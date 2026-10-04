@@ -1,0 +1,29 @@
+{
+  "agents": [
+    { "id": "claude",   "name": "Claude",   "url": "https://claude.ai/new",      "color": "#d97757", "icon": "C" },
+    { "id": "astra",    "name": "Astra",    "url": "https://chatgpt.com/",       "color": "#10a37f", "icon": "A" },
+    { "id": "kimi",     "name": "Kimi",     "url": "https://www.kimi.com/",      "color": "#4f8cff", "icon": "K" },
+    { "id": "deepseek", "name": "DeepSeek", "url": "https://chat.deepseek.com/", "color": "#8b7bff", "icon": "D" }
+  ],
+
+  "layout": {
+    "start": "single",
+    "gridColumns": 2,
+    "askAllBar": true
+  },
+
+  "askAll": {
+    "pressEnter": true
+  },
+
+  "theme": {
+    "background": "#0f1115",
+    "sidebar": "#15181e",
+    "text": "#e6e6e6",
+    "accent": "#7c5cff",
+    "radius": 10,
+    "sidebarWidth": 64,
+    "gap": 6,
+    "font": "Segoe UI, system-ui, sans-serif"
+  }
+}

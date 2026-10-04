@@ -1,0 +1,7 @@
+{
+  "name": "agent-hub",
+  "version": "0.1.0",
+  "description": "Claude, Astra, Kimi and DeepSeek in one customizable window",
+  "main": "main.js",
+  "private": true
+}

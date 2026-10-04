@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:">
+  <title>Agent Hub</title>
+  <link rel="stylesheet" href="app.css">
+  <style id="user-theme"></style>
+</head>
+<body>
+  <div id="app">
+    <nav id="sidebar">
+      <div id="agent-buttons"></div>
+      <div class="spacer"></div>
+      <button class="tool-btn" id="grid-btn" title="Show all side by side (Ctrl+G)">▦</button>
+      <button class="tool-btn" id="bar-btn" title="Toggle ask-all bar (Ctrl+B)">⌨</button>
+      <button class="tool-btn" id="theme-btn" title="Edit theme.css">🎨</button>
+      <button class="tool-btn" id="config-btn" title="Edit config.json (Ctrl+,)">⚙</button>
+    </nav>
+    <main>
+      <div id="error"></div>
+      <div id="views"></div>
+      <form id="broadcast" autocomplete="off">
+        <input id="broadcast-input" placeholder="Ask all agents at once…  (Ctrl+Shift+Space)">
+        <span id="status"></span>
+        <button type="submit">Send to all</button>
+      </form>
+    </main>
+  </div>
+  <script src="renderer.js"></script>
+</body>
+</html>
