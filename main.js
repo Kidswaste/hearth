@@ -4,6 +4,9 @@ const path = require('path');
 const store = require('./store');
 const engines = require('./engines');
 const importer = require('./importer');
+const appshell = require('./appshell');
+const fsapi = require('./fsapi');
+const aemain = require('./aemain');
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const THEME_PATH = path.join(__dirname, 'theme.css');
@@ -11,20 +14,36 @@ const THEME_PATH = path.join(__dirname, 'theme.css');
 // Present as plain Chrome so sign-in pages (Google, etc.) don't reject the app.
 app.userAgentFallback =
   `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome} Safari/537.36`;
+app.setAppUserModelId('AgentHub');
 
 // Sign-in popups stay inside the app so the login lands in the right agent.
 const AUTH_HOSTS = [
   'accounts.google.com', 'appleid.apple.com', 'login.microsoftonline.com',
-  'login.live.com', 'auth.openai.com', 'auth0.openai.com', 'github.com',
+  'login.live.com', 'auth.openai.com', 'auth0.openai.com', 'github.com', 'miro.com', 'slack.com',
 ];
-const ALLOWED_PERMISSIONS = new Set(['clipboard-sanitized-write', 'notifications', 'media', 'fullscreen']);
+const ALLOWED_PERMISSIONS = new Set(['clipboard-sanitized-write', 'clipboard-read', 'notifications', 'media', 'fullscreen']);
 // Ctrl+<key> combos the hub handles even while a website has focus.
-const HUB_KEYS = new Set(['1', '2', '3', '4', '5', '6', '7', '8', '9', 'g', 'r', ',', 'b', 'n', '\\']);
+const HUB_KEYS = new Set(['1', '2', '3', '4', '5', '6', '7', '8', '9', 'g', 'r', ',', 'b', 'n', '\\', 'k', 'f', '/', '=', '+', '-', '0', 'tab', 'j']);
 
 let win;
 
+// A second launch just brings the existing window forward.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!win) return;
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  });
+}
+
 function readConfig() {
   return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+}
+function settings() {
+  try { return readConfig().settings || {}; } catch { return {}; }
 }
 
 function loadAll() {
@@ -49,20 +68,32 @@ function openExternal(url) {
   if (/^https?:\/\//i.test(url)) shell.openExternal(url);
 }
 
+const send = (channel, data) => win?.webContents.send(channel, data);
+
 function createWindow() {
   const { config } = loadAll();
+  const icon = appshell.ensureIcon();
+  const state = appshell.loadWindowState();
   win = new BrowserWindow({
-    width: 1480,
-    height: 940,
+    x: state.x,
+    y: state.y,
+    width: state.width || 1480,
+    height: state.height || 940,
+    minWidth: 760,
+    minHeight: 480,
     title: 'Agent Hub',
+    icon,
     autoHideMenuBar: true,
     backgroundColor: config?.theme?.background || '#0f1115',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       webviewTag: true,
+      spellcheck: true,
     },
   });
+  if (state.maximized) win.maximize();
+  appshell.trackWindowState(win);
   win.loadFile('index.html');
   // Links clicked in native chats open in your normal browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -73,12 +104,21 @@ function createWindow() {
     event.preventDefault();
     openExternal(url);
   });
+  win.webContents.on('found-in-page', (_e, result) => send('find:result', result));
+  win.on('focus', () => { win.flashFrame(false); send('window:focus', true); });
+  win.on('blur', () => send('window:focus', false));
+
+  appshell.setupTray(win, icon, { send });
+  appshell.setupCloseToTray(win, settings);
+  appshell.setupDownloads(send);
+  appshell.applySettings(win, settings());
 }
 
 app.on('web-contents-created', (_event, contents) => {
   contents.session.setPermissionRequestHandler((_wc, permission, callback) => {
     callback(ALLOWED_PERMISSIONS.has(permission));
   });
+  appshell.attachContextMenu(contents, send);
 
   if (contents.getType() !== 'webview') return;
 
@@ -95,31 +135,42 @@ app.on('web-contents-created', (_event, contents) => {
     const key = input.key.toLowerCase();
     if (HUB_KEYS.has(key) || (input.shift && key === ' ')) {
       event.preventDefault();
-      win?.webContents.send('shortcut', { key, shift: input.shift });
+      send('shortcut', { key, shift: input.shift });
     }
   });
 });
 
 ipcMain.handle('config:get', () => loadAll());
-ipcMain.handle('config:save', (_e, config) => fs.writeFileSync(CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`));
+ipcMain.handle('config:save', (_e, config) => {
+  fs.writeFileSync(CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`);
+  return appshell.applySettings(win, config.settings || {});
+});
 ipcMain.handle('open-file', (_e, which) => shell.openPath(which === 'theme' ? THEME_PATH : CONFIG_PATH));
 ipcMain.handle('open-external', (_e, url) => openExternal(url));
+ipcMain.handle('open-data-folder', () => shell.openPath(store.DATA_DIR));
 
 ipcMain.handle('chats:list', () => store.listChats());
 ipcMain.handle('chats:get', (_e, id) => store.getChat(id));
 ipcMain.handle('chats:save', (_e, chat) => store.saveChat(chat));
 ipcMain.handle('chats:delete', (_e, id) => store.deleteChat(id));
+ipcMain.handle('chats:searchText', (_e, query) => store.searchChats(query));
+ipcMain.handle('chats:trash', () => store.listTrash());
+ipcMain.handle('chats:restore', (_e, id) => store.restoreChat(id));
 ipcMain.handle('history:get', () => store.getHistory());
 ipcMain.handle('history:save', (_e, history) => store.saveHistory(history));
+ipcMain.handle('kv:get', (_e, name, fallback) => store.getKV(name, fallback));
+ipcMain.handle('kv:set', (_e, name, value) => store.setKV(name, value));
 
 // The renderer names the agent; engine, model and prompt are always read from config.json here.
-ipcMain.handle('engine:send', (_e, { agentId, chatId, session, text }) => {
+ipcMain.handle('engine:send', (_e, { agentId, chatId, session, text, options }) => {
   const agent = readConfig().agents.find((a) => a.id === agentId);
   if (!agent || agent.mode !== 'native') throw new Error(`${agentId} is not a native agent`);
-  engines.send({ agent, chatId, session: session || {}, text }, (event) => {
-    win?.webContents.send('engine:event', { chatId, ...event });
+  engines.send({ agent, chatId, session: session || {}, text, options: options || {} }, (event) => {
+    send('engine:event', { chatId, ...event });
   });
 });
+ipcMain.handle('attachments:save', (_e, name, base64) => store.saveAttachment(name, base64));
+ipcMain.handle('usage:get', () => store.getUsage());
 ipcMain.handle('memory:get', () => store.getMemory());
 ipcMain.handle('memory:save', (_e, memory) => store.saveMemory(memory));
 // Claude's connected apps with tool counts, for the agent editor.
@@ -162,20 +213,47 @@ ipcMain.handle('chats:import', async () => {
     return { error: err.message };
   }
 });
-ipcMain.handle('pick-folder', async (_e, current) => {
+ipcMain.handle('pick-folder', async (_e, current, title) => {
   const pick = await dialog.showOpenDialog(win, {
-    title: 'Folder this agent can read and edit',
+    title: title || 'Choose a folder',
     defaultPath: current || undefined,
     properties: ['openDirectory'],
   });
   return pick.canceled ? null : pick.filePaths[0];
 });
 ipcMain.handle('engine:stop', (_e, chatId) => engines.stop(chatId));
+ipcMain.handle('engine:stopAll', () => engines.stopAll());
 ipcMain.handle('engine:login', (_e, engine) => engines.login(engine));
 ipcMain.handle('engine:status', () => engines.status());
 
+// ---------- window & desktop ----------
+ipcMain.handle('window:show', () => { win.show(); win.focus(); });
+ipcMain.handle('window:flash', () => { if (!win.isFocused()) win.flashFrame(true); });
+ipcMain.handle('window:isFocused', () => win.isFocused() && win.isVisible());
+ipcMain.handle('window:reload', () => win.webContents.reloadIgnoringCache());
+ipcMain.handle('find:start', (_e, text, opts) => (text ? win.webContents.findInPage(text, opts) : null));
+ipcMain.handle('find:stop', () => win.webContents.stopFindInPage('keepSelection'));
+ipcMain.handle('shortcuts:create', () => appshell.createShortcuts());
+ipcMain.handle('data:export', async () => {
+  const r = await dialog.showSaveDialog(win, {
+    defaultPath: `agent-hub-backup-${new Date().toISOString().slice(0, 10)}.zip`,
+    filters: [{ name: 'Zip', extensions: ['zip'] }],
+  });
+  if (r.canceled || !r.filePath) return null;
+  const entries = [
+    { path: store.DATA_DIR, name: 'data' },
+    { path: CONFIG_PATH, name: 'config.json' },
+    { path: THEME_PATH, name: 'theme.css' },
+  ].filter((e) => fs.existsSync(e.path));
+  // Website logins live in Electron's own profile, not data/, so they're never in the backup.
+  return fsapi.zip(entries, r.filePath, { skipDirs: ['workspace', 'ae'] });
+});
+
+fsapi.registerIpc(ipcMain, () => win);
+aemain.registerIpc(ipcMain, () => win, () => settings().aePath);
+
 for (const file of [CONFIG_PATH, THEME_PATH]) {
-  fs.watchFile(file, { interval: 400 }, () => win?.webContents.send('config:changed', loadAll()));
+  fs.watchFile(file, { interval: 400 }, () => send('config:changed', loadAll()));
 }
 
 app.whenReady().then(createWindow);

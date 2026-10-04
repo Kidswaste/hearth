@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { DATA_DIR, getMemory } = require('./store');
+const { DATA_DIR, ATTACH_DIR, getMemory, addUsage } = require('./store');
 
 const WORKSPACE = path.join(DATA_DIR, 'workspace');
 const PROMPTS_DIR = path.join(DATA_DIR, 'prompts');
@@ -121,17 +121,20 @@ function readConnectorCache() {
 }
 
 // Claude's connected apps come from your Claude account. Each one is off, read-only or full.
-function claudeToolArgs(agent) {
+function claudeToolArgs(agent, options = {}) {
   const enabled = new Map(enabledConnectors(agent));
   const folder = fileFolder(agent);
-  const args = folder
-    ? ['--tools', FILE_TOOLS.join(','), '--restricted', '--add-dir', folder, '--permission-mode', 'acceptEdits']
-    : ['--tools', ''];
-  if (!enabled.size && !folder) return [...args, '--strict-mcp-config'];
+  // Attached images are read with the Read tool from the hub's attachments folder.
+  const images = Boolean(options.images?.length);
+  let args;
+  if (folder) args = ['--tools', FILE_TOOLS.join(','), '--restricted', '--add-dir', folder, ATTACH_DIR, '--permission-mode', 'acceptEdits'];
+  else if (images) args = ['--tools', 'Read', '--restricted', '--add-dir', ATTACH_DIR];
+  else args = ['--tools', ''];
+  if (!enabled.size && !folder && !images) return [...args, '--strict-mcp-config'];
   if (!enabled.size) args.push('--strict-mcp-config');
   args.push('--permission-prompts', 'none');
   const { claude } = readConnectorCache();
-  const allowed = folder ? [...FILE_TOOLS] : [];
+  const allowed = folder ? [...FILE_TOOLS] : images ? ['Read'] : [];
   const denied = [];
   for (const server of enabled.size ? claude?.servers || [] : []) {
     const prefix = serverPrefix(server.name);
@@ -147,21 +150,22 @@ function claudeToolArgs(agent) {
   return args;
 }
 
-function claudeArgs(agent, session) {
+function claudeArgs(agent, session, options = {}) {
   const args = [
     '-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
     '--setting-sources', 'project', '--disable-slash-commands', '--system-prompt-snapshot', 'off',
-    ...claudeToolArgs(agent),
+    ...claudeToolArgs(agent, options),
     '--system-prompt', buildPrompt(agent),
   ];
-  if (agent.model) args.push('--model', agent.model);
+  const model = options.model || agent.model;
+  if (model) args.push('--model', model);
   if (agent.effort) args.push('--effort', agent.effort);
   if (session.id) args.push('--resume', session.id);
   else args.push('--session-id', crypto.randomUUID());
   return args;
 }
 
-function codexArgs(agent, session) {
+function codexArgs(agent, session, options = {}) {
   const promptFile = path.join(PROMPTS_DIR, `${agent.id}.md`);
   fs.writeFileSync(promptFile, buildPrompt(agent));
   const args = ['exec'];
@@ -175,8 +179,10 @@ function codexArgs(agent, session) {
     '-c', 'web_search="disabled"',
   );
   if (agent.effort) args.push('-c', `model_reasoning_effort="${agent.effort}"`);
-  if (agent.model) args.push('-m', agent.model);
+  const model = options.model || agent.model;
+  if (model) args.push('-m', model);
   if (!session.id) args.push('-s', 'read-only', '-C', WORKSPACE);
+  for (const image of options.images || []) args.push('-i', image);
   args.push('-');
   return args;
 }
@@ -246,8 +252,11 @@ function friendlyError(engine, message) {
   return { message };
 }
 
-function send({ agent, chatId, session, text }, emit) {
+function send({ agent, chatId, session, text, options = {} }, emit) {
   const engine = agent.engine;
+  if (engine === 'claude' && options.images?.length) {
+    text += `\n\n[Attached image${options.images.length > 1 ? 's' : ''}: open with your Read tool before answering]\n${options.images.join('\n')}`;
+  }
   const bin = LOCATE[engine]?.();
   if (!bin) {
     emit({ type: 'error', message: `Couldn't find ${ENGINES[engine]?.label || engine} on this PC.` });
@@ -260,7 +269,7 @@ function send({ agent, chatId, session, text }, emit) {
   // Sessions always live in the hub's own workspace so chats resume even after the folder changes;
   // the project folder is reached through --add-dir.
   const state = { ...session };
-  const args = engine === 'claude' ? claudeArgs(agent, state) : codexArgs(agent, state);
+  const args = engine === 'claude' ? claudeArgs(agent, state, options) : codexArgs(agent, state, options);
   const parse = engine === 'claude' ? claudeParser(state) : codexParser(state);
 
   const child = spawn(bin, args, { cwd: WORKSPACE, windowsHide: true });
@@ -274,6 +283,7 @@ function send({ agent, chatId, session, text }, emit) {
     if (finished) return;
     finished = true;
     if (event.type === 'error') Object.assign(event, friendlyError(engine, event.message));
+    if (event.type === 'done') { try { addUsage(agent.id, event.usage); } catch { /* usage stats are best-effort */ } }
     emit({ ...event, session: state });
   };
 
@@ -304,6 +314,12 @@ function send({ agent, chatId, session, text }, emit) {
 function stop(chatId) {
   log(`stop requested ${chatId}`);
   running.get(chatId)?.kill();
+}
+
+function stopAll() {
+  const count = running.size;
+  for (const id of [...running.keys()]) stop(id);
+  return count;
 }
 
 // Opens a console window where you sign in yourself; the hub never sees your password.
@@ -358,5 +374,5 @@ function discoverConnectors() {
 }
 
 module.exports = {
-  send, stop, login, status, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name),
+  send, stop, stopAll, login, status, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name),
 };

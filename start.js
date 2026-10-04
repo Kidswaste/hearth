@@ -11,8 +11,9 @@ $('add-btn').addEventListener('click', () => Manager.open());
 $('panel-btn').addEventListener('click', () => handleShortcut({ key: '\\' }));
 $('grid-btn').addEventListener('click', () => handleShortcut({ key: 'g' }));
 $('bar-btn').addEventListener('click', () => handleShortcut({ key: 'b' }));
-$('config-btn').addEventListener('click', () => window.hub.openFile('config'));
-$('theme-btn').addEventListener('click', () => window.hub.openFile('theme'));
+$('config-btn').addEventListener('click', () => AppUI.openSettings());
+$('palette-btn').addEventListener('click', () => AppUI.palette());
+$('notes-btn').addEventListener('click', () => Notes.toggle());
 $('chat-search').addEventListener('input', (e) => Panel.setFilter(e.target.value));
 $('import-btn').addEventListener('click', async () => {
   const status = $('import-status');
@@ -29,9 +30,10 @@ $('import-btn').addEventListener('click', async () => {
 document.addEventListener('click', (e) => { if (!e.target.closest('#menu')) hideMenu(); });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') hideMenu();
-  if (!e.ctrlKey) return;
+  // Code editors handle their own Ctrl shortcuts (comment toggle, duplicate line…).
+  if (!e.ctrlKey || e.defaultPrevented || e.target.closest?.('.code-editor')) return;
   const key = e.key.toLowerCase();
-  if (/^[1-9gbrn,\\]$/.test(key) || (e.shiftKey && key === ' ')) {
+  if (/^[1-9gbrnkfj,\\/=+\-0]$/.test(key) || key === 'tab' || (e.shiftKey && key === ' ')) {
     e.preventDefault();
     handleShortcut({ key, shift: e.shiftKey });
   }
@@ -45,5 +47,6 @@ window.hub.onConfigChanged(apply);
   [H.chats, H.history, H.engineStatus] = await Promise.all([
     window.hub.listChats(), window.hub.getHistory(), window.hub.engineStatus(),
   ]);
+  AppUI.init();
   apply(await window.hub.getConfig());
 })();

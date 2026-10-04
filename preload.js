@@ -1,31 +1,97 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webFrame, webUtils } = require('electron');
 
 const on = (channel) => (cb) => ipcRenderer.on(channel, (_e, data) => cb(data));
+const call = (channel) => (...args) => ipcRenderer.invoke(channel, ...args);
 
 contextBridge.exposeInMainWorld('hub', {
-  getConfig: () => ipcRenderer.invoke('config:get'),
-  saveConfig: (config) => ipcRenderer.invoke('config:save', config),
+  getConfig: call('config:get'),
+  saveConfig: call('config:save'),
   onConfigChanged: on('config:changed'),
   onShortcut: on('shortcut'),
-  openFile: (which) => ipcRenderer.invoke('open-file', which),
-  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  openFile: call('open-file'),
+  openExternal: call('open-external'),
+  openDataFolder: call('open-data-folder'),
 
-  listChats: () => ipcRenderer.invoke('chats:list'),
-  getChat: (id) => ipcRenderer.invoke('chats:get', id),
-  saveChat: (chat) => ipcRenderer.invoke('chats:save', chat),
-  deleteChat: (id) => ipcRenderer.invoke('chats:delete', id),
-  importChats: () => ipcRenderer.invoke('chats:import'),
-  pickFolder: (current) => ipcRenderer.invoke('pick-folder', current),
-  getMemory: () => ipcRenderer.invoke('memory:get'),
-  saveMemory: (memory) => ipcRenderer.invoke('memory:save', memory),
-  getConnectors: () => ipcRenderer.invoke('connectors:get'),
-  refreshConnectors: () => ipcRenderer.invoke('connectors:refresh'),
-  getHistory: () => ipcRenderer.invoke('history:get'),
-  saveHistory: (history) => ipcRenderer.invoke('history:save', history),
+  listChats: call('chats:list'),
+  getChat: call('chats:get'),
+  saveChat: call('chats:save'),
+  deleteChat: call('chats:delete'),
+  searchChatText: call('chats:searchText'),
+  listChatTrash: call('chats:trash'),
+  restoreChat: call('chats:restore'),
+  importChats: call('chats:import'),
+  pickFolder: call('pick-folder'),
+  getMemory: call('memory:get'),
+  saveMemory: call('memory:save'),
+  getConnectors: call('connectors:get'),
+  refreshConnectors: call('connectors:refresh'),
+  getHistory: call('history:get'),
+  saveHistory: call('history:save'),
+  kvGet: call('kv:get'),
+  kvSet: call('kv:set'),
+  saveAttachment: call('attachments:save'),
+  getUsage: call('usage:get'),
 
-  send: (request) => ipcRenderer.invoke('engine:send', request),
-  stop: (chatId) => ipcRenderer.invoke('engine:stop', chatId),
-  login: (engine) => ipcRenderer.invoke('engine:login', engine),
-  engineStatus: () => ipcRenderer.invoke('engine:status'),
+  send: call('engine:send'),
+  stop: call('engine:stop'),
+  stopAll: call('engine:stopAll'),
+  login: call('engine:login'),
+  engineStatus: call('engine:status'),
   onEngineEvent: on('engine:event'),
+
+  // window & desktop
+  showWindow: call('window:show'),
+  flashWindow: call('window:flash'),
+  isWindowFocused: call('window:isFocused'),
+  reloadWindow: call('window:reload'),
+  onWindowFocus: on('window:focus'),
+  findStart: call('find:start'),
+  findStop: call('find:stop'),
+  onFindResult: on('find:result'),
+  createShortcuts: call('shortcuts:create'),
+  exportData: call('data:export'),
+  setZoom: (factor) => webFrame.setZoomFactor(factor),
+  getZoom: () => webFrame.getZoomFactor(),
+  pathForFile: (file) => webUtils.getPathForFile(file),
+  onTray: (cb) => {
+    ipcRenderer.on('tray:new-chat', () => cb('new-chat'));
+    ipcRenderer.on('tray:palette', () => cb('palette'));
+  },
+  onContextAction: (cb) => {
+    ipcRenderer.on('context:ask', (_e, text) => cb('ask', text));
+    ipcRenderer.on('context:note', (_e, text) => cb('note', text));
+  },
+  onDownload: on('download:update'),
+
+  // files & tools
+  fs: {
+    list: call('fs:list'),
+    read: call('fs:read'),
+    write: call('fs:write'),
+    stat: call('fs:stat'),
+    search: call('fs:search'),
+    trash: call('fs:trash'),
+    zip: call('fs:zip'),
+    diff: call('fs:diff'),
+    reveal: call('fs:reveal'),
+    open: call('fs:open'),
+    copy: call('fs:copy'),
+    watch: call('fs:watch'),
+    unwatch: call('fs:unwatch'),
+    home: call('fs:home'),
+    onChanged: on('fs:changed'),
+  },
+  fetchText: call('net:text'),
+  openDialog: call('dialog:open'),
+  saveFile: call('dialog:saveFile'),
+  ae: {
+    status: call('ae:status'),
+    templates: call('ae:templates'),
+    run: call('ae:run'),
+    install: call('ae:install'),
+    projects: call('ae:projects'),
+    render: call('ae:render'),
+    cancel: call('ae:cancel'),
+    onRender: on('ae:render-event'),
+  },
 });

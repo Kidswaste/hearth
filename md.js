@@ -27,7 +27,9 @@
         i += 1;
         while (i < lines.length && !/^\s*```/.test(lines[i])) body.push(lines[i++]);
         i += 1;
-        out.push(`<pre data-lang="${escape(fence[1])}"><button class="copy-code" title="Copy">Copy</button><code>${escape(body.join('\n'))}</code></pre>`);
+        const codeText = body.join('\n');
+        const highlighted = window.highlight ? window.highlight(codeText, fence[1].toLowerCase() || 'text') : escape(codeText);
+        out.push(`<pre data-lang="${escape(fence[1])}"><button class="copy-code" title="Copy">Copy</button><code>${highlighted}</code></pre>`);
         continue;
       }
       const heading = line.match(/^(#{1,4})\s+(.*)/);

@@ -15,7 +15,11 @@ Electron v44.5.1 (unpacked in `electron/`, gitignored), plain JS, no npm, no bui
 - `store.js`: `data/chats/*.json`, `data/web-history.json`, `data/memory.json` (atomic writes).
 - `importer.js`: claude.ai and ChatGPT export importers (zip via `tar.exe`), deduped by hashed id.
 - Renderer modules (plain scripts sharing the global `H` state): `renderer.js` (core, rail, surfaces, layout, ask-all), `native.js` (chat UI, streaming, `<remember>` tags, imported-chat context), `panel.js` (chats grouped by agent, search, paging), `manager.js` (add/edit agent dialog, presets, connectors), `memory.js`, `md.js` (safe Markdown), `start.js` (wiring).
-- `config.json` holds agents, layout and theme. It's edited in-app and hot-reloads. `theme.css` holds user CSS. `app.css` holds base styles driven by CSS variables.
+- `config.json` holds agents, layout, theme, `settings` (app options) and `tools` (rail order/hidden). It's edited in-app and hot-reloads. `theme.css` holds user CSS. `app.css` + `features.css` hold base styles driven by CSS variables.
+- Main-process helpers: `appshell.js` (icon drawn in code, window memory, tray, global hotkey, startup, shortcuts, right-click menus, downloads), `fsapi.js` (list/read/write/search/watch/zip/recycle/diff IPC), `aemain.js` (After Effects: locate, run ExtendScript via `AfterFX.exe -r` in one undo group, install scripts, output templates from prefs, aerender with progress).
+- Renderer foundation: `ui.js` (`el()`, toasts, `Modal`, `Tabs`, `DataTable`, `CodeEditor`, `highlight`, `dropZone`, `store` = localStorage), `tools.js` (tool registry; tools mount lazily), `appui.js` (settings, themes, palette, find, zoom, Ctrl+Tab, notifications, downloads, usage, trash), `notes.js` (Notes + Prompts), `kit.js` (color + easing tools).
+- Tools: `tools/forge.js` (Forgeheart workspace), `tools/three.js` + `tools/three-data.js` + `tools/three-sandbox.html` (Three.js Lab), `tools/ae.js` + `tools/ae-data.js` (After Effects kit). Full list in `FEATURES.md`.
+- Tool data lives in `data/kv/<name>.json` via `hub.kvGet/kvSet` (each save keeps `<name>.prev.json`). Deleted chats go to `data/trash` for 30 days.
 
 ## Key decisions (keep these)
 - **Token frugality is the #1 priority.** Past CLI attempts burned tokens and gave bad results.
@@ -28,6 +32,10 @@ Electron v44.5.1 (unpacked in `electron/`, gitignored), plain JS, no npm, no bui
 - Never handle my passwords. Sign-in opens the CLI's own login window.
 - File access (Claude agents only) is opt-in per agent: a folder picked in the agent editor. It enables Read/Edit/Write/Glob/Grep with `--restricted --add-dir <folder> --permission-mode acceptEdits`, has no command running, and writes outside the folder are blocked (tested). Sessions stay in `data/workspace` so chats still resume after the folder changes.
 - Memory is added to every prompt, so keep it short. Agents save facts via `<remember>…</remember>`, which the hub strips and shows with an Undo.
+- The Three.js sandbox iframe has `sandbox="allow-scripts"` without same-origin, so sketch code (which can come from chats) can't reach `window.hub`. Perf stats hook `WebGLRenderer.render` through a prototype setter because three assigns `this.render` in its constructor.
+- Destructive tool actions go to the Recycle Bin (`shell.trashItem`), never permanent deletes; the Forgeheart project folder is read-mostly.
+- aerender can exit 0 after an error, so failures are detected from its log ("aerender Error" lines).
+- When editing files from PowerShell, never round-trip through `Get-Content`/`Set-Content` without `-Encoding utf8`: it garbles ×, →, emoji. Use `[IO.File]::ReadAllText/WriteAllText`.
 
 ## Known gaps / not verified
 - The Codex "ChatGPT apps" toggle is untested.
@@ -35,8 +43,9 @@ Electron v44.5.1 (unpacked in `electron/`, gitignored), plain JS, no npm, no bui
 - Real claude.ai/ChatGPT export files haven't been imported yet (only synthetic ones).
 - Ask-all into website agents needs logged-in sites and may break when a site's DOM changes (`inputSelector` override exists).
 - No plugins/skills yet. Proposed approach: an opt-in per-chat "Workshop" switch that gives Claude file/code tools in a sandbox folder.
+- Feature pack items marked ○ in `FEATURES.md` (tray, notifications, downloads, running scripts inside AE, a real aerender render, backup clean/restore, CSV save…) were built and code-checked but not exercised live.
 
 ## How to test changes
-Syntax check: `electron\electron.exe --check <file>` with `ELECTRON_RUN_AS_NODE=1`. For UI checks, launch with `--remote-debugging-port=9333` and drive the page through CDP `Runtime.evaluate`.
+Syntax check: `electron\electron.exe --check <file>` with `ELECTRON_RUN_AS_NODE=1`. For UI checks, launch with `--remote-debugging-port=9333` and drive the page through CDP `Runtime.evaluate` (return `JSON.stringify(...)` so results serialize). Test with throwaway data and clean it up; never edit or delete the user's chats, sketches or Forgeheart files in tests.
 
 Start by asking me what I want to change next.

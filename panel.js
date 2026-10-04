@@ -16,7 +16,9 @@ const Panel = (() => {
 
   function itemsFor(agent) {
     if (agent.mode === 'native') {
-      return H.chats.filter((c) => c.agentId === agent.id).map((c) => ({ key: c.id, title: c.title, chatId: c.id }));
+      return H.chats.filter((c) => c.agentId === agent.id)
+        .sort((a, b) => (b.pinned - a.pinned) || (b.updatedAt - a.updatedAt))
+        .map((c) => ({ key: c.id, title: c.title, chatId: c.id, pinned: c.pinned }));
     }
     return (H.history[agent.id] || []).map((h) => ({ key: h.url, title: h.title, url: h.url }));
   }
@@ -51,8 +53,11 @@ const Panel = (() => {
     e.preventDefault();
     const items = item.chatId
       ? [
+        { label: item.pinned ? 'Unpin' : 'Pin to top', action: () => Native.togglePin(item.chatId) },
         { label: 'Rename', action: () => startRename(row, item.chatId, item.title) },
-        { label: 'Delete chat', danger: true, action: () => { if (confirm(`Delete "${item.title}"? This can't be undone.`)) Native.remove(item.chatId); } },
+        { label: 'Copy as Markdown', action: async () => copyText(await Native.markdownOf(item.chatId), 'Chat copied') },
+        ...H.agents().filter((a) => a.mode === 'native' && a.id !== agent.id).map((a) => ({ label: `Continue with ${a.name}`, action: () => Native.continueWith(item.chatId, a.id) })),
+        { label: 'Delete chat', danger: true, action: () => { if (confirm(`Delete "${item.title}"? You can restore it for 30 days (Ctrl+K → Recently deleted chats).`)) Native.remove(item.chatId); } },
       ]
       : [
         { label: 'Open', action: () => openWebChat(agent.id, item.url) },
@@ -105,6 +110,7 @@ const Panel = (() => {
           const row = el('div', 'item');
           row.dataset.key = item.key;
           row.title = item.title;
+          if (item.pinned) row.append(el('span', 'pin-mark', '📌'));
           row.append(el('span', 'item-title', item.title));
           if (item.chatId && Native.isBusy(item.chatId)) row.append(el('span', 'busy'));
           row.addEventListener('click', () => (item.chatId ? Native.open(agent.id, item.chatId) : openWebChat(agent.id, item.url)));
@@ -118,6 +124,11 @@ const Panel = (() => {
         }
       }
       root.append(group);
+    }
+    if (q.length >= 2) {
+      const deep = el('button', 'show-more deep-search', `Search inside messages for “${filter}”`);
+      deep.addEventListener('click', () => AppUI.palette(`?${filter}`));
+      root.append(deep);
     }
     highlight();
   }

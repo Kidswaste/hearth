@@ -1,0 +1,413 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<!-- Runs untrusted sketch code: it may load three.js and addons from CDNs, nothing from the hub. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: blob:; img-src * data: blob:; connect-src * data: blob:; worker-src 'self' blob: https:; style-src 'self' 'unsafe-inline' https:">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #111318; color: #ccc; font: 13px system-ui, sans-serif; }
+  canvas { display: block; }
+  #drop { position: fixed; inset: 0; display: none; place-items: center; text-align: center; color: #9aa; pointer-events: none; }
+  body.viewer #drop.show { display: grid; }
+</style>
+<script>
+  // Import map built from ?v= so the Lab can switch three.js versions.
+  const params = new URLSearchParams(location.search);
+  const V = params.get('v') || '0.186.1';
+  const base = `https://cdn.jsdelivr.net/npm/three@${V}`;
+  const im = document.createElement('script');
+  im.type = 'importmap';
+  im.textContent = JSON.stringify({ imports: { three: `${base}/build/three.module.js`, 'three/addons/': `${base}/examples/jsm/`, 'three/examples/jsm/': `${base}/examples/jsm/` } });
+  document.currentScript.after(im);
+
+  const post = (msg) => parent.postMessage({ source: 'three-sandbox', ...msg }, '*');
+  const fmt = (v) => {
+    if (typeof v === 'string') return v;
+    if (v instanceof Error) return `${v.name}: ${v.message}`;
+    try { return JSON.stringify(v, (k, x) => (typeof x === 'number' ? Number(x.toFixed?.(4) ?? x) : x)); } catch { return String(v); }
+  };
+  for (const level of ['log', 'info', 'warn', 'error']) {
+    const orig = console[level].bind(console);
+    console[level] = (...args) => { post({ type: 'console', level, text: args.map(fmt).join(' ') }); orig(...args); };
+  }
+  // Line numbers for errors raised inside the sketch module (a blob: URL).
+  // blob URLs look like blob:null/<uuid>:LINE:COL — take the first number pair after the URL.
+  const lineOf = (stack) => { const m = /blob:[^\s)]*?:(\d+):(\d+)/.exec(stack || ''); return m ? Number(m[1]) : null; };
+  addEventListener('error', (e) => post({ type: 'error', message: e.message, line: e.filename?.startsWith('blob:') ? e.lineno : lineOf(e.error?.stack) }));
+  addEventListener('unhandledrejection', (e) => post({ type: 'error', message: String(e.reason?.message || e.reason), line: lineOf(e.reason?.stack) }));
+</script>
+</head>
+<body>
+<div id="drop"><div>Drop a .glb, .gltf, .fbx, .obj, .stl or .ply file<br><small>or use the Open button</small></div></div>
+<script type="module">
+import * as THREE from 'three';
+
+const post = (msg) => parent.postMessage({ source: 'three-sandbox', ...msg }, '*');
+const mode = new URLSearchParams(location.search).get('mode') || 'sketch';
+
+// ---------- performance stats for whatever renderer the sketch makes ----------
+let frames = 0;
+let lastTick = performance.now();
+let lastRenderer = null;
+let frameMs = 0;
+let shotPending = false;
+function instrument(renderFn) {
+  return function render(scene, camera) {
+    const t0 = performance.now();
+    renderFn.call(this, scene, camera);
+    frameMs = performance.now() - t0;
+    lastRenderer = this;
+    frames += 1;
+    if (shotPending) { shotPending = false; post({ type: 'shot', dataUrl: this.domElement.toDataURL('image/png') }); }
+  };
+}
+// WebGLRenderer assigns `this.render = function…` in its constructor (no prototype method), so a
+// prototype setter catches that assignment and stores an instrumented version on the instance.
+const proto = THREE.WebGLRenderer.prototype;
+const protoRender = Object.getOwnPropertyDescriptor(proto, 'render');
+if (typeof protoRender?.value === 'function') proto.render = instrument(protoRender.value);
+else {
+  Object.defineProperty(proto, 'render', {
+    configurable: true,
+    get() { return undefined; },
+    set(fn) { Object.defineProperty(this, 'render', { value: instrument(fn), writable: true, configurable: true, enumerable: true }); },
+  });
+}
+setInterval(() => {
+  const now = performance.now();
+  const fps = (frames * 1000) / (now - lastTick);
+  frames = 0;
+  lastTick = now;
+  if (!lastRenderer) return;
+  const i = lastRenderer.info;
+  post({ type: 'stats', fps, ms: frameMs, calls: i.render.calls, triangles: i.render.triangles, points: i.render.points, lines: i.render.lines, geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs?.length ?? 0 });
+}, 500);
+
+function requestShot() {
+  shotPending = true;
+  // Static scenes may not render again; fall back to the current canvas.
+  setTimeout(() => { if (shotPending && lastRenderer) { shotPending = false; post({ type: 'shot', dataUrl: lastRenderer.domElement.toDataURL('image/png') }); } }, 600);
+}
+
+// ---------- sketch mode ----------
+async function runSketch(code) {
+  const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+  try { await import(url); post({ type: 'ran' }); } catch (err) {
+    post({ type: 'error', message: `${err.name}: ${err.message}`, line: Number(/blob:[^\s)]*?:(\d+):\d+/.exec(err.stack || '')?.[1]) || null });
+  }
+}
+
+// ---------- shader mode ----------
+let shader = null;
+function setupShader() {
+  const renderer = new THREE.WebGLRenderer({ antialias: false });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(innerWidth, innerHeight);
+  document.body.append(renderer.domElement);
+  const scene = new THREE.Scene();
+  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const size = new THREE.Vector2();
+  const uniforms = { uTime: { value: 0 }, uResolution: { value: new THREE.Vector2() }, uMouse: { value: new THREE.Vector2() }, uFrame: { value: 0 } };
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
+  scene.add(quad);
+  const PREFIX = ['precision highp float;', 'uniform float uTime;', 'uniform vec2 uResolution;', 'uniform vec2 uMouse;', 'uniform int uFrame;', 'in vec2 vUv;', 'out vec4 fragColor;',
+    '#define iTime uTime', '#define iResolution vec3(uResolution, 1.0)', '#define iMouse vec4(uMouse, 0.0, 0.0)', '#define iFrame uFrame'];
+  let errorReported = false;
+  renderer.debug.onShaderError = (gl, program, vs, fs) => {
+    const log = gl.getShaderInfoLog(fs) || gl.getShaderInfoLog(vs) || gl.getProgramInfoLog(program) || 'Shader failed to compile';
+    // three prepends its own lines (#version, SHADER_NAME…) before ours; find where the user's code starts.
+    const source = gl.getShaderSource(fs) || '';
+    const offset = source.split('\n').findIndex((l) => l.includes('__USER_CODE__')) + 1;
+    const errors = [...log.matchAll(/ERROR:\s*\d+:(\d+):\s*(.*)/g)].map((m) => ({ line: Number(m[1]) - offset, message: m[2] }));
+    errorReported = true;
+    post({ type: 'shader-error', errors: errors.length ? errors : [{ line: null, message: log }] });
+  };
+  addEventListener('pointermove', (e) => uniforms.uMouse.value.set(e.clientX * renderer.getPixelRatio(), (innerHeight - e.clientY) * renderer.getPixelRatio()));
+  addEventListener('resize', () => renderer.setSize(innerWidth, innerHeight));
+  const clock = new THREE.Clock();
+  renderer.setAnimationLoop(() => {
+    renderer.getDrawingBufferSize(size);
+    uniforms.uResolution.value.copy(size);
+    uniforms.uTime.value = clock.getElapsedTime();
+    uniforms.uFrame.value += 1;
+    renderer.render(scene, camera);
+  });
+  shader = {
+    set(source) {
+      let body = source;
+      if (/mainImage\s*\(/.test(body) && !/void\s+main\s*\(/.test(body)) body += '\nvoid main() { mainImage(fragColor, gl_FragCoord.xy); }';
+      errorReported = false;
+      quad.material?.dispose();
+      quad.material = new THREE.RawShaderMaterial({
+        glslVersion: THREE.GLSL3,
+        uniforms,
+        vertexShader: 'in vec3 position; in vec2 uv; out vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position, 1.0); }',
+        fragmentShader: `${PREFIX.join('\n')}\n// __USER_CODE__\n${body}`,
+      });
+      clock.start();
+      uniforms.uFrame.value = 0;
+      setTimeout(() => { if (!errorReported) post({ type: 'shader-ok' }); }, 150);
+    },
+  };
+}
+
+// ---------- model viewer mode ----------
+let viewer = null;
+async function setupViewer() {
+  document.body.classList.add('viewer');
+  document.getElementById('drop').classList.add('show');
+  const { OrbitControls } = await import('three/addons/controls/OrbitControls.js');
+  const { RoomEnvironment } = await import('three/addons/environments/RoomEnvironment.js');
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  document.body.append(renderer.domElement);
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x1b1e25);
+  const envTex = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environment = envTex;
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x444455, 0.6);
+  scene.add(hemi);
+  const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.01, 1000);
+  camera.position.set(3, 2, 4);
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  const grid = new THREE.GridHelper(10, 20, 0x666666, 0x333333);
+  const axes = new THREE.AxesHelper(1);
+  scene.add(grid, axes);
+  addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+  let model = null;
+  let mixer = null;
+  let clips = [];
+  let boxHelper = null;
+  let selectHelper = null;
+  let normalHelpers = [];
+  let speed = 1;
+  const nodes = new Map();
+  const materials = new Map();
+  const clock = new THREE.Clock();
+  renderer.setAnimationLoop(() => {
+    mixer?.update(clock.getDelta() * speed);
+    boxHelper?.update();
+    selectHelper?.update();
+    controls.update();
+    renderer.render(scene, camera);
+  });
+
+  function frame(obj) {
+    const box = new THREE.Box3().setFromObject(obj);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const radius = Math.max(size.length() / 2, 0.001);
+    camera.near = radius / 100;
+    camera.far = radius * 200;
+    camera.position.copy(center).add(new THREE.Vector3(1, 0.6, 1.3).normalize().multiplyScalar(radius * 2.6));
+    camera.updateProjectionMatrix();
+    controls.target.copy(center);
+    grid.scale.setScalar(Math.max(radius / 2.5, 0.01));
+    grid.position.y = box.min.y;
+    axes.scale.setScalar(radius);
+    return { size, center, box };
+  }
+
+  function texInfo(tex) {
+    const img = tex.image || tex.source?.data;
+    const w = img?.width || img?.videoWidth || 0;
+    const h = img?.height || img?.videoHeight || 0;
+    const pot = (n) => n > 0 && (n & (n - 1)) === 0;
+    return { uuid: tex.uuid, name: tex.name || '(unnamed)', w, h, pot: pot(w) && pot(h), bytes: Math.round(w * h * 4 * 1.333) };
+  }
+
+  function analyze(gltfJson) {
+    let meshes = 0; let vertices = 0; let triangles = 0; let skinned = 0; let maxBones = 0; let drawCalls = 0;
+    const textures = new Map();
+    const heavy = [];
+    materials.clear();
+    nodes.clear();
+    const tree = (o) => {
+      nodes.set(o.uuid, o);
+      return { uuid: o.uuid, name: o.name || `(${o.type})`, type: o.type, visible: o.visible, children: o.children.map(tree) };
+    };
+    model.traverse((o) => {
+      if (!o.isMesh && !o.isPoints && !o.isLine) return;
+      meshes += 1;
+      const g = o.geometry;
+      const count = o.isInstancedMesh ? o.count : 1;
+      const v = g.attributes.position?.count || 0;
+      const tris = o.isMesh ? (g.index ? g.index.count / 3 : v / 3) * count : 0;
+      vertices += v * count;
+      triangles += tris;
+      const mats = [].concat(o.material);
+      drawCalls += Math.max(1, g.groups.length || mats.length);
+      if (tris > 100000) heavy.push({ name: o.name || o.type, tris });
+      if (o.isSkinnedMesh) { skinned += 1; maxBones = Math.max(maxBones, o.skeleton.bones.length); }
+      for (const m of mats) {
+        if (!m) continue;
+        materials.set(m.uuid, m);
+        for (const val of Object.values(m)) if (val?.isTexture) textures.set(val.uuid, texInfo(val));
+      }
+    });
+    const box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    const texList = [...textures.values()];
+    const issues = [];
+    if (triangles > 1_000_000) issues.push({ level: 'bad', text: `${(triangles / 1e6).toFixed(1)}M triangles in total. Aim for under 300k for web, decimate in Blender or use LODs.` });
+    else if (triangles > 300_000) issues.push({ level: 'warn', text: `${Math.round(triangles / 1000)}k triangles. Fine on desktop, heavy on phones.` });
+    for (const h of heavy) issues.push({ level: 'warn', text: `"${h.name}" alone has ${Math.round(h.tris / 1000)}k triangles.` });
+    if (drawCalls > 200) issues.push({ level: 'warn', text: `About ${drawCalls} draw calls. Merge static meshes or share materials to cut this.` });
+    if (materials.size > 25) issues.push({ level: 'warn', text: `${materials.size} materials. Atlas textures and reuse materials where possible.` });
+    for (const t of texList) {
+      if (Math.max(t.w, t.h) > 2048) issues.push({ level: 'warn', text: `Texture "${t.name}" is ${t.w}×${t.h} (~${Math.round(t.bytes / 1048576)} MB of GPU memory). 2048 or less is usually enough.` });
+      if (!t.pot && t.w) issues.push({ level: 'info', text: `Texture "${t.name}" is ${t.w}×${t.h}, not a power of two (mipmaps still work in WebGL2, but POT sizes compress better).` });
+    }
+    const gpuTex = texList.reduce((s, t) => s + t.bytes, 0);
+    if (gpuTex > 256 * 1048576) issues.push({ level: 'bad', text: `Textures need ~${Math.round(gpuTex / 1048576)} MB of GPU memory. Use KTX2/Basis compression or smaller maps.` });
+    if (gltfJson) {
+      const ext = gltfJson.extensionsUsed || [];
+      if (!ext.some((e) => /draco|meshopt/i.test(e)) && triangles > 50000) issues.push({ level: 'info', text: 'Geometry is not compressed. gltf-transform or gltfpack (Draco/Meshopt) can shrink the file a lot.' });
+      if (!ext.includes('KHR_texture_basisu') && texList.length > 4) issues.push({ level: 'info', text: 'Textures are not KTX2. Compressed textures load faster and use ~4–8× less GPU memory.' });
+    }
+    if (maxBones > 64) issues.push({ level: 'info', text: `A skinned mesh uses ${maxBones} bones. Over ~64 can be slow on older GPUs.` });
+    if (!issues.length) issues.push({ level: 'ok', text: 'No obvious performance problems.' });
+    return {
+      meshes, vertices, triangles: Math.round(triangles), drawCalls, skinned, maxBones,
+      size: size.toArray().map((n) => Number(n.toFixed(3))),
+      materials: [...materials.values()].map((m) => ({
+        uuid: m.uuid, name: m.name || '(unnamed)', type: m.type,
+        color: m.color ? `#${m.color.getHexString()}` : null,
+        emissive: m.emissive ? `#${m.emissive.getHexString()}` : null,
+        roughness: m.roughness, metalness: m.metalness, opacity: m.opacity, transparent: m.transparent,
+        maps: Object.entries(m).filter(([, v]) => v?.isTexture).map(([k]) => k),
+      })),
+      textures: texList, gpuTextureBytes: gpuTex,
+      clips: clips.map((c) => ({ name: c.name || '(unnamed)', duration: Number(c.duration.toFixed(2)), tracks: c.tracks.length })),
+      tree: tree(model), issues,
+    };
+  }
+
+  async function load({ name, buffer, extra = [] }) {
+    const ext = name.split('.').pop().toLowerCase();
+    // Extra files (.bin, textures) dropped alongside a .gltf resolve by file name.
+    const urls = new Map(extra.map((f) => [f.name, URL.createObjectURL(new Blob([f.buffer]))]));
+    const manager = new THREE.LoadingManager();
+    manager.setURLModifier((url) => urls.get(decodeURIComponent(url.split('/').pop())) || url);
+    const blobUrl = URL.createObjectURL(new Blob([buffer]));
+    let object; let animations = []; let gltfJson = null;
+    if (ext === 'glb' || ext === 'gltf') {
+      const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+      const { DRACOLoader } = await import('three/addons/loaders/DRACOLoader.js');
+      const { MeshoptDecoder } = await import('three/addons/libs/meshopt_decoder.module.js');
+      const loader = new GLTFLoader(manager).setDRACOLoader(new DRACOLoader().setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/')).setMeshoptDecoder(MeshoptDecoder);
+      const gltf = await loader.loadAsync(blobUrl);
+      object = gltf.scene; animations = gltf.animations; gltfJson = gltf.parser?.json;
+    } else if (ext === 'fbx') {
+      const { FBXLoader } = await import('three/addons/loaders/FBXLoader.js');
+      object = await new FBXLoader(manager).loadAsync(blobUrl); animations = object.animations || [];
+    } else if (ext === 'obj') {
+      const { OBJLoader } = await import('three/addons/loaders/OBJLoader.js');
+      object = await new OBJLoader(manager).loadAsync(blobUrl);
+    } else if (ext === 'stl' || ext === 'ply') {
+      const mod = ext === 'stl' ? await import('three/addons/loaders/STLLoader.js') : await import('three/addons/loaders/PLYLoader.js');
+      const Loader = mod.STLLoader || mod.PLYLoader;
+      const geo = await new Loader(manager).loadAsync(blobUrl);
+      geo.computeVertexNormals();
+      object = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xbbbbbb, vertexColors: Boolean(geo.attributes.color), roughness: 0.6 }));
+    } else {
+      throw new Error(`Unsupported file type .${ext}`);
+    }
+    if (model) { scene.remove(model); model.traverse((o) => { o.geometry?.dispose(); }); }
+    model = object;
+    scene.add(model);
+    clips = animations;
+    mixer = clips.length ? new THREE.AnimationMixer(model) : null;
+    if (clips.length) mixer.clipAction(clips[0]).play();
+    boxHelper = null; selectHelper = null;
+    normalHelpers.forEach((h) => h.removeFromParent()); normalHelpers = [];
+    document.getElementById('drop').classList.remove('show');
+    frame(model);
+    post({ type: 'model', name, ...analyze(gltfJson) });
+  }
+
+  const setNormals = async (on) => {
+    normalHelpers.forEach((h) => h.removeFromParent());
+    normalHelpers = [];
+    if (!on || !model) return;
+    const { VertexNormalsHelper } = await import('three/addons/helpers/VertexNormalsHelper.js');
+    let budget = 60000;
+    model.traverse((o) => {
+      if (!o.isMesh || budget <= 0) return;
+      const v = o.geometry.attributes.position.count;
+      if (v > budget) return;
+      budget -= v;
+      const h = new VertexNormalsHelper(o, 0.03 * (camera.position.distanceTo(controls.target) / 3), 0x00ff88);
+      scene.add(h);
+      normalHelpers.push(h);
+    });
+  };
+
+  viewer = {
+    load: (msg) => load(msg).catch((err) => post({ type: 'error', message: `Couldn't load ${msg.name}: ${err.message}` })),
+    command({ cmd, value, uuid, prop }) {
+      if (cmd === 'wireframe') materials.forEach((m) => { m.wireframe = value; });
+      if (cmd === 'bbox') { if (boxHelper) scene.remove(boxHelper); boxHelper = value && model ? new THREE.BoxHelper(model, 0xffaa00) : null; if (boxHelper) scene.add(boxHelper); }
+      if (cmd === 'grid') grid.visible = value;
+      if (cmd === 'axes') axes.visible = value;
+      if (cmd === 'background') scene.background = new THREE.Color(value);
+      if (cmd === 'environment') { scene.environment = value ? envTex : null; hemi.intensity = value ? 0.6 : 2.2; }
+      if (cmd === 'normals') setNormals(value);
+      if (cmd === 'autorotate') { controls.autoRotate = value; }
+      if (cmd === 'frame' && model) frame(model);
+      if (cmd === 'visible') { const n = nodes.get(uuid); if (n) n.visible = value; }
+      if (cmd === 'select') {
+        if (selectHelper) scene.remove(selectHelper);
+        const n = nodes.get(uuid);
+        selectHelper = n ? new THREE.BoxHelper(n, 0x00e5ff) : null;
+        if (selectHelper) scene.add(selectHelper);
+      }
+      if (cmd === 'material') {
+        const m = materials.get(uuid);
+        if (!m) return;
+        if (prop === 'color' || prop === 'emissive') m[prop]?.set(value);
+        else { m[prop] = value; if (prop === 'opacity') m.transparent = value < 1; }
+        m.needsUpdate = true;
+      }
+      if (cmd === 'clip') {
+        if (!mixer) return;
+        mixer.stopAllAction();
+        const c = clips.find((x) => (x.name || '(unnamed)') === value);
+        if (c) mixer.clipAction(c).reset().play();
+      }
+      if (cmd === 'pause') speed = value ? 0 : 1;
+      if (cmd === 'speed') speed = value;
+      if (cmd === 'seek' && mixer) { mixer.setTime(value); }
+    },
+  };
+  addEventListener('dragover', (e) => e.preventDefault());
+  addEventListener('drop', async (e) => {
+    e.preventDefault();
+    const files = [...e.dataTransfer.files];
+    const main = files.find((f) => /\.(glb|gltf|fbx|obj|stl|ply)$/i.test(f.name));
+    if (!main) return;
+    const extra = await Promise.all(files.filter((f) => f !== main).map(async (f) => ({ name: f.name, buffer: await f.arrayBuffer() })));
+    viewer.load({ name: main.name, buffer: await main.arrayBuffer(), extra });
+  });
+}
+
+addEventListener('message', async (e) => {
+  const msg = e.data || {};
+  if (msg.target !== 'three-sandbox') return;
+  if (msg.type === 'run') runSketch(msg.code);
+  if (msg.type === 'shader') shader?.set(msg.code);
+  if (msg.type === 'load') viewer?.load(msg);
+  if (msg.type === 'viewer') viewer?.command(msg);
+  if (msg.type === 'screenshot') requestShot();
+});
+
+if (mode === 'shader') setupShader();
+if (mode === 'viewer') await setupViewer();
+post({ type: 'ready', mode, revision: THREE.REVISION });
+</script>
+</body>
+</html>

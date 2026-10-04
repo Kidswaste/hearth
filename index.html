@@ -3,9 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:">
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob: file:; media-src 'self' file: blob:; frame-src 'self' file:">
   <title>Agent Hub</title>
   <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="features.css">
   <style id="user-theme"></style>
 </head>
 <body>
@@ -14,12 +15,13 @@
       <div id="agent-buttons"></div>
       <button class="tool-btn" id="add-btn" title="Add an agent or website">＋</button>
       <div class="spacer"></div>
+      <button class="tool-btn" id="palette-btn" title="Command palette (Ctrl+K)">⌘</button>
+      <button class="tool-btn" id="notes-btn" title="Notes (Ctrl+J)">🗒</button>
       <button class="tool-btn" id="memory-btn" title="Memory: what your agents remember about you">🧠</button>
       <button class="tool-btn" id="panel-btn" title="Show/hide chats (Ctrl+\)">☰</button>
       <button class="tool-btn" id="grid-btn" title="All side by side (Ctrl+G)">▦</button>
       <button class="tool-btn" id="bar-btn" title="Ask-all bar (Ctrl+B)">⌨</button>
-      <button class="tool-btn" id="theme-btn" title="Edit theme.css">🎨</button>
-      <button class="tool-btn" id="config-btn" title="Edit config.json (Ctrl+,)">⚙</button>
+      <button class="tool-btn" id="config-btn" title="Settings (Ctrl+,)">⚙</button>
     </nav>
 
     <aside id="panel">
@@ -146,12 +148,22 @@
     </form>
   </dialog>
 
+  <script src="ui.js"></script>
   <script src="md.js"></script>
   <script src="renderer.js"></script>
+  <script src="tools.js"></script>
   <script src="native.js"></script>
   <script src="panel.js"></script>
   <script src="manager.js"></script>
   <script src="memory.js"></script>
+  <script src="notes.js"></script>
+  <script src="appui.js"></script>
+  <script src="kit.js"></script>
+  <script src="tools/three-data.js"></script>
+  <script src="tools/three.js"></script>
+  <script src="tools/ae-data.js"></script>
+  <script src="tools/ae.js"></script>
+  <script src="tools/forge.js"></script>
   <script src="start.js"></script>
 </body>
 </html>
