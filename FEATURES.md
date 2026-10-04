@@ -1,6 +1,6 @@
 # Agent Hub feature pack (October 2026)
 
-125 features. Status: **✓** = tested end to end in the running app · **○** = built and code-checked, but not exercised live
+133 features. Status: **✓** = tested end to end in the running app · **○** = built and code-checked, but not exercised live
 (it needs something I didn't trigger on your PC, like a real After Effects run, a tray click or a Windows notification).
 
 ## App-wide (31)
@@ -141,3 +141,13 @@
 123. ✓ **Game toolbar + activity log**: build picker, reload, Debug Deck, pause, speed, god, 1-shot, +10 foes, screenshot, DevTools; a log line for everything Claude does to the game.
 124. ✓ **Bigger chat box** that starts at three lines and grows with your text up to ~45% of the window.
 125. ✓ **Forgeheart workspace points at the live project** (`Documents\Codex\2026-09-08\…\outputs`, the folder GitHub `Kidswaste/forgeheart` main is built into).
+
+## Forgeheart look + Video Review (added Oct 4, night)
+126. ✓ **Forgeheart skin** (Settings → Theme → Forgeheart, now the default): the game's console palette and Oxanium font, parchment primary buttons, cut-corner HUD panels with corner brackets, small-caps labels.
+127. ✓ **Importance by rarity color**: gold = active/selected, orange = unread or needs attention, violet = AI working, red = stop or error, blue = info. A living rainbow edge marks what's live (a reply being written, the focused chat box, the ask-all bar).
+128. ✓ **Motion**: views slide in, tab underlines grow, buttons get a light sweep on hover, dialogs and the palette open like HUD panels; everything stops if Windows asks for reduced motion.
+129. ✓ **Video Review** replaces the After Effects screen: a library of renders from your Desktop and Documents\Codex (new renders pop up automatically), thumbnails, version chips, a large frame-accurate player with filmstrip scrubbing, J/K/L, frame stepping, loop in/out, speed and timecodes.
+130. ○ **A/B compare** with a wipe slider or side by side, synced playback.
+131. ○ **Guides** (title/action safe, thirds, 9:16, 4:5, 1:1 crops), **color picker** from the video, save or copy the current frame.
+132. ✓ **Timecoded notes with frame grabs** and **Send feedback to Claude**: one click writes the notes, file and frames into a Claude chat so the scripts can be changed.
+133. ✓ **Toolkit drawer**: expressions, scripts, render queue, calculators, presets, palette, projects and shortcuts are still there, behind "⋯ Toolkit" in the Video Review header (closed by default).

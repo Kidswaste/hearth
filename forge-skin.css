@@ -1,0 +1,267 @@
+/* Forgeheart skin: the game's console palette, rarity colors for importance, rainbow for "live",
+   and restrained HUD motion. Presentation only; active when the theme preset is "forgeheart". */
+@font-face { font-family: 'FH Oxanium'; src: url('assets/oxanium.ttf') format('truetype'); font-weight: 200 800; font-display: swap; }
+@property --fh-spin { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+
+html[data-skin="forge"] {
+  --bg: #0b0e10;
+  --sidebar: #111518;
+  --text: #eae0d5;
+  --accent: #ffd75e;
+  --font: 'FH Oxanium', 'Segoe UI', sans-serif;
+  --mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  --muted: #9a9187;
+  --line: #2b2a26;
+  --line-hi: #443e35;
+  --hover: #ffffff0a;
+  --surface: #13171a;
+  --steel: #4d5558;
+  --parchment: #c9b79c;
+  /* importance ladder, from the game's rarity colors */
+  --r-magic: #7ad0ff;
+  --r-rare: #ffd75e;
+  --r-unique: #ff8c42;
+  --r-mythic: #bd8bff;
+  --r-ultima: #ff6a6a;
+  --cyan: #48ddff;
+  --rainbow: conic-gradient(from var(--fh-spin), #48ddff, #bd8bff, #ff6b9d, #ff8c42, #ffd75e, #48ddff);
+  --cut: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  --cut-sm: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+}
+
+@keyframes fh-spin { to { --fh-spin: 360deg; } }
+@keyframes fh-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes fh-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fh-scan { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes fh-sheen { from { transform: translateX(-120%) skewX(-20deg); } to { transform: translateX(220%) skewX(-20deg); } }
+@keyframes fh-pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--pulse, var(--r-unique)) 55%, transparent); } 50% { box-shadow: 0 0 0 5px transparent; } }
+@keyframes fh-drift { from { background-position: 0 0, 0 0, 0 0; } to { background-position: 0 0, 0 64px, 64px 0; } }
+@keyframes fh-blink { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+
+/* ---------- ground: console glass, faint grid, slow drift ---------- */
+html[data-skin="forge"] body {
+  font-family: var(--font);
+  letter-spacing: .01em;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% -10%, #ff8c420d, transparent 60%),
+    repeating-linear-gradient(0deg, #ffffff05 0 1px, transparent 1px 64px),
+    repeating-linear-gradient(90deg, #ffffff04 0 1px, transparent 1px 64px),
+    var(--bg);
+}
+html[data-skin="forge"] body::after {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 70; opacity: .035;
+  background: repeating-linear-gradient(0deg, #000 0 1px, transparent 1px 3px);
+}
+html[data-skin="forge"] ::selection { background: #ffd75e44; }
+html[data-skin="forge"] ::-webkit-scrollbar { width: 9px; height: 9px; }
+html[data-skin="forge"] ::-webkit-scrollbar-thumb { background: #2f3336; border: 2px solid var(--bg); border-radius: 0; }
+html[data-skin="forge"] ::-webkit-scrollbar-thumb:hover { background: var(--steel); }
+html[data-skin="forge"] ::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- small caps labels, like FORGEHEART // AUTONOMOUS WAR ENGINE ---------- */
+html[data-skin="forge"] :is(.lib-group, .dash-card h3, .settings-section h3, .kit-format-label, .group-kind, .kanban-head b, .tool-desc, .panel-head, .p-kind, .stat span, .chat-meta, .kit-sub, .data-table th, .web-url) {
+  font-family: var(--mono); text-transform: uppercase; letter-spacing: .16em; font-size: 10.5px;
+}
+html[data-skin="forge"] .tool-desc::before { content: "◆ "; color: var(--accent); }
+html[data-skin="forge"] h2, html[data-skin="forge"] .tool-title, html[data-skin="forge"] .chat-title { letter-spacing: .06em; }
+html[data-skin="forge"] .tool-title { text-transform: uppercase; letter-spacing: .22em; font-weight: 700; }
+
+/* ---------- rail ---------- */
+html[data-skin="forge"] #rail {
+  background: linear-gradient(180deg, #14181b, #0d1012);
+  border-right: 1px solid var(--line-hi);
+  box-shadow: inset -1px 0 0 #000;
+}
+html[data-skin="forge"] #rail::before {
+  content: ""; width: 26px; height: 2px; margin: 0 0 6px; background: var(--rainbow); animation: fh-spin 8s linear infinite;
+}
+@keyframes fh-btn-sheen { from { background-position: 160% 0, 0 0; } to { background-position: -60% 0, 0 0; } }
+html[data-skin="forge"] .agent-btn {
+  border-radius: 0; clip-path: var(--cut); border: 1px solid transparent;
+  /* layer 1: a light sweep that runs on hover; layer 2: the agent tint */
+  background:
+    linear-gradient(110deg, transparent 40%, #ffffff2a 50%, transparent 60%) 160% 0 / 250% 100% no-repeat,
+    linear-gradient(160deg, color-mix(in srgb, var(--agent) 22%, #0000), color-mix(in srgb, var(--agent) 8%, #0000));
+  transition: transform .18s ease, filter .18s ease, box-shadow .18s ease;
+}
+html[data-skin="forge"] .agent-btn:hover { transform: translateX(2px); filter: brightness(1.15); animation: fh-btn-sheen .6s ease; }
+html[data-skin="forge"] .agent-btn.active {
+  background:
+    linear-gradient(110deg, transparent 40%, #ffffff2a 50%, transparent 60%) 160% 0 / 250% 100% no-repeat,
+    linear-gradient(160deg, color-mix(in srgb, var(--agent) 38%, #0000), color-mix(in srgb, var(--agent) 14%, #0000));
+  box-shadow: inset 0 0 0 1px var(--r-rare), 0 0 14px #ffd75e30;
+  color: #fff;
+}
+html[data-skin="forge"] .agent-btn.unread::before { background: var(--r-unique); --pulse: var(--r-unique); animation: fh-pulse 1.6s ease-in-out infinite; border-radius: 0; transform: rotate(45deg); width: 9px; height: 9px; top: 3px; right: 3px; }
+html[data-skin="forge"] .agent-btn.native::after { border-radius: 0; transform: rotate(45deg); width: 6px; height: 6px; right: 5px; bottom: 5px; box-shadow: none; }
+html[data-skin="forge"] .rail-sep { background: linear-gradient(90deg, transparent, var(--line-hi), transparent); }
+html[data-skin="forge"] .tool-btn { border-radius: 0; clip-path: var(--cut-sm); }
+html[data-skin="forge"] .tool-btn:hover, html[data-skin="forge"] .tool-btn.on { background: #ffd75e14; color: var(--r-rare); opacity: 1; }
+html[data-skin="forge"] #add-btn { border: 1px dashed var(--line-hi); }
+
+/* ---------- chats panel ---------- */
+html[data-skin="forge"] #panel { background: linear-gradient(180deg, #101316, #0c0f11); border-right: 1px solid var(--line); }
+html[data-skin="forge"] .group-toggle { border-radius: 0; font-weight: 600; letter-spacing: .04em; }
+html[data-skin="forge"] .group.current .group-name { color: var(--r-rare); }
+html[data-skin="forge"] .item { border-radius: 0; position: relative; transition: background .15s ease, padding-left .15s ease; }
+html[data-skin="forge"] .item:hover { padding-left: 34px; }
+html[data-skin="forge"] .item.active { background: linear-gradient(90deg, #ffd75e1f, transparent); color: #fff; }
+html[data-skin="forge"] .item.active::before { content: ""; position: absolute; left: 22px; top: 6px; bottom: 6px; width: 2px; background: var(--r-rare); box-shadow: 0 0 8px var(--r-rare); }
+html[data-skin="forge"] .busy { background: var(--r-mythic); border-radius: 0; transform: rotate(45deg); }
+html[data-skin="forge"] .panel-resize:hover, html[data-skin="forge"] body.resizing .panel-resize { background: var(--r-rare); }
+
+/* ---------- inputs ---------- */
+html[data-skin="forge"] :is(input:not([type=checkbox]):not([type=color]):not([type=range]), select, textarea) {
+  border-radius: 0; background: #080a0c; border: 1px solid var(--line-hi);
+  box-shadow: inset 0 1px 0 #000, inset 0 0 0 1px #ffffff04;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+html[data-skin="forge"] :is(input, select, textarea):focus { border-color: var(--r-rare) !important; box-shadow: 0 0 0 3px #ffd75e1a, inset 0 1px 0 #000; }
+html[data-skin="forge"] input[type=checkbox] { accent-color: var(--r-rare); }
+html[data-skin="forge"] input[type=range] { accent-color: var(--r-rare); }
+
+/* ---------- buttons: parchment primary like IGNITE THE FORGE, bronze ghosts ---------- */
+html[data-skin="forge"] :is(.primary, .dialog-actions .primary, #broadcast button) {
+  position: relative; overflow: hidden; border-radius: 0; clip-path: var(--cut-sm);
+  background: linear-gradient(180deg, #d8c8ae, var(--parchment)); color: #17130e; border: 0;
+  text-transform: uppercase; letter-spacing: .14em; font-weight: 700; font-size: 12px;
+  transition: filter .15s ease, transform .15s ease;
+}
+html[data-skin="forge"] :is(.primary, #broadcast button)::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 35%; pointer-events: none;
+  background: linear-gradient(90deg, transparent, #ffffffa0, transparent); transform: translateX(-120%) skewX(-20deg);
+}
+html[data-skin="forge"] :is(.primary, #broadcast button):hover { filter: brightness(1.08); transform: translateY(-1px); }
+html[data-skin="forge"] :is(.primary, #broadcast button):hover::after { animation: fh-sheen .55s ease; }
+html[data-skin="forge"] .primary.stop { background: linear-gradient(180deg, #ff8a7a, var(--r-ultima)); color: #1a0606; --pulse: var(--r-ultima); animation: fh-pulse 1.2s infinite; }
+html[data-skin="forge"] :is(.ghost, .dialog-actions button:not(.primary), .web-btn, .find-bar button, .code-act, .notes-item, .kanban-add) {
+  border-radius: 0; border: 1px solid var(--line-hi); background: #ffffff03;
+  transition: border-color .15s ease, color .15s ease, background .15s ease;
+}
+html[data-skin="forge"] .web-btn { border-color: transparent; }
+html[data-skin="forge"] :is(.ghost, .dialog-actions button:not(.primary), .web-btn, .code-act):hover { border-color: var(--cyan); color: var(--cyan); background: #48ddff0d; }
+html[data-skin="forge"] .ghost.small, html[data-skin="forge"] .ghost { font-size: 12px; letter-spacing: .05em; }
+html[data-skin="forge"] .danger, html[data-skin="forge"] .ghost.danger { color: var(--r-ultima) !important; }
+
+/* ---------- surfaces & views: slide in on activation ---------- */
+html[data-skin="forge"] .surface { background: transparent; }
+html[data-skin="forge"] .surface.active:not(.capturing) { animation: fh-in .24s cubic-bezier(.2, .9, .1, 1); }
+html[data-skin="forge"] .tabpane:not([hidden]) { animation: fh-in .2s cubic-bezier(.2, .9, .1, 1); }
+html[data-skin="forge"] .tool-head, html[data-skin="forge"] .native-head {
+  background: linear-gradient(180deg, #13171a, #0f1214); border-bottom: 1px solid var(--line-hi);
+  box-shadow: 0 1px 0 #000;
+}
+html[data-skin="forge"] .tool-icon { border-radius: 0; clip-path: var(--cut-sm); background: color-mix(in srgb, var(--agent) 22%, #0000); }
+html[data-skin="forge"] .tabbar { border-bottom: 1px solid var(--line-hi); gap: 0; }
+html[data-skin="forge"] .tabbar button {
+  position: relative; border-radius: 0; border-bottom: 0; padding: 9px 14px;
+  font-family: var(--mono); text-transform: uppercase; letter-spacing: .12em; font-size: 11px;
+}
+html[data-skin="forge"] .tabbar button::after {
+  content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px;
+  background: var(--agent); transform: scaleX(0); transition: transform .22s cubic-bezier(.2, .9, .1, 1); box-shadow: 0 0 10px var(--agent);
+}
+html[data-skin="forge"] .tabbar button.on { background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--agent) 10%, transparent)); color: #fff; }
+html[data-skin="forge"] .tabbar button.on::after, html[data-skin="forge"] .tabbar button:hover::after { transform: scaleX(1); }
+html[data-skin="forge"] .tabbar button:hover:not(.on)::after { opacity: .4; }
+html[data-skin="forge"] .web-bar, html[data-skin="forge"] .game-bar { background: #0e1113; border-bottom: 1px solid var(--line-hi); }
+
+/* ---------- HUD cards: corner brackets ---------- */
+html[data-skin="forge"] :is(.dash-card, .calc-card, .preset-card, .tex-card, .model-section, .lib-ask, .connectors, .kanban-col, .ae-banner, .render-row, .stat, .kit-format, .patch-row, .gallery-item, .devlog-day) {
+  border-radius: 0; border-color: var(--line);
+  background:
+    linear-gradient(var(--hud, var(--line-hi)), var(--hud, var(--line-hi))) top left / 10px 1px no-repeat,
+    linear-gradient(var(--hud, var(--line-hi)), var(--hud, var(--line-hi))) top left / 1px 10px no-repeat,
+    linear-gradient(var(--hud, var(--line-hi)), var(--hud, var(--line-hi))) bottom right / 10px 1px no-repeat,
+    linear-gradient(var(--hud, var(--line-hi)), var(--hud, var(--line-hi))) bottom right / 1px 10px no-repeat,
+    linear-gradient(180deg, #ffffff06, #ffffff02);
+  transition: --hud .2s ease, transform .18s ease;
+}
+html[data-skin="forge"] :is(.dash-card, .calc-card, .preset-card, .gallery-item, .kit-format):hover { --hud: var(--r-rare); }
+html[data-skin="forge"] .dash-card h3 { color: var(--r-rare); }
+html[data-skin="forge"] .dash-counts b, html[data-skin="forge"] .devlog-clock { font-family: var(--mono); color: var(--r-rare); text-shadow: 0 0 12px #ffd75e40; }
+html[data-skin="forge"] .bar { border-radius: 0; background: #1d2023; }
+html[data-skin="forge"] .bar span { background: linear-gradient(90deg, var(--r-magic), var(--r-rare)); box-shadow: 0 0 8px #ffd75e60; }
+html[data-skin="forge"] .kanban-card { border-radius: 0; clip-path: var(--cut-sm); background: #12161a; border-left-width: 2px; transition: transform .15s ease; }
+html[data-skin="forge"] .kanban-card:hover { transform: translateX(2px); }
+html[data-skin="forge"] .kanban-card.p1 { border-left-color: var(--r-ultima); }
+html[data-skin="forge"] .tag { border-radius: 0; font-family: var(--mono); letter-spacing: .08em; text-transform: uppercase; font-size: 10px; }
+
+/* ---------- importance ladder for status text ---------- */
+html[data-skin="forge"] .ok { color: var(--r-rare); }
+html[data-skin="forge"] .warn { color: var(--r-unique); }
+html[data-skin="forge"] .bad { color: var(--r-ultima); }
+html[data-skin="forge"] .issues li.ok { color: var(--r-rare); }
+html[data-skin="forge"] .issues li.warn { color: var(--r-unique); }
+html[data-skin="forge"] .issues li.bad { color: var(--r-ultima); }
+
+/* ---------- native chat ---------- */
+html[data-skin="forge"] .msg.user .body {
+  border-radius: 0; clip-path: var(--cut);
+  background: linear-gradient(160deg, color-mix(in srgb, var(--agent) 20%, #14181b), #14181b);
+  border-left: 2px solid var(--agent);
+}
+html[data-skin="forge"] .messages > .msg:last-child:not(.streaming) { animation: fh-in .22s ease both; }
+html[data-skin="forge"] .msg.assistant.streaming { position: relative; padding-left: 14px; }
+/* A reply being written gets the living rainbow edge (the highest-importance marker). */
+html[data-skin="forge"] .msg.assistant.streaming::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--rainbow); animation: fh-spin 2.4s linear infinite;
+  box-shadow: 0 0 10px #bd8bff80;
+}
+html[data-skin="forge"] .typing i { border-radius: 0; width: 10px; height: 3px; background: var(--r-mythic); animation: fh-blink .9s infinite; }
+html[data-skin="forge"] .tool-chips { border-radius: 0; font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--r-mythic); background: #bd8bff12; border-left: 2px solid var(--r-mythic); }
+html[data-skin="forge"] .memory-chip { border-radius: 0; border-color: #ffd75e55; color: var(--r-rare); }
+html[data-skin="forge"] .msg.error { border-radius: 0; border-color: #ff6a6a66; background: #ff6a6a12; }
+html[data-skin="forge"] .body pre { border-radius: 0; background: #07090b; border: 1px solid var(--line); border-top: 2px solid #48ddff55; }
+html[data-skin="forge"] .body code { border-radius: 0; background: #ffffff0d; }
+html[data-skin="forge"] .body a { color: var(--r-magic); }
+html[data-skin="forge"] .empty-icon { border-radius: 0; clip-path: var(--cut); width: 64px; height: 64px; }
+html[data-skin="forge"] .empty h3 { text-transform: uppercase; letter-spacing: .2em; font-size: 15px; }
+html[data-skin="forge"] .composer-box textarea { background: #07090b; }
+html[data-skin="forge"] .composer-box:focus-within::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--rainbow); animation: fh-spin 6s linear infinite; pointer-events: none;
+}
+html[data-skin="forge"] .attach-chip { border-radius: 0; }
+html[data-skin="forge"] .jump-bottom { border-radius: 0; clip-path: var(--cut-sm); }
+html[data-skin="forge"] .model-select { font-family: var(--mono); font-size: 11px; }
+
+/* ---------- ask-all bar ---------- */
+html[data-skin="forge"] #broadcast { background: #0e1113; border-top: 1px solid var(--line-hi); position: relative; }
+html[data-skin="forge"] #broadcast::before { content: ""; position: absolute; left: 0; right: 0; top: -1px; height: 1px; background: var(--rainbow); opacity: .5; animation: fh-spin 10s linear infinite; }
+
+/* ---------- overlays: dialogs, palette, toasts, menus ---------- */
+html[data-skin="forge"] dialog {
+  border-radius: 0; clip-path: var(--cut); background: linear-gradient(180deg, #14181b, #0e1113);
+  border: 1px solid var(--line-hi); box-shadow: 0 24px 80px #000c, inset 0 1px 0 #ffffff0a;
+}
+html[data-skin="forge"] dialog[open] { animation: fh-scan .28s cubic-bezier(.2, .9, .1, 1); }
+html[data-skin="forge"] dialog::backdrop { background: #000a; backdrop-filter: blur(3px); animation: fh-fade .2s ease; }
+html[data-skin="forge"] dialog h2 { text-transform: uppercase; letter-spacing: .2em; font-size: 15px; color: var(--r-rare); }
+html[data-skin="forge"] dialog h2::before { content: "◆ "; }
+html[data-skin="forge"] .palette { background: #000000a0; backdrop-filter: blur(4px); animation: fh-fade .15s ease; }
+html[data-skin="forge"] .palette-card { border-radius: 0; clip-path: var(--cut); background: #101316; border: 1px solid var(--line-hi); animation: fh-scan .22s cubic-bezier(.2, .9, .1, 1); position: relative; }
+html[data-skin="forge"] .palette-card::before { content: ""; display: block; height: 2px; background: var(--rainbow); animation: fh-spin 5s linear infinite; }
+html[data-skin="forge"] .palette-item { border-radius: 0; transition: padding-left .12s ease; }
+html[data-skin="forge"] .palette-item.sel { background: linear-gradient(90deg, #ffd75e22, transparent); box-shadow: inset 2px 0 0 var(--r-rare); padding-left: 14px; }
+html[data-skin="forge"] .toast { border-radius: 0; clip-path: var(--cut-sm); background: #121619; border: 1px solid var(--line-hi); border-left: 3px solid var(--r-magic); animation: fh-in .22s cubic-bezier(.2, .9, .1, 1); }
+html[data-skin="forge"] .toast.error { border-left-color: var(--r-ultima); }
+html[data-skin="forge"] .toast button { color: var(--r-rare); }
+html[data-skin="forge"] #menu { border-radius: 0; clip-path: var(--cut-sm); background: #121619; border: 1px solid var(--line-hi); animation: fh-scan .16s ease; }
+html[data-skin="forge"] #menu button { border-radius: 0; }
+html[data-skin="forge"] #menu button:hover { background: linear-gradient(90deg, #48ddff1a, transparent); color: var(--cyan); }
+html[data-skin="forge"] .find-bar, html[data-skin="forge"] .notes-panel, html[data-skin="forge"] .slash-menu { border-radius: 0; clip-path: var(--cut); background: #111518; border: 1px solid var(--line-hi); }
+html[data-skin="forge"] .notes-panel { animation: fh-in .22s ease; }
+html[data-skin="forge"] kbd { border-radius: 0; background: #07090b; border-color: var(--line-hi); color: var(--r-rare); }
+
+/* ---------- code, tables, editors ---------- */
+html[data-skin="forge"] .code-editor, html[data-skin="forge"] .code-view, html[data-skin="forge"] .three-console, html[data-skin="forge"] .render-log, html[data-skin="forge"] .game-log { border-radius: 0; background: #07090b; }
+html[data-skin="forge"] .data-table th { background: #121619; color: var(--muted); }
+html[data-skin="forge"] .data-table tr:hover td { background: #ffd75e0a; }
+html[data-skin="forge"] .three-stats { border-radius: 0; clip-path: var(--cut-sm); font-family: var(--mono); }
+html[data-skin="forge"] .hl-k { color: var(--r-mythic); } html[data-skin="forge"] .hl-f { color: var(--r-magic); } html[data-skin="forge"] .hl-s { color: #b5e8a0; }
+html[data-skin="forge"] .hl-n { color: var(--r-unique); } html[data-skin="forge"] .hl-t { color: var(--r-rare); }
+
+/* ---------- reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  html[data-skin="forge"] *, html[data-skin="forge"] *::before, html[data-skin="forge"] *::after { animation: none !important; transition: none !important; }
+}

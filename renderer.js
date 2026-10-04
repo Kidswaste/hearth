@@ -55,6 +55,7 @@ function applyTheme(themeCss) {
     if (value != null) root.setProperty(cssVar, typeof value === 'number' ? `${value}px` : value);
   }
   document.documentElement.dataset.scheme = H.config.theme?.scheme || 'dark';
+  document.documentElement.dataset.skin = H.config.theme?.skin || '';
   $('user-theme').textContent = themeCss;
 }
 

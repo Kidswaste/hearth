@@ -613,6 +613,7 @@ const Native = (() => {
 
   return {
     mount, refresh: render, focus, send, open, newChat, rename, remove, togglePin, setDraft, continueWith,
+    attachPaths: async (agentId, paths) => { for (const p of paths) await addPath(agentId, p); },
     isBusy: (chatId) => pending.has(chatId),
     markdownOf: async (chatId) => chatMarkdown(await loadChat(chatId)),
   };

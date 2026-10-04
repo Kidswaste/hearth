@@ -549,11 +549,18 @@ const AEKit = (() => {
     render();
   }
 
-  Tools.define({
-    id: 'ae', name: 'After Effects', icon: 'Ae', color: '#9999ff',
-    description: 'Expressions, scripts, renders, calculators and presets',
-    mount(body) {
-      tabs = Tabs(body, [
+  // The tool opens on Video Review. The hands-on AE tools live in a Toolkit drawer that stays
+  // closed until asked for (it never opens by itself).
+  let reviewRoot = null;
+  let kitRoot = null;
+  let kitToggle = null;
+  function openKit(open = true, tab) {
+    if (!kitRoot) return;
+    kitRoot.hidden = !open;
+    reviewRoot.hidden = open;
+    kitToggle.textContent = open ? '◂ Back to review' : '⋯ Toolkit';
+    if (open && !tabs) {
+      tabs = Tabs(kitRoot, [
         { id: 'expressions', label: 'Expressions', render: expressionsTab },
         { id: 'scripts', label: 'Scripts', render: scriptsTab },
         { id: 'render', label: 'Render queue', render: renderTab },
@@ -565,16 +572,32 @@ const AEKit = (() => {
         { id: 'color', label: 'Color', render: (p) => Kit.colorTool(p) },
         { id: 'easing', label: 'Easing', render: (p) => Kit.easingTool(p) },
       ], { storeKey: 'ae.tab' });
+    }
+    if (open && tab) tabs.show(tab);
+  }
+  const kitCommand = (tab) => () => { activate('tool:ae'); setTimeout(() => openKit(true, tab), 30); };
+
+  Tools.define({
+    id: 'ae', name: 'Video Review', icon: '▶', color: '#bd8bff',
+    description: 'Watch what After Effects renders and steer it',
+    mount(body, head) {
+      reviewRoot = el('div', { class: 'review-root' });
+      kitRoot = el('div', { class: 'toolkit-root', hidden: true });
+      kitToggle = el('button', { class: 'ghost small kit-toggle', text: '⋯ Toolkit', title: 'After Effects reference and tools: expressions, scripts, render queue, calculators, presets, shortcuts', on: { click: () => openKit(kitRoot.hidden) } });
+      head.append(kitToggle);
+      body.append(reviewRoot, kitRoot);
+      Review.mount(reviewRoot);
     },
     commands: [
-      { label: 'AE expression library', run: () => tabs?.show('expressions') },
-      { label: 'Run an AE script', run: () => tabs?.show('scripts') },
-      { label: 'Render with aerender', run: () => tabs?.show('render') },
-      { label: 'Timecode calculator', run: () => tabs?.show('calc') },
-      { label: 'Create a comp from a preset', run: () => tabs?.show('presets') },
-      { label: 'Extract a color palette', run: () => tabs?.show('palette') },
-      { label: 'Find AE projects', run: () => tabs?.show('projects') },
-      { label: 'AE keyboard shortcuts', run: () => tabs?.show('shortcuts') },
+      { label: 'Review renders', run: () => openKit(false) },
+      { label: 'AE expression library', run: kitCommand('expressions') },
+      { label: 'Run an AE script', run: kitCommand('scripts') },
+      { label: 'Render with aerender', run: kitCommand('render') },
+      { label: 'Timecode calculator', run: kitCommand('calc') },
+      { label: 'Create a comp from a preset', run: kitCommand('presets') },
+      { label: 'Extract a color palette', run: kitCommand('palette') },
+      { label: 'Find AE projects', run: kitCommand('projects') },
+      { label: 'AE keyboard shortcuts', run: kitCommand('shortcuts') },
     ],
   });
 

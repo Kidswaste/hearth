@@ -2,11 +2,11 @@
 // switching, reply notifications, downloads, error toasts, resizable chats panel, usage stats.
 const AppUI = (() => {
   const THEMES = {
-    midnight: { label: 'Midnight', scheme: 'dark', background: '#0f1115', sidebar: '#15181e', text: '#e6e6e6', accent: '#7c5cff' },
-    graphite: { label: 'Graphite', scheme: 'dark', background: '#18181b', sidebar: '#202024', text: '#ececec', accent: '#3b82f6' },
-    forge: { label: 'Forge (Forgeheart colors)', scheme: 'dark', background: '#0a0908', sidebar: '#15110d', text: '#eae0d5', accent: '#e07a2f' },
-    light: { label: 'Light', scheme: 'light', background: '#f7f7f8', sidebar: '#e9e9ee', text: '#1d1d22', accent: '#6d4aff' },
-    contrast: { label: 'High contrast', scheme: 'dark', background: '#000000', sidebar: '#0d0d0d', text: '#ffffff', accent: '#ffd400' },
+    forgeheart: { label: 'Forgeheart (game menus, animated)', scheme: 'dark', skin: 'forge', background: '#0b0e10', sidebar: '#111518', text: '#eae0d5', accent: '#ffd75e', font: "'FH Oxanium', 'Segoe UI', sans-serif" },
+    midnight: { label: 'Midnight', scheme: 'dark', skin: '', background: '#0f1115', sidebar: '#15181e', text: '#e6e6e6', accent: '#7c5cff', font: '"Segoe UI", system-ui, sans-serif' },
+    graphite: { label: 'Graphite', scheme: 'dark', skin: '', background: '#18181b', sidebar: '#202024', text: '#ececec', accent: '#3b82f6', font: '"Segoe UI", system-ui, sans-serif' },
+    light: { label: 'Light', scheme: 'light', skin: '', background: '#f7f7f8', sidebar: '#e9e9ee', text: '#1d1d22', accent: '#6d4aff', font: '"Segoe UI", system-ui, sans-serif' },
+    contrast: { label: 'High contrast', scheme: 'dark', skin: '', background: '#000000', sidebar: '#0d0d0d', text: '#ffffff', accent: '#ffd400', font: '"Segoe UI", system-ui, sans-serif' },
   };
   const SPELL_LANGS = [['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['fr-FR', 'French'], ['es-ES', 'Spanish'], ['de-DE', 'German']];
 
