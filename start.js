@@ -14,6 +14,17 @@ $('bar-btn').addEventListener('click', () => handleShortcut({ key: 'b' }));
 $('config-btn').addEventListener('click', () => window.hub.openFile('config'));
 $('theme-btn').addEventListener('click', () => window.hub.openFile('theme'));
 $('chat-search').addEventListener('input', (e) => Panel.setFilter(e.target.value));
+$('import-btn').addEventListener('click', async () => {
+  const status = $('import-status');
+  status.textContent = 'Importing…';
+  const result = await window.hub.importChats();
+  if (!result) { status.textContent = ''; return; }
+  if (result.error) { status.textContent = result.error; return; }
+  H.chats = await window.hub.listChats();
+  Panel.render();
+  const where = Object.values(result.sources).map((id) => H.agent(id)?.name).filter(Boolean).join(' and ');
+  status.textContent = `Imported ${result.imported} chats${where ? ` into ${where}` : ''}${result.skipped ? ` (${result.skipped} skipped: empty or already imported)` : ''}.`;
+});
 
 document.addEventListener('click', (e) => { if (!e.target.closest('#menu')) hideMenu(); });
 document.addEventListener('keydown', (e) => {

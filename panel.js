@@ -4,6 +4,8 @@ const Panel = (() => {
   let collapsed;
   try { collapsed = new Set(JSON.parse(localStorage.getItem(COLLAPSED_KEY) || '[]')); } catch { collapsed = new Set(); }
   let filter = '';
+  const PAGE = 40; // chats shown per agent before "Show more"
+  const expanded = new Map(); // agent id -> how many to show
 
   const el = (tag, cls, text) => {
     const node = document.createElement(tag);
@@ -98,7 +100,8 @@ const Panel = (() => {
         if (!items.length) {
           group.append(el('div', 'none', q ? 'No matches' : agent.mode === 'native' ? 'No chats yet' : 'Chats you open will show up here'));
         }
-        for (const item of items) {
+        const limit = expanded.get(agent.id) || PAGE;
+        for (const item of items.slice(0, limit)) {
           const row = el('div', 'item');
           row.dataset.key = item.key;
           row.title = item.title;
@@ -107,6 +110,11 @@ const Panel = (() => {
           row.addEventListener('click', () => (item.chatId ? Native.open(agent.id, item.chatId) : openWebChat(agent.id, item.url)));
           row.addEventListener('contextmenu', (e) => itemMenu(agent, item, row, e));
           group.append(row);
+        }
+        if (items.length > limit) {
+          const more = el('button', 'show-more', `Show ${Math.min(PAGE, items.length - limit)} more (${items.length - limit} hidden)`);
+          more.addEventListener('click', () => { expanded.set(agent.id, limit + PAGE); render(); });
+          group.append(more);
         }
       }
       root.append(group);

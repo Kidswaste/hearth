@@ -16,8 +16,8 @@ const Manager = (() => {
   ];
   const MODEL_HINTS = { claude: ['sonnet', 'opus', 'fable', 'haiku'], codex: ['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna'] };
   const ENGINE_HINTS = {
-    claude: 'Uses the Claude Code engine inside your Claude desktop app, signed in with your Claude Pro account. Counts toward your Pro usage limits.',
-    codex: 'Uses the Codex engine inside your Codex app, signed in with your ChatGPT Plus account. Counts toward your Plus usage limits.',
+    claude: 'Uses the Claude Code engine inside your Claude desktop app, signed in with your Claude account. Counts toward your plan\'s usage limits.',
+    codex: 'Uses the Codex engine inside your Codex app, signed in with your ChatGPT account. Counts toward your plan\'s usage limits.',
   };
 
   const dialog = $('agent-dialog');
@@ -29,12 +29,60 @@ const Manager = (() => {
     new Option(`${p.name}: ${p.mode === 'native' ? 'native chat' : new URL(p.url).hostname}`, String(i))
   )));
 
+  let connectorModes = {}; // connector name -> 'read' | 'full' (absent = off)
+
   function syncModeFields() {
     const mode = f.mode.value;
     for (const node of form.querySelectorAll('[data-for]')) node.hidden = node.dataset.for !== mode;
+    for (const node of form.querySelectorAll('[data-engine]')) node.hidden = node.dataset.engine !== f.engine.value;
     f.url.required = mode === 'web';
     $('engine-hint').textContent = ENGINE_HINTS[f.engine.value];
     $('model-hints').replaceChildren(...(MODEL_HINTS[f.engine.value] || []).map((m) => new Option(m)));
+    if (mode === 'native' && f.engine.value === 'claude') loadConnectors();
+  }
+
+  function renderConnectors(info) {
+    const list = $('connector-list');
+    list.replaceChildren();
+    if (!info?.servers.length) {
+      list.append(Object.assign(document.createElement('p'), { className: 'hint', textContent: 'No connected apps found. Add them at claude.ai → Settings → Connectors, then press Refresh.' }));
+      return;
+    }
+    for (const server of info.servers) {
+      const row = document.createElement('div');
+      row.className = 'connector';
+      const name = document.createElement('span');
+      name.className = 'connector-name';
+      name.textContent = server.name.replace(/^claude\.ai\s+/, '');
+      const detail = document.createElement('span');
+      detail.className = 'hint';
+      detail.textContent = server.status === 'connected'
+        ? `${server.readTools} read / ${server.tools} tools`
+        : 'needs sign-in at claude.ai → Settings → Connectors';
+      const select = document.createElement('select');
+      select.append(new Option('Off', ''), new Option('Read-only', 'read'), new Option('Full', 'full'));
+      select.value = connectorModes[server.name] || '';
+      select.disabled = server.status !== 'connected' && !connectorModes[server.name];
+      select.addEventListener('change', () => {
+        if (select.value) connectorModes[server.name] = select.value;
+        else delete connectorModes[server.name];
+      });
+      row.append(name, detail, select);
+      list.append(row);
+    }
+  }
+
+  async function loadConnectors(refresh = false) {
+    const btn = $('refresh-connectors');
+    let info = refresh ? null : await window.hub.getConnectors();
+    if (!info) {
+      btn.disabled = true;
+      btn.textContent = 'Checking…';
+      info = await window.hub.refreshConnectors();
+      btn.disabled = false;
+      btn.textContent = 'Refresh';
+    }
+    renderConnectors(info);
   }
 
   function fill(agent) {
@@ -48,6 +96,9 @@ const Manager = (() => {
     f.effort.value = agent.effort || '';
     f.systemPrompt.value = agent.systemPrompt || '';
     f.askAll.checked = agent.askAll !== false;
+    f.chatgptApps.checked = Boolean(agent.chatgptApps);
+    f.autoMemory.checked = agent.autoMemory !== false;
+    connectorModes = { ...agent.connectors };
     syncModeFields();
   }
 
@@ -88,6 +139,9 @@ const Manager = (() => {
         model: f.model.value.trim() || undefined,
         effort: f.effort.value || undefined,
         systemPrompt: f.systemPrompt.value.trim() || undefined,
+        connectors: f.engine.value === 'claude' && Object.keys(connectorModes).length ? { ...connectorModes } : undefined,
+        chatgptApps: f.engine.value === 'codex' && f.chatgptApps.checked ? true : undefined,
+        autoMemory: f.autoMemory.checked ? undefined : false,
       });
     }
     if (existing) H.config.agents[H.config.agents.indexOf(existing)] = agent;
@@ -113,6 +167,7 @@ const Manager = (() => {
   });
   f.mode.addEventListener('change', syncModeFields);
   f.engine.addEventListener('change', syncModeFields);
+  $('refresh-connectors').addEventListener('click', () => loadConnectors(true));
   $('cancel-agent').addEventListener('click', () => dialog.close());
   $('delete-agent').addEventListener('click', () => { dialog.close(); remove(editingId); });
   form.addEventListener('submit', (e) => {

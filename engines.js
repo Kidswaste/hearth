@@ -1,12 +1,12 @@
 // Native chat engines: the official Claude Code and Codex command-line tools, signed in with
-// your Claude Pro / ChatGPT Plus accounts. Every run is stripped down to plain chat — no tools,
-// no project files, no plugins — so a message costs about what the same message costs in the app.
+// your Claude / ChatGPT accounts. Every run is stripped down to plain chat — no coding tools,
+// no project files, no plugins — plus only the connected apps you switched on for that agent.
 const { spawn } = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { DATA_DIR } = require('./store');
+const { DATA_DIR, getMemory } = require('./store');
 
 const WORKSPACE = path.join(DATA_DIR, 'workspace');
 const PROMPTS_DIR = path.join(DATA_DIR, 'prompts');
@@ -68,17 +68,71 @@ const LOCATE = {
     || newestIn(path.join(process.env.LOCALAPPDATA || '', 'OpenAI', 'Codex', 'bin'), 'codex.exe'),
 };
 
-function defaultPrompt(name) {
-  return `You are ${name}, chatting with the user in their personal desktop app. `
-    + 'Answer conversationally and directly, using Markdown when it helps. '
-    + 'You have no tools: never try to run commands, read files or browse the web.';
+// Tool names that only look things up. In "read-only" mode everything else is blocked.
+const READ_ONLY_TOOL = /(^|[_-])(get|list|search|read|fetch|query|find|view|preview|download|export|who_am_i|guide)([_-]|$)/i;
+const CONNECTORS_CACHE = path.join(DATA_DIR, 'connectors.json');
+
+const serverPrefix = (name) => `mcp__${name.replace(/[^A-Za-z0-9_-]/g, '_')}__`;
+
+function enabledConnectors(agent) {
+  return Object.entries(agent.connectors || {}).filter(([, mode]) => mode === 'read' || mode === 'full');
+}
+
+function buildPrompt(agent) {
+  const usesApps = agent.engine === 'claude' ? enabledConnectors(agent).length > 0 : Boolean(agent.chatgptApps);
+  const parts = [
+    agent.systemPrompt
+      || `You are ${agent.name}, chatting with the user in their personal desktop app. `
+        + 'Answer conversationally and directly, using Markdown when it helps.',
+    usesApps
+      ? 'You can use the connected apps in your tools (for example email, documents or calendars) when the user asks about them or when it clearly helps. Never run commands or touch local files.'
+      : 'You have no tools: never try to run commands, read files or browse the web.',
+  ];
+  const memory = getMemory();
+  const notes = [memory.shared, memory.agents?.[agent.id]].map((m) => (m || '').trim()).filter(Boolean);
+  if (notes.length) {
+    parts.push(`What you remember about the user (saved notes, keep them in mind):\n${notes.join('\n')}`);
+  }
+  if (agent.autoMemory !== false) {
+    parts.push('When the user shares a lasting fact or preference worth remembering in future chats '
+      + '(not one-off details), add it on its own line at the very end of your reply as '
+      + '<remember>short fact</remember>. Do this rarely, and never mention these tags.');
+  }
+  return parts.join('\n\n');
+}
+
+function readConnectorCache() {
+  try { return JSON.parse(fs.readFileSync(CONNECTORS_CACHE, 'utf8')); } catch { return {}; }
+}
+
+// Claude's connected apps come from your Claude account. Each one is off, read-only or full.
+function claudeToolArgs(agent) {
+  const enabled = new Map(enabledConnectors(agent));
+  if (!enabled.size) return ['--tools', '', '--strict-mcp-config'];
+  const { claude } = readConnectorCache();
+  const allowed = [];
+  const denied = [];
+  for (const server of claude?.servers || []) {
+    const prefix = serverPrefix(server.name);
+    const mode = enabled.get(server.name);
+    if (!mode) { denied.push(prefix.slice(0, -2)); continue; }
+    for (const tool of claude.tools.filter((t) => t.startsWith(prefix))) {
+      if (mode === 'full' || READ_ONLY_TOOL.test(tool.slice(prefix.length))) allowed.push(tool);
+      else denied.push(tool);
+    }
+  }
+  const args = ['--tools', '', '--permission-prompts', 'none'];
+  if (allowed.length) args.push('--allowedTools', allowed.join(','));
+  if (denied.length) args.push('--disallowedTools', denied.join(','));
+  return args;
 }
 
 function claudeArgs(agent, session) {
   const args = [
     '-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
-    '--safe-mode', '--tools', '', '--strict-mcp-config', '--disable-slash-commands',
-    '--system-prompt', agent.systemPrompt || defaultPrompt(agent.name),
+    '--setting-sources', 'project', '--disable-slash-commands', '--system-prompt-snapshot', 'off',
+    ...claudeToolArgs(agent),
+    '--system-prompt', buildPrompt(agent),
   ];
   if (agent.model) args.push('--model', agent.model);
   if (agent.effort) args.push('--effort', agent.effort);
@@ -89,11 +143,12 @@ function claudeArgs(agent, session) {
 
 function codexArgs(agent, session) {
   const promptFile = path.join(PROMPTS_DIR, `${agent.id}.md`);
-  fs.writeFileSync(promptFile, agent.systemPrompt || defaultPrompt(agent.name));
+  fs.writeFileSync(promptFile, buildPrompt(agent));
   const args = ['exec'];
   if (session.id) args.push('resume', session.id);
   args.push('--json', '--skip-git-repo-check', '--ignore-user-config', '--ignore-rules');
-  for (const feature of CODEX_DISABLED_FEATURES) args.push('--disable', feature);
+  const disabled = agent.chatgptApps ? CODEX_DISABLED_FEATURES.filter((f) => f !== 'apps') : CODEX_DISABLED_FEATURES;
+  for (const feature of disabled) args.push('--disable', feature);
   args.push(
     '-c', `model_instructions_file='${promptFile}'`,
     '-c', 'project_doc_max_bytes=0',
@@ -113,6 +168,8 @@ function claudeParser(session) {
     if (msg.type === 'stream_event' && msg.event?.delta?.type === 'text_delta') {
       return { type: 'delta', text: msg.event.delta.text };
     }
+    const toolUse = msg.type === 'assistant' && msg.message?.content?.find((c) => c.type === 'tool_use');
+    if (toolUse) return { type: 'tool', name: toolUse.name };
     if (msg.type === 'result') {
       if (msg.is_error) return { type: 'error', message: msg.result || 'Claude returned an error' };
       const u = msg.usage || {};
@@ -138,6 +195,9 @@ function codexParser(session) {
       text += part;
       return { type: 'delta', text: part };
     }
+    if (msg.type === 'item.started' && /tool_call/.test(msg.item?.type || '')) {
+      return { type: 'tool', name: [msg.item.server, msg.item.tool].filter(Boolean).join(' · ') || msg.item.type };
+    }
     if (msg.type === 'turn.completed') {
       // Codex reports running totals for the whole thread; show what this turn added.
       const u = msg.usage || {};
@@ -157,7 +217,7 @@ function codexParser(session) {
 }
 
 function friendlyError(engine, message) {
-  if (/not logged in|login|unauthori[sz]ed|401/i.test(message)) {
+  if (/not logged in|please run \/login|codex login|unauthori[sz]ed|\b401\b/i.test(message)) {
     return { message: `${ENGINES[engine].label} isn't signed in to your ${ENGINES[engine].account} account.`, needsLogin: true };
   }
   return { message };
@@ -198,7 +258,7 @@ function send({ agent, chatId, session, text }, emit) {
       let event;
       try { event = parse(JSON.parse(line)); } catch { continue; }
       if (!event) continue;
-      if (event.type === 'delta') emit(event);
+      if (event.type === 'delta' || event.type === 'tool') emit(event);
       else finish(event);
     }
   });
@@ -230,4 +290,44 @@ function status() {
   return Object.fromEntries(Object.keys(ENGINES).map((e) => [e, Boolean(LOCATE[e]())]));
 }
 
-module.exports = { send, stop, login, status };
+// Lists Claude's connected apps by reading its startup report, then stops it before it
+// answers, so this costs next to nothing.
+function discoverConnectors() {
+  const bin = LOCATE.claude();
+  if (!bin) return Promise.resolve(readConnectorCache());
+  return new Promise((resolve) => {
+    const child = spawn(bin, [
+      '-p', '--output-format', 'stream-json', '--verbose', '--setting-sources', 'project',
+      '--tools', '', '--disable-slash-commands', '--permission-prompts', 'none',
+    ], { cwd: WORKSPACE, windowsHide: true });
+    let buffer = '';
+    const done = (result) => {
+      clearTimeout(timer);
+      child.kill();
+      resolve(result);
+    };
+    const timer = setTimeout(() => done(readConnectorCache()), 60000);
+    child.stdout.on('data', (chunk) => {
+      buffer += chunk;
+      const line = buffer.split('\n').find((l) => l.includes('"subtype":"init"'));
+      if (!line) return;
+      const init = JSON.parse(line);
+      const cache = {
+        ...readConnectorCache(),
+        claude: {
+          servers: (init.mcp_servers || []).map(({ name, status: state }) => ({ name, status: state })),
+          tools: (init.tools || []).filter((t) => t.startsWith('mcp__')),
+          checkedAt: Date.now(),
+        },
+      };
+      fs.writeFileSync(CONNECTORS_CACHE, JSON.stringify(cache, null, 2));
+      done(cache);
+    });
+    child.on('error', () => done(readConnectorCache()));
+    child.stdin.end('hi');
+  });
+}
+
+module.exports = {
+  send, stop, login, status, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name),
+};

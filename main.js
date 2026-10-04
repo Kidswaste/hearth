@@ -1,8 +1,9 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const store = require('./store');
 const engines = require('./engines');
+const importer = require('./importer');
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const THEME_PATH = path.join(__dirname, 'theme.css');
@@ -118,6 +119,48 @@ ipcMain.handle('engine:send', (_e, { agentId, chatId, session, text }) => {
   engines.send({ agent, chatId, session: session || {}, text }, (event) => {
     win?.webContents.send('engine:event', { chatId, ...event });
   });
+});
+ipcMain.handle('memory:get', () => store.getMemory());
+ipcMain.handle('memory:save', (_e, memory) => store.saveMemory(memory));
+// Claude's connected apps with tool counts, for the agent editor.
+function describeConnectors(cache) {
+  const claude = cache.claude;
+  if (!claude) return null;
+  return {
+    checkedAt: claude.checkedAt,
+    servers: claude.servers.map(({ name, status }) => {
+      const prefix = `mcp__${name.replace(/[^A-Za-z0-9_-]/g, '_')}__`;
+      const tools = claude.tools.filter((t) => t.startsWith(prefix)).map((t) => t.slice(prefix.length));
+      return { name, status, tools: tools.length, readTools: tools.filter(engines.isReadOnlyTool).length };
+    }),
+  };
+}
+ipcMain.handle('connectors:get', () => describeConnectors(engines.readConnectorCache()));
+ipcMain.handle('connectors:refresh', async () => describeConnectors(await engines.discoverConnectors()));
+
+// Past chats go to the matching native agent, else to the matching website agent.
+function agentForSource(source) {
+  const agents = readConfig().agents;
+  const engine = source === 'claude.ai' ? 'claude' : 'codex';
+  const match = agents.find((a) => a.mode === 'native' && a.engine === engine)
+    || agents.find((a) => (a.url || '').includes(source))
+    || agents[0];
+  return match.id;
+}
+
+ipcMain.handle('chats:import', async () => {
+  const pick = await dialog.showOpenDialog(win, {
+    title: 'Import past chats',
+    buttonLabel: 'Import',
+    filters: [{ name: 'claude.ai or ChatGPT export', extensions: ['zip', 'json'] }],
+    properties: ['openFile'],
+  });
+  if (pick.canceled || !pick.filePaths[0]) return null;
+  try {
+    return importer.importFile(pick.filePaths[0], agentForSource);
+  } catch (err) {
+    return { error: err.message };
+  }
 });
 ipcMain.handle('engine:stop', (_e, chatId) => engines.stop(chatId));
 ipcMain.handle('engine:login', (_e, engine) => engines.login(engine));

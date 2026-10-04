@@ -14,6 +14,11 @@ contextBridge.exposeInMainWorld('hub', {
   getChat: (id) => ipcRenderer.invoke('chats:get', id),
   saveChat: (chat) => ipcRenderer.invoke('chats:save', chat),
   deleteChat: (id) => ipcRenderer.invoke('chats:delete', id),
+  importChats: () => ipcRenderer.invoke('chats:import'),
+  getMemory: () => ipcRenderer.invoke('memory:get'),
+  saveMemory: (memory) => ipcRenderer.invoke('memory:save', memory),
+  getConnectors: () => ipcRenderer.invoke('connectors:get'),
+  refreshConnectors: () => ipcRenderer.invoke('connectors:refresh'),
   getHistory: () => ipcRenderer.invoke('history:get'),
   saveHistory: (history) => ipcRenderer.invoke('history:save', history),
 

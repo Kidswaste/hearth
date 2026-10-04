@@ -7,8 +7,10 @@
       "color": "#d97757",
       "mode": "native",
       "engine": "claude",
-      "model": "sonnet",
-      "url": "https://claude.ai/new"
+      "model": "claude-opus-5-5",
+      "url": "https://claude.ai/new",
+      "askAll": true,
+      "effort": "high"
     },
     {
       "id": "astra",
@@ -17,24 +19,10 @@
       "color": "#10a37f",
       "mode": "native",
       "engine": "codex",
-      "effort": "low",
-      "url": "https://chatgpt.com/"
-    },
-    {
-      "id": "kimi",
-      "name": "Kimi",
-      "icon": "K",
-      "color": "#4f8cff",
-      "mode": "web",
-      "url": "https://www.kimi.com/"
-    },
-    {
-      "id": "deepseek",
-      "name": "DeepSeek",
-      "icon": "D",
-      "color": "#8b7bff",
-      "mode": "web",
-      "url": "https://chat.deepseek.com/"
+      "effort": "high",
+      "url": "https://chatgpt.com/",
+      "askAll": true,
+      "model": "gpt-6-astra"
     }
   ],
   "layout": {

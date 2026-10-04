@@ -5,6 +5,7 @@ const path = require('path');
 const DATA_DIR = path.join(__dirname, 'data');
 const CHATS_DIR = path.join(DATA_DIR, 'chats');
 const HISTORY_PATH = path.join(DATA_DIR, 'web-history.json');
+const MEMORY_PATH = path.join(DATA_DIR, 'memory.json');
 const SAFE_ID = /^[\w-]{1,80}$/;
 
 fs.mkdirSync(CHATS_DIR, { recursive: true });
@@ -46,4 +47,7 @@ module.exports = {
   deleteChat: (id) => fs.rmSync(chatPath(id), { force: true }),
   getHistory: () => readJson(HISTORY_PATH, {}),
   saveHistory: (history) => writeJson(HISTORY_PATH, history),
+  // { shared: "notes for every agent", agents: { [agentId]: "notes for one agent" } }
+  getMemory: () => ({ shared: '', agents: {}, ...readJson(MEMORY_PATH, {}) }),
+  saveMemory: (memory) => writeJson(MEMORY_PATH, memory),
 };

@@ -14,6 +14,23 @@ No API keys, nothing extra to pay.
 
 Switch any agent between the two: right-click its icon → Edit → Mode.
 
+## Memory
+🧠 in the rail: notes every native agent keeps in mind ("about you") plus notes per agent.
+Agents add to their own notes when you tell them something lasting; each save shows under the
+reply with an Undo. Memory is added to every message, so keep it short. Stored in `data/memory.json`.
+
+## Connected apps
+Claude agents can use the apps connected to your Claude account (Gmail, Drive, Notion…):
+right-click the agent → Edit → Connected apps, and set each one to Off, Read-only or Full.
+Every app you switch on adds its tool descriptions to each message, so switch on only what you use.
+ChatGPT agents have one switch for the apps connected to your ChatGPT account.
+
+## Past chats
+Request your data export (claude.ai: Settings → Privacy → Export data; ChatGPT: Settings →
+Data controls → Export data), then use **Import past chats…** at the bottom of the chats panel
+with the .zip you get by email. Chats land under the matching agent; sending a message in one
+continues it, with the earlier conversation sent along as context.
+
 ## Chats panel
 All conversations, grouped by agent. Native chats are stored in `data/chats/`.
 Website conversations show up automatically as you open them.
