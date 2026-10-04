@@ -157,7 +157,9 @@ const Native = (() => {
 
     v.title.textContent = chat?.title || 'New chat';
     const total = (chat?.messages || []).reduce((sum, m) => sum + (m.usage ? m.usage.input + m.usage.output : 0), 0);
-    v.meta.textContent = [agent.model, total ? `${fmt(total)} tokens this chat` : null].filter(Boolean).join(' · ');
+    const folder = agent.workspace ? `edits ${agent.workspace.split(/[\\/]/).filter(Boolean).pop()}` : null;
+    v.meta.textContent = [agent.model, folder, total ? `${fmt(total)} tokens this chat` : null].filter(Boolean).join(' · ');
+    v.meta.title = agent.workspace ? `Can read and edit files in ${agent.workspace}` : '';
     v.input.placeholder = `Message ${agent.name}…  (Enter to send, Shift+Enter for a new line)`;
 
     v.list.replaceChildren();

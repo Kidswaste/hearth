@@ -98,6 +98,7 @@ const Manager = (() => {
     f.askAll.checked = agent.askAll !== false;
     f.chatgptApps.checked = Boolean(agent.chatgptApps);
     f.autoMemory.checked = agent.autoMemory !== false;
+    f.workspace.value = agent.workspace || '';
     connectorModes = { ...agent.connectors };
     syncModeFields();
   }
@@ -141,6 +142,7 @@ const Manager = (() => {
         systemPrompt: f.systemPrompt.value.trim() || undefined,
         connectors: f.engine.value === 'claude' && Object.keys(connectorModes).length ? { ...connectorModes } : undefined,
         chatgptApps: f.engine.value === 'codex' && f.chatgptApps.checked ? true : undefined,
+        workspace: f.engine.value === 'claude' && f.workspace.value ? f.workspace.value : undefined,
         autoMemory: f.autoMemory.checked ? undefined : false,
       });
     }
@@ -168,6 +170,11 @@ const Manager = (() => {
   f.mode.addEventListener('change', syncModeFields);
   f.engine.addEventListener('change', syncModeFields);
   $('refresh-connectors').addEventListener('click', () => loadConnectors(true));
+  $('pick-folder').addEventListener('click', async () => {
+    const folder = await window.hub.pickFolder(f.workspace.value);
+    if (folder) f.workspace.value = folder;
+  });
+  $('clear-folder').addEventListener('click', () => { f.workspace.value = ''; });
   $('cancel-agent').addEventListener('click', () => dialog.close());
   $('delete-agent').addEventListener('click', () => { dialog.close(); remove(editingId); });
   form.addEventListener('submit', (e) => {

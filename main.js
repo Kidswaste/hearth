@@ -162,6 +162,14 @@ ipcMain.handle('chats:import', async () => {
     return { error: err.message };
   }
 });
+ipcMain.handle('pick-folder', async (_e, current) => {
+  const pick = await dialog.showOpenDialog(win, {
+    title: 'Folder this agent can read and edit',
+    defaultPath: current || undefined,
+    properties: ['openDirectory'],
+  });
+  return pick.canceled ? null : pick.filePaths[0];
+});
 ipcMain.handle('engine:stop', (_e, chatId) => engines.stop(chatId));
 ipcMain.handle('engine:login', (_e, engine) => engines.login(engine));
 ipcMain.handle('engine:status', () => engines.status());

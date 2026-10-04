@@ -78,16 +78,31 @@ function enabledConnectors(agent) {
   return Object.entries(agent.connectors || {}).filter(([, mode]) => mode === 'read' || mode === 'full');
 }
 
+// File tools for Claude agents with a project folder. No command running, and Claude Code's
+// restricted mode keeps the file tools inside that folder.
+const FILE_TOOLS = ['Read', 'Edit', 'Write', 'Glob', 'Grep'];
+
+function fileFolder(agent) {
+  return agent.engine === 'claude' && agent.workspace && fs.existsSync(agent.workspace) ? agent.workspace : null;
+}
+
 function buildPrompt(agent) {
   const usesApps = agent.engine === 'claude' ? enabledConnectors(agent).length > 0 : Boolean(agent.chatgptApps);
+  const folder = fileFolder(agent);
   const parts = [
     agent.systemPrompt
       || `You are ${agent.name}, chatting with the user in their personal desktop app. `
         + 'Answer conversationally and directly, using Markdown when it helps.',
-    usesApps
-      ? 'You can use the connected apps in your tools (for example email, documents or calendars) when the user asks about them or when it clearly helps. Never run commands or touch local files.'
-      : 'You have no tools: never try to run commands, read files or browse the web.',
   ];
+  if (folder) {
+    parts.push(`You can read and edit files in the project folder ${folder} with your file tools `
+      + '(Read, Edit, Write, Glob, Grep). Read before you edit, make focused changes, and list the files you changed '
+      + 'at the end. You cannot run commands, so tell the user what to run or test themselves.');
+  }
+  if (usesApps) {
+    parts.push('You can use the connected apps in your tools (for example email, documents or calendars) when the user asks about them or when it clearly helps.');
+  }
+  if (!folder && !usesApps) parts.push('You have no tools: never try to run commands, read files or browse the web.');
   const memory = getMemory();
   const notes = [memory.shared, memory.agents?.[agent.id]].map((m) => (m || '').trim()).filter(Boolean);
   if (notes.length) {
@@ -108,11 +123,17 @@ function readConnectorCache() {
 // Claude's connected apps come from your Claude account. Each one is off, read-only or full.
 function claudeToolArgs(agent) {
   const enabled = new Map(enabledConnectors(agent));
-  if (!enabled.size) return ['--tools', '', '--strict-mcp-config'];
+  const folder = fileFolder(agent);
+  const args = folder
+    ? ['--tools', FILE_TOOLS.join(','), '--restricted', '--add-dir', folder, '--permission-mode', 'acceptEdits']
+    : ['--tools', ''];
+  if (!enabled.size && !folder) return [...args, '--strict-mcp-config'];
+  if (!enabled.size) args.push('--strict-mcp-config');
+  args.push('--permission-prompts', 'none');
   const { claude } = readConnectorCache();
-  const allowed = [];
+  const allowed = folder ? [...FILE_TOOLS] : [];
   const denied = [];
-  for (const server of claude?.servers || []) {
+  for (const server of enabled.size ? claude?.servers || [] : []) {
     const prefix = serverPrefix(server.name);
     const mode = enabled.get(server.name);
     if (!mode) { denied.push(prefix.slice(0, -2)); continue; }
@@ -121,7 +142,6 @@ function claudeToolArgs(agent) {
       else denied.push(tool);
     }
   }
-  const args = ['--tools', '', '--permission-prompts', 'none'];
   if (allowed.length) args.push('--allowedTools', allowed.join(','));
   if (denied.length) args.push('--disallowedTools', denied.join(','));
   return args;
@@ -169,7 +189,10 @@ function claudeParser(session) {
       return { type: 'delta', text: msg.event.delta.text };
     }
     const toolUse = msg.type === 'assistant' && msg.message?.content?.find((c) => c.type === 'tool_use');
-    if (toolUse) return { type: 'tool', name: toolUse.name };
+    if (toolUse) {
+      const target = toolUse.input?.file_path || toolUse.input?.pattern;
+      return { type: 'tool', name: target ? `${toolUse.name} · ${path.basename(target)}` : toolUse.name };
+    }
     if (msg.type === 'result') {
       if (msg.is_error) return { type: 'error', message: msg.result || 'Claude returned an error' };
       const u = msg.usage || {};
@@ -230,6 +253,12 @@ function send({ agent, chatId, session, text }, emit) {
     emit({ type: 'error', message: `Couldn't find ${ENGINES[engine]?.label || engine} on this PC.` });
     return;
   }
+  if (engine === 'claude' && agent.workspace && !fileFolder(agent)) {
+    emit({ type: 'error', message: `The file access folder ${agent.workspace} doesn't exist anymore. Change it in the agent's settings.` });
+    return;
+  }
+  // Sessions always live in the hub's own workspace so chats resume even after the folder changes;
+  // the project folder is reached through --add-dir.
   const state = { ...session };
   const args = engine === 'claude' ? claudeArgs(agent, state) : codexArgs(agent, state);
   const parse = engine === 'claude' ? claudeParser(state) : codexParser(state);

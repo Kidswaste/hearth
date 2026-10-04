@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('hub', {
   saveChat: (chat) => ipcRenderer.invoke('chats:save', chat),
   deleteChat: (id) => ipcRenderer.invoke('chats:delete', id),
   importChats: () => ipcRenderer.invoke('chats:import'),
+  pickFolder: (current) => ipcRenderer.invoke('pick-folder', current),
   getMemory: () => ipcRenderer.invoke('memory:get'),
   saveMemory: (memory) => ipcRenderer.invoke('memory:save', memory),
   getConnectors: () => ipcRenderer.invoke('connectors:get'),

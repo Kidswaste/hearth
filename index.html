@@ -93,6 +93,16 @@
         </label>
         <p class="hint" id="engine-hint"></p>
 
+        <div data-engine="claude" class="file-access">
+          <span class="field-label">File access</span>
+          <div class="folder-row">
+            <input name="workspace" placeholder="No folder: chat only" readonly>
+            <button type="button" class="ghost small" id="pick-folder">Choose…</button>
+            <button type="button" class="ghost small" id="clear-folder">None</button>
+          </div>
+          <p class="hint">Lets it read and edit files in this folder on its own (it can't run commands). Adds the file tools' descriptions to each message.</p>
+        </div>
+
         <div data-engine="claude" class="connectors">
           <div class="connectors-head">
             <span>Connected apps <small>(from your Claude account)</small></span>

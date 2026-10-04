@@ -1,4 +1,4 @@
-You're picking up development of **Agent Hub**, my personal desktop app at `C:\Users\quent\agent-hub` (git repo, Windows 11). I'm talking to you from inside it. You can't see or edit the files from this chat, so when a change is needed, give me exact code edits (file + the code to replace) or a precise prompt I can hand to Claude Code.
+You're picking up development of **Agent Hub**, my personal desktop app at `C:\Users\quent\agent-hub` (git repo, Windows 11). I'm talking to you from inside it, and you have file access to that folder: read files before changing them, make focused edits, and list what you changed. You can't run commands, so tell me what to run or check. Changes to renderer files show up after restarting the app; `config.json` and `theme.css` hot-reload. Before a big change, remind me to commit in git so it's easy to undo.
 
 ## What it is
 One window for all my AI agents, with no API keys and no extra cost:
@@ -26,6 +26,7 @@ Electron v44.5.1 (unpacked in `electron/`, gitignored), plain JS, no npm, no bui
 - Connectors are per agent: Off, Read-only or Full. Read-only uses a tool-name regex plus `--disallowedTools`.
 - No automating or scraping the websites' answers (terms of service). Ask-all only types into website chat boxes.
 - Never handle my passwords. Sign-in opens the CLI's own login window.
+- File access (Claude agents only) is opt-in per agent: a folder picked in the agent editor. It enables Read/Edit/Write/Glob/Grep with `--restricted --add-dir <folder> --permission-mode acceptEdits`, has no command running, and writes outside the folder are blocked (tested). Sessions stay in `data/workspace` so chats still resume after the folder changes.
 - Memory is added to every prompt, so keep it short. Agents save facts via `<remember>…</remember>`, which the hub strips and shows with an Undo.
 
 ## Known gaps / not verified
