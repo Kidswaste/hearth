@@ -1,21 +1,51 @@
 {
   "agents": [
-    { "id": "claude",   "name": "Claude",   "url": "https://claude.ai/new",      "color": "#d97757", "icon": "C" },
-    { "id": "astra",    "name": "Astra",    "url": "https://chatgpt.com/",       "color": "#10a37f", "icon": "A" },
-    { "id": "kimi",     "name": "Kimi",     "url": "https://www.kimi.com/",      "color": "#4f8cff", "icon": "K" },
-    { "id": "deepseek", "name": "DeepSeek", "url": "https://chat.deepseek.com/", "color": "#8b7bff", "icon": "D" }
+    {
+      "id": "claude",
+      "name": "Claude",
+      "icon": "C",
+      "color": "#d97757",
+      "mode": "native",
+      "engine": "claude",
+      "model": "sonnet",
+      "url": "https://claude.ai/new"
+    },
+    {
+      "id": "astra",
+      "name": "Astra",
+      "icon": "A",
+      "color": "#10a37f",
+      "mode": "native",
+      "engine": "codex",
+      "effort": "low",
+      "url": "https://chatgpt.com/"
+    },
+    {
+      "id": "kimi",
+      "name": "Kimi",
+      "icon": "K",
+      "color": "#4f8cff",
+      "mode": "web",
+      "url": "https://www.kimi.com/"
+    },
+    {
+      "id": "deepseek",
+      "name": "DeepSeek",
+      "icon": "D",
+      "color": "#8b7bff",
+      "mode": "web",
+      "url": "https://chat.deepseek.com/"
+    }
   ],
-
   "layout": {
     "start": "single",
     "gridColumns": 2,
+    "chatsPanel": true,
     "askAllBar": true
   },
-
   "askAll": {
     "pressEnter": true
   },
-
   "theme": {
     "background": "#0f1115",
     "sidebar": "#15181e",
@@ -23,6 +53,7 @@
     "accent": "#7c5cff",
     "radius": 10,
     "sidebarWidth": 64,
+    "panelWidth": 250,
     "gap": 6,
     "font": "Segoe UI, system-ui, sans-serif"
   }

@@ -1,6 +1,8 @@
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const store = require('./store');
+const engines = require('./engines');
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const THEME_PATH = path.join(__dirname, 'theme.css');
@@ -15,16 +17,19 @@ const AUTH_HOSTS = [
   'login.live.com', 'auth.openai.com', 'auth0.openai.com', 'github.com',
 ];
 const ALLOWED_PERMISSIONS = new Set(['clipboard-sanitized-write', 'notifications', 'media', 'fullscreen']);
-// Ctrl+<key> combos the hub handles even while a site has focus.
-const HUB_KEYS = new Set(['1', '2', '3', '4', '5', '6', '7', '8', '9', 'g', 'r', ',', 'b']);
+// Ctrl+<key> combos the hub handles even while a website has focus.
+const HUB_KEYS = new Set(['1', '2', '3', '4', '5', '6', '7', '8', '9', 'g', 'r', ',', 'b', 'n', '\\']);
 
 let win;
 
+function readConfig() {
+  return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+}
+
 function loadAll() {
   try {
-    const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
     const themeCss = fs.existsSync(THEME_PATH) ? fs.readFileSync(THEME_PATH, 'utf8') : '';
-    return { config, themeCss };
+    return { config: readConfig(), themeCss };
   } catch (err) {
     return { error: `${path.basename(CONFIG_PATH)}: ${err.message}` };
   }
@@ -39,11 +44,15 @@ function isAuthUrl(url) {
   }
 }
 
+function openExternal(url) {
+  if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+}
+
 function createWindow() {
   const { config } = loadAll();
   win = new BrowserWindow({
-    width: 1440,
-    height: 920,
+    width: 1480,
+    height: 940,
     title: 'Agent Hub',
     autoHideMenuBar: true,
     backgroundColor: config?.theme?.background || '#0f1115',
@@ -54,6 +63,15 @@ function createWindow() {
     },
   });
   win.loadFile('index.html');
+  // Links clicked in native chats open in your normal browser.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    openExternal(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (event, url) => {
+    event.preventDefault();
+    openExternal(url);
+  });
 }
 
 app.on('web-contents-created', (_event, contents) => {
@@ -67,7 +85,7 @@ app.on('web-contents-created', (_event, contents) => {
     if (isAuthUrl(url)) {
       return { action: 'allow', overrideBrowserWindowOptions: { width: 520, height: 720, autoHideMenuBar: true } };
     }
-    if (/^https?:/.test(url)) shell.openExternal(url);
+    openExternal(url);
     return { action: 'deny' };
   });
 
@@ -82,7 +100,28 @@ app.on('web-contents-created', (_event, contents) => {
 });
 
 ipcMain.handle('config:get', () => loadAll());
+ipcMain.handle('config:save', (_e, config) => fs.writeFileSync(CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`));
 ipcMain.handle('open-file', (_e, which) => shell.openPath(which === 'theme' ? THEME_PATH : CONFIG_PATH));
+ipcMain.handle('open-external', (_e, url) => openExternal(url));
+
+ipcMain.handle('chats:list', () => store.listChats());
+ipcMain.handle('chats:get', (_e, id) => store.getChat(id));
+ipcMain.handle('chats:save', (_e, chat) => store.saveChat(chat));
+ipcMain.handle('chats:delete', (_e, id) => store.deleteChat(id));
+ipcMain.handle('history:get', () => store.getHistory());
+ipcMain.handle('history:save', (_e, history) => store.saveHistory(history));
+
+// The renderer names the agent; engine, model and prompt are always read from config.json here.
+ipcMain.handle('engine:send', (_e, { agentId, chatId, session, text }) => {
+  const agent = readConfig().agents.find((a) => a.id === agentId);
+  if (!agent || agent.mode !== 'native') throw new Error(`${agentId} is not a native agent`);
+  engines.send({ agent, chatId, session: session || {}, text }, (event) => {
+    win?.webContents.send('engine:event', { chatId, ...event });
+  });
+});
+ipcMain.handle('engine:stop', (_e, chatId) => engines.stop(chatId));
+ipcMain.handle('engine:login', (_e, engine) => engines.login(engine));
+ipcMain.handle('engine:status', () => engines.status());
 
 for (const file of [CONFIG_PATH, THEME_PATH]) {
   fs.watchFile(file, { interval: 400 }, () => win?.webContents.send('config:changed', loadAll()));

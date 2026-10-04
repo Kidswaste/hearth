@@ -10,17 +10,27 @@
 </head>
 <body>
   <div id="app">
-    <nav id="sidebar">
+    <nav id="rail">
       <div id="agent-buttons"></div>
+      <button class="tool-btn" id="add-btn" title="Add an agent or website">＋</button>
       <div class="spacer"></div>
-      <button class="tool-btn" id="grid-btn" title="Show all side by side (Ctrl+G)">▦</button>
-      <button class="tool-btn" id="bar-btn" title="Toggle ask-all bar (Ctrl+B)">⌨</button>
+      <button class="tool-btn" id="panel-btn" title="Show/hide chats (Ctrl+\)">☰</button>
+      <button class="tool-btn" id="grid-btn" title="All side by side (Ctrl+G)">▦</button>
+      <button class="tool-btn" id="bar-btn" title="Ask-all bar (Ctrl+B)">⌨</button>
       <button class="tool-btn" id="theme-btn" title="Edit theme.css">🎨</button>
       <button class="tool-btn" id="config-btn" title="Edit config.json (Ctrl+,)">⚙</button>
     </nav>
+
+    <aside id="panel">
+      <div class="panel-head">
+        <input id="chat-search" type="search" placeholder="Search chats">
+      </div>
+      <div id="chat-groups"></div>
+    </aside>
+
     <main>
       <div id="error"></div>
-      <div id="views"></div>
+      <div id="surfaces"></div>
       <form id="broadcast" autocomplete="off">
         <input id="broadcast-input" placeholder="Ask all agents at once…  (Ctrl+Shift+Space)">
         <span id="status"></span>
@@ -28,6 +38,74 @@
       </form>
     </main>
   </div>
+
+  <div id="menu" hidden></div>
+
+  <dialog id="agent-dialog">
+    <form id="agent-form" method="dialog">
+      <h2 id="dialog-title">Add agent</h2>
+
+      <label class="row" id="preset-row">Start from
+        <select name="preset"></select>
+      </label>
+
+      <div class="grid2">
+        <label>Name <input name="name" required maxlength="30"></label>
+        <label>Icon <input name="icon" maxlength="200" placeholder="Letter, emoji or image URL"></label>
+      </div>
+      <div class="grid2">
+        <label>Color <input name="color" type="color"></label>
+        <label>Mode
+          <select name="mode">
+            <option value="web">Website</option>
+            <option value="native">Native chat</option>
+          </select>
+        </label>
+      </div>
+
+      <label data-for="web">Website address <input name="url" type="url" placeholder="https://"></label>
+
+      <fieldset data-for="native">
+        <div class="grid2">
+          <label>Engine
+            <select name="engine">
+              <option value="claude">Claude (your Claude Pro login)</option>
+              <option value="codex">ChatGPT (your ChatGPT Plus login)</option>
+            </select>
+          </label>
+          <label>Model <input name="model" placeholder="blank = default" list="model-hints"></label>
+        </div>
+        <label>Effort
+          <select name="effort">
+            <option value="">Default</option>
+            <option value="low">Low: fastest, fewest tokens</option>
+            <option value="medium">Medium</option>
+            <option value="high">High: best answers, more tokens</option>
+          </select>
+        </label>
+        <label>Personality and instructions
+          <textarea name="systemPrompt" rows="4" placeholder="Leave blank for a plain, direct chat assistant."></textarea>
+        </label>
+        <p class="hint" id="engine-hint"></p>
+      </fieldset>
+
+      <label class="check"><input name="askAll" type="checkbox" checked> Include in ask-all</label>
+
+      <div class="dialog-actions">
+        <button type="button" class="danger" id="delete-agent">Remove</button>
+        <span class="spacer"></span>
+        <button type="button" id="cancel-agent">Cancel</button>
+        <button type="submit" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+  <datalist id="model-hints"></datalist>
+
+  <script src="md.js"></script>
   <script src="renderer.js"></script>
+  <script src="native.js"></script>
+  <script src="panel.js"></script>
+  <script src="manager.js"></script>
+  <script src="start.js"></script>
 </body>
 </html>
