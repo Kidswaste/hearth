@@ -281,12 +281,7 @@ const ForgeGame = (() => {
     window.hub.kvGet('forge-patches', []).then((p) => { patches = p; renderPatchBadge(); });
   }
 
-  // Bridge calls from Claude arrive here; answers go back to the main process.
-  window.hub.onGameCall(async ({ id, tool, args }) => {
-    let result;
-    try { result = await handleTool(tool, args); } catch (err) { result = { ok: false, error: err.message }; }
-    window.hub.gameResult(id, result);
-  });
+  HubBridge.register(['forge_'], handleTool);
 
   return { mount, exec, reload, handleTool, isReady: () => ready };
 })();

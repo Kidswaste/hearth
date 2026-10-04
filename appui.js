@@ -282,9 +282,11 @@ const AppUI = (() => {
     const agent = H.agent(agentId);
     if (!agent) return;
     const focused = await window.hub.isWindowFocused();
-    const visible = focused && (H.activeId === agentId || H.grid) && H.activeChat[agentId] === chatId;
+    // Docked chats count as on screen whenever their tool is.
+    const onScreen = H.surfaceIdFor(H.activeId) === H.surfaceIdFor(agentId);
+    const visible = focused && (onScreen || H.grid) && H.activeChat[agentId] === chatId;
     if (visible) return;
-    if (!(focused && H.activeId === agentId)) { H.unread.add(agentId); renderRail(); }
+    if (!(focused && onScreen)) { H.unread.add(agentId); renderRail(); }
     if (H.settings().notify === false) return;
     if (!focused) {
       window.hub.flashWindow();

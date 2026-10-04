@@ -16,6 +16,9 @@ const H = {
 };
 H.agents = () => (H.config?.agents || []).filter((a) => a.enabled !== false);
 H.agent = (id) => H.config?.agents.find((a) => a.id === id);
+// Agents docked inside a tool (Three Director, Video Director) live in that tool, not in the rail.
+H.railAgents = () => H.agents().filter((a) => !a.dock);
+H.surfaceIdFor = (id) => { const a = H.agent(id); return a?.dock ? `tool:${a.dock}` : id; };
 H.settings = () => H.config?.settings || {};
 H.isTool = (id) => typeof id === 'string' && id.startsWith('tool:');
 // The native agent that "Ask Claude" actions go to: the first Claude-engine native agent.
@@ -81,7 +84,7 @@ function railButton(id, item, title) {
 function renderRail() {
   const rail = $('agent-buttons');
   rail.replaceChildren();
-  H.agents().forEach((agent, i) => {
+  H.railAgents().forEach((agent, i) => {
     const btn = railButton(agent.id, agent, `${agent.name}${agent.mode === 'native' ? ' (native)' : ''}  ·  Ctrl+${i + 1}  ·  right-click for options`);
     if (agent.mode === 'native') btn.classList.add('native');
     if (H.unread.has(agent.id)) btn.classList.add('unread');
@@ -94,11 +97,12 @@ function renderRail() {
     for (const tool of tools) {
       const btn = railButton(`tool:${tool.id}`, tool, `${tool.name}  ·  right-click for options`);
       btn.classList.add('tool-btn-rail');
+      if (H.agents().some((a) => a.dock === tool.id && H.unread.has(a.id))) btn.classList.add('unread');
       btn.addEventListener('contextmenu', (e) => { e.preventDefault(); showToolMenu(tool.id, e.clientX, e.clientY); });
       rail.append(btn);
     }
   }
-  for (const btn of rail.querySelectorAll('.agent-btn')) btn.classList.toggle('active', btn.dataset.id === H.activeId);
+  for (const btn of rail.querySelectorAll('.agent-btn')) btn.classList.toggle('active', btn.dataset.id === H.surfaceIdFor(H.activeId));
 }
 
 function showAgentMenu(id, x, y) {
@@ -272,11 +276,11 @@ function createSurface(agent) {
 
 function syncSurfaces() {
   const container = $('surfaces');
-  const wanted = new Set([...H.agents().map((a) => a.id), ...Tools.enabled().map((t) => `tool:${t.id}`)]);
+  const wanted = new Set([...H.railAgents().map((a) => a.id), ...Tools.enabled().map((t) => `tool:${t.id}`)]);
   for (const [id, s] of H.surfaces) {
     if (!wanted.has(id)) { s.el.remove(); H.surfaces.delete(id); }
   }
-  for (const agent of H.agents()) {
+  for (const agent of H.railAgents()) {
     let s = H.surfaces.get(agent.id);
     if (s && (s.mode !== (agent.mode || 'web') || (s.companion || null) !== (agent.companion || null))) { s.el.remove(); s = null; }
     if (!s) {
@@ -296,11 +300,12 @@ function syncSurfaces() {
     if (!H.surfaces.has(id)) H.surfaces.set(id, Tools.createSurface(tool));
     container.append(H.surfaces.get(id).el);
   }
-  if (!wanted.has(H.activeId)) H.activeId = H.agents()[0]?.id ?? null;
+  Tools.syncDocks();
+  if (!wanted.has(H.surfaceIdFor(H.activeId))) H.activeId = H.railAgents()[0]?.id ?? null;
 }
 
 function applyLayout() {
-  const count = Math.max(H.agents().length, 1);
+  const count = Math.max(H.railAgents().length, 1);
   const cols = Math.min(H.config.layout?.gridColumns || 2, count);
   const container = $('surfaces');
   container.style.setProperty('--cols', cols);
@@ -313,18 +318,26 @@ function applyLayout() {
 }
 
 function activate(id, { focus = true } = {}) {
-  const s = H.surfaces.get(id);
+  // Docked agents (e.g. Three Director) show inside their tool's surface.
+  const surfaceId = H.surfaceIdFor(id);
+  const s = H.surfaces.get(surfaceId);
   if (!s) return;
-  if (H.isTool(id) && H.grid) { H.grid = false; applyLayout(); }
+  const docked = surfaceId !== id;
+  if (H.isTool(surfaceId) && H.grid) { H.grid = false; applyLayout(); }
   H.activeId = id;
   H.mru = [id, ...H.mru.filter((m) => m !== id)].slice(0, 12);
-  if (H.unread.delete(id)) renderRail();
-  for (const [sid, other] of H.surfaces) other.el.classList.toggle('active', sid === id);
-  for (const btn of $('agent-buttons').querySelectorAll('.agent-btn')) btn.classList.toggle('active', btn.dataset.id === id);
+  let changed = H.unread.delete(id);
+  // Opening a tool also counts as seeing the chat docked in it.
+  if (H.isTool(id)) for (const a of H.agents()) if (a.dock === id.slice(5) && H.unread.delete(a.id)) changed = true;
+  if (changed) renderRail();
+  for (const [sid, other] of H.surfaces) other.el.classList.toggle('active', sid === surfaceId);
+  for (const btn of $('agent-buttons').querySelectorAll('.agent-btn')) btn.classList.toggle('active', btn.dataset.id === surfaceId);
   Panel.highlight();
   if (s.tool) Tools.shown(s.tool);
+  if (docked) Tools.openDock(s.tool.id);
   if (!focus) return;
-  if (s.webview) s.webview.focus();
+  if (docked) Native.focus(id);
+  else if (s.webview) s.webview.focus();
   else if (s.native) Native.focus(id);
 }
 
@@ -384,7 +397,7 @@ async function askAll(text) {
 // ---------- shortcuts ----------
 
 function handleShortcut({ key, shift }) {
-  if (/^[1-9]$/.test(key)) { const a = H.agents()[Number(key) - 1]; if (a) activate(a.id); }
+  if (/^[1-9]$/.test(key)) { const a = H.railAgents()[Number(key) - 1]; if (a) activate(a.id); }
   else if (key === 'g') { H.grid = !H.grid; applyLayout(); }
   else if (key === '\\') { H.panelOpen = !H.panelOpen; applyLayout(); }
   else if (key === 'b') { $('broadcast').classList.toggle('hidden'); applyLayout(); }

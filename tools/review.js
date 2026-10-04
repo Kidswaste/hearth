@@ -258,7 +258,8 @@ const Review = (() => {
   async function sendFeedback() {
     const list = current ? notes[current.path] || [] : [];
     if (!list.length) return;
-    const agent = H.claudeAgent();
+    // Prefer the Video Director docked here; otherwise any native Claude agent.
+    const agent = H.agents().find((a) => a.videoTools && a.mode === 'native') || H.claudeAgent();
     if (!agent) { toast('Add a native Claude agent first', { type: 'error' }); return; }
     const lines = list.map((n) => `- ${tc(n.t)} (${n.t.toFixed(2)} s): ${n.text}${n.color ? ` [color ${n.color}]` : ''}`).join('\n');
     const text = `Visual feedback on the render "${base(current.path)}"\nFile: ${current.path}\n${refs.video.videoWidth}×${refs.video.videoHeight}, ${fmtDur(refs.video.duration)}, timecodes at ${fps} fps.\n\n${lines}\n\nFind the After Effects script/project that produces this render, apply these changes, and tell me what you changed and how to re-render. Frame grabs of each moment are attached.`;
@@ -400,6 +401,153 @@ const Review = (() => {
 
   // Watch for new renders while the tool is open (cheap rescan every 20 s).
   setInterval(() => { if (refs.lib?.isConnected && refs.lib.offsetParent) load(); }, 20000);
+
+  // ---------- tools for the Video Director (Claude) ----------
+  const jpeg = (canvas, maxW = 1280, q = 0.82) => {
+    let c = canvas;
+    if (c.width > maxW) {
+      const s = document.createElement('canvas');
+      s.width = maxW; s.height = Math.round(maxW * (c.height / c.width));
+      s.getContext('2d').drawImage(c, 0, 0, s.width, s.height);
+      c = s;
+    }
+    return { data: c.toDataURL('image/jpeg', q).split(',')[1], mime: 'image/jpeg' };
+  };
+  // A private video element for sampling frames without moving the user's playhead.
+  async function sampler(path) {
+    const v = document.createElement('video');
+    v.muted = true; v.preload = 'auto'; v.src = fileUrl(path);
+    await new Promise((res, rej) => { v.onloadedmetadata = res; v.onerror = () => rej(new Error('This file can\'t be decoded here (ProRes/.mov may need an H.264 preview).')); setTimeout(() => rej(new Error('Timed out loading the video')), 15000); });
+    const at = (t) => new Promise((res, rej) => { v.onseeked = res; v.currentTime = Math.max(0, Math.min(v.duration - 0.01, t)); setTimeout(() => rej(new Error('Seek timed out')), 8000); });
+    return { v, at };
+  }
+  async function contactSheet({ count = 12, from = 0, to } = {}) {
+    const { v, at } = await sampler(current.path);
+    const n = Math.max(4, Math.min(24, Math.round(count)));
+    const end = Math.min(v.duration, to ?? v.duration);
+    const start = Math.max(0, Math.min(from, end));
+    const cols = n <= 6 ? 3 : 4;
+    const rows = Math.ceil(n / cols);
+    const cw = 320; const ch = Math.round(cw * (v.videoHeight / v.videoWidth));
+    const sheet = document.createElement('canvas');
+    sheet.width = cols * cw; sheet.height = rows * ch;
+    const ctx = sheet.getContext('2d');
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, sheet.width, sheet.height);
+    const times = [];
+    for (let i = 0; i < n; i += 1) {
+      const t = start + ((end - start) * (i + 0.5)) / n;
+      await at(t);
+      const x = (i % cols) * cw; const y = Math.floor(i / cols) * ch;
+      ctx.drawImage(v, x, y, cw, ch);
+      ctx.fillStyle = '#000b'; ctx.fillRect(x, y, 96, 20);
+      ctx.fillStyle = '#ffd75e'; ctx.font = '13px Consolas, monospace'; ctx.fillText(`${t.toFixed(2)}s`, x + 5, y + 14); // plain seconds, same as the times listed to Claude
+      times.push(Number(t.toFixed(2)));
+    }
+    v.removeAttribute('src'); v.load();
+    return { image: jpeg(sheet, 1600, 0.8), times };
+  }
+
+  const pendingRenders = new Map();
+  window.hub.ae.onRender((ev) => {
+    const p = pendingRenders.get(ev.id);
+    if (!p) return;
+    if (ev.type === 'log') { p.log.push(ev.line); if (p.log.length > 200) p.log.shift(); }
+    if (ev.type === 'progress') p.pct = ev.pct;
+    if (ev.type === 'done') { pendingRenders.delete(ev.id); p.resolve(ev); }
+  });
+
+  async function handleTool(tool, args) {
+    if (!refs.video) Tools.shown(Tools.get('ae')); // load the screen in the background if needed
+    if (!refs.video) return { ok: false, error: 'Video Review could not be loaded.' };
+    const say = (text) => toast(`Video Director: ${text}`, { timeout: 2500 });
+    if (tool === 'video_list') {
+      if (!videos.length) await load();
+      const q = (args.search || '').toLowerCase();
+      return { ok: true, value: videos.filter((v) => !q || v.path.toLowerCase().includes(q)).slice(0, Math.min(100, args.limit || 20))
+        .map((v) => ({ path: v.path, name: base(v.path), sizeMB: Number((v.size / 1048576).toFixed(1)), modified: new Date(v.mtime).toISOString(), open: v.path === current?.path })) };
+    }
+    if (tool === 'video_status') {
+      if (!current) return { ok: true, value: { open: null, note: 'Nothing open. Use video_list and video_open.' } };
+      const vid = refs.video;
+      return { ok: true, value: { open: current.path, resolution: `${vid.videoWidth}x${vid.videoHeight}`, duration: Number((vid.duration || 0).toFixed(2)), time: Number(vid.currentTime.toFixed(2)), timecode: tc(vid.currentTime), paused: vid.paused, fps, comparingWith: refs.compare.hidden ? null : refs.cmpLabel.textContent.replace(/^B · /, ''), notes: (notes[current.path] || []).map((n) => ({ time: Number(n.t.toFixed(2)), timecode: tc(n.t), text: n.text, color: n.color || undefined })) } };
+    }
+    if (tool === 'video_open') {
+      const p = String(args.path || '');
+      const st = await window.hub.fs.stat(p);
+      if (!st) return { ok: false, error: `File not found: ${p}` };
+      const v = videos.find((x) => x.path.toLowerCase() === p.toLowerCase()) || { path: p, size: st.size, mtime: st.mtime };
+      open(v);
+      await new Promise((res) => { if (refs.video.readyState >= 1) res(); else { refs.video.addEventListener('loadedmetadata', res, { once: true }); refs.video.addEventListener('error', res, { once: true }); setTimeout(res, 8000); } });
+      say(`opened ${base(p)}`);
+      return { ok: true, value: { opened: p, resolution: `${refs.video.videoWidth}x${refs.video.videoHeight}`, duration: Number((refs.video.duration || 0).toFixed(2)) } };
+    }
+    if (!current) return { ok: false, error: 'No video is open. Use video_list and video_open first.' };
+    if (tool === 'video_frame') {
+      if (args.time != null) {
+        refs.video.pause();
+        seek(Number(args.time));
+        await new Promise((res) => { refs.video.addEventListener('seeked', res, { once: true }); setTimeout(res, 3000); });
+      }
+      const t = refs.video.currentTime;
+      return { ok: true, images: [jpeg(grab())], value: `Frame at ${tc(t)} (${t.toFixed(2)} s) of ${base(current.path)}` };
+    }
+    if (tool === 'video_contact_sheet') {
+      say('looking through the render…');
+      const { image, times } = await contactSheet(args);
+      return { ok: true, images: [image], value: `Contact sheet of ${base(current.path)}: ${times.length} frames at ${times.map((t) => `${t}s`).join(', ')} (left to right, top to bottom). Quote times in seconds like these when you talk to the user.` };
+    }
+    if (tool === 'video_add_note') {
+      const t = Math.max(0, Number(args.time) || 0);
+      let frame = null;
+      try {
+        const { v, at } = await sampler(current.path);
+        await at(t);
+        const c = document.createElement('canvas'); c.width = Math.min(1280, v.videoWidth); c.height = Math.round(c.width * (v.videoHeight / v.videoWidth));
+        c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+        frame = await window.hub.saveAttachment(`frame-${tc(t).replace(/:/g, '-')}.jpg`, c.toDataURL('image/jpeg', 0.85).split(',')[1]);
+      } catch { /* note without a frame */ }
+      (notes[current.path] ||= []).push({ t, text: `Claude: ${String(args.text || '').trim()}`, frame });
+      notes[current.path].sort((a, b) => a.t - b.t);
+      saveNotes(); renderNotes(); renderMarkers(); renderLibrary();
+      return { ok: true, value: `Note added at ${tc(t)}.` };
+    }
+    if (tool === 'video_compare') {
+      const st = await window.hub.fs.stat(String(args.path || ''));
+      if (!st) return { ok: false, error: `File not found: ${args.path}` };
+      startCompare({ path: args.path });
+      say('A/B compare on');
+      return { ok: true, value: `Comparing A=${base(current.path)} with B=${base(args.path)} (wipe slider on screen).` };
+    }
+    return { ok: false, error: `Unknown tool ${tool}` };
+  }
+
+  async function handleAe(tool, args) {
+    if (tool === 'ae_render') {
+      const id = `r${Date.now()}`;
+      const job = { id, project: String(args.project || ''), comp: args.comp || '', output: args.output || '', omTemplate: args.omTemplate || '', multiFrames: true };
+      if (!(await window.hub.fs.stat(job.project))) return { ok: false, error: `Project not found: ${job.project}` };
+      toast(`Video Director started a render: ${job.comp || base(job.project)}`, { timeout: 4000 });
+      const done = new Promise((resolve) => pendingRenders.set(id, { resolve, log: [], pct: 0 }));
+      const p = pendingRenders.get(id);
+      try { await window.hub.ae.render(job); } catch (err) { pendingRenders.delete(id); return { ok: false, error: err.message }; }
+      const ev = await done;
+      load(true);
+      const ok = ev.code === 0 && !ev.error;
+      toast(ok ? `Render finished (${ev.seconds}s)` : `Render failed: ${ev.error || ev.code}`, { type: ok ? 'info' : 'error' });
+      return { ok, value: { result: ok ? 'done' : 'failed', seconds: ev.seconds, output: job.output || '(the project\'s render queue output)', error: ev.error, logTail: p.log.slice(-15).join('\n') }, error: ok ? undefined : `${ev.error || `aerender exited ${ev.code}`}\n${p.log.slice(-10).join('\n')}` };
+    }
+    if (tool === 'ae_run_script') {
+      const st = await window.hub.ae.status();
+      if (!st.found) return { ok: false, error: 'After Effects was not found on this PC.' };
+      await window.hub.ae.run(String(args.code || ''), args.label || 'Video Director script');
+      toast('Video Director ran a script in After Effects', { timeout: 3000 });
+      return { ok: true, value: 'Sent to After Effects (it starts if needed) and runs as one undo step. You cannot see its output; if something went wrong AE shows an alert to the user. Re-render to check the result.' };
+    }
+    return { ok: false, error: `Unknown tool ${tool}` };
+  }
+
+  HubBridge.register(['video_'], handleTool);
+  HubBridge.register(['ae_'], handleAe);
 
   return { mount, reload: () => load(true) };
 })();

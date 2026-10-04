@@ -151,3 +151,11 @@
 131. ○ **Guides** (title/action safe, thirds, 9:16, 4:5, 1:1 crops), **color picker** from the video, save or copy the current frame.
 132. ✓ **Timecoded notes with frame grabs** and **Send feedback to Claude**: one click writes the notes, file and frames into a Claude chat so the scripts can be changed.
 133. ✓ **Toolkit drawer**: expressions, scripts, render queue, calculators, presets, palette, projects and shortcuts are still there, behind "⋯ Toolkit" in the Video Review header (closed by default).
+
+## Directors: chats built into the tools (added Oct 4, late night)
+134. ✓ **Docked chats**: an agent with a `dock` setting lives inside a tool instead of the rail. Its chat sits on the right of that tool (drag the edge to resize, "💬 Name" in the tool header to hide or show it), and its chat list stays in the side panel.
+135. ✓ **Video Director** (in Video Review): you describe what you want the render to look like; it browses the library, opens videos, looks at contact sheets and single frames, compares versions, adds timecoded notes, and can render with aerender or run AE scripts (it asks first). It can read and edit files in `Documents\Codex`. Tested: "give me 3 visual critiques of the latest render" → contact sheet + critiques in 11 s.
+136. ✓ **Three Director** (in Three.js Lab): you describe a scene, not code. It writes the sketch, runs it, reads errors and fps, looks at screenshots and keeps fixing until it looks right. Code stays hidden unless you press "</> Code". Tested: "a slowly spinning neon torus with bloom" → working sketch after 5 self-checked passes, 86 s.
+137. ✓ **Safe sketch edits**: director edits wait until your saved sketches are loaded, so they never land on a placeholder or the wrong sketch, and every change keeps a version in History.
+138. ✓ **Tools keep rendering while a director works** even if you're on another view, so its screenshots and fps are real.
+139. ✓ **Numbered lists keep counting** (2., 3., …) when items are split by paragraphs, and contact sheets are labeled in plain seconds.

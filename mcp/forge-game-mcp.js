@@ -1,10 +1,6 @@
 // MCP server (stdio, JSON-RPC 2.0) that gives Claude tools to drive the live Forgeheart debug game
 // running inside Agent Hub. Each call is forwarded to the hub over its local bridge.
-const fs = require('fs');
-const http = require('http');
-const path = require('path');
-
-const INFO_PATH = path.join(__dirname, '..', 'data', 'game-bridge.json');
+const { serve } = require('./common');
 
 const GAME_GUIDE = `Forgeheart runs as one big classic script, so its globals are reachable by name in forge_eval:
 - S: saved game state (S.stage, S.maxStage, S.gold, S.eq{weapon,weapon2,helm,chest,gloves,boots,belt,ring1,ring2,amulet,ultima,jewel1-4}, S.inv[], S.tree{}, S.shards).
@@ -39,55 +35,5 @@ const TOOLS = [
   { name: 'forge_patch_remove', description: 'Turn off and delete a saved patch (reload the game to fully undo its effect).', inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } },
 ];
 
-function callHub(tool, args) {
-  return new Promise((resolve) => {
-    let info;
-    try { info = JSON.parse(fs.readFileSync(INFO_PATH, 'utf8')); } catch { resolve({ ok: false, error: 'Agent Hub is not running.' }); return; }
-    const body = JSON.stringify({ tool, args });
-    const req = http.request({ host: '127.0.0.1', port: info.port, path: '/call', method: 'POST', headers: { 'Content-Type': 'application/json', 'x-hub-token': info.token, 'Content-Length': Buffer.byteLength(body) } }, (res) => {
-      let data = '';
-      res.on('data', (c) => { data += c; });
-      res.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve({ ok: false, error: `Bad reply from the hub (${res.statusCode})` }); } });
-    });
-    req.on('error', (err) => resolve({ ok: false, error: `Couldn't reach Agent Hub: ${err.message}` }));
-    req.setTimeout(65000, () => { req.destroy(); resolve({ ok: false, error: 'Timed out waiting for the hub.' }); });
-    req.end(body);
-  });
-}
 
-function send(msg) { process.stdout.write(`${JSON.stringify(msg)}\n`); }
-
-async function handle(msg) {
-  const { id, method, params } = msg;
-  if (method === 'initialize') {
-    send({ jsonrpc: '2.0', id, result: { protocolVersion: params?.protocolVersion || '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'forgeheart-debug', version: '1.0.0' }, instructions: GAME_GUIDE } });
-  } else if (method === 'tools/list') {
-    send({ jsonrpc: '2.0', id, result: { tools: TOOLS } });
-  } else if (method === 'tools/call') {
-    const r = await callHub(params.name, params.arguments || {});
-    const content = [];
-    if (r.image) content.push({ type: 'image', data: r.image, mimeType: r.mime || 'image/png' });
-    content.push({ type: 'text', text: r.ok ? (typeof r.value === 'string' ? r.value : JSON.stringify(r.value, null, 2)) : `Error: ${r.error}` });
-    send({ jsonrpc: '2.0', id, result: { content, isError: !r.ok } });
-  } else if (method === 'ping') {
-    send({ jsonrpc: '2.0', id, result: {} });
-  } else if (id !== undefined) {
-    send({ jsonrpc: '2.0', id, error: { code: -32601, message: `Method not found: ${method}` } });
-  }
-}
-
-let buffer = '';
-process.stdin.setEncoding('utf8');
-process.stdin.on('data', (chunk) => {
-  buffer += chunk;
-  let nl;
-  while ((nl = buffer.indexOf('\n')) >= 0) {
-    const line = buffer.slice(0, nl).trim();
-    buffer = buffer.slice(nl + 1);
-    if (!line) continue;
-    let msg;
-    try { msg = JSON.parse(line); } catch { continue; }
-    handle(msg).catch((err) => { if (msg.id !== undefined) send({ jsonrpc: '2.0', id: msg.id, error: { code: -32603, message: err.message } }); });
-  }
-});
-process.stdin.on('end', () => process.exit(0));
+serve({ name: 'forgeheart-debug', instructions: GAME_GUIDE, tools: TOOLS });

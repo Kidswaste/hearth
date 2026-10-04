@@ -24,9 +24,11 @@ function start(getWin) {
     const id = crypto.randomUUID();
     pending.set(id, resolve);
     win.webContents.send('game:call', { id, tool, args });
+    // Renders can run for a long time; everything else should answer within a minute.
+    const limit = tool === 'ae_render' ? 30 * 60000 : 60000;
     setTimeout(() => {
-      if (pending.has(id)) { pending.delete(id); resolve({ ok: false, error: 'The game did not answer within 60 s (is the Forge Debug agent open in the hub?).' }); }
-    }, 60000);
+      if (pending.has(id)) { pending.delete(id); resolve({ ok: false, error: `The hub did not answer within ${Math.round(limit / 1000)} s.` }); }
+    }, limit);
   });
 
   const server = http.createServer((req, res) => {

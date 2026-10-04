@@ -498,3 +498,25 @@ html[data-skin="forge"] .rv-stage { box-shadow: 0 0 0 1px var(--line-hi), 0 20px
 html[data-skin="forge"] .rv-title { text-transform: uppercase; letter-spacing: .14em; }
 html[data-skin="forge"] .kit-toggle { font-family: var(--mono); text-transform: uppercase; letter-spacing: .14em; font-size: 10.5px; opacity: .65; }
 html[data-skin="forge"] .kit-toggle:hover { opacity: 1; }
+/* ---------- chats docked inside tools ---------- */
+.tool-main { flex: 1; min-height: 0; display: flex; }
+.tool-main > .tool-body { flex: 1; min-width: 0; }
+.tool-dock { flex: 0 0 var(--dock-w, 420px); min-width: 0; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 80%, #000); }
+.tool-dock-divider { flex: 0 0 5px; cursor: col-resize; background: var(--line); }
+.tool-dock-divider:hover { background: var(--accent); }
+.tool-dock .native-head { padding: 8px 12px; gap: 8px; }
+.tool-dock .model-select { max-width: 120px; }
+.tool-dock .native-head { min-width: 0; }
+.tool-dock .native-head .chat-title, .tool-dock .native-head .chat-meta { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-dock .native-head .spacer { flex: 1 1 0; min-width: 0; }
+.tool-dock .native-head button, .tool-dock .native-head select { flex-shrink: 0; }
+.tool-dock .native-head .ghost { margin-left: 0; white-space: nowrap; }
+.tool-dock .messages { padding: 14px 14px; }
+.tool-dock .composer { padding: 8px 10px 14px; }
+.tool-dock .msg.user .body { max-width: 92%; }
+.dock-toggle.on { border-color: var(--accent); color: var(--accent); }
+.three-split.no-code { grid-template-columns: 1fr; }
+.three-split.no-code .three-editor { display: none; }
+html[data-skin="forge"] .tool-dock { background: linear-gradient(180deg, #0f1214, #0b0e10); border-left: 1px solid var(--line-hi); }
+html[data-skin="forge"] .tool-dock-divider:hover { background: var(--r-rare); }
+html[data-skin="forge"] .dock-toggle { font-family: var(--mono); text-transform: uppercase; letter-spacing: .12em; font-size: 10.5px; }

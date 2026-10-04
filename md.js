@@ -49,7 +49,8 @@
           items.push(`<li>${inline(lines[i].replace(/^\s*([-*+]|\d+[.)])\s+/, ''))}</li>`);
           i += 1;
         }
-        out.push(ordered ? `<ol>${items.join('')}</ol>` : `<ul>${items.join('')}</ul>`);
+        const first = ordered ? parseInt(list[1], 10) : 1; // items split by blank lines keep counting (2., 3., …)
+        out.push(ordered ? `<ol${first > 1 ? ` start="${first}"` : ''}>${items.join('')}</ol>` : `<ul>${items.join('')}</ul>`);
         continue;
       }
       if (/^\s*\|.*\|\s*$/.test(line) && /^\s*\|?[\s:-]+\|/.test(lines[i + 1] || '')) {

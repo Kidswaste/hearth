@@ -59,12 +59,26 @@ const ThreeLab = (() => {
       btn('📷', 'Save a screenshot of the canvas', () => box.send({ type: 'screenshot' })),
       btn('Export HTML', 'Save as a standalone .html file', exportHtml),
       btn('Ask Claude', 'Send this sketch (and any errors) to Claude', askAbout));
+    // Prompt-first: the code editor stays hidden until asked for.
+    const codeBtn = btn('</> Code', 'Show or hide the code (the Three Director writes it for you)', () => setCodeVisible(split.classList.contains('no-code')));
+    toolbar.prepend(codeBtn);
     const editor = new CodeEditor(editorHost, { lang: 'js', onRun: () => run(), onChange: () => { persist(); if (autoRun) autoRunSoon(); } });
     const split = el('div', { class: 'three-split' }, editorHost, el('div', { class: 'three-right' }, previewHost, consoleBox));
+    function setCodeVisible(show) {
+      split.classList.toggle('no-code', !show);
+      codeBtn.classList.toggle('on', show);
+      store.set('three.showCode', show);
+    }
+    setCodeVisible(store.get('three.showCode', false));
     pane.append(toolbar, split);
     const box = sandboxFrame(previewHost, 'sketch', onMessage);
+    let consoleLines = [];
+    let lastStats = null;
+    let pendingShot = null;
 
     function log(level, text, line) {
+      consoleLines.push({ level, text: String(text).slice(0, 500), line });
+      if (consoleLines.length > 80) consoleLines.shift();
       const row = el('div', { class: `console-row ${level}` }, line ? el('button', { class: 'console-line', text: `line ${line}`, on: { click: () => goToLine(line) } }) : null, el('span', { text }));
       consoleBox.append(row);
       while (consoleBox.children.length > 300) consoleBox.firstChild.remove();
@@ -86,6 +100,7 @@ const ThreeLab = (() => {
         editor.setErrorLines(errors.map((e) => e.line).filter(Boolean));
       }
       if (msg.type === 'stats') {
+        lastStats = { fps: Math.round(msg.fps), renderMs: Number(msg.ms.toFixed(2)), drawCalls: msg.calls, triangles: msg.triangles, points: msg.points, geometries: msg.geometries, textures: msg.textures, shaders: msg.programs };
         stats.hidden = false;
         stats.replaceChildren(
           el('b', { class: msg.fps < 30 ? 'bad' : msg.fps < 55 ? 'warn' : 'ok', text: `${Math.round(msg.fps)} fps` }),
@@ -93,7 +108,9 @@ const ThreeLab = (() => {
           el('span', { text: `${msg.triangles.toLocaleString()} tris` }), msg.points ? el('span', { text: `${msg.points.toLocaleString()} points` }) : null,
           el('span', { text: `${msg.geometries} geo · ${msg.textures} tex · ${msg.programs} shaders` }));
       }
-      if (msg.type === 'shot') saveDataUrl(msg.dataUrl, `${current?.name || 'sketch'}.png`);
+      if (msg.type === 'shot') {
+        if (pendingShot) { pendingShot(msg.dataUrl); pendingShot = null; } else saveDataUrl(msg.dataUrl, `${current?.name || 'sketch'}.png`);
+      }
     }
     const autoRunSoon = debounce(() => run(), 900);
 
@@ -147,6 +164,8 @@ const ThreeLab = (() => {
 
     function run() {
       snapshot();
+      consoleLines = [];
+      lastStats = null;
       errors = [];
       editor.setErrorLines([]);
       consoleBox.replaceChildren();
@@ -247,9 +266,43 @@ ${editor.value}
       ({ versions: history = {}, trash = [] } = await window.hub.kvGet('three-history', {}));
       if (!sketches.length) { sketches = [{ id: `s${Date.now()}`, name: 'Basic scene', code: ThreeData.TEMPLATES[0].code, updatedAt: Date.now() }]; save(); }
       openSketch(store.get('three.current', sketches[0].id));
+      api.director = director; // only once saved sketches are loaded, so director edits never land on a placeholder
     })();
 
     api.openCode = (code) => create(`From chat ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, code);
+
+    // What the Three Director (Claude) uses to build scenes from the user's prompts.
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const report = () => ({
+      sketch: current?.name,
+      errors: errors.map((e) => ({ message: e.message, line: e.line || undefined })),
+      console: consoleLines.slice(-30).map((l) => `${l.level === 'log' ? '' : `[${l.level}] `}${l.line ? `(line ${l.line}) ` : ''}${l.text}`),
+      stats: lastStats || 'no frames rendered yet (nothing calls renderer.render, or it failed)',
+      ...(document.hidden || !document.hasFocus() ? { note: 'The hub window is in the background, so fps is throttled here; judge performance by renderMs.' } : {}),
+    });
+    const director = {
+      getCode: () => ({ sketch: current?.name, lines: editor.value.split('\n').length, code: editor.value }),
+      async setCode(code, wait = 2.5) {
+        snapshot();
+        editor.setValue(code);
+        persist();
+        renderPicker();
+        run();
+        await sleep(Math.min(15, Math.max(1, wait)) * 1000);
+        return report();
+      },
+      async newSketch(name, code, wait = 2.5) {
+        create(name, code);
+        await sleep(Math.min(15, Math.max(1, wait)) * 1000);
+        return report();
+      },
+      report,
+      shot: () => new Promise((resolve) => {
+        pendingShot = resolve;
+        box.send({ type: 'screenshot' });
+        setTimeout(() => { if (pendingShot === resolve) { pendingShot = null; resolve(null); } }, 5000);
+      }),
+    };
     api.runSketch = run;
   }
 
@@ -554,6 +607,48 @@ ${frag}\`,
     activate('tool:three');
     tabs?.show(tab);
   }
+
+  // Tools for the Three Director (Claude). Calls switch the Lab to the Sketch tab so the user sees the result.
+  async function handleTool(tool, args) {
+    if (!tabs) Tools.shown(Tools.get('three')); // load the Lab in the background if needed
+    if (!tabs) return { ok: false, error: 'Three.js Lab could not be loaded.' };
+    tabs.show('sketch');
+    // A hidden view renders no frames, so let the Lab render (behind the current view) while the director works.
+    const surface = H.surfaces.get('tool:three')?.el;
+    surface?.classList.add('capturing');
+    try { return await directorCall(tool, args); } finally { surface?.classList.remove('capturing'); }
+  }
+  async function directorCall(tool, args) {
+    for (let i = 0; i < 100 && !api.director; i += 1) await new Promise((r) => setTimeout(r, 100));
+    const d = api.director;
+    if (!d) return { ok: false, error: 'The sketch editor did not load.' };
+    if (tool === 'three_get_code') return { ok: true, value: d.getCode() };
+    if (tool === 'three_set_code') {
+      if (!String(args.code || '').trim()) return { ok: false, error: 'No code given.' };
+      toast('Three Director updated the sketch', { timeout: 1500 });
+      return { ok: true, value: await d.setCode(String(args.code), Number(args.wait) || 2.5) };
+    }
+    if (tool === 'three_new_sketch') {
+      toast(`Three Director made "${args.name}"`, { timeout: 1500 });
+      return { ok: true, value: await d.newSketch(String(args.name || 'Untitled'), String(args.code || ''), Number(args.wait) || 2.5) };
+    }
+    if (tool === 'three_console') return { ok: true, value: d.report() };
+    if (tool === 'three_screenshot') {
+      const url = await d.shot();
+      if (!url) return { ok: false, error: 'No image: the sketch is not rendering (check three_console for errors).' };
+      // Shrink to a JPEG so the image stays light for the model.
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      const c = document.createElement('canvas');
+      const scale = Math.min(1, 1280 / img.width);
+      c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      return { ok: true, images: [{ data: c.toDataURL('image/jpeg', 0.85).split(',')[1], mime: 'image/jpeg' }], value: `Screenshot of "${d.getCode().sketch}" (${c.width}×${c.height}).` };
+    }
+    return { ok: false, error: `Unknown tool ${tool}` };
+  }
+  HubBridge.register(['three_'], handleTool);
   return {
     openCode(code) { ensureOpen('sketch'); setTimeout(() => api.openCode?.(code), 60); },
     openShader(code) { ensureOpen('shader'); setTimeout(() => api.openShader?.(code), 60); },

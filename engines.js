@@ -84,20 +84,23 @@ const FILE_TOOLS = ['Read', 'Edit', 'Write', 'Glob', 'Grep'];
 
 // Forgeheart live-game tools: a stdio MCP server (run with the hub's own Electron as Node) that
 // forwards to the debug game through gamebridge.js.
-const GAME_MCP_CONFIG = path.join(DATA_DIR, 'mcp-forgeheart.json');
-const gameTools = (agent) => agent.engine === 'claude' && Boolean(agent.gameTools);
-function gameMcpConfig() {
-  const config = {
-    mcpServers: {
-      forgeheart: {
-        command: process.execPath,
-        args: [path.join(__dirname, 'mcp', 'forge-game-mcp.js')],
-        env: { ELECTRON_RUN_AS_NODE: '1' },
-      },
-    },
-  };
-  fs.writeFileSync(GAME_MCP_CONFIG, JSON.stringify(config, null, 2));
-  return GAME_MCP_CONFIG;
+// Hub tool sets an agent can be given (each one a stdio MCP server talking to the hub).
+const HUB_TOOLSETS = {
+  gameTools: { server: 'forgeheart', script: 'forge-game-mcp.js' },
+  videoTools: { server: 'video', script: 'video-mcp.js' },
+  threeTools: { server: 'three', script: 'three-mcp.js' },
+};
+const hubToolsets = (agent) => (agent.engine === 'claude' ? Object.keys(HUB_TOOLSETS).filter((k) => agent[k]) : []);
+const gameTools = (agent) => hubToolsets(agent).includes('gameTools');
+function hubMcpConfig(agent) {
+  const mcpServers = {};
+  for (const key of hubToolsets(agent)) {
+    const { server, script } = HUB_TOOLSETS[key];
+    mcpServers[server] = { command: process.execPath, args: [path.join(__dirname, 'mcp', script)], env: { ELECTRON_RUN_AS_NODE: '1' } };
+  }
+  const file = path.join(DATA_DIR, `mcp-${agent.id}.json`);
+  fs.writeFileSync(file, JSON.stringify({ mcpServers }, null, 2));
+  return file;
 }
 
 function fileFolder(agent) {
@@ -127,7 +130,22 @@ function buildPrompt(agent) {
       + 'Changes made with forge_eval last until the game reloads; when the user wants a change to stick, save it with forge_patch_save. '
       + 'Reply briefly with what you changed. The forge_eval tool description lists the game\'s globals (S, C, FOES, spawnFoe, startStage, stats…).');
   }
-  if (!folder && !usesApps && !gameTools(agent)) parts.push('You have no tools: never try to run commands, read files or browse the web.');
+  const sets = hubToolsets(agent);
+  if (sets.includes('videoTools')) {
+    parts.push('You are the user\'s video director. The user does not edit in After Effects themselves: scripts build and render the videos, and the user steers the look. '
+      + 'Video Review is open right next to this chat. Look at renders yourself with video_contact_sheet (overview) and video_frame (exact moments) before giving opinions, and speak visually '
+      + '(timing, composition, color, motion, readability) with timecodes. Turn the user\'s feedback and their timeline notes (video_status) into concrete changes. '
+      + (folder ? 'You can read and edit files: find the script or project that produced a render (look in and around the render\'s folder for .jsx, .py, .js, .aep, render logs), change it, then re-render with ae_render or run AE scripts with ae_run_script, and check the new render. '
+        : 'You can re-render with ae_render and run AE scripts with ae_run_script; to edit script files the user can give you File access in your settings. ')
+      + 'Keep replies short and concrete.');
+  }
+  if (sets.includes('threeTools')) {
+    parts.push('You turn the user\'s descriptions into three.js scenes in the Three.js Lab shown next to this chat. They prompt; you write the code. '
+      + 'Build with three_set_code (complete sketches), read the errors it returns, look with three_screenshot, and iterate until it matches what they asked for. '
+      + 'Don\'t paste the code into the chat unless they ask for it: describe what you made and what they can ask for next (camera, mood, motion, materials…). '
+      + 'Prefer good-looking defaults: tone mapping, environment lighting, soft shadows, smooth animation, sensible performance.');
+  }
+  if (!folder && !usesApps && !sets.length) parts.push('You have no tools: never try to run commands, read files or browse the web.');
   const memory = getMemory();
   const notes = [memory.shared, memory.agents?.[agent.id]].map((m) => (m || '').trim()).filter(Boolean);
   if (notes.length) {
@@ -155,15 +173,15 @@ function claudeToolArgs(agent, options = {}) {
   if (folder) args = ['--tools', FILE_TOOLS.join(','), '--restricted', '--add-dir', folder, ATTACH_DIR, '--permission-mode', 'acceptEdits'];
   else if (images) args = ['--tools', 'Read', '--restricted', '--add-dir', ATTACH_DIR];
   else args = ['--tools', ''];
-  const game = gameTools(agent);
-  if (!enabled.size && !folder && !images && !game) return [...args, '--strict-mcp-config'];
+  const sets = hubToolsets(agent);
+  if (!enabled.size && !folder && !images && !sets.length) return [...args, '--strict-mcp-config'];
   // --strict-mcp-config limits MCP servers to the ones passed with --mcp-config (or none).
-  if (game) args.push('--mcp-config', gameMcpConfig());
+  if (sets.length) args.push('--mcp-config', hubMcpConfig(agent));
   if (!enabled.size) args.push('--strict-mcp-config');
   args.push('--permission-prompts', 'none');
   const { claude } = readConnectorCache();
   const allowed = folder ? [...FILE_TOOLS] : images ? ['Read'] : [];
-  if (game) allowed.push('mcp__forgeheart');
+  for (const key of sets) allowed.push(`mcp__${HUB_TOOLSETS[key].server}`);
   const denied = [];
   for (const server of enabled.size ? claude?.servers || [] : []) {
     const prefix = serverPrefix(server.name);
