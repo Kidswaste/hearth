@@ -1,7 +1,8 @@
 // Forgeheart workspace: dashboard, build player with live reload, docs, Miro boards, tasks,
 // patch notes, release packaging, balance CSVs, backup cleanup + diff, file search, devlog.
 const Forge = (() => {
-  const DEFAULT_FOLDER = 'C:\\Users\\quent\\Documents\\Codex\\2026-08-23\\do-x20\\outputs';
+  // The live project (GitHub: Kidswaste/forgeheart main is built into this folder).
+  const DEFAULT_FOLDER = 'C:\\Users\\quent\\Documents\\Codex\\2026-09-08\\continue-and-finish-the-user-s\\outputs';
   const SKIP = ['_harness', 'node_modules', '.git', 'saves'];
   const MAIN_BUILD = 'forgeheart_drone_hybrid.html';
   const DEFAULT_BOARDS = [

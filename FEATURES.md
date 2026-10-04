@@ -1,6 +1,6 @@
 # Agent Hub feature pack (October 2026)
 
-119 features. Status: **✓** = tested end to end in the running app · **○** = built and code-checked, but not exercised live
+125 features. Status: **✓** = tested end to end in the running app · **○** = built and code-checked, but not exercised live
 (it needs something I didn't trigger on your PC, like a real After Effects run, a tray click or a Windows notification).
 
 ## App-wide (31)
@@ -133,3 +133,11 @@
 117. ✓ **Screenshot gallery** with lightbox.
 118. ○ **Devlog timer** that survives restarts, with "what did you do?" logging.
 119. ○ **Devlog export** to Markdown and **itch devlog draft** with Claude.
+
+## Forge Debug: live game Claude can control (added Oct 4, evening)
+120. ✓ **Forge Debug agent**: your latest Forgeheart build (`forgeheart_music_test5.html` from the Desktop, the music version) runs permanently beside a Claude chat, in its own save slot so your real save is untouched.
+121. ✓ **Claude drives the game** with 9 tools: status, spawn enemies (any type, count, strength, or the boss), debug switches (god, one-shot, pause, speed, gold, jump to stage, kill all, heal, start from the title screen, open the Debug Deck), run any code in the game, screenshots it can look at, reload. Tested: "Spawn me 8 raiders and make me invincible" → done in 8 s.
+122. ✓ **Patches**: on-the-fly changes Claude (or you) save by name; they re-apply after every reload and hub restart, with a Patches list to switch them off.
+123. ✓ **Game toolbar + activity log**: build picker, reload, Debug Deck, pause, speed, god, 1-shot, +10 foes, screenshot, DevTools; a log line for everything Claude does to the game.
+124. ✓ **Bigger chat box** that starts at three lines and grows with your text up to ~45% of the window.
+125. ✓ **Forgeheart workspace points at the live project** (`Documents\Codex\2026-09-08\…\outputs`, the folder GitHub `Kidswaste/forgeheart` main is built into).

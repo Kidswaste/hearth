@@ -42,7 +42,7 @@ const Native = (() => {
     list.addEventListener('scroll', () => { jump.hidden = nearBottom(list); });
 
     const chips = el('div', { class: 'attach-chips' });
-    const input = el('textarea', { rows: 1, spellcheck: true });
+    const input = el('textarea', { rows: 3, spellcheck: true });
     const attachBtn = el('button', { type: 'button', class: 'ghost attach-btn', text: '📎', title: 'Attach files or images (or drop / paste them)' });
     const sendBtn = el('button', { type: 'submit', class: 'primary', text: 'Send' });
     const counter = el('span', { class: 'composer-count' });
@@ -90,9 +90,12 @@ const Native = (() => {
     return v;
   }
 
+  // Grows with the text up to ~45% of the window, then scrolls.
   function autosize(input) {
     input.style.height = 'auto';
-    input.style.height = `${Math.min(input.scrollHeight, 260)}px`;
+    const max = Math.max(160, Math.round(window.innerHeight * 0.45));
+    input.style.height = `${Math.min(Math.max(input.scrollHeight + 2, 84), max)}px`;
+    input.style.overflowY = input.scrollHeight + 2 > max ? 'auto' : 'hidden';
   }
   function updateCounter(v) {
     const n = v.input.value.length;

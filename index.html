@@ -105,6 +105,8 @@
           <p class="hint">Lets it read and edit files in this folder on its own (it can't run commands). Adds the file tools' descriptions to each message.</p>
         </div>
 
+        <label class="check" data-engine="claude"><input name="gameTools" type="checkbox"> Live Forgeheart debug game: show the game beside the chat and let this agent control it</label>
+
         <div data-engine="claude" class="connectors">
           <div class="connectors-head">
             <span>Connected apps <small>(from your Claude account)</small></span>
@@ -164,6 +166,7 @@
   <script src="tools/ae-data.js"></script>
   <script src="tools/ae.js"></script>
   <script src="tools/forge.js"></script>
+  <script src="tools/forge-game.js"></script>
   <script src="start.js"></script>
 </body>
 </html>

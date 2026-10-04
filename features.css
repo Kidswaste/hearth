@@ -136,7 +136,30 @@ select option { background: var(--sidebar); }
 .code-act:hover { color: var(--text); }
 .body pre { padding-bottom: 30px; }
 .composer-box { position: relative; flex: 1; display: flex; flex-direction: column; min-width: 0; }
-.composer-box textarea { width: 100%; }
+.composer-box textarea { width: 100%; min-height: 84px; line-height: 1.5; font-size: 14.5px; padding: 12px 16px; }
+.composer { align-items: flex-end; }
+
+/* ---------- live game beside a chat ---------- */
+.surface.capturing { visibility: visible !important; z-index: -1; }
+.surface.with-companion { flex-direction: row; }
+.companion-game { flex: 0 0 var(--companion-w, 58%); min-width: 0; display: flex; flex-direction: column; background: #050608; }
+.companion-divider { flex: 0 0 5px; cursor: col-resize; background: var(--line); }
+.companion-divider:hover { background: var(--accent); }
+.companion-chat { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.companion-chat .messages { padding: 16px 18px; }
+.companion-chat .composer { padding: 8px 14px 18px; }
+.game-bar { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; padding: 6px 8px; background: var(--sidebar); border-bottom: 1px solid var(--line); flex: none; }
+.game-bar select { font-size: 12px; padding: 3px 6px; }
+.game-build { max-width: 260px; }
+.game-view { flex: 1; min-height: 0; display: flex; }
+.game-view webview { flex: 1; }
+.game-log { flex: none; max-height: 92px; overflow-y: auto; padding: 4px 8px; font: 11.5px/1.5 Consolas, monospace; background: var(--sidebar); border-top: 1px solid var(--line); }
+.game-log:empty { display: none; }
+.game-log-row { display: flex; gap: 8px; }
+.game-log-row.claude span:last-child { color: var(--accent); }
+.game-log-row.bad span:last-child { color: #f97066; }
+.patch-row { display: flex; flex-direction: column; gap: 4px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; }
+.patch-row .code-view { max-height: 140px; }
 .composer-count { position: absolute; right: 12px; bottom: -16px; font-size: 10.5px; color: var(--muted); }
 .attach-btn { padding: 6px 9px !important; }
 .attach-chips { display: flex; flex-wrap: wrap; gap: 6px; }

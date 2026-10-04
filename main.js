@@ -7,6 +7,7 @@ const importer = require('./importer');
 const appshell = require('./appshell');
 const fsapi = require('./fsapi');
 const aemain = require('./aemain');
+const gamebridge = require('./gamebridge');
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const THEME_PATH = path.join(__dirname, 'theme.css');
@@ -250,6 +251,7 @@ ipcMain.handle('data:export', async () => {
 });
 
 fsapi.registerIpc(ipcMain, () => win);
+gamebridge.start(() => win);
 aemain.registerIpc(ipcMain, () => win, () => settings().aePath);
 
 for (const file of [CONFIG_PATH, THEME_PATH]) {

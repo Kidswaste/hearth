@@ -3,6 +3,7 @@ const Manager = (() => {
   const PRESETS = [
     { name: 'Claude', mode: 'native', engine: 'claude', model: 'sonnet', color: '#d97757', icon: 'C', url: 'https://claude.ai/new' },
     { name: 'Astra', mode: 'native', engine: 'codex', color: '#10a37f', icon: 'A', url: 'https://chatgpt.com/' },
+    { name: 'Forge Debug', mode: 'native', engine: 'claude', color: '#e07a2f', icon: '⚒', gameTools: true, companion: 'forge-game', askAll: false },
     { name: 'Claude', mode: 'web', color: '#d97757', icon: 'C', url: 'https://claude.ai/new' },
     { name: 'ChatGPT', mode: 'web', color: '#10a37f', icon: 'G', url: 'https://chatgpt.com/' },
     { name: 'Kimi', mode: 'web', color: '#4f8cff', icon: 'K', url: 'https://www.kimi.com/' },
@@ -99,6 +100,7 @@ const Manager = (() => {
     f.chatgptApps.checked = Boolean(agent.chatgptApps);
     f.autoMemory.checked = agent.autoMemory !== false;
     f.workspace.value = agent.workspace || '';
+    f.gameTools.checked = Boolean(agent.gameTools);
     connectorModes = { ...agent.connectors };
     syncModeFields();
   }
@@ -143,6 +145,8 @@ const Manager = (() => {
         connectors: f.engine.value === 'claude' && Object.keys(connectorModes).length ? { ...connectorModes } : undefined,
         chatgptApps: f.engine.value === 'codex' && f.chatgptApps.checked ? true : undefined,
         workspace: f.engine.value === 'claude' && f.workspace.value ? f.workspace.value : undefined,
+        gameTools: f.engine.value === 'claude' && f.gameTools.checked ? true : undefined,
+        companion: f.engine.value === 'claude' && f.gameTools.checked ? 'forge-game' : undefined,
         autoMemory: f.autoMemory.checked ? undefined : false,
       });
     }

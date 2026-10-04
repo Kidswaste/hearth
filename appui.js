@@ -43,6 +43,11 @@ const AppUI = (() => {
       return [el('div', { class: 'folder-row' }, input, pick), input];
     };
     const [fhRow, fhIn] = folderInput(s.forgeheartFolder, 'Forgeheart project folder');
+    const dbgIn = el('input', { value: s.forgeDebugBuild || '', placeholder: 'Default: forgeheart_music_test5.html on your Desktop' });
+    const dbgRow = el('div', { class: 'folder-row' }, dbgIn, el('button', { type: 'button', class: 'ghost small', text: 'Choose…', on: { click: async () => {
+      const [p] = await window.hub.openDialog({ filters: [{ name: 'Forgeheart build', extensions: ['html'] }] });
+      if (p) dbgIn.value = p;
+    } } }));
     const [aeRow, aeIn] = folderInput(s.aePath, 'After Effects "Support Files" folder');
     const aeDirs = el('textarea', { rows: 2, value: (s.aeProjectDirs || []).join('\n'), placeholder: 'One folder per line (default: your Documents)' });
 
@@ -55,7 +60,7 @@ const AppUI = (() => {
       section('Appearance', field('Theme', themeSel), el('div', { class: 'hint', text: 'Text size: Ctrl + / Ctrl − / Ctrl 0.' })),
       section('Spell check languages', el('div', { class: 'check-grid' }, langBoxes)),
       section('Tools in the rail', el('div', { class: 'check-grid' }, toolBoxes)),
-      section('Folders', field('Forgeheart project', fhRow), field('After Effects install (optional override)', aeRow), field('Where to look for .aep projects', aeDirs)),
+      section('Folders', field('Forgeheart project', fhRow), field('Forgeheart debug build (runs beside the Forge Debug agent)', dbgRow), field('After Effects install (optional override)', aeRow), field('Where to look for .aep projects', aeDirs)),
       section('App',
         el('div', { class: 'button-row' },
           el('button', { type: 'button', class: 'ghost', text: 'Create Start menu & desktop shortcuts', on: { click: createShortcuts } }),
@@ -77,6 +82,7 @@ const AppUI = (() => {
         hotkey: hotkey.value.trim(),
         spellLanguages: langBoxes.map((l) => l.querySelector('input')).filter((i) => i.checked).map((i) => i.dataset.code),
         forgeheartFolder: fhIn.value.trim() || undefined,
+        forgeDebugBuild: dbgIn.value.trim() || undefined,
         aePath: aeIn.value.trim() || undefined,
         aeProjectDirs: aeDirs.value.split('\n').map((x) => x.trim()).filter(Boolean),
       };

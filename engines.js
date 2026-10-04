@@ -82,6 +82,24 @@ function enabledConnectors(agent) {
 // restricted mode keeps the file tools inside that folder.
 const FILE_TOOLS = ['Read', 'Edit', 'Write', 'Glob', 'Grep'];
 
+// Forgeheart live-game tools: a stdio MCP server (run with the hub's own Electron as Node) that
+// forwards to the debug game through gamebridge.js.
+const GAME_MCP_CONFIG = path.join(DATA_DIR, 'mcp-forgeheart.json');
+const gameTools = (agent) => agent.engine === 'claude' && Boolean(agent.gameTools);
+function gameMcpConfig() {
+  const config = {
+    mcpServers: {
+      forgeheart: {
+        command: process.execPath,
+        args: [path.join(__dirname, 'mcp', 'forge-game-mcp.js')],
+        env: { ELECTRON_RUN_AS_NODE: '1' },
+      },
+    },
+  };
+  fs.writeFileSync(GAME_MCP_CONFIG, JSON.stringify(config, null, 2));
+  return GAME_MCP_CONFIG;
+}
+
 function fileFolder(agent) {
   return agent.engine === 'claude' && agent.workspace && fs.existsSync(agent.workspace) ? agent.workspace : null;
 }
@@ -102,7 +120,14 @@ function buildPrompt(agent) {
   if (usesApps) {
     parts.push('You can use the connected apps in your tools (for example email, documents or calendars) when the user asks about them or when it clearly helps.');
   }
-  if (!folder && !usesApps) parts.push('You have no tools: never try to run commands, read files or browse the web.');
+  if (gameTools(agent)) {
+    parts.push('A live debug instance of the user\'s game Forgeheart runs right next to this chat, and you control it with the forge_* tools. '
+      + 'When the user asks for something in the game ("spawn me enemies", "make me invincible", "go to stage 80", "make drones faster"), do it right away with the tools '
+      + '(forge_spawn, forge_debug, forge_eval…) instead of explaining how. Check forge_status or take a forge_screenshot when you need to see the result. '
+      + 'Changes made with forge_eval last until the game reloads; when the user wants a change to stick, save it with forge_patch_save. '
+      + 'Reply briefly with what you changed. The forge_eval tool description lists the game\'s globals (S, C, FOES, spawnFoe, startStage, stats…).');
+  }
+  if (!folder && !usesApps && !gameTools(agent)) parts.push('You have no tools: never try to run commands, read files or browse the web.');
   const memory = getMemory();
   const notes = [memory.shared, memory.agents?.[agent.id]].map((m) => (m || '').trim()).filter(Boolean);
   if (notes.length) {
@@ -130,11 +155,15 @@ function claudeToolArgs(agent, options = {}) {
   if (folder) args = ['--tools', FILE_TOOLS.join(','), '--restricted', '--add-dir', folder, ATTACH_DIR, '--permission-mode', 'acceptEdits'];
   else if (images) args = ['--tools', 'Read', '--restricted', '--add-dir', ATTACH_DIR];
   else args = ['--tools', ''];
-  if (!enabled.size && !folder && !images) return [...args, '--strict-mcp-config'];
+  const game = gameTools(agent);
+  if (!enabled.size && !folder && !images && !game) return [...args, '--strict-mcp-config'];
+  // --strict-mcp-config limits MCP servers to the ones passed with --mcp-config (or none).
+  if (game) args.push('--mcp-config', gameMcpConfig());
   if (!enabled.size) args.push('--strict-mcp-config');
   args.push('--permission-prompts', 'none');
   const { claude } = readConnectorCache();
   const allowed = folder ? [...FILE_TOOLS] : images ? ['Read'] : [];
+  if (game) allowed.push('mcp__forgeheart');
   const denied = [];
   for (const server of enabled.size ? claude?.servers || [] : []) {
     const prefix = serverPrefix(server.name);

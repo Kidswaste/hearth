@@ -62,6 +62,8 @@ contextBridge.exposeInMainWorld('hub', {
     ipcRenderer.on('context:note', (_e, text) => cb('note', text));
   },
   onDownload: on('download:update'),
+  onGameCall: on('game:call'),
+  gameResult: (id, result) => ipcRenderer.invoke('game:result', id, result),
 
   // files & tools
   fs: {

@@ -240,8 +240,30 @@ function createWebSurface(agent, host) {
 function createSurface(agent) {
   const host = el('section', { class: `surface agent-surface ${agent.mode}`, dataset: { id: agent.id } });
   host.style.setProperty('--agent', agent.color || 'var(--accent)');
-  const surface = { el: host, mode: agent.mode };
-  if (agent.mode === 'native') surface.native = Native.mount(agent.id, host);
+  const surface = { el: host, mode: agent.mode, companion: agent.companion || null };
+  if (agent.mode === 'native' && agent.companion === 'forge-game') {
+    // Game on the left, chat on the right, with a draggable divider.
+    const gamePane = el('div', { class: 'companion-game' });
+    const chatPane = el('div', { class: 'companion-chat' });
+    const divider = el('div', { class: 'companion-divider', title: 'Drag to resize' });
+    host.classList.add('with-companion');
+    host.style.setProperty('--companion-w', `${store.get('companionWidth', 58)}%`);
+    divider.addEventListener('pointerdown', (e) => {
+      divider.setPointerCapture(e.pointerId);
+      document.body.classList.add('resizing');
+      const box = host.getBoundingClientRect();
+      const move = (ev) => host.style.setProperty('--companion-w', `${Math.min(80, Math.max(25, ((ev.clientX - box.left) / box.width) * 100))}%`);
+      divider.addEventListener('pointermove', move);
+      divider.addEventListener('pointerup', () => {
+        divider.removeEventListener('pointermove', move);
+        document.body.classList.remove('resizing');
+        store.set('companionWidth', parseFloat(host.style.getPropertyValue('--companion-w')));
+      }, { once: true });
+    });
+    host.append(gamePane, divider, chatPane);
+    ForgeGame.mount(gamePane);
+    surface.native = Native.mount(agent.id, chatPane);
+  } else if (agent.mode === 'native') surface.native = Native.mount(agent.id, host);
   else surface.webview = createWebSurface(agent, host);
   host.addEventListener('mousedown', () => activate(agent.id, { focus: false }));
   return surface;
@@ -255,7 +277,7 @@ function syncSurfaces() {
   }
   for (const agent of H.agents()) {
     let s = H.surfaces.get(agent.id);
-    if (s && s.mode !== (agent.mode || 'web')) { s.el.remove(); s = null; }
+    if (s && (s.mode !== (agent.mode || 'web') || (s.companion || null) !== (agent.companion || null))) { s.el.remove(); s = null; }
     if (!s) {
       s = createSurface({ ...agent, mode: agent.mode || 'web' });
       H.surfaces.set(agent.id, s);
