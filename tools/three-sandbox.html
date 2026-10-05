@@ -215,7 +215,30 @@ globalThis.audio = audio;
 globalThis.media = media;
 let stateTimer = 0;
 const sendState = () => { if (mediaEl) post({ type: 'media-state', time: mediaEl.currentTime, duration: mediaEl.duration || 0, playing: !mediaEl.paused, ended: mediaEl.ended }); };
-function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, loop = false, volume = 1, analysis: a }) {
+// Loop points (A–B) are checked every frame here, so the loop is tight; a recording can stop exactly at B.
+let region = null;
+let loopOn = false;
+let recUntil = null;
+let prevT = 0;
+function mediaTick() {
+  realRAF(mediaTick);
+  if (!mediaEl || mediaEl.paused) { prevT = mediaEl?.currentTime || 0; return; }
+  const t = mediaEl.currentTime;
+  if (recUntil != null && t >= recUntil) {
+    recUntil = null;
+    stopRecording();
+    mediaEl.pause();
+  } else if (region && loopOn && recUntil == null && prevT >= region.a - 0.1 && prevT < region.b && t >= region.b) {
+    mediaEl.currentTime = region.a;
+    sendState();
+  }
+  prevT = mediaEl.currentTime;
+}
+realRAF(mediaTick);
+const applyLoop = () => { if (mediaEl) mediaEl.loop = loopOn && !region; };
+function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, loop = false, volume = 1, analysis: a, region: rg = null }) {
+  region = rg;
+  loopOn = loop;
   if (mediaEl) { mediaEl.pause(); srcNode?.disconnect(); mediaEl.removeAttribute('src'); mediaEl.load(); URL.revokeObjectURL(mediaUrl); }
   graph();
   analysis = a ? { ...a, name } : { name };
@@ -224,7 +247,7 @@ function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, lo
   const m = document.createElement('video');
   m.playsInline = true;
   m.preload = 'auto';
-  m.loop = loop;
+  m.loop = loop && !region;
   m.src = mediaUrl;
   mediaEl = m;
   srcNode = actx.createMediaElementSource(m);
@@ -243,16 +266,25 @@ function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, lo
 }
 function mediaCommand({ cmd, value }) {
   if (!mediaEl) return;
-  if (cmd === 'play') { actx.resume(); if (mediaEl.ended) mediaEl.currentTime = 0; mediaEl.play().catch(() => {}); }
+  if (cmd === 'play') {
+    actx.resume();
+    if (mediaEl.ended) mediaEl.currentTime = 0;
+    // Playing a locked-in loop from outside it starts at the loop start.
+    if (region && loopOn && recUntil == null && (mediaEl.currentTime < region.a || mediaEl.currentTime >= region.b)) mediaEl.currentTime = region.a;
+    prevT = mediaEl.currentTime;
+    mediaEl.play().catch(() => {});
+  }
+  if (cmd === 'region') { region = value; applyLoop(); }
   if (cmd === 'pause') mediaEl.pause();
   if (cmd === 'seek') { mediaEl.currentTime = Math.max(0, Math.min(value, (mediaEl.duration || value) - 0.01)); sendState(); }
-  if (cmd === 'loop') mediaEl.loop = Boolean(value);
+  if (cmd === 'loop') { loopOn = Boolean(value); applyLoop(); }
   if (cmd === 'volume') gainNode.gain.value = value;
 }
 
 // ---------- recording ----------
 let recorder = null;
-function startRecording({ fps = 60, bitrate = 16e6 } = {}) {
+function startRecording({ fps = 60, bitrate = 16e6, until = null } = {}) {
+  recUntil = lastRenderer ? until : null;
   const canvas = lastRenderer?.domElement;
   if (!canvas) { post({ type: 'record-error', message: 'Nothing is rendering yet.' }); return; }
   const stream = canvas.captureStream(fps);
@@ -272,7 +304,7 @@ function startRecording({ fps = 60, bitrate = 16e6 } = {}) {
   recorder.start(1000);
   post({ type: 'record-started', mime, width: canvas.width, height: canvas.height });
 }
-const stopRecording = () => { if (recorder?.state === 'recording') recorder.stop(); };
+const stopRecording = () => { recUntil = null; if (recorder?.state === 'recording') recorder.stop(); };
 
 // ---------- sliders ----------
 // The Lab runs sketches with their numbers/colors swapped for __tv(i) so sliders can change them live.

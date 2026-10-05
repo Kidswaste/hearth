@@ -623,3 +623,29 @@ html[data-skin="forge"] .tweaks { border-radius: 0; background: linear-gradient(
 .tw-adv > summary { cursor: pointer; font-size: 11.5px; color: var(--muted); padding: 4px 0; }
 .tw-adv > summary:hover { color: var(--fg, #eae0d5); }
 .tw-head .ghost.small { padding-left: 7px; padding-right: 7px; }
+
+/* ---------- Lab layout that fits any width + song timeline ---------- */
+.tool-dock { max-width: 55%; }
+.tabpane:has(.three-split) { container-type: inline-size; }
+.three-split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.three-split.with-tweaks { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) clamp(250px, 26%, 340px); }
+.three-split.no-code.with-tweaks { grid-template-columns: minmax(0, 1fr) clamp(250px, 28%, 340px); }
+.three-right { min-width: 0; }
+@container (max-width: 760px) {
+  .three-split.with-tweaks, .three-split.no-code.with-tweaks { grid-template-columns: minmax(0, 1fr); grid-auto-rows: minmax(0, 1fr); }
+  .three-split.with-tweaks .tweaks { max-height: 45vh; }
+}
+.media-bar { flex-direction: column; align-items: stretch; gap: 6px; }
+.media-bar .mb-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.media-bar .mb-sep { width: 1px; align-self: stretch; background: var(--line); margin: 2px 2px; }
+.media-bar .mb-loopinfo { font: 11px Consolas, monospace; color: #ffd75e; white-space: nowrap; }
+.media-bar.locked .mb-loopinfo { color: #48ddff; }
+.media-bar .mb-timeline { width: 100%; height: 68px; border-radius: 4px; background: #05070880; touch-action: none; }
+.media-bar .mb-scroll { position: relative; height: 8px; border-radius: 4px; background: #ffffff0d; cursor: pointer; }
+.media-bar .mb-thumb { position: absolute; top: 0; bottom: 0; border-radius: 4px; background: #ffd75e70; }
+.media-bar.locked .mb-thumb { background: #48ddff70; }
+.media-bar.empty .mb-timeline, .media-bar.empty .mb-scroll, .media-bar.empty .mb-sep, .media-bar.empty .mb-row > .ghost:not(.mb-rec):not(:first-child), .media-bar.empty .check { display: none; }
+.media-bar.empty .mb-row > .ghost:first-child { display: inline-block; }
+.media-bar button.on { color: #ffd75e; }
+.media-bar.locked button.on[title^="Lock"] { color: #48ddff; border-color: #48ddff80; }
+.media-bar button:disabled { opacity: .35; }

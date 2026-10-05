@@ -54,6 +54,10 @@ const ThreeMedia = (() => {
       return a;
     };
     const L = norm(env(mono)); const B = norm(env(low)); const M = norm(env(mid)); const T = norm(env(high));
+    // Waveform peaks 100× a second, for the zoomed-in timeline.
+    const PK = new Float32Array(N);
+    for (let f = 0; f < N; f += 1) { let m = 0; const a = f * HOP; for (let k = 0; k < HOP; k += 1) { const x = Math.abs(mono[a + k]); if (x > m) m = x; } PK[f] = m; }
+    { let mx = 0; for (let f = 0; f < N; f += 1) mx = Math.max(mx, PK[f]); for (let f = 0; f < N; f += 1) PK[f] /= mx || 1; } // true peaks: scale by the loudest
     const movingAvg = (a, w) => {
       const o = new Float32Array(a.length); let s = 0;
       for (let i = 0; i < a.length; i += 1) { s += a[i]; if (i >= w) s -= a[i - w]; o[i] = s / Math.min(i + 1, w); }
@@ -126,7 +130,7 @@ const ThreeMedia = (() => {
     // 30 fps envelopes for sketches (audio.analysis.bass[Math.floor(t * 30)]) and the overview.
     const FPS = 30;
     const down = (a) => { const n = Math.floor((N * FPS) / 100); const o = new Array(n); for (let i = 0; i < n; i += 1) { const s = Math.floor((i * 100) / FPS); const e = Math.floor(((i + 1) * 100) / FPS); let m = 0; for (let k = s; k < e; k += 1) m = Math.max(m, a[k]); o[i] = Math.round(m * 1000) / 1000; } return o; };
-    return { duration, bpm, beats, drops, sections: sections.map((s) => ({ ...s, start: Math.round(s.start * 10) / 10, end: Math.round(s.end * 10) / 10 })), fps: FPS, level: down(L), bass: down(B), mid: down(M), treble: down(T) };
+    return { duration, bpm, beats, drops, sections: sections.map((s) => ({ ...s, start: Math.round(s.start * 10) / 10, end: Math.round(s.end * 10) / 10 })), fps: FPS, level: down(L), bass: down(B), mid: down(M), treble: down(T), peaks: Array.from(PK, (x) => Math.round(x * 100) / 100) };
   }
 
   // ---------- frame sizes ----------
@@ -181,27 +185,54 @@ const ThreeMedia = (() => {
 
   // ---------- player ----------
   // send(msg) → sandbox; sketchName() for recording file names; onLoaded() after a new file is ready.
+  // The timeline zooms (wheel / ＋ −), scrolls (bar underneath or Shift+wheel), and holds A–B loop
+  // points (drag along the top strip, Set start / Set end, double-click a section) that snap to beats
+  // and can be locked so neither the loop nor the view moves by accident.
   function player({ send, sketchName, onLoaded }) {
     const st = { path: null, name: null, bytes: null, mime: null, video: false, analysis: null, time: 0, duration: 0, playing: false, loop: store.get('three.mediaLoop', true), volume: store.get('three.mediaVolume', 0.8), stampAt: 0 };
+    let region = null; // { a, b } seconds
+    let locked = false;
+    let snap = store.get('three.loopSnap', true);
+    let view = null; // { start, end } seconds when zoomed in, null = whole track
     let recording = null; // { kind, startedAt }
     let analyzing = false;
-    const loadBtn = el('button', { class: 'ghost small', text: '🎵 Load audio / video…', title: 'Pick an mp3, wav, mp4… to drive the sketch (or drop one on the preview)', on: { click: pick } });
+    let dragging = null; // timeline drag in progress
+    const btn = (text, title, fn, cls = 'ghost small') => el('button', { class: cls, text, title, on: { click: fn } });
+    const loadBtn = btn('🎵 Load audio / video…', 'Pick an mp3, wav, mp4… to drive the sketch (or drop one on the preview)', () => pick());
     const nameEl = el('span', { class: 'mb-name' });
-    const unloadBtn = el('button', { class: 'ghost small mb-x', text: '×', title: 'Remove the music (sketches get a demo beat)', on: { click: unload } });
-    const playBtn = el('button', { class: 'primary small mb-play', text: '▶', title: 'Play / pause (Space)', on: { click: () => toggle() } });
+    const unloadBtn = btn('×', 'Remove the music (sketches get a demo beat)', () => unload(), 'ghost small mb-x');
+    const playBtn = btn('▶', 'Play / pause (Space)', () => toggle(), 'primary small mb-play');
     const timeEl = el('span', { class: 'mb-time', text: '0:00' });
-    const canvas = el('canvas', { class: 'mb-overview', title: 'Click or drag to jump' });
-    const loopBtn = el('button', { class: 'ghost small', text: '⟲', title: 'Loop the track', on: { click: () => { st.loop = !st.loop; store.set('three.mediaLoop', st.loop); send({ type: 'media', cmd: 'loop', value: st.loop }); paint(); } } });
+    const zoomOut = btn('－', 'Zoom out (or scroll the mouse wheel on the timeline)', () => zoomBy(1.6));
+    const zoomIn = btn('＋', 'Zoom in (or scroll the mouse wheel on the timeline)', () => zoomBy(1 / 1.6));
+    const zoomAll = btn('Whole song', 'Show the whole song', () => setView(null));
+    const zoomLoop = btn('Fit loop', 'Zoom to the loop', () => fitLoop());
+    const loopBtn = btn('⟲ Loop', 'Loop playback: the loop section if you set one, otherwise the whole song', () => { st.loop = !st.loop; store.set('three.mediaLoop', st.loop); send({ type: 'media', cmd: 'loop', value: st.loop }); paint(); });
+    const setA = btn('[ Start', 'Set the loop start at the playhead', () => setRegionEdge('a', now()));
+    const setB = btn('End ]', 'Set the loop end at the playhead', () => setRegionEdge('b', now()));
+    const clearBtn = btn('✕', 'Remove the loop points', () => setRegion(null));
+    const snapBox = el('input', { type: 'checkbox', checked: snap });
+    snapBox.addEventListener('change', () => { snap = snapBox.checked; store.set('three.loopSnap', snap); });
+    const snapLabel = el('label', { class: 'check small', title: 'Loop points land exactly on beats' }, snapBox, 'Snap to beats');
+    const lockBtn = btn('🔓', 'Lock the loop and the view in place', () => setLocked(!locked));
     const vol = el('input', { type: 'range', class: 'mb-vol', min: 0, max: 1, step: 0.01, value: st.volume, title: 'Volume (the sketch still sees the full signal)' });
     vol.addEventListener('input', () => { st.volume = Number(vol.value); store.set('three.mediaVolume', st.volume); send({ type: 'media', cmd: 'volume', value: st.volume }); });
     const bpmEl = el('span', { class: 'mb-bpm' });
-    const recBtn = el('button', { class: 'ghost small mb-rec', text: '⏺ Record', title: 'Record the preview (with the music) to a video file', on: { click: (e) => (recording ? stopRecord() : recordMenu(e.currentTarget)) } });
-    const bar = el('div', { class: 'media-bar' }, loadBtn, nameEl, unloadBtn, playBtn, timeEl, canvas, loopBtn, vol, bpmEl, recBtn);
+    const recBtn = btn('⏺ Record', 'Record the preview (with the music) to a video file', (e) => (recording ? stopRecord() : recordMenu(e.currentTarget)), 'ghost small mb-rec');
+    const canvas = el('canvas', { class: 'mb-timeline' });
+    const scrollThumb = el('div', { class: 'mb-thumb' });
+    const scrollbar = el('div', { class: 'mb-scroll', title: 'Drag to move along the song' }, scrollThumb);
+    const loopInfo = el('span', { class: 'mb-loopinfo' });
+    const sep = () => el('span', { class: 'mb-sep' });
+    const bar = el('div', { class: 'media-bar' },
+      el('div', { class: 'mb-row' }, loadBtn, nameEl, unloadBtn, playBtn, timeEl, sep(), zoomOut, zoomIn, zoomAll, zoomLoop, sep(), loopBtn, setA, setB, clearBtn, snapLabel, lockBtn, loopInfo, el('span', { class: 'spacer' }), vol, bpmEl, recBtn),
+      canvas, scrollbar);
 
     async function pick() {
       const [p] = await window.hub.openDialog({ title: 'Music or video for the sketch', filters: [{ name: 'Audio and video', extensions: [...AUDIO_EXT, ...VIDEO_EXT] }] });
       if (p) load(p);
     }
+    const loopKey = (p) => `three.loop:${p}`;
     async function load(path, { startAt = 0, quiet = false } = {}) {
       if (!isMedia(path)) { toast(`${base(path)} isn't an audio or video file`, { type: 'error' }); return { ok: false, error: 'Not an audio/video file' }; }
       let bytes;
@@ -210,6 +241,11 @@ const ThreeMedia = (() => {
         bytes = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
       } catch (err) { if (!quiet) toast(`Couldn't open ${base(path)}: ${err.message}`, { type: 'error' }); return { ok: false, error: err.message }; }
       Object.assign(st, { path, name: base(path), bytes, mime: MIME[extOf(path)], video: VIDEO_EXT.includes(extOf(path)), analysis: null, time: startAt, duration: 0, playing: false });
+      // Loop points and lock are remembered per file.
+      const saved = store.get(loopKey(path), null);
+      region = saved?.a != null ? { a: saved.a, b: saved.b } : null;
+      locked = Boolean(saved?.locked && region);
+      view = locked ? padded(region) : null;
       store.set('three.media', path);
       analyzing = true;
       paint();
@@ -223,6 +259,7 @@ const ThreeMedia = (() => {
     }
     function unload() {
       Object.assign(st, { path: null, name: null, bytes: null, analysis: null, time: 0, duration: 0, playing: false });
+      region = null; locked = false; view = null;
       store.set('three.media', null);
       paint();
       onLoaded?.({ reload: true });
@@ -230,7 +267,7 @@ const ThreeMedia = (() => {
     // (Re)sends the file to the sandbox; called after every full reload of the preview.
     function attach({ playing = st.playing } = {}) {
       if (!st.bytes) return;
-      send({ type: 'media-load', buffer: st.bytes.slice(0), mime: st.mime, video: st.video, name: st.name, startAt: st.time, playing, loop: st.loop, volume: st.volume, analysis: st.analysis });
+      send({ type: 'media-load', buffer: st.bytes.slice(0), mime: st.mime, video: st.video, name: st.name, startAt: st.time, playing, loop: st.loop, volume: st.volume, analysis: st.analysis, region });
     }
     function toggle(force) {
       if (!st.bytes) { pick(); return; }
@@ -246,19 +283,77 @@ const ThreeMedia = (() => {
     function onMessage(msg) {
       if (msg.type === 'media-state') {
         Object.assign(st, { time: msg.time, duration: msg.duration || st.duration, playing: msg.playing, stampAt: performance.now() });
-        if (msg.ended && recording?.kind === 'track') stopRecord();
+        if (recording && !recording.stopping && msg.ended && recording.kind === 'track') stopRecord();
+        if (recording && !recording.stopping && !msg.playing && recording.kind === 'loop') finishRecord(); // the sandbox stopped exactly at the loop end
         paint();
       }
-      if (msg.type === 'record-started') { recording.mime = msg.mime; recording.size = `${msg.width}×${msg.height}`; paint(); }
+      if (msg.type === 'record-started') { if (recording) { recording.mime = msg.mime; recording.size = `${msg.width}×${msg.height}`; } paint(); }
       if (msg.type === 'record-error') { recording = null; toast(`Can't record: ${msg.message}`, { type: 'error' }); paint(); }
       if (msg.type === 'recording') saveRecording(msg);
     }
+
+    // ---------- loop points ----------
+    const beatsList = () => st.analysis?.beats || [];
+    function snapT(t) {
+      if (!snap || !beatsList().length) return t;
+      const bs = beatsList();
+      let lo = 0; let hi = bs.length - 1;
+      while (hi - lo > 1) { const m = (lo + hi) >> 1; if (bs[m] < t) lo = m; else hi = m; }
+      return Math.abs(bs[lo] - t) <= Math.abs(bs[hi] - t) ? bs[lo] : bs[hi];
+    }
+    function setRegion(r, { persist = true } = {}) {
+      if (locked && persist) { toast('The loop is locked: press 🔒 to unlock it', { timeout: 2000 }); return; }
+      region = r && r.b - r.a >= 0.05 ? { a: Math.max(0, r.a), b: Math.min(st.duration || r.b, r.b) } : null;
+      send({ type: 'media', cmd: 'region', value: region });
+      if (!region && locked) locked = false;
+      saveLoop();
+      paint();
+    }
+    function setRegionEdge(edge, t) {
+      if (!st.duration) return;
+      const x = snapT(t);
+      const r = region ? { ...region } : { a: edge === 'a' ? x : 0, b: edge === 'b' ? x : st.duration };
+      r[edge] = x;
+      if (r.b < r.a) [r.a, r.b] = [r.b, r.a];
+      setRegion(r);
+    }
+    function setLocked(on) {
+      if (on && !region) { toast('Set loop points first (drag along the top of the timeline)', { timeout: 2500 }); return; }
+      locked = on;
+      if (locked) { view = padded(region); if (!st.loop) { st.loop = true; store.set('three.mediaLoop', true); send({ type: 'media', cmd: 'loop', value: true }); } }
+      saveLoop();
+      paint();
+    }
+    const saveLoop = () => { if (st.path) store.set(loopKey(st.path), region ? { ...region, locked } : null); };
+    const padded = (r) => { const pad = Math.max(0.25, (r.b - r.a) * 0.06); return { start: Math.max(0, r.a - pad), end: Math.min(st.duration || r.b + pad, r.b + pad) }; };
+
+    // ---------- zoom ----------
+    const span = () => (view ? view.end - view.start : st.duration || 1);
+    const v0 = () => (view ? view.start : 0);
+    function setView(v) {
+      if (locked) return;
+      const D = st.duration;
+      if (!v || !D || v.end - v.start >= D * 0.999) { view = null; paint(); return; }
+      const len = Math.max(0.5, Math.min(D, v.end - v.start));
+      let start = Math.max(0, Math.min(D - len, v.start));
+      view = { start, end: start + len };
+      paint();
+    }
+    function zoomBy(f, at) {
+      if (!st.duration || locked) return;
+      const c = at ?? (now() >= v0() && now() <= v0() + span() ? now() : v0() + span() / 2);
+      const len = span() * f;
+      const k = (c - v0()) / span();
+      setView({ start: c - len * k, end: c - len * k + len });
+    }
+    function fitLoop() { if (region && !locked) setView(padded(region)); }
 
     // ---------- recording ----------
     function recordMenu(anchor) {
       const opt = (label, hint, fn) => el('button', { class: 'menu-item', on: { click: () => { menu.remove(); fn(); } } }, el('b', { text: label }), el('span', { class: 'hint', text: hint }));
       const menu = el('div', { class: 'mb-menu' },
-        st.bytes ? opt('Whole track', 'From the start to the end of the music', () => startRecord('track')) : null,
+        region && st.bytes ? opt('The loop', `${fmtTime(region.a)} → ${fmtTime(region.b)}, once`, () => startRecord('loop')) : null,
+        st.bytes ? opt('Whole song', 'From the start to the end of the music', () => startRecord('track')) : null,
         opt('From here', st.bytes ? 'From the current spot until you press Stop' : 'Until you press Stop', () => startRecord('manual')));
       const r = anchor.getBoundingClientRect();
       Object.assign(menu.style, { left: `${Math.max(8, r.right - 260)}px`, top: `${r.top - 8}px` });
@@ -268,17 +363,25 @@ const ThreeMedia = (() => {
     }
     function startRecord(kind) {
       recording = { kind, startedAt: performance.now() };
-      if (kind === 'track') { send({ type: 'media', cmd: 'loop', value: false }); seek(0); toggle(true); } else if (st.bytes && !st.playing) toggle(true);
-      send({ type: 'record', cmd: 'start', fps: 60 });
+      let until = null;
+      if (kind === 'track') { send({ type: 'media', cmd: 'loop', value: false }); seek(0); toggle(true); }
+      else if (kind === 'loop') { until = region.b; seek(region.a); toggle(true); }
+      else if (st.bytes && !st.playing) toggle(true);
+      send({ type: 'record', cmd: 'start', fps: 60, until });
       toast('Recording… slider moves are recorded too. Changes that rebuild the scene wait until you stop.', { timeout: 4000 });
+      paint();
+    }
+    function finishRecord() {
+      if (!recording) return;
+      recording.stopping = true;
+      if (recording.kind === 'track') send({ type: 'media', cmd: 'loop', value: st.loop });
       paint();
     }
     function stopRecord() {
       if (!recording) return;
       send({ type: 'record', cmd: 'stop' });
-      if (recording.kind === 'track') { send({ type: 'media', cmd: 'loop', value: st.loop }); toggle(false); }
-      recording.stopping = true;
-      paint();
+      if (recording.kind !== 'manual') toggle(false);
+      finishRecord();
     }
     async function saveRecording(msg) {
       recording = null;
@@ -290,18 +393,36 @@ const ThreeMedia = (() => {
     }
 
     // ---------- drawing ----------
+    const RULER = 16;
     let raf = 0;
     function now() { return st.playing ? Math.min(st.duration || Infinity, st.time + (performance.now() - st.stampAt) / 1000) : st.time; }
     function paint() {
       bar.classList.toggle('empty', !st.bytes);
+      bar.classList.toggle('locked', locked);
       nameEl.textContent = st.name ? (analyzing ? `${st.name} · analyzing…` : st.name) : 'No music loaded: sketches get a demo beat';
       nameEl.title = st.path || '';
       unloadBtn.hidden = !st.bytes;
       playBtn.textContent = st.playing ? '⏸' : '▶';
       loopBtn.classList.toggle('on', st.loop);
+      for (const b of [zoomOut, zoomIn, zoomAll]) b.disabled = locked || !st.duration;
+      zoomAll.disabled = locked || !view;
+      zoomLoop.hidden = !region;
+      zoomLoop.disabled = locked;
+      setA.disabled = setB.disabled = locked || !st.duration;
+      clearBtn.hidden = !region;
+      clearBtn.disabled = locked;
+      lockBtn.textContent = locked ? '🔒 Locked' : '🔓';
+      lockBtn.classList.toggle('on', locked);
+      lockBtn.disabled = !region && !locked;
+      loopInfo.textContent = region ? `${fmtTime(region.a)}.${String(Math.floor((region.a % 1) * 10))} → ${fmtTime(region.b)}.${String(Math.floor((region.b % 1) * 10))} (${(region.b - region.a).toFixed(1)} s${st.analysis?.bpm ? `, ${Math.round(((region.b - region.a) * st.analysis.bpm) / 60)} beats` : ''})` : '';
       bpmEl.textContent = st.analysis?.bpm ? `${Math.round(st.analysis.bpm)} BPM` : '';
       recBtn.textContent = recording ? (recording.stopping ? '… saving' : `⏹ Stop ${fmtTime((performance.now() - recording.startedAt) / 1000)}`) : '⏺ Record';
       recBtn.classList.toggle('on', Boolean(recording));
+      // While zoomed and playing, page the view along with the playhead (not when locked).
+      if (view && st.playing && !locked && !dragging) {
+        const t = now();
+        if (t > view.end || t < view.start) setView({ start: t - span() * 0.1, end: t - span() * 0.1 + span() });
+      }
       draw();
       cancelAnimationFrame(raf);
       if (st.playing || recording) raf = requestAnimationFrame(paint);
@@ -309,52 +430,165 @@ const ThreeMedia = (() => {
     function draw() {
       const t = now();
       timeEl.textContent = st.duration ? `${fmtTime(t)} / ${fmtTime(st.duration)}` : fmtTime(t);
+      const D = st.duration || st.analysis?.duration || 0;
+      // scrollbar
+      scrollbar.hidden = !view || !D;
+      if (view && D) Object.assign(scrollThumb.style, { left: `${(view.start / D) * 100}%`, width: `${Math.max(1.5, ((view.end - view.start) / D) * 100)}%` });
       const w = canvas.clientWidth; const h = canvas.clientHeight;
       if (!w || !h) return;
       const dpr = devicePixelRatio || 1;
-      if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+      if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
       const g = canvas.getContext('2d');
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
       g.clearRect(0, 0, w, h);
+      if (!D) { g.fillStyle = '#ffffff10'; g.fillRect(0, h / 2 - 1, w, 2); return; }
+      const s0 = v0(); const sp = span();
+      const X = (tt) => ((tt - s0) / sp) * w;
       const a = st.analysis;
-      const D = st.duration || a?.duration || 0;
-      if (a && D) {
-        for (const s of a.sections) if (s.energy === 'loud') { g.fillStyle = '#ffd75e14'; g.fillRect((s.start / D) * w, 0, ((s.end - s.start) / D) * w, h); }
-        const n = a.bass.length;
-        const line = (arr, color, fill) => {
-          g.beginPath();
-          for (let x = 0; x <= w; x += 1) { const i = Math.min(n - 1, Math.floor((x / w) * n)); const y = h - arr[i] * (h - 4); if (x) g.lineTo(x, y); else g.moveTo(x, y); }
-          if (fill) { g.lineTo(w, h); g.lineTo(0, h); g.closePath(); g.fillStyle = color; g.fill(); } else { g.strokeStyle = color; g.lineWidth = 1; g.stroke(); }
-        };
-        line(a.bass, '#ffd75e55', true);
-        line(a.mid, '#48ddffaa', false);
-        line(a.treble, '#bd8bffaa', false);
-        g.fillStyle = '#eae0d540';
-        for (const b of a.beats) g.fillRect((b / D) * w, 0, 1, 4);
-        g.fillStyle = '#ff6a6a';
-        for (const d of a.drops) { const x = (d / D) * w; g.beginPath(); g.moveTo(x - 4, 0); g.lineTo(x + 4, 0); g.lineTo(x, 7); g.fill(); }
-      } else {
-        g.fillStyle = '#ffffff10';
-        g.fillRect(0, h / 2 - 1, w, 2);
+      const top = RULER; const H = h - RULER;
+      // ruler lane
+      g.fillStyle = '#ffffff08';
+      g.fillRect(0, 0, w, RULER);
+      const steps = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120];
+      const step = steps.find((x) => (x / sp) * w >= 70) || 120;
+      g.fillStyle = '#8f877d';
+      g.font = '10px Consolas, monospace';
+      for (let tt = Math.ceil(s0 / step) * step; tt <= s0 + sp; tt += step) {
+        const x = X(tt);
+        g.fillRect(x, RULER - 5, 1, 5);
+        g.fillText(step < 1 ? `${fmtTime(tt)}.${Math.round((tt % 1) * 100)}` : fmtTime(tt), x + 3, 10);
       }
-      if (D) { g.fillStyle = '#ffffff'; g.fillRect(Math.round((t / D) * w), 0, 2, h); }
+      if (a) {
+        for (const s of a.sections) if (s.energy === 'loud') { g.fillStyle = '#ffd75e12'; g.fillRect(X(s.start), top, X(s.end) - X(s.start), H); }
+        if (sp < 25 && a.peaks) {
+          // zoomed in: the real waveform
+          const mid = top + H / 2;
+          g.fillStyle = '#ffd75e90';
+          for (let x = 0; x < w; x += 1) {
+            const i0 = Math.floor((s0 + (x / w) * sp) * 100); const i1 = Math.max(i0 + 1, Math.floor((s0 + ((x + 1) / w) * sp) * 100));
+            let m = 0; for (let i = i0; i < i1 && i < a.peaks.length; i += 1) m = Math.max(m, a.peaks[i]);
+            const hh = m * (H / 2 - 2);
+            g.fillRect(x, mid - hh, 1, hh * 2 || 1);
+          }
+        } else {
+          const n = a.bass.length;
+          const idx = (x) => Math.min(n - 1, Math.max(0, Math.floor(((s0 + (x / w) * sp) / D) * n)));
+          const line = (arr, color, fill) => {
+            g.beginPath();
+            for (let x = 0; x <= w; x += 1) { const y = top + H - arr[idx(x)] * (H - 4); if (x) g.lineTo(x, y); else g.moveTo(x, y); }
+            if (fill) { g.lineTo(w, top + H); g.lineTo(0, top + H); g.closePath(); g.fillStyle = color; g.fill(); } else { g.strokeStyle = color; g.lineWidth = 1; g.stroke(); }
+          };
+          line(a.bass, '#ffd75e55', true);
+          line(a.mid, '#48ddffaa', false);
+          line(a.treble, '#bd8bffaa', false);
+        }
+        // beats (bars every 4) once there is room to see them
+        const pxPerBeat = (60 / (a.bpm || 120) / sp) * w;
+        if (pxPerBeat > 6) {
+          a.beats.forEach((b, i) => {
+            if (b < s0 || b > s0 + sp) return;
+            g.fillStyle = i % 4 === 0 ? '#ffffffa0' : '#ffffff40';
+            g.fillRect(Math.round(X(b)), top, 1, H);
+          });
+        } else {
+          g.fillStyle = '#eae0d540';
+          for (const b of a.beats) if (b >= s0 && b <= s0 + sp) g.fillRect(X(b), top, 1, 3);
+        }
+        g.fillStyle = '#ff6a6a';
+        for (const d of a.drops) { const x = X(d); g.beginPath(); g.moveTo(x - 4, top); g.lineTo(x + 4, top); g.lineTo(x, top + 7); g.fill(); }
+      }
+      // loop region
+      if (region) {
+        const xa = X(region.a); const xb = X(region.b);
+        g.fillStyle = locked ? '#48ddff1c' : '#ffd75e1c';
+        g.fillRect(xa, 0, xb - xa, h);
+        g.fillStyle = locked ? '#48ddff' : '#ffd75e';
+        g.fillRect(xa, 0, xb - xa, 3);
+        for (const x of [xa, xb]) { g.fillRect(Math.round(x) - 1, 0, 2, h); if (!locked) g.fillRect(Math.round(x) - 4, 0, 8, RULER - 2); }
+      }
+      // playhead
+      if (t >= s0 && t <= s0 + sp) { g.fillStyle = '#ffffff'; g.fillRect(Math.round(X(t)), 0, 2, h); }
     }
-    // Click / drag on the overview to jump; hover shows the time.
-    const timeAt = (e) => { const r = canvas.getBoundingClientRect(); return ((e.clientX - r.left) / r.width) * (st.duration || 0); };
+
+    // ---------- timeline interaction ----------
+    const timeAt = (e) => { const r = canvas.getBoundingClientRect(); return v0() + ((e.clientX - r.left) / r.width) * span(); };
+    const pxToT = (px) => (px / canvas.clientWidth) * span();
     canvas.addEventListener('pointerdown', (e) => {
-      if (!st.duration) return;
+      if (!st.duration || e.button !== 0) return;
+      const r = canvas.getBoundingClientRect();
+      const y = e.clientY - r.top;
+      const tt = timeAt(e);
       canvas.setPointerCapture(e.pointerId);
-      seek(timeAt(e));
-      const move = (ev) => seek(timeAt(ev));
+      const near = (edge) => region && Math.abs(((region[edge] - v0()) / span()) * r.width - (e.clientX - r.left)) <= 6;
+      if (y < RULER && !locked) {
+        // top strip: move a loop edge, drag the loop, or draw a new one
+        if (near('a')) dragging = { kind: 'edge', edge: 'a' };
+        else if (near('b')) dragging = { kind: 'edge', edge: 'b' };
+        else if (region && tt > region.a && tt < region.b) dragging = { kind: 'move', from: tt, orig: { ...region } };
+        else dragging = { kind: 'new', from: snapT(tt) };
+      } else dragging = { kind: 'seek' };
+      if (dragging.kind === 'seek') seek(tt);
+      const move = (ev) => {
+        const t2 = Math.max(0, Math.min(st.duration, timeAt(ev)));
+        if (dragging.kind === 'seek') seek(t2);
+        else if (dragging.kind === 'edge') {
+          const r2 = { ...region, [dragging.edge]: snapT(t2) };
+          if (r2.b < r2.a) { [r2.a, r2.b] = [r2.b, r2.a]; dragging.edge = dragging.edge === 'a' ? 'b' : 'a'; }
+          setRegion(r2, { persist: false });
+        } else if (dragging.kind === 'move') {
+          const len = dragging.orig.b - dragging.orig.a;
+          let a2 = snapT(dragging.orig.a + (t2 - dragging.from));
+          a2 = Math.max(0, Math.min(st.duration - len, a2));
+          setRegion({ a: a2, b: a2 + len }, { persist: false });
+        } else if (dragging.kind === 'new') {
+          const b2 = snapT(t2);
+          if (Math.abs(b2 - dragging.from) > pxToT(3)) setRegion({ a: Math.min(dragging.from, b2), b: Math.max(dragging.from, b2) }, { persist: false });
+        }
+      };
       canvas.addEventListener('pointermove', move);
-      canvas.addEventListener('pointerup', () => canvas.removeEventListener('pointermove', move), { once: true });
+      canvas.addEventListener('pointerup', () => {
+        canvas.removeEventListener('pointermove', move);
+        if (dragging && dragging.kind !== 'seek') saveLoop();
+        dragging = null;
+        paint();
+      }, { once: true });
     });
+    // Double-click a part of the song to loop that section.
+    canvas.addEventListener('dblclick', (e) => {
+      if (locked || !st.analysis) return;
+      const tt = timeAt(e);
+      const sec = st.analysis.sections.find((s) => tt >= s.start && tt < s.end);
+      if (sec) { setRegion({ a: snapT(sec.start), b: snapT(sec.end) }); toast(`Looping the ${sec.energy} part ${fmtTime(sec.start)}–${fmtTime(sec.end)}`, { timeout: 2000 }); }
+    });
+    canvas.addEventListener('wheel', (e) => {
+      if (!st.duration) return;
+      e.preventDefault();
+      if (locked) return;
+      if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        const d = (e.shiftKey ? e.deltaY : e.deltaX) || 0;
+        setView({ start: v0() + (d / canvas.clientWidth) * span() * 1.5, end: v0() + (d / canvas.clientWidth) * span() * 1.5 + span() });
+      } else zoomBy(e.deltaY > 0 ? 1.25 : 0.8, timeAt(e));
+    }, { passive: false });
     canvas.addEventListener('mousemove', (e) => {
       if (!st.duration) return;
+      const r = canvas.getBoundingClientRect();
+      const y = e.clientY - r.top;
       const tt = timeAt(e);
       const sec = st.analysis?.sections.find((s) => tt >= s.start && tt < s.end);
-      const drop = st.analysis?.drops.find((d) => Math.abs(d - tt) < 1.5);
-      canvas.title = `${fmtTime(tt)}${sec ? ` · ${sec.energy}` : ''}${drop != null ? ' · drop' : ''}. Click to jump`;
+      const onEdge = region && !locked && y < RULER && ['a', 'b'].some((k) => Math.abs(((region[k] - v0()) / span()) * r.width - (e.clientX - r.left)) <= 6);
+      canvas.style.cursor = locked ? 'pointer' : y < RULER ? (onEdge ? 'ew-resize' : 'copy') : 'pointer';
+      canvas.title = `${fmtTime(tt)}${sec ? ` · ${sec.energy} part` : ''}\n${locked ? 'Locked: click to jump' : 'Click to jump · drag along the top strip to set a loop · double-click to loop this part · wheel to zoom'}`;
+    });
+    // Scrollbar under the timeline.
+    scrollbar.addEventListener('pointerdown', (e) => {
+      if (!view || locked) return;
+      scrollbar.setPointerCapture(e.pointerId);
+      const r = scrollbar.getBoundingClientRect();
+      const D = st.duration;
+      const jump = (ev) => { const c = ((ev.clientX - r.left) / r.width) * D; setView({ start: c - span() / 2, end: c + span() / 2 }); };
+      jump(e);
+      scrollbar.addEventListener('pointermove', jump);
+      scrollbar.addEventListener('pointerup', () => scrollbar.removeEventListener('pointermove', jump), { once: true });
     });
     new ResizeObserver(() => draw()).observe(canvas);
     paint();
@@ -362,6 +596,7 @@ const ThreeMedia = (() => {
     return {
       el: bar,
       load, pick, attach, toggle, seek, onMessage, unload,
+      setLoop(a, b) { if (locked) return false; setRegion(a == null ? null : { a, b }); return true; },
       get recording() { return Boolean(recording); },
       get loaded() { return Boolean(st.bytes); },
       get path() { return st.path; },
@@ -369,7 +604,7 @@ const ThreeMedia = (() => {
       info() {
         if (!st.bytes) return { loaded: false, note: 'No music loaded. Sketches get a demo 120 bpm beat; the user can load a file with "🎵 Load audio / video…" or you can use three_load_media.' };
         const a = st.analysis;
-        const out = { loaded: true, file: st.path, video: st.video, duration: Math.round((st.duration || a?.duration || 0) * 10) / 10, time: Math.round(now() * 10) / 10, playing: st.playing };
+        const out = { loaded: true, file: st.path, video: st.video, duration: Math.round((st.duration || a?.duration || 0) * 10) / 10, time: Math.round(now() * 10) / 10, playing: st.playing, loop: region ? { start: region.a, end: region.b, locked, on: st.loop } : (st.loop ? 'whole song' : 'off') };
         if (!a) return { ...out, analysis: analyzing ? 'still analyzing' : 'none (no audio track)' };
         const per = 5; const n = a.bass.length; const step = per * a.fps;
         const avg = (arr, i) => { let s = 0; let c = 0; for (let k = i; k < Math.min(n, i + step); k += 1) { s += arr[k]; c += 1; } return Math.round((s / (c || 1)) * 100) / 100; };

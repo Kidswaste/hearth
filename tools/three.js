@@ -751,6 +751,10 @@ ${frag}\`,
     }
     if (tool === 'three_media_control') {
       if (!d.media.loaded) return { ok: false, error: 'No music loaded.' };
+      if (args.action === 'loop') {
+        if (!d.media.setLoop(args.time == null ? null : Number(args.time), Number(args.end))) return { ok: false, error: 'The user locked the loop points; ask them before changing it.' };
+        return { ok: true, value: d.media.info() };
+      }
       if (args.action === 'seek' || args.time != null) d.media.seek(Number(args.time) || 0);
       if (args.action === 'play') d.media.toggle(true);
       if (args.action === 'pause') d.media.toggle(false);

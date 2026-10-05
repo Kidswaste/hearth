@@ -56,7 +56,7 @@ const Tools = (() => {
       divider.setPointerCapture(e.pointerId);
       document.body.classList.add('resizing');
       const right = host.getBoundingClientRect().right;
-      const move = (ev) => host.style.setProperty('--dock-w', `${Math.min(760, Math.max(300, right - ev.clientX))}px`);
+      const move = (ev) => host.style.setProperty('--dock-w', `${Math.round(Math.min(760, host.clientWidth * 0.55, Math.max(300, right - ev.clientX)))}px`); // the tool keeps at least ~45%
       divider.addEventListener('pointermove', move);
       divider.addEventListener('pointerup', () => {
         divider.removeEventListener('pointermove', move);

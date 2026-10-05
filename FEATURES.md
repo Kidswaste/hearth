@@ -180,3 +180,10 @@
 154. ✓ **🎲 Shuffle and ↶ Undo**: nudge every control to a random nearby value, step back through slider changes.
 155. ✓ **Ask the director with one click**: More energy, Calmer, New colors, Hit harder on beats, Simpler, More detail, Add a slider for…
 156. ✓ **Three Director makes visualizers**: it reads the track (three_media_info), designs for the frame size, gives every sketch 6–12 labeled, grouped sliders with hints, and checks its work at a loud part (three_media_control). It can also load files (three_load_media) and switch the frame (three_set_frame). Tested: "Eclipse visualizer" → 14 sliders in 5 groups, all live.
+
+## Song timeline + layout fix (added Oct 5)
+157. ✓ **Lab fits any width**: the preview and sliders shrink instead of being pushed off-screen by a wide chat; under ~760 px the sliders stack below the preview; the docked chat can't take more than ~55% of a tool.
+158. ✓ **Zoom into the song**: mouse wheel or ＋/－ on the timeline, "Whole song" to zoom out, Shift+wheel or the bar underneath to move along. Zoomed in, the timeline shows the real waveform with beat lines (brighter every 4 beats) and a time ruler. While playing, the view follows the playhead.
+159. ✓ **Loop points**: drag along the top strip of the timeline to draw a loop (drag its edges or the middle to adjust), "[ Start" / "End ]" at the playhead, or double-click a part of the song to loop that section. Points snap to beats (switchable). Shows the loop length in seconds and beats. Remembered per file.
+160. ✓ **🔒 Lock**: freezes the loop points and the view on the loop, and turns looping on. The director can't change a locked loop either.
+161. ○ **Tight looping and "Record → The loop"**: the loop is checked every frame inside the preview, and a loop recording stops exactly at the loop end (built; playback wrap and loop recording not yet run end to end).
