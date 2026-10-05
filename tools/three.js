@@ -31,9 +31,13 @@ const ThreeLab = (() => {
   }
 
   // ---------- Sketch tab ----------
+  // A sketch is a stack of layers (tools/three-layers.js); a sketch without `layers` is one layer whose
+  // code is sketch.code. The editor, sliders and history always show the selected layer.
+  const SLOT = 10000; // each layer's slider values live from slot × SLOT in the sandbox
   function sketchTab(pane) {
     let sketches = [];
     let current = null;
+    let selId = null; // selected layer
     if (!store.get('three.autorunLive')) { store.set('three.autorun', true); store.set('three.autorunLive', true); }
     let autoRun = store.get('three.autorun', true);
     let errors = [];
@@ -47,34 +51,181 @@ const ThreeLab = (() => {
     const previewHost = el('div', { class: 'three-preview' }, stats);
     const btn = (text, title, fn, cls = 'ghost small') => el('button', { class: cls, text, title, on: { click: fn } });
     const toolbar = el('div', { class: 'three-toolbar' },
-      btn('▶ Run', 'Run (Ctrl+Enter)', () => run(), 'primary small'),
+      btn('▶ Run', 'Run every layer again from the start (Ctrl+Enter)', () => run(), 'primary small'),
       el('label', { class: 'check small', title: 'Apply code changes live, a moment after you stop typing' }, autoBox, 'Live code'),
       picker,
       btn('New', 'New sketch from a template', () => templateGallery()),
       btn('Rename', 'Rename sketch', () => renameSketch()),
       btn('Duplicate', 'Duplicate sketch', () => duplicate()),
       btn('Delete', 'Delete sketch', () => removeSketch()),
-      btn('History…', 'Earlier versions (saved each time you run) and deleted sketches', () => historyDialog()),
+      btn('History…', 'Earlier versions of the selected layer (saved each time it runs) and deleted sketches', () => historyDialog()),
       snippetSel, version,
       el('span', { class: 'spacer' }),
-      btn('📷', 'Save a screenshot of the canvas', () => box.send({ type: 'screenshot' })),
+      btn('📷', 'Save a screenshot (all layers)', () => box.send({ type: 'screenshot' })),
       btn('Export HTML', 'Save as a standalone .html file', exportHtml),
-      btn('Ask Claude', 'Send this sketch (and any errors) to Claude', askAbout));
+      btn('Ask Claude', 'Send the selected layer (and any errors) to Claude', askAbout));
     // Prompt-first: the code editor stays hidden until asked for.
-    const codeBtn = btn('</> Code', 'Show or hide the code (the Three Director writes it for you)', () => setCodeVisible(split.classList.contains('no-code')));
-    const slidersBtn = btn('🎚 Sliders', 'Show or hide sliders for the numbers and colors in this sketch', () => setSlidersVisible(!tweaks.visible));
+    const codeBtn = btn('</> Code', 'Show or hide the code of the selected layer (the Three Director writes it for you)', () => setCodeVisible(split.classList.contains('no-code')));
+    const slidersBtn = btn('🎚 Layers & sliders', 'Show or hide the layers and the sliders of the selected layer', () => setSlidersVisible(column.hidden));
     toolbar.prepend(codeBtn, slidersBtn);
     const editor = new CodeEditor(editorHost, { lang: 'js', onRun: () => run(), onChange: () => { persist(); if (autoRun) autoRunSoon(); } });
-    // Sliders for every number/color in the sketch (tools/three-tweaks.js); Save writes them into the code.
-    const tweaks = ThreeTweaks.controller({
-      send: (msg) => box.send(msg),
-      rerun: (o) => run(o),
-      persist: (kind, data) => { if (!current) return; (extras[current.id] ||= {})[kind] = data; saveExtras(); },
-      quickAsk: (text) => askDirector(text.endsWith('…') ? `${text.slice(0, -1)} ` : text, { send: !text.endsWith('…') }),
-      goToLine: (line) => { setCodeVisible(true); requestAnimationFrame(() => goToLine(line)); },
-      commit: (code) => { snapshot(); editor.setValue(code); persist(); },
-      askForSliders: () => askDirector(`Add clearly named sliders to "${current?.name}" with tweak(): the 4–8 settings I'd most want to play with (motion, colors, lighting, glow, how much it reacts to the music…), with labels, groups and hints, read every frame so they change live. Keep everything else the same.`, { send: false }),
+
+    // ---------- layers ----------
+    const layersOf = () => current?.layers || [];
+    const layerById = (id) => layersOf().find((L) => L.id === id);
+    const sel = () => layerById(selId) || layersOf()[layersOf().length - 1];
+    const baseOf = (L) => (L.slot || 0) * SLOT;
+    function materialize(s) {
+      if (!s.layers?.length) s.layers = [ThreeLayers.defaults({ id: 'main', name: 'Layer 1', code: s.code || '', color: ThreeLayers.COLORS[0], slot: 0 })];
+      s.layers.forEach((L, i) => { L.slot ??= i; L.color ||= ThreeLayers.COLORS[i % ThreeLayers.COLORS.length]; });
+      return s.layers;
+    }
+    const layerProps = (L, z) => ({ name: L.name, visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal', in: L.in ?? null, out: L.out ?? null, fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0, x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, selected: L.id === selId, slot: L.slot, z: z ?? layersOf().indexOf(L) });
+    const extrasOf = (L) => {
+      const ex = (extras[current.id] ||= {});
+      return L.id === 'main' ? ex : ((ex.layers ||= {})[L.id] ||= {});
+    };
+    // Sliders: one controller per layer (tools/three-tweaks.js); the panel shows the selected layer's.
+    const controllers = new Map();
+    const layerMods = {};
+    const mergedMods = () => Object.assign({}, ...Object.values(layerMods));
+    function ctlFor(L) {
+      let c = controllers.get(L.id);
+      if (c) return c;
+      const id = L.id;
+      c = ThreeTweaks.controller({
+        send: (msg) => {
+          const Lx = layerById(id);
+          if (!Lx) return;
+          if (msg.type === 'tweak') box.send({ ...msg, index: msg.index + baseOf(Lx), layer: id });
+          else if (msg.type === 'tweak-mods') {
+            layerMods[id] = Object.fromEntries(Object.entries(msg.mods || {}).map(([i, m]) => [Number(i) + baseOf(Lx), m]));
+            box.send({ type: 'tweak-mods', mods: mergedMods() });
+          } else box.send(msg);
+        },
+        rerun: (o) => run({ hot: Boolean(o?.hot), layer: id }),
+        persist: (kind, data) => { const Lx = layerById(id); if (!Lx || !current) return; extrasOf(Lx)[kind] = data; saveExtras(); },
+        quickAsk: (text) => askDirector(text.endsWith('…') ? `${text.slice(0, -1)} ` : `${text} (layer "${layerById(id)?.name}")`, { send: !text.endsWith('…') }),
+        goToLine: (line) => { if (selId !== id) selectLayer(id); setCodeVisible(true); requestAnimationFrame(() => goToLine(line)); },
+        commit: (code) => {
+          const Lx = layerById(id);
+          if (!Lx) return;
+          if (selId === id) { snapshot(); editor.setValue(code); persist(); } else { Lx.code = code; touch(); }
+        },
+        askForSliders: () => askDirector(`Add clearly named sliders to the layer "${layerById(id)?.name}" of "${current?.name}" with tweak(): the 4–8 settings I'd most want to play with (motion, colors, lighting, glow, how much it reacts to the music…), with labels, groups and hints, read every frame so they change live. Keep everything else the same.`, { send: false }),
+      });
+      c.setVisible(!column.hidden);
+      c.load(extrasOf(L));
+      controllers.set(id, c);
+      return c;
+    }
+    const selCtl = () => (sel() ? ctlFor(sel()) : null);
+    const tweaksSlot = el('div', { class: 'tw-slot' });
+    const layersPanel = ThreeLayers.panel({
+      onSelect: (id) => selectLayer(id),
+      onChange: (id, patch, { live }) => editLayer(id, patch, { live }),
+      onAdd: (kind) => addLayer(kind),
+      onRemove: (id) => removeLayer(id),
+      onReorder: (ids) => reorderLayers(ids),
+      now: () => player.time,
+      duration: () => player.duration,
+      loop: () => player.loop,
     });
+    const column = el('div', { class: 'tw-column' }, layersPanel.el, tweaksSlot);
+    function renderLayers() {
+      if (!current) return;
+      layersPanel.render(layersOf(), selId);
+      player.setTracks([...layersOf()].reverse().map((L) => ({ id: L.id, name: L.name, color: L.color, in: L.in ?? null, out: L.out ?? null, fadeIn: L.in != null ? L.fadeIn || 0 : 0, fadeOut: L.out != null ? L.fadeOut || 0 : 0, visible: L.visible !== false, selected: L.id === selId })),
+        { onSelect: (id) => selectLayer(id), onChange: (id, v, { final }) => editLayer(id, v, { live: !final }) });
+    }
+    function selectLayer(id) {
+      const L = layerById(id);
+      if (!L || !current) return;
+      if (selId !== id) {
+        selId = id;
+        extras[current.id] = { ...(extras[current.id] || {}), selectedLayer: id };
+        saveExtras();
+        editor.setValue(L.code);
+        editor.setErrorLines(errors.filter((e) => (e.layer || 'main') === id || (!e.layer && layersOf().length === 1)).map((e) => e.line).filter(Boolean));
+        for (const x of layersOf()) box.send({ type: 'layer-props', id: x.id, props: { selected: x.id === id } });
+      }
+      tweaksSlot.replaceChildren(ctlFor(L).el);
+      renderLayers();
+    }
+    const saveSoon = debounce(() => save(), 300);
+    function touch() { current.updatedAt = Date.now(); current.code = layersOf()[0]?.code ?? current.code; saveSoon(); }
+    function editLayer(id, patch, { live = false } = {}) {
+      const L = layerById(id);
+      if (!L) return;
+      Object.assign(L, patch);
+      box.send({ type: 'layer-props', id, props: layerProps(L) });
+      if (live) { renderTracksOnly(); return; }
+      touch();
+      renderLayers();
+    }
+    function renderTracksOnly() {
+      player.setTracks([...layersOf()].reverse().map((L) => ({ id: L.id, name: L.name, color: L.color, in: L.in ?? null, out: L.out ?? null, fadeIn: L.in != null ? L.fadeIn || 0 : 0, fadeOut: L.out != null ? L.fadeOut || 0 : 0, visible: L.visible !== false, selected: L.id === selId })));
+    }
+    const uniqueName = (name) => { const names = new Set(layersOf().map((L) => L.name)); if (!names.has(name)) return name; let i = 2; while (names.has(`${name} ${i}`)) i += 1; return `${name} ${i}`; };
+    function newLayer(o) {
+      const Ls = layersOf();
+      const slot = Math.max(-1, ...Ls.map((L) => L.slot || 0)) + 1;
+      return ThreeLayers.defaults({ color: ThreeLayers.COLORS[slot % ThreeLayers.COLORS.length], slot, ...o, name: uniqueName(o.name || 'Layer') });
+    }
+    // Adds a layer on top (or at `index`) and runs just that layer.
+    function addLayer(kind, { code, name, index, props } = {}) {
+      if (!current) return null;
+      if (kind === 'ask') { askDirector('Add a layer: ', { send: false }); return null; }
+      let L;
+      if (kind === 'copy') {
+        const S = sel();
+        L = newLayer({ ...JSON.parse(JSON.stringify(S)), id: ThreeLayers.newId(), name: `${S.name} copy` });
+      } else if (code != null) L = newLayer({ name: name || 'Layer', code, ...(props || {}) });
+      else {
+        const t = ThreeLayers.TEMPLATES.find((x) => x.id === kind) || ThreeLayers.TEMPLATES[0];
+        L = newLayer({ name: name || t.name, code: t.code, ...(props || {}) });
+      }
+      const Ls = layersOf();
+      Ls.splice(index == null ? Ls.length : Math.max(0, Math.min(Ls.length, index)), 0, L);
+      touch();
+      selId = L.id;
+      extras[current.id] = { ...(extras[current.id] || {}), selectedLayer: L.id };
+      saveExtras();
+      editor.setValue(L.code);
+      tweaksSlot.replaceChildren(ctlFor(L).el);
+      for (const x of layersOf()) box.send({ type: 'layer-props', id: x.id, props: layerProps(x) });
+      run({ hot: true, layer: L.id });
+      renderLayers();
+      return L;
+    }
+    async function removeLayer(id, { confirm = true } = {}) {
+      const L = layerById(id);
+      if (!L) return false;
+      if (layersOf().length <= 1) { toast('A sketch keeps at least one layer', { type: 'error' }); return false; }
+      if (confirm && !(await Modal.confirm('Delete layer?', `"${L.name}" will be removed from "${current.name}".`, { ok: 'Delete', danger: true }))) return false;
+      const at = layersOf().indexOf(L);
+      current.layers = layersOf().filter((x) => x !== L);
+      controllers.delete(id);
+      delete layerMods[id];
+      box.send({ type: 'remove-layer', id });
+      box.send({ type: 'tweak-mods', mods: mergedMods() });
+      if (selId === id) selectLayer(layersOf()[Math.min(at, layersOf().length - 1)].id);
+      for (const x of layersOf()) box.send({ type: 'layer-props', id: x.id, props: layerProps(x) });
+      touch();
+      renderLayers();
+      toast(`Deleted "${L.name}"`, { action: { label: 'Undo', fn: () => { current.layers.splice(at, 0, L); touch(); selectLayer(L.id); run({ hot: true, layer: L.id }); for (const x of layersOf()) box.send({ type: 'layer-props', id: x.id, props: layerProps(x) }); } } });
+      return true;
+    }
+    function reorderLayers(idsBottomFirst) {
+      const byId = new Map(layersOf().map((L) => [L.id, L]));
+      const next = idsBottomFirst.map((i) => byId.get(i)).filter(Boolean);
+      if (next.length !== layersOf().length) return;
+      current.layers = next;
+      next.forEach((L, z) => box.send({ type: 'layer-props', id: L.id, props: { z } }));
+      touch();
+      renderLayers();
+    }
+
     // Sends (or drafts) a message to the Three Director docked next to the Lab.
     function askDirector(text, { send = true } = {}) {
       const agent = H.agents().find((a) => a.threeTools);
@@ -89,7 +240,7 @@ const ThreeLab = (() => {
       send: (msg) => box.send(msg),
       sketchName: () => current?.name,
       onPick: (path) => assignMedia(path),
-      onLoaded: (o) => { if (o?.unloaded) assignMedia(null); if (o?.reload) run(); },
+      onLoaded: (o) => { if (o?.unloaded) assignMedia(null); if (o?.reload) run(); renderLayers(); },
     });
     function assignMedia(path) {
       if (!current) return;
@@ -103,22 +254,23 @@ const ThreeLab = (() => {
     }
     setInterval(rememberMedia, 5000);
     addEventListener('beforeunload', () => { rememberMedia(); window.hub.kvSet('three-lab-extras', extras); });
-    const split = el('div', { class: 'three-split' }, editorHost, el('div', { class: 'three-right' }, previewHost, player.el, consoleBox), tweaks.el);
+    const split = el('div', { class: 'three-split' }, editorHost, el('div', { class: 'three-right' }, previewHost, player.el, consoleBox), column);
     function setCodeVisible(show) {
       split.classList.toggle('no-code', !show);
       codeBtn.classList.toggle('on', show);
       store.set('three.showCode', show);
     }
     function setSlidersVisible(show) {
-      const was = tweaks.visible;
-      tweaks.setVisible(show);
+      const was = !column.hidden;
+      column.hidden = !show;
+      for (const c of controllers.values()) c.setVisible(show);
       split.classList.toggle('with-tweaks', show);
       slidersBtn.classList.toggle('on', show);
       store.set('three.showSliders', show);
       if (show && !was && current) run(); // sliders need the instrumented run
     }
     setCodeVisible(store.get('three.showCode', false));
-    tweaks.setVisible(false);
+    column.hidden = true;
     setSlidersVisible(store.get('three.showSliders', true));
     pane.append(toolbar, split);
     let stage = null;
@@ -144,17 +296,22 @@ const ThreeLab = (() => {
     pane.tabIndex = -1;
     let ranOnce = false;
     let rebuildWaiting = false;
-    // Per-sketch looks and music links for the sliders.
+    // Per-sketch looks and music links for the sliders, song, frame size and selected layer.
     let extras = {};
     const saveExtras = debounce(() => window.hub.kvSet('three-lab-extras', extras), 500);
     let consoleLines = [];
     let lastStats = null;
     let pendingShot = null;
 
-    function log(level, text, line) {
-      consoleLines.push({ level, text: String(text).slice(0, 500), line });
+    const layerName = (id) => (layersOf().length > 1 ? layerById(id || 'main')?.name : null);
+    function log(level, text, line, layer) {
+      const lname = layerName(layer);
+      consoleLines.push({ level, text: String(text).slice(0, 500), line, layer: lname });
       if (consoleLines.length > 80) consoleLines.shift();
-      const row = el('div', { class: `console-row ${level}` }, line ? el('button', { class: 'console-line', text: `line ${line}`, on: { click: () => goToLine(line) } }) : null, el('span', { text }));
+      const row = el('div', { class: `console-row ${level}` },
+        lname ? el('button', { class: 'console-layer', text: lname, title: 'Select this layer', on: { click: () => selectLayer(layer) } }) : null,
+        line ? el('button', { class: 'console-line', text: `line ${line}`, on: { click: () => { if (layer && layer !== selId) selectLayer(layer); setCodeVisible(true); requestAnimationFrame(() => goToLine(line)); } } }) : null,
+        el('span', { text }));
       consoleBox.append(row);
       while (consoleBox.children.length > 300) consoleBox.firstChild.remove();
       consoleBox.scrollTop = consoleBox.scrollHeight;
@@ -168,17 +325,27 @@ const ThreeLab = (() => {
       editor.syncScroll();
     }
     function onMessage(msg) {
-      if (msg.type === 'console') log(msg.level, msg.text);
-      if (msg.type === 'tweak-reads') tweaks.onReads(msg);
+      if (msg.type === 'console') log(msg.level, msg.text, null, msg.layer);
+      if (msg.type === 'tweak-reads') {
+        // global indices → each layer's own
+        for (const L of layersOf()) {
+          const c = controllers.get(L.id);
+          if (!c) continue;
+          const b = baseOf(L);
+          const pick = (arr) => arr.filter((i) => i >= b && i < b + SLOT).map((i) => i - b);
+          c.onReads({ used: pick(msg.used), live: pick(msg.live) });
+        }
+      }
       if (/^(media-state|record-started|record-error|recording)$/.test(msg.type)) {
         player.onMessage(msg);
         if (msg.type === 'recording' && rebuildWaiting) { rebuildWaiting = false; run({ hot: true }); }
       }
       if (msg.type === 'error') {
-        if (tweaks.onError(msg)) return; // couldn't attach sliders: it re-runs as-is
-        errors.push(msg);
-        log('error', msg.message, msg.line);
-        editor.setErrorLines(errors.map((e) => e.line).filter(Boolean));
+        const lid = msg.layer || (layersOf().length === 1 ? layersOf()[0].id : null);
+        if (lid && controllers.get(lid)?.onError(msg)) return; // couldn't attach sliders: it re-runs as-is
+        errors.push({ ...msg, layer: lid });
+        log('error', msg.message, msg.line, lid);
+        if (!lid || lid === selId) editor.setErrorLines(errors.filter((e) => !e.layer || e.layer === selId).map((e) => e.line).filter(Boolean));
       }
       if (msg.type === 'stats') {
         lastStats = { fps: Math.round(msg.fps), renderMs: Number(msg.ms.toFixed(2)), drawCalls: msg.calls, triangles: msg.triangles, points: msg.points, geometries: msg.geometries, textures: msg.textures, shaders: msg.programs };
@@ -193,22 +360,24 @@ const ThreeLab = (() => {
         if (pendingShot) { pendingShot(msg.dataUrl); pendingShot = null; } else saveDataUrl(msg.dataUrl, `${current?.name || 'sketch'}.png`);
       }
     }
-    const autoRunSoon = debounce(() => run({ hot: true }), 700);
+    const autoRunSoon = debounce(() => run({ hot: true, layer: selId }), 700);
 
-    // Version history: a snapshot each time the code runs (40 per sketch), plus deleted sketches.
+    // Version history: a snapshot of a layer each time it runs (40 per layer), plus deleted sketches.
     let history = {};
     let trash = [];
     const saveHistory = debounce(() => window.hub.kvSet('three-history', { versions: history, trash }), 400);
+    const histKey = (L) => (!L || L.id === 'main' ? current.id : `${current.id}:${L.id}`);
     function snapshot() {
       if (!current || !editor.value.trim()) return;
-      const list = (history[current.id] ||= []);
+      const list = (history[histKey(sel())] ||= []);
       if (list[0]?.code === editor.value) return;
       list.unshift({ at: Date.now(), code: editor.value });
       list.length = Math.min(list.length, 40);
       saveHistory();
     }
     function historyDialog() {
-      const versions = history[current.id] || [];
+      const L = sel();
+      const versions = history[histKey(L)] || [];
       const dlg = el('dialog', { class: 'ui-modal gallery-dialog' });
       const preview = el('pre', { class: 'code-view', text: 'Pick a version to preview it.' });
       let picked = null;
@@ -217,11 +386,11 @@ const ThreeLab = (() => {
         editor.setValue(picked.code);
         persist();
         dlg.close();
-        run();
+        run({ hot: true, layer: selId });
         toast('Version restored (the code you had is in History too)');
       } } });
       const row = (label, sub, onClick) => el('button', { type: 'button', class: 'lib-item', on: { click: onClick } }, el('b', { text: label }), ' ', el('span', { class: 'hint', text: sub }));
-      dlg.append(el('form', { method: 'dialog' }, el('h2', { text: `History: ${current.name}` }),
+      dlg.append(el('form', { method: 'dialog' }, el('h2', { text: `History: ${current.name}${layersOf().length > 1 ? ` · ${L.name}` : ''}` }),
         el('div', { class: 'lib-layout', style: { minHeight: '360px' } },
           el('div', { class: 'lib-side' },
             el('div', { class: 'lib-group', text: 'Versions (saved when run)' }),
@@ -233,7 +402,7 @@ const ThreeLab = (() => {
               trash = trash.filter((x) => x !== t);
               saveHistory();
               dlg.close();
-              create(t.name, t.code);
+              create(t.name, t.code, t.layers);
               toast(`Restored "${t.name}"`);
             })) : [el('p', { class: 'hint', text: 'None.' })])),
           preview),
@@ -243,9 +412,10 @@ const ThreeLab = (() => {
       dlg.showModal();
     }
 
-    // Full runs reload the preview; hot runs (slider rebuilds, live code) re-run the sketch in place,
-    // keeping three.js loaded and the music playing.
-    function run({ hot = false } = {}) {
+    // Full runs reload the preview with every layer; hot runs (slider rebuilds, live code, a new layer)
+    // re-run one layer in place, keeping three.js loaded, the other layers running and the music playing.
+    function run({ hot = false, layer = null } = {}) {
+      if (!current) return false;
       if (hot && (!box.ready || !ranOnce)) hot = false;
       if (player.recording) {
         // A rebuild would end the recording; it waits until the video is saved.
@@ -254,15 +424,29 @@ const ThreeLab = (() => {
         return false;
       }
       snapshot();
-      consoleLines = [];
-      errors = [];
-      editor.setErrorLines([]);
+      const target = hot ? layerById(layer || selId) : null;
+      if (hot && !target) hot = false;
+      consoleLines = consoleLines.filter((l) => hot && l.layer && l.layer !== target?.name);
+      errors = hot ? errors.filter((e) => e.layer && e.layer !== target.id) : [];
+      editor.setErrorLines(errors.filter((e) => e.layer === selId).map((e) => e.line).filter(Boolean));
       consoleBox.replaceChildren();
-      const prepared = tweaks.prepare(editor.value);
+      // every layer's sliders go into one table, each layer at its own offset
+      const values = {}; const keys = {}; const preps = new Map();
+      for (const L of layersOf()) {
+        const p = ctlFor(L).prepare(L.code, baseOf(L));
+        preps.set(L.id, p);
+        if (!p) { delete layerMods[L.id]; continue; }
+        const b = baseOf(L);
+        p.values.forEach((v, i) => { values[b + i] = v; });
+        for (const [k, i] of Object.entries(p.keys)) keys[`${L.id}|${k}`] = b + i;
+        layerMods[L.id] = Object.fromEntries(Object.entries(p.mods || {}).map(([i, m]) => [Number(i) + b, m]));
+      }
       if (!hot) { lastStats = null; stats.hidden = true; box.reload(); }
-      if (prepared) box.send({ type: 'tweak-init', values: prepared.values, keys: prepared.keys, mods: prepared.mods });
+      box.send({ type: 'tweak-init', values, keys, mods: mergedMods() });
       if (!hot) player.attach();
-      box.send({ type: hot ? 'hot-run' : 'run', code: prepared ? prepared.code : editor.value });
+      const spec = (L) => ({ id: L.id, code: preps.get(L.id)?.code ?? L.code, ...layerProps(L) });
+      if (hot) box.send({ type: 'hot-layer', layer: spec(target) });
+      else box.send({ type: 'run-layers', layers: layersOf().map(spec) });
       ranOnce = true;
       return true;
     }
@@ -270,7 +454,9 @@ const ThreeLab = (() => {
     const save = debounce(() => window.hub.kvSet('three-sketches', sketches), 600);
     function persist() {
       if (!current) return;
-      current.code = editor.value;
+      const L = sel();
+      if (L) L.code = editor.value;
+      current.code = layersOf()[0]?.code ?? editor.value;
       current.updatedAt = Date.now();
       save();
     }
@@ -278,24 +464,32 @@ const ThreeLab = (() => {
       picker.replaceChildren(...[...sketches].sort((a, b) => b.updatedAt - a.updatedAt).map((s) => el('option', { value: s.id, text: s.name, selected: s.id === current?.id })));
     }
     function openSketch(id) {
-      const pending = tweaks.pending();
+      // unsaved slider values in any layer of the sketch you leave
       const left = current;
-      if (pending && left && left.id !== id && left.code === pending.from) {
+      const pendings = left ? [...controllers.entries()].map(([lid, c]) => ({ lid, p: c.pending() })).filter((x) => x.p) : [];
+      if (left && left.id !== id && pendings.length) {
         toast(`Slider changes to "${left.name}" weren't saved`, { timeout: 8000, action: { label: 'Save them', fn: () => {
-          if (left.code !== pending.from) return;
-          history[left.id] ||= [];
-          history[left.id].unshift({ at: Date.now(), code: left.code });
+          for (const { lid, p } of pendings) {
+            const L = left.layers?.find((x) => x.id === lid);
+            if (!L || L.code !== p.from) continue;
+            const key = lid === 'main' ? left.id : `${left.id}:${lid}`;
+            (history[key] ||= []).unshift({ at: Date.now(), code: L.code });
+            L.code = p.to;
+          }
           saveHistory();
-          left.code = pending.to; left.updatedAt = Date.now(); save();
-          if (current === left) { editor.setValue(left.code); run(); }
+          left.code = left.layers?.[0]?.code ?? left.code;
+          left.updatedAt = Date.now();
+          save();
+          if (current === left) { editor.setValue(sel().code); run(); }
           toast(`Saved into "${left.name}"`);
         } } });
       }
-      tweaks.forget();
+      controllers.clear();
+      for (const k of Object.keys(layerMods)) delete layerMods[k];
       rememberMedia();
       if (left && stage) { (extras[left.id] ||= {}).frame = stage.size.id; saveExtras(); }
       current = sketches.find((s) => s.id === id) || sketches[0];
-      tweaks.load(extras[current.id]);
+      materialize(current);
       // This sketch's frame size and song (with where it was in the song).
       const ex = extras[current.id] || {};
       if (ex.frame) stage.setMode(ex.frame, { silent: true });
@@ -304,12 +498,15 @@ const ThreeLab = (() => {
       else if (want !== player.path) { player.unload({ silent: true }); player.load(want, { startAt: ex.media.time || 0, quiet: true }); }
       else player.seek(ex.media.time || 0);
       store.set('three.current', current.id);
-      editor.setValue(current.code);
+      selId = layerById(ex.selectedLayer)?.id || layersOf()[layersOf().length - 1].id;
+      editor.setValue(sel().code);
+      tweaksSlot.replaceChildren(ctlFor(sel()).el);
       renderPicker();
+      renderLayers();
       run();
     }
-    function create(name, code) {
-      const s = { id: `s${Date.now()}`, name, code, updatedAt: Date.now() };
+    function create(name, code, layers) {
+      const s = { id: `s${Date.now()}`, name, code, updatedAt: Date.now(), ...(layers ? { layers: JSON.parse(JSON.stringify(layers)) } : {}) };
       sketches.push(s);
       save();
       openSketch(s.id);
@@ -319,11 +516,12 @@ const ThreeLab = (() => {
       const name = await Modal.prompt('Rename sketch', { value: current.name });
       if (name) { current.name = name.trim(); save(); renderPicker(); }
     }
-    function duplicate() { create(`${current.name} copy`, editor.value); }
+    function duplicate() { persist(); create(`${current.name} copy`, current.code, current.layers); }
     async function removeSketch() {
       if (sketches.length === 1) { toast('Keep at least one sketch', { type: 'error' }); return; }
       if (!(await Modal.confirm('Delete sketch?', `"${current.name}" will be deleted. You can bring it back from History.`, { ok: 'Delete', danger: true }))) return;
-      trash.unshift({ name: current.name, code: editor.value, deletedAt: Date.now() });
+      persist();
+      trash.unshift({ name: current.name, code: current.code, layers: current.layers, deletedAt: Date.now() });
       trash.length = Math.min(trash.length, 30);
       saveHistory();
       sketches = sketches.filter((s) => s.id !== current.id);
@@ -342,21 +540,23 @@ const ThreeLab = (() => {
       dlg.showModal();
     }
     function exportHtml() {
+      if (layersOf().length > 1) { toast('Export HTML works for one-layer sketches. For layered ones, use ⏺ Record (it records every layer with the music).', { type: 'error', timeout: 6000 }); return; }
       const v = store.get('three.version', ThreeData.VERSIONS[0]);
+      const code = editor.value;
       const html = `<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(current.name)}</title>
-<style>html, body { margin: 0; height: 100%; overflow: hidden; background: #111; } canvas { display: block; }</style>${/\btweak\s*\(/.test(editor.value) ? `
+<style>html, body { margin: 0; height: 100%; overflow: hidden; background: #000; } canvas { display: block; }</style>${/\btweak\s*\(/.test(code) ? `
 <script>
 // Slider controls from the Three.js Lab, frozen at their saved values.
 window.tweak = (spec) => Object.fromEntries(Object.entries(spec).map(([k, v]) => [k, Array.isArray(v) ? v[0] : (v && typeof v === 'object' && 'value' in v) ? v.value : v]));
-</script>` : ''}${/\b(audio|media)\./.test(editor.value) ? `
+</script>` : ''}${/\b(audio|media)\./.test(code) ? `
 <script>
 // The Lab's music input isn't part of the export: these stand-ins keep the sketch running (silent).
-window.audio = { level: 0, bass: 0, mid: 0, treble: 0, beat: 0, spectrum: new Uint8Array(1024), waveform: new Float32Array(2048), band: () => 0, time: 0, duration: 0, playing: false, loaded: false, simulated: false, bpm: 0, analysis: null, file: null };
+window.audio = { level: 0, bass: 0, mid: 0, treble: 0, beat: 0, kick: 0, snare: 0, hit: 0, hits: { kick: [], snare: [], hit: [] }, since: () => Infinity, next: () => Infinity, beatInBar: 1, bar: 1, beatPhase: 0, barPhase: 0, beatsPerBar: 4, spectrum: new Uint8Array(1024), waveform: new Float32Array(2048), band: () => 0, time: 0, duration: 0, playing: false, loaded: false, simulated: false, bpm: 0, analysis: null, file: null };
 window.audio = new Proxy(window.audio, { get: (o, k) => (k === 'time' ? performance.now() / 1000 : o[k]) });
 window.media = { video: null, width: 0, height: 0, texture: () => null };
 </script>` : ''}
@@ -366,7 +566,7 @@ window.media = { video: null, width: 0, height: 0, texture: () => null };
 </head>
 <body>
 <script type="module">
-${editor.value}
+${code}
 </script>
 </body>
 </html>
@@ -375,8 +575,10 @@ ${editor.value}
         .then((p) => p && toast('Exported. It runs in any browser (needs internet for three.js).', { action: { label: 'Open', fn: () => window.hub.fs.open(p) } }));
     }
     function askAbout() {
-      const errText = errors.length ? `\n\nIt currently shows these errors:\n${errors.map((e) => `- ${e.message}${e.line ? ` (line ${e.line})` : ''}`).join('\n')}` : '';
-      draftToClaude(`Here's my three.js sketch (three r${(box.revision || store.get('three.version', ThreeData.VERSIONS[0]).split('.')[1])}, ES modules with an import map for 'three' and 'three/addons/').${errText}\n\n\`\`\`js\n${editor.value}\n\`\`\`\n\n`);
+      const own = errors.filter((e) => !e.layer || e.layer === selId);
+      const errText = own.length ? `\n\nIt currently shows these errors:\n${own.map((e) => `- ${e.message}${e.line ? ` (line ${e.line})` : ''}`).join('\n')}` : '';
+      const which = layersOf().length > 1 ? ` (the layer "${sel().name}" of a layered sketch: each layer is its own module with its own transparent renderer)` : '';
+      draftToClaude(`Here's my three.js sketch${which} (three r${(box.revision || store.get('three.version', ThreeData.VERSIONS[0]).split('.')[1])}, ES modules with an import map for 'three' and 'three/addons/').${errText}\n\n\`\`\`js\n${editor.value}\n\`\`\`\n\n`);
     }
 
     picker.addEventListener('change', () => openSketch(picker.value));
@@ -405,19 +607,39 @@ ${editor.value}
 
     // What the Three Director (Claude) uses to build scenes from the user's prompts.
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const layersSummary = () => layersOf().map((L, i) => ({
+      id: L.id, name: L.name, order: `${i + 1} of ${layersOf().length} (1 = bottom)`, selected: L.id === selId,
+      visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal',
+      plays: L.in == null && L.out == null ? 'whole song' : { from: L.in ?? 0, to: L.out ?? 'end', fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0 },
+      ...(L.x || L.y || (L.scale ?? 1) !== 1 || L.rotate ? { transform: { x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0 } } : {}),
+      sliders: controllers.get(L.id)?.controls().map((c) => c.label) || [],
+    }));
     const report = () => ({
       sketch: current?.name,
-      errors: errors.map((e) => ({ message: e.message, line: e.line || undefined })),
-      console: consoleLines.slice(-30).map((l) => `${l.level === 'log' ? '' : `[${l.level}] `}${l.line ? `(line ${l.line}) ` : ''}${l.text}`),
+      layer: sel()?.name,
+      layers: layersSummary(),
+      errors: errors.map((e) => ({ layer: layerById(e.layer)?.name, message: e.message, line: e.line || undefined })),
+      console: consoleLines.slice(-30).map((l) => `${l.layer ? `[${l.layer}] ` : ''}${l.level === 'log' ? '' : `[${l.level}] `}${l.line ? `(line ${l.line}) ` : ''}${l.text}`),
       stats: lastStats || 'no frames rendered yet (nothing calls renderer.render, or it failed)',
       frame: stage.size,
-      ...(tweaks.controls().length ? { sliders: tweaks.controls() } : { sliders: 'none: add named controls with tweak()' }),
-      ...(tweaks.unsaved().length ? { unsavedSliders: tweaks.unsaved() } : {}),
+      ...(selCtl()?.controls().length ? { sliders: selCtl().controls() } : { sliders: 'none: add named controls with tweak()' }),
+      ...(selCtl()?.unsaved().length ? { unsavedSliders: selCtl().unsaved() } : {}),
       music: player.loaded ? (({ file, bpm, duration, time, playing }) => ({ file, bpm, duration, time, playing }))(player.info()) : 'none loaded (demo 120 bpm beat)',
       ...(document.hidden || !document.hasFocus() ? { note: 'The hub window is in the background, so fps is throttled here; judge performance by renderMs.' } : {}),
     });
+    // "top", "bottom", "selected", a number (1 = bottom), an id or a name.
+    function findLayer(ref) {
+      const Ls = layersOf();
+      if (ref == null || ref === '' || ref === 'selected') return sel();
+      if (ref === 'top') return Ls[Ls.length - 1];
+      if (ref === 'bottom') return Ls[0];
+      if (typeof ref === 'number' || /^\d+$/.test(String(ref))) return Ls[Number(ref) - 1];
+      const r = String(ref).toLowerCase();
+      return Ls.find((L) => L.id === ref) || Ls.find((L) => L.name.toLowerCase() === r) || Ls.find((L) => L.name.toLowerCase().includes(r));
+    }
+    const PROP_KEYS = ['name', 'visible', 'opacity', 'blend', 'in', 'out', 'fadeIn', 'fadeOut', 'x', 'y', 'scale', 'rotate'];
     const director = {
-      getCode: () => ({ sketch: current?.name, frame: stage.size, lines: editor.value.split('\n').length, code: editor.value, ...(tweaks.controls().length ? { sliders: tweaks.controls() } : {}), ...(tweaks.unsaved().length ? { unsavedSliders: tweaks.unsaved(), note: 'The user moved these sliders but has not saved them into the code; keep their values when you rewrite.' } : {}) }),
+      getCode: () => ({ sketch: current?.name, layer: sel()?.name, layers: layersSummary(), frame: stage.size, lines: editor.value.split('\n').length, code: editor.value, ...(selCtl()?.controls().length ? { sliders: selCtl().controls() } : {}), ...(selCtl()?.unsaved().length ? { unsavedSliders: selCtl().unsaved(), note: 'The user moved these sliders but has not saved them into the code; keep their values when you rewrite.' } : {}) }),
       media: player,
       assignMedia,
       setFrame: (id) => stage.setMode(id),
@@ -427,7 +649,7 @@ ${editor.value}
         editor.setValue(code);
         persist();
         renderPicker();
-        run();
+        if (layersOf().length > 1) run({ hot: true, layer: selId }); else run();
         await sleep(Math.min(15, Math.max(1, wait)) * 1000);
         return report();
       },
@@ -435,6 +657,51 @@ ${editor.value}
         create(name, code);
         await sleep(Math.min(15, Math.max(1, wait)) * 1000);
         return report();
+      },
+      // ---------- layers ----------
+      layers: () => ({ sketch: current?.name, selected: sel()?.name, layers: layersSummary() }),
+      async addLayer({ name, code, template, position, props = {} }, wait = 2.5) {
+        if (player.recording) throw new Error('The user is recording a video right now; wait until they stop.');
+        const Ls = layersOf();
+        const index = position === 'bottom' ? 0 : typeof position === 'number' ? position - 1 : Ls.length;
+        const p = Object.fromEntries(Object.entries(props).filter(([k]) => PROP_KEYS.includes(k)));
+        const L = code ? addLayer('code', { code, name, index, props: p }) : addLayer(template || 'empty', { name, index, props: p });
+        await sleep(Math.min(15, Math.max(1, wait)) * 1000);
+        return { added: L?.name, ...report() };
+      },
+      async updateLayer(ref, patch = {}, wait = 1.5) {
+        const L = findLayer(ref);
+        if (!L) throw new Error(`No layer "${ref}". Layers: ${layersOf().map((x) => x.name).join(', ')}`);
+        const props = Object.fromEntries(Object.entries(patch).filter(([k]) => PROP_KEYS.includes(k)));
+        if (Object.keys(props).length) editLayer(L.id, props);
+        if (patch.code != null) {
+          if (player.recording) throw new Error('The user is recording a video right now; wait until they stop.');
+          if (selId !== L.id) selectLayer(L.id);
+          snapshot();
+          editor.setValue(String(patch.code));
+          persist();
+          run({ hot: true, layer: L.id });
+        }
+        if (patch.order != null) {
+          const ids = layersOf().map((x) => x.id).filter((x) => x !== L.id);
+          const to = patch.order === 'top' ? ids.length : patch.order === 'bottom' ? 0 : Math.max(0, Math.min(ids.length, Number(patch.order) - 1));
+          ids.splice(to, 0, L.id);
+          reorderLayers(ids);
+        }
+        await sleep(Math.min(15, Math.max(0.3, wait)) * 1000);
+        return { updated: L.name, ...report() };
+      },
+      async removeLayer(ref) {
+        const L = findLayer(ref);
+        if (!L) throw new Error(`No layer "${ref}".`);
+        if (!(await removeLayer(L.id, { confirm: false }))) throw new Error('A sketch keeps at least one layer.');
+        return { removed: L.name, ...report() };
+      },
+      selectLayer(ref) {
+        const L = findLayer(ref);
+        if (!L) throw new Error(`No layer "${ref}".`);
+        selectLayer(L.id);
+        return director.getCode();
       },
       report,
       shot: () => new Promise((resolve) => {
@@ -793,6 +1060,19 @@ ${frag}\`,
       await new Promise((res) => setTimeout(res, 600));
       return { ok: true, value: d.media.info() };
     }
+    if (tool === 'three_layers') return { ok: true, value: d.layers() };
+    if (tool === 'three_add_layer') {
+      toast(`Three Director added a layer${args.name ? ` "${args.name}"` : ''}`, { timeout: 1500 });
+      return { ok: true, value: await d.addLayer({ name: args.name, code: args.code, template: args.template, position: args.position, props: args.settings || {} }, Number(args.wait) || 2.5) };
+    }
+    if (tool === 'three_update_layer') {
+      const patch = { ...(args.settings || {}) };
+      if (args.code != null) patch.code = args.code;
+      if (args.order != null) patch.order = args.order;
+      return { ok: true, value: await d.updateLayer(args.layer, patch, Number(args.wait) || (args.code != null ? 2.5 : 0.5)) };
+    }
+    if (tool === 'three_remove_layer') return { ok: true, value: await d.removeLayer(args.layer) };
+    if (tool === 'three_select_layer') return { ok: true, value: d.selectLayer(args.layer) };
     if (tool === 'three_set_frame') {
       if (!ThreeMedia.SIZES.some((x) => x.id === args.size)) return { ok: false, error: `size must be one of ${ThreeMedia.SIZES.map((x) => x.id).join(', ')}` };
       d.setFrame(args.size);

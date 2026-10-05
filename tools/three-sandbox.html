@@ -9,6 +9,9 @@
   canvas { display: block; }
   #drop { position: fixed; inset: 0; display: none; place-items: center; text-align: center; color: #9aa; pointer-events: none; }
   body.viewer #drop.show { display: grid; }
+  body.sketch { background: #000; }
+  .lab-layer { position: fixed; inset: 0; overflow: hidden; pointer-events: none; transform-origin: 50% 50%; }
+  .lab-layer.interactive { pointer-events: auto; }
 </style>
 <script>
   // Import map built from ?v= so the Lab can switch three.js versions.
@@ -28,15 +31,18 @@
     if (v instanceof Error) return `${v.name}: ${v.message}`;
     try { return JSON.stringify(v, (k, x) => (typeof x === 'number' ? Number(x.toFixed?.(4) ?? x) : x)); } catch { return String(v); }
   };
+  // Which layer logged / threw (the module fills these in once layers run).
+  window.__layerOfStack = () => null;
+  window.__layerOfUrl = () => null;
   for (const level of ['log', 'info', 'warn', 'error']) {
     const orig = console[level].bind(console);
-    console[level] = (...args) => { post({ type: 'console', level, text: args.map(fmt).join(' ') }); orig(...args); };
+    console[level] = (...args) => { post({ type: 'console', level, text: args.map(fmt).join(' '), layer: window.__layerOfStack(new Error().stack) }); orig(...args); };
   }
   // Line numbers for errors raised inside the sketch module (a blob: URL).
   // blob URLs look like blob:null/<uuid>:LINE:COL — take the first number pair after the URL.
   const lineOf = (stack) => { const m = /blob:[^\s)]*?:(\d+):(\d+)/.exec(stack || ''); return m ? Number(m[1]) : null; };
-  addEventListener('error', (e) => post({ type: 'error', message: e.message, line: e.filename?.startsWith('blob:') ? e.lineno : lineOf(e.error?.stack) }));
-  addEventListener('unhandledrejection', (e) => post({ type: 'error', message: String(e.reason?.message || e.reason), line: lineOf(e.reason?.stack) }));
+  addEventListener('error', (e) => post({ type: 'error', message: e.message, line: e.filename?.startsWith('blob:') ? e.lineno : lineOf(e.error?.stack), layer: window.__layerOfUrl(e.filename) || window.__layerOfStack(e.error?.stack) }));
+  addEventListener('unhandledrejection', (e) => post({ type: 'error', message: String(e.reason?.message || e.reason), line: lineOf(e.reason?.stack), layer: window.__layerOfStack(e.reason?.stack) }));
 </script>
 </head>
 <body>
@@ -78,9 +84,29 @@ else {
   Object.defineProperty(proto, 'render', {
     configurable: true,
     get() { return undefined; },
-    set(fn) { renderers.add(this); Object.defineProperty(this, 'render', { value: instrument(fn), writable: true, configurable: true, enumerable: true }); },
+    set(fn) { trackRenderer(this); Object.defineProperty(this, 'render', { value: instrument(fn), writable: true, configurable: true, enumerable: true }); },
   });
 }
+// A layer that sets its own clear color / alpha keeps it (that's how a bottom layer stays opaque).
+for (const m of ['setClearColor', 'setClearAlpha']) {
+  const d = Object.getOwnPropertyDescriptor(proto, m);
+  const mark = (fn) => function (...a) { this.__keepClear = true; return fn.apply(this, a); };
+  if (typeof d?.value === 'function') proto[m] = mark(d.value);
+  else if (!d) {
+    Object.defineProperty(proto, m, {
+      configurable: true,
+      get() { return undefined; },
+      set(fn) { Object.defineProperty(this, m, { value: mark(fn), writable: true, configurable: true, enumerable: true }); },
+    });
+  }
+}
+// WebGL canvases get an alpha channel (layers show the ones below) and keep their last frame (so all
+// layers can be merged into one picture for recordings and screenshots).
+const realGetContext = HTMLCanvasElement.prototype.getContext;
+HTMLCanvasElement.prototype.getContext = function (type, opts) {
+  if (mode === 'sketch' && /^(webgl2?|experimental-webgl)$/.test(type)) opts = { ...(opts || {}), alpha: true, preserveDrawingBuffer: true };
+  return realGetContext.call(this, type, opts);
+};
 realSetInterval(() => {
   const now = performance.now();
   const fps = (frames * 1000) / (now - lastTick);
@@ -92,6 +118,7 @@ realSetInterval(() => {
 }, 500);
 
 function requestShot() {
+  if (mode === 'sketch' && needsComposite()) { realRAF(() => post({ type: 'shot', dataUrl: composite().toDataURL('image/png') })); return; }
   shotPending = true;
   // Static scenes may not render again; fall back to the current canvas.
   realSetTimeout(() => { if (shotPending && lastRenderer) { shotPending = false; post({ type: 'shot', dataUrl: lastRenderer.domElement.toDataURL('image/png') }); } }, 600);
@@ -314,8 +341,9 @@ function mediaCommand({ cmd, value }) {
 let recorder = null;
 function startRecording({ fps = 60, bitrate = 16e6, until = null } = {}) {
   recUntil = lastRenderer ? until : null;
-  const canvas = lastRenderer?.domElement;
-  if (!canvas) { post({ type: 'record-error', message: 'Nothing is rendering yet.' }); return; }
+  if (!lastRenderer) { post({ type: 'record-error', message: 'Nothing is rendering yet.' }); recUntil = null; return; }
+  const merged = needsComposite();
+  const canvas = merged ? (compRec = composite(document.createElement('canvas'))) : lastRenderer.domElement;
   const stream = canvas.captureStream(fps);
   if (mediaEl) {
     if (!recDest) { recDest = actx.createMediaStreamDestination(); srcNode.connect(recDest); }
@@ -329,6 +357,7 @@ function startRecording({ fps = 60, bitrate = 16e6, until = null } = {}) {
     const buf = await new Blob(chunks, { type: mime }).arrayBuffer();
     post({ type: 'recording', mime, width: canvas.width, height: canvas.height, buffer: buf }, [buf]);
     recorder = null;
+    compRec = null;
   };
   recorder.start(1000);
   post({ type: 'record-started', mime, width: canvas.width, height: canvas.height });
@@ -336,19 +365,21 @@ function startRecording({ fps = 60, bitrate = 16e6, until = null } = {}) {
 const stopRecording = () => { recUntil = null; if (recorder?.state === 'recording') recorder.stop(); };
 
 // ---------- sliders ----------
-// The Lab runs sketches with their numbers/colors swapped for __tv(i) so sliders can change them live.
-// Reads after setup (2 frames after the module finishes) mean the value is re-read every frame.
-// A slider can also follow the music: mods[i] = { band: 'bass'|'mid'|'treble'|'level'|'beat', amount, span, int }.
-const TV = [];
+// The Lab runs each layer with its numbers/colors swapped for __tv(i) so sliders can change them live.
+// Each layer owns the indices from slot × 10000. Reads after setup (2 frames after the layer's code has
+// run) mean the value is re-read every frame. A slider can also follow the music:
+// mods[i] = { band: 'kick'|'bass'|…, amount, span, int }.
+const SLOT = 10000;
+let TV = {};
 let mods = {};
 let tweakKeys = {};
 let usedAtSetup = new Set();
 let usedLive = new Set();
-let pastSetup = false;
+const slotPast = {};
 // Report as soon as a value is first read (a microtask, so it isn't delayed by background timer throttling).
 let reportQueued = false;
 const markRead = (i) => {
-  const set = pastSetup ? usedLive : usedAtSetup;
+  const set = slotPast[Math.floor(i / SLOT)] ? usedLive : usedAtSetup;
   if (set.has(i)) return;
   set.add(i);
   if (reportQueued) return;
@@ -362,17 +393,17 @@ const valueOf = (i, base) => {
   return m.int ? Math.round(v) : v;
 };
 globalThis.__tv = (i) => { markRead(i); return valueOf(i, TV[i]); };
-let tweakSets = [];
 // Named controls: const P = tweak({ speed: [1, 0, 5], glow: { value: 1, min: 0, max: 3, label: 'Glow', group: 'Look', onChange }, tint: '#ff3cac', wire: false })
 globalThis.tweak = (spec = {}) => {
-  const call = tweakSets.length;
+  const L = layerState(currentLayer() || 'main');
+  const call = L.tweakSets.length;
   const vals = {};
   const handlers = {};
   const out = {};
   for (const [key, v] of Object.entries(spec)) {
     vals[key] = Array.isArray(v) ? v[0] : (v && typeof v === 'object' && 'value' in v) ? v.value : v;
     if (v && typeof v === 'object' && typeof v.onChange === 'function') handlers[key] = v.onChange;
-    const idx = tweakKeys[`${call}.${key}`];
+    const idx = tweakKeys[`${L.id}|${call}.${key}`];
     if (handlers[key] && idx != null) { usedLive.add(idx); markRead(idx); } // onChange controls are live by definition
     Object.defineProperty(out, key, {
       enumerable: true,
@@ -380,81 +411,253 @@ globalThis.tweak = (spec = {}) => {
       set(x) { vals[key] = x; },
     });
   }
-  tweakSets.push({ vals, handlers });
+  L.tweakSets.push({ vals, handlers });
   return out;
 };
-function setTweak({ index, value, call, key }) {
+function setTweak({ index, value, layer, call, key }) {
   TV[index] = value;
-  const set = call != null ? tweakSets[call] : null;
+  const set = call != null ? layers.get(layer || 'main')?.tweakSets[call] : null;
   if (!set || !(key in set.vals)) return;
   set.vals[key] = value;
-  try { set.handlers[key]?.(value); } catch (err) { post({ type: 'error', message: `${err.name}: ${err.message} (in onChange for "${key}")` }); }
+  try { set.handlers[key]?.(value); } catch (err) { post({ type: 'error', layer, message: `${err.name}: ${err.message} (in onChange for "${key}")` }); }
 }
 
+// ---------- layers ----------
+// A sketch is a stack of layers. Each layer is its own module (own renderer, scene and sliders) drawn
+// into its own full-size box; the boxes are stacked with opacity, blend mode and transform like layers
+// in an image editor. Every layer's code runs from its own blob: URL, so the call stack tells which layer
+// made a renderer, a listener, a timer or a tweak() call — one layer can be re-run, hidden, timed or
+// removed on its own.
+Error.stackTraceLimit = 80;
+const layers = new Map(); // id → { id, gen, box, renderers, tweakSets, props, slot, url }
+const urlLayer = new Map(); // blob url → layer id
+let ctxLayer = null; // layer whose callback is running right now
+const BLOB_RE = /blob:[^\s)]+?(?=:\d+:\d+)/g;
+function layerOfStack(stack) {
+  for (const m of String(stack || '').matchAll(BLOB_RE)) { const id = urlLayer.get(m[0]); if (id) return id; }
+  return null;
+}
+function currentLayer() { return layerOfStack(new Error().stack) || ctxLayer; }
+window.__layerOfStack = layerOfStack;
+window.__layerOfUrl = (u) => (u ? urlLayer.get(u) || null : null);
+function layerState(id) {
+  let L = layers.get(id);
+  if (!L) {
+    const box = document.createElement('div');
+    box.className = 'lab-layer';
+    box.dataset.layer = id;
+    document.body.appendChild(box);
+    L = { id, gen: 0, box, renderers: new Set(), tweakSets: [], props: { visible: true, opacity: 1, blend: 'normal', z: layers.size }, slot: 0, url: null };
+    layers.set(id, L);
+  }
+  return L;
+}
+function trackRenderer(r) {
+  renderers.add(r);
+  const id = currentLayer();
+  if (id) { layerState(id).renderers.add(r); r.__layer = id; }
+  // Transparent where nothing is drawn, so the layers below show through (a scene.background or
+  // setClearColor in the layer's code still makes it opaque, e.g. for a bottom layer).
+  queueMicrotask(() => { try { if (!r.__keepClear) { r.setClearAlpha(0); r.__keepClear = false; } } catch {} });
+}
+const BLEND_CSS = { normal: 'normal', add: 'plus-lighter', screen: 'screen', multiply: 'multiply', overlay: 'overlay', lighten: 'lighten', darken: 'darken', difference: 'difference', exclusion: 'exclusion', 'color-dodge': 'color-dodge', 'soft-light': 'soft-light', 'hard-light': 'hard-light' };
+const BLEND_2D = { ...BLEND_CSS, normal: 'source-over', add: 'lighter' };
+// How much of a layer shows right now: hidden, outside its time on the song, fading in/out, opacity.
+function layerMix(L) {
+  const p = L.props;
+  if (p.visible === false) return 0;
+  const op = p.opacity ?? 1;
+  if (!mediaEl) return op;
+  const t = mediaEl.currentTime;
+  if (p.in != null && t < p.in) return 0;
+  if (p.out != null && t >= p.out) return 0;
+  let k = 1;
+  if (p.in != null && p.fadeIn > 0) k = Math.min(k, (t - p.in) / p.fadeIn);
+  if (p.out != null && p.fadeOut > 0) k = Math.min(k, (p.out - t) / p.fadeOut);
+  return Math.max(0, Math.min(1, k)) * op;
+}
+function styleLayer(L) {
+  const p = L.props;
+  const mix = layerMix(L);
+  const s = L.box.style;
+  const disp = mix > 0 ? '' : 'none';
+  if (s.display !== disp) s.display = disp;
+  const op = String(Math.round(mix * 1000) / 1000);
+  if (s.opacity !== op) s.opacity = op;
+  const bl = BLEND_CSS[p.blend] || 'normal';
+  if (s.mixBlendMode !== bl) s.mixBlendMode = bl;
+  const sc = p.scale ?? 1;
+  const tf = p.x || p.y || sc !== 1 || p.rotate ? `translate(${p.x || 0}%, ${p.y || 0}%) rotate(${p.rotate || 0}deg) scale(${sc})` : '';
+  if (s.transform !== tf) s.transform = tf;
+  const z = String(p.z ?? 0);
+  if (s.zIndex !== z) s.zIndex = z;
+  L.box.classList.toggle('interactive', Boolean(p.selected));
+}
+const ordered = () => [...layers.values()].sort((a, b) => (a.props.z ?? 0) - (b.props.z ?? 0));
+// Merging is needed for recordings / screenshots once more than one layer shows, or one is transformed.
+function needsComposite() {
+  const act = ordered().filter((L) => layerMix(L) > 0);
+  if (act.length !== 1) return act.length > 1;
+  const L = act[0]; const p = L.props;
+  return layerMix(L) < 1 || Boolean(p.x || p.y || p.rotate) || (p.scale ?? 1) !== 1 || (p.blend && p.blend !== 'normal') || L.box.querySelectorAll('canvas').length > 1;
+}
+function composite(target) {
+  const W = Math.round(innerWidth * devicePixelRatio); const H = Math.round(innerHeight * devicePixelRatio);
+  const c = target || document.createElement('canvas');
+  if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
+  const g = c.getContext('2d');
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalAlpha = 1;
+  g.globalCompositeOperation = 'source-over';
+  g.fillStyle = '#000';
+  g.fillRect(0, 0, W, H);
+  for (const L of ordered()) {
+    const mix = layerMix(L);
+    if (mix <= 0) continue;
+    const p = L.props;
+    g.save();
+    g.globalAlpha = mix;
+    g.globalCompositeOperation = BLEND_2D[p.blend] || 'source-over';
+    g.translate(W / 2 + ((p.x || 0) / 100) * W, H / 2 + ((p.y || 0) / 100) * H);
+    g.rotate(((p.rotate || 0) * Math.PI) / 180);
+    g.scale(p.scale ?? 1, p.scale ?? 1);
+    g.translate(-W / 2, -H / 2);
+    for (const cv of L.box.querySelectorAll('canvas')) g.drawImage(cv, 0, 0, W, H);
+    g.restore();
+  }
+  return c;
+}
+let compRec = null; // the merged canvas being recorded
+function compositorTick() {
+  realRAF(compositorTick);
+  for (const L of layers.values()) styleLayer(L);
+  if (compRec) composite(compRec);
+}
+realRAF(compositorTick);
+// `layer` inside a layer's code: { id, name, in, out, time (seconds since its start), progress (0..1), mix }
+Object.defineProperty(globalThis, 'layer', {
+  configurable: true,
+  get() {
+    const L = layers.get(currentLayer() || 'main');
+    if (!L) return null;
+    const p = L.props;
+    const t = mediaEl ? mediaEl.currentTime : performance.now() / 1000;
+    return { id: L.id, name: p.name, in: p.in ?? null, out: p.out ?? null, time: p.in != null ? t - p.in : t, progress: p.in != null && p.out != null ? (t - p.in) / (p.out - p.in) : null, mix: layerMix(L) };
+  },
+});
+
 // ---------- run generations ----------
-// Sliders that only matter while a scene is built (sizes, counts…) and code edits re-run the sketch in
-// place: the old renderer, window listeners, timers and DOM are torn down and the module runs again,
-// without reloading three.js or interrupting the music.
+// Re-running a layer (a slider that rebuilds the scene, a code edit) tears down only that layer: its
+// renderers, window listeners, timers and DOM, then runs its code again — three.js stays loaded and the
+// music keeps playing.
 let gen = 0;
 let sketchListeners = [];
 let sketchRunning = false;
-const keepBody = new Set(document.body.children);
-const keepHead = new Set(document.head.children);
 let guardsInstalled = false;
 function installRunGuards() {
   if (guardsInstalled) return;
   guardsInstalled = true;
   const add = EventTarget.prototype.addEventListener;
   EventTarget.prototype.addEventListener = function (type, fn, opts) {
-    if (sketchRunning && (this === window || this === document)) sketchListeners.push([this, type, fn, opts]);
+    if (sketchRunning && (this === window || this === document)) sketchListeners.push([this, type, fn, opts, currentLayer()]);
     return add.call(this, type, fn, opts);
   };
-  const guard = (fn) => { const g = gen; return typeof fn === 'function' ? (...a) => { if (g === gen) fn(...a); } : fn; };
-  window.requestAnimationFrame = (fn) => realRAF(guard(fn));
-  window.setTimeout = (fn, ms, ...a) => realSetTimeout(guard(fn), ms, ...a);
-  window.setInterval = (fn, ms, ...a) => { const g = gen; const id = realSetInterval((...b) => { if (g === gen) fn(...b); else clearInterval(id); }, ms, ...a); return id; };
+  // Things a layer appends to <body> go into its own box.
+  const redirect = (orig) => function (...args) {
+    if (this === document.body) { const id = currentLayer(); if (id) return orig.apply(layerState(id).box, args); }
+    return orig.apply(this, args);
+  };
+  Element.prototype.append = redirect(Element.prototype.append);
+  Element.prototype.prepend = redirect(Element.prototype.prepend);
+  Node.prototype.appendChild = redirect(Node.prototype.appendChild);
+  const insertBefore = Node.prototype.insertBefore;
+  Node.prototype.insertBefore = function (node, ref) {
+    if (this === document.body) { const id = currentLayer(); if (id) return layerState(id).box.appendChild(node); }
+    return insertBefore.call(this, node, ref);
+  };
+  // Timers and frames belong to the layer that asked for them; a re-run or removal silences the old ones,
+  // and a hidden / off-time layer stops drawing until it shows again.
+  const owner = () => { const id = currentLayer(); const L = id ? layers.get(id) : null; return { id, L, g: L ? L.gen : gen }; };
+  const alive = (o) => (o.L ? o.L.gen === o.g && layers.get(o.id) === o.L : o.g === gen);
+  const within = (o, fn, args) => { const prev = ctxLayer; ctxLayer = o.id; try { return fn(...args); } finally { ctxLayer = prev; } };
+  window.requestAnimationFrame = (fn) => {
+    const o = owner();
+    const run = (t) => {
+      if (!alive(o)) return;
+      if (o.L && layerMix(o.L) <= 0) { realRAF(run); return; }
+      within(o, fn, [t]);
+    };
+    return realRAF(run);
+  };
+  window.setTimeout = (fn, ms, ...a) => { if (typeof fn !== 'function') return realSetTimeout(fn, ms, ...a); const o = owner(); return realSetTimeout((...b) => { if (alive(o)) within(o, fn, b); }, ms, ...a); };
+  window.setInterval = (fn, ms, ...a) => {
+    if (typeof fn !== 'function') return realSetInterval(fn, ms, ...a);
+    const o = owner();
+    const id = realSetInterval((...b) => { if (alive(o)) within(o, fn, b); else clearInterval(id); }, ms, ...a);
+    return id;
+  };
 }
-function teardown() {
-  gen += 1;
-  stopRecording();
-  for (const r of renderers) {
+function teardownLayer(L) {
+  L.gen += 1;
+  for (const r of L.renderers) {
     try { r.setAnimationLoop(null); } catch {}
     try { r.dispose(); r.forceContextLoss(); } catch {}
     r.domElement?.remove();
+    renderers.delete(r);
+    if (lastRenderer === r) lastRenderer = null;
   }
-  renderers.clear();
-  lastRenderer = null;
-  for (const [t, type, fn, opts] of sketchListeners) t.removeEventListener(type, fn, opts);
-  sketchListeners = [];
-  for (const n of [...document.body.children]) if (!keepBody.has(n)) n.remove();
-  for (const n of [...document.head.children]) if (!keepHead.has(n)) n.remove();
-  document.body.removeAttribute('style');
-  document.documentElement.removeAttribute('style');
-  videoTex = null;
-  tweakSets = [];
-  usedAtSetup = new Set();
-  usedLive = new Set();
-  pastSetup = false;
+  L.renderers.clear();
+  sketchListeners = sketchListeners.filter(([t, type, fn, opts, id]) => {
+    if (id !== L.id) return true;
+    t.removeEventListener(type, fn, opts);
+    return false;
+  });
+  L.box.replaceChildren();
+  L.tweakSets = [];
+  const lo = (L.slot || 0) * SLOT;
+  for (const set of [usedAtSetup, usedLive]) for (const i of [...set]) if (i >= lo && i < lo + SLOT) set.delete(i);
+  slotPast[L.slot || 0] = false;
+}
+function removeLayer(id) {
+  const L = layers.get(id);
+  if (!L) return;
+  teardownLayer(L);
+  L.box.remove();
+  layers.delete(id);
+  if (L.url) urlLayer.delete(L.url);
+}
+function setLayerProps(L, props) {
+  const { code, id, ...rest } = props;
+  Object.assign(L.props, rest);
+  if (rest.slot != null) L.slot = rest.slot;
+  styleLayer(L);
 }
 
 // ---------- sketch mode ----------
-let lastUrl = null;
-async function runSketch(code, hot = false) {
+async function runLayer(spec, hot = false) {
   installRunGuards();
-  if (hot) teardown();
-  if (lastUrl) URL.revokeObjectURL(lastUrl);
-  const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
-  lastUrl = url;
-  const g = gen;
+  const L = layerState(spec.id);
+  if (hot) teardownLayer(L);
+  setLayerProps(L, spec);
+  if (L.url) urlLayer.delete(L.url);
+  const url = URL.createObjectURL(new Blob([spec.code], { type: 'text/javascript' }));
+  L.url = url;
+  urlLayer.set(url, L.id);
+  const g = L.gen;
   sketchRunning = true;
   try {
     await import(url);
-    if (g !== gen) return;
-    post({ type: 'ran', hot });
-    realRAF(() => realRAF(() => { if (g === gen) pastSetup = true; }));
+    if (L.gen !== g) return;
+    post({ type: 'ran', hot, layer: L.id });
+    realRAF(() => realRAF(() => { if (L.gen === g) slotPast[L.slot || 0] = true; }));
   } catch (err) {
-    post({ type: 'error', message: `${err.name}: ${err.message}`, line: Number(/blob:[^\s)]*?:(\d+):\d+/.exec(err.stack || '')?.[1]) || null });
+    post({ type: 'error', layer: L.id, message: `${err.name}: ${err.message}`, line: Number(/blob:[^\s)]*?:(\d+):\d+/.exec(err.stack || '')?.[1]) || null });
   }
+}
+// All layers, bottom first.
+function runLayers(specs) {
+  for (const id of [...layers.keys()]) if (!specs.some((s) => s.id === id)) removeLayer(id);
+  specs.forEach((s, z) => runLayer({ z, ...s }));
 }
 
 // ---------- shader mode ----------
@@ -758,11 +961,15 @@ async function setupViewer() {
 addEventListener('message', async (e) => {
   const msg = e.data || {};
   if (msg.target !== 'three-sandbox') return;
-  if (msg.type === 'tweak-init') { TV.splice(0, TV.length, ...msg.values); tweakKeys = msg.keys || {}; mods = msg.mods || {}; }
+  if (msg.type === 'tweak-init') { TV = { ...(msg.values || {}) }; tweakKeys = msg.keys || {}; mods = msg.mods || {}; }
   if (msg.type === 'tweak') setTweak(msg);
   if (msg.type === 'tweak-mods') mods = msg.mods || {};
-  if (msg.type === 'run') runSketch(msg.code);
-  if (msg.type === 'hot-run') runSketch(msg.code, true);
+  if (msg.type === 'run') runLayers([{ id: 'main', code: msg.code, slot: 0, selected: true }]);
+  if (msg.type === 'hot-run') runLayer({ id: 'main', code: msg.code, slot: 0, selected: true }, true);
+  if (msg.type === 'run-layers') runLayers(msg.layers);
+  if (msg.type === 'hot-layer') runLayer(msg.layer, true);
+  if (msg.type === 'layer-props') { const L = layers.get(msg.id); if (L) setLayerProps(L, msg.props); }
+  if (msg.type === 'remove-layer') removeLayer(msg.id);
   if (msg.type === 'media-load') loadMedia(msg);
   if (msg.type === 'media') mediaCommand(msg);
   if (msg.type === 'media-map') beatMap = msg;
@@ -774,6 +981,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'screenshot') requestShot();
 });
 
+if (mode === 'sketch') document.body.classList.add('sketch');
 if (mode === 'shader') setupShader();
 if (mode === 'viewer') await setupViewer();
 post({ type: 'ready', mode, revision: THREE.REVISION });

@@ -312,11 +312,22 @@ const ThreeMedia = (() => {
       el('span', { class: 'mb-label', text: 'Hits' }), ...laneBtns, fillBtn, undoBtn);
 
     const canvas = el('canvas', { class: 'mb-timeline' });
-    const scrollThumb = el('div', { class: 'mb-thumb' });
-    const scrollbar = el('div', { class: 'mb-scroll', title: 'Drag to move along the song' }, scrollThumb);
+    // Overview of the whole song (like FL Studio's playlist overview): every layer, the loop, the playhead,
+    // and the zoomed window you can drag.
+    const minimap = el('canvas', { class: 'mb-minimap', title: 'The whole song: each layer\'s time, the loop and the playhead. Drag the box to move the zoomed view; click to jump.' });
+    // Layer tracks under the song (top layer first): { id, name, color, in, out, visible, selected }.
+    let tracks = [];
+    let trackHandlers = {};
+    const TRACK_H = 16;
+    function setTracks(list, handlers) {
+      tracks = list || [];
+      if (handlers) trackHandlers = handlers;
+      canvas.style.height = `${112 + tracks.length * TRACK_H}px`;
+      draw();
+    }
     const bar = el('div', { class: 'media-bar' },
       el('div', { class: 'mb-row' }, loadBtn, nameEl, unloadBtn, playBtn, timeEl, sep(), zoomOut, zoomIn, zoomAll, zoomLoop, sep(), loopBtn, loopBox, loopLen, lockBtn, el('span', { class: 'spacer' }), vol, recBtn),
-      gridRow, canvas, scrollbar);
+      gridRow, canvas, minimap);
 
     // ---------- file ----------
     async function pick() {
@@ -643,11 +654,11 @@ const ThreeMedia = (() => {
 
     // ---------- drawing ----------
     const RULER = 16; const LANE_H = 14;
-    const laneTop = (h) => h - LANES.length * LANE_H;
+    const laneTop = (h) => h - LANES.length * LANE_H - tracks.length * TRACK_H;
     let raf = 0;
     function now() { return st.playing ? Math.min(D() || Infinity, st.time + (performance.now() - st.stampAt) / 1000) : st.time; }
     function paint() {
-      bar.classList.toggle('empty', !st.bytes);
+      bar.classList.toggle('mb-empty', !st.bytes);
       bar.classList.toggle('locked', locked);
       nameEl.textContent = st.name ? (analyzing ? `${st.name} · analyzing…` : st.name) : 'No music loaded: sketches get a demo beat';
       nameEl.title = st.path || '';
@@ -687,8 +698,7 @@ const ThreeMedia = (() => {
     function draw() {
       const t = now();
       timeEl.textContent = D() ? `${span() < 20 ? fmtMs(t) : fmtTime(t)} / ${fmtTime(D())}` : fmtTime(t);
-      scrollbar.hidden = !view || !D();
-      if (view && D()) Object.assign(scrollThumb.style, { left: `${(view.start / D()) * 100}%`, width: `${Math.max(1.5, ((view.end - view.start) / D()) * 100)}%` });
+      drawMinimap(t);
       const w = canvas.clientWidth; const h = canvas.clientHeight;
       if (!w || !h) return;
       const dpr = devicePixelRatio || 1;
@@ -784,11 +794,35 @@ const ThreeMedia = (() => {
           if (sp < 8) { g.fillStyle = `${ln.color}40`; g.fillRect(Math.round(x), top, 1, H); }
         }
       });
+      // layer tracks: a bar for when each layer is on screen
+      const TT = h - tracks.length * TRACK_H;
+      tracks.forEach((tr, i) => {
+        const y = TT + i * TRACK_H;
+        g.fillStyle = tr.selected ? '#ffd75e16' : i % 2 ? '#ffffff05' : '#ffffff0a';
+        g.fillRect(0, y, w, TRACK_H);
+        const a0 = tr.in ?? 0; const b0 = tr.out ?? D();
+        const xa = X(a0); const xb = X(b0);
+        const col = tr.color || '#7ad0ff';
+        g.globalAlpha = tr.visible === false ? 0.3 : 1;
+        g.fillStyle = `${col}50`;
+        g.fillRect(xa, y + 2, xb - xa, TRACK_H - 4);
+        g.fillStyle = col;
+        g.fillRect(xa, y + 2, 3, TRACK_H - 4);
+        g.fillRect(xb - 3, y + 2, 3, TRACK_H - 4);
+        if (tr.fadeIn) { g.fillStyle = `${col}90`; g.beginPath(); g.moveTo(xa, y + TRACK_H - 2); g.lineTo(X(a0 + tr.fadeIn), y + 2); g.lineTo(xa, y + 2); g.fill(); }
+        if (tr.fadeOut) { g.fillStyle = `${col}90`; g.beginPath(); g.moveTo(xb, y + TRACK_H - 2); g.lineTo(X(b0 - tr.fadeOut), y + 2); g.lineTo(xb, y + 2); g.fill(); }
+        g.globalAlpha = 1;
+        g.fillStyle = tr.selected ? '#ffffff' : '#eae0d5b0';
+        g.fillText(`${tr.visible === false ? '(hidden) ' : ''}${tr.name}${tr.in == null && tr.out == null ? ' · whole song' : ''}`, Math.max(4, Math.min(xa + 6, xb - 40)), y + 11);
+        if (tr.selected) { g.strokeStyle = '#ffd75e'; g.lineWidth = 1; g.strokeRect(Math.max(0, xa) + 0.5, y + 1.5, Math.max(2, Math.min(w, xb) - Math.max(0, xa) - 1), TRACK_H - 3); }
+      });
       // loop region
       if (region) {
         const xa = X(region.a); const xb = X(region.b);
         g.fillStyle = locked ? '#48ddff1a' : '#ffd75e1a';
         g.fillRect(xa, 0, xb - xa, LT);
+        g.fillStyle = locked ? '#48ddff0d' : '#ffd75e0d';
+        g.fillRect(xa, LT, xb - xa, h - LT);
         g.fillStyle = locked ? '#48ddff' : '#ffd75e';
         g.fillRect(xa, 0, xb - xa, 3);
         for (const [edge, x] of [['a', xa], ['b', xb]]) {
@@ -799,6 +833,43 @@ const ThreeMedia = (() => {
       }
       if (t >= s0 && t <= s0 + sp) { g.fillStyle = '#ffffff'; g.fillRect(Math.round(X(t)), 0, 2, h); }
     }
+    function drawMinimap(t) {
+      minimap.hidden = !D();
+      const w = minimap.clientWidth; const h = minimap.clientHeight;
+      if (!D() || !w || !h) return;
+      const dpr = devicePixelRatio || 1;
+      if (minimap.width !== Math.round(w * dpr) || minimap.height !== Math.round(h * dpr)) { minimap.width = Math.round(w * dpr); minimap.height = Math.round(h * dpr); }
+      const g = minimap.getContext('2d');
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, w, h);
+      const X = (tt) => (tt / D()) * w;
+      const a = st.analysis;
+      if (a) {
+        for (const sct of a.sections) if (sct.energy === 'loud') { g.fillStyle = '#ffd75e14'; g.fillRect(X(sct.start), 0, X(sct.end) - X(sct.start), h); }
+        const n = a.level.length;
+        g.fillStyle = '#ffffff16';
+        for (let x = 0; x < w; x += 2) { const v = a.level[Math.min(n - 1, Math.floor((x / w) * n))]; g.fillRect(x, h - v * (h - 2), 2, v * (h - 2)); }
+      }
+      const rows = Math.max(1, tracks.length);
+      const rowH = Math.max(2, Math.min(5, (h - 4) / rows));
+      tracks.forEach((tr, i) => {
+        const x0 = X(tr.in ?? 0); const x1 = X(tr.out ?? D());
+        g.fillStyle = `${tr.color || '#7ad0ff'}${tr.visible === false ? '40' : 'd0'}`;
+        g.fillRect(x0, 2 + i * rowH, Math.max(2, x1 - x0), rowH - 1);
+      });
+      if (region) { g.fillStyle = locked ? '#48ddff40' : '#ffd75e40'; g.fillRect(X(region.a), 0, Math.max(2, X(region.b) - X(region.a)), h); }
+      if (a) { g.fillStyle = '#ff6a6a'; for (const d of a.drops) g.fillRect(X(d) - 1, 0, 2, 4); }
+      g.fillStyle = '#ffffff';
+      g.fillRect(Math.round(X(t)), 0, 2, h);
+      if (view) {
+        const vx = X(view.start); const vw = Math.max(4, X(view.end) - vx);
+        g.fillStyle = '#ffffff14';
+        g.fillRect(vx, 0, vw, h);
+        g.strokeStyle = locked ? '#48ddff' : '#ffffffc0';
+        g.lineWidth = 1.5;
+        g.strokeRect(vx + 0.75, 0.75, vw - 1.5, h - 1.5);
+      }
+    }
 
     // ---------- timeline mouse ----------
     const timeAt = (e) => { const r = canvas.getBoundingClientRect(); return v0() + ((e.clientX - r.left) / r.width) * span(); };
@@ -808,6 +879,14 @@ const ThreeMedia = (() => {
       const r = canvas.getBoundingClientRect();
       const x = e.clientX - r.left; const y = e.clientY - r.top;
       const LT = laneTop(r.height);
+      const TT = r.height - tracks.length * TRACK_H;
+      if (tracks.length && y >= TT) {
+        const tr = tracks[Math.min(tracks.length - 1, Math.floor((y - TT) / TRACK_H))];
+        const a0 = tr.in ?? 0; const b0 = tr.out ?? D();
+        const edge = Math.abs(xOf(a0) - x) <= 6 ? 'in' : Math.abs(xOf(b0) - x) <= 6 ? 'out' : null;
+        const tt = v0() + (x / r.width) * span();
+        return { zone: 'track', track: tr, edge, inside: tt >= a0 && tt <= b0 };
+      }
       if (y < RULER) {
         const edge = region && ['a', 'b'].find((k) => Math.abs(xOf(region[k]) - x) <= 6);
         return { zone: 'ruler', edge };
@@ -832,6 +911,13 @@ const ThreeMedia = (() => {
       } else if (hit.zone === 'lane') {
         if (hit.mark != null) { selected = { type: 'mark', lane: hit.lane, t: hit.mark }; dragging = { kind: 'mark', from: tt, orig: hit.mark, before: JSON.stringify(map) }; }
         else { addMarkAt(hit.lane, tt); dragging = { kind: 'mark', from: tt, orig: selected.t, added: true }; }
+      } else if (hit.zone === 'track') {
+        const { id } = hit.track;
+        const a0 = hit.track.in ?? 0; const b0 = hit.track.out ?? D();
+        trackHandlers.onSelect?.(id);
+        if (hit.edge) dragging = { kind: 'trim', id, edge: hit.edge, a: a0, b: b0 };
+        else if (hit.inside) dragging = { kind: 'clip', id, from: tt, a: a0, b: b0 };
+        else dragging = { kind: 'none' };
       } else { dragging = { kind: 'seek' }; selected = null; seek(tt); }
       draw();
       const move = (ev) => {
@@ -853,12 +939,19 @@ const ThreeMedia = (() => {
           moveSelectedMark(snapT(dragging.orig + (t2 - dragging.from)));
           sendMap();
           draw();
+        } else if (dragging.kind === 'trim' || dragging.kind === 'clip') {
+          let { a, b } = dragging;
+          if (dragging.kind === 'trim') { const v = snapT(t2); if (dragging.edge === 'in') a = Math.max(0, Math.min(v, b - 0.05)); else b = Math.min(D(), Math.max(v, a + 0.05)); }
+          else { const len = b - a; a = Math.max(0, Math.min(D() - len, snapT(a + (t2 - dragging.from)))); b = a + len; }
+          dragging.now = { in: r4(a), out: r4(b) };
+          trackHandlers.onChange?.(dragging.id, dragging.now, { final: false });
         }
       };
       canvas.addEventListener('pointermove', move);
       canvas.addEventListener('pointerup', () => {
         canvas.removeEventListener('pointermove', move);
         if (dragging?.kind === 'edge' || dragging?.kind === 'move' || dragging?.kind === 'new') saveLoop();
+        if ((dragging?.kind === 'trim' || dragging?.kind === 'clip') && dragging.now) trackHandlers.onChange?.(dragging.id, dragging.now, { final: true });
         if (dragging?.kind === 'mark') {
           // Only a marker that actually moved becomes an undo step.
           if (dragging.before && dragging.before !== JSON.stringify(map)) { mapUndo.push(dragging.before); if (mapUndo.length > 80) mapUndo.shift(); }
@@ -871,6 +964,15 @@ const ThreeMedia = (() => {
     canvas.addEventListener('dblclick', (e) => {
       const hit = hitTest(e);
       if (hit.zone === 'lane' && hit.mark != null) { selected = { type: 'mark', lane: hit.lane, t: hit.mark }; deleteSelectedMark(); return; }
+      if (hit.zone === 'track') {
+        // Fit the layer to the loop; again (or with no loop) → the whole song.
+        const tr = hit.track;
+        const onLoop = region && Math.abs((tr.in ?? -1) - region.a) < 1e-3 && Math.abs((tr.out ?? -1) - region.b) < 1e-3;
+        const next = region && !onLoop ? { in: region.a, out: region.b } : { in: null, out: null };
+        trackHandlers.onChange?.(tr.id, next, { final: true });
+        toast(next.in == null ? `"${tr.name}" now plays for the whole song` : `"${tr.name}" now plays during the loop`, { timeout: 1800 });
+        return;
+      }
       if (hit.zone !== 'wave' || locked || !st.analysis) return;
       const tt = timeAt(e);
       const sec = st.analysis.sections.find((s) => tt >= s.start && tt < s.end);
@@ -893,29 +995,40 @@ const ThreeMedia = (() => {
       if (!D()) return;
       const hit = hitTest(e);
       const tt = timeAt(e);
-      canvas.style.cursor = hit.zone === 'lane' ? (hit.mark != null ? 'ew-resize' : 'cell') : locked ? 'pointer' : hit.zone === 'ruler' ? (hit.edge ? 'ew-resize' : 'copy') : 'pointer';
+      canvas.style.cursor = hit.zone === 'track' ? (hit.edge ? 'ew-resize' : hit.inside ? 'grab' : 'default') : hit.zone === 'lane' ? (hit.mark != null ? 'ew-resize' : 'cell') : locked ? 'pointer' : hit.zone === 'ruler' ? (hit.edge ? 'ew-resize' : 'copy') : 'pointer';
       const tips = {
         ruler: locked ? 'Locked: click to jump' : 'Drag along this strip to draw a loop; drag its edges to adjust',
         wave: 'Click to jump · double-click to loop this part · wheel to zoom · Shift+wheel to scroll',
         lane: 'Click to add a marker here · drag to move · double-click or right-click to delete · or press K / S / H while it plays',
+        track: `${hit.track?.name || 'Layer'}: drag the bar to move it in time · drag its ends to trim · double-click to fit it to the loop (again: whole song)`,
       };
       canvas.title = `${fmtMs(tt)}\n${tips[hit.zone]}`;
     });
-    scrollbar.addEventListener('pointerdown', (e) => {
-      if (!view || locked) return;
-      scrollbar.setPointerCapture(e.pointerId);
-      const r = scrollbar.getBoundingClientRect();
-      const jump = (ev) => { const c = ((ev.clientX - r.left) / r.width) * D(); setView({ start: c - span() / 2, end: c + span() / 2 }); };
-      jump(e);
-      scrollbar.addEventListener('pointermove', jump);
-      scrollbar.addEventListener('pointerup', () => scrollbar.removeEventListener('pointermove', jump), { once: true });
+    minimap.addEventListener('pointerdown', (e) => {
+      if (!D() || e.button !== 0) return;
+      minimap.setPointerCapture(e.pointerId);
+      const r = minimap.getBoundingClientRect();
+      const tAt = (ev) => Math.max(0, Math.min(D(), ((ev.clientX - r.left) / r.width) * D()));
+      let act;
+      if (view && !locked) {
+        // drag the zoomed window (grab it where you clicked, or centre it on the click)
+        const t0 = tAt(e);
+        const off = t0 >= view.start && t0 <= view.end ? t0 - view.start : span() / 2;
+        act = (ev) => { const st0 = tAt(ev) - off; setView({ start: st0, end: st0 + span() }); };
+      } else act = (ev) => seek(tAt(ev));
+      act(e);
+      minimap.addEventListener('pointermove', act);
+      minimap.addEventListener('pointerup', () => minimap.removeEventListener('pointermove', act), { once: true });
     });
+    new ResizeObserver(() => draw()).observe(minimap);
     new ResizeObserver(() => draw()).observe(canvas);
     paint();
 
     return {
       el: bar,
-      load, pick, attach, toggle, seek, onMessage, unload, onKey,
+      load, pick, attach, toggle, seek, onMessage, unload, onKey, setTracks,
+      get duration() { return D(); },
+      get loop() { return region ? { ...region } : null; },
       setLoop(a, b) { if (locked) return false; setRegion(a == null ? null : { a, b }); return true; },
       get recording() { return Boolean(recording); },
       get loaded() { return Boolean(st.bytes); },

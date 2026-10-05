@@ -254,10 +254,11 @@ const ThreeTweaks = (() => {
   }
 
   // Code with every literal swapped for a live read; same line numbers, so errors still point at the right line.
-  function instrument(code, items) {
+  // base: where this layer's values start in the sandbox (each layer has its own range).
+  function instrument(code, items, base = 0) {
     let out = '';
     let p = 0;
-    items.forEach((it, i) => { out += code.slice(p, it.start) + (/[\w$]/.test(code[it.start - 1] || '') ? ' ' : '') + `__tv(${i})`; p = it.end; });
+    items.forEach((it, i) => { out += code.slice(p, it.start) + (/[\w$]/.test(code[it.start - 1] || '') ? ' ' : '') + `__tv(${base + i})`; p = it.end; });
     return out + code.slice(p);
   }
 
@@ -631,7 +632,7 @@ const ThreeTweaks = (() => {
       toast('Saved into the sketch');
     }
 
-    function prepare(code) {
+    function prepare(code, base = 0) {
       instrumented = false;
       if (root.hidden) return null;
       if (!scanned || scanned.code !== code) {
@@ -651,7 +652,7 @@ const ThreeTweaks = (() => {
       instrumented = true;
       const keys = {};
       scanned.items.forEach((it, i) => { if (it.key != null) keys[`${it.call}.${it.key}`] = i; });
-      return { code: instrument(code, scanned.items), values: scanned.items.map((it, i) => runtime(it, values[i])), keys, mods: modsNow() };
+      return { code: instrument(code, scanned.items, base), values: scanned.items.map((it, i) => runtime(it, values[i])), keys, mods: modsNow() };
     }
 
     return {

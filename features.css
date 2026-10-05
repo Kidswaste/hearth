@@ -579,8 +579,8 @@ html[data-skin="forge"] .tweaks { border-radius: 0; background: linear-gradient(
 .safe-zones .sz.right { right: 0; width: 15%; bottom: 22%; height: 36%; writing-mode: vertical-rl; }
 .media-bar { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: color-mix(in srgb, #000 25%, var(--bg)); min-width: 0; }
 .media-bar .mb-name { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
-.media-bar.empty .mb-name { color: var(--muted); max-width: 260px; }
-.media-bar.empty .mb-play, .media-bar.empty .mb-time, .media-bar.empty .mb-vol, .media-bar.empty .mb-overview { display: none; }
+.media-bar.mb-empty .mb-name { color: var(--muted); max-width: 260px; }
+.media-bar.mb-empty .mb-play, .media-bar.mb-empty .mb-time, .media-bar.mb-empty .mb-vol, .media-bar.mb-empty .mb-overview { display: none; }
 .media-bar .mb-x { padding: 0 6px; }
 .media-bar .mb-play { width: 34px; padding-left: 0; padding-right: 0; }
 .media-bar .mb-time { font: 11.5px Consolas, monospace; color: var(--muted); white-space: nowrap; }
@@ -644,8 +644,8 @@ html[data-skin="forge"] .tweaks { border-radius: 0; background: linear-gradient(
 .media-bar .mb-scroll { position: relative; height: 8px; border-radius: 4px; background: #ffffff0d; cursor: pointer; }
 .media-bar .mb-thumb { position: absolute; top: 0; bottom: 0; border-radius: 4px; background: #ffd75e70; }
 .media-bar.locked .mb-thumb { background: #48ddff70; }
-.media-bar.empty .mb-timeline, .media-bar.empty .mb-scroll, .media-bar.empty .mb-sep, .media-bar.empty .mb-row > .ghost:not(.mb-rec):not(:first-child), .media-bar.empty .check { display: none; }
-.media-bar.empty .mb-row > .ghost:first-child { display: inline-block; }
+.media-bar.mb-empty .mb-timeline, .media-bar.mb-empty .mb-scroll, .media-bar.mb-empty .mb-sep, .media-bar.mb-empty .mb-row > .ghost:not(.mb-rec):not(:first-child), .media-bar.mb-empty .check { display: none; }
+.media-bar.mb-empty .mb-row > .ghost:first-child { display: inline-block; }
 .media-bar button.on { color: #ffd75e; }
 .media-bar.locked button.on[title^="Lock"] { color: #48ddff; border-color: #48ddff80; }
 .media-bar button:disabled { opacity: .35; }
@@ -669,5 +669,51 @@ html[data-skin="forge"] .tweaks { border-radius: 0; background: linear-gradient(
 .media-bar .mb-lane-snare { color: #48ddff; }
 .media-bar .mb-lane-hit { color: #bd8bff; }
 .media-bar .mb-lane.flash { background: currentColor; color: #0b0e10 !important; }
-.media-bar.empty .mb-grid, .media-bar.empty .mb-loopbox, .media-bar.empty .mb-loopinfo { display: none; }
+.media-bar.mb-empty .mb-grid, .media-bar.mb-empty .mb-loopbox, .media-bar.mb-empty .mb-loopinfo { display: none; }
 .mb-menu .menu-sep { height: 1px; margin: 4px 6px; background: var(--line); }
+
+/* ---------- Three.js Lab layers ---------- */
+.tw-column { display: flex; flex-direction: column; gap: 8px; min-height: 0; min-width: 0; }
+.tw-column[hidden] { display: none; }
+.tw-column .tw-slot { flex: 1; min-height: 0; display: flex; }
+.tw-column .tw-slot > .tweaks { flex: 1; min-width: 0; }
+.layers { flex: none; max-height: 46%; display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--line); border-radius: 8px; background: color-mix(in srgb, #000 22%, var(--bg)); overflow: hidden; }
+.layers .ly-list { overflow-y: auto; min-height: 34px; max-height: 190px; border-top: 1px solid var(--line); }
+.ly-row { display: flex; align-items: center; gap: 6px; padding: 4px 8px; font-size: 12px; cursor: pointer; border-left: 2px solid transparent; user-select: none; }
+.ly-row:hover { background: #ffffff08; }
+.ly-row.on { background: #ffd75e14; border-left-color: #ffd75e; }
+.ly-row.hidden-layer .ly-name { opacity: .45; text-decoration: line-through; }
+.ly-row.dragging { opacity: .4; }
+.ly-row.drop-target { box-shadow: inset 0 2px 0 #ffd75e; }
+.ly-eye { flex: none; width: 22px; padding: 0; font-size: 12px; background: none; border: none; color: inherit; cursor: pointer; }
+.ly-eye.off { color: var(--muted); }
+.ly-swatch { flex: none; width: 10px; height: 10px; border-radius: 2px; }
+.ly-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ly-row.on .ly-name { font-weight: 600; }
+.ly-tags { flex: none; font: 10.5px Consolas, monospace; color: var(--muted); }
+.ly-props { overflow-y: auto; padding: 6px 10px 8px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 5px; }
+.ly-sel { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.ly-field { display: grid; grid-template-columns: 62px minmax(0, 1fr) 44px; align-items: center; gap: 6px; font-size: 11.5px; }
+.ly-field > span:first-child { color: var(--muted); }
+.ly-field input[type=range] { accent-color: #ffd75e; min-width: 0; }
+.ly-field select { grid-column: 2 / 4; }
+.ly-val { font: 11px Consolas, monospace; text-align: right; color: var(--muted); }
+.ly-time { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 11.5px; }
+.ly-label { width: 58px; color: var(--muted); }
+.ly-timebox, .ly-timebtns { display: inline-flex; align-items: center; gap: 3px; flex-wrap: wrap; }
+.ly-fades { display: flex; gap: 10px; font-size: 11.5px; }
+.ly-fade { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
+.ly-num { width: 52px; padding: 2px 4px; font: 11.5px Consolas, monospace; }
+.ly-transform > summary { cursor: pointer; font-size: 11.5px; color: var(--muted); padding: 2px 0; }
+.ly-transform[open] { display: flex; flex-direction: column; gap: 5px; }
+.console-layer { margin-right: 6px; padding: 0 5px; font: 10.5px Consolas, monospace; color: #0b0e10; background: #7ad0ff; border: none; border-radius: 3px; cursor: pointer; }
+.media-bar .mb-minimap { width: 100%; height: 26px; border-radius: 4px; background: #05070880; cursor: pointer; touch-action: none; }
+.media-bar.mb-empty .mb-minimap { display: none; }
+html[data-skin="forge"] .layers { border-radius: 0; background: linear-gradient(180deg, #0f1214, #0b0e10); border-color: var(--line-hi, #443e35); }
+/* Narrow Lab: preview first, then layers + sliders below, and the area scrolls instead of overlapping */
+@container (max-width: 760px) {
+  .three-split.with-tweaks, .three-split.no-code.with-tweaks { grid-template-columns: minmax(0, 1fr); grid-auto-rows: max-content; overflow-y: auto; }
+  .three-split.with-tweaks .three-right { height: 78vh; }
+  .three-split.with-tweaks .tw-column { height: 72vh; }
+  .three-split.with-tweaks .tweaks { max-height: none; }
+}
