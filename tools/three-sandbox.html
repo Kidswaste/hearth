@@ -13,6 +13,8 @@
 <script>
   // Import map built from ?v= so the Lab can switch three.js versions.
   const params = new URLSearchParams(location.search);
+  // Exact output sizes (1080×1920…) render at 1 device pixel per pixel, so the canvas matches the export.
+  if (params.get('dpr')) { const dpr = Number(params.get('dpr')); Object.defineProperty(window, 'devicePixelRatio', { get: () => dpr }); }
   const V = params.get('v') || '0.186.1';
   const base = `https://cdn.jsdelivr.net/npm/three@${V}`;
   const im = document.createElement('script');
@@ -42,8 +44,12 @@
 <script type="module">
 import * as THREE from 'three';
 
-const post = (msg) => parent.postMessage({ source: 'three-sandbox', ...msg }, '*');
+const post = (msg, transfer) => parent.postMessage({ source: 'three-sandbox', ...msg }, '*', transfer || []);
 const mode = new URLSearchParams(location.search).get('mode') || 'sketch';
+// Real timer functions for the sandbox's own work; sketches get wrapped ones (see "run generations").
+const realSetTimeout = setTimeout.bind(window);
+const realSetInterval = setInterval.bind(window);
+const realRAF = requestAnimationFrame.bind(window);
 
 // ---------- performance stats for whatever renderer the sketch makes ----------
 let frames = 0;
@@ -51,12 +57,14 @@ let lastTick = performance.now();
 let lastRenderer = null;
 let frameMs = 0;
 let shotPending = false;
+const renderers = new Set(); // every renderer the current sketch made, so a re-run can dispose them
 function instrument(renderFn) {
   return function render(scene, camera) {
     const t0 = performance.now();
     renderFn.call(this, scene, camera);
     frameMs = performance.now() - t0;
     lastRenderer = this;
+    renderers.add(this);
     frames += 1;
     if (shotPending) { shotPending = false; post({ type: 'shot', dataUrl: this.domElement.toDataURL('image/png') }); }
   };
@@ -70,10 +78,10 @@ else {
   Object.defineProperty(proto, 'render', {
     configurable: true,
     get() { return undefined; },
-    set(fn) { Object.defineProperty(this, 'render', { value: instrument(fn), writable: true, configurable: true, enumerable: true }); },
+    set(fn) { renderers.add(this); Object.defineProperty(this, 'render', { value: instrument(fn), writable: true, configurable: true, enumerable: true }); },
   });
 }
-setInterval(() => {
+realSetInterval(() => {
   const now = performance.now();
   const fps = (frames * 1000) / (now - lastTick);
   frames = 0;
@@ -86,16 +94,195 @@ setInterval(() => {
 function requestShot() {
   shotPending = true;
   // Static scenes may not render again; fall back to the current canvas.
-  setTimeout(() => { if (shotPending && lastRenderer) { shotPending = false; post({ type: 'shot', dataUrl: lastRenderer.domElement.toDataURL('image/png') }); } }, 600);
+  realSetTimeout(() => { if (shotPending && lastRenderer) { shotPending = false; post({ type: 'shot', dataUrl: lastRenderer.domElement.toDataURL('image/png') }); } }, 600);
 }
+
+// ---------- audio / video ----------
+// The Lab sends a loaded mp3/mp4 here. Sketches read it through the `audio` and `media` globals:
+//   audio.level / bass / mid / treble (0..1), audio.beat (1 on a beat, fading), audio.spectrum (Uint8Array),
+//   audio.waveform (Float32Array, -1..1), audio.time / duration / playing, audio.bpm, audio.analysis
+//   media.video (the <video> for mp4s), media.texture() (a THREE.VideoTexture of it)
+let mediaEl = null;
+let mediaUrl = null;
+let isVideo = false;
+let analysis = null;
+let actx = null;
+let analyser = null;
+let srcNode = null;
+let gainNode = null;
+let recDest = null;
+let videoTex = null;
+const freq = new Uint8Array(1024);
+const wave = new Float32Array(2048);
+const bands = { level: 0, bass: 0, mid: 0, treble: 0, beat: 0 };
+let lastUpdate = 0;
+let bassAvg = 0;
+let lastBeatAt = -1e9;
+let simulated = false;
+function graph() {
+  if (actx) return;
+  actx = new AudioContext();
+  analyser = actx.createAnalyser();
+  analyser.fftSize = 2048;
+  analyser.smoothingTimeConstant = 0.6;
+  gainNode = actx.createGain();
+  gainNode.connect(actx.destination);
+}
+const clamp01 = (x) => Math.max(0, Math.min(1, x));
+function update() {
+  const now = performance.now();
+  if (now - lastUpdate < 8) return;
+  const dt = Math.min(0.1, (now - lastUpdate) / 1000);
+  lastUpdate = now;
+  if (!mediaEl) {
+    // No file loaded: a soft 120 bpm demo pulse so audio-reactive sketches still move.
+    simulated = true;
+    const t = now / 1000;
+    const ph = (t * 2) % 1;
+    bands.beat = Math.exp(-ph / 0.12);
+    bands.bass = 0.25 + 0.6 * bands.beat;
+    bands.mid = 0.3 + 0.15 * Math.sin(t * 1.3);
+    bands.treble = 0.2 + 0.1 * Math.sin(t * 3.1);
+    bands.level = 0.3 + 0.35 * bands.beat;
+    for (let i = 0; i < freq.length; i += 1) freq[i] = 255 * clamp01((i < 40 ? bands.bass : i < 300 ? bands.mid : bands.treble) * (1 - i / 1400));
+    for (let i = 0; i < wave.length; i += 1) wave[i] = Math.sin(i / 18 + t * 8) * bands.level * 0.6;
+    return;
+  }
+  simulated = false;
+  analyser.getByteFrequencyData(freq);
+  analyser.getFloatTimeDomainData(wave);
+  const hz = actx.sampleRate / analyser.fftSize;
+  const avg = (lo, hi) => {
+    let s = 0; let n = 0;
+    for (let i = Math.max(1, Math.floor(lo / hz)); i <= Math.min(freq.length - 1, Math.ceil(hi / hz)); i += 1) { s += freq[i]; n += 1; }
+    return n ? s / n / 255 : 0;
+  };
+  let rms = 0;
+  for (let i = 0; i < wave.length; i += 1) rms += wave[i] * wave[i];
+  bands.level = clamp01(Math.sqrt(rms / wave.length) * 3);
+  bands.bass = avg(20, 150);
+  bands.mid = clamp01(avg(150, 2000) * 1.2);
+  bands.treble = clamp01(avg(2000, 12000) * 1.6);
+  const t = mediaEl.currentTime;
+  if (analysis?.beats?.length) {
+    // Beats from the Lab's analysis of the whole file: exact, and steady even at low frame rates.
+    let lo = 0; let hi = analysis.beats.length - 1; let k = -1;
+    while (lo <= hi) { const m = (lo + hi) >> 1; if (analysis.beats[m] <= t) { k = m; lo = m + 1; } else hi = m - 1; }
+    bands.beat = k < 0 ? 0 : Math.exp(-(t - analysis.beats[k]) / 0.15);
+  } else {
+    bassAvg += (bands.bass - bassAvg) * Math.min(1, dt * 2);
+    if (!mediaEl.paused && bands.bass > bassAvg * 1.25 + 0.04 && now - lastBeatAt > 250) lastBeatAt = now;
+    bands.beat = Math.exp(-(now - lastBeatAt) / 150);
+  }
+  if (mediaEl.paused) bands.beat = 0;
+}
+const audio = {
+  get level() { update(); return bands.level; },
+  get bass() { update(); return bands.bass; },
+  get mid() { update(); return bands.mid; },
+  get treble() { update(); return bands.treble; },
+  get beat() { update(); return bands.beat; },
+  get spectrum() { update(); return freq; },
+  get waveform() { update(); return wave; },
+  // Average of a frequency range, 0..1 (e.g. audio.band(40, 90) for the kick).
+  band(lo, hi) {
+    update();
+    const hz = (actx?.sampleRate || 48000) / 2048;
+    let s = 0; let n = 0;
+    for (let i = Math.max(1, Math.floor(lo / hz)); i <= Math.min(freq.length - 1, Math.ceil(hi / hz)); i += 1) { s += freq[i]; n += 1; }
+    return n ? s / n / 255 : 0;
+  },
+  get time() { return mediaEl ? mediaEl.currentTime : performance.now() / 1000; },
+  get duration() { return mediaEl?.duration || 0; },
+  get playing() { return mediaEl ? !mediaEl.paused : true; },
+  get loaded() { return Boolean(mediaEl); },
+  get simulated() { update(); return simulated; },
+  get bpm() { return analysis?.bpm || (mediaEl ? 0 : 120); },
+  get analysis() { return analysis; },
+  get file() { return analysis?.name || null; },
+};
+const media = {
+  get video() { return isVideo ? mediaEl : null; },
+  get width() { return isVideo ? mediaEl.videoWidth : 0; },
+  get height() { return isVideo ? mediaEl.videoHeight : 0; },
+  texture() {
+    if (!isVideo) return null;
+    if (!videoTex || videoTex.image !== mediaEl) { videoTex = new THREE.VideoTexture(mediaEl); videoTex.colorSpace = THREE.SRGBColorSpace; }
+    return videoTex;
+  },
+};
+globalThis.audio = audio;
+globalThis.media = media;
+let stateTimer = 0;
+const sendState = () => { if (mediaEl) post({ type: 'media-state', time: mediaEl.currentTime, duration: mediaEl.duration || 0, playing: !mediaEl.paused, ended: mediaEl.ended }); };
+function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, loop = false, volume = 1, analysis: a }) {
+  if (mediaEl) { mediaEl.pause(); srcNode?.disconnect(); mediaEl.removeAttribute('src'); mediaEl.load(); URL.revokeObjectURL(mediaUrl); }
+  graph();
+  analysis = a ? { ...a, name } : { name };
+  isVideo = Boolean(video);
+  mediaUrl = URL.createObjectURL(new Blob([buffer], { type: mime || (video ? 'video/mp4' : 'audio/mpeg') }));
+  const m = document.createElement('video');
+  m.playsInline = true;
+  m.preload = 'auto';
+  m.loop = loop;
+  m.src = mediaUrl;
+  mediaEl = m;
+  srcNode = actx.createMediaElementSource(m);
+  srcNode.connect(analyser);
+  srcNode.connect(gainNode);
+  if (recDest) srcNode.connect(recDest);
+  gainNode.gain.value = volume;
+  for (const ev of ['play', 'pause', 'ended', 'seeked', 'loadedmetadata']) m.addEventListener(ev, sendState);
+  clearInterval(stateTimer);
+  stateTimer = realSetInterval(() => { if (!m.paused) sendState(); }, 250);
+  m.addEventListener('loadedmetadata', () => {
+    m.currentTime = Math.min(startAt, Math.max(0, (m.duration || 0) - 0.05));
+    if (playing) { actx.resume(); m.play().catch((err) => post({ type: 'console', level: 'warn', text: `Couldn't start playback: ${err.message}` })); }
+  }, { once: true });
+  m.addEventListener('error', () => post({ type: 'error', message: `Couldn't play ${name} (${m.error?.message || 'unsupported format'})` }));
+}
+function mediaCommand({ cmd, value }) {
+  if (!mediaEl) return;
+  if (cmd === 'play') { actx.resume(); if (mediaEl.ended) mediaEl.currentTime = 0; mediaEl.play().catch(() => {}); }
+  if (cmd === 'pause') mediaEl.pause();
+  if (cmd === 'seek') { mediaEl.currentTime = Math.max(0, Math.min(value, (mediaEl.duration || value) - 0.01)); sendState(); }
+  if (cmd === 'loop') mediaEl.loop = Boolean(value);
+  if (cmd === 'volume') gainNode.gain.value = value;
+}
+
+// ---------- recording ----------
+let recorder = null;
+function startRecording({ fps = 60, bitrate = 16e6 } = {}) {
+  const canvas = lastRenderer?.domElement;
+  if (!canvas) { post({ type: 'record-error', message: 'Nothing is rendering yet.' }); return; }
+  const stream = canvas.captureStream(fps);
+  if (mediaEl) {
+    if (!recDest) { recDest = actx.createMediaStreamDestination(); srcNode.connect(recDest); }
+    for (const tr of recDest.stream.getAudioTracks()) stream.addTrack(tr);
+  }
+  const mime = ['video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm'].find((t) => MediaRecorder.isTypeSupported(t));
+  const chunks = [];
+  recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: bitrate, audioBitsPerSecond: 320000 });
+  recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  recorder.onstop = async () => {
+    const buf = await new Blob(chunks, { type: mime }).arrayBuffer();
+    post({ type: 'recording', mime, width: canvas.width, height: canvas.height, buffer: buf }, [buf]);
+    recorder = null;
+  };
+  recorder.start(1000);
+  post({ type: 'record-started', mime, width: canvas.width, height: canvas.height });
+}
+const stopRecording = () => { if (recorder?.state === 'recording') recorder.stop(); };
 
 // ---------- sliders ----------
 // The Lab runs sketches with their numbers/colors swapped for __tv(i) so sliders can change them live.
 // Reads after setup (2 frames after the module finishes) mean the value is re-read every frame.
+// A slider can also follow the music: mods[i] = { band: 'bass'|'mid'|'treble'|'level'|'beat', amount, span, int }.
 const TV = [];
+let mods = {};
 let tweakKeys = {};
-const usedAtSetup = new Set();
-const usedLive = new Set();
+let usedAtSetup = new Set();
+let usedLive = new Set();
 let pastSetup = false;
 // Report as soon as a value is first read (a microtask, so it isn't delayed by background timer throttling).
 let reportQueued = false;
@@ -107,9 +294,15 @@ const markRead = (i) => {
   reportQueued = true;
   queueMicrotask(() => { reportQueued = false; post({ type: 'tweak-reads', used: [...usedAtSetup], live: [...usedLive] }); });
 };
-globalThis.__tv = (i) => { markRead(i); return TV[i]; };
-const tweakSets = [];
-// Named controls: const P = tweak({ speed: [1, 0, 5], glow: { value: 1, min: 0, max: 3, onChange }, tint: '#ff3cac', wire: false })
+const valueOf = (i, base) => {
+  const m = mods[i];
+  if (!m || typeof base !== 'number') return base;
+  const v = base + m.amount * m.span * audio[m.band];
+  return m.int ? Math.round(v) : v;
+};
+globalThis.__tv = (i) => { markRead(i); return valueOf(i, TV[i]); };
+let tweakSets = [];
+// Named controls: const P = tweak({ speed: [1, 0, 5], glow: { value: 1, min: 0, max: 3, label: 'Glow', group: 'Look', onChange }, tint: '#ff3cac', wire: false })
 globalThis.tweak = (spec = {}) => {
   const call = tweakSets.length;
   const vals = {};
@@ -122,7 +315,7 @@ globalThis.tweak = (spec = {}) => {
     if (handlers[key] && idx != null) { usedLive.add(idx); markRead(idx); } // onChange controls are live by definition
     Object.defineProperty(out, key, {
       enumerable: true,
-      get() { if (idx != null) markRead(idx); return vals[key]; },
+      get() { if (idx == null) return vals[key]; markRead(idx); return valueOf(idx, vals[key]); },
       set(x) { vals[key] = x; },
     });
   }
@@ -137,13 +330,67 @@ function setTweak({ index, value, call, key }) {
   try { set.handlers[key]?.(value); } catch (err) { post({ type: 'error', message: `${err.name}: ${err.message} (in onChange for "${key}")` }); }
 }
 
+// ---------- run generations ----------
+// Sliders that only matter while a scene is built (sizes, counts…) and code edits re-run the sketch in
+// place: the old renderer, window listeners, timers and DOM are torn down and the module runs again,
+// without reloading three.js or interrupting the music.
+let gen = 0;
+let sketchListeners = [];
+let sketchRunning = false;
+const keepBody = new Set(document.body.children);
+const keepHead = new Set(document.head.children);
+let guardsInstalled = false;
+function installRunGuards() {
+  if (guardsInstalled) return;
+  guardsInstalled = true;
+  const add = EventTarget.prototype.addEventListener;
+  EventTarget.prototype.addEventListener = function (type, fn, opts) {
+    if (sketchRunning && (this === window || this === document)) sketchListeners.push([this, type, fn, opts]);
+    return add.call(this, type, fn, opts);
+  };
+  const guard = (fn) => { const g = gen; return typeof fn === 'function' ? (...a) => { if (g === gen) fn(...a); } : fn; };
+  window.requestAnimationFrame = (fn) => realRAF(guard(fn));
+  window.setTimeout = (fn, ms, ...a) => realSetTimeout(guard(fn), ms, ...a);
+  window.setInterval = (fn, ms, ...a) => { const g = gen; const id = realSetInterval((...b) => { if (g === gen) fn(...b); else clearInterval(id); }, ms, ...a); return id; };
+}
+function teardown() {
+  gen += 1;
+  stopRecording();
+  for (const r of renderers) {
+    try { r.setAnimationLoop(null); } catch {}
+    try { r.dispose(); r.forceContextLoss(); } catch {}
+    r.domElement?.remove();
+  }
+  renderers.clear();
+  lastRenderer = null;
+  for (const [t, type, fn, opts] of sketchListeners) t.removeEventListener(type, fn, opts);
+  sketchListeners = [];
+  for (const n of [...document.body.children]) if (!keepBody.has(n)) n.remove();
+  for (const n of [...document.head.children]) if (!keepHead.has(n)) n.remove();
+  document.body.removeAttribute('style');
+  document.documentElement.removeAttribute('style');
+  videoTex = null;
+  tweakSets = [];
+  usedAtSetup = new Set();
+  usedLive = new Set();
+  pastSetup = false;
+}
+
 // ---------- sketch mode ----------
-async function runSketch(code) {
+let lastUrl = null;
+async function runSketch(code, hot = false) {
+  installRunGuards();
+  if (hot) teardown();
+  if (lastUrl) URL.revokeObjectURL(lastUrl);
   const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+  lastUrl = url;
+  const g = gen;
+  sketchRunning = true;
   try {
     await import(url);
-    post({ type: 'ran' });
-    requestAnimationFrame(() => requestAnimationFrame(() => { pastSetup = true; }));
+    if (g !== gen) return;
+    post({ type: 'ran', hot });
+    realRAF(() => realRAF(() => { if (g === gen) pastSetup = true; }));
   } catch (err) {
     post({ type: 'error', message: `${err.name}: ${err.message}`, line: Number(/blob:[^\s)]*?:(\d+):\d+/.exec(err.stack || '')?.[1]) || null });
   }
@@ -450,9 +697,15 @@ async function setupViewer() {
 addEventListener('message', async (e) => {
   const msg = e.data || {};
   if (msg.target !== 'three-sandbox') return;
-  if (msg.type === 'tweak-init') { TV.splice(0, TV.length, ...msg.values); tweakKeys = msg.keys || {}; }
+  if (msg.type === 'tweak-init') { TV.splice(0, TV.length, ...msg.values); tweakKeys = msg.keys || {}; mods = msg.mods || {}; }
   if (msg.type === 'tweak') setTweak(msg);
+  if (msg.type === 'tweak-mods') mods = msg.mods || {};
   if (msg.type === 'run') runSketch(msg.code);
+  if (msg.type === 'hot-run') runSketch(msg.code, true);
+  if (msg.type === 'media-load') loadMedia(msg);
+  if (msg.type === 'media') mediaCommand(msg);
+  if (msg.type === 'media-analysis' && mediaEl) analysis = { ...msg.analysis, name: analysis?.name };
+  if (msg.type === 'record') { if (msg.cmd === 'start') startRecording(msg); else stopRecording(); }
   if (msg.type === 'shader') shader?.set(msg.code);
   if (msg.type === 'load') viewer?.load(msg);
   if (msg.type === 'viewer') viewer?.command(msg);

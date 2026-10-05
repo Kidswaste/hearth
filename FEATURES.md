@@ -166,3 +166,17 @@
 142. ✓ **Save to code** writes the changed values back into the code (the old version goes to History); **Reset** goes back to the code's values; double-click a slider to reset just that one. Switching sketches with unsaved values offers "Save them".
 143. ✓ **Named controls** with `tweak()`: `const P = tweak({ speed: [1, 0, 5], tint: '#ff3cac', wire: false })` shows a Controls group with those ranges; `{ value, min, max, onChange }` for settings that must be applied when changed. Export HTML keeps working (the values are frozen).
 144. ✓ **Three Director builds sliders in**: every scene it makes comes with 4–8 named live controls, and it sees (and keeps) any slider values you haven't saved yet. Sketches without named controls show "Ask the Three Director" to add some. Tested: "glowing orbs over dark water" → 7 controls, 6 live.
+
+## Visualizer toolkit in the Three.js Lab (added Oct 5)
+145. ✓ **Music and video input**: "🎵 Load audio / video…" (or drop a file on the preview) loads an mp3, wav, m4a, flac, ogg, mp4, mov or webm. Play/pause (Space), a clickable overview of the track to jump around, loop, volume. The last file comes back next time.
+146. ✓ **Track analysis** in about a second: tempo, every beat, drops, quiet/medium/loud sections and bass/mids/highs energy. The overview shows loud sections, energy curves, beats and drops (red markers); hovering shows the time and section.
+147. ✓ **Audio for sketches**: `audio.bass / mid / treble / level / beat`, `audio.spectrum`, `audio.waveform`, `audio.band(lo, hi)`, `audio.analysis` (the whole track), and `media.texture()` for an mp4 as a video texture. With no file loaded, a demo 120 bpm beat keeps sketches moving.
+148. ✓ **Exact frame sizes**: Fit, 9:16 (1080×1920), 16:9, 1:1 and 4:5 buttons on the preview render at those exact pixels and scale to fit, with a Shorts/Reels/TikTok safe-zone overlay for 9:16.
+149. ✓ **Record to video**: "⏺ Record" saves the preview with its music as an MP4 (H.264 + AAC) at the frame size: the whole track or from the playhead until Stop. Slider moves during recording are recorded too.
+150. ✓ **Everything live**: sliders that only matter when the scene is built now rebuild it while you drag (in place, without reloading or restarting the music), and code edits apply live ("Live code", on by default). Save is only for keeping changes.
+151. ✓ **Understandable sliders**: named controls show plain labels, groups (Music, Motion, Color…), one-line hints and dropdowns for styles; the raw numbers in the code sit in a collapsed "All values in the code" section.
+152. ✓ **Make any slider follow the music**: ♪ on a slider → Bass, Mids, Highs, Loudness or Beat, with an amount (negative works the other way). Saved per sketch.
+153. ✓ **Looks**: "＋ Save look" remembers the current slider values; click a look to switch back to it. Saved per sketch.
+154. ✓ **🎲 Shuffle and ↶ Undo**: nudge every control to a random nearby value, step back through slider changes.
+155. ✓ **Ask the director with one click**: More energy, Calmer, New colors, Hit harder on beats, Simpler, More detail, Add a slider for…
+156. ✓ **Three Director makes visualizers**: it reads the track (three_media_info), designs for the frame size, gives every sketch 6–12 labeled, grouped sliders with hints, and checks its work at a loud part (three_media_control). It can also load files (three_load_media) and switch the frame (three_set_frame). Tested: "Eclipse visualizer" → 14 sliders in 5 groups, all live.

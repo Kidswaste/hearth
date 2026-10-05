@@ -6,7 +6,7 @@ const ThreeLab = (() => {
   const api = {}; // filled by each tab as it mounts
 
   // One iframe per mode; messages from it are routed by `source`.
-  function sandboxFrame(parent, mode, onMessage) {
+  function sandboxFrame(parent, mode, onMessage, extraParams = () => '') {
     // No allow-same-origin: sketch code (which may come from a chat) can't reach the hub's APIs.
     const frame = el('iframe', { class: 'three-frame', attrs: { sandbox: 'allow-scripts allow-pointer-lock allow-downloads' } });
     parent.append(frame);
@@ -24,17 +24,18 @@ const ThreeLab = (() => {
     };
     const load = () => {
       ready = null;
-      frame.src = `${SANDBOX}?mode=${mode}&v=${store.get('three.version', ThreeData.VERSIONS[0])}&n=${Date.now()}`;
+      frame.src = `${SANDBOX}?mode=${mode}&v=${store.get('three.version', ThreeData.VERSIONS[0])}${extraParams()}&n=${Date.now()}`;
     };
     load();
-    return { frame, send, reload: load, get revision() { return ready?.revision; } };
+    return { frame, send, reload: load, get revision() { return ready?.revision; }, get ready() { return Boolean(ready); } };
   }
 
   // ---------- Sketch tab ----------
   function sketchTab(pane) {
     let sketches = [];
     let current = null;
-    let autoRun = store.get('three.autorun', false);
+    if (!store.get('three.autorunLive')) { store.set('three.autorun', true); store.set('three.autorunLive', true); }
+    let autoRun = store.get('three.autorun', true);
     let errors = [];
     const consoleBox = el('div', { class: 'three-console' });
     const stats = el('div', { class: 'three-stats' });
@@ -47,7 +48,7 @@ const ThreeLab = (() => {
     const btn = (text, title, fn, cls = 'ghost small') => el('button', { class: cls, text, title, on: { click: fn } });
     const toolbar = el('div', { class: 'three-toolbar' },
       btn('▶ Run', 'Run (Ctrl+Enter)', () => run(), 'primary small'),
-      el('label', { class: 'check small', title: 'Re-run a moment after you stop typing' }, autoBox, 'Auto-run'),
+      el('label', { class: 'check small', title: 'Apply code changes live, a moment after you stop typing' }, autoBox, 'Live code'),
       picker,
       btn('New', 'New sketch from a template', () => templateGallery()),
       btn('Rename', 'Rename sketch', () => renameSketch()),
@@ -67,17 +68,24 @@ const ThreeLab = (() => {
     // Sliders for every number/color in the sketch (tools/three-tweaks.js); Save writes them into the code.
     const tweaks = ThreeTweaks.controller({
       send: (msg) => box.send(msg),
-      rerun: () => run(),
+      rerun: (o) => run(o),
+      persist: (kind, data) => { if (!current) return; (extras[current.id] ||= {})[kind] = data; saveExtras(); },
+      quickAsk: (text) => askDirector(text.endsWith('…') ? `${text.slice(0, -1)} ` : text, { send: !text.endsWith('…') }),
       goToLine: (line) => { setCodeVisible(true); requestAnimationFrame(() => goToLine(line)); },
       commit: (code) => { snapshot(); editor.setValue(code); persist(); },
-      askForSliders: () => {
-        const agent = H.agents().find((a) => a.threeTools);
-        if (!agent) { toast('Add an agent with Three.js tools first (the Three Director)', { type: 'error' }); return; }
-        activate(agent.id);
-        Native.setDraft(agent.id, `Add a short set of named sliders to "${current?.name}" with tweak(): the 4–8 settings I'd most want to play with (motion, colors, lighting, glow…), read every frame so they change live. Keep everything else the same.`);
-      },
+      askForSliders: () => askDirector(`Add clearly named sliders to "${current?.name}" with tweak(): the 4–8 settings I'd most want to play with (motion, colors, lighting, glow, how much it reacts to the music…), with labels, groups and hints, read every frame so they change live. Keep everything else the same.`, { send: false }),
     });
-    const split = el('div', { class: 'three-split' }, editorHost, el('div', { class: 'three-right' }, previewHost, consoleBox), tweaks.el);
+    // Sends (or drafts) a message to the Three Director docked next to the Lab.
+    function askDirector(text, { send = true } = {}) {
+      const agent = H.agents().find((a) => a.threeTools);
+      if (!agent) { toast('Add an agent with Three.js tools first (the Three Director)', { type: 'error' }); return; }
+      activate(agent.id);
+      if (!send) { Native.setDraft(agent.id, text); return; }
+      Native.send(agent.id, text).catch((err) => toast(err.message, { type: 'error' }));
+    }
+    // Music / video for audio-reactive sketches, and exact output sizes (tools/three-media.js).
+    const player = ThreeMedia.player({ send: (msg) => box.send(msg), sketchName: () => current?.name, onLoaded: (o) => { if (o?.reload) run(); } });
+    const split = el('div', { class: 'three-split' }, editorHost, el('div', { class: 'three-right' }, previewHost, player.el, consoleBox), tweaks.el);
     function setCodeVisible(show) {
       split.classList.toggle('no-code', !show);
       codeBtn.classList.toggle('on', show);
@@ -95,7 +103,31 @@ const ThreeLab = (() => {
     tweaks.setVisible(false);
     setSlidersVisible(store.get('three.showSliders', true));
     pane.append(toolbar, split);
-    const box = sandboxFrame(previewHost, 'sketch', onMessage);
+    let stage = null;
+    const box = sandboxFrame(previewHost, 'sketch', onMessage, () => stage?.params || '');
+    stage = ThreeMedia.stage(previewHost, box.frame, { onChange: ({ reload }) => { if (reload && current) run(); } });
+    // Drop an mp3/mp4 on the preview to load it.
+    previewHost.addEventListener('dragover', (e) => { if ([...e.dataTransfer.items].some((i) => i.kind === 'file')) { e.preventDefault(); previewHost.classList.add('drop-on'); } });
+    previewHost.addEventListener('dragleave', () => previewHost.classList.remove('drop-on'));
+    previewHost.addEventListener('drop', (e) => {
+      previewHost.classList.remove('drop-on');
+      const f = [...e.dataTransfer.files].find((x) => ThreeMedia.isMedia(x.name));
+      if (!f) return;
+      e.preventDefault();
+      player.load(window.hub.pathForFile(f));
+    });
+    // Space plays / pauses the music (unless you're typing).
+    pane.addEventListener('keydown', (e) => {
+      if (e.code !== 'Space' || e.ctrlKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
+      e.preventDefault();
+      player.toggle();
+    });
+    pane.tabIndex = -1;
+    let ranOnce = false;
+    let rebuildWaiting = false;
+    // Per-sketch looks and music links for the sliders.
+    let extras = {};
+    const saveExtras = debounce(() => window.hub.kvSet('three-lab-extras', extras), 500);
     let consoleLines = [];
     let lastStats = null;
     let pendingShot = null;
@@ -119,6 +151,10 @@ const ThreeLab = (() => {
     function onMessage(msg) {
       if (msg.type === 'console') log(msg.level, msg.text);
       if (msg.type === 'tweak-reads') tweaks.onReads(msg);
+      if (/^(media-state|record-started|record-error|recording)$/.test(msg.type)) {
+        player.onMessage(msg);
+        if (msg.type === 'recording' && rebuildWaiting) { rebuildWaiting = false; run({ hot: true }); }
+      }
       if (msg.type === 'error') {
         if (tweaks.onError(msg)) return; // couldn't attach sliders: it re-runs as-is
         errors.push(msg);
@@ -138,7 +174,7 @@ const ThreeLab = (() => {
         if (pendingShot) { pendingShot(msg.dataUrl); pendingShot = null; } else saveDataUrl(msg.dataUrl, `${current?.name || 'sketch'}.png`);
       }
     }
-    const autoRunSoon = debounce(() => run(), 900);
+    const autoRunSoon = debounce(() => run({ hot: true }), 700);
 
     // Version history: a snapshot each time the code runs (40 per sketch), plus deleted sketches.
     let history = {};
@@ -188,18 +224,28 @@ const ThreeLab = (() => {
       dlg.showModal();
     }
 
-    function run() {
+    // Full runs reload the preview; hot runs (slider rebuilds, live code) re-run the sketch in place,
+    // keeping three.js loaded and the music playing.
+    function run({ hot = false } = {}) {
+      if (hot && (!box.ready || !ranOnce)) hot = false;
+      if (player.recording) {
+        // A rebuild would end the recording; it waits until the video is saved.
+        if (hot) { if (!rebuildWaiting) toast('That change rebuilds the scene: it applies when you stop recording', { timeout: 2500 }); rebuildWaiting = true; return false; }
+        toast('Stop the recording first', { type: 'error' });
+        return false;
+      }
       snapshot();
       consoleLines = [];
-      lastStats = null;
       errors = [];
       editor.setErrorLines([]);
       consoleBox.replaceChildren();
-      stats.hidden = true;
-      box.reload();
       const prepared = tweaks.prepare(editor.value);
-      if (prepared) box.send({ type: 'tweak-init', values: prepared.values, keys: prepared.keys });
-      box.send({ type: 'run', code: prepared ? prepared.code : editor.value });
+      if (!hot) { lastStats = null; stats.hidden = true; box.reload(); }
+      if (prepared) box.send({ type: 'tweak-init', values: prepared.values, keys: prepared.keys, mods: prepared.mods });
+      if (!hot) player.attach();
+      box.send({ type: hot ? 'hot-run' : 'run', code: prepared ? prepared.code : editor.value });
+      ranOnce = true;
+      return true;
     }
 
     const save = debounce(() => window.hub.kvSet('three-sketches', sketches), 600);
@@ -228,6 +274,7 @@ const ThreeLab = (() => {
       }
       tweaks.forget();
       current = sketches.find((s) => s.id === id) || sketches[0];
+      tweaks.load(extras[current.id]);
       store.set('three.current', current.id);
       editor.setValue(current.code);
       renderPicker();
@@ -278,6 +325,12 @@ const ThreeLab = (() => {
 <script>
 // Slider controls from the Three.js Lab, frozen at their saved values.
 window.tweak = (spec) => Object.fromEntries(Object.entries(spec).map(([k, v]) => [k, Array.isArray(v) ? v[0] : (v && typeof v === 'object' && 'value' in v) ? v.value : v]));
+</script>` : ''}${/\b(audio|media)\./.test(editor.value) ? `
+<script>
+// The Lab's music input isn't part of the export: these stand-ins keep the sketch running (silent).
+window.audio = { level: 0, bass: 0, mid: 0, treble: 0, beat: 0, spectrum: new Uint8Array(1024), waveform: new Float32Array(2048), band: () => 0, time: 0, duration: 0, playing: false, loaded: false, simulated: false, bpm: 0, analysis: null, file: null };
+window.audio = new Proxy(window.audio, { get: (o, k) => (k === 'time' ? performance.now() / 1000 : o[k]) });
+window.media = { video: null, width: 0, height: 0, texture: () => null };
 </script>` : ''}
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@${v}/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@${v}/examples/jsm/" } }
@@ -310,6 +363,9 @@ ${editor.value}
     (async () => {
       sketches = await window.hub.kvGet('three-sketches', []);
       ({ versions: history = {}, trash = [] } = await window.hub.kvGet('three-history', {}));
+      extras = await window.hub.kvGet('three-lab-extras', {});
+      const lastMedia = store.get('three.media', null);
+      if (lastMedia) player.load(lastMedia, { quiet: true });
       if (!sketches.length) { sketches = [{ id: `s${Date.now()}`, name: 'Basic scene', code: ThreeData.TEMPLATES[0].code, updatedAt: Date.now() }]; save(); }
       openSketch(store.get('three.current', sketches[0].id));
       api.director = director; // only once saved sketches are loaded, so director edits never land on a placeholder
@@ -324,12 +380,18 @@ ${editor.value}
       errors: errors.map((e) => ({ message: e.message, line: e.line || undefined })),
       console: consoleLines.slice(-30).map((l) => `${l.level === 'log' ? '' : `[${l.level}] `}${l.line ? `(line ${l.line}) ` : ''}${l.text}`),
       stats: lastStats || 'no frames rendered yet (nothing calls renderer.render, or it failed)',
+      frame: stage.size,
+      ...(tweaks.controls().length ? { sliders: tweaks.controls() } : { sliders: 'none: add named controls with tweak()' }),
       ...(tweaks.unsaved().length ? { unsavedSliders: tweaks.unsaved() } : {}),
+      music: player.loaded ? (({ file, bpm, duration, time, playing }) => ({ file, bpm, duration, time, playing }))(player.info()) : 'none loaded (demo 120 bpm beat)',
       ...(document.hidden || !document.hasFocus() ? { note: 'The hub window is in the background, so fps is throttled here; judge performance by renderMs.' } : {}),
     });
     const director = {
-      getCode: () => ({ sketch: current?.name, lines: editor.value.split('\n').length, code: editor.value, ...(tweaks.unsaved().length ? { unsavedSliders: tweaks.unsaved(), note: 'The user moved these sliders but has not saved them into the code; keep their values when you rewrite.' } : {}) }),
+      getCode: () => ({ sketch: current?.name, frame: stage.size, lines: editor.value.split('\n').length, code: editor.value, ...(tweaks.controls().length ? { sliders: tweaks.controls() } : {}), ...(tweaks.unsaved().length ? { unsavedSliders: tweaks.unsaved(), note: 'The user moved these sliders but has not saved them into the code; keep their values when you rewrite.' } : {}) }),
+      media: player,
+      setFrame: (id) => stage.setMode(id),
       async setCode(code, wait = 2.5) {
+        if (player.recording) throw new Error('The user is recording a video right now; wait until they stop.');
         snapshot();
         editor.setValue(code);
         persist();
@@ -680,6 +742,27 @@ ${frag}\`,
       return { ok: true, value: await d.newSketch(String(args.name || 'Untitled'), String(args.code || ''), Number(args.wait) || 2.5) };
     }
     if (tool === 'three_console') return { ok: true, value: d.report() };
+    if (tool === 'three_media_info') return { ok: true, value: d.media.info() };
+    if (tool === 'three_load_media') {
+      const r = await d.media.load(String(args.path || ''));
+      if (!r.ok) return { ok: false, error: r.error };
+      for (let i = 0; i < 120 && !d.media.info().bpm && d.media.info().analysis !== 'none (no audio track)'; i += 1) await new Promise((res) => setTimeout(res, 250));
+      return { ok: true, value: d.media.info() };
+    }
+    if (tool === 'three_media_control') {
+      if (!d.media.loaded) return { ok: false, error: 'No music loaded.' };
+      if (args.action === 'seek' || args.time != null) d.media.seek(Number(args.time) || 0);
+      if (args.action === 'play') d.media.toggle(true);
+      if (args.action === 'pause') d.media.toggle(false);
+      await new Promise((res) => setTimeout(res, 600));
+      return { ok: true, value: d.media.info() };
+    }
+    if (tool === 'three_set_frame') {
+      if (!ThreeMedia.SIZES.some((x) => x.id === args.size)) return { ok: false, error: `size must be one of ${ThreeMedia.SIZES.map((x) => x.id).join(', ')}` };
+      d.setFrame(args.size);
+      await new Promise((res) => setTimeout(res, 1500));
+      return { ok: true, value: d.report() };
+    }
     if (tool === 'three_screenshot') {
       const url = await d.shot();
       if (!url) return { ok: false, error: 'No image: the sketch is not rendering (check three_console for errors).' };
@@ -688,7 +771,7 @@ ${frag}\`,
       img.src = url;
       await img.decode();
       const c = document.createElement('canvas');
-      const scale = Math.min(1, 1280 / img.width);
+      const scale = Math.min(1, 1280 / Math.max(img.width, img.height));
       c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
       return { ok: true, images: [{ data: c.toDataURL('image/jpeg', 0.85).split(',')[1], mime: 'image/jpeg' }], value: `Screenshot of "${d.getCode().sketch}" (${c.width}×${c.height}).` };

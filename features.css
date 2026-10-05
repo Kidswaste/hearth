@@ -559,3 +559,67 @@ html[data-skin="forge"] .dock-toggle { font-family: var(--mono); text-transform:
 .tweaks.dirty .tw-head { box-shadow: inset 0 -1px 0 #ffd75e; }
 html[data-skin="forge"] .tweaks { border-radius: 0; background: linear-gradient(180deg, #0f1214, #0b0e10); border-color: var(--line-hi, #443e35); }
 .tw-head button { white-space: nowrap; }
+
+/* ---------- Three.js Lab: frame sizes, music bar, richer sliders ---------- */
+.three-split.with-tweaks { grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr) 320px; }
+.three-split.no-code.with-tweaks { grid-template-columns: 1fr 320px; }
+.three-preview.exact { background: #07080a; }
+.three-preview.exact .three-frame { box-shadow: 0 0 0 1px #ffffff1a, 0 10px 40px #000a; }
+.three-preview.drop-on { outline: 2px dashed #ffd75e; outline-offset: -6px; }
+.three-stats { z-index: 2; }
+.stage-pill { position: absolute; top: 8px; right: 8px; z-index: 3; display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 8px; background: #000b; backdrop-filter: blur(4px); }
+.stage-btn { padding: 3px 8px; font: 11px/1.4 Consolas, monospace; color: #cfc6bb; background: none; border: 1px solid transparent; border-radius: 6px; cursor: pointer; }
+.stage-btn:hover { color: #fff; background: #ffffff12; }
+.stage-btn.on { color: #0b0e10; background: #ffd75e; }
+.stage-size { padding: 0 6px; font: 10.5px Consolas, monospace; color: #8f877d; }
+.safe-zones { position: absolute; z-index: 2; pointer-events: none; }
+.safe-zones .sz { position: absolute; display: flex; align-items: center; justify-content: center; font: 10px Consolas, monospace; letter-spacing: .06em; text-transform: uppercase; color: #ffffffb0; background: repeating-linear-gradient(135deg, #ff6a6a26 0 8px, #ff6a6a12 8px 16px); border: 1px dashed #ff6a6a80; }
+.safe-zones .sz.top { left: 0; right: 0; top: 0; height: 12%; }
+.safe-zones .sz.bottom { left: 0; right: 0; bottom: 0; height: 22%; }
+.safe-zones .sz.right { right: 0; width: 15%; bottom: 22%; height: 36%; writing-mode: vertical-rl; }
+.media-bar { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: color-mix(in srgb, #000 25%, var(--bg)); min-width: 0; }
+.media-bar .mb-name { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.media-bar.empty .mb-name { color: var(--muted); max-width: 260px; }
+.media-bar.empty .mb-play, .media-bar.empty .mb-time, .media-bar.empty .mb-vol, .media-bar.empty .mb-overview { display: none; }
+.media-bar .mb-x { padding: 0 6px; }
+.media-bar .mb-play { width: 34px; padding-left: 0; padding-right: 0; }
+.media-bar .mb-time { font: 11.5px Consolas, monospace; color: var(--muted); white-space: nowrap; }
+.media-bar .mb-overview { flex: 1; min-width: 80px; height: 36px; border-radius: 4px; background: #05070880; cursor: pointer; }
+.media-bar .mb-vol { width: 70px; accent-color: #ffd75e; }
+.media-bar .mb-bpm { font: 11px Consolas, monospace; color: #ffd75e; white-space: nowrap; }
+.media-bar .mb-rec.on { color: #fff; background: #c62828; border-color: #ff6a6a; animation: mb-blink 1.2s ease-in-out infinite; }
+@keyframes mb-blink { 50% { box-shadow: 0 0 0 3px #ff6a6a40; } }
+.media-bar .on:not(.mb-rec) { color: #ffd75e; }
+.mb-menu { position: fixed; z-index: 1000; transform: translateY(-100%); width: 260px; display: flex; flex-direction: column; padding: 4px; border: 1px solid var(--line-hi, #443e35); background: #0f1214; box-shadow: 0 10px 30px #000a; }
+.mb-menu .menu-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 10px; text-align: left; background: none; border: none; color: inherit; cursor: pointer; }
+.mb-menu .menu-item:hover { background: #ffd75e14; }
+.tw-status { margin: 0 10px 6px; font-size: 11.5px; color: var(--muted); }
+.tw-status.dirty { color: #ffd75e; }
+.tw-looks { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 10px 8px; }
+.tw-look { display: inline-flex; align-items: stretch; border: 1px solid var(--line-hi, #443e35); }
+.tw-look-apply { padding: 2px 8px; font-size: 11.5px; background: none; border: none; color: inherit; cursor: pointer; }
+.tw-look-apply:hover { background: #ffd75e1a; color: #ffd75e; }
+.tw-look-x { padding: 0 5px; background: none; border: none; border-left: 1px solid var(--line); color: var(--muted); cursor: pointer; }
+.tw-look-x:hover { color: #ff6a6a; }
+.tw-chip { padding: 2px 8px; font-size: 11.5px; color: inherit; background: none; border: 1px solid var(--line); cursor: pointer; }
+.tw-chip:hover { border-color: #ffd75e; color: #ffd75e; }
+.tw-chip.on { background: #ffd75e; color: #0b0e10; border-color: #ffd75e; }
+.tw-chip.add { color: var(--muted); border-style: dashed; }
+.tw-asks { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 10px; border-top: 1px solid var(--line); }
+.tw-asks-title { width: 100%; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.tw-hint { font-size: 11px; color: var(--muted); margin: -1px 0 4px; }
+.tw-row.named .tw-name { font-weight: 600; }
+.tw-music-btn { flex: none; padding: 0 5px; font-size: 11px; color: var(--muted); background: none; border: 1px solid transparent; cursor: pointer; }
+.tw-music-btn:hover { color: #48ddff; border-color: var(--line); }
+.tw-music-btn.on { color: #48ddff; border-color: #48ddff80; }
+.tw-music { color: #48ddff; }
+.tw-bind { margin-top: 6px; padding: 6px; border-left: 2px solid #48ddff; background: #48ddff0d; }
+.tw-bind-bands { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 4px; }
+.tw-bind .tw-chip.on { background: #48ddff; border-color: #48ddff; }
+.tw-bind-pct { width: 40px; text-align: right; font: 11px Consolas, monospace; }
+.tw-select { width: 100%; padding: 3px 6px; }
+.tw-switch { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+.tw-adv { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 6px; }
+.tw-adv > summary { cursor: pointer; font-size: 11.5px; color: var(--muted); padding: 4px 0; }
+.tw-adv > summary:hover { color: var(--fg, #eae0d5); }
+.tw-head .ghost.small { padding-left: 7px; padding-right: 7px; }

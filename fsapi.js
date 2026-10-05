@@ -38,6 +38,7 @@ function read(file, { maxBytes = 20 * 1024 * 1024, encoding = 'utf8' } = {}) {
   const p = assertAbs(file);
   const { size } = fs.statSync(p);
   if (size > maxBytes) throw new Error(`File is ${Math.round(size / 1048576)} MB, over the ${Math.round(maxBytes / 1048576)} MB limit`);
+  if (encoding === 'buffer') return fs.readFileSync(p); // arrives in the renderer as a Uint8Array
   return fs.readFileSync(p, encoding === 'base64' ? 'base64' : 'utf8');
 }
 
@@ -45,7 +46,8 @@ function write(file, content, { base64 = false } = {}) {
   const p = assertAbs(file);
   fs.mkdirSync(path.dirname(p), { recursive: true });
   const tmp = `${p}.hubtmp`;
-  fs.writeFileSync(tmp, base64 ? Buffer.from(content, 'base64') : content);
+  const bytes = content instanceof Uint8Array ? content : content instanceof ArrayBuffer ? new Uint8Array(content) : null;
+  fs.writeFileSync(tmp, bytes || (base64 ? Buffer.from(content, 'base64') : content));
   fs.renameSync(tmp, p);
   return true;
 }

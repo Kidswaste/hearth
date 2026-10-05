@@ -91,6 +91,7 @@ function createWindow() {
       contextIsolation: true,
       webviewTag: true,
       spellcheck: true,
+      autoplayPolicy: 'no-user-gesture-required', // Three.js Lab plays audio inside its sandbox frame
     },
   });
   if (state.maximized) win.maximize();

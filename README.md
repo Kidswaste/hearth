@@ -13,6 +13,7 @@ Three.js and After Effects. No API keys, nothing extra to pay.
 - **Website agents** are the real sites with your logins, plus a navigation bar.
 - **Directors** live inside their tools: **Video Director** in Video Review (describe how the render should look; it watches frames and steers the AE scripts) and **Three Director** in the Three.js Lab (describe a scene; it writes and checks the code). Toggle them with the 💬 button in the tool header.
 - **Three.js Lab sliders**: 🎚 Sliders lists every number and color in a sketch; ⚡ ones change instantly, ↻ ones rebuild the scene when you let go. Press **Save to code** to keep them.
+- **Visualizers**: load a track with 🎵 (or drop it on the preview), pick 9:16 on the preview for 1080×1920, shape it with the sliders (♪ links a slider to the music, ＋ Save look, 🎲 shuffle) and ⏺ Record to an MP4.
 - **Ctrl+K** opens the command palette: every agent, chat, tool and action (`?word` searches inside messages).
 
 ## Shortcuts
