@@ -61,15 +61,39 @@ const ThreeLab = (() => {
       btn('Ask Claude', 'Send this sketch (and any errors) to Claude', askAbout));
     // Prompt-first: the code editor stays hidden until asked for.
     const codeBtn = btn('</> Code', 'Show or hide the code (the Three Director writes it for you)', () => setCodeVisible(split.classList.contains('no-code')));
-    toolbar.prepend(codeBtn);
+    const slidersBtn = btn('🎚 Sliders', 'Show or hide sliders for the numbers and colors in this sketch', () => setSlidersVisible(!tweaks.visible));
+    toolbar.prepend(codeBtn, slidersBtn);
     const editor = new CodeEditor(editorHost, { lang: 'js', onRun: () => run(), onChange: () => { persist(); if (autoRun) autoRunSoon(); } });
-    const split = el('div', { class: 'three-split' }, editorHost, el('div', { class: 'three-right' }, previewHost, consoleBox));
+    // Sliders for every number/color in the sketch (tools/three-tweaks.js); Save writes them into the code.
+    const tweaks = ThreeTweaks.controller({
+      send: (msg) => box.send(msg),
+      rerun: () => run(),
+      goToLine: (line) => { setCodeVisible(true); requestAnimationFrame(() => goToLine(line)); },
+      commit: (code) => { snapshot(); editor.setValue(code); persist(); },
+      askForSliders: () => {
+        const agent = H.agents().find((a) => a.threeTools);
+        if (!agent) { toast('Add an agent with Three.js tools first (the Three Director)', { type: 'error' }); return; }
+        activate(agent.id);
+        Native.setDraft(agent.id, `Add a short set of named sliders to "${current?.name}" with tweak(): the 4–8 settings I'd most want to play with (motion, colors, lighting, glow…), read every frame so they change live. Keep everything else the same.`);
+      },
+    });
+    const split = el('div', { class: 'three-split' }, editorHost, el('div', { class: 'three-right' }, previewHost, consoleBox), tweaks.el);
     function setCodeVisible(show) {
       split.classList.toggle('no-code', !show);
       codeBtn.classList.toggle('on', show);
       store.set('three.showCode', show);
     }
+    function setSlidersVisible(show) {
+      const was = tweaks.visible;
+      tweaks.setVisible(show);
+      split.classList.toggle('with-tweaks', show);
+      slidersBtn.classList.toggle('on', show);
+      store.set('three.showSliders', show);
+      if (show && !was && current) run(); // sliders need the instrumented run
+    }
     setCodeVisible(store.get('three.showCode', false));
+    tweaks.setVisible(false);
+    setSlidersVisible(store.get('three.showSliders', true));
     pane.append(toolbar, split);
     const box = sandboxFrame(previewHost, 'sketch', onMessage);
     let consoleLines = [];
@@ -94,7 +118,9 @@ const ThreeLab = (() => {
     }
     function onMessage(msg) {
       if (msg.type === 'console') log(msg.level, msg.text);
+      if (msg.type === 'tweak-reads') tweaks.onReads(msg);
       if (msg.type === 'error') {
+        if (tweaks.onError(msg)) return; // couldn't attach sliders: it re-runs as-is
         errors.push(msg);
         log('error', msg.message, msg.line);
         editor.setErrorLines(errors.map((e) => e.line).filter(Boolean));
@@ -171,7 +197,9 @@ const ThreeLab = (() => {
       consoleBox.replaceChildren();
       stats.hidden = true;
       box.reload();
-      box.send({ type: 'run', code: editor.value });
+      const prepared = tweaks.prepare(editor.value);
+      if (prepared) box.send({ type: 'tweak-init', values: prepared.values, keys: prepared.keys });
+      box.send({ type: 'run', code: prepared ? prepared.code : editor.value });
     }
 
     const save = debounce(() => window.hub.kvSet('three-sketches', sketches), 600);
@@ -185,6 +213,20 @@ const ThreeLab = (() => {
       picker.replaceChildren(...[...sketches].sort((a, b) => b.updatedAt - a.updatedAt).map((s) => el('option', { value: s.id, text: s.name, selected: s.id === current?.id })));
     }
     function openSketch(id) {
+      const pending = tweaks.pending();
+      const left = current;
+      if (pending && left && left.id !== id && left.code === pending.from) {
+        toast(`Slider changes to "${left.name}" weren't saved`, { timeout: 8000, action: { label: 'Save them', fn: () => {
+          if (left.code !== pending.from) return;
+          history[left.id] ||= [];
+          history[left.id].unshift({ at: Date.now(), code: left.code });
+          saveHistory();
+          left.code = pending.to; left.updatedAt = Date.now(); save();
+          if (current === left) { editor.setValue(left.code); run(); }
+          toast(`Saved into "${left.name}"`);
+        } } });
+      }
+      tweaks.forget();
       current = sketches.find((s) => s.id === id) || sketches[0];
       store.set('three.current', current.id);
       editor.setValue(current.code);
@@ -232,7 +274,11 @@ const ThreeLab = (() => {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(current.name)}</title>
-<style>html, body { margin: 0; height: 100%; overflow: hidden; background: #111; } canvas { display: block; }</style>
+<style>html, body { margin: 0; height: 100%; overflow: hidden; background: #111; } canvas { display: block; }</style>${/\btweak\s*\(/.test(editor.value) ? `
+<script>
+// Slider controls from the Three.js Lab, frozen at their saved values.
+window.tweak = (spec) => Object.fromEntries(Object.entries(spec).map(([k, v]) => [k, Array.isArray(v) ? v[0] : (v && typeof v === 'object' && 'value' in v) ? v.value : v]));
+</script>` : ''}
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@${v}/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@${v}/examples/jsm/" } }
 </script>
@@ -278,10 +324,11 @@ ${editor.value}
       errors: errors.map((e) => ({ message: e.message, line: e.line || undefined })),
       console: consoleLines.slice(-30).map((l) => `${l.level === 'log' ? '' : `[${l.level}] `}${l.line ? `(line ${l.line}) ` : ''}${l.text}`),
       stats: lastStats || 'no frames rendered yet (nothing calls renderer.render, or it failed)',
+      ...(tweaks.unsaved().length ? { unsavedSliders: tweaks.unsaved() } : {}),
       ...(document.hidden || !document.hasFocus() ? { note: 'The hub window is in the background, so fps is throttled here; judge performance by renderMs.' } : {}),
     });
     const director = {
-      getCode: () => ({ sketch: current?.name, lines: editor.value.split('\n').length, code: editor.value }),
+      getCode: () => ({ sketch: current?.name, lines: editor.value.split('\n').length, code: editor.value, ...(tweaks.unsaved().length ? { unsavedSliders: tweaks.unsaved(), note: 'The user moved these sliders but has not saved them into the code; keep their values when you rewrite.' } : {}) }),
       async setCode(code, wait = 2.5) {
         snapshot();
         editor.setValue(code);

@@ -12,6 +12,7 @@ Three.js and After Effects. No API keys, nothing extra to pay.
   Attach files and screenshots, edit/retry messages, pin chats, switch model per chat, type `/` for saved prompts.
 - **Website agents** are the real sites with your logins, plus a navigation bar.
 - **Directors** live inside their tools: **Video Director** in Video Review (describe how the render should look; it watches frames and steers the AE scripts) and **Three Director** in the Three.js Lab (describe a scene; it writes and checks the code). Toggle them with the 💬 button in the tool header.
+- **Three.js Lab sliders**: 🎚 Sliders lists every number and color in a sketch; ⚡ ones change instantly, ↻ ones rebuild the scene when you let go. Press **Save to code** to keep them.
 - **Ctrl+K** opens the command palette: every agent, chat, tool and action (`?word` searches inside messages).
 
 ## Shortcuts

@@ -4,7 +4,12 @@ const { serve } = require('./common');
 
 const GUIDE = `The user describes scenes in words; you build them as three.js sketches in the hub's Three.js Lab, which they watch live next to this chat.
 Sketches are ES modules: import * as THREE from 'three' and addons from 'three/addons/...' (e.g. 'three/addons/controls/OrbitControls.js'). Create your own WebGLRenderer, append renderer.domElement to document.body, size it to innerWidth/innerHeight, handle resize, and animate with renderer.setAnimationLoop((now) => …) (time in ms). Don't use THREE.Clock (deprecated).
-Workflow: three_set_code with a complete sketch → read the console/errors it returns → three_screenshot to see the result → refine. Keep going until it matches the request.`;
+Workflow: three_set_code with a complete sketch → read the console/errors it returns → three_screenshot to see the result → refine. Keep going until it matches the request.
+Sliders: the Lab shows a slider for every number and color in the code, and a "Controls" group for values declared with the global tweak() helper. Put the main look settings there, near the top:
+  const P = tweak({ speed: [0.6, 0, 3], glow: [1.2, 0, 3], hue: '#ff3cac', ringSize: [1.4, 0.5, 3], wireframe: false });
+  (number: [value, min, max] or [value, min, max, step]; color: '#rrggbb' string; checkbox: true/false; or { value, min, max, onChange: (v) => … } for things that must be applied when changed.)
+Read them every frame so moving a slider changes the scene instantly, e.g. in the animation loop: mesh.rotation.y += P.speed * dt; bloom.strength = P.glow; mat.color.set(P.hue); mat.wireframe = P.wireframe.
+Values only read once at setup still work, but the scene rebuilds when the slider is released. Use clear camelCase names; 4–8 controls is the sweet spot.`;
 
 const TOOLS = [
   { name: 'three_get_code', description: 'Current sketch name and code in the Lab.', inputSchema: { type: 'object', properties: {} } },

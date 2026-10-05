@@ -89,10 +89,62 @@ function requestShot() {
   setTimeout(() => { if (shotPending && lastRenderer) { shotPending = false; post({ type: 'shot', dataUrl: lastRenderer.domElement.toDataURL('image/png') }); } }, 600);
 }
 
+// ---------- sliders ----------
+// The Lab runs sketches with their numbers/colors swapped for __tv(i) so sliders can change them live.
+// Reads after setup (2 frames after the module finishes) mean the value is re-read every frame.
+const TV = [];
+let tweakKeys = {};
+const usedAtSetup = new Set();
+const usedLive = new Set();
+let pastSetup = false;
+// Report as soon as a value is first read (a microtask, so it isn't delayed by background timer throttling).
+let reportQueued = false;
+const markRead = (i) => {
+  const set = pastSetup ? usedLive : usedAtSetup;
+  if (set.has(i)) return;
+  set.add(i);
+  if (reportQueued) return;
+  reportQueued = true;
+  queueMicrotask(() => { reportQueued = false; post({ type: 'tweak-reads', used: [...usedAtSetup], live: [...usedLive] }); });
+};
+globalThis.__tv = (i) => { markRead(i); return TV[i]; };
+const tweakSets = [];
+// Named controls: const P = tweak({ speed: [1, 0, 5], glow: { value: 1, min: 0, max: 3, onChange }, tint: '#ff3cac', wire: false })
+globalThis.tweak = (spec = {}) => {
+  const call = tweakSets.length;
+  const vals = {};
+  const handlers = {};
+  const out = {};
+  for (const [key, v] of Object.entries(spec)) {
+    vals[key] = Array.isArray(v) ? v[0] : (v && typeof v === 'object' && 'value' in v) ? v.value : v;
+    if (v && typeof v === 'object' && typeof v.onChange === 'function') handlers[key] = v.onChange;
+    const idx = tweakKeys[`${call}.${key}`];
+    if (handlers[key] && idx != null) { usedLive.add(idx); markRead(idx); } // onChange controls are live by definition
+    Object.defineProperty(out, key, {
+      enumerable: true,
+      get() { if (idx != null) markRead(idx); return vals[key]; },
+      set(x) { vals[key] = x; },
+    });
+  }
+  tweakSets.push({ vals, handlers });
+  return out;
+};
+function setTweak({ index, value, call, key }) {
+  TV[index] = value;
+  const set = call != null ? tweakSets[call] : null;
+  if (!set || !(key in set.vals)) return;
+  set.vals[key] = value;
+  try { set.handlers[key]?.(value); } catch (err) { post({ type: 'error', message: `${err.name}: ${err.message} (in onChange for "${key}")` }); }
+}
+
 // ---------- sketch mode ----------
 async function runSketch(code) {
   const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
-  try { await import(url); post({ type: 'ran' }); } catch (err) {
+  try {
+    await import(url);
+    post({ type: 'ran' });
+    requestAnimationFrame(() => requestAnimationFrame(() => { pastSetup = true; }));
+  } catch (err) {
     post({ type: 'error', message: `${err.name}: ${err.message}`, line: Number(/blob:[^\s)]*?:(\d+):\d+/.exec(err.stack || '')?.[1]) || null });
   }
 }
@@ -398,6 +450,8 @@ async function setupViewer() {
 addEventListener('message', async (e) => {
   const msg = e.data || {};
   if (msg.target !== 'three-sandbox') return;
+  if (msg.type === 'tweak-init') { TV.splice(0, TV.length, ...msg.values); tweakKeys = msg.keys || {}; }
+  if (msg.type === 'tweak') setTweak(msg);
   if (msg.type === 'run') runSketch(msg.code);
   if (msg.type === 'shader') shader?.set(msg.code);
   if (msg.type === 'load') viewer?.load(msg);

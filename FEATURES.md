@@ -159,3 +159,10 @@
 137. ✓ **Safe sketch edits**: director edits wait until your saved sketches are loaded, so they never land on a placeholder or the wrong sketch, and every change keeps a version in History.
 138. ✓ **Tools keep rendering while a director works** even if you're on another view, so its screenshots and fps are real.
 139. ✓ **Numbered lists keep counting** (2., 3., …) when items are split by paragraphs, and contact sheets are labeled in plain seconds.
+
+## Three.js Lab sliders (added Oct 5)
+140. ✓ **Sliders panel** ("🎚 Sliders" in the Lab toolbar, on by default): every number and color in the sketch gets a slider, number box or color picker, with readable names ("camera.position.z", "MeshStandardMaterial · roughness", "PointLight · intensity") or the code snippet around it, and a jump-to-line link.
+141. ✓ **Live where possible**: values the scene re-reads every frame change instantly (⚡); values only used while building the scene re-run it when you let go (↻), keeping your other unsaved slider values. Values the sketch never reads are hidden (tick "Unused" to see them).
+142. ✓ **Save to code** writes the changed values back into the code (the old version goes to History); **Reset** goes back to the code's values; double-click a slider to reset just that one. Switching sketches with unsaved values offers "Save them".
+143. ✓ **Named controls** with `tweak()`: `const P = tweak({ speed: [1, 0, 5], tint: '#ff3cac', wire: false })` shows a Controls group with those ranges; `{ value, min, max, onChange }` for settings that must be applied when changed. Export HTML keeps working (the values are frozen).
+144. ✓ **Three Director builds sliders in**: every scene it makes comes with 4–8 named live controls, and it sees (and keeps) any slider values you haven't saved yet. Sketches without named controls show "Ask the Three Director" to add some. Tested: "glowing orbs over dark water" → 7 controls, 6 live.
