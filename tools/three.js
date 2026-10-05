@@ -12,9 +12,16 @@ const ThreeLab = (() => {
     parent.append(frame);
     let ready = null;
     let queue = [];
+    let nonce = null; // which load of the frame we're waiting for
     const listener = (e) => {
       if (e.source !== frame.contentWindow || e.data?.source !== 'three-sandbox') return;
-      if (e.data.type === 'ready') { ready = e.data; for (const m of queue) frame.contentWindow.postMessage(m, '*'); queue = []; }
+      if (e.data.type === 'ready') {
+        // A page being replaced by a newer load can still say "ready"; only the current load counts.
+        if (e.data.n && e.data.n !== nonce) return;
+        ready = e.data;
+        for (const m of queue) frame.contentWindow.postMessage(m, '*');
+        queue = [];
+      }
       onMessage(e.data);
     };
     addEventListener('message', listener);
@@ -24,7 +31,8 @@ const ThreeLab = (() => {
     };
     const load = () => {
       ready = null;
-      frame.src = `${SANDBOX}?mode=${mode}&v=${store.get('three.version', ThreeData.VERSIONS[0])}${extraParams()}&n=${Date.now()}`;
+      nonce = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+      frame.src = `${SANDBOX}?mode=${mode}&v=${store.get('three.version', ThreeData.VERSIONS[0])}${extraParams()}&n=${nonce}`;
     };
     load();
     return { frame, send, reload: load, get revision() { return ready?.revision; }, get ready() { return Boolean(ready); } };
@@ -67,7 +75,8 @@ const ThreeLab = (() => {
     // Prompt-first: the code editor stays hidden until asked for.
     const codeBtn = btn('</> Code', 'Show or hide the code of the selected layer (the Three Director writes it for you)', () => setCodeVisible(split.classList.contains('no-code')));
     const slidersBtn = btn('🎚 Layers & sliders', 'Show or hide the layers and the sliders of the selected layer', () => setSlidersVisible(column.hidden));
-    toolbar.prepend(codeBtn, slidersBtn);
+    const focusBtn = btn('⛶ Focus', 'Almost fullscreen: hides the chat, side panels, toolbar, sliders and console, and shrinks the timeline to the strip (F · Esc to leave)', () => setFocus(!focusOn));
+    toolbar.prepend(codeBtn, slidersBtn, focusBtn);
     const editor = new CodeEditor(editorHost, { lang: 'js', onRun: () => run(), onChange: () => { persist(); if (autoRun) autoRunSoon(); } });
 
     // ---------- layers ----------
@@ -149,8 +158,10 @@ const ThreeLab = (() => {
       onKeyMove: (id, from, to) => editKeysAt(id, from, (ks, hit) => [...ks.filter((k) => !hit(k) && Math.abs(k.t - to) >= KEY_EPS), ...ks.filter(hit).map((k) => ({ ...k, t: Math.round(to * 1000) / 1000 }))]),
       onKeyDelete: (id, t) => editKeysAt(id, t, (ks, hit) => ks.filter((k) => !hit(k))),
       onKeyEase: (id, t, ease) => editKeysAt(id, t, (ks, hit) => ks.map((k) => (hit(k) ? { ...k, ease } : k))),
+      onLanePick: (id, x, y, o) => lanePick(id, x, y, o),
+      onLaneEdit: (id, prop, keys, o) => laneEdit(id, prop, keys, o),
     };
-    const trackList = () => [...layersOf()].reverse().map((L) => ({ id: L.id, name: L.name, color: L.color, in: L.in ?? null, out: L.out ?? null, fadeIn: L.in != null ? L.fadeIn || 0 : 0, fadeOut: L.out != null ? L.fadeOut || 0 : 0, visible: L.visible !== false, selected: L.id === selId, keys: trackKeys(L) }));
+    const trackList = () => [...layersOf()].reverse().map((L) => ({ id: L.id, name: L.name, color: L.color, in: L.in ?? null, out: L.out ?? null, fadeIn: L.in != null ? L.fadeIn || 0 : 0, fadeOut: L.out != null ? L.fadeOut || 0 : 0, visible: L.visible !== false, selected: L.id === selId, keys: trackKeys(L), lane: laneData(L) }));
     // Animated values follow the playhead in the panels.
     let lastSyncT = -1;
     function syncKeyUI(force = false) {
@@ -167,6 +178,179 @@ const ThreeLab = (() => {
       controllers.get(L.id)?.sync(sv);
     }
     setInterval(() => { if (current && sel()?.keys && Object.keys(sel().keys).length) syncKeyUI(); }, 100);
+    // ---------- automation lanes (Ableton placement, FL Studio curves) ----------
+    // L.lane = the property shown in the lane under the layer's track ('opacity' … or 's:<slider key>').
+    const { fmtMs } = ThreeMedia._test;
+    function laneData(L) {
+      const prop = L.lane;
+      if (!prop) return null;
+      const meta = ThreeLayers.ANIM_META[prop];
+      if (meta) return { prop, label: meta.label, min: meta.min, max: meta.max, step: meta.step, base: baseValue(L, prop), keys: keysOf(L, prop) };
+      if (prop.startsWith('s:')) {
+        const c = controllers.get(L.id)?.controls().find((x) => x.key === prop.slice(2));
+        if (c && c.min != null) return { prop, label: c.label, min: c.min, max: c.max, step: c.step, base: baseValue(L, prop), keys: keysOf(L, prop) };
+      }
+      return null;
+    }
+    function popup(x, y, items) {
+      document.querySelector('.mb-menu.lab-pop')?.remove();
+      const menu = el('div', { class: 'mb-menu lab-pop' }, items.filter(Boolean).map((it) => (typeof it === 'string'
+        ? el('div', { class: 'menu-head', text: it })
+        : el('button', { class: `menu-item${it[3] ? ' on' : ''}`, on: { click: () => { menu.remove(); it[2](); } } }, el('b', { text: it[0] }), el('span', { class: 'hint', text: it[1] || '' })))));
+      Object.assign(menu.style, { left: `${Math.max(8, Math.min(innerWidth - 290, x))}px`, top: `${Math.max(8, y)}px`, transform: 'none', maxHeight: '64vh', overflowY: 'auto' });
+      document.body.append(menu);
+      requestAnimationFrame(() => { const r = menu.getBoundingClientRect(); if (r.bottom > innerHeight - 8) menu.style.top = `${Math.max(8, innerHeight - 8 - r.height)}px`; });
+      const close = (e) => { if (!menu.contains(e.target)) { menu.remove(); removeEventListener('pointerdown', close, true); } };
+      setTimeout(() => addEventListener('pointerdown', close, true));
+    }
+    function setLane(L, prop) { L.lane = prop; touch(); renderTracksOnly(); }
+    function lanePick(id, x, y, { hide = false } = {}) {
+      const L = layerById(id);
+      if (!L) return;
+      if (hide) { setLane(L, null); return; }
+      const count = (p) => keysOf(L, p).length;
+      const items = ['Show in the lane'];
+      for (const [p, m] of Object.entries(ThreeLayers.ANIM_META)) items.push([`${m.label}${count(p) ? ' ●' : ''}`, L.lane === p ? 'showing now' : count(p) ? `${count(p)} points` : '', () => setLane(L, p), L.lane === p]);
+      const sliders = (controllers.get(id)?.controls() || []).filter((c) => c.min != null);
+      if (sliders.length) {
+        items.push('Sliders');
+        for (const c of sliders) items.push([`${c.label}${count(`s:${c.key}`) ? ' ●' : ''}`, L.lane === `s:${c.key}` ? 'showing now' : count(`s:${c.key}`) ? `${count(`s:${c.key}`)} points` : '', () => setLane(L, `s:${c.key}`), L.lane === `s:${c.key}`]);
+      }
+      items.push('Animate (adds points)');
+      for (const pr of ThreeLayers.PRESETS) items.push([pr.name, pr.desc, () => applyPreset(id, pr.id)]);
+      if (L.lane) items.push('Lane', ['Hide the lane', 'The animation stays', () => setLane(L, null)]);
+      popup(x ?? innerWidth / 2, y ?? innerHeight / 2, items);
+    }
+    function laneEdit(id, prop, keys, { final }) {
+      const L = layerById(id);
+      if (!L) return;
+      L.keys ||= {};
+      if (keys.length) L.keys[prop] = [...keys].sort((a, b) => a.t - b.t); else delete L.keys[prop];
+      sendKeys(L);
+      if (final) { touch(); renderTracksOnly(); syncKeyUI(true); }
+    }
+    // One-click animations over the layer's time (or the loop, or the whole song).
+    function applyPreset(id, presetId) {
+      const L = layerById(id);
+      const pr = ThreeLayers.PRESETS.find((x) => x.id === presetId);
+      if (!L || !pr) return null;
+      if (!player.loaded) { toast('Load a song first: animations sit on the song timeline', { type: 'error' }); return null; }
+      const lp = player.loop;
+      const a = L.in ?? lp?.a ?? 0;
+      const b = L.out ?? (L.in != null ? player.duration : lp?.b ?? player.duration);
+      const beat = 60 / player.bpm;
+      const ctx = { a, b, beat, bar: beat * player.beatsPerBar, beats: player.beatsIn(a, b - 1e-3), kicks: player.markersIn('kick', a, b), snares: player.markersIn('snare', a, b), base: (p) => baseValue(L, p) };
+      const out = pr.make(ctx);
+      L.keys ||= {};
+      for (const [prop, keys] of Object.entries(out)) {
+        if (!keys.length) continue;
+        const lo = Math.min(...keys.map((x) => x.t)); const hi = Math.max(...keys.map((x) => x.t));
+        const kept = keysOf(L, prop).filter((x) => x.t < lo - KEY_EPS || x.t > hi + KEY_EPS);
+        const merged = [...kept, ...keys].sort((p, q) => p.t - q.t).filter((x, i, arr) => i === 0 || Math.abs(x.t - arr[i - 1].t) >= KEY_EPS);
+        L.keys[prop] = merged;
+      }
+      L.lane = Object.keys(out)[0] || L.lane;
+      sendKeys(L);
+      touch();
+      renderTracksOnly();
+      syncKeyUI(true);
+      toast(`${pr.name} on "${L.name}" (${fmtMs(a)} → ${fmtMs(b)}). Edit it in the lane under the layer.`, { timeout: 3500 });
+      return { layer: L.name, preset: pr.name, from: a, to: b, props: Object.keys(out) };
+    }
+
+    // ---------- notes on moments ----------
+    // { sketchId: [{ id, t, text, image, at, done }] } in kv 'three-notes'. A note = the song time, a screenshot and what to change.
+    let notesAll = {};
+    const notesOf = () => (current ? (notesAll[current.id] ||= []) : []);
+    const saveNotes = debounce(() => window.hub.kvSet('three-notes', notesAll), 300);
+    const fileUrl = (p) => `file:///${encodeURI(String(p).replace(/\\/g, '/'))}`;
+    const noteBtn = btn('📌 Note', 'Take a screenshot and a note at this moment, for a change you want here (N)', () => takeNote());
+    const notesBtn = btn('Notes', 'Your notes on this sketch: jump to them, mark them done, send them to the Three Director', (e) => notesList(e.currentTarget));
+    function renderNotes() {
+      player.setNotes(notesOf().map((n) => ({ id: n.id, t: n.t, text: n.text, done: n.done })), { onOpen: (id, x, y) => openNote(id, x, y) });
+      const open = notesOf().filter((n) => !n.done).length;
+      notesBtn.textContent = notesOf().length ? `Notes ${open}${open !== notesOf().length ? `/${notesOf().length}` : ''}` : 'Notes';
+    }
+    async function takeNote({ text: given, time } = {}) {
+      if (!current) return null;
+      const t = time ?? (player.loaded ? player.time : 0);
+      if (time != null && player.loaded) { player.seek(time); await sleep(500); }
+      // the frame is captured right away, while you type the note
+      const shotP = director.shot();
+      const text = given ?? await Modal.prompt(`Note at ${fmtMs(t)}`, { placeholder: 'What should change here? (the screenshot is saved with it)', multiline: true });
+      if (text == null) return null;
+      const shot = await shotP;
+      let image = null;
+      if (shot) { try { image = await window.hub.saveAttachment(`note ${current.name} ${fmtMs(t).replace(/:/g, '-')}.png`.replace(/[\\/:*?"<>|]/g, '_'), shot.split(',')[1]); } catch { image = null; } }
+      const n = { id: `n${Date.now().toString(36)}`, t: Math.round(t * 1000) / 1000, text: String(text).trim() || '(no text)', image, at: Date.now(), done: false };
+      notesOf().push(n);
+      notesOf().sort((a, b) => a.t - b.t);
+      saveNotes();
+      renderNotes();
+      if (given == null) toast(`Note saved at ${fmtMs(t)}`, { timeout: 1800 });
+      return n;
+    }
+    function placeCard(card, x, y) {
+      document.body.append(card);
+      const r = card.getBoundingClientRect();
+      Object.assign(card.style, { left: `${Math.max(8, Math.min(innerWidth - r.width - 8, x - r.width / 2))}px`, top: `${Math.max(8, Math.min(innerHeight - r.height - 8, y - r.height - 12))}px` });
+      const close = (e) => { if (!card.contains(e.target) && !e.target.closest?.('.ui-modal')) { card.remove(); removeEventListener('pointerdown', close, true); } };
+      setTimeout(() => addEventListener('pointerdown', close, true));
+    }
+    function openNote(id, x, y) {
+      const n = notesOf().find((m) => m.id === id);
+      if (!n) return;
+      document.querySelector('.note-card')?.remove();
+      const ta = el('textarea', { class: 'note-text', rows: 3 });
+      ta.value = n.text;
+      ta.addEventListener('change', () => { n.text = ta.value.trim() || '(no text)'; saveNotes(); renderNotes(); });
+      const card = el('div', { class: 'note-card' },
+        el('div', { class: 'note-head' }, el('b', { text: `📌 ${fmtMs(n.t)}` }), el('span', { class: 'hint', text: n.done ? 'done' : '' }), el('span', { class: 'spacer' }), btn('×', 'Close', () => card.remove())),
+        n.image ? el('img', { class: 'note-img', src: fileUrl(n.image), title: 'The frame when you took the note' }) : null,
+        ta,
+        el('div', { class: 'note-actions' },
+          btn(n.done ? 'Reopen' : '✓ Done', n.done ? 'Mark it as still to do' : 'Mark it as handled', () => { n.done = !n.done; saveNotes(); renderNotes(); card.remove(); }),
+          btn('Delete', 'Delete this note', () => { notesAll[current.id] = notesOf().filter((m) => m !== n); saveNotes(); renderNotes(); card.remove(); }),
+          el('span', { class: 'spacer' }),
+          btn('Send to director', 'Put this note and its screenshot in the Three Director\'s chat box', () => { card.remove(); sendNotes([n]); }, 'primary small')));
+      placeCard(card, x, y);
+    }
+    function notesList(anchor) {
+      document.querySelector('.note-card')?.remove();
+      const list = notesOf();
+      const card = el('div', { class: 'note-card note-list' },
+        el('div', { class: 'note-head' }, el('b', { text: `Notes on "${current?.name}"` }), el('span', { class: 'spacer' }), btn('📌 New', 'Take a note at the playhead (N)', () => { card.remove(); takeNote(); }), btn('×', 'Close', () => card.remove())),
+        list.length ? el('div', { class: 'note-rows' }, list.map((n) => el('div', { class: `note-row${n.done ? ' done' : ''}` },
+          n.image ? el('img', { class: 'note-thumb', src: fileUrl(n.image) }) : el('span', { class: 'note-thumb empty', text: '📌' }),
+          el('button', { class: 'note-time', text: fmtMs(n.t), title: 'Jump there', on: { click: () => player.seek(n.t) } }),
+          el('span', { class: 'note-sum', text: n.text, title: n.text }),
+          btn(n.done ? '↺' : '✓', n.done ? 'Reopen' : 'Done', () => { n.done = !n.done; saveNotes(); renderNotes(); card.remove(); notesList(anchor); }),
+          btn('🗑', 'Delete', () => { notesAll[current.id] = notesOf().filter((m) => m !== n); saveNotes(); renderNotes(); card.remove(); notesList(anchor); })))) : el('p', { class: 'hint', text: 'No notes yet. Press N (or 📌 Note) at a moment you want changed.' }),
+        list.some((n) => !n.done) ? el('div', { class: 'note-actions' }, el('span', { class: 'spacer' }), btn('Send open notes to the director', 'Puts every open note with its screenshot in the Three Director\'s chat box', () => { card.remove(); sendNotes(list.filter((n) => !n.done)); }, 'primary small')) : null);
+      const r = anchor.getBoundingClientRect();
+      placeCard(card, r.left + r.width / 2, r.top);
+    }
+    async function sendNotes(list) {
+      const agent = H.agents().find((a) => a.threeTools);
+      if (!agent) { toast('Add an agent with Three.js tools first (the Three Director)', { type: 'error' }); return; }
+      activate(agent.id);
+      const paths = list.map((n) => n.image).filter(Boolean);
+      if (paths.length) await Native.attachPaths(agent.id, paths);
+      Native.setDraft(agent.id, `My notes on "${current.name}" (song times${paths.length ? '; the screenshots are attached in the same order' : ''}):\n${list.map((n) => `- ${fmtMs(n.t)} [${n.id}]: ${n.text}`).join('\n')}\nPlease make these changes, then mark each note done (three_notes).`);
+    }
+
+    // ---------- focus: almost fullscreen ----------
+    let focusOn = false;
+    const exitFocus = el('button', { class: 'lab-focus-exit', text: '✕ Exit focus (Esc)', on: { click: () => setFocus(false) } });
+    document.body.append(exitFocus);
+    function setFocus(on) {
+      focusOn = on;
+      document.body.classList.toggle('lab-focus', on);
+      focusBtn.classList.toggle('on', on);
+      if (on) player.setSize('strip', { temporary: true }); else player.restoreSize();
+    }
+    addEventListener('keydown', (e) => { if (e.key === 'Escape' && focusOn) setFocus(false); });
+
     const layerProps = (L, z) => ({ keys: animKeys(L), sliderKeys: sliderKeysOf(L), name: L.name, visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal', in: L.in ?? null, out: L.out ?? null, fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0, x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, selected: L.id === selId, slot: L.slot, z: z ?? layersOf().indexOf(L) });
     const extrasOf = (L) => {
       const ex = (extras[current.id] ||= {});
@@ -225,6 +409,7 @@ const ThreeLab = (() => {
       keyState: (id, prop) => keyStateFor(layerById(id), prop),
       toggleKey: (id, prop, value) => toggleKeyFor(id, prop, value),
       valueAt: (L, prop) => valueAt(L, prop),
+      onPreset: (id, presetId) => applyPreset(id, presetId),
     });
     const column = el('div', { class: 'tw-column' }, layersPanel.el, tweaksSlot);
     function renderLayers() {
@@ -394,7 +579,12 @@ const ThreeLab = (() => {
       player.load(p);
     });
     // Space plays / pauses; K S H tap hits in; [ ] set loop points; arrows nudge; Delete removes a marker.
-    pane.addEventListener('keydown', (e) => { if (player.onKey(e)) e.preventDefault(); });
+    pane.addEventListener('keydown', (e) => {
+      const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
+      if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'n') { e.preventDefault(); takeNote(); return; }
+      if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'f') { e.preventDefault(); setFocus(!focusOn); return; }
+      if (player.onKey(e)) e.preventDefault();
+    });
     pane.tabIndex = -1;
     let ranOnce = false;
     let rebuildWaiting = false;
@@ -605,6 +795,7 @@ const ThreeLab = (() => {
       tweaksSlot.replaceChildren(ctlFor(sel()).el);
       renderPicker();
       renderLayers();
+      renderNotes();
       run();
     }
     function create(name, code, layers) {
@@ -696,6 +887,8 @@ ${code}
       sketches = await window.hub.kvGet('three-sketches', []);
       ({ versions: history = {}, trash = [] } = await window.hub.kvGet('three-history', {}));
       extras = await window.hub.kvGet('three-lab-extras', {});
+      notesAll = await window.hub.kvGet('three-notes', {});
+      { const row = player.el.querySelector('.mb-main'); row.querySelector('.spacer').before(noteBtn, notesBtn); }
       // First run with per-sketch songs: the song that was loaded goes to the sketch that was open.
       const firstId = sketches.some((s) => s.id === store.get('three.current')) ? store.get('three.current') : sketches[0]?.id;
       const lastMedia = store.get('three.media', null);
@@ -820,6 +1013,39 @@ ${code}
         if (!L) throw new Error(`No layer "${ref}".`);
         selectLayer(L.id);
         return director.getCode();
+      },
+      timeline(range) {
+        return { ...player.timeline(range || {}), layers: layersSummary().map((x) => ({ name: x.name, plays: x.plays, keyframes: x.keyframes, lane: layerById(x.id)?.lane?.replace(/^s:/, 'slider ') || null })), notes: notesOf().map(({ id, t, text, done }) => ({ id, time: t, text, done })) };
+      },
+      timelineEdit({ grid, markers, loop, zoom, lane } = {}) {
+        if (!player.loaded) throw new Error('No song loaded.');
+        const did = [];
+        if (grid === 'auto') { player.clearGrid(); did.push('grid back to the detected beats'); } else if (grid) { player.setGrid(grid); did.push('grid'); }
+        if (markers) { player.editMarkers({ add: markers.add || {}, remove: markers.remove || {}, clear: markers.clear || [], range: markers.range || null, snap: markers.snap !== false }); did.push('markers'); }
+        if (loop !== undefined) { if (!player.setLoop(loop ? loop.start : null, loop?.end)) throw new Error('The user locked the loop.'); did.push('loop'); }
+        if (zoom !== undefined) { player.zoomTo(zoom ? zoom.start : null, zoom?.end); did.push('zoom'); }
+        if (lane) {
+          const L = findLayer(lane.layer);
+          if (!L) throw new Error(`No layer "${lane.layer}".`);
+          let prop = lane.property || null;
+          if (prop && !ThreeLayers.ANIM_META[prop]) { const c = ctlFor(L).controls().find((x) => x.key === prop || x.label.toLowerCase() === String(prop).toLowerCase()); if (!c) throw new Error(`No property "${prop}" on "${L.name}".`); prop = `s:${c.key}`; }
+          setLane(L, prop);
+          did.push('lane');
+        }
+        return { changed: did, ...director.timeline() };
+      },
+      applyPreset(ref, presetId) {
+        const L = findLayer(ref);
+        if (!L) throw new Error(`No layer "${ref}".`);
+        const r = applyPreset(L.id, presetId);
+        if (!r) throw new Error(`Unknown preset "${presetId}" (or no song). Presets: ${ThreeLayers.PRESETS.map((x) => x.id).join(', ')}`);
+        return { ...r, ...report() };
+      },
+      notes: {
+        list: () => notesOf().map(({ id, t, text, done, image }) => ({ id, time: t, text, done, image })),
+        add: (time, text) => takeNote({ time, text: text || '' }),
+        set: (id, patch) => { const n = notesOf().find((m) => m.id === id); if (!n) throw new Error(`No note ${id}`); Object.assign(n, patch); saveNotes(); renderNotes(); return n; },
+        remove: (id) => { notesAll[current.id] = notesOf().filter((m) => m.id !== id); saveNotes(); renderNotes(); },
       },
       report,
       shot: () => new Promise((resolve) => {
@@ -1188,6 +1414,24 @@ ${frag}\`,
       if (args.code != null) patch.code = args.code;
       if (args.order != null) patch.order = args.order;
       return { ok: true, value: await d.updateLayer(args.layer, patch, Number(args.wait) || (args.code != null ? 2.5 : 0.5)) };
+    }
+    if (tool === 'three_timeline') return { ok: true, value: d.timeline(args.from != null || args.to != null ? { from: args.from ?? 0, to: args.to ?? Infinity } : null) };
+    if (tool === 'three_timeline_edit') return { ok: true, value: d.timelineEdit(args) };
+    if (tool === 'three_animate') return { ok: true, value: d.applyPreset(args.layer, args.preset) };
+    if (tool === 'three_notes') {
+      const action = args.action || 'list';
+      if (action === 'list') {
+        const list = d.notes.list();
+        const open = list.filter((n) => !n.done && n.image).slice(0, 6);
+        const images = [];
+        for (const n of open) { try { images.push({ data: await window.hub.fs.read(n.image, { encoding: 'base64' }), mime: 'image/png' }); } catch { /* missing file */ } }
+        return { ok: true, images, value: { notes: list.map(({ image, ...n }) => n), screenshots: images.length ? `The ${images.length} images are the open notes' screenshots, in this order: ${open.map((n) => n.id).join(', ')}` : 'none' } };
+      }
+      if (action === 'done' || action === 'reopen') return { ok: true, value: d.notes.set(args.id, { done: action === 'done' }) };
+      if (action === 'edit') return { ok: true, value: d.notes.set(args.id, { text: String(args.text || '') }) };
+      if (action === 'delete') { d.notes.remove(args.id); return { ok: true, value: d.notes.list() } ; }
+      if (action === 'add') { const n = await d.notes.add(Number(args.time) || 0, args.text); return { ok: true, value: n }; }
+      return { ok: false, error: 'action must be list, done, reopen, edit, delete or add' };
     }
     if (tool === 'three_keyframes') return { ok: true, value: d.setKeyframes(args.layer, args.property, args.keys, args.clear) };
     if (tool === 'three_remove_layer') return { ok: true, value: await d.removeLayer(args.layer) };

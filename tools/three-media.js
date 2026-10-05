@@ -317,18 +317,63 @@ const ThreeMedia = (() => {
     const minimap = el('canvas', { class: 'mb-minimap', title: 'The whole song: each layer\'s time, the loop and the playhead. Drag the box to move the zoomed view; click to jump.' });
     // Layer tracks under the song (top layer first): { id, name, color, in, out, visible, selected, keys: [{ t, ease }] }.
     // Handlers: onSelect(id), onChange(id, { in, out }, { final }), onKeyMove(id, from, to), onKeyDelete(id, t), onKeyEase(id, t, ease).
+    // A track can show one automation lane under it (Ableton-style), picked with the ▾ chip at its right:
+    // lane = { prop, label, min, max, step, base, keys } and handlers onLanePick(id, x, y), onLaneEdit(id, prop, keys, { final }).
     let tracks = [];
     let trackHandlers = {};
-    const TRACK_H = 16;
+    const TRACK_H = 16; const AUTO_H = 48; const CHIP_W = 104;
+    const rowH = (tr) => TRACK_H + (tr.lane ? AUTO_H : 0);
+    const tracksH = () => tracks.reduce((sum, tr) => sum + rowH(tr), 0);
+    function trackRows(h) {
+      let y = h - tracksH();
+      return tracks.map((tr) => { const row = { tr, y, laneY: y + TRACK_H, end: y + rowH(tr) }; y += rowH(tr); return row; });
+    }
     function setTracks(list, handlers) {
       tracks = list || [];
       if (handlers) trackHandlers = handlers;
-      canvas.style.height = `${112 + tracks.length * TRACK_H}px`;
+      canvas.style.height = `${112 + tracksH()}px`;
       draw();
     }
+    // Notes on moments (pins on the ruler): [{ id, t, text, done }], handlers onOpen(id, x, y).
+    let notes = [];
+    let noteHandlers = {};
+    function setNotes(list, handlers) { notes = list || []; if (handlers) noteHandlers = handlers; draw(); }
+    // Timeline size: full, compact (no grid / hits row) or strip (just the overview, like FL Studio's).
+    let size = store.get('three.timelineSize', 'full');
+    let sizeBeforeTemp = null;
+    const miniPlay = btn('▶', 'Play / pause (Space)', () => toggle(), 'ghost small mb-miniplay');
+    const miniTime = el('span', { class: 'mb-minitime' });
+    const SIZE_ORDER = ['full', 'compact', 'strip'];
+    const sizeBtns = [['full', '▤', 'Full timeline'], ['compact', '▭', 'Compact: hide the grid and hits row'], ['strip', '▁', 'Just the overview strip']]
+      .map(([id, text, title]) => btn(text, title, () => setSize(id), `ghost small mb-size mb-size-${id}`));
+    const grip = el('div', { class: 'mb-grip', title: 'Drag up or down to resize the timeline · double-click to cycle sizes' });
+    const handle = el('div', { class: 'mb-handle' }, miniPlay, miniTime, grip, ...sizeBtns);
+    function setSize(m, { temporary = false } = {}) {
+      if (!SIZE_ORDER.includes(m)) return;
+      if (temporary) { if (sizeBeforeTemp == null) sizeBeforeTemp = size; } else { sizeBeforeTemp = null; store.set('three.timelineSize', m); }
+      size = m;
+      bar.dataset.size = m;
+      sizeBtns.forEach((b, i) => b.classList.toggle('on', SIZE_ORDER[i] === m));
+      requestAnimationFrame(() => draw());
+    }
+    function restoreSize() { if (sizeBeforeTemp != null) { const m = sizeBeforeTemp; sizeBeforeTemp = null; setSize(m); } }
+    grip.addEventListener('pointerdown', (e) => {
+      grip.setPointerCapture(e.pointerId);
+      let y0 = e.clientY;
+      const move = (ev) => {
+        const i = SIZE_ORDER.indexOf(size);
+        if (ev.clientY - y0 > 28 && i < 2) { setSize(SIZE_ORDER[i + 1]); y0 = ev.clientY; }
+        if (ev.clientY - y0 < -28 && i > 0) { setSize(SIZE_ORDER[i - 1]); y0 = ev.clientY; }
+      };
+      grip.addEventListener('pointermove', move);
+      grip.addEventListener('pointerup', () => grip.removeEventListener('pointermove', move), { once: true });
+    });
+    grip.addEventListener('dblclick', () => setSize(SIZE_ORDER[(SIZE_ORDER.indexOf(size) + 1) % 3]));
     const bar = el('div', { class: 'media-bar' },
-      el('div', { class: 'mb-row' }, loadBtn, nameEl, unloadBtn, playBtn, timeEl, sep(), zoomOut, zoomIn, zoomAll, zoomLoop, sep(), loopBtn, loopBox, loopLen, lockBtn, el('span', { class: 'spacer' }), vol, recBtn),
+      handle,
+      el('div', { class: 'mb-row mb-main' }, loadBtn, nameEl, unloadBtn, playBtn, timeEl, sep(), zoomOut, zoomIn, zoomAll, zoomLoop, sep(), loopBtn, loopBox, loopLen, lockBtn, el('span', { class: 'spacer' }), vol, recBtn),
       gridRow, canvas, minimap);
+    setSize(size);
 
     // ---------- file ----------
     async function pick() {
@@ -655,7 +700,7 @@ const ThreeMedia = (() => {
 
     // ---------- drawing ----------
     const RULER = 16; const LANE_H = 14;
-    const laneTop = (h) => h - LANES.length * LANE_H - tracks.length * TRACK_H;
+    const laneTop = (h) => h - LANES.length * LANE_H - tracksH();
     let raf = 0;
     function now() { return st.playing ? Math.min(D() || Infinity, st.time + (performance.now() - st.stampAt) / 1000) : st.time; }
     function paint() {
@@ -699,6 +744,8 @@ const ThreeMedia = (() => {
     function draw() {
       const t = now();
       timeEl.textContent = D() ? `${span() < 20 ? fmtMs(t) : fmtTime(t)} / ${fmtTime(D())}` : fmtTime(t);
+      miniTime.textContent = D() ? `${fmtTime(t)} / ${fmtTime(D())}` : '';
+      miniPlay.textContent = st.playing ? '⏸' : '▶';
       drawMinimap(t);
       const w = canvas.clientWidth; const h = canvas.clientHeight;
       if (!w || !h) return;
@@ -796,9 +843,7 @@ const ThreeMedia = (() => {
         }
       });
       // layer tracks: a bar for when each layer is on screen
-      const TT = h - tracks.length * TRACK_H;
-      tracks.forEach((tr, i) => {
-        const y = TT + i * TRACK_H;
+      trackRows(h).forEach(({ tr, y, laneY: ly }, i) => {
         g.fillStyle = tr.selected ? '#ffd75e16' : i % 2 ? '#ffffff05' : '#ffffff0a';
         g.fillRect(0, y, w, TRACK_H);
         const a0 = tr.in ?? 0; const b0 = tr.out ?? D();
@@ -829,6 +874,13 @@ const ThreeMedia = (() => {
           else { g.moveTo(kx, ky - r0); g.lineTo(kx + r0, ky); g.lineTo(kx, ky + r0); g.lineTo(kx - r0, ky); g.closePath(); }
           if (k.ease === 'linear') { g.stroke(); g.strokeStyle = tr.selected ? '#ffffff' : '#eae0d5'; g.stroke(); } else { g.fill(); g.stroke(); }
         }
+        // ▾ chooser at the right of the track: which parameter's automation shows below it
+        g.fillStyle = tr.lane ? '#ffd75e2a' : '#14181bd0';
+        g.fillRect(w - CHIP_W, y + 1, CHIP_W, TRACK_H - 2);
+        g.fillStyle = tr.lane ? '#ffd75e' : '#cfc6bb';
+        const chipText = `▾ ${tr.lane ? tr.lane.label : 'Automation'}`;
+        g.fillText(chipText.length > 16 ? `${chipText.slice(0, 15)}…` : chipText, w - CHIP_W + 6, y + 11);
+        if (tr.lane) drawLane(g, tr, ly, X, s0, sp, w);
       });
       // loop region
       if (region) {
@@ -845,7 +897,64 @@ const ThreeMedia = (() => {
           if (selected?.type === 'edge' && selected.edge === edge) { g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.strokeRect(Math.round(x) - 5, 0.5, 10, RULER - 1); }
         }
       }
+      // notes on moments: green pins on the ruler (grey once done)
+      for (const n of notes) {
+        if (n.t < s0 || n.t > s0 + sp) continue;
+        const x = Math.round(X(n.t));
+        g.fillStyle = n.done ? '#8f877d' : '#7cd992';
+        g.fillRect(x, 0, 2, RULER);
+        g.beginPath(); g.moveTo(x + 2, 1); g.lineTo(x + 10, 4.5); g.lineTo(x + 2, 8); g.fill();
+        g.fillStyle = n.done ? '#8f877d30' : '#7cd99240';
+        g.fillRect(x, RULER, 1, LT - RULER);
+      }
       if (t >= s0 && t <= s0 + sp) { g.fillStyle = '#ffffff'; g.fillRect(Math.round(X(t)), 0, 2, h); }
+    }
+    // FL Studio-style automation: the curve, its points, and a tension handle in the middle of each segment.
+    const laneV = (L, laneY, y) => {
+      const raw = L.min + (1 - (y - laneY - 5) / (AUTO_H - 10)) * (L.max - L.min);
+      const v = Math.max(L.min, Math.min(L.max, raw));
+      return L.step ? Math.round(v / L.step) * L.step : Math.round(v * 1000) / 1000;
+    };
+    const laneY = (L, top, v) => top + 5 + (1 - (v - L.min) / ((L.max - L.min) || 1)) * (AUTO_H - 10);
+    function drawLane(g, tr, top, X, s0, sp, w) {
+      const L = tr.lane;
+      const keys = L.keys || [];
+      const col = tr.color || '#ffd75e';
+      g.fillStyle = '#05070dcc';
+      g.fillRect(0, top, w - 0, AUTO_H);
+      g.fillStyle = '#ffffff0d';
+      g.fillRect(0, laneY(L, top, (L.min + L.max) / 2), w, 1);
+      g.fillRect(0, top + AUTO_H - 1, w, 1);
+      // the curve (and a soft fill under it)
+      const ev = (t) => ThreeLayers.evalKeys(keys, t, L.base);
+      g.beginPath();
+      for (let x = 0; x <= w; x += 2) { const yy = laneY(L, top, ev(s0 + (x / w) * sp)); if (x) g.lineTo(x, yy); else g.moveTo(x, yy); }
+      g.strokeStyle = keys.length ? col : `${col}60`;
+      g.lineWidth = 1.6;
+      g.stroke();
+      g.lineTo(w, top + AUTO_H); g.lineTo(0, top + AUTO_H); g.closePath();
+      g.fillStyle = `${col}18`;
+      g.fill();
+      keys.forEach((k, i) => {
+        const nx = keys[i + 1];
+        if (nx && k.ease !== 'hold' && X(nx.t) - X(k.t) > 18) {
+          const tm = (k.t + nx.t) / 2;
+          const hx = X(tm);
+          if (hx > 0 && hx < w) { g.strokeStyle = '#ffffffb0'; g.lineWidth = 1; g.beginPath(); g.arc(hx, laneY(L, top, ev(tm)), 3, 0, Math.PI * 2); g.stroke(); }
+        }
+        const kx = X(k.t);
+        if (kx < -6 || kx > w + 6) return;
+        g.fillStyle = '#0b0e10';
+        g.beginPath(); g.arc(kx, laneY(L, top, k.v), 4.2, 0, Math.PI * 2); g.fill();
+        g.strokeStyle = k.ease === 'hold' ? '#ffffff' : col; g.lineWidth = 2; g.stroke();
+      });
+      g.fillStyle = '#eae0d590';
+      const fmtV = (v) => (Math.abs(v) >= 10 ? Math.round(v) : Math.round(v * 100) / 100);
+      g.fillText(`${L.label}${keys.length ? '' : ' · click to add a point'}`, 6, top + 12);
+      g.textAlign = 'right';
+      g.fillText(String(fmtV(L.max)), w - 4, top + 11);
+      g.fillText(String(fmtV(L.min)), w - 4, top + AUTO_H - 4);
+      g.textAlign = 'left';
     }
     function drawMinimap(t) {
       minimap.hidden = !D();
@@ -873,6 +982,7 @@ const ThreeMedia = (() => {
       });
       if (region) { g.fillStyle = locked ? '#48ddff40' : '#ffd75e40'; g.fillRect(X(region.a), 0, Math.max(2, X(region.b) - X(region.a)), h); }
       if (a) { g.fillStyle = '#ff6a6a'; for (const d of a.drops) g.fillRect(X(d) - 1, 0, 2, 4); }
+      for (const n of notes) { g.fillStyle = n.done ? '#8f877d' : '#7cd992'; g.fillRect(X(n.t) - 1, h - 5, 3, 5); }
       g.fillStyle = '#ffffff';
       g.fillRect(Math.round(X(t)), 0, 2, h);
       if (view) {
@@ -893,9 +1003,19 @@ const ThreeMedia = (() => {
       const r = canvas.getBoundingClientRect();
       const x = e.clientX - r.left; const y = e.clientY - r.top;
       const LT = laneTop(r.height);
-      const TT = r.height - tracks.length * TRACK_H;
-      if (tracks.length && y >= TT) {
-        const tr = tracks[Math.min(tracks.length - 1, Math.floor((y - TT) / TRACK_H))];
+      const row = trackRows(r.height).find((rw) => y >= rw.y && y < rw.end);
+      if (row && y >= row.laneY) {
+        // automation lane: a point, a curve handle, or empty space
+        const L = row.tr.lane; const keys = L.keys || [];
+        const tt = v0() + (x / r.width) * span();
+        const point = keys.findIndex((k) => Math.hypot(xOf(k.t) - x, laneY(L, row.laneY, k.v) - y) <= 7);
+        let handle = -1;
+        if (point < 0) handle = keys.findIndex((k, i) => { const nx = keys[i + 1]; if (!nx || k.ease === 'hold') return false; const tm = (k.t + nx.t) / 2; return Math.hypot(xOf(tm) - x, laneY(L, row.laneY, ThreeLayers.evalKeys(keys, tm, L.base)) - y) <= 6; });
+        return { zone: 'auto', track: row.tr, row, point, handle, t: tt, value: laneV(L, row.laneY, y) };
+      }
+      if (row) {
+        const tr = row.tr;
+        if (x >= r.width - CHIP_W) return { zone: 'chip', track: tr };
         const key = (tr.keys || []).find((k) => Math.abs(xOf(k.t) - x) <= 5);
         if (key) return { zone: 'track', track: tr, key };
         const a0 = tr.in ?? 0; const b0 = tr.out ?? D();
@@ -904,6 +1024,8 @@ const ThreeMedia = (() => {
         return { zone: 'track', track: tr, edge, inside: tt >= a0 && tt <= b0 };
       }
       if (y < RULER) {
+        const note = notes.find((n) => x - xOf(n.t) >= -3 && x - xOf(n.t) <= 10);
+        if (note) return { zone: 'note', note };
         const edge = region && ['a', 'b'].find((k) => Math.abs(xOf(region[k]) - x) <= 6);
         return { zone: 'ruler', edge };
       }
@@ -927,6 +1049,29 @@ const ThreeMedia = (() => {
       } else if (hit.zone === 'lane') {
         if (hit.mark != null) { selected = { type: 'mark', lane: hit.lane, t: hit.mark }; dragging = { kind: 'mark', from: tt, orig: hit.mark, before: JSON.stringify(map) }; }
         else { addMarkAt(hit.lane, tt); dragging = { kind: 'mark', from: tt, orig: selected.t, added: true }; }
+      } else if (hit.zone === 'chip') {
+        trackHandlers.onSelect?.(hit.track.id);
+        trackHandlers.onLanePick?.(hit.track.id, e.clientX, e.clientY);
+        dragging = { kind: 'none' };
+      } else if (hit.zone === 'note') {
+        seek(hit.note.t);
+        noteHandlers.onOpen?.(hit.note.id, e.clientX, e.clientY);
+        dragging = { kind: 'none' };
+      } else if (hit.zone === 'auto') {
+        const { tr } = hit.row;
+        const L = tr.lane;
+        trackHandlers.onSelect?.(tr.id);
+        const keys = (L.keys || []).map((k) => ({ ...k }));
+        if (hit.point >= 0) dragging = { kind: 'autoPoint', id: tr.id, L, top: hit.row.laneY, keys, i: hit.point, moved: false };
+        else if (hit.handle >= 0) dragging = { kind: 'autoCurve', id: tr.id, L, keys, i: hit.handle, y0: e.clientY, c0: keys[hit.handle].ease === 'curve' ? keys[hit.handle].c || 0 : 0, moved: false };
+        else {
+          const k = { t: r4(Math.max(0, Math.min(D(), snapT(tt)))), v: hit.value, ease: 'ease' };
+          keys.push(k);
+          keys.sort((p, q) => p.t - q.t);
+          dragging = { kind: 'autoPoint', id: tr.id, L, top: hit.row.laneY, keys, i: keys.indexOf(k), moved: true, added: performance.now() };
+          lastLaneAdd = performance.now();
+          laneEmit(dragging, false);
+        }
       } else if (hit.zone === 'track') {
         const { id } = hit.track;
         const a0 = hit.track.in ?? 0; const b0 = hit.track.out ?? D();
@@ -959,6 +1104,20 @@ const ThreeMedia = (() => {
         } else if (dragging.kind === 'key') {
           const to = Math.max(0, Math.min(D(), snapT(dragging.from + (t2 - dragging.grab))));
           if (Math.abs(to - dragging.from) > 1e-4 || dragging.moved) { dragging.moved = true; dragging.now = to; draw(); }
+        } else if (dragging.kind === 'autoPoint') {
+          const rr = canvas.getBoundingClientRect();
+          const d = dragging; const k = d.keys[d.i];
+          const lo = d.i > 0 ? d.keys[d.i - 1].t + 0.001 : 0; const hi = d.i < d.keys.length - 1 ? d.keys[d.i + 1].t - 0.001 : D();
+          d.keys[d.i] = { ...k, t: r4(Math.max(lo, Math.min(hi, snapT(t2)))), v: laneV(d.L, d.top, ev.clientY - rr.top) };
+          d.moved = true;
+          laneEmit(d, false);
+        } else if (dragging.kind === 'autoCurve') {
+          const d = dragging; const a = d.keys[d.i]; const b = d.keys[d.i + 1];
+          const dy = (d.y0 - ev.clientY) / (AUTO_H / 2);
+          const c = Math.max(-1, Math.min(1, d.c0 + (b.v >= a.v ? -dy : dy)));
+          d.keys[d.i] = { ...a, ease: 'curve', c: Math.round(c * 100) / 100 };
+          d.moved = true;
+          laneEmit(d, false);
         } else if (dragging.kind === 'trim' || dragging.kind === 'clip') {
           let { a, b } = dragging;
           if (dragging.kind === 'trim') { const v = snapT(t2); if (dragging.edge === 'in') a = Math.max(0, Math.min(v, b - 0.05)); else b = Math.min(D(), Math.max(v, a + 0.05)); }
@@ -972,6 +1131,7 @@ const ThreeMedia = (() => {
         canvas.removeEventListener('pointermove', move);
         if (dragging?.kind === 'edge' || dragging?.kind === 'move' || dragging?.kind === 'new') saveLoop();
         if ((dragging?.kind === 'trim' || dragging?.kind === 'clip') && dragging.now) trackHandlers.onChange?.(dragging.id, dragging.now, { final: true });
+        if (dragging?.kind === 'autoPoint' || dragging?.kind === 'autoCurve') { if (dragging.moved) laneEmit(dragging, true); else if (dragging.kind === 'autoPoint') seek(dragging.keys[dragging.i].t); }
         if (dragging?.kind === 'key') { if (dragging.moved && Math.abs(dragging.now - dragging.from) > 1e-4) trackHandlers.onKeyMove?.(dragging.id, dragging.from, dragging.now); else seek(dragging.from); }
         if (dragging?.kind === 'mark') {
           // Only a marker that actually moved becomes an undo step.
@@ -982,8 +1142,24 @@ const ThreeMedia = (() => {
         paint();
       }, { once: true });
     });
+    // Sends a lane's edited points to the Lab (live while dragging, final on release).
+    function laneEmit(d, final) {
+      const tr = tracks.find((x) => x.id === d.id);
+      if (tr?.lane) tr.lane.keys = d.keys;
+      trackHandlers.onLaneEdit?.(d.id, d.L.prop, d.keys.map((k) => ({ ...k })), { final });
+      draw();
+    }
+    let lastLaneAdd = 0;
     canvas.addEventListener('dblclick', (e) => {
       const hit = hitTest(e);
+      if (hit.zone === 'auto') {
+        // double-click a point to delete it (not the one this double-click just created)
+        if (hit.point >= 0 && performance.now() - lastLaneAdd > 450) {
+          const keys = (hit.track.lane.keys || []).filter((_, i) => i !== hit.point);
+          laneEmit({ id: hit.track.id, L: hit.track.lane, keys }, true);
+        }
+        return;
+      }
       if (hit.zone === 'lane' && hit.mark != null) { selected = { type: 'mark', lane: hit.lane, t: hit.mark }; deleteSelectedMark(); return; }
       if (hit.zone === 'track' && hit.key) { trackHandlers.onKeyDelete?.(hit.track.id, hit.key.t); return; }
       if (hit.zone === 'track') {
@@ -1002,6 +1178,29 @@ const ThreeMedia = (() => {
     });
     canvas.addEventListener('contextmenu', (e) => {
       const hit = hitTest(e);
+      if (hit.zone === 'auto') {
+        e.preventDefault();
+        const anchor = { getBoundingClientRect: () => ({ left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY }) };
+        const L = hit.track.lane;
+        const keys = (L.keys || []).map((k) => ({ ...k }));
+        const save = (next) => () => laneEmit({ id: hit.track.id, L, keys: next }, true);
+        if (hit.point >= 0) {
+          const setEase = (ease) => save(keys.map((k, i) => (i === hit.point ? { ...k, ease, c: undefined } : k)));
+          menuAt(anchor, [
+            ['Smooth', 'Eases in and out to the next point', setEase('ease')],
+            ['Linear', 'Straight line to the next point', setEase('linear')],
+            ['Hold', 'Stays, then jumps at the next point', setEase('hold')],
+            null,
+            ['Delete point', `At ${fmtMs(keys[hit.point].t)}`, save(keys.filter((_, i) => i !== hit.point))],
+          ]);
+        } else {
+          menuAt(anchor, [
+            ['Clear this lane', `Remove every ${L.label} point`, save([])],
+            ['Hide the lane', 'The automation stays; pick it again with ▾', () => trackHandlers.onLanePick?.(hit.track.id, null, null, { hide: true })],
+          ]);
+        }
+        return;
+      }
       if (hit.zone === 'lane' && hit.mark != null) { e.preventDefault(); selected = { type: 'mark', lane: hit.lane, t: hit.mark }; deleteSelectedMark(); }
       if (hit.zone === 'track' && hit.key) {
         e.preventDefault();
@@ -1029,11 +1228,14 @@ const ThreeMedia = (() => {
       if (!D()) return;
       const hit = hitTest(e);
       const tt = timeAt(e);
-      canvas.style.cursor = hit.zone === 'track' ? (hit.key ? 'move' : hit.edge ? 'ew-resize' : hit.inside ? 'grab' : 'default') : hit.zone === 'lane' ? (hit.mark != null ? 'ew-resize' : 'cell') : locked ? 'pointer' : hit.zone === 'ruler' ? (hit.edge ? 'ew-resize' : 'copy') : 'pointer';
+      canvas.style.cursor = hit.zone === 'auto' ? (hit.point >= 0 ? 'move' : hit.handle >= 0 ? 'ns-resize' : 'crosshair') : hit.zone === 'chip' || hit.zone === 'note' ? 'pointer' : hit.zone === 'track' ? (hit.key ? 'move' : hit.edge ? 'ew-resize' : hit.inside ? 'grab' : 'default') : hit.zone === 'lane' ? (hit.mark != null ? 'ew-resize' : 'cell') : locked ? 'pointer' : hit.zone === 'ruler' ? (hit.edge ? 'ew-resize' : 'copy') : 'pointer';
       const tips = {
         ruler: locked ? 'Locked: click to jump' : 'Drag along this strip to draw a loop; drag its edges to adjust',
         wave: 'Click to jump · double-click to loop this part · wheel to zoom · Shift+wheel to scroll',
         lane: 'Click to add a marker here · drag to move · double-click or right-click to delete · or press K / S / H while it plays',
+        auto: hit.point >= 0 ? 'Drag the point · double-click to delete · right-click for Smooth / Linear / Hold' : hit.handle >= 0 ? 'Drag up or down to bend the curve' : `Click to add a ${hit.track?.lane?.label} point here (it snaps to the grid in time)`,
+        chip: 'Choose which setting this layer automates in the lane below, or hide the lane',
+        note: hit.note ? `Note at ${fmtMs(hit.note.t)}: ${hit.note.text}` : '',
         track: hit.key ? `Keyframe at ${fmtMs(hit.key.t)}: click to jump there · drag to move · double-click to delete · right-click for Ease / Linear / Hold` : `${hit.track?.name || 'Layer'}: drag the bar to move it in time · drag its ends to trim · double-click to fit it to the loop (again: whole song)`,
       };
       canvas.title = `${fmtMs(tt)}\n${tips[hit.zone]}`;
@@ -1060,7 +1262,47 @@ const ThreeMedia = (() => {
 
     return {
       el: bar,
-      load, pick, attach, toggle, seek, onMessage, unload, onKey, setTracks,
+      load, pick, attach, toggle, seek, onMessage, unload, onKey, setTracks, setNotes, setSize, restoreSize,
+      get size() { return size; },
+      // ---------- for the Three Director: the timeline ----------
+      setGrid({ bpm, downbeat, beatsPerBar } = {}) {
+        if (!D()) return false;
+        pushUndo();
+        const gr = ensureGrid();
+        if (bpm) gr.bpm = Math.round(Math.max(20, Math.min(400, bpm)) * 100) / 100;
+        if (downbeat != null) gr.anchor = r4(downbeat);
+        if (beatsPerBar) gr.bpb = Number(beatsPerBar);
+        mapChanged();
+        return true;
+      },
+      clearGrid() { if (map.grid) { pushUndo(); map.grid = null; mapChanged(); } },
+      // add / remove: { kick: [seconds], snare: [...], hit: [...] }; clear: ['kick', …] (within range if given)
+      editMarkers({ add = {}, remove = {}, clear = [], range = null, snap = true } = {}) {
+        if (!D()) return false;
+        pushUndo();
+        const inRange = (t) => !range || (t >= range[0] && t < range[1]);
+        for (const lane of clear) if (map.marks[lane]) map.marks[lane] = map.marks[lane].filter((t) => !inRange(t));
+        for (const [lane, list] of Object.entries(remove)) if (map.marks[lane]) map.marks[lane] = map.marks[lane].filter((t) => !list.some((x) => Math.abs(x - t) < 0.02));
+        for (const [lane, list] of Object.entries(add)) if (map.marks[lane]) for (const t of list) map.marks[lane] = addMark(map.marks[lane], Math.max(0, Math.min(D(), snap ? snapT(t) : t)));
+        mapChanged();
+        return true;
+      },
+      zoomTo(a, b) { if (a == null) setView(null); else setView({ start: a, end: b }); },
+      beatsIn(a, b) { return beats().filter((t) => t >= a - 1e-4 && t <= b + 1e-4); },
+      markersIn(lane, a, b) { return (map.marks[lane] || []).filter((t) => t >= a - 1e-4 && t <= b + 1e-4); },
+      get bpm() { return bpmNow() || 120; },
+      get beatsPerBar() { return bpbNow(); },
+      timeline({ from = 0, to = Infinity } = {}) {
+        const pick = (arr) => arr.filter((t) => t >= from && t <= to).slice(0, 400);
+        return {
+          duration: Math.round(D() * 1000) / 1000, playhead: Math.round(now() * 1000) / 1000,
+          grid: map.grid ? { bpm: map.grid.bpm, downbeat: map.grid.anchor, beatsPerBar: map.grid.bpb, setBy: 'user' } : { bpm: bpmNow(), setBy: 'auto-detected' },
+          markers: Object.fromEntries(LANES.map((ln) => [ln.id, pick(map.marks[ln.id])])),
+          loop: region ? { start: region.a, end: region.b, locked } : null,
+          view: view ? { start: Math.round(view.start * 1000) / 1000, end: Math.round(view.end * 1000) / 1000 } : 'whole song',
+          snap: snapMode,
+        };
+      },
       get duration() { return D(); },
       get loop() { return region ? { ...region } : null; },
       setLoop(a, b) { if (locked) return false; setRegion(a == null ? null : { a, b }); return true; },

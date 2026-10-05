@@ -481,6 +481,8 @@ function evalKeys(keys, t, base) {
   if (a.ease === 'hold') return a.v;
   let u = (t - a.t) / (b.t - a.t || 1);
   if (a.ease === 'ease') u = u * u * (3 - 2 * u);
+  // 'curve' (FL Studio-style tension): c in -1..1 bends the move toward the start or the end
+  else if (a.ease === 'curve' && a.c) u = a.c > 0 ? Math.pow(u, 1 + a.c * 4) : 1 - Math.pow(1 - u, 1 - a.c * 4);
   if (typeof a.v === 'string' && typeof b.v === 'string') return mixColor(a.v, b.v, u);
   return a.v + (b.v - a.v) * u;
 }
@@ -1406,7 +1408,7 @@ addEventListener('message', async (e) => {
 if (mode === 'sketch') document.body.classList.add('sketch');
 if (mode === 'shader') setupShader();
 if (mode === 'viewer') await setupViewer();
-post({ type: 'ready', mode, revision: THREE.REVISION });
+post({ type: 'ready', mode, revision: THREE.REVISION, n: new URLSearchParams(location.search).get('n') });
 </script>
 </body>
 </html>

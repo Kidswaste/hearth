@@ -25,6 +25,8 @@ const ThreeLayers = (() => {
     if (a.ease === 'hold') return a.v;
     let u = (t - a.t) / (b.t - a.t || 1);
     if (a.ease === 'ease') u = u * u * (3 - 2 * u);
+  // 'curve' (FL Studio-style tension): c in -1..1 bends the move toward the start or the end
+  else if (a.ease === 'curve' && a.c) u = a.c > 0 ? Math.pow(u, 1 + a.c * 4) : 1 - Math.pow(1 - u, 1 - a.c * 4);
     if (typeof a.v === 'string' && typeof b.v === 'string') return mixColor(a.v, b.v, u);
     if (typeof a.v === 'boolean') return a.v;
     return a.v + (b.v - a.v) * u;
@@ -155,6 +157,33 @@ renderer.setAnimationLoop(() => {
   ];
 
 
+
+  // What the layer settings can do over time (automation lanes and keyframes).
+  const ANIM_META = {
+    opacity: { label: 'Opacity', min: 0, max: 1, step: 0.01, def: 1 },
+    x: { label: 'Move X', min: -100, max: 100, step: 0.5, def: 0 },
+    y: { label: 'Move Y', min: -100, max: 100, step: 0.5, def: 0 },
+    scale: { label: 'Scale', min: 0.1, max: 3, step: 0.01, def: 1 },
+    rotate: { label: 'Rotate', min: -180, max: 180, step: 0.5, def: 0 },
+  };
+  // One-click animations: each returns { prop: keys } for the range ctx.a..ctx.b (the layer's time, the loop
+  // or the whole song). ctx: { a, b, beat, bar, beats, kicks, snares, base(prop) }.
+  const k = (t, v, ease = 'ease', c) => ({ t: Math.round(t * 1000) / 1000, v, ease, ...(c != null ? { c } : {}) });
+  const PRESETS = [
+    { id: 'fadeIn', name: 'Fade in', desc: 'Over one bar from the start', make: (c) => ({ opacity: [k(c.a, 0), k(c.a + c.bar, c.base('opacity'))] }) },
+    { id: 'fadeOut', name: 'Fade out', desc: 'Over the last bar', make: (c) => ({ opacity: [k(c.b - c.bar, c.base('opacity')), k(c.b, 0)] }) },
+    { id: 'popIn', name: 'Pop in', desc: 'Grows in with a little overshoot', make: (c) => ({ scale: [k(c.a, c.base('scale') * 0.4, 'curve', -0.6), k(c.a + c.beat * 0.6, c.base('scale') * 1.08), k(c.a + c.beat * 1.2, c.base('scale'))], opacity: [k(c.a, 0, 'linear'), k(c.a + c.beat * 0.4, c.base('opacity'))] }) },
+    { id: 'slideLeft', name: 'Slide in from the left', desc: 'Over one bar', make: (c) => ({ x: [k(c.a, -100, 'curve', -0.7), k(c.a + c.bar, c.base('x'))] }) },
+    { id: 'slideRight', name: 'Slide in from the right', desc: 'Over one bar', make: (c) => ({ x: [k(c.a, 100, 'curve', -0.7), k(c.a + c.bar, c.base('x'))] }) },
+    { id: 'slideUp', name: 'Slide up from below', desc: 'Over one bar', make: (c) => ({ y: [k(c.a, 100, 'curve', -0.7), k(c.a + c.bar, c.base('y'))] }) },
+    { id: 'slideDown', name: 'Drop in from above', desc: 'Over one bar', make: (c) => ({ y: [k(c.a, -100, 'curve', -0.7), k(c.a + c.bar, c.base('y'))] }) },
+    { id: 'zoom', name: 'Zoom through', desc: 'Slowly grows over the whole range', make: (c) => ({ scale: [k(c.a, c.base('scale'), 'linear'), k(c.b, c.base('scale') * 1.6)] }) },
+    { id: 'spin', name: 'Spin', desc: 'One turn over the range', make: (c) => ({ rotate: [k(c.a, 0, 'linear'), k(c.b, 360)] }) },
+    { id: 'pulse', name: 'Pulse on beats', desc: 'A small bump on every beat', make: (c) => ({ scale: c.beats.flatMap((t) => [k(t, c.base('scale') * 1.1, 'curve', 0.6), k(t + c.beat * 0.6, c.base('scale'))]) }) },
+    { id: 'shake', name: 'Shake on kicks', desc: 'A jolt on each kick marker (or beat)', make: (c) => ({ x: (c.kicks.length ? c.kicks : c.beats).flatMap((t) => [k(t, c.base('x') + 3, 'linear'), k(t + 0.04, c.base('x') - 2, 'linear'), k(t + 0.1, c.base('x'))]) }) },
+    { id: 'blink', name: 'Blink on snares', desc: 'Dips on each snare marker (or every other beat)', make: (c) => ({ opacity: (c.snares.length ? c.snares : c.beats.filter((_, i) => i % 2)).flatMap((t) => [k(t, c.base('opacity') * 0.15, 'curve', 0.5), k(t + c.beat * 0.5, c.base('opacity'))]) }) },
+  ];
+
   // Filter layers: they change everything below them (like adjustment layers). The settings are sliders.
   const fx = (type, what, spec) => `// Filter layer: ${what}
 // It changes everything below it. Its settings are the sliders; the layer's opacity mixes it with the original,
@@ -225,7 +254,7 @@ filter('${type}', P);
   // onSelect(id), onChange(id, props, { live }), onAdd(templateId | 'copy' | 'ask'), onRemove(id),
   // onReorder(idsBottomFirst), now() → playhead seconds, duration() → song length, loop() → { a, b } | null.
   // keyState(id, prop) → 'none' | 'animated' | 'on'; toggleKey(id, prop, value); valueAt(L, prop) → shown value.
-  function panel({ onSelect, onChange, onAdd, onRemove, onReorder, now, duration, loop, keyState, toggleKey, valueAt }) {
+  function panel({ onSelect, onChange, onAdd, onRemove, onReorder, now, duration, loop, keyState, toggleKey, valueAt, onPreset }) {
     const { fmtMs, parseTime } = ThreeMedia._test;
     let layers = [];
     let selectedId = null;
@@ -337,6 +366,17 @@ filter('${type}', P);
             btn('Whole song', 'Play this layer for the whole song', () => commit({ in: null, out: null })),
             lp ? btn('Loop only', 'Play this layer only during the loop', () => commit({ in: lp.a, out: lp.b })) : null) : null),
         hasSong ? el('div', { class: 'ly-fades' }, fade('fadeIn', 'Fade in'), fade('fadeOut', 'Fade out')) : null,
+        hasSong ? el('div', { class: 'ly-animate' },
+          btn('Animate ▾', 'One-click animations: they add keyframes you can then edit in the layer\'s automation lane', (e) => {
+            const items = PRESETS.map((pr) => [pr.name, pr.desc, () => onPreset?.(L.id, pr.id)]);
+            const menu = el('div', { class: 'mb-menu' }, items.map(([label, hint, fn]) => el('button', { class: 'menu-item', on: { click: () => { menu.remove(); fn(); } } }, el('b', { text: label }), el('span', { class: 'hint', text: hint }))));
+            const r = e.currentTarget.getBoundingClientRect();
+            Object.assign(menu.style, { left: `${Math.max(8, Math.min(innerWidth - 270, r.left))}px`, top: `${r.bottom + 4}px`, transform: 'none', maxHeight: '60vh', overflowY: 'auto' });
+            document.body.append(menu);
+            const close = (ev) => { if (!menu.contains(ev.target)) { menu.remove(); removeEventListener('pointerdown', close, true); } };
+            setTimeout(() => addEventListener('pointerdown', close, true));
+          }),
+          el('span', { class: 'hint', text: 'over this layer\'s time (or the loop)' })) : null,
         el('details', { class: 'ly-transform', open: store.get('three.layerTransform', false), on: { toggle: (e) => store.set('three.layerTransform', e.currentTarget.open) } },
           el('summary', { text: 'Position, size, rotation' }),
           range('Move X', 'x', -100, 100, 0.5, (v) => `${v}%`, 'Move left / right (% of the frame)'),
@@ -365,5 +405,5 @@ filter('${type}', P);
     b.title = state === 'on' ? 'Remove this keyframe' : state === 'animated' ? 'Add a keyframe here (it\'s animated: moving the slider also adds one)' : 'Animate: add a keyframe at the playhead';
   }
 
-  return { panel, TEMPLATES, FILTERS, isFilter, COLORS, BLENDS, defaults, newId, ANIM, KEY_EPS, evalKeys, upsertKey, keyAt };
+  return { panel, TEMPLATES, FILTERS, isFilter, ANIM_META, PRESETS, COLORS, BLENDS, defaults, newId, ANIM, KEY_EPS, evalKeys, upsertKey, keyAt };
 })();

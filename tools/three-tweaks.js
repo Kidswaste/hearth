@@ -704,7 +704,7 @@ const ThreeTweaks = (() => {
       controls() {
         if (!scanned) return [];
         return scanned.items.flatMap((it, i) => (it.key == null ? [] : [{
-          key: it.key, label: labelOf(it), group: it.group, value: values[i], ...(it.kind === 'number' ? { min: it.range.min, max: it.range.max } : {}),
+          key: it.key, label: labelOf(it), group: it.group, value: values[i], ...(it.kind === 'number' ? { min: it.range.min, max: it.range.max, ...(it.int ? { step: 1 } : {}) } : {}),
           ...(it.options ? { options: it.options } : {}), ...(bindings[ids[i]] ? { followsMusic: bindings[ids[i]] } : {}),
           live: reads ? reads.live.has(i) : undefined,
         }]));
