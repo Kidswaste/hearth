@@ -462,11 +462,52 @@ function trackRenderer(r) {
 }
 const BLEND_CSS = { normal: 'normal', add: 'plus-lighter', screen: 'screen', multiply: 'multiply', overlay: 'overlay', lighten: 'lighten', darken: 'darken', difference: 'difference', exclusion: 'exclusion', 'color-dodge': 'color-dodge', 'soft-light': 'soft-light', 'hard-light': 'hard-light' };
 const BLEND_2D = { ...BLEND_CSS, normal: 'source-over', add: 'lighter' };
+// Keyframes: props.keys = { opacity | x | y | scale | rotate: [{ t, v, ease }] } and
+// props.sliderKeys = { sandboxIndex: { call, key, num, keys } } for animated sliders. `ease` shapes the
+// move from a key to the next (linear | ease | hold); before the first / after the last key the value holds.
+const mixColor = (a, b, u) => {
+  const pa = parseInt(a.slice(1), 16); const pb = parseInt(b.slice(1), 16);
+  const ch = (sh) => Math.round(((pa >> sh) & 255) + ((((pb >> sh) & 255) - ((pa >> sh) & 255)) * u));
+  return `#${((ch(16) << 16) | (ch(8) << 8) | ch(0)).toString(16).padStart(6, '0')}`;
+};
+function evalKeys(keys, t, base) {
+  if (!keys?.length || t == null) return base;
+  if (t <= keys[0].t) return keys[0].v;
+  const last = keys[keys.length - 1];
+  if (t >= last.t) return last.v;
+  let i = 0;
+  while (i < keys.length - 2 && t >= keys[i + 1].t) i += 1;
+  const a = keys[i]; const b = keys[i + 1];
+  if (a.ease === 'hold') return a.v;
+  let u = (t - a.t) / (b.t - a.t || 1);
+  if (a.ease === 'ease') u = u * u * (3 - 2 * u);
+  if (typeof a.v === 'string' && typeof b.v === 'string') return mixColor(a.v, b.v, u);
+  return a.v + (b.v - a.v) * u;
+}
+const songTime = () => (mediaEl ? mediaEl.currentTime : null);
+const prop = (L, name, def) => evalKeys(L.props.keys?.[name], songTime(), L.props[name] ?? def);
+function applySliderKeys(L) {
+  const sk = L.props.sliderKeys;
+  const t = songTime();
+  if (!sk || t == null) return;
+  for (const [idx, d] of Object.entries(sk)) {
+    const v = evalKeys(d.keys, t, undefined);
+    if (v === undefined) continue;
+    const val = d.num && typeof v === 'string' ? parseInt(v.slice(1), 16) : v;
+    if (TV[idx] === val) continue;
+    TV[idx] = val;
+    const set = L.tweakSets[d.call];
+    if (set && d.key in set.vals) {
+      set.vals[d.key] = val;
+      try { set.handlers[d.key]?.(val); } catch (err) { post({ type: 'error', layer: L.id, message: `${err.name}: ${err.message} (in onChange for "${d.key}")` }); }
+    }
+  }
+}
 // How much of a layer shows right now: hidden, outside its time on the song, fading in/out, opacity.
 function layerMix(L) {
   const p = L.props;
   if (p.visible === false) return 0;
-  const op = p.opacity ?? 1;
+  const op = prop(L, 'opacity', 1);
   if (!mediaEl) return op;
   const t = mediaEl.currentTime;
   if (p.in != null && t < p.in) return 0;
@@ -474,8 +515,9 @@ function layerMix(L) {
   let k = 1;
   if (p.in != null && p.fadeIn > 0) k = Math.min(k, (t - p.in) / p.fadeIn);
   if (p.out != null && p.fadeOut > 0) k = Math.min(k, (p.out - t) / p.fadeOut);
-  return Math.max(0, Math.min(1, k)) * op;
+  return Math.max(0, Math.min(1, k)) * Math.max(0, Math.min(1, op));
 }
+const xform = (L) => ({ x: prop(L, 'x', 0), y: prop(L, 'y', 0), scale: prop(L, 'scale', 1), rotate: prop(L, 'rotate', 0) });
 function styleLayer(L) {
   const p = L.props;
   const mix = layerMix(L);
@@ -486,8 +528,8 @@ function styleLayer(L) {
   if (s.opacity !== op) s.opacity = op;
   const bl = BLEND_CSS[p.blend] || 'normal';
   if (s.mixBlendMode !== bl) s.mixBlendMode = bl;
-  const sc = p.scale ?? 1;
-  const tf = p.x || p.y || sc !== 1 || p.rotate ? `translate(${p.x || 0}%, ${p.y || 0}%) rotate(${p.rotate || 0}deg) scale(${sc})` : '';
+  const { x, y, scale, rotate } = xform(L);
+  const tf = x || y || scale !== 1 || rotate ? `translate(${x}%, ${y}%) rotate(${rotate}deg) scale(${scale})` : '';
   if (s.transform !== tf) s.transform = tf;
   const z = String(p.z ?? 0);
   if (s.zIndex !== z) s.zIndex = z;
@@ -498,8 +540,8 @@ const ordered = () => [...layers.values()].sort((a, b) => (a.props.z ?? 0) - (b.
 function needsComposite() {
   const act = ordered().filter((L) => layerMix(L) > 0);
   if (act.length !== 1) return act.length > 1;
-  const L = act[0]; const p = L.props;
-  return layerMix(L) < 1 || Boolean(p.x || p.y || p.rotate) || (p.scale ?? 1) !== 1 || (p.blend && p.blend !== 'normal') || L.box.querySelectorAll('canvas').length > 1;
+  const L = act[0]; const p = L.props; const t = xform(L);
+  return layerMix(L) < 1 || Boolean(t.x || t.y || t.rotate) || t.scale !== 1 || (p.blend && p.blend !== 'normal') || L.box.querySelectorAll('canvas').length > 1;
 }
 function composite(target) {
   const W = Math.round(innerWidth * devicePixelRatio); const H = Math.round(innerHeight * devicePixelRatio);
@@ -515,12 +557,13 @@ function composite(target) {
     const mix = layerMix(L);
     if (mix <= 0) continue;
     const p = L.props;
+    const { x, y, scale, rotate } = xform(L);
     g.save();
     g.globalAlpha = mix;
     g.globalCompositeOperation = BLEND_2D[p.blend] || 'source-over';
-    g.translate(W / 2 + ((p.x || 0) / 100) * W, H / 2 + ((p.y || 0) / 100) * H);
-    g.rotate(((p.rotate || 0) * Math.PI) / 180);
-    g.scale(p.scale ?? 1, p.scale ?? 1);
+    g.translate(W / 2 + (x / 100) * W, H / 2 + (y / 100) * H);
+    g.rotate((rotate * Math.PI) / 180);
+    g.scale(scale, scale);
     g.translate(-W / 2, -H / 2);
     for (const cv of L.box.querySelectorAll('canvas')) g.drawImage(cv, 0, 0, W, H);
     g.restore();
@@ -528,9 +571,10 @@ function composite(target) {
   return c;
 }
 let compRec = null; // the merged canvas being recorded
+// Runs first in every frame (it was registered before any layer), so animated sliders are set before layers draw.
 function compositorTick() {
   realRAF(compositorTick);
-  for (const L of layers.values()) styleLayer(L);
+  for (const L of layers.values()) { applySliderKeys(L); styleLayer(L); }
   if (compRec) composite(compRec);
 }
 realRAF(compositorTick);

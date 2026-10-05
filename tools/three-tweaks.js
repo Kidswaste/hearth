@@ -308,7 +308,9 @@ const ThreeTweaks = (() => {
   // send(msg) → sandbox, rerun({ hot }) → run the sketch again (hot = in place, no reload), goToLine(n),
   // commit(newCode) → write into the editor, persist(kind, data) → per-sketch looks/music links,
   // askForSliders() / quickAsk(text) → the Three Director.
-  function controller({ send, rerun, goToLine, commit, askForSliders, quickAsk, persist }) {
+  // keyframes (optional): { state(key) → 'none'|'animated'|'on', toggle(key, value), changed(key, value, { final }) → true when the
+  // value went into a keyframe (the control is animated) }. Only named controls (tweak()) can be animated.
+  function controller({ send, rerun, goToLine, commit, askForSliders, quickAsk, persist, keyframes }) {
     let scanned = null;
     let ids = [];
     let values = [];
@@ -375,6 +377,13 @@ const ThreeTweaks = (() => {
     }
     function setValue(i, v, { release = false } = {}) {
       const it = scanned.items[i];
+      // An animated control: the move becomes a keyframe at the playhead instead of a new base value.
+      if (it.key != null && keyframes?.state(it.key) !== 'none' && keyframes?.state(it.key) && (it.kind === 'number' || it.kind === 'color')) {
+        send({ type: 'tweak', index: i, value: runtime(it, v), call: it.call, key: it.key });
+        keyframes.changed(it.key, v, { final: release });
+        rows.find((r) => r.i === i)?.paintKey?.();
+        return;
+      }
       values[i] = v;
       send({ type: 'tweak', index: i, value: runtime(it, v), call: it.call, key: it.key });
       refreshState();
@@ -554,6 +563,18 @@ const ThreeTweaks = (() => {
         top.append(music);
         r.musicPanel = panel;
       }
+      if (keyframes && it.key != null && (it.kind === 'number' || it.kind === 'color')) {
+        const kb = el('button', { class: 'kf-btn', type: 'button' });
+        r.paintKey = () => {
+          const stt = keyframes.state(it.key);
+          kb.textContent = stt === 'on' ? '◆' : '◇';
+          kb.className = `kf-btn kf-${stt}`;
+          kb.title = stt === 'on' ? 'Remove this keyframe' : stt === 'animated' ? 'Add a keyframe here (it\'s animated: moving the slider also adds one)' : 'Animate this slider: add a keyframe at the playhead';
+        };
+        kb.addEventListener('click', () => { keyframes.toggle(it.key, r.current ?? values[i]); r.paintKey(); });
+        r.paintKey();
+        label.before(kb);
+      }
       top.append(badge, el('button', { class: 'tw-line', text: `L${it.line}`, title: `Show line ${it.line} in the code`, on: { click: () => goToLine(it.line) } }));
       r.el = el('div', { class: `tw-row kind-${it.kind}${named ? ' named' : ''}` }, top, it.hint ? el('div', { class: 'tw-hint', text: it.hint }) : null, ctl.node, r.musicPanel || null);
       rows.push(r);
@@ -689,6 +710,16 @@ const ThreeTweaks = (() => {
         }]));
       },
       forget() { scanned = null; ids = []; values = []; reads = null; undoStack = []; render(); refreshState(); },
+      // Where a named control sits in the sandbox (for keyframes): { index, call, kind } or null.
+      keyInfo(key) { const i = scanned?.items.findIndex((it) => it.key === key) ?? -1; return i < 0 ? null : { index: i, call: scanned.items[i].call, kind: scanned.items[i].kind, num: scanned.items[i].kind === 'color' && !scanned.items[i].quote, value: values[i], label: labelOf(scanned.items[i]) }; },
+      // While the song plays: animated controls show their current value; ◆ shows when you're on a keyframe.
+      sync(valuesByKey) {
+        for (const r of rows) {
+          if (r.it.key == null) continue;
+          if (r.it.key in valuesByKey && !r.el.contains(document.activeElement)) { r.current = valuesByKey[r.it.key]; r.set(r.current); }
+          r.paintKey?.();
+        }
+      },
       setVisible(on) { root.hidden = !on; },
       get visible() { return !root.hidden; },
     };

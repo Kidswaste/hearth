@@ -80,7 +80,94 @@ const ThreeLab = (() => {
       s.layers.forEach((L, i) => { L.slot ??= i; L.color ||= ThreeLayers.COLORS[i % ThreeLayers.COLORS.length]; });
       return s.layers;
     }
-    const layerProps = (L, z) => ({ name: L.name, visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal', in: L.in ?? null, out: L.out ?? null, fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0, x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, selected: L.id === selId, slot: L.slot, z: z ?? layersOf().indexOf(L) });
+    // ---------- keyframes ----------
+    // L.keys = { opacity | x | y | scale | rotate | 's:<slider key>': [{ t, v, ease }] } (ThreeLayers.evalKeys).
+    const { ANIM, evalKeys, upsertKey, keyAt, KEY_EPS } = ThreeLayers;
+    const keysOf = (L, prop) => L?.keys?.[prop] || [];
+    const animKeys = (L) => Object.fromEntries(ANIM.filter((p) => L.keys?.[p]?.length).map((p) => [p, L.keys[p]]));
+    function sliderKeysOf(L) {
+      const c = controllers.get(L.id);
+      const out = {};
+      for (const [prop, keys] of Object.entries(L.keys || {})) {
+        if (!prop.startsWith('s:') || !keys.length) continue;
+        const info = c?.keyInfo(prop.slice(2));
+        if (info) out[baseOf(L) + info.index] = { call: info.call, key: prop.slice(2), num: info.num, keys };
+      }
+      return out;
+    }
+    const baseValue = (L, prop) => (prop.startsWith('s:') ? controllers.get(L.id)?.keyInfo(prop.slice(2))?.value : L[prop] ?? (prop === 'scale' || prop === 'opacity' ? 1 : 0));
+    const valueAt = (L, prop) => evalKeys(keysOf(L, prop), player.loaded ? player.time : null, baseValue(L, prop));
+    const keyStateFor = (L, prop) => (!keysOf(L, prop).length ? 'none' : keyAt(keysOf(L, prop), player.time) ? 'on' : 'animated');
+    function sendKeys(L) { box.send({ type: 'layer-props', id: L.id, props: { keys: animKeys(L), sliderKeys: sliderKeysOf(L) } }); }
+    function setKeys(L, prop, keys) {
+      L.keys ||= {};
+      if (keys.length) L.keys[prop] = keys; else delete L.keys[prop];
+      sendKeys(L);
+      touch();
+      renderTracksOnly();
+      syncKeyUI(true);
+    }
+    function toggleKeyFor(id, prop, value) {
+      const L = layerById(id);
+      if (!L) return;
+      if (!player.loaded) { toast('Load a song first: keyframes sit on the song timeline', { type: 'error' }); return; }
+      const ks = keysOf(L, prop);
+      const at = keyAt(ks, player.time);
+      if (at) setKeys(L, prop, ks.filter((k) => k !== at));
+      else setKeys(L, prop, upsertKey(ks, player.time, value ?? valueAt(L, prop)));
+    }
+    // Moving an animated slider sets a keyframe where the move started (so dragging while it plays stays on one key).
+    let dragKeyT = null;
+    function autoKey(id, prop, value, { final }) {
+      const L = layerById(id);
+      if (!L) return;
+      if (dragKeyT == null) dragKeyT = player.time;
+      L.keys ||= {};
+      L.keys[prop] = upsertKey(keysOf(L, prop), dragKeyT, value);
+      sendKeys(L);
+      if (final) { dragKeyT = null; touch(); renderTracksOnly(); syncKeyUI(true); }
+    }
+    // All of a layer's keyframe times (for the ◆ on its track).
+    function trackKeys(L) {
+      const m = new Map();
+      for (const ks of Object.values(L.keys || {})) for (const k of ks) { const r = Math.round(k.t * 1000) / 1000; if (![...m.keys()].some((x) => Math.abs(x - r) < KEY_EPS)) m.set(r, k.ease || 'ease'); }
+      return [...m].map(([t, ease]) => ({ t, ease })).sort((a, b) => a.t - b.t);
+    }
+    function editKeysAt(id, t, fn) {
+      const L = layerById(id);
+      if (!L?.keys) return;
+      for (const [prop, ks] of Object.entries(L.keys)) L.keys[prop] = fn(ks.map((k) => ({ ...k })), (k) => Math.abs(k.t - t) < KEY_EPS).sort((a, b) => a.t - b.t);
+      for (const prop of Object.keys(L.keys)) if (!L.keys[prop].length) delete L.keys[prop];
+      sendKeys(L);
+      touch();
+      renderTracksOnly();
+      syncKeyUI(true);
+    }
+    const trackHandlers = {
+      onSelect: (id) => selectLayer(id),
+      onChange: (id, v, { final }) => editLayer(id, v, { live: !final }),
+      onKeyMove: (id, from, to) => editKeysAt(id, from, (ks, hit) => [...ks.filter((k) => !hit(k) && Math.abs(k.t - to) >= KEY_EPS), ...ks.filter(hit).map((k) => ({ ...k, t: Math.round(to * 1000) / 1000 }))]),
+      onKeyDelete: (id, t) => editKeysAt(id, t, (ks, hit) => ks.filter((k) => !hit(k))),
+      onKeyEase: (id, t, ease) => editKeysAt(id, t, (ks, hit) => ks.map((k) => (hit(k) ? { ...k, ease } : k))),
+    };
+    const trackList = () => [...layersOf()].reverse().map((L) => ({ id: L.id, name: L.name, color: L.color, in: L.in ?? null, out: L.out ?? null, fadeIn: L.in != null ? L.fadeIn || 0 : 0, fadeOut: L.out != null ? L.fadeOut || 0 : 0, visible: L.visible !== false, selected: L.id === selId, keys: trackKeys(L) }));
+    // Animated values follow the playhead in the panels.
+    let lastSyncT = -1;
+    function syncKeyUI(force = false) {
+      const L = sel();
+      if (!L || !current) return;
+      const t = player.time;
+      if (!force && Math.abs(t - lastSyncT) < 1e-3) return;
+      lastSyncT = t;
+      const vals = {}; const states = {};
+      for (const p of ANIM) { states[p] = keyStateFor(L, p); if (keysOf(L, p).length) vals[p] = valueAt(L, p); }
+      layersPanel.sync(vals, states);
+      const sv = {};
+      for (const p of Object.keys(L.keys || {})) if (p.startsWith('s:')) sv[p.slice(2)] = valueAt(L, p);
+      controllers.get(L.id)?.sync(sv);
+    }
+    setInterval(() => { if (current && sel()?.keys && Object.keys(sel().keys).length) syncKeyUI(); }, 100);
+    const layerProps = (L, z) => ({ keys: animKeys(L), sliderKeys: sliderKeysOf(L), name: L.name, visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal', in: L.in ?? null, out: L.out ?? null, fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0, x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, selected: L.id === selId, slot: L.slot, z: z ?? layersOf().indexOf(L) });
     const extrasOf = (L) => {
       const ex = (extras[current.id] ||= {});
       return L.id === 'main' ? ex : ((ex.layers ||= {})[L.id] ||= {});
@@ -112,6 +199,11 @@ const ThreeLab = (() => {
           if (!Lx) return;
           if (selId === id) { snapshot(); editor.setValue(code); persist(); } else { Lx.code = code; touch(); }
         },
+        keyframes: {
+          state: (key) => keyStateFor(layerById(id), `s:${key}`),
+          toggle: (key, value) => toggleKeyFor(id, `s:${key}`, value),
+          changed: (key, value, o) => autoKey(id, `s:${key}`, value, o),
+        },
         askForSliders: () => askDirector(`Add clearly named sliders to the layer "${layerById(id)?.name}" of "${current?.name}" with tweak(): the 4–8 settings I'd most want to play with (motion, colors, lighting, glow, how much it reacts to the music…), with labels, groups and hints, read every frame so they change live. Keep everything else the same.`, { send: false }),
       });
       c.setVisible(!column.hidden);
@@ -130,13 +222,16 @@ const ThreeLab = (() => {
       now: () => player.time,
       duration: () => player.duration,
       loop: () => player.loop,
+      keyState: (id, prop) => keyStateFor(layerById(id), prop),
+      toggleKey: (id, prop, value) => toggleKeyFor(id, prop, value),
+      valueAt: (L, prop) => valueAt(L, prop),
     });
     const column = el('div', { class: 'tw-column' }, layersPanel.el, tweaksSlot);
     function renderLayers() {
       if (!current) return;
       layersPanel.render(layersOf(), selId);
-      player.setTracks([...layersOf()].reverse().map((L) => ({ id: L.id, name: L.name, color: L.color, in: L.in ?? null, out: L.out ?? null, fadeIn: L.in != null ? L.fadeIn || 0 : 0, fadeOut: L.out != null ? L.fadeOut || 0 : 0, visible: L.visible !== false, selected: L.id === selId })),
-        { onSelect: (id) => selectLayer(id), onChange: (id, v, { final }) => editLayer(id, v, { live: !final }) });
+      player.setTracks(trackList(), trackHandlers);
+      syncKeyUI(true);
     }
     function selectLayer(id) {
       const L = layerById(id);
@@ -154,18 +249,25 @@ const ThreeLab = (() => {
     }
     const saveSoon = debounce(() => save(), 300);
     function touch() { current.updatedAt = Date.now(); current.code = layersOf()[0]?.code ?? current.code; saveSoon(); }
-    function editLayer(id, patch, { live = false } = {}) {
+    // direct: set the base value even when the property is animated (the director does this; keyframes still win).
+    function editLayer(id, patch, { live = false, direct = false } = {}) {
       const L = layerById(id);
       if (!L) return;
+      patch = { ...patch };
+      // Animated properties: the move becomes a keyframe at the playhead (like After Effects).
+      const animated = direct ? [] : Object.keys(patch).filter((k) => ANIM.includes(k) && keysOf(L, k).length);
+      if (animated.length) {
+        if (dragKeyT == null) dragKeyT = player.time;
+        for (const k of animated) { L.keys[k] = upsertKey(keysOf(L, k), dragKeyT, patch[k]); delete patch[k]; }
+        if (!live) dragKeyT = null;
+      }
       Object.assign(L, patch);
       box.send({ type: 'layer-props', id, props: layerProps(L) });
       if (live) { renderTracksOnly(); return; }
       touch();
       renderLayers();
     }
-    function renderTracksOnly() {
-      player.setTracks([...layersOf()].reverse().map((L) => ({ id: L.id, name: L.name, color: L.color, in: L.in ?? null, out: L.out ?? null, fadeIn: L.in != null ? L.fadeIn || 0 : 0, fadeOut: L.out != null ? L.fadeOut || 0 : 0, visible: L.visible !== false, selected: L.id === selId })));
-    }
+    function renderTracksOnly() { player.setTracks(trackList(), trackHandlers); }
     const uniqueName = (name) => { const names = new Set(layersOf().map((L) => L.name)); if (!names.has(name)) return name; let i = 2; while (names.has(`${name} ${i}`)) i += 1; return `${name} ${i}`; };
     function newLayer(o) {
       const Ls = layersOf();
@@ -613,6 +715,7 @@ ${code}
       plays: L.in == null && L.out == null ? 'whole song' : { from: L.in ?? 0, to: L.out ?? 'end', fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0 },
       ...(L.x || L.y || (L.scale ?? 1) !== 1 || L.rotate ? { transform: { x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0 } } : {}),
       sliders: controllers.get(L.id)?.controls().map((c) => c.label) || [],
+      ...(Object.keys(L.keys || {}).length ? { keyframes: Object.fromEntries(Object.entries(L.keys).map(([p, ks]) => [p.replace(/^s:/, 'slider '), ks.map((k) => `${k.t}s=${k.v}${k.ease && k.ease !== 'ease' ? ` (${k.ease})` : ''}`)])) } : {}),
     }));
     const report = () => ({
       sketch: current?.name,
@@ -673,7 +776,7 @@ ${code}
         const L = findLayer(ref);
         if (!L) throw new Error(`No layer "${ref}". Layers: ${layersOf().map((x) => x.name).join(', ')}`);
         const props = Object.fromEntries(Object.entries(patch).filter(([k]) => PROP_KEYS.includes(k)));
-        if (Object.keys(props).length) editLayer(L.id, props);
+        if (Object.keys(props).length) editLayer(L.id, props, { direct: true });
         if (patch.code != null) {
           if (player.recording) throw new Error('The user is recording a video right now; wait until they stop.');
           if (selId !== L.id) selectLayer(L.id);
@@ -690,6 +793,21 @@ ${code}
         }
         await sleep(Math.min(15, Math.max(0.3, wait)) * 1000);
         return { updated: L.name, ...report() };
+      },
+      // property: opacity | x | y | scale | rotate or a slider (key or label); keys: [{ time, value, ease }]; clear removes them.
+      setKeyframes(ref, property, keys, clear) {
+        const L = findLayer(ref);
+        if (!L) throw new Error(`No layer "${ref}". Layers: ${layersOf().map((x) => x.name).join(', ')}`);
+        let prop = String(property || '');
+        if (!ANIM.includes(prop)) {
+          const c = ctlFor(L);
+          const ctl = c.controls().find((x) => x.key === prop || x.label.toLowerCase() === prop.toLowerCase());
+          if (!ctl) throw new Error(`No property "${property}" on "${L.name}". Use opacity, x, y, scale, rotate or a slider: ${c.controls().map((x) => `${x.key} (${x.label})`).join(', ') || 'none'}`);
+          prop = `s:${ctl.key}`;
+        }
+        const list = clear ? [] : (keys || []).map((k) => ({ t: Math.round(Number(k.time) * 1000) / 1000, v: k.value, ease: ['linear', 'ease', 'hold'].includes(k.ease) ? k.ease : 'ease' })).filter((k) => Number.isFinite(k.t) && k.v != null).sort((a, b) => a.t - b.t);
+        setKeys(L, prop, list);
+        return { layer: L.name, property: prop.replace(/^s:/, ''), keyframes: list.length, ...report() };
       },
       async removeLayer(ref) {
         const L = findLayer(ref);
@@ -1071,6 +1189,7 @@ ${frag}\`,
       if (args.order != null) patch.order = args.order;
       return { ok: true, value: await d.updateLayer(args.layer, patch, Number(args.wait) || (args.code != null ? 2.5 : 0.5)) };
     }
+    if (tool === 'three_keyframes') return { ok: true, value: d.setKeyframes(args.layer, args.property, args.keys, args.clear) };
     if (tool === 'three_remove_layer') return { ok: true, value: await d.removeLayer(args.layer) };
     if (tool === 'three_select_layer') return { ok: true, value: d.selectLayer(args.layer) };
     if (tool === 'three_set_frame') {

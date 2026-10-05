@@ -315,7 +315,8 @@ const ThreeMedia = (() => {
     // Overview of the whole song (like FL Studio's playlist overview): every layer, the loop, the playhead,
     // and the zoomed window you can drag.
     const minimap = el('canvas', { class: 'mb-minimap', title: 'The whole song: each layer\'s time, the loop and the playhead. Drag the box to move the zoomed view; click to jump.' });
-    // Layer tracks under the song (top layer first): { id, name, color, in, out, visible, selected }.
+    // Layer tracks under the song (top layer first): { id, name, color, in, out, visible, selected, keys: [{ t, ease }] }.
+    // Handlers: onSelect(id), onChange(id, { in, out }, { final }), onKeyMove(id, from, to), onKeyDelete(id, t), onKeyEase(id, t, ease).
     let tracks = [];
     let trackHandlers = {};
     const TRACK_H = 16;
@@ -815,6 +816,19 @@ const ThreeMedia = (() => {
         g.fillStyle = tr.selected ? '#ffffff' : '#eae0d5b0';
         g.fillText(`${tr.visible === false ? '(hidden) ' : ''}${tr.name}${tr.in == null && tr.out == null ? ' · whole song' : ''}`, Math.max(4, Math.min(xa + 6, xb - 40)), y + 11);
         if (tr.selected) { g.strokeStyle = '#ffd75e'; g.lineWidth = 1; g.strokeRect(Math.max(0, xa) + 0.5, y + 1.5, Math.max(2, Math.min(w, xb) - Math.max(0, xa) - 1), TRACK_H - 3); }
+        // keyframes: ◆ (filled = ease, square = hold, outline diamond = linear)
+        for (const k of tr.keys || []) {
+          const kt = dragging?.kind === 'key' && dragging.id === tr.id && Math.abs(dragging.from - k.t) < 1e-3 ? dragging.now : k.t;
+          if (kt < s0 || kt > s0 + sp) continue;
+          const kx = Math.round(X(kt)); const ky = y + TRACK_H / 2; const r0 = 4.5;
+          g.fillStyle = tr.selected ? '#ffffff' : '#eae0d5';
+          g.strokeStyle = '#0b0e10';
+          g.lineWidth = 1;
+          g.beginPath();
+          if (k.ease === 'hold') g.rect(kx - 3.5, ky - 3.5, 7, 7);
+          else { g.moveTo(kx, ky - r0); g.lineTo(kx + r0, ky); g.lineTo(kx, ky + r0); g.lineTo(kx - r0, ky); g.closePath(); }
+          if (k.ease === 'linear') { g.stroke(); g.strokeStyle = tr.selected ? '#ffffff' : '#eae0d5'; g.stroke(); } else { g.fill(); g.stroke(); }
+        }
       });
       // loop region
       if (region) {
@@ -882,6 +896,8 @@ const ThreeMedia = (() => {
       const TT = r.height - tracks.length * TRACK_H;
       if (tracks.length && y >= TT) {
         const tr = tracks[Math.min(tracks.length - 1, Math.floor((y - TT) / TRACK_H))];
+        const key = (tr.keys || []).find((k) => Math.abs(xOf(k.t) - x) <= 5);
+        if (key) return { zone: 'track', track: tr, key };
         const a0 = tr.in ?? 0; const b0 = tr.out ?? D();
         const edge = Math.abs(xOf(a0) - x) <= 6 ? 'in' : Math.abs(xOf(b0) - x) <= 6 ? 'out' : null;
         const tt = v0() + (x / r.width) * span();
@@ -915,7 +931,8 @@ const ThreeMedia = (() => {
         const { id } = hit.track;
         const a0 = hit.track.in ?? 0; const b0 = hit.track.out ?? D();
         trackHandlers.onSelect?.(id);
-        if (hit.edge) dragging = { kind: 'trim', id, edge: hit.edge, a: a0, b: b0 };
+        if (hit.key) dragging = { kind: 'key', id, from: hit.key.t, now: hit.key.t, grab: tt, moved: false };
+        else if (hit.edge) dragging = { kind: 'trim', id, edge: hit.edge, a: a0, b: b0 };
         else if (hit.inside) dragging = { kind: 'clip', id, from: tt, a: a0, b: b0 };
         else dragging = { kind: 'none' };
       } else { dragging = { kind: 'seek' }; selected = null; seek(tt); }
@@ -939,6 +956,9 @@ const ThreeMedia = (() => {
           moveSelectedMark(snapT(dragging.orig + (t2 - dragging.from)));
           sendMap();
           draw();
+        } else if (dragging.kind === 'key') {
+          const to = Math.max(0, Math.min(D(), snapT(dragging.from + (t2 - dragging.grab))));
+          if (Math.abs(to - dragging.from) > 1e-4 || dragging.moved) { dragging.moved = true; dragging.now = to; draw(); }
         } else if (dragging.kind === 'trim' || dragging.kind === 'clip') {
           let { a, b } = dragging;
           if (dragging.kind === 'trim') { const v = snapT(t2); if (dragging.edge === 'in') a = Math.max(0, Math.min(v, b - 0.05)); else b = Math.min(D(), Math.max(v, a + 0.05)); }
@@ -952,6 +972,7 @@ const ThreeMedia = (() => {
         canvas.removeEventListener('pointermove', move);
         if (dragging?.kind === 'edge' || dragging?.kind === 'move' || dragging?.kind === 'new') saveLoop();
         if ((dragging?.kind === 'trim' || dragging?.kind === 'clip') && dragging.now) trackHandlers.onChange?.(dragging.id, dragging.now, { final: true });
+        if (dragging?.kind === 'key') { if (dragging.moved && Math.abs(dragging.now - dragging.from) > 1e-4) trackHandlers.onKeyMove?.(dragging.id, dragging.from, dragging.now); else seek(dragging.from); }
         if (dragging?.kind === 'mark') {
           // Only a marker that actually moved becomes an undo step.
           if (dragging.before && dragging.before !== JSON.stringify(map)) { mapUndo.push(dragging.before); if (mapUndo.length > 80) mapUndo.shift(); }
@@ -964,6 +985,7 @@ const ThreeMedia = (() => {
     canvas.addEventListener('dblclick', (e) => {
       const hit = hitTest(e);
       if (hit.zone === 'lane' && hit.mark != null) { selected = { type: 'mark', lane: hit.lane, t: hit.mark }; deleteSelectedMark(); return; }
+      if (hit.zone === 'track' && hit.key) { trackHandlers.onKeyDelete?.(hit.track.id, hit.key.t); return; }
       if (hit.zone === 'track') {
         // Fit the layer to the loop; again (or with no loop) → the whole song.
         const tr = hit.track;
@@ -981,6 +1003,18 @@ const ThreeMedia = (() => {
     canvas.addEventListener('contextmenu', (e) => {
       const hit = hitTest(e);
       if (hit.zone === 'lane' && hit.mark != null) { e.preventDefault(); selected = { type: 'mark', lane: hit.lane, t: hit.mark }; deleteSelectedMark(); }
+      if (hit.zone === 'track' && hit.key) {
+        e.preventDefault();
+        const anchor = { getBoundingClientRect: () => ({ left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY }) };
+        const set = (ease) => () => trackHandlers.onKeyEase?.(hit.track.id, hit.key.t, ease);
+        menuAt(anchor, [
+          ['Ease', 'Smooth start and stop (default)', set('ease')],
+          ['Linear', 'Constant speed to the next keyframe', set('linear')],
+          ['Hold', 'Jump to the next keyframe\'s value when it comes', set('hold')],
+          null,
+          ['Delete keyframe', `At ${fmtMs(hit.key.t)}`, () => trackHandlers.onKeyDelete?.(hit.track.id, hit.key.t)],
+        ]);
+      }
     });
     canvas.addEventListener('wheel', (e) => {
       if (!D()) return;
@@ -995,12 +1029,12 @@ const ThreeMedia = (() => {
       if (!D()) return;
       const hit = hitTest(e);
       const tt = timeAt(e);
-      canvas.style.cursor = hit.zone === 'track' ? (hit.edge ? 'ew-resize' : hit.inside ? 'grab' : 'default') : hit.zone === 'lane' ? (hit.mark != null ? 'ew-resize' : 'cell') : locked ? 'pointer' : hit.zone === 'ruler' ? (hit.edge ? 'ew-resize' : 'copy') : 'pointer';
+      canvas.style.cursor = hit.zone === 'track' ? (hit.key ? 'move' : hit.edge ? 'ew-resize' : hit.inside ? 'grab' : 'default') : hit.zone === 'lane' ? (hit.mark != null ? 'ew-resize' : 'cell') : locked ? 'pointer' : hit.zone === 'ruler' ? (hit.edge ? 'ew-resize' : 'copy') : 'pointer';
       const tips = {
         ruler: locked ? 'Locked: click to jump' : 'Drag along this strip to draw a loop; drag its edges to adjust',
         wave: 'Click to jump · double-click to loop this part · wheel to zoom · Shift+wheel to scroll',
         lane: 'Click to add a marker here · drag to move · double-click or right-click to delete · or press K / S / H while it plays',
-        track: `${hit.track?.name || 'Layer'}: drag the bar to move it in time · drag its ends to trim · double-click to fit it to the loop (again: whole song)`,
+        track: hit.key ? `Keyframe at ${fmtMs(hit.key.t)}: click to jump there · drag to move · double-click to delete · right-click for Ease / Linear / Hold` : `${hit.track?.name || 'Layer'}: drag the bar to move it in time · drag its ends to trim · double-click to fit it to the loop (again: whole song)`,
       };
       canvas.title = `${fmtMs(tt)}\n${tips[hit.zone]}`;
     });

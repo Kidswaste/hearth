@@ -207,3 +207,8 @@
 175. ✓ **Prompt it**: "add another layer with…", "only from the drop to 0:30, fading in", "make the top layer softer", "put it behind", "remove that layer". The Three Director has tools to list, add, change, reorder, time, select and remove layers. Tested: one sentence → a "Snare sparks" layer on top with add blending, a 2 s fade-in and an end time, plus 10 sliders.
 176. ✓ **Recording and screenshots merge all layers** (opacity, blend, transform, timing) with the music.
 177. ✓ **Fix**: with no song loaded, the play bar no longer stretches and squashes the preview.
+
+## Keyframes (added Oct 5)
+178. ✓ **Keyframes like After Effects**: a layer's opacity, position X/Y, scale and rotation, and any of its named sliders (numbers and colors) can change over the song. ◆ next to a setting or slider adds a keyframe at the playhead (◆ filled = on a keyframe, ◇ = animated, click again to remove). Once something is animated, moving it adds or updates a keyframe at the playhead.
+179. ✓ **Keyframes on the layer's track**: diamonds on its bar. Click to jump there, drag to move (snaps to the grid), double-click to delete, right-click for Ease (smooth, default), Linear or Hold. While the song plays the sliders show the animated values.
+180. ✓ **Prompt it**: "fade the sparks in over the first 4 seconds", "grow the rings into the drop", "turn it red on the drop": the Three Director's three_keyframes tool animates the right property at the right time. Recordings include the animation.
