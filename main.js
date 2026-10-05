@@ -15,7 +15,7 @@ const THEME_PATH = path.join(__dirname, 'theme.css');
 // Present as plain Chrome so sign-in pages (Google, etc.) don't reject the app.
 app.userAgentFallback =
   `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome} Safari/537.36`;
-app.setAppUserModelId('AgentHub');
+app.setAppUserModelId('Hearth');
 
 // Sign-in popups stay inside the app so the login lands in the right agent.
 const AUTH_HOSTS = [
@@ -32,7 +32,9 @@ let win;
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_e, argv) => {
+    // The desktop "Hearth" shortcut passes --restart: restart cleanly instead of just showing the window.
+    if (argv.includes('--restart')) { appshell.restartApp(); return; }
     if (!win) return;
     if (win.isMinimized()) win.restore();
     win.show();
@@ -82,7 +84,7 @@ function createWindow() {
     height: state.height || 940,
     minWidth: 760,
     minHeight: 480,
-    title: 'Agent Hub',
+    title: appshell.APP_NAME,
     icon,
     autoHideMenuBar: true,
     backgroundColor: config?.theme?.background || '#0f1115',
@@ -236,6 +238,7 @@ ipcMain.handle('window:reload', () => win.webContents.reloadIgnoringCache());
 ipcMain.handle('find:start', (_e, text, opts) => (text ? win.webContents.findInPage(text, opts) : null));
 ipcMain.handle('find:stop', () => win.webContents.stopFindInPage('keepSelection'));
 ipcMain.handle('shortcuts:create', () => appshell.createShortcuts());
+ipcMain.handle('app:restart', () => appshell.restartApp());
 ipcMain.handle('data:export', async () => {
   const r = await dialog.showSaveDialog(win, {
     defaultPath: `agent-hub-backup-${new Date().toISOString().slice(0, 10)}.zip`,

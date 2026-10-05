@@ -1,4 +1,6 @@
-# Agent Hub
+# Hearth
+
+(formerly "Agent Hub"; the folder and data stay where they were.) **Start or restart it with the "Hearth" shortcut on the desktop or in the Start menu**: if it's already open, it restarts cleanly. The tray menu and Ctrl+K also have Restart.
 
 Claude, Astra (ChatGPT) and any AI website in one window, plus workspaces for Forgeheart,
 Three.js and After Effects. No API keys, nothing extra to pay.

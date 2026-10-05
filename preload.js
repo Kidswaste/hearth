@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld('hub', {
   findStop: call('find:stop'),
   onFindResult: on('find:result'),
   createShortcuts: call('shortcuts:create'),
+  restartApp: call('app:restart'),
   exportData: call('data:export'),
   setZoom: (factor) => webFrame.setZoomFactor(factor),
   getZoom: () => webFrame.getZoomFactor(),

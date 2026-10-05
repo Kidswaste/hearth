@@ -9,14 +9,14 @@ const INFO_PATH = path.join(__dirname, '..', 'data', 'game-bridge.json');
 function callHub(tool, args) {
   return new Promise((resolve) => {
     let info;
-    try { info = JSON.parse(fs.readFileSync(INFO_PATH, 'utf8')); } catch { resolve({ ok: false, error: 'Agent Hub is not running.' }); return; }
+    try { info = JSON.parse(fs.readFileSync(INFO_PATH, 'utf8')); } catch { resolve({ ok: false, error: 'Hearth (the hub) is not running.' }); return; }
     const body = JSON.stringify({ tool, args });
     const req = http.request({ host: '127.0.0.1', port: info.port, path: '/call', method: 'POST', headers: { 'Content-Type': 'application/json', 'x-hub-token': info.token, 'Content-Length': Buffer.byteLength(body) } }, (res) => {
       let data = '';
       res.on('data', (c) => { data += c; });
       res.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve({ ok: false, error: `Bad reply from the hub (${res.statusCode})` }); } });
     });
-    req.on('error', (err) => resolve({ ok: false, error: `Couldn't reach Agent Hub: ${err.message}` }));
+    req.on('error', (err) => resolve({ ok: false, error: `Couldn't reach Hearth (the hub): ${err.message}` }));
     // Renders can take a while; the bridge itself enforces per-tool limits.
     req.setTimeout(30 * 60 * 1000, () => { req.destroy(); resolve({ ok: false, error: 'Timed out waiting for the hub.' }); });
     req.end(body);

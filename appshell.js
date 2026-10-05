@@ -9,8 +9,8 @@ const zlib = require('zlib');
 const { DATA_DIR } = require('./store');
 
 const WINDOW_STATE = path.join(DATA_DIR, 'window.json');
-const ICON_PNG = path.join(DATA_DIR, 'icon.png');
-const ICON_ICO = path.join(DATA_DIR, 'icon.ico');
+const ICON_PNG = path.join(DATA_DIR, 'hearth-icon.png');
+const ICON_ICO = path.join(DATA_DIR, 'hearth-icon.ico');
 
 // ---------- app icon (drawn in code so the hub needs no image assets) ----------
 function crc32(buf) {
@@ -40,50 +40,92 @@ function pngFromRgba(rgba, size) {
   }
   return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
 }
-// A rounded violet tile with a ring of four agent dots around a center hub.
+// Hearth's icon: a flame in the Forgeheart rarity colors (gold → orange → red, a white-hot core) on dark
+// steel, a thin rainbow rim, and three embers for the agents. Drawn at any size, anti-aliased.
+const APP_NAME = 'Hearth';
+const clamp01 = (v) => Math.max(0, Math.min(1, v));
+const mixc = (a, b, t) => a.map((c, i) => c + (b[i] - c) * t);
+function hsl2rgb(h) {
+  const f = (n) => { const k = (n + h * 12) % 12; return 0.5 - 0.45 * Math.max(-1, Math.min(k - 3, 9 - k, 1)); };
+  return [f(0) * 255, f(8) * 255, f(4) * 255];
+}
+// Signed distance (in px, + inside) to a flame shape whose base sits at (cx, yb) and tip at yt.
+function flameDist(x, y, cx, yb, yt, R, sway) {
+  const n = (yb - y) / (yb - yt); // 0 at the base, 1 at the tip
+  const bulb = 0.24; // the round bottom, as a fraction of the height
+  if (n < -bulb || n > 1) return -1e3;
+  const k = clamp01(n);
+  // a teardrop: a round bulb below the base, then narrowing to the tip
+  const hw = R * (n < 0 ? Math.sqrt(Math.max(0, 1 - (n / bulb) ** 2)) : Math.pow(1 - k, 1.25) * (1 + 0.35 * Math.sin(k * Math.PI)));
+  const c = cx + sway * Math.sin(k * Math.PI) * k;
+  return hw - Math.abs(x - c);
+}
 function drawIcon(size) {
   const px = Buffer.alloc(size * size * 4);
   const s = size / 256;
-  const dots = [[128, 64], [192, 128], [128, 192], [64, 128]].map(([x, y]) => [x * s, y * s, 24 * s]);
-  const colors = [[217, 119, 87], [16, 163, 127], [79, 140, 255], [139, 123, 255]];
+  const gold = [255, 215, 94]; const orange = [255, 140, 66]; const red = [255, 92, 92]; const core = [255, 247, 220];
+  const steelA = [26, 31, 35]; const steelB = [10, 13, 15];
+  const embers = [[94, 222, [72, 221, 255]], [128, 228, [189, 139, 255]], [162, 222, [124, 217, 146]]];
   for (let y = 0; y < size; y += 1) {
     for (let x = 0; x < size; x += 1) {
       const i = (y * size + x) * 4;
-      // rounded square coverage (radius 56)
-      const r = 56 * s;
-      const dx = Math.max(r - x - 0.5, 0, x + 0.5 - (size - r));
-      const dy = Math.max(r - y - 0.5, 0, y + 0.5 - (size - r));
-      const cover = Math.min(1, Math.max(0, r - Math.hypot(dx, dy) + 0.5));
+      const X = (x + 0.5) / s; const Y = (y + 0.5) / s; // in 256-space
+      // rounded square
+      const r = 58;
+      const dx = Math.max(r - X, 0, X - (256 - r)); const dy = Math.max(r - Y, 0, Y - (256 - r));
+      const edge = r - Math.hypot(dx, dy); // + inside, in 256-space
+      const cover = clamp01(edge * s + 0.5);
       if (!cover) continue;
-      const t = (x + y) / (2 * size);
-      let col = [Math.round(40 + 40 * t), Math.round(32 + 10 * t), Math.round(78 + 60 * t)];
-      // hub ring
-      const dc = Math.hypot(x + 0.5 - 128 * s, y + 0.5 - 128 * s);
-      const ring = Math.min(1, Math.max(0, 1 - Math.abs(dc - 64 * s) / (6 * s)));
-      col = col.map((c) => Math.round(c + (200 - c) * ring * 0.55));
-      const hub = Math.min(1, Math.max(0, 30 * s - dc + 0.5));
-      col = col.map((c) => Math.round(c + (245 - c) * hub));
-      dots.forEach(([cx, cy, cr], k) => {
-        const a = Math.min(1, Math.max(0, cr - Math.hypot(x + 0.5 - cx, y + 0.5 - cy) + 0.5));
-        col = col.map((c, j) => Math.round(c + (colors[k][j] - c) * a));
-      });
-      px[i] = col[0]; px[i + 1] = col[1]; px[i + 2] = col[2]; px[i + 3] = Math.round(255 * cover);
+      let col = mixc(steelA, steelB, clamp01((X + Y) / 512 + 0.15));
+      // soft warm glow behind the flame
+      const glow = clamp01(1 - Math.hypot(X - 128, Y - 150) / 120);
+      col = mixc(col, [70, 38, 22], glow * glow * 0.9);
+      // rainbow rim
+      const rim = clamp01(1 - Math.abs(edge - 5) / 2.6);
+      if (rim) col = mixc(col, hsl2rgb((Math.atan2(Y - 128, X - 128) / (Math.PI * 2) + 1.08) % 1), rim * 0.85);
+      // outer flame (gold at the tip → orange → red at the base)
+      const f1 = flameDist(X, Y, 128, 168, 30, 50, -16);
+      const a1 = clamp01(f1 * s + 0.5);
+      if (a1) {
+        const n = clamp01((200 - Y) / 170);
+        const fc = n > 0.55 ? mixc(orange, gold, (n - 0.55) / 0.45) : mixc(red, orange, n / 0.55);
+        col = mixc(col, fc, a1);
+      }
+      // inner flame (white-hot core)
+      const f2 = flameDist(X, Y, 126, 172, 92, 24, 8);
+      const a2 = clamp01(f2 * s + 0.5);
+      if (a2) col = mixc(col, mixc(gold, core, clamp01((190 - Y) / 70)), a2);
+      // embers: the agents around the fire
+      for (const [ex, ey, ec] of embers) {
+        const d = Math.hypot(X - ex, Y - ey);
+        const ea = clamp01((8 - d) * s + 0.5);
+        if (ea) col = mixc(col, ec, ea);
+      }
+      px[i] = Math.round(col[0]); px[i + 1] = Math.round(col[1]); px[i + 2] = Math.round(col[2]); px[i + 3] = Math.round(255 * cover);
     }
   }
   return pngFromRgba(px, size);
 }
+// Writes the PNG and a multi-size .ico (16–256 px) so the taskbar, desktop and window all get a sharp icon.
+function writeIconFiles() {
+  const sizes = [16, 24, 32, 48, 64, 128, 256];
+  const pngs = sizes.map((z) => drawIcon(z));
+  fs.writeFileSync(ICON_PNG, pngs[pngs.length - 1]);
+  const header = Buffer.alloc(6);
+  header.writeUInt16LE(0, 0); header.writeUInt16LE(1, 2); header.writeUInt16LE(sizes.length, 4);
+  const dir = Buffer.alloc(16 * sizes.length);
+  let offset = 6 + dir.length;
+  sizes.forEach((z, k) => {
+    const o = k * 16;
+    dir[o] = z >= 256 ? 0 : z; dir[o + 1] = z >= 256 ? 0 : z; dir[o + 2] = 0; dir[o + 3] = 0;
+    dir.writeUInt16LE(1, o + 4); dir.writeUInt16LE(32, o + 6);
+    dir.writeUInt32LE(pngs[k].length, o + 8); dir.writeUInt32LE(offset, o + 12);
+    offset += pngs[k].length;
+  });
+  fs.writeFileSync(ICON_ICO, Buffer.concat([header, dir, ...pngs]));
+}
 function ensureIcon() {
-  if (!fs.existsSync(ICON_PNG) || !fs.existsSync(ICON_ICO)) {
-    const png = drawIcon(256);
-    fs.writeFileSync(ICON_PNG, png);
-    // An .ico file may simply wrap a PNG image.
-    const header = Buffer.alloc(22);
-    header.writeUInt16LE(0, 0); header.writeUInt16LE(1, 2); header.writeUInt16LE(1, 4);
-    header[6] = 0; header[7] = 0; header[8] = 0; header[9] = 0;
-    header.writeUInt16LE(1, 10); header.writeUInt16LE(32, 12);
-    header.writeUInt32LE(png.length, 14); header.writeUInt32LE(22, 18);
-    fs.writeFileSync(ICON_ICO, Buffer.concat([header, png]));
-  }
+  if (!fs.existsSync(ICON_PNG) || !fs.existsSync(ICON_ICO)) writeIconFiles();
   return nativeImage.createFromPath(ICON_PNG);
 }
 
@@ -113,12 +155,13 @@ function toggleWindow(win) {
 }
 function setupTray(win, icon, actions) {
   tray = new Tray(icon.resize({ width: 16, height: 16 }));
-  tray.setToolTip('Agent Hub');
+  tray.setToolTip(APP_NAME);
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Show Agent Hub', click: () => { win.show(); win.focus(); } },
+    { label: `Show ${APP_NAME}`, click: () => { win.show(); win.focus(); } },
     { label: 'New chat with Claude', click: () => { win.show(); win.focus(); actions.send('tray:new-chat'); } },
     { label: 'Command palette', click: () => { win.show(); win.focus(); actions.send('tray:palette'); } },
     { type: 'separator' },
+    { label: 'Restart', click: () => restartApp() },
     { label: 'Quit', click: () => { quitting = true; app.quit(); } },
   ]));
   tray.on('click', () => toggleWindow(win));
@@ -141,15 +184,25 @@ function setupCloseToTray(win, getSettings) {
   app.on('before-quit', () => { quitting = true; });
 }
 
+// ---------- restart ----------
+// Closes cleanly (the window saves its state first) and starts again with the same arguments.
+function restartApp() {
+  quitting = true;
+  app.relaunch({ args: process.argv.slice(1).filter((a) => a !== '--restart' && !a.startsWith('--remote-debugging')) });
+  app.quit();
+}
+
 // ---------- Start menu / desktop shortcuts ----------
+// "Hearth" starts the app, or restarts it when it's already running (the --restart argument reaches the
+// running copy through the single-instance lock).
 function createShortcuts() {
   const target = process.execPath;
   const appDir = app.getAppPath();
   const places = [
-    path.join(process.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Agent Hub.lnk'),
-    path.join(os.homedir(), 'Desktop', 'Agent Hub.lnk'),
+    path.join(process.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs', `${APP_NAME}.lnk`),
+    path.join(os.homedir(), 'Desktop', `${APP_NAME}.lnk`),
   ];
-  const ps = places.map((p) => `$s=$w.CreateShortcut('${p.replace(/'/g, "''")}');$s.TargetPath='${target.replace(/'/g, "''")}';$s.Arguments='"${appDir}"';$s.WorkingDirectory='${appDir.replace(/'/g, "''")}';$s.IconLocation='${ICON_ICO.replace(/'/g, "''")}';$s.Description='Agent Hub';$s.Save()`).join(';');
+  const ps = places.map((p) => `$s=$w.CreateShortcut('${p.replace(/'/g, "''")}');$s.TargetPath='${target.replace(/'/g, "''")}';$s.Arguments='"${appDir}" --restart';$s.WorkingDirectory='${appDir.replace(/'/g, "''")}';$s.IconLocation='${ICON_ICO.replace(/'/g, "''")},0';$s.Description='Start ${APP_NAME} (or restart it if it is already open)';$s.Save()`).join(';');
   return new Promise((resolve) => {
     execFile('powershell.exe', ['-NoProfile', '-Command', `$w=New-Object -ComObject WScript.Shell;${ps}`], { windowsHide: true }, (err) => {
       resolve(err ? { error: err.message } : { created: places });
@@ -210,6 +263,6 @@ function setupDownloads(send) {
 
 module.exports = {
   ensureIcon, loadWindowState, trackWindowState, setupTray, applySettings, setupCloseToTray,
-  createShortcuts, attachContextMenu, setupDownloads, toggleWindow, ICON_ICO,
+  createShortcuts, restartApp, writeIconFiles, APP_NAME, ICON_ICO_PATH: ICON_ICO, attachContextMenu, setupDownloads, toggleWindow, ICON_ICO,
   markQuitting: () => { quitting = true; },
 };

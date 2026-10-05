@@ -64,7 +64,7 @@ function runScript(code, label = 'script', override) {
   if (!st.found) throw new Error('After Effects was not found on this PC.');
   const file = path.join(AE_DIR, `${label.replace(/[^\w-]+/g, '_')}-${Date.now()}.jsx`);
   // Wrap in an undo group so one Ctrl+Z in AE reverts the whole script.
-  fs.writeFileSync(file, `app.beginUndoGroup(${JSON.stringify(`Agent Hub: ${label}`)});\ntry {\n${code}\n} catch (e) { alert("Agent Hub script error: " + e.toString() + (e.line ? " (line " + e.line + ")" : "")); }\napp.endUndoGroup();\n`);
+  fs.writeFileSync(file, `app.beginUndoGroup(${JSON.stringify(`Hearth: ${label}`)});\ntry {\n${code}\n} catch (e) { alert("Hearth script error: " + e.toString() + (e.line ? " (line " + e.line + ")" : "")); }\napp.endUndoGroup();\n`);
   spawn(st.afterfx, ['-r', file], { detached: true, stdio: 'ignore', windowsHide: false }).unref();
   // Keep only the 30 newest generated scripts.
   const old = fs.readdirSync(AE_DIR).filter((f) => f.endsWith('.jsx')).map((f) => path.join(AE_DIR, f))

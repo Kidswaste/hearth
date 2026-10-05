@@ -11,7 +11,7 @@ const AEKit = (() => {
   }
 
   // Runs ExtendScript in After Effects (AE starts if it isn't open). Wrapped in one undo step.
-  async function runCode(code, label = 'Agent Hub script') {
+  async function runCode(code, label = 'Hearth script') {
     const st = await status();
     if (!st.found) { toast('After Effects was not found. Set its folder in Settings → Folders.', { type: 'error' }); return; }
     try {

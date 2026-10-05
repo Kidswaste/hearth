@@ -26,7 +26,7 @@ const AppUI = (() => {
       Object.entries(THEMES).map(([id, t]) => el('option', { value: id, text: t.label, selected: H.config.theme?.preset === id })));
     const hotkey = el('input', { value: s.hotkey ?? 'Control+Alt+H', placeholder: 'e.g. Control+Alt+H (empty = off)' });
     const [trayRow, trayIn] = check('Closing the window keeps the hub running in the tray', s.closeToTray);
-    const [startupRow, startupIn] = check('Start Agent Hub when Windows starts', s.launchAtStartup);
+    const [startupRow, startupIn] = check('Start Hearth when Windows starts', s.launchAtStartup);
     const [notifyRow, notifyIn] = check('Notify me when a reply finishes while I\'m elsewhere', s.notify !== false);
     const langs = new Set(s.spellLanguages || ['en-US']);
     const langBoxes = SPELL_LANGS.map(([code, label]) => {
@@ -105,7 +105,7 @@ const AppUI = (() => {
   async function createShortcuts() {
     const r = await window.hub.createShortcuts();
     if (r.error) toast(`Couldn't create shortcuts: ${r.error}`, { type: 'error' });
-    else toast('Added Agent Hub to the Start menu and your desktop.');
+    else toast('Added Hearth to the Start menu and your desktop. Open it again any time to restart the app.');
   }
   async function exportData() {
     const r = await window.hub.exportData();
@@ -115,6 +115,7 @@ const AppUI = (() => {
   // ---------- command palette ----------
   const actions = [];
   function addAction(label, run, keys = '') { actions.push({ label, run, keys }); }
+  addAction('Restart Hearth', () => window.hub.restartApp());
 
   function fuzzy(query, text) {
     if (!query) return 1;
