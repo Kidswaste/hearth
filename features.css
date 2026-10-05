@@ -725,3 +725,6 @@ html[data-skin="forge"] .layers { border-radius: 0; background: linear-gradient(
 .kf-btn.kf-on { color: #ffd75e; text-shadow: 0 0 6px #ffd75e90; }
 .ly-field.kf { grid-template-columns: 16px 54px minmax(0, 1fr) 44px; }
 .ly-field.kf select { grid-column: 3 / 5; }
+.mb-menu .menu-head { padding: 8px 10px 3px; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); border-top: 1px solid var(--line); }
+.mb-menu .menu-head:first-child { border-top: none; }
+.ly-addmenu { max-height: 70vh; overflow-y: auto; }

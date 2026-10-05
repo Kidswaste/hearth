@@ -212,3 +212,8 @@
 178. ✓ **Keyframes like After Effects**: a layer's opacity, position X/Y, scale and rotation, and any of its named sliders (numbers and colors) can change over the song. ◆ next to a setting or slider adds a keyframe at the playhead (◆ filled = on a keyframe, ◇ = animated, click again to remove). Once something is animated, moving it adds or updates a keyframe at the playhead.
 179. ✓ **Keyframes on the layer's track**: diamonds on its bar. Click to jump there, drag to move (snaps to the grid), double-click to delete, right-click for Ease (smooth, default), Linear or Hold. While the song plays the sliders show the animated values.
 180. ✓ **Prompt it**: "fade the sparks in over the first 4 seconds", "grow the rings into the drop", "turn it red on the drop": the Three Director's three_keyframes tool animates the right property at the right time. Recordings include the animation.
+
+## Filter layers (added Oct 5)
+181. ✓ **Filter layers** (like adjustment layers): ＋ Layer → Filters adds a layer that restyles everything below it: ASCII, Datamosh, Found footage (VHS with REC timecode and date), Glitch, CRT, Pixelate, Halftone, Film, Kaleidoscope, Edge glow, Thermal, Duotone, Glow. Marked "FX" in the layers list.
+182. ✓ **Filters are normal layers**: their settings are named sliders (so ◆ keyframes, ♪ music links, looks and shuffle work), opacity mixes the effect with the original, the timeline bar limits it to part of the song (e.g. glitch only on the drop), and its position in the stack decides what it affects. Datamosh and Glitch burst on your kick/snare markers (or the beat).
+183. ✓ **Prompt it**: "add an ASCII filter on top", "VHS look only on the intro", "glitch harder on the drop": the Three Director adds and times filter layers.

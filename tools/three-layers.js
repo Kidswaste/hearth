@@ -154,6 +154,74 @@ renderer.setAnimationLoop(() => {
     },
   ];
 
+
+  // Filter layers: they change everything below them (like adjustment layers). The settings are sliders.
+  const fx = (type, what, spec) => `// Filter layer: ${what}
+// It changes everything below it. Its settings are the sliders; the layer's opacity mixes it with the original,
+// and its bar on the timeline sets when it's on.
+const P = tweak({
+${spec}
+});
+filter('${type}', P);
+`;
+  const FILTERS = [
+    { id: 'ascii', name: 'ASCII', desc: 'Turns the picture into text characters', code: fx('ascii', 'ASCII art', `  cell: { value: 10, min: 4, max: 40, step: 1, label: 'Character size', group: 'ASCII' },
+  contrast: { value: 1.3, min: 0.5, max: 3, label: 'Contrast', group: 'ASCII' },
+  colors: { value: 'source', options: ['source', 'white', 'green', 'amber'], label: 'Colors', group: 'ASCII' },
+  tint: { value: '#ffffff', label: 'Tint', group: 'ASCII' },
+  background: { value: 0, min: 0, max: 0.6, label: 'Picture behind', group: 'ASCII', hint: 'How much of the original shows behind the characters' },`) },
+    { id: 'datamosh', name: 'Datamosh', desc: 'Smeared, blocky trails of earlier frames, bursting on hits', code: fx('datamosh', 'datamosh (frames melting into each other)', `  amount: { value: 0.5, min: 0, max: 1, label: 'Mosh amount', group: 'Datamosh' },
+  block: { value: 24, min: 4, max: 96, step: 1, label: 'Block size', group: 'Datamosh' },
+  smear: { value: 0.6, min: 0, max: 2, label: 'Smear', group: 'Datamosh', hint: 'How far moshed blocks slide' },
+  persist: { value: 0.92, min: 0, max: 0.99, label: 'Trail length', group: 'Datamosh' },
+  onHits: { value: true, label: 'Burst on hits', group: 'Music', hint: 'Mosh harder on your kick and snare markers (or the beat)' },`) },
+    { id: 'vhs', name: 'Found footage', desc: 'VHS tape: jitter, tracking bands, grain, color fringes, REC timecode', code: fx('vhs', 'found footage / VHS camcorder', `  grain: { value: 0.35, min: 0, max: 1, label: 'Grain', group: 'Tape' },
+  aberration: { value: 0.4, min: 0, max: 1, label: 'Color fringes', group: 'Tape' },
+  jitter: { value: 0.3, min: 0, max: 1, label: 'Jitter', group: 'Tape' },
+  tracking: { value: 0.35, min: 0, max: 1, label: 'Tracking bands', group: 'Tape' },
+  vignette: { value: 0.5, min: 0, max: 1, label: 'Dark corners', group: 'Look' },
+  fade: { value: 0.35, min: 0, max: 1, label: 'Washed out', group: 'Look' },`) },
+    { id: 'glitch', name: 'Glitch', desc: 'RGB split and torn slices on hits', code: fx('glitch', 'digital glitch', `  amount: { value: 0.6, min: 0, max: 1, label: 'Glitch amount', group: 'Glitch' },
+  split: { value: 0.5, min: 0, max: 2, label: 'RGB split', group: 'Glitch' },
+  slices: { value: 24, min: 2, max: 120, step: 1, label: 'Slices', group: 'Glitch' },
+  onHits: { value: true, label: 'Glitch on hits', group: 'Music', hint: 'Fire on your kick / snare / hit markers (or the beat)' },`) },
+    { id: 'crt', name: 'CRT', desc: 'Old TV: curved screen, scanlines, phosphor dots', code: fx('crt', 'old CRT television', `  curve: { value: 0.5, min: 0, max: 1.5, label: 'Screen curve', group: 'CRT' },
+  scanlines: { value: 0.6, min: 0, max: 1, label: 'Scanlines', group: 'CRT' },
+  mask: { value: 0.4, min: 0, max: 1, label: 'Phosphor dots', group: 'CRT' },
+  glow: { value: 0.3, min: 0, max: 1.5, label: 'Glow', group: 'CRT' },`) },
+    { id: 'pixelate', name: 'Pixelate', desc: 'Chunky pixels with fewer colors', code: fx('pixelate', 'pixel art', `  size: { value: 8, min: 1, max: 64, step: 1, label: 'Pixel size', group: 'Pixels' },
+  levels: { value: 0, min: 0, max: 16, step: 1, label: 'Colors (0 = all)', group: 'Pixels' },
+  punch: { value: 0.5, min: 0, max: 2, label: 'Kick punch', group: 'Music', hint: 'Pixels get bigger on kicks' },`) },
+    { id: 'halftone', name: 'Halftone', desc: 'Printed dots, like a comic or newspaper', code: fx('halftone', 'halftone print', `  dot: { value: 10, min: 3, max: 40, label: 'Dot size', group: 'Halftone' },
+  angle: { value: 25, min: 0, max: 90, label: 'Angle', group: 'Halftone' },
+  colors: { value: 'source', options: ['source', 'ink'], label: 'Colors', group: 'Halftone' },
+  ink: { value: '#111111', label: 'Ink', group: 'Halftone' },
+  paper: { value: '#f4efe6', label: 'Paper', group: 'Halftone' },`) },
+    { id: 'film', name: 'Film', desc: 'Grain, vignette, warmth and a little flicker', code: fx('film', 'analog film', `  grain: { value: 0.3, min: 0, max: 1, label: 'Grain', group: 'Film' },
+  vignette: { value: 0.5, min: 0, max: 1, label: 'Dark corners', group: 'Film' },
+  warmth: { value: 0.4, min: -1, max: 1, label: 'Warmth', group: 'Film' },
+  contrast: { value: 1.1, min: 0.5, max: 2, label: 'Contrast', group: 'Film' },
+  flicker: { value: 0.3, min: 0, max: 1, label: 'Flicker', group: 'Film' },`) },
+    { id: 'kaleido', name: 'Kaleidoscope', desc: 'Mirrored segments around the center', code: fx('kaleido', 'kaleidoscope', `  segments: { value: 6, min: 2, max: 16, step: 1, label: 'Segments', group: 'Kaleidoscope' },
+  spin: { value: 0.1, min: -2, max: 2, label: 'Spin', group: 'Kaleidoscope' },
+  zoom: { value: 1, min: 0.3, max: 3, label: 'Zoom', group: 'Kaleidoscope' },`) },
+    { id: 'edges', name: 'Edge glow', desc: 'Neon outlines of everything below', code: fx('edges', 'neon edges', `  strength: { value: 2, min: 0, max: 6, label: 'Edge strength', group: 'Edges' },
+  glow: { value: '#48ddff', label: 'Edge color', group: 'Edges' },
+  keep: { value: 0.25, min: 0, max: 1, label: 'Original picture', group: 'Edges' },
+  punch: { value: 0.6, min: 0, max: 2, label: 'Kick punch', group: 'Music' },`) },
+    { id: 'thermal', name: 'Thermal', desc: 'Heat-camera colors', code: fx('thermal', 'thermal camera', `  mix: { value: 1, min: 0, max: 1, label: 'Amount', group: 'Thermal' },
+  contrast: { value: 1.2, min: 0.5, max: 3, label: 'Contrast', group: 'Thermal' },`) },
+    { id: 'duotone', name: 'Duotone', desc: 'Two colors: one for shadows, one for highlights', code: fx('duotone', 'duotone', `  shadows: { value: '#1b0f3b', label: 'Shadows', group: 'Duotone' },
+  highlights: { value: '#ffb86b', label: 'Highlights', group: 'Duotone' },
+  contrast: { value: 1.1, min: 0.5, max: 3, label: 'Contrast', group: 'Duotone' },
+  mix: { value: 1, min: 0, max: 1, label: 'Amount', group: 'Duotone' },`) },
+    { id: 'glow', name: 'Glow', desc: 'Soft bloom around bright parts', code: fx('glow', 'glow / bloom', `  strength: { value: 0.8, min: 0, max: 3, label: 'Glow strength', group: 'Glow' },
+  radius: { value: 1, min: 0.2, max: 4, label: 'Glow size', group: 'Glow' },
+  threshold: { value: 0.55, min: 0, max: 1, label: 'Only above brightness', group: 'Glow' },
+  punch: { value: 0.5, min: 0, max: 2, label: 'Kick punch', group: 'Music' },`) },
+  ];
+  const isFilter = (code) => /\bfilter\(\s*['"]/.test(code || '');
+
   // onSelect(id), onChange(id, props, { live }), onAdd(templateId | 'copy' | 'ask'), onRemove(id),
   // onReorder(idsBottomFirst), now() → playhead seconds, duration() → song length, loop() → { a, b } | null.
   // keyState(id, prop) → 'none' | 'animated' | 'on'; toggleKey(id, prop, value); valueAt(L, prop) → shown value.
@@ -175,11 +243,14 @@ renderer.setAnimationLoop(() => {
 
     function addMenu(anchor) {
       const items = [
+        'Scene layers',
         ...TEMPLATES.map((t) => [t.name, t.desc, () => onAdd(t.id)]),
         ['Copy of the selected layer', 'Same code and settings', () => onAdd('copy')],
         ['Ask the Three Director…', 'Describe the layer you want in the chat', () => onAdd('ask')],
+        'Filters: change everything below',
+        ...FILTERS.map((t) => [t.name, t.desc, () => onAdd(t.id)]),
       ];
-      const menu = el('div', { class: 'mb-menu' }, items.map(([label, hint, fn]) => el('button', { class: 'menu-item', on: { click: () => { menu.remove(); fn(); } } }, el('b', { text: label }), el('span', { class: 'hint', text: hint }))));
+      const menu = el('div', { class: 'mb-menu ly-addmenu' }, items.map((it) => (typeof it === 'string' ? el('div', { class: 'menu-head', text: it }) : el('button', { class: 'menu-item', on: { click: () => { menu.remove(); it[2](); } } }, el('b', { text: it[0] }), el('span', { class: 'hint', text: it[1] })))));
       const r = anchor.getBoundingClientRect();
       Object.assign(menu.style, { left: `${Math.max(8, Math.min(innerWidth - 270, r.left))}px`, top: `${r.bottom + 4}px`, transform: 'none' });
       document.body.append(menu);
@@ -199,7 +270,7 @@ renderer.setAnimationLoop(() => {
           const v = await Modal.prompt('Rename layer', { value: L.name });
           if (v?.trim()) onChange(L.id, { name: v.trim() }, { live: false });
         });
-        const tags = [L.blend && L.blend !== 'normal' ? BLENDS.find((b) => b[0] === L.blend)?.[1].split(' ')[0] : '', (L.opacity ?? 1) < 1 ? `${Math.round(L.opacity * 100)}%` : '', L.in != null || L.out != null ? '⏱' : ''].filter(Boolean).join(' · ');
+        const tags = [isFilter(L.code) ? 'FX' : '', L.blend && L.blend !== 'normal' ? BLENDS.find((b) => b[0] === L.blend)?.[1].split(' ')[0] : '', (L.opacity ?? 1) < 1 ? `${Math.round(L.opacity * 100)}%` : '', L.in != null || L.out != null ? '⏱' : ''].filter(Boolean).join(' · ');
         const row = el('div', { class: `ly-row${L.id === selectedId ? ' on' : ''}${L.visible === false ? ' hidden-layer' : ''}`, attrs: { draggable: 'true' }, title: 'Click to select · drag to reorder', on: { click: () => onSelect(L.id) } },
           eye, el('span', { class: 'ly-swatch', style: { background: L.color } }), name, el('span', { class: 'ly-tags', text: tags }));
         row.addEventListener('dragstart', (e) => { dragId = L.id; e.dataTransfer.effectAllowed = 'move'; row.classList.add('dragging'); });
@@ -294,5 +365,5 @@ renderer.setAnimationLoop(() => {
     b.title = state === 'on' ? 'Remove this keyframe' : state === 'animated' ? 'Add a keyframe here (it\'s animated: moving the slider also adds one)' : 'Animate: add a keyframe at the playhead';
   }
 
-  return { panel, TEMPLATES, COLORS, BLENDS, defaults, newId, ANIM, KEY_EPS, evalKeys, upsertKey, keyAt };
+  return { panel, TEMPLATES, FILTERS, isFilter, COLORS, BLENDS, defaults, newId, ANIM, KEY_EPS, evalKeys, upsertKey, keyAt };
 })();

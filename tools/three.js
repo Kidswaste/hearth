@@ -284,7 +284,7 @@ const ThreeLab = (() => {
         L = newLayer({ ...JSON.parse(JSON.stringify(S)), id: ThreeLayers.newId(), name: `${S.name} copy` });
       } else if (code != null) L = newLayer({ name: name || 'Layer', code, ...(props || {}) });
       else {
-        const t = ThreeLayers.TEMPLATES.find((x) => x.id === kind) || ThreeLayers.TEMPLATES[0];
+        const t = [...ThreeLayers.TEMPLATES, ...ThreeLayers.FILTERS].find((x) => x.id === kind) || ThreeLayers.TEMPLATES[0];
         L = newLayer({ name: name || t.name, code: t.code, ...(props || {}) });
       }
       const Ls = layersOf();
@@ -710,7 +710,7 @@ ${code}
     // What the Three Director (Claude) uses to build scenes from the user's prompts.
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const layersSummary = () => layersOf().map((L, i) => ({
-      id: L.id, name: L.name, order: `${i + 1} of ${layersOf().length} (1 = bottom)`, selected: L.id === selId,
+      id: L.id, name: L.name, ...(ThreeLayers.isFilter(L.code) ? { kind: 'filter (changes the layers below it)' } : {}), order: `${i + 1} of ${layersOf().length} (1 = bottom)`, selected: L.id === selId,
       visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal',
       plays: L.in == null && L.out == null ? 'whole song' : { from: L.in ?? 0, to: L.out ?? 'end', fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0 },
       ...(L.x || L.y || (L.scale ?? 1) !== 1 || L.rotate ? { transform: { x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0 } } : {}),
