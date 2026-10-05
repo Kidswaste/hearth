@@ -166,12 +166,14 @@ const ThreeMedia = (() => {
       zones.hidden = !(safe && mode === '9:16');
       sizeLabel.textContent = `${s.w}×${s.h} · ${Math.round(k * 100)}%`;
     }
-    function setMode(id) {
+    // silent: set by the Lab when a sketch opens (it runs the sketch itself afterwards).
+    function setMode(id, { silent = false } = {}) {
+      if (!SIZES.some((s) => s.id === id)) return;
       const wasExact = Boolean(current().w);
       mode = id;
       store.set('three.aspect', id);
       layout();
-      onChange?.({ reload: wasExact !== Boolean(current().w) }); // device-pixel override needs a reload
+      if (!silent) onChange?.({ id, reload: wasExact !== Boolean(current().w) }); // device-pixel override needs a reload
     }
     new ResizeObserver(layout).observe(host);
     layout();
@@ -238,7 +240,7 @@ const ThreeMedia = (() => {
   // Timeline: zoom (wheel / ＋ −) down to single samples, scroll (bar underneath / Shift+wheel), A–B loop
   // points (top strip, typed times, nudges), a rekordbox-style beat grid (BPM, tap, "1" here, meter),
   // snapping, and Kick / Snare / Hit lanes the user fills by tapping K S H or clicking.
-  function player({ send, sketchName, onLoaded }) {
+  function player({ send, sketchName, onLoaded, onPick }) {
     const st = { path: null, name: null, bytes: null, mime: null, video: false, analysis: null, samples: null, time: 0, duration: 0, playing: false, loop: store.get('three.mediaLoop', true), volume: store.get('three.mediaVolume', 0.8), stampAt: 0 };
     let region = null; // { a, b } seconds
     let locked = false;
@@ -319,16 +321,19 @@ const ThreeMedia = (() => {
     // ---------- file ----------
     async function pick() {
       const [p] = await window.hub.openDialog({ title: 'Music or video for the sketch', filters: [{ name: 'Audio and video', extensions: [...AUDIO_EXT, ...VIDEO_EXT] }] });
-      if (p) load(p);
+      if (p) { onPick?.(p); load(p); }
     }
     const loopKey = (p) => `three.loop:${p}`;
+    let loadSeq = 0; // a newer load / unload (e.g. switching sketches fast) cancels an older one
     async function load(path, { startAt = 0, quiet = false } = {}) {
       if (!isMedia(path)) { toast(`${base(path)} isn't an audio or video file`, { type: 'error' }); return { ok: false, error: 'Not an audio/video file' }; }
+      const seq = ++loadSeq;
       let bytes;
       try {
         const u8 = await window.hub.fs.read(path, { encoding: 'buffer', maxBytes: 2 * 1024 ** 3 });
         bytes = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
       } catch (err) { if (!quiet) toast(`Couldn't open ${base(path)}: ${err.message}`, { type: 'error' }); return { ok: false, error: err.message }; }
+      if (seq !== loadSeq) return { ok: false, error: 'Another file was loaded meanwhile' };
       Object.assign(st, { path, name: base(path), bytes, mime: MIME[extOf(path)], video: VIDEO_EXT.includes(extOf(path)), analysis: null, samples: null, time: startAt, duration: 0, playing: false });
       const saved = store.get(loopKey(path), null);
       region = saved?.a != null ? { a: saved.a, b: saved.b } : null;
@@ -337,6 +342,7 @@ const ThreeMedia = (() => {
       selected = null;
       // The user's grid and markers for this song.
       allMaps ||= await window.hub.kvGet('three-beatmaps', {});
+      if (seq !== loadSeq) return { ok: false, error: 'Another file was loaded meanwhile' };
       const m = allMaps[path];
       map = { grid: m?.grid || null, marks: { kick: m?.marks?.kick || [], snare: m?.marks?.snare || [], hit: m?.marks?.hit || [] } };
       mapUndo = [];
@@ -349,7 +355,8 @@ const ThreeMedia = (() => {
         st.samples = a.samples;
         delete a.samples;
         st.analysis = a;
-      } catch (err) { st.analysis = null; if (!quiet) toast(st.video ? `${st.name} has no audio track to analyze (it still works as a video texture)` : `Couldn't analyze ${st.name}: ${err.message}`, { type: 'error' }); }
+      } catch (err) { if (seq === loadSeq) { st.analysis = null; if (!quiet) toast(st.video ? `${st.name} has no audio track to analyze (it still works as a video texture)` : `Couldn't analyze ${st.name}: ${err.message}`, { type: 'error' }); } }
+      if (seq !== loadSeq) return { ok: false, error: 'Another file was loaded meanwhile' };
       analyzing = false;
       if (st.analysis) { st.duration = st.analysis.duration; send({ type: 'media-analysis', analysis: st.analysis }); }
       if (locked && region) view = padded(region);
@@ -358,13 +365,16 @@ const ThreeMedia = (() => {
       onLoaded?.();
       return { ok: true };
     }
-    function unload() {
+    // silent: the Lab is switching sketches and runs the new one itself.
+    function unload({ silent = false } = {}) {
+      loadSeq += 1;
+      analyzing = false;
       Object.assign(st, { path: null, name: null, bytes: null, analysis: null, samples: null, time: 0, duration: 0, playing: false });
       region = null; locked = false; view = null; selected = null;
       map = { grid: null, marks: { kick: [], snare: [], hit: [] } };
       store.set('three.media', null);
       paint();
-      onLoaded?.({ reload: true });
+      if (!silent) onLoaded?.({ reload: true, unloaded: true });
     }
     // (Re)sends the file to the sandbox; called after every full reload of the preview.
     function attach({ playing = st.playing } = {}) {
@@ -910,6 +920,7 @@ const ThreeMedia = (() => {
       get recording() { return Boolean(recording); },
       get loaded() { return Boolean(st.bytes); },
       get path() { return st.path; },
+      get time() { return now(); },
       // For the Three Director: what's loaded, the user's grid and hit markers, and the song's shape.
       info() {
         if (!st.bytes) return { loaded: false, note: 'No music loaded. Sketches get a demo 120 bpm beat; the user can load a file with "🎵 Load audio / video…" or you can use three_load_media.' };

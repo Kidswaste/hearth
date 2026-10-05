@@ -84,7 +84,25 @@ const ThreeLab = (() => {
       Native.send(agent.id, text).catch((err) => toast(err.message, { type: 'error' }));
     }
     // Music / video for audio-reactive sketches, and exact output sizes (tools/three-media.js).
-    const player = ThreeMedia.player({ send: (msg) => box.send(msg), sketchName: () => current?.name, onLoaded: (o) => { if (o?.reload) run(); } });
+    // Each sketch has its own song (and playback spot and frame size), kept in extras[id].media / .frame.
+    const player = ThreeMedia.player({
+      send: (msg) => box.send(msg),
+      sketchName: () => current?.name,
+      onPick: (path) => assignMedia(path),
+      onLoaded: (o) => { if (o?.unloaded) assignMedia(null); if (o?.reload) run(); },
+    });
+    function assignMedia(path) {
+      if (!current) return;
+      (extras[current.id] ||= {}).media = path ? { path, time: 0 } : null;
+      saveExtras();
+    }
+    function rememberMedia() {
+      if (!current || !extras[current.id]?.media || extras[current.id].media.path !== player.path) return;
+      extras[current.id].media.time = Math.round(player.time * 1000) / 1000;
+      saveExtras();
+    }
+    setInterval(rememberMedia, 5000);
+    addEventListener('beforeunload', () => { rememberMedia(); window.hub.kvSet('three-lab-extras', extras); });
     const split = el('div', { class: 'three-split' }, editorHost, el('div', { class: 'three-right' }, previewHost, player.el, consoleBox), tweaks.el);
     function setCodeVisible(show) {
       split.classList.toggle('no-code', !show);
@@ -105,7 +123,10 @@ const ThreeLab = (() => {
     pane.append(toolbar, split);
     let stage = null;
     const box = sandboxFrame(previewHost, 'sketch', onMessage, () => stage?.params || '');
-    stage = ThreeMedia.stage(previewHost, box.frame, { onChange: ({ reload }) => { if (reload && current) run(); } });
+    stage = ThreeMedia.stage(previewHost, box.frame, { onChange: ({ id, reload }) => {
+      if (current) { (extras[current.id] ||= {}).frame = id; saveExtras(); }
+      if (reload && current) run();
+    } });
     // Drop an mp3/mp4 on the preview to load it.
     previewHost.addEventListener('dragover', (e) => { if ([...e.dataTransfer.items].some((i) => i.kind === 'file')) { e.preventDefault(); previewHost.classList.add('drop-on'); } });
     previewHost.addEventListener('dragleave', () => previewHost.classList.remove('drop-on'));
@@ -114,7 +135,9 @@ const ThreeLab = (() => {
       const f = [...e.dataTransfer.files].find((x) => ThreeMedia.isMedia(x.name));
       if (!f) return;
       e.preventDefault();
-      player.load(window.hub.pathForFile(f));
+      const p = window.hub.pathForFile(f);
+      assignMedia(p);
+      player.load(p);
     });
     // Space plays / pauses; K S H tap hits in; [ ] set loop points; arrows nudge; Delete removes a marker.
     pane.addEventListener('keydown', (e) => { if (player.onKey(e)) e.preventDefault(); });
@@ -269,8 +292,17 @@ const ThreeLab = (() => {
         } } });
       }
       tweaks.forget();
+      rememberMedia();
+      if (left && stage) { (extras[left.id] ||= {}).frame = stage.size.id; saveExtras(); }
       current = sketches.find((s) => s.id === id) || sketches[0];
       tweaks.load(extras[current.id]);
+      // This sketch's frame size and song (with where it was in the song).
+      const ex = extras[current.id] || {};
+      if (ex.frame) stage.setMode(ex.frame, { silent: true });
+      const want = ex.media?.path || null;
+      if (!want) { if (player.loaded || player.path) player.unload({ silent: true }); }
+      else if (want !== player.path) { player.unload({ silent: true }); player.load(want, { startAt: ex.media.time || 0, quiet: true }); }
+      else player.seek(ex.media.time || 0);
       store.set('three.current', current.id);
       editor.setValue(current.code);
       renderPicker();
@@ -360,8 +392,10 @@ ${editor.value}
       sketches = await window.hub.kvGet('three-sketches', []);
       ({ versions: history = {}, trash = [] } = await window.hub.kvGet('three-history', {}));
       extras = await window.hub.kvGet('three-lab-extras', {});
+      // First run with per-sketch songs: the song that was loaded goes to the sketch that was open.
+      const firstId = sketches.some((s) => s.id === store.get('three.current')) ? store.get('three.current') : sketches[0]?.id;
       const lastMedia = store.get('three.media', null);
-      if (lastMedia) player.load(lastMedia, { quiet: true });
+      if (firstId && lastMedia && extras[firstId]?.media === undefined) { (extras[firstId] ||= {}).media = { path: lastMedia, time: 0 }; saveExtras(); }
       if (!sketches.length) { sketches = [{ id: `s${Date.now()}`, name: 'Basic scene', code: ThreeData.TEMPLATES[0].code, updatedAt: Date.now() }]; save(); }
       openSketch(store.get('three.current', sketches[0].id));
       api.director = director; // only once saved sketches are loaded, so director edits never land on a placeholder
@@ -385,6 +419,7 @@ ${editor.value}
     const director = {
       getCode: () => ({ sketch: current?.name, frame: stage.size, lines: editor.value.split('\n').length, code: editor.value, ...(tweaks.controls().length ? { sliders: tweaks.controls() } : {}), ...(tweaks.unsaved().length ? { unsavedSliders: tweaks.unsaved(), note: 'The user moved these sliders but has not saved them into the code; keep their values when you rewrite.' } : {}) }),
       media: player,
+      assignMedia,
       setFrame: (id) => stage.setMode(id),
       async setCode(code, wait = 2.5) {
         if (player.recording) throw new Error('The user is recording a video right now; wait until they stop.');
@@ -741,8 +776,9 @@ ${frag}\`,
     if (tool === 'three_media_info') return { ok: true, value: d.media.info() };
     if (tool === 'three_load_media') {
       const r = await d.media.load(String(args.path || ''));
+      if (r.ok) d.assignMedia(String(args.path));
       if (!r.ok) return { ok: false, error: r.error };
-      for (let i = 0; i < 120 && !d.media.info().bpm && d.media.info().analysis !== 'none (no audio track)'; i += 1) await new Promise((res) => setTimeout(res, 250));
+      for (let i = 0; i < 240 && d.media.info().analysis === 'still analyzing'; i += 1) await new Promise((res) => setTimeout(res, 250));
       return { ok: true, value: d.media.info() };
     }
     if (tool === 'three_media_control') {
