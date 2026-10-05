@@ -306,7 +306,7 @@ const ThreeMedia = (() => {
     snapSel.addEventListener('change', () => { snapMode = snapSel.value; store.set('three.snapMode', snapMode); draw(); });
     const laneBtns = LANES.map((ln) => btn('', `Add a ${ln.name.toLowerCase()} at the playhead (or press ${ln.key.toUpperCase()} while it plays)`, () => addAtPlayhead(ln.id), `ghost small mb-lane mb-lane-${ln.id}`));
     const fillBtn = btn('Fill ▾', 'Stamp kicks / snares / hits on the grid, or clear them', (e) => fillMenu(e.currentTarget));
-    const undoBtn = btn('↶', 'Undo the last grid or marker change (Ctrl+Z)', () => undoMap());
+    const undoBtn = btn('↶', 'Undo the last grid, marker or curve change (Ctrl+Z)', () => undoMap());
     const gridRow = el('div', { class: 'mb-row mb-grid' },
       el('span', { class: 'mb-label', text: 'Grid' }), bpmIn, el('span', { class: 'mb-unit', text: 'BPM' }), tapBtn, dblBtn, halfBtn, sep(), oneBtn, gridL, gridR, meterSel, autoBtn, gridState, sep(), snapSel, sep(),
       el('span', { class: 'mb-label', text: 'Hits' }), ...laneBtns, fillBtn, undoBtn);
@@ -317,17 +317,31 @@ const ThreeMedia = (() => {
     const minimap = el('canvas', { class: 'mb-minimap', title: 'The whole song: each layer\'s time, the loop and the playhead. Drag the box to move the zoomed view; click to jump.' });
     // Layer tracks under the song (top layer first): { id, name, color, in, out, visible, selected, keys: [{ t, ease }] }.
     // Handlers: onSelect(id), onChange(id, { in, out }, { final }), onKeyMove(id, from, to), onKeyDelete(id, t), onKeyEase(id, t, ease).
-    // A track can show one automation lane under it (Ableton-style), picked with the ▾ chip at its right:
-    // lane = { prop, label, min, max, step, base, keys } and handlers onLanePick(id, x, y), onLaneEdit(id, prop, keys, { final }).
+    // A track can show several automation lanes under it (Ableton-style), picked with the ▾ in the header column
+    // at the right (outside the timeline, so it never covers it):
+    // lanes = [{ prop, label, min, max, step, base, keys, tall }], animated = how many settings have points.
+    // Handlers onLanePick(id, x, y, { prop }), onLaneEdit(id, prop, keys, { final }), onLaneHide(id, prop), onLaneTall(id, prop).
     let tracks = [];
     let trackHandlers = {};
-    const TRACK_H = 16; const AUTO_H = 48; const CHIP_W = 104;
-    const rowH = (tr) => TRACK_H + (tr.lane ? AUTO_H : 0);
+    const TRACK_H = 16; const AUTO_H = 48; const AUTO_TALL = 112; const GUT = 122;
+    const laneH = (ln) => (ln.tall ? AUTO_TALL : AUTO_H);
+    const lanesOf = (tr) => tr.lanes || [];
+    const rowH = (tr) => TRACK_H + lanesOf(tr).reduce((s, ln) => s + laneH(ln), 0);
     const tracksH = () => tracks.reduce((sum, tr) => sum + rowH(tr), 0);
     function trackRows(h) {
       let y = h - tracksH();
-      return tracks.map((tr) => { const row = { tr, y, laneY: y + TRACK_H, end: y + rowH(tr) }; y += rowH(tr); return row; });
+      return tracks.map((tr) => {
+        const row = { tr, y, end: y + rowH(tr), lanes: [] };
+        let ly = y + TRACK_H;
+        for (const ln of lanesOf(tr)) { row.lanes.push({ ln, top: ly, h: laneH(ln) }); ly += laneH(ln); }
+        y = row.end;
+        return row;
+      });
     }
+    // Selected curve points (one lane at a time), the lane you last touched (for paste), and the clipboard.
+    let autoSel = null; // { id, prop, idx: Set }
+    let activeLane = null; // { id, prop }
+    let autoClip = null; // { prop, min, max, keys: [{ t (from 0), v, ease, c }] }
     function setTracks(list, handlers) {
       tracks = list || [];
       if (handlers) trackHandlers = handlers;
@@ -488,9 +502,18 @@ const ThreeMedia = (() => {
       fn(ensureGrid());
       mapChanged();
     }
+    // The undo stack holds grid / marker states (strings) and curve edits ({ lane: { id, prop, keys } }).
     function undoMap() {
       const prev = mapUndo.pop();
       if (!prev) return;
+      if (typeof prev === 'object') {
+        const { id, prop, keys } = prev.lane;
+        autoSel = null;
+        setLaneKeys(id, prop, keys);
+        trackHandlers.onLaneEdit?.(id, prop, keys.map((k) => ({ ...k })), { final: true });
+        paint();
+        return;
+      }
       map = JSON.parse(prev);
       selected = null;
       mapChanged({ undoable: false });
@@ -610,20 +633,35 @@ const ThreeMedia = (() => {
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return false;
       if (e.code === 'Space' && !e.ctrlKey && !e.altKey) { toggle(); return true; }
       if (!st.bytes) return false;
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { undoMap(); return true; }
-      if (e.ctrlKey || e.metaKey) return false;
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (ctrl && e.key.toLowerCase() === 'z') { undoMap(); return true; }
+      // curve points: copy / paste at the playhead / duplicate after themselves / select all in the lane
+      if (ctrl && e.key.toLowerCase() === 'c' && autoSel?.idx.size) { copyPoints(); return true; }
+      if (ctrl && e.key.toLowerCase() === 'v' && autoClip && activeLane) { pastePoints(); return true; }
+      if (ctrl && e.key.toLowerCase() === 'd' && autoSel?.idx.size) { duplicatePoints(); return true; }
+      if (ctrl && e.key.toLowerCase() === 'a' && activeLane) { selectAllPoints(); return true; }
+      if (ctrl) return false;
+      if (e.key.toLowerCase() === 'a' && !e.altKey && !e.shiftKey) { trackHandlers.onLanesAll?.(); return true; }
       const lane = LANES.find((l) => l.key === e.key.toLowerCase());
       if (lane && !e.altKey) { addAtPlayhead(lane.id); return true; }
       if (e.key === '[') { setRegionEdge('a', now()); return true; }
       if (e.key === ']') { setRegionEdge('b', now()); return true; }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && autoSel?.idx.size) { deletePoints(); return true; }
       if (e.key === 'Delete' || e.key === 'Backspace') return deleteSelectedMark();
-      if (e.key === 'Escape') { selected = null; draw(); return true; }
+      if (e.key === 'Escape') { if (autoSel) { autoSel = null; draw(); return true; } selected = null; draw(); return true; }
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         const dir = e.key === 'ArrowLeft' ? -1 : 1;
         const d = dir * (e.shiftKey ? snapStep(snapMode, map.grid, bpmNow()) : e.altKey ? 0.001 : 0.01);
-        if (selected?.type === 'edge' && region && !locked) setRegionEdge(selected.edge, region[selected.edge] + d, { exact: true });
+        if (autoSel?.idx.size) nudgePoints(d, 0, e.repeat);
+        else if (selected?.type === 'edge' && region && !locked) setRegionEdge(selected.edge, region[selected.edge] + d, { exact: true });
         else if (selected?.type === 'mark') { if (!e.repeat || !nudgeKey.pushed) { pushUndo(); nudgeKey.pushed = true; } moveSelectedMark(selected.t + d); mapChanged(); }
         else seek(now() + d);
+        return true;
+      }
+      if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && autoSel?.idx.size) {
+        const ln = laneOf(autoSel.id, autoSel.prop);
+        const unit = (ln.max - ln.min) / (e.shiftKey ? 10 : e.altKey ? 1000 : 100);
+        nudgePoints(0, (e.key === 'ArrowUp' ? 1 : -1) * Math.max(unit, e.altKey ? 0 : ln.step || 0), e.repeat);
         return true;
       }
       return false;
@@ -747,14 +785,18 @@ const ThreeMedia = (() => {
       miniTime.textContent = D() ? `${fmtTime(t)} / ${fmtTime(D())}` : '';
       miniPlay.textContent = st.playing ? '⏸' : '▶';
       drawMinimap(t);
-      const w = canvas.clientWidth; const h = canvas.clientHeight;
-      if (!w || !h) return;
+      const W = canvas.clientWidth; const h = canvas.clientHeight;
+      if (!W || !h) return;
+      // the time area; the header column (GUT px) on the right holds the ▾ choosers and lane names
+      const w = tw();
       const dpr = devicePixelRatio || 1;
-      if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+      if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(W * dpr); canvas.height = Math.round(h * dpr); }
       const g = canvas.getContext('2d');
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
-      g.clearRect(0, 0, w, h);
-      if (!D()) { g.fillStyle = '#ffffff10'; g.fillRect(0, h / 2 - 1, w, 2); return; }
+      g.clearRect(0, 0, W, h);
+      if (!D()) { g.fillStyle = '#ffffff10'; g.fillRect(0, h / 2 - 1, w, 2); drawGutter(g, w, W, h, 0); return; }
+      g.save();
+      g.beginPath(); g.rect(0, 0, w, h); g.clip();
       const s0 = v0(); const sp = span();
       const X = (tt) => ((tt - s0) / sp) * w;
       const a = st.analysis;
@@ -843,7 +885,7 @@ const ThreeMedia = (() => {
         }
       });
       // layer tracks: a bar for when each layer is on screen
-      trackRows(h).forEach(({ tr, y, laneY: ly }, i) => {
+      trackRows(h).forEach(({ tr, y }, i) => {
         g.fillStyle = tr.selected ? '#ffd75e16' : i % 2 ? '#ffffff05' : '#ffffff0a';
         g.fillRect(0, y, w, TRACK_H);
         const a0 = tr.in ?? 0; const b0 = tr.out ?? D();
@@ -874,14 +916,13 @@ const ThreeMedia = (() => {
           else { g.moveTo(kx, ky - r0); g.lineTo(kx + r0, ky); g.lineTo(kx, ky + r0); g.lineTo(kx - r0, ky); g.closePath(); }
           if (k.ease === 'linear') { g.stroke(); g.strokeStyle = tr.selected ? '#ffffff' : '#eae0d5'; g.stroke(); } else { g.fill(); g.stroke(); }
         }
-        // ▾ chooser at the right of the track: which parameter's automation shows below it
-        g.fillStyle = tr.lane ? '#ffd75e2a' : '#14181bd0';
-        g.fillRect(w - CHIP_W, y + 1, CHIP_W, TRACK_H - 2);
-        g.fillStyle = tr.lane ? '#ffd75e' : '#cfc6bb';
-        const chipText = `▾ ${tr.lane ? tr.lane.label : 'Automation'}`;
-        g.fillText(chipText.length > 16 ? `${chipText.slice(0, 15)}…` : chipText, w - CHIP_W + 6, y + 11);
-        if (tr.lane) drawLane(g, tr, ly, X, s0, sp, w);
       });
+      for (const row of trackRows(h)) for (const lr of row.lanes) drawLane(g, row.tr, lr, X, s0, sp, w);
+      if (dragging?.kind === 'autoBox' && dragging.box) {
+        const b = dragging.box;
+        g.fillStyle = '#ffffff12'; g.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
+        g.strokeStyle = '#ffffffa0'; g.lineWidth = 1; g.setLineDash([3, 3]); g.strokeRect(b.x0 + 0.5, b.y0 + 0.5, b.x1 - b.x0, b.y1 - b.y0); g.setLineDash([]);
+      }
       // loop region
       if (region) {
         const xa = X(region.a); const xb = X(region.b);
@@ -908,31 +949,79 @@ const ThreeMedia = (() => {
         g.fillRect(x, RULER, 1, LT - RULER);
       }
       if (t >= s0 && t <= s0 + sp) { g.fillStyle = '#ffffff'; g.fillRect(Math.round(X(t)), 0, 2, h); }
+      g.restore();
+      drawGutter(g, w, W, h, t);
+    }
+    // The header column right of the timeline: Ableton's track headers. Each layer gets its ▾ chooser,
+    // each lane its name, the value at the playhead, its range and a ✕.
+    function drawGutter(g, w, W, h, t) {
+      g.fillStyle = '#0d1013';
+      g.fillRect(w, 0, W - w, h);
+      g.fillStyle = '#ffffff1c';
+      g.fillRect(w, 0, 1, h);
+      g.font = '10px Consolas, monospace';
+      const LT = laneTop(h);
+      g.fillStyle = '#8f877d';
+      if (D()) g.fillText(tracks.length ? 'A: all curves' : '', w + 8, LT - 6);
+      const fmtV = (v) => (Math.abs(v) >= 100 ? Math.round(v) : Math.abs(v) >= 10 ? Math.round(v * 10) / 10 : Math.round(v * 100) / 100);
+      for (const row of trackRows(h)) {
+        const { tr, y } = row;
+        const shown = row.lanes.length;
+        g.fillStyle = shown ? '#ffd75e26' : tr.selected ? '#ffffff14' : '#ffffff0a';
+        g.fillRect(w + 3, y + 1, W - w - 6, TRACK_H - 2);
+        g.fillStyle = tr.color || '#7ad0ff';
+        g.fillRect(w + 3, y + 1, 3, TRACK_H - 2);
+        g.fillStyle = shown ? '#ffd75e' : '#cfc6bb';
+        const label = `▾ ${shown ? `${shown} curve${shown === 1 ? '' : 's'}` : 'Automation'}${tr.animated ? ` · ${tr.animated}●` : ''}`;
+        g.fillText(label, w + 10, y + 11);
+        for (const { ln, top, h: lh } of row.lanes) {
+          const col = tr.color || '#ffd75e';
+          const isActive = activeLane && activeLane.id === tr.id && activeLane.prop === ln.prop;
+          g.fillStyle = isActive ? '#ffffff0e' : '#ffffff05';
+          g.fillRect(w + 1, top, W - w - 1, lh);
+          g.fillStyle = '#ffffff12';
+          g.fillRect(w + 1, top + lh - 1, W - w - 1, 1);
+          g.fillStyle = col;
+          g.fillRect(w + 3, top + 3, 2, lh - 6);
+          g.fillStyle = isActive ? '#ffffff' : '#eae0d5';
+          const name = ln.label.length > 13 ? `${ln.label.slice(0, 12)}…` : ln.label;
+          g.fillText(`${name} ▾`, w + 9, top + 12);
+          g.fillStyle = '#cfc6bb';
+          g.fillText('✕', W - 14, top + 12);
+          // value at the playhead
+          const v = ThreeLayers.evalKeys(ln.keys || [], t, ln.base);
+          if (typeof v === 'number') { g.fillStyle = col; g.font = '12px Consolas, monospace'; g.fillText(String(fmtV(v)), w + 9, top + 27); g.font = '10px Consolas, monospace'; }
+          g.fillStyle = '#8f877d';
+          g.textAlign = 'right';
+          if (lh >= AUTO_H) { g.fillText(`${fmtV(ln.max)} ↑`, W - 5, top + 27); g.fillText(`${fmtV(ln.min)} ↓`, W - 5, top + lh - 5); }
+          g.textAlign = 'left';
+          if (lh > AUTO_H) { g.fillStyle = '#8f877d'; g.fillText(`${(ln.keys || []).length} points`, w + 9, top + lh - 5); }
+        }
+      }
     }
     // FL Studio-style automation: the curve, its points, and a tension handle in the middle of each segment.
-    const laneV = (L, laneY, y) => {
-      const raw = L.min + (1 - (y - laneY - 5) / (AUTO_H - 10)) * (L.max - L.min);
-      const v = Math.max(L.min, Math.min(L.max, raw));
-      return L.step ? Math.round(v / L.step) * L.step : Math.round(v * 1000) / 1000;
-    };
-    const laneY = (L, top, v) => top + 5 + (1 - (v - L.min) / ((L.max - L.min) || 1)) * (AUTO_H - 10);
-    function drawLane(g, tr, top, X, s0, sp, w) {
-      const L = tr.lane;
+    const roundV = (L, v) => { const c = Math.max(L.min, Math.min(L.max, v)); return L.step ? Math.round(Math.round(c / L.step) * L.step * 1e6) / 1e6 : Math.round(c * 1000) / 1000; };
+    const laneV = (L, top, lh, y) => roundV(L, L.min + (1 - (y - top - 5) / (lh - 10)) * (L.max - L.min));
+    const laneY = (L, top, lh, v) => top + 5 + (1 - (v - L.min) / ((L.max - L.min) || 1)) * (lh - 10);
+    const isSel = (tr, ln, i) => autoSel && autoSel.id === tr.id && autoSel.prop === ln.prop && autoSel.idx.has(i);
+    function drawLane(g, tr, { ln: L, top, h: lh }, X, s0, sp, w) {
       const keys = L.keys || [];
       const col = tr.color || '#ffd75e';
+      const Y = (v) => laneY(L, top, lh, v);
       g.fillStyle = '#05070dcc';
-      g.fillRect(0, top, w - 0, AUTO_H);
+      g.fillRect(0, top, w, lh);
       g.fillStyle = '#ffffff0d';
-      g.fillRect(0, laneY(L, top, (L.min + L.max) / 2), w, 1);
-      g.fillRect(0, top + AUTO_H - 1, w, 1);
+      g.fillRect(0, Y((L.min + L.max) / 2), w, 1);
+      g.fillStyle = '#ffffff16';
+      g.fillRect(0, top + lh - 1, w, 1);
       // the curve (and a soft fill under it)
       const ev = (t) => ThreeLayers.evalKeys(keys, t, L.base);
       g.beginPath();
-      for (let x = 0; x <= w; x += 2) { const yy = laneY(L, top, ev(s0 + (x / w) * sp)); if (x) g.lineTo(x, yy); else g.moveTo(x, yy); }
+      for (let x = 0; x <= w; x += 2) { const yy = Y(ev(s0 + (x / w) * sp)); if (x) g.lineTo(x, yy); else g.moveTo(x, yy); }
       g.strokeStyle = keys.length ? col : `${col}60`;
       g.lineWidth = 1.6;
       g.stroke();
-      g.lineTo(w, top + AUTO_H); g.lineTo(0, top + AUTO_H); g.closePath();
+      g.lineTo(w, top + lh); g.lineTo(0, top + lh); g.closePath();
       g.fillStyle = `${col}18`;
       g.fill();
       keys.forEach((k, i) => {
@@ -940,21 +1029,27 @@ const ThreeMedia = (() => {
         if (nx && k.ease !== 'hold' && X(nx.t) - X(k.t) > 18) {
           const tm = (k.t + nx.t) / 2;
           const hx = X(tm);
-          if (hx > 0 && hx < w) { g.strokeStyle = '#ffffffb0'; g.lineWidth = 1; g.beginPath(); g.arc(hx, laneY(L, top, ev(tm)), 3, 0, Math.PI * 2); g.stroke(); }
+          if (hx > 0 && hx < w) { g.strokeStyle = '#ffffffb0'; g.lineWidth = 1; g.beginPath(); g.arc(hx, Y(ev(tm)), 3, 0, Math.PI * 2); g.stroke(); }
         }
         const kx = X(k.t);
         if (kx < -6 || kx > w + 6) return;
-        g.fillStyle = '#0b0e10';
-        g.beginPath(); g.arc(kx, laneY(L, top, k.v), 4.2, 0, Math.PI * 2); g.fill();
-        g.strokeStyle = k.ease === 'hold' ? '#ffffff' : col; g.lineWidth = 2; g.stroke();
+        const on = isSel(tr, L, i);
+        g.fillStyle = on ? '#ffffff' : '#0b0e10';
+        g.beginPath(); g.arc(kx, Y(k.v), on ? 4.8 : 4.2, 0, Math.PI * 2); g.fill();
+        g.strokeStyle = on ? col : k.ease === 'hold' ? '#ffffff' : col; g.lineWidth = 2; g.stroke();
       });
-      g.fillStyle = '#eae0d590';
-      const fmtV = (v) => (Math.abs(v) >= 10 ? Math.round(v) : Math.round(v * 100) / 100);
-      g.fillText(`${L.label}${keys.length ? '' : ' · click to add a point'}`, 6, top + 12);
-      g.textAlign = 'right';
-      g.fillText(String(fmtV(L.max)), w - 4, top + 11);
-      g.fillText(String(fmtV(L.min)), w - 4, top + AUTO_H - 4);
-      g.textAlign = 'left';
+      // the value next to the point being dragged
+      const d = dragging;
+      if (d && (d.kind === 'autoPoint' || d.kind === 'autoGroup') && d.id === tr.id && d.L.prop === L.prop && d.moved) {
+        const k = d.keys[d.kind === 'autoPoint' ? d.i : d.lead];
+        if (k) {
+          const txt = `${fmtMs(k.t)} · ${Math.abs(k.v) >= 10 ? Math.round(k.v * 10) / 10 : Math.round(k.v * 1000) / 1000}`;
+          const tx = Math.min(w - g.measureText(txt).width - 6, X(k.t) + 8); const ty = Math.max(top + 11, Math.min(top + lh - 4, Y(k.v) - 6));
+          g.fillStyle = '#000000b0'; g.fillRect(tx - 3, ty - 10, g.measureText(txt).width + 6, 13);
+          g.fillStyle = '#ffffff'; g.fillText(txt, tx, ty);
+        }
+      }
+      if (!keys.length) { g.fillStyle = '#eae0d570'; g.fillText(`${L.label}: click to add a point · Ctrl+drag to draw`, 6, top + 12); }
     }
     function drawMinimap(t) {
       minimap.hidden = !D();
@@ -996,31 +1091,40 @@ const ThreeMedia = (() => {
     }
 
     // ---------- timeline mouse ----------
-    const timeAt = (e) => { const r = canvas.getBoundingClientRect(); return v0() + ((e.clientX - r.left) / r.width) * span(); };
-    const pxToT = (px) => (px / canvas.clientWidth) * span();
-    const xOf = (tt) => ((tt - v0()) / span()) * canvas.clientWidth;
+    function tw() { return Math.max(40, canvas.clientWidth - GUT); }
+    const timeAt = (e) => { const r = canvas.getBoundingClientRect(); return v0() + ((e.clientX - r.left) / tw()) * span(); };
+    const pxToT = (px) => (px / tw()) * span();
+    const xOf = (tt) => ((tt - v0()) / span()) * tw();
     function hitTest(e) {
       const r = canvas.getBoundingClientRect();
       const x = e.clientX - r.left; const y = e.clientY - r.top;
+      const w = tw();
       const LT = laneTop(r.height);
       const row = trackRows(r.height).find((rw) => y >= rw.y && y < rw.end);
-      if (row && y >= row.laneY) {
+      const lr = row?.lanes.find((l) => y >= l.top && y < l.top + l.h);
+      if (x >= w) {
+        // the header column
+        if (lr) return { zone: x >= r.width - 20 && y < lr.top + 16 ? 'laneClose' : 'laneHead', track: row.tr, lane: lr.ln, lr };
+        if (row) return { zone: 'chip', track: row.tr };
+        return { zone: 'gutter' };
+      }
+      if (lr) {
         // automation lane: a point, a curve handle, or empty space
-        const L = row.tr.lane; const keys = L.keys || [];
-        const tt = v0() + (x / r.width) * span();
-        const point = keys.findIndex((k) => Math.hypot(xOf(k.t) - x, laneY(L, row.laneY, k.v) - y) <= 7);
+        const L = lr.ln; const keys = L.keys || [];
+        const Y = (v) => laneY(L, lr.top, lr.h, v);
+        const tt = v0() + (x / w) * span();
+        const point = keys.findIndex((k) => Math.hypot(xOf(k.t) - x, Y(k.v) - y) <= 7);
         let handle = -1;
-        if (point < 0) handle = keys.findIndex((k, i) => { const nx = keys[i + 1]; if (!nx || k.ease === 'hold') return false; const tm = (k.t + nx.t) / 2; return Math.hypot(xOf(tm) - x, laneY(L, row.laneY, ThreeLayers.evalKeys(keys, tm, L.base)) - y) <= 6; });
-        return { zone: 'auto', track: row.tr, row, point, handle, t: tt, value: laneV(L, row.laneY, y) };
+        if (point < 0) handle = keys.findIndex((k, i) => { const nx = keys[i + 1]; if (!nx || k.ease === 'hold') return false; const tm = (k.t + nx.t) / 2; return Math.hypot(xOf(tm) - x, Y(ThreeLayers.evalKeys(keys, tm, L.base)) - y) <= 6; });
+        return { zone: 'auto', track: row.tr, lane: L, lr, point, handle, t: tt, value: laneV(L, lr.top, lr.h, y) };
       }
       if (row) {
         const tr = row.tr;
-        if (x >= r.width - CHIP_W) return { zone: 'chip', track: tr };
         const key = (tr.keys || []).find((k) => Math.abs(xOf(k.t) - x) <= 5);
         if (key) return { zone: 'track', track: tr, key };
         const a0 = tr.in ?? 0; const b0 = tr.out ?? D();
         const edge = Math.abs(xOf(a0) - x) <= 6 ? 'in' : Math.abs(xOf(b0) - x) <= 6 ? 'out' : null;
-        const tt = v0() + (x / r.width) * span();
+        const tt = v0() + (x / w) * span();
         return { zone: 'track', track: tr, edge, inside: tt >= a0 && tt <= b0 };
       }
       if (y < RULER) {
@@ -1053,22 +1157,54 @@ const ThreeMedia = (() => {
         trackHandlers.onSelect?.(hit.track.id);
         trackHandlers.onLanePick?.(hit.track.id, e.clientX, e.clientY);
         dragging = { kind: 'none' };
+      } else if (hit.zone === 'laneHead' || hit.zone === 'laneClose') {
+        activeLane = { id: hit.track.id, prop: hit.lane.prop };
+        if (hit.zone === 'laneClose') trackHandlers.onLaneHide?.(hit.track.id, hit.lane.prop);
+        else if (e.clientY - canvas.getBoundingClientRect().top < hit.lr.top + 16) trackHandlers.onLanePick?.(hit.track.id, e.clientX, e.clientY, { prop: hit.lane.prop });
+        dragging = { kind: 'none' };
+      } else if (hit.zone === 'gutter') {
+        dragging = { kind: 'none' };
       } else if (hit.zone === 'note') {
         seek(hit.note.t);
         noteHandlers.onOpen?.(hit.note.id, e.clientX, e.clientY);
         dragging = { kind: 'none' };
       } else if (hit.zone === 'auto') {
-        const { tr } = hit.row;
-        const L = tr.lane;
+        const tr = hit.track; const L = hit.lane; const { lr } = hit;
         trackHandlers.onSelect?.(tr.id);
+        activeLane = { id: tr.id, prop: L.prop };
         const keys = (L.keys || []).map((k) => ({ ...k }));
-        if (hit.point >= 0) dragging = { kind: 'autoPoint', id: tr.id, L, top: hit.row.laneY, keys, i: hit.point, moved: false };
-        else if (hit.handle >= 0) dragging = { kind: 'autoCurve', id: tr.id, L, keys, i: hit.handle, y0: e.clientY, c0: keys[hit.handle].ease === 'curve' ? keys[hit.handle].c || 0 : 0, moved: false };
+        const before = keys.map((k) => ({ ...k }));
+        const base = { id: tr.id, L, top: lr.top, lh: lr.h, keys, before, moved: false };
+        const sameLane = autoSel && autoSel.id === tr.id && autoSel.prop === L.prop;
+        const rr = canvas.getBoundingClientRect();
+        if (e.ctrlKey || e.metaKey) {
+          // pencil: draw points along the grid as you drag
+          dragging = { ...base, kind: 'autoDraw', drawn: new Map() };
+          autoSel = null;
+          drawAt(dragging, e);
+        } else if (e.shiftKey && hit.point >= 0) {
+          // Shift+click a point: add it to / remove it from the selection
+          const idx = sameLane ? new Set(autoSel.idx) : new Set();
+          if (idx.has(hit.point)) idx.delete(hit.point); else idx.add(hit.point);
+          autoSel = { id: tr.id, prop: L.prop, idx };
+          dragging = { kind: 'none' };
+        } else if (e.shiftKey) {
+          dragging = { ...base, kind: 'autoBox', x0: e.clientX - rr.left, y0: e.clientY - rr.top, box: null, add: sameLane ? new Set(autoSel.idx) : new Set() };
+        } else if (hit.point >= 0 && sameLane && autoSel.idx.has(hit.point) && (autoSel.idx.size > 1 || e.altKey)) {
+          // drag the whole selection (Alt: stretch its values apart / together)
+          dragging = { ...base, kind: 'autoGroup', idx0: new Set(autoSel.idx), lead0: hit.point, lead: hit.point, t0: tt, y0: e.clientY, alt: e.altKey };
+        } else if (hit.point >= 0) {
+          autoSel = { id: tr.id, prop: L.prop, idx: new Set([hit.point]) };
+          dragging = { ...base, kind: 'autoPoint', i: hit.point };
+        } else if (hit.handle >= 0) dragging = { ...base, kind: 'autoCurve', i: hit.handle, y0: e.clientY, c0: keys[hit.handle].ease === 'curve' ? keys[hit.handle].c || 0 : 0 };
         else {
           const k = { t: r4(Math.max(0, Math.min(D(), snapT(tt)))), v: hit.value, ease: 'ease' };
+          const clash = keys.findIndex((x) => Math.abs(x.t - k.t) < 1e-3);
+          if (clash >= 0) keys.splice(clash, 1);
           keys.push(k);
           keys.sort((p, q) => p.t - q.t);
-          dragging = { kind: 'autoPoint', id: tr.id, L, top: hit.row.laneY, keys, i: keys.indexOf(k), moved: true, added: performance.now() };
+          dragging = { ...base, kind: 'autoPoint', keys, i: keys.indexOf(k), moved: true };
+          autoSel = { id: tr.id, prop: L.prop, idx: new Set([dragging.i]) };
           lastLaneAdd = performance.now();
           laneEmit(dragging, false);
         }
@@ -1080,7 +1216,7 @@ const ThreeMedia = (() => {
         else if (hit.edge) dragging = { kind: 'trim', id, edge: hit.edge, a: a0, b: b0 };
         else if (hit.inside) dragging = { kind: 'clip', id, from: tt, a: a0, b: b0 };
         else dragging = { kind: 'none' };
-      } else { dragging = { kind: 'seek' }; selected = null; seek(tt); }
+      } else { dragging = { kind: 'seek' }; selected = null; autoSel = null; seek(tt); }
       draw();
       const move = (ev) => {
         const t2 = Math.max(0, Math.min(D(), timeAt(ev)));
@@ -1108,12 +1244,33 @@ const ThreeMedia = (() => {
           const rr = canvas.getBoundingClientRect();
           const d = dragging; const k = d.keys[d.i];
           const lo = d.i > 0 ? d.keys[d.i - 1].t + 0.001 : 0; const hi = d.i < d.keys.length - 1 ? d.keys[d.i + 1].t - 0.001 : D();
-          d.keys[d.i] = { ...k, t: r4(Math.max(lo, Math.min(hi, snapT(t2)))), v: laneV(d.L, d.top, ev.clientY - rr.top) };
+          d.keys[d.i] = { ...k, t: r4(Math.max(lo, Math.min(hi, snapT(t2)))), v: laneV(d.L, d.top, d.lh, ev.clientY - rr.top) };
           d.moved = true;
           laneEmit(d, false);
+        } else if (dragging.kind === 'autoGroup') {
+          const d = dragging;
+          const lead = d.before[d.lead0];
+          const dt = d.alt ? 0 : snapT(lead.t + (t2 - d.t0)) - lead.t;
+          const dv = d.alt ? 0 : ((d.y0 - ev.clientY) / (d.lh - 10)) * (d.L.max - d.L.min);
+          const amp = d.alt ? Math.max(0, 1 + (d.y0 - ev.clientY) / 40) : 1;
+          const r = moveGroup(d.L, d.before, d.idx0, d.lead0, dt, dv, amp);
+          d.keys = r.keys; d.lead = r.lead; d.moved = true;
+          autoSel = { id: d.id, prop: d.L.prop, idx: r.idx };
+          laneEmit(d, false);
+        } else if (dragging.kind === 'autoBox') {
+          const rr = canvas.getBoundingClientRect();
+          const d = dragging;
+          const x1 = Math.max(0, Math.min(tw(), ev.clientX - rr.left)); const y1 = Math.max(d.top, Math.min(d.top + d.lh, ev.clientY - rr.top));
+          d.box = { x0: Math.min(d.x0, x1), x1: Math.max(d.x0, x1), y0: Math.min(d.y0, y1), y1: Math.max(d.y0, y1) };
+          const idx = new Set(d.add);
+          d.keys.forEach((k, i) => { const kx = xOf(k.t); const ky = laneY(d.L, d.top, d.lh, k.v); if (kx >= d.box.x0 && kx <= d.box.x1 && ky >= d.box.y0 - 4 && ky <= d.box.y1 + 4) idx.add(i); });
+          autoSel = { id: d.id, prop: d.L.prop, idx };
+          draw();
+        } else if (dragging.kind === 'autoDraw') {
+          drawAt(dragging, ev);
         } else if (dragging.kind === 'autoCurve') {
           const d = dragging; const a = d.keys[d.i]; const b = d.keys[d.i + 1];
-          const dy = (d.y0 - ev.clientY) / (AUTO_H / 2);
+          const dy = (d.y0 - ev.clientY) / (d.lh / 2);
           const c = Math.max(-1, Math.min(1, d.c0 + (b.v >= a.v ? -dy : dy)));
           d.keys[d.i] = { ...a, ease: 'curve', c: Math.round(c * 100) / 100 };
           d.moved = true;
@@ -1131,7 +1288,8 @@ const ThreeMedia = (() => {
         canvas.removeEventListener('pointermove', move);
         if (dragging?.kind === 'edge' || dragging?.kind === 'move' || dragging?.kind === 'new') saveLoop();
         if ((dragging?.kind === 'trim' || dragging?.kind === 'clip') && dragging.now) trackHandlers.onChange?.(dragging.id, dragging.now, { final: true });
-        if (dragging?.kind === 'autoPoint' || dragging?.kind === 'autoCurve') { if (dragging.moved) laneEmit(dragging, true); else if (dragging.kind === 'autoPoint') seek(dragging.keys[dragging.i].t); }
+        if (['autoPoint', 'autoCurve', 'autoGroup', 'autoDraw'].includes(dragging?.kind)) { if (dragging.moved) laneEmit(dragging, true); else if (dragging.kind === 'autoPoint') seek(dragging.keys[dragging.i].t); }
+        if (dragging?.kind === 'autoBox' && !dragging.box) autoSel = null;
         if (dragging?.kind === 'key') { if (dragging.moved && Math.abs(dragging.now - dragging.from) > 1e-4) trackHandlers.onKeyMove?.(dragging.id, dragging.from, dragging.now); else seek(dragging.from); }
         if (dragging?.kind === 'mark') {
           // Only a marker that actually moved becomes an undo step.
@@ -1142,21 +1300,181 @@ const ThreeMedia = (() => {
         paint();
       }, { once: true });
     });
-    // Sends a lane's edited points to the Lab (live while dragging, final on release).
+    // ---------- curve editing helpers ----------
+    function laneOf(id, prop) { return lanesOf(tracks.find((x) => x.id === id) || {}).find((l) => l.prop === prop) || null; }
+    function setLaneKeys(id, prop, keys) { const ln = laneOf(id, prop); if (ln) ln.keys = keys; }
+    // Sends a lane's edited points to the Lab (live while dragging, final on release). A final edit with
+    // `before` becomes one undo step (Ctrl+Z) when something changed.
     function laneEmit(d, final) {
-      const tr = tracks.find((x) => x.id === d.id);
-      if (tr?.lane) tr.lane.keys = d.keys;
+      setLaneKeys(d.id, d.L.prop, d.keys);
+      if (final && d.before && JSON.stringify(d.before) !== JSON.stringify(d.keys)) { mapUndo.push({ lane: { id: d.id, prop: d.L.prop, keys: d.before } }); if (mapUndo.length > 80) mapUndo.shift(); undoBtn.disabled = false; }
       trackHandlers.onLaneEdit?.(d.id, d.L.prop, d.keys.map((k) => ({ ...k })), { final });
       draw();
+    }
+    const copyKeys = (keys) => (keys || []).map((k) => ({ ...k }));
+    function laneCommit(id, L, keys) { laneEmit({ id, L, keys, before: copyKeys(laneOf(id, L.prop)?.keys || L.keys) }, true); }
+    // Moves the points in idx by dt / dv (or stretches their values around their middle by amp); moved points
+    // replace the ones they land on. Returns the new keys, the new selection and where the grabbed point went.
+    function moveGroup(L, base, idx, leadIdx, dt, dv, amp = 1) {
+      const sel = base.filter((_, i) => idx.has(i));
+      const lo = Math.min(...sel.map((k) => k.t)); const hi = Math.max(...sel.map((k) => k.t));
+      const d = Math.max(-lo, Math.min(D() - hi, dt));
+      const vs = sel.map((k) => k.v); const mid = (Math.min(...vs) + Math.max(...vs)) / 2;
+      const tagged = base.map((k, i) => (idx.has(i) ? { k: { ...k, t: r4(k.t + d), v: roundV(L, mid + (k.v - mid) * amp + dv) }, s: true, l: i === leadIdx } : { k, s: false, l: false }));
+      const out = tagged.filter((x) => x.s || !tagged.some((y) => y.s && Math.abs(y.k.t - x.k.t) < 1e-3));
+      out.sort((a, b) => a.k.t - b.k.t);
+      return { keys: out.map((x) => x.k), idx: new Set(out.flatMap((x, i) => (x.s ? [i] : []))), lead: out.findIndex((x) => x.l) };
+    }
+    // Ctrl+drag: a point on every grid step you pass (every few pixels with snapping off), replacing what was there.
+    function drawAt(d, ev) {
+      const rr = canvas.getBoundingClientRect();
+      const t = Math.max(0, Math.min(D(), timeAt(ev)));
+      const fine = pxToT(6);
+      const tt = r4(snapMode === 'off' ? Math.round(t / fine) * fine : snapT(t));
+      d.drawn.set(tt, laneV(d.L, d.top, d.lh, ev.clientY - rr.top));
+      const ts = [...d.drawn.keys()]; const lo = Math.min(...ts) - 1e-4; const hi = Math.max(...ts) + 1e-4;
+      d.keys = [...d.before.filter((k) => k.t < lo || k.t > hi), ...[...d.drawn].map(([t1, v]) => ({ t: t1, v, ease: 'linear' }))].sort((a, b) => a.t - b.t);
+      d.moved = true;
+      laneEmit(d, false);
+    }
+    const selPicked = () => {
+      const ln = autoSel && laneOf(autoSel.id, autoSel.prop);
+      return ln ? { ln, keys: ln.keys || [], picked: (ln.keys || []).filter((_, i) => autoSel.idx.has(i)) } : null;
+    };
+    // Puts points (absolute times) into a lane, replacing the lane's points inside their time span, and selects them.
+    function insertPoints(id, prop, pts) {
+      const ln = laneOf(id, prop);
+      if (!ln || !pts.length) return;
+      const clean = pts.filter((k) => k.t >= 0 && k.t <= D() + 1e-4).sort((a, b) => a.t - b.t).filter((k, i, arr) => i === 0 || Math.abs(k.t - arr[i - 1].t) >= 1e-3);
+      if (!clean.length) return;
+      const before = copyKeys(ln.keys);
+      const lo = clean[0].t - 1e-4; const hi = clean[clean.length - 1].t + 1e-4;
+      const tagged = [...before.filter((k) => k.t < lo || k.t > hi).map((k) => ({ k, s: false })), ...clean.map((k) => ({ k, s: true }))].sort((a, b) => a.k.t - b.k.t);
+      autoSel = { id, prop, idx: new Set(tagged.flatMap((x, i) => (x.s ? [i] : []))) };
+      activeLane = { id, prop };
+      laneEmit({ id, L: ln, keys: tagged.map((x) => x.k), before }, true);
+    }
+    function copyPoints() {
+      const s = selPicked();
+      if (!s?.picked.length) return;
+      const t0 = s.picked[0].t;
+      autoClip = { prop: s.ln.prop, min: s.ln.min, max: s.ln.max, keys: s.picked.map((k) => ({ ...k, t: k.t - t0 })) };
+      toast(`Copied ${s.picked.length} point${s.picked.length === 1 ? '' : 's'} · Ctrl+V pastes them at the playhead in the lane you last clicked`, { timeout: 2200 });
+    }
+    function pastePoints() {
+      const ln = laneOf(activeLane.id, activeLane.prop);
+      if (!ln || !autoClip) return;
+      const at = snapT(now());
+      // into another setting: keep the shape, rescaled to that setting's range
+      const fit = (v) => (autoClip.prop === ln.prop ? v : ln.min + ((v - autoClip.min) / ((autoClip.max - autoClip.min) || 1)) * (ln.max - ln.min));
+      insertPoints(activeLane.id, activeLane.prop, autoClip.keys.map((k) => ({ ...k, t: r4(at + k.t), v: roundV(ln, fit(k.v)) })));
+    }
+    // Ctrl+D: repeats the selected points right after themselves, rounded to beats / bars so patterns line up.
+    function duplicatePoints() {
+      const s = selPicked();
+      if (!s?.picked.length) return;
+      const len = s.picked[s.picked.length - 1].t - s.picked[0].t;
+      const beat = 60 / (bpmNow() || 120); const bar = beat * bpbNow();
+      const units = [beat / 4, beat / 2, beat, bar, bar * 2, bar * 4, bar * 8, bar * 16, bar * 32];
+      const off = units.find((u) => u >= len - 1e-3 && u > 1e-3) || len + beat;
+      insertPoints(autoSel.id, autoSel.prop, s.picked.map((k) => ({ ...k, t: r4(k.t + off) })));
+    }
+    function selectAllPoints() {
+      const ln = laneOf(activeLane.id, activeLane.prop);
+      if (!ln) return;
+      autoSel = { id: activeLane.id, prop: activeLane.prop, idx: new Set((ln.keys || []).map((_, i) => i)) };
+      draw();
+    }
+    function deletePoints() {
+      const s = selPicked();
+      if (!s) return;
+      const { id } = autoSel; const keep = s.keys.filter((_, i) => !autoSel.idx.has(i));
+      autoSel = null;
+      laneCommit(id, s.ln, keep);
+    }
+    function nudgePoints(dt, dv, repeat) {
+      const s = selPicked();
+      if (!s) return;
+      const before = copyKeys(s.keys);
+      const r = moveGroup(s.ln, before, autoSel.idx, -1, dt, dv);
+      autoSel = { ...autoSel, idx: r.idx };
+      const first = !(repeat && nudgeKey.pushed);
+      nudgeKey.pushed = true;
+      laneEmit({ id: autoSel.id, L: s.ln, keys: r.keys, before: first ? before : null }, true);
+    }
+    // Shapes for a range (the loop, else the zoomed view, else the layer's time), between a rest and a peak value:
+    // the levels of the points already there, or a swing up from the current value.
+    const SHAPES = [
+      ['beats', 'Pulse on every beat', 'Jumps up on each beat and falls back'],
+      ['kicks', 'Pulse on kicks', 'On your kick markers'],
+      ['snares', 'Pulse on snares', 'On your snare markers'],
+      ['hits', 'Pulse on hits', 'On your hit markers'],
+      ['rampUp', 'Ramp up', 'Rest → peak across the range'],
+      ['rampDown', 'Ramp down', 'Peak → rest across the range'],
+      ['sine', 'Wave, one per bar', 'Smooth up and down'],
+      ['square', 'Square, half a bar each', 'Peak / rest, switching on the half bar'],
+      ['random', 'Random steps on beats', 'A new level every beat'],
+    ];
+    function shapeRange(tr) {
+      if (region) return { a: region.a, b: region.b, where: 'in the loop' };
+      if (view) return { a: view.start, b: view.end, where: 'in the visible part' };
+      return { a: tr.in ?? 0, b: tr.out ?? D(), where: tr.in == null && tr.out == null ? 'over the whole song' : 'over the layer\'s time' };
+    }
+    function applyShape(tr, ln, kind) {
+      const { a, b, where } = shapeRange(tr);
+      const inside = (ln.keys || []).filter((k) => k.t >= a - 1e-4 && k.t <= b + 1e-4).map((k) => k.v);
+      let rest; let peak;
+      if (inside.length && Math.max(...inside) - Math.min(...inside) > 1e-6) { rest = Math.min(...inside); peak = Math.max(...inside); } else {
+        const cur = ThreeLayers.evalKeys(ln.keys || [], a, ln.base); const amp = 0.35 * (ln.max - ln.min);
+        if (ln.max - cur >= amp) { rest = cur; peak = cur + amp; } else { peak = ln.max; rest = ln.max - amp; }
+      }
+      rest = roundV(ln, rest); peak = roundV(ln, peak);
+      const beat = 60 / (bpmNow() || 120); const bar = beat * bpbNow();
+      const bs = beats().filter((t) => t >= a - 1e-4 && t < b - 1e-4);
+      const pulse = (ts) => ts.flatMap((t, i) => { const nx = ts[i + 1] ?? b; return [{ t, v: peak, ease: 'curve', c: -0.6 }, { t: Math.min(t + beat * 0.6, nx - 0.002), v: rest, ease: 'hold' }]; });
+      const steps = (len, fn, ease) => { const out = []; for (let i = 0, t = a; t <= b + 1e-4; i += 1, t = a + i * len) out.push({ t, v: fn(i), ease }); return out; };
+      let pts;
+      if (kind === 'beats') pts = pulse(bs);
+      else if (kind === 'kicks' || kind === 'snares' || kind === 'hits') {
+        const marks = map.marks[kind.slice(0, -1)].filter((t) => t >= a - 1e-4 && t < b - 1e-4);
+        if (!marks.length) { toast(`No ${kind.slice(0, -1)} markers ${where}: add some with ${kind[0].toUpperCase()} while it plays`, { type: 'error' }); return; }
+        pts = pulse(marks);
+      } else if (kind === 'rampUp') pts = [{ t: a, v: rest, ease: 'linear' }, { t: b, v: peak, ease: 'linear' }];
+      else if (kind === 'rampDown') pts = [{ t: a, v: peak, ease: 'linear' }, { t: b, v: rest, ease: 'linear' }];
+      else if (kind === 'sine') pts = steps(bar / 2, (i) => (i % 2 ? peak : rest), 'ease');
+      else if (kind === 'square') pts = steps(bar / 2, (i) => (i % 2 ? rest : peak), 'hold');
+      else if (kind === 'random') pts = bs.map((t) => ({ t, v: roundV(ln, rest + Math.random() * (peak - rest)), ease: 'hold' }));
+      if (!pts?.length) return;
+      insertPoints(tr.id, ln.prop, pts.map((k) => ({ ...k, t: r4(k.t) })));
+      toast(`${SHAPES.find((x) => x[0] === kind)[1]} ${where} on ${ln.label}. The new points are selected: drag one to move them all, Alt+drag to make the swing bigger or smaller.`, { timeout: 4500 });
+    }
+    function laneMenu(e, tr, ln) {
+      const anchor = { getBoundingClientRect: () => ({ left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY }) };
+      const { where } = shapeRange(tr);
+      const sameSel = autoSel && autoSel.id === tr.id && autoSel.prop === ln.prop && autoSel.idx.size;
+      activeLane = { id: tr.id, prop: ln.prop };
+      menuAt(anchor, [
+        ...SHAPES.map(([id, name, hint]) => [name, `${hint}, ${where}`, () => applyShape(tr, ln, id)]),
+        null,
+        ['Select all points', 'Ctrl+A', () => selectAllPoints()],
+        sameSel ? ['Copy the selected points', 'Ctrl+C', () => copyPoints()] : false,
+        sameSel ? ['Duplicate them after themselves', 'Ctrl+D', () => duplicatePoints()] : false,
+        autoClip ? ['Paste at the playhead', `Ctrl+V · ${autoClip.keys.length} points`, () => pastePoints()] : false,
+        ['Clear this lane', `Remove every ${ln.label} point`, () => { autoSel = null; laneCommit(tr.id, ln, []); }],
+        null,
+        [ln.tall ? 'Make the lane shorter' : 'Make the lane taller', 'Or double-click its header', () => trackHandlers.onLaneTall?.(tr.id, ln.prop)],
+        ['Hide the lane', 'The animation stays; show it again with ▾', () => trackHandlers.onLaneHide?.(tr.id, ln.prop)],
+      ].filter((x) => x !== undefined && x !== false).filter((x, i, arr) => x !== null || (i > 0 && arr[i - 1] !== null)));
     }
     let lastLaneAdd = 0;
     canvas.addEventListener('dblclick', (e) => {
       const hit = hitTest(e);
+      if (hit.zone === 'laneHead') { if (e.clientY - canvas.getBoundingClientRect().top >= hit.lr.top + 16) trackHandlers.onLaneTall?.(hit.track.id, hit.lane.prop); return; }
       if (hit.zone === 'auto') {
         // double-click a point to delete it (not the one this double-click just created)
         if (hit.point >= 0 && performance.now() - lastLaneAdd > 450) {
-          const keys = (hit.track.lane.keys || []).filter((_, i) => i !== hit.point);
-          laneEmit({ id: hit.track.id, L: hit.track.lane, keys }, true);
+          autoSel = null;
+          laneCommit(hit.track.id, hit.lane, (hit.lane.keys || []).filter((_, i) => i !== hit.point));
         }
         return;
       }
@@ -1178,27 +1496,28 @@ const ThreeMedia = (() => {
     });
     canvas.addEventListener('contextmenu', (e) => {
       const hit = hitTest(e);
+      if (hit.zone === 'laneHead' || hit.zone === 'laneClose') { e.preventDefault(); laneMenu(e, hit.track, hit.lane); return; }
       if (hit.zone === 'auto') {
         e.preventDefault();
         const anchor = { getBoundingClientRect: () => ({ left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY }) };
-        const L = hit.track.lane;
-        const keys = (L.keys || []).map((k) => ({ ...k }));
-        const save = (next) => () => laneEmit({ id: hit.track.id, L, keys: next }, true);
+        const L = hit.lane; const tr = hit.track;
+        const keys = copyKeys(L.keys);
         if (hit.point >= 0) {
-          const setEase = (ease) => save(keys.map((k, i) => (i === hit.point ? { ...k, ease, c: undefined } : k)));
+          // on a selected point: the change applies to the whole selection
+          const inSel = autoSel && autoSel.id === tr.id && autoSel.prop === L.prop && autoSel.idx.has(hit.point);
+          const targets = inSel ? autoSel.idx : new Set([hit.point]);
+          const n = targets.size;
+          const setEase = (ease) => () => laneCommit(tr.id, L, keys.map((k, i) => (targets.has(i) ? { ...k, ease, c: undefined } : k)));
           menuAt(anchor, [
-            ['Smooth', 'Eases in and out to the next point', setEase('ease')],
+            ['Smooth', `Eases in and out to the next point${n > 1 ? ` (${n} points)` : ''}`, setEase('ease')],
             ['Linear', 'Straight line to the next point', setEase('linear')],
             ['Hold', 'Stays, then jumps at the next point', setEase('hold')],
             null,
-            ['Delete point', `At ${fmtMs(keys[hit.point].t)}`, save(keys.filter((_, i) => i !== hit.point))],
-          ]);
-        } else {
-          menuAt(anchor, [
-            ['Clear this lane', `Remove every ${L.label} point`, save([])],
-            ['Hide the lane', 'The automation stays; pick it again with ▾', () => trackHandlers.onLanePick?.(hit.track.id, null, null, { hide: true })],
-          ]);
-        }
+            n > 1 ? ['Copy', 'Ctrl+C', () => copyPoints()] : false,
+            n > 1 ? ['Duplicate after themselves', 'Ctrl+D', () => duplicatePoints()] : false,
+            [n > 1 ? `Delete ${n} points` : 'Delete point', n > 1 ? 'Delete key' : `At ${fmtMs(keys[hit.point].t)}`, () => { autoSel = null; laneCommit(tr.id, L, keys.filter((_, i) => !targets.has(i))); }],
+          ].filter((x) => x !== false));
+        } else laneMenu(e, tr, L);
         return;
       }
       if (hit.zone === 'lane' && hit.mark != null) { e.preventDefault(); selected = { type: 'mark', lane: hit.lane, t: hit.mark }; deleteSelectedMark(); }
@@ -1220,7 +1539,7 @@ const ThreeMedia = (() => {
       e.preventDefault();
       if (locked) return;
       if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-        const d = ((e.shiftKey ? e.deltaY : e.deltaX) || 0) / canvas.clientWidth * span() * 1.5;
+        const d = ((e.shiftKey ? e.deltaY : e.deltaX) || 0) / tw() * span() * 1.5;
         setView({ start: v0() + d, end: v0() + d + span() });
       } else zoomBy(e.deltaY > 0 ? 1.25 : 0.8, timeAt(e));
     }, { passive: false });
@@ -1228,13 +1547,16 @@ const ThreeMedia = (() => {
       if (!D()) return;
       const hit = hitTest(e);
       const tt = timeAt(e);
-      canvas.style.cursor = hit.zone === 'auto' ? (hit.point >= 0 ? 'move' : hit.handle >= 0 ? 'ns-resize' : 'crosshair') : hit.zone === 'chip' || hit.zone === 'note' ? 'pointer' : hit.zone === 'track' ? (hit.key ? 'move' : hit.edge ? 'ew-resize' : hit.inside ? 'grab' : 'default') : hit.zone === 'lane' ? (hit.mark != null ? 'ew-resize' : 'cell') : locked ? 'pointer' : hit.zone === 'ruler' ? (hit.edge ? 'ew-resize' : 'copy') : 'pointer';
+      canvas.style.cursor = hit.zone === 'auto' ? (e.ctrlKey ? 'crosshair' : hit.point >= 0 ? 'move' : hit.handle >= 0 ? 'ns-resize' : 'crosshair') : hit.zone === 'gutter' ? 'default' : hit.zone === 'chip' || hit.zone === 'note' || hit.zone === 'laneHead' || hit.zone === 'laneClose' ? 'pointer' : hit.zone === 'track' ? (hit.key ? 'move' : hit.edge ? 'ew-resize' : hit.inside ? 'grab' : 'default') : hit.zone === 'lane' ? (hit.mark != null ? 'ew-resize' : 'cell') : locked ? 'pointer' : hit.zone === 'ruler' ? (hit.edge ? 'ew-resize' : 'copy') : 'pointer';
       const tips = {
         ruler: locked ? 'Locked: click to jump' : 'Drag along this strip to draw a loop; drag its edges to adjust',
         wave: 'Click to jump · double-click to loop this part · wheel to zoom · Shift+wheel to scroll',
         lane: 'Click to add a marker here · drag to move · double-click or right-click to delete · or press K / S / H while it plays',
-        auto: hit.point >= 0 ? 'Drag the point · double-click to delete · right-click for Smooth / Linear / Hold' : hit.handle >= 0 ? 'Drag up or down to bend the curve' : `Click to add a ${hit.track?.lane?.label} point here (it snaps to the grid in time)`,
-        chip: 'Choose which setting this layer automates in the lane below, or hide the lane',
+        auto: hit.point >= 0 ? 'Drag the point · Shift+click to add it to the selection · double-click to delete · right-click for Smooth / Linear / Hold' : hit.handle >= 0 ? 'Drag up or down to bend the curve' : `Click to add a ${hit.lane?.label} point (snaps to the grid) · Ctrl+drag to draw · Shift+drag to select points · right-click for shapes (pulse on kicks, ramps, waves…)`,
+        chip: 'Choose which settings of this layer show as curves below it (several at once) · A shows every animated one',
+        laneHead: `${hit.lane?.label}: click the name to switch it to another setting · double-click to make the lane taller / shorter · right-click for more`,
+        laneClose: 'Hide this lane (the animation stays)',
+        gutter: 'A shows / hides every animated setting of every layer',
         note: hit.note ? `Note at ${fmtMs(hit.note.t)}: ${hit.note.text}` : '',
         track: hit.key ? `Keyframe at ${fmtMs(hit.key.t)}: click to jump there · drag to move · double-click to delete · right-click for Ease / Linear / Hold` : `${hit.track?.name || 'Layer'}: drag the bar to move it in time · drag its ends to trim · double-click to fit it to the loop (again: whole song)`,
       };

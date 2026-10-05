@@ -160,8 +160,11 @@ const ThreeLab = (() => {
       onKeyEase: (id, t, ease) => editKeysAt(id, t, (ks, hit) => ks.map((k) => (hit(k) ? { ...k, ease } : k))),
       onLanePick: (id, x, y, o) => lanePick(id, x, y, o),
       onLaneEdit: (id, prop, keys, o) => laneEdit(id, prop, keys, o),
+      onLaneHide: (id, prop) => { const L = layerById(id); if (L) setLanes(L, lanesOf(L).filter((p) => p !== prop)); },
+      onLaneTall: (id, prop) => { const L = layerById(id); if (!L) return; L.laneTall = { ...L.laneTall, [prop]: !L.laneTall?.[prop] }; if (!L.laneTall[prop]) delete L.laneTall[prop]; touch(); renderTracksOnly(); },
+      onLanesAll: () => toggleAllLanes(),
     };
-    const trackList = () => [...layersOf()].reverse().map((L) => ({ id: L.id, name: L.name, color: L.color, in: L.in ?? null, out: L.out ?? null, fadeIn: L.in != null ? L.fadeIn || 0 : 0, fadeOut: L.out != null ? L.fadeOut || 0 : 0, visible: L.visible !== false, selected: L.id === selId, keys: trackKeys(L), lane: laneData(L) }));
+    const trackList = () => [...layersOf()].reverse().map((L) => ({ id: L.id, name: L.name, color: L.color, in: L.in ?? null, out: L.out ?? null, fadeIn: L.in != null ? L.fadeIn || 0 : 0, fadeOut: L.out != null ? L.fadeOut || 0 : 0, visible: L.visible !== false, selected: L.id === selId, keys: trackKeys(L), lanes: lanesOf(L).map((p) => laneData(L, p)).filter(Boolean), animated: Object.values(L.keys || {}).filter((k) => k?.length).length }));
     // Animated values follow the playhead in the panels.
     let lastSyncT = -1;
     function syncKeyUI(force = false) {
@@ -179,19 +182,28 @@ const ThreeLab = (() => {
     }
     setInterval(() => { if (current && sel()?.keys && Object.keys(sel().keys).length) syncKeyUI(); }, 100);
     // ---------- automation lanes (Ableton placement, FL Studio curves) ----------
-    // L.lane = the property shown in the lane under the layer's track ('opacity' … or 's:<slider key>').
+    // L.lanes = the settings shown as curves under the layer's track ('opacity' … or 's:<slider key>'), in order;
+    // L.laneTall = { prop: true } for taller lanes. (Older sketches have a single L.lane.)
     const { fmtMs } = ThreeMedia._test;
-    function laneData(L) {
-      const prop = L.lane;
+    const lanesOf = (L) => L.lanes || (L.lane ? [L.lane] : []);
+    function laneData(L, prop) {
       if (!prop) return null;
+      const tall = Boolean(L.laneTall?.[prop]);
       const meta = ThreeLayers.ANIM_META[prop];
-      if (meta) return { prop, label: meta.label, min: meta.min, max: meta.max, step: meta.step, base: baseValue(L, prop), keys: keysOf(L, prop) };
+      if (meta) return { prop, label: meta.label, min: meta.min, max: meta.max, step: meta.step, base: baseValue(L, prop), keys: keysOf(L, prop), tall };
       if (prop.startsWith('s:')) {
         const c = controllers.get(L.id)?.controls().find((x) => x.key === prop.slice(2));
-        if (c && c.min != null) return { prop, label: c.label, min: c.min, max: c.max, step: c.step, base: baseValue(L, prop), keys: keysOf(L, prop) };
+        if (c && c.min != null) return { prop, label: c.label, min: c.min, max: c.max, step: c.step, base: baseValue(L, prop), keys: keysOf(L, prop), tall };
       }
       return null;
     }
+    // every setting of a layer that can have a curve: [{ prop, label }]
+    function laneProps(L) {
+      const out = Object.entries(ThreeLayers.ANIM_META).map(([prop, m]) => ({ prop, label: m.label }));
+      for (const c of (controllers.get(L.id)?.controls() || []).filter((x) => x.min != null)) out.push({ prop: `s:${c.key}`, label: c.label });
+      return out;
+    }
+    const animatedProps = (L) => laneProps(L).map((x) => x.prop).filter((p) => keysOf(L, p).length);
     function popup(x, y, items) {
       document.querySelector('.mb-menu.lab-pop')?.remove();
       const menu = el('div', { class: 'mb-menu lab-pop' }, items.filter(Boolean).map((it) => (typeof it === 'string'
@@ -203,22 +215,44 @@ const ThreeLab = (() => {
       const close = (e) => { if (!menu.contains(e.target)) { menu.remove(); removeEventListener('pointerdown', close, true); } };
       setTimeout(() => addEventListener('pointerdown', close, true));
     }
-    function setLane(L, prop) { L.lane = prop; touch(); renderTracksOnly(); }
-    function lanePick(id, x, y, { hide = false } = {}) {
+    function setLanes(L, list) { L.lanes = [...new Set(list.filter(Boolean))]; delete L.lane; touch(); renderTracksOnly(); }
+    // A: show every animated setting of every layer; again (when they all show): hide every lane.
+    function toggleAllLanes() {
+      const all = layersOf();
+      const missing = all.some((L) => animatedProps(L).some((p) => !lanesOf(L).includes(p)));
+      for (const L of all) { L.lanes = missing ? [...new Set([...lanesOf(L), ...animatedProps(L)])] : []; delete L.lane; }
+      touch();
+      renderTracksOnly();
+      toast(missing ? 'Showing every animated setting (A hides them)' : 'Lanes hidden (A shows every animated setting)', { timeout: 1600 });
+    }
+    // The ▾ chooser: tick several settings to see their curves at once. With { prop }: switch that lane to another setting.
+    function lanePick(id, x, y, { prop: swap = null } = {}) {
       const L = layerById(id);
       if (!L) return;
-      if (hide) { setLane(L, null); return; }
+      const shown = lanesOf(L);
       const count = (p) => keysOf(L, p).length;
-      const items = ['Show in the lane'];
-      for (const [p, m] of Object.entries(ThreeLayers.ANIM_META)) items.push([`${m.label}${count(p) ? ' ●' : ''}`, L.lane === p ? 'showing now' : count(p) ? `${count(p)} points` : '', () => setLane(L, p), L.lane === p]);
-      const sliders = (controllers.get(id)?.controls() || []).filter((c) => c.min != null);
-      if (sliders.length) {
-        items.push('Sliders');
-        for (const c of sliders) items.push([`${c.label}${count(`s:${c.key}`) ? ' ●' : ''}`, L.lane === `s:${c.key}` ? 'showing now' : count(`s:${c.key}`) ? `${count(`s:${c.key}`)} points` : '', () => setLane(L, `s:${c.key}`), L.lane === `s:${c.key}`]);
+      const again = () => lanePick(id, x, y, { prop: swap });
+      const items = [];
+      const props = laneProps(L);
+      const row = ({ prop, label }) => {
+        const on = shown.includes(prop);
+        const hint = count(prop) ? `${count(prop)} points` : '';
+        if (swap) return [`${label}${count(prop) ? ' ●' : ''}`, prop === swap ? 'this lane' : on ? `already shown${hint ? ` · ${hint}` : ''}` : hint, () => { if (prop !== swap) setLanes(L, on ? shown.filter((p) => p !== swap) : shown.map((p) => (p === swap ? prop : p))); }, prop === swap];
+        return [`${on ? '☑' : '☐'} ${label}${count(prop) ? ' ●' : ''}`, hint, () => { setLanes(L, on ? shown.filter((p) => p !== prop) : [...shown, prop]); again(); }, on];
+      };
+      items.push(swap ? 'Switch this lane to' : 'Curves to show (tick several)');
+      for (const p of props.filter((q) => !q.prop.startsWith('s:'))) items.push(row(p));
+      if (props.some((q) => q.prop.startsWith('s:'))) { items.push('Sliders'); for (const p of props.filter((q) => q.prop.startsWith('s:'))) items.push(row(p)); }
+      items.push('Lanes');
+      const anim = animatedProps(L);
+      if (anim.some((p) => !shown.includes(p))) items.push(['Show every animated one', `${anim.length} with points`, () => setLanes(L, [...shown, ...anim])]);
+      if (swap) items.push(['Hide this lane', 'The animation stays', () => setLanes(L, shown.filter((p) => p !== swap))]);
+      if (shown.length) items.push(['Hide all of this layer\'s lanes', 'The animation stays', () => setLanes(L, [])]);
+      items.push(['Every layer: show / hide animated', 'A', () => toggleAllLanes()]);
+      if (!swap) {
+        items.push('Animate (adds points)');
+        for (const pr of ThreeLayers.PRESETS) items.push([pr.name, pr.desc, () => applyPreset(id, pr.id)]);
       }
-      items.push('Animate (adds points)');
-      for (const pr of ThreeLayers.PRESETS) items.push([pr.name, pr.desc, () => applyPreset(id, pr.id)]);
-      if (L.lane) items.push('Lane', ['Hide the lane', 'The animation stays', () => setLane(L, null)]);
       popup(x ?? innerWidth / 2, y ?? innerHeight / 2, items);
     }
     function laneEdit(id, prop, keys, { final }) {
@@ -249,7 +283,8 @@ const ThreeLab = (() => {
         const merged = [...kept, ...keys].sort((p, q) => p.t - q.t).filter((x, i, arr) => i === 0 || Math.abs(x.t - arr[i - 1].t) >= KEY_EPS);
         L.keys[prop] = merged;
       }
-      L.lane = Object.keys(out)[0] || L.lane;
+      L.lanes = [...new Set([...lanesOf(L), ...Object.keys(out)])];
+      delete L.lane;
       sendKeys(L);
       touch();
       renderTracksOnly();
@@ -1015,7 +1050,7 @@ ${code}
         return director.getCode();
       },
       timeline(range) {
-        return { ...player.timeline(range || {}), layers: layersSummary().map((x) => ({ name: x.name, plays: x.plays, keyframes: x.keyframes, lane: layerById(x.id)?.lane?.replace(/^s:/, 'slider ') || null })), notes: notesOf().map(({ id, t, text, done }) => ({ id, time: t, text, done })) };
+        return { ...player.timeline(range || {}), layers: layersSummary().map((x) => ({ name: x.name, plays: x.plays, keyframes: x.keyframes, lanes: lanesOf(layerById(x.id) || {}).map((p) => p.replace(/^s:/, 'slider ')) })), notes: notesOf().map(({ id, t, text, done }) => ({ id, time: t, text, done })) };
       },
       timelineEdit({ grid, markers, loop, zoom, lane } = {}) {
         if (!player.loaded) throw new Error('No song loaded.');
@@ -1028,8 +1063,12 @@ ${code}
           const L = findLayer(lane.layer);
           if (!L) throw new Error(`No layer "${lane.layer}".`);
           let prop = lane.property || null;
-          if (prop && !ThreeLayers.ANIM_META[prop]) { const c = ctlFor(L).controls().find((x) => x.key === prop || x.label.toLowerCase() === String(prop).toLowerCase()); if (!c) throw new Error(`No property "${prop}" on "${L.name}".`); prop = `s:${c.key}`; }
-          setLane(L, prop);
+          if (prop === 'all') setLanes(L, [...lanesOf(L), ...animatedProps(L)]);
+          else if (!prop) setLanes(L, []);
+          else {
+            if (!ThreeLayers.ANIM_META[prop]) { const c = ctlFor(L).controls().find((x) => x.key === prop || x.key === String(prop).replace(/^s:/, '') || x.label.toLowerCase() === String(prop).toLowerCase()); if (!c) throw new Error(`No property "${prop}" on "${L.name}".`); prop = `s:${c.key}`; }
+            setLanes(L, lane.show === false ? lanesOf(L).filter((p) => p !== prop) : [...lanesOf(L), prop]);
+          }
           did.push('lane');
         }
         return { changed: did, ...director.timeline() };
