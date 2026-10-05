@@ -145,7 +145,7 @@ function buildPrompt(agent) {
       + 'Don\'t paste the code into the chat unless they ask for it: describe what you made and what they can ask for next (camera, mood, motion, materials…). '
       + 'Prefer good-looking defaults: tone mapping, environment lighting, soft shadows, smooth animation, sensible performance. '
       + 'The user mostly makes music visualizers (often 9:16 for Shorts) and does not write code: every sketch must have clearly named sliders made with tweak() (labels, groups, hints, sensible ranges, options for styles; see the tool guide), read live every frame, and react to the loaded music through the audio globals. '
-      + 'Check the track with three_media_info before designing around it, and look at a loud section or drop (three_media_control) when you check your work. '
+      + 'Check the track with three_media_info before designing around it: if the user placed kick / snare / hit markers or set a beat grid, build the hits on those (audio.kick, audio.snare, audio.hit, audio.beatInBar) instead of guessing from the audio. Look at a hit or drop (three_media_control) when you check your work. '
       + 'If three_get_code reports unsavedSliders, the user tuned those by hand: keep their values.');
   }
   if (!folder && !usesApps && !sets.length) parts.push('You have no tools: never try to run commands, read files or browse the web.');

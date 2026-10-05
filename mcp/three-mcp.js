@@ -29,10 +29,13 @@ MUSIC: the user loads an mp3/mp4 in the Lab (or you load one with three_load_med
   audio.spectrum — Uint8Array(1024) FFT magnitudes (0..255), audio.waveform — Float32Array(2048), -1..1
   audio.band(lowHz, highHz) — 0..1 average of any range (e.g. audio.band(40, 90) for kicks)
   audio.time / audio.duration / audio.playing / audio.bpm
+  audio.kick / audio.snare / audio.hit — 1 exactly on the user's hand-placed markers, fading over ~120 ms. The user marks kicks, snares and hits by hand because edits hit on those: when a track has markers (three_media_info → hits), drive cuts, flashes, camera jumps and punches from these, not from audio.bass/beat guesses.
+  audio.hits — { kick: [seconds], snare: [...], hit: [...] }; audio.since('kick') / audio.next('snare') — seconds since the last / until the next ('beat' works too), e.g. to anticipate a hit.
+  audio.beatInBar (1..beatsPerBar), audio.bar (1..), audio.beatPhase / audio.barPhase (0..1), audio.beatsPerBar — from the user's beat grid (BPM + downbeat set like in rekordbox) when they set one.
   audio.analysis — the whole track: { bpm, beats: [seconds], drops: [seconds], sections: [{ start, end, energy: 'quiet'|'medium'|'loud' }], fps: 30, level/bass/mid/treble: [0..1 per 1/30 s] } so you can anticipate drops: e.g. const loud = audio.analysis?.sections?.find(s => audio.time >= s.start && audio.time < s.end)?.energy === 'loud'.
   media.video / media.texture() — for an mp4, the playing video element and a THREE.VideoTexture of it.
   Without a file, audio gives a soft 120 bpm demo beat (audio.simulated = true), so always design so it still looks good.
-  Smooth the raw values yourself (e.g. lerp toward them with the Smoothing slider) and scale them with sliders. Use three_media_info to learn the track (tempo, drops, quiet/loud sections) and three_media_control to jump to a drop before taking a screenshot.`;
+  Smooth the raw values yourself (e.g. lerp toward them with the Smoothing slider) and scale them with sliders. Use three_media_info to learn the track (the user's grid and hit markers, drops, quiet/loud sections) and three_media_control to jump to a hit or drop before taking a screenshot.`;
 
 const TOOLS = [
   { name: 'three_get_code', description: 'Current sketch name, frame size, code, named sliders with their current values (and music links), and any slider changes the user has not saved.', inputSchema: { type: 'object', properties: {} } },

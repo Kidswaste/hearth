@@ -116,12 +116,8 @@ const ThreeLab = (() => {
       e.preventDefault();
       player.load(window.hub.pathForFile(f));
     });
-    // Space plays / pauses the music (unless you're typing).
-    pane.addEventListener('keydown', (e) => {
-      if (e.code !== 'Space' || e.ctrlKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
-      e.preventDefault();
-      player.toggle();
-    });
+    // Space plays / pauses; K S H tap hits in; [ ] set loop points; arrows nudge; Delete removes a marker.
+    pane.addEventListener('keydown', (e) => { if (player.onKey(e)) e.preventDefault(); });
     pane.tabIndex = -1;
     let ranOnce = false;
     let rebuildWaiting = false;

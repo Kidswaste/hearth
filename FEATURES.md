@@ -187,3 +187,12 @@
 159. ✓ **Loop points**: drag along the top strip of the timeline to draw a loop (drag its edges or the middle to adjust), "[ Start" / "End ]" at the playhead, or double-click a part of the song to loop that section. Points snap to beats (switchable). Shows the loop length in seconds and beats. Remembered per file.
 160. ✓ **🔒 Lock**: freezes the loop points and the view on the loop, and turns looping on. The director can't change a locked loop either.
 161. ○ **Tight looping and "Record → The loop"**: the loop is checked every frame inside the preview, and a loop recording stops exactly at the loop end (built; playback wrap and loop recording not yet run end to end).
+
+## Beat grid, precise points and hit markers (added Oct 5)
+162. ✓ **Exact loop points**: type the start and end (m:ss.mmm or seconds), ‹ › nudge 10 ms, arrow keys move the selected point 10 ms (Alt 1 ms, Shift one grid step), [ and ] set them at the playhead.
+163. ✓ **Zoom to single samples**: below 3 s on screen the timeline draws the raw audio; the ruler goes down to milliseconds. Jumping somewhere off-screen brings the view along.
+164. ✓ **Your BPM**: type it (2 decimals), Tap (4+ taps), ×2 / ½, or Auto to go back to the detected tempo.
+165. ✓ **Beat grid like rekordbox**: "Set 1 here" puts the downbeat at the playhead, ◂ ▸ shift the whole grid 5 ms, meter 4/4, 3/4 or 6/8. Downbeats are red with bar numbers; beats white; subdivisions faint at 1/8 and finer.
+166. ✓ **Snap**: Off, Bar, Beat, 1/8, 1/16, 1/32 for loop points, markers and tapped hits.
+167. ✓ **Kick / Snare / Hit lanes**: press K, S or H while the song plays (quantized to the snap), click in a lane to add, drag to move, double-click / right-click / Delete to remove. Fill: kick on every beat, kick on 1 and 3, snare on 2 and 4, hit on every bar's 1, or clear a lane, in the loop or the whole song. ↶ / Ctrl+Z undo grid and marker changes. Saved per song.
+168. ✓ **Sketches use your hits**: `audio.kick / snare / hit` (1 exactly on your markers), `audio.hits`, `audio.since('kick')`, `audio.next('snare')`, `audio.beatInBar`, `audio.bar`, `audio.beatPhase`, `audio.barPhase`; the ♪ slider links can follow Kick, Snare or Hit. The Three Director reads your grid and markers and cuts on them.

@@ -119,6 +119,24 @@ let lastUpdate = 0;
 let bassAvg = 0;
 let lastBeatAt = -1e9;
 let simulated = false;
+// The user's beat grid and hand-placed hits for this song: { beats, bpm, bpb, anchor, manual, marks: { kick, snare, hit } }.
+let beatMap = null;
+const lastIdx = (arr, t) => { let lo = 0; let hi = arr.length - 1; let k = -1; while (lo <= hi) { const m = (lo + hi) >> 1; if (arr[m] <= t) { k = m; lo = m + 1; } else hi = m - 1; } return k; };
+const pulse = (arr, t, decay = 0.12) => { const k = arr?.length ? lastIdx(arr, t) : -1; return k < 0 ? 0 : Math.exp(-(t - arr[k]) / decay); };
+// Position in the bar from the beat list: beat 1..bpb, bar 1.., phases 0..1.
+function barInfo(t) {
+  if (!mediaEl) { const p = 0.5; const k = Math.floor(t / p); return { beatInBar: (k % 4) + 1, bar: Math.floor(k / 4) + 1, beatPhase: (t % p) / p, barPhase: ((k % 4) + (t % p) / p) / 4 }; }
+  const bs = beatMap?.beats?.length ? beatMap.beats : analysis?.beats || [];
+  const bpb = beatMap?.bpb || 4;
+  const i = lastIdx(bs, t);
+  if (i < 0) return { beatInBar: 0, bar: 0, beatPhase: 0, barPhase: 0 };
+  const n = beatMap?.manual ? Math.round((bs[i] - beatMap.anchor) / (60 / beatMap.bpm)) : i;
+  const len = (bs[i + 1] ?? bs[i] + 60 / (beatMap?.bpm || analysis?.bpm || 120)) - bs[i];
+  const ph = Math.min(1, (t - bs[i]) / len);
+  const inBar = ((n % bpb) + bpb) % bpb;
+  return { beatInBar: inBar + 1, bar: Math.floor(n / bpb) + 1, beatPhase: ph, barPhase: (inBar + ph) / bpb };
+}
+const demoHits = (kind, t) => (kind === 'kick' ? Math.exp(-((t % 0.5)) / 0.12) : kind === 'snare' ? Math.exp(-(((t - 0.5) % 1 + 1) % 1) / 0.12) : 0);
 function graph() {
   if (actx) return;
   actx = new AudioContext();
@@ -164,17 +182,15 @@ function update() {
   bands.mid = clamp01(avg(150, 2000) * 1.2);
   bands.treble = clamp01(avg(2000, 12000) * 1.6);
   const t = mediaEl.currentTime;
-  if (analysis?.beats?.length) {
-    // Beats from the Lab's analysis of the whole file: exact, and steady even at low frame rates.
-    let lo = 0; let hi = analysis.beats.length - 1; let k = -1;
-    while (lo <= hi) { const m = (lo + hi) >> 1; if (analysis.beats[m] <= t) { k = m; lo = m + 1; } else hi = m - 1; }
-    bands.beat = k < 0 ? 0 : Math.exp(-(t - analysis.beats[k]) / 0.15);
+  const gridBeats = beatMap?.beats?.length ? beatMap.beats : analysis?.beats;
+  if (gridBeats?.length) {
+    // Beats from the user's grid (or the Lab's analysis): exact, and steady even at low frame rates.
+    bands.beat = pulse(gridBeats, t, 0.15);
   } else {
     bassAvg += (bands.bass - bassAvg) * Math.min(1, dt * 2);
     if (!mediaEl.paused && bands.bass > bassAvg * 1.25 + 0.04 && now - lastBeatAt > 250) lastBeatAt = now;
     bands.beat = Math.exp(-(now - lastBeatAt) / 150);
   }
-  if (mediaEl.paused) bands.beat = 0;
 }
 const audio = {
   get level() { update(); return bands.level; },
@@ -197,7 +213,20 @@ const audio = {
   get playing() { return mediaEl ? !mediaEl.paused : true; },
   get loaded() { return Boolean(mediaEl); },
   get simulated() { update(); return simulated; },
-  get bpm() { return analysis?.bpm || (mediaEl ? 0 : 120); },
+  get bpm() { return beatMap?.bpm || analysis?.bpm || (mediaEl ? 0 : 120); },
+  // Hand-placed hits (1 on the marker, fading over ~120 ms), straight from the user's Kick / Snare / Hit lanes.
+  get kick() { return mediaEl ? pulse(beatMap?.marks?.kick, mediaEl.currentTime) : demoHits('kick', performance.now() / 1000); },
+  get snare() { return mediaEl ? pulse(beatMap?.marks?.snare, mediaEl.currentTime) : demoHits('snare', performance.now() / 1000); },
+  get hit() { return mediaEl ? pulse(beatMap?.marks?.hit, mediaEl.currentTime) : 0; },
+  get hits() { return beatMap?.marks || { kick: [], snare: [], hit: [] }; },
+  // Seconds since the last / until the next marker of a kind ('kick', 'snare', 'hit', 'beat').
+  since(kind) { const t = this.time; const arr = kind === 'beat' ? (beatMap?.beats || analysis?.beats) : beatMap?.marks?.[kind]; const k = arr?.length ? lastIdx(arr, t) : -1; return k < 0 ? Infinity : t - arr[k]; },
+  next(kind) { const t = this.time; const arr = kind === 'beat' ? (beatMap?.beats || analysis?.beats) : beatMap?.marks?.[kind]; const k = arr?.length ? lastIdx(arr, t) : -1; return arr && k + 1 < arr.length ? arr[k + 1] - t : Infinity; },
+  get beatInBar() { return barInfo(this.time).beatInBar; },
+  get bar() { return barInfo(this.time).bar; },
+  get beatPhase() { return barInfo(this.time).beatPhase; },
+  get barPhase() { return barInfo(this.time).barPhase; },
+  get beatsPerBar() { return beatMap?.bpb || 4; },
   get analysis() { return analysis; },
   get file() { return analysis?.name || null; },
 };
@@ -736,6 +765,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'hot-run') runSketch(msg.code, true);
   if (msg.type === 'media-load') loadMedia(msg);
   if (msg.type === 'media') mediaCommand(msg);
+  if (msg.type === 'media-map') beatMap = msg;
   if (msg.type === 'media-analysis' && mediaEl) analysis = { ...msg.analysis, name: analysis?.name };
   if (msg.type === 'record') { if (msg.cmd === 'start') startRecording(msg); else stopRecording(); }
   if (msg.type === 'shader') shader?.set(msg.code);
