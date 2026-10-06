@@ -292,7 +292,7 @@ function mediaTick() {
 }
 realRAF(mediaTick);
 const applyLoop = () => { if (mediaEl) mediaEl.loop = loopOn && !region; };
-function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, loop = false, volume = 1, analysis: a, region: rg = null }) {
+function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, loop = false, volume = 1, analysis: a, region: rg = null, rate = 1 }) {
   region = rg;
   loopOn = loop;
   if (mediaEl) { mediaEl.pause(); srcNode?.disconnect(); mediaEl.removeAttribute('src'); mediaEl.load(); URL.revokeObjectURL(mediaUrl); }
@@ -304,6 +304,8 @@ function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, lo
   m.playsInline = true;
   m.preload = 'auto';
   m.loop = loop && !region;
+  m.defaultPlaybackRate = rate;
+  m.playbackRate = rate;
   m.src = mediaUrl;
   mediaEl = m;
   srcNode = actx.createMediaElementSource(m);
@@ -335,6 +337,7 @@ function mediaCommand({ cmd, value }) {
   if (cmd === 'seek') { mediaEl.currentTime = Math.max(0, Math.min(value, (mediaEl.duration || value) - 0.01)); sendState(); }
   if (cmd === 'loop') { loopOn = Boolean(value); applyLoop(); }
   if (cmd === 'volume') gainNode.gain.value = value;
+  if (cmd === 'rate') { mediaEl.defaultPlaybackRate = value; mediaEl.playbackRate = value; sendState(); }
 }
 
 // ---------- recording ----------

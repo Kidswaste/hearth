@@ -230,3 +230,10 @@
 192. ✓ **Several curves at once** (Ableton-style): tick as many settings as you like in a layer's ▾; click a lane's name to switch it to another setting; double-click its header for a taller lane; A shows every animated setting of every layer (again hides them).
 193. ✓ **Curve editing**: Shift+drag to select points (Shift+click adds one), drag a selected point to move them all, Alt+drag to stretch their swing, arrows nudge them, Delete, Ctrl+C / Ctrl+V (at the playhead, into another setting too), Ctrl+D (repeats them right after, bar-aligned), Ctrl+A, Ctrl+drag draws with a pencil, the value shows while dragging, Ctrl+Z undoes curve edits.
 194. ✓ **Shapes** (right-click a lane): pulse on every beat / kicks / snares / hits, ramps, a wave per bar, square, random steps, over the loop (or the visible part, or the layer's time).
+195. ✓ **Console options**: show it always, only with the code (default), or only when you open it (Console button in the Lab toolbar). Hidden, the button counts new errors / warnings (red ●). Copy, Clear and ✕ in its header.
+196. ✓ **Present** (▣ Present or P): the preview alone, fullscreen, for showing it off or a second monitor; Space, arrows and cue keys still work; Esc leaves.
+197. ✓ **Playback speed**: 1×, ¾, ½, ¼ next to the time, for placing points and markers precisely (recording switches back to 1×).
+198. ✓ **Hot cues** (like rekordbox): C drops a named cue at the playhead, 1–9 jump to them, drag a flag to move it, right-click to rename / move / loop to the next cue / delete. Saved per song with the grid; the director can read and set them (three_timeline_edit cues) and change the speed.
+199. ✓ **Window snapshot → chat** (Ctrl+Shift+S, anywhere): a picture of the whole window is attached to the chat you're using (the docked director in a tool, the agent you're on, or Claude), ready to send with a message.
+200. ✓ **Keep Hearth on top** (Ctrl+Shift+T or the palette): stays above other windows; a 📌 shows at the bottom of the rail.
+201. ✓ **Shortcut sheet** (Ctrl+/) now has a second column with every Three.js Lab key; the palette has Lab entries for Present, Focus, cues, console mode and speed.

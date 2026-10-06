@@ -412,6 +412,8 @@ function handleShortcut({ key, shift }) {
   else if (key === '0') AppUI.zoom(0);
   else if (key === 'tab') AppUI.switchRecent(shift);
   else if (key === 'j') Notes.toggle();
+  else if (key === 's' && shift) AppUI.snapshotToChat();
+  else if (key === 't' && shift) AppUI.toggleOnTop();
   else if (key === ' ' && shift) { $('broadcast').classList.remove('hidden'); applyLayout(); $('broadcast-input').focus(); }
 }
 

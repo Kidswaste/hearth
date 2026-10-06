@@ -57,6 +57,7 @@ const ThreeLab = (() => {
     const snippetSel = el('select', { title: 'Insert a snippet at the cursor' }, el('option', { value: '', text: 'Insert snippet…' }), ThreeData.SNIPPETS.map((s, i) => el('option', { value: i, text: s.name })));
     const editorHost = el('div', { class: 'three-editor' });
     const previewHost = el('div', { class: 'three-preview' }, stats);
+    let split = null;
     const btn = (text, title, fn, cls = 'ghost small') => el('button', { class: cls, text, title, on: { click: fn } });
     const toolbar = el('div', { class: 'three-toolbar' },
       btn('▶ Run', 'Run every layer again from the start (Ctrl+Enter)', () => run(), 'primary small'),
@@ -76,7 +77,60 @@ const ThreeLab = (() => {
     const codeBtn = btn('</> Code', 'Show or hide the code of the selected layer (the Three Director writes it for you)', () => setCodeVisible(split.classList.contains('no-code')));
     const slidersBtn = btn('🎚 Layers & sliders', 'Show or hide the layers and the sliders of the selected layer', () => setSlidersVisible(column.hidden));
     const focusBtn = btn('⛶ Focus', 'Almost fullscreen: hides the chat, side panels, toolbar, sliders and console, and shrinks the timeline to the strip (F · Esc to leave)', () => setFocus(!focusOn));
-    toolbar.prepend(codeBtn, slidersBtn, focusBtn);
+    // The console: always, only with the code (default), or only when you open it. Hidden, it counts new
+    // errors and warnings on its button.
+    const CONSOLE_MODES = [['always', 'Always show'], ['code', 'Only with the code'], ['never', 'Only when I open it']];
+    let consoleMode = store.get('three.consoleMode', 'code');
+    let consolePeek = null; // null: follow the mode · true / false: opened / closed by hand
+    let unseen = { errors: 0, other: 0 };
+    const consoleBtn = btn('Console', 'Show or hide the console (errors and console.log from the sketch)', () => { consolePeek = !consoleShown(); syncConsole(); });
+    const consoleModeSel = el('select', { class: 'tc-mode', title: 'When the console shows' }, CONSOLE_MODES.map(([v, l]) => el('option', { value: v, text: l, selected: v === consoleMode })));
+    consoleModeSel.addEventListener('change', () => setConsoleMode(consoleModeSel.value));
+    const consoleWrap = el('div', { class: 'three-console-wrap' },
+      el('div', { class: 'three-console-head' }, el('b', { text: 'Console' }), consoleModeSel, el('span', { class: 'spacer' }),
+        btn('Copy', 'Copy everything in the console', () => { navigator.clipboard.writeText(consoleLines.map((l) => `${l.layer ? `[${l.layer}] ` : ''}${l.line ? `line ${l.line}: ` : ''}${l.text}`).join('\n')); toast('Console copied', { timeout: 1200 }); }),
+        btn('Clear', 'Empty the console', () => { consoleBox.replaceChildren(); consoleLines = []; }),
+        btn('✕', 'Hide the console (its button in the toolbar opens it again)', () => { consolePeek = false; syncConsole(); })),
+      consoleBox);
+    function consoleShown() { return consolePeek ?? (consoleMode === 'always' || (consoleMode === 'code' && !split?.classList.contains('no-code'))); }
+    function setConsoleMode(m) {
+      consoleMode = CONSOLE_MODES.some(([v]) => v === m) ? m : 'code';
+      store.set('three.consoleMode', consoleMode);
+      consoleModeSel.value = consoleMode;
+      consolePeek = null;
+      syncConsole();
+    }
+    function syncConsole() {
+      const shown = consoleShown();
+      consoleWrap.hidden = !shown;
+      if (shown) unseen = { errors: 0, other: 0 };
+      consoleBtn.classList.toggle('on', shown);
+      consoleBtn.classList.toggle('has-errors', !shown && unseen.errors > 0);
+      const n = unseen.errors + unseen.other;
+      consoleBtn.textContent = !shown && n ? `Console ${unseen.errors ? '●' : '·'} ${n}` : 'Console';
+      if (shown) consoleBox.scrollTop = consoleBox.scrollHeight;
+    }
+    // Present: just the picture, fullscreen (P · Esc). Space, arrows and cue keys still work.
+    const presentBtn = btn('▣ Present', 'Fullscreen preview with nothing else on screen, for showing it off or a second monitor (P · Esc to leave)', () => togglePresent());
+    const presentHint = el('div', { class: 'present-hint', text: 'Esc to leave · Space play / pause · 1–9 jump to cues' });
+    function togglePresent() {
+      if (document.fullscreenElement) { document.exitFullscreen(); return; }
+      pane.focus();
+      previewHost.requestFullscreen().catch((err) => toast(`Couldn't go fullscreen: ${err.message}`, { type: 'error' }));
+    }
+    document.addEventListener('fullscreenchange', () => {
+      const on = document.fullscreenElement === previewHost;
+      presentBtn.classList.toggle('on', on);
+      previewHost.classList.toggle('presenting', on);
+      if (on) { presentHint.classList.remove('gone'); setTimeout(() => presentHint.classList.add('gone'), 2500); }
+    });
+    // While presenting, keys can land outside the Lab pane: pass them to the player.
+    document.addEventListener('keydown', (e) => {
+      if (document.fullscreenElement !== previewHost || pane.contains(e.target)) return;
+      if (!e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'p') { e.preventDefault(); togglePresent(); return; }
+      if (player.onKey(e)) e.preventDefault();
+    });
+    toolbar.prepend(codeBtn, slidersBtn, consoleBtn, focusBtn, presentBtn);
     const editor = new CodeEditor(editorHost, { lang: 'js', onRun: () => run(), onChange: () => { persist(); if (autoRun) autoRunSoon(); } });
 
     // ---------- layers ----------
@@ -378,6 +432,10 @@ const ThreeLab = (() => {
     let focusOn = false;
     const exitFocus = el('button', { class: 'lab-focus-exit', text: '✕ Exit focus (Esc)', on: { click: () => setFocus(false) } });
     document.body.append(exitFocus);
+    api.lab = {
+      present: () => togglePresent(), focus: () => setFocus(!focusOn), consoleMode: (m) => setConsoleMode(m),
+      speed: (r) => player.setRate(r), cue: () => player.addCue(player.time),
+    };
     function setFocus(on) {
       focusOn = on;
       document.body.classList.toggle('lab-focus', on);
@@ -576,11 +634,14 @@ const ThreeLab = (() => {
     }
     setInterval(rememberMedia, 5000);
     addEventListener('beforeunload', () => { rememberMedia(); window.hub.kvSet('three-lab-extras', extras); });
-    const split = el('div', { class: 'three-split' }, editorHost, el('div', { class: 'three-right' }, previewHost, player.el, consoleBox), column);
+    split = el('div', { class: 'three-split' }, editorHost, el('div', { class: 'three-right' }, previewHost, player.el, consoleWrap), column);
+    previewHost.append(presentHint);
     function setCodeVisible(show) {
       split.classList.toggle('no-code', !show);
       codeBtn.classList.toggle('on', show);
       store.set('three.showCode', show);
+      consolePeek = null;
+      syncConsole();
     }
     function setSlidersVisible(show) {
       const was = !column.hidden;
@@ -618,6 +679,7 @@ const ThreeLab = (() => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'n') { e.preventDefault(); takeNote(); return; }
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'f') { e.preventDefault(); setFocus(!focusOn); return; }
+      if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'p') { e.preventDefault(); togglePresent(); return; }
       if (player.onKey(e)) e.preventDefault();
     });
     pane.tabIndex = -1;
@@ -642,6 +704,7 @@ const ThreeLab = (() => {
       consoleBox.append(row);
       while (consoleBox.children.length > 300) consoleBox.firstChild.remove();
       consoleBox.scrollTop = consoleBox.scrollHeight;
+      if (!consoleShown()) { if (level === 'error') unseen.errors += 1; else if (level === 'warn') unseen.other += 1; syncConsole(); }
     }
     function goToLine(line) {
       const lines = editor.value.split('\n');
@@ -757,6 +820,8 @@ const ThreeLab = (() => {
       errors = hot ? errors.filter((e) => e.layer && e.layer !== target.id) : [];
       editor.setErrorLines(errors.filter((e) => e.layer === selId).map((e) => e.line).filter(Boolean));
       consoleBox.replaceChildren();
+      unseen = { errors: 0, other: 0 };
+      syncConsole();
       // every layer's sliders go into one table, each layer at its own offset
       const values = {}; const keys = {}; const preps = new Map();
       for (const L of layersOf()) {
@@ -1052,13 +1117,15 @@ ${code}
       timeline(range) {
         return { ...player.timeline(range || {}), layers: layersSummary().map((x) => ({ name: x.name, plays: x.plays, keyframes: x.keyframes, lanes: lanesOf(layerById(x.id) || {}).map((p) => p.replace(/^s:/, 'slider ')) })), notes: notesOf().map(({ id, t, text, done }) => ({ id, time: t, text, done })) };
       },
-      timelineEdit({ grid, markers, loop, zoom, lane } = {}) {
+      timelineEdit({ grid, markers, loop, zoom, lane, cues, speed } = {}) {
         if (!player.loaded) throw new Error('No song loaded.');
         const did = [];
         if (grid === 'auto') { player.clearGrid(); did.push('grid back to the detected beats'); } else if (grid) { player.setGrid(grid); did.push('grid'); }
         if (markers) { player.editMarkers({ add: markers.add || {}, remove: markers.remove || {}, clear: markers.clear || [], range: markers.range || null, snap: markers.snap !== false }); did.push('markers'); }
         if (loop !== undefined) { if (!player.setLoop(loop ? loop.start : null, loop?.end)) throw new Error('The user locked the loop.'); did.push('loop'); }
         if (zoom !== undefined) { player.zoomTo(zoom ? zoom.start : null, zoom?.end); did.push('zoom'); }
+        if (cues) { player.editCues({ add: cues.add || [], remove: cues.remove || [], clear: Boolean(cues.clear) }); did.push('cues'); }
+        if (speed) { player.setRate(Number(speed)); did.push('speed'); }
         if (lane) {
           const L = findLayer(lane.layer);
           if (!L) throw new Error(`No layer "${lane.layer}".`);
@@ -1389,6 +1456,15 @@ ${frag}\`,
       { label: 'three.js docs', run: () => tabs?.show('docs') },
       { label: 'Color converter', run: () => tabs?.show('color') },
       { label: 'Easing curve editor', run: () => tabs?.show('easing') },
+      { label: 'Lab: present the preview fullscreen (P)', run: () => { tabs?.show('sketch'); setTimeout(() => api.lab?.present(), 80); } },
+      { label: 'Lab: focus mode (F)', run: () => { tabs?.show('sketch'); api.lab?.focus(); } },
+      { label: 'Lab: drop a cue at the playhead (C)', run: () => { tabs?.show('sketch'); api.lab?.cue(); } },
+      { label: 'Lab console: always show', run: () => api.lab?.consoleMode('always') },
+      { label: 'Lab console: only with the code', run: () => api.lab?.consoleMode('code') },
+      { label: 'Lab console: only when I open it', run: () => api.lab?.consoleMode('never') },
+      { label: 'Lab playback speed: 1×', run: () => api.lab?.speed(1) },
+      { label: 'Lab playback speed: ½×', run: () => api.lab?.speed(0.5) },
+      { label: 'Lab playback speed: ¼×', run: () => api.lab?.speed(0.25) },
     ],
   });
 

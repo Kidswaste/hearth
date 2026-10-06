@@ -33,7 +33,7 @@ document.addEventListener('keydown', (e) => {
   // Code editors handle their own Ctrl shortcuts (comment toggle, duplicate line…).
   if (!e.ctrlKey || e.defaultPrevented || e.target.closest?.('.code-editor')) return;
   const key = e.key.toLowerCase();
-  if (/^[1-9gbrnkfj,\\/=+\-0]$/.test(key) || key === 'tab' || (e.shiftKey && key === ' ')) {
+  if (/^[1-9gbrnkfj,\\/=+\-0]$/.test(key) || key === 'tab' || (e.shiftKey && (key === ' ' || key === 's' || key === 't'))) {
     e.preventDefault();
     handleShortcut({ key, shift: e.shiftKey });
   }

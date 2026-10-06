@@ -241,7 +241,7 @@ const ThreeMedia = (() => {
   // points (top strip, typed times, nudges), a rekordbox-style beat grid (BPM, tap, "1" here, meter),
   // snapping, and Kick / Snare / Hit lanes the user fills by tapping K S H or clicking.
   function player({ send, sketchName, onLoaded, onPick }) {
-    const st = { path: null, name: null, bytes: null, mime: null, video: false, analysis: null, samples: null, time: 0, duration: 0, playing: false, loop: store.get('three.mediaLoop', true), volume: store.get('three.mediaVolume', 0.8), stampAt: 0 };
+    const st = { path: null, name: null, bytes: null, mime: null, video: false, analysis: null, samples: null, time: 0, duration: 0, playing: false, loop: store.get('three.mediaLoop', true), volume: store.get('three.mediaVolume', 0.8), stampAt: 0, rate: 1 };
     let region = null; // { a, b } seconds
     let locked = false;
     let snapMode = store.get('three.snapMode', '1/4');
@@ -250,7 +250,7 @@ const ThreeMedia = (() => {
     let analyzing = false;
     let dragging = null;
     let selected = null; // { type: 'edge', edge } | { type: 'mark', lane, t }
-    let map = { grid: null, marks: { kick: [], snare: [], hit: [] } };
+    let map = { grid: null, marks: { kick: [], snare: [], hit: [] }, cues: [] };
     let mapUndo = [];
     let allMaps = null;
     let taps = [];
@@ -264,6 +264,18 @@ const ThreeMedia = (() => {
     const unloadBtn = btn('×', 'Remove the music (sketches get a demo beat)', () => unload(), 'ghost small mb-x');
     const playBtn = btn('▶', 'Play / pause (Space)', () => toggle(), 'primary small mb-play');
     const timeEl = el('span', { class: 'mb-time', text: '0:00' });
+    // Slow motion for precise edits (the sketch sees the slowed music too). Recording always runs at 1×.
+    const RATES = [1, 0.75, 0.5, 0.25];
+    const rateSel = el('select', { class: 'mb-sel mb-rate', title: 'Playback speed: slow it down to place points and markers precisely' }, RATES.map((r) => el('option', { value: r, text: r === 1 ? '1×' : `${r}×` })));
+    rateSel.addEventListener('change', () => setRate(Number(rateSel.value)));
+    function setRate(r) {
+      const t = now();
+      st.rate = RATES.includes(r) ? r : 1;
+      st.time = t; st.stampAt = performance.now();
+      rateSel.value = String(st.rate);
+      rateSel.classList.toggle('on', st.rate !== 1);
+      send({ type: 'media', cmd: 'rate', value: st.rate });
+    }
     const zoomOut = btn('－', 'Zoom out (or the mouse wheel on the timeline)', () => zoomBy(1.6));
     const zoomIn = btn('＋', 'Zoom in (or the mouse wheel on the timeline); goes down to single samples', () => zoomBy(1 / 1.6));
     const zoomAll = btn('Whole song', 'Show the whole song', () => setView(null));
@@ -385,7 +397,7 @@ const ThreeMedia = (() => {
     grip.addEventListener('dblclick', () => setSize(SIZE_ORDER[(SIZE_ORDER.indexOf(size) + 1) % 3]));
     const bar = el('div', { class: 'media-bar' },
       handle,
-      el('div', { class: 'mb-row mb-main' }, loadBtn, nameEl, unloadBtn, playBtn, timeEl, sep(), zoomOut, zoomIn, zoomAll, zoomLoop, sep(), loopBtn, loopBox, loopLen, lockBtn, el('span', { class: 'spacer' }), vol, recBtn),
+      el('div', { class: 'mb-row mb-main' }, loadBtn, nameEl, unloadBtn, playBtn, timeEl, rateSel, sep(), zoomOut, zoomIn, zoomAll, zoomLoop, sep(), loopBtn, loopBox, loopLen, lockBtn, el('span', { class: 'spacer' }), vol, recBtn),
       gridRow, canvas, minimap);
     setSize(size);
 
@@ -415,7 +427,7 @@ const ThreeMedia = (() => {
       allMaps ||= await window.hub.kvGet('three-beatmaps', {});
       if (seq !== loadSeq) return { ok: false, error: 'Another file was loaded meanwhile' };
       const m = allMaps[path];
-      map = { grid: m?.grid || null, marks: { kick: m?.marks?.kick || [], snare: m?.marks?.snare || [], hit: m?.marks?.hit || [] } };
+      map = { grid: m?.grid || null, marks: { kick: m?.marks?.kick || [], snare: m?.marks?.snare || [], hit: m?.marks?.hit || [] }, cues: m?.cues || [] };
       mapUndo = [];
       store.set('three.media', path);
       analyzing = true;
@@ -442,7 +454,7 @@ const ThreeMedia = (() => {
       analyzing = false;
       Object.assign(st, { path: null, name: null, bytes: null, analysis: null, samples: null, time: 0, duration: 0, playing: false });
       region = null; locked = false; view = null; selected = null;
-      map = { grid: null, marks: { kick: [], snare: [], hit: [] } };
+      map = { grid: null, marks: { kick: [], snare: [], hit: [] }, cues: [] };
       store.set('three.media', null);
       paint();
       if (!silent) onLoaded?.({ reload: true, unloaded: true });
@@ -450,7 +462,7 @@ const ThreeMedia = (() => {
     // (Re)sends the file to the sandbox; called after every full reload of the preview.
     function attach({ playing = st.playing } = {}) {
       if (!st.bytes) return;
-      send({ type: 'media-load', buffer: st.bytes.slice(0), mime: st.mime, video: st.video, name: st.name, startAt: st.time, playing, loop: st.loop, volume: st.volume, analysis: st.analysis, region });
+      send({ type: 'media-load', buffer: st.bytes.slice(0), mime: st.mime, video: st.video, name: st.name, startAt: st.time, playing, loop: st.loop, volume: st.volume, analysis: st.analysis, region, rate: st.rate });
       sendMap();
     }
     function toggle(force) {
@@ -521,7 +533,7 @@ const ThreeMedia = (() => {
     const saveMaps = debounce(() => { if (allMaps) window.hub.kvSet('three-beatmaps', allMaps); }, 400);
     function mapChanged() {
       if (st.path && allMaps) {
-        const empty = !map.grid && !LANES.some((ln) => map.marks[ln.id].length);
+        const empty = !map.grid && !LANES.some((ln) => map.marks[ln.id].length) && !map.cues?.length;
         if (empty) delete allMaps[st.path]; else allMaps[st.path] = map;
         saveMaps();
       }
@@ -555,6 +567,35 @@ const ThreeMedia = (() => {
       map.marks[lane] = addMark(map.marks[lane], tt);
       selected = { type: 'mark', lane, t: r4(tt) };
       mapChanged();
+    }
+    // Hot cues: named spots in the song (Drop, Verse…), kept in time order; 1–9 jump to the first nine.
+    const CUE_COLORS = ['#ff9f43', '#ff6a9a', '#48ddff', '#7cd992', '#bd8bff', '#ffd75e', '#ff6a6a', '#5ee0c0', '#f2a6ff'];
+    function addCue(t, name) {
+      if (!D()) return null;
+      const tt = r4(Math.max(0, Math.min(D(), snapT(t))));
+      if (map.cues.some((c) => Math.abs(c.t - tt) < 0.02)) { toast('There is already a cue here', { timeout: 1500 }); return null; }
+      pushUndo();
+      const cue = { t: tt, name: name || `Cue ${map.cues.length + 1}` };
+      map.cues = [...map.cues, cue].sort((a, b) => a.t - b.t);
+      mapChanged();
+      const n = map.cues.indexOf(cue) + 1;
+      if (!name) toast(`${cue.name} at ${fmtMs(tt)}${n <= 9 ? ` · press ${n} to jump here` : ''} · right-click it to rename`, { timeout: 2400 });
+      return cue;
+    }
+    function editCue(cue, patch) {
+      pushUndo();
+      map.cues = map.cues.flatMap((c) => (c === cue ? (patch ? [{ ...c, ...patch }] : []) : [c])).sort((a, b) => a.t - b.t);
+      mapChanged();
+    }
+    function cueMenu(e, cue) {
+      const anchor = { getBoundingClientRect: () => ({ left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY }) };
+      menuAt(anchor, [
+        ['Rename', cue.name, async () => { const v = await Modal.prompt('Cue name', { value: cue.name }); if (v && v.trim()) editCue(cue, { name: v.trim().slice(0, 40) }); }],
+        ['Move here', `To the playhead (${fmtMs(now())})`, () => editCue(cue, { t: r4(snapT(now())) })],
+        region ? false : ['Loop to the next cue', 'Sets the loop from this cue to the next one', () => { const nx = map.cues.find((c) => c.t > cue.t + 1e-3); setRegion({ a: cue.t, b: nx ? nx.t : D() }); }],
+        null,
+        ['Delete cue', fmtMs(cue.t), () => editCue(cue, null)],
+      ].filter((x) => x !== false));
     }
     function addAtPlayhead(lane) {
       addMarkAt(lane, now());
@@ -642,6 +683,9 @@ const ThreeMedia = (() => {
       if (ctrl && e.key.toLowerCase() === 'a' && activeLane) { selectAllPoints(); return true; }
       if (ctrl) return false;
       if (e.key.toLowerCase() === 'a' && !e.altKey && !e.shiftKey) { trackHandlers.onLanesAll?.(); return true; }
+      // hot cues (like rekordbox): C drops one at the playhead, 1–9 jump to them
+      if (e.key.toLowerCase() === 'c' && !e.altKey) { addCue(now()); return true; }
+      if (/^[1-9]$/.test(e.key) && !e.altKey) { const c = map.cues[Number(e.key) - 1]; if (c) { seek(c.t); return true; } return false; }
       const lane = LANES.find((l) => l.key === e.key.toLowerCase());
       if (lane && !e.altKey) { addAtPlayhead(lane.id); return true; }
       if (e.key === '[') { setRegionEdge('a', now()); return true; }
@@ -706,6 +750,7 @@ const ThreeMedia = (() => {
       ].filter(Boolean));
     }
     function startRecord(kind) {
+      if (st.rate !== 1) { setRate(1); toast('Back to 1× speed for the recording', { timeout: 1800 }); }
       recording = { kind, startedAt: performance.now() };
       let until = null;
       if (kind === 'track') { send({ type: 'media', cmd: 'loop', value: false }); seek(0); toggle(true); }
@@ -740,7 +785,7 @@ const ThreeMedia = (() => {
     const RULER = 16; const LANE_H = 14;
     const laneTop = (h) => h - LANES.length * LANE_H - tracksH();
     let raf = 0;
-    function now() { return st.playing ? Math.min(D() || Infinity, st.time + (performance.now() - st.stampAt) / 1000) : st.time; }
+    function now() { return st.playing ? Math.min(D() || Infinity, st.time + ((performance.now() - st.stampAt) / 1000) * st.rate) : st.time; }
     function paint() {
       bar.classList.toggle('mb-empty', !st.bytes);
       bar.classList.toggle('locked', locked);
@@ -948,6 +993,17 @@ const ThreeMedia = (() => {
         g.fillStyle = n.done ? '#8f877d30' : '#7cd99240';
         g.fillRect(x, RULER, 1, LT - RULER);
       }
+      // hot cues: a numbered flag on the ruler and a faint line down the song
+      map.cues.forEach((c, i) => {
+        if (c.t < s0 - sp * 0.2 || c.t > s0 + sp) return;
+        const x = Math.round(X(c.t)); const col = CUE_COLORS[i % CUE_COLORS.length];
+        const label = `${i < 9 ? `${i + 1} ` : ''}${c.name}`;
+        const lw = g.measureText(label).width + 8;
+        g.fillStyle = `${col}30`; g.fillRect(x, RULER, 1, LT - RULER);
+        g.fillStyle = col; g.fillRect(x, 0, 2, RULER);
+        g.fillRect(x + 2, 1, lw, RULER - 3);
+        g.fillStyle = '#0b0e10'; g.fillText(label, x + 6, 11);
+      });
       if (t >= s0 && t <= s0 + sp) { g.fillStyle = '#ffffff'; g.fillRect(Math.round(X(t)), 0, 2, h); }
       g.restore();
       drawGutter(g, w, W, h, t);
@@ -1078,6 +1134,7 @@ const ThreeMedia = (() => {
       if (region) { g.fillStyle = locked ? '#48ddff40' : '#ffd75e40'; g.fillRect(X(region.a), 0, Math.max(2, X(region.b) - X(region.a)), h); }
       if (a) { g.fillStyle = '#ff6a6a'; for (const d of a.drops) g.fillRect(X(d) - 1, 0, 2, 4); }
       for (const n of notes) { g.fillStyle = n.done ? '#8f877d' : '#7cd992'; g.fillRect(X(n.t) - 1, h - 5, 3, 5); }
+      map.cues.forEach((c, i) => { g.fillStyle = CUE_COLORS[i % CUE_COLORS.length]; g.fillRect(X(c.t) - 1, 0, 3, 6); });
       g.fillStyle = '#ffffff';
       g.fillRect(Math.round(X(t)), 0, 2, h);
       if (view) {
@@ -1128,6 +1185,9 @@ const ThreeMedia = (() => {
         return { zone: 'track', track: tr, edge, inside: tt >= a0 && tt <= b0 };
       }
       if (y < RULER) {
+        const g0 = canvas.getContext('2d'); g0.font = '10px Consolas, monospace';
+        const cue = [...map.cues].reverse().find((c, ri) => { const i = map.cues.length - 1 - ri; const lw = g0.measureText(`${i < 9 ? `${i + 1} ` : ''}${c.name}`).width + 10; return x - xOf(c.t) >= -2 && x - xOf(c.t) <= lw; });
+        if (cue) return { zone: 'cue', cue };
         const note = notes.find((n) => x - xOf(n.t) >= -3 && x - xOf(n.t) <= 10);
         if (note) return { zone: 'note', note };
         const edge = region && ['a', 'b'].find((k) => Math.abs(xOf(region[k]) - x) <= 6);
@@ -1164,6 +1224,10 @@ const ThreeMedia = (() => {
         dragging = { kind: 'none' };
       } else if (hit.zone === 'gutter') {
         dragging = { kind: 'none' };
+      } else if (hit.zone === 'cue') {
+        // click: jump · drag: move it
+        seek(hit.cue.t);
+        dragging = { kind: 'cue', cue: hit.cue, from: tt, orig: hit.cue.t, before: JSON.stringify(map), moved: false };
       } else if (hit.zone === 'note') {
         seek(hit.note.t);
         noteHandlers.onOpen?.(hit.note.id, e.clientX, e.clientY);
@@ -1266,6 +1330,9 @@ const ThreeMedia = (() => {
           d.keys.forEach((k, i) => { const kx = xOf(k.t); const ky = laneY(d.L, d.top, d.lh, k.v); if (kx >= d.box.x0 && kx <= d.box.x1 && ky >= d.box.y0 - 4 && ky <= d.box.y1 + 4) idx.add(i); });
           autoSel = { id: d.id, prop: d.L.prop, idx };
           draw();
+        } else if (dragging.kind === 'cue') {
+          const d = dragging; const to = r4(Math.max(0, Math.min(D(), snapT(d.orig + (t2 - d.from)))));
+          if (Math.abs(to - d.cue.t) > 1e-4) { d.cue.t = to; d.moved = true; map.cues.sort((a, b) => a.t - b.t); draw(); }
         } else if (dragging.kind === 'autoDraw') {
           drawAt(dragging, ev);
         } else if (dragging.kind === 'autoCurve') {
@@ -1290,6 +1357,7 @@ const ThreeMedia = (() => {
         if ((dragging?.kind === 'trim' || dragging?.kind === 'clip') && dragging.now) trackHandlers.onChange?.(dragging.id, dragging.now, { final: true });
         if (['autoPoint', 'autoCurve', 'autoGroup', 'autoDraw'].includes(dragging?.kind)) { if (dragging.moved) laneEmit(dragging, true); else if (dragging.kind === 'autoPoint') seek(dragging.keys[dragging.i].t); }
         if (dragging?.kind === 'autoBox' && !dragging.box) autoSel = null;
+        if (dragging?.kind === 'cue' && dragging.moved) { mapUndo.push(dragging.before); if (mapUndo.length > 80) mapUndo.shift(); mapChanged(); }
         if (dragging?.kind === 'key') { if (dragging.moved && Math.abs(dragging.now - dragging.from) > 1e-4) trackHandlers.onKeyMove?.(dragging.id, dragging.from, dragging.now); else seek(dragging.from); }
         if (dragging?.kind === 'mark') {
           // Only a marker that actually moved becomes an undo step.
@@ -1497,6 +1565,7 @@ const ThreeMedia = (() => {
     canvas.addEventListener('contextmenu', (e) => {
       const hit = hitTest(e);
       if (hit.zone === 'laneHead' || hit.zone === 'laneClose') { e.preventDefault(); laneMenu(e, hit.track, hit.lane); return; }
+      if (hit.zone === 'cue') { e.preventDefault(); cueMenu(e, hit.cue); return; }
       if (hit.zone === 'auto') {
         e.preventDefault();
         const anchor = { getBoundingClientRect: () => ({ left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY }) };
@@ -1547,15 +1616,16 @@ const ThreeMedia = (() => {
       if (!D()) return;
       const hit = hitTest(e);
       const tt = timeAt(e);
-      canvas.style.cursor = hit.zone === 'auto' ? (e.ctrlKey ? 'crosshair' : hit.point >= 0 ? 'move' : hit.handle >= 0 ? 'ns-resize' : 'crosshair') : hit.zone === 'gutter' ? 'default' : hit.zone === 'chip' || hit.zone === 'note' || hit.zone === 'laneHead' || hit.zone === 'laneClose' ? 'pointer' : hit.zone === 'track' ? (hit.key ? 'move' : hit.edge ? 'ew-resize' : hit.inside ? 'grab' : 'default') : hit.zone === 'lane' ? (hit.mark != null ? 'ew-resize' : 'cell') : locked ? 'pointer' : hit.zone === 'ruler' ? (hit.edge ? 'ew-resize' : 'copy') : 'pointer';
+      canvas.style.cursor = hit.zone === 'cue' ? 'grab' : hit.zone === 'auto' ? (e.ctrlKey ? 'crosshair' : hit.point >= 0 ? 'move' : hit.handle >= 0 ? 'ns-resize' : 'crosshair') : hit.zone === 'gutter' ? 'default' : hit.zone === 'chip' || hit.zone === 'note' || hit.zone === 'laneHead' || hit.zone === 'laneClose' ? 'pointer' : hit.zone === 'track' ? (hit.key ? 'move' : hit.edge ? 'ew-resize' : hit.inside ? 'grab' : 'default') : hit.zone === 'lane' ? (hit.mark != null ? 'ew-resize' : 'cell') : locked ? 'pointer' : hit.zone === 'ruler' ? (hit.edge ? 'ew-resize' : 'copy') : 'pointer';
       const tips = {
-        ruler: locked ? 'Locked: click to jump' : 'Drag along this strip to draw a loop; drag its edges to adjust',
+        ruler: locked ? 'Locked: click to jump' : 'Drag along this strip to draw a loop; drag its edges to adjust · C drops a cue at the playhead',
         wave: 'Click to jump · double-click to loop this part · wheel to zoom · Shift+wheel to scroll',
         lane: 'Click to add a marker here · drag to move · double-click or right-click to delete · or press K / S / H while it plays',
         auto: hit.point >= 0 ? 'Drag the point · Shift+click to add it to the selection · double-click to delete · right-click for Smooth / Linear / Hold' : hit.handle >= 0 ? 'Drag up or down to bend the curve' : `Click to add a ${hit.lane?.label} point (snaps to the grid) · Ctrl+drag to draw · Shift+drag to select points · right-click for shapes (pulse on kicks, ramps, waves…)`,
         chip: 'Choose which settings of this layer show as curves below it (several at once) · A shows every animated one',
         laneHead: `${hit.lane?.label}: click the name to switch it to another setting · double-click to make the lane taller / shorter · right-click for more`,
         laneClose: 'Hide this lane (the animation stays)',
+        cue: hit.cue ? `${hit.cue.name} at ${fmtMs(hit.cue.t)}: click to jump · drag to move · right-click to rename, loop or delete` : '',
         gutter: 'A shows / hides every animated setting of every layer',
         note: hit.note ? `Note at ${fmtMs(hit.note.t)}: ${hit.note.text}` : '',
         track: hit.key ? `Keyframe at ${fmtMs(hit.key.t)}: click to jump there · drag to move · double-click to delete · right-click for Ease / Linear / Hold` : `${hit.track?.name || 'Layer'}: drag the bar to move it in time · drag its ends to trim · double-click to fit it to the loop (again: whole song)`,
@@ -1610,6 +1680,20 @@ const ThreeMedia = (() => {
         return true;
       },
       zoomTo(a, b) { if (a == null) setView(null); else setView({ start: a, end: b }); },
+      // cues: { add: [{ time, name }], remove: [name or time], clear: true }
+      editCues({ add = [], remove = [], clear = false } = {}) {
+        if (!D()) return false;
+        pushUndo();
+        if (clear) map.cues = [];
+        map.cues = map.cues.filter((c) => !remove.some((r) => (typeof r === 'number' ? Math.abs(r - c.t) < 0.02 : String(r).toLowerCase() === c.name.toLowerCase())));
+        for (const a of add) if (!map.cues.some((c) => Math.abs(c.t - a.time) < 0.02)) map.cues.push({ t: r4(Math.max(0, Math.min(D(), a.time))), name: String(a.name || `Cue ${map.cues.length + 1}`).slice(0, 40) });
+        map.cues.sort((a, b) => a.t - b.t);
+        mapChanged();
+        return true;
+      },
+      get cues() { return map.cues.map((c) => ({ time: c.t, name: c.name })); },
+      addCue, setRate,
+      get rate() { return st.rate; },
       beatsIn(a, b) { return beats().filter((t) => t >= a - 1e-4 && t <= b + 1e-4); },
       markersIn(lane, a, b) { return (map.marks[lane] || []).filter((t) => t >= a - 1e-4 && t <= b + 1e-4); },
       get bpm() { return bpmNow() || 120; },
@@ -1620,6 +1704,7 @@ const ThreeMedia = (() => {
           duration: Math.round(D() * 1000) / 1000, playhead: Math.round(now() * 1000) / 1000,
           grid: map.grid ? { bpm: map.grid.bpm, downbeat: map.grid.anchor, beatsPerBar: map.grid.bpb, setBy: 'user' } : { bpm: bpmNow(), setBy: 'auto-detected' },
           markers: Object.fromEntries(LANES.map((ln) => [ln.id, pick(map.marks[ln.id])])),
+          cues: map.cues.map((c) => ({ time: c.t, name: c.name })),
           loop: region ? { start: region.a, end: region.b, locked } : null,
           view: view ? { start: Math.round(view.start * 1000) / 1000, end: Math.round(view.end * 1000) / 1000 } : 'whole song',
           snap: snapMode,

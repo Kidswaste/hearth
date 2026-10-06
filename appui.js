@@ -240,12 +240,52 @@ const AppUI = (() => {
     ['Enter / Shift+Enter', 'Send / new line in a chat'], ['/', 'Insert a saved prompt (at the start of the message box)'], ['Esc', 'Stop the reply being written'],
     ['Ctrl+V (image)', 'Attach a screenshot to a native chat'], ['Ctrl+Enter', 'Run code in Three.js Lab and shader playground'],
     ['Ctrl+/ (in code)', 'Toggle comment'], ['Ctrl+D (in code)', 'Duplicate line'], ['Ctrl+Alt+H', 'Show/hide the hub from anywhere (configurable)'],
+    ['Ctrl+Shift+S', 'Snapshot the window into the chat you\'re using'], ['Ctrl+Shift+T', 'Keep Hearth on top of other windows'],
+  ];
+  // Keys inside the Three.js Lab sketch (when you're not typing).
+  const LAB_SHORTCUTS = [
+    ['Space', 'Play / pause'], ['← →', 'Nudge 10 ms (Alt 1 ms, Shift a grid step)'], ['[ ]', 'Loop start / end at the playhead'],
+    ['K S H', 'Kick / snare / hit marker at the playhead'], ['C', 'Drop a hot cue'], ['1…9', 'Jump to cue 1…9'],
+    ['A', 'Show / hide every animated curve'], ['N', 'Note with a screenshot'], ['F', 'Focus (hide everything but the animation)'], ['P', 'Present: fullscreen preview'],
+    ['Shift+drag (lane)', 'Select points'], ['Ctrl+drag (lane)', 'Draw points'], ['Alt+drag (selection)', 'Stretch the swing'],
+    ['Ctrl+C / V / D / A', 'Copy, paste at playhead, duplicate, select all points'], ['Delete', 'Delete selected points / marker'], ['Ctrl+Z', 'Undo grid, marker, cue or curve change'],
   ];
   function shortcutsHelp() {
     Modal.confirm('Keyboard shortcuts', '').then(() => {});
     const dlg = document.querySelector('dialog.ui-modal:last-of-type');
-    dlg.querySelector('.modal-text').replaceWith(el('table', { class: 'shortcut-table' }, SHORTCUTS.map(([k, d]) => el('tr', {}, el('td', {}, el('kbd', { text: k })), el('td', { text: d })))));
+    const rows = (list) => list.map(([k, d]) => el('tr', {}, el('td', {}, el('kbd', { text: k })), el('td', { text: d })));
+    dlg.querySelector('.modal-text').replaceWith(el('div', { class: 'shortcut-cols' },
+      el('div', {}, el('h4', { text: 'Everywhere' }), el('table', { class: 'shortcut-table' }, rows(SHORTCUTS))),
+      el('div', {}, el('h4', { text: 'Three.js Lab' }), el('table', { class: 'shortcut-table' }, rows(LAB_SHORTCUTS)))));
+    dlg.classList.add('wide');
     dlg.querySelector('.dialog-actions button[type=button]')?.remove();
+  }
+
+  // ---------- window snapshot → chat ----------
+  // Ctrl+Shift+S: a picture of the window goes into the chat you're using (the docked director in a tool,
+  // the agent you're on, or Claude), ready to send with a message.
+  async function snapshotToChat() {
+    const active = H.activeId || '';
+    const toolId = active.startsWith('tool:') ? active.slice(5) : null;
+    const agent = (toolId && H.agents().find((a) => a.dock === toolId && a.mode === 'native'))
+      || (H.agent(active)?.mode === 'native' ? H.agent(active) : null) || H.claudeAgent();
+    if (!agent) { toast('No chat agent to send it to', { type: 'error' }); return; }
+    try {
+      const p = await window.hub.captureWindow();
+      await Native.attachPaths(agent.id, [p]);
+      const visible = toolId || H.agent(active)?.id === agent.id;
+      toast(`Window snapshot attached to ${agent.name}: write what you want and send`, {
+        timeout: 4000,
+        action: visible ? { label: 'Show file', fn: () => window.hub.fs.reveal(p) } : { label: `Open ${agent.name}`, fn: () => activate(agent.id) },
+      });
+    } catch (err) { toast(`Couldn't take the snapshot: ${err.message}`, { type: 'error' }); }
+  }
+  // Ctrl+Shift+T: keep the window above others (handy next to a game or a video).
+  let onTop = false;
+  async function toggleOnTop() {
+    onTop = await window.hub.setOnTop(!onTop);
+    document.body.classList.toggle('on-top', onTop);
+    toast(onTop ? 'Hearth stays on top of other windows (Ctrl+Shift+T to stop)' : 'Hearth no longer stays on top', { timeout: 1800 });
   }
 
   // ---------- zoom ----------
@@ -436,10 +476,12 @@ const AppUI = (() => {
     addAction('Back up hub data…', exportData);
     addAction('Create Start menu & desktop shortcuts', createShortcuts);
     addAction('Reload the hub', () => window.hub.reloadWindow(), 'Ctrl+Shift+R');
+    addAction('Snapshot the window into the chat', snapshotToChat, 'Ctrl+Shift+S');
+    addAction('Keep Hearth on top / stop', toggleOnTop, 'Ctrl+Shift+T');
     for (const [id, t] of Object.entries(THEMES)) {
       addAction(`Theme: ${t.label}`, () => { const { label, ...colors } = t; H.config.theme = { ...H.config.theme, ...colors, preset: id }; saveConfig(); });
     }
   }
 
-  return { init, openSettings, palette, find, shortcutsHelp, zoom, switchRecent, replyFinished, usageDialog, downloadsDialog, trashDialog, addAction, THEMES };
+  return { init, openSettings, palette, find, shortcutsHelp, zoom, switchRecent, replyFinished, usageDialog, downloadsDialog, trashDialog, addAction, THEMES, snapshotToChat, toggleOnTop };
 })();

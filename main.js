@@ -239,6 +239,13 @@ ipcMain.handle('find:start', (_e, text, opts) => (text ? win.webContents.findInP
 ipcMain.handle('find:stop', () => win.webContents.stopFindInPage('keepSelection'));
 ipcMain.handle('shortcuts:create', () => appshell.createShortcuts());
 ipcMain.handle('app:restart', () => appshell.restartApp());
+// A picture of the whole window (as you see it), saved with the chat attachments.
+ipcMain.handle('window:capture', async () => {
+  const img = await win.webContents.capturePage();
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  return store.saveAttachment(`hearth-${stamp}.png`, img.toPNG().toString('base64'));
+});
+ipcMain.handle('window:onTop', (_e, on) => { win.setAlwaysOnTop(Boolean(on), 'floating'); return win.isAlwaysOnTop(); });
 ipcMain.handle('data:export', async () => {
   const r = await dialog.showSaveDialog(win, {
     defaultPath: `agent-hub-backup-${new Date().toISOString().slice(0, 10)}.zip`,
