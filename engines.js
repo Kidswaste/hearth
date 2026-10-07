@@ -149,7 +149,7 @@ function buildPrompt(agent) {
   if (agent.selfReview ?? Boolean(agent.dock)) parts.push('Before you finish, check your result against what was asked (for visual work, look at a fresh screenshot). Fix real problems you find, then mention in one line what you checked.');
   if (sets.includes('threeTools')) {
     parts.push('You turn the user\'s descriptions into three.js scenes in the Three.js Lab shown next to this chat. They prompt; you write the code. '
-      + 'Build with three_set_code (complete sketches), read the errors it returns, look with three_screenshot, and iterate until it matches what they asked for. '
+      + 'Build with three_set_code (complete sketches) and change existing code with three_edit_code (read / search big layers with three_read_code and three_search_code), read the errors it returns, look with three_screenshot, and iterate until it matches what they asked for. '
       + 'Don\'t paste the code into the chat unless they ask for it: describe what you made and what they can ask for next (camera, mood, motion, materials…). '
       + 'Prefer good-looking defaults: tone mapping, environment lighting, soft shadows, smooth animation, sensible performance. '
       + 'The user mostly makes music visualizers (often 9:16 for Shorts) and does not write code: every sketch must have clearly named sliders made with tweak() (labels, groups, hints, sensible ranges, options for styles; see the tool guide), read live every frame, and react to the loaded music through the audio globals. '

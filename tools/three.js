@@ -4,6 +4,23 @@ const ThreeLab = (() => {
   const SANDBOX = 'tools/three-sandbox.html';
   let tabs = null;
   const api = {}; // filled by each tab as it mounts
+  // "  12| code" for lines a..b (1-based) of a list of lines.
+  const numbered = (lines, a, b) => lines.slice(a - 1, b).map((ln, k) => `${String(a + k).padStart(4)}| ${ln}`).join('\n');
+  // Small layers: their whole code. Big ones: an outline (functions, classes, top-level names, section comments,
+  // tweak() groups) with line numbers, to read in parts with three_read_code.
+  const BIG_CODE_LINES = 350;
+  function codeOrOutline(code) {
+    const lines = code.split('\n');
+    if (lines.length <= BIG_CODE_LINES) return { code };
+    const marks = [];
+    lines.forEach((ln, k) => {
+      if (/^\s{0,2}(export\s+)?(async\s+)?function\s+\w+|^\s{0,2}class\s+\w+|^\s{0,2}(const|let|var)\s+\w+\s*=\s*(tweak\(|new |\(|async|function|\[|\{)|^\s*\/\/\s*[-=#*]{2,}|^\s*\/\/\s*[A-Z][A-Z ]{3,}|^import |^\s*(renderer|scene|camera)\.\w+\s*\(/.test(ln)) marks.push(`${String(k + 1).padStart(4)}| ${ln.trim().slice(0, 110)}`);
+    });
+    return {
+      outline: marks.slice(0, 220).join('\n'),
+      note: `This layer is ${lines.length} lines, so here is its outline with line numbers. Read parts with three_read_code (from / to), find things with three_search_code, and change them with three_edit_code (exact find → replace, or a line range) instead of rewriting the whole layer.`,
+    };
+  }
   // Colors from a Coolors link (coolors.co/palette/264653-2a9d8f-… or coolors.co/264653-…), a Coolors export
   // (CSS / SCSS / array / JSON, '#rrggbbaa' too) or any list of hex codes → ['#rrggbb', …].
   function parseColors(input) {
@@ -1610,7 +1627,7 @@ ${code}
     }
     const PROP_KEYS = ['name', 'visible', 'opacity', 'blend', 'in', 'out', 'fadeIn', 'fadeOut', 'x', 'y', 'scale', 'rotate'];
     const director = {
-      getCode: () => ({ sketch: current?.name, layer: sel()?.name, layers: layersSummary(), frame: stage.size, lines: editor.value.split('\n').length, code: editor.value, ...(selCtl()?.controls().length ? { sliders: selCtl().controls() } : {}), ...(selCtl()?.unsaved().length ? { unsavedSliders: selCtl().unsaved(), note: 'The user moved these sliders but has not saved them into the code; keep their values when you rewrite.' } : {}) }),
+      getCode: () => ({ sketch: current?.name, layer: sel()?.name, layers: layersSummary(), frame: stage.size, lines: editor.value.split('\n').length, ...codeOrOutline(editor.value), ...(selCtl()?.controls().length ? { sliders: selCtl().controls() } : {}), ...(selCtl()?.unsaved().length ? { unsavedSliders: selCtl().unsaved(), note: 'The user moved these sliders but has not saved them into the code; keep their values when you rewrite.' } : {}) }),
       media: player,
       assignMedia,
       setFrame: (id) => stage.setMode(id),
@@ -1682,6 +1699,57 @@ ${code}
         if (!L) throw new Error(`No layer "${ref}".`);
         if (!(await removeLayer(L.id, { confirm: false }))) throw new Error('A sketch keeps at least one layer.');
         return { removed: L.name, ...report() };
+      },
+      // ---------- reading and editing code in parts (big layers don't fit in one reply) ----------
+      readCode(ref, from = 1, to = null) {
+        const L = ref ? findLayer(ref) : sel();
+        if (!L) throw new Error(`No layer "${ref}".`);
+        const code = L.id === sel()?.id ? editor.value : L.code;
+        const lines = code.split('\n');
+        const a = Math.max(1, Math.floor(from)); const b = Math.min(lines.length, Math.floor(to ?? a + 249));
+        return { layer: L.name, totalLines: lines.length, from: a, to: b, code: numbered(lines, a, b), ...(b < lines.length ? { more: `Lines ${b + 1}–${lines.length} not shown: read them with from: ${b + 1}.` } : {}) };
+      },
+      searchCode(pattern, { layer = null, regex = false, context = 1 } = {}) {
+        let re;
+        try { re = regex ? new RegExp(pattern, 'i') : new RegExp(String(pattern).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'); } catch (err) { throw new Error(`Bad pattern: ${err.message}`); }
+        const scope = layer ? [findLayer(layer)].filter(Boolean) : layersOf();
+        const hits = [];
+        for (const L of scope) {
+          const lines = (L.id === sel()?.id ? editor.value : L.code).split('\n');
+          lines.forEach((ln, k) => {
+            if (hits.length >= 120 || !re.test(ln)) return;
+            const a = Math.max(0, k - context); const b = Math.min(lines.length - 1, k + context);
+            hits.push({ layer: L.name, line: k + 1, text: numbered(lines, a + 1, b + 1) });
+          });
+        }
+        return { pattern, matches: hits.length, hits };
+      },
+      // Exact find → replace edits (each must match once unless all: true), or replace a range of lines.
+      async editCode(ref, edits = [], wait = 2.5) {
+        const L = ref ? findLayer(ref) : sel();
+        if (!L) throw new Error(`No layer "${ref}".`);
+        let code = L.id === sel()?.id ? editor.value : L.code;
+        const done = [];
+        for (const [n, e] of edits.entries()) {
+          if (e.lines) {
+            const lines = code.split('\n');
+            const [a, b] = [Number(e.lines[0]), Number(e.lines[1] ?? e.lines[0])];
+            if (!(a >= 1 && b >= a - 1 && b <= lines.length)) throw new Error(`Edit ${n + 1}: lines ${a}–${b} are outside 1–${lines.length}.`);
+            lines.splice(a - 1, b - a + 1, ...String(e.replace ?? '').split('\n'));
+            code = lines.join('\n');
+            done.push(`lines ${a}–${b} replaced`);
+            continue;
+          }
+          const find = String(e.find ?? '');
+          if (!find) throw new Error(`Edit ${n + 1}: give find (exact text) or lines [from, to].`);
+          const count = code.split(find).length - 1;
+          if (!count) throw new Error(`Edit ${n + 1}: the text to find isn't in "${L.name}" (search with three_search_code; whitespace must match).`);
+          if (count > 1 && !e.all) throw new Error(`Edit ${n + 1}: the text appears ${count} times; add more context to make it unique, or all: true.`);
+          code = e.all ? code.split(find).join(String(e.replace ?? '')) : code.replace(find, () => String(e.replace ?? ''));
+          done.push(`${count > 1 ? `${count}×` : ''}"${find.slice(0, 40).replace(/\n/g, '⏎')}${find.length > 40 ? '…' : ''}" replaced`);
+        }
+        const report = await director.updateLayer(L.id, { code }, wait);
+        return { layer: L.name, edits: done, lines: code.split('\n').length, ...report };
       },
       selectLayer(ref) {
         const L = findLayer(ref);
@@ -2120,6 +2188,9 @@ ${frag}\`,
       toast(`Three Director added a layer${args.name ? ` "${args.name}"` : ''}`, { timeout: 1500 });
       return { ok: true, value: await d.addLayer({ name: args.name, code: args.code, template: args.template, position: args.position, props: args.settings || {} }, Number(args.wait) || 2.5) };
     }
+    if (tool === 'three_read_code') return { ok: true, value: d.readCode(args.layer, Number(args.from) || 1, args.to != null ? Number(args.to) : null) };
+    if (tool === 'three_search_code') return { ok: true, value: d.searchCode(String(args.pattern || ''), { layer: args.layer || null, regex: Boolean(args.regex), context: Math.min(5, Math.max(0, Number(args.context ?? 1))) }) };
+    if (tool === 'three_edit_code') return { ok: true, value: await d.editCode(args.layer, Array.isArray(args.edits) ? args.edits : [], Number(args.wait) || 2.5) };
     if (tool === 'three_update_layer') {
       const patch = { ...(args.settings || {}) };
       if (args.code != null) patch.code = args.code;
