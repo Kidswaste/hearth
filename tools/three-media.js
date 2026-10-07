@@ -257,12 +257,14 @@ const ThreeMedia = (() => {
     let beatCache = { key: '', beats: [] };
     const btn = (text, title, fn, cls = 'ghost small') => el('button', { class: cls, text, title, on: { click: fn } });
     const sep = () => el('span', { class: 'mb-sep' });
+    const group = (cat, ...nodes) => el('span', { class: 'tb-group', dataset: { cat } }, ...nodes.filter(Boolean));
 
     // row 1: file, transport, zoom, loop
     const loadBtn = btn('🎵 Load audio / video…', 'Pick an mp3, wav, mp4… to drive the sketch (or drop one on the preview)', () => pick());
     const nameEl = el('span', { class: 'mb-name' });
     const unloadBtn = btn('×', 'Remove the music (sketches get a demo beat)', () => unload(), 'ghost small mb-x');
     const playBtn = btn('▶', 'Play / pause (Space)', () => toggle(), 'primary small mb-play');
+    playBtn.dataset.feature = 'Play / pause';
     const timeEl = el('span', { class: 'mb-time', text: '0:00' });
     // Slow motion for precise edits (the sketch sees the slowed music too). Recording always runs at 1×.
     const RATES = [1, 0.75, 0.5, 0.25];
@@ -288,7 +290,8 @@ const ThreeMedia = (() => {
     const lockBtn = btn('🔓', 'Lock the loop and the view in place', () => setLocked(!locked));
     const vol = el('input', { type: 'range', class: 'mb-vol', min: 0, max: 1, step: 0.01, value: st.volume, title: 'Volume (the sketch still sees the full signal)' });
     vol.addEventListener('input', () => { st.volume = Number(vol.value); store.set('three.mediaVolume', st.volume); send({ type: 'media', cmd: 'volume', value: st.volume }); });
-    const recBtn = btn('⏺ Record', 'Record the preview (with the music) to a video file', (e) => (recording ? stopRecord() : recordMenu(e.currentTarget)), 'ghost small mb-rec');
+    const recBtn = btn('⏺ Record', 'Record the preview (with the music) to a video file', (e) => (recording ? stopRecord() : recordMenu(e.currentTarget)), 'ghost small mb-rec imp-live');
+    recBtn.dataset.feature = 'Record';
 
     // loop points, typed to the millisecond with nudges
     const timeInput = (edge) => {
@@ -401,7 +404,14 @@ const ThreeMedia = (() => {
     grip.addEventListener('dblclick', () => setSize(SIZE_ORDER[(SIZE_ORDER.indexOf(size) + 1) % 3]));
     const bar = el('div', { class: 'media-bar' },
       handle,
-      el('div', { class: 'mb-row mb-main' }, loadBtn, nameEl, unloadBtn, playBtn, timeEl, rateSel, sep(), zoomOut, zoomIn, zoomAll, zoomLoop, waveBtn, sep(), loopBtn, loopBox, loopLen, lockBtn, el('span', { class: 'spacer' }), vol, recBtn),
+      el('div', { class: 'mb-row mb-main' },
+        group('Song', loadBtn, nameEl, unloadBtn),
+        group('Play', playBtn, timeEl, rateSel, vol),
+        group('Zoom', zoomOut, zoomIn, zoomAll, zoomLoop, waveBtn),
+        group('Loop', loopBtn, loopBox, loopLen, lockBtn),
+        el('span', { class: 'tb-group mb-g-capture', dataset: { cat: 'Capture' } }),
+        el('span', { class: 'tb-group mb-g-live', dataset: { cat: 'Live' } }, recBtn),
+        el('span', { class: 'spacer' })),
       gridRow, canvas, minimap);
     setSize(size);
 
@@ -1244,6 +1254,7 @@ const ThreeMedia = (() => {
       if (!D() || e.button !== 0) return;
       const hit = hitTest(e);
       const tt = timeAt(e);
+      if (typeof Usage !== 'undefined') Usage.track(`Timeline › canvas: ${hit.zone}${e.ctrlKey ? ' (draw)' : e.shiftKey ? ' (select)' : ''}`, { area: 'Timeline' });
       canvas.setPointerCapture(e.pointerId);
       if (hit.zone === 'ruler' && !locked) {
         if (hit.edge) { dragging = { kind: 'edge', edge: hit.edge }; selected = { type: 'edge', edge: hit.edge }; }

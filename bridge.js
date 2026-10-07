@@ -3,6 +3,7 @@
 const HubBridge = (() => {
   const handlers = [];
   window.hub.onGameCall(async ({ id, tool, args }) => {
+    Usage.agentTool(tool);
     const h = handlers.find((x) => tool.startsWith(x.prefix));
     let result;
     try { result = h ? await h.fn(tool, args || {}) : { ok: false, error: `Nothing in the hub handles ${tool}.` }; } catch (err) { result = { ok: false, error: err.message }; }

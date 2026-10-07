@@ -69,24 +69,31 @@ const ThreeLab = (() => {
     const previewHost = el('div', { class: 'three-preview' }, stats);
     let split = null;
     const btn = (text, title, fn, cls = 'ghost small') => el('button', { class: cls, text, title, on: { click: fn } });
-    const toolbar = el('div', { class: 'three-toolbar' },
-      btn('▶ Run', 'Run every layer again from the start (Ctrl+Enter)', () => run(), 'primary small'),
-      el('label', { class: 'check small', title: 'Apply code changes live, a moment after you stop typing' }, autoBox, 'Live code'),
-      picker,
-      btn('New', 'New sketch from a template', () => templateGallery()),
-      btn('Rename', 'Rename sketch', () => renameSketch()),
-      btn('Duplicate', 'Duplicate sketch', () => duplicate()),
-      btn('Delete', 'Delete sketch', () => removeSketch()),
-      btn('History…', 'Earlier versions of the selected layer (saved each time it runs) and deleted sketches', () => historyDialog()),
-      snippetSel, version,
-      el('span', { class: 'spacer' }),
-      btn('📷', 'Save a screenshot (all layers)', () => box.send({ type: 'screenshot' })),
-      btn('Export HTML', 'Save as a standalone .html file', exportHtml),
-      btn('Ask Claude', 'Send the selected layer (and any errors) to Claude', askAbout));
+    const runBtn = btn('▶ Run', 'Run every layer again from the start (Ctrl+Enter)', () => run(), 'primary small');
+    const liveLabel = el('label', { class: 'check small', title: 'Apply code changes live, a moment after you stop typing' }, autoBox, 'Live code');
+    const newBtn = btn('New', 'New sketch from a template', () => templateGallery(), 'ghost small imp-main');
+    // Less frequent sketch actions live in a menu (they used to take a whole toolbar row).
+    const sketchMenuBtn = btn('Sketch ▾', 'Rename, duplicate, delete, history, export', (e) => {
+      const r = e.currentTarget.getBoundingClientRect();
+      popup(r.left, r.bottom + 4, [
+        'This sketch',
+        ['Rename…', current?.name || '', () => renameSketch()],
+        ['Duplicate', 'A copy you can change freely', () => duplicate()],
+        ['History…', 'Earlier versions of the selected layer, and deleted sketches', () => historyDialog()],
+        ['Export HTML…', 'A standalone .html file', () => exportHtml()],
+        ['Ask Claude about this layer', 'Sends the code and any errors to Claude', () => askAbout()],
+        'Careful',
+        ['Delete…', 'Moves it to History → deleted sketches', () => removeSketch()],
+      ]);
+    });
+    const shotBtn = btn('📷', 'Save a screenshot (all layers)', () => box.send({ type: 'screenshot' }), 'ghost small imp-capture');
+    shotBtn.dataset.feature = 'Screenshot';
+    const toolbar = el('div', { class: 'three-toolbar' }, runBtn, liveLabel, picker, newBtn, sketchMenuBtn, snippetSel, version, el('span', { class: 'spacer' }), shotBtn);
     // Prompt-first: the code editor stays hidden until asked for.
     const codeBtn = btn('</> Code', 'Show or hide the code of the selected layer (the Three Director writes it for you)', () => setCodeVisible(split.classList.contains('no-code')));
     const slidersBtn = btn('🎚 Layers & sliders', 'Show or hide the layers and the sliders of the selected layer', () => setSlidersVisible(column.hidden));
     const focusBtn = btn('⛶ Focus', 'Almost fullscreen: hides the chat, side panels, toolbar, sliders and console, and shrinks the timeline to the strip (F · Esc to leave)', () => setFocus(!focusOn));
+    focusBtn.dataset.feature = 'Focus';
     // The console: always, only with the code (default), or only when you open it. Hidden, it counts new
     // errors and warnings on its button.
     const CONSOLE_MODES = [['always', 'Always show'], ['code', 'Only with the code'], ['never', 'Only when I open it']];
@@ -94,6 +101,7 @@ const ThreeLab = (() => {
     let consolePeek = null; // null: follow the mode · true / false: opened / closed by hand
     let unseen = { errors: 0, other: 0 };
     const consoleBtn = btn('Console', 'Show or hide the console (errors and console.log from the sketch)', () => { consolePeek = !consoleShown(); syncConsole(); });
+    consoleBtn.dataset.feature = 'Console';
     const consoleModeSel = el('select', { class: 'tc-mode', title: 'When the console shows' }, CONSOLE_MODES.map(([v, l]) => el('option', { value: v, text: l, selected: v === consoleMode })));
     consoleModeSel.addEventListener('change', () => setConsoleMode(consoleModeSel.value));
     const consoleWrap = el('div', { class: 'three-console-wrap' },
@@ -122,6 +130,7 @@ const ThreeLab = (() => {
     }
     // Present: just the picture, fullscreen (P · Esc). Space, arrows and cue keys still work.
     const presentBtn = btn('▣ Present', 'Fullscreen preview with nothing else on screen, for showing it off or a second monitor (P · Esc to leave)', () => togglePresent());
+    presentBtn.dataset.feature = 'Present';
     const presentHint = el('div', { class: 'present-hint', text: 'Esc to leave · Space play / pause · 1–9 jump to cues' });
     function togglePresent() {
       if (document.fullscreenElement) { document.exitFullscreen(); return; }
@@ -452,7 +461,8 @@ const ThreeLab = (() => {
       });
       return { dataUrl: cv.toDataURL('image/jpeg', 0.86), frames: frames.map((f, i) => ({ n: i + 1, time: Math.round(f.t * 100) / 100, cue: f.label || undefined })) };
     }
-    const sheetBtn = btn('🎞 Sheet', 'Contact sheet: a frame at every cue (or across the loop / song) in one picture, to check the whole piece or send to the director / Astra', () => showSheet());
+    const sheetBtn = btn('🎞 Sheet', 'Contact sheet: a frame at every cue (or across the loop / song) in one picture, to check the whole piece or send to the director / Astra', () => showSheet(), 'ghost small imp-capture');
+    sheetBtn.dataset.feature = 'Contact sheet';
     async function showSheet() {
       let sheet;
       const t = toast('Making the contact sheet…', { timeout: 30000 });
@@ -476,7 +486,8 @@ const ThreeLab = (() => {
     }
 
     // ---------- write button ----------
-    const writeBtn = btn('⏺ Write', 'Write: while the song plays, moving a slider, a layer setting or a MIDI knob records it as a curve (replacing what was there). W', () => setWrite(!writeArmed), 'ghost small mb-write');
+    const writeBtn = btn('⏺ Write', 'Write: while the song plays, moving a slider, a layer setting or a MIDI knob records it as a curve (replacing what was there). W', () => setWrite(!writeArmed), 'ghost small mb-write imp-live');
+    writeBtn.dataset.feature = 'Write';
     function setWrite(on) {
       writeArmed = on;
       for (const k of Object.keys(writeLast)) delete writeLast[k];
@@ -492,6 +503,7 @@ const ThreeLab = (() => {
     let midiLearn = null; // { stage: 'slider' } | { stage: 'control', layer, key, label } | { stage: 'pad', action }
     let midiSeen = '';
     const midiBtn = btn('🎛 MIDI', 'Use a MIDI controller: knobs move sliders, pads drop kick / snare / hit markers', (e) => midiMenu(e.currentTarget));
+    midiBtn.dataset.feature = 'MIDI';
     const midiMap = () => (current ? ((extras[current.id] ||= {}).midi ||= {}) : {});
     const midiPads = () => store.get('three.midiPads', {});
     const PAD_ACTIONS = [['kick', 'Kick marker'], ['snare', 'Snare marker'], ['hit', 'Hit marker'], ['play', 'Play / pause'], ['write', 'Write on / off'], ['note', 'Note on this moment']];
@@ -756,6 +768,7 @@ const ThreeLab = (() => {
       box.send({ type: 'refs', items, palette: current?.palette || [] });
     }
     const refsBtn = btn('🖼 References', 'Images, videos, 3D models, sounds and data for this sketch. The Three Director can see and use them; you can also drop files in its chat.', () => openRefs());
+    refsBtn.dataset.feature = 'References';
     function renderRefsBtn() { const n = refsOf().length; refsBtn.textContent = n ? `🖼 References ${n}` : '🖼 References'; }
     let refsDlg = null; let refsGrid = null;
     function openRefs() {
@@ -788,7 +801,7 @@ const ThreeLab = (() => {
           el('div', { class: 'refs-meta', text: `${r.kind} · ${fmtSize(r.size)} · ${r.name}` }),
           el('div', { class: 'refs-actions' },
             btn('Copy code', refUse(r), () => { navigator.clipboard.writeText(refUse(r)); toast(`Copied ${refUse(r)}`, { timeout: 1200 }); }),
-            btn('Ask director', 'Start a message to the Three Director about this reference', () => askAboutRef(r)),
+            btn('Ask director', 'Start a message to the Three Director about this reference', () => askAboutRef(r), 'ghost small imp-ai'),
             btn('Show', 'Show the file', () => window.hub.fs.reveal(r.path)),
             r.kind === 'image' ? btn('🎨 Palette', 'Use this picture\'s colors as the sketch palette', async () => { try { const cols = await paletteFrom(r.path); setPalette(cols); toast(`Palette: ${cols.join(' ')}`, { timeout: 2400 }); } catch (err) { toast(err.message, { type: 'error' }); } }) : null,
             btn('🗑', 'Remove (the copy goes to the Recycle Bin)', () => { removeRef(r); renderRefsDlg(); })));
@@ -802,8 +815,9 @@ const ThreeLab = (() => {
       if (r.kind === 'image') Native.attachPaths(agent.id, [r.path]);
     }
     api.addRef = (p, o) => addRef(p, o);
-    const noteBtn = btn('📌 Note', 'Take a screenshot and a note at this moment, for a change you want here (N)', () => takeNote());
+    const noteBtn = btn('📌 Note', 'Take a screenshot and a note at this moment, for a change you want here (N)', () => takeNote(), 'ghost small imp-capture');
     const notesBtn = btn('Notes', 'Your notes on this sketch: jump to them, mark them done, send them to the Three Director', (e) => notesList(e.currentTarget));
+    notesBtn.dataset.feature = 'Notes list';
     function renderNotes() {
       player.setNotes(notesOf().map((n) => ({ id: n.id, t: n.t, text: n.text, done: n.done })), { onOpen: (id, x, y) => openNote(id, x, y) });
       const open = notesOf().filter((n) => !n.done).length;
@@ -1134,11 +1148,12 @@ const ThreeLab = (() => {
     // Space plays / pauses; K S H tap hits in; [ ] set loop points; arrows nudge; Delete removes a marker.
     pane.addEventListener('keydown', (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
+      if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && /^[nfpw]$/i.test(e.key) && !e.repeat) Usage.key(e.key.toUpperCase(), 'Lab');
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'n') { e.preventDefault(); takeNote(); return; }
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'f') { e.preventDefault(); setFocus(!focusOn); return; }
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'p') { e.preventDefault(); togglePresent(); return; }
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'w') { e.preventDefault(); setWrite(!writeArmed); return; }
-      if (player.onKey(e)) e.preventDefault();
+      if (player.onKey(e)) { e.preventDefault(); if (!e.repeat) Usage.key(`${e.ctrlKey ? 'Ctrl+' : ''}${e.key === ' ' ? 'Space' : e.key.length === 1 ? e.key.toUpperCase() : e.key}`, 'Lab'); }
     });
     pane.tabIndex = -1;
     let ranOnce = false;
@@ -1507,11 +1522,14 @@ ${code}
       notesAll = await window.hub.kvGet('three-notes', {});
       refsAll = await window.hub.kvGet('three-refs', {});
       thumbs = await window.hub.kvGet('three-thumbs', {});
-      picker.after(browseBtn);
-      toolbar.querySelector('.spacer').after(refsBtn);
-      refsBtn.before(paletteBox);
-      { const row = player.el.querySelector('.mb-main'); row.querySelector('.spacer').before(writeBtn, midiBtn, sheetBtn); }
-      { const row = player.el.querySelector('.mb-main'); row.querySelector('.spacer').before(noteBtn, notesBtn); }
+      // The toolbar in labeled groups: what you see, the sketch, its code, its assets, capture.
+      const group = (cat, ...nodes) => el('span', { class: 'tb-group', dataset: { cat } }, ...nodes);
+      toolbar.replaceChildren(
+        group('View', codeBtn, slidersBtn, consoleBtn, focusBtn, presentBtn),
+        group('Sketch', picker, browseBtn, newBtn, sketchMenuBtn),
+        group('Code', runBtn, liveLabel, snippetSel, version),
+        group('Assets', paletteBox, refsBtn, shotBtn));
+      { const row = player.el.querySelector('.mb-main'); row.querySelector('.mb-g-capture').append(noteBtn, notesBtn, sheetBtn); row.querySelector('.mb-g-live').append(writeBtn, midiBtn); }
       // First run with per-sketch songs: the song that was loaded goes to the sketch that was open.
       const firstId = sketches.some((s) => s.id === store.get('three.current')) ? store.get('three.current') : sketches[0]?.id;
       const lastMedia = store.get('three.media', null);

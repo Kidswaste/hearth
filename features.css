@@ -885,3 +885,40 @@ body.on-top #rail::after { content: "📌"; position: absolute; bottom: 4px; lef
 .compact-divider[open] summary { margin-bottom: 6px; }
 .compact-divider .body { font-size: 13px; padding: 8px 12px; border-radius: 8px; background: color-mix(in srgb, var(--text) 5%, transparent); }
 .ctx-meter { white-space: nowrap; flex: none; line-height: 1.2; min-height: 0; height: 22px; }
+
+/* ---------- categories: labeled button groups ---------- */
+.tb-group { display: inline-flex; align-items: center; gap: 3px; padding: 2px 5px 2px 4px; border-radius: 9px; background: color-mix(in srgb, var(--text) 4%, transparent); border: 1px solid color-mix(in srgb, var(--text) 7%, transparent); min-width: 0; }
+.tb-group::before { content: attr(data-cat); font-size: 9px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); opacity: .75; margin-right: 2px; white-space: nowrap; }
+.tb-group:empty { display: none; }
+.three-toolbar { gap: 6px 8px; }
+.media-bar .mb-main { flex-wrap: wrap; row-gap: 6px; }
+.media-bar .mb-main .tb-group { flex-wrap: nowrap; }
+
+/* ---------- importance by meaning (gold = main, violet = AI, red = live / recording, orange = capture) ---------- */
+button.imp-main { color: #ffd75e; border-color: #ffd75e66; }
+button.imp-ai, .msg-act[data-msg-act="review"], .msg-act[data-msg-act="opinion"], .msg-act[data-msg-act="apply-opinion"], .tw-chip { color: #c9a6ff; border-color: #bd8bff66; }
+button.imp-ai:hover, .tw-chip:hover { background: color-mix(in srgb, #bd8bff 16%, transparent); }
+button.imp-live:not(.on):not(.armed) { color: #ff8a8a; border-color: #ff6a6a66; }
+button.imp-capture { color: #ffb062; border-color: #ff9f4366; }
+
+/* ---------- importance by use (usage.js) ---------- */
+button.use-hot, select.use-hot { box-shadow: 0 0 0 1px color-mix(in srgb, #ffd75e 70%, transparent), 0 0 10px -2px #ffd75e66; }
+button.use-warm { border-color: color-mix(in srgb, #ffd75e 35%, var(--line, #333)); }
+button.use-cold, select.use-cold { opacity: .5; }
+button.use-cold:hover, select.use-cold:hover { opacity: 1; }
+.use-hidden { display: none !important; }
+#rail .agent-btn.use-hot { box-shadow: 0 0 0 2px color-mix(in srgb, var(--agent, #ffd75e) 55%, transparent); }
+
+/* ---------- "Your usage" ---------- */
+.usage-dlg { max-height: 70vh; overflow: auto; }
+.usage-dlg h4 { margin: 14px 0 6px; }
+.us-areas { display: flex; flex-wrap: wrap; gap: 6px; }
+.us-chip { font-size: 12px; padding: 2px 9px; border-radius: 99px; background: color-mix(in srgb, var(--text) 7%, transparent); }
+.us-list { display: grid; gap: 2px; }
+.us-row { display: grid; grid-template-columns: minmax(140px, 2fr) minmax(90px, 1fr) 1.2fr 44px 90px auto; gap: 8px; align-items: center; font-size: 12.5px; padding: 2px 4px; border-radius: 5px; }
+.us-row:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
+.us-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.us-area, .us-ago { color: var(--muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.us-bar { height: 5px; border-radius: 4px; background: color-mix(in srgb, var(--text) 8%, transparent); overflow: hidden; }
+.us-bar i { display: block; height: 100%; background: #ffd75e; }
+.us-n { text-align: right; font-variant-numeric: tabular-nums; }

@@ -48,5 +48,6 @@ window.hub.onConfigChanged(apply);
     window.hub.listChats(), window.hub.getHistory(), window.hub.engineStatus(),
   ]);
   AppUI.init();
+  Usage.init();
   apply(await window.hub.getConfig());
 })();

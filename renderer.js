@@ -324,6 +324,7 @@ function activate(id, { focus = true } = {}) {
   if (!s) return;
   const docked = surfaceId !== id;
   if (H.isTool(surfaceId) && H.grid) { H.grid = false; applyLayout(); }
+  if (focus && typeof Usage !== 'undefined') Usage.open(id);
   H.activeId = id;
   H.mru = [id, ...H.mru.filter((m) => m !== id)].slice(0, 12);
   let changed = H.unread.delete(id);
@@ -397,6 +398,7 @@ async function askAll(text) {
 // ---------- shortcuts ----------
 
 function handleShortcut({ key, shift }) {
+  Usage.key(`Ctrl+${shift ? 'Shift+' : ''}${key.length === 1 ? key.toUpperCase() : key}`);
   if (/^[1-9]$/.test(key)) { const a = H.railAgents()[Number(key) - 1]; if (a) activate(a.id); }
   else if (key === 'g') { H.grid = !H.grid; applyLayout(); }
   else if (key === '\\') { H.panelOpen = !H.panelOpen; applyLayout(); }

@@ -266,3 +266,10 @@
 226. ✓ **Auto-compact on long tasks**: once a reply sends over ~110k tokens of context, the chat compacts itself right after (agent setting "Compacts long tasks on its own", on by default).
 227. ✓ **Context meter**: the chat header shows how much context each message sends now (green → yellow at 60k → red at 110k); click to compact.
 228. ✓ **Branch**: "Branch" on any reply starts a new chat with everything up to there, to try another direction without losing the original.
+
+## UI by use
+229. ✓ **Usage tracking** (usage.js, local only: data/kv/ui-usage.json): which buttons, menu items, palette actions, shortcuts, agents / tools and agent tool calls you use, how often and when.
+230. ✓ **Importance from use**: your most used buttons get a gold outline, regular ones a warm border; after two weeks of tracking, buttons you never touch (or haven't for a month) fade until you hover. The agents / tools you open most get a ring in the rail.
+231. ✓ **Importance from meaning**: gold = main actions, violet = AI (Ask the director, Review, Second opinion…), red = live / recording (Record, Write), orange = capture (Note, Sheet, 📷).
+232. ✓ **Categories**: the Lab toolbar is grouped (View · Sketch · Code · Assets) and the timeline too (Song · Play · Zoom · Loop · Capture · Live). Rename / Duplicate / History / Export HTML / Ask Claude / Delete moved into "Sketch ▾".
+233. ✓ **Your usage** (Ctrl+K → "Your usage"): most used features with counts, usage by area, features not used for 3+ weeks and ones seen but never used; Hide removes a button everywhere (Show brings it back).

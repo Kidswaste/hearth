@@ -185,7 +185,7 @@ const AppUI = (() => {
       if (e.key === 'Escape') close();
       else if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(sel + 1, shown.length - 1); paint(); list.children[sel]?.scrollIntoView({ block: 'nearest' }); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(sel - 1, 0); paint(); list.children[sel]?.scrollIntoView({ block: 'nearest' }); }
-      else if (e.key === 'Enter') { e.preventDefault(); const it = shown[sel]; if (it) { close(); it.run(); } }
+      else if (e.key === 'Enter') { e.preventDefault(); const it = shown[sel]; if (it) { close(); Usage.track(`Command palette › ${it.label}`); it.run(); } }
     });
     box.addEventListener('mousedown', (e) => { if (e.target === box) close(); });
     document.body.append(box);
@@ -487,6 +487,7 @@ const AppUI = (() => {
     addAction('Create Start menu & desktop shortcuts', createShortcuts);
     addAction('Reload the hub', () => window.hub.reloadWindow(), 'Ctrl+Shift+R');
     addAction('Snapshot the window into the chat', snapshotToChat, 'Ctrl+Shift+S');
+    addAction('Your usage: what you use and what you never touch', () => Usage.dialog());
     addAction('Keep Hearth on top / stop', toggleOnTop, 'Ctrl+Shift+T');
     for (const [id, t] of Object.entries(THEMES)) {
       addAction(`Theme: ${t.label}`, () => { const { label, ...colors } = t; H.config.theme = { ...H.config.theme, ...colors, preset: id }; saveConfig(); });
