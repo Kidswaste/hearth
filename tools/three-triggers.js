@@ -51,7 +51,7 @@ const ThreeTriggers = (() => {
     const autoBtn = el('button', { class: 'ghost small', text: 'Auto bars', title: 'Set every bar from the last few seconds of sound (just under its loud moments)', on: { click: () => autoBars() } });
     const close = el('button', { class: 'ghost small', text: '×', title: 'Close', on: { click: () => opts.onClose?.() } });
     const hint = el('span', { class: 'trg-hint', text: 'drag a dot: sideways = which sound, up / down = the bar · drag the edges or wheel on the dot = width' });
-    const writeBtn = el('button', { class: 'ghost small', text: '→ Timeline', title: 'Write the kicks, snares and hits these triggers find into the timeline as markers you can edit (the loop, or the whole song). Undo with ↶ / Ctrl+Z.', on: { click: () => opts.onWrite?.(cfg, writeBtn) } });
+    const writeBtn = el('button', { class: 'ghost small', text: '→ Timeline', title: 'Write what the triggers find (kick, snare, hit, plus bass and hats rows) into the timeline as markers you can edit, for the loop or the whole song. Undo with ↶ / Ctrl+Z.', on: { click: () => opts.onWrite?.(cfg, writeBtn) } });
     writeBtn.hidden = !opts.onWrite;
     const head = el('div', { class: 'trg-head' }, el('b', { text: '⚡ Triggers' }), hint, autoBtn, writeBtn, close);
     const senseRow = el('div', { class: 'trg-sense' });

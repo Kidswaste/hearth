@@ -207,7 +207,11 @@ const ThreeMedia = (() => {
   const METERS = [['4', '4/4'], ['3', '3/4'], ['6', '6/8']];
   const SNAPS = [['off', 'Off'], ['bar', 'Bar'], ['1/4', 'Beat'], ['1/8', '1/8'], ['1/16', '1/16'], ['1/32', '1/32'], ['hits', 'Hits']];
   const DIV = { '1/4': 1, '1/8': 2, '1/16': 4, '1/32': 8 };
-  const LANES = [{ id: 'kick', name: 'Kick', key: 'k', color: '#ff6a6a' }, { id: 'snare', name: 'Snare', key: 's', color: '#48ddff' }, { id: 'hit', name: 'Hit', key: 'h', color: '#bd8bff' }];
+  const LANES = [{ id: 'kick', name: 'Kick', key: 'k', color: '#ff6a6a' }, { id: 'snare', name: 'Snare', key: 's', color: '#48ddff' }, { id: 'hit', name: 'Hit', key: 'h', color: '#bd8bff' },
+    // extra rows: only shown once they have markers (⚡ Triggers → Timeline writes them), no tap key
+    { id: 'bass', name: 'Bass', key: null, color: '#ff9f43', extra: true }, { id: 'hats', name: 'Hats', key: null, color: '#c4ff4d', extra: true }];
+  const CORE_LANES = LANES.filter((l) => !l.extra);
+  const emptyMarks = (m) => Object.fromEntries(LANES.map((l) => [l.id, m?.[l.id] || []]));
   const r4 = (t) => Math.round(t * 1e4) / 1e4;
   const mod = (a, n) => ((a % n) + n) % n;
   function gridBeats(grid, duration) {
@@ -266,7 +270,8 @@ const ThreeMedia = (() => {
     let analyzing = false;
     let dragging = null;
     let selected = null; // { type: 'edge', edge } | { type: 'mark', lane, t }
-    let map = { grid: null, marks: { kick: [], snare: [], hit: [] }, cues: [] };
+    let map = { grid: null, marks: emptyMarks(), cues: [] };
+    const shownLanes = () => LANES.filter((l) => !l.extra || map.marks[l.id]?.length);
     let mapUndo = [];
     let allMaps = null;
     let taps = [];
@@ -348,7 +353,7 @@ const ThreeMedia = (() => {
     const gridState = el('span', { class: 'mb-gridstate' });
     const snapSel = el('select', { class: 'mb-sel', title: 'What loop points, markers and curve points snap to (Hits: your kick / snare / hit markers and cues)' }, SNAPS.map(([v, l]) => el('option', { value: v, text: `Snap: ${l}`, selected: v === snapMode })));
     snapSel.addEventListener('change', () => { snapMode = snapSel.value; store.set('three.snapMode', snapMode); draw(); });
-    const laneBtns = LANES.map((ln) => btn('', `Add a ${ln.name.toLowerCase()} at the playhead (or press ${ln.key.toUpperCase()} while it plays)`, () => addAtPlayhead(ln.id), `ghost small mb-lane mb-lane-${ln.id}`));
+    const laneBtns = CORE_LANES.map((ln) => btn('', `Add a ${ln.name.toLowerCase()} at the playhead (or press ${ln.key.toUpperCase()} while it plays)`, () => addAtPlayhead(ln.id), `ghost small mb-lane mb-lane-${ln.id}`));
     const fillBtn = btn('Fill ▾', 'Stamp kicks / snares / hits on the grid, or clear them', (e) => fillMenu(e.currentTarget));
     const undoBtn = btn('↶', 'Undo the last grid, marker or curve change (Ctrl+Z)', () => undoMap());
     const gridRow = el('div', { class: 'mb-row mb-grid' },
@@ -392,7 +397,7 @@ const ThreeMedia = (() => {
     function setTracks(list, handlers) {
       tracks = list || [];
       if (handlers) trackHandlers = handlers;
-      canvas.style.height = `${112 + tracksH()}px`;
+      sizeCanvas();
       draw();
     }
     // Notes on moments (pins on the ruler): [{ id, t, text, done }], handlers onOpen(id, x, y).
@@ -484,8 +489,9 @@ const ThreeMedia = (() => {
       allMaps ||= await window.hub.kvGet('three-beatmaps', {});
       if (seq !== loadSeq) return { ok: false, error: 'Another file was loaded meanwhile' };
       const m = allMaps[path];
-      map = { grid: m?.grid || null, marks: { kick: m?.marks?.kick || [], snare: m?.marks?.snare || [], hit: m?.marks?.hit || [] }, cues: m?.cues || [] };
+      map = { grid: m?.grid || null, marks: emptyMarks(m?.marks), cues: m?.cues || [] };
       mapUndo = [];
+      sizeCanvas();
       store.set('three.media', path);
       analyzing = true;
       paint();
@@ -511,7 +517,7 @@ const ThreeMedia = (() => {
       analyzing = false;
       Object.assign(st, { path: null, name: null, bytes: null, analysis: null, samples: null, time: 0, duration: 0, playing: false });
       region = null; locked = false; view = null; selected = null;
-      map = { grid: null, marks: { kick: [], snare: [], hit: [] }, cues: [] };
+      map = { grid: null, marks: emptyMarks(), cues: [] };
       store.set('three.media', null);
       paint();
       if (!silent) onLoaded?.({ reload: true, unloaded: true });
@@ -595,7 +601,9 @@ const ThreeMedia = (() => {
       mapChanged({ undoable: false });
     }
     const saveMaps = debounce(() => { if (allMaps) window.hub.kvSet('three-beatmaps', allMaps); }, 400);
+    function sizeCanvas() { canvas.style.height = `${112 + tracksH() + (shownLanes().length - CORE_LANES.length) * 14}px`; }
     function mapChanged() {
+      sizeCanvas();
       if (st.path && allMaps) {
         const empty = !map.grid && !LANES.some((ln) => map.marks[ln.id].length) && !map.cues?.length;
         if (empty) delete allMaps[st.path]; else allMaps[st.path] = map;
@@ -707,7 +715,7 @@ const ThreeMedia = (() => {
       const hit = snapToHit(now(), lane);
       const grid = snapT(hit);
       addMarkAt(lane, Math.abs(grid - hit) < 0.03 ? grid : hit, { snapIt: false });
-      const b = laneBtns[LANES.findIndex((l) => l.id === lane)];
+      const b = laneBtns[CORE_LANES.findIndex((l) => l.id === lane)];
       b.classList.add('flash');
       setTimeout(() => b.classList.remove('flash'), 120);
     }
@@ -740,7 +748,7 @@ const ThreeMedia = (() => {
         ['Snare on 2 and 4', where, () => stamp('snare', numbered.filter((b) => b.n === 1 || b.n === 3).map((b) => b.t))],
         ['Hit on every bar’s 1', where, () => stamp('hit', numbered.filter((b) => b.n === 0).map((b) => b.t))],
         null,
-        ...LANES.map((ln) => [`Clear ${ln.name.toLowerCase()}s`, where, () => clear(ln.id)]),
+        ...shownLanes().map((ln) => [`Clear ${ln.name.toLowerCase()}${ln.id === 'bass' || ln.id === 'hats' ? '' : 's'}`, where, () => clear(ln.id)]),
       ]);
     }
 
@@ -795,7 +803,7 @@ const ThreeMedia = (() => {
       // hot cues (like rekordbox): C drops one at the playhead, 1–9 jump to them
       if (e.key.toLowerCase() === 'c' && !e.altKey) { addCue(now()); return true; }
       if (/^[1-9]$/.test(e.key) && !e.altKey) { const c = map.cues[Number(e.key) - 1]; if (c) { seek(c.t); return true; } return false; }
-      const lane = LANES.find((l) => l.key === e.key.toLowerCase());
+      const lane = CORE_LANES.find((l) => l.key === e.key.toLowerCase());
       if (lane && !e.altKey) { addAtPlayhead(lane.id); return true; }
       if (e.key === '[') { setRegionEdge('a', now()); return true; }
       if (e.key === ']') { setRegionEdge('b', now()); return true; }
@@ -892,7 +900,7 @@ const ThreeMedia = (() => {
 
     // ---------- drawing ----------
     const RULER = 16; const LANE_H = 14;
-    const laneTop = (h) => h - LANES.length * LANE_H - tracksH();
+    const laneTop = (h) => h - shownLanes().length * LANE_H - tracksH();
     let raf = 0;
     const waveCache = { key: '', canvas: document.createElement('canvas') };
     let lastFull = 0;
@@ -940,7 +948,7 @@ const ThreeMedia = (() => {
       gridState.classList.toggle('mine', Boolean(map.grid));
       autoBtn.disabled = !map.grid;
       undoBtn.disabled = !mapUndo.length;
-      LANES.forEach((ln, i) => { laneBtns[i].textContent = `${ln.key.toUpperCase()} ${ln.name} ${map.marks[ln.id].length || ''}`.trim(); });
+      CORE_LANES.forEach((ln, i) => { laneBtns[i].textContent = `${ln.key.toUpperCase()} ${ln.name} ${map.marks[ln.id].length || ''}`.trim(); });
       recBtn.textContent = recording ? (recording.stopping ? '… saving' : `⏹ Stop ${fmtTime((performance.now() - recording.startedAt) / 1000)}`) : '⏺ Record';
       recBtn.classList.toggle('on', Boolean(recording));
       if (view && st.playing && !locked && !dragging) {
@@ -1066,7 +1074,7 @@ const ThreeMedia = (() => {
       }
       if (a) { g.fillStyle = '#ff6a6a'; for (const d of a.drops) { const x = X(d); g.beginPath(); g.moveTo(x - 4, top); g.lineTo(x + 4, top); g.lineTo(x, top + 7); g.fill(); } }
       // hit lanes
-      LANES.forEach((ln, li) => {
+      shownLanes().forEach((ln, li) => {
         const y = LT + li * LANE_H;
         g.fillStyle = li % 2 ? '#ffffff06' : '#ffffff0c';
         g.fillRect(0, y, w, LANE_H);
@@ -1361,7 +1369,8 @@ const ThreeMedia = (() => {
         return { zone: 'ruler', edge };
       }
       if (y >= LT) {
-        const lane = LANES[Math.min(LANES.length - 1, Math.floor((y - LT) / LANE_H))].id;
+        const vis = shownLanes();
+        const lane = vis[Math.min(vis.length - 1, Math.floor((y - LT) / LANE_H))].id;
         let mark = null; let best = 7;
         for (const m of map.marks[lane]) { const d = Math.abs(xOf(m) - x); if (d < best) { best = d; mark = m; } }
         return { zone: 'lane', lane, mark };
@@ -1918,7 +1927,7 @@ const ThreeMedia = (() => {
         const counts = {};
         for (const id of lanes) {
           map.marks[id] = map.marks[id].filter((t) => t < range[0] || t >= range[1]);
-          for (const t of found[id]) map.marks[id] = addMark(map.marks[id], r4(Math.max(0, Math.min(D(), snapToHit(Math.min(D(), t + 0.03), id)))));
+          for (const t of found[id]) map.marks[id] = addMark(map.marks[id], r4(Math.max(0, Math.min(D(), snapToHit(Math.min(D(), t + 0.03), id === 'bass' ? 'kick' : id)))));
           counts[id] = found[id].length;
         }
         mapChanged();

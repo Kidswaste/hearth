@@ -197,7 +197,17 @@ const ThreeLab = (() => {
     let trigTuned = store.get('three.triggers', null) != null;
     let trigPanel = null;
     const sendTriggers = () => box.send({ type: 'triggers-set', cfg: trigCfg });
-    const saveTriggers = debounce(() => store.set('three.triggers', trigCfg), 400);
+    // Each song keeps its own bars (songs differ a lot); the last ones you set are the default for new songs.
+    const saveTriggers = debounce(() => {
+      store.set('three.triggers', trigCfg);
+      if (player.path) store.set('three.triggersBySong', { ...store.get('three.triggersBySong', {}), [player.path]: trigCfg });
+    }, 400);
+    function songTriggers() {
+      const saved = player.path && store.get('three.triggersBySong', {})[player.path];
+      if (!saved) return;
+      trigCfg = ThreeTriggers.merge(saved); trigTuned = true;
+      sendTriggers(); trigPanel?.set(trigCfg);
+    }
     const trigBtn = btn('⚡ Triggers', 'What fires the sketch\'s kick / bass / snare / hats / hit: a band of the sound and the bar it must reach', () => toggleTriggers());
     trigBtn.dataset.feature = 'Triggers';
     function toggleTriggers(on = !trigPanel) {
@@ -215,7 +225,7 @@ const ThreeLab = (() => {
           b.disabled = true; const label = b.textContent; b.textContent = 'Scanning…';
           try {
             const r = await player.writeTriggers(cfg, { onProgress: (p) => { b.textContent = `Scanning ${Math.round(p * 100)}%`; } });
-            const parts = Object.entries(r.counts).map(([id, n]) => `${n} ${id}${n === 1 ? '' : 's'}`);
+            const parts = Object.entries(r.counts).map(([id, n]) => `${n} ${id === 'bass' ? 'bass hit' : id === 'hats' ? 'hat' : id}${n === 1 ? '' : 's'}`);
             toast(`Wrote ${parts.join(', ')} on the ${r.range === 'loop' ? 'loop' : 'whole song'} (↶ to undo). These markers now drive the sketch.`, { timeout: 4500 });
           } catch (err) { toast(err.message, { type: 'error' }); } finally { b.disabled = false; b.textContent = label; }
         },
@@ -228,7 +238,7 @@ const ThreeLab = (() => {
       const next = { ...trigCfg };
       for (const [k, v] of Object.entries(patch || {})) if (next[k]) next[k] = { ...next[k], ...v };
       trigCfg = ThreeTriggers.merge(next);
-      sendTriggers(); store.set('three.triggers', trigCfg); trigPanel?.set(trigCfg);
+      sendTriggers(); saveTriggers(); trigPanel?.set(trigCfg);
       return trigCfg;
     }
     // The preview iframe is isolated (no access to the hub) and browsers don't let isolated pages capture
@@ -1417,7 +1427,7 @@ const ThreeLab = (() => {
       send: (msg) => box.send(msg),
       sketchName: () => current?.name,
       onPick: (path) => assignMedia(path),
-      onLoaded: (o) => { if (o?.unloaded) assignMedia(null); if (o?.reload) run(); renderLayers(); },
+      onLoaded: (o) => { if (o?.unloaded) assignMedia(null); else songTriggers(); if (o?.reload) run(); renderLayers(); },
     });
     function assignMedia(path) {
       if (!current) return;

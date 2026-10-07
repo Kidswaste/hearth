@@ -340,3 +340,5 @@
 283. ✓ **Layers, faster** (you hide / show layers a lot): Alt+1…9 hides / shows the layer at that spot in the list (1 = top), Alt+Shift+1…9 shows only that one, Alt+click an eye = only that layer (again: all).
 284. ✓ **Ctrl+R in the Lab** restarts the simulation from scratch (it used to do nothing there); elsewhere it still reloads the website.
 285. ✓ Long chat replies you unfold with "Show full reply" stay unfolded (they used to fold again when the chat refreshed).
+286. ✓ **Bass and Hats rows** on the timeline: ⚡ Triggers → Timeline now writes all five triggers. The two extra rows only appear once they have markers (the timeline grows by their height), and their markers then drive audio.bassHit / audio.hats.
+287. ✓ **Triggers per song**: each song keeps its own bands and bars; switching songs brings them back. The last ones you set are the starting point for a new song.
