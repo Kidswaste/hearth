@@ -63,6 +63,7 @@ let lastTick = performance.now();
 let lastRenderer = null;
 let frameMs = 0;
 let shotPending = false;
+let shotTag = null; // echoed with the picture (the Lab's automatic thumbnails use 'thumb')
 const renderers = new Set(); // every renderer the current sketch made, so a re-run can dispose them
 function instrument(renderFn) {
   return function render(scene, camera) {
@@ -72,7 +73,7 @@ function instrument(renderFn) {
     lastRenderer = this;
     renderers.add(this);
     frames += 1;
-    if (shotPending) { shotPending = false; post({ type: 'shot', dataUrl: this.domElement.toDataURL('image/png') }); }
+    if (shotPending) { shotPending = false; post({ type: 'shot', tag: shotTag, dataUrl: this.domElement.toDataURL('image/png') }); }
   };
 }
 // WebGLRenderer assigns `this.render = function…` in its constructor (no prototype method), so a
@@ -118,10 +119,10 @@ realSetInterval(() => {
 }, 500);
 
 function requestShot() {
-  if (mode === 'sketch' && needsComposite()) { realRAF(() => post({ type: 'shot', dataUrl: composite().toDataURL('image/png') })); return; }
+  if (mode === 'sketch' && needsComposite()) { realRAF(() => post({ type: 'shot', tag: shotTag, dataUrl: composite().toDataURL('image/png') })); return; }
   shotPending = true;
   // Static scenes may not render again; fall back to the current canvas.
-  realSetTimeout(() => { if (shotPending && lastRenderer) { shotPending = false; post({ type: 'shot', dataUrl: lastRenderer.domElement.toDataURL('image/png') }); } }, 600);
+  realSetTimeout(() => { if (shotPending && lastRenderer) { shotPending = false; post({ type: 'shot', tag: shotTag, dataUrl: lastRenderer.domElement.toDataURL('image/png') }); } }, 600);
 }
 
 // ---------- audio / video ----------
@@ -396,6 +397,30 @@ const valueOf = (i, base) => {
   return m.int ? Math.round(v) : v;
 };
 globalThis.__tv = (i) => { markRead(i); return valueOf(i, TV[i]); };
+// The user's reference files for this sketch: refs.<name> is a URL any loader can use (TextureLoader,
+// GLTFLoader, fetch, new Audio…); refTexture('name') gives a ready texture (videos play muted and looping).
+const refs = {}; const refKinds = {};
+globalThis.refs = refs;
+function setRefs(items) {
+  for (const k of Object.keys(refs)) delete refs[k];
+  for (const it of items || []) { refs[it.key] = URL.createObjectURL(new Blob([it.buffer], { type: it.mime || '' })); refKinds[it.key] = it.kind; }
+}
+globalThis.refTexture = (key, { loop = true, muted = true } = {}) => {
+  const url = refs[key];
+  if (!url) throw new Error(`No reference "${key}". This sketch's references: ${Object.keys(refs).join(', ') || 'none (add some with the References button)'}`);
+  if (refKinds[key] === 'video') {
+    const v = document.createElement('video');
+    Object.assign(v, { src: url, loop, muted, playsInline: true, crossOrigin: 'anonymous' });
+    v.play().catch(() => {});
+    const tex = new THREE.VideoTexture(v);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.video = v;
+    return tex;
+  }
+  const tex = new THREE.TextureLoader().load(url);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+};
 // Named controls: const P = tweak({ speed: [1, 0, 5], glow: { value: 1, min: 0, max: 3, label: 'Glow', group: 'Look', onChange }, tint: '#ff3cac', wire: false })
 globalThis.tweak = (spec = {}) => {
   const L = layerState(currentLayer() || 'main');
@@ -1398,6 +1423,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'layer-props') { const L = layers.get(msg.id); if (L) setLayerProps(L, msg.props); }
   if (msg.type === 'remove-layer') removeLayer(msg.id);
   if (msg.type === 'media-load') loadMedia(msg);
+  if (msg.type === 'refs') setRefs(msg.items);
   if (msg.type === 'media') mediaCommand(msg);
   if (msg.type === 'media-map') beatMap = msg;
   if (msg.type === 'media-analysis' && mediaEl) analysis = { ...msg.analysis, name: analysis?.name };
@@ -1405,7 +1431,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'shader') shader?.set(msg.code);
   if (msg.type === 'load') viewer?.load(msg);
   if (msg.type === 'viewer') viewer?.command(msg);
-  if (msg.type === 'screenshot') requestShot();
+  if (msg.type === 'screenshot') { shotTag = msg.tag || null; requestShot(); }
 });
 
 if (mode === 'sketch') document.body.classList.add('sketch');

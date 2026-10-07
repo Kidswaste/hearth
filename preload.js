@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld('hub', {
   kvGet: call('kv:get'),
   kvSet: call('kv:set'),
   saveAttachment: call('attachments:save'),
+  importRef: call('refs:import'),
+  attachmentsDir: call('attachments:dir'),
   getUsage: call('usage:get'),
 
   send: call('engine:send'),

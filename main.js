@@ -174,6 +174,8 @@ ipcMain.handle('engine:send', (_e, { agentId, chatId, session, text, options }) 
   });
 });
 ipcMain.handle('attachments:save', (_e, name, base64) => store.saveAttachment(name, base64));
+ipcMain.handle('refs:import', (_e, src) => store.importRef(String(src)));
+ipcMain.handle('attachments:dir', () => store.ATTACH_DIR);
 ipcMain.handle('usage:get', () => store.getUsage());
 ipcMain.handle('memory:get', () => store.getMemory());
 ipcMain.handle('memory:save', (_e, memory) => store.saveMemory(memory));

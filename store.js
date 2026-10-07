@@ -102,6 +102,16 @@ const kvPath = (name) => {
   return path.join(KV_DIR, `${name}.json`);
 };
 
+// Reference files for Lab sketches are copied here, so they keep working if the original moves.
+function importRef(src) {
+  const dir = path.join(DATA_DIR, 'refs');
+  fs.mkdirSync(dir, { recursive: true });
+  const safe = path.basename(src).replace(/[^\w.\- ]+/g, '_').slice(-80) || 'file';
+  const file = path.join(dir, `${Date.now()}-${safe}`);
+  fs.copyFileSync(src, file);
+  return file;
+}
+
 function saveAttachment(name, base64) {
   const safe = name.replace(/[^\w.\- ]+/g, '_').slice(-80) || 'file';
   const file = path.join(ATTACH_DIR, `${Date.now()}-${safe}`);
@@ -144,6 +154,8 @@ module.exports = {
     writeJson(file, value);
   },
   saveAttachment,
+  importRef,
+  ATTACH_DIR,
   addUsage,
   getUsage: () => readJson(USAGE_PATH, {}),
 };

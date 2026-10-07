@@ -131,10 +131,27 @@ const Native = (() => {
     }
     renderChips(agentId);
   }
+  // Media dropped in the Three Director's chat (videos, models, sounds…) are added to the open sketch's
+  // references, with a note telling the director their names.
+  async function labReference(agentId, path) {
+    const agent = H.agent(agentId);
+    if (!agent?.threeTools || typeof ThreeLab === 'undefined') return false;
+    try {
+      const r = await ThreeLab.addReference(path);
+      const use = r.kind === 'image' || r.kind === 'video' ? `refTexture('${r.key}')` : `refs.${r.key}`;
+      views.get(agentId).attachments.push({ kind: 'text', name: `reference: ${r.key}`, content: `The user added "${r.name}" (${r.kind}) to this sketch's references as "${r.key}". In code: ${use}.` });
+      return true;
+    } catch (err) { toast(err.message, { type: 'error' }); return false; }
+  }
   async function addPath(agentId, path) {
     const v = views.get(agentId);
     const name = path.split(/[\\/]/).pop();
+    if (H.agent(agentId)?.threeTools && typeof ThreeLab !== 'undefined' && ThreeLab.isReference(name) && !/\.(png|jpe?g|gif|webp|bmp)$/i.test(name)) {
+      if (await labReference(agentId, path)) { renderChips(agentId); toast(`${name} added to the sketch's references`, { timeout: 2200 }); return; }
+    }
     if (/\.(png|jpe?g|gif|webp|bmp)$/i.test(name)) {
+      // The Three Director can turn attached pictures into sketch references, from the attachments folder.
+      if (H.agent(agentId)?.threeTools) { try { path = await window.hub.saveAttachment(name, await window.hub.fs.read(path, { encoding: 'base64' })); } catch { /* keep the original path */ } }
       v.attachments.push({ kind: 'image', name, path, preview: `file:///${path.replace(/\\/g, '/')}` });
     } else if (isTextName(name)) {
       try { v.attachments.push({ kind: 'text', name, content: await window.hub.fs.read(path, { maxBytes: TEXT_ATTACH_LIMIT }) }); } catch (err) { toast(err.message, { type: 'error' }); }

@@ -237,3 +237,11 @@
 199. ✓ **Window snapshot → chat** (Ctrl+Shift+S, anywhere): a picture of the whole window is attached to the chat you're using (the docked director in a tool, the agent you're on, or Claude), ready to send with a message.
 200. ✓ **Keep Hearth on top** (Ctrl+Shift+T or the palette): stays above other windows; a 📌 shows at the bottom of the rail.
 201. ✓ **Shortcut sheet** (Ctrl+/) now has a second column with every Three.js Lab key; the palette has Lab entries for Present, Focus, cues, console mode and speed.
+202. ✓ **References**: 🖼 References in the Lab toolbar holds this sketch's pictures, logos, video clips, 3D models, sounds, fonts and data files (add or drop them; copies live in data/refs). Each has a name used in code: refTexture('name') for images / videos, refs.name (a URL) for the rest. Copy code, ask the director about it, show, remove.
+203. ✓ **References from the chat**: files dropped in the Three Director's chat that aren't pictures (clips, .glb, sounds…) become references automatically, with a note telling the director their name; pictures you attach are shown to it and it can add them (three_references add). three_references list lets it see every reference (pictures included).
+204. ✓ **Follow the music** (right-click a lane): curves that ride the loudness, bass, mids or highs over the loop / view / layer time.
+205. ✓ **RGB waveform** like rekordbox (red bass, green mids, blue highs; the RGB button switches back to band lines).
+206. ✓ **Snap: Hits**: points, markers and loop edges snap to your kick / snare / hit markers and cues.
+207. ✓ **M / S per layer** in the timeline's header column: mute (hide) and solo (only this layer while you work; not saved).
+208. ✓ **Sketch browser** (▦ next to the sketch list): every sketch as a picture (thumbnails taken automatically after it runs), with layers, date and song; search; open; new.
+209. ✓ **Reply heads-up**: when a chat you can't see (another tool, or the director hidden by Focus) finishes, a small note with Open appears.

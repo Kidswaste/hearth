@@ -324,11 +324,21 @@ const AppUI = (() => {
     if (!agent) return;
     const focused = await window.hub.isWindowFocused();
     // Docked chats count as on screen whenever their tool is.
-    const onScreen = H.surfaceIdFor(H.activeId) === H.surfaceIdFor(agentId);
+    // ...except when Focus / Present hides the dock.
+    const dockHidden = Boolean(agent.dock) && (document.body.classList.contains('lab-focus') || Boolean(document.fullscreenElement));
+    const onScreen = H.surfaceIdFor(H.activeId) === H.surfaceIdFor(agentId) && !dockHidden;
     const visible = focused && (onScreen || H.grid) && H.activeChat[agentId] === chatId;
     if (visible) return;
     if (!(focused && onScreen)) { H.unread.add(agentId); renderRail(); }
     if (H.settings().notify === false) return;
+    // In the app but looking elsewhere: a small note you can click.
+    if (focused && !document.fullscreenElement) {
+      const gist = (text || '').replace(/[#*`>_]/g, '').replace(/\s+/g, ' ').trim().slice(0, 90);
+      toast(`${agent.name} replied${gist ? `: ${gist}${gist.length >= 90 ? '…' : ''}` : ''}`, {
+        timeout: 6000,
+        action: { label: 'Open', fn: () => { if (dockHidden) document.querySelector('.lab-focus-exit')?.click(); Native.open(agentId, chatId); } },
+      });
+    }
     if (!focused) {
       window.hub.flashWindow();
       const n = new Notification(`${agent.name} replied`, { body: (text || '').replace(/[#*`>_]/g, '').slice(0, 160), silent: false });

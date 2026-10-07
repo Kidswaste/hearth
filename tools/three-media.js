@@ -189,7 +189,7 @@ const ThreeMedia = (() => {
   // A manual grid is { bpm, anchor (a downbeat "1", seconds), bpb (beats per bar) }; without one the
   // detected beats are used. Hit markers are the user's own kick / snare / hit times.
   const METERS = [['4', '4/4'], ['3', '3/4'], ['6', '6/8']];
-  const SNAPS = [['off', 'Off'], ['bar', 'Bar'], ['1/4', 'Beat'], ['1/8', '1/8'], ['1/16', '1/16'], ['1/32', '1/32']];
+  const SNAPS = [['off', 'Off'], ['bar', 'Bar'], ['1/4', 'Beat'], ['1/8', '1/8'], ['1/16', '1/16'], ['1/32', '1/32'], ['hits', 'Hits']];
   const DIV = { '1/4': 1, '1/8': 2, '1/16': 4, '1/32': 8 };
   const LANES = [{ id: 'kick', name: 'Kick', key: 'k', color: '#ff6a6a' }, { id: 'snare', name: 'Snare', key: 's', color: '#48ddff' }, { id: 'hit', name: 'Hit', key: 'h', color: '#bd8bff' }];
   const r4 = (t) => Math.round(t * 1e4) / 1e4;
@@ -223,7 +223,7 @@ const ThreeMedia = (() => {
     const a = beats[i]; const step = (beats[i + 1] - a) / DIV[mode];
     return r4(a + Math.round((t - a) / step) * step);
   }
-  const snapStep = (mode, grid, bpm) => { const p = 60 / (grid?.bpm || bpm || 120); return mode === 'bar' ? p * (grid?.bpb || 4) : mode === 'off' ? p : p / DIV[mode]; };
+  const snapStep = (mode, grid, bpm) => { const p = 60 / (grid?.bpm || bpm || 120); return mode === 'bar' ? p * (grid?.bpb || 4) : mode === 'off' ? p : p / (DIV[mode] || 4); };
   // "1:23.456" / "83.456" / "83" → seconds
   function parseTime(s) {
     const m = String(s).trim().match(/^(?:(\d+):)?(\d+(?:\.\d*)?)$/);
@@ -280,6 +280,10 @@ const ThreeMedia = (() => {
     const zoomIn = btn('＋', 'Zoom in (or the mouse wheel on the timeline); goes down to single samples', () => zoomBy(1 / 1.6));
     const zoomAll = btn('Whole song', 'Show the whole song', () => setView(null));
     const zoomLoop = btn('Fit loop', 'Zoom to the loop', () => fitLoop());
+    // Waveform colors: rekordbox-style RGB (red lows, green mids, blue highs) or the three band lines.
+    let waveRGB = store.get('three.waveRGB', true);
+    const waveBtn = btn('RGB', 'Waveform colors: RGB like rekordbox (red = bass, green = mids, blue = highs) or band lines', () => { waveRGB = !waveRGB; store.set('three.waveRGB', waveRGB); waveBtn.classList.toggle('on', waveRGB); draw(); }, 'ghost small mb-wave');
+    waveBtn.classList.toggle('on', waveRGB);
     const loopBtn = btn('⟲ Loop', 'Loop playback: the loop section if you set one, otherwise the whole song', () => { st.loop = !st.loop; store.set('three.mediaLoop', st.loop); send({ type: 'media', cmd: 'loop', value: st.loop }); paint(); });
     const lockBtn = btn('🔓', 'Lock the loop and the view in place', () => setLocked(!locked));
     const vol = el('input', { type: 'range', class: 'mb-vol', min: 0, max: 1, step: 0.01, value: st.volume, title: 'Volume (the sketch still sees the full signal)' });
@@ -314,7 +318,7 @@ const ThreeMedia = (() => {
     meterSel.addEventListener('change', () => editGrid((g) => { g.bpb = Number(meterSel.value); }));
     const autoBtn = btn('Auto', 'Forget your grid and use the detected beats', () => { if (!map.grid) return; pushUndo(); map.grid = null; mapChanged(); });
     const gridState = el('span', { class: 'mb-gridstate' });
-    const snapSel = el('select', { class: 'mb-sel', title: 'What loop points and markers snap to' }, SNAPS.map(([v, l]) => el('option', { value: v, text: `Snap: ${l}`, selected: v === snapMode })));
+    const snapSel = el('select', { class: 'mb-sel', title: 'What loop points, markers and curve points snap to (Hits: your kick / snare / hit markers and cues)' }, SNAPS.map(([v, l]) => el('option', { value: v, text: `Snap: ${l}`, selected: v === snapMode })));
     snapSel.addEventListener('change', () => { snapMode = snapSel.value; store.set('three.snapMode', snapMode); draw(); });
     const laneBtns = LANES.map((ln) => btn('', `Add a ${ln.name.toLowerCase()} at the playhead (or press ${ln.key.toUpperCase()} while it plays)`, () => addAtPlayhead(ln.id), `ghost small mb-lane mb-lane-${ln.id}`));
     const fillBtn = btn('Fill ▾', 'Stamp kicks / snares / hits on the grid, or clear them', (e) => fillMenu(e.currentTarget));
@@ -397,7 +401,7 @@ const ThreeMedia = (() => {
     grip.addEventListener('dblclick', () => setSize(SIZE_ORDER[(SIZE_ORDER.indexOf(size) + 1) % 3]));
     const bar = el('div', { class: 'media-bar' },
       handle,
-      el('div', { class: 'mb-row mb-main' }, loadBtn, nameEl, unloadBtn, playBtn, timeEl, rateSel, sep(), zoomOut, zoomIn, zoomAll, zoomLoop, sep(), loopBtn, loopBox, loopLen, lockBtn, el('span', { class: 'spacer' }), vol, recBtn),
+      el('div', { class: 'mb-row mb-main' }, loadBtn, nameEl, unloadBtn, playBtn, timeEl, rateSel, sep(), zoomOut, zoomIn, zoomAll, zoomLoop, waveBtn, sep(), loopBtn, loopBox, loopLen, lockBtn, el('span', { class: 'spacer' }), vol, recBtn),
       gridRow, canvas, minimap);
     setSize(size);
 
@@ -500,7 +504,14 @@ const ThreeMedia = (() => {
     }
     const bpmNow = () => map.grid?.bpm || st.analysis?.bpm || 0;
     const bpbNow = () => map.grid?.bpb || 4;
-    const snapT = (t) => snapTime(t, snapMode, map.grid, beats());
+    // "Hits": the nearest kick / snare / hit marker or cue within a beat, else the 1/16 grid.
+    const snapT = (t) => {
+      if (snapMode !== 'hits') return snapTime(t, snapMode, map.grid, beats());
+      const range = 60 / (bpmNow() || 120);
+      let best = null; let bd = range;
+      for (const list of [map.marks.kick, map.marks.snare, map.marks.hit, map.cues.map((c) => c.t)]) for (const m of list) { const d = Math.abs(m - t); if (d < bd) { bd = d; best = m; } }
+      return best ?? snapTime(t, '1/16', map.grid, beats());
+    };
     function ensureGrid() {
       if (map.grid) return map.grid;
       const bs = st.analysis?.beats || [];
@@ -873,10 +884,22 @@ const ThreeMedia = (() => {
       } else if (sp < 25 && a?.peaks) {
         g.fillStyle = '#ffd75e90';
         for (let x = 0; x < w; x += 1) {
-          const i0 = Math.floor((s0 + (x / w) * sp) * 100); const i1 = Math.max(i0 + 1, Math.floor((s0 + ((x + 1) / w) * sp) * 100));
+          const tx = s0 + (x / w) * sp;
+          const i0 = Math.floor(tx * 100); const i1 = Math.max(i0 + 1, Math.floor((s0 + ((x + 1) / w) * sp) * 100));
           let m = 0; for (let i = i0; i < i1 && i < a.peaks.length; i += 1) m = Math.max(m, a.peaks[i]);
           const hh = m * (H / 2 - 2);
+          if (waveRGB) g.fillStyle = rgbAt(a, tx);
           g.fillRect(x, mid - hh, 1, hh * 2 || 1);
+        }
+      } else if (a && waveRGB) {
+        // rekordbox-style: height = loudness, color = which band carries it
+        const n = a.level.length;
+        for (let x = 0; x < w; x += 1) {
+          const tx = s0 + (x / w) * sp;
+          const i = Math.min(n - 1, Math.max(0, Math.floor((tx / D()) * n)));
+          const hh = Math.max(1, a.level[i] * (H / 2 - 2));
+          g.fillStyle = rgbAt(a, tx);
+          g.fillRect(x, mid - hh, 1, hh * 2);
         }
       } else if (a) {
         const n = a.bass.length;
@@ -1029,7 +1052,15 @@ const ThreeMedia = (() => {
         g.fillRect(w + 3, y + 1, 3, TRACK_H - 2);
         g.fillStyle = shown ? '#ffd75e' : '#cfc6bb';
         const label = `▾ ${shown ? `${shown} curve${shown === 1 ? '' : 's'}` : 'Automation'}${tr.animated ? ` · ${tr.animated}●` : ''}`;
-        g.fillText(label, w + 10, y + 11);
+        g.fillText(label.length > 13 ? `${label.slice(0, 12)}…` : label, w + 10, y + 11);
+        // M (mute = hide the layer) and S (solo: only this layer, until you click again)
+        for (const [i, txt, on, col] of [[0, 'M', tr.visible === false, '#ff8a6a'], [1, 'S', tr.solo, '#ffd75e']]) {
+          const bx = W - 38 + i * 17;
+          g.fillStyle = on ? col : '#ffffff14';
+          g.fillRect(bx, y + 2, 15, TRACK_H - 4);
+          g.fillStyle = on ? '#0b0e10' : '#cfc6bb';
+          g.fillText(txt, bx + 4, y + 11);
+        }
         for (const { ln, top, h: lh } of row.lanes) {
           const col = tr.color || '#ffd75e';
           const isActive = activeLane && activeLane.id === tr.id && activeLane.prop === ln.prop;
@@ -1054,6 +1085,13 @@ const ThreeMedia = (() => {
           if (lh > AUTO_H) { g.fillStyle = '#8f877d'; g.fillText(`${(ln.keys || []).length} points`, w + 9, top + lh - 5); }
         }
       }
+    }
+    // Waveform color at a time from the band envelopes (bass → red, mids → green, highs → blue).
+    function rgbAt(a, t) {
+      const n = a.bass.length; const i = Math.min(n - 1, Math.max(0, Math.floor((t / D()) * n)));
+      const b = a.bass[i]; const m = a.mid[i]; const h = a.treble[i]; const sum = b + m + h || 1;
+      const k = 0.55 + 0.45 * Math.min(1, a.level[i] * 1.6);
+      return `rgb(${Math.round((70 + 185 * (b / sum) * 1.4) * k)},${Math.round((60 + 195 * (m / sum) * 1.3) * k)},${Math.round((90 + 165 * (h / sum) * 1.6) * k)})`;
     }
     // FL Studio-style automation: the curve, its points, and a tension handle in the middle of each segment.
     const roundV = (L, v) => { const c = Math.max(L.min, Math.min(L.max, v)); return L.step ? Math.round(Math.round(c / L.step) * L.step * 1e6) / 1e6 : Math.round(c * 1000) / 1000; };
@@ -1162,6 +1200,7 @@ const ThreeMedia = (() => {
       if (x >= w) {
         // the header column
         if (lr) return { zone: x >= r.width - 20 && y < lr.top + 16 ? 'laneClose' : 'laneHead', track: row.tr, lane: lr.ln, lr };
+        if (row && x >= r.width - 38) return { zone: x >= r.width - 21 ? 'solo' : 'mute', track: row.tr };
         if (row) return { zone: 'chip', track: row.tr };
         return { zone: 'gutter' };
       }
@@ -1223,6 +1262,9 @@ const ThreeMedia = (() => {
         else if (e.clientY - canvas.getBoundingClientRect().top < hit.lr.top + 16) trackHandlers.onLanePick?.(hit.track.id, e.clientX, e.clientY, { prop: hit.lane.prop });
         dragging = { kind: 'none' };
       } else if (hit.zone === 'gutter') {
+        dragging = { kind: 'none' };
+      } else if (hit.zone === 'mute' || hit.zone === 'solo') {
+        (hit.zone === 'mute' ? trackHandlers.onMute : trackHandlers.onSolo)?.(hit.track.id);
         dragging = { kind: 'none' };
       } else if (hit.zone === 'cue') {
         // click: jump · drag: move it
@@ -1482,7 +1524,36 @@ const ThreeMedia = (() => {
       ['sine', 'Wave, one per bar', 'Smooth up and down'],
       ['square', 'Square, half a bar each', 'Peak / rest, switching on the half bar'],
       ['random', 'Random steps on beats', 'A new level every beat'],
+      ['followLevel', 'Follow the loudness', 'The curve rides the song\'s overall level'],
+      ['followBass', 'Follow the bass', 'Rides the low end (kicks, bass)'],
+      ['followMid', 'Follow the mids', 'Rides vocals, synths, snares'],
+      ['followHigh', 'Follow the highs', 'Rides hats and cymbals'],
     ];
+    // Automation from the music: the band's envelope over the range (peaks per step), scaled to rest…peak,
+    // then thinned out where a straight line already fits.
+    function followPoints(arr, a, b, rest, peak) {
+      const an = st.analysis; if (!an || !arr?.length) return [];
+      const n = arr.length; const fps = n / D();
+      const beat = 60 / (bpmNow() || 120);
+      let step = beat / 4;
+      if ((b - a) / step > 1500) step = (b - a) / 1500;
+      const raw = [];
+      for (let t = a; t <= b + 1e-6; t += step) {
+        const i0 = Math.floor(t * fps); const i1 = Math.max(i0 + 1, Math.floor((t + step) * fps));
+        let m = 0; for (let i = i0; i < i1 && i < n; i += 1) m = Math.max(m, arr[i]);
+        raw.push({ t, e: m });
+      }
+      const hi = Math.max(...raw.map((x) => x.e)) || 1; const lo = Math.min(...raw.map((x) => x.e));
+      const pts = raw.map((x) => ({ t: r4(x.t), v: rest + ((x.e - lo) / ((hi - lo) || 1)) * (peak - rest), ease: 'linear' }));
+      const tol = Math.abs(peak - rest) * 0.04;
+      const out = [pts[0]];
+      for (let i = 1; i < pts.length - 1; i += 1) {
+        const p0 = out[out.length - 1]; const p2 = pts[i + 1]; const u = (pts[i].t - p0.t) / ((p2.t - p0.t) || 1);
+        if (Math.abs(p0.v + (p2.v - p0.v) * u - pts[i].v) > tol) out.push(pts[i]);
+      }
+      if (pts.length > 1) out.push(pts[pts.length - 1]);
+      return out;
+    }
     function shapeRange(tr) {
       if (region) return { a: region.a, b: region.b, where: 'in the loop' };
       if (view) return { a: view.start, b: view.end, where: 'in the visible part' };
@@ -1493,7 +1564,7 @@ const ThreeMedia = (() => {
       const inside = (ln.keys || []).filter((k) => k.t >= a - 1e-4 && k.t <= b + 1e-4).map((k) => k.v);
       let rest; let peak;
       if (inside.length && Math.max(...inside) - Math.min(...inside) > 1e-6) { rest = Math.min(...inside); peak = Math.max(...inside); } else {
-        const cur = ThreeLayers.evalKeys(ln.keys || [], a, ln.base); const amp = 0.35 * (ln.max - ln.min);
+        const cur = ThreeLayers.evalKeys(ln.keys || [], a, ln.base); const amp = (kind.startsWith('follow') ? 0.5 : 0.35) * (ln.max - ln.min);
         if (ln.max - cur >= amp) { rest = cur; peak = cur + amp; } else { peak = ln.max; rest = ln.max - amp; }
       }
       rest = roundV(ln, rest); peak = roundV(ln, peak);
@@ -1512,6 +1583,11 @@ const ThreeMedia = (() => {
       else if (kind === 'sine') pts = steps(bar / 2, (i) => (i % 2 ? peak : rest), 'ease');
       else if (kind === 'square') pts = steps(bar / 2, (i) => (i % 2 ? rest : peak), 'hold');
       else if (kind === 'random') pts = bs.map((t) => ({ t, v: roundV(ln, rest + Math.random() * (peak - rest)), ease: 'hold' }));
+      else if (kind.startsWith('follow')) {
+        const an = st.analysis;
+        if (!an) { toast('The song is still being analyzed', { type: 'error' }); return; }
+        pts = followPoints({ followLevel: an.level, followBass: an.bass, followMid: an.mid, followHigh: an.treble }[kind], a, b, rest, peak).map((k) => ({ ...k, v: roundV(ln, k.v) }));
+      }
       if (!pts?.length) return;
       insertPoints(tr.id, ln.prop, pts.map((k) => ({ ...k, t: r4(k.t) })));
       toast(`${SHAPES.find((x) => x[0] === kind)[1]} ${where} on ${ln.label}. The new points are selected: drag one to move them all, Alt+drag to make the swing bigger or smaller.`, { timeout: 4500 });
@@ -1522,7 +1598,9 @@ const ThreeMedia = (() => {
       const sameSel = autoSel && autoSel.id === tr.id && autoSel.prop === ln.prop && autoSel.idx.size;
       activeLane = { id: tr.id, prop: ln.prop };
       menuAt(anchor, [
-        ...SHAPES.map(([id, name, hint]) => [name, `${hint}, ${where}`, () => applyShape(tr, ln, id)]),
+        ...SHAPES.filter(([id]) => !id.startsWith('follow')).map(([id, name, hint]) => [name, `${hint}, ${where}`, () => applyShape(tr, ln, id)]),
+        null,
+        ...SHAPES.filter(([id]) => id.startsWith('follow')).map(([id, name, hint]) => [name, `${hint}, ${where}`, () => applyShape(tr, ln, id)]),
         null,
         ['Select all points', 'Ctrl+A', () => selectAllPoints()],
         sameSel ? ['Copy the selected points', 'Ctrl+C', () => copyPoints()] : false,
@@ -1616,7 +1694,7 @@ const ThreeMedia = (() => {
       if (!D()) return;
       const hit = hitTest(e);
       const tt = timeAt(e);
-      canvas.style.cursor = hit.zone === 'cue' ? 'grab' : hit.zone === 'auto' ? (e.ctrlKey ? 'crosshair' : hit.point >= 0 ? 'move' : hit.handle >= 0 ? 'ns-resize' : 'crosshair') : hit.zone === 'gutter' ? 'default' : hit.zone === 'chip' || hit.zone === 'note' || hit.zone === 'laneHead' || hit.zone === 'laneClose' ? 'pointer' : hit.zone === 'track' ? (hit.key ? 'move' : hit.edge ? 'ew-resize' : hit.inside ? 'grab' : 'default') : hit.zone === 'lane' ? (hit.mark != null ? 'ew-resize' : 'cell') : locked ? 'pointer' : hit.zone === 'ruler' ? (hit.edge ? 'ew-resize' : 'copy') : 'pointer';
+      canvas.style.cursor = hit.zone === 'mute' || hit.zone === 'solo' ? 'pointer' : hit.zone === 'cue' ? 'grab' : hit.zone === 'auto' ? (e.ctrlKey ? 'crosshair' : hit.point >= 0 ? 'move' : hit.handle >= 0 ? 'ns-resize' : 'crosshair') : hit.zone === 'gutter' ? 'default' : hit.zone === 'chip' || hit.zone === 'note' || hit.zone === 'laneHead' || hit.zone === 'laneClose' ? 'pointer' : hit.zone === 'track' ? (hit.key ? 'move' : hit.edge ? 'ew-resize' : hit.inside ? 'grab' : 'default') : hit.zone === 'lane' ? (hit.mark != null ? 'ew-resize' : 'cell') : locked ? 'pointer' : hit.zone === 'ruler' ? (hit.edge ? 'ew-resize' : 'copy') : 'pointer';
       const tips = {
         ruler: locked ? 'Locked: click to jump' : 'Drag along this strip to draw a loop; drag its edges to adjust · C drops a cue at the playhead',
         wave: 'Click to jump · double-click to loop this part · wheel to zoom · Shift+wheel to scroll',
@@ -1625,6 +1703,8 @@ const ThreeMedia = (() => {
         chip: 'Choose which settings of this layer show as curves below it (several at once) · A shows every animated one',
         laneHead: `${hit.lane?.label}: click the name to switch it to another setting · double-click to make the lane taller / shorter · right-click for more`,
         laneClose: 'Hide this lane (the animation stays)',
+        mute: 'Mute: hide this layer (click again to show it)',
+        solo: 'Solo: show only this layer while you work on it (click again to show all; not saved)',
         cue: hit.cue ? `${hit.cue.name} at ${fmtMs(hit.cue.t)}: click to jump · drag to move · right-click to rename, loop or delete` : '',
         gutter: 'A shows / hides every animated setting of every layer',
         note: hit.note ? `Note at ${fmtMs(hit.note.t)}: ${hit.note.text}` : '',

@@ -46,6 +46,7 @@ const ThreeLab = (() => {
     let sketches = [];
     let current = null;
     let selId = null; // selected layer
+    let soloId = null; // a layer shown alone while you work on it (not saved)
     if (!store.get('three.autorunLive')) { store.set('three.autorun', true); store.set('three.autorunLive', true); }
     let autoRun = store.get('three.autorun', true);
     let errors = [];
@@ -217,8 +218,10 @@ const ThreeLab = (() => {
       onLaneHide: (id, prop) => { const L = layerById(id); if (L) setLanes(L, lanesOf(L).filter((p) => p !== prop)); },
       onLaneTall: (id, prop) => { const L = layerById(id); if (!L) return; L.laneTall = { ...L.laneTall, [prop]: !L.laneTall?.[prop] }; if (!L.laneTall[prop]) delete L.laneTall[prop]; touch(); renderTracksOnly(); },
       onLanesAll: () => toggleAllLanes(),
+      onMute: (id) => { const L = layerById(id); if (L) editLayer(id, { visible: L.visible === false }); },
+      onSolo: (id) => setSolo(soloId === id ? null : id),
     };
-    const trackList = () => [...layersOf()].reverse().map((L) => ({ id: L.id, name: L.name, color: L.color, in: L.in ?? null, out: L.out ?? null, fadeIn: L.in != null ? L.fadeIn || 0 : 0, fadeOut: L.out != null ? L.fadeOut || 0 : 0, visible: L.visible !== false, selected: L.id === selId, keys: trackKeys(L), lanes: lanesOf(L).map((p) => laneData(L, p)).filter(Boolean), animated: Object.values(L.keys || {}).filter((k) => k?.length).length }));
+    const trackList = () => [...layersOf()].reverse().map((L) => ({ id: L.id, name: L.name, color: L.color, in: L.in ?? null, out: L.out ?? null, fadeIn: L.in != null ? L.fadeIn || 0 : 0, fadeOut: L.out != null ? L.fadeOut || 0 : 0, visible: L.visible !== false, solo: L.id === soloId, selected: L.id === selId, keys: trackKeys(L), lanes: lanesOf(L).map((p) => laneData(L, p)).filter(Boolean), animated: Object.values(L.keys || {}).filter((k) => k?.length).length }));
     // Animated values follow the playhead in the panels.
     let lastSyncT = -1;
     function syncKeyUI(force = false) {
@@ -268,6 +271,12 @@ const ThreeLab = (() => {
       requestAnimationFrame(() => { const r = menu.getBoundingClientRect(); if (r.bottom > innerHeight - 8) menu.style.top = `${Math.max(8, innerHeight - 8 - r.height)}px`; });
       const close = (e) => { if (!menu.contains(e.target)) { menu.remove(); removeEventListener('pointerdown', close, true); } };
       setTimeout(() => addEventListener('pointerdown', close, true));
+    }
+    function setSolo(id) {
+      soloId = id && layerById(id) ? id : null;
+      for (const x of layersOf()) box.send({ type: 'layer-props', id: x.id, props: { visible: x.visible !== false && (!soloId || x.id === soloId) } });
+      renderTracksOnly();
+      if (soloId) toast(`Only "${layerById(soloId).name}" shows · S again to show every layer`, { timeout: 2200 });
     }
     function setLanes(L, list) { L.lanes = [...new Set(list.filter(Boolean))]; delete L.lane; touch(); renderTracksOnly(); }
     // A: show every animated setting of every layer; again (when they all show): hide every lane.
@@ -353,6 +362,120 @@ const ThreeLab = (() => {
     const notesOf = () => (current ? (notesAll[current.id] ||= []) : []);
     const saveNotes = debounce(() => window.hub.kvSet('three-notes', notesAll), 300);
     const fileUrl = (p) => `file:///${encodeURI(String(p).replace(/\\/g, '/'))}`;
+    // ---------- references ----------
+    // { sketchId: [{ id, key, name, kind, path, size, at }] } in kv 'three-refs'. Files are copied into data/refs;
+    // the sandbox gets their bytes (refs.<key> = blob URL, refTexture(key)) before each full run.
+    let refsAll = {};
+    const refBytes = new Map(); // id → ArrayBuffer
+    const refsOf = () => (current ? (refsAll[current.id] ||= []) : []);
+    const saveRefs = debounce(() => window.hub.kvSet('three-refs', refsAll), 300);
+    const REF_KINDS = [['image', /\.(png|jpe?g|gif|webp|bmp|svg)$/i], ['video', /\.(mp4|webm|mov|m4v|mkv)$/i], ['model', /\.(glb|gltf|obj|fbx|stl|ply)$/i],
+      ['audio', /\.(mp3|wav|ogg|m4a|flac|aac)$/i], ['font', /\.(ttf|otf|woff2?)$/i], ['data', /\.(json|csv|txt|hdr|exr|bin)$/i]];
+    const MIMES = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml', mp4: 'video/mp4', webm: 'video/webm', mov: 'video/mp4', m4v: 'video/mp4', mkv: 'video/webm', glb: 'model/gltf-binary', gltf: 'model/gltf+json', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4', flac: 'audio/flac', aac: 'audio/aac', json: 'application/json', csv: 'text/csv', txt: 'text/plain', ttf: 'font/ttf', otf: 'font/otf', woff: 'font/woff', woff2: 'font/woff2' };
+    const refKindOf = (name) => REF_KINDS.find(([, re]) => re.test(name))?.[0] || null;
+    const refUse = (r) => (r.kind === 'image' || r.kind === 'video' ? `refTexture('${r.key}')` : `refs.${r.key}`);
+    const REF_ICONS = { image: '🖼', video: '🎞', model: '🧊', audio: '🔊', font: '🔤', data: '📄' };
+    const fmtSize = (n) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+    function refKey(name, except = null) {
+      let k = name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9]+(.)?/g, (_, c) => (c ? c.toUpperCase() : '')).replace(/^[^a-zA-Z_]+/, '') || 'ref';
+      k = k[0].toLowerCase() + k.slice(1);
+      const taken = new Set(refsOf().filter((r) => r !== except).map((r) => r.key));
+      let out = k; let i = 2;
+      while (taken.has(out)) { out = `${k}${i}`; i += 1; }
+      return out;
+    }
+    async function addRef(src, { key } = {}) {
+      if (!current) throw new Error('Open a sketch first');
+      const name = String(src).split(/[\\/]/).pop().replace(/^\d{10,}-/, '');
+      const kind = refKindOf(name);
+      if (!kind) throw new Error(`${name} isn't a file a sketch can use (images, videos, 3D models, audio, fonts, data files)`);
+      const st = await window.hub.fs.stat(src);
+      if (st.size > 400 * 1048576) throw new Error(`${name} is over 400 MB`);
+      const existing = refsOf().find((r) => r.name === name && r.size === st.size);
+      if (existing) return existing;
+      const path = await window.hub.importRef(src);
+      const r = { id: `r${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`, key: refKey(key || name), name, kind, path, size: st.size, at: Date.now() };
+      refsOf().push(r);
+      saveRefs();
+      await loadRefBytes();
+      renderRefsBtn();
+      if (refsDlg?.open) renderRefsDlg();
+      return r;
+    }
+    function removeRef(r) {
+      refsAll[current.id] = refsOf().filter((x) => x !== r);
+      refBytes.delete(r.id);
+      saveRefs(); sendRefs(); renderRefsBtn();
+      window.hub.fs.trash(r.path).catch(() => {});
+    }
+    function renameRef(r, to) {
+      const k = refKey(to, r);
+      const used = layersOf().some((L) => L.code.includes(r.key));
+      r.key = k;
+      saveRefs(); sendRefs(); renderRefsBtn();
+      if (used) toast(`Renamed to ${k}: code that used the old name needs updating (ask the director)`, { timeout: 4000 });
+      return k;
+    }
+    // Bytes for every reference of the open sketch; a run that needed a missing one runs again.
+    async function loadRefBytes() {
+      let added = false;
+      for (const r of refsOf()) {
+        if (refBytes.has(r.id)) continue;
+        try { const u8 = await window.hub.fs.read(r.path, { encoding: 'buffer', maxBytes: 400 * 1048576 }); refBytes.set(r.id, u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength)); added = true; } catch { /* file gone */ }
+      }
+      sendRefs();
+      return added;
+    }
+    function sendRefs() {
+      const items = refsOf().filter((r) => refBytes.has(r.id)).map((r) => ({ key: r.key, kind: r.kind, mime: MIMES[r.name.split('.').pop().toLowerCase()] || '', buffer: refBytes.get(r.id).slice(0) }));
+      box.send({ type: 'refs', items });
+    }
+    const refsBtn = btn('🖼 References', 'Images, videos, 3D models, sounds and data for this sketch. The Three Director can see and use them; you can also drop files in its chat.', () => openRefs());
+    function renderRefsBtn() { const n = refsOf().length; refsBtn.textContent = n ? `🖼 References ${n}` : '🖼 References'; }
+    let refsDlg = null; let refsGrid = null;
+    function openRefs() {
+      refsDlg?.remove();
+      refsGrid = el('div', { class: 'refs-grid' });
+      const add = btn('＋ Add files…', 'Pick images, videos, models…', async () => {
+        const paths = await window.hub.openDialog({ properties: ['openFile', 'multiSelections'], title: 'References for this sketch' });
+        for (const p of paths) { try { await addRef(p); } catch (err) { toast(err.message, { type: 'error' }); } }
+      }, 'primary small');
+      refsDlg = el('dialog', { class: 'ui-modal refs-dialog' },
+        el('div', { class: 'refs-head' }, el('h3', { text: `References · ${current?.name || ''}` }), el('span', { class: 'spacer' }), add, btn('Close', '', () => refsDlg.close())),
+        el('p', { class: 'muted small', text: 'Drop files here. In code: refTexture(\'name\') for images and videos, refs.name (a URL) for models, sounds and data. Or just ask the director: "use the logo on the cube".' }),
+        refsGrid);
+      dropZone(refsDlg, async (files) => { for (const f of files) { try { await addRef(window.hub.pathForFile(f)); } catch (err) { toast(err.message, { type: 'error' }); } } }, { hint: 'Drop to add references' });
+      refsDlg.addEventListener('close', () => { refsDlg.remove(); refsDlg = null; });
+      document.body.append(refsDlg);
+      renderRefsDlg();
+      refsDlg.showModal();
+    }
+    function renderRefsDlg() {
+      if (!refsGrid) return;
+      const list = refsOf();
+      refsGrid.replaceChildren(...(list.length ? list.map((r) => {
+        const thumb = r.kind === 'image' ? el('img', { src: fileUrl(r.path), alt: '' })
+          : r.kind === 'video' ? el('video', { src: fileUrl(r.path), muted: true, loop: true, playsInline: true, on: { mouseenter: (e) => e.target.play(), mouseleave: (e) => e.target.pause() } })
+            : el('span', { class: 'refs-icon', text: REF_ICONS[r.kind] });
+        const keyIn = el('input', { class: 'refs-key', value: r.key, spellcheck: false, title: 'The name code uses for it' });
+        keyIn.addEventListener('change', () => { keyIn.value = renameRef(r, keyIn.value); renderRefsDlg(); });
+        return el('div', { class: 'refs-card' }, el('div', { class: 'refs-thumb' }, thumb), keyIn,
+          el('div', { class: 'refs-meta', text: `${r.kind} · ${fmtSize(r.size)} · ${r.name}` }),
+          el('div', { class: 'refs-actions' },
+            btn('Copy code', refUse(r), () => { navigator.clipboard.writeText(refUse(r)); toast(`Copied ${refUse(r)}`, { timeout: 1200 }); }),
+            btn('Ask director', 'Start a message to the Three Director about this reference', () => askAboutRef(r)),
+            btn('Show', 'Show the file', () => window.hub.fs.reveal(r.path)),
+            btn('🗑', 'Remove (the copy goes to the Recycle Bin)', () => { removeRef(r); renderRefsDlg(); })));
+      }) : [el('div', { class: 'refs-empty', text: 'No references yet. Add pictures, logos, video clips, 3D models (.glb), sounds or data files.' })]));
+    }
+    function askAboutRef(r) {
+      const agent = H.agents().find((a) => a.dock === 'three' && a.mode === 'native');
+      if (!agent) return;
+      refsDlg?.close();
+      Native.setDraft(agent.id, `Use the reference "${r.key}" (${r.kind}, ${r.name}) in the sketch: `);
+      if (r.kind === 'image') Native.attachPaths(agent.id, [r.path]);
+    }
+    api.addRef = (p, o) => addRef(p, o);
     const noteBtn = btn('📌 Note', 'Take a screenshot and a note at this moment, for a change you want here (N)', () => takeNote());
     const notesBtn = btn('Notes', 'Your notes on this sketch: jump to them, mark them done, send them to the Three Director', (e) => notesList(e.currentTarget));
     function renderNotes() {
@@ -444,7 +567,7 @@ const ThreeLab = (() => {
     }
     addEventListener('keydown', (e) => { if (e.key === 'Escape' && focusOn) setFocus(false); });
 
-    const layerProps = (L, z) => ({ keys: animKeys(L), sliderKeys: sliderKeysOf(L), name: L.name, visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal', in: L.in ?? null, out: L.out ?? null, fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0, x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, selected: L.id === selId, slot: L.slot, z: z ?? layersOf().indexOf(L) });
+    const layerProps = (L, z) => ({ keys: animKeys(L), sliderKeys: sliderKeysOf(L), name: L.name, visible: L.visible !== false && (!soloId || L.id === soloId), opacity: L.opacity ?? 1, blend: L.blend || 'normal', in: L.in ?? null, out: L.out ?? null, fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0, x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, selected: L.id === selId, slot: L.slot, z: z ?? layersOf().indexOf(L) });
     const extrasOf = (L) => {
       const ex = (extras[current.id] ||= {});
       return L.id === 'main' ? ex : ((ex.layers ||= {})[L.id] ||= {});
@@ -747,6 +870,7 @@ const ThreeLab = (() => {
           el('span', { text: `${msg.geometries} geo · ${msg.textures} tex · ${msg.programs} shaders` }));
       }
       if (msg.type === 'shot') {
+        if (msg.tag === 'thumb') { const fn = thumbShot; thumbShot = null; fn?.(msg.dataUrl); return; }
         if (pendingShot) { pendingShot(msg.dataUrl); pendingShot = null; } else saveDataUrl(msg.dataUrl, `${current?.name || 'sketch'}.png`);
       }
     }
@@ -835,11 +959,12 @@ const ThreeLab = (() => {
       }
       if (!hot) { lastStats = null; stats.hidden = true; box.reload(); }
       box.send({ type: 'tweak-init', values, keys, mods: mergedMods() });
-      if (!hot) player.attach();
+      if (!hot) { player.attach(); sendRefs(); }
       const spec = (L) => ({ id: L.id, code: preps.get(L.id)?.code ?? L.code, ...layerProps(L) });
       if (hot) box.send({ type: 'hot-layer', layer: spec(target) });
       else box.send({ type: 'run-layers', layers: layersOf().map(spec) });
       ranOnce = true;
+      if (!hot) scheduleThumb();
       return true;
     }
 
@@ -852,10 +977,64 @@ const ThreeLab = (() => {
       current.updatedAt = Date.now();
       save();
     }
+    // ---------- sketch browser ----------
+    // A grid of every sketch with a thumbnail taken automatically a few seconds after it runs (kv 'three-thumbs').
+    let thumbs = {};
+    const saveThumbs = debounce(() => window.hub.kvSet('three-thumbs', thumbs), 800);
+    let thumbTimer = 0;
+    let thumbShot = null;
+    function scheduleThumb() {
+      clearTimeout(thumbTimer);
+      const id = current?.id;
+      if (!id || (thumbs[id] && Date.now() - thumbs[id].at < 3 * 60000)) return;
+      thumbTimer = setTimeout(() => {
+        if (current?.id !== id || pendingShot || errors.length) return;
+        thumbShot = async (url) => {
+          if (!url) return;
+          const img = new Image(); img.src = url;
+          try { await img.decode(); } catch { return; }
+          const c = document.createElement('canvas'); const sc = Math.min(1, 360 / Math.max(img.width, img.height));
+          c.width = Math.max(1, Math.round(img.width * sc)); c.height = Math.max(1, Math.round(img.height * sc));
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          thumbs[id] = { url: c.toDataURL('image/jpeg', 0.75), at: Date.now() };
+          saveThumbs();
+        };
+        box.send({ type: 'screenshot', tag: 'thumb' });
+      }, 3500);
+    }
+    const browseBtn = btn('▦', 'All your sketches as pictures', () => browseSketches());
+    function browseSketches() {
+      const q = el('input', { class: 'sb-search', placeholder: 'Search sketches…', spellcheck: false });
+      const grid = el('div', { class: 'sb-grid' });
+      const dlg = el('dialog', { class: 'ui-modal sb-dialog' },
+        el('div', { class: 'refs-head' }, el('h3', { text: 'Sketches' }), q, el('span', { class: 'spacer' }),
+          btn('＋ New', 'New sketch from a template', () => { dlg.close(); templateGallery(); }, 'primary small'), btn('Close', '', () => dlg.close())),
+        grid);
+      const fill = () => {
+        const needle = q.value.trim().toLowerCase();
+        const list = [...sketches].sort((a, b) => b.updatedAt - a.updatedAt).filter((sk) => !needle || sk.name.toLowerCase().includes(needle));
+        grid.replaceChildren(...list.map((sk) => {
+          const t = thumbs[sk.id]?.url;
+          const layers = sk.layers?.length || 1;
+          const song = extras[sk.id]?.media?.path?.split(/[\\/]/).pop();
+          return el('button', { class: `sb-card${sk.id === current?.id ? ' on' : ''}`, title: `Open "${sk.name}"`, on: { click: () => { dlg.close(); if (sk.id !== current?.id) openSketch(sk.id); } } },
+            el('div', { class: 'sb-thumb' }, t ? el('img', { src: t, alt: '' }) : el('span', { text: '◭' })),
+            el('b', { text: sk.name }),
+            el('span', { class: 'sb-meta', text: `${layers} layer${layers === 1 ? '' : 's'} · ${new Date(sk.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}${song ? ` · ♪ ${song}` : ''}` }));
+        }));
+      };
+      q.addEventListener('input', fill);
+      dlg.addEventListener('close', () => dlg.remove());
+      document.body.append(dlg);
+      fill();
+      dlg.showModal();
+      q.focus();
+    }
     function renderPicker() {
       picker.replaceChildren(...[...sketches].sort((a, b) => b.updatedAt - a.updatedAt).map((s) => el('option', { value: s.id, text: s.name, selected: s.id === current?.id })));
     }
     function openSketch(id) {
+      soloId = null;
       // unsaved slider values in any layer of the sketch you leave
       const left = current;
       const pendings = left ? [...controllers.entries()].map(([lid, c]) => ({ lid, p: c.pending() })).filter((x) => x.p) : [];
@@ -896,7 +1075,9 @@ const ThreeLab = (() => {
       renderPicker();
       renderLayers();
       renderNotes();
+      renderRefsBtn();
       run();
+      loadRefBytes().then((added) => { if (added && layersOf().some((L) => /\brefs\b|refTexture/.test(L.code))) run(); });
     }
     function create(name, code, layers) {
       const s = { id: `s${Date.now()}`, name, code, updatedAt: Date.now(), ...(layers ? { layers: JSON.parse(JSON.stringify(layers)) } : {}) };
@@ -988,6 +1169,10 @@ ${code}
       ({ versions: history = {}, trash = [] } = await window.hub.kvGet('three-history', {}));
       extras = await window.hub.kvGet('three-lab-extras', {});
       notesAll = await window.hub.kvGet('three-notes', {});
+      refsAll = await window.hub.kvGet('three-refs', {});
+      thumbs = await window.hub.kvGet('three-thumbs', {});
+      picker.after(browseBtn);
+      toolbar.querySelector('.spacer').after(refsBtn);
       { const row = player.el.querySelector('.mb-main'); row.querySelector('.spacer').before(noteBtn, notesBtn); }
       // First run with per-sketch songs: the song that was loaded goes to the sketch that was open.
       const firstId = sketches.some((s) => s.id === store.get('three.current')) ? store.get('three.current') : sketches[0]?.id;
@@ -1147,6 +1332,7 @@ ${code}
         if (!r) throw new Error(`Unknown preset "${presetId}" (or no song). Presets: ${ThreeLayers.PRESETS.map((x) => x.id).join(', ')}`);
         return { ...r, ...report() };
       },
+      refs: { list: () => refsOf(), add: (p, key) => addRef(p, { key }), rename: renameRef, remove: removeRef, use: refUse, size: fmtSize, url: fileUrl },
       notes: {
         list: () => notesOf().map(({ id, t, text, done, image }) => ({ id, time: t, text, done, image })),
         add: (time, text) => takeNote({ time, text: text || '' }),
@@ -1548,6 +1734,36 @@ ${frag}\`,
       if (action === 'add') { const n = await d.notes.add(Number(args.time) || 0, args.text); return { ok: true, value: n }; }
       return { ok: false, error: 'action must be list, done, reopen, edit, delete or add' };
     }
+    if (tool === 'three_references') {
+      const action = args.action || 'list';
+      const R = d.refs;
+      const find = (n) => R.list().find((r) => r.key === n || r.name === n) || (() => { throw new Error(`No reference "${n}". References: ${R.list().map((r) => r.key).join(', ') || 'none'}`); })();
+      if (action === 'list') {
+        const list = R.list();
+        const imgs = list.filter((r) => r.kind === 'image').slice(0, 6);
+        const images = [];
+        for (const r of imgs) {
+          try {
+            const img = new Image(); img.src = R.url(r.path); await img.decode();
+            const c = document.createElement('canvas'); const sc = Math.min(1, 640 / Math.max(img.width, img.height));
+            c.width = Math.max(1, Math.round(img.width * sc)); c.height = Math.max(1, Math.round(img.height * sc));
+            c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+            images.push({ data: c.toDataURL('image/jpeg', 0.85).split(',')[1], mime: 'image/jpeg' });
+          } catch { /* unreadable */ }
+        }
+        return { ok: true, images, value: { references: list.map((r) => ({ name: r.key, kind: r.kind, file: r.name, size: R.size(r.size), use: R.use(r) })), pictures: images.length ? `The ${images.length} images are, in order: ${imgs.map((r) => r.key).join(', ')}` : 'none' } };
+      }
+      if (action === 'add') {
+        const p = String(args.path || '');
+        const dir = await window.hub.attachmentsDir();
+        if (!p.toLowerCase().startsWith(dir.toLowerCase())) return { ok: false, error: 'You can only add files the user attached in this chat (their path is in the hub\'s attachments folder). Ask the user to drop the file in the chat or in the Lab\'s References.' };
+        const r = await R.add(p, args.name);
+        return { ok: true, value: { added: r.key, kind: r.kind, use: R.use(r), note: 'Available in code right away; run the sketch (three_set_code / three_update_layer) to use it.' } };
+      }
+      if (action === 'rename') { const r = find(args.name); return { ok: true, value: { renamed: R.rename(r, String(args.to || r.key)) } }; }
+      if (action === 'remove') { R.remove(find(args.name)); return { ok: true, value: { references: R.list().map((r) => r.key) } }; }
+      return { ok: false, error: 'action must be list, add, rename or remove' };
+    }
     if (tool === 'three_keyframes') return { ok: true, value: d.setKeyframes(args.layer, args.property, args.keys, args.clear) };
     if (tool === 'three_remove_layer') return { ok: true, value: await d.removeLayer(args.layer) };
     if (tool === 'three_select_layer') return { ok: true, value: d.selectLayer(args.layer) };
@@ -1575,6 +1791,9 @@ ${frag}\`,
   HubBridge.register(['three_'], handleTool);
   return {
     openCode(code) { ensureOpen('sketch'); setTimeout(() => api.openCode?.(code), 60); },
+    // Files dropped in the Three Director's chat become references of the open sketch.
+    addReference: (p) => (api.addRef ? api.addRef(p) : Promise.reject(new Error('Open the Three.js Lab first'))),
+    isReference: (name) => /\.(png|jpe?g|gif|webp|bmp|svg|mp4|webm|mov|m4v|mkv|glb|gltf|obj|fbx|stl|ply|mp3|wav|ogg|m4a|flac|aac|ttf|otf|woff2?|hdr|exr)$/i.test(name),
     openShader(code) { ensureOpen('shader'); setTimeout(() => api.openShader?.(code), 60); },
   };
 })();
