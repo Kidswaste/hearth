@@ -350,6 +350,14 @@ const ThreeTweaks = (() => {
     const layoutSel = el('select', { class: 'tw-layoutsel', title: 'Knobs or sliders for numbers' },
       [['auto', 'Auto'], ['knobs', 'Knobs'], ['sliders', 'Sliders']].map(([v, l]) => el('option', { value: v, text: l, selected: v === layout })));
     layoutSel.addEventListener('change', () => { layout = layoutSel.value; store.set('three.twLayout', layout); render(); });
+    // Auto-save: a moment after you let go of a control, its value is written into the code.
+    const autoSaveBox = el('input', { type: 'checkbox', checked: store.get('three.twAutosave', false) });
+    autoSaveBox.addEventListener('change', () => { store.set('three.twAutosave', autoSaveBox.checked); if (autoSaveBox.checked && dirtyCount()) autoSave(); });
+    let autoSaveTimer = 0;
+    const autoSave = () => { clearTimeout(autoSaveTimer); autoSaveTimer = setTimeout(() => { if (store.get('three.twAutosave', false) && dirtyCount() && !root.matches(':active') && !comparing) save(); }, 1500); };
+    // One group open at a time: opening a group folds the others.
+    const accordionBox = el('input', { type: 'checkbox', checked: store.get('three.twAccordion', false) });
+    accordionBox.addEventListener('change', () => store.set('three.twAccordion', accordionBox.checked));
     const changedBox = el('input', { type: 'checkbox' });
     changedBox.addEventListener('change', () => { changedOnly = changedBox.checked; applyFilter(); });
     const abBtn = btn('A/B', 'Hold to see the values in the code (A); let go for yours (B)', () => {});
@@ -368,7 +376,9 @@ const ThreeTweaks = (() => {
       status, looksBar,
       el('div', { class: 'tw-tools' }, search, abBtn),
       el('div', { class: 'tw-tools tw-tools2' }, groupSel, layoutSel, el('label', { class: 'check small', title: 'Only the controls you moved' }, changedBox, 'Changed'),
-        el('label', { class: 'check small', title: 'Also list values the running sketch never reads' }, unusedBox, 'Unused')),
+        el('label', { class: 'check small', title: 'Also list values the running sketch never reads' }, unusedBox, 'Unused'),
+        el('label', { class: 'check small', title: 'Write values into the code by themselves, a moment after you let go' }, autoSaveBox, 'Auto-save'),
+        el('label', { class: 'check small', title: 'Opening a group folds the others' }, accordionBox, 'One group')),
       notice, body, asks,
       el('div', { class: 'tw-foot', title: 'Knobs: drag up / down (Shift = fine), wheel or arrow keys to step. They click into the value in the code (the blue notch) as you pass it; double-click goes back to it. Right-click: lock, favorites, follow the music, keyframe.' },
         el('span', { html: '<b class="tw-live">⚡</b> instant · <b class="tw-rerun">↻</b> rebuilds · <b class="tw-music">♪</b> music · <b style="color:#48ddff">|</b> code value · right-click: 🔒 ★' })));
@@ -425,6 +435,7 @@ const ThreeTweaks = (() => {
       if (undoStack.length > 60) undoStack.shift();
       committed = values.slice();
       refreshState();
+      autoSave();
     }
     function applyValues(next, { remember = true } = {}) {
       let rb = false;
@@ -846,7 +857,11 @@ const ThreeTweaks = (() => {
           el('button', { class: 'tw-sec-btn', text: '↺', title: `Put "${g}" back to the code's values`, on: { click: (e) => { e.preventDefault(); resetGroup(idxs); } } }));
         const det = el('details', { class: 'tw-sec', dataset: { group: g } }, sum);
         det.open = !collapsed.has(g);
-        det.addEventListener('toggle', () => { if (det.open) collapsed.delete(g); else collapsed.add(g); store.set('three.twCollapsed', [...collapsed]); });
+        det.addEventListener('toggle', () => {
+          if (det.open) collapsed.delete(g); else collapsed.add(g);
+          if (det.open && store.get('three.twAccordion', false)) for (const other of body.querySelectorAll('.tw-sec[open]')) if (other !== det) { other.open = false; collapsed.add(other.dataset.group); }
+          store.set('three.twCollapsed', [...collapsed]);
+        });
         if (knobs.length) {
           const grid = el('div', { class: 'tw-knobs' });
           for (const [it, i] of knobs) { const r = knobRow(it, i); grid.append(r.el); }

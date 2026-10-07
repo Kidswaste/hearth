@@ -130,7 +130,23 @@ const ThreeMedia = (() => {
     // 30 fps envelopes for sketches (audio.analysis.bass[Math.floor(t * 30)]) and the overview.
     const FPS = 30;
     const down = (a) => { const n = Math.floor((N * FPS) / 100); const o = new Array(n); for (let i = 0; i < n; i += 1) { const s = Math.floor((i * 100) / FPS); const e = Math.floor(((i + 1) * 100) / FPS); let m = 0; for (let k = s; k < e; k += 1) m = Math.max(m, a[k]); o[i] = Math.round(m * 1000) / 1000; } return o; };
-    return { duration, bpm, beats, drops, sections: sections.map((s) => ({ ...s, start: Math.round(s.start * 10) / 10, end: Math.round(s.end * 10) / 10 })), fps: FPS, level: down(L), bass: down(B), mid: down(M), treble: down(T), peaks: Array.from(PK, (x) => Math.round(x * 100) / 100), samples: mono }; // samples: kept by the player for sample-level zoom, never sent to the sketch
+    // The autocorrelation works in 10 ms steps (127.7 or 130.4, never 128): refine the tempo with a straight-line
+    // fit through the beat chain, and keep the other strong tempos as suggestions.
+    let fine = bpm;
+    if (beats.length > 16) {
+      const n = beats.length; let sx = 0; let sy = 0; let sxx = 0; let sxy = 0;
+      beats.forEach((t, i) => { sx += i; sy += t; sxx += i * i; sxy += i * t; });
+      const slope = (n * sxy - sx * sy) / (n * sxx - sx * sx);
+      if (slope > 0.2 && slope < 2.5 && Math.abs(60 / slope - bpm) < bpm * 0.04) fine = Math.round((60 / slope) * 100) / 100;
+    }
+    // most tracks are produced at a whole-number tempo
+    if (Math.abs(fine - Math.round(fine)) < 0.35) fine = Math.round(fine);
+    const cands = [];
+    for (let lag = 26; lag < 120; lag += 1) if (scores[lag] > scores[lag - 1] && scores[lag] >= scores[lag + 1]) cands.push({ bpm: Math.round((6000 / lag) * 10) / 10, s: scores[lag] });
+    cands.sort((x, y) => y.s - x.s);
+    const bpmCandidates = [fine, ...cands.map((c) => c.bpm), fine * 2, fine / 2].filter((b) => b >= 60 && b <= 200)
+      .filter((b, i, arr) => arr.findIndex((x) => Math.abs(x - b) / b < 0.03) === i).slice(0, 4).map((b) => Math.round(b * 100) / 100);
+    return { duration, bpm: fine, bpmCandidates, beats, drops, sections: sections.map((s) => ({ ...s, start: Math.round(s.start * 10) / 10, end: Math.round(s.end * 10) / 10 })), fps: FPS, level: down(L), bass: down(B), mid: down(M), treble: down(T), peaks: Array.from(PK, (x) => Math.round(x * 100) / 100), samples: mono }; // samples: kept by the player for sample-level zoom, never sent to the sketch
   }
 
   // ---------- frame sizes ----------
@@ -311,7 +327,16 @@ const ThreeMedia = (() => {
     // row 2: grid and hits
     const bpmIn = el('input', { type: 'number', class: 'mb-bpmin', min: 20, max: 400, step: 0.01, title: 'Tempo of the beat grid (type your own)' });
     bpmIn.addEventListener('change', () => { const v = Number(bpmIn.value); if (v >= 20 && v <= 400) editGrid((g) => { g.bpm = Math.round(v * 100) / 100; }); else paint(); });
-    const tapBtn = btn('Tap', 'Tap along to the beat (4+ taps) to set the BPM', () => tap());
+    const tapBtn = btn('Tap', 'Tap along to the beat (or press T), 4+ taps: sets the BPM; while it plays, the grid also lines up with your taps', () => tap());
+    tapBtn.dataset.feature = 'Tap tempo';
+    // the song's own tempo guesses, one click each
+    const bpmCands = el('span', { class: 'mb-cands' });
+    function paintCands() {
+      const c = st.analysis?.bpmCandidates || [];
+      bpmCands.replaceChildren(...c.map((b) => btn(String(b), `Use ${b} BPM`, () => editGrid((g) => { g.bpm = b; }), `ghost small mb-cand${Math.abs(b - bpmNow()) < 0.05 ? ' on' : ''}`)));
+    }
+    const snapTapsBox = el('input', { type: 'checkbox', checked: store.get('three.snapTaps', true) });
+    snapTapsBox.addEventListener('change', () => store.set('three.snapTaps', snapTapsBox.checked));
     const dblBtn = btn('×2', 'Double the BPM', () => editGrid((g) => { g.bpm = Math.round(g.bpm * 200) / 100; }));
     const halfBtn = btn('½', 'Halve the BPM', () => editGrid((g) => { g.bpm = Math.round(g.bpm * 50) / 100; }));
     const oneBtn = btn('Set 1 here', 'Put the downbeat (beat 1 of a bar) at the playhead; the grid lines up from it', () => editGrid((g) => { g.anchor = r4(now()); }), 'ghost small mb-one');
@@ -327,8 +352,8 @@ const ThreeMedia = (() => {
     const fillBtn = btn('Fill ▾', 'Stamp kicks / snares / hits on the grid, or clear them', (e) => fillMenu(e.currentTarget));
     const undoBtn = btn('↶', 'Undo the last grid, marker or curve change (Ctrl+Z)', () => undoMap());
     const gridRow = el('div', { class: 'mb-row mb-grid' },
-      el('span', { class: 'mb-label', text: 'Grid' }), bpmIn, el('span', { class: 'mb-unit', text: 'BPM' }), tapBtn, dblBtn, halfBtn, sep(), oneBtn, gridL, gridR, meterSel, autoBtn, gridState, sep(), snapSel, sep(),
-      el('span', { class: 'mb-label', text: 'Hits' }), ...laneBtns, fillBtn, undoBtn);
+      el('span', { class: 'mb-label', text: 'Grid' }), bpmIn, el('span', { class: 'mb-unit', text: 'BPM' }), tapBtn, dblBtn, halfBtn, bpmCands, sep(), oneBtn, gridL, gridR, meterSel, autoBtn, gridState, sep(), snapSel, sep(),
+      el('span', { class: 'mb-label', text: 'Hits' }), ...laneBtns, el('label', { class: 'check small', title: 'K / S / H taps land on the real attack in the audio (fixes the delay of tapping)' }, snapTapsBox, 'on the hit'), fillBtn, undoBtn);
 
     const canvas = el('canvas', { class: 'mb-timeline' });
     // While playing, only these two lines move every frame; the canvases redraw about 10 times a second.
@@ -568,21 +593,62 @@ const ThreeMedia = (() => {
       if (!st.bytes) return;
       send({ type: 'media-map', beats: beats(), bpm: bpmNow(), bpb: bpbNow(), anchor: map.grid?.anchor ?? beats()[0] ?? 0, manual: Boolean(map.grid), marks: map.marks });
     }
+    // Tap tempo (button or T): the median gap of the last 16 taps (stray taps ignored), shown live; a value
+    // within 0.3 of a whole number rounds to it (most tracks are). While the song plays, the grid's beats also
+    // line up with your taps (each tap is first moved onto the nearest real hit in the audio).
+    let tapSong = [];
     function tap() {
       const t = performance.now();
-      if (taps.length && t - taps[taps.length - 1] > 2000) taps = [];
+      if (taps.length && t - taps[taps.length - 1] > 2000) { taps = []; tapSong = []; }
       taps.push(t);
-      if (taps.length > 9) taps.shift();
+      if (st.playing) tapSong.push(snapToHit(now(), 'any'));
+      if (taps.length > 16) { taps.shift(); if (tapSong.length > 16) tapSong.shift(); }
+      let bpm = null;
       if (taps.length >= 4) {
-        const gaps = taps.slice(1).map((x, i) => x - taps[i]);
-        const bpm = Math.round((60000 / (gaps.reduce((s, g) => s + g, 0) / gaps.length)) * 100) / 100;
+        const gaps = taps.slice(1).map((x, i) => x - taps[i]).sort((a, b) => a - b);
+        const med = gaps[gaps.length >> 1];
+        const kept = gaps.filter((g) => Math.abs(g - med) < med * 0.2);
+        bpm = 60000 / (kept.reduce((s, g) => s + g, 0) / kept.length);
+        bpm = Math.abs(bpm - Math.round(bpm)) < 0.3 ? Math.round(bpm) : Math.round(bpm * 100) / 100;
         if (taps.length === 4) pushUndo();
-        ensureGrid().bpm = bpm;
+        const g = ensureGrid();
+        g.bpm = bpm;
+        if (tapSong.length >= 4) {
+          // circular mean of the taps' phase within a beat, then keep the bar where it was
+          const p = 60 / bpm; let cx = 0; let cy = 0;
+          for (const x of tapSong) { const a = ((x % p) / p) * 2 * Math.PI; cx += Math.cos(a); cy += Math.sin(a); }
+          const phase = ((Math.atan2(cy, cx) / (2 * Math.PI)) * p + p) % p;
+          g.anchor = r4(phase + Math.round((g.anchor - phase) / p) * p);
+        }
         mapChanged();
       }
-      tapBtn.textContent = taps.length < 4 ? `Tap ${'•'.repeat(taps.length)}` : 'Tap ✓';
+      tapBtn.textContent = bpm ? `Tap · ${bpm}` : `Tap ${'•'.repeat(taps.length)}`;
+      tapBtn.classList.add('on');
       clearTimeout(tap.reset);
-      tap.reset = setTimeout(() => { tapBtn.textContent = 'Tap'; }, 2200);
+      tap.reset = setTimeout(() => { tapBtn.classList.remove('on'); tapBtn.textContent = 'Tap'; }, 2500);
+    }
+    // The strongest attack in the audio near t: from 150 ms before (you tap late) to 60 ms after.
+    // lane 'kick' listens to the lows, 'snare' / 'hit' to the highs, 'any' to everything.
+    function snapToHit(t, lane) {
+      const smp = st.samples;
+      if (!smp || store.get('three.snapTaps', true) === false) return t;
+      const SR = 22050; const hop = 110; // 5 ms
+      const a = Math.max(0, Math.floor((t - 0.15) * SR)); const b = Math.min(smp.length, Math.floor((t + 0.06) * SR));
+      if (b - a < hop * 4) return t;
+      let lp = 0; const env = [];
+      for (let i = Math.max(0, a - 2048); i < b; i += 1) {
+        const x = smp[i];
+        lp += 0.03 * (x - lp); // ~100 Hz low-pass
+        const y = lane === 'kick' ? lp : lane === 'any' ? x : x - lp;
+        if (i < a) continue;
+        const k = Math.floor((i - a) / hop);
+        env[k] = (env[k] || 0) + y * y;
+      }
+      let best = -1; let bi = -1;
+      for (let k = 2; k < env.length; k += 1) { const rise = env[k] - Math.max(env[k - 1], env[k - 2]); if (rise > best) { best = rise; bi = k; } }
+      const sorted = [...env].sort((x, y) => x - y); const median = sorted[sorted.length >> 1] || 0;
+      if (bi < 0 || best < median * 1.5) return t;
+      return r4((a + bi * hop) / SR);
     }
     function addMarkAt(lane, t, { snapIt = true } = {}) {
       if (!st.duration) return;
@@ -622,7 +688,10 @@ const ThreeMedia = (() => {
       ].filter((x) => x !== false));
     }
     function addAtPlayhead(lane) {
-      addMarkAt(lane, now());
+      // a live tap: the real attack nearby (fixes the tap's delay); the grid only if a line is that close
+      const hit = snapToHit(now(), lane);
+      const grid = snapT(hit);
+      addMarkAt(lane, Math.abs(grid - hit) < 0.03 ? grid : hit, { snapIt: false });
       const b = laneBtns[LANES.findIndex((l) => l.id === lane)];
       b.classList.add('flash');
       setTimeout(() => b.classList.remove('flash'), 120);
@@ -707,6 +776,7 @@ const ThreeMedia = (() => {
       if (ctrl && e.key.toLowerCase() === 'a' && activeLane) { selectAllPoints(); return true; }
       if (ctrl) return false;
       if (e.key.toLowerCase() === 'a' && !e.altKey && !e.shiftKey) { trackHandlers.onLanesAll?.(); return true; }
+      if (e.key.toLowerCase() === 't' && !e.altKey && !e.repeat) { tap(); return true; }
       // hot cues (like rekordbox): C drops one at the playhead, 1–9 jump to them
       if (e.key.toLowerCase() === 'c' && !e.altKey) { addCue(now()); return true; }
       if (/^[1-9]$/.test(e.key) && !e.altKey) { const c = map.cues[Number(e.key) - 1]; if (c) { seek(c.t); return true; } return false; }
@@ -850,6 +920,7 @@ const ThreeMedia = (() => {
       lockBtn.disabled = !region && !locked;
       if (document.activeElement !== bpmIn) bpmIn.value = bpmNow() ? bpmNow().toFixed(2) : '';
       meterSel.value = String(bpbNow());
+      paintCands();
       gridState.textContent = map.grid ? `yours · 1 at ${fmtMs(map.grid.anchor)}` : (st.analysis ? 'detected' : '');
       gridState.classList.toggle('mine', Boolean(map.grid));
       autoBtn.disabled = !map.grid;

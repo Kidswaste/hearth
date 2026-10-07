@@ -312,3 +312,10 @@
 262. ✓ **Lighter streaming chats**: replies (and thinking) repaint at most every 60 ms instead of on every word.
 263. ✓ **Lighter usage tracking**: ignores clock ticks, streaming text and other constant small updates.
 264. ○ **Unload idle websites** (Settings → General, off by default): website agents you haven't opened for 10 / 30 / 60 minutes are unloaded to free memory and CPU, and load again when you open them (ask-all wakes them first). Logins stay.
+
+## From your usage (Tap was your most-used control)
+265. ✓ **Sharper tempo detection**: the BPM is refined from the detected beats (the old 10 ms steps gave 127.7 or 130.4 instead of 128) and rounds to a whole number when it's that close; the song's other likely tempos show as one-click buttons next to the BPM (the current one highlighted).
+266. ✓ **Better tap tempo**: press T (or the button), the live BPM shows on the button, stray taps are ignored (median of the last 16), near-whole tempos round; while the song plays the grid's beats also line up with your taps.
+267. ✓ **Hits land on the hit**: K / S / H taps move onto the real attack in the audio (lows for kicks, highs for snares / hits), within 150 ms before to 60 ms after, which removes the delay of tapping by ear; "on the hit" can switch it off. Tested: a K pressed 70 ms late landed exactly on the kick.
+268. ✓ **Auto-save sliders** (Sliders → Auto-save): values are written into the code a moment after you let go.
+269. ✓ **One group at a time** (Sliders → One group): opening a slider group folds the others.
