@@ -1735,6 +1735,8 @@ const ThreeMedia = (() => {
     return {
       el: bar,
       load, pick, attach, toggle, seek, onMessage, unload, onKey, setTracks, setNotes, setSize, restoreSize,
+      tapHit: (lane) => addAtPlayhead(lane),
+      get playing() { return st.playing; },
       get size() { return size; },
       // ---------- for the Three Director: the timeline ----------
       setGrid({ bpm, downbeat, beatsPerBar } = {}) {

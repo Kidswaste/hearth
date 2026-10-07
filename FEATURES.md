@@ -245,3 +245,6 @@
 207. ✓ **M / S per layer** in the timeline's header column: mute (hide) and solo (only this layer while you work; not saved).
 208. ✓ **Sketch browser** (▦ next to the sketch list): every sketch as a picture (thumbnails taken automatically after it runs), with layers, date and song; search; open; new.
 209. ✓ **Reply heads-up**: when a chat you can't see (another tool, or the director hidden by Focus) finishes, a small note with Open appears.
+210. ✓ **Write mode** (⏺ Write or W, like a DAW's automation write): while the song plays, moving a slider, a layer setting (opacity, move, scale, rotate) or a MIDI knob records it as a curve at the playhead, replacing the points it passes over.
+211. ✓ **MIDI controllers** (🎛 MIDI): learn a knob / fader for any slider or a layer's opacity (move the slider, then turn the knob); learn pads for kick / snare / hit markers, play / pause, Write on / off or a note. Knob maps are saved per sketch, pads for the whole Lab. With Write on, knob moves become curves.
+212. ✓ **Palettes**: 🎨 Palette on a picture reference takes its main colors as the sketch's palette (swatches in the toolbar: click to copy, Recolor puts them into the selected layer's color sliders). Sketches get them as the global `palette`; the director can read and set it (three_references palette).

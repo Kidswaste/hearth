@@ -22,7 +22,7 @@ const AUTH_HOSTS = [
   'accounts.google.com', 'appleid.apple.com', 'login.microsoftonline.com',
   'login.live.com', 'auth.openai.com', 'auth0.openai.com', 'github.com', 'miro.com', 'slack.com',
 ];
-const ALLOWED_PERMISSIONS = new Set(['clipboard-sanitized-write', 'clipboard-read', 'notifications', 'media', 'fullscreen']);
+const ALLOWED_PERMISSIONS = new Set(['clipboard-sanitized-write', 'clipboard-read', 'notifications', 'media', 'fullscreen', 'midi', 'midiSysex']);
 // Ctrl+<key> combos the hub handles even while a website has focus.
 const HUB_KEYS = new Set(['1', '2', '3', '4', '5', '6', '7', '8', '9', 'g', 'r', ',', 'b', 'n', '\\', 'k', 'f', '/', '=', '+', '-', '0', 'tab', 'j']);
 

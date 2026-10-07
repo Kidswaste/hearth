@@ -310,7 +310,7 @@ const ThreeTweaks = (() => {
   // askForSliders() / quickAsk(text) → the Three Director.
   // keyframes (optional): { state(key) → 'none'|'animated'|'on', toggle(key, value), changed(key, value, { final }) → true when the
   // value went into a keyframe (the control is animated) }. Only named controls (tweak()) can be animated.
-  function controller({ send, rerun, goToLine, commit, askForSliders, quickAsk, persist, keyframes }) {
+  function controller({ send, rerun, goToLine, commit, askForSliders, quickAsk, persist, keyframes, touched }) {
     let scanned = null;
     let ids = [];
     let values = [];
@@ -375,10 +375,12 @@ const ThreeTweaks = (() => {
         : 'Changes show live as you move a slider. Nothing to save.';
       rows.forEach((r) => r.el.classList.toggle('changed', !same(r.it, values[r.i])));
     }
-    function setValue(i, v, { release = false } = {}) {
+    function setValue(i, v, { release = false, external = false } = {}) {
       const it = scanned.items[i];
-      // An animated control: the move becomes a keyframe at the playhead instead of a new base value.
-      if (it.key != null && keyframes?.state(it.key) !== 'none' && keyframes?.state(it.key) && (it.kind === 'number' || it.kind === 'color')) {
+      if (!external && it.key != null) touched?.(it.key, labelOf(it));
+      // An animated control (or any control while Write is recording): the move becomes a keyframe at the playhead.
+      const ks = it.key != null ? keyframes?.state(it.key) : null;
+      if (ks && (ks !== 'none' || keyframes.writing?.()) && (it.kind === 'number' || it.kind === 'color')) {
         send({ type: 'tweak', index: i, value: runtime(it, v), call: it.call, key: it.key });
         keyframes.changed(it.key, v, { final: release });
         rows.find((r) => r.i === i)?.paintKey?.();
@@ -719,6 +721,14 @@ const ThreeTweaks = (() => {
           if (r.it.key in valuesByKey && !r.el.contains(document.activeElement)) { r.current = valuesByKey[r.it.key]; r.set(r.current); }
           r.paintKey?.();
         }
+      },
+      // MIDI / palette: set a named control as if its slider moved.
+      setByKey(key, v, { release = false } = {}) {
+        const i = scanned?.items.findIndex((it) => it.key === key) ?? -1;
+        if (i < 0) return false;
+        setValue(i, v, { release, external: true });
+        rows.find((r) => r.i === i)?.set(v);
+        return true;
       },
       setVisible(on) { root.hidden = !on; },
       get visible() { return !root.hidden; },

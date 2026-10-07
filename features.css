@@ -813,3 +813,11 @@ body.on-top #rail::after { content: "📌"; position: absolute; bottom: 4px; lef
 .sb-card b { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sb-meta { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .refs-dialog, .sb-dialog { padding: 16px 18px; }
+
+/* ---------- Lab: write mode, MIDI, palette ---------- */
+.mb-write.armed { color: #fff; background: #d63b3b; border-color: #ff6a6a; animation: write-pulse 1.2s ease-in-out infinite; }
+@keyframes write-pulse { 50% { box-shadow: 0 0 0 3px #ff6a6a40; } }
+.lab-palette { display: inline-flex; align-items: center; gap: 3px; }
+.lab-palette[hidden] { display: none; }
+.lab-swatch { width: 18px; height: 18px; min-width: 0; padding: 0; border-radius: 4px; border: 1px solid #ffffff40; cursor: pointer; }
+.lab-palette button:not(.lab-swatch) { font-size: 11px; padding: 1px 6px; }

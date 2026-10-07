@@ -401,6 +401,9 @@ globalThis.__tv = (i) => { markRead(i); return valueOf(i, TV[i]); };
 // GLTFLoader, fetch, new Audio…); refTexture('name') gives a ready texture (videos play muted and looping).
 const refs = {}; const refKinds = {};
 globalThis.refs = refs;
+// The sketch's colors ('#rrggbb' strings), usually picked from a reference picture: new THREE.Color(palette[0]).
+const palette = [];
+globalThis.palette = palette;
 function setRefs(items) {
   for (const k of Object.keys(refs)) delete refs[k];
   for (const it of items || []) { refs[it.key] = URL.createObjectURL(new Blob([it.buffer], { type: it.mime || '' })); refKinds[it.key] = it.kind; }
@@ -1423,7 +1426,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'layer-props') { const L = layers.get(msg.id); if (L) setLayerProps(L, msg.props); }
   if (msg.type === 'remove-layer') removeLayer(msg.id);
   if (msg.type === 'media-load') loadMedia(msg);
-  if (msg.type === 'refs') setRefs(msg.items);
+  if (msg.type === 'refs') { setRefs(msg.items); palette.splice(0, palette.length, ...(msg.palette || [])); }
   if (msg.type === 'media') mediaCommand(msg);
   if (msg.type === 'media-map') beatMap = msg;
   if (msg.type === 'media-analysis' && mediaEl) analysis = { ...msg.analysis, name: analysis?.name };

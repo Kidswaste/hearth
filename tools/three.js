@@ -182,9 +182,33 @@ const ThreeLab = (() => {
     }
     // Moving an animated slider sets a keyframe where the move started (so dragging while it plays stays on one key).
     let dragKeyT = null;
+    // Write (like a DAW's automation write): while the song plays, moves are recorded as a curve at the
+    // playhead, replacing the points they pass over.
+    let writeArmed = false;
+    const writeLast = {};
+    const writing = () => writeArmed && player.loaded && player.playing;
+    let writeFlushT = 0;
+    function writeFlush(final) {
+      clearTimeout(writeFlushT);
+      writeFlushT = setTimeout(() => { touch(); renderTracksOnly(); syncKeyUI(true); }, final ? 0 : 160);
+    }
+    function writeKey(L, prop, value, final) {
+      const t = player.time; const k = `${L.id}|${prop}`;
+      let last = writeLast[k];
+      if (last == null || t < last - 0.05 || t - last > 1) last = t; // a new pass, or the loop jumped back
+      L.keys ||= {};
+      const kept = keysOf(L, prop).filter((x) => !(x.t > last + 1e-4 && x.t < t - 1e-4));
+      if (final || t - last >= 0.03 || !kept.some((x) => Math.abs(x.t - t) < 0.03)) {
+        L.keys[prop] = upsertKey(kept, t, value).map((x) => (Math.abs(x.t - t) < 1e-3 ? { ...x, ease: 'linear' } : x));
+        writeLast[k] = t;
+      }
+      sendKeys(L);
+      writeFlush(final);
+    }
     function autoKey(id, prop, value, { final }) {
       const L = layerById(id);
       if (!L) return;
+      if (writing()) { writeKey(L, prop, value, final); return; }
       if (dragKeyT == null) dragKeyT = player.time;
       L.keys ||= {};
       L.keys[prop] = upsertKey(keysOf(L, prop), dragKeyT, value);
@@ -362,6 +386,178 @@ const ThreeLab = (() => {
     const notesOf = () => (current ? (notesAll[current.id] ||= []) : []);
     const saveNotes = debounce(() => window.hub.kvSet('three-notes', notesAll), 300);
     const fileUrl = (p) => `file:///${encodeURI(String(p).replace(/\\/g, '/'))}`;
+    // ---------- write button ----------
+    const writeBtn = btn('⏺ Write', 'Write: while the song plays, moving a slider, a layer setting or a MIDI knob records it as a curve (replacing what was there). W', () => setWrite(!writeArmed), 'ghost small mb-write');
+    function setWrite(on) {
+      writeArmed = on;
+      for (const k of Object.keys(writeLast)) delete writeLast[k];
+      writeBtn.classList.toggle('armed', on);
+      writeBtn.textContent = on ? '⏺ Writing' : '⏺ Write';
+      if (on) toast('Write is on: play the song and move sliders or knobs to record curves (W to stop)', { timeout: 2600 });
+    }
+
+    // ---------- MIDI ----------
+    // Knobs / faders (CC) drive sliders: extras[sketch].midi = { 'ch:ccN': { layer, key, label } } (key 'p:opacity' = layer opacity).
+    // Pads (notes) do actions anywhere in the Lab: store 'three.midiPads' = { 'ch:nN': 'kick' | 'snare' | 'hit' | 'play' | 'note' | 'write' }.
+    let midi = null;
+    let midiLearn = null; // { stage: 'slider' } | { stage: 'control', layer, key, label } | { stage: 'pad', action }
+    let midiSeen = '';
+    const midiBtn = btn('🎛 MIDI', 'Use a MIDI controller: knobs move sliders, pads drop kick / snare / hit markers', (e) => midiMenu(e.currentTarget));
+    const midiMap = () => (current ? ((extras[current.id] ||= {}).midi ||= {}) : {});
+    const midiPads = () => store.get('three.midiPads', {});
+    const PAD_ACTIONS = [['kick', 'Kick marker'], ['snare', 'Snare marker'], ['hit', 'Hit marker'], ['play', 'Play / pause'], ['write', 'Write on / off'], ['note', 'Note on this moment']];
+    async function midiInit() {
+      if (midi) return true;
+      if (!navigator.requestMIDIAccess) { toast('MIDI is not available here', { type: 'error' }); return false; }
+      try { midi = await navigator.requestMIDIAccess(); } catch (err) { toast(`Couldn't open MIDI: ${err.message}`, { type: 'error' }); return false; }
+      const hook = () => { for (const inp of midi.inputs.values()) inp.onmidimessage = onMidi; renderMidiBtn(); };
+      midi.onstatechange = hook;
+      hook();
+      store.set('three.midiOn', true);
+      return true;
+    }
+    const midiDevices = () => (midi ? [...midi.inputs.values()].filter((i) => i.state === 'connected').map((i) => i.name) : []);
+    function renderMidiBtn() {
+      const n = midiDevices().length;
+      midiBtn.textContent = n ? '🎛 MIDI ●' : '🎛 MIDI';
+      midiBtn.classList.toggle('on', Boolean(n));
+      midiBtn.title = n ? `MIDI: ${midiDevices().join(', ')}` : 'Use a MIDI controller: knobs move sliders, pads drop kick / snare / hit markers';
+    }
+    const midiRelease = {};
+    function midiTouched(layer, key, label) {
+      if (midiLearn?.stage !== 'slider') return;
+      midiLearn = { stage: 'control', layer, key, label };
+      toast(`Now turn the knob or fader for "${label}"`, { timeout: 4000 });
+    }
+    function onMidi(e) {
+      const [st, d1, d2 = 0] = e.data;
+      const type = st & 0xf0; const ch = (st & 0x0f) + 1;
+      if (type === 0xB0) {
+        const id = `${ch}:cc${d1}`;
+        midiSeen = `CC ${d1} (channel ${ch})`;
+        if (midiLearn?.stage === 'control') {
+          midiMap()[id] = { layer: midiLearn.layer, key: midiLearn.key, label: midiLearn.label };
+          saveExtras();
+          toast(`${midiSeen} → ${midiLearn.label}`, { timeout: 2200 });
+          midiLearn = null;
+          return;
+        }
+        const m = midiMap()[id];
+        if (m) midiApply(m, d2 / 127);
+      } else if (type === 0x90 && d2 > 0) {
+        const id = `${ch}:n${d1}`;
+        if (midiLearn?.stage === 'pad') {
+          store.set('three.midiPads', { ...midiPads(), [id]: midiLearn.action });
+          toast(`Pad (note ${d1}) → ${PAD_ACTIONS.find((a) => a[0] === midiLearn.action)[1]}`, { timeout: 2200 });
+          midiLearn = null;
+          return;
+        }
+        const act = midiPads()[id];
+        if (act === 'kick' || act === 'snare' || act === 'hit') player.tapHit(act);
+        else if (act === 'play') player.toggle();
+        else if (act === 'write') setWrite(!writeArmed);
+        else if (act === 'note') takeNote();
+      }
+    }
+    // A knob position (0..1) → the control's range; the gesture "releases" 300 ms after the knob stops.
+    function midiApply(m, u) {
+      const L = layerById(m.layer);
+      if (!L) return;
+      const rel = `${m.layer}|${m.key}`;
+      if (m.key.startsWith('p:')) {
+        const prop = m.key.slice(2); const meta = ThreeLayers.ANIM_META[prop];
+        const v = Math.round((meta.min + u * (meta.max - meta.min)) / meta.step) * meta.step;
+        editLayer(L.id, { [prop]: v }, { live: true });
+        clearTimeout(midiRelease[rel]);
+        midiRelease[rel] = setTimeout(() => editLayer(L.id, { [prop]: v }), 300);
+        return;
+      }
+      const c = controllers.get(L.id);
+      const info = c?.controls().find((x) => x.key === m.key);
+      if (!info) return;
+      let v;
+      if (info.options) v = info.options[Math.min(info.options.length - 1, Math.floor(u * info.options.length))];
+      else if (typeof info.value === 'boolean') v = u >= 0.5;
+      else if (info.min != null) { v = info.min + u * (info.max - info.min); v = info.step ? Math.round(v / info.step) * info.step : Math.round(v * 1000) / 1000; }
+      else return;
+      c.setByKey(m.key, v);
+      clearTimeout(midiRelease[rel]);
+      midiRelease[rel] = setTimeout(() => c.setByKey(m.key, v, { release: true }), 300);
+    }
+    async function midiMenu(anchor) {
+      const ok = await midiInit();
+      const r = anchor.getBoundingClientRect();
+      const devs = midiDevices();
+      const maps = Object.entries(midiMap());
+      const pads = Object.entries(midiPads());
+      popup(r.left, r.bottom + 4, [
+        !ok ? 'MIDI is not available' : devs.length ? `Connected: ${devs.join(', ')}` : 'No MIDI device found: plug one in (it shows up by itself)',
+        ['Learn a knob for a slider', 'Move a slider, then turn a knob or fader', () => { midiLearn = { stage: 'slider' }; setSlidersVisible(true); toast('Move the slider you want, then turn a knob', { timeout: 4000 }); }],
+        sel() ? ['Learn a knob for the layer\'s opacity', `"${sel().name}"`, () => { midiLearn = { stage: 'control', layer: sel().id, key: 'p:opacity', label: `${sel().name} opacity` }; toast('Turn a knob or fader', { timeout: 4000 }); }] : null,
+        'Pads',
+        ...PAD_ACTIONS.map(([a, label]) => [`Learn a pad: ${label}`, Object.entries(midiPads()).filter(([, v]) => v === a).map(([k]) => `note ${k.split(':n')[1]}`).join(', ') || 'not set', () => { midiLearn = { stage: 'pad', action: a }; toast('Hit the pad', { timeout: 4000 }); }]),
+        maps.length || pads.length ? 'Your mappings (click to remove)' : null,
+        ...maps.map(([k, m]) => [`${m.label}`, `CC ${k.split(':cc')[1]} · ch ${k.split(':')[0]}`, () => { delete midiMap()[k]; saveExtras(); }]),
+        ...pads.map(([k, a]) => [`Pad → ${PAD_ACTIONS.find((x) => x[0] === a)?.[1] || a}`, `note ${k.split(':n')[1]}`, () => { const p = midiPads(); delete p[k]; store.set('three.midiPads', p); }]),
+        midiSeen ? 'Last control moved' : null,
+        midiSeen ? [midiSeen, 'Learn mode maps the next one you move', () => {}] : null,
+      ]);
+    }
+    if (store.get('three.midiOn', false)) midiInit();
+
+    // ---------- palette ----------
+    // A sketch's colors (current.palette = ['#rrggbb', …]): picked from a reference picture, shown as swatches,
+    // given to sketches as the global `palette`, and one click recolors the selected layer's color sliders.
+    const paletteBox = el('span', { class: 'lab-palette', hidden: true });
+    function renderPalette() {
+      const pal = current?.palette || [];
+      paletteBox.hidden = !pal.length;
+      paletteBox.replaceChildren(...pal.map((c) => { const b = el('button', { class: 'lab-swatch', title: `${c}: click to copy`, on: { click: () => { navigator.clipboard.writeText(c); toast(`Copied ${c}`, { timeout: 1000 }); } } }); b.style.background = c; return b; }),
+        btn('Recolor', 'Put these colors into the selected layer\'s color sliders', () => recolor()),
+        btn('×', 'Remove the palette', () => setPalette([])));
+    }
+    function setPalette(cols) {
+      if (!current) return;
+      if (cols.length) current.palette = cols; else delete current.palette;
+      touch();
+      renderPalette();
+      sendRefs();
+    }
+    function recolor() {
+      const pal = current?.palette || [];
+      const c = controllers.get(sel()?.id);
+      const colorKeys = (c?.controls() || []).filter((x) => typeof x.value === 'string' && /^#[0-9a-f]{6}$/i.test(x.value));
+      if (!colorKeys.length) { toast('The selected layer has no color sliders', { type: 'error' }); return; }
+      colorKeys.forEach((x, i) => c.setByKey(x.key, pal[i % pal.length], { release: true }));
+      toast(`Recolored ${colorKeys.length} color slider${colorKeys.length === 1 ? '' : 's'} (↶ in Sliders to undo, Save to keep)`, { timeout: 2600 });
+    }
+    // Dominant colors of a picture: a coarse color histogram, then the most common buckets that differ enough.
+    async function paletteFrom(path, n = 6) {
+      const img = new Image(); img.src = fileUrl(path); await img.decode();
+      const cv = document.createElement('canvas'); const sc = Math.min(1, 160 / Math.max(img.width, img.height));
+      cv.width = Math.max(1, Math.round(img.width * sc)); cv.height = Math.max(1, Math.round(img.height * sc));
+      const g = cv.getContext('2d'); g.drawImage(img, 0, 0, cv.width, cv.height);
+      const d = g.getImageData(0, 0, cv.width, cv.height).data;
+      const buckets = new Map();
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] < 128) continue;
+        const key = ((d[i] >> 4) << 8) | ((d[i + 1] >> 4) << 4) | (d[i + 2] >> 4);
+        const b = buckets.get(key) || { n: 0, r: 0, g: 0, b: 0 };
+        b.n += 1; b.r += d[i]; b.g += d[i + 1]; b.b += d[i + 2];
+        buckets.set(key, b);
+      }
+      const cands = [...buckets.values()].map((b) => ({ n: b.n, r: b.r / b.n, g: b.g / b.n, b: b.b / b.n }))
+        .map((c) => { const mx = Math.max(c.r, c.g, c.b); const mn = Math.min(c.r, c.g, c.b); return { ...c, score: c.n * (0.35 + (mx - mn) / 255) }; })
+        .sort((a, b) => b.score - a.score);
+      const out = [];
+      for (const c of cands) {
+        if (out.every((o) => Math.hypot(o.r - c.r, o.g - c.g, o.b - c.b) > 48)) out.push(c);
+        if (out.length >= n) break;
+      }
+      const hex = (v) => Math.round(v).toString(16).padStart(2, '0');
+      return out.map((c) => `#${hex(c.r)}${hex(c.g)}${hex(c.b)}`);
+    }
+
     // ---------- references ----------
     // { sketchId: [{ id, key, name, kind, path, size, at }] } in kv 'three-refs'. Files are copied into data/refs;
     // the sandbox gets their bytes (refs.<key> = blob URL, refTexture(key)) before each full run.
@@ -428,7 +624,7 @@ const ThreeLab = (() => {
     }
     function sendRefs() {
       const items = refsOf().filter((r) => refBytes.has(r.id)).map((r) => ({ key: r.key, kind: r.kind, mime: MIMES[r.name.split('.').pop().toLowerCase()] || '', buffer: refBytes.get(r.id).slice(0) }));
-      box.send({ type: 'refs', items });
+      box.send({ type: 'refs', items, palette: current?.palette || [] });
     }
     const refsBtn = btn('🖼 References', 'Images, videos, 3D models, sounds and data for this sketch. The Three Director can see and use them; you can also drop files in its chat.', () => openRefs());
     function renderRefsBtn() { const n = refsOf().length; refsBtn.textContent = n ? `🖼 References ${n}` : '🖼 References'; }
@@ -465,6 +661,7 @@ const ThreeLab = (() => {
             btn('Copy code', refUse(r), () => { navigator.clipboard.writeText(refUse(r)); toast(`Copied ${refUse(r)}`, { timeout: 1200 }); }),
             btn('Ask director', 'Start a message to the Three Director about this reference', () => askAboutRef(r)),
             btn('Show', 'Show the file', () => window.hub.fs.reveal(r.path)),
+            r.kind === 'image' ? btn('🎨 Palette', 'Use this picture\'s colors as the sketch palette', async () => { try { const cols = await paletteFrom(r.path); setPalette(cols); toast(`Palette: ${cols.join(' ')}`, { timeout: 2400 }); } catch (err) { toast(err.message, { type: 'error' }); } }) : null,
             btn('🗑', 'Remove (the copy goes to the Recycle Bin)', () => { removeRef(r); renderRefsDlg(); })));
       }) : [el('div', { class: 'refs-empty', text: 'No references yet. Add pictures, logos, video clips, 3D models (.glb), sounds or data files.' })]));
     }
@@ -558,6 +755,8 @@ const ThreeLab = (() => {
     api.lab = {
       present: () => togglePresent(), focus: () => setFocus(!focusOn), consoleMode: (m) => setConsoleMode(m),
       speed: (r) => player.setRate(r), cue: () => player.addCue(player.time),
+      // what a controller would send (also used by tests): midiMessage([0xB0, 21, 64])
+      midiMessage: (bytes) => onMidi({ data: bytes }), midiLearn: (o) => { midiLearn = o; }, write: (on) => setWrite(on),
     };
     function setFocus(on) {
       focusOn = on;
@@ -603,7 +802,9 @@ const ThreeLab = (() => {
           state: (key) => keyStateFor(layerById(id), `s:${key}`),
           toggle: (key, value) => toggleKeyFor(id, `s:${key}`, value),
           changed: (key, value, o) => autoKey(id, `s:${key}`, value, o),
+          writing: () => writing(),
         },
+        touched: (key, label) => midiTouched(id, key, label),
         askForSliders: () => askDirector(`Add clearly named sliders to the layer "${layerById(id)?.name}" of "${current?.name}" with tweak(): the 4–8 settings I'd most want to play with (motion, colors, lighting, glow, how much it reacts to the music…), with labels, groups and hints, read every frame so they change live. Keep everything else the same.`, { send: false }),
       });
       c.setVisible(!column.hidden);
@@ -655,6 +856,7 @@ const ThreeLab = (() => {
       const L = layerById(id);
       if (!L) return;
       patch = { ...patch };
+      if (!direct && writing()) for (const k of Object.keys(patch)) if (ANIM.includes(k) && typeof patch[k] === 'number') { writeKey(L, k, patch[k], !live); delete patch[k]; }
       // Animated properties: the move becomes a keyframe at the playhead (like After Effects).
       const animated = direct ? [] : Object.keys(patch).filter((k) => ANIM.includes(k) && keysOf(L, k).length);
       if (animated.length) {
@@ -803,6 +1005,7 @@ const ThreeLab = (() => {
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'n') { e.preventDefault(); takeNote(); return; }
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'f') { e.preventDefault(); setFocus(!focusOn); return; }
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'p') { e.preventDefault(); togglePresent(); return; }
+      if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'w') { e.preventDefault(); setWrite(!writeArmed); return; }
       if (player.onKey(e)) e.preventDefault();
     });
     pane.tabIndex = -1;
@@ -1076,6 +1279,7 @@ const ThreeLab = (() => {
       renderLayers();
       renderNotes();
       renderRefsBtn();
+      renderPalette();
       run();
       loadRefBytes().then((added) => { if (added && layersOf().some((L) => /\brefs\b|refTexture/.test(L.code))) run(); });
     }
@@ -1173,6 +1377,8 @@ ${code}
       thumbs = await window.hub.kvGet('three-thumbs', {});
       picker.after(browseBtn);
       toolbar.querySelector('.spacer').after(refsBtn);
+      refsBtn.before(paletteBox);
+      { const row = player.el.querySelector('.mb-main'); row.querySelector('.spacer').before(writeBtn, midiBtn); }
       { const row = player.el.querySelector('.mb-main'); row.querySelector('.spacer').before(noteBtn, notesBtn); }
       // First run with per-sketch songs: the song that was loaded goes to the sketch that was open.
       const firstId = sketches.some((s) => s.id === store.get('three.current')) ? store.get('three.current') : sketches[0]?.id;
@@ -1332,7 +1538,8 @@ ${code}
         if (!r) throw new Error(`Unknown preset "${presetId}" (or no song). Presets: ${ThreeLayers.PRESETS.map((x) => x.id).join(', ')}`);
         return { ...r, ...report() };
       },
-      refs: { list: () => refsOf(), add: (p, key) => addRef(p, { key }), rename: renameRef, remove: removeRef, use: refUse, size: fmtSize, url: fileUrl },
+      refs: { list: () => refsOf(), add: (p, key) => addRef(p, { key }), rename: renameRef, remove: removeRef, use: refUse, size: fmtSize, url: fileUrl,
+        palette: () => current?.palette || [], setPalette: (cols) => setPalette(cols), paletteFrom: async (name) => { const r = refsOf().find((x) => x.key === name || x.name === name); if (!r || r.kind !== 'image') throw new Error(`No picture reference "${name}"`); const cols = await paletteFrom(r.path); setPalette(cols); return cols; } },
       notes: {
         list: () => notesOf().map(({ id, t, text, done, image }) => ({ id, time: t, text, done, image })),
         add: (time, text) => takeNote({ time, text: text || '' }),
@@ -1751,7 +1958,7 @@ ${frag}\`,
             images.push({ data: c.toDataURL('image/jpeg', 0.85).split(',')[1], mime: 'image/jpeg' });
           } catch { /* unreadable */ }
         }
-        return { ok: true, images, value: { references: list.map((r) => ({ name: r.key, kind: r.kind, file: r.name, size: R.size(r.size), use: R.use(r) })), pictures: images.length ? `The ${images.length} images are, in order: ${imgs.map((r) => r.key).join(', ')}` : 'none' } };
+        return { ok: true, images, value: { palette: R.palette(), references: list.map((r) => ({ name: r.key, kind: r.kind, file: r.name, size: R.size(r.size), use: R.use(r) })), pictures: images.length ? `The ${images.length} images are, in order: ${imgs.map((r) => r.key).join(', ')}` : 'none' } };
       }
       if (action === 'add') {
         const p = String(args.path || '');
@@ -1762,7 +1969,13 @@ ${frag}\`,
       }
       if (action === 'rename') { const r = find(args.name); return { ok: true, value: { renamed: R.rename(r, String(args.to || r.key)) } }; }
       if (action === 'remove') { R.remove(find(args.name)); return { ok: true, value: { references: R.list().map((r) => r.key) } }; }
-      return { ok: false, error: 'action must be list, add, rename or remove' };
+      if (action === 'palette') {
+        if (args.from) return { ok: true, value: { palette: await R.paletteFrom(String(args.from)) } };
+        const cols = (args.colors || []).filter((c) => /^#[0-9a-f]{6}$/i.test(c)).slice(0, 12);
+        R.setPalette(cols);
+        return { ok: true, value: { palette: cols } };
+      }
+      return { ok: false, error: 'action must be list, add, rename, remove or palette' };
     }
     if (tool === 'three_keyframes') return { ok: true, value: d.setKeyframes(args.layer, args.property, args.keys, args.clear) };
     if (tool === 'three_remove_layer') return { ok: true, value: await d.removeLayer(args.layer) };
@@ -1791,6 +2004,7 @@ ${frag}\`,
   HubBridge.register(['three_'], handleTool);
   return {
     openCode(code) { ensureOpen('sketch'); setTimeout(() => api.openCode?.(code), 60); },
+    get lab() { return api.lab; }, // Lab actions (palette commands, MIDI simulation for tests)
     // Files dropped in the Three Director's chat become references of the open sketch.
     addReference: (p) => (api.addRef ? api.addRef(p) : Promise.reject(new Error('Open the Three.js Lab first'))),
     isReference: (name) => /\.(png|jpe?g|gif|webp|bmp|svg|mp4|webm|mov|m4v|mkv|glb|gltf|obj|fbx|stl|ply|mp3|wav|ogg|m4a|flac|aac|ttf|otf|woff2?|hdr|exr)$/i.test(name),
