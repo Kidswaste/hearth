@@ -89,14 +89,16 @@ const HUB_TOOLSETS = {
   gameTools: { server: 'forgeheart', script: 'forge-game-mcp.js' },
   videoTools: { server: 'video', script: 'video-mcp.js' },
   threeTools: { server: 'three', script: 'three-mcp.js' },
+  // Ask the user questions in the chat, get a second opinion from Astra. On for every Claude agent unless switched off.
+  chatTools: { server: 'chat', script: 'chat-mcp.js' },
 };
-const hubToolsets = (agent) => (agent.engine === 'claude' ? Object.keys(HUB_TOOLSETS).filter((k) => agent[k]) : []);
+const hubToolsets = (agent) => (agent.engine === 'claude' ? Object.keys(HUB_TOOLSETS).filter((k) => (k === 'chatTools' ? agent.chatTools !== false : agent[k])) : []);
 const gameTools = (agent) => hubToolsets(agent).includes('gameTools');
 function hubMcpConfig(agent) {
   const mcpServers = {};
   for (const key of hubToolsets(agent)) {
     const { server, script } = HUB_TOOLSETS[key];
-    mcpServers[server] = { command: process.execPath, args: [path.join(__dirname, 'mcp', script)], env: { ELECTRON_RUN_AS_NODE: '1' } };
+    mcpServers[server] = { command: process.execPath, args: [path.join(__dirname, 'mcp', script)], env: { ELECTRON_RUN_AS_NODE: '1', HUB_AGENT_ID: agent.id } };
   }
   const file = path.join(DATA_DIR, `mcp-${agent.id}.json`);
   fs.writeFileSync(file, JSON.stringify({ mcpServers }, null, 2));
@@ -139,6 +141,12 @@ function buildPrompt(agent) {
         : 'You can re-render with ae_render and run AE scripts with ae_run_script; to edit script files the user can give you File access in your settings. ')
       + 'Keep replies short and concrete.');
   }
+  if (sets.includes('chatTools')) {
+    parts.push('You can ask the user a question with chat_ask (give options when there are clear choices) when a decision is really theirs; for visual work you can get a second opinion from Astra with chat_second_opinion. '
+      + 'At the end of a reply, when it helps, offer up to 3 short next steps the user might want, each as <suggest>…</suggest> (they become buttons; keep each under 8 words).');
+  }
+  // Directors (agents docked in a tool) check their own work unless switched off.
+  if (agent.selfReview ?? Boolean(agent.dock)) parts.push('Before you finish, check your result against what was asked (for visual work, look at a fresh screenshot). Fix real problems you find, then mention in one line what you checked.');
   if (sets.includes('threeTools')) {
     parts.push('You turn the user\'s descriptions into three.js scenes in the Three.js Lab shown next to this chat. They prompt; you write the code. '
       + 'Build with three_set_code (complete sketches), read the errors it returns, look with three_screenshot, and iterate until it matches what they asked for. '
@@ -211,6 +219,8 @@ function claudeArgs(agent, session, options = {}) {
   const model = options.model || agent.model;
   if (model) args.push('--model', model);
   if (agent.effort) args.push('--effort', agent.effort);
+  // Readable summaries of its thinking, streamed while it works (shown folded in the chat).
+  if (agent.showThinking !== false) args.push('--thinking-display', 'summarized');
   if (session.id) args.push('--resume', session.id);
   else args.push('--session-id', crypto.randomUUID());
   return args;
@@ -245,6 +255,12 @@ function claudeParser(session) {
     if (msg.type === 'stream_event' && msg.event?.delta?.type === 'text_delta') {
       return { type: 'delta', text: msg.event.delta.text };
     }
+    if (msg.type === 'stream_event' && msg.event?.delta?.type === 'thinking_delta' && msg.event.delta.thinking) {
+      return { type: 'thinking', text: msg.event.delta.thinking };
+    }
+    if (msg.type === 'stream_event' && msg.event?.type === 'content_block_start' && msg.event.content_block?.type === 'thinking') {
+      return { type: 'thinking', text: '\n\n' };
+    }
     const toolUse = msg.type === 'assistant' && msg.message?.content?.find((c) => c.type === 'tool_use');
     if (toolUse) {
       const target = toolUse.input?.file_path || toolUse.input?.pattern;
@@ -274,6 +290,9 @@ function codexParser(session) {
       const part = (text ? '\n\n' : '') + msg.item.text;
       text += part;
       return { type: 'delta', text: part };
+    }
+    if (msg.type === 'item.completed' && msg.item?.type === 'reasoning' && msg.item.text) {
+      return { type: 'thinking', text: `${msg.item.text}\n\n` };
     }
     if (msg.type === 'item.started' && /tool_call/.test(msg.item?.type || '')) {
       return { type: 'tool', name: [msg.item.server, msg.item.tool].filter(Boolean).join(' · ') || msg.item.type };
@@ -323,7 +342,8 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
   const args = engine === 'claude' ? claudeArgs(agent, state, options) : codexArgs(agent, state, options);
   const parse = engine === 'claude' ? claudeParser(state) : codexParser(state);
 
-  const child = spawn(bin, args, { cwd: WORKSPACE, windowsHide: true });
+  // MCP_TOOL_TIMEOUT: a question to the user (chat_ask) can wait a long time for the answer.
+  const child = spawn(bin, args, { cwd: WORKSPACE, windowsHide: true, env: { ...process.env, MCP_TOOL_TIMEOUT: String(45 * 60000) } });
   running.set(chatId, child);
   child.stdin.end(text);
 
@@ -348,7 +368,7 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
       let event;
       try { event = parse(JSON.parse(line)); } catch { continue; }
       if (!event) continue;
-      if (event.type === 'delta' || event.type === 'tool') emit(event);
+      if (event.type === 'delta' || event.type === 'tool' || event.type === 'thinking') emit(event);
       else finish(event);
     }
   });
@@ -359,6 +379,19 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
     log(`${engine} ${chatId} exit=${code} signal=${signal} finished=${finished} stderr=${JSON.stringify(stderr.slice(-400))}`);
     if (code === null) finish({ type: 'stopped' });
     else finish({ type: 'error', message: stderr.trim().split('\n').pop() || `${ENGINES[engine].label} exited (${code})` });
+  });
+}
+
+// One question, one answer, no saved chat: used for second opinions (Astra looking at a screenshot).
+function once({ agent, text, images = [] }) {
+  return new Promise((resolve) => {
+    const chatId = `once-${crypto.randomUUID()}`;
+    let out = '';
+    send({ agent: { ...agent, chatTools: false }, chatId, session: {}, text, options: { images } }, (event) => {
+      if (event.type === 'delta') out += event.text;
+      if (event.type === 'done') resolve({ ok: true, text: event.text || out });
+      if (event.type === 'error' || event.type === 'stopped') resolve({ ok: false, error: event.message || 'stopped' });
+    });
   });
 }
 
@@ -425,5 +458,5 @@ function discoverConnectors() {
 }
 
 module.exports = {
-  send, stop, stopAll, login, status, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name),
+  send, stop, stopAll, login, status, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once,
 };

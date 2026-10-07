@@ -166,6 +166,12 @@ ipcMain.handle('kv:get', (_e, name, fallback) => store.getKV(name, fallback));
 ipcMain.handle('kv:set', (_e, name, value) => store.setKV(name, value));
 
 // The renderer names the agent; engine, model and prompt are always read from config.json here.
+// A one-off question to an agent (second opinions): returns { ok, text } or { ok: false, error }.
+ipcMain.handle('engine:once', (_e, { agentId, text, images }) => {
+  const agent = readConfig().agents.find((a) => a.id === agentId);
+  if (!agent || agent.mode !== 'native') return { ok: false, error: `No chat agent ${agentId}` };
+  return engines.once({ agent, text, images: (images || []).filter((p) => typeof p === 'string') });
+});
 ipcMain.handle('engine:send', (_e, { agentId, chatId, session, text, options }) => {
   const agent = readConfig().agents.find((a) => a.id === agentId);
   if (!agent || agent.mode !== 'native') throw new Error(`${agentId} is not a native agent`);

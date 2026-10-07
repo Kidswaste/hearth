@@ -23,7 +23,7 @@ function callHub(tool, args) {
   });
 }
 
-function serve({ name, instructions, tools }) {
+function serve({ name, instructions, tools, extraArgs = {} }) {
   const send = (msg) => process.stdout.write(`${JSON.stringify(msg)}\n`);
   async function handle(msg) {
     const { id, method, params } = msg;
@@ -32,7 +32,7 @@ function serve({ name, instructions, tools }) {
     } else if (method === 'tools/list') {
       send({ jsonrpc: '2.0', id, result: { tools } });
     } else if (method === 'tools/call') {
-      const r = await callHub(params.name, params.arguments || {});
+      const r = await callHub(params.name, { ...(params.arguments || {}), ...extraArgs });
       const content = [];
       for (const img of [].concat(r.images || (r.image ? [{ data: r.image, mime: r.mime }] : []))) {
         content.push({ type: 'image', data: img.data, mimeType: img.mime || 'image/png' });

@@ -52,6 +52,7 @@ contextBridge.exposeInMainWorld('hub', {
   onFindResult: on('find:result'),
   createShortcuts: call('shortcuts:create'),
   restartApp: call('app:restart'),
+  askOnce: call('engine:once'),
   captureWindow: call('window:capture'),
   setOnTop: call('window:onTop'),
   exportData: call('data:export'),

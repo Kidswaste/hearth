@@ -101,6 +101,9 @@ const Manager = (() => {
     f.autoMemory.checked = agent.autoMemory !== false;
     f.workspace.value = agent.workspace || '';
     f.gameTools.checked = Boolean(agent.gameTools);
+    f.chatTools.checked = agent.chatTools !== false;
+    f.showThinking.checked = agent.showThinking !== false;
+    f.selfReview.checked = agent.selfReview ?? Boolean(agent.dock);
     connectorModes = { ...agent.connectors };
     syncModeFields();
   }
@@ -148,6 +151,9 @@ const Manager = (() => {
         gameTools: f.engine.value === 'claude' && f.gameTools.checked ? true : undefined,
         companion: f.engine.value === 'claude' && f.gameTools.checked ? 'forge-game' : undefined,
         autoMemory: f.autoMemory.checked ? undefined : false,
+        chatTools: f.engine.value === 'claude' && !f.chatTools.checked ? false : undefined,
+        showThinking: f.engine.value === 'claude' && !f.showThinking.checked ? false : undefined,
+        selfReview: f.engine.value === 'claude' ? f.selfReview.checked : undefined,
       });
     }
     if (existing) H.config.agents[H.config.agents.indexOf(existing)] = agent;

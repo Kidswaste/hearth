@@ -4,6 +4,15 @@ const ThreeLab = (() => {
   const SANDBOX = 'tools/three-sandbox.html';
   let tabs = null;
   const api = {}; // filled by each tab as it mounts
+  // Colors from a Coolors link (coolors.co/palette/264653-2a9d8f-… or coolors.co/264653-…), a Coolors export
+  // (CSS / SCSS / array / JSON, '#rrggbbaa' too) or any list of hex codes → ['#rrggbb', …].
+  function parseColors(input) {
+    const s = Array.isArray(input) ? input.join(' ') : String(input || '');
+    const link = s.match(/coolors\.co\/(?:palette\/)?([0-9a-f]{6}(?:-[0-9a-f]{6})+)/i);
+    let raw = link ? link[1].split('-') : [...s.matchAll(/#([0-9a-f]{6})(?:[0-9a-f]{2})?(?![0-9a-f])/gi)].map((m) => m[1]);
+    if (!raw.length) raw = [...s.matchAll(/(?<![0-9a-z])([0-9a-f]{6})(?![0-9a-z])/gi)].map((m) => m[1]);
+    return [...new Set(raw.map((h) => `#${h.toLowerCase()}`))].slice(0, 12);
+  }
 
   // One iframe per mode; messages from it are routed by `source`.
   function sandboxFrame(parent, mode, onMessage, extraParams = () => '') {
@@ -508,13 +517,53 @@ const ThreeLab = (() => {
     // ---------- palette ----------
     // A sketch's colors (current.palette = ['#rrggbb', …]): picked from a reference picture, shown as swatches,
     // given to sketches as the global `palette`, and one click recolors the selected layer's color sliders.
-    const paletteBox = el('span', { class: 'lab-palette', hidden: true });
+    const paletteBox = el('span', { class: 'lab-palette' });
+    const paletteBtn = btn('🎨', 'Palettes: import from Coolors, take one from a picture, or pick a saved one', (e) => paletteMenu(e.currentTarget));
+    const savedPalettes = () => store.get('three.palettes', []);
+    function savePalette(name, colors) {
+      const list = savedPalettes().filter((p) => p.name !== name);
+      store.set('three.palettes', [{ name, colors }, ...list].slice(0, 60));
+    }
+    async function importPalette() {
+      let clip = '';
+      try { clip = await navigator.clipboard.readText(); } catch { /* no clipboard text */ }
+      const text = await Modal.prompt('Import a palette', {
+        value: parseColors(clip).length >= 2 ? clip.trim().slice(0, 2000) : '',
+        multiline: true,
+        label: 'Paste a Coolors link (coolors.co/palette/…), a Coolors export (CSS, array, JSON) or any hex codes.',
+        placeholder: 'https://coolors.co/palette/264653-2a9d8f-e9c46a-f4a261-e76f51',
+      });
+      if (text == null) return;
+      const cols = parseColors(text);
+      if (cols.length < 2) { toast('No colors found in that', { type: 'error' }); return; }
+      setPalette(cols);
+      savePalette(/coolors/i.test(text) ? `Coolors ${cols.map((c) => c.slice(1, 4)).join('')}` : `Imported ${new Date().toLocaleDateString([], { month: 'short', day: 'numeric' })} ${cols[0]}`, cols);
+      toast(`Palette set: ${cols.length} colors (also saved in 🎨 → Saved)`, { timeout: 2400 });
+    }
+    function paletteMenu(anchor) {
+      const r = anchor.getBoundingClientRect();
+      const pal = current?.palette || [];
+      const saved = savedPalettes();
+      popup(r.left, r.bottom + 4, [
+        'Palette',
+        ['Import from Coolors…', 'Paste a coolors.co link or export, or hex codes (reads your clipboard)', () => importPalette()],
+        ['Open coolors.co', 'Make one there (space bar = new colors), then copy the link and import it', () => window.open('https://coolors.co/generate')],
+        ['From a reference picture…', 'Open References and press 🎨 Palette on a picture', () => openRefs()],
+        pal.length ? ['Save this palette…', pal.join(' '), async () => { const n = await Modal.prompt('Palette name', { value: current?.name || 'My palette' }); if (n) { savePalette(n.trim(), pal); toast('Saved', { timeout: 1200 }); } }] : null,
+        pal.length ? ['Recolor the selected layer', 'Put these colors into its color sliders', () => recolor()] : null,
+        pal.length ? ['Remove the palette', 'From this sketch', () => setPalette([])] : null,
+        saved.length ? 'Saved (click to use)' : null,
+        ...saved.map((p) => [p.name, p.colors.join(' '), () => setPalette(p.colors), pal.join() === p.colors.join()]),
+        saved.length ? ['Delete a saved palette…', '', () => {
+          popup(r.left, r.bottom + 4, ['Delete which one?', ...savedPalettes().map((p) => [p.name, p.colors.join(' '), () => { store.set('three.palettes', savedPalettes().filter((x) => x.name !== p.name)); toast(`Deleted "${p.name}"`, { timeout: 1500 }); }])]);
+        }] : null,
+      ]);
+    }
     function renderPalette() {
       const pal = current?.palette || [];
-      paletteBox.hidden = !pal.length;
-      paletteBox.replaceChildren(...pal.map((c) => { const b = el('button', { class: 'lab-swatch', title: `${c}: click to copy`, on: { click: () => { navigator.clipboard.writeText(c); toast(`Copied ${c}`, { timeout: 1000 }); } } }); b.style.background = c; return b; }),
-        btn('Recolor', 'Put these colors into the selected layer\'s color sliders', () => recolor()),
-        btn('×', 'Remove the palette', () => setPalette([])));
+      paletteBox.classList.toggle('empty', !pal.length);
+      paletteBox.replaceChildren(paletteBtn, ...pal.map((c) => { const b = el('button', { class: 'lab-swatch', title: `${c}: click to copy`, on: { click: () => { navigator.clipboard.writeText(c); toast(`Copied ${c}`, { timeout: 1000 }); } } }); b.style.background = c; return b; }),
+        ...(pal.length ? [btn('Recolor', 'Put these colors into the selected layer\'s color sliders', () => recolor())] : []));
     }
     function setPalette(cols) {
       if (!current) return;
@@ -1971,7 +2020,7 @@ ${frag}\`,
       if (action === 'remove') { R.remove(find(args.name)); return { ok: true, value: { references: R.list().map((r) => r.key) } }; }
       if (action === 'palette') {
         if (args.from) return { ok: true, value: { palette: await R.paletteFrom(String(args.from)) } };
-        const cols = (args.colors || []).filter((c) => /^#[0-9a-f]{6}$/i.test(c)).slice(0, 12);
+        const cols = parseColors(args.coolors || args.colors || []);
         R.setPalette(cols);
         return { ok: true, value: { palette: cols } };
       }
@@ -2004,7 +2053,9 @@ ${frag}\`,
   HubBridge.register(['three_'], handleTool);
   return {
     openCode(code) { ensureOpen('sketch'); setTimeout(() => api.openCode?.(code), 60); },
-    get lab() { return api.lab; }, // Lab actions (palette commands, MIDI simulation for tests)
+    get lab() { return api.lab; },
+    // A picture of the Lab preview (data URL) for second opinions; null when nothing renders.
+    shot: async () => (api.director ? api.director.shot() : null), // Lab actions (palette commands, MIDI simulation for tests)
     // Files dropped in the Three Director's chat become references of the open sketch.
     addReference: (p) => (api.addRef ? api.addRef(p) : Promise.reject(new Error('Open the Three.js Lab first'))),
     isReference: (name) => /\.(png|jpe?g|gif|webp|bmp|svg|mp4|webm|mov|m4v|mkv|glb|gltf|obj|fbx|stl|ply|mp3|wav|ogg|m4a|flac|aac|ttf|otf|woff2?|hdr|exr)$/i.test(name),

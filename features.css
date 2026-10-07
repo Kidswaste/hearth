@@ -821,3 +821,34 @@ body.on-top #rail::after { content: "📌"; position: absolute; bottom: 4px; lef
 .lab-palette[hidden] { display: none; }
 .lab-swatch { width: 18px; height: 18px; min-width: 0; padding: 0; border-radius: 4px; border: 1px solid #ffffff40; cursor: pointer; }
 .lab-palette button:not(.lab-swatch) { font-size: 11px; padding: 1px 6px; }
+
+/* ---------- chats that talk back ---------- */
+.msg .thinking { margin: 0 0 6px; border-left: 2px solid color-mix(in srgb, #bd8bff 60%, transparent); padding: 2px 0 2px 10px; }
+.msg .thinking summary { cursor: pointer; font-size: 12px; color: #bd8bff; user-select: none; }
+.msg.streaming .thinking:not([open]) summary::after { content: ' (click to watch)'; color: var(--muted); }
+.msg .thinking-text { white-space: pre-wrap; font-size: 12.5px; line-height: 1.5; color: var(--muted); max-height: 260px; overflow-y: auto; margin-top: 4px; font-style: italic; }
+.ask-card { margin: 8px 0; padding: 10px 12px; border-radius: 10px; border: 1px solid #ff9f43; background: color-mix(in srgb, #ff9f43 10%, transparent); display: flex; flex-direction: column; gap: 8px; animation: ask-in .25s ease-out; }
+@keyframes ask-in { from { transform: translateY(4px); opacity: 0; } }
+.ask-q { font-weight: 600; }
+.ask-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.ask-opt { padding: 4px 10px; border-radius: 99px; border: 1px solid color-mix(in srgb, var(--text) 25%, transparent); background: transparent; color: var(--text); cursor: pointer; }
+.ask-opt:hover, .ask-opt.on { border-color: #ff9f43; background: color-mix(in srgb, #ff9f43 22%, transparent); }
+.ask-row { display: flex; gap: 6px; align-items: flex-end; }
+.ask-text { flex: 1; resize: vertical; min-height: 34px; font: inherit; }
+.ask-card.answered, .qa-done { border-color: color-mix(in srgb, var(--text) 15%, transparent); background: transparent; flex-direction: row; flex-wrap: wrap; gap: 6px; font-size: 12.5px; padding: 4px 10px; }
+.qa-done { display: flex; margin: 4px 0; border-left: 2px solid #ff9f43; }
+.qa-q { color: var(--muted); }
+.qa-a { font-weight: 600; }
+.opinion-card { margin: 8px 0; padding: 8px 12px; border-radius: 10px; border: 1px solid #48ddff80; background: color-mix(in srgb, #48ddff 7%, transparent); }
+.opinion-head { font-size: 12px; font-weight: 600; color: #48ddff; margin-bottom: 4px; }
+.msg.opinion { border-left: 3px solid #48ddff; padding-left: 10px; }
+.msg-act.primary-act { color: #48ddff; }
+.suggest-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.suggest-chip { padding: 4px 11px; border-radius: 99px; border: 1px solid color-mix(in srgb, var(--agent, #ffd75e) 55%, transparent); background: color-mix(in srgb, var(--agent, #ffd75e) 10%, transparent); color: var(--text); cursor: pointer; font-size: 12.5px; }
+.suggest-chip:hover { background: color-mix(in srgb, var(--agent, #ffd75e) 25%, transparent); }
+.queue-chips { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 4px 0; }
+.queue-chips[hidden] { display: none; }
+.queue-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 2px 4px 2px 8px; border-radius: 99px; background: color-mix(in srgb, var(--text) 8%, transparent); }
+.queue-chip button { padding: 0 5px; min-width: 0; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.live-cards:empty { display: none; }
+.lab-palette.empty .lab-swatch { display: none; }

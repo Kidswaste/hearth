@@ -13,8 +13,11 @@ const Native = (() => {
   const TEXT_ATTACH_LIMIT = 200 * 1024;
   const COLLAPSE_PX = 900;
 
-  // Hide memory tags from what you see, including a tag that is still streaming in.
-  const visibleText = (text) => text.replace(REMEMBER_TAG, '').replace(/<remember>[\s\S]*$/i, '').replace(/<rem[a-z]*$/i, '').trim();
+  // Follow-up suggestions the agent offers as buttons: <suggest>…</suggest>.
+  const SUGGEST_TAG = /<suggest>([\s\S]*?)<\/suggest>/gi;
+  // Hide memory / suggestion tags from what you see, including a tag that is still streaming in.
+  const visibleText = (text) => text.replace(REMEMBER_TAG, '').replace(SUGGEST_TAG, '').replace(/<(remember|suggest)>[\s\S]*$/i, '').replace(/<(rem|sug)[a-z]*$/i, '').trim();
+  const REVIEW_PROMPT = 'Review your last result critically against what I asked. For visual work, take a fresh screenshot and look closely. List the concrete problems you see, then fix the important ones.';
 
   // "mcp__claude_ai_Gmail__search_threads" -> "Gmail · search threads"
   const toolLabel = (name) => {
@@ -46,8 +49,9 @@ const Native = (() => {
     const attachBtn = el('button', { type: 'button', class: 'ghost attach-btn', text: '📎', title: 'Attach files or images (or drop / paste them)' });
     const sendBtn = el('button', { type: 'submit', class: 'primary', text: 'Send' });
     const counter = el('span', { class: 'composer-count' });
-    const form = el('form', { class: 'composer' }, el('div', { class: 'composer-box' }, chips, input, counter), attachBtn, sendBtn);
-    const v = { title, meta, modelSel, list, input, sendBtn, chips, counter, jump, attachments: [] };
+    const queueBox = el('div', { class: 'queue-chips', hidden: true });
+    const form = el('form', { class: 'composer' }, el('div', { class: 'composer-box' }, queueBox, chips, input, counter), attachBtn, sendBtn);
+    const v = { title, meta, modelSel, list, input, sendBtn, chips, counter, jump, attachments: [], queue: [], queueBox };
 
     const saveDraft = debounce(() => store.set(draftKey(agentId), input.value || null), 400);
     input.addEventListener('input', () => { autosize(input); updateCounter(v); saveDraft(); });
@@ -71,11 +75,21 @@ const Native = (() => {
     dropZone(root, (files) => addFiles(agentId, files), { hint: 'Drop to attach' });
     Prompts.attach(input, (text) => { input.value = text; autosize(input); updateCounter(v); input.focus(); });
 
+    input.addEventListener('input', () => syncSendBtn(agentId));
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       const chatId = H.activeChat[agentId];
-      if (chatId && pending.has(chatId)) { window.hub.stop(chatId); return; }
       const text = input.value.trim();
+      // While it answers: a typed message waits in line (sent when the reply ends); an empty box means Stop.
+      if (chatId && pending.has(chatId)) {
+        if (!text) { window.hub.stop(chatId); return; }
+        (v.queue ||= []).push(text);
+        input.value = '';
+        store.set(draftKey(agentId), null);
+        autosize(input);
+        renderQueue(agentId);
+        return;
+      }
       if (!text && !v.attachments.length) return;
       input.value = '';
       store.set(draftKey(agentId), null);
@@ -189,10 +203,18 @@ const Native = (() => {
       if (codeAction.dataset.act === 'shader') ThreeLab.openShader(code);
       return;
     }
+    const sug = t.closest('[data-suggest]');
+    if (sug) { send(agentId, sug.dataset.suggest).catch((err) => toast(err.message, { type: 'error' })); return; }
     const act = t.closest('[data-msg-act]');
     if (act) {
       const idx = Number(act.closest('.msg').dataset.index);
       const what = act.dataset.msgAct;
+      if (what === 'review') send(agentId, REVIEW_PROMPT).catch((err) => toast(err.message, { type: 'error' }));
+      if (what === 'opinion') secondOpinion(agentId);
+      if (what === 'apply-opinion') {
+        const m = chats.get(H.activeChat[agentId])?.messages[idx];
+        if (m) send(agentId, `Here is ${m.from}'s second opinion on your last result:\n\n${m.text}\n\nWhat do you take from it? Apply the parts that make it better and tell me what you changed (and what you disagree with).`).catch((err) => toast(err.message, { type: 'error' }));
+      }
       if (what === 'edit') editMessage(agentId, idx);
       if (what === 'retry') regenerate(agentId, idx);
       if (what === 'quote') quote(agentId, idx);
@@ -237,8 +259,14 @@ const Native = (() => {
   function messageEl(m, agent, index, isLast) {
     const node = el('div', { class: `msg ${m.role}`, dataset: { raw: m.text, index }, title: m.at ? fmtDate(m.at) : '' });
     const body = el('div', { class: 'body' });
-    if (m.role === 'assistant') { body.innerHTML = renderMarkdown(m.text); decorateCode(body); } else body.textContent = m.text;
+    if (m.role === 'assistant' || m.role === 'opinion') { body.innerHTML = renderMarkdown(m.text); decorateCode(body); } else body.textContent = m.text;
+    if (m.role === 'opinion') node.append(el('div', { class: 'opinion-head', text: `🔎 Second opinion from ${m.from}` }));
+    if (m.thinking) node.append(thinkingEl(m.thinking, false, m.thinkMs));
+    for (const qa of m.qa || []) node.append(el('div', { class: 'qa-done' }, el('span', { class: 'qa-q', text: `❓ ${qa.q}` }), el('span', { class: 'qa-a', text: `→ ${qa.a}` })));
+    for (const op of m.opinions || []) node.append(opinionCard(op));
     node.append(body);
+    if (m.role === 'opinion') node.append(el('div', { class: 'msg-foot' }, el('button', { class: 'msg-act primary-act', text: `Ask ${agent.name} to use it`, dataset: { msgAct: 'apply-opinion' } })));
+    if (m.suggest?.length && (isLast || m.lastReply)) node.append(el('div', { class: 'suggest-chips' }, m.suggest.map((s) => el('button', { class: 'suggest-chip', text: s, dataset: { suggest: s }, title: 'Send this' }))));
     if (m.attachments?.length) node.append(el('div', { class: 'msg-attachments' }, m.attachments.map((a) => el('span', { class: 'attach-chip small', text: `${a.kind === 'image' ? '🖼' : '📄'} ${a.name}` }))));
     if (m.role === 'error' && m.needsLogin) {
       node.append(el('button', { class: 'primary login-btn', text: `Sign in to ${ENGINE_LABEL[agent.engine] || agent.engine}`, dataset: { engine: agent.engine } }));
@@ -257,7 +285,9 @@ const Native = (() => {
         el('span', { class: 'msg-time', text: time }),
         el('button', { class: 'copy-msg', text: 'Copy' }),
         act('quote', 'Quote', 'Quote in your next message'),
-        isLast ? act('retry', 'Retry', 'Write this reply again') : null));
+        isLast ? act('retry', 'Retry', 'Write this reply again') : null,
+        isLast && agent.engine === 'claude' ? act('review', '🔍 Review', 'Ask it to check its own result critically and fix what\'s wrong') : null,
+        isLast && astraAgent() && astraAgent().id !== agent.id ? act('opinion', '👁 Second opinion', `Ask ${astraAgent().name} to judge this result${agent.dock ? ' (with a screenshot)' : ''}`) : null));
     } else if (m.role === 'user') {
       node.append(el('div', { class: 'msg-foot user-foot' }, el('span', { class: 'msg-time', text: time }),
         act('edit', 'Edit', 'Edit and resend (Up arrow edits your last message)'), act('quote', 'Quote', 'Quote in your next message')));
@@ -312,7 +342,10 @@ const Native = (() => {
           : chat.session?.id ? `Imported from ${chat.imported}, continued here.` : `Imported from ${chat.imported}. Send a message to continue it here; the earlier conversation goes along as context.` }));
       }
       const lastIdx = chat.messages.length - 1;
+      // suggestions stay on the latest reply even after a second opinion is added below it
+      const lastReplyIdx = chat.messages.map((m) => m.role).lastIndexOf('assistant');
       chat.messages.forEach((m, i) => {
+        m.lastReply = i === lastReplyIdx && chat.messages.slice(i + 1).every((x) => x.role === 'opinion') && !pending.has(chat.id) ? true : undefined;
         const node = messageEl(m, agent, i, i === lastIdx && !pending.has(chat.id));
         v.list.append(node);
       });
@@ -324,9 +357,8 @@ const Native = (() => {
       paintStreaming(p);
       v.list.append(p.el);
     }
-    v.sendBtn.textContent = p ? 'Stop' : 'Send';
-    v.sendBtn.title = p ? 'Stop (Esc)' : 'Send (Enter)';
-    v.sendBtn.classList.toggle('stop', Boolean(p));
+    syncSendBtn(agentId);
+    renderQueue(agentId);
     // Long replies start folded so the conversation stays scannable.
     requestAnimationFrame(() => {
       for (const node of v.list.querySelectorAll('.msg.assistant:not(.streaming)')) {
@@ -342,16 +374,64 @@ const Native = (() => {
     });
   }
 
+  // The live reply: its thinking (open while it thinks), what it's doing, the text so far, and any
+  // question / second-opinion cards (kept as the same DOM nodes so typed answers survive re-renders).
   function paintStreaming(p) {
     const body = p.el.querySelector('.body');
     const text = visibleText(p.text);
-    body.innerHTML = text ? renderMarkdown(text) : '';
+    if (p.thinking) {
+      let th = p.el.querySelector('.thinking');
+      if (!th) { th = thinkingEl('', true); p.el.prepend(th); }
+      th.querySelector('.thinking-text').textContent = p.thinking.trim();
+      th.querySelector('summary').textContent = text ? 'Thought process' : 'Thinking…';
+      if (text && !p.thinkClosed) { th.open = false; p.thinkClosed = true; }
+      if (th.open) { const tt = th.querySelector('.thinking-text'); tt.scrollTop = tt.scrollHeight; }
+    }
     if (p.tools.length) {
       let chips = p.el.querySelector('.tool-chips');
-      if (!chips) { chips = el('div', { class: 'tool-chips' }); p.el.prepend(chips); }
-      chips.textContent = `Using ${toolLabel(p.tools.at(-1))}…`;
+      if (!chips) { chips = el('div', { class: 'tool-chips' }); body.before(chips); }
+      chips.textContent = `${p.tools.length > 1 ? `Step ${p.tools.length} · ` : ''}Using ${toolLabel(p.tools.at(-1))}…`;
+      chips.title = p.tools.map(toolLabel).join('\n');
     }
-    if (!text) body.insertAdjacentHTML('beforeend', '<span class="typing"><i></i><i></i><i></i></span>');
+    body.innerHTML = text ? renderMarkdown(text) : '';
+    if (!text && !p.cards.some((c) => c.classList.contains('ask-card') && !c.classList.contains('answered'))) body.insertAdjacentHTML('beforeend', '<span class="typing"><i></i><i></i><i></i></span>');
+    let host = p.el.querySelector('.live-cards');
+    if (!host) { host = el('div', { class: 'live-cards' }); p.el.append(host); }
+    for (const c of p.cards) if (c.parentElement !== host) host.append(c);
+  }
+  function thinkingEl(text, open, ms) {
+    const d = el('details', { class: 'thinking' }, el('summary', { text: ms ? `Thought for ${Math.max(1, Math.round(ms / 1000))} s` : 'Thought process' }), el('div', { class: 'thinking-text', text }));
+    d.open = open;
+    return d;
+  }
+  function opinionCard(op) {
+    return el('div', { class: 'opinion-card' }, el('div', { class: 'opinion-head', text: `🔎 ${op.from}'s second opinion${op.q ? `: ${op.q.slice(0, 80)}${op.q.length > 80 ? '…' : ''}` : ''}` }),
+      el('div', { class: 'body', html: renderMarkdown(op.text || '') }));
+  }
+  function repaintPending(chatId) {
+    const p = pending.get(chatId);
+    if (!p?.el?.isConnected) return;
+    const list = p.el.closest('.messages');
+    const stick = nearBottom(list);
+    paintStreaming(p);
+    if (stick) list.scrollTop = list.scrollHeight;
+  }
+  function syncSendBtn(agentId) {
+    const v = views.get(agentId);
+    const busy = pending.has(H.activeChat[agentId]);
+    if (!v) return;
+    v.sendBtn.textContent = busy ? (v.input.value.trim() ? 'Queue' : 'Stop') : 'Send';
+    v.sendBtn.title = busy ? (v.input.value.trim() ? 'Send this when the reply ends' : 'Stop (Esc)') : 'Send (Enter)';
+    v.sendBtn.classList.toggle('stop', busy && !v.input.value.trim());
+  }
+  function renderQueue(agentId) {
+    const v = views.get(agentId);
+    if (!v) return;
+    v.queueBox.hidden = !v.queue.length;
+    v.queueBox.replaceChildren(...v.queue.map((q, i) => el('span', { class: 'queue-chip', title: q },
+      el('span', { text: `⏳ ${q.length > 60 ? `${q.slice(0, 59)}…` : q}` }),
+      el('button', { type: 'button', text: '×', title: 'Remove from the queue', on: { click: () => { v.queue.splice(i, 1); renderQueue(agentId); } } }))));
+    syncSendBtn(agentId);
   }
 
   async function rememberFacts(agentId, facts) {
@@ -373,7 +453,7 @@ const Native = (() => {
   function withContext(chat, text) {
     if (chat.session?.id || chat.messages.length <= 1) return text;
     const earlier = chat.messages.slice(0, -1).filter((m) => m.role !== 'error')
-      .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text}`).join('\n\n');
+      .map((m) => `${m.role === 'user' ? 'User' : m.role === 'opinion' ? `${m.from} (second opinion)` : 'Assistant'}: ${m.text}`).join('\n\n');
     if (!earlier) return text;
     const trimmed = earlier.length > CONTEXT_CHARS ? `…${earlier.slice(-CONTEXT_CHARS)}` : earlier;
     const where = chat.imported ? ` (imported from ${chat.imported})` : chat.continuedFrom ? ` (from a ${chat.continuedFrom} chat)` : '';
@@ -426,7 +506,7 @@ const Native = (() => {
     const last = chat.messages.at(-1);
     chat.updatedAt = now;
     remember(chat);
-    pending.set(chat.id, { text: '', tools: [], started: now });
+    pending.set(chat.id, { text: '', tools: [], started: now, thinking: '', cards: [], qa: [], opinions: [] });
     render(agentId);
     window.hub.send({
       agentId, chatId: chat.id, session: chat.session,
@@ -439,6 +519,13 @@ const Native = (() => {
     const p = pending.get(event.chatId);
     const chat = chats.get(event.chatId);
     if (!p || !chat) return;
+    if (event.type === 'thinking') {
+      if (!p.thinkStart) p.thinkStart = Date.now();
+      p.thinking += event.text;
+      p.thinkEnd = Date.now();
+      repaintPending(event.chatId);
+      return;
+    }
     if (event.type === 'delta' || event.type === 'tool') {
       if (event.type === 'tool') {
         p.tools.push(event.name);
@@ -455,12 +542,19 @@ const Native = (() => {
       return;
     }
     pending.delete(event.chatId);
+    // an unanswered question can't be answered anymore
+    for (const c of p.cards) c.dispatchEvent(new Event('expire'));
     const at = Date.now();
+    const extras = {};
+    if (p.thinking.trim()) { extras.thinking = p.thinking.trim().slice(0, 30000); extras.thinkMs = (p.thinkEnd || at) - (p.thinkStart || p.started); }
+    if (p.qa.length) extras.qa = p.qa;
+    if (p.opinions.length) extras.opinions = p.opinions;
     let replyText = '';
     if (event.type === 'done') {
       const raw = event.text || p.text;
       const facts = [...raw.matchAll(REMEMBER_TAG)].map((m) => m[1].trim()).filter(Boolean);
-      const message = { role: 'assistant', text: visibleText(raw), at, usage: event.usage, ms: at - p.started };
+      const suggest = [...raw.matchAll(SUGGEST_TAG)].map((m) => m[1].trim()).filter(Boolean).slice(0, 4);
+      const message = { role: 'assistant', text: visibleText(raw), at, usage: event.usage, ms: at - p.started, ...extras, ...(suggest.length ? { suggest } : {}) };
       if (p.tools.length) message.tools = p.tools;
       if (facts.length) {
         message.remembered = facts;
@@ -470,7 +564,7 @@ const Native = (() => {
       chat.session = event.session;
       replyText = message.text;
     } else if (event.type === 'stopped') {
-      if (p.text) chat.messages.push({ role: 'assistant', text: visibleText(p.text), at, stopped: true });
+      if (p.text || extras.thinking) chat.messages.push({ role: 'assistant', text: visibleText(p.text), at, stopped: true, ...extras });
       if (event.session?.id) chat.session = event.session;
     } else {
       chat.messages.push({ role: 'error', text: event.message, needsLogin: event.needsLogin, at });
@@ -480,6 +574,127 @@ const Native = (() => {
     remember(chat);
     if (H.activeChat[chat.agentId] === chat.id) render(chat.agentId, { keepScroll: true });
     if (replyText) AppUI.replyFinished(chat.agentId, chat.id, replyText);
+    // messages typed while it worked go out now, one at a time
+    const v = views.get(chat.agentId);
+    if (v?.queue?.length && H.activeChat[chat.agentId] === chat.id && event.type !== 'stopped') {
+      const next = v.queue.shift();
+      renderQueue(chat.agentId);
+      setTimeout(() => send(chat.agentId, next).catch((err) => toast(err.message, { type: 'error' })), 250);
+    }
+  }
+
+  // ---------- talking back: questions and second opinions (mcp/chat-mcp.js → HubBridge) ----------
+  const astraAgent = () => H.agents().find((a) => a.mode === 'native' && a.engine === 'codex' && /astra/i.test(a.name))
+    || H.agents().find((a) => a.mode === 'native' && a.engine === 'codex');
+  const pendingFor = (agentId) => [...pending.keys()].find((id) => chats.get(id)?.agentId === agentId);
+  async function headsUp(agentId, chatId, text) {
+    const agent = H.agent(agentId);
+    const onScreen = H.surfaceIdFor(H.activeId) === H.surfaceIdFor(agentId) && H.activeChat[agentId] === chatId && !document.body.classList.contains('lab-focus');
+    const focused = await window.hub.isWindowFocused();
+    if (onScreen && focused) return;
+    const note = toast(`${agent?.name || 'An agent'} ${text}`, { timeout: 15000, action: { label: 'Open', fn: () => { document.querySelector('.lab-focus-exit')?.click(); open(agentId, chatId); } } });
+    if (!focused) {
+      window.hub.flashWindow();
+      const n = new Notification(`${agent?.name || 'Hearth'} ${text.split(':')[0]}`, { body: text, silent: false });
+      n.onclick = () => { window.hub.showWindow(); open(agentId, chatId); };
+    }
+    return note;
+  }
+  // A question card in the live reply; resolves with the answer (or a skip / stop note).
+  function askUser(agentId, { question, options = [], multiple = false, free = true }) {
+    const chatId = pendingFor(agentId);
+    const p = chatId && pending.get(chatId);
+    if (!p) return Promise.resolve({ ok: false, error: 'There is no reply in progress to ask from.' });
+    return new Promise((resolve) => {
+      const picked = new Set();
+      let noteP = Promise.resolve(null);
+      const text = el('textarea', { class: 'ask-text', rows: 2, placeholder: options.length ? 'Or type your own answer…' : 'Your answer…' });
+      const card = el('div', { class: 'ask-card' });
+      const done = (answer, label = answer) => {
+        if (card.classList.contains('answered')) return;
+        card.classList.add('answered');
+        card.replaceChildren(el('span', { class: 'qa-q', text: `❓ ${question}` }), el('span', { class: 'qa-a', text: `→ ${label}` }));
+        p.qa.push({ q: question, a: label });
+        noteP.then((n) => n?.remove());
+        resolve({ ok: true, value: answer });
+        repaintPending(chatId);
+      };
+      const optBtns = options.map((o) => el('button', { type: 'button', class: 'ask-opt', text: o, on: { click: (e) => {
+        if (!multiple) { done(o); return; }
+        if (picked.has(o)) picked.delete(o); else picked.add(o);
+        e.currentTarget.classList.toggle('on', picked.has(o));
+      } } }));
+      const sendIt = () => {
+        const typed = text.value.trim();
+        const parts = [...picked, ...(typed ? [typed] : [])];
+        if (!parts.length) { text.focus(); return; }
+        done(parts.join('; '));
+      };
+      text.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendIt(); } });
+      card.append(el('div', { class: 'ask-q', text: question }),
+        optBtns.length ? el('div', { class: 'ask-opts' }, optBtns) : null,
+        free !== false || multiple ? el('div', { class: 'ask-row' }, free !== false ? text : null,
+          el('button', { type: 'button', class: 'primary small', text: multiple ? 'Send choices' : 'Answer', on: { click: sendIt } }),
+          el('button', { type: 'button', class: 'ghost small', text: 'Skip', title: 'Let it decide', on: { click: () => done('(The user skipped this question: use your best judgment.)', 'skipped') } })) : null);
+      card.addEventListener('expire', () => done('(The reply ended before the user answered.)', 'not answered'));
+      p.cards.push(card);
+      repaintPending(chatId);
+      setTimeout(() => (text.isConnected ? text : optBtns[0])?.focus?.(), 50);
+      noteP = headsUp(agentId, chatId, `asks you: ${question}`);
+    });
+  }
+  // What the user is looking at, as an image file for the second opinion.
+  async function screenshotFor(agent) {
+    try {
+      if (agent?.dock === 'three' && typeof ThreeLab !== 'undefined') {
+        const url = await ThreeLab.shot?.();
+        if (url) return await window.hub.saveAttachment(`lab-${Date.now()}.png`, url.split(',')[1]);
+      }
+      return await window.hub.captureWindow();
+    } catch { return null; }
+  }
+  async function askAstra(agentId, question, { screenshot = false } = {}) {
+    const agent = H.agent(agentId);
+    const astra = astraAgent();
+    if (!astra) return { ok: false, error: 'No Astra (ChatGPT / Codex) agent is set up in the hub.' };
+    const img = screenshot ? await screenshotFor(agent) : null;
+    const text = `${question}\n\n[You are giving a second opinion to ${agent?.name || 'another AI'}, which is working on this for the user.${img ? ' The attached image is what the user sees right now.' : ''} Be concise and concrete: what works, what doesn't, and the 3 changes that would help most.]`;
+    const r = await window.hub.askOnce({ agentId: astra.id, text, images: img ? [img] : [] });
+    return r.ok ? { ok: true, from: astra.name, text: r.text } : r;
+  }
+  HubBridge.register(['chat_'], async (tool, args) => {
+    const agentId = args.agentId;
+    if (tool === 'chat_ask') {
+      const opts = Array.isArray(args.options) ? args.options.map(String).filter(Boolean).slice(0, 8) : [];
+      return askUser(agentId, { question: String(args.question || '').slice(0, 600), options: opts, multiple: Boolean(args.multiple), free: args.free !== false });
+    }
+    if (tool === 'chat_second_opinion') {
+      const chatId = pendingFor(agentId);
+      const p = chatId && pending.get(chatId);
+      const r = await askAstra(agentId, String(args.question || ''), { screenshot: Boolean(args.screenshot) });
+      if (!r.ok) return r;
+      if (p) { p.opinions.push({ from: r.from, q: String(args.question || ''), text: r.text }); p.cards.push(opinionCard(p.opinions.at(-1))); repaintPending(chatId); }
+      return { ok: true, value: `${r.from} says:\n${r.text}` };
+    }
+    return { ok: false, error: `Unknown tool ${tool}` };
+  });
+  // The 👁 button: Astra judges the last reply (with a screenshot for docked tools); its answer joins the chat.
+  async function secondOpinion(agentId) {
+    const chat = chats.get(H.activeChat[agentId]);
+    const agent = H.agent(agentId);
+    if (!chat || pending.has(chat.id)) return;
+    const lastUser = [...chat.messages].reverse().find((m) => m.role === 'user')?.text || '';
+    const replyMsg = [...chat.messages].reverse().find((m) => m.role === 'assistant');
+    const asked = replyMsg?.qa?.length ? `\n(While working it asked the user: ${replyMsg.qa.map((x) => `"${x.q}" → ${x.a}`).join('; ')})` : '';
+    const offered = replyMsg?.suggest?.length ? `\n(It offered these next steps as buttons: ${replyMsg.suggest.join(' | ')})` : '';
+    const lastReply = `${replyMsg?.text || ''}${asked}${offered}`;
+    const t = toast(`Asking ${astraAgent()?.name || 'Astra'} for a second opinion…`, { timeout: 60000 });
+    const r = await askAstra(agentId, `The user asked ${agent.name}: "${lastUser.slice(0, 2000)}"\n\n${agent.name} answered: "${lastReply.slice(0, 4000)}"\n\nGive your second opinion on the result.`, { screenshot: Boolean(agent.dock) });
+    t?.remove();
+    if (!r.ok) { toast(r.error || 'No answer', { type: 'error' }); return; }
+    chat.messages.push({ role: 'opinion', from: r.from, text: r.text, at: Date.now() });
+    remember(chat);
+    if (H.activeChat[agentId] === chat.id) render(agentId);
   }
 
   // ---------- message actions ----------
@@ -522,7 +737,7 @@ const Native = (() => {
   function chatMarkdown(chat) {
     const agent = H.agent(chat.agentId);
     return `# ${chat.title}\n\n_${agent?.name || chat.agentId} · ${fmtDate(chat.createdAt)}_\n\n${chat.messages.filter((m) => m.role !== 'error')
-      .map((m) => `**${m.role === 'user' ? 'You' : agent?.name || 'Assistant'}:**\n\n${m.text}`).join('\n\n---\n\n')}\n`;
+      .map((m) => `**${m.role === 'user' ? 'You' : m.role === 'opinion' ? `${m.from} (second opinion)` : agent?.name || 'Assistant'}:**\n\n${m.text}`).join('\n\n---\n\n')}\n`;
   }
 
   async function chatMenu(agentId, e) {
