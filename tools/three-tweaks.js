@@ -358,7 +358,7 @@ const ThreeTweaks = (() => {
     // Folds to one line so the controls get the room; remembers whether you keep it open.
     const asks = quickAsk ? el('details', { class: 'tw-asks', on: { toggle: (e) => store.set('three.twAsksOpen', e.currentTarget.open) } },
       el('summary', { class: 'tw-asks-title', text: 'Ask the director' }),
-      ...['More energy', 'Calmer', 'New colors', 'Hit harder on beats', 'Simpler', 'More detail', 'Add a slider for…'].map((t) => el('button', {
+      ...['3 variations to pick from', 'More energy', 'Calmer', 'New colors', 'Hit harder on beats', 'Simpler', 'More detail', 'Add a slider for…'].map((t) => el('button', {
         class: 'tw-chip', text: t, title: t.endsWith('…') ? 'Starts the message so you can finish it' : `Send "${t}" to the Three Director`,
         on: { click: () => quickAsk(t) },
       }))) : null;
@@ -531,6 +531,9 @@ const ThreeTweaks = (() => {
     async function saveLook() {
       const name = await Modal.prompt('Save look', { value: `Look ${looks.length + 1}`, placeholder: 'e.g. Calm intro, Drop, Neon' });
       if (!name?.trim()) return;
+      saveLookAs(name);
+    }
+    function saveLookAs(name) {
       const v = {};
       scanned.items.forEach((it, i) => { if (it.key != null || !same(it, values[i])) v[ids[i]] = values[i]; });
       looks = looks.filter((l) => l.name !== name.trim()).concat({ name: name.trim(), values: v });
@@ -587,15 +590,37 @@ const ThreeTweaks = (() => {
     function control(it, i) {
       const v = values[i];
       if (it.kind === 'bool') {
-        const box = el('input', { type: 'checkbox', checked: Boolean(v) });
-        box.addEventListener('change', () => setValue(i, box.checked, { release: true }));
-        return { node: el('label', { class: 'tw-switch' }, box, el('span', { text: 'On' })), set: (x) => { box.checked = Boolean(x); } };
+        // one click: an On / Off pill
+        let on = Boolean(v);
+        const pill = el('button', { type: 'button', class: 'tw-toggle', dataset: { feature: labelOf(it) || 'Switch' } });
+        const set = (x) => { on = Boolean(x); pill.classList.toggle('on', on); pill.textContent = on ? 'On' : 'Off'; };
+        pill.addEventListener('click', () => { if (locks.has(ids[i])) return; set(!on); setValue(i, on, { release: true }); });
+        set(on);
+        return { node: pill, set };
       }
       if (it.kind === 'choice') {
         const opts = it.options?.length ? [...new Set([...it.options, v])] : [v];
-        const sel = el('select', { class: 'tw-select' }, opts.map((o) => el('option', { value: o, text: humanize(o), selected: o === v })));
+        const pickIdx = (cur, d) => opts[(opts.indexOf(cur) + d + opts.length) % opts.length];
+        // A few short options: one click each (segmented). Many or long ones: a dropdown. The wheel cycles both.
+        if (opts.length <= 5 && opts.every((o) => humanize(o).length <= 12)) {
+          let cur = v;
+          const segs = opts.map((o) => el('button', { type: 'button', class: 'tw-seg-btn', text: humanize(o), dataset: { feature: `${labelOf(it) || 'Choice'}: ${humanize(o)}` } }));
+          const set = (x) => { cur = x; segs.forEach((b, k) => b.classList.toggle('on', opts[k] === x)); };
+          segs.forEach((b, k) => b.addEventListener('click', () => { if (locks.has(ids[i])) return; set(opts[k]); setValue(i, opts[k], { release: true }); }));
+          const node = el('div', { class: 'tw-seg' }, segs);
+          node.addEventListener('wheel', (e) => { if (locks.has(ids[i])) return; e.preventDefault(); const x = pickIdx(cur, e.deltaY > 0 ? 1 : -1); set(x); setValue(i, x, { release: true }); }, { passive: false });
+          set(v);
+          return { node, set };
+        }
+        const sel = el('select', { class: 'tw-select', title: labelOf(it) || '', dataset: { feature: labelOf(it) || 'Choice' } }, opts.map((o) => el('option', { value: o, text: humanize(o), selected: o === v })));
         sel.addEventListener('change', () => setValue(i, sel.value, { release: true }));
-        return { node: sel, set: (x) => { sel.value = x; } };
+        const prev = el('button', { type: 'button', class: 'tw-step', text: '‹', title: 'Previous option' });
+        const next = el('button', { type: 'button', class: 'tw-step', text: '›', title: 'Next option' });
+        const step = (d) => { if (locks.has(ids[i])) return; sel.value = pickIdx(sel.value, d); setValue(i, sel.value, { release: true }); };
+        prev.addEventListener('click', () => step(-1));
+        next.addEventListener('click', () => step(1));
+        sel.addEventListener('wheel', (e) => { e.preventDefault(); step(e.deltaY > 0 ? 1 : -1); }, { passive: false });
+        return { node: el('div', { class: 'tw-choice' }, prev, sel, next), set: (x) => { sel.value = x; } };
       }
       if (it.kind === 'color') {
         const pick = el('input', { type: 'color', value: v });
@@ -980,6 +1005,28 @@ const ThreeTweaks = (() => {
         setValue(i, v, { release, external: true });
         rows.filter((r) => r.i === i).forEach((r) => r.set(v));
         return true;
+      },
+      // For the director: set several named controls at once (one undo step, unsaved like your own moves) and looks.
+      setMany(byKey) {
+        if (!scanned) return [];
+        const next = values.slice(); const done = [];
+        scanned.items.forEach((it, i) => {
+          if (it.key == null || !(it.key in byKey) || locks.has(ids[i])) return;
+          let x = byKey[it.key];
+          if (it.kind === 'number') x = Number(x);
+          else if (it.kind === 'bool') x = Boolean(x);
+          else x = String(x);
+          if (it.kind === 'number' && !Number.isFinite(x)) return;
+          next[i] = x; done.push(it.key);
+        });
+        applyValues(next);
+        return done;
+      },
+      looksApi: {
+        list: () => looks.map((l) => l.name),
+        save: (name) => { saveLookAs(String(name).slice(0, 40)); return looks.map((l) => l.name); },
+        apply: (name) => { const l = looks.find((x) => x.name.toLowerCase() === String(name).toLowerCase()); if (!l) throw new Error(`No look "${name}". Looks: ${looks.map((x) => x.name).join(', ') || 'none'}`); applyLook(l); return l.name; },
+        remove: (name) => { looks = looks.filter((l) => l.name.toLowerCase() !== String(name).toLowerCase()); persist?.('looks', looks); renderLooks(); return looks.map((l) => l.name); },
       },
       setVisible(on) { root.hidden = !on; },
       get visible() { return !root.hidden; },

@@ -283,3 +283,7 @@
 239. ✓ **Hold A/B**: hold to see the sketch with the code's values, let go for yours.
 240. ✓ **Right-click menu** on any control: back to the code's value, lock, reset and lock, favorites, follow the music, keyframe, show in code.
 241. ✓ **More room**: "Ask the director" folds to one line (remembered) and the status line only shows when there's something to save.
+242. ✓ **One-click choices** (choice dropdowns were your most-used control): up to 5 short options show as segmented buttons; longer lists keep the dropdown with ‹ › arrows; the mouse wheel cycles both. On/off settings are a single On / Off pill.
+243. ✓ **Director tunes with sliders**: three_sliders moves a layer's sliders without touching the code (shows as your unsaved changes: Save, ↶ or A/B), three_looks saves / applies / deletes looks.
+244. ✓ **"3 variations to pick from"** (Ask the director): it makes three slider-only variations, saves each as a look (Variation A / B / C), shows each in the chat and asks which you want, then applies it.
+245. ✓ **Sketch browser**: ★ pin sketches to the top, sort by recent / name / most layers, ♪ badge on sketches with a song, right-click a card to open, pin, rename, duplicate or delete.

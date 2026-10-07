@@ -937,7 +937,9 @@ const ThreeLab = (() => {
         },
         rerun: (o) => run({ hot: Boolean(o?.hot), layer: id }),
         persist: (kind, data) => { const Lx = layerById(id); if (!Lx || !current) return; extrasOf(Lx)[kind] = data; saveExtras(); },
-        quickAsk: (text) => askDirector(text.endsWith('…') ? `${text.slice(0, -1)} ` : `${text} (layer "${layerById(id)?.name}")`, { send: !text.endsWith('…') }),
+        quickAsk: (text) => askDirector(text === '3 variations to pick from'
+          ? `Make 3 clearly different variations of the layer "${layerById(id)?.name}" using only its sliders (three_sliders), no code changes. For each: set the values, save it as a look named "Variation A", "B" or "C" (three_looks), and show it to me with chat_show. Then ask me with chat_ask which one I like (A, B, C or none) and apply that look.`
+          : text.endsWith('…') ? `${text.slice(0, -1)} ` : `${text} (layer "${layerById(id)?.name}")`, { send: !text.endsWith('…') }),
         goToLine: (line) => { if (selId !== id) selectLayer(id); setCodeVisible(true); requestAnimationFrame(() => goToLine(line)); },
         commit: (code) => {
           const Lx = layerById(id);
@@ -1360,17 +1362,49 @@ const ThreeLab = (() => {
         el('div', { class: 'refs-head' }, el('h3', { text: 'Sketches' }), q, el('span', { class: 'spacer' }),
           btn('＋ New', 'New sketch from a template', () => { dlg.close(); templateGallery(); }, 'primary small'), btn('Close', '', () => dlg.close())),
         grid);
+      // ★ pinned first, then by the sort you pick; right-click a card for rename / duplicate / pin / delete.
+      const sortSel = el('select', { class: 'sb-sort', title: 'Sort' }, [['recent', 'Recent'], ['name', 'Name'], ['layers', 'Most layers']].map(([v, l]) => el('option', { value: v, text: l, selected: v === store.get('three.sbSort', 'recent') })));
+      sortSel.addEventListener('change', () => { store.set('three.sbSort', sortSel.value); fill(); });
+      q.after(sortSel);
+      const pins = () => new Set(store.get('three.sketchPins', []));
+      const togglePin = (id) => { const p = pins(); if (p.has(id)) p.delete(id); else p.add(id); store.set('three.sketchPins', [...p]); fill(); };
+      const cardMenu = (e, sk) => {
+        e.preventDefault();
+        const p = pins();
+        showMenu(e.clientX, e.clientY, [
+          { label: 'Open', action: () => { dlg.close(); if (sk.id !== current?.id) openSketch(sk.id); } },
+          { label: p.has(sk.id) ? '☆ Unpin' : '★ Pin to the top', action: () => togglePin(sk.id) },
+          { label: 'Rename…', action: async () => { const n = await Modal.prompt('Rename sketch', { value: sk.name }); if (n?.trim()) { sk.name = n.trim(); save(); renderPicker(); fill(); } } },
+          { label: 'Duplicate', action: () => { if (sk.id === current?.id) persist(); const copy = { ...JSON.parse(JSON.stringify(sk)), id: `s${Date.now()}`, name: `${sk.name} copy`, updatedAt: Date.now() }; sketches.push(copy); if (extras[sk.id]?.media) (extras[copy.id] ||= {}).media = { ...extras[sk.id].media }; saveExtras(); save(); renderPicker(); fill(); toast(`Duplicated "${sk.name}"`, { timeout: 1500 }); } },
+          { label: 'Delete…', danger: true, action: async () => {
+            if (sketches.length === 1) { toast('Keep at least one sketch', { type: 'error' }); return; }
+            if (!(await Modal.confirm('Delete sketch?', `"${sk.name}" will be deleted. You can bring it back from History.`, { ok: 'Delete', danger: true }))) return;
+            trash.unshift({ name: sk.name, code: sk.code, layers: sk.layers, deletedAt: Date.now() });
+            trash.length = Math.min(trash.length, 30);
+            saveHistory();
+            sketches = sketches.filter((s) => s.id !== sk.id);
+            save();
+            if (sk.id === current?.id) openSketch(sketches[0].id); else renderPicker();
+            fill();
+          } },
+        ]);
+      };
       const fill = () => {
         const needle = q.value.trim().toLowerCase();
-        const list = [...sketches].sort((a, b) => b.updatedAt - a.updatedAt).filter((sk) => !needle || sk.name.toLowerCase().includes(needle));
+        const p = pins();
+        const by = sortSel.value;
+        const cmp = by === 'name' ? (a, b) => a.name.localeCompare(b.name) : by === 'layers' ? (a, b) => (b.layers?.length || 1) - (a.layers?.length || 1) : (a, b) => b.updatedAt - a.updatedAt;
+        const list = [...sketches].sort((a, b) => (p.has(b.id) - p.has(a.id)) || cmp(a, b)).filter((sk) => !needle || sk.name.toLowerCase().includes(needle));
         grid.replaceChildren(...list.map((sk) => {
           const t = thumbs[sk.id]?.url;
           const layers = sk.layers?.length || 1;
           const song = extras[sk.id]?.media?.path?.split(/[\\/]/).pop();
-          return el('button', { class: `sb-card${sk.id === current?.id ? ' on' : ''}`, title: `Open "${sk.name}"`, on: { click: () => { dlg.close(); if (sk.id !== current?.id) openSketch(sk.id); } } },
-            el('div', { class: 'sb-thumb' }, t ? el('img', { src: t, alt: '' }) : el('span', { text: '◭' })),
+          const card = el('button', { class: `sb-card${sk.id === current?.id ? ' on' : ''}${p.has(sk.id) ? ' pinned' : ''}`, title: `Open "${sk.name}" (right-click for more)`, on: { click: () => { dlg.close(); if (sk.id !== current?.id) openSketch(sk.id); } } },
+            el('div', { class: 'sb-thumb' }, t ? el('img', { src: t, alt: '' }) : el('span', { text: '◭' }), p.has(sk.id) ? el('span', { class: 'sb-pin', text: '★' }) : null, song ? el('span', { class: 'sb-song', text: '♪', title: song }) : null),
             el('b', { text: sk.name }),
-            el('span', { class: 'sb-meta', text: `${layers} layer${layers === 1 ? '' : 's'} · ${new Date(sk.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}${song ? ` · ♪ ${song}` : ''}` }));
+            el('span', { class: 'sb-meta', text: `${layers} layer${layers === 1 ? '' : 's'} · ${new Date(sk.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}${song ? ` · ${song}` : ''}` }));
+          card.addEventListener('contextmenu', (e) => cardMenu(e, sk));
+          return card;
         }));
       };
       q.addEventListener('input', fill);
@@ -1687,6 +1721,22 @@ ${code}
         const r = applyPreset(L.id, presetId);
         if (!r) throw new Error(`Unknown preset "${presetId}" (or no song). Presets: ${ThreeLayers.PRESETS.map((x) => x.id).join(', ')}`);
         return { ...r, ...report() };
+      },
+      sliders(ref, set) {
+        const L = ref ? findLayer(ref) : sel();
+        if (!L) throw new Error(`No layer "${ref}".`);
+        const c = ctlFor(L);
+        const changed = set && Object.keys(set).length ? c.setMany(set) : [];
+        return { layer: L.name, changed, sliders: c.controls(), looks: c.looksApi.list() };
+      },
+      looks(ref, action, name) {
+        const L = ref ? findLayer(ref) : sel();
+        if (!L) throw new Error(`No layer "${ref}".`);
+        const api2 = ctlFor(L).looksApi;
+        if (action === 'save') return { looks: api2.save(name) };
+        if (action === 'apply') return { applied: api2.apply(name), sliders: ctlFor(L).controls() };
+        if (action === 'delete') return { looks: api2.remove(name) };
+        return { looks: api2.list() };
       },
       refs: { list: () => refsOf(), add: (p, key) => addRef(p, { key }), rename: renameRef, remove: removeRef, use: refUse, size: fmtSize, url: fileUrl,
         palette: () => current?.palette || [], setPalette: (cols) => setPalette(cols), paletteFrom: async (name) => { const r = refsOf().find((x) => x.key === name || x.name === name); if (!r || r.kind !== 'image') throw new Error(`No picture reference "${name}"`); const cols = await paletteFrom(r.path); setPalette(cols); return cols; } },
@@ -2094,6 +2144,8 @@ ${frag}\`,
       if (action === 'add') { const n = await d.notes.add(Number(args.time) || 0, args.text); return { ok: true, value: n }; }
       return { ok: false, error: 'action must be list, done, reopen, edit, delete or add' };
     }
+    if (tool === 'three_sliders') return { ok: true, value: d.sliders(args.layer, args.set || null) };
+    if (tool === 'three_looks') return { ok: true, value: d.looks(args.layer, args.action || 'list', args.name) };
     if (tool === 'three_contact_sheet') {
       const sheet = await d.contactSheet({ times: Array.isArray(args.times) ? args.times : null, count: Math.max(2, Math.min(16, Number(args.count) || 8)) });
       return { ok: true, images: [{ data: sheet.dataUrl.split(',')[1], mime: 'image/jpeg' }], value: { frames: sheet.frames, note: 'Numbered left to right, top to bottom.' } };
