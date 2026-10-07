@@ -173,7 +173,8 @@ function applySettings(win, settings = {}) {
   if (hotkey) {
     try { hotkeyOk = globalShortcut.register(hotkey, () => toggleWindow(win)); } catch { hotkeyOk = false; }
   }
-  app.setLoginItemSettings({ openAtLogin: Boolean(settings.launchAtStartup), args: [app.getAppPath()] });
+  // On a Mac the setup script's Hearth.app is what you'd add to Login Items (System Settings → General).
+  if (process.platform !== 'darwin') app.setLoginItemSettings({ openAtLogin: Boolean(settings.launchAtStartup), args: [app.getAppPath()] });
   session.defaultSession.setSpellCheckerLanguages(settings.spellLanguages?.length ? settings.spellLanguages : ['en-US']);
   return { hotkeyOk };
 }
@@ -196,6 +197,7 @@ function restartApp() {
 // "Hearth" starts the app, or restarts it when it's already running (the --restart argument reaches the
 // running copy through the single-instance lock).
 function createShortcuts() {
+  if (process.platform === 'darwin') return createMacLauncher();
   const target = process.execPath;
   const appDir = app.getAppPath();
   const places = [
@@ -208,6 +210,30 @@ function createShortcuts() {
       resolve(err ? { error: err.message } : { created: places });
     });
   });
+}
+
+// Mac: ~/Applications/Hearth.app, a small launcher that starts Hearth (or restarts it when it's open).
+function createMacLauncher() {
+  try {
+    const appDir = app.getAppPath();
+    const bundle = path.join(os.homedir(), 'Applications', `${APP_NAME}.app`);
+    fs.mkdirSync(path.join(bundle, 'Contents', 'MacOS'), { recursive: true });
+    fs.mkdirSync(path.join(bundle, 'Contents', 'Resources'), { recursive: true });
+    fs.writeFileSync(path.join(bundle, 'Contents', 'Info.plist'), `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleName</key><string>${APP_NAME}</string><key>CFBundleDisplayName</key><string>${APP_NAME}</string>
+<key>CFBundleIdentifier</key><string>local.hearth.launcher</string><key>CFBundleExecutable</key><string>hearth</string>
+<key>CFBundleIconFile</key><string>hearth</string><key>CFBundlePackageType</key><string>APPL</string><key>LSUIElement</key><true/>
+</dict></plist>
+`);
+    const launcher = path.join(bundle, 'Contents', 'MacOS', 'hearth');
+    fs.writeFileSync(launcher, `#!/bin/bash\nexec "${process.execPath}" "${appDir}" --restart "$@"\n`);
+    fs.chmodSync(launcher, 0o755);
+    const icns = path.join(appDir, 'mac', 'hearth.icns');
+    if (fs.existsSync(icns)) fs.copyFileSync(icns, path.join(bundle, 'Contents', 'Resources', 'hearth.icns'));
+    return Promise.resolve({ created: [bundle] });
+  } catch (err) { return Promise.resolve({ error: err.message }); }
 }
 
 // ---------- right-click menus ----------

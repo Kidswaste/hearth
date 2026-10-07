@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const store = require('./store');
@@ -6,6 +6,7 @@ const engines = require('./engines');
 const importer = require('./importer');
 const appshell = require('./appshell');
 const fsapi = require('./fsapi');
+const portable = require('./portable');
 const aemain = require('./aemain');
 const gamebridge = require('./gamebridge');
 
@@ -15,7 +16,7 @@ const THEME_PATH = path.join(__dirname, 'theme.css');
 // Present as plain Chrome so sign-in pages (Google, etc.) don't reject the app.
 app.userAgentFallback =
   `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome} Safari/537.36`;
-app.setAppUserModelId('Hearth');
+if (process.platform === 'win32') app.setAppUserModelId('Hearth');
 
 // Sign-in popups stay inside the app so the login lands in the right agent.
 const AUTH_HOSTS = [
@@ -135,7 +136,7 @@ app.on('web-contents-created', (_event, contents) => {
   });
 
   contents.on('before-input-event', (event, input) => {
-    if (input.type !== 'keyDown' || !input.control) return;
+    if (input.type !== 'keyDown' || !(input.control || (process.platform === 'darwin' && input.meta))) return;
     const key = input.key.toLowerCase();
     if (HUB_KEYS.has(key) || (input.shift && key === ' ')) {
       event.preventDefault();
@@ -168,11 +169,13 @@ ipcMain.handle('kv:set', (_e, name, value) => store.setKV(name, value));
 // The renderer names the agent; engine, model and prompt are always read from config.json here.
 // A one-off question to an agent (second opinions): returns { ok, text } or { ok: false, error }.
 ipcMain.handle('engine:once', (_e, { agentId, text, images }) => {
+  engines.setEnginePaths(settings().enginePaths);
   const agent = readConfig().agents.find((a) => a.id === agentId);
   if (!agent || agent.mode !== 'native') return { ok: false, error: `No chat agent ${agentId}` };
   return engines.once({ agent, text, images: (images || []).filter((p) => typeof p === 'string') });
 });
 ipcMain.handle('engine:send', (_e, { agentId, chatId, session, text, options }) => {
+  engines.setEnginePaths(settings().enginePaths);
   const agent = readConfig().agents.find((a) => a.id === agentId);
   if (!agent || agent.mode !== 'native') throw new Error(`${agentId} is not a native agent`);
   engines.send({ agent, chatId, session: session || {}, text, options: options || {} }, (event) => {
@@ -240,7 +243,7 @@ ipcMain.handle('engine:status', () => engines.status());
 
 // ---------- window & desktop ----------
 ipcMain.handle('window:show', () => { win.show(); win.focus(); });
-ipcMain.handle('window:flash', () => { if (!win.isFocused()) win.flashFrame(true); });
+ipcMain.handle('window:flash', () => { if (win.isFocused()) return; if (process.platform === 'darwin') app.dock?.bounce('informational'); else win.flashFrame(true); });
 ipcMain.handle('window:isFocused', () => win.isFocused() && win.isVisible());
 ipcMain.handle('window:reload', () => win.webContents.reloadIgnoringCache());
 ipcMain.handle('find:start', (_e, text, opts) => (text ? win.webContents.findInPage(text, opts) : null));
@@ -269,6 +272,14 @@ ipcMain.handle('data:export', async () => {
   return fsapi.zip(entries, r.filePath, { skipDirs: ['workspace', 'ae'] });
 });
 
+// One zip with the app, your data and settings, to set Hearth up on a Mac (see mac/README.md).
+ipcMain.handle('data:packForMac', async () => {
+  const r = await dialog.showSaveDialog(win, { defaultPath: portable.defaultPackName(), filters: [{ name: 'Zip', extensions: ['zip'] }] });
+  if (r.canceled || !r.filePath) return null;
+  return portable.packForMac(r.filePath);
+});
+ipcMain.handle('app:platform', () => process.platform);
+
 fsapi.registerIpc(ipcMain, () => win);
 gamebridge.start(() => win);
 aemain.registerIpc(ipcMain, () => win, () => settings().aePath);
@@ -277,5 +288,19 @@ for (const file of [CONFIG_PATH, THEME_PATH]) {
   fs.watchFile(file, { interval: 400 }, () => send('config:changed', loadAll()));
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  // data moved here from another computer (or folder): point saved file locations at the new data folder
+  try { const r = portable.fixMovedPaths(); if (r.moved) console.log(`Hearth: data moved from ${r.from}, fixed ${r.changed} paths in ${r.files} files`); } catch (err) { console.error('fixMovedPaths', err); }
+  if (process.platform === 'darwin') {
+    // a Mac app needs a menu bar for ⌘C / ⌘V / ⌘Q and friends
+    Menu.setApplicationMenu(Menu.buildFromTemplate([
+      { label: 'Hearth', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] },
+      { role: 'editMenu' },
+      { label: 'View', submenu: [{ role: 'togglefullscreen' }] },
+      { role: 'windowMenu' },
+    ]));
+    try { app.dock?.setIcon(appshell.ensureIcon()); } catch { /* the icon is optional */ }
+  }
+  createWindow();
+});
 app.on('window-all-closed', () => app.quit());

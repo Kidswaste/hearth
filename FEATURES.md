@@ -296,3 +296,9 @@
 250. ✓ **Placements stay**: what you move is kept with the layer and re-applied every frame, so it holds even when the code rebuilds or animates the scene; only what you changed is pinned (moving a spinning object keeps it spinning). Exact values, Hide / Show, Parent, Reset per object, ↶ undo, Clear all.
 251. ✓ **📷 Use this view**: the angle you framed becomes the sketch's camera (Reset camera undoes it).
 252. ✓ **Bake into code…**: asks the Three Director to write the placements into the code; the director also sees them in three_layers (placedByUser).
+
+## Hearth on a Mac
+253. ○ **Runs on macOS** (code ready, not yet run on a real Mac): Claude / Codex found where the Mac apps install them (or set in Settings → Engines), Mac menu bar so ⌘C / ⌘V / ⌘Q work, ⌘ works wherever Hearth says Ctrl (and the shortcut sheet shows ⌘), dock icon and bounce, After Effects in /Applications (scripts via osascript, aerender).
+254. ✓ **Pack Hearth for a Mac** (Settings → App, or Ctrl+K): one zip with the app, chats, sketches, notes, references, palettes, memory, settings and usage data (tested: packs ~10 MB here without the Windows runtime).
+255. ✓ **Moves cleanly**: on first start in a new place, saved locations of attachments, references and note screenshots are pointed at the new data folder (tested by unzipping elsewhere).
+256. ○ **mac/setup-mac.sh**: one Terminal command downloads Electron for the Mac (Apple silicon or Intel), makes ~/Applications/Hearth.app with the flame icon (opens it, or restarts it when open) and starts Hearth. Steps in mac/README.md.

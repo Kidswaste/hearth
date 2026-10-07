@@ -32,13 +32,22 @@ function log(line) {
   try { fs.appendFileSync(LOG_PATH, `${new Date().toISOString()} ${line}\n`); } catch { /* logging is best-effort */ }
 }
 
+const IS_WIN = process.platform === 'win32';
+const IS_MAC = process.platform === 'darwin';
+const exe = (name) => (IS_WIN ? `${name}.exe` : name);
 function findOnPath(name) {
-  for (const dir of (process.env.PATH || '').split(path.delimiter)) {
-    const file = path.join(dir, `${name}.exe`);
+  // apps started from the Mac Dock don't get the shell's PATH, so the usual install places are added
+  const extra = IS_MAC ? ['/opt/homebrew/bin', '/usr/local/bin', path.join(os.homedir(), '.local', 'bin'), path.join(os.homedir(), '.npm-global', 'bin')] : [];
+  for (const dir of [...(process.env.PATH || '').split(path.delimiter), ...extra]) {
+    const file = path.join(dir, exe(name));
     if (dir && fs.existsSync(file)) return file;
   }
   return null;
 }
+// Settings → Engines can point at the programs directly (settings.enginePaths = { claude, codex }).
+let enginePaths = {};
+function setEnginePaths(p) { enginePaths = p && typeof p === 'object' ? p : {}; }
+const given = (name) => (enginePaths[name] && fs.existsSync(enginePaths[name]) ? enginePaths[name] : null);
 
 // The desktop apps keep their engine in versioned folders; pick the most recently updated one.
 function newestIn(root, exeName, depth = 3) {
@@ -60,12 +69,15 @@ function newestIn(root, exeName, depth = 3) {
 }
 
 const LOCATE = {
-  claude: () => findOnPath('claude')
-    || newestIn(path.join(process.env.APPDATA || '', 'Claude', 'claude-code'), 'claude.exe')
-    || [path.join(os.homedir(), '.local', 'bin', 'claude.exe')].find((f) => fs.existsSync(f))
+  claude: () => given('claude') || findOnPath('claude')
+    || (IS_WIN ? newestIn(path.join(process.env.APPDATA || '', 'Claude', 'claude-code'), 'claude.exe') : null)
+    || (IS_MAC ? newestIn(path.join(os.homedir(), 'Library', 'Application Support', 'Claude', 'claude-code'), 'claude') : null)
+    || [path.join(os.homedir(), '.local', 'bin', exe('claude')), path.join(os.homedir(), '.claude', 'local', exe('claude'))].find((f) => fs.existsSync(f))
     || null,
-  codex: () => findOnPath('codex')
-    || newestIn(path.join(process.env.LOCALAPPDATA || '', 'OpenAI', 'Codex', 'bin'), 'codex.exe'),
+  codex: () => given('codex') || findOnPath('codex')
+    || (IS_WIN ? newestIn(path.join(process.env.LOCALAPPDATA || '', 'OpenAI', 'Codex', 'bin'), 'codex.exe') : null)
+    || (IS_MAC ? newestIn('/Applications/Codex.app/Contents', 'codex', 4) || newestIn('/Applications/ChatGPT.app/Contents', 'codex', 4) || newestIn(path.join(os.homedir(), 'Library', 'Application Support', 'Codex'), 'codex', 4) : null)
+    || null,
 };
 
 // Tool names that only look things up. In "read-only" mode everything else is blocked.
@@ -458,5 +470,5 @@ function discoverConnectors() {
 }
 
 module.exports = {
-  send, stop, stopAll, login, status, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once,
+  send, stop, stopAll, login, status, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
 };

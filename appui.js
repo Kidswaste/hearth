@@ -26,7 +26,10 @@ const AppUI = (() => {
       Object.entries(THEMES).map(([id, t]) => el('option', { value: id, text: t.label, selected: H.config.theme?.preset === id })));
     const hotkey = el('input', { value: s.hotkey ?? 'Control+Alt+H', placeholder: 'e.g. Control+Alt+H (empty = off)' });
     const [trayRow, trayIn] = check('Closing the window keeps the hub running in the tray', s.closeToTray);
-    const [startupRow, startupIn] = check('Start Hearth when Windows starts', s.launchAtStartup);
+    const isMac = /Mac/.test(navigator.platform);
+    const [startupRow, startupIn] = check(isMac ? 'Start Hearth when you log in (Mac: add Hearth.app in System Settings → General → Login Items)' : 'Start Hearth when Windows starts', s.launchAtStartup);
+    const claudePath = el('input', { value: s.enginePaths?.claude || '', placeholder: 'Found automatically (Claude desktop app or the claude command)' });
+    const codexPath = el('input', { value: s.enginePaths?.codex || '', placeholder: 'Found automatically (Codex / ChatGPT app or the codex command)' });
     const [notifyRow, notifyIn] = check('Notify me when a reply finishes while I\'m elsewhere', s.notify !== false);
     const langs = new Set(s.spellLanguages || ['en-US']);
     const langBoxes = SPELL_LANGS.map(([code, label]) => {
@@ -60,11 +63,13 @@ const AppUI = (() => {
       section('Appearance', field('Theme', themeSel), el('div', { class: 'hint', text: 'Text size: Ctrl + / Ctrl − / Ctrl 0.' })),
       section('Spell check languages', el('div', { class: 'check-grid' }, langBoxes)),
       section('Tools in the rail', el('div', { class: 'check-grid' }, toolBoxes)),
+      section('Engines', field('Claude program (only if it isn\'t found)', claudePath), field('Codex program (only if it isn\'t found)', codexPath)),
       section('Folders', field('Forgeheart project', fhRow), field('Forgeheart debug build (runs beside the Forge Debug agent)', dbgRow), field('After Effects install (optional override)', aeRow), field('Where to look for .aep projects', aeDirs)),
       section('App',
         el('div', { class: 'button-row' },
-          el('button', { type: 'button', class: 'ghost', text: 'Create Start menu & desktop shortcuts', on: { click: createShortcuts } }),
+          el('button', { type: 'button', class: 'ghost', text: isMac ? 'Create Hearth.app in Applications' : 'Create Start menu & desktop shortcuts', on: { click: createShortcuts } }),
           el('button', { type: 'button', class: 'ghost', text: 'Back up hub data…', on: { click: exportData } }),
+          el('button', { type: 'button', class: 'ghost', text: 'Pack Hearth for a Mac…', title: 'One zip with the app, your chats, sketches, settings and memory, plus the Mac setup script', on: { click: packForMac } }),
           el('button', { type: 'button', class: 'ghost', text: 'Open data folder', on: { click: () => window.hub.openDataFolder() } }),
           el('button', { type: 'button', class: 'ghost', text: 'Edit config.json', on: { click: () => window.hub.openFile('config') } }),
           el('button', { type: 'button', class: 'ghost', text: 'Edit theme.css', on: { click: () => window.hub.openFile('theme') } }))),
@@ -85,6 +90,7 @@ const AppUI = (() => {
         forgeDebugBuild: dbgIn.value.trim() || undefined,
         aePath: aeIn.value.trim() || undefined,
         aeProjectDirs: aeDirs.value.split('\n').map((x) => x.trim()).filter(Boolean),
+        enginePaths: claudePath.value.trim() || codexPath.value.trim() ? { claude: claudePath.value.trim() || undefined, codex: codexPath.value.trim() || undefined } : undefined,
       };
       if (themeSel.value) {
         const { label, ...colors } = THEMES[themeSel.value];
@@ -106,6 +112,14 @@ const AppUI = (() => {
     const r = await window.hub.createShortcuts();
     if (r.error) toast(`Couldn't create shortcuts: ${r.error}`, { type: 'error' });
     else toast('Added Hearth to the Start menu and your desktop. Open it again any time to restart the app.');
+  }
+  async function packForMac() {
+    const t = toast('Packing Hearth for your Mac…', { timeout: 60000 });
+    try {
+      const r = await window.hub.packForMac();
+      t.remove();
+      if (r?.path) toast(`Packed (${fmtBytes(r.size)}). Copy it to the Mac, unzip it, then run mac/setup-mac.sh (see mac/README.md inside).`, { timeout: 12000, action: { label: 'Show', fn: () => window.hub.fs.reveal(r.path) } });
+    } catch (err) { t.remove(); toast(`Couldn't pack: ${err.message}`, { type: 'error' }); }
   }
   async function exportData() {
     const r = await window.hub.exportData();
@@ -253,7 +267,9 @@ const AppUI = (() => {
   function shortcutsHelp() {
     Modal.confirm('Keyboard shortcuts', '').then(() => {});
     const dlg = document.querySelector('dialog.ui-modal:last-of-type');
-    const rows = (list) => list.map(([k, d]) => el('tr', {}, el('td', {}, el('kbd', { text: k })), el('td', { text: d })));
+    const mac = /Mac/.test(navigator.platform);
+    const keyText = (k) => (mac ? k.replace(/Ctrl\+/g, '⌘').replace(/Ctrl /g, '⌘ ').replace(/Alt\+/g, '⌥') : k);
+    const rows = (list) => list.map(([k, d]) => el('tr', {}, el('td', {}, el('kbd', { text: keyText(k) })), el('td', { text: d })));
     dlg.querySelector('.modal-text').replaceWith(el('div', { class: 'shortcut-cols' },
       el('div', {}, el('h4', { text: 'Everywhere' }), el('table', { class: 'shortcut-table' }, rows(SHORTCUTS))),
       el('div', {}, el('h4', { text: 'Three.js Lab' }), el('table', { class: 'shortcut-table' }, rows(LAB_SHORTCUTS)))));
@@ -485,6 +501,7 @@ const AppUI = (() => {
     addAction('Add an agent or website', () => Manager.open());
     addAction('Back up hub data…', exportData);
     addAction('Create Start menu & desktop shortcuts', createShortcuts);
+    addAction('Pack Hearth for a Mac (app + your data + settings)', packForMac);
     addAction('Reload the hub', () => window.hub.reloadWindow(), 'Ctrl+Shift+R');
     addAction('Snapshot the window into the chat', snapshotToChat, 'Ctrl+Shift+S');
     addAction('Your usage: what you use and what you never touch', () => Usage.dialog());

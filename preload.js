@@ -56,6 +56,8 @@ contextBridge.exposeInMainWorld('hub', {
   captureWindow: call('window:capture'),
   setOnTop: call('window:onTop'),
   exportData: call('data:export'),
+  packForMac: call('data:packForMac'),
+  platform: call('app:platform'),
   setZoom: (factor) => webFrame.setZoomFactor(factor),
   getZoom: () => webFrame.getZoomFactor(),
   pathForFile: (file) => webUtils.getPathForFile(file),

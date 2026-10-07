@@ -19,7 +19,16 @@ function newest(dirs) {
   })[0];
 }
 
+const IS_MAC = process.platform === 'darwin';
+// Mac: /Applications/Adobe After Effects 2026/ holds the .app and aerender.
 function locate(override) {
+  if (IS_MAC) {
+    if (override && fs.existsSync(override)) return override;
+    let dirs = [];
+    try { dirs = fs.readdirSync('/Applications').filter((d) => /^Adobe After Effects/i.test(d)); } catch { return null; }
+    const pick = newest(dirs.filter((d) => fs.existsSync(path.join('/Applications', d, `${d}.app`))));
+    return pick ? path.join('/Applications', pick) : null;
+  }
   if (override && fs.existsSync(path.join(override, 'AfterFX.exe'))) return override;
   const base = 'C:\\Program Files\\Adobe';
   let dirs = [];
@@ -29,7 +38,7 @@ function locate(override) {
 }
 
 function prefsDir() {
-  const root = path.join(process.env.APPDATA || '', 'Adobe', 'After Effects');
+  const root = IS_MAC ? path.join(require('os').homedir(), 'Library', 'Preferences', 'Adobe', 'After Effects') : path.join(process.env.APPDATA || '', 'Adobe', 'After Effects');
   try {
     const v = newest(fs.readdirSync(root).filter((d) => /^\d+(\.\d+)?$/.test(d)));
     return v ? path.join(root, v) : null;
@@ -41,8 +50,8 @@ function status(override) {
   return {
     found: Boolean(dir),
     dir,
-    afterfx: dir && path.join(dir, 'AfterFX.exe'),
-    aerender: dir && fs.existsSync(path.join(dir, 'aerender.exe')) ? path.join(dir, 'aerender.exe') : null,
+    afterfx: dir && (IS_MAC ? path.join(dir, `${path.basename(dir)}.app`) : path.join(dir, 'AfterFX.exe')),
+    aerender: dir && fs.existsSync(path.join(dir, IS_MAC ? 'aerender' : 'aerender.exe')) ? path.join(dir, IS_MAC ? 'aerender' : 'aerender.exe') : null,
     userScripts: prefsDir() && path.join(prefsDir(), 'Scripts'),
   };
 }
@@ -65,7 +74,8 @@ function runScript(code, label = 'script', override) {
   const file = path.join(AE_DIR, `${label.replace(/[^\w-]+/g, '_')}-${Date.now()}.jsx`);
   // Wrap in an undo group so one Ctrl+Z in AE reverts the whole script.
   fs.writeFileSync(file, `app.beginUndoGroup(${JSON.stringify(`Hearth: ${label}`)});\ntry {\n${code}\n} catch (e) { alert("Hearth script error: " + e.toString() + (e.line ? " (line " + e.line + ")" : "")); }\napp.endUndoGroup();\n`);
-  spawn(st.afterfx, ['-r', file], { detached: true, stdio: 'ignore', windowsHide: false }).unref();
+  if (IS_MAC) spawn('osascript', ['-e', `tell application "${path.basename(st.afterfx, '.app')}" to DoScriptFile "${file.replace(/"/g, '\\"')}"`], { detached: true, stdio: 'ignore' }).unref();
+  else spawn(st.afterfx, ['-r', file], { detached: true, stdio: 'ignore', windowsHide: false }).unref();
   // Keep only the 30 newest generated scripts.
   const old = fs.readdirSync(AE_DIR).filter((f) => f.endsWith('.jsx')).map((f) => path.join(AE_DIR, f))
     .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs).slice(30);

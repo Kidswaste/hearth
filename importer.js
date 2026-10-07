@@ -7,11 +7,13 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const store = require('./store');
+// Windows' own bsdtar (Git's GNU tar on the PATH can't write zips); the Mac's tar is bsdtar.
+const TAR = process.platform === 'win32' ? require('path').join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
 
 function extractZip(zipPath) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-hub-import-'));
   // Windows 10+ ships bsdtar, which reads .zip files.
-  execFileSync('tar.exe', ['-xf', zipPath, '-C', dir], { windowsHide: true });
+  execFileSync(TAR, ['-xf', zipPath, '-C', dir], { windowsHide: true });
   return dir;
 }
 

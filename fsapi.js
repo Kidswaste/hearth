@@ -5,6 +5,8 @@ const { execFile } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+// Windows' own bsdtar (Git's GNU tar on the PATH can't write zips); the Mac's tar is bsdtar.
+const TAR = process.platform === 'win32' ? require('path').join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
 
 const assertAbs = (p) => {
   if (typeof p !== 'string' || !path.isAbsolute(p)) throw new Error(`Not an absolute path: ${p}`);
@@ -115,7 +117,7 @@ function zip(entries, out, { skipDirs = [] } = {}) {
     fs.mkdirSync(path.dirname(target), { recursive: true });
     if (fs.existsSync(target)) fs.rmSync(target);
     return new Promise((resolve, reject) => {
-      execFile('tar.exe', ['-a', '-cf', target, '-C', tmp, ...fs.readdirSync(tmp)], { windowsHide: true }, (err) => {
+      execFile(TAR, ['-a', '-cf', target, '-C', tmp, ...fs.readdirSync(tmp)], { windowsHide: true }, (err) => {
         fs.rmSync(tmp, { recursive: true, force: true });
         if (err) reject(err); else resolve({ path: target, size: fs.statSync(target).size });
       });

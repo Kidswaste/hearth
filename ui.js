@@ -1,3 +1,7 @@
+// Mac: ⌘ does what Ctrl does in Hearth's own shortcuts (every handler reads e.ctrlKey).
+if (/Mac/.test(navigator.platform)) {
+  addEventListener('keydown', (e) => { if (e.metaKey && !e.ctrlKey) Object.defineProperty(e, 'ctrlKey', { get: () => true }); }, true);
+}
 // Shared UI building blocks: element helper, toasts, modals, tabs, formatting, syntax highlighting
 // and a lightweight code editor. Loaded before every other renderer module.
 (() => {
