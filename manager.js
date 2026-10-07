@@ -104,6 +104,7 @@ const Manager = (() => {
     f.chatTools.checked = agent.chatTools !== false;
     f.showThinking.checked = agent.showThinking !== false;
     f.selfReview.checked = agent.selfReview ?? Boolean(agent.dock);
+    f.autoCompact.checked = agent.autoCompact !== false;
     connectorModes = { ...agent.connectors };
     syncModeFields();
   }
@@ -154,6 +155,7 @@ const Manager = (() => {
         chatTools: f.engine.value === 'claude' && !f.chatTools.checked ? false : undefined,
         showThinking: f.engine.value === 'claude' && !f.showThinking.checked ? false : undefined,
         selfReview: f.engine.value === 'claude' ? f.selfReview.checked : undefined,
+        autoCompact: f.autoCompact.checked ? undefined : false,
       });
     }
     if (existing) H.config.agents[H.config.agents.indexOf(existing)] = agent;

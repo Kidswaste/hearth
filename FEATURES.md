@@ -262,3 +262,7 @@
 222. ✓ **Contact sheet** (🎞 Sheet in the timeline, or the palette): one image with a frame at every cue (or across the loop / song; a few seconds of frames without a song), numbered and labeled. Send it to the director or save it. The director has three_contact_sheet to review the whole piece instead of one frame.
 223. ✓ **Long chats**: past ~80k tokens per message, a banner offers "Summarize & continue fresh": the agent writes a short summary and a new chat continues from it (much cheaper); "Keep going" hides it.
 224. ✓ **Open any sketch from Ctrl+K**: the palette lists "Open sketch: …" for every sketch.
+225. ✓ **Compact context** (like Claude Code's /compact): the agent summarizes the conversation and the same chat continues from that summary, so each message stops resending the whole history. Every message stays visible; a "🗜 Context compacted here" divider holds the summary. From the context meter in the chat header, the chat ⋯ menu or the long-chat banner. Tested: a code word survived the compaction.
+226. ✓ **Auto-compact on long tasks**: once a reply sends over ~110k tokens of context, the chat compacts itself right after (agent setting "Compacts long tasks on its own", on by default).
+227. ✓ **Context meter**: the chat header shows how much context each message sends now (green → yellow at 60k → red at 110k); click to compact.
+228. ✓ **Branch**: "Branch" on any reply starts a new chat with everything up to there, to try another direction without losing the original.

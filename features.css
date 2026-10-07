@@ -870,3 +870,18 @@ body.on-top #rail::after { content: "📌"; position: absolute; bottom: 4px; lef
 .long-chat { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px auto; max-width: 760px; padding: 8px 12px; border-radius: 10px; border: 1px solid #ffd75e80; background: color-mix(in srgb, #ffd75e 8%, transparent); font-size: 13px; }
 .long-chat span { flex: 1; min-width: 200px; }
 .sheet-img { display: block; max-width: 100%; max-height: 74vh; margin: 0 auto; border-radius: 6px; }
+
+/* ---------- context meter + compaction ---------- */
+.ctx-meter { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 99px; border: 1px solid color-mix(in srgb, var(--text) 15%, transparent); background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; }
+.ctx-meter[hidden] { display: none; }
+.ctx-bar { width: 46px; height: 4px; border-radius: 4px; background: color-mix(in srgb, var(--text) 12%, transparent); overflow: hidden; }
+.ctx-bar i { display: block; height: 100%; width: var(--pct, 0%); background: #7cd992; }
+.ctx-meter.warn { color: #ffd75e; border-color: #ffd75e70; }
+.ctx-meter.warn .ctx-bar i { background: #ffd75e; }
+.ctx-meter.high { color: #ff8a6a; border-color: #ff8a6a90; }
+.ctx-meter.high .ctx-bar i { background: #ff8a6a; }
+.compact-divider { margin: 14px auto; max-width: 760px; border-top: 1px dashed color-mix(in srgb, var(--text) 25%, transparent); padding-top: 6px; }
+.compact-divider summary { cursor: pointer; text-align: center; font-size: 12px; color: var(--muted); list-style: none; }
+.compact-divider[open] summary { margin-bottom: 6px; }
+.compact-divider .body { font-size: 13px; padding: 8px 12px; border-radius: 8px; background: color-mix(in srgb, var(--text) 5%, transparent); }
+.ctx-meter { white-space: nowrap; flex: none; line-height: 1.2; min-height: 0; height: 22px; }

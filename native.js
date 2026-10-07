@@ -34,7 +34,9 @@ const Native = (() => {
     const modelSel = el('select', { class: 'model-select', title: 'Model for this chat' });
     const menuBtn = el('button', { class: 'ghost', text: '⋯', title: 'Chat options' });
     const newBtn = el('button', { class: 'ghost', text: '＋ New chat', title: 'New chat (Ctrl+N)', on: { click: () => newChat(agentId) } });
-    const header = el('header', { class: 'native-head' }, title, meta, el('span', { class: 'spacer' }), modelSel, menuBtn, newBtn);
+    // How much context each message sends now (the last reply's input tokens); click to compact.
+    const ctx = el('button', { class: 'ctx-meter', hidden: true, on: { click: () => compactChat(agentId) } }, el('span', { class: 'ctx-bar' }, el('i')), el('span', { class: 'ctx-text' }));
+    const header = el('header', { class: 'native-head' }, title, meta, ctx, el('span', { class: 'spacer' }), modelSel, menuBtn, newBtn);
     title.addEventListener('dblclick', () => renameCurrent(agentId));
     menuBtn.addEventListener('click', (e) => chatMenu(agentId, e));
     modelSel.addEventListener('change', () => setChatModel(agentId, modelSel.value));
@@ -51,7 +53,7 @@ const Native = (() => {
     const counter = el('span', { class: 'composer-count' });
     const queueBox = el('div', { class: 'queue-chips', hidden: true });
     const form = el('form', { class: 'composer' }, el('div', { class: 'composer-box' }, queueBox, chips, input, counter), attachBtn, sendBtn);
-    const v = { title, meta, modelSel, list, input, sendBtn, chips, counter, jump, attachments: [], queue: [], queueBox };
+    const v = { title, meta, ctx, modelSel, list, input, sendBtn, chips, counter, jump, attachments: [], queue: [], queueBox };
 
     const saveDraft = debounce(() => store.set(draftKey(agentId), input.value || null), 400);
     input.addEventListener('input', () => { autosize(input); updateCounter(v); saveDraft(); });
@@ -209,6 +211,7 @@ const Native = (() => {
     if (act) {
       const idx = Number(act.closest('.msg').dataset.index);
       const what = act.dataset.msgAct;
+      if (what === 'branch') branchFrom(agentId, idx);
       if (what === 'review') send(agentId, REVIEW_PROMPT).catch((err) => toast(err.message, { type: 'error' }));
       if (what === 'opinion') secondOpinion(agentId);
       if (what === 'apply-opinion') {
@@ -287,6 +290,7 @@ const Native = (() => {
         el('span', { class: 'msg-time', text: time }),
         el('button', { class: 'copy-msg', text: 'Copy' }),
         act('quote', 'Quote', 'Quote in your next message'),
+        act('branch', 'Branch', 'New chat from here: try another direction and keep this one'),
         isLast ? act('retry', 'Retry', 'Write this reply again') : null,
         isLast && agent.engine === 'claude' ? act('review', '🔍 Review', 'Ask it to check its own result critically and fix what\'s wrong') : null,
         isLast && astraAgent() && astraAgent().id !== agent.id ? act('opinion', '👁 Second opinion', `Ask ${astraAgent().name} to judge this result${agent.dock ? ' (with a screenshot)' : ''}`) : null));
@@ -331,6 +335,7 @@ const Native = (() => {
     const folder = agent.workspace ? `edits ${agent.workspace.split(/[\\/]/).filter(Boolean).pop() || agent.workspace}` : null;
     v.meta.textContent = [folder, total ? `${fmt(total)} tokens this chat` : null].filter(Boolean).join(' · ');
     v.meta.title = agent.workspace ? `Can read and edit files in ${agent.workspace}` : '';
+    paintContext(v, chat);
     v.input.placeholder = `Message ${agent.name}…  (Enter to send · Shift+Enter new line · / for prompts)`;
     fillModelSelect(v, agent, chat);
     if (!v.input.value) { v.input.value = store.get(draftKey(agentId), '') || ''; autosize(v.input); updateCounter(v); }
@@ -347,6 +352,8 @@ const Native = (() => {
       // suggestions stay on the latest reply even after a second opinion is added below it
       const lastReplyIdx = chat.messages.map((m) => m.role).lastIndexOf('assistant');
       chat.messages.forEach((m, i) => {
+        if (m.compactReq) return; // the "please compact" request is shown as part of the divider
+        if (m.compactSummary) { v.list.append(compactDivider(m)); return; }
         m.lastReply = i === lastReplyIdx && chat.messages.slice(i + 1).every((x) => x.role === 'opinion') && !pending.has(chat.id) ? true : undefined;
         const node = messageEl(m, agent, i, i === lastIdx && !pending.has(chat.id));
         v.list.append(node);
@@ -469,6 +476,11 @@ const Native = (() => {
   // continued from another agent), send the earlier conversation along once.
   function withContext(chat, text) {
     if (chat.session?.id || chat.messages.length <= 1) return text;
+    if (chat.compact) {
+      const after = chat.messages.slice(chat.compact.index, -1).filter((m) => m.role !== 'error')
+        .map((m) => `${m.role === 'user' ? 'User' : m.role === 'opinion' ? `${m.from} (second opinion)` : 'Assistant'}: ${m.text}`).join('\n\n');
+      return `We compacted our earlier conversation to save context. Here is your summary of it${after ? ', then what we said since' : ''}. Continue naturally.\n\n<summary>\n${chat.compact.summary}\n</summary>${after ? `\n\n<since_then>\n${after.length > CONTEXT_CHARS ? `…${after.slice(-CONTEXT_CHARS)}` : after}\n</since_then>` : ''}\n\n${text}`;
+    }
     const earlier = chat.messages.slice(0, -1).filter((m) => m.role !== 'error')
       .map((m) => `${m.role === 'user' ? 'User' : m.role === 'opinion' ? `${m.from} (second opinion)` : 'Assistant'}: ${m.text}`).join('\n\n');
     if (!earlier) return text;
@@ -502,7 +514,7 @@ const Native = (() => {
     return { full, images, meta: atts.map((a) => ({ kind: a.kind, name: a.name })) };
   }
 
-  async function send(agentId, text, { fromHistory = false } = {}) {
+  async function send(agentId, text, { fromHistory = false, compact = false } = {}) {
     let chatId = H.activeChat[agentId];
     if (chatId && pending.has(chatId)) throw new Error(`${H.agent(agentId).name} is still answering`);
     let chat = chatId ? await loadChat(chatId) : null;
@@ -516,7 +528,7 @@ const Native = (() => {
       H.activeChat[agentId] = chat.id;
     }
     if (!fromHistory) {
-      const message = { role: 'user', text: text || '(see attachments)', at: now };
+      const message = { role: 'user', text: text || '(see attachments)', at: now, ...(compact ? { compactReq: true } : {}) };
       if (meta.length) { message.attachments = meta; message.sent = full; message.images = images; }
       chat.messages.push(message);
     }
@@ -568,8 +580,6 @@ const Native = (() => {
     if (p.opinions.length) extras.opinions = p.opinions;
     if (p.progress) extras.progress = p.progress;
     if (p.shows.length) extras.shows = p.shows;
-    afterReply.get(event.chatId)?.(event.type === 'done' ? visibleText(event.text || p.text) : null);
-    afterReply.delete(event.chatId);
     let replyText = '';
     if (event.type === 'done') {
       const raw = event.text || p.text;
@@ -593,8 +603,13 @@ const Native = (() => {
     }
     chat.updatedAt = at;
     remember(chat);
+    // whoever waited for this reply (compacting, summarize-and-continue) gets its text
+    const after = afterReply.get(event.chatId);
+    afterReply.delete(event.chatId);
+    after?.(event.type === 'done' ? visibleText(event.text || p.text) : null);
     if (H.activeChat[chat.agentId] === chat.id) render(chat.agentId, { keepScroll: true });
     if (replyText) AppUI.replyFinished(chat.agentId, chat.id, replyText);
+    if (event.type === 'done' && !after && !chat.messages.at(-1)?.compactSummary && maybeAutoCompact(chat, chat.messages.at(-1))) return;
     // messages typed while it worked go out now, one at a time
     const v = views.get(chat.agentId);
     if (v?.queue?.length && H.activeChat[chat.agentId] === chat.id && event.type !== 'stopped') {
@@ -602,6 +617,72 @@ const Native = (() => {
       renderQueue(chat.agentId);
       setTimeout(() => send(chat.agentId, next).catch((err) => toast(err.message, { type: 'error' })), 250);
     }
+  }
+
+  // ---------- compact context ----------
+  // Like Claude Code's /compact: the agent summarizes the conversation, the engine session restarts, and
+  // the next message carries only that summary plus what came after. The chat itself keeps every message.
+  const COMPACT_PROMPT = 'Compact our context: write a summary of this conversation that you can continue from without the full history. Include the goal, the decisions and preferences I gave you, what exists now (files, sketches, layers, settings, with their exact names), what you were in the middle of, and what is left to do. Complete but compact (under 350 words), no preamble.';
+  const AUTO_COMPACT_TOKENS = 110000;
+  async function compactChat(agentId, { auto = false } = {}) {
+    const chat = chats.get(H.activeChat[agentId]);
+    if (!chat || pending.has(chat.id)) return;
+    if (!chat.messages.some((m) => m.role === 'assistant' && !m.compactSummary)) { toast('Nothing to compact yet', { timeout: 1500 }); return; }
+    const before = [...chat.messages].reverse().find((m) => m.usage)?.usage.input || 0;
+    await send(agentId, COMPACT_PROMPT, { compact: true });
+    afterReply.set(chat.id, (summary) => {
+      const reply = chat.messages.at(-1);
+      if (!summary || reply?.role !== 'assistant') return;
+      reply.compactSummary = true;
+      reply.compactFrom = before;
+      chat.compact = { summary, index: chat.messages.length, at: Date.now() };
+      chat.session = {};
+      chat.longDismissed = false;
+      remember(chat);
+      if (H.activeChat[agentId] === chat.id) render(agentId, { keepScroll: true });
+      toast(`${auto ? 'Long task: context compacted automatically' : 'Context compacted'}${before ? ` (was ${fmt(before)} tokens per message)` : ''}`, { timeout: 3500 });
+    });
+  }
+  function compactDivider(m) {
+    return el('details', { class: 'compact-divider' },
+      el('summary', { text: `🗜 Context compacted here${m.compactFrom ? ` · was ${fmt(m.compactFrom)} tokens per message` : ''} · click to read the summary` }),
+      el('div', { class: 'body', html: renderMarkdown(m.text) }));
+  }
+  function paintContext(v, chat) {
+    const last = [...(chat?.messages || [])].reverse().find((m) => m.usage);
+    const n = last?.usage.input || 0;
+    v.ctx.hidden = !n;
+    if (!n) return;
+    const pct = Math.min(100, Math.round((n / 200000) * 100));
+    v.ctx.style.setProperty('--pct', `${pct}%`);
+    v.ctx.classList.toggle('warn', n >= 60000);
+    v.ctx.classList.toggle('high', n >= AUTO_COMPACT_TOKENS);
+    v.ctx.querySelector('.ctx-text').textContent = `${fmt(n)} context`;
+    v.ctx.title = `Each message now sends about ${fmt(n)} tokens of context. Click to compact it into a summary (the chat keeps every message).`;
+  }
+  // After a reply that pushed the context past the limit: compact on its own (agent setting, on by default).
+  function maybeAutoCompact(chat, message) {
+    const agent = H.agent(chat.agentId);
+    if (!agent || agent.autoCompact === false || !message?.usage || message.usage.input < AUTO_COMPACT_TOKENS) return false;
+    if (H.activeChat[chat.agentId] !== chat.id || views.get(chat.agentId)?.queue?.length) return false;
+    setTimeout(() => compactChat(chat.agentId, { auto: true }), 400);
+    return true;
+  }
+  // Branch: a new chat with everything up to this message, to try another direction without losing this one.
+  async function branchFrom(agentId, index) {
+    const chat = chats.get(H.activeChat[agentId]);
+    if (!chat) return;
+    const now = Date.now();
+    const copy = {
+      id: `${agentId}-${now.toString(36)}`, agentId, title: `${chat.title} (branch)`, createdAt: now, updatedAt: now,
+      session: {}, continuedFrom: `"${chat.title}"`, model: chat.model,
+      messages: chat.messages.slice(0, index + 1).map((m) => ({ ...m, lastReply: undefined })),
+      ...(chat.compact && chat.compact.index <= index + 1 ? { compact: { ...chat.compact } } : {}),
+    };
+    chats.set(copy.id, copy);
+    remember(copy);
+    open(agentId, copy.id);
+    toast('Branched: this chat continues from that message; the original is unchanged', { timeout: 3000 });
   }
 
   // ---------- long chats: summarize and continue fresh ----------
@@ -633,7 +714,8 @@ const Native = (() => {
     if (!last || last.usage.input < LONG_CHAT_TOKENS || chat.longDismissed || pending.has(chat.id)) return null;
     return el('div', { class: 'long-chat' },
       el('span', { text: `This chat now sends about ${fmt(last.usage.input)} tokens with every message.` }),
-      el('button', { class: 'primary small', text: 'Summarize & continue fresh', title: 'It writes a short summary, then a new chat continues from it', on: { click: () => summarizeAndContinue(agent.id) } }),
+      el('button', { class: 'primary small', text: '🗜 Compact context', title: 'It summarizes the conversation; this chat continues from the summary (every message stays visible)', on: { click: () => compactChat(agent.id) } }),
+      el('button', { class: 'ghost small', text: 'New chat from a summary', title: 'It writes a short summary, then a new chat continues from it', on: { click: () => summarizeAndContinue(agent.id) } }),
       el('button', { class: 'ghost small', text: 'Keep going', on: { click: () => { chat.longDismissed = true; remember(chat); render(agent.id, { keepScroll: true }); } } }));
   }
 
@@ -783,6 +865,7 @@ const Native = (() => {
     const chat = chats.get(H.activeChat[agentId]);
     if (!chat || pending.has(chat.id)) return;
     const original = chat.messages[index];
+    if (chat.compact && index < chat.compact.index) delete chat.compact;
     const next = await Modal.prompt('Edit message', { value: original.text, multiline: true, label: 'Everything after this message will be replaced by a new reply.' });
     if (next == null || !next.trim()) return;
     chat.messages = chat.messages.slice(0, index);
@@ -796,6 +879,7 @@ const Native = (() => {
     if (!chat || pending.has(chat.id)) return;
     const lastUser = chat.messages.map((m) => m.role).lastIndexOf('user');
     if (lastUser < 0) return;
+    if (chat.compact && lastUser < chat.compact.index) delete chat.compact;
     chat.messages = chat.messages.slice(0, lastUser + 1);
     chat.session = {};
     await send(agentId, chat.messages[lastUser].text, { fromHistory: true });
@@ -825,6 +909,7 @@ const Native = (() => {
     const items = chat ? [
       { label: chat.pinned ? 'Unpin' : 'Pin to top', action: () => togglePin(chat.id) },
       { label: 'Rename…', action: () => renameCurrent(agentId) },
+      { label: '🗜 Compact context', action: () => compactChat(agentId) },
       { label: 'Copy as Markdown', action: () => copyText(chatMarkdown(chat), 'Chat copied') },
       { label: 'Export as Markdown file…', action: async () => { const p = await window.hub.saveFile({ defaultPath: `${chat.title.replace(/[\\/:*?"<>|]/g, '_')}.md`, filters: [{ name: 'Markdown', extensions: ['md'] }], content: chatMarkdown(chat) }); if (p) toast('Chat exported', { action: { label: 'Show', fn: () => window.hub.fs.reveal(p) } }); } },
       ...others.map((a) => ({ label: `Continue with ${a.name}`, action: () => continueWith(chat.id, a.id) })),
