@@ -202,6 +202,39 @@ function barInfo(t) {
   const inBar = ((n % bpb) + bpb) % bpb;
   return { beatInBar: inBar + 1, bar: Math.floor(n / bpb) + 1, beatPhase: ph, barPhase: (inBar + ph) / bpb };
 }
+// ---------- live input: whatever the computer plays (Spotify, YouTube…) or a microphone ----------
+// Started from the main process (it can grant the click a screen capture needs). Live audio replaces the song's
+// in the analyser; kicks / snares are detected on the fly (low / high band attacks).
+let liveSrc = null; let liveStream = null; let liveKind = null;
+// In the Lab's preview the hub page captures and sends the spectrum / waveform here ('live-frame').
+let remoteFreq = null; let remoteWave = null; let remoteRate = 48000;
+let liveKickAt = -1e9; let liveSnareAt = -1e9; let liveBassAvg = 0; let liveHighAvg = 0;
+window.__startLive = async (kind) => {
+  try {
+    graph(); await actx.resume();
+    window.__stopLive(true);
+    const stream = kind === 'system'
+      ? await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
+      : await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    for (const tr of stream.getVideoTracks()) tr.stop();
+    if (!stream.getAudioTracks().length) throw new Error(kind === 'system' ? 'No system sound was shared' : 'No microphone');
+    liveStream = stream; liveKind = kind;
+    liveSrc = actx.createMediaStreamSource(stream);
+    if (srcNode) { try { srcNode.disconnect(analyser); } catch { /* not connected */ } }
+    liveSrc.connect(analyser);
+    if (recDest) liveSrc.connect(recDest);
+    post({ type: 'live-state', on: true, kind });
+    return true;
+  } catch (err) { post({ type: 'live-state', on: false, error: err.message }); return false; }
+};
+window.__stopLive = (quiet) => {
+  if (!liveSrc) return;
+  try { liveSrc.disconnect(); } catch { /* fine */ }
+  for (const tr of liveStream?.getTracks() || []) tr.stop();
+  liveSrc = null; liveStream = null; liveKind = null;
+  if (srcNode) srcNode.connect(analyser);
+  if (!quiet) post({ type: 'live-state', on: false });
+};
 const demoHits = (kind, t) => (kind === 'kick' ? Math.exp(-((t % 0.5)) / 0.12) : kind === 'snare' ? Math.exp(-(((t - 0.5) % 1 + 1) % 1) / 0.12) : 0);
 function graph() {
   if (actx) return;
@@ -218,7 +251,7 @@ function update() {
   if (now - lastUpdate < 8) return;
   const dt = Math.min(0.1, (now - lastUpdate) / 1000);
   lastUpdate = now;
-  if (!mediaEl) {
+  if (!mediaEl && !liveKind) {
     // No file loaded: a soft 120 bpm demo pulse so audio-reactive sketches still move.
     simulated = true;
     const t = now / 1000;
@@ -233,9 +266,8 @@ function update() {
     return;
   }
   simulated = false;
-  analyser.getByteFrequencyData(freq);
-  analyser.getFloatTimeDomainData(wave);
-  const hz = actx.sampleRate / analyser.fftSize;
+  if (remoteFreq) { freq.set(remoteFreq.subarray(0, freq.length)); wave.set(remoteWave.subarray(0, wave.length)); } else { analyser.getByteFrequencyData(freq); analyser.getFloatTimeDomainData(wave); }
+  const hz = (remoteFreq ? remoteRate : actx.sampleRate) / 2048;
   const avg = (lo, hi) => {
     let s = 0; let n = 0;
     for (let i = Math.max(1, Math.floor(lo / hz)); i <= Math.min(freq.length - 1, Math.ceil(hi / hz)); i += 1) { s += freq[i]; n += 1; }
@@ -247,6 +279,16 @@ function update() {
   bands.bass = avg(20, 150);
   bands.mid = clamp01(avg(150, 2000) * 1.2);
   bands.treble = clamp01(avg(2000, 12000) * 1.6);
+  if (liveKind) {
+    // live: beats and hits from attacks in the sound itself
+    const high = avg(1500, 5000);
+    liveBassAvg += (bands.bass - liveBassAvg) * Math.min(1, dt * 2);
+    liveHighAvg += (high - liveHighAvg) * Math.min(1, dt * 2);
+    if (bands.bass > liveBassAvg * 1.25 + 0.04 && now - liveKickAt > 220) liveKickAt = now;
+    if (high > liveHighAvg * 1.35 + 0.03 && now - liveSnareAt > 180) liveSnareAt = now;
+    bands.beat = Math.exp(-(now - liveKickAt) / 150);
+    return;
+  }
   const t = mediaEl.currentTime;
   const gridBeats = beatMap?.beats?.length ? beatMap.beats : analysis?.beats;
   if (gridBeats?.length) {
@@ -274,15 +316,17 @@ const audio = {
     for (let i = Math.max(1, Math.floor(lo / hz)); i <= Math.min(freq.length - 1, Math.ceil(hi / hz)); i += 1) { s += freq[i]; n += 1; }
     return n ? s / n / 255 : 0;
   },
-  get time() { return mediaEl ? mediaEl.currentTime : performance.now() / 1000; },
+  get time() { return mediaEl && !liveKind ? mediaEl.currentTime : performance.now() / 1000; },
+  // 'system' or 'mic' while live input runs, else null
+  get live() { return liveKind; },
   get duration() { return mediaEl?.duration || 0; },
-  get playing() { return mediaEl ? !mediaEl.paused : true; },
-  get loaded() { return Boolean(mediaEl); },
+  get playing() { return liveKind ? true : mediaEl ? !mediaEl.paused : true; },
+  get loaded() { return Boolean(mediaEl || liveKind); },
   get simulated() { update(); return simulated; },
   get bpm() { return beatMap?.bpm || analysis?.bpm || (mediaEl ? 0 : 120); },
   // Hand-placed hits (1 on the marker, fading over ~120 ms), straight from the user's Kick / Snare / Hit lanes.
-  get kick() { return mediaEl ? pulse(beatMap?.marks?.kick, mediaEl.currentTime) : demoHits('kick', performance.now() / 1000); },
-  get snare() { return mediaEl ? pulse(beatMap?.marks?.snare, mediaEl.currentTime) : demoHits('snare', performance.now() / 1000); },
+  get kick() { if (liveKind) { update(); return Math.exp(-(performance.now() - liveKickAt) / 120); } return mediaEl ? pulse(beatMap?.marks?.kick, mediaEl.currentTime) : demoHits('kick', performance.now() / 1000); },
+  get snare() { if (liveKind) { update(); return Math.exp(-(performance.now() - liveSnareAt) / 120); } return mediaEl ? pulse(beatMap?.marks?.snare, mediaEl.currentTime) : demoHits('snare', performance.now() / 1000); },
   get hit() { return mediaEl ? pulse(beatMap?.marks?.hit, mediaEl.currentTime) : 0; },
   get hits() { return beatMap?.marks || { kick: [], snare: [], hit: [] }; },
   // Seconds since the last / until the next marker of a kind ('kick', 'snare', 'hit', 'beat').
@@ -387,8 +431,9 @@ function startRecording({ fps = 60, bitrate = 16e6, until = null } = {}) {
   const merged = needsComposite();
   const canvas = merged ? (compRec = composite(document.createElement('canvas'))) : lastRenderer.domElement;
   const stream = canvas.captureStream(fps);
-  if (mediaEl) {
-    if (!recDest) { recDest = actx.createMediaStreamDestination(); srcNode.connect(recDest); }
+  if (mediaEl || liveSrc) {
+    // the song, or the live sound (Spotify…), goes into the video
+    if (!recDest) { recDest = actx.createMediaStreamDestination(); if (srcNode) srcNode.connect(recDest); if (liveSrc) liveSrc.connect(recDest); }
     for (const tr of recDest.stream.getAudioTracks()) stream.addTrack(tr);
   }
   const mime = ['video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm'].find((t) => MediaRecorder.isTypeSupported(t));
@@ -1728,6 +1773,9 @@ addEventListener('message', async (e) => {
   if (msg.type === 'layer-props') { const L = layers.get(msg.id); if (L) setLayerProps(L, msg.props); }
   if (msg.type === 'remove-layer') removeLayer(msg.id);
   if (msg.type === 'media-load') loadMedia(msg);
+  if (msg.type === 'live-stop') { window.__stopLive(); remoteFreq = null; remoteWave = null; if (!liveSrc) liveKind = null; }
+  if (msg.type === 'live-remote') { liveKind = msg.on ? msg.kind : null; if (!msg.on) { remoteFreq = null; remoteWave = null; } if (msg.on) graph(); }
+  if (msg.type === 'live-frame') { remoteFreq = msg.freq; remoteWave = msg.wave; remoteRate = msg.rate || 48000; }
   if (msg.type === 'fps-cap') { fpsCap = Number(msg.value) || 0; capT = -1; }
   if (msg.type === 'eval') runEval(msg);
   if (msg.type === 'edit') editCommand(msg);

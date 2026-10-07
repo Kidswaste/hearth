@@ -319,3 +319,8 @@
 267. ✓ **Hits land on the hit**: K / S / H taps move onto the real attack in the audio (lows for kicks, highs for snares / hits), within 150 ms before to 60 ms after, which removes the delay of tapping by ear; "on the hit" can switch it off. Tested: a K pressed 70 ms late landed exactly on the kick.
 268. ✓ **Auto-save sliders** (Sliders → Auto-save): values are written into the code a moment after you let go.
 269. ✓ **One group at a time** (Sliders → One group): opening a slider group folds the others.
+
+## Live sound and Spotify
+270. ✓ **🎧 Live** (timeline → Song): sketches react to what the computer plays (System sound: Spotify, YouTube, Suno, anything) or a microphone, instead of a loaded song; kicks / snares / beats are detected live, so audio-reactive sketches work unchanged. Inside the Lab the hub page captures and forwards the analysis (the isolated preview can't capture); the 🖥 Stage window captures by itself and its ⏺ recordings include the live sound.
+271. ✓ **Now playing** (no Spotify login): title, artist, cover, position and ⏮ ⏯ ⏭ for Spotify through Windows' media controls (or the current media app, e.g. a browser tab), Spotify's AppleScript on a Mac. 🎨 makes a palette from the album cover, 🖼 adds the cover to the sketch's references.
+(Loading Spotify songs as audio files isn't possible: Spotify's streams are encrypted and extracting them would break its terms.)

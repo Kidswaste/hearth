@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, session, desktopCapturer } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const store = require('./store');
@@ -7,6 +7,7 @@ const importer = require('./importer');
 const appshell = require('./appshell');
 const fsapi = require('./fsapi');
 const portable = require('./portable');
+const nowplaying = require('./nowplaying');
 const aemain = require('./aemain');
 const gamebridge = require('./gamebridge');
 
@@ -23,7 +24,7 @@ const AUTH_HOSTS = [
   'accounts.google.com', 'appleid.apple.com', 'login.microsoftonline.com',
   'login.live.com', 'auth.openai.com', 'auth0.openai.com', 'github.com', 'miro.com', 'slack.com',
 ];
-const ALLOWED_PERMISSIONS = new Set(['clipboard-sanitized-write', 'clipboard-read', 'notifications', 'media', 'fullscreen', 'midi', 'midiSysex']);
+const ALLOWED_PERMISSIONS = new Set(['clipboard-sanitized-write', 'clipboard-read', 'notifications', 'media', 'fullscreen', 'midi', 'midiSysex', 'display-capture']);
 // Ctrl+<key> combos the hub handles even while a website has focus.
 const HUB_KEYS = new Set(['1', '2', '3', '4', '5', '6', '7', '8', '9', 'g', 'r', ',', 'b', 'n', '\\', 'k', 'f', '/', '=', '+', '-', '0', 'tab', 'j']);
 
@@ -317,6 +318,20 @@ ipcMain.handle('stage:close', () => { if (stageWin && !stageWin.isDestroyed()) s
 ipcMain.handle('stage:focus', () => { if (stageWin && !stageWin.isDestroyed()) { stageWin.show(); stageWin.focus(); } });
 ipcMain.on('stage:to', (_e, msg) => { if (stageWin && !stageWin.isDestroyed()) stageWin.webContents.send('stage:to', msg); });
 ipcMain.on('stage:from', (_e, msg) => { if (win && !win.isDestroyed()) win.webContents.send('stage:from', msg); });
+// ---------- live sound for the Lab (Spotify, YouTube… or a mic) and what's playing ----------
+// Screen-capture APIs need a click inside the page that asks; the Lab's click happens in the hub window, so the
+// capture is started here in the sketch's frame (the Stage window when it's open) with a user gesture.
+ipcMain.handle('live:start', async (_e, kind) => {
+  try {
+    if (stageWin && !stageWin.isDestroyed()) return await stageWin.webContents.mainFrame.executeJavaScript(`window.__startLive ? window.__startLive(${JSON.stringify(kind)}) : false`, true);
+    // the Lab's own preview: the hub page captures and forwards the analysis
+    return await win.webContents.executeJavaScript(`window.__labLiveStart ? window.__labLiveStart(${JSON.stringify(kind)}) : false`, true);
+  } catch { return false; }
+});
+ipcMain.handle('np:start', () => nowplaying.start((info) => { if (win && !win.isDestroyed()) win.webContents.send('np:update', info); }));
+ipcMain.handle('np:stop', () => nowplaying.stop());
+ipcMain.handle('np:control', (_e, cmd) => nowplaying.control(String(cmd)));
+app.on('before-quit', () => nowplaying.stop());
 ipcMain.on('stage:fullscreen', () => { if (stageWin && !stageWin.isDestroyed()) stageWin.setFullScreen(!stageWin.isFullScreen()); });
 
 fsapi.registerIpc(ipcMain, () => win);
@@ -330,6 +345,10 @@ for (const file of [CONFIG_PATH, THEME_PATH]) {
 app.whenReady().then(() => {
   // data moved here from another computer (or folder): point saved file locations at the new data folder
   try { const r = portable.fixMovedPaths(); if (r.moved) console.log(`Hearth: data moved from ${r.from}, fixed ${r.changed} paths in ${r.files} files`); } catch (err) { console.error('fixMovedPaths', err); }
+  // "System sound" in the Lab: the sound of the whole computer (Windows), without a picker
+  session.defaultSession.setDisplayMediaRequestHandler((_req, cb) => {
+    desktopCapturer.getSources({ types: ['screen'] }).then(([src]) => cb(src ? { video: src, ...(process.platform === 'win32' ? { audio: 'loopback' } : {}) } : {})).catch(() => cb({}));
+  });
   if (process.platform === 'darwin') {
     // a Mac app needs a menu bar for ⌘C / ⌘V / ⌘Q and friends
     Menu.setApplicationMenu(Menu.buildFromTemplate([

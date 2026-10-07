@@ -34,7 +34,7 @@ const ThreeLab = (() => {
   // One iframe per mode; messages from it are routed by `source`.
   function sandboxFrame(parent, mode, onMessage, extraParams = () => '') {
     // No allow-same-origin: sketch code (which may come from a chat) can't reach the hub's APIs.
-    const frame = el('iframe', { class: 'three-frame', attrs: { sandbox: 'allow-scripts allow-pointer-lock allow-downloads' } });
+    const frame = el('iframe', { class: 'three-frame', attrs: { sandbox: 'allow-scripts allow-pointer-lock allow-downloads', allow: 'display-capture; microphone; autoplay' } });
     parent.append(frame);
     let ready = null;
     let queue = [];
@@ -175,6 +175,111 @@ const ThreeLab = (() => {
     const presentBtn = btn('▣ Present', 'Fullscreen preview with nothing else on screen, for showing it off or a second monitor (P · Esc to leave)', () => togglePresent());
     presentBtn.dataset.feature = 'Present';
     const presentHint = el('div', { class: 'present-hint', text: 'Esc to leave · Space play / pause · 1–9 jump to cues' });
+    // ---------- live sound + what's playing (Spotify, YouTube, Suno… anything with media controls) ----------
+    // Live: the sketch hears the computer's sound (or a mic) instead of a loaded song; recordings include it.
+    // Now playing: title / artist / cover / position of Spotify (or the current media app), with ⏮ ⏯ ⏭.
+    let liveKind = null;
+    let np = null;
+    // The preview iframe is isolated (no access to the hub) and browsers don't let isolated pages capture
+    // sound, so for it this page captures and sends the analysis ~60 times a second. The Stage window
+    // captures by itself (and its recordings include the sound).
+    const hubLive = { stream: null, ctx: null, analyser: null, timer: 0 };
+    window.__labLiveStart = async (kind) => {
+      try {
+        hubLiveStop();
+        const stream = kind === 'system'
+          ? await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
+          : await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+        for (const tr of stream.getVideoTracks()) tr.stop();
+        if (!stream.getAudioTracks().length) throw new Error(kind === 'system' ? 'No system sound was shared' : 'No microphone');
+        const ctx = new AudioContext();
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 2048; analyser.smoothingTimeConstant = 0.6;
+        ctx.createMediaStreamSource(stream).connect(analyser);
+        Object.assign(hubLive, { stream, ctx, analyser });
+        box.send({ type: 'live-remote', on: true, kind });
+        const f = new Uint8Array(1024); const w = new Float32Array(2048);
+        hubLive.timer = setInterval(() => {
+          analyser.getByteFrequencyData(f); analyser.getFloatTimeDomainData(w);
+          box.send({ type: 'live-frame', freq: f.slice(), wave: w.slice(), rate: ctx.sampleRate });
+        }, 16);
+        return true;
+      } catch (err) { toast(`Live sound: ${err.message}`, { type: 'error', timeout: 5000 }); return false; }
+    };
+    function hubLiveStop() {
+      clearInterval(hubLive.timer);
+      for (const tr of hubLive.stream?.getTracks() || []) tr.stop();
+      hubLive.ctx?.close();
+      Object.assign(hubLive, { stream: null, ctx: null, analyser: null, timer: 0 });
+    }
+    const liveBtn = btn('🎧 Live ▾', 'Make the sketch react to what your computer plays (Spotify, YouTube…) or a microphone, and see what\'s playing', (e) => liveMenu(e.currentTarget));
+    liveBtn.dataset.feature = 'Live sound';
+    const npBox = el('span', { class: 'np-box', hidden: true });
+    function liveMenu(anchor) {
+      const r = anchor.getBoundingClientRect();
+      const isWin = !/Mac/.test(navigator.platform);
+      popup(r.left, r.bottom + 4, [
+        'Make the sketch react to',
+        isWin ? ['System sound', 'Whatever plays on this PC: Spotify, YouTube, Suno…', () => setLive('system'), liveKind === 'system'] : null,
+        ['Microphone', 'A mic or line-in', () => setLive('mic'), liveKind === 'mic'],
+        liveKind ? ['Off: back to the loaded song', '', () => setLive(null)] : null,
+        'Now playing',
+        [np ? 'Hide what\'s playing' : 'Show what Spotify plays', 'Title, cover and ⏮ ⏯ ⏭ here, no Spotify login (also works with other players)', () => (np ? stopNowPlaying() : startNowPlaying())],
+      ]);
+    }
+    async function setLive(kind) {
+      if (!kind) { liveKind = null; hubLiveStop(); box.send({ type: 'live-stop' }); paintLive(); return; }
+      liveKind = kind;
+      if (player.playing) player.toggle(false); // the song would play over it
+      const ok = await window.hub.liveStart(kind);
+      if (!ok) { liveKind = null; paintLive(); return; } // the sketch reports why (live-state)
+      paintLive();
+      if (kind === 'system' && !np) startNowPlaying();
+    }
+    function paintLive() {
+      liveBtn.textContent = liveKind ? `● Live: ${liveKind === 'system' ? 'system sound' : 'mic'} ▾` : '🎧 Live ▾';
+      liveBtn.classList.toggle('live-on', Boolean(liveKind));
+    }
+    function startNowPlaying() {
+      np = {};
+      window.hub.npStart();
+      npBox.hidden = false;
+      npBox.replaceChildren(el('span', { class: 'np-wait', text: 'Waiting for Spotify / a player…' }));
+    }
+    function stopNowPlaying() { np = null; window.hub.npStop(); npBox.hidden = true; }
+    const fmtClock = (x) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, '0')}`;
+    let npStarted = false;
+    function onNowPlaying(info) {
+      if (!np) return;
+      np = info;
+      if (!info.app || !info.title) { npBox.replaceChildren(el('span', { class: 'np-wait', text: 'Nothing playing in Spotify (or another player)' })); return; }
+      if (info.cover) np.coverSrc = /^https?:/.test(info.cover) ? info.cover : `${fileUrl(info.cover)}?t=${info.coverAt || Date.now()}`;
+      else np.coverSrc = npBox.querySelector('img')?.src;
+      const ctl = (text, title, cmd) => btn(text, title, () => window.hub.npControl(cmd), 'ghost small np-ctl');
+      npBox.replaceChildren(
+        np.coverSrc ? el('img', { class: 'np-cover', src: np.coverSrc, alt: '' }) : null,
+        el('span', { class: 'np-text', title: `${info.title} — ${info.artist}${info.album ? ` (${info.album})` : ''} · ${info.app}` }, el('b', { text: info.title }), ` — ${info.artist || ''}`),
+        el('span', { class: 'np-time', text: info.duration ? `${fmtClock(info.position || 0)} / ${fmtClock(info.duration)}` : '' }),
+        ctl('⏮', 'Previous', 'prev'), ctl(info.playing ? '⏸' : '▶', 'Play / pause', 'toggle'), ctl('⏭', 'Next', 'next'),
+        btn('🎨', 'Palette from the cover', () => coverTo('palette')), btn('🖼', 'Add the cover to this sketch\'s references', () => coverTo('ref')));
+    }
+    async function coverFile() {
+      const src = np?.cover;
+      if (!src) throw new Error('No cover yet');
+      if (!/^https?:/.test(src)) return src;
+      const buf = new Uint8Array(await (await fetch(src)).arrayBuffer());
+      let bin = ''; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+      return window.hub.saveAttachment('cover.jpg', btoa(bin));
+    }
+    async function coverTo(what) {
+      try {
+        const f = await coverFile();
+        if (what === 'palette') { const cols = await paletteFrom(f); setPalette(cols); toast(`Palette from "${np.title}": ${cols.join(' ')}`, { timeout: 2500 }); }
+        else { const r = await addRef(f, { key: `${np.title || 'cover'} cover` }); toast(`Cover added to references as "${r.key}"`, { timeout: 2500 }); }
+      } catch (err) { toast(err.message, { type: 'error' }); }
+    }
+    if (!npStarted) { npStarted = true; window.hub.onNowPlaying((info) => onNowPlaying(info)); }
+
     // ---------- Stage window: the sketch in its own window (own process, own GPU context) for smooth frames ----------
     // Preview frame rate: Max follows the screen (240 Hz screens render 240 frames a second); 60 or 30 is lighter.
     const fpsSel = el('select', { class: 'fps-sel', title: 'Preview frame rate: lower = lighter on the GPU and steadier recordings', dataset: { feature: 'Preview fps' } },
@@ -1396,6 +1501,11 @@ const ThreeLab = (() => {
           el('span', { text: `${msg.geometries} geo · ${msg.textures} tex · ${msg.programs} shaders` }));
       }
       if (/^edit-/.test(msg.type)) { onEditMessage(msg); return; }
+      if (msg.type === 'live-state') { if (msg.error) toast(`Live sound: ${msg.error}`, { type: 'error', timeout: 5000 }); if (!msg.on && msg.error) { liveKind = null; paintLive(); } return; }
+      if (msg.type === 'ready' && liveKind) {
+        // a reloaded preview: the hub page keeps capturing, the Stage captures again by itself
+        if (box.onStage) { hubLiveStop(); setTimeout(() => window.hub.liveStart(liveKind), 400); } else if (hubLive.stream) box.send({ type: 'live-remote', on: true, kind: liveKind }); else setTimeout(() => window.hub.liveStart(liveKind), 400);
+      }
       if (msg.type === 'eval-result' || msg.type === 'input-result') { sandboxCalls.get(msg.id)?.(msg); sandboxCalls.delete(msg.id); return; }
       if (msg.type === 'shot') {
         if (msg.tag === 'thumb') { const fn = thumbShot; thumbShot = null; fn?.(msg.dataUrl); return; }
@@ -1741,7 +1851,7 @@ ${code}
         group('Sketch', picker, browseBtn, newBtn, sketchMenuBtn),
         group('Code', runBtn, liveLabel, snippetSel, version),
         group('Assets', paletteBox, refsBtn, shotBtn));
-      { const row = player.el.querySelector('.mb-main'); row.querySelector('.mb-g-capture').append(noteBtn, notesBtn, sheetBtn); row.querySelector('.mb-g-live').append(writeBtn, midiBtn); }
+      { const row = player.el.querySelector('.mb-main'); row.querySelector('.mb-g-capture').append(noteBtn, notesBtn, sheetBtn); row.querySelector('.mb-g-live').append(writeBtn, midiBtn); row.querySelector('.tb-group[data-cat="Song"]').append(liveBtn, npBox); }
       // First run with per-sketch songs: the song that was loaded goes to the sketch that was open.
       const firstId = sketches.some((s) => s.id === store.get('three.current')) ? store.get('three.current') : sketches[0]?.id;
       const lastMedia = store.get('three.media', null);
