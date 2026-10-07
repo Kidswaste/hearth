@@ -1879,6 +1879,51 @@ const ThreeMedia = (() => {
         return true;
       },
       clearGrid() { if (map.grid) { pushUndo(); map.grid = null; mapChanged(); } },
+      // Run the ⚡ Triggers over the song (or the loop) offline, with the same analyser as the sketch, and write
+      // what kick / snare / hit find as markers (snapped to the real attack). Returns the counts. Undoable.
+      async writeTriggers(cfg, { onProgress } = {}) {
+        if (!st.bytes || !D()) throw new Error('Load a song first');
+        const lanes = LANES.map((l) => l.id).filter((id) => cfg[id]?.on);
+        if (!lanes.length) throw new Error('Kick, snare and hit are all off');
+        const SR = 48000;
+        const decoded = await new OfflineAudioContext(1, 1, SR).decodeAudioData(st.bytes.slice(0));
+        const range = region ? [region.a, region.b] : [0, decoded.duration];
+        const ctx = new OfflineAudioContext(1, decoded.length, SR);
+        const src = ctx.createBufferSource(); src.buffer = decoded;
+        const an = ctx.createAnalyser(); an.fftSize = 2048; an.smoothingTimeConstant = 0.6;
+        src.connect(an); an.connect(ctx.destination);
+        const fr = new Uint8Array(1024); const hz = SR / 2048;
+        const state = Object.fromEntries(lanes.map((id) => [id, { armed: true, at: -1e9 }]));
+        const found = Object.fromEntries(lanes.map((id) => [id, []]));
+        const band = (lo, hi) => { let s = 0; let n = 0; for (let i = Math.max(1, Math.floor(lo / hz)); i <= Math.min(1023, Math.ceil(hi / hz)); i += 1) { s += fr[i]; n += 1; } return n ? s / n / 255 : 0; };
+        const step = 1 / 60; const total = Math.ceil(decoded.duration / step);
+        let k = 0;
+        for (let t = step; t < decoded.duration - step; t += step) {
+          ctx.suspend(t).then(() => {
+            an.getByteFrequencyData(fr);
+            const ms = t * 1000;
+            for (const id of lanes) {
+              const c = cfg[id]; const s = state[id]; const e = band(c.lo, c.hi);
+              if (e < c.thr * 0.93) s.armed = true;
+              else if (s.armed && e >= c.thr && ms - s.at >= c.gap) { s.at = ms; s.armed = false; if (t >= range[0] && t < range[1]) found[id].push(t); }
+            }
+            k += 1;
+            if (k % 600 === 0) onProgress?.(k / total);
+            ctx.resume();
+          });
+        }
+        src.start();
+        await ctx.startRendering();
+        pushUndo();
+        const counts = {};
+        for (const id of lanes) {
+          map.marks[id] = map.marks[id].filter((t) => t < range[0] || t >= range[1]);
+          for (const t of found[id]) map.marks[id] = addMark(map.marks[id], r4(Math.max(0, Math.min(D(), snapToHit(Math.min(D(), t + 0.03), id)))));
+          counts[id] = found[id].length;
+        }
+        mapChanged();
+        return { counts, range: region ? 'loop' : 'song' };
+      },
       // add / remove: { kick: [seconds], snare: [...], hit: [...] }; clear: ['kick', …] (within range if given)
       editMarkers({ add = {}, remove = {}, clear = [], range = null, snap = true } = {}) {
         if (!D()) return false;

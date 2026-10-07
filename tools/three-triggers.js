@@ -21,7 +21,7 @@ const ThreeTriggers = (() => {
   const F0 = 20; const F1 = 20000; const BINS = 200; // the spectrum the sketch sends: 200 log-spaced bins
   const clampCfg = (c) => {
     const lo = Math.max(F0, Math.min(F1 / 1.1, c.lo)); const hi = Math.max(lo * 1.1, Math.min(F1, c.hi));
-    return { on: c.on !== false, lo: Math.round(lo), hi: Math.round(hi), thr: Math.round(Math.max(0.02, Math.min(0.99, c.thr)) * 1000) / 1000, gap: Math.round(Math.max(30, Math.min(2000, c.gap))) };
+    return { on: c.on !== false, lo: Math.round(lo), hi: Math.round(hi), thr: Math.round(Math.max(0.02, Math.min(0.99, c.thr)) * 1000) / 1000, gap: Math.round(Math.max(30, Math.min(2000, c.gap))), fade: Math.round(Math.max(20, Math.min(2000, c.fade ?? 120))) };
   };
   const merge = (saved) => Object.fromEntries(LIST.map(({ id }) => [id, clampCfg({ ...DEFAULTS[id], ...(saved?.[id] || {}) })]));
 
@@ -51,7 +51,9 @@ const ThreeTriggers = (() => {
     const autoBtn = el('button', { class: 'ghost small', text: 'Auto bars', title: 'Set every bar from the last few seconds of sound (just under its loud moments)', on: { click: () => autoBars() } });
     const close = el('button', { class: 'ghost small', text: '×', title: 'Close', on: { click: () => opts.onClose?.() } });
     const hint = el('span', { class: 'trg-hint', text: 'drag a dot: sideways = which sound, up / down = the bar · drag the edges or wheel on the dot = width' });
-    const head = el('div', { class: 'trg-head' }, el('b', { text: '⚡ Triggers' }), hint, autoBtn, close);
+    const writeBtn = el('button', { class: 'ghost small', text: '→ Timeline', title: 'Write the kicks, snares and hits these triggers find into the timeline as markers you can edit (the loop, or the whole song). Undo with ↶ / Ctrl+Z.', on: { click: () => opts.onWrite?.(cfg, writeBtn) } });
+    writeBtn.hidden = !opts.onWrite;
+    const head = el('div', { class: 'trg-head' }, el('b', { text: '⚡ Triggers' }), hint, autoBtn, writeBtn, close);
     const senseRow = el('div', { class: 'trg-sense' });
     const root = el('div', { class: 'trg-panel' }, head, canvas, chips, detail, senseRow);
     const changed = () => { opts.onChange?.(cfg); paintChips(); paintDetail(); draw(); };
@@ -254,6 +256,7 @@ const ThreeTriggers = (() => {
         el('b', { class: 'trg-name', text: t.name }), on,
         el('span', { class: 'trg-k', text: 'bar' }), thr,
         el('span', { class: 'trg-k', text: 'at most every' }), gap,
+        el('span', { class: 'trg-k', text: 'fade' }), dragNum(() => c.fade, (x) => { Object.assign(c, clampCfg({ ...c, fade: x })); opts.onChange?.(cfg); }, (x) => `${x} ms`, (v0, d) => v0 * 1.03 ** d),
         el('span', { class: 'trg-k', text: `${fmtHz(c.lo)}–${fmtHz(c.hi)} Hz` }), rateEl,
         el('span', { class: 'spacer' }),
         el('button', { class: 'ghost small', text: '↺', title: `Reset ${t.name} to its default`, on: { click: () => { cfg[sel] = { ...DEFAULTS[sel] }; changed(); } } }));

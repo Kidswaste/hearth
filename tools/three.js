@@ -210,6 +210,15 @@ const ThreeLab = (() => {
         untuned: !trigTuned,
         onChange: (c) => { trigCfg = c; trigTuned = true; sendTriggers(); saveTriggers(); },
         onClose: () => toggleTriggers(false),
+        onWrite: async (cfg, b) => {
+          if (!player.loaded) { toast('Load a song first: the triggers are written as markers on its timeline', { type: 'error' }); return; }
+          b.disabled = true; const label = b.textContent; b.textContent = 'Scanning…';
+          try {
+            const r = await player.writeTriggers(cfg, { onProgress: (p) => { b.textContent = `Scanning ${Math.round(p * 100)}%`; } });
+            const parts = Object.entries(r.counts).map(([id, n]) => `${n} ${id}${n === 1 ? '' : 's'}`);
+            toast(`Wrote ${parts.join(', ')} on the ${r.range === 'loop' ? 'loop' : 'whole song'} (↶ to undo). These markers now drive the sketch.`, { timeout: 4500 });
+          } catch (err) { toast(err.message, { type: 'error' }); } finally { b.disabled = false; b.textContent = label; }
+        },
         sense: () => (liveKind ? liveOpts() : null),
         onSense: (p) => setLiveOpt(p),
       });

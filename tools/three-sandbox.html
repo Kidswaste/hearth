@@ -302,7 +302,8 @@ function runTriggers(now, hz) {
     }
   }
 }
-const trigPulse = (n) => Math.exp(-(performance.now() - trigState[n].at) / 120);
+const trigFade = (n) => trigCfg?.[n]?.fade || 120; // ms
+const trigPulse = (n) => Math.exp(-(performance.now() - trigState[n].at) / trigFade(n));
 const trigOn = (n) => Boolean(trigCfg?.[n]?.on);
 // While the panel is open: the spectrum in 200 log-spaced bins (20 Hz–20 kHz), each band's level and its last trigger.
 realSetInterval(() => {
@@ -435,11 +436,12 @@ const audio = {
   // user's hand-placed markers when the song has some; otherwise (and with live sound) the ⚡ Triggers bands.
   trigger(name) {
     const marks = beatMap?.marks?.[name];
-    if (mediaEl && !liveKind && marks?.length) return pulse(marks, mediaEl.currentTime);
+    if (mediaEl && !liveKind && marks?.length) return pulse(marks, mediaEl.currentTime, trigFade(name) / 1000);
     if (mediaEl || liveKind) { update(); return trigOn(name) ? trigPulse(name) : 0; }
     const t = performance.now() / 1000;
     return name === 'hats' ? 0.7 * Math.exp(-((t * 4) % 1) / 0.1) : name === 'bass' ? demoHits('kick', t) : demoHits(name, t);
   },
+  get bassHit() { return this.trigger('bass'); },
   get triggers() { return Object.fromEntries(TRIG_NAMES.map((n) => [n, this.trigger(n)])); },
   get hits() { return beatMap?.marks || { kick: [], snare: [], hit: [] }; },
   // Seconds since the last / until the next marker of a kind ('kick', 'snare', 'hit', 'beat').

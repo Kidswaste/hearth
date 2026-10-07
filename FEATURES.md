@@ -334,3 +334,6 @@
 277. ✓ Sketches: audio.trigger('kick' | 'bass' | 'snare' | 'hats' | 'hit'), audio.hats, audio.triggers. Kick / snare / hit still use hand-placed markers when a song has them; otherwise (and with live sound) the triggers. Director tool three_triggers reads / changes them.
 278. ✓ **Fewer timeline controls by default**: ⋯ shows the rest (zoom buttons, loop points and lock, ×2 ½ / tempo candidates / meter / auto / snap / fill / undo, speed, Notes list, Sheet, Write, MIDI). Record moved into Capture. Code-only controls (snippets, three.js version, Live code) hide with the code. Now Playing shows its time and 🎨 🖼 on hover.
 279. ✓ **⟲ Restart from scratch** (next to Run, Sketch ▾, or Ctrl+Shift+Enter): a brand-new page, GPU context and sound (the Stage window is recreated). A banner offers it when the preview stops responding or loses its GPU.
+280. ✓ **⚡ Triggers → Timeline**: scans the whole song (or the loop) offline with the same analyser as the sketch, in well under a second, and writes what Kick / Snare / Hit find as timeline markers snapped to the real attacks. They're then normal markers you can move, delete or undo (↶).
+281. ✓ **Fade** per trigger (how long a hit glows, 20–2000 ms); it also applies to hand-placed markers.
+282. ✓ Slider music links can follow **Hats** and **Bass hit** too (audio.hats, audio.bassHit).

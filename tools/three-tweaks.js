@@ -286,7 +286,7 @@ const ThreeTweaks = (() => {
   // ---------- panel + state ----------
   // Module-level save helper (the controller has its own applyValues for slider values).
   const applyValues_ = (code, items, vals) => applyValues(code, items, vals);
-  const BANDS = [['kick', 'Kick'], ['snare', 'Snare'], ['hit', 'Hit'], ['beat', 'Beat'], ['bass', 'Bass'], ['mid', 'Mids'], ['treble', 'Highs'], ['level', 'Loudness']];
+  const BANDS = [['kick', 'Kick'], ['snare', 'Snare'], ['hats', 'Hats'], ['bassHit', 'Bass hit'], ['hit', 'Hit'], ['beat', 'Beat'], ['bass', 'Bass'], ['mid', 'Mids'], ['treble', 'Highs'], ['level', 'Loudness']];
   const BAND_NAME = Object.fromEntries(BANDS);
   // camelCase / snake_case keys → "Orb size"
   const humanize = (k) => {
