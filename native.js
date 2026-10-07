@@ -264,6 +264,8 @@ const Native = (() => {
     if (m.thinking) node.append(thinkingEl(m.thinking, false, m.thinkMs));
     for (const qa of m.qa || []) node.append(el('div', { class: 'qa-done' }, el('span', { class: 'qa-q', text: `❓ ${qa.q}` }), el('span', { class: 'qa-a', text: `→ ${qa.a}` })));
     for (const op of m.opinions || []) node.append(opinionCard(op));
+    if (m.progress) node.append(progressCard(m.progress));
+    for (const sh of m.shows || []) node.append(showCard(sh));
     node.append(body);
     if (m.role === 'opinion') node.append(el('div', { class: 'msg-foot' }, el('button', { class: 'msg-act primary-act', text: `Ask ${agent.name} to use it`, dataset: { msgAct: 'apply-opinion' } })));
     if (m.suggest?.length && (isLast || m.lastReply)) node.append(el('div', { class: 'suggest-chips' }, m.suggest.map((s) => el('button', { class: 'suggest-chip', text: s, dataset: { suggest: s }, title: 'Send this' }))));
@@ -351,6 +353,8 @@ const Native = (() => {
       });
     }
 
+    const banner = chat && longChatBanner(agent, chat);
+    if (banner) v.list.append(banner);
     const p = chat && pending.get(chat.id);
     if (p) {
       p.el = el('div', { class: 'msg assistant streaming' }, el('div', { class: 'body' }));
@@ -403,6 +407,19 @@ const Native = (() => {
     const d = el('details', { class: 'thinking' }, el('summary', { text: ms ? `Thought for ${Math.max(1, Math.round(ms / 1000))} s` : 'Thought process' }), el('div', { class: 'thinking-text', text }));
     d.open = open;
     return d;
+  }
+  function progressCard(steps) {
+    const done = steps.filter((s) => s.status === 'done').length;
+    const card = el('div', { class: 'progress-card' },
+      el('div', { class: 'progress-head' }, el('b', { text: 'Plan' }), el('span', { text: `${done} / ${steps.length}` }),
+        el('span', { class: 'progress-bar' }, el('i'))),
+      el('ol', {}, steps.map((s) => el('li', { class: `step ${s.status || 'todo'}`, text: s.text }))));
+    card.style.setProperty('--pct', `${Math.round((done / (steps.length || 1)) * 100)}%`);
+    return card;
+  }
+  function showCard(sh) {
+    const url = `file:///${String(sh.path).replace(/\\/g, '/')}`;
+    return el('figure', { class: 'show-card' }, el('img', { src: url, alt: sh.caption, title: 'Click to open full size', on: { click: () => window.hub.fs.open(sh.path) } }), el('figcaption', { text: sh.caption }));
   }
   function opinionCard(op) {
     return el('div', { class: 'opinion-card' }, el('div', { class: 'opinion-head', text: `🔎 ${op.from}'s second opinion${op.q ? `: ${op.q.slice(0, 80)}${op.q.length > 80 ? '…' : ''}` : ''}` }),
@@ -506,7 +523,7 @@ const Native = (() => {
     const last = chat.messages.at(-1);
     chat.updatedAt = now;
     remember(chat);
-    pending.set(chat.id, { text: '', tools: [], started: now, thinking: '', cards: [], qa: [], opinions: [] });
+    pending.set(chat.id, { text: '', tools: [], started: now, thinking: '', cards: [], qa: [], opinions: [], progress: null, shows: [] });
     render(agentId);
     window.hub.send({
       agentId, chatId: chat.id, session: chat.session,
@@ -549,6 +566,10 @@ const Native = (() => {
     if (p.thinking.trim()) { extras.thinking = p.thinking.trim().slice(0, 30000); extras.thinkMs = (p.thinkEnd || at) - (p.thinkStart || p.started); }
     if (p.qa.length) extras.qa = p.qa;
     if (p.opinions.length) extras.opinions = p.opinions;
+    if (p.progress) extras.progress = p.progress;
+    if (p.shows.length) extras.shows = p.shows;
+    afterReply.get(event.chatId)?.(event.type === 'done' ? visibleText(event.text || p.text) : null);
+    afterReply.delete(event.chatId);
     let replyText = '';
     if (event.type === 'done') {
       const raw = event.text || p.text;
@@ -581,6 +602,39 @@ const Native = (() => {
       renderQueue(chat.agentId);
       setTimeout(() => send(chat.agentId, next).catch((err) => toast(err.message, { type: 'error' })), 250);
     }
+  }
+
+  // ---------- long chats: summarize and continue fresh ----------
+  // Every message re-sends the whole conversation; past ~80k tokens a fresh chat that starts from a short
+  // summary is much cheaper. A banner offers it; afterReply catches the summary.
+  const afterReply = new Map(); // chat id -> fn(text | null) when its reply ends
+  const LONG_CHAT_TOKENS = 80000;
+  const SUMMARY_PROMPT = 'We are moving to a fresh chat to save tokens. Write a compact summary of this conversation that you could continue from: the goal, what we decided, what exists now (files, sketches, layers, settings with their names), and what is left to do. Under 250 words, no preamble.';
+  async function summarizeAndContinue(agentId) {
+    const chat = chats.get(H.activeChat[agentId]);
+    if (!chat || pending.has(chat.id)) return;
+    await send(agentId, SUMMARY_PROMPT);
+    afterReply.set(chat.id, (summary) => {
+      if (!summary) return;
+      const now = Date.now();
+      const fresh = {
+        id: `${agentId}-${now.toString(36)}`, agentId, title: `${chat.title.replace(/ \(continued\)$/, '')} (continued)`, createdAt: now, updatedAt: now,
+        session: {}, continuedFrom: 'summary of the earlier chat', model: chat.model,
+        messages: [{ role: 'assistant', text: `**Where we are** (summary of "${chat.title}")\n\n${summary}`, at: now }],
+      };
+      chats.set(fresh.id, fresh);
+      remember(fresh);
+      open(agentId, fresh.id);
+      toast('Continuing in a fresh chat from the summary (the old chat stays in the list)', { timeout: 4000 });
+    });
+  }
+  function longChatBanner(agent, chat) {
+    const last = [...(chat?.messages || [])].reverse().find((m) => m.usage);
+    if (!last || last.usage.input < LONG_CHAT_TOKENS || chat.longDismissed || pending.has(chat.id)) return null;
+    return el('div', { class: 'long-chat' },
+      el('span', { text: `This chat now sends about ${fmt(last.usage.input)} tokens with every message.` }),
+      el('button', { class: 'primary small', text: 'Summarize & continue fresh', title: 'It writes a short summary, then a new chat continues from it', on: { click: () => summarizeAndContinue(agent.id) } }),
+      el('button', { class: 'ghost small', text: 'Keep going', on: { click: () => { chat.longDismissed = true; remember(chat); render(agent.id, { keepScroll: true }); } } }));
   }
 
   // ---------- talking back: questions and second opinions (mcp/chat-mcp.js → HubBridge) ----------
@@ -667,6 +721,31 @@ const Native = (() => {
     if (tool === 'chat_ask') {
       const opts = Array.isArray(args.options) ? args.options.map(String).filter(Boolean).slice(0, 8) : [];
       return askUser(agentId, { question: String(args.question || '').slice(0, 600), options: opts, multiple: Boolean(args.multiple), free: args.free !== false });
+    }
+    if (tool === 'chat_progress') {
+      const chatId = pendingFor(agentId);
+      const p = chatId && pending.get(chatId);
+      if (!p) return { ok: false, error: 'No reply in progress.' };
+      const steps = (Array.isArray(args.steps) ? args.steps : []).slice(0, 12).map((s) => (typeof s === 'string' ? { text: s, status: 'todo' } : { text: String(s.text || '').slice(0, 160), status: ['todo', 'doing', 'done'].includes(s.status) ? s.status : 'todo' }));
+      p.progress = steps;
+      const card = progressCard(steps);
+      card.style.setProperty('--pct', `${Math.round((steps.filter((s) => s.status === 'done').length / (steps.length || 1)) * 100)}%`);
+      const old = p.cards.find((c) => c.classList.contains('progress-card'));
+      if (old) { p.cards[p.cards.indexOf(old)] = card; old.replaceWith(card); } else p.cards.unshift(card);
+      repaintPending(chatId);
+      return { ok: true, value: 'Shown.' };
+    }
+    if (tool === 'chat_show') {
+      const chatId = pendingFor(agentId);
+      const p = chatId && pending.get(chatId);
+      if (!p) return { ok: false, error: 'No reply in progress.' };
+      const path = await screenshotFor(H.agent(agentId));
+      if (!path) return { ok: false, error: 'Could not take the screenshot.' };
+      const sh = { caption: String(args.caption || '').slice(0, 200), path };
+      p.shows.push(sh);
+      p.cards.push(showCard(sh));
+      repaintPending(chatId);
+      return { ok: true, value: 'Shown to the user.' };
     }
     if (tool === 'chat_second_opinion') {
       const chatId = pendingFor(agentId);

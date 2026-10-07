@@ -852,3 +852,21 @@ body.on-top #rail::after { content: "📌"; position: absolute; bottom: 4px; lef
 .queue-chip button { padding: 0 5px; min-width: 0; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
 .live-cards:empty { display: none; }
 .lab-palette.empty .lab-swatch { display: none; }
+
+/* ---------- plan checklist, pictures in chat, long chats, contact sheet ---------- */
+.progress-card { margin: 8px 0; padding: 8px 12px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--text) 15%, transparent); background: color-mix(in srgb, var(--text) 4%, transparent); }
+.progress-head { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.progress-bar { flex: 1; height: 4px; border-radius: 4px; background: color-mix(in srgb, var(--text) 12%, transparent); overflow: hidden; }
+.progress-bar i { display: block; height: 100%; width: var(--pct, 0%); background: #7cd992; transition: width .4s; }
+.progress-card ol { margin: 6px 0 0; padding-left: 22px; font-size: 13px; }
+.progress-card li { margin: 2px 0; }
+.progress-card li.done { color: var(--muted); text-decoration: line-through; }
+.progress-card li.done::marker { color: #7cd992; }
+.progress-card li.doing { font-weight: 600; }
+.progress-card li.doing::after { content: ' …'; color: #ffd75e; }
+.show-card { margin: 8px 0; max-width: 520px; }
+.show-card img { width: 100%; border-radius: 8px; cursor: zoom-in; border: 1px solid color-mix(in srgb, var(--text) 15%, transparent); }
+.show-card figcaption { font-size: 12px; color: var(--muted); margin-top: 3px; }
+.long-chat { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px auto; max-width: 760px; padding: 8px 12px; border-radius: 10px; border: 1px solid #ffd75e80; background: color-mix(in srgb, #ffd75e 8%, transparent); font-size: 13px; }
+.long-chat span { flex: 1; min-width: 200px; }
+.sheet-img { display: block; max-width: 100%; max-height: 74vh; margin: 0 auto; border-radius: 6px; }

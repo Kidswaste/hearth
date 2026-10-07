@@ -257,3 +257,8 @@
 217. ✓ **Suggested next steps**: agents end replies with up to 3 short follow-ups shown as buttons; one click sends it.
 218. ✓ **Queue while it works**: type and press Enter while an agent is answering and the message waits in line (⏳ chip, × to drop it), sent when the reply ends. Empty box + the button = Stop.
 219. ✓ **Coolors palettes**: 🎨 in the Lab toolbar imports a Coolors link (coolors.co/palette/…), a Coolors export (CSS / array / JSON) or any hex codes (it reads your clipboard), opens coolors.co, takes one from a picture, saves palettes to a library and applies saved ones. The director can set one from a Coolors link too.
+220. ✓ **Live plan**: for multi-step work an agent posts its plan as a checklist in the chat (chat_progress) and ticks steps off as it goes, with a progress bar; it stays on the reply.
+221. ✓ **Pictures in the chat**: agents can show you what's on screen (chat_show, e.g. "Variant A" then "Variant B", then ask which you prefer); click a picture for full size.
+222. ✓ **Contact sheet** (🎞 Sheet in the timeline, or the palette): one image with a frame at every cue (or across the loop / song; a few seconds of frames without a song), numbered and labeled. Send it to the director or save it. The director has three_contact_sheet to review the whole piece instead of one frame.
+223. ✓ **Long chats**: past ~80k tokens per message, a banner offers "Summarize & continue fresh": the agent writes a short summary and a new chat continues from it (much cheaper); "Keep going" hides it.
+224. ✓ **Open any sketch from Ctrl+K**: the palette lists "Open sketch: …" for every sketch.

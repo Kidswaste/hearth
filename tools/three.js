@@ -395,6 +395,86 @@ const ThreeLab = (() => {
     const notesOf = () => (current ? (notesAll[current.id] ||= []) : []);
     const saveNotes = debounce(() => window.hub.kvSet('three-notes', notesAll), 300);
     const fileUrl = (p) => `file:///${encodeURI(String(p).replace(/\\/g, '/'))}`;
+    // ---------- contact sheet ----------
+    // One picture of the whole piece: a frame at each cue (or evenly over the loop / song), labeled with
+    // its time, for you, the director's self-review or Astra.
+    let sheetBusy = false;
+    async function contactSheet({ times = null, count = 8 } = {}) {
+      if (sheetBusy) throw new Error('A contact sheet is already being made');
+      // No song: frames a moment apart, as it runs.
+      if (!player.loaded) return sheetFromFrames(await liveFrames(Math.min(count, 8)));
+      sheetBusy = true;
+      const wasPlaying = player.playing; const wasAt = player.time;
+      try {
+        if (wasPlaying) player.toggle(false);
+        const cues = player.cues;
+        let picks = times ? times.map((t) => ({ t: Number(t), label: '' })) : cues.length >= 2 ? cues.map((c) => ({ t: c.time + 0.05, label: c.name })) : null;
+        if (!picks) {
+          const lp = player.loop; const a = lp?.a ?? 0; const b = lp?.b ?? player.duration;
+          picks = Array.from({ length: count }, (_, i) => ({ t: a + ((b - a) * (i + 0.5)) / count, label: '' }));
+        }
+        picks = picks.filter((x) => Number.isFinite(x.t)).slice(0, 16);
+        const frames = [];
+        for (const pk of picks) {
+          player.seek(pk.t);
+          await new Promise((r) => setTimeout(r, 450));
+          const url = await director.shot();
+          if (url) frames.push({ ...pk, url });
+        }
+        return await sheetFromFrames(frames);
+      } finally {
+        player.seek(wasAt);
+        if (wasPlaying) player.toggle(true);
+        sheetBusy = false;
+      }
+    }
+    async function liveFrames(n) {
+      const frames = [];
+      for (let i = 0; i < n; i += 1) { const url = await director.shot(); if (url) frames.push({ t: i * 0.6, label: `+${(i * 0.6).toFixed(1)} s`, url }); await new Promise((r) => setTimeout(r, 600)); }
+      return frames;
+    }
+    async function sheetFromFrames(frames) {
+      if (!frames.length) throw new Error('Nothing is rendering');
+      const imgs = await Promise.all(frames.map((f) => new Promise((res) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = f.url; })));
+      const cols = frames.length <= 4 ? frames.length : frames.length <= 9 ? 3 : 4;
+      const first = imgs.find(Boolean);
+      const tw = 420; const th = Math.round(tw * (first.height / first.width)); const pad = 6; const lab = 22;
+      const rows = Math.ceil(frames.length / cols);
+      const cv = document.createElement('canvas');
+      cv.width = cols * (tw + pad) + pad; cv.height = rows * (th + lab + pad) + pad;
+      const g = cv.getContext('2d');
+      g.fillStyle = '#0b0e10'; g.fillRect(0, 0, cv.width, cv.height);
+      g.font = '14px Consolas, monospace';
+      frames.forEach((f, i) => {
+        const x = pad + (i % cols) * (tw + pad); const y = pad + Math.floor(i / cols) * (th + lab + pad);
+        if (imgs[i]) g.drawImage(imgs[i], x, y, tw, th);
+        g.fillStyle = '#ffd75e'; g.fillText(`${i + 1}  ${f.label?.startsWith('+') ? f.label : `${fmtMs(f.t).replace(/^0:/, '')}${f.label ? `  ${f.label}` : ''}`}`, x + 2, y + th + 16);
+      });
+      return { dataUrl: cv.toDataURL('image/jpeg', 0.86), frames: frames.map((f, i) => ({ n: i + 1, time: Math.round(f.t * 100) / 100, cue: f.label || undefined })) };
+    }
+    const sheetBtn = btn('🎞 Sheet', 'Contact sheet: a frame at every cue (or across the loop / song) in one picture, to check the whole piece or send to the director / Astra', () => showSheet());
+    async function showSheet() {
+      let sheet;
+      const t = toast('Making the contact sheet…', { timeout: 30000 });
+      try { sheet = await contactSheet(); } catch (err) { t.remove(); toast(err.message, { type: 'error' }); return; }
+      t.remove();
+      const path = await window.hub.saveAttachment(`contact-sheet-${Date.now()}.jpg`, sheet.dataUrl.split(',')[1]);
+      const agent = H.agents().find((a) => a.dock === 'three' && a.mode === 'native');
+      const dlg = el('dialog', { class: 'ui-modal sb-dialog' },
+        el('div', { class: 'refs-head' }, el('h3', { text: `Contact sheet · ${sheet.frames.length} frames` }), el('span', { class: 'spacer' }),
+          agent ? btn('Send to the director', 'Attach it to the Three Director\'s chat with a starter message', () => {
+            dlg.close();
+            Native.attachPaths(agent.id, [path]);
+            Native.setDraft(agent.id, `Here's a contact sheet of "${current?.name}" (frames ${sheet.frames.map((f) => `${f.n} = ${fmtMs(f.time)}${f.cue ? ` ${f.cue}` : ''}`).join(', ')}). Look at the whole piece: `);
+          }, 'primary small') : null,
+          btn('Save…', 'Save the picture', async () => { const p = await window.hub.saveFile({ defaultPath: `${current?.name || 'sketch'} contact sheet.jpg`, filters: [{ name: 'JPEG', extensions: ['jpg'] }], content: sheet.dataUrl.split(',')[1], base64: true }); if (p) toast('Saved', { action: { label: 'Show', fn: () => window.hub.fs.reveal(p) } }); }),
+          btn('Close', '', () => dlg.close())),
+        el('img', { class: 'sheet-img', src: sheet.dataUrl, alt: 'Contact sheet' }));
+      dlg.addEventListener('close', () => dlg.remove());
+      document.body.append(dlg);
+      dlg.showModal();
+    }
+
     // ---------- write button ----------
     const writeBtn = btn('⏺ Write', 'Write: while the song plays, moving a slider, a layer setting or a MIDI knob records it as a curve (replacing what was there). W', () => setWrite(!writeArmed), 'ghost small mb-write');
     function setWrite(on) {
@@ -801,7 +881,10 @@ const ThreeLab = (() => {
     let focusOn = false;
     const exitFocus = el('button', { class: 'lab-focus-exit', text: '✕ Exit focus (Esc)', on: { click: () => setFocus(false) } });
     document.body.append(exitFocus);
+    api.sketchList = () => [...sketches].sort((a, b) => b.updatedAt - a.updatedAt).map((s) => ({ id: s.id, name: s.name }));
+    api.openSketchById = (id) => { if (sketches.some((s) => s.id === id) && id !== current?.id) openSketch(id); };
     api.lab = {
+      sheet: () => showSheet(),
       present: () => togglePresent(), focus: () => setFocus(!focusOn), consoleMode: (m) => setConsoleMode(m),
       speed: (r) => player.setRate(r), cue: () => player.addCue(player.time),
       // what a controller would send (also used by tests): midiMessage([0xB0, 21, 64])
@@ -1427,7 +1510,7 @@ ${code}
       picker.after(browseBtn);
       toolbar.querySelector('.spacer').after(refsBtn);
       refsBtn.before(paletteBox);
-      { const row = player.el.querySelector('.mb-main'); row.querySelector('.spacer').before(writeBtn, midiBtn); }
+      { const row = player.el.querySelector('.mb-main'); row.querySelector('.spacer').before(writeBtn, midiBtn, sheetBtn); }
       { const row = player.el.querySelector('.mb-main'); row.querySelector('.spacer').before(noteBtn, notesBtn); }
       // First run with per-sketch songs: the song that was loaded goes to the sketch that was open.
       const firstId = sketches.some((s) => s.id === store.get('three.current')) ? store.get('three.current') : sketches[0]?.id;
@@ -1596,6 +1679,7 @@ ${code}
         remove: (id) => { notesAll[current.id] = notesOf().filter((m) => m.id !== id); saveNotes(); renderNotes(); },
       },
       report,
+      contactSheet: (o) => contactSheet(o),
       shot: () => new Promise((resolve) => {
         pendingShot = resolve;
         box.send({ type: 'screenshot' });
@@ -1890,7 +1974,7 @@ ${frag}\`,
         { id: 'easing', label: 'Easing', render: (p) => Kit.easingTool(p) },
       ], { storeKey: 'three.tab' });
     },
-    commands: [
+    get commands() { return [
       { label: 'New three.js sketch', run: () => { tabs?.show('sketch'); } },
       { label: 'Open a 3D model', run: () => { tabs?.show('models'); setTimeout(() => api.openModel?.(), 100); } },
       { label: 'Shader playground', run: () => tabs?.show('shader') },
@@ -1901,13 +1985,15 @@ ${frag}\`,
       { label: 'Lab: present the preview fullscreen (P)', run: () => { tabs?.show('sketch'); setTimeout(() => api.lab?.present(), 80); } },
       { label: 'Lab: focus mode (F)', run: () => { tabs?.show('sketch'); api.lab?.focus(); } },
       { label: 'Lab: drop a cue at the playhead (C)', run: () => { tabs?.show('sketch'); api.lab?.cue(); } },
+      ...(api.sketchList?.() || []).map((s) => ({ label: `Open sketch: ${s.name}`, run: () => { activate('tool:three'); tabs?.show('sketch'); api.openSketchById?.(s.id); } })),
+      { label: 'Lab: contact sheet of the whole piece', run: () => { tabs?.show('sketch'); api.lab?.sheet(); } },
       { label: 'Lab console: always show', run: () => api.lab?.consoleMode('always') },
       { label: 'Lab console: only with the code', run: () => api.lab?.consoleMode('code') },
       { label: 'Lab console: only when I open it', run: () => api.lab?.consoleMode('never') },
       { label: 'Lab playback speed: 1×', run: () => api.lab?.speed(1) },
       { label: 'Lab playback speed: ½×', run: () => api.lab?.speed(0.5) },
       { label: 'Lab playback speed: ¼×', run: () => api.lab?.speed(0.25) },
-    ],
+    ]; },
   });
 
   // Entry points used by chat code blocks.
@@ -1990,6 +2076,10 @@ ${frag}\`,
       if (action === 'add') { const n = await d.notes.add(Number(args.time) || 0, args.text); return { ok: true, value: n }; }
       return { ok: false, error: 'action must be list, done, reopen, edit, delete or add' };
     }
+    if (tool === 'three_contact_sheet') {
+      const sheet = await d.contactSheet({ times: Array.isArray(args.times) ? args.times : null, count: Math.max(2, Math.min(16, Number(args.count) || 8)) });
+      return { ok: true, images: [{ data: sheet.dataUrl.split(',')[1], mime: 'image/jpeg' }], value: { frames: sheet.frames, note: 'Numbered left to right, top to bottom.' } };
+    }
     if (tool === 'three_references') {
       const action = args.action || 'list';
       const R = d.refs;
@@ -2053,9 +2143,9 @@ ${frag}\`,
   HubBridge.register(['three_'], handleTool);
   return {
     openCode(code) { ensureOpen('sketch'); setTimeout(() => api.openCode?.(code), 60); },
-    get lab() { return api.lab; },
+    get lab() { return api.lab; }, // Lab actions (palette commands, MIDI simulation for tests)
     // A picture of the Lab preview (data URL) for second opinions; null when nothing renders.
-    shot: async () => (api.director ? api.director.shot() : null), // Lab actions (palette commands, MIDI simulation for tests)
+    shot: async () => (api.director ? api.director.shot() : null),
     // Files dropped in the Three Director's chat become references of the open sketch.
     addReference: (p) => (api.addRef ? api.addRef(p) : Promise.reject(new Error('Open the Three.js Lab first'))),
     isReference: (name) => /\.(png|jpe?g|gif|webp|bmp|svg|mp4|webm|mov|m4v|mkv|glb|gltf|obj|fbx|stl|ply|mp3|wav|ogg|m4a|flac|aac|ttf|otf|woff2?|hdr|exr)$/i.test(name),
