@@ -145,6 +145,7 @@ const tickFrames = (t) => {
   realRAF(tickFrames);
 };
 realRAF(tickFrames);
+addEventListener('webglcontextlost', () => post({ type: 'gpu-lost' }), true);
 realSetInterval(() => {
   const now = performance.now();
   const fps = (frames * 1000) / (now - lastTick);
@@ -275,6 +276,51 @@ window.__stopLive = (quiet) => {
   if (srcNode) srcNode.connect(analyser);
   if (!quiet) post({ type: 'live-state', on: false });
 };
+// ---------- triggers (the ⚡ Triggers panel): a band of the spectrum fires when it rises over its bar ----------
+// cfg per trigger: { on, lo, hi (Hz), thr (0..1), gap (ms) }. They drive audio.kick / snare / hit when those have no
+// hand-placed markers, live sound always, and audio.trigger('bass' | 'hats' | …).
+const TRIG_NAMES = ['kick', 'bass', 'snare', 'hats', 'hit'];
+let trigCfg = null;
+const trigState = Object.fromEntries(TRIG_NAMES.map((n) => [n, { at: -1e9, armed: true, e: 0 }]));
+let trigWatch = false; let trigFired = [];
+function bandOf(lo, hi, hz) {
+  let s = 0; let n = 0;
+  for (let i = Math.max(1, Math.floor(lo / hz)); i <= Math.min(freq.length - 1, Math.ceil(hi / hz)); i += 1) { s += freq[i]; n += 1; }
+  return n ? s / n / 255 : 0;
+}
+function runTriggers(now, hz) {
+  if (!trigCfg) return;
+  for (const n of TRIG_NAMES) {
+    const c = trigCfg[n]; const s = trigState[n];
+    if (!c?.on) { s.e = 0; continue; }
+    s.e = bandOf(c.lo, c.hi, hz);
+    if (s.e < c.thr * 0.93) s.armed = true; // it must fall back under the bar before it can fire again
+    else if (s.armed && s.e >= c.thr && now - s.at >= c.gap) {
+      s.at = now; s.armed = false;
+      if (trigWatch) trigFired.push(n);
+      if (n === 'kick' && liveKind) liveTempo(now / 1000);
+    }
+  }
+}
+const trigPulse = (n) => Math.exp(-(performance.now() - trigState[n].at) / 120);
+const trigOn = (n) => Boolean(trigCfg?.[n]?.on);
+// While the panel is open: the spectrum in 200 log-spaced bins (20 Hz–20 kHz), each band's level and its last trigger.
+realSetInterval(() => {
+  if (!trigWatch) return;
+  update();
+  const hz = (remoteFreq ? remoteRate : actx?.sampleRate || 48000) / 2048;
+  const spec = new Uint8Array(200);
+  if (!simulated && (mediaEl || liveKind)) {
+    for (let i = 0; i < 200; i += 1) {
+      const a = Math.floor((20 * 1000 ** (i / 200)) / hz); const b = Math.max(a, Math.floor((20 * 1000 ** ((i + 1) / 200)) / hz));
+      let m = 0; for (let k = Math.max(1, a); k <= Math.min(freq.length - 1, b); k += 1) m = Math.max(m, freq[k]);
+      spec[i] = m;
+    }
+  }
+  const now = performance.now();
+  post({ type: 'trig-viz', spec, e: Object.fromEntries(TRIG_NAMES.map((n) => [n, trigState[n].e])), since: Object.fromEntries(TRIG_NAMES.map((n) => [n, now - trigState[n].at])), fired: trigFired });
+  trigFired = [];
+}, 40);
 const demoHits = (kind, t) => (kind === 'kick' ? Math.exp(-((t % 0.5)) / 0.12) : kind === 'snare' ? Math.exp(-(((t - 0.5) % 1 + 1) % 1) / 0.12) : 0);
 function graph() {
   if (actx) return;
@@ -319,13 +365,17 @@ function update() {
   bands.bass = avg(20, 150);
   bands.mid = clamp01(avg(150, 2000) * 1.2);
   bands.treble = clamp01(avg(2000, 12000) * 1.6);
+  if (mediaEl ? !mediaEl.paused || liveKind : liveKind) runTriggers(now, hz);
   if (liveKind) {
     // live: beats and hits from attacks in the sound itself
     const high = avg(1500, 5000);
     liveBassAvg += (bands.bass - liveBassAvg) * Math.min(1, dt * 2);
     liveHighAvg += (high - liveHighAvg) * Math.min(1, dt * 2);
-    if (bands.bass > liveBassAvg * 1.25 + 0.04 && now - liveKickAt > 220) { liveKickAt = now; liveTempo(now / 1000); }
-    if (high > liveHighAvg * 1.35 + 0.03 && now - liveSnareAt > 180) liveSnareAt = now;
+    if (trigCfg) { liveKickAt = trigOn('kick') ? trigState.kick.at : -1e9; liveSnareAt = trigOn('snare') ? trigState.snare.at : -1e9; } else {
+      // (before the hub sent the triggers) attacks against a running average
+      if (bands.bass > liveBassAvg * 1.25 + 0.04 && now - liveKickAt > 220) { liveKickAt = now; liveTempo(now / 1000); }
+      if (high > liveHighAvg * 1.35 + 0.03 && now - liveSnareAt > 180) liveSnareAt = now;
+    }
     if (now - liveKickAt > 6000) liveLock = 0; // a pause or a break: back to reacting, the tempo is kept
     if (livePeriod && liveLock > 0.5) {
       // a steady beat from the tempo clock (keeps going through breaks with no kick)
@@ -377,9 +427,20 @@ const audio = {
   get simulated() { update(); return simulated; },
   get bpm() { if (liveKind) return livePeriod ? Math.round(600 / livePeriod) / 10 : 0; return beatMap?.bpm || analysis?.bpm || (mediaEl ? 0 : 120); },
   // Hand-placed hits (1 on the marker, fading over ~120 ms), straight from the user's Kick / Snare / Hit lanes.
-  get kick() { if (liveKind) { update(); return Math.exp(-(performance.now() - liveKickAt) / 120); } return mediaEl ? pulse(beatMap?.marks?.kick, mediaEl.currentTime) : demoHits('kick', performance.now() / 1000); },
-  get snare() { if (liveKind) { update(); return Math.exp(-(performance.now() - liveSnareAt) / 120); } return mediaEl ? pulse(beatMap?.marks?.snare, mediaEl.currentTime) : demoHits('snare', performance.now() / 1000); },
-  get hit() { return mediaEl ? pulse(beatMap?.marks?.hit, mediaEl.currentTime) : 0; },
+  get kick() { return this.trigger('kick'); },
+  get snare() { return this.trigger('snare'); },
+  get hit() { return this.trigger('hit'); },
+  get hats() { return this.trigger('hats'); },
+  // 1 when a trigger fires, fading over ~120 ms: 'kick' | 'bass' | 'snare' | 'hats' | 'hit'. Kick / snare / hit use the
+  // user's hand-placed markers when the song has some; otherwise (and with live sound) the ⚡ Triggers bands.
+  trigger(name) {
+    const marks = beatMap?.marks?.[name];
+    if (mediaEl && !liveKind && marks?.length) return pulse(marks, mediaEl.currentTime);
+    if (mediaEl || liveKind) { update(); return trigOn(name) ? trigPulse(name) : 0; }
+    const t = performance.now() / 1000;
+    return name === 'hats' ? 0.7 * Math.exp(-((t * 4) % 1) / 0.1) : name === 'bass' ? demoHits('kick', t) : demoHits(name, t);
+  },
+  get triggers() { return Object.fromEntries(TRIG_NAMES.map((n) => [n, this.trigger(n)])); },
   get hits() { return beatMap?.marks || { kick: [], snare: [], hit: [] }; },
   // Seconds since the last / until the next marker of a kind ('kick', 'snare', 'hit', 'beat').
   since(kind) { const t = this.time; const arr = kind === 'beat' ? (beatMap?.beats || analysis?.beats) : beatMap?.marks?.[kind]; const k = arr?.length ? lastIdx(arr, t) : -1; return k < 0 ? Infinity : t - arr[k]; },
@@ -1825,6 +1886,8 @@ addEventListener('message', async (e) => {
   if (msg.type === 'layer-props') { const L = layers.get(msg.id); if (L) setLayerProps(L, msg.props); }
   if (msg.type === 'remove-layer') removeLayer(msg.id);
   if (msg.type === 'media-load') loadMedia(msg);
+  if (msg.type === 'triggers-set') trigCfg = msg.cfg || null;
+  if (msg.type === 'trig-watch') { trigWatch = Boolean(msg.on); if (trigWatch) graph(); }
   if (msg.type === 'live-gain') { liveAuto = msg.auto !== false; liveSense = Number(msg.sense) || 1; }
   if (msg.type === 'live-stop') { liveReset(); window.__stopLive(); remoteFreq = null; remoteWave = null; if (!liveSrc) liveKind = null; }
   if (msg.type === 'live-remote') { if (!msg.on || liveKind !== msg.kind) liveReset(); liveKind = msg.on ? msg.kind : null; if (!msg.on) { remoteFreq = null; remoteWave = null; } if (msg.on) graph(); }

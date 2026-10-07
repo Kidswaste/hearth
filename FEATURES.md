@@ -328,3 +328,9 @@
 273. ✓ **Live sensitivity**: Auto level (quiet or loud playback moves the sketch about the same) and Calm / Normal / Wild, in the 🎧 menu; remembered.
 274. ✓ **Palette follows the cover**: each new song sets the sketch palette from its album cover.
 275. ✓ The director sees live sound: three_media_info → live { input, bpm, what's playing (title / artist / album) }.
+
+## Triggers, calmer timeline, restart
+276. ✓ **⚡ Triggers** (timeline → Song, or 🎧 Live ▾): an EQ-style view of the sound (like Pro-Q) where Kick / Bass / Snare / Hats / Hit are each a band with a bar. A trigger fires when its band rises over the bar, at most every N ms. Drag a dot (sideways = which sound, up / down = the bar), drag the edges or wheel on the dot for the width; each band shows its live level and flashes when it fires (with a per-minute count). **Auto bars** sets every bar from the last seconds of sound (done once by itself the first time). Live sensitivity (Auto level, Calm / Normal / Wild) moved here from the Live menu.
+277. ✓ Sketches: audio.trigger('kick' | 'bass' | 'snare' | 'hats' | 'hit'), audio.hats, audio.triggers. Kick / snare / hit still use hand-placed markers when a song has them; otherwise (and with live sound) the triggers. Director tool three_triggers reads / changes them.
+278. ✓ **Fewer timeline controls by default**: ⋯ shows the rest (zoom buttons, loop points and lock, ×2 ½ / tempo candidates / meter / auto / snap / fill / undo, speed, Notes list, Sheet, Write, MIDI). Record moved into Capture. Code-only controls (snippets, three.js version, Live code) hide with the code. Now Playing shows its time and 🎨 🖼 on hover.
+279. ✓ **⟲ Restart from scratch** (next to Run, Sketch ▾, or Ctrl+Shift+Enter): a brand-new page, GPU context and sound (the Stage window is recreated). A banner offers it when the preview stops responding or loses its GPU.

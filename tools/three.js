@@ -60,13 +60,18 @@ const ThreeLab = (() => {
       const m = { target: 'three-sandbox', ...msg };
       if (ready) deliver(m); else queue.push(m);
     };
-    const load = () => {
+    // fresh: a brand-new page (the iframe is taken out and put back, the Stage window is recreated), for when a
+    // sketch bugs out: hung code, a lost GPU context, stuck audio.
+    const load = (fresh = false) => {
       ready = null;
       nonce = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
       const query = `?mode=${mode}&v=${store.get('three.version', ThreeData.VERSIONS[0])}${extraParams()}&n=${nonce}`;
       const sz = target === 'stage' ? stageSize() : null;
-      if (target === 'stage') window.hub.stageOpen({ query: `${query}${sz ? `&fw=${sz.width}&fh=${sz.height}` : ''}`, width: sz?.width, height: sz?.height });
-      else frame.src = `${SANDBOX}${query}`;
+      if (target === 'stage') window.hub.stageOpen({ query: `${query}${sz ? `&fw=${sz.width}&fh=${sz.height}` : ''}`, width: sz?.width, height: sz?.height, fresh });
+      else {
+        if (fresh && frame.parentNode) { const p = frame.parentNode; const next = frame.nextSibling; frame.remove(); p.insertBefore(frame, next); }
+        frame.src = `${SANDBOX}${query}`;
+      }
     };
     let stageWired = false;
     let onStageClosed = null;
@@ -83,7 +88,7 @@ const ThreeLab = (() => {
     }
     load();
     return {
-      frame, send, reload: load, useStage,
+      frame, send, reload: (fresh) => load(Boolean(fresh)), useStage,
       set onStageClosed(fn) { onStageClosed = fn; },
       get onStage() { return target === 'stage'; },
       get revision() { return ready?.revision; }, get ready() { return Boolean(ready); },
@@ -113,6 +118,8 @@ const ThreeLab = (() => {
     let split = null;
     const btn = (text, title, fn, cls = 'ghost small') => el('button', { class: cls, text, title, on: { click: fn } });
     const runBtn = btn('▶ Run', 'Run every layer again from the start (Ctrl+Enter)', () => run(), 'primary small');
+    const restartBtn = btn('⟲', 'Restart from scratch: a fresh page, GPU and sound, for when something bugs out (Ctrl+Shift+Enter)', () => restartSim(), 'ghost small');
+    restartBtn.dataset.feature = 'Restart simulation';
     const liveLabel = el('label', { class: 'check small', title: 'Apply code changes live, a moment after you stop typing' }, autoBox, 'Live code');
     const newBtn = btn('New', 'New sketch from a template', () => templateGallery(), 'ghost small imp-main');
     // Less frequent sketch actions live in a menu (they used to take a whole toolbar row).
@@ -123,6 +130,7 @@ const ThreeLab = (() => {
         ['Rename…', current?.name || '', () => renameSketch()],
         ['Duplicate', 'A copy you can change freely', () => duplicate()],
         ['History…', 'Earlier versions of the selected layer, and deleted sketches', () => historyDialog()],
+        ['⟲ Restart from scratch', 'A fresh page, GPU and sound, when something bugs out (Ctrl+Shift+Enter)', () => restartSim()],
         ['Export HTML…', 'A standalone .html file', () => exportHtml()],
         ['Ask Claude about this layer', 'Sends the code and any errors to Claude', () => askAbout()],
         'Careful',
@@ -134,7 +142,7 @@ const ThreeLab = (() => {
     const toolbar = el('div', { class: 'three-toolbar' }, runBtn, liveLabel, picker, newBtn, sketchMenuBtn, snippetSel, version, el('span', { class: 'spacer' }), shotBtn);
     // Prompt-first: the code editor stays hidden until asked for.
     const codeBtn = btn('</> Code', 'Show or hide the code of the selected layer (the Three Director writes it for you)', () => setCodeVisible(split.classList.contains('no-code')));
-    const slidersBtn = btn('🎚 Layers & sliders', 'Show or hide the layers and the sliders of the selected layer', () => setSlidersVisible(column.hidden));
+    const slidersBtn = btn('⚡ Layers & sliders', 'Show or hide the layers and the sliders of the selected layer', () => setSlidersVisible(column.hidden));
     const focusBtn = btn('⛶ Focus', 'Almost fullscreen: hides the chat, side panels, toolbar, sliders and console, and shrinks the timeline to the strip (F · Esc to leave)', () => setFocus(!focusOn));
     focusBtn.dataset.feature = 'Focus';
     // The console: always, only with the code (default), or only when you open it. Hidden, it counts new
@@ -184,6 +192,36 @@ const ThreeLab = (() => {
     const liveOpts = () => ({ auto: true, sense: 1, followCover: false, ...store.get('three.live', {}) });
     const setLiveOpt = (patch) => { store.set('three.live', { ...liveOpts(), ...patch }); sendLiveGain(); };
     const sendLiveGain = () => { const o = liveOpts(); box.send({ type: 'live-gain', auto: o.auto, sense: o.sense }); };
+    // ⚡ Triggers: which sounds fire audio.kick / bass / snare / hats / hit, set on an EQ-style view of the sound.
+    let trigCfg = ThreeTriggers.merge(store.get('three.triggers', null));
+    let trigTuned = store.get('three.triggers', null) != null;
+    let trigPanel = null;
+    const sendTriggers = () => box.send({ type: 'triggers-set', cfg: trigCfg });
+    const saveTriggers = debounce(() => store.set('three.triggers', trigCfg), 400);
+    const trigBtn = btn('⚡ Triggers', 'What fires the sketch\'s kick / bass / snare / hats / hit: a band of the sound and the bar it must reach', () => toggleTriggers());
+    trigBtn.dataset.feature = 'Triggers';
+    function toggleTriggers(on = !trigPanel) {
+      trigPanel?.destroy(); trigPanel = null;
+      trigBtn.classList.toggle('on', on);
+      box.send({ type: 'trig-watch', on });
+      if (!on) return;
+      trigPanel = ThreeTriggers.panel({
+        cfg: trigCfg,
+        untuned: !trigTuned,
+        onChange: (c) => { trigCfg = c; trigTuned = true; sendTriggers(); saveTriggers(); },
+        onClose: () => toggleTriggers(false),
+        sense: () => (liveKind ? liveOpts() : null),
+        onSense: (p) => setLiveOpt(p),
+      });
+      player.el.querySelector('.mb-main').after(trigPanel.el);
+    }
+    function setTriggers(patch) {
+      const next = { ...trigCfg };
+      for (const [k, v] of Object.entries(patch || {})) if (next[k]) next[k] = { ...next[k], ...v };
+      trigCfg = ThreeTriggers.merge(next);
+      sendTriggers(); store.set('three.triggers', trigCfg); trigPanel?.set(trigCfg);
+      return trigCfg;
+    }
     // The preview iframe is isolated (no access to the hub) and browsers don't let isolated pages capture
     // sound, so for it this page captures and sends the analysis ~60 times a second. The Stage window
     // captures by itself (and its recordings include the sound).
@@ -228,22 +266,20 @@ const ThreeLab = (() => {
         isWin ? ['System sound', 'Whatever plays on this PC: Spotify, YouTube, Suno…', () => setLive('system'), liveKind === 'system'] : null,
         ['Microphone', 'A mic or line-in', () => setLive('mic'), liveKind === 'mic'],
         liveKind ? ['Off: back to the loaded song', '', () => setLive(null)] : null,
-        'Sensitivity',
-        ['Auto level', 'Quiet or loud playback moves the sketch about the same', () => setLiveOpt({ auto: !o.auto }), o.auto],
-        ...[['Calm', 0.6], ['Normal', 1], ['Wild', 1.8]].map(([name, v]) => [name, `Reaction × ${v}`, () => setLiveOpt({ sense: v }), o.sense === v]),
+        ['⚡ Triggers & sensitivity…', 'What fires kick / bass / snare / hats / hit, and how strongly the sketch reacts', () => toggleTriggers(true)],
         'Now playing',
         [np ? 'Hide what\'s playing' : 'Show what Spotify plays', 'Title, cover and ⏮ ⏯ ⏭ here, no Spotify login (also works with other players)', () => (np ? stopNowPlaying() : startNowPlaying())],
         ['Palette follows the cover', 'Each new song sets the sketch palette from its album cover', () => { setLiveOpt({ followCover: !o.followCover }); if (!o.followCover && np?.cover) coverTo('palette'); }, o.followCover],
       ]);
     }
     async function setLive(kind) {
-      if (!kind) { liveKind = null; hubLiveStop(); box.send({ type: 'live-stop' }); paintLive(); return; }
+      if (!kind) { liveKind = null; hubLiveStop(); box.send({ type: 'live-stop' }); paintLive(); trigPanel?.refreshSense(); return; }
       liveKind = kind; liveBpm = null;
       if (player.playing) player.toggle(false); // the song would play over it
       sendLiveGain();
       const ok = await window.hub.liveStart(kind);
       if (!ok) { liveKind = null; paintLive(); return; } // the sketch reports why (live-state)
-      paintLive();
+      paintLive(); trigPanel?.refreshSense();
       if (kind === 'system' && !np) startNowPlaying();
     }
     function paintLive() {
@@ -273,7 +309,7 @@ const ThreeLab = (() => {
         el('span', { class: 'np-text', title: `${info.title} — ${info.artist}${info.album ? ` (${info.album})` : ''} · ${info.app}` }, el('b', { text: info.title }), ` — ${info.artist || ''}`),
         el('span', { class: 'np-time', text: info.duration ? `${fmtClock(info.position || 0)} / ${fmtClock(info.duration)}` : '' }),
         ctl('⏮', 'Previous', 'prev'), ctl(info.playing ? '⏸' : '▶', 'Play / pause', 'toggle'), ctl('⏭', 'Next', 'next'),
-        btn('🎨', 'Palette from the cover', () => coverTo('palette')), btn('🖼', 'Add the cover to this sketch\'s references', () => coverTo('ref')));
+        btn('🎨', 'Palette from the cover', () => coverTo('palette'), 'ghost small np-extra'), btn('🖼', 'Add the cover to this sketch\'s references', () => coverTo('ref'), 'ghost small np-extra'));
     }
     async function coverFile() {
       const src = np?.cover;
@@ -1389,6 +1425,7 @@ const ThreeLab = (() => {
     previewHost.append(presentHint, editPanel, stageNote);
     function setCodeVisible(show) {
       split.classList.toggle('no-code', !show);
+      for (const n of [snippetSel, version, liveLabel]) n.hidden = !show; // code tools only matter with the code shown
       codeBtn.classList.toggle('on', show);
       store.set('three.showCode', show);
       consolePeek = null;
@@ -1427,6 +1464,9 @@ const ThreeLab = (() => {
       player.load(p);
     });
     // Space plays / pauses; K S H tap hits in; [ ] set loop points; arrows nudge; Delete removes a marker.
+    pane.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); restartSim(); }
+    }, true);
     pane.addEventListener('keydown', (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && /^[nfpw]$/i.test(e.key) && !e.repeat) Usage.key(e.key.toUpperCase(), 'Lab');
@@ -1502,7 +1542,11 @@ const ThreeLab = (() => {
         log('error', msg.message, msg.line, lid);
         if (!lid || lid === selId) editor.setErrorLines(errors.filter((e) => !e.layer || e.layer === selId).map((e) => e.line).filter(Boolean));
       }
+      if (msg.type === 'gpu-lost') { showStall('The preview lost its GPU context.'); return; }
+      if (msg.type === 'trig-viz') { trigPanel?.feed(msg); return; }
       if (msg.type === 'stats') {
+        lastStatsAt = Date.now();
+        if (stall.querySelector('.three-stall-text').textContent.includes('responding')) hideStall();
         lastStats = { fps: Math.round(msg.fps), worstFrameMs: Math.round(msg.worst || 0), renderMs: Number(msg.ms.toFixed(2)), drawCalls: msg.calls, triangles: msg.triangles, points: msg.points, geometries: msg.geometries, textures: msg.textures, shaders: msg.programs };
         stats.hidden = false;
         stats.replaceChildren(
@@ -1515,6 +1559,7 @@ const ThreeLab = (() => {
       if (/^edit-/.test(msg.type)) { onEditMessage(msg); return; }
       if (msg.type === 'live-tempo') { if (liveKind) { liveBpm = msg; paintLive(); } return; }
       if (msg.type === 'live-state') { if (msg.error) toast(`Live sound: ${msg.error}`, { type: 'error', timeout: 5000 }); if (!msg.on && msg.error) { liveKind = null; paintLive(); } return; }
+      if (msg.type === 'ready') { sendTriggers(); if (trigPanel) box.send({ type: 'trig-watch', on: true }); }
       if (msg.type === 'ready' && liveKind) {
         // a reloaded preview: the hub page keeps capturing, the Stage captures again by itself
         sendLiveGain();
@@ -1580,6 +1625,28 @@ const ThreeLab = (() => {
 
     // Full runs reload the preview with every layer; hot runs (slider rebuilds, live code, a new layer)
     // re-run one layer in place, keeping three.js loaded, the other layers running and the music playing.
+    // ⟲ Restart: everything from scratch (a new page, GPU context and audio), when a sketch bugs out.
+    let restartNext = false;
+    function restartSim() {
+      if (player.recording) { toast('Stop the recording first', { type: 'error' }); return; }
+      restartNext = true;
+      toast('Restarting the simulation from scratch', { timeout: 1400 });
+      if (!run()) restartNext = false;
+    }
+    // When the preview stops answering (or loses its GPU), a banner offers the restart.
+    let lastStatsAt = 0;
+    const stall = el('div', { class: 'three-stall', hidden: true }, el('span', { class: 'three-stall-text' }),
+      el('button', { class: 'primary small', text: '⟲ Restart', title: 'Restart the simulation from scratch', on: { click: () => restartSim() } }),
+      el('button', { class: 'ghost small', text: '×', title: 'Hide', on: { click: () => hideStall() } }));
+    function showStall(text) { stall.querySelector('.three-stall-text').textContent = text; stall.hidden = false; }
+    function hideStall() { stall.hidden = true; }
+    previewHost.append(stall);
+    setInterval(() => {
+      if (!lastStatsAt || !stall.hidden) return;
+      const visible = document.visibilityState === 'visible' && (box.onStage || previewHost.offsetParent);
+      if (!visible) { lastStatsAt = Math.max(lastStatsAt, Date.now() - 2000); return; } // hidden views draw nothing
+      if (Date.now() - lastStatsAt > 8000) showStall('The preview stopped responding.');
+    }, 2000);
     function run({ hot = false, layer = null } = {}) {
       if (!current) return false;
       if (hot && (!box.ready || !ranOnce)) hot = false;
@@ -1609,7 +1676,7 @@ const ThreeLab = (() => {
         for (const [k, i] of Object.entries(p.keys)) keys[`${L.id}|${k}`] = b + i;
         layerMods[L.id] = Object.fromEntries(Object.entries(p.mods || {}).map(([i, m]) => [Number(i) + b, m]));
       }
-      if (!hot) { lastStats = null; stats.hidden = true; box.reload(); }
+      if (!hot) { lastStats = null; lastStatsAt = 0; hideStall(); stats.hidden = true; box.reload(restartNext); restartNext = false; }
       box.send({ type: 'tweak-init', values, keys, mods: mergedMods() });
       if (!hot) { player.attach(); sendRefs(); }
       const spec = (L) => ({ id: L.id, code: preps.get(L.id)?.code ?? L.code, ...layerProps(L) });
@@ -1863,9 +1930,9 @@ ${code}
       toolbar.replaceChildren(
         group('View', codeBtn, slidersBtn, consoleBtn, focusBtn, presentBtn, editBtn, stageBtn, fpsSel),
         group('Sketch', picker, browseBtn, newBtn, sketchMenuBtn),
-        group('Code', runBtn, liveLabel, snippetSel, version),
+        group('Code', runBtn, restartBtn, liveLabel, snippetSel, version),
         group('Assets', paletteBox, refsBtn, shotBtn));
-      { const row = player.el.querySelector('.mb-main'); row.querySelector('.mb-g-capture').append(noteBtn, notesBtn, sheetBtn); row.querySelector('.mb-g-live').append(writeBtn, midiBtn); row.querySelector('.tb-group[data-cat="Song"]').append(liveBtn, npBox); }
+      { const row = player.el.querySelector('.mb-main'); row.querySelector('.mb-g-capture').append(noteBtn, notesBtn, sheetBtn); row.querySelector('.mb-g-live').append(writeBtn, midiBtn); row.querySelector('.tb-group[data-cat="Song"]').append(liveBtn, trigBtn, npBox); for (const n of [notesBtn, sheetBtn, writeBtn, midiBtn]) n.classList.add('mb-adv'); const rec = row.querySelector('.mb-g-live .mb-rec'); if (rec) row.querySelector('.mb-g-capture').prepend(rec); row.querySelector('.mb-g-live').classList.add('mb-adv'); }
       // First run with per-sketch songs: the song that was loaded goes to the sketch that was open.
       const firstId = sketches.some((s) => s.id === store.get('three.current')) ? store.get('three.current') : sketches[0]?.id;
       const lastMedia = store.get('three.media', null);
@@ -2105,6 +2172,7 @@ ${code}
       },
       report,
       contactSheet: (o) => contactSheet(o),
+      triggers: (patch) => (patch ? setTriggers(patch) : trigCfg),
       live: () => ({ input: liveKind, bpm: liveBpm?.bpm ?? null, tempoLocked: Boolean(liveBpm?.locked),
         nowPlaying: np?.title ? { title: np.title, artist: np.artist, album: np.album, app: np.app, position: Math.round(np.position || 0), duration: Math.round(np.duration || 0), playing: np.playing } : null }),
       shot: () => new Promise((resolve) => {
@@ -2454,6 +2522,7 @@ ${frag}\`,
       return { ok: true, value: await d.newSketch(String(args.name || 'Untitled'), String(args.code || ''), Number(args.wait) || 2.5) };
     }
     if (tool === 'three_console') return { ok: true, value: d.report() };
+    if (tool === 'three_triggers') return { ok: true, value: { triggers: d.triggers(args.set || null), note: 'thr is the bar (0..1 of the analyser level), gap the shortest time between two triggers in ms, lo / hi the band in Hz' } };
     if (tool === 'three_media_info') { const live = d.live(); return { ok: true, value: live.input || live.nowPlaying ? { ...d.media.info(), live } : d.media.info() }; }
     if (tool === 'three_load_media') {
       const r = await d.media.load(String(args.path || ''));

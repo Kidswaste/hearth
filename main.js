@@ -285,8 +285,10 @@ ipcMain.handle('app:platform', () => process.platform);
 // The hub window is busy (chats, timeline, panels); a sketch running in its own window gets steady frames.
 // Messages between the Lab and the sandbox page are relayed here (stage-preload.js on the other side).
 let stageWin = null;
-ipcMain.handle('stage:open', (_e, { query, width, height }) => {
+ipcMain.handle('stage:open', (_e, { query, width, height, fresh }) => {
   const { screen } = require('electron');
+  // ⟲ Restart from scratch: a new window (and renderer process), without telling the Lab the Stage closed
+  if (fresh && stageWin && !stageWin.isDestroyed()) { stageWin.__silent = true; stageWin.destroy(); stageWin = null; }
   const url = `${require('url').pathToFileURL(path.join(__dirname, 'tools', 'three-sandbox.html')).href}${query}`;
   if (!stageWin || stageWin.isDestroyed()) {
     const area = screen.getDisplayMatching(win.getBounds()).workArea;
@@ -296,7 +298,8 @@ ipcMain.handle('stage:open', (_e, { query, width, height }) => {
       title: 'Hearth Stage', backgroundColor: '#000000', autoHideMenuBar: true, icon: appshell.ensureIcon(),
       webPreferences: { preload: path.join(__dirname, 'stage-preload.js'), contextIsolation: true, sandbox: true, backgroundThrottling: false },
     });
-    stageWin.on('closed', () => { stageWin = null; if (!win.isDestroyed()) win.webContents.send('stage:closed'); });
+    const w = stageWin;
+    w.on('closed', () => { if (stageWin === w) stageWin = null; if (!w.__silent && !win.isDestroyed()) win.webContents.send('stage:closed'); });
     stageWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   }
   // a new frame size: reshape the window to it (re-runs with the same size leave your window alone)

@@ -442,6 +442,21 @@ const ThreeMedia = (() => {
         el('span', { class: 'spacer' })),
       gridRow, el('div', { class: 'mb-tl-wrap' }, canvas, playheadEl), el('div', { class: 'mb-mm-wrap' }, minimap, miniHeadEl));
     setSize(size);
+    // Fewer controls by default; ⋯ shows every one (zoom buttons, loop points, grid tools…). Rarely used ones get .mb-adv.
+    for (const n of [rateSel, loopBox, lockBtn, dblBtn, halfBtn, bpmCands, meterSel, autoBtn, gridState, snapSel, fillBtn, undoBtn, snapTapsBox.parentElement, zoomOut.parentElement]) n?.classList.add('mb-adv');
+    gridRow.querySelectorAll('.mb-sep').forEach((s) => s.classList.add('mb-adv'));
+    let allCtl = store.get('three.mbAll', false);
+    const moreBtn = btn('⋯', '', () => setAll(!allCtl), 'ghost small mb-more');
+    moreBtn.dataset.feature = 'More timeline controls';
+    function setAll(on) {
+      allCtl = on; store.set('three.mbAll', on);
+      bar.classList.toggle('mb-all', on);
+      moreBtn.classList.toggle('on', on);
+      moreBtn.title = on ? 'Fewer controls' : 'Every timeline control: zoom buttons, loop points, grid tools (×2 ½, meter, snap, fill, undo), speed';
+      requestAnimationFrame(() => draw());
+    }
+    bar.querySelector('.mb-main').append(moreBtn);
+    setAll(allCtl);
 
     // ---------- file ----------
     async function pick() {
