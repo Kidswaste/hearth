@@ -551,6 +551,42 @@ const ThreeTweaks = (() => {
       persist?.('looks', looks);
       renderLooks();
     }
+    // A look played on top of your values (song cues): it morphs in, only for values that change live, and is
+    // never saved or shown as a change; endLook() goes back to your sliders.
+    let played = null; // { cur, sent, raf }
+    function sendPlayed(arr) {
+      arr.forEach((v, i) => {
+        if (v === played.sent[i] || locks.has(ids[i]) || needsRebuild(i)) return;
+        played.sent[i] = v;
+        const it = scanned.items[i];
+        send({ type: 'tweak', index: i, value: runtime(it, v), call: it.call, key: it.key });
+      });
+    }
+    function playLook(name, fade = 450) {
+      const look = looks.find((l) => l.name === name);
+      if (!look || !scanned) return false;
+      const from = (played?.cur || values).slice();
+      const to = values.slice();
+      ids.forEach((id, i) => { if (id in look.values) to[i] = look.values[id]; });
+      cancelAnimationFrame(played?.raf);
+      played = { cur: from.slice(), sent: played?.sent || values.slice(), raf: 0, name };
+      const t0 = performance.now();
+      const step = () => {
+        const k = Math.min(1, (performance.now() - t0) / fade); const e = k * k * (3 - 2 * k);
+        played.cur = to.map((v, i) => (typeof v === 'number' && typeof from[i] === 'number' ? from[i] + (v - from[i]) * e : k < 0.5 ? from[i] : v));
+        sendPlayed(played.cur);
+        if (k < 1) played.raf = requestAnimationFrame(step);
+      };
+      step();
+      return true;
+    }
+    function endLook() {
+      if (!played) return;
+      cancelAnimationFrame(played.raf);
+      const p = played; played = { ...p, cur: values.slice() };
+      sendPlayed(values);
+      played = null;
+    }
     function applyLook(look) {
       const next = values.slice();
       ids.forEach((id, i) => { if (id in look.values) next[i] = look.values[id]; });
@@ -1037,6 +1073,8 @@ const ThreeTweaks = (() => {
         applyValues(next);
         return done;
       },
+      playLook, endLook,
+      get playingLook() { return played?.name || null; },
       looksApi: {
         list: () => looks.map((l) => l.name),
         save: (name) => { saveLookAs(String(name).slice(0, 40)); return looks.map((l) => l.name); },

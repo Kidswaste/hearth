@@ -1428,6 +1428,17 @@ const ThreeLab = (() => {
       sketchName: () => current?.name,
       onPick: (path) => assignMedia(path),
       onLoaded: (o) => { if (o?.unloaded) assignMedia(null); else songTriggers(); if (o?.reload) run(); renderLayers(); },
+      // ✦ cue looks: each layer plays the look of the last cue (at or before the playhead) that set one for it
+      onCue: ({ index, cues, playing }) => {
+        for (const L of layersOf()) {
+          const c = controllers.get(L.id);
+          if (!c?.playLook) continue;
+          let want = null;
+          if (playing) for (let k = 0; k <= index; k += 1) { const l = cues[k].looks?.find((x) => x.layer === L.id || x.layer === L.name); if (l) want = l.name; }
+          if (want) { if (c.playingLook !== want) c.playLook(want); } else c.endLook();
+        }
+      },
+      lookChoices: () => layersOf().map((L) => ({ layer: L.id, layerName: L.name, names: ctlFor(L).looksApi.list() })),
     });
     function assignMedia(path) {
       if (!current) return;

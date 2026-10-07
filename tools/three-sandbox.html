@@ -595,6 +595,8 @@ const valueOf = (i, base) => {
   return m.int ? Math.round(v) : v;
 };
 globalThis.__tv = (i) => { markRead(i); return valueOf(i, TV[i]); };
+// for three_eval: the live value of a named slider (any layer), e.g. __slider('size')
+globalThis.__slider = (key) => { const e = Object.entries(tweakKeys).find(([n]) => n.endsWith(`.${key}`)); return e ? valueOf(e[1], TV[e[1]]) : undefined; };
 // The user's reference files for this sketch: refs.<name> is a URL any loader can use (TextureLoader,
 // GLTFLoader, fetch, new Audio…); refTexture('name') gives a ready texture (videos play muted and looping).
 const refs = {}; const refKinds = {};

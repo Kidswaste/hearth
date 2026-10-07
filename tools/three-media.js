@@ -260,7 +260,8 @@ const ThreeMedia = (() => {
   // Timeline: zoom (wheel / ＋ −) down to single samples, scroll (bar underneath / Shift+wheel), A–B loop
   // points (top strip, typed times, nudges), a rekordbox-style beat grid (BPM, tap, "1" here, meter),
   // snapping, and Kick / Snare / Hit lanes the user fills by tapping K S H or clicking.
-  function player({ send, sketchName, onLoaded, onPick }) {
+  // onCue({ index, cues, playing }) when playback enters another cue's section; lookChoices() → [{ layer, layerName, names }].
+  function player({ send, sketchName, onLoaded, onPick, onCue, lookChoices }) {
     const st = { path: null, name: null, bytes: null, mime: null, video: false, analysis: null, samples: null, time: 0, duration: 0, playing: false, loop: store.get('three.mediaLoop', true), volume: store.get('three.mediaVolume', 0.8), stampAt: 0, rate: 1 };
     let region = null; // { a, b } seconds
     let locked = false;
@@ -604,6 +605,7 @@ const ThreeMedia = (() => {
     function sizeCanvas() { canvas.style.height = `${112 + tracksH() + (shownLanes().length - CORE_LANES.length) * 14}px`; }
     function mapChanged() {
       sizeCanvas();
+      cueIdx = -2;
       if (st.path && allMaps) {
         const empty = !map.grid && !LANES.some((ln) => map.marks[ln.id].length) && !map.cues?.length;
         if (empty) delete allMaps[st.path]; else allMaps[st.path] = map;
@@ -706,9 +708,34 @@ const ThreeMedia = (() => {
         ['Rename', cue.name, async () => { const v = await Modal.prompt('Cue name', { value: cue.name }); if (v && v.trim()) editCue(cue, { name: v.trim().slice(0, 40) }); }],
         ['Move here', `To the playhead (${fmtMs(now())})`, () => editCue(cue, { t: r4(snapT(now())) })],
         region ? false : ['Loop to the next cue', 'Sets the loop from this cue to the next one', () => { const nx = map.cues.find((c) => c.t > cue.t + 1e-3); setRegion({ a: cue.t, b: nx ? nx.t : D() }); }],
+        lookChoices ? ['✦ Look at this cue…', cue.looks?.length ? cue.looks.map((l) => l.name).join(', ') : 'Slider looks that morph in when the song reaches it', () => cueLookMenu(e, cue)] : false,
         null,
         ['Delete cue', fmtMs(cue.t), () => editCue(cue, null)],
       ].filter((x) => x !== false));
+    }
+    function cueLookMenu(e, cue) {
+      const anchor = { getBoundingClientRect: () => ({ left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY }) };
+      const groups = lookChoices().filter((g) => g.names.length);
+      if (!groups.length) { toast('Save a look first: Sliders → + Save look (a set of slider values)', { timeout: 3500 }); return; }
+      const has = (layer, name) => cue.looks?.some((l) => l.layer === layer && l.name === name);
+      const toggle = (layer, name) => {
+        const rest = (cue.looks || []).filter((l) => l.layer !== layer); // one look per layer at a cue
+        editCue(cue, { looks: has(layer, name) ? rest : [...rest, { layer, name }] });
+        cueIdx = -2;
+      };
+      menuAt(anchor, groups.flatMap((g) => g.names.map((n) => [`${has(g.layer, n) ? '✓ ' : ''}${n}`, `${g.layerName}${groups.length > 1 ? '' : ''} · morphs in at "${cue.name}" and stays until another cue changes it`, () => toggle(g.layer, n)])));
+    }
+    // which cue's section the playhead is in (looks follow it while playing)
+    let cueIdx = -2;
+    function watchCues() {
+      if (!onCue) return;
+      const t = now();
+      let i = -1;
+      for (let k = 0; k < map.cues.length; k += 1) if (map.cues[k].t <= t + 1e-3) i = k;
+      const key = st.playing ? i : -3;
+      if (key === cueIdx) return;
+      cueIdx = key;
+      onCue({ index: i, cues: map.cues, playing: st.playing });
     }
     function addAtPlayhead(lane) {
       // a live tap: the real attack nearby (fixes the tap's delay); the grid only if a line is that close
@@ -910,6 +937,7 @@ const ThreeMedia = (() => {
       raf = requestAnimationFrame(tick);
     }
     function placePlayheads() {
+      watchCues();
       const t = now();
       const w = tw();
       const x = D() ? ((t - v0()) / span()) * w : -10;
@@ -1158,7 +1186,7 @@ const ThreeMedia = (() => {
       map.cues.forEach((c, i) => {
         if (c.t < s0 - sp * 0.2 || c.t > s0 + sp) return;
         const x = Math.round(X(c.t)); const col = CUE_COLORS[i % CUE_COLORS.length];
-        const label = `${i < 9 ? `${i + 1} ` : ''}${c.name}`;
+        const label = `${i < 9 ? `${i + 1} ` : ''}${c.name}${c.looks?.length ? ' ✦' : ''}`;
         const lw = g.measureText(label).width + 8;
         g.fillStyle = `${col}30`; g.fillRect(x, RULER, 1, LT - RULER);
         g.fillStyle = col; g.fillRect(x, 0, 2, RULER);
@@ -1361,7 +1389,7 @@ const ThreeMedia = (() => {
       }
       if (y < RULER) {
         const g0 = canvas.getContext('2d'); g0.font = '10px Consolas, monospace';
-        const cue = [...map.cues].reverse().find((c, ri) => { const i = map.cues.length - 1 - ri; const lw = g0.measureText(`${i < 9 ? `${i + 1} ` : ''}${c.name}`).width + 10; return x - xOf(c.t) >= -2 && x - xOf(c.t) <= lw; });
+        const cue = [...map.cues].reverse().find((c, ri) => { const i = map.cues.length - 1 - ri; const lw = g0.measureText(`${i < 9 ? `${i + 1} ` : ''}${c.name}${c.looks?.length ? ' ✦' : ''}`).width + 10; return x - xOf(c.t) >= -2 && x - xOf(c.t) <= lw; });
         if (cue) return { zone: 'cue', cue };
         const note = notes.find((n) => x - xOf(n.t) >= -3 && x - xOf(n.t) <= 10);
         if (note) return { zone: 'note', note };
@@ -1951,12 +1979,17 @@ const ThreeMedia = (() => {
         pushUndo();
         if (clear) map.cues = [];
         map.cues = map.cues.filter((c) => !remove.some((r) => (typeof r === 'number' ? Math.abs(r - c.t) < 0.02 : String(r).toLowerCase() === c.name.toLowerCase())));
-        for (const a of add) if (!map.cues.some((c) => Math.abs(c.t - a.time) < 0.02)) map.cues.push({ t: r4(Math.max(0, Math.min(D(), a.time))), name: String(a.name || `Cue ${map.cues.length + 1}`).slice(0, 40) });
+        for (const a of add) {
+          const same = map.cues.find((c) => Math.abs(c.t - a.time) < 0.02);
+          const looks = Array.isArray(a.looks) ? a.looks.filter((l) => l?.layer && l?.name).map((l) => ({ layer: String(l.layer), name: String(l.name) })) : null;
+          if (same) { if (looks) same.looks = looks; if (a.name) same.name = String(a.name).slice(0, 40); continue; }
+          map.cues.push({ t: r4(Math.max(0, Math.min(D(), a.time))), name: String(a.name || `Cue ${map.cues.length + 1}`).slice(0, 40), ...(looks ? { looks } : {}) });
+        }
         map.cues.sort((a, b) => a.t - b.t);
         mapChanged();
         return true;
       },
-      get cues() { return map.cues.map((c) => ({ time: c.t, name: c.name })); },
+      get cues() { return map.cues.map((c) => ({ time: c.t, name: c.name, ...(c.looks?.length ? { looks: c.looks } : {}) })); },
       addCue, setRate,
       get rate() { return st.rate; },
       beatsIn(a, b) { return beats().filter((t) => t >= a - 1e-4 && t <= b + 1e-4); },
@@ -1969,7 +2002,7 @@ const ThreeMedia = (() => {
           duration: Math.round(D() * 1000) / 1000, playhead: Math.round(now() * 1000) / 1000,
           grid: map.grid ? { bpm: map.grid.bpm, downbeat: map.grid.anchor, beatsPerBar: map.grid.bpb, setBy: 'user' } : { bpm: bpmNow(), setBy: 'auto-detected' },
           markers: Object.fromEntries(LANES.map((ln) => [ln.id, pick(map.marks[ln.id])])),
-          cues: map.cues.map((c) => ({ time: c.t, name: c.name })),
+          cues: map.cues.map((c) => ({ time: c.t, name: c.name, ...(c.looks?.length ? { looks: c.looks } : {}) })),
           loop: region ? { start: region.a, end: region.b, locked } : null,
           view: view ? { start: Math.round(view.start * 1000) / 1000, end: Math.round(view.end * 1000) / 1000 } : 'whole song',
           snap: snapMode,
