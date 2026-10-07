@@ -1,0 +1,140 @@
+/* Swirl: the Forgeheart palette, but curvy and flowing. Active with the "Forgeheart Swirl" theme (skin "forge swirl"):
+   rounded everything, a slow swirling nebula behind the app, swirl rings on what's active, wavy underlines, orbiting
+   loaders. Only transforms / opacity animate (cheap for the GPU); "reduce motion" in Windows stills them. */
+@property --sw-turn { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+@keyframes sw-turn { to { --sw-turn: 360deg; } }
+@keyframes sw-rotate { to { transform: rotate(360deg); } }
+@keyframes sw-rotate-back { to { transform: rotate(-360deg); } }
+@keyframes sw-breathe { 0%, 100% { opacity: .75; transform: scale(1); } 50% { opacity: 1; transform: scale(1.06); } }
+@keyframes sw-in { from { opacity: 0; transform: translateY(8px) scale(.985); filter: blur(2px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes sw-orbit { to { transform: rotate(360deg) translateX(5px) rotate(-360deg); } }
+@keyframes sw-wave { to { background-position-x: 24px; } }
+
+html[data-skin~="swirl"] {
+  --cut: none;
+  --cut-sm: none;
+  --sw-r: 14px;
+  --sw-r-sm: 10px;
+  --sw-pill: 999px;
+  --sw-glass: color-mix(in srgb, #12161a 82%, transparent);
+  --sw-glass-hi: color-mix(in srgb, #181d22 86%, transparent);
+  --sw-swirl: conic-gradient(from var(--sw-turn), #48ddff, #bd8bff, #ff6b9d, #ff8c42, #ffd75e, #48ddff);
+  /* a wavy line (for underlines and separators), tinted by currentColor through a mask */
+  --sw-wave: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='6' viewBox='0 0 24 6'%3E%3Cpath d='M0 3 Q6 0 12 3 T24 3' fill='none' stroke='black' stroke-width='1.6'/%3E%3C/svg%3E");
+}
+
+/* ---------- the swirl behind everything ---------- */
+html[data-skin~="swirl"] body {
+  isolation: isolate; /* so the swirl (z-index -1) paints over the body's own background */
+  background:
+    radial-gradient(ellipse 70% 55% at 85% -5%, #bd8bff14, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 0% 105%, #48ddff12, transparent 60%),
+    var(--bg);
+}
+html[data-skin~="swirl"] body::before,
+html[data-skin~="swirl"] body::after {
+  content: ""; position: fixed; pointer-events: none; z-index: -1; border-radius: 50%; will-change: transform; clip-path: none;
+}
+/* two spiral galaxies (assets/swirl.svg) turning slowly, opposite ways, where the app usually has empty room:
+   behind the chats on the right and the chat list on the left */
+html[data-skin~="swirl"] body::before {
+  width: 110vmax; height: 110vmax; left: auto; top: auto; right: -40vmax; bottom: -55vmax;
+  background: url("assets/swirl.svg") center / contain no-repeat;
+  opacity: .34;
+  animation: sw-rotate 280s linear infinite;
+}
+html[data-skin~="swirl"] body::after {
+  width: 70vmax; height: 70vmax; left: -38vmax; top: -30vmax; right: auto; bottom: auto;
+  background: url("assets/swirl.svg") center / contain no-repeat;
+  opacity: .26;
+  animation: sw-rotate-back 220s linear infinite;
+}
+/* empty screens (a new chat…) get their own little galaxy behind the icon */
+html[data-skin~="swirl"] .empty { position: relative; isolation: isolate; }
+html[data-skin~="swirl"] .empty::before {
+  content: ""; position: absolute; z-index: -1; left: 50%; top: 50%; width: 420px; height: 420px; margin: -250px 0 0 -210px; pointer-events: none;
+  background: url("assets/swirl.svg") center / contain no-repeat; opacity: .35;
+  animation: sw-rotate 90s linear infinite;
+}
+
+/* ---------- curves instead of cut corners ---------- */
+html[data-skin~="swirl"] :is(.agent-btn, .tool-btn, .tool-icon, .kanban-card, .empty-icon, .jump-bottom, .palette-card, .palette, .palette-item, .toast, .find-bar, .notes-panel, .slash-menu,
+  .three-stats, .code-editor, .code-view, .render-log, .game-log, .three-console, .dash-card, .calc-card, .preset-card, .tex-card, .model-section, .lib-ask, .connectors, .kanban-col,
+  .attach-chip, .memory-chip, .tool-chips, .msg.error, .body pre, .group-toggle, .item, dialog, .mb-menu, .lab-pop, .media-bar, .trg-panel, .trg-canvas, .three-preview, .tw-looks, .np-box) {
+  border-radius: var(--sw-r) !important;
+}
+html[data-skin~="swirl"] #menu, html[data-skin~="swirl"] #menu button { border-radius: var(--sw-r-sm) !important; }
+html[data-skin~="swirl"] :is(.ghost, .primary, .dialog-actions button, .web-btn, .code-act, .notes-item, .kanban-add, .tag, .tabbar button, .toast button, kbd, .body code, .bar, .bar span, .tb-group, .trg-chip, .trg-num, .mb-lane, #broadcast button) {
+  border-radius: var(--sw-pill) !important;
+}
+html[data-skin~="swirl"] :is(input:not([type=checkbox]):not([type=color]):not([type=range]), select, textarea) { border-radius: var(--sw-r-sm) !important; }
+html[data-skin~="swirl"] ::-webkit-scrollbar-thumb { border-radius: var(--sw-pill); }
+
+/* ---------- the rail: round agents with a swirl ring on the active one ---------- */
+html[data-skin~="swirl"] #rail { background: linear-gradient(180deg, #13171bcc, #0c0f12cc); }
+html[data-skin~="swirl"] #rail::before { height: 3px; border-radius: 3px; background: var(--sw-swirl); animation: sw-turn 6s linear infinite; }
+html[data-skin~="swirl"] .agent-btn { border-radius: 50% !important; transition: transform .25s cubic-bezier(.3, 1.6, .5, 1), filter .2s; }
+html[data-skin~="swirl"] .agent-btn:hover { transform: scale(1.08) rotate(-4deg); }
+html[data-skin~="swirl"] .agent-btn.active { position: relative; overflow: visible; }
+html[data-skin~="swirl"] .agent-btn.active::before {
+  content: ""; position: absolute; inset: -4px; border-radius: 50%; padding: 2px; pointer-events: none;
+  background: var(--sw-swirl); animation: sw-turn 3.5s linear infinite;
+  -webkit-mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+html[data-skin~="swirl"] .agent-btn.unread::before { border-radius: 50%; }
+html[data-skin~="swirl"] .busy { border-radius: 50%; transform: none; background: conic-gradient(from 0deg, var(--r-mythic), transparent 75%); animation: sw-rotate .9s linear infinite; }
+
+/* ---------- panels: glass over the swirl ---------- */
+html[data-skin~="swirl"] #panel { background: linear-gradient(180deg, #101316e6, #0c0f11e6); }
+html[data-skin~="swirl"] .item:hover { padding-left: 30px; }
+html[data-skin~="swirl"] .item.active { background: linear-gradient(90deg, #bd8bff26, #48ddff10 60%, transparent); }
+html[data-skin~="swirl"] .item.active::before { border-radius: 2px; background: var(--sw-swirl); animation: sw-turn 4s linear infinite; }
+html[data-skin~="swirl"] :is(.tool-head, .native-head) { background: linear-gradient(180deg, #12161ae6, #0e1114d9); }
+html[data-skin~="swirl"] :is(.dash-card, .calc-card, .preset-card, .tex-card, .model-section, .media-bar, .trg-panel) { background: var(--sw-glass); }
+html[data-skin~="swirl"] dialog { background: var(--sw-glass-hi); box-shadow: 0 24px 80px #000a, 0 0 0 1px #ffffff12, 0 0 60px #bd8bff14; }
+
+/* ---------- tabs: a wavy underline that flows ---------- */
+html[data-skin~="swirl"] .tabbar { border-bottom: none; background-image: linear-gradient(90deg, transparent, var(--line-hi), transparent); background-size: 100% 1px; background-repeat: no-repeat; background-position: bottom; }
+html[data-skin~="swirl"] .tabbar button::after {
+  height: 6px; bottom: -2px; transform: none; opacity: 0; background: var(--agent, var(--accent));
+  -webkit-mask: var(--sw-wave) repeat-x 0 50% / 24px 6px; transition: opacity .2s;
+}
+html[data-skin~="swirl"] .tabbar button.on::after { opacity: 1; animation: sw-wave 1.2s linear infinite; }
+html[data-skin~="swirl"] .tabbar button:hover:not(.on)::after { opacity: .45; }
+
+/* ---------- buttons: a swirl rim on the important ones ---------- */
+html[data-skin~="swirl"] :is(.primary, #broadcast button) { position: relative; isolation: isolate; }
+html[data-skin~="swirl"] :is(.primary, #broadcast button)::before {
+  content: ""; position: absolute; inset: -1.5px; border-radius: inherit; padding: 1.5px; z-index: -1; opacity: 0; transition: opacity .25s;
+  background: var(--sw-swirl); animation: sw-turn 2.5s linear infinite;
+  -webkit-mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+html[data-skin~="swirl"] :is(.primary, #broadcast button):hover::before { opacity: 1; }
+html[data-skin~="swirl"] :is(.ghost, .web-btn, .code-act):hover { border-color: #bd8bff88; box-shadow: 0 0 14px #bd8bff22; }
+html[data-skin~="swirl"] .tb-group { border-radius: 16px; }
+
+/* ---------- chat: soft bubbles, orbiting "typing", a swirl spine while it streams ---------- */
+html[data-skin~="swirl"] .msg.user .body { border-radius: 18px 18px 6px 18px; }
+html[data-skin~="swirl"] .msg.assistant.streaming::before { border-radius: 3px; background: var(--sw-swirl); animation: sw-turn 2s linear infinite; }
+html[data-skin~="swirl"] .messages > .msg:last-child:not(.streaming) { animation: sw-in .35s cubic-bezier(.2, .9, .2, 1) both; }
+html[data-skin~="swirl"] .typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--r-mythic); animation: sw-orbit 1.1s linear infinite; }
+html[data-skin~="swirl"] .typing i:nth-child(2) { animation-delay: -.37s; background: var(--cyan); }
+html[data-skin~="swirl"] .typing i:nth-child(3) { animation-delay: -.74s; background: var(--r-unique); }
+html[data-skin~="swirl"] .composer-box { border-radius: 18px; }
+html[data-skin~="swirl"] .composer-box:focus-within { box-shadow: 0 0 0 1px #bd8bff55, 0 0 30px #bd8bff1c; }
+html[data-skin~="swirl"] .empty-icon { border-radius: 50%; animation: sw-breathe 5s ease-in-out infinite; }
+
+/* ---------- views appear with a soft swirl-in ---------- */
+html[data-skin~="swirl"] .surface.active:not(.capturing), html[data-skin~="swirl"] .tabpane:not([hidden]) { animation: sw-in .3s cubic-bezier(.2, .9, .2, 1); }
+html[data-skin~="swirl"] .toast { animation: sw-in .3s cubic-bezier(.2, .9, .2, 1); }
+
+/* ---------- the Lab ---------- */
+html[data-skin~="swirl"] .three-preview { overflow: hidden; }
+html[data-skin~="swirl"] .media-bar .mb-play { border-radius: 50%; }
+html[data-skin~="swirl"] .trg-chip.sel { box-shadow: 0 0 12px color-mix(in srgb, var(--trg) 35%, transparent); }
+
+/* ---------- still, when Windows asks for less motion or the theme says so ---------- */
+@media (prefers-reduced-motion: reduce) {
+  html[data-skin~="swirl"] *, html[data-skin~="swirl"] *::before, html[data-skin~="swirl"] *::after, html[data-skin~="swirl"] body::before, html[data-skin~="swirl"] body::after { animation: none !important; }
+}
+html[data-skin~="swirl"][data-still] body::before, html[data-skin~="swirl"][data-still] body::after { animation: none; }

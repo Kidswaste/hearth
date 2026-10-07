@@ -2,6 +2,7 @@
 // switching, reply notifications, downloads, error toasts, resizable chats panel, usage stats.
 const AppUI = (() => {
   const THEMES = {
+    swirl: { label: 'Forgeheart Swirl (curvy, flowing)', scheme: 'dark', skin: 'forge swirl', background: '#0b0e10', sidebar: '#111518', text: '#eae0d5', accent: '#ffd75e', font: "'FH Oxanium', 'Segoe UI', sans-serif" },
     forgeheart: { label: 'Forgeheart (game menus, animated)', scheme: 'dark', skin: 'forge', background: '#0b0e10', sidebar: '#111518', text: '#eae0d5', accent: '#ffd75e', font: "'FH Oxanium', 'Segoe UI', sans-serif" },
     midnight: { label: 'Midnight', scheme: 'dark', skin: '', background: '#0f1115', sidebar: '#15181e', text: '#e6e6e6', accent: '#7c5cff', font: '"Segoe UI", system-ui, sans-serif' },
     graphite: { label: 'Graphite', scheme: 'dark', skin: '', background: '#18181b', sidebar: '#202024', text: '#ececec', accent: '#3b82f6', font: '"Segoe UI", system-ui, sans-serif' },
@@ -473,6 +474,15 @@ const AppUI = (() => {
   window.addEventListener('error', (e) => reportError(e.message));
   window.addEventListener('unhandledrejection', (e) => reportError(e.reason?.message || String(e.reason)));
 
+  // One time: Forgeheart users get the new Swirl look (Settings → Theme goes back). Called once the config is loaded.
+  function offerSwirl() {
+    if (H.config?.theme?.preset !== 'forgeheart' || store.get('theme.swirlOffered')) return;
+    store.set('theme.swirlOffered', true);
+    const { label, ...colors } = THEMES.swirl;
+    H.config.theme = { ...H.config.theme, ...colors, preset: 'swirl' };
+    saveConfig();
+    setTimeout(() => toast('New look: Forgeheart Swirl · Settings → Theme to switch back', { timeout: 5000 }), 1500);
+  }
   function init() {
     const z = store.get('zoom.app', 1);
     if (z !== 1) window.hub.setZoom(z);
@@ -514,5 +524,5 @@ const AppUI = (() => {
     }
   }
 
-  return { init, openSettings, palette, find, shortcutsHelp, zoom, switchRecent, replyFinished, usageDialog, downloadsDialog, trashDialog, addAction, THEMES, snapshotToChat, toggleOnTop };
+  return { init, offerSwirl, openSettings, palette, find, shortcutsHelp, zoom, switchRecent, replyFinished, usageDialog, downloadsDialog, trashDialog, addAction, THEMES, snapshotToChat, toggleOnTop };
 })();

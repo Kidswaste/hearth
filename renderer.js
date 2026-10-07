@@ -454,6 +454,7 @@ function apply({ config, themeCss, error }) {
   const first = !H.config;
   H.config = config;
   applyTheme(themeCss);
+  if (first) setTimeout(() => AppUI.offerSwirl(), 0);
   if (first) {
     H.grid = config.layout?.start === 'grid';
     H.panelOpen = config.layout?.chatsPanel !== false;
