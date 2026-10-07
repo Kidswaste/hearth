@@ -1183,6 +1183,16 @@ const ThreeLab = (() => {
     let consoleLines = [];
     let lastStats = null;
     let pendingShot = null;
+    // Requests to the sandbox that answer later (eval / input), by id.
+    const sandboxCalls = new Map();
+    function sandboxCall(msg, timeout) {
+      return new Promise((resolve) => {
+        const id = `c${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`;
+        sandboxCalls.set(id, resolve);
+        box.send({ ...msg, id });
+        setTimeout(() => { if (sandboxCalls.has(id)) { sandboxCalls.delete(id); resolve({ ok: false, error: 'The sketch did not answer (is it running?)' }); } }, timeout);
+      });
+    }
 
     const layerName = (id) => (layersOf().length > 1 ? layerById(id || 'main')?.name : null);
     function log(level, text, line, layer) {
@@ -1238,6 +1248,7 @@ const ThreeLab = (() => {
           el('span', { text: `${msg.triangles.toLocaleString()} tris` }), msg.points ? el('span', { text: `${msg.points.toLocaleString()} points` }) : null,
           el('span', { text: `${msg.geometries} geo · ${msg.textures} tex · ${msg.programs} shaders` }));
       }
+      if (msg.type === 'eval-result' || msg.type === 'input-result') { sandboxCalls.get(msg.id)?.(msg); sandboxCalls.delete(msg.id); return; }
       if (msg.type === 'shot') {
         if (msg.tag === 'thumb') { const fn = thumbShot; thumbShot = null; fn?.(msg.dataUrl); return; }
         if (pendingShot) { pendingShot(msg.dataUrl); pendingShot = null; } else saveDataUrl(msg.dataUrl, `${current?.name || 'sketch'}.png`);
@@ -1700,6 +1711,9 @@ ${code}
         if (!(await removeLayer(L.id, { confirm: false }))) throw new Error('A sketch keeps at least one layer.');
         return { removed: L.name, ...report() };
       },
+      // ---------- the running sketch: evaluate code inside it, press keys / click (play-testing) ----------
+      evalInSketch: (code) => sandboxCall({ type: 'eval', code }, 6000),
+      inputToSketch: (actions) => sandboxCall({ type: 'input', actions }, 70000),
       // ---------- reading and editing code in parts (big layers don't fit in one reply) ----------
       readCode(ref, from = 1, to = null) {
         const L = ref ? findLayer(ref) : sel();
@@ -2187,6 +2201,17 @@ ${frag}\`,
     if (tool === 'three_add_layer') {
       toast(`Three Director added a layer${args.name ? ` "${args.name}"` : ''}`, { timeout: 1500 });
       return { ok: true, value: await d.addLayer({ name: args.name, code: args.code, template: args.template, position: args.position, props: args.settings || {} }, Number(args.wait) || 2.5) };
+    }
+    if (tool === 'three_eval') {
+      const r = await d.evalInSketch(String(args.code || ''));
+      return r.ok ? { ok: true, value: { result: r.value, console: d.report().console?.slice?.(-5) } } : { ok: false, error: r.error };
+    }
+    if (tool === 'three_input') {
+      const r = await d.inputToSketch(Array.isArray(args.actions) ? args.actions : []);
+      if (!r.ok) return { ok: false, error: r.error };
+      if (!args.screenshot) return { ok: true, value: { done: r.log } };
+      const url = await d.shot();
+      return { ok: true, value: { done: r.log }, ...(url ? { images: [{ data: url.split(',')[1], mime: 'image/png' }] } : {}) };
     }
     if (tool === 'three_read_code') return { ok: true, value: d.readCode(args.layer, Number(args.from) || 1, args.to != null ? Number(args.to) : null) };
     if (tool === 'three_search_code') return { ok: true, value: d.searchCode(String(args.pattern || ''), { layer: args.layer || null, regex: Boolean(args.regex), context: Math.min(5, Math.max(0, Number(args.context ?? 1))) }) };

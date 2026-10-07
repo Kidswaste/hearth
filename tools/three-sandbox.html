@@ -71,6 +71,7 @@ function instrument(renderFn) {
     renderFn.call(this, scene, camera);
     frameMs = performance.now() - t0;
     lastRenderer = this;
+    this.__lastScene = scene; this.__lastCamera = camera;
     renderers.add(this);
     frames += 1;
     if (shotPending) { shotPending = false; post({ type: 'shot', tag: shotTag, dataUrl: this.domElement.toDataURL('image/png') }); }
@@ -424,6 +425,93 @@ globalThis.refTexture = (key, { loop = true, muted = true } = {}) => {
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 };
+// ---------- for the Three Director: look inside the running sketch, press keys, click ----------
+// __scenes = { 'Layer name': { scene, camera, renderer } } from what each layer last rendered.
+function scenesByLayer() {
+  const out = {};
+  for (const L of layers.values()) for (const r of L.renderers) if (r.__lastScene) out[L.props?.name || L.id] = { scene: r.__lastScene, camera: r.__lastCamera, renderer: r };
+  return out;
+}
+Object.defineProperty(globalThis, '__scenes', { get: scenesByLayer, configurable: true });
+// A readable, JSON-safe picture of any value (three.js objects summarized, cycles and depth cut).
+function describe(v, depth = 0, seen = new WeakSet()) {
+  const r3 = (x) => Math.round(x * 1000) / 1000;
+  if (v == null || typeof v === 'boolean' || typeof v === 'string') return v;
+  if (typeof v === 'number') return Number.isFinite(v) ? r3(v) : String(v);
+  if (typeof v === 'function') return `function ${v.name || '(anonymous)'}`;
+  if (typeof v !== 'object') return String(v);
+  if (seen.has(v)) return '(seen above)';
+  seen.add(v);
+  if (v.isVector2 || v.isVector3 || v.isVector4) return v.toArray().map(r3);
+  if (v.isEuler) return [r3(v.x), r3(v.y), r3(v.z)];
+  if (v.isColor) return `#${v.getHexString()}`;
+  if (v.isObject3D) {
+    const o = { type: v.type, name: v.name || undefined, visible: v.visible, position: v.position.toArray().map(r3) };
+    if (v.rotation.x || v.rotation.y || v.rotation.z) o.rotation = [r3(v.rotation.x), r3(v.rotation.y), r3(v.rotation.z)];
+    if (v.scale.x !== 1 || v.scale.y !== 1 || v.scale.z !== 1) o.scale = v.scale.toArray().map(r3);
+    if (v.geometry) o.geometry = v.geometry.type;
+    if (v.material) o.material = Array.isArray(v.material) ? v.material.map((m) => m.type) : `${v.material.type}${v.material.color ? ` #${v.material.color.getHexString()}` : ''}`;
+    if (v.count != null) o.count = v.count;
+    if (Object.keys(v.userData || {}).length) o.userData = describe(v.userData, depth + 1, seen);
+    if (v.children.length) o.children = depth < 2 ? v.children.slice(0, 40).map((c) => describe(c, depth + 1, seen)) : `${v.children.length} children`;
+    return o;
+  }
+  if (depth > 3) return Array.isArray(v) ? `[${v.length} items]` : '{…}';
+  if (Array.isArray(v) || ArrayBuffer.isView(v)) { const a = Array.from(v.slice(0, 60), (x) => describe(x, depth + 1, seen)); if (v.length > 60) a.push(`…${v.length - 60} more`); return a; }
+  if (v instanceof Map) return Object.fromEntries([...v].slice(0, 40).map(([k, x]) => [String(k), describe(x, depth + 1, seen)]));
+  if (v instanceof Set) return [...v].slice(0, 40).map((x) => describe(x, depth + 1, seen));
+  if (v instanceof Element) return `<${v.tagName.toLowerCase()}${v.id ? `#${v.id}` : ''}>`;
+  const out = {};
+  for (const k of Object.keys(v).slice(0, 60)) { try { out[k] = describe(v[k], depth + 1, seen); } catch { out[k] = '(unreadable)'; } }
+  return out;
+}
+async function runEval({ id, code }) {
+  try {
+    const src = String(code || '');
+    const body = /(^|[;{}\n])\s*return\b/.test(src) || /;\s*\S/.test(src.trim().replace(/;\s*$/, '')) ? src : `return (${src.replace(/;\s*$/, '')});`;
+    const fn = new Function(`return (async () => { ${body}\n })();`);
+    const value = await Promise.race([fn(), new Promise((_, rej) => realSetTimeout(() => rej(new Error('Timed out after 4 s')), 4000))]);
+    post({ type: 'eval-result', id, ok: true, value: describe(value) });
+  } catch (err) { post({ type: 'eval-result', id, ok: false, error: `${err.name}: ${err.message}` }); }
+}
+const KEY_CODES = { ' ': 'Space', ArrowLeft: 'ArrowLeft', ArrowRight: 'ArrowRight', ArrowUp: 'ArrowUp', ArrowDown: 'ArrowDown', Enter: 'Enter', Escape: 'Escape', Shift: 'ShiftLeft', Control: 'ControlLeft', Alt: 'AltLeft', Tab: 'Tab', Backspace: 'Backspace' };
+const codeOf = (k) => KEY_CODES[k] || (/^[a-z]$/i.test(k) ? `Key${k.toUpperCase()}` : /^\d$/.test(k) ? `Digit${k}` : k);
+const keyEvent = (type, key) => {
+  const init = { key, code: codeOf(key), bubbles: true, cancelable: true, keyCode: key.length === 1 ? key.toUpperCase().charCodeAt(0) : { ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Enter: 13, Escape: 27, ' ': 32 }[key] || 0 };
+  const targets = new Set([document.activeElement || document.body, document, window]);
+  for (const t of targets) t.dispatchEvent(new KeyboardEvent(type, init));
+};
+const sleepReal = (ms) => new Promise((r) => realSetTimeout(r, ms));
+// actions: [{ key, ms }] hold a key · [{ keys: ['w','Shift'], ms }] together · { click: [x, y] } (0..1 of the view) · { move: [x, y] } · { wait: ms }
+async function runInput({ id, actions = [] }) {
+  const log = [];
+  try {
+    for (const a of actions.slice(0, 60)) {
+      if (a.wait) { await sleepReal(Math.min(10000, a.wait)); log.push(`waited ${a.wait} ms`); continue; }
+      if (a.key || a.keys) {
+        const ks = a.keys || [a.key];
+        for (const k of ks) keyEvent('keydown', k);
+        await sleepReal(Math.min(10000, a.ms ?? 120));
+        for (const k of [...ks].reverse()) keyEvent('keyup', k);
+        log.push(`pressed ${ks.join('+')} for ${a.ms ?? 120} ms`);
+        continue;
+      }
+      const pt = a.click || a.move;
+      if (pt) {
+        const x = pt[0] * innerWidth; const y = pt[1] * innerHeight;
+        const target = document.elementFromPoint(x, y) || document.querySelector('canvas') || document.body;
+        const base = { clientX: x, clientY: y, bubbles: true, cancelable: true, button: a.button || 0, pointerId: 1, isPrimary: true };
+        if (a.move) { target.dispatchEvent(new PointerEvent('pointermove', base)); target.dispatchEvent(new MouseEvent('mousemove', base)); log.push(`moved to ${pt}`); continue; }
+        for (const t of ['pointerdown', 'mousedown']) target.dispatchEvent(new (t.startsWith('pointer') ? PointerEvent : MouseEvent)(t, { ...base, buttons: 1 }));
+        await sleepReal(Math.min(5000, a.ms ?? 60));
+        for (const t of ['pointerup', 'mouseup', 'click']) target.dispatchEvent(new (t.startsWith('pointer') ? PointerEvent : MouseEvent)(t, base));
+        log.push(`clicked at ${pt} on <${target.tagName.toLowerCase()}>`);
+      }
+    }
+    post({ type: 'input-result', id, ok: true, log });
+  } catch (err) { post({ type: 'input-result', id, ok: false, error: err.message, log }); }
+}
+
 // Named controls: const P = tweak({ speed: [1, 0, 5], glow: { value: 1, min: 0, max: 3, label: 'Glow', group: 'Look', onChange }, tint: '#ff3cac', wire: false })
 globalThis.tweak = (spec = {}) => {
   const L = layerState(currentLayer() || 'main');
@@ -1426,6 +1514,8 @@ addEventListener('message', async (e) => {
   if (msg.type === 'layer-props') { const L = layers.get(msg.id); if (L) setLayerProps(L, msg.props); }
   if (msg.type === 'remove-layer') removeLayer(msg.id);
   if (msg.type === 'media-load') loadMedia(msg);
+  if (msg.type === 'eval') runEval(msg);
+  if (msg.type === 'input') runInput(msg);
   if (msg.type === 'refs') { setRefs(msg.items); palette.splice(0, palette.length, ...(msg.palette || [])); }
   if (msg.type === 'media') mediaCommand(msg);
   if (msg.type === 'media-map') beatMap = msg;
