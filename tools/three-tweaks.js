@@ -321,6 +321,12 @@ const ThreeTweaks = (() => {
     let filter = '';
     let looks = [];
     let bindings = {};
+    let locks = new Set(); // ids of controls held at their value (sliders, shuffle, looks, MIDI and resets leave them alone)
+    let favs = new Set(); // ids shown in ★ Favorites at the top
+    let layout = store.get('three.twLayout', 'auto'); // auto | knobs | sliders
+    let groupFilter = '';
+    let changedOnly = false;
+    const collapsed = new Set(store.get('three.twCollapsed', []));
     let undoStack = [];
     let committed = [];
     const rows = [];
@@ -338,17 +344,34 @@ const ThreeTweaks = (() => {
     unusedBox.addEventListener('change', () => { showUnused = unusedBox.checked; applyFilter(); });
     const search = el('input', { type: 'search', class: 'tw-search', placeholder: 'Find a slider…' });
     search.addEventListener('input', () => { filter = search.value.toLowerCase(); applyFilter(); });
-    const asks = quickAsk ? el('div', { class: 'tw-asks' }, el('span', { class: 'tw-asks-title', text: 'Ask the director' }),
-      ['More energy', 'Calmer', 'New colors', 'Hit harder on beats', 'Simpler', 'More detail', 'Add a slider for…'].map((t) => el('button', {
+    // Show one group at a time, knobs or sliders, only what you changed, and hold A/B to hear… see the code's values.
+    const groupSel = el('select', { class: 'tw-groupsel', title: 'Show one group' });
+    groupSel.addEventListener('change', () => { groupFilter = groupSel.value; applyFilter(); });
+    const layoutSel = el('select', { class: 'tw-layoutsel', title: 'Knobs or sliders for numbers' },
+      [['auto', 'Auto'], ['knobs', 'Knobs'], ['sliders', 'Sliders']].map(([v, l]) => el('option', { value: v, text: l, selected: v === layout })));
+    layoutSel.addEventListener('change', () => { layout = layoutSel.value; store.set('three.twLayout', layout); render(); });
+    const changedBox = el('input', { type: 'checkbox' });
+    changedBox.addEventListener('change', () => { changedOnly = changedBox.checked; applyFilter(); });
+    const abBtn = btn('A/B', 'Hold to see the values in the code (A); let go for yours (B)', () => {});
+    abBtn.addEventListener('pointerdown', () => compare(true));
+    for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) abBtn.addEventListener(ev, () => compare(false));
+    // Folds to one line so the controls get the room; remembers whether you keep it open.
+    const asks = quickAsk ? el('details', { class: 'tw-asks', on: { toggle: (e) => store.set('three.twAsksOpen', e.currentTarget.open) } },
+      el('summary', { class: 'tw-asks-title', text: 'Ask the director' }),
+      ...['More energy', 'Calmer', 'New colors', 'Hit harder on beats', 'Simpler', 'More detail', 'Add a slider for…'].map((t) => el('button', {
         class: 'tw-chip', text: t, title: t.endsWith('…') ? 'Starts the message so you can finish it' : `Send "${t}" to the Three Director`,
         on: { click: () => quickAsk(t) },
       }))) : null;
+    if (asks) asks.open = store.get('three.twAsksOpen', false);
     const root = el('div', { class: 'tweaks' },
       el('div', { class: 'tw-head' }, el('b', { text: 'Sliders' }), count, el('span', { class: 'spacer' }), undoBtn, shuffleBtn, resetBtn, saveBtn),
       status, looksBar,
-      el('div', { class: 'tw-tools' }, search, el('label', { class: 'check small', title: 'Also list values the running sketch never reads' }, unusedBox, 'Unused')),
+      el('div', { class: 'tw-tools' }, search, abBtn),
+      el('div', { class: 'tw-tools tw-tools2' }, groupSel, layoutSel, el('label', { class: 'check small', title: 'Only the controls you moved' }, changedBox, 'Changed'),
+        el('label', { class: 'check small', title: 'Also list values the running sketch never reads' }, unusedBox, 'Unused')),
       notice, body, asks,
-      el('div', { class: 'tw-foot' }, el('span', { html: '<b class="tw-live">⚡</b> instant · <b class="tw-rerun">↻</b> rebuilds the scene as you drag · <b class="tw-music">♪</b> follows the music' })));
+      el('div', { class: 'tw-foot', title: 'Knobs: drag up / down (Shift = fine), wheel or arrow keys to step. They click into the value in the code (the blue notch) as you pass it; double-click goes back to it. Right-click: lock, favorites, follow the music, keyframe.' },
+        el('span', { html: '<b class="tw-live">⚡</b> instant · <b class="tw-rerun">↻</b> rebuilds · <b class="tw-music">♪</b> music · <b style="color:#48ddff">|</b> code value · right-click: 🔒 ★' })));
 
     // Values used only while the scene is built re-run it in place, at most every 180 ms while dragging.
     let rebuildTimer = null;
@@ -374,9 +397,12 @@ const ThreeTweaks = (() => {
         ? `You're seeing ${d} change${d > 1 ? 's' : ''} live. Save keeps ${d > 1 ? 'them' : 'it'} in the sketch.`
         : 'Changes show live as you move a slider. Nothing to save.';
       rows.forEach((r) => r.el.classList.toggle('changed', !same(r.it, values[r.i])));
+      body.querySelectorAll('.tw-sec').forEach((sec) => sec.paintChanged?.());
+      if (changedOnly) applyFilter();
     }
     function setValue(i, v, { release = false, external = false } = {}) {
       const it = scanned.items[i];
+      if (locks.has(ids[i])) return;
       if (!external && it.key != null) touched?.(it.key, labelOf(it));
       // An animated control (or any control while Write is recording): the move becomes a keyframe at the playhead.
       const ks = it.key != null ? keyframes?.state(it.key) : null;
@@ -403,11 +429,11 @@ const ThreeTweaks = (() => {
     function applyValues(next, { remember = true } = {}) {
       let rb = false;
       next.forEach((v, i) => {
-        if (v === values[i] || v === undefined) return;
+        if (v === values[i] || v === undefined || locks.has(ids[i])) return;
         values[i] = v;
         const it = scanned.items[i];
         send({ type: 'tweak', index: i, value: runtime(it, v), call: it.call, key: it.key });
-        rows.find((r) => r.i === i)?.set(v);
+        rows.filter((r) => r.i === i).forEach((r) => r.set(v));
         if (needsRebuild(i)) rb = true;
       });
       if (rb) rebuild();
@@ -419,12 +445,13 @@ const ThreeTweaks = (() => {
       if (!prev || prev.length !== values.length) return;
       applyValues(prev, { remember: false });
     }
-    function shuffle() {
-      if (!scanned) return;
+    function shuffle() { if (scanned) applyValues(shuffled(null)); }
+    // Random nearby values for every control (or only the indexes in `only`).
+    function shuffled(only) {
       const next = values.slice();
       const rnd = (a, b) => a + Math.random() * (b - a);
       scanned.items.forEach((it, i) => {
-        if (it.key == null) return;
+        if (it.key == null || locks.has(ids[i])) return;
         if (it.kind === 'number') {
           const { min, max, step } = it.range;
           const span = max - min;
@@ -435,11 +462,58 @@ const ThreeTweaks = (() => {
         else if (it.kind === 'bool') next[i] = Math.random() < 0.25 ? !values[i] : values[i];
         else if (it.kind === 'choice' && it.options?.length) next[i] = Math.random() < 0.4 ? it.options[Math.floor(Math.random() * it.options.length)] : values[i];
       });
-      applyValues(next);
+      return only ? values.map((v, i) => (only.includes(i) ? next[i] : v)) : next;
     }
     function reset() {
       if (!scanned) return;
       applyValues(scanned.items.map((it) => it.orig));
+    }
+
+    // Hold A/B: the sketch shows the code's values while held, then yours again (nothing is changed).
+    let comparing = false;
+    function compare(on) {
+      if (!scanned || on === comparing) return;
+      comparing = on;
+      root.classList.toggle('comparing', on);
+      scanned.items.forEach((it, i) => {
+        const v = on ? it.orig : values[i];
+        if (same(it, values[i])) return;
+        send({ type: 'tweak', index: i, value: runtime(it, v), call: it.call, key: it.key });
+        rows.filter((r) => r.i === i).forEach((r) => r.set(v));
+      });
+    }
+    // One group: nudge its values at random, or put them back to the code's.
+    function shuffleGroup(idxs) { applyValues(shuffled(idxs)); }
+    function resetGroup(idxs) { applyValues(values.map((v, i) => (idxs.includes(i) ? scanned.items[i].orig : v))); }
+    function saveSets() { persist?.('locks', [...locks]); persist?.('favs', [...favs]); }
+    function toggleLock(i) {
+      if (locks.has(ids[i])) locks.delete(ids[i]); else locks.add(ids[i]);
+      saveSets();
+      rows.filter((r) => r.i === i).forEach((r) => r.paintLock?.());
+    }
+    function toggleFav(i) {
+      if (favs.has(ids[i])) favs.delete(ids[i]); else favs.add(ids[i]);
+      saveSets();
+      render();
+    }
+    function resetOne(i) {
+      const it = scanned.items[i];
+      if (locks.has(ids[i])) return;
+      rows.filter((r) => r.i === i).forEach((r) => r.set(it.orig));
+      setValue(i, it.orig, { release: true });
+    }
+    function rowMenu(e, it, i, r) {
+      e.preventDefault();
+      const locked = locks.has(ids[i]);
+      showMenu(e.clientX, e.clientY, [
+        { label: `↺ Back to the code's value (${it.kind === 'number' ? trimNum(it.orig) : it.orig})`, action: () => resetOne(i) },
+        { label: locked ? '🔓 Unlock' : '🔒 Lock at this value', action: () => toggleLock(i) },
+        { label: '🔒 Reset and lock', action: () => { if (locks.has(ids[i])) toggleLock(i); resetOne(i); toggleLock(i); } },
+        { label: favs.has(ids[i]) ? '☆ Remove from Favorites' : '★ Add to Favorites', action: () => toggleFav(i) },
+        ...(r.musicPanel ? [{ label: '♪ Follow the music…', action: () => { r.musicPanel.hidden = false; r.paintMusic?.(); } }] : []),
+        ...(keyframes && it.key != null && (it.kind === 'number' || it.kind === 'color') ? [{ label: '◆ Keyframe at the playhead', action: () => { keyframes.toggle(it.key, values[i]); r.paintKey?.(); } }] : []),
+        { label: `Show line ${it.line} in the code`, action: () => goToLine(it.line) },
+      ]);
     }
 
     // ---------- looks: named sets of values you can click between ----------
@@ -532,14 +606,144 @@ const ThreeTweaks = (() => {
         return { node: el('div', { class: 'tw-color' }, pick, hex), set: (x) => { pick.value = x; hex.value = x; } };
       }
       const r = it.range;
-      const slider = el('input', { type: 'range', min: r.min, max: r.max, step: r.step, value: v, title: 'Double-click to go back to the value in the code' });
+      const slider = el('input', { type: 'range', min: r.min, max: r.max, step: r.step, value: v, title: 'Clicks into the value in the code as you pass it · double-click to go back to it' });
       const num = el('input', { type: 'number', class: 'tw-num', step: r.step, value: it.int ? v : trimNum(v) });
-      const widen = (x) => { if (x < Number(slider.min)) slider.min = x; if (x > Number(slider.max)) slider.max = x; };
-      slider.addEventListener('input', () => { const x = Number(slider.value); num.value = it.int ? x : trimNum(x); setValue(i, x); });
+      // a tick where the code's value sits, and a detent there (like a center-click knob)
+      const tick = el('i', { class: 'tw-orig' });
+      const placeTick = () => { const lo = Number(slider.min); const hi = Number(slider.max); tick.style.left = `calc(7px + (100% - 14px) * ${(it.orig - lo) / ((hi - lo) || 1)})`; };
+      const widen = (x) => { if (x < Number(slider.min)) slider.min = x; if (x > Number(slider.max)) slider.max = x; placeTick(); };
+      placeTick();
+      slider.addEventListener('input', () => {
+        let x = Number(slider.value);
+        if (Math.abs(x - it.orig) <= (Number(slider.max) - Number(slider.min)) * 0.025) { x = it.orig; slider.value = x; }
+        wrap.classList.toggle('at-orig', x === it.orig);
+        num.value = it.int ? x : trimNum(x);
+        setValue(i, x);
+      });
       slider.addEventListener('change', () => setValue(i, Number(slider.value), { release: true }));
       num.addEventListener('change', () => { const x = Number(num.value); if (!Number.isFinite(x)) return; widen(x); slider.value = x; setValue(i, it.int ? Math.round(x) : x, { release: true }); });
       slider.addEventListener('dblclick', () => { widen(it.orig); slider.value = it.orig; num.value = it.int ? it.orig : trimNum(it.orig); setValue(i, it.orig, { release: true }); });
-      return { node: el('div', { class: 'tw-num-row' }, slider, num), set: (x) => { widen(x); slider.value = x; num.value = it.int ? x : trimNum(x); } };
+      const wrap = el('div', { class: 'tw-range' }, slider, tick);
+      return { node: el('div', { class: 'tw-num-row' }, wrap, num), set: (x) => { widen(x); slider.value = x; num.value = it.int ? x : trimNum(x); wrap.classList.toggle('at-orig', x === it.orig); } };
+    }
+
+    // Numbers as knobs: drag up / down (or sideways), Shift for fine, wheel or arrow keys to step. The knob clicks
+    // into the code's value as you pass it (a detent, shown as a notch); double-click goes back there.
+    const KNOB_R = 17; const KNOB_C = 2 * Math.PI * KNOB_R; const KNOB_ARC = KNOB_C * 0.75;
+    function knobCell(it, i) {
+      const rg = it.range;
+      let lo = rg.min; let hi = rg.max;
+      const NS = 'http://www.w3.org/2000/svg';
+      const svgEl = (tag, attrs) => { const n = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; };
+      const svg = svgEl('svg', { viewBox: '0 0 48 48', class: 'tw-knob', tabindex: '0' });
+      const track = svgEl('circle', { cx: 24, cy: 24, r: KNOB_R, class: 'kn-track', 'stroke-dasharray': `${KNOB_ARC} ${KNOB_C}`, transform: 'rotate(135 24 24)' });
+      const arc = svgEl('circle', { cx: 24, cy: 24, r: KNOB_R, class: 'kn-arc', transform: 'rotate(135 24 24)' });
+      const notch = svgEl('line', { x1: 24, y1: 3, x2: 24, y2: 8, class: 'kn-notch' });
+      const cap = svgEl('circle', { cx: 24, cy: 24, r: 12, class: 'kn-cap' });
+      const ptr = svgEl('line', { x1: 24, y1: 24, x2: 24, y2: 14, class: 'kn-ptr' });
+      svg.append(track, arc, notch, cap, ptr);
+      const valEl = el('button', { class: 'tw-kval', title: 'Click to type a value' });
+      const frac = (x) => Math.max(0, Math.min(1, (x - lo) / ((hi - lo) || 1)));
+      const ang = (x) => -135 + frac(x) * 270;
+      let cur = values[i];
+      function paint(x) {
+        cur = x;
+        arc.setAttribute('stroke-dasharray', `${Math.max(0.001, frac(x) * KNOB_ARC)} ${KNOB_C}`);
+        ptr.setAttribute('transform', `rotate(${ang(x)} 24 24)`);
+        notch.setAttribute('transform', `rotate(${ang(it.orig)} 24 24)`);
+        valEl.textContent = it.int ? String(Math.round(x)) : trimNum(Number(x).toPrecision(3));
+        cell.classList.toggle('at-orig', Math.abs(x - it.orig) < 1e-9);
+      }
+      // Detent: near the code's value the knob clicks into it, and stays there until you turn clearly past.
+      const zone = () => Math.max((hi - lo) * 0.035, it.int ? 1.5 : rg.step * 1.5);
+      let held = false;
+      const quant = (x, dragging = false) => {
+        x = Math.max(lo, Math.min(hi, x));
+        const d = Math.abs(x - it.orig);
+        if (d <= zone() || (dragging && held && d <= zone() * 2.2)) { held = dragging; return it.orig; }
+        held = false;
+        return it.int ? Math.round(x) : Number((Math.round(x / rg.step) * rg.step).toFixed(6));
+      };
+      const commit = (x, release) => { paint(x); setValue(i, x, { release }); };
+      svg.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0 || locks.has(ids[i])) return;
+        e.preventDefault();
+        svg.setPointerCapture(e.pointerId);
+        svg.focus();
+        const y0 = e.clientY; const x0 = e.clientX; const v0 = cur;
+        cell.classList.add('turning');
+        const move = (ev) => {
+          const d = ((y0 - ev.clientY) + (ev.clientX - x0) * 0.5) / 160;
+          commit(quant(v0 + d * (hi - lo) * (ev.shiftKey ? 0.15 : 1), true), false);
+        };
+        const up = () => { svg.removeEventListener('pointermove', move); cell.classList.remove('turning'); held = false; commit(cur, true); };
+        svg.addEventListener('pointermove', move);
+        svg.addEventListener('pointerup', up, { once: true });
+      });
+      svg.addEventListener('dblclick', () => resetOne(i));
+      svg.addEventListener('wheel', (e) => {
+        if (locks.has(ids[i])) return;
+        e.preventDefault();
+        const stepBy = it.int ? 1 : (hi - lo) / (e.shiftKey ? 400 : 100);
+        commit(quant(cur + (e.deltaY < 0 ? stepBy : -stepBy)), true);
+      }, { passive: false });
+      svg.addEventListener('keydown', (e) => {
+        if (!/^Arrow(Up|Down|Left|Right)$/.test(e.key) || locks.has(ids[i])) return;
+        e.preventDefault(); e.stopPropagation();
+        const stepBy = it.int ? 1 : (hi - lo) / (e.shiftKey ? 400 : 100);
+        commit(quant(cur + (/Up|Right/.test(e.key) ? stepBy : -stepBy)), true);
+      });
+      valEl.addEventListener('click', () => {
+        if (locks.has(ids[i])) return;
+        const inp = el('input', { type: 'number', class: 'tw-kedit', value: it.int ? Math.round(cur) : trimNum(cur), step: rg.step });
+        valEl.replaceWith(inp);
+        inp.focus(); inp.select();
+        const done = (ok) => {
+          if (!inp.isConnected) return;
+          inp.replaceWith(valEl);
+          const x = Number(inp.value);
+          if (ok && Number.isFinite(x)) { if (x < lo) lo = x; if (x > hi) hi = x; commit(it.int ? Math.round(x) : x, true); }
+        };
+        inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') done(true); if (e.key === 'Escape') done(false); e.stopPropagation(); });
+        inp.addEventListener('blur', () => done(true));
+      });
+      const cell = el('div', { class: 'tw-knob-cell' });
+      paint(cur);
+      return { cell, svg, valEl, set: (x) => { if (x < lo) lo = x; if (x > hi) hi = x; paint(x); } };
+    }
+    const asKnob = (it) => it.kind === 'number' && layout !== 'sliders' && (layout === 'knobs' || !it.int || it.range.max - it.range.min <= 32);
+    function knobRow(it, i) {
+      const k = knobCell(it, i);
+      const badge = el('span', { class: 'tw-badge' });
+      const r = { it, i, badge, set: k.set, text: `${labelOf(it) || ''} ${it.hint || ''} ${it.lineText}`.toLowerCase(), knob: true };
+      const name = el('span', { class: 'tw-kname', text: labelOf(it) || it.raw, title: [labelOf(it), it.hint, `line ${it.line}`].filter(Boolean).join('\n') });
+      const icons = el('span', { class: 'tw-kicons' });
+      const music = el('button', { class: 'tw-music-btn', text: '♪', title: 'Follow the music' });
+      const { panel, paint } = musicPanel(it, i, r);
+      panel.classList.add('tw-kpanel');
+      music.addEventListener('click', () => { panel.hidden = !panel.hidden; paint(); });
+      r.updateMusic = () => { const b = bindings[ids[i]]; music.textContent = b ? '♪' : '♪'; music.title = b ? `Follows ${BAND_NAME[b.band]}` : 'Follow the music'; music.classList.toggle('on', Boolean(b)); k.cell.classList.toggle('music', Boolean(b)); };
+      r.paintMusic = paint;
+      r.musicPanel = panel;
+      icons.append(music);
+      if (keyframes && it.key != null) {
+        const kb = el('button', { class: 'kf-btn', type: 'button' });
+        r.paintKey = () => { const stt = keyframes.state(it.key); kb.textContent = stt === 'on' ? '◆' : '◇'; kb.className = `kf-btn kf-${stt}`; kb.title = stt === 'on' ? 'Remove this keyframe' : 'Keyframe at the playhead'; };
+        kb.addEventListener('click', () => { keyframes.toggle(it.key, r.current ?? values[i]); r.paintKey(); });
+        r.paintKey();
+        icons.prepend(kb);
+      }
+      const lockMark = el('span', { class: 'tw-lockmark', text: '🔒', title: 'Locked: right-click → Unlock' });
+      r.paintLock = () => { const on = locks.has(ids[i]); k.cell.classList.toggle('locked', on); lockMark.hidden = !on; };
+      icons.append(badge);
+      k.cell.append(el('div', { class: 'tw-ktop' }, name), k.svg, el('div', { class: 'tw-kfoot' }, k.valEl, icons, lockMark));
+      k.cell.addEventListener('contextmenu', (e) => rowMenu(e, it, i, r));
+      r.el = k.cell;
+      r.panelEl = panel;
+      r.updateMusic();
+      r.paintLock();
+      rows.push(r);
+      return r;
     }
 
     function row(it, i) {
@@ -577,8 +781,13 @@ const ThreeTweaks = (() => {
         r.paintKey();
         label.before(kb);
       }
-      top.append(badge, el('button', { class: 'tw-line', text: `L${it.line}`, title: `Show line ${it.line} in the code`, on: { click: () => goToLine(it.line) } }));
+      const lockBtn = el('button', { class: 'tw-lock', type: 'button' });
+      r.paintLock = () => { const on = locks.has(ids[i]); lockBtn.textContent = on ? '🔒' : '🔓'; lockBtn.title = on ? 'Locked at this value: click to unlock' : 'Lock at this value (sliders, shuffle, looks and MIDI leave it alone)'; r.el?.classList.toggle('locked', on); };
+      lockBtn.addEventListener('click', () => toggleLock(i));
+      top.append(badge, lockBtn, el('button', { class: 'tw-line', text: `L${it.line}`, title: `Show line ${it.line} in the code`, on: { click: () => goToLine(it.line) } }));
       r.el = el('div', { class: `tw-row kind-${it.kind}${named ? ' named' : ''}` }, top, it.hint ? el('div', { class: 'tw-hint', text: it.hint }) : null, ctl.node, r.musicPanel || null);
+      r.el.addEventListener('contextmenu', (e) => { if (!e.target.closest('input[type=text], input[type=number]')) rowMenu(e, it, i, r); });
+      r.paintLock();
       rows.push(r);
       return r.el;
     }
@@ -600,17 +809,45 @@ const ThreeTweaks = (() => {
       const colors = all.filter(([it]) => it.key == null && it.kind === 'color');
       const numbers = all.filter(([it]) => it.key == null && it.kind === 'number');
       const section = (title, list) => [el('div', { class: 'tw-group', text: title }), ...list.map(([it, i]) => row(it, i))];
+      // A named group: a foldable section with knobs in a grid, then the other controls; 🎲 and ↺ act on it alone.
+      const groupSection = (g, list) => {
+        const idxs = list.map(([, i]) => i);
+        const knobs = list.filter(([it]) => asKnob(it));
+        const others = list.filter(([it]) => !asKnob(it));
+        const changed = () => idxs.filter((i) => !same(scanned.items[i], values[i])).length;
+        const badgeEl = el('span', { class: 'tw-sec-changed' });
+        const sum = el('summary', { class: 'tw-sec-head' }, el('span', { class: 'tw-sec-name', text: g }), el('span', { class: 'tw-sec-count', text: String(list.length) }), badgeEl, el('span', { class: 'spacer' }),
+          el('button', { class: 'tw-sec-btn', text: '🎲', title: `Shuffle only "${g}"`, on: { click: (e) => { e.preventDefault(); shuffleGroup(idxs); } } }),
+          el('button', { class: 'tw-sec-btn', text: '↺', title: `Put "${g}" back to the code's values`, on: { click: (e) => { e.preventDefault(); resetGroup(idxs); } } }));
+        const det = el('details', { class: 'tw-sec', dataset: { group: g } }, sum);
+        det.open = !collapsed.has(g);
+        det.addEventListener('toggle', () => { if (det.open) collapsed.delete(g); else collapsed.add(g); store.set('three.twCollapsed', [...collapsed]); });
+        if (knobs.length) {
+          const grid = el('div', { class: 'tw-knobs' });
+          for (const [it, i] of knobs) { const r = knobRow(it, i); grid.append(r.el); }
+          det.append(grid, ...knobs.map(([, i]) => rows.find((r) => r.i === i && r.knob)?.panelEl).filter(Boolean));
+        }
+        for (const [it, i] of others) det.append(row(it, i));
+        det.paintChanged = () => { const n = changed(); badgeEl.textContent = n ? `${n} changed` : ''; };
+        det.paintChanged();
+        return det;
+      };
       if (named.length) {
         // Named controls first, grouped as the sketch declares them; the raw numbers are tucked away.
         const groups = new Map();
+        const favList = named.filter(([, i]) => favs.has(ids[i]));
+        if (favList.length) groups.set('★ Favorites', favList);
         for (const pair of named) { const g = pair[0].group || 'Controls'; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(pair); }
-        for (const [g, list] of groups) body.append(...section(g, list));
+        groupSel.replaceChildren(el('option', { value: '', text: `All groups (${groups.size})` }), ...[...groups.keys()].map((g) => el('option', { value: g, text: g, selected: g === groupFilter })));
+        groupSel.hidden = groups.size < 2;
+        for (const [g, list] of groups) body.append(groupSection(g, list));
         const adv = el('details', { class: 'tw-adv', open: store.get('three.tweaksAdvanced', false) },
           el('summary', { text: `All values in the code (${colors.length + numbers.length})` }),
           ...(colors.length ? section('Colors', colors) : []), ...(numbers.length ? section('Numbers', numbers) : []));
         adv.addEventListener('toggle', () => store.set('three.tweaksAdvanced', adv.open));
         if (colors.length + numbers.length) body.append(adv);
       } else {
+        groupSel.hidden = true;
         if (askForSliders) {
           body.append(el('div', { class: 'tw-tip' }, el('span', { text: 'These are all the raw values in the code. Want a short list of clearly named sliders instead?' }),
             el('button', { class: 'ghost small', text: 'Ask the Three Director', on: { click: askForSliders } })));
@@ -634,7 +871,14 @@ const ThreeTweaks = (() => {
       applyFilter();
     }
     function applyFilter() {
-      for (const r of rows) r.el.hidden = (filter && !r.text.includes(filter)) || (r.el.classList.contains('unused') && !showUnused);
+      for (const r of rows) {
+        r.el.hidden = (filter && !r.text.includes(filter)) || (r.el.classList.contains('unused') && !showUnused) || (changedOnly && same(r.it, values[r.i]));
+      }
+      for (const sec of body.querySelectorAll('.tw-sec')) {
+        sec.hidden = (groupFilter && sec.dataset.group !== groupFilter) || ![...sec.querySelectorAll('.tw-row, .tw-knob-cell')].some((n) => !n.hidden);
+        if ((filter || changedOnly || groupFilter) && !sec.hidden) sec.open = true;
+        sec.paintChanged?.();
+      }
       const adv = body.querySelector('.tw-adv');
       if (adv && filter && rows.some((r) => !r.el.hidden && adv.contains(r.el))) adv.open = true;
     }
@@ -695,7 +939,14 @@ const ThreeTweaks = (() => {
         return true;
       },
       // Per-sketch looks and music links, loaded when a sketch opens.
-      load(data = {}) { looks = Array.isArray(data.looks) ? data.looks : []; bindings = data.bindings && typeof data.bindings === 'object' ? data.bindings : {}; renderLooks(); },
+      load(data = {}) {
+        looks = Array.isArray(data.looks) ? data.looks : [];
+        bindings = data.bindings && typeof data.bindings === 'object' ? data.bindings : {};
+        locks = new Set(Array.isArray(data.locks) ? data.locks : []);
+        favs = new Set(Array.isArray(data.favs) ? data.favs : []);
+        renderLooks();
+        if (scanned) render();
+      },
       // Unsaved values, so a sketch switch can offer to keep them and the director can see them.
       pending() { return scanned && dirtyCount() ? { from: scanned.code, to: codeWithValues() } : null; },
       unsaved() {
@@ -727,7 +978,7 @@ const ThreeTweaks = (() => {
         const i = scanned?.items.findIndex((it) => it.key === key) ?? -1;
         if (i < 0) return false;
         setValue(i, v, { release, external: true });
-        rows.find((r) => r.i === i)?.set(v);
+        rows.filter((r) => r.i === i).forEach((r) => r.set(v));
         return true;
       },
       setVisible(on) { root.hidden = !on; },

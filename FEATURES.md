@@ -273,3 +273,13 @@
 231. ✓ **Importance from meaning**: gold = main actions, violet = AI (Ask the director, Review, Second opinion…), red = live / recording (Record, Write), orange = capture (Note, Sheet, 📷).
 232. ✓ **Categories**: the Lab toolbar is grouped (View · Sketch · Code · Assets) and the timeline too (Song · Play · Zoom · Loop · Capture · Live). Rename / Duplicate / History / Export HTML / Ask Claude / Delete moved into "Sketch ▾".
 233. ✓ **Your usage** (Ctrl+K → "Your usage"): most used features with counts, usage by area, features not used for 3+ weeks and ones seen but never used; Hide removes a button everywhere (Show brings it back).
+
+## Sliders panel, round 2
+234. ✓ **Knobs**: number controls show as rotary knobs in a grid (Auto: decimals and small whole-number ranges; switch to Knobs / Sliders in the panel). Drag up / down or sideways, Shift for fine, wheel or arrow keys to step, click the value to type one.
+235. ✓ **Detents, like physical knobs**: a blue notch marks the value in the code; knobs click into it as you pass and hold there until you turn clearly past; sliders snap to it too and show it as a tick. The arc turns blue when you're on it. Double-click goes back to it.
+236. ✓ **Lock**: 🔒 a control at its value (or Reset and lock) so dragging, 🎲 shuffle, looks, Reset and MIDI leave it alone.
+237. ✓ **★ Favorites**: right-click → Add to Favorites puts a control in a ★ group at the top.
+238. ✓ **Foldable groups**: each group folds (remembered), shows how many you changed, and has its own 🎲 shuffle and ↺ reset. A dropdown shows one group at a time; "Changed" shows only what you moved.
+239. ✓ **Hold A/B**: hold to see the sketch with the code's values, let go for yours.
+240. ✓ **Right-click menu** on any control: back to the code's value, lock, reset and lock, favorites, follow the music, keyframe, show in code.
+241. ✓ **More room**: "Ask the director" folds to one line (remembered) and the status line only shows when there's something to save.
