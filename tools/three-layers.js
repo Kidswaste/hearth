@@ -254,7 +254,7 @@ filter('${type}', P);
   // onSelect(id), onChange(id, props, { live }), onAdd(templateId | 'copy' | 'ask'), onRemove(id),
   // onReorder(idsBottomFirst), now() → playhead seconds, duration() → song length, loop() → { a, b } | null.
   // keyState(id, prop) → 'none' | 'animated' | 'on'; toggleKey(id, prop, value); valueAt(L, prop) → shown value.
-  function panel({ onSelect, onChange, onAdd, onRemove, onReorder, now, duration, loop, keyState, toggleKey, valueAt, onPreset }) {
+  function panel({ onSelect, onChange, onAdd, onRemove, onReorder, now, duration, loop, keyState, toggleKey, valueAt, onPreset, onSolo }) {
     const { fmtMs, parseTime } = ThreeMedia._test;
     let layers = [];
     let selectedId = null;
@@ -292,7 +292,7 @@ filter('${type}', P);
       count.textContent = layers.length > 1 ? `${layers.length}` : '';
       delBtn.disabled = layers.length <= 1;
       list.replaceChildren(...[...layers].reverse().map((L) => {
-        const eye = el('button', { class: `ly-eye${L.visible === false ? ' off' : ''}`, text: L.visible === false ? '◌' : '👁', title: L.visible === false ? 'Show this layer' : 'Hide this layer', on: { click: (e) => { e.stopPropagation(); onChange(L.id, { visible: L.visible === false }, { live: false }); } } });
+        const eye = el('button', { class: `ly-eye${L.visible === false ? ' off' : ''}`, text: L.visible === false ? '◌' : '👁', title: `${L.visible === false ? 'Show this layer' : 'Hide this layer'} · Alt+click: show only this one (again: all)`, on: { click: (e) => { e.stopPropagation(); if (e.altKey && onSolo) { onSolo(L.id); return; } onChange(L.id, { visible: L.visible === false }, { live: false }); } } });
         const name = el('span', { class: 'ly-name', text: L.name, title: 'Double-click to rename' });
         name.addEventListener('dblclick', async (e) => {
           e.stopPropagation();

@@ -12,6 +12,7 @@ const Native = (() => {
   const CONTEXT_CHARS = 24000;
   const TEXT_ATTACH_LIMIT = 200 * 1024;
   const COLLAPSE_PX = 900;
+  const unfolded = new Set(); // "chatId:index" of long replies the user unfolded (they stay open)
 
   // Follow-up suggestions the agent offers as buttons: <suggest>…</suggest>.
   const SUGGEST_TAG = /<suggest>([\s\S]*?)<\/suggest>/gi;
@@ -221,7 +222,7 @@ const Native = (() => {
       if (what === 'edit') editMessage(agentId, idx);
       if (what === 'retry') regenerate(agentId, idx);
       if (what === 'quote') quote(agentId, idx);
-      if (what === 'more') act.closest('.msg').classList.remove('collapsed');
+      if (what === 'more') { act.closest('.msg').classList.remove('collapsed'); act.remove(); unfolded.add(`${H.activeChat[agentId]}:${idx}`); }
       return;
     }
     const undo = t.closest('.undo-memory');
@@ -374,7 +375,7 @@ const Native = (() => {
     requestAnimationFrame(() => {
       for (const node of v.list.querySelectorAll('.msg.assistant:not(.streaming)')) {
         const body = node.querySelector('.body');
-        if (body.scrollHeight > COLLAPSE_PX && node !== v.list.querySelector('.msg.assistant:last-of-type')) {
+        if (body.scrollHeight > COLLAPSE_PX && node !== v.list.querySelector('.msg.assistant:last-of-type') && !unfolded.has(`${chat?.id}:${node.dataset.index}`)) {
           node.classList.add('collapsed');
           node.append(el('button', { class: 'show-more-msg msg-act', text: 'Show full reply', dataset: { msgAct: 'more' } }));
         }

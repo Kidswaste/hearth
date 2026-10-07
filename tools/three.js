@@ -640,7 +640,7 @@ const ThreeLab = (() => {
       soloId = id && layerById(id) ? id : null;
       for (const x of layersOf()) box.send({ type: 'layer-props', id: x.id, props: { visible: x.visible !== false && (!soloId || x.id === soloId) } });
       renderTracksOnly();
-      if (soloId) toast(`Only "${layerById(soloId).name}" shows · S again to show every layer`, { timeout: 2200 });
+      if (soloId) toast(`Only "${layerById(soloId).name}" shows · the same again (S, Alt+click its eye or Alt+Shift+number) shows every layer`, { timeout: 2200 });
     }
     function setLanes(L, list) { L.lanes = [...new Set(list.filter(Boolean))]; delete L.lane; touch(); renderTracksOnly(); }
     // A: show every animated setting of every layer; again (when they all show): hide every lane.
@@ -1285,6 +1285,7 @@ const ThreeLab = (() => {
     const selCtl = () => (sel() ? ctlFor(sel()) : null);
     const tweaksSlot = el('div', { class: 'tw-slot' });
     const layersPanel = ThreeLayers.panel({
+      onSolo: (id) => setSolo(soloId === id ? null : id),
       onSelect: (id) => selectLayer(id),
       onChange: (id, patch, { live }) => editLayer(id, patch, { live }),
       onAdd: (kind) => addLayer(kind),
@@ -1475,7 +1476,17 @@ const ThreeLab = (() => {
     // Space plays / pauses; K S H tap hits in; [ ] set loop points; arrows nudge; Delete removes a marker.
     pane.addEventListener('keydown', (e) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); restartSim(); }
+      if (e.altKey && !e.ctrlKey && /^Digit[1-9]$/.test(e.code)) {
+        const L = [...layersOf()].reverse()[Number(e.code.slice(5)) - 1];
+        if (!L) return;
+        e.preventDefault(); e.stopPropagation();
+        if (e.shiftKey) setSolo(soloId === L.id ? null : L.id);
+        else editLayer(L.id, { visible: L.visible === false });
+        Usage.key(`Alt+${e.shiftKey ? 'Shift+' : ''}digit`, 'Lab layers');
+      }
     }, true);
+    // Ctrl+R (reload) while the Lab shows: restart the simulation from scratch instead
+    api.restartVisible = () => { if (!box.onStage && !previewHost.offsetParent) return false; restartSim(); return true; };
     pane.addEventListener('keydown', (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && /^[nfpw]$/i.test(e.key) && !e.repeat) Usage.key(e.key.toUpperCase(), 'Lab');
@@ -2671,5 +2682,6 @@ ${frag}\`,
     addReference: (p) => (api.addRef ? api.addRef(p) : Promise.reject(new Error('Open the Three.js Lab first'))),
     isReference: (name) => /\.(png|jpe?g|gif|webp|bmp|svg|mp4|webm|mov|m4v|mkv|glb|gltf|obj|fbx|stl|ply|mp3|wav|ogg|m4a|flac|aac|ttf|otf|woff2?|hdr|exr)$/i.test(name),
     openShader(code) { ensureOpen('shader'); setTimeout(() => api.openShader?.(code), 60); },
+    restartVisible: () => api.restartVisible?.() ?? false,
   };
 })();

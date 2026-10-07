@@ -431,7 +431,7 @@ function handleShortcut({ key, shift }) {
   else if (key === '\\') { H.panelOpen = !H.panelOpen; applyLayout(); }
   else if (key === 'b') { $('broadcast').classList.toggle('hidden'); applyLayout(); }
   else if (key === 'n') { if (H.agent(H.activeId)?.mode === 'native') Native.newChat(H.activeId); }
-  else if (key === 'r') { if (shift) window.hub.reloadWindow(); else H.surfaces.get(H.activeId)?.webview?.reload(); }
+  else if (key === 'r') { if (shift) window.hub.reloadWindow(); else if (!ThreeLab.restartVisible()) H.surfaces.get(H.activeId)?.webview?.reload(); }
   else if (key === ',') AppUI.openSettings();
   else if (key === 'k') AppUI.palette();
   else if (key === 'f') AppUI.find();

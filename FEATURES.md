@@ -337,3 +337,6 @@
 280. ✓ **⚡ Triggers → Timeline**: scans the whole song (or the loop) offline with the same analyser as the sketch, in well under a second, and writes what Kick / Snare / Hit find as timeline markers snapped to the real attacks. They're then normal markers you can move, delete or undo (↶).
 281. ✓ **Fade** per trigger (how long a hit glows, 20–2000 ms); it also applies to hand-placed markers.
 282. ✓ Slider music links can follow **Hats** and **Bass hit** too (audio.hats, audio.bassHit).
+283. ✓ **Layers, faster** (you hide / show layers a lot): Alt+1…9 hides / shows the layer at that spot in the list (1 = top), Alt+Shift+1…9 shows only that one, Alt+click an eye = only that layer (again: all).
+284. ✓ **Ctrl+R in the Lab** restarts the simulation from scratch (it used to do nothing there); elsewhere it still reloads the website.
+285. ✓ Long chat replies you unfold with "Show full reply" stay unfolded (they used to fold again when the chat refreshed).
