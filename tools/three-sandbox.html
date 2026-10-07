@@ -25,7 +25,21 @@
   im.textContent = JSON.stringify({ imports: { three: `${base}/build/three.module.js`, 'three/addons/': `${base}/examples/jsm/`, 'three/examples/jsm/': `${base}/examples/jsm/` } });
   document.currentScript.after(im);
 
-  const post = (msg) => parent.postMessage({ source: 'three-sandbox', ...msg }, '*');
+  const post = (msg) => (window.__stageHost ? window.__stageHost.post({ source: 'three-sandbox', ...msg }) : parent.postMessage({ source: 'three-sandbox', ...msg }, '*'));
+  // In the Stage window an exact frame size (fw × fh) is rendered at full size and scaled to fit the window.
+  if (window.__stageHost && params.get('fw')) {
+    const fw = Number(params.get('fw')); const fh = Number(params.get('fh'));
+    Object.defineProperty(window, 'innerWidth', { get: () => fw });
+    Object.defineProperty(window, 'innerHeight', { get: () => fh });
+    const fit = () => {
+      const vw = document.documentElement.clientWidth; const vh = document.documentElement.clientHeight;
+      const k = Math.min(vw / fw, vh / fh);
+      Object.assign(document.body.style, { position: 'absolute', margin: '0', overflow: 'hidden', width: `${fw}px`, height: `${fh}px`, left: `${(vw - fw * k) / 2}px`, top: `${(vh - fh * k) / 2}px`, transform: `scale(${k})`, transformOrigin: '0 0' });
+    };
+    addEventListener('DOMContentLoaded', fit);
+    addEventListener('resize', fit); // the window resized; the sketch keeps seeing fw × fh
+  }
+  if (window.__stageHost) addEventListener('keydown', (e) => { if (e.key === 'F11') { e.preventDefault(); window.__stageHost.fullscreen(); } });
   const fmt = (v) => {
     if (typeof v === 'string') return v;
     if (v instanceof Error) return `${v.name}: ${v.message}`;
@@ -50,7 +64,7 @@
 <script type="module">
 import * as THREE from 'three';
 
-const post = (msg, transfer) => parent.postMessage({ source: 'three-sandbox', ...msg }, '*', transfer || []);
+const post = (msg, transfer) => (window.__stageHost ? window.__stageHost.post({ source: 'three-sandbox', ...msg }) : parent.postMessage({ source: 'three-sandbox', ...msg }, '*', transfer || []));
 const mode = new URLSearchParams(location.search).get('mode') || 'sketch';
 // Real timer functions for the sandbox's own work; sketches get wrapped ones (see "run generations").
 const realSetTimeout = setTimeout.bind(window);
@@ -59,6 +73,8 @@ const realRAF = requestAnimationFrame.bind(window);
 
 // ---------- performance stats for whatever renderer the sketch makes ----------
 let frames = 0;
+// Displayed frames: one tick per real animation frame (layers each render in it, which used to multiply the fps).
+let frameTick = 0; let frameSeen = -1; let lastFrameAt = 0; let worstGap = 0;
 let lastTick = performance.now();
 let lastRenderer = null;
 let frameMs = 0;
@@ -77,7 +93,7 @@ function instrument(renderFn) {
     lastRenderer = this;
     this.__lastScene = scene; this.__lastCamera = camera;
     renderers.add(this);
-    frames += 1;
+    if (frameSeen !== frameTick) { frameSeen = frameTick; frames += 1; } // one per displayed frame, however many layers render
     if (shotPending) { shotPending = false; post({ type: 'shot', tag: shotTag, dataUrl: this.domElement.toDataURL('image/png') }); }
   };
 }
@@ -113,14 +129,23 @@ HTMLCanvasElement.prototype.getContext = function (type, opts) {
   if (mode === 'sketch' && /^(webgl2?|experimental-webgl)$/.test(type)) opts = { ...(opts || {}), alpha: true, preserveDrawingBuffer: true };
   return realGetContext.call(this, type, opts);
 };
+// The gap between displayed frames; the worst one in each half second is what reads as a stutter.
+const tickFrames = (t) => {
+  frameTick += 1;
+  if (frameSeen === frameTick - 1 && lastFrameAt) worstGap = Math.max(worstGap, t - lastFrameAt);
+  lastFrameAt = t;
+  realRAF(tickFrames);
+};
+realRAF(tickFrames);
 realSetInterval(() => {
   const now = performance.now();
   const fps = (frames * 1000) / (now - lastTick);
   frames = 0;
   lastTick = now;
+  const worst = worstGap; worstGap = 0;
   if (!lastRenderer) return;
   const i = lastRenderer.info;
-  post({ type: 'stats', fps, ms: frameMs, calls: i.render.calls, triangles: i.render.triangles, points: i.render.points, lines: i.render.lines, geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs?.length ?? 0 });
+  post({ type: 'stats', fps, worst, ms: frameMs, calls: i.render.calls, triangles: i.render.triangles, points: i.render.points, lines: i.render.lines, geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs?.length ?? 0 });
 }, 500);
 
 function requestShot() {

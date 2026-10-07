@@ -280,6 +280,45 @@ ipcMain.handle('data:packForMac', async () => {
 });
 ipcMain.handle('app:platform', () => process.platform);
 
+// ---------- Stage window: the Lab's sketch in its own renderer process and GPU context ----------
+// The hub window is busy (chats, timeline, panels); a sketch running in its own window gets steady frames.
+// Messages between the Lab and the sandbox page are relayed here (stage-preload.js on the other side).
+let stageWin = null;
+ipcMain.handle('stage:open', (_e, { query, width, height }) => {
+  const { screen } = require('electron');
+  const url = `${require('url').pathToFileURL(path.join(__dirname, 'tools', 'three-sandbox.html')).href}${query}`;
+  if (!stageWin || stageWin.isDestroyed()) {
+    const area = screen.getDisplayMatching(win.getBounds()).workArea;
+    const k = width && height ? Math.min(1, (area.width * 0.8) / width, (area.height * 0.85) / height) : 1;
+    stageWin = new BrowserWindow({
+      width: width ? Math.round(width * k) : 1280, height: height ? Math.round(height * k) : 720, useContentSize: true,
+      title: 'Hearth Stage', backgroundColor: '#000000', autoHideMenuBar: true, icon: appshell.ensureIcon(),
+      webPreferences: { preload: path.join(__dirname, 'stage-preload.js'), contextIsolation: true, sandbox: true, backgroundThrottling: false },
+    });
+    stageWin.on('closed', () => { stageWin = null; if (!win.isDestroyed()) win.webContents.send('stage:closed'); });
+    stageWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  }
+  // a new frame size: reshape the window to it (re-runs with the same size leave your window alone)
+  const sizeKey = width && height ? `${width}x${height}` : 'fit';
+  if (stageWin.__size !== sizeKey) {
+    if (stageWin.__size && width && height) {
+      const area = screen.getDisplayMatching(stageWin.getBounds()).workArea;
+      const k = Math.min(1, (area.width * 0.8) / width, (area.height * 0.85) / height);
+      stageWin.setContentSize(Math.round(width * k), Math.round(height * k));
+    }
+    stageWin.setAspectRatio(width && height ? width / height : 0);
+    stageWin.__size = sizeKey;
+  }
+  stageWin.loadURL(url);
+  stageWin.show();
+  return true;
+});
+ipcMain.handle('stage:close', () => { if (stageWin && !stageWin.isDestroyed()) stageWin.close(); });
+ipcMain.handle('stage:focus', () => { if (stageWin && !stageWin.isDestroyed()) { stageWin.show(); stageWin.focus(); } });
+ipcMain.on('stage:to', (_e, msg) => { if (stageWin && !stageWin.isDestroyed()) stageWin.webContents.send('stage:to', msg); });
+ipcMain.on('stage:from', (_e, msg) => { if (win && !win.isDestroyed()) win.webContents.send('stage:from', msg); });
+ipcMain.on('stage:fullscreen', () => { if (stageWin && !stageWin.isDestroyed()) stageWin.setFullScreen(!stageWin.isFullScreen()); });
+
 fsapi.registerIpc(ipcMain, () => win);
 gamebridge.start(() => win);
 aemain.registerIpc(ipcMain, () => win, () => settings().aePath);

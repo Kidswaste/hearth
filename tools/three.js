@@ -39,29 +39,55 @@ const ThreeLab = (() => {
     let ready = null;
     let queue = [];
     let nonce = null; // which load of the frame we're waiting for
-    const listener = (e) => {
-      if (e.source !== frame.contentWindow || e.data?.source !== 'three-sandbox') return;
-      if (e.data.type === 'ready') {
+    // 'frame' = the iframe here; 'stage' = the separate Stage window (main.js relays its messages).
+    let target = 'frame';
+    let stageSize = () => null; // → { width, height } for exact frame sizes (read at every load)
+    const deliver = (m) => (target === 'stage' ? window.hub.stageSend(m) : frame.contentWindow.postMessage(m, '*'));
+    const handle = (data) => {
+      if (data?.source !== 'three-sandbox') return;
+      if (data.type === 'ready') {
         // A page being replaced by a newer load can still say "ready"; only the current load counts.
-        if (e.data.n && e.data.n !== nonce) return;
-        ready = e.data;
-        for (const m of queue) frame.contentWindow.postMessage(m, '*');
+        if (data.n && data.n !== nonce) return;
+        ready = data;
+        for (const m of queue) deliver(m);
         queue = [];
       }
-      onMessage(e.data);
+      onMessage(data);
     };
+    const listener = (e) => { if (target === 'frame' && e.source === frame.contentWindow) handle(e.data); };
     addEventListener('message', listener);
     const send = (msg) => {
       const m = { target: 'three-sandbox', ...msg };
-      if (ready) frame.contentWindow.postMessage(m, '*'); else queue.push(m);
+      if (ready) deliver(m); else queue.push(m);
     };
     const load = () => {
       ready = null;
       nonce = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
-      frame.src = `${SANDBOX}?mode=${mode}&v=${store.get('three.version', ThreeData.VERSIONS[0])}${extraParams()}&n=${nonce}`;
+      const query = `?mode=${mode}&v=${store.get('three.version', ThreeData.VERSIONS[0])}${extraParams()}&n=${nonce}`;
+      const sz = target === 'stage' ? stageSize() : null;
+      if (target === 'stage') window.hub.stageOpen({ query: `${query}${sz ? `&fw=${sz.width}&fh=${sz.height}` : ''}`, width: sz?.width, height: sz?.height });
+      else frame.src = `${SANDBOX}${query}`;
     };
+    let stageWired = false;
+    let onStageClosed = null;
+    // Run in the Stage window (on) or back here (off). The iframe sleeps while the Stage runs.
+    function useStage(on, sizeFn = () => null) {
+      if (!stageWired) {
+        stageWired = true;
+        window.hub.onStageMessage((data) => { if (target === 'stage') handle(data); });
+        window.hub.onStageClosed(() => { if (target !== 'stage') return; target = 'frame'; load(); onStageClosed?.(); });
+      }
+      stageSize = sizeFn;
+      if (on) { target = 'stage'; frame.src = 'about:blank'; } else { target = 'frame'; window.hub.stageClose(); }
+      load();
+    }
     load();
-    return { frame, send, reload: load, get revision() { return ready?.revision; }, get ready() { return Boolean(ready); } };
+    return {
+      frame, send, reload: load, useStage,
+      set onStageClosed(fn) { onStageClosed = fn; },
+      get onStage() { return target === 'stage'; },
+      get revision() { return ready?.revision; }, get ready() { return Boolean(ready); },
+    };
   }
 
   // ---------- Sketch tab ----------
@@ -149,6 +175,21 @@ const ThreeLab = (() => {
     const presentBtn = btn('▣ Present', 'Fullscreen preview with nothing else on screen, for showing it off or a second monitor (P · Esc to leave)', () => togglePresent());
     presentBtn.dataset.feature = 'Present';
     const presentHint = el('div', { class: 'present-hint', text: 'Esc to leave · Space play / pause · 1–9 jump to cues' });
+    // ---------- Stage window: the sketch in its own window (own process, own GPU context) for smooth frames ----------
+    const stageBtn = btn('🖥 Stage', 'Run the sketch in its own window: steady, smooth frames for recording or a second monitor (F11 there for fullscreen). The preview here sleeps meanwhile.', () => setStage(!box.onStage));
+    stageBtn.dataset.feature = 'Stage window';
+    const stageNote = el('div', { class: 'stage-note', hidden: true },
+      el('b', { text: '🖥 Playing in the Stage window' }),
+      el('span', { text: 'Music, sliders, timeline, recording and the director all keep working from here.' }),
+      el('div', { class: 'button-row' }, btn('Show it', 'Bring the Stage window to the front', () => window.hub.stageFocus()), btn('↩ Bring it back here', 'Close the Stage window and run the preview here again', () => setStage(false))));
+    function setStage(on) {
+      box.useStage(on, () => { const z = stage.size; return z.id !== 'fit' ? { width: z.width, height: z.height } : null; });
+      stageBtn.classList.toggle('on', on);
+      stageNote.hidden = !on;
+      previewHost.classList.toggle('on-stage', on);
+      run();
+      if (on) toast('The sketch now runs in its own Stage window (F11 there for fullscreen)', { timeout: 3500 });
+    }
     // ---------- scene editor: orbit around the selected layer's scene, click objects, move / rotate / scale them ----------
     // Placements live in L.overrides ({ path: { p, q, s, rd, v, name } }, '@camera' for the framed view) and the sandbox
     // re-applies them every frame. "Bake into code" asks the director to write them into the code.
@@ -1224,7 +1265,7 @@ const ThreeLab = (() => {
     setInterval(rememberMedia, 5000);
     addEventListener('beforeunload', () => { rememberMedia(); window.hub.kvSet('three-lab-extras', extras); });
     split = el('div', { class: 'three-split' }, editorHost, el('div', { class: 'three-right' }, previewHost, player.el, consoleWrap), column);
-    previewHost.append(presentHint, editPanel);
+    previewHost.append(presentHint, editPanel, stageNote);
     function setCodeVisible(show) {
       split.classList.toggle('no-code', !show);
       codeBtn.classList.toggle('on', show);
@@ -1247,6 +1288,7 @@ const ThreeLab = (() => {
     pane.append(toolbar, split);
     let stage = null;
     const box = sandboxFrame(previewHost, 'sketch', onMessage, () => stage?.params || '');
+    box.onStageClosed = () => { stageBtn.classList.remove('on'); stageNote.hidden = true; previewHost.classList.remove('on-stage'); run(); };
     stage = ThreeMedia.stage(previewHost, box.frame, { onChange: ({ id, reload }) => {
       if (current) { (extras[current.id] ||= {}).frame = id; saveExtras(); }
       if (reload && current) run();
@@ -1340,10 +1382,11 @@ const ThreeLab = (() => {
         if (!lid || lid === selId) editor.setErrorLines(errors.filter((e) => !e.layer || e.layer === selId).map((e) => e.line).filter(Boolean));
       }
       if (msg.type === 'stats') {
-        lastStats = { fps: Math.round(msg.fps), renderMs: Number(msg.ms.toFixed(2)), drawCalls: msg.calls, triangles: msg.triangles, points: msg.points, geometries: msg.geometries, textures: msg.textures, shaders: msg.programs };
+        lastStats = { fps: Math.round(msg.fps), worstFrameMs: Math.round(msg.worst || 0), renderMs: Number(msg.ms.toFixed(2)), drawCalls: msg.calls, triangles: msg.triangles, points: msg.points, geometries: msg.geometries, textures: msg.textures, shaders: msg.programs };
         stats.hidden = false;
         stats.replaceChildren(
           el('b', { class: msg.fps < 30 ? 'bad' : msg.fps < 55 ? 'warn' : 'ok', text: `${Math.round(msg.fps)} fps` }),
+          msg.worst ? el('span', { class: msg.worst > 40 ? 'bad' : msg.worst > 24 ? 'warn' : 'ok', text: `worst ${Math.round(msg.worst)} ms`, title: 'The longest gap between two frames in the last half second: over ~25 ms shows as a stutter (60 Hz = 16.7 ms per frame)' }) : null,
           el('span', { text: `${msg.ms.toFixed(1)} ms render` }), el('span', { text: `${msg.calls} draw calls` }),
           el('span', { text: `${msg.triangles.toLocaleString()} tris` }), msg.points ? el('span', { text: `${msg.points.toLocaleString()} points` }) : null,
           el('span', { text: `${msg.geometries} geo · ${msg.textures} tex · ${msg.programs} shaders` }));
@@ -1689,7 +1732,7 @@ ${code}
       // The toolbar in labeled groups: what you see, the sketch, its code, its assets, capture.
       const group = (cat, ...nodes) => el('span', { class: 'tb-group', dataset: { cat } }, ...nodes);
       toolbar.replaceChildren(
-        group('View', codeBtn, slidersBtn, consoleBtn, focusBtn, presentBtn, editBtn),
+        group('View', codeBtn, slidersBtn, consoleBtn, focusBtn, presentBtn, editBtn, stageBtn),
         group('Sketch', picker, browseBtn, newBtn, sketchMenuBtn),
         group('Code', runBtn, liveLabel, snippetSel, version),
         group('Assets', paletteBox, refsBtn, shotBtn));

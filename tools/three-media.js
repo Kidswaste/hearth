@@ -806,6 +806,7 @@ const ThreeMedia = (() => {
     const RULER = 16; const LANE_H = 14;
     const laneTop = (h) => h - LANES.length * LANE_H - tracksH();
     let raf = 0;
+    const waveCache = { key: '', canvas: document.createElement('canvas') };
     function now() { return st.playing ? Math.min(D() || Infinity, st.time + ((performance.now() - st.stampAt) / 1000) * st.rate) : st.time; }
     function paint() {
       bar.classList.toggle('mb-empty', !st.bytes);
@@ -879,50 +880,62 @@ const ThreeMedia = (() => {
         g.fillRect(x, RULER - 4, 1, 4);
         g.fillText(step < 1 ? fmtMs(tt).replace(/0+$/, '').replace(/\.$/, '') : fmtTime(tt), x + 3, 9);
       }
-      if (a) for (const s of a.sections) if (s.energy === 'loud') { g.fillStyle = '#ffd75e10'; g.fillRect(X(s.start), top, X(s.end) - X(s.start), H); }
-      // waveform: raw samples when very close, peaks when close, energy curves when far
-      const mid = top + H / 2;
-      if (sp < 3 && st.samples) {
-        const SR = 22050; const smp = st.samples;
-        g.fillStyle = '#ffd75ec0';
-        for (let x = 0; x < w; x += 1) {
-          const i0 = Math.floor((s0 + (x / w) * sp) * SR); const i1 = Math.max(i0 + 1, Math.floor((s0 + ((x + 1) / w) * sp) * SR));
-          let lo = 0; let hi = 0;
-          for (let i = i0; i < i1 && i < smp.length; i += 1) { if (smp[i] < lo) lo = smp[i]; if (smp[i] > hi) hi = smp[i]; }
-          g.fillRect(x, mid - hi * (H / 2 - 2), 1, Math.max(1, (hi - lo) * (H / 2 - 2)));
+      // The waveform is the heavy part (a color per pixel column): drawn once into an offscreen canvas and
+      // reused until the view, size or song changes, so playback only repaints the light overlays.
+      const wkey = `${s0}|${sp}|${w}|${h}|${top}|${H}|${waveRGB}|${dpr}|${st.path}|${Boolean(a)}|${Boolean(st.samples)}`;
+      if (waveCache.key !== wkey) {
+        waveCache.key = wkey;
+        const wc = waveCache.canvas;
+        wc.width = Math.round(w * dpr); wc.height = Math.round(h * dpr);
+        const wg = wc.getContext('2d');
+        wg.setTransform(dpr, 0, 0, dpr, 0, 0);
+        wg.clearRect(0, 0, w, h);
+        if (a) for (const s of a.sections) if (s.energy === 'loud') { wg.fillStyle = '#ffd75e10'; wg.fillRect(X(s.start), top, X(s.end) - X(s.start), H); }
+        // waveform: raw samples when very close, peaks when close, energy curves when far
+        const mid = top + H / 2;
+        if (sp < 3 && st.samples) {
+          const SR = 22050; const smp = st.samples;
+          wg.fillStyle = '#ffd75ec0';
+          for (let x = 0; x < w; x += 1) {
+            const i0 = Math.floor((s0 + (x / w) * sp) * SR); const i1 = Math.max(i0 + 1, Math.floor((s0 + ((x + 1) / w) * sp) * SR));
+            let lo = 0; let hi = 0;
+            for (let i = i0; i < i1 && i < smp.length; i += 1) { if (smp[i] < lo) lo = smp[i]; if (smp[i] > hi) hi = smp[i]; }
+            wg.fillRect(x, mid - hi * (H / 2 - 2), 1, Math.max(1, (hi - lo) * (H / 2 - 2)));
+          }
+        } else if (sp < 25 && a?.peaks) {
+          wg.fillStyle = '#ffd75e90';
+          for (let x = 0; x < w; x += 1) {
+            const tx = s0 + (x / w) * sp;
+            const i0 = Math.floor(tx * 100); const i1 = Math.max(i0 + 1, Math.floor((s0 + ((x + 1) / w) * sp) * 100));
+            let m = 0; for (let i = i0; i < i1 && i < a.peaks.length; i += 1) m = Math.max(m, a.peaks[i]);
+            const hh = m * (H / 2 - 2);
+            if (waveRGB) wg.fillStyle = rgbAt(a, tx);
+            wg.fillRect(x, mid - hh, 1, hh * 2 || 1);
+          }
+        } else if (a && waveRGB) {
+          // rekordbox-style: height = loudness, color = which band carries it
+          const n = a.level.length;
+          for (let x = 0; x < w; x += 1) {
+            const tx = s0 + (x / w) * sp;
+            const i = Math.min(n - 1, Math.max(0, Math.floor((tx / D()) * n)));
+            const hh = Math.max(1, a.level[i] * (H / 2 - 2));
+            wg.fillStyle = rgbAt(a, tx);
+            wg.fillRect(x, mid - hh, 1, hh * 2);
+          }
+        } else if (a) {
+          const n = a.bass.length;
+          const idx = (x) => Math.min(n - 1, Math.max(0, Math.floor(((s0 + (x / w) * sp) / D()) * n)));
+          const line = (arr, color, fill) => {
+            wg.beginPath();
+            for (let x = 0; x <= w; x += 1) { const y = top + H - arr[idx(x)] * (H - 4); if (x) wg.lineTo(x, y); else wg.moveTo(x, y); }
+            if (fill) { wg.lineTo(w, top + H); wg.lineTo(0, top + H); wg.closePath(); wg.fillStyle = color; wg.fill(); } else { wg.strokeStyle = color; wg.lineWidth = 1; wg.stroke(); }
+          };
+          line(a.bass, '#ffd75e55', true);
+          line(a.mid, '#48ddffaa', false);
+          line(a.treble, '#bd8bffaa', false);
         }
-      } else if (sp < 25 && a?.peaks) {
-        g.fillStyle = '#ffd75e90';
-        for (let x = 0; x < w; x += 1) {
-          const tx = s0 + (x / w) * sp;
-          const i0 = Math.floor(tx * 100); const i1 = Math.max(i0 + 1, Math.floor((s0 + ((x + 1) / w) * sp) * 100));
-          let m = 0; for (let i = i0; i < i1 && i < a.peaks.length; i += 1) m = Math.max(m, a.peaks[i]);
-          const hh = m * (H / 2 - 2);
-          if (waveRGB) g.fillStyle = rgbAt(a, tx);
-          g.fillRect(x, mid - hh, 1, hh * 2 || 1);
-        }
-      } else if (a && waveRGB) {
-        // rekordbox-style: height = loudness, color = which band carries it
-        const n = a.level.length;
-        for (let x = 0; x < w; x += 1) {
-          const tx = s0 + (x / w) * sp;
-          const i = Math.min(n - 1, Math.max(0, Math.floor((tx / D()) * n)));
-          const hh = Math.max(1, a.level[i] * (H / 2 - 2));
-          g.fillStyle = rgbAt(a, tx);
-          g.fillRect(x, mid - hh, 1, hh * 2);
-        }
-      } else if (a) {
-        const n = a.bass.length;
-        const idx = (x) => Math.min(n - 1, Math.max(0, Math.floor(((s0 + (x / w) * sp) / D()) * n)));
-        const line = (arr, color, fill) => {
-          g.beginPath();
-          for (let x = 0; x <= w; x += 1) { const y = top + H - arr[idx(x)] * (H - 4); if (x) g.lineTo(x, y); else g.moveTo(x, y); }
-          if (fill) { g.lineTo(w, top + H); g.lineTo(0, top + H); g.closePath(); g.fillStyle = color; g.fill(); } else { g.strokeStyle = color; g.lineWidth = 1; g.stroke(); }
-        };
-        line(a.bass, '#ffd75e55', true);
-        line(a.mid, '#48ddffaa', false);
-        line(a.treble, '#bd8bffaa', false);
       }
+      g.drawImage(waveCache.canvas, 0, 0, w, h);
       // beat grid: downbeats red with bar numbers (like rekordbox), beats white, subdivisions faint
       const bs = beats(); const bpb = bpbNow(); const bpm = bpmNow() || 120;
       const pxPerBeat = (60 / bpm / sp) * w;

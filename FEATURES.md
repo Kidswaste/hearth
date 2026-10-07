@@ -302,3 +302,8 @@
 254. ✓ **Pack Hearth for a Mac** (Settings → App, or Ctrl+K): one zip with the app, chats, sketches, notes, references, palettes, memory, settings and usage data (tested: packs ~10 MB here without the Windows runtime).
 255. ✓ **Moves cleanly**: on first start in a new place, saved locations of attachments, references and note screenshots are pointed at the new data folder (tested by unzipping elsewhere).
 256. ○ **mac/setup-mac.sh**: one Terminal command downloads Electron for the Mac (Apple silicon or Intel), makes ~/Applications/Hearth.app with the flame icon (opens it, or restarts it when open) and starts Hearth. Steps in mac/README.md.
+
+## Smooth playback
+257. ✓ **🖥 Stage window** (Lab toolbar → View): the sketch runs in its own window with its own process and GPU context, away from the busy hub window, for steady frames when recording or on a second monitor (F11 there = fullscreen). Exact frame sizes render at full size (e.g. a real 1080×1920 canvas) scaled to fit. Music, sliders, timeline, keyframes, recording, screenshots, contact sheets, the scene editor and the director's tools all keep working through it; the preview here sleeps meanwhile ("Bring it back here" or closing the window returns it).
+258. ✓ **Honest FPS**: counts displayed frames (layers used to multiply it) and shows the **worst frame gap** of the last half second, the number that shows stutter.
+259. ✓ **Lighter timeline**: the waveform is drawn once into an offscreen canvas and reused while playing, instead of being re-colored pixel by pixel every frame.
