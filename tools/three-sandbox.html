@@ -73,6 +73,14 @@ const realRAF = requestAnimationFrame.bind(window);
 
 // ---------- performance stats for whatever renderer the sketch makes ----------
 let frames = 0;
+// Frame-rate cap (the Lab's Preview fps): on a 240 Hz screen, 60 does a quarter of the work. Every layer's
+// callback in an allowed frame runs; the frames in between are skipped.
+let fpsCap = 0; let capT = -1;
+function capOk(t) {
+  if (!fpsCap || t === capT) return true;
+  if (t - capT >= 1000 / fpsCap - 2) { capT = t; return true; }
+  return false;
+}
 // Displayed frames: one tick per real animation frame (layers each render in it, which used to multiply the fps).
 let frameTick = 0; let frameSeen = -1; let lastFrameAt = 0; let worstGap = 0;
 let lastTick = performance.now();
@@ -1333,6 +1341,7 @@ function installRunGuards() {
     const run = (t) => {
       if (!alive(o)) return;
       if (o.L && layerMix(o.L) <= 0) { realRAF(run); return; }
+      if (!capOk(t)) { realRAF(run); return; }
       within(o, fn, [t]);
     };
     return realRAF(run);
@@ -1719,6 +1728,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'layer-props') { const L = layers.get(msg.id); if (L) setLayerProps(L, msg.props); }
   if (msg.type === 'remove-layer') removeLayer(msg.id);
   if (msg.type === 'media-load') loadMedia(msg);
+  if (msg.type === 'fps-cap') { fpsCap = Number(msg.value) || 0; capT = -1; }
   if (msg.type === 'eval') runEval(msg);
   if (msg.type === 'edit') editCommand(msg);
   if (msg.type === 'input') runInput(msg);

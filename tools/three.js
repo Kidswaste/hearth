@@ -176,6 +176,10 @@ const ThreeLab = (() => {
     presentBtn.dataset.feature = 'Present';
     const presentHint = el('div', { class: 'present-hint', text: 'Esc to leave · Space play / pause · 1–9 jump to cues' });
     // ---------- Stage window: the sketch in its own window (own process, own GPU context) for smooth frames ----------
+    // Preview frame rate: Max follows the screen (240 Hz screens render 240 frames a second); 60 or 30 is lighter.
+    const fpsSel = el('select', { class: 'fps-sel', title: 'Preview frame rate: lower = lighter on the GPU and steadier recordings', dataset: { feature: 'Preview fps' } },
+      [['0', 'Max fps'], ['60', '60 fps'], ['30', '30 fps']].map(([v, l]) => el('option', { value: v, text: l, selected: v === String(store.get('three.fpsCap', 0)) })));
+    fpsSel.addEventListener('change', () => { store.set('three.fpsCap', Number(fpsSel.value)); box.send({ type: 'fps-cap', value: Number(fpsSel.value) }); });
     const stageBtn = btn('🖥 Stage', 'Run the sketch in its own window: steady, smooth frames for recording or a second monitor (F11 there for fullscreen). The preview here sleeps meanwhile.', () => setStage(!box.onStage));
     stageBtn.dataset.feature = 'Stage window';
     const stageNote = el('div', { class: 'stage-note', hidden: true },
@@ -1488,6 +1492,7 @@ const ThreeLab = (() => {
       if (hot) box.send({ type: 'hot-layer', layer: spec(target) });
       else box.send({ type: 'run-layers', layers: layersOf().map(spec) });
       if (editOn && !hot && sel()) box.send({ type: 'edit', cmd: 'on', layer: sel().id });
+      if (!hot) box.send({ type: 'fps-cap', value: store.get('three.fpsCap', 0) });
       ranOnce = true;
       if (!hot) scheduleThumb();
       return true;
@@ -1732,7 +1737,7 @@ ${code}
       // The toolbar in labeled groups: what you see, the sketch, its code, its assets, capture.
       const group = (cat, ...nodes) => el('span', { class: 'tb-group', dataset: { cat } }, ...nodes);
       toolbar.replaceChildren(
-        group('View', codeBtn, slidersBtn, consoleBtn, focusBtn, presentBtn, editBtn, stageBtn),
+        group('View', codeBtn, slidersBtn, consoleBtn, focusBtn, presentBtn, editBtn, stageBtn, fpsSel),
         group('Sketch', picker, browseBtn, newBtn, sketchMenuBtn),
         group('Code', runBtn, liveLabel, snippetSel, version),
         group('Assets', paletteBox, refsBtn, shotBtn));

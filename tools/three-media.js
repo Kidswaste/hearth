@@ -331,6 +331,9 @@ const ThreeMedia = (() => {
       el('span', { class: 'mb-label', text: 'Hits' }), ...laneBtns, fillBtn, undoBtn);
 
     const canvas = el('canvas', { class: 'mb-timeline' });
+    // While playing, only these two lines move every frame; the canvases redraw about 10 times a second.
+    const playheadEl = el('div', { class: 'mb-playhead' });
+    const miniHeadEl = el('div', { class: 'mb-playhead mini' });
     // Overview of the whole song (like FL Studio's playlist overview): every layer, the loop, the playhead,
     // and the zoomed window you can drag.
     const minimap = el('canvas', { class: 'mb-minimap', title: 'The whole song: each layer\'s time, the loop and the playhead. Drag the box to move the zoomed view; click to jump.' });
@@ -412,7 +415,7 @@ const ThreeMedia = (() => {
         el('span', { class: 'tb-group mb-g-capture', dataset: { cat: 'Capture' } }),
         el('span', { class: 'tb-group mb-g-live', dataset: { cat: 'Live' } }, recBtn),
         el('span', { class: 'spacer' })),
-      gridRow, canvas, minimap);
+      gridRow, el('div', { class: 'mb-tl-wrap' }, canvas, playheadEl), el('div', { class: 'mb-mm-wrap' }, minimap, miniHeadEl));
     setSize(size);
 
     // ---------- file ----------
@@ -807,6 +810,22 @@ const ThreeMedia = (() => {
     const laneTop = (h) => h - LANES.length * LANE_H - tracksH();
     let raf = 0;
     const waveCache = { key: '', canvas: document.createElement('canvas') };
+    let lastFull = 0;
+    function tick() {
+      if (performance.now() - lastFull > 100 || dragging) { paint(); return; }
+      placePlayheads();
+      raf = requestAnimationFrame(tick);
+    }
+    function placePlayheads() {
+      const t = now();
+      const w = tw();
+      const x = D() ? ((t - v0()) / span()) * w : -10;
+      playheadEl.style.display = x >= -1 && x <= w + 1 && canvas.offsetParent ? '' : 'none';
+      playheadEl.style.transform = `translateX(${Math.round(x)}px)`;
+      const mw = minimap.clientWidth;
+      miniHeadEl.style.display = D() && mw && !minimap.hidden ? '' : 'none';
+      miniHeadEl.style.transform = `translateX(${Math.round(D() ? (t / D()) * mw : 0)}px)`;
+    }
     function now() { return st.playing ? Math.min(D() || Infinity, st.time + ((performance.now() - st.stampAt) / 1000) * st.rate) : st.time; }
     function paint() {
       bar.classList.toggle('mb-empty', !st.bytes);
@@ -844,7 +863,9 @@ const ThreeMedia = (() => {
       }
       draw();
       cancelAnimationFrame(raf);
-      if (st.playing || recording) raf = requestAnimationFrame(paint);
+      lastFull = performance.now();
+      placePlayheads();
+      if (st.playing || recording) raf = requestAnimationFrame(tick);
     }
     function draw() {
       const t = now();
@@ -1050,7 +1071,7 @@ const ThreeMedia = (() => {
         g.fillRect(x + 2, 1, lw, RULER - 3);
         g.fillStyle = '#0b0e10'; g.fillText(label, x + 6, 11);
       });
-      if (t >= s0 && t <= s0 + sp) { g.fillStyle = '#ffffff'; g.fillRect(Math.round(X(t)), 0, 2, h); }
+      placePlayheads();
       g.restore();
       drawGutter(g, w, W, h, t);
     }
@@ -1196,8 +1217,6 @@ const ThreeMedia = (() => {
       if (a) { g.fillStyle = '#ff6a6a'; for (const d of a.drops) g.fillRect(X(d) - 1, 0, 2, 4); }
       for (const n of notes) { g.fillStyle = n.done ? '#8f877d' : '#7cd992'; g.fillRect(X(n.t) - 1, h - 5, 3, 5); }
       map.cues.forEach((c, i) => { g.fillStyle = CUE_COLORS[i % CUE_COLORS.length]; g.fillRect(X(c.t) - 1, 0, 3, 6); });
-      g.fillStyle = '#ffffff';
-      g.fillRect(Math.round(X(t)), 0, 2, h);
       if (view) {
         const vx = X(view.start); const vw = Math.max(4, X(view.end) - vx);
         g.fillStyle = '#ffffff14';

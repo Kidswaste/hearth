@@ -325,6 +325,8 @@ function activate(id, { focus = true } = {}) {
   const docked = surfaceId !== id;
   if (H.isTool(surfaceId) && H.grid) { H.grid = false; applyLayout(); }
   if (focus && typeof Usage !== 'undefined') Usage.open(id);
+  lastSeen.set(surfaceId, Date.now());
+  if (s.webview?.dataset.sleeping) wakeWebsite(s);
   H.activeId = id;
   H.mru = [id, ...H.mru.filter((m) => m !== id)].slice(0, 12);
   let changed = H.unread.delete(id);
@@ -367,8 +369,33 @@ function draftToClaude(text) {
 
 // ---------- ask all ----------
 
+// ---------- sleeping websites (Settings → "Unload websites I haven't opened for…") ----------
+// A website agent you haven't looked at for a while is unloaded to free memory and CPU; opening it (or
+// ask-all) loads it again. Logins stay (they live in the site's partition).
+const lastSeen = new Map();
+function sleepIdleWebsites() {
+  const mins = Number(H.settings?.().sleepWebsAfter || 0);
+  if (!mins || H.grid) return;
+  for (const [id, s] of H.surfaces) {
+    const v = s.webview;
+    if (!v || v.dataset.sleeping || id === H.surfaceIdFor(H.activeId)) continue;
+    if (Date.now() - (lastSeen.get(id) || performance.timeOrigin) < mins * 60000) continue;
+    try { v.dataset.sleptUrl = v.getURL(); v.dataset.sleeping = '1'; v.loadURL('about:blank'); } catch { /* not ready yet */ }
+  }
+}
+setInterval(sleepIdleWebsites, 60000);
+function wakeWebsite(s) {
+  const v = s.webview;
+  const url = v.dataset.sleptUrl;
+  delete v.dataset.sleeping;
+  if (!url) return Promise.resolve();
+  return new Promise((resolve) => { v.addEventListener('dom-ready', () => resolve(), { once: true }); v.loadURL(url); setTimeout(resolve, 15000); });
+}
+
 async function sendToWebsite(agent, text) {
-  const view = H.surfaces.get(agent.id).webview;
+  const surf = H.surfaces.get(agent.id);
+  if (surf.webview?.dataset.sleeping) { await wakeWebsite(surf); await new Promise((r) => setTimeout(r, 2500)); }
+  const view = surf.webview;
   const selector = JSON.stringify(agent.inputSelector || DEFAULT_INPUT);
   const found = await view.executeJavaScript(
     `(() => { const el = document.querySelector(${selector}); if (!el) return false; el.focus(); return true; })()`,

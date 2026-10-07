@@ -64,7 +64,7 @@ const Usage = (() => {
 
   // ---------- how important things look ----------
   let decorateTimer = 0;
-  function scheduleDecorate() { clearTimeout(decorateTimer); decorateTimer = setTimeout(decorate, 600); }
+  function scheduleDecorate() { if (decorateTimer) return; decorateTimer = setTimeout(() => { decorateTimer = 0; decorate(); }, 600); }
   const trackedDays = () => (data ? (Date.now() - data.since) / DAY : 0);
   function tiers() {
     const counts = Object.values(data.items).map((x) => x.n).filter((n) => n > 0).sort((a, b) => b - a);
@@ -148,7 +148,13 @@ const Usage = (() => {
     if (!data || !data.items) data = { since: Date.now(), items: {}, days: {}, hidden: [] };
     document.addEventListener('click', onClick, true);
     document.addEventListener('change', onChange, true);
-    new MutationObserver(scheduleDecorate).observe(document.body, { childList: true, subtree: true });
+    // Re-check buttons when the layout changes, not for every clock tick or streamed word.
+    const NOISY = '.mb-time, .mb-minitime, .three-stats, .messages, .three-console, .tw-kval, .ed-panel, #toasts, .msg';
+    new MutationObserver((records) => {
+      if (decorateTimer) return;
+      if (records.every((r) => (r.target.nodeType === 1 ? r.target : r.target.parentElement)?.closest?.(NOISY))) return;
+      decorateTimer = setTimeout(() => { decorateTimer = 0; decorate(); }, 800);
+    }).observe(document.body, { childList: true, subtree: true });
     scheduleDecorate();
   }
 

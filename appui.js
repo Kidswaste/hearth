@@ -31,6 +31,7 @@ const AppUI = (() => {
     const claudePath = el('input', { value: s.enginePaths?.claude || '', placeholder: 'Found automatically (Claude desktop app or the claude command)' });
     const codexPath = el('input', { value: s.enginePaths?.codex || '', placeholder: 'Found automatically (Codex / ChatGPT app or the codex command)' });
     const [notifyRow, notifyIn] = check('Notify me when a reply finishes while I\'m elsewhere', s.notify !== false);
+    const sleepSel = el('select', {}, [['0', 'Never'], ['10', 'after 10 minutes'], ['30', 'after 30 minutes'], ['60', 'after an hour']].map(([v, l]) => el('option', { value: v, text: l, selected: String(s.sleepWebsAfter || 0) === v })));
     const langs = new Set(s.spellLanguages || ['en-US']);
     const langBoxes = SPELL_LANGS.map(([code, label]) => {
       const input = el('input', { type: 'checkbox', checked: langs.has(code), dataset: { code } });
@@ -59,6 +60,7 @@ const AppUI = (() => {
     const form = el('form', { method: 'dialog' },
       el('h2', { text: 'Settings' }),
       section('General', field('Open on start', startOn), trayRow, startupRow, notifyRow,
+        field('Unload websites I haven\'t opened (frees memory; they load again when you open them)', sleepSel),
         field('Show/hide hotkey (works from anywhere)', hotkey, 'Uses Electron accelerator names: Control, Alt, Shift, Super, letters, Space, F1…')),
       section('Appearance', field('Theme', themeSel), el('div', { class: 'hint', text: 'Text size: Ctrl + / Ctrl − / Ctrl 0.' })),
       section('Spell check languages', el('div', { class: 'check-grid' }, langBoxes)),
@@ -84,6 +86,7 @@ const AppUI = (() => {
         closeToTray: trayIn.checked,
         launchAtStartup: startupIn.checked,
         notify: notifyIn.checked,
+        sleepWebsAfter: Number(sleepSel.value) || undefined,
         hotkey: hotkey.value.trim(),
         spellLanguages: langBoxes.map((l) => l.querySelector('input')).filter((i) => i.checked).map((i) => i.dataset.code),
         forgeheartFolder: fhIn.value.trim() || undefined,

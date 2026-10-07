@@ -432,6 +432,13 @@ const Native = (() => {
     return el('div', { class: 'opinion-card' }, el('div', { class: 'opinion-head', text: `🔎 ${op.from}'s second opinion${op.q ? `: ${op.q.slice(0, 80)}${op.q.length > 80 ? '…' : ''}` : ''}` }),
       el('div', { class: 'body', html: renderMarkdown(op.text || '') }));
   }
+  // Streaming text arrives in many small pieces; re-rendering the whole reply for each one gets heavy on
+  // long answers, so pieces are gathered and painted at most every 60 ms.
+  function schedulePaint(chatId) {
+    const p = pending.get(chatId);
+    if (!p || p.paintTimer) return;
+    p.paintTimer = setTimeout(() => { p.paintTimer = 0; repaintPending(chatId); }, 60);
+  }
   function repaintPending(chatId) {
     const p = pending.get(chatId);
     if (!p?.el?.isConnected) return;
@@ -552,7 +559,7 @@ const Native = (() => {
       if (!p.thinkStart) p.thinkStart = Date.now();
       p.thinking += event.text;
       p.thinkEnd = Date.now();
-      repaintPending(event.chatId);
+      schedulePaint(event.chatId);
       return;
     }
     if (event.type === 'delta' || event.type === 'tool') {
@@ -562,12 +569,7 @@ const Native = (() => {
       } else {
         p.text += event.text;
       }
-      if (p.el?.isConnected) {
-        const list = p.el.closest('.messages');
-        const stick = nearBottom(list);
-        paintStreaming(p);
-        if (stick) list.scrollTop = list.scrollHeight;
-      }
+      schedulePaint(event.chatId);
       return;
     }
     pending.delete(event.chatId);
