@@ -290,3 +290,9 @@
 246. ✓ **Director code tools for big sketches**: three_read_code (line ranges with numbers), three_search_code (across all layers, with context) and three_edit_code (exact find → replace or a line range, then re-run). Layers over 350 lines come back from three_get_code / three_select_layer as an outline with line numbers instead of the whole code, so the director reads only what it needs and edits in place instead of rewriting.
 247. ✓ **Director looks inside the running sketch** (three_eval): runs JavaScript in the live preview and returns the result, with three.js objects summarized; __scenes['Layer'] gives each layer's scene / camera / renderer, window.game whatever the sketch exposes. For games: real values ("wall health is 1") instead of guesses.
 248. ✓ **Director play-tests** (three_input): holds keys, clicks and moves the mouse in the preview, then screenshots.
+
+## Scene editor
+249. ✓ **✥ Edit scene** (View group, or E): fly around the selected layer's 3D scene (drag to orbit, right-drag to pan, wheel to zoom), click an object to select it (Alt+click its group, or pick from "Objects ▾"), and move / rotate / scale it with gizmo arrows (W / E / R, Q for world / local, Snap for 0.25 / 15° / 0.1 steps, F to focus). Other layers fade back while you edit.
+250. ✓ **Placements stay**: what you move is kept with the layer and re-applied every frame, so it holds even when the code rebuilds or animates the scene; only what you changed is pinned (moving a spinning object keeps it spinning). Exact values, Hide / Show, Parent, Reset per object, ↶ undo, Clear all.
+251. ✓ **📷 Use this view**: the angle you framed becomes the sketch's camera (Reset camera undoes it).
+252. ✓ **Bake into code…**: asks the Three Director to write the placements into the code; the director also sees them in three_layers (placedByUser).

@@ -67,6 +67,10 @@ let shotTag = null; // echoed with the picture (the Lab's automatic thumbnails u
 const renderers = new Set(); // every renderer the current sketch made, so a re-run can dispose them
 function instrument(renderFn) {
   return function render(scene, camera) {
+    // the user's placements from the scene editor, then (while editing this layer) the editor camera
+    const EL = this.__layer && layers.get(this.__layer);
+    if (EL?.props?.overrides) applyOverrides(EL, scene, camera);
+    camera = editCamera(this, scene, camera);
     const t0 = performance.now();
     renderFn.call(this, scene, camera);
     frameMs = performance.now() - t0;
@@ -512,6 +516,181 @@ async function runInput({ id, actions = [] }) {
   } catch (err) { post({ type: 'input-result', id, ok: false, error: err.message, log }); }
 }
 
+// ---------- scene edit mode: fly around the selected layer's scene, pick objects, move / rotate / scale them ----------
+// Placements are overrides kept with the layer (props.overrides = { path: { p, r, s, v } }, '@camera' = { p, q, fov })
+// and re-applied right before every render, so they hold even when the code animates or rebuilds the scene.
+const edit = { on: false, layerId: null, cam: null, orbit: null, gizmo: null, helper: null, scene: null, sketchCam: null, dom: null, sel: null, mode: 'translate', space: 'world', snap: false, down: null, OrbitControls: null, TransformControls: null, lastPick: 0 };
+const pathCache = new WeakMap(); // scene → Map(path → object)
+function objectAt(scene, camera, path) {
+  if (path === '@camera') return camera;
+  let cache = pathCache.get(scene);
+  if (!cache) { cache = new Map(); pathCache.set(scene, cache); }
+  let o = cache.get(path);
+  if (o && o.parent && isInside(o, scene)) return o;
+  if (path.startsWith('#')) o = scene.getObjectByName(path.slice(1));
+  else { o = scene; for (const i of path.split('/')) { o = o?.children?.[Number(i)]; if (!o) break; } }
+  if (o) cache.set(path, o);
+  return o || null;
+}
+function isInside(o, scene) { for (let p = o; p; p = p.parent) if (p === scene) return true; return false; }
+function pathOf(o, scene) {
+  if (o === edit.sketchCam) return '@camera';
+  if (o.name) { let n = 0; scene.traverse((x) => { if (x.name === o.name) n += 1; }); if (n === 1) return `#${o.name}`; }
+  const idx = [];
+  for (let p = o; p && p !== scene; p = p.parent) { if (!p.parent) return null; idx.unshift(p.parent.children.indexOf(p)); }
+  return idx.join('/');
+}
+function applyOverrides(L, scene, camera) {
+  for (const [path, ov] of Object.entries(L.props.overrides || {})) {
+    const o = objectAt(scene, camera, path);
+    if (!o || (edit.gizmo?.dragging && o === edit.sel)) continue;
+    if (ov.p) o.position.fromArray(ov.p);
+    if (ov.q) o.quaternion.fromArray(ov.q); else if (ov.r) o.rotation.set(ov.r[0], ov.r[1], ov.r[2]);
+    if (ov.s) o.scale.fromArray(ov.s);
+    if (ov.v != null) o.visible = ov.v;
+    if (ov.fov && o.isPerspectiveCamera && o.fov !== ov.fov) { o.fov = ov.fov; o.updateProjectionMatrix(); }
+  }
+}
+// Called from the render hook: the edited layer renders through the editor camera.
+function editCamera(renderer, scene, camera) {
+  if (!edit.on || renderer.__layer !== edit.layerId) return camera;
+  edit.scene = scene; edit.sketchCam = camera;
+  if (!edit.cam) {
+    const c = camera?.isPerspectiveCamera ? new THREE.PerspectiveCamera(camera.fov, 1, camera.near, Math.max(camera.far, 1000)) : new THREE.PerspectiveCamera(50, 1, 0.05, 2000);
+    if (camera) { camera.updateMatrixWorld(); c.position.setFromMatrixPosition(camera.matrixWorld); c.quaternion.setFromRotationMatrix(camera.matrixWorld); } else c.position.set(0, 2, 8);
+    edit.cam = c;
+    edit.dom = renderer.domElement;
+    edit.orbit = new edit.OrbitControls(c, edit.dom);
+    edit.orbit.enableDamping = true;
+    const ahead = new THREE.Vector3(0, 0, -1).applyQuaternion(c.quaternion).multiplyScalar(Math.max(3, c.position.length() * 0.8));
+    edit.orbit.target.copy(c.position).add(ahead);
+    edit.gizmo = new edit.TransformControls(c, edit.dom);
+    edit.helper = edit.gizmo.getHelper ? edit.gizmo.getHelper() : edit.gizmo;
+    edit.gizmo.setMode(edit.mode);
+    edit.gizmo.setSpace(edit.space);
+    edit.gizmo.addEventListener('dragging-changed', (e) => { edit.orbit.enabled = !e.value; if (!e.value) recordSel(true); });
+    edit.gizmo.addEventListener('objectChange', () => recordSel(false));
+    edit.dom.addEventListener('pointerdown', pickDown, true);
+    edit.dom.addEventListener('pointerup', pickUp, true);
+  }
+  if (edit.helper.parent !== scene) scene.add(edit.helper);
+  const w = edit.dom.clientWidth || innerWidth; const h = edit.dom.clientHeight || innerHeight;
+  if (Math.abs(edit.cam.aspect - w / h) > 1e-3) { edit.cam.aspect = w / h; edit.cam.updateProjectionMatrix(); }
+  edit.orbit.update();
+  return edit.cam;
+}
+const r3 = (x) => Math.round(x * 1000) / 1000;
+function selInfo() {
+  const o = edit.sel;
+  if (!o || !edit.scene) return null;
+  return { path: pathOf(o, edit.scene), name: o.name || '', type: o.type, p: o.position.toArray().map(r3), r: [o.rotation.x, o.rotation.y, o.rotation.z].map((x) => r3(THREE.MathUtils.radToDeg(x))), s: o.scale.toArray().map(r3), v: o.visible, children: o.children.filter((c) => c !== edit.helper).length, hasParent: Boolean(o.parent && o.parent !== edit.scene) };
+}
+function select(o) {
+  edit.sel = o || null;
+  if (o && o !== edit.sketchCam) edit.gizmo.attach(o); else edit.gizmo.detach();
+  post({ type: 'edit-select', info: selInfo() });
+}
+// Saves the selected object's transform as the layer's override (live while dragging, final when let go).
+// Only what you changed is pinned (moving keeps the code's spin, rotating keeps its motion): prop 'p' | 'q' | 's'.
+function recordSel(final, prop = { translate: 'p', rotate: 'q', scale: 's' }[edit.mode]) {
+  const o = edit.sel; const L = layers.get(edit.layerId);
+  if (!o || !L || !edit.scene) return;
+  const path = pathOf(o, edit.scene);
+  if (!path) return;
+  // q is what's applied; rd (rotation in degrees) and name are for people and the director to read.
+  const ov = { ...(L.props.overrides?.[path] || {}), name: o.name || o.type };
+  if (prop === 'p') ov.p = o.position.toArray().map(r3);
+  if (prop === 'q') { ov.q = o.quaternion.toArray().map((x) => Math.round(x * 1e5) / 1e5); ov.rd = [o.rotation.x, o.rotation.y, o.rotation.z].map((x) => Math.round(THREE.MathUtils.radToDeg(Math.atan2(Math.sin(x), Math.cos(x))) * 10) / 10); }
+  if (prop === 's') ov.s = o.scale.toArray().map(r3);
+  delete ov.r;
+  L.props.overrides = { ...(L.props.overrides || {}), [path]: ov };
+  post({ type: 'edit-change', layer: L.id, overrides: L.props.overrides, final, info: selInfo() });
+}
+function pickDown(e) { edit.down = { x: e.clientX, y: e.clientY }; }
+function pickUp(e) {
+  const d = edit.down; edit.down = null;
+  if (!d || edit.gizmo.dragging || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4 || e.button !== 0) return;
+  const rect = edit.dom.getBoundingClientRect();
+  const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+  const ray = new THREE.Raycaster();
+  ray.setFromCamera(ndc, edit.cam);
+  const helperParts = new Set(); edit.helper.traverse((x) => helperParts.add(x));
+  const hits = ray.intersectObjects(edit.scene.children, true).filter((h) => !helperParts.has(h.object) && h.object.visible && !h.object.isLine && !h.object.isPoints && !h.object.isSprite);
+  // Click again on the same spot: pick the object's parent (groups).
+  let o = hits[0]?.object || null;
+  if (o && e.altKey && o.parent && o.parent !== edit.scene) o = o.parent;
+  select(o);
+}
+function treeOf(o, depth = 0, out = []) {
+  for (const c of o.children) {
+    if (c === edit.helper || out.length > 300) continue;
+    out.push({ path: pathOf(c, edit.scene), name: c.name || '', type: c.type, depth, v: c.visible, ov: Boolean(layers.get(edit.layerId)?.props.overrides?.[pathOf(c, edit.scene)]) });
+    if (depth < 5) treeOf(c, depth + 1, out);
+  }
+  return out;
+}
+async function editOn(layerId) {
+  if (!edit.OrbitControls) {
+    edit.OrbitControls = (await import('three/addons/controls/OrbitControls.js')).OrbitControls;
+    edit.TransformControls = (await import('three/addons/controls/TransformControls.js')).TransformControls;
+  }
+  if (edit.on && edit.layerId === layerId) return;
+  editOff(true);
+  edit.on = true; edit.layerId = layerId;
+  for (const L of layers.values()) styleLayer(L);
+  post({ type: 'edit-state', on: true, layer: layerId });
+}
+function editOff(quiet) {
+  if (edit.helper?.parent) edit.helper.parent.remove(edit.helper);
+  edit.gizmo?.detach(); edit.gizmo?.dispose?.(); edit.orbit?.dispose?.();
+  edit.dom?.removeEventListener('pointerdown', pickDown, true);
+  edit.dom?.removeEventListener('pointerup', pickUp, true);
+  Object.assign(edit, { on: false, cam: null, orbit: null, gizmo: null, helper: null, sel: null, scene: null, dom: null });
+  for (const L of layers.values()) styleLayer(L);
+  if (!quiet) post({ type: 'edit-state', on: false });
+}
+function editCommand(msg) {
+  const L = layers.get(edit.layerId);
+  if (msg.cmd === 'on') { editOn(msg.layer); return; }
+  if (msg.cmd === 'off') { editOff(); return; }
+  if (!edit.on || !edit.gizmo) return;
+  if (msg.cmd === 'mode') { edit.mode = msg.value; edit.gizmo.setMode(msg.value); }
+  if (msg.cmd === 'space') { edit.space = msg.value; edit.gizmo.setSpace(msg.value); }
+  if (msg.cmd === 'snap') { edit.snap = msg.value; edit.gizmo.setTranslationSnap(msg.value ? 0.25 : null); edit.gizmo.setRotationSnap(msg.value ? THREE.MathUtils.degToRad(15) : null); edit.gizmo.setScaleSnap(msg.value ? 0.1 : null); }
+  if (msg.cmd === 'select') select(msg.path ? objectAt(edit.scene, edit.sketchCam, msg.path) : null);
+  if (msg.cmd === 'parent' && edit.sel?.parent && edit.sel.parent !== edit.scene) select(edit.sel.parent);
+  if (msg.cmd === 'focus' && edit.sel) { const box = new THREE.Box3().setFromObject(edit.sel); const c = box.getCenter(new THREE.Vector3()); const size = box.getSize(new THREE.Vector3()).length() || 1; edit.orbit.target.copy(c); edit.cam.position.copy(c).add(new THREE.Vector3(0, size * 0.4, size * 1.6)); }
+  if (msg.cmd === 'set' && edit.sel) {
+    const o = edit.sel; const [k, axis, val] = [msg.prop, msg.axis, Number(msg.value)];
+    if (k === 'p') o.position.setComponent(axis, val);
+    if (k === 's') o.scale.setComponent(axis, val);
+    if (k === 'r') { const e = o.rotation.toArray(); e[axis] = THREE.MathUtils.degToRad(val); o.rotation.set(e[0], e[1], e[2]); }
+    recordSel(true, k === 'r' ? 'q' : k);
+  }
+  if (msg.cmd === 'visible' && edit.sel && L) {
+    const path = pathOf(edit.sel, edit.scene);
+    edit.sel.visible = !edit.sel.visible;
+    L.props.overrides = { ...(L.props.overrides || {}), [path]: { ...(L.props.overrides?.[path] || {}), v: edit.sel.visible } };
+    post({ type: 'edit-change', layer: L.id, overrides: L.props.overrides, final: true, info: selInfo() });
+  }
+  if (msg.cmd === 'camera' && L && edit.sketchCam) {
+    // the view you framed becomes the sketch's camera
+    const c = edit.cam;
+    L.props.overrides = { ...(L.props.overrides || {}), '@camera': { p: c.position.toArray().map(r3), q: c.quaternion.toArray().map((x) => Math.round(x * 1e5) / 1e5), fov: c.fov } };
+    post({ type: 'edit-change', layer: L.id, overrides: L.props.overrides, final: true, info: selInfo() });
+  }
+  if (msg.cmd === 'tree') post({ type: 'edit-tree', tree: edit.scene ? treeOf(edit.scene) : [] });
+  if (msg.cmd === 'refresh') post({ type: 'edit-select', info: selInfo() });
+}
+addEventListener('keydown', (e) => {
+  if (!edit.on || !edit.gizmo || /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
+  const k = e.key.toLowerCase();
+  if (k === 'w' || k === 'e' || k === 'r') { edit.mode = { w: 'translate', e: 'rotate', r: 'scale' }[k]; edit.gizmo.setMode(edit.mode); post({ type: 'edit-mode', mode: edit.mode }); }
+  if (k === 'q') { edit.space = edit.space === 'world' ? 'local' : 'world'; edit.gizmo.setSpace(edit.space); post({ type: 'edit-mode', space: edit.space }); }
+  if (k === 'f') editCommand({ cmd: 'focus' });
+  if (k === 'escape') select(null);
+}, true);
+
 // Named controls: const P = tweak({ speed: [1, 0, 5], glow: { value: 1, min: 0, max: 3, label: 'Glow', group: 'Look', onChange }, tint: '#ff3cac', wire: false })
 globalThis.tweak = (spec = {}) => {
   const L = layerState(currentLayer() || 'main');
@@ -641,7 +820,8 @@ function layerMix(L) {
 const xform = (L) => ({ x: prop(L, 'x', 0), y: prop(L, 'y', 0), scale: prop(L, 'scale', 1), rotate: prop(L, 'rotate', 0) });
 function styleLayer(L) {
   const p = L.props;
-  const mix = layerMix(L);
+  // while editing one layer's scene, the others fade back
+  const mix = layerMix(L) * (edit.on && L.id !== edit.layerId ? 0.25 : 1);
   const s = L.box.style;
   const disp = mix > 0 ? '' : 'none';
   if (s.display !== disp) s.display = disp;
@@ -1515,6 +1695,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'remove-layer') removeLayer(msg.id);
   if (msg.type === 'media-load') loadMedia(msg);
   if (msg.type === 'eval') runEval(msg);
+  if (msg.type === 'edit') editCommand(msg);
   if (msg.type === 'input') runInput(msg);
   if (msg.type === 'refs') { setRefs(msg.items); palette.splice(0, palette.length, ...(msg.palette || [])); }
   if (msg.type === 'media') mediaCommand(msg);

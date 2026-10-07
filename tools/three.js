@@ -149,6 +149,104 @@ const ThreeLab = (() => {
     const presentBtn = btn('▣ Present', 'Fullscreen preview with nothing else on screen, for showing it off or a second monitor (P · Esc to leave)', () => togglePresent());
     presentBtn.dataset.feature = 'Present';
     const presentHint = el('div', { class: 'present-hint', text: 'Esc to leave · Space play / pause · 1–9 jump to cues' });
+    // ---------- scene editor: orbit around the selected layer's scene, click objects, move / rotate / scale them ----------
+    // Placements live in L.overrides ({ path: { p, q, s, rd, v, name } }, '@camera' for the framed view) and the sandbox
+    // re-applies them every frame. "Bake into code" asks the director to write them into the code.
+    let editOn = false;
+    let editSel = null;
+    const editUndo = [];
+    const editBtn = btn('✥ Edit scene', 'Move around the selected layer\'s 3D scene and drag objects into place (move / rotate / scale). Placements are kept with the layer. E', () => setEdit(!editOn));
+    editBtn.dataset.feature = 'Edit scene';
+    const modeBtns = [['translate', 'Move', 'W'], ['rotate', 'Rotate', 'E'], ['scale', 'Scale', 'R']].map(([m, label, k]) => btn(label, `${label} (${k} in the preview)`, () => { box.send({ type: 'edit', cmd: 'mode', value: m }); paintMode(m); }, 'ghost small ed-mode'));
+    const spaceBtn = btn('World', 'Gizmo axes: world or the object\'s own (Q in the preview)', () => { const v = spaceBtn.textContent === 'World' ? 'local' : 'world'; box.send({ type: 'edit', cmd: 'space', value: v }); spaceBtn.textContent = v === 'world' ? 'World' : 'Local'; });
+    const snapBtn = btn('Snap', 'Snap: 0.25 units, 15°, 0.1 scale', () => { snapBtn.classList.toggle('on'); box.send({ type: 'edit', cmd: 'snap', value: snapBtn.classList.contains('on') }); });
+    const outlinerBtn = btn('Objects ▾', 'Every object in the scene: click to select', () => box.send({ type: 'edit', cmd: 'tree' }));
+    const camBtn = btn('📷 Use this view', 'Make the view you framed the sketch\'s camera', () => { pushEditUndo(); box.send({ type: 'edit', cmd: 'camera' }); toast('The sketch\'s camera now uses this view (Reset camera in the list to undo)', { timeout: 3000 }); });
+    const selBox = el('div', { class: 'ed-sel' });
+    const footBox = el('div', { class: 'ed-foot' });
+    const editPanel = el('div', { class: 'ed-panel', hidden: true },
+      el('div', { class: 'ed-row' }, ...modeBtns, spaceBtn, snapBtn, outlinerBtn, camBtn, el('span', { class: 'spacer' }), btn('Done', 'Leave the scene editor (E)', () => setEdit(false), 'primary small')),
+      selBox, footBox);
+    const paintMode = (m) => modeBtns.forEach((b, k) => b.classList.toggle('on', ['translate', 'rotate', 'scale'][k] === m));
+    function setEdit(on) {
+      const L = sel();
+      if (on && !L) return;
+      editOn = on;
+      editBtn.classList.toggle('on', on);
+      editPanel.hidden = !on;
+      previewHost.classList.toggle('editing', on);
+      box.send({ type: 'edit', cmd: on ? 'on' : 'off', layer: L?.id });
+      if (on) { paintMode('translate'); editSel = null; paintEditSel(); toast(`Editing "${L.name}": drag to orbit, right-drag to pan, wheel to zoom, click an object to move it`, { timeout: 3500 }); }
+    }
+    const placements = () => Object.keys(sel()?.overrides || {}).filter((k) => k !== '@camera');
+    function paintEditSel() {
+      const info = editSel;
+      if (!info) {
+        selBox.replaceChildren(el('div', { class: 'ed-hint', text: 'Click an object to select it · drag to orbit · right-drag to pan · wheel to zoom · W / E / R move / rotate / scale · F focus · Alt+click picks its group · Esc deselects' }));
+      } else {
+        const num = (prop, axis, val) => {
+          const inp = el('input', { type: 'number', class: 'ed-num', value: val, step: prop === 'r' ? 1 : 0.05 });
+          inp.addEventListener('change', () => { pushEditUndo(); box.send({ type: 'edit', cmd: 'set', prop, axis, value: Number(inp.value) }); });
+          return inp;
+        };
+        const trio = (label, prop, arr) => el('div', { class: 'ed-trio' }, el('span', { class: 'ed-lab', text: label }), ...arr.map((v, k) => num(prop, k, v)));
+        const placed = Boolean(sel()?.overrides?.[info.path]);
+        selBox.replaceChildren(
+          el('div', { class: 'ed-row' }, el('b', { text: info.name || info.type }), el('span', { class: 'ed-type', text: `${info.type}${info.children ? ` · ${info.children} inside` : ''}${placed ? ' · placed' : ''}` }), el('span', { class: 'spacer' }),
+            info.hasParent ? btn('Parent', 'Select the group it belongs to', () => box.send({ type: 'edit', cmd: 'parent' })) : null,
+            btn('Focus', 'Fly the view to it (F)', () => box.send({ type: 'edit', cmd: 'focus' })),
+            btn(info.v ? '👁 Hide' : '👁 Show', 'Hide or show it', () => { pushEditUndo(); box.send({ type: 'edit', cmd: 'visible' }); }),
+            placed ? btn('↺ Reset', 'Back to where the code puts it', () => resetPlacement(info.path)) : null),
+          (() => {
+            // the arrows are the main tool; exact numbers fold away (remembered)
+            const d = el('details', { class: 'ed-nums', on: { toggle: (e) => store.set('three.edNums', e.currentTarget.open) } },
+              el('summary', { text: 'Exact values' }), trio('Position', 'p', info.p), trio('Rotation°', 'r', info.r), trio('Scale', 's', info.s));
+            d.open = store.get('three.edNums', false);
+            return d;
+          })());
+      }
+      const n = placements().length; const cam = Boolean(sel()?.overrides?.['@camera']);
+      footBox.replaceChildren(el('span', { text: n || cam ? `${n} object${n === 1 ? '' : 's'} placed${cam ? ' · camera set' : ''} in "${sel()?.name}"` : 'Nothing placed yet' }), el('span', { class: 'spacer' }),
+        editUndo.length ? btn('↶', 'Undo the last placement', () => undoEdit()) : null,
+        n || cam ? btn('Bake into code…', 'Ask the Three Director to write these placements into the code', () => bakePlacements()) : null,
+        cam ? btn('Reset camera', 'The sketch\'s own camera again', () => resetPlacement('@camera')) : null,
+        n || cam ? btn('Clear all', 'Remove every placement in this layer', () => { pushEditUndo(); setOverrides(sel(), null); }) : null);
+    }
+    function pushEditUndo() { const L = sel(); if (L) { editUndo.push({ id: L.id, ov: JSON.stringify(L.overrides || null) }); if (editUndo.length > 50) editUndo.shift(); } }
+    function setOverrides(L, ov) {
+      L.overrides = ov && Object.keys(ov).length ? ov : undefined;
+      box.send({ type: 'layer-props', id: L.id, props: { overrides: L.overrides || null } });
+      touch();
+      run({ hot: true, layer: L.id }); // objects the code doesn't move every frame go back to where it puts them
+      paintEditSel();
+    }
+    function resetPlacement(path) { const L = sel(); if (!L?.overrides) return; pushEditUndo(); const ov = { ...L.overrides }; delete ov[path]; setOverrides(L, ov); }
+    function undoEdit() { const u = editUndo.pop(); const L = u && layerById(u.id); if (L) setOverrides(L, JSON.parse(u.ov)); }
+    function bakePlacements() {
+      const L = sel();
+      const lines = Object.entries(L.overrides || {}).map(([path, o]) => (path === '@camera'
+        ? `- the camera: position [${o.p.join(', ')}], quaternion [${o.q.join(', ')}], fov ${Math.round(o.fov)}`
+        : `- ${o.name || path} (${path.startsWith('#') ? `named "${path.slice(1)}"` : `scene child path ${path}`}): ${o.p ? `position [${o.p.join(', ')}], ` : ''}${o.rd ? `rotation [${o.rd.join(', ')}] degrees, ` : ''}${o.s ? `scale [${o.s.join(', ')}]` : ''}${o.v === false ? ', hidden' : ''}`));
+      askDirector(`In the layer "${L.name}" I placed things with the scene editor. Write these placements into the code so they start there (use three_edit_code, keep everything else as it is):\n${lines.join('\n')}\nWhen it's done, tell me, and I'll clear the placements in the editor.`, { send: false });
+    }
+    function onEditMessage(msg) {
+      if (msg.type === 'edit-select') { editSel = msg.info; paintEditSel(); }
+      if (msg.type === 'edit-change') {
+        const L = layerById(msg.layer);
+        if (!L) return;
+        if (msg.final && JSON.stringify(L.overrides || null) !== JSON.stringify(msg.overrides)) { editUndo.push({ id: L.id, ov: JSON.stringify(L.overrides || null) }); }
+        L.overrides = msg.overrides;
+        editSel = msg.info || editSel;
+        if (msg.final) touch();
+        paintEditSel();
+      }
+      if (msg.type === 'edit-mode') { if (msg.mode) paintMode(msg.mode); if (msg.space) spaceBtn.textContent = msg.space === 'world' ? 'World' : 'Local'; }
+      if (msg.type === 'edit-tree') {
+        const r = outlinerBtn.getBoundingClientRect();
+        const ov = sel()?.overrides || {};
+        popup(r.left, r.bottom + 4, ['Objects in the scene', ...msg.tree.slice(0, 200).map((n) => [`${'  '.repeat(n.depth)}${n.name || n.type}${ov[n.path] ? ' ●' : ''}${n.v ? '' : ' (hidden)'}`, n.name ? n.type : '', () => box.send({ type: 'edit', cmd: 'select', path: n.path }), editSel?.path === n.path])]);
+      }
+    }
     function togglePresent() {
       if (document.fullscreenElement) { document.exitFullscreen(); return; }
       pane.focus();
@@ -929,7 +1027,7 @@ const ThreeLab = (() => {
     }
     addEventListener('keydown', (e) => { if (e.key === 'Escape' && focusOn) setFocus(false); });
 
-    const layerProps = (L, z) => ({ keys: animKeys(L), sliderKeys: sliderKeysOf(L), name: L.name, visible: L.visible !== false && (!soloId || L.id === soloId), opacity: L.opacity ?? 1, blend: L.blend || 'normal', in: L.in ?? null, out: L.out ?? null, fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0, x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, selected: L.id === selId, slot: L.slot, z: z ?? layersOf().indexOf(L) });
+    const layerProps = (L, z) => ({ keys: animKeys(L), sliderKeys: sliderKeysOf(L), overrides: L.overrides || null, name: L.name, visible: L.visible !== false && (!soloId || L.id === soloId), opacity: L.opacity ?? 1, blend: L.blend || 'normal', in: L.in ?? null, out: L.out ?? null, fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0, x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, selected: L.id === selId, slot: L.slot, z: z ?? layersOf().indexOf(L) });
     const extrasOf = (L) => {
       const ex = (extras[current.id] ||= {});
       return L.id === 'main' ? ex : ((ex.layers ||= {})[L.id] ||= {});
@@ -1010,6 +1108,7 @@ const ThreeLab = (() => {
         editor.setValue(L.code);
         editor.setErrorLines(errors.filter((e) => (e.layer || 'main') === id || (!e.layer && layersOf().length === 1)).map((e) => e.line).filter(Boolean));
         for (const x of layersOf()) box.send({ type: 'layer-props', id: x.id, props: { selected: x.id === id } });
+        if (editOn) { editSel = null; box.send({ type: 'edit', cmd: 'on', layer: id }); paintEditSel(); }
       }
       tweaksSlot.replaceChildren(ctlFor(L).el);
       renderLayers();
@@ -1125,7 +1224,7 @@ const ThreeLab = (() => {
     setInterval(rememberMedia, 5000);
     addEventListener('beforeunload', () => { rememberMedia(); window.hub.kvSet('three-lab-extras', extras); });
     split = el('div', { class: 'three-split' }, editorHost, el('div', { class: 'three-right' }, previewHost, player.el, consoleWrap), column);
-    previewHost.append(presentHint);
+    previewHost.append(presentHint, editPanel);
     function setCodeVisible(show) {
       split.classList.toggle('no-code', !show);
       codeBtn.classList.toggle('on', show);
@@ -1172,6 +1271,7 @@ const ThreeLab = (() => {
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'f') { e.preventDefault(); setFocus(!focusOn); return; }
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'p') { e.preventDefault(); togglePresent(); return; }
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'w') { e.preventDefault(); setWrite(!writeArmed); return; }
+      if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'e') { e.preventDefault(); setEdit(!editOn); return; }
       if (player.onKey(e)) { e.preventDefault(); if (!e.repeat) Usage.key(`${e.ctrlKey ? 'Ctrl+' : ''}${e.key === ' ' ? 'Space' : e.key.length === 1 ? e.key.toUpperCase() : e.key}`, 'Lab'); }
     });
     pane.tabIndex = -1;
@@ -1248,6 +1348,7 @@ const ThreeLab = (() => {
           el('span', { text: `${msg.triangles.toLocaleString()} tris` }), msg.points ? el('span', { text: `${msg.points.toLocaleString()} points` }) : null,
           el('span', { text: `${msg.geometries} geo · ${msg.textures} tex · ${msg.programs} shaders` }));
       }
+      if (/^edit-/.test(msg.type)) { onEditMessage(msg); return; }
       if (msg.type === 'eval-result' || msg.type === 'input-result') { sandboxCalls.get(msg.id)?.(msg); sandboxCalls.delete(msg.id); return; }
       if (msg.type === 'shot') {
         if (msg.tag === 'thumb') { const fn = thumbShot; thumbShot = null; fn?.(msg.dataUrl); return; }
@@ -1343,6 +1444,7 @@ const ThreeLab = (() => {
       const spec = (L) => ({ id: L.id, code: preps.get(L.id)?.code ?? L.code, ...layerProps(L) });
       if (hot) box.send({ type: 'hot-layer', layer: spec(target) });
       else box.send({ type: 'run-layers', layers: layersOf().map(spec) });
+      if (editOn && !hot && sel()) box.send({ type: 'edit', cmd: 'on', layer: sel().id });
       ranOnce = true;
       if (!hot) scheduleThumb();
       return true;
@@ -1587,7 +1689,7 @@ ${code}
       // The toolbar in labeled groups: what you see, the sketch, its code, its assets, capture.
       const group = (cat, ...nodes) => el('span', { class: 'tb-group', dataset: { cat } }, ...nodes);
       toolbar.replaceChildren(
-        group('View', codeBtn, slidersBtn, consoleBtn, focusBtn, presentBtn),
+        group('View', codeBtn, slidersBtn, consoleBtn, focusBtn, presentBtn, editBtn),
         group('Sketch', picker, browseBtn, newBtn, sketchMenuBtn),
         group('Code', runBtn, liveLabel, snippetSel, version),
         group('Assets', paletteBox, refsBtn, shotBtn));
@@ -1608,6 +1710,7 @@ ${code}
     const layersSummary = () => layersOf().map((L, i) => ({
       id: L.id, name: L.name, ...(ThreeLayers.isFilter(L.code) ? { kind: 'filter (changes the layers below it)' } : {}), order: `${i + 1} of ${layersOf().length} (1 = bottom)`, selected: L.id === selId,
       visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal',
+      ...(L.overrides ? { placedByUser: Object.fromEntries(Object.entries(L.overrides).map(([k, o]) => [k, { position: o.p, rotationDegrees: o.rd, scale: o.s, ...(o.v === false ? { hidden: true } : {}), ...(o.fov ? { fov: o.fov } : {}) }])) } : {}),
       plays: L.in == null && L.out == null ? 'whole song' : { from: L.in ?? 0, to: L.out ?? 'end', fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0 },
       ...(L.x || L.y || (L.scale ?? 1) !== 1 || L.rotate ? { transform: { x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0 } } : {}),
       sliders: controllers.get(L.id)?.controls().map((c) => c.label) || [],

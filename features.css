@@ -1007,3 +1007,26 @@ details.tw-asks[open] > summary::before { content: '▾ '; }
 .sb-pin { position: absolute; top: 4px; left: 6px; color: #ffd75e; text-shadow: 0 0 4px #000; }
 .sb-song { position: absolute; top: 4px; right: 6px; padding: 0 5px; border-radius: 99px; background: #000a; color: #48ddff; font-size: 11px; }
 .sb-card.pinned { border-color: #ffd75e70; }
+
+/* ---------- scene editor ---------- */
+.three-preview.editing { box-shadow: inset 0 0 0 2px #48ddff; }
+.ed-panel { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 15; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, #05070d 88%, transparent); border: 1px solid #48ddff70; backdrop-filter: blur(6px); font-size: 12px; }
+.ed-panel[hidden] { display: none; }
+.ed-row { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.ed-row .spacer { flex: 1; }
+.ed-mode.on { background: #48ddff; color: #05070d; border-color: #48ddff; }
+.ed-panel button.on:not(.ed-mode) { color: #48ddff; border-color: #48ddff; }
+.ed-sel { display: flex; flex-direction: column; gap: 4px; }
+.ed-type { color: var(--muted); font-size: 11.5px; }
+.ed-hint { color: var(--muted); font-size: 11.5px; line-height: 1.4; }
+.ed-trio { display: flex; align-items: center; gap: 4px; }
+.ed-lab { width: 66px; color: var(--muted); font-size: 11px; }
+.ed-num { width: 72px; padding: 1px 4px; font: 11.5px Consolas, monospace; }
+.ed-foot { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; color: var(--muted); font-size: 11.5px; border-top: 1px solid color-mix(in srgb, var(--text) 10%, transparent); padding-top: 5px; }
+.ed-foot .spacer { flex: 1; }
+.ed-panel { top: 8px; bottom: auto; gap: 4px; padding: 6px 8px; max-height: calc(100% - 16px); overflow: auto; }
+.ed-panel button { padding: 2px 8px; font-size: 11.5px; }
+.ed-panel .ed-mode.on { background: #48ddff !important; color: #05070d !important; border-color: #48ddff !important; }
+.ed-nums > summary { cursor: pointer; color: var(--muted); font-size: 11px; }
+.ed-nums[open] { display: flex; flex-direction: column; gap: 3px; }
+.ed-num { width: 60px; }
