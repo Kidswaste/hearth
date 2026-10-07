@@ -180,6 +180,10 @@ const ThreeLab = (() => {
     // Now playing: title / artist / cover / position of Spotify (or the current media app), with ⏮ ⏯ ⏭.
     let liveKind = null;
     let np = null;
+    let liveBpm = null;
+    const liveOpts = () => ({ auto: true, sense: 1, followCover: false, ...store.get('three.live', {}) });
+    const setLiveOpt = (patch) => { store.set('three.live', { ...liveOpts(), ...patch }); sendLiveGain(); };
+    const sendLiveGain = () => { const o = liveOpts(); box.send({ type: 'live-gain', auto: o.auto, sense: o.sense }); };
     // The preview iframe is isolated (no access to the hub) and browsers don't let isolated pages capture
     // sound, so for it this page captures and sends the analysis ~60 times a second. The Stage window
     // captures by itself (and its recordings include the sound).
@@ -218,26 +222,33 @@ const ThreeLab = (() => {
     function liveMenu(anchor) {
       const r = anchor.getBoundingClientRect();
       const isWin = !/Mac/.test(navigator.platform);
+      const o = liveOpts();
       popup(r.left, r.bottom + 4, [
         'Make the sketch react to',
         isWin ? ['System sound', 'Whatever plays on this PC: Spotify, YouTube, Suno…', () => setLive('system'), liveKind === 'system'] : null,
         ['Microphone', 'A mic or line-in', () => setLive('mic'), liveKind === 'mic'],
         liveKind ? ['Off: back to the loaded song', '', () => setLive(null)] : null,
+        'Sensitivity',
+        ['Auto level', 'Quiet or loud playback moves the sketch about the same', () => setLiveOpt({ auto: !o.auto }), o.auto],
+        ...[['Calm', 0.6], ['Normal', 1], ['Wild', 1.8]].map(([name, v]) => [name, `Reaction × ${v}`, () => setLiveOpt({ sense: v }), o.sense === v]),
         'Now playing',
         [np ? 'Hide what\'s playing' : 'Show what Spotify plays', 'Title, cover and ⏮ ⏯ ⏭ here, no Spotify login (also works with other players)', () => (np ? stopNowPlaying() : startNowPlaying())],
+        ['Palette follows the cover', 'Each new song sets the sketch palette from its album cover', () => { setLiveOpt({ followCover: !o.followCover }); if (!o.followCover && np?.cover) coverTo('palette'); }, o.followCover],
       ]);
     }
     async function setLive(kind) {
       if (!kind) { liveKind = null; hubLiveStop(); box.send({ type: 'live-stop' }); paintLive(); return; }
-      liveKind = kind;
+      liveKind = kind; liveBpm = null;
       if (player.playing) player.toggle(false); // the song would play over it
+      sendLiveGain();
       const ok = await window.hub.liveStart(kind);
       if (!ok) { liveKind = null; paintLive(); return; } // the sketch reports why (live-state)
       paintLive();
       if (kind === 'system' && !np) startNowPlaying();
     }
     function paintLive() {
-      liveBtn.textContent = liveKind ? `● Live: ${liveKind === 'system' ? 'system sound' : 'mic'} ▾` : '🎧 Live ▾';
+      liveBtn.textContent = liveKind ? `● Live: ${liveKind === 'system' ? 'system sound' : 'mic'}${liveBpm ? ` · ${Math.round(liveBpm.bpm)} BPM${liveBpm.locked ? '' : '?'}` : ''} ▾` : '🎧 Live ▾';
+      liveBtn.title = liveKind ? `Live sound${liveBpm ? `: about ${liveBpm.bpm} BPM, found from the kicks${liveBpm.locked ? ' (audio.beat / beatPhase follow it)' : ' (still listening)'}` : ''}. Click for sensitivity or to stop.` : 'Make the sketch react to what your computer plays (Spotify, YouTube…) or a microphone, and see what\'s playing';
       liveBtn.classList.toggle('live-on', Boolean(liveKind));
     }
     function startNowPlaying() {
@@ -253,6 +264,7 @@ const ThreeLab = (() => {
       if (!np) return;
       np = info;
       if (!info.app || !info.title) { npBox.replaceChildren(el('span', { class: 'np-wait', text: 'Nothing playing in Spotify (or another player)' })); return; }
+      if (info.coverAt && liveOpts().followCover) setTimeout(() => coverTo('palette', true), 300); // a new song
       if (info.cover) np.coverSrc = /^https?:/.test(info.cover) ? info.cover : `${fileUrl(info.cover)}?t=${info.coverAt || Date.now()}`;
       else np.coverSrc = npBox.querySelector('img')?.src;
       const ctl = (text, title, cmd) => btn(text, title, () => window.hub.npControl(cmd), 'ghost small np-ctl');
@@ -271,10 +283,10 @@ const ThreeLab = (() => {
       let bin = ''; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
       return window.hub.saveAttachment('cover.jpg', btoa(bin));
     }
-    async function coverTo(what) {
+    async function coverTo(what, quiet) {
       try {
         const f = await coverFile();
-        if (what === 'palette') { const cols = await paletteFrom(f); setPalette(cols); toast(`Palette from "${np.title}": ${cols.join(' ')}`, { timeout: 2500 }); }
+        if (what === 'palette') { const cols = await paletteFrom(f); setPalette(cols); toast(`Palette from "${np.title}": ${cols.join(' ')}`, { timeout: quiet ? 1400 : 2500 }); }
         else { const r = await addRef(f, { key: `${np.title || 'cover'} cover` }); toast(`Cover added to references as "${r.key}"`, { timeout: 2500 }); }
       } catch (err) { toast(err.message, { type: 'error' }); }
     }
@@ -1501,9 +1513,11 @@ const ThreeLab = (() => {
           el('span', { text: `${msg.geometries} geo · ${msg.textures} tex · ${msg.programs} shaders` }));
       }
       if (/^edit-/.test(msg.type)) { onEditMessage(msg); return; }
+      if (msg.type === 'live-tempo') { if (liveKind) { liveBpm = msg; paintLive(); } return; }
       if (msg.type === 'live-state') { if (msg.error) toast(`Live sound: ${msg.error}`, { type: 'error', timeout: 5000 }); if (!msg.on && msg.error) { liveKind = null; paintLive(); } return; }
       if (msg.type === 'ready' && liveKind) {
         // a reloaded preview: the hub page keeps capturing, the Stage captures again by itself
+        sendLiveGain();
         if (box.onStage) { hubLiveStop(); setTimeout(() => window.hub.liveStart(liveKind), 400); } else if (hubLive.stream) box.send({ type: 'live-remote', on: true, kind: liveKind }); else setTimeout(() => window.hub.liveStart(liveKind), 400);
       }
       if (msg.type === 'eval-result' || msg.type === 'input-result') { sandboxCalls.get(msg.id)?.(msg); sandboxCalls.delete(msg.id); return; }
@@ -2091,6 +2105,8 @@ ${code}
       },
       report,
       contactSheet: (o) => contactSheet(o),
+      live: () => ({ input: liveKind, bpm: liveBpm?.bpm ?? null, tempoLocked: Boolean(liveBpm?.locked),
+        nowPlaying: np?.title ? { title: np.title, artist: np.artist, album: np.album, app: np.app, position: Math.round(np.position || 0), duration: Math.round(np.duration || 0), playing: np.playing } : null }),
       shot: () => new Promise((resolve) => {
         pendingShot = resolve;
         box.send({ type: 'screenshot' });
@@ -2438,7 +2454,7 @@ ${frag}\`,
       return { ok: true, value: await d.newSketch(String(args.name || 'Untitled'), String(args.code || ''), Number(args.wait) || 2.5) };
     }
     if (tool === 'three_console') return { ok: true, value: d.report() };
-    if (tool === 'three_media_info') return { ok: true, value: d.media.info() };
+    if (tool === 'three_media_info') { const live = d.live(); return { ok: true, value: live.input || live.nowPlaying ? { ...d.media.info(), live } : d.media.info() }; }
     if (tool === 'three_load_media') {
       const r = await d.media.load(String(args.path || ''));
       if (r.ok) d.assignMedia(String(args.path));

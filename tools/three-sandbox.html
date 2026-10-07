@@ -191,6 +191,7 @@ const lastIdx = (arr, t) => { let lo = 0; let hi = arr.length - 1; let k = -1; w
 const pulse = (arr, t, decay = 0.12) => { const k = arr?.length ? lastIdx(arr, t) : -1; return k < 0 ? 0 : Math.exp(-(t - arr[k]) / decay); };
 // Position in the bar from the beat list: beat 1..bpb, bar 1.., phases 0..1.
 function barInfo(t) {
+  if (liveKind && livePeriod) { const x = (t - liveOrigin) / livePeriod; const k = Math.floor(x); const ph = x - k; const b = ((k % 4) + 4) % 4; return { beatInBar: b + 1, bar: Math.floor(k / 4) + 1, beatPhase: ph, barPhase: (b + ph) / 4 }; }
   if (!mediaEl) { const p = 0.5; const k = Math.floor(t / p); return { beatInBar: (k % 4) + 1, bar: Math.floor(k / 4) + 1, beatPhase: (t % p) / p, barPhase: ((k % 4) + (t % p) / p) / 4 }; }
   const bs = beatMap?.beats?.length ? beatMap.beats : analysis?.beats || [];
   const bpb = beatMap?.bpb || 4;
@@ -208,6 +209,45 @@ function barInfo(t) {
 let liveSrc = null; let liveStream = null; let liveKind = null;
 // In the Lab's preview the hub page captures and sends the spectrum / waveform here ('live-frame').
 let remoteFreq = null; let remoteWave = null; let remoteRate = 48000;
+// Live tempo: kick onsets → the most likely beat period (70–180 BPM), then a beat clock that the kicks keep in phase.
+// Live levelling: quiet or loud playback gives about the same audio.level / bass / mid / treble.
+const liveOnsets = []; let livePeriod = 0; let liveOrigin = 0; let liveLock = 0; let liveCand = 0; let liveTempoSent = 0;
+let liveAuto = true; let liveSense = 1; let livePeak = 0.25;
+function liveTempo(nowS) {
+  liveOnsets.push(nowS);
+  while (liveOnsets.length && nowS - liveOnsets[0] > 12) liveOnsets.shift();
+  const on = liveOnsets;
+  if (on.length >= 6) {
+    const score = (p) => {
+      let sc = 0;
+      for (let i = 0; i < on.length; i += 1) {
+        for (let j = i + 1; j < on.length && on[j] - on[i] < 2.5; j += 1) {
+          const r = (on[j] - on[i]) / p; const e = r - Math.round(r);
+          if (Math.round(r) >= 1) sc += Math.exp(-(e * e) / 0.006) / Math.round(r);
+        }
+      }
+      return sc * (1 + 0.15 * Math.exp(-(((60 / p) - 122) ** 2) / 1800)); // a slight preference for usual dance tempos
+    };
+    let best = 0; let bestScore = 0;
+    for (let p = 60 / 180; p <= 60 / 70; p += 0.004) { const sc = score(p); if (sc > bestScore) { bestScore = sc; best = p; } }
+    for (let p = best - 0.004; p <= best + 0.004; p += 0.0004) { const sc = score(p); if (sc > bestScore) { bestScore = sc; best = p; } } // finer
+    if (best) {
+      if (!livePeriod || Math.abs(best - livePeriod) / livePeriod < 0.03) livePeriod = livePeriod ? livePeriod + (best - livePeriod) * 0.3 : best;
+      else if (liveCand && Math.abs(best - liveCand) / liveCand < 0.03) { livePeriod = best; liveLock = 0; } // won twice: a new tempo
+      else liveCand = best;
+    }
+  }
+  if (livePeriod) {
+    // phase: the circular mean of the recent kicks on the beat clock (off-beat hits barely move it);
+    // how tightly they agree is the lock (0..1)
+    let c = 0; let sn = 0; let n = 0;
+    for (const t of on) { if (nowS - t > 8) continue; const a = (2 * Math.PI * t) / livePeriod; c += Math.cos(a); sn += Math.sin(a); n += 1; }
+    liveLock = n ? Math.hypot(c, sn) / n : 0;
+    liveOrigin = (Math.atan2(sn, c) / (2 * Math.PI)) * livePeriod;
+    if (nowS - liveTempoSent > 1) { liveTempoSent = nowS; post({ type: 'live-tempo', bpm: Math.round(600 / livePeriod) / 10, locked: liveLock > 0.5 }); }
+  }
+}
+function liveReset() { liveOnsets.length = 0; livePeriod = 0; liveOrigin = 0; liveLock = 0; liveCand = 0; livePeak = 0.25; }
 let liveKickAt = -1e9; let liveSnareAt = -1e9; let liveBassAvg = 0; let liveHighAvg = 0;
 window.__startLive = async (kind) => {
   try {
@@ -284,9 +324,21 @@ function update() {
     const high = avg(1500, 5000);
     liveBassAvg += (bands.bass - liveBassAvg) * Math.min(1, dt * 2);
     liveHighAvg += (high - liveHighAvg) * Math.min(1, dt * 2);
-    if (bands.bass > liveBassAvg * 1.25 + 0.04 && now - liveKickAt > 220) liveKickAt = now;
+    if (bands.bass > liveBassAvg * 1.25 + 0.04 && now - liveKickAt > 220) { liveKickAt = now; liveTempo(now / 1000); }
     if (high > liveHighAvg * 1.35 + 0.03 && now - liveSnareAt > 180) liveSnareAt = now;
-    bands.beat = Math.exp(-(now - liveKickAt) / 150);
+    if (now - liveKickAt > 6000) liveLock = 0; // a pause or a break: back to reacting, the tempo is kept
+    if (livePeriod && liveLock > 0.5) {
+      // a steady beat from the tempo clock (keeps going through breaks with no kick)
+      const ph = (((now / 1000 - liveOrigin) / livePeriod) % 1 + 1) % 1;
+      bands.beat = Math.exp(-(ph * livePeriod * 1000) / 150);
+    } else bands.beat = Math.exp(-(now - liveKickAt) / 150);
+    // levelling: divide by a slowly falling peak, so Spotify at 20% volume moves the sketch like at 100%
+    livePeak = Math.max(bands.level, livePeak * Math.exp(-dt / 8), 0.02);
+    const g = (liveAuto ? Math.min(6, 0.6 / livePeak) : 1) * liveSense;
+    if (g !== 1) {
+      bands.level = clamp01(bands.level * g); bands.bass = clamp01(bands.bass * (0.5 + 0.5 * g)); bands.mid = clamp01(bands.mid * (0.5 + 0.5 * g)); bands.treble = clamp01(bands.treble * (0.5 + 0.5 * g));
+      for (let i = 0; i < wave.length; i += 1) wave[i] *= g;
+    }
     return;
   }
   const t = mediaEl.currentTime;
@@ -323,7 +375,7 @@ const audio = {
   get playing() { return liveKind ? true : mediaEl ? !mediaEl.paused : true; },
   get loaded() { return Boolean(mediaEl || liveKind); },
   get simulated() { update(); return simulated; },
-  get bpm() { return beatMap?.bpm || analysis?.bpm || (mediaEl ? 0 : 120); },
+  get bpm() { if (liveKind) return livePeriod ? Math.round(600 / livePeriod) / 10 : 0; return beatMap?.bpm || analysis?.bpm || (mediaEl ? 0 : 120); },
   // Hand-placed hits (1 on the marker, fading over ~120 ms), straight from the user's Kick / Snare / Hit lanes.
   get kick() { if (liveKind) { update(); return Math.exp(-(performance.now() - liveKickAt) / 120); } return mediaEl ? pulse(beatMap?.marks?.kick, mediaEl.currentTime) : demoHits('kick', performance.now() / 1000); },
   get snare() { if (liveKind) { update(); return Math.exp(-(performance.now() - liveSnareAt) / 120); } return mediaEl ? pulse(beatMap?.marks?.snare, mediaEl.currentTime) : demoHits('snare', performance.now() / 1000); },
@@ -1773,8 +1825,9 @@ addEventListener('message', async (e) => {
   if (msg.type === 'layer-props') { const L = layers.get(msg.id); if (L) setLayerProps(L, msg.props); }
   if (msg.type === 'remove-layer') removeLayer(msg.id);
   if (msg.type === 'media-load') loadMedia(msg);
-  if (msg.type === 'live-stop') { window.__stopLive(); remoteFreq = null; remoteWave = null; if (!liveSrc) liveKind = null; }
-  if (msg.type === 'live-remote') { liveKind = msg.on ? msg.kind : null; if (!msg.on) { remoteFreq = null; remoteWave = null; } if (msg.on) graph(); }
+  if (msg.type === 'live-gain') { liveAuto = msg.auto !== false; liveSense = Number(msg.sense) || 1; }
+  if (msg.type === 'live-stop') { liveReset(); window.__stopLive(); remoteFreq = null; remoteWave = null; if (!liveSrc) liveKind = null; }
+  if (msg.type === 'live-remote') { if (!msg.on || liveKind !== msg.kind) liveReset(); liveKind = msg.on ? msg.kind : null; if (!msg.on) { remoteFreq = null; remoteWave = null; } if (msg.on) graph(); }
   if (msg.type === 'live-frame') { remoteFreq = msg.freq; remoteWave = msg.wave; remoteRate = msg.rate || 48000; }
   if (msg.type === 'fps-cap') { fpsCap = Number(msg.value) || 0; capT = -1; }
   if (msg.type === 'eval') runEval(msg);

@@ -324,3 +324,7 @@
 270. ✓ **🎧 Live** (timeline → Song): sketches react to what the computer plays (System sound: Spotify, YouTube, Suno, anything) or a microphone, instead of a loaded song; kicks / snares / beats are detected live, so audio-reactive sketches work unchanged. Inside the Lab the hub page captures and forwards the analysis (the isolated preview can't capture); the 🖥 Stage window captures by itself and its ⏺ recordings include the live sound.
 271. ✓ **Now playing** (no Spotify login): title, artist, cover, position and ⏮ ⏯ ⏭ for Spotify through Windows' media controls (or the current media app, e.g. a browser tab), Spotify's AppleScript on a Mac. 🎨 makes a palette from the album cover, 🖼 adds the cover to the sketch's references.
 (Loading Spotify songs as audio files isn't possible: Spotify's streams are encrypted and extracting them would break its terms.)
+272. ✓ **Live tempo**: the BPM is found from the kicks after a few seconds (shown on the 🎧 button; "?" while it's still listening), and audio.bpm / beat / beatPhase / beatInBar then follow a steady beat clock locked to the music (it keeps going through breaks, and lets go after ~6 s of silence).
+273. ✓ **Live sensitivity**: Auto level (quiet or loud playback moves the sketch about the same) and Calm / Normal / Wild, in the 🎧 menu; remembered.
+274. ✓ **Palette follows the cover**: each new song sets the sketch palette from its album cover.
+275. ✓ The director sees live sound: three_media_info → live { input, bpm, what's playing (title / artist / album) }.
