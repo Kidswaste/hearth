@@ -474,14 +474,13 @@ const AppUI = (() => {
   window.addEventListener('error', (e) => reportError(e.message));
   window.addEventListener('unhandledrejection', (e) => reportError(e.reason?.message || String(e.reason)));
 
-  // One time: Forgeheart users get the new Swirl look (Settings → Theme goes back). Called once the config is loaded.
+  // One time: back to Forgeheart for whoever was moved to Swirl automatically (Swirl stays in Settings → Theme).
   function offerSwirl() {
-    if (H.config?.theme?.preset !== 'forgeheart' || store.get('theme.swirlOffered')) return;
-    store.set('theme.swirlOffered', true);
-    const { label, ...colors } = THEMES.swirl;
-    H.config.theme = { ...H.config.theme, ...colors, preset: 'swirl' };
+    if (H.config?.theme?.preset !== 'swirl' || !store.get('theme.swirlOffered') || store.get('theme.forgeBack')) return;
+    store.set('theme.forgeBack', true);
+    const { label, ...colors } = THEMES.forgeheart;
+    H.config.theme = { ...H.config.theme, ...colors, preset: 'forgeheart' };
     saveConfig();
-    setTimeout(() => toast('New look: Forgeheart Swirl · Settings → Theme to switch back', { timeout: 5000 }), 1500);
   }
   function init() {
     const z = store.get('zoom.app', 1);

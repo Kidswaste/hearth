@@ -261,7 +261,59 @@ html[data-skin~="forge"] .three-stats { border-radius: 0; clip-path: var(--cut-s
 html[data-skin~="forge"] .hl-k { color: var(--r-mythic); } html[data-skin~="forge"] .hl-f { color: var(--r-magic); } html[data-skin~="forge"] .hl-s { color: #b5e8a0; }
 html[data-skin~="forge"] .hl-n { color: var(--r-unique); } html[data-skin~="forge"] .hl-t { color: var(--r-rare); }
 
+/* ---------- juice: sparks, twinkles, glints (juice.js adds the click bursts) ---------- */
+@keyframes fh-twinkle { 0%, 100% { opacity: 0; transform: scale(.4) rotate(0deg); } 50% { opacity: 1; transform: scale(1) rotate(90deg); } }
+@keyframes fh-spark { 0% { opacity: 1; transform: translate(-50%, -50%) rotate(45deg) scale(1); } 100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(45deg) scale(.2); } }
+@keyframes fh-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes fh-dust { 0%, 100% { opacity: .25; } 50% { opacity: .9; } }
+@keyframes fh-glint { 0%, 88% { transform: translateX(-30%) skewX(-20deg); opacity: 0; } 90% { opacity: 1; } 100% { transform: translateX(130vw) skewX(-20deg); opacity: 0; } }
+/* click sparks: tiny diamonds flying out of the press */
+.juice-layer { position: fixed; inset: 0; pointer-events: none; z-index: 9999; }
+.juice-spark { position: fixed; width: 5px; height: 5px; background: var(--c); box-shadow: 0 0 8px var(--c), 0 0 2px #fff; animation: fh-spark .55s cubic-bezier(.2, .8, .3, 1) both; }
+.juice-spark.big { width: 7px; height: 7px; background: #fff; box-shadow: 0 0 10px var(--c), 0 0 4px var(--c); }
+/* presses squash a little */
+html[data-skin~="forge"] :is(.primary, .ghost, .tool-btn, .web-btn, .code-act):active:not(:disabled) { transform: translateY(1px) scale(.97); filter: brightness(1.2); }
+html[data-skin~="forge"] .agent-btn:active { transform: scale(.94); }
+/* important buttons twinkle while hovered */
+html[data-skin~="forge"] :is(.primary, #broadcast button)::before {
+  content: "✦"; position: absolute; right: 5px; top: 1px; font-size: 9px; line-height: 1; color: #fff; text-shadow: 0 0 6px #fff8e0; opacity: 0; pointer-events: none;
+}
+html[data-skin~="forge"] :is(.primary, #broadcast button):hover::before { animation: fh-twinkle 1.2s ease-in-out infinite; }
+/* the active agent glimmers gently */
+html[data-skin~="forge"] .agent-btn.active { box-shadow: 0 0 0 1px color-mix(in srgb, var(--agent) 60%, transparent), 0 0 14px color-mix(in srgb, var(--agent) 35%, transparent); }
+/* idle windows: star dust around the empty-screen icon, and the icon floats */
+html[data-skin~="forge"] .empty { position: relative; isolation: isolate; }
+html[data-skin~="forge"] .empty::before, html[data-skin~="forge"] .empty::after {
+  content: ""; position: absolute; z-index: -1; left: 50%; top: 50%; width: 440px; height: 300px; margin: -210px 0 0 -220px; pointer-events: none;
+  background:
+    radial-gradient(2.5px 2.5px at 12% 30%, #ffd75e, transparent), radial-gradient(2px 2px at 28% 72%, #48ddff, transparent),
+    radial-gradient(2.5px 2.5px at 44% 18%, #bd8bff, transparent), radial-gradient(2px 2px at 63% 64%, #ffd75e, transparent),
+    radial-gradient(3px 3px at 78% 26%, #fff, transparent), radial-gradient(2px 2px at 88% 58%, #ff8c42, transparent),
+    radial-gradient(2.5px 2.5px at 22% 50%, #fff, transparent), radial-gradient(2px 2px at 56% 40%, #48ddff, transparent),
+    radial-gradient(2px 2px at 36% 88%, #ffd75e, transparent), radial-gradient(2.5px 2.5px at 70% 86%, #bd8bff, transparent),
+    radial-gradient(2px 2px at 6% 70%, #48ddff, transparent), radial-gradient(2px 2px at 95% 12%, #ffd75e, transparent);
+  animation: fh-dust 3.2s ease-in-out infinite;
+}
+html[data-skin~="forge"] .empty::after { transform: rotate(180deg) scale(.85); animation-duration: 4.1s; animation-delay: -1.6s; }
+html[data-skin~="forge"] .empty-icon { animation: fh-float 4s ease-in-out infinite; box-shadow: 0 0 24px color-mix(in srgb, var(--agent, #ffd75e) 25%, transparent); }
+/* headers catch a light glint now and then */
+html[data-skin~="forge"] :is(.tool-head, .native-head) { position: relative; overflow: hidden; }
+html[data-skin~="forge"] :is(.tool-head, .native-head)::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 120px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, #ffd75e14, #ffffff22, #ffd75e14, transparent);
+  animation: fh-glint 14s ease-in-out infinite;
+}
+/* a lit tab gets a spark at the end of its underline */
+html[data-skin~="forge"] .tabbar button.on::before {
+  content: "✦"; position: absolute; right: 6px; bottom: -6px; font-size: 8px; color: var(--agent, var(--r-rare)); text-shadow: 0 0 6px currentColor; pointer-events: none;
+  animation: fh-twinkle 2.6s ease-in-out infinite;
+}
+/* notifications slide in with a glow on their edge */
+html[data-skin~="forge"] .toast { box-shadow: -6px 0 18px -8px #ffd75e66, 0 8px 24px #0008; }
+html[data-skin~="forge"] .toast.error { box-shadow: -6px 0 18px -8px #ff6a6a66, 0 8px 24px #0008; }
+
 /* ---------- reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
   html[data-skin~="forge"] *, html[data-skin~="forge"] *::before, html[data-skin~="forge"] *::after { animation: none !important; transition: none !important; }
+  .juice-layer { display: none; }
 }
