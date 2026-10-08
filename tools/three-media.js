@@ -339,7 +339,8 @@ const ThreeMedia = (() => {
   // snapping, and Kick / Snare / Hit lanes the user fills by tapping K S H or clicking.
   // onCue({ index, cues, playing }) when playback enters another cue's section; lookChoices() → [{ layer, layerName, names }].
   // frame: { get() → { id, width, height }, set(id) } so the record menu can switch between the social sizes.
-  function player({ send, sketchName, onLoaded, onPick, onCue, lookChoices, frame: frameHook }) {
+  // onCueLookHere(cue) → { layer, name } saves the selected layer's current sliders as a look for that cue.
+  function player({ send, sketchName, onLoaded, onPick, onCue, lookChoices, frame: frameHook, onCueLookHere }) {
     const st = { path: null, name: null, bytes: null, mime: null, video: false, analysis: null, samples: null, time: 0, duration: 0, playing: false, loop: store.get('three.mediaLoop', true), volume: store.get('three.mediaVolume', 0.8), stampAt: 0, rate: 1 };
     let region = null; // { a, b } seconds
     let locked = false;
@@ -914,6 +915,7 @@ const ThreeMedia = (() => {
         ['Move here', `To the playhead (${fmtMs(now())})`, () => editCue(cue, { t: r4(snapT(now())) })],
         region ? false : ['Loop to the next cue', 'Sets the loop from this cue to the next one', () => { const nx = map.cues.find((c) => c.t > cue.t + 1e-3); setRegion({ a: cue.t, b: nx ? nx.t : D() }); }],
         lookChoices ? ['✦ Look at this cue…', cue.looks?.length ? cue.looks.map((l) => l.name).join(', ') : 'Slider looks that morph in when the song reaches it', () => cueLookMenu(e, cue)] : false,
+        onCueLookHere ? ['✦ The current sliders, here', 'Saves them as a look and plays it from this cue', () => { const l = onCueLookHere(cue); if (l) editCue(cue, { looks: [...(cue.looks || []).filter((x) => x.layer !== l.layer), l] }); }] : false,
         null,
         ['Delete cue', fmtMs(cue.t), () => editCue(cue, null)],
       ].filter((x) => x !== false));
@@ -1266,10 +1268,12 @@ const ThreeMedia = (() => {
       const fr = frameHook?.get?.();
       const fmt = fr && fr.id !== 'fit' ? `${fr.width}×${fr.height}` : 'the preview size (pick a size for an exact one)';
       menuAt(anchor, [
-        region && st.bytes ? ['The loop', `${fmtMs(region.a)} → ${fmtMs(region.b)}, once · ${fmt}`, () => startRecord('loop')] : null,
-        st.bytes ? ['Whole song', `From the start to the end · ${fmt}`, () => startRecord('track')] : null,
+        region && st.bytes ? ['The loop', `${fmtMs(region.a)} → ${fmtMs(region.b)}, once · ${fmt}`, () => startRecord('loop')] : false,
+        st.bytes ? ['Whole song', `From the start to the end · ${fmt}`, () => startRecord('track')] : false,
         ['From here', `${st.bytes ? 'From the current spot' : 'Now'} until you press Stop · ${fmt}`, () => startRecord('manual')],
-        frameHook ? null : false,
+        st.bytes ? ['8 bars from here', 'Sets the loop to 8 bars from this bar and records it', () => recordSpan({ bars: 8 })] : false,
+        st.bytes ? ['15 s · 30 s · 60 s from here…', 'Social lengths', () => menuAt(anchor, [15, 30, 60, 90].map((sec) => [`${sec} s from here`, `${fmtMs(now())} → ${fmtMs(Math.min(D(), now() + sec))}`, () => recordSpan({ seconds: sec })]))] : false,
+        null,
         ...(frameHook ? [['9:16', '1080×1920'], ['16:9', '1920×1080'], ['4:5', '1080×1350'], ['1:1', '1080×1080']].map(([id, px]) => [`${fr?.id === id ? '● ' : ''}Size ${id}`, px, () => { frameHook.set(id); setTimeout(() => recordMenu(anchor), 400); }]) : []),
         null,
         [`${o.fps === 60 ? '● ' : ''}60 fps`, 'Smooth', () => { setRecOpt({ fps: 60 }); recordMenu(anchor); }],
@@ -1277,7 +1281,17 @@ const ThreeMedia = (() => {
         [`${o.mbps >= 32 ? '● ' : ''}High quality`, '32 Mbps (big files)', () => { setRecOpt({ mbps: 32 }); recordMenu(anchor); }],
         [`${o.mbps < 32 ? '● ' : ''}Normal quality`, '16 Mbps', () => { setRecOpt({ mbps: 16 }); recordMenu(anchor); }],
         [`${o.countdown ? '● ' : ''}3-second countdown`, 'Time to get ready', () => { setRecOpt({ countdown: o.countdown ? 0 : 3 }); recordMenu(anchor); }],
-      ].filter((x) => x !== false && x !== null || x === null).filter((x, i, arr) => x !== null || (i > 0 && arr[i - 1] !== null)));
+      ].filter((x) => x !== false).filter((x, i, arr) => x !== null || (i > 0 && arr[i - 1] !== null && i < arr.length - 1)));
+    }
+    // a length from the playhead (N bars from this bar, or N seconds) becomes the loop, then it's recorded once
+    function recordSpan({ bars = null, seconds = null } = {}) {
+      if (!D()) return false;
+      if (locked) { toast('The loop is locked: unlock it first', { type: 'error' }); return false; }
+      const t = now();
+      if (bars) { const bar = snapStep('bar', map.grid, bpmNow()); let a = snapTime(t, 'bar', map.grid, beats()); if (a > t + 1e-3) a -= bar; if (a < -1e-3) a += bar; setRegion({ a: Math.max(0, a), b: Math.min(D(), a + bar * bars) }); } else setRegion({ a: t, b: Math.min(D(), t + seconds) });
+      if (!region) return false;
+      startRecord('loop');
+      return { ...region };
     }
     function startRecord(kind) {
       const o = recOpts();
@@ -2433,6 +2447,7 @@ const ThreeMedia = (() => {
       undo: () => undoMap(),
       setView: (a, b) => (a == null ? setView(null) : setView({ start: a, end: b })),
       zoom: (f) => zoomBy(f), fitLoop: () => fitLoop(),
+      recordSpan: (o) => recordSpan(o || {}),
       record(kind = 'manual', o = {}) { if (o.fps || o.mbps || o.countdown != null) setRecOpt(o); if (kind === 'stop') { stopRecord(); return true; } if (recording) return false; if (kind === 'loop' && !region) kind = 'manual'; if (kind === 'track' && !st.bytes) kind = 'manual'; startRecord(kind); return kind; },
       recordMenu: (anchor) => recordMenu(anchor || recBtn),
       get recordOptions() { return recOpts(); },
@@ -2450,7 +2465,7 @@ const ThreeMedia = (() => {
       tapLane: (lane) => addAtPlayhead(lane),
       fill: (kind) => fillKind(kind),
       // seconds until the next beat / bar (for "freeze on the beat")
-      untilNext(unit = 'beat') { if (!D()) return null; const bs = beats(); const t = now(); const i = beatIndex(bs, t); for (let k = Math.max(0, i + 1); k < bs.length; k += 1) { if (unit === 'beat' || mod(beatNo(bs, k, map.grid), bpbNow()) === 0) return (bs[k] - t) / (st.rate || 1); } return null; },
+      untilNext(unit = 'beat') { if (!D()) return null; const t = now(); if (unit === 'kick' || unit === 'snare' || unit === 'hit') { const m = map.marks[unit].find((x) => x > t + 0.01); return m == null ? null : (m - t) / (st.rate || 1); } const bs = beats(); const i = beatIndex(bs, t); for (let k = Math.max(0, i + 1); k < bs.length; k += 1) { if (unit === 'beat' || mod(beatNo(bs, k, map.grid), bpbNow()) === 0) return (bs[k] - t) / (st.rate || 1); } return null; },
       clearMarks(lane) { if (!D() || !map.marks[lane]) return 0; const range = region ? [region.a, region.b] : [0, D()]; pushUndo(); const n0 = map.marks[lane].length; map.marks[lane] = map.marks[lane].filter((t) => t < range[0] || t >= range[1]); mapChanged(); return n0 - map.marks[lane].length; },
       get markers() { return Object.fromEntries(LANES.map((l) => [l.id, map.marks[l.id].length])); },
       addCue, setRate,

@@ -234,11 +234,18 @@ const ThreeLab = (() => {
       el('div', { class: 'three-console-head' }, el('b', { text: 'Console' }), consoleModeSel,
         el('label', { class: 'check small', title: 'Hide console.log lines, keep errors and warnings' }, el('input', { type: 'checkbox', checked: store.get('three.consoleErrors', false), on: { change: (e) => { store.set('three.consoleErrors', e.target.checked); consoleWrap.classList.toggle('errors-only', e.target.checked); } } }), 'Errors only'),
         el('span', { class: 'spacer' }),
+        btn('Ask director to fix', 'Send the errors to the Three Director and ask it to fix them', () => fixErrors(), 'ghost small imp-ai tc-fix'),
         btn('Copy', 'Copy everything in the console', () => { navigator.clipboard.writeText(consoleLines.map((l) => `${l.layer ? `[${l.layer}] ` : ''}${l.line ? `line ${l.line}: ` : ''}${l.text}`).join('\n')); toast('Console copied', { timeout: 1200 }); }),
         btn('Clear', 'Empty the console', () => { consoleBox.replaceChildren(); consoleLines = []; }),
         btn('✕', 'Hide the console (its button in the toolbar opens it again)', () => { consolePeek = false; syncConsole(); })),
       consoleBox);
     queueMicrotask(() => consoleWrap.classList.toggle('errors-only', store.get('three.consoleErrors', false)));
+    function fixErrors() {
+      const errs = consoleLines.filter((l) => l.level === 'error' || l.level === 'warn');
+      if (!errs.length) { toast('No errors in the console', { timeout: 1200 }); return false; }
+      askDirector(`The Lab console shows these ${errs.length === 1 ? 'problems' : `${errs.length} problems`} in "${current?.name}". Find the cause (three_read_code / three_search_code) and fix it with three_edit_code:\n${errs.slice(-12).map((l) => `- ${l.layer ? `[${l.layer}] ` : ''}${l.line ? `line ${l.line}: ` : ''}${l.text}`).join('\n')}`, { send: false });
+      return true;
+    }
     function consoleShown() { return consolePeek ?? (consoleMode === 'always' || (consoleMode === 'code' && !split?.classList.contains('no-code'))); }
     function setConsoleMode(m) {
       consoleMode = CONSOLE_MODES.some(([v]) => v === m) ? m : 'code';
@@ -263,15 +270,18 @@ const ThreeLab = (() => {
     presentBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); ThreeTweaks.menu(e.clientX, e.clientY, ['Present', ['Present', 'P', () => togglePresent()], player.loaded ? ['From the top of the song', 'Starts it playing', () => { player.seek(0); player.toggle(true); togglePresent(); }] : null, player.loop ? ['The loop', '', () => { player.seek(player.loop.a); player.toggle(true); togglePresent(); }] : null, [`${store.get('three.presentHud', false) ? '✓ ' : ''}Show the info line`, 'I while presenting', () => store.set('three.presentHud', !store.get('three.presentHud', false))], ['Stage window', 'Its own window, for a second monitor', () => setStage(true)]]); });
     previewHost.addEventListener('dblclick', (e) => { if (e.target === previewHost) togglePresent(); }); // double-click beside the picture
     presentBtn.dataset.key = 'P';
-    const presentHint = el('div', { class: 'present-hint', text: 'Esc to leave · Space play / pause · F freeze · I info · PgUp / PgDn other sketches · 1–9 cues' });
+    const presentHint = el('div', { class: 'present-hint', text: 'Esc to leave · Space play / pause · F freeze · B blackout · I info · PgUp / PgDn other sketches · 1–9 cues' });
     // Present info (I): the sketch, song time, BPM and frame size in a corner, for live shows and checks
     const presentHud = el('div', { class: 'present-hud', hidden: true });
+    // B in Present: fade to black (and back), for live shows
+    const blackout = el('div', { class: 'lab-blackout' });
+    const setBlackout = (on) => { blackout.classList.toggle('on', on ?? !blackout.classList.contains('on')); return blackout.classList.contains('on'); };
     let hudTimer = 0;
     function setHud(on) {
       presentHud.hidden = !on; store.set('three.presentHud', on);
       clearInterval(hudTimer);
       if (!on) return;
-      const paint = () => { const z = stage.size; presentHud.textContent = `${current?.name || ''} · ${z.id === 'fit' ? `${z.width}×${z.height}` : `${z.id} ${z.width}×${z.height}`}${player.loaded ? ` · ${fmtClock(player.time)} / ${fmtClock(player.duration)} · ${Math.round(player.bpm)} BPM` : ''}${liveKind ? ` · live ${liveBpm?.bpm ? `${Math.round(liveBpm.bpm)} BPM` : ''}` : ''}${lastStats ? ` · ${lastStats.fps} fps` : ''}${frozenNow ? ' · ❚❚' : ''}`; };
+      const paint = () => { const z = stage.size; const sec = player.loaded ? player.sectionAt() : null; presentHud.textContent = `${sec?.cue ? `${sec.cue} · ` : ''}${current?.name || ''} · ${z.id === 'fit' ? `${z.width}×${z.height}` : `${z.id} ${z.width}×${z.height}`}${player.loaded ? ` · ${fmtClock(player.time)} / ${fmtClock(player.duration)} · ${Math.round(player.bpm)} BPM` : ''}${liveKind ? ` · live ${liveBpm?.bpm ? `${Math.round(liveBpm.bpm)} BPM` : ''}` : ''}${lastStats ? ` · ${lastStats.fps} fps` : ''}${frozenNow ? ' · ❚❚' : ''}`; };
       paint(); hudTimer = setInterval(paint, 250);
     }
     // PgUp / PgDn in Present: the previous / next sketch (most recent first, like the picker)
@@ -639,13 +649,14 @@ const ThreeLab = (() => {
     function presentKeys(e) {
       if (document.fullscreenElement !== previewHost || e.ctrlKey || e.altKey || e.metaKey) return false;
       if (e.key.toLowerCase() === 'i') { setHud(presentHud.hidden); return true; }
+      if (e.key.toLowerCase() === 'b') { setBlackout(); return true; }
       if (e.key === 'PageDown' || e.key === 'PageUp') { stepSketch(e.key === 'PageDown' ? 1 : -1); return true; }
       if (e.key.toLowerCase() === 'f' || e.key === '\\') { setFreeze(!frozenNow); return true; }
       return false;
     }
     document.addEventListener('fullscreenchange', () => {
       const on = document.fullscreenElement === previewHost;
-      if (on && store.get('three.presentHud', false)) setHud(true); else if (!on) { clearInterval(hudTimer); presentHud.hidden = true; }
+      if (on && store.get('three.presentHud', false)) setHud(true); else if (!on) { clearInterval(hudTimer); presentHud.hidden = true; setBlackout(false); }
       presentBtn.classList.toggle('on', on);
       previewHost.classList.toggle('presenting', on);
       box.send({ type: 'present', on });
@@ -1596,6 +1607,7 @@ const ThreeLab = (() => {
       if (confirm && !(await Modal.confirm('Delete layer?', `"${L.name}" will be removed from "${current.name}".`, { ok: 'Delete', danger: true }))) return false;
       const at = layersOf().indexOf(L);
       current.layers = layersOf().filter((x) => x !== L);
+      controllers.get(id)?.destroy?.();
       controllers.delete(id);
       delete layerMods[id];
       box.send({ type: 'remove-layer', id });
@@ -1644,7 +1656,21 @@ const ThreeLab = (() => {
       },
       lookChoices: () => layersOf().map((L) => ({ layer: L.id, layerName: L.name, names: ctlFor(L).looksApi.list() })),
       frame: { get: () => stage?.size, set: (id) => stage?.setMode(id) },
+      onCueLookHere: (cue) => { const L = sel(); const c = L && ctlFor(L); if (!c) return null; c.looksApi.save(cue.name); toast(`"${cue.name}" plays these sliders from ${fmtMs(cue.t)} (while the song plays)`, { timeout: 2600 }); return { layer: L.id, name: cue.name }; },
     });
+    // Every section cue gets its own look: a bold shuffle of the selected layer's sliders, saved and assigned
+    // (your own values come back afterwards). Rough material to refine, for when you start from nothing.
+    function looksForSections({ amount = 0.6 } = {}) {
+      const L = sel(); const c = L && ctlFor(L);
+      if (!c || !player.loaded) throw new Error('Load a song and open a sketch with sliders');
+      if (!player.cues.length) player.autoSections();
+      const keep = c.controls().reduce((o, x) => ({ ...o, [x.key]: x.value }), {});
+      const add = [];
+      for (const cue of player.cues) { c.shuffle({ amount }); c.looksApi.save(cue.name); add.push({ time: cue.time, name: cue.name, looks: [{ layer: L.id, name: cue.name }] }); }
+      c.setMany(keep);
+      player.editCues({ add });
+      return add.length;
+    }
     function assignMedia(path) {
       if (!current) return;
       (extras[current.id] ||= {}).media = path ? { path, time: 0 } : null;
@@ -1658,7 +1684,7 @@ const ThreeLab = (() => {
     setInterval(rememberMedia, 5000);
     addEventListener('beforeunload', () => { rememberMedia(); window.hub.kvSet('three-lab-extras', extras); });
     split = el('div', { class: 'three-split' }, editorHost, el('div', { class: 'three-right' }, previewHost, player.el, consoleWrap), column);
-    previewHost.append(presentHint, editPanel, stageNote);
+    previewHost.append(presentHint, presentHud, blackout, editPanel, stageNote);
     function setCodeVisible(show) {
       split.classList.toggle('no-code', !show);
       for (const n of [snippetSel, version, liveLabel]) n.hidden = !show; // code tools only matter with the code shown
@@ -1765,7 +1791,9 @@ const ThreeLab = (() => {
       look: (name) => ctl().looksApi.apply(name), looks: () => ctl().looksApi.list(), deleteLook: (name) => ctl().looksApi.remove(name),
       lookStep: (d) => ctl().lookStep(d), morphLook: (name, ms) => ctl().morphLook(name, ms),
       shuffle: (o) => ctl().shuffle(o), shuffleStep: (d) => ctl().shuffleStep(d), tame: (k) => ctl().tame(k), paletteColors: () => ctl().paletteColors(), tweakCode: () => ctl().tweakCode(), saveOne: (q) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(`No slider "${q}"`); c.saveOne(hit.key); return hit; },
-      freezeOn: (unit) => freezeOn(unit), stepSketch: (d) => { stepSketch(d); return current?.name; }, shuffleInfo: () => ctl().shuffleInfo, setShuffle: (o) => ctl().setShuffle(o),
+      freezeOn: (unit) => freezeOn(unit), stepSketch: (d) => { stepSketch(d); return current?.name; },
+      blackout: (on) => setBlackout(on), stills: (kind) => stillsAt(kind), fixErrors: () => fixErrors(), looksForSections: (o) => looksForSections(o),
+      recordSpan: (o) => { needSong(); return player.recordSpan(o); }, autoMorph: (bars) => ctl().autoMorph(bars), swapSlots: () => ctl().swapSlots(), shuffleInfo: () => ctl().shuffleInfo, setShuffle: (o) => ctl().setShuffle(o),
       groups: () => ctl().groups(), showGroup: (g) => ctl().showGroup(g), find: (q) => ctl().find(q),
       slot: (n, action = 'recall') => { const c = ctl(); if (action === 'save') return c.slotSave(n); if (action === 'clear') return c.slotClear(n); return c.slotRecall(n); }, slots: () => ctl().slots,
       morph: (t, pair) => ctl().morph(t, pair),
@@ -2069,7 +2097,7 @@ const ThreeLab = (() => {
     freezeBtn.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       ThreeTweaks.menu(e.clientX, e.clientY, ['Freeze', [frozenNow ? 'Unfreeze' : 'Freeze now', 'F or \\', () => setFreeze(!frozenNow)],
-        ['On the next beat', 'Lands exactly on the beat while it plays', () => freezeOn('beat')], ['On the next bar', 'On the next 1', () => freezeOn('bar')],
+        ['On the next beat', 'Lands exactly on the beat while it plays', () => freezeOn('beat')], ['On the next bar', 'On the next 1', () => freezeOn('bar')], ['On the next kick', 'Your next kick marker', () => freezeOn('kick')],
         ['◐ Pin this frame', '|', () => pinFrame()], ['📷 Still of this frame', 'Exact size', () => still()], [frozenNow ? 'One frame forward' : '', '.', () => box.send({ type: 'step' })].filter(() => frozenNow)].filter((x) => !Array.isArray(x) || x.length));
     });
     // freeze exactly on the next beat / bar (counts in the song's grid; without a song: now)
@@ -2146,7 +2174,8 @@ const ThreeLab = (() => {
     // Shift+click copies it; right-click picks one of the four sizes (the preview switches, shoots, comes back).
     const stillBtn = el('button', { class: 'stage-btn', text: '📷', title: 'Still: save this frame as a PNG at the exact frame size · Shift+click: copy it · right-click: a still at 9:16 / 16:9 / 4:5 / 1:1', dataset: { feature: 'Still' } });
     stillBtn.addEventListener('click', (e) => still({ copy: e.shiftKey }));
-    stillBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); ThreeTweaks.menu(e.clientX, e.clientY, ['A still at', ...stage.pillOrder.filter((id) => id !== 'fit').map((id) => [id, ThreeMedia.SIZES.find((z) => z.id === id).title, () => still({ size: id })]), ['Copy this frame', 'To the clipboard', () => still({ copy: true })]]); });
+    stillBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); ThreeTweaks.menu(e.clientX, e.clientY, ['A still at', ...stage.pillOrder.filter((id) => id !== 'fit').map((id) => [id, ThreeMedia.SIZES.find((z) => z.id === id).title, () => still({ size: id })]), ['Copy this frame', 'To the clipboard', () => still({ copy: true })],
+      'A folder of stills', ['In all four sizes', '9:16, 16:9, 4:5, 1:1 as PNGs', () => stillsAt('sizes')], [player.loaded ? 'At every cue' : 'Across the song', player.cues.length ? `${player.cues.length} cues` : 'six evenly spaced frames', () => stillsAt('cues')], store.get('three.stillsDir', '') ? ['Choose another folder…', store.get('three.stillsDir', ''), () => { store.set('three.stillsDir', ''); stillsFolder(); }] : null]); });
     async function still({ size = null, copy = false } = {}) {
       const before = stage.size.id;
       if (size && size !== before) { stage.setMode(size); await sleep(2200); }
@@ -2160,6 +2189,37 @@ const ThreeLab = (() => {
         await navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]).then(() => toast('Still copied', { timeout: 1200 }), (err) => toast(`Couldn't copy: ${err.message}`, { type: 'error' }));
       } else saveDataUrl(url, name);
       return url;
+    }
+    // A folder of stills: one at every cue (or across the song), or the frame in all four sizes, as PNGs.
+    async function stillsFolder() {
+      let dir = store.get('three.stillsDir', '');
+      if (!dir || !(await window.hub.fs.stat(dir))?.isDir) { [dir] = await window.hub.openDialog({ title: 'Folder for the stills', properties: ['openDirectory', 'createDirectory'] }); if (!dir) return null; store.set('three.stillsDir', dir); }
+      return dir;
+    }
+    const pngBytes = (url) => Uint8Array.from(atob(url.split(',')[1]), (ch) => ch.charCodeAt(0));
+    const safeName = (x) => String(x).replace(/[\\/:*?"<>|]/g, '_');
+    async function stillsAt(kind = 'cues') {
+      const dir = await stillsFolder();
+      if (!dir) return 0;
+      const sep = dir.includes('\\') ? '\\' : '/';
+      const base = safeName(current?.name || 'sketch');
+      let n = 0;
+      const t0 = toast(kind === 'sizes' ? 'Stills in four sizes…' : 'A still at every cue…', { timeout: 60000 });
+      try {
+        if (kind === 'sizes') {
+          const before = stage.size.id;
+          for (const id of ['9:16', '16:9', '4:5', '1:1']) { stage.setMode(id); await sleep(2200); const url = await director.shot(); if (url) { const z = ThreeMedia.SIZES.find((x) => x.id === id); await window.hub.fs.write(`${dir}${sep}${base} ${z.w}x${z.h}.png`, pngBytes(url)); n += 1; } }
+          stage.setMode(before);
+        } else {
+          const was = player.time; const playing = player.playing;
+          if (playing) player.toggle(false);
+          const cues = player.cues.length ? player.cues : Array.from({ length: 6 }, (_, i) => ({ time: (player.duration * (i + 0.5)) / 6, name: `${i + 1}` }));
+          for (const [i, c] of cues.entries()) { player.seek(c.time + 0.05); await sleep(450); const url = await director.shot(); if (url) { await window.hub.fs.write(`${dir}${sep}${base} ${String(i + 1).padStart(2, '0')} ${safeName(c.name)}.png`, pngBytes(url)); n += 1; } }
+          player.seek(was); if (playing) player.toggle(true);
+        }
+      } finally { t0.remove(); }
+      toast(`${n} stills saved`, { timeout: 3000, action: { label: 'Show', fn: () => window.hub.fs.open(dir) } });
+      return n;
     }
     // the preview's own ⋯: guides, safe zones, stage, fps, present
     const previewMoreBtn = el('button', { class: 'stage-btn', text: '⋯', title: 'Guides, safe zones, Stage window, frame rate, present', dataset: { feature: 'Preview more' }, on: { click: (e) => { const r0 = e.currentTarget.getBoundingClientRect(); ThreeTweaks.menu(r0.right - 280, r0.bottom + 4, previewMenu()); } } });
@@ -2361,6 +2421,7 @@ const ThreeLab = (() => {
           toast(`Saved into "${left.name}"`);
         } } });
       }
+      for (const c of controllers.values()) c.destroy?.();
       controllers.clear();
       for (const k of Object.keys(layerMods)) delete layerMods[k];
       rememberMedia();

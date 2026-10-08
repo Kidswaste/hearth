@@ -709,7 +709,33 @@ const ThreeTweaks = (() => {
         ['Store the current values', slots[n] ? 'Replaces what it holds' : '', () => slotSave(n)],
         slots[n] ? ['Recall', 'Back to these values (↶ undoes)', () => slotRecall(n)] : null,
         slots[n] ? ['Save it as a look…', 'A named look in the looks bar', async () => { const v = await Modal.prompt('Look name', { value: `Slot ${n}` }); if (v?.trim()) { const keep = values.slice(); values = slotValues(n); saveLookAs(v); values = keep; } }] : null,
-        slots[n] ? ['Clear', 'Alt+click does the same', () => slotClear(n)] : null]);
+        slots[n] ? ['Clear', 'Alt+click does the same', () => slotClear(n)] : null,
+        slots.A && slots.B ? ['Swap A and B', '', () => swapSlots()] : null,
+        'Auto-morph (while it plays)',
+        ...[1, 2, 4, 8].map((b) => [`${morphPair[0]} ↔ ${morphPair[1]} every ${b} bar${b === 1 ? '' : 's'}`, 'Glides back and forth on the beat; nothing to save', () => setAutoMorph(b), autoMorph === b]),
+        autoMorph ? ['Stop auto-morph', '', () => setAutoMorph(0)] : null]);
+    }
+    function swapSlots() { if (!slots.A || !slots.B) return false; slots = { ...slots, A: slots.B, B: slots.A }; persist?.('slots', slots); paintSlots(); toast('Swapped A and B', { timeout: 1000 }); return true; }
+    // Auto-morph: the crossfader glides A → B → A every N bars while the song plays, on top of your values
+    // (like a look played at a cue: not saved, not marked changed). Off when the song stops.
+    let autoMorph = 0;
+    const morphSent = {};
+    function setAutoMorph(bars) {
+      autoMorph = Number(bars) || 0;
+      if (autoMorph && !morphPair.every((x) => slots[x])) { autoMorph = 0; toast('Save both slots first', { type: 'error' }); }
+      morph.classList.toggle('auto', Boolean(autoMorph));
+      if (!autoMorph) { Object.keys(morphSent).forEach((i) => resend(Number(i))); for (const k of Object.keys(morphSent)) delete morphSent[k]; }
+      syncMotion();
+      return autoMorph;
+    }
+    function morphTick(c) {
+      if (!autoMorph || !c.playing) return null;
+      const beats = c.t / (60 / (c.bpm || 120));
+      const ph = ((beats / (autoMorph * 4)) % 1 + 1) % 1;
+      const k = 0.5 - 0.5 * Math.cos(ph * Math.PI * 2);
+      const arr = lerpVals(slotValues(morphPair[0]), slotValues(morphPair[1]), k);
+      morph.value = k;
+      return arr;
     }
     function paintSlots() {
       slotBtns.forEach((b, k) => {
@@ -1066,7 +1092,7 @@ const ThreeTweaks = (() => {
     }
     function resend(i) { const it = scanned?.items[i]; if (!it) return; const v = played?.cur?.[i] ?? values[i]; delete motionSent[i]; send({ type: 'tweak', index: i, value: runtime(it, v), call: it.call, key: it.key }); }
     function syncMotion() {
-      const on = modsCount() > 0 && !root.hidden && Boolean(scanned);
+      const on = (modsCount() > 0 || autoMorph > 0) && !root.hidden && Boolean(scanned);
       if (on && !motionTimer) motionTimer = setInterval(motionTick, 33);
       if (!on && motionTimer) { clearInterval(motionTimer); motionTimer = 0; Object.keys(motionSent).forEach((i) => resend(Number(i))); }
     }
@@ -1075,6 +1101,13 @@ const ThreeTweaks = (() => {
       if (!scanned || peeking || comparing) return;
       const c = clock?.() || { t: performance.now() / 1000, bpm: 120 };
       const beatPos = c.t / (60 / (c.bpm || 120));
+      const morphed = morphTick(c);
+      if (morphed) scanned.items.forEach((it, i) => {
+        if (motions[ids[i]] || locks.has(ids[i]) || needsRebuild(i) || morphed[i] === morphSent[i]) return;
+        morphSent[i] = morphed[i];
+        send({ type: 'tweak', index: i, value: runtime(it, morphed[i]), call: it.call, key: it.key });
+      });
+      else if (Object.keys(morphSent).length) { Object.keys(morphSent).forEach((i) => resend(Number(i))); for (const k of Object.keys(morphSent)) delete morphSent[k]; }
       scanned.items.forEach((it, i) => {
         const mo = motions[ids[i]];
         if (!mo || it.kind !== 'number' || locks.has(ids[i])) return;
@@ -1086,7 +1119,7 @@ const ThreeTweaks = (() => {
         else if (mo.kind === 'beat') u = hash01(Math.floor(beatPos / rate) * 13 + i) * 2 - 1;
         else if (mo.kind === 'pulse') u = Math.exp(-ph * 6);
         else if (mo.kind === 'section') { const s = (walkState[i] ||= { x: 0 }); const target = c.section === 'loud' ? 1 : c.section === 'quiet' ? -1 : 0; s.x += (target - s.x) * 0.05; u = s.x; }
-        const base = played?.cur?.[i] ?? values[i];
+        const base = morphed?.[i] ?? played?.cur?.[i] ?? values[i];
         let v = Math.max(it.range.min, Math.min(it.range.max, base + u * depth * span));
         if (it.int) v = Math.round(v);
         if (motionSent[i] != null && Math.abs(v - motionSent[i]) < span * 2e-4) return;
@@ -1448,7 +1481,9 @@ const ThreeTweaks = (() => {
       chips.hidden = groups.length < 2;
       const changedN = scanned ? scanned.items.filter((it, i) => it.key != null && !same(it, values[i])).length : 0;
       chips.replaceChildren(...['', ...groups].map((g) => {
-        const b = el('button', { class: `tw-gchip${g === groupFilter ? ' on' : ''}`, text: g || 'All', title: g ? `Only "${g}" (again: every group) · right-click for its menu` : 'Every group', on: { click: () => setGroupFilter(g === groupFilter ? '' : g) } });
+        const idxOf = () => scanned.items.map((it, i) => i).filter((i) => scanned.items[i].key != null && (!g || (scanned.items[i].group || 'Controls') === g));
+        const b = el('button', { class: `tw-gchip${g === groupFilter ? ' on' : ''}`, text: g || 'All', title: g ? `Only "${g}" (again: every group) · Shift+click: shuffle it · double-click: back to the code · right-click: its menu` : 'Every group · Shift+click: shuffle everything', on: { click: (e) => { if (e.shiftKey) { shuffle({ only: idxOf().filter((i) => !locks.has(ids[i])) }); return; } setGroupFilter(g === groupFilter ? '' : g); } } });
+        b.addEventListener('dblclick', () => { if (g) resetGroup(idxOf()); });
         b.dataset.feature = g ? `Group chip: ${g}` : 'Group chip: All';
         if (g) b.addEventListener('contextmenu', (e) => { const sec = [...body.querySelectorAll('.tw-sec')].find((x) => x.dataset.group === g); const idxs = rows.filter((r) => sec?.contains(r.el)).map((r) => r.i); groupMenu(e, g, [...new Set(idxs)]); });
         return b;
@@ -1624,7 +1659,7 @@ const ThreeTweaks = (() => {
       get slots() { return SLOTS.filter((n) => slots[n]); },
       morph(t, pair) { if (pair) { morphPair = pair; store.set('three.twMorphPair', pair); paintSlots(); } return morphTo(t, { release: true }); },
       copyValues: () => copyValues(), pasteValues: (text) => pasteValues(text), quickLook: () => quickLook(),
-      lookStep: (d) => lookStep(d), tame: (k) => tame(k), paletteColors: () => paletteColors(), tweakCode: () => tweakCode(),
+      lookStep: (d) => lookStep(d), swapSlots: () => swapSlots(), autoMorph: (bars) => setAutoMorph(bars), tame: (k) => tame(k), paletteColors: () => paletteColors(), tweakCode: () => tweakCode(),
       saveOne: (key) => { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; return i >= 0 && saveOne(i); }, morphLook: (name, ms) => { const l = looks.find((x) => x.name.toLowerCase() === String(name).toLowerCase()); if (!l) return null; morphLook(l, ms); return l.name; },
       reset: () => reset(), undo: () => undo(), dirty: () => dirtyCount(),
       groups: () => [...new Set((scanned?.items || []).filter((it) => it.key != null).map((it) => it.group || 'Controls'))],
@@ -1658,6 +1693,8 @@ const ThreeTweaks = (() => {
         remove: (name) => { looks = looks.filter((l) => l.name.toLowerCase() !== String(name).toLowerCase()); persist?.('looks', looks); renderLooks(); return looks.map((l) => l.name); },
       },
       setVisible(on) { root.hidden = !on; syncMotion(); },
+      // the sketch closed or the layer went away: stop sending motion values
+      destroy() { clearInterval(motionTimer); motionTimer = 0; autoMorph = 0; cancelAnimationFrame(played?.raf); },
       get visible() { return !root.hidden; },
     };
   }

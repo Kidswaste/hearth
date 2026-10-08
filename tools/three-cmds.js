@@ -79,13 +79,15 @@
     const r = c.slot(n, act || 'recall');
     return act === 'save' ? null : act === 'clear' ? `Slot ${n} cleared` : r === false ? `Slot ${n} is empty: /slot ${n} save stores the current values` : `Slot ${n} recalled`;
   }, (a) => pick(['A', 'B', 'C', 'A save', 'B save', 'C save', 'A clear'], a));
-  reg('morph', 'Morph the sliders between two save slots (0 = the first, 1 = the second)', '<0–1 or %> [A-B|B-C|A-C]', async (args) => {
-    const [t0, pr] = words(args); const t = String(t0 || '').endsWith('%') ? Number(t0.slice(0, -1)) / 100 : Number(t0);
+  reg('morph', 'Morph the sliders between two save slots (0 = the first, 1 = the second); auto <bars> glides back and forth while it plays; swap', '<0–1 or %> [A-B|B-C|A-C] | auto <bars>|off | swap', async (args) => {
+    const [t0, pr] = words(args);
+    if (/^swap$/i.test(t0)) return (await lab()).swapSlots() ? 'Swapped A and B' : 'Save both slots first';
+    if (/^auto$/i.test(t0)) { const b = /^off$/i.test(pr) ? 0 : Number(pr) || 4; const r = (await lab()).autoMorph(b); return r ? `Auto-morph every ${r} bar${r === 1 ? '' : 's'} while it plays` : 'Auto-morph off'; } const t = String(t0 || '').endsWith('%') ? Number(t0.slice(0, -1)) / 100 : Number(t0);
     if (!Number.isFinite(t)) return 'Give a position: /morph 0.5 (or 50%), optionally A-B, B-C or A-C';
     const pair = pr ? pr.toUpperCase().split(/[-↔/]/) : null;
     const ok = (await lab()).morph(t, pair);
     return ok ? null : 'Save both slots first (/slot A save, /slot B save)';
-  }, (a) => pick(['0', '0.25', '0.5', '0.75', '1', '0.5 A-B', '0.5 B-C', '0.5 A-C'], a));
+  }, (a) => pick(['0', '0.25', '0.5', '0.75', '1', '0.5 A-B', '0.5 B-C', 'auto 4', 'auto off', 'swap'], a));
   reg('look', 'Switch to a saved look; next / prev / random; morph <name>; save <name> / delete <name>; nothing: list them', '[name] | next | random | morph <name> | save [name] | delete <name>', async (args) => {
     const c = await lab(); const w = words(args);
     if (!w.length) { const l = c.looks(); return l.length ? `Looks: ${l.map((x) => `\`${x}\``).join(', ')}` : 'No looks yet: /look save <name> (or Shift+click Save)'; }
@@ -147,7 +149,7 @@
     return z.id === 'fit' ? 'Fit: fills the preview' : `${z.id} · ${z.width}×${z.height}`;
   }, (a) => pick(['9:16', '16:9', '4:5', '1:1', 'fit', '21:9', '4:3', '2:3', '4k', '4k-v', 'tiktok', 'youtube', 'square', 'feed'], a), { aliases: ['frame'] });
   reg('fit', 'Fit the picture to the preview (no exact size)', '', async () => { (await lab()).size('fit'); });
-  reg('freeze', 'Freeze the picture (the music goes on); again to unfreeze; beat / bar: exactly on the next one', '[on|off|beat|bar]', async (args) => { if (/^(beat|bar)$/i.test(args)) { const w = (await lab()).freezeOn(args.toLowerCase()); return `❚❚ Freezing on the next ${args.toLowerCase()}${w ? ` (in ${w.toFixed(2)} s)` : ''}`; } const on = (await lab()).freeze(onOff(args)); return on ? '❚❚ Frozen · /next-frame steps one frame · /onion pins it to compare' : '▶ Running'; }, (a) => pick(['on', 'off', 'beat', 'bar'], a));
+  reg('freeze', 'Freeze the picture (the music goes on); again to unfreeze; beat / bar: exactly on the next one', '[on|off|beat|bar]', async (args) => { if (/^(beat|bar|kick)$/i.test(args)) { const w = (await lab()).freezeOn(args.toLowerCase()); return `❚❚ Freezing on the next ${args.toLowerCase()}${w ? ` (in ${w.toFixed(2)} s)` : ''}`; } const on = (await lab()).freeze(onOff(args)); return on ? '❚❚ Frozen · /next-frame steps one frame · /onion pins it to compare' : '▶ Running'; }, (a) => pick(['on', 'off', 'beat', 'bar', 'kick'], a));
   reg('next-frame', 'One frame forward (freezes first)', '', async () => { (await lab()).step(); });
   reg('onion', 'Pin this frame and compare it with the live picture: pin, onion, wipe or off', '[pin|onion|wipe|off]', async (args) => { const r = await (await lab()).compare((args || 'pin').toLowerCase()); return r === 'off' ? 'Compare off' : null; }, (a) => pick(['pin', 'onion', 'wipe', 'off'], a), { aliases: ['compare-frame'] });
   reg('still', 'Save a still at the exact frame size (or one of 9:16, 16:9, 4:5, 1:1); "copy" puts it in the clipboard', '[9:16|16:9|4:5|1:1] [copy]', async (args) => {
@@ -155,6 +157,8 @@
     await (await lab()).still({ size: sz ? (SIZE_WORDS[sz.toLowerCase()] || sz) : null, copy });
     return null;
   }, (a) => pick(['9:16', '16:9', '4:5', '1:1', 'copy'], a), null);
+  reg('stills', 'A folder of PNG stills: at every cue (or across the song), or this frame in all four sizes', '<cues|sizes>', async (args) => { const n = await (await lab()).stills(/^size/i.test(args) ? 'sizes' : 'cues'); return n ? `${n} stills saved` : null; }, (a) => pick(['cues', 'sizes'], a));
+  reg('blackout', 'Fade the picture to black and back (B while presenting)', '[on|off]', async (args) => `Blackout ${(await lab(false)).blackout(onOff(args)) ? 'on' : 'off'}`, (a) => pick(['on', 'off'], a));
   reg('safe', 'Safe zones on the frame: on, off, or for tiktok / reels / shorts', '[on|off|tiktok|reels|shorts]', async (args) => { const a0 = String(args || '').toLowerCase(); const plat = ['tiktok', 'reels', 'shorts'].includes(a0) ? a0 : null; const on = (await lab()).safe(plat ? true : onOff(a0), plat); return `Safe zones ${on ? `on${plat ? ` (${plat})` : ''}` : 'off'}`; }, (a) => pick(['on', 'off', 'tiktok', 'reels', 'shorts'], a));
   reg('guides', 'Next composition guide: thirds, golden ratio, center, off', '', async () => `Guides: ${(await lab()).guides()}`);
   reg('present', 'Present: the preview alone, fullscreen (Esc leaves)', '', async () => { (await lab()).present(); });
@@ -170,6 +174,7 @@
     if (Array.isArray(r)) return r.length ? `\`\`\`\n${r.map((l) => `${l.level === 'log' ? '' : `[${l.level}] `}${l.layer ? `[${l.layer}] ` : ''}${l.line ? `line ${l.line}: ` : ''}${l.text}`).join('\n')}\n\`\`\`` : 'The console is empty.';
     return r === 'cleared' ? 'Console cleared' : 'Console copied';
   }, (a) => pick(['show', 'hide', 'clear', 'copy'], a));
+  reg('fix-errors', 'Put the console\'s errors in the Three Director\'s chat box, asking it to fix them', '', async () => { (await lab()).fixErrors(); });
   reg('edit-scene', 'Scene editor: move objects around in 3D (again to leave)', '[on|off]', async (args) => { (await lab()).edit(onOff(args)); }, null);
 
   // ---------- sketches and layers ----------
@@ -243,7 +248,11 @@
     return `Looping ${fmtMs(r.a)} → ${fmtMs(r.b)}`;
   }, (a) => pick(['off', 'bar', '4 bars', '8 bars', '0:00 0:08'], a));
   reg('click-track', 'A soft click on every beat while the song plays (to check the grid by ear)', '[on|off]', async (args) => { const c = await lab(); const cur = c.gridView().click; const v = c.gridView({ click: onOff(args) ?? !cur }); return `Click track ${v.click ? 'on' : 'off'}`; }, (a) => pick(['on', 'off'], a), { aliases: ['metronome'] });
-  reg('sections', 'Mark the song\'s parts (Intro, Build, Drop, Break, Outro) as cues that looks can follow', '', async () => { const n = (await lab()).sections(); return n ? `${n} sections marked` : null; });
+  reg('sections', 'Mark the song\'s parts (Intro, Build, Drop, Break, Outro) as cues that looks can follow; "looks" also gives each section its own shuffled look', '[looks]', async (args) => {
+    const c = await lab();
+    if (/^looks?$/i.test(args)) { const n = c.looksForSections(); return `${n} sections now each play their own look (while the song plays). Refine one: right-click its cue → ✦ The current sliders, here.`; }
+    const n = c.sections(); return n ? `${n} sections marked` : null;
+  }, (a) => pick(['looks'], a));
   reg('cue', 'A cue (named spot) at the playhead: Drop, Verse… (1–9 jump to them); next / prev jump between them', '[name] | next | prev', async (args) => {
     const lb = await lab();
     if (/^(next|prev|previous)$/i.test(args)) return `At ${fmtMs(lb.jumpCue(/^next$/i.test(args) ? 1 : -1))}`;
@@ -261,13 +270,16 @@
     if (sub === 'zoom') { if (!w[1] || /^all$/i.test(w[1])) c.zoom(null); else c.zoom(time(w[1]), time(w[2])); return null; }
     return 'Use /song play, pause, seek 1:20, speed 0.5, mute, load or zoom';
   }, (a) => pick(['play', 'pause', 'seek 0:30', 'speed 0.5', 'mute', 'load', 'zoom all'], a));
-  reg('record', 'Record a video: loop, song, here (until /record stop) or stop; add 30 / 60 (fps) and hq', '[loop|song|here|stop] [30|60] [hq]', async (args) => {
+  reg('record', 'Record a video: loop, song, here (until /record stop), N bars or N s from here, or stop; add 30 / 60 (fps) and hq', '[loop|song|here|8 bars|15s|stop] [30|60] [hq]', async (args) => {
     const c = await lab(); const w = words(args).map((x) => x.toLowerCase());
     const o = {}; if (w.includes('30')) o.fps = 30; if (w.includes('60')) o.fps = 60; if (w.includes('hq')) o.mbps = 32;
+    const bi = w.findIndex((x) => /^bars?$/.test(x)); const sec = w.find((x) => /^\d+s$/.test(x));
+    if (bi > 0 && Number(w[bi - 1])) { const r0 = c.recordSpan({ bars: Number(w[bi - 1]) }); return r0 ? `⏺ Recording ${w[bi - 1]} bars (${fmtMs(r0.a)} → ${fmtMs(r0.b)})` : null; }
+    if (sec) { const r0 = c.recordSpan({ seconds: parseInt(sec, 10) }); return r0 ? `⏺ Recording ${parseInt(sec, 10)} s` : null; }
     const kind = w.includes('stop') ? 'stop' : w.includes('loop') ? 'loop' : w.includes('song') || w.includes('track') ? 'track' : 'manual';
     const r = c.record(kind, o);
     return r === false ? 'Already recording: /record stop' : kind === 'stop' ? 'Stopping…' : `⏺ Recording (${r === 'track' ? 'whole song' : r === 'loop' ? 'the loop' : 'until /record stop'})`;
-  }, (a) => pick(['loop', 'song', 'here', 'stop', '30', '60', 'hq'], a));
+  }, (a) => pick(['loop', 'song', 'here', '8 bars', '15s', '30s', 'stop', '30', '60', 'hq'], a));
 
   // ---------- assets ----------
   reg('lab-palette', 'Set the sketch palette from a coolors.co link or hex codes (nothing: show it)', '[coolors link | #hex …]', async (args) => { const p = (await lab()).palette(args || null); return p.length ? `Palette: ${p.join(' ')}` : 'No palette'; });

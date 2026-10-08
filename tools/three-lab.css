@@ -180,3 +180,13 @@ body.tw-scrubbing, body.tw-scrubbing * { cursor: ew-resize !important; }
 /* sliders: the "Changed" chip */
 .tw-gchip.tw-gchip-changed { margin-left: auto; }
 .tw-gchip.tw-gchip-changed.on { background: #48ddff; border-color: #48ddff; }
+
+/* Present: blackout (B) */
+.lab-blackout { position: absolute; inset: 0; z-index: 19; background: #000; opacity: 0; pointer-events: none; transition: opacity .6s ease; }
+.lab-blackout.on { opacity: 1; }
+
+/* console: "Ask director to fix" only when there's something to fix */
+.three-console-wrap:not(:has(.console-row.error, .console-row.warn)) .tc-fix { display: none; }
+
+/* sliders: the crossfader glows while it auto-morphs */
+.tw-morph.auto { accent-color: #ffd75e; filter: drop-shadow(0 0 4px #ffd75e88); }
