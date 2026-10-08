@@ -47,10 +47,11 @@ const NodeView = (() => {
     }
     return { label: f.label || f.name.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase()), ...f, type, kind, socket };
   }
-  function createRegistry({ name = 'nodes', types = {}, compat = {}, convert, assemble, groupOf, paramExpr, idBase, staticTypes = [] } = {}) {
+  // sliderLabel: the knob menu item that exposes a widget as a slider (null hides it); bypass: false turns M off.
+  function createRegistry({ name = 'nodes', types = {}, compat = {}, convert, assemble, groupOf, paramExpr, idBase, staticTypes = [], sliderLabel = 'Show as a Lab slider', sliderHint = 'Exposed sliders can be shuffled, saved as looks and animated', bypass = true } = {}) {
     const defs = new Map();
     const reg = {
-      name, staticTypes: new Set(staticTypes),
+      name, staticTypes: new Set(staticTypes), sliderLabel, sliderHint, bypass,
       types: { ...BASE_TYPES, ...types },
       define(def) {
         if (!def?.type || typeof def.type !== 'string') throw new Error('Node definitions need a type');
@@ -124,7 +125,7 @@ const NodeView = (() => {
           const f = def?.fields.find((x) => x.name === k);
           if (!f || JSON.stringify(f.value) !== JSON.stringify(v)) values[k] = v;
         }
-        return { id: n.id, type: n.type, x: r(n.x), y: r(n.y), ...(Object.keys(values).length ? { values } : {}), ...(n.title ? { title: n.title } : {}), ...(n.sliders && Object.keys(n.sliders).length ? { sliders: n.sliders } : {}), ...(n.collapsed ? { collapsed: true } : {}), ...(n.color ? { color: n.color } : {}), ...(n.group ? { group: n.group } : {}) };
+        return { id: n.id, type: n.type, x: r(n.x), y: r(n.y), ...(Object.keys(values).length ? { values } : {}), ...(n.title ? { title: n.title } : {}), ...(n.sliders && Object.keys(n.sliders).length ? { sliders: n.sliders } : {}), ...(n.collapsed ? { collapsed: true } : {}), ...(n.color ? { color: n.color } : {}), ...(n.group ? { group: n.group } : {}), ...(n.bypass ? { bypass: true } : {}) };
       }),
       links: graph.links.map((l) => ({ from: l.from, to: l.to })),
       ...(graph.frames.length ? { frames: graph.frames.map((f) => ({ ...f, x: r(f.x), y: r(f.y), w: r(f.w), h: r(f.h) })) } : {}),
@@ -232,6 +233,18 @@ const NodeView = (() => {
         uniq, warn: (message) => warnings.push({ node: node.id, message }), error: (message) => errors.push({ node: node.id, message }),
       };
       node.__setup = []; node.__frame = []; node.__outs = {};
+      // a bypassed node (M) hands each output the first wired input that fits it, and adds no code of its own
+      if (node.bypass && node.type !== '@reroute') {
+        for (const o of def.outputs) {
+          const f = def.inputs.find((x) => linksOf(x.name).length && reg.compatible(sourceOf(linksOf(x.name)[0]).type, o.type));
+          if (!f) continue;
+          const src = sourceOf(linksOf(f.name)[0]);
+          outs.set(`${node.id}.${o.name}`, { expr: reg.convert(src.type, o.type, src.expr), dyn: src.dyn, type: o.type });
+          if (src.dyn) dynamic.add(`${node.id}.${o.name}`);
+        }
+        delete node.__setup; delete node.__frame; delete node.__outs;
+        continue;
+      }
       let ret;
       try { ret = def.compile(ctx) || {}; } catch (err) { errors.push({ node: node.id, message: err.message }); ret = {}; }
       for (const [k, expr] of Object.entries(ret)) if (!(k in node.__outs)) node.__outs[k] = { expr };
@@ -307,7 +320,10 @@ const NodeView = (() => {
   const svg = (tag, attrs = {}) => { const n = document.createElementNS(SVGNS, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; };
 
   // ---------- the editor ----------
-  function create(container, { registry: reg, graph: g0, onChange, onSelect, readOnly = false, menuItems, pickerExtras, live = true, storeKey = 'nodes', spacePan = true } = {}) {
+  // Extra options (all optional): hud: [{ text, title, run(api, button), cls }] buttons next to ＋ ⋯;
+  // nodeMenu(node, api) → menu items added to a node's right-click menu (read-only graphs too);
+  // onOpen(id) on double-click / Enter in a read-only graph; roMove: nodes of a read-only graph can still be arranged.
+  function create(container, { registry: reg, graph: g0, onChange, onSelect, readOnly = false, menuItems, pickerExtras, live = true, storeKey = 'nodes', spacePan = true, hud: hudExtra = [], nodeMenu, onOpen, roMove = false } = {}) {
     let graph = normalize(g0 || emptyGraph(reg.name), reg);
     let view = { x: 40, y: 40, z: 1 };
     let ro = readOnly;
@@ -335,8 +351,13 @@ const NodeView = (() => {
     const searchBox = el('input', { class: 'nv-search', placeholder: 'Find a node…', hidden: true, spellcheck: false });
     const addBtn = el('button', { class: 'nv-hud-btn nv-add', text: '＋', title: 'Add a node (Tab or double-click the background)' });
     const moreBtn = el('button', { class: 'nv-hud-btn', text: '⋯', title: 'More: layout, fit, snap, minimap, frames, notes, undo' });
-    const hud = el('div', { class: 'nv-hud' }, addBtn, moreBtn, zoomLbl, searchBox);
+    // adapter buttons (▶ Run, Apply…) sit with ＋ and ⋯; a pill says when the graph is read-only
+    const extraBtns = hudExtra.filter(Boolean).map((b) => { const x = el('button', { class: `nv-hud-btn ${b.cls || ''}`, text: b.text, title: b.title || '' }); x.addEventListener('click', () => b.run?.(api, x)); return x; });
+    const roPill = el('span', { class: 'nv-ro-pill', text: 'read-only', title: 'This graph can be looked at, not changed', hidden: true });
+    const hud = el('div', { class: 'nv-hud' }, addBtn, moreBtn, ...extraBtns, zoomLbl, roPill, searchBox);
     const root = el('div', { class: 'nv', tabIndex: 0 }, canvas, boxSel, hud, mini, status);
+    // run status per node (adapters that run steps: queued · running · ok · warn · error · skip) and badges
+    const runState = new Map(); // id → { state, text, pct }
     container.append(root);
     mini.hidden = !showMini;
 
@@ -434,6 +455,9 @@ const NodeView = (() => {
         el('span', { class: 'nv-dot' }),
         el('span', { class: 'nv-title', text: n.title || def.title, title: def.desc || def.title }),
         n.title ? el('span', { class: 'nv-sub', text: def.title }) : null,
+        badgeOf(n, def) ? el('span', { class: 'nv-badge', text: badgeOf(n, def) }) : null,
+        n.bypass ? el('span', { class: 'nv-bypass-mark', text: 'skip', title: 'Bypassed (M): its input passes straight through' }) : null,
+        el('span', { class: 'nv-run', title: runState.get(n.id)?.text || '' }),
         el('button', { class: 'nv-col', text: n.collapsed ? '▸' : '▾', title: 'Collapse / expand (H)', dataset: { act: 'collapse' } }));
       const body = el('div', { class: 'nv-body' });
       for (const o of def.outputs) {
@@ -452,11 +476,26 @@ const NodeView = (() => {
         else row.append(el('span', { class: 'nv-lbl', text: f.label + (f.multi && linked ? ` · ${linkInto(n.id, f.name).length}` : '') }));
         body.append(row);
       }
-      const node = el('div', { class: `nv-node${n.collapsed ? ' collapsed' : ''}`, dataset: { id: n.id, cat: def.category }, style: { left: `${n.x}px`, top: `${n.y}px`, '--nc': color, ...(def.width ? { width: `${def.width}px` } : {}) } }, head, body);
+      const node = el('div', { class: `nv-node${n.collapsed ? ' collapsed' : ''}${n.bypass ? ' bypass' : ''}`, dataset: { id: n.id, cat: def.category }, style: { left: `${n.x}px`, top: `${n.y}px`, '--nc': color, ...(def.width ? { width: `${def.width}px` } : {}) } }, head, body, el('div', { class: 'nv-progress' }));
       if (errorsBy.has(n.id)) { node.classList.add('err'); node.title = errorsBy.get(n.id); }
       nodesLayer.append(node);
       nodeEls.set(n.id, node);
+      paintRun(n.id);
       measure(n.id);
+    }
+    // a short label in the header: the node's own (n.badge) or its type's (def.badge(node) → text)
+    function badgeOf(n, def) { try { return n.badge || def.badge?.(n) || ''; } catch { return ''; } }
+    const RUN_ICON = { queued: '◌', running: '◐', ok: '✓', warn: '!', error: '✕', skip: '–', wait: '⏸' };
+    function paintRun(id) {
+      const node = nodeEls.get(id);
+      if (!node) return;
+      const r = runState.get(id);
+      for (const k of Object.keys(RUN_ICON)) node.classList.toggle(`run-${k}`, r?.state === k);
+      const b = node.querySelector('.nv-run');
+      if (b) { b.textContent = r ? RUN_ICON[r.state] || '' : ''; b.title = r?.text || ''; }
+      const p = node.querySelector('.nv-progress');
+      if (p) { p.hidden = !(r && r.pct != null && r.state === 'running'); p.style.setProperty('--pct', `${clamp(r?.pct || 0, 0, 1) * 100}%`); }
+      if (r?.text && r.state !== 'queued') node.dataset.runText = r.text; else delete node.dataset.runText;
     }
     // where each port sits inside its node (graph units)
     function measure(id) {
@@ -490,13 +529,25 @@ const NodeView = (() => {
         const d = wirePath(a, b);
         const t = outType(l.from[0], l.from[1]);
         const isLive = live && dynamic.has(`${l.from[0]}.${l.from[1]}`);
-        const g = svg('g', { class: `nv-link${selWire === i ? ' sel' : ''}${isLive ? ' live' : ''}`, 'data-link': String(i), style: `--pc:${reg.typeColor(t)}` });
+        // a wire into a running step flows too, and one out of a finished step stays lit
+        const isRun = runState.get(l.to[0])?.state === 'running' && runState.get(l.from[0])?.state === 'ok';
+        const g = svg('g', { class: `nv-link${selWire === i ? ' sel' : ''}${isLive || isRun ? ' live' : ''}${isRun ? ' run' : ''}${hoverId && (l.from[0] === hoverId || l.to[0] === hoverId) ? ' hl' : ''}`, 'data-link': String(i), 'data-a': l.from[0], 'data-b': l.to[0], style: `--pc:${reg.typeColor(t)}` });
         g.append(svg('path', { class: 'nv-wire-hit', d }), svg('path', { class: 'nv-wire', d }));
-        if (isLive) g.append(svg('path', { class: 'nv-wire-flow', d }));
+        if (isLive || isRun) g.append(svg('path', { class: 'nv-wire-flow', d }));
         frag.append(g);
       });
       wires.replaceChildren(frag, tempWire);
     }
+    // hovering a node lights up its wires (what feeds it and what it feeds); the others dim
+    let hoverId = null;
+    function traceHover(id) {
+      if (id === hoverId) return;
+      hoverId = id;
+      root.classList.toggle('nv-tracing', Boolean(id) && graph.links.some((l) => l.from[0] === id || l.to[0] === id));
+      for (const g of wires.querySelectorAll('.nv-link')) g.classList.toggle('hl', Boolean(id) && (g.dataset.a === id || g.dataset.b === id));
+    }
+    nodesLayer.addEventListener('pointerover', (e) => { if (!drag) traceHover(e.target.closest('.nv-node')?.dataset.id || null); });
+    nodesLayer.addEventListener('pointerleave', () => traceHover(null));
     let wiresQueued = false;
     const drawWiresSoon = () => { if (wiresQueued) return; wiresQueued = true; requestAnimationFrame(() => { wiresQueued = false; drawWires(); }); };
     function paintSelection() {
@@ -513,7 +564,7 @@ const NodeView = (() => {
     }
     function widgetRow(n, f) { return el('div', { class: 'nv-row w' }, widget(n, f)); }
     function sliderBadge(n, f) {
-      if (!['number', 'knob', 'color', 'toggle', 'select'].includes(f.kind)) return null;
+      if (!reg.sliderLabel || !['number', 'knob', 'color', 'toggle', 'select'].includes(f.kind)) return null;
       const on = n.sliders?.[f.name] ?? f.slider ?? defOf(n).sliders ?? true;
       return on ? el('span', { class: 'nv-slider-mark', title: 'Shows as a slider in the Lab (right-click to change)', text: '⚡' }) : null;
     }
@@ -574,6 +625,81 @@ const NodeView = (() => {
         inp.addEventListener('change', () => setValue(n, f, inp.value));
         inp.addEventListener('keydown', (e) => e.stopPropagation());
         wrap.append(f.kind === 'code' ? null : el('span', { class: 'nv-num-lbl', text: f.label }), inp);
+        return wrap;
+      }
+      // several of a list: chips that toggle (value: array of the chosen options)
+      if (f.kind === 'multi') {
+        const chosen = new Set(Array.isArray(v) ? v : []);
+        const box = el('div', { class: 'nv-chips' });
+        for (const o of f.options || []) {
+          const val = typeof o === 'object' ? o.value : o;
+          const chip = el('button', { class: `nv-chip${chosen.has(val) ? ' on' : ''}`, disabled: ro, text: typeof o === 'object' ? o.label : val });
+          chip.addEventListener('click', () => { if (chosen.has(val)) chosen.delete(val); else chosen.add(val); chip.classList.toggle('on', chosen.has(val)); setValue(n, f, (f.options || []).map((x) => (typeof x === 'object' ? x.value : x)).filter((x) => chosen.has(x))); });
+          box.append(chip);
+        }
+        wrap.append(f.label ? el('span', { class: 'nv-num-lbl', text: f.label }) : null, box);
+        return wrap;
+      }
+      // a from – to pair (seconds, frames…): drag either number, click to type
+      if (f.kind === 'range') {
+        const arr = Array.isArray(v) ? v.slice(0, 2) : [0, 1];
+        const short = (y) => fmt(Math.round(y * 1000) / 1000);
+        const box = el('div', { class: 'nv-vec nv-range' });
+        arr.forEach((x, i) => {
+          const cell = el('div', { class: 'nv-vec-cell', text: short(x), title: `${i ? 'To' : 'From'}: drag or click to type` });
+          dragValue(cell, n, f, () => (n.values[f.name] ?? f.value)[i], (y, final) => { const next = [...(n.values[f.name] ?? f.value)]; next[i] = clamp(Math.round(y * 1000) / 1000, f.min ?? -Infinity, f.max ?? Infinity); if (next[0] > next[1]) next[1 - i] = next[i]; cell.textContent = short(next[i]); setValue(n, f, next, { final }); }, f.step || 0.05);
+          box.append(cell);
+          if (!i) box.append(el('span', { class: 'nv-range-dash', text: '–' }));
+        });
+        wrap.append(el('span', { class: 'nv-num-lbl', text: f.label }), box);
+        return wrap;
+      }
+      // text with a ▾ list of suggestions (f.choices(node) → [{ value, label?, hint? }], may be async)
+      if (f.kind === 'pick') {
+        const inp = el('input', { value: String(v ?? ''), placeholder: f.placeholder || f.label, spellcheck: false, disabled: ro });
+        inp.addEventListener('change', () => setValue(n, f, inp.value));
+        inp.addEventListener('keydown', (e) => e.stopPropagation());
+        const more = el('button', { class: 'nv-pick-btn', text: '▾', disabled: ro, title: 'Choose from a list' });
+        more.addEventListener('click', async () => {
+          let list = [];
+          try { list = (await f.choices?.(n)) || []; } catch { /* no list */ }
+          const r = more.getBoundingClientRect();
+          menu(r.left, r.bottom + 2, list.length ? [f.label, ...list.slice(0, 40).map((c) => [c.label || String(c.value), c.hint || '', () => { inp.value = c.value; setValue(n, f, c.value); }, { checked: c.value === (n.values[f.name] ?? f.value) }])] : [['Nothing to choose from yet', '', null, { disabled: true }]]);
+        });
+        wrap.append(el('span', { class: 'nv-num-lbl', text: f.label }), inp, more);
+        return wrap;
+      }
+      // a button inside the node (f.action(node, api))
+      if (f.kind === 'button') {
+        const b = el('button', { class: 'nv-wbtn', text: f.label, title: f.hint || '' });
+        b.addEventListener('click', () => f.action?.(n, api));
+        wrap.append(b);
+        return wrap;
+      }
+      // read-only text (code excerpts, results): selectable, never edited
+      if (f.kind === 'info') {
+        const txt = typeof f.text === 'function' ? f.text(n) : v;
+        wrap.append(el('div', { class: `nv-info${f.mono ? ' mono' : ''}`, text: String(txt ?? '') }));
+        return wrap;
+      }
+      // a list of colors (ramps, palettes): click a swatch to change it, right-click removes, ＋ adds
+      if (f.kind === 'gradient') {
+        const list = Array.isArray(v) && v.length ? v.slice() : ['#000000', '#ffffff'];
+        const box = el('div', { class: 'nv-swatches' });
+        const save = () => setValue(n, f, list.slice());
+        list.forEach((c, i) => {
+          const sw = el('input', { type: 'color', class: 'nv-swatch', value: /^#[0-9a-f]{6}$/i.test(c) ? c : '#ffffff', disabled: ro, title: `${c} · right-click to remove` });
+          sw.addEventListener('input', () => { list[i] = sw.value; setValue(n, f, list.slice(), { final: false }); });
+          sw.addEventListener('change', () => { list[i] = sw.value; save(); });
+          sw.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); if (ro || list.length <= (f.minColors || 2)) return; list.splice(i, 1); save(); renderNode(n); drawWires(); });
+          box.append(sw);
+        });
+        if (!ro && list.length < (f.maxColors || 8)) {
+          const add = el('button', { class: 'nv-pick-btn', text: '＋', title: 'Add a color' });
+          add.addEventListener('click', () => { list.push(list[list.length - 1]); save(); renderNode(n); drawWires(); });
+          box.append(add);
+        }
+        wrap.append(f.label ? el('span', { class: 'nv-num-lbl', text: f.label }) : null, box);
         return wrap;
       }
       if (f.kind === 'vec') {
@@ -776,7 +902,7 @@ const NodeView = (() => {
     }, { passive: false });
 
     function startMove(e, ids, frameIds = [], noteIds = []) {
-      if (ro) return;
+      if (ro && !roMove) return;
       drag = { kind: 'move', x0: e.clientX, y0: e.clientY, moved: false,
         start: new Map(ids.map((id) => { const n = nodeById(id); return [id, { x: n.x, y: n.y }]; })),
         frames: new Map(frameIds.map((id) => { const f = graph.frames.find((x) => x.id === id); return [id, { x: f.x, y: f.y }]; })),
@@ -788,9 +914,9 @@ const NodeView = (() => {
       let clickSelect = null;
       if (e.shiftKey || e.ctrlKey) { if (sel.has(id)) sel.delete(id); else sel.add(id); } else if (!sel.has(id)) { sel.clear(); sel.add(id); } else clickSelect = id;
       paintSelection();
-      if (e.detail === 2 && !ro && !e.target.closest('.nv-widget')) { renameNode(id); return; }
+      if (e.detail === 2 && !e.target.closest('.nv-widget')) { if (ro) onOpen?.(id); else renameNode(id); return; }
       startMove(e, [...sel]);
-      if (drag) { drag.clickSelect = clickSelect; drag.dup = e.altKey; }
+      if (drag) { drag.clickSelect = clickSelect; drag.dup = e.altKey && !ro; }
     }
     function duplicateInPlace() {
       const copies = copyOf([...sel]);
@@ -1108,7 +1234,18 @@ const NodeView = (() => {
       if ((C && k === 'z' && e.shiftKey) || (C && k === 'y')) { stop(); redo(); return; }
       if (C && k === 'f') { stop(); openSearch(); return; }
       if (C && k === 'a') { stop(); for (const n of graph.nodes) sel.add(n.id); paintSelection(); return; }
-      if (ro) { if (k === 'f' || e.key === 'Home') { stop(); fit(); } return; }
+      // [ / ] select what feeds the selection / what it feeds (both modes)
+      if (!C && (e.key === '[' || e.key === ']') && sel.size) { stop(); selectChain(e.key === ']' ? 'down' : 'up'); return; }
+      if (ro) {
+        if (k === 'f' || e.key === 'Home') { stop(); fit(sel.size ? [...sel] : null); }
+        else if (e.key === 'Enter' && sel.size === 1) { stop(); onOpen?.([...sel][0]); }
+        else if (e.key === 'Escape') { sel.clear(); paintSelection(); }
+        else if (k === 'h' && sel.size) { stop(); for (const id of sel) { const n = nodeById(id); n.collapsed = !n.collapsed; renderNode(n); } paintSelection(); drawWires(); }
+        else if (k === '1' || e.key === '=' || e.key === '+' || e.key === '-') { stop(); const r = rect(); zoomAt(r.left + r.width / 2, r.top + r.height / 2, k === '1' ? 1 : e.key === '-' ? view.z / 1.2 : view.z * 1.2); }
+        else if (e.key === '?') { stop(); help(); }
+        return;
+      }
+      if (k === 'm' && sel.size) { stop(); toggleBypass([...sel]); return; }
       if (C && k === 'c') { stop(); copySel(); return; }
       if (C && k === 'x') { stop(); copySel(true); return; }
       if (C && k === 'v') { stop(); paste(); return; }
@@ -1148,9 +1285,32 @@ const NodeView = (() => {
     function help() {
       const rows = [['Drag a dot', 'Connect (drop on empty space to pick a node)'], ['Tab · Shift+A · double-click', 'Add a node'], ['Drag background', 'Box select (Shift adds)'], [spacePan ? 'Right/middle drag · Space+drag' : 'Right/middle drag', 'Pan'], ['Wheel · pinch', 'Zoom'],
         ['Ctrl+C / X / V / D', 'Copy · cut · paste · duplicate'], ['Alt+drag', 'Duplicate while moving'], ['Delete', 'Delete the selection or wire'], ['Ctrl+Z · Ctrl+Shift+Z', 'Undo · redo'], ['Ctrl+G', 'Group into a frame'],
-        ['C', 'Note'], ['H', 'Collapse'], ['L', 'Auto layout'], ['F · Home', 'Fit'], ['1 · + · −', 'Zoom 100% · in · out'], ['Ctrl+F', 'Find a node'], ['Alt+click a wire', 'Reroute dot'], ['Double-click a title', 'Rename'], ['Right-click', 'Menus']];
-      menu(rect().left + 20, rect().top + 44, ['Node keys', ...rows.map(([k, v]) => [v, '', null, { key: k }])]);
+        ['C', 'Note'], ['H', 'Collapse'], ['M', 'Bypass (skip) the selected nodes'], ['[ · ]', 'Select what feeds it · what it feeds'], ['L', 'Auto layout'], ['F · Home', 'Fit'], ['1 · + · −', 'Zoom 100% · in · out'], ['Ctrl+F', 'Find a node'], ['Alt+click a wire', 'Reroute dot'], ['Double-click a title', 'Rename'], ['Hover a node', 'Light up its wires'], ['Right-click', 'Menus']];
+      const roRows = [['Drag a node', roMove ? 'Arrange (the content stays read-only)' : 'Select'], ['Double-click · Enter', onOpen ? 'Open what the node stands for' : 'Select'], ['[ · ]', 'Select what feeds it · what it feeds'], ['H', 'Collapse'], ['F · Home', 'Fit'], ['Right/middle drag', 'Pan'], ['Wheel · pinch', 'Zoom'], ['Ctrl+F', 'Find a node'], ['Hover a node', 'Light up its wires']];
+      menu(rect().left + 20, rect().top + 44, [ro ? 'Keys (read-only graph)' : 'Node keys', ...(ro ? roRows : rows).map(([k, v]) => [v, '', null, { key: k }])]);
     }
+    // ---------- bypass, chains ----------
+    function toggleBypass(ids) {
+      change('bypass', () => {
+        const all = ids.map(nodeById).filter((n) => n && n.type !== '@reroute');
+        const on = !all.every((n) => n.bypass);
+        for (const n of all) { if (on) n.bypass = true; else delete n.bypass; renderNode(n); }
+        paintSelection(); drawWires();
+      });
+    }
+    // everything upstream (what feeds the selection) or downstream (what it feeds)
+    function chainOf(ids, dir) {
+      const seen = new Set(ids); const stack = [...ids];
+      while (stack.length) {
+        const id = stack.pop();
+        for (const l of graph.links) {
+          const next = dir === 'down' ? (l.from[0] === id ? l.to[0] : null) : (l.to[0] === id ? l.from[0] : null);
+          if (next && !seen.has(next)) { seen.add(next); stack.push(next); }
+        }
+      }
+      return [...seen];
+    }
+    function selectChain(dir) { const ids = chainOf([...sel], dir); sel.clear(); for (const id of ids) sel.add(id); paintSelection(); }
 
     // ---------- menus ----------
     function contextMenu(e) {
@@ -1163,7 +1323,7 @@ const NodeView = (() => {
         const n = nodeById(w.dataset.node); const f = fieldsOf(n).find((x) => x.name === w.dataset.field);
         const on = n.sliders?.[f.name] ?? f.slider ?? defOf(n).sliders ?? true;
         const items = [`${f.label}`];
-        if (['number', 'knob', 'color', 'toggle', 'select'].includes(f.kind)) items.push(['Show as a Lab slider', 'Exposed sliders can be shuffled, saved as looks and animated', () => change('slider', () => { n.sliders = { ...(n.sliders || {}), [f.name]: !on }; renderNode(n); }), { checked: on }]);
+        if (reg.sliderLabel && ['number', 'knob', 'color', 'toggle', 'select'].includes(f.kind)) items.push([reg.sliderLabel, reg.sliderHint || '', () => change('slider', () => { n.sliders = { ...(n.sliders || {}), [f.name]: !on }; renderNode(n); }), { checked: on }]);
         items.push(['Reset to default', '', () => setValue(n, f, clone(f.value)) || renderNode(n)]);
         if (f.min != null && f.max != null) items.push(['Random value', '', () => { const v = f.min + Math.random() * (f.max - f.min); setValue(n, f, f.step ? Math.round(v / f.step) * f.step : Math.round(v * 1000) / 1000); renderNode(n); }]);
         menu(e.clientX, e.clientY, items);
@@ -1181,11 +1341,32 @@ const NodeView = (() => {
           ['Collapse', '', () => change('collapse', () => { for (const x of sel) { const m = nodeById(x); m.collapsed = !m.collapsed; renderNode(m); } drawWires(); }), { key: 'H', checked: n.collapsed }],
           ['Group into a frame', '', () => change('frame', () => frameAround([...sel])), { key: 'Ctrl+G' }],
           ['Color', '', () => menu(e.clientX, e.clientY, ['Node color', ...COLORS.map((c) => [c, '', () => change('color', () => { for (const x of sel) { const m = nodeById(x); m.color = c; renderNode(m); } })]), ['Default', '', () => change('color', () => { for (const x of sel) { const m = nodeById(x); delete m.color; renderNode(m); } })]])],
-          ['All sliders on / off', 'Show every knob of this node in the Lab sliders, or none', () => change('slider', () => { const on = !def.fields.some((f) => n.sliders?.[f.name] ?? f.slider ?? def.sliders ?? true); n.sliders = Object.fromEntries(def.fields.filter((f) => f.kind).map((f) => [f.name, on])); renderNode(n); })],
+          reg.sliderLabel ? ['All sliders on / off', 'Show every knob of this node as a slider, or none', () => change('slider', () => { const on = !def.fields.some((f) => n.sliders?.[f.name] ?? f.slider ?? def.sliders ?? true); n.sliders = Object.fromEntries(def.fields.filter((f) => f.kind).map((f) => [f.name, on])); renderNode(n); })] : null,
+          reg.bypass !== false && def.inputs.length ? ['Bypass (skip)', 'Its input passes straight through; nothing of its own runs', () => toggleBypass([...sel]), { key: 'M', checked: Boolean(n.bypass) }] : null,
+          ['Select what feeds it', '', () => selectChain('up'), { key: '[' }],
+          ['Select what it feeds', '', () => selectChain('down'), { key: ']' }],
           ['Disconnect all', '', () => change('disconnect', () => { graph.links = graph.links.filter((l) => l.from[0] !== id && l.to[0] !== id); renderAll(); })],
           def.desc ? ['What it does', def.desc, () => toast(`${def.title}: ${def.desc}`, { timeout: 6000 })] : null,
+          ...(nodeMenu?.(clone(n), api) || []),
           '-',
           ['Delete', '', () => change('delete', () => removeNodes([...sel])), { key: 'Del' }],
+        ]);
+        return;
+      }
+      // read-only graphs: look around (open, select chains, collapse) and the adapter's own items
+      if (nodeEl && ro) {
+        const id = nodeEl.dataset.id;
+        if (!sel.has(id)) { sel.clear(); sel.add(id); paintSelection(); }
+        const n = nodeById(id);
+        const def = defOf(n);
+        menu(e.clientX, e.clientY, [
+          n.title || def.title,
+          onOpen ? ['Open', '', () => onOpen(id), { key: 'Enter' }] : null,
+          ['Select what feeds it', '', () => selectChain('up'), { key: '[' }],
+          ['Select what it feeds', '', () => selectChain('down'), { key: ']' }],
+          ['Collapse', '', () => { for (const x of sel) { const m = nodeById(x); m.collapsed = !m.collapsed; renderNode(m); } drawWires(); }, { key: 'H', checked: n.collapsed }],
+          ['Fit the selection', '', () => fit([...sel]), { key: 'F' }],
+          ...(nodeMenu?.(clone(n), api) || []),
         ]);
         return;
       }
@@ -1323,31 +1504,93 @@ const NodeView = (() => {
       setDynamic: (set) => { dynamic = new Set(set || []); drawWires(); },
       setErrors: (list = []) => { errorsBy = new Map(list.filter((x) => x.node).map((x) => [x.node, x.message])); for (const [id, node] of nodeEls) { node.classList.toggle('err', errorsBy.has(id)); node.title = errorsBy.get(id) || ''; } },
       setStatus: (text, kind = '') => { status.textContent = text || ''; status.className = `nv-status ${kind}`; },
-      setReadOnly: (on) => { ro = Boolean(on); root.classList.toggle('ro', ro); renderAll(); },
+      setReadOnly: (on) => { ro = Boolean(on); root.classList.toggle('ro', ro); roPill.hidden = !ro; renderAll(); },
+      get readOnly() { return ro; },
       compile: (o) => reg.compile(graph, o),
       relayout: () => { for (const id of nodeEls.keys()) measure(id); drawWires(); drawMiniSoon(); },
       focus: () => root.focus({ preventScroll: true }),
       get view() { return { ...view }; },
+      // run status of steps (adapters that run graphs): state = queued | running | ok | warn | error | skip | wait,
+      // text = the tooltip and the line under the node, pct = 0..1 progress while running
+      setRun(id, state, text = '', pct = null) {
+        if (!state) runState.delete(id); else runState.set(id, { state, text, pct });
+        paintRun(id);
+        drawWiresSoon();
+      },
+      setProgress(id, pct) { const r = runState.get(id); if (r) { r.pct = pct; paintRun(id); } },
+      runOf: (id) => (runState.get(id) ? { ...runState.get(id) } : null),
+      clearRun() { const ids = [...runState.keys()]; runState.clear(); for (const id of ids) paintRun(id); drawWiresSoon(); },
+      setBadge: (id, text) => { const n = nodeById(id); if (n) { if (text) n.badge = text; else delete n.badge; renderNode(n); drawWires(); } },
+      bypass: (ids, on) => { const list = (ids || []).map(nodeById).filter(Boolean); if (on != null && list.every((n) => Boolean(n.bypass) === on)) return; toggleBypass(list.map((n) => n.id)); },
+      chain: (ids, dir = 'down') => chainOf(ids, dir),
+      hudButton: (i) => extraBtns[i] || null,
       destroy: () => { ro2.disconnect(); closePicker(); root.remove(); },
     };
     root.classList.toggle('ro', ro);
+    roPill.hidden = !ro;
     return api;
   }
 
   // ---------- read-only graph in a dialog ----------
-  function showGraph(graph, reg, { title = 'Nodes', note = '', actions = [] } = {}) {
-    const host = el('div', { class: 'nv-dialog-host' });
-    const d = el('dialog', { class: 'nv-dialog' },
-      el('div', { class: 'nv-dialog-head' }, el('b', { text: title }), note ? el('span', { class: 'nv-dialog-note', text: note }) : null, el('span', { class: 'spacer' }),
-        ...actions.map((a) => el('button', { class: a.primary ? 'primary small' : 'ghost small', text: a.label, title: a.title || '', on: { click: () => { a.run(); if (a.close !== false) d.close(); } } })),
-        el('button', { class: 'ghost small', text: '✕', on: { click: () => d.close() } })),
-      host);
-    d.addEventListener('close', () => { v.destroy(); d.remove(); });
+  // One searchable picker for any adapter's presets: items [{ id, name, desc, hint (the chat command), tag }].
+  // Arrow keys move, Enter picks, typing filters (names, descriptions, tags).
+  function presetPicker({ title = 'Presets', items = [], onPick, placeholder } = {}) {
+    const q = el('input', { class: 'tn-preset-q', type: 'search', placeholder: placeholder || `Find a preset (${items.length})…`, spellcheck: false });
+    const grid = el('div', { class: 'tn-presets' });
+    let shown = []; let active = 0;
+    const shut = () => { if (d.open) d.close(); d.remove(); };
+    const pick = (p) => { shut(); try { onPick?.(p); } catch (err) { toast(err.message, { type: 'error' }); } };
+    const paint = () => {
+      const s = q.value.trim().toLowerCase();
+      shown = items.filter((p) => !s || s.split(/\s+/).every((w) => `${p.id} ${p.name} ${p.desc || ''} ${p.tags || ''} ${p.tag || ''}`.toLowerCase().includes(w)));
+      active = clamp(active, 0, Math.max(0, shown.length - 1));
+      grid.replaceChildren(...shown.map((p, i) => el('button', { class: `tn-preset${i === active ? ' on' : ''}`, on: { click: () => pick(p), mouseenter: () => { active = i; mark(); } } },
+        el('b', { text: p.name }), p.tag ? el('em', { class: 'tn-preset-tag', text: p.tag }) : null, el('span', { text: p.desc || '' }), p.hint ? el('small', { text: p.hint }) : null)));
+      if (!shown.length) grid.append(el('div', { class: 'tn-preset-none', text: 'Nothing matches' }));
+    };
+    const mark = () => { [...grid.querySelectorAll('.tn-preset')].forEach((b, i) => b.classList.toggle('on', i === active)); grid.querySelectorAll('.tn-preset')[active]?.scrollIntoView({ block: 'nearest' }); };
+    q.addEventListener('input', () => { active = 0; paint(); });
+    q.addEventListener('keydown', (e) => {
+      const cols = Math.max(1, Math.round(grid.clientWidth / 200));
+      const mv = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: cols, ArrowUp: -cols }[e.key];
+      if (mv) { e.preventDefault(); active = clamp(active + mv, 0, shown.length - 1); mark(); }
+      if (e.key === 'Enter' && shown[active]) { e.preventDefault(); pick(shown[active]); }
+    });
+    const d = el('dialog', { class: 'nv-dialog nv-presets-dialog' },
+      el('div', { class: 'nv-dialog-head' }, el('b', { text: title }), el('span', { class: 'nv-dialog-note', text: `${items.length} · ↑↓ Enter` }), el('span', { class: 'spacer' }), el('button', { class: 'ghost small', text: '✕', on: { click: () => shut() } })),
+      el('div', { class: 'nv-presets-body' }, q, grid));
+    d.addEventListener('close', () => d.remove());
+    d.addEventListener('cancel', () => setTimeout(() => d.remove(), 0));
     document.body.append(d);
     d.showModal();
-    const v = create(host, { registry: reg, graph, readOnly: true, storeKey: 'nodes.dialog' });
+    paint();
+    q.focus();
+    return { close: shut };
+  }
+
+  // side: an element shown at the right (details of the selected node); other options go to create()
+  // (onSelect, onOpen, nodeMenu, hud, menuItems, roMove, readOnly…). actions: [{ label, title, run, primary, close }].
+  function showGraph(graph, reg, { title = 'Nodes', note = '', actions = [], side = null, readOnly = true, className = '', onClose, ...opts } = {}) {
+    const host = el('div', { class: 'nv-dialog-host' });
+    const body = el('div', { class: `nv-dialog-body${side ? ' with-side' : ''}` }, host, side);
+    const d = el('dialog', { class: `nv-dialog ${className}` },
+      el('div', { class: 'nv-dialog-head' }, el('b', { text: title }), note ? el('span', { class: 'nv-dialog-note', text: note }) : null, el('span', { class: 'spacer' }),
+        ...actions.filter(Boolean).map((a) => el('button', { class: a.primary ? 'primary small' : 'ghost small', text: a.label, title: a.title || '', on: { click: () => { a.run(v); if (a.close !== false) close(); } } })),
+        el('button', { class: 'ghost small', text: '✕', title: 'Close (Esc)', on: { click: () => close() } })),
+      body);
+    // the dialog's own 'close' event can come late (or not at all in a hidden window): clean up either way, once
+    let gone = false;
+    const finish = () => { if (gone) return; gone = true; onClose?.(); v.destroy(); d.remove(); };
+    const nativeClose = d.close.bind(d);
+    const close = () => { if (d.open) nativeClose(); finish(); };
+    d.close = close; // dlg.dialog.close() from elsewhere cleans up too
+    d.addEventListener('close', finish);
+    d.addEventListener('cancel', () => setTimeout(finish, 0));
+    document.body.append(d);
+    d.showModal();
+    const v = create(host, { registry: reg, graph, readOnly, storeKey: 'nodes.dialog', ...opts });
     requestAnimationFrame(() => v.fit());
-    return { view: v, close: () => d.close() };
+    return { view: v, close, dialog: d };
   }
 
   // ---------- outline of any JS: imports, functions, names, sliders, and what uses what ----------
@@ -1447,17 +1690,24 @@ const NodeView = (() => {
   function openCode(code, lang = '') {
     const hit = extract(code);
     if (hit) {
-      const a = adapters.find((x) => x.kinds?.includes(hit.graph.kind)) || adapters.find((x) => x.detect?.(code, lang));
-      if (a) return a.open(code, lang, hit.graph);
+      const a = ranked().find((x) => x.kinds?.includes(hit.graph.kind)) || ranked().find((x) => x.detect?.(code, lang));
+      if (a) return guard(a.open(code, lang, hit.graph));
     } else {
-      const a = adapters.find((x) => x.detect?.(code, lang));
-      if (a) return a.open(code, lang, null);
+      const a = ranked().find((x) => x.detect?.(code, lang));
+      if (a) return guard(a.open(code, lang, null));
     }
     const o = outline(code);
     if (!o.graph.nodes.length) { toast('Nothing to show as nodes in this code', { timeout: 2000 }); return null; }
     autoLayout(o.graph, o.registry, { colW: 280 });
     return showGraph(o.graph, o.registry, { title: 'Code outline', note: `${lang || 'code'} · read-only: what uses what` });
   }
+  // adapters with a higher priority are asked first (a catch-all like the code flow view uses a low one)
+  const ranked = () => adapters.slice().sort((a, b) => (b.priority || 0) - (a.priority || 0));
+  const guard = (r) => { if (r && typeof r.then === 'function') r.catch((err) => toast(`Couldn't open it as nodes: ${err.message}`, { type: 'error' })); return r; };
 
-  return { createRegistry, create, compileGraph, normalize, compact, embed, extract, emptyGraph, autoLayout, outline, outlineRegistry, showGraph, menu, registerAdapter, adapters: () => adapters.slice(), openCode, EASES, COLORS, slug, fmt };
+  const api = { createRegistry, create, compileGraph, normalize, compact, embed, extract, emptyGraph, autoLayout, outline, outlineRegistry, showGraph, presetPicker, menu, registerAdapter, adapters: () => adapters.slice(), openCode, EASES, COLORS, slug, fmt };
+  // other scripts reach it as window.NodeView (a top-level const is not a window property): the chat's code
+  // blocks show their "Nodes" button and /code n nodes only when it's there
+  if (typeof window !== 'undefined') window.NodeView = api;
+  return api;
 })();

@@ -1530,6 +1530,7 @@ const Review = (() => {
       el('div', { class: 'vr-heading' }, el('div', { class: 'vr-title-row' }, refs.title, refs.favBtn), refs.sub),
       refs.versions, el('span', { class: 'spacer' }), seg, ico('⋯', 'More: export, frame rate, folders, shortcuts…', (e) => moreMenu(e.currentTarget)));
     refs.main = el('section', { class: 'vr-main' }, top, refs.stage, tlBox, transport, refs.info);
+    window.VideoNodes?.attach?.({ main: refs.main, seg, top }); // "Flow" segment: the pipeline as runnable nodes (nodes-video.js)
 
     // notes
     refs.noteCount = el('span', { class: 'vr-count' });
