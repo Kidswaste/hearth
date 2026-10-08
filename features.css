@@ -93,6 +93,10 @@ select option { background: var(--sidebar); }
 .slash-item { display: flex; flex-direction: column; padding: 6px 10px; border-radius: 7px; cursor: pointer; }
 .slash-item.sel, .slash-item:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }
 .slash-item .hint { margin: 0; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slash-menu { max-height: 320px; overflow-y: auto; }
+.slash-item.cmd b { font-family: var(--mono, ui-monospace, monospace); font-size: 12.5px; color: var(--accent); }
+.msg.note { position: relative; align-self: stretch; margin: 6px 0; padding: 8px 34px 8px 12px; border: 1px dashed var(--line); border-radius: 10px; font-size: 13px; background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.msg.note .note-x { position: absolute; top: 4px; right: 4px; padding: 0 6px; }
 .prompts-dialog { width: min(820px, calc(100vw - 32px)); }
 .prompts-layout { display: grid; grid-template-columns: 220px 1fr; gap: 14px; min-height: 340px; }
 .prompt-list { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; max-height: 50vh; }

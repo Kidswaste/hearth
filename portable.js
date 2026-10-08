@@ -58,7 +58,7 @@ function writeOrigin(o) { try { fs.writeFileSync(ORIGIN, JSON.stringify(o, null,
 // Everything needed to run Hearth on another computer: the app's code, data/, config.json, theme.css and the
 // Mac setup script. Left out: the Windows Electron runtime, engine sessions (they can't move), logs.
 function packForMac(out) {
-  const skipTop = new Set(['electron', 'electron-mac', 'node_modules']);
+  const skipTop = new Set(['electron', 'electron-mac', 'node_modules', 'dev']);
   const entries = fs.readdirSync(APP_DIR)
     .filter((n) => !skipTop.has(n) && !/\.zip$/i.test(n))
     .map((n) => ({ path: path.join(APP_DIR, n), name: path.join('Hearth', n) }));

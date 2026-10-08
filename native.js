@@ -121,6 +121,15 @@ const Native = (() => {
         return;
       }
       if (!text && !v.attachments.length) return;
+      // "/command args" runs a chat command instead of sending (see commands.js); unknown "/words" are sent.
+      if (text.startsWith('/') && Commands.parse(text)) {
+        input.value = '';
+        store.set(draftKey(agentId), null);
+        autosize(input);
+        updateCounter(v);
+        Commands.tryRun(text, agentId, input);
+        return;
+      }
       input.value = '';
       store.set(draftKey(agentId), null);
       autosize(input);
@@ -1093,12 +1102,25 @@ const Native = (() => {
     toast(`Deleted "${summary?.title || 'chat'}"`, { action: { label: 'Undo', fn: async () => { await window.hub.restoreChat(chatId); H.chats = await window.hub.listChats(); Panel.render(); } } });
   }
 
+  // A note in the chat from the hub itself (command output, help): shown, never sent, not saved.
+  function note(agentId, text) {
+    const v = views.get(agentId);
+    if (!v) { toast(text, { timeout: 8000 }); return; }
+    const body = el('div', { class: 'body', html: renderMarkdown(text) });
+    const box = el('div', { class: 'msg note' }, body,
+      el('button', { type: 'button', class: 'ghost note-x', text: '×', title: 'Dismiss', on: { click: () => box.remove() } }));
+    v.list.append(box);
+    v.list.scrollTop = v.list.scrollHeight;
+  }
+
   window.hub.onEngineEvent(onEvent);
 
   return {
     mount, refresh: render, focus, send, open, newChat, rename, remove, togglePin, setDraft, continueWith, copyLastReply, foldAll,
     attachPaths: async (agentId, paths) => { for (const p of paths) await addPath(agentId, p); },
     isBusy: (chatId) => pending.has(chatId),
+    note,
+    sendText: (agentId, text) => send(agentId, text).catch((err) => toast(err.message, { type: 'error' })),
     markdownOf: async (chatId) => chatMarkdown(await loadChat(chatId)),
   };
 })();

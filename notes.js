@@ -130,36 +130,59 @@ const Prompts = (() => {
     return prompt.text.replace(/\{\{(\w+)\}\}/g, (_, n) => values[n] ?? '');
   }
 
-  // Dropdown under a composer textarea while the message starts with "/".
+  // Dropdown under a composer textarea while the message starts with "/": chat commands (commands.js), their
+  // argument suggestions, then saved prompts.
   function attach(textarea, onPick) {
     let menu = null;
     let sel = 0;
     let items = [];
+    let seq = 0;
     const close = () => { menu?.remove(); menu = null; };
-    const pick = async (p) => {
+    const setText = (text) => { textarea.value = text; textarea.dispatchEvent(new Event('input')); textarea.focus(); textarea.setSelectionRange(text.length, text.length); };
+    const pick = async (it) => {
       close();
-      const text = await fill(p);
+      if (it.kind === 'command') { setText(`/${it.def.name} `); return; }
+      if (it.kind === 'arg') { setText(`/${it.def.name} ${it.value}`); return; }
+      const text = await fill(it.prompt);
       if (text != null) onPick(text);
     };
     const update = async () => {
-      const m = textarea.value.match(/^\/([\w ]*)$/);
-      if (!m) { close(); return; }
-      const q = m[1].toLowerCase();
-      items = (await load()).filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8);
+      const my = ++seq;
+      const value = textarea.value;
+      const word = value.match(/^\/([\w-]*)$/);
+      const withArgs = !word && value.match(/^\/([\w-]+)\s([^\n]*)$/);
+      let next = [];
+      if (word) {
+        const q = word[1].toLowerCase();
+        next = Commands.matching(q).slice(0, 8).map((def) => ({ kind: 'command', def, label: `/${def.name}${def.args ? ` ${def.args}` : ''}`, hint: def.desc }));
+        const prompts = (await load()).filter((p) => p.name.toLowerCase().includes(q)).slice(0, 6);
+        next.push(...prompts.map((p) => ({ kind: 'prompt', prompt: p, label: p.name, hint: p.text.slice(0, 70).replace(/\n/g, ' ') })));
+      } else if (withArgs) {
+        const def = Commands.get(withArgs[1]);
+        if (def?.complete) {
+          const opts = (await def.complete(withArgs[2], { agentId: null })) || [];
+          next = opts.slice(0, 10).map((o) => ({ kind: 'arg', def, value: o.value, label: o.label || o.value, hint: o.hint || '' }));
+        }
+      }
+      if (my !== seq) return; // a newer keystroke already updated the menu
+      items = next;
       if (!items.length) { close(); return; }
       if (!menu) { menu = el('div', { class: 'slash-menu' }); textarea.parentElement.append(menu); }
       sel = Math.min(sel, items.length - 1);
-      menu.replaceChildren(...items.map((p, i) => el('div', {
-        class: `slash-item${i === sel ? ' sel' : ''}`, on: { mousedown: (e) => { e.preventDefault(); pick(p); } },
-      }, el('b', { text: p.name }), el('span', { class: 'hint', text: p.text.slice(0, 70).replace(/\n/g, ' ') }))));
+      menu.replaceChildren(...items.map((it, i) => el('div', {
+        class: `slash-item${i === sel ? ' sel' : ''}${it.kind === 'command' ? ' cmd' : ''}`, on: { mousedown: (e) => { e.preventDefault(); pick(it); } },
+      }, el('b', { text: it.label }), el('span', { class: 'hint', text: it.hint }))));
+      menu.children[sel]?.scrollIntoView({ block: 'nearest' });
     };
     textarea.addEventListener('input', update);
     textarea.addEventListener('keydown', (e) => {
       if (!menu) return;
       if (e.key === 'ArrowDown') { e.preventDefault(); e.stopImmediatePropagation(); sel = (sel + 1) % items.length; update(); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); e.stopImmediatePropagation(); sel = (sel - 1 + items.length) % items.length; update(); }
-      else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); e.stopImmediatePropagation(); pick(items[sel]); }
-      else if (e.key === 'Escape') { e.stopImmediatePropagation(); close(); }
+      else if (e.key === 'Tab' || (e.key === 'Enter' && !(items[sel].kind === 'command' && textarea.value.trim() === `/${items[sel].def.name}`))) {
+        // Enter on a fully typed command runs it (the form submits); otherwise Enter / Tab completes
+        e.preventDefault(); e.stopImmediatePropagation(); pick(items[sel]);
+      } else if (e.key === 'Escape') { e.stopImmediatePropagation(); close(); }
     }, true);
     textarea.addEventListener('blur', () => setTimeout(close, 150));
   }
