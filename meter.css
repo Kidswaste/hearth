@@ -98,6 +98,7 @@ dialog.meter-dlg[open] { display: flex; flex-direction: column; gap: 10px; max-h
 .mt-x { font-size: 18px; line-height: 1; padding: 2px 8px; }
 .mt-seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .mt-seg button, .mt-tabs button { border: 0; background: none; padding: 4px 10px; cursor: pointer; color: var(--muted); font-size: 12px; }
+.mt-seg.mt-mini button { padding: 2px 8px; font-size: 10.5px; }
 .mt-seg button + button { border-left: 1px solid var(--line); }
 .mt-seg button.on { background: color-mix(in srgb, var(--meter-active) 18%, transparent); color: var(--meter-active); }
 .mt-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); overflow-x: auto; flex: none; }
@@ -112,7 +113,7 @@ dialog.meter-dlg[open] { display: flex; flex-direction: column; gap: 10px; max-h
 .mt-kpi b { font-size: 18px; color: var(--text); font-variant-numeric: tabular-nums; }
 .mt-kpi small { font-size: 10.5px; color: var(--muted); }
 .mt-kl { font-size: 9.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
-.mt-kpi .mt-spark { position: absolute; right: 8px; bottom: 8px; opacity: .8; }
+.mt-kpi .mt-spark { margin-top: 3px; opacity: .85; }
 dialog.meter-dlg:focus { outline: none; }
 .mt-kpis.small .mt-kpi b { font-size: 15px; }
 .mt-pane { overflow: auto; min-height: 220px; padding-right: 4px; }
@@ -145,6 +146,7 @@ dialog.meter-dlg:focus { outline: none; }
 .mt-frow:hover { background: var(--hover); }
 .mt-fname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mt-farea { font-size: 10.5px; color: var(--muted); }
+.mt-frow button { padding: 1px 8px; font-size: 11px; }
 .mt-fn { text-align: right; color: var(--meter-active); font-variant-numeric: tabular-nums; }
 .mt-h4row { display: flex; align-items: center; gap: 10px; }
 .mt-h4row h4 { flex: 1; }
@@ -177,3 +179,6 @@ html[data-skin~="forge"] .mt-seg button.on { background: linear-gradient(180deg,
 html[data-skin~="forge"] .mt-pane h4::before { content: "◆ "; color: var(--meter-active); }
 html[data-skin~="forge"] .item .item-tok { font-family: var(--mono); }
 @media (prefers-reduced-motion: reduce) { .meter-strip.is-live::before, .meter-pill.is-live .mp-dot, .ms-live.is-live::first-letter { animation: none; } }
+/* Lab focus / present hides the chrome: the strip goes too; calm mode stops its animations */
+body.lab-focus .meter-strip { display: none; }
+html[data-calm] .meter-strip.is-live::before, html[data-calm] .meter-pill.is-live .mp-dot, html[data-calm] .ms-live { animation: none !important; }

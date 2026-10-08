@@ -42,6 +42,7 @@ const Meter = (() => {
   let stats = null; // token-stats.json, as written by store.js
   const live = new Map(); // chatId -> { agentId, chars, think, tools, started, shown }
   let lastSnap = null; // { agentId, chatId, est, usage, at } the latest reply that finished
+  const session = { since: Date.now(), i: 0, o: 0, c: 0, r: 0 }; // since Hearth started
   let strip = null; let pill = null;
 
   // ---------- formatting ----------
@@ -148,6 +149,7 @@ const Meter = (() => {
         if (seen > 1.5 && seen < 8) { prefs.calib[e] = Math.round(((prefs.calib[e] || 4) * 0.8 + seen * 0.2) * 100) / 100; savePrefs(); }
       }
       lastSnap = { agentId, chatId: ev.chatId, est, usage: ev.usage || null, at: Date.now() };
+      if (ev.usage) merge(session, { i: ev.usage.input, o: ev.usage.output, c: ev.usage.cached, r: 1 });
       live.delete(ev.chatId);
       if (ev.usage && prefs.longCtx && ev.usage.input >= prefs.longCtx) longContextWarning(agentId, ev.chatId, ev.usage.input);
       if (ev.local && ev.usage) localAdd(agentId, ev.chatId, ev.usage);
@@ -492,8 +494,9 @@ const Meter = (() => {
     const kpis = el('div', { class: 'mt-kpis' });
     const pane = el('div', { class: 'mt-pane' });
     const close = el('button', { type: 'button', class: 'ghost mt-x', text: '×', title: 'Close (Esc)' });
+    const copy = el('button', { type: 'button', class: 'ghost mt-x', text: '⧉', title: 'Copy a summary of this range (Markdown)', dataset: { feature: 'Copy summary' }, on: { click: () => copyText(report(range), 'Usage summary') } });
     dlg = el('dialog', { class: 'ui-modal wide meter-dlg' },
-      el('div', { class: 'mt-head' }, el('h2', { text: 'Tokens & usage' }), rangeBar, el('span', { class: 'spacer' }), close),
+      el('div', { class: 'mt-head' }, el('h2', { text: 'Tokens & usage' }), rangeBar, el('span', { class: 'spacer' }), copy, close),
       kpis, tabBar, pane);
     const draw = () => {
       for (const b of rangeBar.children) b.classList.toggle('on', b.dataset.r === range);
@@ -547,6 +550,12 @@ const Meter = (() => {
       sparkline(dayKeys(14).map((d) => tot(stats?.days?.[d]?.[dim]?.[k])), { w: 80, h: 18, stroke: colorOf?.(k) || 'var(--meter-active)' }),
     ]));
   }
+  // average tokens per weekday over every recorded day (Mon first)
+  function weekdays() {
+    const acc = Array.from({ length: 7 }, () => ({ sum: 0, n: 0 }));
+    for (const d of allDays()) { const w = (new Date(`${d}T12:00`).getDay() + 6) % 7; acc[w].sum += tot(sumOf([d])); acc[w].n += 1; }
+    return acc.map((x, i) => ({ label: new Date(2024, 0, 1 + i).toLocaleDateString(undefined, { weekday: 'short' }), avg: x.n ? Math.round(x.sum / x.n) : 0, n: x.n }));
+  }
   const PANES = {
     overview(days, range) {
       const out = [];
@@ -556,7 +565,15 @@ const Meter = (() => {
       } else {
         const ds = range === 'all' ? allDays().slice(-90) : days;
         const parts = ds.map((d) => sumOf([d]));
-        out.push(el('h4', { text: range === 'all' ? `By day (last ${ds.length} days with data)` : 'By day' }),
+        const byAgent = store.get('meter.byAgent', false);
+        const mode = el('div', { class: 'mt-seg mt-mini' }, [['type', 'by type'], ['agent', 'by agent']].map(([v, t]) => el('button', { type: 'button', text: t, class: (v === 'agent') === byAgent ? 'on' : '', on: { click: () => { store.set('meter.byAgent', v === 'agent'); dlg?.redraw(); } } })));
+        const head = el('div', { class: 'mt-h4row' }, el('h4', { text: range === 'all' ? `By day (last ${ds.length} days with data)` : 'By day' }), mode);
+        if (byAgent) {
+          const ids = Object.keys(by('a', ds));
+          out.push(head, bars(ds.map((d) => dayLabel(d, { month: 'numeric', day: 'numeric' })), ids.map((a) => ({ color: agentColor(a), values: ds.map((d) => tot(stats.days[d]?.a?.[a])) })),
+            { h: 150, tips: ds.map((d) => `${dayLabel(d)}: ${ids.map((a) => `${agentName(a)} ${fmt(tot(stats.days[d]?.a?.[a]))}`).join(' · ')}`) }),
+          legend(ids.map((a) => [agentName(a), agentColor(a)])));
+        } else out.push(head,
           bars(ds.map((d) => dayLabel(d, { month: 'numeric', day: 'numeric' })), [
             { color: 'var(--meter-info)', values: parts.map((t) => t.c || 0) },
             { color: 'var(--meter-ai)', values: parts.map((t) => (t.i || 0) - (t.c || 0)) },
@@ -580,6 +597,10 @@ const Meter = (() => {
           el('span', { text: `${full(tot(cs))} tokens over ${cs.r} replies · context now ${full(cs.ctx || 0)} of ${fmt(win)} · peak ${fmt(cs.peak || 0)}` }),
           el('button', { type: 'button', class: 'ghost small', text: '🗜 Compact', title: 'Summarize the conversation so each message sends less (the chat keeps every message)', on: { click: () => { if (compact()) dlg?.close(); } } })));
       }
+      if (range !== 'today' && allDays().length >= 7) {
+        const wd = weekdays();
+        out.push(el('h4', { text: 'Your week (average per weekday, all time)' }), bars(wd.map((x) => x.label), [{ color: 'var(--meter-ai)', values: wd.map((x) => x.avg) }], { h: 90, tips: wd.map((x) => `${x.label}: ⌀ ${full(x.avg)} tokens over ${x.n} days`) }));
+      }
       return out;
     },
     agents: (days) => [el('h4', { text: 'Per agent' }), dimTable('a', days, agentName, agentColor)],
@@ -591,7 +612,9 @@ const Meter = (() => {
       const rows = Object.entries(stats?.chats || {}).filter(([, c]) => (c.last || 0) >= from).sort((a, b) => tot(b[1]) - tot(a[1])).slice(0, 40);
       const max = Math.max(1, ...rows.map(([, c]) => tot(c)));
       if (!rows.length) return el('p', { class: 'hint', text: 'No chats with recorded replies in this range.' });
-      return [el('h4', { text: 'Most expensive chats (last used in this range)' }), table(['Chat', 'Agent', 'Tokens', 'Replies', 'Context now', 'Peak', ''], rows.map(([id, c]) => {
+      const filter = el('input', { type: 'search', class: 'mt-filter', placeholder: 'Filter chats…' });
+      filter.addEventListener('input', () => { const q = filter.value.toLowerCase(); for (const tr of filter.closest('.mt-pane').querySelectorAll('tbody tr')) tr.hidden = Boolean(q) && !tr.textContent.toLowerCase().includes(q); });
+      return [el('div', { class: 'mt-h4row' }, el('h4', { text: 'Most expensive chats (last used in this range)' }), filter), table(['Chat', 'Agent', 'Tokens', 'Replies', 'Context now', 'Peak', ''], rows.map(([id, c]) => {
         const summary = H.chats.find((x) => x.id === id);
         return [summary?.title || '(deleted chat)', agentName(c.a), el('span', { class: 'mt-tok' }, meterBar(tot(c), max, agentColor(c.a)), fmt(tot(c))), full(c.r || 0), fmt(c.ctx || 0), fmt(c.peak || 0),
           summary ? el('button', { type: 'button', class: 'ghost small', text: 'Open', on: { click: () => { dlg?.close(); Native.open(c.a, id); } } }) : ''];
@@ -604,7 +627,7 @@ const Meter = (() => {
       const dayClicks = (range === 'all' ? Object.keys(Usage.data.days || {}).sort() : days).map((d) => Usage.data.days?.[d] || 0);
       const out = [
         el('div', { class: 'mt-kpis small' }, kpi('Clicks today', full(today.clicks), `${today.features} different features`), kpi('Streak', `${st.current} day${st.current === 1 ? '' : 's'}`, `best ${st.best}`),
-          kpi('Tracked', `${Math.max(1, Math.round(Usage.trackedDays()))} days`, `${Object.keys(Usage.data.items).length} controls seen`),
+          kpi('Tracked', `${Math.max(1, Math.round(Usage.trackedDays()))} day${Math.round(Usage.trackedDays()) > 1 ? 's' : ''}`, `${Object.keys(Usage.data.items).length} controls seen`),
           kpi('Hidden', String((Usage.data.hidden || []).length), 'Show brings one back')),
       ];
       if (dayClicks.length > 1) out.push(el('h4', { text: 'Clicks per day' }), bars((range === 'all' ? Object.keys(Usage.data.days).sort() : days).map((d) => dayLabel(d, { month: 'numeric', day: 'numeric' })), [{ color: 'var(--meter-active)', values: dayClicks }], { h: 100 }));
@@ -615,7 +638,7 @@ const Meter = (() => {
       };
       out.push(el('div', { class: 'mt-cols' },
         el('div', {}, el('h4', { text: `Used today (${today.top.length})` }), el('div', { class: 'mt-flist' }, today.top.slice(0, 30).map((x) => row({ key: x.key, ...Usage.data.items[x.key] }, `${x.n}×`)))),
-        el('div', {}, el('h4', { text: 'Hot (your most used)' }), el('div', { class: 'mt-flist' }, Usage.hot().slice(0, 30).map((x) => row(x, `${x.n}×`))))));
+        el('div', {}, el('h4', { text: 'Hot (your most used)' }), Usage.hot().length ? el('div', { class: 'mt-flist' }, Usage.hot().slice(0, 30).map((x) => row(x, `${x.n}×`))) : el('p', { class: 'hint', text: 'Features you use 8+ times show up here (and glow in the app).' }))));
       const cold = Usage.cold();
       if (cold.length) out.push(el('h4', { text: `Cold: not used for 3+ weeks (${cold.length})` }), el('div', { class: 'mt-flist' }, cold.slice(0, 60).map((x) => row(x, timeAgo(x.last), hideBtn(x)))));
       const never = Usage.never();
@@ -728,10 +751,16 @@ const Meter = (() => {
   // ---------- chat commands ----------
   const R = (def) => Commands.register({ area: 'Meter', ...def });
   function registerCommands() {
-    R({ name: 'tokens', aliases: ['tok'], args: '[today|week|month|all|chat]', desc: 'Token totals (this chat, today, week, month or all time)', complete: () => [...RANGE_ARGS, { value: 'chat' }],
+    R({ name: 'tokens', aliases: ['tok'], args: '[today|week|month|all|chat|<agent> [range]]', desc: 'Token totals (this chat, today, week, month, all time or one agent)', complete: (a) => [...RANGE_ARGS, { value: 'chat' }, ...AGENT_ARGS(a)].filter((x) => x.value.toLowerCase().startsWith(a.toLowerCase())),
       run: async (args) => {
         await refresh();
-        if (/^c/i.test(args)) return PANE_TEXT.chat();
+        if (/^chat/i.test(args)) return PANE_TEXT.chat();
+        const word = args.split(/\s+/)[0];
+        const agent = word && !['today', 'week', 'month', 'all'].includes(word.toLowerCase()) ? agentArg(word) : null;
+        if (agent) {
+          const r = pickRange(args.split(/\s+/)[1]) || 'week';
+          return `${line(`${agent.name}, ${r === 'today' ? 'today' : r === 'all' ? 'all time' : `last ${rangeDays(r).length} days`}`, by('a', rangeDays(r))[agent.id] || {})}\n\`${spark(dayKeys(14).map((d) => tot(stats?.days?.[d]?.a?.[agent.id])))}\` last 14 days`;
+        }
         return report(pickRange(args) || 'today');
       } });
     R({ name: 'usage', aliases: ['dashboard', 'token-usage'], args: '[tab]', desc: 'Open the token & usage dashboard (overview, agents, models, tools, chats, features, budgets, export)',
@@ -909,6 +938,14 @@ const Meter = (() => {
     R({ name: 'export-usage', aliases: ['tokens-export'], args: '[csv|json|md]', desc: 'Save your token history as CSV / JSON, or copy a Markdown table', complete: () => ['csv', 'json', 'md'].map((value) => ({ value })),
       run: (args) => exportUsage(['json', 'md'].includes(args) ? args : 'csv') });
     R({ name: 'usage-rebuild', desc: 'Recount the token stats from every chat\'s recorded replies', run: async () => { await rebuild(); return `Rebuilt: ${allDays().length} days, ${Object.keys(stats?.chats || {}).length} chats.`; } });
+    R({ name: 'session', desc: 'Tokens since Hearth started', run: () => `${line(`Since ${new Date(session.since).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, session)}` });
+    R({ name: 'budget-left', aliases: ['left'], desc: 'Tokens left today in each budget', run: async () => {
+      await refresh();
+      const today = by('a', [dayKey()]);
+      const rows = Object.entries(prefs.budgets).filter(([, b]) => b).map(([a, b]) => { const left = b - tot(today[a]); return `- ${agentName(a)}: ${left >= 0 ? `**${fmt(left)}** left` : `**${fmt(-left)}** over`} of ${fmt(b)}`; });
+      return rows.join('\n') || 'No budgets set. Try /budget Claude 300k.';
+    } });
+    R({ name: 'weekdays', desc: 'Your average tokens per weekday', run: async () => { await refresh(); const wd = weekdays(); return `\`${spark(wd.map((x) => x.avg))}\` ${wd.map((x) => `${x.label} ${fmt(x.avg)}`).join(' · ')}`; } });
     R({ name: 'calibration', desc: 'How live estimates turn characters into tokens (learned per engine)', run: () => `Characters per token: ${['claude', 'codex'].map((e) => `${engineLabel(e)} ${prefs.calib[e] || '4 (default)'}`).join(' · ')}. Learned from streamed replies, used for the live meter and /estimate.` });
   }
   const PANE_TEXT = {
