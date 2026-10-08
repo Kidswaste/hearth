@@ -564,7 +564,7 @@ const NodeView = (() => {
     }
     function widgetRow(n, f) { return el('div', { class: 'nv-row w' }, widget(n, f)); }
     function sliderBadge(n, f) {
-      if (!['number', 'knob', 'color', 'toggle', 'select'].includes(f.kind)) return null;
+      if (!reg.sliderLabel || !['number', 'knob', 'color', 'toggle', 'select'].includes(f.kind)) return null;
       const on = n.sliders?.[f.name] ?? f.slider ?? defOf(n).sliders ?? true;
       return on ? el('span', { class: 'nv-slider-mark', title: 'Shows as a slider in the Lab (right-click to change)', text: '⚡' }) : null;
     }

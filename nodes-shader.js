@@ -16,7 +16,7 @@ const ShaderNodes = (() => {
   const LUMA = 'vec3(0.299, 0.587, 0.114)';
   const frameOf = (node, graph) => (graph.frames || []).find((f) => node.x >= f.x && node.y >= f.y && node.x < f.x + f.w && node.y < f.y + f.h);
   const reg = NodeView.createRegistry({
-    name: 'shader', types: TYPES,
+    name: 'shader', types: TYPES, idBase: (d) => d.type, // short ids for chat: fbm1, palette2…
     compat: { float: ['vec2', 'vec3', 'color'], vec2: ['vec3', 'color'], vec3: ['color', 'vec2', 'float'], color: ['vec3', 'vec2', 'float'] },
     convert: (from, to, e) => {
       if (from === 'float') return to === 'vec2' ? `vec2(${e})` : `vec3(${e})`;
