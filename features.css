@@ -1243,3 +1243,6 @@ mark.find-hit.cur { background: #ff8a3d; color: #000; }
 .body img.md-img { max-width: min(100%, 420px); max-height: 320px; border-radius: 8px; cursor: zoom-in; display: block; margin: 6px 0; }
 .empty .empty-cmds { justify-content: center; margin-top: 14px; opacity: .8; }
 .edited-mark { cursor: help; }
+.slash-item b { max-width: 44ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.messages .msg .body { font-family: var(--chat-font, inherit); }
+.msg .body.raw { white-space: pre-wrap; font: 12.5px/1.5 var(--mono, ui-monospace, monospace); padding: 8px 10px; border: 1px dashed var(--line); border-radius: 8px; }

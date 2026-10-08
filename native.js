@@ -551,7 +551,11 @@ const Native = (() => {
     const last = index === chat.messages.length - 1;
     const astra = astraAgent();
     const r = anchor.getBoundingClientRect();
-    const reactRow = REACTIONS.map((emoji) => ({ label: `${emoji === m.reaction?.emoji ? '✓ ' : ''}React ${emoji}`, action: () => react(agentId, index, emoji) }));
+    // reactions open as a second small menu, so this one stays short
+    const reactRow = [{ label: `React… ${m.reaction ? `(${m.reaction.emoji})` : REACTIONS.join(' ')}`, action: () => setTimeout(() => showMenu(r.left, r.bottom + 4, [
+      ...REACTIONS.map((emoji) => ({ label: `${emoji === m.reaction?.emoji ? '✓ ' : ''}${emoji}  ${{ '👍': 'Good', '👎': 'Not good', '❤️': 'Love it', '🔥': 'Great', '🤔': 'Hmm' }[emoji]}`, action: () => react(agentId, index, emoji) })),
+      m.reaction ? { label: 'Remove the reaction', action: () => react(agentId, index, m.reaction.emoji) } : null,
+    ].filter(Boolean)), 0) }];
     const items = [
       { label: 'Copy', action: () => copyText(m.text, 'Copied') },
       { label: 'Copy as plain text', action: () => copyText(plainText(m.text), 'Copied as plain text') },
@@ -570,9 +574,20 @@ const Native = (() => {
       m.reaction ? { label: 'Add a feedback note…', action: async () => { const note = await Modal.prompt('Feedback note', { value: m.reaction.note || '', label: 'Kept with your reaction (not sent to the agent).' }); if (note != null) { m.reaction.note = note.trim(); remember(chat); render(agentId, { keepScroll: true }); } } } : null,
       m.role === 'assistant' ? { label: 'Save as a Markdown file…', action: () => saveReply(m) } : null,
       { label: 'Save to notes', action: () => Notes.append(m.text) },
-      { label: `Copy link to message #${index + 1}`, action: () => copyText(`/jump ${index + 1}`, 'Command copied: paste it in this chat to come back here') },
+      m.role !== 'user' ? { label: 'Show the Markdown source', action: () => toggleRaw(agentId, index) } : null,
+      { label: `Copy “/jump ${index + 1}” (to come back here)`, action: () => copyText(`/jump ${index + 1}`, 'Paste it in this chat to come back to this message') },
     ].filter(Boolean);
     showMenu(r.left, r.bottom + 4, items);
+  }
+  // Shows a reply's Markdown source in place (again: back to the formatted view).
+  function toggleRaw(agentId, index) {
+    const node = views.get(agentId)?.list.querySelector(`.msg[data-index="${index}"]`);
+    const m = chats.get(H.activeChat[agentId])?.messages[index];
+    if (!node || !m) return false;
+    const body = node.querySelector(':scope > .body');
+    if (body.classList.toggle('raw')) body.textContent = m.text;
+    else { body.innerHTML = renderMarkdown(m.text); decorateCode(body); }
+    return body.classList.contains('raw');
   }
   const plainText = (t) => String(t || '').replace(/```[\w+-]*\n?/g, '').replace(/\*\*|__|~~|==|`/g, '').replace(/^#{1,6}\s+/gm, '').replace(/^\s*>\s?/gm, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
   const REACTIONS = ['👍', '👎', '❤️', '🔥', '🤔'];
@@ -690,7 +705,7 @@ const Native = (() => {
     requestAnimationFrame(() => {
       for (const node of v.list.querySelectorAll('.msg.assistant:not(.streaming)')) {
         const body = node.querySelector('.body');
-        if (body.scrollHeight > COLLAPSE_PX && node !== v.list.querySelector('.msg.assistant:last-of-type') && !unfolded.has(`${chat?.id}:${node.dataset.index}`)) {
+        if (store.get('chat.autoFold', true) !== false && body.scrollHeight > COLLAPSE_PX && node !== v.list.querySelector('.msg.assistant:last-of-type') && !unfolded.has(`${chat?.id}:${node.dataset.index}`)) {
           node.classList.add('collapsed');
           const words = (node.dataset.raw.match(/\S+/g) || []).length;
           node.append(el('button', { class: 'show-more-msg msg-act', text: `Show full reply · ${words.toLocaleString()} words`, dataset: { msgAct: 'more' } }));
@@ -757,7 +772,8 @@ const Native = (() => {
       if (!th) { th = thinkingEl('', true); p.el.prepend(th); }
       th.querySelector('.thinking-text').textContent = p.thinking.trim();
       th.querySelector('summary').textContent = text ? 'Thought process' : 'Thinking…';
-      if (text && !p.thinkClosed) { th.open = false; p.thinkClosed = true; }
+      // it folds itself once the answer starts, unless you asked for thinking to stay open (/thinking always)
+      if (text && !p.thinkClosed) { if (!store.get('chat.thinkingOpen', false)) th.open = false; p.thinkClosed = true; }
       if (th.open) { const tt = th.querySelector('.thinking-text'); tt.scrollTop = tt.scrollHeight; }
     }
     if (p.tools.length) {
@@ -1556,7 +1572,7 @@ const Native = (() => {
     // additive API for chat-*.js / chat commands
     hooks, current, view: (agentId) => views.get(agentId) || null, load: loadChat, save: remember, adopt,
     compact: compactChat, summarizeAndContinue, branch: branchFrom, edit: editMessage, retry: regenerate, quote,
-    secondOpinion, review: (agentId) => send(agentId, REVIEW_PROMPT), chatMarkdown, stats: chatStats, speak, speakMessage, stopSpeaking, plainText, modelMenu,
+    secondOpinion, review: (agentId) => send(agentId, REVIEW_PROMPT), chatMarkdown, stats: chatStats, speak, speakMessage, stopSpeaking, plainText, modelMenu, toggleRaw,
     setModel: setChatModel, renameCurrent, stop: stopReply, pendingFor, renderQueue, insertDraft, setStyle, renderStyle,
     toggleThinking, jumpTo, react, toggleMark, REACTIONS, messageMenu, chatMenu, lastReplyText, dayLabel,
     MODEL_CHOICES, astraAgent, screenshotFor, addFiles, addPath, pickFiles: async (agentId) => {

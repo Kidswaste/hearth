@@ -16,13 +16,18 @@ const Panel = (() => {
     if (text != null) node.textContent = text;
     return node;
   };
+  // /sort: newest activity (default), oldest, or by title
+  const SORTS = { recent: (a, b) => b.updatedAt - a.updatedAt, oldest: (a, b) => a.updatedAt - b.updatedAt, title: (a, b) => a.title.localeCompare(b.title) };
+  const sortBy = () => (SORTS[store.get('panel.sort', 'recent')] ? store.get('panel.sort', 'recent') : 'recent');
   const metaOf = (id) => (typeof ChatUX !== 'undefined' ? ChatUX.metaOf(id) : {});
 
   // Does a chat summary pass the current /filter view?
   function inView(c, agent) {
-    if (!view) return true;
+    if (!view) return !metaOf(c.id).archived;
     const v = view.toLowerCase();
     const day = new Date(); day.setHours(0, 0, 0, 0);
+    if (v === 'archived') return Boolean(metaOf(c.id).archived);
+    if (metaOf(c.id).archived) return false; // archived chats only show under /filter archived
     if (v === 'pinned') return c.pinned;
     if (v === 'today') return c.updatedAt >= day.getTime();
     if (v === 'week') return c.updatedAt >= Date.now() - 7 * 864e5;
@@ -36,7 +41,7 @@ const Panel = (() => {
   function itemsFor(agent) {
     if (agent.mode === 'native') {
       return H.chats.filter((c) => c.agentId === agent.id && inView(c, agent))
-        .sort((a, b) => (b.pinned - a.pinned) || (b.updatedAt - a.updatedAt))
+        .sort((a, b) => (b.pinned - a.pinned) || SORTS[sortBy()](a, b))
         .map((c) => ({ key: c.id, title: c.title, chatId: c.id, pinned: c.pinned, updatedAt: c.updatedAt, ...metaOf(c.id) }));
     }
     if (view && view.toLowerCase() !== agent.name.toLowerCase()) return [];
@@ -84,6 +89,7 @@ const Panel = (() => {
         { label: 'Export…', action: () => onChat(agent.id, item.chatId, '/export md file') },
         { label: 'Tag…', action: async () => { const t = await Modal.prompt('Tags', { value: (item.tags || []).join(', '), label: 'Comma-separated; filter with /filter tag:<name>' }); if (t != null) ChatUX.setMeta(item.chatId, { tags: [...new Set(t.split(/[,\s]+/).map((x) => x.replace(/^#/, '').trim().toLowerCase()).filter(Boolean))] }); } },
         { label: 'Move to folder…', action: async () => { const f = await Modal.prompt('Folder', { value: item.folder || '', label: `Existing: ${ChatUX.allFolders().join(', ') || 'none yet'} (empty = no folder)` }); if (f != null) ChatUX.setMeta(item.chatId, { folder: f.trim().slice(0, 40) }); } },
+        { label: item.archived ? 'Unarchive' : 'Archive (hide from the list)', action: () => ChatUX.setMeta(item.chatId, { archived: !item.archived }) },
         { label: H.unreadChats?.has(item.chatId) ? 'Mark as read' : 'Mark as unread', action: () => { if (H.unreadChats.has(item.chatId)) H.unreadChats.delete(item.chatId); else H.unreadChats.add(item.chatId); render(); } },
         ...H.agents().filter((a) => a.mode === 'native' && a.id !== agent.id).map((a) => ({ label: `Continue with ${a.name}`, action: () => Native.continueWith(item.chatId, a.id) })),
         { label: 'Delete chat  Del', danger: true, action: () => { if (confirm(`Delete "${item.title}"? You can restore it for 30 days (Ctrl+K → Recently deleted chats).`)) Native.remove(item.chatId); } },
@@ -263,7 +269,8 @@ const Panel = (() => {
       const folders = typeof ChatUX !== 'undefined' ? ChatUX.allFolders() : [];
       showMenu(b.left, b.bottom + 4, [
         { label: `${view ? '' : '✓ '}Everything`, action: () => setView(null) },
-        ...['pinned', 'today', 'week', 'unread', 'busy'].map((v) => ({ label: `${view === v ? '✓ ' : ''}${{ pinned: '📌 Pinned', today: 'Today', week: 'Last 7 days', unread: 'Unread replies', busy: 'Answering now' }[v]}`, action: () => setView(v) })),
+        ...['pinned', 'today', 'week', 'unread', 'busy', 'archived'].map((v) => ({ label: `${view === v ? '✓ ' : ''}${{ pinned: '📌 Pinned', today: 'Today', week: 'Last 7 days', unread: 'Unread replies', busy: 'Answering now', archived: '🗄 Archived' }[v]}`, action: () => setView(v) })),
+        ...Object.keys(SORTS).map((k) => ({ label: `${sortBy() === k ? '✓ ' : ''}Sort: ${{ recent: 'latest first', oldest: 'oldest first', title: 'by title' }[k]}`, action: () => { store.set('panel.sort', k); render(); } })),
         ...folders.map((f) => ({ label: `${view === `folder:${f.toLowerCase()}` ? '✓ ' : ''}📁 ${f}`, action: () => setView(`folder:${f.toLowerCase()}`) })),
         ...tags.map((t) => ({ label: `${view === `tag:${t}` ? '✓ ' : ''}#${t}`, action: () => setView(`tag:${t}`) })),
       ]);
@@ -273,5 +280,5 @@ const Panel = (() => {
   }
   setTimeout(wireKeys, 0);
 
-  return { render, highlight, setFilter, setView, view: () => view };
+  return { render, highlight, setFilter, setView, view: () => view, SORTS };
 })();

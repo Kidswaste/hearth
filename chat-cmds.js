@@ -274,9 +274,9 @@ const ChatCmds = (() => {
       return folder ? `Moved to folder **${safe(folder)}**` : 'Removed from its folder';
     },
   });
-  const FILTERS = [{ value: 'all', hint: 'show everything' }, { value: 'pinned' }, { value: 'today' }, { value: 'week', hint: 'last 7 days' }, { value: 'unread' }, { value: 'busy', hint: 'answering now' }];
+  const FILTERS = [{ value: 'all', hint: 'show everything' }, { value: 'pinned' }, { value: 'today' }, { value: 'week', hint: 'last 7 days' }, { value: 'unread' }, { value: 'busy', hint: 'answering now' }, { value: 'archived', hint: 'chats you archived' }];
   R({
-    name: 'filter', area: 'Chat', args: '<pinned | today | week | unread | busy | tag:x | folder:x | agent | all>', desc: 'Filter the chat list',
+    name: 'filter', area: 'Chat', args: '<pinned | today | unread | archived | tag:x | folder:x | agent | all>', desc: 'Filter the chat list',
     complete: (args) => [...FILTERS, ...ChatUX.allTags().map((t) => ({ value: `tag:${t}` })), ...ChatUX.allFolders().map((f) => ({ value: `folder:${f}` })), ...nativeAgents().map((a) => ({ value: a.name, hint: 'only this agent' }))].filter((x) => has(args)(x.value)),
     run: (args) => {
       const f = args.trim();
@@ -1318,6 +1318,47 @@ const ChatCmds = (() => {
       const week = Date.now() - 7 * 864e5;
       const rows = nativeAgents().map((a) => { const list = H.chats.filter((c) => c.agentId === a.id); return list.length ? `- ${safe(a.name)}: ${plural(list.length, 'chat')} · ${list.filter((c) => c.updatedAt > week).length} this week` : null; }).filter(Boolean);
       return `**${plural(H.chats.length, 'chat')}** · ${H.chats.filter((c) => c.pinned).length} pinned · ${ChatUX.allTags().length} tags · ${ChatUX.allFolders().length} folders\n${rows.join('\n')}`;
+    },
+  });
+
+  R({
+    name: 'raw', aliases: ['source'], area: 'Messages', args: '[#]', desc: 'Show a reply\'s Markdown source in place (again: formatted)',
+    run: (args, ctx) => { const chat = need(ctx); Native.toggleRaw(ctx.agentId, args ? mustIndex(chat, args) : mustIndex(chat, 'last', 'assistant')); },
+  });
+  R({
+    name: 'autofold', area: 'View', args: '[on | off]', desc: 'Fold long replies automatically (on by default; “Show full reply” opens them)',
+    complete: () => ONOFF,
+    run: (args, ctx) => { const on = onOff(args, store.get('chat.autoFold', true) !== false); store.set('chat.autoFold', on); Native.refresh(ctx.agentId, { keepScroll: true }); return on ? 'Long replies start folded.' : 'Replies always show in full.'; },
+  });
+  R({
+    name: 'spell', aliases: ['spellcheck'], area: 'Compose', args: '[on | off]', desc: 'Spell checking in the message box',
+    complete: () => ONOFF,
+    run: (args) => { const on = ChatUX.setPref('spell', onOff(args, ChatUX.pref('spell') !== false)); return on ? 'Spell check on.' : 'Spell check off.'; },
+  });
+  R({
+    name: 'font', area: 'View', args: '<default | sans | serif | mono | rounded>', desc: 'The typeface of messages',
+    complete: pick(Object.keys(ChatUX.FONTS)),
+    run: (args) => { const f = Object.keys(ChatUX.FONTS).find((k) => k.startsWith(args.toLowerCase())) || 'default'; ChatUX.setPref('font', f); toast(`Message font: ${f}`, { timeout: 1000 }); },
+  });
+  R({
+    name: 'sort', area: 'Chat', args: '<recent | oldest | title>', desc: 'How the chat list is ordered (pinned chats stay on top)',
+    complete: pick(['recent', 'oldest', 'title']),
+    run: (args) => { const k = ['recent', 'oldest', 'title'].find((x) => x.startsWith(args.toLowerCase())) || 'recent'; store.set('panel.sort', k); Panel.render(); toast(`Chats sorted: ${k}`, { timeout: 1000 }); },
+  });
+  R({
+    name: 'archive', area: 'Chat', desc: 'Hide this chat from the list without deleting it (/filter archived shows them)',
+    run: (_a, ctx) => { const chat = need(ctx); ChatUX.setMeta(chat.id, { archived: true }); pushUndo('unarchive', () => ChatUX.setMeta(chat.id, { archived: false })); return 'Archived: it\'s out of the list (`/filter archived` · `/unarchive` · `/undo`).'; },
+  });
+  R({
+    name: 'unarchive', area: 'Chat', desc: 'Put this chat back in the list', hidden: false,
+    run: (_a, ctx) => { const chat = need(ctx); ChatUX.setMeta(chat.id, { archived: false }); return 'Back in the list.'; },
+  });
+  R({
+    name: 'next-unread', aliases: ['nu'], area: 'Chat', desc: 'Open the next chat with a reply you haven\'t seen',
+    run: () => {
+      const c = H.chats.find((x) => H.unreadChats?.has(x.id));
+      if (!c) return 'You have seen every reply.';
+      Native.open(c.agentId, c.id);
     },
   });
 

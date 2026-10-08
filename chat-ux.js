@@ -10,7 +10,10 @@ const ChatUX = (() => {
     density: { key: 'chat.density', def: 'cozy' },
     timestamps: { key: 'chat.timestamps', def: 'hover' },
     numbers: { key: 'chat.numbers', def: false },
+    font: { key: 'chat.font', def: 'default' },
+    spell: { key: 'chat.spell', def: true },
   };
+  const FONTS = { default: '', sans: 'system-ui, "Segoe UI", sans-serif', serif: 'Georgia, "Iowan Old Style", serif', mono: 'ui-monospace, Consolas, monospace', rounded: '"Nunito", "SF Pro Rounded", system-ui, sans-serif' };
   const WIDTHS = { narrow: '640px', normal: '820px', wide: '1080px', full: '100%' };
   const pref = (name) => store.get(PREFS[name].key, PREFS[name].def);
   function setPref(name, value) { store.set(PREFS[name].key, value); applyPrefs(); return value; }
@@ -24,6 +27,8 @@ const ChatUX = (() => {
     const root = document.documentElement.style;
     root.setProperty('--chat-scale', String(pref('scale')));
     root.setProperty('--chat-width', WIDTHS[pref('width')] || WIDTHS.normal);
+    if (FONTS[pref('font')]) root.setProperty('--chat-font', FONTS[pref('font')]); else root.removeProperty('--chat-font');
+    for (const t of document.querySelectorAll('.composer textarea')) t.spellcheck = pref('spell') !== false;
   }
 
   // Focus: just this chat (no chats panel, no rail). Zen: focus plus quiet chrome (footers show on hover).
@@ -164,6 +169,7 @@ const ChatUX = (() => {
     const next = { ...metaOf(chatId), ...patch };
     if (!next.tags?.length) delete next.tags;
     if (!next.folder) delete next.folder;
+    if (!next.archived) delete next.archived;
     if (Object.keys(next).length) meta[chatId] = next; else delete meta[chatId];
     saveMeta();
     Panel.render();
@@ -243,7 +249,7 @@ const ChatUX = (() => {
   setTimeout(() => { loadMeta().catch(() => {}); }, 0);
 
   return {
-    pref, setPref, applyPrefs, WIDTHS, setFocus, isFocus: () => Boolean(focusState),
+    pref, setPref, applyPrefs, WIDTHS, FONTS, setFocus, isFocus: () => Boolean(focusState),
     find, closeFind, step,
     metaOf, setMeta, allTags, allFolders,
     loadBookmarks, loadSnippets, saveSnippet, deleteSnippet, chime,
