@@ -1,0 +1,7 @@
+{
+ "note": "Startup medians from dev/perf-report.js on 2026-10-08 (12 reloads interleaved with the pre-perf build, 4 shared CPUs, SwiftShader). `node dev/perf-report.js --budget --startup-only` fails when one is > 30 % worse. Before the perf stream: readyMs 397.7. Re-baseline on a new machine with --save-budget.",
+ "readyMs": 216.9,
+ "interactiveMs": 216.9,
+ "scriptEvalMs": 32.3,
+ "mainThreadBusyMs": 231.3
+}

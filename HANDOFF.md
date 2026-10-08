@@ -72,6 +72,12 @@ duplicate warnings), `nodes.js` (generic node editor + adapters `tools/three-nod
 (Xvfb + Linux Electron at /opt/hearth-electron, SwiftShader WebGL, three.js served from an npm copy, `--fake-engines`
 answers chats with `dev/fake-claude.js` / `dev/fake-codex.js`); checks live in `dev/checks/`.
 
+Perf (round 3, docs/upgrades/perf.md): renderer scripts in `index.html` are `defer` (order kept; code that needs
+"after every script" uses DOMContentLoaded / load, not a timeout). Don't poll `H.activeId` / `H.activeChat`: listen
+for the window event `hearth:view` (start.js). Hidden surfaces are `visibility: hidden`, so `offsetParent` doesn't
+mean "on screen": use `el.checkVisibility({ visibilityProperty: true })`. `node dev/perf-report.js --budget
+--startup-only` guards startup (dev/perf-budget.json).
+
 ## How to test changes
 Syntax check: `electron\electron.exe --check <file>` with `ELECTRON_RUN_AS_NODE=1`. For UI checks, launch with `--remote-debugging-port=9333` and drive the page through CDP `Runtime.evaluate` (return `JSON.stringify(...)` so results serialize). Test with throwaway data and clean it up; never edit or delete the user's chats, sketches or Forgeheart files in tests.
 

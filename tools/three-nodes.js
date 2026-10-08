@@ -845,10 +845,14 @@ let ${id}Travel = 0;`);
     } });
 
   // ---------- Filter layer nodes (from the Lab's filter templates, so new filters show up here too) ----------
-  function filterDefs() {
+  // With an idle deadline (the Lab's first open) it works in slices and picks up again in the next idle time;
+  // everything that needs the types (compile, presets, the type list…) calls it without one and gets them all.
+  function filterDefs(idle) {
     if (typeof ThreeLayers === 'undefined' || typeof ThreeTweaks === 'undefined') return;
+    const until = performance.now() + 6; // short slices, so a click right after the Lab opens never waits on this
     for (const f of ThreeLayers.FILTERS) {
       if (reg.has(`fx-${f.id}`)) continue;
+      if (idle?.timeRemaining && (idle.timeRemaining() < 3 || performance.now() > until)) { requestIdleCallback(filterDefs); return; }
       let items = [];
       try { items = ThreeTweaks.scan(f.code).items.filter((it) => it.key != null); } catch { continue; }
       const inputs = items.map((it) => {
@@ -1237,7 +1241,7 @@ let ${id}Travel = 0;`);
   let lab = null; // set by attach()
   const MODE_KEY = 'three.nodesMode';
   function attach(hook) {
-    filterDefs();
+    requestIdleCallback(filterDefs); // ≈170 filter types: scanned after the Lab is on screen (was ~50 ms of its first open)
     const host = hook.host;
     host.classList.add('tn-host');
     window.ShaderNodes?.setLabHook?.(hook); // shader-node layers write back to the Lab through this hook

@@ -19,6 +19,7 @@ line count is lower than the number of upgrades).
 | Director agents: Three Director ≈67 % fewer tokens per message, faster edit loops, dock strip, undo | [director.md](director.md) | 147 |
 | Polish: one design system across all the new UI, materials on your favorite controls | [polish.md](polish.md) | 242 |
 | QA: 25 integration bugs fixed, command / key collisions, data-safety fixes | [qa.md](qa.md) | 29 |
+| Perf (round 3): ready 45 % sooner, nothing running when idle, lighter streaming, perf budget check | [perf.md](perf.md) | 18 |
 | **Total** | | **3,133** |
 
 ## Start here

@@ -53,5 +53,5 @@
       Commands.register({ ...d, name, aliases: aliases.filter((a) => a !== name), area: AREA });
     }
   }
-  setTimeout(registerAll, 0);
+  registerAll(); // right away: with deferred scripts a timeout would now run after addons-cmds.js and lose /ease to the Kit
 })();

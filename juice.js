@@ -142,7 +142,7 @@ const Juice = (() => {
   });
   // the window title follows what you look at
   const retitle = () => { const a = H.agent?.(H.activeId); const t = a?.name || (String(H.activeId || '').startsWith('tool:') ? Tools.get?.(H.activeId.slice(5))?.name : ''); document.title = t ? `${t} · Hearth` : 'Hearth'; };
-  setInterval(() => { if (!document.hidden) retitle(); }, 1500);
+  addEventListener('hearth:view', retitle); // start.js: the agent / tool on screen changed (was a 1.5 s poll)
 
   // a hidden window rests every animation (look.css: [data-away])
   const away = () => root.toggleAttribute('data-away', document.hidden);

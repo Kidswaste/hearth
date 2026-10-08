@@ -985,11 +985,14 @@ const Meter = (() => {
       ['Compact this chat\'s context', () => compact()],
     ]) AppUI.addAction?.(label, fn, label === 'Token dashboard' ? 'Ctrl+Shift+U' : '');
     // the context fill and "this chat" follow whichever chat is on screen
+    // (start.js fires 'hearth:view' when that changes; this used to poll every 700 ms)
     let seen = '';
-    setInterval(() => { const s = `${H.activeId}|${activeChatId()}`; if (s !== seen) { seen = s; paint(); } }, 700);
-    // midnight: "today" starts over
+    addEventListener('hearth:view', () => { const s = `${H.activeId}|${activeChatId()}`; if (s !== seen) { seen = s; paint(); } });
+    // midnight: "today" starts over (one timer to the next midnight instead of a check every minute)
     let day = dayKey();
-    setInterval(() => { if (dayKey() !== day) { day = dayKey(); alerted.clear(); refresh(); } }, 60000);
+    const midnight = () => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1, 0, 0, 2) - n; };
+    const atMidnight = () => { if (dayKey() !== day) { day = dayKey(); alerted.clear(); refresh(); } setTimeout(atMidnight, Math.min(midnight(), 3600000)); };
+    setTimeout(atMidnight, Math.min(midnight(), 3600000));
     await refresh();
   }
 

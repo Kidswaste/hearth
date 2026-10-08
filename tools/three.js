@@ -803,7 +803,16 @@ const ThreeLab = (() => {
       for (const p of Object.keys(L.keys || {})) if (p.startsWith('s:')) sv[p.slice(2)] = valueAt(L, p);
       controllers.get(L.id)?.sync(sv);
     }
-    setInterval(() => { if (current && sel()?.keys && Object.keys(sel().keys).length) syncKeyUI(); }, 100);
+    // keyframed values follow the playhead while the Lab is on screen; the timer stops when it isn't (and
+    // 'hearth:view' from start.js starts it again), so a hidden Lab doesn't wake up 10× a second
+    let keyTimer = 0;
+    const keyTick = () => {
+      if (!(split || previewHost).checkVisibility({ visibilityProperty: true }) && !box.onStage) { clearInterval(keyTimer); keyTimer = 0; return; }
+      if (current && sel()?.keys && Object.keys(sel().keys).length) syncKeyUI();
+    };
+    const keyLoop = () => { if (!keyTimer) keyTimer = setInterval(keyTick, 100); };
+    keyLoop();
+    addEventListener('hearth:view', keyLoop);
     // ---------- automation lanes (Ableton placement, FL Studio curves) ----------
     // L.lanes = the settings shown as curves under the layer's track ('opacity' … or 's:<slider key>'), in order;
     // L.laneTall = { prop: true } for taller lanes. (Older sketches have a single L.lane.)
@@ -1682,7 +1691,9 @@ const ThreeLab = (() => {
     }
     function rememberMedia() {
       if (!current || !extras[current.id]?.media || extras[current.id].media.path !== player.path) return;
-      extras[current.id].media.time = Math.round(player.time * 1000) / 1000;
+      const t = Math.round(player.time * 1000) / 1000;
+      if (extras[current.id].media.time === t) return; // paused: no rewrite of the kv file every 5 s
+      extras[current.id].media.time = t;
       saveExtras();
     }
     setInterval(rememberMedia, 5000);

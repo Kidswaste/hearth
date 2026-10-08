@@ -451,7 +451,8 @@ const VideoCmds = (() => {
   cmd({ name: 'video-keys', desc: 'Video Review keyboard shortcuts', run: async () => { await R().ensureMounted(); R().shortcutsHelp(); } });
   cmd({ name: 'video-status', desc: 'What\'s open in Video Review: file, time, frame, fps, loop, compare, notes', run: async () => { const r = await ready(); const s = r.status(); return `**${base(s.open)}** · ${s.resolution} ${s.format} · \`${s.timecode}\` (frame ${s.frame}) · ${s.fps} fps (${s.fpsSource})${s.bpm ? ` · ${s.bpm} bpm` : ''}${s.loop ? ` · loop ${s.loop.in}–${s.loop.out}s${s.loop.on ? '' : ' (off)'}` : ''}${s.comparingWith ? ` · B ${base(s.comparingWith)} (${s.compareMode})` : ''} · ${s.notes.filter((n) => !n.resolved).length} open notes`; } });
 
-  if (document.readyState === 'loading') addEventListener('DOMContentLoaded', registerAll, { once: true }); else registerAll();
+  // a deferred script (index.html) also runs before DOMContentLoaded, while readyState is already 'interactive'
+  if (document.readyState === 'loading' || document.currentScript?.defer) addEventListener('DOMContentLoaded', registerAll, { once: true }); else registerAll();
 
   return { findVideo, ready, clean };
 })();
