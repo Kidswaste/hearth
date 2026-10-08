@@ -3195,6 +3195,8 @@ globalThis.filter = (type, P = {}) => {
 // filter.types: every filter name · filter.check(): compiles every filter and returns the ones that fail ·
 // filter.thumbs([{ type, P }], w, h): small JPEG previews of filters on the current picture (the picker's thumbnails)
 filter.types = Object.keys(FILTER_DEFS);
+// filter.define(name, { frag, feedback, choices }): a filter made elsewhere (Shader nodes compile a graph to one)
+filter.define = (name, def) => { FILTER_DEFS[name] = def; filter.types = Object.keys(FILTER_DEFS); return name; };
 function testCard(c) {
   const g = c.getContext('2d'); const W = c.width; const H = c.height;
   const gr = g.createLinearGradient(0, 0, W, H);

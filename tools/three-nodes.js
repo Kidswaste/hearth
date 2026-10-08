@@ -1240,6 +1240,7 @@ let ${id}Travel = 0;`);
     filterDefs();
     const host = hook.host;
     host.classList.add('tn-host');
+    window.ShaderNodes?.setLabHook?.(hook); // shader-node layers write back to the Lab through this hook
     let mode = store.get(MODE_KEY, 'code');
     let state = 'none'; // none | ok | edited | code (no graph) | outline
     let applied = null; // the code we wrote last (so our own writes aren't read back)
@@ -1300,6 +1301,24 @@ let ${id}Travel = 0;`);
       const sameLayer = k === layerKey;
       layerKey = k;
       if (!force && sameLayer && code === applied) return;
+      // a layer whose graph belongs to another node editor (Shader nodes): offer that editor
+      const other = NodeView.extract(code)?.graph;
+      if (other?.kind && other.kind !== 'three') {
+        const a = NodeView.adapters().find((x) => x.kinds?.includes(other.kind));
+        state = 'code';
+        view.setReadOnly(true);
+        view.setGraph(NodeView.emptyGraph('three'), { history: false });
+        setBanner('');
+        empty.replaceChildren(el('div', { class: 'tn-empty-card' },
+          el('b', { text: `This layer was made with ${a?.label || other.kind} nodes` }),
+          el('p', { text: 'Edit its graph there; Apply writes it back to this layer.' }),
+          el('div', { class: 'tn-row' },
+            el('button', { class: 'primary small', text: `Open in ${a?.label || 'its node editor'}`, on: { click: () => (window.ShaderNodes && other.kind === 'shader' ? window.ShaderNodes.editLabLayer(hook.editor.value, hook) : a?.open(hook.editor.value, 'js', other)) } }),
+            el('button', { class: 'ghost small', text: 'Show the code', on: { click: () => setMode('code') } }))));
+        empty.hidden = false;
+        view.setStatus('');
+        return;
+      }
       let r = fromCode(code);
       // the director rewrote the layer from a shortened read ("// @nodes:v1 {…}"): the graph is still known here
       if (!r && /@nodes:v1 \{…\}/.test(code) && graphCache.has(k)) r = { graph: graphCache.get(k), edited: true };
@@ -1607,11 +1626,11 @@ let ${id}Travel = 0;`);
     } catch (err) { return { ok: false, error: err.message }; }
   }
   if (typeof HubBridge !== 'undefined') HubBridge.register(['three_nodes'], (name, args) => tool(args));
-  // NodeView.openCode(code) for three.js sketches: a sketch made with nodes reopens as nodes; other three.js code
-  // opens in the Lab with its outline.
+  // NodeView.openCode(code) for three.js sketches: a sketch made with nodes reopens as nodes in the Lab. Other
+  // three.js code opens in the code flow view (nodes-code.js), which offers "Open in the Lab" from there.
   NodeView.registerAdapter({
     id: 'three', label: 'Three.js Lab', kinds: ['three'],
-    detect: (code, lang) => /from\s+['"]three['"]|\bTHREE\.|\bfilter\(\s*['"]/.test(code) && !/^(py|python|glsl|frag|vert)$/i.test(lang || ''),
+    detect: (code, lang) => /from\s+['"]three['"]|\bTHREE\.|\bfilter\(\s*['"]/.test(code) && !/^(py|python|glsl|frag|vert)$/i.test(lang || '') && Boolean(fromCode(code)),
     open: async (code, lang, graph) => {
       ThreeLab.openCode(code);
       const L = await ensureLab();

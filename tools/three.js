@@ -3003,6 +3003,7 @@ ${frag}\`,
     editor.setValue(store.get('three.shader', ThreeData.SHADERS['Gradient + time']));
     apply();
     api.openShader = (code) => { editor.setValue(code); store.set('three.shader', code); apply(); };
+    window.ShaderNodes?.attachPlayground?.(pane, { editor }); // "◇ Nodes": edit shaders as node graphs (nodes-shader.js)
   }
 
   // ---------- Textures tab ----------
