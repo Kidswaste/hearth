@@ -763,6 +763,15 @@ function toggleFold(hostId, m) {
     const cost = prev ? ` Last ${md.label.toLowerCase()} here: ${fmt(totals(prev).all.input + totals(prev).all.output)} tokens.` : '';
     c.chip.title = md ? `${md.label}: ${md.desc}. Your next message goes to ${seatsFor(agentId).map((s) => s.name).join(' and ')}.${cost} Click to change, right-click for presets.` : `Collab: answer with ${partner(agent)?.name || 'the other agent'} too (Duo, Relay, Debate…). Right-click for presets.`;
     c.root.classList.toggle('collab-armed', Boolean(md));
+    armPlaceholder(agentId);
+  }
+  function armPlaceholder(agentId) {
+    const c = chipEls.get(agentId);
+    if (!c) return;
+    const md = MODES[getMode(agentId).mode];
+    const want = md ? `${md.icon} ${md.label}: message ${seatsFor(agentId).map((x) => x.name).join(' and ')}…` : null;
+    if (want && c.input.placeholder !== want) { c.input.dataset.solo = c.input.placeholder; c.input.placeholder = want; }
+    if (!want && c.input.dataset.solo) { c.input.placeholder = c.input.dataset.solo; delete c.input.dataset.solo; }
   }
   function seatsFor(agentId) {
     const host = H.agent(agentId);
@@ -812,6 +821,7 @@ function toggleFold(hostId, m) {
       chip.addEventListener('contextmenu', (e) => { e.preventDefault(); Commands.tryRun('/collab-preset', agentId); }); // right-click: ready-made collaborations
       form.querySelector('.attach-btn')?.before(chip);
       chipEls.set(agentId, { chip, root, input: v.input });
+      new MutationObserver(() => { if (MODES[getMode(agentId).mode] && !v.input.placeholder.includes(MODES[getMode(agentId).mode].label)) armPlaceholder(agentId); }).observe(v.input, { attributes: true, attributeFilter: ['placeholder'] });
       v.input.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !v.input.value && stopAllIn(agentId)) toast('Stopping the collaboration', { timeout: 1200 }); });
       // capture phase on the surface: runs before the composer's own submit handler
       root.addEventListener('submit', (e) => {
@@ -973,9 +983,25 @@ function toggleFold(hostId, m) {
   const lastCollab = new Map(); // host id -> the last collab's settings (for /collab-again)
   const lastCollabMsg = (agentId) => [...(Native.chatOf(agentId)?.messages || [])].reverse().find((m) => m.role === 'collab');
   const seatHint = 'seats: claude, astra, astra:<model>, claude@<persona>';
+  function completeSeats(a) {
+    const words = a.split(/\s+/);
+    if (words.length > 1 && !/^\d$/.test(words[0])) return [];
+    const last = words.at(-1);
+    const head = a.slice(0, a.length - last.length);
+    const part = last.split(',').pop();
+    const before = last.slice(0, last.length - part.length);
+    const m = part.match(/^([^:@~]+)([:@~])([\w.-]*)$/);
+    if (m) {
+      const ag = findAgent(m[1]);
+      const pool = m[2] === '@' ? Object.keys(PERSONAS) : m[2] === ':' ? [...(MODELS[ag?.engine] || []), ...recentModels(ag?.engine)] : EFFORTS[ag?.engine] || [];
+      return pool.filter((x) => x.startsWith(m[3])).slice(0, 12).map((x) => ({ value: `${head}${before}${m[1]}${m[2]}${x}`, hint: m[2] === '@' ? PERSONAS[x]?.label : '' }));
+    }
+    if (!part) return [{ value: `${a}claude,astra `, hint: seatHint }];
+    return ['claude', 'astra', 'all', ...natives().filter((x) => !x.dock).map((x) => x.name.toLowerCase())].filter((x, i, l) => l.indexOf(x) === i && x.startsWith(part.toLowerCase()) && x !== part.toLowerCase()).map((x) => ({ value: `${head}${before}${x}`, hint: 'seat' }));
+  }
 
   R({ name: 'duo', area: 'Collab', args: '[seats] <message>', desc: 'Claude and Astra answer side by side; pick one or merge them',
-    complete: (a) => (a ? [] : [{ value: 'claude,astra ', hint: seatHint }]),
+    complete: (a) => (a ? completeSeats(a) : [{ value: 'claude,astra ', hint: seatHint }]),
     run: (args, ctx) => {
       if (/(^|\s)--fresh\b/.test(args)) { const c = Native.chatOf(ctx.agentId); if (c) delete c.duoSessions; } // forget earlier duo turns
       const { seats, task } = parseSeats(stripFlags(args), ctx.agentId);
@@ -988,7 +1014,7 @@ function toggleFold(hostId, m) {
     complete: (a) => (a ? [] : [{ value: 'claude→astra 1 ', hint: 'Astra reviews Claude' }, { value: 'astra→claude 2 ', hint: 'Claude reviews Astra twice' }]),
     run: (args, ctx) => { const { order, rounds, task } = parseLead(args, ctx.agentId); go(ctx, 'critique', task, order || defaultPair(ctx.agentId), { rounds: rounds || getMode(ctx.agentId).rounds || 1 }); } });
   R({ name: 'debate', area: 'Collab', args: '[rounds] [seats] <question>', desc: 'They answer, read each other and reply for N rounds, then one merged final answer',
-    complete: (a) => (a ? [] : [{ value: '2 ', hint: 'two rounds (default)' }, { value: '3 claude,astra@skeptic ', hint: seatHint }]),
+    complete: (a) => (a ? completeSeats(a) : [{ value: '2 ', hint: 'two rounds (default)' }, { value: '3 claude,astra@skeptic ', hint: seatHint }]),
     run: (args, ctx) => {
       const { judge, rest: a1 } = judgeFlag(args, ctx.agentId);
       const { rounds, task: rest } = parseLead(a1, ctx.agentId);
@@ -997,7 +1023,7 @@ function toggleFold(hostId, m) {
       go(ctx, 'debate', task, list, { rounds: rounds || Math.max(2, getMode(ctx.agentId).rounds), judge: judgeIndex(list, judge) });
     } });
   R({ name: 'council', area: 'Collab', args: '[seats] <question>', desc: 'Several seats (agents and personas) answer, the chair writes the final answer',
-    complete: (a) => (a ? [] : [{ value: 'claude,astra,astra@skeptic ', hint: seatHint }, { value: 'coder,reviewer,researcher ', hint: 'personas, engines alternate' }]),
+    complete: (a) => (a ? completeSeats(a) : [{ value: 'claude,astra,astra@skeptic ', hint: seatHint }, { value: 'coder,reviewer,researcher ', hint: 'personas, engines alternate' }]),
     run: (args, ctx) => {
       const { judge, rest } = judgeFlag(args, ctx.agentId);
       const { seats, task } = parseSeats(rest, ctx.agentId);
@@ -1006,7 +1032,7 @@ function toggleFold(hostId, m) {
       go(ctx, 'council', task, list, { judge: judgeIndex(list, judge) });
     } });
   R({ name: 'compare', area: 'Collab', args: '<seats> <task>', desc: 'Same task to different models or agents side by side (e.g. astra:gpt-6-sol,astra:gpt-6-luna)',
-    complete: (a) => (a ? [] : [{ value: 'claude,astra ', hint: 'two engines' }, ...((MODELS.codex.length > 1) ? [{ value: `astra:${MODELS.codex[0]},astra:${MODELS.codex[2]} `, hint: 'two Astra models' }] : []), { value: `claude:${MODELS.claude[0]},claude:${MODELS.claude[1]} `, hint: 'two Claude models' }]),
+    complete: (a) => (a ? completeSeats(a) : [{ value: 'claude,astra ', hint: 'two engines' }, ...((MODELS.codex.length > 1) ? [{ value: `astra:${MODELS.codex[0]},astra:${MODELS.codex[2]} `, hint: 'two Astra models' }] : []), { value: `claude:${MODELS.claude[0]},claude:${MODELS.claude[1]} `, hint: 'two Claude models' }]),
     run: (args, ctx) => {
       const { seats, task } = parseSeats(args, ctx.agentId);
       if (!seats) return 'Name what to compare first, e.g. `/compare astra:gpt-6-sol,astra:gpt-6-luna explain monads` or `/compare claude,astra …`.';

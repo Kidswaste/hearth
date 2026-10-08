@@ -375,3 +375,8 @@
 312. ✓ 10 more Lab actions in Ctrl+K (guides, loop this bar, snap, quantize, remove doubles, cycle looks, copy all code, save sliders, save as look, Stage on top): 32 in all.
 313. ✓ Chat: Ctrl+↑ / Ctrl+↓ jump between your own messages (they flash); select text in a reply → ❝ Quote puts it in your message.
 314. ✓ App: Ctrl+K → Recent notifications (the last 40), middle-click an agent on the rail = a new chat with it, the window title shows what you're looking at.
+
+## Astra × Claude (astra stream)
+- Astra (Codex / ChatGPT) is a full chat agent: per-chat model, effort (minimal…xhigh), web search, answer length, personas (14 presets + your own), opt-in sandboxed file access, opt-in talk-back tools, `/astra-doctor` diagnostics. Commands: `/help astra`.
+- Claude and Astra work together from one chat: the ⚇ chip in the composer or `/duo`, `/relay a→b N`, `/critique`, `/debate N`, `/council seats`, `/compare seats`, `/handoff`, `/opinion` (both ways), 17 ready-made `/collab-preset`s. Results land in one compact card with per-participant token totals. Commands: `/help collab`.
+- Directors (Three / Video) can run on either engine: `/director-engine three astra`. Full list: docs/upgrades/astra.md.

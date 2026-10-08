@@ -108,6 +108,16 @@ out.partial = Native.chatOf(A.id).messages.slice(-2).map((m) => `${m.role}:${m.s
 await Commands.tryRun('/duo thinking check', A.id);
 const th = await until(() => { const x = [...Native.chatOf(A.id).messages].reverse().find((y) => y.role === 'collab'); return x?.status === 'done' && x; });
 out.collabThinking = th?.parts.map((p) => Boolean(p.thinking));
+// seat completion and the armed placeholder
+out.completeSeat = [Commands.get('duo').complete('claude@sk', {}).map((x) => x.value), Commands.get('debate').complete('2 astra~l', {}).map((x) => x.value)];
+await Commands.tryRun('/collab relay', A.id);
+await sleep(100);
+Native.refresh(A.id);
+await sleep(300);
+out.placeholder = document.querySelector(`.surface[data-id="${A.id}"] .composer textarea`).placeholder;
+await Commands.tryRun('/collab off', A.id);
+await sleep(100);
+out.placeholderOff = document.querySelector(`.surface[data-id="${A.id}"] .composer textarea`).placeholder.slice(0, 30);
 // rail star
 out.railStar = [...document.querySelectorAll('#agent-buttons .agent-btn.astra-btn')].map((b) => b.dataset.id);
 // the agent editor shows Astra's options

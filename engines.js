@@ -490,7 +490,7 @@ function friendlyError(engine, message) {
 }
 
 // The engine has no saved session under that id anymore (cleared, other machine, other version).
-const LOST_SESSION = /no (saved |matching )?(conversation|session|thread|rollout)s? (was )?found|(thread|session|conversation|rollout) (not found|does not exist)|could not (find|resume)|failed to (resume|load) (the )?(session|thread|rollout|conversation)/i;
+const LOST_SESSION = /no (saved |matching )?(conversation|session|thread|rollout)s? (was )?found|(thread|session|conversation|rollout) (not found|does not exist)|could not (find|resume) (the )?(session|thread|rollout|conversation)|failed to (resume|load) (the )?(session|thread|rollout|conversation)/i;
 
 function send({ agent, chatId, session, text, options = {} }, emit) {
   const engine = agent.engine;
