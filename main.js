@@ -240,7 +240,7 @@ ipcMain.handle('pick-folder', async (_e, current, title) => {
 ipcMain.handle('engine:stop', (_e, chatId) => engines.stop(chatId));
 ipcMain.handle('engine:stopAll', () => engines.stopAll());
 ipcMain.handle('engine:login', (_e, engine) => engines.login(engine));
-ipcMain.handle('engine:status', () => engines.status());
+ipcMain.handle('engine:status', () => { engines.setEnginePaths(settings().enginePaths); return engines.status(); });
 
 // ---------- window & desktop ----------
 ipcMain.handle('window:show', () => { win.show(); win.focus(); });
