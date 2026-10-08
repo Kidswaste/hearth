@@ -236,7 +236,8 @@ html[data-skin~="forge"] #menu button { padding: 6px 12px; }
 /* ---------- Three.js Lab ---------- */
 /* one tidy toolbar row at 1280 px: slimmer buttons, one control height */
 .three-toolbar { row-gap: 6px; }
-.three-toolbar .tb-group { gap: 2px; padding: 2px 3px; }
+.three-toolbar .tb-group { gap: 2px; padding: 2px 3px; flex-wrap: wrap; max-width: 100%; }
+.three-toolbar :is(.primary, .ghost) { white-space: nowrap; }
 .three-toolbar .ghost.small, .three-toolbar select { min-height: 26px; }
 .three-toolbar .ghost.small { padding: 2px 8px; }
 .three-toolbar .three-sketch-select { height: 28px; }
