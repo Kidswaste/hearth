@@ -1686,7 +1686,7 @@ const ThreeLab = (() => {
       saveExtras();
     }
     setInterval(rememberMedia, 5000);
-    addEventListener('beforeunload', () => { rememberMedia(); window.hub.kvSet('three-lab-extras', extras); });
+    addEventListener('beforeunload', () => { rememberMedia(); if (extrasLoaded) window.hub.kvSet('three-lab-extras', extras); });
     split = el('div', { class: 'three-split' }, editorHost, el('div', { class: 'three-right' }, previewHost, player.el, consoleWrap), column);
     previewHost.append(presentHint, presentHud, blackout, editPanel, stageNote);
     function setCodeVisible(show) {
@@ -1794,7 +1794,7 @@ const ThreeLab = (() => {
       saveLook: (name) => (name ? ctl().looksApi.save(name) && name : ctl().quickLook()),
       look: (name) => ctl().looksApi.apply(name), looks: () => ctl().looksApi.list(), deleteLook: (name) => ctl().looksApi.remove(name),
       lookStep: (d) => ctl().lookStep(d), morphLook: (name, ms) => ctl().morphLook(name, ms),
-      shuffle: (o) => ctl().shuffle(o), shuffleStep: (d) => ctl().shuffleStep(d), tame: (k) => ctl().tame(k), paletteColors: () => ctl().paletteColors(), tweakCode: () => ctl().tweakCode(), saveOne: (q) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(`No slider "${q}"`); c.saveOne(hit.key); return hit; },
+      shuffle: (o) => ctl().shuffle(o), shuffleStep: (d) => ctl().shuffleStep(d), tame: (k) => ctl().tame(k), paletteColors: () => ctl().paletteColors(), tweakCode: () => ctl().tweakCode(), saveOne: (q) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(q ? `No slider "${q}"` : `Name a slider: ${c.controls().map((x) => x.label).slice(0, 12).join(', ') || 'none'}`); c.saveOne(hit.key); return hit; },
       freezeOn: (unit) => freezeOn(unit), stepSketch: (d) => { stepSketch(d); return current?.name; },
       blackout: (on) => setBlackout(on), framesToDirector: (w) => framesToDirector(w), stills: (kind) => stillsAt(kind), fixErrors: () => fixErrors(), looksForSections: (o) => looksForSections(o),
       recordSpan: (o) => { needSong(); return player.recordSpan(o); }, autoMorph: (bars) => ctl().autoMorph(bars), swapSlots: () => ctl().swapSlots(), shuffleInfo: () => ctl().shuffleInfo, setShuffle: (o) => ctl().setShuffle(o),
@@ -1805,12 +1805,12 @@ const ThreeLab = (() => {
       copySliders: () => ctl().copyValues(), pasteSliders: (text) => ctl().pasteValues(text),
       resolve: (q) => ctl().resolve(q),
       setSlider: (q, v) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(`No slider "${q}". Sliders: ${c.controls().map((x) => x.label).join(', ') || 'none'}`); const done = c.setMany({ [hit.key]: v }); return done.length ? hit : null; },
-      knob: (q, u) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(`No slider "${q}"`); return { ...hit, value: c.setNormalized(hit.key, u, { release: true }) }; },
-      lock: (q, on) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(`No slider "${q}"`); c.lock(hit.key, on); return hit; },
-      fav: (q, on) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(`No slider "${q}"`); c.fav(hit.key, on); return hit; },
-      motion: (q, mo) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(`No slider "${q}"`); if (!c.setMotion(hit.key, mo)) throw new Error(`"${hit.label}" isn't a number slider`); return hit; },
-      follow: (q, band, amount) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(`No slider "${q}"`); if (!c.bind(hit.key, band, amount)) throw new Error(`"${hit.label}" isn't a number slider`); return hit; },
-      learn: (q) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(`No slider "${q}"`); midiInit().then((ok) => { if (ok) { midiLearn = { stage: 'control', layer: sel().id, key: hit.key, label: hit.label }; toast(`Turn a knob for "${hit.label}"`, { timeout: 4000 }); } }); return hit; },
+      knob: (q, u) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(q ? `No slider "${q}"` : `Name a slider: ${c.controls().map((x) => x.label).slice(0, 12).join(', ') || 'none'}`); return { ...hit, value: c.setNormalized(hit.key, u, { release: true }) }; },
+      lock: (q, on) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(q ? `No slider "${q}"` : `Name a slider: ${c.controls().map((x) => x.label).slice(0, 12).join(', ') || 'none'}`); c.lock(hit.key, on); return hit; },
+      fav: (q, on) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(q ? `No slider "${q}"` : `Name a slider: ${c.controls().map((x) => x.label).slice(0, 12).join(', ') || 'none'}`); c.fav(hit.key, on); return hit; },
+      motion: (q, mo) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(q ? `No slider "${q}"` : `Name a slider: ${c.controls().map((x) => x.label).slice(0, 12).join(', ') || 'none'}`); if (!c.setMotion(hit.key, mo)) throw new Error(`"${hit.label}" isn't a number slider`); return hit; },
+      follow: (q, band, amount) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(q ? `No slider "${q}"` : `Name a slider: ${c.controls().map((x) => x.label).slice(0, 12).join(', ') || 'none'}`); if (!c.bind(hit.key, band, amount)) throw new Error(`"${hit.label}" isn't a number slider`); return hit; },
+      learn: (q) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(q ? `No slider "${q}"` : `Name a slider: ${c.controls().map((x) => x.label).slice(0, 12).join(', ') || 'none'}`); midiInit().then((ok) => { if (ok) { midiLearn = { stage: 'control', layer: sel().id, key: hit.key, label: hit.label }; toast(`Turn a knob for "${hit.label}"`, { timeout: 4000 }); } }); return hit; },
       sliders: () => ctl().controls(),
       searchSliders: () => { setSlidersVisible(true); selCtl()?.focusSearch(); },
       // preview
@@ -1890,7 +1890,8 @@ const ThreeLab = (() => {
     let rebuildWaiting = false;
     // Per-sketch looks and music links for the sliders, song, frame size and selected layer.
     let extras = {};
-    const saveExtras = debounce(() => window.hub.kvSet('three-lab-extras', extras), 500);
+    let extrasLoaded = false; // never write the empty placeholder over your saved extras (a reload while loading)
+    const saveExtras = debounce(() => { if (extrasLoaded) window.hub.kvSet('three-lab-extras', extras); }, 500);
     let consoleLines = [];
     let lastStats = null;
     let pendingShot = null;
@@ -2563,7 +2564,7 @@ ${code}
     (async () => {
       sketches = await window.hub.kvGet('three-sketches', []);
       ({ versions: history = {}, trash = [] } = await window.hub.kvGet('three-history', {}));
-      extras = await window.hub.kvGet('three-lab-extras', {});
+      extras = await window.hub.kvGet('three-lab-extras', {}); extrasLoaded = true;
       notesAll = await window.hub.kvGet('three-notes', {});
       refsAll = await window.hub.kvGet('three-refs', {});
       thumbs = await window.hub.kvGet('three-thumbs', {});

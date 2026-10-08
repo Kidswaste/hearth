@@ -339,6 +339,7 @@ const ThreeFX = (() => {
   addEventListener('keydown', (e) => {
     if (e.ctrlKey || e.altKey || e.metaKey || e.repeat || e.key.toLowerCase() !== 'x') return;
     if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable || root) return;
+    if (e.target.closest?.('.tool-dock, dialog')) return; // a docked chat or a dialog has focus, not the Lab
     if (!document.querySelector('.layers')?.offsetParent) return;
     e.preventDefault();
     openPicker(e.shiftKey ? 'all' : 'add');

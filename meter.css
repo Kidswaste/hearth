@@ -173,6 +173,10 @@ html[data-skin~="forge"] .mt-kpi {
   border-radius: 0; clip-path: var(--cut-sm);
   background: linear-gradient(160deg, #ffffff0d, #ffffff02 40%, #00000022), #101417; border: 1px solid var(--line-hi, #443e35);
 }
+/* light Forgeheart presets: the strip and the KPI cards follow the light sidebar (the dark glass left the dark
+   values unreadable) */
+html[data-skin~="forge"][data-scheme="light"] { --meter-bg: color-mix(in srgb, var(--sidebar) 92%, transparent); }
+html[data-skin~="forge"][data-scheme="light"] .mt-kpi { background: linear-gradient(160deg, #ffffff80, #ffffff20 40%, #00000008), var(--sidebar); }
 html[data-skin~="forge"] .mt-kpi b { color: var(--meter-active); text-shadow: 0 0 12px #ffd75e40; }
 html[data-skin~="forge"] .mt-seg, html[data-skin~="forge"] .mt-split, html[data-skin~="forge"] .mt-filter, html[data-skin~="forge"] .mt-tabs button { border-radius: 0; }
 html[data-skin~="forge"] .mt-seg button.on { background: linear-gradient(180deg, #ffd75e30, #ffd75e10); box-shadow: inset 0 1px 0 #ffffff22; }

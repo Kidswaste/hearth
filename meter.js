@@ -751,7 +751,7 @@ const Meter = (() => {
   // ---------- chat commands ----------
   const R = (def) => Commands.register({ area: 'Meter', ...def });
   function registerCommands() {
-    R({ name: 'tokens', aliases: ['tok'], args: '[today|week|month|all|chat|<agent> [range]]', desc: 'Token totals (this chat, today, week, month, all time or one agent)', complete: (a) => [...RANGE_ARGS, { value: 'chat' }, ...AGENT_ARGS(a)].filter((x) => x.value.toLowerCase().startsWith(a.toLowerCase())),
+    R({ name: 'tokens', aliases: ['tok'], override: true, // replaces the chat stream's simpler /tokens args: '[today|week|month|all|chat|<agent> [range]]', desc: 'Token totals (this chat, today, week, month, all time or one agent)', complete: (a) => [...RANGE_ARGS, { value: 'chat' }, ...AGENT_ARGS(a)].filter((x) => x.value.toLowerCase().startsWith(a.toLowerCase())),
       run: async (args) => {
         await refresh();
         if (/^chat/i.test(args)) return PANE_TEXT.chat();
@@ -875,7 +875,7 @@ const Meter = (() => {
       run: (args) => { const hits = Usage.find(args).slice(0, 6); return hits.length ? hits.map((x) => `- ${x.key}: ${x.n}× · last ${x.last ? timeAgo(x.last) : 'never'}${(Usage.data.hidden || []).includes(x.key) ? ' · hidden' : ''}`).join('\n') : `No feature matches “${args}”.`; } });
     R({ name: 'clicks', desc: 'Feature clicks today (the meter\'s usability total)', run: () => { const c = Usage.dayStats(); return `${c.clicks} clicks on ${c.features} features today.${c.top.length ? `\nTop: ${c.top.slice(0, 5).map((x) => `${x.key.split(' › ').pop()} ${x.n}×`).join(' · ')}` : ''}`; } });
     R({ name: 'features', aliases: ['your-usage'], desc: 'Open "Your usage": every feature, used and never used', run: () => { Usage.dialog(); } });
-    R({ name: 'context', aliases: ['ctx'], args: '[compact]', desc: 'How full this chat\'s context is; /ctx compact compacts it', complete: () => [{ value: 'compact' }],
+    R({ name: 'context', aliases: ['ctx'], override: true, // replaces the chat stream's /context args: '[compact]', desc: 'How full this chat\'s context is; /ctx compact compacts it', complete: () => [{ value: 'compact' }],
       run: async (args, ctx) => {
         await refresh();
         if (/^compact/i.test(args)) { compact(ctx.agentId); return; }
@@ -917,7 +917,7 @@ const Meter = (() => {
       const hh = hours.indexOf(Math.max(...hours));
       return `Busiest day: **${dayLabel(best)}** (${fmt(tot(sumOf([best])))}) · busiest hour overall: **${hh}:00** \`${spark(hours)}\``;
     } });
-    R({ name: 'live', desc: 'Replies streaming right now with their estimated tokens', run: () => (live.size ? [...live.entries()].map(([id, l]) => `- ${agentName(l.agentId)} · ${H.chats.find((c) => c.id === id)?.title || id} · ≈${fmt(estimate(l))} out so far · ${l.tools} tool calls · ${Math.round((Date.now() - l.started) / 1000)} s`).join('\n') : 'Nothing is streaming.') });
+    R({ name: 'streaming', aliases: ['live-tokens'], desc: 'Replies streaming right now with their estimated tokens', run: () => (live.size ? [...live.entries()].map(([id, l]) => `- ${agentName(l.agentId)} · ${H.chats.find((c) => c.id === id)?.title || id} · ≈${fmt(estimate(l))} out so far · ${l.tools} tool calls · ${Math.round((Date.now() - l.started) / 1000)} s`).join('\n') : 'Nothing is streaming.') });
     R({ name: 'estimate', aliases: ['count-tokens'], args: '[text]', desc: 'Estimate the tokens of some text (or of your draft)', run: (args, ctx) => {
       const text = args || ctx.input?.value || '';
       if (!text) return 'Type /estimate followed by text, or write a draft first.';

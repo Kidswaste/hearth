@@ -807,7 +807,7 @@ gradientTex.colorSpace = THREE.SRGBColorSpace;`;
     const body = el('div', { class: 'kit-body' });
     // the tools' plain buttons (tabs, swatches) would submit the form and close the window: never submit it
     dlg.append(el('form', { class: 'kit-shell', noValidate: true, on: { submit: (e) => e.preventDefault() } }, el('h2', { text: 'Kit' }), body,
-      el('div', { class: 'dialog-actions' }, el('span', { class: 'hint', text: 'Also in chat: /color /palette /harmony /contrast /gradient /ease /bpm /frame /tc' }), el('span', { class: 'spacer' }), el('button', { type: 'button', text: 'Close', on: { click: () => dlg.close() } }))));
+      el('div', { class: 'dialog-actions' }, el('span', { class: 'hint', text: 'Also in chat: /color /kit-palette /harmony /contrast /gradient /easing /kit-bpm /aspect /tc' }), el('span', { class: 'spacer' }), el('button', { type: 'button', text: 'Close', on: { click: () => dlg.close() } }))));
     dlg.addEventListener('close', () => dlg.remove());
     document.body.append(dlg);
     const want = TABS.find((t) => t.id === tab) ? tab : 'color';

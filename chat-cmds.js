@@ -84,7 +84,7 @@ const ChatCmds = (() => {
     return t ? t[0].toUpperCase() + t.slice(1) : null;
   }
   R({
-    name: 'title', aliases: ['auto-title'], area: 'Chat', args: '[ai]', desc: 'Name this chat from its content (ai: let the agent write the title, one short extra call)',
+    name: 'title', area: 'Chat', args: '[ai]', desc: 'Name this chat from its content (ai: let the agent write the title, one short extra call)',
     complete: pick([{ value: 'ai', hint: 'the agent writes it (costs one small call)' }]),
     run: async (args, ctx) => {
       const chat = need(ctx);
@@ -113,7 +113,7 @@ const ChatCmds = (() => {
     run: async (_a, ctx) => { const chat = need(ctx); if (chat.pinned) await Native.togglePin(chat.id); },
   });
   R({
-    name: 'delete', aliases: ['del', 'trash'], area: 'Chat', desc: 'Move this chat to Recently deleted (30 days; /undo or the toast brings it back)',
+    name: 'delete', aliases: ['del'], area: 'Chat', desc: 'Move this chat to Recently deleted (30 days; /undo or the toast brings it back)',
     run: async (_a, ctx) => {
       const chat = need(ctx);
       const { id, agentId, title } = chat;
@@ -638,7 +638,7 @@ const ChatCmds = (() => {
     },
   });
   R({
-    name: 'tokens', aliases: ['usage', 'cost'], area: 'Messages', args: '[today | week | all]', desc: 'Token use: this chat per reply, or every agent today / this week / ever',
+    name: 'tokens', aliases: ['cost'], area: 'Messages', args: '[today | week | all]', desc: 'Token use: this chat per reply, or every agent today / this week / ever',
     complete: pick([{ value: 'today' }, { value: 'week' }, { value: 'all' }]),
     run: async (args, ctx) => {
       if (window.Meter?.summary && args) { const t = await window.Meter.summary(args); if (t) return t; } // the live meter, when installed
@@ -726,7 +726,7 @@ const ChatCmds = (() => {
     },
   });
   R({
-    name: 'screenshot', aliases: ['snap', 'shot'], area: 'Compose', args: '[window | lab]', keys: 'Ctrl+Shift+S', desc: 'Put a picture of the window (or the Lab view) in your message',
+    name: 'screenshot', aliases: ['shot'], area: 'Compose', args: '[window | lab]', keys: 'Ctrl+Shift+S', desc: 'Put a picture of the window (or the Lab view) in your message',
     complete: pick([{ value: 'window' }, { value: 'lab', hint: 'the Three.js Lab canvas' }]),
     run: async (args, ctx) => {
       const agent = H.agent(ctx.agentId);
@@ -1099,7 +1099,7 @@ const ChatCmds = (() => {
   // View: text size, width, density, wrap, timestamps, focus / zen, theme
   // =====================================================================================================
   R({
-    name: 'zoom', aliases: ['text-size', 'font'], area: 'View', args: '[+ | - | 0 | 90% … 150%]', desc: 'Chat text size (only the chats; Ctrl +/- zooms the whole app)',
+    name: 'zoom', aliases: ['text-size'], area: 'View', args: '[+ | - | 0 | 90% … 150%]', desc: 'Chat text size (only the chats; Ctrl +/- zooms the whole app)',
     complete: pick(['+', '-', '0', '90%', '110%', '125%']),
     run: (args) => {
       const a = args.trim();
@@ -1116,7 +1116,7 @@ const ChatCmds = (() => {
     run: (args) => { const w = Object.keys(ChatUX.WIDTHS).find((k) => k.startsWith(args.toLowerCase())) || 'normal'; ChatUX.setPref('width', w); toast(`Message width: ${w}`, { timeout: 1000 }); },
   });
   R({
-    name: 'density', aliases: ['compact-view'], area: 'View', args: '<compact | cozy>', desc: 'Tighter or roomier message spacing',
+    name: 'spacing', aliases: ['compact-view', 'msg-density'], area: 'View', args: '<compact | cozy>', desc: 'Tighter or roomier message spacing',
     complete: pick(['compact', 'cozy']),
     run: (args) => { const d = /^c[oa]m/i.test(args) || (!args && ChatUX.pref('density') !== 'compact') ? 'compact' : 'cozy'; ChatUX.setPref('density', d); toast(`Density: ${d}`, { timeout: 1000 }); },
   });

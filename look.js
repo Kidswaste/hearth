@@ -271,7 +271,7 @@ const Look = (() => {
     });
     const reg = (def) => Commands.register({ area, ...def, complete: narrow(def.complete) });
     reg({
-      name: 'theme', aliases: ['skin'], args: '<name | next | prev | random>', desc: 'Switch the look (Forgeheart, Classic, Chrome Forge, Molten…)',
+      name: 'theme', aliases: ['skin'], override: true, /* replaces the chat stream's simpler /theme */ args: '<name | next | prev | random>', desc: 'Switch the look (Forgeheart, Classic, Chrome Forge, Molten…)',
       complete: () => [...ids().map((id) => ({ value: id, label: id, hint: label(id) })), { value: 'next', hint: 'Next preset' }, { value: 'prev', hint: 'Previous preset' }, { value: 'random', hint: 'Surprise me' }],
       run: (args) => {
         const a = args.trim().toLowerCase();
@@ -285,9 +285,11 @@ const Look = (() => {
         return `Look → ${label(id)}`;
       },
     });
-    reg({ name: 'themes', aliases: ['looks'], desc: 'List every look preset (▸ = current)', run: () => `${themeList()}\n\n/theme <name> switches · /look opens the picker` });
-    reg({
-      name: 'look', aliases: ['appearance'], args: '[reset | status | save <name> | load <name> | delete <name>]', desc: 'Open the Appearance picker (presets, textures, glow, motion…)',
+    reg({ name: 'themes', desc: 'List every look preset (▸ = current)', run: () => `${themeList()}\n\n/theme <name> switches · /appearance (or /look outside the Lab) opens the picker` });
+    // /look is shared with the Three.js Lab's saved looks (the Lab's wins in the Lab and its docked chats);
+    // /appearance is always this one.
+    const lookDef = {
+      name: 'appearance', args: '[reset | status | save <name> | load <name> | delete <name>]', desc: 'Open the Appearance picker (presets, textures, glow, motion…)',
       complete: () => [{ value: 'reset', hint: 'Textures, glow, motion, density, corners and accent back to the preset' }, { value: 'status', hint: 'What is set now' },
         { value: 'save ', hint: 'Keep this preset + your tweaks under a name' }, ...Object.keys(saved()).flatMap((n) => [{ value: `load ${n}`, hint: 'Your look' }, { value: `delete ${n}`, hint: 'Forget it' }])],
       run: (args) => {
@@ -301,7 +303,9 @@ const Look = (() => {
         openDialog();
         return '';
       },
-    });
+    };
+    reg(lookDef);
+    reg({ ...lookDef, name: 'look' });
     reg({ name: 'classic', args: '[off]', desc: 'Forgeheart Classic (the original look); /classic off → Forgeheart',
       run: (args) => {
         const id = /^(off|no|new)$/i.test(args.trim()) ? 'forgeheart' : 'classic';

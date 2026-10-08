@@ -247,7 +247,7 @@ const AppUI = (() => {
         class: `palette-item${i === sel ? ' sel' : ''}`,
         on: { click: () => { close(); it.run(); }, mousemove: () => { if (sel !== i) { sel = i; paint(); } } },
       }, el('span', { class: 'p-label', text: it.label }), it.detail ? el('span', { class: 'p-detail', text: it.detail }) : null,
-      el('span', { class: 'p-kind', text: it.keys ? `${it.kind} · ${it.keys}` : it.kind }))) : [el('div', { class: 'palette-empty', text: q.startsWith('?') ? 'No messages match' : 'Nothing matches' })]));
+      el('span', { class: 'p-kind', text: it.keys ? `${it.kind} · ${Commands.keyText(it.keys)}` : it.kind }))) : [el('div', { class: 'palette-empty', text: q.startsWith('?') ? 'No messages match' : 'Nothing matches' })]));
     };
     const paint = () => [...list.children].forEach((c, i) => c.classList.toggle('sel', i === sel));
     const debounced = debounce(render, 120);
@@ -308,17 +308,21 @@ const AppUI = (() => {
     ['Ctrl+N', 'New native chat'], ['Ctrl+F', 'Find in the current view'], ['Ctrl+J', 'Notes'], ['Ctrl+\\', 'Show/hide chats panel'],
     ['Ctrl+G', 'All agents side by side'], ['Ctrl+Shift+Space', 'Ask all agents'], ['Ctrl+B', 'Show/hide ask-all bar'],
     ['Ctrl + / − / 0', 'Text size'], ['Ctrl+R', 'Reload website'], ['Ctrl+Shift+R', 'Reload the hub itself'], ['Ctrl+,', 'Settings'], ['Ctrl+/', 'This list'],
-    ['Enter / Shift+Enter', 'Send / new line in a chat'], ['/', 'Insert a saved prompt (at the start of the message box)'], ['Esc', 'Stop the reply being written'],
+    ['Enter / Shift+Enter', 'Send / new line in a chat'], ['/', 'Chat commands (at the start of the message box; /help lists them)'], ['Esc', 'Stop the reply being written'],
+    ['Alt+T / Alt+R', 'In a chat box: open / close thinking · read the last reply aloud'], ['Alt+B / Alt+P / Alt+M', 'In a chat box: bookmark / pin / menu of the last reply'],
+    ['Alt+F', 'Find in this chat'], ['Alt+↑ / Alt+↓', 'Messages you sent before (in the chat box)'], ['Ctrl+Shift+U', 'Token & usage dashboard'],
     ['Ctrl+V (image)', 'Attach a screenshot to a native chat'], ['Ctrl+Enter', 'Run code in Three.js Lab and shader playground'],
     ['Ctrl+/ (in code)', 'Toggle comment'], ['Ctrl+D (in code)', 'Duplicate line'], ['Ctrl+Alt+H', 'Show/hide the hub from anywhere (configurable)'],
     ['Ctrl+Shift+S', 'Snapshot the window into the chat you\'re using'], ['Ctrl+Shift+T', 'Keep Hearth on top of other windows'],
-    ['Ctrl+Shift+L', 'Appearance: looks, textures, glow, motion (/theme, /look in any chat)'],
+    ['Ctrl+Shift+L', 'Appearance: looks, textures, glow, motion (/theme, /appearance in any chat)'],
   ];
   // Keys inside the Three.js Lab sketch (when you're not typing).
   const LAB_SHORTCUTS = [
     ['Space', 'Play / pause'], ['← →', 'Nudge 10 ms (Alt 1 ms, Shift a grid step)'], ['[ ]', 'Loop start / end at the playhead'],
     ['K S H', 'Kick / snare / hit marker at the playhead'], ['C', 'Drop a hot cue'], ['1…9', 'Jump to cue 1…9'],
     ['A', 'Show / hide every animated curve'], ['W', 'Write: record slider / knob moves as curves while it plays'], ['N', 'Note with a screenshot'], ['F', 'Freeze the picture (Shift+F: Focus)'], ['P', 'Present: fullscreen preview'], ['R / Shift+R', 'Shuffle the sliders / the shuffle before'], ['Shift+1…5', 'Frame size: Fit, 9:16, 16:9, 4:5, 1:1'], ['T / Shift+T', 'Tap tempo / this tap is the 1'],
+    ['X / Shift+X', 'FX picker: effects & layers / everything'], ['Shift+A / B / C', 'Recall slider slot A, B, C'], ['Alt+1…9', 'Hide / show layer 1…9 (Shift: solo)'],
+    ['Ctrl+S / Ctrl+Shift+S', 'Save the sliders into the code / as a look (in the Lab)'], ['Alt+N', 'Code ⇄ nodes (in the Lab code view)'], ['O / `', 'Your sketches / console'], ['?', 'Every Lab key'],
     ['Shift+drag (lane)', 'Select points'], ['Ctrl+drag (lane)', 'Draw points'], ['Alt+drag (selection)', 'Stretch the swing'],
     ['Ctrl+C / V / D / A', 'Copy, paste at playhead, duplicate, select all points'], ['Delete', 'Delete selected points / marker'], ['Ctrl+Z', 'Undo grid, marker, cue or curve change'],
   ];

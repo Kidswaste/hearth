@@ -10,6 +10,8 @@
   const onOff = (s) => (/^(on|yes|1|true|show)$/i.test(s) ? true : /^(off|no|0|false|hide)$/i.test(s) ? false : undefined);
   const { parseTime, fmtMs } = ThreeMedia._test;
   const time = (s) => { const t = parseTime(String(s || '').replace(/s$/, '')); if (!Number.isFinite(t)) throw new Error(`"${s}" isn't a time (m:ss.mmm or seconds)`); return t; };
+  // in the Lab or one of its docked chats (shared names like /look prefer the Lab's there, see Commands `when`)
+  const inLab = (ctx) => H.surfaceIdFor(H.activeId) === 'tool:three' || H.agent(ctx?.agentId)?.dock === 'three';
   const reg = (name, desc, args, run, complete, extra = {}) => Commands.register({ name, desc, args, area: AREA, run, complete, ...extra });
   const sliderNames = () => (peek()?.sliders() || []).map((x) => ({ value: x.label, hint: x.group || '' }));
   const lookNames = () => { try { return peek()?.looks() || []; } catch { return []; } };
@@ -34,7 +36,8 @@
     const s = (await lab(false)).state;
     return `**${s.sketch}** · layer ${s.layer} · ${s.frame.id === 'fit' ? `fit ${s.frame.width}×${s.frame.height}` : `${s.frame.id} ${s.frame.width}×${s.frame.height}`}${s.frozen ? ' · ❚❚ frozen' : ''}${s.song ? ` · ♪ ${s.song.split(/[\\/]/).pop()}${s.playing ? ' (playing)' : ''}` : ''}${s.bpm ? ` · ${Math.round(s.bpm * 100) / 100} BPM` : ''}${s.live ? ` · live ${s.live}` : ''}`;
   }, null, { aliases: ['lab-status'] });
-  reg('run', 'Run the sketch again from the start', '', async () => { (await lab()).run(); });
+  // shares /run with the chat's "/run /cmd one ; /cmd two" chain (used by /alias): alone it reruns the sketch
+  reg('run', 'Run the sketch again from the start', '', async () => { (await lab()).run(); }, null, { when: (ctx, args) => !args.trim(), whenLabel: 'alone' });
   reg('restart-sketch', 'Restart the simulation from scratch (fresh page, GPU and sound)', '', async () => { (await lab()).restart(); });
   reg('lab-keys', 'Show every Lab key', '', async () => { (await lab()).keys(); });
 
@@ -96,7 +99,7 @@
     if (/^(next|prev|previous|random)$/i.test(w[0])) { const n = c.lookStep(/^next$/i.test(w[0]) ? 1 : /^random$/i.test(w[0]) ? 'random' : -1); return n ? `Look "${n}"` : 'No looks yet'; }
     if (w[0].toLowerCase() === 'morph') { const n = c.morphLook(w.slice(1).join(' ')); return n ? null : `No look "${w.slice(1).join(' ')}"`; }
     const name = c.look(args); return `Look "${name}"`;
-  }, (a) => pick([...lookNames(), 'next', 'prev', 'random', 'morph', 'save', 'delete'], a), { aliases: ['looks'] });
+  }, (a) => pick([...lookNames(), 'next', 'prev', 'random', 'morph', 'save', 'delete'], a), { aliases: ['looks'], when: (ctx, a) => inLab(ctx) || lookNames().some((n) => String(n).toLowerCase() === a.trim().toLowerCase()), whenLabel: 'in the Lab' });
   reg('save-look', 'Save the current slider values as a look (a quick name if you give none)', '[name]', async (args) => `Saved look "${(await lab()).saveLook(args)}"`);
   reg('reset-sliders', 'Put the selected layer\'s sliders back to the values in the code', '', async () => { (await lab()).resetSliders(); });
   reg('undo-sliders', 'Undo the last slider change', '', async () => { (await lab()).undoSliders(); });

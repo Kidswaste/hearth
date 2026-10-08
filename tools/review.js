@@ -1625,8 +1625,11 @@ const Review = (() => {
   setInterval(() => { if (refs.list?.isConnected && refs.list.offsetParent) load(); }, 20000);
 
   // Lab recordings: three-media calls this after saving one, wherever it was saved.
-  function noteRecording(path) {
+  async function noteRecording(path) {
     if (!path) return;
+    // Video Review may never have opened this session: read your saved library first, so this write doesn't
+    // replace favorites, tags and exports with the empty placeholder.
+    if (!load.once) S.lib = { fav: [], tags: {}, recordings: [], exports: [], ...(await window.hub.kvGet('video-library', {})) };
     S.lib.recordings = [path, ...S.lib.recordings.filter((p) => p !== path)].slice(0, 300);
     window.hub.kvSet('video-library', S.lib);
     if (refs.list) load();
