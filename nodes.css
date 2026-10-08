@@ -117,6 +117,7 @@
 .nv-widget.k-vec .nv-num-lbl { flex: 1; }
 .nv-slider-mark { font-size: 9px; color: var(--accent); opacity: .75; position: relative; }
 .nv.ro .nv-widget { pointer-events: none; }
+.nv.ro .nv-add { display: none; }
 
 /* far zoom: hide the small print */
 .nv-far .nv-body .nv-widget > *:not(.nv-num-fill), .nv-far .nv-lbl, .nv-far .nv-live { visibility: hidden; }

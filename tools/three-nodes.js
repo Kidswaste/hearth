@@ -1542,7 +1542,14 @@ let ${id}Travel = 0;`);
     }
     if (v === 'rm' || v === 'remove' || v === 'delete') { const ids = args.split(/[\s,]+/).filter(Boolean); L.edit((view) => view.removeNodes(ids)); return `Removed ${ids.join(', ')}.`; }
     if (v === 'rename') { const [id, ...t] = args.split(/\s+/); L.edit((view) => view.setTitle(id, t.join(' '))); return null; }
-    if (v === 'frame' || v === 'group') { const [title, ...ids] = args.split(/\s+/); L.edit((view) => view.frame(ids.length ? ids : L.view.selection(), { title: title || 'Group' })); return `Framed as "${title}" (a slider group in the Lab).`; }
+    if (v === 'frame' || v === 'group') {
+      const [title, ...want] = args.split(/\s+/);
+      const have = new Set(L.view.getGraph().nodes.map((n) => n.id));
+      const ids = (want.length ? want : L.view.selection()).filter((x) => have.has(x));
+      if (!ids.length) throw new Error(`No such nodes${want.length ? `: ${want.join(', ')}` : ' selected'}. Nodes: ${[...have].join(', ')}`);
+      L.edit((view) => view.frame(ids, { title: title || 'Group' }));
+      return `Framed ${ids.join(', ')} as "${title || 'Group'}" (their slider group in the Lab).`;
+    }
     if (v === 'note') { L.edit((view) => view.note(args)); return null; }
     throw new Error(`Unknown: ${verb}. Try presets, types, new, layer, preset, list, add, link, unlink, set, rm, layout, rebuild, outline.`);
   }

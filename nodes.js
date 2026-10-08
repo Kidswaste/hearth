@@ -1394,8 +1394,10 @@ const NodeView = (() => {
     for (const it of items) {
       if (!it.id) continue;
       for (const other of items) {
-        if (other === it || !other.id || other.kind === 'section' || other.kind === 'loop' || other.name.length < 2) continue;
-        if (new RegExp(`\\b${other.name.replace(/\$/g, '\\$')}\\b`).test(it.body.split('\n').slice(1).join('\n') || (it.kind === 'loop' ? it.body : ''))) graph.links.push({ from: [other.id, 'out'], to: [it.id, 'uses'] });
+        if (other === it || !other.id || other.kind === 'section' || other.kind === 'loop' || (other.name.length < 2 && other.kind === 'value')) continue;
+        // its code without its own declared name
+        const own = it.kind === 'loop' || it.kind === 'section' ? it.body : it.body.replace(new RegExp(`\\b${it.name.replace(/\$/g, '\\$')}\\b`), '');
+        if (new RegExp(`\\b${other.name.replace(/\$/g, '\\$')}\\b`).test(own)) graph.links.push({ from: [other.id, 'out'], to: [it.id, 'uses'] });
       }
       if (audioUses.length && /\baudio\./.test(it.body)) graph.links.push({ from: ['music0', 'out'], to: [it.id, 'uses'] });
     }
