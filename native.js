@@ -419,6 +419,9 @@ const Native = (() => {
       const idx = Number(act.closest('.msg').dataset.index);
       const what = act.dataset.msgAct;
       if (what === 'menu') { messageMenu(agentId, idx, act); return; }
+      if (what === 'continue') { send(agentId, 'Continue exactly where you stopped.').catch((err) => toast(err.message, { type: 'error' })); return; }
+      if (what === 'copy-error') { copyText(act.closest('.msg').dataset.raw, 'Error copied'); return; }
+      if (what === 'engines') { Commands.exec('/engines', agentId); return; }
       if (what === 'fold') { const node = act.closest('.msg'); unfolded.delete(`${H.activeChat[agentId]}:${idx}`); node.classList.add('collapsed'); act.remove(); node.append(el('button', { class: 'show-more-msg msg-act', text: 'Show full reply', dataset: { msgAct: 'more' } })); node.scrollIntoView({ block: 'nearest' }); return; }
       if (what === 'branch') branchFrom(agentId, idx);
       if (what === 'speak') speak(act.closest('.msg').dataset.raw, act);
@@ -530,12 +533,14 @@ const Native = (() => {
         el('button', { class: 'copy-msg', text: 'Copy' }),
         act('speak', '🔊', 'Read it aloud (click again to stop)'),
         isLast && isRetryable(m) ? act('retry', 'Retry', 'Write this reply again') : null,
+        isLast && m.stopped ? act('continue', 'Continue', 'Ask it to continue where it stopped') : null,
         more));
     } else if (m.role === 'user') {
       node.append(el('div', { class: 'msg-foot user-foot' }, num, m.edited ? el('span', { class: 'edited-mark', text: 'edited', title: m.edits?.length ? `Before: ${m.edits.at(-1).slice(0, 300)}` : '' }) : null, timeEl,
         act('edit', 'Edit', 'Edit and resend (Up arrow edits your last message)'), more));
     } else if (m.role === 'error' && isLast) {
-      node.append(el('div', { class: 'msg-foot' }, act('retry', 'Retry', 'Send the last message again')));
+      node.append(el('div', { class: 'msg-foot' }, act('retry', 'Retry', 'Send the last message again'),
+        act('copy-error', 'Copy error', 'Copy the error text'), act('engines', 'Check engines', 'Whether Claude Code / Codex were found (/engines)')));
     }
     for (const fn of hooks.message) { try { fn(node, m, index, agent); } catch (err) { console.warn(err); } }
     return node;

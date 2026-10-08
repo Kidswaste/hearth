@@ -377,6 +377,21 @@ const ChatCmds = (() => {
       Native.jumpTo(ctx.agentId, i);
     },
   });
+  for (const [name, fold] of [['fold-code', true], ['unfold-code', false]]) {
+    R({
+      name, area: 'Messages', desc: fold ? 'Fold every long code block in this chat' : 'Show every code block in full',
+      run: (_a, ctx) => {
+        const list = Native.view(ctx.agentId)?.list;
+        let n = 0;
+        for (const pre of list?.querySelectorAll('.msg .body pre') || []) {
+          const lines = pre.querySelector('code').textContent.split('\n').length;
+          if (fold && lines > 12 && !pre.classList.contains('code-folded')) { pre.classList.add('code-folded'); if (!pre.querySelector('.code-unfold')) pre.append(el('button', { class: 'code-unfold', text: `Show all ${lines} lines`, dataset: { act: 'unfold' } })); n += 1; }
+          if (!fold && pre.classList.contains('code-folded')) { pre.classList.remove('code-folded'); pre.querySelector('.code-unfold')?.remove(); n += 1; }
+        }
+        toast(n ? `${fold ? 'Folded' : 'Unfolded'} ${plural(n, 'code block')}` : 'No code block to change', { timeout: 1200 });
+      },
+    });
+  }
   R({
     name: 'thinking', aliases: ['thoughts', 'think'], area: 'Messages', args: '[open | close | always | never | show | hide]', keys: 'Alt+T', desc: 'Open or close every “Thought process” block; always: keep them open',
     complete: pick([{ value: 'open' }, { value: 'close' }, { value: 'always', hint: 'finished thinking starts open' }, { value: 'never', hint: 'finished thinking starts folded (default)' }, { value: 'hide', hint: 'this agent stops streaming its thinking' }, { value: 'show', hint: 'this agent streams its thinking (default)' }, { value: 'copy', hint: 'copy the last thinking' }]),
