@@ -710,6 +710,13 @@ const ThreeMedia = (() => {
         // the sandbox sends this a few times a second while it plays: only a real change (play / pause / end / a new
         // song length) repaints the control row; plain time updates just re-sync the clock
         const same = st.playing === msg.playing && (msg.duration || st.duration) === st.duration && !msg.ended && !recording;
+        // While it plays, the playhead runs on its own smooth clock and is steered toward the reported time: snapping
+        // to every report (late by however long the message took) made it jump back and forth. A real jump (seek,
+        // loop, a stall over 0.3 s) still snaps.
+        if (same && st.playing && msg.playing) {
+          const predicted = now(); const err = msg.time - predicted;
+          if (Math.abs(err) < 0.3) { st.time = predicted + err * 0.15; st.stampAt = performance.now(); if (!wish) return; }
+        }
         Object.assign(st, { time: msg.time, duration: msg.duration || st.duration, playing: msg.playing, stampAt: performance.now() });
         if (same && !wish) { if (!st.playing) livePaint(); return; }
         if (wish && wish.play === msg.playing) wish = null;
@@ -1369,16 +1376,40 @@ const ThreeMedia = (() => {
       draw();
     }
     const setText = (node, text) => { if (node.textContent !== text) node.textContent = text; };
+    // The playheads glide on the compositor: while a song plays each one gets a linear animation to where it will be
+    // at the end of the view (the end of the song for the minimap), so it moves at the screen's refresh rate even when
+    // the main thread is busy (the preview rendering, a reply streaming). JS only restarts it when the view, the rate
+    // or the play state changes, or when it has drifted more than 2 px from the audio clock.
+    const heads = new Map(); // element -> { anim, key, x0, x1 }
+    function glide(elm, x, xEnd, ms, key, moving) {
+      let h = heads.get(elm);
+      if (!moving || !(ms > 30)) {
+        if (h?.anim) { h.anim.cancel(); h.anim = null; }
+        elm.style.transform = `translate3d(${x.toFixed(2)}px, 0, 0)`;
+        return;
+      }
+      const at = h?.anim ? h.x0 + (h.x1 - h.x0) * (h.anim.effect.getComputedTiming().progress ?? 0) : NaN;
+      if (h?.anim && h.key === key && Math.abs(at - x) <= 2) return;
+      h?.anim?.cancel();
+      elm.style.transform = `translate3d(${x.toFixed(2)}px, 0, 0)`;
+      const anim = elm.animate([{ transform: `translate3d(${x.toFixed(2)}px, 0, 0)` }, { transform: `translate3d(${xEnd.toFixed(2)}px, 0, 0)` }], { duration: ms, easing: 'linear', fill: 'forwards' });
+      anim.startTime = document.timeline.currentTime; // start at x now, not when it's first drawn (a few frames later)
+      heads.set(elm, { anim, key, x0: x, x1: xEnd });
+    }
     function placePlayheads() {
       watchCues();
-      const t = now();
+      const rate = st.rate || 1;
+      // positions on the frame's clock (what the animations run on), not "now": in a slow frame the two differ
+      const t = st.playing ? Math.max(0, now() - ((performance.now() - (document.timeline.currentTime ?? performance.now())) / 1000) * rate) : now();
       const w = tw();
       const x = D() ? ((t - v0()) / span()) * w : -10;
+      const moving = st.playing && Boolean(D()) && !dragging;
       playheadEl.style.display = x >= -1 && x <= w + 1 && canvas.offsetParent ? '' : 'none';
-      playheadEl.style.transform = `translateX(${Math.round(x)}px)`;
+      const vEnd = Math.min(v0() + span(), D() || 0);
+      glide(playheadEl, x, ((vEnd - v0()) / span()) * w, ((vEnd - t) / rate) * 1000, `${v0()}|${span()}|${w}|${rate}`, moving);
       const mw = minimap.clientWidth;
       miniHeadEl.style.display = D() && mw && !minimap.hidden ? '' : 'none';
-      miniHeadEl.style.transform = `translateX(${Math.round(D() ? (t / D()) * mw : 0)}px)`;
+      glide(miniHeadEl, D() ? (t / D()) * mw : 0, mw, ((D() - t) / rate) * 1000, `${D()}|${mw}|${rate}`, moving && mw > 0);
     }
     function now() { return st.playing ? Math.min(D() || Infinity, st.time + ((performance.now() - st.stampAt) / 1000) * st.rate) : st.time; }
     function paint() {
