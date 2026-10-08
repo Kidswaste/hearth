@@ -30,6 +30,24 @@ const PORT = 9400 + Math.floor(Math.random() * 500);
 // Errors that come from the test environment, not the app (no GPU, no engines installed, no network).
 const IGNORE = [/GPU|gpu_|viz|dri3|libva|vaInitialize|Vulkan|EGL|GLES|ANGLE/i, /net::ERR_/, /Autofill\./, /ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|ERR_PROXY|ERR_TUNNEL/, /Electron Security Warning/, /favicon/i, /DevTools/, /dbus|org\.freedesktop/i];
 
+// https://cdn.jsdelivr.net/npm/three@V/<path> -> /opt/cdn-cache/three@V/package/<path> (fetched once from the npm registry).
+const CDN_CACHE = process.env.CDN_CACHE || '/opt/cdn-cache';
+const CDN_PATTERNS = [{ urlPattern: 'https://cdn.jsdelivr.net/*', requestStage: 'Request' }];
+function cdnFile(url) {
+  const m = url.match(/^https:\/\/cdn\.jsdelivr\.net\/npm\/([^@/]+)@([^/]+)\/([^?#]*)/);
+  if (!m) return null;
+  const [, pkg, ver, rest] = m;
+  const root = path.join(CDN_CACHE, `${pkg}@${ver}`, 'package');
+  if (!fs.existsSync(root)) {
+    try {
+      fs.mkdirSync(path.dirname(root), { recursive: true });
+      execFileSync('sh', ['-c', `curl -fsSL "https://registry.npmjs.org/${pkg}/-/${pkg}-${ver}.tgz" | tar -xz -C "${path.dirname(root)}"`]);
+    } catch { return null; }
+  }
+  const file = path.join(root, rest);
+  return file.startsWith(root) && fs.existsSync(file) && fs.statSync(file).isFile() ? file : null;
+}
+
 function copyApp() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-smoke-'));
   const skip = new Set(['.git', 'data', 'electron', 'electron-mac', 'node_modules', 'dev']);
@@ -76,6 +94,18 @@ async function cdpConnect() {
     ws.onmessage = (m) => {
       const msg = JSON.parse(m.data);
       if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); return; }
+      // CDN requests (three.js from jsdelivr) are answered from a local copy of the npm package, since this
+      // container's network may not reach the CDN. Sandboxed iframes run in their own target: attach to them too.
+      if (msg.method === 'Fetch.requestPaused') { if (process.env.SMOKE_DEBUG) console.log('cdn', msg.params.request.url, !!cdnFile(msg.params.request.url)); serveCdn(msg.params, msg.sessionId); return; }
+      if (process.env.SMOKE_DEBUG && msg.method === 'Target.attachedToTarget') console.log('attached', msg.params.targetInfo.type, msg.params.targetInfo.url.slice(0, 80));
+      if (msg.method === 'Target.attachedToTarget') {
+        const sid = msg.params.sessionId;
+        send('Fetch.enable', { patterns: CDN_PATTERNS }, sid);
+        send('Runtime.enable', {}, sid);
+        send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }, sid);
+        send('Runtime.runIfWaitingForDebugger', {}, sid);
+        return;
+      }
       if (msg.method === 'Runtime.exceptionThrown') {
         const d = msg.params.exceptionDetails;
         problems.push(`exception: ${d.exception?.description || d.text} @ ${d.url || ''}:${d.lineNumber}`);
@@ -89,8 +119,16 @@ async function cdpConnect() {
         if (!IGNORE.some((re) => re.test(e.text + (e.url || '')))) problems.push(`log: ${e.text} ${e.url || ''}`);
       }
     };
-    const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+    const send = (method, params = {}, sessionId) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params, ...(sessionId ? { sessionId } : {}) })); });
+    const serveCdn = (p, sid) => {
+      const file = cdnFile(p.request.url);
+      if (!file) { send('Fetch.continueRequest', { requestId: p.requestId }, sid); return; }
+      const type = /\.m?js$/.test(file) ? 'text/javascript' : /\.json$/.test(file) ? 'application/json' : /\.wasm$/.test(file) ? 'application/wasm' : 'application/octet-stream';
+      send('Fetch.fulfillRequest', { requestId: p.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: type }, { name: 'Access-Control-Allow-Origin', value: '*' }], body: fs.readFileSync(file).toString('base64') }, sid);
+    };
     await send('Runtime.enable'); await send('Log.enable'); await send('Page.enable');
+    await send('Fetch.enable', { patterns: CDN_PATTERNS });
+    await send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true });
     await send('Page.reload', { ignoreCache: true });
     await new Promise((r) => setTimeout(r, waitMs));
     const run = async (expr) => {
