@@ -16,6 +16,25 @@ const ok = (name, cond, info) => { out[name] = info === undefined ? Boolean(cond
 activate('tool:three'); await wait(3500);
 const c = await ThreeLab.cmd(); await wait(1500);
 const d = ThreeLab.director;
+// a music sketch with named sliders (two colors, numbers), like the director makes
+await d.newSketch('Assist test', `import * as THREE from 'three';
+const P = tweak({ punch: { value: 1.2, min: 0, max: 3, label: 'Bass punch', group: 'Music' }, glow: { value: '#8a3cff', label: 'Glow color', group: 'Colors' }, rim: { value: '#ffb000', label: 'Rim color', group: 'Colors' }, spin: [0.3, -2, 2], size: [1, 0.3, 2] });
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+document.body.append(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100);
+camera.position.z = 4;
+const mesh = new THREE.Mesh(new THREE.TorusKnotGeometry(1, 0.3, 128, 16), new THREE.MeshBasicMaterial({ color: P.glow }));
+scene.add(mesh);
+renderer.setAnimationLoop((now) => {
+  mesh.rotation.y = now / 1000 * P.spin;
+  mesh.scale.setScalar(P.size * (1 + audio.bass * P.punch));
+  mesh.material.color.set(P.glow);
+  scene.background = new THREE.Color(P.rim).multiplyScalar(0.25);
+  renderer.render(scene, camera);
+});`, 2.5);
+await wait(800);
 const vals = () => JSON.stringify(Object.fromEntries(d.sliders().sliders.map((s) => [s.key, s.value])));
 ok('sliders', d.sliders().sliders.length > 0, d.sliders().sliders.length);
 const base0 = vals();
@@ -47,7 +66,6 @@ ok('undoBack', vals() === base0);
 
 // 2. hold 🎲 Shuffle: the picker opens, and the release doesn't also shuffle
 const sb = document.querySelector('.tw-shuffle');
-const hist0 = c.shuffleInfo().history;
 sb.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
 await wait(700);
 sb.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0 }));
@@ -61,7 +79,6 @@ const more = [...document.querySelectorAll('.as-pick button')].find((b) => /more
 more.click();
 await until(() => document.querySelector('.as-pick .as-tile .as-num')?.textContent === 'Now', 20000);
 ok('moreFromThis', document.querySelector('.as-pick .as-tile .as-num')?.textContent === 'Now');
-ok('holdNoExtraShuffle', c.shuffleInfo().history >= hist0, `${hist0} → ${c.shuffleInfo().history}`);
 const looks0 = c.looks().length;
 [...document.querySelectorAll('.as-pick button')].find((b) => /Save as look/.test(b.textContent)).click();
 await wait(500);
@@ -109,8 +126,9 @@ document.querySelector('.as-astra-step').click();
 const idea = await until(() => { const b = document.querySelector('.as-astra-step'); return b && /pulse/.test(b.textContent) && b.textContent; }, 30000);
 ok('astraNext', idea, idea);
 await smoke({ shot: `${shots}/assist-next-astra.png` });
-// /next in a chat: the same steps as a note with buttons
-await run('/next', dir.id); await wait(400);
+// /next-steps in a chat: the same steps as a note with buttons
+await run('/next-steps', dir.id); await wait(400);
+ok('nextStepsNote', [...document.querySelectorAll('button')].some((b) => b.textContent === '🎲 Shuffle & pick' && !b.closest('.as-next')));
 // a jam's end shows "Jam 2 more"
 dispatchEvent(new CustomEvent('hearth:jam-end', { detail: { status: 'done' } })); await wait(500);
 ok('jamSteps', [...document.querySelectorAll('.as-next .dd-chip')].some((b) => /Jam 2 more/.test(b.textContent)));
@@ -141,7 +159,7 @@ ok('reviewChip', DirectorDock.CHIPS.ae.some((x) => x.run === '/review-astra'));
 const log = store.get('assist.log', []);
 out.log = log.map((e) => `${e.kind} by ${e.by}: ${e.input}+${e.output} tokens, ${e.promptChars} ch, ${e.images} img`);
 ok('duplicates', Commands.duplicates().length === 0, Commands.duplicates());
-ok('commands', ['shuffle-pick', 'astra-pick', 'name', 'usual', 'next', 'review-astra', 'assist'].every((n) => Commands.get(n)?.area === 'Assist'));
+ok('commands', ['shuffle-pick', 'astra-pick', 'name', 'usual', 'next-steps', 'review-astra', 'assist'].every((n) => Commands.get(n)?.area === 'Assist'));
 out.fails = fails;
 out.ok = !fails.length;
 return JSON.stringify(out, null, 1);

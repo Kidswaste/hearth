@@ -394,6 +394,8 @@ const Assist = (() => {
       astraChip.dataset.send = step;
       astraChip.textContent = `✦ ${cap(step, 46)}`;
       astraChip.title = `${r.by}: ${step}\nClick to send it to the director · ${costText(r)}`;
+      group.prepend(astraChip); // its answer first, where it can be read
+      e.chips.scrollLeft = 0;
     });
     const group = el('span', { class: 'as-next', dataset: { feature: 'Next steps' } }, ...steps.map(chip), astraChip);
     e.chips.prepend(group);
@@ -464,7 +466,10 @@ const Assist = (() => {
   }
 
   // ---------- chat commands ----------
-  const reg = (def) => { if (Commands.get(def.name)) { console.warn(`[assist] /${def.name} exists: not registered`); return; } Commands.register({ area: 'Assist', ...def }); };
+  const reg = (def) => {
+    if (Commands.get(def.name)) { console.warn(`[assist] /${def.name} exists: not registered`); return; }
+    Commands.register({ area: 'Assist', ...def, aliases: (def.aliases || []).filter((x) => !Commands.get(x)) });
+  };
   reg({
     name: 'shuffle-pick', aliases: ['pick-shuffle'], args: '[2–9] [astra] [goal…]',
     desc: 'Shuffle the sliders n times (4) into thumbnails; click one to keep, or ✦ lets Astra pick the strongest for the song',
@@ -511,7 +516,7 @@ const Assist = (() => {
     run: async () => useUsual(),
   });
   reg({
-    name: 'next', aliases: ['next-steps'], args: '', desc: 'What to do next, from the Lab (or Video Review) as it is now: a few one-click steps, no tokens',
+    name: 'next-steps', aliases: ['whats-next'], args: '', desc: 'What to do next, from the Lab (or Video Review) as it is now: a few one-click steps, no tokens',
     keywords: 'suggest what now next step ideas',
     run: async (args, ctx) => {
       const toolId = ctx.place === 'ae' ? 'ae' : 'three';
