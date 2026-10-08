@@ -32,6 +32,8 @@
       .replace(/~~(.+?)~~/g, '<del>$1</del>')
       .replace(/==([^=\s][^=]*?)==/g, '<mark>$1</mark>')
       .replace(/\[\[([^\]]{1,24})\]\]/g, '<kbd>$1</kbd>')
+      // pictures from the web (https only), shown small; click opens them in the browser
+      .replace(/!\[([^\]]*)\]\((https:\/\/[^)\s]+)\)/g, '<img class="md-img" src="$2" alt="$1" title="$1" loading="lazy">')
       .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank">$1</a>')
       .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank">$2</a>');
     return s.replace(/\u0003(\d+)\u0003/g, (_, i) => `<span class="math">${math(maths[i])}</span>`)

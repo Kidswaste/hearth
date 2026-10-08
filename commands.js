@@ -21,13 +21,13 @@
 //   note(text, { actions: [{ label, run }], id })  a note with buttons (id: replaces an older note with that id)
 //
 // Additive helpers: Commands.recent() (names, newest first), Commands.areas() (menu order),
-// Commands.run(name, args, agentId), Commands.AREA_ORDER.
+// Commands.run(name, args, agentId), Commands.AREA_ORDER, Commands.closest(word) (typo → nearest command).
 const Commands = (() => {
   const cmds = new Map(); // name -> def
   const alias = new Map(); // alias -> name
   const NAME = /^[a-z0-9][\w-]*$/i;
   // Menu / help order of the areas; unknown areas follow alphabetically.
-  const AREA_ORDER = ['Chat', 'Messages', 'Compose', 'Agents', 'Style', 'Memory', 'Export', 'View', 'Navigate', 'App'];
+  const AREA_ORDER = ['Yours', 'Chat', 'Messages', 'Compose', 'Agents', 'Style', 'Memory', 'Export', 'View', 'Navigate', 'App'];
   const areaRank = (a) => { const i = AREA_ORDER.indexOf(a); return i < 0 ? AREA_ORDER.length : i; };
   // Commands you ran lately come first in the "/" menu.
   const RECENT_KEY = 'commands.recent';
@@ -87,6 +87,26 @@ const Commands = (() => {
       get chat() { return Native.current?.(agentId) || null; },
       get agent() { return H.agent(agentId) || null; },
     };
+  }
+
+  // The registered command nearest to a mistyped name (1–2 letters off), or null.
+  function closest(word) {
+    const w = String(word || '').toLowerCase();
+    if (w.length < 3 || get(w)) return null;
+    const dist = (a, b) => {
+      const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+      for (let j = 1; j <= b.length; j++) d[0][j] = j;
+      for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      return d[a.length][b.length];
+    };
+    let best = null;
+    for (const d of cmds.values()) {
+      for (const n of [d.name, ...d.aliases]) {
+        const k = dist(w, n.toLowerCase());
+        if (k <= (w.length > 5 ? 2 : 1) && (!best || k < best.k)) best = { def: d, k };
+      }
+    }
+    return best?.def || null;
   }
 
   // Runs the command in text if there is one. Returns true when it was handled (the message isn't sent).
@@ -157,5 +177,5 @@ const Commands = (() => {
     return out;
   }
 
-  return { register, unregister, get, list, parse, matching, tryRun, exec, paletteActions, recent, areas, run, AREA_ORDER };
+  return { register, unregister, get, list, parse, matching, tryRun, exec, paletteActions, recent, areas, run, AREA_ORDER, closest };
 })();

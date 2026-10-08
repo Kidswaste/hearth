@@ -41,20 +41,22 @@ const Native = (() => {
     // How much context each message sends now (the last reply's input tokens); click to compact.
     const ctx = el('button', { class: 'ctx-meter', hidden: true, on: { click: () => compactChat(agentId) } }, el('span', { class: 'ctx-bar' }, el('i')), el('span', { class: 'ctx-text' }));
     const header = el('header', { class: 'native-head' }, title, meta, ctx, el('span', { class: 'spacer' }), modelSel, menuBtn, newBtn);
+    // Docked director chats are narrow: the header keeps only what fits (model and more live in ⋯ and /model).
+    if (root.classList.contains('tool-dock')) { newBtn.textContent = '＋'; modelSel.hidden = true; root.classList.add('dock-chat'); }
     title.addEventListener('dblclick', () => renameCurrent(agentId));
     menuBtn.addEventListener('click', (e) => chatMenu(agentId, e));
     modelSel.addEventListener('change', () => setChatModel(agentId, modelSel.value));
 
     const list = el('div', { class: 'messages' });
     list.addEventListener('click', (e) => onListClick(e, agentId));
-    const quoteSel = el('button', { class: 'quote-sel', text: '❝ Quote', hidden: true });
+    // Selected text in the chat gets a small bar: quote it, copy it, find it in the chat, or save it to notes.
+    const selAct = (label, title, fn) => el('button', { type: 'button', text: label, title, on: { click: () => { const t = String(getSelection()).trim(); quoteSel.hidden = true; if (t) fn(t); } } });
+    const quoteSel = el('div', { class: 'quote-sel sel-bar', hidden: true },
+      selAct('❝ Quote', 'Quote it in your message', (t) => { input.value = `${t.split('\n').map((l) => `> ${l}`).join('\n')}\n\n${input.value}`; autosize(input); input.focus(); getSelection().removeAllRanges(); }),
+      selAct('Copy', 'Copy the selection', (t) => copyText(t, 'Copied')),
+      selAct('🔎', 'Find it in this chat', (t) => (typeof ChatUX !== 'undefined' ? ChatUX.find(agentId, t.slice(0, 80)) : null)),
+      selAct('📝', 'Save it to notes', (t) => Notes.append(t)));
     quoteSel.addEventListener('mousedown', (e) => e.preventDefault());
-    quoteSel.addEventListener('click', () => {
-      const t = String(getSelection()).trim(); quoteSel.hidden = true;
-      if (!t) return;
-      input.value = `${t.split('\n').map((l) => `> ${l}`).join('\n')}\n\n${input.value}`; autosize(input); input.focus();
-      getSelection().removeAllRanges();
-    });
     list.addEventListener('mouseup', () => setTimeout(() => {
       const s = getSelection(); const t = String(s).trim();
       if (!t || !s.rangeCount || !list.contains(s.anchorNode)) { quoteSel.hidden = true; return; }
@@ -83,7 +85,6 @@ const Native = (() => {
     const saveDraft = debounce(() => store.set(draftKey(agentId), input.value || null), 400);
     input.addEventListener('input', () => { autosize(input); updateCounter(v); saveDraft(); });
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit(); }
       if (e.key === 'Escape') {
         const id = H.activeChat[agentId];
         if (id && pending.has(id)) window.hub.stop(id);
@@ -100,6 +101,16 @@ const Native = (() => {
       if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); historyStep(agentId, e.key === 'ArrowUp' ? 1 : -1); return; }
       // Alt+T: open / close every thinking block in this chat
       if (e.altKey && e.key.toLowerCase() === 't') { e.preventDefault(); toggleThinking(agentId); return; }
+      // Alt+R read the last reply aloud (again: stop) · Alt+B bookmark it · Alt+P pin it · Alt+Home / Alt+End scroll
+      if (e.altKey && !e.ctrlKey && ALT_KEYS[e.key.length === 1 ? e.key.toLowerCase() : e.key]) { e.preventDefault(); ALT_KEYS[e.key.length === 1 ? e.key.toLowerCase() : e.key](agentId); return; }
+      // Tab inside a ``` code fence indents instead of leaving the box
+      if (e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && ((input.value.slice(0, input.selectionStart).match(/```/g) || []).length % 2 === 1)) {
+        e.preventDefault(); insertDraft(agentId, '  '); return;
+      }
+      // /enter-sends off: Enter makes a new line and Ctrl+Enter sends
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && store.get('chat.enterSends', true) === false && !(e.ctrlKey || e.metaKey) && !input.value.startsWith('/')) { e.stopImmediatePropagation(); return; }
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && store.get('chat.enterSends', true) === false) { e.preventDefault(); form.requestSubmit(); return; }
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit(); return; }
       if (e.key === 'ArrowUp' && !input.value) { // edit your last message, like most chat apps
         const chat = chats.get(H.activeChat[agentId]);
         const idx = chat?.messages.map((m) => m.role).lastIndexOf('user');
@@ -145,6 +156,13 @@ const Native = (() => {
       }
       if (!text && !v.attachments.length) return;
       if (text) pushHistory(text);
+      // A "/word" that is almost a command (a typo) asks first: Enter again sends it to the agent as written.
+      const typo = text.startsWith('/') && !Commands.parse(text) && v.typoOk !== text && Commands.closest?.(text.slice(1).split(/\s/)[0]);
+      if (typo) {
+        v.typoOk = text;
+        note(agentId, `\`/${text.slice(1).split(/\s/)[0]}\` isn't a command. Did you mean \`/${typo.name}\`? Press Enter again to send it to ${H.agent(agentId).name} as a message.`, { id: 'typo' });
+        return;
+      }
       // "/command args" runs a chat command instead of sending (see commands.js); unknown "/words" are sent.
       if (text.startsWith('/') && Commands.parse(text)) {
         input.value = '';
@@ -260,6 +278,16 @@ const Native = (() => {
     } else v.styleNext = '';
     renderStyle(agentId);
   }
+  // Alt+letter shortcuts in the message box (also listed in /help next to their commands).
+  const lastReplyIndex = (agentId) => chats.get(H.activeChat[agentId])?.messages.map((m) => m.role).lastIndexOf('assistant') ?? -1;
+  const ALT_KEYS = {
+    r: (agentId) => { if (!stopSpeaking()) { const i = lastReplyIndex(agentId); if (i >= 0) speakMessage(agentId, i); } },
+    b: (agentId) => { const i = lastReplyIndex(agentId); if (i >= 0) toast(toggleMark(agentId, i, 'bookmark') ? '🔖 Bookmarked the last reply' : 'Bookmark removed', { timeout: 1200 }); },
+    p: (agentId) => { const i = lastReplyIndex(agentId); if (i >= 0) toast(toggleMark(agentId, i, 'pinnedMsg') ? '📌 Pinned the last reply' : 'Unpinned', { timeout: 1200 }); },
+    m: (agentId) => { const i = lastReplyIndex(agentId); const node = views.get(agentId)?.list.querySelector(`.msg[data-index="${i}"] .msg-more`); if (node) messageMenu(agentId, i, node); },
+    Home: (agentId) => { const l = views.get(agentId)?.list; if (l) l.scrollTop = 0; },
+    End: (agentId) => { const l = views.get(agentId)?.list; if (l) l.scrollTop = l.scrollHeight; },
+  };
   // Opens or closes every thinking block in the chat (Alt+T).
   function toggleThinking(agentId, open) {
     const v = views.get(agentId);
@@ -412,6 +440,8 @@ const Native = (() => {
       }
       return;
     }
+    const img = t.closest('img.md-img');
+    if (img) { window.hub.openExternal(img.src); return; }
     const undo = t.closest('.undo-memory');
     if (undo) {
       await forgetFacts(undo.dataset.agent, JSON.parse(undo.dataset.facts));
@@ -502,7 +532,7 @@ const Native = (() => {
         isLast && isRetryable(m) ? act('retry', 'Retry', 'Write this reply again') : null,
         more));
     } else if (m.role === 'user') {
-      node.append(el('div', { class: 'msg-foot user-foot' }, num, m.edited ? el('span', { text: 'edited' }) : null, timeEl,
+      node.append(el('div', { class: 'msg-foot user-foot' }, num, m.edited ? el('span', { class: 'edited-mark', text: 'edited', title: m.edits?.length ? `Before: ${m.edits.at(-1).slice(0, 300)}` : '' }) : null, timeEl,
         act('edit', 'Edit', 'Edit and resend (Up arrow edits your last message)'), more));
     } else if (m.role === 'error' && isLast) {
       node.append(el('div', { class: 'msg-foot' }, act('retry', 'Retry', 'Send the last message again')));
@@ -520,14 +550,18 @@ const Native = (() => {
     const agent = H.agent(agentId);
     const last = index === chat.messages.length - 1;
     const astra = astraAgent();
+    const r = anchor.getBoundingClientRect();
     const reactRow = REACTIONS.map((emoji) => ({ label: `${emoji === m.reaction?.emoji ? '✓ ' : ''}React ${emoji}`, action: () => react(agentId, index, emoji) }));
     const items = [
       { label: 'Copy', action: () => copyText(m.text, 'Copied') },
+      { label: 'Copy as plain text', action: () => copyText(plainText(m.text), 'Copied as plain text') },
+      m.thinking ? { label: 'Copy its thinking', action: () => copyText(m.thinking, 'Thinking copied') } : null,
       m.role === 'assistant' ? { label: 'Read aloud', action: () => speak(m.text) } : null,
       { label: 'Quote in my message', action: () => quote(agentId, index) },
       m.role === 'user' ? { label: 'Edit and resend', action: () => editMessage(agentId, index) } : null,
       { label: 'Branch: new chat from here', action: () => branchFrom(agentId, index) },
       m.role === 'assistant' && last ? { label: 'Retry: write this reply again', action: () => regenerate(agentId) } : null,
+      m.role === 'assistant' && last ? { label: 'Retry with another model…', action: () => { const others = (MODEL_CHOICES[agent.engine] || []).filter((x) => x !== (chat.model || agent.model)); setTimeout(() => showMenu(r.left, r.bottom + 4, others.map((x) => ({ label: x, action: async () => { await setChatModel(agentId, x); regenerate(agentId); } }))), 0); } } : null,
       m.role === 'assistant' && last && agent.engine === 'claude' ? { label: '🔍 Review: check its own result', action: () => send(agentId, REVIEW_PROMPT).catch((err) => toast(err.message, { type: 'error' })) } : null,
       m.role === 'assistant' && last && astra && astra.id !== agentId ? { label: `👁 Second opinion from ${astra.name}`, action: () => secondOpinion(agentId) } : null,
       { label: m.pinnedMsg ? 'Unpin message' : '📌 Pin message', action: () => toggleMark(agentId, index, 'pinnedMsg') },
@@ -538,9 +572,9 @@ const Native = (() => {
       { label: 'Save to notes', action: () => Notes.append(m.text) },
       { label: `Copy link to message #${index + 1}`, action: () => copyText(`/jump ${index + 1}`, 'Command copied: paste it in this chat to come back here') },
     ].filter(Boolean);
-    const r = anchor.getBoundingClientRect();
     showMenu(r.left, r.bottom + 4, items);
   }
+  const plainText = (t) => String(t || '').replace(/```[\w+-]*\n?/g, '').replace(/\*\*|__|~~|==|`/g, '').replace(/^#{1,6}\s+/gm, '').replace(/^\s*>\s?/gm, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
   const REACTIONS = ['👍', '👎', '❤️', '🔥', '🤔'];
   function react(agentId, index, emoji, note) {
     const chat = chats.get(H.activeChat[agentId]);
@@ -575,7 +609,9 @@ const Native = (() => {
       el('h3', { text: `New chat with ${agent.name}` }),
       el('p', { class: 'hint', text: engineOk
         ? `Runs on your ${ENGINE_LABEL[agent.engine] || agent.engine} account${agent.model ? ` · ${agent.model}` : ''}. Type / for saved prompts, drop files or paste screenshots to attach them.`
-        : `Couldn't find the ${agent.engine === 'claude' ? 'Claude' : 'Codex'} desktop app on this PC, so native chat can't run.` }));
+        : `Couldn't find the ${agent.engine === 'claude' ? 'Claude' : 'Codex'} desktop app on this PC, so native chat can't run.` }),
+      // a few commands to start from (they run here; nothing is sent)
+      el('div', { class: 'suggest-chips empty-cmds' }, ['/template', '/recent', '/bookmarks', '/help'].map((c) => el('button', { class: 'suggest-chip cmd', text: c, dataset: { suggest: c }, title: Commands.get(c.slice(1))?.desc || '' }))));
   }
 
   function fillModelSelect(v, agent, chat) {
@@ -596,12 +632,14 @@ const Native = (() => {
     const prevScroll = v.list.scrollTop;
 
     v.title.textContent = `${chat?.pinned ? '📌 ' : ''}${chat?.title || 'New chat'}`;
+    v.title.title = chat ? `${chat.title}\n${chat.messages.length} messages · started ${fmtDate(chat.createdAt || chat.updatedAt)}\nDouble-click to rename` : 'Double-click to rename';
     const total = (chat?.messages || []).reduce((sum, m) => sum + (m.usage ? m.usage.input + m.usage.output : 0), 0);
     const folder = agent.workspace ? `edits ${agent.workspace.split(/[\\/]/).filter(Boolean).pop() || agent.workspace}` : null;
     v.meta.textContent = [folder, total ? `${fmt(total)} tokens this chat` : null].filter(Boolean).join(' · ');
     v.meta.title = agent.workspace ? `Can read and edit files in ${agent.workspace}` : '';
     paintContext(v, chat);
-    v.input.placeholder = `Message ${agent.name}…  (Enter to send · Shift+Enter new line · / for prompts)`;
+    v.input.placeholder = v.root.classList.contains('dock-chat') ? `Message ${agent.name}…  (/ for commands)`
+      : `Message ${agent.name}…  (${store.get('chat.enterSends', true) === false ? 'Ctrl+Enter to send · Enter new line' : 'Enter to send · Shift+Enter new line'} · / for commands)`;
     fillModelSelect(v, agent, chat);
     renderStyle(agentId);
     if (!v.input.value) { v.input.value = store.get(draftKey(agentId), '') || ''; autosize(v.input); updateCounter(v); }
@@ -749,7 +787,9 @@ const Native = (() => {
   function thinkingEl(text, open, ms) {
     const words = text ? (text.match(/\S+/g) || []).length : 0;
     const d = el('details', { class: 'thinking' },
-      el('summary', { text: ms ? `Thought for ${Math.max(1, Math.round(ms / 1000))} s${words ? ` · ${words.toLocaleString()} words` : ''}` : 'Thought process' }),
+      el('summary', {}, ms ? `Thought for ${Math.max(1, Math.round(ms / 1000))} s${words ? ` · ${words.toLocaleString()} words` : ''}` : 'Thought process',
+        // a glance at what it thought about, without opening it
+        ms && text ? el('span', { class: 'thinking-peek', text: text.replace(/\s+/g, ' ').trim().slice(0, 120) }) : null),
       el('div', { class: 'thinking-text', text }));
     d.open = open || (text !== '' && store.get('chat.thinkingOpen', false));
     return d;
@@ -800,8 +840,8 @@ const Native = (() => {
     const v = views.get(agentId);
     if (!v) return;
     v.queueBox.hidden = !v.queue.length;
-    v.queueBox.replaceChildren(...v.queue.map((q, i) => el('span', { class: 'queue-chip', title: q },
-      el('span', { text: `⏳ ${q.length > 60 ? `${q.slice(0, 59)}…` : q}` }),
+    v.queueBox.replaceChildren(...v.queue.map((q, i) => el('span', { class: 'queue-chip', title: `${q}\n\n(click to edit it again)` },
+      el('span', { text: `⏳ ${q.length > 60 ? `${q.slice(0, 59)}…` : q}`, on: { click: () => { v.queue.splice(i, 1); renderQueue(agentId); insertDraft(agentId, q); } } }),
       el('button', { type: 'button', text: '×', title: 'Remove from the queue', on: { click: () => { v.queue.splice(i, 1); renderQueue(agentId); } } }))));
     syncSendBtn(agentId);
   }
@@ -1228,7 +1268,9 @@ const Native = (() => {
     const next = await Modal.prompt('Edit message', { value: original.text, multiline: true, label: 'Everything after this message will be replaced by a new reply.' });
     if (next == null || !next.trim()) return;
     chat.messages = chat.messages.slice(0, index);
-    chat.messages.push({ ...original, text: next.trim(), sent: original.sent ? original.sent.replace(original.text, next.trim()) : undefined, at: Date.now(), edited: true });
+    // the earlier wording is kept (shown on hover over "edited")
+    const edits = [...(original.edits || []), original.text].slice(-5);
+    chat.messages.push({ ...original, text: next.trim(), sent: original.sent ? original.sent.replace(original.text, next.trim()) : undefined, at: Date.now(), edited: true, edits });
     chat.session = {};
     await send(agentId, next.trim(), { fromHistory: true });
   }
@@ -1276,6 +1318,7 @@ const Native = (() => {
       { label: 'Jump to the first message', action: () => { const l = views.get(agentId)?.list; if (l) l.scrollTop = 0; } },
       { label: 'Duplicate this chat', action: () => { const n = chat.messages.length; if (n) branchFrom(agentId, n - 1); } },
       { label: 'Chat stats', action: () => chatStats(chat) },
+      { label: `Model: ${chat.model || H.agent(agentId).model || 'default'}…  /model`, action: () => modelMenu(agentId, e) },
       { label: 'Find in this chat…  /find', action: () => Commands.exec('/find', agentId) },
       { label: 'Open / close all thinking  Alt+T', action: () => toggleThinking(agentId) },
       { label: 'Read the last reply aloud  /read', action: () => speak(lastReplyText(agentId)) },
@@ -1292,6 +1335,19 @@ const Native = (() => {
     ];
     const r = e.currentTarget.getBoundingClientRect();
     showMenu(r.left, r.bottom + 4, items);
+  }
+
+  // The model list as a menu (docked chats hide the dropdown).
+  function modelMenu(agentId, e) {
+    const agent = H.agent(agentId);
+    const chat = chats.get(H.activeChat[agentId]);
+    const current = chat?.model || '';
+    const choices = [...new Set([...(MODEL_CHOICES[agent.engine] || [])])].filter((c) => c !== agent.model);
+    const r = (e?.currentTarget || views.get(agentId)?.title)?.getBoundingClientRect?.() || { left: 200, bottom: 80 };
+    setTimeout(() => showMenu(r.left, r.bottom + 4, [
+      { label: `${current ? '' : '✓ '}Agent default (${agent.model || 'engine default'})`, action: () => { setChatModel(agentId, ''); render(agentId, { keepScroll: true }); } },
+      ...choices.map((c) => ({ label: `${current === c ? '✓ ' : ''}${c}`, action: () => { setChatModel(agentId, c); render(agentId, { keepScroll: true }); } })),
+    ]), 0);
   }
 
   // ---------- small helpers for the chat menu and keys ----------
@@ -1330,11 +1386,12 @@ const Native = (() => {
   }
   // 🔊 read a reply aloud (the system voice); clicking again stops. /read rate 1.3 and /read voice <name> tune it.
   let speaking = null;
-  function speak(text, btn = null) {
+  function speak(text, btn = null, msgNode = null) {
     if (speaking) {
       speechSynthesis.cancel();
       const was = speaking; speaking = null;
       if (was.btn) was.btn.textContent = '🔊';
+      was.node?.classList.remove('speaking');
       if (!btn || was.btn === btn) return false;
     }
     const plain = String(text || '').replace(/```[\s\S]*?```/g, ' (code) ').replace(/[#*_`>|]/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
@@ -1342,14 +1399,23 @@ const Native = (() => {
     u.rate = Number(store.get('chat.readRate', 1)) || 1;
     const voice = store.get('chat.readVoice', '');
     if (voice) u.voice = speechSynthesis.getVoices().find((x) => x.name === voice) || null;
-    const me = { btn };
-    u.onend = () => { if (speaking === me) { speaking = null; if (btn) btn.textContent = '🔊'; } };
+    const node = msgNode || btn?.closest('.msg');
+    const me = { btn, node };
+    node?.classList.add('speaking');
+    u.onend = () => { node?.classList.remove('speaking'); if (speaking === me) { speaking = null; if (btn) btn.textContent = '🔊'; } };
     speaking = me;
     if (btn) btn.textContent = '⏹';
     speechSynthesis.speak(u);
     return true;
   }
-  function stopSpeaking() { if (!speaking) return false; speechSynthesis.cancel(); if (speaking.btn) speaking.btn.textContent = '🔊'; speaking = null; return true; }
+  // Reads message #index of the open chat aloud, highlighting it while it reads.
+  function speakMessage(agentId, index) {
+    const m = chats.get(H.activeChat[agentId])?.messages[index];
+    if (!m) return false;
+    stopSpeaking();
+    return speak(m.text, null, views.get(agentId)?.list.querySelector(`.msg[data-index="${index}"]`));
+  }
+  function stopSpeaking() { if (!speaking) return false; speechSynthesis.cancel(); if (speaking.btn) speaking.btn.textContent = '🔊'; speaking.node?.classList.remove('speaking'); speaking = null; return true; }
 
   async function togglePin(chatId) {
     const chat = await loadChat(chatId);
@@ -1479,7 +1545,6 @@ const Native = (() => {
     if (openIt) open(chat.agentId, chat.id);
     return chat;
   }
-  window.hub.onEngineEvent(onEvent);
 
   return {
     mount, refresh: render, focus, send, open, newChat, rename, remove, togglePin, setDraft, continueWith, copyLastReply, foldAll,
@@ -1491,7 +1556,7 @@ const Native = (() => {
     // additive API for chat-*.js / chat commands
     hooks, current, view: (agentId) => views.get(agentId) || null, load: loadChat, save: remember, adopt,
     compact: compactChat, summarizeAndContinue, branch: branchFrom, edit: editMessage, retry: regenerate, quote,
-    secondOpinion, review: (agentId) => send(agentId, REVIEW_PROMPT), chatMarkdown, stats: chatStats, speak, stopSpeaking,
+    secondOpinion, review: (agentId) => send(agentId, REVIEW_PROMPT), chatMarkdown, stats: chatStats, speak, speakMessage, stopSpeaking, plainText, modelMenu,
     setModel: setChatModel, renameCurrent, stop: stopReply, pendingFor, renderQueue, insertDraft, setStyle, renderStyle,
     toggleThinking, jumpTo, react, toggleMark, REACTIONS, messageMenu, chatMenu, lastReplyText, dayLabel,
     MODEL_CHOICES, astraAgent, screenshotFor, addFiles, addPath, pickFiles: async (agentId) => {

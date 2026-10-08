@@ -1227,3 +1227,19 @@ mark.find-hit.cur { background: #ff8a3d; color: #000; }
 
 /* the shared right-click / ⋯ menu can get long */
 #menu { max-height: calc(100vh - 16px); overflow-y: auto; }
+.native-head .model-select[hidden] { display: none; }
+.dock-chat .native-head .ctx-meter { flex-shrink: 1; min-width: 0; }
+.messages pre::-webkit-scrollbar, .body .table-wrap::-webkit-scrollbar { height: 6px; }
+.messages pre::-webkit-scrollbar-thumb, .body .table-wrap::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--muted) 35%, transparent); border-radius: 3px; }
+.messages pre::-webkit-scrollbar-track, .body .table-wrap::-webkit-scrollbar-track { background: transparent; }
+/* selection bar, thinking peek, reading aloud, pictures, empty-chat commands */
+.quote-sel.sel-bar { display: flex; gap: 0; padding: 2px; }
+.quote-sel.sel-bar[hidden] { display: none; }
+.sel-bar button { border: 0; background: none; color: #17130e; cursor: pointer; font-size: 12px; padding: 2px 8px; border-radius: 4px; }
+.sel-bar button:hover { background: #0002; }
+.msg .thinking summary .thinking-peek { margin-left: 8px; color: var(--muted); font-style: italic; opacity: .75; display: inline-block; max-width: min(52ch, 60%); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.msg .thinking[open] summary .thinking-peek { display: none; }
+.msg.speaking > .body { box-shadow: -3px 0 0 #48ddff; padding-left: 10px; transition: box-shadow .2s; }
+.body img.md-img { max-width: min(100%, 420px); max-height: 320px; border-radius: 8px; cursor: zoom-in; display: block; margin: 6px 0; }
+.empty .empty-cmds { justify-content: center; margin-top: 14px; opacity: .8; }
+.edited-mark { cursor: help; }

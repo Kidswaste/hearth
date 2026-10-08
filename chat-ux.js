@@ -191,7 +191,25 @@ const ChatUX = (() => {
     if (event.type !== 'done' || !store.get('chat.autoRead', false)) return;
     if (H.activeChat[chat.agentId] !== chat.id) return;
     const m = chat.messages.at(-1);
-    if (m?.role === 'assistant') Native.speak(m.text);
+    if (m?.role === 'assistant') Native.speakMessage(chat.agentId, chat.messages.length - 1);
+  });
+
+  // ---------- a soft chime when a reply lands in a chat you're not looking at (/chime on) ----------
+  let audio = null;
+  function chime() {
+    try {
+      audio ||= new AudioContext();
+      const t = audio.currentTime;
+      for (const [i, f] of [660, 990].entries()) {
+        const o = audio.createOscillator(); const g = audio.createGain();
+        o.type = 'sine'; o.frequency.value = f;
+        g.gain.setValueAtTime(0, t + i * 0.09); g.gain.linearRampToValueAtTime(0.06, t + i * 0.09 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.09 + 0.5);
+        o.connect(g).connect(audio.destination); o.start(t + i * 0.09); o.stop(t + i * 0.09 + 0.55);
+      }
+    } catch { /* no audio device */ }
+  }
+  Native.hooks.event.push((event, chat) => {
+    if (event.type === 'done' && store.get('chat.chime', false) && H.unreadChats?.has(chat.id)) chime();
   });
 
   // ---------- snippets: reusable bits of text you insert with /snippet (data/kv/chat-snippets.json) ----------
@@ -228,6 +246,6 @@ const ChatUX = (() => {
     pref, setPref, applyPrefs, WIDTHS, setFocus, isFocus: () => Boolean(focusState),
     find, closeFind, step,
     metaOf, setMeta, allTags, allFolders,
-    loadBookmarks, loadSnippets, saveSnippet, deleteSnippet,
+    loadBookmarks, loadSnippets, saveSnippet, deleteSnippet, chime,
   };
 })();

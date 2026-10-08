@@ -521,7 +521,7 @@ const ChatCmds = (() => {
     run: (_a, ctx) => {
       const chat = need(ctx);
       const list = chat.messages.map((m, i) => ({ m, i })).filter((x) => x.m.reaction);
-      return list.length ? `**Your feedback**\n${list.map((x) => `- ${x.m.reaction.emoji} \`/jump ${x.i + 1}\` ${safe(clip(x.m.text, 60))}${x.m.reaction.note ? ` — _${safe(x.m.reaction.note)}_` : ''}`).join('\n')}` : 'No reactions yet: `/react 👍 great colors`.';
+      return list.length ? `**Your feedback**\n${list.map((x) => `- ${x.m.reaction.emoji} \`/jump ${x.i + 1}\` ${safe(clip(x.m.text, 60))}${x.m.reaction.note ? ` — *${safe(x.m.reaction.note)}*` : ''}`).join('\n')}` : 'No reactions yet: `/react 👍 great colors`.';
     },
   });
   R({
@@ -554,8 +554,7 @@ const ChatCmds = (() => {
       }
       if (/^auto\b/i.test(a)) { const on = onOff(a.slice(4), store.get('chat.autoRead', false)); store.set('chat.autoRead', on); return on ? 'New replies are read aloud as they arrive (in the chat you look at).' : 'New replies are no longer read aloud.'; }
       const chat = need(ctx);
-      Native.stopSpeaking();
-      Native.speak(chat.messages[a ? mustIndex(chat, a) : mustIndex(chat, 'last', 'assistant')].text);
+      Native.speakMessage(ctx.agentId, a ? mustIndex(chat, a) : mustIndex(chat, 'last', 'assistant'));
     },
   });
   R({
@@ -973,7 +972,7 @@ const ChatCmds = (() => {
     complete: pick(['off']),
     run: (args, ctx) => {
       const chat = chatOf(ctx);
-      if (!args) return chat?.style ? `This chat's style: _${safe(chat.style)}_ · \`/style off\` drops it` : 'No style set. `/tone`, `/persona`, `/lang` or `/style <your words>`.';
+      if (!args) return chat?.style ? `This chat's style: *${safe(chat.style)}* · \`/style off\` drops it` : 'No style set. `/tone`, `/persona`, `/lang` or `/style <your words>`.';
       Native.setStyle(ctx.agentId, /^(off|none|clear)$/i.test(args) ? null : args.trim());
     },
   });
@@ -992,7 +991,7 @@ const ChatCmds = (() => {
       if (!args) return 'What should it remember? `/remember I like dark palettes`';
       await Native.rememberFacts(ctx.agentId, [args.trim()]);
       pushUndo(`forget "${args.trim()}"`, () => Native.forgetFacts(ctx.agentId, [args.trim()]));
-      return `Remembered: _${safe(args.trim())}_ · \`/undo\``;
+      return `Remembered: *${safe(args.trim())}* · \`/undo\``;
     },
   });
   R({
@@ -1002,7 +1001,7 @@ const ChatCmds = (() => {
       const memory = await window.hub.getMemory();
       memory.shared = [(memory.shared || '').trim(), `- ${args.trim()}`].filter(Boolean).join('\n');
       await window.hub.saveMemory(memory);
-      return `Every agent will remember: _${safe(args.trim())}_`;
+      return `Every agent will remember: *${safe(args.trim())}*`;
     },
   });
   R({
@@ -1038,7 +1037,7 @@ const ChatCmds = (() => {
       const own = (memory.agents?.[ctx.agentId] || '').trim();
       const shared = (memory.shared || '').trim();
       const size = Math.ceil((own.length + shared.length) / 4);
-      return `**${H.agent(ctx.agentId).name} remembers** (~${fmt(size)} tokens added to every message)\n${own || '_nothing yet_'}${shared ? `\n\n**Every agent remembers**\n${shared}` : ''}\n\n\`/remember <fact>\` · \`/forget <words>\` · \`/memory edit\``;
+      return `**${H.agent(ctx.agentId).name} remembers** (~${fmt(size)} tokens added to every message)\n${own || '*nothing yet*'}${shared ? `\n\n**Every agent remembers**\n${shared}` : ''}\n\n\`/remember <fact>\` · \`/forget <words>\` · \`/memory edit\``;
     },
   });
 
@@ -1222,5 +1221,122 @@ const ChatCmds = (() => {
   });
   R({ name: 'time', aliases: ['now', 'date'], area: 'App', desc: 'The date and time (nothing is sent)', run: () => new Date().toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'short' }) });
 
-  return { undo: () => Commands.run('undo'), TEMPLATES, TONES, PERSONAS, LANGS };
+  // =====================================================================================================
+  // Chains, your own commands, and small settings
+  // =====================================================================================================
+  R({
+    name: 'run', aliases: ['chain', 'then'], area: 'App', args: '</cmd one ; /cmd two …>', desc: 'Run several commands in a row (handy in suggestion chips and your own /alias)',
+    run: async (args, ctx) => {
+      const steps = args.split(/\s*(?:;|\n)\s*(?=\/)/).map((x) => x.trim()).filter(Boolean);
+      if (!steps.length) return 'Give it commands: `/run /wrap on ; /width wide`';
+      for (const step of steps.slice(0, 12)) {
+        if (!Commands.parse(step)) { ctx.say(`Skipped “${safe(step)}” (not a command)`); continue; }
+        await Commands.exec(step, ctx.agentId);
+      }
+    },
+  });
+  // /alias name /command … : your own commands, kept in this app (localStorage) and listed under "Yours".
+  const ALIAS_KEY = 'chat.aliases';
+  const aliasUnreg = new Map();
+  function registerAlias(name, text) {
+    aliasUnreg.get(name)?.();
+    aliasUnreg.set(name, R({
+      name, area: 'Yours', args: '[more]', desc: `→ ${text.slice(0, 70)}`,
+      run: async (args, ctx) => {
+        // {args} in the alias is replaced by what you type after it; otherwise it's added at the end of the last command
+        const full = text.includes('{args}') ? text.replace(/\{args\}/g, args) : `${text}${args ? ` ${args}` : ''}`;
+        if (full.startsWith('/')) await Commands.exec(/\s;\s*\//.test(full) ? `/run ${full}` : full, ctx.agentId);
+        else ctx.send(full);
+      },
+    }));
+  }
+  for (const [name, text] of Object.entries(store.get(ALIAS_KEY, {}))) { try { registerAlias(name, text); } catch { /* a bad saved name */ } }
+  R({
+    name: 'alias', aliases: ['my-command'], area: 'App', args: '<name> </command … | text>', desc: 'Make your own command: /alias wide /run /width wide ; /density compact',
+    run: (args) => {
+      const all = store.get(ALIAS_KEY, {});
+      if (!args) return Object.keys(all).length ? `**Your commands**\n${Object.entries(all).map(([n, t]) => `- \`/${n}\` → ${safe(t)}`).join('\n')}\n\n\`/unalias <name>\` removes one.` : 'No commands of your own yet: `/alias focusmode /run /focus ; /zoom 115%`';
+      const m = args.match(/^([a-z0-9][\w-]*)\s+([\s\S]+)$/i);
+      if (!m) return 'Use `/alias <name> <what it does>`';
+      const name = m[1].toLowerCase();
+      if (Commands.get(name) && !aliasUnreg.has(name)) return `/${name} already exists. Pick another name.`;
+      all[name] = m[2].trim();
+      store.set(ALIAS_KEY, all);
+      registerAlias(name, all[name]);
+      return `Made \`/${name}\` → ${safe(all[name])}`;
+    },
+  });
+  R({
+    name: 'unalias', area: 'App', args: '<name>', desc: 'Remove one of your own commands',
+    complete: (args) => Object.keys(store.get(ALIAS_KEY, {})).filter(has(args)).map((n) => ({ value: n })),
+    run: (args) => {
+      const all = store.get(ALIAS_KEY, {});
+      const name = args.replace(/^\//, '').toLowerCase();
+      if (!all[name]) return `You have no /${name}.`;
+      delete all[name];
+      store.set(ALIAS_KEY, all);
+      aliasUnreg.get(name)?.(); aliasUnreg.delete(name);
+      return `Removed /${name}.`;
+    },
+  });
+  R({
+    name: 'repeat', aliases: ['resend'], area: 'Messages', desc: 'Send your last message again (as a new message)',
+    run: (_a, ctx) => { const chat = need(ctx); ctx.send(chat.messages[mustIndex(chat, 'last', 'user')].text); },
+  });
+  R({
+    name: 'engines', aliases: ['engine'], area: 'Agents', desc: 'Whether Claude Code and Codex were found (and the paths from Settings → Engines)',
+    run: async () => {
+      const st = await window.hub.engineStatus();
+      H.engineStatus = st;
+      const paths = H.settings().enginePaths || {};
+      return `**Engines**\n${Object.entries(st).map(([e, ok]) => `- ${e === 'claude' ? 'Claude Code' : 'Codex'}: ${ok ? 'found' : '**not found**'}${paths[e] ? ` · ${safe(paths[e])}` : ''}`).join('\n')}\n\nSettings → Engines points at them directly.`;
+    },
+  });
+  R({
+    name: 'chime', area: 'App', args: '[on | off | test]', desc: 'A soft chime when a reply lands in a chat you aren\'t looking at',
+    complete: pick(['on', 'off', 'test']),
+    run: (args) => { if (/^test$/i.test(args)) { ChatUX.chime(); return; } const on = onOff(args, store.get('chat.chime', false)); store.set('chat.chime', on); if (on) ChatUX.chime(); return on ? 'Chime on.' : 'Chime off.'; },
+  });
+  R({
+    name: 'enter-sends', aliases: ['enter'], area: 'Compose', args: '[on | off]', desc: 'Enter sends (on, default) or makes a new line and Ctrl+Enter sends (off)',
+    complete: () => ONOFF,
+    run: (args, ctx) => { const on = onOff(args, store.get('chat.enterSends', true)); store.set('chat.enterSends', on); Native.refresh(ctx.agentId, { keepScroll: true }); return on ? 'Enter sends · Shift+Enter makes a new line.' : 'Enter makes a new line · Ctrl+Enter sends (commands still run on Enter).'; },
+  });
+  R({
+    name: 'auto-title', area: 'Chat', args: '[on | off]', desc: 'Name new chats from their content after the first reply (free, no extra call)',
+    complete: () => ONOFF,
+    run: (args) => { const on = onOff(args, store.get('chat.autoTitle', false)); store.set('chat.autoTitle', on); return on ? 'New chats get a title from their content after the first reply.' : 'New chats keep their first line as the title.'; },
+  });
+  Native.hooks.event.push((event, chat) => {
+    if (event.type !== 'done' || !store.get('chat.autoTitle', false) || chat.titled || chat.messages.filter((m) => m.role === 'assistant').length !== 1) return;
+    const t = localTitle(chat);
+    if (t) { chat.titled = true; Native.rename(chat.id, t); }
+  });
+  R({
+    name: 'stats-all', aliases: ['overview'], area: 'Chat', desc: 'All your chats in numbers: per agent, this week, pinned, tagged',
+    run: () => {
+      const week = Date.now() - 7 * 864e5;
+      const rows = nativeAgents().map((a) => { const list = H.chats.filter((c) => c.agentId === a.id); return list.length ? `- ${safe(a.name)}: ${plural(list.length, 'chat')} · ${list.filter((c) => c.updatedAt > week).length} this week` : null; }).filter(Boolean);
+      return `**${plural(H.chats.length, 'chat')}** · ${H.chats.filter((c) => c.pinned).length} pinned · ${ChatUX.allTags().length} tags · ${ChatUX.allFolders().length} folders\n${rows.join('\n')}`;
+    },
+  });
+
+  // Every chat command is in the Ctrl+K palette too ("/name — what it does"); commands that need words
+  // put "/name " in the chat box, the others run right away in the chat you're on.
+  function chatAgentNow() {
+    const id = H.activeId || '';
+    if (H.isTool(id)) return Tools.dockedAgent(id.slice(5))?.id || H.claudeAgent()?.id;
+    return H.agent(id)?.mode === 'native' ? id : H.claudeAgent()?.id;
+  }
+  window.addEventListener('load', () => setTimeout(() => {
+    for (const d of Commands.list().filter((x) => !x.hidden && !['do', 'help'].includes(x.name))) {
+      AppUI.addAction(`/${d.name} — ${d.desc}`, () => {
+        const agentId = chatAgentNow();
+        if (!agentId) return;
+        if (/^</.test(d.args)) { activate(agentId); Native.setDraft(agentId, `/${d.name} `); } else Commands.exec(`/${d.name}`, agentId);
+      }, d.keys || '');
+    }
+  }, 0));
+
+  return { undo: () => Commands.run('undo'), TEMPLATES, TONES, PERSONAS, LANGS, localTitle };
 })();
