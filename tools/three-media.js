@@ -2310,7 +2310,8 @@ const ThreeMedia = (() => {
       const bb = bi >= 0 ? beatNo(bs, bi, map.grid) : null;
       hoverEl.hidden = !(hit.zone === 'wave' || hit.zone === 'ruler' || hit.zone === 'lane');
       hoverEl.style.transform = `translateX(${Math.round(x)}px)`;
-      hoverEl.dataset.t = `${span() < 20 ? fmtMs(tt) : fmtTime(tt)}${bb != null ? ` · ${Math.floor(bb / bpbNow()) + 1}.${mod(bb, bpbNow()) + 1}` : ''}`;
+      const secName = sectionAt(tt).cue;
+      hoverEl.dataset.t = `${span() < 20 ? fmtMs(tt) : fmtTime(tt)}${bb != null ? ` · ${Math.floor(bb / bpbNow()) + 1}.${mod(bb, bpbNow()) + 1}` : ''}${secName ? ` · ${secName}` : ''}`;
     });
     canvas.addEventListener('mouseleave', () => { hoverEl.hidden = true; });
     // right-click the waveform / ruler: loop, cue, section and zoom actions at that spot

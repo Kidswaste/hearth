@@ -366,6 +366,7 @@ const ThreeTweaks = (() => {
     // its variants; everything rarer sits in the ⋯ menu.
     const saveBtn = btn('Save', 'Keep these values: write them into the sketch code (the old code stays in History) · Ctrl+S · Shift+click: save them as a look instead', (e) => (e.shiftKey ? quickLook() : save()), 'primary small tw-big tw-save');
     saveBtn.dataset.feature = 'Save';
+    saveBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); saveMenu(saveBtn); });
     saveBtn.dataset.key = 'Ctrl+S';
     const saveMore = btn('▾', 'Save as a look, into a slot (A / B / C), auto-save…', (e) => saveMenu(e.currentTarget), 'primary small tw-big tw-split');
     saveMore.dataset.feature = 'Save options';
@@ -373,6 +374,7 @@ const ThreeTweaks = (() => {
     const undoBtn = btn('↶', 'Undo the last slider change', () => undo());
     const shuffleBtn = btn('🎲 Shuffle', 'Shuffle: nudge the controls to random nearby values (R) · ‹ › step back / forward through your shuffles · ▾ amount, which ones, seeds', () => shuffle(), 'ghost small tw-big tw-shuffle');
     shuffleBtn.dataset.feature = 'Shuffle';
+    shuffleBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); shuffleMenu(shuffleBtn); });
     shuffleBtn.dataset.key = 'R';
     const shufBack = btn('‹', 'The previous shuffle (Shift+R)', () => shuffleStep(-1), 'ghost small tw-big tw-step');
     shufBack.dataset.feature = 'Shuffle back';

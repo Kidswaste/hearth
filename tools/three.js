@@ -141,7 +141,8 @@ const ThreeLab = (() => {
     restartBtn.dataset.feature = 'Restart simulation';
     restartBtn.dataset.key = 'Ctrl+R';
     const liveLabel = el('label', { class: 'check small', title: 'Apply code changes live, a moment after you stop typing' }, autoBox, 'Live code');
-    const newBtn = btn('New', 'New sketch from a template', () => templateGallery(), 'ghost small imp-main');
+    const newBtn = btn('New', 'New sketch from a template · right-click: the templates as a list', () => templateGallery(), 'ghost small imp-main');
+    newBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); ThreeTweaks.menu(e.clientX, e.clientY, ['New sketch from', ...ThreeData.TEMPLATES.map((t) => [t.name, t.desc || '', () => create(t.name, t.code)]), ['Duplicate this one', current?.name || '', () => duplicate()]]); });
     // Less frequent sketch actions live in a menu (they used to take a whole toolbar row).
     const sketchMenuBtn = btn('Sketch ▾', 'Rename, duplicate, delete, history, export', (e) => {
       const r = e.currentTarget.getBoundingClientRect();
@@ -436,6 +437,8 @@ const ThreeLab = (() => {
     }
     const liveBtn = btn('🎧 Live ▾', 'Make the sketch react to what your computer plays (Spotify, YouTube…) or a microphone, and see what\'s playing', (e) => liveMenu(e.currentTarget));
     liveBtn.dataset.feature = 'Live sound';
+    liveBtn.dataset.key = 'Shift+L';
+    liveBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); setLive(liveKind ? null : store.get('three.lastLive', /Mac/.test(navigator.platform) ? 'mic' : 'system')); }); // right-click: straight on / off
     const npBox = el('span', { class: 'np-box', hidden: true });
     function liveMenu(anchor) {
       const r = anchor.getBoundingClientRect();
@@ -1792,7 +1795,7 @@ const ThreeLab = (() => {
       lookStep: (d) => ctl().lookStep(d), morphLook: (name, ms) => ctl().morphLook(name, ms),
       shuffle: (o) => ctl().shuffle(o), shuffleStep: (d) => ctl().shuffleStep(d), tame: (k) => ctl().tame(k), paletteColors: () => ctl().paletteColors(), tweakCode: () => ctl().tweakCode(), saveOne: (q) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(`No slider "${q}"`); c.saveOne(hit.key); return hit; },
       freezeOn: (unit) => freezeOn(unit), stepSketch: (d) => { stepSketch(d); return current?.name; },
-      blackout: (on) => setBlackout(on), stills: (kind) => stillsAt(kind), fixErrors: () => fixErrors(), looksForSections: (o) => looksForSections(o),
+      blackout: (on) => setBlackout(on), framesToDirector: (w) => framesToDirector(w), stills: (kind) => stillsAt(kind), fixErrors: () => fixErrors(), looksForSections: (o) => looksForSections(o),
       recordSpan: (o) => { needSong(); return player.recordSpan(o); }, autoMorph: (bars) => ctl().autoMorph(bars), swapSlots: () => ctl().swapSlots(), shuffleInfo: () => ctl().shuffleInfo, setShuffle: (o) => ctl().setShuffle(o),
       groups: () => ctl().groups(), showGroup: (g) => ctl().showGroup(g), find: (q) => ctl().find(q),
       slot: (n, action = 'recall') => { const c = ctl(); if (action === 'save') return c.slotSave(n); if (action === 'clear') return c.slotClear(n); return c.slotRecall(n); }, slots: () => ctl().slots,
@@ -1870,6 +1873,7 @@ const ThreeLab = (() => {
       // Shift+1…5: Fit, 9:16, 16:9, 4:5, 1:1 (the sizes you switch between)
       if (plain && e.shiftKey && /^Digit[1-5]$/.test(e.code)) { e.preventDefault(); stage.setMode(stage.pillOrder[Number(e.code.slice(5)) - 1]); Usage.key(`Shift+${e.code.slice(5)}`, 'Lab frame size'); return; }
       if (plain && e.key.toLowerCase() === 'o') { e.preventDefault(); browseSketches(); return; }
+      if (plain && e.shiftKey && /^[abc]$/i.test(e.key)) { e.preventDefault(); const cc = selCtl(); if (cc && !cc.slotRecall(e.key.toUpperCase())) toast(`Slot ${e.key.toUpperCase()} is empty`, { timeout: 1000 }); return; }
       if (e.ctrlKey && !e.altKey && (e.key === 'PageDown' || e.key === 'PageUp')) { e.preventDefault(); stepSketch(e.key === 'PageDown' ? 1 : -1); return; }
       if (plain && e.key === '`') { e.preventDefault(); consolePeek = !consoleShown(); syncConsole(); return; }
       if (plain && e.key === '/') { e.preventDefault(); setSlidersVisible(true); selCtl()?.focusSearch(); return; }
@@ -2094,6 +2098,7 @@ const ThreeLab = (() => {
     // ❚❚ freeze: hold the picture (the music and the timeline go on); . steps one frame while frozen
     let frozenNow = false;
     const freezeBtn = el('button', { class: 'stage-btn freeze-btn', text: '❚❚ Freeze', title: 'Freeze the picture (F or \\) · while frozen, . steps one frame · | pins this frame to compare with what comes next', dataset: { feature: 'Freeze', key: 'F' }, on: { click: () => setFreeze(!frozenNow) } });
+    freezeBtn.addEventListener('dblclick', (e) => { if (frozenNow) { e.preventDefault(); setFreeze(true); box.send({ type: 'step' }); } }); // frozen: double-click = one frame
     freezeBtn.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       ThreeTweaks.menu(e.clientX, e.clientY, ['Freeze', [frozenNow ? 'Unfreeze' : 'Freeze now', 'F or \\', () => setFreeze(!frozenNow)],
@@ -2162,6 +2167,7 @@ const ThreeLab = (() => {
         ['Pin when I freeze', 'Each freeze also pins the frame', () => store.set('three.pinOnFreeze', !store.get('three.pinOnFreeze', false)), store.get('three.pinOnFreeze', false)],
         ...(pinned?.mode === 'onion' ? [0.25, 0.5, 0.75].map((o) => [`${Math.round(o * 100)}% see-through`, '', () => { pinned.opacity = o; paintOnion(); }, pinned.opacity === o]) : []),
         pinned ? ['Save the pinned frame…', '', () => saveDataUrl(pinned.url, `${current?.name || 'sketch'} pinned.png`)] : null,
+        pinned ? ['Send before / after to the director', 'Both frames in its chat', () => framesToDirector('compare')] : null,
         pinned ? ['Off', '', () => setCompare('off')] : null]);
     }
     wipeBar.addEventListener('pointerdown', (e) => {
@@ -2175,6 +2181,7 @@ const ThreeLab = (() => {
     const stillBtn = el('button', { class: 'stage-btn', text: '📷', title: 'Still: save this frame as a PNG at the exact frame size · Shift+click: copy it · right-click: a still at 9:16 / 16:9 / 4:5 / 1:1', dataset: { feature: 'Still' } });
     stillBtn.addEventListener('click', (e) => still({ copy: e.shiftKey }));
     stillBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); ThreeTweaks.menu(e.clientX, e.clientY, ['A still at', ...stage.pillOrder.filter((id) => id !== 'fit').map((id) => [id, ThreeMedia.SIZES.find((z) => z.id === id).title, () => still({ size: id })]), ['Copy this frame', 'To the clipboard', () => still({ copy: true })],
+      ['Send this frame to the director', 'Attached in its chat, ready to describe', () => framesToDirector('frame')],
       'A folder of stills', ['In all four sizes', '9:16, 16:9, 4:5, 1:1 as PNGs', () => stillsAt('sizes')], [player.loaded ? 'At every cue' : 'Across the song', player.cues.length ? `${player.cues.length} cues` : 'six evenly spaced frames', () => stillsAt('cues')], store.get('three.stillsDir', '') ? ['Choose another folder…', store.get('three.stillsDir', ''), () => { store.set('three.stillsDir', ''); stillsFolder(); }] : null]); });
     async function still({ size = null, copy = false } = {}) {
       const before = stage.size.id;
@@ -2191,6 +2198,19 @@ const ThreeLab = (() => {
       return url;
     }
     // A folder of stills: one at every cue (or across the song), or the frame in all four sizes, as PNGs.
+    // Frames to the Three Director's chat: this frame, or the pinned one and the live one side by side in time
+    async function framesToDirector(which = 'frame') {
+      const agent = H.agents().find((a) => a.threeTools);
+      if (!agent) { toast('Add an agent with Three.js tools first (the Three Director)', { type: 'error' }); return false; }
+      const urls = which === 'compare' && pinned ? [pinned.url, await director.shot()] : [await director.shot()];
+      const paths = [];
+      for (const [k, u] of urls.entries()) if (u) paths.push(await window.hub.saveAttachment(`${safeName(current?.name || 'sketch')} ${which === 'compare' ? (k ? 'after' : 'before') : 'frame'}.png`, u.split(',')[1]));
+      if (!paths.length) return false;
+      activate(agent.id);
+      await Native.attachPaths(agent.id, paths);
+      Native.setDraft(agent.id, which === 'compare' ? 'Before (pinned) and after (now): ' : `This frame${player.loaded ? ` at ${fmtMs(player.time)}` : ''} of "${current?.name}": `);
+      return true;
+    }
     async function stillsFolder() {
       let dir = store.get('three.stillsDir', '');
       if (!dir || !(await window.hub.fs.stat(dir))?.isDir) { [dir] = await window.hub.openDialog({ title: 'Folder for the stills', properties: ['openDirectory', 'createDirectory'] }); if (!dir) return null; store.set('three.stillsDir', dir); }
@@ -2351,6 +2371,7 @@ const ThreeLab = (() => {
         const p = pins();
         showMenu(e.clientX, e.clientY, [
           { label: 'Open', action: () => { dlg.close(); if (sk.id !== current?.id) openSketch(sk.id); } },
+          { label: '▣ Open and present', action: () => { dlg.close(); if (sk.id !== current?.id) openSketch(sk.id); setTimeout(() => togglePresent(), 400); } },
           { label: p.has(sk.id) ? '☆ Unpin' : '★ Pin to the top', action: () => togglePin(sk.id) },
           { label: 'Rename…', action: async () => { const n = await Modal.prompt('Rename sketch', { value: sk.name }); if (n?.trim()) { sk.name = n.trim(); save(); renderPicker(); fill(); } } },
           { label: 'Duplicate', action: () => { if (sk.id === current?.id) persist(); const copy = { ...JSON.parse(JSON.stringify(sk)), id: `s${Date.now()}`, name: `${sk.name} copy`, updatedAt: Date.now() }; sketches.push(copy); if (extras[sk.id]?.media) (extras[copy.id] ||= {}).media = { ...extras[sk.id].media }; saveExtras(); save(); renderPicker(); fill(); toast(`Duplicated "${sk.name}"`, { timeout: 1500 }); } },

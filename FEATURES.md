@@ -375,3 +375,11 @@
 312. ✓ 10 more Lab actions in Ctrl+K (guides, loop this bar, snap, quantize, remove doubles, cycle looks, copy all code, save sliders, save as look, Stage on top): 32 in all.
 313. ✓ Chat: Ctrl+↑ / Ctrl+↓ jump between your own messages (they flash); select text in a reply → ❝ Quote puts it in your message.
 314. ✓ App: Ctrl+K → Recent notifications (the last 40), middle-click an agent on the rail = a new chat with it, the window title shows what you're looking at.
+
+## Three.js Lab, reworked around your habits (lab stream, ~306 upgrades: docs/upgrades/lab.md)
+- ✓ **Sketch first**: the tabs moved into the header; Model viewer, Shaders, Textures, Docs, Color and Easing live in a 🧰 Tools drawer. One-row toolbar in workflow order; never-used controls (Focus, Screenshot, snippets, three.js version, loop buttons, Record, Write, MIDI, layer ⧉ / 🗑) moved into ⋯ / right-click menus. Key hints on hover.
+- ✓ **Sliders**: big Save and 🎲 Shuffle; shuffle amounts, scopes, groups, seeds and a ‹ › history; slots A / B / C with peek, morph and auto-morph; group chips; scrub by dragging a name (Shift / Alt fine); per-slider history, copy / paste, save just one, MIDI learn; sliders that move by themselves (LFO, walk, beat steps, pulse, song sections).
+- ✓ **Preview**: segmented frame sizes (Shift+1…5) + your own size; safe zones for TikTok / Reels / Shorts, Instagram's 3:4 crop and title-safe frames; F freezes (on the beat / bar / kick too); ◐ compare a pinned frame (onion, wipe, difference); 📷 exact-size stills, folders of stills per cue or in all four sizes; Present info line, blackout and sketch switching.
+- ✓ **Timeline**: bigger Tap with BPM readout and confidence, Shift+T = the 1, Q quantize, marker / waveform right-click menus, Shift+drag loops, loop chip, hover time, smooth zoom, grid view options, beat light and click track, sections that looks follow, quick trigger Presets / Auto bars, live input / gain / latency, record formats, fps, quality, countdown, N bars / seconds.
+- ✓ **Chat commands** for everything (tools/three-cmds.js, `/help lab`): /size, /freeze, /shuffle, /save-sliders, /slot, /morph, /look, /tap, /bpm, /live, /loop, /record, /still, /present, /sketch, /console, /preset, /marker… (84 commands).
+

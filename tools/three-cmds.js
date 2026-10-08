@@ -158,6 +158,7 @@
     return null;
   }, (a) => pick(['9:16', '16:9', '4:5', '1:1', 'copy'], a), null);
   reg('stills', 'A folder of PNG stills: at every cue (or across the song), or this frame in all four sizes', '<cues|sizes>', async (args) => { const n = await (await lab()).stills(/^size/i.test(args) ? 'sizes' : 'cues'); return n ? `${n} stills saved` : null; }, (a) => pick(['cues', 'sizes'], a));
+  reg('frame-to-director', 'Attach this frame (or the pinned one and now, with "compare") to the Three Director\'s chat', '[compare]', async (args) => { await (await lab()).framesToDirector(/^compare/i.test(args) ? 'compare' : 'frame'); }, (a) => pick(['compare'], a));
   reg('blackout', 'Fade the picture to black and back (B while presenting)', '[on|off]', async (args) => `Blackout ${(await lab(false)).blackout(onOff(args)) ? 'on' : 'off'}`, (a) => pick(['on', 'off'], a));
   reg('safe', 'Safe zones on the frame: on, off, or for tiktok / reels / shorts', '[on|off|tiktok|reels|shorts]', async (args) => { const a0 = String(args || '').toLowerCase(); const plat = ['tiktok', 'reels', 'shorts'].includes(a0) ? a0 : null; const on = (await lab()).safe(plat ? true : onOff(a0), plat); return `Safe zones ${on ? `on${plat ? ` (${plat})` : ''}` : 'off'}`; }, (a) => pick(['on', 'off', 'tiktok', 'reels', 'shorts'], a));
   reg('guides', 'Next composition guide: thirds, golden ratio, center, off', '', async () => `Guides: ${(await lab()).guides()}`);
