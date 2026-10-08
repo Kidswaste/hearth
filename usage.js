@@ -207,7 +207,7 @@ const Usage = (() => {
     document.addEventListener('click', onClick, true);
     document.addEventListener('change', onChange, true);
     // Re-check buttons when the layout changes, not for every clock tick or streamed word.
-    const NOISY = '.mb-time, .mb-minitime, .three-stats, .messages, .three-console, .tw-kval, .ed-panel, #toasts, .msg';
+    const NOISY = '.mb-time, .mb-minitime, .three-stats, .messages, .three-console, .tw-kval, .ed-panel, #toasts, .msg, .meter-strip, .meter-pill'; // the meter ticks while replies stream
     new MutationObserver((records) => {
       if (decorateTimer) return;
       if (records.every((r) => (r.target.nodeType === 1 ? r.target : r.target.parentElement)?.closest?.(NOISY))) return;
