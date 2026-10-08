@@ -547,6 +547,8 @@ const Jam = (() => {
     label: '🎛 Jam', desc: 'Claude and Astra take turns making a visual (4 rounds)',
     start: (idea = '', opts = {}) => start({ idea: typeof idea === 'string' ? idea : '', ...(typeof idea === 'object' ? idea : {}), ...opts }),
     stop, again, keep, running: () => Boolean(J), latest, cardEl,
+    // the chat a jam is working in (chat-scenes.js shows Claude + Astra on that chat's scene tag)
+    activeFor: (chatId) => Boolean(J && (J.chat?.id || J.chat) === chatId),
     _test: { parseArgs, buildPrompt, directPrompt, pickPrompt, summary, sides, state: () => J },
   };
 })();
