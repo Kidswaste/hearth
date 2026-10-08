@@ -323,10 +323,11 @@ const ThreeTriggers = (() => {
     const ro = new ResizeObserver(() => draw());
     ro.observe(canvas);
     return {
-      el: root, feed, refreshSense: paintSense,
+      el: root, feed, refreshSense: paintSense, autoBars: (o) => autoBars(o), // autoBars: the Lab's quick button
+
       set(next) { cfg = merge(next); paintChips(); paintDetail(); draw(); },
       destroy() { ro.disconnect(); cancelAnimationFrame(raf); root.remove(); },
     };
   }
-  return { LIST, DEFAULTS, BINS, F0, F1, merge, panel };
+  return { LIST, DEFAULTS, PRESETS, BINS, F0, F1, merge, panel };
 })();

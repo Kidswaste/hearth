@@ -1,0 +1,192 @@
+/* Three.js Lab, reworked around how it's used (tools/three.js, three-tweaks.js, three-media.js):
+   tool header tabs + Tools drawer, one-row toolbar, big Save / Shuffle, slots and morph, group chips,
+   motions, frame-size segmented control, safe zones per format, compare / onion skin, timeline quick bar. */
+
+/* ---------- tool header: the tab strip moves up here, secondary tools live in a drawer ---------- */
+.lab-head { gap: 10px; padding-top: 6px; padding-bottom: 6px; }
+.lab-head .tool-desc { display: none; }
+.lab-head .lab-tabs { flex: 1; min-width: 0; padding: 0; border: 0; gap: 4px; align-items: center; overflow: visible; }
+.lab-tabs > button[data-id] { display: none; }
+.lab-tabs.on-tool > button[data-id].on:not([data-id="sketch"]) { display: inline-flex; border-radius: 8px; border-bottom-color: transparent; background: color-mix(in srgb, var(--agent, #4f8cff) 18%, transparent); color: var(--text); padding: 4px 10px; }
+.lab-tabs .lab-back { display: none; border: 1px solid var(--line); background: none; color: var(--muted); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+.lab-tabs.on-tool .lab-back { display: inline-flex; }
+.lab-tabs .lab-back:hover { color: var(--text); border-color: var(--agent, #4f8cff); }
+.lab-tabs .lab-tools-btn { margin-left: auto; border: 1px solid var(--line); background: color-mix(in srgb, var(--text) 4%, transparent); color: var(--text); border-radius: 8px; padding: 4px 10px; cursor: pointer; font-size: 12px; white-space: nowrap; }
+.lab-tabs .lab-tools-btn:hover { border-color: var(--agent, #4f8cff); }
+html[data-skin~="forge"] .lab-tabs .lab-tools-btn::after, html[data-skin~="forge"] .lab-tabs .lab-back::after { display: none; }
+
+/* ---------- toolbar: one row; category labels only where there's room ---------- */
+.three-toolbar { flex-wrap: wrap; row-gap: 4px; }
+.three-toolbar > .spacer { flex: 1; min-width: 0; }
+.three-toolbar .tb-group::before { display: none; }
+.three-toolbar .tb-group[data-cat="Code"]:not(:has(label:not([hidden]))) { display: none; }
+.three-toolbar .three-sketch-select { max-width: 190px; font-weight: 600; }
+.three-toolbar .lab-palette.empty .lab-swatch { display: none; }
+
+/* key hints: a little badge under a main button after a moment's hover */
+.lab-keyhint { position: fixed; z-index: 2000; padding: 1px 6px; border-radius: 4px; background: #000e; color: #ffd75e; border: 1px solid #ffd75e55; font: 10.5px/1.5 Consolas, monospace; pointer-events: none; white-space: nowrap; box-shadow: 0 4px 12px #0008; }
+.lab-keyhint[hidden] { display: none; }
+
+/* ---------- sliders head: big Save and Shuffle, ‹ › through shuffles, ⋯ ---------- */
+.tweaks .tw-head { gap: 3px; flex-wrap: wrap; }
+.tweaks .tw-big { font-size: 12.5px; font-weight: 600; padding: 5px 10px; min-height: 30px; }
+.tweaks .tw-split { padding-left: 7px; padding-right: 7px; flex: none; }
+.tweaks .tw-save + .tw-split { border-left: 1px solid #0003; }
+.tweaks .tw-shuffle { border-color: color-mix(in srgb, #ffd75e 45%, var(--line)); color: #ffd75e; }
+.tweaks .tw-step { padding-left: 8px; padding-right: 8px; font-size: 15px; line-height: 1; flex: none; }
+.tweaks .tw-more { padding: 3px 8px; }
+.tweaks button:disabled.tw-big { opacity: .45; }
+.tw-flash { animation: tw-flash .35s ease-out; }
+@keyframes tw-flash { from { box-shadow: 0 0 0 3px #ffd75e88; } to { box-shadow: 0 0 0 0 #ffd75e00; } }
+@media (prefers-reduced-motion: reduce) { .tw-flash { animation: none; } }
+
+/* slots A / B / C and the morph crossfader */
+.tw-slots { display: flex; align-items: center; gap: 4px; padding: 0 10px 6px; }
+.tw-slots[hidden] { display: none; }
+.tw-slots-k { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-right: 2px; }
+.tw-slotbtn { width: 28px; padding: 2px 0 !important; font: 600 12px Consolas, monospace; color: var(--muted); border-style: dashed !important; }
+.tw-slotbtn.full { color: #0b0e10; background: #48ddff; border-style: solid !important; border-color: #48ddff !important; }
+.tw-slotbtn.peek { background: #ffd75e; border-color: #ffd75e !important; }
+.tw-morph-lab { border: 0; background: none; color: var(--muted); font: 11px Consolas, monospace; cursor: pointer; padding: 0 2px 0 6px; }
+.tw-morph-lab:hover { color: var(--text); }
+.tw-morph { flex: 1; min-width: 50px; accent-color: #48ddff; }
+.tw-slots:not(.can-morph) .tw-morph, .tw-slots:not(.can-morph) .tw-morph-lab { opacity: .35; }
+
+/* search with a count, group chips */
+.tw-tools .tw-matches { font: 10.5px Consolas, monospace; color: var(--muted); white-space: nowrap; }
+.tw-gchips { display: flex; gap: 4px; padding: 0 10px 6px; overflow-x: auto; scrollbar-width: none; flex: none; }
+.tw-gchips[hidden] { display: none; }
+.tw-gchips::-webkit-scrollbar { display: none; }
+.tw-gchip { flex: none; padding: 3px 10px; border-radius: 99px; border: 1px solid var(--line); background: color-mix(in srgb, var(--text) 4%, transparent); color: var(--muted); font-size: 11.5px; cursor: pointer; white-space: nowrap; }
+.tw-gchip:hover { color: var(--text); border-color: color-mix(in srgb, #ffd75e 50%, var(--line)); }
+.tw-gchip.on { color: #0b0e10; background: #ffd75e; border-color: #ffd75e; font-weight: 600; }
+.tw-sec-head { font-size: 12.5px; }
+
+/* scrubbing a number by its name */
+.tw-scrub { cursor: ew-resize; user-select: none; }
+.tw-scrub:hover { color: #ffd75e; }
+body.tw-scrubbing, body.tw-scrubbing * { cursor: ew-resize !important; }
+
+/* follow the music / move by itself */
+.tw-bind-k { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 6px 0 3px; }
+.tw-bind-k:first-child { margin-top: 0; }
+.tw-mrow { gap: 6px; }
+.tw-mrow[hidden] { display: none; }
+.tw-msel { font-size: 11px; padding: 1px 4px; max-width: 92px; }
+
+/* ---------- preview: the frame-size segmented control, freeze, compare, still ---------- */
+.stage-pill { gap: 3px; padding: 4px; border-radius: 10px; flex-wrap: wrap; justify-content: flex-end; max-width: calc(100% - 16px); }
+.stage-pill .stage-seg { display: inline-flex; border: 1px solid #ffffff24; border-radius: 8px; overflow: hidden; }
+.stage-pill .stage-seg .stage-btn { border-radius: 0; border: 0; padding: 4px 9px; font-size: 12px; }
+.stage-pill .stage-seg .stage-btn + .stage-btn { border-left: 1px solid #ffffff18; }
+.stage-pill .stage-seg .stage-btn.on { font-weight: 700; }
+.stage-pill .freeze-btn { font-size: 12px; padding: 4px 10px; border: 1px solid #48ddff55; color: #48ddff; }
+.stage-pill .freeze-btn.on { background: #48ddff; color: #0b0e10; }
+.stage-pill .stage-size { order: 9; }
+.three-preview:not(:hover) .stage-pill .stage-size { display: none; }
+
+/* safe zones per format */
+.safe-zones .sz.right { height: auto; }
+.safe-zones .sz.frame { background: none; border: 1px solid #ffd75e70; align-items: flex-start; justify-content: flex-start; padding: 2px 4px; color: #ffd75ec0; font-size: 9.5px; }
+.safe-zones .sz.frame.dashed { border-style: dashed; border-color: #48ddff60; color: #48ddffb0; align-items: flex-end; justify-content: center; }
+.safe-zones .sz.crop { top: 0; bottom: 0; background: #000a; border: 0; }
+.safe-zones .sz.crop.left { left: 0; }
+.safe-zones .sz.crop.right { right: 0; left: auto; writing-mode: horizontal-tb; }
+
+/* compare: a pinned frame as an onion skin or a wipe */
+.lab-onion { position: absolute; z-index: 2; pointer-events: none; }
+.lab-onion[hidden] { display: none; }
+.lab-onion-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
+.lab-onion[data-mode="onion"] .lab-onion-img { mix-blend-mode: normal; }
+.lab-wipe-bar { position: absolute; top: 0; bottom: 0; width: 14px; margin-left: -7px; cursor: ew-resize; pointer-events: auto; }
+.lab-wipe-bar::before { content: ""; position: absolute; left: 6px; top: 0; bottom: 0; width: 2px; background: #ffd75e; box-shadow: 0 0 6px #000; }
+.lab-wipe-bar::after { content: "pinned ◂ ▸ live"; position: absolute; left: 50%; top: 8px; transform: translateX(-50%); white-space: nowrap; padding: 1px 6px; border-radius: 4px; background: #000c; color: #ffd75e; font: 10px Consolas, monospace; }
+.lab-wipe-bar[hidden] { display: none; }
+.three-preview.presenting .lab-onion { display: none; }
+
+/* present info (I) */
+.present-hud { position: absolute; left: 14px; bottom: 12px; z-index: 21; padding: 4px 10px; border-radius: 6px; background: #000b; color: #eae0d5; font: 12px Consolas, monospace; pointer-events: none; }
+.present-hud[hidden] { display: none; }
+.three-preview:not(.presenting) .present-hud { display: none; }
+
+/* ---------- timeline: Tap with its readout, quick trigger buttons, the loop chip, hover time ---------- */
+.media-bar .mb-tap { min-width: 74px; font-weight: 700; font-size: 12.5px; padding: 4px 12px; border-color: color-mix(in srgb, #ffd75e 50%, var(--line)); color: #ffd75e; position: relative; overflow: hidden; }
+.media-bar .mb-tap.on { background: color-mix(in srgb, #ffd75e calc(10% + var(--conf, 0) * 22%), transparent); }
+.media-bar .mb-tap.flash { animation: mb-tapflash .18s ease-out; }
+@keyframes mb-tapflash { from { box-shadow: inset 0 0 0 30px #ffd75e55; } to { box-shadow: inset 0 0 0 30px #ffd75e00; } }
+.media-bar .mb-bpmread { font: 11.5px Consolas, monospace; color: var(--muted); white-space: nowrap; cursor: text; padding: 0 3px; }
+.media-bar .mb-bpmread.mine { color: #ffd75e; }
+.media-bar .mb-bpmread.sure::after { content: " ✓"; color: #7cd992; }
+.media-bar .mb-lane { font-weight: 600; }
+.media-bar .mb-quick { font-size: 11.5px; }
+.media-bar .mb-quant.on { background: #ffd75e; color: #0b0e10; }
+.media-bar .mb-loopchip { display: inline-flex; align-items: center; border: 1px solid #ffd75e66; border-radius: 99px; overflow: hidden; }
+.media-bar .mb-loopchip[hidden] { display: none; }
+.media-bar .mb-loopchip button { border: 0; background: none; color: #ffd75e; font: 11px Consolas, monospace; padding: 2px 8px; cursor: pointer; }
+.media-bar .mb-loopchip .mb-loopchip-x { padding: 2px 7px; border-left: 1px solid #ffd75e44; color: var(--muted); }
+.media-bar .mb-loopchip.off { border-style: dashed; opacity: .7; }
+.media-bar .mb-loopchip .mb-loopinfo { color: inherit; }
+.media-bar .mb-tl-wrap { position: relative; }
+.media-bar .mb-hover { position: absolute; top: 0; bottom: 0; left: 0; width: 1px; background: #ffffff40; pointer-events: none; }
+.media-bar .mb-hover[hidden] { display: none; }
+.media-bar .mb-hover::after { content: attr(data-t); position: absolute; top: 1px; left: 4px; padding: 0 4px; border-radius: 3px; background: #000c; color: #fff; font: 10px Consolas, monospace; white-space: nowrap; }
+
+/* ---------- narrower windows: keep one tidy toolbar, let the timeline row wrap cleanly ---------- */
+@media (max-width: 1250px) {
+  .three-toolbar .three-sketch-select { max-width: 140px; }
+  .media-bar .mb-name { max-width: 120px; }
+  .tweaks .tw-shuffle { padding-left: 8px; padding-right: 8px; }
+}
+
+/* sliders: the two big buttons get their own full-width row under the title */
+.tweaks .tw-actions { flex-basis: 100%; display: flex; gap: 6px; margin-top: 6px; }
+.tweaks .tw-act { flex: 1; display: flex; min-width: 0; }
+.tweaks .tw-act > button { border-radius: 0; margin: 0; }
+.tweaks .tw-act > button + button { margin-left: -1px; }
+.tweaks .tw-act > button:first-child { border-radius: 8px 0 0 8px; }
+.tweaks .tw-act > button:last-child { border-radius: 0 8px 8px 0; }
+.tweaks .tw-act .tw-shuffle, .tweaks .tw-act .tw-save { flex: 1; justify-content: center; text-align: center; min-width: 0; }
+
+/* timeline groups that have nothing to show */
+.media-bar.mb-empty .tb-group[data-cat="Play"], .media-bar.mb-empty .tb-group[data-cat="Beat"] { display: none; }
+.media-bar:not(.mb-all) .tb-group[data-cat="Loop"]:not(:has(.mb-loopchip:not([hidden]))) { display: none; }
+.media-bar .mb-main .tb-group::before { display: none; }
+.media-bar .mb-main .tb-group { padding: 2px 4px; }
+.media-bar .mb-main .mb-g-sound { flex-wrap: wrap; row-gap: 4px; }
+
+/* Lab menus: one line per item (label left, hint right), so long menus stay short */
+.mb-menu.lab-pop { width: 300px; padding: 3px; }
+.mb-menu.lab-compact { width: 290px; padding: 3px; }
+.mb-menu:is(.lab-pop, .lab-compact) .menu-item { flex-direction: row; align-items: baseline; gap: 10px; padding: 5px 9px; min-width: 0; }
+.mb-menu:is(.lab-pop, .lab-compact) .menu-item b { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; max-width: 62%; }
+.mb-menu:is(.lab-pop, .lab-compact) .menu-item .hint { margin-left: auto; font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: right; opacity: .8; }
+.mb-menu.lab-pop .menu-item.on b::before { content: "● "; color: #ffd75e; }
+.mb-menu:is(.lab-pop, .lab-compact) .menu-head { padding: 6px 9px 2px; }
+
+/* console: errors only */
+.three-console-wrap.errors-only .console-row:not(.error):not(.warn) { display: none; }
+.three-console-head .check { margin-left: 6px; }
+
+/* layers: ⧉ / 🗑 were never used: they live in the row's right-click menu now */
+.layers .tw-head button[title^="Duplicate the selected"], .layers .tw-head button[title^="Delete the selected"] { display: none; }
+
+/* timeline: the beat light on the BPM readout */
+.media-bar .mb-bpmread.beat { animation: mb-beat .16s ease-out; }
+.media-bar .mb-bpmread.beat.down { animation-name: mb-down; }
+@keyframes mb-beat { from { color: #fff; text-shadow: 0 0 8px #ffd75e; } }
+@keyframes mb-down { from { color: #ff6a6a; text-shadow: 0 0 10px #ff6a6a; } }
+@media (prefers-reduced-motion: reduce) { .media-bar .mb-bpmread.beat { animation: none; } }
+
+/* sliders: the "Changed" chip */
+.tw-gchip.tw-gchip-changed { margin-left: auto; }
+.tw-gchip.tw-gchip-changed.on { background: #48ddff; border-color: #48ddff; }
+
+/* Present: blackout (B) */
+.lab-blackout { position: absolute; inset: 0; z-index: 19; background: #000; opacity: 0; pointer-events: none; transition: opacity .6s ease; }
+.lab-blackout.on { opacity: 1; }
+
+/* console: "Ask director to fix" only when there's something to fix */
+.three-console-wrap:not(:has(.console-row.error, .console-row.warn)) .tc-fix { display: none; }
+
+/* sliders: the crossfader glows while it auto-morphs */
+.tw-morph.auto { accent-color: #ffd75e; filter: drop-shadow(0 0 4px #ffd75e88); }

@@ -288,6 +288,30 @@ const ThreeTweaks = (() => {
   const applyValues_ = (code, items, vals) => applyValues(code, items, vals);
   const BANDS = [['kick', 'Kick'], ['snare', 'Snare'], ['hats', 'Hats'], ['bassHit', 'Bass hit'], ['hit', 'Hit'], ['beat', 'Beat'], ['bass', 'Bass'], ['mid', 'Mids'], ['treble', 'Highs'], ['level', 'Loudness']];
   const BAND_NAME = Object.fromEntries(BANDS);
+  // Ways a control can move by itself (on top of your value): [kind, name, hint]
+  const MOTIONS = [['', 'Still', 'Stays where you put it'], ['lfo', 'Wave (LFO)', 'Smooth up and down in time with the beat'], ['walk', 'Random walk', 'Drifts around on its own'],
+    ['beat', 'Steps on beats', 'A new random value every beat (or every few)'], ['pulse', 'Pulse on beats', 'Jumps up on each beat and falls back'], ['section', 'Song sections', 'Lower in quiet parts, higher in loud ones']];
+  const MOTION_NAME = Object.fromEntries(MOTIONS);
+  const RATES = [[0.25, '¼ beat'], [0.5, '½ beat'], [1, '1 beat'], [2, '2 beats'], [4, '1 bar'], [8, '2 bars'], [16, '4 bars'], [32, '8 bars']];
+  const motionDefaults = (kind) => ({ kind, shape: 'sine', rate: kind === 'lfo' ? 4 : kind === 'walk' ? 2 : 1, depth: kind === 'pulse' ? 0.3 : 0.2 });
+  // Seeded randomness so a shuffle can be repeated from its number.
+  function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+  const hashSeed = (s) => [...String(s)].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) >>> 0, 7);
+  const flash = (node) => { if (!node) return; node.classList.remove('tw-flash'); void node.offsetWidth; node.classList.add('tw-flash'); };
+  // A small menu with headings and hints, used across the Lab: items are 'Heading' | [label, hint, fn, on?, feature?] | null.
+  function menu(x, y, items) {
+    document.querySelector('.mb-menu.lab-pop')?.remove();
+    const m = el('div', { class: 'mb-menu lab-pop' }, items.filter(Boolean).map((it) => (typeof it === 'string'
+      ? el('div', { class: 'menu-head', text: it })
+      : el('button', { class: `menu-item${it[3] ? ' on' : ''}`, dataset: it[4] ? { feature: it[4] } : {}, on: { click: () => { m.remove(); it[2](); } } }, el('b', { text: it[0] }), el('span', { class: 'hint', text: it[1] || '' })))));
+    Object.assign(m.style, { left: `${Math.max(8, Math.min(innerWidth - 312, x))}px`, top: `${Math.max(8, y)}px`, transform: 'none', maxHeight: '70vh', overflowY: 'auto' });
+    document.body.append(m);
+    requestAnimationFrame(() => { const r = m.getBoundingClientRect(); if (r.bottom > innerHeight - 8) m.style.top = `${Math.max(8, innerHeight - 8 - r.height)}px`; });
+    const close = (e) => { if (!m.contains(e.target)) { m.remove(); removeEventListener('pointerdown', close, true); removeEventListener('keydown', esc, true); } };
+    const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); m.remove(); removeEventListener('pointerdown', close, true); removeEventListener('keydown', esc, true); } };
+    setTimeout(() => { addEventListener('pointerdown', close, true); addEventListener('keydown', esc, true); });
+    return m;
+  }
   // camelCase / snake_case keys → "Orb size"
   const humanize = (k) => {
     const words = String(k).replace(/[_-]+/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2').trim().split(/\s+/);
@@ -310,7 +334,9 @@ const ThreeTweaks = (() => {
   // askForSliders() / quickAsk(text) → the Three Director.
   // keyframes (optional): { state(key) → 'none'|'animated'|'on', toggle(key, value), changed(key, value, { final }) → true when the
   // value went into a keyframe (the control is animated) }. Only named controls (tweak()) can be animated.
-  function controller({ send, rerun, goToLine, commit, askForSliders, quickAsk, persist, keyframes, touched }) {
+  // learn(key, label) → map a MIDI knob to it (optional); clock() → { t, bpm, playing, section } for motions (optional).
+  // palette() → the sketch's colors (for "colors from the palette").
+  function controller({ send, rerun, goToLine, commit, askForSliders, quickAsk, persist, keyframes, touched, learn, clock, palette }) {
     let scanned = null;
     let ids = [];
     let values = [];
@@ -336,14 +362,38 @@ const ThreeTweaks = (() => {
     const notice = el('div', { class: 'tw-notice', hidden: true });
     const looksBar = el('div', { class: 'tw-looks' });
     const btn = (text, title, fn, cls = 'ghost small') => el('button', { class: cls, text, title, on: { click: fn } });
-    const saveBtn = btn('Save', 'Keep these values: write them into the sketch code (the old code stays in History)', () => save(), 'primary small');
+    // The two most-used buttons of the whole Lab (Save 46, Shuffle 31) are the biggest ones here, each with a ▾ for
+    // its variants; everything rarer sits in the ⋯ menu.
+    const saveBtn = btn('Save', 'Keep these values: write them into the sketch code (the old code stays in History) · Ctrl+S · Shift+click: save them as a look instead', (e) => (e.shiftKey ? quickLook() : save()), 'primary small tw-big tw-save');
+    saveBtn.dataset.feature = 'Save';
+    saveBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); saveMenu(saveBtn); });
+    saveBtn.dataset.key = 'Ctrl+S';
+    const saveMore = btn('▾', 'Save as a look, into a slot (A / B / C), auto-save…', (e) => saveMenu(e.currentTarget), 'primary small tw-big tw-split');
+    saveMore.dataset.feature = 'Save options';
     const resetBtn = btn('Reset', 'Back to the values in the code', () => reset());
     const undoBtn = btn('↶', 'Undo the last slider change', () => undo());
-    const shuffleBtn = btn('🎲', 'Shuffle: nudge every control to a random nearby value (↶ to undo)', () => shuffle());
+    const shuffleBtn = btn('🎲 Shuffle', 'Shuffle: nudge the controls to random nearby values (R) · ‹ › step back / forward through your shuffles · ▾ amount, which ones, seeds', () => shuffle(), 'ghost small tw-big tw-shuffle');
+    shuffleBtn.dataset.feature = 'Shuffle';
+    shuffleBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); shuffleMenu(shuffleBtn); });
+    shuffleBtn.dataset.key = 'R';
+    const shufBack = btn('‹', 'The previous shuffle (Shift+R)', () => shuffleStep(-1), 'ghost small tw-big tw-step');
+    shufBack.dataset.feature = 'Shuffle back';
+    const shufFwd = btn('›', 'The next shuffle (or a new one)', () => shuffleStep(1), 'ghost small tw-big tw-step');
+    shufFwd.dataset.feature = 'Shuffle forward';
+    const shufMore = btn('▾', 'Shuffle options: amount, which controls, seeds', (e) => shuffleMenu(e.currentTarget), 'ghost small tw-big tw-split');
+    shufMore.dataset.feature = 'Shuffle options';
+    const moreBtn = btn('⋯', 'More: reset, undo, copy / paste values, knobs or sliders, auto-save, filters', (e) => moreMenu(e.currentTarget), 'ghost small tw-more');
+    moreBtn.dataset.feature = 'Sliders more';
     const unusedBox = el('input', { type: 'checkbox' });
     unusedBox.addEventListener('change', () => { showUnused = unusedBox.checked; applyFilter(); });
-    const search = el('input', { type: 'search', class: 'tw-search', placeholder: 'Find a slider…' });
-    search.addEventListener('input', () => { filter = search.value.toLowerCase(); applyFilter(); });
+    const search = el('input', { type: 'search', class: 'tw-search', placeholder: 'Find a slider…  ( / )' });
+    search.addEventListener('input', () => { filter = search.value.toLowerCase().trim(); applyFilter(); });
+    // Enter jumps to the first match, Esc clears the search
+    search.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && search.value) { e.stopPropagation(); search.value = ''; filter = ''; applyFilter(); }
+      if (e.key === 'Enter') { const r = rows.find((x) => !x.el.hidden && x.el.offsetParent); if (r) { r.el.scrollIntoView({ block: 'center' }); flash(r.el); (r.el.querySelector('input, svg, button.tw-toggle, .tw-seg-btn') || r.el).focus?.(); } }
+    });
+    const matchCount = el('span', { class: 'tw-matches' });
     // Show one group at a time, knobs or sliders, only what you changed, and hold A/B to hear… see the code's values.
     const groupSel = el('select', { class: 'tw-groupsel', title: 'Show one group' });
     groupSel.addEventListener('change', () => { groupFilter = groupSel.value; applyFilter(); });
@@ -366,23 +416,57 @@ const ThreeTweaks = (() => {
     // Folds to one line so the controls get the room; remembers whether you keep it open.
     const asks = quickAsk ? el('details', { class: 'tw-asks', on: { toggle: (e) => store.set('three.twAsksOpen', e.currentTarget.open) } },
       el('summary', { class: 'tw-asks-title', text: 'Ask the director' }),
-      ...['3 variations to pick from', 'More energy', 'Calmer', 'New colors', 'Hit harder on beats', 'Simpler', 'More detail', 'Add a slider for…'].map((t) => el('button', {
+      ...['3 variations to pick from', 'More energy', 'Calmer', 'New colors', 'Hit harder on beats', 'React to the kick', 'Change on the drop', 'Fill the 9:16 frame', 'Simpler', 'More detail', 'Add a slider for…'].map((t) => el('button', {
         class: 'tw-chip', text: t, title: t.endsWith('…') ? 'Starts the message so you can finish it' : `Send "${t}" to the Three Director`,
         on: { click: () => quickAsk(t) },
       }))) : null;
     if (asks) asks.open = store.get('three.twAsksOpen', false);
+    // Save slots A / B / C (click: recall · empty or Shift+click: store · hold: peek · Alt+click: clear) and a
+    // crossfader that morphs between two of them.
+    const SLOTS = ['A', 'B', 'C'];
+    let slots = {};
+    let morphPair = store.get('three.twMorphPair', ['A', 'B']);
+    const slotBtns = SLOTS.map((n) => {
+      const b = btn(n, '', () => {}, 'ghost small tw-slotbtn');
+      b.dataset.feature = `Slot ${n}`;
+      let peekT = 0; let peeked = false;
+      b.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        peeked = false;
+        if (slots[n] && !e.shiftKey && !e.altKey) peekT = setTimeout(() => { peeked = true; peek(slotValues(n)); b.classList.add('peek'); }, 280);
+      });
+      const endPeek = () => { clearTimeout(peekT); if (peeked) { peek(null); b.classList.remove('peek'); } };
+      b.addEventListener('pointerup', endPeek);
+      b.addEventListener('pointerleave', endPeek);
+      b.addEventListener('click', (e) => {
+        if (peeked) { peeked = false; return; }
+        if (e.altKey) slotClear(n); else if (e.shiftKey || !slots[n]) slotSave(n); else slotRecall(n);
+      });
+      b.addEventListener('contextmenu', (e) => { e.preventDefault(); slotMenu(e, n); });
+      return b;
+    });
+    const morph = el('input', { type: 'range', class: 'tw-morph', min: 0, max: 1, step: 0.001, value: 0, title: 'Morph between the two slots (drag) · double-click: halfway' });
+    const morphLab = el('button', { class: 'tw-morph-lab', text: 'A↔B', title: 'Which two slots the crossfader morphs between' });
+    morphLab.addEventListener('click', (e) => { const r = e.currentTarget.getBoundingClientRect(); menu(r.left, r.bottom + 4, ['Morph between', ...[['A', 'B'], ['B', 'C'], ['A', 'C']].map((p) => [`${p[0]} ↔ ${p[1]}`, p.every((x) => slots[x]) ? '' : 'save both first', () => { morphPair = p; store.set('three.twMorphPair', p); paintSlots(); }, p.join() === morphPair.join()])]); });
+    morph.addEventListener('input', () => morphTo(Number(morph.value)));
+    morph.addEventListener('change', () => morphTo(Number(morph.value), { release: true }));
+    morph.addEventListener('dblclick', () => { morph.value = 0.5; morphTo(0.5, { release: true }); });
+    const slotsRow = el('div', { class: 'tw-slots' }, el('span', { class: 'tw-slots-k', text: 'Slots' }), ...slotBtns, morphLab, morph);
+    // Group chips: one click shows a single group (your slider groups get a lot of clicks), again shows all.
+    const chips = el('div', { class: 'tw-gchips' });
     const root = el('div', { class: 'tweaks' },
-      el('div', { class: 'tw-head' }, el('b', { text: 'Sliders' }), count, el('span', { class: 'spacer' }), undoBtn, shuffleBtn, resetBtn, saveBtn),
-      status, looksBar,
-      el('div', { class: 'tw-tools' }, search, abBtn),
-      el('div', { class: 'tw-tools tw-tools2' }, groupSel, layoutSel, el('label', { class: 'check small', title: 'Only the controls you moved' }, changedBox, 'Changed'),
-        el('label', { class: 'check small', title: 'Also list values the running sketch never reads' }, unusedBox, 'Unused'),
-        el('label', { class: 'check small', title: 'Write values into the code by themselves, a moment after you let go' }, autoSaveBox, 'Auto-save'),
-        el('label', { class: 'check small', title: 'Opening a group folds the others' }, accordionBox, 'One group')),
+      el('div', { class: 'tw-head' }, el('b', { text: 'Sliders' }), count, el('span', { class: 'spacer' }), moreBtn,
+        el('div', { class: 'tw-actions' }, el('span', { class: 'tw-act' }, shufBack, shuffleBtn, shufFwd, shufMore), el('span', { class: 'tw-act' }, saveBtn, saveMore))),
+      status, slotsRow, looksBar,
+      el('div', { class: 'tw-tools' }, search, matchCount, abBtn),
+      chips,
       notice, body, asks,
-      el('div', { class: 'tw-foot', title: 'Knobs: drag up / down (Shift = fine), wheel or arrow keys to step. They click into the value in the code (the blue notch) as you pass it; double-click goes back to it. Right-click: lock, favorites, follow the music, keyframe.' },
-        el('span', { html: '<b class="tw-live">⚡</b> instant · <b class="tw-rerun">↻</b> rebuilds · <b class="tw-music">♪</b> music · <b style="color:#48ddff">|</b> code value · right-click: 🔒 ★' })));
+      el('div', { class: 'tw-foot', title: 'Knobs: drag up / down (Shift = fine, Alt = finer), wheel or arrow keys to step. Drag a slider\'s name sideways to scrub it. They click into the value in the code (the blue notch) as you pass it; double-click goes back to it. Right-click: lock, favorites, follow the music, move by itself, history, copy / paste, keyframe, MIDI.' },
+        el('span', { html: '<b class="tw-live">⚡</b> instant · <b class="tw-rerun">↻</b> rebuilds · <b class="tw-music">♪</b> music / motion · <b style="color:#48ddff">|</b> code value · drag a name to scrub · right-click: more' })));
 
+    root.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && !/^(INPUT|TEXTAREA)$/.test(e.target.tagName) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && e.target.type === 'range')) { e.preventDefault(); e.stopPropagation(); undo(); }
+    });
     // Values used only while the scene is built re-run it in place, at most every 180 ms while dragging.
     let rebuildTimer = null;
     let rebuildAgain = false;
@@ -399,15 +483,19 @@ const ThreeTweaks = (() => {
       const d = dirtyCount();
       saveBtn.disabled = !d; resetBtn.disabled = !d;
       undoBtn.disabled = !undoStack.length;
-      shuffleBtn.disabled = !scanned?.items.some((it) => it.key != null);
+      shuffleBtn.disabled = shufMore.disabled = !scanned?.items.some((it) => it.key != null);
+      shufBack.disabled = shufPos <= 0;
+      shufFwd.disabled = shuffleBtn.disabled;
+      saveMore.disabled = !scanned?.items.length;
       saveBtn.textContent = d ? `Save ${d}` : 'Save';
       root.classList.toggle('dirty', d > 0);
       status.className = `tw-status${d ? ' dirty' : ''}`;
       status.textContent = !scanned?.items.length ? '' : d
-        ? `You're seeing ${d} change${d > 1 ? 's' : ''} live. Save keeps ${d > 1 ? 'them' : 'it'} in the sketch.`
+        ? `${d} change${d > 1 ? 's' : ''} live · Save keeps ${d > 1 ? 'them' : 'it'} · ↶ in ⋯`
         : 'Changes show live as you move a slider. Nothing to save.';
       rows.forEach((r) => r.el.classList.toggle('changed', !same(r.it, values[r.i])));
       body.querySelectorAll('.tw-sec').forEach((sec) => sec.paintChanged?.());
+      const cc = chips.querySelector('.tw-gchip-changed'); if (cc) cc.textContent = `• Changed${d ? ` ${d}` : ''}`;
       if (changedOnly) applyFilter();
     }
     function setValue(i, v, { release = false, external = false } = {}) {
@@ -426,8 +514,17 @@ const ThreeTweaks = (() => {
       send({ type: 'tweak', index: i, value: runtime(it, v), call: it.call, key: it.key });
       refreshState();
       if (needsRebuild(i)) rebuild();
-      if (release) checkpoint();
+      if (release) { checkpoint(); remember(i); }
     }
+    // Each control's recent values (right-click → History), newest first.
+    const valHist = {};
+    function remember(i) {
+      const id = ids[i]; const v = values[i];
+      const list = (valHist[id] ||= []);
+      if (list[0] === v) return;
+      valHist[id] = [v, ...list.filter((x) => x !== v)].slice(0, 12);
+    }
+    const rememberIdx = (i) => remember(i);
     // Undo works on whole gestures: a checkpoint after each release, shuffle, look or reset.
     function checkpoint() {
       if (!scanned || committed.length !== values.length || committed.every((v, i) => v === values[i])) { committed = values.slice(); return; }
@@ -448,7 +545,7 @@ const ThreeTweaks = (() => {
         if (needsRebuild(i)) rb = true;
       });
       if (rb) rebuild();
-      if (remember) checkpoint(); else committed = values.slice();
+      if (remember) { checkpoint(); values.forEach((_, i) => { if (valHist[ids[i]]?.[0] !== values[i] && !same(scanned.items[i], values[i])) rememberIdx(i); }); } else committed = values.slice();
       refreshState();
     }
     function undo() {
@@ -456,28 +553,309 @@ const ThreeTweaks = (() => {
       if (!prev || prev.length !== values.length) return;
       applyValues(prev, { remember: false });
     }
-    function shuffle() { if (scanned) applyValues(shuffled(null)); }
-    // Random nearby values for every control (or only the indexes in `only`).
-    function shuffled(only) {
+    // ---------- shuffle: amount, which controls, seeds, and a history you can step through ----------
+    // shufOpt = { amount: 0.1 … 1 of each range, scope: 'all' | 'favs' | 'colors' | 'numbers' | 'visible' | 'changed' | 'group:<name>' }
+    const AMOUNTS = [[0.1, 'Subtle'], [0.35, 'Normal'], [0.6, 'Bold'], [1, 'Wild']];
+    let shufOpt = { amount: 0.35, scope: 'all', ...store.get('three.shuffle', {}) };
+    let shufHist = []; // [{ values, seed, label }]: entry 0 is what you had before the first shuffle
+    let shufPos = -1;
+    const scopeName = (s) => (s === 'one' ? 'one at random' : s === 'all' ? 'every control' : s === 'favs' ? '★ favorites' : s === 'colors' ? 'colors' : s === 'numbers' ? 'numbers' : s === 'visible' ? 'what the panel shows' : s === 'changed' ? 'what you changed' : `"${s.slice(6)}"`);
+    function scopeIdx(scope) {
+      if (!scanned) return [];
+      const all = scanned.items.map((_, i) => i).filter((i) => scanned.items[i].key != null && !locks.has(ids[i]));
+      if (scope === 'favs') return all.filter((i) => favs.has(ids[i]));
+      if (scope === 'colors') return all.filter((i) => scanned.items[i].kind === 'color');
+      if (scope === 'numbers') return all.filter((i) => scanned.items[i].kind === 'number');
+      if (scope === 'changed') return all.filter((i) => !same(scanned.items[i], values[i]));
+      if (scope === 'visible') return all.filter((i) => rows.some((r) => r.i === i && !r.el.hidden && !r.el.closest('[hidden]')));
+      if (scope?.startsWith('group:')) return all.filter((i) => (scanned.items[i].group || 'Controls') === scope.slice(6));
+      if (scope === 'one') { const pool = all.filter((i) => scanned.items[i].kind !== 'bool'); return pool.length ? [pool[Math.floor(Math.random() * pool.length)]] : []; }
+      return all;
+    }
+    // Colors from the sketch palette: every color control gets one of its colors (a different order each time)
+    function paletteColors() {
+      const pal = (palette?.() || []).filter((c) => CSS_HEX.test(c));
+      if (pal.length < 2) { toast('Set a palette first (🎨 in the Lab toolbar, or a Coolors link)', { type: 'error' }); return false; }
+      const idx = scopeIdx('colors');
+      if (!idx.length) { toast('No color sliders here', { timeout: 1500 }); return false; }
+      const order = [...pal].sort(() => Math.random() - 0.5);
+      const next = values.slice(); idx.forEach((i, k) => { next[i] = normHex(order[k % order.length]); });
+      applyValues(next);
+      return true;
+    }
+    // Halfway back to the code (k = 0.5) or further out (k = 1.5): scales how far every changed number is from the code
+    function tame(k) {
+      if (!scanned) return 0;
+      let n = 0;
+      const next = values.map((v, i) => {
+        const it = scanned.items[i];
+        if (it.kind !== 'number' || same(it, v) || locks.has(ids[i])) return v;
+        n += 1;
+        let x = it.orig + (v - it.orig) * k;
+        x = Math.max(Math.min(it.range.min, it.orig), Math.min(Math.max(it.range.max, it.orig), x));
+        return it.int ? Math.round(x) : Number(x.toPrecision(6));
+      });
+      applyValues(next);
+      return n;
+    }
+    // Save just one control into the code; your other changes stay live and unsaved
+    function saveOne(i) {
+      if (!scanned || same(scanned.items[i], values[i])) return false;
+      const keep = Object.fromEntries(ids.map((id, k) => [id, values[k]]));
+      const only = scanned.items.map((it, k) => (k === i ? values[k] : it.orig));
+      const next = applyValues_(scanned.code, scanned.items, only);
+      const fresh = scan(next);
+      scanned = fresh; ids = idsFor(fresh.items);
+      values = fresh.items.map((it, k) => (ids[k] in keep && typeof keep[ids[k]] === typeof it.orig ? keep[ids[k]] : it.orig));
+      committed = values.slice(); undoStack = [];
+      commit(next);
+      render();
+      toast('Saved that one into the code', { timeout: 1200 });
+      return true;
+    }
+    // tweak({ … }) code with the current values, to paste into a sketch (or give the director)
+    function tweakCode() {
+      const byCall = {};
+      scanned?.items.forEach((it, i) => { if (it.key == null) return; const v = values[i]; const val = it.kind === 'number' ? `{ value: ${trimNum(v)}, min: ${trimNum(it.range.min)}, max: ${trimNum(it.range.max)}${it.int ? ', step: 1' : ''}${it.group ? `, group: '${it.group}'` : ''} }` : JSON.stringify(v); (byCall[it.call] ||= []).push(`  ${it.key}: ${val},`); });
+      return Object.values(byCall).map((lines) => `const P = tweak({\n${lines.join('\n')}\n});`).join('\n\n');
+    }
+    // { amount, scope, seed, only } → applies a shuffle and remembers it (‹ › step through them)
+    function shuffle(o = {}) {
+      if (!scanned) return null;
+      const amount = Number(o.amount ?? shufOpt.amount) || 0.35;
+      const scope = o.scope ?? shufOpt.scope;
+      const only = o.only || scopeIdx(scope);
+      if (!only.length) { toast(`Nothing to shuffle in ${scopeName(scope)}${locks.size ? ' (locked controls stay)' : ''}`, { timeout: 1800 }); return null; }
+      const seed = Number.isFinite(Number(o.seed)) && o.seed !== '' && o.seed != null ? (Number(o.seed) >>> 0) : (Math.random() * 1e9) >>> 0;
+      if (shufPos < 0 || JSON.stringify(shufHist[shufPos]?.values) !== JSON.stringify(values)) { shufHist = shufHist.slice(0, shufPos + 1); shufHist.push({ values: values.slice(), seed: null, label: 'before' }); shufPos = shufHist.length - 1; }
+      const next = shuffled(only, amount, rng(seed));
+      shufHist = shufHist.slice(0, shufPos + 1);
+      shufHist.push({ values: next, seed, label: `${AMOUNTS.find((a) => a[0] === amount)?.[1] || `${Math.round(amount * 100)}%`} · ${scopeName(scope)}` });
+      if (shufHist.length > 40) shufHist.shift();
+      shufPos = shufHist.length - 1;
+      applyValues(next);
+      shuffleBtn.title = `Shuffle (R) · last: seed ${seed}, ${shufHist[shufPos].label} · ‹ › step through ${shufHist.length - 1} shuffle${shufHist.length === 2 ? '' : 's'}`;
+      flash(shuffleBtn);
+      return seed;
+    }
+    function shuffleStep(d) {
+      if (d > 0 && shufPos >= shufHist.length - 1) { shuffle(); return; }
+      const to = shufPos + d;
+      if (to < 0 || to >= shufHist.length) { toast(d < 0 ? 'No earlier shuffle' : 'No later shuffle', { timeout: 1000 }); return; }
+      shufPos = to;
+      applyValues(shufHist[to].values);
+      toast(shufHist[to].seed == null ? 'Back to before the shuffles' : `Shuffle ${to} of ${shufHist.length - 1} · seed ${shufHist[to].seed}`, { timeout: 1100 });
+      refreshState();
+    }
+    // Random nearby values for the indexes in `only` (all named controls when null); amount = how far, of each range.
+    function shuffled(only, amount = 0.35, rand = Math.random) {
       const next = values.slice();
-      const rnd = (a, b) => a + Math.random() * (b - a);
+      const rnd = (a, b) => a + rand() * (b - a);
       scanned.items.forEach((it, i) => {
         if (it.key == null || locks.has(ids[i])) return;
+        if (only && !only.includes(i)) return;
         if (it.kind === 'number') {
           const { min, max, step } = it.range;
           const span = max - min;
-          let x = Math.min(max, Math.max(min, values[i] + rnd(-0.35, 0.35) * span));
+          let x = amount >= 1 ? rnd(min, max) : Math.min(max, Math.max(min, values[i] + rnd(-amount, amount) * span));
           x = it.int ? Math.round(x) : Number((Math.round(x / step) * step).toFixed(6));
           next[i] = x;
-        } else if (it.kind === 'color') next[i] = shiftHue(values[i], rnd(-0.5, 0.5));
-        else if (it.kind === 'bool') next[i] = Math.random() < 0.25 ? !values[i] : values[i];
-        else if (it.kind === 'choice' && it.options?.length) next[i] = Math.random() < 0.4 ? it.options[Math.floor(Math.random() * it.options.length)] : values[i];
+        } else if (it.kind === 'color') next[i] = shiftHue(values[i], rnd(-0.5, 0.5) * Math.min(1, amount * 1.45));
+        else if (it.kind === 'bool') next[i] = rand() < 0.25 * Math.min(2, amount / 0.35) ? !values[i] : values[i];
+        else if (it.kind === 'choice' && it.options?.length) next[i] = rand() < 0.4 * Math.min(2.2, amount / 0.35) ? it.options[Math.floor(rand() * it.options.length)] : values[i];
       });
-      return only ? values.map((v, i) => (only.includes(i) ? next[i] : v)) : next;
+      return next;
+    }
+    function shuffleMenu(anchor) {
+      const r = anchor.getBoundingClientRect();
+      const groups = [...new Set((scanned?.items || []).filter((it) => it.key != null).map((it) => it.group || 'Controls'))];
+      const set = (patch) => { shufOpt = { ...shufOpt, ...patch }; store.set('three.shuffle', shufOpt); };
+      menu(r.left, r.bottom + 4, [
+        'How far',
+        ...AMOUNTS.map(([a, name]) => [name, `${Math.round(a * 100)}% of each range${a === 1 ? ' (anywhere)' : ''}`, () => { set({ amount: a }); shuffle(); }, shufOpt.amount === a]),
+        'Which controls (locked ones always stay)',
+        ...[['all', 'Everything'], ['favs', '★ Favorites only'], ['colors', 'Colors only'], ['numbers', 'Numbers only'], ['changed', 'Only what I changed'], ['visible', 'What the panel shows (search / group)']].map(([s, name]) => [name, '', () => { set({ scope: s }); shuffle(); }, shufOpt.scope === s]),
+        ...(groups.length > 1 ? groups.map((g) => [`Group: ${g}`, '', () => { set({ scope: `group:${g}` }); shuffle(); }, shufOpt.scope === `group:${g}`]) : []),
+        'One-offs',
+        ['One control at random', 'Just one slider moves', () => shuffle({ scope: 'one' })],
+        ['Colors from the palette', 'Each color slider gets a palette color', () => paletteColors()],
+        ['Halfway back to the code', 'Tames a wild shuffle', () => tame(0.5)],
+        ['Exaggerate the changes ×1.5', 'Pushes what you changed further', () => tame(1.5)],
+        'Seeds',
+        shufHist[shufPos]?.seed != null ? ['Copy this shuffle\'s seed', String(shufHist[shufPos].seed), () => navigator.clipboard.writeText(String(shufHist[shufPos].seed))] : null,
+        ['Shuffle with a seed…', 'The same seed gives the same shuffle again', async () => { const v = await Modal.prompt('Seed', { value: String(shufHist[shufPos]?.seed ?? ''), placeholder: 'a number' }); if (v != null && v.trim()) shuffle({ seed: Number(v.trim()) || hashSeed(v) }); }],
+        ...shufHist.map((h, i) => (h.seed == null ? null : [`${i === shufPos ? '● ' : ''}#${i} seed ${h.seed}`, h.label, () => { shufPos = i; applyValues(h.values); refreshState(); }, i === shufPos])).filter(Boolean).slice(-8),
+        shufHist.length > 1 ? ['Forget the shuffle history', '', () => { shufHist = []; shufPos = -1; refreshState(); }] : null,
+      ]);
     }
     function reset() {
       if (!scanned) return;
       applyValues(scanned.items.map((it) => it.orig));
+    }
+
+    // ---------- slots A / B / C, morph, peek ----------
+    const byIds = (arr) => Object.fromEntries(ids.map((id, i) => [id, arr[i]]));
+    function slotValues(n) { const s = slots[n]; return s ? ids.map((id, i) => (id in s && typeof s[id] === typeof values[i] ? s[id] : values[i])) : values.slice(); }
+    function slotSave(n) {
+      if (!scanned) return;
+      slots = { ...slots, [n]: byIds(values) };
+      persist?.('slots', slots);
+      paintSlots();
+      flash(slotBtns[SLOTS.indexOf(n)]);
+      toast(`Slot ${n} saved · click it to come back · hold to peek`, { timeout: 1400 });
+    }
+    function slotRecall(n) { if (!slots[n]) return false; applyValues(slotValues(n)); flash(slotBtns[SLOTS.indexOf(n)]); return true; }
+    function slotClear(n) { const s = { ...slots }; delete s[n]; slots = s; persist?.('slots', slots); paintSlots(); }
+    function slotMenu(e, n) {
+      menu(e.clientX, e.clientY, [`Slot ${n}`,
+        ['Store the current values', slots[n] ? 'Replaces what it holds' : '', () => slotSave(n)],
+        slots[n] ? ['Recall', 'Back to these values (↶ undoes)', () => slotRecall(n)] : null,
+        slots[n] ? ['Save it as a look…', 'A named look in the looks bar', async () => { const v = await Modal.prompt('Look name', { value: `Slot ${n}` }); if (v?.trim()) { const keep = values.slice(); values = slotValues(n); saveLookAs(v); values = keep; } }] : null,
+        slots[n] ? ['Clear', 'Alt+click does the same', () => slotClear(n)] : null,
+        slots.A && slots.B ? ['Swap A and B', '', () => swapSlots()] : null,
+        'Auto-morph (while it plays)',
+        ...[1, 2, 4, 8].map((b) => [`${morphPair[0]} ↔ ${morphPair[1]} every ${b} bar${b === 1 ? '' : 's'}`, 'Glides back and forth on the beat; nothing to save', () => setAutoMorph(b), autoMorph === b]),
+        autoMorph ? ['Stop auto-morph', '', () => setAutoMorph(0)] : null]);
+    }
+    function swapSlots() { if (!slots.A || !slots.B) return false; slots = { ...slots, A: slots.B, B: slots.A }; persist?.('slots', slots); paintSlots(); toast('Swapped A and B', { timeout: 1000 }); return true; }
+    // Auto-morph: the crossfader glides A → B → A every N bars while the song plays, on top of your values
+    // (like a look played at a cue: not saved, not marked changed). Off when the song stops.
+    let autoMorph = 0;
+    const morphSent = {};
+    function setAutoMorph(bars) {
+      autoMorph = Number(bars) || 0;
+      if (autoMorph && !morphPair.every((x) => slots[x])) { autoMorph = 0; toast('Save both slots first', { type: 'error' }); }
+      morph.classList.toggle('auto', Boolean(autoMorph));
+      if (!autoMorph) { Object.keys(morphSent).forEach((i) => resend(Number(i))); for (const k of Object.keys(morphSent)) delete morphSent[k]; }
+      syncMotion();
+      return autoMorph;
+    }
+    function morphTick(c) {
+      if (!autoMorph || !c.playing) return null;
+      const beats = c.t / (60 / (c.bpm || 120));
+      const ph = ((beats / (autoMorph * 4)) % 1 + 1) % 1;
+      const k = 0.5 - 0.5 * Math.cos(ph * Math.PI * 2);
+      const arr = lerpVals(slotValues(morphPair[0]), slotValues(morphPair[1]), k);
+      morph.value = k;
+      return arr;
+    }
+    function paintSlots() {
+      slotBtns.forEach((b, k) => {
+        const n = SLOTS[k]; const has = Boolean(slots[n]);
+        b.classList.toggle('full', has);
+        b.title = has ? `Slot ${n}: click to recall · hold to peek · Shift+click to store again · Alt+click to clear` : `Slot ${n} is empty: click to store the current values`;
+      });
+      const ok = morphPair.every((x) => slots[x]);
+      morph.disabled = !ok; morphLab.textContent = `${morphPair[0]}↔${morphPair[1]}`;
+      slotsRow.classList.toggle('can-morph', ok);
+      slotsRow.hidden = !scanned?.items.some((it) => it.key != null);
+    }
+    const mixHex = (a, b, t) => { const p = (h) => [1, 3, 5].map((k) => parseInt(h.slice(k, k + 2), 16)); const x = p(a); const y = p(b); return `#${x.map((v, k) => Math.round(v + (y[k] - v) * t).toString(16).padStart(2, '0')).join('')}`; };
+    function lerpVals(from, to, t) {
+      return from.map((v, i) => {
+        const w = to[i]; const it = scanned.items[i];
+        if (v === w) return v;
+        if (it.kind === 'number') { const x = v + (w - v) * t; return it.int ? Math.round(x) : Number(x.toFixed(6)); }
+        if (it.kind === 'color' && CSS_HEX.test(v) && CSS_HEX.test(w)) return mixHex(normHex(v), normHex(w), t);
+        return t < 0.5 ? v : w;
+      });
+    }
+    function morphTo(t, { release = false } = {}) {
+      if (!scanned || !morphPair.every((x) => slots[x])) return false;
+      morph.value = t;
+      applyValues(lerpVals(slotValues(morphPair[0]), slotValues(morphPair[1]), Math.max(0, Math.min(1, t))), { remember: release });
+      return true;
+    }
+    // Peek: the sketch shows other values while you hold (a slot), then yours again; nothing changes.
+    let peeking = null;
+    function peek(arr) {
+      if (!scanned) return;
+      const show = arr || values;
+      const prev = peeking || values;
+      peeking = arr;
+      scanned.items.forEach((it, i) => {
+        if (show[i] === prev[i]) return;
+        send({ type: 'tweak', index: i, value: runtime(it, show[i]), call: it.call, key: it.key });
+        rows.filter((r) => r.i === i).forEach((r) => r.set(show[i]));
+      });
+      root.classList.toggle('comparing', Boolean(arr));
+    }
+
+    // ---------- menus: Save ▾, ⋯, groups, copy / paste ----------
+    function quickLook() { const name = `Look ${looks.length + 1}`; saveLookAs(name); toast(`Saved as "${name}" (right-click it to rename)`, { timeout: 1500 }); return name; }
+    function saveMenu(anchor) {
+      const r = anchor.getBoundingClientRect();
+      const d = dirtyCount();
+      menu(r.right - 280, r.bottom + 4, [
+        ['Save into the code', d ? `${d} change${d === 1 ? '' : 's'} · Ctrl+S` : 'Nothing changed', () => save()],
+        ['Save as a look (quick)', `"Look ${looks.length + 1}" · Shift+click Save`, () => quickLook()],
+        ['Save as a look…', 'Pick a name · Ctrl+Shift+S', () => saveLook()],
+        'Slots',
+        ...SLOTS.map((n) => [`Store in slot ${n}`, slots[n] ? 'replaces it' : 'empty', () => slotSave(n)]),
+        'Options',
+        ['Auto-save', 'Write values into the code by themselves, a moment after you let go', () => { const on = !store.get('three.twAutosave', false); autoSaveBox.checked = on; autoSaveBox.dispatchEvent(new Event('change')); toast(`Auto-save ${on ? 'on' : 'off'}`, { timeout: 1000 }); }, store.get('three.twAutosave', false)],
+      ]);
+    }
+    function moreMenu(anchor) {
+      const r = anchor.getBoundingClientRect();
+      const d = dirtyCount();
+      menu(r.right - 280, r.bottom + 4, [
+        'Values',
+        ['Reset', d ? 'Back to the values in the code' : 'Nothing changed', () => reset(), false, 'Reset'],
+        ['Undo the last slider change', undoStack.length ? `${undoStack.length} step${undoStack.length === 1 ? '' : 's'}` : 'Nothing to undo', () => undo(), false, 'Undo slider change'],
+        ['Copy all values', 'As text you can paste here (or in another sketch / layer)', () => copyValues()],
+        ['Copy as tweak() code', 'The controls with these values as defaults', () => { navigator.clipboard.writeText(tweakCode()); toast('tweak() code copied', { timeout: 1200 }); }],
+        ['Halfway back to the code', 'Every change, half as far', () => tame(0.5)],
+        ['Paste values', 'Sets every control the copied text names', () => pasteValues()],
+        ['Lock everything', 'Shuffle, looks and resets leave them all alone', () => lockAll(true)],
+        locks.size ? ['Unlock everything', `${locks.size} locked`, () => lockAll(false)] : null,
+        modsCount() ? ['Stop every motion', `${modsCount()} moving by themselves`, () => { for (const id of Object.keys(motions)) delete motions[id]; persist?.('motions', motions); syncMotion(); rows.forEach((x) => x.updateMusic?.()); }] : null,
+        'Show',
+        ...[['auto', 'Auto: knobs for decimals'], ['knobs', 'Knobs for every number'], ['sliders', 'Sliders for every number']].map(([v, l]) => [l, '', () => { layout = v; layoutSel.value = v; store.set('three.twLayout', v); render(); }, layout === v, 'Knobs or sliders']),
+        ['Only what I changed', '', () => { changedOnly = !changedOnly; changedBox.checked = changedOnly; applyFilter(); }, changedOnly],
+        ['Values the sketch never reads', 'Hidden by default', () => { showUnused = !showUnused; unusedBox.checked = showUnused; applyFilter(); }, showUnused],
+        ['One group open at a time', 'Opening a group folds the others', () => { accordionBox.checked = !accordionBox.checked; accordionBox.dispatchEvent(new Event('change')); }, accordionBox.checked],
+        ['Fold every group', '', () => foldAll(true)], ['Unfold every group', '', () => foldAll(false)],
+      ]);
+    }
+    function foldAll(fold) { for (const sec of body.querySelectorAll('.tw-sec')) { sec.open = !fold; if (fold) collapsed.add(sec.dataset.group); else collapsed.delete(sec.dataset.group); } store.set('three.twCollapsed', [...collapsed]); }
+    function lockAll(on) { (scanned?.items || []).forEach((it, i) => { if (it.key == null) return; if (on) locks.add(ids[i]); else locks.delete(ids[i]); }); saveSets(); rows.forEach((x) => x.paintLock?.()); toast(on ? 'Every control is locked' : 'Everything unlocked', { timeout: 1200 }); }
+    function groupMenu(e, g, idxs) {
+      e.preventDefault();
+      const named = idxs.filter((i) => scanned.items[i].key != null);
+      menu(e.clientX, e.clientY, [g,
+        ...AMOUNTS.map(([a, name]) => [`🎲 Shuffle ${name.toLowerCase()}`, `${Math.round(a * 100)}% of each range`, () => shuffle({ amount: a, only: idxs.filter((i) => !locks.has(ids[i])) })]),
+        ['↺ Back to the code\'s values', '', () => resetGroup(idxs)],
+        ['🔒 Lock the group', '', () => { named.forEach((i) => locks.add(ids[i])); saveSets(); rows.forEach((x) => x.paintLock?.()); }],
+        ['🔓 Unlock the group', '', () => { named.forEach((i) => locks.delete(ids[i])); saveSets(); rows.forEach((x) => x.paintLock?.()); }],
+        ['★ Add all to Favorites', '', () => { named.forEach((i) => favs.add(ids[i])); saveSets(); render(); }],
+        ['Copy the group\'s values', '', () => copyValues(idxs)],
+        ['∿ Make it breathe', 'Every number in the group moves on a slow wave (LFO, 2 bars)', () => idxs.filter((i) => scanned.items[i].kind === 'number').forEach((i, k) => setMotion(i, { kind: 'lfo', rate: 8 + k * 2, depth: 0.15 }))],
+        ['∿ Pulse on the beat', 'Every number in the group jumps on each beat', () => idxs.filter((i) => scanned.items[i].kind === 'number').forEach((i) => setMotion(i, { kind: 'pulse', rate: 1, depth: 0.2 }))],
+        idxs.some((i) => motions[ids[i]]) ? ['Still', 'Stop the group\'s motions', () => idxs.forEach((i) => { if (motions[ids[i]]) setMotion(i, null); })] : null,
+        ['Only this group', 'Same as its chip above', () => setGroupFilter(g)],
+      ]);
+    }
+    const LAB_TAG = 'hearth-lab-sliders';
+    function copyValues(only = null) {
+      if (!scanned) return '';
+      const out = {};
+      scanned.items.forEach((it, i) => { if (it.key != null && (!only || only.includes(i))) out[it.key] = values[i]; });
+      const text = JSON.stringify({ [LAB_TAG]: 1, values: out });
+      navigator.clipboard.writeText(text).catch(() => {});
+      toast(`Copied ${Object.keys(out).length} values`, { timeout: 1200 });
+      return text;
+    }
+    async function pasteValues(text) {
+      let src = text;
+      if (src == null) { try { src = await navigator.clipboard.readText(); } catch { src = ''; } }
+      let obj = null;
+      try { obj = JSON.parse(src); } catch { /* not JSON */ }
+      const vals = obj?.values || obj;
+      if (!vals || typeof vals !== 'object') { toast('No slider values in the clipboard (use Copy all values first)', { type: 'error' }); return []; }
+      const done = setManyKeys(vals);
+      toast(done.length ? `Pasted ${done.length} value${done.length === 1 ? '' : 's'} (↶ undoes)` : 'None of those sliders are in this layer', { timeout: 1600 });
+      return done;
     }
 
     // Hold A/B: the sketch shows the code's values while held, then yours again (nothing is changed).
@@ -513,17 +891,32 @@ const ThreeTweaks = (() => {
       rows.filter((r) => r.i === i).forEach((r) => r.set(it.orig));
       setValue(i, it.orig, { release: true });
     }
+    const fmtVal = (it, v) => (it.kind === 'number' ? trimNum(v) : String(v));
+    let clip = null; // one copied value: { kind, v }
     function rowMenu(e, it, i, r) {
       e.preventDefault();
       const locked = locks.has(ids[i]);
-      showMenu(e.clientX, e.clientY, [
-        { label: `↺ Back to the code's value (${it.kind === 'number' ? trimNum(it.orig) : it.orig})`, action: () => resetOne(i) },
-        { label: locked ? '🔓 Unlock' : '🔒 Lock at this value', action: () => toggleLock(i) },
-        { label: '🔒 Reset and lock', action: () => { if (locks.has(ids[i])) toggleLock(i); resetOne(i); toggleLock(i); } },
-        { label: favs.has(ids[i]) ? '☆ Remove from Favorites' : '★ Add to Favorites', action: () => toggleFav(i) },
-        ...(r.musicPanel ? [{ label: '♪ Follow the music…', action: () => { r.musicPanel.hidden = false; r.paintMusic?.(); } }] : []),
-        ...(keyframes && it.key != null && (it.kind === 'number' || it.kind === 'color') ? [{ label: '◆ Keyframe at the playhead', action: () => { keyframes.toggle(it.key, values[i]); r.paintKey?.(); } }] : []),
-        { label: `Show line ${it.line} in the code`, action: () => goToLine(it.line) },
+      const hist = (valHist[ids[i]] || []).filter((v) => v !== values[i]).slice(0, 6);
+      const set = (v) => { rows.filter((x) => x.i === i).forEach((x) => x.set(v)); setValue(i, v, { release: true }); };
+      menu(e.clientX, e.clientY, [
+        labelOf(it) || it.raw,
+        ['↺ Back to the code\'s value', fmtVal(it, it.orig), () => resetOne(i)],
+        [locked ? '🔓 Unlock' : '🔒 Lock at this value', 'Shuffle, looks, resets and MIDI leave it alone', () => toggleLock(i)],
+        ['🔒 Reset and lock', '', () => { if (locks.has(ids[i])) toggleLock(i); resetOne(i); toggleLock(i); }],
+        [favs.has(ids[i]) ? '☆ Remove from Favorites' : '★ Add to Favorites', '', () => toggleFav(i)],
+        it.key != null && it.kind !== 'bool' ? ['🎲 Shuffle just this one', '', () => shuffle({ only: [i] })] : null,
+        !same(it, values[i]) ? ['💾 Save just this one', 'Into the code; your other changes stay', () => saveOne(i)] : null,
+        it.kind === 'number' ? ['Type a value…', `now ${fmtVal(it, values[i])} · range ${trimNum(it.range.min)}…${trimNum(it.range.max)}`, async () => { const v = await Modal.prompt(labelOf(it) || 'Value', { value: fmtVal(it, values[i]) }); const x = Number(v); if (v != null && Number.isFinite(x)) set(it.int ? Math.round(x) : x); }] : null,
+        ['Copy the value', fmtVal(it, values[i]), () => { clip = { kind: it.kind, v: values[i] }; navigator.clipboard.writeText(fmtVal(it, values[i])).catch(() => {}); }],
+        clip && clip.kind === it.kind ? ['Paste the value', fmtVal(it, clip.v), () => set(clip.v)] : null,
+        hist.length ? 'History (click to go back)' : null,
+        ...hist.map((v) => [fmtVal(it, v), '', () => set(v)]),
+        it.kind === 'number' ? 'Moves' : null,
+        ...(r.musicPanel ? [['♪ Follow the music / move by itself…', bindings[ids[i]] ? `follows ${BAND_NAME[bindings[ids[i]].band]}` : motions[ids[i]] ? MOTION_NAME[motions[ids[i]].kind] : 'bass, kick, LFO, random walk…', () => { r.musicPanel.hidden = false; r.paintMusic?.(); }]] : []),
+        ...(it.kind === 'number' ? MOTIONS.filter(([k]) => k).map(([k, name, hint]) => [`${motions[ids[i]]?.kind === k ? '● ' : ''}${name}`, hint, () => setMotion(i, motions[ids[i]]?.kind === k ? null : { kind: k })]) : []),
+        ...(keyframes && it.key != null && (it.kind === 'number' || it.kind === 'color') ? [['◆ Keyframe at the playhead', '', () => { keyframes.toggle(it.key, values[i]); r.paintKey?.(); }]] : []),
+        learn && it.key != null ? ['🎛 Map to a MIDI knob…', 'Then turn the knob or fader', () => learn(it.key, labelOf(it))] : null,
+        [`Show line ${it.line} in the code`, '', () => goToLine(it.line)],
       ]);
     }
 
@@ -533,12 +926,18 @@ const ThreeTweaks = (() => {
       if (!scanned?.items.length) return;
       for (const look of looks) {
         const chip = el('span', { class: 'tw-look' },
-          el('button', { class: 'tw-look-apply', text: look.name, title: `Switch to "${look.name}" (↶ to undo)`, on: { click: () => applyLook(look) } }),
+          el('button', { class: 'tw-look-apply', text: look.name, title: `Switch to "${look.name}" (↶ to undo) · Alt+click: morph into it`, on: { click: (e) => (e.altKey ? morphLook(look) : applyLook(look)) } }),
           el('button', { class: 'tw-look-x', text: '×', title: `Delete "${look.name}"`, on: { click: () => { looks = looks.filter((l) => l !== look); persist?.('looks', looks); renderLooks(); } } }));
         chip.addEventListener('contextmenu', (e) => {
           e.preventDefault();
           showMenu(e.clientX, e.clientY, [
+            { label: 'Morph into it (1 s)', action: () => morphLook(look) },
             { label: 'Update with the current values', action: () => { saveLookAs(look.name); toast(`"${look.name}" updated`, { timeout: 1400 }); } },
+            { label: 'Store in slot A / B / C…', action: () => {
+              const r0 = chip.getBoundingClientRect();
+              const lookVals = values.map((v, i) => (ids[i] in look.values ? look.values[ids[i]] : v));
+              menu(r0.left, r0.bottom + 4, ['Store the look in', ...SLOTS.map((n) => [`Slot ${n}`, slots[n] ? 'replaces it' : 'empty', () => { const keep = values; values = lookVals; slotSave(n); values = keep; }])]);
+            } },
             { label: 'Rename…', action: async () => { const v = await Modal.prompt('Look name', { value: look.name }); if (v?.trim()) { look.name = v.trim().slice(0, 40); persist?.('looks', looks); renderLooks(); } } },
             { label: 'Duplicate', action: () => { looks.push({ name: `${look.name} copy`, values: { ...look.values } }); persist?.('looks', looks); renderLooks(); } },
             { label: `Delete "${look.name}"`, danger: true, action: () => { looks = looks.filter((l) => l !== look); persist?.('looks', looks); renderLooks(); } },
@@ -597,6 +996,22 @@ const ThreeTweaks = (() => {
       sendPlayed(values);
       played = null;
     }
+    // a look, morphed in over `ms` (your values, undoable once it lands)
+    function morphLook(look, ms = 1000) {
+      const from = values.slice(); const to = values.slice();
+      ids.forEach((id, i) => { if (id in look.values) to[i] = look.values[id]; });
+      const t0 = performance.now();
+      const step = () => { const k = Math.min(1, (performance.now() - t0) / ms); const e = k * k * (3 - 2 * k); applyValues(lerpVals(from, to, e), { remember: k >= 1 }); if (k < 1) requestAnimationFrame(step); };
+      step();
+      toast(`Morphing into "${look.name}"`, { timeout: 1200 });
+    }
+    function lookStep(d) {
+      if (!looks.length) return null;
+      const cur = looks.findIndex((l) => ids.every((id, i) => !(id in l.values) || l.values[id] === values[i]));
+      const next = d === 'random' ? looks[Math.floor(Math.random() * looks.length)] : looks[((cur < 0 ? (d > 0 ? -1 : 0) : cur) + d + looks.length) % looks.length];
+      applyLook(next);
+      return next.name;
+    }
     function applyLook(look) {
       const next = values.slice();
       ids.forEach((id, i) => { if (id in look.values) next[i] = look.values[id]; });
@@ -638,9 +1053,81 @@ const ThreeTweaks = (() => {
         note.textContent = cur && reads && !reads.live.has(i) ? 'This value is only used when the scene is built, so it can\'t follow the music. Ask the director to read it every frame.' : '';
       }
       amount.addEventListener('input', () => { if (b()) setBinding(i, b().band, Number(amount.value)); paint(); });
-      panel.append(el('div', { class: 'tw-bind-bands' }, ...bandBtns), el('div', { class: 'tw-num-row' }, el('span', { class: 'tw-hint', text: 'Amount' }), amount, pct), note);
-      paint();
-      return { panel, paint };
+      // Moves by itself: an LFO, a random walk, steps or pulses on the beat, or the song's quiet / loud sections.
+      const m = () => motions[ids[i]];
+      const kindBtns = MOTIONS.map(([k, name, hint]) => el('button', { class: 'tw-chip', text: k ? name.split(' (')[0] : 'Still', title: hint, on: { click: () => { setMotion(i, k ? { ...(m() || {}), kind: k } : null); paintMotion(); } } }));
+      const shapeSel = el('select', { class: 'tw-msel', title: 'Wave shape' }, [['sine', '∿ Sine'], ['tri', '⋀ Triangle'], ['saw', '⟋ Saw'], ['square', '⊓ Square']].map(([v, l]) => el('option', { value: v, text: l })));
+      const rateSel = el('select', { class: 'tw-msel', title: 'How long one cycle / step lasts, in beats' }, RATES.map(([v, l]) => el('option', { value: v, text: l })));
+      const depth = el('input', { type: 'range', min: 0, max: 1, step: 0.01, title: 'How far it moves, of the slider\'s range' });
+      const depthPct = el('span', { class: 'tw-bind-pct' });
+      const mNote = el('div', { class: 'tw-hint' });
+      shapeSel.addEventListener('change', () => { if (m()) setMotion(i, { ...m(), shape: shapeSel.value }); });
+      rateSel.addEventListener('change', () => { if (m()) setMotion(i, { ...m(), rate: Number(rateSel.value) }); });
+      depth.addEventListener('input', () => { if (m()) setMotion(i, { ...m(), depth: Number(depth.value) }); depthPct.textContent = `${Math.round(Number(depth.value) * 100)}%`; });
+      const mRow = el('div', { class: 'tw-num-row tw-mrow' }, shapeSel, rateSel, depth, depthPct);
+      function paintMotion() {
+        const cur = m();
+        kindBtns.forEach((x, k) => x.classList.toggle('on', (MOTIONS[k][0] || null) === (cur?.kind || null)));
+        mRow.hidden = !cur;
+        if (cur) { shapeSel.value = cur.shape || 'sine'; shapeSel.hidden = cur.kind !== 'lfo'; rateSel.value = String(cur.rate ?? motionDefaults(cur.kind).rate); rateSel.hidden = cur.kind === 'section'; depth.value = cur.depth ?? 0.25; depthPct.textContent = `${Math.round((cur.depth ?? 0.25) * 100)}%`; }
+        mNote.textContent = cur && reads && !reads.live.has(i) ? 'Only used when the scene is built, so it can\'t move by itself.' : '';
+      }
+      panel.append(el('div', { class: 'tw-bind-k', text: '♪ Follow the music' }), el('div', { class: 'tw-bind-bands' }, ...bandBtns), el('div', { class: 'tw-num-row' }, el('span', { class: 'tw-hint', text: 'Amount' }), amount, pct), note,
+        el('div', { class: 'tw-bind-k', text: '∿ Move by itself' }), el('div', { class: 'tw-bind-bands' }, ...kindBtns), mRow, mNote);
+      paint(); paintMotion();
+      return { panel, paint: () => { paint(); paintMotion(); } };
+    }
+
+    // ---------- motion: a control that moves by itself (runs here, ~30 times a second, on top of your value) ----------
+    // motions[id] = { kind: 'lfo' | 'walk' | 'beat' | 'pulse' | 'section', shape, rate (beats per cycle), depth (0..1 of the range) }
+    let motions = {};
+    let motionTimer = 0;
+    const walkState = {};
+    const motionSent = {};
+    const modsCount = () => Object.keys(motions).length;
+    function setMotion(i, mo) {
+      const id = ids[i];
+      if (mo) motions[id] = { ...motionDefaults(mo.kind), ...mo }; else { delete motions[id]; delete walkState[i]; resend(i); }
+      persist?.('motions', motions);
+      syncMotion();
+      rows.filter((r) => r.i === i).forEach((r) => r.updateMusic?.());
+    }
+    function resend(i) { const it = scanned?.items[i]; if (!it) return; const v = played?.cur?.[i] ?? values[i]; delete motionSent[i]; send({ type: 'tweak', index: i, value: runtime(it, v), call: it.call, key: it.key }); }
+    function syncMotion() {
+      const on = (modsCount() > 0 || autoMorph > 0) && !root.hidden && Boolean(scanned);
+      if (on && !motionTimer) motionTimer = setInterval(motionTick, 33);
+      if (!on && motionTimer) { clearInterval(motionTimer); motionTimer = 0; Object.keys(motionSent).forEach((i) => resend(Number(i))); }
+    }
+    const hash01 = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+    function motionTick() {
+      if (!scanned || peeking || comparing) return;
+      const c = clock?.() || { t: performance.now() / 1000, bpm: 120 };
+      const beatPos = c.t / (60 / (c.bpm || 120));
+      const morphed = morphTick(c);
+      if (morphed) scanned.items.forEach((it, i) => {
+        if (motions[ids[i]] || locks.has(ids[i]) || needsRebuild(i) || morphed[i] === morphSent[i]) return;
+        morphSent[i] = morphed[i];
+        send({ type: 'tweak', index: i, value: runtime(it, morphed[i]), call: it.call, key: it.key });
+      });
+      else if (Object.keys(morphSent).length) { Object.keys(morphSent).forEach((i) => resend(Number(i))); for (const k of Object.keys(morphSent)) delete morphSent[k]; }
+      scanned.items.forEach((it, i) => {
+        const mo = motions[ids[i]];
+        if (!mo || it.kind !== 'number' || locks.has(ids[i])) return;
+        const span = it.range.max - it.range.min; const depth = mo.depth ?? 0.25; const rate = mo.rate || 1;
+        const ph = ((beatPos / rate) % 1 + 1) % 1;
+        let u = 0;
+        if (mo.kind === 'lfo') u = mo.shape === 'tri' ? 1 - 4 * Math.abs(ph - 0.5) : mo.shape === 'saw' ? ph * 2 - 1 : mo.shape === 'square' ? (ph < 0.5 ? 1 : -1) : Math.sin(ph * Math.PI * 2);
+        else if (mo.kind === 'walk') { const s = (walkState[i] ||= { x: 0, v: 0 }); s.v = (s.v + (Math.random() - 0.5) * 0.06 / rate) * 0.94; s.x = Math.max(-1, Math.min(1, s.x + s.v)); if (Math.abs(s.x) >= 1) s.v *= -0.5; u = s.x; }
+        else if (mo.kind === 'beat') u = hash01(Math.floor(beatPos / rate) * 13 + i) * 2 - 1;
+        else if (mo.kind === 'pulse') u = Math.exp(-ph * 6);
+        else if (mo.kind === 'section') { const s = (walkState[i] ||= { x: 0 }); const target = c.section === 'loud' ? 1 : c.section === 'quiet' ? -1 : 0; s.x += (target - s.x) * 0.05; u = s.x; }
+        const base = morphed?.[i] ?? played?.cur?.[i] ?? values[i];
+        let v = Math.max(it.range.min, Math.min(it.range.max, base + u * depth * span));
+        if (it.int) v = Math.round(v);
+        if (motionSent[i] != null && Math.abs(v - motionSent[i]) < span * 2e-4) return;
+        motionSent[i] = v;
+        send({ type: 'tweak', index: i, value: v, call: it.call, key: it.key });
+      });
     }
 
     // ---------- controls ----------
@@ -703,10 +1190,48 @@ const ThreeTweaks = (() => {
         setValue(i, x);
       });
       slider.addEventListener('change', () => setValue(i, Number(slider.value), { release: true }));
+      // Shift / Alt + arrows: finer steps than the slider's own
+      slider.addEventListener('keydown', (e) => {
+        if (!/^Arrow/.test(e.key) || !(e.shiftKey || e.altKey) || locks.has(ids[i])) return;
+        e.preventDefault(); e.stopPropagation();
+        const d = ((r.max - r.min) / (e.altKey ? 2000 : 400)) * (/Up|Right/.test(e.key) ? 1 : -1);
+        const x = it.int ? Math.round(values[i] + Math.sign(d)) : Number((values[i] + d).toPrecision(6));
+        num.value = it.int ? x : trimNum(x); slider.value = x;
+        setValue(i, x, { release: true });
+      });
       num.addEventListener('change', () => { const x = Number(num.value); if (!Number.isFinite(x)) return; widen(x); slider.value = x; setValue(i, it.int ? Math.round(x) : x, { release: true }); });
       slider.addEventListener('dblclick', () => { widen(it.orig); slider.value = it.orig; num.value = it.int ? it.orig : trimNum(it.orig); setValue(i, it.orig, { release: true }); });
       const wrap = el('div', { class: 'tw-range' }, slider, tick);
       return { node: el('div', { class: 'tw-num-row' }, wrap, num), set: (x) => { widen(x); slider.value = x; num.value = it.int ? x : trimNum(x); wrap.classList.toggle('at-orig', x === it.orig); } };
+    }
+
+    // Drag a number's name sideways to scrub it (Shift: 10× finer, Alt: 100× finer), like Blender / After Effects.
+    function scrubbable(node, it, i) {
+      if (it.kind !== 'number') return;
+      node.classList.add('tw-scrub');
+      node.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0 || locks.has(ids[i])) return;
+        const x0 = e.clientX; const v0 = values[i]; let moved = false; let last = v0;
+        const span = (it.range.max - it.range.min) || 1;
+        try { node.setPointerCapture(e.pointerId); } catch { /* a synthetic pointer */ }
+        const move = (ev) => {
+          const dx = ev.clientX - x0;
+          if (!moved && Math.abs(dx) < 3) return;
+          moved = true;
+          document.body.classList.add('tw-scrubbing');
+          let v = v0 + (dx / 260) * span * (ev.altKey ? 0.01 : ev.shiftKey ? 0.1 : 1);
+          v = Math.max(it.range.min, Math.min(it.range.max, v));
+          v = it.int ? Math.round(v) : Number(v.toPrecision(5));
+          if (v === last) return;
+          last = v;
+          rows.filter((x) => x.i === i).forEach((x) => x.set(v));
+          setValue(i, v);
+        };
+        const up = () => { node.removeEventListener('pointermove', move); document.body.classList.remove('tw-scrubbing'); if (moved) setValue(i, last, { release: true }); };
+        node.addEventListener('pointermove', move);
+        node.addEventListener('pointerup', up, { once: true });
+        node.addEventListener('pointercancel', up, { once: true });
+      });
     }
 
     // Numbers as knobs: drag up / down (or sideways), Shift for fine, wheel or arrow keys to step. The knob clicks
@@ -756,7 +1281,7 @@ const ThreeTweaks = (() => {
         cell.classList.add('turning');
         const move = (ev) => {
           const d = ((y0 - ev.clientY) + (ev.clientX - x0) * 0.5) / 160;
-          commit(quant(v0 + d * (hi - lo) * (ev.shiftKey ? 0.15 : 1), true), false);
+          commit(quant(v0 + d * (hi - lo) * (ev.altKey ? 0.03 : ev.shiftKey ? 0.15 : 1), true), false);
         };
         const up = () => { svg.removeEventListener('pointermove', move); cell.classList.remove('turning'); held = false; commit(cur, true); };
         svg.addEventListener('pointermove', move);
@@ -766,13 +1291,13 @@ const ThreeTweaks = (() => {
       svg.addEventListener('wheel', (e) => {
         if (locks.has(ids[i])) return;
         e.preventDefault();
-        const stepBy = it.int ? 1 : (hi - lo) / (e.shiftKey ? 400 : 100);
+        const stepBy = it.int ? 1 : (hi - lo) / (e.altKey ? 2000 : e.shiftKey ? 400 : 100);
         commit(quant(cur + (e.deltaY < 0 ? stepBy : -stepBy)), true);
       }, { passive: false });
       svg.addEventListener('keydown', (e) => {
         if (!/^Arrow(Up|Down|Left|Right)$/.test(e.key) || locks.has(ids[i])) return;
         e.preventDefault(); e.stopPropagation();
-        const stepBy = it.int ? 1 : (hi - lo) / (e.shiftKey ? 400 : 100);
+        const stepBy = it.int ? 1 : (hi - lo) / (e.altKey ? 2000 : e.shiftKey ? 400 : 100);
         commit(quant(cur + (/Up|Right/.test(e.key) ? stepBy : -stepBy)), true);
       });
       valEl.addEventListener('click', () => {
@@ -797,14 +1322,15 @@ const ThreeTweaks = (() => {
     function knobRow(it, i) {
       const k = knobCell(it, i);
       const badge = el('span', { class: 'tw-badge' });
-      const r = { it, i, badge, set: k.set, text: `${labelOf(it) || ''} ${it.hint || ''} ${it.lineText}`.toLowerCase(), knob: true };
-      const name = el('span', { class: 'tw-kname', text: labelOf(it) || it.raw, title: [labelOf(it), it.hint, `line ${it.line}`].filter(Boolean).join('\n') });
+      const r = { it, i, badge, set: k.set, text: `${labelOf(it) || ''} ${it.hint || ''} ${it.group || ''} ${it.lineText}`.toLowerCase(), knob: true };
+      const name = el('span', { class: 'tw-kname', text: labelOf(it) || it.raw, title: [labelOf(it), it.hint, `line ${it.line}`, 'Drag sideways to scrub (Shift fine, Alt finer)'].filter(Boolean).join('\n') });
+      scrubbable(name, it, i);
       const icons = el('span', { class: 'tw-kicons' });
       const music = el('button', { class: 'tw-music-btn', text: '♪', title: 'Follow the music' });
       const { panel, paint } = musicPanel(it, i, r);
       panel.classList.add('tw-kpanel');
       music.addEventListener('click', () => { panel.hidden = !panel.hidden; paint(); });
-      r.updateMusic = () => { const b = bindings[ids[i]]; music.textContent = b ? '♪' : '♪'; music.title = b ? `Follows ${BAND_NAME[b.band]}` : 'Follow the music'; music.classList.toggle('on', Boolean(b)); k.cell.classList.toggle('music', Boolean(b)); };
+      r.updateMusic = () => { const b = bindings[ids[i]]; const mo = motions[ids[i]]; music.textContent = mo && !b ? '∿' : '♪'; music.title = [b ? `Follows ${BAND_NAME[b.band]}` : '', mo ? `Moves by itself: ${MOTION_NAME[mo.kind]}` : ''].filter(Boolean).join(' · ') || 'Follow the music or move by itself'; music.classList.toggle('on', Boolean(b || mo)); k.cell.classList.toggle('music', Boolean(b || mo)); };
       r.paintMusic = paint;
       r.musicPanel = panel;
       icons.append(music);
@@ -836,15 +1362,16 @@ const ThreeTweaks = (() => {
         ? el('span', { class: 'tw-name', text: labelOf(it), title: [it.hint, it.lineText].filter(Boolean).join('\n') })
         : el('code', { class: 'tw-snippet', title: it.lineText }, it.before, el('b', { text: it.raw }), it.after);
       const top = el('div', { class: 'tw-top' }, label);
-      const r = { it, i, badge, set: ctl.set, text: `${labelOf(it) || ''} ${it.hint || ''} ${it.lineText}`.toLowerCase() };
+      scrubbable(label, it, i);
+      const r = { it, i, badge, set: ctl.set, text: `${labelOf(it) || ''} ${it.hint || ''} ${it.group || ''} ${it.lineText}`.toLowerCase() };
       if (it.kind === 'number') {
         const music = el('button', { class: 'tw-music-btn', text: '♪', title: 'Make this slider follow the music (bass, mids, highs, loudness or the beat)' });
         const { panel, paint } = musicPanel(it, i, r);
         music.addEventListener('click', () => { panel.hidden = !panel.hidden; paint(); });
         r.updateMusic = () => {
-          const b = bindings[ids[i]];
-          music.textContent = b ? `♪ ${BAND_NAME[b.band]}` : '♪';
-          music.classList.toggle('on', Boolean(b));
+          const b = bindings[ids[i]]; const mo = motions[ids[i]];
+          music.textContent = [b ? `♪ ${BAND_NAME[b.band]}` : '', mo ? `∿ ${MOTION_NAME[mo.kind].split(' ')[0]}` : ''].filter(Boolean).join(' ') || '♪';
+          music.classList.toggle('on', Boolean(b || mo));
         };
         r.updateMusic();
         r.paintMusic = paint;
@@ -902,6 +1429,8 @@ const ThreeTweaks = (() => {
           el('button', { class: 'tw-sec-btn', text: '🎲', title: `Shuffle only "${g}"`, on: { click: (e) => { e.preventDefault(); shuffleGroup(idxs); } } }),
           el('button', { class: 'tw-sec-btn', text: '↺', title: `Put "${g}" back to the code's values`, on: { click: (e) => { e.preventDefault(); resetGroup(idxs); } } }));
         const det = el('details', { class: 'tw-sec', dataset: { group: g } }, sum);
+        sum.title = `${g}: click to fold · right-click: shuffle amounts, reset, lock, favorites, copy`;
+        sum.addEventListener('contextmenu', (e) => groupMenu(e, g, idxs));
         det.open = !collapsed.has(g);
         det.addEventListener('toggle', () => {
           if (det.open) collapsed.delete(g); else collapsed.add(g);
@@ -926,6 +1455,8 @@ const ThreeTweaks = (() => {
         for (const pair of named) { const g = pair[0].group || 'Controls'; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(pair); }
         groupSel.replaceChildren(el('option', { value: '', text: `All groups (${groups.size})` }), ...[...groups.keys()].map((g) => el('option', { value: g, text: g, selected: g === groupFilter })));
         groupSel.hidden = groups.size < 2;
+        if (groupFilter && !groups.has(groupFilter)) groupFilter = '';
+        paintChips([...groups.keys()]);
         for (const [g, list] of groups) body.append(groupSection(g, list));
         const adv = el('details', { class: 'tw-adv', open: store.get('three.tweaksAdvanced', false) },
           el('summary', { text: `All values in the code (${colors.length + numbers.length})` }),
@@ -934,6 +1465,7 @@ const ThreeTweaks = (() => {
         if (colors.length + numbers.length) body.append(adv);
       } else {
         groupSel.hidden = true;
+        paintChips([]);
         if (askForSliders) {
           body.append(el('div', { class: 'tw-tip' }, el('span', { text: 'These are all the raw values in the code. Want a short list of clearly named sliders instead?' }),
             el('button', { class: 'ghost small', text: 'Ask the Three Director', on: { click: askForSliders } })));
@@ -942,7 +1474,30 @@ const ThreeTweaks = (() => {
         if (numbers.length) body.append(...section('Numbers', numbers));
       }
       updateBadges();
+      paintSlots();
+      syncMotion();
       refreshState();
+    }
+    // The group chips above the list: All · ★ · each group. Click one to see only it; again for all.
+    function paintChips(groups) {
+      chips.hidden = groups.length < 2;
+      const changedN = scanned ? scanned.items.filter((it, i) => it.key != null && !same(it, values[i])).length : 0;
+      chips.replaceChildren(...['', ...groups].map((g) => {
+        const idxOf = () => scanned.items.map((it, i) => i).filter((i) => scanned.items[i].key != null && (!g || (scanned.items[i].group || 'Controls') === g));
+        const b = el('button', { class: `tw-gchip${g === groupFilter ? ' on' : ''}`, text: g || 'All', title: g ? `Only "${g}" (again: every group) · Shift+click: shuffle it · double-click: back to the code · right-click: its menu` : 'Every group · Shift+click: shuffle everything', on: { click: (e) => { if (e.shiftKey) { shuffle({ only: idxOf().filter((i) => !locks.has(ids[i])) }); return; } setGroupFilter(g === groupFilter ? '' : g); } } });
+        b.addEventListener('dblclick', () => { if (g) resetGroup(idxOf()); });
+        b.dataset.feature = g ? `Group chip: ${g}` : 'Group chip: All';
+        if (g) b.addEventListener('contextmenu', (e) => { const sec = [...body.querySelectorAll('.tw-sec')].find((x) => x.dataset.group === g); const idxs = rows.filter((r) => sec?.contains(r.el)).map((r) => r.i); groupMenu(e, g, [...new Set(idxs)]); });
+        return b;
+      }), el('button', { class: `tw-gchip tw-gchip-changed${changedOnly ? ' on' : ''}`, text: `• Changed${changedN ? ` ${changedN}` : ''}`, title: 'Only the controls you moved (again: all)', dataset: { feature: 'Group chip: Changed' }, on: { click: () => { changedOnly = !changedOnly; changedBox.checked = changedOnly; applyFilter(); paintChips(groups); } } }));
+      chips.dataset.groups = JSON.stringify(groups);
+    }
+    function setGroupFilter(g) {
+      groupFilter = g || '';
+      groupSel.value = groupFilter;
+      chips.querySelectorAll('.tw-gchip').forEach((b) => b.classList.toggle('on', (b.textContent === 'All' ? '' : b.textContent) === groupFilter));
+      applyFilter();
+      if (groupFilter) body.querySelector(`.tw-sec[data-group="${CSS.escape(groupFilter)}"]`)?.scrollIntoView({ block: 'nearest' });
     }
     function updateBadges() {
       for (const r of rows) {
@@ -967,8 +1522,27 @@ const ThreeTweaks = (() => {
       }
       const adv = body.querySelector('.tw-adv');
       if (adv && filter && rows.some((r) => !r.el.hidden && adv.contains(r.el))) adv.open = true;
+      const shown = rows.filter((r) => !r.el.hidden && !r.el.closest('.tw-sec[hidden]')).length;
+      matchCount.textContent = filter ? `${shown} of ${rows.length}` : '';
     }
 
+    // Set named controls by key (numbers, colors, on / off, choices): one undo step.
+    function setManyKeys(byKey) {
+      if (!scanned) return [];
+      const next = values.slice(); const done = [];
+      scanned.items.forEach((it, i) => {
+        if (it.key == null || !(it.key in byKey) || locks.has(ids[i])) return;
+        let x = byKey[it.key];
+        if (it.kind === 'number') x = Number(x);
+        else if (it.kind === 'bool') x = x === true || x === 'true' || x === 1 || x === 'on';
+        else x = String(x);
+        if (it.kind === 'number' && !Number.isFinite(x)) return;
+        if (it.kind === 'color' && !CSS_HEX.test(x)) return;
+        next[i] = it.kind === 'color' ? normHex(x) : x; done.push(it.key);
+      });
+      applyValues(next);
+      return done;
+    }
     const codeWithValues = () => applyValues_(scanned.code, scanned.items, values);
     function save() {
       if (!dirtyCount()) return;
@@ -980,6 +1554,7 @@ const ThreeTweaks = (() => {
       values = fresh.items.map((it) => it.orig);
       committed = values.slice();
       undoStack = [];
+      if (!sameShape) { shufHist = []; shufPos = -1; }
       commit(next);
       if (sameShape) render(); else { reads = null; rerun({ hot: true }); }
       toast('Saved into the sketch');
@@ -997,6 +1572,9 @@ const ThreeTweaks = (() => {
         committed = values.slice();
         undoStack = [];
         reads = null;
+        if (shufHist[0]?.values.length !== values.length) { shufHist = []; shufPos = -1; }
+        for (const k of Object.keys(motionSent)) delete motionSent[k];
+        for (const k of Object.keys(walkState)) delete walkState[k];
         render();
       }
       notice.hidden = broken !== code;
@@ -1031,7 +1609,12 @@ const ThreeTweaks = (() => {
         bindings = data.bindings && typeof data.bindings === 'object' ? data.bindings : {};
         locks = new Set(Array.isArray(data.locks) ? data.locks : []);
         favs = new Set(Array.isArray(data.favs) ? data.favs : []);
+        slots = data.slots && typeof data.slots === 'object' ? data.slots : {};
+        motions = data.motions && typeof data.motions === 'object' ? data.motions : {};
+        shufHist = []; shufPos = -1;
         renderLooks();
+        paintSlots();
+        syncMotion();
         if (scanned) render();
       },
       // Unsaved values, so a sketch switch can offer to keep them and the director can see them.
@@ -1069,20 +1652,39 @@ const ThreeTweaks = (() => {
         return true;
       },
       // For the director: set several named controls at once (one undo step, unsaved like your own moves) and looks.
-      setMany(byKey) {
-        if (!scanned) return [];
-        const next = values.slice(); const done = [];
-        scanned.items.forEach((it, i) => {
-          if (it.key == null || !(it.key in byKey) || locks.has(ids[i])) return;
-          let x = byKey[it.key];
-          if (it.kind === 'number') x = Number(x);
-          else if (it.kind === 'bool') x = Boolean(x);
-          else x = String(x);
-          if (it.kind === 'number' && !Number.isFinite(x)) return;
-          next[i] = x; done.push(it.key);
-        });
-        applyValues(next);
-        return done;
+      setMany: (byKey) => setManyKeys(byKey),
+      // ---------- for chat commands (tools/three-cmds.js) and MIDI ----------
+      shuffle: (o) => shuffle(o || {}), shuffleStep: (d) => shuffleStep(d),
+      get shuffleInfo() { return { amount: shufOpt.amount, scope: shufOpt.scope, history: shufHist.length - 1, at: shufPos, seed: shufHist[shufPos]?.seed ?? null }; },
+      setShuffle(patch) { shufOpt = { ...shufOpt, ...patch }; store.set('three.shuffle', shufOpt); return shufOpt; },
+      slotSave: (n) => slotSave(n), slotRecall: (n) => slotRecall(n), slotClear: (n) => slotClear(n),
+      get slots() { return SLOTS.filter((n) => slots[n]); },
+      morph(t, pair) { if (pair) { morphPair = pair; store.set('three.twMorphPair', pair); paintSlots(); } return morphTo(t, { release: true }); },
+      copyValues: () => copyValues(), pasteValues: (text) => pasteValues(text), quickLook: () => quickLook(),
+      lookStep: (d) => lookStep(d), swapSlots: () => swapSlots(), autoMorph: (bars) => setAutoMorph(bars), tame: (k) => tame(k), paletteColors: () => paletteColors(), tweakCode: () => tweakCode(),
+      saveOne: (key) => { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; return i >= 0 && saveOne(i); }, morphLook: (name, ms) => { const l = looks.find((x) => x.name.toLowerCase() === String(name).toLowerCase()); if (!l) return null; morphLook(l, ms); return l.name; },
+      reset: () => reset(), undo: () => undo(), dirty: () => dirtyCount(),
+      groups: () => [...new Set((scanned?.items || []).filter((it) => it.key != null).map((it) => it.group || 'Controls'))],
+      showGroup: (g) => setGroupFilter(g), find: (q) => { search.value = q || ''; filter = search.value.toLowerCase().trim(); applyFilter(); return rows.filter((r) => !r.el.hidden).length; },
+      focusSearch() { search.focus(); search.select(); },
+      // a control by key or (part of) its label
+      resolve(q) { const s0 = String(q || '').toLowerCase(); const it = scanned?.items.find((x) => x.key != null && (x.key.toLowerCase() === s0 || labelOf(x).toLowerCase() === s0)) || scanned?.items.find((x) => x.key != null && labelOf(x).toLowerCase().includes(s0)); return it ? { key: it.key, label: labelOf(it), kind: it.kind } : null; },
+      lock(key, on = true) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0) return false; if (locks.has(ids[i]) !== on) toggleLock(i); return true; },
+      fav(key, on = true) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0) return false; if (favs.has(ids[i]) !== on) toggleFav(i); return true; },
+      setMotion(key, mo) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0 || scanned.items[i].kind !== 'number') return false; setMotion(i, mo); return true; },
+      bind(key, band, amount = 0.5) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0 || scanned.items[i].kind !== 'number') return false; setBinding(i, band || null, amount); return true; },
+      // MIDI-ready: a 0..1 position (a knob, a fader, an OSC value…) → the control's range, like moving it by hand
+      setNormalized(key, u, { release = false } = {}) {
+        const i = scanned?.items.findIndex((x) => x.key === key) ?? -1;
+        if (i < 0) return false;
+        const it = scanned.items[i]; u = Math.max(0, Math.min(1, Number(u) || 0));
+        let v;
+        if (it.options) v = it.options[Math.min(it.options.length - 1, Math.floor(u * it.options.length))];
+        else if (it.kind === 'bool') v = u >= 0.5;
+        else if (it.kind === 'number') { v = it.range.min + u * (it.range.max - it.range.min); v = it.int ? Math.round(v) : Number(v.toPrecision(6)); } else return false;
+        setValue(i, v, { release, external: true });
+        rows.filter((r) => r.i === i).forEach((r) => r.set(v));
+        return v;
       },
       playLook, endLook,
       get playingLook() { return played?.name || null; },
@@ -1092,7 +1694,9 @@ const ThreeTweaks = (() => {
         apply: (name) => { const l = looks.find((x) => x.name.toLowerCase() === String(name).toLowerCase()); if (!l) throw new Error(`No look "${name}". Looks: ${looks.map((x) => x.name).join(', ') || 'none'}`); applyLook(l); return l.name; },
         remove: (name) => { looks = looks.filter((l) => l.name.toLowerCase() !== String(name).toLowerCase()); persist?.('looks', looks); renderLooks(); return looks.map((l) => l.name); },
       },
-      setVisible(on) { root.hidden = !on; },
+      setVisible(on) { root.hidden = !on; syncMotion(); },
+      // the sketch closed or the layer went away: stop sending motion values
+      destroy() { clearInterval(motionTimer); motionTimer = 0; autoMorph = 0; cancelAnimationFrame(played?.raf); },
       get visible() { return !root.hidden; },
     };
   }
@@ -1112,5 +1716,5 @@ const ThreeTweaks = (() => {
     return `#${to(r)}${to(g)}${to(b)}`;
   }
 
-  return { scan, instrument, applyValues, controller };
+  return { scan, instrument, applyValues, controller, menu, MOTIONS, RATES };
 })();
