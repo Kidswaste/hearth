@@ -172,7 +172,7 @@ const Juice = (() => {
     tip = el('div', { class: `juice-tip${full ? ' full' : ''}`, text });
     document.body.append(tip);
     const r = t.getBoundingClientRect(); const w = tip.offsetWidth; const h = tip.offsetHeight;
-    const list = !full && t.closest(LISTS);
+    const list = full ? null : t.closest(LISTS);
     const lr = list?.getBoundingClientRect();
     if (lr && (lr.right + 8 + w < innerWidth || lr.left - 8 - w > 0)) {
       tip.style.left = `${lr.right + 8 + w < innerWidth ? lr.right + 8 : lr.left - 8 - w}px`;
