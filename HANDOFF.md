@@ -50,6 +50,9 @@ Electron v44.5.1 (unpacked in `electron/`, gitignored), plain JS, no npm, no bui
 - aerender can exit 0 after an error, so failures are detected from its log ("aerender Error" lines).
 - When editing files from PowerShell, never round-trip through `Get-Content`/`Set-Content` without `-Encoding utf8`: it garbles ×, →, emoji. Use `[IO.File]::ReadAllText/WriteAllText`.
 
+- Chat commands: `commands.js` is the registry (areas, recent, `run`, `closest`); the chat's own commands live in `chat-cmds.js`, chat extras (find in chat, view prefs, tags / folders in `data/kv/chat-meta.json`, bookmarks in `data/kv/chat-bookmarks.json`, snippets in `data/kv/chat-snippets.json`) in `chat-ux.js`. `Native.hooks` (render, message, event, mark, send) and the `Native` chat API let other modules extend the chat. Style commands (/tone, /persona, /lang) prefix the next message once per engine session; nothing is added to the system prompt.
+- Testing chats without real engines: `node dev/smoke.js --fake-engines --script dev/checks/chat-cmds.js` (fake CLIs in `dev/fake-*.js`; keywords in a message pick thinking / tools / code / errors / slow streaming).
+
 ## Known gaps / not verified
 - The Codex "ChatGPT apps" toggle is untested.
 - Read-only blocking of write tools hasn't been tested live.

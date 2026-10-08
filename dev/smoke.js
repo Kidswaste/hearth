@@ -7,6 +7,7 @@
 //   node dev/smoke.js --eval "JSON.stringify(Object.keys(H))"   # extra expressions (repeatable)
 //   node dev/smoke.js --script dev/checks/foo.js                 # file of expressions, one async fn body
 //   node dev/smoke.js --shot out.png --wait 6000
+//   node dev/smoke.js --fake-engines --script dev/checks/chat-stream.js   # native chats answered by dev/fake-*.js
 //
 // Env: ELECTRON (path to the electron binary, default /opt/hearth-electron/electron).
 // Exit code 1 when the page threw or logged errors (known harmless ones are filtered below).
@@ -36,6 +37,14 @@ function copyApp() {
   const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
   pkg.name = 'hearth-smoke-test';
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(pkg, null, 2));
+  // --fake-engines: Settings → Engines points at the fake CLIs in dev/ (they stream scripted replies).
+  if (args.includes('--fake-engines')) {
+    const cfgPath = path.join(dir, 'config.json');
+    const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+    const ext = process.platform === 'win32' ? 'cmd' : 'js';
+    cfg.settings = { ...(cfg.settings || {}), enginePaths: { claude: path.join(__dirname, `fake-claude.${ext}`), codex: path.join(__dirname, `fake-codex.${ext}`) } };
+    fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+  }
   return dir;
 }
 
@@ -107,7 +116,7 @@ async function cdpConnect() {
     child.kill('SIGKILL');
     const mainErrors = log.join('').split('\n').filter((l) => /Error|Uncaught|TypeError|ReferenceError|SyntaxError/.test(l) && !IGNORE.some((re) => re.test(l)));
     for (const l of mainErrors.slice(0, 30)) problems.push(`main: ${l.trim()}`);
-    if (!keep) { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(userData, { recursive: true, force: true }); }
+    if (!keep) { for (const d of [dir, userData]) { try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 3 }); } catch { /* a helper process still writing; tmp is cleaned later */ } } }
     else console.log(`kept: ${dir}`);
   }
   if (problems.length) { console.log(`\n${problems.length} problem(s):\n${[...new Set(problems)].join('\n')}`); code = 1; } else console.log('\nOK: no page errors.');

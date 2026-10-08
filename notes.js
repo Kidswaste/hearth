@@ -131,12 +131,14 @@ const Prompts = (() => {
   }
 
   // Dropdown under a composer textarea while the message starts with "/": chat commands (commands.js), their
-  // argument suggestions, then saved prompts.
-  function attach(textarea, onPick) {
+  // argument suggestions, then saved prompts. With only "/" typed it shows your recent commands, then every
+  // command grouped by area; each row shows its shortcut when it has one.
+  function attach(textarea, onPick, { agentId = null } = {}) {
     let menu = null;
     let sel = 0;
     let items = [];
     let seq = 0;
+    let lastValue = '';
     const close = () => { menu?.remove(); menu = null; };
     const setText = (text) => { textarea.value = text; textarea.dispatchEvent(new Event('input')); textarea.focus(); textarea.setSelectionRange(text.length, text.length); };
     const pick = async (it) => {
@@ -149,39 +151,62 @@ const Prompts = (() => {
     const update = async () => {
       const my = ++seq;
       const value = textarea.value;
+      if (value !== lastValue) { sel = 0; lastValue = value; }
       const word = value.match(/^\/([\w-]*)$/);
       const withArgs = !word && value.match(/^\/([\w-]+)\s([^\n]*)$/);
       let next = [];
       if (word) {
         const q = word[1].toLowerCase();
-        next = Commands.matching(q).slice(0, 8).map((def) => ({ kind: 'command', def, label: `/${def.name}${def.args ? ` ${def.args}` : ''}`, hint: def.desc }));
-        const prompts = (await load()).filter((p) => p.name.toLowerCase().includes(q)).slice(0, 6);
+        const recent = new Set(Commands.recent?.() || []);
+        const cmds = Commands.matching(q).slice(0, q ? 12 : 60);
+        let group = '';
+        for (const def of cmds) {
+          // headers: "Recent" first (only with nothing typed), then the areas
+          const g = !q && recent.has(def.name) ? 'Recent' : q ? '' : def.area;
+          if (g && g !== group) { next.push({ kind: 'head', label: g }); group = g; }
+          next.push({ kind: 'command', def, label: `/${def.name}${def.args ? ` ${def.args}` : ''}`, hint: def.desc, keys: def.keys || '' });
+        }
+        const prompts = (await load()).filter((p) => p.name.toLowerCase().includes(q)).slice(0, q ? 6 : 4);
+        if (prompts.length) next.push({ kind: 'head', label: 'Saved prompts' });
         next.push(...prompts.map((p) => ({ kind: 'prompt', prompt: p, label: p.name, hint: p.text.slice(0, 70).replace(/\n/g, ' ') })));
       } else if (withArgs) {
         const def = Commands.get(withArgs[1]);
         if (def?.complete) {
-          const opts = (await def.complete(withArgs[2], { agentId: null })) || [];
-          next = opts.slice(0, 10).map((o) => ({ kind: 'arg', def, value: o.value, label: o.label || o.value, hint: o.hint || '' }));
+          let opts = [];
+          try { opts = (await def.complete(withArgs[2], { agentId, chatId: H.activeChat?.[agentId] || null })) || []; } catch { /* a suggestion list must never break typing */ }
+          next = opts.slice(0, 14).map((o) => ({ kind: 'arg', def, value: o.value, label: o.label || o.value, hint: o.hint || '' }));
+          if (next.length) next.unshift({ kind: 'head', label: `/${def.name} ${def.args || ''}`.trim() });
         }
       }
       if (my !== seq) return; // a newer keystroke already updated the menu
       items = next;
-      if (!items.length) { close(); return; }
+      const pickable = items.filter((it) => it.kind !== 'head');
+      if (!pickable.length) { close(); return; }
       if (!menu) { menu = el('div', { class: 'slash-menu' }); textarea.parentElement.append(menu); }
-      sel = Math.min(sel, items.length - 1);
-      menu.replaceChildren(...items.map((it, i) => el('div', {
-        class: `slash-item${i === sel ? ' sel' : ''}${it.kind === 'command' ? ' cmd' : ''}`, on: { mousedown: (e) => { e.preventDefault(); pick(it); } },
-      }, el('b', { text: it.label }), el('span', { class: 'hint', text: it.hint }))));
-      menu.children[sel]?.scrollIntoView({ block: 'nearest' });
+      sel = Math.min(sel, pickable.length - 1);
+      let n = -1;
+      menu.replaceChildren(...items.map((it) => {
+        if (it.kind === 'head') return el('div', { class: 'slash-head', text: it.label });
+        n += 1;
+        const mine = n;
+        return el('div', {
+          class: `slash-item${mine === sel ? ' sel' : ''}${it.kind === 'command' ? ' cmd' : ''}`, on: { mousedown: (e) => { e.preventDefault(); pick(it); } },
+        }, el('b', { text: it.label }), el('span', { class: 'hint', text: it.hint }), it.keys ? el('kbd', { text: it.keys }) : null);
+      }), el('div', { class: 'slash-foot', text: '↑↓ choose · Tab complete · Enter run · Esc close' }));
+      menu.querySelector('.slash-item.sel')?.scrollIntoView({ block: 'nearest' });
     };
+    const pickableItems = () => items.filter((it) => it.kind !== 'head');
     textarea.addEventListener('input', update);
     textarea.addEventListener('keydown', (e) => {
       if (!menu) return;
-      if (e.key === 'ArrowDown') { e.preventDefault(); e.stopImmediatePropagation(); sel = (sel + 1) % items.length; update(); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); e.stopImmediatePropagation(); sel = (sel - 1 + items.length) % items.length; update(); }
-      else if (e.key === 'Tab' || (e.key === 'Enter' && !(items[sel].kind === 'command' && textarea.value.trim() === `/${items[sel].def.name}`))) {
-        // Enter on a fully typed command runs it (the form submits); otherwise Enter / Tab completes
-        e.preventDefault(); e.stopImmediatePropagation(); pick(items[sel]);
+      const list = pickableItems();
+      if (!list.length) return;
+      if (e.key === 'ArrowDown') { e.preventDefault(); e.stopImmediatePropagation(); sel = (sel + 1) % list.length; update(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); e.stopImmediatePropagation(); sel = (sel - 1 + list.length) % list.length; update(); }
+      else if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && !(list[sel].kind === 'command' && textarea.value.trim() === `/${list[sel].def.name}`)
+        && !(list[sel].kind === 'arg' && textarea.value.trim() === `/${list[sel].def.name} ${list[sel].value}`.trim()))) {
+        // Enter on a fully typed command (or a picked argument) runs it (the form submits); otherwise Enter / Tab completes
+        e.preventDefault(); e.stopImmediatePropagation(); pick(list[sel]);
       } else if (e.key === 'Escape') { e.stopImmediatePropagation(); close(); }
     }, true);
     textarea.addEventListener('blur', () => setTimeout(close, 150));
