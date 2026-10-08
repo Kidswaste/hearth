@@ -57,9 +57,12 @@ function plan(prompt) {
     compact: /Compact our context|moving to a fresh chat/i.test(msg),
     summarize: /^Summari[sz]e\b/i.test(msg),
     title: /short title for this chat/i.test(msg),
+    // "Let Astra decide" (decide.js): answers with the second option, like a real pick
+    decide: /^Options: (.+)$/m.test(msg) && /Reply with one option name only/.test(msg) ? msg.match(/^Options: (.+)$/m)[1].split(' | ') : null,
   };
   const parts = [];
   const short = msg.replace(/\s+/g, ' ').slice(0, 80);
+  if (p.decide) return { p, text: p.decide[1] || p.decide[0], thinking: '' };
   if (p.title) parts.push('Fake chat about testing');
   else if (p.compact) parts.push('**Summary.** The user is testing Hearth with a fake engine. Decisions: keep it compact. Exists: one test chat. Left to do: nothing.');
   else if (p.echo) parts.push(prompt);

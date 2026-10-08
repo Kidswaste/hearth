@@ -1406,20 +1406,25 @@ const Review = (() => {
   // ---------- more menu ----------
   function moreMenu(anchor) {
     const r = anchor.getBoundingClientRect();
+    // round 4: the Director / Toolkit / Flow tabs live here (the tab row only shows while one of them is open)
+    const segBtn = (re) => [...(refs.main?.querySelectorAll('.vr-seg button') || [])].find((b) => re.test(b.textContent));
     showMenu(r.right - 280, r.bottom + 4, [
+      { label: `💬 ${refs.segDirector?.textContent || 'Director'} chat`, action: () => refs.segDirector?.click() },
+      { label: '🧰 After Effects toolkit', action: () => AEKit.openKit?.() },
+      segBtn(/Flow/) ? { label: '⧉ Flow: the pipeline as nodes', action: () => segBtn(/Flow/)?.click() } : null,
       { label: 'Export for social…', action: () => exportMenu(anchor) },
-      { label: 'Export presets and tips', action: presetsDialog },
-      S.tools?.ffmpeg && S.cur ? { label: 'Make a playable copy (H.264 proxy)', action: () => runExport('proxy') } : null,
-      { label: 'Contact sheet of this video (save)', action: async () => { if (!S.cur) return; const { canvas } = await contactSheet({ count: 16 }); const p = await window.hub.saveFile({ defaultPath: `${noExt(base(S.cur.path))} sheet.jpg`, filters: [{ name: 'JPEG', extensions: ['jpg'] }], content: canvas.toDataURL('image/jpeg', 0.85).split(',')[1], base64: true }); if (p) toast('Contact sheet saved'); } },
-      { label: 'Copy frame', action: copyFrame }, { label: 'Save frame as PNG…', action: saveFrame },
-      { label: `Frame rate: ${S.fps} fps (${S.fpsSource})…`, action: fpsMenu },
-      { label: 'Tags…', action: () => editTags() },
+      { more: true, label: 'Export presets and tips', action: presetsDialog },
+      S.tools?.ffmpeg && S.cur ? { more: true, label: 'Make a playable copy (H.264 proxy)', action: () => runExport('proxy') } : null,
+      { more: true, label: 'Contact sheet of this video (save)', action: async () => { if (!S.cur) return; const { canvas } = await contactSheet({ count: 16 }); const p = await window.hub.saveFile({ defaultPath: `${noExt(base(S.cur.path))} sheet.jpg`, filters: [{ name: 'JPEG', extensions: ['jpg'] }], content: canvas.toDataURL('image/jpeg', 0.85).split(',')[1], base64: true }); if (p) toast('Contact sheet saved'); } },
+      { label: 'Save frame as PNG…', action: saveFrame }, { more: true, label: 'Copy frame', action: copyFrame },
+      { more: true, label: `Frame rate: ${S.fps} fps (${S.fpsSource})…`, action: fpsMenu },
+      { more: true, label: 'Tags…', action: () => editTags() },
       { label: 'Watched folders…', action: editFolders },
-      { label: 'Rescan now', action: () => load(true) },
-      { label: `ffmpeg: ${S.tools?.ffmpeg || 'not found'}…`, action: setFfmpegPath },
+      { more: true, label: 'Rescan now', action: () => load(true) },
+      { more: true, label: `ffmpeg: ${S.tools?.ffmpeg || 'not found'}…`, action: setFfmpegPath },
       { label: IS_MAC ? 'Show in Finder' : 'Show in folder', action: () => S.cur && window.hub.fs.reveal(S.cur.path) },
-      { label: 'Open in default player', action: () => S.cur && window.hub.fs.open(S.cur.path) },
-      { label: 'Keyboard shortcuts (?)', action: shortcutsHelp },
+      { more: true, label: 'Open in default player', action: () => S.cur && window.hub.fs.open(S.cur.path) },
+      { more: true, label: 'Keyboard shortcuts (?)', action: shortcutsHelp },
     ].filter(Boolean));
   }
   function fpsMenu() {

@@ -115,10 +115,13 @@ const AppUI = (() => {
     const section = (title, ...kids) => el('section', { class: 'settings-section' }, el('h3', { text: title }), ...kids);
     const form = el('form', { method: 'dialog' },
       el('h2', { text: 'Settings' }),
-      section('General', field('Open on start', startOn), trayRow, startupRow, notifyRow,
+      // Round 4: what people change sits on top; the rest folds into "More settings" (all still here).
+      section('General', field('Open on start', startOn), notifyRow),
+      section('Appearance', Look.picker()),
+      el('details', { class: 'settings-more' }, el('summary', { text: 'More settings: startup, tray, hotkey, spell check, rail tools, engines, folders, backups' }),
+      section('Startup and tray', trayRow, startupRow,
         field('Unload websites I haven\'t opened (frees memory; they load again when you open them)', sleepSel),
         field('Show/hide hotkey (works from anywhere)', hotkey, 'Uses Electron accelerator names: Control, Alt, Shift, Super, letters, Space, F1…')),
-      section('Appearance', Look.picker(), el('div', { class: 'hint', text: 'Looks apply instantly. Text size: Ctrl + / Ctrl − / Ctrl 0. In any chat: /theme, /themes, /look.' })),
       section('Spell check languages', el('div', { class: 'check-grid' }, langBoxes)),
       section('Tools in the rail', el('div', { class: 'check-grid' }, toolBoxes)),
       section('Engines', field('Claude program (only if it isn\'t found)', claudePath), field('Codex program (only if it isn\'t found)', codexPath)),
@@ -130,7 +133,7 @@ const AppUI = (() => {
           el('button', { type: 'button', class: 'ghost', text: 'Pack Hearth for a Mac…', title: 'One zip with the app, your chats, sketches, settings and memory, plus the Mac setup script', on: { click: packForMac } }),
           el('button', { type: 'button', class: 'ghost', text: 'Open data folder', on: { click: () => window.hub.openDataFolder() } }),
           el('button', { type: 'button', class: 'ghost', text: 'Edit config.json', on: { click: () => window.hub.openFile('config') } }),
-          el('button', { type: 'button', class: 'ghost', text: 'Edit theme.css', on: { click: () => window.hub.openFile('theme') } }))),
+          el('button', { type: 'button', class: 'ghost', text: 'Edit theme.css', on: { click: () => window.hub.openFile('theme') } })))),
       el('div', { class: 'dialog-actions' }, el('span', { class: 'spacer' }),
         el('button', { type: 'button', text: 'Cancel', on: { click: () => dialog.close() } }),
         el('button', { type: 'submit', class: 'primary', text: 'Save' })));

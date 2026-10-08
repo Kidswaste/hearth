@@ -13,6 +13,8 @@ const ThreeFX = (() => {
     ['look', 'Looks', 'Colors + filters in one click'], ['palette', 'Palettes', 'Sketch colors'], ['trigger', 'Triggers', 'What makes kick / snare / hats fire'],
     ['animate', 'Animate', 'One-click keyframes for the selected layer'], ['ease', 'Eases', 'How keyframes move'], ['blend', 'Blends', 'How the selected layer mixes'], ['all', 'All', 'Everything'],
   ];
+  // What the picker shows first (the Add tab): a few strong, popular ones; everything else is a search away.
+  const SUGGESTED = ['filter:glow', 'filter:glitch', 'filter:film', 'filter:ascii', 'filter:crt', 'filter:kaleido', 'layer:rings', 'layer:particles', 'filter:datamosh', 'filter:halftone'];
   const KIND_LABEL = { layer: 'Layer', filter: 'Filter', look: 'Look', palette: 'Palette', trigger: 'Trigger preset', animate: 'Animation', ease: 'Ease', blend: 'Blend' };
   const ICON = { Shapes: '◇', Backgrounds: '▦', Visualizers: '▮', 'Text & HUD': 'T', Social: '◫', '3D': '⬢' };
   const norm = (s) => String(s || '').toLowerCase();
@@ -243,14 +245,17 @@ const ThreeFX = (() => {
     thumbCache.clear();
     let tab = TABS.some((t) => t[0] === kind) ? kind : 'all';
     let rows = []; let cur = 0; let favOnly = false;
+    // Round 4: the Add tab opens on a short Suggested list; the whole catalog is a search (or "Browse all") away.
+    let browse = kind !== 'add';
     const input = el('input', { type: 'search', class: 'fx-search', placeholder: 'Search effects, layers, looks, palettes…', value: query, spellcheck: false });
     const tabsEl = el('div', { class: 'fx-tabs' });
     const list = el('div', { class: 'fx-list' });
     const foot = el('div', { class: 'fx-foot' });
     const favBtn = el('button', { class: 'ghost small', text: '★', title: 'Only favorites', on: { click: () => { favOnly = !favOnly; favBtn.classList.toggle('on', favOnly); render(); input.focus(); } } });
     const diceBtn = el('button', { class: 'ghost small', text: '🎲', title: 'Surprise me: apply a random one from this tab (Alt+R)', on: { click: () => doSurprise() } });
+    const decideBtn = typeof Decide !== 'undefined' ? el('button', { class: 'ghost small decide-btn', text: '✦', title: 'Let Astra pick an effect for this picture (Undo takes it back) · /decide effect', on: { click: () => { close(); Decide.run(tab === 'look' || tab === 'palette' ? tab : 'effect'); } } }) : null;
     root = el('div', { class: 'fx-picker', attrs: { role: 'dialog', 'aria-label': 'Effects and presets' } },
-      el('div', { class: 'fx-head' }, input, favBtn, diceBtn, el('button', { class: 'ghost small', text: '×', title: 'Close (Esc)', on: { click: close } })),
+      el('div', { class: 'fx-head' }, input, favBtn, diceBtn, decideBtn, el('button', { class: 'ghost small', text: '×', title: 'Close (Esc)', on: { click: close } })),
       tabsEl, list, foot);
     if (anchor) {
       const r = anchor.getBoundingClientRect();
@@ -259,7 +264,7 @@ const ThreeFX = (() => {
     document.body.append(root);
     let scrollT = 0;
     list.addEventListener('scroll', () => { clearTimeout(scrollT); scrollT = setTimeout(() => loadVisible(list), 120); });
-    const paintTabs = () => tabsEl.replaceChildren(...TABS.map(([id, label, title]) => el('button', { class: `fx-tab${id === tab ? ' on' : ''}`, text: label, title, on: { click: () => { tab = id; paintTabs(); render(); input.focus(); } } })));
+    const paintTabs = () => { tabsEl.hidden = !browse; tabsEl.replaceChildren(...TABS.map(([id, label, title]) => el('button', { class: `fx-tab${id === tab ? ' on' : ''}`, text: label, title, on: { click: () => { tab = id; paintTabs(); render(); input.focus(); } } }))); };
 
     function render() {
       const q = norm(input.value).trim();
@@ -270,7 +275,17 @@ const ThreeFX = (() => {
       shown = shown.map((x) => x[0]);
       if (!q) { const ko = ['layer', 'filter', 'look', 'palette', 'trigger', 'animate', 'ease', 'blend']; const co = (c) => { const k = CAT_ORDER.indexOf(c); return k < 0 ? 50 : k; }; shown.sort((a, b) => ko.indexOf(a.kind) - ko.indexOf(b.kind) || co(a.cat) - co(b.cat)); }
       const sections = [];
-      if (!q && !favOnly) {
+      let browseRow = null;
+      if (!q && !favOnly && !browse) {
+        const byKey = new Map(all.map((it) => [keyOf(it), it]));
+        const fv = [...f].map((k) => byKey.get(k)).filter(Boolean).slice(0, 6);
+        const rc = recent().map((k) => byKey.get(k)).filter((it) => it && !fv.includes(it)).slice(0, 4);
+        const sg = SUGGESTED.map((k) => byKey.get(k)).filter((it) => it && !fv.includes(it) && !rc.includes(it));
+        if (fv.length) sections.push(['★ Favorites', fv]);
+        if (rc.length) sections.push(['Recent', rc]);
+        sections.push(['Suggested', sg.slice(0, Math.max(4, 8 - fv.length - rc.length))]);
+        browseRow = el('button', { class: 'ghost small fx-browse', text: `Browse all ${all.length}…`, title: 'Every layer and filter, with tabs for looks, palettes, triggers… (Tab)', on: { click: () => { browse = true; paintTabs(); render(); input.focus(); } } });
+      } else if (!q && !favOnly) {
         const byKey = new Map(all.map((it) => [keyOf(it), it]));
         const fv = [...f].map((k) => byKey.get(k)).filter(Boolean);
         const rc = recent().map((k) => byKey.get(k)).filter(Boolean).slice(0, 6);
@@ -294,6 +309,7 @@ const ThreeFX = (() => {
           frag.push(row);
         }
       }
+      if (browseRow) frag.push(browseRow);
       if (!rows.length) frag.push(el('div', { class: 'fx-empty', text: favOnly ? 'No favorites here yet: ★ an item (or Ctrl+D) to keep it at the top.' : 'Nothing matches. Try another word or the All tab.' }));
       list.replaceChildren(...frag);
       setCur(0, true);
@@ -324,7 +340,7 @@ const ThreeFX = (() => {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); setCur(cur + (e.key === 'ArrowDown' ? 1 : -1)); return; }
       if (e.key === 'PageDown' || e.key === 'PageUp') { e.preventDefault(); setCur(cur + (e.key === 'PageDown' ? 8 : -8)); return; }
       if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); run(rows[cur]?.it, e.shiftKey); return; }
-      if (e.key === 'Tab') { e.preventDefault(); const i = TABS.findIndex((t) => t[0] === tab); tab = TABS[(i + (e.shiftKey ? -1 : 1) + TABS.length) % TABS.length][0]; paintTabs(); render(); return; }
+      if (e.key === 'Tab') { e.preventDefault(); if (!browse) { browse = true; paintTabs(); render(); return; } const i = TABS.findIndex((t) => t[0] === tab); tab = TABS[(i + (e.shiftKey ? -1 : 1) + TABS.length) % TABS.length][0]; paintTabs(); render(); return; }
       if (e.ctrlKey && e.key.toLowerCase() === 'd') { e.preventDefault(); const r = rows[cur]; if (r) r.star.classList.toggle('on', toggleFav(r.it)); return; }
       if (e.altKey && e.key.toLowerCase() === 'r') { e.preventDefault(); doSurprise(); }
       e.stopPropagation(); // typing here never reaches the Lab's single-key shortcuts
@@ -351,5 +367,5 @@ const ThreeFX = (() => {
   for (const [label, kind] of [['Lab: Effects & layers picker (X)', 'add'], ['Lab: Looks…', 'look'], ['Lab: Palettes…', 'palette'], ['Lab: Trigger presets…', 'trigger'], ['Lab: Animate the selected layer…', 'animate'], ['Lab: Keyframe eases…', 'ease'], ['Lab: Blend presets…', 'blend']]) AppUI.addAction?.(label, open(kind));
   AppUI.addAction?.('Lab: Surprise me (random filter)', async () => { try { toast(await surprise('filter'), { timeout: 2600 }); } catch (err) { toast(err.message, { type: 'error' }); } });
 
-  return { openPicker, close, items, find, apply, surprise, toggleFav, KIND_LABEL, TABS };
+  return { openPicker, close, items, find, apply, surprise, toggleFav, KIND_LABEL, TABS, SUGGESTED, keyOf };
 })();

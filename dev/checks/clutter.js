@@ -99,5 +99,4 @@ await shot('dock');
 const total = Object.values(rows).reduce((s, r) => s + (r.controls || 0), 0);
 const width = Math.max(...Object.keys(rows).map((k) => k.length));
 const table = Object.entries(rows).map(([k, r]) => `${k.padEnd(width)}  ${String(r.controls ?? '-').padStart(4)}${r.items != null ? `  (+${r.items} items)` : ''}${r.list ? `   ${r.list}` : ''}`).join('\n');
-console.log(`\nCLUTTER\n${table}\n${'total'.padEnd(width)}  ${String(total).padStart(4)}\n`);
-return JSON.stringify({ total, rows: Object.fromEntries(Object.entries(rows).map(([k, r]) => [k, r.items != null ? [r.controls, r.items] : r.controls])) });
+return `CLUTTER\n${table}\n${'total'.padEnd(width)}  ${String(total).padStart(4)}\n` + JSON.stringify({ total, rows: Object.fromEntries(Object.entries(rows).map(([k, r]) => [k, r.items != null ? [r.controls, r.items] : r.controls])) });

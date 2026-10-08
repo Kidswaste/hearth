@@ -25,7 +25,7 @@ const Meter = (() => {
     { id: 'streak', label: 'Days-in-a-row streak', on: false },
   ];
   const DEFAULTS = {
-    mode: 'strip', // strip | pill | off
+    mode: 'pill', // pill (one number in the rail, the default since round 4) | strip | off
     fields: FIELDS.filter((f) => f.on).map((f) => f.id),
     budgets: {}, // agentId -> daily tokens
     alerts: false, // budget toasts (opt-in)
@@ -38,6 +38,8 @@ const Meter = (() => {
   };
   let prefs = { ...DEFAULTS, ...store.get(PREFS_KEY, {}) };
   const savePrefs = () => store.set(PREFS_KEY, prefs);
+  // Round 4: the strip moves into the rail pill once for everyone (one click on the pill, or /meter strip, brings it back).
+  if (!prefs.calm) { if (prefs.mode === 'strip') prefs.mode = 'pill'; prefs.calm = 1; savePrefs(); }
 
   let stats = null; // token-stats.json, as written by store.js
   const live = new Map(); // chatId -> { agentId, chars, think, tools, started, shown }

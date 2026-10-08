@@ -1,0 +1,29 @@
+/* Round 4 (simplify): fewer things on screen at once. Everything hidden here still works through its menu,
+   shortcut or /command; see docs/upgrades/simplify.md. Loaded last so it wins over the earlier layers. */
+
+/* the chats panel's footer (Import) moved into the rail's ⋯ */
+.panel-foot.tucked { display: none; }
+
+/* Appearance: three looks up front, the rest and the toggles fold away */
+.look-featured, .look-picker > .look-mine { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 6px; padding: 2px; }
+.look-picker > .look-mine:empty { display: none; }
+:is(.look-more, .look-adv, .settings-more) > summary { cursor: pointer; color: var(--muted); font-size: 12px; padding: 4px 2px; user-select: none; }
+:is(.look-more, .look-adv, .settings-more) > summary:hover { color: var(--text); }
+.look-more[open], .look-adv[open] { display: flex; flex-direction: column; gap: 8px; }
+.look-more > input[type=search] { width: 100%; }
+.settings-more[open] > summary { margin-bottom: 6px; }
+.look-top .decide-btn { margin-left: auto; }
+
+/* Lab sliders: a row's lock, code line and ♪ buttons show when you point at it (a lock that's on stays) */
+.tw-row:not(:hover):not(:focus-within):not(.locked) .tw-top .tw-lock,
+.tw-row:not(:hover):not(:focus-within) .tw-top .tw-line,
+.tw-row:not(:hover):not(:focus-within) .tw-top .tw-music-btn:not(.on) { visibility: hidden; }
+.tweaks .tw-foot { display: none; }                       /* the legend: the same words are in each button's tooltip */
+.tw-looks:not(:has(.tw-chip:not(.add))) { display: none; } /* "+ Save look" shows once you have looks (Save ▾ → as a look) */
+
+/* the FX picker's short first view */
+.fx-browse { display: block; margin: 8px auto 4px; }
+.fx-head .decide-btn { font-weight: 600; }
+
+/* Video Review: the Review · Director · Toolkit · Flow tabs show only while one of the others is open (⋯ opens them) */
+.vr-seg:has(> button:first-child.on):not(:has(> button.on:not(:first-child))) { display: none; }

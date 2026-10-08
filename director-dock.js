@@ -28,10 +28,9 @@ const DirectorDock = (() => {
   const CHIPS = {
     three: [
       { label: '🥁 Hit harder on the kick', send: 'Make it hit harder on the kick: bigger, snappier punches on the kicks (my kick markers / the kick trigger when there are some), with a slider for how hard. Keep everything else.' },
-      { label: '🎨 Shuffle colors', run: '/shuffle colors' },
-      { label: '💾 Save this look', run: '/save-look' },
+      // (round 4: Shuffle colors / Save this look left the row: the Lab's own Shuffle and Save do it, and
+      // /shuffle colors, /save-look, /fix-errors still work)
       { label: '✨ 3 variations', send: 'Make 3 clearly different variations with the sliders, save each as a look, show them to me and ask which one I want.' },
-      { label: '🔧 Fix the errors', run: '/fix-errors' },
       { label: '🌊 Change on the drop', send: 'Make it change on the drop: a clear switch in look or motion when the drop hits, timed to my cues / markers.' },
     ],
     ae: [

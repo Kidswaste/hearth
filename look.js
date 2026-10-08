@@ -15,6 +15,7 @@ const Look = (() => {
   const READ_FONTS = { clean: "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif" };
   const NAMED = { gold: '#ffc23d', ember: '#ff7a1a', orange: '#ff8c42', violet: '#a970ff', purple: '#a970ff', magenta: '#ff3ddc', pink: '#ff4f8b', red: '#ff4b4b', cyan: '#48ddff', blue: '#56c6ff', mint: '#5cf2c5', green: '#5ee08f', lime: '#b6f24a', silver: '#c9ced3', white: '#ffffff', copper: '#e3965c', rose: '#f2a7a0' };
   const GROUPS = ['Forgeheart', 'Bold', 'Light', 'Plain'];
+  const FEATURED = ['forgeheart', 'classic', 'forge-light']; // the looks the picker shows first
   let applied = []; // CSS variables we set inline on <html>
 
   const themes = () => AppUI.THEMES;
@@ -174,22 +175,33 @@ const Look = (() => {
         swatch({ ...t, accent: saved()[n].fx?.accent || t.accent }), el('span', { text: n }));
       })] : []));
     };
-    grid.append(mine);
+    // Round 4: three looks up front (Forgeheart, Classic, one light) plus the one you're on; the other presets
+    // wait under "More looks" (searchable), the toggles under "Advanced". /theme <name> reaches every one.
+    const tile = (id, t, head) => {
+      const b = el('button', { type: 'button', class: 'look-tile', title: `${t.label}  ·  /theme ${id}`, dataset: { id }, on: { click: () => applyPreset(id) } }, swatch(t), el('span', { text: t.label.replace(/ \(.*\)$/, '') }));
+      b.head = head;
+      return b;
+    };
+    const featured = el('div', { class: 'look-featured' });
+    const fillFeatured = () => {
+      const ids = [...FEATURED, presetId()].filter((id, i, a) => themes()[id] && a.indexOf(id) === i);
+      featured.replaceChildren(...ids.map((id) => tile(id, themes()[id], null)));
+    };
+    const moreLooks = el('details', { class: 'look-more' }, el('summary', { text: `More looks (${Object.keys(themes()).length - FEATURED.length})` }), search, grid);
     for (const g of GROUPS) {
-      const items = Object.entries(themes()).filter(([, t]) => (t.group || 'Plain') === g);
+      const items = Object.entries(themes()).filter(([id, t]) => (t.group || 'Plain') === g && !FEATURED.includes(id));
       if (!items.length) continue;
       const head = el('div', { class: 'look-group', text: g });
       grid.append(head);
       for (const [id, t] of items) {
-        const tile = el('button', { type: 'button', class: 'look-tile', title: `${t.label}  ·  /theme ${id}`, dataset: { id }, on: { click: () => applyPreset(id) } }, swatch(t), el('span', { text: t.label.replace(/ \(.*\)$/, '') }));
-        tile.head = head;
-        tiles.push(tile);
-        grid.append(tile);
+        const b = tile(id, t, head);
+        tiles.push(b);
+        grid.append(b);
       }
     }
     search.addEventListener('input', () => {
       const q = search.value.trim().toLowerCase();
-      for (const tile of tiles) tile.hidden = q && !`${tile.title} ${tile.dataset.id}`.toLowerCase().includes(q);
+      for (const b of tiles) b.hidden = q && !`${b.title} ${b.dataset.id}`.toLowerCase().includes(q);
       for (const head of grid.querySelectorAll('.look-group')) head.hidden = Boolean(q) && !tiles.some((t) => t.head === head && !t.hidden);
     });
     const bool = (v) => v === 'true';
@@ -206,13 +218,18 @@ const Look = (() => {
       el('span', { text: 'Textures' }), tex, el('span', { text: 'Glow' }), glow,
       el('span', { text: 'Motion' }), motion, el('span', { text: 'Density' }), density,
       el('span', { text: 'Corners' }), corners, el('span', { text: 'Chat font' }), font,
-      el('span', { text: 'Accent' }), el('span', { class: 'look-accent' }, accentIn, accentReset), el('span', { text: 'Tooltips' }), tips);
-    const box = el('div', { class: 'look-picker' }, el('div', { class: 'look-top' }, search, now), grid, ctl);
+      el('span', { text: 'Accent' }), el('span', { class: 'look-accent' }, accentIn, accentReset), el('span', { text: 'Tooltips' }), tips,
+      el('span', { text: 'Your looks' }), el('span', {}, el('button', { type: 'button', class: 'ghost small', text: 'Save as…', title: 'Keep this preset + your tweaks under a name (/appearance save <name>)',
+        on: { click: async () => { const n = await Modal.prompt('Save this look as', { placeholder: 'e.g. Night session' }); if (n) toast(saveLook(n), { timeout: 1600 }); } } })));
+    const decide = typeof Decide !== 'undefined' ? el('button', { type: 'button', class: 'ghost small decide-btn', text: '✦ Let Astra pick', title: 'Astra picks a look for you (Undo puts yours back) · /decide theme', on: { click: () => Decide.run('theme') } }) : null;
+    const box = el('div', { class: 'look-picker' }, el('div', { class: 'look-top' }, now, el('span', { class: 'spacer' }), decide), featured, mine, moreLooks,
+      el('details', { class: 'look-adv' }, el('summary', { text: 'Advanced: textures, glow, motion, density, corners…' }), ctl));
     box.refresh = () => {
       const f = fx();
       const t = preset();
       now.replaceChildren('Now: ', el('b', { text: t ? t.label.replace(/ \(.*\)$/, '') : 'Custom' }));
-      for (const tile of tiles) tile.classList.toggle('on', tile.dataset.id === presetId());
+      fillFeatured();
+      for (const b of [...tiles, ...featured.children]) b.classList.toggle('on', b.dataset.id === presetId());
       fillMine();
       for (const s of [tex, motion, density, corners, font, tips]) s.sync();
       if (document.activeElement !== glow) glow.value = f.glow;
@@ -221,16 +238,13 @@ const Look = (() => {
     };
     box.refresh();
     pickers.add(box);
-    requestAnimationFrame(() => grid.querySelector('.look-tile.on')?.scrollIntoView({ block: 'nearest' }));
     return box;
   }
   function openDialog() {
     document.querySelector('dialog.look-dialog')?.close();
     const dialog = el('dialog', { class: 'ui-modal look-dialog' });
     dialog.append(el('form', { method: 'dialog' }, el('h2', { text: 'Appearance' }), picker(),
-      el('div', { class: 'dialog-actions' }, el('button', { type: 'button', class: 'ghost small', text: 'Save as…', title: 'Keep this preset + your tweaks under a name (/appearance save <name>)',
-        on: { click: async () => { const n = await Modal.prompt('Save this look as', { placeholder: 'e.g. Night session' }); if (n) toast(saveLook(n), { timeout: 1600 }); } } }),
-      el('span', { class: 'hint', text: '/theme name · /themes · /appearance reset · Ctrl+Shift+L' }), el('span', { class: 'spacer' }),
+      el('div', { class: 'dialog-actions' }, el('span', { class: 'hint', text: '/theme name · Ctrl+Shift+L' }), el('span', { class: 'spacer' }),
         el('button', { type: 'submit', class: 'primary', text: 'Done' }))));
     dialog.addEventListener('close', () => dialog.remove());
     document.body.append(dialog);

@@ -42,7 +42,11 @@ const Native = (() => {
     const ctx = el('button', { class: 'ctx-meter', hidden: true, on: { click: () => compactChat(agentId) } }, el('span', { class: 'ctx-bar' }, el('i')), el('span', { class: 'ctx-text' }));
     const header = el('header', { class: 'native-head' }, title, meta, ctx, el('span', { class: 'spacer' }), modelSel, menuBtn, newBtn);
     // Docked director chats are narrow: the header keeps only what fits (model and more live in ⋯ and /model).
-    if (root.classList.contains('tool-dock')) { newBtn.textContent = '＋'; modelSel.hidden = true; root.classList.add('dock-chat'); }
+    if (root.classList.contains('tool-dock')) { newBtn.textContent = '＋'; root.classList.add('dock-chat'); }
+    // One button in the header: ⋯ holds New chat (Ctrl+N), the model and the rest. The model dropdown and the
+    // big New chat button were never used; /model and Ctrl+N stay.
+    else newBtn.hidden = true;
+    modelSel.hidden = true;
     title.addEventListener('dblclick', () => renameCurrent(agentId));
     menuBtn.addEventListener('click', (e) => chatMenu(agentId, e));
     modelSel.addEventListener('change', () => setChatModel(agentId, modelSel.value));
@@ -544,14 +548,13 @@ const Native = (() => {
         u && typeof Meter !== 'undefined' ? Meter.badge(m) : u ? el('span', { class: 'tok-badge', text: `${fmt(u.input)} in · ${fmt(u.output)} out${m.ms ? ` · ${(m.ms / 1000).toFixed(1)}s` : ''}`, title: `${u.input.toLocaleString()} tokens sent (context) · ${u.output.toLocaleString()} written${m.ms && u.output ? ` · ~${Math.round(u.output / (m.ms / 1000))} tokens/s` : ''}${m.model ? ` · ${m.model}` : ''}` }) : null,
         m.stopped ? el('span', { text: 'stopped' }) : null,
         timeEl, num,
+        // Copy + ⋯ only (read aloud, retry… are in ⋯); a stopped reply keeps its one obvious next step
         el('button', { class: 'copy-msg', text: 'Copy' }),
-        act('speak', '🔊', 'Read it aloud (click again to stop)'),
-        isLast && isRetryable(m) ? act('retry', 'Retry', 'Write this reply again') : null,
-        isLast && m.stopped ? act('continue', 'Continue', 'Ask it to continue where it stopped') : null,
+        isLast && m.stopped ? act('continue', 'Continue', 'Ask it to continue where it stopped (Retry is in ⋯)') : null,
         more));
     } else if (m.role === 'user') {
       node.append(el('div', { class: 'msg-foot user-foot' }, num, m.edited ? el('span', { class: 'edited-mark', text: 'edited', title: m.edits?.length ? `Before: ${m.edits.at(-1).slice(0, 300)}` : '' }) : null, timeEl,
-        act('edit', 'Edit', 'Edit and resend (Up arrow edits your last message)'), more));
+        el('button', { class: 'copy-msg', text: 'Copy' }), more));
     } else if (m.role === 'error' && isLast) {
       node.append(el('div', { class: 'msg-foot' }, act('retry', 'Retry', 'Send the last message again'),
         act('copy-error', 'Copy error', 'Copy the error text'), act('engines', 'Check engines', 'Whether Claude Code / Codex were found (/engines)')));
@@ -561,7 +564,7 @@ const Native = (() => {
   }
   const isRetryable = (m) => Boolean(m.stopped);
 
-  // The ⋯ menu of a message: everything you can do with it (each item has a chat command too).
+  // The ⋯ menu of a message: the usual actions first, the rest behind More… (each item has a chat command too).
   function messageMenu(agentId, index, anchor) {
     const chat = chats.get(H.activeChat[agentId]);
     const m = chat?.messages[index];
@@ -577,24 +580,24 @@ const Native = (() => {
     ].filter(Boolean)), 0) }];
     const items = [
       { label: 'Copy', action: () => copyText(m.text, 'Copied') },
-      { label: 'Copy as plain text', action: () => copyText(plainText(m.text), 'Copied as plain text') },
-      m.thinking ? { label: 'Copy its thinking', action: () => copyText(m.thinking, 'Thinking copied') } : null,
+      { more: true, label: 'Copy as plain text', action: () => copyText(plainText(m.text), 'Copied as plain text') },
+      m.thinking ? { more: true, label: 'Copy its thinking', action: () => copyText(m.thinking, 'Thinking copied') } : null,
       m.role === 'assistant' ? { label: 'Read aloud', action: () => speak(m.text) } : null,
       { label: 'Quote in my message', action: () => quote(agentId, index) },
       m.role === 'user' ? { label: 'Edit and resend', action: () => editMessage(agentId, index) } : null,
       { label: 'Branch: new chat from here', action: () => branchFrom(agentId, index) },
       m.role === 'assistant' && last ? { label: 'Retry: write this reply again', action: () => regenerate(agentId) } : null,
-      m.role === 'assistant' && last ? { label: 'Retry with another model…', action: () => { const others = (MODEL_CHOICES[agent.engine] || []).filter((x) => x !== (chat.model || agent.model)); setTimeout(() => showMenu(r.left, r.bottom + 4, others.map((x) => ({ label: x, action: async () => { await setChatModel(agentId, x); regenerate(agentId); } }))), 0); } } : null,
-      m.role === 'assistant' && last && agent.engine === 'claude' ? { label: '🔍 Review: check its own result', action: () => send(agentId, REVIEW_PROMPT).catch((err) => toast(err.message, { type: 'error' })) } : null,
+      m.role === 'assistant' && last ? { more: true, label: 'Retry with another model…', action: () => { const others = (MODEL_CHOICES[agent.engine] || []).filter((x) => x !== (chat.model || agent.model)); setTimeout(() => showMenu(r.left, r.bottom + 4, others.map((x) => ({ label: x, action: async () => { await setChatModel(agentId, x); regenerate(agentId); } }))), 0); } } : null,
+      m.role === 'assistant' && last && agent.engine === 'claude' ? { more: true, label: '🔍 Review: check its own result', action: () => send(agentId, REVIEW_PROMPT).catch((err) => toast(err.message, { type: 'error' })) } : null,
       m.role === 'assistant' && last && astra && astra.id !== agentId ? { label: `👁 Second opinion from ${astra.name}`, action: () => secondOpinion(agentId) } : null,
-      { label: m.pinnedMsg ? 'Unpin message' : '📌 Pin message', action: () => toggleMark(agentId, index, 'pinnedMsg') },
-      { label: m.bookmark ? 'Remove bookmark' : '🔖 Bookmark', action: () => toggleMark(agentId, index, 'bookmark') },
-      ...reactRow,
-      m.reaction ? { label: 'Add a feedback note…', action: async () => { const note = await Modal.prompt('Feedback note', { value: m.reaction.note || '', label: 'Kept with your reaction (not sent to the agent).' }); if (note != null) { m.reaction.note = note.trim(); remember(chat); render(agentId, { keepScroll: true }); } } } : null,
-      m.role === 'assistant' ? { label: 'Save as a Markdown file…', action: () => saveReply(m) } : null,
-      { label: 'Save to notes', action: () => Notes.append(m.text) },
-      m.role !== 'user' ? { label: 'Show the Markdown source', action: () => toggleRaw(agentId, index) } : null,
-      { label: `Copy “/jump ${index + 1}” (to come back here)`, action: () => copyText(`/jump ${index + 1}`, 'Paste it in this chat to come back to this message') },
+      { more: true, label: m.pinnedMsg ? 'Unpin message' : '📌 Pin message', action: () => toggleMark(agentId, index, 'pinnedMsg') },
+      { more: true, label: m.bookmark ? 'Remove bookmark' : '🔖 Bookmark', action: () => toggleMark(agentId, index, 'bookmark') },
+      ...reactRow.map((it) => ({ ...it, more: true })),
+      m.reaction ? { more: true, label: 'Add a feedback note…', action: async () => { const note = await Modal.prompt('Feedback note', { value: m.reaction.note || '', label: 'Kept with your reaction (not sent to the agent).' }); if (note != null) { m.reaction.note = note.trim(); remember(chat); render(agentId, { keepScroll: true }); } } } : null,
+      m.role === 'assistant' ? { more: true, label: 'Save as a Markdown file…', action: () => saveReply(m) } : null,
+      { more: true, label: 'Save to notes', action: () => Notes.append(m.text) },
+      m.role !== 'user' ? { more: true, label: 'Show the Markdown source', action: () => toggleRaw(agentId, index) } : null,
+      { more: true, label: `Copy “/jump ${index + 1}” (to come back here)`, action: () => copyText(`/jump ${index + 1}`, 'Paste it in this chat to come back to this message') },
     ].filter(Boolean);
     showMenu(r.left, r.bottom + 4, items);
   }
@@ -642,10 +645,8 @@ const Native = (() => {
       el('div', { class: 'empty-icon', text: agent.icon || agent.name[0] }),
       el('h3', { text: `New chat with ${agent.name}` }),
       el('p', { class: 'hint', text: engineOk
-        ? `Runs on your ${ENGINE_LABEL[agent.engine] || agent.engine} account${agent.model ? ` · ${agent.model}` : ''}. Type / for saved prompts, drop files or paste screenshots to attach them.`
+        ? 'Type / for commands · drop or paste files to attach them.'
         : `Couldn't find the ${agent.engine === 'claude' ? 'Claude' : 'Codex'} desktop app on this PC, so native chat can't run.` }),
-      // a few commands to start from (they run here; nothing is sent)
-      el('div', { class: 'suggest-chips empty-cmds' }, ['/template', '/recent', '/bookmarks', '/help'].map((c) => el('button', { class: 'suggest-chip cmd', text: c, dataset: { suggest: c }, title: Commands.get(c.slice(1))?.desc || '' }))),
       typeof Astra !== 'undefined' ? Astra.emptyHints(agent) : null);
   }
 
@@ -674,7 +675,7 @@ const Native = (() => {
     v.meta.title = agent.workspace ? `Can read and edit files in ${agent.workspace}` : '';
     paintContext(v, chat);
     v.input.placeholder = v.root.classList.contains('dock-chat') ? `Message ${agent.name}…  (/ for commands)`
-      : `Message ${agent.name}…  (${store.get('chat.enterSends', true) === false ? 'Ctrl+Enter to send · Enter new line' : 'Enter to send · Shift+Enter new line'} · / for commands)`;
+      : `Message ${agent.name}…${store.get('chat.enterSends', true) === false ? '  (Ctrl+Enter sends)' : ''}`;
     fillModelSelect(v, agent, chat);
     renderStyle(agentId);
     if (!v.input.value) { v.input.value = store.get(draftKey(agentId), '') || ''; autosize(v.input); updateCounter(v); }
@@ -1390,28 +1391,30 @@ const Native = (() => {
     const chat = chats.get(H.activeChat[agentId]);
     const others = H.agents().filter((a) => a.mode === 'native' && a.id !== agentId);
     const items = chat ? [
-      { label: chat.pinned ? 'Unpin' : 'Pin to top', action: () => togglePin(chat.id) },
+      { label: '＋ New chat  Ctrl+N', action: () => newChat(agentId) },
+      { more: true, label: chat.pinned ? 'Unpin' : 'Pin to top', action: () => togglePin(chat.id) },
       { label: 'Rename…', action: () => renameCurrent(agentId) },
       { label: '🗜 Compact context', action: () => compactChat(agentId) },
       { label: 'Copy as Markdown', action: () => copyText(chatMarkdown(chat), 'Chat copied') },
-      { label: 'Copy the last reply', action: () => copyLastReply(agentId) },
-      { label: 'Fold all long replies', action: () => foldAll(agentId, true) },
-      { label: 'Unfold all replies', action: () => foldAll(agentId, false) },
-      { label: 'Jump to the first message', action: () => { const l = views.get(agentId)?.list; if (l) l.scrollTop = 0; } },
-      { label: 'Duplicate this chat', action: () => { const n = chat.messages.length; if (n) branchFrom(agentId, n - 1); } },
-      { label: 'Chat stats', action: () => chatStats(chat) },
+      { more: true, label: 'Copy the last reply', action: () => copyLastReply(agentId) },
+      { more: true, label: 'Fold all long replies', action: () => foldAll(agentId, true) },
+      { more: true, label: 'Unfold all replies', action: () => foldAll(agentId, false) },
+      { more: true, label: 'Jump to the first message', action: () => { const l = views.get(agentId)?.list; if (l) l.scrollTop = 0; } },
+      { more: true, label: 'Duplicate this chat', action: () => { const n = chat.messages.length; if (n) branchFrom(agentId, n - 1); } },
+      { more: true, label: 'Chat stats', action: () => chatStats(chat) },
       { label: `Model: ${chat.model || H.agent(agentId).model || 'default'}…  /model`, action: () => modelMenu(agentId, e) },
       { label: 'Find in this chat…  /find', action: () => Commands.exec('/find', agentId) },
-      { label: 'Open / close all thinking  Alt+T', action: () => toggleThinking(agentId) },
-      { label: 'Read the last reply aloud  /read', action: () => speak(lastReplyText(agentId)) },
-      { label: 'Tags and folder…  /tag', action: () => Commands.exec('/tags', agentId) },
-      { label: 'Export as JSON (to import later)…', action: () => Commands.exec('/export json file', agentId) },
-      { label: 'Export as Markdown file…', action: async () => { const p = await window.hub.saveFile({ defaultPath: `${chat.title.replace(/[\\/:*?"<>|]/g, '_')}.md`, filters: [{ name: 'Markdown', extensions: ['md'] }], content: chatMarkdown(chat) }); if (p) toast('Chat exported', { action: { label: 'Show', fn: () => window.hub.fs.reveal(p) } }); } },
-      ...others.map((a) => ({ label: `Continue with ${a.name}`, action: () => continueWith(chat.id, a.id) })),
-      { label: 'Chat commands…  /help', action: () => Commands.exec('/help', agentId) },
+      { more: true, label: 'Open / close all thinking  Alt+T', action: () => toggleThinking(agentId) },
+      { more: true, label: 'Read the last reply aloud  /read', action: () => speak(lastReplyText(agentId)) },
+      { more: true, label: 'Tags and folder…  /tag', action: () => Commands.exec('/tags', agentId) },
+      { more: true, label: 'Export as JSON (to import later)…', action: () => Commands.exec('/export json file', agentId) },
+      { more: true, label: 'Export as Markdown file…', action: async () => { const p = await window.hub.saveFile({ defaultPath: `${chat.title.replace(/[\\/:*?"<>|]/g, '_')}.md`, filters: [{ name: 'Markdown', extensions: ['md'] }], content: chatMarkdown(chat) }); if (p) toast('Chat exported', { action: { label: 'Show', fn: () => window.hub.fs.reveal(p) } }); } },
+      ...others.map((a) => ({ more: true, label: `Continue with ${a.name}`, action: () => continueWith(chat.id, a.id) })),
+      { more: true, label: 'Chat commands…  /help', action: () => Commands.exec('/help', agentId) },
       { label: 'Delete chat', danger: true, action: async () => { if (await Modal.confirm('Delete chat?', `"${chat.title}" moves to Recently deleted (Ctrl+K → Recently deleted chats) for 30 days.`, { ok: 'Delete', danger: true })) remove(chat.id); } },
     ] : [
-      { label: 'Start by sending a message', action: () => views.get(agentId).input.focus() },
+      { label: `Model: ${H.agent(agentId).model || 'default'}…  /model`, action: () => modelMenu(agentId, e) },
+      { more: true, label: 'Start by sending a message', action: () => views.get(agentId).input.focus() },
       { label: 'Import a chat from a file…', action: () => Commands.exec('/import', agentId) },
       { label: 'Chat commands…  /help', action: () => Commands.exec('/help', agentId) },
     ];

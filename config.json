@@ -29,7 +29,7 @@
     "start": "single",
     "gridColumns": 2,
     "chatsPanel": true,
-    "askAllBar": true
+    "askAllBar": false
   },
   "askAll": {
     "pressEnter": true
