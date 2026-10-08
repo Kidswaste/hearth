@@ -63,7 +63,11 @@
 
 /* help view */
 dialog.cmd-help { width: min(760px, calc(100vw - 40px)); max-width: none; padding: 0; overflow: hidden; }
-.cmd-help-card { display: flex; flex-direction: column; max-height: min(78vh, 760px); }
+.cmd-help-card { position: relative; display: flex; flex-direction: column; max-height: min(78vh, 760px); }
+.cmd-help-pop { position: absolute; z-index: 5; min-width: 230px; display: flex; flex-direction: column; padding: 4px; background: var(--sidebar); border: 1px solid var(--line); border-radius: 9px; box-shadow: 0 12px 34px #000b; }
+.cmd-help-pop button { text-align: left; background: none; border: 0; padding: 6px 10px; border-radius: 6px; font-size: 12.5px; color: var(--text); cursor: pointer; }
+.cmd-help-pop button:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.cmd-help-meta { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 2px; font-size: 11px; color: color-mix(in srgb, var(--accent) 55%, var(--muted)); }
 .cmd-help-bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
 .cmd-help-bar h2 { margin: 0; font-size: 15px; flex: none; }
 .cmd-help-q { flex: 1; min-width: 120px; }
@@ -103,3 +107,4 @@ dialog.cmd-help { width: min(760px, calc(100vw - 40px)); max-width: none; paddin
 :root[data-skin~="forge"] .cmdbar-row, :root[data-skin~="forge"] .cmdbar-out { border-radius: 0; clip-path: var(--cut, none); }
 @media (prefers-reduced-motion: reduce) { .cmdbar-row { animation: none; } }
 :root[data-motion=off] .cmdbar-row { animation: none; }
+:is(.msg, .notes-panel) code.cmd-code.fill::after { content: " ✎"; }

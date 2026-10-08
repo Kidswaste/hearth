@@ -230,7 +230,7 @@ const Commands = (() => {
   // "make it 9 by 16" → /size 9:16 · "dark theme" → /theme midnight · "bpm 128" → /bpm 128 · "freeze" → /freeze
   // Words are scored against names (and their parts), aliases, keywords, descriptions and areas; leftover words
   // that are argument values (completions, numbers, ratios, on / off, argument words from addInfo) become args.
-  const STOP = new Set('a an the it its this that these to for of in with and or please pls can could would will you i me my we our us make set turn switch change put use go get let do does want wanna need like into be is are some so just now then thing stuff how what which way should'.split(' '));
+  const STOP = new Set('a an the it its this that these to for of in with and or please pls can could would will you i me my we our us make set turn switch change put use go get let do does want wanna need like into be is are some so just then thing stuff how what which way should'.split(' '));
   const stem = (w) => (w.length > 4 ? w.replace(/(ings?|ed|es|s)$/, '') : w);
   let index = null; // [{ def, name, parts, aliases, kw, desc, area }]
   function buildIndex() {
@@ -254,11 +254,46 @@ const Commands = (() => {
       return x <= 32 && y <= 32 ? `${x}:${y}` : `${a}x${b}`;
     });
     s = s.replace(/(\d)\s+%/g, '$1%').replace(/(\d)\s*(minutes?|mins?)\b/g, '$1m').replace(/(\d)\s*(seconds?|secs?)\b/g, '$1s').replace(/(\d)\s*(hours?|hrs?)\b/g, '$1h')
-      .replace(/(\d)\s+(ms|s|m|h|bpm)\b/g, '$1$2');
+      .replace(/(\d)\s+(ms|s|m|h|bpm|bars?|beats?)\b/g, '$1$2');
     return s.split(/\s+/).filter(Boolean);
   }
-  const ARGISH = /^(on|off|\d[\d.:%x]*|#[0-9a-f]{3,8}|[+-]\d*|\d+(ms|s|m|h|bpm)|bars?|beats?)$/i;
-  function suggest(text, { limit = 5, ctx = null } = {}) {
+  const ARGISH = /^(on|off|\d[\d.:%x]*|#[0-9a-f]{3,8}|[+-]\d*|\d+(ms|s|m|h|bpm|bars?|beats?))$/i;
+  // Sentences that combine commands: "every 5 minutes shuffle" → /every 5m /shuffle, "in 10 minutes freeze" →
+  // /after 10m /freeze, "at 9pm backup now" → /at 9pm /backup now, "shuffle 3 times" → /repeat 3 /shuffle,
+  // "freeze then still" → /run /freeze ; /still, "do it again" → /repeat.
+  const UNIT = { minute: '1m', hour: '1h', second: '1s', sec: '1s', min: '1m', bar: '1bar', beat: '1beat' };
+  const DUR = /^(\d+(?:\.\d+)?(?:ms|s|m|h)|\d+(?:bars?|beats?))$/;
+  function compose(text, ctx) {
+    const s = words(text).join(' ');
+    const best = (t) => suggest(t, { limit: 1, ctx, inner: true })[0];
+    const one = (t) => { const b = best(t); return b && !b.fill && !/^\/(every|at|after|run|repeat)\b/.test(b.line) ? b : null; };
+    if (/^(again|do it again|repeat( that| it)?|once more|one more time)$/.test(s)) return [{ line: '/repeat', def: get('repeat') }];
+    let m = s.match(/^(?:every|each)\s+(\d+\s?(?:bars?|beats?)|\S+)\s+(.+)$/);
+    if (m) {
+      const d = UNIT[m[1]] || m[1].replace(/\s/g, '');
+      const b = (DUR.test(d) || /^\d+(bars?|beats?)$/.test(d)) && one(m[2]);
+      if (b) return [{ line: `/every ${d.replace(/(\d)(bars?|beats?)$/, '$1 $2')} ${b.line.trim()}`, def: get('every') }];
+    }
+    m = s.match(/^(?:in|after)\s+(\S+)\s+(.+)$/);
+    if (m && (DUR.test(m[1]) || UNIT[m[1]])) { const b = one(m[2]); if (b) return [{ line: `/after ${UNIT[m[1]] || m[1]} ${b.line.trim()}`, def: get('after') }]; }
+    m = s.match(/^at\s+(\d{1,2}(?::\d{2})?\s?(?:am|pm)?|noon|midnight)\s+(.+)$/);
+    if (m) { const b = one(m[2]); if (b) return [{ line: `/at ${m[1].replace(/\s/g, '')} ${b.line.trim()}`, def: get('at') }]; }
+    m = s.match(/^(.+?)\s+(\d+)\s*(?:times|x)$/) || s.match(/^(twice|thrice)\s+(.+)$/);
+    if (m) {
+      const [n, rest] = /^(twice|thrice)$/.test(m[1]) ? [m[1] === 'twice' ? 2 : 3, m[2]] : [Number(m[2]), m[1]];
+      const b = one(rest);
+      if (b && n > 1 && n <= 50) return [{ line: `/repeat ${n} ${b.line.trim()}`, def: get('repeat') }];
+    }
+    const parts = s.split(/\s+(?:and then|then|after that)\s+|\s*;\s*/).filter(Boolean);
+    if (parts.length > 1 && parts.length <= 6) {
+      const lines = parts.map(one);
+      if (lines.every(Boolean)) return [{ line: `/run ${lines.map((b) => b.line.trim()).join(' ; ')}`, def: get('run') }];
+    }
+    return [];
+  }
+  function suggest(text, { limit = 5, ctx = null, inner = false } = {}) {
+    const composed = inner ? [] : compose(text, ctx).filter((c) => c.def).map((c) => ({ ...c, score: 30, fill: false }));
+    if (composed.length) return [...composed, ...suggest(text, { limit: limit - 1, ctx, inner: true })].slice(0, limit);
     const all = words(text);
     const toks = all.filter((w) => !STOP.has(w));
     if (!toks.length) return [];
@@ -320,7 +355,7 @@ const Commands = (() => {
       const needs = /^</.test(String(d.args || '').trim());
       // a command that takes another /command (/every, /at, /run…) is never complete from words alone
       const wantsCmd = /<\/|\/command/.test(String(d.args || ''));
-      const argText = [...new Set(args)].join(' ');
+      const argText = [...new Set(args)].join(' ').replace(/(\d)(bars?|beats?)\b/g, '$1 $2');
       const fill = (needs && !argText) || wantsCmd;
       out.push({ def: d, line: `/${d.name}${argText ? ` ${argText}` : ''}${fill ? ' ' : ''}`, score: s.score + bonus, fill });
     }
@@ -342,16 +377,19 @@ const Commands = (() => {
 
   // The argument you are typing now, for the hint above the box: "/size 9" → { now: '<9:16|16:9|…>', … }.
   // parts: [{ text, state: 'done' | 'now' | 'next' }] from the command's args spec.
-  function argHint(text) {
+  // ctx (optional, { agentId }): a shared name shows the arguments of the variant that runs here (/look in the Lab).
+  function argHint(text, ctx = null) {
     const m = String(text || '').match(/^\/([\w-]+)\s([\s\S]*)$/);
     const def = m && get(m[1]);
     if (!def) return null;
-    const spec = String(def.args || '').match(/<[^>]*>|\[[^\]]*\]|[^\s<[]+/g) || [];
+    let v = def;
+    if (def.variants && ctx) { try { v = def.variants.find((x) => x.when && x.when(ctx, m[2])) || def.variants.find((x) => !x.when) || def; } catch { v = def; } }
+    const spec = String(v.args || '').match(/<[^>]*>|\[[^\]]*\]|[^\s<[]+/g) || [];
     const typed = m[2];
     const n = typed.trim() ? typed.trim().split(/\s+/).length : 0;
     const at = Math.min(/\s$/.test(typed) || !typed ? n : n - 1, Math.max(spec.length - 1, 0));
     const parts = spec.map((p, i) => ({ text: p, state: i < at ? 'done' : i === at ? 'now' : 'next' }));
-    return { def, parts, now: spec[at] || '', example: examplesOf(def)[0] || '' };
+    return { def, parts, now: spec[at] || '', example: (v.examples || [])[0] || examplesOf(def)[0] || '', variant: v.when ? v.whenLabel || v.area : '' };
   }
 
   // "/x args | draft" → { cmd: '/x args', to: 'draft' } (only a known target after the last " | " is a pipe).
@@ -383,6 +421,11 @@ const Commands = (() => {
   async function tryRun(text, agentId, input, opts) {
     const nested = !opts && Boolean(active);
     opts = opts || (active ? { ...active, history: false } : {});
+    // "/size 9:16 ; /freeze" typed straight: a chain (like /run), unless the first command takes commands itself
+    const first = parse(text);
+    if (first && /\s;\s*\/[\w-]/.test(text) && !/<\/|\/command|<name> <|\/cmd/.test(String(first.def.args || '')) && get('run') && first.def.name !== 'run') {
+      text = `/run ${String(text).trim()}`;
+    }
     const pipe = splitPipe(text);
     const hit = parse(pipe ? pipe.cmd : text);
     if (!hit) return false;

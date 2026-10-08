@@ -1259,7 +1259,10 @@ const ChatCmds = (() => {
       name, area: 'Yours', args: '[more]', desc: `→ ${text.slice(0, 70)}`,
       run: async (args, ctx) => {
         // {args} in the alias is replaced by what you type after it; otherwise it's added at the end of the last command
-        const full = text.includes('{args}') ? text.replace(/\{args\}/g, args) : `${text}${args ? ` ${args}` : ''}`;
+        // {1} {2}… take single words (cmdbar round: /alias vs /run /size {1} ; /still {1} → /vs 9:16)
+        const w = String(args || '').trim().split(/\s+/).filter(Boolean);
+        const full = /\{\d\}/.test(text) ? text.replace(/\{(\d)\}/g, (_, n) => w[Number(n) - 1] ?? '').replace(/\{args\}/g, args)
+          : text.includes('{args}') ? text.replace(/\{args\}/g, args) : `${text}${args ? ` ${args}` : ''}`;
         if (full.startsWith('/')) await Commands.exec(/\s;\s*\//.test(full) ? `/run ${full}` : full, ctx.agentId);
         else ctx.send(full);
       },

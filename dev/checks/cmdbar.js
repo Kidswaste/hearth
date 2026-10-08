@@ -17,7 +17,15 @@ try {
   // plain language → command lines
   const nl = (t) => Commands.suggest(t, { limit: 3 }).map((s) => s.line.trim());
   out.nl = {};
-  for (const t of ['make it 9 by 16', 'dark theme', 'light theme', 'turn off the click track', 'bpm 128', 'freeze the picture', 'vertical', 'stop every reply', 'make text bigger', 'random colors', 'square', '1080 by 1920', 'record 8 bars', 'every 5 minutes', 'undo']) out.nl[t] = nl(t);
+  for (const t of ['make it 9 by 16', 'dark theme', 'light theme', 'turn off the click track', 'bpm 128', 'freeze the picture', 'vertical', 'stop every reply', 'make text bigger', 'random colors', 'square', '1080 by 1920', 'record 8 bars', 'every 5 minutes', 'undo',
+    'every 5 minutes shuffle colors', 'in 10 minutes freeze', 'at 9pm backup now', 'shuffle 3 times', 'freeze then still 9:16', 'do it again', 'every bar reshuffle', 'red channel', 'smooth framerate']) out.nl[t] = nl(t);
+  // a chain typed straight, alias placeholders
+  await CmdBar.runLine('/echo a1 ; /echo b2');
+  out.chainTyped = card().replace(/\s+/g, ' ').slice(-20);
+  await CmdBar.runLine('/alias smoke-two /echo {2} then {1}');
+  await CmdBar.runLine('/smoke-two x y');
+  out.aliasPos = card().replace(/\s+/g, ' ').slice(-14);
+  await CmdBar.runLine('/unalias smoke-two');
   out.dym = Commands.didYouMean('/make it 9 by 16').map((m) => m.line.trim());
   out.dymPath = Commands.didYouMean('/Users/me/file.js is broken').length;
   out.typo = Commands.didYouMean('/frezee').map((m) => m.line);
@@ -122,7 +130,25 @@ try {
   msg.querySelector('code.cmd-code')?.click();
   await wait(150);
   out.replyRan = [...list.querySelectorAll('.msg.note .body')].at(-1)?.textContent;
+  msg.querySelector('code.cmd-code.fill')?.click();
+  await wait(150);
+  out.replyFill = document.querySelector('.cmdbar-input')?.value;
+  CmdBar.close();
+  await Commands.tryRun('/cmd-links off', claude.id, null);
+  out.linksOff = msg.querySelectorAll('code.cmd-code').length;
+  await Commands.tryRun('/cmd-links on', claude.id, null);
+  await wait(50);
+  out.linksOn = msg.querySelectorAll('code.cmd-code').length;
   msg.remove();
+  // help view: an area's name opens it; right-click menu
+  CmdBar.help('lab');
+  await wait(150);
+  const d2 = document.querySelector('dialog.cmd-help');
+  out.helpArea = d2.querySelector('.cmd-help-area').value + ' · ' + d2.querySelectorAll('.cmd-help-row').length;
+  d2.querySelector('.cmd-help-row').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 400, clientY: 300 }));
+  out.helpPop = [...d2.querySelectorAll('.cmd-help-pop button')].map((b) => b.textContent).length;
+  out.helpMeta = d2.querySelectorAll('.cmd-help-meta').length;
+  d2.close();
   // the composer's / menu: plain-language rows and the hint row, same as the bar
   const ci = Native.view(claude.id).input;
   ci.focus(); ci.value = '/make it 9 by 16'; ci.dispatchEvent(new Event('input')); await wait(150);
@@ -170,6 +196,7 @@ try {
   await type('/');
   out.labMenuHeads = [...document.querySelectorAll('.cmdbar .slash-head')].map((x) => x.textContent).slice(0, 3);
   out.recentLab = Commands.recent('three');
+  out.lookHintLab = Commands.argHint('/look ', { agentId: CmdBar.target()?.id })?.parts.map((p) => p.text).join(' ') + ' | ' + Commands.argHint('/look ', { agentId: CmdBar.target()?.id })?.variant;
   await type('');
   if (dir && Native.view(dir.id)) {
     CmdBar.close();

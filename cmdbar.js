@@ -159,6 +159,7 @@ const CmdBar = (() => {
 
   // ---------- output card ----------
   let outRun = 0;
+  let lastBarLine = '';
   function clearOut() { if (out) { out.replaceChildren(); out.hidden = true; } }
   function show(text, { actions = [], type = '' } = {}) {
     if (!bar || bar.hidden) { toast(String(text).replace(/[*`]/g, '').slice(0, 300), { type: type === 'error' ? 'error' : 'info', timeout: 6000 }); return null; }
@@ -170,6 +171,7 @@ const CmdBar = (() => {
     // copy / to the chat box, for the whole card
     if (!out.querySelector('.cmdbar-out-acts')) {
       out.prepend(el('div', { class: 'cmdbar-out-acts' },
+        el('button', { type: 'button', class: 'ghost small', text: '↻', title: 'Run it again', on: { mousedown: (e) => e.preventDefault(), click: () => { if (lastBarLine) runLine(lastBarLine); } } }),
         el('button', { type: 'button', class: 'ghost small', text: '⧉', title: 'Copy the output', on: { mousedown: (e) => e.preventDefault(), click: () => { navigator.clipboard.writeText(outText()); toast('Copied', { timeout: 1200 }); } } }),
         el('button', { type: 'button', class: 'ghost small', text: '📝', title: 'Save the output to Notes (like | note)', on: { mousedown: (e) => e.preventDefault(), click: async () => { await Notes.append(outText()); toast('Saved to Notes', { timeout: 1400 }); } } }),
         el('button', { type: 'button', class: 'ghost small', text: '→ draft', title: 'Put the output in the chat box (like | draft)', on: { mousedown: (e) => e.preventDefault(), click: () => { const a = target(); if (a) { const t = outText(); close(); activate(a.id); Native.setDraft(a.id, t); } } } }),
@@ -237,6 +239,7 @@ const CmdBar = (() => {
       draft: (t) => { close(); activate(agent.id); Native.setDraft(agent.id, t); },
     };
     if (quiet) Object.assign(opts, { say: (t) => toast(String(t).replace(/[*`]/g, '').slice(0, 240), { timeout: 4000 }), note: (t) => toast(String(t).replace(/[*`]/g, '').slice(0, 240), { timeout: 4000 }) });
+    if (!quiet) lastBarLine = text;
     const ok = await Commands.tryRun(text, agent.id, null, opts);
     if (isOpen() && document.activeElement !== input && !document.querySelector('dialog[open]') && !document.activeElement?.closest?.('.composer, .notes-panel')) input.focus();
     return ok;
@@ -244,9 +247,9 @@ const CmdBar = (() => {
 
   // ---------- shortcuts ----------
   document.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === ';' || e.code === 'Semicolon')) { e.preventDefault(); e.stopPropagation(); toggle(); }
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === ';' || e.code === 'Semicolon')) { e.preventDefault(); e.stopPropagation(); if (e.shiftKey) help(); else toggle(); }
   }, true);
-  window.hub.onShortcut?.((s) => { if (s?.key === ';') toggle(); });
+  window.hub.onShortcut?.((s) => { if (s?.key === ';') { if (s.shift) help(); else toggle(); } }); // Ctrl+Shift+; → the help view
 
   // ---------- help view ----------
   // A compact dialog: search (names, words, plain language), an area / list picker, each command with its
@@ -260,22 +263,53 @@ const CmdBar = (() => {
     const area = el('select', { class: 'cmd-help-area', title: 'Show one area or list' }, groups.map(([v, l]) => el('option', { value: v, text: l })));
     area.value = ls.get('cmdbar.helpArea', 'all');
     if (![...area.options].some((o) => o.value === area.value)) area.value = 'all';
+    // "/help lab", "/help video": an area's name opens that area
+    const f = String(filter || '').trim().toLowerCase();
+    const areaHit = f && Commands.areas().find((a) => a.toLowerCase() === f || a.toLowerCase().split(/[\s.]+/).includes(f));
+    if (areaHit) { area.value = `area:${areaHit}`; q.value = ''; }
+    else if (f) area.value = 'all';
     const listEl = el('div', { class: 'cmd-help-list' });
     const count = el('span', { class: 'cmd-help-count' });
     let rows = [], sel = 0;
     const tryLine = (line, fill) => { dlg.close(); if (fill) open(line); else runLine(line); };
+    // a small right-click menu inside the dialog (the app's #menu would sit under the modal)
+    const popMenu = (e, items) => {
+      dlg.querySelector('.cmd-help-pop')?.remove();
+      const card = dlg.querySelector('.cmd-help-card');
+      const r = card.getBoundingClientRect();
+      const pop = el('div', { class: 'cmd-help-pop', style: { left: `${Math.min(e.clientX - r.left, r.width - 250)}px`, top: `${Math.min(e.clientY - r.top, r.height - 40 * items.length)}px` } },
+        items.map((it) => el('button', { type: 'button', text: it.label, on: { click: () => { pop.remove(); it.action(); } } })));
+      card.append(pop);
+      setTimeout(() => dlg.addEventListener('click', () => pop.remove(), { once: true }), 0);
+    };
     const row = (d, line) => {
       const exs = Commands.examplesOf(d).slice(0, 4);
       const needs = /^</.test(String(d.args || '').trim());
       const starBtn = el('button', { type: 'button', class: `ghost small cmd-star${Commands.isFav(d.name) ? ' on' : ''}`, text: Commands.isFav(d.name) ? '★' : '☆', title: 'Pin to the top of the / menu', on: { click: (e) => { e.stopPropagation(); const on = Commands.toggleFav(d.name); starBtn.textContent = on ? '★' : '☆'; starBtn.classList.toggle('on', on); } } });
       const go = () => tryLine(line || (needs ? `/${d.name} ` : `/${d.name}`), !line && needs);
-      const r = el('div', { class: 'cmd-help-row', dataset: { name: d.name }, on: { dblclick: go } },
+      const menu = (e) => {
+        e.preventDefault();
+        const plain = `/${d.name}`;
+        popMenu(e, [
+          { label: needs ? 'Fill it in the command bar' : 'Run it', action: go },
+          ...(needs ? [] : [{ label: 'Put it in the command bar', action: () => tryLine(`${plain} `, true) }]),
+          { label: Commands.isFav(d.name) ? 'Unpin from the / menu' : 'Pin to the / menu', action: () => { Commands.toggleFav(d.name); render(); } },
+          { label: 'Copy the command', action: () => navigator.clipboard.writeText(line ? line.trim() : plain) },
+          { label: 'Everything about it (/what)', action: () => tryLine(`/what ${d.name}`) },
+          { label: 'Make my own shortcut for it (/alias)…', action: () => tryLine(`/alias my-${d.name} ${line ? line.trim() : plain}`, true) },
+          { label: 'Run it on a timer (/every)…', action: () => tryLine(`/every 5m ${line ? line.trim() : plain}`, true) },
+        ]);
+      };
+      const undo = Commands.undoOf(d);
+      const where = d.variants?.filter((v) => v.whenLabel).map((v) => `${v.whenLabel}: ${v.area}`).join(' · ');
+      const r = el('div', { class: 'cmd-help-row', dataset: { name: d.name }, on: { dblclick: go, contextmenu: menu } },
         el('div', { class: 'cmd-help-top' },
           el('code', { class: 'cmd-help-name', text: line ? line.trim() : `/${d.name}${d.args ? ` ${d.args}` : ''}` }),
           d.keys ? el('kbd', { text: Commands.keyText(d.keys) }) : null,
           el('span', { class: 'spacer' }), starBtn,
           el('button', { type: 'button', class: 'ghost small cmd-try', text: needs && !line ? '✎ fill' : '▶ try', title: needs && !line ? 'Put it in the command bar to add the arguments' : 'Run it now (in the command bar)', on: { click: (e) => { e.stopPropagation(); go(); } } })),
         el('div', { class: 'cmd-help-desc', text: `${d.desc}${d.aliases.length ? ` · also /${d.aliases.join(', /')}` : ''}` }),
+        undo || where ? el('div', { class: 'cmd-help-meta' }, where ? el('span', { text: `⇄ ${where}`, title: 'The same name does something else there' }) : null, undo ? el('span', { text: `↶ ${undo}`, title: 'How to take it back' }) : null) : null,
         exs.length ? el('div', { class: 'cmd-help-ex' }, exs.map((x) => el('button', { type: 'button', class: 'ex-chip', text: x, title: 'Run this example', on: { click: (e) => { e.stopPropagation(); tryLine(x); } } }))) : null);
       return r;
     };
@@ -350,14 +384,20 @@ const CmdBar = (() => {
     if (!/^\/[\w-]+(\s[^\n]{0,100})?$/.test(s) || /[<[\]>…]/.test(s) || /\s\|\s/.test(s.replace(/\s\|\s*(draft|copy|send|note|say)\s*$/, ''))) return null;
     return Commands.parse(s) ? s : null;
   };
+  // `/size <ratio>` (a command with a placeholder) is clickable too: it goes into the command bar to fill in
+  const fillCmd = (t) => { const m = String(t || '').trim().match(/^\/([\w-]+)\s+[<[]/); return m && Commands.get(m[1]) ? `/${Commands.get(m[1]).name} ` : null; };
+  const linksOn = () => ls.get('cmdbar.links', true);
   function decorate(root = document) {
+    if (!linksOn()) return;
     for (const c of root.querySelectorAll('.msg:not(.note):not(.user) code:not([data-cmdchk]), .notes-panel code:not([data-cmdchk])')) {
       c.dataset.cmdchk = '1';
       if (c.closest('pre')) continue;
       const line = exactCmd(c.textContent);
-      if (!line) continue;
+      const fill = !line && fillCmd(c.textContent);
+      if (!line && !fill) continue;
       c.classList.add('cmd-code');
-      c.title = `Run ${line} (click) · Alt+click: put it in the command bar · ${Commands.parse(line).def.desc}`;
+      if (fill) c.classList.add('fill');
+      c.title = line ? `Run ${line} (click) · Alt+click: put it in the command bar · ${Commands.parse(line).def.desc}` : `Fill it in the command bar (click) · ${Commands.parse(fill.trim()).def.desc}`;
     }
   }
   let decoTimer = 0;
@@ -373,10 +413,12 @@ const CmdBar = (() => {
   }
   document.addEventListener('click', (e) => {
     const c = e.target.closest?.('code.cmd-code');
-    if (!c) return;
+    if (!c || !linksOn()) return;
     const line = exactCmd(c.textContent);
-    if (!line) return;
+    const fill = !line && fillCmd(c.textContent);
+    if (!line && !fill) return;
     e.preventDefault(); e.stopPropagation();
+    if (fill) { open(fill); return; }
     const a = agentOfNode(c) || target();
     if (e.altKey) { open(line); return; }
     if (typeof Usage !== 'undefined') Usage.track('Command bar › command in a reply');
@@ -583,11 +625,11 @@ const CmdBar = (() => {
     },
   });
   R({
-    name: 'macro', aliases: ['macros'], args: '[rec <name> | stop | cancel | <name> </cmd ; /cmd…> | show <name> | delete <name>]',
+    name: 'macro', aliases: ['macros'], args: '[rec <name> | stop | cancel | <name> </cmd ; /cmd…> | show <name> | edit <name> | delete <name>]',
     desc: 'Macros: record the commands you run (rec … stop) into your own command, or write one with ; between steps',
     keywords: 'record recording sequence steps automate playback',
     examples: ['/macro rec drop', '/macro stop', '/macro vertical-look /size 9:16 ; /freeze ; /still'],
-    complete: (a) => (a.includes(' ') ? [] : [{ value: 'rec ', hint: 'Start recording' }, { value: 'stop', hint: 'Save the recording' }, { value: 'cancel', hint: 'Drop the recording' }, { value: 'show ', hint: 'A macro\'s steps' }, { value: 'delete ', hint: 'Remove one' }]),
+    complete: (a) => (a.includes(' ') ? [] : [{ value: 'rec ', hint: 'Start recording' }, { value: 'stop', hint: 'Save the recording' }, { value: 'cancel', hint: 'Drop the recording' }, { value: 'show ', hint: 'A macro\'s steps' }, { value: 'edit ', hint: 'Change the steps' }, { value: 'delete ', hint: 'Remove one' }]),
     run: async (args, ctx) => {
       const a = String(args || '').trim();
       const all = store.get('chat.aliases', {});
@@ -613,6 +655,17 @@ const CmdBar = (() => {
         if (!r.lines.length) return 'Nothing recorded (no command ran).';
         await Commands.tryRun(`/alias ${r.name} /run ${r.lines.join(' ; ')}`, ctx.agentId, null, { source: ctx.source, say: () => {}, history: false });
         return `Saved **/${r.name}** (${r.lines.length} step(s)):\n${r.lines.map((l, i) => `${i + 1}. \`${safe(l)}\``).join('\n')}\nRun it: \`/${r.name}\` · see it: \`/macro show ${r.name}\``;
+      }
+      if (/^edit$/i.test(w)) {
+        const name = rest.toLowerCase().replace(/^\//, '');
+        if (!all[name]) return `No macro /${name}. \`/macro\` lists yours.`;
+        const steps = all[name].replace(/^\/run\s+/, '').split(/\s*;\s*(?=\/)/);
+        const text = await Modal.prompt(`Edit /${name}: one command per line`, { value: steps.join('\n'), multiline: true });
+        if (text == null) return null;
+        const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+        if (!lines.length) return 'Empty: kept it as it was (`/macro delete` removes it).';
+        await Commands.tryRun(`/alias ${name} ${lines.length > 1 ? `/run ${lines.join(' ; ')}` : lines[0]}`, ctx.agentId, null, { source: ctx.source, say: () => {}, history: false });
+        return `Saved **/${name}** (${lines.length} step(s)).`;
       }
       if (/^cancel$/i.test(w)) { const had = Boolean(rec); rec = null; if (bar && !bar.hidden) place(); return had ? 'Recording dropped.' : 'Not recording.'; }
       if (/^show$/i.test(w)) { const t = all[rest.toLowerCase().replace(/^\//, '')]; return t ? `\`/${rest}\` →\n${t.replace(/^\/run\s+/, '').split(/\s*;\s*(?=\/)/).map((l, i) => `${i + 1}. \`${safe(l)}\``).join('\n')}` : `No macro /${rest}.`; }
@@ -731,6 +784,19 @@ const CmdBar = (() => {
     },
   });
 
+  R({
+    name: 'cmd-links', args: '[on | off]', desc: 'Commands written in agents\' replies and your notes (like `/size 9:16`) run when clicked (on by default)',
+    keywords: 'clickable links replies inline code',
+    complete: () => [{ value: 'on' }, { value: 'off' }],
+    run: (args) => {
+      const a = args.trim().toLowerCase();
+      const on = a === 'on' ? true : a === 'off' ? false : !linksOn();
+      ls.set('cmdbar.links', on);
+      document.querySelectorAll('code[data-cmdchk]').forEach((c) => { delete c.dataset.cmdchk; if (!on) c.classList.remove('cmd-code', 'fill'); });
+      if (on) decorate();
+      return on ? 'Commands in replies and notes are clickable.' : 'Commands in replies stay plain text.';
+    },
+  });
   R({
     name: 'timers-pause', aliases: ['pause-timers'], args: '[on | off]', desc: 'Pause every command timer (again: resume); repeating ones skip their turns while paused',
     keywords: 'timers pause resume hold',

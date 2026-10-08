@@ -479,7 +479,7 @@ const Prompts = (() => {
       } else if (withArgs) {
         const def = Commands.get(withArgs[1]);
         if (def) {
-          hint = Commands.argHint?.(value) || null;
+          hint = Commands.argHint?.(value, ctxNow()) || null;
           if (def.complete) {
             let opts = [];
             try { opts = (await def.complete(withArgs[2], ctxNow())) || []; } catch { /* a suggestion list must never break typing */ }
@@ -507,7 +507,7 @@ const Prompts = (() => {
       });
       // the argument hint: "/size <9:16|16:9…>" with the one you're typing now lit up (and an example)
       const hintRow = hint?.parts?.length ? el('div', { class: 'slash-arghint' }, el('b', { text: `/${hint.def.name}` }), ...hint.parts.map((p) => el('span', { class: `arg-${p.state}`, text: ` ${p.text}` })),
-        hint.example ? el('span', { class: 'arg-eg', text: `  e.g. ${hint.example}` }) : null) : null;
+        hint.variant ? el('span', { class: 'arg-eg', text: `  · ${hint.variant}` }) : null, hint.example ? el('span', { class: 'arg-eg', text: `  e.g. ${hint.example}` }) : null) : null;
       menu.replaceChildren(hintRow, ...items.map((it) => {
         if (it.kind === 'head') return el('div', { class: 'slash-head', text: it.label });
         n += 1;
