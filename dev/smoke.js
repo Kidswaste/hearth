@@ -8,6 +8,13 @@
 //   node dev/smoke.js --script dev/checks/foo.js                 # file of expressions, one async fn body
 //   node dev/smoke.js --shot out.png --wait 6000
 //   node dev/smoke.js --fake-engines --script dev/checks/chat-stream.js   # native chats answered by dev/fake-*.js
+//   node dev/smoke.js --lib dev/checks/journey-lib.js --script dev/checks/journey-lab.js   # helpers before the script
+//   node dev/smoke.js --data dev/old-data --script dev/checks/journey-upgrade.js     # start from a copy of a data/ folder
+//
+// Check scripts can drive real input and take pictures mid-run through the `__smoke` page binding the harness adds:
+//   await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mousePressed', x, y, button: 'left', clickCount: 1 } })
+//   await smoke({ shot: '/tmp/step3.png' })            // full-window screenshot now
+// (`smoke` is defined in the page by the harness: it resolves with the CDP result.)
 //
 // Env: ELECTRON (path to the electron binary, default /opt/hearth-electron/electron).
 // Exit code 1 when the page threw or logged errors (known harmless ones are filtered below).
@@ -55,6 +62,15 @@ function copyApp() {
   const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
   pkg.name = 'hearth-smoke-test';
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(pkg, null, 2));
+  // --data <dir>: the copy starts with that data/ folder (and its config.json, if the folder holds one at ../config.json
+  // shape: <dir>/config.json is used as the app config, everything else becomes data/).
+  const dataSrc = opt('--data');
+  if (dataSrc) {
+    for (const n of fs.readdirSync(dataSrc)) {
+      if (n === 'config.json') fs.copyFileSync(path.join(dataSrc, n), path.join(dir, 'config.json'));
+      else fs.cpSync(path.join(dataSrc, n), path.join(dir, 'data', n), { recursive: true });
+    }
+  }
   // --fake-engines: Settings → Engines points at the fake CLIs in dev/ (they stream scripted replies).
   if (args.includes('--fake-engines')) {
     const cfgPath = path.join(dir, 'config.json');
@@ -110,6 +126,7 @@ async function cdpConnect() {
         send('Runtime.runIfWaitingForDebugger', {}, sid);
         return;
       }
+      if (msg.method === 'Runtime.bindingCalled' && msg.params.name === '__smoke') { smokeCall(msg.params.payload); return; }
       if (msg.method === 'Runtime.exceptionThrown') {
         const d = msg.params.exceptionDetails;
         problems.push(`exception: ${d.exception?.description || d.text} @ ${d.url || ''}:${d.lineNumber}`);
@@ -130,6 +147,19 @@ async function cdpConnect() {
       const type = /\.m?js$/.test(file) ? 'text/javascript' : /\.json$/.test(file) ? 'application/json' : /\.wasm$/.test(file) ? 'application/wasm' : 'application/octet-stream';
       send('Fetch.fulfillRequest', { requestId: p.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: type }, { name: 'Access-Control-Allow-Origin', value: '*' }], body: fs.readFileSync(file).toString('base64') }, sid);
     };
+    // The `smoke()` bridge for check scripts: real input events (Input.*), screenshots and other CDP calls.
+    const smokeCall = async (payload) => {
+      let req; try { req = JSON.parse(payload); } catch { return; }
+      let result;
+      if (req.shot) {
+        const img = await send('Page.captureScreenshot', { format: 'png' });
+        if (img.result?.data) fs.writeFileSync(req.shot, Buffer.from(img.result.data, 'base64'));
+        result = { saved: req.shot };
+      } else result = (await send(req.cdp, req.params || {})).result || {};
+      send('Runtime.evaluate', { expression: `window.__smokeReply && window.__smokeReply(${req.id}, ${JSON.stringify(JSON.stringify(result))})` });
+    };
+    await send('Runtime.addBinding', { name: '__smoke' });
+    await send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => { const w = new Map(); let n = 0; window.__smokeReply = (id, r) => { w.get(id)?.(JSON.parse(r)); w.delete(id); }; window.smoke = (req) => new Promise((res) => { const id = ++n; w.set(id, res); window.__smoke(JSON.stringify({ ...req, id })); }); })();` });
     await send('Runtime.enable'); await send('Log.enable'); await send('Page.enable');
     await send('Fetch.enable', { patterns: CDN_PATTERNS });
     await send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true });
@@ -143,7 +173,9 @@ async function cdpConnect() {
       return { value: r.result?.result?.value };
     };
     const checks = [...evals];
-    if (scriptFile) checks.push(fs.readFileSync(scriptFile, 'utf8'));
+    // --lib <file> (repeatable): shared helpers put in front of the --script body (e.g. dev/checks/journey-lib.js).
+    const libs = args.flatMap((a, i) => (a === '--lib' ? [fs.readFileSync(args[i + 1], 'utf8')] : []));
+    if (scriptFile) checks.push([...libs, fs.readFileSync(scriptFile, 'utf8')].join('\n'));
     for (const c of checks) {
       const r = await run(c);
       console.log(`\n▶ ${c.length > 160 ? `${c.slice(0, 160)}…` : c}\n${r.error ? `✖ ${r.error}` : typeof r.value === 'string' ? r.value : JSON.stringify(r.value, null, 2)}`);
