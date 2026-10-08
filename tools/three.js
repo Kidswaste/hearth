@@ -1686,7 +1686,7 @@ const ThreeLab = (() => {
       saveExtras();
     }
     setInterval(rememberMedia, 5000);
-    addEventListener('beforeunload', () => { rememberMedia(); window.hub.kvSet('three-lab-extras', extras); });
+    addEventListener('beforeunload', () => { rememberMedia(); if (extrasLoaded) window.hub.kvSet('three-lab-extras', extras); });
     split = el('div', { class: 'three-split' }, editorHost, el('div', { class: 'three-right' }, previewHost, player.el, consoleWrap), column);
     previewHost.append(presentHint, presentHud, blackout, editPanel, stageNote);
     function setCodeVisible(show) {
@@ -1890,7 +1890,8 @@ const ThreeLab = (() => {
     let rebuildWaiting = false;
     // Per-sketch looks and music links for the sliders, song, frame size and selected layer.
     let extras = {};
-    const saveExtras = debounce(() => window.hub.kvSet('three-lab-extras', extras), 500);
+    let extrasLoaded = false; // never write the empty placeholder over your saved extras (a reload while loading)
+    const saveExtras = debounce(() => { if (extrasLoaded) window.hub.kvSet('three-lab-extras', extras); }, 500);
     let consoleLines = [];
     let lastStats = null;
     let pendingShot = null;
@@ -2563,7 +2564,7 @@ ${code}
     (async () => {
       sketches = await window.hub.kvGet('three-sketches', []);
       ({ versions: history = {}, trash = [] } = await window.hub.kvGet('three-history', {}));
-      extras = await window.hub.kvGet('three-lab-extras', {});
+      extras = await window.hub.kvGet('three-lab-extras', {}); extrasLoaded = true;
       notesAll = await window.hub.kvGet('three-notes', {});
       refsAll = await window.hub.kvGet('three-refs', {});
       thumbs = await window.hub.kvGet('three-thumbs', {});

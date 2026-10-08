@@ -1425,6 +1425,8 @@ let ${id}Travel = 0;`);
     function stopProbe() { clearInterval(probeTimer); probeTimer = 0; }
     addEventListener('keydown', (e) => {
       if (!e.altKey || e.ctrlKey || e.code !== 'KeyN' || !host.isConnected || !host.closest('.tabpane')?.offsetParent) return;
+      // not while typing in the docked chat, a dialog or another box (⌥N types ñ / ˜ on a Mac)
+      if (e.target.closest?.('.tool-dock, dialog, .composer') || (/^(INPUT|SELECT)$/.test(e.target.tagName))) return;
       e.preventDefault();
       setMode(mode === 'nodes' ? 'code' : 'nodes');
       Usage.key('Alt+N', 'Lab nodes');
