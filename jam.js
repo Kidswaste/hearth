@@ -185,9 +185,17 @@ const Jam = (() => {
   }
   function noteOnce(m, text) { if (!m.notes.includes(text)) m.notes.push(text); }
 
+  // The jam's sketch is the one open (you, or switching chats, may have opened another meanwhile).
+  async function onJamSketch(m, d) {
+    if (!m.sketchId || d.capture().sketchId === m.sketchId) return;
+    d.openSketch(m.sketchId);
+    await sleep(1200);
+    if (d.capture().sketchId !== m.sketchId) await putBack(m, m.good ?? 0, d);
+  }
   async function roundOf(n) {
     const { m } = J;
     const d = await lab();
+    await onJamSketch(m, d);
     const S = sides();
     const lead = leadOf(n, S);
     const prev = m.list.at(-1);
@@ -226,6 +234,7 @@ const Jam = (() => {
   async function directOf(m, R, lead, S, d) {
     let critic = criticOf(lead, S);
     if (!critic) return;
+    await onJamSketch(m, d);
     const look = await lookPath(m, R.n, d);
     const ask = async (c) => {
       badge(`Jam · round ${R.n}/${m.total} · ${c.name} directing`);
@@ -344,8 +353,13 @@ const Jam = (() => {
   const hostChatOf = (m) => { const a = hostAgent(); const c = a && Native.chatOf(a.id); return c?.messages.includes(m) ? c : null; };
 
   // Starts a jam. opts: { idea, rounds, agentId (where it was asked, for the reply) }.
-  async function start({ idea = '', rounds = ROUNDS } = {}) {
-    if (J) throw new Error('A jam is already running: Esc or /jam stop ends it.');
+  let starting = false;
+  async function start(opts = {}) {
+    if (J || starting) throw new Error('A jam is already running: Esc or /jam stop ends it.');
+    starting = true;
+    try { return await prepare(opts); } finally { starting = false; }
+  }
+  async function prepare({ idea = '', rounds = ROUNDS } = {}) {
     let host = hostAgent();
     if (!host) {
       // no setup: the Three Director is made on the spot
@@ -353,6 +367,7 @@ const Jam = (() => {
       for (let i = 0; i < 30 && !(host = hostAgent()); i += 1) await sleep(100);
       if (!host) throw new Error('The jam needs the Three Director: /director-setup makes it.');
     }
+    if (Native.pendingFor?.(host.id)) throw new Error(`${host.name} is answering a message: start the jam when it's done.`);
     const d = await lab();
     Tools.openDock?.('three');
     const chat = Native.ensureChat(host.id, 'Jam');
@@ -372,7 +387,7 @@ const Jam = (() => {
   }
   // Two more rounds on the latest jam's result (or n).
   async function again(n = AGAIN) {
-    if (J) throw new Error('A jam is running: wait for it, or Esc first.');
+    if (J || starting) throw new Error('A jam is running: wait for it, or Esc first.');
     const host = hostAgent();
     const chat = host && Native.chatOf(host.id);
     const m = chat && [...chat.messages].reverse().find((x) => x.role === 'jam');

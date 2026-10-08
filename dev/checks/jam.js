@@ -52,8 +52,13 @@ out.unfolded = Boolean(card(m)?.querySelector('.jam-row.open'));
 // 3. /jam again: 2 more rounds on the result
 await Commands.tryRun('/jam again', host.id);
 await until(() => Jam.running(), 5000);
+// you open your own sketch mid-jam: the next turn goes back to the jam's sketch
+await until(() => m.list.length >= 4 && m.list[3].status !== 'building', 60000);
+ThreeLab.director.openSketch(m.start.snap.sketchId);
 await jamDone();
-out.again = { rounds: m.list.length, status: m.status, best: m.best?.n };
+out.again = { rounds: m.list.length, status: m.status, best: m.best?.n, onJamSketch: ThreeLab.director.capture().sketchId === m.sketchId};
+await wait(900);
+{ const own = (await window.hub.kvGet('three-sketches', [])).find((x) => x.id === m.start.snap.sketchId); out.ownSketchUntouched = Boolean(own) && JSON.stringify((own.layers || []).map((L) => L.code)) === JSON.stringify(m.start.snap.layers.map((L) => L.code)); }
 
 // 4. broken builds: fixed first by the next turn; the jam never ends broken
 await Commands.tryRun('/jam 4 jam-break glitch rings', host.id);
