@@ -795,7 +795,7 @@ function toggleFold(hostId, m) {
     const r = anchor.getBoundingClientRect();
     const host = H.agent(agentId);
     const other = H.agent(seatsFor(agentId).find((x) => x.agentId !== agentId)?.agentId) || partner(host);
-    const jam = window.Jam;
+    const jam = typeof Jam !== 'undefined' ? Jam : window.Jam; // jam.js (another round-4 stream) may be a global const
     const items = [
       jam ? { label: `🎛 Jam: ${host.name} ⇄ ${other?.name || 'Astra'} build a visual together`, action: () => (Commands.get('jam') ? Native.setDraft(agentId, '/jam ') : (jam.start || jam.open)?.call(jam, { agentId })) } : null,
       { label: `👁 Second opinion from ${other?.name || 'Astra'}`, action: () => Native.secondOpinion(agentId) },
