@@ -4,17 +4,21 @@
 // with a way to hide it. Nothing leaves the PC.
 const Usage = (() => {
   const KV = 'ui-usage';
-  // { since, items: { key: { n, first, last, label, area } }, days: { 'YYYY-MM-DD': clicks }, hidden: [keys] }
+  // { since, items: { key: { n, first, last, label, area } }, days: { 'YYYY-MM-DD': clicks }, hidden: [keys],
+  //   dayItems: { 'YYYY-MM-DD': { key: clicks } } (last 35 days, for "used today" and streaks in the meter) }
   let data = null;
+  const listeners = new Set(); // called after every counted use (the token meter shows today's total live)
   const save = debounce(() => { if (data) window.hub.kvSet(KV, data); }, 3000);
   const DAY = 86400000;
-  const today = () => new Date().toISOString().slice(0, 10);
+  // local day (the token meter counts days the same way)
+  const today = () => new Date().toLocaleDateString('en-CA');
+  const KEEP_DAY_ITEMS = 35;
 
   // Where a control lives, from its nearest known container.
   const AREAS = [
     ['.three-toolbar', 'Lab toolbar'], ['.media-bar', 'Timeline'], ['.tweaks', 'Sliders'], ['.ly-panel, .layers-panel', 'Layers'],
     ['.three-console-wrap', 'Console'], ['.refs-dialog', 'References'], ['.sb-dialog', 'Lab dialogs'], ['.three-preview', 'Preview'],
-    ['.native-head', 'Chat header'], ['.composer', 'Chat composer'], ['.msg-foot, .msg', 'Chat messages'], ['.tool-dock', 'Docked chat'],
+    ['.meter-strip, .meter-pill', 'Meter'], ['.meter-dlg', 'Token dashboard'], ['.native-head', 'Chat header'], ['.composer', 'Chat composer'], ['.msg-foot, .msg', 'Chat messages'], ['.tool-dock', 'Docked chat'],
     ['#rail', 'Rail'], ['#panel', 'Chats panel'], ['#broadcast', 'Ask-all bar'], ['.tool-head', 'Tool header'],
     ['.mb-menu, .lab-pop, #menu', 'Menus'], ['dialog', 'Dialogs'], ['.tool-surface', 'Tools'],
   ];
@@ -26,7 +30,8 @@ const Usage = (() => {
   function labelOf(node) {
     if (node.dataset?.feature) return node.dataset.feature;
     const raw = (node.matches('select') ? (node.title || node.getAttribute('aria-label') || node.className) : (node.querySelector?.('b')?.textContent || node.textContent || ''));
-    let text = raw.replace(/[\d.,:/×·●%]+/g, ' ').replace(/[^\p{L}\p{N}\s'&+…-]/gu, ' ').replace(/\s+/g, ' ').trim();
+    // numbers go (and the k / M left behind by "21k context"), so live counters keep one stable name
+    let text = raw.replace(/[\d.,:/×·●%]+[kKM]?\b/g, ' ').replace(/[\d.,:/×·●%]+/g, ' ').replace(/[^\p{L}\p{N}\s'&+…-]/gu, ' ').replace(/\s+/g, ' ').trim();
     if (text.length < 3) text = (node.title || node.getAttribute('aria-label') || text).split(/[(:·.\n]/)[0].trim();
     return text.slice(0, 60);
   }
@@ -42,7 +47,11 @@ const Usage = (() => {
     it.n += 1;
     it.last = now;
     data.days[today()] = (data.days[today()] || 0) + 1;
+    const di = (data.dayItems ||= {});
+    if (!di[today()]) for (const d of Object.keys(di).sort().slice(0, -KEEP_DAY_ITEMS + 1)) delete di[d];
+    (di[today()] ||= {})[key] = (di[today()][key] || 0) + 1;
     save();
+    listeners.forEach((fn) => fn(key));
     scheduleDecorate();
   }
   // Seen on screen but maybe never clicked: registered with n = 0 so "never used" can be listed.
@@ -143,6 +152,55 @@ const Usage = (() => {
     decorate();
   }
 
+  // ---------- numbers for the meter and chat commands ----------
+  const itemsList = () => Object.entries(data?.items || {}).map(([key, v]) => ({ key, ...v }));
+  const isFeature = (x) => !x.key.startsWith('Open › ') && !x.key.startsWith('Agent tool › ');
+  // { clicks, features (distinct things used), top: [{ key, n }] } for a day (default today)
+  function dayStats(day = today()) {
+    const items = data?.dayItems?.[day] || {};
+    const top = Object.entries(items).map(([key, n]) => ({ key, n })).sort((a, b) => b.n - a.n);
+    return { clicks: data?.days?.[day] || 0, features: top.length, top };
+  }
+  // used a lot (top tier), and seen but never / not lately used
+  const hot = () => { if (!data) return []; const { hotAt } = tiers(); return itemsList().filter((x) => x.n >= hotAt).sort((a, b) => b.n - a.n); };
+  const never = () => itemsList().filter((x) => x.n === 0 && isFeature(x)).sort((a, b) => a.area.localeCompare(b.area) || a.label.localeCompare(b.label));
+  const cold = (days = 21) => itemsList().filter((x) => x.n > 0 && x.last && Date.now() - x.last > days * DAY).sort((a, b) => a.last - b.last);
+  // days in a row (ending today or yesterday) with at least one click
+  function streak() {
+    if (!data) return { current: 0, best: 0 };
+    const days = new Set(Object.keys(data.days || {}).filter((d) => data.days[d] > 0));
+    const key = (t) => new Date(t).toLocaleDateString('en-CA');
+    let current = 0;
+    for (let t = Date.now() - (days.has(today()) ? 0 : DAY); days.has(key(t)); t -= DAY) current += 1;
+    let best = 0; let run = 0; let prev = null;
+    for (const d of [...days].sort()) {
+      run = prev && (new Date(`${d}T12:00`) - new Date(`${prev}T12:00`)) <= DAY * 1.1 ? run + 1 : 1;
+      best = Math.max(best, run); prev = d;
+    }
+    return { current, best };
+  }
+  function byArea() {
+    const out = {};
+    for (const x of itemsList()) if (x.n > 0) out[x.area] = (out[x.area] || 0) + x.n;
+    return Object.entries(out).sort((a, b) => b[1] - a[1]);
+  }
+  function setHidden(key, hide) {
+    if (!data) return false;
+    const s = new Set(data.hidden || []);
+    if (hide) s.add(key); else s.delete(key);
+    data.hidden = [...s];
+    save();
+    decorate();
+    return true;
+  }
+  // a feature by (part of) its name, best match first
+  function find(q) {
+    const s = String(q || '').toLowerCase().trim();
+    if (!s) return [];
+    const all = itemsList();
+    return [...all.filter((x) => x.key.toLowerCase() === s || x.label?.toLowerCase() === s), ...all.filter((x) => x.key.toLowerCase().includes(s) && x.label?.toLowerCase() !== s && x.key.toLowerCase() !== s)];
+  }
+
   async function init() {
     data = await window.hub.kvGet(KV, null);
     if (!data || !data.items) data = { since: Date.now(), items: {}, days: {}, hidden: [] };
@@ -165,5 +223,7 @@ const Usage = (() => {
     open: (id) => track(`Open › ${id}`, { area: 'Opened', label: id }),
     agentTool: (tool) => track(`Agent tool › ${tool}`, { area: 'Agent tools', label: tool }),
     get data() { return data; },
+    today, dayStats, hot, never, cold, streak, byArea, setHidden, find, trackedDays,
+    onTrack: (fn) => { listeners.add(fn); return () => listeners.delete(fn); },
   };
 })();

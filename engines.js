@@ -287,6 +287,10 @@ function claudeParser(session) {
         usage: {
           input: (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0),
           output: u.output_tokens || 0,
+          // for the meter (meter.js): cache reads / writes and Claude's own API-price estimate
+          cached: u.cache_read_input_tokens || 0,
+          cacheWrite: u.cache_creation_input_tokens || 0,
+          cost: msg.total_cost_usd || 0,
         },
       };
     }
@@ -312,13 +316,13 @@ function codexParser(session) {
     if (msg.type === 'turn.completed') {
       // Codex reports running totals for the whole thread; show what this turn added.
       const u = msg.usage || {};
-      const totals = { input: u.input_tokens || 0, output: u.output_tokens || 0 };
-      const prev = session.totals || { input: 0, output: 0 };
+      const totals = { input: u.input_tokens || 0, output: u.output_tokens || 0, cached: u.cached_input_tokens || 0 };
+      const prev = session.totals || { input: 0, output: 0, cached: 0 };
       session.totals = totals;
       return {
         type: 'done',
         text,
-        usage: { input: Math.max(totals.input - prev.input, 0), output: Math.max(totals.output - prev.output, 0) },
+        usage: { input: Math.max(totals.input - prev.input, 0), output: Math.max(totals.output - prev.output, 0), cached: Math.max(totals.cached - (prev.cached || 0), 0) },
       };
     }
     if (msg.type === 'turn.failed') return { type: 'error', message: msg.error?.message || 'Codex turn failed' };
@@ -361,12 +365,14 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
 
   let finished = false;
   let buffer = '';
+  const startedAt = Date.now();
+  let toolCount = 0; // tool calls in this reply (token meter)
   let stderr = '';
   const finish = (event) => {
     if (finished) return;
     finished = true;
     if (event.type === 'error') Object.assign(event, friendlyError(engine, event.message));
-    if (event.type === 'done') { try { addUsage(agent.id, event.usage); } catch { /* usage stats are best-effort */ } }
+    if (event.type === 'done') { try { addUsage(agent.id, event.usage, { chatId, model: options.model || agent.model || '', dock: agent.dock || '', ms: Date.now() - startedAt, tools: toolCount }); } catch { /* usage stats are best-effort */ } }
     emit({ ...event, session: state });
   };
 
@@ -380,6 +386,7 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
       let event;
       try { event = parse(JSON.parse(line)); } catch { continue; }
       if (!event) continue;
+      if (event.type === 'tool') toolCount += 1;
       if (event.type === 'delta' || event.type === 'tool' || event.type === 'thinking') emit(event);
       else finish(event);
     }

@@ -327,7 +327,7 @@ const Native = (() => {
     const act = (name, label, title) => el('button', { class: 'msg-act', text: label, title, dataset: { msgAct: name } });
     if (m.role === 'assistant') {
       node.append(el('div', { class: 'msg-foot' },
-        m.usage ? el('span', { text: `${fmt(m.usage.input)} in · ${fmt(m.usage.output)} out${m.ms ? ` · ${(m.ms / 1000).toFixed(1)}s` : ''}` }) : null,
+        m.usage && typeof Meter !== 'undefined' ? Meter.badge(m) : m.usage ? el('span', { text: `${fmt(m.usage.input)} in · ${fmt(m.usage.output)} out${m.ms ? ` · ${(m.ms / 1000).toFixed(1)}s` : ''}` }) : null,
         m.stopped ? el('span', { text: 'stopped' }) : null,
         el('span', { class: 'msg-time', text: time }),
         el('button', { class: 'copy-msg', text: 'Copy' }),
@@ -1120,6 +1120,7 @@ const Native = (() => {
     attachPaths: async (agentId, paths) => { for (const p of paths) await addPath(agentId, p); },
     isBusy: (chatId) => pending.has(chatId),
     note,
+    compact: (agentId) => compactChat(agentId), // the token meter's one-click compact
     sendText: (agentId, text) => send(agentId, text).catch((err) => toast(err.message, { type: 'error' })),
     markdownOf: async (chatId) => chatMarkdown(await loadChat(chatId)),
   };

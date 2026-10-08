@@ -412,6 +412,7 @@ const AppUI = (() => {
 
   // ---------- usage stats ----------
   async function usageDialog() {
+    if (typeof Meter !== 'undefined') return Meter.dashboard(); // the token meter's dashboard replaces this list
     const usage = await window.hub.getUsage();
     const days = Object.keys(usage).sort().reverse().slice(0, 14);
     const agents = [...new Set(days.flatMap((d) => Object.keys(usage[d])))];

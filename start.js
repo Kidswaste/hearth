@@ -49,5 +49,6 @@ window.hub.onConfigChanged(apply);
   ]);
   AppUI.init();
   Usage.init();
+  Meter.init();
   apply(await window.hub.getConfig());
 })();

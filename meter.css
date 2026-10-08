@@ -1,0 +1,179 @@
+/* Token meter (meter.js): the status strip, the rail pill, reply badges, chats-panel totals and the dashboard.
+   Colors are variables so skins can restyle them; in Forgeheart they follow the game's importance colors
+   (gold active, violet AI working, orange attention, red over, blue info, rainbow = live). */
+:root {
+  --meter-active: var(--accent);
+  --meter-ai: #a98bff;
+  --meter-warn: #ffb347;
+  --meter-over: #ff6a6a;
+  --meter-info: #7ad0ff;
+  --meter-ok: #7cd992;
+  --meter-claude: #d9915f;
+  --meter-astra: #5fc9b4;
+  --meter-h: 22px;
+  --meter-bg: color-mix(in srgb, var(--sidebar) 88%, transparent);
+}
+html[data-skin~="forge"] {
+  --meter-active: var(--r-rare, #ffd75e);
+  --meter-ai: var(--r-mythic, #bd8bff);
+  --meter-warn: var(--r-unique, #ff8c42);
+  --meter-over: var(--r-ultima, #ff6a6a);
+  --meter-info: var(--r-magic, #7ad0ff);
+  --meter-claude: var(--r-unique, #ff8c42);
+  --meter-astra: var(--cyan, #48ddff);
+  --meter-bg: linear-gradient(180deg, #0f1316, #0a0d0f);
+}
+@property --mt-spin { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+@keyframes mt-spin { to { --mt-spin: 360deg; } }
+@keyframes mt-snap { 0% { transform: scale(1.18); color: var(--meter-ok); } 100% { transform: none; } }
+@keyframes mt-blink { 50% { opacity: .35; } }
+
+/* ---------- the strip ---------- */
+.meter-strip {
+  position: relative; flex: none; height: var(--meter-h); display: flex; align-items: stretch; gap: 0;
+  padding: 0 4px 0 6px; background: var(--meter-bg); border-top: 1px solid var(--line);
+  font: 11px/1 var(--mono, ui-monospace, Consolas, monospace); color: var(--muted); overflow: hidden; user-select: none;
+}
+.meter-strip::before { /* the live line: a thin rainbow along the top while a reply streams */
+  content: ""; position: absolute; left: 0; right: 0; top: -1px; height: 2px; opacity: 0; transition: opacity .3s;
+  background: conic-gradient(from var(--mt-spin) at 50% -400%, #48ddff, #bd8bff, #ff6b9d, #ff8c42, #ffd75e, #48ddff);
+}
+.meter-strip.is-live::before { opacity: 1; animation: mt-spin 2.4s linear infinite; }
+.ms-cell {
+  display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; border: 0; background: none; cursor: pointer;
+  font: inherit; color: inherit; white-space: nowrap; border-right: 1px solid color-mix(in srgb, var(--text) 6%, transparent);
+  transition: background .15s, color .15s;
+}
+.ms-cell:hover { background: var(--hover); color: var(--text); }
+.ms-cell.ms-collapse { margin-left: auto; border-right: 0; font-size: 13px; padding: 0 8px; opacity: .6; }
+.ms-cell.ms-collapse:hover { opacity: 1; }
+.ms-k { opacity: .7; text-transform: uppercase; letter-spacing: .06em; font-size: 9.5px; }
+.ms-v { color: var(--text); }
+.ms-live.is-live { color: var(--meter-ai); font-weight: 600; }
+.ms-live.is-live::first-letter { animation: mt-blink 1s infinite; }
+.ms-live.is-snap { color: var(--meter-ok); animation: mt-snap .5s ease-out; }
+.ms-today { color: var(--text); }
+.ms-cell.b-warn { color: var(--meter-warn); }
+.ms-cell.b-over { color: var(--meter-over); }
+.ms-splitbar { display: inline-flex; width: 46px; height: 5px; border-radius: 3px; overflow: hidden; background: color-mix(in srgb, var(--text) 10%, transparent); }
+.ms-splitbar i { display: block; height: 100%; }
+.ms-splitbar i.c { background: var(--meter-claude); }
+.ms-splitbar i.x { background: var(--meter-astra); }
+.ms-gauge { position: relative; width: 38px; height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--text) 10%, transparent); overflow: hidden; }
+.ms-gauge i { position: absolute; inset: 0 auto 0 0; width: var(--p, 0%); background: var(--meter-ai); border-radius: 3px; transition: width .4s; }
+.ms-ctx.b-warn .ms-gauge i { background: var(--meter-warn); }
+.ms-ctx.b-over .ms-gauge i { background: var(--meter-over); }
+.ms-cache { color: var(--meter-info); }
+.ms-clicks { color: var(--meter-active); }
+@media (max-width: 900px) { .ms-week, .ms-speed, .ms-value, .ms-avg { display: none; } }
+
+/* ---------- the rail pill ---------- */
+.meter-pill {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  height: 34px; font: 600 10.5px/1 var(--mono, ui-monospace, monospace); opacity: .8; color: var(--text);
+}
+.meter-pill .mp-dot { position: absolute; top: 3px; right: 4px; width: 5px; height: 5px; border-radius: 50%; background: var(--meter-ok); opacity: .7; }
+.meter-pill .mp-bar { width: 26px; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--text) 12%, transparent); overflow: hidden; }
+.meter-pill .mp-bar i { display: block; height: 100%; width: var(--fill, 0%); background: var(--meter-active); }
+.meter-pill.is-live { opacity: 1; color: var(--meter-ai); }
+.meter-pill.is-live .mp-dot { opacity: 1; background: conic-gradient(from var(--mt-spin), #48ddff, #bd8bff, #ff6b9d, #ff8c42, #ffd75e, #48ddff); animation: mt-spin 1.6s linear infinite; width: 7px; height: 7px; }
+.meter-pill.b-warn .mp-bar i { background: var(--meter-warn); }
+.meter-pill.b-over .mp-bar i { background: var(--meter-over); }
+.meter-pill.b-over { color: var(--meter-over); }
+
+/* ---------- reply badges and panel totals ---------- */
+.meter-badge { cursor: help; white-space: nowrap; }
+.meter-badge .mb-cache { color: var(--meter-info); }
+.meter-badge.compact { font-variant-numeric: tabular-nums; }
+.item .item-tok {
+  margin-left: auto; padding-left: 6px; flex: none; font: 10px/1 var(--mono, ui-monospace, monospace); color: var(--muted); opacity: .75;
+}
+.item:hover .item-tok, .item.active .item-tok { opacity: 1; color: var(--meter-active); }
+
+/* ---------- the dashboard ---------- */
+dialog.meter-dlg { width: min(860px, 94vw); max-width: min(860px, 94vw); padding: 16px 20px 18px; display: none; }
+dialog.meter-dlg[open] { display: flex; flex-direction: column; gap: 10px; max-height: 88vh; }
+.mt-head { display: flex; align-items: center; gap: 12px; }
+.mt-head h2 { margin: 0; font-size: 17px; }
+.mt-x { font-size: 18px; line-height: 1; padding: 2px 8px; }
+.mt-seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.mt-seg button, .mt-tabs button { border: 0; background: none; padding: 4px 10px; cursor: pointer; color: var(--muted); font-size: 12px; }
+.mt-seg button + button { border-left: 1px solid var(--line); }
+.mt-seg button.on { background: color-mix(in srgb, var(--meter-active) 18%, transparent); color: var(--meter-active); }
+.mt-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); overflow-x: auto; flex: none; }
+.mt-tabs button { padding: 6px 10px; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; }
+.mt-tabs button:hover { color: var(--text); }
+.mt-tabs button.on { color: var(--text); border-bottom-color: var(--meter-active); background: var(--hover); }
+.mt-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(108px, 1fr)); gap: 8px; flex: none; }
+.mt-kpi {
+  position: relative; display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 10px;
+  background: color-mix(in srgb, var(--text) 4%, transparent); border: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+}
+.mt-kpi b { font-size: 18px; color: var(--text); font-variant-numeric: tabular-nums; }
+.mt-kpi small { font-size: 10.5px; color: var(--muted); }
+.mt-kl { font-size: 9.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.mt-kpi .mt-spark { position: absolute; right: 8px; bottom: 8px; opacity: .8; }
+dialog.meter-dlg:focus { outline: none; }
+.mt-kpis.small .mt-kpi b { font-size: 15px; }
+.mt-pane { overflow: auto; min-height: 220px; padding-right: 4px; }
+.mt-pane h4 { margin: 12px 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.mt-chart { display: block; max-width: 100%; }
+.mt-legend { display: flex; gap: 14px; font-size: 11px; color: var(--muted); margin-top: 4px; }
+.mt-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.mt-split { display: flex; height: 22px; border-radius: 6px; overflow: hidden; font-size: 11px; }
+.mt-split i { display: flex; align-items: center; padding: 0 8px; font-style: normal; color: #111; white-space: nowrap; overflow: hidden; min-width: 2px; }
+.mt-split .e-claude { background: var(--meter-claude); }
+.mt-split .e-codex { background: var(--meter-astra); }
+.mt-split .e-other { background: var(--muted); }
+.mt-rings { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 12px; }
+.mt-rings > div { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 10.5px; color: var(--muted); }
+.mt-chatline { display: flex; align-items: center; gap: 12px; font-size: 12.5px; }
+.mt-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+.mt-table th { text-align: left; font-weight: 500; color: var(--muted); font-size: 10.5px; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+.mt-table td { padding: 4px 6px; border-bottom: 1px solid color-mix(in srgb, var(--text) 5%, transparent); white-space: nowrap; }
+.mt-table td:first-child { white-space: normal; max-width: 260px; }
+.mt-table tr:hover td { background: var(--hover); }
+.mt-name { display: inline-flex; align-items: center; gap: 6px; }
+.mt-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.mt-tok { display: inline-flex; align-items: center; gap: 6px; }
+.mt-bar { display: inline-block; width: 70px; height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--text) 8%, transparent); overflow: hidden; }
+.mt-bar i { display: block; height: 100%; border-radius: 3px; }
+.mt-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 760px) { .mt-cols { grid-template-columns: 1fr; } }
+.mt-flist { display: flex; flex-direction: column; max-height: 260px; overflow: auto; }
+.mt-frow { display: grid; grid-template-columns: 1fr auto 48px auto; gap: 8px; align-items: center; padding: 2px 4px; font-size: 12px; border-radius: 5px; }
+.mt-frow:hover { background: var(--hover); }
+.mt-fname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mt-farea { font-size: 10.5px; color: var(--muted); }
+.mt-fn { text-align: right; color: var(--meter-active); font-variant-numeric: tabular-nums; }
+.mt-h4row { display: flex; align-items: center; gap: 10px; }
+.mt-h4row h4 { flex: 1; }
+.mt-filter { width: 180px; padding: 3px 8px; font: inherit; font-size: 12px; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+.mt-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.mt-budgets { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 12px; }
+.mt-brow { display: grid; grid-template-columns: 160px 120px 1fr 130px; gap: 10px; align-items: center; font-size: 13px; }
+.mt-brow .mt-bar { width: 100%; }
+.mt-brow input, .mt-inline input { padding: 4px 8px; font: inherit; font-size: 12.5px; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+.meter-dlg label.check { display: flex; flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-size: 13px; }
+.mt-inline { display: flex !important; flex-direction: row !important; align-items: center; gap: 8px; margin: 6px 0; color: var(--text) !important; font-size: 13px !important; }
+.mt-inline input { width: 90px; }
+.mt-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+
+/* ---------- Forgeheart: cut corners, gold active, chrome glass on the strip ---------- */
+html[data-skin~="forge"] .meter-strip { border-top: 1px solid var(--line-hi, #443e35); box-shadow: inset 0 1px 0 #ffffff08; }
+html[data-skin~="forge"] .ms-today, html[data-skin~="forge"] .ms-chat:hover { color: var(--meter-active); }
+html[data-skin~="forge"] .ms-cell:hover { background: #ffd75e10; }
+html[data-skin~="forge"] .ms-splitbar, html[data-skin~="forge"] .ms-gauge, html[data-skin~="forge"] .ms-gauge i,
+html[data-skin~="forge"] .mt-bar, html[data-skin~="forge"] .mt-bar i, html[data-skin~="forge"] .meter-pill .mp-bar { border-radius: 0; }
+html[data-skin~="forge"] .meter-pill { border-radius: 0; clip-path: var(--cut-sm); }
+html[data-skin~="forge"] .meter-pill .mp-dot { border-radius: 0; transform: rotate(45deg); }
+html[data-skin~="forge"] .mt-kpi {
+  border-radius: 0; clip-path: var(--cut-sm);
+  background: linear-gradient(160deg, #ffffff0d, #ffffff02 40%, #00000022), #101417; border: 1px solid var(--line-hi, #443e35);
+}
+html[data-skin~="forge"] .mt-kpi b { color: var(--meter-active); text-shadow: 0 0 12px #ffd75e40; }
+html[data-skin~="forge"] .mt-seg, html[data-skin~="forge"] .mt-split, html[data-skin~="forge"] .mt-filter, html[data-skin~="forge"] .mt-tabs button { border-radius: 0; }
+html[data-skin~="forge"] .mt-seg button.on { background: linear-gradient(180deg, #ffd75e30, #ffd75e10); box-shadow: inset 0 1px 0 #ffffff22; }
+html[data-skin~="forge"] .mt-pane h4::before { content: "◆ "; color: var(--meter-active); }
+html[data-skin~="forge"] .item .item-tok { font-family: var(--mono); }
+@media (prefers-reduced-motion: reduce) { .meter-strip.is-live::before, .meter-pill.is-live .mp-dot, .ms-live.is-live::first-letter { animation: none; } }

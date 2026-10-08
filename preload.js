@@ -33,6 +33,8 @@ contextBridge.exposeInMainWorld('hub', {
   importRef: call('refs:import'),
   attachmentsDir: call('attachments:dir'),
   getUsage: call('usage:get'),
+  getTokenStats: call('usage:stats'),
+  rebuildTokenStats: call('usage:rebuild'),
 
   send: call('engine:send'),
   stop: call('engine:stop'),
