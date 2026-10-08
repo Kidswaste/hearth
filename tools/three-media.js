@@ -159,26 +159,64 @@ const ThreeMedia = (() => {
 
   // ---------- frame sizes ----------
   // Exact sizes render the sketch at that many pixels (1 device pixel each) and scale it to fit.
+  // The four social sizes you switch between most sit in one segmented control (in the order you use them);
+  // the rest are in "More…". Safe zones show where each platform puts its buttons, captions and crops.
+  const PILL_ORDER = ['fit', '9:16', '16:9', '4:5', '1:1'];
+  const SAFE = {
+    // fractions of the frame covered by the platform's UI: top, bottom, right (9:16) and labels
+    tiktok: { name: 'TikTok', top: 0.085, bottom: 0.2, right: 0.13, left: 0.05 },
+    reels: { name: 'Reels', top: 0.14, bottom: 0.22, right: 0.12, left: 0.05 },
+    shorts: { name: 'Shorts', top: 0.1, bottom: 0.21, right: 0.15, left: 0.05 },
+  };
   function stage(host, frame, { onChange }) {
     let mode = store.get('three.aspect', 'fit');
     let safe = store.get('three.safeZones', true);
-    const buttons = BASE_SIZES.map((s) => el('button', { class: 'stage-btn', text: s.label, title: s.title, on: { click: () => setMode(s.id) } }));
+    let platform = store.get('three.safePlatform', 'tiktok');
+    const pillSizes = PILL_ORDER.map((id) => SIZES.find((s) => s.id === id));
+    const buttons = pillSizes.map((s) => {
+      const b = el('button', { class: 'stage-btn stage-size-btn', text: s.label, title: `${s.title}${s.w ? ` · Shift+${PILL_ORDER.indexOf(s.id) + 1}` : ' · Shift+1'}`, on: { click: () => setMode(s.id) } });
+      b.dataset.feature = s.w ? `${s.w}×${s.h}` : 'Fit';
+      b.dataset.key = `Shift+${PILL_ORDER.indexOf(s.id) + 1}`;
+      return b;
+    });
+    const seg = el('span', { class: 'stage-seg' }, ...buttons);
     const moreSel = el('select', { class: 'stage-more', title: 'More frame sizes: 21:9, 4:3, 2:3, 4K' }, el('option', { value: '', text: 'More…' }), EXTRA_SIZES.map((s) => el('option', { value: s.id, text: `${s.label} · ${s.w}×${s.h}` })));
     moreSel.addEventListener('change', () => { if (moreSel.value) setMode(moreSel.value); });
-    const safeBtn = el('button', { class: 'stage-btn', text: 'Safe zones', title: 'Show where Shorts / Reels / TikTok put the title, captions and buttons', on: { click: () => { safe = !safe; store.set('three.safeZones', safe); layout(); } } });
+    const safeBtn = el('button', { class: 'stage-btn', text: 'Safe', title: 'Safe zones: where TikTok / Reels / Shorts put their buttons and captions, Instagram\'s grid crop, title-safe areas · right-click: which platform', on: { click: () => { safe = !safe; store.set('three.safeZones', safe); layout(); } } });
+    safeBtn.dataset.feature = 'Safe zones';
+    safeBtn.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      ThreeTweaks.menu(e.clientX, e.clientY, ['Safe zones for 9:16', ...Object.entries(SAFE).map(([k, v]) => [v.name, k === 'tiktok' ? 'Caption + buttons on the right' : k === 'reels' ? 'Instagram Reels' : 'YouTube Shorts', () => { platform = k; safe = true; store.set('three.safePlatform', k); store.set('three.safeZones', true); layout(); }, platform === k])]);
+    });
     const sizeLabel = el('span', { class: 'stage-size' });
-    const pill = el('div', { class: 'stage-pill' }, ...buttons, moreSel, safeBtn, sizeLabel);
-    const zones = el('div', { class: 'safe-zones', hidden: true },
-      el('div', { class: 'sz top', text: 'Title / status bar' }), el('div', { class: 'sz bottom', text: 'Captions and channel name' }), el('div', { class: 'sz right', text: 'Buttons' }));
+    const pill = el('div', { class: 'stage-pill' }, seg, moreSel, safeBtn, sizeLabel);
+    const zones = el('div', { class: 'safe-zones', hidden: true });
     host.append(pill, zones);
     const current = () => SIZES.find((s) => s.id === mode) || SIZES[0];
+    // The overlay for the current size: platform UI boxes (9:16), Instagram's 3:4 grid crop (4:5),
+    // title-safe / action-safe frames (16:9, 1:1 and the rest).
+    function paintZones(s) {
+      const box = (cls, st, text) => { const d = el('div', { class: `sz ${cls}`, text: text || '' }); Object.assign(d.style, st); return d; };
+      const pct = (x) => `${(x * 100).toFixed(2)}%`;
+      if (s.id === '9:16' || s.id === '4k-v') {
+        const P = SAFE[platform] || SAFE.tiktok;
+        zones.replaceChildren(box('top', { height: pct(P.top) }, `${P.name}: status / tabs`), box('bottom', { height: pct(P.bottom), right: pct(P.right) }, 'Caption and name'), box('right', { width: pct(P.right), top: pct(P.top), bottom: pct(P.bottom * 0.55) }, 'Buttons'),
+          box('frame', { left: pct(P.left), right: pct(P.right), top: pct(P.top), bottom: pct(P.bottom) }, ''));
+      } else if (s.id === '4:5') {
+        const side = (1 - (1350 * 3 / 4) / 1080) / 2;
+        zones.replaceChildren(box('crop left', { width: pct(side) }), box('crop right', { width: pct(side) }), box('frame dashed', { left: pct(side), right: pct(side), top: '0', bottom: '0' }, 'Profile grid shows 3:4'),
+          box('frame', { left: '0', right: '0', top: pct((1350 - 1080) / 2 / 1350), bottom: pct((1350 - 1080) / 2 / 1350) }, '1:1 center'));
+      } else zones.replaceChildren(box('frame', { left: '5%', right: '5%', top: '5%', bottom: '5%' }, 'Title safe'), box('frame dashed', { left: '3.5%', right: '3.5%', top: '3.5%', bottom: '3.5%' }, ''));
+    }
     function layout() {
       const s = current();
-      buttons.forEach((b, i) => b.classList.toggle('on', BASE_SIZES[i].id === mode));
+      buttons.forEach((b, i) => b.classList.toggle('on', pillSizes[i].id === mode));
       moreSel.value = s.extra ? s.id : ''; moreSel.classList.toggle('on', Boolean(s.extra));
-      safeBtn.hidden = mode !== '9:16';
+      safeBtn.hidden = !s.w;
       safeBtn.classList.toggle('on', safe);
+      safeBtn.textContent = safe && (s.id === '9:16' || s.id === '4k-v') ? `Safe · ${(SAFE[platform] || SAFE.tiktok).name}` : 'Safe';
       host.classList.toggle('exact', Boolean(s.w));
+      host.dataset.frame = s.id;
       if (!s.w) {
         frame.style.cssText = '';
         zones.hidden = true;
@@ -190,7 +228,8 @@ const ThreeMedia = (() => {
       const left = (W - s.w * k) / 2; const top = (H - s.h * k) / 2;
       frame.style.cssText = `position:absolute;left:${left}px;top:${top}px;width:${s.w}px;height:${s.h}px;transform:scale(${k});transform-origin:0 0;`;
       Object.assign(zones.style, { left: `${left}px`, top: `${top}px`, width: `${s.w * k}px`, height: `${s.h * k}px` });
-      zones.hidden = !(safe && mode === '9:16');
+      zones.hidden = !safe;
+      if (safe && zones.dataset.for !== `${s.id}|${platform}`) { zones.dataset.for = `${s.id}|${platform}`; paintZones(s); }
       sizeLabel.textContent = `${s.w}×${s.h} · ${Math.round(k * 100)}%`;
     }
     // silent: set by the Lab when a sketch opens (it runs the sketch itself afterwards).
@@ -207,8 +246,13 @@ const ThreeMedia = (() => {
     return {
       get params() { return current().w ? '&dpr=1' : ''; },
       get size() { const s = current(); return s.w ? { id: s.id, width: s.w, height: s.h } : { id: 'fit', width: host.clientWidth, height: host.clientHeight }; },
+      // where the picture sits inside the preview (for overlays such as the onion skin): { left, top, width, height } in px
+      get rect() { const s = current(); if (!s.w) return { left: 0, top: 0, width: host.clientWidth, height: host.clientHeight }; const W = host.clientWidth; const H = host.clientHeight; const k = Math.min(W / s.w, H / s.h); return { left: (W - s.w * k) / 2, top: (H - s.h * k) / 2, width: s.w * k, height: s.h * k }; },
       setMode, pill,
+      setSafe(on, plat) { if (plat && SAFE[plat]) { platform = plat; store.set('three.safePlatform', plat); } safe = on ?? !safe; store.set('three.safeZones', safe); zones.dataset.for = ''; layout(); return safe; },
+      get safe() { return safe; },
       sizes: SIZES.map((s) => s.id),
+      pillOrder: PILL_ORDER,
     };
   }
 
@@ -272,7 +316,8 @@ const ThreeMedia = (() => {
   // points (top strip, typed times, nudges), a rekordbox-style beat grid (BPM, tap, "1" here, meter),
   // snapping, and Kick / Snare / Hit lanes the user fills by tapping K S H or clicking.
   // onCue({ index, cues, playing }) when playback enters another cue's section; lookChoices() → [{ layer, layerName, names }].
-  function player({ send, sketchName, onLoaded, onPick, onCue, lookChoices }) {
+  // frame: { get() → { id, width, height }, set(id) } so the record menu can switch between the social sizes.
+  function player({ send, sketchName, onLoaded, onPick, onCue, lookChoices, frame: frameHook }) {
     const st = { path: null, name: null, bytes: null, mime: null, video: false, analysis: null, samples: null, time: 0, duration: 0, playing: false, loop: store.get('three.mediaLoop', true), volume: store.get('three.mediaVolume', 0.8), stampAt: 0, rate: 1 };
     let region = null; // { a, b } seconds
     let locked = false;
@@ -294,6 +339,7 @@ const ThreeMedia = (() => {
 
     // row 1: file, transport, zoom, loop
     const loadBtn = btn('🎵 Load audio / video…', 'Pick an mp3, wav, mp4… to drive the sketch (or drop one on the preview)', () => pick());
+    loadBtn.dataset.feature = 'Load audio video…';
     const nameEl = el('span', { class: 'mb-name' });
     const unloadBtn = btn('×', 'Remove the music (sketches get a demo beat)', () => unload(), 'ghost small mb-x');
     const playBtn = btn('▶', 'Play / pause (Space)', () => toggle(), 'primary small mb-play');
@@ -352,8 +398,14 @@ const ThreeMedia = (() => {
     // row 2: grid and hits
     const bpmIn = el('input', { type: 'number', class: 'mb-bpmin', min: 20, max: 400, step: 0.01, title: 'Tempo of the beat grid (type your own)' });
     bpmIn.addEventListener('change', () => { const v = Number(bpmIn.value); if (v >= 20 && v <= 400) editGrid((g) => { g.bpm = Math.round(v * 100) / 100; }); else paint(); });
-    const tapBtn = btn('Tap', 'Tap along to the beat (or press T), 4+ taps: sets the BPM; while it plays, the grid also lines up with your taps', () => tap());
+    const tapBtn = btn('Tap', 'Tap along to the beat (T), 4+ taps set the BPM; while it plays the grid also lines up with your taps · Shift+T: this tap is the 1 · right-click: options', () => tap(), 'ghost small mb-tap');
     tapBtn.dataset.feature = 'Tap tempo';
+    tapBtn.dataset.key = 'T';
+    tapBtn.addEventListener('pointerdown', (e) => { if (e.shiftKey && e.button === 0) { e.preventDefault(); tapOne(); } });
+    tapBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); tapMenu(e); });
+    // the live BPM readout next to Tap: tempo, how sure (how even your taps are) and where the 1 is
+    const bpmRead = el('span', { class: 'mb-bpmread', title: 'The tempo of the grid · click to type it' });
+    bpmRead.addEventListener('click', () => { setAll(true); requestAnimationFrame(() => { bpmIn.focus(); bpmIn.select(); }); });
     // the song's own tempo guesses, one click each
     const bpmCands = el('span', { class: 'mb-cands' });
     function paintCands() {
@@ -376,9 +428,23 @@ const ThreeMedia = (() => {
     const laneBtns = CORE_LANES.map((ln) => btn('', `Add a ${ln.name.toLowerCase()} at the playhead (or press ${ln.key.toUpperCase()} while it plays)`, () => addAtPlayhead(ln.id), `ghost small mb-lane mb-lane-${ln.id}`));
     const fillBtn = btn('Fill ▾', 'Stamp kicks / snares / hits on the grid, or clear them', (e) => fillMenu(e.currentTarget));
     const undoBtn = btn('↶', 'Undo the last grid, marker or curve change (Ctrl+Z)', () => undoMap());
+    // Q: K / S / H taps land exactly on the grid (the snap setting) instead of on the sound
+    let quantTaps = store.get('three.quantizeTaps', false);
+    const quantBtn = btn('Q', 'Quantize taps: K / S / H markers land on the grid (the Snap setting) · Q key', () => setQuantize(!quantTaps), 'ghost small mb-quant');
+    quantBtn.dataset.feature = 'Quantize taps';
+    quantBtn.dataset.key = 'Q';
+    function setQuantize(on) { quantTaps = Boolean(on); store.set('three.quantizeTaps', quantTaps); quantBtn.classList.toggle('on', quantTaps); return quantTaps; }
+    setQuantize(quantTaps);
+    // How the beat grid and the waveform are drawn
+    let gridView = { lines: true, numbers: true, subs: true, sections: true, drops: true, dim: false, ...store.get('three.gridView', {}) };
+    const viewBtn = btn('View ▾', 'How the timeline looks: beat lines, bar numbers, subdivisions, loud parts, drops, RGB or band waveform', (e) => viewMenu(e.currentTarget));
+    viewBtn.dataset.feature = 'Timeline view';
+    // Sections (Intro, Build, Drop…): named cues that slider looks and motions can follow
+    const sectionsBtn = btn('Sections ▾', 'Mark the song\'s parts (Intro, Build, Drop, Break, Outro) as cues: from the song\'s loud / quiet parts or at the playhead. Looks can follow them (right-click a cue).', (e) => sectionsMenu(e.currentTarget));
+    sectionsBtn.dataset.feature = 'Sections';
     const gridRow = el('div', { class: 'mb-row mb-grid' },
-      el('span', { class: 'mb-label', text: 'Grid' }), bpmIn, el('span', { class: 'mb-unit', text: 'BPM' }), tapBtn, dblBtn, halfBtn, bpmCands, sep(), oneBtn, gridL, gridR, meterSel, autoBtn, gridState, sep(), snapSel, sep(),
-      el('span', { class: 'mb-label', text: 'Hits' }), ...laneBtns, el('label', { class: 'check small', title: 'K / S / H taps land on the real attack in the audio (fixes the delay of tapping)' }, snapTapsBox, 'on the hit'), fillBtn, undoBtn);
+      el('span', { class: 'mb-label', text: 'Grid' }), bpmIn, el('span', { class: 'mb-unit', text: 'BPM' }), dblBtn, halfBtn, bpmCands, sep(), oneBtn, gridL, gridR, meterSel, autoBtn, gridState, sep(), snapSel, quantBtn, sep(),
+      viewBtn, sectionsBtn, sep(), el('label', { class: 'check small', title: 'K / S / H taps land on the real attack in the audio (fixes the delay of tapping)' }, snapTapsBox, 'on the hit'), fillBtn, undoBtn);
 
     const canvas = el('canvas', { class: 'mb-timeline' });
     // While playing, only these two lines move every frame; the canvases redraw about 10 times a second.
@@ -455,20 +521,27 @@ const ThreeMedia = (() => {
       grip.addEventListener('pointerup', () => grip.removeEventListener('pointermove', move), { once: true });
     });
     grip.addEventListener('dblclick', () => setSize(SIZE_ORDER[(SIZE_ORDER.indexOf(size) + 1) % 3]));
+    // the loop as one small chip (looping is a drag now: Shift+drag the waveform or drag the top strip)
+    const loopChip = el('span', { class: 'mb-loopchip', hidden: true },
+      el('button', { class: 'mb-loopchip-t', title: 'Loop on / off (the section stays)', on: { click: () => loopBtn.click() } }, loopLen),
+      el('button', { class: 'mb-loopchip-x', text: '×', title: 'Remove the loop', on: { click: () => setRegion(null) } }));
+    const hoverEl = el('div', { class: 'mb-hover', hidden: true });
     const bar = el('div', { class: 'media-bar' },
       handle,
       el('div', { class: 'mb-row mb-main' },
-        group('Song', loadBtn, nameEl, unloadBtn),
         group('Play', playBtn, timeEl, rateSel, vol),
-        group('Zoom', zoomOut, zoomIn, zoomAll, zoomLoop, waveBtn),
-        group('Loop', loopBtn, loopBox, loopLen, lockBtn),
+        group('Song', loadBtn, nameEl, unloadBtn),
+        group('Beat', tapBtn, bpmRead, ...laneBtns),
+        group('Zoom', zoomOut, zoomIn, zoomAll, zoomLoop),
+        group('Loop', loopChip, loopBtn, loopBox, lockBtn),
         el('span', { class: 'tb-group mb-g-capture', dataset: { cat: 'Capture' } }),
         el('span', { class: 'tb-group mb-g-live', dataset: { cat: 'Live' } }, recBtn),
         el('span', { class: 'spacer' })),
-      gridRow, el('div', { class: 'mb-tl-wrap' }, canvas, playheadEl), el('div', { class: 'mb-mm-wrap' }, minimap, miniHeadEl));
+      gridRow, el('div', { class: 'mb-tl-wrap' }, canvas, playheadEl, hoverEl), el('div', { class: 'mb-mm-wrap' }, minimap, miniHeadEl));
+    gridRow.insertBefore(waveBtn, viewBtn);
     setSize(size);
     // Fewer controls by default; ⋯ shows every one (zoom buttons, loop points, grid tools…). Rarely used ones get .mb-adv.
-    for (const n of [rateSel, loopBox, lockBtn, dblBtn, halfBtn, bpmCands, meterSel, autoBtn, gridState, snapSel, fillBtn, undoBtn, snapTapsBox.parentElement, zoomOut.parentElement]) n?.classList.add('mb-adv');
+    for (const n of [rateSel, loopBtn, loopBox, lockBtn, dblBtn, halfBtn, bpmCands, meterSel, autoBtn, gridState, snapSel, fillBtn, undoBtn, snapTapsBox.parentElement, zoomOut.parentElement]) n?.classList.add('mb-adv');
     gridRow.querySelectorAll('.mb-sep').forEach((s) => s.classList.add('mb-adv'));
     let allCtl = store.get('three.mbAll', false);
     const moreBtn = btn('⋯', '', () => setAll(!allCtl), 'ghost small mb-more');
@@ -477,7 +550,7 @@ const ThreeMedia = (() => {
       allCtl = on; store.set('three.mbAll', on);
       bar.classList.toggle('mb-all', on);
       moreBtn.classList.toggle('on', on);
-      moreBtn.title = on ? 'Fewer controls' : 'Every timeline control: zoom buttons, loop points, grid tools (×2 ½, meter, snap, fill, undo), speed';
+      moreBtn.title = on ? 'Fewer controls' : 'Every timeline control: zoom buttons, loop points and lock, grid tools (×2 ½, meter, snap, fill, undo), speed, record';
       requestAnimationFrame(() => draw());
     }
     bar.querySelector('.mb-main').append(moreBtn);
@@ -641,9 +714,10 @@ const ThreeMedia = (() => {
     // within 0.3 of a whole number rounds to it (most tracks are). While the song plays, the grid's beats also
     // line up with your taps (each tap is first moved onto the nearest real hit in the audio).
     let tapSong = [];
+    let tapInfo = null; // { bpm, conf (0..1), n, spread (± BPM) }
     function tap() {
       const t = performance.now();
-      if (taps.length && t - taps[taps.length - 1] > 2000) { taps = []; tapSong = []; }
+      if (taps.length && t - taps[taps.length - 1] > 2000) { taps = []; tapSong = []; tapInfo = null; }
       taps.push(t);
       if (st.playing) tapSong.push(snapToHit(now(), 'any'));
       if (taps.length > 16) { taps.shift(); if (tapSong.length > 16) tapSong.shift(); }
@@ -652,12 +726,18 @@ const ThreeMedia = (() => {
         const gaps = taps.slice(1).map((x, i) => x - taps[i]).sort((a, b) => a - b);
         const med = gaps[gaps.length >> 1];
         const kept = gaps.filter((g) => Math.abs(g - med) < med * 0.2);
-        bpm = 60000 / (kept.reduce((s, g) => s + g, 0) / kept.length);
-        bpm = Math.abs(bpm - Math.round(bpm)) < 0.3 ? Math.round(bpm) : Math.round(bpm * 100) / 100;
+        const mean = kept.reduce((s0, g) => s0 + g, 0) / kept.length;
+        bpm = 60000 / mean;
+        const sd = Math.sqrt(kept.reduce((s0, g) => s0 + (g - mean) ** 2, 0) / kept.length);
+        // how sure: even taps (small spread) and enough of them
+        const conf = Math.max(0, Math.min(1, (1 - (sd / mean) * 6) * Math.min(1, kept.length / 8) * (kept.length / gaps.length)));
+        const spread = Math.abs(60000 / (mean - sd / Math.sqrt(kept.length)) - bpm);
+        if (store.get('three.tapRound', true) !== false && Math.abs(bpm - Math.round(bpm)) < 0.3) bpm = Math.round(bpm); else bpm = Math.round(bpm * 100) / 100;
+        tapInfo = { bpm, conf, n: taps.length, spread: Math.round(spread * 10) / 10 };
         if (taps.length === 4) pushUndo();
         const g = ensureGrid();
         g.bpm = bpm;
-        if (tapSong.length >= 4) {
+        if (tapSong.length >= 4 && store.get('three.tapAlign', true) !== false) {
           // circular mean of the taps' phase within a beat, then keep the bar where it was
           const p = 60 / bpm; let cx = 0; let cy = 0;
           for (const x of tapSong) { const a = ((x % p) / p) * 2 * Math.PI; cx += Math.cos(a); cy += Math.sin(a); }
@@ -666,10 +746,47 @@ const ThreeMedia = (() => {
         }
         mapChanged();
       }
+      paintTap(bpm);
+      clearTimeout(tap.reset);
+      tap.reset = setTimeout(() => { tapBtn.classList.remove('on'); tapBtn.textContent = 'Tap'; tapBtn.style.removeProperty('--conf'); }, 2500);
+      return tapInfo;
+    }
+    function paintTap(bpm) {
       tapBtn.textContent = bpm ? `Tap · ${bpm}` : `Tap ${'•'.repeat(taps.length)}`;
       tapBtn.classList.add('on');
-      clearTimeout(tap.reset);
-      tap.reset = setTimeout(() => { tapBtn.classList.remove('on'); tapBtn.textContent = 'Tap'; }, 2500);
+      tapBtn.classList.remove('flash'); void tapBtn.offsetWidth; tapBtn.classList.add('flash');
+      if (tapInfo) tapBtn.style.setProperty('--conf', String(tapInfo.conf));
+      paintBpmRead();
+    }
+    function paintBpmRead() {
+      const b = bpmNow();
+      const sure = tapInfo && taps.length ? ` · ${Math.round(tapInfo.conf * 100)}%` : '';
+      bpmRead.textContent = b ? `${Math.round(b * 100) / 100} BPM${sure}` : '';
+      bpmRead.classList.toggle('mine', Boolean(map.grid));
+      bpmRead.classList.toggle('sure', Boolean(tapInfo && tapInfo.conf >= 0.75));
+      bpmRead.title = `${map.grid ? 'Your grid' : 'Detected tempo'}${tapInfo ? ` · last taps: ${tapInfo.n}, ±${tapInfo.spread} BPM, ${Math.round(tapInfo.conf * 100)}% sure` : ''}${map.grid ? ` · the 1 at ${fmtMs(map.grid.anchor)}` : ''} · click to type it`;
+    }
+    // Shift+T: this tap is the 1 (the downbeat), moved onto the real hit in the audio
+    function tapOne() {
+      if (!D()) return false;
+      const t = snapToHit(now(), 'kick');
+      editGrid((g) => { g.anchor = r4(t); });
+      toast(`The 1 is at ${fmtMs(t)} (Shift+T again to move it)`, { timeout: 1500 });
+      return t;
+    }
+    function tapMenu(e) {
+      const anchor = { getBoundingClientRect: () => ({ left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY }) };
+      const align = store.get('three.tapAlign', true) !== false; const round = store.get('three.tapRound', true) !== false;
+      menuAt(anchor, [
+        ['This tap is the 1', 'Shift+T or Shift+click: the downbeat goes here', () => tapOne()],
+        ['×2', 'Double the BPM', () => editGrid((g) => { g.bpm = Math.round(g.bpm * 200) / 100; })],
+        ['½', 'Halve the BPM', () => editGrid((g) => { g.bpm = Math.round(g.bpm * 50) / 100; })],
+        ['Auto: the detected tempo', 'Forget your grid', () => { if (map.grid) { pushUndo(); map.grid = null; mapChanged(); } }],
+        null,
+        [`${align ? '✓ ' : ''}Taps line up the grid`, 'While it plays, the beats move onto your taps', () => store.set('three.tapAlign', !align)],
+        [`${round ? '✓ ' : ''}Round to whole BPM`, 'Within 0.3 of a whole number', () => store.set('three.tapRound', !round)],
+        ['Forget the taps', 'Esc', () => { taps = []; tapSong = []; tapInfo = null; tapBtn.textContent = 'Tap'; tapBtn.classList.remove('on'); paintBpmRead(); }],
+      ]);
     }
     // The strongest attack in the audio near t: from 150 ms before (you tap late) to 60 ms after.
     // lane 'kick' listens to the lows, 'snare' / 'hit' to the highs, 'any' to everything.
@@ -760,7 +877,7 @@ const ThreeMedia = (() => {
       // a live tap: the real attack nearby (fixes the tap's delay); the grid only if a line is that close
       const hit = snapToHit(now(), lane);
       const grid = snapT(hit);
-      addMarkAt(lane, Math.abs(grid - hit) < 0.03 ? grid : hit, { snapIt: false });
+      addMarkAt(lane, quantTaps || Math.abs(grid - hit) < 0.03 ? grid : hit, { snapIt: false });
       const b = laneBtns[CORE_LANES.findIndex((l) => l.id === lane)];
       b.classList.add('flash');
       setTimeout(() => b.classList.remove('flash'), 120);
@@ -805,7 +922,7 @@ const ThreeMedia = (() => {
     function loopBar() {
       if (!D()) return;
       const t = now(); const len = snapStep('bar', map.grid, bpmNow());
-      let a = snapTime(t, 'bar', map.grid, beats()); if (a > t + 1e-3) a -= len;
+      let a = snapTime(t, 'bar', map.grid, beats()); if (a > t + 1e-3) a -= len; if (a < -1e-3) a += len;
       if (region && Math.abs(region.a - a) < 1e-3 && Math.abs(region.b - (a + len)) < 1e-3) { setRegion(null); toast('Loop off', { timeout: 1000 }); return; }
       setRegion({ a: Math.max(0, a), b: Math.min(D(), a + len) });
       if (!st.loop) loopBtn.click();
@@ -836,6 +953,87 @@ const ThreeMedia = (() => {
         ['Remove doubles', `${where}: markers closer than 80 ms to the one before go`, () => dedupe(range)],
         null,
         ...shownLanes().map((ln) => [`Clear ${ln.name.toLowerCase()}${ln.id === 'bass' || ln.id === 'hats' ? '' : 's'}`, where, () => clear(ln.id)]),
+      ]);
+    }
+
+    // ---------- timeline view ----------
+    function setGridView(patch) { gridView = { ...gridView, ...patch }; store.set('three.gridView', gridView); waveCache.key = ''; draw(); return gridView; }
+    function viewMenu(anchor) {
+      const v = gridView;
+      const tog = (k, label, hint) => [`${v[k] ? '✓ ' : ''}${label}`, hint, () => setGridView({ [k]: !v[k] })];
+      menuAt(anchor, [
+        tog('lines', 'Beat lines', 'Downbeats red, beats white'),
+        tog('numbers', 'Bar numbers', 'On each downbeat'),
+        tog('subs', 'Subdivisions', 'Faint lines at the snap setting (1/8, 1/16…)'),
+        tog('dim', 'Dim the grid', 'Fainter lines, the waveform stands out'),
+        tog('sections', 'Loud parts', 'Yellow shading where the song is loud'),
+        tog('drops', 'Drops', 'Red ▼ where a loud part starts'),
+        null,
+        [`${waveRGB ? '✓ ' : ''}RGB waveform`, 'Red = bass, green = mids, blue = highs (else band lines)', () => waveBtn.click()],
+        ['Whole song', '0 · double-click the overview', () => setView(null)],
+        region ? ['Zoom to the loop', '', () => fitLoop()] : false,
+      ].filter((x) => x !== false));
+    }
+    // Sections: cues named after the song's parts, so looks (right-click a cue) and slider motions follow them.
+    const SECTION_NAMES = ['Intro', 'Verse', 'Build', 'Drop', 'Break', 'Chorus', 'Bridge', 'Outro'];
+    function autoSections() {
+      const a = st.analysis;
+      if (!a?.sections?.length) { toast('The song is still being analyzed (or has no audio)', { type: 'error' }); return 0; }
+      let drops = 0;
+      const names = a.sections.map((sec, i) => {
+        if (i === 0) return sec.energy === 'loud' ? 'Drop' : 'Intro';
+        if (i === a.sections.length - 1 && sec.energy !== 'loud') return 'Outro';
+        if (sec.energy === 'loud') { drops += 1; return drops > 1 ? `Drop ${drops}` : 'Drop'; }
+        return a.sections[i + 1]?.energy === 'loud' ? 'Build' : 'Break';
+      });
+      editCues({ add: a.sections.map((sec, i) => ({ time: snapT(sec.start), name: names[i] })) });
+      toast(`${a.sections.length} sections marked as cues (1–9 jump to them; right-click one to give it a look)`, { timeout: 3000 });
+      return a.sections.length;
+    }
+    function sectionsMenu(anchor) {
+      menuAt(anchor, [
+        ['Mark sections from the song', 'Intro / Build / Drop / Break / Outro from its loud and quiet parts', () => autoSections()],
+        null,
+        ...SECTION_NAMES.map((n) => [`${n} here`, `A "${n}" cue at the playhead (${fmtMs(now())})`, () => addCue(now(), n)]),
+        null,
+        map.cues.length ? ['Remove every cue', `${map.cues.length} cue${map.cues.length === 1 ? '' : 's'} (↶ undoes)`, () => editCues({ clear: true })] : false,
+      ].filter((x) => x !== false));
+    }
+    // What part of the song a time is in: the loudness of the analysed section and the cue you're past
+    function sectionAt(t = now()) {
+      const sec = st.analysis?.sections?.find((x) => t >= x.start && t < x.end);
+      let cue = null; for (const c of map.cues) if (c.t <= t + 1e-3) cue = c;
+      return { energy: sec?.energy || null, cue: cue?.name || null };
+    }
+    function editCues({ add = [], remove = [], clear = false } = {}) {
+      if (!D()) return false;
+      pushUndo();
+      if (clear) map.cues = [];
+      map.cues = map.cues.filter((c) => !remove.some((r) => (typeof r === 'number' ? Math.abs(r - c.t) < 0.02 : String(r).toLowerCase() === c.name.toLowerCase())));
+      for (const a of add) {
+        const same = map.cues.find((c) => Math.abs(c.t - a.time) < 0.02);
+        const looks = Array.isArray(a.looks) ? a.looks.filter((l) => l?.layer && l?.name).map((l) => ({ layer: String(l.layer), name: String(l.name) })) : null;
+        if (same) { if (looks) same.looks = looks; if (a.name) same.name = String(a.name).slice(0, 40); continue; }
+        map.cues.push({ t: r4(Math.max(0, Math.min(D(), a.time))), name: String(a.name || `Cue ${map.cues.length + 1}`).slice(0, 40), ...(looks ? { looks } : {}) });
+      }
+      map.cues.sort((a, b) => a.t - b.t);
+      mapChanged();
+      return true;
+    }
+    // A marker's own menu (right-click it): delete, nudge, quantize, another row, to the playhead
+    function markMenu(e, lane, t) {
+      const anchor = { getBoundingClientRect: () => ({ left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY }) };
+      selected = { type: 'mark', lane, t }; draw();
+      const move = (to) => { pushUndo(); moveSelectedMark(to); mapChanged(); };
+      menuAt(anchor, [
+        ['Delete', 'Or double-click it · Delete key', () => deleteSelectedMark()],
+        ['Nudge 10 ms earlier', '← (Alt: 1 ms, Shift: a grid step)', () => move(t - 0.01)],
+        ['Nudge 10 ms later', '→', () => move(t + 0.01)],
+        [`Onto the grid (${qLabel()})`, 'Quantize just this one', () => move(snapTime(t, qMode(), map.grid, beats()))],
+        ['Onto the hit', 'The real attack in the audio nearby', () => { const h = snapToHit(t + 0.05, lane === 'kick' || lane === 'bass' ? 'kick' : lane); move(h); }],
+        ['To the playhead', fmtMs(now()), () => move(now())],
+        null,
+        ...shownLanes().filter((l) => l.id !== lane).map((l) => [`Make it a ${l.name.toLowerCase()}`, '', () => { pushUndo(); map.marks[lane] = map.marks[lane].filter((x) => Math.abs(x - t) > 1e-4); map.marks[l.id] = addMark(map.marks[l.id], t); selected = { type: 'mark', lane: l.id, t }; mapChanged(); }]),
       ]);
     }
 
@@ -886,7 +1084,11 @@ const ThreeMedia = (() => {
       if (ctrl && e.key.toLowerCase() === 'a' && activeLane) { selectAllPoints(); return true; }
       if (ctrl) return false;
       if (e.key.toLowerCase() === 'a' && !e.altKey && !e.shiftKey) { trackHandlers.onLanesAll?.(); return true; }
-      if (e.key.toLowerCase() === 't' && !e.altKey && !e.repeat) { tap(); return true; }
+      if (e.key.toLowerCase() === 't' && !e.altKey && !e.repeat) { if (e.shiftKey) tapOne(); else tap(); return true; }
+      if (e.key.toLowerCase() === 'q' && !e.altKey && !e.shiftKey) { toast(setQuantize(!quantTaps) ? 'Quantize taps on: K / S / H land on the grid' : 'Quantize taps off: K / S / H land on the sound', { timeout: 1400 }); return true; }
+      if ((e.key === '=' || e.key === '+') && !e.altKey) { zoomBy(1 / 1.6); return true; }
+      if (e.key === '-' && !e.altKey) { zoomBy(1.6); return true; }
+      if (e.key === '0' && !e.altKey) { setView(null); return true; }
       if (e.key === 'Home') { seek(region && now() > region.a + 0.01 ? region.a : 0); return true; }
       if (e.key === 'End') { seek(region ? region.b - 0.01 : Math.max(0, D() - 0.05)); return true; }
       if (e.key.toLowerCase() === 'm' && !ctrl && !e.altKey) { toggleMute(); return true; }
@@ -946,26 +1148,51 @@ const ThreeMedia = (() => {
     function menuAt(anchor, items) {
       const menu = el('div', { class: 'mb-menu' }, items.map((it) => (it ? el('button', { class: 'menu-item', on: { click: () => { menu.remove(); it[2](); } } }, el('b', { text: it[0] }), el('span', { class: 'hint', text: it[1] })) : el('div', { class: 'menu-sep' }))));
       const r = anchor.getBoundingClientRect();
-      Object.assign(menu.style, { left: `${Math.max(8, Math.min(innerWidth - 270, r.left))}px`, top: `${r.top - 8}px` });
+      Object.assign(menu.style, { left: `${Math.max(8, Math.min(innerWidth - 270, r.left))}px`, top: `${r.top - 8}px`, maxHeight: `${Math.round(innerHeight * 0.8)}px`, overflowY: 'auto' });
       document.body.append(menu);
+      // never off-screen: a menu that doesn't fit above the button opens from the top of the window instead
+      const mr = menu.getBoundingClientRect();
+      if (mr.top < 8) Object.assign(menu.style, { transform: 'none', top: `${Math.max(8, Math.min(r.bottom + 4, innerHeight - 8 - mr.height))}px` });
       const close = (e) => { if (!menu.contains(e.target)) { menu.remove(); removeEventListener('pointerdown', close, true); } };
       setTimeout(() => addEventListener('pointerdown', close, true));
     }
+    // Recording: what to record, in which of your four sizes, at which frame rate and quality, with a countdown.
+    const recOpts = () => ({ fps: 60, mbps: 16, countdown: 0, ...store.get('three.recOpts', {}) });
+    const setRecOpt = (patch) => store.set('three.recOpts', { ...recOpts(), ...patch });
     function recordMenu(anchor) {
+      const o = recOpts();
+      const fr = frameHook?.get?.();
+      const fmt = fr && fr.id !== 'fit' ? `${fr.width}×${fr.height}` : 'the preview size (pick a size for an exact one)';
       menuAt(anchor, [
-        region && st.bytes ? ['The loop', `${fmtMs(region.a)} → ${fmtMs(region.b)}, once`, () => startRecord('loop')] : null,
-        st.bytes ? ['Whole song', 'From the start to the end of the music', () => startRecord('track')] : null,
-        ['From here', st.bytes ? 'From the current spot until you press Stop' : 'Until you press Stop', () => startRecord('manual')],
-      ].filter(Boolean));
+        region && st.bytes ? ['The loop', `${fmtMs(region.a)} → ${fmtMs(region.b)}, once · ${fmt}`, () => startRecord('loop')] : null,
+        st.bytes ? ['Whole song', `From the start to the end · ${fmt}`, () => startRecord('track')] : null,
+        ['From here', `${st.bytes ? 'From the current spot' : 'Now'} until you press Stop · ${fmt}`, () => startRecord('manual')],
+        frameHook ? null : false,
+        ...(frameHook ? [['9:16', '1080×1920'], ['16:9', '1920×1080'], ['4:5', '1080×1350'], ['1:1', '1080×1080']].map(([id, px]) => [`${fr?.id === id ? '● ' : ''}Size ${id}`, px, () => { frameHook.set(id); setTimeout(() => recordMenu(anchor), 400); }]) : []),
+        null,
+        [`${o.fps === 60 ? '● ' : ''}60 fps`, 'Smooth', () => { setRecOpt({ fps: 60 }); recordMenu(anchor); }],
+        [`${o.fps === 30 ? '● ' : ''}30 fps`, 'Lighter, smaller files', () => { setRecOpt({ fps: 30 }); recordMenu(anchor); }],
+        [`${o.mbps >= 32 ? '● ' : ''}High quality`, '32 Mbps (big files)', () => { setRecOpt({ mbps: 32 }); recordMenu(anchor); }],
+        [`${o.mbps < 32 ? '● ' : ''}Normal quality`, '16 Mbps', () => { setRecOpt({ mbps: 16 }); recordMenu(anchor); }],
+        [`${o.countdown ? '● ' : ''}3-second countdown`, 'Time to get ready', () => { setRecOpt({ countdown: o.countdown ? 0 : 3 }); recordMenu(anchor); }],
+      ].filter((x) => x !== false && x !== null || x === null).filter((x, i, arr) => x !== null || (i > 0 && arr[i - 1] !== null)));
     }
     function startRecord(kind) {
+      const o = recOpts();
+      if (o.countdown && !startRecord.counting) {
+        startRecord.counting = true;
+        let n = o.countdown;
+        const t = toast(`Recording in ${n}…`, { timeout: 5000 });
+        const iv = setInterval(() => { n -= 1; if (n > 0) t.querySelector('span').textContent = `Recording in ${n}…`; else { clearInterval(iv); t.remove(); startRecord(kind); startRecord.counting = false; } }, 1000);
+        return;
+      }
       if (st.rate !== 1) { setRate(1); toast('Back to 1× speed for the recording', { timeout: 1800 }); }
       recording = { kind, startedAt: performance.now() };
       let until = null;
       if (kind === 'track') { send({ type: 'media', cmd: 'loop', value: false }); seek(0); toggle(true); }
       else if (kind === 'loop') { until = region.b; seek(region.a); toggle(true); }
       else if (st.bytes && !st.playing) toggle(true);
-      send({ type: 'record', cmd: 'start', fps: 60, until });
+      send({ type: 'record', cmd: 'start', fps: o.fps, bitrate: o.mbps * 1e6, until });
       toast('Recording… slider moves are recorded too. Changes that rebuild the scene wait until you stop.', { timeout: 4000 });
       paint();
     }
@@ -1017,6 +1244,7 @@ const ThreeMedia = (() => {
       bar.classList.toggle('mb-empty', !st.bytes);
       bar.classList.toggle('locked', locked);
       nameEl.textContent = st.name ? (analyzing ? `${st.name} · analyzing…` : st.name) : 'No music loaded: sketches get a demo beat';
+      loadBtn.textContent = st.bytes ? '🎵' : '🎵 Load audio / video…';
       nameEl.title = st.path || '';
       unloadBtn.hidden = !st.bytes;
       playBtn.textContent = st.playing ? '⏸' : '▶';
@@ -1030,7 +1258,11 @@ const ThreeMedia = (() => {
       if (document.activeElement !== aIn) aIn.value = region ? fmtMs(region.a) : '';
       if (document.activeElement !== bIn) bIn.value = region ? fmtMs(region.b) : '';
       aIn.placeholder = 'start'; bIn.placeholder = 'end';
-      loopLen.textContent = region ? `${(region.b - region.a).toFixed(3)} s${bpmNow() ? ` · ${(((region.b - region.a) * bpmNow()) / 60).toFixed(2).replace(/\.00$/, '')} beats` : ''}` : '';
+      loopLen.textContent = region ? `⟲ ${bpmNow() ? `${(((region.b - region.a) * bpmNow()) / 60).toFixed(2).replace(/\.00$/, '')} beats · ` : ''}${(region.b - region.a).toFixed(2)} s` : '';
+      loopChip.hidden = !region;
+      loopChip.classList.toggle('off', !st.loop);
+      loopChip.title = region ? `Loop ${fmtMs(region.a)} → ${fmtMs(region.b)}${locked ? ' (locked)' : ''} · Shift+drag the waveform for a new one` : '';
+      paintBpmRead();
       lockBtn.textContent = locked ? '🔒 Locked' : '🔓';
       lockBtn.classList.toggle('on', locked);
       lockBtn.disabled = !region && !locked;
@@ -1090,7 +1322,7 @@ const ThreeMedia = (() => {
       }
       // The waveform is the heavy part (a color per pixel column): drawn once into an offscreen canvas and
       // reused until the view, size or song changes, so playback only repaints the light overlays.
-      const wkey = `${s0}|${sp}|${w}|${h}|${top}|${H}|${waveRGB}|${dpr}|${st.path}|${Boolean(a)}|${Boolean(st.samples)}`;
+      const wkey = `${s0}|${sp}|${w}|${h}|${top}|${H}|${waveRGB}|${dpr}|${st.path}|${Boolean(a)}|${Boolean(st.samples)}|${gridView.sections}`;
       if (waveCache.key !== wkey) {
         waveCache.key = wkey;
         const wc = waveCache.canvas;
@@ -1098,7 +1330,7 @@ const ThreeMedia = (() => {
         const wg = wc.getContext('2d');
         wg.setTransform(dpr, 0, 0, dpr, 0, 0);
         wg.clearRect(0, 0, w, h);
-        if (a) for (const s of a.sections) if (s.energy === 'loud') { wg.fillStyle = '#ffd75e10'; wg.fillRect(X(s.start), top, X(s.end) - X(s.start), H); }
+        if (a && gridView.sections) for (const s of a.sections) if (s.energy === 'loud') { wg.fillStyle = '#ffd75e10'; wg.fillRect(X(s.start), top, X(s.end) - X(s.start), H); }
         // waveform: raw samples when very close, peaks when close, energy curves when far
         const mid = top + H / 2;
         if (sp < 3 && st.samples) {
@@ -1147,25 +1379,28 @@ const ThreeMedia = (() => {
       // beat grid: downbeats red with bar numbers (like rekordbox), beats white, subdivisions faint
       const bs = beats(); const bpb = bpbNow(); const bpm = bpmNow() || 120;
       const pxPerBeat = (60 / bpm / sp) * w;
-      if (bs.length && pxPerBeat > 4) {
-        const div = DIV[snapMode] || 1;
+      const dimK = gridView.dim ? 0.45 : 1;
+      if (bs.length && pxPerBeat > 4 && gridView.lines) {
+        const div = gridView.subs ? DIV[snapMode] || 1 : 1;
+        g.globalAlpha = dimK;
         const i0 = Math.max(0, beatIndex(bs, s0)); const i1 = Math.min(bs.length - 1, beatIndex(bs, s0 + sp) + 1);
         for (let i = i0; i <= i1; i += 1) {
           const n = beatNo(bs, i, map.grid); const down = mod(n, bpb) === 0;
           const x = Math.round(X(bs[i]));
           g.fillStyle = down ? '#ff6a6ad0' : '#ffffff55';
           g.fillRect(x, top, down ? 2 : 1, H);
-          if (down && (pxPerBeat * bpb) > 26) { g.fillStyle = '#ff9a8a'; g.fillText(String(Math.floor(n / bpb) + 1), x + 3, top + 10); }
+          if (down && gridView.numbers && (pxPerBeat * bpb) > 26) { g.fillStyle = '#ff9a8a'; g.fillText(String(Math.floor(n / bpb) + 1), x + 3, top + 10); }
           if (div > 1 && i < bs.length - 1 && (pxPerBeat / div) > 7) {
             g.fillStyle = '#ffffff1c';
             for (let k = 1; k < div; k += 1) g.fillRect(Math.round(X(bs[i] + ((bs[i + 1] - bs[i]) * k) / div)), top, 1, H);
           }
         }
-      } else if (bs.length) {
+        g.globalAlpha = 1;
+      } else if (bs.length && gridView.lines) {
         g.fillStyle = '#eae0d540';
         for (const b of bs) if (b >= s0 && b <= s0 + sp) g.fillRect(X(b), top, 1, 3);
       }
-      if (a) { g.fillStyle = '#ff6a6a'; for (const d of a.drops) { const x = X(d); g.beginPath(); g.moveTo(x - 4, top); g.lineTo(x + 4, top); g.lineTo(x, top + 7); g.fill(); } }
+      if (a && gridView.drops) { g.fillStyle = '#ff6a6a'; for (const d of a.drops) { const x = X(d); g.beginPath(); g.moveTo(x - 4, top); g.lineTo(x + 4, top); g.lineTo(x, top + 7); g.fill(); } }
       // hit lanes
       shownLanes().forEach((ln, li) => {
         const y = LT + li * LANE_H;
@@ -1553,6 +1788,9 @@ const ThreeMedia = (() => {
         else if (hit.edge) dragging = { kind: 'trim', id, edge: hit.edge, a: a0, b: b0 };
         else if (hit.inside) dragging = { kind: 'clip', id, from: tt, a: a0, b: b0 };
         else dragging = { kind: 'none' };
+      } else if ((e.shiftKey || e.altKey) && !locked) {
+        // Shift+drag (or Alt+drag) the waveform: draw a loop over that part
+        dragging = { kind: 'new', from: snapT(tt) }; selected = null; autoSel = null;
       } else { dragging = { kind: 'seek' }; selected = null; autoSel = null; seek(tt); }
       draw();
       const move = (ev) => {
@@ -1866,6 +2104,7 @@ const ThreeMedia = (() => {
         toast(next.in == null ? `"${tr.name}" now plays for the whole song` : `"${tr.name}" now plays during the loop`, { timeout: 1800 });
         return;
       }
+      if (hit.zone === 'ruler' && !hit.edge) { if (view) setView(null); else if (region) fitLoop(); return; } // double-click the ruler: whole song / the loop
       if (hit.zone !== 'wave' || locked || !st.analysis) return;
       const tt = timeAt(e);
       const sec = st.analysis.sections.find((s) => tt >= s.start && tt < s.end);
@@ -1898,7 +2137,8 @@ const ThreeMedia = (() => {
         } else laneMenu(e, tr, L);
         return;
       }
-      if (hit.zone === 'lane' && hit.mark != null) { e.preventDefault(); selected = { type: 'mark', lane: hit.lane, t: hit.mark }; deleteSelectedMark(); }
+      if (hit.zone === 'lane' && hit.mark != null) { e.preventDefault(); markMenu(e, hit.lane, hit.mark); }
+      if (hit.zone === 'ruler' || hit.zone === 'wave') { e.preventDefault(); waveMenu(e, timeAt(e)); }
       if (hit.zone === 'track' && hit.key) {
         e.preventDefault();
         const anchor = { getBoundingClientRect: () => ({ left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY }) };
@@ -1916,10 +2156,15 @@ const ThreeMedia = (() => {
       if (!D()) return;
       e.preventDefault();
       if (locked) return;
-      if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-        const d = ((e.shiftKey ? e.deltaY : e.deltaX) || 0) / tw() * span() * 1.5;
+      const px = e.deltaMode === 1 ? 16 : 1; // lines → pixels
+      if (e.shiftKey || e.altKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        const d = ((e.shiftKey || e.altKey ? e.deltaY : e.deltaX) || 0) * px / tw() * span() * 1.5;
         setView({ start: v0() + d, end: v0() + d + span() });
-      } else zoomBy(e.deltaY > 0 ? 1.25 : 0.8, timeAt(e));
+      } else {
+        // smooth: a mouse notch ≈ 1.25×, a trackpad pinch (ctrl + wheel) or two-finger scroll zooms gradually
+        const f = Math.max(0.5, Math.min(2, Math.exp(e.deltaY * px * (e.ctrlKey ? 0.012 : 0.0022))));
+        zoomBy(f, timeAt(e));
+      }
     }, { passive: false });
     canvas.addEventListener('mousemove', (e) => {
       if (!D()) return;
@@ -1942,7 +2187,34 @@ const ThreeMedia = (() => {
         track: hit.key ? `Keyframe at ${fmtMs(hit.key.t)}: click to jump there · drag to move · double-click to delete · right-click for Ease / Linear / Hold` : `${hit.track?.name || 'Layer'}: drag the bar to move it in time · drag its ends to trim · double-click to fit it to the loop (again: whole song)`,
       };
       canvas.title = `${fmtMs(tt)}\n${tips[hit.zone]}`;
+      // a hairline with the time under the mouse (and the bar · beat when there's a grid)
+      const x = xOf(tt);
+      const bs = beats(); const bi = beatIndex(bs, tt);
+      const bb = bi >= 0 ? beatNo(bs, bi, map.grid) : null;
+      hoverEl.hidden = !(hit.zone === 'wave' || hit.zone === 'ruler' || hit.zone === 'lane');
+      hoverEl.style.transform = `translateX(${Math.round(x)}px)`;
+      hoverEl.dataset.t = `${span() < 20 ? fmtMs(tt) : fmtTime(tt)}${bb != null ? ` · ${Math.floor(bb / bpbNow()) + 1}.${mod(bb, bpbNow()) + 1}` : ''}`;
     });
+    canvas.addEventListener('mouseleave', () => { hoverEl.hidden = true; });
+    // right-click the waveform / ruler: loop, cue, section and zoom actions at that spot
+    function waveMenu(e, t) {
+      const anchor = { getBoundingClientRect: () => ({ left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY }) };
+      const bar = snapStep('bar', map.grid, bpmNow()); let a = snapTime(t, 'bar', map.grid, beats()); if (a > t + 1e-3) a -= bar; if (a < -1e-3) a += bar;
+      const sec = st.analysis?.sections.find((x) => t >= x.start && t < x.end);
+      menuAt(anchor, [
+        ['Play from here', fmtMs(t), () => { seek(t); toggle(true); }],
+        ['Loop this bar', 'L at the playhead', () => setRegion({ a, b: a + bar })],
+        ['Loop 4 bars from here', '', () => setRegion({ a, b: Math.min(D(), a + bar * 4) })],
+        sec ? [`Loop this ${sec.energy} part`, `${fmtTime(sec.start)}–${fmtTime(sec.end)} · or double-click`, () => setRegion({ a: snapT(sec.start), b: snapT(sec.end) })] : false,
+        region ? ['Remove the loop', '', () => setRegion(null)] : false,
+        null,
+        ['Cue here', 'C at the playhead', () => addCue(t)],
+        ['Section here…', 'Intro, Build, Drop…', () => menuAt(anchor, SECTION_NAMES.map((n) => [n, '', () => addCue(t, n)]))],
+        ['The 1 is here', 'The grid\'s downbeat', () => editGrid((g) => { g.anchor = r4(snapToHit(t + 0.05, 'kick')); })],
+        null,
+        ['Whole song', '0', () => setView(null)],
+      ].filter((x) => x !== false));
+    }
     minimap.addEventListener('dblclick', () => setView(null)); // double-click the overview: the whole song
     minimap.addEventListener('pointerdown', (e) => {
       if (!D() || e.button !== 0) return;
@@ -2041,23 +2313,50 @@ const ThreeMedia = (() => {
         return true;
       },
       zoomTo(a, b) { if (a == null) setView(null); else setView({ start: a, end: b }); },
-      // cues: { add: [{ time, name }], remove: [name or time], clear: true }
-      editCues({ add = [], remove = [], clear = false } = {}) {
-        if (!D()) return false;
-        pushUndo();
-        if (clear) map.cues = [];
-        map.cues = map.cues.filter((c) => !remove.some((r) => (typeof r === 'number' ? Math.abs(r - c.t) < 0.02 : String(r).toLowerCase() === c.name.toLowerCase())));
-        for (const a of add) {
-          const same = map.cues.find((c) => Math.abs(c.t - a.time) < 0.02);
-          const looks = Array.isArray(a.looks) ? a.looks.filter((l) => l?.layer && l?.name).map((l) => ({ layer: String(l.layer), name: String(l.name) })) : null;
-          if (same) { if (looks) same.looks = looks; if (a.name) same.name = String(a.name).slice(0, 40); continue; }
-          map.cues.push({ t: r4(Math.max(0, Math.min(D(), a.time))), name: String(a.name || `Cue ${map.cues.length + 1}`).slice(0, 40), ...(looks ? { looks } : {}) });
-        }
-        map.cues.sort((a, b) => a.t - b.t);
-        mapChanged();
-        return true;
-      },
+      // cues: { add: [{ time, name, looks? }], remove: [name or time], clear: true }
+      editCues: (o) => editCues(o || {}),
       get cues() { return map.cues.map((c) => ({ time: c.t, name: c.name, ...(c.looks?.length ? { looks: c.looks } : {}) })); },
+      // ---------- for chat commands (tools/three-cmds.js) ----------
+      tap: () => tap(), tapOne: () => tapOne(), get tapInfo() { return tapInfo; },
+      setBpm(b) { if (!D() || !(b >= 20 && b <= 400)) return false; editGrid((g) => { g.bpm = Math.round(b * 100) / 100; }); return true; },
+      scaleBpm(k) { if (!D()) return false; editGrid((g) => { g.bpm = Math.round(g.bpm * k * 100) / 100; }); return bpmNow(); },
+      oneHere: () => { if (!D()) return false; editGrid((g) => { g.anchor = r4(now()); }); return true; },
+      nudgeGrid(ms) { if (!D()) return false; editGrid((g) => { g.anchor = r4(g.anchor + ms / 1000); }); return true; },
+      setQuantize, get quantize() { return quantTaps; },
+      setSnap(m) { if (!SNAPS.some(([v]) => v === m)) return false; snapSel.value = m; snapSel.dispatchEvent(new Event('change')); return true; },
+      get snap() { return snapMode; }, snaps: SNAPS.map(([v]) => v),
+      setGridView, get gridView() { return { ...gridView }; },
+      autoSections, sectionAt, sectionNames: SECTION_NAMES,
+      undo: () => undoMap(),
+      setView: (a, b) => (a == null ? setView(null) : setView({ start: a, end: b })),
+      zoom: (f) => zoomBy(f), fitLoop: () => fitLoop(),
+      record(kind = 'manual', o = {}) { if (o.fps || o.mbps || o.countdown != null) setRecOpt(o); if (kind === 'stop') { stopRecord(); return true; } if (recording) return false; if (kind === 'loop' && !region) kind = 'manual'; if (kind === 'track' && !st.bytes) kind = 'manual'; startRecord(kind); return kind; },
+      recordMenu: (anchor) => recordMenu(anchor || recBtn),
+      get recordOptions() { return recOpts(); },
+      // N bars from the bar the playhead is in, looping on
+      loopBars(n = 1) {
+        if (!D()) return null;
+        const bar = snapStep('bar', map.grid, bpmNow()); const t = now();
+        let a = snapTime(t, 'bar', map.grid, beats()); if (a > t + 1e-3) a -= bar; if (a < -1e-3) a += bar;
+        setRegion({ a: Math.max(0, a), b: Math.min(D(), a + bar * Math.max(1, n)) });
+        if (!st.loop) loopBtn.click();
+        return region ? { ...region } : null;
+      },
+      setLoopOn(on) { if (Boolean(on) !== st.loop) loopBtn.click(); return st.loop; },
+      lock: (on) => { setLocked(on ?? !locked); return locked; },
+      tapLane: (lane) => addAtPlayhead(lane),
+      fill(kind) {
+        if (!D()) return 0;
+        const range = region ? [region.a, region.b] : [0, D()];
+        const bs = beats(); const inR = (t) => t >= range[0] - 1e-3 && t < range[1] - 1e-3;
+        const nb = bs.map((t, i) => ({ t, n: mod(beatNo(bs, i, map.grid), bpbNow()) })).filter((b) => inR(b.t));
+        const plan = { kicks: ['kick', nb], 'kicks13': ['kick', nb.filter((b) => b.n === 0 || b.n === 2)], snares: ['snare', nb.filter((b) => b.n === 1 || b.n === 3)], hits: ['hit', nb.filter((b) => b.n === 0)] }[kind];
+        if (!plan) return 0;
+        pushUndo(); for (const b of plan[1]) map.marks[plan[0]] = addMark(map.marks[plan[0]], b.t); mapChanged();
+        return plan[1].length;
+      },
+      clearMarks(lane) { if (!D() || !map.marks[lane]) return 0; const range = region ? [region.a, region.b] : [0, D()]; pushUndo(); const n0 = map.marks[lane].length; map.marks[lane] = map.marks[lane].filter((t) => t < range[0] || t >= range[1]); mapChanged(); return n0 - map.marks[lane].length; },
+      get markers() { return Object.fromEntries(LANES.map((l) => [l.id, map.marks[l.id].length])); },
       addCue, setRate,
       get rate() { return st.rate; },
       beatsIn(a, b) { return beats().filter((t) => t >= a - 1e-4 && t <= b + 1e-4); },

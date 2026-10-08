@@ -120,9 +120,12 @@ const ThreeLab = (() => {
     stats.addEventListener('click', () => { const c = !stats.classList.contains('compact'); stats.classList.toggle('compact', c); store.set('three.statsCompact', c); });
     // ?: the Lab's keys in one sheet
     function labKeys() {
-      const rows = [['Space', 'Play / pause'], ['T', 'Tap tempo'], ['K · S · H', 'Kick / snare / hit marker at the playhead'], ['C', 'Cue here'], ['1–9', 'Jump to cue'],
-        ['[ · ]', 'Loop start / end'], ['Home · End', 'Start / end (of the loop)'], ['M', 'Mute the music (the sketch still reacts)'], ['A', 'Show every automation curve'], ['L', 'Loop this bar'], ['G', 'Next snap setting'], ['Ctrl+S · Ctrl+Shift+S', 'Save the sliders · as a look'],
-        ['\\', 'Freeze the picture'], ['.', 'One frame (while frozen)'], ['F · P', 'Focus · Present'], ['N', 'Note with a screenshot'], ['W', 'Write mode'], ['E', 'Edit the scene'],
+      const rows = [['Space', 'Play / pause'], ['T · Shift+T', 'Tap tempo · this tap is the 1'], ['K · S · H', 'Kick / snare / hit marker at the playhead'], ['Q', 'Quantize taps to the grid on / off'], ['C', 'Cue here'], ['1–9', 'Jump to cue'],
+        ['R · Shift+R', 'Shuffle the sliders · the shuffle before'], ['Ctrl+S · Ctrl+Shift+S', 'Save the sliders · as a look'], ['/', 'Find a slider'],
+        ['F · \\', 'Freeze the picture'], ['.', 'One frame (while frozen)'], ['|', 'Pin this frame to compare (onion / wipe)'], ['Shift+1–5', 'Fit · 9:16 · 16:9 · 4:5 · 1:1'],
+        ['Shift+L', 'Live sound on / off'], ['O', 'Your sketches'], ['`', 'Console'], ['P · Shift+F', 'Present · Focus'], ['I · PgUp / PgDn', 'In Present: info · other sketches'],
+        ['Shift+drag the waveform', 'Draw a loop'], ['= · - · 0', 'Zoom in · out · whole song'], ['[ · ]', 'Loop start / end'], ['Home · End', 'Start / end (of the loop)'], ['M', 'Mute the music (the sketch still reacts)'], ['A', 'Show every automation curve'], ['L', 'Loop this bar'], ['G', 'Next snap setting'],
+        ['N', 'Note with a screenshot'], ['W', 'Write mode'], ['E', 'Edit the scene'],
         ['Alt+1–9', 'Hide / show a layer'], ['Alt+Shift+1–9', 'Only that layer'], ['Ctrl+R · Ctrl+Shift+Enter', 'Restart the simulation'], ['Ctrl+Z', 'Undo (timeline)'], ['Esc', 'Deselect, forget taps, leave Present']];
       const d = el('dialog', { class: 'lab-keys' }, el('h2', { text: 'Lab keys' }), el('div', { class: 'lab-keys-grid' }, rows.flatMap(([k, v]) => [el('kbd', { text: k }), el('span', { text: v })])),
         el('div', { class: 'dialog-actions' }, el('button', { class: 'primary', text: 'Got it', on: { click: () => d.close() } })));
@@ -133,8 +136,10 @@ const ThreeLab = (() => {
     let split = null;
     const btn = (text, title, fn, cls = 'ghost small') => el('button', { class: cls, text, title, on: { click: fn } });
     const runBtn = btn('▶ Run', 'Run every layer again from the start (Ctrl+Enter)', () => run(), 'primary small');
+    runBtn.dataset.key = 'Ctrl+Enter';
     const restartBtn = btn('⟲', 'Restart from scratch: a fresh page, GPU and sound, for when something bugs out (Ctrl+Shift+Enter)', () => restartSim(), 'ghost small');
     restartBtn.dataset.feature = 'Restart simulation';
+    restartBtn.dataset.key = 'Ctrl+R';
     const liveLabel = el('label', { class: 'check small', title: 'Apply code changes live, a moment after you stop typing' }, autoBox, 'Live code');
     const newBtn = btn('New', 'New sketch from a template', () => templateGallery(), 'ghost small imp-main');
     // Less frequent sketch actions live in a menu (they used to take a whole toolbar row).
@@ -154,15 +159,65 @@ const ThreeLab = (() => {
         ['Delete…', 'Moves it to History → deleted sketches', () => removeSketch()],
       ]);
     });
+    // ⋯ in the Lab toolbar: the controls you rarely or never use, still one click away (with their old names for usage)
+    const labMoreBtn = btn('⋯', 'More: focus, screenshot, snippets, three.js version, live code, frame rate, keys', (e) => { const r = e.currentTarget.getBoundingClientRect(); ThreeTweaks.menu(r.right - 290, r.bottom + 4, labMoreItems()); });
+    labMoreBtn.dataset.feature = 'Lab more';
+    function labMoreItems() {
+      const v = store.get('three.version', ThreeData.VERSIONS[0]);
+      return ['View',
+        ['⛶ Focus', 'Almost fullscreen · Shift+F (Esc leaves)', () => setFocus(!focusOn), focusOn, 'Focus'],
+        ['📷 Screenshot', 'Save the picture (all layers) as it shows here', () => { copyNextShot = false; box.send({ type: 'screenshot' }); }, false, 'Screenshot'],
+        ['📋 Copy a screenshot', 'To the clipboard', () => { copyNextShot = true; box.send({ type: 'screenshot' }); }],
+        ['Console: always / with the code / when I open it', `Now: ${CONSOLE_MODES.find(([m]) => m === consoleMode)[1]}`, () => setConsoleMode(CONSOLE_MODES[(CONSOLE_MODES.findIndex(([m]) => m === consoleMode) + 1) % 3][0])],
+        [`${document.body.classList.contains('lab-nohints') ? '' : '✓ '}Key hints on hover`, 'Little key badges on the main buttons', () => { const off = !document.body.classList.contains('lab-nohints'); document.body.classList.toggle('lab-nohints', off); store.set('three.keyHints', !off); }],
+        ['Lab keys', '?', () => labKeys()],
+        'Code',
+        ['Insert snippet…', 'At the cursor in the code', () => snippetMenu(), false, 'Insert snippet'],
+        [`three.js version · r${v.split('.')[1]}`, 'Switch and re-run', () => versionMenu(), false, 'three.js version'],
+        [`${autoRun ? '✓ ' : ''}Live code`, 'Apply code changes a moment after you stop typing', () => { autoBox.checked = !autoBox.checked; autoBox.dispatchEvent(new Event('change')); }],
+        ['Copy all the code', 'Every layer', () => api.actions.copyCode()],
+        ['Export HTML…', 'A standalone .html file', () => exportHtml()],
+        'Frame rate',
+        ...[['0', 'Max fps'], ['60', '60 fps'], ['30', '30 fps']].map(([val, l]) => [l, '', () => { fpsSel.value = val; fpsSel.dispatchEvent(new Event('change')); }, String(store.get('three.fpsCap', 0)) === val, 'Preview fps'])];
+    }
+    function snippetMenu() {
+      const r = labMoreBtn.getBoundingClientRect();
+      setCodeVisible(true);
+      ThreeTweaks.menu(r.right - 290, r.bottom + 4, ['Insert a snippet at the cursor', ...ThreeData.SNIPPETS.map((sn) => [sn.name, '', () => editor.insertAtCursor(sn.code)])]);
+    }
+    function versionMenu() {
+      const r = labMoreBtn.getBoundingClientRect();
+      ThreeTweaks.menu(r.right - 290, r.bottom + 4, ['three.js version', ...ThreeData.VERSIONS.map((vv) => [`r${vv.split('.')[1]}`, vv, () => { version.value = vv; version.dispatchEvent(new Event('change')); }, vv === store.get('three.version', ThreeData.VERSIONS[0])])]);
+    }
+    document.body.classList.toggle('lab-nohints', store.get('three.keyHints', true) === false);
+    // Key hints: hover a main button for a moment and its key shows in a small badge under it.
+    const keyHint = el('div', { class: 'lab-keyhint', hidden: true });
+    document.body.append(keyHint);
+    let hintT = 0;
+    document.addEventListener('pointerover', (e) => {
+      const b = e.target.closest?.('[data-key]');
+      clearTimeout(hintT);
+      if (!b || document.body.classList.contains('lab-nohints') || !pane.contains(b)) { keyHint.hidden = true; return; }
+      hintT = setTimeout(() => {
+        if (!b.isConnected) return;
+        const r = b.getBoundingClientRect();
+        keyHint.textContent = b.dataset.key; keyHint.hidden = false;
+        const w = keyHint.offsetWidth;
+        Object.assign(keyHint.style, { left: `${Math.max(4, Math.min(innerWidth - w - 4, r.left + r.width / 2 - w / 2))}px`, top: `${r.bottom + 26 > innerHeight ? r.top - 22 : r.bottom + 4}px` });
+      }, 380);
+    });
+    addEventListener('pointerdown', () => { clearTimeout(hintT); keyHint.hidden = true; }, true);
     let copyNextShot = false;
     const shotBtn = btn('📷', 'Save a screenshot (all layers) · Shift+click: copy it to the clipboard', (e) => { copyNextShot = e.shiftKey; box.send({ type: 'screenshot' }); }, 'ghost small imp-capture');
     shotBtn.dataset.feature = 'Screenshot';
     const toolbar = el('div', { class: 'three-toolbar' }, runBtn, liveLabel, picker, newBtn, sketchMenuBtn, snippetSel, version, el('span', { class: 'spacer' }), shotBtn);
     // Prompt-first: the code editor stays hidden until asked for.
     const codeBtn = btn('</> Code', 'Show or hide the code of the selected layer (the Three Director writes it for you)', () => setCodeVisible(split.classList.contains('no-code')));
-    const slidersBtn = btn('⚡ Layers & sliders', 'Show or hide the layers and the sliders of the selected layer', () => setSlidersVisible(column.hidden));
+    const slidersBtn = btn('⚡ Sliders', 'Show or hide the layers and the sliders of the selected layer (/ finds a slider)', () => setSlidersVisible(column.hidden));
+    slidersBtn.dataset.feature = 'Layers & sliders';
     const focusBtn = btn('⛶ Focus', 'Almost fullscreen: hides the chat, side panels, toolbar, sliders and console, and shrinks the timeline to the strip (F · Esc to leave)', () => setFocus(!focusOn));
     focusBtn.dataset.feature = 'Focus';
+    focusBtn.dataset.key = 'Shift+F';
     // The console: always, only with the code (default), or only when you open it. Hidden, it counts new
     // errors and warnings on its button.
     const CONSOLE_MODES = [['always', 'Always show'], ['code', 'Only with the code'], ['never', 'Only when I open it']];
@@ -171,6 +226,7 @@ const ThreeLab = (() => {
     let unseen = { errors: 0, other: 0 };
     const consoleBtn = btn('Console', 'Show or hide the console (errors and console.log from the sketch)', () => { consolePeek = !consoleShown(); syncConsole(); });
     consoleBtn.dataset.feature = 'Console';
+    consoleBtn.dataset.key = '`';
     const consoleModeSel = el('select', { class: 'tc-mode', title: 'When the console shows' }, CONSOLE_MODES.map(([v, l]) => el('option', { value: v, text: l, selected: v === consoleMode })));
     consoleModeSel.addEventListener('change', () => setConsoleMode(consoleModeSel.value));
     const consoleWrap = el('div', { class: 'three-console-wrap' },
@@ -200,7 +256,25 @@ const ThreeLab = (() => {
     // Present: just the picture, fullscreen (P · Esc). Space, arrows and cue keys still work.
     const presentBtn = btn('▣ Present', 'Fullscreen preview with nothing else on screen, for showing it off or a second monitor (P · Esc to leave)', () => togglePresent());
     presentBtn.dataset.feature = 'Present';
-    const presentHint = el('div', { class: 'present-hint', text: 'Esc to leave · Space play / pause · 1–9 jump to cues' });
+    presentBtn.dataset.key = 'P';
+    const presentHint = el('div', { class: 'present-hint', text: 'Esc to leave · Space play / pause · F freeze · I info · PgUp / PgDn other sketches · 1–9 cues' });
+    // Present info (I): the sketch, song time, BPM and frame size in a corner, for live shows and checks
+    const presentHud = el('div', { class: 'present-hud', hidden: true });
+    let hudTimer = 0;
+    function setHud(on) {
+      presentHud.hidden = !on; store.set('three.presentHud', on);
+      clearInterval(hudTimer);
+      if (!on) return;
+      const paint = () => { const z = stage.size; presentHud.textContent = `${current?.name || ''} · ${z.id === 'fit' ? `${z.width}×${z.height}` : `${z.id} ${z.width}×${z.height}`}${player.loaded ? ` · ${fmtClock(player.time)} / ${fmtClock(player.duration)} · ${Math.round(player.bpm)} BPM` : ''}${liveKind ? ` · live ${liveBpm?.bpm ? `${Math.round(liveBpm.bpm)} BPM` : ''}` : ''}${lastStats ? ` · ${lastStats.fps} fps` : ''}${frozenNow ? ' · ❚❚' : ''}`; };
+      paint(); hudTimer = setInterval(paint, 250);
+    }
+    // PgUp / PgDn in Present: the previous / next sketch (most recent first, like the picker)
+    function stepSketch(d) {
+      const list = [...sketches].sort((a, b) => b.updatedAt - a.updatedAt);
+      const i = list.findIndex((x) => x.id === current?.id);
+      const next = list[(i + d + list.length) % list.length];
+      if (next && next.id !== current?.id) { openSketch(next.id); toast(next.name, { timeout: 1000 }); }
+    }
     // ---------- live sound + what's playing (Spotify, YouTube, Suno… anything with media controls) ----------
     // Live: the sketch hears the computer's sound (or a mic) instead of a loaded song; recordings include it.
     // Now playing: title / artist / cover / position of Spotify (or the current media app), with ⏮ ⏯ ⏭.
@@ -228,6 +302,42 @@ const ThreeLab = (() => {
     }
     const trigBtn = btn('⚡ Triggers', 'What fires the sketch\'s kick / bass / snare / hats / hit: a band of the sound and the bar it must reach', () => toggleTriggers());
     trigBtn.dataset.feature = 'Triggers';
+    // The trigger presets and Auto bars, one click from the timeline (you used them more than the panel itself)
+    const trigPresetBtn = btn('Presets ▾', 'Trigger presets for a style of music (your bars stay and are re-fitted), your own saved ones, or another song\'s setup', (e) => trigPresetMenu(e.currentTarget), 'ghost small mb-quick');
+    trigPresetBtn.dataset.feature = 'Presets';
+    const autoBarsBtn = btn('Auto bars', 'Fit every trigger bar to the last few seconds of sound (opens ⚡ Triggers for a moment if it\'s closed)', () => autoBars(), 'ghost small mb-quick');
+    autoBarsBtn.dataset.feature = 'Auto bars';
+    const trigPresets = () => ({ ...(ThreeTriggers.PRESETS || {}) });
+    function applyTrigPreset(name) {
+      const saved = store.get('three.trigPresets', []).find((x) => x.name.toLowerCase() === String(name).toLowerCase());
+      if (saved) { trigCfg = ThreeTriggers.merge(saved.cfg); trigTuned = true; sendTriggers(); saveTriggers(); trigPanel?.set(trigCfg); toast(`Triggers: ${saved.name}`, { timeout: 1400 }); return saved.name; }
+      const all = trigPresets();
+      const key = Object.keys(all).find((k) => k.toLowerCase() === String(name).toLowerCase()) || Object.keys(all).find((k) => k.toLowerCase().includes(String(name).toLowerCase()));
+      if (!key) return null;
+      setTriggers(Object.fromEntries(Object.entries(all[key]).map(([id, p]) => [id, { ...p }])));
+      toast(`Triggers: ${key} (bars kept · Auto bars fits them to the sound)`, { timeout: 2000 });
+      return key;
+    }
+    function trigPresetMenu(anchor) {
+      const r = anchor.getBoundingClientRect();
+      const saved = store.get('three.trigPresets', []);
+      const songs = Object.entries(store.get('three.triggersBySong', {})).filter(([p0]) => p0 !== player.path).slice(0, 8);
+      ThreeTweaks.menu(r.left, r.bottom + 4, ['Trigger presets', ...Object.keys(trigPresets()).map((n) => [n, 'Bands and timing · your bars stay', () => applyTrigPreset(n)]),
+        saved.length ? 'Yours' : null, ...saved.map((x) => [`★ ${x.name}`, 'Bands and bars', () => applyTrigPreset(x.name)]),
+        songs.length ? 'From another song' : null, ...songs.map(([p0, c]) => [`♪ ${p0.split(/[\\/]/).pop()}`, '', () => { trigCfg = ThreeTriggers.merge(c); trigTuned = true; sendTriggers(); saveTriggers(); trigPanel?.set(trigCfg); }]),
+        ['Auto bars', 'Fit the bars to the sound', () => autoBars()], ['⚡ Open the triggers', 'Bands, bars, fade, sensitivity', () => toggleTriggers(true)]]);
+    }
+    async function autoBars() {
+      if (trigPanel?.autoBars) { const n = trigPanel.autoBars(); toast(n ? `Auto bars: ${n} bars fitted to the sound` : 'Play some sound first (a few seconds), then Auto bars', { timeout: 1800 }); return n; }
+      const wasOpen = Boolean(trigPanel);
+      toggleTriggers(true);
+      toast('Listening for 3 s to fit the bars…', { timeout: 2600 });
+      await new Promise((r) => setTimeout(r, 3200));
+      const n = trigPanel?.autoBars?.() || 0;
+      toast(n ? `Auto bars: ${n} bars fitted` : 'No sound came in: play the song (or live sound) and try again', { timeout: 2000 });
+      if (!wasOpen) setTimeout(() => toggleTriggers(false), 600);
+      return n;
+    }
     function toggleTriggers(on = !trigPanel) {
       trigPanel?.destroy(); trigPanel = null;
       trigBtn.classList.toggle('on', on);
@@ -262,25 +372,42 @@ const ThreeLab = (() => {
     // The preview iframe is isolated (no access to the hub) and browsers don't let isolated pages capture
     // sound, so for it this page captures and sends the analysis ~60 times a second. The Stage window
     // captures by itself (and its recordings include the sound).
-    const hubLive = { stream: null, ctx: null, analyser: null, timer: 0 };
+    // Input gain (×0.5…×4) and a latency offset (the sketch reacts N ms later, to line up with a speaker or a
+    // Bluetooth delay) apply here; the input picker chooses which microphone / line-in.
+    const hubLive = { stream: null, ctx: null, analyser: null, timer: 0, gain: null, queue: [] };
+    const liveIo = () => ({ gain: 1, latency: 0, device: '', ...store.get('three.liveIo', {}) });
+    function setLiveIo(patch) {
+      store.set('three.liveIo', { ...liveIo(), ...patch });
+      if (hubLive.gain && patch.gain != null) hubLive.gain.gain.value = Number(patch.gain) || 1;
+      if (patch.device != null && liveKind === 'mic') setLive('mic');
+      return liveIo();
+    }
     window.__labLiveStart = async (kind) => {
       try {
         hubLiveStop();
+        const io = liveIo();
         const stream = kind === 'system'
           ? await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
-          : await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+          : await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, ...(io.device ? { deviceId: { exact: io.device } } : {}) } });
         for (const tr of stream.getVideoTracks()) tr.stop();
         if (!stream.getAudioTracks().length) throw new Error(kind === 'system' ? 'No system sound was shared' : 'No microphone');
         const ctx = new AudioContext();
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 2048; analyser.smoothingTimeConstant = 0.6;
-        ctx.createMediaStreamSource(stream).connect(analyser);
-        Object.assign(hubLive, { stream, ctx, analyser });
+        const gain = ctx.createGain(); gain.gain.value = io.gain || 1;
+        ctx.createMediaStreamSource(stream).connect(gain).connect(analyser);
+        Object.assign(hubLive, { stream, ctx, analyser, gain, queue: [] });
         box.send({ type: 'live-remote', on: true, kind });
         const f = new Uint8Array(1024); const w = new Float32Array(2048);
         hubLive.timer = setInterval(() => {
           analyser.getByteFrequencyData(f); analyser.getFloatTimeDomainData(w);
-          box.send({ type: 'live-frame', freq: f.slice(), wave: w.slice(), rate: ctx.sampleRate });
+          const frame = { type: 'live-frame', freq: f.slice(), wave: w.slice(), rate: ctx.sampleRate };
+          const lat = liveIo().latency || 0;
+          if (!lat) { box.send(frame); return; }
+          const tNow = performance.now();
+          hubLive.queue.push([tNow, frame]);
+          while (hubLive.queue.length && tNow - hubLive.queue[0][0] >= lat) box.send(hubLive.queue.shift()[1]);
+          if (hubLive.queue.length > 120) hubLive.queue.splice(0, hubLive.queue.length - 120);
         }, 16);
         return true;
       } catch (err) { toast(`Live sound: ${err.message}`, { type: 'error', timeout: 5000 }); return false; }
@@ -289,7 +416,7 @@ const ThreeLab = (() => {
       clearInterval(hubLive.timer);
       for (const tr of hubLive.stream?.getTracks() || []) tr.stop();
       hubLive.ctx?.close();
-      Object.assign(hubLive, { stream: null, ctx: null, analyser: null, timer: 0 });
+      Object.assign(hubLive, { stream: null, ctx: null, analyser: null, timer: 0, gain: null, queue: [] });
     }
     const liveBtn = btn('🎧 Live ▾', 'Make the sketch react to what your computer plays (Spotify, YouTube…) or a microphone, and see what\'s playing', (e) => liveMenu(e.currentTarget));
     liveBtn.dataset.feature = 'Live sound';
@@ -304,14 +431,28 @@ const ThreeLab = (() => {
         ['Microphone', 'A mic or line-in', () => setLive('mic'), liveKind === 'mic'],
         liveKind ? ['Off: back to the loaded song', '', () => setLive(null)] : null,
         ['⚡ Triggers & sensitivity…', 'What fires kick / bass / snare / hats / hit, and how strongly the sketch reacts', () => toggleTriggers(true)],
+        'Input',
+        ['Microphone / line-in…', liveIo().device ? 'A chosen input' : 'The default input', () => inputMenu(anchor)],
+        ['Gain', `×${liveIo().gain} · how loud the sketch hears it (in the Lab preview)`, () => popup(r.left, r.bottom + 4, ['Gain', ...[0.5, 1, 1.5, 2, 3, 4].map((g) => [`×${g}`, g === 1 ? 'as it comes' : g < 1 ? 'quieter' : 'louder', () => setLiveIo({ gain: g }), liveIo().gain === g])])],
+        ['Latency offset', `${liveIo().latency} ms · the sketch reacts later, to line up with what you hear`, () => popup(r.left, r.bottom + 4, ['Latency offset', ...[0, 20, 40, 60, 80, 120, 160, 200, 300].map((ms) => [`${ms} ms`, ms ? `for a speaker / Bluetooth delay` : 'none', () => setLiveIo({ latency: ms }), liveIo().latency === ms])])],
+        liveKind ? ['Restart live sound', 'Capture again (after changing devices)', () => setLive(liveKind)] : null,
         'Now playing',
         [np ? 'Hide what\'s playing' : 'Show what Spotify plays', 'Title, cover and ⏮ ⏯ ⏭ here, no Spotify login (also works with other players)', () => (np ? stopNowPlaying() : startNowPlaying())],
         ['Palette follows the cover', 'Each new song sets the sketch palette from its album cover', () => { setLiveOpt({ followCover: !o.followCover }); if (!o.followCover && np?.cover) coverTo('palette'); }, o.followCover],
       ]);
     }
+    async function inputMenu(anchor) {
+      const r = anchor.getBoundingClientRect();
+      let devs = [];
+      try { devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput'); } catch { /* none */ }
+      const cur = liveIo().device;
+      popup(r.left, r.bottom + 4, ['Microphone / line-in', ['Default input', 'What the system uses', () => setLiveIo({ device: '' }), !cur],
+        ...devs.filter((d) => d.deviceId && d.deviceId !== 'default').map((d, k) => [d.label || `Input ${k + 1}`, d.label ? '' : 'names show after the first capture', () => setLiveIo({ device: d.deviceId }), d.deviceId === cur])]);
+    }
     async function setLive(kind) {
       if (!kind) { liveKind = null; hubLiveStop(); box.send({ type: 'live-stop' }); paintLive(); trigPanel?.refreshSense(); return; }
       liveKind = kind; liveBpm = null;
+      store.set('three.lastLive', kind);
       if (player.playing) player.toggle(false); // the song would play over it
       sendLiveGain();
       const ok = await window.hub.liveStart(kind);
@@ -370,7 +511,7 @@ const ThreeLab = (() => {
     const fpsSel = el('select', { class: 'fps-sel', title: 'Preview frame rate: lower = lighter on the GPU and steadier recordings', dataset: { feature: 'Preview fps' } },
       [['0', 'Max fps'], ['60', '60 fps'], ['30', '30 fps']].map(([v, l]) => el('option', { value: v, text: l, selected: v === String(store.get('three.fpsCap', 0)) })));
     fpsSel.addEventListener('change', () => { store.set('three.fpsCap', Number(fpsSel.value)); box.send({ type: 'fps-cap', value: Number(fpsSel.value) }); });
-    const stageBtn = btn('🖥 Stage', 'Run the sketch in its own window: steady, smooth frames for recording or a second monitor (F11 there for fullscreen). The preview here sleeps meanwhile.', () => setStage(!box.onStage));
+    const stageBtn = btn('🖥', 'Stage window: run the sketch in its own window, steady, smooth frames for recording or a second monitor (F11 there for fullscreen). The preview here sleeps meanwhile.', () => setStage(!box.onStage));
     stageBtn.dataset.feature = 'Stage window';
     const stageNote = el('div', { class: 'stage-note', hidden: true },
       el('b', { text: '🖥 Playing in the Stage window' }),
@@ -390,8 +531,9 @@ const ThreeLab = (() => {
     let editOn = false;
     let editSel = null;
     const editUndo = [];
-    const editBtn = btn('✥ Edit scene', 'Move around the selected layer\'s 3D scene and drag objects into place (move / rotate / scale). Placements are kept with the layer. E', () => setEdit(!editOn));
+    const editBtn = btn('✥ Edit', 'Move around the selected layer\'s 3D scene and drag objects into place (move / rotate / scale). Placements are kept with the layer. E', () => setEdit(!editOn));
     editBtn.dataset.feature = 'Edit scene';
+    editBtn.dataset.key = 'E';
     const modeBtns = [['translate', 'Move', 'W'], ['rotate', 'Rotate', 'E'], ['scale', 'Scale', 'R']].map(([m, label, k]) => btn(label, `${label} (${k} in the preview)`, () => { box.send({ type: 'edit', cmd: 'mode', value: m }); paintMode(m); }, 'ghost small ed-mode'));
     const spaceBtn = btn('World', 'Gizmo axes: world or the object\'s own (Q in the preview)', () => { const v = spaceBtn.textContent === 'World' ? 'local' : 'world'; box.send({ type: 'edit', cmd: 'space', value: v }); spaceBtn.textContent = v === 'world' ? 'World' : 'Local'; });
     const snapBtn = btn('Snap', 'Snap: 0.25 units, 15°, 0.1 scale', () => { snapBtn.classList.toggle('on'); box.send({ type: 'edit', cmd: 'snap', value: snapBtn.classList.contains('on') }); });
@@ -487,8 +629,17 @@ const ThreeLab = (() => {
       pane.focus();
       previewHost.requestFullscreen().catch((err) => toast(`Couldn't go fullscreen: ${err.message}`, { type: 'error' }));
     }
+    // keys that only mean something while presenting: I info, PgUp / PgDn sketches, F / \\ freeze
+    function presentKeys(e) {
+      if (document.fullscreenElement !== previewHost || e.ctrlKey || e.altKey || e.metaKey) return false;
+      if (e.key.toLowerCase() === 'i') { setHud(presentHud.hidden); return true; }
+      if (e.key === 'PageDown' || e.key === 'PageUp') { stepSketch(e.key === 'PageDown' ? 1 : -1); return true; }
+      if (e.key.toLowerCase() === 'f' || e.key === '\\') { setFreeze(!frozenNow); return true; }
+      return false;
+    }
     document.addEventListener('fullscreenchange', () => {
       const on = document.fullscreenElement === previewHost;
+      if (on && store.get('three.presentHud', false)) setHud(true); else if (!on) { clearInterval(hudTimer); presentHud.hidden = true; }
       presentBtn.classList.toggle('on', on);
       previewHost.classList.toggle('presenting', on);
       box.send({ type: 'present', on });
@@ -498,6 +649,7 @@ const ThreeLab = (() => {
     document.addEventListener('keydown', (e) => {
       if (document.fullscreenElement !== previewHost || pane.contains(e.target)) return;
       if (!e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'p') { e.preventDefault(); togglePresent(); return; }
+      if (presentKeys(e)) { e.preventDefault(); return; }
       if (player.onKey(e)) e.preventDefault();
     });
     toolbar.prepend(codeBtn, slidersBtn, consoleBtn, focusBtn, presentBtn);
@@ -1120,7 +1272,7 @@ const ThreeLab = (() => {
     }
     const refsBtn = btn('🖼 References', 'Images, videos, 3D models, sounds and data for this sketch. The Three Director can see and use them; you can also drop files in its chat.', () => openRefs());
     refsBtn.dataset.feature = 'References';
-    function renderRefsBtn() { const n = refsOf().length; refsBtn.textContent = n ? `🖼 References ${n}` : '🖼 References'; }
+    function renderRefsBtn() { const n = refsOf().length; refsBtn.textContent = n ? `🖼 ${n}` : '🖼'; refsBtn.title = `References${n ? ` (${n})` : ''}: images, videos, 3D models, sounds and data for this sketch. The Three Director can see and use them; you can also drop files in its chat.`; }
     let refsDlg = null; let refsGrid = null;
     function openRefs() {
       refsDlg?.remove();
@@ -1304,6 +1456,8 @@ const ThreeLab = (() => {
           writing: () => writing(),
         },
         touched: (key, label) => midiTouched(id, key, label),
+        learn: async (key, label) => { if (!(await midiInit())) return; midiLearn = { stage: 'control', layer: id, key, label }; toast(`Turn the knob or fader for "${label}"`, { timeout: 4000 }); },
+        clock: () => ({ t: player.loaded ? player.time : performance.now() / 1000, bpm: player.loaded ? player.bpm : (liveBpm?.bpm || 120), playing: player.playing, section: player.loaded ? player.sectionAt().energy : null }),
         askForSliders: () => askDirector(`Add clearly named sliders to the layer "${layerById(id)?.name}" of "${current?.name}" with tweak(): the 4–8 settings I'd most want to play with (motion, colors, lighting, glow, how much it reacts to the music…), with labels, groups and hints, read every frame so they change live. Keep everything else the same.`, { send: false }),
       });
       c.setVisible(!column.hidden);
@@ -1458,6 +1612,7 @@ const ThreeLab = (() => {
         }
       },
       lookChoices: () => layersOf().map((L) => ({ layer: L.id, layerName: L.name, names: ctlFor(L).looksApi.list() })),
+      frame: { get: () => stage?.size, set: (id) => stage?.setMode(id) },
     });
     function assignMedia(path) {
       if (!current) return;
@@ -1497,7 +1652,7 @@ const ThreeLab = (() => {
     let stage = null;
     const box = sandboxFrame(previewHost, 'sketch', onMessage, () => stage?.params || '');
     box.onStageClosed = () => { stageBtn.classList.remove('on'); stageNote.hidden = true; previewHost.classList.remove('on-stage'); run(); };
-    queueMicrotask(() => stage?.pill?.prepend(freezeBtn, guidesBtn));
+    queueMicrotask(() => { stage?.pill?.prepend(freezeBtn, compareBtn); stage?.pill?.append(stillBtn, previewMoreBtn); });
     stage = ThreeMedia.stage(previewHost, box.frame, { onChange: ({ id, reload }) => {
       if (current) { (extras[current.id] ||= {}).frame = id; saveExtras(); }
       if (reload && current) run();
@@ -1549,11 +1704,96 @@ const ThreeLab = (() => {
       stageTop: async () => { const on = await window.hub.stageOnTop?.(); toast(on == null ? 'Open the Stage window first' : on ? 'Stage window stays on top' : 'Stage window: normal', { timeout: 1500 }); },
     };
     api.restartVisible = () => { if (!box.onStage && !previewHost.offsetParent) return false; restartSim(); return true; };
+    // ---------- everything the chat commands drive (tools/three-cmds.js); each returns a short result ----------
+    const ctl = () => { const c = selCtl(); if (!c) throw new Error('No sketch is open'); if (!c.visible) setSlidersVisible(true); return c; };
+    const needSong = () => { if (!player.loaded) throw new Error('Load a song first (🎵 in the timeline, or drop one on the preview)'); };
+    api.cmd = {
+      get state() { return { sketch: current?.name, layer: sel()?.name, frame: stage.size, frozen: frozenNow, live: liveKind, song: player.loaded ? player.info().file : null, bpm: player.loaded ? player.bpm : liveBpm?.bpm ?? null, playing: player.playing, presenting: document.fullscreenElement === previewHost }; },
+      run: () => run(), restart: () => restartSim(),
+      // sliders
+      save: () => { const c = ctl(); const n = c.dirty(); c.save(); return n; },
+      saveLook: (name) => (name ? ctl().looksApi.save(name) && name : ctl().quickLook()),
+      look: (name) => ctl().looksApi.apply(name), looks: () => ctl().looksApi.list(), deleteLook: (name) => ctl().looksApi.remove(name),
+      shuffle: (o) => ctl().shuffle(o), shuffleStep: (d) => ctl().shuffleStep(d), shuffleInfo: () => ctl().shuffleInfo, setShuffle: (o) => ctl().setShuffle(o),
+      groups: () => ctl().groups(), showGroup: (g) => ctl().showGroup(g), find: (q) => ctl().find(q),
+      slot: (n, action = 'recall') => { const c = ctl(); if (action === 'save') return c.slotSave(n); if (action === 'clear') return c.slotClear(n); return c.slotRecall(n); }, slots: () => ctl().slots,
+      morph: (t, pair) => ctl().morph(t, pair),
+      resetSliders: () => ctl().reset(), undoSliders: () => ctl().undo(),
+      copySliders: () => ctl().copyValues(), pasteSliders: (text) => ctl().pasteValues(text),
+      resolve: (q) => ctl().resolve(q),
+      setSlider: (q, v) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(`No slider "${q}". Sliders: ${c.controls().map((x) => x.label).join(', ') || 'none'}`); const done = c.setMany({ [hit.key]: v }); return done.length ? hit : null; },
+      knob: (q, u) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(`No slider "${q}"`); return { ...hit, value: c.setNormalized(hit.key, u, { release: true }) }; },
+      lock: (q, on) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(`No slider "${q}"`); c.lock(hit.key, on); return hit; },
+      fav: (q, on) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(`No slider "${q}"`); c.fav(hit.key, on); return hit; },
+      motion: (q, mo) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(`No slider "${q}"`); if (!c.setMotion(hit.key, mo)) throw new Error(`"${hit.label}" isn't a number slider`); return hit; },
+      follow: (q, band, amount) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(`No slider "${q}"`); if (!c.bind(hit.key, band, amount)) throw new Error(`"${hit.label}" isn't a number slider`); return hit; },
+      learn: (q) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(`No slider "${q}"`); midiInit().then((ok) => { if (ok) { midiLearn = { stage: 'control', layer: sel().id, key: hit.key, label: hit.label }; toast(`Turn a knob for "${hit.label}"`, { timeout: 4000 }); } }); return hit; },
+      sliders: () => ctl().controls(),
+      searchSliders: () => { setSlidersVisible(true); selCtl()?.focusSearch(); },
+      // preview
+      size: (id) => { if (!ThreeMedia.SIZES.some((z) => z.id === id)) throw new Error(`Sizes: ${ThreeMedia.SIZES.map((z) => z.id).join(', ')}`); stage.setMode(id); return stage.size; },
+      freeze: (on) => { setFreeze(on ?? !frozenNow); return frozenNow; }, step: () => { if (!frozenNow) setFreeze(true); box.send({ type: 'step' }); },
+      compare: (mode) => (mode === 'pin' ? pinFrame() : setCompare(mode)),
+      still: (o) => still(o || {}), safe: (on, plat) => stage.setSafe(on, plat), guides: () => { cycleGuides(); return guides || 'off'; },
+      present: () => togglePresent(), focus: () => setFocus(!focusOn), stage: () => setStage(!box.onStage),
+      fps: (v) => { fpsSel.value = String(v); fpsSel.dispatchEvent(new Event('change')); return v; },
+      // view
+      code: (on) => setCodeVisible(on ?? split.classList.contains('no-code')), panel: (on) => setSlidersVisible(on ?? column.hidden),
+      console: (what) => { if (what === 'clear') { consoleBox.replaceChildren(); consoleLines = []; return 'cleared'; } if (what === 'copy') { const t = consoleLines.map((l) => `${l.layer ? `[${l.layer}] ` : ''}${l.line ? `line ${l.line}: ` : ''}${l.text}`).join('\n'); navigator.clipboard.writeText(t); return t; } consolePeek = what === 'show' ? true : what === 'hide' ? false : !consoleShown(); syncConsole(); return consoleLines.slice(-12); },
+      edit: (on) => setEdit(on ?? !editOn), keys: () => labKeys(),
+      // sketches
+      sketches: () => [...sketches].sort((a, b) => b.updatedAt - a.updatedAt).map((x) => ({ id: x.id, name: x.name, layers: x.layers?.length || 1, current: x.id === current?.id })),
+      openSketch: (q) => { const n = String(q || '').toLowerCase(); const hit = sketches.find((x) => x.name.toLowerCase() === n) || sketches.find((x) => x.name.toLowerCase().includes(n)); if (!hit) return null; if (hit.id !== current?.id) openSketch(hit.id); return hit.name; },
+      browse: () => browseSketches(), newSketch: (tpl) => { if (!tpl) { templateGallery(); return null; } const t = ThreeData.TEMPLATES.find((x) => x.name.toLowerCase().includes(String(tpl).toLowerCase())); if (!t) return null; create(t.name, t.code); return t.name; },
+      templates: () => ThreeData.TEMPLATES.map((t) => t.name), duplicate: () => duplicate(), rename: (n) => { if (!current || !n) return null; current.name = n; save(); renderPicker(); return n; },
+      // layers
+      layers: () => layersOf().map((L) => ({ name: L.name, visible: L.visible !== false, selected: L.id === selId })).reverse(),
+      selectLayer: (q) => { const L = findLayer(q); if (!L) return null; selectLayer(L.id); return L.name; },
+      showLayer: (q, on) => { const L = findLayer(q); if (!L) return null; editLayer(L.id, { visible: on ?? L.visible === false }); return L.name; },
+      solo: (q) => { const L = q ? findLayer(q) : null; setSolo(L && soloId !== L.id ? L.id : null); return L?.name || null; },
+      // music
+      live: async (kind) => { if (kind === 'off') { await setLive(null); return 'off'; } await setLive(kind || (liveKind ? null : store.get('three.lastLive', 'system'))); return liveKind || 'off'; },
+      liveIo: (patch) => (patch ? setLiveIo(patch) : liveIo()),
+      tap: () => player.tap(), tapOne: () => { needSong(); return player.tapOne(); },
+      bpm: (v) => { needSong(); if (v === 'auto') { player.clearGrid(); return player.bpm; } if (v === 'x2' || v === 'double') return player.scaleBpm(2); if (v === 'half') return player.scaleBpm(0.5); if (v === 'one') { player.oneHere(); return player.bpm; } if (!player.setBpm(Number(v))) throw new Error('A tempo between 20 and 400'); return player.bpm; },
+      nudgeGrid: (ms) => { needSong(); return player.nudgeGrid(ms); },
+      marker: (lane) => { needSong(); player.tapLane(lane); return lane; },
+      fill: (kind) => { needSong(); return player.fill(kind); }, clearMarks: (lane) => { needSong(); return player.clearMarks(lane); },
+      quantize: (on) => player.setQuantize(on ?? !player.quantize), snap: (m) => { if (!player.setSnap(m)) throw new Error(`Snap: ${player.snaps.join(', ')}`); return m; },
+      loop: (a, b) => { needSong(); if (a == null) { player.setLoop(null); return null; } if (!player.setLoop(a, b)) throw new Error('The loop is locked'); player.setLoopOn(true); return player.loop; },
+      loopBar: () => { needSong(); player.loopBar(); return player.loop; },
+      loopBars: (n) => { needSong(); return player.loopBars(n); },
+      sections: () => { needSong(); return player.autoSections(); }, cue: (name) => { needSong(); return player.addCue(player.time, name || undefined); },
+      cues: () => player.cues,
+      gridView: (patch) => player.setGridView(patch || {}),
+      play: (on) => { needSong(); player.toggle(on); }, seek: (t) => { needSong(); player.seek(t); return player.time; }, speed: (r) => { player.setRate(r); return player.rate; },
+      mute: () => player.toggleMute(), music: () => player.pick(),
+      loadSong: async (path) => { const r = await player.load(path); if (r.ok) assignMedia(path); return r; }, zoom: (a, b) => player.setView(a, b),
+      record: (kind, o) => player.record(kind, o),
+      trigPreset: (name) => applyTrigPreset(name), trigPresets: () => [...Object.keys(trigPresets()), ...store.get('three.trigPresets', []).map((x) => x.name)],
+      autoBars: () => autoBars(), triggers: (on) => toggleTriggers(on ?? !trigPanel),
+      // assets
+      palette: (text) => { if (!text) return current?.palette || []; const cols = parseColors(text); if (cols.length < 2) throw new Error('No colors found: give a coolors.co link or hex codes'); setPalette(cols); return cols; },
+      recolor: () => recolor(), refs: () => openRefs(), note: (text) => takeNote(text ? { text } : {}), sheet: () => showSheet(),
+      tools: (id) => { tabs?.show(id || "sketch"); return id || "sketch"; },
+    };
     pane.addEventListener('keydown', (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
-      if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && /^[nfpw]$/i.test(e.key) && !e.repeat) Usage.key(e.key.toUpperCase(), 'Lab');
-      if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'n') { e.preventDefault(); takeNote(); return; }
-      if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'f') { e.preventDefault(); setFocus(!focusOn); return; }
+      const plain = !typing && !e.ctrlKey && !e.altKey && !e.metaKey;
+      if (plain && /^[nfpwrob`|/]$/i.test(e.key) && !e.repeat) Usage.key(`${e.shiftKey && /[a-z]/i.test(e.key) ? 'Shift+' : ''}${e.key.toUpperCase()}`, 'Lab');
+      if (plain && presentKeys(e)) { e.preventDefault(); return; }
+      if (plain && e.key.toLowerCase() === 'n') { e.preventDefault(); takeNote(); return; }
+      // F freezes the picture (you freeze a lot, Focus was never used: it moved to Shift+F)
+      if (plain && e.key.toLowerCase() === 'f') { e.preventDefault(); if (e.shiftKey) setFocus(!focusOn); else setFreeze(!frozenNow); return; }
+      // R shuffles the selected layer's sliders, Shift+R steps back through the shuffles
+      if (plain && e.key.toLowerCase() === 'r' && !editOn) { e.preventDefault(); const c = selCtl(); if (!c) return; if (!c.visible) setSlidersVisible(true); if (e.shiftKey) c.shuffleStep(-1); else c.shuffle(); return; }
+      // Shift+1…5: Fit, 9:16, 16:9, 4:5, 1:1 (the sizes you switch between)
+      if (plain && e.shiftKey && /^Digit[1-5]$/.test(e.code)) { e.preventDefault(); stage.setMode(stage.pillOrder[Number(e.code.slice(5)) - 1]); Usage.key(`Shift+${e.code.slice(5)}`, 'Lab frame size'); return; }
+      if (plain && e.key.toLowerCase() === 'o') { e.preventDefault(); browseSketches(); return; }
+      if (plain && e.key === '`') { e.preventDefault(); consolePeek = !consoleShown(); syncConsole(); return; }
+      if (plain && e.key === '/') { e.preventDefault(); setSlidersVisible(true); selCtl()?.focusSearch(); return; }
+      if (plain && e.key === '|') { e.preventDefault(); pinFrame(); return; }
+      if (plain && e.shiftKey && e.key.toLowerCase() === 'l') { e.preventDefault(); setLive(liveKind ? null : store.get('three.lastLive', /Mac/.test(navigator.platform) ? 'mic' : 'system')); return; }
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'p') { e.preventDefault(); togglePresent(); return; }
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'w') { e.preventDefault(); setWrite(!writeArmed); return; }
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'e') { e.preventDefault(); setEdit(!editOn); return; }
@@ -1772,13 +2012,98 @@ const ThreeLab = (() => {
     guidesBtn.classList.toggle('on', Boolean(guides));
     // ❚❚ freeze: hold the picture (the music and the timeline go on); . steps one frame while frozen
     let frozenNow = false;
-    const freezeBtn = el('button', { class: 'stage-btn freeze-btn', text: '❚❚', title: 'Freeze the picture (\\) · while frozen, . steps one frame', on: { click: () => setFreeze(!frozenNow) } });
+    const freezeBtn = el('button', { class: 'stage-btn freeze-btn', text: '❚❚ Freeze', title: 'Freeze the picture (F or \\) · while frozen, . steps one frame · | pins this frame to compare with what comes next', dataset: { feature: 'Freeze', key: 'F' }, on: { click: () => setFreeze(!frozenNow) } });
     function setFreeze(on) {
       frozenNow = on;
       box.send({ type: 'freeze', on });
-      freezeBtn.textContent = on ? '▶' : '❚❚';
+      freezeBtn.textContent = on ? '▶ Frozen' : '❚❚ Freeze';
       freezeBtn.classList.toggle('on', on);
       previewHost.classList.toggle('frozen', on);
+    }
+    // ◐ Compare: pin a frame (|), then see it over the live picture as an onion skin, or a wipe you drag across.
+    // Freeze, pin, unfreeze, move a slider: before and after side by side.
+    let pinned = null; // { url, mode: 'onion' | 'wipe', opacity, split }
+    const onionImg = el('img', { class: 'lab-onion-img', alt: '' });
+    const wipeBar = el('div', { class: 'lab-wipe-bar', title: 'Drag to move the wipe' });
+    const onion = el('div', { class: 'lab-onion', hidden: true }, onionImg, wipeBar);
+    const compareBtn = el('button', { class: 'stage-btn', text: '◐', title: 'Compare: pin this frame (|) and see it over the live picture · click again: onion skin → wipe → off · right-click: options', dataset: { feature: 'Compare frame', key: '|' }, on: { click: () => cycleCompare() } });
+    compareBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); compareMenu(e.clientX, e.clientY); });
+    previewHost.append(onion);
+    function placeOnion() { if (!pinned) return; const r0 = stage.rect; Object.assign(onion.style, { left: `${r0.left}px`, top: `${r0.top}px`, width: `${r0.width}px`, height: `${r0.height}px` }); paintOnion(); }
+    function paintOnion() {
+      onion.hidden = !pinned;
+      compareBtn.classList.toggle('on', Boolean(pinned));
+      compareBtn.textContent = pinned ? (pinned.mode === 'wipe' ? '◐ Wipe' : '◐ Onion') : '◐';
+      if (!pinned) return;
+      onion.dataset.mode = pinned.mode;
+      onionImg.style.opacity = pinned.mode === 'wipe' ? 1 : pinned.opacity;
+      onionImg.style.clipPath = pinned.mode === 'wipe' ? `inset(0 ${100 - pinned.split * 100}% 0 0)` : 'none';
+      wipeBar.style.left = `${pinned.split * 100}%`;
+      wipeBar.hidden = pinned.mode !== 'wipe';
+    }
+    new ResizeObserver(() => placeOnion()).observe(previewHost);
+    async function pinFrame({ mode } = {}) {
+      const url = await director.shot();
+      if (!url) { toast('Nothing is rendering to pin', { type: 'error' }); return false; }
+      pinned = { url, mode: mode || pinned?.mode || 'onion', opacity: pinned?.opacity ?? 0.5, split: pinned?.split ?? 0.5 };
+      onionImg.src = url;
+      placeOnion();
+      toast('Frame pinned: change something and compare · ◐ onion → wipe → off', { timeout: 2200 });
+      return true;
+    }
+    function setCompare(mode) {
+      if (mode === 'off' || !mode) { pinned = null; paintOnion(); return 'off'; }
+      if (!pinned) { pinFrame({ mode }); return mode; }
+      pinned.mode = mode; paintOnion(); return mode;
+    }
+    function cycleCompare() { if (!pinned) pinFrame(); else setCompare(pinned.mode === 'onion' ? 'wipe' : 'off'); }
+    function compareMenu(x, y) {
+      ThreeTweaks.menu(x, y, ['Compare with a pinned frame',
+        ['Pin this frame', '| · replaces the pinned one', () => pinFrame()],
+        ['Onion skin', 'The pinned frame over the live picture, see-through', () => setCompare('onion'), pinned?.mode === 'onion'],
+        ['Wipe', 'Pinned on the left, live on the right: drag the line', () => setCompare('wipe'), pinned?.mode === 'wipe'],
+        ...(pinned?.mode === 'onion' ? [0.25, 0.5, 0.75].map((o) => [`${Math.round(o * 100)}% see-through`, '', () => { pinned.opacity = o; paintOnion(); }, pinned.opacity === o]) : []),
+        pinned ? ['Save the pinned frame…', '', () => saveDataUrl(pinned.url, `${current?.name || 'sketch'} pinned.png`)] : null,
+        pinned ? ['Off', '', () => setCompare('off')] : null]);
+    }
+    wipeBar.addEventListener('pointerdown', (e) => {
+      wipeBar.setPointerCapture(e.pointerId);
+      const move = (ev) => { const r0 = onion.getBoundingClientRect(); pinned.split = Math.max(0, Math.min(1, (ev.clientX - r0.left) / r0.width)); paintOnion(); };
+      wipeBar.addEventListener('pointermove', move);
+      wipeBar.addEventListener('pointerup', () => wipeBar.removeEventListener('pointermove', move), { once: true });
+    });
+    // 📷 Still: the frame at its exact output size (1080×1920…) as a PNG named after the sketch and size.
+    // Shift+click copies it; right-click picks one of the four sizes (the preview switches, shoots, comes back).
+    const stillBtn = el('button', { class: 'stage-btn', text: '📷', title: 'Still: save this frame as a PNG at the exact frame size · Shift+click: copy it · right-click: a still at 9:16 / 16:9 / 4:5 / 1:1', dataset: { feature: 'Still' } });
+    stillBtn.addEventListener('click', (e) => still({ copy: e.shiftKey }));
+    stillBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); ThreeTweaks.menu(e.clientX, e.clientY, ['A still at', ...stage.pillOrder.filter((id) => id !== 'fit').map((id) => [id, ThreeMedia.SIZES.find((z) => z.id === id).title, () => still({ size: id })]), ['Copy this frame', 'To the clipboard', () => still({ copy: true })]]); });
+    async function still({ size = null, copy = false } = {}) {
+      const before = stage.size.id;
+      if (size && size !== before) { stage.setMode(size); await sleep(2200); }
+      const url = await director.shot();
+      if (size && size !== before) stage.setMode(before);
+      if (!url) { toast('Nothing is rendering', { type: 'error' }); return null; }
+      const z = ThreeMedia.SIZES.find((x) => x.id === (size || before));
+      const name = `${current?.name || 'sketch'}${z?.w ? ` ${z.w}x${z.h}` : ''}${player.loaded ? ` ${fmtMs(player.time).replace(/:/g, '-')}` : ''}.png`.replace(/[\\/:*?"<>|]/g, '_');
+      if (copy) {
+        const b = await (await fetch(url)).blob();
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]).then(() => toast('Still copied', { timeout: 1200 }), (err) => toast(`Couldn't copy: ${err.message}`, { type: 'error' }));
+      } else saveDataUrl(url, name);
+      return url;
+    }
+    // the preview's own ⋯: guides, safe zones, stage, fps, present
+    const previewMoreBtn = el('button', { class: 'stage-btn', text: '⋯', title: 'Guides, safe zones, Stage window, frame rate, present', dataset: { feature: 'Preview more' }, on: { click: (e) => { const r0 = e.currentTarget.getBoundingClientRect(); ThreeTweaks.menu(r0.right - 280, r0.bottom + 4, previewMenu()); } } });
+    function previewMenu() {
+      return ['Preview',
+        ['⌗ Composition guides', `Now: ${GUIDES.find(([k]) => k === guides)[1]} · click for the next`, () => cycleGuides(), Boolean(guides), 'Guides'],
+        ['Safe zones', 'Platform buttons / captions / crops for the size', () => stage.setSafe(), stage.safe, 'Safe zones'],
+        ...['tiktok', 'reels', 'shorts'].map((k) => [`· for ${k === 'tiktok' ? 'TikTok' : k === 'reels' ? 'Reels' : 'Shorts'}`, '9:16', () => stage.setSafe(true, k)]),
+        ['◐ Pin this frame to compare', '|', () => pinFrame()],
+        ['📷 Still at the exact size', 'PNG', () => still()],
+        ['▣ Present', 'P', () => togglePresent()],
+        [box.onStage ? '🖥 Back from the Stage window' : '🖥 Stage window', 'Its own window, steady frames', () => setStage(!box.onStage), box.onStage, 'Stage window'],
+        'Frame rate',
+        ...[['0', 'Max fps'], ['60', '60 fps'], ['30', '30 fps']].map(([v, l]) => [l, '', () => { fpsSel.value = v; fpsSel.dispatchEvent(new Event('change')); }, String(store.get('three.fpsCap', 0)) === v, 'Preview fps'])];
     }
     let restartNext = false;
     function restartSim() {
@@ -2081,12 +2406,15 @@ ${code}
       thumbs = await window.hub.kvGet('three-thumbs', {});
       // The toolbar in labeled groups: what you see, the sketch, its code, its assets, capture.
       const group = (cat, ...nodes) => el('span', { class: 'tb-group', dataset: { cat } }, ...nodes);
+      // One row, in the order of your workflow: your sketch and Run, then what you look at, then assets. The
+      // controls you never touched (Focus, snippets, three.js version, the toolbar 📷) are in ⋯ (they still work).
       toolbar.replaceChildren(
-        group('View', codeBtn, slidersBtn, consoleBtn, focusBtn, presentBtn, editBtn, stageBtn, fpsSel),
-        group('Sketch', picker, browseBtn, newBtn, sketchMenuBtn),
-        group('Code', runBtn, restartBtn, liveLabel, snippetSel, version),
-        group('Assets', paletteBox, refsBtn, shotBtn));
-      { const row = player.el.querySelector('.mb-main'); row.querySelector('.mb-g-capture').append(noteBtn, notesBtn, sheetBtn); row.querySelector('.mb-g-live').append(writeBtn, midiBtn); row.querySelector('.tb-group[data-cat="Song"]').append(liveBtn, trigBtn, npBox); for (const n of [notesBtn, sheetBtn, writeBtn, midiBtn]) n.classList.add('mb-adv'); const rec = row.querySelector('.mb-g-live .mb-rec'); if (rec) row.querySelector('.mb-g-capture').prepend(rec); row.querySelector('.mb-g-live').classList.add('mb-adv'); }
+        group('Sketch', picker, browseBtn, newBtn, sketchMenuBtn, runBtn, restartBtn),
+        group('View', slidersBtn, codeBtn, consoleBtn, editBtn, presentBtn),
+        group('Code', liveLabel),
+        el('span', { class: 'spacer' }),
+        group('Assets', paletteBox, refsBtn, stageBtn, labMoreBtn));
+      { const row = player.el.querySelector('.mb-main'); row.querySelector('.mb-g-capture').append(noteBtn, notesBtn, sheetBtn); row.querySelector('.mb-g-live').append(writeBtn, midiBtn); row.querySelector('.tb-group[data-cat="Beat"]').after(el('span', { class: 'tb-group mb-g-sound', dataset: { cat: 'Sound' } }, liveBtn, trigBtn, trigPresetBtn, autoBarsBtn, npBox)); for (const n of [notesBtn, sheetBtn, writeBtn, midiBtn]) n.classList.add('mb-adv'); const rec = row.querySelector('.mb-g-live .mb-rec'); if (rec) { row.querySelector('.mb-g-capture').prepend(rec); rec.classList.add('mb-adv'); } row.querySelector('.mb-g-live').classList.add('mb-adv'); }
       // First run with per-sketch songs: the song that was loaded goes to the sketch that was open.
       const firstId = sketches.some((s) => s.id === store.get('three.current')) ? store.get('three.current') : sketches[0]?.id;
       const lastMedia = store.get('three.media', null);
@@ -2609,19 +2937,43 @@ ${frag}\`,
     })();
   }
 
+  // Secondary tools, one click away in the "Tools" drawer: [id, label, hint, render, icon]
+  const TOOL_TABS = [
+    ['models', 'Model viewer', 'Open a .glb / .fbx / .obj, audit it, copy loader code', modelTab, '🧊'],
+    ['shader', 'Shader playground', 'GLSL fragment shaders with live compile', shaderTab, '✦'],
+    ['textures', 'Textures', 'Sizes, power-of-two, alpha, GPU memory, resize', textureTab, '▦'],
+    ['docs', 'Docs', 'three.js classes, manual, examples, forum', docsTab, '📖'],
+    ['color', 'Color', 'Convert colors (three.js, GLSL, AE), tints, contrast', (p) => Kit.colorTool(p), '🎨'],
+    ['easing', 'Easing', 'Draw a bezier, get CSS / GSAP / three.js / AE code', (p) => Kit.easingTool(p), '〰'],
+  ];
+  function toolsDrawer(anchor) {
+    const r = anchor.getBoundingClientRect();
+    ThreeTweaks.menu(r.left, r.bottom + 4, ['Tools', ['◭ Sketch', 'The Lab (Esc from any tool)', () => tabs.show('sketch'), tabs.current === 'sketch', 'Tools: Sketch'],
+      ...TOOL_TABS.map(([id, label, hint, , icon]) => [`${icon} ${label}`, hint, () => tabs.show(id), tabs.current === id, `Tools: ${label}`])]);
+  }
   Tools.define({
     id: 'three', name: 'Three.js Lab', icon: '◭', color: '#4f8cff',
     description: 'Live sketches, model viewer, shaders, textures and docs',
-    mount(body) {
+    mount(body, head) {
       tabs = Tabs(body, [
         { id: 'sketch', label: 'Sketch', render: sketchTab },
-        { id: 'models', label: 'Model viewer', render: modelTab },
-        { id: 'shader', label: 'Shader playground', render: shaderTab },
-        { id: 'textures', label: 'Textures', render: textureTab },
-        { id: 'docs', label: 'Docs', render: docsTab },
-        { id: 'color', label: 'Color', render: (p) => Kit.colorTool(p) },
-        { id: 'easing', label: 'Easing', render: (p) => Kit.easingTool(p) },
+        ...TOOL_TABS.map(([id, label, , render]) => ({ id, label, render })),
       ], { storeKey: 'three.tab' });
+      // The music-visual workflow is the default path: the Sketch tab is the only one on show. The secondary tools
+      // (model viewer, shaders, textures, docs, color, easing) live in a compact "Tools" drawer, and the tab strip
+      // moves up into the tool header so the Lab gains a whole row.
+      tabs.bar.classList.add('lab-tabs');
+      const toolsBtn = el('button', { class: 'lab-tools-btn', text: '🧰 Tools ▾', title: 'Model viewer, shader playground, textures, docs, color and easing tools', dataset: { feature: 'Tools drawer' }, on: { click: (e) => toolsDrawer(e.currentTarget) } });
+      const back = el('button', { class: 'lab-back', text: '◭ Sketch', title: 'Back to the sketch (Esc)', dataset: { feature: 'Back to sketch' }, on: { click: () => tabs.show('sketch') } });
+      tabs.bar.prepend(back);
+      tabs.bar.append(toolsBtn);
+      const paintTabs = () => { const on = tabs.current; tabs.bar.classList.toggle('on-tool', on !== 'sketch'); toolsBtn.textContent = on !== 'sketch' ? `🧰 ${TOOL_TABS.find((t) => t[0] === on)?.[1] || 'Tools'} ▾` : '🧰 Tools ▾'; };
+      const show0 = tabs.show;
+      tabs.show = (id) => { show0(id); paintTabs(); };
+      for (const b of tabs.bar.querySelectorAll('button[data-id]')) b.addEventListener('click', paintTabs);
+      paintTabs();
+      if (head) { head.classList.add('lab-head'); head.querySelector('.tool-desc')?.after(tabs.bar); }
+      body.addEventListener('keydown', (e) => { if (e.key === 'Escape' && tabs.current !== 'sketch' && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) tabs.show('sketch'); });
     },
     get commands() { return [
       { label: 'New three.js sketch', run: () => { tabs?.show('sketch'); } },
@@ -2817,6 +3169,19 @@ ${frag}\`,
     isReference: (name) => /\.(png|jpe?g|gif|webp|bmp|svg|mp4|webm|mov|m4v|mkv|glb|gltf|obj|fbx|stl|ply|mp3|wav|ogg|m4a|flac|aac|ttf|otf|woff2?|hdr|exr)$/i.test(name),
     openShader(code) { ensureOpen('shader'); setTimeout(() => api.openShader?.(code), 60); },
     restartVisible: () => api.restartVisible?.() ?? false,
+    // The chat commands' way in (tools/three-cmds.js): the Lab, loaded and shown (unless show: false), with its
+    // sketch tab on top; resolves to api.cmd.
+    async cmd({ show = true } = {}) {
+      if (show && H.surfaceIdFor?.(H.activeId) !== 'tool:three') activate('tool:three', { focus: false });
+      if (!tabs) Tools.shown(Tools.get('three'));
+      if (show && tabs?.current !== 'sketch') tabs.show('sketch');
+      for (let i = 0; i < 80 && !(api.cmd && api.director); i += 1) await new Promise((r) => setTimeout(r, 100));
+      if (!api.cmd) throw new Error('The Three.js Lab did not load');
+      return api.cmd;
+    },
+    toolTabs: () => TOOL_TABS.map(([id, label, hint]) => ({ id, label, hint })),
+    peek: () => api.cmd || null, // the commands' completions: only when the Lab is already loaded
+    showTab(id) { ensureOpen(id); },
     // run a Lab action from anywhere (the command palette): opens the Lab first
     async act(name) {
       ensureOpen('sketch');
