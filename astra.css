@@ -94,3 +94,28 @@
 .collab-round > .collab-part { margin: 4px 0 4px 10px; }
 .collab-error { color: #ff8a8a; font-size: 12px; margin-top: 4px; white-space: pre-line; }
 .collab-card .suggest-chips { margin-top: 8px; }
+
+.collab-mode { cursor: pointer; user-select: none; }
+.collab-card.folded { padding-bottom: 6px; }
+.collab-folded { font-size: 12px; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.collab-verdict { margin-top: 8px; border-style: dashed; }
+.collab-diff { font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; max-height: 60vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; padding: 6px 0; }
+.collab-diff > div { padding: 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.collab-diff .dadd { background: color-mix(in srgb, #3fd28b 14%, transparent); }
+.collab-diff .ddel { background: color-mix(in srgb, #ff6b6b 14%, transparent); }
+.collab-diff .dsame { color: var(--muted); }
+.collab-diff-dialog { width: min(860px, 92vw); }
+
+/* ---- agent editor: Astra's file mode sits in the folder row ---- */
+.folder-row select[name="codexFiles"] { width: auto; flex: none; }
+/* two-column rows shrink instead of overflowing when the (now taller) dialog shows its scrollbar */
+#agent-form .grid2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+#agent-form .grid2 > label > input:not([type=checkbox]), #agent-form .grid2 > label > select { min-width: 0; width: 100%; box-sizing: border-box; }
+#agent-form .folder-row > input { min-width: 0; }
+
+/* ---- rail: a small star on agents that run on the Astra (Codex) engine ---- */
+.agent-btn.astra-btn { position: relative; }
+.agent-btn.astra-btn::before {
+  content: '✦'; position: absolute; left: 3px; top: 1px; font-size: 9px; line-height: 1; color: var(--astra);
+  text-shadow: 0 0 5px var(--astra-glow); pointer-events: none;
+}

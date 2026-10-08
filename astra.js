@@ -69,22 +69,24 @@ const Astra = (() => {
     return natives().find((a) => a.id.toLowerCase() === w) || natives().find((a) => a.name.toLowerCase() === w)
       || natives().find((a) => a.name.toLowerCase().startsWith(w)) || null;
   }
-  // A seat: "astra", "astra:gpt-6-luna", "claude@skeptic", "astra:gpt-6-sol@coder", or a bare persona ("skeptic").
+  // A seat: "astra", "astra:gpt-6-luna", "claude@skeptic", "astra:gpt-6-sol@coder", "astra~low" (effort), or a bare persona ("skeptic").
   function parseSeat(word, hostId, i = 0) {
-    const m = String(word).trim().match(/^([^:@]+)?(?::([^@]+))?(?:@(.+))?$/);
+    const m = String(word).trim().match(/^([^:@~]+)?(?::([^@~]+))?(?:@([^~]+))?(?:~(\w+))?$/);
     if (!m) return null;
     let agent = findAgent(m[1], hostId);
     let persona = m[3] ? m[3].toLowerCase() : null;
     if (!agent && m[1] && PERSONAS[m[1].toLowerCase()]) { persona = m[1].toLowerCase(); agent = i % 2 ? astra() : claude(); }
     if (!agent) return null;
-    return seatOf(agent, { model: m[2] || null, persona });
+    const effort = m[4] && (EFFORTS[agent.engine] || []).includes(m[4].toLowerCase()) ? m[4].toLowerCase() : null;
+    return seatOf(agent, { model: m[2] || null, persona, effort });
   }
-  function seatOf(agent, { model = null, persona = null } = {}) {
+  function seatOf(agent, { model = null, persona = null, effort = null } = {}) {
     const p = persona && PERSONAS[persona];
     return {
+      ...(effort ? { effort } : {}),
       agentId: agent.id, name: agent.name, engine: agent.engine, color: agent.color || (agent.engine === 'codex' ? '#10a37f' : '#d97757'),
       model: model || null, persona: persona || null,
-      label: `${agent.name}${model ? ` · ${model}` : ''}${p ? ` (${p.label})` : persona ? ` (${persona})` : ''}`,
+      label: `${agent.name}${model ? ` · ${model}` : ''}${effort ? ` ~${effort}` : ''}${p ? ` (${p.label})` : persona ? ` (${persona})` : ''}`,
     };
   }
   const personaText = (agent, key) => {
@@ -114,7 +116,7 @@ const Astra = (() => {
         if (done && ev.usage) document.dispatchEvent(new CustomEvent('hearth:usage', { detail: { agentId: seat.agentId, usage: ev.usage, source: 'collab' } }));
         resolve({ ok: done, stopped: ev.type === 'stopped', text: done ? (ev.text || out) : out, usage: ev.usage || null, error: ev.message || null, needsLogin: ev.needsLogin, session: ev.session || session, ms: Date.now() - started });
       });
-      const options = { lean: true, images, model: seat.model || undefined, persona: seat.persona ? personaText(agent, seat.persona) : undefined };
+      const options = { lean: true, images, model: seat.model || undefined, effort: seat.effort || undefined, persona: seat.persona ? personaText(agent, seat.persona) : undefined };
       window.hub.send({ agentId: seat.agentId, chatId: id, session, text, options })
         .catch((err) => runs.get(id)?.({ type: 'error', message: err.message }));
     });
@@ -163,6 +165,7 @@ const Astra = (() => {
     return part;
   }
   const ok = (part) => part?.status === 'done';
+  const seatKey = (s) => [s.agentId, s.model || '', s.persona || '', s.effort || ''].join('|');
   const answerOf = (part) => String(part?.text || '').replace(/\n+Changes:[^\n]*$/i, '').trim();
 
   // Starts a collaboration in the host chat: the task as your message, then the card.
@@ -175,6 +178,10 @@ const Astra = (() => {
     const m = { role: 'collab', id: `c${at.toString(36)}`, mode, task, seats, rounds, judge, parts: [], status: 'running', at, text: '' };
     chat.messages.push(m);
     const L = { m, chat, hostId, runIds: new Set(), stopped: false, sessions: [], images };
+    // A duo / compare in a chat that had one with the same seats continues those engine sessions, so both
+    // remember the earlier duo turns (and later turns send only the new message).
+    if ((mode === 'duo' || mode === 'compare') && chat.duoSessions) L.sessions = seats.map((s) => chat.duoSessions[seatKey(s)] || undefined);
+    m.continued = L.sessions.some((x) => x?.id) || undefined;
     live.set(m.id, L);
     lastCollab.set(hostId, { mode, task, seats, rounds, judge });
     save(L);
@@ -195,6 +202,10 @@ const Astra = (() => {
     m.ms = Date.now() - m.at;
     // engine sessions are kept so a later merge resumes the judge (it already knows its own answer)
     m.sessions = L.sessions.map((s) => (s?.id ? { id: s.id, ...(s.totals ? { totals: s.totals } : {}) } : null));
+    if (m.mode === 'duo' || m.mode === 'compare') {
+      L.chat.duoSessions ||= {};
+      m.seats.forEach((s, i) => { if (m.sessions[i]) L.chat.duoSessions[seatKey(s)] = m.sessions[i]; });
+    }
     m.text = collabText(m);
     const fin = m.final != null ? m.parts[m.final] : null;
     if (fin?.suggest) m.suggest = fin.suggest;
@@ -203,7 +214,10 @@ const Astra = (() => {
     save(L);
     Native.refresh(L.hostId, { keepScroll: true });
     const t = totals(m);
-    if (m.status === 'done') toast(`${MODES[m.mode].label} finished · ${fmt(t.all.input + t.all.output)} tokens`, { timeout: 2500 });
+    if (m.status === 'done') {
+      toast(`${MODES[m.mode].label} finished · ${fmt(t.all.input + t.all.output)} tokens`, { timeout: 2500 });
+      AppUI.replyFinished?.(L.hostId, L.chat.id, m.text); // unread dot / notification when you're elsewhere
+    }
   }
 
   // ----- the modes -----
@@ -311,7 +325,7 @@ const Astra = (() => {
     finishCollab(L);
   }
   function latestBySeat(m) {
-    return m.seats.map((_, i) => [...m.parts].reverse().find((p) => p.seat === i && p.kind !== 'final' && p.kind !== 'critique')).filter(Boolean);
+    return m.seats.map((_, i) => [...m.parts].reverse().find((p) => p.seat === i && !['final', 'critique', 'verdict'].includes(p.kind))).filter(Boolean);
   }
   function stop(id) {
     const L = live.get(id);
@@ -351,7 +365,7 @@ const Astra = (() => {
   }
 
   // ---------- the card ----------
-  const KIND = { answer: 'answered', draft: 'drafted', improve: 'improved', critique: 'reviewed', revision: 'revised', rebuttal: 'replied', final: 'final answer' };
+  const KIND = { answer: 'answered', draft: 'drafted', improve: 'improved', critique: 'reviewed', revision: 'revised', rebuttal: 'replied', final: 'final answer', verdict: 'judged' };
   function partEl(m, p, { compact = false } = {}) {
     const s = m.seats[p.seat] || {};
     const head = el('div', { class: 'collab-part-head' },
@@ -377,14 +391,21 @@ const Astra = (() => {
     const mode = MODES[m.mode] || { icon: '⚇', label: m.mode };
     const act = (label, title, fn, cls = '') => el('button', { type: 'button', class: `msg-act ${cls}`, text: label, title, on: { click: (e) => { e.stopPropagation(); fn(e); } } });
     const head = el('div', { class: 'collab-head' },
-      el('span', { class: 'collab-mode', text: `${mode.icon} ${mode.label}` }),
+      el('span', { class: 'collab-mode', text: `${m.folded ? '▸' : '▾'} ${mode.icon} ${mode.label}`, title: m.folded ? 'Unfold' : 'Fold this card', on: { click: () => toggleFold(hostId, m) } }),
       el('span', { class: 'collab-task', text: cap(m.task, 90), title: m.task }),
+      m.continued ? el('span', { class: 'hint', text: '↻', title: 'Both continued their earlier duo sessions in this chat (/duo --fresh starts over)' }) : null,
       el('span', { class: 'spacer' }),
       ...m.seats.map((s, i) => el('span', { class: 'collab-seat', attrs: { style: `--seat: ${s.color}` }, title: `${s.label}: ${t.per[i].input.toLocaleString()} in · ${t.per[i].output.toLocaleString()} out · ${t.per[i].turns} turn(s)` },
         el('i', { class: 'collab-dot' }), `${s.name} ${fmt(t.per[i].input + t.per[i].output)}`)),
       el('span', { class: 'collab-total', title: `${t.all.input.toLocaleString()} in · ${t.all.output.toLocaleString()} out${m.ms ? ` · ${(m.ms / 1000).toFixed(1)} s` : ''}`, text: `Σ ${fmt(t.all.input + t.all.output)}` }),
       running ? act('■ Stop', 'Stop this collaboration', () => stop(m.id), 'collab-stop') : act('⋯', 'More', (e) => cardMenu(e, hostId, m)));
-    const card = el('div', { class: `collab-card mode-${m.mode} ${m.status}`, dataset: { cid: m.id, host: hostId || '', index: String(index ?? '') } }, head);
+    const card = el('div', { class: `collab-card mode-${m.mode} ${m.status}${m.folded ? ' folded' : ''}`, dataset: { cid: m.id, host: hostId || '', index: String(index ?? '') } }, head);
+    if (m.folded && !running) {
+      // folded: one line with the kept / final answer's start
+      const fin = m.final != null ? m.parts[m.final] : null;
+      card.append(el('div', { class: 'collab-folded hint', text: fin ? `${m.seats[fin.seat]?.name}: ${cap(answerOf(fin).replace(/\s+/g, ' '), 160)}` : `${latestBySeat(m).filter(ok).length} answers` }));
+      return card;
+    }
     if (m.mode === 'duo' || m.mode === 'compare') {
       const grid = el('div', { class: 'collab-grid', attrs: { style: `--cols: ${Math.min(m.seats.length, 3)}` } });
       for (const p of latestBySeat(m)) {
@@ -396,10 +417,14 @@ const Astra = (() => {
       card.append(grid);
       const merged = m.final != null && m.parts[m.final]?.kind === 'final' ? m.parts[m.final] : [...m.parts].reverse().find((p) => p.kind === 'final' && p.status === 'running');
       if (merged) { const f = partEl(m, merged); f.classList.add('collab-final'); card.append(f); }
+      const verdict = [...m.parts].reverse().find((p) => p.kind === 'verdict');
+      if (verdict) { const v = partEl(m, verdict); v.classList.add('collab-verdict'); card.append(v); }
       if (!running && latestBySeat(m).filter(ok).length >= 2) {
         card.append(el('div', { class: 'collab-actions' },
           act('⧉ Merge both', `${m.seats[judgeSeat({ m, hostId })]?.name || 'The host'} merges the answers into one`, () => merge(hostId, m)),
-          m.seats.length === 2 ? act(`Merge by ${m.seats[1 - judgeSeat({ m, hostId })]?.name}`, 'The other agent writes the merged answer', () => merge(hostId, m, 1 - judgeSeat({ m, hostId }))) : null));
+          m.seats.length === 2 ? act(`Merge by ${m.seats[1 - judgeSeat({ m, hostId })]?.name}`, 'The other agent writes the merged answer', () => merge(hostId, m, 1 - judgeSeat({ m, hostId }))) : null,
+          act('⚖ Judge', 'One of them reads both answers and keeps the better one (short verdict)', () => judgeBest(hostId, m)),
+          m.seats.length === 2 ? act('± Differences', 'Show where the two answers differ, line by line', () => showDiff(m)) : null));
       }
     } else {
       // rounds fold away so the card stays short; the final answer stays visible
@@ -435,11 +460,77 @@ const Astra = (() => {
       { label: 'Run it again', action: () => start(hostId, m.mode, m.task, m.seats, { rounds: m.rounds, judge: m.judge }).catch((err) => toast(err.message, { type: 'error' })) },
       { label: 'Run again, order swapped', action: () => start(hostId, m.mode, m.task, [...m.seats].reverse(), { rounds: m.rounds }).catch((err) => toast(err.message, { type: 'error' })) },
       fin ? { label: 'Copy the final answer', action: () => copyText(answerOf(fin), 'Answer copied') } : null,
+      fin ? { label: 'Put the final answer in the composer', action: () => Native.setDraft(hostId, answerOf(fin)) } : null,
+      ...m.seats.map((s, i) => (latestBySeat(m).some((p) => p.seat === i && p.status === 'error') && !live.has(m.id) ? { label: `Retry ${s.label}`, action: () => retrySeat(hostId, m, i) } : null)),
       { label: 'Copy everything (Markdown)', action: () => copyText(collabMarkdown(m), 'Collaboration copied') },
       { label: 'Token totals', action: () => Modal.alert('Collaboration tokens', totalsText(m)) },
       ...m.seats.filter((s, i, all) => all.findIndex((x) => x.agentId === s.agentId) === i && s.agentId !== hostId)
         .map((s) => ({ label: `Continue with ${s.name}`, action: () => handoff(hostId, s.agentId, { from: m }) })),
     ].filter(Boolean));
+  }
+function toggleFold(hostId, m) {
+    m.folded = !m.folded || undefined;
+    const chat = Native.chatOf(hostId);
+    if (chat) Native.save(chat);
+    paint(m, true);
+  }
+  // The judge (host seat unless chosen) reads both answers, names the better one and why; that one is kept.
+  async function judgeBest(hostId, m, judgeIdx = null) {
+    const chat = Native.chatOf(hostId);
+    const answers = latestBySeat(m).filter(ok);
+    if (!chat || live.has(m.id) || answers.length < 2) return;
+    const L = { m, chat, hostId, runIds: new Set(), stopped: false, sessions: [], images: [] };
+    live.set(m.id, L);
+    m.status = 'running';
+    const j = Number.isInteger(judgeIdx) ? judgeIdx : judgeSeat(L);
+    const list = answers.map((p, i) => `Answer ${i + 1} (${m.seats[p.seat].label}):\n<answer>\n${answerOf(p)}\n</answer>`).join('\n\n');
+    const v = await turn(L, j, 'final', 'verdict', `Request from the user:\n<request>\n${m.task}\n</request>\n\n${list}\n\nWhich answer serves the user better? Be fair to both (one may be yours). Reply with only the number on the first line, then at most 3 short lines on why.`);
+    const n = Number((v.text.match(/\d/) || [])[0]);
+    m.status = L.stopped ? 'stopped' : 'done';
+    finishCollab(L);
+    if (ok(v) && answers[n - 1]) pick(hostId, m, answers[n - 1].seat);
+  }
+  // A small line diff (longest common subsequence) between the two answers.
+  function diffLines(a, b) {
+    const x = a.split('\n'); const y = b.split('\n');
+    if (x.length * y.length > 250000) return null;
+    const dp = Array.from({ length: x.length + 1 }, () => new Uint16Array(y.length + 1));
+    for (let i = x.length - 1; i >= 0; i -= 1) for (let k = y.length - 1; k >= 0; k -= 1) dp[i][k] = x[i] === y[k] ? dp[i + 1][k + 1] + 1 : Math.max(dp[i + 1][k], dp[i][k + 1]);
+    const out = [];
+    let i = 0; let k = 0;
+    while (i < x.length && k < y.length) {
+      if (x[i] === y[k]) { out.push([' ', x[i]]); i += 1; k += 1; } else if (dp[i + 1][k] >= dp[i][k + 1]) { out.push(['-', x[i]]); i += 1; } else { out.push(['+', y[k]]); k += 1; }
+    }
+    while (i < x.length) out.push(['-', x[i++]]);
+    while (k < y.length) out.push(['+', y[k++]]);
+    return out;
+  }
+  function showDiff(m) {
+    const [a, b] = latestBySeat(m).filter(ok);
+    if (!a || !b) return;
+    const d = diffLines(answerOf(a), answerOf(b));
+    if (!d) { toast('Those answers are too long to compare line by line', { type: 'error' }); return; }
+    const same = d.filter(([t]) => t === ' ').length;
+    const box = el('div', { class: 'collab-diff' }, d.map(([t, line]) => el('div', { class: `d${t === '+' ? 'add' : t === '-' ? 'del' : 'same'}`, text: `${t} ${line}` })));
+    const dlg = el('dialog', { class: 'ui-modal collab-diff-dialog' },
+      el('h2', { text: `− ${m.seats[a.seat].label}  ·  + ${m.seats[b.seat].label}` }),
+      el('p', { class: 'hint', text: `${same} line${same === 1 ? '' : 's'} in common, ${d.length - same} different` }), box,
+      el('div', { class: 'dialog-actions' }, el('span', { class: 'spacer' }), el('button', { class: 'primary', text: 'Close', on: { click: () => dlg.close() } })));
+    dlg.addEventListener('close', () => dlg.remove());
+    document.body.append(dlg);
+    dlg.showModal();
+  }
+  // A seat that failed in a duo / compare answers again (the others keep their answers).
+  async function retrySeat(hostId, m, i) {
+    const chat = Native.chatOf(hostId);
+    if (!chat || live.has(m.id)) return;
+    const L = { m, chat, hostId, runIds: new Set(), stopped: false, sessions: [], images: [] };
+    live.set(m.id, L);
+    m.status = 'running';
+    m.parts = m.parts.filter((p) => !(p.seat === i && p.status === 'error'));
+    await turn(L, i, 1, 'answer', m.task);
+    m.status = L.stopped ? 'stopped' : 'done';
+    finishCollab(L);
   }
   function totalsText(m) {
     const t = totals(m);
@@ -572,6 +663,13 @@ const Astra = (() => {
     const seats = [seatOf(host), seatOf(other)];
     return st.swap ? seats.reverse() : seats;
   }
+  // Which seat writes final answers (debate / council / merge) in composer mode: you choose host or partner.
+  function judgeFor(agentId) {
+    const st = getMode(agentId);
+    if (st.judge !== 'partner') return null;
+    const i = seatsFor(agentId).findIndex((s) => s.agentId !== agentId);
+    return i >= 0 ? i : null;
+  }
   function chipMenu(agentId, anchor) {
     const st = getMode(agentId);
     const r = anchor.getBoundingClientRect();
@@ -582,6 +680,7 @@ const Astra = (() => {
       ...Object.entries(MODES).filter(([k]) => k !== 'compare').map(([k, md]) => ({ label: `${st.mode === k ? '✓ ' : ''}${md.icon} ${md.label}: ${md.desc}`, action: () => setMode(agentId, { mode: k }) })),
       { label: `Order: ${seatsFor(agentId).map((s) => s.name).join(' → ')} (swap)`, action: () => setMode(agentId, { swap: !st.swap }) },
       { label: `Rounds: ${st.rounds} (click for ${st.rounds >= 4 ? 1 : st.rounds + 1})`, action: () => setMode(agentId, { rounds: st.rounds >= 4 ? 1 : st.rounds + 1 }) },
+      { label: `Final answer by: ${st.judge === 'partner' ? other?.name : host.name} (switch)`, action: () => setMode(agentId, { judge: st.judge === 'partner' ? 'host' : 'partner' }) },
       { label: `👁 Second opinion from ${other?.name} on the last reply`, action: () => Native.secondOpinion(agentId) },
       { label: `↪ Hand this chat off to ${other?.name}`, action: () => handoff(agentId, other.id).catch((err) => toast(err.message, { type: 'error' })) },
     ];
@@ -596,6 +695,7 @@ const Astra = (() => {
       if (!form) return v;
       const chip = el('button', { type: 'button', class: 'ghost collab-chip', text: '⚇', dataset: { feature: 'Collab chip' } });
       chip.addEventListener('click', (e) => { e.preventDefault(); chipMenu(agentId, chip); });
+      chip.addEventListener('contextmenu', (e) => { e.preventDefault(); Commands.tryRun('/collab-preset', agentId); }); // right-click: ready-made collaborations
       form.querySelector('.attach-btn')?.before(chip);
       chipEls.set(agentId, { chip, root, input: v.input });
       // capture phase on the surface: runs before the composer's own submit handler
@@ -611,7 +711,7 @@ const Astra = (() => {
         v.input.value = '';
         v.input.dispatchEvent(new Event('input'));
         const att = Native.takeAttachments(agentId);
-        start(agentId, st.mode, `${text}${att.full}`, seatsFor(agentId), { rounds: st.rounds, images: att.images }).catch((err) => toast(err.message, { type: 'error' }));
+        start(agentId, st.mode, `${text}${att.full}`, seatsFor(agentId), { rounds: st.rounds, images: att.images, judge: judgeFor(agentId) }).catch((err) => toast(err.message, { type: 'error' }));
       }, true);
       syncChip(agentId);
       return v;
@@ -709,7 +809,7 @@ const Astra = (() => {
     let rest = args.trim();
     let order = null;
     let rounds = null;
-    const dir = rest.match(/^([\w@:.-]+)\s*(?:→|->|>|\bto\b)\s*([\w@:.-]+)\s+/i);
+    const dir = rest.match(/^([\w@:.~-]+?)\s*(?:→|->|>|\bto\b)\s*([\w@:.~-]+)\s+/i);
     if (dir) {
       const a = parseSeat(dir[1], hostId, 0); const b = parseSeat(dir[2], hostId, 1);
       if (a && b) { order = [a, b]; rest = rest.slice(dir[0].length); }
@@ -720,7 +820,9 @@ const Astra = (() => {
   }
   // Optional leading comma list of seats ("claude,astra@skeptic,astra:gpt-6-luna").
   function parseSeats(args, hostId) {
-    const m = args.trim().match(/^([\w@:.-]+(?:,[\w@:.-]+)+)\s+([\s\S]*)$/);
+    const all = args.trim().match(/^all\s+([\s\S]*)$/i); // every chat agent in the rail
+    if (all) return { seats: natives().filter((a) => !a.dock).slice(0, 6).map((a) => seatOf(a)), task: all[1].trim() };
+    const m = args.trim().match(/^([\w@:.~-]+(?:,[\w@:.~-]+)+)\s+([\s\S]*)$/);
     if (!m) return { seats: null, task: args.trim() };
     const seats = m[1].split(',').map((w, i) => parseSeat(w, hostId, i));
     if (seats.some((s) => !s)) return { seats: null, task: args.trim() };
@@ -739,7 +841,11 @@ const Astra = (() => {
 
   R({ name: 'duo', area: 'Collab', args: '[seats] <message>', desc: 'Claude and Astra answer side by side; pick one or merge them',
     complete: (a) => (a ? [] : [{ value: 'claude,astra ', hint: seatHint }]),
-    run: (args, ctx) => { const { seats, task } = parseSeats(args, ctx.agentId); go(ctx, 'duo', task, seats || defaultPair(ctx.agentId)); } });
+    run: (args, ctx) => {
+      if (/(^|\s)--fresh\b/.test(args)) { const c = Native.chatOf(ctx.agentId); if (c) delete c.duoSessions; } // forget earlier duo turns
+      const { seats, task } = parseSeats(stripFlags(args), ctx.agentId);
+      go(ctx, 'duo', task, seats || defaultPair(ctx.agentId));
+    } });
   R({ name: 'relay', area: 'Collab', args: '[a→b] [passes] <task>', desc: 'One drafts, the other improves it (passes alternate)',
     complete: (a) => (a ? [] : [{ value: 'claude→astra 1 ', hint: 'Claude drafts, Astra improves' }, { value: 'astra→claude 2 ', hint: 'Astra drafts, two improvement passes' }]),
     run: (args, ctx) => { const { order, rounds, task } = parseLead(args, ctx.agentId); go(ctx, 'relay', task, order || defaultPair(ctx.agentId), { rounds: rounds || getMode(ctx.agentId).rounds || 1 }); } });
@@ -1012,7 +1118,14 @@ const Astra = (() => {
         chat.session?.totals ? `- Codex thread total so far: ${chat.session.totals.input.toLocaleString()} in (${(chat.session.totals.cached || 0).toLocaleString()} cached) · ${chat.session.totals.output.toLocaleString()} out` : null].filter(Boolean).join('\n');
     } });
   R({ name: 'astra-doctor', aliases: ['doctor'], area: 'Astra', desc: 'Check Codex and Claude: found? version? signed in? with fixes',
-    run: () => doctorReport() });
+    args: '[--run]', complete: () => [{ value: '--run', hint: 'also send Astra a tiny test message (a few tokens)' }],
+    run: async (args) => {
+      const report = await doctorReport();
+      if (!/--run\b/.test(args) || !astra()) return report;
+      const t0 = Date.now();
+      const r = await window.hub.askOnce({ agentId: astra().id, text: 'Reply with just: OK', options: { lean: true, effort: 'minimal', verbosity: 'low' } });
+      return `${report}\n\n**Test message**: ${r.ok ? `✓ \"${cap(clean(r.text), 60)}\" in ${((Date.now() - t0) / 1000).toFixed(1)} s${r.usage ? ` · ${fmt(r.usage.input)} in · ${fmt(r.usage.output)} out` : ''}` : `✗ ${r.error}`}`;
+    } });
   R({ name: 'astra-login', area: 'Astra', desc: 'Sign Codex in with your ChatGPT account (opens its own window)',
     run: async () => { const okv = await window.hub.login('codex'); doctorCache = null; return okv ? 'Finish signing in in the window that opened, then run /astra-doctor.' : 'Codex wasn\'t found: run /astra-doctor.'; } });
   R({ name: 'astra-settings', area: 'Astra', desc: 'Open Astra\'s agent settings', run: () => { const a = astra(); if (a) Manager.open(a.id); else Manager.open(); } });
@@ -1039,6 +1152,158 @@ const Astra = (() => {
       return `${d.name} now runs on ${engineName(d)}${d.model ? ` (${d.model})` : ''}. Its chats start fresh engine sessions; its tools work through MCP. ${engine === 'codex' ? 'Astra-backed directors cost more tokens per turn (tool definitions).' : ''}`;
     } });
 
+  // ---------- collaboration presets (one searchable picker: /collab-preset) ----------
+  const COLLAB_PRESETS = {
+    brainstorm: { label: 'Brainstorm', mode: 'council', seats: 'claude@brainstorm,astra@brainstorm,astra@skeptic', desc: 'ideas from both, a skeptic, then the best picks' },
+    codereview: { label: 'Code review', mode: 'critique', seats: 'claude@coder,astra@reviewer', rounds: 1, desc: 'Claude codes, Astra reviews, Claude fixes' },
+    pair: { label: 'Pair programming', mode: 'relay', seats: 'astra@coder,claude@coder', rounds: 2, desc: 'Astra drafts the code, Claude and Astra improve it' },
+    factcheck: { label: 'Fact check', mode: 'critique', seats: 'claude,astra@researcher', rounds: 1, desc: 'Claude answers, Astra checks the facts' },
+    write: { label: 'Writing room', mode: 'relay', seats: 'claude@writer,astra@writer', rounds: 1, desc: 'Claude drafts, Astra edits' },
+    plan: { label: 'Plan it', mode: 'council', seats: 'claude@planner,astra@planner,astra@skeptic', desc: 'two plans and a risk check, merged' },
+    teach: { label: 'Explain it', mode: 'duo', seats: 'claude@teacher,astra@teacher', desc: 'two explanations side by side' },
+    debug: { label: 'Debug', mode: 'duo', seats: 'claude@debugger,astra@debugger', desc: 'two debugging takes side by side' },
+    visual: { label: 'Visual direction', mode: 'council', seats: 'claude@director,astra@shader,astra@skeptic', desc: 'ideas for the Lab: shots, shaders, a critic' },
+    redteam: { label: 'Red team', mode: 'debate', seats: 'claude,astra@skeptic', rounds: 2, desc: 'Astra attacks the idea, Claude defends, then a verdict' },
+    product: { label: 'Product call', mode: 'debate', seats: 'claude@product,astra@product', rounds: 2, desc: 'two product designers argue it out' },
+    translate: { label: 'Translation check', mode: 'critique', seats: 'claude@translator,astra@translator', rounds: 1, desc: 'one translates, the other checks' },
+  };
+  function runPreset(ctx, key, task) {
+    const p = COLLAB_PRESETS[key];
+    if (!p) return `Presets: ${Object.keys(COLLAB_PRESETS).join(', ')}.`;
+    if (!task) { Native.setDraft(ctx.agentId, `/collab-preset ${key} `); return `${p.label}: ${p.desc}. Type the task after the preset name.`; }
+    const seats = p.seats.split(',').map((w, i) => parseSeat(w, ctx.agentId, i)).filter(Boolean);
+    if (seats.length < 2) return 'This preset needs both a Claude and an Astra agent.';
+    go(ctx, p.mode, task, seats, { rounds: p.rounds || (p.mode === 'debate' ? 2 : 1) });
+  }
+  R({ name: 'collab-preset', aliases: ['cp'], area: 'Collab', args: '<preset> <task>', desc: 'Ready-made collaborations: brainstorm, code review, pair, fact check, red team…',
+    complete: (a) => {
+      const [w, ...rest] = a.split(/\s+/);
+      if (rest.length) return [];
+      return Object.entries(COLLAB_PRESETS).filter(([k, p]) => !w || k.startsWith(w.toLowerCase()) || p.label.toLowerCase().includes(w.toLowerCase())).map(([k, p]) => ({ value: `${k} `, label: p.label, hint: p.desc }));
+    },
+    run: (args, ctx) => {
+      const [w, ...rest] = args.trim().split(/\s+/);
+      if (!w) {
+        const v = chipEls.get(ctx.agentId);
+        const r = v?.chip.getBoundingClientRect() || { left: 200, top: 400 };
+        showMenu(r.left, Math.max(8, r.top - 30 * Object.keys(COLLAB_PRESETS).length), Object.entries(COLLAB_PRESETS).map(([k, p]) => ({ label: `${MODES[p.mode].icon} ${p.label}: ${p.desc}`, action: () => runPreset(ctx, k, '') })));
+        return;
+      }
+      const key = Object.keys(COLLAB_PRESETS).find((k) => k === w.toLowerCase()) || Object.keys(COLLAB_PRESETS).find((k) => k.startsWith(w.toLowerCase()));
+      return runPreset(ctx, key, rest.join(' ').trim());
+    } });
+  for (const key of ['brainstorm', 'pair', 'factcheck', 'redteam']) {
+    const p = COLLAB_PRESETS[key];
+    R({ name: key, area: 'Collab', args: '<task>', desc: `${p.label}: ${p.desc}`, run: (args, ctx) => runPreset(ctx, key, args) });
+  }
+
+  // ---------- your own personas (kept in data/kv/astra-personas.json) ----------
+  (async () => {
+    try { for (const [k, p] of Object.entries(await window.hub.kvGet('astra-personas', {}) || {})) if (!PERSONAS[k]) PERSONAS[k] = { ...p, custom: true }; } catch { /* none yet */ }
+  })();
+  const saveCustomPersonas = () => window.hub.kvSet('astra-personas', Object.fromEntries(Object.entries(PERSONAS).filter(([, p]) => p.custom).map(([k, p]) => [k, { label: p.label, text: p.text }])));
+  R({ name: 'astra-persona-save', area: 'Astra', args: '<name> <instructions>', desc: 'Save your own persona (usable in /astra-persona and as council seats)',
+    run: async (args) => {
+      const m = args.match(/^([a-z][\w-]{1,24})\s+([\s\S]{10,})$/i);
+      if (!m) return 'Usage: /astra-persona-save critic You are a blunt art critic who…';
+      const key = m[1].toLowerCase();
+      if (PERSONAS[key] && !PERSONAS[key].custom) return `“${key}” is a built-in persona; pick another name.`;
+      PERSONAS[key] = { label: m[1], text: m[2].trim().slice(0, 1200), custom: true };
+      await saveCustomPersonas();
+      return `Saved persona “${key}”. Use it with /astra-persona ${key} or a seat like astra@${key}.`;
+    } });
+  R({ name: 'astra-persona-delete', area: 'Astra', args: '<name>', desc: 'Delete one of your saved personas',
+    complete: (a) => Object.entries(PERSONAS).filter(([k, p]) => p.custom && k.startsWith(a.trim())).map(([k]) => ({ value: k })),
+    run: async (args) => {
+      const key = args.trim().toLowerCase();
+      if (!PERSONAS[key]?.custom) return 'Only your own personas can be deleted.';
+      delete PERSONAS[key];
+      await saveCustomPersonas();
+      return `Deleted persona “${key}”.`;
+    } });
+
+  // ---------- sessions, usage, screenshots ----------
+  R({ name: 'astra-session', area: 'Astra', desc: 'This chat\'s engine session id, and how to continue it in a terminal',
+    run: (args, ctx) => {
+      const chat = Native.chatOf(ctx.agentId);
+      const agent = H.agent(ctx.agentId);
+      if (!chat?.session?.id) return 'No engine session yet (send a message first).';
+      copyText(chat.session.id, 'Session id copied');
+      return agent.engine === 'codex'
+        ? `Codex thread \`${chat.session.id}\` (copied). Continue it in a terminal with \`codex resume ${chat.session.id}\` (Hearth's sessions live in its data/workspace folder).`
+        : `Claude session \`${chat.session.id}\` (copied). Continue it in a terminal from Hearth's data/workspace folder with \`claude --resume ${chat.session.id}\`.`;
+    } });
+  R({ name: 'astra-usage', area: 'Astra', args: '[days]', desc: 'Tokens used by Astra and Claude agents, today and over the last days',
+    run: async (args) => {
+      const days = Math.min(90, Math.max(1, Number(args) || 7));
+      const all = await window.hub.getUsage() || {};
+      const keys = Object.keys(all).sort().slice(-days);
+      const by = new Map();
+      for (const d of keys) for (const [id, u] of Object.entries(all[d] || {})) {
+        const a = H.agent(id);
+        const name = a ? `${a.name} (${engineName(a)})` : id;
+        const x = by.get(name) || { input: 0, output: 0, replies: 0, today: 0 };
+        x.input += u.input || 0; x.output += u.output || 0; x.replies += u.replies || 0;
+        if (d === keys.at(-1) && d === new Date().toLocaleDateString('en-CA')) x.today += (u.input || 0) + (u.output || 0);
+        by.set(name, x);
+      }
+      if (!by.size) return 'No token usage recorded yet.';
+      return [`**Tokens, last ${days} day${days > 1 ? 's' : ''}** (replies, second opinions and collaborations)`,
+        ...[...by].sort((a, b) => (b[1].input + b[1].output) - (a[1].input + a[1].output)).map(([n, x]) => `- ${n}: ${fmt(x.input)} in · ${fmt(x.output)} out · ${x.replies} replies${x.today ? ` · today ${fmt(x.today)}` : ''}`)].join('\n');
+    } });
+  R({ name: 'attach-screen', area: 'Chat', desc: 'Attach a screenshot of the Hearth window to your next message (both engines can see it)',
+    run: async (args, ctx) => {
+      const p = await window.hub.captureWindow();
+      if (!p) return 'Couldn\'t take the screenshot.';
+      await Native.attachPaths(ctx.agentId, [p]);
+      Native.focus(ctx.agentId);
+    } });
+  R({ name: 'attach-lab', area: 'Chat', desc: 'Attach the Three.js Lab preview to your next message',
+    run: async (args, ctx) => {
+      if (typeof ThreeLab === 'undefined' || !ThreeLab.shot) return 'The Three.js Lab isn\'t open.';
+      const url = await ThreeLab.shot();
+      if (!url) return 'The Lab has no picture yet (open a sketch).';
+      const p = await window.hub.saveAttachment(`lab-${Date.now()}.png`, url.split(',')[1]);
+      await Native.attachPaths(ctx.agentId, [p]);
+      Native.focus(ctx.agentId);
+    } });
+
+  R({ name: 'collabs', area: 'Collab', desc: 'List the collaborations in this chat; pick one to jump to it',
+    run: (args, ctx) => {
+      const ms = (Native.chatOf(ctx.agentId)?.messages || []).filter((m) => m.role === 'collab');
+      if (!ms.length) return 'No collaborations in this chat yet.';
+      const c = chipEls.get(ctx.agentId);
+      const r = c?.chip.getBoundingClientRect() || { left: 200, top: 400 };
+      showMenu(r.left, Math.max(8, r.top - 30 * Math.min(ms.length, 12)), ms.slice(-12).reverse().map((m) => ({
+        label: `${MODES[m.mode]?.icon || '⚇'} ${cap(m.task, 50)} · ${fmt(totals(m).all.input + totals(m).all.output)}`,
+        action: () => { const n = document.querySelector(`.collab-card[data-cid="${m.id}"]`); n?.scrollIntoView({ block: 'center' }); n?.classList.add('flash-msg'); setTimeout(() => n?.classList.remove('flash-msg'), 800); },
+      })));
+    } });
+  R({ name: 'astra-compare-models', area: 'Astra', args: '<task>', desc: 'The same task on each Astra model, side by side (tokens × models)',
+    run: (args, ctx) => {
+      const a = astra();
+      if (!a) return 'No Astra agent yet.';
+      if (!args) return 'Say what to compare, e.g. /astra-compare-models summarize this in 3 bullets';
+      go(ctx, 'compare', args, MODELS.codex.slice(0, 3).map((m) => seatOf(a, { model: m })));
+    } });
+  R({ name: 'astra-color', area: 'Astra', args: '[#hex|reset]', desc: 'Astra\'s accent color (stars, cards, chip)',
+    run: (args) => {
+      const v = args.trim();
+      if (v === 'reset') { store.set('astra.accent', null); document.documentElement.style.removeProperty('--astra'); return 'Astra\'s accent is back to default.'; }
+      if (!/^#[0-9a-f]{3,8}$/i.test(v)) return 'Give a color like #19c39c (or reset).';
+      store.set('astra.accent', v);
+      document.documentElement.style.setProperty('--astra', v);
+      return `Astra's accent is now ${v}.`;
+    } });
+  { const c = store.get('astra.accent', null); if (c) document.documentElement.style.setProperty('--astra', c); }
+
+  // ---------- rail: a star marks agents running on the Astra (Codex) engine ----------
+  function markRail() {
+    for (const b of document.querySelectorAll('#agent-buttons .agent-btn[data-id]')) b.classList.toggle('astra-btn', H.agent(b.dataset.id)?.engine === 'codex');
+  }
+  const railBox = document.getElementById('agent-buttons');
+  if (railBox) new MutationObserver(markRail).observe(railBox, { childList: true });
+
   // ---------- keys & palette ----------
   addEventListener('keydown', (e) => {
     if (!(e.ctrlKey || e.metaKey) || !e.altKey) return;
@@ -1058,6 +1323,8 @@ const Astra = (() => {
       toast(`Model: ${next}`, { timeout: 1200 });
     }
     if (e.code === 'KeyO') { e.preventDefault(); Native.secondOpinion(targetId); }
+    if (e.code === 'KeyH') { e.preventDefault(); const o = partner(H.agent(targetId)); if (o) handoff(targetId, o.id).catch((err) => toast(err.message, { type: 'error' })); }
+    if (e.code === 'KeyS' && stopAllIn(targetId)) { e.preventDefault(); toast('Stopping the collaboration', { timeout: 1200 }); }
   });
   queueMicrotask(() => {
     if (typeof AppUI === 'undefined' || !AppUI.addAction) return;

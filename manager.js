@@ -59,7 +59,11 @@ const Manager = (() => {
         : CLAUDE_FILE_HINT;
     }
     const talk = form.querySelector('input[name="chatTools"]')?.closest('label');
-    if (talk) talk.title = codex ? 'Off by default for Astra: the tools add their descriptions to every Codex message' : '';
+    if (talk) {
+      talk.title = codex ? 'Off by default for Astra: the tools add their descriptions to every Codex message' : '';
+      const text = [...talk.childNodes].find((n) => n.nodeType === 3 && /Talks back/.test(n.textContent));
+      if (text) text.textContent = text.textContent.replace(/opinion from (Astra|Claude)/, `opinion from ${codex ? 'Claude' : 'Astra'}`);
+    }
     for (const [value, text] of Object.entries(EXTRA_EFFORTS)) {
       let opt = f.effort.querySelector(`option[value="${value}"]`);
       if (codex && !opt) { opt = el('option', { value, text }); if (value === 'minimal') f.effort.options[1].before(opt); else f.effort.append(opt); }

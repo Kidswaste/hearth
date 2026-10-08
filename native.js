@@ -210,7 +210,7 @@ const Native = (() => {
       try { v.attachments.push({ kind: 'text', name, content: await window.hub.fs.read(path, { maxBytes: TEXT_ATTACH_LIMIT }) }); } catch (err) { toast(err.message, { type: 'error' }); }
     } else {
       const agent = H.agent(agentId);
-      if (agent.engine === 'claude' && agent.workspace) v.attachments.push({ kind: 'file', name, path });
+      if (agent.workspace) v.attachments.push({ kind: 'file', name, path }); // Claude reads it with Read, Astra with a sandboxed command
       else { toast(`${name} isn't a text file. Give this agent File access to let it open other file types.`, { type: 'error' }); return; }
     }
     renderChips(agentId);
@@ -563,7 +563,7 @@ const Native = (() => {
     let full = text;
     for (const a of atts.filter((x) => x.kind === 'text')) full += `\n\n<file name="${a.name}">\n${a.content}\n</file>`;
     const files = atts.filter((x) => x.kind === 'file');
-    if (files.length) full += `\n\n[Attached files, open them with your Read tool]\n${files.map((f) => f.path).join('\n')}`;
+    if (files.length) full += `\n\n[Attached files, open them with your ${H.agent(agentId)?.engine === 'codex' ? 'read-only commands' : 'Read tool'}]\n${files.map((f) => f.path).join('\n')}`;
     const images = atts.filter((x) => x.kind === 'image').map((x) => x.path);
     return { full, images, meta: atts.map((a) => ({ kind: a.kind, name: a.name })) };
   }
