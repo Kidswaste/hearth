@@ -25,7 +25,7 @@ function start(getWin) {
     pending.set(id, resolve);
     win.webContents.send('game:call', { id, tool, args });
     // Renders can run for a long time; everything else should answer within a minute.
-    const limit = tool === 'ae_render' || tool === 'chat_ask' ? 45 * 60000 : tool === 'chat_second_opinion' ? 6 * 60000 : 60000;
+    const limit = tool === 'ae_render' || tool === 'video_export' || tool === 'chat_ask' ? 45 * 60000 : tool === 'chat_second_opinion' ? 6 * 60000 : 60000;
     setTimeout(() => {
       if (pending.has(id)) { pending.delete(id); resolve({ ok: false, error: `The hub did not answer within ${Math.round(limit / 1000)} s.` }); }
     }, limit);

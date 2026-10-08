@@ -218,7 +218,7 @@ const VideoData = (() => {
   function guessCategory(text) {
     const t = String(text).toLowerCase();
     if (/\b(late|early|beat|sync|timing|faster|slower|hold|pause|cut|drop|tempo|bpm|frames?)\b/.test(t)) return 'timing';
-    if (/\b(colou?r|hue|saturat|bright|dark|contrast|grade|tint|red|blue|green|pink|warm|cool|white|black|gold)\b/.test(t)) return 'color';
+    if (/\b(colou?r|hue|saturat|bright|dark|contrast|grade|grading|tint|red|blue|green|pink|purple|orange|yellow|warm|cool|white|black|gold|neon|vivid|dull|muted|exposure)/.test(t)) return 'color';
     if (/\b(text|title|font|caption|typo|word|letter|kerning|subtitle|logo)\b/.test(t)) return 'text';
     if (/\b(motion|move|ease|speed|bounce|spin|rotate|shake|jitter|camera|zoom|smooth)\b/.test(t)) return 'motion';
     if (/\b(audio|sound|music|kick|snare|bass|volume|mix|loud)\b/.test(t)) return 'audio';
@@ -248,7 +248,7 @@ const VideoData = (() => {
     const nodes = [
       source === 'lab'
         ? { id: 'source', type: 'lab-sketch', label: 'Three.js Lab sketch', out: ['video'], cmd: '/three' }
-        : { id: 'source', type: 'ae-project', label: comp ? `AE comp “${comp}”` : 'After Effects project', out: ['project'], params: { comp }, cmd: '/ae-projects' },
+        : { id: 'source', type: 'ae-project', label: comp ? `AE comp “${comp}”` : 'After Effects project', out: ['project'], params: { comp }, cmd: '/toolkit projects' },
       source === 'lab'
         ? { id: 'render', type: 'lab-record', label: 'Record (⏺ in the Lab)', in: ['video'], out: ['video'], cmd: null }
         : { id: 'render', type: 'aerender', label: 'Render with aerender', in: ['project'], out: ['video'], params: { comp }, cmd: `/render ${comp || '<comp>'}` },

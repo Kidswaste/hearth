@@ -239,7 +239,7 @@ const Review = (() => {
     const node = el('button', {
       class: `vr-card${S.cur?.path === v.path ? ' on' : ''}${S.cmp.path === v.path ? ' is-b' : ''}`, title: v.path, dataset: { path: v.path },
       on: {
-        click: (e) => { if (e.altKey || e.shiftKey) compareWith(v.path); else openVideo(v); },
+        click: (e) => { if (e.altKey || e.shiftKey) compareWith(v.path); else openVideo(v); refs.root.classList.remove('lib-open'); },
         contextmenu: (e) => { e.preventDefault(); cardMenu(v, e.clientX, e.clientY); },
         // Hovering scrubs through 8 frames of the clip.
         pointermove: (e) => {
@@ -478,6 +478,10 @@ const Review = (() => {
   // ---------- zoom / pan ----------
   function applyZoom() {
     const { s, x, y } = S.zoom;
+    // side by side: the frame holds A and B next to each other, so it is twice as wide
+    const d = vid();
+    const ar = d?.videoWidth ? d.videoWidth / d.videoHeight : 16 / 9;
+    refs.stage.style.setProperty('--arf', String(S.cmp.path && S.cmp.mode === 'side' ? ar * 2 : ar));
     refs.frame.style.transform = `translate(${x}px, ${y}px) scale(${s})`;
     refs.zoomLabel.textContent = s === 1 ? '' : `${Math.round(s * pixelScale() * 100)}%`;
   }
@@ -531,6 +535,7 @@ const Review = (() => {
   function stopCompare() {
     S.cmp.path = null;
     refs.stage?.classList.remove('comparing');
+    if (refs.stage) applyZoom();
     refs.cmp?.removeAttribute('src');
     refs.cmp?.load();
   }
@@ -1282,7 +1287,16 @@ const Review = (() => {
     flash(next ? (kind === 'safe' ? V.SAFE_ZONES[next].name : V.GUIDES.find((g) => g.id === next).name) : 'No overlay');
   }
   function fullscreen() { if (document.fullscreenElement) document.exitFullscreen(); else refs.main.requestFullscreen?.(); }
-  function toggleLib(force) { const hide = force != null ? !force : !refs.root.classList.contains('lib-hidden'); refs.root.classList.toggle('lib-hidden', hide); store.set('review.libHidden', hide); requestAnimationFrame(() => { drawTimeline(); applyZoom(); }); }
+  // Wide: the library column shows / hides. Narrow (Director chat open): it slides over the player as a drawer.
+  const narrow = () => refs.root.clientWidth <= 940;
+  function toggleLib(force) {
+    if (narrow()) { const open = force ?? !refs.root.classList.contains('lib-open'); refs.root.classList.toggle('lib-open', open); return open; }
+    const hide = force != null ? !force : !refs.root.classList.contains('lib-hidden');
+    refs.root.classList.toggle('lib-hidden', hide);
+    store.set('review.libHidden', hide);
+    requestAnimationFrame(() => { drawTimeline(); applyZoom(); });
+    return !hide;
+  }
 
   // ---------- more menu ----------
   function moreMenu(anchor) {
@@ -1404,7 +1418,7 @@ const Review = (() => {
     refs.bpm = el('span', { class: 'vr-bpm', title: 'Tempo and beats found in the audio (, and . jump between beats)' });
     refs.info = el('div', { class: 'vr-info' });
     const transport = el('div', { class: 'vr-transport' },
-      el('div', { class: 'vr-tgroup' }, ico('⏮', 'Start (Home)', () => seek(0)), ico('◂', 'Previous frame (←)', () => step(-1)), refs.play, ico('▸', 'Next frame (→)', () => step(1)), ico('⏭', 'End (End)', () => seek(dur()))),
+      el('div', { class: 'vr-tgroup' }, ico('⏮', 'Start (Home)', () => seek(0), 'vr-skip'), ico('◂', 'Previous frame (←)', () => step(-1)), refs.play, ico('▸', 'Next frame (→)', () => step(1)), ico('⏭', 'End (End)', () => seek(dur()), 'vr-skip')),
       el('div', { class: 'vr-tgroup vr-tc-group' }, refs.time, refs.timeTotal),
       el('div', { class: 'vr-tgroup' }, refs.speed, refs.fpsBtn, refs.loopBtn),
       el('span', { class: 'spacer' }), refs.bpm,
@@ -1674,7 +1688,7 @@ const Review = (() => {
     addNote, updateNote, deleteNote, notes: notesOf, selectNote, openComposer, exportNotes, carryNotes,
     sendFeedback, agentFor, grabToAttachment, copyFrame, saveFrame, contactSheet,
     toggleFav, setTags, tagsOf, isFav, setFilter, versionsOf, verLabel, fmtOf, metaOf,
-    runExport, exportMenu, presetsDialog, renderAe, runAeScript, aeStatusText, setDock, directorSegment, shortcutsHelp, status: () => (S.cur ? statusValue() : null),
+    tool: handleTool, runExport, exportMenu, presetsDialog, renderAe, runAeScript, aeStatusText, setDock, directorSegment, shortcutsHelp, status: () => (S.cur ? statusValue() : null),
     // The render pipeline as nodes + edges (VideoData.pipeline) for the node editor; each node names its chat command.
     pipeline: (opts = {}) => V.pipeline({ file: S.cur?.path || '', source: S.cur?.lab ? 'lab' : 'ae', ...opts }),
   };
