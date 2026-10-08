@@ -52,7 +52,8 @@ const DirectorDock = (() => {
     detach(s.tool.id);
     const toolId = s.tool.id;
     const prefixes = PREFIXES[toolId] || [`${toolId}_`];
-    const mine = (e) => e && (prefixes.some((p) => e.tool.startsWith(p)) || (e.tool.startsWith('chat_') && e.agentId === agent.id));
+    // calls that carry a chat (chat-scenes.js) show only while that chat is the one in the dock
+    const mine = (e) => e && (prefixes.some((p) => e.tool.startsWith(p)) || (e.tool.startsWith('chat_') && e.agentId === agent.id)) && (!e.chatId || e.chatId === H.activeChat[agent.id]);
     let turnFrom = 0; // calls since the user's last message
     let listOpen = false;
 

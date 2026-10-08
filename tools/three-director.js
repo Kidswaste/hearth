@@ -125,8 +125,12 @@ const ThreeDirector = (() => {
     redoStack.length = 0;
     changed();
   }
+  // A history entry of a sketch that isn't on screen (another director chat's scene) is undone in that sketch's data,
+  // without switching the Lab to it (tools/three-backstage.js).
+  const forEntry = (d, h) => (h?.sketchId && d.codeOf().sketchId !== h.sketchId && typeof ThreeBackstage !== 'undefined' && ThreeLab.scenes?.get(h.sketchId) ? ThreeBackstage.dataDirector(h.sketchId) : d);
   // Puts a layer's code back. Opens the sketch it belonged to when another one is open now.
   async function restore(d, h, code) {
+    d = forEntry(d, h);
     if (h.sketchId && d.codeOf().sketchId !== h.sketchId) {
       d.openSketch(h.sketchId);
       await sleep(400);
@@ -140,7 +144,7 @@ const ThreeDirector = (() => {
   async function undo(d, { force = false } = {}) {
     const h = history.at(-1);
     if (!h) throw new Error('The director hasn\'t changed any code yet.');
-    const cur = (() => { try { return d.codeOf(h.layerId).code; } catch { return null; } })();
+    const cur = (() => { try { return forEntry(d, h).codeOf(h.layerId).code; } catch { return null; } })();
     if (cur != null && cur !== h.after && !force) throw new Error(`"${h.layer}" changed after the director's edit (you or a slider save?). /undo-edit force puts the director's "before" back anyway.`);
     const r = await restore(d, h, h.before);
     history.pop(); redoStack.push(h); changed();
@@ -359,7 +363,8 @@ const ThreeDirector = (() => {
       const results = [];
       for (const [i, p] of plans.entries()) {
         const last = i === plans.length - 1;
-        const r = await d.updateLayer(p.L.id, { code: p.code }, last ? Math.min(15, Math.max(0.5, Number(args.wait) || 2.5)) : 0.4);
+        // sketchId: a batch never continues into another scene if the one on screen changes mid-way (chat-scenes.js)
+        const r = await d.updateLayer(p.L.id, { code: p.code, sketchId: p.L.sketchId }, last ? Math.min(15, Math.max(0.5, Number(args.wait) || 2.5)) : 0.4);
         record({ sketchId: p.L.sketchId, sketch: p.L.sketch, layerId: p.L.id, layer: p.L.name, before: p.L.code, after: p.code, tool });
         results.push({ p, r });
       }

@@ -2432,7 +2432,7 @@ const ThreeLab = (() => {
           const song = extras[sk.id]?.media?.path?.split(/[\\/]/).pop();
           const card = el('button', { class: `sb-card${sk.id === current?.id ? ' on' : ''}${p.has(sk.id) ? ' pinned' : ''}`, title: `Open "${sk.name}" (right-click for more)`, on: { click: () => { dlg.close(); if (sk.id !== current?.id) openSketch(sk.id); } } },
             el('div', { class: 'sb-thumb' }, t ? el('img', { src: t, alt: '' }) : el('span', { text: '◭' }), p.has(sk.id) ? el('span', { class: 'sb-pin', text: '★' }) : null, song ? el('span', { class: 'sb-song', text: '♪', title: song }) : null),
-            el('b', { text: sk.name }),
+            el('b', { text: sk.name }, typeof ChatScenes !== 'undefined' && ChatScenes.ownerOf(sk.id) ? el('span', { class: 'sb-chat', text: ` ${ChatScenes.glyphFor(sk.id)}`, title: 'The scene of a director chat', style: { color: ChatScenes.identity(ChatScenes.ownerOf(sk.id)).color } }) : null),
             el('span', { class: 'sb-meta', text: `${layers} layer${layers === 1 ? '' : 's'} · ${new Date(sk.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}${song ? ` · ${song}` : ''}` }));
           card.addEventListener('contextmenu', (e) => cardMenu(e, sk));
           return card;
@@ -2449,10 +2449,12 @@ const ThreeLab = (() => {
       // ★ pinned ones (pin them in the sketch browser) first, then the most recent
       const pins = new Set(store.get('three.sketchPins', []));
       const list = [...sketches].sort((a, b) => (pins.has(b.id) - pins.has(a.id)) || b.updatedAt - a.updatedAt);
-      picker.replaceChildren(...list.map((s) => el('option', { value: s.id, text: `${pins.has(s.id) ? '★ ' : ''}${s.name}`, selected: s.id === current?.id })));
+      const mark = (id) => (typeof ChatScenes !== 'undefined' ? ChatScenes.glyphFor(id) : ''); // the chat that owns it (chat-scenes.js)
+      picker.replaceChildren(...list.map((s) => el('option', { value: s.id, text: `${pins.has(s.id) ? '★ ' : ''}${mark(s.id) ? `${mark(s.id)} ` : ''}${s.name}`, selected: s.id === current?.id })));
       picker.title = `Your sketches (${sketches.length}) · O opens them as pictures · ★ pinned ones first`;
     }
-    function openSketch(id) {
+    // opts.by: who switched ('scene' = chat-scenes.js following the chat on screen); fires 'hearth:sketch'
+    function openSketch(id, opts = {}) {
       soloId = null;
       // unsaved slider values in any layer of the sketch you leave
       const left = current;
@@ -2499,6 +2501,7 @@ const ThreeLab = (() => {
       renderPalette();
       run();
       loadRefBytes().then((added) => { if (added && layersOf().some((L) => /\brefs\b|refTexture/.test(L.code))) run(); });
+      dispatchEvent(new CustomEvent('hearth:sketch', { detail: { id: current.id, from: left?.id || null, by: opts.by || 'user' } }));
     }
     function create(name, code, layers) {
       const s = { id: `s${Date.now()}`, name, code, updatedAt: Date.now(), ...(layers ? { layers: JSON.parse(JSON.stringify(layers)) } : {}) };
@@ -2614,9 +2617,70 @@ ${code}
       const lastMedia = store.get('three.media', null);
       if (firstId && lastMedia && extras[firstId]?.media === undefined) { (extras[firstId] ||= {}).media = { path: lastMedia, time: 0 }; saveExtras(); }
       if (!sketches.length) { sketches = [{ id: `s${Date.now()}`, name: 'Basic scene', code: ThreeData.TEMPLATES[0].code, updatedAt: Date.now() }]; save(); }
-      openSketch(store.get('three.current', sketches[0].id));
+      // the chat on screen may own another sketch (chat-scenes.js): open that one instead of the last one
+      const want = typeof ChatScenes !== 'undefined' ? ChatScenes.startSketch?.(sketches.map((x) => x.id)) : null;
+      openSketch(want || store.get('three.current', sketches[0].id), { by: want ? 'scene' : 'start' });
       api.director = director; // only once saved sketches are loaded, so director edits never land on a placeholder
+      dispatchEvent(new Event('hearth:lab-ready'));
     })();
+
+    // ---------- per-chat scenes (chat-scenes.js, tools/three-backstage.js) ----------
+    // The sketches as data: each director chat owns one; the backstage runs the ones that aren't on screen.
+    api.scenes = {
+      all: () => sketches,
+      get: (id) => sketches.find((x) => x.id === id) || null,
+      currentId: () => current?.id || null,
+      // switch to a chat's sketch (the one you leave is saved first; unsaved sliders get the usual toast)
+      open(id) {
+        if (!sketches.some((x) => x.id === id)) return false;
+        if (id !== current?.id) { persist(); openSketch(id, { by: 'scene' }); }
+        return true;
+      },
+      create({ name, code, layers = null, open = false, frame = null }) {
+        const x = { id: `s${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`, name, code, updatedAt: Date.now(), ...(layers ? { layers: JSON.parse(JSON.stringify(layers)) } : {}) };
+        sketches.push(x);
+        if (frame) { (extras[x.id] ||= {}).frame = frame; saveExtras(); }
+        save();
+        if (open) { persist(); openSketch(x.id, { by: 'scene' }); } else renderPicker();
+        return x;
+      },
+      // a copy with its song link, frame size and look (a chat that starts from another chat's scene)
+      duplicate(id, name) {
+        const src = sketches.find((x) => x.id === id);
+        if (!src) return null;
+        if (src === current) persist();
+        const copy = { ...JSON.parse(JSON.stringify(src)), id: `s${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`, name, updatedAt: Date.now() };
+        sketches.push(copy);
+        if (extras[id]) { extras[copy.id] = JSON.parse(JSON.stringify(extras[id])); saveExtras(); }
+        save();
+        renderPicker();
+        return copy;
+      },
+      rename(id, name) {
+        const x = sketches.find((y) => y.id === id);
+        if (!x || !name || x.name === name) return false;
+        x.name = name;
+        save();
+        renderPicker();
+        return true;
+      },
+      // a sketch changed outside the editor (the backstage): saved; re-run when it's the one on screen
+      changed(id) {
+        const x = sketches.find((y) => y.id === id);
+        if (!x) return;
+        x.code = x.layers?.[0]?.code ?? x.code;
+        x.updatedAt = Date.now();
+        save();
+        if (x === current) { editor.setValue(sel().code); run(); }
+      },
+      layersOf: (x) => materialize(x),
+      frameOf: (id) => extras[id]?.frame || null,
+      setFrame(id, f) { (extras[id] ||= {}).frame = f; saveExtras(); if (id === current?.id) stage.setMode(f); },
+      selectedOf: (id) => extras[id]?.selectedLayer || null,
+      songOf: (id) => extras[id]?.media?.path || null,
+      thumbOf: (id) => thumbs[id]?.url || null,
+      previewHost: () => previewHost,
+    };
 
     api.openCode = (code) => create(`From chat ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, code);
 
@@ -2719,6 +2783,7 @@ ${code}
         return { added: L?.name, ...report() };
       },
       async updateLayer(ref, patch = {}, wait = 1.5) {
+        if (patch.sketchId && patch.sketchId !== current?.id) throw new Error('The scene on screen changed during this edit (the owner switched chats or sketches), so it stopped there. Check with three_console and carry on.');
         const L = findLayer(ref);
         if (!L) throw new Error(`No layer "${ref}". Layers: ${layersOf().map((x) => x.name).join(', ')}`);
         const props = Object.fromEntries(Object.entries(patch).filter(([k]) => PROP_KEYS.includes(k)));
@@ -3242,9 +3307,28 @@ ${frag}\`,
   }
 
   // Tools for the Three Director (Claude). Calls switch the Lab to the Sketch tab so the user sees the result.
-  async function handleTool(tool, args) {
+  // Per-chat scenes: a call from a chat goes to that chat's sketch (chat-scenes.js). The one on screen is driven
+  // here as before; another chat's runs backstage (tools/three-backstage.js), so no chat edits another's scene.
+  let inflight = 0; let idleWaiters = [];
+  const settle = () => { if (inflight) return; const w = idleWaiters; idleWaiters = []; for (const fn of w) fn(); };
+  async function handleTool(tool, args, ctx = {}) {
     if (!tabs) Tools.shown(Tools.get('three')); // load the Lab in the background if needed
     if (!tabs) return { ok: false, error: 'Three.js Lab could not be loaded.' };
+    for (let i = 0; i < 100 && !api.director; i += 1) await new Promise((r) => setTimeout(r, 100));
+    const route = typeof ChatScenes !== 'undefined' && api.scenes ? ChatScenes.routeThree(tool, ctx.chatId) : null;
+    if (route && route.sketchId !== api.scenes.currentId() && typeof ThreeBackstage !== 'undefined') {
+      const r = await ThreeBackstage.handle(tool, args, route);
+      if (tool === 'three_new_sketch' && r?.newSketchId) ChatScenes.relink(route.chatId, r.newSketchId);
+      return r;
+    }
+    inflight += 1;
+    try {
+      const r = await handleVisible(tool, args);
+      if (route && tool === 'three_new_sketch' && r?.ok !== false) ChatScenes.relink(route.chatId, api.scenes.currentId());
+      return r;
+    } finally { inflight -= 1; settle(); }
+  }
+  async function handleVisible(tool, args) {
     tabs.show('sketch');
     // A hidden view renders no frames, so let the Lab render (behind the current view) while the director works.
     const surface = H.surfaces.get('tool:three')?.el;
@@ -3403,6 +3487,11 @@ ${frag}\`,
     openCode(code) { ensureOpen('sketch'); setTimeout(() => api.openCode?.(code), 60); },
     get lab() { return api.lab; }, // Lab actions (palette commands, MIDI simulation for tests)
     get director() { return api.director; }, // the Lab's layer / slider / palette API (the FX picker and its chat commands use it)
+    get scenes() { return api.scenes || null; }, // the sketches as data, for per-chat scenes (chat-scenes.js)
+    // resolves when no director call is changing the sketch on screen (a chat switch waits for it)
+    idle: () => (inflight ? new Promise((r) => idleWaiters.push(r)) : Promise.resolve()),
+    _sandbox: (parent, onMessage, params) => sandboxFrame(parent, 'sketch', onMessage, params, { lazy: true }), // tools/three-backstage.js
+    _util: { codeOrOutline, numbered },
     // A picture of the Lab preview (data URL) for second opinions; null when nothing renders.
     shot: async () => (api.director ? api.director.shot() : null),
     // Files dropped in the Three Director's chat become references of the open sketch.

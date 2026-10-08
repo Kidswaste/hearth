@@ -15,7 +15,7 @@ const Native = (() => {
   const unfolded = new Set(); // "chatId:index" of long replies the user unfolded (they stay open)
   // Extension points for chat-*.js: render(agentId, view, chat), message(node, m, index, agent),
   // event(event, chat), mark(chat, index, key, on), send(agentId, chat, text).
-  const hooks = { render: [], message: [], event: [], mark: [], send: [] };
+  const hooks = { render: [], message: [], event: [], mark: [], send: [], newChat: [] }; // newChat(agentId): "New chat" (chat-scenes.js)
 
   // Follow-up suggestions the agent offers as buttons: <suggest>…</suggest>.
   const SUGGEST_TAG = /<suggest>([\s\S]*?)<\/suggest>/gi;
@@ -1565,6 +1565,7 @@ const Native = (() => {
     enterAnim(agentId);
     Panel.highlight();
     focus(agentId);
+    for (const fn of hooks.newChat) { try { fn(agentId); } catch (err) { console.warn(err); } }
   }
 
   function focus(agentId) { views.get(agentId)?.input.focus(); }

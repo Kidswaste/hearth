@@ -9,6 +9,8 @@ const Panel = (() => {
   let view = store.get('panel.view', null); // a filter from /filter (null = everything)
   const PAGE = 40; // chats shown per agent before "Show more"
   const expanded = new Map(); // agent id -> how many to show
+  // row(rowEl, item, agent) after a chat row is built, render() after the list is drawn (chat-scenes.js)
+  const hooks = { row: [], render: [] };
 
   const el = (tag, cls, text) => {
     const node = document.createElement(tag);
@@ -129,6 +131,7 @@ const Panel = (() => {
       else if (e.key === 'Delete' && item.chatId) { e.preventDefault(); if (confirm(`Delete "${item.title}"? You can restore it for 30 days.`)) Native.remove(item.chatId); }
       else if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) { e.preventDefault(); const b = r.getBoundingClientRect(); itemMenu(agent, item, r, { preventDefault() {}, clientX: b.left + 20, clientY: b.bottom }); }
     });
+    for (const fn of hooks.row) { try { fn(r, item, agent); } catch (err) { console.warn(err); } }
     return r;
   }
 
@@ -210,6 +213,7 @@ const Panel = (() => {
     const unread = H.unreadChats?.size || 0;
     document.title = `${unread ? `(${unread}) ` : ''}${document.title.replace(/^\(\d+\) /, '') || 'Hearth'}`;
     if (hadFocus) root.querySelector(`.item[data-key="${CSS.escape(hadFocus)}"]`)?.focus();
+    for (const fn of hooks.render) { try { fn(); } catch (err) { console.warn(err); } }
   }
 
   function highlight() {
@@ -280,5 +284,5 @@ const Panel = (() => {
   }
   setTimeout(wireKeys, 0);
 
-  return { render, highlight, setFilter, setView, view: () => view, SORTS };
+  return { render, highlight, setFilter, setView, view: () => view, SORTS, hooks };
 })();
