@@ -1,0 +1,49 @@
+/* The docked director chat's extras (director-dock.js): activity strip, quick chips, thin collapsed bar, viewer. */
+.tool-dock { position: relative; }
+.dd-strip { position: relative; display: flex; align-items: center; gap: 6px; min-height: 26px; padding: 3px 8px; border-bottom: 1px solid var(--line); font-size: 11.5px; color: var(--muted); background: color-mix(in srgb, var(--bg) 70%, #000); }
+.dd-strip .spacer { flex: 1; }
+.dd-calls { display: flex; align-items: center; gap: 2px; min-width: 0; padding: 0 2px; border: 0; background: none; color: inherit; cursor: pointer; overflow: hidden; }
+.dd-call { width: 18px; height: 18px; display: inline-grid; place-items: center; font-size: 11px; line-height: 1; border-radius: 4px; background: color-mix(in srgb, var(--fg, #eae0d5) 6%, transparent); filter: grayscale(.35); }
+.dd-call:last-child { filter: none; background: color-mix(in srgb, var(--fh-gold, #ffd75e) 16%, transparent); }
+.dd-call.running { animation: dd-pulse 1s ease-in-out infinite; background: color-mix(in srgb, var(--fh-ai, #b07cff) 30%, transparent); filter: none; }
+.dd-call.failed { background: color-mix(in srgb, #ff5a5a 30%, transparent); filter: none; }
+@keyframes dd-pulse { 50% { opacity: .45; } }
+.dd-sum { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.dd-strip.busy .dd-sum { color: var(--fh-ai, #b07cff); }
+.dd-thumb { height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: #000; cursor: zoom-in; overflow: hidden; flex: none; }
+.dd-thumb img { display: block; height: 20px; width: auto; max-width: 48px; object-fit: cover; }
+.dd-btn { flex: none; min-width: 22px; height: 22px; padding: 0 4px; border: 1px solid transparent; border-radius: 5px; background: none; color: var(--fg, #eae0d5); cursor: pointer; font-size: 13px; line-height: 1; opacity: .75; }
+.dd-btn:hover:not(:disabled) { opacity: 1; border-color: var(--line); }
+.dd-btn:disabled { opacity: .3; cursor: default; }
+.dd-list { position: absolute; z-index: 30; top: calc(100% + 2px); left: 6px; right: 6px; max-height: 320px; overflow-y: auto; padding: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface, #15181b); box-shadow: 0 12px 30px #0008; }
+.dd-list-head { display: flex; align-items: center; gap: 6px; padding: 0 2px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.dd-list-head .spacer { flex: 1; }
+.dd-row { display: grid; grid-template-columns: 18px auto 1fr auto; gap: 6px; align-items: baseline; padding: 2px; font-size: 11.5px; }
+.dd-row.failed .dd-row-sum { color: #ff7a7a; }
+.dd-row-name { color: var(--fg, #eae0d5); white-space: nowrap; }
+.dd-row-sum { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono, Consolas, monospace); font-size: 10.5px; }
+.dd-row-ms { font-variant-numeric: tabular-nums; }
+.dd-chips { display: flex; gap: 5px; padding: 4px 10px 0; overflow-x: auto; scrollbar-width: none; flex: none; }
+.dd-chips::-webkit-scrollbar { display: none; }
+.dd-chips[hidden] { display: none; }
+.dd-chip { flex: none; padding: 2px 9px; border: 1px solid var(--line); border-radius: 999px; background: color-mix(in srgb, var(--fg, #eae0d5) 4%, transparent); color: var(--fg, #eae0d5); font-size: 11.5px; white-space: nowrap; cursor: pointer; opacity: .85; }
+.dd-chip:hover { opacity: 1; border-color: var(--fh-ai, #b07cff); }
+.dd-chip.local { border-style: dashed; }
+.dd-chip.local:hover { border-color: var(--fh-gold, #ffd75e); }
+/* collapsed: the dock becomes a thin bar with the director's icon and a busy dot */
+.dd-rail { display: none; }
+.tool-surface.dock-collapsed .tool-dock { flex-basis: 34px; }
+.tool-surface.dock-collapsed .tool-dock > :not(.dd-rail) { display: none !important; }
+.tool-surface.dock-collapsed .tool-dock-divider { flex-basis: 3px; }
+.tool-surface.dock-collapsed .dd-rail { display: flex; flex-direction: column; align-items: center; gap: 10px; flex: 1; width: 100%; padding: 10px 0; border: 0; background: none; color: var(--fg, #eae0d5); cursor: pointer; }
+.dd-rail:hover { background: color-mix(in srgb, var(--fg, #eae0d5) 6%, transparent); }
+.dd-rail-icon { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 6px; background: var(--agent, var(--accent)); color: #fff; font-size: 13px; }
+.dd-rail-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
+.dd-rail.busy .dd-rail-dot { background: var(--fh-ai, #b07cff); animation: dd-pulse 1s ease-in-out infinite; }
+.dd-rail-name { writing-mode: vertical-rl; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+/* the picture viewer */
+.dd-view { max-width: min(92vw, 1400px); }
+.dd-view-img { display: block; max-width: 100%; max-height: 72vh; margin: 8px auto; border-radius: 6px; }
+html[data-skin="forge"] .dd-strip { background: linear-gradient(180deg, #121519, #0d1013); border-bottom-color: var(--line-hi, var(--line)); }
+html[data-skin="forge"] .dd-sum { font-family: var(--mono, Consolas, monospace); letter-spacing: .04em; }
+.dd-rail.unread .dd-rail-dot { background: var(--fh-gold, #ffd75e); box-shadow: 0 0 6px var(--fh-gold, #ffd75e); }

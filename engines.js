@@ -123,16 +123,21 @@ const HUB_TOOLSETS = {
   // unless switched off; opt-in for Astra (it adds tool definitions to every Codex request).
   chatTools: { server: 'chat', script: 'chat-mcp.js' },
 };
-const hubToolsets = (agent) => Object.keys(HUB_TOOLSETS).filter((k) => {
-  if (k === 'chatTools') return agent.engine === 'claude' ? agent.chatTools !== false : agent.chatTools === true;
+// Claude agents get their tool sets (chat tools unless switched off). Codex agents (Astra) get the tool sets their
+// agent has (a director switched to Astra) and chat tools only as an opt-in (talk-back, or agent.hubTools).
+// One-off calls (second opinions) never get hub tools (agent.noHubTools).
+const hubToolsets = (agent) => (agent.noHubTools ? [] : Object.keys(HUB_TOOLSETS).filter((k) => {
+  if (k === 'chatTools') return agent.engine === 'claude' ? agent.chatTools !== false : agent.chatTools === true || (agent.hubTools === true && agent.chatTools !== false);
   return Boolean(agent[k]);
-});
+}));
 const gameTools = (agent) => hubToolsets(agent).includes('gameTools');
+// What every hub MCP server gets: Node mode, the agent (for chat_ tools), opt-ins that change the tool list.
+const hubToolEnv = (agent) => ({ ELECTRON_RUN_AS_NODE: '1', HUB_AGENT_ID: agent.id, ...(agent.engine === 'codex' ? { HUB_PARTNER: 'Claude' } : {}), ...(agent.nodesTool ? { HUB_NODES_TOOL: '1' } : {}), ...(agent.toolMode === 'full' ? { HUB_TOOL_MODE: 'full' } : {}) });
 function hubMcpConfig(agent) {
   const mcpServers = {};
   for (const key of hubToolsets(agent)) {
     const { server, script } = HUB_TOOLSETS[key];
-    mcpServers[server] = { command: process.execPath, args: [path.join(__dirname, 'mcp', script)], env: { ELECTRON_RUN_AS_NODE: '1', HUB_AGENT_ID: agent.id, ...(agent.nodesTool ? { HUB_NODES_TOOL: '1' } : {}) } };
+    mcpServers[server] = { command: process.execPath, args: [path.join(__dirname, 'mcp', script)], env: hubToolEnv(agent) };
   }
   const file = path.join(DATA_DIR, `mcp-${agent.id}.json`);
   fs.writeFileSync(file, JSON.stringify({ mcpServers }, null, 2));
@@ -148,9 +153,9 @@ function codexMcpArgs(agent) {
     args.push(
       '-c', `${p}.command=${tomlStr(process.execPath)}`,
       '-c', `${p}.args=[${tomlStr(path.join(__dirname, 'mcp', script))}]`,
-      '-c', `${p}.env={ELECTRON_RUN_AS_NODE="1",HUB_AGENT_ID=${tomlStr(agent.id)}}`,
+      '-c', `${p}.env={ ${Object.entries(hubToolEnv(agent)).map(([k, v]) => `${k}=${tomlStr(String(v))}`).join(', ')} }`,
       // a question to the user (chat_ask) or a render can take a long time
-      '-c', `${p}.tool_timeout_sec=2700`,
+      '-c', `${p}.tool_timeout_sec=${key === 'videoTools' || key === 'chatTools' ? 2700 : 300}`,
       '-c', `${p}.startup_timeout_sec=30`,
     );
   }
@@ -163,6 +168,12 @@ function fileFolder(agent) {
   return agent.workspace && fs.existsSync(agent.workspace) ? agent.workspace : null;
 }
 const partnerName = (agent) => (agent.engine === 'codex' ? 'Claude' : 'Astra');
+// Tool guides go into the system prompt, which the hub controls (the CLI may drop MCP server instructions when
+// --system-prompt replaces its own), once, instead of being repeated in tool descriptions.
+const threeGuide = () => require('./mcp/three-guide');
+function toolGuide(key) {
+  try { return require(path.join(__dirname, 'mcp', HUB_TOOLSETS[key].script)).guide || ''; } catch { return ''; }
+}
 
 function buildPrompt(agent) {
   const usesApps = agent.engine === 'claude' ? enabledConnectors(agent).length > 0 : Boolean(agent.chatgptApps);
@@ -190,9 +201,8 @@ function buildPrompt(agent) {
   if (gameTools(agent)) {
     parts.push('A live debug instance of the user\'s game Forgeheart runs right next to this chat, and you control it with the forge_* tools. '
       + 'When the user asks for something in the game ("spawn me enemies", "make me invincible", "go to stage 80", "make drones faster"), do it right away with the tools '
-      + '(forge_spawn, forge_debug, forge_eval…) instead of explaining how. Check forge_status or take a forge_screenshot when you need to see the result. '
-      + 'Changes made with forge_eval last until the game reloads; when the user wants a change to stick, save it with forge_patch_save. '
-      + 'Reply briefly with what you changed. The forge_eval tool description lists the game\'s globals (S, C, FOES, spawnFoe, startStage, stats…).');
+      + 'instead of explaining how; check forge_status or forge_screenshot when you need to see the result. Reply briefly with what you changed.');
+    parts.push(toolGuide('gameTools'));
   }
   const sets = hubToolsets(agent);
   if (sets.includes('videoTools')) {
@@ -204,14 +214,19 @@ function buildPrompt(agent) {
       + 'Keep replies short and concrete.');
   }
   if (sets.includes('chatTools')) {
-    parts.push(`You can ask the user a question with chat_ask (give options when there are clear choices) when a decision is really theirs; for visual work you can get a second opinion from ${partnerName(agent)} with chat_second_opinion. `
-      + 'At the end of a reply, when it helps, offer up to 3 short next steps the user might want, each as <suggest>…</suggest> (they become buttons; keep each under 8 words).');
+    // directors get the chat tools' when-to-use guide; plain chats only the <suggest> convention
+    if (agent.dock || sets.length > 1) parts.push(toolGuide('chatTools'));
+    parts.push('At the end of a reply, when it helps, offer up to 3 short next steps the user might want, each as <suggest>…</suggest> (they become buttons; keep each under 8 words).');
   } else if (agent.suggestNext) {
     parts.push('At the end of a reply, when it helps, offer up to 3 short next steps the user might want, each as <suggest>…</suggest> (they become buttons; keep each under 8 words).');
   }
   // Directors (agents docked in a tool) check their own work unless switched off.
   if (agent.selfReview ?? Boolean(agent.dock)) parts.push('Before you finish, check your result against what was asked (for visual work, look at a fresh screenshot). Fix real problems you find, then mention in one line what you checked.');
-  if (sets.includes('threeTools')) {
+  // Lean (default): the three-lab tool guide carries the how-to, so the prompt only sets the role. 'full' keeps the long version.
+  if (sets.includes('threeTools') && agent.toolMode !== 'full') {
+    parts.push('You are the Three Director. Prefer good-looking defaults (tone mapping, environment light, smooth motion, sensible performance) and small edits over rewrites.\n'
+      + threeGuide().CORE);
+  } else if (sets.includes('threeTools')) {
     parts.push('You turn the user\'s descriptions into three.js scenes in the Three.js Lab shown next to this chat. They prompt; you write the code. '
       + 'Build with three_set_code (complete sketches) and change existing code with three_edit_code (read / search big layers with three_read_code and three_search_code), read the errors it returns, look with three_screenshot, and iterate until it matches what they asked for. '
       + 'Don\'t paste the code into the chat unless they ask for it: describe what you made and what they can ask for next (camera, mood, motion, materials…). '
@@ -220,6 +235,7 @@ function buildPrompt(agent) {
       + 'Check the track with three_media_info before designing around it: if the user placed kick / snare / hit markers or set a beat grid, build the hits on those (audio.kick, audio.snare, audio.hit, audio.beatInBar) instead of guessing from the audio. Look at a hit or drop (three_media_control) when you check your work. '
       + 'Sketches can have layers (like Photoshop / After Effects): when the user asks to add, remove, time, fade, move or blend a layer, use the layer tools (three_add_layer, three_update_layer, three_remove_layer, three_layers); upper layers must be transparent. For changes over time ("fade in on the drop", "zoom during the build") use three_keyframes or three_animate presets. You can read and edit the timeline (three_timeline, three_timeline_edit) and the notes the user pins on moments (three_notes: they come with screenshots; mark them done when handled). Looks like ASCII, datamosh, found footage/VHS, glitch, CRT, pixelate, halftone, film, kaleidoscope, edge glow, thermal, duotone or glow are filter layers (three_add_layer with that template) placed above what they should affect. The user can give you reference files (pictures, logos, clips, models, sounds): three_references lists them and adds pictures they attach here; use them in code with refTexture(name) or refs.name. '
       + 'If three_get_code reports unsavedSliders, the user tuned those by hand: keep their values.');
+    parts.push(threeGuide().FULL);
   }
   if (web) parts.push('You can search the web when the answer depends on recent or specific facts; say briefly where facts come from.');
   if (!folder && !usesApps && !sets.length) parts.push(web ? 'Apart from web search you have no tools: never try to run commands or read files.' : 'You have no tools: never try to run commands, read files or browse the web.');
@@ -233,7 +249,7 @@ function buildPrompt(agent) {
       + '(not one-off details), add it on its own line at the very end of your reply as '
       + '<remember>short fact</remember>. Do this rarely, and never mention these tags.');
   }
-  return parts.join('\n\n');
+  return parts.filter(Boolean).join('\n\n');
 }
 
 function readConnectorCache() {
@@ -603,7 +619,7 @@ function once({ agent, text, images = [], options = {}, timeoutMs = 8 * 60000 })
     const chatId = `once-${crypto.randomUUID()}`;
     let out = '';
     const timer = setTimeout(() => { stop(chatId); resolve({ ok: false, error: `No answer after ${Math.round(timeoutMs / 60000)} minutes.` }); }, timeoutMs);
-    send({ agent: { ...agent, chatTools: false }, chatId, session: {}, text, options: { ...options, images } }, (event) => {
+    send({ agent: { ...agent, chatTools: false, noHubTools: true }, chatId, session: {}, text, options: { ...options, images } }, (event) => {
       if (event.type === 'delta') out += event.text;
       if (event.type === 'done') { clearTimeout(timer); resolve({ ok: true, text: event.text || out, usage: event.usage }); }
       if (event.type === 'error' || event.type === 'stopped') { clearTimeout(timer); resolve({ ok: false, error: event.message || 'stopped' }); }
@@ -740,4 +756,5 @@ module.exports = {
   doctor, EFFORTS, CODEX_DISABLED_FEATURES,
   // for tests (dev/astra-engine-test.js)
   _test: { codexArgs, claudeArgs, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, LOST_SESSION },
+  buildPrompt, HUB_TOOLSETS, // the director cost report (mcp/cost.js)
 };

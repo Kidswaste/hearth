@@ -2629,6 +2629,13 @@ ${code}
       getCode: () => ({ sketch: current?.name, layer: sel()?.name, layers: layersSummary(), frame: stage.size, lines: editor.value.split('\n').length, ...codeOrOutline(editor.value), ...(selCtl()?.controls().length ? { sliders: selCtl().controls() } : {}), ...(selCtl()?.unsaved().length ? { unsavedSliders: selCtl().unsaved(), note: 'The user moved these sliders but has not saved them into the code; keep their values when you rewrite.' } : {}) }),
       media: player,
       assignMedia,
+      // a layer's code as it is now (the editor's text for the selected one), for diffs and the director's undo
+      codeOf(ref = null) {
+        const L = ref ? findLayer(ref) : sel();
+        if (!L) throw new Error(`No layer "${ref}". Layers: ${layersOf().map((x) => x.name).join(', ')}`);
+        return { id: L.id, name: L.name, sketchId: current?.id, sketch: current?.name, code: L.id === sel()?.id ? editor.value : L.code };
+      },
+      openSketch: (id) => api.openSketchById?.(id),
       setFrame: (id) => stage.setMode(id),
       async setCode(code, wait = 2.5) {
         if (player.recording) throw new Error('The user is recording a video right now; wait until they stop.');
@@ -3188,6 +3195,8 @@ ${frag}\`,
     for (let i = 0; i < 100 && !api.director; i += 1) await new Promise((r) => setTimeout(r, 100));
     const d = api.director;
     if (!d) return { ok: false, error: 'The sketch editor did not load.' };
+    // the director's fast loop (tools/three-director.js): compact results, batches, diffs, screenshot options, undo
+    if (typeof ThreeDirector !== 'undefined') { const r = await ThreeDirector.handle(tool, args, d); if (r) return r; }
     if (tool === 'three_get_code') return { ok: true, value: d.getCode() };
     if (tool === 'three_set_code') {
       if (!String(args.code || '').trim()) return { ok: false, error: 'No code given.' };

@@ -9,6 +9,8 @@
 //   slow      streams slowly (~6 s, to test Stop)       error    the engine fails (is_error / turn.failed)
 //   login     fails with "not logged in"                crash    exits with code 3 and a stderr line
 //   big       reports a huge input usage (auto-compact) echo     replies with the exact prompt it got
+//   mcp       really calls the hub MCP servers it was given (--mcp-config / -c mcp_servers.*): the tools in a line
+//             `mcp: [["three_console", {}], ["three_do", {"cmd": "layers"}]]` (default: tools/list + three_console)
 // Env: FAKE_DELAY (ms between pieces, default 15), FAKE_STATE (folder for per-session turn counts).
 const fs = require('fs');
 const os = require('os');
@@ -50,7 +52,8 @@ function plan(prompt) {
   const p = {
     think: has('think'), tool: has('tool'), tools3: has('tools3'), code: has('code'), table: has('table'), long: has('long'),
     remember: has('remember'), suggest: has('suggest'), slow: has('slow'), error: has('error'), login: has('login'),
-    crash: has('crash'), big: has('big'), echo: has('echo'),
+    crash: has('crash'), big: has('big'), echo: has('echo'), mcp: has('mcp'),
+    mcpCalls: (() => { const m = msg.match(/^mcp:\s*(\[[\s\S]*\])\s*$/m); try { return m ? JSON.parse(m[1]) : null; } catch { return null; } })(),
     compact: /Compact our context|moving to a fresh chat/i.test(msg),
     summarize: /^Summari[sz]e\b/i.test(msg),
     title: /short title for this chat/i.test(msg),
@@ -74,4 +77,32 @@ function plan(prompt) {
 function pieces(text) { return text.match(/[\s\S]{1,12}/g) || []; }
 const delayMs = (p) => (p.slow ? 120 : Number(process.env.FAKE_DELAY || 15));
 
-module.exports = { readStdin, sleep, out, uuid, loadState, saveState, plan, pieces, delayMs };
+// A real MCP client for the `mcp` keyword: starts a server the way the CLI would ({ command, args, env }), speaks
+// JSON-RPC over stdio, and returns { tools, call(name, args), close() }.
+function mcpClient({ command, args = [], env = {} }) {
+  const { spawn } = require('child_process');
+  const child = spawn(command, args, { env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'ignore'] });
+  let buf = ''; let next = 1; const waiting = new Map();
+  child.stdout.on('data', (d) => {
+    buf += d;
+    let nl;
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl); buf = buf.slice(nl + 1);
+      try { const msg = JSON.parse(line); waiting.get(msg.id)?.(msg); waiting.delete(msg.id); } catch { /* not JSON */ }
+    }
+  });
+  const rpc = (method, params) => new Promise((resolve) => { const id = next++; waiting.set(id, resolve); child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`); setTimeout(() => { if (waiting.delete(id)) resolve({ error: { message: 'timeout' } }); }, 120000); });
+  return (async () => {
+    const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'fake', version: '0' } });
+    const list = await rpc('tools/list', {});
+    return {
+      instructions: init.result?.instructions || '', tools: list.result?.tools || [],
+      call: async (name, a) => (await rpc('tools/call', { name, arguments: a || {} })).result || { isError: true, content: [{ type: 'text', text: 'no result' }] },
+      close: () => { try { child.stdin.end(); child.kill(); } catch { /* gone */ } },
+    };
+  })();
+}
+// Which server a tool belongs to (by prefix), from the servers the CLI was given.
+const serverFor = (servers, tool) => servers[{ three: 'three', video: 'video', ae: 'video', forge: 'forgeheart', chat: 'chat' }[tool.split('_')[0]]] || null;
+
+module.exports = { readStdin, sleep, out, uuid, loadState, saveState, plan, pieces, delayMs, mcpClient, serverFor };

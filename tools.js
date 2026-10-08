@@ -74,6 +74,7 @@ const Tools = (() => {
     s.divider.hidden = !open;
     s.dockBtn?.classList.toggle('on', open);
     store.set(`dockOpen.${s.tool.id}`, open);
+    if (typeof DirectorDock !== 'undefined') DirectorDock.applyCollapsed(s); // the thin bar only shows while the dock is open
   }
 
   function syncDock(s) {
@@ -83,8 +84,10 @@ const Tools = (() => {
     s.dock.replaceChildren();
     s.dockBtn?.remove();
     s.dockedId = agent?.id || null;
-    if (!agent) { setDockOpen(s, false); return; }
+    if (!agent) { if (typeof DirectorDock !== 'undefined') DirectorDock.detach(s.tool.id); setDockOpen(s, false); return; }
     Native.mount(agent.id, s.dock);
+    // activity strip, quick chips, undo, collapse (director-dock.js)
+    if (typeof DirectorDock !== 'undefined') { try { DirectorDock.attach(s, agent); } catch (err) { console.warn(err); } }
     s.dockBtn = el('button', { class: 'ghost small dock-toggle', text: `💬 ${agent.name}`, title: `Show or hide the ${agent.name} chat`, on: { click: () => setDockOpen(s, s.dock.hidden) } });
     s.head.append(s.dockBtn);
     setDockOpen(s, store.get(`dockOpen.${s.tool.id}`, true));

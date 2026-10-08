@@ -60,12 +60,12 @@ function turn(agent, text, session = {}, options = {}, onStart) {
   assert(ed.includes('sandbox_mode="workspace-write"') && ed.includes(`sandbox_workspace_write.writable_roots=[${JSON.stringify(folder)}]`) && ed.includes('sandbox_workspace_write.network_access=false'));
   ok('opt-in file access: read-only sandbox, or writes only inside the folder (paths with quotes survive)');
   const dir2 = T.codexArgs({ ...astra, threeTools: true, chatTools: true }, {}, {});
-  assert(dir2.some((x) => /^mcp_servers\.three\.command=/.test(x)) && dir2.some((x) => /^mcp_servers\.chat\.env=\{ELECTRON_RUN_AS_NODE="1",HUB_AGENT_ID="astra"\}$/.test(x)));
+  assert(dir2.some((x) => /^mcp_servers\.three\.command=/.test(x)) && dir2.some((x) => /^mcp_servers\.chat\.env=\{ ELECTRON_RUN_AS_NODE="1", HUB_AGENT_ID="astra", HUB_PARTNER="Claude" \}$/.test(x)));
   ok('a director (three tools) and talk-back tools run on Codex through MCP config overrides');
   assert(T.hubToolsets(claude).includes('chatTools') && !T.hubToolsets(astra).includes('chatTools'));
   ok('talk-back tools stay on by default for Claude, opt-in for Astra');
-  const p = T.buildPrompt({ ...astra, chatTools: true });
-  assert(/second opinion from Claude/.test(p) && /second opinion from Astra/.test(T.buildPrompt(claude)));
+  // the chat tool server names the partner (HUB_PARTNER) in chat_second_opinion's description
+  assert(T.codexArgs({ ...astra, chatTools: true }, {}, {}).some((x) => /HUB_PARTNER="Claude"/.test(x)));
   ok('second opinions point at the other engine');
   assert(/<suggest>/.test(T.buildPrompt({ ...astra, suggestNext: true })) && !/<suggest>/.test(T.buildPrompt(astra)));
   ok('next-step suggestions are opt-in for Astra');

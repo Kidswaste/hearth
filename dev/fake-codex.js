@@ -11,7 +11,18 @@ const F = require('./fake-common');
   const resume = argv.indexOf('resume');
   const threadId = resume >= 0 ? argv[resume + 1] : F.uuid();
   const prompt = await F.readStdin();
-  const { p, text, thinking } = F.plan(prompt);
+  const { p, thinking } = F.plan(prompt);
+  let { text } = F.plan(prompt);
+  // -c mcp_servers.<name>.<key>=<TOML value> (engines.js codexArgs) → { name: { command, args, env } }
+  const servers = {};
+  argv.forEach((a, i) => {
+    const m = argv[i - 1] === '-c' && a.match(/^mcp_servers\.([\w-]+)\.(\w+)=([\s\S]*)$/);
+    if (!m) return;
+    const v = m[3].trim();
+    let val;
+    try { val = JSON.parse(v.startsWith('{') ? v.replace(/([{,]\s*)([A-Za-z_][\w]*)\s*=/g, '$1"$2":') : v); } catch { val = v; }
+    (servers[m[1]] ||= {})[m[2]] = val;
+  });
   const state = F.loadState(`codex-${threadId}`);
   const wait = F.delayMs(p);
   if (resume < 0) F.out({ type: 'thread.started', thread_id: threadId });
@@ -29,6 +40,24 @@ const F = require('./fake-common');
     F.out({ type: 'item.started', item: { id, type: 'mcp_tool_call', server, tool, status: 'in_progress' } });
     await F.sleep(wait * 6);
     F.out({ type: 'item.completed', item: { id, type: 'mcp_tool_call', server, tool, status: 'completed' } });
+  }
+  if (p.mcp) {
+    const lines = [`servers: ${Object.keys(servers).join(', ') || 'none'}`];
+    const clients = {};
+    for (const [tool, a] of p.mcpCalls || [['three_console', {}]]) {
+      const spec = F.serverFor(servers, tool);
+      if (!spec) { lines.push(`${tool}: no server`); continue; }
+      const name = Object.keys(servers).find((k) => servers[k] === spec);
+      clients[name] ||= await F.mcpClient(spec);
+      const id = `item_${n++}`;
+      F.out({ type: 'item.started', item: { id, type: 'mcp_tool_call', server: name, tool, arguments: a, status: 'in_progress' } });
+      const r = await clients[name].call(tool, a);
+      const t = (r.content || []).filter((x) => x.type === 'text').map((x) => x.text).join('\n');
+      F.out({ type: 'item.completed', item: { id, type: 'mcp_tool_call', server: name, tool, status: r.isError ? 'failed' : 'completed' } });
+      lines.push(`${tool}: ${r.isError ? 'ERROR ' : ''}${t.length} chars · ${t.replace(/\s+/g, ' ').slice(0, 160)}`);
+    }
+    for (const c of Object.values(clients)) c.close();
+    text += `\n\nMCP calls:\n${lines.map((l) => `- ${l}`).join('\n')}`;
   }
   if (p.error) { F.out({ type: 'turn.failed', error: { message: 'Fake Codex error: stream disconnected' } }); return; }
   // Codex sends whole messages, not deltas: wait about as long as a stream would take, then send it.

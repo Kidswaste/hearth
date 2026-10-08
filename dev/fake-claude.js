@@ -14,7 +14,8 @@ const F = require('./fake-common');
   const prompt = await F.readStdin();
   const tools = (arg('--allowedTools') || '').split(',').filter(Boolean);
   F.out({ type: 'system', subtype: 'init', session_id: sessionId, model, tools: ['Read', ...tools], mcp_servers: [], cwd: process.cwd() });
-  const { p, text, thinking } = F.plan(prompt);
+  const { p, thinking } = F.plan(prompt);
+  let { text } = F.plan(prompt);
   const state = F.loadState(`claude-${sessionId}`);
   const wait = F.delayMs(p);
 
@@ -29,6 +30,33 @@ const F = require('./fake-common');
     F.out({ type: 'stream_event', event: { type: 'content_block_stop', index } });
     index += 1;
   }
+  // `mcp`: real calls to the hub MCP servers from --mcp-config, with their results in the reply
+  let mcpReport = '';
+  if (p.mcp) {
+    let servers = {};
+    try { servers = JSON.parse(require('fs').readFileSync(arg('--mcp-config'), 'utf8')).mcpServers || {}; } catch { /* none given */ }
+    const calls = p.mcpCalls || [['three_console', {}]];
+    const lines = [];
+    const clients = {};
+    for (const [tool, a] of calls) {
+      const spec = F.serverFor(servers, tool);
+      if (!spec) { lines.push(`${tool}: no server`); continue; }
+      const key = JSON.stringify(spec);
+      clients[key] ||= await F.mcpClient(spec);
+      const c = clients[key];
+      if (!c.reported && (c.reported = true)) lines.push(`server ${spec.args?.[0]?.split(/[\\/]/).pop()}: ${c.tools.length} tools, list ${JSON.stringify(c.tools).length} chars, instructions ${c.instructions.length} chars`);
+      const server = Object.keys(servers).find((k) => JSON.stringify(servers[k]) === key);
+      const id = `toolu_${F.uuid().slice(0, 8)}`;
+      F.out({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: `mcp__${server}__${tool}`, input: a } ] }, session_id: sessionId });
+      const r = await c.call(tool, a);
+      const text = (r.content || []).filter((x) => x.type === 'text').map((x) => x.text).join('\n');
+      const imgs = (r.content || []).filter((x) => x.type === 'image').length;
+      F.out({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: text, is_error: Boolean(r.isError) }] }, session_id: sessionId });
+      lines.push(`${tool}: ${r.isError ? 'ERROR ' : ''}${text.length} chars${imgs ? ` + ${imgs} image` : ''} · ${text.replace(/\s+/g, ' ').slice(0, 160)}`);
+    }
+    for (const c of Object.values(clients)) c.close();
+    mcpReport = `\n\nMCP calls:\n${lines.map((l) => `- ${l}`).join('\n')}`;
+  }
   const toolCalls = p.tools3 ? ['mcp__three__three_screenshot', 'mcp__three__three_eval', 'mcp__three__three_edit_code'] : p.tool ? ['mcp__claude_ai_Gmail__search_threads'] : [];
   for (const name of toolCalls) {
     const id = `toolu_${F.uuid().slice(0, 8)}`;
@@ -37,6 +65,7 @@ const F = require('./fake-common');
     F.out({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: 'ok' }] }, session_id: sessionId });
   }
   if (p.error) { F.out({ type: 'result', subtype: 'error_during_execution', is_error: true, result: 'Fake engine error: the model is overloaded', session_id: sessionId }); return; }
+  text += mcpReport;
   F.out({ type: 'stream_event', event: { type: 'content_block_start', index, content_block: { type: 'text', text: '' } } });
   for (const t of F.pieces(text)) { F.out({ type: 'stream_event', event: { type: 'content_block_delta', index, delta: { type: 'text_delta', text: t } } }); await F.sleep(wait); }
   F.out({ type: 'stream_event', event: { type: 'content_block_stop', index } });
