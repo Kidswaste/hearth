@@ -100,9 +100,11 @@ const Native = (() => {
       // Alt+↑ / Alt+↓: earlier messages you sent (draft history)
       if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); historyStep(agentId, e.key === 'ArrowUp' ? 1 : -1); return; }
       // Alt+T: open / close every thinking block in this chat
-      if (e.altKey && e.key.toLowerCase() === 't') { e.preventDefault(); toggleThinking(agentId); return; }
+      // (keys are read from e.code: on a Mac, Alt+letter types a special character)
+      const altKey = e.code?.startsWith('Key') ? e.code.slice(3).toLowerCase() : e.key;
+      if (e.altKey && altKey === 't') { e.preventDefault(); toggleThinking(agentId); return; }
       // Alt+R read the last reply aloud (again: stop) · Alt+B bookmark it · Alt+P pin it · Alt+Home / Alt+End scroll
-      if (e.altKey && !e.ctrlKey && ALT_KEYS[e.key.length === 1 ? e.key.toLowerCase() : e.key]) { e.preventDefault(); ALT_KEYS[e.key.length === 1 ? e.key.toLowerCase() : e.key](agentId); return; }
+      if (e.altKey && !e.ctrlKey && ALT_KEYS[altKey]) { e.preventDefault(); ALT_KEYS[altKey](agentId); return; }
       // Tab inside a ``` code fence indents instead of leaving the box
       if (e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && ((input.value.slice(0, input.selectionStart).match(/```/g) || []).length % 2 === 1)) {
         e.preventDefault(); insertDraft(agentId, '  '); return;
@@ -145,8 +147,15 @@ const Native = (() => {
       const chatId = H.activeChat[agentId];
       const text = input.value.trim();
       // While it answers: a typed message waits in line (sent when the reply ends); an empty box means Stop.
+      // Chat commands still run right away (/stop, /find, /stats… while it works).
       if (chatId && pending.has(chatId)) {
         if (!text) { window.hub.stop(chatId); return; }
+        if (text.startsWith('/') && Commands.parse(text)) {
+          pushHistory(text);
+          input.value = ''; store.set(draftKey(agentId), null); autosize(input); updateCounter(v); syncSendBtn(agentId);
+          Commands.tryRun(text, agentId, input);
+          return;
+        }
         (v.queue ||= []).push(text);
         input.value = '';
         store.set(draftKey(agentId), null);
@@ -745,6 +754,13 @@ const Native = (() => {
     setTimeout(() => unreadFrom.delete(chatId), 1500); // the "New" line stays for this render
     Panel.render();
   }
+  // A docked chat's tool opened later (or the window came back): replies now on screen count as seen.
+  setInterval(() => {
+    for (const agentId of views.keys()) {
+      const id = H.activeChat[agentId];
+      if (id && H.unreadChats.has(id) && visibleNow(agentId) && document.hasFocus()) markSeen(id);
+    }
+  }, 1500);
   function pinnedStrip(agentId, chat, pins) {
     let at = 0;
     const label = (i) => `📌 ${pins.length > 1 ? `${at + 1}/${pins.length} · ` : ''}${(chat.messages[i].text || '').replace(/[#*`>_]/g, '').replace(/\s+/g, ' ').trim().slice(0, 90)}`;

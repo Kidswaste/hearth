@@ -236,7 +236,7 @@ const ChatUX = (() => {
 
   // Global keys inside a chat: Alt+F finds in the chat you are typing in.
   document.addEventListener('keydown', (e) => {
-    if (!e.altKey || e.ctrlKey || e.key.toLowerCase() !== 'f') return;
+    if (!e.altKey || e.ctrlKey || e.code !== 'KeyF') return;
     const box = e.target.closest?.('.composer, .messages-wrap');
     if (!box) return;
     const agentId = [...H.agents()].map((a) => a.id).find((id) => Native.view(id)?.root.contains(box));
