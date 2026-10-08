@@ -440,7 +440,8 @@ const Prompts = (() => {
     const argText = (it) => {
       const m = textarea.value.match(/^\/[\w-]+\s([^\n]*)$/); const typed = m ? m[1] : '';
       const v = String(it.value);
-      if (!typed.trim() || v.toLowerCase().startsWith(typed.trim().toLowerCase())) return `/${it.def.name} ${v}`;
+      const flat = (t) => t.toLowerCase().replace(/[·\s]+/g, ' ').trim();
+      if (!typed.trim() || flat(v).startsWith(flat(typed)) || flat(typed).split(' ').every((w) => flat(v).includes(w))) return `/${it.def.name} ${v}`;
       const head = typed.replace(/\S*$/, '');
       return `/${it.def.name} ${head}${v}`;
     };
