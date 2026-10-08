@@ -102,6 +102,8 @@ const Review = (() => {
     let i = 0;
     for (const d of [...dirs].slice(0, 40)) {
       const id = `vr:${i += 1}`;
+      // a default folder that doesn't exist (no Documents/Codex) is skipped quietly instead of logging a main-process error
+      if (!(await window.hub.fs.stat(d).catch(() => null))?.isDir) continue;
       try { await window.hub.fs.watch(id, d); watched.push(id); } catch { /* missing folder */ }
     }
   }
