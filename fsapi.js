@@ -118,7 +118,8 @@ function zip(entries, out, { skipDirs = [] } = {}) {
     if (fs.existsSync(target)) fs.rmSync(target);
     return new Promise((resolve, reject) => {
       execFile(TAR, ['-a', '-cf', target, '-C', tmp, ...fs.readdirSync(tmp)], { windowsHide: true }, (err) => {
-        fs.rmSync(tmp, { recursive: true, force: true });
+        // the temp copy: Windows (antivirus, indexer) can still hold it for a moment; never crash over it
+        try { fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 }); } catch { setTimeout(() => fs.rm(tmp, { recursive: true, force: true }, () => {}), 5000); }
         if (err) reject(err); else resolve({ path: target, size: fs.statSync(target).size });
       });
     });
