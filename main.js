@@ -100,7 +100,7 @@ function createWindow() {
   });
   if (state.maximized) win.maximize();
   appshell.trackWindowState(win);
-  win.loadFile('index.html');
+  win.loadFile(path.join(__dirname, 'index.html'));
   // Links clicked in native chats open in your normal browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
     openExternal(url);
