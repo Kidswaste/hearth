@@ -37,8 +37,11 @@ if (/Mac/.test(navigator.platform)) {
 
   // ---------- toasts ----------
   let toastBox;
+  const toastLog = []; // the last notifications (Ctrl+K → Recent notifications)
+  globalThis.recentToasts = () => toastLog.slice();
   function toast(message, { type = 'info', action, timeout = 4500 } = {}) {
     if (!toastBox) { toastBox = el('div', { id: 'toasts' }); document.body.append(toastBox); }
+    toastLog.unshift({ message, type, at: Date.now() }); toastLog.length = Math.min(toastLog.length, 40);
     const node = el('div', { class: `toast ${type}` }, el('span', { text: message }));
     if (action) node.append(el('button', { text: action.label, on: { click: () => { action.fn(); node.remove(); } } }));
     node.append(el('button', { class: 'toast-x', text: '×', title: 'Dismiss', on: { click: () => node.remove() } }));

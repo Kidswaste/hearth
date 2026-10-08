@@ -27,7 +27,7 @@ $('import-btn').addEventListener('click', async () => {
   status.textContent = `Imported ${result.imported} chats${where ? ` into ${where}` : ''}${result.skipped ? ` (${result.skipped} skipped: empty or already imported)` : ''}.`;
 });
 
-document.addEventListener('click', (e) => { if (!e.target.closest('#menu')) hideMenu(); });
+document.addEventListener('click', (e) => { if (!e.target.closest('#menu') && performance.now() - menuOpenedAt > 40) hideMenu(); });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') hideMenu();
   // Code editors handle their own Ctrl shortcuts (comment toggle, duplicate line…).

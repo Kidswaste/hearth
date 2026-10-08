@@ -360,3 +360,18 @@
 299. ✓ Looks: right-click → update with the current values, rename, duplicate, delete.
 300. ✓ Chat: 🔊 read a reply aloud, Save a reply as Markdown, chat menu → copy the last reply, fold / unfold all long replies, jump to the first message, duplicate the chat, chat stats; Ctrl+Shift+C copies the last reply.
 301. ✓ Notifications stay while hovered; Shift+Esc (or Ctrl+K → Clear all notifications) clears them; Ctrl+K → Sparkle effects on / off (turns off the Forgeheart sparkles), copy last reply, fold long replies.
+
+## Pack 2 (≈55)
+302. ✓ Fix: menus opened by a click (⚡ Triggers → Presets, Sketch → Cycle looks…, the chat menu…) closed instantly because the same click counted as "outside"; menus are also above the Lab now.
+303. ✓ Sketch helpers: clamp, mix, map, smoothstep, fract, pingpong, snap, wave; hsl() and paletteAt(t) colors; beatPulse(div); onBar, onCue, everyBeats(n); audio.peak (loudest of the last 3 s), audio.section ('quiet' | 'medium' | 'loud').
+304. ✓ Right-click the preview: screenshot (save / copy), freeze, guides, note, restart, present, Stage window, keys. (A sketch that uses right-click itself keeps it.)
+305. ✓ ⌗ Composition guides on the preview (thirds, golden ratio, center cross): over the picture only, never in screenshots or videos.
+306. ✓ Present hides the mouse after 2 s still.
+307. ✓ Timeline: L loops the bar under the playhead (again: off), G cycles the snap setting; Fill ▾ → Quantize the markers to the snap grid, Remove doubles (closer than 80 ms).
+308. ✓ Sketch ▾ → Copy all the code (every layer), Cycle looks… (every 1 / 2 / 4 / 8 bars while it plays, each layer moves to its next look, morphing; off stops).
+309. ✓ Ctrl+S saves the selected layer's sliders into its code (your most-clicked button), Ctrl+Shift+S saves them as a look.
+310. ✓ ⚡ Triggers → Presets also lists "♪ From <song>": copy another song's whole setup.
+311. ✓ Now playing: click the song name to copy it. Stage window: Ctrl+K → "always on top / normal".
+312. ✓ 10 more Lab actions in Ctrl+K (guides, loop this bar, snap, quantize, remove doubles, cycle looks, copy all code, save sliders, save as look, Stage on top): 32 in all.
+313. ✓ Chat: Ctrl+↑ / Ctrl+↓ jump between your own messages (they flash); select text in a reply → ❝ Quote puts it in your message.
+314. ✓ App: Ctrl+K → Recent notifications (the last 40), middle-click an agent on the rail = a new chat with it, the window title shows what you're looking at.

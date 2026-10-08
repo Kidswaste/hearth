@@ -285,6 +285,7 @@ ipcMain.handle('app:platform', () => process.platform);
 // The hub window is busy (chats, timeline, panels); a sketch running in its own window gets steady frames.
 // Messages between the Lab and the sandbox page are relayed here (stage-preload.js on the other side).
 let stageWin = null;
+ipcMain.handle('stage:onTop', () => { if (!stageWin || stageWin.isDestroyed()) return null; const on = !stageWin.isAlwaysOnTop(); stageWin.setAlwaysOnTop(on); return on; });
 ipcMain.handle('stage:open', (_e, { query, width, height, fresh }) => {
   const { screen } = require('electron');
   // ⟲ Restart from scratch: a new window (and renderer process), without telling the Lab the Stage closed

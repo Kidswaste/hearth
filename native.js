@@ -44,6 +44,23 @@ const Native = (() => {
 
     const list = el('div', { class: 'messages' });
     list.addEventListener('click', (e) => onListClick(e, agentId));
+    const quoteSel = el('button', { class: 'quote-sel', text: '❝ Quote', hidden: true });
+    quoteSel.addEventListener('mousedown', (e) => e.preventDefault());
+    quoteSel.addEventListener('click', () => {
+      const t = String(getSelection()).trim(); quoteSel.hidden = true;
+      if (!t) return;
+      input.value = `${t.split('\n').map((l) => `> ${l}`).join('\n')}\n\n${input.value}`; autosize(input); input.focus();
+      getSelection().removeAllRanges();
+    });
+    list.addEventListener('mouseup', () => setTimeout(() => {
+      const s = getSelection(); const t = String(s).trim();
+      if (!t || !s.rangeCount || !list.contains(s.anchorNode)) { quoteSel.hidden = true; return; }
+      const r = s.getRangeAt(0).getBoundingClientRect();
+      Object.assign(quoteSel.style, { left: `${r.left + r.width / 2}px`, top: `${r.top - 30}px` });
+      quoteSel.hidden = false;
+    }));
+    list.addEventListener('scroll', () => { quoteSel.hidden = true; });
+    document.body.append(quoteSel);
     queueMicrotask(() => list.parentElement?.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'c') { e.preventDefault(); copyLastReply(agentId); }
     }));
@@ -64,6 +81,13 @@ const Native = (() => {
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit(); }
       if (e.key === 'Escape') { const id = H.activeChat[agentId]; if (id && pending.has(id)) window.hub.stop(id); }
+      // Ctrl+↑ / Ctrl+↓: jump between your own messages
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        e.preventDefault();
+        const mine = [...list.querySelectorAll('.msg.user')]; const top = list.scrollTop; const up = e.key === 'ArrowUp';
+        const target = up ? mine.reverse().find((m) => m.offsetTop < top - 8) : mine.find((m) => m.offsetTop > top + 8);
+        if (target) { list.scrollTop = target.offsetTop - 12; target.classList.add('flash-msg'); setTimeout(() => target.classList.remove('flash-msg'), 700); }
+      }
       if (e.key === 'ArrowUp' && !input.value) { // edit your last message, like most chat apps
         const chat = chats.get(H.activeChat[agentId]);
         const idx = chat?.messages.map((m) => m.role).lastIndexOf('user');

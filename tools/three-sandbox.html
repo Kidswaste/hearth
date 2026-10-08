@@ -146,6 +146,25 @@ const tickFrames = (t) => {
 };
 realRAF(tickFrames);
 addEventListener('webglcontextlost', () => post({ type: 'gpu-lost' }), true);
+addEventListener('contextmenu', (e) => { if (mode !== 'sketch' || e.defaultPrevented) return; e.preventDefault(); post({ type: 'ctx', x: e.clientX, y: e.clientY }); }); // (a sketch that uses right-click itself prevents it first)
+// composition guides over the picture (not in screenshots or recordings): 'thirds' | 'center' | 'golden' | off
+let guideEl = null;
+function setGuides(kind) {
+  guideEl?.remove(); guideEl = null;
+  if (!kind) return;
+  const L = (x1, y1, x2, y2) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+  const g = 0.382;
+  const lines = kind === 'thirds' ? [L(33.33, 0, 33.33, 100), L(66.67, 0, 66.67, 100), L(0, 33.33, 100, 33.33), L(0, 66.67, 100, 66.67)]
+    : kind === 'center' ? [L(50, 0, 50, 100), L(0, 50, 100, 50), L(0, 0, 100, 100), L(100, 0, 0, 100)]
+      : [L(g * 100, 0, g * 100, 100), L(100 - g * 100, 0, 100 - g * 100, 100), L(0, g * 100, 100, g * 100), L(0, 100 - g * 100, 100, 100 - g * 100)];
+  guideEl = document.createElement('div');
+  guideEl.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:99999';
+  guideEl.innerHTML = `<svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0"><g stroke="#ffffff88" stroke-width="0.25" vector-effect="non-scaling-stroke" style="filter:drop-shadow(0 0 1px #000)">${lines.join('')}</g></svg>`;
+  document.body.append(guideEl);
+}
+// Present: the mouse hides after 2 s still
+let presentCursor = false; let cursorTimer = 0;
+addEventListener('mousemove', () => { if (!presentCursor) return; document.documentElement.style.cursor = ''; clearTimeout(cursorTimer); cursorTimer = realSetTimeout(() => { document.documentElement.style.cursor = 'none'; }, 2000); });
 realSetInterval(() => {
   const now = performance.now();
   const fps = (frames * 1000) / (now - lastTick);
@@ -366,6 +385,7 @@ function update() {
   for (let i = 0; i < wave.length; i += 1) rms += wave[i] * wave[i];
   bands.level = clamp01(Math.sqrt(rms / wave.length) * 3);
   bands.energy += (bands.level - bands.energy) * Math.min(1, dt);
+  bands.peak = Math.max(bands.level, (bands.peak || 0) - dt / 3);
   bands.bass = avg(20, 150);
   bands.mid = clamp01(avg(150, 2000) * 1.2);
   bands.treble = clamp01(avg(2000, 12000) * 1.6);
@@ -473,6 +493,10 @@ globalThis.audio = audio;
 Object.defineProperties(audio, {
   // loudness averaged over about a second (0..1): calm vs intense parts
   energy: { get() { update(); return bands.energy; } },
+  // 'quiet' | 'medium' | 'loud' from the song's analysis (where the playhead is), null live / without a song
+  section: { get() { const t = this.time; return analysis?.sections?.find((s) => t >= s.start && t < s.end)?.energy || null; } },
+  // the loudest level of the last ~3 s (falls slowly): normalize with audio.level / audio.peak
+  peak: { get() { update(); return bands.peak || 0; } },
   // the song section you named with cues: { name, index, start, end, progress 0..1 } or null
   cue: { get() {
     const cs = beatMap?.cues; if (!cs?.length || !mediaEl) return null;
@@ -497,6 +521,31 @@ globalThis.onHit = (kind, cb) => {
   };
   requestAnimationFrame(loop);
 };
+// small math: clamp, mix (lerp), map (range → range), smoothstep, fract, pingpong (0→1→0)
+globalThis.clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+globalThis.mix = (a, b, t) => a + (b - a) * t;
+globalThis.map = (v, a, b, c = 0, d = 1, clampIt = false) => { const t = (v - a) / (b - a || 1); return c + (d - c) * (clampIt ? Math.max(0, Math.min(1, t)) : t); };
+globalThis.smoothstep = (a, b, v) => { const t = Math.max(0, Math.min(1, (v - a) / (b - a || 1))); return t * t * (3 - 2 * t); };
+globalThis.fract = (v) => v - Math.floor(v);
+globalThis.snap = (v, step = 1) => Math.round(v / step) * step;
+// wave(t, speed = 1): a smooth 0..1 back-and-forth (sine), e.g. wave(audio.time, 0.5)
+globalThis.wave = (t, speed = 1) => 0.5 - 0.5 * Math.cos(t * speed * Math.PI * 2);
+globalThis.pingpong = (v) => 1 - Math.abs(1 - 2 * (v - Math.floor(v)));
+// colors: hsl(h 0..360, s 0..1, l 0..1) → '#rrggbb'; paletteAt(t 0..1) blends along the sketch palette (wraps)
+globalThis.hsl = (h, s = 1, l = 0.5) => { const k = (n) => (n + h / 30) % 12; const a = s * Math.min(l, 1 - l); const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1)); return `#${[f(0), f(8), f(4)].map((x) => Math.round(x * 255).toString(16).padStart(2, '0')).join('')}`; };
+globalThis.paletteAt = (t) => {
+  const cols = (globalThis.palette?.length ? globalThis.palette : ['#48ddff', '#bd8bff', '#ff6b9d', '#ffd75e']);
+  const x = (((t % 1) + 1) % 1) * cols.length; const i = Math.floor(x); const f = x - i;
+  const p = (c) => [1, 3, 5].map((k) => parseInt(c.slice(k, k + 2), 16)); const a = p(cols[i]); const b = p(cols[(i + 1) % cols.length]);
+  return `#${a.map((v, k) => Math.round(v + (b[k] - v) * f).toString(16).padStart(2, '0')).join('')}`;
+};
+// beatPulse(div = 1, sharpness = 6): 1 on each beat (div 2 = eighths, 4 = sixteenths…), fading before the next
+globalThis.beatPulse = (div = 1, k = 6) => Math.exp(-((audio.beatPhase * div) % 1) * k);
+// onBar(fn(bar)), onCue(fn(cue)), everyBeats(n, fn(beat)): run when the bar / your named section / every n beats changes
+const watch = (get, cb) => { let prev; const loop = () => { const v = get(); if (prev !== undefined && v !== prev && v != null) { try { cb(v); } catch (err) { console.error(err); } } prev = v; requestAnimationFrame(loop); }; requestAnimationFrame(loop); };
+globalThis.onBar = (cb) => watch(() => audio.bar, cb);
+globalThis.onCue = (cb) => watch(() => audio.cue?.index, () => cb(audio.cue));
+globalThis.everyBeats = (n, cb) => watch(() => Math.floor((((audio.bar || 1) - 1) * audio.beatsPerBar + ((audio.beatInBar || 1) - 1)) / Math.max(1, n)), cb);
 // damp(current, target, speed, dt): smooth follow that doesn't depend on the frame rate
 globalThis.damp = (a, b, lambda, dt) => a + (b - a) * (1 - Math.exp(-lambda * dt));
 // seeded(n): a random() you can repeat (same seed → same numbers)
@@ -1952,6 +2001,8 @@ addEventListener('message', async (e) => {
   if (msg.type === 'remove-layer') removeLayer(msg.id);
   if (msg.type === 'media-load') loadMedia(msg);
   if (msg.type === 'freeze') frozen = Boolean(msg.on);
+  if (msg.type === 'guides') setGuides(msg.kind || null);
+  if (msg.type === 'present') { presentCursor = Boolean(msg.on); document.documentElement.style.cursor = msg.on ? 'none' : ''; }
   if (msg.type === 'step') { stepping = true; realRAF(() => realRAF(() => { stepping = false; })); }
   if (msg.type === 'triggers-set') trigCfg = msg.cfg || null;
   if (msg.type === 'trig-watch') { trigWatch = Boolean(msg.on); if (trigWatch) graph(); }

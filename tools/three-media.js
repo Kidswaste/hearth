@@ -780,6 +780,44 @@ const ThreeMedia = (() => {
       map.marks[lane] = addMark(list, tt);
       selected = { type: 'mark', lane, t: tt };
     }
+    // quantize / dedupe the markers (all rows) in a range
+    const qMode = () => (['off', 'hits'].includes(snapMode) ? '1/16' : snapMode);
+    const qLabel = () => (qMode() === '1/4' ? 'beat' : qMode());
+    function quantize([a, b]) {
+      pushUndo(); let n = 0;
+      for (const ln of LANES) {
+        const keep = map.marks[ln.id].filter((t) => t < a || t >= b);
+        let moved = map.marks[ln.id].filter((t) => t >= a && t < b).map((t) => { const q = snapTime(t, qMode(), map.grid, beats()); if (q !== t) n += 1; return q; });
+        moved = [...new Set(moved.map((t) => r4(t)))];
+        map.marks[ln.id] = [...keep, ...moved].sort((x, y) => x - y);
+      }
+      mapChanged(); toast(`${n} marker${n === 1 ? '' : 's'} moved onto the ${qLabel()} grid (↶ to undo)`, { timeout: 2200 });
+    }
+    function dedupe([a, b]) {
+      pushUndo(); let n = 0;
+      for (const ln of LANES) {
+        const out = []; for (const t of map.marks[ln.id]) { if (t >= a && t < b && out.length && t - out[out.length - 1] < 0.08) { n += 1; continue; } out.push(t); }
+        map.marks[ln.id] = out;
+      }
+      mapChanged(); toast(`${n} double${n === 1 ? '' : 's'} removed (↶ to undo)`, { timeout: 2000 });
+    }
+    // L: loop the bar under the playhead (again: no loop)
+    function loopBar() {
+      if (!D()) return;
+      const t = now(); const len = snapStep('bar', map.grid, bpmNow());
+      let a = snapTime(t, 'bar', map.grid, beats()); if (a > t + 1e-3) a -= len;
+      if (region && Math.abs(region.a - a) < 1e-3 && Math.abs(region.b - (a + len)) < 1e-3) { setRegion(null); toast('Loop off', { timeout: 1000 }); return; }
+      setRegion({ a: Math.max(0, a), b: Math.min(D(), a + len) });
+      if (!st.loop) loopBtn.click();
+      toast('Looping this bar · L again to stop', { timeout: 1500 });
+    }
+    // G: the next snap setting
+    function cycleSnap() {
+      const i = SNAPS.findIndex(([v]) => v === snapMode);
+      snapSel.value = SNAPS[(i + 1) % SNAPS.length][0];
+      snapSel.dispatchEvent(new Event('change'));
+      toast(`Snap: ${SNAPS.find(([v]) => v === snapSel.value)[1]}`, { timeout: 900 });
+    }
     function fillMenu(anchor) {
       const range = region ? [region.a, region.b] : [0, D()];
       const where = region ? 'in the loop' : 'in the whole song';
@@ -793,6 +831,9 @@ const ThreeMedia = (() => {
         ['Kick on 1 and 3', where, () => stamp('kick', numbered.filter((b) => b.n === 0 || b.n === 2).map((b) => b.t))],
         ['Snare on 2 and 4', where, () => stamp('snare', numbered.filter((b) => b.n === 1 || b.n === 3).map((b) => b.t))],
         ['Hit on every bar’s 1', where, () => stamp('hit', numbered.filter((b) => b.n === 0).map((b) => b.t))],
+        null,
+        [`Quantize the markers to ${qLabel()}`, `${where}: every marker moves to the nearest ${qLabel()} (the snap setting)`, () => quantize(range)],
+        ['Remove doubles', `${where}: markers closer than 80 ms to the one before go`, () => dedupe(range)],
         null,
         ...shownLanes().map((ln) => [`Clear ${ln.name.toLowerCase()}${ln.id === 'bass' || ln.id === 'hats' ? '' : 's'}`, where, () => clear(ln.id)]),
       ]);
@@ -849,6 +890,8 @@ const ThreeMedia = (() => {
       if (e.key === 'Home') { seek(region && now() > region.a + 0.01 ? region.a : 0); return true; }
       if (e.key === 'End') { seek(region ? region.b - 0.01 : Math.max(0, D() - 0.05)); return true; }
       if (e.key.toLowerCase() === 'm' && !ctrl && !e.altKey) { toggleMute(); return true; }
+      if (e.key.toLowerCase() === 'l' && !ctrl && !e.altKey) { loopBar(); return true; }
+      if (e.key.toLowerCase() === 'g' && !ctrl && !e.altKey) { cycleSnap(); return true; }
       // hot cues (like rekordbox): C drops one at the playhead, 1–9 jump to them
       if (e.key.toLowerCase() === 'c' && !e.altKey) { addCue(now()); return true; }
       if (/^[1-9]$/.test(e.key) && !e.altKey) { const c = map.cues[Number(e.key) - 1]; if (c) { seek(c.t); return true; } return false; }
@@ -1925,7 +1968,8 @@ const ThreeMedia = (() => {
       el: bar,
       load, pick, attach, toggle, seek, onMessage, unload, onKey, setTracks, setNotes, setSize, restoreSize,
       tapHit: (lane) => addAtPlayhead(lane),
-      toggleAllControls: () => setAll(!allCtl), toggleMute,
+      toggleAllControls: () => setAll(!allCtl), toggleMute, loopBar, cycleSnap,
+      quantize: () => quantize(region ? [region.a, region.b] : [0, D()]), dedupe: () => dedupe(region ? [region.a, region.b] : [0, D()]),
       get playing() { return st.playing; },
       get size() { return size; },
       // ---------- for the Three Director: the timeline ----------

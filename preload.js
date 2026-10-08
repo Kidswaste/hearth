@@ -64,6 +64,7 @@ contextBridge.exposeInMainWorld('hub', {
   npControl: call('np:control'),
   onNowPlaying: on('np:update'),
   stageOpen: call('stage:open'),
+  stageOnTop: call('stage:onTop'),
   stageClose: call('stage:close'),
   stageFocus: call('stage:focus'),
   stageSend: (msg) => ipcRenderer.send('stage:to', msg),

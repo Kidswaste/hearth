@@ -59,7 +59,7 @@ const ThreeTriggers = (() => {
     const autoBtn = el('button', { class: 'ghost small', text: 'Auto bars', title: 'Set every bar from the last few seconds of sound (just under its loud moments)', on: { click: () => autoBars() } });
     const close = el('button', { class: 'ghost small', text: '×', title: 'Close', on: { click: () => opts.onClose?.() } });
     const hint = el('span', { class: 'trg-hint', text: 'drag a dot: sideways = which sound, up / down = the bar · drag the edges or wheel on the dot = width' });
-    const presetBtn = el('button', { class: 'ghost small', text: 'Presets ▾', title: 'Bands and timing for a style of music (your bars stay), or your own saved setups', on: { click: (e) => presetMenu(e.currentTarget) } });
+    const presetBtn = el('button', { class: 'ghost small', text: 'Presets ▾', title: 'Bands and timing for a style of music (your bars stay), or your own saved setups', on: { click: (e) => { e.stopPropagation(); presetMenu(e.currentTarget); } } }); // (stop: the app closes menus on any outside click)
     function applyPreset(p, name) {
       for (const { id } of LIST) if (p[id]) cfg[id] = clampCfg({ ...cfg[id], ...p[id] });
       changed();
@@ -71,6 +71,7 @@ const ThreeTriggers = (() => {
       showMenu(r.left, r.bottom + 4, [
         ...Object.entries(PRESETS).map(([name, p]) => ({ label: name, action: () => applyPreset(p, name) })),
         { label: '↺ Defaults (everything)', action: () => { cfg = merge(null); changed(); hint.textContent = 'Back to the defaults'; } },
+        ...Object.entries(store.get('three.triggersBySong', {})).slice(0, 12).map(([p, c]) => ({ label: `♪ From ${p.split(/[\\/]/).pop()}`, action: () => { cfg = merge(c); changed(); hint.textContent = `Copied from ${p.split(/[\\/]/).pop()}`; } })),
         ...saved.map((x) => ({ label: `★ ${x.name}`, action: () => { cfg = merge(x.cfg); changed(); hint.textContent = `${x.name}: loaded (bands and bars)`; } })),
         { label: 'Save these as a preset…', action: async () => { const name = await Modal.prompt('Preset name', { value: '', placeholder: 'e.g. My techno setup' }); if (!name?.trim()) return; store.set('three.trigPresets', [{ name: name.trim().slice(0, 40), cfg: merge(cfg) }, ...saved.filter((x) => x.name !== name.trim())].slice(0, 30)); hint.textContent = `Saved "${name.trim()}"`; } },
         ...(saved.length ? [{ label: 'Delete a saved preset…', danger: true, action: () => showMenu(r.left, r.bottom + 4, saved.map((x) => ({ label: `Delete ${x.name}`, danger: true, action: () => store.set('three.trigPresets', saved.filter((y) => y.name !== x.name)) }))) }] : []),

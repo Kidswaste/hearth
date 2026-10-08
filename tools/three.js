@@ -121,7 +121,7 @@ const ThreeLab = (() => {
     // ?: the Lab's keys in one sheet
     function labKeys() {
       const rows = [['Space', 'Play / pause'], ['T', 'Tap tempo'], ['K · S · H', 'Kick / snare / hit marker at the playhead'], ['C', 'Cue here'], ['1–9', 'Jump to cue'],
-        ['[ · ]', 'Loop start / end'], ['Home · End', 'Start / end (of the loop)'], ['M', 'Mute the music (the sketch still reacts)'], ['A', 'Show every automation curve'],
+        ['[ · ]', 'Loop start / end'], ['Home · End', 'Start / end (of the loop)'], ['M', 'Mute the music (the sketch still reacts)'], ['A', 'Show every automation curve'], ['L', 'Loop this bar'], ['G', 'Next snap setting'], ['Ctrl+S · Ctrl+Shift+S', 'Save the sliders · as a look'],
         ['\\', 'Freeze the picture'], ['.', 'One frame (while frozen)'], ['F · P', 'Focus · Present'], ['N', 'Note with a screenshot'], ['W', 'Write mode'], ['E', 'Edit the scene'],
         ['Alt+1–9', 'Hide / show a layer'], ['Alt+Shift+1–9', 'Only that layer'], ['Ctrl+R · Ctrl+Shift+Enter', 'Restart the simulation'], ['Ctrl+Z', 'Undo (timeline)'], ['Esc', 'Deselect, forget taps, leave Present']];
       const d = el('dialog', { class: 'lab-keys' }, el('h2', { text: 'Lab keys' }), el('div', { class: 'lab-keys-grid' }, rows.flatMap(([k, v]) => [el('kbd', { text: k }), el('span', { text: v })])),
@@ -145,6 +145,8 @@ const ThreeLab = (() => {
         ['Rename…', current?.name || '', () => renameSketch()],
         ['Duplicate', 'A copy you can change freely', () => duplicate()],
         ['History…', 'Earlier versions of the selected layer, and deleted sketches', () => historyDialog()],
+        ['Copy all the code', 'Every layer, one after the other, to the clipboard', () => { navigator.clipboard.writeText(layersOf().map((L) => `// ===== ${L.name} =====\n${L.code}`).join('\n\n')); toast('Code copied', { timeout: 1200 }); }],
+        ['Cycle looks…', lookCycle ? `Now: every ${lookCycle} bar${lookCycle === 1 ? '' : 's'}` : 'Switch between your saved looks every few bars while it plays', () => lookCycleMenu(sketchMenuBtn)],
         ['⟲ Restart from scratch', 'A fresh page, GPU and sound, when something bugs out (Ctrl+Shift+Enter)', () => restartSim()],
         ['Export HTML…', 'A standalone .html file', () => exportHtml()],
         ['Ask Claude about this layer', 'Sends the code and any errors to Claude', () => askAbout()],
@@ -341,7 +343,7 @@ const ThreeLab = (() => {
       const ctl = (text, title, cmd) => btn(text, title, () => window.hub.npControl(cmd), 'ghost small np-ctl');
       npBox.replaceChildren(
         np.coverSrc ? el('img', { class: 'np-cover', src: np.coverSrc, alt: '' }) : null,
-        el('span', { class: 'np-text', title: `${info.title} — ${info.artist}${info.album ? ` (${info.album})` : ''} · ${info.app}` }, el('b', { text: info.title }), ` — ${info.artist || ''}`),
+        el('span', { class: 'np-text', title: `${info.title} — ${info.artist}${info.album ? ` (${info.album})` : ''} · ${info.app} · click to copy`, on: { click: () => { navigator.clipboard.writeText(`${info.title} — ${info.artist || ''}`); toast('Copied the song name', { timeout: 1000 }); } } }, el('b', { text: info.title }), ` — ${info.artist || ''}`),
         el('span', { class: 'np-time', text: info.duration ? `${fmtClock(info.position || 0)} / ${fmtClock(info.duration)}` : '' }),
         ctl('⏮', 'Previous', 'prev'), ctl(info.playing ? '⏸' : '▶', 'Play / pause', 'toggle'), ctl('⏭', 'Next', 'next'),
         btn('🎨', 'Palette from the cover', () => coverTo('palette'), 'ghost small np-extra'), btn('🖼', 'Add the cover to this sketch\'s references', () => coverTo('ref'), 'ghost small np-extra'));
@@ -489,6 +491,7 @@ const ThreeLab = (() => {
       const on = document.fullscreenElement === previewHost;
       presentBtn.classList.toggle('on', on);
       previewHost.classList.toggle('presenting', on);
+      box.send({ type: 'present', on });
       if (on) { presentHint.classList.remove('gone'); setTimeout(() => presentHint.classList.add('gone'), 2500); }
     });
     // While presenting, keys can land outside the Lab pane: pass them to the player.
@@ -1494,7 +1497,7 @@ const ThreeLab = (() => {
     let stage = null;
     const box = sandboxFrame(previewHost, 'sketch', onMessage, () => stage?.params || '');
     box.onStageClosed = () => { stageBtn.classList.remove('on'); stageNote.hidden = true; previewHost.classList.remove('on-stage'); run(); };
-    queueMicrotask(() => stage?.pill?.prepend(freezeBtn));
+    queueMicrotask(() => stage?.pill?.prepend(freezeBtn, guidesBtn));
     stage = ThreeMedia.stage(previewHost, box.frame, { onChange: ({ id, reload }) => {
       if (current) { (extras[current.id] ||= {}).frame = id; saveExtras(); }
       if (reload && current) run();
@@ -1514,6 +1517,8 @@ const ThreeLab = (() => {
     // Space plays / pauses; K S H tap hits in; [ ] set loop points; arrows nudge; Delete removes a marker.
     pane.addEventListener('keydown', (e) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); restartSim(); }
+      // Ctrl+S: save the selected layer's sliders into its code · Ctrl+Shift+S: save them as a look
+      if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === 's') { e.preventDefault(); e.stopPropagation(); const c = sel() && ctlFor(sel()); if (e.shiftKey) c?.saveLook(); else { c?.save(); toast('Sliders saved into the code', { timeout: 1200 }); } return; }
       const typingNow = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
       if (!typingNow && !e.ctrlKey && !e.altKey) {
         if (e.key === '\\') { e.preventDefault(); e.stopPropagation(); setFreeze(!frozenNow); return; }
@@ -1538,6 +1543,10 @@ const ThreeLab = (() => {
       present: () => togglePresent(), stage: () => setStage(!box.onStage), code: () => setCodeVisible(split.classList.contains('no-code')),
       music: () => player.pick(), shot: () => box.send({ type: 'screenshot' }), copyShot: () => { copyNextShot = true; box.send({ type: 'screenshot' }); },
       sheet: () => showSheet(), newSketch: () => templateGallery(), allControls: () => player.toggleAllControls(), mute: () => player.toggleMute(),
+      saveSliders: () => { const c = sel() && ctlFor(sel()); c?.save(); }, saveLook: () => { const c = sel() && ctlFor(sel()); c?.saveLook(); },
+      guides: () => cycleGuides(), loopBar: () => player.loopBar(), snap: () => player.cycleSnap(), quantize: () => player.quantize(), dedupe: () => player.dedupe(),
+      cycleLooks: () => setLookCycle(lookCycle ? 0 : 4), copyCode: () => { navigator.clipboard.writeText(layersOf().map((L) => `// ===== ${L.name} =====\n${L.code}`).join('\n\n')); toast('Code copied', { timeout: 1200 }); },
+      stageTop: async () => { const on = await window.hub.stageOnTop?.(); toast(on == null ? 'Open the Stage window first' : on ? 'Stage window stays on top' : 'Stage window: normal', { timeout: 1500 }); },
     };
     api.restartVisible = () => { if (!box.onStage && !previewHost.offsetParent) return false; restartSim(); return true; };
     pane.addEventListener('keydown', (e) => {
@@ -1615,6 +1624,11 @@ const ThreeLab = (() => {
         log('error', msg.message, msg.line, lid);
         if (!lid || lid === selId) editor.setErrorLines(errors.filter((e) => !e.layer || e.layer === selId).map((e) => e.line).filter(Boolean));
       }
+      if (msg.type === 'ctx') {
+        const r = box.frame.getBoundingClientRect(); const k = r.width / (box.frame.offsetWidth || r.width);
+        showMenu(r.left + msg.x * k, r.top + msg.y * k, previewMenuItems());
+        return;
+      }
       if (msg.type === 'gpu-lost') { showStall('The preview lost its GPU context.'); return; }
       if (msg.type === 'trig-viz') { trigPanel?.feed(msg); return; }
       if (msg.type === 'stats') {
@@ -1632,7 +1646,7 @@ const ThreeLab = (() => {
       if (/^edit-/.test(msg.type)) { onEditMessage(msg); return; }
       if (msg.type === 'live-tempo') { if (liveKind) { liveBpm = msg; paintLive(); } return; }
       if (msg.type === 'live-state') { if (msg.error) toast(`Live sound: ${msg.error}`, { type: 'error', timeout: 5000 }); if (!msg.on && msg.error) { liveKind = null; paintLive(); } return; }
-      if (msg.type === 'ready') { if (frozenNow) box.send({ type: 'freeze', on: true }); sendTriggers(); if (trigPanel) box.send({ type: 'trig-watch', on: true }); }
+      if (msg.type === 'ready') { if (frozenNow) box.send({ type: 'freeze', on: true }); if (guides) box.send({ type: 'guides', kind: guides }); if (previewHost.classList.contains('presenting')) box.send({ type: 'present', on: true }); sendTriggers(); if (trigPanel) box.send({ type: 'trig-watch', on: true }); }
       if (msg.type === 'ready' && liveKind) {
         // a reloaded preview: the hub page keeps capturing, the Stage captures again by itself
         sendLiveGain();
@@ -1702,7 +1716,60 @@ const ThreeLab = (() => {
 
     // Full runs reload the preview with every layer; hot runs (slider rebuilds, live code, a new layer)
     // re-run one layer in place, keeping three.js loaded, the other layers running and the music playing.
+    // Cycle looks: every N bars while the song plays, each layer moves to its next saved look (morphing)
+    let lookCycle = store.get('three.lookCycle', 0);
+    let lookTimer = 0; let lookBar = -1;
+    function lookCycleMenu(anchor) {
+      const r = anchor.getBoundingClientRect();
+      showMenu(r.left, r.bottom + 4, [[0, 'Off'], [1, 'Every bar'], [2, 'Every 2 bars'], [4, 'Every 4 bars'], [8, 'Every 8 bars']].map(([n, label]) => ({ label: `${lookCycle === n ? '✓ ' : ''}${label}`, action: () => setLookCycle(n) })));
+    }
+    function setLookCycle(n) {
+      lookCycle = n; store.set('three.lookCycle', n);
+      clearInterval(lookTimer); lookTimer = 0; lookBar = -1;
+      if (!n) { for (const L of layersOf()) controllers.get(L.id)?.endLook?.(); toast('Look cycling off', { timeout: 1200 }); return; }
+      const looksCount = layersOf().reduce((s, L) => s + (controllers.get(L.id)?.looksApi.list().length || 0), 0);
+      toast(looksCount ? `Looks change every ${n} bar${n === 1 ? '' : 's'} while it plays` : 'Save a few looks first (Sliders → + Save look)', { timeout: 2200 });
+      lookTimer = setInterval(() => {
+        if (!player.playing) { if (lookBar !== -1) { lookBar = -1; for (const L of layersOf()) controllers.get(L.id)?.endLook?.(); } return; }
+        const barLen = (60 / player.bpm) * 4;
+        const bar = Math.floor(player.time / barLen);
+        if (bar === lookBar) return;
+        lookBar = bar;
+        if (bar % n) return;
+        for (const L of layersOf()) {
+          const c = controllers.get(L.id); const names = c?.looksApi.list() || [];
+          if (names.length) c.playLook(names[Math.floor(bar / n) % names.length]);
+        }
+      }, 40);
+    }
+    if (lookCycle) queueMicrotask(() => setLookCycle(lookCycle));
     // ⟲ Restart: everything from scratch (a new page, GPU context and audio), when a sketch bugs out.
+    // right-click on the picture
+    function previewMenuItems() {
+      return [
+        { label: '📷 Save a screenshot', action: () => box.send({ type: 'screenshot' }) },
+        { label: '📋 Copy a screenshot', action: () => { copyNextShot = true; box.send({ type: 'screenshot' }); } },
+        { label: frozenNow ? '▶ Unfreeze (\\)' : '❚❚ Freeze the picture (\\)', action: () => setFreeze(!frozenNow) },
+        { label: `⌗ Guides: ${GUIDES.find(([k]) => k === guides)[1]} → ${GUIDES[(GUIDES.findIndex(([k]) => k === guides) + 1) % GUIDES.length][1]}`, action: () => cycleGuides() },
+        { label: '📌 Note at this moment (N)', action: () => takeNote() },
+        { label: '⟲ Restart from scratch', action: () => restartSim() },
+        { label: '▣ Present (P)', action: () => togglePresent() },
+        { label: box.onStage ? '🖥 Back from the Stage window' : '🖥 Open in a Stage window', action: () => setStage(!box.onStage) },
+        { label: 'Lab keys (?)', action: () => labKeys() },
+      ];
+    }
+    // ⌗ composition guides over the picture (not in screenshots / videos)
+    const GUIDES = [['', 'off'], ['thirds', 'thirds'], ['golden', 'golden ratio'], ['center', 'center cross']];
+    let guides = store.get('three.guides', '');
+    const guidesBtn = el('button', { class: 'stage-btn', text: '⌗', title: 'Composition guides: thirds, golden ratio, center (not in screenshots or videos)', on: { click: () => cycleGuides() } });
+    function cycleGuides() {
+      guides = GUIDES[(GUIDES.findIndex(([k]) => k === guides) + 1) % GUIDES.length][0];
+      store.set('three.guides', guides);
+      box.send({ type: 'guides', kind: guides });
+      guidesBtn.classList.toggle('on', Boolean(guides));
+      toast(`Guides: ${GUIDES.find(([k]) => k === guides)[1]}`, { timeout: 900 });
+    }
+    guidesBtn.classList.toggle('on', Boolean(guides));
     // ❚❚ freeze: hold the picture (the music and the timeline go on); . steps one frame while frozen
     let frozenNow = false;
     const freezeBtn = el('button', { class: 'stage-btn freeze-btn', text: '❚❚', title: 'Freeze the picture (\\) · while frozen, . steps one frame', on: { click: () => setFreeze(!frozenNow) } });
@@ -2767,4 +2834,7 @@ for (const [label, name] of [
   ['Lab: Present', 'present'], ['Lab: Stage window', 'stage'], ['Lab: Show / hide the code', 'code'], ['Lab: Load music or video…', 'music'],
   ['Lab: Save a screenshot', 'shot'], ['Lab: Copy a screenshot', 'copyShot'], ['Lab: Contact sheet', 'sheet'], ['Lab: New sketch from a template', 'newSketch'],
   ['Lab: All timeline controls / fewer', 'allControls'], ['Lab: Mute / unmute the music', 'mute'],
+  ['Lab: Composition guides (thirds, golden, center)', 'guides'], ['Lab: Loop this bar', 'loopBar'], ['Lab: Next snap setting', 'snap'],
+  ['Lab: Quantize markers to the grid', 'quantize'], ['Lab: Remove double markers', 'dedupe'], ['Lab: Cycle looks every 4 bars / off', 'cycleLooks'],
+  ['Lab: Copy all the code', 'copyCode'], ['Lab: Save the sliders into the code', 'saveSliders'], ['Lab: Save the sliders as a look…', 'saveLook'], ['Lab: Stage window always on top / normal', 'stageTop'],
 ]) AppUI.addAction(label, () => ThreeLab.act(name));

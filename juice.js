@@ -57,5 +57,16 @@ const Juice = (() => {
   AppUI.addAction('Copy the last reply in this chat', () => Native.copyLastReply(H.activeId));
   AppUI.addAction('Fold all long replies in this chat', () => Native.foldAll(H.activeId, true));
   AppUI.addAction('Clear all notifications', () => document.querySelectorAll('#toasts .toast').forEach((t) => t.remove()), 'Shift+Esc');
+  AppUI.addAction('Recent notifications', () => { const l = recentToasts(); Modal.alert('Recent notifications', l.length ? l.map((t) => `${new Date(t.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}  ${t.type === 'error' ? '⚠ ' : ''}${t.message}`).join('\n') : 'None yet'); });
+  // middle-click an agent on the rail: a new chat with it
+  addEventListener('auxclick', (e) => {
+    if (e.button !== 1) return;
+    const b = e.target.closest?.('#rail .agent-btn'); const a = b && H.agents().find((x) => x.id === b.dataset.id);
+    if (!a || a.mode !== 'native') return;
+    e.preventDefault(); activate(a.id); Native.newChat(a.id);
+  });
+  // the window title follows what you look at
+  const retitle = () => { const a = H.agent?.(H.activeId); const t = a?.name || (String(H.activeId || '').startsWith('tool:') ? Tools.get?.(H.activeId.slice(5))?.name : ''); document.title = t ? `${t} · Hearth` : 'Hearth'; };
+  setInterval(retitle, 1500);
   return { burst };
 })();

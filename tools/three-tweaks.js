@@ -1010,6 +1010,7 @@ const ThreeTweaks = (() => {
 
     return {
       el: root,
+      save: () => save(), saveLook: () => saveLook(),
       prepare,
       // The sandbox reports which values were read during setup and which keep being read.
       onReads(msg) {

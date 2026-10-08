@@ -126,6 +126,7 @@ function showToolMenu(id, x, y) {
   ]);
 }
 
+let menuOpenedAt = 0;
 function showMenu(x, y, items) {
   const menu = $('menu');
   menu.replaceChildren(...items.map(({ label, action, danger }) => {
@@ -136,6 +137,7 @@ function showMenu(x, y, items) {
     return b;
   }));
   menu.hidden = false;
+  menuOpenedAt = performance.now(); // the click that opened it must not close it (start.js)
   const { innerWidth: w, innerHeight: h } = window;
   menu.style.left = `${Math.min(x, w - menu.offsetWidth - 8)}px`;
   menu.style.top = `${Math.min(y, h - menu.offsetHeight - 8)}px`;

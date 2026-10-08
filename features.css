@@ -1102,3 +1102,7 @@ dialog.lab-keys { max-width: 560px; }
 html[data-calm] .juice-layer, html[data-calm] :is(.primary, #broadcast button)::before, html[data-calm] .empty::before, html[data-calm] .empty::after,
 html[data-calm] :is(.tool-head, .native-head)::after, html[data-calm] .tabbar button.on::before { display: none !important; }
 html[data-calm] .empty-icon { animation: none !important; }
+.quote-sel { position: fixed; z-index: 10001; transform: translateX(-50%); padding: 3px 10px; font-size: 12px; border-radius: 6px; background: var(--accent); color: #17130e; border: 0; cursor: pointer; box-shadow: 0 4px 14px #0008; }
+.quote-sel[hidden] { display: none; }
+.msg.flash-msg { animation: flash-msg .7s ease; }
+@keyframes flash-msg { 0% { box-shadow: 0 0 0 2px var(--accent); } 100% { box-shadow: 0 0 0 2px transparent; } }
