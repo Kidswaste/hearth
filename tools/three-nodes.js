@@ -237,7 +237,7 @@ function beatCount() { return ((audio.bar || 1) - 1) * audio.beatsPerBar + ((aud
       const id = c.id;
       c.setup(`const ${id} = new THREE.ShaderMaterial({
   uniforms: { uColor: { value: new THREE.Color(${c.in('color')}) }, uPower: { value: ${c.in('power')} }, uIntensity: { value: ${c.in('intensity')} } },
-  vertexShader: 'varying vec3 vN; varying vec3 vV; void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }',
+  vertexShader: 'varying vec3 vN; varying vec3 vV;\\nvoid main() {\\n  vec4 p = vec4(position, 1.0); vec3 n = normal;\\n#ifdef USE_INSTANCING\\n  p = instanceMatrix * p; n = mat3(instanceMatrix) * n;\\n#endif\\n  vec4 mv = modelViewMatrix * p; vN = normalize(normalMatrix * n); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv;\\n}',
   fragmentShader: 'uniform vec3 uColor; uniform float uPower; uniform float uIntensity; varying vec3 vN; varying vec3 vV; void main() { float f = pow(1.0 - abs(dot(vN, vV)), uPower) * uIntensity; gl_FragColor = vec4(uColor * f, f); }',
   transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
 });`);
@@ -254,7 +254,7 @@ function beatCount() { return ((audio.bar || 1) - 1) * audio.beatsPerBar + ((aud
       const id = c.id;
       c.setup(`const ${id} = new THREE.ShaderMaterial({
   uniforms: { uA: { value: new THREE.Color(${c.in('bottom')}) }, uB: { value: new THREE.Color(${c.in('top')}) }, uSize: { value: ${c.in('size')} }, uOpacity: { value: ${c.in('opacity')} } },
-  vertexShader: 'varying float vY; void main() { vY = position.y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  vertexShader: 'varying float vY;\\nvoid main() {\\n  vec4 p = vec4(position, 1.0); vY = position.y;\\n#ifdef USE_INSTANCING\\n  p = instanceMatrix * p;\\n#endif\\n  gl_Position = projectionMatrix * modelViewMatrix * p;\\n}',
   fragmentShader: 'uniform vec3 uA; uniform vec3 uB; uniform float uSize; uniform float uOpacity; varying float vY; void main() { gl_FragColor = vec4(mix(uA, uB, clamp(vY / uSize + 0.5, 0.0, 1.0)), uOpacity); }',
   transparent: true,
 });`);
@@ -749,7 +749,7 @@ let ${id}Travel = 0;`);
     compile: (c) => { c.setup(`let ${c.id} = 0;`); c.frame(`${c.id} = Math.max(${c.id} * Math.pow(${c.in('release')}, dt * 60), ${c.in('value')});`); return { out: c.id }; } });
   math({ type: 'spring', title: 'Spring', live: true, desc: 'Follows a value with a bouncy overshoot (jelly motion)', keywords: 'bounce elastic jelly physics',
     inputs: [N('value', 0, -10, 10), N('stiffness', 120, 5, 600), N('damping', 8, 0.5, 40)], outputs: [O('out', 'num', 'Spring')],
-    compile: (c) => { c.setup(`let ${c.id} = 0; let ${c.id}Vel = 0;`); c.frame(`${c.id}Vel += ((${c.in('value')} - ${c.id}) * ${c.in('stiffness')} - ${c.id}Vel * ${c.in('damping')}) * dt;`); c.frame(`${c.id} += ${c.id}Vel * dt;`); return { out: c.id }; } });
+    compile: (c) => { c.setup(`let ${c.id} = 0; let ${c.id}Vel = 0;`); c.frame(`for (let left = dt; left > 1e-6; left -= 1 / 120) { const h = Math.min(left, 1 / 120); ${c.id}Vel += ((${c.in('value')} - ${c.id}) * ${c.in('stiffness')} - ${c.id}Vel * ${c.in('damping')}) * h; ${c.id} += ${c.id}Vel * h; } // small steps: stable at any frame rate`); return { out: c.id }; } });
   math({ type: 'ease', title: 'Ease curve', desc: 'Shapes a 0..1 value with an easing curve (out back, elastic, bounce…)', keywords: 'easing curve tween',
     inputs: [N('t', 0.5, 0, 1)], widgets: [{ name: 'curve', kind: 'curve', value: 'outCubic', label: 'Curve', slider: false }], outputs: [O('out', 'num', 'Eased')],
     compile: (c) => ({ out: `ease.${c.value('curve') in NodeView.EASES ? c.value('curve') : 'linear'}(clamp(${c.in('t')}))` }) });
@@ -811,7 +811,7 @@ let ${id}Travel = 0;`);
   // ---------- Post effects (EffectComposer passes, applied to this layer) ----------
   const post = (o) => define({ category: 'Post', color: '#f5a3d0', ...o, outputs: [O('pass', 'pass', 'Effect')] });
   const passSet = (c, id, list) => { for (const [f, target] of list) if (c.dyn(f)) c.frame(`${id}.${target} = ${c.in(f)};`); };
-  post({ type: 'bloom', title: 'Bloom', desc: 'Glow around bright things (wire a kick to Strength for flashes)', keywords: 'glow unreal bright', inputs: [N('strength', 1.2, 0, 4, { kind: 'knob' }), N('radius', 0.5, 0, 1.5, { kind: 'knob' }), N('threshold', 0.1, 0, 1, { kind: 'knob' })],
+  post({ type: 'bloom', title: 'Bloom', desc: 'Glow around bright things (wire a kick to Strength for flashes)', keywords: 'glow unreal bright', inputs: [N('strength', 0.8, 0, 4, { kind: 'knob' }), N('radius', 0.4, 0, 1.5, { kind: 'knob' }), N('threshold', 0.5, 0, 1, { kind: 'knob', hint: 'Only things brighter than this glow' })],
     compile: (c) => { c.import('UnrealBloomPass', 'three/addons/postprocessing/UnrealBloomPass.js'); c.setup(`const ${c.id} = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), ${c.in('strength')}, ${c.in('radius')}, ${c.in('threshold')});`); passSet(c, c.id, [['strength', 'strength'], ['radius', 'radius'], ['threshold', 'threshold']]); return { pass: c.id }; } });
   post({ type: 'afterimage', title: 'Trails', desc: 'Motion trails: each frame keeps a ghost of the last ones', keywords: 'afterimage echo ghost feedback smear', inputs: [N('length', 0.88, 0, 0.99, { label: 'Trail length', kind: 'knob' })],
     compile: (c) => { c.import('AfterimagePass', 'three/addons/postprocessing/AfterimagePass.js'); c.setup(`const ${c.id} = new AfterimagePass(${c.in('length')});`); if (c.dyn('length')) c.frame(`${c.id}.uniforms.damp.value = ${c.in('length')};`); return { pass: c.id }; } });
@@ -996,7 +996,7 @@ let ${id}Travel = 0;`);
     const hits = g.add('hits'); const pump = g.add('peak', { release: 0.86 });
     const pts = g.add('particles', { count: 7000, spread: 4.5, color: '#bd8bff', size: 0.07, punch: 1.6 });
     const pal = g.add('palette', { palette: 'vapor', drift: 0.04 });
-    const bloom = g.add('bloom', { strength: 1.1 }); const out = g.add('output');
+    const bloom = g.add('bloom', { strength: 0.72 }); const out = g.add('output');
     g.link(`${hits}.kick`, `${pump}.value`); g.link(`${pump}.out`, `${pts}.pulse`); g.link(`${pal}.out`, `${pts}.color`);
     g.link(`${pts}.obj`, `${out}.objects`); g.link(`${bloom}.pass`, `${out}.post`);
     g.frame('Music', [hits, pump], '#ff6b9d'); g.frame('Particles', [pts, pal], '#bd8bff');
@@ -1007,19 +1007,19 @@ let ${id}Travel = 0;`);
     const speed = g.add('remap', { inMin: 0, inMax: 1, outMin: 3, outMax: 14 }, 'Energy → speed');
     const tun = g.add('tunnel', { rings: 48, radius: 3.2, twist: 0.12 }); const pump = g.add('peak', { release: 0.85 });
     const cam = g.add('camera', { mode: 'fly', distance: 8, speed: 0.4 });
-    const bloom = g.add('bloom', { strength: 1.4, radius: 0.6 }); const out = g.add('output');
+    const bloom = g.add('bloom', { strength: 0.91, radius: 0.6 }); const out = g.add('output');
     g.link(`${lv}.energy`, `${speed}.value`); g.link(`${speed}.out`, `${tun}.speed`); g.link(`${hits}.kick`, `${pump}.value`); g.link(`${pump}.out`, `${tun}.pulse`);
     g.link(`${tun}.obj`, `${out}.objects`); g.link(`${cam}.cam`, `${out}.camera`); g.link(`${bloom}.pass`, `${out}.post`);
     g.frame('Music', [lv, hits, speed, pump], '#ff6b9d');
   }, 'tunnel rings fly');
   // 3
-  preset('kick-flash-grid', 'Kick-flash grid', 'A floor of cubes rippling out, flashing white on every kick', (g) => {
+  preset('kick-flash-grid', 'Kick-flash grid', 'A floor of wire cubes rippling out, flashing white on every kick', (g) => {
     const hits = g.add('hits'); const env = g.add('envelope', { decay: 0.2 });
     const flash = g.add('mixColors', { a: '#1f4fff', b: '#ffffff' }, 'Kick flash');
     const box = g.add('box', { width: 0.4, height: 0.4, depth: 0.4 }); const mat = g.add('basicMat', { wireframe: true });
     const grid = g.add('gridCopies', { mode: 'ripple', columns: 22, rows: 22, spacing: 0.6, height: 0.7 });
     const amt = g.add('remap', { outMin: 0.5, outMax: 1.8 }, 'Kick → height');
-    const cam = g.add('camera', { mode: 'orbit', distance: 15, height: 7, speed: 0.08 }); const bloom = g.add('bloom', { strength: 0.7, threshold: 0.2 }); const out = g.add('output');
+    const cam = g.add('camera', { mode: 'orbit', distance: 15, height: 7, speed: 0.08 }); const bloom = g.add('bloom', { strength: 0.45, threshold: 0.5 }); const out = g.add('output');
     g.link(`${hits}.kick`, `${env}.hit`); g.link(`${env}.out`, `${flash}.t`); g.link(`${flash}.out`, `${mat}.color`); g.link(`${env}.out`, `${amt}.value`); g.link(`${amt}.out`, `${grid}.amount`);
     g.link(`${box}.geo`, `${grid}.geometry`); g.link(`${mat}.mat`, `${grid}.material`); g.link(`${grid}.obj`, `${out}.objects`); g.link(`${cam}.cam`, `${out}.camera`); g.link(`${bloom}.pass`, `${out}.post`);
     g.frame('Music', [hits, env, amt], '#ff6b9d'); g.frame('Formation', [box, mat, grid, flash], '#ffd75e');
@@ -1028,14 +1028,14 @@ let ${id}Travel = 0;`);
   preset('spectrum-circle', 'Spectrum circle', 'A round equalizer in palette colors that breathes with the bass', (g) => {
     const bars = g.add('spectrumBars', { layout: 'circle', count: 96, width: 5, height: 3.5 });
     const lv = g.add('levels'); const sm = g.add('smooth', { speed: 8 }); const sc = g.add('remap', { outMin: 1, outMax: 1.25 }, 'Bass → size');
-    const spin = g.add('spin', { axis: 'z', speed: 0.15 }); const bloom = g.add('bloom', { strength: 1.3 }); const out = g.add('output');
+    const spin = g.add('spin', { axis: 'z', speed: 0.15 }); const bloom = g.add('bloom', { strength: 0.85 }); const out = g.add('output');
     g.link(`${lv}.bass`, `${sm}.value`); g.link(`${sm}.out`, `${sc}.value`); g.link(`${sc}.out`, `${bars}.scale`); g.link(`${bars}.obj`, `${spin}.obj`); g.link(`${spin}.obj`, `${out}.objects`); g.link(`${bloom}.pass`, `${out}.post`);
   }, 'equalizer eq bars round');
   // 5
   preset('spectrum-line', 'Spectrum bars', 'A classic mirrored equalizer across the screen', (g) => {
     const bars = g.add('spectrumBars', { layout: 'line', count: 72, width: 11, height: 4, mirror: true, thickness: 0.2 });
     const wave = g.add('waveLine', { width: 11, amplitude: 0.8, color: '#ffffff', opacity: 0.6 });
-    const bloom = g.add('bloom', { strength: 0.9 }); const out = g.add('output');
+    const bloom = g.add('bloom', { strength: 0.59 }); const out = g.add('output');
     g.link(`${bars}.obj`, `${out}.objects`); g.link(`${wave}.obj`, `${out}.objects`); g.link(`${bloom}.pass`, `${out}.post`);
   }, 'equalizer eq bars');
   // 6
@@ -1055,14 +1055,14 @@ let ${id}Travel = 0;`);
     const w1 = g.add('waveLine', { layout: 'circle', width: 6, amplitude: 1.4, color: '#48ddff' });
     const w2 = g.add('waveLine', { layout: 'circle', width: 7.5, amplitude: 0.8, color: '#ff6b9d', opacity: 0.6 });
     const rb = g.add('rainbow', { speed: 0.05 }); const spin = g.add('spin', { axis: 'z', speed: -0.2 });
-    const trails = g.add('afterimage', { length: 0.85 }); const bloom = g.add('bloom', { strength: 1.2 }); const out = g.add('output');
+    const trails = g.add('afterimage', { length: 0.85 }); const bloom = g.add('bloom', { strength: 0.78 }); const out = g.add('output');
     g.link(`${rb}.out`, `${w2}.color`); g.link(`${w2}.obj`, `${spin}.obj`); g.link(`${w1}.obj`, `${out}.objects`); g.link(`${spin}.obj`, `${out}.objects`); g.link(`${trails}.pass`, `${out}.post`); g.link(`${bloom}.pass`, `${out}.post`);
   }, 'oscilloscope circle scope');
   // 8
   preset('warp-stars', 'Warp speed', 'Hyperspace stars; the speed follows the energy and boosts on kicks', (g) => {
     const lv = g.add('levels'); const hits = g.add('hits'); const sp = g.add('remap', { outMin: 6, outMax: 40 }, 'Energy → speed');
     const stars = g.add('starfield', { count: 3000 }); const cam = g.add('camera', { mode: 'drift', speed: 0.2 });
-    const trails = g.add('afterimage', { length: 0.8 }); const bloom = g.add('bloom', { strength: 1 }); const out = g.add('output');
+    const trails = g.add('afterimage', { length: 0.8 }); const bloom = g.add('bloom', { strength: 0.65 }); const out = g.add('output');
     g.link(`${lv}.energy`, `${sp}.value`); g.link(`${sp}.out`, `${stars}.speed`); g.link(`${hits}.kick`, `${stars}.boost`); g.link(`${hits}.snare`, `${cam}.shake`);
     g.link(`${stars}.obj`, `${out}.objects`); g.link(`${cam}.cam`, `${out}.camera`); g.link(`${trails}.pass`, `${out}.post`); g.link(`${bloom}.pass`, `${out}.post`);
   }, 'stars hyperspace space');
@@ -1070,7 +1070,7 @@ let ${id}Travel = 0;`);
   preset('pulse-rings', 'Pulse rings', 'A ring of glowing tori that each react to their slice of the spectrum', (g) => {
     const geo = g.add('torus', { radius: 0.35, tube: 0.05 }); const mat = g.add('glowMat', { color: '#ffd75e', intensity: 2 });
     const ring = g.add('ringCopies', { count: 24, radius: 3, react: 1.6, palette: false }); const hits = g.add('hits'); const pulse = g.add('pulse', { strength: 0.15 });
-    const bloom = g.add('bloom', { strength: 1.2 }); const out = g.add('output');
+    const bloom = g.add('bloom', { strength: 0.78 }); const out = g.add('output');
     g.link(`${geo}.geo`, `${ring}.geometry`); g.link(`${mat}.mat`, `${ring}.material`); g.link(`${ring}.obj`, `${pulse}.obj`); g.link(`${hits}.kick`, `${pulse}.amount`); g.link(`${pulse}.obj`, `${out}.objects`); g.link(`${bloom}.pass`, `${out}.post`);
   }, 'rings donuts circle');
   // 10
@@ -1078,15 +1078,15 @@ let ${id}Travel = 0;`);
     const lv = g.add('levels'); const sm = g.add('smooth', { speed: 4 });
     const mat = g.add('basicMat', { color: '#ff2bd6', wireframe: true, opacity: 0.85 }); const ter = g.add('wavePlane', { speed: 2, height: 1, size: 40 });
     const sunG = g.add('sphere', { radius: 2.4 }); const sunM = g.add('gradientMat', { bottom: '#ff2bd6', top: '#ffd75e', size: 4.8 }); const sun = g.add('mesh', { position: [0, 1.6, -14] }, 'Sun');
-    const cam = g.add('camera', { mode: 'fly', height: 0.6, distance: 8, speed: 0.2 }); const bloom = g.add('bloom', { strength: 1.3, threshold: 0.05 }); const out = g.add('output', { backgroundOn: true, background: '#0a0118', fog: 0.045 });
+    const cam = g.add('camera', { mode: 'fly', height: 0.6, distance: 8, speed: 0.2 }); const bloom = g.add('bloom', { strength: 0.85, threshold: 0.35 }); const out = g.add('output', { backgroundOn: true, background: '#0a0118', fog: 0.045 });
     g.link(`${lv}.bass`, `${sm}.value`); g.link(`${sm}.out`, `${ter}.react`); g.link(`${mat}.mat`, `${ter}.material`); g.link(`${sunG}.geo`, `${sun}.geometry`); g.link(`${sunM}.mat`, `${sun}.material`);
     g.link(`${ter}.obj`, `${out}.objects`); g.link(`${sun}.obj`, `${out}.objects`); g.link(`${cam}.cam`, `${out}.camera`); g.link(`${bloom}.pass`, `${out}.post`);
   }, 'retro 80s outrun landscape');
   // 11
   preset('neon-knot', 'Neon knot', 'A rim-glowing torus knot that tumbles a quarter turn on each kick', (g) => {
-    const geo = g.add('torusKnot', { radius: 1.6, tube: 0.42, p: 3, q: 5 }); const mat = g.add('glowMat', { color: '#48ddff', power: 1.6, intensity: 2.2 });
+    const geo = g.add('torusKnot', { radius: 1.6, tube: 0.42, p: 3, q: 5 }); const mat = g.add('glowMat', { color: '#48ddff', power: 1.8, intensity: 1.3 });
     const mesh = g.add('mesh'); const hits = g.add('hits'); const tum = g.add('tumble', { degrees: 90 }); const spin = g.add('spin', { speed: 0.3, axis: 'x' });
-    const rb = g.add('palette', { palette: 'neon', drift: 0.06 }); const bloom = g.add('bloom', { strength: 1.6 }); const out = g.add('output');
+    const rb = g.add('palette', { palette: 'neon', drift: 0.06 }); const bloom = g.add('bloom', { strength: 0.7 }); const out = g.add('output');
     g.link(`${geo}.geo`, `${mesh}.geometry`); g.link(`${mat}.mat`, `${mesh}.material`); g.link(`${rb}.out`, `${mat}.color`); g.link(`${mesh}.obj`, `${tum}.obj`); g.link(`${hits}.kick`, `${tum}.hit`); g.link(`${tum}.obj`, `${spin}.obj`); g.link(`${spin}.obj`, `${out}.objects`); g.link(`${bloom}.pass`, `${out}.post`);
   }, 'knot glow neon');
   // 12
@@ -1122,7 +1122,7 @@ let ${id}Travel = 0;`);
   preset('kaleido-crystals', 'Kaleido crystals', 'Faceted gems mirrored into a kaleidoscope that turns with the bars', (g) => {
     const geo = g.add('polyhedron', { kind: 'Octahedron', radius: 0.8 }); const mat = g.add('normalMat', { flatShading: true });
     const ring = g.add('ringCopies', { count: 12, radius: 2.2, mode: 'spectrum', react: 1.2, spin: 0.3 }); const beat = g.add('beat');
-    const ang = g.add('remap', { outMin: 0, outMax: 90 }, 'Bar → angle'); const kal = g.add('kaleido', { sides: 8 }); const bloom = g.add('bloom', { strength: 0.7 }); const out = g.add('output');
+    const ang = g.add('remap', { outMin: 0, outMax: 90 }, 'Bar → angle'); const kal = g.add('kaleido', { sides: 8 }); const bloom = g.add('bloom', { strength: 0.45 }); const out = g.add('output');
     g.link(`${geo}.geo`, `${ring}.geometry`); g.link(`${mat}.mat`, `${ring}.material`); g.link(`${beat}.barPhase`, `${ang}.value`); g.link(`${ang}.out`, `${kal}.angle`);
     g.link(`${ring}.obj`, `${out}.objects`); g.link(`${kal}.pass`, `${out}.post`); g.link(`${bloom}.pass`, `${out}.post`);
   }, 'kaleidoscope mirror gems');
@@ -1131,7 +1131,7 @@ let ${id}Travel = 0;`);
     const geo = g.add('torus', { radius: 0.7, tube: 0.12 }); const mat = g.add('basicMat', { additive: true }); const rb = g.add('rainbow', { speed: 0.15 });
     const mesh = g.add('mesh'); const path = g.add('circlePath', { shape: 'figure 8', radius: 3, speed: 0.35 }); const move = g.add('move');
     const spin = g.add('spin', { axis: 'all', speed: 1.5 }); const hits = g.add('hits'); const pulse = g.add('pulse', { strength: 0.6 });
-    const trails = g.add('afterimage', { length: 0.93 }); const bloom = g.add('bloom', { strength: 1.4 }); const out = g.add('output');
+    const trails = g.add('afterimage', { length: 0.93 }); const bloom = g.add('bloom', { strength: 0.91 }); const out = g.add('output');
     g.link(`${geo}.geo`, `${mesh}.geometry`); g.link(`${mat}.mat`, `${mesh}.material`); g.link(`${rb}.out`, `${mat}.color`); g.link(`${mesh}.obj`, `${move}.obj`); g.link(`${path}.out`, `${move}.offset`);
     g.link(`${move}.obj`, `${spin}.obj`); g.link(`${spin}.obj`, `${pulse}.obj`); g.link(`${hits}.kick`, `${pulse}.amount`); g.link(`${pulse}.obj`, `${out}.objects`); g.link(`${trails}.pass`, `${out}.post`); g.link(`${bloom}.pass`, `${out}.post`);
   }, 'trails afterimage dance');
@@ -1145,10 +1145,10 @@ let ${id}Travel = 0;`);
   }, 'glitch drop rgb');
   // 18
   preset('disco-orbit', 'Disco orbit', 'A ring of mirror tiles orbited by the camera, palette colors stepping on each kick', (g) => {
-    const geo = g.add('box', { width: 0.5, height: 0.5, depth: 0.08 }); const mat = g.add('standardMat', { roughness: 0.05, metalness: 1 });
+    const geo = g.add('box', { width: 0.5, height: 0.5, depth: 0.08 }); const mat = g.add('standardMat', { color: '#e8e8f0', roughness: 0.3, metalness: 0.55 });
     const hits = g.add('hits'); const col = g.add('colorOnHit', { palette: 'vapor' }); const ring = g.add('ringCopies', { count: 40, radius: 3, mode: 'wave', react: 0.4, spin: 0.4 });
     const lamp = g.add('pointLight', { intensity: 120, position: [0, 0, 4] }); const amb = g.add('ambientLight', { intensity: 0.3 });
-    const cam = g.add('camera', { mode: 'orbit', distance: 9, height: 2, speed: 0.25 }); const bloom = g.add('bloom', { strength: 0.8 }); const out = g.add('output');
+    const cam = g.add('camera', { mode: 'orbit', distance: 9, height: 2, speed: 0.25 }); const bloom = g.add('bloom', { strength: 0.52 }); const out = g.add('output');
     g.link(`${geo}.geo`, `${ring}.geometry`); g.link(`${mat}.mat`, `${ring}.material`); g.link(`${hits}.kick`, `${col}.hit`); g.link(`${col}.out`, `${lamp}.color`); g.link(`${hits}.snare`, `${cam}.zoom`);
     for (const x of [ring, lamp, amb]) g.link(`${x}.obj`, `${out}.objects`); g.link(`${cam}.cam`, `${out}.camera`); g.link(`${bloom}.pass`, `${out}.post`);
   }, 'disco mirror ball');
@@ -1176,16 +1176,16 @@ let ${id}Travel = 0;`);
   preset('galaxy', 'Particle galaxy', 'A spiral galaxy of dots turning slowly, flaring on kicks', (g) => {
     const pts = g.add('particles', { shape: 'galaxy', count: 16000, spread: 6, size: 0.05, spin: 0.08, rotation: [65, 0, 0] });
     const pal = g.add('palette', { palette: 'sketch palette', drift: 0.02 }); const hits = g.add('hits'); const pump = g.add('peak', { release: 0.9 });
-    const cam = g.add('camera', { mode: 'drift', speed: 0.1, distance: 9 }); const bloom = g.add('bloom', { strength: 1.2 }); const out = g.add('output');
+    const cam = g.add('camera', { mode: 'drift', speed: 0.1, distance: 9 }); const bloom = g.add('bloom', { strength: 0.78 }); const out = g.add('output');
     g.link(`${pal}.out`, `${pts}.color`); g.link(`${hits}.kick`, `${pump}.value`); g.link(`${pump}.out`, `${pts}.pulse`);
     g.link(`${pts}.obj`, `${out}.objects`); g.link(`${cam}.cam`, `${out}.camera`); g.link(`${bloom}.pass`, `${out}.post`);
   }, 'galaxy spiral space stars');
   // 22
-  preset('retro-sun', 'Retro sun', 'A striped sun rising behind an arc equalizer, with film grain', (g) => {
+  preset('retro-sun', 'Retro sun', 'A gradient sun rising behind an arc equalizer, with film grain', (g) => {
     const sunG = g.add('sphere', { radius: 2.5 }); const sunM = g.add('gradientMat', { bottom: '#ff2bd6', top: '#fff200', size: 5 }); const sun = g.add('mesh', { position: [0, 0.6, -2] }, 'Sun');
     const bars = g.add('spectrumBars', { layout: 'arc', count: 48, width: 7, height: 2.4, palette: true, position: [0, -0.6, 0] });
     const prog = g.add('song'); const rise = g.add('remap', { outMin: -1.5, outMax: 0.8 }, 'Song → sunrise'); const vec = g.add('vector', { z: -2 }); const place = g.add('transform');
-    const film = g.add('film', { intensity: 0.5 }); const bloom = g.add('bloom', { strength: 0.9 }); const out = g.add('output', { backgroundOn: true, background: '#140021' });
+    const film = g.add('film', { intensity: 0.5 }); const bloom = g.add('bloom', { strength: 0.59 }); const out = g.add('output', { backgroundOn: true, background: '#140021' });
     g.link(`${sunG}.geo`, `${sun}.geometry`); g.link(`${sunM}.mat`, `${sun}.material`); g.link(`${prog}.progress`, `${rise}.value`); g.link(`${rise}.out`, `${vec}.y`); g.link(`${vec}.out`, `${place}.position`); g.link(`${sun}.obj`, `${place}.obj`);
     g.link(`${place}.obj`, `${out}.objects`); g.link(`${bars}.obj`, `${out}.objects`); g.link(`${bloom}.pass`, `${out}.post`); g.link(`${film}.pass`, `${out}.post`);
   }, 'sunrise 80s outrun');
@@ -1194,7 +1194,7 @@ let ${id}Travel = 0;`);
     const beat = g.add('beat'); const cnt = g.add('counter', { steps: 4 }); const col = g.add('colorOnHit', { palette: 'forgeheart' });
     const seq = g.add('sequence', { values: '0, 1.5, -1.5, 0.75' }); const vec = g.add('vector'); const sm = g.add('spring', { stiffness: 220, damping: 12 });
     const geo = g.add('box', { width: 1.4, height: 1.4, depth: 1.4 }); const mat = g.add('basicMat', { wireframe: true }); const mesh = g.add('mesh'); const move = g.add('move');
-    const tum = g.add('tumble', { degrees: 90, smooth: 14 }); const out = g.add('output'); const bloom = g.add('bloom', { strength: 1 });
+    const tum = g.add('tumble', { degrees: 90, smooth: 14 }); const out = g.add('output'); const bloom = g.add('bloom', { strength: 0.65 });
     g.link(`${beat}.beat`, `${cnt}.hit`); g.link(`${beat}.beat`, `${col}.hit`); g.link(`${col}.out`, `${mat}.color`); g.link(`${seq}.out`, `${sm}.value`); g.link(`${sm}.out`, `${vec}.x`); g.link(`${vec}.out`, `${move}.offset`);
     g.link(`${geo}.geo`, `${mesh}.geometry`); g.link(`${mat}.mat`, `${mesh}.material`); g.link(`${mesh}.obj`, `${move}.obj`); g.link(`${move}.obj`, `${tum}.obj`); g.link(`${beat}.beat`, `${tum}.hit`); g.link(`${tum}.obj`, `${out}.objects`); g.link(`${bloom}.pass`, `${out}.post`);
   }, 'sequencer steps beat colors');
@@ -1256,7 +1256,7 @@ let ${id}Travel = 0;`);
     pane.append(banner, viewHost, empty);
     host.append(pane, sw);
     const view = NodeView.create(viewHost, {
-      registry: reg, graph: NodeView.emptyGraph('three'), storeKey: 'three.nodes',
+      registry: reg, graph: NodeView.emptyGraph('three'), storeKey: 'three.nodes', spacePan: false, // Space stays play / pause in the Lab
       onChange: (graph, info) => onGraph(graph, info),
       menuItems: () => [
         'Three.js Lab',
@@ -1271,7 +1271,7 @@ let ${id}Travel = 0;`);
     });
     const layerOf = () => hook.layer();
     const keyOf = () => `${hook.sketch()?.id}:${layerOf()?.id}`;
-    function setMode(m, { quiet = false } = {}) {
+    function setMode(m, { quiet = false, init = false } = {}) {
       mode = m === 'nodes' ? 'nodes' : 'code';
       store.set(MODE_KEY, mode);
       codeBtn.classList.toggle('on', mode === 'code');
@@ -1279,7 +1279,7 @@ let ${id}Travel = 0;`);
       pane.hidden = mode !== 'nodes';
       host.closest('.three-split')?.classList.toggle('tn-wide', mode === 'nodes');
       if (mode === 'nodes') {
-        if (!hook.codeShown()) hook.showCode(true);
+        if (!init && !hook.codeShown()) hook.showCode(true);
         sync(hook.editor.value, { force: true });
         requestAnimationFrame(() => { view.relayout(); if (!quiet) view.focus(); });
         startProbe();
@@ -1429,7 +1429,7 @@ let ${id}Travel = 0;`);
       setMode(mode === 'nodes' ? 'code' : 'nodes');
       Usage.key('Alt+N', 'Lab nodes');
     }, true);
-    setMode(mode, { quiet: true });
+    setMode(mode, { quiet: true, init: true });
     lab = {
       view, hook, setMode, usePreset, presetPicker, showOutline, rebuild, sync: () => sync(hook.editor.value, { force: true }),
       get mode() { return mode; }, get state() { return state; },

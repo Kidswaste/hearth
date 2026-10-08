@@ -307,7 +307,7 @@ const NodeView = (() => {
   const svg = (tag, attrs = {}) => { const n = document.createElementNS(SVGNS, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; };
 
   // ---------- the editor ----------
-  function create(container, { registry: reg, graph: g0, onChange, onSelect, readOnly = false, menuItems, pickerExtras, live = true, storeKey = 'nodes' } = {}) {
+  function create(container, { registry: reg, graph: g0, onChange, onSelect, readOnly = false, menuItems, pickerExtras, live = true, storeKey = 'nodes', spacePan = true } = {}) {
     let graph = normalize(g0 || emptyGraph(reg.name), reg);
     let view = { x: 40, y: 40, z: 1 };
     let ro = readOnly;
@@ -333,7 +333,7 @@ const NodeView = (() => {
     const zoomLbl = el('button', { class: 'nv-hud-btn nv-zoom', title: 'Zoom: click for 100%, double-click to fit (F)', text: '100%' });
     const status = el('div', { class: 'nv-status' });
     const searchBox = el('input', { class: 'nv-search', placeholder: 'Find a node…', hidden: true, spellcheck: false });
-    const addBtn = el('button', { class: 'nv-hud-btn nv-add', text: '＋', title: 'Add a node (Tab, Space or double-click the background)' });
+    const addBtn = el('button', { class: 'nv-hud-btn nv-add', text: '＋', title: 'Add a node (Tab or double-click the background)' });
     const moreBtn = el('button', { class: 'nv-hud-btn', text: '⋯', title: 'More: layout, fit, snap, minimap, frames, notes, undo' });
     const hud = el('div', { class: 'nv-hud' }, addBtn, moreBtn, zoomLbl, searchBox);
     const root = el('div', { class: 'nv', tabIndex: 0 }, canvas, boxSel, hud, mini, status);
@@ -1103,7 +1103,7 @@ const NodeView = (() => {
       const k = e.key.toLowerCase();
       const C = e.ctrlKey || e.metaKey;
       const stop = () => { e.preventDefault(); e.stopPropagation(); };
-      if (e.key === ' ' && !e.repeat) { spaceDown = true; root.classList.add('panning'); }
+      if (e.key === ' ' && !e.repeat && spacePan) { e.preventDefault(); spaceDown = true; root.classList.add('panning'); }
       if (C && k === 'z' && !e.shiftKey) { stop(); undo(); return; }
       if ((C && k === 'z' && e.shiftKey) || (C && k === 'y')) { stop(); redo(); return; }
       if (C && k === 'f') { stop(); openSearch(); return; }
@@ -1146,7 +1146,7 @@ const NodeView = (() => {
     function undo() { if (!undoStack.length) return; redoStack.push(snapshot()); graph = JSON.parse(undoStack.pop()); renderAll(); onChange?.(clone(graph), { kind: 'undo' }); }
     function redo() { if (!redoStack.length) return; undoStack.push(snapshot()); graph = JSON.parse(redoStack.pop()); renderAll(); onChange?.(clone(graph), { kind: 'redo' }); }
     function help() {
-      const rows = [['Drag a dot', 'Connect (drop on empty space to pick a node)'], ['Tab · Space · double-click', 'Add a node'], ['Drag background', 'Box select (Shift adds)'], ['Right/middle drag · Space+drag', 'Pan'], ['Wheel · pinch', 'Zoom'],
+      const rows = [['Drag a dot', 'Connect (drop on empty space to pick a node)'], ['Tab · Shift+A · double-click', 'Add a node'], ['Drag background', 'Box select (Shift adds)'], [spacePan ? 'Right/middle drag · Space+drag' : 'Right/middle drag', 'Pan'], ['Wheel · pinch', 'Zoom'],
         ['Ctrl+C / X / V / D', 'Copy · cut · paste · duplicate'], ['Alt+drag', 'Duplicate while moving'], ['Delete', 'Delete the selection or wire'], ['Ctrl+Z · Ctrl+Shift+Z', 'Undo · redo'], ['Ctrl+G', 'Group into a frame'],
         ['C', 'Note'], ['H', 'Collapse'], ['L', 'Auto layout'], ['F · Home', 'Fit'], ['1 · + · −', 'Zoom 100% · in · out'], ['Ctrl+F', 'Find a node'], ['Alt+click a wire', 'Reroute dot'], ['Double-click a title', 'Rename'], ['Right-click', 'Menus']];
       menu(rect().left + 20, rect().top + 44, ['Node keys', ...rows.map(([k, v]) => [v, '', null, { key: k }])]);
