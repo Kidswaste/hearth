@@ -16,7 +16,7 @@ const ThreeFX = (() => {
   const KIND_LABEL = { layer: 'Layer', filter: 'Filter', look: 'Look', palette: 'Palette', trigger: 'Trigger preset', animate: 'Animation', ease: 'Ease', blend: 'Blend' };
   const ICON = { Shapes: '◇', Backgrounds: '▦', Visualizers: '▮', 'Text & HUD': 'T', Social: '◫', '3D': '⬢' };
   const norm = (s) => String(s || '').toLowerCase();
-  const CAT_ORDER = ['Glitch', 'Film', 'Color', 'LUT', 'Stylize', 'Distort', 'Blur & light', 'Feedback', 'Beat', 'Frame', 'Forgeheart', 'Cinematic', 'Retro', 'Neon', 'Dreamy', 'Art', 'Mono', 'Social'];
+  const CAT_ORDER = ['Forgeheart', 'Glitch', 'Film', 'Color', 'LUT', 'Stylize', 'Distort', 'Blur & light', 'Feedback', 'Beat', 'Frame', 'Cinematic', 'Retro', 'Neon', 'Dreamy', 'Art', 'Mono', 'Social'];
 
   // ---------- the catalog ----------
   function items(kind = 'all') {

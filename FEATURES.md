@@ -375,3 +375,6 @@
 312. ✓ 10 more Lab actions in Ctrl+K (guides, loop this bar, snap, quantize, remove doubles, cycle looks, copy all code, save sliders, save as look, Stage on top): 32 in all.
 313. ✓ Chat: Ctrl+↑ / Ctrl+↓ jump between your own messages (they flash); select text in a reply → ❝ Quote puts it in your message.
 314. ✓ App: Ctrl+K → Recent notifications (the last 40), middle-click an agent on the rail = a new chat with it, the window title shows what you're looking at.
+
+## Lab FX pack (fx stream)
+One searchable **FX picker** in the Three.js Lab (**X**, the Layers **＋ Layer** button, Ctrl+K, `/fx-picker`) with tabs, favorites, recent, 🎲 surprise and live filter thumbnails of your own picture: 156 new filter layers (109 new shaders: glitch, datamosh, film, color/LUT, stylize, distort, light, feedback, beat-reactive, frames), 85 music-reactive layer templates (shader backgrounds, visualizers, text/HUD/social overlays, 3D scenes), 154 looks (incl. Forgeheart), 104 palettes, 62 trigger presets, 28 keyframe eases, 13 eased animations, 22 blend presets and 6 more blend modes. Chat: `/fx`, `/fx-list`, `/template`, `/look-apply`, `/palette`, `/trigger-preset`, `/animate`, `/ease`, `/blend`, `/surprise`. Full list: `docs/upgrades/fx.md`.
