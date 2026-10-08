@@ -2828,10 +2828,14 @@ ${code}
       triggers: (patch) => (patch ? setTriggers(patch) : trigCfg),
       live: () => ({ input: liveKind, bpm: liveBpm?.bpm ?? null, tempoLocked: Boolean(liveBpm?.locked),
         nowPlaying: np?.title ? { title: np.title, artist: np.artist, album: np.album, app: np.app, position: Math.round(np.position || 0), duration: Math.round(np.duration || 0), playing: np.playing } : null }),
+      // Shots asked for at the same time (a still while the director takes one) share the next picture: each
+      // waiter used to replace the one before, which then never resolved.
       shot: () => new Promise((resolve) => {
-        pendingShot = resolve;
+        const prev = pendingShot;
+        const mine = (url) => { prev?.(url); resolve(url); };
+        pendingShot = mine;
         box.send({ type: 'screenshot' });
-        setTimeout(() => { if (pendingShot === resolve) { pendingShot = null; resolve(null); } }, 5000);
+        setTimeout(() => { if (pendingShot === mine) { pendingShot = null; mine(null); } }, 5000);
       }),
     };
     api.runSketch = run;
