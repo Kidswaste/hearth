@@ -110,7 +110,7 @@ function hubMcpConfig(agent) {
   const mcpServers = {};
   for (const key of hubToolsets(agent)) {
     const { server, script } = HUB_TOOLSETS[key];
-    mcpServers[server] = { command: process.execPath, args: [path.join(__dirname, 'mcp', script)], env: { ELECTRON_RUN_AS_NODE: '1', HUB_AGENT_ID: agent.id } };
+    mcpServers[server] = { command: process.execPath, args: [path.join(__dirname, 'mcp', script)], env: { ELECTRON_RUN_AS_NODE: '1', HUB_AGENT_ID: agent.id, ...(agent.nodesTool ? { HUB_NODES_TOOL: '1' } : {}) } };
   }
   const file = path.join(DATA_DIR, `mcp-${agent.id}.json`);
   fs.writeFileSync(file, JSON.stringify({ mcpServers }, null, 2));

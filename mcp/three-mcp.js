@@ -109,4 +109,5 @@ const TOOLS = [
   { name: 'three_set_frame', description: 'Set the preview/output frame: "fit" (any size), "9:16" (1080×1920, Shorts/Reels/TikTok), "16:9" (1920×1080), "1:1" (1080×1080) or "4:5" (1080×1350).', inputSchema: { type: 'object', properties: { size: { type: 'string', enum: ['fit', '9:16', '16:9', '1:1', '4:5'] } }, required: ['size'] } },
 ];
 
-serve({ name: 'three-lab', instructions: GUIDE, tools: TOOLS });
+// three_nodes costs ~90 tokens per message, so it's only offered when the agent opts in (agent.nodesTool, `/nodes-director on`).
+serve({ name: 'three-lab', instructions: GUIDE, tools: process.env.HUB_NODES_TOOL ? TOOLS : TOOLS.filter((t) => t.name !== 'three_nodes') });

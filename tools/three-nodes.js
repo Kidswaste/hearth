@@ -1559,6 +1559,19 @@ let ${id}Travel = 0;`);
   const nodeIds = () => (lab ? lab.view.getGraph().nodes.map((n) => n.id) : []);
   const cmd = (name, o) => Commands.register({ name, area, ...o, run: async (args) => { const r = await run(`${o.verb || name} ${args}`); return r || undefined; } });
   if (typeof Commands !== 'undefined') {
+    // The director only gets its three_nodes tool when you opt in (it adds ~90 tokens to each of its messages).
+    Commands.register({
+      name: 'nodes-director', area, args: 'on|off', desc: 'Let Three.js director agents edit node graphs themselves (adds ~90 tokens per message)',
+      complete: () => [{ value: 'on' }, { value: 'off' }],
+      run: async (a) => {
+        const dirs = H.config.agents.filter((x) => x.threeTools);
+        if (!dirs.length) return 'No Three.js director agent yet.';
+        const want = a.trim() ? a.trim() === 'on' : !dirs[0].nodesTool;
+        for (const d of dirs) d.nodesTool = want || undefined;
+        await saveConfig();
+        return want ? `Directors can now edit node graphs (${dirs.map((d) => d.name).join(', ')}). Takes effect in their next new chat.` : 'Directors no longer get the node tool; you can still use /nodes yourself.';
+      },
+    });
     Commands.register({ name: 'nodes', area, args: '[code]', desc: 'Show the selected Lab layer as nodes (/nodes code: back to the code)', complete: () => [{ value: 'code', hint: 'back to the code' }], run: async (a) => (await run(a.trim() === 'code' ? 'code' : 'show')) || undefined });
     cmd('nodes-new', { verb: 'new', args: '<preset>', desc: 'New Lab sketch from a node preset (beat particles, tunnel, spectrum…)', complete: presetComplete });
     cmd('nodes-layer', { verb: 'layer', args: '<preset>', desc: 'Add a layer built from a node preset', complete: presetComplete });
