@@ -95,6 +95,14 @@ function instrument(renderFn) {
     const EL = this.__layer && layers.get(this.__layer);
     if (EL?.props?.overrides) applyOverrides(EL, scene, camera);
     camera = editCamera(this, scene, camera);
+    // adaptive resolution (see adaptQuality): the sketch's own pixel ratio × the current quality
+    const q = fullRes() ? 1 : quality;
+    if (this.__q !== q && typeof this.setPixelRatio === 'function') {
+      // the sketch's own ratio: read the first time, and again if the sketch set a new one since (it no longer matches ours)
+      if (this.__basePR == null || Math.abs(this.getPixelRatio() - this.__basePR * this.__q) > 1e-3) this.__basePR = this.getPixelRatio();
+      this.__q = q;
+      this.setPixelRatio(this.__basePR * q);
+    }
     const t0 = performance.now();
     renderFn.call(this, scene, camera);
     frameMs = performance.now() - t0;
@@ -137,10 +145,26 @@ HTMLCanvasElement.prototype.getContext = function (type, opts) {
   if (mode === 'sketch' && /^(webgl2?|experimental-webgl)$/.test(type)) opts = { ...(opts || {}), alpha: true, preserveDrawingBuffer: true };
   return realGetContext.call(this, type, opts);
 };
+// Adaptive resolution: when the preview can't keep up (frames dropping: the GPU is busy drawing a big frame size),
+// it draws at a lower internal resolution, step by step down to half, and climbs back when there's headroom. The
+// picture on screen keeps its size (the canvas is scaled). Stills, screenshots and recordings always draw at full
+// resolution. No setting: it only kicks in when frames are actually lost.
+let quality = 1; let qFrames = 0; let qSlow = 0; let qSince = 0;
+const fullRes = () => shotPending || recorder != null || recUntil != null;
+function adaptQuality(gap) {
+  const target = 1000 / (fpsCap || 60);
+  if (gap > 250 || document.hidden) return; // a hitch from a reload / a hidden window says nothing
+  qFrames += 1; if (gap > target * 1.35) qSlow += 1;
+  if (qFrames < 45) return;
+  const slowShare = qSlow / qFrames; qFrames = 0; qSlow = 0;
+  const now = performance.now();
+  if (slowShare > 0.25 && quality > 0.5) { quality = Math.max(0.5, +(quality * 0.8).toFixed(2)); qSince = now; }
+  else if (slowShare < 0.04 && quality < 1 && now - qSince > 4000) { quality = Math.min(1, +(quality / 0.8).toFixed(2)); qSince = now; }
+}
 // The gap between displayed frames; the worst one in each half second is what reads as a stutter.
 const tickFrames = (t) => {
   frameTick += 1;
-  if (frameSeen === frameTick - 1 && lastFrameAt) worstGap = Math.max(worstGap, t - lastFrameAt);
+  if (frameSeen === frameTick - 1 && lastFrameAt) { worstGap = Math.max(worstGap, t - lastFrameAt); if (mode === 'sketch') adaptQuality(t - lastFrameAt); }
   lastFrameAt = t;
   realRAF(tickFrames);
 };
@@ -173,7 +197,7 @@ realSetInterval(() => {
   const worst = worstGap; worstGap = 0;
   if (!lastRenderer) return;
   const i = lastRenderer.info;
-  post({ type: 'stats', fps, worst, ms: frameMs, calls: i.render.calls, triangles: i.render.triangles, points: i.render.points, lines: i.render.lines, geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs?.length ?? 0 });
+  post({ type: 'stats', fps, worst, quality, ms: frameMs, calls: i.render.calls, triangles: i.render.triangles, points: i.render.points, lines: i.render.lines, geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs?.length ?? 0 });
 }, 500);
 
 function requestShot() {

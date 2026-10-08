@@ -686,3 +686,7 @@ svg.hi { width: 1em; height: 1em; display: block; flex: none; overflow: visible;
 .media-bar canvas.mb-timeline, .media-bar canvas.mb-minimap { will-change: contents; transform: translateZ(0); }
 .media-bar .mb-playhead { contain: strict; }
 .media-bar .mb-bpmread { contain: layout paint; will-change: opacity; }
+
+/* the timeline's scrolling strip (three-media.js scroll): slides under the fixed playhead while a song plays */
+.media-bar .mb-strip-clip { position: absolute; left: 0; top: 0; bottom: 0; overflow: hidden; pointer-events: none; border-radius: 4px; }
+.media-bar .mb-strip { position: absolute; left: 0; top: 0; display: block; will-change: transform; }

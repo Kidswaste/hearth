@@ -516,6 +516,11 @@ const ThreeMedia = (() => {
     const canvas = el('canvas', { class: 'mb-timeline' });
     // While playing, only these two lines move every frame; the canvases redraw about 10 times a second.
     const playheadEl = el('div', { class: 'mb-playhead' });
+    // the scrolling strip (see scroll): three views of the timeline drawn once, slid under a fixed playhead
+    const strip = el('canvas', { class: 'mb-strip' });
+    const stripClip = el('div', { class: 'mb-strip-clip', hidden: true }, strip);
+    const ANCHOR = 0.3; // where the playhead stays while the timeline scrolls
+    const scroll = { on: false, S: 0, sp: 0, w: 0, anim: null, x0: 0, x1: 0 };
     const miniHeadEl = el('div', { class: 'mb-playhead mini' });
     // Overview of the whole song (like FL Studio's playlist overview): every layer, the loop, the playhead,
     // and the zoomed window you can drag.
@@ -604,7 +609,7 @@ const ThreeMedia = (() => {
         el('span', { class: 'tb-group mb-g-capture', dataset: { cat: 'Capture' } }),
         el('span', { class: 'tb-group mb-g-live', dataset: { cat: 'Live' } }, recBtn),
         el('span', { class: 'spacer' })),
-      gridRow, el('div', { class: 'mb-tl-wrap' }, canvas, playheadEl, hoverEl), el('div', { class: 'mb-mm-wrap' }, minimap, miniHeadEl));
+      gridRow, el('div', { class: 'mb-tl-wrap' }, canvas, stripClip, playheadEl, hoverEl), el('div', { class: 'mb-mm-wrap' }, minimap, miniHeadEl));
     gridRow.insertBefore(waveBtn, viewBtn);
     setSize(size);
     // Fewer controls by default; ⋯ shows every one (zoom buttons, loop points, grid tools…). Rarely used ones get .mb-adv.
@@ -1369,7 +1374,7 @@ const ThreeMedia = (() => {
     function livePaint() {
       lastFull = performance.now();
       if (recording) setText(recBtn, recording.stopping ? '… saving' : `⏹ Stop ${fmtTime((performance.now() - recording.startedAt) / 1000)}`);
-      if (view && st.playing && !locked && gridView.follow !== false) {
+      if (view && st.playing && !locked && gridView.follow !== false && !scroll.on) {
         const t = now();
         if (t > view.end || t < view.start) setView({ start: t - span() * 0.1, end: t - span() * 0.1 + span() });
       }
@@ -1396,14 +1401,64 @@ const ThreeMedia = (() => {
       anim.startTime = document.timeline.currentTime; // start at x now, not when it's first drawn (a few frames later)
       heads.set(elm, { anim, key, x0: x, x1: xEnd });
     }
+    // ---------- smooth scrolling while it plays (zoomed in, following) ----------
+    // Like a DAW: once the playhead reaches ANCHOR of the view it stays there and the timeline slides under it. A strip
+    // three views wide is drawn once and moved by a compositor animation (smooth even when the main thread is busy);
+    // it's redrawn about every two views, or after a seek / zoom / resize. Near the end of the song the last view stays
+    // and the playhead runs to the end.
+    const scrollWanted = () => Boolean(view) && st.playing && !locked && !dragging && gridView.follow !== false && D() > 0 && Boolean(canvas.offsetParent);
+    function scrollStop(nextView) {
+      if (!scroll.on) return;
+      scroll.on = false;
+      scroll.anim?.cancel(); scroll.anim = null;
+      stripClip.hidden = true;
+      if (nextView) view = nextView;
+      paint();
+    }
+    function scrollAnimate(t) {
+      const { S, sp, w } = scroll;
+      const rate = st.rate || 1;
+      const x = -(((t - ANCHOR * sp) - S) / sp) * w;
+      const x1 = -2 * w;
+      const ms = ((S + 2 * sp + ANCHOR * sp - t) / rate) * 1000;
+      scroll.anim?.cancel();
+      strip.style.transform = `translate3d(${x.toFixed(2)}px, 0, 0)`;
+      if (!(ms > 30)) { scroll.anim = null; return; }
+      scroll.anim = strip.animate([{ transform: `translate3d(${x.toFixed(2)}px, 0, 0)` }, { transform: `translate3d(${x1.toFixed(2)}px, 0, 0)` }], { duration: ms, easing: 'linear', fill: 'forwards' });
+      scroll.anim.startTime = document.timeline.currentTime;
+      scroll.x0 = x; scroll.x1 = x1;
+    }
+    function scrollStart(L, sp, w, t) {
+      Object.assign(scroll, { on: true, S: L, sp, w });
+      view = { start: L, end: L + sp };
+      stripClip.style.width = `${w}px`;
+      strip.style.width = `${3 * w}px`; strip.style.height = `${canvas.clientHeight}px`;
+      draw({ canvas: strip, w: 3 * w, s0: L, sp: 3 * sp });
+      stripClip.hidden = false;
+      draw(); // the main canvas keeps only its header column now
+      scrollAnimate(t);
+    }
+    function scrollUpdate(t) {
+      if (!scrollWanted()) { if (scroll.on) scrollStop(); return; }
+      const sp = span(); const w = tw();
+      const L = t - ANCHOR * sp; // the view's start with the playhead at the anchor
+      if (L + sp >= D()) { if (scroll.on) scrollStop({ start: Math.max(0, D() - sp), end: D() }); return; }
+      if (!scroll.on) { if (L >= v0() - 1e-3) scrollStart(L, sp, w, t); return; }
+      if (Math.abs(scroll.sp - sp) > 1e-6 || scroll.w !== w || L < scroll.S - 1e-3 || L > scroll.S + 1.8 * sp) { scrollStart(L, sp, w, t); return; }
+      view.start = L; view.end = L + sp; // clicks, hover and the minimap box follow (no repaint)
+      const want = -((L - scroll.S) / sp) * w;
+      const at = scroll.anim ? scroll.x0 + (scroll.x1 - scroll.x0) * (scroll.anim.effect.getComputedTiming().progress ?? 0) : NaN;
+      if (!(Math.abs(at - want) <= 2)) scrollAnimate(t);
+    }
     function placePlayheads() {
       watchCues();
       const rate = st.rate || 1;
       // positions on the frame's clock (what the animations run on), not "now": in a slow frame the two differ
       const t = st.playing ? Math.max(0, now() - ((performance.now() - (document.timeline.currentTime ?? performance.now())) / 1000) * rate) : now();
       const w = tw();
-      const x = D() ? ((t - v0()) / span()) * w : -10;
-      const moving = st.playing && Boolean(D()) && !dragging;
+      scrollUpdate(t);
+      const x = scroll.on ? ANCHOR * w : D() ? ((t - v0()) / span()) * w : -10;
+      const moving = st.playing && Boolean(D()) && !dragging && !scroll.on;
       playheadEl.style.display = x >= -1 && x <= w + 1 && canvas.offsetParent ? '' : 'none';
       const vEnd = Math.min(v0() + span(), D() || 0);
       glide(playheadEl, x, ((vEnd - v0()) / span()) * w, ((vEnd - t) / rate) * 1000, `${v0()}|${span()}|${w}|${rate}`, moving);
@@ -1448,35 +1503,43 @@ const ThreeMedia = (() => {
       CORE_LANES.forEach((ln, i) => { laneBtns[i].textContent = `${ln.key.toUpperCase()} ${ln.name} ${map.marks[ln.id].length || ''}`.trim(); });
       recBtn.textContent = recording ? (recording.stopping ? '… saving' : `⏹ Stop ${fmtTime((performance.now() - recording.startedAt) / 1000)}`) : '⏺ Record';
       recBtn.classList.toggle('on', Boolean(recording));
-      if (view && st.playing && !locked && !dragging && gridView.follow !== false) {
+      if (view && st.playing && !locked && !dragging && gridView.follow !== false && !scroll.on) {
         const t = now();
         if (t > view.end || t < view.start) setView({ start: t - span() * 0.1, end: t - span() * 0.1 + span() });
       }
       draw();
+      // something changed while the strip scrolls (a tap, a marker, the grid): redraw it in place
+      if (scroll.on) draw({ canvas: strip, w: 3 * scroll.w, s0: scroll.S, sp: 3 * scroll.sp });
       cancelAnimationFrame(raf);
       lastFull = performance.now();
       placePlayheads();
       if (st.playing || recording) raf = requestAnimationFrame(tick);
     }
-    function draw() {
+    // ov: draw the time area into another canvas with its own view (the scrolling strip, see scroll below)
+    function draw(ov = null) {
       const t = now();
-      setText(timeEl, D() ? `${span() < 20 ? fmtMs(t) : fmtTime(t)} / ${fmtTime(D())}` : fmtTime(t));
-      setText(miniTime, D() ? `${fmtTime(t)} / ${fmtTime(D())}` : '');
-      setText(miniPlay, st.playing ? '⏸' : '▶');
-      drawMinimap(t);
-      const W = canvas.clientWidth; const h = canvas.clientHeight;
+      if (!ov) {
+        setText(timeEl, D() ? `${span() < 20 ? fmtMs(t) : fmtTime(t)} / ${fmtTime(D())}` : fmtTime(t));
+        setText(miniTime, D() ? `${fmtTime(t)} / ${fmtTime(D())}` : '');
+        setText(miniPlay, st.playing ? '⏸' : '▶');
+        drawMinimap(t);
+      }
+      const cv = ov ? ov.canvas : canvas;
+      const W = ov ? ov.w : canvas.clientWidth; const h = canvas.clientHeight;
       if (!W || !h) return;
       // the time area; the header column (GUT px) on the right holds the ▾ choosers and lane names
-      const w = tw();
+      const w = ov ? ov.w : tw();
       const dpr = devicePixelRatio || 1;
-      if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(W * dpr); canvas.height = Math.round(h * dpr); }
-      const g = canvas.getContext('2d');
+      if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(h * dpr); }
+      const g = cv.getContext('2d');
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
       g.clearRect(0, 0, W, h);
+      // while the strip scrolls, the main canvas only keeps the header column
+      if (!ov && scroll.on) { drawGutter(g, w, W, h, t); return; }
       if (!D()) { g.fillStyle = '#ffffff10'; g.fillRect(0, h / 2 - 1, w, 2); drawGutter(g, w, W, h, 0); return; }
       g.save();
       g.beginPath(); g.rect(0, 0, w, h); g.clip();
-      const s0 = v0(); const sp = span();
+      const s0 = ov ? ov.s0 : v0(); const sp = ov ? ov.sp : span();
       const X = (tt) => ((tt - s0) / sp) * w;
       const a = st.analysis;
       const top = RULER; const LT = laneTop(h); const H = LT - top;
@@ -1665,6 +1728,7 @@ const ThreeMedia = (() => {
         g.fillRect(x + 2, 1, lw, RULER - 3);
         g.fillStyle = '#0b0e10'; g.fillText(label, x + 6, 11);
       });
+      if (ov) { g.restore(); return; }
       placePlayheads();
       g.restore();
       drawGutter(g, w, W, h, t);
