@@ -1097,13 +1097,13 @@ float sgSimplex(vec2 v) {
       const r = build(g, 'filter');
       const res = await D.addLayer({ name: `${name} (filter)`, code: r.code }, 1);
       const L = findLabLayer(res?.added);
-      return { bind: L ? { kind: 'layer', id: L.id, name: L.name } : { kind: 'none' }, text: `Added the filter layer “${res?.added || name}”: it restyles every layer below it.` };
+      return { bind: L ? { kind: 'layer', id: L.id, name: L.name } : { kind: 'none' }, text: `Added the filter layer “${res?.added || name}”: it restyles every layer below it.${errs(res)}`, report: res };
     }
     if (target === 'layer') {
       const r = build(g, 'layer');
       const res = await D.addLayer({ name, code: r.code }, 1);
       const L = findLabLayer(res?.added);
-      return { bind: L ? { kind: 'layer', id: L.id, name: L.name } : { kind: 'none' }, text: `Added the layer “${res?.added || name}” (a full-screen shader that follows the song).` };
+      return { bind: L ? { kind: 'layer', id: L.id, name: L.name } : { kind: 'none' }, text: `Added the layer “${res?.added || name}” (a full-screen shader that follows the song).${errs(res)}`, report: res };
     }
     if (target === 'sketch') {
       const r = build(g, 'layer');
@@ -1113,6 +1113,7 @@ float sgSimplex(vec2 v) {
     }
     throw new Error(`Send to playground, filter, layer, sketch, shadertoy or copy (not "${target}").`);
   }
+  const errs = (res) => (res?.errors?.length ? `\nThe Lab reports: ${res.errors.map((e) => `${e.layer ? `[${e.layer}] ` : ''}${e.message}`).join('; ')}` : '');
   // the layer just added is the selected one: its id from the Lab's code-pane hook, else its name
   function findLabLayer(name) {
     try {

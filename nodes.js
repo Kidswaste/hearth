@@ -1538,7 +1538,8 @@ const NodeView = (() => {
     const q = el('input', { class: 'tn-preset-q', type: 'search', placeholder: placeholder || `Find a preset (${items.length})…`, spellcheck: false });
     const grid = el('div', { class: 'tn-presets' });
     let shown = []; let active = 0;
-    const pick = (p) => { d.close(); try { onPick?.(p); } catch (err) { toast(err.message, { type: 'error' }); } };
+    const shut = () => { if (d.open) d.close(); d.remove(); };
+    const pick = (p) => { shut(); try { onPick?.(p); } catch (err) { toast(err.message, { type: 'error' }); } };
     const paint = () => {
       const s = q.value.trim().toLowerCase();
       shown = items.filter((p) => !s || s.split(/\s+/).every((w) => `${p.id} ${p.name} ${p.desc || ''} ${p.tags || ''} ${p.tag || ''}`.toLowerCase().includes(w)));
@@ -1556,14 +1557,15 @@ const NodeView = (() => {
       if (e.key === 'Enter' && shown[active]) { e.preventDefault(); pick(shown[active]); }
     });
     const d = el('dialog', { class: 'nv-dialog nv-presets-dialog' },
-      el('div', { class: 'nv-dialog-head' }, el('b', { text: title }), el('span', { class: 'nv-dialog-note', text: `${items.length} · ↑↓ Enter` }), el('span', { class: 'spacer' }), el('button', { class: 'ghost small', text: '✕', on: { click: () => d.close() } })),
+      el('div', { class: 'nv-dialog-head' }, el('b', { text: title }), el('span', { class: 'nv-dialog-note', text: `${items.length} · ↑↓ Enter` }), el('span', { class: 'spacer' }), el('button', { class: 'ghost small', text: '✕', on: { click: () => shut() } })),
       el('div', { class: 'nv-presets-body' }, q, grid));
     d.addEventListener('close', () => d.remove());
+    d.addEventListener('cancel', () => setTimeout(() => d.remove(), 0));
     document.body.append(d);
     d.showModal();
     paint();
     q.focus();
-    return { close: () => d.close() };
+    return { close: shut };
   }
 
   // side: an element shown at the right (details of the selected node); other options go to create()
@@ -1573,15 +1575,22 @@ const NodeView = (() => {
     const body = el('div', { class: `nv-dialog-body${side ? ' with-side' : ''}` }, host, side);
     const d = el('dialog', { class: `nv-dialog ${className}` },
       el('div', { class: 'nv-dialog-head' }, el('b', { text: title }), note ? el('span', { class: 'nv-dialog-note', text: note }) : null, el('span', { class: 'spacer' }),
-        ...actions.filter(Boolean).map((a) => el('button', { class: a.primary ? 'primary small' : 'ghost small', text: a.label, title: a.title || '', on: { click: () => { a.run(v); if (a.close !== false) d.close(); } } })),
-        el('button', { class: 'ghost small', text: '✕', title: 'Close (Esc)', on: { click: () => d.close() } })),
+        ...actions.filter(Boolean).map((a) => el('button', { class: a.primary ? 'primary small' : 'ghost small', text: a.label, title: a.title || '', on: { click: () => { a.run(v); if (a.close !== false) close(); } } })),
+        el('button', { class: 'ghost small', text: '✕', title: 'Close (Esc)', on: { click: () => close() } })),
       body);
-    d.addEventListener('close', () => { onClose?.(); v.destroy(); d.remove(); });
+    // the dialog's own 'close' event can come late (or not at all in a hidden window): clean up either way, once
+    let gone = false;
+    const finish = () => { if (gone) return; gone = true; onClose?.(); v.destroy(); d.remove(); };
+    const nativeClose = d.close.bind(d);
+    const close = () => { if (d.open) nativeClose(); finish(); };
+    d.close = close; // dlg.dialog.close() from elsewhere cleans up too
+    d.addEventListener('close', finish);
+    d.addEventListener('cancel', () => setTimeout(finish, 0));
     document.body.append(d);
     d.showModal();
     const v = create(host, { registry: reg, graph, readOnly, storeKey: 'nodes.dialog', ...opts });
     requestAnimationFrame(() => v.fit());
-    return { view: v, close: () => d.close(), dialog: d };
+    return { view: v, close, dialog: d };
   }
 
   // ---------- outline of any JS: imports, functions, names, sliders, and what uses what ----------

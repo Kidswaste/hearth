@@ -301,6 +301,22 @@
 .vf-wait-text { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vf-wait-dot { width: 8px; height: 8px; border-radius: 50%; background: #ffd75e; box-shadow: 0 0 8px #ffd75e; animation: nv-pulse 1.2s ease-in-out infinite; flex: none; }
 
+/* ---------- Code flow (nodes-code.js): read-only flow + the selected node's code ---------- */
+.cf-dialog { width: min(1400px, 96vw); height: min(880px, 90vh); }
+.cf-side { display: flex; flex-direction: column; gap: 8px; padding: 10px; min-width: 0; }
+.cf-head { display: flex; flex-direction: column; gap: 2px; }
+.cf-head b { font-size: 13px; word-break: break-all; }
+.cf-muted { color: var(--muted); font-size: 11px; }
+.cf-links { display: flex; flex-direction: column; gap: 4px; }
+.cf-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.cf-chip { height: 20px; padding: 0 7px; border-radius: 6px; font: 11px var(--mono, monospace); cursor: pointer; color: var(--text); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); background: linear-gradient(180deg, #ffffff12, #00000018); }
+.cf-chip:hover { border-color: var(--accent); }
+.cf-code { flex: 1; min-height: 80px; margin: 0; overflow: auto; font: 11px/1.45 var(--mono, monospace); white-space: pre-wrap; word-break: break-word; padding: 8px; border-radius: 8px; background: color-mix(in srgb, var(--text) 4%, transparent); border: 1px solid var(--line); user-select: text; }
+.cf-code[hidden], .cf-edit[hidden] { display: none; }
+.cf-edit { flex: 1; min-height: 160px; resize: none; font: 11px/1.45 var(--mono, monospace); padding: 8px; border-radius: 8px; border: 1px solid var(--accent); background: var(--bg); color: var(--text); }
+.cf-bar { display: flex; gap: 6px; }
+.cf-bar:empty { display: none; }
+
 /* dialog with a side panel */
 .nv-dialog-body { flex: 1; min-height: 0; display: flex; }
 .nv-dialog-body > .nv-dialog-host { flex: 1; min-width: 0; }

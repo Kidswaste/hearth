@@ -1310,7 +1310,7 @@ let ${id}Travel = 0;`);
         view.setGraph(NodeView.emptyGraph('three'), { history: false });
         setBanner('');
         empty.replaceChildren(el('div', { class: 'tn-empty-card' },
-          el('b', { text: `This layer was made with ${a?.label || other.kind} nodes` }),
+          el('b', { text: `This layer was made with ${a?.label || `${other.kind} nodes`}` }),
           el('p', { text: 'Edit its graph there; Apply writes it back to this layer.' }),
           el('div', { class: 'tn-row' },
             el('button', { class: 'primary small', text: `Open in ${a?.label || 'its node editor'}`, on: { click: () => (window.ShaderNodes && other.kind === 'shader' ? window.ShaderNodes.editLabLayer(hook.editor.value, hook) : a?.open(hook.editor.value, 'js', other)) } }),
@@ -1412,23 +1412,13 @@ let ${id}Travel = 0;`);
       status(r);
       return p;
     }
+    // the shared picker (search, arrow keys + Enter)
     function presetPicker(where) {
-      const q = el('input', { class: 'tn-preset-q', placeholder: `Find a preset (${PRESETS.length})…` });
-      const grid = el('div', { class: 'tn-presets' });
-      const paint = () => {
-        const s = q.value.toLowerCase();
-        grid.replaceChildren(...PRESETS.filter((p) => `${p.name} ${p.desc} ${p.tags}`.toLowerCase().includes(s)).map((p) => el('button', { class: 'tn-preset', on: { click: () => { d.close(); try { usePreset(p.id, where); } catch (err) { toast(err.message, { type: 'error' }); } } } },
-          el('b', { text: p.name }), el('span', { text: p.desc }), el('small', { text: `/nodes-new ${p.id}` }))));
-      };
-      q.addEventListener('input', paint);
-      const d = el('dialog', { class: 'nv-dialog', style: { height: 'auto', maxHeight: '86vh' } },
-        el('div', { class: 'nv-dialog-head' }, el('b', { text: where === 'layer' ? 'New layer from a preset' : where === 'sketch' ? 'New sketch from a preset' : 'Start this layer from a preset' }), el('span', { class: 'spacer' }), el('button', { class: 'ghost small', text: '✕', on: { click: () => d.close() } })),
-        el('div', { style: { padding: '10px' } }, q, grid));
-      d.addEventListener('close', () => d.remove());
-      document.body.append(d);
-      d.showModal();
-      paint();
-      q.focus();
+      NodeView.presetPicker({
+        title: where === 'layer' ? 'New layer from a preset' : where === 'sketch' ? 'New sketch from a preset' : 'Start this layer from a preset',
+        items: PRESETS.map((p) => ({ id: p.id, name: p.name, desc: p.desc, tags: p.tags, hint: `/nodes-${where === 'layer' ? 'layer' : where === 'sketch' ? 'new' : 'preset'} ${p.id}`, tag: /filter/.test(p.id) ? 'filter' : '' })),
+        onPick: (p) => usePreset(p.id, where),
+      });
     }
     // live values on the nodes while the nodes show
     let probeTimer = 0;

@@ -155,6 +155,23 @@ const VideoNodes = (() => {
   rev({ type: 'carry', title: 'Carry notes over', desc: 'Copies the open notes of one version to another (to check them off there)', keywords: 'copy notes version',
     inputs: [IN('from', 'video', { required: true, label: 'From' }), IN('to', 'video', { required: true, label: 'To' })], outputs: [OUT('video', 'video', 'To')],
     run: async (x) => { await show(videoOf(x, 'from')); const to = videoOf(x, 'to'); const n = R().carryNotes(to); x.status(`${n} note${n === 1 ? '' : 's'} → ${base(to)}`); return { video: { path: to } }; }, cmd: () => '/carry-notes' });
+  rev({ type: 'notes-file', title: 'Notes to a file', desc: 'Writes the video\'s notes next to it (exports folder) as Markdown, CSV or JSON', keywords: 'export notes markdown csv',
+    inputs: [IN('notes', 'notes', { required: true })], widgets: [SEL('format', ['md', 'csv', 'json'])], outputs: [OUT('file', 'file')], cmdBadge: (n) => n.values?.format || 'md',
+    run: async (x) => {
+      const p = await show(x.in('notes').path);
+      const text = R().exportNotes(x.v('format'));
+      if (!text) throw new Error('No notes to write');
+      const sep = p.includes('\\') && !p.startsWith('/') ? '\\' : '/';
+      const dir = p.slice(0, p.lastIndexOf(sep));
+      const out = `${dir}${sep}exports${sep}${base(p).replace(/\.[^.]+$/, '')} notes.${x.v('format')}`;
+      await window.hub.fs.write(out, text);
+      x.status(base(out));
+      return { file: { path: out } };
+    }, cmd: (n) => `/notes ${n.values?.format || 'md'}` });
+  rev({ type: 'fav', title: 'Favorite', desc: 'Marks the video as a favorite ★ (the library\'s ★ filter, "latest fav" sources)', inputs: [IN('video', 'video', { required: true })], outputs: [OUT('video', 'video')],
+    run: async (x) => { const p = videoOf(x); if (!R().isFav(p)) { await show(p); R().toggleFav(p); } x.status('★'); return { video: { path: p } }; }, cmd: () => '/fav' });
+  rev({ type: 'tag', title: 'Tag', desc: 'Adds tags to the video (search them with #tag; "#tag" sources pick them up)', inputs: [IN('video', 'video', { required: true })], widgets: [TXT('tags', 'final', { label: 'Tags' })], outputs: [OUT('video', 'video')], cmdBadge: (n) => String(n.values?.tags || '').slice(0, 12),
+    run: async (x) => { const p = videoOf(x); const tags = R().setTags(p, [...R().tagsOf(p), ...String(x.v('tags') || '').split(/[\s,]+/)]); x.status(tags.map((t) => `#${t}`).join(' ')); return { video: { path: p } }; }, cmd: (n) => `/tag ${n.values?.tags || ''}` });
   rev({ type: 'sheet', title: 'Contact sheet', desc: 'A grid of frames across the video (saved as a picture; optionally attached to the director\'s chat)', keywords: 'thumbnails storyboard frames',
     inputs: [IN('video', 'video', { required: true })], widgets: [NUM('frames', 12, 4, 36, { step: 1, slider: false }), TOG('attach', false, { label: 'Attach to the director chat' })], outputs: [OUT('file', 'file', 'Picture'), OUT('video', 'video')],
     run: async (x) => {
@@ -252,6 +269,17 @@ const VideoNodes = (() => {
       x.status(x.v('script'));
       return { project: x.in('project') };
     }, cmd: (n) => `/ae-run ${n.values?.script || '<script>'}` });
+
+  ae({ type: 'ae-comp', title: 'New AE comp', desc: 'Creates a comp in After Effects for a social format (9:16, 4:5, 1:1, 16:9) with your length and frame rate', keywords: 'composition format create',
+    inputs: [IN('project', 'project', { label: 'After' })], widgets: [SEL('format', FORMAT_OPTS), NUM('seconds', 15, 1, 600, { slider: false }), NUM('fps', 30, 12, 60, { slider: false, step: 1 })], outputs: [OUT('project', 'project')], cmdBadge: (n) => n.values?.format || '9:16',
+    run: async (x) => {
+      const c = Commands.get('ae-comp');
+      if (!c) throw new Error('The /ae-comp command is missing');
+      const out = await c.run(`${x.v('format')} ${x.v('seconds')} ${x.v('fps')}`, { agentId: H.claudeAgent()?.id, say: () => {} });
+      if (!out) throw new Error('After Effects didn\'t create it (is it installed and running?)');
+      x.status(String(out).replace(/[*`]/g, '').slice(0, 60));
+      return { project: x.in('project') || null };
+    }, cmd: (n) => `/ae-comp ${n.values?.format || '9:16'} ${n.values?.seconds || 15} ${n.values?.fps || 30}` });
 
   // Agents and chat
   const ag = cat('Agents & chat', '#48ddff');
@@ -558,6 +586,22 @@ const VideoNodes = (() => {
     const v = g.add('open-video'); const c = g.add('crop', { format: '4:5', offset: 0.5 }); const w = g.add('wait', { message: 'Drag the crop to choose what stays, then Continue.' }); const ex = g.add('export', { preset: 'feed45' });
     g.link(`${v}.video`, `${c}.video`); g.link(`${c}.video`, `${w}.in`); g.link(`${w}.out`, `${ex}.video`);
   }, 'instagram feed reframe');
+  preset('notes-md', 'Notes → Markdown file', 'Writes the open video\'s notes into a Markdown file in its exports folder and shows it', (g) => {
+    const v = g.add('open-video'); const nt = g.add('notes'); const f = g.add('notes-file', { format: 'md' }); const r = g.add('reveal');
+    g.link(`${v}.video`, `${nt}.video`); g.link(`${nt}.notes`, `${f}.notes`); g.link(`${f}.file`, `${r}.file`);
+  }, 'export notes document');
+  preset('lab-director', 'Lab recording → ask the director', 'The newest Lab recording, a contact sheet in the Video Director\'s chat, and a question drafted for it', (g) => {
+    const lab = g.add('lab-recording'); const rv = g.add('review'); const sh = g.add('sheet', { frames: 12, attach: true }); const ask = g.add('ask', { agent: 'director', text: 'Here is {name} (contact sheet attached). What would make it hit harder on the drops?' });
+    g.link(`${lab}.video`, `${rv}.video`); g.link(`${rv}.video`, `${sh}.video`); g.link(`${sh}.video`, `${ask}.video`);
+  }, 'three lab feedback director');
+  preset('reels-feed-pair', 'Reels + feed pair', 'A vertical → Reels 9:16 and an Instagram feed 4:5 crop (you check the crop first)', (g) => {
+    const v = g.add('open-video'); const r = g.add('export', { preset: 'reels' }); const c = g.add('crop', { format: '4:5' }); const w = g.add('wait', { message: 'Drag the 4:5 crop to choose what stays, then Continue.' }); const f = g.add('export', { preset: 'feed45' });
+    g.link(`${v}.video`, `${r}.video`); g.link(`${v}.video`, `${c}.video`); g.link(`${c}.video`, `${w}.in`); g.link(`${w}.out`, `${f}.video`);
+  }, 'instagram reels feed');
+  preset('keeper', 'Keep it (★ + tag + YouTube)', 'Favorite the open video, tag it "final" and export the 1080p YouTube version', (g) => {
+    const v = g.add('open-video'); const f = g.add('fav'); const t = g.add('tag', { tags: 'final' }); const ex = g.add('export', { preset: 'yt1080', range: 'all' });
+    g.link(`${v}.video`, `${f}.video`); g.link(`${f}.video`, `${t}.video`); g.link(`${t}.video`, `${ex}.video`);
+  }, 'final favorite deliver');
   preset('empty', 'Empty flow', 'Just the open video: add steps with Tab', (g) => { g.add('open-video'); }, 'blank');
 
   function usePreset(id) {
