@@ -89,9 +89,9 @@ dialog.cmd-help { width: min(760px, calc(100vw - 40px)); max-width: none; paddin
 .cmd-help-tips kbd, .cmd-help-tips code { font: 10.5px var(--mono, ui-monospace, monospace); }
 
 /* commands inside agents' replies: `/size 9:16` you can click */
-.msg code.cmd-code { cursor: pointer; border-bottom: 1px dashed color-mix(in srgb, var(--accent) 70%, transparent); }
-.msg code.cmd-code:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
-.msg code.cmd-code::after { content: ' ▸'; font-size: .8em; opacity: .55; }
+:is(.msg, .notes-panel) code.cmd-code { cursor: pointer; border-bottom: 1px dashed color-mix(in srgb, var(--accent) 70%, transparent); }
+:is(.msg, .notes-panel) code.cmd-code:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+:is(.msg, .notes-panel) code.cmd-code::after { content: ' ▸'; font-size: .8em; opacity: .55; }
 
 /* Forgeheart 2: glass + gold like the palette */
 :root[data-look~=v2] .cmdbar-row, :root[data-look~=v2] .cmdbar-out {

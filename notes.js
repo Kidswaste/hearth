@@ -514,6 +514,8 @@ const Prompts = (() => {
         const mine = n;
         return el('div', {
           class: `slash-item${mine === sel ? ' sel' : ''}${it.kind === 'command' || it.kind === 'line' ? ' cmd' : ''}`, on: { mousedown: (e) => { e.preventDefault(); pick(it); } },
+          // hover: the full description and a few examples
+          title: it.kind === 'command' && it.def ? [it.def.desc, ...(Commands.examplesOf?.(it.def) || []).slice(0, 3).map((x) => `e.g. ${x}`)].join('\n') : (it.hint || ''),
         }, el('b', { text: it.label }), el('span', { class: 'hint', text: it.hint }), it.keys ? el('kbd', { text: Commands.keyText(it.keys) }) : null, it.kind === 'command' && Commands.toggleFav ? star(it.def) : null);
       }), pickable.length ? el('div', { class: 'slash-foot', text: '↑↓ choose · Tab complete · Enter run · ☆ pin · Esc close' }) : null);
       menu.querySelector('.slash-item.sel')?.scrollIntoView({ block: 'nearest' });

@@ -8,8 +8,8 @@
   const SL = '/undo-sliders (Ctrl+Z on the sliders)';
   Commands.addInfo({
     // ---------- Three.js Lab: your daily loop (Save, Shuffle, Tap, Freeze, frame sizes) ----------
-    size: { boost: 1, examples: ['/size 9:16', '/size 16:9', '/size 4:5', '/size 1:1', '/size fit'], keywords: 'frame aspect ratio format resolution dimensions crop canvas preview vertical portrait landscape square widescreen', args: VERT, undo: '/size with the size before (or /size fit)' },
-    freeze: { boost: 1, examples: ['/freeze', '/freeze off', '/freeze beat', '/freeze bar'], keywords: 'pause still hold stop picture frame image', undo: '/freeze again (or /freeze off)' },
+    size: { boost: 1, examples: ['/size 9:16', '/size 16:9', '/size 4:5', '/size 1:1', '/size fit'], keywords: 'frame aspect ratio format resolution dimensions crop canvas preview vertical portrait landscape square widescreen', args: VERT, undo: 'pick the size before in the frame bar (Shift+1…5)' },
+    freeze: { boost: 1, examples: ['/freeze', '/freeze off', '/freeze beat', '/freeze bar'], keywords: 'pause still hold stop picture frame image', undo: '/freeze off' },
     shuffle: { boost: 1, examples: ['/shuffle', '/shuffle colors', '/shuffle colors subtle', '/shuffle wild', '/shuffle favs bold seed 7'], keywords: 'random randomize variation dice mix sliders', args: { colours: 'colors', color: 'colors', gentle: 'subtle', little: 'subtle', crazy: 'wild', extreme: 'wild', big: 'bold' }, undo: '/unshuffle (Shift+R) or /undo-sliders' },
     reshuffle: { examples: ['/reshuffle'], keywords: 'forward next shuffle redo', undo: '/unshuffle' },
     unshuffle: { examples: ['/unshuffle'], keywords: 'previous shuffle back undo shuffle' },
@@ -64,7 +64,7 @@
     onion: { examples: ['/onion pin', '/onion wipe', '/onion off'], keywords: 'compare before after frame pin overlay' },
     guides: { examples: ['/guides'], keywords: 'composition thirds golden ratio grid overlay' },
     fps: { examples: ['/fps 30', '/fps 60', '/fps max'], keywords: 'framerate frame rate performance speed' },
-    fit: { examples: ['/fit'], keywords: 'fit preview window', undo: '/size with the size before' },
+    fit: { examples: ['/fit'], keywords: 'fit preview window', undo: 'pick the size before in the frame bar (Shift+1…5)' },
     snap: { examples: ['/snap 1/8', '/snap bar', '/snap off'], keywords: 'grid quantize snapping' },
     quantize: { examples: ['/quantize on', '/quantize off'], keywords: 'grid snap taps exact' },
     'click-track': { examples: ['/click-track on', '/click-track off'], keywords: 'metronome click beep beat check' },

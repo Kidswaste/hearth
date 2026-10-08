@@ -84,6 +84,9 @@ const Commands = (() => {
     const t = String(line || '').trim();
     if (t) writeLS(HIST_KEY, [...history().filter((x) => x !== t), t].slice(-150));
   }
+  // How often you ran each command (/cmd-stats; the plain-language search prefers the ones you use).
+  const COUNT_KEY = 'commands.counts';
+  const counts = () => readLS(COUNT_KEY, {});
   // Commands that never become "the last command" (/repeat would loop on itself).
   const NOT_LAST = new Set(['repeat', 'help', 'cmd-history', 'every', 'at', 'timers', 'timer-cancel', 'macro', 'how', 'what']);
   let lastLine = readLS('commands.last', '');
@@ -262,6 +265,7 @@ const Commands = (() => {
     const here = place();
     const rec = recentAll();
     const fv = favs();
+    const runs = counts();
     const scored = [];
     for (const e of index || buildIndex()) {
       const d = e.def;
@@ -290,6 +294,7 @@ const Commands = (() => {
       if (d.area === here.area || (d.variants && ctx && d.variants.some((v) => v.when && (() => { try { return v.when(ctx, ''); } catch { return false; } })()))) score += 2;
       if (fv.includes(d.name)) score += 1;
       if (rec.includes(d.name)) score += 0.5;
+      if (runs[d.name]) score += Math.min(1.5, Math.log2(1 + runs[d.name]) * 0.4);
       if (d.hidden) score -= 1;
       score += Number(info.get(d.name)?.boost) || 0; // the ones you use most win ties (cmdbar-data.js)
       scored.push({ def: d, score, used, argVals });
@@ -350,7 +355,7 @@ const Commands = (() => {
   }
 
   // "/x args | draft" → { cmd: '/x args', to: 'draft' } (only a known target after the last " | " is a pipe).
-  const PIPE = /^([\s\S]*?\S)\s+\|\s*(draft|copy|send|note|notes|say|\/[\w-]+[^|]*)\s*$/i;
+  const PIPE = /^([\s\S]*?\S)\s+\|\s*(draft|copy|send|note|notes|say|file|speak|\/[\w-]+[^|]*)\s*$/i;
   function splitPipe(text) {
     const m = String(text || '').match(PIPE);
     return m && parse(m[1].trim()) ? { cmd: m[1].trim(), to: m[2].trim() } : null;
@@ -360,11 +365,13 @@ const Commands = (() => {
   async function pipeTo(to, text, agentId, opts) {
     const t = to.toLowerCase();
     if (!text) { toast('Nothing to pipe: that command printed no text', { timeout: 2500 }); return; }
-    if (t === 'draft') { Native.setDraft(agentId, text); toast('The output is in the message box', { timeout: 1800 }); }
+    if (t === 'draft') { (opts.draft || ((x) => Native.setDraft(agentId, x)))(text); toast('The output is in the message box', { timeout: 1800 }); }
     else if (t === 'copy') { await navigator.clipboard.writeText(text); toast('Output copied', { timeout: 1600 }); }
     else if (t === 'send') await Native.sendText(agentId, text);
     else if (t === 'note' || t === 'notes') { await Notes.append(text); toast('Output saved to Notes', { timeout: 1800 }); }
     else if (t === 'say') (opts.say || ((x) => Native.note(agentId, x)))(text);
+    else if (t === 'file') { const p = await window.hub.saveFile({ defaultPath: `hearth-output-${new Date().toLocaleDateString('en-CA')}.md`, content: text }); if (p) toast(`Saved ${p.split(/[\\/]/).pop()}`, { timeout: 2000 }); }
+    else if (t === 'speak') { speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(text.slice(0, 4000))); }
     else if (t.startsWith('/')) await tryRun(`${to} ${text.replace(/\s*\n+\s*/g, ' ')}`.slice(0, 4000), agentId, null, { ...opts, history: false });
   }
 
@@ -391,6 +398,7 @@ const Commands = (() => {
       Usage.track(`Chat command › /${hit.def.name}`);
       noteRecent(hit.def.name);
       notePlace(hit.def.name, ctx.place);
+      if (!nested) { const c = counts(); c[hit.def.name] = (c[hit.def.name] || 0) + 1; writeLS(COUNT_KEY, c); }
       if (pipe) await pipeTo(pipe.to, plain(captured), agentId, opts);
     } catch (err) {
       ok = false;
@@ -469,7 +477,7 @@ const Commands = (() => {
   return {
     register, unregister, get, list, parse, duplicates: () => dups.slice(), keyText, matching, tryRun, exec, paletteActions, recent, areas, run, AREA_ORDER, closest,
     // round 3: command bar, plain-language search, favorites, history, examples
-    place, favs, isFav, toggleFav, history, addHistory, last: () => lastLine, onRun, context, suggest, didYouMean, argHint, splitPipe,
+    place, favs, isFav, toggleFav, history, addHistory, counts, last: () => lastLine, onRun, context, suggest, didYouMean, argHint, splitPipe,
     addInfo, info: (name) => info.get(String(name || '').toLowerCase()) || {}, examplesOf, keywordsOf, undoOf, helpList, words,
   };
 })();

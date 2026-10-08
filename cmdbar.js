@@ -17,10 +17,12 @@ const CmdBar = (() => {
 
   // ---------- where commands run: the chat of what's on screen ----------
   // A tool → its docked director chat (so `when` variants and ctx.draft land there), a native agent → itself,
-  // anything else (a website agent) → Claude.
+  // anything else (a website agent) → Claude. The bar's chip can point it at another chat until you leave the tool.
+  let pinnedTarget = null; // { agentId, place }
   function target() {
     const active = H.activeId || '';
     const sid = H.surfaceIdFor(active) || '';
+    if (pinnedTarget && pinnedTarget.place === sid && H.agent(pinnedTarget.agentId)) return H.agent(pinnedTarget.agentId);
     if (sid.startsWith('tool:')) {
       const tool = sid.slice(5);
       const docked = H.agents().find((a) => a.dock === tool && a.mode === 'native');
@@ -29,6 +31,17 @@ const CmdBar = (() => {
     const a = H.agent(active);
     return a?.mode === 'native' ? a : H.claudeAgent() || null;
   }
+  function chipMenu(e) {
+    const r = e.currentTarget.getBoundingClientRect();
+    const sid = H.surfaceIdFor(H.activeId) || '';
+    const now = target();
+    showMenu(r.left, r.bottom + 4, [
+      ...H.agents().filter((a) => a.mode === 'native').map((a) => ({ label: `${a.id === now?.id ? '● ' : ''}Run in ${a.name}'s chat${a.dock ? ` (docked in ${a.dock})` : ''}`, action: () => { pinnedTarget = { agentId: a.id, place: sid }; place(); input.focus(); } })),
+      { label: 'Back to the chat of what\'s on screen', action: () => { pinnedTarget = null; place(); input.focus(); } },
+      { label: 'Every command…  F1', action: () => help() },
+      { label: `Move the bar to the ${pos() === 'top' ? 'bottom' : 'top'}`, action: () => runLine(`/cmdbar ${pos() === 'top' ? 'bottom' : 'top'}`) },
+    ]);
+  }
 
   // ---------- the bar ----------
   let bar = null, input = null, out = null, chip = null, menuApi = null;
@@ -36,7 +49,7 @@ const CmdBar = (() => {
   const pos = () => ls.get('cmdbar.pos', 'top');
   function build() {
     input = el('textarea', { class: 'cmdbar-input', rows: 1, spellcheck: false, placeholder: 'Type / for commands, or what you want (“make it 9 by 16”)  ·  ↑ history  ·  ? help', attrs: { 'aria-label': 'Command' } });
-    chip = el('button', { type: 'button', class: 'cmdbar-place', title: 'Commands run here (the chat of what\'s on screen)', on: { click: () => help() } });
+    chip = el('button', { type: 'button', class: 'cmdbar-place', title: 'Commands run here (the chat of what\'s on screen)', on: { mousedown: (e) => e.preventDefault(), click: chipMenu } });
     const helpBtn = el('button', { type: 'button', class: 'ghost cmdbar-btn', text: '?', title: 'Every command, searchable (F1)', on: { mousedown: (e) => e.preventDefault(), click: () => help(input.value.replace(/^\//, '')) } });
     const timersBtn = el('button', { type: 'button', class: 'ghost cmdbar-btn cmdbar-timers', hidden: true, title: 'Your timers (/timers)', on: { mousedown: (e) => e.preventDefault(), click: () => runLine('/timers') } });
     out = el('div', { class: 'cmdbar-out', hidden: true });
@@ -45,10 +58,11 @@ const CmdBar = (() => {
     document.body.append(bar);
     menuApi = Prompts.attach(input, (text) => { const a = target(); if (a) { close(); activate(a.id); Native.setDraft(a.id, text); } }, { agentId: () => target()?.id || null, bare: true, below: pos() === 'top' });
     input.addEventListener('input', () => { histAt = -1; grow(); });
+    addEventListener('resize', () => { if (isOpen()) place(); });
     input.addEventListener('keydown', onKey);
     input.addEventListener('blur', () => setTimeout(() => {
       // clicking elsewhere closes the bar (not its own card, a dialog the command opened, or the menu)
-      if (!bar.hidden && !bar.contains(document.activeElement) && !document.querySelector('dialog[open]')) close();
+      if (!bar.hidden && !bar.contains(document.activeElement) && !document.querySelector('dialog[open]') && document.getElementById('menu')?.hidden !== false) close();
     }, 180));
     out.addEventListener('click', onOutClick);
   }
@@ -66,7 +80,7 @@ const CmdBar = (() => {
     const p = Commands.place();
     const a = target();
     chip.textContent = `${p.id === 'chat' ? '💬' : '⌁'} ${p.id === 'chat' ? (a?.name || 'Chat') : p.label}`;
-    chip.title = `Commands run in ${p.label}${a ? ` · ${a.name}'s chat` : ''} (click: every command)`;
+    chip.title = `Commands run in ${p.label}${a ? ` · ${a.name}'s chat` : ''} (click: run them in another chat)`;
     bar.querySelector('.cmdbar-timers').hidden = !timers.length;
     bar.querySelector('.cmdbar-timers').textContent = `⏱ ${timers.length}`;
     bar.classList.toggle('rec', Boolean(rec));
@@ -94,6 +108,16 @@ const CmdBar = (() => {
   function onKey(e) {
     if (e.key === 'Escape') { e.preventDefault(); if (out && !out.hidden && !input.value) clearOut(); else if (input.value) { input.value = ''; grow(); menuApi?.close(); } else close(); return; }
     if (e.key === 'F1') { e.preventDefault(); help(input.value.replace(/^\//, '')); return; }
+    // Alt+1…9: run your pinned command 1…9 (its arguments go in the bar when it needs some)
+    if (e.altKey && !e.ctrlKey && /^Digit[1-9]$/.test(e.code)) {
+      e.preventDefault(); e.stopPropagation();
+      const d = Commands.favs().map(Commands.get).filter(Boolean)[Number(e.code.slice(5)) - 1];
+      if (!d) { show(`No pinned command ${e.code.slice(5)}: ☆ in the / menu (or /star) pins one.`); return; }
+      if (/^</.test(String(d.args || '').trim())) { input.value = `/${d.name} `; grow(); input.dispatchEvent(new Event('input')); } else runLine(`/${d.name}`);
+      return;
+    }
+    // Ctrl+Z in an empty bar: take back the last command when there is a known way (/undo-report)
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !input.value) { e.preventDefault(); undoLast(); return; }
     const menuOpen = menuApi?.isOpen();
     // ↑ / ↓: the commands you ran (when the menu isn't open, or the box is empty)
     if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && (!menuOpen || !input.value.trim() || histAt >= 0)) {
@@ -120,6 +144,19 @@ const CmdBar = (() => {
     }
   }
 
+  function undoLast() {
+    const line = Commands.last();
+    const d = line && Commands.parse(line)?.def;
+    const how = d && Commands.undoOf(d);
+    if (!how) { show(line ? `No known undo for \`${safe(line)}\`. \`/undo-report\` lists every way back.` : 'Nothing ran yet.'); return; }
+    // "/unshuffle (Shift+R) or /undo-sliders" → "/unshuffle": the first complete command in the text (a name and at
+    // most one plain word, no <placeholder>), never the same line again
+    const cmd = how.split(/(?:^|\s+)or\s+|[()·,;]/).map((s) => s.trim()).filter((s) => /^\/[\w-]+(\s[\w:%.+-]+)?$/.test(s) && Commands.parse(s))
+      .find((s) => s !== line.trim() && !(s.split(/\s/).length === 1 && Commands.parse(s).def === Commands.parse(line).def));
+    if (cmd && cmd !== line.split(/\s/)[0]) { show(`↶ \`${safe(line)}\` → \`${cmd}\``); runLine(cmd, { keep: true }); }
+    else show(`To undo \`${safe(line)}\`: ${how}`);
+  }
+
   // ---------- output card ----------
   let outRun = 0;
   function clearOut() { if (out) { out.replaceChildren(); out.hidden = true; } }
@@ -134,6 +171,7 @@ const CmdBar = (() => {
     if (!out.querySelector('.cmdbar-out-acts')) {
       out.prepend(el('div', { class: 'cmdbar-out-acts' },
         el('button', { type: 'button', class: 'ghost small', text: '⧉', title: 'Copy the output', on: { mousedown: (e) => e.preventDefault(), click: () => { navigator.clipboard.writeText(outText()); toast('Copied', { timeout: 1200 }); } } }),
+        el('button', { type: 'button', class: 'ghost small', text: '📝', title: 'Save the output to Notes (like | note)', on: { mousedown: (e) => e.preventDefault(), click: async () => { await Notes.append(outText()); toast('Saved to Notes', { timeout: 1400 }); } } }),
         el('button', { type: 'button', class: 'ghost small', text: '→ draft', title: 'Put the output in the chat box (like | draft)', on: { mousedown: (e) => e.preventDefault(), click: () => { const a = target(); if (a) { const t = outText(); close(); activate(a.id); Native.setDraft(a.id, t); } } } }),
         el('button', { type: 'button', class: 'ghost small', text: '×', title: 'Clear (Esc)', on: { mousedown: (e) => e.preventDefault(), click: clearOut } })));
     }
@@ -152,11 +190,11 @@ const CmdBar = (() => {
 
   // ---------- running a line ----------
   // Runs "/cmd args" (pipes, "!!", plain words…) the way the bar does: output in the card.
-  async function runLine(raw, { agent = target(), quiet = false } = {}) {
+  async function runLine(raw, { agent = target(), quiet = false, keep = false } = {}) {
     let text = String(raw || '').trim();
     if (!text) return false;
     if (!quiet && !isOpen()) open();
-    if (++outRun && !quiet) clearOut();
+    if (++outRun && !quiet && !keep) clearOut();
     if (!agent) { show('Add a native chat agent first (＋ in the rail).', { type: 'error' }); return false; }
     // shell-like prefixes: "?" help · "!!" the last command · "!calc" the last /calc line · "=" math · ">" a message
     if (text === '?') { help(); return true; }
@@ -313,7 +351,7 @@ const CmdBar = (() => {
     return Commands.parse(s) ? s : null;
   };
   function decorate(root = document) {
-    for (const c of root.querySelectorAll('.msg:not(.note):not(.user) code:not([data-cmdchk])')) {
+    for (const c of root.querySelectorAll('.msg:not(.note):not(.user) code:not([data-cmdchk]), .notes-panel code:not([data-cmdchk])')) {
       c.dataset.cmdchk = '1';
       if (c.closest('pre')) continue;
       const line = exactCmd(c.textContent);
@@ -324,7 +362,7 @@ const CmdBar = (() => {
   }
   let decoTimer = 0;
   new MutationObserver(() => { clearTimeout(decoTimer); decoTimer = setTimeout(() => decorate(), 250); })
-    .observe(document.getElementById('surfaces') || document.body, { childList: true, subtree: true });
+    .observe(document.body, { childList: true, subtree: true });
   function agentOfNode(node) {
     for (const [sid, s] of H.surfaces) {
       if (!s.el.contains(node)) continue;
@@ -383,6 +421,10 @@ const CmdBar = (() => {
     const t = String(s || '').trim().toLowerCase();
     const inM = t.match(/^in\s+(.+)$/);
     if (inM) return Date.now() + parseDur(inM[1]);
+    if (/^(noon|midday)$/.test(t)) return parseAt('12:00');
+    if (t === 'midnight') return parseAt('0:00');
+    const tm = t.match(/^tomorrow\s+(.+)$/);
+    if (tm) { const d = new Date(parseAt(tm[1])); if (d.getDate() === new Date().getDate()) d.setDate(d.getDate() + 1); return d.getTime(); }
     const m = t.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/);
     if (!m) throw new Error(`"${s}" isn't a time (21:30, 9pm, in 10m)`);
     let h = Number(m[1]); const min = Number(m[2] || 0);
@@ -403,6 +445,8 @@ const CmdBar = (() => {
     const t = timers.find((x) => x.id === id);
     if (!t) return;
     if (Date.now() < t.next - 50) { schedule(t); return; } // a very long wait was capped
+    // paused (/timers-pause): repeating timers skip their turn, one-shot ones wait until you resume
+    if (ls.get('cmdbar.timersPaused', false)) { if (t.every) t.next += t.every; else t.next = Date.now() + 5000; schedule(t); saveTimers(); return; }
     const agent = H.agent(t.agentId) || target();
     t.runs = (t.runs || 0) + 1;
     if (t.every) { t.next = Math.max(t.next + t.every, Date.now() + 500); schedule(t); } else timers = timers.filter((x) => x !== t);
@@ -684,6 +728,71 @@ const CmdBar = (() => {
         '', '**Ways back**', ...UNDO_PATHS.map(([a, how, what]) => `- ${a}: \`${how.split(' · ')[0]}\`${how.includes(' · ') ? ` · ${how.split(' · ').slice(1).join(' · ')}` : ''} (${what})`),
         '', '**Covered commands**', ...Object.entries(byArea).map(([a, ds]) => `- ${a}: ${ds.map((d) => `/${d.name}`).join(', ')}`),
         ...(last.length ? ['', '**Your last commands**', ...last.map(mark)] : [])].join('\n');
+    },
+  });
+
+  R({
+    name: 'timers-pause', aliases: ['pause-timers'], args: '[on | off]', desc: 'Pause every command timer (again: resume); repeating ones skip their turns while paused',
+    keywords: 'timers pause resume hold',
+    complete: () => [{ value: 'on' }, { value: 'off' }],
+    run: (args) => {
+      const a = args.trim().toLowerCase();
+      const on = a === 'on' ? true : a === 'off' ? false : !ls.get('cmdbar.timersPaused', false);
+      ls.set('cmdbar.timersPaused', on);
+      return on ? `⏸ Timers paused (${timers.length}). \`/timers-pause\` again resumes.` : '▶ Timers running again.';
+    },
+  });
+  R({
+    name: 'cmd-stats', aliases: ['my-commands', 'top-cmds'], args: '[n]', desc: 'The commands you use most (and areas you never touched)',
+    keywords: 'stats usage most used favorite commands',
+    run: (args) => {
+      const c = Commands.counts();
+      const top = Object.entries(c).sort((a, b) => b[1] - a[1]).slice(0, Number(args) || 12);
+      if (!top.length) return 'No commands counted yet: they are counted from now on.';
+      const usedAreas = new Set(top.map(([n]) => Commands.get(n)?.area));
+      const never = Commands.areas().filter((a) => !Object.keys(c).some((n) => Commands.get(n)?.area === a));
+      return `**Your commands** (${Object.values(c).reduce((s, n) => s + n, 0)} runs)\n${top.map(([n, k]) => `- \`/${n}\` ${k}×${Commands.isFav(n) ? ' ★' : ''}`).join('\n')}${never.length ? `\n\nAreas you haven't tried: ${never.slice(0, 10).join(', ')} (\`/discover <area>\`)` : ''}${usedAreas.size ? '' : ''}`;
+    },
+  });
+  R({
+    name: 'where', aliases: ['cmd-context'], desc: 'Where commands run right now: the tool on screen, the chat they talk to, and which shared commands change meaning here',
+    keywords: 'context place target which chat',
+    run: (_a, ctx) => {
+      const p = Commands.place();
+      const a = H.agent(ctx.agentId);
+      const shared = Commands.list().filter((d) => d.variants?.some((v) => v.when && (() => { try { return v.when(ctx, ''); } catch { return false; } })()));
+      return `**Here**: ${p.label}${a ? ` · commands talk to **${a.name}**'s chat` : ''}${pinnedTarget ? ' (picked in the bar)' : ''}\n${shared.length ? `Shared names that do something else here: ${shared.map((d) => `/${d.name}`).join(', ')}` : 'No shared command changes meaning here.'}\nRecent here: ${(Commands.recent(p.id).map((n) => `\`/${n}\``).join(' ') || '–')}`;
+    },
+  });
+  // Your command setup (aliases, macros, pins, history) as one file, to move it to the Mac or keep a copy.
+  R({
+    name: 'cmd-export', args: '', desc: 'Save your aliases, macros, pinned commands and command history to a file',
+    keywords: 'backup export aliases macros settings move',
+    run: async () => {
+      const data = { hearthCommands: 1, aliases: store.get('chat.aliases', {}), favs: Commands.favs(), history: Commands.history(), counts: Commands.counts() };
+      const p = await window.hub.saveFile({ defaultPath: `hearth-commands-${new Date().toLocaleDateString('en-CA')}.json`, filters: [{ name: 'JSON', extensions: ['json'] }], content: JSON.stringify(data, null, 2) });
+      return p ? `Saved ${Object.keys(data.aliases).length} alias(es) / macro(s), ${data.favs.length} pin(s) to ${p.split(/[\\/]/).pop()}` : null;
+    },
+  });
+  R({
+    name: 'cmd-import', args: '', desc: 'Bring back aliases, macros and pins from a /cmd-export file (merges, keeps yours)',
+    keywords: 'restore import aliases macros',
+    run: async (_a, ctx) => {
+      const [p] = await window.hub.openDialog({ properties: ['openFile'], filters: [{ name: 'JSON', extensions: ['json'] }], title: 'Import commands' });
+      if (!p) return null;
+      let data;
+      try { data = JSON.parse(await window.hub.fs.read(p)); } catch (err) { return `Can't read that file (${err.message}).`; }
+      if (!data?.hearthCommands) return 'That isn\'t a /cmd-export file.';
+      let n = 0;
+      const mine = store.get('chat.aliases', {});
+      for (const [name, text] of Object.entries(data.aliases || {})) {
+        if (mine[name] || Commands.get(name)) continue;
+        await Commands.tryRun(`/alias ${name} ${text}`, ctx.agentId, null, { source: ctx.source, say: () => {}, history: false });
+        n += 1;
+      }
+      for (const f of data.favs || []) if (Commands.get(f)) Commands.toggleFav(f, true);
+      for (const l of data.history || []) Commands.addHistory(l);
+      return `Imported ${n} alias(es) / macro(s) and ${(data.favs || []).length} pin(s).`;
     },
   });
 

@@ -134,6 +134,21 @@ try {
   ci.value = '/make it 9 by 16'; ci.closest('form').requestSubmit(); await wait(150);
   out.composerTypo = [...Native.view(claude.id).list.querySelectorAll('.msg.note .body')].at(-1)?.textContent.slice(0, 140);
   ci.value = '';
+  // round 2 of bar features: undo the last command (Ctrl+Z in an empty bar), pause timers, stats, where, pipes
+  CmdBar.open('');
+  await CmdBar.runLine('/theme next');
+  const themeAfter = document.documentElement.dataset.skin || document.documentElement.dataset.look;
+  document.querySelector('.cmdbar-input').focus();
+  key('z', { ctrlKey: true });
+  await wait(300);
+  out.undoCard = card().replace(/\s+/g, ' ').slice(0, 100);
+  out.themeBack = (document.documentElement.dataset.skin || document.documentElement.dataset.look) !== themeAfter;
+  for (const c of ['/timers-pause', '/timers-pause off', '/cmd-stats', '/where', '/at tomorrow 9:00 /echo hi', '/timers', '/timer-cancel all']) { await CmdBar.runLine(c); out[c] = card().replace(/\s+/g, ' ').slice(0, 110); }
+  // Alt+1: first pinned command
+  document.querySelector('.cmdbar-input').focus();
+  key('1', { altKey: true, code: 'Digit1' });
+  await wait(200);
+  out.alt1 = card().replace(/\s+/g, ' ').slice(0, 60) + ' | ' + document.querySelector('.cmdbar-input').value;
   // shell-like prefixes in the bar
   await CmdBar.runLine('=2+2'); out.eq = card().replace(/\s+/g, ' ').slice(-12);
   await CmdBar.runLine('!calc'); out.bangCalc = card().replace(/\s+/g, ' ').slice(-14);
