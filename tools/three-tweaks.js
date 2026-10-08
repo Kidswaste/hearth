@@ -673,6 +673,8 @@ const ThreeTweaks = (() => {
       const groups = [...new Set((scanned?.items || []).filter((it) => it.key != null).map((it) => it.group || 'Controls'))];
       const set = (patch) => { shufOpt = { ...shufOpt, ...patch }; store.set('three.shuffle', shufOpt); };
       menu(r.left, r.bottom + 4, [
+        // (round 5, assist.js) n variations as thumbnails to pick from; holding Shuffle does the same
+        ...(window.Assist ? [['🎲 Shuffle 4, pick one…', 'Thumbnails to click, or ✦ Astra picks · hold Shuffle · /shuffle-pick', () => window.Assist.shufflePick(4).catch((err) => toast(err.message, { type: 'error' }))]] : []),
         'How far',
         ...AMOUNTS.map(([a, name]) => [name, `${Math.round(a * 100)}% of each range${a === 1 ? ' (anywhere)' : ''}`, () => { set({ amount: a }); shuffle(); }, shufOpt.amount === a]),
         'Which controls (locked ones always stay)',
@@ -784,7 +786,9 @@ const ThreeTweaks = (() => {
     }
 
     // ---------- menus: Save ▾, ⋯, groups, copy / paste ----------
-    function quickLook() { const name = `Look ${looks.length + 1}`; saveLookAs(name); toast(`Saved as "${name}" (right-click it to rename)`, { timeout: 1500 }); return name; }
+    // (round 5) a name from its colors and the song part at the playhead ("Violet Drop"), see assist.js
+    const autoName = () => window.Assist?.lookName?.({ taken: looks.map((l) => l.name), colors: scanned ? scanned.items.flatMap((it, i) => (it.kind === 'color' ? [values[i]] : [])) : [] }) || `Look ${looks.length + 1}`;
+    function quickLook() { const name = autoName(); saveLookAs(name); toast(`Saved as "${name}" (right-click it to rename)`, { timeout: 1500 }); return name; }
     function saveMenu(anchor) {
       const r = anchor.getBoundingClientRect();
       const d = dirtyCount();
@@ -948,10 +952,11 @@ const ThreeTweaks = (() => {
         chip.title = 'Click: switch to it · right-click: update, rename, duplicate, delete';
         looksBar.append(chip);
       }
+      if (looks.length >= 2 && window.Assist) looksBar.append(el('button', { class: 'tw-chip as-decide', text: '✦', title: 'Let Astra pick one of these looks for the picture (one small question, Undo) · /decide saved', on: { click: () => window.Assist.decide('saved') } }));
       looksBar.append(el('button', { class: 'tw-chip add', text: '＋ Save look', title: 'Remember the current slider values as a look you can switch back to with one click', on: { click: saveLook } }));
     }
     async function saveLook() {
-      const name = await Modal.prompt('Save look', { value: `Look ${looks.length + 1}`, placeholder: 'e.g. Calm intro, Drop, Neon' });
+      const name = await Modal.prompt('Save look', { value: autoName(), placeholder: 'e.g. Calm intro, Drop, Neon' });
       if (!name?.trim()) return;
       saveLookAs(name);
     }

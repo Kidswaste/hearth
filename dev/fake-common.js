@@ -117,6 +117,11 @@ function plan(prompt, engine = 'claude') {
     title: /short title for this chat/i.test(msg),
     // "Let Astra decide" (decide.js): answers with the second option, like a real pick
     decide: /^Options: (.+)$/m.test(msg) && /Reply with one option name only/.test(msg) ? msg.match(/^Options: (.+)$/m)[1].split(' | ') : null,
+    // assist.js: pick a numbered variation, a name, review notes, one next step
+    assist: /Reply with the number, a dash/.test(msg) ? `${Math.min(2, Number((msg.match(/numbered 1–(\d)/) || [])[1]) || 1)} — strongest contrast and the cleanest beat hits`
+      : /Reply with the name only/.test(msg) ? 'Ember Tide'
+        : /Reply one per line as "m:ss \| note"/.test(msg) ? '0:01 | Push the contrast in the center ring.\n0:02 | Cut the busy background grain.'
+          : /Reply with one next step/.test(msg) ? 'Make the rings pulse on every kick and cut the slow spin.' : null,
   };
   if (jam) {
     Object.assign(p, { think: false, mcp: Boolean(jam.mcpCalls), mcpCalls: jam.mcpCalls || null, error: Boolean(jam.error), code: false, table: false, long: false, remember: false, suggest: false, slow: false, tool: false, tools3: false });
@@ -125,6 +130,7 @@ function plan(prompt, engine = 'claude') {
   const parts = [];
   const short = msg.replace(/\s+/g, ' ').slice(0, 80);
   if (p.decide) return { p, text: p.decide[1] || p.decide[0], thinking: '' };
+  if (p.assist) return { p, text: p.assist, thinking: '' };
   if (p.title) parts.push('Fake chat about testing');
   else if (p.compact) parts.push('**Summary.** The user is testing Hearth with a fake engine. Decisions: keep it compact. Exists: one test chat. Left to do: nothing.');
   else if (p.echo) parts.push(prompt);

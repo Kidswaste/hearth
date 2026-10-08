@@ -335,6 +335,7 @@ const Jam = (() => {
     badge(null);
     if (chat) { chat.updatedAt = Date.now(); Native.save(chat); }
     paint(m, true);
+    dispatchEvent(new CustomEvent('hearth:jam-end', { detail: { status: m.status, host: host?.id || null } })); // assist.js: next-step chips
     const t = totalOf(m);
     if (m.status === 'done') {
       toast(`Jam finished${m.best ? ` · round ${m.best.n} kept` : ''} · Claude ${fmt(t.claude)} · Astra ${fmt(t.astra)} tokens`, { timeout: 4000 });
