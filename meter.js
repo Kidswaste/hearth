@@ -126,6 +126,9 @@ const Meter = (() => {
     return refreshing;
   }
   const refreshSoon = debounce(refresh, 250);
+  // Second opinions, quick asks and collaboration seats run outside a chat stream (no 'done' reaches ingest):
+  // their usage is stored in the main process, so the strip just reloads (it stayed stale until the next reply).
+  document.addEventListener('hearth:usage', () => refreshSoon());
 
   // Engine events (the same ones the chat gets). Exposed as Meter.ingest for tests and other streams.
   function ingest(ev) {

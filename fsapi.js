@@ -370,12 +370,17 @@ function registerIpc(ipcMain, getWin) {
   });
   handle('backup:restore', (zipPath, opts) => restoreBackup(zipPath, opts));
   handle('net:text', (url) => fetchText(url));
+  // Headless tests (dev/smoke.js) can't answer native dialogs: HEARTH_TEST_SAVE_DIR saves there without asking,
+  // HEARTH_TEST_OPEN (paths joined with the path delimiter) is what every open dialog picks.
+  const TEST_SAVE = process.env.HEARTH_TEST_SAVE_DIR; const TEST_OPEN = process.env.HEARTH_TEST_OPEN;
   handle('dialog:open', async (opts) => {
+    if (TEST_OPEN != null) return TEST_OPEN.split(path.delimiter).filter(Boolean);
     const r = await dialog.showOpenDialog(getWin(), { properties: ['openFile'], ...opts });
     return r.canceled ? [] : r.filePaths;
   });
   // Saves text or base64 content wherever the user picks. Returns the path or null.
   handle('dialog:saveFile', async ({ defaultPath, filters, content, base64 }) => {
+    if (TEST_SAVE) { const p = path.join(TEST_SAVE, path.basename(defaultPath || 'file')); write(p, content, { base64 }); return p; }
     const r = await dialog.showSaveDialog(getWin(), { defaultPath, filters });
     if (r.canceled || !r.filePath) return null;
     write(r.filePath, content, { base64 });

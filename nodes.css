@@ -184,6 +184,10 @@
 /* nodes need room: the code pane gets wider while it shows them */
 .three-split.tn-wide:not(.no-code) { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
 .three-split.tn-wide.with-tweaks:not(.no-code) { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) clamp(250px, 24%, 330px); }
+/* a narrow Lab (the director docked) keeps its one stacked column with the nodes too (three ~200 px columns before) */
+@container (max-width: 760px) {
+  .three-split.tn-wide:not(.no-code), .three-split.tn-wide.with-tweaks:not(.no-code) { grid-template-columns: minmax(0, 1fr); }
+}
 .three-editor.tn-host { position: relative; }
 .tn-switch { position: absolute; top: 6px; right: 8px; z-index: 5; display: inline-flex; padding: 2px; border-radius: 8px; gap: 2px;
   background: color-mix(in srgb, var(--bg) 85%, transparent); border: 1px solid var(--line); box-shadow: 0 2px 8px #0006; backdrop-filter: blur(6px); }

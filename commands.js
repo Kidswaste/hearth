@@ -182,10 +182,13 @@ const Commands = (() => {
     }
     const starts = shown.filter((d) => d.name.startsWith(q) || d.aliases.some((a) => a.toLowerCase().startsWith(q)));
     const has = shown.filter((d) => !starts.includes(d) && (d.name.includes(q) || d.desc.toLowerCase().includes(q) || d.area.toLowerCase() === q || keywordsOf(d).toLowerCase().split(/\s+/).includes(q)));
-    // the exact name first, then pinned, what you ran here, recent anywhere
+    // the command you typed exactly (name or alias) first, so Enter runs it (/opinion, not /opinion-chat); then
+    // pinned, what you ran here, recent anywhere
     const rec = [...favs(), ...recentAt(place().id), ...recentAll()];
     const rank = (d) => (d.name === q ? -1 : (rec.indexOf(d.name) + 1 || 99));
-    return [...starts.sort((a, b) => rank(a) - rank(b)), ...has];
+    const sorted = starts.sort((a, b) => rank(a) - rank(b));
+    const exact = get(q);
+    return exact && !exact.hidden ? [exact, ...sorted.filter((d) => d !== exact), ...has.filter((d) => d !== exact)] : [...sorted, ...has];
   }
 
   // opts (all optional): { source: 'bar' | 'timer' | …, say(text), note(text, opts), draft(text) } redirect output.

@@ -1,0 +1,432 @@
+{
+  "since": 1791436909882,
+  "items": {
+    "Chat header › Model for this chat": {
+      "n": 0,
+      "first": 1791436910483,
+      "label": "Model for this chat",
+      "area": "Chat header"
+    },
+    "Chat header › Chat options": {
+      "n": 0,
+      "first": 1791436910484,
+      "label": "Chat options",
+      "area": "Chat header"
+    },
+    "Chat header › New chat": {
+      "n": 0,
+      "first": 1791436910484,
+      "label": "New chat",
+      "area": "Chat header"
+    },
+    "Open › claude": {
+      "n": 1,
+      "first": 1791436917260,
+      "label": "claude",
+      "area": "Opened",
+      "last": 1791436917260
+    },
+    "Chat messages › Edit": {
+      "n": 0,
+      "first": 1791436917861,
+      "label": "Edit",
+      "area": "Chat messages"
+    },
+    "Chat messages › Quote": {
+      "n": 0,
+      "first": 1791436917861,
+      "label": "Quote",
+      "area": "Chat messages"
+    },
+    "Chat header › context": {
+      "n": 0,
+      "first": 1791436919185,
+      "label": "context",
+      "area": "Chat header"
+    },
+    "Open › astra": {
+      "n": 1,
+      "first": 1791436934498,
+      "label": "astra",
+      "area": "Opened",
+      "last": 1791436934498
+    },
+    "Chat header › k context": {
+      "n": 0,
+      "first": 1791436935217,
+      "label": "k context",
+      "area": "Chat header"
+    },
+    "Chat messages › Copy": {
+      "n": 0,
+      "first": 1791436935217,
+      "label": "Copy",
+      "area": "Chat messages"
+    },
+    "Chat messages › Read it aloud": {
+      "n": 0,
+      "first": 1791436935217,
+      "label": "Read it aloud",
+      "area": "Chat messages"
+    },
+    "Chat messages › Save": {
+      "n": 0,
+      "first": 1791436935217,
+      "label": "Save",
+      "area": "Chat messages"
+    },
+    "Chat messages › Branch": {
+      "n": 0,
+      "first": 1791436935217,
+      "label": "Branch",
+      "area": "Chat messages"
+    },
+    "Chat messages › Retry": {
+      "n": 0,
+      "first": 1791436935217,
+      "label": "Retry",
+      "area": "Chat messages"
+    },
+    "Chat messages › Review": {
+      "n": 0,
+      "first": 1791436935217,
+      "label": "Review",
+      "area": "Chat messages"
+    },
+    "Chat messages › Second opinion": {
+      "n": 0,
+      "first": 1791436935217,
+      "label": "Second opinion",
+      "area": "Chat messages"
+    },
+    "Open › tool:three": {
+      "n": 1,
+      "first": 1791436935471,
+      "label": "tool:three",
+      "area": "Opened",
+      "last": 1791436935471
+    },
+    "Tool header › Three Director": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Three Director",
+      "area": "Tool header"
+    },
+    "Lab toolbar › Code": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Code",
+      "area": "Lab toolbar"
+    },
+    "Lab toolbar › Layers & sliders": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Layers & sliders",
+      "area": "Lab toolbar"
+    },
+    "Lab toolbar › Console": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Console",
+      "area": "Lab toolbar"
+    },
+    "Lab toolbar › Focus": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Focus",
+      "area": "Lab toolbar"
+    },
+    "Lab toolbar › Present": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Present",
+      "area": "Lab toolbar"
+    },
+    "Lab toolbar › Edit scene": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Edit scene",
+      "area": "Lab toolbar"
+    },
+    "Lab toolbar › Stage window": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Stage window",
+      "area": "Lab toolbar"
+    },
+    "Lab toolbar › Preview fps": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Preview fps",
+      "area": "Lab toolbar"
+    },
+    "Lab toolbar › Your sketches": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Your sketches",
+      "area": "Lab toolbar"
+    },
+    "Lab toolbar › All your sketches as pictures": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "All your sketches as pictures",
+      "area": "Lab toolbar"
+    },
+    "Lab toolbar › New": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "New",
+      "area": "Lab toolbar"
+    },
+    "Lab toolbar › Sketch": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Sketch",
+      "area": "Lab toolbar"
+    },
+    "Lab toolbar › Run": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Run",
+      "area": "Lab toolbar"
+    },
+    "Lab toolbar › Restart simulation": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Restart simulation",
+      "area": "Lab toolbar"
+    },
+    "Lab toolbar › Insert a snippet at the cursor": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Insert a snippet at the cursor",
+      "area": "Lab toolbar"
+    },
+    "Lab toolbar › three js version": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "three js version",
+      "area": "Lab toolbar"
+    },
+    "Lab toolbar › Palettes": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Palettes",
+      "area": "Lab toolbar"
+    },
+    "Lab toolbar › References": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "References",
+      "area": "Lab toolbar"
+    },
+    "Lab toolbar › Screenshot": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Screenshot",
+      "area": "Lab toolbar"
+    },
+    "Timeline › Load audio video…": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Load audio video…",
+      "area": "Timeline"
+    },
+    "Timeline › Remove the music": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Remove the music",
+      "area": "Timeline"
+    },
+    "Timeline › Live sound": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Live sound",
+      "area": "Timeline"
+    },
+    "Timeline › Triggers": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Triggers",
+      "area": "Timeline"
+    },
+    "Timeline › Play / pause": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Play / pause",
+      "area": "Timeline"
+    },
+    "Timeline › Playback speed slow it down to place points and markers prec": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Playback speed slow it down to place points and markers prec",
+      "area": "Timeline"
+    },
+    "Timeline › Zoom out": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Zoom out",
+      "area": "Timeline"
+    },
+    "Timeline › Zoom in": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Zoom in",
+      "area": "Timeline"
+    },
+    "Timeline › Whole song": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Whole song",
+      "area": "Timeline"
+    },
+    "Timeline › Fit loop": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Fit loop",
+      "area": "Timeline"
+    },
+    "Timeline › RGB": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "RGB",
+      "area": "Timeline"
+    },
+    "Timeline › Loop": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Loop",
+      "area": "Timeline"
+    },
+    "Timeline › here": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "here",
+      "area": "Timeline"
+    },
+    "Timeline › Move the loop start back 10 ms": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Move the loop start back 10 ms",
+      "area": "Timeline"
+    },
+    "Timeline › Move the loop start forward 10 ms": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Move the loop start forward 10 ms",
+      "area": "Timeline"
+    },
+    "Timeline › Move the loop end back 10 ms": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Move the loop end back 10 ms",
+      "area": "Timeline"
+    },
+    "Timeline › Move the loop end forward 10 ms": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Move the loop end forward 10 ms",
+      "area": "Timeline"
+    },
+    "Timeline › Remove the loop points": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Remove the loop points",
+      "area": "Timeline"
+    },
+    "Timeline › Lock the loop and the view in place": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Lock the loop and the view in place",
+      "area": "Timeline"
+    },
+    "Timeline › Record": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Record",
+      "area": "Timeline"
+    },
+    "Timeline › Note": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Note",
+      "area": "Timeline"
+    },
+    "Timeline › Notes list": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Notes list",
+      "area": "Timeline"
+    },
+    "Timeline › Contact sheet": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Contact sheet",
+      "area": "Timeline"
+    },
+    "Timeline › Write": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Write",
+      "area": "Timeline"
+    },
+    "Timeline › MIDI": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "MIDI",
+      "area": "Timeline"
+    },
+    "Timeline › More timeline controls": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "More timeline controls",
+      "area": "Timeline"
+    },
+    "Tools › Layer": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Layer",
+      "area": "Tools"
+    },
+    "Tools › Duplicate the selected layer": {
+      "n": 0,
+      "first": 1791436936239,
+      "label": "Duplicate the selected layer",
+      "area": "Tools"
+    },
+    "Tools › Delete the selected layer": {
+      "n": 0,
+      "first": 1791436936240,
+      "label": "Delete the selected layer",
+      "area": "Tools"
+    },
+    "Sliders › Undo the last slider change": {
+      "n": 0,
+      "first": 1791436936240,
+      "label": "Undo the last slider change",
+      "area": "Sliders"
+    },
+    "Sliders › Shuffle": {
+      "n": 0,
+      "first": 1791436936240,
+      "label": "Shuffle",
+      "area": "Sliders"
+    },
+    "Sliders › Reset": {
+      "n": 0,
+      "first": 1791436936240,
+      "label": "Reset",
+      "area": "Sliders"
+    },
+    "Sliders › Save": {
+      "n": 0,
+      "first": 1791436936240,
+      "label": "Save",
+      "area": "Sliders"
+    }
+  },
+  "days": {
+    "2026-10-08": 3
+  },
+  "hidden": []
+}

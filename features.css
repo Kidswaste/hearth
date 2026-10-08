@@ -719,6 +719,8 @@ html[data-skin="forge"] .layers { border-radius: 0; background: linear-gradient(
   .three-split.with-tweaks, .three-split.no-code.with-tweaks { grid-template-columns: minmax(0, 1fr); grid-auto-rows: max-content; overflow-y: auto; }
   .three-split.with-tweaks .three-right { height: 78vh; }
   .three-split.with-tweaks .tw-column { height: 72vh; }
+  /* the code / nodes pane gets a screen-sized box too (it grew to the whole code, ~2300 px, with the nodes lost in it) */
+  .three-split.with-tweaks .three-editor { height: 70vh; min-height: 320px; }
   .three-split.with-tweaks .tweaks { max-height: none; }
 }
 

@@ -102,6 +102,8 @@ const Review = (() => {
     let i = 0;
     for (const d of [...dirs].slice(0, 40)) {
       const id = `vr:${i += 1}`;
+      // a default folder that doesn't exist (no Documents/Codex) is skipped quietly instead of logging a main-process error
+      if (!(await window.hub.fs.stat(d).catch(() => null))?.isDir) continue;
       try { await window.hub.fs.watch(id, d); watched.push(id); } catch { /* missing folder */ }
     }
   }
@@ -245,7 +247,8 @@ const Review = (() => {
     const node = el('button', {
       class: `vr-card${S.cur?.path === v.path ? ' on' : ''}${S.cmp.path === v.path ? ' is-b' : ''}`, title: v.path, dataset: { path: v.path },
       on: {
-        click: (e) => { if (e.altKey || e.shiftKey) compareWith(v.path); else openVideo(v); refs.root.classList.remove('lib-open'); },
+        // the list re-renders (this card is replaced): keep the keyboard on the player so Space / arrows work at once
+        click: (e) => { if (e.altKey || e.shiftKey) compareWith(v.path); else openVideo(v); refs.root.classList.remove('lib-open'); refs.root.focus({ preventScroll: true }); },
         contextmenu: (e) => { e.preventDefault(); cardMenu(v, e.clientX, e.clientY); },
         // Hovering scrubs through 8 frames of the clip.
         pointermove: (e) => {
@@ -982,6 +985,8 @@ const Review = (() => {
   function openComposer(text = '') {
     if (!S.cur) return;
     pause();
+    // already writing one (D, then a drawing, then N): keep its marks and text instead of starting over
+    if (S.compose) { if (text) S.compose.text = `${S.compose.text ? `${S.compose.text} ` : ''}${text}`; renderComposer(); setTimeout(() => refs.composeText?.focus(), 0); return; }
     S.compose = { t: vid().currentTime, cat: '', text, draw: [], color: S.picked?.hex || null };
     renderComposer();
     setTimeout(() => refs.composeText?.focus(), 0);
@@ -1342,7 +1347,13 @@ const Review = (() => {
       m: () => { vid().muted = !vid().muted; flash(vid().muted ? 'Muted' : 'Sound on'); }, b: toggleLib,
       '[': () => nudgeSpeed(-1), ']': () => nudgeSpeed(1), '?': shortcutsHelp, escape: () => { if (S.draw.on) setDraw(false); else if (S.pick) setPick(false); else if (S.compose) closeComposer(); },
     }[lk];
-    if (act) { e.preventDefault(); act(); }
+    if (act) {
+      e.preventDefault();
+      // Space on a focused button (the library card or control you just clicked) plays / pauses; it no longer also
+      // "clicks" that button on key-up (which reopened the render at 0:00)
+      if (k === ' ' && e.target.closest('button')) e.target.addEventListener('keyup', (u) => u.preventDefault(), { once: true });
+      act();
+    }
   }
   function jumpDrop(dir) {
     const t = vid().currentTime;

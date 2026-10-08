@@ -33,7 +33,9 @@ const ThreeLab = (() => {
   }
 
   // One iframe per mode; messages from it are routed by `source`.
-  function sandboxFrame(parent, mode, onMessage, extraParams = () => '') {
+  // lazy: the first load waits for the first run (the sketch tab runs its sketch right away; loading the page at mount
+  // too meant a reload ~0.3 s later, while the first page was still starting, which could leave the preview black)
+  function sandboxFrame(parent, mode, onMessage, extraParams = () => '', { lazy = false } = {}) {
     // No allow-same-origin: sketch code (which may come from a chat) can't reach the hub's APIs.
     const frame = el('iframe', { class: 'three-frame', attrs: { sandbox: 'allow-scripts allow-pointer-lock allow-downloads', allow: 'display-capture; microphone; autoplay' } });
     parent.append(frame);
@@ -49,7 +51,7 @@ const ThreeLab = (() => {
       if (data.type === 'ready') {
         // A page being replaced by a newer load can still say "ready"; only the current load counts.
         if (data.n && data.n !== nonce) return;
-        ready = data;
+        ready = data; retries = 0;
         for (const m of queue) deliver(m);
         queue = [];
       }
@@ -63,9 +65,15 @@ const ThreeLab = (() => {
     };
     // fresh: a brand-new page (the iframe is taken out and put back, the Stage window is recreated), for when a
     // sketch bugs out: hung code, a lost GPU context, stuck audio.
+    // A load that never says "ready" (seen when a reload lands while the page before it is still starting: black
+    // preview, nothing plays, "not rendering") is retried with a fresh page, twice at most.
+    let watchdog = 0; let retries = 0;
     const load = (fresh = false) => {
       ready = null;
       nonce = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+      clearTimeout(watchdog);
+      const mine = nonce;
+      watchdog = setTimeout(() => { if (!ready && nonce === mine && target === 'frame' && frame.isConnected && retries < 2) { retries += 1; console.warn(`Lab ${mode} preview didn't start; reloading it (${retries})`); load(true); } }, 10000);
       const query = `?mode=${mode}&v=${store.get('three.version', ThreeData.VERSIONS[0])}${extraParams()}&n=${nonce}`;
       const sz = target === 'stage' ? stageSize() : null;
       if (target === 'stage') window.hub.stageOpen({ query: `${query}${sz ? `&fw=${sz.width}&fh=${sz.height}` : ''}`, width: sz?.width, height: sz?.height, fresh });
@@ -87,7 +95,7 @@ const ThreeLab = (() => {
       if (on) { target = 'stage'; frame.src = 'about:blank'; } else { target = 'frame'; window.hub.stageClose(); }
       load();
     }
-    load();
+    if (!lazy) load();
     return {
       frame, send, reload: (fresh) => load(Boolean(fresh)), useStage,
       set onStageClosed(fn) { onStageClosed = fn; },
@@ -1722,7 +1730,7 @@ const ThreeLab = (() => {
     setSlidersVisible(store.get('three.showSliders', true));
     pane.append(toolbar, split);
     let stage = null;
-    const box = sandboxFrame(previewHost, 'sketch', onMessage, () => stage?.params || '');
+    const box = sandboxFrame(previewHost, 'sketch', onMessage, () => stage?.params || '', { lazy: true });
     box.onStageClosed = () => { stageBtn.classList.remove('on'); stageNote.hidden = true; previewHost.classList.remove('on-stage'); run(); };
     queueMicrotask(() => { stage?.pill?.prepend(freezeBtn, compareBtn); stage?.pill?.append(stillBtn, previewMoreBtn); });
     stage = ThreeMedia.stage(previewHost, box.frame, { onChange: ({ id, reload }) => {
@@ -1894,7 +1902,8 @@ const ThreeLab = (() => {
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'p') { e.preventDefault(); togglePresent(); return; }
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'w') { e.preventDefault(); setWrite(!writeArmed); return; }
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'e') { e.preventDefault(); setEdit(!editOn); return; }
-      if (player.onKey(e)) { e.preventDefault(); if (!e.repeat) Usage.key(`${e.ctrlKey ? 'Ctrl+' : ''}${e.key === ' ' ? 'Space' : e.key.length === 1 ? e.key.toUpperCase() : e.key}`, 'Lab'); }
+      // (Space on the button you just clicked, e.g. Tap, plays / pauses without also pressing that button on key-up)
+      if (player.onKey(e)) { e.preventDefault(); if (e.key === ' ' && e.target.closest?.('button')) e.target.addEventListener('keyup', (u) => u.preventDefault(), { once: true }); if (!e.repeat) Usage.key(`${e.ctrlKey ? 'Ctrl+' : ''}${e.key === ' ' ? 'Space' : e.key.length === 1 ? e.key.toUpperCase() : e.key}`, 'Lab'); }
     });
     pane.tabIndex = -1;
     let ranOnce = false;
@@ -1940,6 +1949,8 @@ const ThreeLab = (() => {
       editor.syncScroll();
     }
     function onMessage(msg) {
+      // a key pressed while the picture had focus: the Lab's shortcuts handle it as if pressed here
+      if (msg.type === 'host-key') { const { type: _t, source: _s, ...k } = msg; pane.dispatchEvent(new KeyboardEvent('keydown', { ...k, bubbles: true, cancelable: true })); return; }
       if (msg.type === 'console') log(msg.level, msg.text, null, msg.layer);
       if (msg.type === 'tweak-reads') {
         // global indices → each layer's own
@@ -1993,6 +2004,7 @@ const ThreeLab = (() => {
       if (msg.type === 'eval-result' || msg.type === 'input-result') { sandboxCalls.get(msg.id)?.(msg); sandboxCalls.delete(msg.id); return; }
       if (msg.type === 'shot') {
         if (msg.tag === 'thumb') { const fn = thumbShot; thumbShot = null; fn?.(msg.dataUrl); return; }
+        if (msg.tag === 'get') { const fn = pendingShot; pendingShot = null; fn?.(msg.dataUrl); return; }
         if (pendingShot) { pendingShot(msg.dataUrl); pendingShot = null; } else if (copyNextShot) {
           copyNextShot = false;
           fetch(msg.dataUrl).then((r) => r.blob()).then((b) => navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]))
@@ -2839,10 +2851,15 @@ ${code}
       triggers: (patch) => (patch ? setTriggers(patch) : trigCfg),
       live: () => ({ input: liveKind, bpm: liveBpm?.bpm ?? null, tempoLocked: Boolean(liveBpm?.locked),
         nowPlaying: np?.title ? { title: np.title, artist: np.artist, album: np.album, app: np.app, position: Math.round(np.position || 0), duration: Math.round(np.duration || 0), playing: np.playing } : null }),
+      // Shots asked for at the same time (a still while the director takes one) share the next picture: each
+      // waiter used to replace the one before, which then never resolved. Tagged 'get' so a second reply never
+      // falls through to the user's "save screenshot" dialog.
       shot: () => new Promise((resolve) => {
-        pendingShot = resolve;
-        box.send({ type: 'screenshot' });
-        setTimeout(() => { if (pendingShot === resolve) { pendingShot = null; resolve(null); } }, 5000);
+        const prev = pendingShot;
+        const mine = (url) => { prev?.(url); resolve(url); };
+        pendingShot = mine;
+        box.send({ type: 'screenshot', tag: 'get' });
+        setTimeout(() => { if (pendingShot === mine) { pendingShot = null; mine(null); } }, 5000);
       }),
     };
     api.runSketch = run;

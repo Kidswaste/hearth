@@ -1,0 +1,33 @@
+{
+  "id": "astra-muz3apiw",
+  "agentId": "astra",
+  "title": "think hello astra code",
+  "createdAt": 1791436934840,
+  "updatedAt": 1791436935437,
+  "session": {
+    "id": "d0ae1668-085f-41bf-ad68-140ab69b0d46",
+    "totals": {
+      "input": 4276,
+      "output": 92
+    }
+  },
+  "messages": [
+    {
+      "role": "user",
+      "text": "think hello astra code",
+      "at": 1791436934840
+    },
+    {
+      "role": "assistant",
+      "text": "Fake reply to: “think hello astra code”.\n\nHere is a sketch:\n\n```js\nimport * as THREE from 'three';\nconst scene = new THREE.Scene();\nconst cube = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshNormalMaterial());\nscene.add(cube);\n```\n\nAnd a shell line:\n\n```bash\necho hello\n```",
+      "at": 1791436935437,
+      "usage": {
+        "input": 4276,
+        "output": 92
+      },
+      "ms": 597,
+      "thinking": "Let me think about this.\n\nFirst, consider the request. Then decide on a compact answer.",
+      "thinkMs": 0
+    }
+  ]
+}

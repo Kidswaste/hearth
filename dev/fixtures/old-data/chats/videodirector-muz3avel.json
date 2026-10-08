@@ -1,0 +1,27 @@
+{
+  "id": "videodirector-muz3avel",
+  "agentId": "videodirector",
+  "title": "hello director",
+  "createdAt": 1791436942461,
+  "updatedAt": 1791436942631,
+  "session": {
+    "id": "ea9eda68-5861-4ecc-9734-a4409e3e8788"
+  },
+  "messages": [
+    {
+      "role": "user",
+      "text": "hello director",
+      "at": 1791436942461
+    },
+    {
+      "role": "assistant",
+      "text": "Fake reply to: “hello director”.",
+      "at": 1791436942631,
+      "usage": {
+        "input": 712,
+        "output": 8
+      },
+      "ms": 170
+    }
+  ]
+}

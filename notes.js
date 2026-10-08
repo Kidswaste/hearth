@@ -439,10 +439,31 @@ const Prompts = (() => {
     const close = () => { menu?.remove(); menu = null; };
     const setText = (text) => { textarea.value = text; textarea.dispatchEvent(new Event('input')); textarea.focus(); textarea.setSelectionRange(text.length, text.length); };
     const ctxNow = () => ({ agentId: typeof agentId === 'function' ? agentId() : agentId, chatId: H.activeChat?.[typeof agentId === 'function' ? agentId() : agentId] || null, source: bare ? 'bar' : 'chat' });
+        // An argument suggestion completes what you typed: the whole argument text when the suggestion starts with it
+    // ("/song pl" → "/song play"), else only the last word ("/compare v2 si" → "/compare v2 side", not "/compare side").
+    const argText = (it) => {
+      const m = textarea.value.match(/^\/[\w-]+\s([^\n]*)$/); const typed = m ? m[1] : '';
+      const v = String(it.value);
+      const flat = (t) => t.toLowerCase().replace(/[·\s]+/g, ' ').trim();
+      if (!typed.trim() || flat(v).startsWith(flat(typed)) || flat(typed).split(' ').every((w) => flat(v).includes(w))) return `/${it.def.name} ${v}`;
+      const head = typed.replace(/\S*$/, '');
+      return `/${it.def.name} ${head}${v}`;
+    };
+    // Enter on an argument suggestion: completes a word you're still typing or a suggestion you picked with ↑↓;
+    // otherwise it runs what you typed (Enter used to replace every argument with the highlighted one).
+    const enterCompletes = (it) => {
+      const now = textarea.value.trim();
+      const done = argText(it).trim();
+      if (done === now) return false;
+      if (moved) return true;
+      const last = (now.match(/(\S*)$/) || [])[1].toLowerCase();
+      const want = (done.match(/(\S*)$/) || [])[1].toLowerCase();
+      return Boolean(last) && want.startsWith(last) && want !== last && !/\s$/.test(textarea.value);
+    };
     const pick = async (it) => {
       close();
       if (it.kind === 'command') { setText(`/${it.def.name} `); return; }
-      if (it.kind === 'arg') { setText(`/${it.def.name} ${it.value}`); return; }
+      if (it.kind === 'arg') { setText(argText(it)); return; }
       if (it.kind === 'line') { setText(it.line); return; }
       if (it.kind === 'send') { onSend?.(it.text); return; }
       const text = await fill(it.prompt);
@@ -536,8 +557,12 @@ const Prompts = (() => {
       // arrows only move the highlight (rebuilding the whole menu per key made holding ↓ sluggish)
       const move = (d) => { moved = true; e.preventDefault(); e.stopImmediatePropagation(); sel = (sel + d + list.length) % list.length; const rows = menu.querySelectorAll('.slash-item'); rows.forEach((r, i) => r.classList.toggle('sel', i === sel)); rows[sel]?.scrollIntoView({ block: 'nearest' }); };
       const done = (it) => (it.kind === 'command' && textarea.value.trim() === `/${it.def.name}`)
-        || (it.kind === 'arg' && textarea.value.trim() === `/${it.def.name} ${it.value}`.trim())
+        // Enter on an argument suggestion completes only a word being typed or a row picked with ↑↓; else it runs what you typed
+        || (it.kind === 'arg' && (textarea.value.trim() === `/${it.def.name} ${it.value}`.trim() || (e.key === 'Enter' && !enterCompletes(it))))
         || (it.kind === 'line' && (textarea.value.trim() === it.line.trim() || (!bare && !moved && e.key === 'Enter')));
+      // a command typed in full (its name or an alias, e.g. /save) runs on Enter unless you picked another row with ↑↓
+      const typedCmd = !moved && textarea.value.trim().match(/^\/([\w-]+)$/);
+      if (e.key === 'Enter' && !e.shiftKey && typedCmd && Commands.get(typedCmd[1])) { close(); return; }
       // (in a chat box, Enter on "/words that aren't a command" still goes to the chat's own "did you mean" step
       // unless you chose a row with the arrows; Tab always takes the highlighted row)
       if (e.key === 'ArrowDown') move(1);

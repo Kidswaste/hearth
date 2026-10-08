@@ -1,0 +1,11 @@
+{
+  "versions": {
+    "s1791436935543": [
+      {
+        "at": 1791436935565,
+        "code": "import * as THREE from 'three';\nimport { OrbitControls } from 'three/addons/controls/OrbitControls.js';\n\nconst renderer = new THREE.WebGLRenderer({ antialias: true });\nrenderer.setPixelRatio(Math.min(devicePixelRatio, 2));\nrenderer.setSize(innerWidth, innerHeight);\ndocument.body.append(renderer.domElement);\n\nconst scene = new THREE.Scene();\nconst camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 200);\ncamera.position.set(3, 2, 5);\nconst controls = new OrbitControls(camera, renderer.domElement);\ncontrols.enableDamping = true;\n\naddEventListener('resize', () => {\n  camera.aspect = innerWidth / innerHeight;\n  camera.updateProjectionMatrix();\n  renderer.setSize(innerWidth, innerHeight);\n});\n\nscene.background = new THREE.Color(0x15181e);\nscene.add(new THREE.HemisphereLight(0xffffff, 0x334455, 1.5));\nconst sun = new THREE.DirectionalLight(0xffffff, 2);\nsun.position.set(4, 6, 3);\nscene.add(sun);\n\nconst cube = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshStandardMaterial({ color: 0x7c5cff, roughness: 0.4 }));\nscene.add(cube);\n\nrenderer.setAnimationLoop((now) => {\n  const t = now / 1000; // seconds\n  cube.rotation.set(t * 0.4, t * 0.6, 0);\n  controls.update();\n  renderer.render(scene, camera);\n});\n"
+      }
+    ]
+  },
+  "trash": []
+}

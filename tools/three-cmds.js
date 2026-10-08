@@ -6,7 +6,9 @@
   const lab = async (show = true) => { const c = await ThreeLab.cmd({ show }); await c.waitSong?.(); return c; };
   const peek = () => ThreeLab.peek?.() || null;
   const words = (s) => String(s || '').trim().split(/\s+/).filter(Boolean);
-  const pick = (list, q) => { const s = String(q || '').toLowerCase(); return list.filter((x) => String(x.value ?? x).toLowerCase().includes(s)).slice(0, 14).map((x) => (typeof x === 'string' ? { value: x } : x)); };
+  // suggestions that contain what you typed; "bloom st" also finds "Bloom · Strength"
+  const flat = (t) => String(t).toLowerCase().replace(/\s*·\s*/g, ' ');
+  const pick = (list, q) => { const s = String(q || '').toLowerCase(); return list.filter((x) => String(x.value ?? x).toLowerCase().includes(s) || flat(x.value ?? x).includes(flat(s))).slice(0, 14).map((x) => (typeof x === 'string' ? { value: x } : x)); };
   const onOff = (s) => (/^(on|yes|1|true|show)$/i.test(s) ? true : /^(off|no|0|false|hide)$/i.test(s) ? false : undefined);
   const { parseTime, fmtMs } = ThreeMedia._test;
   const time = (s) => { const t = parseTime(String(s || '').replace(/s$/, '')); if (!Number.isFinite(t)) throw new Error(`"${s}" isn't a time (m:ss.mmm or seconds)`); return t; };
@@ -42,7 +44,7 @@
   reg('lab-keys', 'Show every Lab key', '', async () => { (await lab()).keys(); });
 
   // ---------- sliders ----------
-  reg('save-sliders', 'Save the selected layer\'s slider values into its code (Ctrl+S)', '', async () => { const n = (await lab()).save(); return n ? `Saved ${n} slider change${n === 1 ? '' : 's'} into the code.` : 'Nothing to save: the sliders match the code.'; }, null, { aliases: ['ss'] });
+  reg('save-sliders', 'Save the selected layer\'s slider values into its code (Ctrl+S)', '', async () => { const n = (await lab()).save(); return n ? `Saved ${n} slider change${n === 1 ? '' : 's'} into the code.` : 'Nothing to save: the sliders match the code.'; }, null, { aliases: ['ss', 'save'] });
   const AMOUNT = { subtle: 0.1, small: 0.1, normal: 0.35, medium: 0.35, bold: 0.6, big: 0.6, wild: 1, total: 1, random: 1 };
   const SCOPES = ['all', 'favs', 'colors', 'numbers', 'changed', 'visible', 'one'];
   reg('shuffle', 'Shuffle the sliders: a group or kind (colors, numbers, favs, changed), how far (subtle / normal / bold / wild or 0–1), a seed', '[group|colors|numbers|favs] [subtle|normal|bold|wild|0.5] [seed N]', async (args) => {
@@ -274,6 +276,9 @@
     if (sub === 'zoom') { if (!w[1] || /^all$/i.test(w[1])) c.zoom(null); else c.zoom(time(w[1]), time(w[2])); return null; }
     return 'Use /song play, pause, seek 1:20, speed 0.5, mute, load or zoom';
   }, (a) => pick(['play', 'pause', 'seek 0:30', 'speed 0.5', 'mute', 'load', 'zoom all'], a));
+  // /play and /pause belong to Video Review elsewhere; typed in the Lab (or its docked director) they drive the song
+  reg('play', 'Play the song', '', async () => { (await lab()).play(true); return null; }, null, { when: (ctx) => inLab(ctx), whenLabel: 'in the Lab' });
+  reg('pause', 'Pause the song', '', async () => { (await lab()).play(false); return null; }, null, { when: (ctx) => inLab(ctx), whenLabel: 'in the Lab' });
   reg('record', 'Record a video: loop, song, here (until /record stop), N bars or N s from here, or stop; add 30 / 60 (fps) and hq', '[loop|song|here|8 bars|15s|stop] [30|60] [hq]', async (args) => {
     const c = await lab(); const w = words(args).map((x) => x.toLowerCase());
     const o = {}; if (w.includes('30')) o.fps = 30; if (w.includes('60')) o.fps = 60; if (w.includes('hq')) o.mbps = 32;

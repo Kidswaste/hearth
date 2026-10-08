@@ -44,7 +44,9 @@ const ThreeFX = (() => {
     const q = norm(text).trim();
     if (!q) return null;
     const list = items(kind);
-    return list.find((it) => norm(it.name) === q || norm(it.id) === q) || list.map((it) => [it, score(it, q)]).filter((x) => x[1]).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+    // an exact name wins; an exact id only counts like a strong match, so "/fx vhs" gives "VHS tape" as the picker
+    // does, not "Found footage" (whose id happens to be vhs)
+    return list.find((it) => norm(it.name) === q) || list.map((it) => [it, score(it, q) + (norm(it.id) === q ? 60 : 0)]).filter((x) => x[1]).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
   }
 
   // ---------- favorites and recent ----------
