@@ -1108,7 +1108,7 @@ function toggleFold(hostId, m) {
       }
       const m = lastCollabMsg(ctx.agentId); if (!m) return 'No collaboration in this chat yet.'; copyText(collabMarkdown(m), 'Collaboration copied');
     } });
-  R({ name: 'opinion', aliases: ['second-opinion'], area: 'Collab', args: '[claude|astra]', desc: 'Second opinion on the last reply from the other agent (works both ways)',
+  R({ name: 'opinion', aliases: ['second-opinion'], override: true, area: 'Collab', args: '[claude|astra]', desc: 'Second opinion on the last reply from the other agent (works both ways)',
     complete: () => [{ value: 'claude' }, { value: 'astra' }],
     run: (args, ctx) => { const shot = /--shot\b/.test(args); const to = stripFlags(args) ? findAgent(stripFlags(args), ctx.agentId) : null; Native.secondOpinion(ctx.agentId, to?.id || null, shot ? { screenshot: true } : {}); } });
   for (const [name, who] of [['ask-astra', 'astra'], ['ask-claude', 'claude']]) {
@@ -1136,7 +1136,7 @@ function toggleFold(hostId, m) {
       } });
   }
 
-  R({ name: 'astra', area: 'Astra', args: '[message]', desc: 'Open Astra (and send it a message)',
+  R({ name: 'astra-open', area: 'Astra', args: '[message]', desc: 'Open Astra (and send it a message)',
     run: async (args) => {
       const a = astra();
       if (!a) return 'No Astra agent yet: add one with ＋ → Astra.';
@@ -1144,7 +1144,7 @@ function toggleFold(hostId, m) {
       if (args) await Native.send(a.id, args);
     } });
   R({ name: 'astra-new', area: 'Astra', desc: 'New chat with Astra', run: () => { const a = astra(); if (!a) return 'No Astra agent yet.'; activate(H.surfaceIdFor(a.id)); Native.newChat(a.id); } });
-  R({ name: 'astra-model', aliases: ['model'], area: 'Astra', args: '[model] [--default]', desc: 'Switch this chat\'s model (--default: the agent\'s default)',
+  R({ name: 'astra-model', area: 'Astra', args: '[model] [--default]', desc: 'Switch this chat\'s model (--default: the agent\'s default)',
     complete: (a, ctx) => modelChoices(ctx.agentId).filter((x) => x.value.startsWith(a.trim())),
     run: (args, ctx) => {
       const agent = targetAgent(ctx);
@@ -1155,7 +1155,7 @@ function toggleFold(hostId, m) {
       if (isDefault(args)) { setAgent(agent, { model }); return `${agent.name} now uses ${model} by default.`; }
       return chatSetting({ agentId: agent.id }, 'model', model, `This chat now uses ${model}.`);
     } });
-  R({ name: 'astra-effort', aliases: ['effort'], area: 'Astra', args: '[level] [--default]', desc: 'Reasoning effort for this chat (minimal…xhigh for Astra, low…max for Claude)',
+  R({ name: 'astra-effort', area: 'Astra', args: '[level] [--default]', desc: 'Reasoning effort for this chat (minimal…xhigh for Astra, low…max for Claude)',
     complete: (a, ctx) => (EFFORTS[H.agent(ctx.agentId)?.engine] || EFFORTS.codex).map((v) => ({ value: v })).filter((x) => x.value.startsWith(a.trim())),
     run: (args, ctx) => {
       const agent = targetAgent(ctx);
@@ -1207,7 +1207,7 @@ function toggleFold(hostId, m) {
       else return `Thinking: ${agent.showThinking === false ? 'off' : agent.reasoningSummary || 'on'}. Use on, off, concise or detailed.`;
       return `${agent.name}'s thinking: ${v}.`;
     } });
-  R({ name: 'astra-persona', aliases: ['persona'], area: 'Astra', args: '[name|off|your own text] [--default]', desc: 'Give this chat a persona (coder, reviewer, writer, researcher, director…)',
+  R({ name: 'astra-persona', area: 'Astra', args: '[name|off|your own text] [--default]', desc: 'Give this chat a persona (coder, reviewer, writer, researcher, director…)',
     complete: (a) => [...Object.entries(PERSONAS).map(([k, p]) => ({ value: k, label: p.label, hint: p.text.slice(0, 60) })), { value: 'off', hint: 'back to plain' }].filter((x) => x.value.startsWith(a.trim().toLowerCase())),
     run: (args, ctx) => {
       const agent = targetAgent(ctx);
@@ -1412,7 +1412,7 @@ function toggleFold(hostId, m) {
     if (seats.length < 2) return 'This preset needs both a Claude and an Astra agent.';
     go(ctx, p.mode, task, seats, { rounds: p.rounds || (p.mode === 'debate' ? 2 : 1) });
   }
-  R({ name: 'collab-preset', aliases: ['cp'], area: 'Collab', args: '<preset> <task>', desc: 'Ready-made collaborations: brainstorm, code review, pair, fact check, red team…',
+  R({ name: 'collab-preset', area: 'Collab', args: '<preset> <task>', desc: 'Ready-made collaborations: brainstorm, code review, pair, fact check, red team…',
     complete: (a) => {
       const [w, ...rest] = a.split(/\s+/);
       if (rest.length) return [];

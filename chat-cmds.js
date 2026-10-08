@@ -577,7 +577,7 @@ const ChatCmds = (() => {
     run: async (_a, ctx) => { need(ctx); await Native.review(ctx.agentId); },
   });
   R({
-    name: 'opinion', aliases: ['second-opinion', '2nd'], area: 'Messages', desc: 'Astra judges the last reply (with a screenshot for docked tools)',
+    name: 'opinion-chat', aliases: ['2nd'], area: 'Messages', desc: 'Astra judges the last reply (with a screenshot for docked tools)',
     run: async (_a, ctx) => { need(ctx); if (!Native.astraAgent() || Native.astraAgent().id === ctx.agentId) return 'There is no other ChatGPT agent to ask.'; await Native.secondOpinion(ctx.agentId); },
   });
   // quick follow-ups: short prompts about the last reply (sent as your message)
@@ -839,7 +839,7 @@ const ChatCmds = (() => {
     run: (args, ctx) => { const a = astra(); if (!a) throw new Error('No Astra (ChatGPT) agent is set up'); if (a.id === ctx.agentId) return ctx.send(args); return sendTo(a, args); },
   });
   R({
-    name: 'both', aliases: ['duo'], area: 'Agents', args: '<message>', desc: 'Send this to Claude and Astra at once (each in its own chat)',
+    name: 'both', area: 'Agents', args: '<message>', desc: 'Send this to Claude and Astra at once (each in its own chat)',
     run: async (args, ctx) => {
       if (!args) return 'What should both answer? `/both <message>`';
       const targets = [claudeAgent(), astra()].filter(Boolean);
@@ -865,7 +865,7 @@ const ChatCmds = (() => {
     run: async (args) => { if (!args) { document.getElementById('broadcast-input')?.focus(); return; } await askAll(args); },
   });
   R({
-    name: 'continue-with', aliases: ['handoff', 'move-to-agent'], area: 'Agents', args: '<agent>', desc: 'Continue this chat with another agent (it gets the history as context)',
+    name: 'continue-with', aliases: ['move-to-agent'], area: 'Agents', args: '<agent>', desc: 'Continue this chat with another agent (it gets the history as context)',
     complete: (args, ctx) => agentChoices(args, ctx.agentId),
     run: (args, ctx) => {
       const chat = need(ctx);
