@@ -5,7 +5,7 @@
 //   turn.failed, error. Also answers `--version` and `login status`.
 // Words in the prompt steer it: SLOW (answers after 20 s, to test Stop), FAIL (model error), LIMIT (usage
 // limit), TOOL (a shell command + a plan), REMEMBER (<remember> tag), SUGGEST (<suggest> tags), NOID (old
-// Codex without item ids), PERTURN (per-turn usage instead of running totals), NONEWLINE (last line unterminated).
+// Codex without item ids), PARTIALFAIL (fails after some text), PERTURN (per-turn usage instead of running totals), NONEWLINE (last line unterminated).
 // Every run's arguments are saved in <tmp>/fake-codex-astra/last-args.json for checks.
 const fs = require('fs');
 const os = require('os');
@@ -56,6 +56,7 @@ async function main() {
   } else thread = crypto.randomUUID();
   out({ type: 'thread.started', thread_id: thread });
   out({ type: 'turn.started' });
+  if (/PARTIALFAIL/.test(prompt)) { out({ type: 'item.updated', item: { id: 'item_p', type: 'agent_message', text: 'Half of an answer' } }); await wait(100); out({ type: 'turn.failed', error: { message: 'stream disconnected before completion' } }); return; }
   if (/FAIL/.test(prompt)) { out({ type: 'turn.failed', error: { message: `The '${model}' model is not supported when using Codex with a ChatGPT account.` } }); return; }
   if (/LIMIT/.test(prompt)) { out({ type: 'error', message: "You've hit your usage limit. Try again later." }); return; }
   out({ type: 'item.completed', item: { id: 'item_0', type: 'reasoning', text: `**Reading the request** (${prompt.length} chars)` } });

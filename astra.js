@@ -107,14 +107,18 @@ const Astra = (() => {
       if (live?.stopped) { resolve({ ok: false, stopped: true, text: '', session }); return; }
       const started = Date.now();
       let out = '';
+      let thinking = '';
+      const tools = [];
       runs.set(id, (ev) => {
         if (ev.type === 'delta') { out += ev.text; onText?.(out); return; }
-        if (ev.type === 'thinking' || ev.type === 'tool' || ev.type === 'progress') return;
+        if (ev.type === 'thinking') { thinking += ev.text; return; }
+        if (ev.type === 'tool') { tools.push(ev.name); return; }
+        if (ev.type === 'progress') return;
         runs.delete(id);
         live?.runIds.delete(id);
         const done = ev.type === 'done';
         if (done && ev.usage) document.dispatchEvent(new CustomEvent('hearth:usage', { detail: { agentId: seat.agentId, usage: ev.usage, source: 'collab' } }));
-        resolve({ ok: done, stopped: ev.type === 'stopped', text: done ? (ev.text || out) : out, usage: ev.usage || null, error: ev.message || null, needsLogin: ev.needsLogin, session: ev.session || session, ms: Date.now() - started });
+        resolve({ ok: done, stopped: ev.type === 'stopped', text: done ? (ev.text || out) : out, usage: ev.usage || null, error: ev.message || null, needsLogin: ev.needsLogin, session: ev.session || session, ms: Date.now() - started, thinking: thinking.trim(), tools });
       });
       const options = { lean: true, images, model: seat.model || undefined, effort: seat.effort || undefined, persona: seat.persona ? personaText(agent, seat.persona) : undefined };
       window.hub.send({ agentId: seat.agentId, chatId: id, session, text, options })
@@ -160,6 +164,9 @@ const Astra = (() => {
     if (facts.length) { part.remembered = facts; Native.rememberFacts(seat.agentId, facts); }
     const sug = [...raw.matchAll(SUGGEST)].map((x) => x[1].trim()).filter(Boolean).slice(0, 3);
     if (sug.length) part.suggest = sug;
+    if (r.thinking) part.thinking = r.thinking.slice(0, 8000);
+    if (r.tools?.length) part.tools = [...new Set(r.tools)].slice(0, 12);
+    if (r.needsLogin) part.needsLogin = H.agent(seat.agentId)?.engine;
     save(L);
     paint(m);
     // a token budget (/collab-budget) stops the collaboration once it is spent
@@ -277,18 +284,56 @@ const Astra = (() => {
           if (!ok(prev[i])) return prev[i];
           const others = prev.filter((p, j) => j !== i && ok(p)).map((p) => `${m.seats[p.seat].label} answered:\n<answer>\n${answerOf(p)}\n</answer>`).join('\n\n');
           if (!others) return prev[i];
-          return turn(L, i, r, 'rebuttal', `${others}\n\nWhere do you agree or disagree? Defend or update your answer. Reply with your full updated answer, starting with one short line on what changed and why.`);
+          return turn(L, i, r, 'rebuttal', `${others}\n\nWhere do you agree or disagree? Defend or update your answer. Reply with your full updated answer, starting with one short line on what changed and why (start with AGREED if you now fully agree).`);
         }));
+        // everyone agrees: no more rounds needed (saves tokens)
+        if (latest.filter(ok).length && latest.filter(ok).every((p) => /^\s*\**AGREED\b/i.test(p.text))) break;
       }
       await synthesize(L, latest, 'Debate over.');
     },
     // Seats answer (several can be the same engine with different personas); the chair sums up.
     async council(L, task, images) {
       const latest = await Promise.all(L.m.seats.map((_, i) => turn(L, i, 1, 'answer', task, { images })));
-      await synthesize(L, latest, 'The council has answered.');
+      // rounds ≥ 2: each seat reads the others and notes what they got wrong or missed (short), then the chair decides
+      if (L.m.rounds >= 2 && !L.stopped) {
+        await Promise.all(latest.map((p) => {
+          if (!ok(p)) return p;
+          const others = latest.filter((x) => x !== p && ok(x)).map((x) => `${L.m.seats[x.seat].label}:\n<answer>\n${answerOf(x)}\n</answer>`).join('\n\n');
+          return turn(L, p.seat, 2, 'critique', `The other council members answered:\n\n${others}\n\nIn at most 5 short lines: what did they get wrong or miss, and what would you keep from them?`);
+        }));
+      }
+      await synthesize(L, latest, 'The council has answered (and reviewed each other).');
     },
   };
   // The judge (host seat by default) writes the final answer; it already knows its own answer from its session.
+  // A finished debate gets another round (then a new final answer); a relay gets another improvement pass.
+  async function oneMore(hostId, m) {
+    const chat = Native.chatOf(hostId);
+    if (!chat || live.has(m.id)) return;
+    const L = { m, chat, hostId, runIds: new Set(), stopped: false, sessions: (m.sessions || []).map((x) => x || undefined), images: [] };
+    live.set(m.id, L);
+    m.status = 'running';
+    const nums = m.parts.map((p) => p.round).filter((r) => typeof r === 'number');
+    const r = (nums.length ? Math.max(...nums) : 1) + 1;
+    if (m.mode === 'relay') {
+      const last = m.final != null ? m.parts[m.final] : [...m.parts].reverse().find(ok);
+      const i = last.seat === 0 ? 1 : 0;
+      const next = await turn(L, i, r, 'improve', `${m.seats[last.seat].name}'s latest version:\n\n<version>\n${answerOf(last)}\n</version>\n\nImprove it further: reply with the full improved version, then one last line "Changes: …".`);
+      if (ok(next)) m.final = m.parts.indexOf(next);
+    } else {
+      if (m.final != null && m.parts[m.final]?.kind === 'final') m.final = undefined;
+      const prev = latestBySeat(m);
+      const latest = await Promise.all(prev.map((p) => {
+        if (!ok(p)) return p;
+        const others = prev.filter((x) => x !== p && ok(x)).map((x) => `${m.seats[x.seat].label} answered:\n<answer>\n${answerOf(x)}\n</answer>`).join('\n\n');
+        return turn(L, p.seat, r, 'rebuttal', `One more round. ${others}\n\nWhere do you still disagree? Reply with your full updated answer, starting with one short line on what changed.`);
+      }));
+      await synthesize(L, latest, 'Debate over.');
+    }
+    m.rounds = r;
+    m.status = L.stopped ? 'stopped' : 'done';
+    finishCollab(L);
+  }
   async function synthesize(L, latest, lead) {
     const { m } = L;
     if (L.stopped) return;
@@ -400,12 +445,18 @@ const Astra = (() => {
       el('span', { class: 'hint', text: `${KIND[p.kind] || p.kind}${p.status === 'running' ? '…' : ''}` }),
       el('span', { class: 'spacer' }),
       p.usage ? el('span', { class: 'collab-tok', text: `${fmt(p.usage.input)} in · ${fmt(p.usage.output)} out${p.ms ? ` · ${(p.ms / 1000).toFixed(1)}s` : ''}` }) : null,
-      p.status === 'stopped' ? el('span', { class: 'hint', text: 'stopped' }) : null);
+      p.status === 'stopped' ? el('span', { class: 'hint', text: 'stopped' }) : null,
+      ok(p) && !compact ? el('button', { type: 'button', class: 'msg-act', text: 'Copy', title: 'Copy this part', on: { click: (e) => { e.stopPropagation(); copyText(answerOf(p), 'Copied'); } } }) : null);
     const body = el('div', { class: `body${compact ? ' collab-scroll' : ''}` });
-    if (p.status === 'error') body.append(el('div', { class: 'collab-error', text: p.error || 'No answer' }));
+    if (p.status === 'error') body.append(el('div', { class: 'collab-error', text: p.error || 'No answer' }),
+      p.needsLogin ? el('button', { type: 'button', class: 'primary small', text: 'Sign in', on: { click: () => window.hub.login(p.needsLogin) } }) : null);
     else if (p.text) body.innerHTML = renderMarkdown(p.text);
     else if (p.status === 'running') body.innerHTML = '<span class="typing"><i></i><i></i><i></i></span>';
-    return el('div', { class: `collab-part ${p.status}`, attrs: { style: `--seat: ${s.color}` } }, head, body,
+    const extra = [
+      p.tools?.length ? el('div', { class: 'tool-chips', text: `Used ${p.tools.join(', ')}` }) : null,
+      p.thinking ? el('details', { class: 'thinking collab-thinking' }, el('summary', { text: 'Thought process' }), el('div', { class: 'thinking-text', text: p.thinking })) : null,
+    ];
+    return el('div', { class: `collab-part ${p.status}`, attrs: { style: `--seat: ${s.color}` } }, head, ...extra, body,
       p.remembered?.length ? el('div', { class: 'memory-chip' }, `Saved to ${s.name}'s memory: ${p.remembered.join(' · ')} `,
         el('button', { class: 'undo-memory-collab', text: 'Undo', on: { click: async (e) => { await Native.forgetFacts(s.agentId, p.remembered); p.remembered = undefined; e.target.parentElement.replaceWith(el('div', { class: 'memory-chip', text: 'Removed from memory' })); } } })) : null);
   }
@@ -487,7 +538,11 @@ const Astra = (() => {
       { label: 'Run again, order swapped', action: () => start(hostId, m.mode, m.task, [...m.seats].reverse(), { rounds: m.rounds }).catch((err) => toast(err.message, { type: 'error' })) },
       fin ? { label: 'Copy the final answer', action: () => copyText(answerOf(fin), 'Answer copied') } : null,
       fin ? { label: 'Put the final answer in the composer', action: () => Native.setDraft(hostId, answerOf(fin)) } : null,
+      m.mode === 'duo' || m.mode === 'compare' ? { label: 'Follow up with both…', action: async () => { const q = await Modal.prompt('Follow up with both', { multiline: true, label: `${m.seats.map((x) => x.name).join(' and ')} continue where they left off.` }); if (q?.trim()) start(hostId, 'duo', q.trim(), m.seats).catch((err) => toast(err.message, { type: 'error' })); } } : null,
+      m.mode === 'debate' || m.mode === 'council' ? { label: 'One more round (then a new final answer)', action: () => oneMore(hostId, m) } : null,
+      m.mode === 'relay' && fin ? { label: 'One more improvement pass', action: () => oneMore(hostId, m) } : null,
       ...m.seats.map((s, i) => (latestBySeat(m).some((p) => p.seat === i && p.status === 'error') && !live.has(m.id) ? { label: `Retry ${s.label}`, action: () => retrySeat(hostId, m, i) } : null)),
+      fin && typeof Notes !== 'undefined' ? { label: 'Save the final answer to Notes', action: () => Notes.append(`**${MODES[m.mode].label}: ${cap(m.task, 80)}**\n\n${answerOf(fin)}`) } : null,
       { label: 'Copy everything (Markdown)', action: () => copyText(collabMarkdown(m), 'Collaboration copied') },
       { label: 'Save as a Markdown file…', action: async () => { const p = await window.hub.saveFile({ defaultPath: `${MODES[m.mode].label} - ${cap(m.task, 40).replace(/[\\/:*?"<>|]/g, '_')}.md`, filters: [{ name: 'Markdown', extensions: ['md'] }], content: collabMarkdown(m) }); if (p) toast('Saved', { action: { label: 'Show', fn: () => window.hub.fs.reveal(p) } }); } },
       fin ? { label: 'Read the final answer aloud', action: () => { speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(answerOf(fin).replace(/```[\s\S]*?```/g, ' (code) ').replace(/[#*_`>|]/g, ''))); } } : null,
@@ -587,9 +642,14 @@ function toggleFold(hostId, m) {
     if (chat.verbosity) options.verbosity = chat.verbosity;
     if (chat.persona) options.persona = personaText(agent, chat.persona);
     if (chat.model) options.model = chat.model;
+    const once = nextOnce.get(chat.agentId); // one message only
+    if (once) { Object.assign(options, once); nextOnce.delete(chat.agentId); }
     if (chat.session?.id && chat.messages.length > 1) options.fallbackText = withContext({ ...chat, session: {} }, raw);
     return { text, options };
   }
+  // Codex features Hearth switches off (engines.js); /astra-feature turns one back on per agent.
+  const FEATURES = ['shell_tool', 'unified_exec', 'apps', 'browser_use', 'browser_use_external', 'computer_use', 'multi_agent', 'plugins', 'skill_search', 'tool_suggest', 'view_image', 'sleep_tool', 'goals', 'hooks', 'image_generation', 'shell_snapshot', 'in_app_browser', 'workspace_dependencies', 'remote_plugin'];
+  const nextOnce = new Map(); // agent id -> engine options for the next message only
   // Capability hints under the empty chat (Astra) or a collab tip (Claude when Astra exists).
   let doctorCache = null;
   function emptyHints(agent) {
@@ -603,8 +663,13 @@ function toggleFold(hostId, m) {
       ];
       const status = el('div', { class: 'astra-onboard hint' });
       checkOnboarding(status);
+      window.hub.getUsage().then((all) => {
+        const u = all?.[new Date().toLocaleDateString('en-CA')]?.[agent.id];
+        if (u && status.isConnected) status.after(el('div', { class: 'hint astra-today', text: `Today: ${fmt((u.input || 0) + (u.output || 0))} tokens in ${u.replies || 0} replies` }));
+      }).catch(() => {});
       return el('div', { class: 'astra-hints' },
         el('div', { class: 'astra-chips' }, chips.map(([i, t, cmd]) => el('button', { type: 'button', class: 'astra-chip', title: cmd ? `Change with ${cmd.trim()}` : '', text: `${i} ${t}`, on: { click: () => { if (cmd) Native.setDraft(agent.id, cmd); } } }))),
+        el('div', { class: 'astra-chips astra-personas' }, el('span', { class: 'hint', text: 'Persona:' }), ['coder', 'reviewer', 'writer', 'researcher', 'director'].map((k) => el('button', { type: 'button', class: `astra-chip${(chatValue(agent.id, 'persona')) === k ? ' on' : ''}`, text: PERSONAS[k].label, title: PERSONAS[k].text, on: { click: (e) => { const on = chatValue(agent.id, 'persona') === k; chatPatch(agent.id, { persona: on ? null : k }); e.currentTarget.classList.toggle('on', !on); toast(on ? 'Persona off' : `Persona for this chat: ${PERSONAS[k].label}`, { timeout: 1400 }); } } }))),
         el('div', { class: 'astra-try' }, 'Try ', ...['/duo', '/relay', '/debate', '/astra-persona', '/astra-doctor'].flatMap((c, i) => [i ? ' · ' : '', el('a', { href: '#', text: c, on: { click: (e) => { e.preventDefault(); Native.setDraft(agent.id, `${c} `); } } })])),
         status);
     }
@@ -642,7 +707,7 @@ function toggleFold(hostId, m) {
     Native.adopt(origin);
     toast(`Back in "${origin.title}"${since ? ': your next message carries what happened meanwhile' : ''}`, { timeout: 3000 });
   }
-  async function handoff(hostId, targetId, { raw = false, from = null } = {}) {
+  async function handoff(hostId, targetId, { raw = false, from = null, model = null, persona = null } = {}) {
     const host = H.agent(hostId);
     const target = H.agent(targetId);
     const chat = Native.chatOf(hostId);
@@ -665,7 +730,7 @@ function toggleFold(hostId, m) {
     const now = Date.now();
     const copy = {
       id: `${targetId}-${now.toString(36)}`, agentId: targetId, title: `${chat?.title || 'Handoff'} (→ ${target.name})`, createdAt: now, updatedAt: now,
-      session: {}, continuedFrom: host.name, handoffFrom: chat?.id,
+      session: {}, continuedFrom: host.name, handoffFrom: chat?.id, ...(model ? { model } : {}), ...(persona ? { persona } : {}),
       messages: [{ role: 'assistant', text: `**Handoff from ${host.name}**${chat?.title ? ` ("${chat.title}")` : ''}\n\n${summary}`, at: now }],
     };
     Native.adopt(copy);
@@ -690,9 +755,13 @@ function toggleFold(hostId, m) {
     const st = getMode(agentId);
     const md = MODES[st.mode];
     c.chip.textContent = md ? `${md.icon} ${md.label}${st.mode !== 'duo' && st.mode !== 'compare' && st.rounds > 1 ? ` ×${st.rounds}` : ''}` : '⚇';
+    const mate = seatsFor(agentId).find((x) => x.agentId !== agentId);
+    if (mate) c.chip.style.setProperty('--mate', mate.color); // a dot in the partner's color
     c.chip.classList.toggle('on', Boolean(md));
     c.chip.hidden = !partner(agent);
-    c.chip.title = md ? `${md.label}: ${md.desc}. Your next message goes to ${seatsFor(agentId).map((s) => s.name).join(' and ')}. Click to change.` : `Collab: answer with ${partner(agent)?.name || 'the other agent'} too (Duo, Relay, Debate…)`;
+    const prev = md && [...(Native.chatOf(agentId)?.messages || [])].reverse().find((x) => x.role === 'collab' && x.mode === st.mode && x.status === 'done');
+    const cost = prev ? ` Last ${md.label.toLowerCase()} here: ${fmt(totals(prev).all.input + totals(prev).all.output)} tokens.` : '';
+    c.chip.title = md ? `${md.label}: ${md.desc}. Your next message goes to ${seatsFor(agentId).map((s) => s.name).join(' and ')}.${cost} Click to change, right-click for presets.` : `Collab: answer with ${partner(agent)?.name || 'the other agent'} too (Duo, Relay, Debate…). Right-click for presets.`;
     c.root.classList.toggle('collab-armed', Boolean(md));
   }
   function seatsFor(agentId) {
@@ -702,7 +771,7 @@ function toggleFold(hostId, m) {
     const other = (st0.partner && H.agent(st0.partner)?.mode === 'native' && st0.partner !== agentId ? H.agent(st0.partner) : null) || partner(host);
     if (!host || !other) return [];
     const st = getMode(agentId);
-    const seats = [seatOf(host), seatOf(other)];
+    const seats = [seatOf(host, { persona: st.personas?.host || null }), seatOf(other, { persona: st.personas?.partner || null })];
     return st.swap ? seats.reverse() : seats;
   }
   // Which seat writes final answers (debate / council / merge) in composer mode: you choose host or partner.
@@ -725,6 +794,7 @@ function toggleFold(hostId, m) {
       { label: `Final answer by: ${st.judge === 'partner' ? other?.name : host.name} (switch)`, action: () => setMode(agentId, { judge: st.judge === 'partner' ? 'host' : 'partner' }) },
       { label: `After a duo: ${st.after === 'merge' ? 'merge them' : st.after === 'judge' ? 'judge them' : 'nothing'} (switch)`, action: () => setMode(agentId, { after: st.after === 'merge' ? 'judge' : st.after === 'judge' ? null : 'merge' }) },
       ...natives().filter((a) => a.id !== agentId && !a.dock && a.id !== other?.id).slice(0, 4).map((a) => ({ label: `Partner: ${a.name} instead of ${other?.name}`, action: () => setMode(agentId, { partner: a.id }) })),
+      { label: '✦ Ready-made collaborations…', action: () => Commands.tryRun('/collab-preset', agentId) },
       { label: `👁 Second opinion from ${other?.name} on the last reply`, action: () => Native.secondOpinion(agentId) },
       { label: `↪ Hand this chat off to ${other?.name}`, action: () => handoff(agentId, other.id).catch((err) => toast(err.message, { type: 'error' })) },
     ];
@@ -742,11 +812,14 @@ function toggleFold(hostId, m) {
       chip.addEventListener('contextmenu', (e) => { e.preventDefault(); Commands.tryRun('/collab-preset', agentId); }); // right-click: ready-made collaborations
       form.querySelector('.attach-btn')?.before(chip);
       chipEls.set(agentId, { chip, root, input: v.input });
+      v.input.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !v.input.value && stopAllIn(agentId)) toast('Stopping the collaboration', { timeout: 1200 }); });
       // capture phase on the surface: runs before the composer's own submit handler
       root.addEventListener('submit', (e) => {
         if (e.target !== form) return;
         const st = getMode(agentId);
         const text = v.input.value.trim();
+        const chatNow = Native.chatOf(agentId);
+        if (!text && !(chatNow && Native.isBusy(chatNow.id)) && stopAllIn(agentId)) { e.preventDefault(); e.stopImmediatePropagation(); return; }
         if (!MODES[st.mode] || !text || text.startsWith('/')) return;
         const chat = Native.chatOf(agentId);
         if (chat && Native.isBusy(chat.id)) return; // it queues as usual
@@ -882,6 +955,12 @@ function toggleFold(hostId, m) {
     if (seats.some((s) => !s)) return { seats: null, task: args.trim() };
     return { seats, task: m[2].trim() };
   }
+  // "--judge astra" anywhere in the arguments: that agent writes the final answer.
+  function judgeFlag(args, hostId) {
+    const m = args.match(/(^|\s)--judge[= ]([\w-]+)/);
+    return m ? { judge: findAgent(m[2], hostId), rest: args.replace(m[0], ' ').trim() } : { judge: null, rest: args };
+  }
+  const judgeIndex = (seats, agent) => { if (!agent) return null; const i = seats.findIndex((x) => x.agentId === agent.id && !x.persona); return i >= 0 ? i : seats.findIndex((x) => x.agentId === agent.id); };
   const defaultPair = (hostId) => { const s = seatsFor(hostId); return s.length ? s : [claude(), astra()].filter(Boolean).map((a) => seatOf(a)); };
   const go = (ctx, mode, task, seats, opts = {}) => {
     const host = H.agent(ctx.agentId);
@@ -911,16 +990,20 @@ function toggleFold(hostId, m) {
   R({ name: 'debate', area: 'Collab', args: '[rounds] [seats] <question>', desc: 'They answer, read each other and reply for N rounds, then one merged final answer',
     complete: (a) => (a ? [] : [{ value: '2 ', hint: 'two rounds (default)' }, { value: '3 claude,astra@skeptic ', hint: seatHint }]),
     run: (args, ctx) => {
-      const { rounds, task: rest } = parseLead(args, ctx.agentId);
+      const { judge, rest: a1 } = judgeFlag(args, ctx.agentId);
+      const { rounds, task: rest } = parseLead(a1, ctx.agentId);
       const { seats, task } = parseSeats(rest, ctx.agentId);
-      go(ctx, 'debate', task, seats || defaultPair(ctx.agentId), { rounds: rounds || Math.max(2, getMode(ctx.agentId).rounds) });
+      const list = seats || defaultPair(ctx.agentId);
+      go(ctx, 'debate', task, list, { rounds: rounds || Math.max(2, getMode(ctx.agentId).rounds), judge: judgeIndex(list, judge) });
     } });
   R({ name: 'council', area: 'Collab', args: '[seats] <question>', desc: 'Several seats (agents and personas) answer, the chair writes the final answer',
     complete: (a) => (a ? [] : [{ value: 'claude,astra,astra@skeptic ', hint: seatHint }, { value: 'coder,reviewer,researcher ', hint: 'personas, engines alternate' }]),
     run: (args, ctx) => {
-      const { seats, task } = parseSeats(args, ctx.agentId);
+      const { judge, rest } = judgeFlag(args, ctx.agentId);
+      const { seats, task } = parseSeats(rest, ctx.agentId);
       const def = [...defaultPair(ctx.agentId), seatOf(astra() || claude(), { persona: 'skeptic' })].filter((s) => s.agentId);
-      go(ctx, 'council', task, (seats || def).slice(0, 6));
+      const list = (seats || def).slice(0, 6);
+      go(ctx, 'council', task, list, { judge: judgeIndex(list, judge) });
     } });
   R({ name: 'compare', area: 'Collab', args: '<seats> <task>', desc: 'Same task to different models or agents side by side (e.g. astra:gpt-6-sol,astra:gpt-6-luna)',
     complete: (a) => (a ? [] : [{ value: 'claude,astra ', hint: 'two engines' }, ...((MODELS.codex.length > 1) ? [{ value: `astra:${MODELS.codex[0]},astra:${MODELS.codex[2]} `, hint: 'two Astra models' }] : []), { value: `claude:${MODELS.claude[0]},claude:${MODELS.claude[1]} `, hint: 'two Claude models' }]),
@@ -934,8 +1017,9 @@ function toggleFold(hostId, m) {
     run: async (args, ctx) => {
       const host = H.agent(ctx.agentId);
       if (/^back\b/i.test(args.trim())) { await handoffBack(ctx.agentId); return; }
-      const target = findAgent(stripFlags(args), ctx.agentId) || partner(host);
-      await handoff(ctx.agentId, target?.id, { raw: /--raw\b/.test(args) });
+      const seat = stripFlags(args) ? parseSeat(stripFlags(args), ctx.agentId) : null;
+      const target = (seat && H.agent(seat.agentId)) || partner(host);
+      await handoff(ctx.agentId, target?.id, { raw: /--raw\b/.test(args), model: seat?.model, persona: seat?.persona });
     } });
   R({ name: 'collab', area: 'Collab', args: '[duo|relay|critique|debate|council|off] [rounds]', desc: 'Set the composer\'s collab mode (the ⚇ chip): your next messages go to both',
     complete: completeFrom([...Object.entries(MODES).filter(([k]) => k !== 'compare').map(([k, m]) => ({ value: k, hint: m.desc })), { value: 'off', hint: 'back to solo' }, { value: 'swap', hint: 'swap who goes first' }]),
@@ -968,10 +1052,12 @@ function toggleFold(hostId, m) {
     } });
   R({ name: 'collab-stop', area: 'Collab', desc: 'Stop the collaborations running in this chat',
     run: (args, ctx) => { const n = stopAllIn(ctx.agentId); return n ? `Stopping ${n} collaboration${n > 1 ? 's' : ''}.` : 'Nothing is running.'; } });
-  R({ name: 'collab-again', area: 'Collab', args: '[new task]', desc: 'Run the last collaboration again (optionally with a new task)',
+  R({ name: 'collab-again', area: 'Collab', args: '[new task|swap]', desc: 'Run the last collaboration again (optionally with a new task)',
+    complete: () => [{ value: 'swap', hint: 'same task, the other one goes first' }],
     run: (args, ctx) => {
       const last = lastCollab.get(ctx.agentId) || lastCollabMsg(ctx.agentId);
       if (!last) return 'No collaboration to repeat yet.';
+      if (args.trim() === 'swap') { go(ctx, last.mode, last.task, [...last.seats].reverse(), { rounds: last.rounds }); return; }
       go(ctx, last.mode, args || last.task, last.seats, { rounds: last.rounds, judge: last.judge });
     } });
   R({ name: 'collab-stats', area: 'Collab', desc: 'Token totals of every collaboration in this chat, per participant',
@@ -983,20 +1069,36 @@ function toggleFold(hostId, m) {
       const all = [...by.values()].reduce((n, x) => n + x.input + x.output, 0);
       return [`**${ms.length} collaboration${ms.length > 1 ? 's' : ''} in this chat** · ${fmt(all)} tokens`, ...[...by].map(([n, x]) => `- ${n}: ${x.input.toLocaleString()} in · ${x.output.toLocaleString()} out · ${x.turns} turns`)].join('\n');
     } });
-  R({ name: 'collab-export', area: 'Collab', desc: 'Copy the last collaboration (every round) as Markdown',
-    run: (args, ctx) => { const m = lastCollabMsg(ctx.agentId); if (!m) return 'No collaboration in this chat yet.'; copyText(collabMarkdown(m), 'Collaboration copied'); } });
+  R({ name: 'collab-export', area: 'Collab', args: '[all]', desc: 'Copy the last collaboration (or all of this chat\'s) with every round as Markdown',
+    complete: () => [{ value: 'all', hint: 'every collaboration in this chat' }],
+    run: (args, ctx) => {
+      if (args.trim() === 'all') {
+        const ms = (Native.chatOf(ctx.agentId)?.messages || []).filter((x) => x.role === 'collab');
+        if (!ms.length) return 'No collaboration in this chat yet.';
+        copyText(ms.map(collabMarkdown).join('\n---\n\n'), `${ms.length} collaborations copied`);
+        return;
+      }
+      const m = lastCollabMsg(ctx.agentId); if (!m) return 'No collaboration in this chat yet.'; copyText(collabMarkdown(m), 'Collaboration copied');
+    } });
   R({ name: 'opinion', aliases: ['second-opinion'], area: 'Collab', args: '[claude|astra]', desc: 'Second opinion on the last reply from the other agent (works both ways)',
     complete: () => [{ value: 'claude' }, { value: 'astra' }],
-    run: (args, ctx) => { const to = args ? findAgent(args, ctx.agentId) : null; Native.secondOpinion(ctx.agentId, to?.id || null); } });
+    run: (args, ctx) => { const shot = /--shot\b/.test(args); const to = stripFlags(args) ? findAgent(stripFlags(args), ctx.agentId) : null; Native.secondOpinion(ctx.agentId, to?.id || null, shot ? { screenshot: true } : {}); } });
   for (const [name, who] of [['ask-astra', 'astra'], ['ask-claude', 'claude']]) {
     R({ name, area: 'Collab', args: '<question>', desc: `Quick answer from ${who === 'astra' ? 'Astra' : 'Claude'} right in this chat (one lean turn)`,
       run: async (args, ctx) => {
         const target = findAgent(who, ctx.agentId);
         if (!target) return `No ${who === 'astra' ? 'Astra' : 'Claude'} agent is set up.`;
-        if (!args) return `Ask something: /${name} <question>`;
-        const chat = Native.ensureChat(ctx.agentId, args);
+        // "--shot" attaches a screenshot of the window; "@persona" answers in that persona
+        const shot = /(^|\s)--shot\b/.test(args);
+        const pm = args.match(/(^|\s)@([\w-]+)/);
+        const persona = pm && PERSONAS[pm[2].toLowerCase()] ? pm[2].toLowerCase() : null;
+        const q = args.replace(/(^|\s)--shot\b/, ' ').replace(persona ? pm[0] : /$^/, ' ').trim();
+        if (!q) return `Ask something: /${name} [--shot] [@persona] <question>`;
+        const chat = Native.ensureChat(ctx.agentId, q);
         const t = toast(`Asking ${target.name}…`, { timeout: 60000 });
-        const r = await window.hub.askOnce({ agentId: target.id, text: args, images: Native.takeAttachments(ctx.agentId).images, options: { lean: true } });
+        const images = Native.takeAttachments(ctx.agentId).images;
+        if (shot) { const p = await window.hub.captureWindow(); if (p) images.push(p); }
+        const r = await window.hub.askOnce({ agentId: target.id, text: q, images, options: { lean: true, ...(persona ? { persona: personaText(target, persona) } : {}) } });
         t.remove();
         if (!r.ok) throw new Error(r.error || 'No answer');
         if (r.usage) document.dispatchEvent(new CustomEvent('hearth:usage', { detail: { agentId: target.id, usage: r.usage, source: 'quick ask' } }));
@@ -1140,6 +1242,50 @@ function toggleFold(hostId, m) {
       setAgent(agent, { suggestNext: v === 'on' ? true : undefined });
       return `Suggestions ${v}.`;
     } });
+  R({ name: 'astra-memory-shared', area: 'Astra', args: '<fact>', desc: 'Add a fact every agent keeps in mind (shared memory)',
+    run: async (args) => {
+      if (!args) return 'Say what every agent should remember.';
+      const memory = await window.hub.getMemory();
+      memory.shared = [String(memory.shared || '').trim(), `- ${args.trim()}`].filter(Boolean).join('\n');
+      await window.hub.saveMemory(memory);
+      return `Every agent now remembers: ${args.trim()}`;
+    } });
+  R({ name: 'astra-clone', area: 'Astra', args: '<persona>', desc: 'Add an Astra variant with that persona (e.g. Astra Reviewer), handy as a collab partner',
+    complete: (a) => Object.entries(PERSONAS).filter(([k]) => k.startsWith(a.trim())).map(([k, p]) => ({ value: k, hint: p.label })),
+    run: (args) => {
+      const base = astra();
+      const key = args.trim().toLowerCase();
+      if (!base) return 'No Astra agent to copy yet.';
+      if (!PERSONAS[key]) return `Personas: ${Object.keys(PERSONAS).join(', ')}.`;
+      const name = `${base.name} ${PERSONAS[key].label}`.slice(0, 30);
+      if (H.agents().some((a) => a.name === name)) return `${name} already exists.`;
+      let id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      for (let n = 2; H.config.agents.some((a) => a.id === id); n += 1) id = `${id}-${n}`;
+      H.config.agents.push({ id, name, mode: 'native', engine: 'codex', model: base.model, effort: base.effort, color: base.color, icon: '✦', url: base.url, askAll: false, systemPrompt: personaText({ name }, key) });
+      saveConfig();
+      return `Added ${name} to the rail. /collab-partner ${name.toLowerCase()} makes it this chat's partner.`;
+    } });
+  R({ name: 'astra-feature', area: 'Astra', args: '<feature> <on|off>', desc: 'Switch one of Codex\'s disabled features back on for Astra (each adds tool definitions to every message)',
+    complete: (a) => FEATURES.filter((f) => f.startsWith(a.trim().split(/\s+/)[0] || '')).map((f) => ({ value: `${f} `, hint: (astra()?.codexFeatures || []).includes(f) ? 'on' : 'off' })),
+    run: (args, ctx) => {
+      const agent = targetAgent(ctx, { codexOnly: true });
+      const [f, v] = args.trim().split(/\s+/);
+      if (!agent) return 'No Astra agent yet.';
+      if (!FEATURES.includes(f) || !['on', 'off'].includes(v)) return `Usage: /astra-feature <${FEATURES.join('|')}> on|off. On now: ${(agent.codexFeatures || []).join(', ') || 'none'}.`;
+      const set = new Set(agent.codexFeatures || []);
+      if (v === 'on') set.add(f); else set.delete(f);
+      setAgent(agent, { codexFeatures: set.size ? [...set] : undefined });
+      return `Codex feature ${f} ${v} for ${agent.name}${v === 'on' ? ' (adds its tools to every message)' : ''}.`;
+    } });
+  R({ name: 'astra-flags', area: 'Astra', args: '[agent]', desc: 'The exact command line Hearth runs for an agent (frugal flags, features, sandbox)',
+    complete: () => natives().map((a) => ({ value: a.name.toLowerCase() })),
+    run: async (args, ctx) => {
+      const agent = (args && findAgent(args, ctx.agentId)) || targetAgent(ctx);
+      const r = await window.hub.engineDoctor();
+      const p = r.prompts?.find((x) => x.id === agent?.id);
+      if (!p?.args) return 'No command line for that agent.';
+      return `**${p.name}** runs (new chat):\n\`\`\`\n${p.engine === 'codex' ? 'codex' : 'claude'} ${p.args.map((x) => (/[\s"']/.test(x) ? JSON.stringify(x) : x)).join(' ')}\n\`\`\``;
+    } });
   R({ name: 'astra-memory', area: 'Astra', args: '[fact to remember]', desc: 'Show Astra\'s memory, or add a fact to it',
     run: async (args, ctx) => {
       const agent = targetAgent(ctx);
@@ -1224,6 +1370,11 @@ function toggleFold(hostId, m) {
     redteam: { label: 'Red team', mode: 'debate', seats: 'claude,astra@skeptic', rounds: 2, desc: 'Astra attacks the idea, Claude defends, then a verdict' },
     product: { label: 'Product call', mode: 'debate', seats: 'claude@product,astra@product', rounds: 2, desc: 'two product designers argue it out' },
     translate: { label: 'Translation check', mode: 'critique', seats: 'claude@translator,astra@translator', rounds: 1, desc: 'one translates, the other checks' },
+    eli5: { label: 'Explain simply', mode: 'duo', seats: 'claude@teacher~low,astra@teacher~low', desc: 'two short, simple explanations (low effort)' },
+    names: { label: 'Name it', mode: 'council', seats: 'claude@brainstorm,astra@brainstorm,claude@product', desc: 'names, taglines and a pick' },
+    email: { label: 'Email polish', mode: 'relay', seats: 'claude@writer,astra@concise', rounds: 1, desc: 'Claude writes it, Astra makes it shorter' },
+    security: { label: 'Security pass', mode: 'critique', seats: 'claude@coder,astra@skeptic', rounds: 2, desc: 'Astra looks for risks in Claude\'s code, twice' },
+    summary: { label: 'Summary duel', mode: 'duo', seats: 'claude@concise,astra@concise', desc: 'two tight summaries side by side (pick one)' },
   };
   function runPreset(ctx, key, task) {
     const p = COLLAB_PRESETS[key];
@@ -1405,6 +1556,69 @@ function toggleFold(hostId, m) {
       Native.save(chat);
       return v === 'on' ? `${Native.partnerOf(H.agent(ctx.agentId))?.name || 'The other agent'} will judge every reply in this chat.` : 'Auto second opinions off.';
     } });
+  // One message with other settings, the chat keeps its own.
+  const sendOnce = (ctx, opts, text, label) => {
+    const agent = H.agent(ctx.agentId);
+    if (agent?.mode !== 'native') return 'Use it in a native chat.';
+    if (!text) return `Add the message: /${label} <message>`;
+    const allowed = Object.fromEntries(Object.entries(opts).filter(([k, v]) => k !== 'effort' || EFFORTS[agent.engine].includes(v)));
+    if (opts.effort && !allowed.effort) allowed.effort = agent.engine === 'claude' ? 'low' : 'minimal';
+    nextOnce.set(ctx.agentId, allowed);
+    Native.send(ctx.agentId, text).catch((err) => { nextOnce.delete(ctx.agentId); toast(err.message, { type: 'error' }); });
+  };
+  R({ name: 'astra-quick', aliases: ['quick'], area: 'Astra', args: '<message>', desc: 'Send one message with the lowest effort (fewest tokens); the chat keeps its setting',
+    run: (args, ctx) => sendOnce(ctx, { effort: 'minimal', verbosity: 'low' }, args, 'astra-quick') });
+  R({ name: 'astra-deep', aliases: ['deep'], area: 'Astra', args: '<message>', desc: 'Send one message with the most reasoning (xhigh for Astra, max for Claude)',
+    run: (args, ctx) => sendOnce(ctx, { effort: H.agent(ctx.agentId)?.engine === 'claude' ? 'max' : 'xhigh' }, args, 'astra-deep') });
+  R({ name: 'astra-web-once', aliases: ['web'], area: 'Astra', args: '<question>', desc: 'Ask Astra one question with live web search (the chat stays without web)',
+    run: (args, ctx) => (H.agent(ctx.agentId)?.engine === 'codex' ? sendOnce(ctx, { webSearch: 'live' }, args, 'astra-web-once') : 'Web search is an Astra (Codex) option: run it in an Astra chat, or /ask-astra.') });
+  R({ name: 'redo-with', area: 'Collab', args: '[agent]', desc: 'Ask your last message again to the other agent, right here (one lean turn)',
+    complete: () => natives().filter((a) => !a.dock).map((a) => ({ value: a.name.toLowerCase() })),
+    run: async (args, ctx) => {
+      const chat = Native.chatOf(ctx.agentId);
+      const last = [...(chat?.messages || [])].reverse().find((m) => m.role === 'user' && !String(m.text).startsWith('/'));
+      if (!last) return 'No message of yours to ask again.';
+      const target = (args && findAgent(args, ctx.agentId)) || partner(H.agent(ctx.agentId));
+      if (!target) return 'No other agent to ask.';
+      const t = toast(`Asking ${target.name}…`, { timeout: 60000 });
+      const r = await window.hub.askOnce({ agentId: target.id, text: last.sent || last.text, images: last.images || [], options: { lean: true } });
+      t.remove();
+      if (!r.ok) throw new Error(r.error || 'No answer');
+      chat.messages.push({ role: 'opinion', from: target.name, text: clean(r.text), at: Date.now(), ...(r.usage ? { cost: r.usage } : {}) });
+      Native.save(chat);
+      Native.refresh(ctx.agentId);
+    } });
+  R({ name: 'duo-last', area: 'Collab', desc: 'Run your last message again as a duo (both agents, side by side)',
+    run: (args, ctx) => {
+      const last = [...(Native.chatOf(ctx.agentId)?.messages || [])].reverse().find((m) => m.role === 'user' && !String(m.text).startsWith('/'));
+      if (!last) return 'No message of yours yet.';
+      go(ctx, 'duo', last.sent || last.text, defaultPair(ctx.agentId));
+    } });
+  R({ name: 'collab-persona', area: 'Collab', args: '<this-persona|-> <partner-persona|->', desc: 'Personas for this chat\'s collab seats (e.g. coder reviewer; - for none)',
+    complete: (a) => Object.keys(PERSONAS).filter((k) => k.startsWith(a.split(/\s+/).pop() || '')).map((k) => ({ value: `${a.split(/\s+/).slice(0, -1).concat(k).join(' ')} ` })),
+    run: (args, ctx) => {
+      const [h, p] = args.trim().toLowerCase().split(/\s+/);
+      const val = (x) => (!x || x === '-' || x === 'none' ? null : PERSONAS[x] ? x : undefined);
+      if (val(h) === undefined || val(p) === undefined) return `Personas: ${Object.keys(PERSONAS).join(', ')} (or - for none).`;
+      setMode(ctx.agentId, { personas: { host: val(h), partner: val(p) } });
+      return `Collab seats: ${seatsFor(ctx.agentId).map((x) => x.label).join(' × ')}.`;
+    } });
+  R({ name: 'astra-prompt', area: 'Astra', desc: 'Show the instructions + memory each agent sends with every message (and their size)',
+    run: async () => {
+      const r = await window.hub.engineDoctor();
+      if (!r.prompts?.length) return 'No chat agents.';
+      return r.prompts.map((p) => `**${p.name}** (${p.engine === 'codex' ? 'Astra' : 'Claude'} engine) · ~${fmt(p.tokens)} tokens${p.tools.length ? ` · tools: ${p.tools.join(', ')}` : ''}\n\n> ${cap(p.text || '', 1800).replace(/\n/g, '\n> ')}`).join('\n\n');
+    } });
+  // Errors that another agent can work around come with a one-click way out.
+  window.hub.onEngineEvent((ev) => {
+    if (ev.type !== 'error' || String(ev.chatId).startsWith('collab-')) return;
+    const agentId = Object.keys(H.activeChat).find((id) => H.activeChat[id] === ev.chatId);
+    const agent = H.agent(agentId);
+    if (!agent) return;
+    const other = partner(agent);
+    if (/usage limit|rate.?limit|quota|\b429\b/i.test(ev.message || '') && other) toast(`${agent.name} hit its usage limit.`, { type: 'error', timeout: 12000, action: { label: `Continue with ${other.name}`, fn: () => handoff(agentId, other.id).catch((err) => toast(err.message, { type: 'error' })) } });
+    else if (/model\b.*\b(not supported|does not exist|not found|unavailable)|unsupported model|model_not_found/i.test(ev.message || '')) toast(`${agent.name}'s model isn't available.`, { type: 'error', timeout: 12000, action: { label: 'Pick another', fn: () => Native.setDraft(agentId, '/astra-model ') } });
+  });
   R({ name: 'astra-log', area: 'Astra', args: '[lines]', desc: 'The last lines of the engine log (exit codes, errors), for troubleshooting',
     run: async (args) => {
       const dir = String(await window.hub.attachmentsDir()).replace(/[\\/]attachments[\\/]?$/, '');
@@ -1441,6 +1655,7 @@ function toggleFold(hostId, m) {
     const agent = H.agent(id);
     const targetId = agent?.mode === 'native' ? id : H.isTool(id) ? Tools.dockedAgent(id.slice(5))?.id || null : null;
     if (!targetId || !Native.hasView(targetId)) return;
+    if (e.code === 'KeyC') { const c = chipEls.get(targetId); if (c && !c.chip.hidden) { e.preventDefault(); chipMenu(targetId, c.chip); } }
     if (e.code === 'KeyD') { e.preventDefault(); const st = getMode(targetId); setMode(targetId, { mode: st.mode === 'duo' ? 'solo' : 'duo' }); toast(getMode(targetId).mode === 'duo' ? '⚇ Duo on' : 'Duo off', { timeout: 1200 }); }
     if (e.code === 'KeyM') {
       e.preventDefault();

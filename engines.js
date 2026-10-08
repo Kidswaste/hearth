@@ -324,6 +324,8 @@ function codexArgs(agent, session, options = {}) {
   let disabled = agent.chatgptApps ? CODEX_DISABLED_FEATURES.filter((f) => f !== 'apps') : CODEX_DISABLED_FEATURES;
   // File access (opt-in): Codex looks at files with its shell tool, which runs inside its OS sandbox.
   if (folder) disabled = disabled.filter((f) => f !== 'shell_tool');
+  // Features switched back on for this agent (/astra-feature): each adds its tool definitions to every message.
+  if (Array.isArray(agent.codexFeatures)) disabled = disabled.filter((f) => !agent.codexFeatures.includes(f));
   for (const feature of disabled) args.push('--disable', feature);
   const web = pick(options.webSearch, WEB_SEARCH) || pick(agent.webSearch, WEB_SEARCH) || 'disabled';
   args.push(
@@ -677,7 +679,9 @@ async function doctor(agents = []) {
   report.bridge = fs.existsSync(path.join(DATA_DIR, 'game-bridge.json'));
   report.prompts = agents.filter((a) => a.mode === 'native').map((a) => {
     const text = buildPrompt(a);
-    return { id: a.id, name: a.name, engine: a.engine, chars: text.length, tokens: Math.ceil(text.length / 4), tools: hubToolsets(a) };
+    return { id: a.id, name: a.name, engine: a.engine, chars: text.length, tokens: Math.ceil(text.length / 4), tools: hubToolsets(a), text,
+      // the command line a new chat would run (prompt text shortened), for /astra-flags
+      args: (a.engine === 'codex' ? codexArgs(a, {}, {}) : claudeArgs(a, {}, {})).map((x) => (x.length > 160 ? `${x.slice(0, 157)}…` : x)) };
   });
   return report;
 }
@@ -726,7 +730,7 @@ function discoverConnectors() {
 
 module.exports = {
   send, stop, stopAll, login, status, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
-  doctor, EFFORTS,
+  doctor, EFFORTS, CODEX_DISABLED_FEATURES,
   // for tests (dev/astra-engine-test.js)
   _test: { codexArgs, claudeArgs, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, LOST_SESSION },
 };

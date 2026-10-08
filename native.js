@@ -659,6 +659,8 @@ const Native = (() => {
       if (p.text || extras.thinking) chat.messages.push({ role: 'assistant', text: visibleText(p.text), at, stopped: true, ...extras });
       if (event.session?.id) chat.session = event.session;
     } else {
+      // what it wrote before failing stays (marked stopped), then the error
+      if (visibleText(p.text)) chat.messages.push({ role: 'assistant', text: visibleText(p.text), at, stopped: true, ...extras });
       chat.messages.push({ role: 'error', text: event.message, needsLogin: event.needsLogin, at });
       replyText = `Error: ${event.message}`;
     }
@@ -909,7 +911,7 @@ const Native = (() => {
     return { ok: false, error: `Unknown tool ${tool}` };
   });
   // The 👁 button: Astra judges the last reply (with a screenshot for docked tools); its answer joins the chat.
-  async function secondOpinion(agentId, to = null) {
+  async function secondOpinion(agentId, to = null, { screenshot = null } = {}) {
     const chat = chats.get(H.activeChat[agentId]);
     const agent = H.agent(agentId);
     if (!chat || pending.has(chat.id)) return;
@@ -920,7 +922,7 @@ const Native = (() => {
     const offered = replyMsg?.suggest?.length ? `\n(It offered these next steps as buttons: ${replyMsg.suggest.join(' | ')})` : '';
     const lastReply = `${replyMsg?.text || ''}${asked}${offered}`;
     const t = toast(`Asking ${judge?.name || 'Astra'} for a second opinion…`, { timeout: 60000 });
-    const r = await askAstra(agentId, `The user asked ${agent.name}: "${lastUser.slice(0, 2000)}"\n\n${agent.name} answered: "${lastReply.slice(0, 4000)}"\n\nGive your second opinion on the result.`, { screenshot: Boolean(agent.dock), to: judge?.id });
+    const r = await askAstra(agentId, `The user asked ${agent.name}: "${lastUser.slice(0, 2000)}"\n\n${agent.name} answered: "${lastReply.slice(0, 4000)}"\n\nGive your second opinion on the result.`, { screenshot: screenshot ?? Boolean(agent.dock), to: judge?.id });
     t?.remove();
     if (!r.ok) { toast(r.error || 'No answer', { type: 'error' }); return; }
     chat.messages.push({ role: 'opinion', from: r.from, text: r.text, at: Date.now(), ...(r.usage ? { cost: r.usage } : {}) }); // not "usage": that one drives the context meter

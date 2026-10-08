@@ -50,6 +50,9 @@ function turn(agent, text, session = {}, options = {}, onStart) {
   ok('an effort Codex does not know is dropped instead of failing');
   assert(T.codexArgs(astra, {}, { effort: 'minimal', webSearch: 'cached' }).includes('model_reasoning_effort="low"'));
   ok('minimal effort with web search on becomes low (they don\'t mix)');
+  const feat = T.codexArgs({ ...astra, codexFeatures: ['view_image'] }, {}, {});
+  assert(!feat.includes('view_image') && feat.includes('image_generation'));
+  ok('a Codex feature switched back on per agent is no longer disabled (the others stay off)');
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), "astra o'folder-"));
   const ro = T.codexArgs({ ...astra, workspace: folder }, {}, {});
   assert(!ro.includes('shell_tool') && ro.includes('sandbox_mode="read-only"') && !ro.some((x) => /writable_roots/.test(x)));

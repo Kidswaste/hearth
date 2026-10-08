@@ -87,6 +87,27 @@ await sleep(500);
 await Commands.tryRun('/handoff back', A.id);
 await sleep(500);
 out.handoffBack = Native.chatOf(C.id)?.id === before;
+// command line, features, clone, ask with persona + screenshot, partial failure, thinking in collab parts
+await Commands.tryRun('/astra-flags astra', A.id);
+out.flags = /--ignore-user-config/.test(lastNote(A.id)) && /--disable/.test(lastNote(A.id));
+await Commands.tryRun('/astra-feature view_image on', A.id);
+await sleep(500);
+out.feature = H.agent(A.id).codexFeatures;
+await Commands.tryRun('/astra-feature view_image off', A.id);
+await Commands.tryRun('/astra-clone reviewer', A.id);
+await sleep(600);
+out.clone = H.agents().filter((a) => /Reviewer/.test(a.name)).map((a) => a.name);
+activate(A.id);
+await sleep(200);
+await Commands.tryRun('/ask-claude --shot @skeptic is this ok', A.id);
+const ask = Native.chatOf(A.id).messages.at(-1);
+out.askShot = ask?.role === 'opinion' && /image/.test(ask.text) ? 'has image' : ask?.text.slice(0, 60);
+await Native.send(A.id, 'PARTIALFAIL now');
+await until(() => Native.chatOf(A.id).messages.at(-1)?.role === 'error');
+out.partial = Native.chatOf(A.id).messages.slice(-2).map((m) => `${m.role}:${m.stopped ? 'stopped:' : ''}${m.text.slice(0, 40)}`);
+await Commands.tryRun('/duo thinking check', A.id);
+const th = await until(() => { const x = [...Native.chatOf(A.id).messages].reverse().find((y) => y.role === 'collab'); return x?.status === 'done' && x; });
+out.collabThinking = th?.parts.map((p) => Boolean(p.thinking));
 // rail star
 out.railStar = [...document.querySelectorAll('#agent-buttons .agent-btn.astra-btn')].map((b) => b.dataset.id);
 // the agent editor shows Astra's options
