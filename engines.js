@@ -20,6 +20,23 @@ const CODEX_DISABLED_FEATURES = [
   'hooks', 'image_generation', 'shell_snapshot', 'in_app_browser', 'workspace_dependencies', 'remote_plugin',
 ];
 
+// Reasoning efforts each engine accepts (anything else is dropped rather than failing the run).
+const EFFORTS = {
+  claude: ['low', 'medium', 'high', 'xhigh', 'max'],
+  codex: ['minimal', 'low', 'medium', 'high', 'xhigh'],
+};
+const WEB_SEARCH = ['disabled', 'cached', 'live'];
+const SUMMARIES = ['auto', 'concise', 'detailed', 'none'];
+const VERBOSITY = ['low', 'medium', 'high'];
+// A value for Codex's "-c key=value" (TOML): a JSON string is a valid TOML basic string, and unlike
+// '…' literals it survives paths with apostrophes.
+const tomlStr = (s) => JSON.stringify(String(s));
+const pick = (value, allowed) => (allowed.includes(value) ? value : null);
+// A run that prints nothing for this long is considered hung (a question to the user may wait 45 min).
+const IDLE_MS = 50 * 60000;
+// A single JSONL line bigger than this is dropped instead of growing memory without end.
+const MAX_LINE = 64 * 1024 * 1024;
+
 const ENGINES = {
   claude: { label: 'Claude Code', account: 'Claude Pro', loginArgs: ['auth', 'login'] },
   codex: { label: 'Codex', account: 'ChatGPT Plus', loginArgs: ['login'] },
@@ -96,15 +113,20 @@ const FILE_TOOLS = ['Read', 'Edit', 'Write', 'Glob', 'Grep'];
 
 // Forgeheart live-game tools: a stdio MCP server (run with the hub's own Electron as Node) that
 // forwards to the debug game through gamebridge.js.
-// Hub tool sets an agent can be given (each one a stdio MCP server talking to the hub).
+// Hub tool sets an agent can be given (each one a stdio MCP server talking to the hub). Claude gets them
+// with --mcp-config, Codex (Astra) through "-c mcp_servers.<name>…", so a director can run on either engine.
 const HUB_TOOLSETS = {
   gameTools: { server: 'forgeheart', script: 'forge-game-mcp.js' },
   videoTools: { server: 'video', script: 'video-mcp.js' },
   threeTools: { server: 'three', script: 'three-mcp.js' },
-  // Ask the user questions in the chat, get a second opinion from Astra. On for every Claude agent unless switched off.
+  // Ask the user questions in the chat, get a second opinion from the other engine. On for every Claude agent
+  // unless switched off; opt-in for Astra (it adds tool definitions to every Codex request).
   chatTools: { server: 'chat', script: 'chat-mcp.js' },
 };
-const hubToolsets = (agent) => (agent.engine === 'claude' ? Object.keys(HUB_TOOLSETS).filter((k) => (k === 'chatTools' ? agent.chatTools !== false : agent[k])) : []);
+const hubToolsets = (agent) => Object.keys(HUB_TOOLSETS).filter((k) => {
+  if (k === 'chatTools') return agent.engine === 'claude' ? agent.chatTools !== false : agent.chatTools === true;
+  return Boolean(agent[k]);
+});
 const gameTools = (agent) => hubToolsets(agent).includes('gameTools');
 function hubMcpConfig(agent) {
   const mcpServers = {};
@@ -117,19 +139,47 @@ function hubMcpConfig(agent) {
   return file;
 }
 
-function fileFolder(agent) {
-  return agent.engine === 'claude' && agent.workspace && fs.existsSync(agent.workspace) ? agent.workspace : null;
+// Codex MCP servers for the hub tool sets, as config overrides (nothing is written to the user's config).
+function codexMcpArgs(agent) {
+  const args = [];
+  for (const key of hubToolsets(agent)) {
+    const { server, script } = HUB_TOOLSETS[key];
+    const p = `mcp_servers.${server}`;
+    args.push(
+      '-c', `${p}.command=${tomlStr(process.execPath)}`,
+      '-c', `${p}.args=[${tomlStr(path.join(__dirname, 'mcp', script))}]`,
+      '-c', `${p}.env={ELECTRON_RUN_AS_NODE="1",HUB_AGENT_ID=${tomlStr(agent.id)}}`,
+      // a question to the user (chat_ask) or a render can take a long time
+      '-c', `${p}.tool_timeout_sec=2700`,
+      '-c', `${p}.startup_timeout_sec=30`,
+    );
+  }
+  return args;
 }
+
+// The opt-in project folder (both engines). Claude edits it with its file tools; Astra looks with read-only
+// shell commands inside Codex's sandbox, and edits only when its file mode is "edit".
+function fileFolder(agent) {
+  return agent.workspace && fs.existsSync(agent.workspace) ? agent.workspace : null;
+}
+const partnerName = (agent) => (agent.engine === 'codex' ? 'Claude' : 'Astra');
 
 function buildPrompt(agent) {
   const usesApps = agent.engine === 'claude' ? enabledConnectors(agent).length > 0 : Boolean(agent.chatgptApps);
   const folder = fileFolder(agent);
+  const web = agent.engine === 'codex' && WEB_SEARCH.includes(agent.webSearch) && agent.webSearch !== 'disabled';
   const parts = [
     agent.systemPrompt
       || `You are ${agent.name}, chatting with the user in their personal desktop app. `
         + 'Answer conversationally and directly, using Markdown when it helps.',
   ];
-  if (folder) {
+  if (folder && agent.engine === 'codex') {
+    parts.push(agent.codexFiles === 'edit'
+      ? `You can read and edit files in the project folder ${folder}: look with short read-only commands (ls, cat, rg, sed -n) and edit with apply_patch. `
+        + 'Commands run in a sandbox with no network; never run builds, installs, deletes or anything outside that folder. Read before you edit, make focused changes, and list the files you changed at the end.'
+      : `You can read files in the project folder ${folder} with short read-only commands (ls, cat, rg, sed -n). Stay inside that folder. `
+        + 'You cannot change files: describe the edits instead, and tell the user what to run or test themselves.');
+  } else if (folder) {
     parts.push(`You can read and edit files in the project folder ${folder} with your file tools `
       + '(Read, Edit, Write, Glob, Grep). Read before you edit, make focused changes, and list the files you changed '
       + 'at the end. You cannot run commands, so tell the user what to run or test themselves.');
@@ -154,8 +204,10 @@ function buildPrompt(agent) {
       + 'Keep replies short and concrete.');
   }
   if (sets.includes('chatTools')) {
-    parts.push('You can ask the user a question with chat_ask (give options when there are clear choices) when a decision is really theirs; for visual work you can get a second opinion from Astra with chat_second_opinion. '
+    parts.push(`You can ask the user a question with chat_ask (give options when there are clear choices) when a decision is really theirs; for visual work you can get a second opinion from ${partnerName(agent)} with chat_second_opinion. `
       + 'At the end of a reply, when it helps, offer up to 3 short next steps the user might want, each as <suggest>…</suggest> (they become buttons; keep each under 8 words).');
+  } else if (agent.suggestNext) {
+    parts.push('At the end of a reply, when it helps, offer up to 3 short next steps the user might want, each as <suggest>…</suggest> (they become buttons; keep each under 8 words).');
   }
   // Directors (agents docked in a tool) check their own work unless switched off.
   if (agent.selfReview ?? Boolean(agent.dock)) parts.push('Before you finish, check your result against what was asked (for visual work, look at a fresh screenshot). Fix real problems you find, then mention in one line what you checked.');
@@ -169,7 +221,8 @@ function buildPrompt(agent) {
       + 'Sketches can have layers (like Photoshop / After Effects): when the user asks to add, remove, time, fade, move or blend a layer, use the layer tools (three_add_layer, three_update_layer, three_remove_layer, three_layers); upper layers must be transparent. For changes over time ("fade in on the drop", "zoom during the build") use three_keyframes or three_animate presets. You can read and edit the timeline (three_timeline, three_timeline_edit) and the notes the user pins on moments (three_notes: they come with screenshots; mark them done when handled). Looks like ASCII, datamosh, found footage/VHS, glitch, CRT, pixelate, halftone, film, kaleidoscope, edge glow, thermal, duotone or glow are filter layers (three_add_layer with that template) placed above what they should affect. The user can give you reference files (pictures, logos, clips, models, sounds): three_references lists them and adds pictures they attach here; use them in code with refTexture(name) or refs.name. '
       + 'If three_get_code reports unsavedSliders, the user tuned those by hand: keep their values.');
   }
-  if (!folder && !usesApps && !sets.length) parts.push('You have no tools: never try to run commands, read files or browse the web.');
+  if (web) parts.push('You can search the web when the answer depends on recent or specific facts; say briefly where facts come from.');
+  if (!folder && !usesApps && !sets.length) parts.push(web ? 'Apart from web search you have no tools: never try to run commands or read files.' : 'You have no tools: never try to run commands, read files or browse the web.');
   const memory = getMemory();
   const notes = [memory.shared, memory.agents?.[agent.id]].map((m) => (m || '').trim()).filter(Boolean);
   if (notes.length) {
@@ -230,7 +283,9 @@ function claudeArgs(agent, session, options = {}) {
   ];
   const model = options.model || agent.model;
   if (model) args.push('--model', model);
-  if (agent.effort) args.push('--effort', agent.effort);
+  // a chat can pick its own effort (Astra's /astra-effort works for Claude chats too)
+  const effort = pick(options.effort, EFFORTS.claude) || agent.effort;
+  if (effort) args.push('--effort', effort);
   // Readable summaries of its thinking, streamed while it works (shown folded in the chat).
   if (agent.showThinking !== false) args.push('--thinking-display', 'summarized');
   if (session.id) args.push('--resume', session.id);
@@ -238,23 +293,60 @@ function claudeArgs(agent, session, options = {}) {
   return args;
 }
 
+// The instructions file is named after its content, so two runs of the same agent with different personas
+// (a council, a debate) never overwrite each other's prompt.
+function promptFile(agent) {
+  const text = buildPrompt(agent);
+  const file = path.join(PROMPTS_DIR, `${agent.id}-${crypto.createHash('sha1').update(text).digest('hex').slice(0, 10)}.md`);
+  if (!fs.existsSync(file)) fs.writeFileSync(file, text);
+  else { try { const now = new Date(); fs.utimesSync(file, now, now); } catch { /* only keeps it from being pruned */ } }
+  return file;
+}
+// Prompt files nobody used for a week (old personas, old memory) are cleared at start.
+function prunePrompts() {
+  try {
+    const cutoff = Date.now() - 7 * 86400000;
+    for (const name of fs.readdirSync(PROMPTS_DIR)) {
+      const file = path.join(PROMPTS_DIR, name);
+      if (fs.statSync(file).mtimeMs < cutoff) fs.rmSync(file, { force: true });
+    }
+  } catch { /* best-effort */ }
+}
+prunePrompts();
+
 function codexArgs(agent, session, options = {}) {
-  const promptFile = path.join(PROMPTS_DIR, `${agent.id}.md`);
-  fs.writeFileSync(promptFile, buildPrompt(agent));
+  const file = promptFile(agent);
+  const folder = fileFolder(agent);
+  const edit = Boolean(folder) && agent.codexFiles === 'edit';
   const args = ['exec'];
   if (session.id) args.push('resume', session.id);
   args.push('--json', '--skip-git-repo-check', '--ignore-user-config', '--ignore-rules');
-  const disabled = agent.chatgptApps ? CODEX_DISABLED_FEATURES.filter((f) => f !== 'apps') : CODEX_DISABLED_FEATURES;
+  let disabled = agent.chatgptApps ? CODEX_DISABLED_FEATURES.filter((f) => f !== 'apps') : CODEX_DISABLED_FEATURES;
+  // File access (opt-in): Codex looks at files with its shell tool, which runs inside its OS sandbox.
+  if (folder) disabled = disabled.filter((f) => f !== 'shell_tool');
   for (const feature of disabled) args.push('--disable', feature);
+  const web = pick(options.webSearch, WEB_SEARCH) || pick(agent.webSearch, WEB_SEARCH) || 'disabled';
   args.push(
-    '-c', `model_instructions_file='${promptFile}'`,
+    '-c', `model_instructions_file=${tomlStr(file)}`,
     '-c', 'project_doc_max_bytes=0',
-    '-c', 'web_search="disabled"',
+    '-c', `web_search="${web}"`,
   );
-  if (agent.effort) args.push('-c', `model_reasoning_effort="${agent.effort}"`);
+  if (folder) {
+    // resumed runs get the sandbox again (-s only applies to new sessions); writes only inside the folder, no network
+    args.push('-c', `sandbox_mode="${edit ? 'workspace-write' : 'read-only'}"`, '-c', 'approval_policy="never"');
+    if (edit) args.push('-c', `sandbox_workspace_write.writable_roots=[${tomlStr(folder)}]`, '-c', 'sandbox_workspace_write.network_access=false');
+  }
+  const effort = pick(options.effort, EFFORTS.codex) || pick(agent.effort, EFFORTS.codex);
+  if (effort) args.push('-c', `model_reasoning_effort="${effort}"`);
+  // Thinking summaries: switching them off saves output tokens; a chosen style is opt-in.
+  const summary = agent.showThinking === false ? 'none' : pick(agent.reasoningSummary, SUMMARIES);
+  if (summary) args.push('-c', `model_reasoning_summary="${summary}"`);
+  const verbosity = pick(options.verbosity, VERBOSITY) || pick(agent.verbosity, VERBOSITY);
+  if (verbosity) args.push('-c', `model_verbosity="${verbosity}"`);
+  args.push(...codexMcpArgs(agent));
   const model = options.model || agent.model;
   if (model) args.push('-m', model);
-  if (!session.id) args.push('-s', 'read-only', '-C', WORKSPACE);
+  if (!session.id) args.push('-s', edit ? 'workspace-write' : 'read-only', '-C', WORKSPACE);
   for (const image of options.images || []) args.push('-i', image);
   args.push('-');
   return args;
@@ -294,122 +386,227 @@ function claudeParser(session) {
   };
 }
 
-function codexParser(session) {
+// Codex `exec --json` events: thread.started, turn.started, item.started / item.updated / item.completed
+// (agent_message, reasoning, command_execution, file_change, mcp_tool_call, web_search, todo_list, error),
+// turn.completed (usage), turn.failed, error.
+function codexParser(session, agent = {}) {
   let text = '';
+  const seen = new Map(); // agent_message item id -> text already streamed (item.updated sends the text so far)
+  const short = (s, n = 60) => { const t = String(s || '').replace(/\s+/g, ' ').trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
+  const messageText = (item) => {
+    const shown = seen.get(item.id) || '';
+    const full = String(item.text || '');
+    if (!full.startsWith(shown)) return null; // rewritten mid-way: wait for the completed item
+    const add = full.slice(shown.length);
+    if (!add) return null;
+    const lead = !shown && text ? '\n\n' : '';
+    seen.set(item.id, full);
+    text += lead + add;
+    return { type: 'delta', text: lead + add };
+  };
   return (msg) => {
+    const item = msg.item || {};
     if (msg.type === 'thread.started') session.id = msg.thread_id;
-    if (msg.type === 'item.completed' && msg.item?.type === 'agent_message') {
-      const part = (text ? '\n\n' : '') + msg.item.text;
-      text += part;
-      return { type: 'delta', text: part };
+    if (item.type === 'agent_message' && (msg.type === 'item.updated' || msg.type === 'item.completed')) {
+      if (!item.id) { // older Codex: only completed messages, no ids
+        const part = (text ? '\n\n' : '') + (item.text || '');
+        text += part;
+        return { type: 'delta', text: part };
+      }
+      return messageText(item);
     }
-    if (msg.type === 'item.completed' && msg.item?.type === 'reasoning' && msg.item.text) {
-      return { type: 'thinking', text: `${msg.item.text}\n\n` };
+    if (msg.type === 'item.completed' && item.type === 'reasoning' && item.text) {
+      return agent.showThinking === false ? null : { type: 'thinking', text: `${item.text}\n\n` };
     }
-    if (msg.type === 'item.started' && /tool_call/.test(msg.item?.type || '')) {
-      return { type: 'tool', name: [msg.item.server, msg.item.tool].filter(Boolean).join(' · ') || msg.item.type };
+    if (msg.type === 'item.started' && /tool_call/.test(item.type || '')) {
+      return { type: 'tool', name: [item.server, item.tool].filter(Boolean).join(' · ') || item.type };
     }
+    if (msg.type === 'item.started' && item.type === 'command_execution') return { type: 'tool', name: `Shell · ${short(item.command)}` };
+    if (msg.type === 'item.started' && item.type === 'web_search') return { type: 'tool', name: `Web search · ${short(item.query, 50)}` };
+    if (msg.type === 'item.completed' && item.type === 'file_change') {
+      const files = (item.changes || []).map((c) => path.basename(c.path || '')).filter(Boolean);
+      return { type: 'tool', name: `${item.status === 'failed' ? 'Edit failed' : 'Edited'} · ${short(files.join(', ') || 'files')}` };
+    }
+    // Its own plan (todo list) becomes the chat's live checklist.
+    if ((msg.type === 'item.started' || msg.type === 'item.updated' || msg.type === 'item.completed') && item.type === 'todo_list' && Array.isArray(item.items)) {
+      return { type: 'progress', steps: item.items.slice(0, 12).map((s) => ({ text: short(s.text, 160), status: s.completed ? 'done' : 'todo' })) };
+    }
+    // Non-fatal warnings (an item of type error) go into the thinking fold, not the reply.
+    if (msg.type === 'item.completed' && item.type === 'error' && item.message) return { type: 'thinking', text: `⚠ ${item.message}\n\n` };
     if (msg.type === 'turn.completed') {
-      // Codex reports running totals for the whole thread; show what this turn added.
+      // Codex has reported running totals for the whole thread (shown here as what this turn added); a
+      // smaller number than last time means this version reports per turn, so it is used as is.
       const u = msg.usage || {};
-      const totals = { input: u.input_tokens || 0, output: u.output_tokens || 0 };
-      const prev = session.totals || { input: 0, output: 0 };
-      session.totals = totals;
-      return {
-        type: 'done',
-        text,
-        usage: { input: Math.max(totals.input - prev.input, 0), output: Math.max(totals.output - prev.output, 0) },
-      };
+      const totals = { input: u.input_tokens || 0, output: u.output_tokens || 0, cached: u.cached_input_tokens || 0, reasoning: u.reasoning_output_tokens || 0 };
+      const prev = session.totals || { input: 0, output: 0, cached: 0, reasoning: 0 };
+      const perTurn = totals.input < prev.input || totals.output < prev.output;
+      const delta = (k) => (perTurn ? totals[k] : Math.max(totals[k] - (prev[k] || 0), 0));
+      session.totals = perTurn ? Object.fromEntries(Object.keys(totals).map((k) => [k, (prev[k] || 0) + totals[k]])) : totals;
+      const usage = { input: delta('input'), output: delta('output') };
+      if (delta('cached')) usage.cached = delta('cached');
+      if (delta('reasoning')) usage.reasoning = delta('reasoning');
+      return { type: 'done', text, usage };
     }
     if (msg.type === 'turn.failed') return { type: 'error', message: msg.error?.message || 'Codex turn failed' };
-    if (msg.type === 'error') return { type: 'error', message: msg.message || 'Codex error' };
+    if (msg.type === 'error') {
+      // "Reconnecting… 2/5" and similar retries are progress, not the end of the turn
+      if (/reconnect|retrying|retry \d/i.test(msg.message || '')) return { type: 'thinking', text: `⚠ ${msg.message}\n\n` };
+      return { type: 'error', message: msg.message || 'Codex error' };
+    }
     return null;
   };
 }
 
+// Known failures with what to do about them (shown under the error in the chat).
+const FIXES = [
+  [/model\b.*\b(not supported|does not exist|not found|unavailable|unknown)|unsupported model|invalid model|model_not_found/i,
+    (e) => `That model isn't available on your ${ENGINES[e].account} account. Pick another one in the chat header's Model menu${e === 'codex' ? ' or with /astra-model' : ''}.`],
+  [/usage limit|rate.?limit|too many requests|\b429\b|quota/i,
+    (e) => `Your plan's usage limit was reached for now. Wait for it to reset, or use a lighter model / lower effort${e === 'codex' ? ' (/astra-model, /astra-effort low)' : ''}.`],
+  [/unexpected argument|unrecognized (option|argument)|unknown (option|flag|argument)|invalid value for|found argument .* which wasn't expected/i,
+    (e) => `This ${ENGINES[e].label} version doesn't know one of Hearth's options. Update the ${e === 'codex' ? 'Codex' : 'Claude'} app, then run /astra-doctor.`],
+  [/ENOENT|EACCES|EPERM|spawn /i,
+    (e) => `Hearth couldn't start ${ENGINES[e].label}. Check its path in Settings → Engines, or run /astra-doctor.`],
+  [/ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|network|stream disconnected|connection (closed|reset)|getaddrinfo/i,
+    () => 'Network problem: check the internet connection (or VPN / proxy), then press Retry.'],
+  [/context (window|length)|maximum context|too many tokens|prompt is too long|input too long/i,
+    () => 'The conversation is too long for the model: compact it (🗜 in the chat menu) or start a new chat from a summary.'],
+  [/sandbox|landlock|seatbelt|seccomp/i,
+    () => 'Codex\'s sandbox refused something. File access in Astra\'s settings decides what it may read or change (/astra-files).'],
+];
+
 function friendlyError(engine, message) {
-  if (/not logged in|please run \/login|codex login|unauthori[sz]ed|\b401\b/i.test(message)) {
-    return { message: `${ENGINES[engine].label} isn't signed in to your ${ENGINES[engine].account} account.`, needsLogin: true };
+  if (/not logged in|please run \/login|codex login|unauthori[sz]ed|\b401\b|sign in again|token (expired|is invalid)|refresh token/i.test(message)) {
+    return { message: `${ENGINES[engine].label} isn't signed in to your ${ENGINES[engine].account} account.`, needsLogin: true, fix: 'Press the sign-in button below (or run /astra-login), finish in the window that opens, then Retry.' };
   }
-  return { message };
+  const hit = FIXES.find(([re]) => re.test(message));
+  if (!hit) return { message };
+  const fix = hit[1](engine);
+  return { message: `${message}\n\nFix: ${fix}`, fix };
 }
+
+// The engine has no saved session under that id anymore (cleared, other machine, other version).
+const LOST_SESSION = /no (saved |matching )?(conversation|session|thread|rollout)s? (was )?found|(thread|session|conversation|rollout) (not found|does not exist)|could not (find|resume)|failed to (resume|load) (the )?(session|thread|rollout|conversation)/i;
 
 function send({ agent, chatId, session, text, options = {} }, emit) {
   const engine = agent.engine;
+  // A per-run persona replaces the agent's own instructions; "lean" runs (collaborations, quick asks) drop
+  // the hub tool sets and file tools so they cost no more than a plain chat turn.
+  if (options.persona) agent = { ...agent, systemPrompt: String(options.persona).slice(0, 4000) };
+  if (options.lean) agent = { ...agent, chatTools: false, threeTools: false, videoTools: false, gameTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false };
+  const original = text;
   if (engine === 'claude' && options.images?.length) {
     text += `\n\n[Attached image${options.images.length > 1 ? 's' : ''}: open with your Read tool before answering]\n${options.images.join('\n')}`;
   }
   const bin = LOCATE[engine]?.();
   if (!bin) {
-    emit({ type: 'error', message: `Couldn't find ${ENGINES[engine]?.label || engine} on this PC.` });
+    emit({ type: 'error', message: `Couldn't find ${ENGINES[engine]?.label || engine} on this ${IS_MAC ? 'Mac' : 'PC'}.\n\nFix: install the ${engine === 'codex' ? 'Codex (ChatGPT)' : 'Claude'} desktop app, or set its path in Settings → Engines. /astra-doctor shows what Hearth looked for.` });
     return;
   }
-  if (engine === 'claude' && agent.workspace && !fileFolder(agent)) {
+  if (agent.workspace && !fileFolder(agent)) {
     emit({ type: 'error', message: `The file access folder ${agent.workspace} doesn't exist anymore. Change it in the agent's settings.` });
     return;
   }
   // Sessions always live in the hub's own workspace so chats resume even after the folder changes;
-  // the project folder is reached through --add-dir.
+  // the project folder is reached through --add-dir (Claude) or the sandbox's writable roots (Codex).
   const state = { ...session };
   const args = engine === 'claude' ? claudeArgs(agent, state, options) : codexArgs(agent, state, options);
-  const parse = engine === 'claude' ? claudeParser(state) : codexParser(state);
+  const parse = engine === 'claude' ? claudeParser(state) : codexParser(state, agent);
 
   // MCP_TOOL_TIMEOUT: a question to the user (chat_ask) can wait a long time for the answer.
   const child = spawn(bin, args, { cwd: WORKSPACE, windowsHide: true, env: { ...process.env, MCP_TOOL_TIMEOUT: String(45 * 60000) } });
   running.set(chatId, child);
+  child.stdin.on('error', () => { /* the engine quit before reading its input; close reports why */ });
   child.stdin.end(text);
 
   let finished = false;
+  let streamed = false;
   let buffer = '';
   let stderr = '';
+  let idle = null;
+  const touch = () => {
+    clearTimeout(idle);
+    idle = setTimeout(() => { child.hubIdle = true; log(`${engine} ${chatId} idle for ${IDLE_MS / 60000} min, stopping`); child.kill(); }, IDLE_MS);
+  };
+  touch();
   const finish = (event) => {
     if (finished) return;
     finished = true;
+    clearTimeout(idle);
+    // A chat whose engine session is gone continues in a fresh one, with the conversation sent as context.
+    if (event.type === 'error' && session.id && !streamed && options.fallbackText && LOST_SESSION.test(`${event.message}\n${stderr}`)) {
+      log(`${engine} ${chatId} session ${session.id} lost, starting fresh with context`);
+      if (running.get(chatId) === child) running.delete(chatId);
+      try { child.kill(); } catch { /* already gone */ }
+      emit({ type: 'thinking', text: `⚠ The earlier ${ENGINES[engine].label} session couldn't be resumed, so this continues in a new one with the conversation as context.\n\n` });
+      send({ agent, chatId, session: {}, text: options.fallbackText, options: { ...options, fallbackText: undefined, persona: undefined, lean: undefined } }, emit);
+      return;
+    }
     if (event.type === 'error') Object.assign(event, friendlyError(engine, event.message));
     if (event.type === 'done') { try { addUsage(agent.id, event.usage); } catch { /* usage stats are best-effort */ } }
     emit({ ...event, session: state });
   };
+  const handleLine = (raw) => {
+    const line = raw.trim();
+    if (!line.startsWith('{')) return;
+    let event;
+    try { event = parse(JSON.parse(line)); } catch { return; }
+    if (!event) return;
+    if (STREAM_EVENTS.has(event.type)) { if (event.type === 'delta') streamed = true; if (!finished) emit(event); } else finish(event);
+  };
 
   child.stdout.on('data', (chunk) => {
+    touch();
     buffer += chunk;
     let nl;
     while ((nl = buffer.indexOf('\n')) >= 0) {
-      const line = buffer.slice(0, nl).trim();
+      const line = buffer.slice(0, nl);
       buffer = buffer.slice(nl + 1);
-      if (!line.startsWith('{')) continue;
-      let event;
-      try { event = parse(JSON.parse(line)); } catch { continue; }
-      if (!event) continue;
-      if (event.type === 'delta' || event.type === 'tool' || event.type === 'thinking') emit(event);
-      else finish(event);
+      handleLine(line);
     }
+    if (buffer.length > MAX_LINE) { log(`${engine} ${chatId} dropped an oversized line (${buffer.length} bytes)`); buffer = ''; }
   });
-  child.stderr.on('data', (chunk) => { stderr = (stderr + chunk).slice(-2000); });
+  child.stderr.on('data', (chunk) => { touch(); stderr = (stderr + chunk).slice(-4000); });
   child.on('error', (err) => finish({ type: 'error', message: err.message }));
   child.on('close', (code, signal) => {
-    running.delete(chatId);
+    if (running.get(chatId) === child) running.delete(chatId);
+    if (buffer.trim()) { handleLine(buffer); buffer = ''; } // the last line may come without a newline
     log(`${engine} ${chatId} exit=${code} signal=${signal} finished=${finished} stderr=${JSON.stringify(stderr.slice(-400))}`);
-    if (code === null) finish({ type: 'stopped' });
-    else finish({ type: 'error', message: stderr.trim().split('\n').pop() || `${ENGINES[engine].label} exited (${code})` });
+    if (child.hubIdle) finish({ type: 'error', message: `${ENGINES[engine].label} printed nothing for ${IDLE_MS / 60000} minutes, so Hearth stopped it. Press Retry.` });
+    else if (code === null || child.hubStopped) finish({ type: 'stopped' });
+    else finish({ type: 'error', message: lastErrorLine(stderr) || `${ENGINES[engine].label} exited (${code})` });
   });
 }
+// Events that stream into the live reply (everything else ends it).
+const STREAM_EVENTS = new Set(['delta', 'tool', 'thinking', 'progress']);
+// The most telling stderr line: an "Error:" line when there is one, else the last line.
+function lastErrorLine(stderr) {
+  const lines = stderr.trim().split('\n').map((l) => l.trim()).filter(Boolean);
+  return [...lines].reverse().find((l) => /error/i.test(l)) || lines.pop() || '';
+}
 
-// One question, one answer, no saved chat: used for second opinions (Astra looking at a screenshot).
-function once({ agent, text, images = [] }) {
+// One question, one answer, no saved chat: second opinions, quick asks and collaborations that don't stream.
+// options: { model, effort, persona, lean, webSearch } as for send(); timeoutMs stops a run that hangs.
+function once({ agent, text, images = [], options = {}, timeoutMs = 8 * 60000 }) {
   return new Promise((resolve) => {
     const chatId = `once-${crypto.randomUUID()}`;
     let out = '';
-    send({ agent: { ...agent, chatTools: false }, chatId, session: {}, text, options: { images } }, (event) => {
+    const timer = setTimeout(() => { stop(chatId); resolve({ ok: false, error: `No answer after ${Math.round(timeoutMs / 60000)} minutes.` }); }, timeoutMs);
+    send({ agent: { ...agent, chatTools: false }, chatId, session: {}, text, options: { ...options, images } }, (event) => {
       if (event.type === 'delta') out += event.text;
-      if (event.type === 'done') resolve({ ok: true, text: event.text || out });
-      if (event.type === 'error' || event.type === 'stopped') resolve({ ok: false, error: event.message || 'stopped' });
+      if (event.type === 'done') { clearTimeout(timer); resolve({ ok: true, text: event.text || out, usage: event.usage }); }
+      if (event.type === 'error' || event.type === 'stopped') { clearTimeout(timer); resolve({ ok: false, error: event.message || 'stopped' }); }
     });
   });
 }
 
 function stop(chatId) {
   log(`stop requested ${chatId}`);
-  running.get(chatId)?.kill();
+  const child = running.get(chatId);
+  if (!child) return false;
+  child.hubStopped = true; // an engine that exits cleanly on SIGTERM still counts as stopped, not failed
+  child.kill();
+  return true;
 }
 
 function stopAll() {
@@ -425,6 +622,43 @@ function login(engine) {
   // On Windows a detached console program gets its own visible console window.
   spawn(bin, ENGINES[engine].loginArgs, { detached: true, stdio: 'ignore', windowsHide: false }).unref();
   return true;
+}
+
+// Runs a short command of an engine (version, login status) and returns its output; never throws.
+function quick(bin, args, ms = 10000) {
+  return new Promise((resolve) => {
+    let out = '';
+    let child;
+    try { child = spawn(bin, args, { cwd: WORKSPACE, windowsHide: true }); } catch (err) { resolve({ code: -1, out: err.message }); return; }
+    const timer = setTimeout(() => { child.kill(); resolve({ code: -1, out: `${out}\n(timed out)`.trim() }); }, ms);
+    child.stdout.on('data', (c) => { out += c; });
+    child.stderr.on('data', (c) => { out += c; });
+    child.on('error', (err) => { clearTimeout(timer); resolve({ code: -1, out: err.message }); });
+    child.on('close', (code) => { clearTimeout(timer); resolve({ code, out: out.trim().slice(0, 2000) }); });
+  });
+}
+
+// Diagnostics for /astra-doctor: where each engine was found, its version and (Codex) whether it's signed in.
+async function doctor() {
+  const report = {};
+  for (const engine of Object.keys(ENGINES)) {
+    const bin = LOCATE[engine]();
+    const from = !bin ? null : given(engine) ? 'Settings → Engines' : findOnPath(engine) === bin ? 'PATH' : 'desktop app';
+    const r = { label: ENGINES[engine].label, found: Boolean(bin), path: bin, from };
+    if (bin) {
+      const v = await quick(bin, ['--version']);
+      r.version = v.code === 0 ? (v.out.split('\n').find(Boolean) || '').trim() : null;
+      if (engine === 'codex') {
+        const s = await quick(bin, ['login', 'status']);
+        r.loggedIn = s.code === 0 && !/not logged in/i.test(s.out);
+        r.loginText = s.out.split('\n').filter(Boolean).pop() || '';
+      }
+    }
+    report[engine] = r;
+  }
+  report.platform = process.platform;
+  report.workspace = WORKSPACE;
+  return report;
 }
 
 function status() {
@@ -471,4 +705,7 @@ function discoverConnectors() {
 
 module.exports = {
   send, stop, stopAll, login, status, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
+  doctor, EFFORTS,
+  // for tests (dev/astra-engine-test.js)
+  _test: { codexArgs, claudeArgs, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, LOST_SESSION },
 };
