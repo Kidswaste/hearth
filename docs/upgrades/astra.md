@@ -164,7 +164,7 @@ quick asks run "lean" (no hub tools, no file tools), so each turn costs about on
 145. **Critique** (`/critique astra→claude 1 <task>`, also `/review-by`): one drafts, the other reviews, the first revises; stops early when the reviewer says LGTM.
 146. **Debate** (`/debate 3 <question>`): both answer, read each other and reply for N rounds, then one merged final answer.
 147. **Council** (`/council claude,astra,astra@skeptic <question>`): several seats answer, the chair writes the final answer.
-148. **Compare** (`/compare astra:gpt-6-sol,astra:gpt-6-luna <task>`): the same task on different models or agents, up to 3 columns.
+148. **Compare** (`/compare-agents astra:gpt-6-sol,astra:gpt-6-luna <task>`): the same task on different models or agents, up to 3 columns.
 149. **`/astra-compare-models <task>`**: every Astra model side by side.
 150. **Seats with a model**: `astra:gpt-6-luna`.
 151. **Seats with a persona**: `claude@reviewer`, or a bare persona (`coder,reviewer` alternates engines).

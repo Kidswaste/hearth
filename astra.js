@@ -1033,11 +1033,11 @@ function toggleFold(hostId, m) {
       const list = (seats || def).slice(0, 6);
       go(ctx, 'council', task, list, { judge: judgeIndex(list, judge) });
     } });
-  R({ name: 'compare', area: 'Collab', args: '<seats> <task>', desc: 'Same task to different models or agents side by side (e.g. astra:gpt-6-sol,astra:gpt-6-luna)',
+  R({ name: 'compare-agents', area: 'Collab', args: '<seats> <task>', desc: 'Same task to different models or agents side by side (e.g. astra:gpt-6-sol,astra:gpt-6-luna)',
     complete: (a) => (a ? completeSeats(a) : [{ value: 'claude,astra ', hint: 'two engines' }, ...((MODELS.codex.length > 1) ? [{ value: `astra:${MODELS.codex[0]},astra:${MODELS.codex[2]} `, hint: 'two Astra models' }] : []), { value: `claude:${MODELS.claude[0]},claude:${MODELS.claude[1]} `, hint: 'two Claude models' }]),
     run: (args, ctx) => {
       const { seats, task } = parseSeats(args, ctx.agentId);
-      if (!seats) return 'Name what to compare first, e.g. `/compare astra:gpt-6-sol,astra:gpt-6-luna explain monads` or `/compare claude,astra …`.';
+      if (!seats) return 'Name what to compare first, e.g. `/compare-agents astra:gpt-6-sol,astra:gpt-6-luna explain monads` or `/compare-agents claude,astra …`.';
       go(ctx, 'compare', task, seats.slice(0, 3));
     } });
   R({ name: 'handoff', area: 'Collab', args: '[agent] [--raw]', desc: 'Continue this chat with the other agent from a compact summary (--raw: last messages, no extra turn)',
@@ -1663,7 +1663,7 @@ function toggleFold(hostId, m) {
       '- Check it: `/astra-doctor`, `/astra-status`, `/astra-tokens`, `/astra-usage`, `/astra-log`.',
       '',
       '**Together with Claude** (the ⚇ chip, or):',
-      '- `/duo` side by side · `/relay a→b N` draft + improve · `/critique a→b N` review loop · `/debate N` · `/council seats` · `/compare seats`.',
+      '- `/duo` side by side · `/relay a→b N` draft + improve · `/critique a→b N` review loop · `/debate N` · `/council seats` · `/compare-agents seats`.',
       '- `/handoff [agent|back]` · `/opinion` (both ways) · `/opinion-auto on` · `/ask-astra` · `/ask-claude`.',
       '- Seats: `claude`, `astra`, `astra:<model>`, `claude@<persona>`, `astra~low`, `all`. `/collab-preset` has ready-made ones.',
       '- Keys: Ctrl/⌘+Alt+D duo · M next model · O second opinion · H hand off · S stop.',
