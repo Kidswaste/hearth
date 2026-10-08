@@ -678,3 +678,11 @@ svg.hi { width: 1em; height: 1em; display: block; flex: none; overflow: visible;
 .scene-cover.out { animation: hx-reveal .35s ease both; }
 :root[data-motion=off] .scene-cover.out { animation-duration: 1ms; }
 .tool-icon svg.hi { width: 18px; height: 18px; color: var(--agent, var(--accent)); }
+
+/* ---------- the music timeline: what moves while a song plays is drawn on its own layers ----------
+   The waveform canvas redraws ~10×/s and the playheads move every frame; contained and promoted, they repaint only
+   themselves instead of the styled (clip-masked, textured) timeline around them. */
+.media-bar .mb-tl-wrap, .media-bar .mb-mm-wrap { contain: layout paint style; isolation: isolate; }
+.media-bar canvas.mb-timeline, .media-bar canvas.mb-minimap { will-change: contents; transform: translateZ(0); }
+.media-bar .mb-playhead { contain: strict; }
+.media-bar .mb-bpmread { contain: layout paint; will-change: opacity; }

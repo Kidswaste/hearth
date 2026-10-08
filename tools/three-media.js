@@ -707,7 +707,11 @@ const ThreeMedia = (() => {
     }
     function onMessage(msg) {
       if (msg.type === 'media-state') {
+        // the sandbox sends this a few times a second while it plays: only a real change (play / pause / end / a new
+        // song length) repaints the control row; plain time updates just re-sync the clock
+        const same = st.playing === msg.playing && (msg.duration || st.duration) === st.duration && !msg.ended && !recording;
         Object.assign(st, { time: msg.time, duration: msg.duration || st.duration, playing: msg.playing, stampAt: performance.now() });
+        if (same && !wish) { if (!st.playing) livePaint(); return; }
         if (wish && wish.play === msg.playing) wish = null;
         if (recording && !recording.stopping && msg.ended && recording.kind === 'track') stopRecord();
         if (recording && !recording.stopping && !msg.playing && recording.kind === 'loop') finishRecord(); // the sandbox stopped exactly at the loop end
@@ -1050,7 +1054,8 @@ const ThreeMedia = (() => {
       if (i === lastBeat || i < 0) return;
       lastBeat = i;
       const down = mod(beatNo(bs, i, map.grid), bpbNow()) === 0;
-      if (gridView.light !== false) { bpmRead.classList.remove('beat', 'down'); void bpmRead.offsetWidth; bpmRead.classList.add('beat'); if (down) bpmRead.classList.add('down'); }
+      // restart the beat light's flash without forcing a layout of the whole page (a reflow per beat, before)
+      if (gridView.light !== false) { bpmRead.classList.toggle('down', down); for (const a of bpmRead.getAnimations()) a.cancel(); bpmRead.classList.remove('beat'); requestAnimationFrame(() => bpmRead.classList.add('beat')); }
       if (gridView.click) {
         try {
           clickCtx ||= new AudioContext();

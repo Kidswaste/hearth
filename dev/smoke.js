@@ -132,6 +132,8 @@ async function cdpConnect() {
         return;
       }
       if (msg.method === 'Runtime.bindingCalled' && msg.params.name === '__smoke') { smokeCall(msg.params.payload); return; }
+      if (msg.method === 'Tracing.dataCollected') { traceEvents.push(...msg.params.value); return; }
+      if (msg.method === 'Tracing.tracingComplete') { traceDone?.(); return; }
       if (msg.method === 'Runtime.exceptionThrown') {
         const d = msg.params.exceptionDetails;
         problems.push(`exception: ${d.exception?.description || d.text} @ ${d.url || ''}:${d.lineNumber}`);
@@ -157,10 +159,24 @@ async function cdpConnect() {
       send('Fetch.fulfillRequest', { requestId: p.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: type }, { name: 'Access-Control-Allow-Origin', value: '*' }], body: fs.readFileSync(file).toString('base64') }, sid);
     };
     // The `smoke()` bridge for check scripts: real input events (Input.*), screenshots and other CDP calls.
+    let traceEvents = []; let traceDone = null;
     const smokeCall = async (payload) => {
       let req; try { req = JSON.parse(payload); } catch { return; }
       let result;
-      if (req.shot) {
+      // { trace: 'start' } / { trace: 'stop' }: a timeline trace; stop returns what was painted (count, area per layer)
+      if (req.trace === 'start') {
+        traceEvents = []; result = (await send('Tracing.start', { categories: 'devtools.timeline,disabled-by-default-devtools.timeline', transferMode: 'ReportEvents' })).result || {};
+      } else if (req.trace === 'stop') {
+        const done = new Promise((r) => { traceDone = r; });
+        await send('Tracing.end'); await done;
+        const paints = traceEvents.filter((e) => e.name === 'Paint' && e.args?.data?.clip);
+        const area = (q) => Math.abs((q[2] - q[0]) * (q[5] - q[1]));
+        const byLayer = {};
+        for (const e of paints) { const k = `layer ${e.args.data.layerId ?? '?'} node ${e.args.data.nodeId ?? '?'}`; const b = byLayer[k] ||= { n: 0, px: 0, ms: 0 }; b.n++; b.px += area(e.args.data.clip); b.ms += (e.dur || 0) / 1000; }
+        const sum = (name) => traceEvents.filter((e) => e.name === name).reduce((a, e) => a + (e.dur || 0) / 1000, 0);
+        result = { paints: paints.length, paintedPx: Math.round(paints.reduce((a, e) => a + area(e.args.data.clip), 0)), paintMs: Math.round(sum('Paint')), rasterMs: Math.round(sum('RasterTask')), layerizeMs: Math.round(sum('Layerize')), styleMs: Math.round(sum('UpdateLayoutTree')), layoutMs: Math.round(sum('Layout')),
+          top: Object.entries(byLayer).sort((a, b) => b[1].px - a[1].px).slice(0, 8).map(([k, v]) => `${k}: ${v.n}× ${Math.round(v.px / 1000)}k px ${Math.round(v.ms)} ms`) };
+      } else if (req.shot) {
         const img = await send('Page.captureScreenshot', { format: 'png' });
         if (img.result?.data) fs.writeFileSync(req.shot, Buffer.from(img.result.data, 'base64'));
         result = { saved: req.shot };

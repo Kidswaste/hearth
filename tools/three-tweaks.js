@@ -343,6 +343,7 @@ const ThreeTweaks = (() => {
     let broken = null;
     let instrumented = false;
     let reads = null; // { used:Set, live:Set } once the sandbox reports
+    let readsSig = '';
     let showUnused = false;
     let filter = '';
     let looks = [];
@@ -1504,20 +1505,27 @@ const ThreeTweaks = (() => {
       for (const r of rows) {
         const used = !reads || reads.used.has(r.i) || reads.live.has(r.i);
         const live = reads?.live.has(r.i);
-        r.badge.textContent = !reads ? '' : live ? '⚡' : used ? '↻' : '○';
-        r.badge.className = `tw-badge ${!reads ? '' : live ? 'tw-live' : used ? 'tw-rerun' : 'tw-unused'}`;
-        r.badge.title = !reads ? '' : live ? 'Read every frame: changes show instantly' : used ? 'Used when the scene is built: the scene rebuilds as you drag' : 'The running sketch never reads this value';
-        r.el.classList.toggle('unused', !used);
-        r.paintMusic?.();
+        // write only what changed: these run many times a second while a sketch plays
+        const state = !reads ? '' : live ? 'live' : used ? 'used' : 'unused';
+        if (r.badgeState !== state) {
+          r.badgeState = state;
+          r.badge.textContent = !reads ? '' : live ? '⚡' : used ? '↻' : '○';
+          r.badge.className = `tw-badge ${!reads ? '' : live ? 'tw-live' : used ? 'tw-rerun' : 'tw-unused'}`;
+          r.badge.title = !reads ? '' : live ? 'Read every frame: changes show instantly' : used ? 'Used when the scene is built: the scene rebuilds as you drag' : 'The running sketch never reads this value';
+          if (r.el.classList.contains('unused') === used) r.el.classList.toggle('unused', !used);
+          r.paintMusic?.();
+        }
       }
       applyFilter();
     }
     function applyFilter() {
       for (const r of rows) {
-        r.el.hidden = (filter && !r.text.includes(filter)) || (r.el.classList.contains('unused') && !showUnused) || (changedOnly && same(r.it, values[r.i]));
+        const hide = Boolean((filter && !r.text.includes(filter)) || (r.el.classList.contains('unused') && !showUnused) || (changedOnly && same(r.it, values[r.i])));
+        if (r.el.hidden !== hide) r.el.hidden = hide;
       }
       for (const sec of body.querySelectorAll('.tw-sec')) {
-        sec.hidden = (groupFilter && sec.dataset.group !== groupFilter) || ![...sec.querySelectorAll('.tw-row, .tw-knob-cell')].some((n) => !n.hidden);
+        const hideSec = Boolean((groupFilter && sec.dataset.group !== groupFilter) || ![...sec.querySelectorAll('.tw-row, .tw-knob-cell')].some((n) => !n.hidden));
+        if (sec.hidden !== hideSec) sec.hidden = hideSec;
         if ((filter || changedOnly || groupFilter) && !sec.hidden) sec.open = true;
         sec.paintChanged?.();
       }
@@ -1594,7 +1602,16 @@ const ThreeTweaks = (() => {
       // The sandbox reports which values were read during setup and which keep being read.
       onReads(msg) {
         if (!instrumented) return;
-        reads = { used: new Set(msg.used), live: new Set(msg.live) };
+        // the sandbox reports reads often while a sketch runs; repaint the rows only when they actually changed
+        // (rewriting every row's badges ~20×/s repainted the whole window during playback)
+        // A value read on some frames only (on a beat, in a branch) counts as live from then on, until the next run
+        // (reads is reset then): replacing the sets flipped the badges back and forth with every report.
+        const used = new Set([...(reads?.used || []), ...msg.used]);
+        const live = new Set([...(reads?.live || []), ...msg.live]);
+        const sig = `${[...used].sort((a, b) => a - b).join(',')}|${[...live].sort((a, b) => a - b).join(',')}`;
+        if (reads && sig === readsSig) return;
+        readsSig = sig;
+        reads = { used, live };
         updateBadges();
       },
       // Returns true when the error came from attaching sliders, and the sketch is re-run without them.
