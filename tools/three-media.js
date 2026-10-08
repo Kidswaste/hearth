@@ -1347,10 +1347,23 @@ const ThreeMedia = (() => {
     let lastFull = 0;
     function tick() {
       beatTick();
-      if (performance.now() - lastFull > 100 || dragging) { paint(); return; }
+      if (dragging) { paint(); return; }
+      // While it plays only the picture, the time and the playhead move: the control row is repainted by paint()
+      // when something actually changes (play / pause / loop / markers…), not ten times a second.
+      if (performance.now() - lastFull > 100) livePaint();
       placePlayheads();
       raf = requestAnimationFrame(tick);
     }
+    function livePaint() {
+      lastFull = performance.now();
+      if (recording) setText(recBtn, recording.stopping ? '… saving' : `⏹ Stop ${fmtTime((performance.now() - recording.startedAt) / 1000)}`);
+      if (view && st.playing && !locked && gridView.follow !== false) {
+        const t = now();
+        if (t > view.end || t < view.start) setView({ start: t - span() * 0.1, end: t - span() * 0.1 + span() });
+      }
+      draw();
+    }
+    const setText = (node, text) => { if (node.textContent !== text) node.textContent = text; };
     function placePlayheads() {
       watchCues();
       const t = now();
@@ -1411,9 +1424,9 @@ const ThreeMedia = (() => {
     }
     function draw() {
       const t = now();
-      timeEl.textContent = D() ? `${span() < 20 ? fmtMs(t) : fmtTime(t)} / ${fmtTime(D())}` : fmtTime(t);
-      miniTime.textContent = D() ? `${fmtTime(t)} / ${fmtTime(D())}` : '';
-      miniPlay.textContent = st.playing ? '⏸' : '▶';
+      setText(timeEl, D() ? `${span() < 20 ? fmtMs(t) : fmtTime(t)} / ${fmtTime(D())}` : fmtTime(t));
+      setText(miniTime, D() ? `${fmtTime(t)} / ${fmtTime(D())}` : '');
+      setText(miniPlay, st.playing ? '⏸' : '▶');
       drawMinimap(t);
       const W = canvas.clientWidth; const h = canvas.clientHeight;
       if (!W || !h) return;

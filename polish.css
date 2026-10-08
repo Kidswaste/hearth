@@ -623,3 +623,10 @@ body:has(.surface.active > .tool-dock:not([hidden])) #toasts, body:has(.surface.
 /* the full text of something cut short sits right over it, in the same place */
 .juice-tip.full { border-left-width: 1px; max-width: min(560px, calc(100vw - 16px)); }
 .j-die { display: inline-block; }
+
+/* ---------- lightweight rendering ----------
+   A backdrop blur is recomputed every frame when what's behind it moves. Over the Lab preview, the video player
+   and the node canvas (all animate constantly) the glass becomes a plain tint; toasts too, since they often float
+   over a playing picture. Menus and dialogs keep their glass: they're short-lived. */
+:is(.three-preview, .vr-stage, .media-bar, .nv) :is(*, *::before, *::after),
+.toast, .jam-badge, .three-stats, .stage-pill { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
