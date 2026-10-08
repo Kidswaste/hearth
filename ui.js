@@ -43,7 +43,12 @@ if (/Mac/.test(navigator.platform)) {
     if (action) node.append(el('button', { text: action.label, on: { click: () => { action.fn(); node.remove(); } } }));
     node.append(el('button', { class: 'toast-x', text: '×', title: 'Dismiss', on: { click: () => node.remove() } }));
     toastBox.append(node);
-    if (timeout) setTimeout(() => node.remove(), timeout);
+    if (timeout) {
+      // hovering a notification keeps it until you leave it
+      let timer = setTimeout(() => node.remove(), timeout);
+      node.addEventListener('mouseenter', () => clearTimeout(timer));
+      node.addEventListener('mouseleave', () => { clearTimeout(timer); timer = setTimeout(() => node.remove(), 1500); });
+    }
     return node;
   }
 
@@ -69,6 +74,7 @@ if (/Mac/.test(navigator.platform)) {
     });
   }
   const Modal = {
+    alert: (title, text) => modal(title, el('p', { class: 'modal-text pre-line', text }), [{ label: 'OK', submit: true, class: 'primary', value: () => true }]),
     confirm: (title, text, { ok = 'OK', danger = false } = {}) => modal(title, el('p', { class: 'modal-text', text }), [
       { label: 'Cancel', value: false },
       { label: ok, submit: true, class: danger ? 'primary danger-fill' : 'primary', value: () => true },

@@ -18,6 +18,14 @@ const ThreeTriggers = (() => {
     hats: { on: true, lo: 8000, hi: 15000, thr: 0.45, gap: 90 },
     hit: { on: true, lo: 300, hi: 2500, thr: 0.66, gap: 300 },
   };
+  // Presets set the bands and timing (your bars stay: Auto bars fits them to the song)
+  const PRESETS = {
+    'Techno / house': { kick: { lo: 40, hi: 90, gap: 300 }, bass: { lo: 50, hi: 160, gap: 200 }, snare: { lo: 1200, hi: 4000, gap: 250 }, hats: { lo: 8000, hi: 16000, gap: 80 }, hit: { lo: 300, hi: 2500, gap: 400 } },
+    'Hip-hop / trap': { kick: { lo: 35, hi: 80, gap: 150 }, bass: { lo: 40, hi: 120, gap: 150 }, snare: { lo: 1500, hi: 5000, gap: 180 }, hats: { lo: 6000, hi: 14000, gap: 50 }, hit: { lo: 400, hi: 3000, gap: 300 } },
+    'Drum & bass': { kick: { lo: 45, hi: 110, gap: 120 }, bass: { lo: 40, hi: 140, gap: 120 }, snare: { lo: 1800, hi: 5000, gap: 200 }, hats: { lo: 7000, hi: 15000, gap: 70 }, hit: { lo: 300, hi: 2500, gap: 250 } },
+    'Rock / live drums': { kick: { lo: 50, hi: 120, gap: 150 }, bass: { lo: 60, hi: 250, gap: 200 }, snare: { lo: 2000, hi: 6000, gap: 120 }, hats: { lo: 6000, hi: 12000, gap: 80 }, hit: { lo: 4000, hi: 12000, gap: 500 } },
+    'Ambient / soft': { kick: { lo: 40, hi: 120, gap: 400 }, bass: { lo: 50, hi: 300, gap: 500 }, snare: { lo: 800, hi: 3000, gap: 400 }, hats: { lo: 5000, hi: 12000, gap: 200 }, hit: { lo: 200, hi: 2000, gap: 600 } },
+  };
   const F0 = 20; const F1 = 20000; const BINS = 200; // the spectrum the sketch sends: 200 log-spaced bins
   const clampCfg = (c) => {
     const lo = Math.max(F0, Math.min(F1 / 1.1, c.lo)); const hi = Math.max(lo * 1.1, Math.min(F1, c.hi));
@@ -51,9 +59,26 @@ const ThreeTriggers = (() => {
     const autoBtn = el('button', { class: 'ghost small', text: 'Auto bars', title: 'Set every bar from the last few seconds of sound (just under its loud moments)', on: { click: () => autoBars() } });
     const close = el('button', { class: 'ghost small', text: '×', title: 'Close', on: { click: () => opts.onClose?.() } });
     const hint = el('span', { class: 'trg-hint', text: 'drag a dot: sideways = which sound, up / down = the bar · drag the edges or wheel on the dot = width' });
+    const presetBtn = el('button', { class: 'ghost small', text: 'Presets ▾', title: 'Bands and timing for a style of music (your bars stay), or your own saved setups', on: { click: (e) => presetMenu(e.currentTarget) } });
+    function applyPreset(p, name) {
+      for (const { id } of LIST) if (p[id]) cfg[id] = clampCfg({ ...cfg[id], ...p[id] });
+      changed();
+      hint.textContent = `${name}: bands set${autoBars({ quiet: true }) ? ', bars fitted to the sound' : ' · play a bit, then Auto bars'}`;
+    }
+    function presetMenu(anchor) {
+      const r = anchor.getBoundingClientRect();
+      const saved = store.get('three.trigPresets', []);
+      showMenu(r.left, r.bottom + 4, [
+        ...Object.entries(PRESETS).map(([name, p]) => ({ label: name, action: () => applyPreset(p, name) })),
+        { label: '↺ Defaults (everything)', action: () => { cfg = merge(null); changed(); hint.textContent = 'Back to the defaults'; } },
+        ...saved.map((x) => ({ label: `★ ${x.name}`, action: () => { cfg = merge(x.cfg); changed(); hint.textContent = `${x.name}: loaded (bands and bars)`; } })),
+        { label: 'Save these as a preset…', action: async () => { const name = await Modal.prompt('Preset name', { value: '', placeholder: 'e.g. My techno setup' }); if (!name?.trim()) return; store.set('three.trigPresets', [{ name: name.trim().slice(0, 40), cfg: merge(cfg) }, ...saved.filter((x) => x.name !== name.trim())].slice(0, 30)); hint.textContent = `Saved "${name.trim()}"`; } },
+        ...(saved.length ? [{ label: 'Delete a saved preset…', danger: true, action: () => showMenu(r.left, r.bottom + 4, saved.map((x) => ({ label: `Delete ${x.name}`, danger: true, action: () => store.set('three.trigPresets', saved.filter((y) => y.name !== x.name)) }))) }] : []),
+      ]);
+    }
     const writeBtn = el('button', { class: 'ghost small', text: '→ Timeline', title: 'Write what the triggers find (kick, snare, hit, plus bass and hats rows) into the timeline as markers you can edit, for the loop or the whole song. Undo with ↶ / Ctrl+Z.', on: { click: () => opts.onWrite?.(cfg, writeBtn) } });
     writeBtn.hidden = !opts.onWrite;
-    const head = el('div', { class: 'trg-head' }, el('b', { text: '⚡ Triggers' }), hint, autoBtn, writeBtn, close);
+    const head = el('div', { class: 'trg-head' }, el('b', { text: '⚡ Triggers' }), hint, presetBtn, autoBtn, writeBtn, close);
     const senseRow = el('div', { class: 'trg-sense' });
     const root = el('div', { class: 'trg-panel' }, head, canvas, chips, detail, senseRow);
     const changed = () => { opts.onChange?.(cfg); paintChips(); paintDetail(); draw(); };
@@ -83,6 +108,7 @@ const ThreeTriggers = (() => {
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
       g.clearRect(0, 0, W, H);
       g.fillStyle = '#05070a'; g.fillRect(0, 0, W, H);
+      const hov = hover; // drawn last: a crosshair with the frequency and level under the mouse
       g.font = '10px Consolas, monospace'; g.textAlign = 'center';
       for (const f of [50, 100, 200, 500, 1000, 2000, 5000, 10000]) {
         g.fillStyle = '#ffffff10'; g.fillRect(Math.round(X(f)), 0, 1, H - PAD_B);
@@ -129,8 +155,19 @@ const ThreeTriggers = (() => {
         g.fillStyle = '#000'; g.font = 'bold 9px Consolas, monospace'; g.fillText(t.letter, cx, cy + 3);
         g.font = '10px Consolas, monospace';
       }
+      drawHover(g);
     }
 
+    // the crosshair (Pro-Q style readout)
+    function drawHover(g) {
+      if (!hover || drag) return;
+      g.fillStyle = '#ffffff30'; g.fillRect(Math.round(hover.x), 0, 1, H - PAD_B); g.fillRect(0, Math.round(hover.y), W, 1);
+      const label = `${fmtHz(Finv(hover.x))} Hz · ${Math.round(Vinv(hover.y) * 100)}%`;
+      g.font = '10px Consolas, monospace'; const tw = g.measureText(label).width + 8;
+      const lx = Math.min(W - tw - 2, hover.x + 8); const ly = Math.max(12, hover.y - 8);
+      g.fillStyle = '#000c'; g.fillRect(lx, ly - 10, tw, 14); g.fillStyle = '#ffd75e'; g.textAlign = 'left'; g.fillText(label, lx + 4, ly + 1); g.textAlign = 'center';
+    }
+    let hover = null;
     // ---------- the sound from the sketch (~25 times a second) ----------
     let raf = 0;
     function feed(data) {
@@ -158,7 +195,18 @@ const ThreeTriggers = (() => {
       return null;
     }
     const pos = (e) => { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+    canvas.addEventListener('pointerleave', () => { hover = null; draw(); });
+    canvas.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const h = hit(...pos(e));
+      if (!h) return;
+      cfg[h.id].on = !cfg[h.id].on; sel = h.id; changed(); // right-click a band: off (double-click its chip for on)
+    });
+    root.tabIndex = -1;
+    root.addEventListener('pointerdown', () => root.focus({ preventScroll: true }));
+    root.addEventListener('keydown', (e) => { const n = Number(e.key); if (n >= 1 && n <= LIST.length && !e.ctrlKey && !e.altKey && e.target === root) { sel = LIST[n - 1].id; changed(); e.preventDefault(); e.stopPropagation(); } });
     canvas.addEventListener('pointermove', (e) => {
+      { const [x, y] = pos(e); hover = { x, y }; if (!raf) raf = requestAnimationFrame(() => { raf = 0; draw(); }); }
       if (drag) return;
       const h = hit(...pos(e));
       canvas.style.cursor = !h ? 'default' : h.mode === 'move' ? 'grab' : h.mode === 'select' ? 'pointer' : 'ew-resize';

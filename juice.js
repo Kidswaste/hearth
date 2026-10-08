@@ -3,7 +3,7 @@
 // when Windows asks for reduced motion.
 const Juice = (() => {
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
-  const on = () => /\bforge\b/.test(document.documentElement.dataset.skin || '') && !reduced.matches;
+  const on = () => /\bforge\b/.test(document.documentElement.dataset.skin || '') && !reduced.matches && !store.get('juice.off', false);
   let layer = null;
   let lastAt = 0;
   function burst(x, y, { color = '#48ddff', count = 5, spread = 22 } = {}) {
@@ -50,5 +50,12 @@ const Juice = (() => {
     });
     wait.observe(document.body, { childList: true });
   }
+  // Shift+Esc: clear every notification
+  addEventListener('keydown', (e) => { if (e.key === 'Escape' && e.shiftKey) document.querySelectorAll('#toasts .toast').forEach((t) => t.remove()); });
+  AppUI.addAction('Sparkle effects on / off', () => { const off = !store.get('juice.off', false); store.set('juice.off', off); document.documentElement.toggleAttribute('data-calm', off); toast(off ? 'Sparkles off' : 'Sparkles on ✦', { timeout: 1500 }); });
+  document.documentElement.toggleAttribute('data-calm', store.get('juice.off', false));
+  AppUI.addAction('Copy the last reply in this chat', () => Native.copyLastReply(H.activeId));
+  AppUI.addAction('Fold all long replies in this chat', () => Native.foldAll(H.activeId, true));
+  AppUI.addAction('Clear all notifications', () => document.querySelectorAll('#toasts .toast').forEach((t) => t.remove()), 'Shift+Esc');
   return { burst };
 })();

@@ -535,6 +535,16 @@ const ThreeTweaks = (() => {
         const chip = el('span', { class: 'tw-look' },
           el('button', { class: 'tw-look-apply', text: look.name, title: `Switch to "${look.name}" (↶ to undo)`, on: { click: () => applyLook(look) } }),
           el('button', { class: 'tw-look-x', text: '×', title: `Delete "${look.name}"`, on: { click: () => { looks = looks.filter((l) => l !== look); persist?.('looks', looks); renderLooks(); } } }));
+        chip.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          showMenu(e.clientX, e.clientY, [
+            { label: 'Update with the current values', action: () => { saveLookAs(look.name); toast(`"${look.name}" updated`, { timeout: 1400 }); } },
+            { label: 'Rename…', action: async () => { const v = await Modal.prompt('Look name', { value: look.name }); if (v?.trim()) { look.name = v.trim().slice(0, 40); persist?.('looks', looks); renderLooks(); } } },
+            { label: 'Duplicate', action: () => { looks.push({ name: `${look.name} copy`, values: { ...look.values } }); persist?.('looks', looks); renderLooks(); } },
+            { label: `Delete "${look.name}"`, danger: true, action: () => { looks = looks.filter((l) => l !== look); persist?.('looks', looks); renderLooks(); } },
+          ]);
+        });
+        chip.title = 'Click: switch to it · right-click: update, rename, duplicate, delete';
         looksBar.append(chip);
       }
       looksBar.append(el('button', { class: 'tw-chip add', text: '＋ Save look', title: 'Remember the current slider values as a look you can switch back to with one click', on: { click: saveLook } }));

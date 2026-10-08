@@ -11,7 +11,15 @@ const ThreeMedia = (() => {
     { id: '16:9', w: 1920, h: 1080, label: '16:9', title: '1920×1080: YouTube' },
     { id: '1:1', w: 1080, h: 1080, label: '1:1', title: '1080×1080: square' },
     { id: '4:5', w: 1080, h: 1350, label: '4:5', title: '1080×1350: Instagram feed' },
+    // in the "More…" list
+    { id: '21:9', w: 2560, h: 1080, label: '21:9', title: '2560×1080: cinematic widescreen', extra: true },
+    { id: '4:3', w: 1440, h: 1080, label: '4:3', title: '1440×1080: classic TV / VHS look', extra: true },
+    { id: '2:3', w: 1080, h: 1620, label: '2:3', title: '1080×1620: Pinterest, posters', extra: true },
+    { id: '4k', w: 3840, h: 2160, label: '4K', title: '3840×2160: 4K video', extra: true },
+    { id: '4k-v', w: 2160, h: 3840, label: '4K 9:16', title: '2160×3840: vertical 4K', extra: true },
   ];
+  const BASE_SIZES = SIZES.filter((s) => !s.extra);
+  const EXTRA_SIZES = SIZES.filter((s) => s.extra);
   const extOf = (p) => (p.split('.').pop() || '').toLowerCase();
   const isMedia = (p) => [...AUDIO_EXT, ...VIDEO_EXT].includes(extOf(p));
   const fmtTime = (s) => { s = Math.max(0, s || 0); const m = Math.floor(s / 60); return `${m}:${String(Math.floor(s % 60)).padStart(2, '0')}`; };
@@ -154,17 +162,20 @@ const ThreeMedia = (() => {
   function stage(host, frame, { onChange }) {
     let mode = store.get('three.aspect', 'fit');
     let safe = store.get('three.safeZones', true);
-    const buttons = SIZES.map((s) => el('button', { class: 'stage-btn', text: s.label, title: s.title, on: { click: () => setMode(s.id) } }));
+    const buttons = BASE_SIZES.map((s) => el('button', { class: 'stage-btn', text: s.label, title: s.title, on: { click: () => setMode(s.id) } }));
+    const moreSel = el('select', { class: 'stage-more', title: 'More frame sizes: 21:9, 4:3, 2:3, 4K' }, el('option', { value: '', text: 'More…' }), EXTRA_SIZES.map((s) => el('option', { value: s.id, text: `${s.label} · ${s.w}×${s.h}` })));
+    moreSel.addEventListener('change', () => { if (moreSel.value) setMode(moreSel.value); });
     const safeBtn = el('button', { class: 'stage-btn', text: 'Safe zones', title: 'Show where Shorts / Reels / TikTok put the title, captions and buttons', on: { click: () => { safe = !safe; store.set('three.safeZones', safe); layout(); } } });
     const sizeLabel = el('span', { class: 'stage-size' });
-    const pill = el('div', { class: 'stage-pill' }, ...buttons, safeBtn, sizeLabel);
+    const pill = el('div', { class: 'stage-pill' }, ...buttons, moreSel, safeBtn, sizeLabel);
     const zones = el('div', { class: 'safe-zones', hidden: true },
       el('div', { class: 'sz top', text: 'Title / status bar' }), el('div', { class: 'sz bottom', text: 'Captions and channel name' }), el('div', { class: 'sz right', text: 'Buttons' }));
     host.append(pill, zones);
     const current = () => SIZES.find((s) => s.id === mode) || SIZES[0];
     function layout() {
       const s = current();
-      buttons.forEach((b, i) => b.classList.toggle('on', SIZES[i].id === mode));
+      buttons.forEach((b, i) => b.classList.toggle('on', BASE_SIZES[i].id === mode));
+      moreSel.value = s.extra ? s.id : ''; moreSel.classList.toggle('on', Boolean(s.extra));
       safeBtn.hidden = mode !== '9:16';
       safeBtn.classList.toggle('on', safe);
       host.classList.toggle('exact', Boolean(s.w));
@@ -196,7 +207,7 @@ const ThreeMedia = (() => {
     return {
       get params() { return current().w ? '&dpr=1' : ''; },
       get size() { const s = current(); return s.w ? { id: s.id, width: s.w, height: s.h } : { id: 'fit', width: host.clientWidth, height: host.clientHeight }; },
-      setMode,
+      setMode, pill,
       sizes: SIZES.map((s) => s.id),
     };
   }
@@ -311,6 +322,14 @@ const ThreeMedia = (() => {
     const loopBtn = btn('⟲ Loop', 'Loop playback: the loop section if you set one, otherwise the whole song', () => { st.loop = !st.loop; store.set('three.mediaLoop', st.loop); send({ type: 'media', cmd: 'loop', value: st.loop }); paint(); });
     const lockBtn = btn('🔓', 'Lock the loop and the view in place', () => setLocked(!locked));
     const vol = el('input', { type: 'range', class: 'mb-vol', min: 0, max: 1, step: 0.01, value: st.volume, title: 'Volume (the sketch still sees the full signal)' });
+    // M: mute the music you hear (the sketch still gets the full signal), M again: back to your volume
+    let mutedFrom = null;
+    function toggleMute() {
+      if (mutedFrom == null) { mutedFrom = st.volume || 0.8; vol.value = 0; } else { vol.value = mutedFrom; mutedFrom = null; }
+      vol.dispatchEvent(new Event('input'));
+      vol.classList.toggle('muted', mutedFrom != null);
+      toast(mutedFrom != null ? 'Music muted (M to hear it again) · the sketch still reacts' : 'Music back on', { timeout: 1400 });
+    }
     vol.addEventListener('input', () => { st.volume = Number(vol.value); store.set('three.mediaVolume', st.volume); send({ type: 'media', cmd: 'volume', value: st.volume }); });
     const recBtn = btn('⏺ Record', 'Record the preview (with the music) to a video file', (e) => (recording ? stopRecord() : recordMenu(e.currentTarget)), 'ghost small mb-rec imp-live');
     recBtn.dataset.feature = 'Record';
@@ -616,7 +635,7 @@ const ThreeMedia = (() => {
     }
     function sendMap() {
       if (!st.bytes) return;
-      send({ type: 'media-map', beats: beats(), bpm: bpmNow(), bpb: bpbNow(), anchor: map.grid?.anchor ?? beats()[0] ?? 0, manual: Boolean(map.grid), marks: map.marks });
+      send({ type: 'media-map', beats: beats(), bpm: bpmNow(), bpb: bpbNow(), anchor: map.grid?.anchor ?? beats()[0] ?? 0, manual: Boolean(map.grid), marks: map.marks, cues: map.cues.map((c) => ({ t: c.t, name: c.name })) });
     }
     // Tap tempo (button or T): the median gap of the last 16 taps (stray taps ignored), shown live; a value
     // within 0.3 of a whole number rounds to it (most tracks are). While the song plays, the grid's beats also
@@ -827,6 +846,9 @@ const ThreeMedia = (() => {
       if (ctrl) return false;
       if (e.key.toLowerCase() === 'a' && !e.altKey && !e.shiftKey) { trackHandlers.onLanesAll?.(); return true; }
       if (e.key.toLowerCase() === 't' && !e.altKey && !e.repeat) { tap(); return true; }
+      if (e.key === 'Home') { seek(region && now() > region.a + 0.01 ? region.a : 0); return true; }
+      if (e.key === 'End') { seek(region ? region.b - 0.01 : Math.max(0, D() - 0.05)); return true; }
+      if (e.key.toLowerCase() === 'm' && !ctrl && !e.altKey) { toggleMute(); return true; }
       // hot cues (like rekordbox): C drops one at the playhead, 1–9 jump to them
       if (e.key.toLowerCase() === 'c' && !e.altKey) { addCue(now()); return true; }
       if (/^[1-9]$/.test(e.key) && !e.altKey) { const c = map.cues[Number(e.key) - 1]; if (c) { seek(c.t); return true; } return false; }
@@ -836,7 +858,7 @@ const ThreeMedia = (() => {
       if (e.key === ']') { setRegionEdge('b', now()); return true; }
       if ((e.key === 'Delete' || e.key === 'Backspace') && autoSel?.idx.size) { deletePoints(); return true; }
       if (e.key === 'Delete' || e.key === 'Backspace') return deleteSelectedMark();
-      if (e.key === 'Escape') { if (autoSel) { autoSel = null; draw(); return true; } selected = null; draw(); return true; }
+      if (e.key === 'Escape') { if (taps.length) { taps = []; tapBtn.textContent = 'Tap'; tapBtn.classList.remove('on'); } if (autoSel) { autoSel = null; draw(); return true; } selected = null; draw(); return true; }
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         const dir = e.key === 'ArrowLeft' ? -1 : 1;
         const d = dir * (e.shiftKey ? snapStep(snapMode, map.grid, bpmNow()) : e.altKey ? 0.001 : 0.01);
@@ -1878,6 +1900,7 @@ const ThreeMedia = (() => {
       };
       canvas.title = `${fmtMs(tt)}\n${tips[hit.zone]}`;
     });
+    minimap.addEventListener('dblclick', () => setView(null)); // double-click the overview: the whole song
     minimap.addEventListener('pointerdown', (e) => {
       if (!D() || e.button !== 0) return;
       minimap.setPointerCapture(e.pointerId);
@@ -1902,6 +1925,7 @@ const ThreeMedia = (() => {
       el: bar,
       load, pick, attach, toggle, seek, onMessage, unload, onKey, setTracks, setNotes, setSize, restoreSize,
       tapHit: (lane) => addAtPlayhead(lane),
+      toggleAllControls: () => setAll(!allCtl), toggleMute,
       get playing() { return st.playing; },
       get size() { return size; },
       // ---------- for the Three Director: the timeline ----------

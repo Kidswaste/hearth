@@ -44,6 +44,9 @@ const Native = (() => {
 
     const list = el('div', { class: 'messages' });
     list.addEventListener('click', (e) => onListClick(e, agentId));
+    queueMicrotask(() => list.parentElement?.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'c') { e.preventDefault(); copyLastReply(agentId); }
+    }));
     const jump = el('button', { class: 'jump-bottom', text: '↓', title: 'Jump to the latest message', hidden: true, on: { click: () => { list.scrollTop = list.scrollHeight; } } });
     list.addEventListener('scroll', () => { jump.hidden = nearBottom(list); });
 
@@ -213,6 +216,11 @@ const Native = (() => {
       const idx = Number(act.closest('.msg').dataset.index);
       const what = act.dataset.msgAct;
       if (what === 'branch') branchFrom(agentId, idx);
+      if (what === 'speak') speak(act.closest('.msg').dataset.raw, act);
+      if (what === 'savemd') {
+        const m = chats.get(H.activeChat[agentId])?.messages[idx];
+        if (m) { const p = await window.hub.saveFile({ defaultPath: `${(m.text.split('\n').find((l) => l.trim()) || 'reply').replace(/[#*`>\\/:*?"<>|]/g, '').trim().slice(0, 50) || 'reply'}.md`, filters: [{ name: 'Markdown', extensions: ['md'] }], content: m.text }); if (p) toast('Reply saved', { action: { label: 'Show', fn: () => window.hub.fs.reveal(p) } }); }
+      }
       if (what === 'review') send(agentId, REVIEW_PROMPT).catch((err) => toast(err.message, { type: 'error' }));
       if (what === 'opinion') secondOpinion(agentId);
       if (what === 'apply-opinion') {
@@ -290,6 +298,8 @@ const Native = (() => {
         m.stopped ? el('span', { text: 'stopped' }) : null,
         el('span', { class: 'msg-time', text: time }),
         el('button', { class: 'copy-msg', text: 'Copy' }),
+        act('speak', '🔊', 'Read it aloud (click again to stop)'),
+        act('savemd', 'Save', 'Save this reply as a Markdown file'),
         act('quote', 'Quote', 'Quote in your next message'),
         act('branch', 'Branch', 'New chat from here: try another direction and keep this one'),
         isLast ? act('retry', 'Retry', 'Write this reply again') : null,
@@ -914,12 +924,63 @@ const Native = (() => {
       { label: 'Rename…', action: () => renameCurrent(agentId) },
       { label: '🗜 Compact context', action: () => compactChat(agentId) },
       { label: 'Copy as Markdown', action: () => copyText(chatMarkdown(chat), 'Chat copied') },
+      { label: 'Copy the last reply', action: () => copyLastReply(agentId) },
+      { label: 'Fold all long replies', action: () => foldAll(agentId, true) },
+      { label: 'Unfold all replies', action: () => foldAll(agentId, false) },
+      { label: 'Jump to the first message', action: () => { const l = views.get(agentId)?.list; if (l) l.scrollTop = 0; } },
+      { label: 'Duplicate this chat', action: () => { const n = chat.messages.length; if (n) branchFrom(agentId, n - 1); } },
+      { label: 'Chat stats', action: () => chatStats(chat) },
       { label: 'Export as Markdown file…', action: async () => { const p = await window.hub.saveFile({ defaultPath: `${chat.title.replace(/[\\/:*?"<>|]/g, '_')}.md`, filters: [{ name: 'Markdown', extensions: ['md'] }], content: chatMarkdown(chat) }); if (p) toast('Chat exported', { action: { label: 'Show', fn: () => window.hub.fs.reveal(p) } }); } },
       ...others.map((a) => ({ label: `Continue with ${a.name}`, action: () => continueWith(chat.id, a.id) })),
       { label: 'Delete chat', danger: true, action: async () => { if (await Modal.confirm('Delete chat?', `"${chat.title}" moves to Recently deleted (Ctrl+K → Recently deleted chats) for 30 days.`, { ok: 'Delete', danger: true })) remove(chat.id); } },
     ] : [{ label: 'Start by sending a message', action: () => views.get(agentId).input.focus() }];
     const r = e.currentTarget.getBoundingClientRect();
     showMenu(r.left, r.bottom + 4, items);
+  }
+
+  // ---------- small helpers for the chat menu and keys ----------
+  function lastReplyText(agentId) {
+    const chat = chats.get(H.activeChat[agentId]);
+    return [...(chat?.messages || [])].reverse().find((m) => m.role === 'assistant')?.text || '';
+  }
+  function copyLastReply(agentId) {
+    const t = lastReplyText(agentId);
+    if (!t) { toast('No reply yet'); return; }
+    navigator.clipboard.writeText(t).then(() => toast('Last reply copied', { timeout: 1400 }));
+  }
+  function foldAll(agentId, fold) {
+    const v = views.get(agentId); const chat = chats.get(H.activeChat[agentId]);
+    if (!v) return;
+    for (const node of v.list.querySelectorAll('.msg.assistant:not(.streaming)')) {
+      const key = `${chat?.id}:${node.dataset.index}`;
+      if (fold) { unfolded.delete(key); if (node.querySelector('.body').scrollHeight > COLLAPSE_PX / 3 && !node.classList.contains('collapsed')) { node.classList.add('collapsed'); if (!node.querySelector('.show-more-msg')) node.append(el('button', { class: 'show-more-msg msg-act', text: 'Show full reply', dataset: { msgAct: 'more' } })); } }
+      else { unfolded.add(key); node.classList.remove('collapsed'); node.querySelector('.show-more-msg')?.remove(); }
+    }
+  }
+  const plural = (n, one, many = `${one}s`) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+  function chatStats(chat) {
+    const ms = chat.messages;
+    const words = (role) => ms.filter((m) => m.role === role).reduce((n, m) => n + (m.text.match(/\S+/g) || []).length, 0);
+    const tokIn = ms.reduce((n, m) => n + (m.usage?.input || 0), 0); const tokOut = ms.reduce((n, m) => n + (m.usage?.output || 0), 0);
+    const time = ms.reduce((n, m) => n + (m.ms || 0), 0);
+    const first = ms.find((m) => m.at)?.at; const last = [...ms].reverse().find((m) => m.at)?.at;
+    Modal.alert('Chat stats', [
+      plural(ms.filter((m) => m.role === 'user').length, 'message') + ` from you (${plural(words('user'), 'word')})`,
+      plural(ms.filter((m) => m.role === 'assistant').length, 'reply', 'replies') + ` (${plural(words('assistant'), 'word')})`,
+      tokIn || tokOut ? `${tokIn.toLocaleString()} tokens in · ${tokOut.toLocaleString()} out` : null,
+      time ? `${Math.round(time / 1000)} s spent answering` : null,
+      first ? `From ${new Date(first).toLocaleString()} to ${new Date(last).toLocaleString()}` : null,
+    ].filter(Boolean).join('\n')) ?? toast('Stats unavailable');
+  }
+  // 🔊 read a reply aloud (the system voice); clicking again stops
+  let speaking = null;
+  function speak(text, btn) {
+    if (speaking) { speechSynthesis.cancel(); const was = speaking; speaking = null; was.textContent = '🔊'; if (was === btn) return; }
+    const plain = String(text || '').replace(/```[\s\S]*?```/g, ' (code) ').replace(/[#*_`>|]/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+    const u = new SpeechSynthesisUtterance(plain);
+    u.onend = () => { if (speaking === btn) { speaking = null; btn.textContent = '🔊'; } };
+    speaking = btn; btn.textContent = '⏹';
+    speechSynthesis.speak(u);
   }
 
   async function togglePin(chatId) {
@@ -1011,7 +1072,7 @@ const Native = (() => {
   window.hub.onEngineEvent(onEvent);
 
   return {
-    mount, refresh: render, focus, send, open, newChat, rename, remove, togglePin, setDraft, continueWith,
+    mount, refresh: render, focus, send, open, newChat, rename, remove, togglePin, setDraft, continueWith, copyLastReply, foldAll,
     attachPaths: async (agentId, paths) => { for (const p of paths) await addPath(agentId, p); },
     isBusy: (chatId) => pending.has(chatId),
     markdownOf: async (chatId) => chatMarkdown(await loadChat(chatId)),

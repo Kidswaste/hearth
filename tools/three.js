@@ -115,6 +115,21 @@ const ThreeLab = (() => {
     const snippetSel = el('select', { title: 'Insert a snippet at the cursor' }, el('option', { value: '', text: 'Insert snippet…' }), ThreeData.SNIPPETS.map((s, i) => el('option', { value: i, text: s.name })));
     const editorHost = el('div', { class: 'three-editor' });
     const previewHost = el('div', { class: 'three-preview' }, stats);
+    stats.title = 'Click: just fps (or everything again)';
+    stats.classList.toggle('compact', store.get('three.statsCompact', false));
+    stats.addEventListener('click', () => { const c = !stats.classList.contains('compact'); stats.classList.toggle('compact', c); store.set('three.statsCompact', c); });
+    // ?: the Lab's keys in one sheet
+    function labKeys() {
+      const rows = [['Space', 'Play / pause'], ['T', 'Tap tempo'], ['K · S · H', 'Kick / snare / hit marker at the playhead'], ['C', 'Cue here'], ['1–9', 'Jump to cue'],
+        ['[ · ]', 'Loop start / end'], ['Home · End', 'Start / end (of the loop)'], ['M', 'Mute the music (the sketch still reacts)'], ['A', 'Show every automation curve'],
+        ['\\', 'Freeze the picture'], ['.', 'One frame (while frozen)'], ['F · P', 'Focus · Present'], ['N', 'Note with a screenshot'], ['W', 'Write mode'], ['E', 'Edit the scene'],
+        ['Alt+1–9', 'Hide / show a layer'], ['Alt+Shift+1–9', 'Only that layer'], ['Ctrl+R · Ctrl+Shift+Enter', 'Restart the simulation'], ['Ctrl+Z', 'Undo (timeline)'], ['Esc', 'Deselect, forget taps, leave Present']];
+      const d = el('dialog', { class: 'lab-keys' }, el('h2', { text: 'Lab keys' }), el('div', { class: 'lab-keys-grid' }, rows.flatMap(([k, v]) => [el('kbd', { text: k }), el('span', { text: v })])),
+        el('div', { class: 'dialog-actions' }, el('button', { class: 'primary', text: 'Got it', on: { click: () => d.close() } })));
+      d.addEventListener('close', () => d.remove());
+      d.addEventListener('click', (e) => { if (e.target === d) d.close(); });
+      document.body.append(d); d.showModal();
+    }
     let split = null;
     const btn = (text, title, fn, cls = 'ghost small') => el('button', { class: cls, text, title, on: { click: fn } });
     const runBtn = btn('▶ Run', 'Run every layer again from the start (Ctrl+Enter)', () => run(), 'primary small');
@@ -137,7 +152,8 @@ const ThreeLab = (() => {
         ['Delete…', 'Moves it to History → deleted sketches', () => removeSketch()],
       ]);
     });
-    const shotBtn = btn('📷', 'Save a screenshot (all layers)', () => box.send({ type: 'screenshot' }), 'ghost small imp-capture');
+    let copyNextShot = false;
+    const shotBtn = btn('📷', 'Save a screenshot (all layers) · Shift+click: copy it to the clipboard', (e) => { copyNextShot = e.shiftKey; box.send({ type: 'screenshot' }); }, 'ghost small imp-capture');
     shotBtn.dataset.feature = 'Screenshot';
     const toolbar = el('div', { class: 'three-toolbar' }, runBtn, liveLabel, picker, newBtn, sketchMenuBtn, snippetSel, version, el('span', { class: 'spacer' }), shotBtn);
     // Prompt-first: the code editor stays hidden until asked for.
@@ -1478,6 +1494,7 @@ const ThreeLab = (() => {
     let stage = null;
     const box = sandboxFrame(previewHost, 'sketch', onMessage, () => stage?.params || '');
     box.onStageClosed = () => { stageBtn.classList.remove('on'); stageNote.hidden = true; previewHost.classList.remove('on-stage'); run(); };
+    queueMicrotask(() => stage?.pill?.prepend(freezeBtn));
     stage = ThreeMedia.stage(previewHost, box.frame, { onChange: ({ id, reload }) => {
       if (current) { (extras[current.id] ||= {}).frame = id; saveExtras(); }
       if (reload && current) run();
@@ -1497,6 +1514,12 @@ const ThreeLab = (() => {
     // Space plays / pauses; K S H tap hits in; [ ] set loop points; arrows nudge; Delete removes a marker.
     pane.addEventListener('keydown', (e) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); restartSim(); }
+      const typingNow = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
+      if (!typingNow && !e.ctrlKey && !e.altKey) {
+        if (e.key === '\\') { e.preventDefault(); e.stopPropagation(); setFreeze(!frozenNow); return; }
+        if (e.key === '.' && frozenNow) { e.preventDefault(); e.stopPropagation(); box.send({ type: 'step' }); return; }
+        if (e.key === '?') { e.preventDefault(); e.stopPropagation(); labKeys(); return; }
+      }
       if (e.altKey && !e.ctrlKey && /^Digit[1-9]$/.test(e.code)) {
         const L = [...layersOf()].reverse()[Number(e.code.slice(5)) - 1];
         if (!L) return;
@@ -1507,6 +1530,15 @@ const ThreeLab = (() => {
       }
     }, true);
     // Ctrl+R (reload) while the Lab shows: restart the simulation from scratch instead
+    api.actions = {
+      restart: () => restartSim(), freeze: () => setFreeze(!frozenNow), keys: () => labKeys(),
+      triggers: () => toggleTriggers(true),
+      writeTriggers: () => { toggleTriggers(true); setTimeout(() => trigPanel?.el.querySelector('button[title^="Write"]')?.click(), 60); },
+      liveSystem: () => setLive('system'), liveOff: () => setLive(null), nowPlaying: () => (np ? stopNowPlaying() : startNowPlaying()),
+      present: () => togglePresent(), stage: () => setStage(!box.onStage), code: () => setCodeVisible(split.classList.contains('no-code')),
+      music: () => player.pick(), shot: () => box.send({ type: 'screenshot' }), copyShot: () => { copyNextShot = true; box.send({ type: 'screenshot' }); },
+      sheet: () => showSheet(), newSketch: () => templateGallery(), allControls: () => player.toggleAllControls(), mute: () => player.toggleMute(),
+    };
     api.restartVisible = () => { if (!box.onStage && !previewHost.offsetParent) return false; restartSim(); return true; };
     pane.addEventListener('keydown', (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
@@ -1600,7 +1632,7 @@ const ThreeLab = (() => {
       if (/^edit-/.test(msg.type)) { onEditMessage(msg); return; }
       if (msg.type === 'live-tempo') { if (liveKind) { liveBpm = msg; paintLive(); } return; }
       if (msg.type === 'live-state') { if (msg.error) toast(`Live sound: ${msg.error}`, { type: 'error', timeout: 5000 }); if (!msg.on && msg.error) { liveKind = null; paintLive(); } return; }
-      if (msg.type === 'ready') { sendTriggers(); if (trigPanel) box.send({ type: 'trig-watch', on: true }); }
+      if (msg.type === 'ready') { if (frozenNow) box.send({ type: 'freeze', on: true }); sendTriggers(); if (trigPanel) box.send({ type: 'trig-watch', on: true }); }
       if (msg.type === 'ready' && liveKind) {
         // a reloaded preview: the hub page keeps capturing, the Stage captures again by itself
         sendLiveGain();
@@ -1609,7 +1641,11 @@ const ThreeLab = (() => {
       if (msg.type === 'eval-result' || msg.type === 'input-result') { sandboxCalls.get(msg.id)?.(msg); sandboxCalls.delete(msg.id); return; }
       if (msg.type === 'shot') {
         if (msg.tag === 'thumb') { const fn = thumbShot; thumbShot = null; fn?.(msg.dataUrl); return; }
-        if (pendingShot) { pendingShot(msg.dataUrl); pendingShot = null; } else saveDataUrl(msg.dataUrl, `${current?.name || 'sketch'}.png`);
+        if (pendingShot) { pendingShot(msg.dataUrl); pendingShot = null; } else if (copyNextShot) {
+          copyNextShot = false;
+          fetch(msg.dataUrl).then((r) => r.blob()).then((b) => navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]))
+            .then(() => toast('Screenshot copied: paste it anywhere', { timeout: 1800 }), (err) => toast(`Couldn't copy: ${err.message}`, { type: 'error' }));
+        } else saveDataUrl(msg.dataUrl, `${current?.name || 'sketch'}.png`);
       }
     }
     const autoRunSoon = debounce(() => run({ hot: true, layer: selId }), 700);
@@ -1667,6 +1703,16 @@ const ThreeLab = (() => {
     // Full runs reload the preview with every layer; hot runs (slider rebuilds, live code, a new layer)
     // re-run one layer in place, keeping three.js loaded, the other layers running and the music playing.
     // ⟲ Restart: everything from scratch (a new page, GPU context and audio), when a sketch bugs out.
+    // ❚❚ freeze: hold the picture (the music and the timeline go on); . steps one frame while frozen
+    let frozenNow = false;
+    const freezeBtn = el('button', { class: 'stage-btn freeze-btn', text: '❚❚', title: 'Freeze the picture (\\) · while frozen, . steps one frame', on: { click: () => setFreeze(!frozenNow) } });
+    function setFreeze(on) {
+      frozenNow = on;
+      box.send({ type: 'freeze', on });
+      freezeBtn.textContent = on ? '▶' : '❚❚';
+      freezeBtn.classList.toggle('on', on);
+      previewHost.classList.toggle('frozen', on);
+    }
     let restartNext = false;
     function restartSim() {
       if (player.recording) { toast('Stop the recording first', { type: 'error' }); return; }
@@ -2704,5 +2750,21 @@ ${frag}\`,
     isReference: (name) => /\.(png|jpe?g|gif|webp|bmp|svg|mp4|webm|mov|m4v|mkv|glb|gltf|obj|fbx|stl|ply|mp3|wav|ogg|m4a|flac|aac|ttf|otf|woff2?|hdr|exr)$/i.test(name),
     openShader(code) { ensureOpen('shader'); setTimeout(() => api.openShader?.(code), 60); },
     restartVisible: () => api.restartVisible?.() ?? false,
+    // run a Lab action from anywhere (the command palette): opens the Lab first
+    async act(name) {
+      ensureOpen('sketch');
+      for (let i = 0; i < 60 && !api.actions; i += 1) await new Promise((r) => setTimeout(r, 100));
+      api.actions?.[name]?.();
+    },
   };
 })();
+
+// ---------- the Lab in the command palette (Ctrl+K) ----------
+for (const [label, name] of [
+  ['Lab: Restart the simulation', 'restart'], ['Lab: Freeze / unfreeze the picture', 'freeze'], ['Lab: Keys', 'keys'],
+  ['Lab: ⚡ Triggers', 'triggers'], ['Lab: Write triggers to the timeline', 'writeTriggers'],
+  ['Lab: Live sound from this PC (Spotify, YouTube…)', 'liveSystem'], ['Lab: Live sound off', 'liveOff'], ['Lab: Show / hide what\'s playing', 'nowPlaying'],
+  ['Lab: Present', 'present'], ['Lab: Stage window', 'stage'], ['Lab: Show / hide the code', 'code'], ['Lab: Load music or video…', 'music'],
+  ['Lab: Save a screenshot', 'shot'], ['Lab: Copy a screenshot', 'copyShot'], ['Lab: Contact sheet', 'sheet'], ['Lab: New sketch from a template', 'newSketch'],
+  ['Lab: All timeline controls / fewer', 'allControls'], ['Lab: Mute / unmute the music', 'mute'],
+]) AppUI.addAction(label, () => ThreeLab.act(name));
