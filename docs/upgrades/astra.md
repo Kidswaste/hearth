@@ -275,5 +275,5 @@ quick asks run "lean" (no hub tools, no file tools), so each turn costs about on
 250. **Collaboration cards**: Claude→Astra gradient edge that flows while running, seat-colored columns, starred final answer.
 
 ## Tests
-- `node dev/astra-engine-test.js`: 23 engine checks against the fake engines (flags, file sandbox, MCP, parser, deltas, errors, lost sessions, stop, personas, doctor).
-- `node dev/astra-smoke.js collab` and `node dev/astra-smoke.js ui`: the app under Xvfb with `dev/fake-codex-astra.js` and `dev/fake-claude-astra.js` (Codex / Claude stand-ins speaking their real JSONL) driving every collaboration, the chip, second opinions, handoff, doctor, personas, director switch and the agent editor.
+- `node dev/astra-engine-test.js`: 25 engine checks against the fake engines (flags, file sandbox, MCP, parser, deltas, errors, lost sessions, stop, personas, doctor).
+- `node dev/astra-smoke.js collab`, `… ui` and `… manager`: the app under Xvfb with `dev/fake-codex-astra.js` and `dev/fake-claude-astra.js` (Codex / Claude stand-ins speaking their real JSONL) driving every collaboration, the chip, second opinions, handoff, doctor, personas, director switch and the agent editor.
