@@ -212,7 +212,6 @@ html[data-skin~="forge"] #menu button { padding: 6px 12px; }
   background: linear-gradient(180deg, #f2fbff 0%, color-mix(in srgb, var(--fh-info) 55%, #fff) 40%, color-mix(in srgb, var(--fh-info) 80%, #04121a) 52%, color-mix(in srgb, var(--fh-info) 60%, #fff) 100%);
   box-shadow: inset 0 1px 0 #fff, 0 0 calc(12px * var(--glow)) color-mix(in srgb, var(--fh-info) calc(40% * var(--glow)), transparent);
 }
-:root[data-look~=v2][data-scheme=light] .stage-pill .freeze-btn:not(.on) { color: color-mix(in srgb, var(--fh-info) 80%, #000); }
 /* Run: the Lab's toolbar gold chrome, the same height as its neighbours */
 :root[data-look~=v2] .three-toolbar .primary { padding: 0 14px; min-height: 28px; }
 /* Export / render / record buttons that start a long job get the molten edge */
@@ -282,6 +281,8 @@ html[data-skin~="forge"] #menu button { padding: 6px 12px; }
 .stage-pill .stage-btn { min-height: 24px; }
 .stage-pill .stage-more { height: 24px; max-width: 92px; font-size: 11px; padding: 0 4px; }
 :root[data-look~=v2] .stage-pill { border: 1px solid var(--line-hi); }
+/* a short sliders panel scrolls its list; the head, slots and chips never squash into each other */
+.tweaks > :not(.tw-body), .layers > .tw-head { flex-shrink: 0; }
 /* sliders head: Shuffle gets the room it needs, Save stays a solid block */
 .tweaks .tw-actions { gap: 6px; }
 .tweaks .tw-act:first-child { flex: 1 1 0; }
@@ -561,19 +562,21 @@ dialog .ghost:not(.small) { min-height: 32px; }
 /* ====================================================================================================== */
 /* ---------- light looks: surfaces that were drawn dark by default follow the light iron ---------- */
 :root[data-look~=v2][data-scheme=light] :is(.three-preview, .vr-stage) { background: #15171c; }
-:root[data-look~=v2][data-scheme=light] :is(.media-bar .mb-timeline, .media-bar .mb-overview) { background: color-mix(in srgb, var(--fh-iron-3) 70%, #000 6%); }
+/* the song timeline is drawn for a dark ground (lane labels, waveform): it stays a dark well */
+:root[data-look~=v2][data-scheme=light] :is(.media-bar .mb-timeline, .media-bar .mb-overview, .media-bar .mb-minimap) { background: #15171c; }
 /* overlays that sit on the (always dark) picture stay a dark glass island in light looks, so their labels keep contrast */
 :root[data-look~=v2][data-scheme=light] :is(.stage-pill, .three-stats, .three-preview .present-hint, .three-preview .present-hud, .vr-scopes, .vr-zoom, .vr-pickchip, .vr-label, .lab-wipe-bar) {
   --fh-iron-1: #23262d; --fh-iron-2: #191b20; --fh-iron-3: #111317; --fh-pop: #15171c; --fh-ink: #050608; --text: #ece6dc; --muted: #a49d92;
   --line: #2c2e33; --line-hi: #3d4047; --fh-strong: #fff; --fh-shine: #ffffff1c; --fh-shade: #00000066; --hover: #ffffff14; --fh-gold-text: var(--fh-gold-hi);
-  --m-glass-edge: inset 0 1px 0 #ffffff24, inset 0 0 0 1px #ffffff0f; color: var(--text);
+  --m-glass-edge: inset 0 1px 0 #ffffff24, inset 0 0 0 1px #ffffff0f; --fh-info: #56c6ff; color: var(--text);
 }
 :root[data-look~=v2][data-scheme=light] .stage-pill { background: color-mix(in srgb, var(--fh-pop) 84%, transparent); }
 :root[data-look~=v2][data-scheme=light] .stage-btn { color: color-mix(in srgb, var(--text) 85%, transparent); }
 :root[data-look~=v2][data-scheme=light] .fx-thumb b { color: #fff; }
 :root[data-look~=v2][data-scheme=light] .nv { --nv-bg: color-mix(in srgb, var(--fh-iron-2) 80%, var(--bg)); }
 :root[data-look~=v2][data-scheme=light] .nv-head { color: #fff; }
-:root[data-look~=v2][data-scheme=light] .vr-kit, :root[data-look~=v2][data-scheme=light] .fx-picker { box-shadow: 0 18px 50px #0003; }
+:root[data-look~=v2][data-scheme=light] :is(.vr-kit, .fx-picker, .nv-picker, .nv-menu, .nv-minimap, .tn-empty-card, .mb-menu, #menu, .slash-menu, .toast) { box-shadow: var(--m-glass-edge), 0 12px 32px #0002; }
+:root[data-look~=v2][data-scheme=light] .nv-node { box-shadow: var(--m-bevel), 0 4px 12px #0002; }
 
 /* ====================================================================================================== */
 /* ---------- density reaches the new UI too (/density compact | comfortable) ---------- */
