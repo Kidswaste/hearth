@@ -1,0 +1,561 @@
+/* Polish: makes the app's many surfaces (chat, Lab, FX picker, nodes, Video Review, meter, add-ons) read as one
+   designed product. Shared tokens (spacing, corners, motion, control heights, importance colors), materials on the
+   few actions that matter most, compact spacing, scroll and overflow care, focus and motion accessibility.
+   Loaded last (after look.css). Presentation only; Forgeheart 2 extras sit under :root[data-look~=v2]. */
+
+/* ====================================================================================================== */
+/* ---------- tokens: every stream's CSS reads these, so a look or /corners /motion change reaches all of it ---------- */
+@property --pl-fade { syntax: '<length>'; inherits: false; initial-value: 0px; }
+:root {
+  --s-1: 2px; --s-2: 4px; --s-3: 6px; --s-4: 8px; --s-5: 12px; --s-6: 16px;
+  --r-sm: 4px; --r-md: 6px; --r-lg: 10px; --r-pill: 999px;
+  --t-fast: .12s; --t-med: .18s; --t-slow: .28s;
+  --ease-out: cubic-bezier(.2, .8, .2, 1); --ease-spring: cubic-bezier(.3, 1.4, .5, 1);
+  --h-ctl: 28px; --h-ctl-sm: 24px;
+  /* importance colors for new UI: gold = active, cyan = info / frozen, violet = AI, red = stop, orange = attention */
+  --ui-gold: var(--accent);
+  --ui-cyan: #48ddff;
+  --ui-ai: #bd8bff;
+  --ui-ai-hi: color-mix(in srgb, var(--ui-ai) 62%, #fff);
+  --ui-red: #f97066;
+  --ui-hot: #ff8a3d;
+  --ui-ok: #3ccf8e;
+  --ui-ink: #0b0e10; /* dark text on a lit (gold / cyan) fill */
+  --focus-c: var(--accent);
+}
+html[data-skin~="forge"] {
+  --r-sm: 0px; --r-md: 0px; --r-lg: 0px; --r-pill: 0px;
+  --ui-cyan: var(--cyan, #48ddff); --ui-ai: var(--r-mythic, #bd8bff); --ui-red: var(--r-ultima, #ff6a6a); --ui-hot: var(--r-unique, #ff8c42); --ui-ok: #7cd992;
+}
+html[data-skin~="swirl"] { --r-sm: 6px; --r-md: 9px; --r-lg: 14px; --r-pill: 999px; }
+:root[data-corners=round] { --r-sm: 6px; --r-md: 8px; --r-lg: 12px; --r-pill: 999px; }
+:root[data-corners=square] { --r-sm: 0px; --r-md: 0px; --r-lg: 0px; --r-pill: 0px; }
+:root[data-look~=v2] {
+  --ui-gold: var(--fh-gold); --ui-cyan: var(--fh-info); --ui-ai: var(--fh-ai); --ui-ai-hi: var(--fh-ai-hi); --ui-red: var(--fh-stop); --ui-hot: var(--fh-ember); --ui-ok: var(--fh-ok);
+  --ui-ink: var(--m-gold-ink); --focus-c: var(--fh-gold);
+}
+:root[data-look~=v2][data-scheme=light] { --fh-ok: #1f8a4c; --ui-ink: #fff; }
+:root[data-motion=off] { --t-fast: 0s; --t-med: 0s; --t-slow: 0s; }
+@media (prefers-reduced-motion: reduce) { :root { --t-fast: 0s; --t-med: 0s; --t-slow: 0s; } }
+
+/* ====================================================================================================== */
+/* ---------- motion: the OS "reduce motion" setting reaches every look (plain ones too) ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; animation-delay: 0s !important; transition-duration: 1ms !important; scroll-behavior: auto !important; }
+}
+/* calm motion: the new UI's ambient loops rest too (wires, meter, recording blinks keep a still "on" state) */
+:root[data-motion=calm] .nv-wire-flow, :root[data-motion=calm] .meter-strip.is-live::before, :root[data-motion=calm] .meter-pill.is-live .mp-dot,
+:root[data-motion=calm] .ms-live.is-live::first-letter, :root[data-motion=calm] .stream-status::before, :root[data-motion=calm] .m-working::after,
+:root[data-motion=calm] .msg.assistant.streaming::after, :root[data-motion=calm] .msg.streaming .tool-chips::after { animation: none !important; }
+:root[data-motion=calm] .nv-wire-flow { opacity: .25; }
+/* no idle loops in Forgeheart 2: the rail and ask-all rainbows only turn while something is live */
+:root[data-look~=v2] #rail::before, :root[data-look~=v2] #broadcast::before { animation-play-state: paused; }
+:root[data-look~=v2]:has(.msg.streaming, .meter-strip.is-live, .meter-pill.is-live) :is(#rail, #broadcast)::before { animation-play-state: running; }
+/* the header glint: a quick sweep when you point at a header, instead of one every 14 s forever */
+@keyframes pl-glint { from { transform: translateX(-140px) skewX(-20deg); opacity: 1; } to { transform: translateX(calc(100vw)) skewX(-20deg); opacity: 0; } }
+:root[data-look~=v2] :is(.tool-head, .native-head)::after { animation: none; opacity: 0; }
+:root[data-look~=v2]:not([data-motion]) :is(.tool-head, .native-head):hover::after { opacity: 1; animation: pl-glint .9s var(--ease-out) 1; }
+/* a lit tab twinkles twice, then rests; unread agents pulse a few times, then stay lit */
+:root[data-look~=v2] .tabbar button.on::before { animation-iteration-count: 2; }
+:root[data-look~=v2] .agent-btn.unread::before { animation-iteration-count: 5; }
+/* the empty-chat star dust and floating icon settle after a few breaths */
+:root[data-look~=v2] .empty-icon, :root[data-look~=v2] .empty::before, :root[data-look~=v2] .empty::after { animation-iteration-count: 3; }
+/* hover / press feedback shares one tempo */
+:root[data-look~=v2] :is(.ghost, .primary, .tool-btn, .stage-btn, .tw-chip, .tw-gchip, .vr-ico, .vr-chip, .nv-hud-btn, .fx-tab, .mt-seg button, .seg button, .look-tile) {
+  transition-duration: var(--t-fast); transition-timing-function: var(--ease-out);
+}
+
+/* ====================================================================================================== */
+/* ---------- focus: one ring, never doubled, never clipped ---------- */
+/* text fields light their own border, so they don't get a second outline ring on top */
+:root[data-look~=v2] :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]), select, textarea):focus-visible { outline: none; }
+/* sliders show keyboard focus on the knob */
+:root[data-look~=v2] input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--fh-gold), 0 0 0 5px color-mix(in srgb, var(--fh-gold) 30%, transparent), 0 1px 3px #000a; }
+input[type=range]:focus-visible { outline: none; }
+input[type=range]:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--focus-c); outline-offset: 2px; }
+/* Classic: cut-corner buttons clip outlines, so their keyboard ring is drawn inside */
+html[data-skin~="forge"]:not([data-look~=v2]) :is(.primary, .tool-btn, .agent-btn, #broadcast button, .stage-btn, .tw-chip):focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--r-rare); }
+/* new UI's own controls get the forged ring too */
+:root[data-look~=v2] :is(.fx-tab, .fx-row, .vr-ico, .vr-chip, .vr-card, .vr-seg button, .nv-hud-btn, .nv-picker-item, .nv-menu-item, .mt-seg button, .mt-tabs button, .tw-gchip, .tn-switch button, .tn-preset, .look-tile, .preset-card, .seg button, .ms-cell):focus-visible {
+  outline: none; box-shadow: inset 0 0 0 1px var(--fh-gold), inset 0 0 0 3px color-mix(in srgb, var(--fh-ember) 30%, transparent);
+}
+.ms-cell:focus-visible { outline: 1px solid var(--focus-c); outline-offset: -2px; }
+
+/* ====================================================================================================== */
+/* ---------- scrolling: long menus fade at the edge while there is more, and never drag the page behind ---------- */
+@keyframes pl-scrollfade { from { --pl-fade: 22px; } to { --pl-fade: 0px; } }
+:is(#menu, .slash-menu, .mb-menu, .nv-menu, .nv-picker-list, .look-grid, .palette-list, .fx-list, .tw-body, .vr-list, .vr-notelist, .prompt-list, .memory-list, .preset-grid) {
+  overscroll-behavior: contain;
+}
+@supports (animation-timeline: scroll()) {
+  :is(#menu, .mb-menu, .nv-menu, .palette-list, .look-grid, .preset-grid) {
+    animation: pl-scrollfade linear both; animation-timeline: scroll(self);
+    -webkit-mask-image: linear-gradient(#000 calc(100% - var(--pl-fade)), transparent); mask-image: linear-gradient(#000 calc(100% - var(--pl-fade)), transparent);
+  }
+}
+/* Lab menus: long ones (trigger presets, templates) stop at a comfortable height and scroll */
+.mb-menu { max-height: min(68vh, 540px) !important; overflow-y: auto; scrollbar-width: thin; }
+/* tab bars: no stray vertical scrollbar from the underline, a slim one when tabs overflow */
+.tabbar { overflow-y: hidden; scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--text) 18%, transparent) transparent; }
+/* thin scrollbars inside small panes */
+:is(.tw-body, .fx-list, .vr-list, .vr-notelist, .nv-picker-list, .prompt-list, .memory-list, .slash-menu, .mb-menu) { scrollbar-gutter: stable; }
+
+/* ====================================================================================================== */
+/* ---------- menus ---------- */
+/* shortcut keys sit on the right of a menu item (Rename · F2) */
+#menu button { display: flex; align-items: baseline; gap: 18px; white-space: nowrap; }
+#menu .menu-key { margin-left: auto; font: 10.5px var(--mono, ui-monospace, monospace); letter-spacing: .04em; color: var(--muted); opacity: .85; }
+#menu button.danger .menu-key { color: inherit; opacity: .7; }
+#menu { min-width: 180px; }
+html[data-skin~="forge"] #menu button { padding: 6px 12px; }
+/* the "/" menu: keyboard selection is lit, mouse hover is a softer wash, so you can tell them apart */
+:root[data-look~=v2] .slash-item:hover:not(.sel) { background: color-mix(in srgb, var(--fh-gold) 7%, transparent); box-shadow: none; }
+.slash-item:hover:not(.sel) { background: var(--hover); }
+:root[data-look~=v2] .slash-foot { background: color-mix(in srgb, var(--fh-pop) 94%, transparent); border-top-color: var(--line-hi); }
+.slash-item b { transition: color var(--t-fast); }
+/* Lab menus: a calm hover, an active-color dot for the current choice, a little air between groups */
+.mb-menu .menu-item { border-radius: var(--r-sm); transition: background var(--t-fast) var(--ease-out); }
+.mb-menu .menu-item:hover { background: color-mix(in srgb, var(--ui-gold) 9%, transparent); }
+.mb-menu .menu-head { color: color-mix(in srgb, var(--ui-gold) 45%, var(--muted)); }
+.mb-menu { animation: pl-pop var(--t-med) var(--ease-out); }
+@keyframes pl-pop { from { opacity: 0; scale: .98; } }
+:root[data-look~=v2] .mb-menu { border-color: var(--line-hi); }
+
+/* ====================================================================================================== */
+/* ---------- chat ---------- */
+/* a slimmer composer and ask-all bar: two lines to start, they still grow as you type */
+:root[data-look~=v2] .composer-box textarea { min-height: 66px; padding: 10px 14px; }
+:root[data-look~=v2] .tool-dock .composer-box textarea { min-height: 58px; padding: 8px 12px; }
+:root[data-look~=v2] .composer { padding-top: 8px; padding-bottom: 12px; }
+:root[data-look~=v2] .tool-dock .composer { padding: 6px 10px 10px; }
+:root[data-look~=v2] #broadcast { padding: 6px 8px; }
+:root[data-look~=v2] #broadcast input { padding: 7px 12px; }
+:root[data-look~=v2] #broadcast button { min-height: 34px; }
+/* attach and Send line up at the bottom of the composer, the same height */
+.composer .attach-btn { min-width: 34px; min-height: 34px; display: inline-grid; place-items: center; }
+:root[data-look~=v2] .composer > .primary { min-height: 34px; min-width: 78px; }
+/* Send glows faintly while there is something to send, so the main action reads at a glance */
+:root[data-look~=v2] .composer:has(textarea:not(:placeholder-shown)) > .primary:not(.stop):not(:disabled) { box-shadow: inset 0 1px 0 #ffffffb0, inset 0 -2px 0 #00000040, inset 0 0 0 1px color-mix(in srgb, var(--fh-gold-lo) 60%, transparent), inset 0 0 calc(10px * var(--glow)) #fff6; }
+/* the char / token counter under the composer is quieter and never overlaps the frame */
+.composer-count { bottom: -15px; font-variant-numeric: tabular-nums; opacity: .8; }
+/* message footer: one height, tabular numbers, actions hover in the active color */
+.msg-foot { min-height: 18px; font-variant-numeric: tabular-nums; }
+.msg-foot .msg-act, .msg-foot .copy-msg { padding: 1px 3px; border-radius: var(--r-sm); }
+.msg-foot .msg-act:hover, .msg-foot .copy-msg:hover { background: var(--hover); }
+:root[data-look~=v2] .copy-msg:hover { color: var(--fh-gold-text); }
+/* code blocks: the Save / Lab / ⋯ actions trade places with the language label on hover, so blocks lose their empty 30px foot */
+.body pre { padding-bottom: 14px; }
+.body pre .code-acts { bottom: auto; top: 5px; right: 52px; }
+.body pre .code-label { transition: opacity var(--t-fast); }
+.body pre:hover .code-label { opacity: 0; }
+:root[data-look~=v2] .code-act { min-height: 22px; }
+/* the reply that's still being written: its live status line sits a little closer */
+.stream-status { margin-top: 4px; }
+.stream-status::before { background: var(--ui-ai); }
+/* day / unread separators share the hairline look */
+:root[data-look~=v2] .day-sep::before, :root[data-look~=v2] .day-sep::after { background: linear-gradient(90deg, transparent, var(--line-hi)); }
+:root[data-look~=v2] .day-sep::after { background: linear-gradient(90deg, var(--line-hi), transparent); }
+:root[data-look~=v2] .day-sep { font-family: var(--mono); letter-spacing: .16em; font-size: 10px; }
+/* "new" pill and the find bar inside a chat are glass */
+:root[data-look~=v2] .chat-find { background: var(--tx-noise), color-mix(in srgb, var(--fh-pop) 86%, transparent); backdrop-filter: var(--m-glass-filter); border-color: var(--line-hi); box-shadow: var(--m-glass-edge), 0 10px 30px #0009; border-radius: var(--r-md); }
+.chat-find button { min-width: 26px; min-height: 26px; }
+/* style chips and queue chips: same height as attach chips */
+.style-chip, .queue-chip, .attach-chip { min-height: 24px; }
+:root[data-look~=v2] .style-chip { border-radius: 0; clip-path: var(--cut-sm); background: color-mix(in srgb, var(--fh-ai) 14%, var(--fh-iron-1)); border-color: color-mix(in srgb, var(--fh-ai) 40%, transparent); }
+/* pinned strip, callouts and marks follow the look */
+:root[data-look~=v2] .pinned-strip { border-radius: 0; background: var(--tx-noise), color-mix(in srgb, var(--fh-pop) 90%, transparent); backdrop-filter: var(--m-glass-filter); border-color: var(--line-hi); box-shadow: inset 2px 0 0 var(--fh-gold); }
+:root[data-look~=v2] .body .callout { border-radius: 0; }
+:root[data-look~=v2] .body mark { background: color-mix(in srgb, var(--fh-gold) 30%, transparent); }
+:root[data-look~=v2] .code-unfold { border-radius: 0; clip-path: var(--cut-sm); background: var(--fh-iron-1); border-color: var(--line-hi); color: var(--fh-gold-text); }
+:root[data-look~=v2] .tok-badge { border-radius: 0; background: color-mix(in srgb, var(--fh-gold) 8%, transparent); }
+/* the chat header: model picker and buttons share one height */
+.native-head :is(.ghost, select) { min-height: 28px; }
+.tool-dock .native-head :is(.ghost, select) { min-height: 26px; }
+/* chats panel: titles truncate cleanly next to token counts and tags */
+.item { min-height: 28px; }
+.item .item-tok { font-variant-numeric: tabular-nums; }
+:root[data-look~=v2] .panel-view { border-radius: 0; clip-path: var(--cut-sm); }
+:root[data-look~=v2] .group-unread, :root[data-look~=v2] .unread-dot { background: var(--fh-ember); }
+:root[data-look~=v2] .unread-dot { border-radius: 0; transform: rotate(45deg); box-shadow: 0 0 6px var(--g-ember); }
+/* the busy dot in the chat list breathes only while the AI works (it already does); calm keeps it still */
+:root[data-motion=calm] .busy { animation: none; }
+
+/* ====================================================================================================== */
+/* ---------- materials on the actions that matter (Forgeheart 2) ---------- */
+/* Shuffle: polished chrome next to Save's molten gold, a matched pair */
+:root[data-look~=v2] .tweaks .tw-shuffle:not(:disabled) {
+  color: var(--m-chrome-ink); border: 1px solid #00000080; text-shadow: 0 1px 0 #ffffff80;
+  background: var(--m-sheen) 160% 0 / 250% 100% no-repeat, var(--m-chrome); box-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 #0000004d;
+}
+:root[data-look~=v2] .tweaks .tw-shuffle:not(:disabled):hover { animation: m-sweep .6s ease; filter: brightness(1.06); color: var(--m-chrome-ink); }
+:root[data-look~=v2] .tweaks .tw-act > .tw-step:not(:disabled), :root[data-look~=v2] .tweaks .tw-act > .ghost.tw-split:not(:disabled) {
+  color: var(--m-chrome-ink); background: linear-gradient(180deg, #e9ecef, #9aa1a8 52%, #c9ced3); border-color: #00000080; box-shadow: inset 0 1px 0 #fff;
+}
+/* Tap: a forged pad with a gold rim; once the tempo locks it turns gold chrome */
+:root[data-look~=v2] .media-bar .mb-tap {
+  border: 1px solid color-mix(in srgb, var(--fh-gold) 60%, var(--line-hi)); color: var(--fh-gold-text);
+  background: var(--m-sheen) 160% 0 / 250% 100% no-repeat, var(--tx-brushed), linear-gradient(180deg, color-mix(in srgb, var(--fh-gold) 14%, var(--fh-iron-1)), var(--fh-iron-2));
+  box-shadow: var(--m-bevel), inset 0 0 calc(10px * var(--glow)) color-mix(in srgb, var(--fh-gold) calc(16% * var(--glow)), transparent);
+  letter-spacing: .12em; text-transform: uppercase; min-height: 30px;
+}
+:root[data-look~=v2] .media-bar .mb-tap.on { color: var(--m-gold-ink); text-shadow: 0 1px 0 #fff6; background: var(--m-sheen) 160% 0 / 250% 100% no-repeat, var(--m-gold); border-color: var(--fh-gold-lo); }
+:root[data-look~=v2] .media-bar .mb-tap.flash { animation: mb-tapflash .18s ease-out, m-sweep .4s ease; }
+/* Freeze: frosted glass with an ice edge; frozen it turns to ice chrome */
+:root[data-look~=v2] .stage-pill .freeze-btn {
+  color: var(--fh-info); border: 1px solid color-mix(in srgb, var(--fh-info) 45%, transparent);
+  background: linear-gradient(180deg, #ffffff1c, #ffffff05 50%, #0000001a), color-mix(in srgb, var(--fh-info) 8%, transparent);
+  box-shadow: inset 0 1px 0 #ffffff30;
+}
+:root[data-look~=v2] .stage-pill .freeze-btn:hover { color: var(--fh-strong); border-color: var(--fh-info); background: linear-gradient(180deg, #ffffff26, #ffffff08 50%, #0000001a), color-mix(in srgb, var(--fh-info) 16%, transparent); }
+:root[data-look~=v2] .stage-pill .freeze-btn.on {
+  color: #04121a; text-shadow: 0 1px 0 #fff8; border-color: color-mix(in srgb, var(--fh-info) 70%, #000);
+  background: linear-gradient(180deg, #f2fbff 0%, color-mix(in srgb, var(--fh-info) 55%, #fff) 40%, color-mix(in srgb, var(--fh-info) 80%, #04121a) 52%, color-mix(in srgb, var(--fh-info) 60%, #fff) 100%);
+  box-shadow: inset 0 1px 0 #fff, 0 0 calc(12px * var(--glow)) color-mix(in srgb, var(--fh-info) calc(40% * var(--glow)), transparent);
+}
+:root[data-look~=v2][data-scheme=light] .stage-pill .freeze-btn:not(.on) { color: color-mix(in srgb, var(--fh-info) 80%, #000); }
+/* Run: the Lab's toolbar gold chrome, the same height as its neighbours */
+:root[data-look~=v2] .three-toolbar .primary { padding: 0 14px; min-height: 28px; }
+/* Export / render / record buttons that start a long job get the molten edge */
+:root[data-look~=v2] :is(.mb-rec, [data-feature^="Export"], [data-feature^="Render"]):not(.on):not(:disabled):hover { box-shadow: var(--m-bevel), inset 0 -2px 0 var(--fh-ember); }
+
+/* ---------- segmented controls: one look everywhere (frame sizes, dashboard ranges, Code ⇄ Nodes, Review · Director · Toolkit) ---------- */
+:root[data-look~=v2] :is(.mt-seg, .tn-switch, .vr-seg, .stage-pill .stage-seg) {
+  border: 1px solid var(--line-hi); border-radius: var(--r-md); padding: 1px; gap: 1px;
+  background: linear-gradient(180deg, var(--fh-iron-2), var(--fh-iron-3)); box-shadow: inset 0 1px 2px var(--fh-shade), 0 1px 0 color-mix(in srgb, var(--fh-shine) 50%, transparent);
+}
+:root[data-look~=v2] :is(.mt-seg, .tn-switch, .vr-seg) button { border: 0 !important; border-radius: var(--r-sm); color: var(--muted); background: none; transition: color var(--t-fast), background var(--t-fast); }
+:root[data-look~=v2] :is(.mt-seg, .tn-switch, .vr-seg) button:hover:not(.on) { color: var(--fh-gold-text); background: var(--hover); }
+:root[data-look~=v2] :is(.mt-seg, .tn-switch, .vr-seg, .stage-seg) button.on {
+  color: var(--m-gold-ink); text-shadow: 0 1px 0 #fff6; font-weight: 700;
+  background: var(--m-sheen) 160% 0 / 250% 100% no-repeat, var(--m-gold); box-shadow: inset 0 1px 0 #ffffffa0, inset 0 -1px 0 #0004;
+}
+:root[data-look~=v2] .vr-seg button.on { box-shadow: inset 0 1px 0 #ffffffa0, inset 0 -1px 0 #0004, 0 0 calc(8px * var(--glow)) var(--g-gold); }
+:root[data-look~=v2] .stage-pill .stage-seg .stage-btn + .stage-btn { border-left: 1px solid var(--fh-shade); }
+.mt-seg button, .tn-switch button, .vr-seg button { min-height: 24px; }
+
+/* ====================================================================================================== */
+/* ---------- Three.js Lab ---------- */
+/* one tidy toolbar row at 1280 px: slimmer buttons, one control height */
+.three-toolbar { row-gap: 6px; }
+.three-toolbar .tb-group { gap: 2px; padding: 2px 3px; }
+.three-toolbar .ghost.small, .three-toolbar select { min-height: 26px; }
+.three-toolbar .ghost.small { padding: 2px 8px; }
+.three-toolbar .three-sketch-select { height: 28px; }
+.tabpane:has(.three-split) { padding-top: 8px; gap: 8px; }
+/* narrow Lab (the director chat docked): icon-only toolbar labels collapse their padding */
+@container (max-width: 640px) {
+  .three-toolbar .ghost.small { padding: 2px 6px; }
+  .three-toolbar .tb-group { padding: 1px 2px; }
+}
+/* narrow Lab (sliders open beside a docked chat): the picture comes first, then the code, then the panels */
+@container (max-width: 760px) {
+  .three-split.with-tweaks .three-right { order: -1; }
+}
+/* the Tools ▾ drawer button reads as a button, not a label */
+.lab-tabs .lab-tools-btn, .lab-tabs.on-tool .lab-back { min-height: 28px; display: inline-flex; align-items: center; gap: 4px; transition: border-color var(--t-fast), color var(--t-fast), background var(--t-fast); }
+:root[data-look~=v2] .lab-tabs :is(.lab-tools-btn, .lab-back) {
+  font-family: var(--font); text-transform: none; letter-spacing: .03em; font-size: 12px; color: var(--text); border-radius: 0; clip-path: var(--cut-sm);
+  border: 1px solid var(--line-hi); background: var(--m-sheen) 160% 0 / 250% 100% no-repeat, var(--tx-brushed), linear-gradient(180deg, color-mix(in srgb, var(--fh-strong) 5%, var(--fh-iron-1)), var(--fh-iron-2));
+  box-shadow: var(--m-bevel); padding: 3px 12px;
+}
+:root[data-look~=v2] .lab-tabs :is(.lab-tools-btn, .lab-back):hover { color: var(--fh-gold-text); border-color: color-mix(in srgb, var(--fh-gold) 60%, var(--line-hi)); animation: m-sweep .6s ease; }
+:root[data-look~=v2] .lab-tabs :is(.lab-tools-btn, .lab-back)::before, :root[data-look~=v2] .lab-tabs :is(.lab-tools-btn, .lab-back)::after { display: none !important; }
+:root[data-look~=v2] .lab-tabs.on-tool > button[data-id].on:not([data-id="sketch"]) { border-radius: 0; clip-path: var(--cut-sm); background: linear-gradient(180deg, color-mix(in srgb, var(--fh-gold) 22%, var(--fh-iron-1)), color-mix(in srgb, var(--fh-gold) 8%, var(--fh-iron-2))); color: var(--fh-strong); }
+/* the preview's numbers move to the bottom-left, so they never hide under the frame-size pill */
+.three-preview .three-stats { top: auto; bottom: 8px; max-width: calc(100% - 16px); overflow: hidden; white-space: nowrap; flex-wrap: nowrap; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent); }
+/* a narrow preview (director docked): the frame-size pill keeps to one row; More… and the extras show on hover */
+.three-right { container-type: inline-size; }
+.stage-btn { white-space: nowrap; }
+@container (max-width: 520px) {
+  .media-bar .mb-main .tb-group { flex-wrap: wrap; row-gap: 4px; }
+}
+@container (max-width: 460px) {
+  .stage-pill { flex-wrap: nowrap; gap: 2px; padding: 2px; }
+  .stage-pill .stage-seg .stage-btn { padding: 3px 5px; font-size: 10.5px; }
+  .stage-pill .freeze-btn { padding: 3px 7px; }
+  .three-preview:not(:hover) .stage-pill :is(.stage-more, .stage-btn:not(.freeze-btn):not(.stage-size-btn)) { display: none; }
+  .three-preview:hover .stage-pill { flex-wrap: wrap; }
+}
+:root[data-look~=v2] .three-stats { border: 1px solid var(--line); box-shadow: var(--m-glass-edge); }
+/* frame-size pill: tighter, one row as long as it fits, a calm size readout */
+.stage-pill { gap: 3px; padding: 3px; }
+.stage-pill .stage-btn { min-height: 24px; }
+.stage-pill .stage-more { height: 24px; max-width: 92px; font-size: 11px; padding: 0 4px; }
+:root[data-look~=v2] .stage-pill { border: 1px solid var(--line-hi); }
+/* sliders head: Shuffle gets the room it needs, Save stays a solid block */
+.tweaks .tw-actions { gap: 6px; }
+.tweaks .tw-act:first-child { flex: 1 1 0; }
+.tweaks .tw-act:last-child { flex: 0 1 auto; }
+.tweaks .tw-act > .tw-step { padding-left: 6px; padding-right: 6px; min-width: 22px; }
+.tweaks .tw-act > .tw-split { padding-left: 6px; padding-right: 6px; min-width: 22px; }
+.tweaks .tw-act > button { min-height: 30px; }
+.tweaks .tw-act .tw-shuffle, .tweaks .tw-act .tw-save { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html[data-skin~="forge"] .tweaks .tw-act > button { border-radius: 0 !important; }
+html[data-skin~="forge"] .tweaks .tw-act:first-child > button:first-child { clip-path: polygon(5px 0, 100% 0, 100% 100%, 0 100%, 0 5px); }
+html[data-skin~="forge"] .tweaks .tw-act:last-child > button:last-child { clip-path: polygon(0 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%); }
+:root[data-look~=v2] .tweaks .tw-act .primary.tw-split { border-left: 1px solid color-mix(in srgb, var(--fh-gold-lo) 70%, #000); }
+/* panel heads (Layers, Sliders): small primary buttons match the head height */
+:root[data-look~=v2] :is(.tweaks, .layers) .tw-head .primary.small:not(.tw-big) { padding: 3px 12px; min-height: 26px; font-size: 11px; }
+:is(.tweaks, .layers) .tw-head { min-height: 38px; }
+/* group chips: bevelled plates, the chosen one is gold chrome; the row fades at its edge when it scrolls */
+.tw-gchips { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent); padding-right: 18px; }
+.tw-gchip { border-radius: var(--r-pill); min-height: 24px; transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast); }
+:root[data-look~=v2] .tw-gchip { border-radius: 0; clip-path: var(--cut-sm); border-color: var(--line-hi); background: linear-gradient(180deg, color-mix(in srgb, var(--fh-strong) 4%, var(--fh-iron-1)), var(--fh-iron-2)); box-shadow: var(--m-bevel); }
+:root[data-look~=v2] .tw-gchip:hover { color: var(--fh-gold-text); border-color: color-mix(in srgb, var(--fh-gold) 60%, var(--line-hi)); }
+:root[data-look~=v2] .tw-gchip.on { color: var(--m-gold-ink); background: var(--m-gold); border-color: var(--fh-gold-lo); text-shadow: 0 1px 0 #fff6; }
+:root[data-look~=v2] .tw-gchip.tw-gchip-changed.on { color: #04121a; background: linear-gradient(180deg, #f2fbff, color-mix(in srgb, var(--fh-info) 70%, #fff) 45%, var(--fh-info)); border-color: color-mix(in srgb, var(--fh-info) 70%, #000); }
+/* slots A / B / C: filled slots are cyan chrome; the morph fader groove matches the sliders */
+:root[data-look~=v2] .tw-slotbtn.full { color: #04121a; background: linear-gradient(180deg, #f2fbff, color-mix(in srgb, var(--fh-info) 70%, #fff) 45%, var(--fh-info)); border-color: color-mix(in srgb, var(--fh-info) 70%, #000) !important; box-shadow: inset 0 1px 0 #fff; }
+:root[data-look~=v2] .tw-slotbtn.peek { color: var(--m-gold-ink); background: var(--m-gold); }
+.tw-slotbtn { min-height: 24px; }
+/* slider rows: a changed name keeps the gold marker, numbers line up */
+.tw-num, .tw-hex, .tw-bind-pct, .mb-time, .mb-bpmread, .mb-tin, .mb-bpmin { font-variant-numeric: tabular-nums; }
+:root[data-look~=v2] .tw-row.changed { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 9%, transparent), transparent 70%); }
+:root[data-look~=v2] .tw-tip { border-color: var(--line-hi); border-radius: 0; background: color-mix(in srgb, var(--fh-gold) 3%, transparent); }
+/* timeline: the main row stays one line where it can, its groups share a height */
+.media-bar .mb-main .tb-group { min-height: 32px; }
+.media-bar .mb-main .ghost.small { min-height: 26px; }
+.media-bar .mb-name { min-width: 0; }
+:root[data-look~=v2] .media-bar .mb-handle { opacity: .85; }
+:root[data-look~=v2] .media-bar .mb-loopchip { border-radius: 0; clip-path: var(--cut-sm); }
+:root[data-look~=v2] .media-bar .mb-quant.on, :root[data-look~=v2] .media-bar .mb-size.on { color: var(--m-gold-ink); background: var(--m-gold); border-color: var(--fh-gold-lo); }
+/* console head: "Errors only" stays on one line, buttons wrap instead of running off the edge */
+.three-console-head { flex-wrap: wrap; row-gap: 4px; min-width: 0; }
+.three-console-head .check { display: inline-flex; flex-direction: row; align-items: center; gap: 5px; white-space: nowrap; }
+/* Present: the key hint is one line of glass, and the info line matches it */
+.three-preview.presenting .present-hint { white-space: nowrap; max-width: calc(100% - 32px); overflow: hidden; text-overflow: ellipsis; font-size: 12px; padding: 5px 14px; }
+:root[data-look~=v2] .three-preview.presenting :is(.present-hint, .present-hud) {
+  border-radius: 0; clip-path: var(--cut-sm); color: var(--text); backdrop-filter: blur(10px) saturate(1.3);
+  background: var(--tx-noise), color-mix(in srgb, var(--fh-pop) 70%, transparent); box-shadow: var(--m-glass-edge), inset 2px 0 0 var(--fh-gold);
+}
+/* key-hint badges, compare wipe label and hover time read in the look's colors */
+.lab-keyhint { border-radius: var(--r-sm); color: var(--ui-gold); border-color: color-mix(in srgb, var(--ui-gold) 35%, transparent); }
+:root[data-look~=v2] .lab-keyhint { background: color-mix(in srgb, var(--fh-pop) 92%, transparent); }
+/* the docked director: its divider is a hairline that lights on hover, not a grey bar */
+.tool-dock-divider { flex-basis: 4px; background: transparent; box-shadow: inset 1px 0 0 var(--line); transition: background var(--t-fast); }
+.tool-dock-divider:hover { background: color-mix(in srgb, var(--ui-gold) 60%, transparent); }
+:root[data-look~=v2] .tool-dock { background: var(--tx-brushed-v), linear-gradient(180deg, var(--fh-iron-2), var(--fh-iron-3)); border-left-color: var(--line-hi); }
+/* scene editor / references / sketch browser cards share the forged plate */
+:root[data-look~=v2] :is(.tn-preset, .ref-card, .sk-card) { border-radius: 0; border-color: var(--line); background: var(--tx-brushed), linear-gradient(180deg, color-mix(in srgb, var(--fh-strong) 3%, var(--fh-iron-1)), var(--fh-iron-2)); box-shadow: var(--m-bevel); }
+:root[data-look~=v2] :is(.tn-preset, .ref-card, .sk-card):hover { border-color: color-mix(in srgb, var(--fh-gold) 60%, var(--line-hi)); }
+
+/* ====================================================================================================== */
+/* ---------- node editor ---------- */
+.nv { border-radius: var(--r-lg); }
+.nv-node { border-radius: var(--r-md); }
+.nv-head { border-radius: var(--r-md) var(--r-md) 0 0; }
+.nv-node.collapsed .nv-head { border-radius: var(--r-md); }
+.nv-frame, .nv-frame-head { border-radius: var(--r-lg) var(--r-lg) 0 0; }
+.nv-frame { border-radius: var(--r-lg); }
+.nv-note, .nv-picker, .nv-menu, .nv-minimap, .tn-empty-card, .nv-dialog { border-radius: var(--r-lg); }
+.nv-hud-btn, .nv-search, .nv-menu-item, .nv-picker-item, .nv-widget.k-number, .nv-num-input, .tn-preset { border-radius: var(--r-sm); }
+.nv-hud-btn { min-height: 28px; min-width: 28px; transition: border-color var(--t-fast), color var(--t-fast), background var(--t-fast); }
+.nv-hud-btn:hover { color: var(--ui-gold); }
+.nv-status.error { color: var(--ui-red); }
+.nv-status.ok { color: var(--ui-ok); }
+.nv-node.err { border-color: var(--ui-red); box-shadow: 0 0 0 1.5px var(--ui-red), 0 6px 18px #0007; }
+/* Forgeheart 2: node headers are forged chrome tinted by the node, HUD and menus are glass */
+:root[data-look~=v2] .nv-node { background: color-mix(in srgb, var(--fh-iron-1) 92%, transparent); box-shadow: var(--m-bevel), 0 6px 18px #0007; }
+:root[data-look~=v2] .nv-head {
+  background: var(--m-sheen) 160% 0 / 250% 100% no-repeat, linear-gradient(180deg, #ffffff30 0%, #ffffff08 46%, #00000030 100%),
+    linear-gradient(90deg, color-mix(in srgb, var(--nc) 50%, var(--fh-iron-3)) 0%, color-mix(in srgb, var(--nc) 20%, var(--fh-iron-3)) 100%);
+  border-bottom: 1px solid var(--fh-shade); font-family: var(--font-head);
+}
+:root[data-look~=v2] .nv-node:hover .nv-head { animation: m-sweep .6s ease; }
+:root[data-look~=v2] .nv-node.sel { box-shadow: 0 0 0 1.5px var(--nc), 0 10px 26px #000a, 0 0 calc(18px * var(--glow)) color-mix(in srgb, var(--nc) 30%, transparent); }
+:root[data-look~=v2] :is(.nv-hud-btn, .tn-switch) { border-color: var(--line-hi); background: var(--tx-noise), color-mix(in srgb, var(--fh-pop) 82%, transparent); backdrop-filter: var(--m-glass-filter); box-shadow: var(--m-glass-edge), 0 2px 8px #0006; }
+:root[data-look~=v2] .nv-hud-btn:hover { border-color: color-mix(in srgb, var(--fh-gold) 60%, var(--line-hi)); color: var(--fh-gold-text); }
+:root[data-look~=v2] .nv-add { color: var(--m-gold-ink); background: var(--m-gold) !important; border-color: var(--fh-gold-lo) !important; text-shadow: 0 1px 0 #fff6; }
+:root[data-look~=v2] :is(.nv-picker, .nv-menu, .nv-minimap, .tn-empty-card) {
+  background: var(--tx-noise), color-mix(in srgb, var(--fh-pop) 88%, transparent); backdrop-filter: var(--m-glass-filter);
+  border: 1px solid var(--line-hi); box-shadow: var(--m-glass-edge), 0 14px 40px #000a;
+}
+:root[data-look~=v2] .nv-picker { border-top: 1px solid transparent; background: var(--hairline) top / 100% 1px no-repeat, var(--tx-noise), color-mix(in srgb, var(--fh-pop) 88%, transparent); }
+:root[data-look~=v2] .nv-picker-q { font-family: var(--font-head); }
+:root[data-look~=v2] .nv-menu-item:hover:not(:disabled) { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 16%, transparent), transparent); color: var(--fh-gold-text); box-shadow: inset 2px 0 0 var(--fh-gold); }
+:root[data-look~=v2] :is(.nv-picker-cat, .nv-menu-sec) { font-family: var(--mono); color: color-mix(in srgb, var(--fh-gold) 50%, var(--muted)); }
+:root[data-look~=v2] .nv-port { border-color: var(--fh-iron-3); }
+:root[data-look~=v2] .nv-toggle.on { color: var(--m-gold-ink); }
+:root[data-look~=v2] .tn-empty-card b, :root[data-look~=v2] .tn-empty-card h3 { font-family: var(--font-head); letter-spacing: .06em; }
+:root[data-look~=v2] .tn-pane .nv { border-color: var(--line-hi); }
+.tn-switch button { min-height: 22px; }
+/* the empty-graph card fits a narrow Lab */
+.tn-empty-card { max-width: min(380px, calc(100% - 24px)); }
+
+/* ====================================================================================================== */
+/* ---------- Video Review ---------- */
+.vr { --vr-gold: var(--ui-gold); --vr-hot: var(--ui-hot); }
+.vr-ico { min-width: 28px; height: 28px; border-radius: var(--r-sm); }
+.vr-chip, .vr-cat, .vr-catchip { border-radius: var(--r-pill); }
+.vr-card, .vr-note, .vr-composer, .vr-stage, .vr-timeline, .vr-scopes { border-radius: var(--r-md); }
+.vr-thumb-wrap, .vr-ver, .vr-fmt, .vr-badge, .vr-new, .vr-lab, .vr-flash, .vr-pickchip, .vr-label, .vr-zoom { border-radius: var(--r-sm); }
+.vr-seg { border-radius: var(--r-md); }
+.vr-seg button { border-radius: var(--r-sm); }
+.vr-card { transition: background var(--t-fast), border-color var(--t-fast); }
+.vr-card-name { color: var(--text); }
+.vr-card.on .vr-card-name { color: var(--fh-strong, var(--text)); }
+.vr-chip { min-height: 22px; transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast); }
+.vr-time:focus { outline: none; border-color: var(--ui-gold); }
+.vr-mark.sel { outline-color: var(--text); }
+.vr-tags { color: var(--ui-cyan); }
+.vr-card.is-b { box-shadow: inset 3px 0 0 var(--ui-cyan); }
+.vr-ver.is-b { border-color: var(--ui-cyan); color: var(--ui-cyan); }
+.vr-label.b { color: color-mix(in srgb, var(--ui-cyan) 60%, #fff); }
+.vr-lab { background: var(--ui-ai); }
+.vr-by { color: var(--ui-ai); }
+.vr-ver { min-height: 22px; }
+/* the play button is the same molten chrome as every other main action */
+.vr-play { min-height: 30px; }
+:root[data-look~=v2] .vr-play { color: var(--m-gold-ink); background: var(--m-sheen) 160% 0 / 250% 100% no-repeat, var(--m-gold); box-shadow: inset 0 1px 0 #ffffffa0, inset 0 -2px 0 #0004, 0 0 calc(10px * var(--glow)) var(--g-gold); border-radius: 0; clip-path: var(--cut-sm); text-shadow: 0 1px 0 #fff6; }
+:root[data-look~=v2] .vr-play:hover { filter: brightness(1.1) saturate(1.1); animation: m-sweep .6s ease; }
+/* Forgeheart 2: library and notes columns are brushed iron, the stage frame matches the Lab preview */
+:root[data-look~=v2] :is(.vr-lib, .vr-notes) { background: var(--tx-brushed-v), linear-gradient(180deg, var(--fh-iron-2), var(--fh-iron-3)); border-color: var(--line-hi); }
+:root[data-look~=v2] .vr-main { background: transparent; }
+:root[data-look~=v2] .vr-card.on { border-color: var(--fh-gold); background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 16%, transparent), transparent); box-shadow: inset 2px 0 0 var(--fh-gold); }
+:root[data-look~=v2] .vr-card:hover:not(.on) { background: var(--hover); }
+:root[data-look~=v2] .vr-thumb-wrap { box-shadow: inset 0 0 0 1px var(--line); }
+:root[data-look~=v2] .vr-chip { border-radius: 0; border-color: var(--line-hi); background: linear-gradient(180deg, color-mix(in srgb, var(--fh-strong) 4%, var(--fh-iron-1)), var(--fh-iron-2)); box-shadow: var(--m-bevel); }
+:root[data-look~=v2] .vr-chip:hover { color: var(--fh-gold-text); border-color: color-mix(in srgb, var(--fh-gold) 60%, var(--line-hi)); }
+:root[data-look~=v2] .vr-chip.on { color: var(--m-gold-ink); background: var(--m-gold); border-color: var(--fh-gold-lo); text-shadow: 0 1px 0 #fff6; }
+:root[data-look~=v2] .vr-stage { box-shadow: 0 0 0 1px var(--line-hi), 0 0 0 3px var(--fh-iron-3), 0 0 0 4px color-mix(in srgb, var(--fh-gold) calc(16% * var(--glow)), transparent), 0 18px 50px #000a; border-radius: 0; }
+:root[data-look~=v2] .vr-title { font-family: var(--font-head); color: var(--fh-strong); }
+:root[data-look~=v2] .vr-time { color: var(--fh-gold-text); }
+:root[data-look~=v2] .vr-ico.on { color: var(--fh-gold-text); border-color: color-mix(in srgb, var(--fh-gold) 50%, transparent); background: linear-gradient(180deg, color-mix(in srgb, var(--fh-gold) 18%, var(--fh-iron-1)), color-mix(in srgb, var(--fh-gold) 6%, var(--fh-iron-2))); }
+:root[data-look~=v2] .vr-ico:hover { color: var(--fh-gold-text); }
+:root[data-look~=v2] .vr-note { border-radius: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--c) 7%, var(--fh-iron-1)), var(--fh-iron-2)); box-shadow: var(--m-bevel); }
+:root[data-look~=v2] .vr-composer { border-radius: 0; background: var(--tx-noise), linear-gradient(180deg, color-mix(in srgb, var(--fh-gold) 8%, var(--fh-iron-1)), var(--fh-iron-2)); border-color: color-mix(in srgb, var(--fh-gold) 50%, var(--line-hi)); }
+:root[data-look~=v2] .vr-scopes { background: var(--tx-noise), color-mix(in srgb, var(--fh-pop) 82%, transparent); backdrop-filter: var(--m-glass-filter); border-color: var(--line-hi); box-shadow: var(--m-glass-edge); }
+:root[data-look~=v2] :is(.vr-hover span, .vr-zoom, .vr-pickchip, .vr-label) { background: color-mix(in srgb, var(--fh-pop) 90%, transparent); }
+:root[data-look~=v2] .vr-timeline { box-shadow: inset 0 0 0 1px var(--line-hi), inset 0 1px 4px var(--fh-shade); }
+:root[data-look~=v2] .vr-send-more { border-color: var(--fh-gold-lo); }
+/* the library's filter chips stay on one row and scroll sideways, instead of taking three rows */
+.vr-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent); padding-right: 14px; }
+.vr-chips::-webkit-scrollbar { display: none; }
+.vr-chip { flex: none; }
+/* the After Effects lists: one item per line (short names used to pair up), the chosen one lit like every list */
+.lib-list > div { display: flex; flex-direction: column; gap: 1px; }
+.lib-item { min-height: 28px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background var(--t-fast); }
+:root[data-look~=v2] .lib-item.on { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 18%, transparent), transparent); box-shadow: inset 2px 0 0 var(--fh-gold); color: var(--fh-strong); border-radius: 0; }
+:root[data-look~=v2] .lib-item:hover:not(.on) { color: var(--fh-gold-text); }
+:root[data-look~=v2] .lib-group { font-family: var(--mono); color: color-mix(in srgb, var(--fh-gold) 50%, var(--muted)); }
+/* the Toolkit drawer: a real header, glass edge, tabs that scroll without a scrollbar track */
+.vr-kit-head { min-height: 44px; }
+.vr-kit-head > :first-child { font-weight: 700; }
+:root[data-look~=v2] .vr-kit { background: var(--tx-brushed-v), linear-gradient(180deg, var(--fh-iron-1), var(--fh-iron-3)); border-left: 1px solid var(--line-hi); box-shadow: -24px 0 60px #000b, inset 1px 0 0 var(--fh-shine); }
+:root[data-look~=v2] .vr-kit-head { background: var(--hairline) bottom / 100% 1px no-repeat, var(--tx-brushed), linear-gradient(180deg, var(--fh-iron-1), var(--fh-iron-2)); border-bottom-color: var(--fh-shade); }
+:root[data-look~=v2] .vr-kit-head > :first-child { font-family: var(--font-head); text-transform: uppercase; letter-spacing: .18em; font-size: 13px; color: var(--fh-strong); text-shadow: 0 0 calc(14px * var(--glow)) var(--g-gold); }
+.vr-kit-body .tabbar { scrollbar-width: none; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 30px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 30px), transparent); padding-right: 24px; }
+.vr-kit-body .tabbar::-webkit-scrollbar { display: none; }
+
+/* ====================================================================================================== */
+/* ---------- token meter ---------- */
+/* Forgeheart 2: the strip is brushed metal from the look's own iron (light looks get a light strip) */
+:root[data-look~=v2] { --meter-bg: var(--tx-brushed), linear-gradient(180deg, var(--fh-iron-1), var(--fh-iron-2)); }
+:root[data-look~=v2] .meter-strip { border-top: 1px solid var(--line-hi); box-shadow: inset 0 1px 0 var(--fh-shine); }
+:root[data-look~=v2] .meter-strip::before { background: var(--rainbow); }
+:root[data-look~=v2] .ms-cell { border-right-color: color-mix(in srgb, var(--line-hi) 70%, transparent); }
+:root[data-look~=v2] .ms-cell:hover { background: linear-gradient(180deg, color-mix(in srgb, var(--fh-gold) 12%, transparent), transparent); color: var(--fh-gold-text); }
+.ms-cell { font-variant-numeric: tabular-nums; }
+.ms-cell.ms-collapse { min-width: 24px; }
+/* the rail pill: a small glass plate with a bevel */
+:root[data-look~=v2] .meter-pill { background: var(--tx-noise), linear-gradient(180deg, color-mix(in srgb, var(--fh-strong) 5%, var(--fh-iron-1)), var(--fh-iron-2)); box-shadow: var(--m-bevel), inset 0 0 0 1px var(--line); opacity: 1; color: var(--muted); }
+:root[data-look~=v2] .meter-pill:hover { color: var(--fh-gold-text); box-shadow: var(--m-bevel), inset 0 0 0 1px color-mix(in srgb, var(--fh-gold) 50%, var(--line)); }
+:root[data-look~=v2] .meter-pill.is-live { color: var(--fh-ai-hi); box-shadow: var(--m-bevel), inset 0 0 0 1px color-mix(in srgb, var(--fh-ai) 50%, var(--line)), inset 0 0 calc(10px * var(--glow)) var(--g-ai); }
+:root[data-look~=v2] .meter-pill .mp-bar i { background: var(--m-molten); }
+/* the dashboard: KPI plates from the look's iron, tabs like every other tab bar */
+:root[data-look~=v2] .mt-kpi { background: var(--tx-brushed), linear-gradient(160deg, color-mix(in srgb, var(--fh-strong) 5%, var(--fh-iron-1)), var(--fh-iron-2)); border-color: var(--line-hi); box-shadow: var(--m-bevel); }
+:root[data-look~=v2] .mt-kpi b { color: var(--fh-gold-text); text-shadow: 0 0 calc(12px * var(--glow)) var(--g-gold); font-family: var(--font-head); }
+:root[data-look~=v2] .mt-tabs { border-bottom-color: var(--line-hi); }
+:root[data-look~=v2] .mt-tabs button.on { color: var(--fh-strong); border-bottom-color: var(--fh-gold); background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--fh-gold) 12%, transparent)); box-shadow: 0 6px 10px -8px var(--g-ember); }
+:root[data-look~=v2] .mt-tabs button:hover:not(.on) { color: var(--fh-gold-text); }
+.mt-tabs { scrollbar-width: none; }
+.mt-filter, .mt-brow input, .mt-inline input { border-radius: var(--r-sm); }
+.mt-kpi { border-radius: var(--r-lg); }
+.mt-seg { border-radius: var(--r-md); }
+.mt-x { min-width: 28px; min-height: 28px; }
+.mt-table td, .mt-table th { font-variant-numeric: tabular-nums; }
+.mt-split { border-radius: var(--r-sm); }
+.mt-split i { color: var(--ui-ink); }
+
+/* ====================================================================================================== */
+/* ---------- add-ons: prompt library, notes, memory, Kit, presets, backups ---------- */
+.notes-tag, .memory-cost-pill, .kit-badge, .notes-link-chip { border-radius: var(--r-pill); }
+.preset-picker .preset-card, .kit-contrast-sample, .kit-gradient, .kit-frame-canvas { border-radius: var(--r-lg); }
+.preset-icon { border-radius: var(--r-md); }
+.fg-watch { border-radius: var(--r-md); }
+.dl-bar { border-radius: var(--r-sm); }
+.memory-cost-pill.heavy { background: color-mix(in srgb, var(--ui-hot) 25%, transparent); }
+.kit-badge.ok { background: color-mix(in srgb, var(--ui-ok) 25%, transparent); }
+.kit-badge.bad { background: color-mix(in srgb, var(--ui-red) 25%, transparent); }
+/* prompt library: the selected prompt is lit, category heads match the side list */
+.prompt-item { min-height: 28px; align-items: center; }
+:root[data-look~=v2] .prompt-item:hover { background: var(--hover); color: var(--fh-gold-text); }
+:root[data-look~=v2] .prompt-item.on { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 18%, transparent), transparent); box-shadow: inset 2px 0 0 var(--fh-gold); color: var(--fh-strong); }
+:root[data-look~=v2] .prompts-dialog .lib-group { background: color-mix(in srgb, var(--fh-iron-2) 96%, transparent); color: color-mix(in srgb, var(--fh-gold) 55%, var(--muted)); }
+/* notes: chips and tags are plates, the pinned one gold */
+:root[data-look~=v2] :is(.notes-tag, .notes-link-chip) { border-radius: 0; clip-path: var(--cut-sm); }
+:root[data-look~=v2] .notes-tag.on { color: var(--m-gold-ink); background: var(--m-gold); }
+:root[data-look~=v2] .notes-item.on { color: var(--m-gold-ink); background: var(--m-gold); border-color: var(--fh-gold-lo); text-shadow: 0 1px 0 #fff6; }
+:root[data-look~=v2] .notes-pin.on { color: var(--m-gold-ink); background: var(--m-gold); }
+.notes-head { min-height: 30px; }
+.notes-head :is(.ghost, input) { min-height: 28px; }
+/* memory: the cost pills are plates, the pinned fact has a gold edge */
+:root[data-look~=v2] .memory-cost-pill { border-radius: 0; clip-path: var(--cut-sm); background: linear-gradient(180deg, var(--fh-iron-1), var(--fh-iron-2)); box-shadow: var(--m-bevel), inset 0 0 0 1px var(--line); }
+:root[data-look~=v2] .memory-row.pinned .memory-text { box-shadow: inset 2px 0 0 var(--fh-gold); }
+.memory-row :is(.ghost, select) { min-height: 28px; }
+/* agent presets: icons are chrome-framed like the rail */
+:root[data-look~=v2] .preset-icon { border-radius: 0; clip-path: var(--cut-sm); box-shadow: inset 0 1px 0 #ffffff60, inset 0 -1px 0 #0005; }
+:root[data-look~=v2] .preset-picker .preset-card { border-radius: 0; }
+/* Kit: tabs fit on one line without a scrollbar track; the contrast sample is a well */
+.kit-dialog .tabbar { scrollbar-width: none; }
+:root[data-look~=v2] :is(.kit-contrast-sample, .kit-gradient, .kit-frame-canvas) { border-radius: 0; border-color: var(--line-hi); }
+:root[data-look~=v2] .kit-ratio { font-family: var(--font-head); color: var(--fh-gold-text); }
+.kit-chip { border-radius: var(--r-sm); }
+/* Forge Debug stat watch: glass in Forgeheart 2 */
+:root[data-look~=v2] .fg-watch { background: var(--tx-noise), color-mix(in srgb, var(--fh-pop) 80%, transparent); border: 1px solid var(--line-hi); box-shadow: var(--m-glass-edge); color: var(--text); }
+
+/* ====================================================================================================== */
+/* ---------- overlays ---------- */
+/* dialogs: a touch denser in Forgeheart 2 (inputs and buttons 34 px instead of 38) */
+:root[data-look~=v2] dialog form { gap: 10px; padding: 18px 20px; }
+:root[data-look~=v2] dialog form :is(input:not([type=checkbox]):not([type=color]):not([type=range]):not([type=radio]), select) { padding: 6px 10px; }
+:root[data-look~=v2] .dialog-actions button { padding: 6px 14px; min-height: 34px; }
+:root[data-look~=v2] .dialog-actions { margin-top: 2px; align-items: center; }
+:root[data-look~=v2] dialog form h2 { margin-bottom: 0; }
+/* small buttons inside dialogs keep a 28 px target */
+dialog .ghost.small { min-height: 28px; }
+dialog .ghost:not(.small) { min-height: 32px; }
+/* toasts sit above the composer's Send button instead of on top of it */
+#toasts { bottom: 132px; }
+/* toasts: one height for the action and the ×, long text stops after three lines */
+.toast { min-height: 40px; max-width: min(460px, calc(100vw - 32px)); }
+.toast > span:first-child { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.toast .toast-x { min-width: 22px; min-height: 22px; }
+:root[data-look~=v2] .toast { border-radius: 0; }
+/* the command palette: rows a little shorter so more fit, kind labels line up */
+.palette-item { padding: 7px 10px; align-items: center; }
+.p-kind { font-variant-numeric: tabular-nums; }
+:root[data-look~=v2] .palette-item:hover:not(.sel) { background: color-mix(in srgb, var(--fh-gold) 6%, transparent); }
+/* the Appearance picker: tiles hover with the active color and a light sweep */
+:root[data-look~=v2] .look-tile { background: var(--m-sheen) 160% 0 / 250% 100% no-repeat, linear-gradient(180deg, color-mix(in srgb, var(--fh-strong) 4%, var(--fh-iron-1)), var(--fh-iron-2)); border-color: var(--line-hi); box-shadow: var(--m-bevel); min-height: 34px; }
+:root[data-look~=v2] .look-tile:hover { animation: m-sweep .6s ease; border-color: color-mix(in srgb, var(--fh-gold) 60%, var(--line-hi)); color: var(--fh-gold-text); }
+:root[data-look~=v2] .look-tile.on { border-color: var(--fh-gold); box-shadow: var(--m-bevel), inset 0 0 0 1px var(--fh-gold), inset 0 0 calc(12px * var(--glow)) var(--g-gold); color: var(--fh-strong); }
+:root[data-look~=v2] .look-group { font-family: var(--mono); color: color-mix(in srgb, var(--fh-gold) 50%, var(--muted)); }
+.seg button { min-height: 24px; }
+
+/* ====================================================================================================== */
+/* ---------- light looks: surfaces that were drawn dark by default follow the light iron ---------- */
+:root[data-look~=v2][data-scheme=light] :is(.three-preview, .vr-stage) { background: #15171c; }
+:root[data-look~=v2][data-scheme=light] :is(.media-bar .mb-timeline, .media-bar .mb-overview) { background: color-mix(in srgb, var(--fh-iron-3) 70%, #000 6%); }
+/* overlays that sit on the (always dark) picture stay a dark glass island in light looks, so their labels keep contrast */
+:root[data-look~=v2][data-scheme=light] :is(.stage-pill, .three-stats, .three-preview .present-hint, .three-preview .present-hud, .vr-scopes, .vr-zoom, .vr-pickchip, .vr-label, .lab-wipe-bar) {
+  --fh-iron-1: #23262d; --fh-iron-2: #191b20; --fh-iron-3: #111317; --fh-pop: #15171c; --fh-ink: #050608; --text: #ece6dc; --muted: #a49d92;
+  --line: #2c2e33; --line-hi: #3d4047; --fh-strong: #fff; --fh-shine: #ffffff1c; --fh-shade: #00000066; --hover: #ffffff14; --fh-gold-text: var(--fh-gold-hi);
+  --m-glass-edge: inset 0 1px 0 #ffffff24, inset 0 0 0 1px #ffffff0f; color: var(--text);
+}
+:root[data-look~=v2][data-scheme=light] .stage-pill { background: color-mix(in srgb, var(--fh-pop) 84%, transparent); }
+:root[data-look~=v2][data-scheme=light] .stage-btn { color: color-mix(in srgb, var(--text) 85%, transparent); }
+:root[data-look~=v2][data-scheme=light] .fx-thumb b { color: #fff; }
+:root[data-look~=v2][data-scheme=light] .nv { --nv-bg: color-mix(in srgb, var(--fh-iron-2) 80%, var(--bg)); }
+:root[data-look~=v2][data-scheme=light] .nv-head { color: #fff; }
+:root[data-look~=v2][data-scheme=light] .vr-kit, :root[data-look~=v2][data-scheme=light] .fx-picker { box-shadow: 0 18px 50px #0003; }
