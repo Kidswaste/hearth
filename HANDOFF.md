@@ -63,6 +63,15 @@ Electron v44.5.1 (unpacked in `electron/`, gitignored), plain JS, no npm, no bui
 - No plugins/skills yet. Proposed approach: an opt-in per-chat "Workshop" switch that gives Claude file/code tools in a sandbox folder.
 - Feature pack items marked ○ in `FEATURES.md` (tray, notifications, downloads, running scripts inside AE, a real aerender render, backup clean/restore, CSV save…) were built and code-checked but not exercised live.
 
+## Night build (2026-10-08)
+Thirteen parallel streams landed overnight; `docs/upgrades/README.md` is the overview and each `docs/upgrades/<stream>.md`
+lists what shipped. Key shared pieces: `commands.js` (chat command registry: `when` for context-shared names, `override`,
+duplicate warnings), `nodes.js` (generic node editor + adapters `tools/three-nodes.js`, `nodes-shader.js`, `nodes-video.js`,
+`nodes-code.js`), `meter.js`, `look.js` / `look.css` / `polish.css`, `astra.js` (collaboration), `director-*.js` +
+`tools/three-director.js`, `chat-ux.js` / `chat-cmds.js`. Headless testing in a cloud container: `node dev/smoke.js`
+(Xvfb + Linux Electron at /opt/hearth-electron, SwiftShader WebGL, three.js served from an npm copy, `--fake-engines`
+answers chats with `dev/fake-claude.js` / `dev/fake-codex.js`); checks live in `dev/checks/`.
+
 ## How to test changes
 Syntax check: `electron\electron.exe --check <file>` with `ELECTRON_RUN_AS_NODE=1`. For UI checks, launch with `--remote-debugging-port=9333` and drive the page through CDP `Runtime.evaluate` (return `JSON.stringify(...)` so results serialize). Test with throwaway data and clean it up; never edit or delete the user's chats, sketches or Forgeheart files in tests.
 
