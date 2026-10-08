@@ -1,0 +1,585 @@
+/* Look: the material system (chrome, glass, forged metal, molten glow), Forgeheart 2 (the bold default skin, active
+   when <html data-look~="v2">), and the appearance toggles set by look.js (data-tex, data-motion, data-density,
+   data-corners, --glow). Forgeheart Classic is forge-skin.css alone, so nothing here touches it unless a toggle
+   is set. Presentation only. CSS variables are the source of truth: new UI that uses var(--surface), var(--line),
+   var(--accent) or the .m-* classes inherits every preset. */
+
+/* ---------- material tokens (usable in any skin) ---------- */
+:root {
+  --glow: 1; /* 0 = flat, 1 = default, 2 = blazing (look.js: /glow 0-100) */
+  --fh-gold: var(--accent);
+  --fh-gold-hi: color-mix(in srgb, var(--fh-gold) 45%, #fff);
+  --fh-gold-lo: color-mix(in srgb, var(--fh-gold) 62%, #3a1d00);
+  --fh-ember: #ff7a1a;
+  --fh-ai: #a76bff;
+  --fh-hot: #ff3d7f;
+  --fh-stop: #ff4b4b;
+  --fh-info: #56c6ff;
+  --fh-ok: #7cd992;
+  --fh-shine: #ffffff1c;  /* bevel highlight */
+  --fh-shade: #00000066;  /* bevel shadow */
+  /* tiny tiling grain (an SVG turbulence rendered once and tiled) */
+  --tx-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  /* brushed metal: hairlines across (horizontal) or down (vertical) */
+  --tx-brushed: repeating-linear-gradient(90deg, #ffffff05 0 1px, transparent 1px 3px, #0000000a 3px 4px, transparent 4px 7px);
+  --tx-brushed-v: repeating-linear-gradient(0deg, #ffffff05 0 1px, transparent 1px 3px, #0000000a 3px 4px, transparent 4px 7px);
+  --m-chrome: linear-gradient(180deg, #fbfcfd 0%, #d5d9de 16%, #9ba2aa 44%, #555b62 50%, #8e959c 56%, #c9ced3 82%, #f2f4f6 100%);
+  --m-chrome-ink: #121418;
+  --m-gold: linear-gradient(180deg, var(--fh-gold-hi) 0%, var(--fh-gold) 34%, var(--fh-gold-lo) 50%, var(--fh-gold) 64%, var(--fh-gold-hi) 100%);
+  --m-gold-ink: #1d1203;
+  --m-molten: linear-gradient(100deg, var(--fh-hot), var(--fh-ember) 40%, var(--fh-gold) 75%, var(--fh-gold-hi));
+  --m-bevel: inset 0 1px 0 var(--fh-shine), inset 0 -1px 0 var(--fh-shade);
+  --m-glass-bg: color-mix(in srgb, var(--sidebar) 74%, transparent);
+  --m-glass-filter: blur(16px) saturate(1.45);
+  --m-glass-edge: inset 0 1px 0 #ffffff24, inset 0 0 0 1px #ffffff0f;
+  --m-sheen: linear-gradient(110deg, transparent 38%, #ffffff38 50%, transparent 62%);
+}
+:root[data-tex="off"] { --tx-noise: none; --tx-brushed: none; --tx-brushed-v: none; }
+
+@keyframes m-sweep { from { background-position: 160% 0; } to { background-position: -60% 0; } }
+@keyframes m-shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+@keyframes m-breathe { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+
+/* utility classes: add one to any element (other streams' new UI can use these directly) */
+.m-chrome {
+  color: var(--m-chrome-ink); border: 1px solid #00000080;
+  background: var(--m-sheen) 160% 0 / 250% 100% no-repeat, var(--m-chrome);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 #0000004d; text-shadow: 0 1px 0 #ffffff80;
+}
+.m-chrome:hover { animation: m-sweep .6s ease; }
+.m-gold {
+  color: var(--m-gold-ink); border: 1px solid color-mix(in srgb, var(--fh-gold-lo) 70%, #000);
+  background: var(--m-sheen) 160% 0 / 250% 100% no-repeat, var(--m-gold);
+  box-shadow: inset 0 1px 0 #ffffffa0, inset 0 -1px 0 #0000004d; text-shadow: 0 1px 0 #ffffff60;
+}
+.m-gold:hover { animation: m-sweep .6s ease; }
+.m-glass {
+  background: var(--tx-noise), var(--m-glass-bg); backdrop-filter: var(--m-glass-filter);
+  box-shadow: var(--m-glass-edge), 0 12px 40px #0008; border: 1px solid #ffffff14;
+}
+.m-forged {
+  background: var(--tx-brushed), linear-gradient(180deg, color-mix(in srgb, var(--text) 8%, var(--sidebar)), var(--sidebar));
+  box-shadow: var(--m-bevel); border: 1px solid var(--line);
+}
+.m-molten {
+  color: #1a0700; background: var(--m-molten);
+  box-shadow: inset 0 1px 0 #ffffff80, 0 0 calc(18px * var(--glow)) color-mix(in srgb, var(--fh-ember) calc(45% * var(--glow)), transparent);
+}
+.m-bevel { box-shadow: var(--m-bevel); }
+.m-sheen { background-image: var(--m-sheen); background-size: 250% 100%; background-position: 160% 0; background-repeat: no-repeat; }
+.m-sheen:hover { animation: m-sweep .6s ease; }
+.m-working { position: relative; overflow: clip; }
+.m-working::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--fh-ai) 22%, transparent) 50%, transparent 70%);
+  animation: m-shimmer 1.6s linear infinite;
+}
+
+/* ====================================================================================================== */
+/* ---------- Forgeheart 2: palette ---------- */
+:root[data-look~=v2] {
+  --fh-gold: #ffc23d;
+  --fh-ember: #ff7a1a;
+  --fh-ai: #a970ff;
+  --fh-hot: #ff3d7f;
+  --fh-stop: #ff4b4b;
+  --fh-info: #56c6ff;
+  --fh-heat: #ff6a1f;           /* warm tint in the metal and the ambient light */
+  --fh-ink: #050608;            /* deepest black: wells, code, inputs */
+  --fh-iron-1: #191b20;         /* raised metal, top of a gradient */
+  --fh-iron-2: #0f1115;         /* metal, bottom */
+  --fh-iron-3: #0a0b0e;         /* panels, rail bottom */
+  --fh-strong: #ffffff;         /* strongest text (selected items) */
+  --fh-line-base: #25262b;
+  --fh-pop: #12141a;            /* glass overlays tint */
+  --font-head: 'FH Oxanium', 'Segoe UI', system-ui, sans-serif;
+  --font-read: var(--font);
+  --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
+  --line: color-mix(in srgb, var(--fh-gold) 7%, var(--fh-line-base));
+  --line-hi: color-mix(in srgb, var(--fh-gold) 16%, color-mix(in srgb, var(--fh-line-base) 70%, var(--text)));
+  --surface: var(--fh-iron-1);
+  --hover: color-mix(in srgb, var(--fh-gold) 7%, transparent);
+  --muted: color-mix(in srgb, var(--text) 60%, var(--bg));
+  --steel: color-mix(in srgb, var(--text) 30%, var(--fh-iron-2));
+  --r-magic: var(--fh-info);
+  --r-rare: var(--fh-gold);
+  --r-unique: var(--fh-ember);
+  --r-mythic: var(--fh-ai);
+  --r-ultima: var(--fh-stop);
+  --cyan: var(--fh-info);
+  --m-glass-bg: color-mix(in srgb, var(--fh-pop) 78%, transparent);
+  --heat: color-mix(in srgb, var(--fh-heat) calc(9% * var(--glow)), transparent);
+  --g-gold: color-mix(in srgb, var(--fh-gold) calc(34% * var(--glow)), transparent);
+  --g-ai: color-mix(in srgb, var(--fh-ai) calc(40% * var(--glow)), transparent);
+  --g-ember: color-mix(in srgb, var(--fh-ember) calc(38% * var(--glow)), transparent);
+  --hairline: linear-gradient(90deg, transparent, color-mix(in srgb, var(--fh-gold) calc(55% * var(--glow)), transparent) 30%, color-mix(in srgb, var(--fh-ember) calc(45% * var(--glow)), transparent) 60%, transparent);
+  --rainbow: conic-gradient(from var(--fh-spin), var(--fh-info), var(--fh-ai), var(--fh-hot), var(--fh-ember), var(--fh-gold), var(--fh-info));
+}
+:root[data-look~=v2][data-scheme=light] {
+  --fh-shine: #ffffffd0;
+  --fh-shade: #0000001f;
+  --m-glass-edge: inset 0 1px 0 #ffffffb0, inset 0 0 0 1px #0000000d;
+  --tx-brushed: repeating-linear-gradient(90deg, #ffffff40 0 1px, transparent 1px 3px, #00000006 3px 4px, transparent 4px 7px);
+  --tx-brushed-v: repeating-linear-gradient(0deg, #ffffff40 0 1px, transparent 1px 3px, #00000006 3px 4px, transparent 4px 7px);
+  --hover: color-mix(in srgb, var(--fh-gold) 12%, transparent);
+  --muted: color-mix(in srgb, var(--text) 62%, var(--bg));
+}
+:root[data-look~=v2][data-scheme=light][data-tex="off"] { --tx-brushed: none; --tx-brushed-v: none; }
+
+/* ---------- ground: deep forge black, warm light from above, a violet ember low right, fine grain ---------- */
+:root[data-look~=v2] body {
+  background:
+    radial-gradient(ellipse 75% 48% at 50% -14%, var(--heat), transparent 72%),
+    radial-gradient(ellipse 46% 40% at 104% 108%, color-mix(in srgb, var(--fh-ai) calc(6% * var(--glow)), transparent), transparent 70%),
+    linear-gradient(180deg, var(--bg), color-mix(in srgb, var(--fh-ink) 55%, var(--bg)));
+}
+:root[data-look~=v2] body::after { opacity: .7; background: var(--tx-noise); }
+:root[data-look~=v2][data-scheme=light] body::after { opacity: 1; filter: invert(1); }
+:root[data-look~=v2] ::selection { background: color-mix(in srgb, var(--fh-gold) 34%, transparent); color: var(--fh-strong); }
+:root[data-look~=v2] ::-webkit-scrollbar { width: 10px; height: 10px; }
+:root[data-look~=v2] ::-webkit-scrollbar-thumb {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--text) 22%, var(--fh-iron-1)), color-mix(in srgb, var(--text) 12%, var(--fh-iron-2)));
+  border: 2px solid transparent; background-clip: padding-box; border-radius: 0;
+}
+:root[data-look~=v2] ::-webkit-scrollbar-thumb:hover { background: var(--m-gold); background-clip: padding-box; }
+:root[data-look~=v2] ::-webkit-scrollbar-corner { background: transparent; }
+
+/* ---------- typography: Oxanium for headers and labels, a calm reading face for long text ---------- */
+:root[data-look~=v2] :is(h1, h2, h3, h4, .tool-title, .chat-title, .group-name, .settings-section h3, .tw-head b, .empty h3, .rv-title, .p-label) { font-family: var(--font-head); }
+:root[data-look~=v2] .messages .body, :root[data-look~=v2] .composer-box textarea, :root[data-look~=v2] .notes-text { font-family: var(--font-read); }
+:root[data-look~=v2] .messages .body :is(h1, h2, h3, h4) { font-family: var(--font-head); letter-spacing: .03em; }
+:root[data-look~=v2] .messages .body :is(h1, h2) { color: var(--fh-gold-hi); }
+:root[data-look~=v2] .messages .body :is(strong, b) { color: var(--fh-strong); }
+:root[data-look~=v2] .tool-title { color: var(--fh-strong); text-shadow: 0 0 calc(16px * var(--glow)) var(--g-gold); }
+:root[data-look~=v2] .chat-title { font-weight: 700; color: var(--fh-strong); }
+
+/* ---------- rail: brushed forged steel with a molten edge ---------- */
+:root[data-look~=v2] #rail {
+  background: var(--tx-brushed-v), linear-gradient(180deg, var(--fh-iron-1), var(--fh-iron-3) 70%);
+  border-right: 1px solid var(--line-hi);
+  box-shadow: inset -1px 0 0 var(--fh-shade), 1px 0 0 color-mix(in srgb, var(--fh-gold) calc(10% * var(--glow)), transparent);
+}
+:root[data-look~=v2] #rail::before { width: 30px; height: 3px; box-shadow: 0 0 calc(10px * var(--glow)) var(--g-ai); }
+:root[data-look~=v2] .agent-btn {
+  border: 1px solid transparent;
+  background:
+    var(--m-sheen) 160% 0 / 250% 100% no-repeat,
+    linear-gradient(180deg, var(--fh-shine), transparent 42%, var(--fh-shade)) padding-box,
+    linear-gradient(160deg, color-mix(in srgb, var(--agent) 34%, var(--fh-iron-1)), color-mix(in srgb, var(--agent) 12%, var(--fh-iron-2))) padding-box,
+    linear-gradient(180deg, color-mix(in srgb, var(--agent) 55%, #fff3), color-mix(in srgb, var(--agent) 25%, #0008)) border-box;
+  text-shadow: 0 1px 0 #0008;
+}
+:root[data-look~=v2] .agent-btn:hover { animation: m-sweep .6s ease; filter: brightness(1.18) saturate(1.1); }
+:root[data-look~=v2] .agent-btn.active {
+  border: 2px solid transparent; color: var(--fh-strong);
+  background:
+    var(--m-sheen) 160% 0 / 250% 100% no-repeat,
+    linear-gradient(180deg, var(--fh-shine), transparent 42%, var(--fh-shade)) padding-box,
+    linear-gradient(160deg, color-mix(in srgb, var(--agent) 52%, var(--fh-iron-1)), color-mix(in srgb, var(--agent) 22%, var(--fh-iron-2))) padding-box,
+    var(--m-gold) border-box;
+  box-shadow: inset 0 0 calc(12px * var(--glow)) var(--g-gold);
+}
+:root[data-look~=v2] .tool-btn { transition: background .15s ease, color .15s ease, box-shadow .15s ease; }
+:root[data-look~=v2] .tool-btn:hover { background: linear-gradient(180deg, color-mix(in srgb, var(--fh-gold) 14%, transparent), color-mix(in srgb, var(--fh-gold) 5%, transparent)); color: var(--fh-gold-hi); box-shadow: var(--m-bevel); }
+:root[data-look~=v2] .tool-btn.on { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 22%, transparent), color-mix(in srgb, var(--fh-gold) 6%, transparent)); color: var(--fh-gold); box-shadow: inset 2px 0 0 var(--fh-gold), var(--m-bevel); }
+:root[data-look~=v2] .rail-sep { height: 1px; background: var(--hairline); }
+
+/* ---------- chats panel: dark iron, molten marker on the open chat ---------- */
+:root[data-look~=v2] #panel { background: var(--tx-brushed-v), linear-gradient(180deg, var(--fh-iron-2), var(--fh-iron-3)); border-right: 1px solid var(--line); }
+:root[data-look~=v2] .group-toggle:hover, :root[data-look~=v2] .item:hover { background: var(--hover); }
+:root[data-look~=v2] .group.current .group-name { color: var(--fh-gold); text-shadow: 0 0 calc(10px * var(--glow)) var(--g-gold); }
+:root[data-look~=v2] .item.active { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 20%, transparent), color-mix(in srgb, var(--fh-ember) 4%, transparent) 70%, transparent); color: var(--fh-strong); }
+:root[data-look~=v2] .item.active::before { width: 3px; background: linear-gradient(180deg, var(--fh-gold-hi), var(--fh-gold), var(--fh-ember)); box-shadow: 0 0 calc(10px * var(--glow)) var(--g-ember); }
+:root[data-look~=v2] .busy { background: var(--fh-ai); box-shadow: 0 0 calc(8px * var(--glow)) var(--g-ai); }
+:root[data-look~=v2] .group-kind { color: color-mix(in srgb, var(--muted) 80%, transparent); }
+
+/* ---------- inputs: dark wells with a bevel, forged focus ---------- */
+:root[data-look~=v2] :is(input:not([type=checkbox]):not([type=color]):not([type=range]):not([type=radio]), select, textarea) {
+  background: linear-gradient(180deg, var(--fh-ink), color-mix(in srgb, var(--fh-ink) 60%, var(--fh-iron-2)));
+  border: 1px solid var(--line-hi); color: var(--text);
+  box-shadow: inset 0 1px 2px var(--fh-shade), 0 1px 0 color-mix(in srgb, var(--fh-shine) 50%, transparent);
+}
+:root[data-look~=v2] :is(input, select, textarea):focus {
+  border-color: var(--fh-gold) !important;
+  box-shadow: inset 0 1px 2px var(--fh-shade), 0 0 0 3px color-mix(in srgb, var(--fh-gold) 16%, transparent), 0 0 calc(14px * var(--glow)) var(--g-gold);
+}
+:root[data-look~=v2] ::placeholder { color: color-mix(in srgb, var(--muted) 75%, transparent); }
+/* checkboxes: a forged socket with a gold check */
+:root[data-look~=v2] input[type=checkbox] {
+  appearance: none; -webkit-appearance: none; flex: none; width: 15px; height: 15px; margin: 0 2px; display: inline-grid; place-content: center; vertical-align: -2px; cursor: pointer;
+  border: 1px solid var(--line-hi); background: linear-gradient(180deg, var(--fh-ink), var(--fh-iron-2)); box-shadow: inset 0 1px 2px var(--fh-shade);
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+:root[data-look~=v2] input[type=checkbox]::before {
+  content: ""; width: 10px; height: 10px; transform: scale(0); transition: transform .14s cubic-bezier(.3, 1.6, .5, 1);
+  background: var(--m-gold); clip-path: polygon(12% 46%, 0 62%, 40% 100%, 100% 18%, 86% 4%, 39% 70%);
+}
+:root[data-look~=v2] input[type=checkbox]:checked { border-color: var(--fh-gold); box-shadow: inset 0 1px 2px var(--fh-shade), 0 0 calc(8px * var(--glow)) var(--g-gold); }
+:root[data-look~=v2] input[type=checkbox]:checked::before { transform: scale(1); }
+:root[data-look~=v2] input[type=checkbox]:hover { border-color: color-mix(in srgb, var(--fh-gold) 60%, var(--line-hi)); }
+:root[data-look~=v2] input[type=checkbox]:disabled { opacity: .45; cursor: default; }
+:root[data-look~=v2] input[type=radio] { accent-color: var(--fh-gold); }
+/* sliders: a dark groove and a polished chrome knob with a gold ring */
+:root[data-look~=v2] input[type=range] { -webkit-appearance: none; appearance: none; height: 16px; background: transparent; cursor: pointer; }
+:root[data-look~=v2] input[type=range]::-webkit-slider-runnable-track {
+  height: 4px; border: 1px solid var(--line-hi);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 22%, var(--fh-ink)), var(--fh-ink)); box-shadow: inset 0 1px 2px var(--fh-shade);
+}
+:root[data-look~=v2] input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 14px; height: 14px; margin-top: -6px; border-radius: 50%; border: 1px solid #0009;
+  background: radial-gradient(circle at 34% 28%, #fff 0, #eef0f2 16%, #a3aab1 54%, #4a5057 100%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--fh-gold) 60%, transparent), 0 1px 3px #000a;
+  transition: box-shadow .15s ease;
+}
+:root[data-look~=v2] input[type=range]:hover::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--fh-gold), 0 0 calc(10px * var(--glow)) var(--g-gold), 0 1px 3px #000a; }
+:root[data-look~=v2] input[type=range]:active::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--fh-gold-hi), 0 0 calc(16px * var(--glow)) var(--g-gold), 0 1px 3px #000a; }
+:root[data-look~=v2] input[type=range]:focus { box-shadow: none; }
+:root[data-look~=v2] input[type=range]:disabled { opacity: .4; }
+:root[data-look~=v2] input[type=color] { background: var(--fh-ink); border: 1px solid var(--line-hi); }
+
+/* ---------- forged focus rings (keyboard focus only) ---------- */
+:root[data-look~=v2] :focus-visible { outline: 1px solid var(--fh-gold); outline-offset: 2px; }
+:root[data-look~=v2] :is(button, .agent-btn, .tool-btn, .item, .palette-item):focus-visible {
+  outline: none; box-shadow: inset 0 0 0 1px var(--fh-gold), inset 0 0 0 3px color-mix(in srgb, var(--fh-ember) 30%, transparent), inset 0 0 calc(12px * var(--glow)) var(--g-gold);
+}
+
+/* ---------- buttons: molten-gold chrome for the important ones ---------- */
+:root[data-look~=v2] :is(.primary, .dialog-actions .primary, #broadcast button) {
+  color: var(--m-primary-ink, var(--m-gold-ink)); text-shadow: 0 1px 0 #ffffff55; border: 0;
+  background: var(--m-primary, var(--m-gold));
+  box-shadow: inset 0 1px 0 #ffffffb0, inset 0 -2px 0 #00000040, inset 0 0 0 1px color-mix(in srgb, var(--fh-gold-lo) 60%, transparent);
+  transition: filter .15s ease, transform .12s ease, box-shadow .15s ease;
+}
+:root[data-look~=v2] :is(.primary, #broadcast button):hover { filter: brightness(1.1) saturate(1.1); }
+:root[data-look~=v2] :is(.primary, #broadcast button)::after { width: 45%; background: linear-gradient(90deg, transparent, #ffffffd0, transparent); }
+:root[data-look~=v2] :is(.primary, .ghost, #broadcast button, .tw-chip, .stage-btn, .suggest-chip):active:not(:disabled) {
+  transform: translateY(1px) scale(.975); filter: brightness(1.15);
+}
+:root[data-look~=v2] :is(.primary, #broadcast button):active:not(:disabled) { box-shadow: inset 0 2px 3px #0000005a, inset 0 0 0 1px color-mix(in srgb, var(--fh-gold-lo) 60%, transparent); }
+:root[data-look~=v2] .primary:disabled { filter: grayscale(.7) brightness(.7); cursor: default; }
+/* Stop: hot red metal, breathing from the inside (outer glows get cut by the corner clip) */
+@keyframes v2-stop { 0%, 100% { box-shadow: inset 0 1px 0 #ffffff80, inset 0 0 0 1px #5a0a0a, inset 0 0 0 0 #fff0; } 50% { box-shadow: inset 0 1px 0 #ffffff80, inset 0 0 0 1px #5a0a0a, inset 0 0 12px 2px #ffffff55; } }
+:root[data-look~=v2] .primary.stop { color: #1c0303; background: linear-gradient(180deg, #ffb3a6 0%, var(--fh-stop) 36%, color-mix(in srgb, var(--fh-stop) 60%, #3a0000) 52%, var(--fh-stop) 70%, #ff9e90 100%); animation: v2-stop 1.3s ease-in-out infinite; }
+:root[data-look~=v2] .primary.danger-fill, :root[data-look~=v2] .danger-fill { color: #1c0303; background: linear-gradient(180deg, #ffb3a6, var(--fh-stop) 45%, color-mix(in srgb, var(--fh-stop) 70%, #3a0000)); }
+/* ghost buttons: forged dark plate, bevel, a light sweep on hover */
+:root[data-look~=v2] :is(.ghost, .dialog-actions button:not(.primary), .code-act, .find-bar button, .kanban-add, .notes-item) {
+  border: 1px solid var(--line-hi); color: var(--text);
+  background:
+    var(--m-sheen) 160% 0 / 250% 100% no-repeat,
+    var(--tx-brushed),
+    linear-gradient(180deg, color-mix(in srgb, var(--fh-strong) 5%, var(--fh-iron-1)), var(--fh-iron-2));
+  box-shadow: var(--m-bevel);
+  transition: border-color .15s ease, color .15s ease, box-shadow .15s ease, transform .12s ease;
+}
+:root[data-look~=v2] :is(.ghost, .dialog-actions button:not(.primary), .code-act, .find-bar button):hover {
+  border-color: color-mix(in srgb, var(--fh-gold) 60%, var(--line-hi)); color: var(--fh-gold-hi);
+  box-shadow: var(--m-bevel), inset 0 0 calc(10px * var(--glow)) color-mix(in srgb, var(--fh-gold) calc(14% * var(--glow)), transparent);
+  animation: m-sweep .6s ease;
+}
+:root[data-look~=v2] :is(.ghost, .dialog-actions button:not(.primary)):active:not(:disabled) { box-shadow: inset 0 2px 4px var(--fh-shade); }
+:root[data-look~=v2] :is(.ghost.on, .dock-toggle.on) {
+  border-color: var(--fh-gold); color: var(--fh-gold-hi);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--fh-gold) 24%, var(--fh-iron-1)), color-mix(in srgb, var(--fh-gold) 8%, var(--fh-iron-2)));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--fh-gold-hi) 40%, transparent), inset 0 0 calc(10px * var(--glow)) var(--g-gold);
+}
+:root[data-look~=v2] .ghost.danger:hover, :root[data-look~=v2] .dialog-actions .danger:hover { border-color: var(--fh-stop); color: var(--fh-stop) !important; box-shadow: var(--m-bevel), inset 0 0 10px color-mix(in srgb, var(--fh-stop) 18%, transparent); }
+:root[data-look~=v2] .web-btn:hover { color: var(--fh-gold-hi); background: var(--hover); border-color: transparent; }
+:root[data-look~=v2] .ghost:disabled, :root[data-look~=v2] button:disabled { cursor: default; }
+
+/* ---------- toggles & segmented controls: chrome-lit when on ---------- */
+:root[data-look~=v2] .tabbar { border-bottom: 1px solid var(--line-hi); background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--fh-iron-3) 60%, transparent)); }
+:root[data-look~=v2] .tabbar button { color: var(--muted); transition: color .15s ease, background .15s ease; }
+:root[data-look~=v2] .tabbar button:hover { color: var(--text); }
+:root[data-look~=v2] .tabbar button::after { height: 2px; background: linear-gradient(90deg, var(--fh-ember), var(--fh-gold-hi), var(--fh-ember)); box-shadow: 0 0 calc(10px * var(--glow)) var(--g-ember); }
+:root[data-look~=v2] .tabbar button.on { color: var(--fh-strong); background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--fh-gold) 12%, transparent)); }
+:root[data-look~=v2] .tabbar button.on::before { color: var(--fh-gold); }
+:root[data-look~=v2] .stage-pill { background: color-mix(in srgb, var(--fh-pop) 80%, transparent); backdrop-filter: var(--m-glass-filter); box-shadow: var(--m-glass-edge), 0 6px 20px #0008; border-radius: 0; clip-path: var(--cut-sm); }
+:root[data-look~=v2] .stage-btn { border-radius: 0; color: color-mix(in srgb, var(--text) 80%, transparent); }
+:root[data-look~=v2] .stage-btn:hover { color: var(--fh-gold-hi); background: var(--hover); }
+:root[data-look~=v2] .stage-btn.on { color: var(--m-gold-ink); background: var(--m-gold); box-shadow: inset 0 1px 0 #ffffffa0, inset 0 -1px 0 #0004; }
+:root[data-look~=v2] :is(.tw-chip, .ver-chip, .trg-chip, .ask-opt) {
+  border: 1px solid var(--line-hi); border-radius: 0;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--fh-strong) 4%, var(--fh-iron-1)), var(--fh-iron-2)); box-shadow: var(--m-bevel);
+  transition: border-color .15s ease, color .15s ease, background .15s ease;
+}
+:root[data-look~=v2] :is(.tw-chip, .ver-chip, .ask-opt):hover { border-color: var(--fh-gold); color: var(--fh-gold-hi); }
+:root[data-look~=v2] :is(.tw-chip.on, .ver-chip.on, .ask-opt.on, .mb-size.on) { color: var(--m-gold-ink); background: var(--m-gold); border-color: var(--fh-gold-lo); box-shadow: inset 0 1px 0 #ffffffa0, inset 0 -1px 0 #0004; text-shadow: 0 1px 0 #fff6; }
+:root[data-look~=v2] .tw-chip.add { background: transparent; box-shadow: none; border-style: dashed; }
+:root[data-look~=v2] .suggest-chip {
+  border-radius: 0; clip-path: var(--cut-sm); border: 1px solid color-mix(in srgb, var(--agent, var(--fh-gold)) 50%, var(--line-hi));
+  background: var(--m-sheen) 160% 0 / 250% 100% no-repeat, linear-gradient(180deg, color-mix(in srgb, var(--agent, var(--fh-gold)) 16%, var(--fh-iron-1)), var(--fh-iron-2));
+  box-shadow: var(--m-bevel);
+}
+:root[data-look~=v2] .suggest-chip:hover { animation: m-sweep .6s ease; color: var(--fh-strong); border-color: var(--agent, var(--fh-gold)); }
+:root[data-look~=v2] .queue-chip { border-radius: 0; clip-path: var(--cut-sm); background: color-mix(in srgb, var(--fh-ai) 14%, var(--fh-iron-1)); border-left: 2px solid var(--fh-ai); }
+:root[data-look~=v2] .media-bar button.on { color: var(--fh-gold); text-shadow: 0 0 calc(8px * var(--glow)) var(--g-gold); }
+:root[data-look~=v2] .tb-group { border-radius: 0; clip-path: var(--cut-sm); background: linear-gradient(180deg, color-mix(in srgb, var(--fh-strong) 3%, var(--fh-iron-2)), var(--fh-iron-3)); border-color: var(--line); box-shadow: var(--m-bevel); }
+:root[data-look~=v2] .tb-group::before { font-family: var(--mono); color: color-mix(in srgb, var(--fh-gold) 55%, var(--muted)); }
+
+/* ---------- headers: brushed steel with a molten hairline ---------- */
+:root[data-look~=v2] :is(.tool-head, .native-head) {
+  background: var(--hairline) bottom / 100% 1px no-repeat, var(--tx-brushed), linear-gradient(180deg, var(--fh-iron-1), var(--fh-iron-2));
+  border-bottom: 1px solid var(--fh-shade); box-shadow: 0 1px 0 color-mix(in srgb, var(--fh-shade) 60%, transparent);
+}
+:root[data-look~=v2] :is(.tool-head, .native-head)::after { background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--fh-gold) 12%, transparent), #ffffff26, color-mix(in srgb, var(--fh-gold) 12%, transparent), transparent); }
+:root[data-look~=v2] .tool-icon {
+  border: 1px solid transparent;
+  background: linear-gradient(180deg, var(--fh-shine), transparent 45%, var(--fh-shade)) padding-box, linear-gradient(160deg, color-mix(in srgb, var(--agent) 30%, var(--fh-iron-1)), var(--fh-iron-2)) padding-box, var(--m-chrome) border-box;
+}
+:root[data-look~=v2] .tool-desc::before { color: var(--fh-gold); }
+:root[data-look~=v2] :is(.web-bar, .game-bar) { background: var(--tx-brushed), linear-gradient(180deg, var(--fh-iron-1), var(--fh-iron-2)); border-bottom: 1px solid var(--line-hi); }
+
+/* ---------- cards: forged plates with gold brackets on hover ---------- */
+:root[data-look~=v2] :is(.dash-card, .calc-card, .preset-card, .tex-card, .model-section, .lib-ask, .connectors, .kanban-col, .ae-banner, .render-row, .stat, .kit-format, .patch-row, .gallery-item, .devlog-day, .settings-section) {
+  --hud: var(--line-hi);
+  background:
+    linear-gradient(var(--hud), var(--hud)) top left / 12px 1px no-repeat,
+    linear-gradient(var(--hud), var(--hud)) top left / 1px 12px no-repeat,
+    linear-gradient(var(--hud), var(--hud)) bottom right / 12px 1px no-repeat,
+    linear-gradient(var(--hud), var(--hud)) bottom right / 1px 12px no-repeat,
+    var(--tx-brushed),
+    linear-gradient(180deg, color-mix(in srgb, var(--fh-strong) 3%, var(--fh-iron-1)), var(--fh-iron-2));
+  box-shadow: var(--m-bevel);
+}
+:root[data-look~=v2] :is(.dash-card, .calc-card, .preset-card, .gallery-item, .kit-format):hover { --hud: var(--fh-gold); }
+:root[data-look~=v2] .settings-section { padding: 10px 12px; border: 1px solid var(--line); }
+:root[data-look~=v2] .settings-section h3 { color: var(--fh-gold); }
+:root[data-look~=v2] .bar { background: var(--fh-ink); box-shadow: inset 0 1px 2px var(--fh-shade); }
+:root[data-look~=v2] .bar span { background: var(--m-molten); box-shadow: 0 0 calc(8px * var(--glow)) var(--g-ember); }
+:root[data-look~=v2] .kanban-card { background: linear-gradient(180deg, var(--fh-iron-1), var(--fh-iron-2)); box-shadow: var(--m-bevel); }
+:root[data-look~=v2] .data-table th { background: var(--fh-iron-1); }
+:root[data-look~=v2] .data-table tr:hover td { background: var(--hover); }
+:root[data-look~=v2] kbd { background: linear-gradient(180deg, var(--fh-iron-1), var(--fh-ink)); border: 1px solid var(--line-hi); border-bottom-width: 2px; color: var(--fh-gold); box-shadow: var(--m-bevel); }
+
+/* ---------- Lab, dock, Video Review ---------- */
+:root[data-look~=v2] :is(.tool-dock, .tweaks, .layers) { background: var(--tx-brushed-v), linear-gradient(180deg, var(--fh-iron-2), var(--fh-iron-3)); border-color: var(--line-hi); }
+:root[data-look~=v2] .tw-head { background: linear-gradient(180deg, var(--fh-iron-1), transparent); }
+:root[data-look~=v2] .tweaks.dirty .tw-head { box-shadow: inset 0 -1px 0 var(--fh-ember); }
+:root[data-look~=v2] :is(.tw-row, .ly-row):hover { background: var(--hover); }
+:root[data-look~=v2] .ly-row.on { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 16%, transparent), transparent); box-shadow: inset 2px 0 0 var(--fh-gold); }
+:root[data-look~=v2] .tw-row.changed .tw-name { color: var(--fh-gold); }
+:root[data-look~=v2] .media-bar { background: var(--tx-brushed), linear-gradient(180deg, var(--fh-iron-2), var(--fh-iron-3)); border-color: var(--line-hi); border-radius: 0; box-shadow: var(--m-bevel); }
+:root[data-look~=v2] .mb-menu { background: color-mix(in srgb, var(--fh-pop) 84%, transparent); backdrop-filter: var(--m-glass-filter); box-shadow: var(--m-glass-edge), 0 14px 40px #000a; }
+:root[data-look~=v2] .three-preview { box-shadow: inset 0 0 0 1px var(--line), 0 0 0 1px var(--fh-shade); }
+:root[data-look~=v2] .vid-card.on { border-color: var(--fh-gold); background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 14%, transparent), transparent); }
+:root[data-look~=v2] .rv-stage { box-shadow: 0 0 0 1px var(--line-hi), 0 0 0 3px var(--fh-iron-3), 0 0 0 4px color-mix(in srgb, var(--fh-gold) calc(18% * var(--glow)), transparent), 0 20px 60px #000a; }
+:root[data-look~=v2] .note-marker { background: var(--fh-gold); box-shadow: 0 0 6px var(--g-gold); }
+:root[data-look~=v2] .progress-bar i { background: var(--m-molten); }
+
+/* ---------- chat ---------- */
+:root[data-look~=v2] .msg.user .body {
+  background: var(--tx-noise), linear-gradient(160deg, color-mix(in srgb, var(--agent) 22%, var(--fh-iron-1)), var(--fh-iron-2));
+  border-left: 2px solid var(--agent); box-shadow: var(--m-bevel);
+}
+:root[data-look~=v2] .msg.assistant.streaming::before { width: 2px; box-shadow: 0 0 calc(12px * var(--glow)) var(--g-ai); }
+/* the AI is working: a violet shimmer runs through the reply being written */
+:root[data-look~=v2] .msg.assistant.streaming { overflow: clip; }
+:root[data-look~=v2] .msg.assistant.streaming::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(100deg, transparent 35%, color-mix(in srgb, var(--fh-ai) calc(9% * var(--glow)), transparent) 50%, transparent 65%);
+  animation: m-shimmer 2.2s linear infinite;
+}
+:root[data-look~=v2] .typing i { background: var(--fh-ai); box-shadow: 0 0 calc(8px * var(--glow)) var(--g-ai); }
+:root[data-look~=v2] .tool-chips { color: var(--fh-ai-hi, color-mix(in srgb, var(--fh-ai) 55%, #fff)); background: linear-gradient(90deg, color-mix(in srgb, var(--fh-ai) 16%, transparent), transparent); border-left: 2px solid var(--fh-ai); }
+:root[data-look~=v2] .msg.streaming .tool-chips { position: relative; overflow: clip; }
+:root[data-look~=v2] .msg.streaming .tool-chips::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--fh-ai) 30%, transparent) 50%, transparent 70%); animation: m-shimmer 1.4s linear infinite; pointer-events: none; }
+:root[data-look~=v2] .msg .thinking summary { color: color-mix(in srgb, var(--fh-ai) 60%, var(--text)); }
+:root[data-look~=v2] .progress-card { border-radius: 0; border-color: color-mix(in srgb, var(--fh-ai) 35%, var(--line)); background: linear-gradient(180deg, color-mix(in srgb, var(--fh-ai) 7%, var(--fh-iron-1)), var(--fh-iron-2)); }
+:root[data-look~=v2] .ask-card { border-radius: 0; border-color: var(--fh-ember); background: linear-gradient(180deg, color-mix(in srgb, var(--fh-ember) 12%, var(--fh-iron-1)), var(--fh-iron-2)); box-shadow: inset 0 0 calc(16px * var(--glow)) color-mix(in srgb, var(--fh-ember) calc(12% * var(--glow)), transparent); }
+:root[data-look~=v2] .opinion-card { border-radius: 0; }
+:root[data-look~=v2] .msg.note { border-radius: 0; border: 1px solid color-mix(in srgb, var(--fh-info) 30%, var(--line)); border-left: 2px solid var(--fh-info); background: linear-gradient(90deg, color-mix(in srgb, var(--fh-info) 9%, transparent), transparent); }
+@keyframes v2-shake { 0%, 100% { transform: none; } 20% { transform: translateX(-5px); } 40% { transform: translateX(4px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
+:root[data-look~=v2] .msg.error { border-color: color-mix(in srgb, var(--fh-stop) 50%, transparent); background: linear-gradient(90deg, color-mix(in srgb, var(--fh-stop) 14%, transparent), color-mix(in srgb, var(--fh-stop) 4%, transparent)); border-left: 3px solid var(--fh-stop); animation: v2-shake .42s ease both; }
+:root[data-look~=v2] .body pre { background: var(--fh-ink); border: 1px solid var(--line); border-top: 2px solid color-mix(in srgb, var(--fh-info) 45%, transparent); box-shadow: inset 0 1px 6px var(--fh-shade); }
+:root[data-look~=v2] .body code { background: color-mix(in srgb, var(--fh-gold) 9%, transparent); color: color-mix(in srgb, var(--fh-gold-hi) 70%, var(--text)); }
+:root[data-look~=v2] .body pre code { color: var(--text); background: none; }
+:root[data-look~=v2] .body a { color: var(--fh-info); text-decoration-color: color-mix(in srgb, var(--fh-info) 40%, transparent); text-underline-offset: 2px; }
+:root[data-look~=v2] .body blockquote { border-left: 2px solid var(--fh-gold); background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 6%, transparent), transparent); padding: 4px 12px; }
+:root[data-look~=v2] .body hr { border-top: 0; height: 1px; background: var(--hairline); }
+:root[data-look~=v2] .body th { background: var(--fh-iron-1); color: var(--fh-gold); }
+:root[data-look~=v2] .empty-icon {
+  border: 2px solid transparent;
+  background: linear-gradient(180deg, var(--fh-shine), transparent 45%, var(--fh-shade)) padding-box, linear-gradient(160deg, color-mix(in srgb, var(--agent) 34%, var(--fh-iron-1)), var(--fh-iron-2)) padding-box, var(--m-gold) border-box;
+}
+:root[data-look~=v2] .empty h3 { color: var(--fh-strong); }
+/* the composer: a forged frame around a deep well; focus lights a molten edge */
+:root[data-look~=v2] .composer-box textarea { background: linear-gradient(180deg, var(--fh-ink), color-mix(in srgb, var(--fh-ink) 50%, var(--fh-iron-2))); border-color: var(--line-hi); }
+:root[data-look~=v2] .composer-box:focus-within::after { height: 2px; background: var(--m-molten); animation: none; box-shadow: 0 0 calc(12px * var(--glow)) var(--g-ember); }
+:root[data-look~=v2] .composer-box:focus-within textarea { border-color: color-mix(in srgb, var(--fh-gold) 70%, var(--line-hi)) !important; }
+:root[data-look~=v2] .attach-chip { background: linear-gradient(180deg, var(--fh-iron-1), var(--fh-iron-2)); border: 1px solid var(--line-hi); box-shadow: var(--m-bevel); }
+:root[data-look~=v2] .jump-bottom { background: color-mix(in srgb, var(--fh-pop) 80%, transparent); backdrop-filter: var(--m-glass-filter); border: 1px solid var(--line-hi); color: var(--fh-gold); }
+:root[data-look~=v2] .msg-act:hover { color: var(--fh-gold-hi); }
+:root[data-look~=v2] #broadcast { background: var(--tx-brushed), linear-gradient(180deg, var(--fh-iron-1), var(--fh-iron-3)); border-top: 1px solid var(--line-hi); }
+:root[data-look~=v2] #broadcast::before { opacity: .8; height: 1px; }
+:root[data-look~=v2] .model-select { color: var(--fh-gold-hi); }
+
+/* ---------- glass overlays: dialogs, palette, menus, toasts ---------- */
+:root[data-look~=v2] dialog {
+  background:
+    var(--hairline) top / 100% 1px no-repeat,
+    var(--tx-noise),
+    linear-gradient(180deg, color-mix(in srgb, var(--fh-iron-1) 86%, transparent), color-mix(in srgb, var(--fh-iron-3) 92%, transparent));
+  backdrop-filter: var(--m-glass-filter);
+  border: 1px solid var(--line-hi); box-shadow: var(--m-glass-edge), 0 24px 80px #000c;
+}
+:root[data-look~=v2] dialog::backdrop { background: radial-gradient(ellipse at 50% 30%, color-mix(in srgb, var(--fh-heat) calc(8% * var(--glow)), #0006), #000b); backdrop-filter: blur(3px) saturate(.8); }
+:root[data-look~=v2] dialog h2 { color: var(--fh-gold); text-shadow: 0 0 calc(14px * var(--glow)) var(--g-gold); }
+:root[data-look~=v2] .palette { background: radial-gradient(ellipse at 50% 20%, color-mix(in srgb, var(--fh-heat) calc(6% * var(--glow)), #0005), #000a); backdrop-filter: blur(3px); }
+:root[data-look~=v2] .palette-card {
+  background: var(--tx-noise), linear-gradient(180deg, color-mix(in srgb, var(--fh-iron-1) 82%, transparent), color-mix(in srgb, var(--fh-iron-3) 90%, transparent));
+  backdrop-filter: var(--m-glass-filter); border: 1px solid var(--line-hi); box-shadow: var(--m-glass-edge), 0 24px 70px #000c;
+}
+:root[data-look~=v2] .palette-card::before { background: var(--m-molten); animation: none; box-shadow: 0 0 calc(12px * var(--glow)) var(--g-ember); }
+:root[data-look~=v2] .palette-input { background: transparent !important; border: 0 !important; box-shadow: none !important; font-family: var(--font-head); font-size: 15px; }
+:root[data-look~=v2] .palette-item.sel { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 22%, transparent), transparent); box-shadow: inset 2px 0 0 var(--fh-gold); color: var(--fh-strong); }
+:root[data-look~=v2] .palette-item.sel .p-kind { color: var(--fh-gold); }
+:root[data-look~=v2] :is(#menu, .slash-menu, .find-bar, .notes-panel, .lab-pop) {
+  background: var(--tx-noise), color-mix(in srgb, var(--fh-pop) 84%, transparent); backdrop-filter: var(--m-glass-filter);
+  border: 1px solid var(--line-hi); box-shadow: var(--m-glass-edge), 0 14px 40px #000a;
+}
+:root[data-look~=v2] #menu button:hover, :root[data-look~=v2] .mb-menu .menu-item:hover { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 18%, transparent), transparent); color: var(--fh-gold-hi); box-shadow: inset 2px 0 0 var(--fh-gold); }
+:root[data-look~=v2] :is(.slash-item.sel, .slash-item:hover) { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 18%, transparent), transparent); box-shadow: inset 2px 0 0 var(--fh-gold); }
+:root[data-look~=v2] .toast {
+  background: var(--tx-noise), color-mix(in srgb, var(--fh-pop) 86%, transparent); backdrop-filter: var(--m-glass-filter);
+  border: 1px solid var(--line-hi); border-left: 3px solid var(--fh-info);
+  box-shadow: var(--m-glass-edge), -8px 0 22px -10px color-mix(in srgb, var(--fh-info) calc(60% * var(--glow)), transparent), 0 10px 30px #0009;
+}
+:root[data-look~=v2] .toast.error { border-left-color: var(--fh-stop); box-shadow: var(--m-glass-edge), -8px 0 22px -10px color-mix(in srgb, var(--fh-stop) calc(70% * var(--glow)), transparent), 0 10px 30px #0009; }
+:root[data-look~=v2] .toast button { color: var(--fh-gold); }
+
+/* ---------- code views ---------- */
+:root[data-look~=v2] :is(.code-editor, .code-view, .three-console, .render-log, .game-log) { background: var(--fh-ink); }
+:root[data-look~=v2] .three-stats { background: color-mix(in srgb, var(--fh-pop) 80%, transparent); backdrop-filter: blur(6px); }
+:root[data-look~=v2] .hl-k { color: var(--fh-ai); }
+:root[data-look~=v2] .hl-f { color: var(--fh-info); }
+:root[data-look~=v2] .hl-n { color: var(--fh-ember); }
+:root[data-look~=v2] .hl-t { color: var(--fh-gold); }
+
+/* ---------- forged tooltips (juice.js shows them for anything with a title) ---------- */
+.juice-tip {
+  position: fixed; z-index: 10001; max-width: 320px; padding: 5px 9px; pointer-events: none;
+  font: 12px/1.4 var(--font); color: var(--text); white-space: pre-line;
+  background: var(--tx-noise), color-mix(in srgb, var(--fh-pop, var(--sidebar)) 92%, transparent); backdrop-filter: blur(10px);
+  border: 1px solid var(--line-hi, var(--line)); border-left: 2px solid var(--fh-gold); clip-path: var(--cut-sm, none);
+  box-shadow: var(--m-glass-edge); animation: j-tip-in .14s ease-out both;
+}
+@keyframes j-tip-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+
+/* ---------- micro-interactions (juice.js adds these classes / elements) ---------- */
+/* press glint: a chrome streak crossing the button you press */
+.juice-glint { position: fixed; pointer-events: none; overflow: hidden; z-index: 9998; clip-path: var(--cut-sm, none); }
+.juice-glint::after {
+  content: ""; position: absolute; top: -20%; bottom: -20%; left: 0; width: 40%;
+  background: linear-gradient(90deg, transparent, #ffffffb0, transparent); transform: translateX(-120%) skewX(-22deg);
+  animation: j-glint .42s cubic-bezier(.3, .7, .2, 1) forwards;
+}
+@keyframes j-glint { to { transform: translateX(320%) skewX(-22deg); } }
+/* send: a molten ring rolls out of the Send button */
+.juice-ring {
+  position: fixed; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; pointer-events: none;
+  border: 2px solid var(--c, #ffc23d); box-shadow: 0 0 12px var(--c, #ffc23d), inset 0 0 8px var(--c, #ffc23d);
+  animation: j-ring .5s cubic-bezier(.2, .8, .3, 1) forwards;
+}
+@keyframes j-ring { from { opacity: .95; transform: scale(.4); } to { opacity: 0; transform: scale(7); } }
+/* success: embers drift up */
+.juice-ember { position: fixed; width: 4px; height: 4px; border-radius: 50%; background: var(--c); box-shadow: 0 0 6px var(--c), 0 0 2px #fff; animation: j-ember .9s cubic-bezier(.2, .6, .4, 1) both; }
+@keyframes j-ember { 0% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% - var(--dy))) scale(.3); } }
+@keyframes j-pop { 0% { transform: scale(.94); } 45% { transform: scale(1.03); } 100% { transform: none; } }
+.j-pop { animation: j-pop .32s cubic-bezier(.3, 1.5, .5, 1) !important; }
+.j-shake { animation: v2-shake .42s ease !important; }
+:root[data-look~=v2] .toast.j-pop { border-left-color: var(--fh-gold); }
+
+/* ====================================================================================================== */
+/* ---------- corners: cut (the forge default), rounded, square ---------- */
+:root[data-corners=round] { --cut: none; --cut-sm: none; --radius: 10px; }
+:root[data-corners=round] :is(.agent-btn, .tool-btn, .tool-icon, .kanban-card, .empty-icon, .jump-bottom, .palette-card, .palette-item, .toast, .find-bar, .notes-panel, .slash-menu,
+  .three-stats, .code-editor, .code-view, .render-log, .game-log, .three-console, .dash-card, .calc-card, .preset-card, .tex-card, .model-section, .lib-ask, .connectors, .kanban-col,
+  .attach-chip, .memory-chip, .tool-chips, .msg.error, .msg.note, .body pre, .group-toggle, .item, dialog, #menu, .mb-menu, .lab-pop, .media-bar, .tweaks, .layers, .stage-pill, .settings-section,
+  .msg.user .body, .progress-card, .ask-card, .tb-group, .juice-tip, .look-tile) { border-radius: 10px !important; }
+:root[data-corners=round] :is(.ghost, .primary, .dialog-actions button, .web-btn, .code-act, .notes-item, .kanban-add, .tag, .tw-chip, .ver-chip, .stage-btn, .suggest-chip, .queue-chip, .ask-opt, #broadcast button, .seg button) { border-radius: 8px !important; }
+:root[data-corners=round] :is(input:not([type=checkbox]):not([type=color]):not([type=range]):not([type=radio]), select, textarea) { border-radius: 8px !important; }
+:root[data-corners=round] input[type=checkbox] { border-radius: 4px; }
+:root[data-corners=round] ::-webkit-scrollbar-thumb { border-radius: 10px; }
+:root[data-corners=round] .item.active::before { border-radius: 3px; }
+:root[data-corners=round] .msg.user .body { border-radius: 14px 14px 4px 14px !important; }
+:root[data-corners=square] { --cut: none; --cut-sm: none; }
+/* rounded corners don't clip glows, so the bold look gets its outer bloom back */
+:root[data-look~=v2][data-corners=round] :is(.primary, #broadcast button):hover { box-shadow: inset 0 1px 0 #ffffffb0, inset 0 -2px 0 #00000040, 0 0 calc(18px * var(--glow)) var(--g-gold); }
+:root[data-look~=v2][data-corners=round] .agent-btn.active { box-shadow: inset 0 0 calc(12px * var(--glow)) var(--g-gold), 0 0 calc(14px * var(--glow)) var(--g-gold); }
+
+/* ---------- density ---------- */
+:root[data-density=compact] body { font-size: 13px; }
+:root[data-density=compact] { --sidebar-w: 56px; }
+:root[data-density=compact] #rail { gap: 7px; padding: 8px 0; }
+:root[data-density=compact] #agent-buttons { gap: 7px; }
+:root[data-density=compact] .agent-btn { width: 40px; height: 40px; font-size: 15px; }
+:root[data-density=compact] .tool-btn { width: 36px; height: 36px; font-size: 16px; }
+:root[data-density=compact] .item { padding-top: 3px; padding-bottom: 3px; }
+:root[data-density=compact] .group-toggle { padding: 4px 6px; }
+:root[data-density=compact] .messages { padding-top: 12px; padding-bottom: 12px; }
+:root[data-density=compact] .msg { margin-bottom: 11px; }
+:root[data-density=compact] .msg.user .body { padding: 7px 11px; }
+:root[data-density=compact] :is(.native-head, .tool-head) { padding-top: 6px; padding-bottom: 6px; }
+:root[data-density=compact] .composer { padding-top: 6px; padding-bottom: 10px; }
+:root[data-density=compact] .composer-box textarea { min-height: 64px; padding: 8px 12px; font-size: 13.5px; }
+:root[data-density=compact] .ghost { padding: 3px 9px; }
+:root[data-density=compact] .primary { padding: 6px 13px; }
+:root[data-density=compact] .tabbar button { padding-top: 6px; padding-bottom: 6px; }
+:root[data-density=compact] dialog form { gap: 9px; padding: 14px 16px; }
+:root[data-density=comfortable] body { font-size: 15px; }
+:root[data-density=comfortable] .messages { padding-top: 28px; }
+:root[data-density=comfortable] .msg { margin-bottom: 24px; }
+:root[data-density=comfortable] .msg.user .body { padding: 12px 16px; }
+:root[data-density=comfortable] .item { padding-top: 7px; padding-bottom: 7px; }
+:root[data-density=comfortable] .body p { margin-bottom: 12px; line-height: 1.62; }
+:root[data-density=comfortable] .composer-box textarea { font-size: 15px; }
+
+/* ---------- motion: full, calm (no ambient loops), off ---------- */
+:root[data-motion=calm] :is(#rail, #broadcast, .palette-card, .tool-head, .native-head, .empty, .empty-icon, .tabbar button, .item, .agent-btn)::before,
+:root[data-motion=calm] :is(#rail, #broadcast, .palette-card, .tool-head, .native-head, .empty, .empty-icon, .tabbar button, .item, .agent-btn)::after,
+:root[data-motion=calm] .empty-icon,
+:root[data-motion=calm] body::before, :root[data-motion=calm] body::after { animation: none !important; }
+:root[data-motion=calm] :is(.tool-head, .native-head)::after { opacity: 0; }
+:root[data-motion=off] *, :root[data-motion=off] *::before, :root[data-motion=off] *::after { animation: none !important; transition: none !important; }
+:root[data-motion=off] :is(.tool-head, .native-head)::after { opacity: 0; }
+:root[data-motion=off] .juice-layer { display: none; }
+/* the window is hidden: every loop rests */
+:root[data-away] *, :root[data-away] *::before, :root[data-away] *::after { animation-play-state: paused !important; }
+
+/* ---------- reduced motion (the OS setting) ---------- */
+@media (prefers-reduced-motion: reduce) {
+  :root[data-look~=v2] *, :root[data-look~=v2] *::before, :root[data-look~=v2] *::after { animation: none !important; transition: none !important; }
+  .juice-glint, .juice-ring, .juice-ember { display: none; }
+}
+
+/* ---------- the Appearance picker (Settings → Appearance, /look) ---------- */
+.look-picker { display: flex; flex-direction: column; gap: 8px; }
+.look-top { display: flex; gap: 8px; align-items: center; }
+.look-top input { flex: 1; min-width: 0; }
+.look-now { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.look-now b { color: var(--text); }
+.look-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 6px; max-height: 228px; overflow-y: auto; padding: 2px; }
+.look-group { grid-column: 1 / -1; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 4px 0 -2px; }
+.look-tile {
+  display: flex; align-items: center; gap: 7px; padding: 5px 7px; min-width: 0; cursor: pointer; text-align: left;
+  border: 1px solid var(--line); background: var(--surface); color: var(--text); font-size: 12px; border-radius: 6px;
+}
+:root[data-skin~=forge] .look-tile { border-radius: 0; }
+.look-tile:hover { border-color: color-mix(in srgb, var(--accent) 60%, var(--line)); }
+.look-tile.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.look-tile span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.look-sw { flex: none; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; width: 26px; height: 22px; border: 1px solid #0006; box-shadow: inset 0 0 0 1px #ffffff14; }
+.look-sw i:first-child { grid-row: 1 / 3; }
+.look-ctl { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 6px 10px; align-items: center; font-size: 12px; color: var(--muted); }
+.look-ctl > span { white-space: nowrap; }
+.seg { display: inline-flex; border: 1px solid var(--line); min-width: 0; }
+.seg button { flex: 1; border: 0; background: none; padding: 3px 8px; font-size: 11.5px; cursor: pointer; color: var(--muted); white-space: nowrap; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button:hover { color: var(--text); background: var(--hover); }
+.seg button.on { color: var(--text); background: color-mix(in srgb, var(--accent) 22%, transparent); }
+:root[data-look~=v2] .seg { border-color: var(--line-hi); box-shadow: var(--m-bevel); background: linear-gradient(180deg, var(--fh-iron-1), var(--fh-iron-2)); }
+:root[data-look~=v2] .seg button.on { color: var(--m-gold-ink); background: var(--m-gold); text-shadow: 0 1px 0 #fff6; box-shadow: inset 0 1px 0 #fffa; }
+.look-ctl input[type=range] { width: 100%; }
+.look-accent { display: flex; gap: 6px; align-items: center; }
+.look-accent input[type=color] { width: 30px; height: 22px; padding: 0; border: 1px solid var(--line); background: none; cursor: pointer; }
+.look-dialog { width: min(600px, calc(100vw - 32px)); }

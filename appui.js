@@ -1,13 +1,66 @@
 // App-wide features: settings, themes, command palette, find in page, text zoom, recent-surface
 // switching, reply notifications, downloads, error toasts, resizable chats panel, usage stats.
 const AppUI = (() => {
+  // Theme presets. The first keys go into config.json → theme (colors, font, skin); `look: 'v2'` turns on
+  // Forgeheart 2 (look.css), `vars` retint its CSS variables, `fx` are the preset's default appearance toggles
+  // (your own /glow, /motion… choices win). look.js applies them; Settings → Appearance and /theme pick them.
+  const OX = "'FH Oxanium', 'Segoe UI', sans-serif";
+  const SYS = '"Segoe UI", system-ui, sans-serif';
+  const forge2 = (label, group, colors, vars = {}, fx) => ({ label, group, scheme: 'dark', skin: 'forge', font: OX, ...colors, look: 'v2', vars, fx });
+  const lightForge = { '--fh-ink': '#fffdf9', '--fh-strong': '#000000', '--fh-on-gold': '#1d1203', '--fh-stop': '#d12b2b', '--fh-ai': '#7a3fe0', '--fh-info': '#0a74b8', '--fh-hot': '#d6245f', '--fh-ember': '#d9580a' };
+  const chrome = { '--m-primary': 'var(--m-chrome)', '--m-primary-ink': 'var(--m-chrome-ink)' };
   const THEMES = {
-    swirl: { label: 'Forgeheart Swirl (curvy, flowing)', scheme: 'dark', skin: 'forge swirl', background: '#0b0e10', sidebar: '#111518', text: '#eae0d5', accent: '#ffd75e', font: "'FH Oxanium', 'Segoe UI', sans-serif" },
-    forgeheart: { label: 'Forgeheart (game menus, animated)', scheme: 'dark', skin: 'forge', background: '#0b0e10', sidebar: '#111518', text: '#eae0d5', accent: '#ffd75e', font: "'FH Oxanium', 'Segoe UI', sans-serif" },
-    midnight: { label: 'Midnight', scheme: 'dark', skin: '', background: '#0f1115', sidebar: '#15181e', text: '#e6e6e6', accent: '#7c5cff', font: '"Segoe UI", system-ui, sans-serif' },
-    graphite: { label: 'Graphite', scheme: 'dark', skin: '', background: '#18181b', sidebar: '#202024', text: '#ececec', accent: '#3b82f6', font: '"Segoe UI", system-ui, sans-serif' },
-    light: { label: 'Light', scheme: 'light', skin: '', background: '#f7f7f8', sidebar: '#e9e9ee', text: '#1d1d22', accent: '#6d4aff', font: '"Segoe UI", system-ui, sans-serif' },
-    contrast: { label: 'High contrast', scheme: 'dark', skin: '', background: '#000000', sidebar: '#0d0d0d', text: '#ffffff', accent: '#ffd400', font: '"Segoe UI", system-ui, sans-serif' },
+    forgeheart: forge2('Forgeheart', 'Forgeheart', { background: '#08090c', sidebar: '#0f1115', text: '#ece3d8', accent: '#ffc23d' }),
+    classic: { label: 'Forgeheart Classic', group: 'Forgeheart', scheme: 'dark', skin: 'forge', background: '#0b0e10', sidebar: '#111518', text: '#eae0d5', accent: '#ffd75e', font: OX },
+    swirl: { label: 'Forgeheart Swirl (curvy, flowing)', group: 'Forgeheart', scheme: 'dark', skin: 'forge swirl', background: '#0b0e10', sidebar: '#111518', text: '#eae0d5', accent: '#ffd75e', font: OX },
+    'chrome-forge': forge2('Chrome Forge', 'Forgeheart', { background: '#0a0c0f', sidebar: '#12151a', text: '#e8ecf0', accent: '#ffc23d' },
+      { ...chrome, '--fh-heat': '#7fa8c9', '--fh-iron-1': '#22262d', '--fh-iron-2': '#14171c', '--fh-iron-3': '#0c0e12', '--fh-line-base': '#2e333b' }),
+    'glass-ember': forge2('Glass Ember', 'Forgeheart', { background: '#0b090a', sidebar: '#141012', text: '#f3e6dc', accent: '#ff9a3d' },
+      { '--fh-gold': '#ff9a3d', '--fh-heat': '#ff5a1f', '--fh-pop': '#1c1315', '--fh-iron-1': '#1d1517', '--fh-iron-2': '#130e10', '--fh-iron-3': '#0d0a0b', '--fh-line-base': '#33272a' }, { corners: 'round' }),
+    obsidian: forge2('Obsidian', 'Forgeheart', { background: '#000000', sidebar: '#07070a', text: '#e9e6f0', accent: '#e6c36a' },
+      { '--fh-gold': '#e6c36a', '--fh-heat': '#6b4cff', '--fh-ink': '#000000', '--fh-iron-1': '#121217', '--fh-iron-2': '#08080b', '--fh-iron-3': '#040406', '--fh-line-base': '#1e1e26', '--fh-pop': '#0b0b10' }),
+    molten: forge2('Molten', 'Bold', { background: '#0d0705', sidebar: '#160b08', text: '#f6e6da', accent: '#ffae2b' },
+      { '--fh-gold': '#ffae2b', '--fh-ember': '#ff5a1a', '--fh-hot': '#ff2e63', '--fh-heat': '#ff3d1a', '--fh-iron-1': '#24140f', '--fh-iron-2': '#170c09', '--fh-iron-3': '#0f0806', '--fh-line-base': '#3b2017', '--fh-pop': '#1a0e0a' }, { glow: 70 }),
+    'neon-anvil': forge2('Neon Anvil', 'Bold', { background: '#07060d', sidebar: '#0e0b18', text: '#eee9ff', accent: '#ff3ddc' },
+      { '--fh-gold': '#ff3ddc', '--fh-ember': '#ffb020', '--fh-ai': '#8a6bff', '--fh-hot': '#00f0ff', '--fh-info': '#00e5ff', '--fh-heat': '#ff00c8', '--fh-iron-1': '#18142b', '--fh-iron-2': '#0f0c1c', '--fh-iron-3': '#08060f', '--fh-line-base': '#2b2445', '--fh-pop': '#110e20' }, { glow: 80 }),
+    'synth-forge': forge2('Synth Forge', 'Bold', { background: '#0c0612', sidebar: '#150a1d', text: '#fbe9f4', accent: '#ff9f43' },
+      { '--fh-gold': '#ff9f43', '--fh-ember': '#ff5e7e', '--fh-hot': '#ff2a9d', '--fh-ai': '#9d6bff', '--fh-info': '#4de1ff', '--fh-heat': '#ff2a9d', '--fh-iron-1': '#211330', '--fh-iron-2': '#160c21', '--fh-iron-3': '#0e0716', '--fh-line-base': '#36224a', '--fh-pop': '#1a0f26' }, { glow: 70 }),
+    'frost-steel': forge2('Frost Steel', 'Bold', { background: '#0a0e12', sidebar: '#10161c', text: '#e3edf5', accent: '#9fdcff' },
+      { ...chrome, '--fh-gold': '#9fdcff', '--fh-ember': '#ffb04a', '--fh-heat': '#5fb8ff', '--fh-iron-1': '#1b232c', '--fh-iron-2': '#11171e', '--fh-iron-3': '#0a0f14', '--fh-line-base': '#27323d', '--fh-pop': '#121a22' }),
+    'gold-leaf': forge2('Gold Leaf', 'Bold', { background: '#0e0b07', sidebar: '#16110a', text: '#f3e7cf', accent: '#f0c04a' },
+      { '--fh-gold': '#f0c04a', '--fh-ember': '#e0782a', '--fh-heat': '#c9902a', '--fh-iron-1': '#231b10', '--fh-iron-2': '#18120a', '--fh-iron-3': '#0f0b06', '--fh-line-base': '#3b2f1c', '--fh-pop': '#1b150c' }, { glow: 60 }),
+    'midnight-violet': forge2('Midnight Violet', 'Bold', { background: '#0a0814', sidebar: '#110d20', text: '#ebe6ff', accent: '#ffc94d' },
+      { '--fh-gold': '#ffc94d', '--fh-ai': '#b38cff', '--fh-heat': '#7c4dff', '--fh-iron-1': '#1b1531', '--fh-iron-2': '#120e22', '--fh-iron-3': '#0b0817', '--fh-line-base': '#2b2346', '--fh-pop': '#15102a' }, { glow: 60 }),
+    'ash-copper': forge2('Ash & Copper', 'Bold', { background: '#121212', sidebar: '#1a1918', text: '#e8e2dc', accent: '#e3965c' },
+      { '--fh-gold': '#e3965c', '--fh-ember': '#ff6a3a', '--fh-heat': '#c06a3a', '--fh-iron-1': '#262321', '--fh-iron-2': '#1b1918', '--fh-iron-3': '#141312', '--fh-line-base': '#34312e', '--fh-pop': '#1e1c1a' }),
+    verdigris: forge2('Verdigris', 'Bold', { background: '#08100f', sidebar: '#0e1716', text: '#e2efe9', accent: '#e2b25a' },
+      { '--fh-gold': '#e2b25a', '--fh-heat': '#2fbf9f', '--fh-info': '#4fe0c0', '--fh-iron-1': '#16221f', '--fh-iron-2': '#0e1716', '--fh-iron-3': '#091110', '--fh-line-base': '#223330', '--fh-pop': '#0f1a18' }),
+    'jade-furnace': forge2('Jade Furnace', 'Bold', { background: '#060d09', sidebar: '#0b150f', text: '#e4f3e8', accent: '#5ee08f' },
+      { '--fh-gold': '#5ee08f', '--fh-ember': '#ffb347', '--fh-heat': '#1fbf6a', '--fh-iron-1': '#13221a', '--fh-iron-2': '#0b1510', '--fh-iron-3': '#070e0a', '--fh-line-base': '#1e3327', '--fh-pop': '#0e1a13' }),
+    bloodmoon: forge2('Blood Moon', 'Bold', { background: '#0d0607', sidebar: '#16090b', text: '#f2e2e2', accent: '#ffb347' },
+      { '--fh-gold': '#ffb347', '--fh-hot': '#ff1f5a', '--fh-heat': '#ff1f3d', '--fh-iron-1': '#231012', '--fh-iron-2': '#170a0c', '--fh-iron-3': '#0f0607', '--fh-line-base': '#3a1a1e', '--fh-pop': '#1b0c0e' }, { glow: 65 }),
+    'rose-gold': forge2('Rose Gold', 'Bold', { background: '#0f0a0b', sidebar: '#181012', text: '#f6e8e8', accent: '#f2a7a0' },
+      { '--fh-gold': '#f2a7a0', '--fh-ember': '#ff8a5c', '--fh-hot': '#ff4f8b', '--fh-heat': '#e0707a', '--fh-iron-1': '#241a1c', '--fh-iron-2': '#181113', '--fh-iron-3': '#100b0c', '--fh-line-base': '#3a2a2d', '--fh-pop': '#1d1416' }, { corners: 'round' }),
+    aurora: forge2('Aurora', 'Bold', { background: '#060b10', sidebar: '#0b131a', text: '#e4f2f0', accent: '#5cf2c5' },
+      { '--fh-gold': '#5cf2c5', '--fh-ember': '#ffb347', '--fh-ai': '#b07cff', '--fh-heat': '#2ad1a3', '--fh-iron-1': '#13202a', '--fh-iron-2': '#0b141b', '--fh-iron-3': '#070d12', '--fh-line-base': '#1e2f3a', '--fh-pop': '#0e1820' }),
+    abyss: forge2('Abyss', 'Bold', { background: '#050a14', sidebar: '#0a1222', text: '#e2ecff', accent: '#4fd2ff' },
+      { '--fh-gold': '#4fd2ff', '--fh-heat': '#1f6bff', '--fh-iron-1': '#101b30', '--fh-iron-2': '#0a1222', '--fh-iron-3': '#060c18', '--fh-line-base': '#1b2a45', '--fh-pop': '#0c162a' }),
+    sunforge: forge2('Sunforge', 'Bold', { background: '#120c06', sidebar: '#1b1209', text: '#fff1de', accent: '#ffb627' },
+      { '--fh-gold': '#ffb627', '--fh-heat': '#ff9a1f', '--fh-iron-1': '#291c0f', '--fh-iron-2': '#1c130a', '--fh-iron-3': '#130d07', '--fh-line-base': '#40301c', '--fh-pop': '#20160c' }, { glow: 80 }),
+    ironclad: forge2('Ironclad (calm, low glow)', 'Forgeheart', { background: '#111214', sidebar: '#17181b', text: '#dcdcdc', accent: '#d6b25e' },
+      { '--fh-gold': '#d6b25e', '--fh-heat': '#8a8a8a', '--fh-iron-1': '#1f2024', '--fh-iron-2': '#16171a', '--fh-iron-3': '#111214', '--fh-line-base': '#2c2d31' }, { glow: 15, motion: 'calm' }),
+    'hc-forge': forge2('High Contrast Forge', 'Forgeheart', { background: '#000000', sidebar: '#000000', text: '#ffffff', accent: '#ffd400' },
+      { '--fh-gold': '#ffd400', '--fh-ink': '#000000', '--fh-iron-1': '#0d0d0d', '--fh-iron-2': '#000000', '--fh-iron-3': '#000000', '--fh-line-base': '#6a6a6a', '--fh-pop': '#050505' }, { glow: 40, texture: false }),
+    'forge-light': forge2('Forge Light', 'Light', { scheme: 'light', background: '#f4efe6', sidebar: '#e8e0d2', text: '#221c14', accent: '#b97a00' },
+      { ...lightForge, '--fh-gold': '#c98a00', '--fh-heat': '#ffb35a', '--fh-iron-1': '#fbf7f0', '--fh-iron-2': '#ede6d9', '--fh-iron-3': '#e3dacb', '--fh-line-base': '#cdc1ad', '--fh-pop': '#f8f3eb' }, { glow: 40 }),
+    'chrome-light': forge2('Chrome Light', 'Light', { scheme: 'light', background: '#eef1f4', sidebar: '#dfe4e9', text: '#161a1f', accent: '#2f6fde' },
+      { ...lightForge, ...chrome, '--fh-gold': '#2f6fde', '--fh-heat': '#8fb3ff', '--fh-iron-1': '#fbfcfd', '--fh-iron-2': '#e8ecf0', '--fh-iron-3': '#dde2e8', '--fh-line-base': '#c3cad3', '--fh-pop': '#f4f6f8' }, { glow: 35 }),
+    parchment: forge2('Parchment', 'Light', { scheme: 'light', background: '#f3ead8', sidebar: '#e6dac2', text: '#2a2116', accent: '#9c5b12' },
+      { ...lightForge, '--fh-gold': '#a8661a', '--fh-heat': '#e0a050', '--fh-iron-1': '#faf3e4', '--fh-iron-2': '#ece0c8', '--fh-iron-3': '#e2d4b8', '--fh-line-base': '#cbb994', '--fh-pop': '#f6eedd' }, { glow: 25 }),
+    midnight: { label: 'Midnight', group: 'Plain', scheme: 'dark', skin: '', background: '#0f1115', sidebar: '#15181e', text: '#e6e6e6', accent: '#7c5cff', font: SYS },
+    graphite: { label: 'Graphite', group: 'Plain', scheme: 'dark', skin: '', background: '#18181b', sidebar: '#202024', text: '#ececec', accent: '#3b82f6', font: SYS },
+    light: { label: 'Light', group: 'Plain', scheme: 'light', skin: '', background: '#f7f7f8', sidebar: '#e9e9ee', text: '#1d1d22', accent: '#6d4aff', font: SYS },
+    contrast: { label: 'High contrast', group: 'Plain', scheme: 'dark', skin: '', background: '#000000', sidebar: '#0d0d0d', text: '#ffffff', accent: '#ffd400', font: SYS },
   };
   const SPELL_LANGS = [['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['fr-FR', 'French'], ['es-ES', 'Spanish'], ['de-DE', 'German']];
 
@@ -23,8 +76,6 @@ const AppUI = (() => {
     const startOn = el('select', {}, el('option', { value: '', text: 'Last used (first agent)' }),
       H.agents().map((a) => el('option', { value: a.id, text: a.name, selected: s.startOn === a.id })),
       Tools.all().map((t) => el('option', { value: `tool:${t.id}`, text: t.name, selected: s.startOn === `tool:${t.id}` })));
-    const themeSel = el('select', {}, el('option', { value: '', text: 'Custom (keep current colors)' }),
-      Object.entries(THEMES).map(([id, t]) => el('option', { value: id, text: t.label, selected: H.config.theme?.preset === id })));
     const hotkey = el('input', { value: s.hotkey ?? 'Control+Alt+H', placeholder: 'e.g. Control+Alt+H (empty = off)' });
     const [trayRow, trayIn] = check('Closing the window keeps the hub running in the tray', s.closeToTray);
     const isMac = /Mac/.test(navigator.platform);
@@ -63,7 +114,7 @@ const AppUI = (() => {
       section('General', field('Open on start', startOn), trayRow, startupRow, notifyRow,
         field('Unload websites I haven\'t opened (frees memory; they load again when you open them)', sleepSel),
         field('Show/hide hotkey (works from anywhere)', hotkey, 'Uses Electron accelerator names: Control, Alt, Shift, Super, letters, Space, F1…')),
-      section('Appearance', field('Theme', themeSel), el('div', { class: 'hint', text: 'Text size: Ctrl + / Ctrl − / Ctrl 0.' })),
+      section('Appearance', Look.picker(), el('div', { class: 'hint', text: 'Looks apply instantly. Text size: Ctrl + / Ctrl − / Ctrl 0. In any chat: /theme, /themes, /look.' })),
       section('Spell check languages', el('div', { class: 'check-grid' }, langBoxes)),
       section('Tools in the rail', el('div', { class: 'check-grid' }, toolBoxes)),
       section('Engines', field('Claude program (only if it isn\'t found)', claudePath), field('Codex program (only if it isn\'t found)', codexPath)),
@@ -96,10 +147,6 @@ const AppUI = (() => {
         aeProjectDirs: aeDirs.value.split('\n').map((x) => x.trim()).filter(Boolean),
         enginePaths: claudePath.value.trim() || codexPath.value.trim() ? { claude: claudePath.value.trim() || undefined, codex: codexPath.value.trim() || undefined } : undefined,
       };
-      if (themeSel.value) {
-        const { label, ...colors } = THEMES[themeSel.value];
-        H.config.theme = { ...H.config.theme, ...colors, preset: themeSel.value };
-      }
       H.config.tools = { ...H.config.tools, hidden: toolBoxes.map((l) => l.querySelector('input')).filter((i) => !i.checked).map((i) => i.dataset.id) };
       const result = await saveConfig();
       dialog.close();
@@ -480,9 +527,7 @@ const AppUI = (() => {
   function offerSwirl() {
     if (H.config?.theme?.preset !== 'swirl' || !store.get('theme.swirlOffered') || store.get('theme.forgeBack')) return;
     store.set('theme.forgeBack', true);
-    const { label, ...colors } = THEMES.forgeheart;
-    H.config.theme = { ...H.config.theme, ...colors, preset: 'forgeheart' };
-    saveConfig();
+    Look.applyPreset('forgeheart', { quiet: true });
   }
   function init() {
     const z = store.get('zoom.app', 1);
@@ -520,9 +565,7 @@ const AppUI = (() => {
     addAction('Snapshot the window into the chat', snapshotToChat, 'Ctrl+Shift+S');
     addAction('Your usage: what you use and what you never touch', () => Usage.dialog());
     addAction('Keep Hearth on top / stop', toggleOnTop, 'Ctrl+Shift+T');
-    for (const [id, t] of Object.entries(THEMES)) {
-      addAction(`Theme: ${t.label}`, () => { const { label, ...colors } = t; H.config.theme = { ...H.config.theme, ...colors, preset: id }; saveConfig(); });
-    }
+    for (const [id, t] of Object.entries(THEMES)) addAction(`Theme: ${t.label}`, () => Look.applyPreset(id));
   }
 
   return { actions: () => actions.slice(), init, offerSwirl, openSettings, palette, find, shortcutsHelp, zoom, switchRecent, replyFinished, usageDialog, downloadsDialog, trashDialog, addAction, THEMES, snapshotToChat, toggleOnTop };
