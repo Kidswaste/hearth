@@ -434,17 +434,38 @@ const Prompts = (() => {
     let lastValue = '';
     const close = () => { menu?.remove(); menu = null; };
     const setText = (text) => { textarea.value = text; textarea.dispatchEvent(new Event('input')); textarea.focus(); textarea.setSelectionRange(text.length, text.length); };
+    let navigated = false; // the highlight was moved with ↑↓ since the last keystroke
+    // An argument suggestion completes what you typed: the whole argument text when the suggestion starts with it
+    // ("/song pl" → "/song play"), else only the last word ("/compare v2 si" → "/compare v2 side", not "/compare side").
+    const argText = (it) => {
+      const m = textarea.value.match(/^\/[\w-]+\s([^\n]*)$/); const typed = m ? m[1] : '';
+      const v = String(it.value);
+      if (!typed.trim() || v.toLowerCase().startsWith(typed.trim().toLowerCase())) return `/${it.def.name} ${v}`;
+      const head = typed.replace(/\S*$/, '');
+      return `/${it.def.name} ${head}${v}`;
+    };
+    // Enter on an argument suggestion: completes a word you're still typing or a suggestion you picked with ↑↓;
+    // otherwise it runs what you typed (Enter used to replace every argument with the highlighted one).
+    const enterCompletes = (it) => {
+      const now = textarea.value.trim();
+      const done = argText(it).trim();
+      if (done === now) return false;
+      if (navigated) return true;
+      const last = (now.match(/(\S*)$/) || [])[1].toLowerCase();
+      const want = (done.match(/(\S*)$/) || [])[1].toLowerCase();
+      return Boolean(last) && want.startsWith(last) && want !== last && !/\s$/.test(textarea.value);
+    };
     const pick = async (it) => {
       close();
       if (it.kind === 'command') { setText(`/${it.def.name} `); return; }
-      if (it.kind === 'arg') { setText(`/${it.def.name} ${it.value}`); return; }
+      if (it.kind === 'arg') { setText(argText(it)); return; }
       const text = await fill(it.prompt);
       if (text != null) onPick(text);
     };
     const update = async () => {
       const my = ++seq;
       const value = textarea.value;
-      if (value !== lastValue) { sel = 0; lastValue = value; }
+      if (value !== lastValue) { sel = 0; lastValue = value; navigated = false; }
       const word = value.match(/^\/([\w-]*)$/);
       const withArgs = !word && value.match(/^\/([\w-]+)\s([^\n]*)$/);
       let next = [];
@@ -495,11 +516,11 @@ const Prompts = (() => {
       const list = pickableItems();
       if (!list.length) return;
       // arrows only move the highlight (rebuilding the whole menu per key made holding ↓ sluggish)
-      const move = (d) => { e.preventDefault(); e.stopImmediatePropagation(); sel = (sel + d + list.length) % list.length; const rows = menu.querySelectorAll('.slash-item'); rows.forEach((r, i) => r.classList.toggle('sel', i === sel)); rows[sel]?.scrollIntoView({ block: 'nearest' }); };
+      const move = (d) => { e.preventDefault(); e.stopImmediatePropagation(); navigated = true; sel = (sel + d + list.length) % list.length; const rows = menu.querySelectorAll('.slash-item'); rows.forEach((r, i) => r.classList.toggle('sel', i === sel)); rows[sel]?.scrollIntoView({ block: 'nearest' }); };
       if (e.key === 'ArrowDown') move(1);
       else if (e.key === 'ArrowUp') move(-1);
       else if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && !(list[sel].kind === 'command' && textarea.value.trim() === `/${list[sel].def.name}`)
-        && !(list[sel].kind === 'arg' && textarea.value.trim() === `/${list[sel].def.name} ${list[sel].value}`.trim()))) {
+        && !(list[sel].kind === 'arg' && !enterCompletes(list[sel])))) {
         // Enter on a fully typed command (or a picked argument) runs it (the form submits); otherwise Enter / Tab completes
         e.preventDefault(); e.stopImmediatePropagation(); pick(list[sel]);
       } else if (e.key === 'Escape') { e.stopImmediatePropagation(); close(); }

@@ -563,6 +563,9 @@ dialog .ghost.small { min-height: 28px; }
 dialog .ghost:not(.small) { min-height: 32px; }
 /* toasts sit above the composer's Send button instead of on top of it */
 #toasts { bottom: 132px; }
+/* with a docked chat open (Lab, Video Review) they also clear its composer, chips and Send button: "Feedback is
+   ready in the Video Director's chat box" used to sit right on that chat box */
+body:has(.surface.active > .tool-dock:not([hidden])) #toasts, body:has(.surface.active .tool-dock:not([hidden])) #toasts { bottom: 280px; }
 /* toasts: one height for the action and the ×, long text stops after three lines */
 .toast { min-height: 40px; max-width: min(460px, calc(100vw - 32px)); }
 .toast > span:first-child { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
