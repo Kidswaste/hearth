@@ -115,5 +115,13 @@ contextBridge.exposeInMainWorld('hub', {
     render: call('ae:render'),
     cancel: call('ae:cancel'),
     onRender: on('ae:render-event'),
+    running: call('ae:running'),
+  },
+  video: {
+    tools: call('video:tools'),
+    probe: call('video:probe'),
+    transcode: call('video:transcode'),
+    cancel: call('video:cancel'),
+    onJob: on('video:job-event'),
   },
 });

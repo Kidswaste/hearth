@@ -10,14 +10,22 @@ const AEKit = (() => {
     return aeStatus;
   }
 
+  const IS_MAC = /Mac/.test(navigator.platform);
+  const UNDO = IS_MAC ? '⌘Z' : 'Ctrl+Z';
+  const clean = (msg) => String(msg).replace(/^Error invoking remote method[^:]*: (Error: )?/, '');
+  // Mac keyboard names for AE's (Windows-written) shortcut list.
+  const macKeys = (k) => (IS_MAC ? k.replace(/Ctrl\+/g, '⌘').replace(/Alt\+/g, '⌥').replace(/Shift\+/g, '⇧').replace(/Alt\b/g, '⌥ Option').replace(/Page Up/g, 'Page Up (fn↑)').replace(/Page Down/g, 'Page Down (fn↓)') : k);
+
   // Runs ExtendScript in After Effects (AE starts if it isn't open). Wrapped in one undo step.
   async function runCode(code, label = 'Hearth script') {
     const st = await status();
-    if (!st.found) { toast('After Effects was not found. Set its folder in Settings → Folders.', { type: 'error' }); return; }
+    if (!st.found) { toast(st.reason || 'After Effects was not found. Set its folder in Settings → Folders.', { type: 'error', timeout: 8000 }); return false; }
     try {
-      await window.hub.ae.run(code, label);
-      toast(`Sent "${label}" to After Effects. One Ctrl+Z in AE undoes it.`, { timeout: 3500 });
-    } catch (err) { toast(err.message, { type: 'error' }); }
+      const r = await window.hub.ae.run(code, label);
+      if (r && r.ok === false) { toast(r.error, { type: 'error', timeout: 10000 }); return false; }
+      toast(`Sent "${label}" to After Effects. One ${UNDO} in AE undoes it.`, { timeout: 3500 });
+      return true;
+    } catch (err) { toast(clean(err.message), { type: 'error' }); return false; }
   }
 
   // Renders a parameter form; returns { node, values() }.
@@ -135,8 +143,8 @@ const AEKit = (() => {
     status().then((st) => {
       banner.className = `ae-banner ${st.found ? 'ok' : 'bad'}`;
       banner.textContent = st.found
-        ? `After Effects found (${st.dir.match(/After Effects ([^\\]+)/)?.[1] || st.dir}). "Run in After Effects" starts AE if needed and runs the script as one undoable step.`
-        : 'After Effects not found. Set its "Support Files" folder in Settings → Folders.';
+        ? `After Effects ${st.version || ''} found. "Run in After Effects" starts AE if needed and runs the script as one undoable step.${IS_MAC ? ' The first time, macOS asks to let Hearth control After Effects: allow it.' : ''}`
+        : st.reason || 'After Effects not found. Set its folder in Settings → Folders.';
     });
     const renderList = () => list.replaceChildren(
       el('div', { class: 'lib-group', text: 'Built in' }),
@@ -145,7 +153,7 @@ const AEKit = (() => {
       ...mine.map((s) => el('button', { class: 'lib-item', text: s.name, on: { click: () => showMine(s) } })),
       el('button', { class: 'ghost small lib-add', text: '＋ New script', on: { click: () => showMine({ id: `j${Date.now()}`, name: 'New script', code: '// app.project.activeItem is the open comp\nvar comp = app.project.activeItem;\nif (!(comp instanceof CompItem)) throw new Error("Open a composition first.");\n\n' }) } }));
     const install = async (name, code) => {
-      try { const r = await window.hub.ae.install(name, code); toast(`Installed. In AE: File → Scripts → ${name}.jsx (restart AE if it's open).`, { action: { label: 'Show', fn: () => window.hub.fs.reveal(r.file) }, timeout: 7000 }); } catch (err) { toast(err.message, { type: 'error' }); }
+      try { const r = await window.hub.ae.install(name, code); toast(`Installed. In AE: File → Scripts → ${name}.jsx (restart AE if it's open).`, { action: { label: 'Show', fn: () => window.hub.fs.reveal(r.file) }, timeout: 7000 }); } catch (err) { toast(clean(err.message), { type: 'error' }); }
     };
     function showBuiltin(s) {
       const preview = el('div');
@@ -243,7 +251,7 @@ const AEKit = (() => {
         const st = await window.hub.fs.stat(job.output);
         if (st && st.size === 0) await window.hub.fs.trash([job.output]);
       }
-      try { await window.hub.ae.render(job); } catch (err) { job.state = 'failed'; job.error = err.message; running = null; renderQueue(); toast(err.message, { type: 'error' }); }
+      try { await window.hub.ae.render(job); } catch (err) { job.state = 'failed'; job.error = clean(err.message); running = null; renderQueue(); toast(job.error, { type: 'error' }); }
       renderQueue();
     }
     window.hub.ae.onRender((ev) => {
@@ -507,7 +515,8 @@ const AEKit = (() => {
     const scan = async () => {
       box.replaceChildren(el('p', { class: 'hint', text: 'Scanning for .aep files…' }));
       const home = await window.hub.fs.home();
-      const dirs = H.settings().aeProjectDirs?.length ? H.settings().aeProjectDirs : [`${home}\\Documents`, `${home}\\Desktop`, `${home}\\Videos`];
+      const sep = home.includes('\\') ? '\\' : '/';
+      const dirs = H.settings().aeProjectDirs?.length ? H.settings().aeProjectDirs : ['Documents', 'Desktop', IS_MAC ? 'Movies' : 'Videos'].map((d) => `${home}${sep}${d}`);
       projects = await window.hub.ae.projects(dirs);
       render();
     };
@@ -519,8 +528,8 @@ const AEKit = (() => {
           { key: 'mtime', label: 'Modified', render: (r) => timeAgo(r.mtime) },
           { key: 'size', label: 'Size', num: true, render: (r) => fmtBytes(r.size) },
           { key: 'path', label: '', render: (r) => el('span', { class: 'row' },
-            el('button', { class: 'ghost small', text: 'Open in AE', on: { click: (e) => { e.stopPropagation(); window.hub.fs.open(r.path); } } }),
-            el('button', { class: 'ghost small', text: 'Render…', on: { click: (e) => { e.stopPropagation(); tabs.show('render'); setTimeout(() => api.prefillRender?.(r.path), 50); } } }),
+            el('button', { class: 'ghost small', text: 'Open in AE', on: { click: (e) => { e.stopPropagation(); store.set('review.lastProject', r.path); window.hub.fs.open(r.path); } } }),
+            el('button', { class: 'ghost small', text: 'Render…', on: { click: (e) => { e.stopPropagation(); store.set('review.lastProject', r.path); tabs.show('render'); setTimeout(() => api.prefillRender?.(r.path), 50); } } }),
             el('button', { class: 'ghost small', text: 'Folder', on: { click: (e) => { e.stopPropagation(); window.hub.fs.reveal(r.path); } } })) },
         ],
         rows: projects.filter((p) => !qv || p.path.toLowerCase().includes(qv)),
@@ -529,7 +538,8 @@ const AEKit = (() => {
     };
     search.addEventListener('input', render);
     pane.append(el('div', { class: 'three-toolbar' }, search, el('button', { class: 'ghost small', text: 'Rescan', on: { click: scan } }),
-      el('span', { class: 'hint', text: 'Searches Documents, Desktop and Videos (change in Settings → Folders).' })), box);
+      el('span', { class: 'hint', text: `Searches Documents, Desktop and ${IS_MAC ? 'Movies' : 'Videos'} (change in Settings → Folders).` })), box);
+    api.projects = () => projects;
     scan();
   }
 
@@ -540,27 +550,26 @@ const AEKit = (() => {
     const render = () => {
       const qv = search.value.toLowerCase();
       DataTable(box.replaceChildren() || box, {
-        columns: [{ key: 0, label: 'Area', width: '110px' }, { key: 1, label: 'Keys', render: (r) => el('kbd', { text: r[1] }), width: '220px' }, { key: 2, label: 'Action' }],
-        rows: AEData.SHORTCUTS.filter((r) => !qv || r.join(' ').toLowerCase().includes(qv)),
+        columns: [{ key: 0, label: 'Area', width: '110px' }, { key: 1, label: 'Keys', render: (r) => el('kbd', { text: macKeys(r[1]) }), width: '220px' }, { key: 2, label: 'Action' }],
+        rows: AEData.SHORTCUTS.filter((r) => !qv || `${r.join(' ')} ${macKeys(r[1])}`.toLowerCase().includes(qv)),
       });
     };
     search.addEventListener('input', render);
-    pane.append(el('div', { class: 'three-toolbar' }, search, el('span', { class: 'hint', text: 'Windows defaults for After Effects.' })), box);
+    pane.append(el('div', { class: 'three-toolbar' }, search, el('span', { class: 'hint', text: IS_MAC ? 'After Effects defaults, Mac keys (⌘ Cmd, ⌥ Option, ⇧ Shift).' : 'Windows defaults for After Effects.' })), box);
     render();
   }
 
-  // The tool opens on Video Review. The hands-on AE tools live in a Toolkit drawer that stays
-  // closed until asked for (it never opens by itself).
+  // The tool opens on Video Review. The hands-on AE tools live in a Toolkit drawer that slides over the
+  // right side of the review (the "Toolkit" segment, /toolkit or Ctrl+K) and stays closed until asked for.
   let reviewRoot = null;
   let kitRoot = null;
-  let kitToggle = null;
+  let kitBody = null;
   function openKit(open = true, tab) {
-    if (!kitRoot) return;
+    if (!kitRoot) return false;
     kitRoot.hidden = !open;
-    reviewRoot.hidden = open;
-    kitToggle.textContent = open ? '◂ Back to review' : '⋯ Toolkit';
+    reviewRoot.querySelectorAll('.vr-seg button').forEach((b, i) => { if (i !== 1) b.classList.toggle('on', i === (open ? 2 : 0)); });
     if (open && !tabs) {
-      tabs = Tabs(kitRoot, [
+      tabs = Tabs(kitBody, [
         { id: 'expressions', label: 'Expressions', render: expressionsTab },
         { id: 'scripts', label: 'Scripts', render: scriptsTab },
         { id: 'render', label: 'Render queue', render: renderTab },
@@ -574,17 +583,22 @@ const AEKit = (() => {
       ], { storeKey: 'ae.tab' });
     }
     if (open && tab) tabs.show(tab);
+    return open;
   }
+  const KIT_TABS = ['expressions', 'scripts', 'render', 'calc', 'presets', 'palette', 'projects', 'shortcuts', 'color', 'easing'];
   const kitCommand = (tab) => () => { activate('tool:ae'); setTimeout(() => openKit(true, tab), 30); };
 
   Tools.define({
     id: 'ae', name: 'Video Review', icon: '▶', color: '#bd8bff',
     description: 'Watch what After Effects renders and steer it',
-    mount(body, head) {
+    mount(body) {
       reviewRoot = el('div', { class: 'review-root' });
-      kitRoot = el('div', { class: 'toolkit-root', hidden: true });
-      kitToggle = el('button', { class: 'ghost small kit-toggle', text: '⋯ Toolkit', title: 'After Effects reference and tools: expressions, scripts, render queue, calculators, presets, shortcuts', on: { click: () => openKit(kitRoot.hidden) } });
-      head.append(kitToggle);
+      kitBody = el('div', { class: 'vr-kit-body' });
+      kitRoot = el('div', { class: 'toolkit-root vr-kit', hidden: true },
+        el('div', { class: 'vr-kit-head' }, el('b', { text: 'After Effects toolkit' }), el('span', { class: 'spacer' }),
+          el('button', { class: 'vr-ico', text: '✕', title: 'Close the toolkit (Esc)', on: { click: () => openKit(false) } })), kitBody);
+      kitRoot.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !e.target.closest('textarea, .code-editor')) { e.stopPropagation(); openKit(false); } });
+      body.classList.add('ae-body');
       body.append(reviewRoot, kitRoot);
       Review.mount(reviewRoot);
     },
@@ -601,5 +615,5 @@ const AEKit = (() => {
     ],
   });
 
-  return { runCode, framesToTc, tcToFrames, FPS };
+  return { runCode, framesToTc, tcToFrames, FPS, openKit, KIT_TABS, status: async () => { aeStatus = null; return status(); }, projects: () => api.projects?.() || [], newScript: (code) => { openKit(true, 'scripts'); setTimeout(() => api.newScript?.(code), 50); } };
 })();
