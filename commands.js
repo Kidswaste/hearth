@@ -11,16 +11,28 @@
 //     run: async (args, ctx) => {}, // args = the rest of the line (string); may return text to show in the chat
 //     complete: (args, ctx) => [],   // optional: argument suggestions [{ value, label?, hint? }]
 //     hidden: false,                 // optional: works when typed but stays out of the menu
+//     keys: 'Alt+T',                 // optional: the keyboard shortcut doing the same, shown in the menu
 //   })
 //
-// ctx: { agentId, chatId, input, say(text), draft(text), send(text) }
+// ctx: { agentId, chatId, input, say(text), draft(text), send(text), chat, agent, note(text, opts) }
 //   say(text)   shows a note in the chat (not sent to the agent; falls back to a toast)
 //   draft(text) puts text in the composer for you to edit and send
 //   send(text)  sends text to this chat's agent as your message
+//   note(text, { actions: [{ label, run }], id })  a note with buttons (id: replaces an older note with that id)
+//
+// Additive helpers: Commands.recent() (names, newest first), Commands.areas() (menu order),
+// Commands.run(name, args, agentId), Commands.AREA_ORDER.
 const Commands = (() => {
   const cmds = new Map(); // name -> def
   const alias = new Map(); // alias -> name
   const NAME = /^[a-z0-9][\w-]*$/i;
+  // Menu / help order of the areas; unknown areas follow alphabetically.
+  const AREA_ORDER = ['Chat', 'Messages', 'Compose', 'Agents', 'Style', 'Memory', 'Export', 'View', 'Navigate', 'App'];
+  const areaRank = (a) => { const i = AREA_ORDER.indexOf(a); return i < 0 ? AREA_ORDER.length : i; };
+  // Commands you ran lately come first in the "/" menu.
+  const RECENT_KEY = 'commands.recent';
+  const recent = () => { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch { return []; } };
+  const noteRecent = (name) => { try { localStorage.setItem(RECENT_KEY, JSON.stringify([name, ...recent().filter((n) => n !== name)].slice(0, 8))); } catch { /* not critical */ } };
 
   function register(def) {
     if (!def?.name || !NAME.test(def.name) || typeof def.run !== 'function') throw new Error(`Bad command: ${def?.name}`);
@@ -36,7 +48,8 @@ const Commands = (() => {
     for (const a of def.aliases) if (alias.get(a.toLowerCase()) === name) alias.delete(a.toLowerCase());
   }
   const get = (name) => { const n = String(name || '').toLowerCase(); return cmds.get(n) || cmds.get(alias.get(n)); };
-  const list = () => [...cmds.values()].sort((a, b) => a.area.localeCompare(b.area) || a.name.localeCompare(b.name));
+  const list = () => [...cmds.values()].sort((a, b) => areaRank(a.area) - areaRank(b.area) || a.area.localeCompare(b.area) || a.name.localeCompare(b.name));
+  const areas = () => [...new Set(list().map((d) => d.area))];
 
   // "/name rest of line" -> { def, args } when name is a registered command, else null.
   function parse(text) {
@@ -50,9 +63,15 @@ const Commands = (() => {
   function matching(query) {
     const q = String(query || '').toLowerCase();
     const shown = list().filter((d) => !d.hidden);
+    if (!q) { // nothing typed yet: your recent commands, then everything by area
+      const rec = recent().map(get).filter((d) => d && !d.hidden);
+      return [...rec, ...shown.filter((d) => !rec.includes(d))];
+    }
     const starts = shown.filter((d) => d.name.startsWith(q) || d.aliases.some((a) => a.toLowerCase().startsWith(q)));
-    const has = shown.filter((d) => !starts.includes(d) && (d.name.includes(q) || d.desc.toLowerCase().includes(q)));
-    return [...starts, ...has];
+    const has = shown.filter((d) => !starts.includes(d) && (d.name.includes(q) || d.desc.toLowerCase().includes(q) || d.area.toLowerCase() === q));
+    const rec = recent();
+    const byRecent = (a, b) => ((rec.indexOf(a.name) + 1 || 99) - (rec.indexOf(b.name) + 1 || 99));
+    return [...starts.sort(byRecent), ...has];
   }
 
   function context(agentId, input) {
@@ -64,6 +83,9 @@ const Commands = (() => {
       say: (text) => Native.note(agentId, String(text)),
       draft: (text) => Native.setDraft(agentId, text),
       send: (text) => Native.sendText(agentId, text),
+      note: (text, opts) => Native.note(agentId, String(text), opts),
+      get chat() { return Native.current?.(agentId) || null; },
+      get agent() { return H.agent(agentId) || null; },
     };
   }
 
@@ -76,6 +98,7 @@ const Commands = (() => {
       const out = await hit.def.run(hit.args, ctx);
       if (typeof out === 'string' && out) ctx.say(out);
       Usage.track(`Chat command › /${hit.def.name}`);
+      noteRecent(hit.def.name);
     } catch (err) {
       toast(`/${hit.def.name}: ${err.message}`, { type: 'error' });
     }
@@ -84,6 +107,7 @@ const Commands = (() => {
 
   // Runs a command from code (agents' suggestion chips, other tools): Commands.exec('/astra hi', agentId)
   const exec = (text, agentId = H.claudeAgent()?.id) => tryRun(text.startsWith('/') ? text : `/${text}`, agentId, null);
+  const run = (name, args = '', agentId) => exec(`/${name}${args ? ` ${args}` : ''}`, agentId);
 
   // ---- built-in commands ----
   register({
@@ -94,9 +118,9 @@ const Commands = (() => {
       const lines = [];
       for (const d of rows) {
         if (d.area !== area) { area = d.area; lines.push(`\n**${area}**`); }
-        lines.push(`- \`/${d.name}${d.args ? ` ${d.args}` : ''}\` ${d.desc}${d.aliases.length ? ` (also /${d.aliases.join(', /')})` : ''}`);
+        lines.push(`- \`/${d.name}${d.args ? ` ${d.args}` : ''}\` ${d.desc}${d.keys ? ` · ${d.keys}` : ''}${d.aliases.length ? ` (also /${d.aliases.join(', /')})` : ''}`);
       }
-      return lines.length ? lines.join('\n').trim() : `No command matches “${args}”.`;
+      return lines.length ? `${args ? '' : `${list().length} commands · click one to run it (or fill it in) · \`/help <word>\` filters\n`}${lines.join('\n').trim()}` : `No command matches “${args}”.`;
     },
   });
   register({
@@ -133,5 +157,5 @@ const Commands = (() => {
     return out;
   }
 
-  return { register, unregister, get, list, parse, matching, tryRun, exec, paletteActions };
+  return { register, unregister, get, list, parse, matching, tryRun, exec, paletteActions, recent, areas, run, AREA_ORDER };
 })();

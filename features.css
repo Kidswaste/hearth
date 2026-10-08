@@ -1110,3 +1110,120 @@ html[data-calm] .empty-icon { animation: none !important; }
 .quote-sel[hidden] { display: none; }
 .msg.flash-msg { animation: flash-msg .7s ease; }
 @keyframes flash-msg { 0% { box-shadow: 0 0 0 2px var(--accent); } 100% { box-shadow: 0 0 0 2px transparent; } }
+
+/* ---------- chat core upgrades (chat-ux.js, chat-cmds.js, native.js) ---------- */
+/* view preferences: /zoom, /width, /density, /timestamps, /wrap, /numbers */
+.messages { font-size: calc(14.5px * var(--chat-scale, 1)); padding-left: max(18px, calc((100% - var(--chat-width, 820px)) / 2)); padding-right: max(18px, calc((100% - var(--chat-width, 820px)) / 2)); }
+.tool-dock .messages { padding: 14px 14px; }
+body.chat-dense .msg { margin-bottom: 10px; }
+body.chat-dense .msg.user .body { padding: 6px 11px; }
+body.chat-dense .body p { margin-bottom: 6px; }
+body.chat-ts-always .msg-time { opacity: .8; }
+body.chat-ts-never .msg-time { display: none; }
+body.chat-wrap-code .body pre, .body pre.code-wrap { white-space: pre-wrap; word-break: break-word; }
+.msg-num { display: none; font-size: 10px; color: var(--muted); opacity: .6; font-variant-numeric: tabular-nums; }
+body.chat-numbers .msg-num { display: inline; }
+/* focus / zen */
+body.chat-focus #rail, body.chat-focus #panel, body.chat-zen #broadcast { display: none !important; }
+body.chat-zen .msg-foot, body.chat-zen .native-head .chat-meta, body.chat-zen .native-head .model-select { opacity: 0; transition: opacity .2s; }
+body.chat-zen .msg:hover .msg-foot, body.chat-zen .native-head:hover .chat-meta, body.chat-zen .native-head:hover .model-select { opacity: 1; }
+.chat-focus-exit { position: fixed; left: 10px; bottom: 10px; z-index: 50; opacity: .55; }
+.chat-focus-exit:hover { opacity: 1; }
+
+/* footer: token badge, ⋯ menu, marks */
+.tok-badge { font-variant-numeric: tabular-nums; padding: 0 6px; border-radius: 99px; background: color-mix(in srgb, var(--muted) 12%, transparent); }
+.msg-more { font-size: 14px; line-height: 1; letter-spacing: 1px; }
+.msg { position: relative; }
+.msg-marks { position: absolute; top: -6px; right: -4px; font-size: 12px; cursor: default; filter: drop-shadow(0 1px 2px #0008); }
+.msg.user .msg-marks { right: auto; left: -4px; }
+.msg.pinned-msg > .body { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 70%, transparent); padding-left: 10px; }
+.msg.user.pinned-msg > .body { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent); padding-left: 14px; }
+.pinned-strip { position: sticky; top: -20px; z-index: 3; display: block; width: 100%; margin: -8px 0 12px; padding: 5px 10px; text-align: left; font-size: 12px; color: var(--text); background: color-mix(in srgb, var(--sidebar) 92%, var(--accent)); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; backdrop-filter: blur(6px); }
+.tool-dock .pinned-strip { top: -14px; }
+
+/* day lines and the unread "New" line */
+.day-sep, .new-sep { display: flex; align-items: center; gap: 10px; margin: 10px 0 14px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.day-sep::before, .day-sep::after, .new-sep::before, .new-sep::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.new-sep { color: #ff8a3d; }
+.new-sep::before, .new-sep::after { background: color-mix(in srgb, #ff8a3d 60%, transparent); }
+
+/* live reply status */
+.stream-status { margin-top: 6px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; opacity: .8; }
+.stream-status::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: #bd8bff; animation: stream-pulse 1.2s ease-in-out infinite; vertical-align: 1px; }
+@keyframes stream-pulse { 50% { opacity: .25; transform: scale(.7); } }
+.jump-bottom.has-new { width: auto; padding: 0 12px; border-radius: 99px; border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.jump-bottom.has-new::after { content: ' new'; font-size: 11.5px; }
+
+/* code blocks: label, fold, more */
+.body pre:has(> .code-label)::before { display: none; }
+.code-label { position: absolute; top: 6px; right: 52px; font-size: 11px; color: var(--muted); pointer-events: none; }
+.body pre.code-folded { max-height: 360px; overflow: hidden; }
+.body pre.code-folded .code-acts { display: none; }
+.body pre.code-folded::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 90px; background: linear-gradient(transparent, color-mix(in srgb, #000 35%, var(--bg))); pointer-events: none; }
+.code-unfold { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 2; border: 1px solid var(--line); background: var(--sidebar); color: var(--accent); border-radius: 99px; font-size: 11.5px; padding: 3px 12px; cursor: pointer; }
+
+/* richer Markdown (md.js) */
+.body ul.tasks { list-style: none; padding-left: 4px; }
+.body li.task input { margin: 0 6px 0 0; vertical-align: -1px; accent-color: var(--accent); }
+.body li.task.done { color: var(--muted); }
+.body li > ul, .body li > ol { margin: 2px 0 4px; }
+.body mark { background: color-mix(in srgb, #ffd75e 35%, transparent); color: inherit; border-radius: 3px; padding: 0 2px; }
+.body kbd { font: 11.5px var(--mono, ui-monospace, monospace); padding: 1px 6px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; background: var(--hover); }
+.body .math { font-family: 'Cambria Math', 'STIX Two Math', Georgia, serif; font-style: italic; }
+.body .math-block { display: block; margin: 0 0 12px; text-align: center; font-size: 1.12em; }
+.body .table-wrap { overflow-x: auto; margin: 0 0 12px; }
+.body .table-wrap table { margin: 0; }
+.body tbody tr:nth-child(even) { background: color-mix(in srgb, var(--text) 4%, transparent); }
+.body .callout { margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; border-left: 3px solid var(--c, #48a0ff); background: color-mix(in srgb, var(--c, #48a0ff) 10%, transparent); }
+.body .callout > summary, .body .callout-title { font-weight: 600; margin-bottom: 4px; }
+.body details.callout > summary { cursor: pointer; }
+.body .callout-tip, .body .callout-success { --c: #3ccf8e; }
+.body .callout-important, .body .callout-question { --c: #bd8bff; }
+.body .callout-warning { --c: #ffb020; }
+.body .callout-caution { --c: #f97066; }
+.body .callout-example { --c: #ff8a3d; }
+
+/* find in chat */
+.chat-find { position: absolute; top: 8px; right: 18px; z-index: 6; display: flex; align-items: center; gap: 4px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 10px; background: var(--sidebar); box-shadow: 0 8px 24px #0007; }
+.chat-find input { width: 180px; border: 0; background: transparent; color: var(--text); outline: none; }
+.chat-find .find-count { font-size: 11px; color: var(--muted); min-width: 52px; text-align: right; font-variant-numeric: tabular-nums; }
+mark.find-hit { background: color-mix(in srgb, #ffd75e 45%, transparent); color: inherit; border-radius: 2px; }
+mark.find-hit.cur { background: #ff8a3d; color: #000; }
+
+/* composer: style chips, the "/" menu */
+.style-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 10px 0; }
+.style-chips[hidden] { display: none; }
+.style-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 2px 4px 2px 10px; border-radius: 99px; font-size: 11.5px; color: var(--text); background: color-mix(in srgb, #bd8bff 16%, transparent); border: 1px solid color-mix(in srgb, #bd8bff 40%, transparent); }
+.style-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.style-chip button { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 4px; }
+.slash-menu { max-height: min(420px, 55vh); }
+.slash-item { display: grid; grid-template-columns: auto 1fr auto; column-gap: 10px; align-items: baseline; padding: 5px 10px; }
+.slash-item .hint { min-width: 0; }
+.slash-item kbd { font: 10.5px var(--mono, ui-monospace, monospace); color: var(--muted); padding: 0 5px; border: 1px solid var(--line); border-radius: 4px; }
+.slash-head { padding: 6px 10px 2px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+.slash-foot { position: sticky; bottom: -4px; margin: 4px -4px -4px; padding: 4px 10px; font-size: 10.5px; color: var(--muted); background: var(--sidebar); border-top: 1px solid var(--line); }
+.tool-dock .slash-item { grid-template-columns: auto 1fr; }
+.tool-dock .slash-item kbd { display: none; }
+
+/* notes (command output) */
+.msg.note code { cursor: pointer; }
+.msg.note code:hover { color: var(--accent); text-decoration: underline; }
+.note-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.suggest-chip.cmd { font-family: var(--mono, ui-monospace, monospace); font-size: 11.5px; border-style: dashed; }
+
+/* chats panel: filters, unread, tags, folders */
+.panel-head { display: flex; gap: 4px; align-items: center; }
+.panel-head #chat-search { flex: 1; min-width: 0; }
+.panel-filter-btn { padding: 4px 7px; font-size: 12px; }
+.panel-view { display: flex; align-items: center; justify-content: space-between; margin: 4px 6px 8px; padding: 3px 4px 3px 10px; font-size: 11.5px; border-radius: 99px; background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.panel-view button { border: 0; background: none; color: var(--muted); cursor: pointer; }
+#chat-groups .item:focus { outline: 1px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset: -1px; }
+#chat-groups .item.unread .item-title { font-weight: 650; color: var(--text); }
+.unread-dot { flex: none; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: #ff8a3d; box-shadow: 0 0 6px #ff8a3d99; }
+.item-tags { flex: none; max-width: 40%; margin-left: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; color: var(--muted); }
+.group-unread { margin-left: auto; min-width: 16px; padding: 0 5px; border-radius: 99px; font-size: 10px; line-height: 16px; text-align: center; color: #000; background: #ff8a3d; }
+.folder-head { display: block; width: 100%; margin: 4px 0 0; padding: 2px 10px 2px 16px; border: 0; background: none; text-align: left; font-size: 11.5px; color: var(--muted); cursor: pointer; }
+.folder-head:hover { color: var(--text); }
+
+/* the shared right-click / ⋯ menu can get long */
+#menu { max-height: calc(100vh - 16px); overflow-y: auto; }

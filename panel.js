@@ -1,9 +1,12 @@
-// Chats panel: every conversation, grouped under its agent.
+// Chats panel: every conversation, grouped under its agent (and its folders), with filters
+// (/filter or the ⏷ button: pinned, today, unread, busy, a tag, a folder, one agent), unread dots,
+// tags, and keyboard navigation (↓ from the search box, ↑ ↓ Enter, F2 rename, Delete, Esc back).
 const Panel = (() => {
   const COLLAPSED_KEY = 'hub.collapsedGroups';
   let collapsed;
   try { collapsed = new Set(JSON.parse(localStorage.getItem(COLLAPSED_KEY) || '[]')); } catch { collapsed = new Set(); }
   let filter = '';
+  let view = store.get('panel.view', null); // a filter from /filter (null = everything)
   const PAGE = 40; // chats shown per agent before "Show more"
   const expanded = new Map(); // agent id -> how many to show
 
@@ -13,13 +16,30 @@ const Panel = (() => {
     if (text != null) node.textContent = text;
     return node;
   };
+  const metaOf = (id) => (typeof ChatUX !== 'undefined' ? ChatUX.metaOf(id) : {});
+
+  // Does a chat summary pass the current /filter view?
+  function inView(c, agent) {
+    if (!view) return true;
+    const v = view.toLowerCase();
+    const day = new Date(); day.setHours(0, 0, 0, 0);
+    if (v === 'pinned') return c.pinned;
+    if (v === 'today') return c.updatedAt >= day.getTime();
+    if (v === 'week') return c.updatedAt >= Date.now() - 7 * 864e5;
+    if (v === 'unread') return H.unreadChats?.has(c.id);
+    if (v === 'busy') return Native.isBusy(c.id);
+    if (v.startsWith('tag:')) return (metaOf(c.id).tags || []).includes(v.slice(4).replace(/^#/, ''));
+    if (v.startsWith('folder:')) return (metaOf(c.id).folder || '').toLowerCase() === v.slice(7);
+    return agent.name.toLowerCase() === v || agent.id === v; // an agent's name: only its chats
+  }
 
   function itemsFor(agent) {
     if (agent.mode === 'native') {
-      return H.chats.filter((c) => c.agentId === agent.id)
+      return H.chats.filter((c) => c.agentId === agent.id && inView(c, agent))
         .sort((a, b) => (b.pinned - a.pinned) || (b.updatedAt - a.updatedAt))
-        .map((c) => ({ key: c.id, title: c.title, chatId: c.id, pinned: c.pinned }));
+        .map((c) => ({ key: c.id, title: c.title, chatId: c.id, pinned: c.pinned, updatedAt: c.updatedAt, ...metaOf(c.id) }));
     }
+    if (view && view.toLowerCase() !== agent.name.toLowerCase()) return [];
     return (H.history[agent.id] || []).map((h) => ({ key: h.url, title: h.title, url: h.url }));
   }
 
@@ -43,21 +63,30 @@ const Panel = (() => {
       else render();
     };
     input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
       if (e.key === 'Enter') commit(true);
       if (e.key === 'Escape') commit(false);
     });
     input.addEventListener('blur', () => commit(true));
   }
 
+  // Runs a chat command on a chat from the list (opens it first, since commands act on the open chat).
+  function onChat(agentId, chatId, cmd) { Native.open(agentId, chatId); setTimeout(() => Commands.exec(cmd, agentId), 30); }
+
   function itemMenu(agent, item, row, e) {
     e.preventDefault();
     const items = item.chatId
       ? [
         { label: item.pinned ? 'Unpin' : 'Pin to top', action: () => Native.togglePin(item.chatId) },
-        { label: 'Rename', action: () => startRename(row, item.chatId, item.title) },
+        { label: 'Rename  F2', action: () => startRename(row, item.chatId, item.title) },
         { label: 'Copy as Markdown', action: async () => copyText(await Native.markdownOf(item.chatId), 'Chat copied') },
+        { label: 'Duplicate', action: () => onChat(agent.id, item.chatId, '/duplicate') },
+        { label: 'Export…', action: () => onChat(agent.id, item.chatId, '/export md file') },
+        { label: 'Tag…', action: async () => { const t = await Modal.prompt('Tags', { value: (item.tags || []).join(', '), label: 'Comma-separated; filter with /filter tag:<name>' }); if (t != null) ChatUX.setMeta(item.chatId, { tags: [...new Set(t.split(/[,\s]+/).map((x) => x.replace(/^#/, '').trim().toLowerCase()).filter(Boolean))] }); } },
+        { label: 'Move to folder…', action: async () => { const f = await Modal.prompt('Folder', { value: item.folder || '', label: `Existing: ${ChatUX.allFolders().join(', ') || 'none yet'} (empty = no folder)` }); if (f != null) ChatUX.setMeta(item.chatId, { folder: f.trim().slice(0, 40) }); } },
+        { label: H.unreadChats?.has(item.chatId) ? 'Mark as read' : 'Mark as unread', action: () => { if (H.unreadChats.has(item.chatId)) H.unreadChats.delete(item.chatId); else H.unreadChats.add(item.chatId); render(); } },
         ...H.agents().filter((a) => a.mode === 'native' && a.id !== agent.id).map((a) => ({ label: `Continue with ${a.name}`, action: () => Native.continueWith(item.chatId, a.id) })),
-        { label: 'Delete chat', danger: true, action: () => { if (confirm(`Delete "${item.title}"? You can restore it for 30 days (Ctrl+K → Recently deleted chats).`)) Native.remove(item.chatId); } },
+        { label: 'Delete chat  Del', danger: true, action: () => { if (confirm(`Delete "${item.title}"? You can restore it for 30 days (Ctrl+K → Recently deleted chats).`)) Native.remove(item.chatId); } },
       ]
       : [
         { label: 'Open', action: () => openWebChat(agent.id, item.url) },
@@ -73,25 +102,62 @@ const Panel = (() => {
     render();
   }
 
+  const matches = (i, q) => !q || i.title.toLowerCase().includes(q) || (q.startsWith('#') && (i.tags || []).some((t) => `#${t}`.startsWith(q))) || (i.folder || '').toLowerCase().includes(q);
+
+  function row(agent, item) {
+    const r = el('div', 'item');
+    r.dataset.key = item.key;
+    r.tabIndex = -1;
+    r.title = item.title + (item.updatedAt ? ` · ${timeAgo(item.updatedAt)}` : '') + (item.tags?.length ? ` · ${item.tags.map((t) => `#${t}`).join(' ')}` : '');
+    if (item.pinned) r.append(el('span', 'pin-mark', '📌'));
+    r.append(el('span', 'item-title', item.title));
+    if (item.tags?.length) r.append(el('span', 'item-tags', item.tags.map((t) => `#${t}`).join(' ')));
+    if (item.chatId && Native.isBusy(item.chatId)) r.append(el('span', 'busy'));
+    else if (item.chatId && H.unreadChats?.has(item.chatId)) { r.classList.add('unread'); r.append(el('span', 'unread-dot')); }
+    const openIt = () => (item.chatId ? Native.open(agent.id, item.chatId) : openWebChat(agent.id, item.url));
+    r.addEventListener('click', openIt);
+    r.addEventListener('contextmenu', (e) => itemMenu(agent, item, r, e));
+    r.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); openIt(); }
+      else if (e.key === 'F2' && item.chatId) { e.preventDefault(); startRename(r, item.chatId, item.title); }
+      else if (e.key === 'Delete' && item.chatId) { e.preventDefault(); if (confirm(`Delete "${item.title}"? You can restore it for 30 days.`)) Native.remove(item.chatId); }
+      else if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) { e.preventDefault(); const b = r.getBoundingClientRect(); itemMenu(agent, item, r, { preventDefault() {}, clientX: b.left + 20, clientY: b.bottom }); }
+    });
+    return r;
+  }
+
   function render() {
     const root = $('chat-groups');
     if (!H.config) return;
+    const hadFocus = root.contains(document.activeElement) ? document.activeElement.dataset.key : null;
     root.replaceChildren();
     const q = filter.toLowerCase();
+    if (view) {
+      const chip = el('div', 'panel-view');
+      chip.append(el('span', null, `Showing: ${view}`));
+      const x = el('button', null, '×');
+      x.title = 'Show every chat';
+      x.addEventListener('click', () => setView(null));
+      chip.append(x);
+      root.append(chip);
+    }
     for (const agent of H.agents()) {
-      const items = itemsFor(agent).filter((i) => !q || i.title.toLowerCase().includes(q));
+      const items = itemsFor(agent).filter((i) => matches(i, q));
+      if (view && !items.length) continue;
       const group = el('div', 'group');
       group.dataset.id = agent.id;
       group.style.setProperty('--agent', agent.color || 'var(--accent)');
 
       const head = el('div', 'group-head');
       const toggle = el('button', 'group-toggle');
+      const unread = agent.mode === 'native' ? H.chats.filter((c) => c.agentId === agent.id && H.unreadChats?.has(c.id)).length : 0;
       toggle.append(
-        el('span', 'caret', collapsed.has(agent.id) && !q ? '▸' : '▾'),
+        el('span', 'caret', collapsed.has(agent.id) && !q && !view ? '▸' : '▾'),
         el('span', 'dot'),
         el('span', 'group-name', agent.name),
-        el('span', 'group-kind', agent.mode === 'native' ? 'native' : 'web'),
+        unread ? el('span', 'group-unread', String(unread)) : el('span', 'group-kind', agent.mode === 'native' ? (agent.dock ? 'docked' : 'native') : 'web'),
       );
+      toggle.title = `${items.length} chat${items.length === 1 ? '' : 's'}${unread ? ` · ${unread} unread` : ''}`;
       toggle.addEventListener('click', () => toggleGroup(agent.id));
       const add = el('button', 'group-add', '＋');
       add.title = agent.mode === 'native' ? 'New chat' : `Open a new ${agent.name} chat`;
@@ -101,21 +167,23 @@ const Panel = (() => {
       head.append(toggle, add);
       group.append(head);
 
-      if (!collapsed.has(agent.id) || q) {
+      if (!collapsed.has(agent.id) || q || view) {
         if (!items.length) {
           group.append(el('div', 'none', q ? 'No matches' : agent.mode === 'native' ? 'No chats yet' : 'Chats you open will show up here'));
         }
         const limit = expanded.get(agent.id) || PAGE;
-        for (const item of items.slice(0, limit)) {
-          const row = el('div', 'item');
-          row.dataset.key = item.key;
-          row.title = item.title;
-          if (item.pinned) row.append(el('span', 'pin-mark', '📌'));
-          row.append(el('span', 'item-title', item.title));
-          if (item.chatId && Native.isBusy(item.chatId)) row.append(el('span', 'busy'));
-          row.addEventListener('click', () => (item.chatId ? Native.open(agent.id, item.chatId) : openWebChat(agent.id, item.url)));
-          row.addEventListener('contextmenu', (e) => itemMenu(agent, item, row, e));
-          group.append(row);
+        // chats without a folder first, then each folder under its own small header
+        const shown = items.slice(0, limit);
+        const loose = shown.filter((i) => !i.folder);
+        for (const item of loose) group.append(row(agent, item));
+        const folders = [...new Set(shown.filter((i) => i.folder).map((i) => i.folder))].sort();
+        for (const f of folders) {
+          const key = `${agent.id}/folder:${f}`;
+          const fh = el('button', 'folder-head', `${collapsed.has(key) && !q ? '▸' : '▾'} 📁 ${f}`);
+          fh.addEventListener('click', () => toggleGroup(key));
+          group.append(fh);
+          if (collapsed.has(key) && !q) continue;
+          for (const item of shown.filter((i) => i.folder === f)) group.append(row(agent, item));
         }
         if (items.length > limit) {
           const more = el('button', 'show-more', `Show ${Math.min(PAGE, items.length - limit)} more (${items.length - limit} hidden)`);
@@ -125,16 +193,18 @@ const Panel = (() => {
       }
       root.append(group);
     }
+    if (view && !root.querySelector('.group')) root.append(el('div', 'none', 'No chat matches this filter'));
     if (q.length >= 2) {
       const deep = el('button', 'show-more deep-search', `Search inside messages for “${filter}”`);
       deep.addEventListener('click', () => AppUI.palette(`?${filter}`));
       root.append(deep);
     }
     highlight();
+    if (hadFocus) root.querySelector(`.item[data-key="${CSS.escape(hadFocus)}"]`)?.focus();
   }
 
   function highlight() {
-    for (const group of $('chat-groups').children) {
+    for (const group of $('chat-groups').querySelectorAll('.group')) {
       const id = group.dataset.id;
       group.classList.toggle('current', id === H.activeId);
       const agent = H.agent(id);
@@ -151,6 +221,54 @@ const Panel = (() => {
     filter = text.trim();
     render();
   }
+  function setView(v) {
+    view = v || null;
+    store.set('panel.view', view);
+    render();
+  }
 
-  return { render, highlight, setFilter };
+  // Keyboard: ↓ from the search box into the list, ↑ ↓ between chats, Esc back to the search box.
+  function wireKeys() {
+    const root = $('chat-groups');
+    const search = $('chat-search');
+    if (!root || !search || root.dataset.keys) return;
+    root.dataset.keys = '1';
+    const rows = () => [...root.querySelectorAll('.item')];
+    search.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); rows()[0]?.focus(); }
+      if (e.key === 'Enter') { const first = rows()[0]; if (first) { e.preventDefault(); first.click(); } }
+      if (e.key === 'Escape' && search.value) { search.value = ''; setFilter(''); }
+    });
+    root.addEventListener('keydown', (e) => {
+      const all = rows();
+      const i = all.indexOf(document.activeElement);
+      if (i < 0) return;
+      if (e.key === 'ArrowDown') { e.preventDefault(); all[Math.min(all.length - 1, i + 1)].focus(); }
+      if (e.key === 'ArrowUp') { e.preventDefault(); if (i === 0) search.focus(); else all[i - 1].focus(); }
+      if (e.key === 'Home') { e.preventDefault(); all[0].focus(); }
+      if (e.key === 'End') { e.preventDefault(); all.at(-1).focus(); }
+      if (e.key === 'Escape') { e.preventDefault(); search.focus(); }
+    });
+    // the ⏷ filter button next to the search box
+    const btn = document.createElement('button');
+    btn.className = 'panel-filter-btn ghost';
+    btn.textContent = '⏷';
+    btn.title = 'Filter chats: pinned, today, unread, a tag, a folder… (/filter)';
+    btn.addEventListener('click', () => {
+      const b = btn.getBoundingClientRect();
+      const tags = typeof ChatUX !== 'undefined' ? ChatUX.allTags() : [];
+      const folders = typeof ChatUX !== 'undefined' ? ChatUX.allFolders() : [];
+      showMenu(b.left, b.bottom + 4, [
+        { label: `${view ? '' : '✓ '}Everything`, action: () => setView(null) },
+        ...['pinned', 'today', 'week', 'unread', 'busy'].map((v) => ({ label: `${view === v ? '✓ ' : ''}${{ pinned: '📌 Pinned', today: 'Today', week: 'Last 7 days', unread: 'Unread replies', busy: 'Answering now' }[v]}`, action: () => setView(v) })),
+        ...folders.map((f) => ({ label: `${view === `folder:${f.toLowerCase()}` ? '✓ ' : ''}📁 ${f}`, action: () => setView(`folder:${f.toLowerCase()}`) })),
+        ...tags.map((t) => ({ label: `${view === `tag:${t}` ? '✓ ' : ''}#${t}`, action: () => setView(`tag:${t}`) })),
+      ]);
+    });
+    search.after(btn);
+    search.placeholder = 'Search chats (#tag)';
+  }
+  setTimeout(wireKeys, 0);
+
+  return { render, highlight, setFilter, setView, view: () => view };
 })();
