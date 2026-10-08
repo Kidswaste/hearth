@@ -375,3 +375,10 @@
 312. ✓ 10 more Lab actions in Ctrl+K (guides, loop this bar, snap, quantize, remove doubles, cycle looks, copy all code, save sliders, save as look, Stage on top): 32 in all.
 313. ✓ Chat: Ctrl+↑ / Ctrl+↓ jump between your own messages (they flash); select text in a reply → ❝ Quote puts it in your message.
 314. ✓ App: Ctrl+K → Recent notifications (the last 40), middle-click an agent on the rail = a new chat with it, the window title shows what you're looking at.
+
+## Look: Forgeheart 2 (look stream, details in docs/upgrades/look.md)
+- ✓ Forgeheart is bolder by default: deeper forge blacks, molten gold, ember, electric violet for the AI, brushed metal, glass overlays, chrome slider knobs, molten-gold primary buttons. **Forgeheart Classic** keeps the old look exactly (`/classic`).
+- ✓ 31 looks (25 new, light ones included) in Settings → Appearance (a compact swatch picker), Ctrl+Shift+L, Ctrl+K, and `/theme <name>`, `/themes`. Save your own with `/look save <name>`.
+- ✓ Toggles: textures, glow 0–100, motion (full / calm / off), density (compact / normal / roomy), corners (cut / round / square), your own accent, chat font, forged tooltips (`/texture`, `/glow`, `/motion`, `/density`, `/corners`, `/accent`, `/chatfont`, `/tips`, `/sparkles`).
+- ✓ Micro-interactions: chrome glint on press, a molten ring and sparks when you send, embers on Save, Tap rings, Shuffle die rolls, Freeze frost, notifications pop or shake, violet shimmer while the AI writes. Everything pauses while the window is hidden.
+
