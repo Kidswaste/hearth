@@ -3,7 +3,7 @@
 // and when it plays). Each layer is its own sketch module; the Lab stacks them in the preview.
 const ThreeLayers = (() => {
   const COLORS = ['#ffd75e', '#48ddff', '#bd8bff', '#ff6a6a', '#7cd992', '#ff8c42', '#7ad0ff', '#f5a3d0'];
-  const BLENDS = [['normal', 'Normal'], ['add', 'Add (glow)'], ['screen', 'Screen'], ['lighten', 'Lighten'], ['overlay', 'Overlay'], ['soft-light', 'Soft light'], ['multiply', 'Multiply'], ['darken', 'Darken'], ['difference', 'Difference'], ['exclusion', 'Exclusion'], ['color-dodge', 'Color dodge']];
+  const BLENDS = [['normal', 'Normal'], ['add', 'Add (glow)'], ['screen', 'Screen'], ['lighten', 'Lighten'], ['overlay', 'Overlay'], ['soft-light', 'Soft light'], ['multiply', 'Multiply'], ['darken', 'Darken'], ['difference', 'Difference'], ['exclusion', 'Exclusion'], ['color-dodge', 'Color dodge'], ['hard-light', 'Hard light'], ['color-burn', 'Color burn'], ['hue', 'Hue'], ['saturation', 'Saturation'], ['color', 'Color'], ['luminosity', 'Luminosity']];
   // ---------- keyframes ----------
   // keys = [{ t: seconds, v: number | '#rrggbb', ease: 'linear' | 'ease' | 'hold' }], sorted by t;
   // `ease` shapes the move from that key to the next one.
@@ -11,9 +11,30 @@ const ThreeLayers = (() => {
   const KEY_EPS = 1 / 60;
   const mixColor = (a, b, u) => {
     const pa = parseInt(a.slice(1), 16); const pb = parseInt(b.slice(1), 16);
-    const ch = (sh) => Math.round(((pa >> sh) & 255) + ((((pb >> sh) & 255) - ((pa >> sh) & 255)) * u));
+    const ch = (sh) => Math.max(0, Math.min(255, Math.round(((pa >> sh) & 255) + ((((pb >> sh) & 255) - ((pa >> sh) & 255)) * u))));
     return `#${((ch(16) << 16) | (ch(8) << 8) | ch(0)).toString(16).padStart(6, '0')}`;
   };
+  // Named eases for keyframes (key.ease): what the move from a key to the next one looks like.
+  const EASE_FN = (() => {
+    const b1 = 1.70158; const b2 = b1 * 1.525; const b3 = b1 + 1;
+    const bounceOut = (t) => { const n = 7.5625; const d = 2.75; if (t < 1 / d) return n * t * t; if (t < 2 / d) return n * (t -= 1.5 / d) * t + 0.75; if (t < 2.5 / d) return n * (t -= 2.25 / d) * t + 0.9375; return n * (t -= 2.625 / d) * t + 0.984375; };
+    return {
+      in: (t) => t * t * t, out: (t) => 1 - (1 - t) ** 3, inOut: (t) => (t < 0.5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 / 2),
+      quadIn: (t) => t * t, quadOut: (t) => 1 - (1 - t) * (1 - t), quartIn: (t) => t ** 4, quartOut: (t) => 1 - (1 - t) ** 4, quartInOut: (t) => (t < 0.5 ? 8 * t ** 4 : 1 - (-2 * t + 2) ** 4 / 2),
+      expoIn: (t) => (t <= 0 ? 0 : 2 ** (10 * t - 10)), expoOut: (t) => (t >= 1 ? 1 : 1 - 2 ** (-10 * t)), expoInOut: (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t < 0.5 ? 2 ** (20 * t - 10) / 2 : (2 - 2 ** (-20 * t + 10)) / 2),
+      sineIn: (t) => 1 - Math.cos((t * Math.PI) / 2), sineOut: (t) => Math.sin((t * Math.PI) / 2), sineInOut: (t) => -(Math.cos(Math.PI * t) - 1) / 2,
+      circIn: (t) => 1 - Math.sqrt(1 - t * t), circOut: (t) => Math.sqrt(1 - (t - 1) ** 2),
+      backIn: (t) => b3 * t ** 3 - b1 * t * t, backOut: (t) => 1 + b3 * (t - 1) ** 3 + b1 * (t - 1) ** 2,
+      backInOut: (t) => (t < 0.5 ? ((2 * t) ** 2 * ((b2 + 1) * 2 * t - b2)) / 2 : ((2 * t - 2) ** 2 * ((b2 + 1) * (t * 2 - 2) + b2) + 2) / 2),
+      elastic: (t) => (t <= 0 ? 0 : t >= 1 ? 1 : 2 ** (-10 * t) * Math.sin((t * 10 - 0.75) * ((2 * Math.PI) / 3)) + 1),
+      elasticIn: (t) => (t <= 0 ? 0 : t >= 1 ? 1 : -(2 ** (10 * t - 10)) * Math.sin((t * 10 - 10.75) * ((2 * Math.PI) / 3))),
+      bounce: bounceOut, bounceIn: (t) => 1 - bounceOut(1 - t),
+      smoother: (t) => t * t * t * (t * (t * 6 - 15) + 10),
+      steps4: (t) => Math.min(1, Math.floor(t * 4) / 3), steps8: (t) => Math.min(1, Math.floor(t * 8) / 7),
+      wobble: (t) => 1 - Math.cos(t * Math.PI * 4.5) * (1 - t) ** 2,
+      pulse: (t) => Math.sin(t * Math.PI),
+    };
+  })();
   function evalKeys(keys, t, base) {
     if (!keys?.length || t == null) return base;
     if (t <= keys[0].t) return keys[0].v;
@@ -27,6 +48,7 @@ const ThreeLayers = (() => {
     if (a.ease === 'ease') u = u * u * (3 - 2 * u);
   // 'curve' (FL Studio-style tension): c in -1..1 bends the move toward the start or the end
   else if (a.ease === 'curve' && a.c) u = a.c > 0 ? Math.pow(u, 1 + a.c * 4) : 1 - Math.pow(1 - u, 1 - a.c * 4);
+    else if (EASE_FN[a.ease]) u = EASE_FN[a.ease](u);
     if (typeof a.v === 'string' && typeof b.v === 'string') return mixColor(a.v, b.v, u);
     if (typeof a.v === 'boolean') return a.v;
     return a.v + (b.v - a.v) * u;
