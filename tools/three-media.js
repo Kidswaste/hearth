@@ -1331,6 +1331,7 @@ const ThreeMedia = (() => {
       const name = `${(sketchName?.() || 'sketch').replace(/[\\/:*?"<>|]/g, '_')} ${msg.width}x${msg.height}.${ext}`;
       const p = await window.hub.saveFile({ defaultPath: name, filters: [{ name: 'Video', extensions: [ext] }], content: new Uint8Array(msg.buffer) });
       if (p) toast(`Saved ${base(p)}`, { action: { label: 'Show', fn: () => window.hub.fs.reveal(p) } });
+      if (p && typeof Review !== 'undefined') Review.noteRecording(p); // recordings show up in Video Review wherever they're saved
     }
 
     // ---------- drawing ----------
