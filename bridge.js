@@ -44,13 +44,35 @@ const HubBridge = (() => {
     return '';
   }
 
+  // Same text the MCP servers send (mcp/common.js fmtValue), to count what the agent reads.
+  function fmtText(v) {
+    if (typeof v === 'string') return v;
+    if (v === undefined) return 'done';
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return JSON.stringify(v) || '';
+    return Object.entries(v).filter(([, x]) => x !== undefined).map(([k, x]) => {
+      if (typeof x === 'string') return x.includes('\n') ? `${k}:\n${x}` : `${k}: ${x}`;
+      if (Array.isArray(x) && x.length && x.every((e) => typeof e === 'string')) return `${k}:\n${x.map((e) => `  ${e}`).join('\n')}`;
+      return `${k}: ${JSON.stringify(x)}`;
+    }).join('\n');
+  }
+  // Claude bills a picture at about width × height / 750 tokens (after shrinking it to ≤ 1568 px on the long side).
+  async function imageTokens(im) {
+    try {
+      const img = new Image();
+      img.src = `data:${im.mime || 'image/png'};base64,${im.data}`;
+      await img.decode();
+      const k = Math.min(1, 1568 / Math.max(img.width, img.height));
+      return Math.round((img.width * k * img.height * k) / 750);
+    } catch { return 0; }
+  }
+
   const emit = (entry) => { for (const fn of listeners) { try { fn(entry, log); } catch (err) { console.warn(err); } } };
 
   window.hub.onGameCall(async ({ id, tool: asked, args: given }) => {
     const r0 = resolve(asked, given || {});
     const { tool, args } = r0;
     Usage.agentTool(tool);
-    const entry = { id, tool, via: r0.via || null, summary: summarize(tool, args), at: Date.now(), running: true };
+    const entry = { id, tool, via: r0.via || null, agentId: args?.agentId || null, summary: summarize(tool, args), at: Date.now(), running: true };
     log.push(entry);
     if (log.length > LOG_MAX) log.shift();
     emit(entry);
@@ -61,10 +83,13 @@ const HubBridge = (() => {
     } catch (err) { result = { ok: false, error: err.message }; }
     result ||= { ok: false, error: `${tool} returned nothing.` };
     Object.assign(entry, { running: false, ms: Date.now() - entry.at, ok: result.ok !== false, error: result.ok === false ? String(result.error || '').slice(0, 300) : null });
-    const img = [].concat(result.images || (result.image ? [{ data: result.image, mime: result.mime }] : []))[0];
-    if (img?.data) { entry.image = true; lastImage = { tool, url: `data:${img.mime || 'image/png'};base64,${img.data}`, at: Date.now() }; }
-    emit(entry);
+    const imgs = [].concat(result.images || (result.image ? [{ data: result.image, mime: result.mime }] : [])).filter((x) => x?.data);
+    if (imgs.length) { entry.image = imgs.length; lastImage = { tool, url: `data:${imgs[0].mime || 'image/png'};base64,${imgs[0].data}`, at: Date.now() }; }
+    // what the agent will read: the text as the MCP server formats it (mcp/common.js) + pictures (≈ w×h / 750 tokens)
+    entry.tokens = Math.round((result.ok === false ? String(result.error || '').length + 7 : fmtText(result.value).length) / 4);
     window.hub.gameResult(id, result);
+    for (const im of imgs) entry.tokens += await imageTokens(im);
+    emit(entry);
   });
 
   return {
@@ -82,6 +107,6 @@ const HubBridge = (() => {
       if (!h) return { ok: false, error: `Nothing in the hub handles ${r0.tool}.` };
       try { return await h.fn(r0.tool, r0.args || {}); } catch (err) { return { ok: false, error: err.message }; }
     },
-    summarize, resolve,
+    summarize, resolve, fmtText, imageTokens,
   };
 })();

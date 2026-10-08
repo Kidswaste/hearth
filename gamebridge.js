@@ -16,6 +16,14 @@ function start(getWin) {
     pending.get(id)?.(result);
     pending.delete(id);
   });
+  // /director-cost: what each director's tool sets and prompt cost per message (mcp/cost.js).
+  ipcMain.handle('director:cost', (_e, agents) => {
+    try { return require('./mcp/cost').report(Array.isArray(agents) && agents.length ? agents : undefined); } catch (err) { return { error: err.message }; }
+  });
+  // /director-guide: the Three Director's guide topics, as the agent reads them (three_do help).
+  ipcMain.handle('director:guide', (_e, topic) => {
+    try { return require('./mcp/three-guide').help(topic); } catch (err) { return `Error: ${err.message}`; }
+  });
 
   // Ask the renderer (which owns the game webview) to run one tool call.
   const callRenderer = (tool, args) => new Promise((resolve) => {
@@ -25,7 +33,9 @@ function start(getWin) {
     pending.set(id, resolve);
     win.webContents.send('game:call', { id, tool, args });
     // Renders can run for a long time; everything else should answer within a minute.
-    const limit = tool === 'ae_render' || tool === 'video_export' || tool === 'chat_ask' ? 45 * 60000 : tool === 'chat_second_opinion' ? 6 * 60000 : 60000;
+    // (three_do / forge_patch carry the real command in their arguments; the bridge routes them in the renderer)
+    const slow = tool === 'ae_render' || tool === 'video_export' || tool === 'chat_ask';
+    const limit = slow ? 45 * 60000 : tool === 'chat_second_opinion' ? 6 * 60000 : tool === 'three_load_media' || (tool === 'three_do' && args?.cmd === 'load_media') ? 3 * 60000 : 60000;
     setTimeout(() => {
       if (pending.has(id)) { pending.delete(id); resolve({ ok: false, error: `The hub did not answer within ${Math.round(limit / 1000)} s.` }); }
     }, limit);

@@ -154,6 +154,36 @@ const ThreeDirector = (() => {
     return { ...h, restored: 'after', errors: r.report?.errors?.length || 0 };
   }
 
+  // ---------- within one reply: don't send the same thing twice ----------
+  // Reset whenever the user sends a director a message (a compacted / new chat starts a new reply anyway).
+  const readCache = new Map(); // "layerId:a-b" -> text it was given
+  let lastSig = null; // { key, sig } of the last screenshot this reply
+  const savedNotes = { reads: 0, shots: 0 };
+  function newTurn() { readCache.clear(); lastSig = null; }
+  if (typeof Native !== 'undefined') Native.hooks.send.push((agentId) => { if (H.agent(agentId)?.threeTools) newTurn(); });
+  // 24x24 grey thumbnail of a canvas, to tell "nothing visibly changed" without sending the picture again
+  function signature(c) {
+    const t = document.createElement('canvas'); t.width = 24; t.height = 24;
+    const g = t.getContext('2d', { willReadFrequently: true }); g.drawImage(c, 0, 0, 24, 24);
+    const px = g.getImageData(0, 0, 24, 24).data; const out = new Uint8Array(576);
+    for (let i = 0; i < 576; i += 1) out[i] = (px[i * 4] * 0.3 + px[i * 4 + 1] * 0.59 + px[i * 4 + 2] * 0.11) | 0;
+    return out;
+  }
+  const sigDiff = (a, b) => { let s = 0; for (let i = 0; i < a.length; i += 1) s += Math.abs(a[i] - b[i]); return s / a.length / 255; };
+  // at: seconds, or 'drop' / 'kick' / 'snare' / 'hit' (the next one after the playhead) / a cue's name
+  function resolveAt(d, at) {
+    if (at == null || at === '') return null;
+    if (Number.isFinite(Number(at))) return Number(at);
+    const info = d.media.info();
+    if (!info.loaded) return null;
+    const name = String(at).toLowerCase();
+    const after = (list) => (list || []).find((t) => t > (info.time || 0) + 0.05) ?? (list || [])[0] ?? null;
+    if (name === 'drop') return after(info.drops);
+    if (info.hits?.[name]) return after(info.hits[name].first);
+    try { const cue = (d.timeline().cues || []).find((c) => String(c.name || '').toLowerCase() === name); if (cue) return cue.time ?? cue.t ?? null; } catch { /* no timeline */ }
+    return null;
+  }
+
   // ---------- pictures ----------
   const SIZES = { small: 512, medium: 1024, large: 1280 };
   let prevShot = null; // the last picture the director got (canvas), for compare
@@ -196,8 +226,10 @@ const ThreeDirector = (() => {
     return jpeg(frameCanvas(await loadImg(url), { max }), 0.75);
   }
   async function screenshot(d, args) {
-    const max = SIZES[args.size] || SIZES.medium;
-    if (args.at != null && d.media.loaded) { d.media.seek(Number(args.at) || 0); await sleep(450); }
+    const max = SIZES[args.size] || SIZES[store.get('director.shotSize', 'medium')] || SIZES.medium; // /director-shot-size
+    const at = resolveAt(d, args.at);
+    if (args.at != null && at == null) return { ok: false, error: `Can't go to "${args.at}": give seconds, drop, kick, snare, hit or a cue name (and load a song).` };
+    if (at != null && d.media.loaded) { d.media.seek(at); await sleep(450); }
     const n = Math.max(0, Math.min(8, Math.round(Number(args.frames) || 0)));
     if (n >= 2) {
       const gap = Math.max(0.1, Math.min(5, Number(args.gap) || 0.5));
@@ -216,6 +248,14 @@ const ThreeDirector = (() => {
     const url = await d.shot();
     if (!url) return { ok: false, error: 'No image: the sketch is not rendering (check three_console for errors).' };
     const c = frameCanvas(await loadImg(url), { max, region: args.region });
+    // the same view again in this reply, and nothing visibly changed: say so instead of sending the picture again
+    const key = JSON.stringify([max, args.region || null]);
+    const sig = signature(c);
+    if (!args.force && !args.compare && lastSig?.key === key && sigDiff(sig, lastSig.sig) < 0.004) {
+      savedNotes.shots += 1;
+      return { ok: true, value: 'No visible change since your previous screenshot in this reply (same picture, not sent again; force: true sends it).' };
+    }
+    lastSig = { key, sig };
     let out = c; let note = '';
     if (args.compare && prevShot) { out = tile([prevShot, c], ['before', 'now'], Math.min(1600, max * 2)); note = ' Left: the previous screenshot, right: now.'; } else if (args.compare) note = ' (No earlier screenshot to compare with yet.)';
     prevShot = c;
@@ -234,7 +274,11 @@ const ThreeDirector = (() => {
     b = Math.min(lines.length, b);
     const w = String(b).length;
     const body = lines.slice(a - 1, b).map((ln, k) => `${pad(a + k, w)}| ${ln.replace(/\s+$/, '')}`).join('\n');
-    return `── ${L.name} · lines ${a}–${b} of ${lines.length}${b < lines.length ? ` (more: from ${b + 1})` : ''}\n${body}`;
+    const head = `── ${L.name} · lines ${a}–${b} of ${lines.length}${b < lines.length ? ` (more: from ${b + 1})` : ''}`;
+    const ck = `${L.sketchId}:${L.id}:${a}-${b}`;
+    if (!args.force && readCache.get(ck) === body) { savedNotes.reads += 1; return `${head}: unchanged since you read them earlier in this reply (force: true re-sends).`; }
+    readCache.set(ck, body);
+    return `${head}\n${body}`;
   }
   function searchCode(d, args) {
     const pattern = String(args.pattern || '');
@@ -277,6 +321,17 @@ const ThreeDirector = (() => {
 
   // ---------- the handler ----------
   const consoleTail = (d) => d.report().console || [];
+  // Errors with a line number get that line of code next to them, which saves a read_code call to look.
+  function withErrorLines(d, value, r) {
+    const errs = (r?.errors || []).filter((e) => e.line);
+    if (!errs.length) return value;
+    const lines = [];
+    for (const e of errs.slice(0, 4)) {
+      try { const code = d.codeOf(e.layer || null).code.split('\n'); const t = code[e.line - 1]; if (t != null) lines.push(`${e.layer ? `[${e.layer}] ` : ''}${e.line}| ${clip(t.trim(), 160)}`); } catch { /* layer gone */ }
+    }
+    if (lines.length) value.errorLines = lines;
+    return value;
+  }
   // Lines added since `before` (the console keeps the last 30; a layer's re-run drops its old lines).
   function newLines(before, after) {
     for (let k = Math.min(before.length, after.length); k > 0; k -= 1) {
@@ -299,6 +354,8 @@ const ThreeDirector = (() => {
         groups.get(L.id).list.push(e);
       }
       const plans = [...groups.values()].map(({ L, list }) => ({ L, ...applyEdits(L.code, list, L.name) })); // throws before anything changes
+      const keysOf = (id) => { try { return d.sliders(id, null).sliders.map((c) => c.key); } catch { return []; } };
+      const sliderKeysBefore = new Map(plans.map((p) => [p.L.id, keysOf(p.L.id)]));
       const results = [];
       for (const [i, p] of plans.entries()) {
         const last = i === plans.length - 1;
@@ -312,7 +369,12 @@ const ThreeDirector = (() => {
       delete value.updated;
       value.changed = results.map(({ p }) => `${p.L.name}: ${p.done.join(', ')} → ${p.code.split('\n').length} lines`).join('; ');
       value.diff = results.map(({ p }) => `${plans.length > 1 ? `── ${p.L.name}\n` : ''}${diff(p.L.code, p.code)}`).join('\n');
-      const img = args.shot ? await thumb(d) : null;
+      // sliders the edit added or removed, so there's no need to re-read them
+      const delta = plans.flatMap((p) => { const was = sliderKeysBefore.get(p.L.id) || []; const now = keysOf(p.L.id); return [...now.filter((k) => !was.includes(k)).map((k) => `+${k}`), ...was.filter((k) => !now.includes(k)).map((k) => `-${k}`)]; });
+      if (delta.length) value.slidersChanged = delta.join(' ');
+      delete value.sliders;
+      withErrorLines(d, value, final);
+      const img = (args.shot ?? store.get('director.autoShot', false)) ? await thumb(d) : null; // /director-autoshot
       return { ok: true, value, ...(img ? { images: [{ data: img, mime: 'image/jpeg' }] } : {}) };
     }
     if (tool === 'three_set_code') {
@@ -321,7 +383,7 @@ const ThreeDirector = (() => {
       toast('Three Director updated the sketch', { timeout: 1500 });
       const r = await d.setCode(String(args.code), Number(args.wait) || 2.5);
       record({ sketchId: before.sketchId, sketch: before.sketch, layerId: before.id, layer: before.name, before: before.code, after: String(args.code), tool });
-      return { ok: true, value: args.report === 'full' ? r : compact(r) };
+      return { ok: true, value: args.report === 'full' ? r : withErrorLines(d, compact(r), r) };
     }
     if (tool === 'three_update_layer') {
       const patch = { ...(args.settings || {}) };
@@ -336,6 +398,20 @@ const ThreeDirector = (() => {
     if (tool === 'three_screenshot') return screenshot(d, args);
     if (tool === 'three_read_code') return { ok: true, value: readCode(d, args) };
     if (tool === 'three_search_code') return { ok: true, value: searchCode(d, args) };
+    if (tool === 'three_eval' && Number(args.samples) > 1) {
+      // the same expression n times, every ms: watch a value move (does it jump on kicks?) without screenshots
+      const n = Math.min(30, Math.round(Number(args.samples)));
+      const every = Math.max(16, Math.min(2000, Number(args.every) || 100));
+      const vals = [];
+      const t0 = d.media.loaded ? d.media.info().time : null;
+      for (let i = 0; i < n; i += 1) {
+        const r = await d.evalInSketch(String(args.code || ''));
+        if (!r.ok) return { ok: false, error: `Sample ${i + 1}: ${r.error}` };
+        vals.push(typeof r.value === 'string' ? r.value : clip(JSON.stringify(r.value), 200));
+        if (i < n - 1) await sleep(every);
+      }
+      return { ok: true, value: `${n} samples every ${every} ms${t0 != null ? ` from ${t0.toFixed(2)} s on the song` : ''}:\n${vals.join('\n')}` };
+    }
     if (tool === 'three_eval') {
       const before = consoleTail(d);
       const r = await d.evalInSketch(String(args.code || ''));
@@ -368,6 +444,7 @@ const ThreeDirector = (() => {
     history: () => history.slice(),
     canRedo: () => redoStack.length > 0,
     onHistory(fn) { listeners.add(fn); return () => listeners.delete(fn); },
-    _test: { diff, applyEdits, compact, sliderLine, newLines, statLine },
+    newTurn, saved: () => ({ ...savedNotes }),
+    _test: { diff, applyEdits, compact, sliderLine, newLines, statLine, signature, sigDiff },
   };
 })();

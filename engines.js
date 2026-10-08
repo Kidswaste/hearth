@@ -277,6 +277,20 @@ function codexArgs(agent, session, options = {}) {
     '-c', 'web_search="disabled"',
   );
   if (agent.effort) args.push('-c', `model_reasoning_effort="${agent.effort}"`);
+  // Astra as a director (agent.hubTools): the same hub MCP servers Claude gets, declared with -c overrides (TOML values;
+  // JSON strings are valid TOML basic strings). --ignore-user-config keeps the user's own MCP servers out.
+  for (const key of hubToolsets(agent)) {
+    const { server, script } = HUB_TOOLSETS[key];
+    const env = Object.entries(hubToolEnv(agent)).map(([k, v]) => `${k}=${JSON.stringify(String(v))}`).join(', ');
+    args.push(
+      '-c', `mcp_servers.${server}.command=${JSON.stringify(process.execPath)}`,
+      '-c', `mcp_servers.${server}.args=[${JSON.stringify(path.join(__dirname, 'mcp', script))}]`,
+      '-c', `mcp_servers.${server}.env={ ${env} }`,
+      '-c', `mcp_servers.${server}.startup_timeout_sec=20`,
+      // renders and questions to the user can take long (the hub enforces its own per-tool limits)
+      '-c', `mcp_servers.${server}.tool_timeout_sec=${key === 'videoTools' || key === 'chatTools' ? 2700 : 300}`,
+    );
+  }
   const model = options.model || agent.model;
   if (model) args.push('-m', model);
   if (!session.id) args.push('-s', 'read-only', '-C', WORKSPACE);
