@@ -1883,7 +1883,8 @@ const ThreeLab = (() => {
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'p') { e.preventDefault(); togglePresent(); return; }
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'w') { e.preventDefault(); setWrite(!writeArmed); return; }
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'e') { e.preventDefault(); setEdit(!editOn); return; }
-      if (player.onKey(e)) { e.preventDefault(); if (!e.repeat) Usage.key(`${e.ctrlKey ? 'Ctrl+' : ''}${e.key === ' ' ? 'Space' : e.key.length === 1 ? e.key.toUpperCase() : e.key}`, 'Lab'); }
+      // (Space on the button you just clicked, e.g. Tap, plays / pauses without also pressing that button on key-up)
+      if (player.onKey(e)) { e.preventDefault(); if (e.key === ' ' && e.target.closest?.('button')) e.target.addEventListener('keyup', (u) => u.preventDefault(), { once: true }); if (!e.repeat) Usage.key(`${e.ctrlKey ? 'Ctrl+' : ''}${e.key === ' ' ? 'Space' : e.key.length === 1 ? e.key.toUpperCase() : e.key}`, 'Lab'); }
     });
     pane.tabIndex = -1;
     let ranOnce = false;
