@@ -163,6 +163,8 @@ const ThreeLab = (() => {
     const sketchMenuBtn = btn('Sketch ▾', 'Rename, duplicate, delete, history, export', (e) => {
       const r = e.currentTarget.getBoundingClientRect();
       popup(r.left, r.bottom + 4, [
+        ['New from a template…', 'Right-click it for the list', () => templateGallery()],
+        ['▦ All your sketches', 'As pictures', () => browseSketches()],
         'This sketch',
         ['Rename…', current?.name || '', () => renameSketch()],
         ['Duplicate', 'A copy you can change freely', () => duplicate()],
@@ -191,11 +193,8 @@ const ThreeLab = (() => {
         'Code',
         ['Insert snippet…', 'At the cursor in the code', () => snippetMenu(), false, 'Insert snippet'],
         [`three.js version · r${v.split('.')[1]}`, 'Switch and re-run', () => versionMenu(), false, 'three.js version'],
-        [`${autoRun ? '✓ ' : ''}Live code`, 'Apply code changes a moment after you stop typing', () => { autoBox.checked = !autoBox.checked; autoBox.dispatchEvent(new Event('change')); }],
-        ['Copy all the code', 'Every layer', () => api.actions.copyCode()],
-        ['Export HTML…', 'A standalone .html file', () => exportHtml()],
-        'Frame rate',
-        ...[['0', 'Max fps'], ['60', '60 fps'], ['30', '30 fps']].map(([val, l]) => [l, '', () => { fpsSel.value = val; fpsSel.dispatchEvent(new Event('change')); }, String(store.get('three.fpsCap', 0)) === val, 'Preview fps'])];
+        [`${autoRun ? '✓ ' : ''}Live code`, 'Apply code changes a moment after you stop typing', () => { autoBox.checked = !autoBox.checked; autoBox.dispatchEvent(new Event('change')); }]];
+      // (copy / export are in Sketch ▾, the frame rate in the preview's ⋯)
     }
     function snippetMenu() {
       const r = labMoreBtn.getBoundingClientRect();
@@ -2160,10 +2159,12 @@ const ThreeLab = (() => {
     const onion = el('div', { class: 'lab-onion', hidden: true }, onionImg, wipeBar);
     const compareBtn = el('button', { class: 'stage-btn', text: '◐', title: 'Compare: pin this frame (|) and see it over the live picture · click again: onion skin → wipe → off · right-click: options', dataset: { feature: 'Compare frame', key: '|' }, on: { click: () => cycleCompare() } });
     compareBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); compareMenu(e.clientX, e.clientY); });
+    compareBtn.hidden = true;
     previewHost.append(onion);
     function placeOnion() { if (!pinned) return; const r0 = stage.rect; Object.assign(onion.style, { left: `${r0.left}px`, top: `${r0.top}px`, width: `${r0.width}px`, height: `${r0.height}px` }); paintOnion(); }
     function paintOnion() {
       onion.hidden = !pinned;
+      compareBtn.hidden = !pinned; // ◐ shows while a frame is pinned (| or ⋯ pins one)
       compareBtn.classList.toggle('on', Boolean(pinned));
       compareBtn.textContent = pinned ? (pinned.mode === 'wipe' ? '◐ Wipe' : pinned.mode === 'diff' ? '◐ Diff' : '◐ Onion') : '◐';
       if (!pinned) return;
@@ -2278,11 +2279,9 @@ const ThreeLab = (() => {
     function previewMenu() {
       return ['Preview',
         ['⌗ Composition guides', `Now: ${GUIDES.find(([k]) => k === guides)[1]} · click for the next`, () => cycleGuides(), Boolean(guides), 'Guides'],
-        ['Safe zones', 'Platform buttons / captions / crops for the size', () => stage.setSafe(), stage.safe, 'Safe zones'],
-        ...['tiktok', 'reels', 'shorts'].map((k) => [`· for ${k === 'tiktok' ? 'TikTok' : k === 'reels' ? 'Reels' : 'Shorts'}`, '9:16', () => stage.setSafe(true, k)]),
+        ['Safe zones', 'Platform buttons / captions / crops for the size (/safe tiktok | reels | shorts)', () => stage.setSafe(), stage.safe, 'Safe zones'],
         ['◐ Pin this frame to compare', '|', () => pinFrame()],
-        ['📷 Still at the exact size', 'PNG', () => still()],
-        ['▣ Present', 'P', () => togglePresent()],
+        typeof Decide !== 'undefined' ? ['✦ Let Astra pick the frame size', 'For this picture · Undo puts yours back', () => Decide.run('size')] : null,
         [box.onStage ? '🖥 Back from the Stage window' : '🖥 Stage window', 'Its own window, steady frames', () => setStage(!box.onStage), box.onStage, 'Stage window'],
         'Frame rate',
         ...[['0', 'Max fps'], ['60', '60 fps'], ['30', '30 fps']].map(([v, l]) => [l, '', () => { fpsSel.value = v; fpsSel.dispatchEvent(new Event('change')); }, String(store.get('three.fpsCap', 0)) === v, 'Preview fps'])];
@@ -2606,7 +2605,8 @@ ${code}
       // One row, in the order of your workflow: your sketch and Run, then what you look at, then assets. The
       // controls you never touched (Focus, snippets, three.js version, the toolbar 📷) are in ⋯ (they still work).
       toolbar.replaceChildren(
-        group('Sketch', picker, browseBtn, newBtn, sketchMenuBtn, runBtn, restartBtn),
+        // round 4: New, ▦ and ⟲ moved into Sketch ▾ (Ctrl+Shift+Enter still restarts)
+        group('Sketch', picker, sketchMenuBtn, runBtn),
         group('View', slidersBtn, codeBtn, consoleBtn, editBtn, presentBtn),
         group('Code', liveLabel),
         el('span', { class: 'spacer' }),

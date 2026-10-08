@@ -482,6 +482,7 @@ const ThreeTweaks = (() => {
     function refreshState() {
       const d = dirtyCount();
       saveBtn.disabled = !d; resetBtn.disabled = !d;
+      abBtn.hidden = !d; // A/B only means something once a value differs from the code
       undoBtn.disabled = !undoStack.length;
       shuffleBtn.disabled = shufMore.disabled = !scanned?.items.some((it) => it.key != null);
       shufBack.disabled = shufPos <= 0;
@@ -1467,8 +1468,8 @@ const ThreeTweaks = (() => {
         groupSel.hidden = true;
         paintChips([]);
         if (askForSliders) {
-          body.append(el('div', { class: 'tw-tip' }, el('span', { text: 'These are all the raw values in the code. Want a short list of clearly named sliders instead?' }),
-            el('button', { class: 'ghost small', text: 'Ask the Three Director', on: { click: askForSliders } })));
+          body.append(el('div', { class: 'tw-tip' }, el('span', { text: 'Raw values from the code.' }),
+            el('button', { class: 'ghost small', text: 'Ask for named sliders', title: 'The Three Director turns them into a short list of clearly named sliders', on: { click: askForSliders } })));
         }
         if (colors.length) body.append(...section('Colors', colors));
         if (numbers.length) body.append(...section('Numbers', numbers));

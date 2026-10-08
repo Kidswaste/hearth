@@ -24,12 +24,13 @@ line count is lower than the number of upgrades).
 | Command bar (round 3): Ctrl/⌘+; over any tool, plain-language search ("make it 9 by 16"), `/help` dialog, history, macros, timers, pipes, clickable commands in replies | [cmdbar.md](cmdbar.md) | 127 |
 | Jam (round 4): `/jam`, Claude and Astra take turns making a music visual in the Lab (Astra art-directs from a picture), one card, undo per round, best round kept | [jam.md](jam.md) | 31 |
 | Scenes (round 4): each director chat owns its scene, switching chats switches it, a color + mark per chat, directors work on their own scene (backstage when it isn't on screen), `/scene` | [scenes.md](scenes.md) | 33 |
+| Simplify (round 4): fewer controls on screen (357 → 180 on the main surfaces), short menus with More…, `/decide` lets Astra choose a look / effect / frame size / app look with Undo | [simplify.md](simplify.md) | 27 |
 | **Total** | | **3,303** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.
 - Type `/` in any chat: **≈595 chat commands**, grouped by area; `/help <word>` filters them. `/do <anything>` runs any Ctrl+K action.
-- **Token meter** at the bottom (`/meter pill` tucks it into the rail). **Dashboard**: Ctrl+Shift+U or `/usage`.
+- **Token meter**: the pill in the rail (`/meter strip` for the full strip). **Dashboard**: click the pill, Ctrl+Shift+U or `/usage`.
 - **Looks**: Settings → Appearance, Ctrl+Shift+L, `/appearance`, `/theme <name>`. Back to the old look: `/classic`.
 - **Lab**: X = effects picker, Alt+N = Code ⇄ Nodes, F = Freeze (Focus moved to Shift+F), Shift+1…5 = frame sizes, T = Tap.
 - **Astra with Claude**: the ⚇ chip in the composer, or `/duo`, `/relay`, `/debate`, `/council`, `/handoff`, `/compare-agents`.

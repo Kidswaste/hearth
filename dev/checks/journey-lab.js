@@ -85,6 +85,8 @@ const pal0 = JSON.stringify(c.palette()); const layersBeforeLook = c.layers().le
 await key('x'); await wait(400);
 picker = document.querySelector('.fx-picker');
 if (picker) {
+  // the picker opens on Suggested; its tabs show after "Browse all" (round 4)
+  if (!visible(picker.querySelector('.fx-tabs')) && picker.querySelector('.fx-browse')) await click(picker.querySelector('.fx-browse'));
   const lookTab = [...picker.querySelectorAll('.fx-tabs button, .fx-tabs [role=tab]')].find((b) => /Looks/.test(b.textContent));
   if (lookTab) await click(lookTab);
   await type('neon'); await wait(300);

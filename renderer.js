@@ -131,8 +131,18 @@ function showToolMenu(id, x, y) {
 }
 
 let menuOpenedAt = 0;
+// Items marked `more: true` (rare actions) wait behind one "More…" at the end, so menus stay short.
 function showMenu(x, y, items) {
   const menu = $('menu');
+  items = items.filter(Boolean);
+  const rest = items.filter((it) => it.more);
+  if (rest.length > 1) {
+    const main = items.filter((it) => !it.more);
+    const at = main.findIndex((it) => it.danger); // "More…" goes above a closing Delete
+    main.splice(at < 0 ? main.length : at, 0, { label: `More…  ${rest.length}`, action: () => setTimeout(() => showMenu(x, y, rest.map((it) => ({ ...it, more: false }))), 0) });
+    items = main;
+  }
+  else if (rest.length) rest[0].more = false;
   menu.replaceChildren(...items.map(({ label, action, danger }) => {
     const b = document.createElement('button');
     // "Rename  F2": two spaces before a last word mark a shortcut, shown on the right (polish.css .menu-key)
@@ -467,7 +477,8 @@ function apply({ config, themeCss, error }) {
   if (first) {
     H.grid = config.layout?.start === 'grid';
     H.panelOpen = config.layout?.chatsPanel !== false;
-    $('broadcast').classList.toggle('hidden', config.layout?.askAllBar === false);
+    // the ask-all bar starts hidden (Ctrl+B or Ctrl+Shift+Space shows it; layout.askAllBar: true keeps it)
+    $('broadcast').classList.toggle('hidden', config.layout?.askAllBar !== true);
     const startOn = H.settings().startOn;
     if (startOn && (H.agent(startOn) || (H.isTool(startOn) && Tools.enabled().some((t) => `tool:${t.id}` === startOn)))) H.activeId = startOn;
   }

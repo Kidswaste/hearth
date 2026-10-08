@@ -667,16 +667,12 @@ function toggleFold(hostId, m) {
         const u = all?.[new Date().toLocaleDateString('en-CA')]?.[agent.id];
         if (u && status.isConnected) status.after(el('div', { class: 'hint astra-today', text: `Today: ${fmt((u.input || 0) + (u.output || 0))} tokens in ${u.replies || 0} replies` }));
       }).catch(() => {});
-      return el('div', { class: 'astra-hints' },
-        el('div', { class: 'astra-chips' }, chips.map(([i, t, cmd]) => el('button', { type: 'button', class: 'astra-chip', title: cmd ? `Change with ${cmd.trim()}` : '', text: `${i} ${t}`, on: { click: () => { if (cmd) Native.setDraft(agent.id, cmd); } } }))),
-        el('div', { class: 'astra-chips astra-personas' }, el('span', { class: 'hint', text: 'Persona:' }), ['coder', 'reviewer', 'writer', 'researcher', 'director'].map((k) => el('button', { type: 'button', class: `astra-chip${(chatValue(agent.id, 'persona')) === k ? ' on' : ''}`, text: PERSONAS[k].label, title: PERSONAS[k].text, on: { click: (e) => { const on = chatValue(agent.id, 'persona') === k; chatPatch(agent.id, { persona: on ? null : k }); e.currentTarget.classList.toggle('on', !on); toast(on ? 'Persona off' : `Persona for this chat: ${PERSONAS[k].label}`, { timeout: 1400 }); } } }))),
-        el('div', { class: 'astra-try' }, 'Try ', ...['/duo', '/relay', '/debate', '/astra-persona', '/astra-doctor'].flatMap((c, i) => [i ? ' · ' : '', el('a', { href: '#', text: c, on: { click: (e) => { e.preventDefault(); Native.setDraft(agent.id, `${c} `); } } })])),
-        status);
+      // one line instead of rows of chips: the settings are a / away (/astra-model, /astra-persona, /astra-web…)
+      return el('div', { class: 'astra-hints' }, status,
+        el('div', { class: 'astra-try' }, `${chips.slice(0, 2).map(([, t]) => t).join(' · ')} · `, el('a', { href: '#', text: '/astra', on: { click: (e) => { e.preventDefault(); Native.setDraft(agent.id, '/astra-'); } } }), ' for the rest'));
     }
     if (astra() && agent.engine === 'claude') {
-      return el('div', { class: 'astra-hints' }, el('div', { class: 'astra-try' }, `Work with ${astra().name}: `,
-        ...['/duo', '/relay', '/critique', '/debate', '/handoff'].flatMap((c, i) => [i ? ' · ' : '', el('a', { href: '#', text: c, on: { click: (e) => { e.preventDefault(); Native.setDraft(agent.id, `${c} `); } } })]),
-        ' or the ⚇ chip.'));
+      return el('div', { class: 'astra-hints' }, el('div', { class: 'astra-try' }, `⚇ next to Send: jam or a second opinion with ${astra().name}`));
     }
     return null;
   }
@@ -763,7 +759,7 @@ function toggleFold(hostId, m) {
     c.chip.hidden = !partner(agent);
     const prev = md && [...(Native.chatOf(agentId)?.messages || [])].reverse().find((x) => x.role === 'collab' && x.mode === st.mode && x.status === 'done');
     const cost = prev ? ` Last ${md.label.toLowerCase()} here: ${fmt(totals(prev).all.input + totals(prev).all.output)} tokens.` : '';
-    c.chip.title = md ? `${md.label}: ${md.desc}. Your next message goes to ${seatsFor(agentId).map((s) => s.name).join(' and ')}.${cost} Click to change, right-click for presets.` : `Collab: answer with ${partner(agent)?.name || 'the other agent'} too (Duo, Relay, Debate…). Right-click for presets.`;
+    c.chip.title = md ? `${md.label}: ${md.desc}. Your next message goes to ${seatsFor(agentId).map((s) => s.name).join(' and ')}.${cost} Click: jam, second opinion or back to solo · right-click: every mode.` : `Work with ${partner(agent)?.name || 'the other agent'}: jam or a second opinion · right-click: duo, relay, debate…`;
     c.root.classList.toggle('collab-armed', Boolean(md));
     armPlaceholder(agentId);
   }
@@ -792,7 +788,22 @@ function toggleFold(hostId, m) {
     const i = seatsFor(agentId).findIndex((s) => s.agentId !== agentId);
     return i >= 0 ? i : null;
   }
+  // The ⚇ chip offers two things: a Jam (Claude ⇄ Astra make a visual together, jam.js, when it's there) and a
+  // second opinion. Duo / relay / debate / council / presets live in commands and on right-click (fullMenu).
   function chipMenu(agentId, anchor) {
+    const st = getMode(agentId);
+    const r = anchor.getBoundingClientRect();
+    const host = H.agent(agentId);
+    const other = H.agent(seatsFor(agentId).find((x) => x.agentId !== agentId)?.agentId) || partner(host);
+    const jam = typeof Jam !== 'undefined' ? Jam : window.Jam; // jam.js (another round-4 stream) may be a global const
+    const items = [
+      jam ? { label: `🎛 Jam: ${host.name} ⇄ ${other?.name || 'Astra'} build a visual together`, action: () => (Commands.get('jam') ? Native.setDraft(agentId, '/jam ') : (jam.start || jam.open)?.call(jam, { agentId })) } : null,
+      { label: `👁 Second opinion from ${other?.name || 'Astra'}`, action: () => Native.secondOpinion(agentId) },
+      MODES[st.mode] ? { label: `✓ ${MODES[st.mode].label} is on: back to just ${host.name}`, action: () => setMode(agentId, { mode: 'solo' }) } : null,
+    ].filter(Boolean);
+    showMenu(r.left, Math.max(8, r.top - 8 - items.length * 30), items);
+  }
+  function fullMenu(agentId, anchor) {
     const st = getMode(agentId);
     const r = anchor.getBoundingClientRect();
     const host = H.agent(agentId);
@@ -820,7 +831,7 @@ function toggleFold(hostId, m) {
       if (!form) return v;
       const chip = el('button', { type: 'button', class: 'ghost collab-chip', text: '⚇', dataset: { feature: 'Collab chip' } });
       chip.addEventListener('click', (e) => { e.preventDefault(); chipMenu(agentId, chip); });
-      chip.addEventListener('contextmenu', (e) => { e.preventDefault(); Commands.tryRun('/collab-preset', agentId); }); // right-click: ready-made collaborations
+      chip.addEventListener('contextmenu', (e) => { e.preventDefault(); fullMenu(agentId, chip); }); // right-click: every way to work together
       form.querySelector('.attach-btn')?.before(chip);
       chipEls.set(agentId, { chip, root, input: v.input });
       new MutationObserver(() => { if (MODES[getMode(agentId).mode] && !v.input.placeholder.includes(MODES[getMode(agentId).mode].label)) armPlaceholder(agentId); }).observe(v.input, { attributes: true, attributeFilter: ['placeholder'] });
@@ -1053,7 +1064,7 @@ function toggleFold(hostId, m) {
     complete: completeFrom([...Object.entries(MODES).filter(([k]) => k !== 'compare').map(([k, m]) => ({ value: k, hint: m.desc })), { value: 'off', hint: 'back to solo' }, { value: 'swap', hint: 'swap who goes first' }]),
     run: (args, ctx) => {
       const [w, n] = args.toLowerCase().split(/\s+/);
-      if (!w) { const c = chipEls.get(ctx.agentId); if (c) chipMenu(ctx.agentId, c.chip); return; }
+      if (!w) { const c = chipEls.get(ctx.agentId); if (c) fullMenu(ctx.agentId, c.chip); return; }
       if (w === 'swap') { setMode(ctx.agentId, { swap: !getMode(ctx.agentId).swap }); return `Order: ${seatsFor(ctx.agentId).map((s) => s.name).join(' → ')}`; }
       if (['off', 'solo', 'none'].includes(w)) { setMode(ctx.agentId, { mode: 'solo' }); return 'Collab off: messages go to this agent only.'; }
       if (!MODES[w] || w === 'compare') return `Unknown mode “${w}”. Try duo, relay, critique, debate or council.`;
