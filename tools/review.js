@@ -978,6 +978,8 @@ const Review = (() => {
   function openComposer(text = '') {
     if (!S.cur) return;
     pause();
+    // already writing one (D, then a drawing, then N): keep its marks and text instead of starting over
+    if (S.compose) { if (text) S.compose.text = `${S.compose.text ? `${S.compose.text} ` : ''}${text}`; renderComposer(); setTimeout(() => refs.composeText?.focus(), 0); return; }
     S.compose = { t: vid().currentTime, cat: '', text, draw: [], color: S.picked?.hex || null };
     renderComposer();
     setTimeout(() => refs.composeText?.focus(), 0);
