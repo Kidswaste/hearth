@@ -10,6 +10,7 @@ const ThreeLab = (() => {
   // tweak() groups) with line numbers, to read in parts with three_read_code.
   const BIG_CODE_LINES = 350;
   function codeOrOutline(code) {
+    code = code.replace(/\/\/ @nodes:v1 \{.*\}[ \t]*$/m, '// @nodes:v1 {…} (the node graph this layer is made from: change it with three_nodes)'); // tools/three-nodes.js
     const lines = code.split('\n');
     if (lines.length <= BIG_CODE_LINES) return { code };
     const marks = [];
@@ -2826,6 +2827,11 @@ ${code}
       }),
     };
     api.runSketch = run;
+    // Nodes ⇄ Code (tools/three-nodes.js): the selected layer as a node graph over the code pane.
+    if (typeof ThreeNodes !== 'undefined') ThreeNodes.attach({ host: editorHost, editor, layer: () => sel(), sketch: () => current, codeShown: () => !split.classList.contains('no-code'), showCode: setCodeVisible,
+      setCode: (code, { rerun = true } = {}) => { if (rerun) snapshot(); editor.setValue(code); persist(); if (rerun) run({ hot: true, layer: selId }); },
+      addLayer: (name, code) => addLayer('code', { name, code }), newSketch: (name, code) => create(name, code),
+      slider: (key, v) => Boolean(selCtl()?.setByKey(key, v)), evalInSketch: (code) => sandboxCall({ type: 'eval', code }, 2000) });
   }
 
   function saveDataUrl(dataUrl, name) {
