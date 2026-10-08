@@ -2810,6 +2810,7 @@ ${frag}\`,
   return {
     openCode(code) { ensureOpen('sketch'); setTimeout(() => api.openCode?.(code), 60); },
     get lab() { return api.lab; }, // Lab actions (palette commands, MIDI simulation for tests)
+    get director() { return api.director; }, // the Lab's layer / slider / palette API (the FX picker and its chat commands use it)
     // A picture of the Lab preview (data URL) for second opinions; null when nothing renders.
     shot: async () => (api.director ? api.director.shot() : null),
     // Files dropped in the Three Director's chat become references of the open sketch.
