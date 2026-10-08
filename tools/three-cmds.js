@@ -6,7 +6,9 @@
   const lab = async (show = true) => { const c = await ThreeLab.cmd({ show }); await c.waitSong?.(); return c; };
   const peek = () => ThreeLab.peek?.() || null;
   const words = (s) => String(s || '').trim().split(/\s+/).filter(Boolean);
-  const pick = (list, q) => { const s = String(q || '').toLowerCase(); return list.filter((x) => String(x.value ?? x).toLowerCase().includes(s)).slice(0, 14).map((x) => (typeof x === 'string' ? { value: x } : x)); };
+  // suggestions that contain what you typed; "bloom st" also finds "Bloom · Strength"
+  const flat = (t) => String(t).toLowerCase().replace(/\s*·\s*/g, ' ');
+  const pick = (list, q) => { const s = String(q || '').toLowerCase(); return list.filter((x) => String(x.value ?? x).toLowerCase().includes(s) || flat(x.value ?? x).includes(flat(s))).slice(0, 14).map((x) => (typeof x === 'string' ? { value: x } : x)); };
   const onOff = (s) => (/^(on|yes|1|true|show)$/i.test(s) ? true : /^(off|no|0|false|hide)$/i.test(s) ? false : undefined);
   const { parseTime, fmtMs } = ThreeMedia._test;
   const time = (s) => { const t = parseTime(String(s || '').replace(/s$/, '')); if (!Number.isFinite(t)) throw new Error(`"${s}" isn't a time (m:ss.mmm or seconds)`); return t; };

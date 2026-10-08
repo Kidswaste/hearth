@@ -1668,7 +1668,15 @@ const ThreeTweaks = (() => {
       showGroup: (g) => setGroupFilter(g), find: (q) => { search.value = q || ''; filter = search.value.toLowerCase().trim(); applyFilter(); return rows.filter((r) => !r.el.hidden).length; },
       focusSearch() { search.focus(); search.select(); },
       // a control by key or (part of) its label
-      resolve(q) { const s0 = String(q || '').toLowerCase(); const it = scanned?.items.find((x) => x.key != null && (x.key.toLowerCase() === s0 || labelOf(x).toLowerCase() === s0)) || scanned?.items.find((x) => x.key != null && labelOf(x).toLowerCase().includes(s0)); return it ? { key: it.key, label: labelOf(it), kind: it.kind } : null; },
+      // by key or label; typed words also match across the "·" in labels ("bloom strength" → "Bloom · Strength")
+      resolve(q) {
+        const s0 = String(q || '').toLowerCase(); const words = (t) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+        const w0 = words(s0);
+        const named = (scanned?.items || []).filter((x) => x.key != null);
+        const it = named.find((x) => x.key.toLowerCase() === s0 || labelOf(x).toLowerCase() === s0) || named.find((x) => labelOf(x).toLowerCase().includes(s0))
+          || (w0 && (named.find((x) => words(labelOf(x)) === w0) || named.find((x) => words(labelOf(x)).includes(w0)) || named.find((x) => w0.split(' ').every((w) => words(`${labelOf(x)} ${x.key}`).includes(w)))));
+        return it ? { key: it.key, label: labelOf(it), kind: it.kind } : null;
+      },
       lock(key, on = true) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0) return false; if (locks.has(ids[i]) !== on) toggleLock(i); return true; },
       fav(key, on = true) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0) return false; if (favs.has(ids[i]) !== on) toggleFav(i); return true; },
       setMotion(key, mo) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0 || scanned.items[i].kind !== 'number') return false; setMotion(i, mo); return true; },

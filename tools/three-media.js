@@ -683,7 +683,10 @@ const ThreeMedia = (() => {
       if (!silent) onLoaded?.({ reload: true, unloaded: true });
     }
     // (Re)sends the file to the sandbox; called after every full reload of the preview.
-    function attach({ playing = st.playing } = {}) {
+    // play / pause you asked for that the sandbox hasn't confirmed yet: a preview that reloads meanwhile (just after
+    // loading a song) gets it with the file, instead of dropping it
+    let wish = null;
+    function attach({ playing = wish && performance.now() - wish.at < 10000 ? wish.play : st.playing } = {}) {
       if (!st.bytes) return;
       send({ type: 'media-load', buffer: st.bytes.slice(0), mime: st.mime, video: st.video, name: st.name, startAt: st.time, playing, loop: st.loop, volume: st.volume, analysis: st.analysis, region, rate: st.rate });
       sendMap();
@@ -691,6 +694,7 @@ const ThreeMedia = (() => {
     function toggle(force) {
       if (!st.bytes) { pick(); return; }
       const play = force ?? !st.playing;
+      wish = { play, at: performance.now() };
       send({ type: 'media', cmd: play ? 'play' : 'pause' });
     }
     function seek(t) {
@@ -704,6 +708,7 @@ const ThreeMedia = (() => {
     function onMessage(msg) {
       if (msg.type === 'media-state') {
         Object.assign(st, { time: msg.time, duration: msg.duration || st.duration, playing: msg.playing, stampAt: performance.now() });
+        if (wish && wish.play === msg.playing) wish = null;
         if (recording && !recording.stopping && msg.ended && recording.kind === 'track') stopRecord();
         if (recording && !recording.stopping && !msg.playing && recording.kind === 'loop') finishRecord(); // the sandbox stopped exactly at the loop end
         paint();

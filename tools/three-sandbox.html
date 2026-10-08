@@ -600,6 +600,7 @@ function mediaTick() {
 realRAF(mediaTick);
 const applyLoop = () => { if (mediaEl) mediaEl.loop = loopOn && !region; };
 function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, loop = false, volume = 1, analysis: a, region: rg = null, rate = 1 }) {
+  if (pendingPlay != null) { playing = pendingPlay; pendingPlay = null; }
   region = rg;
   loopOn = loop;
   if (mediaEl) { mediaEl.pause(); srcNode?.disconnect(); mediaEl.removeAttribute('src'); mediaEl.load(); URL.revokeObjectURL(mediaUrl); }
@@ -629,8 +630,11 @@ function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, lo
   }, { once: true });
   m.addEventListener('error', () => post({ type: 'error', message: `Couldn't play ${name} (${m.error?.message || 'unsupported format'})` }));
 }
+// Play / pause asked for while the song is still on its way here (just loaded or the preview restarting): kept
+// and applied when it arrives (a play right after loading a song used to do nothing).
+let pendingPlay = null;
 function mediaCommand({ cmd, value }) {
-  if (!mediaEl) return;
+  if (!mediaEl) { if (cmd === 'play' || cmd === 'pause') pendingPlay = cmd === 'play'; return; }
   if (cmd === 'play') {
     actx.resume();
     if (mediaEl.ended) mediaEl.currentTime = 0;
