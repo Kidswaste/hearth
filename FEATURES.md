@@ -380,3 +380,10 @@
 - ✓ Live meter strip at the bottom (or a pill in the rail): tokens ticking while replies stream, then snapped to the real count; this chat, today, Claude vs Astra, cache hits, context fill (click → compact), replies, average per reply, today's feature clicks.
 - ✓ Dashboard (Ctrl+Shift+U, `/usage`): day / week / month / all charts, per agent / model / tool, most expensive chats, features used / hot / cold / never used with Hide, budgets & alerts (opt-in), CSV / JSON export. Data in `data/kv/token-stats.json`, built from your chats on first run.
 - ✓ Token line under every reply with cache % and speed, token totals per chat in the panel, 55 `/` commands (`/help meter`).
+
+## Look: Forgeheart 2 (look stream, details in docs/upgrades/look.md)
+- ✓ Forgeheart is bolder by default: deeper forge blacks, molten gold, ember, electric violet for the AI, brushed metal, glass overlays, chrome slider knobs, molten-gold primary buttons. **Forgeheart Classic** keeps the old look exactly (`/classic`).
+- ✓ 31 looks (25 new, light ones included) in Settings → Appearance (a compact swatch picker), Ctrl+Shift+L, Ctrl+K, and `/theme <name>`, `/themes`. Save your own with `/look save <name>`.
+- ✓ Toggles: textures, glow 0–100, motion (full / calm / off), density (compact / normal / roomy), corners (cut / round / square), your own accent, chat font, forged tooltips (`/texture`, `/glow`, `/motion`, `/density`, `/corners`, `/accent`, `/chatfont`, `/tips`, `/sparkles`).
+- ✓ Micro-interactions: chrome glint on press, a molten ring and sparks when you send, embers on Save, Tap rings, Shuffle die rolls, Freeze frost, notifications pop or shake, violet shimmer while the AI writes. Everything pauses while the window is hidden.
+
