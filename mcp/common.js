@@ -51,7 +51,8 @@ function serve(def, mod) {
       send({ jsonrpc: '2.0', id, result: { tools } });
     } else if (method === 'tools/call') {
       // local[name](args) can answer without the hub (help text); null means "ask the hub".
-      const args = { ...(params.arguments || {}), ...extraArgs };
+      // hubChatId: which chat's run made the call (engines.js HUB_CHAT_ID); the hub routes by it and strips it
+      const args = { ...(params.arguments || {}), ...extraArgs, ...(process.env.HUB_CHAT_ID ? { hubChatId: process.env.HUB_CHAT_ID } : {}) };
       const r = (local[params.name] && await local[params.name](args)) || await callHub(params.name, args);
       const content = [];
       for (const img of [].concat(r.images || (r.image ? [{ data: r.image, mime: r.mime }] : []))) {

@@ -132,14 +132,20 @@ const hubToolsets = (agent) => (agent.noHubTools ? [] : Object.keys(HUB_TOOLSETS
 }));
 const gameTools = (agent) => hubToolsets(agent).includes('gameTools');
 // What every hub MCP server gets: Node mode, the agent (for chat_ tools), opt-ins that change the tool list.
-const hubToolEnv = (agent) => ({ ELECTRON_RUN_AS_NODE: '1', HUB_AGENT_ID: agent.id, ...(agent.engine === 'codex' ? { HUB_PARTNER: 'Claude' } : {}), ...(agent.nodesTool ? { HUB_NODES_TOOL: '1' } : {}), ...(agent.toolMode === 'full' ? { HUB_TOOL_MODE: 'full' } : {}) });
+// HUB_CHAT_ID: the chat this run answers, so a director's tool calls reach that chat's own scene (chat-scenes.js).
+const hubToolEnv = (agent) => ({ ELECTRON_RUN_AS_NODE: '1', HUB_AGENT_ID: agent.id, ...(agent.hubChatId ? { HUB_CHAT_ID: agent.hubChatId } : {}), ...(agent.engine === 'codex' ? { HUB_PARTNER: 'Claude' } : {}), ...(agent.nodesTool ? { HUB_NODES_TOOL: '1' } : {}), ...(agent.toolMode === 'full' ? { HUB_TOOL_MODE: 'full' } : {}) });
+// One file per chat run (two chats of the same director can start at once), removed when the run ends.
+const mcpConfigFile = (agent) => (agent.hubChatId
+  ? path.join(DATA_DIR, 'mcp-runs', `${agent.id}-${String(agent.hubChatId).replace(/[^\w-]/g, '_')}.json`)
+  : path.join(DATA_DIR, `mcp-${agent.id}.json`));
 function hubMcpConfig(agent) {
   const mcpServers = {};
   for (const key of hubToolsets(agent)) {
     const { server, script } = HUB_TOOLSETS[key];
     mcpServers[server] = { command: process.execPath, args: [path.join(__dirname, 'mcp', script)], env: hubToolEnv(agent) };
   }
-  const file = path.join(DATA_DIR, `mcp-${agent.id}.json`);
+  const file = mcpConfigFile(agent);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify({ mcpServers }, null, 2));
   return file;
 }
@@ -518,6 +524,7 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
   // the hub tool sets and file tools so they cost no more than a plain chat turn.
   if (options.persona) agent = { ...agent, systemPrompt: String(options.persona).slice(0, 4000) };
   if (options.lean) agent = { ...agent, chatTools: false, threeTools: false, videoTools: false, gameTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false };
+  if (chatId && !String(chatId).startsWith('once-') && hubToolsets(agent).some((k) => k !== 'chatTools')) agent = { ...agent, hubChatId: chatId };
   const original = text;
   if (engine === 'claude' && options.images?.length) {
     text += `\n\n[Attached image${options.images.length > 1 ? 's' : ''}: open with your Read tool before answering]\n${options.images.join('\n')}`;
@@ -597,6 +604,7 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
   child.on('error', (err) => finish({ type: 'error', message: err.message }));
   child.on('close', (code, signal) => {
     if (running.get(chatId) === child) running.delete(chatId);
+    if (agent.hubChatId && engine === 'claude') fs.rm(mcpConfigFile(agent), { force: true }, () => {});
     if (buffer.trim()) { handleLine(buffer); buffer = ''; } // the last line may come without a newline
     log(`${engine} ${chatId} exit=${code} signal=${signal} finished=${finished} stderr=${JSON.stringify(stderr.slice(-400))}`);
     if (child.hubIdle) finish({ type: 'error', message: `${ENGINES[engine].label} printed nothing for ${IDLE_MS / 60000} minutes, so Hearth stopped it. Press Retry.` });

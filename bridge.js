@@ -69,17 +69,19 @@ const HubBridge = (() => {
   const emit = (entry) => { for (const fn of listeners) { try { fn(entry, log); } catch (err) { console.warn(err); } } };
 
   window.hub.onGameCall(async ({ id, tool: asked, args: given }) => {
-    const r0 = resolve(asked, given || {});
+    // the chat whose run made the call (mcp/common.js adds it); handlers get it as ctx.chatId, not in their args
+    const { hubChatId = null, ...plain } = given || {};
+    const r0 = resolve(asked, plain);
     const { tool, args } = r0;
     Usage.agentTool(tool);
-    const entry = { id, tool, via: r0.via || null, agentId: args?.agentId || null, summary: summarize(tool, args), at: Date.now(), running: true };
+    const entry = { id, tool, via: r0.via || null, agentId: args?.agentId || null, chatId: hubChatId, summary: summarize(tool, args), at: Date.now(), running: true };
     log.push(entry);
     if (log.length > LOG_MAX) log.shift();
     emit(entry);
     const h = handlerFor(tool);
     let result;
     try {
-      result = r0.error ? { ok: false, error: r0.error } : h ? await h.fn(tool, args || {}) : { ok: false, error: `Nothing in the hub handles ${tool}.` };
+      result = r0.error ? { ok: false, error: r0.error } : h ? await h.fn(tool, args || {}, { chatId: hubChatId }) : { ok: false, error: `Nothing in the hub handles ${tool}.` };
     } catch (err) { result = { ok: false, error: err.message }; }
     result ||= { ok: false, error: `${tool} returned nothing.` };
     Object.assign(entry, { running: false, ms: Date.now() - entry.at, ok: result.ok !== false, error: result.ok === false ? String(result.error || '').slice(0, 300) : null });
@@ -100,12 +102,13 @@ const HubBridge = (() => {
     lastImage: () => lastImage,
     clearLog() { log.length = 0; lastImage = null; emit(null); },
     // Runs a tool exactly like an agent would (tests, /director try): same routing, multi-commands, logging.
-    async call(tool, args = {}) {
+    // ctx.chatId: as if that chat's run made the call (per-chat scenes, tests)
+    async call(tool, args = {}, ctx = {}) {
       const r0 = resolve(tool, args);
       if (r0.error) return { ok: false, error: r0.error };
       const h = handlerFor(r0.tool);
       if (!h) return { ok: false, error: `Nothing in the hub handles ${r0.tool}.` };
-      try { return await h.fn(r0.tool, r0.args || {}); } catch (err) { return { ok: false, error: err.message }; }
+      try { return await h.fn(r0.tool, r0.args || {}, { chatId: ctx.chatId || null }); } catch (err) { return { ok: false, error: err.message }; }
     },
     summarize, resolve, fmtText, imageTokens,
   };
