@@ -244,3 +244,7 @@ dialog { max-height: calc(100vh - 40px); }
 .panel-foot .hint { margin: 0; }
 .show-more { margin: 2px 0 4px 30px; border: 0; background: none; color: var(--muted); font-size: 12px; cursor: pointer; padding: 2px 0; }
 .show-more:hover { color: var(--text); }
+
+/* Perf: looping decorations (glints, dust, floats) rest on surfaces you can't see, so they stop costing a style
+   pass every frame; they carry on where they were when the surface shows again. */
+#surfaces:not(.grid) > .surface:not(.active):not(.capturing) :is(.native-head, .tool-head, .empty, .empty-icon), #surfaces:not(.grid) > .surface:not(.active):not(.capturing) :is(.native-head, .tool-head, .empty, .empty-icon)::before, #surfaces:not(.grid) > .surface:not(.active):not(.capturing) :is(.native-head, .tool-head, .empty, .empty-icon)::after { animation-play-state: paused; }

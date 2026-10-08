@@ -9,6 +9,7 @@
 //   node dev/perf-report.js --runs 5 --json /tmp/perf.json
 //   node dev/perf-report.js --budget               # exit 1 if startup is > 30 % slower than dev/perf-budget.json
 //   node dev/perf-report.js --save-budget          # write the current medians as the new budget baseline
+//   node dev/perf-report.js --theme forgeheart     # measure with a look preset (the idle check counts its animations)
 //   node dev/perf-report.js --startup-only         # skip the interaction check (--no-stream: and the streamed reply)
 //   node dev/perf-report.js --trace /tmp/t.json    # keep the last startup trace (load it in DevTools → Performance)
 //   node dev/perf-report.js --startup-profile /tmp/s.cpuprofile   # JS profile of the last startup run
@@ -178,6 +179,11 @@ function analyzeIdle(events, ms) {
     await send('Fetch.enable', { patterns: CDN_PATTERNS });
     await send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true });
     await wait(3000); // the first load (profile creation, data folder) is not a fair start: measure reloads
+    if (opt('--theme')) { // a look preset (forgeheart, classic, swirl…): saved in the copy's config, so every reload uses it
+      await evaluate(`(async () => { await Commands.exec('/theme ${opt('--theme').replace(/[^\w-]/g, '')}'); return true; })()`).catch((e) => console.log('theme:', e.message));
+      await wait(2500);
+      report.theme = opt('--theme');
+    }
     const isReady = () => evaluate("Boolean(performance.getEntriesByName('hearth:ready').length)", 2000).catch(() => false);
     for (let run = 0; run < RUNS; run++) {
       const prof = opt('--startup-profile') && run === RUNS - 1;
@@ -213,6 +219,7 @@ function analyzeIdle(events, ms) {
     // idle: 5 s with nothing happening
     await wait(1500);
     report.idle = analyzeIdle(await trace(() => wait(5000)), 5000);
+    if (report.idle) report.idle.runningAnimations = await evaluate("document.getAnimations().filter((a) => a.playState === 'running').map((a) => `${a.animationName || a.constructor.name} on ${a.effect?.target?.className || a.effect?.target?.tagName || '?'}${a.effect?.pseudoElement || ''}`.slice(0, 90))").catch(() => []);
     console.log(`idle: ${report.idle?.busyMsPerSec} ms busy/s · ${report.idle?.timerFires} timer fires · ${report.idle?.animationFrames} rAF · ${report.idle?.styleRecalcs} style recalcs · ${report.idle?.paints} paints`);
     // a long streamed reply (fake engine): main-thread cost of painting it
     if (!flag('--no-stream')) {
