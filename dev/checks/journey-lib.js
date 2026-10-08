@@ -11,7 +11,7 @@ const J = (() => {
   console.error = (...a) => { out.errors.push(a.map(String).join(' ').slice(0, 240)); origErr(...a); };
   addEventListener('error', (e) => out.errors.push(`uncaught ${e.message}`));
   addEventListener('unhandledrejection', (e) => out.errors.push(`rejection ${e.reason?.message || e.reason}`));
-  const step = (name, ok, info) => { out.steps.push(`${ok ? '✓' : '✖'} ${name}${info === undefined ? '' : ` · ${typeof info === 'string' ? info : JSON.stringify(info)}`}`); if (!ok) out.problems.push(name); return ok; };
+  const step = (name, ok, info) => { console.log(`[J] ${ok ? '✓' : '✖'} ${name}`); out.steps.push(`${ok ? '✓' : '✖'} ${name}${info === undefined ? '' : ` · ${typeof info === 'string' ? info : JSON.stringify(info)}`}`); if (!ok) out.problems.push(name); return ok; };
   const q = (sel, root = document) => (typeof sel === 'string' ? root.querySelector(sel) : sel);
   const visible = (n) => { if (!n) return false; const r = n.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(n).visibility !== 'hidden'; };
   // The element at the middle of `node`: what a real click there would hit (null if something else covers it).

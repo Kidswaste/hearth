@@ -136,6 +136,10 @@ async function cdpConnect() {
         const d = msg.params.exceptionDetails;
         problems.push(`exception: ${d.exception?.description || d.text} @ ${d.url || ''}:${d.lineNumber}`);
       }
+      if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'log' && process.env.SMOKE_DEBUG) {
+        const text = msg.params.args.map((a) => a.value ?? a.description ?? '').join(' ');
+        if (text.startsWith('[J]')) console.log(text);
+      }
       if (msg.method === 'Runtime.consoleAPICalled' && (msg.params.type === 'error' || msg.params.type === 'assert')) {
         const text = msg.params.args.map((a) => a.value ?? a.description ?? '').join(' ');
         if (!IGNORE.some((re) => re.test(text))) problems.push(`console.error: ${text}`);
