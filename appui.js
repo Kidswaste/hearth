@@ -247,7 +247,7 @@ const AppUI = (() => {
         class: `palette-item${i === sel ? ' sel' : ''}`,
         on: { click: () => { close(); it.run(); }, mousemove: () => { if (sel !== i) { sel = i; paint(); } } },
       }, el('span', { class: 'p-label', text: it.label }), it.detail ? el('span', { class: 'p-detail', text: it.detail }) : null,
-      el('span', { class: 'p-kind', text: it.keys ? `${it.kind} · ${it.keys}` : it.kind }))) : [el('div', { class: 'palette-empty', text: q.startsWith('?') ? 'No messages match' : 'Nothing matches' })]));
+      el('span', { class: 'p-kind', text: it.keys ? `${it.kind} · ${Commands.keyText(it.keys)}` : it.kind }))) : [el('div', { class: 'palette-empty', text: q.startsWith('?') ? 'No messages match' : 'Nothing matches' })]));
     };
     const paint = () => [...list.children].forEach((c, i) => c.classList.toggle('sel', i === sel));
     const debounced = debounce(render, 120);

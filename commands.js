@@ -34,6 +34,8 @@ const Commands = (() => {
   const recent = () => { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch { return []; } };
   const noteRecent = (name) => { try { localStorage.setItem(RECENT_KEY, JSON.stringify([name, ...recent().filter((n) => n !== name)].slice(0, 8))); } catch { /* not critical */ } };
 
+  // 'Ctrl+Shift+S' as the Mac shows it (⌘ does what Ctrl does in Hearth, Alt is ⌥)
+  const keyText = (k) => (/Mac/.test(navigator.platform) ? String(k).replace(/Ctrl\+/g, '⌘').replace(/Alt\+/g, '⌥') : k);
   const dups = []; // [{ name, was, by }] names registered twice (see register)
   function noteDup(name, prev, def) {
     dups.push({ name, was: `/${prev.name} (${prev.area})`, by: `/${def.name} (${def.area || 'Other'})`, at: (new Error().stack || '').split('\n').slice(3, 6).map((l) => l.trim().replace(/^at /, '').replace(/\(?file:\/\/\S*\/([^/]+:\d+):\d+\)?/, '$1')).join(' < ') });
@@ -169,7 +171,7 @@ const Commands = (() => {
       const lines = [];
       for (const d of rows) {
         if (d.area !== area) { area = d.area; lines.push(`\n**${area}**`); }
-        lines.push(`- \`/${d.name}${d.args ? ` ${d.args}` : ''}\` ${d.desc}${d.keys ? ` · ${d.keys}` : ''}${d.aliases.length ? ` (also /${d.aliases.join(', /')})` : ''}`);
+        lines.push(`- \`/${d.name}${d.args ? ` ${d.args}` : ''}\` ${d.desc}${d.keys ? ` · ${keyText(d.keys)}` : ''}${d.aliases.length ? ` (also /${d.aliases.join(', /')})` : ''}`);
       }
       return lines.length ? `${args ? '' : `${list().length} commands · click one to run it (or fill it in) · \`/help <word>\` filters\n`}${lines.join('\n').trim()}` : `No command matches “${args}”.`;
     },
@@ -208,5 +210,5 @@ const Commands = (() => {
     return out;
   }
 
-  return { register, unregister, get, list, parse, duplicates: () => dups.slice(), matching, tryRun, exec, paletteActions, recent, areas, run, AREA_ORDER, closest };
+  return { register, unregister, get, list, parse, duplicates: () => dups.slice(), keyText, matching, tryRun, exec, paletteActions, recent, areas, run, AREA_ORDER, closest };
 })();

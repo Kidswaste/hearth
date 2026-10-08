@@ -484,7 +484,7 @@ const Prompts = (() => {
         const mine = n;
         return el('div', {
           class: `slash-item${mine === sel ? ' sel' : ''}${it.kind === 'command' ? ' cmd' : ''}`, on: { mousedown: (e) => { e.preventDefault(); pick(it); } },
-        }, el('b', { text: it.label }), el('span', { class: 'hint', text: it.hint }), it.keys ? el('kbd', { text: it.keys }) : null);
+        }, el('b', { text: it.label }), el('span', { class: 'hint', text: it.hint }), it.keys ? el('kbd', { text: Commands.keyText(it.keys) }) : null);
       }), el('div', { class: 'slash-foot', text: '↑↓ choose · Tab complete · Enter run · Esc close' }));
       menu.querySelector('.slash-item.sel')?.scrollIntoView({ block: 'nearest' });
     };
