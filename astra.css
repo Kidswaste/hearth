@@ -1,0 +1,96 @@
+/* Astra (Codex) identity and the Claude × Astra collaboration cards. Colors are variables so themes and
+   the Forge skin can restyle them: --astra (accent), --astra-2 (second hue), --claude. */
+:root {
+  --astra: #19c39c;
+  --astra-2: #7c8cff;
+  --claude: #d97757;
+  --astra-glow: color-mix(in srgb, var(--astra) 35%, transparent);
+}
+
+/* ---- Astra's own look: a starry ring avatar and a cool accent on its chats ---- */
+.engine-codex .empty-icon {
+  position: relative;
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--astra) 45%, #fff 10%), color-mix(in srgb, var(--astra-2) 55%, #000 30%));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--astra) 60%, transparent), 0 0 22px var(--astra-glow);
+  color: #fff;
+}
+.engine-codex .empty-icon::after {
+  content: '✦'; position: absolute; right: -6px; top: -6px; font-size: 14px; color: var(--astra);
+  text-shadow: 0 0 6px var(--astra-glow);
+}
+.engine-codex .msg.assistant { border-left: 2px solid color-mix(in srgb, var(--astra) 45%, transparent); padding-left: 10px; }
+.engine-codex .composer textarea:focus { border-color: color-mix(in srgb, var(--astra) 60%, transparent); }
+.engine-codex .native-head .chat-title::before { content: '✦ '; color: var(--astra); }
+
+/* ---- empty-state hints ---- */
+.astra-hints { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 10px; max-width: 560px; }
+.astra-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.astra-chip {
+  font-size: 11.5px; padding: 3px 9px; border-radius: 99px; cursor: pointer; color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--astra) 35%, transparent); background: color-mix(in srgb, var(--astra) 8%, transparent);
+}
+.astra-chip:hover { background: color-mix(in srgb, var(--astra) 18%, transparent); }
+.astra-try { font-size: 12px; color: var(--muted); }
+.astra-try a { color: var(--astra); text-decoration: none; }
+.astra-try a:hover { text-decoration: underline; }
+.astra-onboard { font-size: 11.5px; min-height: 1em; }
+.astra-onboard a { color: var(--astra); }
+
+/* ---- composer chip ---- */
+.collab-chip { font-size: 13px; padding: 4px 8px; border-radius: 8px; white-space: nowrap; align-self: flex-end; }
+.collab-chip.on {
+  color: #fff; border-color: transparent;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--claude) 80%, #000 10%), color-mix(in srgb, var(--astra) 80%, #000 10%));
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .12) inset, 0 2px 10px var(--astra-glow);
+}
+.collab-armed .composer textarea { border-image: linear-gradient(90deg, var(--claude), var(--astra)) 1; }
+
+/* ---- collaboration card ---- */
+.collab-card {
+  margin: 10px 0; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--astra) 4%, var(--surface)), var(--surface));
+  position: relative; container-type: inline-size;
+}
+.collab-card::before {
+  content: ''; position: absolute; inset: 0 0 auto 0; height: 2px; border-radius: 12px 12px 0 0;
+  background: linear-gradient(90deg, var(--claude), var(--astra), var(--astra-2));
+}
+.collab-card.running::before { background-size: 200% 100%; animation: collab-flow 2.2s linear infinite; }
+@keyframes collab-flow { from { background-position: 0 0; } to { background-position: 200% 0; } }
+.collab-card .msg-act { opacity: .85; }
+.collab-card .msg-act:hover { opacity: 1; }
+.collab-head { display: flex; align-items: center; gap: 8px; font-size: 12px; flex-wrap: wrap; }
+.collab-head .spacer { flex: 1; }
+.collab-mode { font-weight: 600; letter-spacing: .02em; }
+.collab-task { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; }
+.collab-seat { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
+.collab-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--seat, var(--accent)); flex: none; }
+.collab-total { font-size: 11px; font-variant-numeric: tabular-nums; padding: 1px 6px; border-radius: 99px; background: var(--hover); }
+.collab-tok { font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.collab-stop { color: #ff6b6b !important; }
+
+.collab-grid { display: grid; grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+/* side by side while there is room (docked chats are narrow) */
+@container (max-width: 520px) { .collab-grid { grid-template-columns: 1fr; } }
+.collab-part {
+  border-radius: 9px; padding: 6px 9px; min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--seat, var(--accent)) 28%, transparent);
+  background: color-mix(in srgb, var(--seat, var(--accent)) 5%, transparent);
+}
+.collab-part.picked { box-shadow: 0 0 0 2px color-mix(in srgb, var(--seat) 70%, transparent); }
+.collab-part.error { border-color: #ff6b6b80; }
+.collab-part-head { display: flex; align-items: center; gap: 6px; font-size: 11.5px; margin-bottom: 2px; }
+.collab-part-head .spacer { flex: 1; }
+.collab-part .body { font-size: 13.5px; overflow-wrap: anywhere; }
+.collab-scroll { max-height: 420px; overflow: auto; }
+.collab-col-foot, .collab-actions { display: flex; gap: 12px; margin-top: 6px; font-size: 11.5px; }
+.collab-actions { justify-content: center; padding-top: 4px; border-top: 1px dashed var(--line); }
+.collab-final { margin-top: 8px; border-width: 1.5px; background: color-mix(in srgb, var(--seat, var(--accent)) 8%, transparent); }
+.collab-final .collab-part-head b::before { content: '★ '; color: #ffd75e; }
+.collab-round { margin-top: 6px; font-size: 12px; }
+.collab-round > summary { cursor: pointer; color: var(--muted); padding: 2px 0; list-style: none; }
+.collab-round > summary::before { content: '▸ '; }
+.collab-round[open] > summary::before { content: '▾ '; }
+.collab-round > .collab-part { margin: 4px 0 4px 10px; }
+.collab-error { color: #ff8a8a; font-size: 12px; margin-top: 4px; white-space: pre-line; }
+.collab-card .suggest-chips { margin-top: 8px; }

@@ -3,6 +3,11 @@ const Manager = (() => {
   const PRESETS = [
     { name: 'Claude', mode: 'native', engine: 'claude', model: 'sonnet', color: '#d97757', icon: 'C', url: 'https://claude.ai/new' },
     { name: 'Astra', mode: 'native', engine: 'codex', color: '#10a37f', icon: 'A', url: 'https://chatgpt.com/' },
+    // Astra variants (persona presets; the same Codex engine and ChatGPT login)
+    { name: 'Astra Coder', mode: 'native', engine: 'codex', color: '#19c39c', icon: '✦', effort: 'high', systemPrompt: 'You are Astra Coder, a senior software engineer chatting with the user in their desktop app. Give working, minimal code with short explanations; point out edge cases and how to test it.', askAll: false },
+    { name: 'Astra Reviewer', mode: 'native', engine: 'codex', color: '#7c8cff', icon: '✦', effort: 'high', systemPrompt: 'You are Astra Reviewer. Find the real problems in what the user shows you (bugs, unclear parts, risks), ranked by importance, and say how to fix each. No praise padding.', askAll: false },
+    { name: 'Astra Researcher', mode: 'native', engine: 'codex', color: '#4fb3ff', icon: '✦', effort: 'medium', webSearch: 'cached', systemPrompt: 'You are Astra Researcher. Separate facts from guesses, say how sure you are, compare options with pros and cons, and say where facts come from.', askAll: false },
+    { name: 'Astra Quick', mode: 'native', engine: 'codex', color: '#19c39c', icon: '✦', effort: 'low', verbosity: 'low', systemPrompt: 'You are Astra Quick. Answer as briefly as possible: the answer first, no preamble.', askAll: false },
     { name: 'Forge Debug', mode: 'native', engine: 'claude', color: '#e07a2f', icon: '⚒', gameTools: true, companion: 'forge-game', askAll: false },
     { name: 'Claude', mode: 'web', color: '#d97757', icon: 'C', url: 'https://claude.ai/new' },
     { name: 'ChatGPT', mode: 'web', color: '#10a37f', icon: 'G', url: 'https://chatgpt.com/' },
@@ -32,10 +37,41 @@ const Manager = (() => {
 
   let connectorModes = {}; // connector name -> 'read' | 'full' (absent = off)
 
+  // ---- Astra (Codex) options, built here so index.html stays as it is: web search, answer length, and
+  // what its opt-in file access may do. File access, talk-back and thinking rows are shared with Claude.
+  const astraBox = el('div', { class: 'grid2 astra-opts', dataset: { engine: 'codex' } },
+    el('label', {}, 'Web search', el('select', { name: 'webSearch' }, el('option', { value: '', text: 'Off' }), el('option', { value: 'cached', text: 'Cached (cheaper)' }), el('option', { value: 'live', text: 'Live' }))),
+    el('label', {}, 'Answer length', el('select', { name: 'verbosity' }, el('option', { value: '', text: 'Default' }), el('option', { value: 'low', text: 'Short' }), el('option', { value: 'medium', text: 'Medium' }), el('option', { value: 'high', text: 'Detailed' }))));
+  const fileMode = el('select', { name: 'codexFiles', title: 'What Astra may do in the folder' }, el('option', { value: '', text: 'Read only' }), el('option', { value: 'edit', text: 'Read + edit' }));
+  form.querySelector('[name="chatgptApps"]')?.closest('label')?.before(astraBox);
+  form.querySelector('#clear-folder')?.after(fileMode);
+  const fileHint = form.querySelector('.file-access .hint');
+  const CLAUDE_FILE_HINT = fileHint?.textContent || '';
+  const SHARED = ['.file-access', 'label:has(> input[name="chatTools"])', 'label:has(> input[name="showThinking"])'];
+  const EXTRA_EFFORTS = { minimal: 'Minimal: fewest tokens (Astra)', xhigh: 'Extra high: most reasoning (Astra)' };
+  function syncAstraFields(engine) {
+    const codex = engine === 'codex';
+    for (const sel of SHARED) for (const n of form.querySelectorAll(sel)) n.hidden = f.mode.value !== 'native' ? n.hidden : false;
+    fileMode.hidden = !codex;
+    if (fileHint) {
+      fileHint.textContent = codex
+        ? 'Lets Astra look at files in this folder with read-only commands inside Codex\'s sandbox (no network); "Read + edit" also lets it change files there. Codex can read other folders too, so pick read-only unless you need edits. Adds the shell tool to each message.'
+        : CLAUDE_FILE_HINT;
+    }
+    const talk = form.querySelector('input[name="chatTools"]')?.closest('label');
+    if (talk) talk.title = codex ? 'Off by default for Astra: the tools add their descriptions to every Codex message' : '';
+    for (const [value, text] of Object.entries(EXTRA_EFFORTS)) {
+      let opt = f.effort.querySelector(`option[value="${value}"]`);
+      if (codex && !opt) { opt = el('option', { value, text }); if (value === 'minimal') f.effort.options[1].before(opt); else f.effort.append(opt); }
+      if (!codex && opt) { if (f.effort.value === value) f.effort.value = ''; opt.remove(); }
+    }
+  }
+
   function syncModeFields() {
     const mode = f.mode.value;
     for (const node of form.querySelectorAll('[data-for]')) node.hidden = node.dataset.for !== mode;
     for (const node of form.querySelectorAll('[data-engine]')) node.hidden = node.dataset.engine !== f.engine.value;
+    if (mode === 'native') syncAstraFields(f.engine.value);
     f.url.required = mode === 'web';
     $('engine-hint').textContent = ENGINE_HINTS[f.engine.value];
     $('model-hints').replaceChildren(...(MODEL_HINTS[f.engine.value] || []).map((m) => new Option(m)));
@@ -94,14 +130,18 @@ const Manager = (() => {
     f.url.value = agent.url || '';
     f.engine.value = agent.engine || 'claude';
     f.model.value = agent.model || '';
+    syncAstraFields(f.engine.value); // Astra's extra effort levels must exist before the value is set
     f.effort.value = agent.effort || '';
+    f.webSearch.value = agent.webSearch && agent.webSearch !== 'disabled' ? agent.webSearch : '';
+    f.verbosity.value = agent.verbosity || '';
+    f.codexFiles.value = agent.codexFiles === 'edit' ? 'edit' : '';
     f.systemPrompt.value = agent.systemPrompt || '';
     f.askAll.checked = agent.askAll !== false;
     f.chatgptApps.checked = Boolean(agent.chatgptApps);
     f.autoMemory.checked = agent.autoMemory !== false;
     f.workspace.value = agent.workspace || '';
     f.gameTools.checked = Boolean(agent.gameTools);
-    f.chatTools.checked = agent.chatTools !== false;
+    f.chatTools.checked = agent.engine === 'codex' ? agent.chatTools === true : agent.chatTools !== false;
     f.showThinking.checked = agent.showThinking !== false;
     f.selfReview.checked = agent.selfReview ?? Boolean(agent.dock);
     f.autoCompact.checked = agent.autoCompact !== false;
@@ -148,12 +188,16 @@ const Manager = (() => {
         systemPrompt: f.systemPrompt.value.trim() || undefined,
         connectors: f.engine.value === 'claude' && Object.keys(connectorModes).length ? { ...connectorModes } : undefined,
         chatgptApps: f.engine.value === 'codex' && f.chatgptApps.checked ? true : undefined,
-        workspace: f.engine.value === 'claude' && f.workspace.value ? f.workspace.value : undefined,
+        workspace: f.workspace.value || undefined,
+        codexFiles: f.engine.value === 'codex' && f.workspace.value && f.codexFiles.value === 'edit' ? 'edit' : undefined,
+        webSearch: f.engine.value === 'codex' && f.webSearch.value ? f.webSearch.value : undefined,
+        verbosity: f.engine.value === 'codex' && f.verbosity.value ? f.verbosity.value : undefined,
         gameTools: f.engine.value === 'claude' && f.gameTools.checked ? true : undefined,
         companion: f.engine.value === 'claude' && f.gameTools.checked ? 'forge-game' : undefined,
         autoMemory: f.autoMemory.checked ? undefined : false,
-        chatTools: f.engine.value === 'claude' && !f.chatTools.checked ? false : undefined,
-        showThinking: f.engine.value === 'claude' && !f.showThinking.checked ? false : undefined,
+        // talk-back tools: on unless switched off for Claude, off unless switched on for Astra (tokens)
+        chatTools: f.engine.value === 'claude' ? (f.chatTools.checked ? undefined : false) : (f.chatTools.checked ? true : undefined),
+        showThinking: f.showThinking.checked ? undefined : false,
         selfReview: f.engine.value === 'claude' ? f.selfReview.checked : undefined,
         autoCompact: f.autoCompact.checked ? undefined : false,
       });

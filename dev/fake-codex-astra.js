@@ -69,8 +69,9 @@ async function main() {
   const ask = prompt.replace(/\s+/g, ' ').trim();
   let reply = `Astra here (${model}, effort ${effort}${images.length ? `, ${images.length} image${images.length > 1 ? 's' : ''}` : ''}). You said: “${ask.slice(0, 90)}${ask.length > 90 ? '…' : ''}”`;
   if (/Improve this|improve it further/i.test(prompt)) reply = `Improved version by Astra.\n\nChanges: tightened wording, fixed one mistake.`;
-  if (/Critique this|review of|Review this/i.test(prompt)) reply = '1. The intro is vague.\n2. A step is missing.\n3. Add an example.';
-  if (/single best answer|Merge/i.test(prompt)) reply = `Merged answer (Astra): the best of both.`;
+  if (/Critique this|Review it again/i.test(prompt)) reply = '1. The intro is vague.\n2. A step is missing.\n3. Add an example.';
+  if (/single best|Merge/i.test(prompt)) reply = `Merged answer (Astra): the best of both.`;
+  if (/Revise your answer/i.test(prompt)) reply = 'Revised answer by Astra, with the missing step.';
   if (/REMEMBER/.test(prompt)) reply += '\n<remember>The user likes fake tea</remember>';
   if (/SUGGEST/.test(prompt)) reply += '\n<suggest>Make it shorter</suggest><suggest>Add an example</suggest>';
   const noId = /NOID/.test(prompt);
