@@ -97,6 +97,7 @@ const MemoryEditor = (() => {
     const live = new Set(all.map((f) => f.key));
     for (const k of Object.keys(meta.facts)) if (!live.has(k)) delete meta.facts[k];
     await Promise.all([window.hub.saveMemory(memory), saveMeta()]);
+    paintButton();
   }
   const setMeta = (f, patch) => { meta.facts[f.key] = { ...meta.facts[f.key], ...patch }; Object.assign(f, patch); };
 
@@ -298,8 +299,14 @@ const MemoryEditor = (() => {
     return dlg;
   }
 
+  // The 🧠 button's tooltip shows what memory costs per message.
+  async function paintButton() {
+    const rows = await cost().catch(() => []);
+    const max = Math.max(0, ...rows.map((r) => r.perMsg));
+    $('memory-btn').title = `Memory: what your agents remember about you${max ? ` · ≈${max} tokens added to each message` : ''} (/memory)`;
+  }
   // Expired facts are dropped a few seconds after start-up.
-  setTimeout(() => purgeExpired().catch(() => {}), 4000);
+  setTimeout(() => purgeExpired().catch(() => {}).then(paintButton), 4000);
 
   return { open, openText, facts, remember, forget, setPinned, setExpiry, cost, costText, purgeExpired, exportAll, importFile, guessCat, CATS };
 })();

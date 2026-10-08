@@ -380,3 +380,12 @@
 - ✓ Live meter strip at the bottom (or a pill in the rail): tokens ticking while replies stream, then snapped to the real count; this chat, today, Claude vs Astra, cache hits, context fill (click → compact), replies, average per reply, today's feature clicks.
 - ✓ Dashboard (Ctrl+Shift+U, `/usage`): day / week / month / all charts, per agent / model / tool, most expensive chats, features used / hot / cold / never used with Hide, budgets & alerts (opt-in), CSV / JSON export. Data in `data/kv/token-stats.json`, built from your chats on first run.
 - ✓ Token line under every reply with cache % and speed, token totals per chat in the panel, 55 `/` commands (`/help meter`).
+
+## Add-ons & presets (addons stream, 391 upgrades: docs/upgrades/addons.md)
+- ✓ Prompt library with 169 presets in 11 categories (159 new), search, favorites, most used, blanks with defaults and dropdowns (`{{tone|warm,dry}}`), import / export; presets merge without touching your prompts. `/prompts`, `/prompt-new`, `/prompt-save-last`.
+- ✓ 42 short personas + 16 more website presets in a searchable picker (add-agent → Browse…, `/agent-new <preset>`).
+- ✓ Notes: search, #tags, pins, clickable checklists, [[links]], 11 templates, daily note, links to chats / sketches, Inbox capture (`/note`, `/todo`, `/daily-note`).
+- ✓ Memory: facts with categories, pins, expiry, search, import / export and its token cost per message (`/memory`, `/remember`, `/forget`, `/memory-cost`).
+- ✓ Kit window (`/kit`): palettes from pictures / clipboard / the Lab frame → Lab palettes, harmonies, contrast checker, gradients (CSS / GLSL / three), 27 more easings + GSAP / GLSL output, BPM ↔ ms with tap tempo, social frame sizes with safe zones, timecode calculator.
+- ✓ Forge Debug: ⋯ quick actions, stat watch overlay, snapshots / restore, patch sets, 26 `/forge-*` commands (tested against a fake build, dev/fake-forgeheart.html).
+- ✓ One-click and automatic backups with a merging restore, searchable trash and downloads, import that checks first (claude.ai / ChatGPT export variants, dedupe report, progress). `/backup`, `/restore`, `/trash`, `/downloads`, `/import`.
