@@ -517,6 +517,9 @@ const Prompts = (() => {
       if (!list.length) return;
       // arrows only move the highlight (rebuilding the whole menu per key made holding ↓ sluggish)
       const move = (d) => { e.preventDefault(); e.stopImmediatePropagation(); navigated = true; sel = (sel + d + list.length) % list.length; const rows = menu.querySelectorAll('.slash-item'); rows.forEach((r, i) => r.classList.toggle('sel', i === sel)); rows[sel]?.scrollIntoView({ block: 'nearest' }); };
+      // a command typed in full (its name or an alias, e.g. /save) runs on Enter unless you picked another row with ↑↓
+      const typedCmd = !navigated && textarea.value.trim().match(/^\/([\w-]+)$/);
+      if (e.key === 'Enter' && !e.shiftKey && typedCmd && Commands.get(typedCmd[1])) { close(); return; }
       if (e.key === 'ArrowDown') move(1);
       else if (e.key === 'ArrowUp') move(-1);
       else if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && !(list[sel].kind === 'command' && textarea.value.trim() === `/${list[sel].def.name}`)

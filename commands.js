@@ -109,7 +109,10 @@ const Commands = (() => {
     const has = shown.filter((d) => !starts.includes(d) && (d.name.includes(q) || d.desc.toLowerCase().includes(q) || d.area.toLowerCase() === q));
     const rec = recent();
     const byRecent = (a, b) => ((rec.indexOf(a.name) + 1 || 99) - (rec.indexOf(b.name) + 1 || 99));
-    return [...starts.sort(byRecent), ...has];
+    // the command you typed exactly (name or alias) comes first, so Enter runs it (/opinion, not /opinion-chat)
+    const exact = get(q);
+    const sorted = starts.sort(byRecent);
+    return exact && !exact.hidden ? [exact, ...sorted.filter((d) => d !== exact), ...has.filter((d) => d !== exact)] : [...sorted, ...has];
   }
 
   function context(agentId, input) {
