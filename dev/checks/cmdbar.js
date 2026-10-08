@@ -162,6 +162,7 @@ try {
   ci.value = '';
   // round 2 of bar features: undo the last command (Ctrl+Z in an empty bar), pause timers, stats, where, pipes
   CmdBar.open('');
+  await type(''); // (the bar brings back unsent text)
   await CmdBar.runLine('/theme next');
   const themeAfter = document.documentElement.dataset.skin || document.documentElement.dataset.look;
   document.querySelector('.cmdbar-input').focus();

@@ -84,6 +84,7 @@ const CmdBar = (() => {
     bar.querySelector('.cmdbar-timers').hidden = !timers.length;
     bar.querySelector('.cmdbar-timers').textContent = `⏱ ${timers.length}`;
     bar.classList.toggle('rec', Boolean(rec));
+    chip.dataset.rec = rec ? `● REC ${rec.lines.length} ` : '';
   }
   function open(text = '') {
     if (!bar) build();
@@ -111,13 +112,16 @@ const CmdBar = (() => {
     // Alt+1…9: run your pinned command 1…9 (its arguments go in the bar when it needs some)
     if (e.altKey && !e.ctrlKey && /^Digit[1-9]$/.test(e.code)) {
       e.preventDefault(); e.stopPropagation();
-      const d = Commands.favs().map(Commands.get).filter(Boolean)[Number(e.code.slice(5)) - 1];
+      const d = Commands.get(Commands.favs()[Number(e.code.slice(5)) - 1]);
       if (!d) { show(`No pinned command ${e.code.slice(5)}: ☆ in the / menu (or /star) pins one.`); return; }
       if (/^</.test(String(d.args || '').trim())) { input.value = `/${d.name} `; grow(); input.dispatchEvent(new Event('input')); } else runLine(`/${d.name}`);
       return;
     }
     // Ctrl+Z in an empty bar: take back the last command when there is a known way (/undo-report)
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !input.value) { e.preventDefault(); undoLast(); return; }
+    // Ctrl+L clears the output card (a terminal habit) · Tab in an empty bar brings back your last command
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l') { e.preventDefault(); clearOut(); return; }
+    if (e.key === 'Tab' && !input.value && Commands.last()) { e.preventDefault(); input.value = Commands.last(); grow(); return; }
     const menuOpen = menuApi?.isOpen();
     // ↑ / ↓: the commands you ran (when the menu isn't open, or the box is empty)
     if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && (!menuOpen || !input.value.trim() || histAt >= 0)) {
@@ -301,6 +305,7 @@ const CmdBar = (() => {
         ]);
       };
       const undo = Commands.undoOf(d);
+      const uses = Commands.counts()[d.name] || 0;
       const where = d.variants?.filter((v) => v.whenLabel).map((v) => `${v.whenLabel}: ${v.area}`).join(' · ');
       const r = el('div', { class: 'cmd-help-row', dataset: { name: d.name }, on: { dblclick: go, contextmenu: menu } },
         el('div', { class: 'cmd-help-top' },
@@ -309,7 +314,7 @@ const CmdBar = (() => {
           el('span', { class: 'spacer' }), starBtn,
           el('button', { type: 'button', class: 'ghost small cmd-try', text: needs && !line ? '✎ fill' : '▶ try', title: needs && !line ? 'Put it in the command bar to add the arguments' : 'Run it now (in the command bar)', on: { click: (e) => { e.stopPropagation(); go(); } } })),
         el('div', { class: 'cmd-help-desc', text: `${d.desc}${d.aliases.length ? ` · also /${d.aliases.join(', /')}` : ''}` }),
-        undo || where ? el('div', { class: 'cmd-help-meta' }, where ? el('span', { text: `⇄ ${where}`, title: 'The same name does something else there' }) : null, undo ? el('span', { text: `↶ ${undo}`, title: 'How to take it back' }) : null) : null,
+        undo || where || uses ? el('div', { class: 'cmd-help-meta' }, uses ? el('span', { text: `✓ used ${uses}×`, title: 'How often you ran it' }) : null, where ? el('span', { text: `⇄ ${where}`, title: 'The same name does something else there' }) : null, undo ? el('span', { text: `↶ ${undo}`, title: 'How to take it back' }) : null) : null,
         exs.length ? el('div', { class: 'cmd-help-ex' }, exs.map((x) => el('button', { type: 'button', class: 'ex-chip', text: x, title: 'Run this example', on: { click: (e) => { e.stopPropagation(); tryLine(x); } } }))) : null);
       return r;
     };
@@ -361,7 +366,13 @@ const CmdBar = (() => {
     });
     const tips = el('div', { class: 'cmd-help-tips' },
       el('span', { html: `<kbd>${KEY}</kbd> command bar anywhere` }), el('span', { html: '<kbd>↑</kbd> history · <code>!!</code> again' }),
-      el('span', { html: '<code>| draft</code> <code>| copy</code> pipes' }), el('span', { html: '<code>/alias</code> <code>/macro</code> <code>/every</code> <code>/at</code>' }));
+      el('span', { html: '<code>| draft</code> <code>| copy</code> pipes' }), el('span', { html: '<code>/alias</code> <code>/macro</code> <code>/every</code> <code>/at</code>' }),
+      el('span', { class: 'spacer' }),
+      // the rows on screen as a Markdown list (to keep in Notes or share)
+      el('button', { type: 'button', class: 'ghost small', text: 'Copy list', title: 'Copy the commands shown as a Markdown list', on: { click: () => {
+        const md = rows.map((r) => { const d = Commands.get(r.dataset.name); return d ? `- \`${r.querySelector('.cmd-help-name').textContent}\` ${d.desc}` : ''; }).filter(Boolean).join('\n');
+        navigator.clipboard.writeText(md); toast(`Copied ${rows.length} commands`, { timeout: 1400 });
+      } } }));
     dlg.append(el('div', { class: 'cmd-help-card' },
       el('div', { class: 'cmd-help-bar' }, el('h2', { text: 'Commands' }), q, area, count,
         el('button', { type: 'button', class: 'ghost small', text: '×', title: 'Close (Esc)', on: { click: () => dlg.close() } })),

@@ -36,7 +36,8 @@
 // history() of command lines, last(), onRun(fn), place(), argHint(text), suggest(text) (plain words → command
 // lines, all local, no tokens), didYouMean(text), examplesOf(def), addInfo({ name: { examples, keywords, args,
 // undo } }), context(agentId, input, opts). tryRun(text, agentId, input, opts) takes { source, say, note, error }
-// and pipes: "/calc 2*8 | draft" (draft · copy · send · note · say · /another-command).
+// and pipes: "/calc 2*8 | draft" (draft · copy · send · note · say · file · speak · /another-command); "/a ; /b"
+// typed straight runs as a chain. Commands a command runs (/run, aliases) print where it was run (the bar card…).
 const Commands = (() => {
   const cmds = new Map(); // name -> def
   const alias = new Map(); // alias -> name

@@ -10,7 +10,7 @@
   animation: cmdbar-in .14s ease-out;
 }
 .cmdbar.rec .cmdbar-row { border-color: #ff4b4b; box-shadow: 0 0 0 3px #ff4b4b33, 0 18px 50px #000a; }
-.cmdbar.rec .cmdbar-place::before { content: '● REC '; color: #ff4b4b; font-weight: 700; }
+.cmdbar.rec .cmdbar-place::before { content: attr(data-rec); color: #ff4b4b; font-weight: 700; }
 @keyframes cmdbar-in { from { opacity: 0; transform: translateY(-6px) scale(.985); } }
 .cmdbar.bottom .cmdbar-row { animation-name: cmdbar-in-up; }
 @keyframes cmdbar-in-up { from { opacity: 0; transform: translateY(6px) scale(.985); } }
@@ -89,7 +89,7 @@ dialog.cmd-help { width: min(760px, calc(100vw - 40px)); max-width: none; paddin
 .cmd-help-row:hover .cmd-star, .cmd-help-row:hover .cmd-try, .cmd-help-row.sel .cmd-try, .cmd-star.on { opacity: 1; }
 .cmd-star.on { color: var(--accent); }
 .cmd-help-empty { padding: 24px; text-align: center; color: var(--muted); font-size: 13px; }
-.cmd-help-tips { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 7px 12px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); }
+.cmd-help-tips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; padding: 7px 12px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); }
 .cmd-help-tips kbd, .cmd-help-tips code { font: 10.5px var(--mono, ui-monospace, monospace); }
 
 /* commands inside agents' replies: `/size 9:16` you can click */
@@ -108,3 +108,5 @@ dialog.cmd-help { width: min(760px, calc(100vw - 40px)); max-width: none; paddin
 @media (prefers-reduced-motion: reduce) { .cmdbar-row { animation: none; } }
 :root[data-motion=off] .cmdbar-row { animation: none; }
 :is(.msg, .notes-panel) code.cmd-code.fill::after { content: " ✎"; }
+.cmd-help-tips .spacer { flex: 1; }
+.cmd-help-tips button { padding: 1px 8px; font-size: 11px; }

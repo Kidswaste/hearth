@@ -469,7 +469,10 @@ const Prompts = (() => {
           // headers: "Pinned", "Recent in <tool>" and "Recent" first (only with nothing typed), then the areas
           const g = q ? '' : pinned.has(def.name) ? '★ Pinned' : recentHere.has(def.name) ? `Recent in ${here.label}` : recent.has(def.name) ? 'Recent' : def.area;
           if (g && g !== group) { next.push({ kind: 'head', label: g }); group = g; }
-          next.push(cmdRow(def));
+          const row = cmdRow(def);
+          // in the command bar, Alt+1…9 run the pinned ones: show which key
+          if (bare && g === '★ Pinned') { const k = [...pinned].indexOf(def.name) + 1; if (k > 0 && k < 10) row.keys = `Alt+${k}`; }
+          next.push(row);
         }
         // nothing by that name: maybe a word for it ("/vertical" → /size 9:16)
         if (q.length > 2 && !cmds.length) { const s = lineRows(q); if (s.length) next.push({ kind: 'head', label: 'Did you mean' }, ...s); }
