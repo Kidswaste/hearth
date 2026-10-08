@@ -58,5 +58,11 @@ out.status = document.querySelector('.sg-dialog .nv-status')?.textContent;
 const px = (() => { const cv = document.querySelector('.sg-canvas'); const g = cv?.getContext('webgl2'); if (!g) return null; const a = new Uint8Array(4); g.readPixels(Math.floor(cv.width / 2), Math.floor(cv.height / 2), 1, 1, g.RGBA, g.UNSIGNED_BYTE, a); return [...a]; })();
 out.pixel = px;
 await S.run('undo');
+// every round-2 command is registered under its own area (none silently shadowed)
+const mine = { 'Shader nodes': ['shader-nodes', 'shader-nodes-new', 'shader-nodes-presets', 'shader-nodes-types', 'shader-nodes-list', 'shader-nodes-add', 'shader-nodes-link', 'shader-nodes-unlink', 'shader-nodes-set', 'shader-nodes-rm', 'shader-nodes-bypass', 'shader-nodes-layout', 'shader-nodes-undo', 'shader-nodes-apply', 'shader-nodes-to', 'shader-nodes-code'],
+  Video: ['video-nodes', 'video-flow', 'video-flow-run', 'video-flow-stop', 'video-flow-continue', 'video-flow-presets', 'video-flow-list', 'video-flow-types', 'video-flow-add', 'video-flow-link', 'video-flow-set', 'video-flow-rm', 'video-flow-skip', 'video-flow-commands', 'video-flow-save', 'video-flow-load', 'video-flow-saved'],
+  Messages: ['code-nodes', 'code-nodes-paste', 'code-nodes-file', 'code-outline'] };
+out.missingCommands = Object.entries(mine).flatMap(([a, list]) => list.filter((n) => Commands.get(n)?.area !== a));
+out.commandCount = Commands.list().length;
 await wait(400);
 return JSON.stringify(out, null, 1);

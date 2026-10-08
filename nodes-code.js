@@ -638,7 +638,8 @@ const CodeFlow = (() => {
     for (let i = 1; i < steps.length; i += 1) g.links.push({ from: [steps[i - 1].id, 'next'], to: [steps[i].id, 'prev'] });
     for (const u of units) for (const c of u.calls) if (byId.has(c) && byId.get(c).kind !== 'import' && byId.get(c).kind !== 'type') g.links.push({ from: [u.id, 'calls'], to: [c, 'callers'] });
     // ---- layout ----
-    const H = (u) => 30 + 46 + Math.min(10, preview(u.kind === 'step' ? u.text : `${u.sig}\n${u.text}`, u.kind === 'step' ? 9 : 7).split('\n').length) * 14;
+    // head + port rows + the code excerpt (capped like the widget's max height)
+    const H = (u) => 40 + (u.kind === 'step' ? 3 : u.kind === 'import' || u.kind === 'type' ? 0 : 2) * 22 + Math.min(140, g.nodes.find((n) => n.id === u.id)?.values.code.split('\n').length * 14 || 28);
     const depth = new Map();
     const queue = [];
     for (const s of steps) { depth.set(s.id, 0); queue.push(s.id); }

@@ -4,16 +4,22 @@
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const agent = H.claudeAgent().id;
 const out = {};
-await Commands.tryRun('/nodes-new beat-particles', agent);
+await ThreeLab.cmd({ show: true });
 await wait(2500);
+await Commands.tryRun('/nodes-new beat-particles', agent);
+await wait(3000);
 const L = ThreeNodes.lab;
+L.setMode('nodes');
+await wait(1500);
 out.labNodes = L?.view.getGraph().nodes.length;
 const g = L.view.getGraph();
 const pump = g.nodes.find((n) => n.type === 'peak')?.id;
 L.view.bypass([pump], true);
-await wait(1500);
+await wait(2500);
 const r = ThreeNodes.compile(L.view.getGraph());
-out.bypassCompiles = !r.errors.length && /bypass/.test(JSON.stringify(NodeView.compact(L.view.getGraph(), ThreeNodes.registry)));
+out.bypassedCodeHasNoPump = !new RegExp(`// .*\\(${pump}\\)`).test(r.code);
+out.errorsAfterBypass = (await ThreeLab.director.addLayer({ name: 'probe', code: '// nothing' }, 1)).errors;
+out.bypassCompiles = !r.errors.length && /"bypass":true/.test(L.hook.editor.value) && !ThreeNodes.fromCode(L.hook.editor.value)?.edited;
 out.labState = L.state;
 // shader graph → a Lab layer and a filter layer
 await Commands.tryRun('/shader-nodes-new plasma', agent);
