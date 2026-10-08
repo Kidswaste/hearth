@@ -91,6 +91,24 @@ out.shotSmall = await shotInfo({ size: 'small' });
 out.shotRegion = await shotInfo({ size: 'small', region: [0.25, 0.25, 0.5, 0.5] });
 out.shotCompare = await shotInfo({ size: 'small', compare: true });
 out.shotFrames = await shotInfo({ size: 'medium', frames: 4, gap: 0.2 });
+// within one reply: unchanged reads / pictures aren't sent twice; a new message resets it
+ThreeDirector.newTurn();
+await call('three_read_code', { layer: 1, from: 1, to: 5 });
+out.readAgain = (await call('three_read_code', { layer: 1, from: 1, to: 5 })).value;
+await call('three_do', { cmd: 'set_frame', size: 'fit' });
+await call('three_eval', { code: 'for (const k in __scenes) __scenes[k].renderer.setAnimationLoop(null); 1' }); // a still picture
+await wait(300);
+await call('three_screenshot', { size: 'small' });
+out.shotAgain = (await call('three_screenshot', { size: 'small' })).value;
+out.shotForced = (await call('three_screenshot', { size: 'small', force: true })).images?.length;
+await call('three_do', { cmd: 'set_frame', size: 'fit' });
+out.saved = ThreeDirector.saved();
+// eval samples, errors with their code line
+out.samples = (await call('three_eval', { code: 'Math.round(performance.now()) % 1000', samples: 4, every: 50 })).value;
+const broken = await call('three_edit_code', { layer: 1, edits: [{ find: 'mesh.name = \'knot\';', replace: 'mesh.name = \'knot\';\nundefinedThing.go();' }], wait: 1.5 });
+out.errorLines = broken.value?.errorLines || broken.value?.errors || broken.error;
+await ThreeDirector.undo({ force: true });
+out.screenshotAtBad = (await call('three_screenshot', { at: 'drop' })).error;
 // multi-command routing + usage names
 out.doTimeline = (await call('three_do', { cmd: 'timeline' })).ok === false ? 'no song (expected)' : 'ok';
 out.doFrame = (await call('three_do', { cmd: 'set_frame', size: '9:16' })).value?.frame;

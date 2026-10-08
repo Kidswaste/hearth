@@ -44,7 +44,7 @@ const F = require('./fake-common');
       const key = JSON.stringify(spec);
       clients[key] ||= await F.mcpClient(spec);
       const c = clients[key];
-      if (!lines.some((l) => l.startsWith(`server ${spec.args?.[0]}`))) lines.push(`server ${spec.args?.[0]?.split(/[\\/]/).pop()}: ${c.tools.length} tools, list ${JSON.stringify(c.tools).length} chars, instructions ${c.instructions.length} chars`);
+      if (!c.reported && (c.reported = true)) lines.push(`server ${spec.args?.[0]?.split(/[\\/]/).pop()}: ${c.tools.length} tools, list ${JSON.stringify(c.tools).length} chars, instructions ${c.instructions.length} chars`);
       const server = Object.keys(servers).find((k) => JSON.stringify(servers[k]) === key);
       const id = `toolu_${F.uuid().slice(0, 8)}`;
       F.out({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: `mcp__${server}__${tool}`, input: a } ] }, session_id: sessionId });

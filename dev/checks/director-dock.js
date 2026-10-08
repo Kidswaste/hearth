@@ -12,8 +12,8 @@ await until(() => H.agents().some((a) => a.dock === 'three'));
 const agent = H.agents().find((a) => a.dock === 'three');
 activate('tool:three');
 await ThreeLab.cmd();
-await until(() => document.querySelector('[data-id="tool:three"] .dd-strip'));
-const host = document.querySelector('[data-id="tool:three"]');
+await until(() => H.surfaces.get('tool:three')?.el.querySelector('.dd-strip'));
+const host = H.surfaces.get('tool:three').el;
 out.strip = Boolean(host.querySelector('.dd-strip'));
 out.chips = [...host.querySelectorAll('.dd-chip')].map((c) => c.textContent);
 // 2. a reply that really calls the three-lab MCP server
@@ -38,6 +38,7 @@ out.thumb = !host.querySelector('.dd-thumb').hidden;
 out.undoEnabled = !host.querySelector('.dd-undo').disabled;
 // 3. one click undo
 host.querySelector('.dd-undo').click();
+await until(() => ThreeDirector.canRedo(), 8000);
 await until(() => !ThreeLab.director.codeOf().code.includes('// edited by the director'), 8000);
 out.undone = !ThreeLab.director.codeOf().code.includes('// edited by the director');
 await run('/redo-edit', agent.id);
