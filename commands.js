@@ -34,11 +34,42 @@ const Commands = (() => {
   const recent = () => { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch { return []; } };
   const noteRecent = (name) => { try { localStorage.setItem(RECENT_KEY, JSON.stringify([name, ...recent().filter((n) => n !== name)].slice(0, 8))); } catch { /* not critical */ } };
 
+  const dups = []; // [{ name, was, by }] names registered twice (see register)
+  function noteDup(name, prev, def) {
+    dups.push({ name, was: `/${prev.name} (${prev.area})`, by: `/${def.name} (${def.area || 'Other'})`, at: (new Error().stack || '').split('\n').slice(3, 6).map((l) => l.trim().replace(/^at /, '').replace(/\(?file:\/\/\S*\/([^/]+:\d+):\d+\)?/, '$1')).join(' < ') });
+    console.warn(`Commands: /${name} registered again by /${def.name} (${def.area || 'Other'}), replacing /${prev.name} (${prev.area})`);
+  }
+  // Shared names: a def with `when: (ctx, args) => bool` (and `whenLabel`, e.g. 'in Video Review') shares its name
+  // with whatever else registers that name (or has it as an alias), in any load order: the variant whose `when`
+  // holds runs, otherwise the plain one. E.g. /compare is the Video A/B compare in Video Review, the token
+  // comparison anywhere else.
+  function combine(name, variants) {
+    const base = variants.find((v) => !v.when) || variants[0];
+    const pick = (ctx, args) => variants.find((v) => v.when && v !== base && v.when(ctx, String(args || ''))) || base;
+    const extra = variants.filter((v) => v !== base && v.whenLabel).map((v) => ` · ${v.whenLabel}: ${v.desc}`).join('');
+    const aliases = [...new Set(variants.filter((v) => v.name === name).flatMap((v) => v.aliases || []))];
+    return { ...base, name, aliases, variants, desc: `${base.desc}${extra}`, when: undefined,
+      run: (args, ctx) => pick(ctx, args).run(args, ctx),
+      complete: (args, ctx) => pick(ctx, args).complete?.(args, ctx) || [] };
+  }
   function register(def) {
     if (!def?.name || !NAME.test(def.name) || typeof def.run !== 'function') throw new Error(`Bad command: ${def?.name}`);
     const name = def.name.toLowerCase();
-    cmds.set(name, { area: 'Other', desc: '', args: '', aliases: [], ...def, name });
-    for (const a of def.aliases || []) alias.set(String(a).toLowerCase(), name);
+    let full = { area: 'Other', desc: '', args: '', aliases: [], ...def, name };
+    const prev = cmds.get(name) || cmds.get(alias.get(name));
+    if (prev && !def.override && (def.when || prev.when || prev.variants)) {
+      full = combine(name, [...(prev.variants || [prev]), full]);
+    } else if (!def.override) {
+      // Otherwise names are first come, first served across streams and a second register() of a name or alias
+      // replaces the first silently, so warn (dev aid; `override: true` marks a deliberate replacement).
+      if (prev) noteDup(name, prev, def);
+      for (const a of def.aliases || []) {
+        const k = String(a).toLowerCase(), owner = cmds.get(k) || cmds.get(alias.get(k));
+        if (owner && owner.name !== name) noteDup(k, owner, def);
+      }
+    }
+    cmds.set(name, full);
+    for (const a of full.aliases) alias.set(String(a).toLowerCase(), name);
     return () => unregister(name);
   }
   function unregister(name) {
@@ -177,5 +208,5 @@ const Commands = (() => {
     return out;
   }
 
-  return { register, unregister, get, list, parse, matching, tryRun, exec, paletteActions, recent, areas, run, AREA_ORDER, closest };
+  return { register, unregister, get, list, parse, duplicates: () => dups.slice(), matching, tryRun, exec, paletteActions, recent, areas, run, AREA_ORDER, closest };
 })();

@@ -3,9 +3,16 @@
 // Everything here is drivable from any native chat: type / to see them, /help <word> to filter.
 const Addons = (() => {
   const reg = (area) => (def) => {
-    // another stream may own a name (chat registers /memory, /remember…): theirs wins, ours stays reachable by alias
-    if (Commands.get(def.name)) return null;
-    return Commands.register({ area, ...def, aliases: (def.aliases || []).filter((a) => !Commands.get(a)) });
+    // another stream may own a name (chat registers /memory, /remember…, the Lab /bpm, /ease…): theirs wins, ours
+    // stays reachable under `alt` or its first free alias (e.g. /kit-bpm, /easing)
+    const free = (def.aliases || []).filter((a) => !Commands.get(a));
+    let name = def.name;
+    if (Commands.get(name)) {
+      name = [def.alt, ...free].find((n) => n && !Commands.get(n));
+      if (!name) { console.warn(`Add-ons: /${def.name} is taken and has no free alternative`); return null; }
+    }
+    const { alt, ...rest } = def;
+    return Commands.register({ area, ...rest, name, aliases: free.filter((a) => a !== name) });
   };
   const words = (args) => String(args || '').trim().split(/\s+/).filter(Boolean);
   const startsWith = (list, a) => list.filter((x) => String(x.value).toLowerCase().startsWith(String(a || '').toLowerCase()));
@@ -65,11 +72,11 @@ const Addons = (() => {
   // ---------- notes ----------
   const N = reg('Notes');
   const noteArgs = async (a) => (await Notes.search(a)).slice(0, 10).map((n) => ({ value: n.title, hint: timeAgo(n.updatedAt) }));
-  N({ name: 'note', aliases: ['n'], args: '[text]', desc: 'Quick capture into your Inbox note (no text: open Notes)',
+  N({ name: 'note', alt: 'inbox', aliases: ['n'], args: '[text]', desc: 'Quick capture into your Inbox note (no text: open Notes)',
     run: async (args) => { if (!args) { Notes.open(); return; } await Notes.capture(args); return `📝 Saved to **Inbox**: ${args}`; } });
   N({ name: 'todo', args: '<text>', desc: 'Add a checklist item to your Inbox note',
     run: async (args) => { if (!args) return 'Usage: /todo buy strings'; await Notes.capture(args, { todo: true }); return `☐ Added to **Inbox**: ${args}`; } });
-  N({ name: 'notes', args: '[search or #tag]', desc: 'Open Notes, filtered', complete: async (a) => [...(await Notes.tags()).map((t) => ({ value: `#${t}` })).filter((x) => x.value.startsWith(a)), ...await noteArgs(a)].slice(0, 12),
+  N({ name: 'notes', alt: 'notes-find', args: '[search or #tag]', desc: 'Open Notes, filtered', complete: async (a) => [...(await Notes.tags()).map((t) => ({ value: `#${t}` })).filter((x) => x.value.startsWith(a)), ...await noteArgs(a)].slice(0, 12),
     run: async (args) => { if (args) { const hit = (await Notes.search(args))[0]; if (hit) { await Notes.show(hit.id); return; } return `No note matches “${args}”.`; } Notes.open(); } });
   N({ name: 'daily-note', aliases: ['today-note', 'dn'], desc: 'Open today\'s daily note (made from the Daily template)', run: async () => { await Notes.daily(); } });
   N({ name: 'note-new', args: '[template]', desc: 'New note from a template (daily, idea, track, shots, bug, devlog, meeting…)',
@@ -198,20 +205,20 @@ const Addons = (() => {
       const angle = Number((args.match(/\b(\d{1,3})\s*(?:deg|°)/) || [])[1] || 90);
       return Kit.gradientCode(cols, { type, angle }).map(([l, v]) => `**${l}**\n${'```'}\n${v}\n${'```'}`).join('\n');
     } });
-  K({ name: 'palette', args: '[hex codes | picture path]', desc: 'Make a palette: from a picture, the clipboard, the Lab frame or hex codes',
+  K({ name: 'palette', alt: 'kit-palette', args: '[hex codes | picture path]', desc: 'Make a palette: from a picture, the clipboard, the Lab frame or hex codes',
     run: async (args) => {
       if (!args) { Kit.open('palette'); return; }
       const cols = /^[a-z]:\\|^\/|\.(png|jpe?g|webp|gif|bmp)$/i.test(args.trim()) ? await Kit.paletteFromImage(args.trim().replace(/^"|"$/g, '')) : Kit.hexList(args);
       if (!cols.length) return 'No colors found.';
       store.set('kit.palette', cols);
-      return `${cols.map((c) => `\`${c}\``).join(' ')}\n/lab-palette <name> saves it for the Three.js Lab.`;
+      return `${cols.map((c) => `\`${c}\``).join(' ')}\n/save-palette <name> saves it for the Three.js Lab.`;
     } });
-  K({ name: 'lab-palette', args: '<name> [hex codes]', desc: 'Save a palette (or the last Kit palette) to the Lab\'s 🎨 menu',
+  K({ name: 'lab-palette', alt: 'save-palette', args: '<name> [hex codes]', desc: 'Save a palette (or the last Kit palette) to the Lab\'s 🎨 menu',
     run: (args) => {
       const cols = Kit.hexList(args);
       const name = args.replace(/#?\b([0-9a-f]{6}|[0-9a-f]{3})\b/gi, '').trim() || 'Kit palette';
       const use = cols.length ? cols : Kit.lastPalette();
-      if (!use.length) return 'No palette yet: /palette or give hex codes.';
+      if (!use.length) return 'No palette yet: /kit-palette or give hex codes.';
       Kit.savePaletteToLab(name, use);
       return `🎨 Saved **${name}** (${use.join(' ')}) to the Lab palettes.`;
     } });
@@ -226,20 +233,20 @@ const Addons = (() => {
       const out = Kit.easingOutputs(pts).filter(([l]) => /^(CSS|GSAP|AE keyframe)/.test(l));
       return `**${name || 'cubic-bezier'}**\n${out.map(([l, v]) => `- ${l}: \`${v}\``).join('\n')}\n(/kit easing shows the JS, GLSL and AE expression versions)`;
     } });
-  K({ name: 'bpm', args: '<bpm> | <ms>ms', desc: 'Note lengths at a tempo (ms, frames, Hz), or the BPM of a duration',
+  K({ name: 'bpm', alt: 'kit-bpm', args: '<bpm> | <ms>ms', desc: 'Note lengths at a tempo (ms, frames, Hz), or the BPM of a duration',
     run: (args) => {
       if (!args) { Kit.open('bpm'); return; }
       const ms = args.match(/^(\d+(?:\.\d+)?)\s*ms$/i);
       if (ms) return `${ms[1]} ms per beat = **${Kit.bpmFromMs(Number(ms[1])).toFixed(2)} BPM** (per bar: ${Kit.bpmFromMs(Number(ms[1]), 4).toFixed(2)} BPM)`;
       const b = Number(args);
-      return b > 0 && b < 1000 ? Kit.bpmText(b) : 'Usage: /bpm 128 or /bpm 469ms';
+      return b > 0 && b < 1000 ? Kit.bpmText(b) : 'Usage: /kit-bpm 128 or /kit-bpm 469ms';
     } });
   K({ name: 'frame', aliases: ['aspect'], args: '<WxH | 16:9 1280 | format>', desc: 'Frame size: ratio, safe zones for Shorts / TikTok / Reels…, three.js code',
     complete: (a) => startsWith(Kit.FORMATS.map((f) => ({ value: f.id, hint: `${f.label} ${f.w}×${f.h}` })), a),
     run: (args) => {
       if (!args) { Kit.open('frame'); return; }
       const r = Kit.parseFrame(args);
-      return r ? Kit.frameText(r.w, r.h) : 'Try /frame 1080x1920, /frame 16:9 1280, /frame 9:16 h1920 or /frame tiktok';
+      return r ? Kit.frameText(r.w, r.h) : 'Try /aspect 1080x1920, /aspect 16:9 1280, /aspect 9:16 h1920 or /aspect tiktok';
     } });
   K({ name: 'tc', aliases: ['timecode'], args: '<time math> [@fps] [@bpm]', desc: 'Timecode calculator: 00:01:00:00 + 12f - 2s, 8 bars @128bpm, 900f @24',
     run: (args) => {
@@ -358,7 +365,7 @@ const Addons = (() => {
       return r ? `💾 Backup saved: \`${r.path}\` (${fmtBytes(r.size)})` : undefined;
     } });
   D({ name: 'backups', desc: 'Your backups: list, restore, folder, automatic backups', run: () => { AppUI.backupsDialog(); } });
-  D({ name: 'restore', args: '[backup zip path]', desc: 'Restore from a backup (adds what\'s missing, never deletes)', run: async (args) => { await AppUI.restoreBackup(args || undefined); } });
+  D({ name: 'restore', alt: 'restore-backup', args: '[backup zip path]', desc: 'Restore from a backup (adds what\'s missing, never deletes)', run: async (args) => { await AppUI.restoreBackup(args || undefined); } });
   D({ name: 'trash', aliases: ['deleted'], args: '[search | restore <title>]', desc: 'Recently deleted chats (restore, peek, delete for good)',
     run: async (args) => {
       const m = args.match(/^restore\s+(.+)/i);
@@ -372,7 +379,7 @@ const Addons = (() => {
       return `Restored **${c.title}**.`;
     } });
   D({ name: 'downloads', args: '[search]', desc: 'Files downloaded from website agents', run: (args) => { AppUI.downloadsDialog({ query: args }); } });
-  D({ name: 'import', args: '[path to export .zip/.json]', desc: 'Import past chats from claude.ai / ChatGPT (checks first, then imports)', run: async (args) => { await importChats(args || undefined); } });
+  D({ name: 'import', alt: 'import-chats', args: '[path to export .zip/.json]', desc: 'Import past chats from claude.ai / ChatGPT (checks first, then imports)', run: async (args) => { await importChats(args || undefined); } });
 
   // ---------- import flow: check the file, show what will happen, then import with progress ----------
   function importReport(r) {

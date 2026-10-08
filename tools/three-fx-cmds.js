@@ -13,7 +13,7 @@
     const text = args.replace(alt, ' ').trim();
     if (!text) { ThreeFX.openPicker(kind); return ''; }
     const it = ThreeFX.find(kind, text);
-    if (!it) return `Nothing called “${text}”. Try \`/fx-list ${kind}\` or just \`/${kind === 'filter' ? 'fx' : kind}\` to browse.`;
+    if (!it) return `Nothing called “${text}”. Try \`/fx-list ${kind}\` or \`/fx-picker ${kind}\` to browse.`;
     return ThreeFX.apply(it, { alt: altOn });
   };
   const DEFS = [
@@ -46,9 +46,11 @@
   function registerAll() {
     if (typeof Commands === 'undefined') return;
     for (const d of DEFS) {
-      if (Commands.get(d.name)) continue;
       const aliases = (d.aliases || []).filter((a) => !Commands.get(a));
-      Commands.register({ ...d, aliases, area: AREA });
+      // a name another stream owns (/template, /palette) stays reachable as its first free alias or /fx-<name>
+      const name = Commands.get(d.name) ? [...aliases, `fx-${d.name}`].find((n) => !Commands.get(n)) : d.name;
+      if (!name) continue;
+      Commands.register({ ...d, name, aliases: aliases.filter((a) => a !== name), area: AREA });
     }
   }
   setTimeout(registerAll, 0);

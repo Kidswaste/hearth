@@ -42,23 +42,14 @@ const VideoCmds = (() => {
   const CATS = V.CATEGORIES.map((c) => ({ value: `#${c.id}`, hint: c.name }));
   const fmtNote = (n, i) => `${i + 1}. \`${tcOf(n.t)}\` ${n.done ? '~~' : ''}**${V.category(n.cat).name}**: ${n.text}${n.done ? '~~' : ''}`;
 
-  // Registered once every script has loaded, so generic names (/play, /note, /export…) that another tool also
-  // registers are shared instead of overwritten: in Video Review (or its docked director chat) they drive the
-  // video, anywhere else they run the other tool's command.
+  // Registered once every script has loaded. Generic names (/play, /note, /export, /compare, /goto…) that another
+  // tool also registers are shared instead of overwritten (Commands `when`, in any load order: the meter registers
+  // later): in Video Review (or its docked director chat) they drive the video, anywhere else the other command.
   const defs = [];
   const cmd = (def) => defs.push(def);
   const inVideo = (ctx) => H.activeId === 'tool:ae' || H.agent(ctx?.agentId)?.dock === 'ae';
   function registerAll() {
-    for (const def of defs) {
-      const prev = Commands.get(def.name);
-      if (prev && prev.name === def.name && prev.area !== AREA) {
-        Commands.register({ ...prev, aliases: prev.aliases, desc: `${prev.desc} · in Video Review: ${def.desc}`,
-          run: (args, ctx) => (inVideo(ctx) ? def.run(args, ctx) : prev.run(args, ctx)),
-          complete: (args, ctx) => (inVideo(ctx) ? def.complete?.(args, ctx) : prev.complete?.(args, ctx)) || [] });
-        continue;
-      }
-      Commands.register({ area: AREA, ...def, aliases: (def.aliases || []).filter((a) => !Commands.get(a)) });
-    }
+    for (const def of defs) Commands.register({ area: AREA, ...def, when: inVideo, whenLabel: 'in Video Review', aliases: (def.aliases || []).filter((a) => !Commands.get(a)) });
   }
   async function projectDirs() {
     if (H.settings().aeProjectDirs?.length) return H.settings().aeProjectDirs;
