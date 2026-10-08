@@ -169,12 +169,14 @@ ipcMain.handle('kv:set', (_e, name, value) => store.setKV(name, value));
 
 // The renderer names the agent; engine, model and prompt are always read from config.json here.
 // A one-off question to an agent (second opinions): returns { ok, text } or { ok: false, error }.
-ipcMain.handle('engine:once', (_e, { agentId, text, images }) => {
+ipcMain.handle('engine:once', (_e, { agentId, text, images, options }) => {
   engines.setEnginePaths(settings().enginePaths);
   const agent = readConfig().agents.find((a) => a.id === agentId);
   if (!agent || agent.mode !== 'native') return { ok: false, error: `No chat agent ${agentId}` };
-  return engines.once({ agent, text, images: (images || []).filter((p) => typeof p === 'string') });
+  return engines.once({ agent, text, images: (images || []).filter((p) => typeof p === 'string'), options: options || {} });
 });
+// Astra's /astra-doctor: engine paths, versions, sign-in state.
+ipcMain.handle('engine:doctor', () => { engines.setEnginePaths(settings().enginePaths); return engines.doctor(readConfig().agents); });
 ipcMain.handle('engine:send', (_e, { agentId, chatId, session, text, options }) => {
   engines.setEnginePaths(settings().enginePaths);
   const agent = readConfig().agents.find((a) => a.id === agentId);

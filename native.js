@@ -362,7 +362,7 @@ const Native = (() => {
       try { v.attachments.push({ kind: 'text', name, content: await window.hub.fs.read(path, { maxBytes: TEXT_ATTACH_LIMIT }) }); } catch (err) { toast(err.message, { type: 'error' }); }
     } else {
       const agent = H.agent(agentId);
-      if (agent.engine === 'claude' && agent.workspace) v.attachments.push({ kind: 'file', name, path });
+      if (agent.workspace) v.attachments.push({ kind: 'file', name, path }); // Claude reads it with Read, Astra with a sandboxed command
       else { toast(`${name} isn't a text file. Give this agent File access to let it open other file types.`, { type: 'error' }); return; }
     }
     renderChips(agentId);
@@ -500,10 +500,12 @@ const Native = (() => {
   }
 
   function messageEl(m, agent, index, isLast) {
+    // Claude × Astra collaborations (duo, relay, debate…) draw their own card (astra.js)
+    if (m.role === 'collab' && typeof Astra !== 'undefined') return Astra.collabEl(m, agent, index, isLast);
     const node = el('div', { class: `msg ${m.role}`, dataset: { raw: m.text, index }, title: m.at ? fmtDate(m.at) : '' });
     const body = el('div', { class: 'body' });
     if (m.role === 'assistant' || m.role === 'opinion') { body.innerHTML = renderMarkdown(m.text); decorateCode(body); } else body.textContent = m.text;
-    if (m.role === 'opinion') node.append(el('div', { class: 'opinion-head', text: `🔎 Second opinion from ${m.from}` }));
+    if (m.role === 'opinion') node.append(el('div', { class: 'opinion-head', text: `🔎 Second opinion from ${m.from}${m.cost ? ` · ${fmt(m.cost.input)} in · ${fmt(m.cost.output)} out` : ''}` }));
     if (m.thinking) node.append(thinkingEl(m.thinking, false, m.thinkMs));
     for (const qa of m.qa || []) node.append(el('div', { class: 'qa-done' }, el('span', { class: 'qa-q', text: `❓ ${qa.q}` }), el('span', { class: 'qa-a', text: `→ ${qa.a}` })));
     for (const op of m.opinions || []) node.append(opinionCard(op));
@@ -640,7 +642,8 @@ const Native = (() => {
         ? `Runs on your ${ENGINE_LABEL[agent.engine] || agent.engine} account${agent.model ? ` · ${agent.model}` : ''}. Type / for saved prompts, drop files or paste screenshots to attach them.`
         : `Couldn't find the ${agent.engine === 'claude' ? 'Claude' : 'Codex'} desktop app on this PC, so native chat can't run.` }),
       // a few commands to start from (they run here; nothing is sent)
-      el('div', { class: 'suggest-chips empty-cmds' }, ['/template', '/recent', '/bookmarks', '/help'].map((c) => el('button', { class: 'suggest-chip cmd', text: c, dataset: { suggest: c }, title: Commands.get(c.slice(1))?.desc || '' }))));
+      el('div', { class: 'suggest-chips empty-cmds' }, ['/template', '/recent', '/bookmarks', '/help'].map((c) => el('button', { class: 'suggest-chip cmd', text: c, dataset: { suggest: c }, title: Commands.get(c.slice(1))?.desc || '' }))),
+      typeof Astra !== 'undefined' ? Astra.emptyHints(agent) : null);
   }
 
   function fillModelSelect(v, agent, chat) {
@@ -934,7 +937,7 @@ const Native = (() => {
     let full = text;
     for (const a of atts.filter((x) => x.kind === 'text')) full += `\n\n<file name="${a.name}">\n${a.content}\n</file>`;
     const files = atts.filter((x) => x.kind === 'file');
-    if (files.length) full += `\n\n[Attached files, open them with your Read tool]\n${files.map((f) => f.path).join('\n')}`;
+    if (files.length) full += `\n\n[Attached files, open them with your ${H.agent(agentId)?.engine === 'codex' ? 'read-only commands' : 'Read tool'}]\n${files.map((f) => f.path).join('\n')}`;
     const images = atts.filter((x) => x.kind === 'image').map((x) => x.path);
     return { full, images, meta: atts.map((a) => ({ kind: a.kind, name: a.name })) };
   }
@@ -970,11 +973,14 @@ const Native = (() => {
     let style = '';
     if (!compact && v?.styleNext) { style = v.styleNext; chat.style = v.styleClear ? undefined : v.styleNext; v.styleNext = ''; v.styleClear = false; renderStyle(agentId); remember(chat); }
     else if (!compact && chat.style && !chat.session?.id) style = chat.style;
-    const body = withContext(chat, last.sent || full || last.text);
+    // astra.js adds the chat's effort / persona / web search, a collaboration's outcome, and a fallback
+    // (the conversation as context) in case the engine lost the session
+    const raw = last.sent || full || last.text;
+    const extra = typeof Astra !== 'undefined' ? Astra.beforeSend(chat, raw, withContext) : { text: withContext(chat, raw), options: {} };
     window.hub.send({
       agentId, chatId: chat.id, session: chat.session,
-      text: style ? `[${style}]\n\n${body}` : body,
-      options: { model: chat.model || undefined, images: last.images || images },
+      text: style ? `[${style}]\n\n${extra.text}` : extra.text,
+      options: { model: chat.model || undefined, images: last.images || images, ...extra.options },
     }).catch((err) => onEvent({ chatId: chat.id, type: 'error', message: err.message }));
   }
 
@@ -986,6 +992,14 @@ const Native = (() => {
       if (!p.thinkStart) p.thinkStart = Date.now();
       p.thinking += event.text;
       p.thinkEnd = Date.now();
+      schedulePaint(event.chatId);
+      return;
+    }
+    if (event.type === 'progress') { // the engine's own plan (Codex todo list) as the live checklist
+      p.progress = event.steps || [];
+      const card = progressCard(p.progress);
+      const old = p.cards.find((c) => c.classList.contains('progress-card'));
+      if (old) { p.cards[p.cards.indexOf(old)] = card; old.replaceWith(card); } else p.cards.unshift(card);
       schedulePaint(event.chatId);
       return;
     }
@@ -1033,6 +1047,8 @@ const Native = (() => {
       if (p.text || extras.thinking) chat.messages.push({ role: 'assistant', text: visibleText(p.text), at, stopped: true, ...extras });
       if (event.session?.id) chat.session = event.session;
     } else {
+      // what it wrote before failing stays (marked stopped), then the error
+      if (visibleText(p.text)) chat.messages.push({ role: 'assistant', text: visibleText(p.text), at, stopped: true, ...extras });
       chat.messages.push({ role: 'error', text: event.message, needsLogin: event.needsLogin, at });
       replyText = `Error: ${event.message}`;
     }
@@ -1158,6 +1174,12 @@ const Native = (() => {
   // ---------- talking back: questions and second opinions (mcp/chat-mcp.js → HubBridge) ----------
   const astraAgent = () => H.agents().find((a) => a.mode === 'native' && a.engine === 'codex' && /astra/i.test(a.name))
     || H.agents().find((a) => a.mode === 'native' && a.engine === 'codex');
+  // Second opinions go both ways: Claude-engine agents ask Astra, Astra (Codex) agents ask Claude.
+  const partnerOf = (agent) => {
+    if (!agent) return null;
+    const other = agent.engine === 'codex' ? H.agents().find((a) => a.mode === 'native' && a.engine === 'claude' && !a.dock) || H.agents().find((a) => a.mode === 'native' && a.engine === 'claude') : astraAgent();
+    return other && other.id !== agent.id ? other : null;
+  };
   const pendingFor = (agentId) => [...pending.keys()].find((id) => chats.get(id)?.agentId === agentId);
   async function headsUp(agentId, chatId, text) {
     const agent = H.agent(agentId);
@@ -1225,14 +1247,16 @@ const Native = (() => {
       return await window.hub.captureWindow();
     } catch { return null; }
   }
-  async function askAstra(agentId, question, { screenshot = false } = {}) {
+  async function askAstra(agentId, question, { screenshot = false, to = null } = {}) {
     const agent = H.agent(agentId);
-    const astra = astraAgent();
-    if (!astra) return { ok: false, error: 'No Astra (ChatGPT / Codex) agent is set up in the hub.' };
+    const astra = (to && H.agent(to)) || partnerOf(agent);
+    if (!astra) return { ok: false, error: agent?.engine === 'codex' ? 'No Claude chat agent is set up in the hub.' : 'No Astra (ChatGPT / Codex) agent is set up in the hub.' };
     const img = screenshot ? await screenshotFor(agent) : null;
     const text = `${question}\n\n[You are giving a second opinion to ${agent?.name || 'another AI'}, which is working on this for the user.${img ? ' The attached image is what the user sees right now.' : ''} Be concise and concrete: what works, what doesn't, and the 3 changes that would help most.]`;
-    const r = await window.hub.askOnce({ agentId: astra.id, text, images: img ? [img] : [] });
-    return r.ok ? { ok: true, from: astra.name, text: r.text } : r;
+    // lean: the judge needs no tools of its own, so the opinion costs about one plain chat turn
+    const r = await window.hub.askOnce({ agentId: astra.id, text, images: img ? [img] : [], options: { lean: true } });
+    if (r.ok && r.usage) document.dispatchEvent(new CustomEvent('hearth:usage', { detail: { agentId: astra.id, usage: r.usage, source: 'second opinion' } }));
+    return r.ok ? { ok: true, from: astra.name, text: r.text, usage: r.usage } : r;
   }
   HubBridge.register(['chat_'], async (tool, args) => {
     const agentId = args.agentId;
@@ -1276,20 +1300,21 @@ const Native = (() => {
     return { ok: false, error: `Unknown tool ${tool}` };
   });
   // The 👁 button: Astra judges the last reply (with a screenshot for docked tools); its answer joins the chat.
-  async function secondOpinion(agentId) {
+  async function secondOpinion(agentId, to = null, { screenshot = null } = {}) {
     const chat = chats.get(H.activeChat[agentId]);
     const agent = H.agent(agentId);
     if (!chat || pending.has(chat.id)) return;
+    const judge = (to && H.agent(to)) || partnerOf(agent);
     const lastUser = [...chat.messages].reverse().find((m) => m.role === 'user')?.text || '';
     const replyMsg = [...chat.messages].reverse().find((m) => m.role === 'assistant');
     const asked = replyMsg?.qa?.length ? `\n(While working it asked the user: ${replyMsg.qa.map((x) => `"${x.q}" → ${x.a}`).join('; ')})` : '';
     const offered = replyMsg?.suggest?.length ? `\n(It offered these next steps as buttons: ${replyMsg.suggest.join(' | ')})` : '';
     const lastReply = `${replyMsg?.text || ''}${asked}${offered}`;
-    const t = toast(`Asking ${astraAgent()?.name || 'Astra'} for a second opinion…`, { timeout: 60000 });
-    const r = await askAstra(agentId, `The user asked ${agent.name}: "${lastUser.slice(0, 2000)}"\n\n${agent.name} answered: "${lastReply.slice(0, 4000)}"\n\nGive your second opinion on the result.`, { screenshot: Boolean(agent.dock) });
+    const t = toast(`Asking ${judge?.name || 'Astra'} for a second opinion…`, { timeout: 60000 });
+    const r = await askAstra(agentId, `The user asked ${agent.name}: "${lastUser.slice(0, 2000)}"\n\n${agent.name} answered: "${lastReply.slice(0, 4000)}"\n\nGive your second opinion on the result.`, { screenshot: screenshot ?? Boolean(agent.dock), to: judge?.id });
     t?.remove();
     if (!r.ok) { toast(r.error || 'No answer', { type: 'error' }); return; }
-    chat.messages.push({ role: 'opinion', from: r.from, text: r.text, at: Date.now() });
+    chat.messages.push({ role: 'opinion', from: r.from, text: r.text, at: Date.now(), ...(r.usage ? { cost: r.usage } : {}) }); // not "usage": that one drives the context meter
     remember(chat);
     if (H.activeChat[agentId] === chat.id) render(agentId);
   }
@@ -1564,6 +1589,26 @@ const Native = (() => {
     v.notes = (v.notes || []).filter((n) => n.chatId !== (H.activeChat[agentId] || null));
   }
 
+  // ---------- for astra.js (collaborations, handoff, per-chat engine options) ----------
+  const chatOf = (agentId) => chats.get(H.activeChat[agentId]) || null;
+  // The chat on screen for this agent, created (like a first message would) when there is none yet.
+  function ensureChat(agentId, title) {
+    let chat = chatOf(agentId);
+    if (chat) return chat;
+    const now = Date.now();
+    const v = views.get(agentId);
+    chat = { id: `${agentId}-${now.toString(36)}`, agentId, title: titleFrom(title || 'New chat'), createdAt: now, updatedAt: now, session: {}, messages: [], model: v?.pendingModel || undefined };
+    if (v) v.pendingModel = undefined;
+    chats.set(chat.id, chat);
+    H.activeChat[agentId] = chat.id;
+    return chat;
+  }
+  function adopt(chat, { show = true } = {}) {
+    chats.set(chat.id, chat);
+    remember(chat);
+    if (show) open(chat.agentId, chat.id);
+  }
+
   window.hub.onEngineEvent(onEvent);
 
   // The chat as data, for chat-*.js and chat commands.
@@ -1584,6 +1629,11 @@ const Native = (() => {
   }
 
   return {
+    chatOf, ensureChat, adopt, save: remember, loadChat, partnerOf, rememberFacts, forgetFacts,
+    takeAttachments: (agentId) => packAttachments(agentId, ''),
+    secondOpinion,
+    isAgentBusy: (agentId) => Boolean(pendingFor(agentId)),
+    hasView: (agentId) => views.has(agentId),
     mount, refresh: render, focus, send, open, newChat, rename, remove, togglePin, setDraft, continueWith, copyLastReply, foldAll,
     attachPaths: async (agentId, paths) => { for (const p of paths) await addPath(agentId, p); },
     isBusy: (chatId) => pending.has(chatId),

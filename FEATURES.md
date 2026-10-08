@@ -424,3 +424,7 @@ One searchable **FX picker** in the Three.js Lab (**X**, the Layers **＋ Layer*
 - ✓ Kit window (`/kit`): palettes from pictures / clipboard / the Lab frame → Lab palettes, harmonies, contrast checker, gradients (CSS / GLSL / three), 27 more easings + GSAP / GLSL output, BPM ↔ ms with tap tempo, social frame sizes with safe zones, timecode calculator.
 - ✓ Forge Debug: ⋯ quick actions, stat watch overlay, snapshots / restore, patch sets, 27 `/forge-*` commands (tested against a fake build, dev/fake-forgeheart.html).
 - ✓ One-click and automatic backups with a merging restore, searchable trash and downloads, import that checks first (claude.ai / ChatGPT export variants, dedupe report, progress). `/backup`, `/restore`, `/trash`, `/downloads`, `/import`.
+## Astra × Claude (astra stream)
+- Astra (Codex / ChatGPT) is a full chat agent: per-chat model, effort (minimal…xhigh), web search, answer length, personas (14 presets + your own), opt-in sandboxed file access, opt-in talk-back tools, `/astra-doctor` diagnostics. Commands: `/help astra`.
+- Claude and Astra work together from one chat: the ⚇ chip in the composer or `/duo`, `/relay a→b N`, `/critique`, `/debate N`, `/council seats`, `/compare seats`, `/handoff`, `/opinion` (both ways), 17 ready-made `/collab-preset`s. Results land in one compact card with per-participant token totals. Commands: `/help collab`.
+- Directors (Three / Video) can run on either engine: `/director-engine three astra`. Full list: docs/upgrades/astra.md.

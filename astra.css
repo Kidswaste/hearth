@@ -1,0 +1,135 @@
+/* Astra (Codex) identity and the Claude × Astra collaboration cards. Colors are variables so themes and
+   the Forge skin can restyle them: --astra (accent), --astra-2 (second hue), --claude. */
+:root {
+  --astra: #19c39c;
+  --astra-2: #7c8cff;
+  --claude: #d97757;
+  --astra-glow: color-mix(in srgb, var(--astra) 35%, transparent);
+}
+
+/* ---- Astra's own look: a starry ring avatar and a cool accent on its chats ---- */
+.engine-codex .empty-icon {
+  position: relative;
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--astra) 45%, #fff 10%), color-mix(in srgb, var(--astra-2) 55%, #000 30%));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--astra) 60%, transparent), 0 0 22px var(--astra-glow);
+  color: #fff;
+}
+.engine-codex .empty-icon::after {
+  content: '✦'; position: absolute; right: -6px; top: -6px; font-size: 14px; color: var(--astra);
+  text-shadow: 0 0 6px var(--astra-glow);
+}
+.engine-codex .msg.assistant { border-left: 2px solid color-mix(in srgb, var(--astra) 45%, transparent); padding-left: 10px; }
+.engine-codex .composer textarea:focus { border-color: color-mix(in srgb, var(--astra) 60%, transparent); }
+.engine-codex .native-head .chat-title::before { content: '✦ '; color: var(--astra); }
+
+.engine-codex .typing i { background: var(--astra); }
+.engine-codex .thinking > summary { color: color-mix(in srgb, var(--astra) 70%, var(--muted)); }
+.collab-thinking { margin: 2px 0 4px; font-size: 12px; }
+.collab-part .tool-chips { margin: 2px 0; }
+@media (prefers-reduced-motion: reduce) { .collab-card.running::before { animation: none; } }
+
+/* ---- empty-state hints ---- */
+.astra-hints { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 10px; max-width: 560px; }
+.astra-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.astra-chip {
+  font-size: 11.5px; padding: 3px 9px; border-radius: 99px; cursor: pointer; color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--astra) 35%, transparent); background: color-mix(in srgb, var(--astra) 8%, transparent);
+}
+.astra-chip:hover { background: color-mix(in srgb, var(--astra) 18%, transparent); }
+.astra-try { font-size: 12px; color: var(--muted); }
+.astra-try a { color: var(--astra); text-decoration: none; }
+.astra-try a:hover { text-decoration: underline; }
+.astra-onboard { font-size: 11.5px; min-height: 1em; }
+.astra-onboard a { color: var(--astra); }
+
+/* ---- composer chip ---- */
+.collab-chip { font-size: 13px; padding: 4px 8px; border-radius: 8px; white-space: nowrap; align-self: flex-end; }
+.collab-chip.on {
+  color: #fff; border-color: transparent;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--claude) 80%, #000 10%), color-mix(in srgb, var(--astra) 80%, #000 10%));
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .12) inset, 0 2px 10px var(--astra-glow);
+}
+.collab-chip { position: relative; }
+.collab-chip::after { /* the partner's color */
+  content: ''; position: absolute; right: 2px; bottom: 2px; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--mate, transparent);
+}
+.astra-chip.on { background: color-mix(in srgb, var(--astra) 30%, transparent); border-color: var(--astra); }
+.astra-personas { align-items: center; }
+.collab-armed .composer textarea { border-image: linear-gradient(90deg, var(--claude), var(--astra)) 1; }
+
+/* ---- collaboration card ---- */
+.collab-card {
+  margin: 10px 0; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--astra) 4%, var(--surface)), var(--surface));
+  position: relative; container-type: inline-size;
+}
+.collab-card::before {
+  content: ''; position: absolute; inset: 0 0 auto 0; height: 2px; border-radius: 12px 12px 0 0;
+  background: linear-gradient(90deg, var(--claude), var(--astra), var(--astra-2));
+}
+.collab-card.running::before { background-size: 200% 100%; animation: collab-flow 2.2s linear infinite; }
+@keyframes collab-flow { from { background-position: 0 0; } to { background-position: 200% 0; } }
+.collab-card .msg-act { opacity: .85; }
+.collab-card .msg-act:hover { opacity: 1; }
+.collab-head { display: flex; align-items: center; gap: 8px; font-size: 12px; flex-wrap: wrap; }
+.collab-head .spacer { flex: 1; }
+.collab-mode { font-weight: 600; letter-spacing: .02em; }
+.collab-task { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; }
+.collab-seat { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
+.collab-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--seat, var(--accent)); flex: none; }
+.collab-total { font-size: 11px; font-variant-numeric: tabular-nums; padding: 1px 6px; border-radius: 99px; background: var(--hover); }
+.collab-tok { font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.collab-stop { color: #ff6b6b !important; }
+
+.collab-grid { display: grid; grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+/* side by side while there is room (docked chats are narrow) */
+@container (max-width: 520px) { .collab-grid { grid-template-columns: 1fr; } }
+.collab-part {
+  border-radius: 9px; padding: 6px 9px; min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--seat, var(--accent)) 28%, transparent);
+  background: color-mix(in srgb, var(--seat, var(--accent)) 5%, transparent);
+}
+.collab-part.picked { box-shadow: 0 0 0 2px color-mix(in srgb, var(--seat) 70%, transparent); }
+.collab-part.error { border-color: #ff6b6b80; }
+.collab-part-head { display: flex; align-items: center; gap: 6px; font-size: 11.5px; margin-bottom: 2px; }
+.collab-part-head .spacer { flex: 1; }
+.collab-part .body { font-size: 13.5px; overflow-wrap: anywhere; }
+.collab-scroll { max-height: 420px; overflow: auto; }
+.collab-col-foot, .collab-actions { display: flex; gap: 12px; margin-top: 6px; font-size: 11.5px; }
+.collab-actions { justify-content: center; padding-top: 4px; border-top: 1px dashed var(--line); }
+.collab-final { margin-top: 8px; border-width: 1.5px; background: color-mix(in srgb, var(--seat, var(--accent)) 8%, transparent); }
+.collab-final .collab-part-head b::before { content: '★ '; color: #ffd75e; }
+.collab-round { margin-top: 6px; font-size: 12px; }
+.collab-round > summary { cursor: pointer; color: var(--muted); padding: 2px 0; list-style: none; }
+.collab-round > summary::before { content: '▸ '; }
+.collab-round[open] > summary::before { content: '▾ '; }
+.collab-round > .collab-part { margin: 4px 0 4px 10px; }
+.collab-error { color: #ff8a8a; font-size: 12px; margin-top: 4px; white-space: pre-line; }
+.collab-card .suggest-chips { margin-top: 8px; }
+
+.collab-mode { cursor: pointer; user-select: none; }
+.collab-card.folded { padding-bottom: 6px; }
+.collab-folded { font-size: 12px; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.collab-verdict { margin-top: 8px; border-style: dashed; }
+.collab-diff { font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; max-height: 60vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; padding: 6px 0; }
+.collab-diff > div { padding: 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.collab-diff .dadd { background: color-mix(in srgb, #3fd28b 14%, transparent); }
+.collab-diff .ddel { background: color-mix(in srgb, #ff6b6b 14%, transparent); }
+.collab-diff .dsame { color: var(--muted); }
+.collab-diff-dialog { width: min(860px, 92vw); }
+
+/* ---- agent editor: Astra's file mode sits in the folder row ---- */
+.folder-row select[name="codexFiles"] { width: auto; flex: none; }
+/* two-column rows shrink instead of overflowing when the (now taller) dialog shows its scrollbar */
+#agent-form .grid2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+#agent-form .grid2 > label > input:not([type=checkbox]), #agent-form .grid2 > label > select { min-width: 0; width: 100%; box-sizing: border-box; }
+#agent-form .folder-row > input { min-width: 0; width: 0; flex: 1 1 0; }
+#agent-form fieldset { min-inline-size: 0; }
+
+/* ---- rail: a small star on agents that run on the Astra (Codex) engine ---- */
+.agent-btn.astra-btn { position: relative; }
+.agent-btn.astra-btn::before {
+  content: '✦'; position: absolute; left: 3px; top: 1px; font-size: 9px; line-height: 1; color: var(--astra);
+  text-shadow: 0 0 5px var(--astra-glow); pointer-events: none;
+}
