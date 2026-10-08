@@ -15,17 +15,8 @@ $('config-btn').addEventListener('click', () => AppUI.openSettings());
 $('palette-btn').addEventListener('click', () => AppUI.palette());
 $('notes-btn').addEventListener('click', () => Notes.toggle());
 $('chat-search').addEventListener('input', (e) => Panel.setFilter(e.target.value));
-$('import-btn').addEventListener('click', async () => {
-  const status = $('import-status');
-  status.textContent = 'Importing…';
-  const result = await window.hub.importChats();
-  if (!result) { status.textContent = ''; return; }
-  if (result.error) { status.textContent = result.error; return; }
-  H.chats = await window.hub.listChats();
-  Panel.render();
-  const where = Object.values(result.sources).map((id) => H.agent(id)?.name).filter(Boolean).join(' and ');
-  status.textContent = `Imported ${result.imported} chats${where ? ` into ${where}` : ''}${result.skipped ? ` (${result.skipped} skipped: empty or already imported)` : ''}.`;
-});
+// Checks the export first (what's new, duplicates, empty chats), then imports with progress (addons-cmds.js).
+$('import-btn').addEventListener('click', () => Addons.importChats());
 
 document.addEventListener('click', (e) => { if (!e.target.closest('#menu') && performance.now() - menuOpenedAt > 40) hideMenu(); });
 document.addEventListener('keydown', (e) => {

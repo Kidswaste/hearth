@@ -1,5 +1,6 @@
 // Live Forgeheart debug game: a persistent game view shown beside the Forge Debug agent's chat.
-// Claude drives it through the forge_* tools (mcp/forge-game-mcp.js → gamebridge.js → here).
+// Claude drives it through the forge_* tools (mcp/forge-game-mcp.js → gamebridge.js → here). You drive it with the
+// toolbar, its ⋯ menu (quick actions, stat watch, snapshots, patch sets) and the /forge-* chat commands.
 const ForgeGame = (() => {
   const DEFAULT_BUILD = 'C:\\Users\\quent\\Desktop\\forgeheart_music_test5.html';
   const PARTITION = 'persist:forgeheart-debug';
@@ -8,6 +9,7 @@ const ForgeGame = (() => {
   let logBox = null;
   let buildSel = null;
   let patches = [];
+  let actor = 'Claude'; // who the log says did it (you, from the ⋯ menu and /forge-* commands)
 
   const buildPath = () => H.settings().forgeDebugBuild || DEFAULT_BUILD;
   const fileUrl = (p) => `file:///${p.replace(/\\/g, '/')}`;
@@ -61,7 +63,7 @@ const ForgeGame = (() => {
       const type = String(args.type || 'random');
       const count = Math.max(1, Math.min(200, Number(args.count) || 10));
       const mult = Number(args.mult) || 1;
-      log(`Claude: spawn ${type === 'boss' ? 'the boss' : `${count} × ${type}`}${mult !== 1 ? ` (×${mult})` : ''}`, 'claude');
+      log(`${actor}: spawn ${type === 'boss' ? 'the boss' : `${count} × ${type}`}${mult !== 1 ? ` (×${mult})` : ''}`, 'claude');
       return exec(`(() => { const want = ${JSON.stringify(type)}, made = {};
         if (want === 'boss') { spawnBoss(); return { spawned: 'boss', enemies: C.en.length }; }
         const keys = Object.keys(FOES); let n = 0;
@@ -71,7 +73,7 @@ const ForgeGame = (() => {
         return { spawned: n, byType: made, enemiesNow: C.en.length, cap: combatEnemyCap(), note: n < ${count} ? 'Stopped at the enemy cap' : undefined }; })()`);
     }
     if (tool === 'forge_debug') {
-      log(`Claude: debug ${Object.entries(args).map(([k, v]) => `${k}=${v}`).join(', ')}`, 'claude');
+      log(`${actor}: debug ${Object.entries(args).map(([k, v]) => `${k}=${v}`).join(', ')}`, 'claude');
       const r = await exec(`(async () => { const a = ${JSON.stringify(args)}, D = window.__fhDbg, done = [];
         if (a.start) {
           const b = document.getElementById('mm-start');
@@ -274,14 +276,200 @@ const ForgeGame = (() => {
         btn('＋10 foes', 'Spawn 10 random enemies', () => handleTool('forge_spawn', { type: 'random', count: 10 })),
         patchBtn,
         btn('📷', 'Screenshot', async () => { const r = await handleTool('forge_screenshot', {}); if (r.ok) { const p = await window.hub.saveFile({ defaultPath: 'forgeheart-debug.png', filters: [{ name: 'PNG', extensions: ['png'] }], content: r.png, base64: true }); if (p) toast('Screenshot saved'); } }),
-        btn('DevTools', 'Game console & profiler', () => view.openDevTools())),
-      el('div', { class: 'game-view' }, view),
+        btn('DevTools', 'Game console & profiler', () => view.openDevTools()),
+        btn('⋯', 'More: heal, kill all, boss, stage, gold, stat watch, snapshots, patch sets, run code', moreMenu)),
+      el('div', { class: 'game-view' }, view, watchBox = el('div', { class: 'fg-watch', hidden: true, title: 'Stat watch (⋯ → Stat watch, /forge-watch)' })),
       logBox);
+    if (store.get('forge.watchOn', false)) setTimeout(() => setWatch(true), 500);
     fillBuilds();
     window.hub.kvGet('forge-patches', []).then((p) => { patches = p; renderPatchBadge(); });
   }
 
+  // ---------- quick actions, stat watch, snapshots, patch sets (the ⋯ menu and /forge-* commands) ----------
+  const needGame = () => { if (!view || !ready) throw new Error('Open Forge Debug first (the game is not loaded).'); };
+  const fmtVal = (v) => (typeof v === 'number' ? (Math.abs(v) >= 1e6 ? `${(v / 1e6).toFixed(2)}M` : Math.abs(v) >= 1e4 ? `${Math.round(v / 1e3)}k` : String(Math.round(v * 100) / 100)) : typeof v === 'object' ? JSON.stringify(v).slice(0, 60) : String(v));
+  // Small debug actions by name: heal, kill, boss, gold <n>, stage <n>, next, spawn <type> <n>, god, oneshot, pause, speed <x>.
+  async function quick(action, arg) {
+    actor = 'You';
+    try { return await quickAction(action, arg); } finally { actor = 'Claude'; }
+  }
+  async function quickAction(action, arg) {
+    needGame();
+    const n = Number(arg);
+    switch (action) {
+      case 'heal': return handleTool('forge_debug', { heal: true });
+      case 'kill': return handleTool('forge_debug', { killAll: true });
+      case 'boss': return handleTool('forge_spawn', { type: 'boss' });
+      case 'gold': return handleTool('forge_debug', { gold: Number.isFinite(n) ? n : 1e6 });
+      case 'stage': return handleTool('forge_debug', { stage: Number.isFinite(n) ? n : 1 });
+      case 'next': { const r = await exec('S.stage'); return handleTool('forge_debug', { stage: (r.ok ? r.value : 0) + 1 }); }
+      case 'god': case 'oneshot': case 'paused': { const r = await exec(`window.__fhDbg.${action}`); return handleTool('forge_debug', { [action]: arg == null ? !(r.ok && r.value) : /^(on|1|true|yes)$/i.test(arg) }); }
+      case 'speed': return handleTool('forge_debug', { timeScale: Number.isFinite(n) && n > 0 ? n : 1 });
+      case 'spawn': { const [type = 'random', count = '10', mult = '1'] = String(arg || '').split(/\s+/); return handleTool('forge_spawn', { type, count: Number(count) || 10, mult: Number(mult) || 1 }); }
+      case 'start': return handleTool('forge_debug', { start: true });
+      default: throw new Error(`Unknown action ${action}`);
+    }
+  }
+  async function enemyTypes() { const r = ready ? await exec('Object.keys(FOES)') : null; return r?.ok ? r.value : []; }
+
+  // Watch: a small overlay on the game with expressions refreshed every second while it's visible.
+  const WATCH_DEFAULT = [['Stage', 'S.stage'], ['Gold', 'S.gold'], ['HP', 'Math.round(C.hp)'], ['Enemies', 'C.en.length'], ['DPS', 'Math.round(stats().dps)']];
+  const watchList = () => store.get('forge.watch', WATCH_DEFAULT);
+  let watchBox = null;
+  let watchTimer = null;
+  async function paintWatch() {
+    if (!watchBox?.isConnected || watchBox.hidden || !ready) return;
+    if (!watchBox.offsetParent) return; // the game isn't on screen
+    const list = watchList();
+    const r = await exec(`(() => [${list.map(([, ex]) => `(() => { try { return ${ex}; } catch (e) { return '⚠ ' + e.message; } })()`).join(',')}])()`);
+    if (!r.ok) return;
+    watchBox.replaceChildren(...list.map(([label, ex], i) => el('div', { class: 'fg-watch-row', title: `${ex} · right-click to remove`, on: { contextmenu: (e) => { e.preventDefault(); store.set('forge.watch', watchList().filter((_, j) => j !== i)); paintWatch(); } } },
+      el('span', { text: label }), el('b', { text: fmtVal(r.value[i]) }))));
+  }
+  function setWatch(on) {
+    if (!watchBox) return false;
+    watchBox.hidden = on == null ? !watchBox.hidden : !on;
+    store.set('forge.watchOn', !watchBox.hidden);
+    clearInterval(watchTimer);
+    if (!watchBox.hidden) { paintWatch(); watchTimer = setInterval(() => { if (!watchBox?.isConnected) clearInterval(watchTimer); else paintWatch(); }, 1000); }
+    return !watchBox.hidden;
+  }
+  function addWatch(expr, label) {
+    const ex = String(expr || '').trim();
+    if (!ex) return null;
+    store.set('forge.watch', [...watchList().filter(([, e]) => e !== ex), [label || (ex.length <= 16 ? ex : `…${ex.slice(-15)}`), ex]].slice(-12));
+    setWatch(true);
+    return ex;
+  }
+
+  // Snapshots: the debug game's whole localStorage (its save), so a situation can be set up once and restored.
+  // Only the debug partition is touched, never your normal game.
+  const snapshots = () => window.hub.kvGet('forge-snapshots', []);
+  async function snapshot(name) {
+    needGame();
+    const r = await exec(`(() => { try { if (typeof save === 'function') save(); } catch (e) {} const o = {}; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); o[k] = localStorage.getItem(k); } return { data: o, stage: S.stage, gold: S.gold }; })()`);
+    if (!r.ok) throw new Error(r.error);
+    const all = await snapshots();
+    const label = String(name || `Stage ${r.value.stage} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`).slice(0, 60);
+    const next = [{ name: label, at: Date.now(), stage: r.value.stage, gold: r.value.gold, data: r.value.data }, ...all.filter((s) => s.name !== label)].slice(0, 20);
+    await window.hub.kvSet('forge-snapshots', next);
+    log(`Snapshot "${label}" saved`);
+    return label;
+  }
+  async function restore(name) {
+    needGame();
+    const all = await snapshots();
+    const s = all.find((x) => x.name === name) || all.find((x) => x.name.toLowerCase().includes(String(name || '').toLowerCase())) || (!name ? all[0] : null);
+    if (!s) throw new Error(name ? `No snapshot "${name}"` : 'No snapshots yet (/forge-snap saves one).');
+    const r = await exec(`(() => { localStorage.clear(); const o = ${JSON.stringify(s.data)}; for (const k in o) localStorage.setItem(k, o[k]); return Object.keys(o).length; })()`);
+    if (!r.ok) throw new Error(r.error);
+    // the game would save its current state over the restored one on unload: this page can't write storage any more
+    await exec('window.save = () => {}; Storage.prototype.setItem = Storage.prototype.removeItem = Storage.prototype.clear = function () {}; true');
+    await reload();
+    log(`Restored snapshot "${s.name}"`);
+    return s.name;
+  }
+  async function snapshotsDialog() {
+    const all = await snapshots();
+    const dlg = el('dialog', { class: 'ui-modal gallery-dialog' });
+    const list = el('div', { class: 'download-list' }, all.length ? all.map((s) => el('div', { class: 'download-row' },
+      el('span', { class: 'dl-name', text: s.name }), el('span', { class: 'hint', text: `stage ${s.stage} · ${fmtVal(s.gold)} gold · ${timeAgo(s.at)}` }),
+      el('button', { type: 'button', class: 'ghost small', text: 'Restore', on: { click: async () => { dlg.close(); try { await restore(s.name); toast(`Restored "${s.name}"`); } catch (err) { toast(err.message, { type: 'error' }); } } } }),
+      el('button', { type: 'button', class: 'ghost small danger', text: '×', on: { click: async () => { await window.hub.kvSet('forge-snapshots', (await snapshots()).filter((x) => x.name !== s.name)); dlg.close(); snapshotsDialog(); } } }))) : el('p', { class: 'hint', text: 'No snapshots yet. A snapshot keeps the debug game\'s save so you can come back to a situation (a stage, a build, a boss).' }));
+    dlg.append(el('form', { method: 'dialog' }, el('h2', { text: 'Game snapshots' }), list,
+      el('div', { class: 'dialog-actions' }, el('button', { type: 'button', class: 'primary', text: '＋ Snapshot now', on: { click: async () => { const n = await Modal.prompt('Snapshot name', { value: '' , placeholder: 'e.g. Boss 50 with drone build' }); if (n == null) return; try { await snapshot(n.trim() || undefined); dlg.close(); snapshotsDialog(); } catch (err) { toast(err.message, { type: 'error' }); } } } }),
+        el('span', { class: 'spacer' }), el('button', { type: 'submit', text: 'Close' }))));
+    dlg.addEventListener('close', () => dlg.remove());
+    document.body.append(dlg);
+    dlg.showModal();
+  }
+
+  // Patch sets: named groups of enabled patches ("balance test", "visual debug"…), switched in one go.
+  const patchSets = () => window.hub.kvGet('forge-patch-sets', {});
+  async function savePatchSet(name) {
+    const sets = await patchSets();
+    sets[name] = patches.filter((p) => p.enabled).map((p) => p.name);
+    await window.hub.kvSet('forge-patch-sets', sets);
+    return sets[name];
+  }
+  async function applyPatchSet(name, { doReload = true } = {}) {
+    const sets = await patchSets();
+    const key = Object.keys(sets).find((k) => k.toLowerCase() === String(name).toLowerCase()) || Object.keys(sets).find((k) => k.toLowerCase().includes(String(name).toLowerCase()));
+    if (!key && !/^(none|off)$/i.test(name)) throw new Error(`No patch set "${name}". Sets: ${Object.keys(sets).join(', ') || 'none yet'}`);
+    const on = new Set(key ? sets[key] : []);
+    for (const p of patches) p.enabled = on.has(p.name);
+    await window.hub.kvSet('forge-patches', patches);
+    renderPatchBadge();
+    if (doReload && view) await reload();
+    return key || 'none';
+  }
+  async function setPatch(name, enabled) {
+    const p = patches.find((x) => x.name.toLowerCase() === String(name).toLowerCase()) || patches.find((x) => x.name.toLowerCase().includes(String(name).toLowerCase()));
+    if (!p) throw new Error(`No patch "${name}"`);
+    p.enabled = enabled == null ? !p.enabled : enabled;
+    await window.hub.kvSet('forge-patches', patches);
+    renderPatchBadge();
+    if (p.enabled && ready) await exec(p.code);
+    return p;
+  }
+  async function exportPatches() {
+    const p = await window.hub.saveFile({ defaultPath: 'forgeheart-patches.json', filters: [{ name: 'JSON', extensions: ['json'] }], content: JSON.stringify({ forgePatches: 1, patches, sets: await patchSets() }, null, 2) });
+    if (p) toast(`Exported ${patches.length} patches`);
+  }
+  async function importPatches() {
+    const [file] = await window.hub.openDialog({ filters: [{ name: 'JSON', extensions: ['json'] }] });
+    if (!file) return;
+    const data = JSON.parse(await window.hub.fs.read(file));
+    let added = 0;
+    for (const p of data.patches || []) if (p?.name && p.code && !patches.some((x) => x.name === p.name)) { patches.push({ ...p, enabled: false }); added += 1; }
+    await window.hub.kvSet('forge-patches', patches);
+    if (data.sets) await window.hub.kvSet('forge-patch-sets', { ...data.sets, ...(await patchSets()) });
+    renderPatchBadge();
+    toast(`Imported ${added} patch${added === 1 ? '' : 'es'} (off until you enable them)`);
+  }
+
+  async function runCode() {
+    needGame();
+    const code = await Modal.prompt('Run in the game', { multiline: true, value: store.get('forge.lastCode', 'S.gold'), label: 'Like the DevTools console: the last expression\'s value is shown in the log.' });
+    if (!code) return;
+    store.set('forge.lastCode', code);
+    const r = await exec(code);
+    log(r.ok ? `› ${fmtVal(r.value)}` : `✕ ${r.error.split('\n')[0]}`, r.ok ? '' : 'bad');
+  }
+
+  function moreMenu(e) {
+    const sub = (fn) => () => fn().catch?.((err) => toast(err.message, { type: 'error' }));
+    showMenu(e.clientX, e.clientY, [
+      { label: '▶ Start (skip the title screen)', action: sub(() => quick('start')) },
+      { label: '❤ Heal', action: sub(() => quick('heal')) },
+      { label: '☠ Kill all enemies', action: sub(() => quick('kill')) },
+      { label: '👑 Spawn the boss', action: sub(() => quick('boss')) },
+      { label: 'Spawn enemies…', action: sub(async () => { const types = await enemyTypes(); const v = await Modal.form('Spawn enemies', [{ name: 'type', label: 'Type', type: 'select', options: ['random', ...types] }, { name: 'count', label: 'How many', type: 'number', value: 20 }, { name: 'mult', label: 'Strength ×', type: 'number', value: 1 }], { ok: 'Spawn' }); if (v) await quick('spawn', `${v.type} ${v.count} ${v.mult}`); }) },
+      { label: '💰 Gold +1M', action: sub(async () => { const r = await exec('S.gold'); await quick('gold', (r.ok ? r.value : 0) + 1e6); }) },
+      { label: '⏭ Next stage', action: sub(() => quick('next')) },
+      { label: 'Go to stage…', action: sub(async () => { const v = await Modal.prompt('Go to stage', { value: '50' }); if (v) await quick('stage', v); }) },
+      { label: `${watchBox && !watchBox.hidden ? '✓ ' : ''}Stat watch`, action: () => setWatch() },
+      { label: 'Watch an expression…', action: async () => { const v = await Modal.prompt('Watch', { placeholder: 'e.g. S.inv.length or C.boss?.hp', label: 'An expression evaluated in the game every second' }); if (v) addWatch(v); } },
+      { label: '📸 Snapshots…', action: () => snapshotsDialog() },
+      { label: 'Patch sets…', action: () => patchSetsMenu(e) },
+      { label: 'Run code…', action: sub(runCode) },
+      { label: 'Export patches…', action: () => exportPatches() },
+      { label: 'Import patches…', action: () => importPatches().catch((err) => toast(err.message, { type: 'error' })) },
+    ]);
+  }
+  async function patchSetsMenu(e) {
+    const sets = await patchSets();
+    setTimeout(() => showMenu(e.clientX, e.clientY, [
+      { label: 'Save the enabled patches as a set…', action: async () => { const n = await Modal.prompt('Patch set name'); if (n?.trim()) { const s = await savePatchSet(n.trim()); toast(`Set "${n.trim()}": ${s.length} patch(es)`); } } },
+      ...Object.entries(sets).map(([k, v]) => ({ label: `Use "${k}" (${v.length})`, action: () => applyPatchSet(k).then((x) => toast(`Patch set "${x}" on`)).catch((err) => toast(err.message, { type: 'error' })) })),
+      { label: 'All patches off', action: () => applyPatchSet('none') },
+    ]), 30);
+  }
+
   HubBridge.register(['forge_'], handleTool);
 
-  return { mount, exec, reload, handleTool, isReady: () => ready };
+  return {
+    mount, exec, reload, handleTool, isReady: () => ready, quick, enemyTypes, setWatch, addWatch, watchList, snapshot, restore, snapshots, snapshotsDialog,
+    patches: () => patches.slice(), patchSets, savePatchSet, applyPatchSet, setPatch, exportPatches, importPatches, patchesDialog, log,
+  };
 })();

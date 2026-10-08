@@ -416,3 +416,11 @@ One searchable **FX picker** in the Three.js Lab (**X**, the Layers **＋ Layer*
 - ✓ 29 presets (beat particles, audio tunnel, kick-flash grid, spectrum circle, morphing blob, synthwave terrain, filter layers…) via the picker, `/nodes-new`, `/nodes-layer`, `/nodes-preset`.
 - ✓ Editor: pan / zoom, minimap, typed colored ports, flowing live wires with live values, drop-a-wire node picker, box select, copy / paste / duplicate, undo, frames (= slider groups), notes, reroute dots, collapse, inline widgets (slider, knob, color, toggle, select, text, ease curve, vector), auto layout, find, snap. `NodeView.openCode(code, lang)` opens any code as nodes (or a read-only outline).
 - ✓ Chat: `/nodes-…` commands (add, link, set, rm, list, types, presets, layout, frame, rebuild, from-code); the Three Director edits graphs with `three_nodes`. Full list: docs/upgrades/nodes.md.
+## Add-ons & presets (addons stream, 391 upgrades: docs/upgrades/addons.md)
+- ✓ Prompt library with 169 presets in 11 categories (159 new), search, favorites, most used, blanks with defaults and dropdowns (`{{tone|warm,dry}}`), import / export; presets merge without touching your prompts. `/prompts`, `/prompt-new`, `/prompt-save-last`.
+- ✓ 42 short personas + 16 more website presets in a searchable picker (add-agent → Browse…, `/agent-new <preset>`).
+- ✓ Notes: search, #tags, pins, clickable checklists, [[links]], 11 templates, daily note, links to chats / sketches, Inbox capture (`/note`, `/todo`, `/daily-note`).
+- ✓ Memory: facts with categories, pins, expiry, search, import / export and its token cost per message (`/memory`, `/remember`, `/forget`, `/memory-cost`).
+- ✓ Kit window (`/kit`): palettes from pictures / clipboard / the Lab frame → Lab palettes, harmonies, contrast checker, gradients (CSS / GLSL / three), 27 more easings + GSAP / GLSL output, BPM ↔ ms with tap tempo, social frame sizes with safe zones, timecode calculator.
+- ✓ Forge Debug: ⋯ quick actions, stat watch overlay, snapshots / restore, patch sets, 27 `/forge-*` commands (tested against a fake build, dev/fake-forgeheart.html).
+- ✓ One-click and automatic backups with a merging restore, searchable trash and downloads, import that checks first (claude.ai / ChatGPT export variants, dedupe report, progress). `/backup`, `/restore`, `/trash`, `/downloads`, `/import`.

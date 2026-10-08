@@ -421,45 +421,195 @@ const AppUI = (() => {
   }
 
   // ---------- downloads ----------
+  // This session's downloads plus a log of the last 100 finished ones (kv 'downloads-log'), searchable.
   const downloads = new Map();
+  let dlLog = null;
+  let dlView = null; // the open Downloads dialog's repaint
+  const dlHistory = async () => { dlLog ||= await window.hub.kvGet('downloads-log', []); return dlLog; };
   function onDownload(d) {
     const had = downloads.has(d.id);
     downloads.set(d.id, d);
     if (!had) toast(`Downloading ${d.name}…`, { timeout: 2500 });
     if (d.state === 'completed') toast(`Downloaded ${d.name}`, { action: { label: 'Show', fn: () => window.hub.fs.reveal(d.path) }, timeout: 8000 });
     if (d.state === 'interrupted' || d.state === 'cancelled') toast(`Download ${d.state}: ${d.name}`, { type: 'error' });
+    if (d.state !== 'progressing') {
+      dlHistory().then((list) => { dlLog = [{ ...d, at: Date.now() }, ...list.filter((x) => x.id !== d.id)].slice(0, 100); window.hub.kvSet('downloads-log', dlLog); });
+    }
+    dlView?.();
   }
-  function downloadsDialog() {
-    const rows = [...downloads.values()].reverse();
-    Modal.confirm('Downloads', rows.length ? '' : 'Nothing downloaded in this session yet.').then(() => {});
-    if (!rows.length) return;
-    const dlg = document.querySelector('dialog.ui-modal:last-of-type');
-    dlg.querySelector('.modal-text').replaceWith(el('div', { class: 'download-list' }, rows.map((d) => el('div', { class: 'download-row' },
-      el('span', { class: 'dl-name', text: d.name }),
-      el('span', { class: 'hint', text: d.state === 'completed' ? fmtBytes(d.total || d.received) : d.state === 'progressing' ? `${d.total ? Math.round((d.received / d.total) * 100) : '?'}%` : d.state }),
-      el('button', { type: 'button', class: 'ghost small', text: 'Open', disabled: d.state !== 'completed', on: { click: () => window.hub.fs.open(d.path) } }),
-      el('button', { type: 'button', class: 'ghost small', text: 'Show', on: { click: () => window.hub.fs.reveal(d.path) } })))));
+  async function downloadsDialog({ query = '' } = {}) {
+    const history = await dlHistory();
+    const dlg = el('dialog', { class: 'ui-modal downloads-dialog' });
+    const q = el('input', { type: 'search', placeholder: 'Search downloads…', value: query });
+    const list = el('div', { class: 'download-list' });
+    const folderOf = (p) => p.slice(0, Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\')));
+    const paint = () => {
+      const rows = [...new Map([...history, ...[...downloads.values()].reverse()].map((d) => [d.id, d])).values()]
+        .sort((a, b) => (b.state === 'progressing') - (a.state === 'progressing') || (b.at || Date.now()) - (a.at || Date.now()))
+        .filter((d) => !q.value || `${d.name} ${d.url || ''}`.toLowerCase().includes(q.value.toLowerCase()));
+      list.replaceChildren(...(rows.length ? rows.map((d) => {
+        const pct = d.total ? Math.round((d.received / d.total) * 100) : null;
+        return el('div', { class: `download-row ${d.state}` },
+          el('span', { class: 'dl-name', text: d.name, title: d.url || d.path }),
+          d.state === 'progressing' ? el('span', { class: 'dl-bar', title: `${pct ?? '?'}%` }, el('span', { style: { width: `${pct ?? 30}%` } })) : null,
+          el('span', { class: 'hint', text: d.state === 'completed' ? `${fmtBytes(d.total || d.received)}${d.at ? ` · ${timeAgo(d.at)}` : ''}` : d.state === 'progressing' ? `${pct ?? '?'}% of ${d.total ? fmtBytes(d.total) : '?'}` : d.state }),
+          el('button', { type: 'button', class: 'ghost small', text: 'Open', disabled: d.state !== 'completed', on: { click: () => window.hub.fs.open(d.path) } }),
+          el('button', { type: 'button', class: 'ghost small', text: 'Show', on: { click: () => window.hub.fs.reveal(d.path) } }),
+          d.url && d.state !== 'completed' ? el('button', { type: 'button', class: 'ghost small', text: 'Try again', title: 'Opens the link in your browser', on: { click: () => window.hub.openExternal(d.url) } }) : null,
+          d.url ? el('button', { type: 'button', class: 'ghost small', text: '🔗', title: 'Copy the link', on: { click: () => copyText(d.url, 'Link') } }) : null);
+      }) : [el('p', { class: 'hint', text: history.length || downloads.size ? 'Nothing matches.' : 'Nothing downloaded yet. Files you download from website agents land in your Downloads folder and show up here.' })]));
+    };
+    q.addEventListener('input', paint);
+    const latest = [...downloads.values()].at(-1) || history[0];
+    dlg.append(el('form', { method: 'dialog', on: { keydown: (e) => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') e.preventDefault(); } } }, el('h2', { text: 'Downloads' }), q, list,
+      el('div', { class: 'dialog-actions' },
+        latest ? el('button', { type: 'button', class: 'ghost small', text: 'Open the folder', on: { click: () => window.hub.fs.open(folderOf(latest.path)) } }) : null,
+        el('button', { type: 'button', class: 'ghost small', text: 'Clear the list', title: 'Forgets the list (the files stay)', on: { click: async () => { dlLog = []; history.length = 0; for (const [id, d] of downloads) if (d.state !== 'progressing') downloads.delete(id); await window.hub.kvSet('downloads-log', []); paint(); } } }),
+        el('span', { class: 'spacer' }), el('button', { type: 'submit', text: 'Close' }))));
+    dlg.addEventListener('close', () => { dlg.remove(); dlView = null; });
+    document.body.append(dlg);
+    dlView = () => { if (dlg.isConnected) paint(); };
+    paint();
+    dlg.showModal();
+    return dlg;
   }
 
   // ---------- recently deleted chats ----------
-  async function trashDialog() {
-    const items = await window.hub.listChatTrash();
-    Modal.confirm('Recently deleted chats', items.length ? '' : 'Nothing deleted in the last 30 days.').then(() => {});
-    if (!items.length) return;
-    const dlg = document.querySelector('dialog.ui-modal:last-of-type');
-    const list = el('div', { class: 'download-list' }, items.map((c) => {
-      const row = el('div', { class: 'download-row' },
+  const dataDir = async () => { const a = await window.hub.attachmentsDir(); return a.slice(0, Math.max(a.lastIndexOf('/'), a.lastIndexOf('\\'))); };
+  const sepOf = (p) => (p.includes('\\') ? '\\' : '/');
+  async function trashDialog({ query = '' } = {}) {
+    let items = await window.hub.listChatTrash();
+    const dlg = el('dialog', { class: 'ui-modal trash-dialog' });
+    const q = el('input', { type: 'search', placeholder: 'Search deleted chats…', value: query });
+    const list = el('div', { class: 'download-list' });
+    const refreshChats = async () => { H.chats = await window.hub.listChats(); Panel.render(); };
+    const restore = async (c) => { await window.hub.restoreChat(c.id); items = items.filter((x) => x !== c); };
+    const forever = async (cs) => {
+      const dir = await dataDir(); const sep = sepOf(dir);
+      const r = await window.hub.fs.trash(cs.map((c) => `${dir}${sep}trash${sep}${c.id}.json`));
+      const gone = new Set(r.done.map((p) => p.split(/[\\/]/).pop().replace(/\.json$/, '')));
+      items = items.filter((x) => !gone.has(x.id));
+      if (r.failed.length) toast(`${r.failed.length} couldn't be moved: ${r.failed[0].error}`, { type: 'error' });
+      return r;
+    };
+    const peek = async (c) => {
+      const dir = await dataDir();
+      try {
+        const chat = JSON.parse(await window.hub.fs.read(`${dir}${sepOf(dir)}trash${sepOf(dir)}${c.id}.json`));
+        Modal.alert(c.title, chat.messages.slice(0, 6).map((m) => `${m.role === 'user' ? 'You' : H.agent(chat.agentId)?.name || 'Agent'}: ${(m.text || '').slice(0, 280)}`).join('\n\n') || '(empty)');
+      } catch (err) { toast(err.message, { type: 'error' }); }
+    };
+    const paint = () => {
+      const rows = items.filter((c) => !q.value || `${c.title} ${H.agent(c.agentId)?.name || ''}`.toLowerCase().includes(q.value.toLowerCase()));
+      list.replaceChildren(...(rows.length ? rows.map((c) => el('div', { class: 'download-row' },
         el('span', { class: 'dl-name', text: c.title, title: c.title }),
-        el('span', { class: 'hint', text: `${H.agent(c.agentId)?.name || c.agentId} · ${c.messages} msgs · deleted ${timeAgo(c.deletedAt)}` }),
-        el('button', { type: 'button', class: 'ghost small', text: 'Restore', on: { click: async () => {
-          await window.hub.restoreChat(c.id);
-          H.chats = await window.hub.listChats();
-          Panel.render();
-          row.replaceChildren(el('span', { class: 'ok', text: `Restored "${c.title}"` }));
-        } } }));
-      return row;
-    }));
-    dlg.querySelector('.modal-text').replaceWith(el('div', {}, el('p', { class: 'hint', text: 'Deleted chats are kept here for 30 days.' }), list));
+        el('span', { class: 'hint', text: `${H.agent(c.agentId)?.name || c.agentId} · ${c.messages} msgs · deleted ${timeAgo(c.deletedAt)} · ${Math.max(0, 30 - Math.floor((Date.now() - c.deletedAt) / 864e5))} d left` }),
+        el('button', { type: 'button', class: 'ghost small', text: 'Peek', on: { click: () => peek(c) } }),
+        el('button', { type: 'button', class: 'ghost small', text: 'Restore', on: { click: async () => { await restore(c); await refreshChats(); paint(); toast(`Restored "${c.title}"`, { timeout: 2000 }); } } }),
+        el('button', { type: 'button', class: 'ghost small danger', text: '×', title: 'Delete for good (to the Recycle Bin / Trash)', on: { click: async () => { await forever([c]); paint(); } } })))
+        : [el('p', { class: 'hint', text: items.length ? 'Nothing matches.' : 'Nothing deleted in the last 30 days.' })]));
+    };
+    q.addEventListener('input', paint);
+    dlg.append(el('form', { method: 'dialog', on: { keydown: (e) => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') e.preventDefault(); } } }, el('h2', { text: 'Recently deleted chats' }),
+      el('p', { class: 'hint', text: 'Deleted chats are kept here for 30 days. Deleting them for good moves the files to your Recycle Bin / Trash.' }), q, list,
+      el('div', { class: 'dialog-actions' },
+        el('button', { type: 'button', class: 'ghost small', text: 'Restore all', on: { click: async () => { for (const c of [...items]) await restore(c); await refreshChats(); paint(); } } }),
+        el('button', { type: 'button', class: 'ghost small danger', text: 'Empty…', on: { click: async () => { if (!items.length || !(await Modal.confirm('Empty recently deleted?', `${items.length} chat(s) go to your Recycle Bin / Trash.`, { ok: 'Empty', danger: true }))) return; await forever([...items]); items = await window.hub.listChatTrash(); paint(); } } }),
+        el('span', { class: 'spacer' }), el('button', { type: 'submit', text: 'Close' }))));
+    dlg.addEventListener('close', () => dlg.remove());
+    document.body.append(dlg);
+    paint();
+    dlg.showModal();
+    return dlg;
+  }
+
+  // ---------- backups ----------
+  // One-click backups to a folder (settings.backupDir, default Documents/Hearth backups), the list of them, and a
+  // restore that merges (adds what's missing; never deletes anything of yours). /backup, /restore.
+  async function backupNow({ quiet = false } = {}) {
+    const t = quiet ? null : toast('Backing up…', { timeout: 60000 });
+    try {
+      const r = await window.hub.backup.now({ keep: H.settings().backupKeep || 10 });
+      t?.remove();
+      store.set('backup.last', Date.now());
+      if (!quiet) toast(`Backup saved (${fmtBytes(r.size)})${r.removed ? ` · ${r.removed} old one(s) to the bin` : ''}`, { action: { label: 'Show', fn: () => window.hub.fs.reveal(r.path) } });
+      return r;
+    } catch (err) { t?.remove(); toast(`Backup failed: ${err.message}`, { type: 'error' }); return null; }
+  }
+  function restoreText(r) {
+    return [`Chats: ${r.chats.add} to add${r.chats.newer ? ` · ${r.chats.newer} newer in the backup` : ''}${r.chats.older ? ` · ${r.chats.older} older in the backup (yours kept)` : ''} · ${r.chats.same} identical`,
+      `Tool data (notes, prompts, sketches…): ${r.kv.add} to add${r.kv.differ.length ? ` · ${r.kv.differ.length} differ (yours kept): ${r.kv.differ.slice(0, 8).join(', ')}${r.kv.differ.length > 8 ? '…' : ''}` : ''}`,
+      `Memory: ${r.memory.add} line(s) to add · Attachments: ${r.attachments.add} to add`,
+      r.agentsMissing.length ? `Agents in the backup you don't have (add them by hand): ${r.agentsMissing.join(', ')}` : '',
+      r.titles.length ? `\nFor example: ${r.titles.slice(0, 5).map((t) => `"${t}"`).join(', ')}` : ''].filter(Boolean).join('\n');
+  }
+  async function restoreBackup(file) {
+    file ||= await window.hub.backup.pick();
+    if (!file) return null;
+    let r;
+    try { r = await window.hub.backup.restore(file, { dryRun: true }); } catch (err) { toast(err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { type: 'error' }); return null; }
+    const nothing = !r.chats.add && !r.chats.newer && !r.kv.add && !r.memory.add && !r.attachments.add;
+    if (nothing) { Modal.alert('Nothing to restore', `Everything in that backup is already here.\n\n${restoreText(r)}`); return r; }
+    const v = await new Promise((resolve) => {
+      const newer = el('input', { type: 'checkbox' });
+      const d = el('dialog', { class: 'ui-modal' });
+      d.append(el('form', { method: 'dialog' }, el('h2', { text: 'Restore from backup' }),
+        el('p', { class: 'modal-text pre-line', text: `Adds what's missing here; nothing of yours is deleted.\n\n${restoreText(r)}` }),
+        r.chats.newer ? el('label', { class: 'check' }, newer, `Also replace ${r.chats.newer} chat(s) with the backup's newer version (yours are kept in data/trash first)`) : null,
+        el('div', { class: 'dialog-actions' }, el('span', { class: 'spacer' }),
+          el('button', { type: 'button', text: 'Cancel', on: { click: () => d.close() } }),
+          el('button', { type: 'submit', class: 'primary', text: 'Restore', value: 'ok' }))));
+      d.addEventListener('close', () => { d.remove(); resolve(d.returnValue === 'ok' ? { newer: newer.checked } : null); });
+      document.body.append(d);
+      d.showModal();
+    });
+    if (!v) return null;
+    const done = await window.hub.backup.restore(file, { dryRun: false, newer: Boolean(v.newer) });
+    H.chats = await window.hub.listChats();
+    Panel.render();
+    toast(`Restored: ${done.chats.add} chat(s)${done.chats.replaced ? `, ${done.chats.replaced} updated` : ''}, ${done.kv.add} tool store(s), ${done.memory.add} memory line(s), ${done.attachments.add} attachment(s). Reload to see restored tool data.`, { timeout: 9000, action: { label: 'Reload', fn: () => window.hub.reloadWindow() } });
+    return done;
+  }
+  async function backupsDialog() {
+    const dlg = el('dialog', { class: 'ui-modal backups-dialog' });
+    const list = el('div', { class: 'download-list' });
+    const dirLabel = el('code', {});
+    const auto = el('select', { title: 'Back up automatically when the last backup is older than this' },
+      [['0', 'Off'], ['1', 'Daily'], ['7', 'Weekly'], ['30', 'Monthly']].map(([v, t]) => el('option', { value: v, text: t, selected: String(H.settings().autoBackupDays || 0) === v })));
+    auto.addEventListener('change', async () => { H.config.settings = { ...H.config.settings, autoBackupDays: Number(auto.value) || undefined }; await saveConfig(); toast('Saved', { timeout: 1000 }); });
+    const paint = async () => {
+      const { dir, items } = await window.hub.backup.list();
+      dirLabel.textContent = dir;
+      list.replaceChildren(...(items.length ? items.map((b) => el('div', { class: 'download-row' },
+        el('span', { class: 'dl-name', text: b.name }), el('span', { class: 'hint', text: `${fmtBytes(b.size)} · ${timeAgo(b.mtime)}` }),
+        el('button', { type: 'button', class: 'ghost small', text: 'Restore…', on: { click: async () => { await restoreBackup(b.path); } } }),
+        el('button', { type: 'button', class: 'ghost small', text: 'Show', on: { click: () => window.hub.fs.reveal(b.path) } })))
+        : [el('p', { class: 'hint', text: 'No backups in this folder yet.' })]));
+    };
+    dlg.append(el('form', { method: 'dialog' }, el('h2', { text: 'Backups' }),
+      el('p', { class: 'hint' }, 'Chats, notes, prompts, memory, tool data, settings and theme (never website logins). Folder: ', dirLabel, ' ',
+        el('button', { type: 'button', class: 'ghost small', text: 'Change…', on: { click: async () => { const f = await window.hub.pickFolder(dirLabel.textContent, 'Backup folder'); if (f) { H.config.settings = { ...H.config.settings, backupDir: f }; await saveConfig(); setTimeout(paint, 300); } } } })),
+      list,
+      el('div', { class: 'dialog-actions' },
+        el('button', { type: 'button', class: 'primary small', text: 'Back up now', on: { click: async () => { await backupNow(); paint(); } } }),
+        el('button', { type: 'button', class: 'ghost small', text: 'Save a copy as…', on: { click: exportData } }),
+        el('button', { type: 'button', class: 'ghost small', text: 'Restore from a file…', on: { click: () => restoreBackup() } }),
+        el('label', { class: 'hint' }, 'Auto ', auto),
+        el('span', { class: 'spacer' }), el('button', { type: 'submit', text: 'Close' }))));
+    dlg.addEventListener('close', () => dlg.remove());
+    document.body.append(dlg);
+    await paint();
+    dlg.showModal();
+    return dlg;
+  }
+  // At start-up: a quiet backup when auto backup is on and the newest one is older than its interval.
+  async function autoBackup() {
+    const days = H.settings().autoBackupDays;
+    if (!days) return false;
+    const { items } = await window.hub.backup.list();
+    const newest = Math.max(items[0]?.mtime || 0, store.get('backup.last', 0));
+    if (Date.now() - newest < days * 864e5) return false;
+    return Boolean(await backupNow({ quiet: true }));
   }
 
   // ---------- usage stats ----------
@@ -574,5 +724,5 @@ const AppUI = (() => {
     for (const [id, t] of Object.entries(THEMES)) addAction(`Theme: ${t.label}`, () => Look.applyPreset(id));
   }
 
-  return { actions: () => actions.slice(), init, offerSwirl, openSettings, palette, find, shortcutsHelp, zoom, switchRecent, replyFinished, usageDialog, downloadsDialog, trashDialog, addAction, THEMES, snapshotToChat, toggleOnTop };
+  return { actions: () => actions.slice(), init, offerSwirl, openSettings, palette, find, shortcutsHelp, zoom, switchRecent, replyFinished, usageDialog, downloadsDialog, trashDialog, addAction, THEMES, snapshotToChat, toggleOnTop, backupsDialog, backupNow, restoreBackup, autoBackup, exportData, downloadHistory: dlHistory };
 })();

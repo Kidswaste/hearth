@@ -1,0 +1,99 @@
+/* Add-ons: notes, prompt library, memory facts, agent preset picker, Kit window, Forge Debug watch, data dialogs. */
+
+/* ---------- notes ---------- */
+.notes-search { flex: 1; min-width: 80px; padding: 3px 8px !important; font-size: 12.5px; }
+.notes-head b { margin-right: 2px; }
+.notes-pin.on { background: color-mix(in srgb, var(--accent) 25%, transparent); }
+.notes-item.pinned { border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+.notes-tags { display: flex; gap: 4px; flex-wrap: wrap; flex: none; }
+.notes-tag { border: 0; background: var(--hover); color: var(--muted); border-radius: 999px; padding: 0 8px; font-size: 11.5px; cursor: pointer; }
+.notes-tag.on, .notes-tag:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 25%, transparent); }
+.notes-preview li.note-todo { list-style: none; margin-left: -1.2em; }
+.notes-preview li.note-todo input { margin: 0 6px 0 0; vertical-align: -2px; accent-color: var(--accent); }
+.notes-preview li.note-todo.done { color: var(--muted); text-decoration: line-through; }
+.notes-preview a.note-link { color: var(--accent); text-decoration: none; border-bottom: 1px dashed currentColor; }
+.notes-links { display: flex; gap: 4px; flex-wrap: wrap; flex: none; }
+.notes-links:empty { display: none; }
+.notes-link-chip { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.notes-link-chip button { border-radius: 0 !important; }
+
+/* ---------- prompt library ---------- */
+.prompts-dialog { width: min(980px, calc(100vw - 32px)); }
+.prompts-dialog .prompts-layout { grid-template-columns: 280px 1fr; }
+.prompt-side { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.prompt-side .row input { flex: 1; }
+.prompt-side .prompt-list { max-height: 54vh; }
+.prompt-item { display: flex; flex: none; justify-content: space-between; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: inherit; }
+.prompt-side .lib-group { flex: none; }
+.prompt-item .hint { flex: none; margin: 0; }
+.prompt-edit .row input { flex: 1; }
+.prompt-vars { font-size: 11.5px; margin: 0; }
+.prompts-dialog .lib-group { position: sticky; top: 0; background: var(--sidebar); padding: 2px 0; z-index: 1; }
+
+/* ---------- memory ---------- */
+.memory-facts { width: min(860px, calc(100vw - 32px)); }
+.memory-facts .row input[type=search] { flex: 1; }
+.memory-cost { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+.memory-cost-pill { display: inline-flex; align-items: center; gap: 5px; padding: 1px 9px; border-radius: 999px; background: var(--hover); font-size: 12px; }
+.memory-cost-pill.heavy { background: color-mix(in srgb, #f59e0b 25%, transparent); }
+.memory-cost-pill .dot { width: 7px; height: 7px; border-radius: 50%; }
+.memory-list { display: flex; flex-direction: column; gap: 3px; max-height: 50vh; overflow-y: auto; margin: 8px 0; }
+.memory-row { display: flex; gap: 5px; align-items: center; }
+.memory-row.pinned .memory-text { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.memory-text { flex: 1; min-width: 0; }
+.memory-cat, .memory-move { width: auto; font-size: 12px; padding: 3px 4px; max-width: 120px; }
+.memory-add input { flex: 1; }
+
+/* ---------- agent preset picker ---------- */
+.preset-picker { width: min(760px, calc(100vw - 32px)); }
+.preset-picker input[type=search] { width: 100%; margin-bottom: 8px; }
+.preset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; max-height: 58vh; overflow-y: auto; overflow-x: hidden; }
+.preset-picker .preset-card { display: flex; flex-direction: row; justify-content: flex-start; gap: 8px; align-items: center; text-align: left; border: 1px solid var(--line); background: none; border-radius: 10px; padding: 6px 8px; cursor: pointer; color: inherit; min-width: 0; }
+.preset-card:hover, .preset-card:focus-visible { background: var(--hover); border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+.preset-icon { flex: none; width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; font-weight: 700; font-size: 12.5px; color: #111; }
+.preset-picker .preset-text { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; flex: 1; overflow: hidden; }
+.preset-text .hint { max-width: 100%; margin: 0; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#preset-row { gap: 8px; }
+
+/* ---------- kit window ---------- */
+.kit-dialog { width: min(1020px, calc(100vw - 32px)); }
+.kit-dialog .kit-body { height: min(620px, 70vh); display: flex; flex-direction: column; }
+.kit-dialog .tabpane { padding: 12px 4px; }
+.kit-dialog .tabbar { padding-left: 0; }
+.kit-col { display: flex; flex-direction: column; gap: 8px; }
+.kit-col > .row { flex-wrap: wrap; align-items: center; }
+.kit-chip.big { width: 44px; height: 32px; }
+.kit-harmony { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.kit-harmony .kit-format-label { width: 150px; }
+.kit-contrast-sample { display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; border-radius: 12px; border: 1px solid var(--line); }
+.kit-contrast-sample b { font-size: 22px; }
+.kit-ratio { font-size: 30px; font-weight: 700; letter-spacing: -.02em; }
+.kit-badge { padding: 1px 9px; border-radius: 999px; font-size: 12px; }
+.kit-badge.ok { background: color-mix(in srgb, #22c55e 25%, transparent); }
+.kit-badge.bad { background: color-mix(in srgb, #ef4444 25%, transparent); }
+.kit-gradient { height: 90px; border-radius: 12px; border: 1px solid var(--line); }
+.kit-formats-1 { grid-template-columns: 1fr; }
+.kit-table table { font-size: 12.5px; }
+.kit-frame { display: grid; grid-template-columns: 280px 1fr; gap: 16px; align-items: start; }
+.kit-frame-canvas { width: 260px; height: 260px; border-radius: 10px; background: color-mix(in srgb, #000 20%, var(--bg)); }
+.kit-ratio-in { width: 100%; }
+.kit-frame-info code { white-space: pre-wrap; word-break: break-word; }
+.kit-tc-out { font-size: 15px; }
+.kit-tc-out strong { font-size: 24px; font-family: var(--mono, ui-monospace, monospace); }
+
+/* ---------- forge debug: stat watch ---------- */
+.game-view { position: relative; }
+.fg-watch { position: absolute; top: 8px; right: 8px; z-index: 3; min-width: 130px; padding: 6px 8px; border-radius: 10px; font: 11.5px/1.5 var(--mono, Consolas, monospace);
+  background: color-mix(in srgb, #000 62%, transparent); color: #f2f2f2; backdrop-filter: blur(6px); pointer-events: auto; }
+.fg-watch-row { display: flex; justify-content: space-between; gap: 12px; cursor: default; }
+.fg-watch-row span { opacity: .7; }
+
+/* ---------- downloads, trash, backups ---------- */
+.downloads-dialog, .trash-dialog, .backups-dialog { width: min(760px, calc(100vw - 32px)); }
+.downloads-dialog input[type=search], .trash-dialog input[type=search] { width: 100%; margin-bottom: 8px; }
+.downloads-dialog .download-list, .trash-dialog .download-list, .backups-dialog .download-list { max-height: 52vh; overflow-y: auto; min-width: 0; }
+.download-row.interrupted .dl-name, .download-row.cancelled .dl-name { color: var(--muted); text-decoration: line-through; }
+.dl-bar { width: 90px; height: 6px; border-radius: 3px; background: var(--hover); overflow: hidden; flex: none; }
+.dl-bar span { display: block; height: 100%; background: var(--accent); transition: width .3s; }
+.backups-dialog code { font-size: 12px; }
+.backups-dialog .dialog-actions { flex-wrap: wrap; }
