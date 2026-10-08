@@ -111,7 +111,8 @@
 /* two-column rows shrink instead of overflowing when the (now taller) dialog shows its scrollbar */
 #agent-form .grid2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 #agent-form .grid2 > label > input:not([type=checkbox]), #agent-form .grid2 > label > select { min-width: 0; width: 100%; box-sizing: border-box; }
-#agent-form .folder-row > input { min-width: 0; }
+#agent-form .folder-row > input { min-width: 0; width: 0; flex: 1 1 0; }
+#agent-form fieldset { min-inline-size: 0; }
 
 /* ---- rail: a small star on agents that run on the Astra (Codex) engine ---- */
 .agent-btn.astra-btn { position: relative; }

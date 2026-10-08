@@ -41,13 +41,15 @@ function turn(agent, text, session = {}, options = {}, onStart) {
   assert(a1.includes('shell_tool') && a1.includes('web_search="disabled"') && a1.join(' ').includes('-s read-only'));
   assert(!a1.some((x) => /mcp_servers/.test(x)), 'no MCP for a plain Astra');
   ok('Astra keeps the frugal flags (no user config, features off, no web, no MCP, read-only)');
-  const a2 = T.codexArgs(astra, { id: 'abc' }, { effort: 'minimal', webSearch: 'live', model: 'gpt-6-luna', images: ['/x.png'] });
+  const a2 = T.codexArgs(astra, { id: 'abc' }, { effort: 'xhigh', webSearch: 'live', model: 'gpt-6-luna', images: ['/x.png'] });
   assert.deepStrictEqual(a2.slice(0, 3), ['exec', 'resume', 'abc']);
-  assert(a2.includes('model_reasoning_effort="minimal"') && a2.includes('web_search="live"') && a2.includes('gpt-6-luna') && a2.includes('/x.png'));
+  assert(a2.includes('model_reasoning_effort="xhigh"') && a2.includes('web_search="live"') && a2.includes('gpt-6-luna') && a2.includes('/x.png'));
   assert(!a2.includes('-C'), 'resume runs keep their session folder');
   ok('per-chat effort / web search / model / images reach codex exec resume');
   assert(!T.codexArgs({ ...astra, effort: 'max' }, {}, {}).some((x) => /reasoning_effort/.test(x)), 'unknown effort is dropped');
   ok('an effort Codex does not know is dropped instead of failing');
+  assert(T.codexArgs(astra, {}, { effort: 'minimal', webSearch: 'cached' }).includes('model_reasoning_effort="low"'));
+  ok('minimal effort with web search on becomes low (they don\'t mix)');
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), "astra o'folder-"));
   const ro = T.codexArgs({ ...astra, workspace: folder }, {}, {});
   assert(!ro.includes('shell_tool') && ro.includes('sandbox_mode="read-only"') && !ro.some((x) => /writable_roots/.test(x)));

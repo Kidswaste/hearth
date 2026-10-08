@@ -33,6 +33,7 @@ process.stdin.on('end', async () => {
   let reply = `Claude here (${opt('--model') || 'default'}). You said: “${ask.slice(0, 90)}${ask.length > 90 ? '…' : ''}”`;
   if (/Improve this|improve it further/i.test(prompt)) reply = 'Improved version by Claude.\n\nChanges: clearer structure.';
   if (/Critique this|Review it again/i.test(prompt)) reply = '1. Too long.\n2. Missing a caveat.';
+  if (/serves the user better/.test(prompt)) reply = '2\nIt is more concrete.';
   if (/single best|Merge/i.test(prompt)) reply = 'Merged answer (Claude): the best of both.';
   if (/Revise your answer/i.test(prompt)) reply = 'Revised answer by Claude, shorter and with the caveat.';
   for (const piece of reply.match(/.{1,24}/gs)) {

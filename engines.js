@@ -336,7 +336,9 @@ function codexArgs(agent, session, options = {}) {
     args.push('-c', `sandbox_mode="${edit ? 'workspace-write' : 'read-only'}"`, '-c', 'approval_policy="never"');
     if (edit) args.push('-c', `sandbox_workspace_write.writable_roots=[${tomlStr(folder)}]`, '-c', 'sandbox_workspace_write.network_access=false');
   }
-  const effort = pick(options.effort, EFFORTS.codex) || pick(agent.effort, EFFORTS.codex);
+  let effort = pick(options.effort, EFFORTS.codex) || pick(agent.effort, EFFORTS.codex);
+  // minimal reasoning can't use the web search tool: with web on it becomes low instead of failing
+  if (effort === 'minimal' && web !== 'disabled') effort = 'low';
   if (effort) args.push('-c', `model_reasoning_effort="${effort}"`);
   // Thinking summaries: switching them off saves output tokens; a chosen style is opt-in.
   const summary = agent.showThinking === false ? 'none' : pick(agent.reasoningSummary, SUMMARIES);
@@ -526,7 +528,7 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
   let idle = null;
   const touch = () => {
     clearTimeout(idle);
-    idle = setTimeout(() => { child.hubIdle = true; log(`${engine} ${chatId} idle for ${IDLE_MS / 60000} min, stopping`); child.kill(); }, IDLE_MS);
+    idle = setTimeout(() => { child.hubIdle = true; log(`${engine} ${chatId} idle for ${IDLE_MS / 60000} min, stopping`); kill(child); }, IDLE_MS);
   };
   touch();
   const finish = (event) => {
@@ -605,8 +607,18 @@ function stop(chatId) {
   const child = running.get(chatId);
   if (!child) return false;
   child.hubStopped = true; // an engine that exits cleanly on SIGTERM still counts as stopped, not failed
-  child.kill();
+  kill(child);
   return true;
+}
+// Stops an engine and what it started (MCP tool servers): on Windows the whole process tree, elsewhere
+// SIGTERM, then SIGKILL if it is still there after 5 s.
+function kill(child) {
+  if (IS_WIN && child.pid) {
+    try { spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }).on('error', () => child.kill()); return; } catch { /* fall back */ }
+  }
+  child.kill();
+  const force = setTimeout(() => { if (child.exitCode === null && child.signalCode === null) { try { child.kill('SIGKILL'); } catch { /* gone */ } } }, 5000);
+  child.once('close', () => clearTimeout(force));
 }
 
 function stopAll() {
@@ -639,7 +651,8 @@ function quick(bin, args, ms = 10000) {
 }
 
 // Diagnostics for /astra-doctor: where each engine was found, its version and (Codex) whether it's signed in.
-async function doctor() {
+// agents (optional): native agents whose prompt size per message is estimated (instructions + memory).
+async function doctor(agents = []) {
   const report = {};
   for (const engine of Object.keys(ENGINES)) {
     const bin = LOCATE[engine]();
@@ -658,6 +671,14 @@ async function doctor() {
   }
   report.platform = process.platform;
   report.workspace = WORKSPACE;
+  try { fs.accessSync(WORKSPACE, fs.constants.W_OK); report.workspaceOk = true; } catch { report.workspaceOk = false; }
+  // the hub's MCP tool servers (talk-back, directors) and the bridge they call
+  report.mcp = Object.fromEntries(Object.values(HUB_TOOLSETS).map(({ server, script }) => [server, fs.existsSync(path.join(__dirname, 'mcp', script))]));
+  report.bridge = fs.existsSync(path.join(DATA_DIR, 'game-bridge.json'));
+  report.prompts = agents.filter((a) => a.mode === 'native').map((a) => {
+    const text = buildPrompt(a);
+    return { id: a.id, name: a.name, engine: a.engine, chars: text.length, tokens: Math.ceil(text.length / 4), tools: hubToolsets(a) };
+  });
   return report;
 }
 

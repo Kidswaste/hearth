@@ -70,6 +70,7 @@ async function main() {
   let reply = `Astra here (${model}, effort ${effort}${images.length ? `, ${images.length} image${images.length > 1 ? 's' : ''}` : ''}). You said: “${ask.slice(0, 90)}${ask.length > 90 ? '…' : ''}”`;
   if (/Improve this|improve it further/i.test(prompt)) reply = `Improved version by Astra.\n\nChanges: tightened wording, fixed one mistake.`;
   if (/Critique this|Review it again/i.test(prompt)) reply = '1. The intro is vague.\n2. A step is missing.\n3. Add an example.';
+  if (/serves the user better/.test(prompt)) reply = '2\nIt is more concrete.';
   if (/single best|Merge/i.test(prompt)) reply = `Merged answer (Astra): the best of both.`;
   if (/Revise your answer/i.test(prompt)) reply = 'Revised answer by Astra, with the missing step.';
   if (/REMEMBER/.test(prompt)) reply += '\n<remember>The user likes fake tea</remember>';

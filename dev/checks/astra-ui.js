@@ -59,6 +59,34 @@ out.director = { engine: d.engine, model: d.model, keep: d.otherEngine };
 await Commands.tryRun('/director-engine three claude', A.id);
 await sleep(600);
 out.directorBack = { engine: H.agent('threedirector').engine, model: H.agent('threedirector').model };
+// doctor lists prompt sizes and tool servers
+await Commands.tryRun('/astra-doctor', A.id);
+out.doctorPrompts = /Instructions \+ memory per message/.test(lastNote(A.id)) && /Hub tool servers present/.test(lastNote(A.id));
+// scoreboard after a pick, budget, partner, auto opinion, log, handoff back
+activate(C.id);
+await sleep(200);
+await Commands.tryRun('/pick 1', C.id);
+await sleep(300);
+await Commands.tryRun('/collab-scoreboard', C.id);
+out.scoreboard = lastNote(C.id).slice(0, 120);
+await Commands.tryRun('/collab-budget 5k', C.id);
+await Commands.tryRun('/debate 3 budget test', C.id);
+const bud = await until(() => { const x = lastCollab(); return x?.task === 'budget test' && x.status !== 'running' && x; }, 30000);
+out.budget = bud && { status: bud.status, error: bud.error, parts: bud.parts.length };
+await Commands.tryRun('/collab-budget off', C.id);
+await Commands.tryRun('/opinion-auto on', C.id);
+await Native.send(C.id, 'auto opinion please');
+const auto = await until(() => { const ms = Native.chatOf(C.id).messages; return ms.at(-1)?.role === 'opinion' && ms.at(-1); }, 20000);
+out.autoOpinion = auto?.from;
+await Commands.tryRun('/opinion-auto off', C.id);
+await Commands.tryRun('/astra-log 3', C.id);
+out.log = lastNote(C.id).slice(0, 80);
+const before = Native.chatOf(C.id).id;
+await Commands.tryRun('/handoff astra --raw', C.id);
+await sleep(500);
+await Commands.tryRun('/handoff back', A.id);
+await sleep(500);
+out.handoffBack = Native.chatOf(C.id)?.id === before;
 // rail star
 out.railStar = [...document.querySelectorAll('#agent-buttons .agent-btn.astra-btn')].map((b) => b.dataset.id);
 // the agent editor shows Astra's options

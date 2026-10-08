@@ -176,7 +176,7 @@ ipcMain.handle('engine:once', (_e, { agentId, text, images, options }) => {
   return engines.once({ agent, text, images: (images || []).filter((p) => typeof p === 'string'), options: options || {} });
 });
 // Astra's /astra-doctor: engine paths, versions, sign-in state.
-ipcMain.handle('engine:doctor', () => { engines.setEnginePaths(settings().enginePaths); return engines.doctor(); });
+ipcMain.handle('engine:doctor', () => { engines.setEnginePaths(settings().enginePaths); return engines.doctor(readConfig().agents); });
 ipcMain.handle('engine:send', (_e, { agentId, chatId, session, text, options }) => {
   engines.setEnginePaths(settings().enginePaths);
   const agent = readConfig().agents.find((a) => a.id === agentId);
