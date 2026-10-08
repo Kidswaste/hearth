@@ -25,6 +25,71 @@ const ThreeTriggers = (() => {
     'Drum & bass': { kick: { lo: 45, hi: 110, gap: 120 }, bass: { lo: 40, hi: 140, gap: 120 }, snare: { lo: 1800, hi: 5000, gap: 200 }, hats: { lo: 7000, hi: 15000, gap: 70 }, hit: { lo: 300, hi: 2500, gap: 250 } },
     'Rock / live drums': { kick: { lo: 50, hi: 120, gap: 150 }, bass: { lo: 60, hi: 250, gap: 200 }, snare: { lo: 2000, hi: 6000, gap: 120 }, hats: { lo: 6000, hi: 12000, gap: 80 }, hit: { lo: 4000, hi: 12000, gap: 500 } },
     'Ambient / soft': { kick: { lo: 40, hi: 120, gap: 400 }, bass: { lo: 50, hi: 300, gap: 500 }, snare: { lo: 800, hi: 3000, gap: 400 }, hats: { lo: 5000, hi: 12000, gap: 200 }, hit: { lo: 200, hi: 2000, gap: 600 } },
+
+    // ---- FX pack: more genres (bands + timing) ----
+    'Techno · peak time': { kick: { lo: 40, hi: 85, gap: 330, fade: 140 }, bass: { lo: 45, hi: 140, gap: 220 }, snare: { lo: 1500, hi: 4500, gap: 300 }, hats: { lo: 9000, hi: 16000, gap: 70, fade: 60 }, hit: { lo: 400, hi: 3000, gap: 450 } },
+    'Minimal techno': { kick: { lo: 40, hi: 80, gap: 340, fade: 100 }, bass: { lo: 50, hi: 130, gap: 300 }, snare: { lo: 2000, hi: 6000, gap: 400 }, hats: { lo: 8000, hi: 15000, gap: 100, fade: 50 }, hit: { lo: 600, hi: 4000, gap: 600 } },
+    'Hard techno': { kick: { lo: 45, hi: 110, gap: 250, fade: 160 }, bass: { lo: 60, hi: 200, gap: 200 }, snare: { lo: 1200, hi: 4000, gap: 250 }, hats: { lo: 7000, hi: 15000, gap: 60 }, hit: { lo: 300, hi: 3000, gap: 300 } },
+    'Deep house': { kick: { lo: 40, hi: 95, gap: 330, fade: 180 }, bass: { lo: 45, hi: 180, gap: 260 }, snare: { lo: 1000, hi: 3500, gap: 350 }, hats: { lo: 7000, hi: 14000, gap: 110 }, hit: { lo: 300, hi: 2500, gap: 500 } },
+    'Tech house': { kick: { lo: 42, hi: 95, gap: 320 }, bass: { lo: 50, hi: 170, gap: 180 }, snare: { lo: 1300, hi: 4500, gap: 300 }, hats: { lo: 8000, hi: 16000, gap: 70 }, hit: { lo: 400, hi: 3000, gap: 400 } },
+    'Disco / nu-disco': { kick: { lo: 45, hi: 110, gap: 300 }, bass: { lo: 60, hi: 250, gap: 140 }, snare: { lo: 1500, hi: 5000, gap: 300 }, hats: { lo: 6000, hi: 13000, gap: 100 }, hit: { lo: 500, hi: 3500, gap: 450 } },
+    'Trance': { kick: { lo: 40, hi: 90, gap: 300 }, bass: { lo: 60, hi: 220, gap: 120 }, snare: { lo: 1500, hi: 5000, gap: 300 }, hats: { lo: 8000, hi: 16000, gap: 90 }, hit: { lo: 800, hi: 5000, gap: 300 } },
+    'Psytrance': { kick: { lo: 45, hi: 100, gap: 290, fade: 90 }, bass: { lo: 60, hi: 200, gap: 90, fade: 70 }, snare: { lo: 2000, hi: 6000, gap: 300 }, hats: { lo: 9000, hi: 16000, gap: 70 }, hit: { lo: 1000, hi: 6000, gap: 250 } },
+    'Trap': { kick: { lo: 30, hi: 70, gap: 140, fade: 220 }, bass: { lo: 30, hi: 90, gap: 200, fade: 300 }, snare: { lo: 1500, hi: 5500, gap: 220 }, hats: { lo: 6000, hi: 15000, gap: 40, fade: 40 }, hit: { lo: 400, hi: 3000, gap: 300 } },
+    'Boom bap': { kick: { lo: 40, hi: 100, gap: 220 }, bass: { lo: 50, hi: 160, gap: 250 }, snare: { lo: 1200, hi: 4500, gap: 350, fade: 160 }, hats: { lo: 5000, hi: 12000, gap: 110 }, hit: { lo: 300, hi: 2500, gap: 400 } },
+    'Drill': { kick: { lo: 30, hi: 75, gap: 160, fade: 200 }, bass: { lo: 30, hi: 100, gap: 180, fade: 280 }, snare: { lo: 1800, hi: 6000, gap: 200 }, hats: { lo: 6000, hi: 15000, gap: 45 }, hit: { lo: 600, hi: 4000, gap: 250 } },
+    'Phonk': { kick: { lo: 35, hi: 80, gap: 180, fade: 180 }, bass: { lo: 35, hi: 110, gap: 160 }, snare: { lo: 1500, hi: 5000, gap: 200 }, hats: { lo: 4000, hi: 9000, gap: 60 }, hit: { lo: 800, hi: 4000, gap: 200 } },
+    'Dubstep': { kick: { lo: 40, hi: 100, gap: 300 }, bass: { lo: 60, hi: 400, gap: 120, fade: 150 }, snare: { lo: 1500, hi: 5500, gap: 400, fade: 180 }, hats: { lo: 7000, hi: 15000, gap: 90 }, hit: { lo: 300, hi: 3000, gap: 300 } },
+    'Riddim': { kick: { lo: 40, hi: 100, gap: 300 }, bass: { lo: 80, hi: 600, gap: 100, fade: 100 }, snare: { lo: 1500, hi: 5000, gap: 450 }, hats: { lo: 7000, hi: 15000, gap: 100 }, hit: { lo: 400, hi: 3500, gap: 200 } },
+    'Liquid DnB': { kick: { lo: 45, hi: 110, gap: 140 }, bass: { lo: 40, hi: 130, gap: 180, fade: 200 }, snare: { lo: 1500, hi: 4500, gap: 220, fade: 150 }, hats: { lo: 7000, hi: 14000, gap: 70 }, hit: { lo: 400, hi: 3000, gap: 350 } },
+    'Neurofunk': { kick: { lo: 45, hi: 110, gap: 120 }, bass: { lo: 50, hi: 300, gap: 90, fade: 80 }, snare: { lo: 1800, hi: 5500, gap: 200 }, hats: { lo: 8000, hi: 16000, gap: 60 }, hit: { lo: 500, hi: 4000, gap: 180 } },
+    'Jungle / breaks': { kick: { lo: 50, hi: 130, gap: 100 }, bass: { lo: 40, hi: 120, gap: 200 }, snare: { lo: 1200, hi: 5000, gap: 90, fade: 90 }, hats: { lo: 6000, hi: 14000, gap: 60 }, hit: { lo: 300, hi: 3000, gap: 200 } },
+    'Breakbeat': { kick: { lo: 50, hi: 120, gap: 130 }, bass: { lo: 50, hi: 180, gap: 180 }, snare: { lo: 1500, hi: 5000, gap: 130 }, hats: { lo: 6000, hi: 13000, gap: 80 }, hit: { lo: 400, hi: 3000, gap: 250 } },
+    'UK garage': { kick: { lo: 45, hi: 100, gap: 180 }, bass: { lo: 45, hi: 160, gap: 160 }, snare: { lo: 1500, hi: 5000, gap: 200 }, hats: { lo: 7000, hi: 14000, gap: 70 }, hit: { lo: 400, hi: 3000, gap: 300 } },
+    'Future bass': { kick: { lo: 40, hi: 100, gap: 250 }, bass: { lo: 50, hi: 250, gap: 200 }, snare: { lo: 1500, hi: 5000, gap: 300, fade: 200 }, hats: { lo: 7000, hi: 15000, gap: 80 }, hit: { lo: 600, hi: 5000, gap: 250, fade: 200 } },
+    'EDM / big room': { kick: { lo: 40, hi: 100, gap: 320, fade: 170 }, bass: { lo: 50, hi: 200, gap: 200 }, snare: { lo: 1300, hi: 4500, gap: 250 }, hats: { lo: 8000, hi: 16000, gap: 80 }, hit: { lo: 500, hi: 4000, gap: 300 } },
+    'Hardstyle': { kick: { lo: 50, hi: 200, gap: 300, fade: 220 }, bass: { lo: 60, hi: 300, gap: 250 }, snare: { lo: 1500, hi: 5000, gap: 300 }, hats: { lo: 8000, hi: 16000, gap: 90 }, hit: { lo: 800, hi: 5000, gap: 300 } },
+    'Lo-fi hip-hop': { kick: { lo: 40, hi: 110, gap: 300, fade: 200 }, bass: { lo: 50, hi: 200, gap: 350 }, snare: { lo: 1000, hi: 3500, gap: 400, fade: 200 }, hats: { lo: 4000, hi: 9000, gap: 150 }, hit: { lo: 300, hi: 2000, gap: 500 } },
+    'Chillwave': { kick: { lo: 45, hi: 120, gap: 350, fade: 250 }, bass: { lo: 50, hi: 250, gap: 400 }, snare: { lo: 1000, hi: 4000, gap: 400, fade: 250 }, hats: { lo: 6000, hi: 12000, gap: 150 }, hit: { lo: 300, hi: 2500, gap: 500 } },
+    'Synthwave': { kick: { lo: 45, hi: 110, gap: 300 }, bass: { lo: 50, hi: 200, gap: 150 }, snare: { lo: 1200, hi: 4500, gap: 350, fade: 220 }, hats: { lo: 7000, hi: 14000, gap: 110 }, hit: { lo: 500, hi: 4000, gap: 400 } },
+    'Pop': { kick: { lo: 45, hi: 110, gap: 250 }, bass: { lo: 50, hi: 200, gap: 250 }, snare: { lo: 1500, hi: 5000, gap: 300 }, hats: { lo: 6000, hi: 13000, gap: 100 }, hit: { lo: 1000, hi: 4000, gap: 400 } },
+    'K-pop': { kick: { lo: 40, hi: 100, gap: 200 }, bass: { lo: 45, hi: 180, gap: 200 }, snare: { lo: 1500, hi: 5500, gap: 200 }, hats: { lo: 7000, hi: 15000, gap: 60 }, hit: { lo: 600, hi: 4500, gap: 250 } },
+    'R&B': { kick: { lo: 40, hi: 100, gap: 300, fade: 200 }, bass: { lo: 40, hi: 160, gap: 300 }, snare: { lo: 1200, hi: 4500, gap: 350, fade: 180 }, hats: { lo: 6000, hi: 13000, gap: 70 }, hit: { lo: 500, hi: 3500, gap: 400 } },
+    'Reggaeton': { kick: { lo: 40, hi: 100, gap: 180 }, bass: { lo: 45, hi: 160, gap: 180 }, snare: { lo: 1500, hi: 5000, gap: 150 }, hats: { lo: 6000, hi: 13000, gap: 80 }, hit: { lo: 400, hi: 3000, gap: 300 } },
+    'Afrobeats': { kick: { lo: 45, hi: 110, gap: 180 }, bass: { lo: 50, hi: 180, gap: 180 }, snare: { lo: 1000, hi: 4000, gap: 160 }, hats: { lo: 5000, hi: 12000, gap: 70 }, hit: { lo: 300, hi: 2500, gap: 250 } },
+    'Funk': { kick: { lo: 50, hi: 120, gap: 160 }, bass: { lo: 60, hi: 300, gap: 110, fade: 90 }, snare: { lo: 1500, hi: 5000, gap: 160 }, hats: { lo: 6000, hi: 12000, gap: 80 }, hit: { lo: 800, hi: 4000, gap: 250 } },
+    'Indie rock': { kick: { lo: 55, hi: 130, gap: 150 }, bass: { lo: 60, hi: 250, gap: 200 }, snare: { lo: 1800, hi: 6000, gap: 140 }, hats: { lo: 5000, hi: 11000, gap: 90 }, hit: { lo: 3000, hi: 10000, gap: 400 } },
+    'Metal': { kick: { lo: 60, hi: 160, gap: 70, fade: 70 }, bass: { lo: 70, hi: 250, gap: 120 }, snare: { lo: 2000, hi: 6000, gap: 110 }, hats: { lo: 6000, hi: 14000, gap: 70 }, hit: { lo: 3000, hi: 12000, gap: 300 } },
+    'Punk': { kick: { lo: 55, hi: 140, gap: 120 }, bass: { lo: 60, hi: 250, gap: 120 }, snare: { lo: 1800, hi: 6000, gap: 120 }, hats: { lo: 5000, hi: 12000, gap: 70 }, hit: { lo: 3000, hi: 12000, gap: 300 } },
+    'Jazz': { kick: { lo: 50, hi: 140, gap: 250 }, bass: { lo: 40, hi: 250, gap: 180 }, snare: { lo: 1500, hi: 5000, gap: 150 }, hats: { lo: 4000, hi: 10000, gap: 100 }, hit: { lo: 2000, hi: 9000, gap: 300 } },
+    'Classical / orchestral': { kick: { lo: 40, hi: 120, gap: 500, fade: 300 }, bass: { lo: 40, hi: 250, gap: 500, fade: 300 }, snare: { lo: 1500, hi: 5000, gap: 400 }, hats: { lo: 5000, hi: 12000, gap: 250 }, hit: { lo: 100, hi: 4000, gap: 700, fade: 400 } },
+    'Cinematic / trailer': { kick: { lo: 30, hi: 100, gap: 600, fade: 400 }, bass: { lo: 30, hi: 150, gap: 600, fade: 400 }, snare: { lo: 1000, hi: 5000, gap: 500, fade: 300 }, hats: { lo: 6000, hi: 14000, gap: 200 }, hit: { lo: 100, hi: 6000, gap: 700, fade: 500 } },
+    'Acoustic / folk': { kick: { lo: 60, hi: 160, gap: 350 }, bass: { lo: 70, hi: 250, gap: 300 }, snare: { lo: 1500, hi: 5000, gap: 300 }, hats: { lo: 5000, hi: 12000, gap: 150 }, hit: { lo: 200, hi: 3000, gap: 300 } },
+    'Reggae / dub': { kick: { lo: 45, hi: 110, gap: 400 }, bass: { lo: 40, hi: 160, gap: 250, fade: 220 }, snare: { lo: 1200, hi: 4500, gap: 450, fade: 250 }, hats: { lo: 5000, hi: 11000, gap: 120 }, hit: { lo: 600, hi: 4000, gap: 400 } },
+    'Latin / salsa': { kick: { lo: 60, hi: 160, gap: 200 }, bass: { lo: 60, hi: 220, gap: 180 }, snare: { lo: 2000, hi: 6000, gap: 120 }, hats: { lo: 5000, hi: 12000, gap: 80 }, hit: { lo: 800, hi: 5000, gap: 200 } },
+    'Hyperpop': { kick: { lo: 40, hi: 110, gap: 160 }, bass: { lo: 40, hi: 200, gap: 140 }, snare: { lo: 1500, hi: 6000, gap: 150 }, hats: { lo: 7000, hi: 16000, gap: 50 }, hit: { lo: 800, hi: 6000, gap: 180 } },
+    'Garage rock': { kick: { lo: 55, hi: 140, gap: 140 }, bass: { lo: 70, hi: 250, gap: 160 }, snare: { lo: 1500, hi: 5500, gap: 150 }, hats: { lo: 4000, hi: 10000, gap: 90 }, hit: { lo: 2000, hi: 8000, gap: 300 } },
+    // ---- FX pack: behaviors (they can also change bars, fades and which triggers are on) ----
+    '◆ Kick only': { kick: { on: true }, bass: { on: false }, snare: { on: false }, hats: { on: false }, hit: { on: false } },
+    '◆ Kick + snare': { kick: { on: true }, bass: { on: false }, snare: { on: true }, hats: { on: false }, hit: { on: false } },
+    '◆ Everything on': { kick: { on: true }, bass: { on: true }, snare: { on: true }, hats: { on: true }, hit: { on: true } },
+    '◆ Busy (more hits)': { kick: { thr: 0.68, gap: 120 }, bass: { thr: 0.62, gap: 150 }, snare: { thr: 0.48, gap: 100 }, hats: { thr: 0.35, gap: 50 }, hit: { thr: 0.55, gap: 180 } },
+    '◆ Calm (fewer hits)': { kick: { thr: 0.88, gap: 400 }, bass: { thr: 0.85, gap: 450 }, snare: { thr: 0.7, gap: 400 }, hats: { thr: 0.6, gap: 250 }, hit: { thr: 0.8, gap: 600 } },
+    '◆ Only the big hits': { kick: { thr: 0.93 }, bass: { thr: 0.92 }, snare: { thr: 0.82 }, hats: { thr: 0.75 }, hit: { thr: 0.9 } },
+    '◆ Snappy (short flashes)': { kick: { fade: 60 }, bass: { fade: 80 }, snare: { fade: 50 }, hats: { fade: 30 }, hit: { fade: 70 } },
+    '◆ Smooth (long tails)': { kick: { fade: 350 }, bass: { fade: 450 }, snare: { fade: 300 }, hats: { fade: 200 }, hit: { fade: 500 } },
+    '◆ Sub-bass drops': { kick: { on: false }, bass: { on: true, lo: 25, hi: 60, gap: 400, fade: 400 }, snare: { on: false }, hats: { on: false }, hit: { on: false } },
+    '◆ Hi-hat rolls': { hats: { on: true, lo: 7000, hi: 16000, gap: 35, fade: 35, thr: 0.38 } },
+    '◆ Vocals as hits': { hit: { on: true, lo: 300, hi: 3400, gap: 250, fade: 200 } },
+    '◆ Claps & snaps': { snare: { lo: 2000, hi: 7000, gap: 150, fade: 90 } },
+    '◆ Cymbal crashes': { hit: { on: true, lo: 6000, hi: 16000, gap: 900, fade: 600, thr: 0.8 } },
+    '◆ Synth stabs': { hit: { on: true, lo: 500, hi: 5000, gap: 120, fade: 100 } },
+    '◆ Guitar chugs': { hit: { on: true, lo: 100, hi: 800, gap: 90, fade: 70 } },
+    '◆ Live mic (noisy room)': { kick: { thr: 0.86, gap: 260 }, bass: { thr: 0.84 }, snare: { thr: 0.66, gap: 200 }, hats: { thr: 0.55, gap: 120 }, hit: { thr: 0.75, gap: 400 } },
+    '◆ Laptop speakers (no bass)': { kick: { lo: 90, hi: 200 }, bass: { lo: 120, hi: 300 } },
+    '◆ Half-time feel': { kick: { gap: 600 }, snare: { gap: 900 }, hit: { gap: 900 } },
+    '◆ Double-time feel': { kick: { gap: 110 }, snare: { gap: 110 }, hats: { gap: 40 } },
+    '◆ Bass as kick': { kick: { lo: 40, hi: 160, gap: 250 }, bass: { on: false } },
   };
   const F0 = 20; const F1 = 20000; const BINS = 200; // the spectrum the sketch sends: 200 log-spaced bins
   const clampCfg = (c) => {
@@ -69,7 +134,8 @@ const ThreeTriggers = (() => {
       const r = anchor.getBoundingClientRect();
       const saved = store.get('three.trigPresets', []);
       showMenu(r.left, r.bottom + 4, [
-        ...Object.entries(PRESETS).map(([name, p]) => ({ label: name, action: () => applyPreset(p, name) })),
+        ...Object.entries(PRESETS).slice(0, 5).map(([name, p]) => ({ label: name, action: () => applyPreset(p, name) })),
+        ...(typeof ThreeFX !== 'undefined' ? [{ label: `All ${Object.keys(PRESETS).length} presets… (search)`, action: () => ThreeFX.openPicker('trigger') }] : Object.entries(PRESETS).slice(5).map(([name, p]) => ({ label: name, action: () => applyPreset(p, name) }))),
         { label: '↺ Defaults (everything)', action: () => { cfg = merge(null); changed(); hint.textContent = 'Back to the defaults'; } },
         ...Object.entries(store.get('three.triggersBySong', {})).slice(0, 12).map(([p, c]) => ({ label: `♪ From ${p.split(/[\\/]/).pop()}`, action: () => { cfg = merge(c); changed(); hint.textContent = `Copied from ${p.split(/[\\/]/).pop()}`; } })),
         ...saved.map((x) => ({ label: `★ ${x.name}`, action: () => { cfg = merge(x.cfg); changed(); hint.textContent = `${x.name}: loaded (bands and bars)`; } })),
@@ -328,5 +394,5 @@ const ThreeTriggers = (() => {
       destroy() { ro.disconnect(); cancelAnimationFrame(raf); root.remove(); },
     };
   }
-  return { LIST, DEFAULTS, BINS, F0, F1, merge, panel };
+  return { LIST, DEFAULTS, PRESETS, BINS, F0, F1, merge, panel };
 })();

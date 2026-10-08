@@ -204,6 +204,20 @@ renderer.setAnimationLoop(() => {
     { id: 'pulse', name: 'Pulse on beats', desc: 'A small bump on every beat', make: (c) => ({ scale: c.beats.flatMap((t) => [k(t, c.base('scale') * 1.1, 'curve', 0.6), k(t + c.beat * 0.6, c.base('scale'))]) }) },
     { id: 'shake', name: 'Shake on kicks', desc: 'A jolt on each kick marker (or beat)', make: (c) => ({ x: (c.kicks.length ? c.kicks : c.beats).flatMap((t) => [k(t, c.base('x') + 3, 'linear'), k(t + 0.04, c.base('x') - 2, 'linear'), k(t + 0.1, c.base('x'))]) }) },
     { id: 'blink', name: 'Blink on snares', desc: 'Dips on each snare marker (or every other beat)', make: (c) => ({ opacity: (c.snares.length ? c.snares : c.beats.filter((_, i) => i % 2)).flatMap((t) => [k(t, c.base('opacity') * 0.15, 'curve', 0.5), k(t + c.beat * 0.5, c.base('opacity'))]) }) },
+    // FX pack: one-click animations with the named eases
+    { id: 'bounceIn', name: 'Bounce in', desc: 'Drops in from above and bounces', make: (c) => ({ y: [k(c.a, -100, 'bounce'), k(c.a + c.bar, c.base('y'))] }) },
+    { id: 'elasticPop', name: 'Elastic pop', desc: 'Springs to full size with a wobble', make: (c) => ({ scale: [k(c.a, c.base('scale') * 0.2, 'elastic'), k(c.a + c.bar, c.base('scale'))], opacity: [k(c.a, 0, 'linear'), k(c.a + c.beat * 0.25, c.base('opacity'))] }) },
+    { id: 'overshootLeft', name: 'Swoosh in', desc: 'Slides in from the left and overshoots a little', make: (c) => ({ x: [k(c.a, -100, 'backOut'), k(c.a + c.beat * 2, c.base('x'))] }) },
+    { id: 'anticipateOut', name: 'Swoosh out', desc: 'Pulls back, then shoots off to the right at the end', make: (c) => ({ x: [k(c.b - c.beat * 2, c.base('x'), 'backIn'), k(c.b, 100)] }) },
+    { id: 'heartbeat', name: 'Heartbeat', desc: 'A double thump on every kick (or beat)', make: (c) => ({ scale: (c.kicks.length ? c.kicks : c.beats).flatMap((t) => [k(t, c.base('scale') * 1.12, 'expoOut'), k(t + c.beat * 0.18, c.base('scale') * 1.02, 'expoOut'), k(t + c.beat * 0.3, c.base('scale') * 1.08, 'expoOut'), k(t + c.beat * 0.7, c.base('scale'))]) }) },
+    { id: 'punchZoom', name: 'Punch zoom on kicks', desc: 'Snaps bigger on each kick and glides back', make: (c) => ({ scale: (c.kicks.length ? c.kicks : c.beats).flatMap((t) => [k(t, c.base('scale') * 1.2, 'expoOut'), k(t + c.beat * 0.8, c.base('scale'))]) }) },
+    { id: 'wobbleSnare', name: 'Wobble on snares', desc: 'A little rotation wobble on each snare', make: (c) => ({ rotate: (c.snares.length ? c.snares : c.beats.filter((_, i) => i % 2)).flatMap((t) => [k(t, c.base('rotate') + 6, 'wobble'), k(t + c.beat * 0.9, c.base('rotate'))]) }) },
+    { id: 'spinBars', name: 'Quarter turn every bar', desc: 'Snaps 90° on each bar line', make: (c) => { const out = []; let r = c.base('rotate'); for (let t = c.a; t < c.b; t += c.bar) { out.push(k(t, r, 'backOut')); r += 90; out.push(k(Math.min(c.b, t + c.beat), r, 'hold')); } return { rotate: out }; } },
+    { id: 'strobeOpacity', name: 'Strobe on beats', desc: 'Opacity flashes on each beat', make: (c) => ({ opacity: c.beats.flatMap((t) => [k(t, c.base('opacity'), 'hold'), k(t + c.beat * 0.25, c.base('opacity') * 0.1, 'hold')]) }) },
+    { id: 'drift', name: 'Slow drift', desc: 'Floats gently up and down over the range', make: (c) => { const out = []; let up = true; for (let t = c.a; t <= c.b; t += c.bar) { out.push(k(t, c.base('y') + (up ? -3 : 3), 'sineInOut')); up = !up; } return { y: out }; } },
+    { id: 'stepsIn', name: 'Step in', desc: 'Grows in 4 hard steps', make: (c) => ({ scale: [k(c.a, 0.1, 'steps4'), k(c.a + c.bar, c.base('scale'))] }) },
+    { id: 'zoomOutEnd', name: 'Zoom away', desc: 'Shrinks and fades out at the end', make: (c) => ({ scale: [k(c.b - c.bar, c.base('scale'), 'expoIn'), k(c.b, c.base('scale') * 0.2)], opacity: [k(c.b - c.beat, c.base('opacity'), 'quadIn'), k(c.b, 0)] }) },
+    { id: 'shakeHits', name: 'Shake on hits', desc: 'A vertical jolt on each hit marker (or beat)', make: (c) => ({ y: (c.kicks.length ? c.kicks : c.beats).flatMap((t) => [k(t, c.base('y') - 3, 'elastic'), k(t + c.beat * 0.6, c.base('y'))]) }) },
   ];
 
   // Filter layers: they change everything below them (like adjustment layers). The settings are sliders.
@@ -283,7 +297,7 @@ filter('${type}', P);
     const list = el('div', { class: 'ly-list' });
     const count = el('span', { class: 'tw-count' });
     const btn = (text, title, fn, cls = 'ghost small') => el('button', { class: cls, text, title, on: { click: fn } });
-    const addBtn = btn('＋ Layer', 'Add a layer on top', (e) => addMenu(e.currentTarget), 'primary small');
+    const addBtn = btn('＋ Layer', 'Add a layer on top: templates and filters, searchable (X in the Lab) · Alt+click: the plain list', (e) => (typeof ThreeFX !== 'undefined' && !e.altKey ? ThreeFX.openPicker('add', { anchor: e.currentTarget }) : addMenu(e.currentTarget)), 'primary small');
     const dupBtn = btn('⧉', 'Duplicate the selected layer', () => onAdd('copy'));
     const delBtn = btn('🗑', 'Delete the selected layer', () => selectedId && onRemove(selectedId));
     const props = el('div', { class: 'ly-props' });
@@ -427,5 +441,5 @@ filter('${type}', P);
     b.title = state === 'on' ? 'Remove this keyframe' : state === 'animated' ? 'Add a keyframe here (it\'s animated: moving the slider also adds one)' : 'Animate: add a keyframe at the playhead';
   }
 
-  return { panel, TEMPLATES, FILTERS, isFilter, ANIM_META, PRESETS, COLORS, BLENDS, defaults, newId, ANIM, KEY_EPS, evalKeys, upsertKey, keyAt };
+  return { panel, TEMPLATES, FILTERS, isFilter, ANIM_META, PRESETS, COLORS, BLENDS, defaults, newId, ANIM, KEY_EPS, evalKeys, upsertKey, keyAt, EASE_IDS: ['linear', 'ease', 'hold', 'curve', ...Object.keys(EASE_FN)] };
 })();

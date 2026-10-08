@@ -2197,7 +2197,7 @@ ${code}
           if (!ctl) throw new Error(`No property "${property}" on "${L.name}". Use opacity, x, y, scale, rotate or a slider: ${c.controls().map((x) => `${x.key} (${x.label})`).join(', ') || 'none'}`);
           prop = `s:${ctl.key}`;
         }
-        const list = clear ? [] : (keys || []).map((k) => ({ t: Math.round(Number(k.time) * 1000) / 1000, v: k.value, ease: ['linear', 'ease', 'hold'].includes(k.ease) ? k.ease : 'ease' })).filter((k) => Number.isFinite(k.t) && k.v != null).sort((a, b) => a.t - b.t);
+        const list = clear ? [] : (keys || []).map((k) => ({ t: Math.round(Number(k.time) * 1000) / 1000, v: k.value, ease: (ThreeLayers.EASE_IDS || ['linear', 'ease', 'hold']).includes(k.ease) ? k.ease : 'ease' })).filter((k) => Number.isFinite(k.t) && k.v != null).sort((a, b) => a.t - b.t);
         setKeys(L, prop, list);
         return { layer: L.name, property: prop.replace(/^s:/, ''), keyframes: list.length, ...report() };
       },
