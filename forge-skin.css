@@ -133,7 +133,7 @@ html[data-skin~="forge"] :is(.primary, #broadcast button)::after {
 }
 html[data-skin~="forge"] :is(.primary, #broadcast button):hover { filter: brightness(1.08); transform: translateY(-1px); }
 html[data-skin~="forge"] :is(.primary, #broadcast button):hover::after { animation: fh-sheen .55s ease; }
-html[data-skin~="forge"] .primary.stop { background: linear-gradient(180deg, #ff8a7a, var(--r-ultima)); color: #1a0606; --pulse: var(--r-ultima); animation: fh-pulse 1.2s infinite; }
+html[data-skin~="forge"] :is(.primary.stop, #broadcast button.stop) { /* :is() so it outranks the #broadcast rule above */ background: linear-gradient(180deg, #ff8a7a, var(--r-ultima)); color: #1a0606; --pulse: var(--r-ultima); animation: fh-pulse 1.2s infinite; }
 html[data-skin~="forge"] :is(.ghost, .dialog-actions button:not(.primary), .web-btn, .find-bar button, .code-act, .notes-item, .kanban-add) {
   border-radius: 0; border: 1px solid var(--line-hi); background: #ffffff03;
   transition: border-color .15s ease, color .15s ease, background .15s ease;

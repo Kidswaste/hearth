@@ -44,7 +44,8 @@ const Look = (() => {
   // renderer.js applyTheme() writes data-skin on every config load: that's our cue
   new MutationObserver(apply).observe(root, { attributes: true, attributeFilter: ['data-skin'] });
 
-  const save = debounce(() => saveConfig(), 350);
+  // saved right away: the config file watcher reloads whatever was written last, so a delayed save could lose a change
+  const save = () => saveConfig();
   function setFx(patch) {
     const theme = H.config.theme || (H.config.theme = {});
     const next = { ...(theme.fx || {}), ...patch };
