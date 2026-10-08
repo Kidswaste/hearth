@@ -413,7 +413,7 @@ void main() {
   }), 'flames hot forge');
   add('caustics', 'Water caustics', BG, 'Light dancing on a pool floor', shader({
     desc: 'Water caustics: rippling light like the bottom of a pool',
-    P: { water: ['#05345a', 'Water'], light: ['#9ff3ff', 'Light'], scale: [5, 1, 15, 'Size'], speed: [0.6, 0, 3, 'Speed', 'Motion'], ...M(0.5) },
+    P: { water: ['#05345a', 'Water'], light: ['#9ff3ff', 'Light'], scale: [1.2, 0.3, 5, 'Size'], speed: [0.6, 0, 3, 'Speed', 'Motion'], ...M(0.5) },
     frag: `
 void main() {
   vec2 p = mod(vUv * vec2(uRes.x / uRes.y, 1.0) * u_scale * 6.28318, 6.28318) - 250.0;
@@ -1219,7 +1219,7 @@ let lastT = 0;`,
     draw: `const dt = lastT ? Math.min(0.05, t - lastT) : 0;
 lastT = t;
 const hit = P.on === 'beat' ? audio.beat : audio.trigger(P.on);
-if (hit > 0.9 && prev <= 0.9) {
+if (hit > 0.5 && prev <= 0.5) {
   for (let i = 0; i < P.amount; i++) {
     const k = head; head = (head + 1) % MAX;
     px[k] = 0.5 + (Math.random() - 0.5) * 0.2; py[k] = 0.55;
@@ -1511,7 +1511,7 @@ camera.position.set(0, 2, 10);`,
     loop: `const dt = last ? Math.min(0.05, t - last) : 0;
 last = t;
 const hit = P.on === 'beat' ? audio.beat : audio.trigger(P.on);
-if (hit > 0.9 && prev <= 0.9) {
+if (hit > 0.5 && prev <= 0.5) {
   for (let n = 0; n < P.burst; n++) {
     const i = head; head = (head + 1) % MAX;
     const a = Math.random() * Math.PI * 2; const s = Math.random() * 0.35;
@@ -2009,7 +2009,7 @@ scene.add(plane);
 let head = 0;
 let prev = 0;`,
     loop: `const hit = audio.kick;
-if (hit > 0.9 && prev <= 0.9) { uniforms.uHits.value[head] = t; head = (head + 1) % MAXR; }
+if (hit > 0.5 && prev <= 0.5) { uniforms.uHits.value[head] = t; head = (head + 1) % MAXR; }
 prev = hit;
 uniforms.uT.value = t;
 uniforms.uH.value = P.height * P.punch;
@@ -2033,7 +2033,7 @@ ${LIGHTS}`,
   const s = P.strength * (1 + kick * P.punch * 0.4) / ((Math.sqrt(n) - 1) / 4 + 1);
   for (let i = 0; i < n; i++) {
     const a = t * P.speed;
-    mc.addBall(0.5 + 0.27 * Math.sin(i + 1.26 * a * (1.03 + 0.5 * Math.cos(0.21 * i))), 0.5 + 0.27 * Math.abs(Math.cos(i + 1.12 * a * Math.cos(1.22 + 0.1424 * i))), 0.5 + 0.27 * Math.cos(i + 1.32 * a * 0.1 * Math.sin(0.92 + 0.53 * i)), s, 12);
+    mc.addBall(0.5 + 0.27 * Math.sin(i + 1.26 * a * (1.03 + 0.5 * Math.cos(0.21 * i))), 0.5 + 0.27 * Math.cos(i + 1.12 * a * Math.cos(1.22 + 0.1424 * i)), 0.5 + 0.27 * Math.cos(i + 1.32 * a * 0.1 * Math.sin(0.92 + 0.53 * i)), s, 12);
   }
   mc.update();
   mc.material.color.set(P.color);

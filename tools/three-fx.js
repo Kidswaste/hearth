@@ -106,12 +106,14 @@ const ThreeFX = (() => {
       const n = await recolor(d, l.colors);
       if (alt) return say(`Look "${l.name}": colors only${n ? ` (${n} sliders)` : ''}`);
       // a look's filters replace the previous look's (layers named "✦ …")
+      const was = selected(d);
       for (const L of d.layers().layers.filter((x) => x.name.startsWith(LOOK_MARK))) await d.removeLayer(L.id);
       for (const f of l.fx) {
         const t = ThreeLayers.FILTERS.find((x) => x.id === f.id);
         if (!t) continue;
         await d.addLayer({ name: `${LOOK_MARK}${t.name}`, code: ThreeLayers.filterCode(f.id, f.values) }, 1);
       }
+      if (was && !was.name.startsWith(LOOK_MARK)) try { d.selectLayer(was.id); } catch { /* it was removed */ }
       return say(`Look "${l.name}": ${l.fx.length} filter layer${l.fx.length === 1 ? '' : 's'} (✦) + palette${n ? `, ${n} color sliders` : ''}`);
     }
     if (it.kind === 'trigger') {
