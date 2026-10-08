@@ -42,7 +42,24 @@ const VideoCmds = (() => {
   const CATS = V.CATEGORIES.map((c) => ({ value: `#${c.id}`, hint: c.name }));
   const fmtNote = (n, i) => `${i + 1}. \`${tcOf(n.t)}\` ${n.done ? '~~' : ''}**${V.category(n.cat).name}**: ${n.text}${n.done ? '~~' : ''}`;
 
-  const cmd = (def) => Commands.register({ area: AREA, ...def });
+  // Registered once every script has loaded, so generic names (/play, /note, /export…) that another tool also
+  // registers are shared instead of overwritten: in Video Review (or its docked director chat) they drive the
+  // video, anywhere else they run the other tool's command.
+  const defs = [];
+  const cmd = (def) => defs.push(def);
+  const inVideo = (ctx) => H.activeId === 'tool:ae' || H.agent(ctx?.agentId)?.dock === 'ae';
+  function registerAll() {
+    for (const def of defs) {
+      const prev = Commands.get(def.name);
+      if (prev && prev.name === def.name && prev.area !== AREA) {
+        Commands.register({ ...prev, aliases: prev.aliases, desc: `${prev.desc} · in Video Review: ${def.desc}`,
+          run: (args, ctx) => (inVideo(ctx) ? def.run(args, ctx) : prev.run(args, ctx)),
+          complete: (args, ctx) => (inVideo(ctx) ? def.complete?.(args, ctx) : prev.complete?.(args, ctx)) || [] });
+        continue;
+      }
+      Commands.register({ area: AREA, ...def, aliases: (def.aliases || []).filter((a) => !Commands.get(a)) });
+    }
+  }
   async function projectDirs() {
     if (H.settings().aeProjectDirs?.length) return H.settings().aeProjectDirs;
     const home = await window.hub.fs.home();
@@ -442,6 +459,8 @@ const VideoCmds = (() => {
   });
   cmd({ name: 'video-keys', desc: 'Video Review keyboard shortcuts', run: async () => { await R().ensureMounted(); R().shortcutsHelp(); } });
   cmd({ name: 'video-status', desc: 'What\'s open in Video Review: file, time, frame, fps, loop, compare, notes', run: async () => { const r = await ready(); const s = r.status(); return `**${base(s.open)}** · ${s.resolution} ${s.format} · \`${s.timecode}\` (frame ${s.frame}) · ${s.fps} fps (${s.fpsSource})${s.bpm ? ` · ${s.bpm} bpm` : ''}${s.loop ? ` · loop ${s.loop.in}–${s.loop.out}s${s.loop.on ? '' : ' (off)'}` : ''}${s.comparingWith ? ` · B ${base(s.comparingWith)} (${s.compareMode})` : ''} · ${s.notes.filter((n) => !n.resolved).length} open notes`; } });
+
+  if (document.readyState === 'loading') addEventListener('DOMContentLoaded', registerAll, { once: true }); else registerAll();
 
   return { findVideo, ready, clean };
 })();

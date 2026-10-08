@@ -375,3 +375,12 @@
 312. ✓ 10 more Lab actions in Ctrl+K (guides, loop this bar, snap, quantize, remove doubles, cycle looks, copy all code, save sliders, save as look, Stage on top): 32 in all.
 313. ✓ Chat: Ctrl+↑ / Ctrl+↓ jump between your own messages (they flash); select text in a reply → ❝ Quote puts it in your message.
 314. ✓ App: Ctrl+K → Recent notifications (the last 40), middle-click an agent on the rail = a new chat with it, the window title shows what you're looking at.
+
+## Video Review reworked (video stream)
+- ✓ **One review surface** (library · player · notes) with a **Review · Director · Toolkit** switch; the AE toolkit is a slide-over drawer; fits beside the Director chat.
+- ✓ **Library**: 9:16 / 16:9 / 4:5 / 1:1 chips, favorites, tags, date/length/project filters, versions grouped, hover scrub, live folder watching, Lab recordings and exports included.
+- ✓ **Player**: frame-accurate stepping with the file's real fps, J/K/L, loop by dragging, waveform + beats + drops, zoom/pan, color picker, histogram + luma waveform, channel/luma/negative/mirror views.
+- ✓ **A/B**: wipe, side by side, onion, difference, flip, swap, offset. **Safe zones** for TikTok, Reels, Shorts, Facebook, Snapchat, IG grid, YouTube; crop previews between the four formats.
+- ✓ **Notes**: categories, drawings on the frame, must-fix, resolve, carry to the next version, Markdown/CSV/JSON, inbox; feedback to the Director, Claude or Astra with frame grabs.
+- ✓ **Export for socials** with ffmpeg (18 presets, crop / fit / blurred fill, loop range, all formats at once). ○ **After Effects on a Mac** (AppleScript, permission errors explained; tested with a fake AE).
+- ✓ **54 chat commands** (`/help video`). Full list: `docs/upgrades/video.md`.
