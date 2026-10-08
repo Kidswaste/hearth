@@ -1,4 +1,17 @@
 // Wires up the buttons and loads everything once all modules are defined.
+
+// 'hearth:view' (a window event, once per task) whenever the agent / tool on screen or any agent's open chat
+// changes, so modules react to it instead of polling H.activeId / H.activeChat on timers (an idle app runs nothing).
+(() => {
+  let queued = false;
+  const changed = () => { if (queued) return; queued = true; queueMicrotask(() => { queued = false; dispatchEvent(new Event('hearth:view')); }); };
+  let activeId = H.activeId;
+  Object.defineProperty(H, 'activeId', { get: () => activeId, set: (v) => { activeId = v; changed(); }, enumerable: true, configurable: true });
+  H.activeChat = new Proxy(H.activeChat, {
+    set: (o, k, v) => { if (o[k] !== v) changed(); o[k] = v; return true; },
+    deleteProperty: (o, k) => { delete o[k]; changed(); return true; },
+  });
+})();
 $('broadcast').addEventListener('submit', (e) => {
   e.preventDefault();
   const input = $('broadcast-input');
@@ -42,4 +55,5 @@ window.hub.onConfigChanged(apply);
   Usage.init();
   Meter.init();
   apply(await window.hub.getConfig());
+  performance.mark('hearth:ready'); // the first screen is up (dev/perf-report.js measures startup to here)
 })();

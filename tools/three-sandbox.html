@@ -327,7 +327,8 @@ const trigFade = (n) => trigCfg?.[n]?.fade || 120; // ms
 const trigPulse = (n) => Math.exp(-(performance.now() - trigState[n].at) / trigFade(n));
 const trigOn = (n) => Boolean(trigCfg?.[n]?.on);
 // While the panel is open: the spectrum in 200 log-spaced bins (20 Hz–20 kHz), each band's level and its last trigger.
-realSetInterval(() => {
+let trigTimer = 0; // runs only while the panel watches (it used to tick 25×/s for nothing)
+const trigTick = () => {
   if (!trigWatch) return;
   update();
   const hz = (remoteFreq ? remoteRate : actx?.sampleRate || 48000) / 2048;
@@ -342,7 +343,7 @@ realSetInterval(() => {
   const now = performance.now();
   post({ type: 'trig-viz', spec, e: Object.fromEntries(TRIG_NAMES.map((n) => [n, trigState[n].e])), since: Object.fromEntries(TRIG_NAMES.map((n) => [n, now - trigState[n].at])), fired: trigFired });
   trigFired = [];
-}, 40);
+};
 const demoHits = (kind, t) => (kind === 'kick' ? Math.exp(-((t % 0.5)) / 0.12) : kind === 'snare' ? Math.exp(-(((t - 0.5) % 1 + 1) % 1) / 0.12) : 0);
 function graph() {
   if (actx) return;
@@ -3731,7 +3732,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'present') { presentCursor = Boolean(msg.on); document.documentElement.style.cursor = msg.on ? 'none' : ''; }
   if (msg.type === 'step') { stepping = true; realRAF(() => realRAF(() => { stepping = false; })); }
   if (msg.type === 'triggers-set') trigCfg = msg.cfg || null;
-  if (msg.type === 'trig-watch') { trigWatch = Boolean(msg.on); if (trigWatch) graph(); }
+  if (msg.type === 'trig-watch') { trigWatch = Boolean(msg.on); if (trigWatch) graph(); clearInterval(trigTimer); trigTimer = trigWatch ? realSetInterval(trigTick, 40) : 0; }
   if (msg.type === 'live-gain') { liveAuto = msg.auto !== false; liveSense = Number(msg.sense) || 1; }
   if (msg.type === 'live-stop') { liveReset(); window.__stopLive(); remoteFreq = null; remoteWave = null; if (!liveSrc) liveKind = null; }
   if (msg.type === 'live-remote') { if (!msg.on || liveKind !== msg.kind) liveReset(); liveKind = msg.on ? msg.kind : null; if (!msg.on) { remoteFreq = null; remoteWave = null; } if (msg.on) graph(); }

@@ -456,19 +456,25 @@ const Review = (() => {
     refs.loopBtn.classList.toggle('on', S.loop.a != null && S.loop.on);
   }
   let lastTick = 0;
+  const onScreen = () => (refs.root.checkVisibility ? refs.root.checkVisibility({ visibilityProperty: true }) : Boolean(refs.root.offsetParent));
   function tick(now) {
     if (!refs.video?.isConnected) return;
     const d = vid();
     // hidden tool and nothing playing: check again a few times a second instead of every frame
-    if (!refs.root.offsetParent && d.paused && !S.shuttle) { lastTick = 0; setTimeout(() => requestAnimationFrame(tick), 300); return; }
+    // (hidden surfaces are visibility: hidden, so offsetParent alone said "on screen" and this ran every frame)
+    if (!onScreen() && d.paused && !S.shuttle) { lastTick = 0; setTimeout(() => requestAnimationFrame(tick), 300); return; }
     const D = d.duration || 0;
     // reverse shuttle: step the playhead back by hand (browsers can't play backwards)
     if (S.shuttle < 0 && lastTick) { const t = d.currentTime + (S.shuttle * (now - lastTick)) / 1000; if (t <= (S.loop.on && S.loop.a != null ? S.loop.a : 0) && !S.pingpong) { seek(S.loop.on && S.loop.b != null ? S.loop.b : D); } else seek(t); }
     lastTick = now;
-    refs.head.style.left = D ? `${(d.currentTime / D) * 100}%` : '0';
-    if (document.activeElement !== refs.time) refs.time.value = fmtTime(d.currentTime);
-    refs.timeTotal.textContent = `/ ${fmtTime(D)}${S.timeMode === 'frames' ? '' : `  · f${frameNow()}`}`;
-    refs.play.textContent = d.paused && S.shuttle <= 0 ? '▶' : '❚❚';
+    // only real changes touch the DOM (a paused player used to rewrite these every frame: style + observers)
+    const left = D ? `${(d.currentTime / D) * 100}%` : '0';
+    if (refs.head.dataset.left !== left) { refs.head.dataset.left = left; refs.head.style.left = left; }
+    if (document.activeElement !== refs.time) { const v = fmtTime(d.currentTime); if (refs.time.value !== v) refs.time.value = v; }
+    const total = `/ ${fmtTime(D)}${S.timeMode === 'frames' ? '' : `  · f${frameNow()}`}`;
+    if (refs.timeTotal.textContent !== total) refs.timeTotal.textContent = total;
+    const icon = d.paused && S.shuttle <= 0 ? '▶' : '❚❚';
+    if (refs.play.textContent !== icon) refs.play.textContent = icon;
     const { a, b, on: lo } = S.loop;
     if (lo && a != null && !d.paused && d.currentTime >= (b ?? D) - 0.5 / S.fps) { if (S.pingpong) { d.pause(); refs.cmp.pause(); S.shuttle = -Number(refs.speed.value || 1); } else seek(a); }
     if (S.pingpong && lo && a != null && S.shuttle < 0 && d.currentTime <= a + 0.5 / S.fps) { S.shuttle = 0; seek(a); play(); }
@@ -1623,7 +1629,7 @@ const Review = (() => {
     return S.videos;
   }
   // Rescan every 20 s while the tool is visible (folder watches cover most changes instantly).
-  setInterval(() => { if (refs.list?.isConnected && refs.list.offsetParent) load(); }, 20000);
+  setInterval(() => { if (refs.list?.isConnected && refs.list.checkVisibility({ visibilityProperty: true })) load(); }, 20000); // (offsetParent is set on a hidden surface too)
 
   // Lab recordings: three-media calls this after saving one, wherever it was saved.
   async function noteRecording(path) {

@@ -210,7 +210,12 @@ filter('${type}', P);
   const nameOf = Object.fromEntries([...LIST.map(([, name, , type]) => [type, name]), ...ThreeLayers.FILTERS.map((t) => [t.type, t.name])]);
   const add = (id, name, cat, type, desc, P, tags = '') => {
     if (ThreeLayers.FILTERS.some((t) => t.id === id)) return;
-    ThreeLayers.FILTERS.push({ id, name, cat, type, desc, tags, spec: P, code: code(type, name.toLowerCase(), P, nameOf[type] || name), pack: 'fx' });
+    // the code text is built the first time something reads it (≈150 of them at startup cost ~13 ms)
+    let src = null;
+    const t = { id, name, cat, type, desc, tags, spec: P };
+    Object.defineProperty(t, 'code', { get: () => (src ??= code(type, name.toLowerCase(), P, nameOf[type] || name)), set: (v) => { src = v; }, enumerable: true, configurable: true });
+    t.pack = 'fx';
+    ThreeLayers.FILTERS.push(t);
   };
   for (const [id, name, cat, type, desc, P, tags] of LIST) add(id, name, cat, type, desc, P, tags);
   for (const [id, name, cat, type, desc, over] of VARIANTS) {

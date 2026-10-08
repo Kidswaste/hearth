@@ -758,12 +758,17 @@ const Native = (() => {
     Panel.render();
   }
   // A docked chat's tool opened later (or the window came back): replies now on screen count as seen.
-  setInterval(() => {
+  // (on 'hearth:view' from start.js, focus and visibility instead of a check every 1.5 s)
+  const seeShown = () => {
+    if (!H.unreadChats.size) return;
     for (const agentId of views.keys()) {
       const id = H.activeChat[agentId];
       if (id && H.unreadChats.has(id) && visibleNow(agentId) && document.hasFocus()) markSeen(id);
     }
-  }, 1500);
+  };
+  addEventListener('hearth:view', seeShown);
+  addEventListener('focus', seeShown);
+  document.addEventListener('visibilitychange', seeShown);
   function pinnedStrip(agentId, chat, pins) {
     let at = 0;
     const label = (i) => `📌 ${pins.length > 1 ? `${at + 1}/${pins.length} · ` : ''}${(chat.messages[i].text || '').replace(/[#*`>_]/g, '').replace(/\s+/g, ' ').trim().slice(0, 90)}`;
@@ -788,6 +793,18 @@ const Native = (() => {
 
   // The live reply: its thinking (open while it thinks), what it's doing, the text so far, and any
   // question / second-opinion cards (kept as the same DOM nodes so typed answers survive re-renders).
+  // The growing reply is re-rendered as Markdown on each paint, but only the blocks that changed are swapped in:
+  // finished paragraphs above keep their DOM, so a long reply isn't re-laid out from the top 16× a second.
+  function patchHTML(body, html) {
+    const tpl = document.createElement('template');
+    tpl.innerHTML = html;
+    const next = [...tpl.content.childNodes];
+    const cur = body.childNodes;
+    let i = 0;
+    while (i < cur.length && i < next.length && cur[i].isEqualNode(next[i])) i += 1;
+    while (cur.length > i) body.lastChild.remove();
+    body.append(...next.slice(i));
+  }
   function paintStreaming(p) {
     const body = p.el.querySelector('.body');
     const text = visibleText(p.text);
@@ -806,7 +823,7 @@ const Native = (() => {
       chips.textContent = `${p.tools.length > 1 ? `Step ${p.tools.length} · ` : ''}Using ${toolLabel(p.tools.at(-1))}…`;
       chips.title = p.tools.map(toolLabel).join('\n');
     }
-    body.innerHTML = text ? renderMarkdown(text) : '';
+    patchHTML(body, text ? renderMarkdown(text) : '');
     if (!text && !p.cards.some((c) => c.classList.contains('ask-card') && !c.classList.contains('answered'))) body.insertAdjacentHTML('beforeend', '<span class="typing"><i></i><i></i><i></i></span>');
     let host = p.el.querySelector('.live-cards');
     if (!host) { host = el('div', { class: 'live-cards' }); p.el.append(host); }
