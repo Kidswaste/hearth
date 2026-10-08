@@ -375,3 +375,8 @@
 312. ✓ 10 more Lab actions in Ctrl+K (guides, loop this bar, snap, quantize, remove doubles, cycle looks, copy all code, save sliders, save as look, Stage on top): 32 in all.
 313. ✓ Chat: Ctrl+↑ / Ctrl+↓ jump between your own messages (they flash); select text in a reply → ❝ Quote puts it in your message.
 314. ✓ App: Ctrl+K → Recent notifications (the last 40), middle-click an agent on the rail = a new chat with it, the window title shows what you're looking at.
+
+## Token meter (meter stream, 157 upgrades: docs/upgrades/meter.md)
+- ✓ Live meter strip at the bottom (or a pill in the rail): tokens ticking while replies stream, then snapped to the real count; this chat, today, Claude vs Astra, cache hits, context fill (click → compact), replies, average per reply, today's feature clicks.
+- ✓ Dashboard (Ctrl+Shift+U, `/usage`): day / week / month / all charts, per agent / model / tool, most expensive chats, features used / hot / cold / never used with Hide, budgets & alerts (opt-in), CSV / JSON export. Data in `data/kv/token-stats.json`, built from your chats on first run.
+- ✓ Token line under every reply with cache % and speed, token totals per chat in the panel, 55 `/` commands (`/help meter`).
