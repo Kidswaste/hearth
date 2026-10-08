@@ -305,7 +305,7 @@ const Look = (() => {
       },
     };
     reg(lookDef);
-    reg({ ...lookDef, name: 'look' });
+    reg({ ...lookDef, name: 'look', aliases: [] });
     reg({ name: 'classic', args: '[off]', desc: 'Forgeheart Classic (the original look); /classic off → Forgeheart',
       run: (args) => {
         const id = /^(off|no|new)$/i.test(args.trim()) ? 'forgeheart' : 'classic';

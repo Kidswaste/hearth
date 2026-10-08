@@ -22,7 +22,7 @@ line count is lower than the number of upgrades).
 | **Total** | | **3,133** |
 
 ## Start here
-- Type `/` in any chat: **≈510 chat commands**, grouped by area; `/help <word>` filters them. `/do <anything>` runs any Ctrl+K action.
+- Type `/` in any chat: **≈570 chat commands**, grouped by area; `/help <word>` filters them. `/do <anything>` runs any Ctrl+K action.
 - **Token meter** at the bottom (`/meter pill` tucks it into the rail). **Dashboard**: Ctrl+Shift+U or `/usage`.
 - **Looks**: Settings → Appearance, Ctrl+Shift+L, `/appearance`, `/theme <name>`. Back to the old look: `/classic`.
 - **Lab**: X = effects picker, Alt+N = Code ⇄ Nodes, F = Freeze (Focus moved to Shift+F), Shift+1…5 = frame sizes, T = Tap.
