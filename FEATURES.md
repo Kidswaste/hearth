@@ -387,5 +387,5 @@
 - ✓ Notes: search, #tags, pins, clickable checklists, [[links]], 11 templates, daily note, links to chats / sketches, Inbox capture (`/note`, `/todo`, `/daily-note`).
 - ✓ Memory: facts with categories, pins, expiry, search, import / export and its token cost per message (`/memory`, `/remember`, `/forget`, `/memory-cost`).
 - ✓ Kit window (`/kit`): palettes from pictures / clipboard / the Lab frame → Lab palettes, harmonies, contrast checker, gradients (CSS / GLSL / three), 27 more easings + GSAP / GLSL output, BPM ↔ ms with tap tempo, social frame sizes with safe zones, timecode calculator.
-- ✓ Forge Debug: ⋯ quick actions, stat watch overlay, snapshots / restore, patch sets, 26 `/forge-*` commands (tested against a fake build, dev/fake-forgeheart.html).
+- ✓ Forge Debug: ⋯ quick actions, stat watch overlay, snapshots / restore, patch sets, 27 `/forge-*` commands (tested against a fake build, dev/fake-forgeheart.html).
 - ✓ One-click and automatic backups with a merging restore, searchable trash and downloads, import that checks first (claude.ai / ChatGPT export variants, dedupe report, progress). `/backup`, `/restore`, `/trash`, `/downloads`, `/import`.
