@@ -161,3 +161,21 @@ body.tw-scrubbing, body.tw-scrubbing * { cursor: ew-resize !important; }
 .mb-menu.lab-pop .menu-item .hint { margin-left: auto; font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: right; opacity: .8; }
 .mb-menu.lab-pop .menu-item.on b::before { content: "● "; color: #ffd75e; }
 .mb-menu.lab-pop .menu-head { padding: 6px 9px 2px; }
+
+/* console: errors only */
+.three-console-wrap.errors-only .console-row:not(.error):not(.warn) { display: none; }
+.three-console-head .check { margin-left: 6px; }
+
+/* layers: ⧉ / 🗑 were never used: they live in the row's right-click menu now */
+.layers .tw-head button[title^="Duplicate the selected"], .layers .tw-head button[title^="Delete the selected"] { display: none; }
+
+/* timeline: the beat light on the BPM readout */
+.media-bar .mb-bpmread.beat { animation: mb-beat .16s ease-out; }
+.media-bar .mb-bpmread.beat.down { animation-name: mb-down; }
+@keyframes mb-beat { from { color: #fff; text-shadow: 0 0 8px #ffd75e; } }
+@keyframes mb-down { from { color: #ff6a6a; text-shadow: 0 0 10px #ff6a6a; } }
+@media (prefers-reduced-motion: reduce) { .media-bar .mb-bpmread.beat { animation: none; } }
+
+/* sliders: the "Changed" chip */
+.tw-gchip.tw-gchip-changed { margin-left: auto; }
+.tw-gchip.tw-gchip-changed.on { background: #48ddff; border-color: #48ddff; }

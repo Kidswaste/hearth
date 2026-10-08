@@ -230,11 +230,14 @@ const ThreeLab = (() => {
     const consoleModeSel = el('select', { class: 'tc-mode', title: 'When the console shows' }, CONSOLE_MODES.map(([v, l]) => el('option', { value: v, text: l, selected: v === consoleMode })));
     consoleModeSel.addEventListener('change', () => setConsoleMode(consoleModeSel.value));
     const consoleWrap = el('div', { class: 'three-console-wrap' },
-      el('div', { class: 'three-console-head' }, el('b', { text: 'Console' }), consoleModeSel, el('span', { class: 'spacer' }),
+      el('div', { class: 'three-console-head' }, el('b', { text: 'Console' }), consoleModeSel,
+        el('label', { class: 'check small', title: 'Hide console.log lines, keep errors and warnings' }, el('input', { type: 'checkbox', checked: store.get('three.consoleErrors', false), on: { change: (e) => { store.set('three.consoleErrors', e.target.checked); consoleWrap.classList.toggle('errors-only', e.target.checked); } } }), 'Errors only'),
+        el('span', { class: 'spacer' }),
         btn('Copy', 'Copy everything in the console', () => { navigator.clipboard.writeText(consoleLines.map((l) => `${l.layer ? `[${l.layer}] ` : ''}${l.line ? `line ${l.line}: ` : ''}${l.text}`).join('\n')); toast('Console copied', { timeout: 1200 }); }),
         btn('Clear', 'Empty the console', () => { consoleBox.replaceChildren(); consoleLines = []; }),
         btn('✕', 'Hide the console (its button in the toolbar opens it again)', () => { consolePeek = false; syncConsole(); })),
       consoleBox);
+    queueMicrotask(() => consoleWrap.classList.toggle('errors-only', store.get('three.consoleErrors', false)));
     function consoleShown() { return consolePeek ?? (consoleMode === 'always' || (consoleMode === 'code' && !split?.classList.contains('no-code'))); }
     function setConsoleMode(m) {
       consoleMode = CONSOLE_MODES.some(([v]) => v === m) ? m : 'code';
@@ -1483,6 +1486,30 @@ const ThreeLab = (() => {
       onPreset: (id, presetId) => applyPreset(id, presetId),
     });
     const column = el('div', { class: 'tw-column' }, layersPanel.el, tweaksSlot);
+    // Right-click a layer: everything for it in one menu (its ⧉ / 🗑 buttons were never used, so they're tucked away)
+    layersPanel.el.addEventListener('contextmenu', (e) => {
+      const row = e.target.closest('.ly-row');
+      if (!row) return;
+      e.preventDefault();
+      const idx = [...layersPanel.el.querySelectorAll('.ly-list .ly-row')].indexOf(row);
+      const L = [...layersOf()].reverse()[idx];
+      if (!L) return;
+      const Ls = layersOf(); const at = Ls.indexOf(L);
+      const move = (to) => { const ids = Ls.map((x) => x.id).filter((x) => x !== L.id); ids.splice(Math.max(0, Math.min(ids.length, to)), 0, L.id); reorderLayers(ids); };
+      ThreeTweaks.menu(e.clientX, e.clientY, [L.name,
+        [L.visible === false ? '👁 Show' : '◌ Hide', `Alt+${[...Ls].reverse().indexOf(L) + 1}`, () => editLayer(L.id, { visible: L.visible === false })],
+        [soloId === L.id ? 'Show every layer' : 'Only this layer (solo)', 'Alt+click its eye', () => setSolo(soloId === L.id ? null : L.id)],
+        ['Rename…', 'Or double-click its name', async () => { const v = await Modal.prompt('Rename layer', { value: L.name }); if (v?.trim()) editLayer(L.id, { name: v.trim() }); }],
+        ['Duplicate', 'A copy on top', () => { selectLayer(L.id); addLayer('copy'); }, false, 'Duplicate layer'],
+        at < Ls.length - 1 ? ['Move up', '', () => move(at + 1)] : null,
+        at > 0 ? ['Move down', '', () => move(at - 1)] : null,
+        at < Ls.length - 1 ? ['To the top', '', () => move(Ls.length)] : null,
+        'Opacity',
+        ...[1, 0.75, 0.5, 0.25].map((o) => [`${Math.round(o * 100)}%`, '', () => editLayer(L.id, { opacity: o }), Math.abs((L.opacity ?? 1) - o) < 0.01]),
+        'Blend',
+        ...ThreeLayers.BLENDS.slice(0, 6).map(([v, label]) => [label, '', () => editLayer(L.id, { blend: v }), (L.blend || 'normal') === v]),
+        Ls.length > 1 ? ['Delete…', 'With Undo', () => removeLayer(L.id), false, 'Delete layer'] : null]);
+    });
     function renderLayers() {
       if (!current) return;
       layersPanel.render(layersOf(), selId);
@@ -1714,6 +1741,7 @@ const ThreeLab = (() => {
       save: () => { const c = ctl(); const n = c.dirty(); c.save(); return n; },
       saveLook: (name) => (name ? ctl().looksApi.save(name) && name : ctl().quickLook()),
       look: (name) => ctl().looksApi.apply(name), looks: () => ctl().looksApi.list(), deleteLook: (name) => ctl().looksApi.remove(name),
+      lookStep: (d) => ctl().lookStep(d), morphLook: (name, ms) => ctl().morphLook(name, ms),
       shuffle: (o) => ctl().shuffle(o), shuffleStep: (d) => ctl().shuffleStep(d), shuffleInfo: () => ctl().shuffleInfo, setShuffle: (o) => ctl().setShuffle(o),
       groups: () => ctl().groups(), showGroup: (g) => ctl().showGroup(g), find: (q) => ctl().find(q),
       slot: (n, action = 'recall') => { const c = ctl(); if (action === 'save') return c.slotSave(n); if (action === 'clear') return c.slotClear(n); return c.slotRecall(n); }, slots: () => ctl().slots,
@@ -1731,6 +1759,7 @@ const ThreeLab = (() => {
       sliders: () => ctl().controls(),
       searchSliders: () => { setSlidersVisible(true); selCtl()?.focusSearch(); },
       // preview
+      customSize: (w, h) => stage.setCustom(w, h),
       size: (id) => { if (!ThreeMedia.SIZES.some((z) => z.id === id)) throw new Error(`Sizes: ${ThreeMedia.SIZES.map((z) => z.id).join(', ')}`); stage.setMode(id); return stage.size; },
       freeze: (on) => { setFreeze(on ?? !frozenNow); return frozenNow; }, step: () => { if (!frozenNow) setFreeze(true); box.send({ type: 'step' }); },
       compare: (mode) => (mode === 'pin' ? pinFrame() : setCompare(mode)),
@@ -1764,7 +1793,7 @@ const ThreeLab = (() => {
       loopBar: () => { needSong(); player.loopBar(); return player.loop; },
       loopBars: (n) => { needSong(); return player.loopBars(n); },
       sections: () => { needSong(); return player.autoSections(); }, cue: (name) => { needSong(); return player.addCue(player.time, name || undefined); },
-      cues: () => player.cues,
+      cues: () => player.cues, jumpCue: (d) => { needSong(); player.jumpCue(d); return player.time; },
       gridView: (patch) => player.setGridView(patch || {}),
       play: (on) => { needSong(); player.toggle(on); }, seek: (t) => { needSong(); player.seek(t); return player.time; }, speed: (r) => { player.setRate(r); return player.rate; },
       mute: () => player.toggleMute(), music: () => player.pick(),
@@ -2017,6 +2046,7 @@ const ThreeLab = (() => {
       frozenNow = on;
       box.send({ type: 'freeze', on });
       freezeBtn.textContent = on ? '▶ Frozen' : '❚❚ Freeze';
+      if (on && store.get('three.pinOnFreeze', false)) setTimeout(() => pinFrame(), 120);
       freezeBtn.classList.toggle('on', on);
       previewHost.classList.toggle('frozen', on);
     }
@@ -2033,10 +2063,11 @@ const ThreeLab = (() => {
     function paintOnion() {
       onion.hidden = !pinned;
       compareBtn.classList.toggle('on', Boolean(pinned));
-      compareBtn.textContent = pinned ? (pinned.mode === 'wipe' ? '◐ Wipe' : '◐ Onion') : '◐';
+      compareBtn.textContent = pinned ? (pinned.mode === 'wipe' ? '◐ Wipe' : pinned.mode === 'diff' ? '◐ Diff' : '◐ Onion') : '◐';
       if (!pinned) return;
       onion.dataset.mode = pinned.mode;
-      onionImg.style.opacity = pinned.mode === 'wipe' ? 1 : pinned.opacity;
+      onionImg.style.opacity = pinned.mode === 'onion' ? pinned.opacity : 1;
+      onionImg.style.mixBlendMode = pinned.mode === 'diff' ? 'difference' : 'normal';
       onionImg.style.clipPath = pinned.mode === 'wipe' ? `inset(0 ${100 - pinned.split * 100}% 0 0)` : 'none';
       wipeBar.style.left = `${pinned.split * 100}%`;
       wipeBar.hidden = pinned.mode !== 'wipe';
@@ -2056,12 +2087,14 @@ const ThreeLab = (() => {
       if (!pinned) { pinFrame({ mode }); return mode; }
       pinned.mode = mode; paintOnion(); return mode;
     }
-    function cycleCompare() { if (!pinned) pinFrame(); else setCompare(pinned.mode === 'onion' ? 'wipe' : 'off'); }
+    function cycleCompare() { if (!pinned) pinFrame(); else setCompare(pinned.mode === 'onion' ? 'wipe' : pinned.mode === 'wipe' ? 'diff' : 'off'); }
     function compareMenu(x, y) {
       ThreeTweaks.menu(x, y, ['Compare with a pinned frame',
         ['Pin this frame', '| · replaces the pinned one', () => pinFrame()],
         ['Onion skin', 'The pinned frame over the live picture, see-through', () => setCompare('onion'), pinned?.mode === 'onion'],
         ['Wipe', 'Pinned on the left, live on the right: drag the line', () => setCompare('wipe'), pinned?.mode === 'wipe'],
+        ['Difference', 'Only what changed lights up', () => setCompare('diff'), pinned?.mode === 'diff'],
+        ['Pin when I freeze', 'Each freeze also pins the frame', () => store.set('three.pinOnFreeze', !store.get('three.pinOnFreeze', false)), store.get('three.pinOnFreeze', false)],
         ...(pinned?.mode === 'onion' ? [0.25, 0.5, 0.75].map((o) => [`${Math.round(o * 100)}% see-through`, '', () => { pinned.opacity = o; paintOnion(); }, pinned.opacity === o]) : []),
         pinned ? ['Save the pinned frame…', '', () => saveDataUrl(pinned.url, `${current?.name || 'sketch'} pinned.png`)] : null,
         pinned ? ['Off', '', () => setCompare('off')] : null]);
@@ -2263,7 +2296,11 @@ const ThreeLab = (() => {
       q.focus();
     }
     function renderPicker() {
-      picker.replaceChildren(...[...sketches].sort((a, b) => b.updatedAt - a.updatedAt).map((s) => el('option', { value: s.id, text: s.name, selected: s.id === current?.id })));
+      // ★ pinned ones (pin them in the sketch browser) first, then the most recent
+      const pins = new Set(store.get('three.sketchPins', []));
+      const list = [...sketches].sort((a, b) => (pins.has(b.id) - pins.has(a.id)) || b.updatedAt - a.updatedAt);
+      picker.replaceChildren(...list.map((s) => el('option', { value: s.id, text: `${pins.has(s.id) ? '★ ' : ''}${s.name}`, selected: s.id === current?.id })));
+      picker.title = `Your sketches (${sketches.length}) · O opens them as pictures · ★ pinned ones first`;
     }
     function openSketch(id) {
       soloId = null;
@@ -2949,7 +2986,8 @@ ${frag}\`,
   function toolsDrawer(anchor) {
     const r = anchor.getBoundingClientRect();
     ThreeTweaks.menu(r.left, r.bottom + 4, ['Tools', ['◭ Sketch', 'The Lab (Esc from any tool)', () => tabs.show('sketch'), tabs.current === 'sketch', 'Tools: Sketch'],
-      ...TOOL_TABS.map(([id, label, hint, , icon]) => [`${icon} ${label}`, hint, () => tabs.show(id), tabs.current === id, `Tools: ${label}`])]);
+      ...TOOL_TABS.map(([id, label, hint, , icon]) => [`${icon} ${label}`, hint, () => tabs.show(id), tabs.current === id, `Tools: ${label}`]),
+      'Quick', ['Open a 3D model…', 'GLB, FBX, OBJ, STL, PLY', () => { tabs.show('models'); setTimeout(() => api.openModel?.(), 80); }], ['Paste a shader…', 'Opens the playground with your clipboard', async () => { let t = ''; try { t = await navigator.clipboard.readText(); } catch { /* none */ } tabs.show('shader'); if (/void\s+main|mainImage/.test(t)) setTimeout(() => api.openShader?.(t), 80); }]]);
   }
   Tools.define({
     id: 'three', name: 'Three.js Lab', icon: '◭', color: '#4f8cff',

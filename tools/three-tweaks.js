@@ -304,7 +304,7 @@ const ThreeTweaks = (() => {
     const m = el('div', { class: 'mb-menu lab-pop' }, items.filter(Boolean).map((it) => (typeof it === 'string'
       ? el('div', { class: 'menu-head', text: it })
       : el('button', { class: `menu-item${it[3] ? ' on' : ''}`, dataset: it[4] ? { feature: it[4] } : {}, on: { click: () => { m.remove(); it[2](); } } }, el('b', { text: it[0] }), el('span', { class: 'hint', text: it[1] || '' })))));
-    Object.assign(m.style, { left: `${Math.max(8, Math.min(innerWidth - 290, x))}px`, top: `${Math.max(8, y)}px`, transform: 'none', maxHeight: '70vh', overflowY: 'auto' });
+    Object.assign(m.style, { left: `${Math.max(8, Math.min(innerWidth - 312, x))}px`, top: `${Math.max(8, y)}px`, transform: 'none', maxHeight: '70vh', overflowY: 'auto' });
     document.body.append(m);
     requestAnimationFrame(() => { const r = m.getBoundingClientRect(); if (r.bottom > innerHeight - 8) m.style.top = `${Math.max(8, innerHeight - 8 - r.height)}px`; });
     const close = (e) => { if (!m.contains(e.target)) { m.remove(); removeEventListener('pointerdown', close, true); removeEventListener('keydown', esc, true); } };
@@ -461,6 +461,9 @@ const ThreeTweaks = (() => {
       el('div', { class: 'tw-foot', title: 'Knobs: drag up / down (Shift = fine, Alt = finer), wheel or arrow keys to step. Drag a slider\'s name sideways to scrub it. They click into the value in the code (the blue notch) as you pass it; double-click goes back to it. Right-click: lock, favorites, follow the music, move by itself, history, copy / paste, keyframe, MIDI.' },
         el('span', { html: '<b class="tw-live">⚡</b> instant · <b class="tw-rerun">↻</b> rebuilds · <b class="tw-music">♪</b> music / motion · <b style="color:#48ddff">|</b> code value · drag a name to scrub · right-click: more' })));
 
+    root.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && !/^(INPUT|TEXTAREA)$/.test(e.target.tagName) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && e.target.type === 'range')) { e.preventDefault(); e.stopPropagation(); undo(); }
+    });
     // Values used only while the scene is built re-run it in place, at most every 180 ms while dragging.
     let rebuildTimer = null;
     let rebuildAgain = false;
@@ -489,6 +492,7 @@ const ThreeTweaks = (() => {
         : 'Changes show live as you move a slider. Nothing to save.';
       rows.forEach((r) => r.el.classList.toggle('changed', !same(r.it, values[r.i])));
       body.querySelectorAll('.tw-sec').forEach((sec) => sec.paintChanged?.());
+      const cc = chips.querySelector('.tw-gchip-changed'); if (cc) cc.textContent = `• Changed${d ? ` ${d}` : ''}`;
       if (changedOnly) applyFilter();
     }
     function setValue(i, v, { release = false, external = false } = {}) {
@@ -622,6 +626,7 @@ const ThreeTweaks = (() => {
         ...[['all', 'Everything'], ['favs', '★ Favorites only'], ['colors', 'Colors only'], ['numbers', 'Numbers only'], ['changed', 'Only what I changed'], ['visible', 'What the panel shows (search / group)']].map(([s, name]) => [name, '', () => { set({ scope: s }); shuffle(); }, shufOpt.scope === s]),
         ...(groups.length > 1 ? groups.map((g) => [`Group: ${g}`, '', () => { set({ scope: `group:${g}` }); shuffle(); }, shufOpt.scope === `group:${g}`]) : []),
         'Seeds',
+        shufHist[shufPos]?.seed != null ? ['Copy this shuffle\'s seed', String(shufHist[shufPos].seed), () => navigator.clipboard.writeText(String(shufHist[shufPos].seed))] : null,
         ['Shuffle with a seed…', 'The same seed gives the same shuffle again', async () => { const v = await Modal.prompt('Seed', { value: String(shufHist[shufPos]?.seed ?? ''), placeholder: 'a number' }); if (v != null && v.trim()) shuffle({ seed: Number(v.trim()) || hashSeed(v) }); }],
         ...shufHist.map((h, i) => (h.seed == null ? null : [`${i === shufPos ? '● ' : ''}#${i} seed ${h.seed}`, h.label, () => { shufPos = i; applyValues(h.values); refreshState(); }, i === shufPos])).filter(Boolean).slice(-8),
         shufHist.length > 1 ? ['Forget the shuffle history', '', () => { shufHist = []; shufPos = -1; refreshState(); }] : null,
@@ -741,6 +746,9 @@ const ThreeTweaks = (() => {
         ['🔓 Unlock the group', '', () => { named.forEach((i) => locks.delete(ids[i])); saveSets(); rows.forEach((x) => x.paintLock?.()); }],
         ['★ Add all to Favorites', '', () => { named.forEach((i) => favs.add(ids[i])); saveSets(); render(); }],
         ['Copy the group\'s values', '', () => copyValues(idxs)],
+        ['∿ Make it breathe', 'Every number in the group moves on a slow wave (LFO, 2 bars)', () => idxs.filter((i) => scanned.items[i].kind === 'number').forEach((i, k) => setMotion(i, { kind: 'lfo', rate: 8 + k * 2, depth: 0.15 }))],
+        ['∿ Pulse on the beat', 'Every number in the group jumps on each beat', () => idxs.filter((i) => scanned.items[i].kind === 'number').forEach((i) => setMotion(i, { kind: 'pulse', rate: 1, depth: 0.2 }))],
+        idxs.some((i) => motions[ids[i]]) ? ['Still', 'Stop the group\'s motions', () => idxs.forEach((i) => { if (motions[ids[i]]) setMotion(i, null); })] : null,
         ['Only this group', 'Same as its chip above', () => setGroupFilter(g)],
       ]);
     }
@@ -833,12 +841,18 @@ const ThreeTweaks = (() => {
       if (!scanned?.items.length) return;
       for (const look of looks) {
         const chip = el('span', { class: 'tw-look' },
-          el('button', { class: 'tw-look-apply', text: look.name, title: `Switch to "${look.name}" (↶ to undo)`, on: { click: () => applyLook(look) } }),
+          el('button', { class: 'tw-look-apply', text: look.name, title: `Switch to "${look.name}" (↶ to undo) · Alt+click: morph into it`, on: { click: (e) => (e.altKey ? morphLook(look) : applyLook(look)) } }),
           el('button', { class: 'tw-look-x', text: '×', title: `Delete "${look.name}"`, on: { click: () => { looks = looks.filter((l) => l !== look); persist?.('looks', looks); renderLooks(); } } }));
         chip.addEventListener('contextmenu', (e) => {
           e.preventDefault();
           showMenu(e.clientX, e.clientY, [
+            { label: 'Morph into it (1 s)', action: () => morphLook(look) },
             { label: 'Update with the current values', action: () => { saveLookAs(look.name); toast(`"${look.name}" updated`, { timeout: 1400 }); } },
+            { label: 'Store in slot A / B / C…', action: () => {
+              const r0 = chip.getBoundingClientRect();
+              const lookVals = values.map((v, i) => (ids[i] in look.values ? look.values[ids[i]] : v));
+              menu(r0.left, r0.bottom + 4, ['Store the look in', ...SLOTS.map((n) => [`Slot ${n}`, slots[n] ? 'replaces it' : 'empty', () => { const keep = values; values = lookVals; slotSave(n); values = keep; }])]);
+            } },
             { label: 'Rename…', action: async () => { const v = await Modal.prompt('Look name', { value: look.name }); if (v?.trim()) { look.name = v.trim().slice(0, 40); persist?.('looks', looks); renderLooks(); } } },
             { label: 'Duplicate', action: () => { looks.push({ name: `${look.name} copy`, values: { ...look.values } }); persist?.('looks', looks); renderLooks(); } },
             { label: `Delete "${look.name}"`, danger: true, action: () => { looks = looks.filter((l) => l !== look); persist?.('looks', looks); renderLooks(); } },
@@ -896,6 +910,22 @@ const ThreeTweaks = (() => {
       const p = played; played = { ...p, cur: values.slice() };
       sendPlayed(values);
       played = null;
+    }
+    // a look, morphed in over `ms` (your values, undoable once it lands)
+    function morphLook(look, ms = 1000) {
+      const from = values.slice(); const to = values.slice();
+      ids.forEach((id, i) => { if (id in look.values) to[i] = look.values[id]; });
+      const t0 = performance.now();
+      const step = () => { const k = Math.min(1, (performance.now() - t0) / ms); const e = k * k * (3 - 2 * k); applyValues(lerpVals(from, to, e), { remember: k >= 1 }); if (k < 1) requestAnimationFrame(step); };
+      step();
+      toast(`Morphing into "${look.name}"`, { timeout: 1200 });
+    }
+    function lookStep(d) {
+      if (!looks.length) return null;
+      const cur = looks.findIndex((l) => ids.every((id, i) => !(id in l.values) || l.values[id] === values[i]));
+      const next = d === 'random' ? looks[Math.floor(Math.random() * looks.length)] : looks[((cur < 0 ? (d > 0 ? -1 : 0) : cur) + d + looks.length) % looks.length];
+      applyLook(next);
+      return next.name;
     }
     function applyLook(look) {
       const next = values.slice();
@@ -1091,7 +1121,7 @@ const ThreeTweaks = (() => {
         if (e.button !== 0 || locks.has(ids[i])) return;
         const x0 = e.clientX; const v0 = values[i]; let moved = false; let last = v0;
         const span = (it.range.max - it.range.min) || 1;
-        node.setPointerCapture(e.pointerId);
+        try { node.setPointerCapture(e.pointerId); } catch { /* a synthetic pointer */ }
         const move = (ev) => {
           const dx = ev.clientX - x0;
           if (!moved && Math.abs(dx) < 3) return;
@@ -1359,12 +1389,14 @@ const ThreeTweaks = (() => {
     // The group chips above the list: All · ★ · each group. Click one to see only it; again for all.
     function paintChips(groups) {
       chips.hidden = groups.length < 2;
+      const changedN = scanned ? scanned.items.filter((it, i) => it.key != null && !same(it, values[i])).length : 0;
       chips.replaceChildren(...['', ...groups].map((g) => {
         const b = el('button', { class: `tw-gchip${g === groupFilter ? ' on' : ''}`, text: g || 'All', title: g ? `Only "${g}" (again: every group) · right-click for its menu` : 'Every group', on: { click: () => setGroupFilter(g === groupFilter ? '' : g) } });
         b.dataset.feature = g ? `Group chip: ${g}` : 'Group chip: All';
         if (g) b.addEventListener('contextmenu', (e) => { const sec = [...body.querySelectorAll('.tw-sec')].find((x) => x.dataset.group === g); const idxs = rows.filter((r) => sec?.contains(r.el)).map((r) => r.i); groupMenu(e, g, [...new Set(idxs)]); });
         return b;
-      }));
+      }), el('button', { class: `tw-gchip tw-gchip-changed${changedOnly ? ' on' : ''}`, text: `• Changed${changedN ? ` ${changedN}` : ''}`, title: 'Only the controls you moved (again: all)', dataset: { feature: 'Group chip: Changed' }, on: { click: () => { changedOnly = !changedOnly; changedBox.checked = changedOnly; applyFilter(); paintChips(groups); } } }));
+      chips.dataset.groups = JSON.stringify(groups);
     }
     function setGroupFilter(g) {
       groupFilter = g || '';
@@ -1535,6 +1567,7 @@ const ThreeTweaks = (() => {
       get slots() { return SLOTS.filter((n) => slots[n]); },
       morph(t, pair) { if (pair) { morphPair = pair; store.set('three.twMorphPair', pair); paintSlots(); } return morphTo(t, { release: true }); },
       copyValues: () => copyValues(), pasteValues: (text) => pasteValues(text), quickLook: () => quickLook(),
+      lookStep: (d) => lookStep(d), morphLook: (name, ms) => { const l = looks.find((x) => x.name.toLowerCase() === String(name).toLowerCase()); if (!l) return null; morphLook(l, ms); return l.name; },
       reset: () => reset(), undo: () => undo(), dirty: () => dirtyCount(),
       groups: () => [...new Set((scanned?.items || []).filter((it) => it.key != null).map((it) => it.group || 'Controls'))],
       showGroup: (g) => setGroupFilter(g), find: (q) => { search.value = q || ''; filter = search.value.toLowerCase().trim(); applyFilter(); return rows.filter((r) => !r.el.hidden).length; },

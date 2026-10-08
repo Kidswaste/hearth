@@ -81,13 +81,15 @@
     const ok = (await lab()).morph(t, pair);
     return ok ? null : 'Save both slots first (/slot A save, /slot B save)';
   }, (a) => pick(['0', '0.25', '0.5', '0.75', '1', '0.5 A-B', '0.5 B-C', '0.5 A-C'], a));
-  reg('look', 'Switch to a saved look; save <name> / delete <name>; nothing: list them', '[name] | save [name] | delete <name>', async (args) => {
+  reg('look', 'Switch to a saved look; next / prev / random; morph <name>; save <name> / delete <name>; nothing: list them', '[name] | next | random | morph <name> | save [name] | delete <name>', async (args) => {
     const c = await lab(); const w = words(args);
     if (!w.length) { const l = c.looks(); return l.length ? `Looks: ${l.map((x) => `\`${x}\``).join(', ')}` : 'No looks yet: /look save <name> (or Shift+click Save)'; }
     if (w[0].toLowerCase() === 'save') { const name = c.saveLook(w.slice(1).join(' ')); return `Saved look "${name}"`; }
     if (w[0].toLowerCase() === 'delete') { c.deleteLook(w.slice(1).join(' ')); return 'Deleted'; }
+    if (/^(next|prev|previous|random)$/i.test(w[0])) { const n = c.lookStep(/^next$/i.test(w[0]) ? 1 : /^random$/i.test(w[0]) ? 'random' : -1); return n ? `Look "${n}"` : 'No looks yet'; }
+    if (w[0].toLowerCase() === 'morph') { const n = c.morphLook(w.slice(1).join(' ')); return n ? null : `No look "${w.slice(1).join(' ')}"`; }
     const name = c.look(args); return `Look "${name}"`;
-  }, (a) => pick([...lookNames(), 'save', 'delete'], a), { aliases: ['looks'] });
+  }, (a) => pick([...lookNames(), 'next', 'prev', 'random', 'morph', 'save', 'delete'], a), { aliases: ['looks'] });
   reg('save-look', 'Save the current slider values as a look (a quick name if you give none)', '[name]', async (args) => `Saved look "${(await lab()).saveLook(args)}"`);
   reg('reset-sliders', 'Put the selected layer\'s sliders back to the values in the code', '', async () => { (await lab()).resetSliders(); });
   reg('undo-sliders', 'Undo the last slider change', '', async () => { (await lab()).undoSliders(); });
@@ -134,6 +136,8 @@
   const SIZE_WORDS = { vertical: '9:16', portrait: '9:16', story: '9:16', stories: '9:16', tiktok: '9:16', reels: '9:16', reel: '9:16', shorts: '9:16', landscape: '16:9', youtube: '16:9', yt: '16:9', wide: '16:9', square: '1:1', feed: '4:5', insta: '4:5', instagram: '4:5', portrait45: '4:5', fit: 'fit', '1080x1920': '9:16', '1920x1080': '16:9', '1080x1350': '4:5', '1080x1080': '1:1' };
   reg('size', 'Frame size: 9:16, 16:9, 4:5, 1:1, fit (or tiktok, youtube, square, feed, 21:9, 4:3, 2:3, 4k, 4k-v)', '<9:16|16:9|4:5|1:1|fit|…>', async (args) => {
     const id = SIZE_WORDS[String(args).toLowerCase().replace(/\s|×/g, (m) => (m === '×' ? 'x' : ''))] || String(args).toLowerCase();
+    const wh = String(args).match(/^(\d{2,4})\s*[x×*]\s*(\d{2,4})$/i);
+    if (wh && !SIZE_WORDS[id]) { const z0 = (await lab()).customSize(Number(wh[1]), Number(wh[2])); return `Your own size: ${z0.width}×${z0.height}`; }
     const z = (await lab()).size(id);
     return z.id === 'fit' ? 'Fit: fills the preview' : `${z.id} · ${z.width}×${z.height}`;
   }, (a) => pick(['9:16', '16:9', '4:5', '1:1', 'fit', '21:9', '4:3', '2:3', '4k', '4k-v', 'tiktok', 'youtube', 'square', 'feed'], a), { aliases: ['frame'] });
@@ -215,13 +219,14 @@
   reg('clear-markers', 'Remove a row of markers (in the loop, else the whole song)', '<kick|snare|hit|bass|hats>', async (args) => `${(await lab()).clearMarks(String(args).toLowerCase())} removed`, (a) => pick(['kick', 'snare', 'hit', 'bass', 'hats'], a));
   reg('quantize', 'Quantize taps: K / S / H markers land exactly on the grid', '[on|off]', async (args) => `Quantize taps ${(await lab()).quantize(onOff(args)) ? 'on' : 'off'}`, (a) => pick(['on', 'off'], a));
   reg('snap', 'What markers, loops and points snap to', '<off|bar|1/4|1/8|1/16|1/32|hits>', async (args) => `Snap: ${(await lab()).snap(String(args).toLowerCase() === 'beat' ? '1/4' : String(args).toLowerCase())}`, (a) => pick(['off', 'bar', '1/4', '1/8', '1/16', '1/32', 'hits'], a));
-  reg('beat-grid', 'How the timeline looks: lines, numbers, subs, dim, sections, drops (each toggles)', '<lines|numbers|subs|dim|sections|drops>', async (args) => {
-    const c = await lab(); const k = String(args).toLowerCase();
+  reg('beat-grid', 'How the timeline looks: lines, numbers, subs, dim, sections, drops, marker lines, tall, follow, beat light, click (each toggles)', '<lines|numbers|subs|dim|sections|drops|marklines|tall|follow|light|click>', async (args) => {
+    const c = await lab();
     const cur = c.gridView();
-    if (!(k in cur)) return `Use /beat-grid ${Object.keys(cur).join(', ')}`;
+    const k = Object.keys(cur).find((x) => x.toLowerCase() === String(args).toLowerCase().replace(/\s+/g, ''));
+    if (!k) return `Use /beat-grid ${Object.keys(cur).join(', ')}`;
     const v = c.gridView({ [k]: !cur[k] });
     return `${k}: ${v[k] ? 'on' : 'off'}`;
-  }, (a) => pick(['lines', 'numbers', 'subs', 'dim', 'sections', 'drops'], a));
+  }, (a) => pick(['lines', 'numbers', 'subs', 'dim', 'sections', 'drops', 'marklines', 'tall', 'follow', 'light', 'click'], a));
   reg('loop', 'Loop a part: two times (0:32 0:48), N bars from the playhead, "bar", or off', '<start> <end> | <n> bars | bar | off', async (args) => {
     const c = await lab(); const w = words(args);
     if (!w.length || /^off$/i.test(w[0])) { c.loop(null); return 'Loop off'; }
@@ -231,8 +236,13 @@
     const r = c.loop(a, b);
     return `Looping ${fmtMs(r.a)} → ${fmtMs(r.b)}`;
   }, (a) => pick(['off', 'bar', '4 bars', '8 bars', '0:00 0:08'], a));
+  reg('click-track', 'A soft click on every beat while the song plays (to check the grid by ear)', '[on|off]', async (args) => { const c = await lab(); const cur = c.gridView().click; const v = c.gridView({ click: onOff(args) ?? !cur }); return `Click track ${v.click ? 'on' : 'off'}`; }, (a) => pick(['on', 'off'], a), { aliases: ['metronome'] });
   reg('sections', 'Mark the song\'s parts (Intro, Build, Drop, Break, Outro) as cues that looks can follow', '', async () => { const n = (await lab()).sections(); return n ? `${n} sections marked` : null; });
-  reg('cue', 'A cue (named spot) at the playhead: Drop, Verse… (1–9 jump to them)', '[name]', async (args) => { const c = (await lab()).cue(args); return c ? `Cue "${c.name}" at ${fmtMs(c.t)}` : null; }, (a) => pick(['Intro', 'Verse', 'Build', 'Drop', 'Break', 'Chorus', 'Outro'], a), { aliases: ['section'] });
+  reg('cue', 'A cue (named spot) at the playhead: Drop, Verse… (1–9 jump to them); next / prev jump between them', '[name] | next | prev', async (args) => {
+    const lb = await lab();
+    if (/^(next|prev|previous)$/i.test(args)) return `At ${fmtMs(lb.jumpCue(/^next$/i.test(args) ? 1 : -1))}`;
+    const c = lb.cue(args); return c ? `Cue "${c.name}" at ${fmtMs(c.t)}` : null;
+  }, (a) => pick(['Intro', 'Verse', 'Build', 'Drop', 'Break', 'Chorus', 'Outro'], a), { aliases: ['section'] });
   reg('cues', 'List the song\'s cues', '', async () => { const l = (await lab(false)).cues(); return l.length ? l.map((c, i) => `${i + 1}. ${c.name} · ${fmtMs(c.time)}${c.looks?.length ? ` ✦ ${c.looks.map((x) => x.name).join(', ')}` : ''}`).join('\n') : 'No cues yet (/cue Drop, /sections)'; });
   reg('song', 'The song: play, pause, seek <time>, speed <1|0.75|0.5|0.25>, mute, load, zoom <a> <b> | all', '<play|pause|seek|speed|mute|load [path]|zoom> …', async (args) => {
     const c = await lab(); const w = words(args); const sub = (w[0] || '').toLowerCase();

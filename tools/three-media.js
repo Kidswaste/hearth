@@ -180,8 +180,29 @@ const ThreeMedia = (() => {
       return b;
     });
     const seg = el('span', { class: 'stage-seg' }, ...buttons);
-    const moreSel = el('select', { class: 'stage-more', title: 'More frame sizes: 21:9, 4:3, 2:3, 4K' }, el('option', { value: '', text: 'More…' }), EXTRA_SIZES.map((s) => el('option', { value: s.id, text: `${s.label} · ${s.w}×${s.h}` })));
-    moreSel.addEventListener('change', () => { if (moreSel.value) setMode(moreSel.value); });
+    // Your own size (e.g. 1440×2560 or a banner), remembered; it shows in "More…" next to the others.
+    function setCustom(w, h) {
+      w = Math.round(Math.max(64, Math.min(7680, w))); h = Math.round(Math.max(64, Math.min(7680, h)));
+      let c = SIZES.find((x) => x.id === 'custom');
+      if (!c) { c = { id: 'custom', extra: true }; SIZES.push(c); }
+      Object.assign(c, { w, h, label: `${w}×${h}`, title: `${w}×${h}: your own size` });
+      store.set('three.customSize', { w, h });
+      return c;
+    }
+    { const c0 = store.get('three.customSize', null); if (c0?.w) setCustom(c0.w, c0.h); }
+    const moreSel = el('select', { class: 'stage-more', title: 'More frame sizes: 21:9, 4:3, 2:3, 4K, your own' });
+    const fillMore = () => moreSel.replaceChildren(el('option', { value: '', text: 'More…' }), ...SIZES.filter((x) => x.extra).map((x) => el('option', { value: x.id, text: x.id === 'custom' ? `Yours · ${x.w}×${x.h}` : `${x.label} · ${x.w}×${x.h}` })), el('option', { value: '+custom', text: 'Your own size…' }));
+    fillMore();
+    moreSel.addEventListener('change', async () => {
+      if (moreSel.value === '+custom') {
+        const c = SIZES.find((x) => x.id === 'custom');
+        const v = await Modal.prompt('Your own frame size', { value: c ? `${c.w}x${c.h}` : '1440x2560', placeholder: 'width x height, e.g. 1440x2560' });
+        const m = String(v || '').match(/(\d+)\s*[x×*, ]\s*(\d+)/i);
+        if (m) { setCustom(Number(m[1]), Number(m[2])); fillMore(); setMode('custom'); } else layout();
+        return;
+      }
+      if (moreSel.value) setMode(moreSel.value);
+    });
     const safeBtn = el('button', { class: 'stage-btn', text: 'Safe', title: 'Safe zones: where TikTok / Reels / Shorts put their buttons and captions, Instagram\'s grid crop, title-safe areas · right-click: which platform', on: { click: () => { safe = !safe; store.set('three.safeZones', safe); layout(); } } });
     safeBtn.dataset.feature = 'Safe zones';
     safeBtn.addEventListener('contextmenu', (e) => {
@@ -249,6 +270,7 @@ const ThreeMedia = (() => {
       // where the picture sits inside the preview (for overlays such as the onion skin): { left, top, width, height } in px
       get rect() { const s = current(); if (!s.w) return { left: 0, top: 0, width: host.clientWidth, height: host.clientHeight }; const W = host.clientWidth; const H = host.clientHeight; const k = Math.min(W / s.w, H / s.h); return { left: (W - s.w * k) / 2, top: (H - s.h * k) / 2, width: s.w * k, height: s.h * k }; },
       setMode, pill,
+      setCustom(w, h) { setCustom(w, h); fillMore(); setMode('custom'); return this.size; },
       setSafe(on, plat) { if (plat && SAFE[plat]) { platform = plat; store.set('three.safePlatform', plat); } safe = on ?? !safe; store.set('three.safeZones', safe); zones.dataset.for = ''; layout(); return safe; },
       get safe() { return safe; },
       sizes: SIZES.map((s) => s.id),
@@ -436,7 +458,7 @@ const ThreeMedia = (() => {
     function setQuantize(on) { quantTaps = Boolean(on); store.set('three.quantizeTaps', quantTaps); quantBtn.classList.toggle('on', quantTaps); return quantTaps; }
     setQuantize(quantTaps);
     // How the beat grid and the waveform are drawn
-    let gridView = { lines: true, numbers: true, subs: true, sections: true, drops: true, dim: false, ...store.get('three.gridView', {}) };
+    let gridView = { lines: true, numbers: true, subs: true, sections: true, drops: true, dim: false, follow: true, tall: false, markLines: false, click: false, light: true, ...store.get('three.gridView', {}) };
     const viewBtn = btn('View ▾', 'How the timeline looks: beat lines, bar numbers, subdivisions, loud parts, drops, RGB or band waveform', (e) => viewMenu(e.currentTarget));
     viewBtn.dataset.feature = 'Timeline view';
     // Sections (Intro, Build, Drop…): named cues that slider looks and motions can follow
@@ -694,7 +716,7 @@ const ThreeMedia = (() => {
       mapChanged({ undoable: false });
     }
     const saveMaps = debounce(() => { if (allMaps) window.hub.kvSet('three-beatmaps', allMaps); }, 400);
-    function sizeCanvas() { canvas.style.height = `${112 + tracksH() + (shownLanes().length - CORE_LANES.length) * 14}px`; }
+    function sizeCanvas() { canvas.style.height = `${(gridView?.tall ? 170 : 112) + tracksH() + (shownLanes().length - CORE_LANES.length) * 14}px`; }
     function mapChanged() {
       sizeCanvas();
       cueIdx = -2;
@@ -873,6 +895,14 @@ const ThreeMedia = (() => {
       cueIdx = key;
       onCue({ index: i, cues: map.cues, playing: st.playing });
     }
+    // the next / previous cue from the playhead (PgDn / PgUp)
+    function jumpCue(d) {
+      const t = now();
+      const c = d > 0 ? map.cues.find((x) => x.t > t + 0.05) : [...map.cues].reverse().find((x) => x.t < t - 0.25);
+      if (!c) { if (d < 0) seek(0); return Boolean(map.cues.length) || d < 0; }
+      seek(c.t);
+      return true;
+    }
     function addAtPlayhead(lane) {
       // a live tap: the real attack nearby (fixes the tap's delay); the grid only if a line is that close
       const hit = snapToHit(now(), lane);
@@ -957,7 +987,25 @@ const ThreeMedia = (() => {
     }
 
     // ---------- timeline view ----------
-    function setGridView(patch) { gridView = { ...gridView, ...patch }; store.set('three.gridView', gridView); waveCache.key = ''; draw(); return gridView; }
+    function setGridView(patch) { gridView = { ...gridView, ...patch }; store.set('three.gridView', gridView); waveCache.key = ''; sizeCanvas(); draw(); return gridView; }
+    // Beat light + click track: follow the grid while it plays (checked every frame in tick)
+    let lastBeat = -1; let clickCtx = null;
+    function beatTick() {
+      if (!st.playing || !D()) { lastBeat = -1; return; }
+      const bs = beats(); const i = beatIndex(bs, now());
+      if (i === lastBeat || i < 0) return;
+      lastBeat = i;
+      const down = mod(beatNo(bs, i, map.grid), bpbNow()) === 0;
+      if (gridView.light !== false) { bpmRead.classList.remove('beat', 'down'); void bpmRead.offsetWidth; bpmRead.classList.add('beat'); if (down) bpmRead.classList.add('down'); }
+      if (gridView.click) {
+        try {
+          clickCtx ||= new AudioContext();
+          const o = clickCtx.createOscillator(); const g = clickCtx.createGain();
+          o.frequency.value = down ? 1760 : 1180; g.gain.setValueAtTime(0.18, clickCtx.currentTime); g.gain.exponentialRampToValueAtTime(0.0001, clickCtx.currentTime + 0.05);
+          o.connect(g).connect(clickCtx.destination); o.start(); o.stop(clickCtx.currentTime + 0.06);
+        } catch { /* no audio */ }
+      }
+    }
     function viewMenu(anchor) {
       const v = gridView;
       const tog = (k, label, hint) => [`${v[k] ? '✓ ' : ''}${label}`, hint, () => setGridView({ [k]: !v[k] })];
@@ -968,6 +1016,12 @@ const ThreeMedia = (() => {
         tog('dim', 'Dim the grid', 'Fainter lines, the waveform stands out'),
         tog('sections', 'Loud parts', 'Yellow shading where the song is loud'),
         tog('drops', 'Drops', 'Red ▼ where a loud part starts'),
+        tog('markLines', 'Marker lines', 'Kick / snare / hit markers as lines over the waveform, at any zoom'),
+        tog('tall', 'Taller timeline', 'More room for the waveform'),
+        tog('follow', 'Follow the playhead', 'Zoomed in, the view moves along while it plays'),
+        null,
+        tog('light', 'Beat light', 'The BPM readout blinks on every beat (red on the 1)'),
+        tog('click', 'Click track', 'A soft click on every beat while it plays, to check the grid by ear'),
         null,
         [`${waveRGB ? '✓ ' : ''}RGB waveform`, 'Red = bass, green = mids, blue = highs (else band lines)', () => waveBtn.click()],
         ['Whole song', '0 · double-click the overview', () => setView(null)],
@@ -1097,6 +1151,7 @@ const ThreeMedia = (() => {
       // hot cues (like rekordbox): C drops one at the playhead, 1–9 jump to them
       if (e.key.toLowerCase() === 'c' && !e.altKey) { addCue(now()); return true; }
       if (/^[1-9]$/.test(e.key) && !e.altKey) { const c = map.cues[Number(e.key) - 1]; if (c) { seek(c.t); return true; } return false; }
+      if (e.key === 'PageDown' || e.key === 'PageUp') return jumpCue(e.key === 'PageDown' ? 1 : -1);
       const lane = CORE_LANES.find((l) => l.key === e.key.toLowerCase());
       if (lane && !e.altKey) { addAtPlayhead(lane.id); return true; }
       if (e.key === '[') { setRegionEdge('a', now()); return true; }
@@ -1224,6 +1279,7 @@ const ThreeMedia = (() => {
     const waveCache = { key: '', canvas: document.createElement('canvas') };
     let lastFull = 0;
     function tick() {
+      beatTick();
       if (performance.now() - lastFull > 100 || dragging) { paint(); return; }
       placePlayheads();
       raf = requestAnimationFrame(tick);
@@ -1276,7 +1332,7 @@ const ThreeMedia = (() => {
       CORE_LANES.forEach((ln, i) => { laneBtns[i].textContent = `${ln.key.toUpperCase()} ${ln.name} ${map.marks[ln.id].length || ''}`.trim(); });
       recBtn.textContent = recording ? (recording.stopping ? '… saving' : `⏹ Stop ${fmtTime((performance.now() - recording.startedAt) / 1000)}`) : '⏺ Record';
       recBtn.classList.toggle('on', Boolean(recording));
-      if (view && st.playing && !locked && !dragging) {
+      if (view && st.playing && !locked && !dragging && gridView.follow !== false) {
         const t = now();
         if (t > view.end || t < view.start) setView({ start: t - span() * 0.1, end: t - span() * 0.1 + span() });
       }
@@ -1415,7 +1471,7 @@ const ThreeMedia = (() => {
           g.fillStyle = ln.color;
           g.fillRect(Math.round(x) - 2, y + 2, 4, LANE_H - 4);
           if (sel) { g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.strokeRect(Math.round(x) - 3.5, y + 1, 7, LANE_H - 2); }
-          if (sp < 8) { g.fillStyle = `${ln.color}40`; g.fillRect(Math.round(x), top, 1, H); }
+          if (sp < 8 || gridView.markLines) { g.fillStyle = `${ln.color}${sp < 8 ? '40' : '30'}`; g.fillRect(Math.round(x), top, 1, H); }
         }
       });
       // layer tracks: a bar for when each layer is on screen
@@ -2317,7 +2373,7 @@ const ThreeMedia = (() => {
       editCues: (o) => editCues(o || {}),
       get cues() { return map.cues.map((c) => ({ time: c.t, name: c.name, ...(c.looks?.length ? { looks: c.looks } : {}) })); },
       // ---------- for chat commands (tools/three-cmds.js) ----------
-      tap: () => tap(), tapOne: () => tapOne(), get tapInfo() { return tapInfo; },
+      tap: () => tap(), tapOne: () => tapOne(), get tapInfo() { return tapInfo; }, jumpCue: (d) => jumpCue(d),
       setBpm(b) { if (!D() || !(b >= 20 && b <= 400)) return false; editGrid((g) => { g.bpm = Math.round(b * 100) / 100; }); return true; },
       scaleBpm(k) { if (!D()) return false; editGrid((g) => { g.bpm = Math.round(g.bpm * k * 100) / 100; }); return bpmNow(); },
       oneHere: () => { if (!D()) return false; editGrid((g) => { g.anchor = r4(now()); }); return true; },
