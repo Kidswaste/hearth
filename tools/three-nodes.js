@@ -849,9 +849,10 @@ let ${id}Travel = 0;`);
   // everything that needs the types (compile, presets, the type list…) calls it without one and gets them all.
   function filterDefs(idle) {
     if (typeof ThreeLayers === 'undefined' || typeof ThreeTweaks === 'undefined') return;
+    const until = performance.now() + 6; // short slices, so a click right after the Lab opens never waits on this
     for (const f of ThreeLayers.FILTERS) {
       if (reg.has(`fx-${f.id}`)) continue;
-      if (idle?.timeRemaining && idle.timeRemaining() < 3) { requestIdleCallback(filterDefs); return; }
+      if (idle?.timeRemaining && (idle.timeRemaining() < 3 || performance.now() > until)) { requestIdleCallback(filterDefs); return; }
       let items = [];
       try { items = ThreeTweaks.scan(f.code).items.filter((it) => it.key != null); } catch { continue; }
       const inputs = items.map((it) => {
