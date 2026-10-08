@@ -3,7 +3,7 @@
 //   /size 9:16 · /freeze · /shuffle Colors wild · /save · /look Drop · /bpm 128 · /live system · /loop 0:32 0:48 …
 (() => {
   const AREA = 'Three.js Lab';
-  const lab = (show = true) => ThreeLab.cmd({ show });
+  const lab = async (show = true) => { const c = await ThreeLab.cmd({ show }); await c.waitSong?.(); return c; };
   const peek = () => ThreeLab.peek?.() || null;
   const words = (s) => String(s || '').trim().split(/\s+/).filter(Boolean);
   const pick = (list, q) => { const s = String(q || '').toLowerCase(); return list.filter((x) => String(x.value ?? x).toLowerCase().includes(s)).slice(0, 14).map((x) => (typeof x === 'string' ? { value: x } : x)); };
@@ -41,11 +41,12 @@
   // ---------- sliders ----------
   reg('save-sliders', 'Save the selected layer\'s slider values into its code (Ctrl+S)', '', async () => { const n = (await lab()).save(); return n ? `Saved ${n} slider change${n === 1 ? '' : 's'} into the code.` : 'Nothing to save: the sliders match the code.'; }, null, { aliases: ['ss'] });
   const AMOUNT = { subtle: 0.1, small: 0.1, normal: 0.35, medium: 0.35, bold: 0.6, big: 0.6, wild: 1, total: 1, random: 1 };
-  const SCOPES = ['all', 'favs', 'colors', 'numbers', 'changed', 'visible'];
+  const SCOPES = ['all', 'favs', 'colors', 'numbers', 'changed', 'visible', 'one'];
   reg('shuffle', 'Shuffle the sliders: a group or kind (colors, numbers, favs, changed), how far (subtle / normal / bold / wild or 0–1), a seed', '[group|colors|numbers|favs] [subtle|normal|bold|wild|0.5] [seed N]', async (args) => {
     const c = await lab();
     const w = words(args);
     const o = {};
+    if (/^palette$/i.test(args.trim())) return c.paletteColors() ? '🎨 Colors from the palette (/unshuffle-free: ↶ in the panel undoes)' : null;
     const si = w.findIndex((x) => x.toLowerCase() === 'seed');
     if (si >= 0) { o.seed = Number(w[si + 1]); w.splice(si, 2); }
     const ai = w.findIndex((x) => AMOUNT[x.toLowerCase()] != null || /^(0?\.\d+|1(\.0+)?|\d{1,3}%)$/.test(x));
@@ -58,7 +59,11 @@
     }
     const seed = c.shuffle(o);
     return seed == null ? null : `🎲 Shuffled${o.scope ? ` ${o.scope.replace('group:', '')}` : ''}${o.amount != null ? ` (${Math.round(o.amount * 100)}%)` : ''} · seed ${seed} · /unshuffle goes back, /save keeps it`;
-  }, (a) => pick([...groupNames(), ...SCOPES, ...Object.keys(AMOUNT), 'seed'], words(a).pop() || ''), { aliases: ['dice'] });
+  }, (a) => pick([...groupNames(), ...SCOPES, 'palette', ...Object.keys(AMOUNT), 'seed'], words(a).pop() || ''), { aliases: ['dice'] });
+  reg('tame', 'Halfway back to the code: every slider you changed moves half the way back (after a wild shuffle)', '[0–1]', async (args) => { const n = (await lab()).tame(Number(args) || 0.5); return `${n} slider${n === 1 ? '' : 's'} tamed`; });
+  reg('exaggerate', 'Push every change further from the code (×1.5, or the factor you give)', '[factor]', async (args) => { const n = (await lab()).tame(Number(args) || 1.5); return `${n} slider${n === 1 ? '' : 's'} pushed further`; });
+  reg('save-one', 'Save just one slider into the code (your other changes stay live)', '<slider>', async (args) => `💾 ${(await lab()).saveOne(args).label} saved into the code`, (a) => pick(sliderNames(), a));
+  reg('tweak-code', 'Copy the sliders as tweak() code with their current values', '', async () => { const t = (await lab()).tweakCode(); navigator.clipboard.writeText(t).catch(() => {}); return `\`\`\`js\n${t}\n\`\`\``; });
   reg('unshuffle', 'Back to the shuffle before (Shift+R)', '', async () => { (await lab()).shuffleStep(-1); }, null, { aliases: ['shuffle-back'] });
   reg('reshuffle', 'Forward to the next shuffle (or a new one)', '', async () => { (await lab()).shuffleStep(1); }, null, { aliases: ['shuffle-forward'] });
   reg('shuffle-mode', 'Set how /shuffle and R shuffle by default: amount and which sliders', '<subtle|normal|bold|wild> [all|colors|numbers|favs|<group>]', async (args) => {
@@ -142,7 +147,7 @@
     return z.id === 'fit' ? 'Fit: fills the preview' : `${z.id} · ${z.width}×${z.height}`;
   }, (a) => pick(['9:16', '16:9', '4:5', '1:1', 'fit', '21:9', '4:3', '2:3', '4k', '4k-v', 'tiktok', 'youtube', 'square', 'feed'], a), { aliases: ['frame'] });
   reg('fit', 'Fit the picture to the preview (no exact size)', '', async () => { (await lab()).size('fit'); });
-  reg('freeze', 'Freeze the picture (the music goes on); again to unfreeze', '[on|off]', async (args) => { const on = (await lab()).freeze(onOff(args)); return on ? '❚❚ Frozen · /next-frame steps one frame · /onion pins it to compare' : '▶ Running'; }, (a) => pick(['on', 'off'], a));
+  reg('freeze', 'Freeze the picture (the music goes on); again to unfreeze; beat / bar: exactly on the next one', '[on|off|beat|bar]', async (args) => { if (/^(beat|bar)$/i.test(args)) { const w = (await lab()).freezeOn(args.toLowerCase()); return `❚❚ Freezing on the next ${args.toLowerCase()}${w ? ` (in ${w.toFixed(2)} s)` : ''}`; } const on = (await lab()).freeze(onOff(args)); return on ? '❚❚ Frozen · /next-frame steps one frame · /onion pins it to compare' : '▶ Running'; }, (a) => pick(['on', 'off', 'beat', 'bar'], a));
   reg('next-frame', 'One frame forward (freezes first)', '', async () => { (await lab()).step(); });
   reg('onion', 'Pin this frame and compare it with the live picture: pin, onion, wipe or off', '[pin|onion|wipe|off]', async (args) => { const r = await (await lab()).compare((args || 'pin').toLowerCase()); return r === 'off' ? 'Compare off' : null; }, (a) => pick(['pin', 'onion', 'wipe', 'off'], a), { aliases: ['compare-frame'] });
   reg('still', 'Save a still at the exact frame size (or one of 9:16, 16:9, 4:5, 1:1); "copy" puts it in the clipboard', '[9:16|16:9|4:5|1:1] [copy]', async (args) => {
@@ -176,9 +181,10 @@
     if (sub === 'new') { const t = c.newSketch(w.slice(1).join(' ') || null); return t ? `New sketch: ${t}` : w.length > 1 ? `Templates: ${c.templates().join(', ')}` : null; }
     if (sub === 'rename') return `Renamed to "${c.rename(w.slice(1).join(' '))}"`;
     if (sub === 'duplicate' || sub === 'dup') { c.duplicate(); return 'Duplicated'; }
+    if (sub === 'next' || sub === 'prev' || sub === 'previous') return `Opened "${c.stepSketch(sub === 'next' ? 1 : -1)}"`;
     const name = c.openSketch(args);
     return name ? `Opened "${name}"` : `No sketch "${args}". /sketches lists them.`;
-  }, (a) => pick([...sketchNames(), 'new', 'rename', 'duplicate'], a));
+  }, (a) => pick([...sketchNames(), 'next', 'prev', 'new', 'rename', 'duplicate'], a));
   reg('sketches', 'List your sketches (most recent first); "browse" opens them as pictures', '[browse]', async (args) => {
     const c = await lab(!/^browse/i.test(args) ? false : true);
     if (/^browse/i.test(args)) { c.browse(); return null; }

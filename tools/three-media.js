@@ -366,7 +366,10 @@ const ThreeMedia = (() => {
     const unloadBtn = btn('×', 'Remove the music (sketches get a demo beat)', () => unload(), 'ghost small mb-x');
     const playBtn = btn('▶', 'Play / pause (Space)', () => toggle(), 'primary small mb-play');
     playBtn.dataset.feature = 'Play / pause';
-    const timeEl = el('span', { class: 'mb-time', text: '0:00' });
+    playBtn.dataset.key = 'Space';
+    playBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); menuAt(playBtn, [['Play from the start', 'Home, then Space', () => { seek(0); toggle(true); }], region ? ['Play the loop', '', () => { seek(region.a); toggle(true); }] : false, ...RATES.map((r) => [`${st.rate === r ? '● ' : ''}${r === 1 ? 'Normal speed' : `${r}× speed`}`, '', () => setRate(r)])].filter((x) => x !== false)); });
+    const timeEl = el('span', { class: 'mb-time', text: '0:00', title: 'Click to jump to a time (m:ss.mmm or seconds)' });
+    timeEl.addEventListener('click', async () => { if (!D()) return; const v = await Modal.prompt('Jump to', { value: fmtMs(now()), placeholder: 'm:ss.mmm or seconds' }); const t = parseTime(v ?? ''); if (Number.isFinite(t)) seek(t); });
     // Slow motion for precise edits (the sketch sees the slowed music too). Recording always runs at 1×.
     const RATES = [1, 0.75, 0.5, 0.25];
     const rateSel = el('select', { class: 'mb-sel mb-rate', title: 'Playback speed: slow it down to place points and markers precisely' }, RATES.map((r) => el('option', { value: r, text: r === 1 ? '1×' : `${r}×` })));
@@ -398,6 +401,9 @@ const ThreeMedia = (() => {
       vol.classList.toggle('muted', mutedFrom != null);
       toast(mutedFrom != null ? 'Music muted (M to hear it again) · the sketch still reacts' : 'Music back on', { timeout: 1400 });
     }
+    vol.addEventListener('wheel', (e) => { e.preventDefault(); vol.value = Math.max(0, Math.min(1, Number(vol.value) + (e.deltaY < 0 ? 0.05 : -0.05))); vol.dispatchEvent(new Event('input')); }, { passive: false });
+    vol.addEventListener('dblclick', () => toggleMute());
+    vol.title = 'Volume (the sketch still sees the full signal) · wheel to step · double-click or M to mute';
     vol.addEventListener('input', () => { st.volume = Number(vol.value); store.set('three.mediaVolume', st.volume); send({ type: 'media', cmd: 'volume', value: st.volume }); });
     const recBtn = btn('⏺ Record', 'Record the preview (with the music) to a video file', (e) => (recording ? stopRecord() : recordMenu(e.currentTarget)), 'ghost small mb-rec imp-live');
     recBtn.dataset.feature = 'Record';
@@ -439,15 +445,52 @@ const ThreeMedia = (() => {
     const dblBtn = btn('×2', 'Double the BPM', () => editGrid((g) => { g.bpm = Math.round(g.bpm * 200) / 100; }));
     const halfBtn = btn('½', 'Halve the BPM', () => editGrid((g) => { g.bpm = Math.round(g.bpm * 50) / 100; }));
     const oneBtn = btn('Set 1 here', 'Put the downbeat (beat 1 of a bar) at the playhead; the grid lines up from it', () => editGrid((g) => { g.anchor = r4(now()); }), 'ghost small mb-one');
-    const gridL = btn('◂', 'Shift the whole grid 5 ms earlier', () => editGrid((g) => { g.anchor = r4(g.anchor - 0.005); }));
-    const gridR = btn('▸', 'Shift the whole grid 5 ms later', () => editGrid((g) => { g.anchor = r4(g.anchor + 0.005); }));
+    const gridStep = (e) => (e.shiftKey ? 0.001 : e.altKey ? 0.02 : 0.005);
+    const gridL = btn('◂', 'Shift the whole grid 5 ms earlier (Shift: 1 ms, Alt: 20 ms)', (e) => editGrid((g) => { g.anchor = r4(g.anchor - gridStep(e)); }));
+    const gridR = btn('▸', 'Shift the whole grid 5 ms later (Shift: 1 ms, Alt: 20 ms)', (e) => editGrid((g) => { g.anchor = r4(g.anchor + gridStep(e)); }));
+    oneBtn.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const anchor = { getBoundingClientRect: () => ({ left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY }) };
+      const nextKick = map.marks.kick.find((t) => t >= now() - 0.02);
+      menuAt(anchor, [
+        ['The 1 on the hit', 'Moved onto the real attack near the playhead', () => editGrid((g) => { g.anchor = r4(snapToHit(now() + 0.05, 'kick')); })],
+        nextKick != null ? ['The 1 on the next kick marker', fmtMs(nextKick), () => editGrid((g) => { g.anchor = r4(nextKick); })] : false,
+        map.cues.length ? ['The 1 on the first cue', fmtMs(map.cues[0].t), () => editGrid((g) => { g.anchor = r4(map.cues[0].t); })] : false,
+        ['Auto: the detected grid', '', () => { if (map.grid) { pushUndo(); map.grid = null; mapChanged(); } }],
+      ].filter((x) => x !== false));
+    });
     const meterSel = el('select', { class: 'mb-sel', title: 'Beats per bar' }, METERS.map(([v, l]) => el('option', { value: v, text: l })));
     meterSel.addEventListener('change', () => editGrid((g) => { g.bpb = Number(meterSel.value); }));
     const autoBtn = btn('Auto', 'Forget your grid and use the detected beats', () => { if (!map.grid) return; pushUndo(); map.grid = null; mapChanged(); });
     const gridState = el('span', { class: 'mb-gridstate' });
     const snapSel = el('select', { class: 'mb-sel', title: 'What loop points, markers and curve points snap to (Hits: your kick / snare / hit markers and cues)' }, SNAPS.map(([v, l]) => el('option', { value: v, text: `Snap: ${l}`, selected: v === snapMode })));
     snapSel.addEventListener('change', () => { snapMode = snapSel.value; store.set('three.snapMode', snapMode); draw(); });
-    const laneBtns = CORE_LANES.map((ln) => btn('', `Add a ${ln.name.toLowerCase()} at the playhead (or press ${ln.key.toUpperCase()} while it plays)`, () => addAtPlayhead(ln.id), `ghost small mb-lane mb-lane-${ln.id}`));
+    const laneBtns = CORE_LANES.map((ln) => {
+      const b = btn('', `Add a ${ln.name.toLowerCase()} at the playhead (or press ${ln.key.toUpperCase()} while it plays) · right-click: fill, clear, copy`, () => addAtPlayhead(ln.id), `ghost small mb-lane mb-lane-${ln.id}`);
+      b.dataset.feature = `${ln.key.toUpperCase()} ${ln.name}`; b.dataset.key = ln.key.toUpperCase();
+      b.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const anchor = b;
+        const range = region ? [region.a, region.b] : [0, D()]; const where = region ? 'in the loop' : 'in the whole song';
+        const plan = { kick: [['Every beat', 'kicks'], ['On 1 and 3', 'kicks13']], snare: [['On 2 and 4', 'snares']], hit: [['Every bar\'s 1', 'hits']] }[ln.id] || [];
+        menuAt(anchor, [
+          ...plan.map(([label, kind]) => [`Fill: ${label}`, where, () => fillKind(kind)]),
+          ['Copy the times', `${map.marks[ln.id].filter((t) => t >= range[0] && t < range[1]).length} ${ln.name.toLowerCase()}s, in seconds`, () => { navigator.clipboard.writeText(map.marks[ln.id].filter((t) => t >= range[0] && t < range[1]).map((t) => t.toFixed(3)).join('\n')); toast('Copied', { timeout: 1000 }); }],
+          [`Clear the ${ln.name.toLowerCase()}s`, where, () => { pushUndo(); map.marks[ln.id] = map.marks[ln.id].filter((t) => t < range[0] || t >= range[1]); mapChanged(); }],
+        ]);
+      });
+      return b;
+    });
+    function fillKind(kind) {
+      if (!D()) return 0;
+      const range = region ? [region.a, region.b] : [0, D()];
+      const bs = beats(); const inR = (t) => t >= range[0] - 1e-3 && t < range[1] - 1e-3;
+      const nb = bs.map((t, i) => ({ t, n: mod(beatNo(bs, i, map.grid), bpbNow()) })).filter((b) => inR(b.t));
+      const plan = { kicks: ['kick', nb], kicks13: ['kick', nb.filter((b) => b.n === 0 || b.n === 2)], snares: ['snare', nb.filter((b) => b.n === 1 || b.n === 3)], hits: ['hit', nb.filter((b) => b.n === 0)] }[kind];
+      if (!plan) return 0;
+      pushUndo(); for (const b of plan[1]) map.marks[plan[0]] = addMark(map.marks[plan[0]], b.t); mapChanged();
+      return plan[1].length;
+    }
     const fillBtn = btn('Fill ▾', 'Stamp kicks / snares / hits on the grid, or clear them', (e) => fillMenu(e.currentTarget));
     const undoBtn = btn('↶', 'Undo the last grid, marker or curve change (Ctrl+Z)', () => undoMap());
     // Q: K / S / H taps land exactly on the grid (the snap setting) instead of on the sound
@@ -455,6 +498,7 @@ const ThreeMedia = (() => {
     const quantBtn = btn('Q', 'Quantize taps: K / S / H markers land on the grid (the Snap setting) · Q key', () => setQuantize(!quantTaps), 'ghost small mb-quant');
     quantBtn.dataset.feature = 'Quantize taps';
     quantBtn.dataset.key = 'Q';
+    quantBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); menuAt(quantBtn, SNAPS.filter(([v]) => v !== 'off' && v !== 'hits').map(([v, l]) => [`${snapMode === v ? '● ' : ''}Quantize to ${l}`, 'Also the snap for loops and points', () => { snapSel.value = v; snapSel.dispatchEvent(new Event('change')); setQuantize(true); }])); });
     function setQuantize(on) { quantTaps = Boolean(on); store.set('three.quantizeTaps', quantTaps); quantBtn.classList.toggle('on', quantTaps); return quantTaps; }
     setQuantize(quantTaps);
     // How the beat grid and the waveform are drawn
@@ -843,6 +887,9 @@ const ThreeMedia = (() => {
     }
     // Hot cues: named spots in the song (Drop, Verse…), kept in time order; 1–9 jump to the first nine.
     const CUE_COLORS = ['#ff9f43', '#ff6a9a', '#48ddff', '#7cd992', '#bd8bff', '#ffd75e', '#ff6a6a', '#5ee0c0', '#f2a6ff'];
+    // sections get their own colors (drops red, builds orange, intros / outros blue…), other cues cycle
+    const SECTION_COLORS = { intro: '#48ddff', verse: '#7cd992', build: '#ff9f43', drop: '#ff6a6a', break: '#bd8bff', chorus: '#ffd75e', bridge: '#5ee0c0', outro: '#48ddff' };
+    const cueColor = (c, i) => SECTION_COLORS[String(c.name).toLowerCase().replace(/\s*\d+$/, '')] || CUE_COLORS[i % CUE_COLORS.length];
     function addCue(t, name) {
       if (!D()) return null;
       const tt = r4(Math.max(0, Math.min(D(), snapT(t))));
@@ -1201,9 +1248,9 @@ const ThreeMedia = (() => {
 
     // ---------- menus + recording ----------
     function menuAt(anchor, items) {
-      const menu = el('div', { class: 'mb-menu' }, items.map((it) => (it ? el('button', { class: 'menu-item', on: { click: () => { menu.remove(); it[2](); } } }, el('b', { text: it[0] }), el('span', { class: 'hint', text: it[1] })) : el('div', { class: 'menu-sep' }))));
+      const menu = el('div', { class: 'mb-menu lab-compact' }, items.map((it) => (it ? el('button', { class: 'menu-item', on: { click: () => { menu.remove(); it[2](); } } }, el('b', { text: it[0] }), el('span', { class: 'hint', text: it[1] })) : el('div', { class: 'menu-sep' }))));
       const r = anchor.getBoundingClientRect();
-      Object.assign(menu.style, { left: `${Math.max(8, Math.min(innerWidth - 270, r.left))}px`, top: `${r.top - 8}px`, maxHeight: `${Math.round(innerHeight * 0.8)}px`, overflowY: 'auto' });
+      Object.assign(menu.style, { left: `${Math.max(8, Math.min(innerWidth - 300, r.left))}px`, top: `${r.top - 8}px`, maxHeight: `${Math.round(innerHeight * 0.8)}px`, overflowY: 'auto' });
       document.body.append(menu);
       // never off-screen: a menu that doesn't fit above the button opens from the top of the window instead
       const mr = menu.getBoundingClientRect();
@@ -1541,7 +1588,7 @@ const ThreeMedia = (() => {
       // hot cues: a numbered flag on the ruler and a faint line down the song
       map.cues.forEach((c, i) => {
         if (c.t < s0 - sp * 0.2 || c.t > s0 + sp) return;
-        const x = Math.round(X(c.t)); const col = CUE_COLORS[i % CUE_COLORS.length];
+        const x = Math.round(X(c.t)); const col = cueColor(c, i);
         const label = `${i < 9 ? `${i + 1} ` : ''}${c.name}${c.looks?.length ? ' ✦' : ''}`;
         const lw = g.measureText(label).width + 8;
         g.fillStyle = `${col}30`; g.fillRect(x, RULER, 1, LT - RULER);
@@ -1694,7 +1741,7 @@ const ThreeMedia = (() => {
       if (region) { g.fillStyle = locked ? '#48ddff40' : '#ffd75e40'; g.fillRect(X(region.a), 0, Math.max(2, X(region.b) - X(region.a)), h); }
       if (a) { g.fillStyle = '#ff6a6a'; for (const d of a.drops) g.fillRect(X(d) - 1, 0, 2, 4); }
       for (const n of notes) { g.fillStyle = n.done ? '#8f877d' : '#7cd992'; g.fillRect(X(n.t) - 1, h - 5, 3, 5); }
-      map.cues.forEach((c, i) => { g.fillStyle = CUE_COLORS[i % CUE_COLORS.length]; g.fillRect(X(c.t) - 1, 0, 3, 6); });
+      map.cues.forEach((c, i) => { g.fillStyle = cueColor(c, i); g.fillRect(X(c.t) - 1, 0, 3, 6); });
       if (view) {
         const vx = X(view.start); const vw = Math.max(4, X(view.end) - vx);
         g.fillStyle = '#ffffff14';
@@ -2401,16 +2448,9 @@ const ThreeMedia = (() => {
       setLoopOn(on) { if (Boolean(on) !== st.loop) loopBtn.click(); return st.loop; },
       lock: (on) => { setLocked(on ?? !locked); return locked; },
       tapLane: (lane) => addAtPlayhead(lane),
-      fill(kind) {
-        if (!D()) return 0;
-        const range = region ? [region.a, region.b] : [0, D()];
-        const bs = beats(); const inR = (t) => t >= range[0] - 1e-3 && t < range[1] - 1e-3;
-        const nb = bs.map((t, i) => ({ t, n: mod(beatNo(bs, i, map.grid), bpbNow()) })).filter((b) => inR(b.t));
-        const plan = { kicks: ['kick', nb], 'kicks13': ['kick', nb.filter((b) => b.n === 0 || b.n === 2)], snares: ['snare', nb.filter((b) => b.n === 1 || b.n === 3)], hits: ['hit', nb.filter((b) => b.n === 0)] }[kind];
-        if (!plan) return 0;
-        pushUndo(); for (const b of plan[1]) map.marks[plan[0]] = addMark(map.marks[plan[0]], b.t); mapChanged();
-        return plan[1].length;
-      },
+      fill: (kind) => fillKind(kind),
+      // seconds until the next beat / bar (for "freeze on the beat")
+      untilNext(unit = 'beat') { if (!D()) return null; const bs = beats(); const t = now(); const i = beatIndex(bs, t); for (let k = Math.max(0, i + 1); k < bs.length; k += 1) { if (unit === 'beat' || mod(beatNo(bs, k, map.grid), bpbNow()) === 0) return (bs[k] - t) / (st.rate || 1); } return null; },
       clearMarks(lane) { if (!D() || !map.marks[lane]) return 0; const range = region ? [region.a, region.b] : [0, D()]; pushUndo(); const n0 = map.marks[lane].length; map.marks[lane] = map.marks[lane].filter((t) => t < range[0] || t >= range[1]); mapChanged(); return n0 - map.marks[lane].length; },
       get markers() { return Object.fromEntries(LANES.map((l) => [l.id, map.marks[l.id].length])); },
       addCue, setRate,

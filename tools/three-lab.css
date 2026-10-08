@@ -156,11 +156,12 @@ body.tw-scrubbing, body.tw-scrubbing * { cursor: ew-resize !important; }
 
 /* Lab menus: one line per item (label left, hint right), so long menus stay short */
 .mb-menu.lab-pop { width: 300px; padding: 3px; }
-.mb-menu.lab-pop .menu-item { flex-direction: row; align-items: baseline; gap: 10px; padding: 5px 9px; min-width: 0; }
-.mb-menu.lab-pop .menu-item b { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; max-width: 62%; }
-.mb-menu.lab-pop .menu-item .hint { margin-left: auto; font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: right; opacity: .8; }
+.mb-menu.lab-compact { width: 290px; padding: 3px; }
+.mb-menu:is(.lab-pop, .lab-compact) .menu-item { flex-direction: row; align-items: baseline; gap: 10px; padding: 5px 9px; min-width: 0; }
+.mb-menu:is(.lab-pop, .lab-compact) .menu-item b { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; max-width: 62%; }
+.mb-menu:is(.lab-pop, .lab-compact) .menu-item .hint { margin-left: auto; font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: right; opacity: .8; }
 .mb-menu.lab-pop .menu-item.on b::before { content: "● "; color: #ffd75e; }
-.mb-menu.lab-pop .menu-head { padding: 6px 9px 2px; }
+.mb-menu:is(.lab-pop, .lab-compact) .menu-head { padding: 6px 9px 2px; }
 
 /* console: errors only */
 .three-console-wrap.errors-only .console-row:not(.error):not(.warn) { display: none; }

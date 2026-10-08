@@ -135,7 +135,7 @@ const ThreeLab = (() => {
     }
     let split = null;
     const btn = (text, title, fn, cls = 'ghost small') => el('button', { class: cls, text, title, on: { click: fn } });
-    const runBtn = btn('▶ Run', 'Run every layer again from the start (Ctrl+Enter)', () => run(), 'primary small');
+    const runBtn = btn('▶ Run', 'Run every layer again from the start (Ctrl+Enter) · Shift+click: restart from scratch', (e) => (e.shiftKey ? restartSim() : run()), 'primary small');
     runBtn.dataset.key = 'Ctrl+Enter';
     const restartBtn = btn('⟲', 'Restart from scratch: a fresh page, GPU and sound, for when something bugs out (Ctrl+Shift+Enter)', () => restartSim(), 'ghost small');
     restartBtn.dataset.feature = 'Restart simulation';
@@ -226,6 +226,7 @@ const ThreeLab = (() => {
     let unseen = { errors: 0, other: 0 };
     const consoleBtn = btn('Console', 'Show or hide the console (errors and console.log from the sketch)', () => { consolePeek = !consoleShown(); syncConsole(); });
     consoleBtn.dataset.feature = 'Console';
+    consoleBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); ThreeTweaks.menu(e.clientX, e.clientY, ['Console shows', ...CONSOLE_MODES.map(([m, l]) => [l, '', () => setConsoleMode(m), consoleMode === m]), ['Errors only', 'Hide console.log lines', () => { const on = !store.get('three.consoleErrors', false); store.set('three.consoleErrors', on); consoleWrap.classList.toggle('errors-only', on); }, store.get('three.consoleErrors', false)], ['Clear', '', () => { consoleBox.replaceChildren(); consoleLines = []; }], ['Copy', '', () => api.cmd.console('copy')]]); });
     consoleBtn.dataset.key = '`';
     const consoleModeSel = el('select', { class: 'tc-mode', title: 'When the console shows' }, CONSOLE_MODES.map(([v, l]) => el('option', { value: v, text: l, selected: v === consoleMode })));
     consoleModeSel.addEventListener('change', () => setConsoleMode(consoleModeSel.value));
@@ -259,6 +260,8 @@ const ThreeLab = (() => {
     // Present: just the picture, fullscreen (P · Esc). Space, arrows and cue keys still work.
     const presentBtn = btn('▣ Present', 'Fullscreen preview with nothing else on screen, for showing it off or a second monitor (P · Esc to leave)', () => togglePresent());
     presentBtn.dataset.feature = 'Present';
+    presentBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); ThreeTweaks.menu(e.clientX, e.clientY, ['Present', ['Present', 'P', () => togglePresent()], player.loaded ? ['From the top of the song', 'Starts it playing', () => { player.seek(0); player.toggle(true); togglePresent(); }] : null, player.loop ? ['The loop', '', () => { player.seek(player.loop.a); player.toggle(true); togglePresent(); }] : null, [`${store.get('three.presentHud', false) ? '✓ ' : ''}Show the info line`, 'I while presenting', () => store.set('three.presentHud', !store.get('three.presentHud', false))], ['Stage window', 'Its own window, for a second monitor', () => setStage(true)]]); });
+    previewHost.addEventListener('dblclick', (e) => { if (e.target === previewHost) togglePresent(); }); // double-click beside the picture
     presentBtn.dataset.key = 'P';
     const presentHint = el('div', { class: 'present-hint', text: 'Esc to leave · Space play / pause · F freeze · I info · PgUp / PgDn other sketches · 1–9 cues' });
     // Present info (I): the sketch, song time, BPM and frame size in a corner, for live shows and checks
@@ -1460,6 +1463,7 @@ const ThreeLab = (() => {
         },
         touched: (key, label) => midiTouched(id, key, label),
         learn: async (key, label) => { if (!(await midiInit())) return; midiLearn = { stage: 'control', layer: id, key, label }; toast(`Turn the knob or fader for "${label}"`, { timeout: 4000 }); },
+        palette: () => current?.palette || [],
         clock: () => ({ t: player.loaded ? player.time : performance.now() / 1000, bpm: player.loaded ? player.bpm : (liveBpm?.bpm || 120), playing: player.playing, section: player.loaded ? player.sectionAt().energy : null }),
         askForSliders: () => askDirector(`Add clearly named sliders to the layer "${layerById(id)?.name}" of "${current?.name}" with tweak(): the 4–8 settings I'd most want to play with (motion, colors, lighting, glow, how much it reacts to the music…), with labels, groups and hints, read every frame so they change live. Keep everything else the same.`, { send: false }),
       });
@@ -1684,6 +1688,16 @@ const ThreeLab = (() => {
       if (current) { (extras[current.id] ||= {}).frame = id; saveExtras(); }
       if (reload && current) run();
     } });
+    {
+      const seg = stage.pill.querySelector('.stage-seg');
+      seg.addEventListener('wheel', (e) => { e.preventDefault(); const o = stage.pillOrder; const i = o.indexOf(stage.size.id); stage.setMode(o[(Math.max(0, i) + (e.deltaY > 0 ? 1 : -1) + o.length) % o.length]); }, { passive: false });
+      seg.querySelectorAll('.stage-btn').forEach((b, k) => b.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const id = stage.pillOrder[k];
+        if (id === 'fit') return;
+        ThreeTweaks.menu(e.clientX, e.clientY, [`${id} · ${ThreeMedia.SIZES.find((z) => z.id === id).title}`, ['📷 Still at this size', 'Then back to the size you had', () => still({ size: id })], ['⏺ Record at this size…', 'Switches, then the record menu', () => { stage.setMode(id); setTimeout(() => player.recordMenu(), 300); }], ['🖥 Stage window at this size', 'A real-size canvas in its own window', () => { stage.setMode(id); setTimeout(() => setStage(true), 200); }], ['Safe zones', 'On / off', () => stage.setSafe()]]);
+      }));
+    }
     // Drop an mp3/mp4 on the preview to load it.
     previewHost.addEventListener('dragover', (e) => { if ([...e.dataTransfer.items].some((i) => i.kind === 'file')) { e.preventDefault(); previewHost.classList.add('drop-on'); } });
     previewHost.addEventListener('dragleave', () => previewHost.classList.remove('drop-on'));
@@ -1728,6 +1742,12 @@ const ThreeLab = (() => {
       saveSliders: () => { const c = sel() && ctlFor(sel()); c?.save(); }, saveLook: () => { const c = sel() && ctlFor(sel()); c?.saveLook(); },
       guides: () => cycleGuides(), loopBar: () => player.loopBar(), snap: () => player.cycleSnap(), quantize: () => player.quantize(), dedupe: () => player.dedupe(),
       cycleLooks: () => setLookCycle(lookCycle ? 0 : 4), copyCode: () => { navigator.clipboard.writeText(layersOf().map((L) => `// ===== ${L.name} =====\n${L.code}`).join('\n\n')); toast('Code copied', { timeout: 1200 }); },
+      shuffle: () => selCtl()?.shuffle(), shuffleBack: () => selCtl()?.shuffleStep(-1), slotA: () => selCtl()?.slotRecall('A'), slotB: () => selCtl()?.slotRecall('B'), slotC: () => selCtl()?.slotRecall('C'),
+      storeA: () => selCtl()?.slotSave('A'), storeB: () => selCtl()?.slotSave('B'), quickLook: () => selCtl()?.quickLook(), nextLook: () => selCtl()?.lookStep(1),
+      freezeBeat: () => freezeOn('beat'), pin: () => pinFrame(), compareOff: () => setCompare('off'), still: () => still(), safe: () => stage.setSafe(),
+      live: () => setLive(liveKind ? null : store.get('three.lastLive', 'system')), autoBars: () => autoBars(), sections: () => player.autoSections(), clickTrack: () => player.setGridView({ click: !player.gridView.click }),
+      quantizeTaps: () => player.setQuantize(!player.quantize), size916: () => stage.setMode('9:16'), size169: () => stage.setMode('16:9'), size45: () => stage.setMode('4:5'), size11: () => stage.setMode('1:1'), sizeFit: () => stage.setMode('fit'),
+      nextSketch: () => stepSketch(1), prevSketch: () => stepSketch(-1), tools: () => toolsDrawer(document.querySelector('.lab-tools-btn')),
       stageTop: async () => { const on = await window.hub.stageOnTop?.(); toast(on == null ? 'Open the Stage window first' : on ? 'Stage window stays on top' : 'Stage window: normal', { timeout: 1500 }); },
     };
     api.restartVisible = () => { if (!box.onStage && !previewHost.offsetParent) return false; restartSim(); return true; };
@@ -1737,12 +1757,15 @@ const ThreeLab = (() => {
     api.cmd = {
       get state() { return { sketch: current?.name, layer: sel()?.name, frame: stage.size, frozen: frozenNow, live: liveKind, song: player.loaded ? player.info().file : null, bpm: player.loaded ? player.bpm : liveBpm?.bpm ?? null, playing: player.playing, presenting: document.fullscreenElement === previewHost }; },
       run: () => run(), restart: () => restartSim(),
+      // a sketch that has a song is still loading it (just opened): wait for it a moment
+      waitSong: async () => { for (let i = 0; i < 40 && current && extras[current.id]?.media?.path && !player.loaded; i += 1) await sleep(100); },
       // sliders
       save: () => { const c = ctl(); const n = c.dirty(); c.save(); return n; },
       saveLook: (name) => (name ? ctl().looksApi.save(name) && name : ctl().quickLook()),
       look: (name) => ctl().looksApi.apply(name), looks: () => ctl().looksApi.list(), deleteLook: (name) => ctl().looksApi.remove(name),
       lookStep: (d) => ctl().lookStep(d), morphLook: (name, ms) => ctl().morphLook(name, ms),
-      shuffle: (o) => ctl().shuffle(o), shuffleStep: (d) => ctl().shuffleStep(d), shuffleInfo: () => ctl().shuffleInfo, setShuffle: (o) => ctl().setShuffle(o),
+      shuffle: (o) => ctl().shuffle(o), shuffleStep: (d) => ctl().shuffleStep(d), tame: (k) => ctl().tame(k), paletteColors: () => ctl().paletteColors(), tweakCode: () => ctl().tweakCode(), saveOne: (q) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(`No slider "${q}"`); c.saveOne(hit.key); return hit; },
+      freezeOn: (unit) => freezeOn(unit), stepSketch: (d) => { stepSketch(d); return current?.name; }, shuffleInfo: () => ctl().shuffleInfo, setShuffle: (o) => ctl().setShuffle(o),
       groups: () => ctl().groups(), showGroup: (g) => ctl().showGroup(g), find: (q) => ctl().find(q),
       slot: (n, action = 'recall') => { const c = ctl(); if (action === 'save') return c.slotSave(n); if (action === 'clear') return c.slotClear(n); return c.slotRecall(n); }, slots: () => ctl().slots,
       morph: (t, pair) => ctl().morph(t, pair),
@@ -1819,6 +1842,7 @@ const ThreeLab = (() => {
       // Shift+1…5: Fit, 9:16, 16:9, 4:5, 1:1 (the sizes you switch between)
       if (plain && e.shiftKey && /^Digit[1-5]$/.test(e.code)) { e.preventDefault(); stage.setMode(stage.pillOrder[Number(e.code.slice(5)) - 1]); Usage.key(`Shift+${e.code.slice(5)}`, 'Lab frame size'); return; }
       if (plain && e.key.toLowerCase() === 'o') { e.preventDefault(); browseSketches(); return; }
+      if (e.ctrlKey && !e.altKey && (e.key === 'PageDown' || e.key === 'PageUp')) { e.preventDefault(); stepSketch(e.key === 'PageDown' ? 1 : -1); return; }
       if (plain && e.key === '`') { e.preventDefault(); consolePeek = !consoleShown(); syncConsole(); return; }
       if (plain && e.key === '/') { e.preventDefault(); setSlidersVisible(true); selCtl()?.focusSearch(); return; }
       if (plain && e.key === '|') { e.preventDefault(); pinFrame(); return; }
@@ -2042,6 +2066,19 @@ const ThreeLab = (() => {
     // ❚❚ freeze: hold the picture (the music and the timeline go on); . steps one frame while frozen
     let frozenNow = false;
     const freezeBtn = el('button', { class: 'stage-btn freeze-btn', text: '❚❚ Freeze', title: 'Freeze the picture (F or \\) · while frozen, . steps one frame · | pins this frame to compare with what comes next', dataset: { feature: 'Freeze', key: 'F' }, on: { click: () => setFreeze(!frozenNow) } });
+    freezeBtn.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      ThreeTweaks.menu(e.clientX, e.clientY, ['Freeze', [frozenNow ? 'Unfreeze' : 'Freeze now', 'F or \\', () => setFreeze(!frozenNow)],
+        ['On the next beat', 'Lands exactly on the beat while it plays', () => freezeOn('beat')], ['On the next bar', 'On the next 1', () => freezeOn('bar')],
+        ['◐ Pin this frame', '|', () => pinFrame()], ['📷 Still of this frame', 'Exact size', () => still()], [frozenNow ? 'One frame forward' : '', '.', () => box.send({ type: 'step' })].filter(() => frozenNow)].filter((x) => !Array.isArray(x) || x.length));
+    });
+    // freeze exactly on the next beat / bar (counts in the song's grid; without a song: now)
+    function freezeOn(unit = 'beat') {
+      const wait = player.loaded && player.playing ? player.untilNext(unit) : 0;
+      if (wait == null || wait > 8 || wait < 0.01) { setFreeze(true); return 0; }
+      setTimeout(() => setFreeze(true), Math.max(0, wait * 1000 - 8));
+      return wait;
+    }
     function setFreeze(on) {
       frozenNow = on;
       box.send({ type: 'freeze', on });
@@ -2426,6 +2463,12 @@ ${code}
     }
 
     picker.addEventListener('change', () => openSketch(picker.value));
+    picker.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const pins = new Set(store.get('three.sketchPins', []));
+      const list = [...sketches].sort((a, b) => (pins.has(b.id) - pins.has(a.id)) || b.updatedAt - a.updatedAt).slice(0, 14);
+      ThreeTweaks.menu(e.clientX, e.clientY, ['Switch to', ...list.map((x) => [`${pins.has(x.id) ? '★ ' : ''}${x.name}`, `${x.layers?.length || 1} layer${(x.layers?.length || 1) === 1 ? '' : 's'}`, () => openSketch(x.id), x.id === current?.id]), ['All as pictures…', 'O', () => browseSketches()], ['＋ New sketch', '', () => templateGallery()]]);
+    });
     autoBox.addEventListener('change', () => { autoRun = autoBox.checked; store.set('three.autorun', autoRun); });
     version.addEventListener('change', () => { store.set('three.version', version.value); run(); });
     snippetSel.addEventListener('change', () => {
@@ -3240,4 +3283,10 @@ for (const [label, name] of [
   ['Lab: Composition guides (thirds, golden, center)', 'guides'], ['Lab: Loop this bar', 'loopBar'], ['Lab: Next snap setting', 'snap'],
   ['Lab: Quantize markers to the grid', 'quantize'], ['Lab: Remove double markers', 'dedupe'], ['Lab: Cycle looks every 4 bars / off', 'cycleLooks'],
   ['Lab: Copy all the code', 'copyCode'], ['Lab: Save the sliders into the code', 'saveSliders'], ['Lab: Save the sliders as a look…', 'saveLook'], ['Lab: Stage window always on top / normal', 'stageTop'],
+  ['Lab: Shuffle the sliders (R)', 'shuffle'], ['Lab: The shuffle before (Shift+R)', 'shuffleBack'], ['Lab: Recall slot A', 'slotA'], ['Lab: Recall slot B', 'slotB'], ['Lab: Recall slot C', 'slotC'],
+  ['Lab: Store the sliders in slot A', 'storeA'], ['Lab: Store the sliders in slot B', 'storeB'], ['Lab: Save as a look (quick)', 'quickLook'], ['Lab: Next look', 'nextLook'],
+  ['Lab: Freeze on the next beat', 'freezeBeat'], ['Lab: Pin this frame to compare (|)', 'pin'], ['Lab: Compare off', 'compareOff'], ['Lab: Still at the exact frame size', 'still'], ['Lab: Safe zones on / off', 'safe'],
+  ['Lab: Live sound on / off (Shift+L)', 'live'], ['Lab: Auto bars', 'autoBars'], ['Lab: Mark the song\'s sections', 'sections'], ['Lab: Click track on / off', 'clickTrack'], ['Lab: Quantize taps on / off (Q)', 'quantizeTaps'],
+  ['Lab: Frame 9:16 (1080×1920)', 'size916'], ['Lab: Frame 16:9 (1920×1080)', 'size169'], ['Lab: Frame 4:5 (1080×1350)', 'size45'], ['Lab: Frame 1:1 (1080×1080)', 'size11'], ['Lab: Fit the frame', 'sizeFit'],
+  ['Lab: Next sketch (Ctrl+PgDn)', 'nextSketch'], ['Lab: Previous sketch (Ctrl+PgUp)', 'prevSketch'], ['Lab: Tools drawer', 'tools'],
 ]) AppUI.addAction(label, () => ThreeLab.act(name));

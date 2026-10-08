@@ -335,7 +335,8 @@ const ThreeTweaks = (() => {
   // keyframes (optional): { state(key) → 'none'|'animated'|'on', toggle(key, value), changed(key, value, { final }) → true when the
   // value went into a keyframe (the control is animated) }. Only named controls (tweak()) can be animated.
   // learn(key, label) → map a MIDI knob to it (optional); clock() → { t, bpm, playing, section } for motions (optional).
-  function controller({ send, rerun, goToLine, commit, askForSliders, quickAsk, persist, keyframes, touched, learn, clock }) {
+  // palette() → the sketch's colors (for "colors from the palette").
+  function controller({ send, rerun, goToLine, commit, askForSliders, quickAsk, persist, keyframes, touched, learn, clock, palette }) {
     let scanned = null;
     let ids = [];
     let values = [];
@@ -413,7 +414,7 @@ const ThreeTweaks = (() => {
     // Folds to one line so the controls get the room; remembers whether you keep it open.
     const asks = quickAsk ? el('details', { class: 'tw-asks', on: { toggle: (e) => store.set('three.twAsksOpen', e.currentTarget.open) } },
       el('summary', { class: 'tw-asks-title', text: 'Ask the director' }),
-      ...['3 variations to pick from', 'More energy', 'Calmer', 'New colors', 'Hit harder on beats', 'Simpler', 'More detail', 'Add a slider for…'].map((t) => el('button', {
+      ...['3 variations to pick from', 'More energy', 'Calmer', 'New colors', 'Hit harder on beats', 'React to the kick', 'Change on the drop', 'Fill the 9:16 frame', 'Simpler', 'More detail', 'Add a slider for…'].map((t) => el('button', {
         class: 'tw-chip', text: t, title: t.endsWith('…') ? 'Starts the message so you can finish it' : `Send "${t}" to the Three Director`,
         on: { click: () => quickAsk(t) },
       }))) : null;
@@ -556,7 +557,7 @@ const ThreeTweaks = (() => {
     let shufOpt = { amount: 0.35, scope: 'all', ...store.get('three.shuffle', {}) };
     let shufHist = []; // [{ values, seed, label }]: entry 0 is what you had before the first shuffle
     let shufPos = -1;
-    const scopeName = (s) => (s === 'all' ? 'every control' : s === 'favs' ? '★ favorites' : s === 'colors' ? 'colors' : s === 'numbers' ? 'numbers' : s === 'visible' ? 'what the panel shows' : s === 'changed' ? 'what you changed' : `"${s.slice(6)}"`);
+    const scopeName = (s) => (s === 'one' ? 'one at random' : s === 'all' ? 'every control' : s === 'favs' ? '★ favorites' : s === 'colors' ? 'colors' : s === 'numbers' ? 'numbers' : s === 'visible' ? 'what the panel shows' : s === 'changed' ? 'what you changed' : `"${s.slice(6)}"`);
     function scopeIdx(scope) {
       if (!scanned) return [];
       const all = scanned.items.map((_, i) => i).filter((i) => scanned.items[i].key != null && !locks.has(ids[i]));
@@ -566,7 +567,55 @@ const ThreeTweaks = (() => {
       if (scope === 'changed') return all.filter((i) => !same(scanned.items[i], values[i]));
       if (scope === 'visible') return all.filter((i) => rows.some((r) => r.i === i && !r.el.hidden && !r.el.closest('[hidden]')));
       if (scope?.startsWith('group:')) return all.filter((i) => (scanned.items[i].group || 'Controls') === scope.slice(6));
+      if (scope === 'one') { const pool = all.filter((i) => scanned.items[i].kind !== 'bool'); return pool.length ? [pool[Math.floor(Math.random() * pool.length)]] : []; }
       return all;
+    }
+    // Colors from the sketch palette: every color control gets one of its colors (a different order each time)
+    function paletteColors() {
+      const pal = (palette?.() || []).filter((c) => CSS_HEX.test(c));
+      if (pal.length < 2) { toast('Set a palette first (🎨 in the Lab toolbar, or a Coolors link)', { type: 'error' }); return false; }
+      const idx = scopeIdx('colors');
+      if (!idx.length) { toast('No color sliders here', { timeout: 1500 }); return false; }
+      const order = [...pal].sort(() => Math.random() - 0.5);
+      const next = values.slice(); idx.forEach((i, k) => { next[i] = normHex(order[k % order.length]); });
+      applyValues(next);
+      return true;
+    }
+    // Halfway back to the code (k = 0.5) or further out (k = 1.5): scales how far every changed number is from the code
+    function tame(k) {
+      if (!scanned) return 0;
+      let n = 0;
+      const next = values.map((v, i) => {
+        const it = scanned.items[i];
+        if (it.kind !== 'number' || same(it, v) || locks.has(ids[i])) return v;
+        n += 1;
+        let x = it.orig + (v - it.orig) * k;
+        x = Math.max(Math.min(it.range.min, it.orig), Math.min(Math.max(it.range.max, it.orig), x));
+        return it.int ? Math.round(x) : Number(x.toPrecision(6));
+      });
+      applyValues(next);
+      return n;
+    }
+    // Save just one control into the code; your other changes stay live and unsaved
+    function saveOne(i) {
+      if (!scanned || same(scanned.items[i], values[i])) return false;
+      const keep = Object.fromEntries(ids.map((id, k) => [id, values[k]]));
+      const only = scanned.items.map((it, k) => (k === i ? values[k] : it.orig));
+      const next = applyValues_(scanned.code, scanned.items, only);
+      const fresh = scan(next);
+      scanned = fresh; ids = idsFor(fresh.items);
+      values = fresh.items.map((it, k) => (ids[k] in keep && typeof keep[ids[k]] === typeof it.orig ? keep[ids[k]] : it.orig));
+      committed = values.slice(); undoStack = [];
+      commit(next);
+      render();
+      toast('Saved that one into the code', { timeout: 1200 });
+      return true;
+    }
+    // tweak({ … }) code with the current values, to paste into a sketch (or give the director)
+    function tweakCode() {
+      const byCall = {};
+      scanned?.items.forEach((it, i) => { if (it.key == null) return; const v = values[i]; const val = it.kind === 'number' ? `{ value: ${trimNum(v)}, min: ${trimNum(it.range.min)}, max: ${trimNum(it.range.max)}${it.int ? ', step: 1' : ''}${it.group ? `, group: '${it.group}'` : ''} }` : JSON.stringify(v); (byCall[it.call] ||= []).push(`  ${it.key}: ${val},`); });
+      return Object.values(byCall).map((lines) => `const P = tweak({\n${lines.join('\n')}\n});`).join('\n\n');
     }
     // { amount, scope, seed, only } → applies a shuffle and remembers it (‹ › step through them)
     function shuffle(o = {}) {
@@ -625,6 +674,11 @@ const ThreeTweaks = (() => {
         'Which controls (locked ones always stay)',
         ...[['all', 'Everything'], ['favs', '★ Favorites only'], ['colors', 'Colors only'], ['numbers', 'Numbers only'], ['changed', 'Only what I changed'], ['visible', 'What the panel shows (search / group)']].map(([s, name]) => [name, '', () => { set({ scope: s }); shuffle(); }, shufOpt.scope === s]),
         ...(groups.length > 1 ? groups.map((g) => [`Group: ${g}`, '', () => { set({ scope: `group:${g}` }); shuffle(); }, shufOpt.scope === `group:${g}`]) : []),
+        'One-offs',
+        ['One control at random', 'Just one slider moves', () => shuffle({ scope: 'one' })],
+        ['Colors from the palette', 'Each color slider gets a palette color', () => paletteColors()],
+        ['Halfway back to the code', 'Tames a wild shuffle', () => tame(0.5)],
+        ['Exaggerate the changes ×1.5', 'Pushes what you changed further', () => tame(1.5)],
         'Seeds',
         shufHist[shufPos]?.seed != null ? ['Copy this shuffle\'s seed', String(shufHist[shufPos].seed), () => navigator.clipboard.writeText(String(shufHist[shufPos].seed))] : null,
         ['Shuffle with a seed…', 'The same seed gives the same shuffle again', async () => { const v = await Modal.prompt('Seed', { value: String(shufHist[shufPos]?.seed ?? ''), placeholder: 'a number' }); if (v != null && v.trim()) shuffle({ seed: Number(v.trim()) || hashSeed(v) }); }],
@@ -722,6 +776,8 @@ const ThreeTweaks = (() => {
         ['Reset', d ? 'Back to the values in the code' : 'Nothing changed', () => reset(), false, 'Reset'],
         ['Undo the last slider change', undoStack.length ? `${undoStack.length} step${undoStack.length === 1 ? '' : 's'}` : 'Nothing to undo', () => undo(), false, 'Undo slider change'],
         ['Copy all values', 'As text you can paste here (or in another sketch / layer)', () => copyValues()],
+        ['Copy as tweak() code', 'The controls with these values as defaults', () => { navigator.clipboard.writeText(tweakCode()); toast('tweak() code copied', { timeout: 1200 }); }],
+        ['Halfway back to the code', 'Every change, half as far', () => tame(0.5)],
         ['Paste values', 'Sets every control the copied text names', () => pasteValues()],
         ['Lock everything', 'Shuffle, looks and resets leave them all alone', () => lockAll(true)],
         locks.size ? ['Unlock everything', `${locks.size} locked`, () => lockAll(false)] : null,
@@ -821,6 +877,7 @@ const ThreeTweaks = (() => {
         ['🔒 Reset and lock', '', () => { if (locks.has(ids[i])) toggleLock(i); resetOne(i); toggleLock(i); }],
         [favs.has(ids[i]) ? '☆ Remove from Favorites' : '★ Add to Favorites', '', () => toggleFav(i)],
         it.key != null && it.kind !== 'bool' ? ['🎲 Shuffle just this one', '', () => shuffle({ only: [i] })] : null,
+        !same(it, values[i]) ? ['💾 Save just this one', 'Into the code; your other changes stay', () => saveOne(i)] : null,
         it.kind === 'number' ? ['Type a value…', `now ${fmtVal(it, values[i])} · range ${trimNum(it.range.min)}…${trimNum(it.range.max)}`, async () => { const v = await Modal.prompt(labelOf(it) || 'Value', { value: fmtVal(it, values[i]) }); const x = Number(v); if (v != null && Number.isFinite(x)) set(it.int ? Math.round(x) : x); }] : null,
         ['Copy the value', fmtVal(it, values[i]), () => { clip = { kind: it.kind, v: values[i] }; navigator.clipboard.writeText(fmtVal(it, values[i])).catch(() => {}); }],
         clip && clip.kind === it.kind ? ['Paste the value', fmtVal(it, clip.v), () => set(clip.v)] : null,
@@ -1567,7 +1624,8 @@ const ThreeTweaks = (() => {
       get slots() { return SLOTS.filter((n) => slots[n]); },
       morph(t, pair) { if (pair) { morphPair = pair; store.set('three.twMorphPair', pair); paintSlots(); } return morphTo(t, { release: true }); },
       copyValues: () => copyValues(), pasteValues: (text) => pasteValues(text), quickLook: () => quickLook(),
-      lookStep: (d) => lookStep(d), morphLook: (name, ms) => { const l = looks.find((x) => x.name.toLowerCase() === String(name).toLowerCase()); if (!l) return null; morphLook(l, ms); return l.name; },
+      lookStep: (d) => lookStep(d), tame: (k) => tame(k), paletteColors: () => paletteColors(), tweakCode: () => tweakCode(),
+      saveOne: (key) => { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; return i >= 0 && saveOne(i); }, morphLook: (name, ms) => { const l = looks.find((x) => x.name.toLowerCase() === String(name).toLowerCase()); if (!l) return null; morphLook(l, ms); return l.name; },
       reset: () => reset(), undo: () => undo(), dirty: () => dirtyCount(),
       groups: () => [...new Set((scanned?.items || []).filter((it) => it.key != null).map((it) => it.group || 'Controls'))],
       showGroup: (g) => setGroupFilter(g), find: (q) => { search.value = q || ''; filter = search.value.toLowerCase().trim(); applyFilter(); return rows.filter((r) => !r.el.hidden).length; },
