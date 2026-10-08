@@ -429,7 +429,7 @@ const Prompts = (() => {
   // has one. While you type arguments, a hint line shows the argument expected next. Words that aren't a command
   // ("/make it 9 by 16") get plain-language matches (Commands.suggest). The command bar (cmdbar.js) uses the same
   // menu with { bare: true }: text without "/" is searched in plain language too.
-  function attach(textarea, onPick, { agentId = null, bare = false, below = false } = {}) {
+  function attach(textarea, onPick, { agentId = null, bare = false, below = false, onSend = null, sendLabel = null } = {}) {
     let menu = null;
     let sel = 0;
     let items = [];
@@ -444,6 +444,7 @@ const Prompts = (() => {
       if (it.kind === 'command') { setText(`/${it.def.name} `); return; }
       if (it.kind === 'arg') { setText(`/${it.def.name} ${it.value}`); return; }
       if (it.kind === 'line') { setText(it.line); return; }
+      if (it.kind === 'send') { onSend?.(it.text); return; }
       const text = await fill(it.prompt);
       if (text != null) onPick(text);
     };
@@ -496,6 +497,8 @@ const Prompts = (() => {
       } else if (bare && value.trim() && !value.startsWith('/') && Commands.suggest) {
         const s = lineRows(value);
         if (s.length) next = [{ kind: 'head', label: 'Commands for that' }, ...s];
+        // the command bar: or send the words as a message to the chat it talks to
+        if (onSend) next.push({ kind: 'send', text: value.trim(), label: sendLabel?.() || 'Send as a message', hint: value.trim().slice(0, 60) });
       }
       if (my !== seq) return; // a newer keystroke already updated the menu
       items = next;

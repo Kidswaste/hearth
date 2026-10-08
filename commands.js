@@ -427,7 +427,7 @@ const Commands = (() => {
     opts = opts || (active ? { ...active, history: false } : {});
     // "/size 9:16 ; /freeze" typed straight: a chain (like /run), unless the first command takes commands itself
     const first = parse(text);
-    if (first && /\s;\s*\/[\w-]/.test(text) && !/<\/|\/command|<name> <|\/cmd/.test(String(first.def.args || '')) && get('run') && first.def.name !== 'run') {
+    if (first && /(\s;|\n)\s*\/[\w-]/.test(String(text).trim()) && !/<\/|\/command|<name> <|\/cmd/.test(String(first.def.args || '')) && get('run') && first.def.name !== 'run') {
       text = `/run ${String(text).trim()}`;
     }
     const pipe = splitPipe(text);

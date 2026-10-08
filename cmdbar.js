@@ -56,7 +56,11 @@ const CmdBar = (() => {
     bar = el('div', { class: `cmdbar ${pos()}`, hidden: true, attrs: { role: 'dialog', 'aria-label': 'Command bar' } },
       el('div', { class: 'cmdbar-row' }, chip, el('span', { class: 'cmdbar-field' }, input), timersBtn, helpBtn), out);
     document.body.append(bar);
-    menuApi = Prompts.attach(input, (text) => { const a = target(); if (a) { close(); activate(a.id); Native.setDraft(a.id, text); } }, { agentId: () => target()?.id || null, bare: true, below: pos() === 'top' });
+    menuApi = Prompts.attach(input, (text) => { const a = target(); if (a) { close(); activate(a.id); Native.setDraft(a.id, text); } }, {
+      agentId: () => target()?.id || null, bare: true, below: pos() === 'top',
+      // plain words: the last row sends them as a message (same as "> text")
+      onSend: (text) => { input.value = ''; runLine(`> ${text}`); }, sendLabel: () => `➤ Send to ${target()?.name || 'the chat'}`,
+    });
     input.addEventListener('input', () => { histAt = -1; grow(); });
     addEventListener('resize', () => { if (isOpen()) place(); });
     input.addEventListener('keydown', onKey);
