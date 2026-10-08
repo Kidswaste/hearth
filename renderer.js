@@ -64,7 +64,11 @@ function applyTheme(themeCss) {
 
 function iconFor(item) {
   const icon = item.icon || item.name[0];
-  if (/^(https?:|data:|\.{0,2}\/)|\.(png|jpe?g|svg|ico|webp)$/i.test(icon)) {
+  const isImage = /^(https?:|data:|\.{0,2}\/)|\.(png|jpe?g|svg|ico|webp)$/i.test(icon);
+  // Hearth's own SVG icons for its agents and tools (icons.js); your own picture always wins.
+  const svg = !isImage && Icons.for(item);
+  if (svg) return svg;
+  if (isImage) {
     const img = document.createElement('img');
     img.src = icon;
     img.alt = '';

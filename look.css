@@ -557,7 +557,8 @@
 
 /* ---------- reduced motion (the OS setting) ---------- */
 @media (prefers-reduced-motion: reduce) {
-  :root[data-look~=v2] *, :root[data-look~=v2] *::before, :root[data-look~=v2] *::after { animation: none !important; transition: none !important; }
+  /* looping decorations rest; short entrances and hover transitions stay (they help you follow what changed) */
+  :root[data-look~=v2] *, :root[data-look~=v2] *::before, :root[data-look~=v2] *::after { animation-iteration-count: 1 !important; }
   .juice-glint, .juice-ring, .juice-ember { display: none; }
 }
 

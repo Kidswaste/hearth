@@ -45,7 +45,7 @@ const Tools = (() => {
     const host = el('section', { class: 'surface tool-surface', dataset: { id: `tool:${tool.id}` } });
     host.style.setProperty('--agent', tool.color);
     const head = el('header', { class: 'tool-head' },
-      el('span', { class: 'tool-icon', text: tool.icon }),
+      el('span', { class: 'tool-icon' }, Icons.for(tool) || document.createTextNode(tool.icon)),
       el('span', { class: 'tool-title', text: tool.name }),
       el('span', { class: 'tool-desc', text: tool.description || '' }));
     const body = el('div', { class: 'tool-body' });

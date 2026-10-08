@@ -159,7 +159,7 @@ const Panel = (() => {
       const unread = agent.mode === 'native' ? H.chats.filter((c) => c.agentId === agent.id && H.unreadChats?.has(c.id)).length : 0;
       toggle.append(
         el('span', 'caret', collapsed.has(agent.id) && !q && !view ? '▸' : '▾'),
-        el('span', 'dot'),
+        (() => { const d = el('span', 'dot'); const svg = Icons.for(agent); if (svg) { d.classList.add('dot-icon'); d.append(svg); } return d; })(),
         el('span', 'group-name', agent.name),
         unread ? el('span', 'group-unread', String(unread)) : el('span', 'group-kind', agent.mode === 'native' ? (agent.dock ? 'docked' : 'native') : 'web'),
       );

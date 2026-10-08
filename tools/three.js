@@ -39,6 +39,11 @@ const ThreeLab = (() => {
     // No allow-same-origin: sketch code (which may come from a chat) can't reach the hub's APIs.
     const frame = el('iframe', { class: 'three-frame', attrs: { sandbox: 'allow-scripts allow-pointer-lock allow-downloads', allow: 'display-capture; microphone; autoplay' } });
     parent.append(frame);
+    // A full reload (another sketch, a fresh run) hides the half-built picture under a cover that fades away once
+    // the new scene is up, instead of flashing black (polish.css .scene-cover).
+    const cover = el('div', { class: 'scene-cover out' });
+    parent.append(cover);
+    let coverT = 0;
     let ready = null;
     let queue = [];
     let nonce = null; // which load of the frame we're waiting for
@@ -52,6 +57,7 @@ const ThreeLab = (() => {
         // A page being replaced by a newer load can still say "ready"; only the current load counts.
         if (data.n && data.n !== nonce) return;
         ready = data; retries = 0;
+        setTimeout(() => cover.classList.add('out'), 160);
         for (const m of queue) deliver(m);
         queue = [];
       }
@@ -76,6 +82,7 @@ const ThreeLab = (() => {
       watchdog = setTimeout(() => { if (!ready && nonce === mine && target === 'frame' && frame.isConnected && retries < 2) { retries += 1; console.warn(`Lab ${mode} preview didn't start; reloading it (${retries})`); load(true); } }, 10000);
       const query = `?mode=${mode}&v=${store.get('three.version', ThreeData.VERSIONS[0])}${extraParams()}&n=${nonce}`;
       const sz = target === 'stage' ? stageSize() : null;
+      if (target === 'frame') { cover.classList.remove('out'); clearTimeout(coverT); coverT = setTimeout(() => cover.classList.add('out'), 4000); } // never left covered
       if (target === 'stage') window.hub.stageOpen({ query: `${query}${sz ? `&fw=${sz.width}&fh=${sz.height}` : ''}`, width: sz?.width, height: sz?.height, fresh });
       else {
         if (fresh && frame.parentNode) { const p = frame.parentNode; const next = frame.nextSibling; frame.remove(); p.insertBefore(frame, next); }

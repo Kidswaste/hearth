@@ -36,12 +36,12 @@ html[data-skin~="swirl"] { --r-sm: 6px; --r-md: 9px; --r-lg: 14px; --r-pill: 999
 }
 :root[data-look~=v2][data-scheme=light] { --fh-ok: #1f8a4c; --ui-ink: #fff; }
 :root[data-motion=off] { --t-fast: 0s; --t-med: 0s; --t-slow: 0s; }
-@media (prefers-reduced-motion: reduce) { :root { --t-fast: 0s; --t-med: 0s; --t-slow: 0s; } }
 
 /* ====================================================================================================== */
 /* ---------- motion: the OS "reduce motion" setting reaches every look (plain ones too) ---------- */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; animation-delay: 0s !important; transition-duration: 1ms !important; scroll-behavior: auto !important; }
+  /* loops play once; entrances and transitions keep their (short) durations */
+  *, *::before, *::after { animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
 }
 /* calm motion: the new UI's ambient loops rest too (wires, meter, recording blinks keep a still "on" state) */
 :root[data-motion=calm] .nv-wire-flow, :root[data-motion=calm] .meter-strip.is-live::before, :root[data-motion=calm] .meter-pill.is-live .mp-dot,
@@ -630,3 +630,51 @@ body:has(.surface.active > .tool-dock:not([hidden])) #toasts, body:has(.surface.
    over a playing picture. Menus and dialogs keep their glass: they're short-lived. */
 :is(.three-preview, .vr-stage, .media-bar, .nv) :is(*, *::before, *::after),
 .toast, .jam-badge, .three-stats, .stage-pill { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+
+/* ---------- Hearth icons (icons.js) ---------- */
+svg.hi { width: 1em; height: 1em; display: block; flex: none; overflow: visible; }
+.agent-btn svg.hi { width: 22px; height: 22px; color: var(--agent, var(--accent)); filter: drop-shadow(0 0 6px color-mix(in srgb, var(--agent, var(--accent)) 35%, transparent)); transition: transform var(--t-fast, .12s) ease; }
+.agent-btn:hover svg.hi { transform: scale(1.1) rotate(-4deg); }
+.agent-btn.active svg.hi { transform: scale(1.06); }
+.tool-btn svg.hi { width: 19px; height: 19px; opacity: .85; transition: opacity .12s, transform .12s; }
+.tool-btn:hover svg.hi { opacity: 1; transform: translateY(-1px); }
+.empty-icon svg.hi { width: 30px; height: 30px; color: var(--agent, var(--accent)); }
+.group-head .dot.dot-icon { width: 14px; height: 14px; background: none; box-shadow: none; color: var(--agent, var(--accent)); display: inline-grid; place-items: center; }
+.group-head .dot.dot-icon svg.hi { width: 14px; height: 14px; }
+
+/* ---------- motion: menus, dialogs and scenes come in instead of popping ----------
+   Short (120–240 ms), eased, and only on entry: nothing loops. /motion off still turns everything off. */
+@keyframes hx-pop { from { opacity: 0; transform: translateY(-5px) scale(.965); } }
+@keyframes hx-rise { from { opacity: 0; transform: translateY(8px) scale(.985); } }
+@keyframes hx-fade { from { opacity: 0; } }
+@keyframes hx-item { from { opacity: 0; transform: translateX(-6px); } }
+@keyframes hx-dialog { from { opacity: 0; transform: translateY(10px) scale(.97); filter: blur(2px); } }
+@keyframes hx-scene { from { opacity: 0; transform: translateY(6px); } }
+@keyframes hx-chat { from { opacity: 0; transform: translateY(10px); } }
+@keyframes hx-reveal { from { opacity: 1; } to { opacity: 0; visibility: hidden; } }
+:root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .cb-out) { animation: hx-pop .17s cubic-bezier(.2, .9, .3, 1.15) both; transform-origin: top left; }
+:root:not([data-motion=off]) .slash-menu { animation: hx-rise .18s cubic-bezier(.2, .9, .3, 1.1) both; transform-origin: bottom left; }
+:root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu) > :is(.menu-item, button, .menu-head, .nv-menu-sec) { animation: hx-item .2s ease-out both; }
+:root:not([data-motion=off]) .slash-menu > .slash-item { animation: hx-item .18s ease-out both; }
+:root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(1) { animation-delay: 14ms; }
+:root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(2) { animation-delay: 28ms; }
+:root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(3) { animation-delay: 42ms; }
+:root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(4) { animation-delay: 56ms; }
+:root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(5) { animation-delay: 70ms; }
+:root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(6) { animation-delay: 84ms; }
+:root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(7) { animation-delay: 98ms; }
+:root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(8) { animation-delay: 112ms; }
+:root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(9) { animation-delay: 126ms; }
+:root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(10) { animation-delay: 140ms; }
+:root:not([data-motion=off]) dialog[open] { animation: hx-dialog .22s cubic-bezier(.2, .9, .3, 1.1) both; }
+:root:not([data-motion=off]) dialog[open]::backdrop { animation: hx-fade .22s ease both; }
+:root:not([data-motion=off]) .palette-card { animation: hx-pop .18s cubic-bezier(.2, .9, .3, 1.1) both; transform-origin: top center; }
+/* switching agents / tools: the new surface eases in */
+:root:not([data-motion=off]) .surface.active { animation: hx-scene .24s cubic-bezier(.2, .8, .3, 1) both; }
+/* switching chats: the conversation slides up into place */
+:root:not([data-motion=off]) .chat-enter { animation: hx-chat .26s cubic-bezier(.2, .8, .3, 1) both; }
+/* the Lab preview: a cover that fades away once the new scene has drawn (see three.js scene-cover) */
+.scene-cover { position: absolute; inset: 0; z-index: 4; pointer-events: none; background: var(--bg, #0b0d10); }
+.scene-cover.out { animation: hx-reveal .35s ease both; }
+:root[data-motion=off] .scene-cover.out { animation-duration: 1ms; }
+.tool-icon svg.hi { width: 18px; height: 18px; color: var(--agent, var(--accent)); }

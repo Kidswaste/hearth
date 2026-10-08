@@ -640,7 +640,7 @@ const Native = (() => {
   function emptyState(agent) {
     const engineOk = H.engineStatus[agent.engine] !== false;
     return el('div', { class: 'empty' },
-      el('div', { class: 'empty-icon', text: agent.icon || agent.name[0] }),
+      el('div', { class: 'empty-icon', attrs: { style: `--agent: ${agent.color || 'var(--accent)'}` } }, Icons.for(agent) || document.createTextNode(agent.icon || agent.name[0])),
       el('h3', { text: `New chat with ${agent.name}` }),
       el('p', { class: 'hint', text: engineOk
         ? `Runs on your ${ENGINE_LABEL[agent.engine] || agent.engine} account${agent.model ? ` · ${agent.model}` : ''}. Type / for saved prompts, drop files or paste screenshots to attach them.`
@@ -1540,10 +1540,21 @@ const Native = (() => {
   }
 
   function open(agentId, chatId) {
+    const changed = H.activeChat[agentId] !== chatId;
     H.activeChat[agentId] = chatId;
     activate(agentId);
     render(agentId);
+    if (changed) enterAnim(agentId);
     Panel.highlight();
+  }
+  // a chat you switch to slides into place (polish.css .chat-enter)
+  function enterAnim(agentId) {
+    const list = views.get(agentId)?.list;
+    if (!list) return;
+    list.classList.remove('chat-enter');
+    void list.offsetWidth; // restart the animation
+    list.classList.add('chat-enter');
+    list.addEventListener('animationend', () => list.classList.remove('chat-enter'), { once: true });
   }
 
   function newChat(agentId) {
@@ -1551,6 +1562,7 @@ const Native = (() => {
     const v = views.get(agentId);
     if (v) v.input.value = '';
     render(agentId);
+    enterAnim(agentId);
     Panel.highlight();
     focus(agentId);
   }
