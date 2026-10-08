@@ -613,7 +613,7 @@ let ${id}Travel = 0;`);
   define({
     type: 'camera', title: 'Camera', category: 'Camera', color: '#c9b79c', desc: 'How the camera moves: still, orbiting, flying forward or drifting; with shake and zoom punches (wire hits)', keywords: 'view orbit fly fov zoom shake',
     widgets: [SEL('mode', ['still', 'orbit', 'drift', 'fly'], { label: 'Move' })],
-    inputs: [N('fov', 50, 10, 120, { label: 'Lens (fov)' }), N('distance', 8, 1, 60), N('height', 0, -20, 20), N('speed', 0.15, -3, 3), HIT('shake'), N('shakeStrength', 0.25, 0, 2, { label: 'Shake amount' }), HIT('zoom', { label: 'Zoom punch' }), N('zoomStrength', 0.15, 0, 0.6, { label: 'Zoom amount' })],
+    inputs: [N('fov', 50, 10, 120, { label: 'Lens (fov)', kind: 'knob' }), N('distance', 8, 1, 60), N('height', 0, -20, 20), N('speed', 0.15, -3, 3), HIT('shake'), N('shakeStrength', 0.25, 0, 2, { label: 'Shake amount' }), HIT('zoom', { label: 'Zoom punch' }), N('zoomStrength', 0.15, 0, 0.6, { label: 'Zoom amount' })],
     outputs: [O('cam', 'cam', 'Camera')],
     compile: (c) => {
       const mode = c.value('mode');
@@ -636,7 +636,7 @@ let ${id}Travel = 0;`);
   // ---------- Music ----------
   const music = (o) => define({ category: 'Music', color: '#ff6b9d', live: true, ...o });
   music({ type: 'levels', title: 'Music levels', idBase: 'music', desc: 'How loud the music is right now, overall and in the low, mid and high ranges (0..1)', keywords: 'audio bass mid treble volume loudness energy',
-    inputs: [N('gain', 1, 0, 4)], outputs: [O('bass', 'num', 'Bass'), O('mid', 'num', 'Mids'), O('treble', 'num', 'Highs'), O('level', 'num', 'Level'), O('energy', 'num', 'Energy (1 s)'), O('peak', 'num', 'Peak (3 s)')],
+    inputs: [N('gain', 1, 0, 4, { kind: 'knob' })], outputs: [O('bass', 'num', 'Bass'), O('mid', 'num', 'Mids'), O('treble', 'num', 'Highs'), O('level', 'num', 'Level'), O('energy', 'num', 'Energy (1 s)'), O('peak', 'num', 'Peak (3 s)')],
     compile: (c) => { const g = c.in('gain'); const k = (e) => (g === '1' ? e : `(${e} * ${g})`); return { bass: k('audio.bass'), mid: k('audio.mid'), treble: k('audio.treble'), level: k('audio.level'), energy: k('audio.energy'), peak: 'audio.peak' }; } });
   music({ type: 'hits', title: 'Hits', desc: 'Kick, snare, hats and hits: 1 on each hit, fading in ~120 ms. From your hand-placed markers, else from ⚡ Triggers (kick falls back to the beat).', keywords: 'kick snare hat drum trigger marker onset',
     outputs: [O('kick', 'trig', 'Kick'), O('snare', 'trig', 'Snare'), O('hats', 'trig', 'Hats'), O('hit', 'trig', 'Hit'), O('bass', 'trig', 'Bass hit')],
@@ -811,9 +811,9 @@ let ${id}Travel = 0;`);
   // ---------- Post effects (EffectComposer passes, applied to this layer) ----------
   const post = (o) => define({ category: 'Post', color: '#f5a3d0', ...o, outputs: [O('pass', 'pass', 'Effect')] });
   const passSet = (c, id, list) => { for (const [f, target] of list) if (c.dyn(f)) c.frame(`${id}.${target} = ${c.in(f)};`); };
-  post({ type: 'bloom', title: 'Bloom', desc: 'Glow around bright things (wire a kick to Strength for flashes)', keywords: 'glow unreal bright', inputs: [N('strength', 1.2, 0, 4), N('radius', 0.5, 0, 1.5), N('threshold', 0.1, 0, 1)],
+  post({ type: 'bloom', title: 'Bloom', desc: 'Glow around bright things (wire a kick to Strength for flashes)', keywords: 'glow unreal bright', inputs: [N('strength', 1.2, 0, 4, { kind: 'knob' }), N('radius', 0.5, 0, 1.5, { kind: 'knob' }), N('threshold', 0.1, 0, 1, { kind: 'knob' })],
     compile: (c) => { c.import('UnrealBloomPass', 'three/addons/postprocessing/UnrealBloomPass.js'); c.setup(`const ${c.id} = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), ${c.in('strength')}, ${c.in('radius')}, ${c.in('threshold')});`); passSet(c, c.id, [['strength', 'strength'], ['radius', 'radius'], ['threshold', 'threshold']]); return { pass: c.id }; } });
-  post({ type: 'afterimage', title: 'Trails', desc: 'Motion trails: each frame keeps a ghost of the last ones', keywords: 'afterimage echo ghost feedback smear', inputs: [N('length', 0.88, 0, 0.99, { label: 'Trail length' })],
+  post({ type: 'afterimage', title: 'Trails', desc: 'Motion trails: each frame keeps a ghost of the last ones', keywords: 'afterimage echo ghost feedback smear', inputs: [N('length', 0.88, 0, 0.99, { label: 'Trail length', kind: 'knob' })],
     compile: (c) => { c.import('AfterimagePass', 'three/addons/postprocessing/AfterimagePass.js'); c.setup(`const ${c.id} = new AfterimagePass(${c.in('length')});`); if (c.dyn('length')) c.frame(`${c.id}.uniforms.damp.value = ${c.in('length')};`); return { pass: c.id }; } });
   post({ type: 'rgbShift', title: 'RGB split', desc: 'Red / blue color fringes (chromatic aberration); wire a hit to Amount', keywords: 'chromatic aberration glitch fringe', inputs: [N('amount', 0.003, 0, 0.03, { step: 0.0005 }), N('angle', 0, 0, 360)],
     compile: (c) => { c.import('ShaderPass', 'three/addons/postprocessing/ShaderPass.js'); c.import('RGBShiftShader', 'three/addons/shaders/RGBShiftShader.js'); c.setup(`const ${c.id} = new ShaderPass(RGBShiftShader);`); c.apply('amount', (e) => `${c.id}.uniforms.amount.value = ${e};`); c.apply('angle', (e) => `${c.id}.uniforms.angle.value = THREE.MathUtils.degToRad(${e});`); return { pass: c.id }; } });
@@ -1244,6 +1244,7 @@ let ${id}Travel = 0;`);
     let state = 'none'; // none | ok | edited | code (no graph) | outline
     let applied = null; // the code we wrote last (so our own writes aren't read back)
     let layerKey = null;
+    const graphCache = new Map(); // layer → its last graph
     const codeBtn = el('button', { text: 'Code', title: 'The code of the selected layer' });
     const nodesBtn = el('button', { text: 'Nodes', title: 'The selected layer as nodes and wires (Alt+N)' });
     codeBtn.dataset.feature = 'Lab code view'; nodesBtn.dataset.feature = 'Lab nodes view';
@@ -1299,7 +1300,10 @@ let ${id}Travel = 0;`);
       const sameLayer = k === layerKey;
       layerKey = k;
       if (!force && sameLayer && code === applied) return;
-      const r = fromCode(code);
+      let r = fromCode(code);
+      // the director rewrote the layer from a shortened read ("// @nodes:v1 {…}"): the graph is still known here
+      if (!r && /@nodes:v1 \{…\}/.test(code) && graphCache.has(k)) r = { graph: graphCache.get(k), edited: true };
+      if (r) graphCache.set(k, r.graph);
       empty.hidden = true;
       if (!r) {
         state = 'code';
@@ -1365,6 +1369,7 @@ let ${id}Travel = 0;`);
       const rerun = before == null || before !== NodeView.extract(r.code)?.body;
       applied = r.code;
       layerKey = keyOf();
+      graphCache.set(layerKey, graph);
       hook.setCode(r.code, { rerun });
     }
     function rebuild() { state = 'ok'; view.setReadOnly(false); setBanner(''); apply(view.getGraph()); toast('Code rebuilt from the nodes', { timeout: 1500 }); }
@@ -1572,17 +1577,16 @@ let ${id}Travel = 0;`);
     AppUI.addAction('Lab: New layer from a node preset…', () => ensureLab().then((L) => { ThreeLab.act('noop'); L.presetPicker('layer'); }));
   }
   // The Three Director's three_nodes tool: one command line, the same verbs as the chat commands.
-  if (typeof HubBridge !== 'undefined') {
-    HubBridge.register(['three_nodes'], async (tool, args) => {
-      try {
-        const text = await run(String(args.command || 'list'));
-        const L = lab;
-        const r = L && L.state !== 'code' ? compile(L.view.getGraph()) : null;
-        await new Promise((res) => setTimeout(res, 900));
-        return { ok: true, value: { result: text || 'done', ...(r ? { errors: r.errors.map((e) => `${e.node || ''} ${e.message}`.trim()), warnings: r.warnings.map((e) => e.message), sliders: r.parts.tweaks.map((t) => t.key) } : {}), note: 'It runs in the Lab now; three_console / three_screenshot show the result.' } };
-      } catch (err) { return { ok: false, error: err.message }; }
-    });
+  async function tool(args = {}) {
+    try {
+      const text = await run(String(args.command || 'list'));
+      const L = lab;
+      const r = L && L.state !== 'code' ? compile(L.view.getGraph()) : null;
+      await new Promise((res) => setTimeout(res, 900));
+      return { ok: true, value: { result: text || 'done', ...(r ? { errors: r.errors.map((e) => `${e.node || ''} ${e.message}`.trim()), warnings: r.warnings.map((e) => e.message) } : {}), note: 'It runs in the Lab now; three_console / three_screenshot show the result.' } };
+    } catch (err) { return { ok: false, error: err.message }; }
   }
+  if (typeof HubBridge !== 'undefined') HubBridge.register(['three_nodes'], (name, args) => tool(args));
   // NodeView.openCode(code) for three.js sketches: a sketch made with nodes reopens as nodes; other three.js code
   // opens in the Lab with its outline.
   NodeView.registerAdapter({
@@ -1596,5 +1600,5 @@ let ${id}Travel = 0;`);
     },
   });
 
-  return { registry: reg, compile, fromCode, presets: () => PRESETS.map(({ id, name, desc }) => ({ id, name, desc })), buildPreset: (id) => buildPreset(PRESETS.find((p) => p.id === id)), attach, run, summary, get lab() { return lab; } };
+  return { registry: reg, compile, fromCode, presets: () => PRESETS.map(({ id, name, desc }) => ({ id, name, desc })), buildPreset: (id) => buildPreset(PRESETS.find((p) => p.id === id)), attach, run, tool, summary, get lab() { return lab; } };
 })();

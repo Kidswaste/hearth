@@ -10,6 +10,7 @@ const ThreeLab = (() => {
   // tweak() groups) with line numbers, to read in parts with three_read_code.
   const BIG_CODE_LINES = 350;
   function codeOrOutline(code) {
+    code = code.replace(/\/\/ @nodes:v1 \{.*\}[ \t]*$/m, '// @nodes:v1 {…} (the node graph this layer is made from: change it with three_nodes)'); // tools/three-nodes.js
     const lines = code.split('\n');
     if (lines.length <= BIG_CODE_LINES) return { code };
     const marks = [];

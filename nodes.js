@@ -301,6 +301,8 @@ const NodeView = (() => {
     for (let i = 0; i <= 16; i += 1) { const t = i / 16; const v = clamp(f(t), -0.3, 1.3); d += `${i ? 'L' : 'M'}${(t * w).toFixed(1)} ${(h - 2 - v * (h - 4)).toFixed(1)}`; }
     return d;
   };
+  // pointer capture (synthetic events from tests and scripts have no real pointer to capture)
+  const capture = (node, e) => { try { node.setPointerCapture(e.pointerId); } catch { /* not a live pointer */ } };
   const SVGNS = 'http://www.w3.org/2000/svg';
   const svg = (tag, attrs = {}) => { const n = document.createElementNS(SVGNS, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; };
 
@@ -596,7 +598,7 @@ const NodeView = (() => {
         if (ro || e.button !== 0) return;
         e.stopPropagation(); e.preventDefault();
         const x0 = e.clientX; const y0 = e.clientY; const v0 = get(); let moved = false;
-        target.setPointerCapture(e.pointerId);
+        capture(target, e);
         begin();
         const move = (ev) => {
           const d = vertical ? y0 - ev.clientY : ev.clientX - x0;
@@ -604,12 +606,12 @@ const NodeView = (() => {
           moved = true;
           const fine = ev.shiftKey ? 0.1 : 1;
           let next;
-          if (range) { const r = range(); next = v0 + (d / view.z / Math.max(40, r.width)) * (r.max - r.min) * fine; } else next = v0 + d * (perPx || 0.01) * fine;
+          if (range) { const r = range(); next = v0 + (d / view.z / Math.max(140, r.width)) * (r.max - r.min) * fine; } else next = v0 + d * (perPx || 0.01) * fine;
           set(next, false);
         };
         const up = (ev) => {
           target.removeEventListener('pointermove', move); target.removeEventListener('pointerup', up);
-          if (moved) { const d = vertical ? y0 - ev.clientY : ev.clientX - x0; const fine = ev.shiftKey ? 0.1 : 1; let next; if (range) { const r = range(); next = v0 + (d / view.z / Math.max(40, r.width)) * (r.max - r.min) * fine; } else next = v0 + d * (perPx || 0.01) * fine; set(next, true); return; }
+          if (moved) { const d = vertical ? y0 - ev.clientY : ev.clientX - x0; const fine = ev.shiftKey ? 0.1 : 1; let next; if (range) { const r = range(); next = v0 + (d / view.z / Math.max(140, r.width)) * (r.max - r.min) * fine; } else next = v0 + d * (perPx || 0.01) * fine; set(next, true); return; }
           pendingBefore = null;
           // a click: type the value
           const inp = el('input', { class: 'nv-num-input', value: String(v0) });
@@ -626,7 +628,9 @@ const NodeView = (() => {
     function addNode(type, { x, y, values, title, id } = {}) {
       const def = reg.get(type);
       if (!def) throw new Error(`Unknown node type "${type}"`);
-      const c = x == null ? centerGraph() : { x, y };
+      // no position given (chat, the director): to the right of everything, so nothing ends up hidden under it
+      const b = x == null && graph.nodes.length ? bounds(null) : null;
+      const c = x == null ? (b ? { x: b.x + b.w + 60, y: b.y } : centerGraph()) : { x, y };
       const n = { id: id && !nodeById(id) ? id : reg.idFor(def, graph), type, x: snapV(c.x), y: snapV(c.y), values: {} };
       for (const f of def.fields) if (f.value !== undefined) n.values[f.name] = clone(f.value);
       Object.assign(n.values, values || {});
@@ -674,7 +678,7 @@ const NodeView = (() => {
       const noteEl = e.target.closest('.nv-note');
       const linkEl = e.target.closest('.nv-link');
       const pan = e.button === 1 || e.button === 2 || (e.button === 0 && spaceDown);
-      if (pan) { drag = { kind: 'pan', x0: e.clientX, y0: e.clientY, v0: { ...view }, moved: false }; root.setPointerCapture(e.pointerId); return; }
+      if (pan) { drag = { kind: 'pan', x0: e.clientX, y0: e.clientY, v0: { ...view }, moved: false }; capture(root, e); return; }
       if (e.button !== 0) return;
       if (port && !ro) { startWire(port, e); return; }
       if (e.target.closest('[data-act="collapse"]') && nodeEl) { const n = nodeById(nodeEl.dataset.id); change('collapse', () => { n.collapsed = !n.collapsed; renderNode(n); drawWires(); }); return; }
@@ -683,7 +687,7 @@ const NodeView = (() => {
       if (noteEl && !e.target.closest('.nv-note-text')) { startMove(e, [], [], [noteEl.dataset.note]); return; }
       if (frameEl) {
         const f = graph.frames.find((x) => x.id === frameEl.dataset.frame);
-        if (e.target.closest('.nv-frame-resize') && !ro) { begin(); drag = { kind: 'resize', f, x0: e.clientX, y0: e.clientY, w0: f.w, h0: f.h }; root.setPointerCapture(e.pointerId); return; }
+        if (e.target.closest('.nv-frame-resize') && !ro) { begin(); drag = { kind: 'resize', f, x0: e.clientX, y0: e.clientY, w0: f.w, h0: f.h }; capture(root, e); return; }
         if (e.target.closest('.nv-frame-head')) {
           if (e.detail === 2 && !ro) { renameFrame(f); return; }
           selFrame = f.id; renderFrames();
@@ -698,7 +702,7 @@ const NodeView = (() => {
       if (!e.shiftKey && !e.ctrlKey) { sel.clear(); selWire = null; selFrame = null; paintSelection(); drawWires(); renderFrames(); }
       const p = toGraph(e.clientX, e.clientY);
       drag = { kind: 'box', p0: p, add: e.shiftKey || e.ctrlKey, base: new Set(sel) };
-      root.setPointerCapture(e.pointerId);
+      capture(root, e);
     });
     root.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -777,7 +781,7 @@ const NodeView = (() => {
         start: new Map(ids.map((id) => { const n = nodeById(id); return [id, { x: n.x, y: n.y }]; })),
         frames: new Map(frameIds.map((id) => { const f = graph.frames.find((x) => x.id === id); return [id, { x: f.x, y: f.y }]; })),
         notes: new Map(noteIds.map((id) => { const m = graph.notes.find((x) => x.id === id); return [id, { x: m.x, y: m.y }]; })) };
-      root.setPointerCapture(e.pointerId);
+      capture(root, e);
     }
     function startNodeDrag(id, e) {
       selWire = null;
@@ -805,12 +809,12 @@ const NodeView = (() => {
           renderNode(nodeById(id));
           drawWires();
           drag = { kind: 'wire', dir: 'out', id: l.from[0], port: l.from[1], a: portPos(l.from[0], l.from[1], 'out'), picked: true };
-          root.setPointerCapture(e.pointerId);
+          capture(root, e);
           return;
         }
       }
       drag = { kind: 'wire', dir, id, port: name, a: portPos(id, name, dir) };
-      root.setPointerCapture(e.pointerId);
+      capture(root, e);
     }
     function endWire(d, e) {
       tempWire.setAttribute('d', '');
@@ -880,7 +884,7 @@ const NodeView = (() => {
         const q = input.value.trim().toLowerCase();
         const all = [...cands, ...extras.map((x) => ({ extra: x, label: x.label, category: x.category || 'More', desc: x.desc }))];
         shown = all.map((c) => [c, score(c, q)]).filter(([, s]) => s > 0).sort((a, b) => (q ? b[1] - a[1] : 0)).map(([c]) => c);
-        if (!q) { const cats = reg.categories(); shown.sort((a, b) => cats.indexOf(a.def?.category ?? '') - cats.indexOf(b.def?.category ?? '') || (b.exact ? 1 : 0) - (a.exact ? 1 : 0)); }
+        if (!q) { const cats = reg.categories(); const ci = (c) => { const i = cats.indexOf(c.def?.category ?? ''); return i < 0 ? 999 : i; }; shown.sort((a, b) => ci(a) - ci(b) || (b.exact ? 1 : 0) - (a.exact ? 1 : 0)); }
         active = clamp(active, 0, Math.max(0, shown.length - 1));
         listBox.replaceChildren();
         let cat = null;
@@ -1266,7 +1270,7 @@ const NodeView = (() => {
       view.x = r.width / 2 - gx * view.z; view.y = r.height / 2 - gy * view.z;
       applyView();
     };
-    mini.addEventListener('pointerdown', (e) => { e.stopPropagation(); mini.setPointerCapture(e.pointerId); miniJump(e); const mv = (ev) => miniJump(ev); mini.addEventListener('pointermove', mv); mini.addEventListener('pointerup', () => mini.removeEventListener('pointermove', mv), { once: true }); });
+    mini.addEventListener('pointerdown', (e) => { e.stopPropagation(); capture(mini, e); miniJump(e); const mv = (ev) => miniJump(ev); mini.addEventListener('pointermove', mv); mini.addEventListener('pointerup', () => mini.removeEventListener('pointermove', mv), { once: true }); });
     const ro2 = new ResizeObserver(() => drawMiniSoon());
     ro2.observe(root);
 
