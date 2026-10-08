@@ -73,7 +73,7 @@
 .vr-video { filter: var(--vr-filter, none); }
 .vr-frame.mirrored .vr-video { transform: scaleX(-1); }
 .vr-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
-.vr-b { display: none; }
+.vr-b { display: none; object-fit: contain; } /* a B with another shape keeps its proportions */
 .comparing .vr-b { display: block; }
 .comparing[data-cmp="wipe"] .vr-b { clip-path: inset(0 0 0 var(--wipe)); }
 .comparing[data-cmp="side"] .vr-a { width: 50%; }

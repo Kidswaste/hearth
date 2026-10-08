@@ -24,7 +24,7 @@ const VideoCmds = (() => {
     const s = String(q || '').trim().toLowerCase().replace(/^"|"$/g, '');
     if (!s || s === 'latest' || s === 'newest') return list[0] || null;
     if (/^\d+$/.test(s) && Number(s) >= 1 && Number(s) <= 50 && !list.some((v) => base(v.path).toLowerCase().includes(s))) return list[Number(s) - 1] || null;
-    return list.find((v) => v.path.toLowerCase() === s) || list.find((v) => base(v.path).toLowerCase() === s)
+    return list.find((v) => v.path.toLowerCase() === s) || list.find((v) => base(v.path).toLowerCase() === s) || list.find((v) => base(v.path).toLowerCase().replace(/\.[^.]+$/, '') === s)
       || list.find((v) => base(v.path).toLowerCase().startsWith(s)) || list.find((v) => v.path.toLowerCase().includes(s))
       || list.find((v) => s.split(/\s+/).every((w) => v.path.toLowerCase().includes(w))) || null;
   }

@@ -286,7 +286,7 @@ comp.openInViewer();`;
   // "Audio Amplitude" is the layer AE makes with Animation → Keyframe Assistant → Convert Audio to Keyframes.
   const amp = (p) => `thisComp.layer(${q(p.layer)}).effect(${q(p.channel)})("Slider")`;
   const ampParams = () => [t('layer', 'Audio Amplitude layer', 'Audio Amplitude'), s('channel', 'Channel', 'Both Channels', ['Both Channels', 'Left Channel', 'Right Channel'])];
-  EXPRESSIONS.push(
+  EXPRESSIONS.unshift(
     { cat: 'Music', name: 'Scale from audio amplitude', where: 'Scale', params: [...ampParams(), n('lo', 'Quiet level', 0), n('hi', 'Loud level', 30), n('boost', 'Extra scale at loud (%)', 25)],
       code: (p) => `var a = ${amp(p)};\nvar s = linear(a, ${p.lo}, ${p.hi}, 0, ${p.boost});\n[value[0] + s, value[1] + s];` },
     { cat: 'Music', name: 'Opacity from audio amplitude', where: 'Opacity', params: [...ampParams(), n('lo', 'Quiet level', 0), n('hi', 'Loud level', 30), n('min', 'Opacity when quiet', 20)],
