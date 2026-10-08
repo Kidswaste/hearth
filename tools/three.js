@@ -2660,6 +2660,31 @@ ${code}
       },
       openSketch: (id) => api.openSketchById?.(id),
       setFrame: (id) => stage.setMode(id),
+      // The whole sketch as it is now (every layer), and putting such a capture back (jam.js: one undo point per
+      // round). A capture whose sketch is gone, or restored with asNew, becomes a new sketch.
+      capture() {
+        persist();
+        return { sketchId: current?.id, sketch: current?.name, selId, layers: JSON.parse(JSON.stringify(layersOf())), errors: errors.length };
+      },
+      async restore(snap, { asNew = null, wait = 2 } = {}) {
+        if (player.recording) throw new Error('The user is recording a video right now; wait until they stop.');
+        if (!snap?.layers?.length) throw new Error('Nothing to restore.');
+        persist();
+        const s = !asNew && sketches.find((x) => x.id === snap.sketchId);
+        if (!s) {
+          create(asNew || snap.sketch || 'Restored sketch', snap.layers[0].code, snap.layers);
+        } else {
+          if (s === current) snapshot();
+          s.layers = JSON.parse(JSON.stringify(snap.layers));
+          s.code = s.layers[0]?.code ?? s.code;
+          s.updatedAt = Date.now();
+          if (snap.selId) (extras[s.id] ||= {}).selectedLayer = snap.selId;
+          save();
+          openSketch(s.id);
+        }
+        await sleep(Math.min(15, Math.max(0.3, wait)) * 1000);
+        return report();
+      },
       async setCode(code, wait = 2.5) {
         if (player.recording) throw new Error('The user is recording a video right now; wait until they stop.');
         snapshot();

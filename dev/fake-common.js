@@ -11,6 +11,10 @@
 //   big       reports a huge input usage (auto-compact) echo     replies with the exact prompt it got
 //   mcp       really calls the hub MCP servers it was given (--mcp-config / -c mcp_servers.*): the tools in a line
 //             `mcp: [["three_console", {}], ["three_do", {"cmd": "layers"}]]` (default: tools/list + three_console)
+// Jam turns (jam.js) are recognized by their first line ("Jam · round 2/4 · you build" / "you direct" / "Jam · final
+// pick"): a build sets a real sketch through the Lab's MCP tools, a direction is two short lines, a pick names a round.
+// In the jam's idea: jam-break makes builds fail (until a "fix the errors first" turn), jam-break-hard always,
+// jam-astra-down fails Codex.
 // Env: FAKE_DELAY (ms between pieces, default 15), FAKE_STATE (folder for per-session turn counts).
 const fs = require('fs');
 const os = require('os');
@@ -46,8 +50,62 @@ function userPart(prompt) {
   return cut.replace(/<file name="[^"]*">[\s\S]*?<\/file>/g, '').trim();
 }
 
-function plan(prompt) {
+// A small but real music sketch for jam builds (color / shape from the seed), or a broken one.
+const JAM_COLORS = ['#ff3cac', '#2bd2ff', '#ffd75e', '#7cff6b', '#b388ff', '#ff7a3c'];
+const JAM_SHAPES = ['TorusKnotGeometry(1, 0.3, 128, 16)', 'IcosahedronGeometry(1.3, 1)', 'TorusGeometry(1.2, 0.35, 32, 96)', 'OctahedronGeometry(1.4, 0)'];
+function jamSketch(seed, broken) {
+  const color = JAM_COLORS[seed % JAM_COLORS.length];
+  const shape = JAM_SHAPES[seed % JAM_SHAPES.length];
+  return `import * as THREE from 'three';
+const P = tweak({ punch: { value: ${(1 + (seed % 3) * 0.4).toFixed(1)}, min: 0, max: 3, label: 'Bass punch', group: 'Music' }, glow: { value: '${color}', label: 'Glow color', group: 'Colors' }, spin: [${(0.2 + (seed % 4) * 0.2).toFixed(1)}, -2, 2] });
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+document.body.append(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#05030a');
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100);
+camera.position.z = 4.5;
+const mesh = new THREE.Mesh(new THREE.${shape}, new THREE.MeshBasicMaterial({ color: P.glow, wireframe: ${seed % 2 ? 'true' : 'false'} }));
+scene.add(mesh);
+${broken ? 'const oops = ;\n' : ''}renderer.setAnimationLoop((now) => {
+  mesh.rotation.y = now / 1000 * P.spin;
+  mesh.rotation.x = now / 2600;
+  mesh.scale.setScalar(1 + audio.bass * P.punch);
+  mesh.material.color.set(P.glow);
+  renderer.render(scene, camera);
+});`;
+}
+function jamPlan(msg, engine) {
+  const head = msg.split('\n')[0];
+  if (!/^Jam · /.test(head)) return null;
+  const round = Number((head.match(/round (\d+)\/(\d+)/) || [])[1]) || 1;
+  if (engine === 'codex' && /jam-astra-down/.test(msg)) return { error: true };
+  if (/you build/.test(head)) {
+    const fixing = /left errors/i.test(msg);
+    const broken = /jam-break-hard/.test(msg) || (/jam-break/.test(msg) && !fixing);
+    const seed = round + msg.length;
+    const idea = /No idea given/.test(msg) ? 'Idea: neon pulse knot — ' : '';
+    return {
+      mcpCalls: [['three_set_code', { code: jamSketch(seed, broken), wait: 1 }]],
+      text: `${idea}${fixing ? 'Fixed the error, then ' : ''}${round === 1 ? 'built' : 'changed'} a ${JAM_COLORS[seed % JAM_COLORS.length]} ${JAM_SHAPES[seed % JAM_SHAPES.length].split('Geometry')[0].toLowerCase()} that punches on the bass.`,
+    };
+  }
+  if (/you direct/.test(head)) {
+    const push = ['Push the bass punch harder: let the kick throw it at the camera.', 'Push contrast: one hot color on near-black, nothing in between.', 'Push the motion: snap rotation on every downbeat instead of drifting.'][round % 3];
+    const cut = ['Cut the wireframe noise; keep one clean silhouette.', 'Cut the slow spin: it fights the beat.', 'Cut the background clutter.'][round % 3];
+    return { text: `${push}\n${cut}` };
+  }
+  if (/final pick/.test(head)) {
+    const n = Number((msg.match(/numbered 1–(\d+)/) || [])[1]) || 1;
+    const pick = engine === 'codex' ? Math.max(1, n - 1) : n;
+    return { text: `${pick}: strongest beat sync and cleanest silhouette` };
+  }
+  return null;
+}
+
+function plan(prompt, engine = 'claude') {
   const msg = userPart(prompt);
+  const jam = jamPlan(msg, engine);
   const has = (w) => new RegExp(`\\b${w}\\b`, 'i').test(msg);
   const p = {
     think: has('think'), tool: has('tool'), tools3: has('tools3'), code: has('code'), table: has('table'), long: has('long'),
@@ -58,6 +116,10 @@ function plan(prompt) {
     summarize: /^Summari[sz]e\b/i.test(msg),
     title: /short title for this chat/i.test(msg),
   };
+  if (jam) {
+    Object.assign(p, { think: false, mcp: Boolean(jam.mcpCalls), mcpCalls: jam.mcpCalls || null, error: Boolean(jam.error), code: false, table: false, long: false, remember: false, suggest: false, slow: false, tool: false, tools3: false });
+    return { p, text: jam.text || '', thinking: '' };
+  }
   const parts = [];
   const short = msg.replace(/\s+/g, ' ').slice(0, 80);
   if (p.title) parts.push('Fake chat about testing');

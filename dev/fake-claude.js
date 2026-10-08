@@ -14,8 +14,8 @@ const F = require('./fake-common');
   const prompt = await F.readStdin();
   const tools = (arg('--allowedTools') || '').split(',').filter(Boolean);
   F.out({ type: 'system', subtype: 'init', session_id: sessionId, model, tools: ['Read', ...tools], mcp_servers: [], cwd: process.cwd() });
-  const { p, thinking } = F.plan(prompt);
-  let { text } = F.plan(prompt);
+  const { p, thinking } = F.plan(prompt, 'claude');
+  let { text } = F.plan(prompt, 'claude');
   const state = F.loadState(`claude-${sessionId}`);
   const wait = F.delayMs(p);
 

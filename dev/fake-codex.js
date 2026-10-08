@@ -11,8 +11,8 @@ const F = require('./fake-common');
   const resume = argv.indexOf('resume');
   const threadId = resume >= 0 ? argv[resume + 1] : F.uuid();
   const prompt = await F.readStdin();
-  const { p, thinking } = F.plan(prompt);
-  let { text } = F.plan(prompt);
+  const { p, thinking } = F.plan(prompt, 'codex');
+  let { text } = F.plan(prompt, 'codex');
   // -c mcp_servers.<name>.<key>=<TOML value> (engines.js codexArgs) → { name: { command, args, env } }
   const servers = {};
   argv.forEach((a, i) => {

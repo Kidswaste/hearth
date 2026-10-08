@@ -518,6 +518,8 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
   // the hub tool sets and file tools so they cost no more than a plain chat turn.
   if (options.persona) agent = { ...agent, systemPrompt: String(options.persona).slice(0, 4000) };
   if (options.lean) agent = { ...agent, chatTools: false, threeTools: false, videoTools: false, gameTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false };
+  // "hubOnly" runs (a jam's build turns, jam.js) keep the agent's tool sets (Lab, video…) and drop the rest.
+  if (options.hubOnly) agent = { ...agent, chatTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false };
   const original = text;
   if (engine === 'claude' && options.images?.length) {
     text += `\n\n[Attached image${options.images.length > 1 ? 's' : ''}: open with your Read tool before answering]\n${options.images.join('\n')}`;

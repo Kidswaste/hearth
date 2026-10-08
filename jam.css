@@ -1,0 +1,53 @@
+/* Jam (jam.js): the compact card in the Three Director's chat and the small badge on the Lab preview. */
+.jam-card {
+  margin: 10px 0; padding: 7px 9px; border-radius: 12px; border: 1px solid var(--line);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--fh-gold, #ffd75e) 5%, var(--surface)), var(--surface));
+  position: relative; font-size: 12px;
+}
+.jam-card::before {
+  content: ''; position: absolute; inset: 0 0 auto 0; height: 2px; border-radius: 12px 12px 0 0;
+  background: linear-gradient(90deg, var(--claude, #d97757), var(--fh-gold, #ffd75e), var(--astra, #19c39c));
+}
+.jam-card.running::before { background-size: 200% 100%; animation: jam-flow 2.4s linear infinite; }
+@keyframes jam-flow { to { background-position: -200% 0; } }
+.jam-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.jam-head .spacer, .jam-foot .spacer { flex: 1; }
+.jam-title { font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
+.jam-idea { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
+.jam-state { color: var(--muted); white-space: nowrap; }
+.jam-state.live { color: var(--fh-gold, #ffd75e); }
+.jam-tok { font: 11px/1 ui-monospace, Consolas, monospace; color: var(--muted); white-space: nowrap; }
+.jam-rows { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+.jam-row { display: flex; align-items: center; gap: 7px; padding: 2px 4px; border-radius: 7px; cursor: pointer; min-width: 0; }
+.jam-row:hover { background: color-mix(in srgb, var(--text, #fff) 5%, transparent); }
+.jam-row.start { cursor: default; }
+.jam-row.best { background: color-mix(in srgb, var(--fh-gold, #ffd75e) 10%, transparent); }
+.jam-row.broken .jam-line { color: var(--danger, #ff6b6b); }
+.jam-thumb { width: 44px; height: 26px; object-fit: cover; border-radius: 4px; flex: none; background: #000; border: 1px solid var(--line); }
+.jam-thumb.none { display: inline-block; }
+.jam-n { width: 14px; text-align: center; font-weight: 700; color: var(--muted); flex: none; }
+.jam-row.best .jam-n { color: var(--fh-gold, #ffd75e); }
+.jam-line { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jam-row.open .jam-line { white-space: normal; }
+.jam-back { flex: none; padding: 0 6px; opacity: 0; }
+.jam-row:hover .jam-back, .jam-back:focus-visible { opacity: 1; }
+.jam-more { margin: 0 0 3px 58px; }
+.jam-more.folded { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jam-dir { white-space: pre-wrap; padding: 3px 7px; border-left: 2px solid var(--astra, #19c39c); border-radius: 0 6px 6px 0; background: color-mix(in srgb, var(--astra, #19c39c) 7%, transparent); }
+.jam-dir.by-claude { border-left-color: var(--claude, #d97757); background: color-mix(in srgb, var(--claude, #d97757) 7%, transparent); }
+.jam-err { color: var(--danger, #ff6b6b); margin-bottom: 2px; }
+.jam-note { margin-top: 4px; }
+.jam-foot { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.jam-best { color: var(--fh-gold, #ffd75e); font-weight: 600; }
+
+/* the badge on the Lab preview while a jam runs */
+.jam-badge {
+  position: absolute; right: 10px; bottom: 40px; z-index: 6; display: inline-flex; align-items: center; gap: 7px;
+  padding: 3px 4px 3px 10px; border-radius: 999px; background: #000b; color: #eee; font: 600 11.5px system-ui, sans-serif;
+  border: 1px solid color-mix(in srgb, var(--fh-gold, #ffd75e) 45%, transparent); cursor: pointer; backdrop-filter: blur(6px); white-space: nowrap;
+}
+.jam-badge-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fh-gold, #ffd75e); animation: jam-pulse 1.4s ease-in-out infinite; }
+@keyframes jam-pulse { 50% { opacity: .3; } }
+.jam-badge-stop { border: 0; background: #fff1; color: #ddd; border-radius: 999px; width: 20px; height: 20px; padding: 0; font-size: 9px; cursor: pointer; }
+.jam-badge-stop:hover { background: var(--danger, #e5484d); color: #fff; }
+@media (prefers-reduced-motion: reduce) { .jam-card.running::before, .jam-badge-dot { animation: none; } }

@@ -27,6 +27,7 @@ const DirectorDock = (() => {
   // Quick asks per tool. run: a chat command that runs here (no tokens); send: a message to the director.
   const CHIPS = {
     three: [
+      { label: '🎛 Jam', run: '/jam', title: 'Claude and Astra take turns making a visual for you (4 rounds; Esc stops) · /jam <idea>' },
       { label: '🥁 Hit harder on the kick', send: 'Make it hit harder on the kick: bigger, snappier punches on the kicks (my kick markers / the kick trigger when there are some), with a slider for how hard. Keep everything else.' },
       { label: '🎨 Shuffle colors', run: '/shuffle colors' },
       { label: '💾 Save this look', run: '/save-look' },
@@ -132,8 +133,8 @@ const DirectorDock = (() => {
       const on = store.get('director.chips', true);
       chips.hidden = !on;
       chips.replaceChildren(...chipList(toolId).map((c) => el('button', {
-        type: 'button', class: `dd-chip${c.run ? ' local' : ''}`, text: c.label,
-        title: c.run ? `${c.run} (runs here: no tokens)` : `Ask the director: ${c.send}`,
+        type: 'button', class: `dd-chip${c.run && !c.title ? ' local' : ''}`, text: c.label,
+        title: c.title || (c.run ? `${c.run} (runs here: no tokens)` : `Ask the director: ${c.send}`),
         on: { click: () => useChip(c), contextmenu: (e) => { if (!c.own) return; e.preventDefault(); showMenu(e.clientX, e.clientY, [{ label: 'Remove this chip', danger: true, action: () => { store.set(`director.chips.${toolId}`, store.get(`director.chips.${toolId}`, []).filter((t) => t !== (c.run || c.send))); refreshAll(); } }]); } },
       })));
     }
