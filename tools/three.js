@@ -1929,6 +1929,8 @@ const ThreeLab = (() => {
       editor.syncScroll();
     }
     function onMessage(msg) {
+      // a key pressed while the picture had focus: the Lab's shortcuts handle it as if pressed here
+      if (msg.type === 'host-key') { const { type: _t, source: _s, ...k } = msg; pane.dispatchEvent(new KeyboardEvent('keydown', { ...k, bubbles: true, cancelable: true })); return; }
       if (msg.type === 'console') log(msg.level, msg.text, null, msg.layer);
       if (msg.type === 'tweak-reads') {
         // global indices → each layer's own

@@ -986,6 +986,14 @@ function editCommand(msg) {
   if (msg.cmd === 'tree') post({ type: 'edit-tree', tree: edit.scene ? treeOf(edit.scene) : [] });
   if (msg.cmd === 'refresh') post({ type: 'edit-select', info: selInfo() });
 }
+// Keys pressed while the picture has focus (after a click on it) still reach the Lab's shortcuts (F freeze,
+// R shuffle, Shift+1…5 sizes, X effects, T tap, Alt+N…) unless the sketch used them (preventDefault). Synthetic
+// keys (the director's three_input) never do; neither do the scene editor's own keys.
+addEventListener('keydown', (e) => {
+  if (!e.isTrusted || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
+  if (edit.on && /^[werqf]$|^Escape$/i.test(e.key)) return;
+  realSetTimeout(() => { if (!e.defaultPrevented) post({ type: 'host-key', key: e.key, code: e.code, shiftKey: e.shiftKey, altKey: e.altKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey, repeat: e.repeat }); }, 0);
+});
 addEventListener('keydown', (e) => {
   if (!edit.on || !edit.gizmo || /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
   const k = e.key.toLowerCase();
