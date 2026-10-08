@@ -36,7 +36,7 @@ html[data-skin~="forge"] {
 }
 .meter-strip::before { /* the live line: a thin rainbow along the top while a reply streams */
   content: ""; position: absolute; left: 0; right: 0; top: -1px; height: 2px; opacity: 0; transition: opacity .3s;
-  background: conic-gradient(from var(--mt-spin) at 50% -400%, #48ddff, #bd8bff, #ff6b9d, #ff8c42, #ffd75e, #48ddff);
+  background: conic-gradient(from var(--mt-spin) at 50% -400%, var(--ui-cyan), var(--ui-ai), #ff6b9d, var(--ui-hot), var(--ui-gold), var(--ui-cyan));
 }
 .meter-strip.is-live::before { opacity: 1; animation: mt-spin 2.4s linear infinite; }
 .ms-cell {
@@ -76,7 +76,7 @@ html[data-skin~="forge"] {
 .meter-pill .mp-bar { width: 26px; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--text) 12%, transparent); overflow: hidden; }
 .meter-pill .mp-bar i { display: block; height: 100%; width: var(--fill, 0%); background: var(--meter-active); }
 .meter-pill.is-live { opacity: 1; color: var(--meter-ai); }
-.meter-pill.is-live .mp-dot { opacity: 1; background: conic-gradient(from var(--mt-spin), #48ddff, #bd8bff, #ff6b9d, #ff8c42, #ffd75e, #48ddff); animation: mt-spin 1.6s linear infinite; width: 7px; height: 7px; }
+.meter-pill.is-live .mp-dot { opacity: 1; background: conic-gradient(from var(--mt-spin), var(--ui-cyan), var(--ui-ai), #ff6b9d, var(--ui-hot), var(--ui-gold), var(--ui-cyan)); animation: mt-spin 1.6s linear infinite; width: 7px; height: 7px; }
 .meter-pill.b-warn .mp-bar i { background: var(--meter-warn); }
 .meter-pill.b-over .mp-bar i { background: var(--meter-over); }
 .meter-pill.b-over { color: var(--meter-over); }
@@ -164,7 +164,7 @@ dialog.meter-dlg:focus { outline: none; }
 /* ---------- Forgeheart: cut corners, gold active, chrome glass on the strip ---------- */
 html[data-skin~="forge"] .meter-strip { border-top: 1px solid var(--line-hi, #443e35); box-shadow: inset 0 1px 0 #ffffff08; }
 html[data-skin~="forge"] .ms-today, html[data-skin~="forge"] .ms-chat:hover { color: var(--meter-active); }
-html[data-skin~="forge"] .ms-cell:hover { background: #ffd75e10; }
+html[data-skin~="forge"] .ms-cell:hover { background: color-mix(in srgb, var(--ui-gold) 6%, transparent); }
 html[data-skin~="forge"] .ms-splitbar, html[data-skin~="forge"] .ms-gauge, html[data-skin~="forge"] .ms-gauge i,
 html[data-skin~="forge"] .mt-bar, html[data-skin~="forge"] .mt-bar i, html[data-skin~="forge"] .meter-pill .mp-bar { border-radius: 0; }
 html[data-skin~="forge"] .meter-pill { border-radius: 0; clip-path: var(--cut-sm); }
@@ -177,9 +177,9 @@ html[data-skin~="forge"] .mt-kpi {
    values unreadable) */
 html[data-skin~="forge"][data-scheme="light"] { --meter-bg: color-mix(in srgb, var(--sidebar) 92%, transparent); }
 html[data-skin~="forge"][data-scheme="light"] .mt-kpi { background: linear-gradient(160deg, #ffffff80, #ffffff20 40%, #00000008), var(--sidebar); }
-html[data-skin~="forge"] .mt-kpi b { color: var(--meter-active); text-shadow: 0 0 12px #ffd75e40; }
+html[data-skin~="forge"] .mt-kpi b { color: var(--meter-active); text-shadow: 0 0 12px color-mix(in srgb, var(--ui-gold) 25%, transparent); }
 html[data-skin~="forge"] .mt-seg, html[data-skin~="forge"] .mt-split, html[data-skin~="forge"] .mt-filter, html[data-skin~="forge"] .mt-tabs button { border-radius: 0; }
-html[data-skin~="forge"] .mt-seg button.on { background: linear-gradient(180deg, #ffd75e30, #ffd75e10); box-shadow: inset 0 1px 0 #ffffff22; }
+html[data-skin~="forge"] .mt-seg button.on { background: linear-gradient(180deg, color-mix(in srgb, var(--ui-gold) 19%, transparent), color-mix(in srgb, var(--ui-gold) 6%, transparent)); box-shadow: inset 0 1px 0 #ffffff22; }
 html[data-skin~="forge"] .mt-pane h4::before { content: "◆ "; color: var(--meter-active); }
 html[data-skin~="forge"] .item .item-tok { font-family: var(--mono); }
 @media (prefers-reduced-motion: reduce) { .meter-strip.is-live::before, .meter-pill.is-live .mp-dot, .ms-live.is-live::first-letter { animation: none; } }

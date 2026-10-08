@@ -40,7 +40,7 @@
 }
 .nv-node.sel { border-color: var(--nc); box-shadow: 0 0 0 1.5px var(--nc), 0 10px 26px #000a, 0 0 18px color-mix(in srgb, var(--nc) 30%, transparent); }
 .nv-node.hit { outline: 2px dashed var(--accent); outline-offset: 3px; }
-.nv-node.err { border-color: #ff6a6a; box-shadow: 0 0 0 1.5px #ff6a6a, 0 6px 18px #0007; }
+.nv-node.err { border-color: var(--ui-red); box-shadow: 0 0 0 1.5px var(--ui-red), 0 6px 18px #0007; }
 .nv-head {
   display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 6px 0 8px; border-radius: 8px 8px 0 0; cursor: grab;
   /* chrome: a bright top edge, the node color through glass, a dark lip */
@@ -129,8 +129,8 @@
 .nv-frame-head { height: 30px; padding: 0 12px; display: flex; align-items: center; cursor: grab; border-radius: 12px 12px 0 0; background: linear-gradient(180deg, color-mix(in srgb, var(--fc) 26%, transparent), transparent); }
 .nv-frame-title { font-weight: 700; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--fc); text-shadow: 0 0 10px color-mix(in srgb, var(--fc) 50%, transparent); }
 .nv-frame-resize { position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize; background: linear-gradient(135deg, transparent 50%, color-mix(in srgb, var(--fc) 60%, transparent) 50%); border-radius: 0 0 12px 0; }
-.nv-note { position: absolute; min-height: 60px; border-radius: 8px; background: color-mix(in srgb, #ffd75e 13%, var(--nv-bg)); border: 1px solid color-mix(in srgb, #ffd75e 35%, transparent); box-shadow: 0 6px 16px #0006; }
-.nv-note-head { font-size: 10px; color: #ffd75ecc; padding: 4px 8px 0; cursor: grab; }
+.nv-note { position: absolute; min-height: 60px; border-radius: 8px; background: color-mix(in srgb, var(--ui-gold) 13%, var(--nv-bg)); border: 1px solid color-mix(in srgb, var(--ui-gold) 35%, transparent); box-shadow: 0 6px 16px #0006; }
+.nv-note-head { font-size: 10px; color: color-mix(in srgb, var(--ui-gold) 80%, transparent); padding: 4px 8px 0; cursor: grab; }
 .nv-note-text { padding: 4px 9px 8px; outline: none; min-height: 34px; white-space: pre-wrap; user-select: text; cursor: text; }
 .nv-boxsel { position: absolute; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); pointer-events: none; border-radius: 3px; }
 
@@ -149,8 +149,8 @@
 .nv-minimap { position: absolute; right: 8px; bottom: 8px; width: 180px; height: 112px; border-radius: 8px; z-index: 3; cursor: pointer;
   background: color-mix(in srgb, var(--bg) 80%, transparent); border: 1px solid var(--line); box-shadow: 0 4px 14px #0007; backdrop-filter: blur(4px); }
 .nv-status { position: absolute; left: 10px; bottom: 8px; z-index: 3; font-size: 11px; color: var(--muted); max-width: calc(100% - 210px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
-.nv-status.error { color: #ff6a6a; }
-.nv-status.ok { color: #7cd992; }
+.nv-status.error { color: var(--ui-red); }
+.nv-status.ok { color: var(--ui-ok); }
 
 /* ---------- picker & menus ---------- */
 .nv-picker { position: absolute; z-index: 10; width: 260px; display: flex; flex-direction: column; border-radius: 10px; overflow: hidden;
@@ -193,8 +193,8 @@
 .tn-pane .nv { flex: 1; border: 1px solid var(--line); }
 .tn-bar { display: flex; align-items: center; gap: 6px; padding: 4px 0 6px; padding-right: 130px; min-height: 30px; }
 .tn-bar .tn-state { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tn-bar .tn-state.warn { color: #ff8c42; }
-.tn-bar .tn-state.error { color: #ff6a6a; }
+.tn-bar .tn-state.warn { color: var(--ui-hot); }
+.tn-bar .tn-state.error { color: var(--ui-red); }
 .tn-empty { position: absolute; inset: 38px 0 0; z-index: 6; display: grid; place-items: center; pointer-events: none; }
 .tn-empty-card { pointer-events: auto; max-width: 380px; padding: 18px; border-radius: 12px; text-align: center; background: color-mix(in srgb, var(--bg) 88%, transparent); border: 1px solid var(--line); box-shadow: 0 10px 30px #0009; backdrop-filter: blur(8px); }
 .tn-empty-card p { color: var(--muted); margin: 6px 0 12px; }

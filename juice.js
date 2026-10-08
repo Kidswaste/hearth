@@ -71,8 +71,17 @@ const Juice = (() => {
       const gold = css('--fh-gold', '#ffc23d');
       burst(e.clientX, e.clientY, primary ? { color: gold, count: 8, spread: 30 } : agent ? { color: agent, count: 6, spread: 24 } : { color: css('--fh-info', '#56c6ff'), count: 4, spread: 16 });
       if (b.dataset.feature === 'Tap tempo') { const r = b.getBoundingClientRect(); ring(r.left + r.width / 2, r.top + r.height / 2, gold); }
-      if ((b.textContent || '').trim() === '🎲') {
-        b.classList.remove('j-roll'); void b.offsetWidth; b.classList.add('j-roll');
+      if (/^🎲/.test((b.textContent || '').trim())) {
+        // "🎲 Shuffle": only the die rolls (its glyph gets a span the first time), a bare 🎲 rolls whole
+        let die = b;
+        const first = [...b.childNodes].find((n) => n.nodeType === 3 && n.nodeValue.trim());
+        if (b.querySelector(':scope > .j-die')) die = b.querySelector(':scope > .j-die');
+        else if (first && first.nodeValue.trim() !== '🎲' && first.nodeValue.trimStart().startsWith('🎲')) {
+          const rest = first.nodeValue.trimStart().slice(2);
+          die = el('span', { class: 'j-die', text: '🎲' });
+          first.replaceWith(die, document.createTextNode(rest));
+        }
+        die.classList.remove('j-roll'); void die.offsetWidth; die.classList.add('j-roll');
         for (const c of ['--fh-ai', '--fh-hot', '--fh-info']) burst(e.clientX, e.clientY, { color: css(c, '#a970ff'), count: 3, spread: 26, force: true });
       }
       if (/^save\b/i.test((b.textContent || '').trim()) || /^Save\b/.test(b.title || '')) { const r = b.getBoundingClientRect(); embers(r.left + r.width / 2, r.top + 4, { color: gold, count: 12 }); }
@@ -101,7 +110,8 @@ const Juice = (() => {
       if (!(t instanceof HTMLElement) || !t.classList.contains('toast')) continue;
       const bad = t.classList.contains('error');
       if (v2()) t.classList.add(bad ? 'j-shake' : 'j-pop');
-      requestAnimationFrame(() => { const r = t.getBoundingClientRect(); if (r.width) burst(r.left + 4, r.top + r.height / 2, { color: bad ? '#ff6a6a' : '#ffd75e', count: 5, spread: 18 }); });
+      const color = bad ? css('--fh-stop', css('--r-ultima', '#ff6a6a')) : css('--fh-gold', css('--r-rare', '#ffd75e'));
+      requestAnimationFrame(() => { const r = t.getBoundingClientRect(); if (r.width) burst(r.left + 4, r.top + r.height / 2, { color, count: 5, spread: 18 }); });
     }
   };
   const watchBox = (box) => { new MutationObserver(onToasts).observe(box, { childList: true }); };
@@ -152,23 +162,49 @@ const Juice = (() => {
     tipFor = null;
     tip?.remove(); tip = null;
   }
-  function showTip(t) {
+  // rows of a list or menu: the tip goes beside the list, so it never covers the next rows
+  const LISTS = '.fx-list, .palette-list, .slash-menu, #menu, .mb-menu, .nv-menu, .nv-picker-list, .look-grid, .vr-list, .prompt-list, #chat-groups';
+  function showTip(t, full) {
     if (!t.isConnected || tipFor !== t || !t.matches(':hover')) return;
-    const text = t.getAttribute('title');
+    const text = full || t.getAttribute('title');
     if (!text) return;
-    t.dataset.tip = text;
-    t.removeAttribute('title');
-    tip = el('div', { class: 'juice-tip', text });
+    if (!full) { t.dataset.tip = text; t.removeAttribute('title'); }
+    tip = el('div', { class: `juice-tip${full ? ' full' : ''}`, text });
     document.body.append(tip);
     const r = t.getBoundingClientRect(); const w = tip.offsetWidth; const h = tip.offsetHeight;
+    const list = full ? null : t.closest(LISTS);
+    const lr = list?.getBoundingClientRect();
+    if (lr && (lr.right + 8 + w < innerWidth || lr.left - 8 - w > 0)) {
+      tip.style.left = `${lr.right + 8 + w < innerWidth ? lr.right + 8 : lr.left - 8 - w}px`;
+      tip.style.top = `${Math.max(6, Math.min(innerHeight - h - 6, r.top))}px`;
+      return;
+    }
     const below = r.bottom + 6 + h < innerHeight;
-    tip.style.left = `${Math.max(6, Math.min(innerWidth - w - 6, r.left + r.width / 2 - w / 2))}px`;
-    tip.style.top = `${below ? r.bottom + 6 : Math.max(6, r.top - h - 6)}px`;
+    tip.style.left = `${Math.max(6, Math.min(innerWidth - w - 6, (full ? r.left - 9 : r.left + r.width / 2 - w / 2)))}px`;
+    tip.style.top = `${full ? (below ? r.top - 4 : Math.max(6, r.top - h - 6)) : below ? r.bottom + 6 : Math.max(6, r.top - h - 6)}px`;
   }
+  // text cut short with an ellipsis (chat titles, render names, effect names…) shows in full on hover
+  const clipped = (n) => {
+    for (let x = n, i = 0; x && i < 3 && x !== document.body; x = x.parentElement, i += 1) {
+      if (x.closest('[title], input, textarea, select, [contenteditable=true]')) return null;
+      if (x.scrollWidth > x.clientWidth + 1 && getComputedStyle(x).textOverflow === 'ellipsis') return x;
+    }
+    return null;
+  };
   addEventListener('pointerover', (e) => {
     if (!tipsOn()) return;
     const t = e.target.closest?.('[title]');
-    if (!t || t === tipFor || !t.getAttribute('title')) return;
+    if (!t || !t.getAttribute('title')) {
+      const c = !t && e.target instanceof HTMLElement && clipped(e.target);
+      if (!c || c === tipFor) return;
+      const text = c.textContent.trim();
+      if (!text || text.length > 400) return;
+      hideTip();
+      tipFor = c;
+      tipTimer = setTimeout(() => showTip(c, text), 520);
+      return;
+    }
+    if (t === tipFor) return;
     hideTip();
     tipFor = t;
     tipTimer = setTimeout(() => showTip(t), 420);

@@ -1,6 +1,6 @@
 // Look: theme presets (AppUI.THEMES), the Forgeheart 2 materials and the appearance toggles (textures, glow,
 // motion, density, corners, accent, chat font, forged tooltips). Everything is reachable from Settings → Appearance,
-// the Ctrl+K palette and chat commands (/theme, /themes, /look, /texture, /glow, /motion, /density, /corners,
+// the Ctrl+K palette and chat commands (/theme, /themes, /appearance, /texture, /glow, /motion, /density, /corners,
 // /accent, /chatfont, /tips, /sparkles, /classic). Presentation only: config.json → theme.preset and theme.fx hold
 // the choices, look.css draws them through <html data-look / data-tex / data-motion / data-density / data-corners>.
 const Look = (() => {
@@ -74,12 +74,12 @@ const Look = (() => {
   const savedKey = (name) => Object.keys(saved()).find((k) => k.toLowerCase() === String(name || '').trim().toLowerCase());
   function saveLook(name) {
     const n = String(name || '').trim().slice(0, 40);
-    if (!n) throw new Error('Name it: /look save <name>');
+    if (!n) throw new Error('Name it: /appearance save <name>');
     if (!presetId()) throw new Error('Pick a preset first (/theme), then save your tweaks on top of it');
     H.config.theme.saved = { ...saved(), [savedKey(n) || n]: { preset: presetId(), fx: { ...(H.config.theme.fx || {}) } } };
     save();
     refresh();
-    return `Saved this look as "${n}" (/look load ${n})`;
+    return `Saved this look as "${n}" (/appearance load ${n})`;
   }
   function loadLook(name, { quiet = true } = {}) {
     const k = savedKey(name);
@@ -141,7 +141,7 @@ const Look = (() => {
     return `Accent → ${c}`;
   }
 
-  // ---------- the picker (Settings → Appearance and the /look dialog) ----------
+  // ---------- the picker (Settings → Appearance and the /appearance dialog) ----------
   const pickers = new Set();
   function refresh() { for (const p of pickers) { if (p.isConnected) p.refresh(); else pickers.delete(p); } }
   const swatch = (t) => {
@@ -169,7 +169,7 @@ const Look = (() => {
       const names = Object.keys(saved());
       mine.replaceChildren(...(names.length ? [el('div', { class: 'look-group', text: 'Yours' }), ...names.map((n) => {
         const t = themes()[saved()[n].preset] || {};
-        return el('button', { type: 'button', class: 'look-tile mine', title: `${n} (${t.label || '?'} + your tweaks) · /look load ${n} · right-click to delete`, dataset: { saved: n },
+        return el('button', { type: 'button', class: 'look-tile mine', title: `${n} (${t.label || '?'} + your tweaks) · /appearance load ${n} · right-click to delete`, dataset: { saved: n },
           on: { click: () => loadLook(n, { quiet: false }), contextmenu: (e) => { e.preventDefault(); Modal.confirm(`Delete the look "${n}"?`, 'Only your saved tweaks go; the preset stays.', { ok: 'Delete', danger: true }).then((ok) => { if (ok) deleteLook(n); }); } } },
         swatch({ ...t, accent: saved()[n].fx?.accent || t.accent }), el('span', { text: n }));
       })] : []));
@@ -228,9 +228,9 @@ const Look = (() => {
     document.querySelector('dialog.look-dialog')?.close();
     const dialog = el('dialog', { class: 'ui-modal look-dialog' });
     dialog.append(el('form', { method: 'dialog' }, el('h2', { text: 'Appearance' }), picker(),
-      el('div', { class: 'dialog-actions' }, el('button', { type: 'button', class: 'ghost small', text: 'Save as…', title: 'Keep this preset + your tweaks under a name (/look save <name>)',
+      el('div', { class: 'dialog-actions' }, el('button', { type: 'button', class: 'ghost small', text: 'Save as…', title: 'Keep this preset + your tweaks under a name (/appearance save <name>)',
         on: { click: async () => { const n = await Modal.prompt('Save this look as', { placeholder: 'e.g. Night session' }); if (n) toast(saveLook(n), { timeout: 1600 }); } } }),
-      el('span', { class: 'hint', text: '/theme name · /themes · /look reset · Ctrl+Shift+L' }), el('span', { class: 'spacer' }),
+      el('span', { class: 'hint', text: '/theme name · /themes · /appearance reset · Ctrl+Shift+L' }), el('span', { class: 'spacer' }),
         el('button', { type: 'submit', class: 'primary', text: 'Done' }))));
     dialog.addEventListener('close', () => dialog.remove());
     document.body.append(dialog);
@@ -289,7 +289,7 @@ const Look = (() => {
     // /look is shared with the Three.js Lab's saved looks (the Lab's wins in the Lab and its docked chats);
     // /appearance is always this one.
     const lookDef = {
-      name: 'appearance', args: '[reset | status | save <name> | load <name> | delete <name>]', desc: 'Open the Appearance picker (presets, textures, glow, motion…)',
+      name: 'appearance', aliases: ['appear', 'ui-look'].filter((a) => !Commands.get(a)), args: '[reset | status | save <name> | load <name> | delete <name>]', desc: 'Open the Appearance picker (presets, textures, glow, motion…)',
       complete: () => [{ value: 'reset', hint: 'Textures, glow, motion, density, corners and accent back to the preset' }, { value: 'status', hint: 'What is set now' },
         { value: 'save ', hint: 'Keep this preset + your tweaks under a name' }, ...Object.keys(saved()).flatMap((n) => [{ value: `load ${n}`, hint: 'Your look' }, { value: `delete ${n}`, hint: 'Forget it' }])],
       run: (args) => {
@@ -311,7 +311,7 @@ const Look = (() => {
         const id = /^(off|no|new)$/i.test(args.trim()) ? 'forgeheart' : 'classic';
         applyPreset(id, { quiet: true });
         const tweaks = Object.keys(H.config.theme.fx || {}).length;
-        return `Look → ${label(id)}${tweaks ? ' (your tweaks still apply: /look reset for the exact original)' : ''}`;
+        return `Look → ${label(id)}${tweaks ? ' (your tweaks still apply: /appearance reset for the exact original)' : ''}`;
       } });
     reg({ name: 'texture', aliases: ['textures'], args: 'on | off', desc: 'Brushed metal, grain and glass on or off',
       complete: () => [{ value: 'on' }, { value: 'off' }],

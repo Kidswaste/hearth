@@ -433,3 +433,9 @@ One searchable **FX picker** in the Three.js Lab (**X**, the Layers **＋ Layer*
 - Astra (Codex / ChatGPT) is a full chat agent: per-chat model, effort (minimal…xhigh), web search, answer length, personas (14 presets + your own), opt-in sandboxed file access, opt-in talk-back tools, `/astra-doctor` diagnostics. Commands: `/help astra`.
 - Claude and Astra work together from one chat: the ⚇ chip in the composer or `/duo`, `/relay a→b N`, `/critique`, `/debate N`, `/council seats`, `/compare-agents seats`, `/handoff`, `/opinion` (both ways), 17 ready-made `/collab-preset`s. Results land in one compact card with per-participant token totals. Commands: `/help collab`.
 - Directors (Three / Video) can run on either engine: `/director-engine three astra`. Full list: docs/upgrades/astra.md.
+- ✓ One-click and automatic backups with a merging restore, searchable trash and downloads, import that checks first (claude.ai / ChatGPT export variants, dedupe report, progress). `/backup`, `/restore`, `/trash`, `/downloads`, `/import`.
+## Polish: one designed product (polish stream, 242 upgrades: docs/upgrades/polish.md)
+- ✓ Shared tokens (corners, motion, importance colors, control heights) so the Lab, FX picker, nodes, Video Review, meter and add-ons follow every look, `/corners`, `/motion` and `/density`.
+- ✓ Materials on the favorites: chrome 🎲 Shuffle beside gold Save, a forged Tap that turns gold, ice-glass Freeze, gold segmented controls, chrome node headers, molten Play.
+- ✓ Compact: slimmer composer and dialogs, code blocks without the empty foot, one-row chips, a Lab that fits beside the docked director, long menus that scroll and fade.
+- ✓ Calm: no idle loops (rainbows rest until something is live), reduced motion everywhere, one focus ring, full text on hover for anything cut short. `/appearance` opens the look picker.

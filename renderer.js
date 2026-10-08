@@ -131,7 +131,10 @@ function showMenu(x, y, items) {
   const menu = $('menu');
   menu.replaceChildren(...items.map(({ label, action, danger }) => {
     const b = document.createElement('button');
-    b.textContent = label;
+    // "Rename  F2": two spaces before a last word mark a shortcut, shown on the right (polish.css .menu-key)
+    const [text, key] = String(label).split(/\s{2,}(?=\S+$)/);
+    b.textContent = text;
+    if (key) b.append(el('span', { class: 'menu-key', text: key }));
     if (danger) b.className = 'danger';
     b.addEventListener('click', () => { hideMenu(); action(); });
     return b;
