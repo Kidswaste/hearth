@@ -117,7 +117,9 @@ function zip(entries, out, { skipDirs = [] } = {}) {
     fs.mkdirSync(path.dirname(target), { recursive: true });
     if (fs.existsSync(target)) fs.rmSync(target);
     return new Promise((resolve, reject) => {
-      execFile(TAR, ['-a', '-cf', target, '-C', tmp, ...fs.readdirSync(tmp)], { windowsHide: true }, (err) => {
+      // GNU tar (Linux) can't write zips: use zip there
+      const [cmd, args, opts] = process.platform === 'linux' ? ['zip', ['-qr', target, ...fs.readdirSync(tmp)], { cwd: tmp }] : [TAR, ['-a', '-cf', target, '-C', tmp, ...fs.readdirSync(tmp)], { windowsHide: true }];
+      execFile(cmd, args, opts, (err) => {
         // the temp copy: Windows (antivirus, indexer) can still hold it for a moment; never crash over it
         try { fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 }); } catch { setTimeout(() => fs.rm(tmp, { recursive: true, force: true }, () => {}), 5000); }
         if (err) reject(err); else resolve({ path: target, size: fs.statSync(target).size });
@@ -217,6 +219,132 @@ async function fetchText(url) {
   return res.text();
 }
 
+// ---------- backups: one-click backups to a folder, the list of them, and a merging restore ----------
+// Paths of the hub's own files (fsapi.js sits next to main.js and config.json).
+const HUB = { data: path.join(__dirname, 'data'), config: path.join(__dirname, 'config.json'), theme: path.join(__dirname, 'theme.css') };
+const BACKUP_SKIP = ['workspace', 'ae'];
+function hubSettings() { try { return JSON.parse(fs.readFileSync(HUB.config, 'utf8')).settings || {}; } catch { return {}; } }
+const backupDir = () => hubSettings().backupDir || path.join(os.homedir(), 'Documents', 'Hearth backups');
+
+function listBackups(dir = backupDir()) {
+  let names = [];
+  try { names = fs.readdirSync(dir); } catch { return { dir, items: [] }; }
+  const items = names.filter((n) => /\.zip$/i.test(n)).map((n) => {
+    const p = path.join(dir, n);
+    const st = fs.statSync(p);
+    return { name: n, path: p, size: st.size, mtime: st.mtimeMs };
+  }).sort((a, b) => b.mtime - a.mtime);
+  return { dir, items };
+}
+// Zips data + config + theme into the backup folder (no dialog) and keeps the newest `keep` hearth-*.zip files;
+// older ones go to the Recycle Bin / Trash.
+async function backupNow({ keep = 10 } = {}) {
+  const dir = backupDir();
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+  const entries = [{ path: HUB.data, name: 'data' }, { path: HUB.config, name: 'config.json' }, { path: HUB.theme, name: 'theme.css' }].filter((e) => fs.existsSync(e.path));
+  const r = await zip(entries, path.join(dir, `hearth-backup-${stamp}.zip`), { skipDirs: BACKUP_SKIP });
+  const old = listBackups(dir).items.filter((b) => /^hearth-backup-/.test(b.name)).slice(Math.max(1, keep));
+  if (old.length) await trash(old.map((b) => b.path));
+  return { ...r, dir, removed: old.length };
+}
+
+function unzipTo(zipPath) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-restore-'));
+  return new Promise((resolve, reject) => {
+    const done = (err) => (err ? reject(err) : resolve(dir));
+    // GNU tar (Linux) can't read zips; unzip can
+    if (process.platform === 'linux') execFile('unzip', ['-q', '-o', assertAbs(zipPath), '-d', dir], done);
+    else execFile(TAR, ['-xf', assertAbs(zipPath), '-C', dir], { windowsHide: true }, done);
+  });
+}
+const readJsonSafe = (p, fallback) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return fallback; } };
+const jsonFiles = (dir) => { try { return fs.readdirSync(dir).filter((n) => n.endsWith('.json') && !n.endsWith('.prev.json') && !n.endsWith('.tmp')); } catch { return []; } };
+
+// Compares a backup with the current data and (unless dryRun) merges it in. Nothing of yours is deleted:
+//   chats      missing here are added; with newer: true, chats the backup has a newer version of replace yours
+//              (yours are kept in data/trash/restored-<date>/ first)
+//   tool data  (kv: notes, prompts, sketches…) files missing here are added; different ones are reported, kept
+//   memory     lines missing here are added
+//   attachments missing files are copied
+// config.json and theme.css are never restored automatically (agents in the backup but not here are listed).
+async function restoreBackup(zipPath, { dryRun = true, newer = false } = {}) {
+  const tmp = await unzipTo(zipPath);
+  try {
+    const src = fs.existsSync(path.join(tmp, 'data')) ? path.join(tmp, 'data') : tmp;
+    if (!fs.existsSync(path.join(src, 'chats')) && !fs.existsSync(path.join(src, 'kv'))) throw new Error("That zip doesn't look like a Hearth backup (no data/chats or data/kv).");
+    const report = { dryRun, chats: { add: 0, newer: 0, same: 0, older: 0, replaced: 0 }, kv: { add: 0, differ: [], same: 0 }, memory: { add: 0 }, attachments: { add: 0 }, agentsMissing: [], titles: [] };
+    const stamp = new Date().toISOString().slice(0, 10);
+    const keepDir = path.join(HUB.data, 'trash', `restored-${stamp}`);
+    // chats
+    const chatsSrc = path.join(src, 'chats');
+    const chatsDst = path.join(HUB.data, 'chats');
+    fs.mkdirSync(chatsDst, { recursive: true });
+    for (const n of jsonFiles(chatsSrc)) {
+      const theirs = readJsonSafe(path.join(chatsSrc, n), null);
+      if (!theirs) continue;
+      const mineP = path.join(chatsDst, n);
+      const mine = fs.existsSync(mineP) ? readJsonSafe(mineP, null) : null;
+      if (!mine) {
+        report.chats.add += 1;
+        if (report.titles.length < 8) report.titles.push(theirs.title || n);
+        if (!dryRun) fs.copyFileSync(path.join(chatsSrc, n), mineP);
+      } else if ((theirs.updatedAt || 0) > (mine.updatedAt || 0)) {
+        report.chats.newer += 1;
+        if (!dryRun && newer) {
+          fs.mkdirSync(keepDir, { recursive: true });
+          fs.copyFileSync(mineP, path.join(keepDir, n));
+          fs.copyFileSync(path.join(chatsSrc, n), mineP);
+          report.chats.replaced += 1;
+        }
+      } else if ((theirs.updatedAt || 0) < (mine.updatedAt || 0)) report.chats.older += 1;
+      else report.chats.same += 1;
+    }
+    // tool data
+    const kvSrc = path.join(src, 'kv');
+    const kvDst = path.join(HUB.data, 'kv');
+    fs.mkdirSync(kvDst, { recursive: true });
+    for (const n of jsonFiles(kvSrc)) {
+      const mineP = path.join(kvDst, n);
+      if (!fs.existsSync(mineP)) { report.kv.add += 1; if (!dryRun) fs.copyFileSync(path.join(kvSrc, n), mineP); continue; }
+      if (fs.readFileSync(mineP, 'utf8') === fs.readFileSync(path.join(kvSrc, n), 'utf8')) report.kv.same += 1;
+      else report.kv.differ.push(n.replace(/\.json$/, ''));
+    }
+    // memory
+    const memSrc = readJsonSafe(path.join(src, 'memory.json'), null);
+    if (memSrc) {
+      const memP = path.join(HUB.data, 'memory.json');
+      const mem = { shared: '', agents: {}, ...readJsonSafe(memP, {}) };
+      const merge = (mine, theirs) => {
+        const have = new Set(String(mine || '').split('\n').map((l) => l.trim()).filter(Boolean));
+        const add = String(theirs || '').split('\n').map((l) => l.trim()).filter((l) => l && !have.has(l));
+        report.memory.add += add.length;
+        return [String(mine || '').trim(), ...add].filter(Boolean).join('\n');
+      };
+      mem.shared = merge(mem.shared, memSrc.shared);
+      for (const [id, text] of Object.entries(memSrc.agents || {})) mem.agents[id] = merge(mem.agents[id], text);
+      if (!dryRun && report.memory.add) fs.writeFileSync(memP, JSON.stringify(mem, null, 2));
+    }
+    // attachments
+    const attSrc = path.join(src, 'attachments');
+    const attDst = path.join(HUB.data, 'attachments');
+    if (fs.existsSync(attSrc)) {
+      fs.mkdirSync(attDst, { recursive: true });
+      for (const n of fs.readdirSync(attSrc)) {
+        if (fs.existsSync(path.join(attDst, n)) || !fs.statSync(path.join(attSrc, n)).isFile()) continue;
+        report.attachments.add += 1;
+        if (!dryRun) fs.copyFileSync(path.join(attSrc, n), path.join(attDst, n));
+      }
+    }
+    // agents in the backup's config that this hub doesn't have
+    const cfg = readJsonSafe(path.join(tmp, 'config.json'), null);
+    const here = new Set((readJsonSafe(HUB.config, {}).agents || []).map((a) => a.id));
+    report.agentsMissing = (cfg?.agents || []).filter((a) => !here.has(a.id)).map((a) => a.name || a.id);
+    return report;
+  } finally {
+    fs.rm(tmp, { recursive: true, force: true }, () => {});
+  }
+}
+
 function registerIpc(ipcMain, getWin) {
   const handle = (name, fn) => ipcMain.handle(name, async (_e, ...args) => fn(...args));
   handle('fs:list', (dir, opts) => list(dir, opts));
@@ -233,6 +361,14 @@ function registerIpc(ipcMain, getWin) {
   handle('fs:unwatch', (id) => unwatch(id));
   handle('fs:copy', (from, to) => { fs.copyFileSync(assertAbs(from), assertAbs(to)); return true; });
   handle('fs:home', () => os.homedir());
+  handle('backup:now', (opts) => backupNow(opts));
+  handle('backup:list', () => listBackups());
+  handle('backup:dir', () => backupDir());
+  handle('backup:pick', async () => {
+    const r = await dialog.showOpenDialog(getWin(), { title: 'Restore from a Hearth backup', defaultPath: backupDir(), filters: [{ name: 'Hearth backup', extensions: ['zip'] }], properties: ['openFile'] });
+    return r.canceled ? null : r.filePaths[0];
+  });
+  handle('backup:restore', (zipPath, opts) => restoreBackup(zipPath, opts));
   handle('net:text', (url) => fetchText(url));
   handle('dialog:open', async (opts) => {
     const r = await dialog.showOpenDialog(getWin(), { properties: ['openFile'], ...opts });
@@ -247,4 +383,4 @@ function registerIpc(ipcMain, getWin) {
   });
 }
 
-module.exports = { registerIpc, list, read, write, diffLines, zip };
+module.exports = { registerIpc, list, read, write, diffLines, zip, backupNow, listBackups, restoreBackup };

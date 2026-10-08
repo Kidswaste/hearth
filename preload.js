@@ -19,7 +19,9 @@ contextBridge.exposeInMainWorld('hub', {
   searchChatText: call('chats:searchText'),
   listChatTrash: call('chats:trash'),
   restoreChat: call('chats:restore'),
-  importChats: call('chats:import'),
+  importChats: call('chats:import'), // (opts?: { path, dryRun }) → summary; no path opens a file dialog
+  onImportProgress: on('import:progress'),
+  backup: { now: call('backup:now'), list: call('backup:list'), dir: call('backup:dir'), pick: call('backup:pick'), restore: call('backup:restore') },
   pickFolder: call('pick-folder'),
   getMemory: call('memory:get'),
   saveMemory: call('memory:save'),

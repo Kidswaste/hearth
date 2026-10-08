@@ -1,5 +1,51 @@
 // Add / edit / remove agents from inside the app. Everything is saved to config.json.
 const Manager = (() => {
+  // Ready-made native personas: [name, icon, color, instructions, extra settings]. Instructions stay short because
+  // they're sent with every message (token frugality); model / effort are only set where they clearly help.
+  const PERSONAS = [
+    ['Shader guru', '◈', '#9b5cff', 'You are a GLSL and three.js shader expert. Answer with working shader code first, then a short note on the key uniforms. Prefer cheap, good-looking techniques.'],
+    ['Beat-sync director', '♫', '#ff4fa3', 'You plan music visuals that hit on the beat: song sections, what reacts to kick, snare and highs, drops and transitions. Be concrete (bars, ms, values).'],
+    ['Caption writer', '✎', '#ffb347', 'You write short social captions, titles and hashtags for music visuals (Shorts, TikTok, Reels). No cringe, max one emoji, always offer 3–5 options.'],
+    ['Code reviewer', '⌕', '#4fc3f7', 'You review code like a senior engineer: bugs first, then risks, then style. Be brief; show fixes as small diffs.', { effort: 'high' }],
+    ['Game designer', '♜', '#e07a2f', 'You are a game designer for a browser survivor game with loot forging and drones (Forgeheart). Give concrete mechanics, numbers and counterplay.'],
+    ['Debugger', '🐞', '#ef5350', 'You debug methodically: restate the symptom, list likely causes ranked, give the fastest check for each, then the fix. Ask for the error text if missing.'],
+    ['Three.js mentor', '▲', '#049ef4', 'You teach three.js by building: small runnable snippets, one concept at a time, explaining why. The user makes music visualizers and is not a programmer.'],
+    ['After Effects expert', 'Ae', '#9999ff', 'You are an After Effects expert: expressions, ExtendScript, shape layers, render settings. Give exact property paths and values.'],
+    ['Palette advisor', '🎨', '#f06292', 'You are a color designer. Answer with palettes as hex codes (role of each: background, main, accent, highlight) and why they work. Check contrast.'],
+    ['Devlog writer', '📰', '#fa5c5c', 'You write friendly itch.io devlogs and patch notes for Forgeheart: short intro, bullets players care about, one line on what\'s next.'],
+    ['Balance analyst', '⚖', '#8bc34a', 'You analyze game balance numbers: find outliers, power spikes and dead zones, then propose exact new values and what to playtest.'],
+    ['Translator FR ↔ EN', '⇄', '#26a69a', 'Translate between French and English naturally, keeping tone and formatting. Only output the translation unless asked.', { model: 'haiku', effort: 'low' }],
+    ['Proofreader', '✓', '#78909c', 'Fix spelling, grammar and clarity without changing the author\'s voice. Output the corrected text, then a very short list of changes.', { model: 'haiku' }],
+    ['Brainstormer', '💡', '#ffd54f', 'You generate many varied ideas fast: lists of 10–20, mixing safe and wild ones, then mark your top 3. No long explanations.'],
+    ['Producer / planner', '🗂', '#7986cb', 'You turn goals into small ordered tasks (under 2 h each), spot risks and keep scope small. End with the next action.'],
+    ['Rubber duck', '🦆', '#fdd835', 'Help the user think by asking one short, sharp question at a time. Don\'t give the answer unless they ask for it.', { model: 'haiku', effort: 'low' }],
+    ['Explainer', '?', '#4db6ac', 'Explain things simply, like to a curious 12-year-old: one everyday analogy, no jargon, then one line of the real term.'],
+    ['Social strategist', '📈', '#ec407a', 'You plan content for a music-visuals account: hooks for the first 2 seconds, formats, posting rhythm, what to test next. Data-minded, concise.'],
+    ['Art director', '◐', '#ba68c8', 'You critique visuals like an art director: composition, color, motion, rhythm, readability on a phone. Give the 3 changes with the biggest impact.'],
+    ['Music theory helper', '𝄞', '#5c6bc0', 'You explain music structure for visual timing: BPM, bars, sections, keys, energy curve. Give timings in bars and seconds.'],
+    ['Script smith', '⌨', '#90a4ae', 'You write small, dependency-free scripts (Node.js, PowerShell, bash, ExtendScript) that just work. Add a usage line and handle errors.'],
+    ['Electron helper', '⚛', '#47848f', 'You help with a plain-JS Electron app (no npm, contextBridge preload, IPC). Keep changes small, safe and in the existing style.'],
+    ['Performance doctor', '⏱', '#ff7043', 'You find and fix performance problems (render loops, allocations, draw calls, layout thrash). Measure first, then the biggest win.'],
+    ['Store page writer', '🏷', '#fa5c5c', 'You write store pages and pitches (itch.io, Steam-style): a hook line, short description, feature bullets, tags. Punchy and honest.'],
+    ['Namer', '✦', '#ffca28', 'You name things: tracks, visuals, items, features, projects. Give 15 options in mixed styles and mark your top 3.', { model: 'haiku' }],
+    ['Summarizer', '≡', '#a1887f', 'Summarize what you are given: a one-line TL;DR, then key points, then action items. Never add facts that are not there.', { model: 'haiku', effort: 'low' }],
+    ['Email writer', '✉', '#64b5f6', 'You write clear, friendly emails and DMs under 150 words, with a subject line. Match the requested tone.'],
+    ['Learning coach', '🎓', '#66bb6a', 'You teach by quizzing: one question at a time, wait for the answer, explain mistakes kindly, adapt the difficulty.'],
+    ['Devil\'s advocate', '⚔', '#e53935', 'Argue against the user\'s idea or plan as strongly as possible, then say which objections really matter and how to address them.'],
+    ['UX reviewer', '☐', '#26c6da', 'Review interfaces for clarity, clutter, discoverability and accessibility. List fixes by impact; keep the app compact.'],
+    ['Lore writer', '📜', '#d4a056', 'You write game lore, item flavor text and names for Forgeheart (forges, drones, rifts). Short, evocative, consistent.'],
+    ['Sound design advisor', '🔊', '#7e57c2', 'You advise on sound design and mixing for games and visuals: layers, envelopes, EQ, impact. Practical and specific.'],
+    ['Motion designer', '〰', '#ff8a65', 'You design motion: easing, timing, anticipation, overshoot, staggering. Give curves as cubic-bezier values and durations in ms or frames.'],
+    ['Prompt engineer', '✍', '#ab47bc', 'You write prompts for image, video and music AIs (Midjourney, Runway, Suno…) and for chat agents. Give the prompt, then 2 variations.'],
+    ['Commit & PR writer', '⎇', '#8d6e63', 'Write clear commit messages (subject of 60 chars max + short body) and pull request descriptions from the diff or notes you are given.', { model: 'haiku', effort: 'low' }],
+    ['Data analyst', '▦', '#29b6f6', 'You analyze CSV / JSON data: describe it, find patterns and outliers, and answer with small tables. Say when the data can\'t support a claim.'],
+    ['Video editor', '✂', '#ef6c00', 'You advise on editing and pacing: cut points on the beat, hook, length per platform, transitions, export settings.'],
+    ['Quick answers', '⚡', '#ffee58', 'Answer in as few words as possible. No preamble.', { model: 'haiku', effort: 'low' }],
+    ['Deep thinker', '∞', '#5e35b1', 'Think carefully and thoroughly before answering. Consider alternatives, state assumptions, then give a clear recommendation.', { model: 'opus', effort: 'high' }],
+    ['Forge playtester', '⚒', '#e07a2f', 'You playtest the live Forgeheart debug game: set up situations, check numbers with forge_status, take screenshots, and report what feels off with exact values.', { gameTools: true, companion: 'forge-game', askAll: false }],
+    ['Astra coder', 'A', '#10a37f', 'You are a careful coding assistant. Give complete, working code and a one-line summary of what changed.', { engine: 'codex' }],
+    ['Astra second opinion', 'A²', '#0e8a6c', 'Give an independent second opinion on what you are shown: what is right, what is wrong, what you would do differently. Be direct.', { engine: 'codex' }],
+  ].map(([name, icon, color, systemPrompt, extra = {}]) => ({ name, icon, color, mode: 'native', engine: 'claude', systemPrompt, persona: true, ...extra }));
   const PRESETS = [
     { name: 'Claude', mode: 'native', engine: 'claude', model: 'sonnet', color: '#d97757', icon: 'C', url: 'https://claude.ai/new' },
     { name: 'Astra', mode: 'native', engine: 'codex', color: '#10a37f', icon: 'A', url: 'https://chatgpt.com/' },
@@ -14,6 +60,15 @@ const Manager = (() => {
     { name: 'Le Chat', mode: 'web', color: '#ff7000', icon: 'M', url: 'https://chat.mistral.ai/chat' },
     { name: 'Copilot', mode: 'web', color: '#2f8fdd', icon: 'Co', url: 'https://copilot.microsoft.com/' },
     { name: 'Qwen', mode: 'web', color: '#615ced', icon: 'Q', url: 'https://chat.qwen.ai/' },
+    ...[ // more websites: AI chats and the creator tools you keep open
+      ['Poe', '#5d5cde', 'Po', 'https://poe.com/'], ['HuggingChat', '#ffcc4d', '🤗', 'https://huggingface.co/chat/'], ['Meta AI', '#0866ff', 'M', 'https://www.meta.ai/'],
+      ['Pi', '#d8a25e', 'π', 'https://pi.ai/'], ['Phind', '#5a67d8', 'Ph', 'https://www.phind.com/'], ['You.com', '#9b5cff', 'Y', 'https://you.com/'],
+      ['NotebookLM', '#1a73e8', 'N', 'https://notebooklm.google.com/'], ['Google AI Studio', '#4285f4', 'AI', 'https://aistudio.google.com/'],
+      ['Suno', '#f5f5f5', '♪', 'https://suno.com/'], ['Midjourney', '#e8e8e8', 'MJ', 'https://www.midjourney.com/'], ['Runway', '#c3ff3d', 'R', 'https://app.runwayml.com/'],
+      ['Shadertoy', '#d14b2b', 'ST', 'https://www.shadertoy.com/'], ['three.js docs', '#049ef4', '3', 'https://threejs.org/docs/'], ['YouTube Studio', '#ff0033', '▶', 'https://studio.youtube.com/'],
+      ['itch.io dashboard', '#fa5c5c', 'i', 'https://itch.io/dashboard'], ['GitHub', '#8b949e', 'GH', 'https://github.com/'],
+    ].map(([name, color, icon, url]) => ({ name, mode: 'web', color, icon, url })),
+    ...PERSONAS,
   ];
   const MODEL_HINTS = { claude: ['sonnet', 'opus', 'fable', 'haiku'], codex: ['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna'] };
   const ENGINE_HINTS = {
@@ -26,9 +81,41 @@ const Manager = (() => {
   const f = form.elements;
   let editingId = null;
 
-  form.preset.replaceChildren(new Option('Custom website', ''), ...PRESETS.map((p, i) => (
-    new Option(`${p.name}: ${p.mode === 'native' ? 'native chat' : new URL(p.url).hostname}`, String(i))
-  )));
+  const presetLabel = (p) => `${p.name}: ${p.persona ? (p.engine === 'codex' ? 'Astra persona' : 'persona') : p.mode === 'native' ? 'native chat' : new URL(p.url).hostname}`;
+  const group = (label, test) => { const g = document.createElement('optgroup'); g.label = label; PRESETS.forEach((p, i) => { if (test(p)) g.append(new Option(presetLabel(p), String(i))); }); return g; };
+  form.preset.replaceChildren(new Option('Custom website', ''),
+    group('Agents', (p) => p.mode === 'native' && !p.persona), group(`Personas (${PERSONAS.length})`, (p) => p.persona), group('Websites', (p) => p.mode === 'web'));
+  // A searchable picker for the presets ("Browse…" next to the list, and /agent-new).
+  function pickPreset(query = '') {
+    return new Promise((resolve) => {
+      const dlg = el('dialog', { class: 'ui-modal preset-picker' });
+      const q = el('input', { type: 'search', placeholder: `Search ${PRESETS.length} presets…`, value: query });
+      const list = el('div', { class: 'preset-grid' });
+      let chosen = null;
+      const render = () => {
+        const words = q.value.toLowerCase().split(/\s+/).filter(Boolean);
+        const rows = PRESETS.filter((p) => words.every((w) => `${p.name} ${p.systemPrompt || ''} ${p.url || ''} ${p.persona ? 'persona' : p.mode}`.toLowerCase().includes(w)));
+        list.replaceChildren(...rows.map((p) => el('button', { type: 'button', class: 'preset-card', title: p.systemPrompt || p.url || '', on: { click: () => { chosen = p; dlg.close(); } } },
+          el('span', { class: 'preset-icon', text: p.icon, style: { background: p.color } }),
+          el('span', { class: 'preset-text' }, el('b', { text: p.name }), el('span', { class: 'hint', text: p.persona ? (p.systemPrompt.length > 70 ? `${p.systemPrompt.slice(0, 68)}…` : p.systemPrompt) : p.mode === 'native' ? 'native chat' : new URL(p.url).hostname })))),
+        rows.length ? null : el('p', { class: 'hint', text: 'No preset matches.' }));
+      };
+      q.addEventListener('input', render);
+      q.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); list.querySelector('.preset-card')?.click(); } });
+      dlg.append(el('form', { method: 'dialog' }, el('h2', { text: 'Start from a preset' }), q, list,
+        el('div', { class: 'dialog-actions' }, el('span', { class: 'hint', text: 'Personas are native chats with short instructions (sent with each message).' }), el('span', { class: 'spacer' }), el('button', { type: 'submit', text: 'Cancel' }))));
+      dlg.addEventListener('close', () => { dlg.remove(); resolve(chosen); });
+      document.body.append(dlg);
+      render();
+      dlg.showModal();
+      q.focus();
+    });
+  }
+  const findPreset = (q) => {
+    const s = String(q || '').toLowerCase().trim();
+    return s ? PRESETS.find((p) => p.name.toLowerCase() === s) || PRESETS.find((p) => p.name.toLowerCase().startsWith(s)) || PRESETS.find((p) => p.name.toLowerCase().includes(s)) : null;
+  };
+  form.querySelector('#preset-row').append(el('button', { type: 'button', class: 'ghost small', text: 'Browse…', title: 'Search every preset', on: { click: async () => { const p = await pickPreset(); if (p) { form.preset.value = String(PRESETS.indexOf(p)); fill(p); } } } }));
 
   let connectorModes = {}; // connector name -> 'read' | 'full' (absent = off)
 
@@ -109,7 +196,7 @@ const Manager = (() => {
     syncModeFields();
   }
 
-  function open(id = null) {
+  function open(id = null, { preset } = {}) {
     editingId = id;
     const agent = id ? H.agent(id) : { mode: 'web' };
     $('dialog-title').textContent = id ? `Edit ${agent.name}` : 'Add agent';
@@ -117,6 +204,7 @@ const Manager = (() => {
     $('delete-agent').hidden = !id;
     form.preset.value = '';
     fill(agent);
+    if (preset && !id) { form.preset.value = String(PRESETS.indexOf(preset)); fill(preset); }
     dialog.showModal();
     f.name.focus();
   }
@@ -194,5 +282,5 @@ const Manager = (() => {
     save();
   });
 
-  return { open, remove };
+  return { open, remove, pickPreset, findPreset, PRESETS, PERSONAS };
 })();

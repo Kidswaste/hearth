@@ -409,6 +409,7 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
     search.addEventListener('input', render);
     tagSel.addEventListener('change', () => { filterTag = tagSel.value; render(); });
     (async () => { tasks = await kv.get('forge-tasks', []); render(); })();
+    api.reloadTasks = async () => { tasks = await kv.get('forge-tasks', []); render(); };
     api.importTasks = (items, title) => { tabs.show('tasks'); importTasks(items, title); };
   }
 
@@ -782,6 +783,58 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
       askClaude(`Write a friendly itch.io devlog post for Forgeheart covering this week's work (${fmtMin(week.reduce((s, e) => s + e.minutes, 0))} total). Short intro, a bullet list of what changed for players, one line about what's next.\n\n${md(week)}`);
     }
     (async () => { log = await kv.get('forge-devlog', log); renderTimer(); renderList(); })();
+    api.reloadDevlog = async () => { log = await kv.get('forge-devlog', log); renderTimer(); renderList(); };
+  }
+
+  // ---------- for chat commands (/forge, /forge-task, /forge-devlog) ----------
+  async function open(tab) {
+    activate('tool:forgeheart');
+    for (let i = 0; i < 40 && !tabs; i += 1) await new Promise((r) => setTimeout(r, 50));
+    if (tab) tabs?.show(tab);
+    return Boolean(tabs);
+  }
+  const TAB_IDS = ['dashboard', 'builds', 'docs', 'board', 'tasks', 'patch', 'release', 'balance', 'backups', 'files', 'devlog'];
+  // "Fix rift timer #bug !1" → a To-do task tagged bug, priority 1.
+  async function addTask(text, { col = 'todo' } = {}) {
+    const tag = (text.match(/#(\w+)/) || [])[1] || '';
+    const prio = Number((text.match(/!([123])\b/) || [])[1] || 2);
+    const title = text.replace(/#\w+/g, '').replace(/!([123])\b/, '').replace(/\s+/g, ' ').trim();
+    if (!title) return null;
+    const tasks = await kv.get('forge-tasks', []);
+    const t = { id: `t${Date.now()}`, title, col, tag, priority: prio, order: Date.now(), createdAt: Date.now() };
+    tasks.push(t);
+    await kv.set('forge-tasks', tasks);
+    await api.reloadTasks?.();
+    return t;
+  }
+  async function taskList(col) {
+    const tasks = await kv.get('forge-tasks', []);
+    return tasks.filter((t) => (col ? t.col === col : t.col !== 'done')).sort((a, b) => (a.priority || 2) - (b.priority || 2) || a.order - b.order);
+  }
+  // start / stop (with what you did) / status of the devlog work timer
+  async function devlog(action = 'status', note = '') {
+    const log = await kv.get('forge-devlog', { running: null, entries: [] });
+    const fmtMin = (m) => `${Math.floor(m / 60)}h ${String(Math.round(m % 60)).padStart(2, '0')}m`;
+    if (action === 'start') {
+      if (log.running) return `Already running since ${new Date(log.running.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`;
+      log.running = { start: Date.now() };
+      await kv.set('forge-devlog', log);
+      await api.reloadDevlog?.();
+      return 'Devlog timer started.';
+    }
+    if (action === 'stop') {
+      if (!log.running) return 'The devlog timer is not running.';
+      const minutes = Math.max(1, Math.round((Date.now() - log.running.start) / 60000));
+      log.entries.unshift({ id: `d${Date.now()}`, start: log.running.start, minutes, note: note.trim() });
+      log.running = null;
+      await kv.set('forge-devlog', log);
+      await api.reloadDevlog?.();
+      return `Logged ${fmtMin(minutes)}${note ? `: ${note}` : ''}.`;
+    }
+    const today = new Date().toDateString();
+    const todayMin = log.entries.filter((e) => new Date(e.start).toDateString() === today).reduce((sum, e) => sum + e.minutes, 0);
+    const weekMin = log.entries.filter((e) => Date.now() - e.start < 7 * 864e5).reduce((sum, e) => sum + e.minutes, 0);
+    return `${log.running ? `⏱ Running for ${fmtMin((Date.now() - log.running.start) / 60000)}. ` : ''}Today ${fmtMin(todayMin)} · last 7 days ${fmtMin(weekMin)}.`;
   }
 
   Tools.define({
@@ -817,5 +870,5 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
     ],
   });
 
-  return { forgeChat, parseCsv };
+  return { forgeChat, parseCsv, open, addTask, taskList, devlog, TAB_IDS, folder };
 })();

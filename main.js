@@ -219,18 +219,22 @@ function agentForSource(source) {
   return match.id;
 }
 
-ipcMain.handle('chats:import', async () => {
-  const pick = await dialog.showOpenDialog(win, {
-    title: 'Import past chats',
-    buttonLabel: 'Import',
-    filters: [{ name: 'claude.ai or ChatGPT export', extensions: ['zip', 'json'] }],
-    properties: ['openFile'],
-  });
-  if (pick.canceled || !pick.filePaths[0]) return null;
+ipcMain.handle('chats:import', async (_e, opts = {}) => {
+  let file = typeof opts?.path === 'string' ? opts.path : null;
+  if (!file) {
+    const pick = await dialog.showOpenDialog(win, {
+      title: 'Import past chats',
+      buttonLabel: opts?.dryRun ? 'Check' : 'Import',
+      filters: [{ name: 'claude.ai or ChatGPT export', extensions: ['zip', 'json'] }],
+      properties: ['openFile'],
+    });
+    if (pick.canceled || !pick.filePaths[0]) return null;
+    file = pick.filePaths[0];
+  }
   try {
-    return importer.importFile(pick.filePaths[0], agentForSource);
+    return { path: file, ...await importer.importFile(file, agentForSource, { dryRun: Boolean(opts?.dryRun), onProgress: (p) => send('import:progress', p) }) };
   } catch (err) {
-    return { error: err.message };
+    return { path: file, error: err.message };
   }
 });
 ipcMain.handle('pick-folder', async (_e, current, title) => {
