@@ -20,9 +20,14 @@ const J = (() => {
   async function click(sel, { right = false, double = false, at } = {}) {
     const n = q(sel);
     if (!visible(n)) throw new Error(`click: not visible: ${typeof sel === 'string' ? sel : n?.className || n}`);
-    n.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
-    const r = n.getBoundingClientRect();
+    n.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+    // smooth-scrolling panes: wait until the element stops moving
+    let r = n.getBoundingClientRect();
+    for (let i = 0; i < 20; i++) { await wait(50); const r2 = n.getBoundingClientRect(); if (r2.top === r.top && r2.left === r.left) break; r = r2; }
     const x = at ? r.left + at[0] * r.width : r.left + r.width / 2; const y = at ? r.top + at[1] * r.height : r.top + r.height / 2;
+    // a real click hits whatever is on top: note it when that isn't the element (a toast, a tooltip, a sticky bar)
+    const top = document.elementFromPoint(x, y);
+    if (top && top !== n && !n.contains(top)) out.misses = [...(out.misses || []), `${(n.textContent || n.className || n.tagName).toString().trim().slice(0, 24)} → covered by ${top.tagName.toLowerCase()}.${String(top.className).slice(0, 40)} "${(top.textContent || '').trim().slice(0, 30)}"`];
     const button = right ? 'right' : 'left';
     await mouse('mouseMoved', x, y, { button: 'none' });
     for (let c = 1; c <= (double ? 2 : 1); c++) { await mouse('mousePressed', x, y, { button, clickCount: c }); await mouse('mouseReleased', x, y, { button, clickCount: c }); }
@@ -53,6 +58,8 @@ const J = (() => {
     await smoke({ cdp: 'Input.dispatchKeyEvent', params: { type: 'keyUp', key: keyName, code: codeName, windowsVirtualKeyCode: code, nativeVirtualKeyCode: code, modifiers: mods } });
     await wait(60);
   }
+  // Files the app saved through a (skipped) save dialog in this run.
+  const saved = async () => ((await window.hub.fs.list?.(window.SMOKE_SAVES).catch(() => null)) || []).map((f) => f.name || f);
   async function type(text) { await smoke({ cdp: 'Input.insertText', params: { text } }); await wait(80); }
   let shots = 0;
   async function shot(name) { const f = `${J.shotDir || '/tmp'}/${String(++shots).padStart(2, '0')}-${name}.png`; await smoke({ shot: f }); return f; }
@@ -60,9 +67,10 @@ const J = (() => {
   const lastNote = (agentId) => [...(Native.view(agentId)?.list?.querySelectorAll('.msg.note .body, .msg.assistant .body') || [])].at(-1)?.textContent.trim().slice(0, 160) || '';
   // Types a /command in the composer of `agentId`'s view the way a person does (click, type, Enter) and returns the note.
   async function command(agentId, text, ms = 600) {
+    if (!visible(Native.view(agentId)?.input)) { activate(agentId); await wait(400); }
     await click(Native.view(agentId).input); await type(text); await wait(150); await key('Enter'); await wait(ms);
     return lastNote(agentId);
   }
   function done() { console.error = origErr; return JSON.stringify({ ok: !out.problems.length && !out.errors.length, ...out }, null, 1); }
-  return { wait, until, out, step, q, visible, hitOk, click, drag, key, type, shot, lastNote, command, mouse, done };
+  return { wait, until, out, step, q, visible, hitOk, click, drag, key, type, shot, lastNote, command, mouse, saved, done };
 })();

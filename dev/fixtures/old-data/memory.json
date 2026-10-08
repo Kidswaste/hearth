@@ -1,0 +1,6 @@
+{
+  "shared": "The owner makes music-driven Three.js visuals.",
+  "agents": {
+    "claude": "Prefers short answers.\n- The user tests Hearth with fake engines"
+  }
+}

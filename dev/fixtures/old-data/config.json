@@ -1,0 +1,82 @@
+{
+  "agents": [
+    {
+      "id": "claude",
+      "name": "Claude",
+      "icon": "C",
+      "color": "#d97757",
+      "mode": "native",
+      "engine": "claude",
+      "model": "claude-opus-5-5",
+      "url": "https://claude.ai/new",
+      "askAll": true,
+      "effort": "high"
+    },
+    {
+      "id": "astra",
+      "name": "Astra",
+      "icon": "A",
+      "color": "#10a37f",
+      "mode": "native",
+      "engine": "codex",
+      "effort": "high",
+      "url": "https://chatgpt.com/",
+      "askAll": true,
+      "model": "gpt-6-astra"
+    },
+    {
+      "id": "threedirector",
+      "name": "Three Director",
+      "icon": "◆",
+      "color": "#7c5cff",
+      "mode": "native",
+      "engine": "claude",
+      "dock": "three",
+      "threeTools": true,
+      "selfReview": true
+    },
+    {
+      "id": "videodirector",
+      "name": "Video Director",
+      "icon": "▶",
+      "color": "#ff7a59",
+      "mode": "native",
+      "engine": "claude",
+      "dock": "ae",
+      "videoTools": true
+    }
+  ],
+  "layout": {
+    "start": "single",
+    "gridColumns": 2,
+    "chatsPanel": true,
+    "askAllBar": true
+  },
+  "askAll": {
+    "pressEnter": true
+  },
+  "theme": {
+    "background": "#0b0e10",
+    "sidebar": "#111518",
+    "text": "#eae0d5",
+    "accent": "#ffd75e",
+    "radius": 10,
+    "sidebarWidth": 64,
+    "panelWidth": 250,
+    "gap": 6,
+    "font": "'FH Oxanium', 'Segoe UI', sans-serif",
+    "scheme": "dark",
+    "skin": "forge",
+    "preset": "forgeheart"
+  },
+  "settings": {
+    "enginePaths": {
+      "claude": "/old/hearth/dev/fake-claude.js",
+      "codex": "/old/hearth/dev/fake-codex.js"
+    },
+    "videoDirs": [
+      "/tmp/hearth-test-videos"
+    ],
+    "fontSize": 14
+  }
+}

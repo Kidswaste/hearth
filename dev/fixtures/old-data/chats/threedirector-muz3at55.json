@@ -1,0 +1,30 @@
+{
+  "id": "threedirector-muz3at55",
+  "agentId": "threedirector",
+  "title": "tool make it pulse on the kick",
+  "createdAt": 1791436939529,
+  "updatedAt": 1791436939747,
+  "session": {
+    "id": "f3b932af-0788-4806-9be2-6c796d1f3371"
+  },
+  "messages": [
+    {
+      "role": "user",
+      "text": "tool make it pulse on the kick",
+      "at": 1791436939529
+    },
+    {
+      "role": "assistant",
+      "text": "Fake reply to: “tool make it pulse on the kick”.",
+      "at": 1791436939747,
+      "usage": {
+        "input": 720,
+        "output": 12
+      },
+      "ms": 218,
+      "tools": [
+        "mcp__claude_ai_Gmail__search_threads"
+      ]
+    }
+  ]
+}

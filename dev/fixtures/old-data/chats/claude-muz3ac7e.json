@@ -1,0 +1,49 @@
+{
+  "id": "claude-muz3ac7e",
+  "agentId": "claude",
+  "title": "think code a spinning cube please",
+  "createdAt": 1791436917578,
+  "updatedAt": 1791436918851,
+  "session": {
+    "id": "bc099cc3-5352-4fcc-89aa-9b42aacd8a1d"
+  },
+  "messages": [
+    {
+      "role": "user",
+      "text": "think code a spinning cube please",
+      "at": 1791436917578
+    },
+    {
+      "role": "assistant",
+      "text": "Fake reply to: “think code a spinning cube please”.\n\nHere is a sketch:\n\n```js\nimport * as THREE from 'three';\nconst scene = new THREE.Scene();\nconst cube = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshNormalMaterial());\nscene.add(cube);\n```\n\nAnd a shell line:\n\n```bash\necho hello\n```",
+      "at": 1791436918378,
+      "usage": {
+        "input": 782,
+        "output": 95
+      },
+      "ms": 800,
+      "thinking": "Let me think about this.\n\nFirst, consider the request. Then decide on a compact answer.",
+      "thinkMs": 113
+    },
+    {
+      "role": "user",
+      "text": "table remember compare two shaders",
+      "at": 1791436918410
+    },
+    {
+      "role": "assistant",
+      "text": "Fake reply to: “table remember compare two shaders”.\n\n| Name | Value |\n| --- | ---: |\n| alpha | 1 |\n| beta | 22 |\n\n- [x] done task\n- [ ] open task\n\n> [!NOTE]\n> A callout note.\n\nInline math: $E = mc^2$.",
+      "at": 1791436918851,
+      "usage": {
+        "input": 856,
+        "output": 66
+      },
+      "ms": 441,
+      "remembered": [
+        "The user tests Hearth with fake engines"
+      ],
+      "lastReply": true
+    }
+  ],
+  "pinned": true
+}

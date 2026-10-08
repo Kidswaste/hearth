@@ -1,0 +1,24 @@
+{
+  "2026-10-08": {
+    "claude": {
+      "input": 5021,
+      "output": 2839,
+      "replies": 3
+    },
+    "astra": {
+      "input": 4276,
+      "output": 92,
+      "replies": 1
+    },
+    "threedirector": {
+      "input": 720,
+      "output": 12,
+      "replies": 1
+    },
+    "videodirector": {
+      "input": 712,
+      "output": 8,
+      "replies": 1
+    }
+  }
+}
