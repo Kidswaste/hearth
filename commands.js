@@ -12,7 +12,12 @@
 //     complete: (args, ctx) => [],   // optional: argument suggestions [{ value, label?, hint? }]
 //     hidden: false,                 // optional: works when typed but stays out of the menu
 //     keys: 'Alt+T',                 // optional: the keyboard shortcut doing the same, shown in the menu
+//     when: (ctx, args) => bool,     // optional: share the name with another stream's command; this one runs
+//     whenLabel: 'in Video Review',  //   when `when` holds (e.g. in its tool), the other one otherwise
+//     override: true,                // optional: deliberately replace an existing command (no warning)
 //   })
+// Names are shared by every stream: registering a taken name or alias replaces it and logs a console warning
+// (Commands.duplicates() lists them; dev/checks/qa-commands.js). Check Commands.get(name) first, or use `when`.
 //
 // ctx: { agentId, chatId, input, say(text), draft(text), send(text), chat, agent, note(text, opts) }
 //   say(text)   shows a note in the chat (not sent to the agent; falls back to a toast)
