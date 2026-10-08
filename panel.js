@@ -206,9 +206,9 @@ const Panel = (() => {
       root.append(deep);
     }
     highlight();
-    // unread replies show in the window title too: "(2) Hearth"
+    // unread replies show in the window title too: "(2) Claude · Hearth"
     const unread = H.unreadChats?.size || 0;
-    document.title = unread ? `(${unread}) Hearth` : 'Hearth';
+    document.title = `${unread ? `(${unread}) ` : ''}${document.title.replace(/^\(\d+\) /, '') || 'Hearth'}`;
     if (hadFocus) root.querySelector(`.item[data-key="${CSS.escape(hadFocus)}"]`)?.focus();
   }
 

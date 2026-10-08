@@ -375,3 +375,11 @@
 312. ✓ 10 more Lab actions in Ctrl+K (guides, loop this bar, snap, quantize, remove doubles, cycle looks, copy all code, save sliders, save as look, Stage on top): 32 in all.
 313. ✓ Chat: Ctrl+↑ / Ctrl+↓ jump between your own messages (they flash); select text in a reply → ❝ Quote puts it in your message.
 314. ✓ App: Ctrl+K → Recent notifications (the last 40), middle-click an agent on the rail = a new chat with it, the window title shows what you're looking at.
+
+## Chat core (night build, ≈300; full list in docs/upgrades/chat.md)
+315. ✓ Every chat feature is a chat command (144 of them: chats, messages, compose, agents, style, memory, export, view, app); `/help` lists them, the `/` menu groups them with your recent ones first, Ctrl+K has them all, `/alias` makes your own and `/run` chains them. Agents' `<suggest>/command</suggest>` chips run commands.
+316. ✓ Messages: ⋯ menu (rare actions tucked away), token badges, pins with a sticky strip, bookmarks across chats, reactions with notes, day lines, an unread "New" line, live status while streaming, scroll lock, thinking peek / duration / Alt+T, read aloud with highlight, rate, voice and auto-read, selection bar, raw Markdown view.
+317. ✓ Code blocks fold, show language and lines, have a ⋯ menu (insert, wrap, notes, Lab, node view hook). Markdown: task lists, nested lists, callouts, aligned tables, light math, highlights, keycaps, https pictures.
+318. ✓ Message box: draft history (Alt+↑↓), smart paste, Tab in code fences, Ctrl+Enter mode, style chips (/tone /persona /lang ride along once, never in the system prompt), typo guard for commands, Alt+R/B/P/M/F shortcuts.
+319. ✓ Chats panel: filters (pinned, today, unread, busy, archived, tags, folders, agent), unread dots and counts, tags, folders, archive, sort, keyboard navigation.
+
