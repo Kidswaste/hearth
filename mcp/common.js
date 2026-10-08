@@ -23,21 +23,41 @@ function callHub(tool, args) {
   });
 }
 
-function serve({ name, instructions, tools, extraArgs = {} }) {
+// Tool results as the model reads them, kept cheap: an object becomes "key: value" lines (values as compact JSON,
+// multi-line text and lists of lines as text), instead of 2-space-indented JSON where indentation and escaped
+// newlines cost tokens on every call. Strings pass through.
+function fmtValue(v) {
+  if (typeof v === 'string') return v;
+  if (v === undefined) return 'done';
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return JSON.stringify(v);
+  return Object.entries(v).filter(([, x]) => x !== undefined).map(([k, x]) => {
+    if (typeof x === 'string') return x.includes('\n') ? `${k}:\n${x}` : `${k}: ${x}`;
+    if (Array.isArray(x) && x.length && x.every((e) => typeof e === 'string')) return `${k}:\n${x.map((e) => `  ${e}`).join('\n')}`;
+    return `${k}: ${JSON.stringify(x)}`;
+  }).join('\n');
+}
+
+// Each server file ends with `module.exports = serve({ name, instructions, tools }, module)`: run as a program it
+// serves stdio; required (by the hub's cost report / tests) it only hands back its definitions.
+function serve(def, mod) {
+  if (mod && require.main !== mod) return def;
+  const { name, instructions, tools, extraArgs = {}, local = {} } = def;
   const send = (msg) => process.stdout.write(`${JSON.stringify(msg)}\n`);
   async function handle(msg) {
     const { id, method, params } = msg;
     if (method === 'initialize') {
-      send({ jsonrpc: '2.0', id, result: { protocolVersion: params?.protocolVersion || '2025-06-18', capabilities: { tools: {} }, serverInfo: { name, version: '1.0.0' }, instructions } });
+      send({ jsonrpc: '2.0', id, result: { protocolVersion: params?.protocolVersion || '2025-06-18', capabilities: { tools: {} }, serverInfo: { name, version: '1.0.0' }, ...(instructions ? { instructions } : {}) } });
     } else if (method === 'tools/list') {
       send({ jsonrpc: '2.0', id, result: { tools } });
     } else if (method === 'tools/call') {
-      const r = await callHub(params.name, { ...(params.arguments || {}), ...extraArgs });
+      // local[name](args) can answer without the hub (help text); null means "ask the hub".
+      const args = { ...(params.arguments || {}), ...extraArgs };
+      const r = (local[params.name] && await local[params.name](args)) || await callHub(params.name, args);
       const content = [];
       for (const img of [].concat(r.images || (r.image ? [{ data: r.image, mime: r.mime }] : []))) {
         content.push({ type: 'image', data: img.data, mimeType: img.mime || 'image/png' });
       }
-      content.push({ type: 'text', text: r.ok ? (typeof r.value === 'string' ? r.value : JSON.stringify(r.value, null, 2)) : `Error: ${r.error}` });
+      content.push({ type: 'text', text: r.ok ? fmtValue(r.value) : `Error: ${r.error}` });
       send({ jsonrpc: '2.0', id, result: { content, isError: !r.ok } });
     } else if (method === 'ping') {
       send({ jsonrpc: '2.0', id, result: {} });
@@ -60,6 +80,7 @@ function serve({ name, instructions, tools, extraArgs = {} }) {
     }
   });
   process.stdin.on('end', () => process.exit(0));
+  return def;
 }
 
-module.exports = { serve, callHub };
+module.exports = { serve, callHub, fmtValue };
