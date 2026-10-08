@@ -1528,6 +1528,7 @@ let ${id}Travel = 0;`);
     }
     if (v === 'link' || v === 'connect') {
       const [a, b] = args.split(/\s+|→|->/).filter(Boolean);
+      if (!b) throw new Error('Use: /nodes-link <node.output> <node.input> (names: /nodes-list)');
       const [x, xp] = ref(a); const [y, yp] = ref(b);
       const { out: ok } = L.edit((view) => view.connect(x, xp, y, yp));
       if (!ok) throw new Error(`Could not connect ${a} to ${b} (check the names with /nodes-list and the types).`);
@@ -1546,6 +1547,7 @@ let ${id}Travel = 0;`);
     if (v === 'rename') { const [id, ...t] = args.split(/\s+/); L.edit((view) => view.setTitle(id, t.join(' '))); return null; }
     if (v === 'frame' || v === 'group') {
       const [title, ...want] = args.split(/\s+/);
+      if (!title && !L.view.selection().length) throw new Error('Use: /nodes-frame <title> [node…] (or select nodes first)');
       const have = new Set(L.view.getGraph().nodes.map((n) => n.id));
       const ids = (want.length ? want : L.view.selection()).filter((x) => have.has(x));
       if (!ids.length) throw new Error(`No such nodes${want.length ? `: ${want.join(', ')}` : ' selected'}. Nodes: ${[...have].join(', ')}`);

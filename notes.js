@@ -494,8 +494,10 @@ const Prompts = (() => {
       if (!menu) return;
       const list = pickableItems();
       if (!list.length) return;
-      if (e.key === 'ArrowDown') { e.preventDefault(); e.stopImmediatePropagation(); sel = (sel + 1) % list.length; update(); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); e.stopImmediatePropagation(); sel = (sel - 1 + list.length) % list.length; update(); }
+      // arrows only move the highlight (rebuilding the whole menu per key made holding ↓ sluggish)
+      const move = (d) => { e.preventDefault(); e.stopImmediatePropagation(); sel = (sel + d + list.length) % list.length; const rows = menu.querySelectorAll('.slash-item'); rows.forEach((r, i) => r.classList.toggle('sel', i === sel)); rows[sel]?.scrollIntoView({ block: 'nearest' }); };
+      if (e.key === 'ArrowDown') move(1);
+      else if (e.key === 'ArrowUp') move(-1);
       else if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && !(list[sel].kind === 'command' && textarea.value.trim() === `/${list[sel].def.name}`)
         && !(list[sel].kind === 'arg' && textarea.value.trim() === `/${list[sel].def.name} ${list[sel].value}`.trim()))) {
         // Enter on a fully typed command (or a picked argument) runs it (the form submits); otherwise Enter / Tab completes

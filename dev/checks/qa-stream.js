@@ -22,9 +22,9 @@ Tools.syncDocks?.(); await wait(500);
 out.dockShown = Boolean(document.querySelector('.tool-dock:not([hidden]) .composer'));
 // 1. main Claude chat replies while you look at the Lab -> unread mark
 Native.newChat(claude.id);
-const mainChat = H.activeChat[claude.id];
 activate('tool:three'); await wait(300);
 await Native.send(claude.id, 'think table long');
+const mainChat = H.activeChat[claude.id]; // the chat exists once the first message is sent
 // 2. the docked director streams at the same time
 Native.newChat(dir.id);
 await Native.send(dir.id, 'think tool code suggest');
@@ -32,7 +32,7 @@ const dirChat = H.activeChat[dir.id];
 await wait(400);
 out.bothBusy = Native.isBusy(mainChat) && Native.isBusy(dirChat);
 out.meterLive = document.querySelector('.meter-strip, .meter-pill')?.textContent.slice(0, 120);
-await until(() => !Native.isBusy(mainChat) && !Native.isBusy(dirChat), 40000);
+out.waitedBoth = await until(() => !Native.isBusy(mainChat) && !Native.isBusy(dirChat), 90000);
 await wait(500);
 out.unreadMain = H.unreadChats?.has(mainChat);
 const dv = Native.view(dir.id);
@@ -46,6 +46,8 @@ await Commands.tryRun('/look', dir.id); await wait(300);
 out.lookInLab = [...dv.list.querySelectorAll('.msg.note .body')].at(-1)?.textContent.slice(0, 80);
 // 3. Video Review open while Claude replies
 activate('tool:ae'); await wait(2500);
+out.claudeBusyBefore = Native.isBusy(H.activeChat[claude.id]);
+await until(() => !Native.isBusy(H.activeChat[claude.id]), 60000);
 await Native.send(claude.id, 'code table');
 await until(() => !Native.isBusy(H.activeChat[claude.id]), 20000);
 await Commands.tryRun('/compare', claude.id); await wait(300);

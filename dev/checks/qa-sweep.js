@@ -25,7 +25,13 @@ t = performance.now(); v.input.value = '/lo'; v.input.dispatchEvent(new Event('i
 t = performance.now(); v.input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); await frame(); out.slashArrowMs = Math.round(performance.now() - t);
 v.input.value = ''; v.input.dispatchEvent(new Event('input'));
 
-// every command, no args
+t = performance.now(); for (let i = 0; i < 10; i++) Commands.matching(''); out.matchingMs = Math.round((performance.now() - t) / 10);
+t = performance.now(); for (let i = 0; i < 10; i++) Commands.matching('lo'); out.matchingTypedMs = Math.round((performance.now() - t) / 10);
+
+// every command, no args (in a chat that has a reply, so chat commands have something to act on)
+Native.newChat(claude.id);
+await Native.send(claude.id, 'code table suggest');
+for (let i = 0; i < 150 && Native.isBusy(H.activeChat[claude.id]); i++) await wait(100);
 const SKIP = /^(delete|del|restore|restore-backup|import|import-chats|backup|trash|reset|reload|relaunch|quit|unalias|forget|wipe|purge|empty|uninstall|clear|clear-all|new-window|update|sleep)$/;
 const SKIP_DESC = /\b(delete|remove|forget|wipe|erase|for good|restore|import|reset|quit|uninstall|reload)\b/i;
 const errs = [];
@@ -34,7 +40,7 @@ console.error = (...a) => { errs.push(a.map(String).join(' ').slice(0, 200)); or
 const onErr = (e) => errs.push(`uncaught: ${e.message || e.reason?.message || e.reason}`);
 addEventListener('error', onErr); addEventListener('unhandledrejection', onErr);
 const results = { ran: 0, skipped: [], errors: [], slow: [] };
-for (const d of Commands.list()) {
+for (const d of Commands.list().slice(window.QA_FROM || 0, window.QA_TO || 9999)) { // chunks: --eval "return (window.QA_FROM=0, window.QA_TO=150)"
   if (SKIP.test(d.name) || SKIP_DESC.test(d.desc)) { results.skipped.push(d.name); continue; }
   activate(claude.id);
   const before = (recentToasts?.() || []).length ? recentToasts()[0] : null;
@@ -49,7 +55,8 @@ for (const d of Commands.list()) {
   const ms = Math.round(performance.now() - t0);
   const newToasts = [];
   for (const x of recentToasts?.() || []) { if (x === before) break; if (x.type === 'error') newToasts.push(x.message); }
-  if (thrown || newToasts.length || errs.length) results.errors.push(`/${d.name}: ${[thrown && `threw ${thrown}`, ...newToasts.map((m) => `toast ${m}`), ...errs].filter(Boolean).join(' | ').slice(0, 300)}`);
+  const real = newToasts.filter((m) => !/No chat open yet/.test(m));
+  if (thrown || real.length || errs.length) results.errors.push(`/${d.name}: ${[thrown && `threw ${thrown}`, ...real.map((m) => `toast ${m}`), ...errs].filter(Boolean).join(' | ').slice(0, 300)}`);
   results.ran += 1;
   if (ms > 1500 && !results.slow.includes(d.name)) results.slow.push(`${d.name} ${ms}ms`);
   // close what it opened

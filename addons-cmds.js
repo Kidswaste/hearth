@@ -333,7 +333,7 @@ const Addons = (() => {
   F({ name: 'forge-patches', desc: 'The saved debug-game patches', run: () => { ForgeGame.patchesDialog(); } });
   F({ name: 'forge-patch', args: '<name> [on|off]', desc: 'Turn a saved patch on or off',
     complete: (a) => ForgeGame.patches().filter((p) => p.name.toLowerCase().includes(a.toLowerCase())).map((p) => ({ value: p.name, hint: p.enabled ? 'on' : 'off' })),
-    run: async (args) => { const m = args.match(/^(.*?)(?:\s+(on|off))?$/i); const p = await ForgeGame.setPatch(m[1], m[2] ? /on/i.test(m[2]) : undefined); return `Patch **${p.name}** ${p.enabled ? 'on (applied now)' : 'off (reload to fully undo)'}.`; } });
+    run: async (args) => { if (!args.trim()) return `Patches: ${ForgeGame.patches().map((p) => `${p.name} (${p.enabled ? 'on' : 'off'})`).join(', ') || 'none yet'} · /forge-patch <name> [on|off]`; const m = args.match(/^(.*?)(?:\s+(on|off))?$/i); const p = await ForgeGame.setPatch(m[1], m[2] ? /on/i.test(m[2]) : undefined); return `Patch **${p.name}** ${p.enabled ? 'on (applied now)' : 'off (reload to fully undo)'}.`; } });
   F({ name: 'forge-set', args: 'save|use <name> | list', desc: 'Patch sets: save the enabled patches as a set, or switch sets',
     complete: async (a) => startsWith([{ value: 'save' }, { value: 'use' }, { value: 'list' }, ...Object.keys(await ForgeGame.patchSets()).map((k) => ({ value: `use ${k}` }))], a),
     run: async (args) => {
