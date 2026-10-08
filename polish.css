@@ -242,7 +242,7 @@ html[data-skin~="forge"] #menu button { padding: 6px 12px; }
 .three-toolbar :is(.primary, .ghost) { white-space: nowrap; }
 .three-toolbar .ghost.small, .three-toolbar select { min-height: 26px; }
 .three-toolbar .ghost.small { padding: 2px 8px; }
-.three-toolbar .three-sketch-select { height: 28px; }
+.three-toolbar .three-sketch-select { height: 28px; padding-top: 0; padding-bottom: 0; } /* 6 px padding clipped the name at 28 px */
 .tabpane:has(.three-split) { padding-top: 8px; gap: 8px; }
 /* narrow Lab (the director chat docked): icon-only toolbar labels collapse their padding */
 @container (max-width: 640px) {
