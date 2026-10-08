@@ -202,6 +202,7 @@ renderer.setAnimationLoop((now) => {
         chatId = owner; shown.three = owner;
         H.activeChat[agent.id] = owner;
         Native.refresh(agent.id);
+        Panel.highlight();
       } else if (chatId && linkOf(chatId)) { await ThreeLab.idle(); S.open(linkOf(chatId)); }
       paintAll();
       return;

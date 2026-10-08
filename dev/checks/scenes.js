@@ -74,7 +74,7 @@ await until(() => S.currentId() === skB, 8000);
 await wait(400);
 step(frameA !== '9:16' && ThreeLab.director.report().frame.id === '9:16', 'frame size per chat', { A: frameA, B: ThreeLab.director.report().frame.id });
 const tag = host.querySelector('.scene-tag');
-step(Boolean(tag) && tag.textContent.includes('Scene B'), 'preview tag shows the chat', tag?.textContent);
+step(Boolean(tag) && tag.textContent.includes('Scene B') && tag.querySelectorAll('.scene-av').length === 1, 'preview tag shows the chat and its agent', tag?.textContent);
 step(host.querySelector('.three-preview').classList.contains('scene-framed'), 'preview framed in the chat color');
 const head = host.querySelector('.tool-dock .native-head .chat-ident');
 step(head?.textContent === ChatScenes.identity(B).glyph, 'dock header glyph = chat B', head?.textContent);
@@ -96,7 +96,17 @@ const r4 = await HubBridge.call('three_console', {}, { chatId: A });
 step(r4.ok !== false && /fps/.test(String(r4.value?.stats || '')), 'backstage renders (fps)', r4.value?.stats);
 const r5 = await HubBridge.call('three_sliders', {}, { chatId: A });
 step(r5.ok === false && /on screen/.test(r5.error), 'on-screen-only tools explain themselves', r5.error?.slice(0, 90));
+// the dock's undo of that edit: undone in A's sketch, the Lab stays on B
+const u = await ThreeDirector.undo();
+step(u?.restored === 'before' && !S.layersOf(S.get(skA))[0].code.includes('drift: { value: 1.4') && S.currentId() === skB && S.layersOf(S.get(skB))[0].code === bBefore, 'undo of a background edit stays in its scene', u?.layer);
+await ThreeDirector.redo();
+step(S.layersOf(S.get(skA))[0].code.includes('drift: { value: 1.4'), 'redo too');
+// a jam on B: both agents on the tag
+ChatScenes.setWorkers(B, ['claude', 'codex']);
+await wait(50);
+step(host.querySelectorAll('.scene-tag .scene-av').length === 2, 'jam: Claude and Astra on the tag', [...host.querySelectorAll('.scene-tag .scene-av')].map((x) => x.title));
 await shot('2-backstage-edit');
+ChatScenes.setWorkers(B, null);
 document.getElementById('bs-shot')?.remove();
 // no chat given (tests / old runs): the sketch on screen, as before
 const r6 = await HubBridge.call('three_read_code', { from: 1, to: 3 });
@@ -120,6 +130,15 @@ step(S.layersOf(S.get(skC))[0].code.includes('breathe: { value: 1.1'), 'C\'s dir
 step(!aCode.includes('breathe: { value: 1.1') && S.currentId() === skA, 'A\'s scene (on screen) untouched');
 const logC = HubBridge.log().filter((e) => e.chatId === C).map((e) => e.tool);
 step(logC.includes('three_edit_code'), 'calls carry the chat id', logC);
+
+// a new sketch made by a background chat's director becomes that chat's scene, not opened
+const nsBefore = S.currentId();
+const r7 = await HubBridge.call('three_new_sketch', { name: 'C remix', code: ChatScenes.starter('#56c6ff') }, { chatId: C });
+step(r7.ok !== false && S.get(ChatScenes.linkOf(C))?.name === 'C remix' && S.currentId() === nsBefore, 'three_new_sketch from a background chat relinks it', r7.error || S.get(ChatScenes.linkOf(C))?.name);
+// the chat's title changes: the sketch we named follows
+await Native.rename(B, 'Scene B: renamed');
+await until(() => S.get(skB).name === 'Scene B: renamed', 3000);
+step(S.get(skB).name === 'Scene B: renamed', 'renaming the chat renames its sketch', S.get(skB).name);
 
 // 6. a sketch from "Your sketches" that belongs to another chat → offer to go there; unowned → opens unlinked
 let toastText = '';
@@ -170,6 +189,35 @@ await shot('5-chat-A');
 const tintOf = (id) => S.layersOf(S.get(id))[0].code.match(/tint: \{ value: '(#\w+)'/)?.[1];
 const tints = { A: [tintOf(skA), ChatScenes.identity(A).color], B: [tintOf(skB), ChatScenes.identity(B).color], C: [tintOf(skC), ChatScenes.identity(C).color] };
 step(Object.values(tints).every(([t, c]) => t === c), 'each starter keeps its chat\'s color', tints);
+// 8. Video Director: each chat comes back to its video (needs the test videos: sh dev/make-test-videos.sh /tmp/hearth-test-videos)
+const V1 = '/tmp/hearth-test-videos/neon_tunnel_v1.mp4'; const V2 = '/tmp/hearth-test-videos/square_loop.mp4';
+if (await window.hub.fs.stat(V1).then(() => true, () => false)) {
+  H.config.agents.push({ id: 'videodirector', name: 'Video Director', icon: '🎬', color: '#bd8bff', mode: 'native', engine: 'claude', dock: 'ae', videoTools: true, enabled: true });
+  await saveConfig();
+  await until(() => Tools.dockedAgent('ae'), 5000);
+  activate('tool:ae'); await Review.ensureMounted(); await Review.waitReady?.().catch(() => null);
+  const vd = Tools.dockedAgent('ae');
+  await until(() => Native.hasView(vd.id), 5000);
+  await Review.open(V1);
+  await Native.send(vd.id, 'Video one');
+  await until(() => !Native.isBusy(H.activeChat[vd.id]), 30000);
+  const V = H.activeChat[vd.id];
+  Native.newChat(vd.id);
+  await wait(200);
+  await Review.open(V2);
+  await Native.send(vd.id, 'Video two');
+  await until(() => !Native.isBusy(H.activeChat[vd.id]), 30000);
+  const W = H.activeChat[vd.id];
+  Native.open(vd.id, V);
+  await until(() => Review.current?.path === V1, 6000);
+  step(Review.current?.path === V1, 'video chat 1 → its video', Review.current?.path);
+  Native.open(vd.id, W);
+  await until(() => Review.current?.path === V2, 6000);
+  step(Review.current?.path === V2, 'video chat 2 → its video', Review.current?.path);
+  step(Boolean(document.querySelector(`#chat-groups .item[data-key="${CSS.escape(W)}"] .chat-ident`)), 'video chats carry their glyph too');
+  await wait(800);
+  await shot('6-video-director');
+} else step(true, 'video part skipped (no test videos)');
 out.dups = Commands.duplicates().length;
 out.links = Object.keys(ChatScenes.data().links).length;
 return JSON.stringify(out, null, 1);

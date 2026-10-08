@@ -74,7 +74,8 @@ const ThreeBackstage = (() => {
   const settle = async (wait) => { await started; await sleep(Math.min(WAIT_MAX, Math.max(0.3, Number(wait) || 2.5)) * 500); };
 
   // ---------- the director API, for one sketch ----------
-  function director(sketchId, route) {
+  // quiet: data only, nothing runs (an undo of a background chat's edit)
+  function director(sketchId, route, { quiet = false } = {}) {
     const s = () => sketchOf(sketchId);
     const selId = () => { const Ls = layersOf(s()); const want = ThreeLab.scenes.selectedOf(sketchId); return (Ls.find((L) => L.id === want) || Ls.at(-1)).id; };
     function findLayer(ref) {
@@ -121,6 +122,7 @@ const ThreeBackstage = (() => {
           Ls.splice(0, Ls.length, ...rest);
         }
         changed();
+        if (quiet) return { updated: L.name, sketch: s().name };
         await load(s());
         await settle(wait);
         return { updated: L.name, ...report() };
@@ -220,5 +222,5 @@ const ThreeBackstage = (() => {
     return p;
   }
 
-  return { handle, log: () => log.slice(), get running() { return loaded?.id || null; }, OK_TOOLS };
+  return { handle, dataDirector: (sketchId) => director(sketchId, null, { quiet: true }), log: () => log.slice(), get running() { return loaded?.id || null; }, OK_TOOLS };
 })();

@@ -2751,6 +2751,7 @@ ${code}
         return { added: L?.name, ...report() };
       },
       async updateLayer(ref, patch = {}, wait = 1.5) {
+        if (patch.sketchId && patch.sketchId !== current?.id) throw new Error('The scene on screen changed during this edit (the owner switched chats or sketches), so it stopped there. Check with three_console and carry on.');
         const L = findLayer(ref);
         if (!L) throw new Error(`No layer "${ref}". Layers: ${layersOf().map((x) => x.name).join(', ')}`);
         const props = Object.fromEntries(Object.entries(patch).filter(([k]) => PROP_KEYS.includes(k)));

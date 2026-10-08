@@ -14,7 +14,7 @@
 /* the Lab preview: a thin frame in the color of the chat that owns the scene, and its tag */
 .three-preview.scene-framed { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--scene-color) 70%, transparent); }
 .scene-tag {
-  position: absolute; left: 8px; bottom: 8px; z-index: 6; display: inline-flex; align-items: center; gap: 6px;
+  position: absolute; right: 8px; bottom: 8px; z-index: 6; display: inline-flex; align-items: center; gap: 6px;
   max-width: min(60%, 340px); padding: 3px 8px 3px 7px; border-radius: 999px; cursor: pointer;
   font-weight: 600; font-size: 11.5px; line-height: 1.4; color: #f4f1ea; background: #0b0c10cc; backdrop-filter: blur(6px);
   border: 1px solid color-mix(in srgb, var(--scene-color) 70%, transparent);
