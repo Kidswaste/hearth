@@ -22,6 +22,7 @@ line count is lower than the number of upgrades).
 | Perf (round 3): ready 45 % sooner, nothing running when idle, lighter streaming, perf budget check | [perf.md](perf.md) | 18 |
 | Journeys (round 3): your real workflows end to end; 21 fixes and additions (Lab keys after a click on the picture, sizes that moved under the pointer, Enter in the `/` menu, `/save`, Video Review focus…) | [journey.md](journey.md) | 25 |
 | Command bar (round 3): Ctrl/⌘+; over any tool, plain-language search ("make it 9 by 16"), `/help` dialog, history, macros, timers, pipes, clickable commands in replies | [cmdbar.md](cmdbar.md) | 127 |
+| Scenes (round 4): each director chat owns its scene, switching chats switches it, a color + mark per chat, directors work on their own scene (backstage when it isn't on screen), `/scene` | [scenes.md](scenes.md) | 33 |
 | **Total** | | **3,303** |
 
 ## Start here

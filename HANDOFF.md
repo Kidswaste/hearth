@@ -78,6 +78,11 @@ for the window event `hearth:view` (start.js). Hidden surfaces are `visibility: 
 mean "on screen": use `el.checkVisibility({ visibilityProperty: true })`. `node dev/perf-report.js --budget
 --startup-only` guards startup (dev/perf-budget.json).
 
+Scenes (round 4, docs/upgrades/scenes.md): each docked director chat owns a Lab sketch (`chat-scenes.js`, kv `chat-scenes`).
+Director runs get `HUB_CHAT_ID` (engines.js) → `hubChatId` in every hub call (mcp/common.js) → `ctx.chatId` for bridge
+handlers; `tools/three.js` routes a call to its chat's sketch, running it in `tools/three-backstage.js` (hidden sandbox) when
+it isn't the one on screen. Sketch data API for other modules: `ThreeLab.scenes`; events `hearth:sketch`, `hearth:lab-ready`.
+
 ## How to test changes
 Syntax check: `electron\electron.exe --check <file>` with `ELECTRON_RUN_AS_NODE=1`. For UI checks, launch with `--remote-debugging-port=9333` and drive the page through CDP `Runtime.evaluate` (return `JSON.stringify(...)` so results serialize). Test with throwaway data and clean it up; never edit or delete the user's chats, sketches or Forgeheart files in tests.
 
