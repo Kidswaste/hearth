@@ -19,8 +19,8 @@ const VideoCmds = (() => {
     return R();
   }
   // Best match for a name / path fragment among the library (newest first), with "latest" / "b" shortcuts.
-  function findVideo(q) {
-    const list = R().videos;
+  function findVideo(q, { not } = {}) {
+    const list = R().videos.filter((v) => v.path !== not);
     const s = String(q || '').trim().toLowerCase().replace(/^"|"$/g, '');
     if (!s || s === 'latest' || s === 'newest') return list[0] || null;
     if (/^\d+$/.test(s) && Number(s) >= 1 && Number(s) <= 50 && !list.some((v) => base(v.path).toLowerCase().includes(s))) return list[Number(s) - 1] || null;
@@ -43,6 +43,12 @@ const VideoCmds = (() => {
   const fmtNote = (n, i) => `${i + 1}. \`${tcOf(n.t)}\` ${n.done ? '~~' : ''}**${V.category(n.cat).name}**: ${n.text}${n.done ? '~~' : ''}`;
 
   const cmd = (def) => Commands.register({ area: AREA, ...def });
+  async function projectDirs() {
+    if (H.settings().aeProjectDirs?.length) return H.settings().aeProjectDirs;
+    const home = await window.hub.fs.home();
+    const sep = home.includes('\\') ? '\\' : '/';
+    return ['Documents', 'Desktop', /Mac/.test(navigator.platform) ? 'Movies' : 'Videos'].map((d) => `${home}${sep}${d}`);
+  }
 
   // ---------- library ----------
   cmd({
@@ -199,7 +205,7 @@ const VideoCmds = (() => {
       let a = null; let b = null;
       const two = w.length >= 2 ? [findVideo(w[0]), findVideo(w.slice(1).join(' '))] : null;
       if (two?.[0] && two?.[1] && two[0] !== two[1]) [a, b] = two;
-      else b = w.length ? findVideo(w.join(' ')) : null;
+      else b = w.length ? findVideo(w.join(' '), { not: r.current?.path }) : null;
       if (a) await r.open(a);
       if (!r.current) return 'Open a video first.';
       if (!b) { const vers = r.versionsOf(r.current).filter((v) => v.path !== r.current.path); b = vers[0]; if (!b) return `Name a B: /compare <name>.${w.length ? ` Nothing matches “${w.join(' ')}”.` : ''}`; }
@@ -322,9 +328,7 @@ const VideoCmds = (() => {
       const st = await window.hub.ae.status();
       if (!st.found) return `Can't render: ${st.reason}`;
       if (!project) {
-        const home = await window.hub.fs.home();
-        const sep = home.includes('\\') ? '\\' : '/';
-        const found = await window.hub.ae.projects(H.settings().aeProjectDirs?.length ? H.settings().aeProjectDirs : [`${home}${sep}Documents`, `${home}${sep}Desktop`]);
+        const found = await window.hub.ae.projects(await projectDirs());
         project = found[0]?.path;
         if (!project) return 'No .aep found. Give it: /render "path/to/project.aep" "Comp name" reels';
       }
@@ -380,6 +384,60 @@ const VideoCmds = (() => {
       await R().ensureMounted();
       const p = R().pipeline({ preset: args || 'reels' });
       return `${p.nodes.map((n) => `- **${n.label}**${n.cmd ? ` · \`${n.cmd}\`` : ''}`).join('\n')}\nFlow: ${p.edges.map((e) => `${e.from}→${e.to}`).join(', ')}`;
+    },
+  });
+  cmd({
+    name: 'view', desc: 'Look at the frame differently: r, g, b (one channel), luma, invert, contrast, sat, normal', args: '<view>',
+    complete: (a) => opts(Review.VIEWS.map(([k, l]) => ({ value: k || 'normal', hint: l })), a),
+    run: async (args) => { const r = await ready({ show: true }); const v = r.setView(args === 'normal' ? '' : args.toLowerCase()); return v ? `View: ${Review.VIEWS.find(([k]) => k === v)[1]}.` : 'Normal view.'; },
+  });
+  cmd({ name: 'mirror', desc: 'Mirror the frame left/right (spot composition problems with fresh eyes)', run: async () => ((await ready({ show: true })).setMirror() ? 'Mirrored.' : 'Not mirrored.') });
+  cmd({ name: 'pingpong', desc: 'Loop back and forth between the in and out points', run: async () => ((await ready()).setPingPong() ? 'Ping-pong loop on.' : 'Ping-pong loop off.') });
+  cmd({ name: 'volume', desc: 'Playback volume 0–100', args: '<0-100>', complete: (a) => opts(['0', '50', '80', '100'].map((value) => ({ value })), a), run: async (args) => `Volume ${Math.round((await ready()).setVolume((Number(args) || 0) / 100) * 100)}%` });
+  cmd({ name: 'timecode', aliases: ['time-mode'], desc: 'Show time as timecode, seconds or frames', args: 'tc|sec|frames', complete: (a) => opts(['tc', 'sec', 'frames'].map((value) => ({ value })), a), run: async (args) => `Time shown as ${(await ready({ needVideo: false })).cycleTimeMode(args)}.` });
+  cmd({ name: 'section', aliases: ['drop'], desc: 'Jump to the next (or previous) loud section / drop in the audio', args: '[next|prev]', complete: (a) => opts([{ value: 'next' }, { value: 'prev' }], a), run: async (args) => { const r = await ready(); r.jumpDrop(args === 'prev' ? -1 : 1); await r.waitSeek(); return `\`${r.status().timecode}\``; } });
+  cmd({
+    name: 'inbox', aliases: ['all-notes'], desc: 'Every open note across all renders (newest renders first)',
+    run: async () => {
+      const r = await ready({ needVideo: false });
+      const all = r.allOpenNotes();
+      if (!all.length) return 'No open notes anywhere. ✓';
+      let last = '';
+      const lines = [];
+      for (const { path, note } of all.slice(0, 40)) { if (path !== last) { lines.push(`**${base(path)}**`); last = path; } lines.push(`- \`${tcOf(note.t)}\` ${note.prio ? '❗ ' : ''}${V.category(note.cat).name}: ${note.text}`); }
+      return `${all.length} open note${all.length > 1 ? 's' : ''}:\n${lines.join('\n')}`;
+    },
+  });
+  cmd({ name: 'urgent', aliases: ['must-fix'], desc: 'Mark a note as must-fix (sent first in feedback)', args: '<n>', run: async (args) => { const r = await ready(); const n = r.notes()[Number(String(args).replace('#', '')) - 1]; if (!n) return 'No such note.'; r.updateNote(n.id, { prio: !n.prio }); return n.prio ? `❗ Note #${args} is must-fix.` : `Note #${args} is no longer urgent.`; } });
+  cmd({
+    name: 'export-all', aliases: ['socials'], desc: 'Export the open video to every other social format (9:16, 4:5, 1:1, 16:9) with ffmpeg', args: '[crop|blur|fit]',
+    complete: (a) => opts(V.FIT_MODES.map((value) => ({ value })), a),
+    run: async (args) => { const r = await ready(); r.exportAllSocials({ fit: V.FIT_MODES.includes(args) ? args : 'crop' }); return 'Exporting every social format, one after another (progress in the corner).'; },
+  });
+  cmd({
+    name: 'ae-open', desc: 'Open an After Effects project (newest first, or by name)', args: '[name]',
+    complete: async (a) => { const found = await window.hub.ae.projects(await projectDirs()); return found.filter((p) => !a || p.name.toLowerCase().includes(a.toLowerCase())).slice(0, 10).map((p) => ({ value: p.name, hint: timeAgo(p.mtime) })); },
+    run: async (args) => {
+      const st = await window.hub.ae.status();
+      const found = await window.hub.ae.projects(await projectDirs());
+      const p = found.find((x) => !args || x.name.toLowerCase().includes(args.toLowerCase()));
+      if (!p) return `No .aep${args ? ` matching “${args}”` : ''} in ${(await projectDirs()).join(', ')}.`;
+      store.set('review.lastProject', p.path);
+      await window.hub.fs.open(p.path);
+      return `Opening **${p.name}**${st.found ? '' : ` (note: ${st.reason})`}. /render <comp> now renders from it.`;
+    },
+  });
+  cmd({
+    name: 'ae-comp', desc: 'Create a comp in After Effects for a social format: 9:16, 4:5, 1:1, 16:9 (or any AE preset name)', args: '<format> [seconds] [fps]',
+    complete: (a) => opts([...V.MAIN_FORMATS.map((f) => ({ value: f })), ...AEData.PRESETS.map((p) => ({ value: p.name, hint: `${p.w}×${p.h}` }))], a),
+    run: async (args) => {
+      const w = words(args);
+      const f = V.formatInfo(w[0]);
+      const preset = f ? { name: `${f.name} ${f.id.replace(':', 'x')}`, w: f.w, h: f.h, fps: 30 } : AEData.PRESETS.find((p) => p.name.toLowerCase().includes(args.toLowerCase()));
+      if (!preset) return `Unknown format “${args}”. Try 9:16, 4:5, 1:1 or 16:9.`;
+      const nums = w.slice(f ? 1 : 0).map(Number).filter((x) => x > 0);
+      const ok = await AEKit.runCode(AEData.scriptCreateComp({ ...preset, duration: nums[0] || 10, fps: nums[1] || preset.fps }), `Create comp ${preset.name}`);
+      return ok ? `Comp **${preset.name}** (${preset.w}×${preset.h}) sent to After Effects.` : null;
     },
   });
   cmd({ name: 'video-keys', desc: 'Video Review keyboard shortcuts', run: async () => { await R().ensureMounted(); R().shortcutsHelp(); } });

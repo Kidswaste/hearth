@@ -70,6 +70,9 @@
 .vr-stage { position: relative; flex: 1; min-height: 160px; background: radial-gradient(ellipse at center, #111318, #050607 70%); display: grid; place-items: center; overflow: hidden; border-radius: 8px; container-type: size; --ar: 1.7778; --wipe: 50%; touch-action: none; }
 .vr-frame { position: relative; aspect-ratio: var(--arf, var(--ar)); width: min(100cqw, calc(100cqh * var(--arf, var(--ar)))); transform-origin: center; will-change: transform; box-shadow: 0 10px 40px #000c; }
 .vr-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; background: #000; }
+.vr-video { filter: var(--vr-filter, none); }
+.vr-frame.mirrored .vr-video { transform: scaleX(-1); }
+.vr-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
 .vr-b { display: none; }
 .comparing .vr-b { display: block; }
 .comparing[data-cmp="wipe"] .vr-b { clip-path: inset(0 0 0 var(--wipe)); }
@@ -159,6 +162,9 @@
 .vr-tc { border: 0; background: none; cursor: pointer; font: 11.5px var(--mono, ui-monospace, Consolas, monospace); color: var(--vr-hot); padding: 0; }
 .vr-catchip { border: 0; cursor: pointer; font-size: 10px; padding: 1px 6px; border-radius: 999px; background: color-mix(in srgb, var(--c) 22%, transparent); color: var(--c); }
 .vr-by { font-size: 10px; color: #bd8bff; }
+.vr-prio { font-size: 10px; }
+.vr-note.prio { border-left-width: 5px; }
+.vr-time-total { cursor: pointer; }
 .vr-idx { font-size: 10px; }
 .vr-x { opacity: 0; }
 .vr-note:hover .vr-x { opacity: 1; }

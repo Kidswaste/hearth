@@ -282,5 +282,104 @@ comp.openInViewer();`;
     ['View', '`', 'Maximize panel under cursor'], ['View', 'Alt+4', 'Toggle alpha channel view'], ['View', 'Ctrl+Alt+Shift+N', 'New comp viewer'],
   ];
 
+  // ---------- music-driven visuals (added for social music videos) ----------
+  // "Audio Amplitude" is the layer AE makes with Animation → Keyframe Assistant → Convert Audio to Keyframes.
+  const amp = (p) => `thisComp.layer(${q(p.layer)}).effect(${q(p.channel)})("Slider")`;
+  const ampParams = () => [t('layer', 'Audio Amplitude layer', 'Audio Amplitude'), s('channel', 'Channel', 'Both Channels', ['Both Channels', 'Left Channel', 'Right Channel'])];
+  EXPRESSIONS.push(
+    { cat: 'Music', name: 'Scale from audio amplitude', where: 'Scale', params: [...ampParams(), n('lo', 'Quiet level', 0), n('hi', 'Loud level', 30), n('boost', 'Extra scale at loud (%)', 25)],
+      code: (p) => `var a = ${amp(p)};\nvar s = linear(a, ${p.lo}, ${p.hi}, 0, ${p.boost});\n[value[0] + s, value[1] + s];` },
+    { cat: 'Music', name: 'Opacity from audio amplitude', where: 'Opacity', params: [...ampParams(), n('lo', 'Quiet level', 0), n('hi', 'Loud level', 30), n('min', 'Opacity when quiet', 20)],
+      code: (p) => `linear(${amp(p)}, ${p.lo}, ${p.hi}, ${p.min}, 100);` },
+    { cat: 'Music', name: 'Glow / any effect from amplitude', where: 'Glow Intensity (or any effect value)', params: [...ampParams(), n('lo', 'Quiet level', 0), n('hi', 'Loud level', 30), n('out', 'Value at loud', 4)],
+      code: (p) => `linear(${amp(p)}, ${p.lo}, ${p.hi}, value, ${p.out});` },
+    { cat: 'Music', name: 'Kick shake (amplitude threshold)', where: 'Position', params: [...ampParams(), n('threshold', 'Kick level', 22), n('amount', 'Shake (px)', 18)],
+      code: (p) => `var a = ${amp(p)};\nvar k = Math.max(0, a - ${p.threshold}) / ${p.threshold};\nseedRandom(Math.floor(time * 30), true);\nvalue + [random(-1, 1), random(-1, 1)] * ${p.amount} * k;` },
+    { cat: 'Music', name: 'Beat strobe (BPM)', where: 'Opacity', params: [n('bpm', 'Beats per minute', 128), n('offset', 'First beat at (s)', 0), n('flash', 'Flash length (beats)', 0.25)],
+      code: (p) => `var b = (time - ${p.offset}) * ${p.bpm} / 60;\n(b >= 0 && (b % 1) < ${p.flash}) ? 100 : 0;` },
+    { cat: 'Music', name: 'Snap motion to the beat (stepped)', where: 'Any animated property', params: [n('bpm', 'Beats per minute', 128), n('offset', 'First beat at (s)', 0), n('every', 'Every N beats', 1)],
+      code: (p) => `var beat = 60 / ${p.bpm} * ${p.every};\nvar t = Math.floor((time - ${p.offset}) / beat) * beat + ${p.offset};\nvalueAtTime(Math.max(0, t));` },
+    { cat: 'Music', name: 'Rotate a step every bar', where: 'Rotation', params: [n('bpm', 'Beats per minute', 128), n('beats', 'Beats per bar', 4), n('deg', 'Degrees per bar', 90), n('ease', 'Ease time (s)', 0.15)],
+      code: (p) => `var bar = 60 / ${p.bpm} * ${p.beats};\nvar n = Math.floor(time / bar), f = time - n * bar;\nvalue + ${p.deg} * (n + ease(f, 0, ${p.ease}, 0, 1));` },
+    { cat: 'Music', name: 'Beat bounce (position)', where: 'Position', params: [n('bpm', 'Beats per minute', 128), n('height', 'Bounce (px)', 40), n('decay', 'Decay', 6)],
+      code: (p) => `var b = time * ${p.bpm} / 60, f = (b % 1) * 60 / ${p.bpm};\nvalue - [0, ${p.height} * Math.exp(-${p.decay} * f * 4) * Math.abs(Math.cos(f * 20))];` },
+    { cat: 'Music', name: 'Hue cycles with the bars', where: 'Hue/Saturation Master Hue (or Color: Change to Color)', params: [n('bpm', 'Beats per minute', 128), n('beats', 'Beats per full cycle', 16)],
+      code: (p) => `(time * ${p.bpm} / 60 / ${p.beats}) * 360 % 360;` },
+    { cat: 'Music', name: 'Wiggle only on loud parts', where: 'Any property', params: [...ampParams(), n('threshold', 'Loud from', 15), n('freq', 'Wiggles per second', 8), n('amp', 'Amount', 25)],
+      code: (p) => `var k = clamp((${amp(p)} - ${p.threshold}) / ${p.threshold}, 0, 1);\nvalue + (wiggle(${p.freq}, ${p.amp}) - value) * k;` },
+  );
+
+  // Social formats as comps; "duplicate for every format" keeps the original centered and fills by scale.
+  const FORMATS_AE = [['9x16', 1080, 1920], ['4x5', 1080, 1350], ['1x1', 1080, 1080], ['16x9', 1920, 1080]];
+  SCRIPTS.push(
+    { name: 'Duplicate comp for every social format', desc: 'Makes 9:16, 4:5, 1:1 and 16:9 versions of the open comp (the original nested inside, scaled to fill or fit)', params: [s('fit', 'Fit', 'fill', ['fill', 'fit'])],
+      code: (p) => `var src = app.project.activeItem;
+if (!(src instanceof CompItem)) throw new Error("Open a composition first.");
+var formats = ${JSON.stringify(FORMATS_AE)};
+for (var i = 0; i < formats.length; i++) {
+  var f = formats[i];
+  if (f[1] === src.width && f[2] === src.height) continue;
+  var c = app.project.items.addComp(src.name + " " + f[0], f[1], f[2], src.pixelAspect, src.duration, src.frameRate);
+  var L = c.layers.add(src);
+  var sx = f[1] / src.width, sy = f[2] / src.height;
+  var s = ${p.fit === 'fit' ? 'Math.min(sx, sy)' : 'Math.max(sx, sy)'} * 100;
+  L.property("ADBE Transform Group").property("ADBE Scale").setValue([s, s]);
+}
+alert("Made the social versions of " + src.name + ".");` },
+    { name: 'Social safe-zone guide layer', desc: 'Adds a guide layer (never renders) showing the TikTok / Reels / Shorts UI areas on a 9:16 comp', params: [s('platform', 'Platform', 'all', ['all', 'tiktok', 'reels', 'shorts'])],
+      code: (p) => {
+        const zones = { tiktok: [[0, 0, 1080, 150], [945, 620, 135, 880], [0, 1480, 1080, 440]], reels: [[0, 0, 1080, 220], [950, 900, 130, 640], [0, 1450, 1080, 470]], shorts: [[0, 0, 1080, 170], [930, 760, 150, 760], [0, 1420, 1080, 500]] };
+        const list = p.platform === 'all' ? [...zones.tiktok, ...zones.reels, ...zones.shorts] : zones[p.platform];
+        return `var comp = app.project.activeItem;
+if (!(comp instanceof CompItem)) throw new Error("Open a composition first.");
+var sx = comp.width / 1080, sy = comp.height / 1920;
+var zones = ${JSON.stringify(list)};
+var layer = comp.layers.addShape();
+layer.name = "Safe zones (${p.platform}) - guide";
+layer.guideLayer = true;
+var root = layer.property("ADBE Root Vectors Group");
+for (var i = 0; i < zones.length; i++) {
+  var z = zones[i];
+  var g = root.addProperty("ADBE Vector Group");
+  var r = g.property("ADBE Vectors Group").addProperty("ADBE Vector Shape - Rect");
+  r.property("ADBE Vector Rect Size").setValue([z[2] * sx, z[3] * sy]);
+  r.property("ADBE Vector Rect Position").setValue([(z[0] + z[2] / 2) * sx, (z[1] + z[3] / 2) * sy]);
+  var fill = g.property("ADBE Vectors Group").addProperty("ADBE Vector Graphic - Fill");
+  fill.property("ADBE Vector Fill Color").setValue([1, 0.23, 0.36]);
+  fill.property("ADBE Vector Fill Opacity").setValue(28);
+}
+layer.property("ADBE Transform Group").property("ADBE Anchor Point").setValue([0, 0]);
+layer.property("ADBE Transform Group").property("ADBE Position").setValue([0, 0]);` },
+    },
+    { name: 'Beat markers from BPM', desc: 'Adds a comp marker on every beat (bar numbers on the downbeats)', params: [n('bpm', 'Beats per minute', 128), n('offset', 'First beat at (s)', 0), n('beats', 'Beats per bar', 4)],
+      code: (p) => `var comp = app.project.activeItem;
+if (!(comp instanceof CompItem)) throw new Error("Open a composition first.");
+var step = 60 / ${p.bpm}, n = 0;
+for (var t = ${p.offset}; t < comp.duration; t += step) {
+  var m = new MarkerValue(n % ${p.beats} === 0 ? "bar " + (n / ${p.beats} + 1) : "");
+  comp.markerProperty.setValueAtTime(t, m);
+  n++;
+}` },
+    { name: 'Audio to keyframes (selected layer)', desc: 'Runs Convert Audio to Keyframes on the selected audio layer (makes the "Audio Amplitude" layer the Music expressions read)', params: [],
+      code: () => `var comp = app.project.activeItem;
+if (!(comp instanceof CompItem)) throw new Error("Open a composition first.");
+if (comp.selectedLayers.length !== 1) throw new Error("Select the music layer first.");
+app.executeCommand(app.findMenuCommandId("Convert Audio to Keyframes"));` },
+    { name: 'Set work area to the comp markers', desc: 'Work area from the first to the last comp marker (e.g. a loop between two beat markers)', params: [],
+      code: () => `var comp = app.project.activeItem;
+if (!(comp instanceof CompItem)) throw new Error("Open a composition first.");
+var m = comp.markerProperty;
+if (m.numKeys < 2) throw new Error("Add at least two comp markers.");
+comp.workAreaStart = m.keyTime(1);
+comp.workAreaDuration = m.keyTime(m.numKeys) - m.keyTime(1);` },
+  );
+  PRESETS.push(
+    { group: 'Social', name: 'Shorts / Reels / TikTok 60 fps', w: 1080, h: 1920, fps: 60 }, { group: 'Social', name: 'Instagram story', w: 1080, h: 1920, fps: 30 },
+    { group: 'Social', name: 'Spotify Canvas (3–8 s loop)', w: 720, h: 1280, fps: 30 }, { group: 'Social', name: 'Pinterest 2:3', w: 1000, h: 1500, fps: 30 },
+    { group: 'Social', name: 'LinkedIn / Facebook 4:5', w: 1080, h: 1350, fps: 30 }, { group: 'Social', name: 'YouTube 1440p (better encode)', w: 2560, h: 1440, fps: 60 },
+    { group: 'Social', name: 'X / Twitter vertical', w: 1080, h: 1920, fps: 30 }, { group: 'Social', name: 'Facebook cover video', w: 1200, h: 675, fps: 30 },
+  );
+  BITRATES.push(['YouTube Shorts 1080×1920 60 fps', 15], ['Instagram feed 4:5', 10], ['Spotify Canvas', 4], ['X / Twitter 1080p', 8]);
+
   return { EXPRESSIONS, SCRIPTS, PRESETS, BITRATES, SHORTCUTS, scriptCreateComp, scriptSwatches };
 })();

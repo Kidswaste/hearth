@@ -25,7 +25,7 @@ const Review = (() => {
     videos: [], // { path, size, mtime, lab? }
     cur: null,
     notes: {}, // path -> [{ id, t, text, cat, done, frame, color, draw, by, at }]
-    lib: { fav: [], tags: {}, recordings: [] }, // favorites, tags, Lab recordings saved anywhere
+    lib: { fav: [], tags: {}, recordings: [], exports: [] }, // favorites, tags, Lab recordings and exports saved anywhere
     meta: {}, // path -> { mtime, w, h, d, fps, codec }
     fps: store.get('review.fps', 30), fpsSource: 'default',
     loop: { a: null, b: null, on: true },
@@ -34,7 +34,8 @@ const Review = (() => {
     zoom: { s: 1, x: 0, y: 0 },
     draw: { on: false, tool: store.get('review.drawTool', 'arrow'), color: store.get('review.drawColor', '#ff3b5c') },
     pick: false, picked: null, scopes: false,
-    filter: { fmt: 'all', fav: false, notes: false, lab: false, dur: 'any', project: '', sort: store.get('review.sort', 'new'), group: store.get('review.group', true), q: '' },
+    view: '', mirror: false, pingpong: false, timeMode: store.get('review.timeMode', 'tc'), // channel view, flipped view, loop style, tc | sec | frames
+    filter: { fmt: 'all', fav: false, notes: false, lab: false, dur: 'any', date: 'any', project: '', sort: store.get('review.sort', 'new'), group: store.get('review.group', true), q: '' },
     shuttle: 0, compose: null, selNote: null, hideDone: store.get('review.hideDone', false), catFilter: '',
     audio: null, // analysis of the open file (peaks, beats, drops, bpm)
     strip: [], // filmstrip frames of the open file [{ t, url }]
@@ -75,15 +76,19 @@ const Review = (() => {
       } catch { /* folder may not exist */ }
     }
     // Lab recordings are saved wherever you pick, so they're remembered by path.
+    // Exports made here are remembered the same way (they may sit outside the watched folders).
     const rec = [];
-    for (const p of S.lib.recordings) {
-      const st = await window.hub.fs.stat(p);
-      if (st) rec.push({ path: p, name: base(p), size: st.size, mtime: st.mtime, lab: true });
+    for (const [key, lab] of [['recordings', true], ['exports', false]]) {
+      const keep = [];
+      for (const p of S.lib[key]) {
+        const st = await window.hub.fs.stat(p);
+        if (st) { rec.push({ path: p, name: base(p), size: st.size, mtime: st.mtime, lab, exported: !lab }); keep.push(p); }
+      }
+      if (keep.length !== S.lib[key].length) { S.lib[key] = keep; saveLib(); }
     }
-    if (rec.length !== S.lib.recordings.length) { S.lib.recordings = rec.map((r) => r.path); saveLib(); }
     const seen = new Set();
     const labSet = new Set(S.lib.recordings);
-    return [...rec, ...found].filter((f) => !seen.has(f.path) && seen.add(f.path)).map((f) => ({ ...f, lab: f.lab || labSet.has(f.path) || /\s\d{3,4}x\d{3,4}\.(mp4|webm)$/i.test(f.name || base(f.path)) }))
+    return [...rec, ...found].filter((f) => !seen.has(f.path) && seen.add(f.path)).map((f) => ({ ...f, lab: f.lab || labSet.has(f.path) || (!f.exported && /\s\d{3,4}x\d{3,4}\.(mp4|webm)$/i.test(f.name || base(f.path))) }))
       .sort((a, b) => b.mtime - a.mtime).slice(0, 800);
   }
 
@@ -176,6 +181,7 @@ const Review = (() => {
       if (f.lab && !v.lab) return false;
       if (f.notes && !notesOf(v.path).some((n) => !n.done)) return false;
       if (f.project && projectOf(v) !== f.project) return false;
+      if (f.date !== 'any' && Date.now() - v.mtime > { today: 86400e3, week: 7 * 86400e3, month: 31 * 86400e3 }[f.date]) return false;
       const m = metaOf(v);
       if (f.fmt !== 'all') { if (!m) return false; if (V.aspectOf(m.w, m.h) !== f.fmt) return false; }
       if (f.dur !== 'any') { if (!m) return false; const d = m.d; if (f.dur === 'short' ? d >= 15 : f.dur === 'mid' ? d < 15 || d > 60 : d <= 60) return false; }
@@ -314,6 +320,7 @@ const Review = (() => {
       ...[['new', 'Newest first'], ['old', 'Oldest first'], ['name', 'Name'], ['long', 'Longest'], ['short', 'Shortest'], ['size', 'Biggest file'], ['notes', 'Most notes']].map(([k, l]) => ({ label: `${chk(f.sort === k)}Sort: ${l}`, action: () => setFilter({ sort: k }) })),
       { label: `${chk(f.group)}Group versions (v1, v2…) into one card`, action: () => setFilter({ group: !f.group }) },
       ...[['any', 'Any length'], ['short', 'Under 15 s'], ['mid', '15–60 s'], ['long', 'Over a minute']].map(([k, l]) => ({ label: `${chk(f.dur === k)}${l}`, action: () => setFilter({ dur: k }) })),
+      ...[['any', 'Any date'], ['today', 'Last 24 hours'], ['week', 'This week'], ['month', 'This month']].map(([k, l]) => ({ label: `${chk(f.date === k)}${l}`, action: () => setFilter({ date: k }) })),
       { label: `${chk(!f.project)}All projects`, action: () => setFilter({ project: '' }) },
       ...projects.slice(0, 14).map((p) => ({ label: `${chk(f.project === p)}Project: ${p}`, action: () => setFilter({ project: p }) })),
     ]);
@@ -452,20 +459,31 @@ const Review = (() => {
   function tick(now) {
     if (!refs.video?.isConnected) return;
     const d = vid();
+    // hidden tool and nothing playing: check again a few times a second instead of every frame
+    if (!refs.root.offsetParent && d.paused && !S.shuttle) { lastTick = 0; setTimeout(() => requestAnimationFrame(tick), 300); return; }
     const D = d.duration || 0;
     // reverse shuttle: step the playhead back by hand (browsers can't play backwards)
-    if (S.shuttle < 0 && lastTick) { const t = d.currentTime + (S.shuttle * (now - lastTick)) / 1000; if (t <= (S.loop.on && S.loop.a != null ? S.loop.a : 0)) { seek(S.loop.on && S.loop.b != null ? S.loop.b : D); } else seek(t); }
+    if (S.shuttle < 0 && lastTick) { const t = d.currentTime + (S.shuttle * (now - lastTick)) / 1000; if (t <= (S.loop.on && S.loop.a != null ? S.loop.a : 0) && !S.pingpong) { seek(S.loop.on && S.loop.b != null ? S.loop.b : D); } else seek(t); }
     lastTick = now;
     refs.head.style.left = D ? `${(d.currentTime / D) * 100}%` : '0';
-    if (document.activeElement !== refs.time) refs.time.value = tc(d.currentTime);
-    refs.timeTotal.textContent = `/ ${tc(D)}  · f${frameNow()}`;
+    if (document.activeElement !== refs.time) refs.time.value = fmtTime(d.currentTime);
+    refs.timeTotal.textContent = `/ ${fmtTime(D)}${S.timeMode === 'frames' ? '' : `  · f${frameNow()}`}`;
     refs.play.textContent = d.paused && S.shuttle <= 0 ? '▶' : '❚❚';
     const { a, b, on: lo } = S.loop;
-    if (lo && a != null && !d.paused && d.currentTime >= (b ?? D) - 0.5 / S.fps) seek(a);
+    if (lo && a != null && !d.paused && d.currentTime >= (b ?? D) - 0.5 / S.fps) { if (S.pingpong) { d.pause(); refs.cmp.pause(); S.shuttle = -Number(refs.speed.value || 1); } else seek(a); }
+    if (S.pingpong && lo && a != null && S.shuttle < 0 && d.currentTime <= a + 0.5 / S.fps) { S.shuttle = 0; seek(a); play(); }
     if (S.cmp.path && !d.paused && Math.abs(refs.cmp.currentTime - (d.currentTime + S.cmp.offset / S.fps)) > 1.5 / S.fps + 0.03) refs.cmp.currentTime = d.currentTime + S.cmp.offset / S.fps;
     if (S.scopes && (d.paused ? scopesDirty : now - lastScope > 250)) drawScopes(now);
     showNoteDrawings();
     requestAnimationFrame(tick);
+  }
+  // The time readout: timecode, seconds or frame numbers (click the total to switch).
+  const fmtTime = (t) => (S.timeMode === 'sec' ? `${(t || 0).toFixed(3)}s` : S.timeMode === 'frames' ? `f${V.frameAt(t || 0, S.fps)}` : tc(t));
+  function cycleTimeMode(mode) {
+    const modes = ['tc', 'sec', 'frames'];
+    S.timeMode = modes.includes(mode) ? mode : modes[(modes.indexOf(S.timeMode) + 1) % modes.length];
+    store.set('review.timeMode', S.timeMode);
+    return S.timeMode;
   }
   let flashTimer;
   function flash(text) {
@@ -473,6 +491,32 @@ const Review = (() => {
     refs.flash.classList.add('on');
     clearTimeout(flashTimer);
     flashTimer = setTimeout(() => refs.flash.classList.remove('on'), 700);
+  }
+
+  // ---------- view modes: one channel, luma (values only), negative, mirrored (fresh eyes) ----------
+  const VIEWS = [['', 'Normal'], ['r', 'Red channel'], ['g', 'Green channel'], ['b', 'Blue channel'], ['luma', 'Luma (values only)'], ['invert', 'Negative'], ['contrast', 'High contrast (spot banding)'], ['sat', 'Saturation boost (spot dull areas)']];
+  function setView(v) {
+    S.view = VIEWS.some(([k]) => k === v) ? v : '';
+    refs.frame.style.setProperty('--vr-filter', S.view ? `url(#vr-f-${S.view})` : 'none');
+    refs.viewBtn?.classList.toggle('on', Boolean(S.view) || S.mirror);
+    if (S.view) flash(VIEWS.find(([k]) => k === S.view)[1]);
+    return S.view;
+  }
+  function setMirror(on) { S.mirror = on ?? !S.mirror; refs.frame.classList.toggle('mirrored', S.mirror); refs.viewBtn?.classList.toggle('on', Boolean(S.view) || S.mirror); flash(S.mirror ? 'Mirrored' : 'Not mirrored'); return S.mirror; }
+  function viewMenu(anchor) {
+    const r = anchor.getBoundingClientRect();
+    showMenu(r.left, r.top - 8, [
+      ...VIEWS.map(([k, l]) => ({ label: `${S.view === k ? '✓ ' : '   '}${l}`, action: () => setView(k) })),
+      { label: `${S.mirror ? '✓ ' : '   '}Mirror (fresh eyes)`, action: () => setMirror() },
+      { label: `${S.pingpong ? '✓ ' : '   '}Loop back and forth (ping-pong)`, action: () => { S.pingpong = !S.pingpong; } },
+    ]);
+  }
+  function filterDefs() {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'vr-defs');
+    const m = (id, values) => `<filter id="vr-f-${id}" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="${values}"/></filter>`;
+    svg.innerHTML = `<defs>${m('r', '1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 1 0')}${m('g', '0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 1 0')}${m('b', '0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 1 0')}${m('luma', '.2126 .7152 .0722 0 0 .2126 .7152 .0722 0 0 .2126 .7152 .0722 0 0 0 0 0 1 0')}${m('invert', '-1 0 0 0 1 0 -1 0 0 1 0 0 -1 0 1 0 0 0 1 0')}${m('contrast', '3 0 0 0 -1 0 3 0 0 -1 0 0 3 0 -1 0 0 0 1 0')}<filter id="vr-f-sat"><feColorMatrix type="saturate" values="3"/></filter></defs>`;
+    return svg;
   }
 
   // ---------- zoom / pan ----------
@@ -1022,13 +1066,15 @@ const Review = (() => {
         ta.addEventListener('blur', () => updateNote(n.id, { text: ta.value.trim() || n.text }));
         text.replaceWith(ta); ta.focus();
       });
-      return el('div', { class: `vr-note${n.done ? ' done' : ''}${n.id === S.selNote ? ' sel' : ''}`, dataset: { id: n.id }, style: { '--c': k.color } },
+      return el('div', { class: `vr-note${n.done ? ' done' : ''}${n.id === S.selNote ? ' sel' : ''}${n.prio ? ' prio' : ''}`, dataset: { id: n.id }, style: { '--c': k.color }, on: { contextmenu: (e) => { e.preventDefault(); noteMenu(n, e.clientX, e.clientY); } } },
         el('div', { class: 'vr-note-head' },
           el('input', { type: 'checkbox', checked: n.done, title: n.done ? 'Reopen' : 'Mark as resolved', on: { change: (e) => updateNote(n.id, { done: e.target.checked }) } }),
           el('button', { class: 'vr-tc', text: tc(n.t), title: 'Go to this frame', on: { click: () => selectNote(n.id) } }),
           el('button', { class: 'vr-catchip', text: k.name, title: 'Change category', on: { click: (e) => { const r = e.target.getBoundingClientRect(); showMenu(r.left, r.bottom, V.CATEGORIES.map((c) => ({ label: c.name, action: () => updateNote(n.id, { cat: c.id }) }))); } } }),
           n.by && n.by !== 'you' ? el('span', { class: 'vr-by', text: n.by === 'director' ? 'Director' : n.by }) : null,
           n.draw?.length ? el('span', { class: 'vr-by', text: '✎', title: 'Has a drawing' }) : null,
+          n.prio ? el('span', { class: 'vr-prio', text: '❗', title: 'Must fix' }) : null,
+          n.carried ? el('span', { class: 'vr-by', text: '↪', title: `Carried over from ${n.carried}` }) : null,
           el('span', { class: 'spacer' }),
           el('span', { class: 'hint vr-idx', text: `#${all.indexOf(n) + 1}` }),
           el('button', { class: 'msg-act vr-x', text: '×', title: 'Delete note', on: { click: () => deleteNote(n.id) } })),
@@ -1037,6 +1083,23 @@ const Review = (() => {
         n.color ? el('span', { class: 'vr-colortag' }, el('i', { style: { background: n.color } }), n.color) : null);
     }) : [el('p', { class: 'hint vr-empty', text: all.length ? 'No notes match.' : 'Pause where something should change and press N. Draw on the frame with D. Each note keeps the timecode, a category and a frame grab.' })]));
     refs.sendBtn.disabled = !open;
+  }
+  function noteMenu(n, x, y) {
+    showMenu(x, y, [
+      { label: 'Go to this frame', action: () => selectNote(n.id) },
+      { label: 'Loop 1 s around it', action: () => { setLoop(Math.max(0, n.t - 0.5), Math.min(dur(), n.t + 0.5)); seek(Math.max(0, n.t - 0.5)); play(); } },
+      { label: n.prio ? 'Not urgent' : '❗ Must fix (urgent)', action: () => updateNote(n.id, { prio: !n.prio }) },
+      { label: n.done ? 'Reopen' : '✓ Resolve', action: () => updateNote(n.id, { done: !n.done }) },
+      { label: 'Move to the playhead', action: () => updateNote(n.id, { t: vid().currentTime }) },
+      { label: 'Copy text with timecode', action: () => copyText(`${tc(n.t)}  ${n.text}`, 'Note copied') },
+      n.frame ? { label: 'Show the frame grab file', action: () => window.hub.fs.reveal(n.frame) } : null,
+      ...V.CATEGORIES.map((c) => ({ label: `${n.cat === c.id ? '✓ ' : '   '}${c.name}`, action: () => updateNote(n.id, { cat: c.id }) })),
+      { label: 'Delete', danger: true, action: () => deleteNote(n.id) },
+    ].filter(Boolean));
+  }
+  // Every open note in the library (for /inbox): newest videos first.
+  function allOpenNotes() {
+    return S.videos.flatMap((v) => notesOf(v.path).filter((n) => !n.done).map((n) => ({ path: v.path, note: n })));
   }
   function exportNotes(kind = 'md', { save = false } = {}) {
     const list = notesOf();
@@ -1090,7 +1153,8 @@ const Review = (() => {
     const agent = agentFor(key);
     if (!agent) { toast(key === 'astra' ? 'Astra (a Codex agent) isn\'t set up' : 'Add a native Claude agent first', { type: 'error' }); return null; }
     const d = vid();
-    const lines = list.map((n) => `- ${tc(n.t)} (${n.t.toFixed(2)} s) [${V.category(n.cat).name}]: ${n.text}${n.color ? ` [color ${n.color}]` : ''}${n.draw?.length ? ' (marked on the frame)' : ''}`).join('\n');
+    list.sort((a, b) => Number(Boolean(b.prio)) - Number(Boolean(a.prio)) || a.t - b.t);
+    const lines = list.map((n) => `- ${tc(n.t)} (${n.t.toFixed(2)} s) [${V.category(n.cat).name}${n.prio ? ', MUST FIX' : ''}]: ${n.text}${n.color ? ` [color ${n.color}]` : ''}${n.draw?.length ? ' (marked on the frame)' : ''}`).join('\n');
     const text = `Visual feedback on the render "${base(S.cur.path)}"\nFile: ${S.cur.path}\n${d.videoWidth}×${d.videoHeight} (${V.aspectOf(d.videoWidth, d.videoHeight)}), ${fmtDur(d.duration)}, timecodes at ${S.fps} fps.\n\n${lines}\n\nFind the After Effects script/project (or Lab sketch) that produces this render, apply these changes, and tell me what you changed and how to re-render. Frame grabs of each moment are attached.`;
     const frames = list.map((n) => n.frame).filter(Boolean);
     if (sheet) { try { const { image } = await contactSheet({ count: 12 }); frames.push(await window.hub.saveAttachment('contact-sheet.jpg', image.data)); } catch { /* optional */ } }
@@ -1126,7 +1190,7 @@ const Review = (() => {
       exportJobs.delete(ev.id);
       j.toast.remove();
       if (ev.code === 0) {
-        S.lib.recordings = [...new Set([ev.output, ...S.lib.recordings])].slice(0, 300); // exports show in the library even outside the watched folders
+        S.lib.exports = [...new Set([ev.output, ...S.lib.exports])].slice(0, 300); // exports show in the library even outside the watched folders
         saveLib();
         toast(`${j.label} done (${ev.seconds}s)`, { action: { label: 'Open', fn: () => load().then(() => openVideo(ev.output)) }, timeout: 9000 });
         load();
@@ -1156,6 +1220,16 @@ const Review = (() => {
     emit('export', { preset: p.id, output });
     return { id, output, done };
   }
+  // One render → the four social formats (9:16, 4:5, 1:1, 16:9 minus the one it already is), one after another.
+  async function exportAllSocials({ fit = 'crop' } = {}) {
+    const d = vid();
+    const cur = V.aspectOf(d.videoWidth, d.videoHeight);
+    const ids = ['reels', 'feed45', 'square', 'yt1080'].filter((id) => { const p = V.EXPORT_PRESETS.find((x) => x.id === id); return V.aspectOf(p.w, p.h) !== cur; });
+    const outs = [];
+    for (const id of ids) { const j = await runExport(id, { fit }); if (!j) break; outs.push(j.output); await j.done; }
+    return outs;
+  }
+  const estimateMB = (p, seconds) => (p.mbps && seconds ? ((p.mbps + 0.25) * seconds) / 8 : null);
   function exportMenu(anchor) {
     const d = vid();
     const cur = d?.videoWidth ? V.aspectOf(d.videoWidth, d.videoHeight) : null;
@@ -1165,13 +1239,17 @@ const Review = (() => {
     const items = V.EXPORT_PRESETS.map((p) => {
       const pf = p.w && p.h ? V.aspectOf(p.w, p.h) : null;
       const reshape = pf && cur && pf !== cur;
-      return { label: `${p.name}${p.w && p.h ? ` · ${p.w}×${p.h}` : ''}${p.fps ? ` · ${p.fps} fps` : ''}${p.mbps ? ` · ${p.mbps} Mbps` : ''}${reshape ? ` (${crop === pf ? 'your crop' : 'center crop'})` : ''}`, action: () => (ff ? runExport(p.id) : showPreset(p)) };
+      const mb = estimateMB(p, S.loop.a != null && S.loop.on ? S.loop.b - S.loop.a : d?.duration);
+      return { label: `${p.name}${p.w && p.h ? ` · ${p.w}×${p.h}` : ''}${p.fps ? ` · ${p.fps} fps` : ''}${p.mbps ? ` · ${p.mbps} Mbps` : ''}${mb ? ` · ≈${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB` : ''}${reshape ? ` (${crop === pf ? 'your crop' : 'center crop'})` : ''}`, action: () => (ff ? runExport(p.id) : showPreset(p)) };
     });
     showMenu(r.left, r.top - 8, [
+      ff ? { label: 'Open the exports folder', action: () => S.cur && window.hub.fs.open(join(dirOf(S.cur.path), 'exports')).catch(() => toast('No exports yet')) } : null,
       { label: ff ? `Export with ffmpeg${S.loop.a != null && S.loop.on ? ' (the loop range)' : ''}:` : 'ffmpeg not found: click a preset to see its settings', action: () => (ff ? null : presetsDialog()) },
       ...items,
+      ff ? { label: 'All social formats (9:16 · 4:5 · 1:1 · 16:9) in one go', action: () => exportAllSocials() } : null,
+      ff ? { label: 'All social formats, blurred fill instead of crop', action: () => exportAllSocials({ fit: 'blur' }) } : null,
       { label: 'All presets with tips…', action: presetsDialog },
-    ]);
+    ].filter(Boolean));
   }
   function showPreset(p) { Modal.alert(p.name, presetText(p)); }
   const presetText = (p) => `${p.w && p.h ? `${p.w}×${p.h}` : p.h ? `${p.h}p` : 'Same size as the source'} · ${p.fps ? `${p.fps} fps` : 'same frame rate'} · ${p.codec === 'prores' ? 'ProRes 422 HQ' : p.codec === 'vp9' ? 'VP9' : p.codec === 'gif' ? 'GIF' : `H.264 High, ${p.mbps} Mbps`} · audio ${p.audio}\nLimits: ${p.max}${p.tip ? `\n${p.tip}` : ''}`;
@@ -1235,7 +1313,7 @@ const Review = (() => {
     [', / .', 'Previous / next beat'], ['Home / End', 'Start / end'], ['I / O', 'Loop in / out at the playhead'], ['X', 'Clear loop'], ['Shift+L', 'Loop on / off'],
     ['N', 'New note at the playhead'], ['D', 'Draw on the frame'], ['P', 'Color picker'], ['Y', 'Scopes'], ['C', 'Compare mode (with B open)'], ['\\', 'Swap A / B'],
     ['G', 'Next guide'], ['S', 'Next safe zone'], ['Z', 'Zoom 100% / fit (wheel zooms, drag pans)'], ['F', 'Fullscreen'], ['M', 'Mute'], ['B', 'Show / hide the library'],
-    ['[ / ]', 'Slower / faster'], [`${MOD}+C`, 'Copy frame'], [`${MOD}+S`, 'Save frame'], ['?', 'This list'],
+    ['[ / ]', 'Slower / faster'], ['< / >', 'Previous / next section or drop'], ['V', 'Next view: R / G / B / luma / negative…'], ['H', 'Mirror the frame'], ['T', 'Timecode / seconds / frames'], ['- / =', 'Volume'], [`${MOD}+C`, 'Copy frame'], [`${MOD}+S`, 'Save frame'], ['?', 'This list'],
   ];
   function shortcutsHelp() { Modal.alert('Video Review shortcuts', KEYS.map(([k, d]) => `${k.padEnd(12)} ${d}`).join('\n')); }
   function onKey(e) {
@@ -1250,6 +1328,8 @@ const Review = (() => {
       arrowleft: () => step(e.shiftKey ? -10 : -1), arrowright: () => step(e.shiftKey ? 10 : 1),
       arrowup: () => jumpNote(-1), arrowdown: () => jumpNote(1),
       ',': () => { const b = beatsNear(vid().currentTime, -1); if (b != null) seek(b); }, '.': () => { const b = beatsNear(vid().currentTime, 1); if (b != null) seek(b); },
+      '<': () => jumpDrop(-1), '>': () => jumpDrop(1), v: () => cycleView(), h: () => setMirror(), t: () => flash(`Time in ${cycleTimeMode() === 'tc' ? 'timecode' : S.timeMode === 'sec' ? 'seconds' : 'frames'}`),
+      '-': () => setVolume(vid().volume - 0.1), '=': () => setVolume(vid().volume + 0.1), '+': () => setVolume(vid().volume + 0.1),
       home: () => seek(0), end: () => seek(dur()), i: () => setLoop(vid().currentTime, S.loop.b ?? dur()), o: () => setLoop(S.loop.a ?? 0, vid().currentTime), x: () => setLoop(null),
       n: () => openComposer(), d: () => setDraw(), p: () => setPick(), y: () => setScopes(), c: () => cycleCompare(), '\\': swapAB,
       g: () => cycleOverlay('guide'), s: () => cycleOverlay('safe'), z: () => zoomTo(S.zoom.s === 1 ? '100' : 'fit'), f: fullscreen,
@@ -1258,6 +1338,14 @@ const Review = (() => {
     }[lk];
     if (act) { e.preventDefault(); act(); }
   }
+  function jumpDrop(dir) {
+    const t = vid().currentTime;
+    const drops = [...(S.audio?.drops || []), ...(S.audio?.sections || []).map((x) => x.start)].sort((a, b) => a - b);
+    const x = dir > 0 ? drops.find((d) => d > t + 0.05) : [...drops].reverse().find((d) => d < t - 0.05);
+    if (x != null) { seek(x); flash(dir > 0 ? 'Next section ▸' : '◂ Previous section'); }
+  }
+  function cycleView() { const i = VIEWS.findIndex(([k]) => k === S.view); setView(VIEWS[(i + 1) % VIEWS.length][0]); if (!S.view) flash('Normal view'); }
+  function setVolume(v) { const x = clamp(Number(v), 0, 1); vid().volume = x; vid().muted = x === 0; store.set('review.volume', x); flash(`Volume ${Math.round(x * 100)}%`); return x; }
   function toggleLoop(force) {
     if (S.loop.a == null) return false;
     S.loop.on = force ?? !S.loop.on;
@@ -1406,7 +1494,7 @@ const Review = (() => {
     refs.time = el('input', { class: 'vr-time', value: '00:00:00:00', title: 'Type a time and press Enter: 1:23, 12.5, 00:00:04:12, f240, +10f, 50%', on: {
       keydown: (e) => { e.stopPropagation(); if (e.key === 'Enter') { goto(refs.time.value); refs.time.blur(); } else if (e.key === 'Escape') refs.time.blur(); },
     } });
-    refs.timeTotal = el('span', { class: 'vr-time-total' });
+    refs.timeTotal = el('span', { class: 'vr-time-total', title: 'Click: timecode / seconds / frames (T)', on: { click: () => cycleTimeMode() } });
     refs.speed = el('select', { class: 'vr-speed', title: 'Playback speed ([ and ])', on: { change: (e) => setSpeed(e.target.value) } }, SPEEDS.map((s) => el('option', { value: s, text: `${s}×`, selected: s === 1 })));
     refs.fpsBtn = el('button', { class: 'vr-ico vr-fps', text: `${S.fps} fps`, on: { click: fpsMenu } });
     refs.loopBtn = ico('⟲', 'Loop the in/out range (I / O to set, drag the top of the timeline, Shift+L on/off, X clears)', () => (S.loop.a == null ? setLoop(vid().currentTime, Math.min(dur(), vid().currentTime + 2)) : toggleLoop()));
@@ -1415,6 +1503,7 @@ const Review = (() => {
     refs.drawBtn = ico('✎', 'Draw on the frame for a note (D)', () => setDraw());
     refs.pickBtn = ico('◉', 'Color picker (P)', () => setPick());
     refs.scopesBtn = ico('▤', 'Scopes: histogram and luma waveform (Y)', () => setScopes());
+    refs.viewBtn = ico('◐', 'View: one channel, luma, negative, mirrored, ping-pong loop (V, H)', (e) => viewMenu(e.currentTarget));
     refs.bpm = el('span', { class: 'vr-bpm', title: 'Tempo and beats found in the audio (, and . jump between beats)' });
     refs.info = el('div', { class: 'vr-info' });
     const transport = el('div', { class: 'vr-transport' },
@@ -1422,7 +1511,7 @@ const Review = (() => {
       el('div', { class: 'vr-tgroup vr-tc-group' }, refs.time, refs.timeTotal),
       el('div', { class: 'vr-tgroup' }, refs.speed, refs.fpsBtn, refs.loopBtn),
       el('span', { class: 'spacer' }), refs.bpm,
-      el('div', { class: 'vr-tgroup' }, refs.cmpBtn, refs.overlayBtn, refs.drawBtn, refs.pickBtn, refs.scopesBtn,
+      el('div', { class: 'vr-tgroup' }, refs.cmpBtn, refs.overlayBtn, refs.viewBtn, refs.drawBtn, refs.pickBtn, refs.scopesBtn,
         ico('⧉', `Copy frame (${MOD}+C) · right-click: save PNG`, copyFrame), ico('⛶', 'Fullscreen review (F)', fullscreen)));
     transport.querySelector('[title^="Copy frame"]').addEventListener('contextmenu', (e) => { e.preventDefault(); saveFrame(); });
 
@@ -1455,7 +1544,8 @@ const Review = (() => {
       refs.composer, refs.noteList,
       el('div', { class: 'vr-notes-foot' }, refs.sendBtn, ico('▾', 'Send to Claude, Astra, with a contact sheet…', (e) => sendMenu(e.currentTarget), 'vr-send-more')));
 
-    root.append(el('div', { class: 'vr' }, lib, refs.main, notes));
+    root.append(el('div', { class: 'vr' }, lib, refs.main, notes), filterDefs());
+    vid().volume = store.get('review.volume', 1);
     root.classList.toggle('lib-hidden', store.get('review.libHidden', false));
     root.addEventListener('keydown', onKey);
     root.tabIndex = -1;
@@ -1510,7 +1600,7 @@ const Review = (() => {
     if (!load.once) {
       load.once = true;
       [S.notes, S.lib, S.meta] = await Promise.all([window.hub.kvGet('video-notes', {}), window.hub.kvGet('video-library', {}), window.hub.kvGet('video-meta', {})]);
-      S.lib = { fav: [], tags: {}, recordings: [], ...S.lib };
+      S.lib = { fav: [], tags: {}, recordings: [], exports: [], ...S.lib };
       upgradeNotes();
     }
     const next = await scan();
@@ -1684,7 +1774,8 @@ const Review = (() => {
     get state() { return S; }, get current() { return S.cur; }, get videos() { return S.videos; }, filtered, videoDirs, setFolders,
     open: openVideo, play, pause, togglePlay, step, seek, goto, shuttle, setSpeed, setLoop, toggleLoop, setFpsUser,
     compare: compareWith, setCompareMode, stopCompare, swapAB, CMP_MODES, setWipe,
-    setSafe, setGuide, setCrop, setDraw, setPick, setScopes, zoomTo, fullscreen, toggleLib,
+    setSafe, setGuide, setCrop, setDraw, setPick, setScopes, zoomTo, fullscreen, toggleLib, setView, setMirror, VIEWS, setVolume, cycleTimeMode, jumpDrop,
+    setPingPong: (on) => { S.pingpong = on ?? !S.pingpong; return S.pingpong; }, exportAllSocials, allOpenNotes, estimateMB,
     addNote, updateNote, deleteNote, notes: notesOf, selectNote, openComposer, exportNotes, carryNotes,
     sendFeedback, agentFor, grabToAttachment, copyFrame, saveFrame, contactSheet,
     toggleFav, setTags, tagsOf, isFav, setFilter, versionsOf, verLabel, fmtOf, metaOf,
