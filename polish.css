@@ -135,7 +135,7 @@ html[data-skin~="forge"] #menu button { padding: 6px 12px; }
 .composer .attach-btn { min-width: 34px; min-height: 34px; display: inline-grid; place-items: center; }
 :root[data-look~=v2] .composer > .primary { min-height: 34px; min-width: 78px; }
 /* Send glows faintly while there is something to send, so the main action reads at a glance */
-:root[data-look~=v2] .composer:has(textarea:not(:placeholder-shown)) > .primary:not(.stop):not(:disabled) { box-shadow: inset 0 1px 0 #ffffffb0, inset 0 -2px 0 #00000040, inset 0 0 0 1px color-mix(in srgb, var(--fh-gold-lo) 60%, transparent), inset 0 0 calc(10px * var(--glow)) #fff6; }
+:root[data-look~=v2] #app .composer:has(textarea:not(:placeholder-shown)) > .primary:not(.stop):not(:disabled) { box-shadow: inset 0 1px 0 #ffffffb0, inset 0 -2px 0 #00000040, inset 0 0 0 1px color-mix(in srgb, var(--fh-gold-lo) 60%, transparent), inset 0 0 calc(10px * var(--glow)) #fff6; }
 /* the char / token counter under the composer is quieter and never overlaps the frame */
 .composer-count { bottom: -15px; font-variant-numeric: tabular-nums; opacity: .8; }
 /* message footer: one height, tabular numbers, actions hover in the active color */
@@ -192,14 +192,14 @@ html[data-skin~="forge"] #menu button { padding: 6px 12px; }
   color: var(--m-chrome-ink); background: linear-gradient(180deg, #e9ecef, #9aa1a8 52%, #c9ced3); border-color: #00000080; box-shadow: inset 0 1px 0 #fff;
 }
 /* Tap: a forged pad with a gold rim; once the tempo locks it turns gold chrome */
-:root[data-look~=v2] .media-bar .mb-tap {
+:root[data-look~=v2] .media-bar .ghost.mb-tap {
   border: 1px solid color-mix(in srgb, var(--fh-gold) 60%, var(--line-hi)); color: var(--fh-gold-text);
   background: var(--m-sheen) 160% 0 / 250% 100% no-repeat, var(--tx-brushed), linear-gradient(180deg, color-mix(in srgb, var(--fh-gold) 14%, var(--fh-iron-1)), var(--fh-iron-2));
   box-shadow: var(--m-bevel), inset 0 0 calc(10px * var(--glow)) color-mix(in srgb, var(--fh-gold) calc(16% * var(--glow)), transparent);
   letter-spacing: .12em; text-transform: uppercase; min-height: 30px;
 }
-:root[data-look~=v2] .media-bar .mb-tap.on { color: var(--m-gold-ink); text-shadow: 0 1px 0 #fff6; background: var(--m-sheen) 160% 0 / 250% 100% no-repeat, var(--m-gold); border-color: var(--fh-gold-lo); }
-:root[data-look~=v2] .media-bar .mb-tap.flash { animation: mb-tapflash .18s ease-out, m-sweep .4s ease; }
+:root[data-look~=v2] .media-bar .ghost.mb-tap.on { color: var(--m-gold-ink); text-shadow: 0 1px 0 #fff6; background: var(--m-sheen) 160% 0 / 250% 100% no-repeat, var(--m-gold); border-color: var(--fh-gold-lo); }
+:root[data-look~=v2] .media-bar .ghost.mb-tap.flash { animation: mb-tapflash .18s ease-out, m-sweep .4s ease; }
 /* Freeze: frosted glass with an ice edge; frozen it turns to ice chrome */
 :root[data-look~=v2] .stage-pill .freeze-btn {
   color: var(--fh-info); border: 1px solid color-mix(in srgb, var(--fh-info) 45%, transparent);
@@ -269,7 +269,7 @@ html[data-skin~="forge"] #menu button { padding: 6px 12px; }
 @container (max-width: 520px) {
   .media-bar .mb-main .tb-group { flex-wrap: wrap; row-gap: 4px; }
 }
-@container (max-width: 460px) {
+@container (max-width: 560px) {
   .stage-pill { flex-wrap: nowrap; gap: 2px; padding: 2px; }
   .stage-pill .stage-seg .stage-btn { padding: 3px 5px; font-size: 10.5px; }
   .stage-pill .freeze-btn { padding: 3px 7px; }
@@ -293,7 +293,7 @@ html[data-skin~="forge"] #menu button { padding: 6px 12px; }
 html[data-skin~="forge"] .tweaks .tw-act > button { border-radius: 0 !important; }
 html[data-skin~="forge"] .tweaks .tw-act:first-child > button:first-child { clip-path: polygon(5px 0, 100% 0, 100% 100%, 0 100%, 0 5px); }
 html[data-skin~="forge"] .tweaks .tw-act:last-child > button:last-child { clip-path: polygon(0 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%); }
-:root[data-look~=v2] .tweaks .tw-act .primary.tw-split { border-left: 1px solid color-mix(in srgb, var(--fh-gold-lo) 70%, #000); }
+:root[data-look~=v2] #app .tweaks .tw-act .primary.tw-split { border-left: 1px solid color-mix(in srgb, var(--fh-gold-lo) 70%, #000); }
 /* panel heads (Layers, Sliders): small primary buttons match the head height */
 :root[data-look~=v2] :is(.tweaks, .layers) .tw-head .primary.small:not(.tw-big) { padding: 3px 12px; min-height: 26px; font-size: 11px; }
 :is(.tweaks, .layers) .tw-head { min-height: 38px; }
@@ -336,8 +336,8 @@ html[data-skin~="forge"] .tweaks .tw-act:last-child > button:last-child { clip-p
 .tool-dock-divider:hover { background: color-mix(in srgb, var(--ui-gold) 60%, transparent); }
 :root[data-look~=v2] .tool-dock { background: var(--tx-brushed-v), linear-gradient(180deg, var(--fh-iron-2), var(--fh-iron-3)); border-left-color: var(--line-hi); }
 /* scene editor / references / sketch browser cards share the forged plate */
-:root[data-look~=v2] :is(.tn-preset, .ref-card, .sk-card) { border-radius: 0; border-color: var(--line); background: var(--tx-brushed), linear-gradient(180deg, color-mix(in srgb, var(--fh-strong) 3%, var(--fh-iron-1)), var(--fh-iron-2)); box-shadow: var(--m-bevel); }
-:root[data-look~=v2] :is(.tn-preset, .ref-card, .sk-card):hover { border-color: color-mix(in srgb, var(--fh-gold) 60%, var(--line-hi)); }
+:root[data-look~=v2] :is(.tn-preset, .refs-card, .sb-card) { border-radius: 0; border-color: var(--line); background: var(--tx-brushed), linear-gradient(180deg, color-mix(in srgb, var(--fh-strong) 3%, var(--fh-iron-1)), var(--fh-iron-2)); box-shadow: var(--m-bevel); }
+:root[data-look~=v2] :is(.tn-preset, .refs-card, .sb-card):hover { border-color: color-mix(in srgb, var(--fh-gold) 60%, var(--line-hi)); }
 
 /* ====================================================================================================== */
 /* ---------- node editor ---------- */
@@ -428,6 +428,21 @@ html[data-skin~="forge"] .tweaks .tw-act:last-child > button:last-child { clip-p
 :root[data-look~=v2] :is(.vr-hover span, .vr-zoom, .vr-pickchip, .vr-label) { background: color-mix(in srgb, var(--fh-pop) 90%, transparent); }
 :root[data-look~=v2] .vr-timeline { box-shadow: inset 0 0 0 1px var(--line-hi), inset 0 1px 4px var(--fh-shade); }
 :root[data-look~=v2] .vr-send-more { border-color: var(--fh-gold-lo); }
+/* references and sketch browser: dialog titles match every other dialog, thumbnails are wells, the open sketch is lit */
+:root[data-look~=v2] :is(.refs-head h3, .sb-dialog h3, .sb-dialog .refs-head b) { font-family: var(--font-head); text-transform: uppercase; letter-spacing: .18em; font-size: 14px; color: var(--fh-gold); text-shadow: 0 0 calc(14px * var(--glow)) var(--g-gold); }
+:root[data-look~=v2] :is(.refs-thumb, .sb-thumb) { border-radius: 0; box-shadow: inset 0 0 0 1px var(--line), inset 0 2px 6px var(--fh-shade); background: var(--fh-ink); }
+:root[data-look~=v2] .sb-card.on { border-color: var(--fh-gold); box-shadow: var(--m-bevel), inset 0 0 0 1px var(--fh-gold), inset 0 0 calc(12px * var(--glow)) var(--g-gold); }
+.refs-actions button { min-height: 24px; }
+/* After Effects calculators: cards fit the drawer (no fields hanging off the right edge) */
+.calc-grid { grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 10px; }
+.calc-card { padding: 12px; min-width: 0; }
+.calc-card .row { flex-wrap: wrap; min-width: 0; }
+.calc-card :is(input, select) { min-width: 0; max-width: 100%; }
+.calc-card .grid2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 10px; }
+.calc-card .grid2 > label { min-width: 0; }
+.calc-card .grid2 :is(input, select) { width: 100%; }
+.calc-card.wide { grid-column: 1 / -1; }
+:root[data-look~=v2] .calc-card h3 { font-family: var(--font-head); color: var(--fh-gold-text); letter-spacing: .04em; }
 /* the library's filter chips stay on one row and scroll sideways, instead of taking three rows */
 .vr-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent); padding-right: 14px; }
 .vr-chips::-webkit-scrollbar { display: none; }
