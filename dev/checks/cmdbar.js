@@ -123,13 +123,17 @@ try {
   dlg.close();
   // clickable command in a reply (DOM like a reply's inline code)
   const list = Native.view(claude.id).list;
-  const msg = el('div', { class: 'msg assistant' }, el('div', { class: 'body', html: '<p>Try <code>/echo from reply</code> or <code>/size &lt;ratio&gt;</code> or <code>/nope</code></p>' }));
+  const msg = el('div', { class: 'msg assistant' }, el('div', { class: 'body', html: '<p>Try <code>/echo from reply</code> or <code>/size &lt;ratio&gt;</code> or <code>/nope</code></p><pre><code>/echo one\n/echo two</code></pre>' }));
   list.append(msg);
   await wait(400);
   out.replyCodes = [...msg.querySelectorAll('code')].map((c) => `${c.textContent}:${c.classList.contains('cmd-code')}`);
   msg.querySelector('code.cmd-code')?.click();
   await wait(150);
   out.replyRan = [...list.querySelectorAll('.msg.note .body')].at(-1)?.textContent;
+  out.runAll = msg.querySelector('.cmd-run-all')?.textContent;
+  msg.querySelector('.cmd-run-all')?.click();
+  await wait(200);
+  out.runAllRan = [...list.querySelectorAll('.msg.note .body')].slice(-2).map((n) => n.textContent).join(' | ');
   msg.querySelector('code.cmd-code.fill')?.click();
   await wait(150);
   out.replyFill = document.querySelector('.cmdbar-input')?.value;
@@ -176,6 +180,27 @@ try {
   key('1', { altKey: true, code: 'Digit1' });
   await wait(200);
   out.alt1 = card().replace(/\s+/g, ' ').slice(0, 60) + ' | ' + document.querySelector('.cmdbar-input').value;
+  // grep / head pipes, /remind, Ctrl+R history search, pinned chips, ↶ in the card
+  await CmdBar.runLine('/help list | grep freeze');
+  out.grep = card().replace(/\s+/g, ' ').slice(0, 120);
+  await CmdBar.runLine('/cmd-history | head 2');
+  out.head = card().split('\n').filter(Boolean).length;
+  await CmdBar.runLine('/remind in 30m take a break');
+  out.remind = card().replace(/\s+/g, ' ').slice(-60);
+  out.remindTimer = CmdBar.timers().map((t) => t.label).join();
+  await CmdBar.runLine('/timer-cancel all');
+  document.querySelector('.cmdbar-input').focus();
+  await type('calc');
+  key('r', { ctrlKey: true });
+  await wait(100);
+  out.ctrlR = card().replace(/\s+/g, ' ').slice(0, 80);
+  await type('');
+  CmdBar.close(); CmdBar.open('');
+  await type('');
+  CmdBar.close(); CmdBar.open('');
+  out.pins = [...document.querySelectorAll('.cmdbar-pins .ex-chip')].map((b) => b.textContent);
+  await CmdBar.runLine('/shuffle');
+  out.undoBtn = [...document.querySelectorAll('.cmdbar-out-acts button')].map((b) => b.textContent).join(' ');
   // shell-like prefixes in the bar
   await CmdBar.runLine('=2+2'); out.eq = card().replace(/\s+/g, ' ').slice(-12);
   await CmdBar.runLine('!calc'); out.bangCalc = card().replace(/\s+/g, ' ').slice(-14);

@@ -394,14 +394,14 @@ const Commands = (() => {
   }
 
   // "/x args | draft" → { cmd: '/x args', to: 'draft' } (only a known target after the last " | " is a pipe).
-  const PIPE = /^([\s\S]*?\S)\s+\|\s*(draft|copy|send|note|notes|say|file|speak|\/[\w-]+[^|]*)\s*$/i;
+  const PIPE = /^([\s\S]*?\S)\s+\|\s*(draft|copy|send|note|notes|say|file|speak|grep\s+[^|]+|head(?:\s+\d+)?|\/[\w-]+[^|]*)\s*$/i;
   function splitPipe(text) {
     const m = String(text || '').match(PIPE);
     return m && parse(m[1].trim()) ? { cmd: m[1].trim(), to: m[2].trim() } : null;
   }
   // Text without Markdown marks (for pipes into the draft, the clipboard and other commands).
   const plain = (t) => String(t || '').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/`([^`]+)`/g, '$1').trim();
-  async function pipeTo(to, text, agentId, opts) {
+  async function pipeTo(to, text, agentId, opts, raw = text) {
     const t = to.toLowerCase();
     if (!text) { toast('Nothing to pipe: that command printed no text', { timeout: 2500 }); return; }
     if (t === 'draft') { (opts.draft || ((x) => Native.setDraft(agentId, x)))(text); toast('The output is in the message box', { timeout: 1800 }); }
@@ -411,6 +411,9 @@ const Commands = (() => {
     else if (t === 'say') (opts.say || ((x) => Native.note(agentId, x)))(text);
     else if (t === 'file') { const p = await window.hub.saveFile({ defaultPath: `hearth-output-${new Date().toLocaleDateString('en-CA')}.md`, content: text }); if (p) toast(`Saved ${p.split(/[\\/]/).pop()}`, { timeout: 2000 }); }
     else if (t === 'speak') { speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(text.slice(0, 4000))); }
+    // grep <word> / head [n]: keep only matching lines / the first n, shown here (Markdown kept, so `/commands` stay clickable)
+    else if (t.startsWith('grep ')) { const w = to.slice(5).trim().toLowerCase(); const keep = raw.split('\n').filter((l) => l.toLowerCase().includes(w)); (opts.say || ((x) => Native.note(agentId, x)))(keep.length ? keep.join('\n') : `No line with “${w}”.`); }
+    else if (/^head\b/.test(t)) { const n = Number(t.split(/\s+/)[1]) || 10; (opts.say || ((x) => Native.note(agentId, x)))(raw.split('\n').filter((l) => l.trim()).slice(0, n).join('\n')); }
     else if (t.startsWith('/')) await tryRun(`${to} ${text.replace(/\s*\n+\s*/g, ' ')}`.slice(0, 4000), agentId, null, { ...opts, history: false });
   }
 
@@ -443,7 +446,7 @@ const Commands = (() => {
       noteRecent(hit.def.name);
       notePlace(hit.def.name, ctx.place);
       if (!nested) { const c = counts(); c[hit.def.name] = (c[hit.def.name] || 0) + 1; writeLS(COUNT_KEY, c); }
-      if (pipe) await pipeTo(pipe.to, plain(captured), agentId, opts);
+      if (pipe) await pipeTo(pipe.to, plain(captured), agentId, opts, captured);
     } catch (err) {
       ok = false;
       (opts.error || ((msg) => toast(msg, { type: 'error' })))(`/${hit.def.name}: ${err.message}`);

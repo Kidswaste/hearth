@@ -110,3 +110,5 @@ dialog.cmd-help { width: min(760px, calc(100vw - 40px)); max-width: none; paddin
 :is(.msg, .notes-panel) code.cmd-code.fill::after { content: " ✎"; }
 .cmd-help-tips .spacer { flex: 1; }
 .cmd-help-tips button { padding: 1px 8px; font-size: 11px; }
+.cmd-run-all { margin: 2px 0 8px; font-size: 11.5px; }
+.cmdbar-pins { display: flex; flex-wrap: wrap; gap: 4px; }

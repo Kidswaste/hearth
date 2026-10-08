@@ -97,6 +97,7 @@ const CmdBar = (() => {
     input.focus();
     input.setSelectionRange(text.length, text.length);
     if (text) input.dispatchEvent(new Event('input'));
+    else showPins();
     histAt = -1;
     if (typeof Usage !== 'undefined') Usage.track('Command bar › open');
   }
@@ -121,6 +122,8 @@ const CmdBar = (() => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !input.value) { e.preventDefault(); undoLast(); return; }
     // Ctrl+L clears the output card (a terminal habit) · Tab in an empty bar brings back your last command
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l') { e.preventDefault(); clearOut(); return; }
+    // Ctrl+R: your history lines that contain what's typed (click one to run it)
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'r') { e.preventDefault(); e.stopPropagation(); historySearch(input.value.trim()); return; }
     if (e.key === 'Tab' && !input.value && Commands.last()) { e.preventDefault(); input.value = Commands.last(); grow(); return; }
     const menuOpen = menuApi?.isOpen();
     // ↑ / ↓: the commands you ran (when the menu isn't open, or the box is empty)
@@ -161,6 +164,23 @@ const CmdBar = (() => {
     else show(`To undo \`${safe(line)}\`: ${how}`);
   }
 
+  // An empty bar shows your pinned commands as one row of chips (Alt+1…9 run them too).
+  function showPins() {
+    const pins = Commands.favs().map(Commands.get).filter(Boolean).slice(0, 9);
+    if (!pins.length || !out || (!out.hidden && out.childElementCount)) return;
+    out.replaceChildren(el('div', { class: 'cmdbar-pins' }, pins.map((d, i) => el('button', {
+      type: 'button', class: 'ex-chip', text: `/${d.name}`, title: `${d.desc} (Alt+${i + 1})`,
+      on: { mousedown: (e) => e.preventDefault(), click: () => { if (/^</.test(String(d.args || '').trim())) { input.value = `/${d.name} `; grow(); input.dispatchEvent(new Event('input')); input.focus(); } else runLine(`/${d.name}`); } },
+    }))));
+    out.hidden = false;
+  }
+  function historySearch(q) {
+    const s = q.toLowerCase();
+    const hits = [...new Set(Commands.history().slice().reverse().filter((l) => !s || l.toLowerCase().includes(s)))].slice(0, 15);
+    clearOut();
+    show(hits.length ? `**History${s ? ` with “${safe(q)}”` : ''}** (click to run)\n${hits.map((l) => `- \`${safe(l)}\``).join('\n')}` : `Nothing in your history with “${safe(q)}”.`);
+  }
+
   // ---------- output card ----------
   let outRun = 0;
   let lastBarLine = '';
@@ -176,6 +196,8 @@ const CmdBar = (() => {
     if (!out.querySelector('.cmdbar-out-acts')) {
       out.prepend(el('div', { class: 'cmdbar-out-acts' },
         el('button', { type: 'button', class: 'ghost small', text: '↻', title: 'Run it again', on: { mousedown: (e) => e.preventDefault(), click: () => { if (lastBarLine) runLine(lastBarLine); } } }),
+        // ↶ when the command just run has a known way back (same as Ctrl+Z in an empty bar)
+        lastBarLine && Commands.undoOf(Commands.parse(lastBarLine)?.def) ? el('button', { type: 'button', class: 'ghost small', text: '↶', title: `Undo: ${Commands.undoOf(Commands.parse(lastBarLine).def)}`, on: { mousedown: (e) => e.preventDefault(), click: () => undoLast() } }) : null,
         el('button', { type: 'button', class: 'ghost small', text: '⧉', title: 'Copy the output', on: { mousedown: (e) => e.preventDefault(), click: () => { navigator.clipboard.writeText(outText()); toast('Copied', { timeout: 1200 }); } } }),
         el('button', { type: 'button', class: 'ghost small', text: '📝', title: 'Save the output to Notes (like | note)', on: { mousedown: (e) => e.preventDefault(), click: async () => { await Notes.append(outText()); toast('Saved to Notes', { timeout: 1400 }); } } }),
         el('button', { type: 'button', class: 'ghost small', text: '→ draft', title: 'Put the output in the chat box (like | draft)', on: { mousedown: (e) => e.preventDefault(), click: () => { const a = target(); if (a) { const t = outText(); close(); activate(a.id); Native.setDraft(a.id, t); } } } }),
@@ -200,7 +222,7 @@ const CmdBar = (() => {
     let text = String(raw || '').trim();
     if (!text) return false;
     if (!quiet && !isOpen()) open();
-    if (++outRun && !quiet && !keep) clearOut();
+    if (++outRun && !quiet && !keep) { clearOut(); lastBarLine = ''; }
     if (!agent) { show('Add a native chat agent first (＋ in the rail).', { type: 'error' }); return false; }
     // shell-like prefixes: "?" help · "!!" the last command · "!calc" the last /calc line · "=" math · ">" a message
     if (text === '?') { help(); return true; }
@@ -410,6 +432,14 @@ const CmdBar = (() => {
       if (fill) c.classList.add('fill');
       c.title = line ? `Run ${line} (click) · Alt+click: put it in the command bar · ${Commands.parse(line).def.desc}` : `Fill it in the command bar (click) · ${Commands.parse(fill.trim()).def.desc}`;
     }
+    // a code block in a reply made only of commands (2–12 lines) gets "▶ Run these" under it
+    for (const pre of root.querySelectorAll('.msg:not(.note):not(.user) pre:not([data-cmdchk])')) {
+      pre.dataset.cmdchk = '1';
+      const lines = pre.textContent.split('\n').map((l) => l.trim()).filter(Boolean);
+      if (lines.length < 2 || lines.length > 12 || !lines.every(exactCmd) || pre.nextElementSibling?.classList.contains('cmd-run-all')) continue;
+      pre.after(el('button', { type: 'button', class: 'ghost small cmd-run-all', text: `▶ Run these ${lines.length} commands`, title: lines.join('\n'),
+        on: { click: (e) => { const a = agentOfNode(e.currentTarget) || target(); Commands.exec(`/run ${lines.join(' ; ')}`, a?.id); } } }));
+    }
   }
   let decoTimer = 0;
   new MutationObserver(() => { clearTimeout(decoTimer); decoTimer = setTimeout(() => decorate(), 250); })
@@ -503,6 +533,8 @@ const CmdBar = (() => {
     const agent = H.agent(t.agentId) || target();
     t.runs = (t.runs || 0) + 1;
     if (t.every) { t.next = Math.max(t.next + t.every, Date.now() + 500); schedule(t); } else timers = timers.filter((x) => x !== t);
+    // a one-time timer (and every /remind) also shows a system notification when Hearth isn't in front
+    if ((!t.every || t.label) && !document.hasFocus() && typeof Notification !== 'undefined') { try { new Notification(t.label ? `⏰ ${t.label}` : 'Hearth timer', { body: t.label ? '' : t.cmd, silent: false }); } catch { /* notifications off */ } }
     saveTimers();
     let failed = false;
     await Commands.tryRun(t.cmd, agent?.id, null, {
@@ -514,10 +546,10 @@ const CmdBar = (() => {
     // three failures in a row stop a repeating timer (so a broken one doesn't nag forever)
     if (t.every) { t.fails = failed ? (t.fails || 0) + 1 : 0; if (t.fails >= 3) { cancel(t.id); toast(`⏱ Stopped “${t.cmd}” after 3 errors`, { type: 'error' }); } else saveTimers(); }
   }
-  function addTimer({ every = 0, at = 0, cmd, quiet = false }) {
+  function addTimer({ every = 0, at = 0, cmd, quiet = false, label = '' }) {
     if (!Commands.parse(cmd)) throw new Error(`“${cmd}” isn't a command`);
     if (timers.length >= 30) throw new Error('30 timers at most: /timer-cancel some first');
-    const t = { id: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, cmd, every, next: every ? Date.now() + every : at, agentId: target()?.id || null, place: Commands.place().label, created: Date.now(), quiet };
+    const t = { id: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, cmd, every, next: every ? Date.now() + every : at, agentId: target()?.id || null, place: Commands.place().label, created: Date.now(), quiet, label };
     timers.push(t);
     saveTimers();
     schedule(t);
@@ -611,6 +643,18 @@ const CmdBar = (() => {
     name: 'after', aliases: ['later-cmd'], args: '<delay> </command>', desc: 'Run a command once after a delay: /after 2m /unfreeze', keywords: 'timer delay later',
     examples: ['/after 30s /freeze off', '/after 2m /echo check the render'],
     run: (args) => { const s = splitCmd(args); if (!s) return 'Use `/after <delay> /command`'; const t = addTimer({ at: Date.now() + parseDur(s.when), cmd: s.cmd }); return `⏱ \`${safe(t.cmd)}\` in ${fmtDur(t.next - Date.now())}`; },
+  });
+  R({
+    name: 'remind', aliases: ['reminder'], args: '<time | in 10m> <text>', desc: 'A reminder: at a time (21:30, 9pm) or after a while (in 25m), with a system notification if Hearth is in the background',
+    keywords: 'reminder alarm timer later notify notification',
+    examples: ['/remind in 25m take a break', '/remind 18:00 export the reels version'],
+    run: (args) => {
+      const m = String(args || '').trim().match(/^(in\s+\S+|tomorrow\s+\S+|\d{1,2}(?::\d{2})?\s?(?:am|pm)?|noon|midnight)\s+(.+)$/i);
+      if (!m) return 'Use `/remind <time> <text>`: `/remind in 25m take a break`, `/remind 9pm render the reels cut`';
+      const text = m[2].trim().slice(0, 200);
+      const t = addTimer({ at: parseAt(m[1].replace(/\s(?=[ap]m$)/i, '')), cmd: `/echo ⏰ ${text.replace(/`/g, "'")}`, label: text });
+      return `⏰ “${safe(text)}” at ${new Date(t.next).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (in ${fmtDur(t.next - Date.now())}) · \`/timers\``;
+    },
   });
   R({
     name: 'timers', aliases: ['schedules'], desc: 'Your command timers (/every, /at, /after), with buttons to stop them',
@@ -839,6 +883,20 @@ const CmdBar = (() => {
       const a = H.agent(ctx.agentId);
       const shared = Commands.list().filter((d) => d.variants?.some((v) => v.when && (() => { try { return v.when(ctx, ''); } catch { return false; } })()));
       return `**Here**: ${p.label}${a ? ` · commands talk to **${a.name}**'s chat` : ''}${pinnedTarget ? ' (picked in the bar)' : ''}\n${shared.length ? `Shared names that do something else here: ${shared.map((d) => `/${d.name}`).join(', ')}` : 'No shared command changes meaning here.'}\nRecent here: ${(Commands.recent(p.id).map((n) => `\`/${n}\``).join(' ') || '–')}`;
+    },
+  });
+  R({
+    name: 'cmd-reset', args: '<history | pins | counts | recent | all>', desc: 'Forget your command history, pinned commands, use counts or recent lists (your aliases stay)',
+    keywords: 'clear forget privacy reset history',
+    complete: () => ['history', 'pins', 'counts', 'recent', 'all'].map((value) => ({ value })),
+    run: async (args) => {
+      const a = args.trim().toLowerCase();
+      const keys = { history: ['commands.history', 'commands.last'], pins: ['commands.favs'], counts: ['commands.counts'], recent: ['commands.recent', 'commands.recentByPlace'] };
+      const pick = a === 'all' ? Object.keys(keys) : keys[a] ? [a] : null;
+      if (!pick) return 'Say what to forget: `/cmd-reset history`, `pins`, `counts`, `recent` or `all`.';
+      if (!await Modal.confirm('Forget command data', `Forget your ${pick.join(', ')}? Your aliases and macros stay.`, { ok: 'Forget', danger: true })) return null;
+      for (const p of pick) for (const k of keys[p]) localStorage.removeItem(k);
+      return `Forgot: ${pick.join(', ')}.`;
     },
   });
   // Your command setup (aliases, macros, pins, history) as one file, to move it to the Mac or keep a copy.
