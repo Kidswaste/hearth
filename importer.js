@@ -17,8 +17,9 @@ const ATTACH_CHARS = 4000; // pasted / attached text kept per message (the rest 
 
 function extractZip(zipPath) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-hub-import-'));
-  // Windows 10+ ships bsdtar, which reads .zip files.
-  execFileSync(TAR, ['-xf', zipPath, '-C', dir], { windowsHide: true });
+  // Windows 10+ ships bsdtar, which reads .zip files (GNU tar on Linux doesn't: unzip there).
+  if (process.platform === 'linux') execFileSync('unzip', ['-q', '-o', zipPath, '-d', dir]);
+  else execFileSync(TAR, ['-xf', zipPath, '-C', dir], { windowsHide: true });
   return dir;
 }
 

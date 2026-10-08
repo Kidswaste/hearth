@@ -28,7 +28,7 @@ const Addons = (() => {
   P({ name: 'prompt-save-last', aliases: ['save-prompt'], args: '[name]', desc: 'Save the last message you sent in this chat as a prompt',
     run: async (args, ctx) => {
       const p = await Prompts.saveLast(nativeAgent(ctx), args || undefined);
-      return p ? `Saved **${p.name}** to your prompts. Type \`/${p.name.split(' ')[0].toLowerCase()}\`… or /prompt ${p.name} to use it.` : 'No message of yours in this chat yet.';
+      return p ? `Saved **${p.name}** to your prompts: type / and part of its name in any chat to use it.` : 'No message of yours in this chat yet.';
     } });
   P({ name: 'prompt-fav', args: '<name>', desc: 'Favorite (or unfavorite) a prompt: favorites come first in the / menu', complete: promptArgs,
     run: async (args) => {
@@ -385,6 +385,8 @@ const Addons = (() => {
       r.failed ? `${r.failed} unreadable conversation${r.failed === 1 ? '' : 's'} skipped` : '',
       r.titles?.length ? `\nFor example: ${r.titles.slice(0, 5).map((t) => `“${t}”`).join(', ')}` : ''].filter(Boolean).join('\n');
   }
+  let progressSink = null; // the running import's toast
+  window.hub.onImportProgress?.((p) => progressSink?.(p));
   async function importChats(path) {
     const status = $('import-status');
     if (status) status.textContent = 'Checking…';
@@ -395,10 +397,10 @@ const Addons = (() => {
     if (status) status.textContent = '';
     if (!(await Modal.confirm('Import past chats?', importReport(check), { ok: `Import ${check.imported}` }))) return null;
     const t = toast('Importing…', { timeout: 0 });
-    const off = window.hub.onImportProgress?.((p) => { const span = t.querySelector('span'); if (span) span.textContent = `Importing… ${p.done} / ${p.total}`; });
+    progressSink = (p) => { const span = t.querySelector('span'); if (span) span.textContent = `Importing… ${p.done} / ${p.total}`; };
     const r = await window.hub.importChats({ path: check.path });
     t.remove();
-    off?.();
+    progressSink = null;
     if (r?.error) { toast(r.error, { type: 'error' }); return r; }
     H.chats = await window.hub.listChats();
     Panel.render();

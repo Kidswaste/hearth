@@ -62,7 +62,7 @@ const MemoryEditor = (() => {
     if (/\b(prefer|like|love|hate|don'?t|always|never|want|rather|favorite)\b/.test(t)) return 'pref';
     if (/\b(tone|style|short|concise|answer|reply|format|language|french|english)\b/.test(t)) return 'style';
     if (/\b(mac|windows|electron|three\.?js|after effects|ae|blender|codex|claude|gpu|setup|folder|app)\b/.test(t)) return 'tools';
-    if (/\b(forgeheart|project|game|channel|visuali[sz]er|track|album|release|client)\b/.test(t)) return 'project';
+    if (/\b(forgeheart|project|game|channel|visuals?|visuali[sz]ers?|shorts|track|album|release|client)\b/.test(t)) return 'project';
     if (/\b(my (wife|husband|partner|friend|brother|sister|mom|dad|boss)|named|called)\b/.test(t)) return 'people';
     return 'fact';
   }

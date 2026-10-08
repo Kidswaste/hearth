@@ -23,7 +23,8 @@
 .prompt-side { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .prompt-side .row input { flex: 1; }
 .prompt-side .prompt-list { max-height: 54vh; }
-.prompt-item { display: flex; justify-content: space-between; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prompt-item { display: flex; flex: none; justify-content: space-between; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: inherit; }
+.prompt-side .lib-group { flex: none; }
 .prompt-item .hint { flex: none; margin: 0; }
 .prompt-edit .row input { flex: 1; }
 .prompt-vars { font-size: 11.5px; margin: 0; }
@@ -46,12 +47,12 @@
 /* ---------- agent preset picker ---------- */
 .preset-picker { width: min(760px, calc(100vw - 32px)); }
 .preset-picker input[type=search] { width: 100%; margin-bottom: 8px; }
-.preset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; max-height: 58vh; overflow-y: auto; }
-.preset-card { display: flex; gap: 8px; align-items: center; text-align: left; border: 1px solid var(--line); background: none; border-radius: 10px; padding: 6px 8px; cursor: pointer; color: inherit; min-width: 0; }
+.preset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; max-height: 58vh; overflow-y: auto; overflow-x: hidden; }
+.preset-picker .preset-card { display: flex; flex-direction: row; justify-content: flex-start; gap: 8px; align-items: center; text-align: left; border: 1px solid var(--line); background: none; border-radius: 10px; padding: 6px 8px; cursor: pointer; color: inherit; min-width: 0; }
 .preset-card:hover, .preset-card:focus-visible { background: var(--hover); border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
 .preset-icon { flex: none; width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; font-weight: 700; font-size: 12.5px; color: #111; }
-.preset-text { display: flex; flex-direction: column; min-width: 0; }
-.preset-text .hint { margin: 0; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preset-picker .preset-text { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; flex: 1; overflow: hidden; }
+.preset-text .hint { max-width: 100%; margin: 0; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #preset-row { gap: 8px; }
 
 /* ---------- kit window ---------- */

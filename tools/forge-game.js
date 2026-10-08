@@ -9,6 +9,7 @@ const ForgeGame = (() => {
   let logBox = null;
   let buildSel = null;
   let patches = [];
+  let actor = 'Claude'; // who the log says did it (you, from the ⋯ menu and /forge-* commands)
 
   const buildPath = () => H.settings().forgeDebugBuild || DEFAULT_BUILD;
   const fileUrl = (p) => `file:///${p.replace(/\\/g, '/')}`;
@@ -62,7 +63,7 @@ const ForgeGame = (() => {
       const type = String(args.type || 'random');
       const count = Math.max(1, Math.min(200, Number(args.count) || 10));
       const mult = Number(args.mult) || 1;
-      log(`Claude: spawn ${type === 'boss' ? 'the boss' : `${count} × ${type}`}${mult !== 1 ? ` (×${mult})` : ''}`, 'claude');
+      log(`${actor}: spawn ${type === 'boss' ? 'the boss' : `${count} × ${type}`}${mult !== 1 ? ` (×${mult})` : ''}`, 'claude');
       return exec(`(() => { const want = ${JSON.stringify(type)}, made = {};
         if (want === 'boss') { spawnBoss(); return { spawned: 'boss', enemies: C.en.length }; }
         const keys = Object.keys(FOES); let n = 0;
@@ -72,7 +73,7 @@ const ForgeGame = (() => {
         return { spawned: n, byType: made, enemiesNow: C.en.length, cap: combatEnemyCap(), note: n < ${count} ? 'Stopped at the enemy cap' : undefined }; })()`);
     }
     if (tool === 'forge_debug') {
-      log(`Claude: debug ${Object.entries(args).map(([k, v]) => `${k}=${v}`).join(', ')}`, 'claude');
+      log(`${actor}: debug ${Object.entries(args).map(([k, v]) => `${k}=${v}`).join(', ')}`, 'claude');
       const r = await exec(`(async () => { const a = ${JSON.stringify(args)}, D = window.__fhDbg, done = [];
         if (a.start) {
           const b = document.getElementById('mm-start');
@@ -289,6 +290,10 @@ const ForgeGame = (() => {
   const fmtVal = (v) => (typeof v === 'number' ? (Math.abs(v) >= 1e6 ? `${(v / 1e6).toFixed(2)}M` : Math.abs(v) >= 1e4 ? `${Math.round(v / 1e3)}k` : String(Math.round(v * 100) / 100)) : typeof v === 'object' ? JSON.stringify(v).slice(0, 60) : String(v));
   // Small debug actions by name: heal, kill, boss, gold <n>, stage <n>, next, spawn <type> <n>, god, oneshot, pause, speed <x>.
   async function quick(action, arg) {
+    actor = 'You';
+    try { return await quickAction(action, arg); } finally { actor = 'Claude'; }
+  }
+  async function quickAction(action, arg) {
     needGame();
     const n = Number(arg);
     switch (action) {
@@ -300,7 +305,7 @@ const ForgeGame = (() => {
       case 'next': { const r = await exec('S.stage'); return handleTool('forge_debug', { stage: (r.ok ? r.value : 0) + 1 }); }
       case 'god': case 'oneshot': case 'paused': { const r = await exec(`window.__fhDbg.${action}`); return handleTool('forge_debug', { [action]: arg == null ? !(r.ok && r.value) : /^(on|1|true|yes)$/i.test(arg) }); }
       case 'speed': return handleTool('forge_debug', { timeScale: Number.isFinite(n) && n > 0 ? n : 1 });
-      case 'spawn': { const [type = 'random', count = '10'] = String(arg || '').split(/\s+/); return handleTool('forge_spawn', { type, count: Number(count) || 10 }); }
+      case 'spawn': { const [type = 'random', count = '10', mult = '1'] = String(arg || '').split(/\s+/); return handleTool('forge_spawn', { type, count: Number(count) || 10, mult: Number(mult) || 1 }); }
       case 'start': return handleTool('forge_debug', { start: true });
       default: throw new Error(`Unknown action ${action}`);
     }
@@ -332,7 +337,7 @@ const ForgeGame = (() => {
   function addWatch(expr, label) {
     const ex = String(expr || '').trim();
     if (!ex) return null;
-    store.set('forge.watch', [...watchList().filter(([, e]) => e !== ex), [label || ex.replace(/^.*\./, '').slice(0, 14), ex]].slice(-12));
+    store.set('forge.watch', [...watchList().filter(([, e]) => e !== ex), [label || (ex.length <= 16 ? ex : `…${ex.slice(-15)}`), ex]].slice(-12));
     setWatch(true);
     return ex;
   }
@@ -358,8 +363,8 @@ const ForgeGame = (() => {
     if (!s) throw new Error(name ? `No snapshot "${name}"` : 'No snapshots yet (/forge-snap saves one).');
     const r = await exec(`(() => { localStorage.clear(); const o = ${JSON.stringify(s.data)}; for (const k in o) localStorage.setItem(k, o[k]); return Object.keys(o).length; })()`);
     if (!r.ok) throw new Error(r.error);
-    // the game would save its current state over the restored one on unload: block that for this reload
-    await exec('window.addEventListener("beforeunload", (e) => e.stopImmediatePropagation(), true); window.save = () => {}; true');
+    // the game would save its current state over the restored one on unload: this page can't write storage any more
+    await exec('window.save = () => {}; Storage.prototype.setItem = Storage.prototype.removeItem = Storage.prototype.clear = function () {}; true');
     await reload();
     log(`Restored snapshot "${s.name}"`);
     return s.name;
@@ -439,7 +444,7 @@ const ForgeGame = (() => {
       { label: '❤ Heal', action: sub(() => quick('heal')) },
       { label: '☠ Kill all enemies', action: sub(() => quick('kill')) },
       { label: '👑 Spawn the boss', action: sub(() => quick('boss')) },
-      { label: 'Spawn enemies…', action: sub(async () => { const types = await enemyTypes(); const v = await Modal.form('Spawn enemies', [{ name: 'type', label: 'Type', type: 'select', options: ['random', ...types] }, { name: 'count', label: 'How many', type: 'number', value: 20 }, { name: 'mult', label: 'Strength ×', type: 'number', value: 1 }], { ok: 'Spawn' }); if (v) await handleTool('forge_spawn', v); }) },
+      { label: 'Spawn enemies…', action: sub(async () => { const types = await enemyTypes(); const v = await Modal.form('Spawn enemies', [{ name: 'type', label: 'Type', type: 'select', options: ['random', ...types] }, { name: 'count', label: 'How many', type: 'number', value: 20 }, { name: 'mult', label: 'Strength ×', type: 'number', value: 1 }], { ok: 'Spawn' }); if (v) await quick('spawn', `${v.type} ${v.count} ${v.mult}`); }) },
       { label: '💰 Gold +1M', action: sub(async () => { const r = await exec('S.gold'); await quick('gold', (r.ok ? r.value : 0) + 1e6); }) },
       { label: '⏭ Next stage', action: sub(() => quick('next')) },
       { label: 'Go to stage…', action: sub(async () => { const v = await Modal.prompt('Go to stage', { value: '50' }); if (v) await quick('stage', v); }) },

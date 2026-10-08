@@ -1,0 +1,29 @@
+<!doctype html>
+<!-- A tiny stand-in for a Forgeheart build, for testing Forge Debug without the real game:
+     the same top-level globals the debug tools use (S, C, FOES, spawnFoe, startStage, stats, save, window.__fhDbg). -->
+<html><head><meta charset="utf-8"><title>Fake Forgeheart</title>
+<style>body { margin: 0; background: #120c08; color: #ffb35c; font: 16px/1.5 monospace; } #hud { padding: 16px; } .foe { display: inline-block; width: 10px; height: 10px; margin: 2px; background: #e0553a; border-radius: 50%; }</style>
+</head><body><div id="hud"></div><div id="foes"></div>
+<script>
+var S = { stage: 1, maxStage: 1, gold: 100, eq: {}, inv: [], tree: {} };
+var C = { hp: 100, en: [], boss: null };
+var FOES = { drone: {}, brute: {}, wisp: {} };
+var ST = null;
+const saved = localStorage.getItem('fh-save');
+if (saved) Object.assign(S, JSON.parse(saved));
+function save() { localStorage.setItem('fh-save', JSON.stringify(S)); }
+function stats() { return { hp: 100, dps: 42 + S.stage }; }
+function combatEnemyCap() { return 60; }
+function spawnFoe(type, mult) { if (C.en.length >= combatEnemyCap()) return null; const f = { type, hp: 10 * (mult || 1) }; C.en.push(f); return f; }
+function spawnBoss() { C.boss = { name: 'Forge Tyrant', hp: 5000 }; }
+function startStage(n) { S.stage = n; C.en = []; }
+function touchGear() {}
+function renderHdr() {}
+window.__fhDbg = { god: false, oneshot: false, paused: false, timeScale: 1 };
+addEventListener('beforeunload', save);
+setInterval(() => {
+  if (!window.__fhDbg.paused) C.en = C.en.filter((e) => e.hp > 0);
+  document.getElementById('hud').textContent = `Stage ${S.stage} · Gold ${S.gold} · HP ${C.hp} · Enemies ${C.en.length}${C.boss ? ' · BOSS' : ''}${window.__fhDbg.god ? ' · GOD' : ''}`;
+  document.getElementById('foes').innerHTML = C.en.map(() => '<span class="foe"></span>').join('');
+}, 100);
+</script></body></html>
