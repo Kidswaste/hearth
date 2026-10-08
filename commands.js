@@ -347,7 +347,8 @@ const Commands = (() => {
       }
       const args = [...s.argVals];
       let bonus = 0;
-      for (const t of left) {
+      // (a command that takes no arguments never gets leftover words: "/unshuffle", not "/unshuffle 8 bars")
+      for (const t of String(d.args || '').trim() ? left : []) {
         const o = opts.find((x) => String(x.value).toLowerCase() === t) || (t.length > 2 && opts.find((x) => String(x.value).toLowerCase().startsWith(t) || String(x.hint || x.label || '').toLowerCase().split(/\W+/).includes(t)));
         if (o) { args.push(String(o.value)); bonus += 3; } else if (ARGISH.test(t)) { args.push(t); bonus += 0.5; }
       }
