@@ -115,6 +115,8 @@ const AppUI = (() => {
   async function createShortcuts() {
     const r = await window.hub.createShortcuts();
     if (r.error) toast(`Couldn't create shortcuts: ${r.error}`, { type: 'error' });
+    else if (r.installed) toast(`Hearth is already installed as an app: ${r.installed}`);
+    else if (/Mac/.test(navigator.platform)) toast('Made Hearth.app in your Applications folder. For a full install (out of Downloads, into /Applications), run mac/install-mac.sh.', { timeout: 10000 });
     else toast('Added Hearth to the Start menu and your desktop. Open it again any time to restart the app.');
   }
   async function packForMac() {

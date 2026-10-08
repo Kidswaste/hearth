@@ -3,17 +3,28 @@
 ## Move it over
 1. On Windows: Settings → App → **Pack Hearth for a Mac…** (or Ctrl+K → "Pack Hearth for a Mac"). It saves one zip
    with the app, your chats, sketches, notes, references, memory and settings.
-2. Copy the zip to the Mac (AirDrop, a USB stick, iCloud Drive…) and double-click it. Move the `Hearth` folder
-   where you want to keep it, e.g. your home folder (`~/Hearth`).
-3. Open Terminal and run:
+2. Copy the zip to the Mac (AirDrop, a USB stick, iCloud Drive…) and double-click it. It unzips to a `Hearth`
+   folder (in Downloads if that's where the zip was).
+3. Open Terminal and run (adjust the path if the folder is somewhere else):
 
    ```bash
-   bash ~/Hearth/mac/setup-mac.sh
+   bash ~/Downloads/Hearth/mac/install-mac.sh
    ```
 
-   It downloads Electron (the engine Hearth runs on, from Electron's official releases), makes
-   `~/Applications/Hearth.app` with the flame icon and opens it. Drag it to the Dock. Opening it again while
-   it runs restarts Hearth, like the desktop shortcut on Windows.
+   It installs Hearth like a regular app:
+   - the `Hearth` folder (code + all your data) moves to `~/Library/Application Support/Hearth`;
+   - `/Applications/Hearth.app` is made from Electron (the engine Hearth runs on, from Electron's official
+     releases), with the flame icon. It's in Launchpad and Spotlight; drag it to the Dock.
+
+   Run it again any time to rebuild the app; your data stays put. It also replaces an older `setup-mac.sh`
+   setup (that launcher and its `electron-mac` folder go to the Trash).
+
+`setup-mac.sh` is the older way: it leaves the folder where it is and makes a small launcher in
+`~/Applications`.
+
+## Updates
+Once (if the folder isn't linked to GitHub yet): `bash ~/Library/Application\ Support/Hearth/mac/connect-git.sh`.
+Then: `cd ~/Library/Application\ Support/Hearth && git pull`, and restart Hearth (Ctrl+K → Restart Hearth).
 
 ## What you need on the Mac
 - **Claude**: the Claude desktop app (signed in) or the `claude` command. Hearth finds it on its own; if not,

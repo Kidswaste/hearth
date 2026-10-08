@@ -213,7 +213,9 @@ function createShortcuts() {
 }
 
 // Mac: ~/Applications/Hearth.app, a small launcher that starts Hearth (or restarts it when it's open).
+// Installed with mac/install-mac.sh, Hearth already is an app in Applications: nothing to make.
 function createMacLauncher() {
+  if (app.isPackaged) return Promise.resolve({ installed: process.execPath.replace(/\/Contents\/MacOS\/[^/]+$/, '') });
   try {
     const appDir = app.getAppPath();
     const bundle = path.join(os.homedir(), 'Applications', `${APP_NAME}.app`);
