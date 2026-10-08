@@ -424,87 +424,123 @@ const Prompts = (() => {
   }
 
   // Dropdown under a composer textarea while the message starts with "/": chat commands (commands.js), their
-  // argument suggestions, then saved prompts. With only "/" typed it shows your recent commands, then every
-  // command grouped by area; each row shows its shortcut when it has one.
-  function attach(textarea, onPick, { agentId = null } = {}) {
+  // argument suggestions, then saved prompts. With only "/" typed it shows your pinned (★) commands, the ones you
+  // ran here (in this tool) and lately, then every command grouped by area; each row shows its shortcut when it
+  // has one. While you type arguments, a hint line shows the argument expected next. Words that aren't a command
+  // ("/make it 9 by 16") get plain-language matches (Commands.suggest). The command bar (cmdbar.js) uses the same
+  // menu with { bare: true }: text without "/" is searched in plain language too.
+  function attach(textarea, onPick, { agentId = null, bare = false, below = false } = {}) {
     let menu = null;
     let sel = 0;
     let items = [];
     let seq = 0;
     let lastValue = '';
+    let moved = false; // arrows used since the last keystroke (a plain-language row then takes Enter)
     const close = () => { menu?.remove(); menu = null; };
     const setText = (text) => { textarea.value = text; textarea.dispatchEvent(new Event('input')); textarea.focus(); textarea.setSelectionRange(text.length, text.length); };
+    const ctxNow = () => ({ agentId: typeof agentId === 'function' ? agentId() : agentId, chatId: H.activeChat?.[typeof agentId === 'function' ? agentId() : agentId] || null, source: bare ? 'bar' : 'chat' });
     const pick = async (it) => {
       close();
       if (it.kind === 'command') { setText(`/${it.def.name} `); return; }
       if (it.kind === 'arg') { setText(`/${it.def.name} ${it.value}`); return; }
+      if (it.kind === 'line') { setText(it.line); return; }
       const text = await fill(it.prompt);
       if (text != null) onPick(text);
     };
+    const cmdRow = (def, prefix = '') => ({ kind: 'command', def, label: `${prefix}/${def.name}${def.args ? ` ${def.args}` : ''}`, hint: def.desc, keys: def.keys || '' });
+    const lineRows = (text) => (Commands.suggest?.(text, { limit: 6, ctx: ctxNow() }) || []).map((s) => ({ kind: 'line', def: s.def, line: s.line, label: s.line.trim(), hint: s.def.desc, keys: s.def.keys || '' }));
     const update = async () => {
       const my = ++seq;
       const value = textarea.value;
-      if (value !== lastValue) { sel = 0; lastValue = value; }
+      if (value !== lastValue) { sel = 0; lastValue = value; moved = false; }
       const word = value.match(/^\/([\w-]*)$/);
       const withArgs = !word && value.match(/^\/([\w-]+)\s([^\n]*)$/);
       let next = [];
+      let hint = null;
       if (word) {
         const q = word[1].toLowerCase();
+        const pinned = new Set(Commands.favs?.() || []);
+        const here = Commands.place?.() || { id: 'chat', label: 'Chat' };
+        const recentHere = new Set(here.id !== 'chat' ? Commands.recent?.(here.id) || [] : []);
         const recent = new Set(Commands.recent?.() || []);
         const cmds = Commands.matching(q).slice(0, q ? 12 : 60);
         let group = '';
         for (const def of cmds) {
-          // headers: "Recent" first (only with nothing typed), then the areas
-          const g = !q && recent.has(def.name) ? 'Recent' : q ? '' : def.area;
+          // headers: "Pinned", "Recent in <tool>" and "Recent" first (only with nothing typed), then the areas
+          const g = q ? '' : pinned.has(def.name) ? '★ Pinned' : recentHere.has(def.name) ? `Recent in ${here.label}` : recent.has(def.name) ? 'Recent' : def.area;
           if (g && g !== group) { next.push({ kind: 'head', label: g }); group = g; }
-          next.push({ kind: 'command', def, label: `/${def.name}${def.args ? ` ${def.args}` : ''}`, hint: def.desc, keys: def.keys || '' });
+          next.push(cmdRow(def));
         }
+        // nothing by that name: maybe a word for it ("/vertical" → /size 9:16)
+        if (q.length > 2 && !cmds.length) { const s = lineRows(q); if (s.length) next.push({ kind: 'head', label: 'Did you mean' }, ...s); }
         const prompts = (await load()).filter((p) => p.name.toLowerCase().includes(q)).slice(0, q ? 6 : 4);
         if (prompts.length) next.push({ kind: 'head', label: 'Saved prompts' });
         next.push(...prompts.map((p) => ({ kind: 'prompt', prompt: p, label: p.name, hint: p.text.slice(0, 70).replace(/\n/g, ' ') })));
       } else if (withArgs) {
         const def = Commands.get(withArgs[1]);
-        if (def?.complete) {
-          let opts = [];
-          try { opts = (await def.complete(withArgs[2], { agentId, chatId: H.activeChat?.[agentId] || null })) || []; } catch { /* a suggestion list must never break typing */ }
-          next = opts.slice(0, 14).map((o) => ({ kind: 'arg', def, value: o.value, label: o.label || o.value, hint: o.hint || '' }));
-          if (next.length) next.unshift({ kind: 'head', label: `/${def.name} ${def.args || ''}`.trim() });
+        if (def) {
+          hint = Commands.argHint?.(value) || null;
+          if (def.complete) {
+            let opts = [];
+            try { opts = (await def.complete(withArgs[2], ctxNow())) || []; } catch { /* a suggestion list must never break typing */ }
+            next = opts.slice(0, 14).map((o) => ({ kind: 'arg', def, value: o.value, label: o.label || o.value, hint: o.hint || '' }));
+          }
+        } else if (Commands.suggest) {
+          // "/make it 9 by 16": not a command, so plain-language matches
+          const s = lineRows(value.slice(1));
+          if (s.length) next = [{ kind: 'head', label: 'Did you mean' }, ...s];
         }
+      } else if (bare && value.trim() && !value.startsWith('/') && Commands.suggest) {
+        const s = lineRows(value);
+        if (s.length) next = [{ kind: 'head', label: 'Commands for that' }, ...s];
       }
       if (my !== seq) return; // a newer keystroke already updated the menu
       items = next;
       const pickable = items.filter((it) => it.kind !== 'head');
-      if (!pickable.length) { close(); return; }
-      if (!menu) { menu = el('div', { class: 'slash-menu' }); textarea.parentElement.append(menu); }
-      sel = Math.min(sel, pickable.length - 1);
+      if (!pickable.length && !hint?.parts?.length) { close(); return; }
+      if (!menu) { menu = el('div', { class: `slash-menu${below ? ' below' : ''}` }); textarea.parentElement.append(menu); }
+      sel = Math.min(sel, Math.max(0, pickable.length - 1));
       let n = -1;
-      menu.replaceChildren(...items.map((it) => {
+      const star = (def) => el('span', {
+        class: `slash-star${Commands.isFav?.(def.name) ? ' on' : ''}`, text: Commands.isFav?.(def.name) ? '★' : '☆', title: 'Pin to the top of the / menu',
+        on: { mousedown: (e) => { e.preventDefault(); e.stopPropagation(); Commands.toggleFav(def.name); lastValue = null; update(); } },
+      });
+      // the argument hint: "/size <9:16|16:9…>" with the one you're typing now lit up (and an example)
+      const hintRow = hint?.parts?.length ? el('div', { class: 'slash-arghint' }, el('b', { text: `/${hint.def.name}` }), ...hint.parts.map((p) => el('span', { class: `arg-${p.state}`, text: ` ${p.text}` })),
+        hint.example ? el('span', { class: 'arg-eg', text: `  e.g. ${hint.example}` }) : null) : null;
+      menu.replaceChildren(hintRow, ...items.map((it) => {
         if (it.kind === 'head') return el('div', { class: 'slash-head', text: it.label });
         n += 1;
         const mine = n;
         return el('div', {
-          class: `slash-item${mine === sel ? ' sel' : ''}${it.kind === 'command' ? ' cmd' : ''}`, on: { mousedown: (e) => { e.preventDefault(); pick(it); } },
-        }, el('b', { text: it.label }), el('span', { class: 'hint', text: it.hint }), it.keys ? el('kbd', { text: Commands.keyText(it.keys) }) : null);
-      }), el('div', { class: 'slash-foot', text: '↑↓ choose · Tab complete · Enter run · Esc close' }));
+          class: `slash-item${mine === sel ? ' sel' : ''}${it.kind === 'command' || it.kind === 'line' ? ' cmd' : ''}`, on: { mousedown: (e) => { e.preventDefault(); pick(it); } },
+        }, el('b', { text: it.label }), el('span', { class: 'hint', text: it.hint }), it.keys ? el('kbd', { text: Commands.keyText(it.keys) }) : null, it.kind === 'command' && Commands.toggleFav ? star(it.def) : null);
+      }), pickable.length ? el('div', { class: 'slash-foot', text: '↑↓ choose · Tab complete · Enter run · ☆ pin · Esc close' }) : null);
       menu.querySelector('.slash-item.sel')?.scrollIntoView({ block: 'nearest' });
     };
     const pickableItems = () => items.filter((it) => it.kind !== 'head');
     textarea.addEventListener('input', update);
     textarea.addEventListener('keydown', (e) => {
       if (!menu) return;
+      if (e.key === 'Escape') { e.stopImmediatePropagation(); close(); return; }
       const list = pickableItems();
       if (!list.length) return;
       // arrows only move the highlight (rebuilding the whole menu per key made holding ↓ sluggish)
-      const move = (d) => { e.preventDefault(); e.stopImmediatePropagation(); sel = (sel + d + list.length) % list.length; const rows = menu.querySelectorAll('.slash-item'); rows.forEach((r, i) => r.classList.toggle('sel', i === sel)); rows[sel]?.scrollIntoView({ block: 'nearest' }); };
+      const move = (d) => { moved = true; e.preventDefault(); e.stopImmediatePropagation(); sel = (sel + d + list.length) % list.length; const rows = menu.querySelectorAll('.slash-item'); rows.forEach((r, i) => r.classList.toggle('sel', i === sel)); rows[sel]?.scrollIntoView({ block: 'nearest' }); };
+      const done = (it) => (it.kind === 'command' && textarea.value.trim() === `/${it.def.name}`)
+        || (it.kind === 'arg' && textarea.value.trim() === `/${it.def.name} ${it.value}`.trim())
+        || (it.kind === 'line' && (textarea.value.trim() === it.line.trim() || (!bare && !moved && e.key === 'Enter')));
+      // (in a chat box, Enter on "/words that aren't a command" still goes to the chat's own "did you mean" step
+      // unless you chose a row with the arrows; Tab always takes the highlighted row)
       if (e.key === 'ArrowDown') move(1);
       else if (e.key === 'ArrowUp') move(-1);
-      else if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && !(list[sel].kind === 'command' && textarea.value.trim() === `/${list[sel].def.name}`)
-        && !(list[sel].kind === 'arg' && textarea.value.trim() === `/${list[sel].def.name} ${list[sel].value}`.trim()))) {
+      else if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && !done(list[sel]))) {
         // Enter on a fully typed command (or a picked argument) runs it (the form submits); otherwise Enter / Tab completes
         e.preventDefault(); e.stopImmediatePropagation(); pick(list[sel]);
-      } else if (e.key === 'Escape') { e.stopImmediatePropagation(); close(); }
+      }
     }, true);
-    textarea.addEventListener('blur', () => setTimeout(close, 150));
+    textarea.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== textarea) close(); }, 150)); // (focus back already: keep it)
+    return { close, update, isOpen: () => Boolean(menu) };
   }
 
   // ---------- library operations (also used by the chat commands) ----------

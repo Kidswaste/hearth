@@ -226,7 +226,7 @@ const AppUI = (() => {
 
   function palette(initial = '') {
     document.querySelector('.palette')?.remove();
-    const input = el('input', { class: 'palette-input', placeholder: 'Jump to an agent, chat, tool or action…  (type ? to search inside chat messages)', value: initial });
+    const input = el('input', { class: 'palette-input', placeholder: 'Jump to an agent, chat, tool or action…  (? searches chat messages · / chat commands)', value: initial });
     const list = el('div', { class: 'palette-list' });
     const box = el('div', { class: 'palette' }, el('div', { class: 'palette-card' }, input, list));
     let items = paletteItems();
@@ -251,7 +251,11 @@ const AppUI = (() => {
     };
     const paint = () => [...list.children].forEach((c, i) => c.classList.toggle('sel', i === sel));
     const debounced = debounce(render, 120);
-    input.addEventListener('input', () => { sel = 0; if (input.value.startsWith('?')) debounced(); else render(); });
+    input.addEventListener('input', () => {
+      // "/" hands over to the command bar (chat commands over any tool, cmdbar.js)
+      if (input.value.startsWith('/') && typeof CmdBar !== 'undefined') { const t = input.value; close(); CmdBar.open(t); return; }
+      sel = 0; if (input.value.startsWith('?')) debounced(); else render();
+    });
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') close();
       else if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(sel + 1, shown.length - 1); paint(); list.children[sel]?.scrollIntoView({ block: 'nearest' }); }
@@ -304,7 +308,7 @@ const AppUI = (() => {
 
   // ---------- shortcuts help ----------
   const SHORTCUTS = [
-    ['Ctrl+K', 'Command palette (type ? to search messages)'], ['Ctrl+1…9', 'Switch agent'], ['Ctrl+Tab', 'Previous agent/tool (press again to go further back)'],
+    ['Ctrl+K', 'Command palette (type ? to search messages, / for chat commands)'], ['Ctrl+;', 'Command bar: run a /command over any tool (↑ history, ? help)'], ['Ctrl+1…9', 'Switch agent'], ['Ctrl+Tab', 'Previous agent/tool (press again to go further back)'],
     ['Ctrl+N', 'New native chat'], ['Ctrl+F', 'Find in the current view'], ['Ctrl+J', 'Notes'], ['Ctrl+\\', 'Show/hide chats panel'],
     ['Ctrl+G', 'All agents side by side'], ['Ctrl+Shift+Space', 'Ask all agents'], ['Ctrl+B', 'Show/hide ask-all bar'],
     ['Ctrl + / − / 0', 'Text size'], ['Ctrl+R', 'Reload website'], ['Ctrl+Shift+R', 'Reload the hub itself'], ['Ctrl+,', 'Settings'], ['Ctrl+/', 'This list'],

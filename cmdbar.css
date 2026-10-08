@@ -1,0 +1,105 @@
+/* Command bar (cmdbar.js): a slim command line over any tool (Ctrl/⌘+;), its output card, the help view,
+   and clickable /commands in replies. Colors come from the theme tokens; Forgeheart 2 adds glass + gold below. */
+.cmdbar { position: fixed; z-index: 900; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+.cmdbar > * { pointer-events: auto; }
+.cmdbar[hidden] { display: none; }
+.cmdbar-row {
+  position: relative; display: flex; align-items: center; gap: 6px; padding: 5px 6px 5px 5px;
+  background: var(--sidebar); border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius: 12px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent), 0 18px 50px #000a;
+  animation: cmdbar-in .14s ease-out;
+}
+.cmdbar.rec .cmdbar-row { border-color: #ff4b4b; box-shadow: 0 0 0 3px #ff4b4b33, 0 18px 50px #000a; }
+.cmdbar.rec .cmdbar-place::before { content: '● REC '; color: #ff4b4b; font-weight: 700; }
+@keyframes cmdbar-in { from { opacity: 0; transform: translateY(-6px) scale(.985); } }
+.cmdbar.bottom .cmdbar-row { animation-name: cmdbar-in-up; }
+@keyframes cmdbar-in-up { from { opacity: 0; transform: translateY(6px) scale(.985); } }
+.cmdbar.bottom { flex-direction: column-reverse; }
+.cmdbar-field { position: static; flex: 1; min-width: 0; display: flex; }
+.cmdbar-input {
+  flex: 1; min-width: 0; resize: none; border: 0 !important; outline: none; background: transparent !important; box-shadow: none !important;
+  color: var(--text); font: 13.5px/1.45 var(--mono, ui-monospace, monospace); padding: 5px 4px; max-height: 120px;
+}
+.cmdbar-input::placeholder { color: var(--muted); font-family: var(--font); font-size: 12.5px; }
+.cmdbar-place {
+  flex: none; max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 11px; padding: 3px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--hover); color: var(--muted); cursor: pointer;
+}
+.cmdbar-place:hover { color: var(--text); border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+.cmdbar-btn { flex: none; min-width: 26px; height: 26px; padding: 0 6px; font-size: 12px; }
+.cmdbar-timers { color: var(--accent); }
+/* the "/" menu drops below the bar at the top of the view */
+.cmdbar .slash-menu { left: 0; right: 0; }
+.cmdbar .slash-menu.below { bottom: auto; top: calc(100% + 10px); }
+.slash-star { font-size: 12px; color: var(--muted); opacity: 0; cursor: pointer; padding: 0 2px; }
+.slash-item:hover .slash-star, .slash-item.sel .slash-star, .slash-star.on { opacity: 1; }
+.slash-star.on { color: var(--accent); }
+.slash-item { grid-template-columns: auto 1fr auto auto; }
+.tool-dock .slash-item { grid-template-columns: auto 1fr auto; }
+.slash-arghint { padding: 5px 10px 6px; font: 12px var(--mono, ui-monospace, monospace); color: var(--muted); border-bottom: 1px solid var(--line); margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.slash-arghint b { color: var(--accent); font-weight: 600; }
+.slash-arghint .arg-now { color: var(--text); background: color-mix(in srgb, var(--accent) 22%, transparent); border-radius: 4px; padding: 0 3px; }
+.slash-arghint .arg-done { opacity: .55; }
+.slash-arghint .arg-eg { font-family: var(--font); font-size: 11px; opacity: .8; }
+.slash-menu:has(> .slash-arghint:only-child) { padding: 0; }
+.slash-menu:has(> .slash-arghint:only-child) .slash-arghint { border: 0; margin: 0; }
+
+/* output card */
+.cmdbar-out {
+  position: relative; max-height: min(46vh, 420px); overflow: auto; padding: 8px 10px; font-size: 13px;
+  background: var(--sidebar); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 14px 40px #0009;
+}
+.cmdbar-out[hidden] { display: none; }
+.cmdbar-out-acts { position: sticky; top: -8px; float: right; display: flex; gap: 2px; margin: -4px -6px 0 6px; z-index: 1; }
+.cmdbar-out-acts button { padding: 1px 6px; font-size: 11px; }
+.cmdbar-note + .cmdbar-note { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.cmdbar-note .body > :first-child { margin-top: 0; }
+.cmdbar-note .body > :last-child { margin-bottom: 0; }
+.cmdbar-note .body ul { padding-left: 18px; margin: 4px 0; }
+.cmdbar-note .body code { cursor: pointer; }
+.cmdbar-note .body code:hover { color: var(--accent); }
+.cmdbar-note.error { color: color-mix(in srgb, #ff6b6b 80%, var(--text)); }
+.cmdbar-note .note-acts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+
+/* help view */
+dialog.cmd-help { width: min(760px, calc(100vw - 40px)); max-width: none; padding: 0; overflow: hidden; }
+.cmd-help-card { display: flex; flex-direction: column; max-height: min(78vh, 760px); }
+.cmd-help-bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.cmd-help-bar h2 { margin: 0; font-size: 15px; flex: none; }
+.cmd-help-q { flex: 1; min-width: 120px; }
+.cmd-help-area { flex: none; max-width: 190px; }
+.cmd-help-count { flex: none; font-size: 11px; color: var(--muted); }
+.cmd-help-list { overflow: auto; padding: 4px 6px 8px; flex: 1; }
+.cmd-help-head { padding: 9px 8px 3px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+.cmd-help-row { padding: 6px 8px; border-radius: 8px; cursor: default; }
+.cmd-help-row:hover, .cmd-help-row.sel { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.cmd-help-top { display: flex; align-items: center; gap: 8px; }
+.cmd-help-top .spacer { flex: 1; }
+.cmd-help-name { font: 12.5px var(--mono, ui-monospace, monospace); color: var(--accent); background: none !important; padding: 0 !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmd-help-top kbd { font: 10.5px var(--mono, ui-monospace, monospace); color: var(--muted); padding: 0 5px; border: 1px solid var(--line); border-radius: 4px; }
+.cmd-help-desc { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.cmd-help-ex { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.ex-chip { font: 11px var(--mono, ui-monospace, monospace); padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); background: var(--hover); color: var(--text); cursor: pointer; }
+.ex-chip:hover { border-color: var(--accent); color: var(--accent); }
+.cmd-star, .cmd-try { padding: 1px 7px !important; font-size: 11.5px; opacity: .55; }
+.cmd-help-row:hover .cmd-star, .cmd-help-row:hover .cmd-try, .cmd-help-row.sel .cmd-try, .cmd-star.on { opacity: 1; }
+.cmd-star.on { color: var(--accent); }
+.cmd-help-empty { padding: 24px; text-align: center; color: var(--muted); font-size: 13px; }
+.cmd-help-tips { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 7px 12px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); }
+.cmd-help-tips kbd, .cmd-help-tips code { font: 10.5px var(--mono, ui-monospace, monospace); }
+
+/* commands inside agents' replies: `/size 9:16` you can click */
+.msg code.cmd-code { cursor: pointer; border-bottom: 1px dashed color-mix(in srgb, var(--accent) 70%, transparent); }
+.msg code.cmd-code:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.msg code.cmd-code::after { content: ' ▸'; font-size: .8em; opacity: .55; }
+
+/* Forgeheart 2: glass + gold like the palette */
+:root[data-look~=v2] .cmdbar-row, :root[data-look~=v2] .cmdbar-out {
+  background: var(--tx-noise, none), linear-gradient(180deg, color-mix(in srgb, var(--fh-iron-1, var(--sidebar)) 86%, transparent), color-mix(in srgb, var(--fh-iron-3, var(--sidebar)) 92%, transparent));
+  backdrop-filter: var(--m-glass-filter, blur(8px));
+}
+:root[data-look~=v2] .cmdbar-row { border-color: color-mix(in srgb, var(--fh-gold, var(--accent)) 55%, transparent); box-shadow: var(--m-glass-edge, none), 0 0 calc(14px * var(--glow, 1)) var(--g-gold, transparent), 0 18px 50px #000c; }
+:root[data-look~=v2] .cmd-help-name, :root[data-look~=v2] .slash-arghint b { color: var(--fh-gold, var(--accent)); }
+:root[data-skin~="forge"] .cmdbar-row, :root[data-skin~="forge"] .cmdbar-out { border-radius: 0; clip-path: var(--cut, none); }
+@media (prefers-reduced-motion: reduce) { .cmdbar-row { animation: none; } }
+:root[data-motion=off] .cmdbar-row { animation: none; }

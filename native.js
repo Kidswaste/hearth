@@ -166,10 +166,13 @@ const Native = (() => {
       if (!text && !v.attachments.length) return;
       if (text) pushHistory(text);
       // A "/word" that is almost a command (a typo) asks first: Enter again sends it to the agent as written.
-      const typo = text.startsWith('/') && !Commands.parse(text) && v.typoOk !== text && Commands.closest?.(text.slice(1).split(/\s/)[0]);
-      if (typo) {
+      const typo = text.startsWith('/') && !Commands.parse(text) && !Commands.splitPipe?.(text) && v.typoOk !== text && Commands.closest?.(text.slice(1).split(/\s/)[0]);
+      // (commands.js didYouMean adds plain-language matches: "/make it 9 by 16" → /size 9:16)
+      const means = text.startsWith('/') && !Commands.parse(text) && !Commands.splitPipe?.(text) && v.typoOk !== text ? (Commands.didYouMean?.(text) || []) : [];
+      if (typo || means.length) {
         v.typoOk = text;
-        note(agentId, `\`/${text.slice(1).split(/\s/)[0]}\` isn't a command. Did you mean \`/${typo.name}\`? Press Enter again to send it to ${H.agent(agentId).name} as a message.`, { id: 'typo' });
+        const opts = means.length ? means.map((m) => `\`${m.line.trim()}\``).join(' · ') : `\`/${typo.name}\``;
+        note(agentId, `\`/${text.slice(1).split(/\s/)[0]}\` isn't a command. Did you mean ${opts}? Click one to run it, or press Enter again to send it to ${H.agent(agentId).name} as a message.`, { id: 'typo' });
         return;
       }
       // "/command args" runs a chat command instead of sending (see commands.js); unknown "/words" are sent.

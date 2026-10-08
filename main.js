@@ -26,7 +26,7 @@ const AUTH_HOSTS = [
 ];
 const ALLOWED_PERMISSIONS = new Set(['clipboard-sanitized-write', 'clipboard-read', 'notifications', 'media', 'fullscreen', 'midi', 'midiSysex', 'display-capture']);
 // Ctrl+<key> combos the hub handles even while a website has focus.
-const HUB_KEYS = new Set(['1', '2', '3', '4', '5', '6', '7', '8', '9', 'g', 'r', ',', 'b', 'n', '\\', 'k', 'f', '/', '=', '+', '-', '0', 'tab', 'j']);
+const HUB_KEYS = new Set(['1', '2', '3', '4', '5', '6', '7', '8', '9', 'g', 'r', ',', 'b', 'n', '\\', 'k', 'f', '/', '=', '+', '-', '0', 'tab', 'j', ';']);
 
 let win;
 
@@ -111,6 +111,13 @@ function createWindow() {
     openExternal(url);
   });
   win.webContents.on('found-in-page', (_e, result) => send('find:result', result));
+  // Ctrl/⌘+; opens the command bar (cmdbar.js) even while the Lab's sandboxed frame has the keyboard.
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.type === 'keyDown' && (input.control || (process.platform === 'darwin' && input.meta)) && (input.key === ';' || input.code === 'Semicolon')) {
+      event.preventDefault();
+      send('shortcut', { key: ';', shift: input.shift });
+    }
+  });
   win.on('focus', () => { win.flashFrame(false); send('window:focus', true); });
   win.on('blur', () => send('window:focus', false));
 
