@@ -424,3 +424,8 @@ One searchable **FX picker** in the Three.js Lab (**X**, the Layers **＋ Layer*
 - ✓ Kit window (`/kit`): palettes from pictures / clipboard / the Lab frame → Lab palettes, harmonies, contrast checker, gradients (CSS / GLSL / three), 27 more easings + GSAP / GLSL output, BPM ↔ ms with tap tempo, social frame sizes with safe zones, timecode calculator.
 - ✓ Forge Debug: ⋯ quick actions, stat watch overlay, snapshots / restore, patch sets, 27 `/forge-*` commands (tested against a fake build, dev/fake-forgeheart.html).
 - ✓ One-click and automatic backups with a merging restore, searchable trash and downloads, import that checks first (claude.ai / ChatGPT export variants, dedupe report, progress). `/backup`, `/restore`, `/trash`, `/downloads`, `/import`.
+## Polish: one designed product (polish stream, 242 upgrades: docs/upgrades/polish.md)
+- ✓ Shared tokens (corners, motion, importance colors, control heights) so the Lab, FX picker, nodes, Video Review, meter and add-ons follow every look, `/corners`, `/motion` and `/density`.
+- ✓ Materials on the favorites: chrome 🎲 Shuffle beside gold Save, a forged Tap that turns gold, ice-glass Freeze, gold segmented controls, chrome node headers, molten Play.
+- ✓ Compact: slimmer composer and dialogs, code blocks without the empty foot, one-row chips, a Lab that fits beside the docked director, long menus that scroll and fade.
+- ✓ Calm: no idle loops (rainbows rest until something is live), reduced motion everywhere, one focus ring, full text on hover for anything cut short. `/appearance` opens the look picker.

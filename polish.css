@@ -92,6 +92,8 @@ html[data-skin~="forge"]:not([data-look~=v2]) :is(.primary, .tool-btn, .agent-bt
     animation: pl-scrollfade linear both; animation-timeline: scroll(self);
     -webkit-mask-image: linear-gradient(#000 calc(100% - var(--pl-fade)), transparent); mask-image: linear-gradient(#000 calc(100% - var(--pl-fade)), transparent);
   }
+  /* Lab menus keep their pop-in too */
+  #app ~ .mb-menu { animation: pl-pop var(--t-med) var(--ease-out), pl-scrollfade linear both; animation-timeline: auto, scroll(self); }
 }
 /* Lab menus: long ones (trigger presets, templates) stop at a comfortable height and scroll */
 .mb-menu { max-height: min(68vh, 540px) !important; overflow-y: auto; scrollbar-width: thin; }
