@@ -1982,6 +1982,7 @@ const ThreeLab = (() => {
       if (msg.type === 'eval-result' || msg.type === 'input-result') { sandboxCalls.get(msg.id)?.(msg); sandboxCalls.delete(msg.id); return; }
       if (msg.type === 'shot') {
         if (msg.tag === 'thumb') { const fn = thumbShot; thumbShot = null; fn?.(msg.dataUrl); return; }
+        if (msg.tag === 'get') { const fn = pendingShot; pendingShot = null; fn?.(msg.dataUrl); return; }
         if (pendingShot) { pendingShot(msg.dataUrl); pendingShot = null; } else if (copyNextShot) {
           copyNextShot = false;
           fetch(msg.dataUrl).then((r) => r.blob()).then((b) => navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]))
@@ -2829,12 +2830,13 @@ ${code}
       live: () => ({ input: liveKind, bpm: liveBpm?.bpm ?? null, tempoLocked: Boolean(liveBpm?.locked),
         nowPlaying: np?.title ? { title: np.title, artist: np.artist, album: np.album, app: np.app, position: Math.round(np.position || 0), duration: Math.round(np.duration || 0), playing: np.playing } : null }),
       // Shots asked for at the same time (a still while the director takes one) share the next picture: each
-      // waiter used to replace the one before, which then never resolved.
+      // waiter used to replace the one before, which then never resolved. Tagged 'get' so a second reply never
+      // falls through to the user's "save screenshot" dialog.
       shot: () => new Promise((resolve) => {
         const prev = pendingShot;
         const mine = (url) => { prev?.(url); resolve(url); };
         pendingShot = mine;
-        box.send({ type: 'screenshot' });
+        box.send({ type: 'screenshot', tag: 'get' });
         setTimeout(() => { if (pendingShot === mine) { pendingShot = null; mine(null); } }, 5000);
       }),
     };

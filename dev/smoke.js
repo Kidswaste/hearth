@@ -98,7 +98,12 @@ async function cdpConnect() {
   const dir = copyApp();
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-smoke-profile-'));
   const log = [];
-  const child = spawn('xvfb-run', ['-a', '-s', '-screen 0 1600x1000x24', ELECTRON, dir, '--no-sandbox', `--remote-debugging-port=${PORT}`, `--user-data-dir=${userData}`, ...(process.env.SMOKE_GPU_FLAGS || '--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist').split(' ').filter(Boolean)], { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+  // Native save dialogs can't be answered here: files are saved straight into --save-dir (default <copy>/test-saves,
+  // also exposed to checks as window.SMOKE_SAVES); --open "a.wav:b.png" is what open dialogs pick.
+  const saveDir = opt('--save-dir', path.join(dir, 'test-saves'));
+  fs.mkdirSync(saveDir, { recursive: true });
+  const env = { ...process.env, HEARTH_TEST_SAVE_DIR: saveDir, ...(opt('--open') != null ? { HEARTH_TEST_OPEN: opt('--open') } : {}) };
+  const child = spawn('xvfb-run', ['-a', '-s', '-screen 0 1600x1000x24', ELECTRON, dir, '--no-sandbox', `--remote-debugging-port=${PORT}`, `--user-data-dir=${userData}`, ...(process.env.SMOKE_GPU_FLAGS || '--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist').split(' ').filter(Boolean)], { stdio: ['ignore', 'pipe', 'pipe'], detached: true, env });
   // Kill Xvfb + Electron (their own process group) however the harness ends, so no stray instances pile up.
   const killAll = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* gone */ } try { execFileSync('pkill', ['-9', '-f', dir]); } catch { /* gone */ } };
   process.on('exit', killAll);
@@ -159,7 +164,7 @@ async function cdpConnect() {
       send('Runtime.evaluate', { expression: `window.__smokeReply && window.__smokeReply(${req.id}, ${JSON.stringify(JSON.stringify(result))})` });
     };
     await send('Runtime.addBinding', { name: '__smoke' });
-    await send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => { const w = new Map(); let n = 0; window.__smokeReply = (id, r) => { w.get(id)?.(JSON.parse(r)); w.delete(id); }; window.smoke = (req) => new Promise((res) => { const id = ++n; w.set(id, res); window.__smoke(JSON.stringify({ ...req, id })); }); })();` });
+    await send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => { const w = new Map(); let n = 0; window.__smokeReply = (id, r) => { w.get(id)?.(JSON.parse(r)); w.delete(id); }; window.SMOKE_SAVES = ${JSON.stringify(saveDir)}; window.smoke = (req) => new Promise((res) => { const id = ++n; w.set(id, res); window.__smoke(JSON.stringify({ ...req, id })); }); })();` });
     await send('Runtime.enable'); await send('Log.enable'); await send('Page.enable');
     await send('Fetch.enable', { patterns: CDN_PATTERNS });
     await send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true });

@@ -276,8 +276,15 @@ html[data-skin~="forge"] #menu button { padding: 6px 12px; }
   .stage-pill .stage-seg .stage-btn { padding: 3px 5px; font-size: 10.5px; }
   .stage-pill .freeze-btn { padding: 3px 7px; }
   .three-preview:not(:hover) .stage-pill :is(.stage-more, .stage-btn:not(.freeze-btn):not(.stage-size-btn)) { display: none; }
+  /* on hover the extras open on a second row: the size buttons never slide under the pointer (they used to move
+     left as More… / Safe / 📷 appeared, so a click aimed at 9:16 landed on 16:9) */
   .three-preview:hover .stage-pill { flex-wrap: wrap; }
+  .three-preview:hover .stage-pill::after { content: ''; order: 5; flex-basis: 100%; height: 0; }
+  .three-preview:hover .stage-pill .stage-seg ~ :not(.stage-size) { order: 6; }
 }
+/* the size readout (hover only) gets its own row under the buttons instead of widening the pill leftwards */
+.three-preview:hover .stage-pill { flex-wrap: wrap; }
+.stage-pill .stage-size { flex-basis: 100%; text-align: right; white-space: nowrap; }
 :root[data-look~=v2] .three-stats { border: 1px solid var(--line); box-shadow: var(--m-glass-edge); }
 /* frame-size pill: tighter, one row as long as it fits, a calm size readout */
 .stage-pill { gap: 3px; padding: 3px; }
