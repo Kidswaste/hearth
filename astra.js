@@ -685,6 +685,8 @@ function toggleFold(hostId, m) {
     try {
       if (!doctorCache || Date.now() - doctorCache.at > 600000) doctorCache = { at: Date.now(), r: await window.hub.engineDoctor() };
       const c = doctorCache.r.codex;
+      // keep the app's engine status in step (it is read once at start; Settings → Engines can change it)
+      if (H.engineStatus) for (const e of ['codex', 'claude']) if (doctorCache.r[e]) H.engineStatus[e] = doctorCache.r[e].found;
       if (!c.found) node.textContent = '⚠ Codex wasn\'t found on this computer. Install the Codex (ChatGPT) app or set its path in Settings → Engines, then run /astra-doctor.';
       else if (c.loggedIn === false) {
         node.replaceChildren('⚠ Codex isn\'t signed in. ', el('a', { href: '#', text: 'Sign in with ChatGPT', on: { click: (e) => { e.preventDefault(); window.hub.login('codex'); } } }));

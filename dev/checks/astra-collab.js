@@ -1,5 +1,6 @@
 // Astra smoke checks (run through dev/astra-smoke.js, which fills in the fake engine paths).
 const out = {};
+{ const t = Commands.tryRun; Commands.tryRun = (...a) => { window.__last = a[0]; return t(...a); }; } // progress marker for debugging hangs
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 15000) => { const t = Date.now(); while (Date.now() - t < ms) { const v = await fn(); if (v) return v; await sleep(150); } return null; };
 H.config.settings = { ...(H.config.settings || {}), enginePaths: { codex: '__FAKE_CODEX__', claude: '__FAKE_CLAUDE__' } };
