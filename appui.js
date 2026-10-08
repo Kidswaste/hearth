@@ -57,6 +57,10 @@ const AppUI = (() => {
       { ...lightForge, ...chrome, '--fh-gold': '#2f6fde', '--fh-heat': '#8fb3ff', '--fh-iron-1': '#fbfcfd', '--fh-iron-2': '#e8ecf0', '--fh-iron-3': '#dde2e8', '--fh-line-base': '#c3cad3', '--fh-pop': '#f4f6f8' }, { glow: 35 }),
     parchment: forge2('Parchment', 'Light', { scheme: 'light', background: '#f3ead8', sidebar: '#e6dac2', text: '#2a2116', accent: '#9c5b12' },
       { ...lightForge, '--fh-gold': '#a8661a', '--fh-heat': '#e0a050', '--fh-iron-1': '#faf3e4', '--fh-iron-2': '#ece0c8', '--fh-iron-3': '#e2d4b8', '--fh-line-base': '#cbb994', '--fh-pop': '#f6eedd' }, { glow: 25 }),
+    'frost-light': forge2('Frost Light', 'Light', { scheme: 'light', background: '#eef4f8', sidebar: '#dde8ef', text: '#14202a', accent: '#0a7fc2' },
+      { ...lightForge, ...chrome, '--fh-gold': '#0a7fc2', '--fh-heat': '#7fc8ff', '--fh-iron-1': '#fafdff', '--fh-iron-2': '#e6eef4', '--fh-iron-3': '#dae5ed', '--fh-line-base': '#bfcfdb', '--fh-pop': '#f3f8fb' }, { glow: 35 }),
+    dusk: forge2('Dusk (soft, muted)', 'Bold', { background: '#141218', sidebar: '#1b1820', text: '#e6e0ea', accent: '#e0a96d' },
+      { '--fh-gold': '#e0a96d', '--fh-ember': '#e07a5f', '--fh-ai': '#9d84d9', '--fh-hot': '#d96a8c', '--fh-heat': '#9d84d9', '--fh-iron-1': '#221f28', '--fh-iron-2': '#1a171f', '--fh-iron-3': '#141218', '--fh-line-base': '#302c37', '--fh-pop': '#1d1a22' }, { glow: 30 }),
     midnight: { label: 'Midnight', group: 'Plain', scheme: 'dark', skin: '', background: '#0f1115', sidebar: '#15181e', text: '#e6e6e6', accent: '#7c5cff', font: SYS },
     graphite: { label: 'Graphite', group: 'Plain', scheme: 'dark', skin: '', background: '#18181b', sidebar: '#202024', text: '#ececec', accent: '#3b82f6', font: SYS },
     light: { label: 'Light', group: 'Plain', scheme: 'light', skin: '', background: '#f7f7f8', sidebar: '#e9e9ee', text: '#1d1d22', accent: '#6d4aff', font: SYS },
@@ -308,6 +312,7 @@ const AppUI = (() => {
     ['Ctrl+V (image)', 'Attach a screenshot to a native chat'], ['Ctrl+Enter', 'Run code in Three.js Lab and shader playground'],
     ['Ctrl+/ (in code)', 'Toggle comment'], ['Ctrl+D (in code)', 'Duplicate line'], ['Ctrl+Alt+H', 'Show/hide the hub from anywhere (configurable)'],
     ['Ctrl+Shift+S', 'Snapshot the window into the chat you\'re using'], ['Ctrl+Shift+T', 'Keep Hearth on top of other windows'],
+    ['Ctrl+Shift+L', 'Appearance: looks, textures, glow, motion (/theme, /look in any chat)'],
   ];
   // Keys inside the Three.js Lab sketch (when you're not typing).
   const LAB_SHORTCUTS = [

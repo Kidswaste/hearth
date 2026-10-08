@@ -60,13 +60,21 @@ const Juice = (() => {
   addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || !on()) return;
     const b = e.target.closest?.('button, .agent-btn, .tool-btn, .item');
-    if (!b || b.disabled || b.closest('.three-preview, .mb-tl-wrap, canvas')) return;
+    if (!b || b.disabled) return;
+    // Lab favorites get their own little moments: Freeze frosts, Tap pulses a ring, Shuffle rolls the die
+    if (v2() && b.matches('.freeze-btn')) { const r = b.getBoundingClientRect(); ring(r.left + r.width / 2, r.top + r.height / 2, css('--fh-info', '#56c6ff')); glint(b); return; }
+    if (b.closest('.three-preview, .mb-tl-wrap, canvas')) return;
     const primary = b.matches('.primary, #broadcast button');
     const agent = b.matches('.agent-btn') ? getComputedStyle(b).getPropertyValue('--agent').trim() : '';
     if (v2()) {
       if (b.matches('.primary, .ghost, .agent-btn, .tool-btn, #broadcast button, .tw-chip, .stage-btn, .suggest-chip, .look-tile, .seg button, .dialog-actions button')) glint(b);
       const gold = css('--fh-gold', '#ffc23d');
       burst(e.clientX, e.clientY, primary ? { color: gold, count: 8, spread: 30 } : agent ? { color: agent, count: 6, spread: 24 } : { color: css('--fh-info', '#56c6ff'), count: 4, spread: 16 });
+      if (b.dataset.feature === 'Tap tempo') { const r = b.getBoundingClientRect(); ring(r.left + r.width / 2, r.top + r.height / 2, gold); }
+      if ((b.textContent || '').trim() === '🎲') {
+        b.classList.remove('j-roll'); void b.offsetWidth; b.classList.add('j-roll');
+        for (const c of ['--fh-ai', '--fh-hot', '--fh-info']) burst(e.clientX, e.clientY, { color: css(c, '#a970ff'), count: 3, spread: 26, force: true });
+      }
       if (/^save\b/i.test((b.textContent || '').trim()) || /^Save\b/.test(b.title || '')) { const r = b.getBoundingClientRect(); embers(r.left + r.width / 2, r.top + 4, { color: gold, count: 12 }); }
       return;
     }

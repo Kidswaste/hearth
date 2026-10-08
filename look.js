@@ -69,6 +69,40 @@ const Look = (() => {
     return true;
   }
 
+  // ---------- your saved looks (config.json → theme.saved: { name: { preset, fx } }) ----------
+  const saved = () => H.config?.theme?.saved || {};
+  const savedKey = (name) => Object.keys(saved()).find((k) => k.toLowerCase() === String(name || '').trim().toLowerCase());
+  function saveLook(name) {
+    const n = String(name || '').trim().slice(0, 40);
+    if (!n) throw new Error('Name it: /look save <name>');
+    if (!presetId()) throw new Error('Pick a preset first (/theme), then save your tweaks on top of it');
+    H.config.theme.saved = { ...saved(), [savedKey(n) || n]: { preset: presetId(), fx: { ...(H.config.theme.fx || {}) } } };
+    save();
+    refresh();
+    return `Saved this look as "${n}" (/look load ${n})`;
+  }
+  function loadLook(name, { quiet = true } = {}) {
+    const k = savedKey(name);
+    if (!k) return false;
+    const { preset: id, fx: f = {} } = saved()[k];
+    if (!themes()[id]) throw new Error(`"${k}" was built on a preset that no longer exists`);
+    H.config.theme.fx = { ...f };
+    applyPreset(id, { quiet: true });
+    if (f.accent) { H.config.theme.accent = f.accent; applyTheme($('user-theme')?.textContent || ''); apply(); save(); }
+    if (!quiet) toast(`Look: ${k}`, { timeout: 1400 });
+    return k;
+  }
+  function deleteLook(name) {
+    const k = savedKey(name);
+    if (!k) throw new Error(`No saved look called "${name}"`);
+    const next = { ...saved() };
+    delete next[k];
+    H.config.theme.saved = next;
+    save();
+    refresh();
+    return `Deleted "${k}"`;
+  }
+
   // "chrome forge", "Chrome-Forge", "chromeforge", "chrome" → 'chrome-forge'
   function resolve(name) {
     const squash = (x) => String(x || '').toLowerCase().replace(/\(.*?\)/g, '').replace(/[^a-z0-9]/g, '');
@@ -130,6 +164,17 @@ const Look = (() => {
     const now = el('span', { class: 'look-now' });
     const grid = el('div', { class: 'look-grid' });
     const tiles = [];
+    const mine = el('div', { class: 'look-mine' });
+    const fillMine = () => {
+      const names = Object.keys(saved());
+      mine.replaceChildren(...(names.length ? [el('div', { class: 'look-group', text: 'Yours' }), ...names.map((n) => {
+        const t = themes()[saved()[n].preset] || {};
+        return el('button', { type: 'button', class: 'look-tile mine', title: `${n} (${t.label || '?'} + your tweaks) · /look load ${n} · right-click to delete`, dataset: { saved: n },
+          on: { click: () => loadLook(n, { quiet: false }), contextmenu: (e) => { e.preventDefault(); Modal.confirm(`Delete the look "${n}"?`, 'Only your saved tweaks go; the preset stays.', { ok: 'Delete', danger: true }).then((ok) => { if (ok) deleteLook(n); }); } } },
+        swatch({ ...t, accent: saved()[n].fx?.accent || t.accent }), el('span', { text: n }));
+      })] : []));
+    };
+    grid.append(mine);
     for (const g of GROUPS) {
       const items = Object.entries(themes()).filter(([, t]) => (t.group || 'Plain') === g);
       if (!items.length) continue;
@@ -168,6 +213,7 @@ const Look = (() => {
       const t = preset();
       now.replaceChildren('Now: ', el('b', { text: t ? t.label.replace(/ \(.*\)$/, '') : 'Custom' }));
       for (const tile of tiles) tile.classList.toggle('on', tile.dataset.id === presetId());
+      fillMine();
       for (const s of [tex, motion, density, corners, font, tips]) s.sync();
       if (document.activeElement !== glow) glow.value = f.glow;
       accentIn.value = /^#[0-9a-f]{6}$/i.test(f.accent || H.config?.theme?.accent || '') ? (f.accent || H.config.theme.accent) : '#ffc23d';
@@ -182,7 +228,9 @@ const Look = (() => {
     document.querySelector('dialog.look-dialog')?.close();
     const dialog = el('dialog', { class: 'ui-modal look-dialog' });
     dialog.append(el('form', { method: 'dialog' }, el('h2', { text: 'Appearance' }), picker(),
-      el('div', { class: 'dialog-actions' }, el('span', { class: 'hint', text: '/theme name · /themes · /look reset' }), el('span', { class: 'spacer' }),
+      el('div', { class: 'dialog-actions' }, el('button', { type: 'button', class: 'ghost small', text: 'Save as…', title: 'Keep this preset + your tweaks under a name (/look save <name>)',
+        on: { click: async () => { const n = await Modal.prompt('Save this look as', { placeholder: 'e.g. Night session' }); if (n) toast(saveLook(n), { timeout: 1600 }); } } }),
+      el('span', { class: 'hint', text: '/theme name · /themes · /look reset · Ctrl+Shift+L' }), el('span', { class: 'spacer' }),
         el('button', { type: 'submit', class: 'primary', text: 'Done' }))));
     dialog.addEventListener('close', () => dialog.remove());
     document.body.append(dialog);
@@ -208,7 +256,7 @@ const Look = (() => {
       const rows = Object.entries(themes()).filter(([, t]) => (t.group || 'Plain') === g)
         .map(([id, t]) => `${id === cur ? '▸ ' : '  '}${id.padEnd(16)} ${t.label}`);
       return rows.length ? `${g}\n${rows.join('\n')}` : '';
-    }).filter(Boolean).join('\n\n');
+    }).filter(Boolean).concat(Object.keys(saved()).length ? [`Yours\n${Object.entries(saved()).map(([n, v]) => `  ${n.padEnd(16)} ${label(v.preset)} + your tweaks`).join('\n')}`] : []).join('\n\n');
   }
   function status() {
     const f = fx();
@@ -230,6 +278,7 @@ const Look = (() => {
         if (!a) return `${status()}\nType /theme <name> or /themes for the list.`;
         let id = a === 'next' ? cycle(1) : a === 'prev' || a === 'previous' ? cycle(-1) : null;
         if (a === 'random' || a === 'shuffle') { const all = ids().filter((x) => x !== presetId()); id = all[Math.floor(Math.random() * all.length)]; }
+        if (!id && savedKey(a)) return `Look → ${loadLook(a)} (yours)`;
         id = id || resolve(a);
         if (!id) throw new Error(`No look called "${args}". /themes lists them.`);
         applyPreset(id, { quiet: true });
@@ -238,10 +287,15 @@ const Look = (() => {
     });
     reg({ name: 'themes', aliases: ['looks'], desc: 'List every look preset (▸ = current)', run: () => `${themeList()}\n\n/theme <name> switches · /look opens the picker` });
     reg({
-      name: 'look', aliases: ['appearance'], args: '[reset | status]', desc: 'Open the Appearance picker (presets, textures, glow, motion…)',
-      complete: () => [{ value: 'reset', hint: 'Textures, glow, motion, density, corners and accent back to the preset' }, { value: 'status', hint: 'What is set now' }],
+      name: 'look', aliases: ['appearance'], args: '[reset | status | save <name> | load <name> | delete <name>]', desc: 'Open the Appearance picker (presets, textures, glow, motion…)',
+      complete: () => [{ value: 'reset', hint: 'Textures, glow, motion, density, corners and accent back to the preset' }, { value: 'status', hint: 'What is set now' },
+        { value: 'save ', hint: 'Keep this preset + your tweaks under a name' }, ...Object.keys(saved()).flatMap((n) => [{ value: `load ${n}`, hint: 'Your look' }, { value: `delete ${n}`, hint: 'Forget it' }])],
       run: (args) => {
         const a = args.trim().toLowerCase();
+        const m = args.trim().match(/^(save|load|delete|remove)\s+(.+)$/i);
+        if (m && /save/i.test(m[1])) return saveLook(m[2]);
+        if (m && /load/i.test(m[1])) { const k = loadLook(m[2]); if (!k) throw new Error(`No saved look called "${m[2]}"`); return `Look → ${k}`; }
+        if (m) return deleteLook(m[2]);
         if (a === 'reset') { const accent = fx().accent; H.config.theme.fx = {}; if (accent && preset()) H.config.theme.accent = preset().accent; applyTheme($('user-theme')?.textContent || ''); saveConfig(); return `Appearance toggles reset. ${status()}`; }
         if (a === 'status' || a === 'now') return status();
         openDialog();
@@ -249,7 +303,12 @@ const Look = (() => {
       },
     });
     reg({ name: 'classic', args: '[off]', desc: 'Forgeheart Classic (the original look); /classic off → Forgeheart',
-      run: (args) => { const id = /^(off|no|new)$/i.test(args.trim()) ? 'forgeheart' : 'classic'; applyPreset(id, { quiet: true }); return `Look → ${label(id)}`; } });
+      run: (args) => {
+        const id = /^(off|no|new)$/i.test(args.trim()) ? 'forgeheart' : 'classic';
+        applyPreset(id, { quiet: true });
+        const tweaks = Object.keys(H.config.theme.fx || {}).length;
+        return `Look → ${label(id)}${tweaks ? ' (your tweaks still apply: /look reset for the exact original)' : ''}`;
+      } });
     reg({ name: 'texture', aliases: ['textures'], args: 'on | off', desc: 'Brushed metal, grain and glass on or off',
       complete: () => [{ value: 'on' }, { value: 'off' }],
       run: (args) => { const v = onOff(args.trim(), fx().texture); setFx({ texture: v }); return `Textures ${v ? 'on' : 'off'}`; } });
@@ -304,7 +363,11 @@ const Look = (() => {
     };
     once();
   }
+  // Ctrl+Shift+L (⌘⇧L on a Mac): the Appearance picker
+  addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.shiftKey && !e.altKey && e.code === 'KeyL') { e.preventDefault(); if (document.querySelector('dialog.look-dialog')) document.querySelector('dialog.look-dialog').close(); else openDialog(); }
+  });
   init();
 
-  return { apply, applyPreset, setFx, fx, picker, openDialog, resolve, status, setAccent };
+  return { apply, applyPreset, setFx, fx, picker, openDialog, resolve, status, setAccent, saveLook, loadLook, deleteLook };
 })();
