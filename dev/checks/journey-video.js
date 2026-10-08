@@ -8,7 +8,8 @@ J.shotDir = window.JOURNEY_SHOTS || '/tmp';
 // a fresh copy of the test renders for each run (exports land next to them)
 const SRC = window.VIDS || '/tmp/hearth-test-videos';
 const VIDS = `${window.SMOKE_SAVES}/renders`;
-for (const f of (await window.hub.fs.list(SRC)).filter((x) => !x.isDir)) await window.hub.fs.copy(f.path, `${VIDS}/${f.name}`).catch(async () => { await window.hub.fs.write(`${VIDS}/.keep`, ''); await window.hub.fs.copy(f.path, `${VIDS}/${f.name}`); });
+await window.hub.fs.write(`${VIDS}/.keep`, '');
+for (const f of (await window.hub.fs.list(SRC)).filter((x) => !x.isDir)) await window.hub.fs.copy(f.path, `${VIDS}/${f.name}`);
 const claude = H.claudeAgent();
 const btnText = (root, re) => [...root.querySelectorAll('button')].find((b) => re.test(b.textContent.trim()) && visible(b));
 
@@ -34,6 +35,8 @@ activate('tool:ae'); await wait(1200);
 step('Video Director docked', Boolean(vdir) && visible(Native.view(vdir.id)?.input));
 
 // 2. open the newest neon_tunnel (v2; v1 is grouped under it as a version) with a click on its card
+// with the director docked the library folds away: ☰ opens it
+if (![...R.querySelectorAll('.vr-card')].some(visible)) { const lib = [...R.querySelectorAll('button')].find((b) => b.textContent.trim() === '☰' && visible(b)); if (lib) await click(lib); await wait(400); }
 const item = [...R.querySelectorAll('.vr-card')].find((n) => visible(n) && /neon_tunnel/.test(n.textContent));
 step('library card visible', Boolean(item) && hitOk(item), item?.textContent.slice(0, 60));
 if (item) await click(item);

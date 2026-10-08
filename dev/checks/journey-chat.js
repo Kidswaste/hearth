@@ -47,27 +47,26 @@ if (more) {
   if (item) { await click(item); opinionVia = 'menu'; } else await key('Escape');
 }
 if (opinionVia === 'command') await say(C.id, '/opinion');
-await until(() => /opinion|Astra/i.test(JSON.stringify(Native.current(C.id)?.messages.at(-1) || {})) && !Native.isAgentBusy(C.id), 60000);
-await idle(C.id);
-const op1 = Native.current(C.id)?.messages.at(-1);
-step('second opinion from Astra on Claude\'s reply', /astra|codex/i.test(`${op1?.role} ${op1?.agent || ''} ${op1?.from || ''} ${op1?.mode || ''} ${op1?.text?.slice(0, 200) || ''}`), { via: opinionVia, role: op1?.role, mode: op1?.mode, text: op1?.text?.slice(0, 100) });
+const opinionOf = (id) => [...(Native.current(id)?.messages || [])].reverse().find((m) => m.role === 'opinion');
+await until(() => opinionOf(C.id), 60000);
+step('second opinion from Astra on Claude\'s reply', /astra/i.test(opinionOf(C.id)?.from || ''), { via: opinionVia, from: opinionOf(C.id)?.from, cost: opinionOf(C.id)?.cost });
+step('the opinion shows in the chat', Boolean([...Native.view(C.id).list.querySelectorAll('.msg')].at(-1)?.textContent.includes('Astra')));
 activate(A.id); await wait(400);
 Native.newChat(A.id);
 await say(A.id, 'think a plan for a music video');
 await say(A.id, '/opinion');
-await idle(A.id);
-const op2 = Native.current(A.id)?.messages.at(-1);
-step('second opinion from Claude on Astra\'s reply', /claude/i.test(`${op2?.role} ${op2?.agent || ''} ${op2?.from || ''} ${op2?.text?.slice(0, 200) || ''}`), { role: op2?.role, text: op2?.text?.slice(0, 100), notes: notes(A.id).slice(-1) });
+await until(() => opinionOf(A.id), 60000);
+step('second opinion from Claude on Astra\'s reply', /claude/i.test(opinionOf(A.id)?.from || ''), { from: opinionOf(A.id)?.from });
 await shot('opinions');
 
 // 4. handoff: Claude's chat continues with Astra
 activate(C.id); await wait(400);
 const chatsA0 = (await window.hub.listChats()).filter((c) => c.agentId === A.id).length;
 await say(C.id, '/handoff astra');
-await idle(A.id);
+await until(() => H.activeId === A.id && !Native.isAgentBusy(A.id), 60000);
 await wait(800);
 const chatsA1 = (await window.hub.listChats()).filter((c) => c.agentId === A.id).length;
-step('handoff opened an Astra chat with the summary', chatsA1 === chatsA0 + 1 && H.activeId === A.id, { active: H.activeId, first: Native.current(A.id)?.messages[0]?.text?.slice(0, 100) });
+step('handoff opened an Astra chat with the summary', chatsA1 === chatsA0 + 1 && H.activeId === A.id && /Handoff from Claude/.test(Native.current(A.id)?.messages[0]?.text || ''), { active: H.activeId, first: Native.current(A.id)?.messages[0]?.text?.slice(0, 80) });
 
 // 5. pin, bookmark, export (back in Claude's chat)
 activate(C.id); await wait(400);
@@ -85,8 +84,15 @@ step('/export md wrote a Markdown file', (await J.saved()).some((f) => /\.md$/.t
 // 6. search across chats (the chats panel box, then /search)
 const box = document.querySelector('#panel input');
 if (box) { await click(box); await type('haiku'); await wait(800); }
-const hits = [...document.querySelectorAll('#panel .item')].filter(visible).map((n) => n.textContent.trim().slice(0, 50));
-step('panel search finds the relay chat', hits.length > 0, hits.slice(0, 4));
+// titles don't mention it: the panel offers "Search inside messages" (the palette's ? mode)
+const deep = document.querySelector('#panel .deep-search');
+step('panel offers a search inside messages', visible(deep), deep?.textContent);
+if (deep) { await click(deep); await wait(1200); }
+const pal = document.activeElement?.value?.startsWith('?') ? document.activeElement.parentElement?.parentElement : null;
+const hits = pal ? [pal.textContent.replace(/\s+/g, ' ').slice(0, 160)] : [];
+step('…and it finds the relay chat', hits.some((h) => /haiku/i.test(h)), hits.slice(0, 4));
+await shot('deep-search');
+await key('Escape'); await wait(200);
 if (box) { await click(box); await key('a', { ctrl: true }); await key('Backspace'); await key('Escape'); }
 await say(C.id, '/search haiku');
 step('/search lists matches', /haiku/i.test(notes(C.id).at(-1) || ''), (notes(C.id).at(-1) || '').slice(0, 160));
@@ -101,13 +107,14 @@ for (const c of chats) {
   for (const m of full?.messages || []) {
     if (m.role === 'assistant') add(m.usage);
     for (const p of m.parts || []) add(p.usage);
-    if (m.opinion?.usage) add(m.opinion.usage);
+    if (m.role === 'opinion') add(m.cost);
   }
 }
 await wait(1500);
 Meter.refresh?.();
 const today = Meter._test.sumOf([Meter._test.dayKeys(1)[0]]);
-step('meter today = sum of the replies', today.i === sum.i && today.o === sum.o, { meter: { i: today.i, o: today.o, r: today.r }, replies: sum });
+// the meter also counts turns no chat keeps (the handoff's summary): at most one more than the messages show
+step('meter today = the replies (+ the handoff summary)', today.i >= sum.i && today.o >= sum.o && today.r - sum.r <= 1, { meter: { i: today.i, o: today.o, r: today.r }, replies: sum });
 await key('u', { ctrl: true, shift: true }); await wait(1200);
 const dash = document.querySelector('dialog[open] .meter-dash, .meter-dashboard, dialog[open]');
 step('Ctrl+Shift+U opens the dashboard', visible(dash), dash?.className);

@@ -19,7 +19,8 @@ line count is lower than the number of upgrades).
 | Director agents: Three Director ≈67 % fewer tokens per message, faster edit loops, dock strip, undo | [director.md](director.md) | 147 |
 | Polish: one design system across all the new UI, materials on your favorite controls | [polish.md](polish.md) | 242 |
 | QA: 25 integration bugs fixed, command / key collisions, data-safety fixes | [qa.md](qa.md) | 29 |
-| **Total** | | **3,133** |
+| Journeys (round 3): your real workflows end to end; 21 fixes and additions (Lab keys after a click on the picture, sizes that moved under the pointer, Enter in the `/` menu, `/save`, Video Review focus…) | [journey.md](journey.md) | 21 |
+| **Total** | | **3,154** |
 
 ## Start here
 - Type `/` in any chat: **≈570 chat commands**, grouped by area; `/help <word>` filters them. `/do <anything>` runs any Ctrl+K action.
