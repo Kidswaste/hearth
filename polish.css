@@ -566,13 +566,15 @@ dialog .ghost:not(.small) { min-height: 32px; }
 /* the song timeline is drawn for a dark ground (lane labels, waveform): it stays a dark well */
 :root[data-look~=v2][data-scheme=light] :is(.media-bar .mb-timeline, .media-bar .mb-overview, .media-bar .mb-minimap) { background: #15171c; }
 /* overlays that sit on the (always dark) picture stay a dark glass island in light looks, so their labels keep contrast */
-:root[data-look~=v2][data-scheme=light] :is(.stage-pill, .three-stats, .three-preview .present-hint, .three-preview .present-hud, .vr-scopes, .vr-zoom, .vr-pickchip, .vr-label, .lab-wipe-bar) {
+:root[data-look~=v2][data-scheme=light] :is(.three-preview, .vr-stage, .vr-thumb-wrap, .vr-scopes, .media-bar .mb-tl-wrap, .fx-thumb) {
   --fh-iron-1: #23262d; --fh-iron-2: #191b20; --fh-iron-3: #111317; --fh-pop: #15171c; --fh-ink: #050608; --text: #ece6dc; --muted: #a49d92;
   --line: #2c2e33; --line-hi: #3d4047; --fh-strong: #fff; --fh-shine: #ffffff1c; --fh-shade: #00000066; --hover: #ffffff14; --fh-gold-text: var(--fh-gold-hi);
-  --m-glass-edge: inset 0 1px 0 #ffffff24, inset 0 0 0 1px #ffffff0f; --fh-info: #56c6ff; color: var(--text);
+  --m-glass-edge: inset 0 1px 0 #ffffff24, inset 0 0 0 1px #ffffff0f; --fh-info: #56c6ff; --fh-ai: #b48cff; --fh-stop: #ff6a6a;
+  --ui-cyan: #56c6ff; --ui-ai: #b48cff; --ui-red: #ff6a6a; --ui-hot: #ff8c42; --ui-ok: #7cd992;
 }
+:root[data-look~=v2][data-scheme=light] :is(.stage-pill, .three-stats) { color: var(--text); }
 :root[data-look~=v2][data-scheme=light] .stage-pill { background: color-mix(in srgb, var(--fh-pop) 84%, transparent); }
-:root[data-look~=v2][data-scheme=light] .stage-btn { color: color-mix(in srgb, var(--text) 85%, transparent); }
+:root[data-look~=v2][data-scheme=light] .stage-btn:not(.freeze-btn):not(.on) { color: color-mix(in srgb, var(--text) 85%, transparent); }
 :root[data-look~=v2][data-scheme=light] .fx-thumb b { color: #fff; }
 :root[data-look~=v2][data-scheme=light] .nv { --nv-bg: color-mix(in srgb, var(--fh-iron-2) 80%, var(--bg)); }
 :root[data-look~=v2][data-scheme=light] .nv-head { color: #fff; }
