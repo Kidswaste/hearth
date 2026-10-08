@@ -375,3 +375,9 @@
 312. ✓ 10 more Lab actions in Ctrl+K (guides, loop this bar, snap, quantize, remove doubles, cycle looks, copy all code, save sliders, save as look, Stage on top): 32 in all.
 313. ✓ Chat: Ctrl+↑ / Ctrl+↓ jump between your own messages (they flash); select text in a reply → ❝ Quote puts it in your message.
 314. ✓ App: Ctrl+K → Recent notifications (the last 40), middle-click an agent on the rail = a new chat with it, the window title shows what you're looking at.
+
+## Nodes (visual coding)
+- ✓ Three.js Lab: a **Code | Nodes** switch on the code pane (Alt+N, `/nodes`). Build music visuals with nodes and wires (127 node types: shapes, materials, particles, tunnels, spectrum bars, blobs, lights, motion, camera, music bands / hits / beat / drops, triggers, LFOs, math, palettes, post effects, filter layers). A graph compiles to a normal readable sketch; its knobs are the Lab sliders (Save, Shuffle, looks, keyframes keep working) and the graph is kept in the code's last line.
+- ✓ 29 presets (beat particles, audio tunnel, kick-flash grid, spectrum circle, morphing blob, synthwave terrain, filter layers…) via the picker, `/nodes-new`, `/nodes-layer`, `/nodes-preset`.
+- ✓ Editor: pan / zoom, minimap, typed colored ports, flowing live wires with live values, drop-a-wire node picker, box select, copy / paste / duplicate, undo, frames (= slider groups), notes, reroute dots, collapse, inline widgets (slider, knob, color, toggle, select, text, ease curve, vector), auto layout, find, snap. `NodeView.openCode(code, lang)` opens any code as nodes (or a read-only outline).
+- ✓ Chat: `/nodes-…` commands (add, link, set, rm, list, types, presets, layout, frame, rebuild, from-code); the Three Director edits graphs with `three_nodes`. Full list: docs/upgrades/nodes.md.
