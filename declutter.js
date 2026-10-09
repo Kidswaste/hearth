@@ -51,7 +51,6 @@ const Declutter = (() => {
     // Lab layers and sliders
     { id: 'ly-key', area: 'Lab layers', label: '◇ Keyframe buttons (until a layer is animated)', sel: '.layers .kf-btn.kf-none', mode: 'hover', host: '.layers .ly-field' },
     { id: 'ly-timebtns', area: 'Lab layers', label: 'Whole song / Loop only (layer timing)', sel: '.layers .ly-timebtns' },
-    { id: 'ly-notime', area: 'Lab layers', label: '"Load a song to time layers" row', sel: '.layers .ly-time:has(> .hint)' },
     { id: 'tw-steps', area: 'Lab sliders', label: '‹ › Shuffle steps (Shift+R)', sel: '[data-feature="Shuffle back"], [data-feature="Shuffle forward"]' },
     { id: 'tw-shuffle-opts', area: 'Lab sliders', label: '▾ Shuffle options (right-click Shuffle)', sel: '[data-feature="Shuffle options"]' },
     { id: 'tw-save-opts', area: 'Lab sliders', label: '▾ Save options (right-click Save)', sel: '[data-feature="Save options"]' },
@@ -77,7 +76,7 @@ const Declutter = (() => {
     // long tab bars (Forgeheart's eleven): the first five and the open one stay, the rest wait behind Alt and in the
     // bar's right-click menu
     { id: 'tool-desc', area: 'Tabs', label: 'A tool’s one-line description in its header', sel: '.tool-head .tool-desc', mode: 'hover', host: '.tool-head' },
-    { id: 'tabs-more', area: 'Tabs', label: 'Tabs after the fifth in long tab bars', sel: '.tool-surface .tabbar:has(> button:nth-child(7)) > button:nth-child(n+6):not(.on)' },
+    { id: 'tabs-more', area: 'Tabs', label: 'Forgeheart’s tabs after the fifth', sel: '.tool-surface[data-id="tool:forgeheart"] .tabbar > button:nth-child(n+6):not(.on)' },
     // memory: the dialog's rarer buttons
     { id: 'mem-foot', area: 'Memory', label: 'Edit as text… / Import… / Export…', sel: 'dialog.memory-facts .dialog-actions > button.ghost' },
     // memory rows: the per-fact controls show on the row you point at
@@ -95,6 +94,19 @@ const Declutter = (() => {
 
   // One stylesheet from the table: tucked 'alt' controls are display:none until Alt; 'hover' ones fade until their
   // area is pointed at (or has the keyboard focus). Pinned ones and everything with /calm off stay as they were.
+  // Every selector becomes its own plain rule (":is(a, b)" lists are expanded): a rule the style engine can file
+  // under its last class / id is only tried on matching elements, while one big ":is(…)" list was tried on every
+  // element at every style update (it tripled the style time of slider drags and streaming chats).
+  const topSplit = (str) => { const out = []; let depth = 0; let cur = ''; for (const ch of str) { if (ch === '(') depth += 1; if (ch === ')') depth -= 1; if (ch === ',' && depth === 0) { out.push(cur.trim()); cur = ''; } else cur += ch; } if (cur.trim()) out.push(cur.trim()); return out; };
+  function expand(sel) {
+    return topSplit(sel).flatMap((one) => {
+      const i = one.indexOf(':is(');
+      if (i < 0) return [one];
+      let depth = 0; let j = i + 3;
+      for (; j < one.length; j += 1) { if (one[j] === '(') depth += 1; if (one[j] === ')') { depth -= 1; if (!depth) break; } }
+      return topSplit(one.slice(i + 4, j)).flatMap((opt) => expand(`${one.slice(0, i)}${opt}${one.slice(j + 1)}`));
+    });
+  }
   function paint() {
     const live = off ? [] : REVEAL.filter((r) => !pins.has(r.id));
     const alt = live.filter((r) => r.mode === 'alt');
@@ -102,16 +114,15 @@ const Declutter = (() => {
     const notKeep = (r) => (r.keep ? `:not(${r.keep})` : '');
     const css = [];
     if (!off) for (const m of mine) alt.push({ sel: m.sel });
-    if (alt.length) {
-      const sel = alt.map((r) => r.sel.split(/,\s*(?![^()]*\))/).map((s) => `${s}${notKeep(r)}`).join(', ')).join(', ');
-      css.push(`:root:not(.reveal-alt) :is(${sel}) { display: none !important; }`);
-      css.push(`:root.reveal-alt :is(${sel}) { animation: dc-reveal .2s cubic-bezier(.2, .9, .3, 1.25) both; outline: 1px dashed color-mix(in srgb, var(--fh-gold, #f5b642) 75%, transparent) !important; outline-offset: 1px; }`);
-    }
+    const altSels = alt.flatMap((r) => expand(r.sel).map((x) => `${x}${notKeep(r)}`));
+    for (const x of altSels) css.push(`:root:not(.reveal-alt) ${x} { display: none !important; }`);
+    for (const x of altSels) css.push(`.reveal-alt ${x} { animation: dc-reveal .2s cubic-bezier(.2, .9, .3, 1.25) both; outline: 1px dashed color-mix(in srgb, var(--fh-gold, #f5b642) 75%, transparent) !important; outline-offset: 1px; }`);
     for (const r of hover) {
-      const sel = r.sel.split(/,\s*(?![^()]*\))/).map((s) => `${s}${notKeep(r)}`).join(', ');
       // (focus: false when the area holds something that keeps the focus, like the Lab picture's iframe)
-      css.push(`:root:not(.reveal-alt) :is(${r.host}):not(:hover)${r.focus === false ? '' : ':not(:focus-within)'} :is(${sel}) { opacity: 0; visibility: hidden; }`);
-      css.push(`:is(${sel}) { transition: opacity .16s ease, visibility .16s; }`);
+      const state = `:not(:hover)${r.focus === false ? '' : ':not(:focus-within)'}`;
+      for (const host of expand(r.host)) for (const x of expand(r.sel)) {
+        css.push(`:root:not(.reveal-alt) ${host}${state} ${x}${notKeep(r)} { opacity: 0; visibility: hidden; transition: opacity .16s ease, visibility .16s; }`);
+      }
     }
     styleEl.textContent = css.join('\n');
     document.documentElement.classList.toggle('calm-off', off);
