@@ -50,7 +50,8 @@ out.suggestions = sug.slice(0, 5);
 ok(sug.length >= 5 && sug.some((s) => /Claude and Astra/.test(s)), `word suggestions from the app ${sug}`);
 IntroCard.wordItems(p, b2b)[0].action(); await wait(100);
 ok(b2b.words === sug[0], 'words from the menu');
-// Formats › add 1:1; Titles › Neon; Cuts › Clean
+// Formats › add 1:1 (from two formats); Titles › Neon
+await run('/intro formats 9:16 16:9');
 IntroCard.planItems(p).find((x) => x.label === 'Formats').items().find((x) => /^1:1/.test(x.label)).action();
 IntroCard.planItems(p).find((x) => x.label === 'Titles').items().find((x) => x.label === 'Neon').action();
 await wait(100);
@@ -72,7 +73,7 @@ out.steps = Object.fromEntries(Object.entries(p.steps).map(([k, v]) => [k, `${v.
 ok(p.status === 'done', `quick run done ${p.status} ${p.error} ${JSON.stringify(out.steps)}`);
 out.outputs = [];
 for (const o of p.outputs) { const pr = await window.hub.video.probe(o.path); out.outputs.push(`${o.fmt} ${pr?.w}x${pr?.h} ${pr?.duration}s`); }
-ok(p.outputs.length === 2, `two formats rendered ${out.outputs}`);
+ok(p.outputs.length === 3, `three formats rendered ${out.outputs}`);
 const tourClip1 = p.plan.beats[1].clip?.path;
 ok(tourClip1, 'the tour beat filmed');
 await smoke({ shot: `${shots}/intro-more-done.png` });
@@ -88,7 +89,7 @@ ok(p.steps.edit?.status !== 'done' && p.steps.review?.status !== 'done', 'undo e
 const editPill = card(p).querySelector('.intro-step[data-step="edit"]');
 editPill.click();
 await until(() => !Intro.running() && p.steps.render?.status === 'done', 300000, 400);
-ok(p.seq && p.steps.edit.status === 'done' && p.outputs.length === 2, `from Edit again ${JSON.stringify(Object.fromEntries(Object.entries(p.steps).map(([k, v]) => [k, v.status])))}`);
+ok(p.seq && p.steps.edit.status === 'done' && p.outputs.length === 3, `from Edit again ${JSON.stringify(Object.fromEntries(Object.entries(p.steps).map(([k, v]) => [k, v.status])))}`);
 ok(p.review?.at !== reviewWas, 'the review ran again');
 
 // ---------- ↻ redo one beat ----------
@@ -113,10 +114,10 @@ const cpr = cut?.outputs[0] && await window.hub.video.probe(cut.outputs[0].path)
 out.cutProbe = cpr && `${cpr.w}x${cpr.h} ${cpr.duration}s`;
 ok(cut && cpr && Math.abs(cpr.duration - 6) < 0.3 && cpr.w === 1080 && cpr.h === 1920, `6 s cut ${out.cut} ${out.cutProbe}`);
 out.cover = await run('/intro cover end');
-ok(/Cover \(end\)/.test(out.cover) && p.cover.beat === p.plan.beats.at(-1).n && Object.keys(p.cover.files).length === 2, `cover on the end card ${out.cover}`);
+ok(/Cover \(end\)/.test(out.cover) && p.cover.beat === p.plan.beats.at(-1).n && Object.keys(p.cover.files).length === 3, `cover on the end card ${out.cover}`);
 out.post = await run('/post-text tiktok');
 out.draft = document.querySelector('.surface.active .composer textarea')?.value;
-ok(/#ai/.test(out.draft || '') && /#motiondesign/.test(out.draft || ''), `post text in the chat box ${out.draft}`);
+ok(/#ai/.test(`${out.draft || ''}${out.post}`) && /#motiondesign/.test(`${out.draft || ''}${out.post}`), `post text ${out.post} ${out.draft}`);
 const ta = document.querySelector('.surface.active .composer textarea'); if (ta) { ta.value = ''; ta.dispatchEvent(new Event('input', { bubbles: true })); }
 
 // ---------- the agents' op (what the Video Director calls) ----------

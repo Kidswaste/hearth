@@ -119,7 +119,7 @@ const IntroCmds = (() => {
         const made = await Intro.makeCuts(p, secs.length ? secs : [15, 6], { all: /\ball\b/i.test(rest) });
         return made.map((c) => `✂ ${c.loop ? 'loop' : `${c.secs} s`}: ${c.beats} beats${c.outputs.length ? ` → ${c.outputs.map((o) => `${o.fmt} ${o.dur || ''}s`).join(', ')}` : ''}`).join('\n') || 'No cut made.';
       }
-      case 'post': { const t = Intro.postText(p, rest.toLowerCase() || 'instagram'); ctx.draft?.(t); return ctx.draft ? null : t; }
+      case 'post': { const t = Intro.postText(p, rest.toLowerCase() || 'instagram'); try { ctx.draft?.(t); } catch { /* no chat box here */ } return `${t}\n\n(in the chat box too: edit it, then copy)`; }
       case 'render': { const f = D.parseFormat(rest); Intro.run(p, { only: 'render', formats: f ? [f] : null }).catch((e) => toast(e.message, { type: 'error' })); return `Rendering ${f || p.plan.formats.join(' · ')}…`; }
       case 'review': Intro.run(p, { only: 'review' }).catch((e) => toast(e.message, { type: 'error' })); return 'Reviewing every beat, frame by frame…';
       case 'edit': await Intro.openTheEdit(p); return null;

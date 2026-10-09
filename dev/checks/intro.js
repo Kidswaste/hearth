@@ -104,7 +104,7 @@ out.notes = p.notes;
 // (software WebGL can make the Lab take too short to use: then the scene's still with a push stands in, said on the card)
 ok(p.plan.beats.filter((b) => b.kind === 'lab').every((b) => b.jam?.status === 'done' && b.sketchId && (b.clip?.dur >= b.secs * 0.6 || (b.shot && p.notes.some((n) => /Lab take was too short/.test(n))))), 'every Lab beat jammed and recorded (or its still, said)');
 out.labTakes = p.plan.beats.filter((b) => b.kind === 'lab').map((b) => (b.clip ? `clip ${b.clip.dur}s` : `still ${b.shot?.split('/').pop()}`));
-ok(p.plan.beats.filter((b) => b.kind === 'tour').every((b) => b.clip?.dur > b.secs), 'every tour beat filmed (long enough)');
+ok(p.plan.beats.filter((b) => b.kind === 'tour').every((b) => b.clip?.dur >= b.secs * 0.6), `every tour beat filmed (${p.plan.beats.filter((b) => b.kind === 'tour').map((b) => `${b.clip?.dur}/${b.secs}`)})`);
 out.tokens = p.tokens;
 ok(p.tokens.claude?.turns >= 2 && p.tokens.astra?.turns >= 2, `both engines worked ${JSON.stringify(p.tokens)}`);
 

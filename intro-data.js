@@ -47,6 +47,10 @@ const IntroData = (() => {
     { id: 'soft', name: 'Soft: blur dissolves', list: ['blur-dissolve', 'blur-push-left', 'blur-push-up'], dur: 0.45 },
     { id: 'violet', name: 'Violet: AI-violet flashes and leaks', list: ['flash-violet', 'leak-violet', 'edge-wipe-violet'], dur: 0.3 },
     { id: 'rainbow', name: 'Rainbow: every Hearth color in turn', list: ['flash-gold', 'flash-violet', 'flash-cyan', 'flash-pink'], dur: 0.25 },
+    { id: 'geometric', name: 'Geometric: irises, clocks and diagonals', list: ['iris-open', 'clock', 'diag-tr'], dur: 0.4 },
+    { id: 'kinetic', name: 'Kinetic: spins, squeezes and ripples', list: ['spin', 'squeeze-h', 'ripple'], dur: 0.3 },
+    { id: 'graphic', name: 'Graphic: shutters, slices and checkers', list: ['shutter', 'slices-left', 'checker'], dur: 0.35 },
+    { id: 'reveal', name: 'Reveal: doors, covers and reveals', list: ['doors-open-h', 'cover-left', 'reveal-up'], dur: 0.4 },
   ];
   // Title looks: the hook, the words on beats, the end card (title style + in animation, cut-presets ids).
   const TITLE_LOOKS = [
@@ -62,9 +66,18 @@ const IntroData = (() => {
     { id: 'outline', name: 'Outline', hook: ['intro-giant-outline', 'zoom-through'], body: ['outline-white', 'words-rise'], end: ['intro-stroke-fill', 'fade-up'] },
     { id: 'violet', name: 'AI violet', hook: ['big-violet', 'letters-rise-blur'], body: ['caption-violet', 'words-rise'], end: ['intro-violet', 'fade-up'] },
     { id: 'ember', name: 'Ember', hook: ['huge-ember', 'letters-rise'], body: ['caption-ember', 'words-slide'], end: ['intro-ember', 'zoom-out'] },
+    { id: 'retro', name: 'Retro', hook: ['retro', 'letters-wave'], body: ['caption-yellow', 'words-flip'], end: ['retro', 'stamp'] },
+    { id: 'glitch', name: 'Glitch', hook: ['intro-wide', 'glitch-letters'], body: ['outline-cyan', 'scramble'], end: ['neon-cyan', 'glitch-letters'] },
+    { id: 'question', name: 'Question hook', hook: ['hook-question', 'pop'], body: ['caption-white-box', 'pop-words'], end: ['hook-end-card', 'pop'] },
+    { id: 'pov', name: 'POV', hook: ['hook-pov', 'typewriter'], body: ['caption-tiktok', 'words-elastic'], end: ['hook-end-card', 'fade-up'] },
+    { id: 'sticker', name: 'Stickers', hook: ['sticker', 'heartbeat'], body: ['boxed-gold', 'pop'], end: ['sticker', 'stamp'] },
+    { id: 'editorial', name: 'Editorial left', hook: ['headline-left', 'unfold'], body: ['headline-left', 'fade-up'], end: ['display', 'box-reveal'] },
+    { id: 'gold-black', name: 'Gold on black', hook: ['gold-on-black', 'tracking-blur'], body: ['outline-gold', 'rise-slow'], end: ['gold-on-black', 'zoom-through'] },
+    { id: 'tilted', name: 'Tilted', hook: ['intro-tilted', 'spin-zoom'], body: ['neon-pink', 'neon-on'], end: ['big-ember', 'highlight'] },
   ];
   // Grades the whole edit can take (cut-presets LOOKS), picked from the vibe when nobody chooses.
-  const GRADES = ['forgeheart', 'molten', 'punchy', 'clean', 'cyberpunk', 'synthwave', 'teal-orange', 'moody', 'airy', 'noir-cine', 'vivid', 'forge-ai'];
+  const GRADES = ['forgeheart', 'molten', 'punchy', 'clean', 'cyberpunk', 'synthwave', 'teal-orange', 'moody', 'airy', 'noir-cine', 'vivid', 'forge-ai',
+    'forge-gold-dark', 'forge-steel', 'forge-rainbow', 'mv-chrome', 'golden-hour', 'blue-hour', 'anamorphic', '80s', 'hologram', 'ice-neon', 'dream', 'kodachrome'];
   // Colors for word beats (backgrounds) by mood
   const BACKDROPS = { dark: '#0b0710', ember: '#1a0a05', violet: '#130b24', gold: '#1c1404', light: '#f4efe6', ink: '#05070c', red: '#1d0507', teal: '#03161a' };
 
@@ -139,9 +152,21 @@ const IntroData = (() => {
     { id: 'carousel', name: 'Screenshot carousel', secs: 12, fmts: ['4:5', '1:1'], trans: 'soft', titles: 'minimal', grade: 'clean', hint: 'Stills of each screen with a slow push: nothing to record', beats: [
       B('title', 2, { words: '{name}', sub: 'a look inside', pri: 1 }), B('shot', 2.5, { area: 'lab', words: 'The Lab', pri: 1 }), B('shot', 2.5, { area: 'board', words: 'The board' }),
       B('shot', 2.5, { area: 'editor', words: 'The editor' }), B('end', 2.5, { words: '{name}', sub: '{cta}', pri: 1 })] },
+    { id: 'speedrun', name: 'Speedrun (everything in 10 s)', secs: 10, fmts: ['9:16', '1:1'], trans: 'hype', titles: 'kinetic', grade: 'vivid', hint: 'Every screen for a second: chats, Lab, board, editor, jam', beats: [
+      B('title', 1, { words: 'Everything.', pri: 1 }), B('tour', 1.2, { area: 'chats', pri: 1 }), B('tour', 1.2, { area: 'lab' }), B('tour', 1.2, { area: 'board' }), B('tour', 1.2, { area: 'editor' }),
+      B('tour', 1.2, { area: 'jam' }), B('tour', 1.2, { area: 'palette', pri: 3 }), B('end', 1.8, { words: '{name}', sub: 'one window', pri: 1 })] },
+    { id: 'nodes-story', name: 'Code as nodes', secs: 12, fmts: ['9:16', '16:9'], trans: 'tech', titles: 'mono', grade: 'clean', hint: 'A visual, then the node graph behind it', beats: [
+      B('lab', 3, { scene: 'a glowing shape built as a node graph', words: 'This is code', pri: 1 }), B('tour', 4, { area: 'lab-layers', words: 'Every layer, a graph', pri: 1 }), B('lab', 2.5, { scene: 'the same shape, rewired' }), B('end', 2.5, { words: '{name}', sub: 'wire it', pri: 1 })] },
+    { id: 'drop', name: 'On the drop', secs: 8, fmts: ['9:16'], trans: 'hype', titles: 'giant', grade: 'molten', hint: 'Calm until the drop of your song, then everything at once (cuts: drop)', beats: [
+      B('lab', 3, { scene: 'a calm build, almost still', pri: 1 }), B('lab', 3, { scene: 'the drop: an explosion of color', words: '{name}', pri: 1 }), B('end', 2, { words: '{name}', sub: '{tagline}', pri: 1 })] },
+    { id: 'question', name: 'Question → answer', secs: 12, fmts: ['9:16', '1:1'], trans: 'bold', titles: 'question', grade: 'punchy', hint: 'Ask what everyone wonders, answer on screen', beats: [
+      B('title', 2, { words: 'Can two AIs make a video together?', pri: 1 }), B('tour', 3, { area: 'jam', words: 'Yes.', pri: 1 }), B('lab', 3, { scene: 'what they made, glowing' }), B('tour', 2, { area: 'editor', words: 'And cut it.' }), B('end', 2, { words: '{name}', sub: '{cta}', pri: 1 })] },
+    { id: 'week-recap', name: 'Week in Hearth', secs: 20, fmts: ['9:16', '16:9'], trans: 'calm', titles: 'editorial', grade: 'clean', hint: 'What you made this week: the board, the jams, the edits', beats: [
+      B('title', 2.5, { words: 'This week in {name}', pri: 1 }), B('tour', 4, { area: 'board', words: 'Collected', pri: 1 }), B('tour', 4, { area: 'jam-card', words: 'Jammed' }), B('lab', 3.5, { scene: 'the best visual of the week' }),
+      B('tour', 3, { area: 'editor', words: 'Cut' }), B('end', 3, { words: '{name}', sub: 'see you next week', pri: 1 })] },
   ];
   const TEMPLATE = Object.fromEntries(TEMPLATES.map((t) => [t.id, t]));
-  const findTemplate = (q) => { const s = String(q || '').toLowerCase().trim(); return TEMPLATE[s] || TEMPLATES.find((t) => t.name.toLowerCase() === s) || TEMPLATES.find((t) => t.id.startsWith(s) || t.name.toLowerCase().includes(s)) || null; };
+  const findTemplate = (q) => { const s = String(q || '').toLowerCase().trim(); if (!s) return null; return TEMPLATE[s] || TEMPLATES.find((t) => t.name.toLowerCase() === s) || TEMPLATES.find((t) => t.id.startsWith(s) || t.name.toLowerCase().includes(s)) || null; };
 
   // ---------- tour recipes: one Hearth moment each, filmed by a capture tour ----------
   // steps: capture-tour.js lines without record / stop (tourText wraps them); they only look, hover and zoom, so a
@@ -197,6 +222,7 @@ const IntroData = (() => {
     'Meet {name}.', 'One window. Two minds.', 'Your AI studio, in one window.', 'Claude and Astra, jamming for you.', 'Stop switching tabs.',
     'What if your AIs worked together?', 'Made in {name}, by {name}.', 'Ideas in. Videos out.', 'Two AIs. One visual.', 'Your references become a vibe.',
     'Every frame, exactly.', 'The app that films itself.', 'Talk. Shape. Cut. Post.', 'From a mood to a motion.', 'Built for people who make things.',
+    'POV: your AIs finally talk.', 'Tabs: 0. Ideas: all of them.', 'Describe it. Watch it build.', 'Made in one evening.', 'This intro edited itself.', 'Claude builds. Astra directs.', 'Your studio has two brains now.',
   ];
   const TAGLINES = ['one window for your AI agents', 'your AI studio', 'Claude and Astra, together', 'visuals, chats and cuts in one place', 'where the AIs jam', 'made for makers'];
   const CTAS = ['Try it tonight.', 'Link in bio.', 'Coming soon.', 'Made in Hearth.', 'Follow for more.', 'Out now.', 'Your turn.'];
@@ -209,6 +235,8 @@ const IntroData = (() => {
     jam: ['Claude builds, Astra directs', 'Two AIs jam on one visual', 'Every round is an undo point', 'The best round is kept'],
     palette: ['Everything one command away', 'Plain words work too', 'Ctrl+; over any tool'],
     looks: ['31 looks, chrome and glass', 'Bold Forgeheart colors', 'Make it yours'],
+    nodes: ['Code you can see as nodes', 'Wire it, don\'t write it', 'Every layer, a graph'],
+    music: ['Cut on the beat', 'Tap the tempo, it follows', 'Visuals that hear the drop'],
   };
   // Lines with real numbers counted from the running app (intro.js passes the counts)
   const STATS = [

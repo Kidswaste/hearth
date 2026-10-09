@@ -86,7 +86,7 @@ const Intro = (() => {
 
   // ---------- creating a project: a plan proposed in one card ----------
   // A guess of the template from the owner's words ("a teaser", "6 second loop", "changelog for this week"…)
-  const GUESS = [[/loop/i, 'loop'], [/teaser|tease/i, 'teaser'], [/change ?log|what'?s new|update/i, 'changelog'], [/launch|release|out now/i, 'launch'], [/tutorial|how[- ]to|steps/i, 'tutorial'],
+  const GUESS = [[/loop/i, 'loop'], [/speedrun|everything/i, 'speedrun'], [/nodes?|graph/i, 'nodes-story'], [/drop/i, 'drop'], [/question|\?/i, 'question'], [/week/i, 'week-recap'], [/teaser|tease/i, 'teaser'], [/change ?log|what'?s new|update/i, 'changelog'], [/launch|release|out now/i, 'launch'], [/tutorial|how[- ]to|steps/i, 'tutorial'],
     [/before|after/i, 'before-after'], [/kinetic|words only|text only|no footage/i, 'kinetic'], [/music|song|beat/i, 'music-visual'], [/jam/i, 'jam-story'], [/board|reference|mood/i, 'board-to-video'],
     [/number|stat/i, 'stat-hype'], [/cinema|trailer/i, 'cinematic'], [/countdown|3.?2.?1/i, 'countdown'], [/tip/i, 'daily-tip'], [/behind|making of/i, 'behind-scenes'], [/bumper|6 ?s(ec)?\b/i, 'bumper'],
     [/hook|shorts/i, 'shorts-hook'], [/thank|milestone/i, 'milestone'], [/dev ?log/i, 'dev-log'], [/lab|visuals? only/i, 'lab-showcase'], [/carousel|screenshots|stills/i, 'carousel'], [/tour|features/i, 'feature-tour'], [/spotlight|one feature/i, 'one-feature']];
@@ -454,7 +454,11 @@ const Intro = (() => {
             b.clip = null;
           } else b.shot = null;
         }
-        else if (b.kind === 'tour') b.clip = await recordTour(p, b, fmt0);
+        else if (b.kind === 'tour') {
+          b.clip = await recordTour(p, b, fmt0);
+          // a take much shorter than the beat is filmed again once (then it plays slower to fill its beat)
+          if (!R.stopped && (b.clip.dur || 0) < b.secs * 0.6) b.clip = await recordTour(p, b, fmt0);
+        }
         else { b.shot = await shotOf(b, fmt0); b.clip = null; }
         b.status = 'captured';
       } catch (err) { b.error = cap(err.message, 140); b.status = 'error'; note(p, `Beat ${b.n} (${D.KINDS[b.kind].label}): ${b.error}`); }
@@ -838,7 +842,7 @@ const Intro = (() => {
   async function takeOver(p, step) {
     const by = other(p.steps[step]?.by || p.lead);
     if (step === 'plan') return (await decide(p, { side: by })).text;
-    if (step === 'review') { p.reviewBy = by; await run(p, { only: 'review' }); return `${NAME[by]} reviewed it.`; }
+    if (step === 'review') { p.reviewBy = by; p.reviewAsk = true; await run(p, { only: 'review' }); return `${NAME[by]} reviewed it.`; }
     if (step === 'edit') { const d = await directorPass(p, { side: by }); return d ? `${NAME[d.by]}: ${d.line}` : 'No director.'; }
     if (step === 'scenes') { handoff(p, by); await run(p, { only: 'scenes' }); return `${NAME[by]} led the scenes again.`; }
     throw new Error(`${D.STEP[step]?.name || step} isn't an AI step.`);
