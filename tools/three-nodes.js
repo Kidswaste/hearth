@@ -924,17 +924,19 @@ let ${id}Travel = 0;`);
     const helpers = [...parts.helpers.values()];
     const probe = parts.probes.length ? `nodeValues[nodeLayer] = { ${parts.probes.map((p) => `'${p.key}': ${p.expr}`).join(', ')} };` : '';
     const probeSetup = probe ? ['// live values for the node view (shown on the nodes while it plays)', "const nodeLayer = globalThis.layer?.id || 'main';", 'const nodeValues = (globalThis.__nodeValues ||= {});'] : [];
-    const filter = parts.shared.filter;
+    // a node can be the whole layer: a filter, or one call such as motion.type(…) (tools/three-motion.js: shared.layerCall)
+    const call = parts.shared.layerCall;
+    const filter = parts.shared.filter || call;
     if (filter) {
       const body = [
-        '// A filter layer made with Nodes (Three.js Lab → Nodes): it restyles every layer below it.',
+        call ? `// A ${call.what} layer made with Nodes (Three.js Lab → Nodes): Alt+N shows it as nodes.` : '// A filter layer made with Nodes (Three.js Lab → Nodes): it restyles every layer below it.',
         '// Its knobs are the sliders; the last line keeps the node graph.',
         ...tweakBlock,
         'let t = 0; // seconds since the start',
         'let dt = 1 / 60; // seconds since the last frame',
         ...helpers, helpers.length ? '' : null,
         ...blocks(parts.setup, ''),
-        `filter(${lit(filter.type)}, {`, ...filter.params.map((p) => `  get ${p.key}() { return ${p.expr}; },`), '});',
+        call ? `${call.fn}({` : `filter(${lit(filter.type)}, {`, ...filter.params.map((p) => `  get ${p.key}() { return ${p.expr}; },`), call?.opts ? `}, ${call.opts});` : '});',
       ].filter((x) => x != null);
       if (parts.frame.length || probe) {
         body.push('', ...probeSetup, 'let last = performance.now();', 'requestAnimationFrame(function tick() {', '  const now = performance.now();', '  dt = Math.min(0.1, (now - last) / 1000);', '  last = now;', '  t += dt;', ...blocks(parts.frame, '  '), probe ? `  ${probe}` : null, '  requestAnimationFrame(tick);', '});');

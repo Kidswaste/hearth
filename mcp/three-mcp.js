@@ -73,6 +73,8 @@ const MORE_TOOLS = [
   { name: 'three_help', description: 'The app map and the Lab guide by topic: app, lab, nodes, react, commands, handoff, habits, video.', inputSchema: obj({ topic: { type: 'string' } }) },
   { name: 'three_sequence', description: 'The Lab sequence: a video timeline of scenes (sketches), footage, titles, overlays and the song, shared with the video editor. op: status | new | open | add {scene | footage | title | overlay | song, at: s | "bar 9" | "f120", bars | secs, look} | transition {clip, type} | length | trim | split | delete | move | slip | look | fit | seek | frame {at} | play | render {format} | editor | back | undo (op "help").',
     inputSchema: obj({ op: { type: 'string' }, clip: {}, at: {}, scene: { type: 'string' }, type: { type: 'string' }, format: { type: 'string' } }, ['op']) },
+  { name: 'three_motion', description: 'Motion-design kit (help motion): op list {family} | add {preset, words, pics, values, in, out} | hearth {layout, frame, words} (Put Hearth on screen) | words {layer, text} | set {layer, values} | seq {preset, at, secs} | intro.',
+    inputSchema: obj({ op: { type: 'string' }, preset: { type: 'string' }, words: { type: 'string' }, layer: { type: 'string' }, values: { type: 'object' }, family: { type: 'string' } }, ['op']) },
   { name: 'three_footage', description: 'Video footage frame by frame and its cut list (the sketch plays the parts; the editor shares it). action: info | cuts | split | delete | restore | speed | hold (value) | keep (from, to) | clear | cut_scenes | cue | sheet | scenes | motion | pacing / match (ref: a reference clip; its rhythm, never its footage) | editor; frame: n, "f120" or timecode.',
     inputSchema: obj({ action: { type: 'string' }, frame: {}, value: {}, ref: { type: 'string' }, from: {}, to: {}, mode: { type: 'string' }, cut: { type: 'boolean' } }) },
 ];
@@ -80,7 +82,7 @@ const MORE_TOOLS = [
 const NODES_TOOL = { name: 'three_nodes', description: 'Layers as node graphs (the owner\'s Nodes view). command: "layer <preset>" (new layer), "presets", "types [word]", "list", "add <type> k=v [to=n.in]", "link a.out b.in", "unlink b.in", "set <n> k=v", "rm <n>", "preset <p>" (replace), "rebuild". help nodes.', inputSchema: obj({ command: { type: 'string' } }, ['command']) };
 
 // add_layer stays a command (older habits keep working) but is described as its own tool now
-const DO_CMDS = ['layers', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'footage', 'sequence', 'help'];
+const DO_CMDS = ['layers', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'footage', 'sequence', 'motion', 'help'];
 const DO_TOOL = {
   name: 'three_do',
   description: `More Lab actions: { cmd, ...args }. layer = name, id, number (1 = bottom), "top", "bottom" or "selected".
@@ -93,6 +95,7 @@ references {action: list|add|rename|remove|palette, path, name, to, from, colors
 triggers {set} · media_info · load_media {path} · set_frame {size: fit|9:16|16:9|1:1|4:5} · new_sketch {name, code}
 run {command: "/make-it-react"} runs a chat command · task {todo} this chat's task state
 footage {action, frame} frames + cut list (help footage) · sequence {op} scenes / footage / titles on a video timeline (help sequence)
+motion {op, preset, words} motion design: Hearth UI cards, kinetic type, camera moves, logos, end cards (help motion)
 help {topic} explains any of these (app: the whole app).`,
   inputSchema: { type: 'object', properties: { cmd: { type: 'string', enum: DO_CMDS } }, required: ['cmd'] },
 };

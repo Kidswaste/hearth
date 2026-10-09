@@ -3552,6 +3552,8 @@ ${frag}\`,
     const route = typeof ChatScenes !== 'undefined' && api.scenes ? ChatScenes.routeThree(tool, ctx.chatId) : null;
     // the Lab sequence is one for every chat (its scenes are anyone's): never backstage
     if (tool === 'three_sequence' && typeof ThreeSeq !== 'undefined') return ThreeSeq.handle(tool, args, { sketchId: route?.sketchId || null });
+    // the motion-design kit (tools/three-motion.js): its layers go through three_add_layer, so they reach this chat's scene
+    if (tool === 'three_motion' && typeof ThreeMotion !== 'undefined') return ThreeMotion.handle(args, { chatId: ctx.chatId, call: (t, a) => handleTool(t, a, ctx) });
     if (route && route.sketchId !== api.scenes.currentId() && typeof ThreeBackstage !== 'undefined') {
       const r = await ThreeBackstage.handle(tool, args, route);
       if (tool === 'three_new_sketch' && r?.newSketchId) ChatScenes.relink(route.chatId, r.newSketchId);

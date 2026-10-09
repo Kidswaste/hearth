@@ -191,7 +191,8 @@ const NodeView = (() => {
           if (!parts.tweaks.some((t) => t.key === key)) {
             // fields can take their label, group and range from other fields (a "Slider" node the user names)
             const from = (k, d) => (f[`${k}From`] ? ctx.value(f[`${k}From`]) ?? d : d);
-            const t = { key, value: v, label: from('label', '') || `${node.title || def.title} · ${f.label}`, group: from('group', '') || reg.groupOf(node, def, graph), node: node.id, field: name };
+            // a field with its own slider group (f.group) keeps its plain label there (the motion kit's knobs)
+            const t = { key, value: v, label: from('label', '') || (f.group ? f.label : `${node.title || def.title} · ${f.label}`), group: from('group', '') || f.group || reg.groupOf(node, def, graph), node: node.id, field: name };
             if (f.kind === 'number' || f.kind === 'knob') {
               const min = Number(from('min', f.min ?? Math.min(0, v))); const max = Number(from('max', f.max ?? Math.max(1, v * 2 || 1)));
               Object.assign(t, { min: Math.min(min, v), max: Math.max(max, v), ...(f.step ? { step: f.step } : {}) });
