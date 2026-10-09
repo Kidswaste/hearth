@@ -243,7 +243,7 @@ function barInfo(t) {
   const bpb = beatMap?.bpb || 4;
   const i = lastIdx(bs, t);
   if (i < 0) return { beatInBar: 0, bar: 0, beatPhase: 0, barPhase: 0 };
-  const n = beatMap?.manual ? Math.round((bs[i] - beatMap.anchor) / (60 / beatMap.bpm)) : i;
+  const n = beatMap?.manual ? Math.round((bs[i] - beatMap.anchor) / (60 / beatMap.bpm)) : i - (beatMap?.downIndex || analysis?.downIndex || 0); // counted from bar 1
   const len = (bs[i + 1] ?? bs[i] + 60 / (beatMap?.bpm || analysis?.bpm || 120)) - bs[i];
   const ph = Math.min(1, (t - bs[i]) / len);
   const inBar = ((n % bpb) + bpb) % bpb;
@@ -290,7 +290,9 @@ function liveTempo(nowS) {
     for (const t of on) { if (nowS - t > 8) continue; const a = (2 * Math.PI * t) / livePeriod; c += Math.cos(a); sn += Math.sin(a); n += 1; }
     liveLock = n ? Math.hypot(c, sn) / n : 0;
     liveOrigin = (Math.atan2(sn, c) / (2 * Math.PI)) * livePeriod;
-    if (nowS - liveTempoSent > 1) { liveTempoSent = nowS; post({ type: 'live-tempo', bpm: Math.round(600 / livePeriod) / 10, locked: liveLock > 0.5 }); }
+    // beatAt: a beat on the wall clock (ms since 1970, comparable with the hub's), for its beat-lock light and the
+    // latency calibration from taps
+    if (nowS - liveTempoSent > 1) { liveTempoSent = nowS; post({ type: 'live-tempo', bpm: Math.round(600 / livePeriod) / 10, locked: liveLock > 0.5, lock: Math.round(liveLock * 100) / 100, period: livePeriod, beatAt: performance.timeOrigin + liveOrigin * 1000 }); }
   }
 }
 function liveReset() { liveOnsets.length = 0; livePeriod = 0; liveOrigin = 0; liveLock = 0; liveCand = 0; livePeak = 0.25; }

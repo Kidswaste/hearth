@@ -26,135 +26,41 @@ const ThreeMedia = (() => {
   const base = (p) => p.split(/[\\/]/).pop();
 
   // ---------- analysis ----------
-  // Decodes the audio at 22 kHz, splits it into bass (<150 Hz), mids (150–2000 Hz) and highs (>2 kHz),
-  // measures loudness 100× a second, then finds onsets, the tempo (autocorrelation), the beats
-  // (dynamic-programming beat tracker) and loud/quiet sections and drops.
-  async function analyze(bytes) {
+  // Decodes the audio at 22 kHz (the browser does that off the main thread), then hands the samples to the analysis
+  // Worker (tools/three-music-core.js: the same file the page loads as MusicCore): band envelopes, spectral-flux
+  // onsets, the tempo and a straight grid through the beats, where bar 1 is, kick / snare / hat hits, sections
+  // (intro / build / drop / break / outro) and a style guess. If a Worker can't start, it runs here instead.
+  // onProgress(0..1) while it works. The result keeps `samples` (mono, for sample-level zoom) and `wave` (3-band
+  // peaks for the timeline); the player keeps both and never sends them to the sketch.
+  async function analyze(bytes, { onProgress } = {}) {
     const SR = 22050;
     const decoded = await new OfflineAudioContext(1, 1, SR).decodeAudioData(bytes.slice(0));
-    const len = decoded.length;
-    const render = async (build) => {
-      const ctx = new OfflineAudioContext(1, len, SR);
-      const src = ctx.createBufferSource();
-      src.buffer = decoded;
-      build(ctx, src).connect(ctx.destination);
-      src.start();
-      return (await ctx.startRendering()).getChannelData(0);
+    const channels = () => Array.from({ length: decoded.numberOfChannels }, (_, c) => { const a = new Float32Array(decoded.length); decoded.copyFromChannel(a, c); return a; });
+    const inline = () => {
+      const ch = channels(); const mono = ch[0];
+      for (let c = 1; c < ch.length; c += 1) for (let i = 0; i < mono.length; i += 1) mono[i] += ch[c][i];
+      if (ch.length > 1) for (let i = 0; i < mono.length; i += 1) mono[i] /= ch.length;
+      return { result: MusicCore.analyzeSignal(mono, SR, { onProgress }), mono };
     };
-    const biquad = (ctx, type, f) => { const b = ctx.createBiquadFilter(); b.type = type; b.frequency.value = f; return b; };
-    const chain = (ctx, src, ...nodes) => { let n = src; for (const x of nodes) { n.connect(x); n = x; } return n; };
-    const [mono, low, mid, high] = await Promise.all([
-      render((c, s) => s),
-      render((c, s) => chain(c, s, biquad(c, 'lowpass', 150), biquad(c, 'lowpass', 150))),
-      render((c, s) => chain(c, s, biquad(c, 'highpass', 150), biquad(c, 'lowpass', 2000))),
-      render((c, s) => chain(c, s, biquad(c, 'highpass', 2000))),
-    ]);
-    const HOP = Math.round(SR / 100);
-    const N = Math.floor(len / HOP);
-    const env = (d) => {
-      const o = new Float32Array(N);
-      for (let f = 0; f < N; f += 1) { let s = 0; const a = f * HOP; for (let k = 0; k < HOP; k += 1) { const x = d[a + k]; s += x * x; } o[f] = Math.sqrt(s / HOP); }
-      return o;
-    };
-    const norm = (a) => {
-      const p = Float32Array.from(a).sort()[Math.floor(a.length * 0.98)] || 1;
-      for (let i = 0; i < a.length; i += 1) a[i] = Math.min(1, a[i] / p);
-      return a;
-    };
-    const L = norm(env(mono)); const B = norm(env(low)); const M = norm(env(mid)); const T = norm(env(high));
-    // Waveform peaks 100× a second, for the zoomed-in timeline.
-    const PK = new Float32Array(N);
-    for (let f = 0; f < N; f += 1) { let m = 0; const a = f * HOP; for (let k = 0; k < HOP; k += 1) { const x = Math.abs(mono[a + k]); if (x > m) m = x; } PK[f] = m; }
-    { let mx = 0; for (let f = 0; f < N; f += 1) mx = Math.max(mx, PK[f]); for (let f = 0; f < N; f += 1) PK[f] /= mx || 1; } // true peaks: scale by the loudest
-    const movingAvg = (a, w) => {
-      const o = new Float32Array(a.length); let s = 0;
-      for (let i = 0; i < a.length; i += 1) { s += a[i]; if (i >= w) s -= a[i - w]; o[i] = s / Math.min(i + 1, w); }
-      // centre the window
-      const c = new Float32Array(a.length); const h = Math.floor(w / 2);
-      for (let i = 0; i < a.length; i += 1) c[i] = o[Math.min(a.length - 1, i + h)];
-      return c;
-    };
-    // Onsets: rises in each band, minus the local average.
-    const raw = new Float32Array(N);
-    for (let f = 1; f < N; f += 1) raw[f] = Math.max(0, B[f] - B[f - 1]) + 0.5 * Math.max(0, M[f] - M[f - 1]) + 0.25 * Math.max(0, T[f] - T[f - 1]) + 0.5 * Math.max(0, L[f] - L[f - 1]);
-    const localMean = movingAvg(raw, 30);
-    const on = new Float32Array(N);
-    let sd = 0;
-    for (let f = 0; f < N; f += 1) { on[f] = Math.max(0, raw[f] - localMean[f]); sd += on[f] * on[f]; }
-    sd = Math.sqrt(sd / N) || 1;
-    for (let f = 0; f < N; f += 1) on[f] /= sd;
-    // Tempo: autocorrelation of the onsets, preferring tempos near 120 bpm.
-    const scores = [];
-    let bestLag = 50; let best = -1;
-    for (let lag = 25; lag <= 120; lag += 1) {
-      let s = 0;
-      for (let i = 0; i + lag < N; i += 1) s += on[i] * on[i + lag];
-      const bpm = 6000 / lag;
-      scores[lag] = s * Math.exp(-0.5 * (Math.log2(bpm / 120) / 0.9) ** 2);
-      if (scores[lag] > best) { best = scores[lag]; bestLag = lag; }
-    }
-    const y0 = scores[bestLag - 1] ?? best; const y2 = scores[bestLag + 1] ?? best;
-    const den = y0 - 2 * best + y2;
-    const period = bestLag + (den ? Math.max(-0.5, Math.min(0.5, (y0 - y2) / (2 * den))) : 0);
-    const bpm = Math.round((6000 / period) * 10) / 10;
-    // Beats: the best chain of onsets spaced about one period apart (Ellis 2007).
-    const score = new Float32Array(N);
-    const back = new Int32Array(N).fill(-1);
-    for (let t = 0; t < N; t += 1) {
-      let bs = 0; let bp = -1;
-      const lo = Math.max(0, Math.round(t - 2 * period)); const hi = Math.round(t - period / 2);
-      for (let p = lo; p <= hi; p += 1) { const r = Math.log((t - p) / period); const s = score[p] - 100 * r * r; if (bp < 0 || s > bs) { bs = s; bp = p; } }
-      score[t] = on[t] + (bp >= 0 ? bs : 0);
-      back[t] = bp;
-    }
-    let t = N - 1;
-    for (let k = Math.max(0, Math.floor(N - period)); k < N; k += 1) if (score[k] > score[t]) t = k;
-    const beatFrames = [];
-    while (t >= 0) { beatFrames.push(t); t = back[t]; }
-    beatFrames.reverse();
-    const beats = beatFrames.map((f) => Math.round(f) / 100);
-    // Sections: loudness over ~3 s, split into quiet / medium / loud, short pieces merged away.
-    const E = movingAvg(L, 300);
-    const sorted = Float32Array.from(E).sort();
-    const qLo = sorted[Math.floor(N * 0.35)]; const qHi = sorted[Math.floor(N * 0.72)];
-    const lvl = (x) => (x >= qHi ? 'loud' : x <= qLo ? 'quiet' : 'medium');
-    let sections = [];
-    for (let f = 0; f < N; f += 50) {
-      const e = lvl(E[f]);
-      const last = sections[sections.length - 1];
-      if (last && last.energy === e) last.end = (f + 50) / 100; else sections.push({ start: f / 100, end: (f + 50) / 100, energy: e });
-    }
-    for (let pass = 0; pass < 3; pass += 1) {
-      const merged = [];
-      for (const s of sections) {
-        const last = merged[merged.length - 1];
-        if (last && (s.end - s.start < 4 || last.energy === s.energy)) last.end = s.end; else merged.push({ ...s });
-      }
-      sections = merged;
-    }
-    const duration = decoded.duration;
-    if (sections.length) sections[sections.length - 1].end = Math.round(duration * 10) / 10;
-    const drops = sections.filter((s, i) => i > 0 && s.energy === 'loud' && sections[i - 1].energy !== 'loud').map((s) => s.start);
-    // 30 fps envelopes for sketches (audio.analysis.bass[Math.floor(t * 30)]) and the overview.
-    const FPS = 30;
-    const down = (a) => { const n = Math.floor((N * FPS) / 100); const o = new Array(n); for (let i = 0; i < n; i += 1) { const s = Math.floor((i * 100) / FPS); const e = Math.floor(((i + 1) * 100) / FPS); let m = 0; for (let k = s; k < e; k += 1) m = Math.max(m, a[k]); o[i] = Math.round(m * 1000) / 1000; } return o; };
-    // The autocorrelation works in 10 ms steps (127.7 or 130.4, never 128): refine the tempo with a straight-line
-    // fit through the beat chain, and keep the other strong tempos as suggestions.
-    let fine = bpm;
-    if (beats.length > 16) {
-      const n = beats.length; let sx = 0; let sy = 0; let sxx = 0; let sxy = 0;
-      beats.forEach((t, i) => { sx += i; sy += t; sxx += i * i; sxy += i * t; });
-      const slope = (n * sxy - sx * sy) / (n * sxx - sx * sx);
-      if (slope > 0.2 && slope < 2.5 && Math.abs(60 / slope - bpm) < bpm * 0.04) fine = Math.round((60 / slope) * 100) / 100;
-    }
-    // most tracks are produced at a whole-number tempo
-    if (Math.abs(fine - Math.round(fine)) < 0.35) fine = Math.round(fine);
-    const cands = [];
-    for (let lag = 26; lag < 120; lag += 1) if (scores[lag] > scores[lag - 1] && scores[lag] >= scores[lag + 1]) cands.push({ bpm: Math.round((6000 / lag) * 10) / 10, s: scores[lag] });
-    cands.sort((x, y) => y.s - x.s);
-    const bpmCandidates = [fine, ...cands.map((c) => c.bpm), fine * 2, fine / 2].filter((b) => b >= 60 && b <= 200)
-      .filter((b, i, arr) => arr.findIndex((x) => Math.abs(x - b) / b < 0.03) === i).slice(0, 4).map((b) => Math.round(b * 100) / 100);
-    return { duration, bpm: fine, bpmCandidates, beats, drops, sections: sections.map((s) => ({ ...s, start: Math.round(s.start * 10) / 10, end: Math.round(s.end * 10) / 10 })), fps: FPS, level: down(L), bass: down(B), mid: down(M), treble: down(T), peaks: Array.from(PK, (x) => Math.round(x * 100) / 100), samples: mono }; // samples: kept by the player for sample-level zoom, never sent to the sketch
+    const viaWorker = () => new Promise((resolve, reject) => {
+      let w;
+      try { w = new Worker('tools/three-music-core.js'); } catch { resolve(null); return; }
+      let started = false;
+      w.onmessage = (e) => {
+        const d = e.data || {};
+        started = true;
+        if (d.progress != null) { onProgress?.(d.progress); return; }
+        w.terminate();
+        if (d.error) reject(new Error(d.error)); else resolve({ result: d.result, mono: d.mono });
+      };
+      w.onerror = (e) => { e.preventDefault?.(); w.terminate(); if (started) reject(new Error(e.message || 'The analysis stopped')); else resolve(null); };
+      const ch = channels();
+      w.postMessage({ id: 1, channels: ch, sampleRate: SR }, ch.map((c) => c.buffer));
+    });
+    const fromWorker = await viaWorker();
+    const out = fromWorker || inline();
+    analyze.lastWorker = Boolean(fromWorker); // for the tests: did it run off the main thread
+    return { ...out.result, samples: out.mono };
   }
 
   // ---------- frame sizes ----------
@@ -305,7 +211,8 @@ const ThreeMedia = (() => {
   }
   // Beat number counted from the downbeat: 0 = the "1" of a bar.
   const beatNo = (beats, i, grid) => (grid ? Math.round((beats[i] - grid.anchor) / (60 / grid.bpm)) : i);
-  function snapTime(t, mode, grid, beats) {
+  // off: which detected beat is a bar's 1 (when there's no straight grid)
+  function snapTime(t, mode, grid, beats, off = 0) {
     if (mode === 'off' || !beats.length) return t;
     if (grid) {
       const p = 60 / grid.bpm;
@@ -314,7 +221,7 @@ const ThreeMedia = (() => {
     }
     const i = Math.max(0, Math.min(beats.length - 2, beatIndex(beats, t)));
     if (mode === 'bar') {
-      const k0 = i - (i % 4); const k1 = Math.min(beats.length - 1, k0 + 4);
+      const k0 = Math.max(0, i - mod(i - off, 4)); const k1 = Math.min(beats.length - 1, k0 + 4);
       return Math.abs(beats[k0] - t) <= Math.abs(beats[k1] - t) ? beats[k0] : beats[k1];
     }
     const a = beats[i]; const step = (beats[i + 1] - a) / DIV[mode];
@@ -356,6 +263,9 @@ const ThreeMedia = (() => {
     let allMaps = null;
     let taps = [];
     let beatCache = { key: '', beats: [] };
+    // listeners (tools/three-music.js): 'analysis' (a song was analysed), 'tap' (tap tempo learned something)
+    const listeners = {};
+    const emit = (ev, data) => { for (const fn of listeners[ev] || []) { try { fn(data); } catch (err) { console.error(err); } } };
     const btn = (text, title, fn, cls = 'ghost small') => el('button', { class: cls, text, title, on: { click: fn } });
     const sep = () => el('span', { class: 'mb-sep' });
     const group = (cat, ...nodes) => el('span', { class: 'tb-group', dataset: { cat } }, ...nodes.filter(Boolean));
@@ -474,11 +384,13 @@ const ThreeMedia = (() => {
         const anchor = b;
         const range = region ? [region.a, region.b] : [0, D()]; const where = region ? 'in the loop' : 'in the whole song';
         const plan = { kick: [['Every beat', 'kicks'], ['On 1 and 3', 'kicks13']], snare: [['On 2 and 4', 'snares']], hit: [['Every bar\'s 1', 'hits']] }[ln.id] || [];
+        const fh = found(ln.id === 'hit' ? '' : ln.id);
         menuAt(anchor, [
+          fh.length ? [`✦ Mark ${ln.name.toLowerCase()}s for me`, `${fh.filter((o) => o.t >= range[0] && o.t < range[1]).length} found in the audio ${where} · editable after, ↶ undoes`, () => { const n = markFound(ln.id)?.[ln.id] || 0; toast(`${n} ${ln.name.toLowerCase()}s marked from the song`, { timeout: 1800 }); }] : false,
           ...plan.map(([label, kind]) => [`Fill: ${label}`, where, () => fillKind(kind)]),
           ['Copy the times', `${map.marks[ln.id].filter((t) => t >= range[0] && t < range[1]).length} ${ln.name.toLowerCase()}s, in seconds`, () => { navigator.clipboard.writeText(map.marks[ln.id].filter((t) => t >= range[0] && t < range[1]).map((t) => t.toFixed(3)).join('\n')); toast('Copied', { timeout: 1000 }); }],
           [`Clear the ${ln.name.toLowerCase()}s`, where, () => { pushUndo(); map.marks[ln.id] = map.marks[ln.id].filter((t) => t < range[0] || t >= range[1]); mapChanged(); }],
-        ]);
+        ].filter((x) => x !== false));
       });
       return b;
     });
@@ -486,7 +398,7 @@ const ThreeMedia = (() => {
       if (!D()) return 0;
       const range = region ? [region.a, region.b] : [0, D()];
       const bs = beats(); const inR = (t) => t >= range[0] - 1e-3 && t < range[1] - 1e-3;
-      const nb = bs.map((t, i) => ({ t, n: mod(beatNo(bs, i, map.grid), bpbNow()) })).filter((b) => inR(b.t));
+      const nb = bs.map((t, i) => ({ t, n: mod(bno(bs, i), bpbNow()) })).filter((b) => inR(b.t));
       const plan = { kicks: ['kick', nb], kicks13: ['kick', nb.filter((b) => b.n === 0 || b.n === 2)], snares: ['snare', nb.filter((b) => b.n === 1 || b.n === 3)], hits: ['hit', nb.filter((b) => b.n === 0)] }[kind];
       if (!plan) return 0;
       pushUndo(); for (const b of plan[1]) map.marks[plan[0]] = addMark(map.marks[plan[0]], b.t); mapChanged();
@@ -644,7 +556,7 @@ const ThreeMedia = (() => {
         bytes = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
       } catch (err) { if (!quiet) toast(`Couldn't open ${base(path)}: ${err.message}`, { type: 'error' }); return { ok: false, error: err.message }; }
       if (seq !== loadSeq) return { ok: false, error: 'Another file was loaded meanwhile' };
-      Object.assign(st, { path, name: base(path), bytes, mime: MIME[extOf(path)], video: VIDEO_EXT.includes(extOf(path)), analysis: null, samples: null, time: startAt, duration: 0, playing: false });
+      Object.assign(st, { path, name: base(path), bytes, mime: MIME[extOf(path)], video: VIDEO_EXT.includes(extOf(path)), analysis: null, samples: null, wave: null, time: startAt, duration: 0, playing: false });
       const saved = store.get(loopKey(path), null);
       region = saved?.a != null ? { a: saved.a, b: saved.b } : null;
       locked = Boolean(saved?.locked && region);
@@ -662,10 +574,10 @@ const ThreeMedia = (() => {
       paint();
       attach({ playing: false });
       try {
-        const a = await analyze(bytes);
-        st.samples = a.samples;
-        delete a.samples;
-        st.analysis = a;
+        const a = await analyze(bytes, { onProgress: (p) => { if (seq === loadSeq) setText(nameEl, `${st.name} · analyzing ${Math.round(p * 100)}%`); } });
+        st.samples = a.samples; st.wave = a.wave;
+        delete a.samples; delete a.wave;
+        st.analysis = a; anaVer += 1;
       } catch (err) { if (seq === loadSeq) { st.analysis = null; if (!quiet) toast(st.video ? `${st.name} has no audio track to analyze (it still works as a video texture)` : `Couldn't analyze ${st.name}: ${err.message}`, { type: 'error' }); } }
       if (seq !== loadSeq) return { ok: false, error: 'Another file was loaded meanwhile' };
       analyzing = false;
@@ -674,13 +586,14 @@ const ThreeMedia = (() => {
       sendMap();
       paint();
       onLoaded?.();
+      if (st.analysis) emit('analysis', st.analysis);
       return { ok: true };
     }
     // silent: the Lab is switching sketches and runs the new one itself.
     function unload({ silent = false } = {}) {
       loadSeq += 1;
       analyzing = false;
-      Object.assign(st, { path: null, name: null, bytes: null, analysis: null, samples: null, time: 0, duration: 0, playing: false });
+      Object.assign(st, { path: null, name: null, bytes: null, analysis: null, samples: null, wave: null, time: 0, duration: 0, playing: false });
       region = null; locked = false; view = null; selected = null;
       map = { grid: null, marks: emptyMarks(), cues: [] };
       store.set('three.media', null);
@@ -736,26 +649,33 @@ const ThreeMedia = (() => {
 
     // ---------- grid + markers ----------
     const D = () => st.duration || st.analysis?.duration || 0;
+    // The grid in use: yours (map.grid) or, until you set one, the detected straight grid with its bar 1. A played
+    // song (the tempo drifts) has no straight grid: its tracked beats are used, counted from the detected bar 1.
+    const autoGrid = () => { const g = st.analysis?.grid; return g?.straight ? g : null; };
+    const G = () => map.grid || autoGrid();
+    const dIdx = () => (G() ? 0 : st.analysis?.downIndex || 0);
+    const bno = (bs, i) => (G() ? beatNo(bs, i, G()) : i - dIdx());
     function beats() {
-      if (!map.grid) return st.analysis?.beats || [];
-      const key = `${map.grid.bpm}|${map.grid.anchor}|${D()}`;
-      if (beatCache.key !== key) beatCache = { key, beats: gridBeats(map.grid, D()) };
+      const g = G();
+      if (!g) return st.analysis?.beats || [];
+      const key = `${g.bpm}|${g.anchor}|${D()}`;
+      if (beatCache.key !== key) beatCache = { key, beats: gridBeats(g, D()) };
       return beatCache.beats;
     }
-    const bpmNow = () => map.grid?.bpm || st.analysis?.bpm || 0;
-    const bpbNow = () => map.grid?.bpb || 4;
+    const bpmNow = () => G()?.bpm || st.analysis?.bpm || 0;
+    const bpbNow = () => G()?.bpb || 4;
     // "Hits": the nearest kick / snare / hit marker or cue within a beat, else the 1/16 grid.
     const snapT = (t) => {
-      if (snapMode !== 'hits') return snapTime(t, snapMode, map.grid, beats());
+      if (snapMode !== 'hits') return snapTime(t, snapMode, G(), beats(), dIdx());
       const range = 60 / (bpmNow() || 120);
       let best = null; let bd = range;
       for (const list of [map.marks.kick, map.marks.snare, map.marks.hit, map.cues.map((c) => c.t)]) for (const m of list) { const d = Math.abs(m - t); if (d < bd) { bd = d; best = m; } }
-      return best ?? snapTime(t, '1/16', map.grid, beats());
+      return best ?? snapTime(t, '1/16', G(), beats(), dIdx());
     };
     function ensureGrid() {
       if (map.grid) return map.grid;
-      const bs = st.analysis?.beats || [];
-      map.grid = { bpm: Math.round((st.analysis?.bpm || 120) * 100) / 100, anchor: bs[0] ?? 0, bpb: 4 };
+      const ag = autoGrid(); const bs = st.analysis?.beats || [];
+      map.grid = ag ? { bpm: ag.bpm, anchor: ag.anchor, bpb: ag.bpb || 4 } : { bpm: Math.round((st.analysis?.bpm || 120) * 100) / 100, anchor: bs[dIdx()] ?? bs[0] ?? 0, bpb: 4 };
       return map.grid;
     }
     function pushUndo() { mapUndo.push(JSON.stringify(map)); if (mapUndo.length > 80) mapUndo.shift(); }
@@ -796,43 +716,85 @@ const ThreeMedia = (() => {
     }
     function sendMap() {
       if (!st.bytes) return;
-      send({ type: 'media-map', beats: beats(), bpm: bpmNow(), bpb: bpbNow(), anchor: map.grid?.anchor ?? beats()[0] ?? 0, manual: Boolean(map.grid), marks: map.marks, cues: map.cues.map((c) => ({ t: c.t, name: c.name })) });
+      send({ type: 'media-map', beats: beats(), bpm: bpmNow(), bpb: bpbNow(), anchor: G()?.anchor ?? beats()[dIdx()] ?? 0, manual: Boolean(G()), downIndex: dIdx(), marks: map.marks, cues: map.cues.map((c) => ({ t: c.t, name: c.name })) });
     }
-    // Tap tempo (button or T): the median gap of the last 16 taps (stray taps ignored), shown live; a value
-    // within 0.3 of a whole number rounds to it (most tracks are). While the song plays, the grid's beats also
-    // line up with your taps (each tap is first moved onto the nearest real hit in the audio).
+    // Tap tempo that learns (button or T): the median gap of the last 16 taps (stray taps ignored), shown live.
+    // Close to the song's detected tempo (or half / double of it, the classic mistake either way) the grid locks to
+    // the detected one: its exact BPM and bar 1, instead of a rough tapped value. Taps far from it set the tempo as
+    // before (within 0.3 of a whole number rounds to it). While the song plays, taps that disagree with the beat
+    // phase move the grid onto them, and taps on a trusted grid teach the app how late you tap (used to put K / S / H
+    // and "this tap is the 1" on the real hit).
     let tapSong = [];
-    let tapInfo = null; // { bpm, conf (0..1), n, spread (± BPM) }
+    let tapRaw = [];
+    let tapInfo = null; // { bpm, tapped, conf (0..1), n, spread (± BPM), lock: 'same' | 'half' | 'double' | null }
+    let tapLat = store.get('three.tapLatency', null); // { ms, n }: how late you tap, learned (not a setting)
+    const tapNow = () => Math.max(0, now() - ((tapLat?.ms || 0) / 1000) * (st.rate || 1));
+    // where taps sit against a grid (period p, anchor a): the circular mean offset (s) and how tightly they agree
+    function tapPhase(times, p, a) {
+      let cx = 0; let cy = 0;
+      for (const x of times) { const ang = (((x - a) % p) / p) * 2 * Math.PI; cx += Math.cos(ang); cy += Math.sin(ang); }
+      const n = times.length || 1;
+      return { off: (Math.atan2(cy, cx) / (2 * Math.PI)) * p, agree: Math.hypot(cx, cy) / n };
+    }
+    let tapToastShown = false;
     function tap() {
       const t = performance.now();
-      if (taps.length && t - taps[taps.length - 1] > 2000) { taps = []; tapSong = []; tapInfo = null; }
+      if (taps.length && t - taps[taps.length - 1] > 2000) { taps = []; tapSong = []; tapRaw = []; tapInfo = null; tapToastShown = false; }
       taps.push(t);
-      if (st.playing) tapSong.push(snapToHit(now(), 'any'));
-      if (taps.length > 16) { taps.shift(); if (tapSong.length > 16) tapSong.shift(); }
+      if (st.playing) { tapRaw.push(now()); tapSong.push(snapToHit(tapNow(), 'any')); }
+      if (taps.length > 16) { taps.shift(); if (tapSong.length > 16) { tapSong.shift(); tapRaw.shift(); } }
       let bpm = null;
       if (taps.length >= 4) {
         const gaps = taps.slice(1).map((x, i) => x - taps[i]).sort((a, b) => a - b);
         const med = gaps[gaps.length >> 1];
         const kept = gaps.filter((g) => Math.abs(g - med) < med * 0.2);
         const mean = kept.reduce((s0, g) => s0 + g, 0) / kept.length;
-        bpm = 60000 / mean;
+        const tapped = 60000 / (mean * (st.playing ? st.rate || 1 : 1));
         const sd = Math.sqrt(kept.reduce((s0, g) => s0 + (g - mean) ** 2, 0) / kept.length);
         // how sure: even taps (small spread) and enough of them
         const conf = Math.max(0, Math.min(1, (1 - (sd / mean) * 6) * Math.min(1, kept.length / 8) * (kept.length / gaps.length)));
-        const spread = Math.abs(60000 / (mean - sd / Math.sqrt(kept.length)) - bpm);
-        if (store.get('three.tapRound', true) !== false && Math.abs(bpm - Math.round(bpm)) < 0.3) bpm = Math.round(bpm); else bpm = Math.round(bpm * 100) / 100;
-        tapInfo = { bpm, conf, n: taps.length, spread: Math.round(spread * 10) / 10 };
+        const spread = Math.abs(60000 / (mean - sd / Math.sqrt(kept.length)) - 60000 / mean);
+        // the song's own tempo, if the taps agree with it (or with half / double of it)
+        const det = autoGrid()?.bpm || st.analysis?.bpm || 0;
+        let lock = null;
+        if (det) for (const [k, kind] of [[1, 'same'], [0.5, 'half'], [2, 'double']]) if (Math.abs(tapped / (det * k) - 1) < 0.03) { lock = kind; break; }
+        if (lock) bpm = det;
+        else if (store.get('three.tapRound', true) !== false && Math.abs(tapped - Math.round(tapped)) < 0.3) bpm = Math.round(tapped); else bpm = Math.round(tapped * 100) / 100;
+        tapInfo = { bpm, tapped: Math.round(tapped * 10) / 10, conf, n: taps.length, spread: Math.round(spread * 10) / 10, lock };
         if (taps.length === 4) pushUndo();
-        const g = ensureGrid();
-        g.bpm = bpm;
-        if (tapSong.length >= 4 && store.get('three.tapAlign', true) !== false) {
-          // circular mean of the taps' phase within a beat, then keep the bar where it was
-          const p = 60 / bpm; let cx = 0; let cy = 0;
-          for (const x of tapSong) { const a = ((x % p) / p) * 2 * Math.PI; cx += Math.cos(a); cy += Math.sin(a); }
-          const phase = ((Math.atan2(cy, cx) / (2 * Math.PI)) * p + p) % p;
-          g.anchor = r4(phase + Math.round((g.anchor - phase) / p) * p);
+        const align = tapSong.length >= 4 && store.get('three.tapAlign', true) !== false;
+        if (lock) {
+          // locked: the detected grid stays (or comes back); only taps that clearly put the beat elsewhere move it
+          const g0 = G(); const p = 60 / bpm;
+          const ph = align && g0 ? tapPhase(tapSong, p, g0.anchor) : null;
+          const moved = Boolean(ph && ph.agree > 0.75 && Math.abs(ph.off) > 0.045);
+          if (map.grid && Math.abs(map.grid.bpm - bpm) > 0.005) map.grid.bpm = bpm;
+          if (moved) { const g = ensureGrid(); g.bpm = bpm; g.anchor = r4(g.anchor + ph.off); }
+          // how late you tap, against a grid you agree with (not one your taps just moved)
+          if (!moved && tapRaw.length >= 6 && G()) {
+            const pr = tapPhase(tapRaw, 60 / G().bpm, G().anchor);
+            if (pr.agree > 0.8 && Math.abs(pr.off) < 0.15 && (taps.length === 8 || taps.length === 16)) {
+              const n = Math.min(20, (tapLat?.n || 0) + 1);
+              tapLat = { ms: Math.round(((tapLat?.ms || 0) * (n - 1) + (pr.off / (st.rate || 1)) * 1000) / n), n };
+              store.set('three.tapLatency', tapLat);
+            }
+          }
+          if (lock !== 'same' && !tapToastShown && taps.length >= 6) {
+            tapToastShown = true;
+            const k = lock === 'half' ? 0.5 : 2; const alt = Math.round(det * k * 100) / 100;
+            toast(`You tapped ${lock} time (${Math.round(alt)}): the grid stays at the song's ${det} BPM`, { timeout: 4000, action: { label: `Use ${alt}`, fn: () => editGrid((g) => { g.bpm = alt; }) } });
+          }
+        } else {
+          const g = ensureGrid();
+          g.bpm = bpm;
+          if (align) {
+            // circular mean of the taps' phase within a beat, then keep the bar where it was
+            const p = 60 / bpm; const phase = (tapPhase(tapSong, p, 0).off + p) % p;
+            g.anchor = r4(phase + Math.round((g.anchor - phase) / p) * p);
+          }
         }
         mapChanged();
+        emit('tap', tapInfo);
       }
       paintTap(bpm);
       clearTimeout(tap.reset);
@@ -840,7 +802,8 @@ const ThreeMedia = (() => {
       return tapInfo;
     }
     function paintTap(bpm) {
-      tapBtn.textContent = bpm ? `Tap · ${bpm}` : `Tap ${'•'.repeat(taps.length)}`;
+      tapBtn.textContent = bpm ? `Tap · ${bpm}${tapInfo?.lock ? ' ✓' : ''}` : `Tap ${'•'.repeat(taps.length)}`;
+      tapBtn.classList.toggle('locked', Boolean(tapInfo?.lock));
       tapBtn.classList.add('on');
       tapBtn.classList.remove('flash'); void tapBtn.offsetWidth; tapBtn.classList.add('flash');
       if (tapInfo) tapBtn.style.setProperty('--conf', String(tapInfo.conf));
@@ -852,29 +815,70 @@ const ThreeMedia = (() => {
       bpmRead.textContent = b ? `${Math.round(b * 100) / 100} BPM${sure}` : '';
       bpmRead.classList.toggle('mine', Boolean(map.grid));
       bpmRead.classList.toggle('sure', Boolean(tapInfo && tapInfo.conf >= 0.75));
-      bpmRead.title = `${map.grid ? 'Your grid' : 'Detected tempo'}${tapInfo ? ` · last taps: ${tapInfo.n}, ±${tapInfo.spread} BPM, ${Math.round(tapInfo.conf * 100)}% sure` : ''}${map.grid ? ` · the 1 at ${fmtMs(map.grid.anchor)}` : ''} · click to type it`;
+      const ag = !map.grid && st.analysis?.grid;
+      bpmRead.title = `${map.grid ? 'Your grid' : 'Detected tempo'}${ag ? ` (${Math.round((ag.tempoConf ?? 0) * 100)}% sure${ag.straight ? `, bar 1 at ${fmtMs(ag.anchor)}, ${Math.round((ag.downbeatConf ?? 0) * 100)}% sure` : ', played: the beats follow the band'})` : ''}${tapInfo ? ` · last taps: ${tapInfo.n} at ${tapInfo.tapped}, ±${tapInfo.spread} BPM, ${Math.round(tapInfo.conf * 100)}% even${tapInfo.lock ? ', locked to the song\'s grid' : ''}` : ''}${map.grid ? ` · the 1 at ${fmtMs(map.grid.anchor)}` : ''}${tapLat?.n ? ` · you tap about ${Math.abs(tapLat.ms)} ms ${tapLat.ms >= 0 ? 'late' : 'early'} (learned)` : ''} · click to type it`;
     }
-    // Shift+T: this tap is the 1 (the downbeat), moved onto the real hit in the audio
+    // Shift+T: this tap is the 1 (the downbeat). With a grid, the beat line nearest your tap becomes the 1 (the tempo
+    // and phase stay exactly as they were: only which beat counts as "1" changes); without one, the real hit near it.
     function tapOne() {
       if (!D()) return false;
-      const t = snapToHit(now(), 'kick');
-      editGrid((g) => { g.anchor = r4(t); });
+      const raw = tapNow(); const g = G();
+      let t = null;
+      if (g) { const p = 60 / g.bpm; const onGrid = g.anchor + Math.round((raw - g.anchor) / p) * p; if (Math.abs(onGrid - raw) < Math.min(0.15, p * 0.45)) t = onGrid; }
+      if (t == null) t = snapToHit(raw, 'kick');
+      editGrid((gg) => { gg.anchor = r4(t); });
       toast(`The 1 is at ${fmtMs(t)} (Shift+T again to move it)`, { timeout: 1500 });
       return t;
+    }
+    // , and . (while it plays): shift the grid 5 ms earlier / later by ear (Shift 1 ms, Alt 20 ms); one undo step for
+    // a run of nudges, and one note that keeps the total
+    let nudgeRun = null;
+    function nudgeByEar(dir, e = {}) {
+      if (!D()) return false;
+      const ms = dir * (e.shiftKey ? 1 : e.altKey ? 20 : 5);
+      if (!nudgeRun || performance.now() - nudgeRun.at > 1500) { pushUndo(); nudgeRun = { total: 0, note: null }; }
+      const g = ensureGrid(); g.anchor = r4(g.anchor + ms / 1000);
+      nudgeRun.total += ms; nudgeRun.at = performance.now();
+      mapChanged();
+      const text = `Grid ${nudgeRun.total > 0 ? '+' : ''}${nudgeRun.total} ms · , . nudge by ear (Shift 1 ms, Alt 20 ms)${gridView.click ? '' : ' · /click-track to hear it'}`;
+      if (nudgeRun.note?.isConnected) nudgeRun.note.querySelector('span').textContent = text; else nudgeRun.note = toast(text, { timeout: 2200 });
+      return nudgeRun.total;
+    }
+    // The hits the analysis found in the audio, written as markers you can edit (undoable); in the loop if there is
+    // one, else the whole song. Hits next to one you placed by hand are skipped. kind: kick | snare | hats | all
+    const found = (k) => st.analysis?.onsets?.[k] || [];
+    function markFound(kind = 'kick') {
+      if (!D() || !st.analysis?.onsets) return null;
+      const range = region ? [region.a, region.b] : [0, D()];
+      const kinds = kind === 'all' ? ['kick', 'snare', 'hats'] : [kind];
+      pushUndo();
+      const counts = {};
+      for (const k of kinds) {
+        let n = 0;
+        for (const o of found(k)) {
+          if (o.t < range[0] || o.t >= range[1] || map.marks[k].some((x) => Math.abs(x - o.t) < 0.04)) continue;
+          map.marks[k] = addMark(map.marks[k], o.t); n += 1;
+        }
+        counts[k] = n;
+      }
+      mapChanged();
+      return counts;
     }
     function tapMenu(e) {
       const anchor = { getBoundingClientRect: () => ({ left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY }) };
       const align = store.get('three.tapAlign', true) !== false; const round = store.get('three.tapRound', true) !== false;
       menuAt(anchor, [
-        ['This tap is the 1', 'Shift+T or Shift+click: the downbeat goes here', () => tapOne()],
+        ['This tap is the 1', 'Shift+T or Shift+click: the beat line nearest your tap becomes the 1', () => tapOne()],
+        st.analysis?.grid ? ['Back to the song\'s grid', `${autoGrid()?.bpm || st.analysis.bpm} BPM, bar 1 as detected`, () => { if (map.grid) { pushUndo(); map.grid = null; mapChanged(); } }] : false,
         ['×2', 'Double the BPM', () => editGrid((g) => { g.bpm = Math.round(g.bpm * 200) / 100; })],
         ['½', 'Halve the BPM', () => editGrid((g) => { g.bpm = Math.round(g.bpm * 50) / 100; })],
         ['Auto: the detected tempo', 'Forget your grid', () => { if (map.grid) { pushUndo(); map.grid = null; mapChanged(); } }],
         null,
         [`${align ? '✓ ' : ''}Taps line up the grid`, 'While it plays, the beats move onto your taps', () => store.set('three.tapAlign', !align)],
         [`${round ? '✓ ' : ''}Round to whole BPM`, 'Within 0.3 of a whole number', () => store.set('three.tapRound', !round)],
-        ['Forget the taps', 'Esc', () => { taps = []; tapSong = []; tapInfo = null; tapBtn.textContent = 'Tap'; tapBtn.classList.remove('on'); paintBpmRead(); }],
-      ]);
+        ['Forget the taps', 'Esc', () => { taps = []; tapSong = []; tapRaw = []; tapInfo = null; tapBtn.textContent = 'Tap'; tapBtn.classList.remove('on'); paintBpmRead(); }],
+        tapLat?.n ? ['Forget how late I tap', `Learned: ${tapLat.ms} ms`, () => { tapLat = null; store.set('three.tapLatency', null); paintBpmRead(); }] : false,
+      ].filter((x) => x !== false));
     }
     // The strongest attack in the audio near t: from 150 ms before (you tap late) to 60 ms after.
     // lane 'kick' listens to the lows, 'snare' / 'hit' to the highs, 'any' to everything.
@@ -975,7 +979,7 @@ const ThreeMedia = (() => {
     }
     function addAtPlayhead(lane) {
       // a live tap: the real attack nearby (fixes the tap's delay); the grid only if a line is that close
-      const hit = snapToHit(now(), lane);
+      const hit = snapToHit(tapNow(), lane);
       const grid = snapT(hit);
       addMarkAt(lane, quantTaps || Math.abs(grid - hit) < 0.03 ? grid : hit, { snapIt: false });
       const b = laneBtns[CORE_LANES.findIndex((l) => l.id === lane)];
@@ -1004,7 +1008,7 @@ const ThreeMedia = (() => {
       pushUndo(); let n = 0;
       for (const ln of LANES) {
         const keep = map.marks[ln.id].filter((t) => t < a || t >= b);
-        let moved = map.marks[ln.id].filter((t) => t >= a && t < b).map((t) => { const q = snapTime(t, qMode(), map.grid, beats()); if (q !== t) n += 1; return q; });
+        let moved = map.marks[ln.id].filter((t) => t >= a && t < b).map((t) => { const q = snapTime(t, qMode(), G(), beats(), dIdx()); if (q !== t) n += 1; return q; });
         moved = [...new Set(moved.map((t) => r4(t)))];
         map.marks[ln.id] = [...keep, ...moved].sort((x, y) => x - y);
       }
@@ -1021,8 +1025,8 @@ const ThreeMedia = (() => {
     // L: loop the bar under the playhead (again: no loop)
     function loopBar() {
       if (!D()) return;
-      const t = now(); const len = snapStep('bar', map.grid, bpmNow());
-      let a = snapTime(t, 'bar', map.grid, beats()); if (a > t + 1e-3) a -= len; if (a < -1e-3) a += len;
+      const t = now(); const len = snapStep('bar', G(), bpmNow());
+      let a = snapTime(t, 'bar', G(), beats(), dIdx()); if (a > t + 1e-3) a -= len; if (a < -1e-3) a += len;
       if (region && Math.abs(region.a - a) < 1e-3 && Math.abs(region.b - (a + len)) < 1e-3) { setRegion(null); toast('Loop off', { timeout: 1000 }); return; }
       setRegion({ a: Math.max(0, a), b: Math.min(D(), a + len) });
       if (!st.loop) loopBtn.click();
@@ -1040,10 +1044,12 @@ const ThreeMedia = (() => {
       const where = region ? 'in the loop' : 'in the whole song';
       const bs = beats();
       const inRange = (t) => t >= range[0] - 1e-3 && t < range[1] - 1e-3;
-      const numbered = bs.map((t, i) => ({ t, n: mod(beatNo(bs, i, map.grid), bpbNow()) })).filter((b) => inRange(b.t));
+      const numbered = bs.map((t, i) => ({ t, n: mod(bno(bs, i), bpbNow()) })).filter((b) => inRange(b.t));
       const stamp = (lane, list) => { pushUndo(); for (const t of list) map.marks[lane] = addMark(map.marks[lane], t); mapChanged(); toast(`${list.length} ${lane}${list.length === 1 ? '' : 's'} added ${where}`, { timeout: 2000 }); };
       const clear = (lane) => { pushUndo(); const before = map.marks[lane].length; map.marks[lane] = map.marks[lane].filter((t) => !inRange(t)); mapChanged(); toast(`${before - map.marks[lane].length} ${lane}s removed ${where}`, { timeout: 2000 }); };
+      const fAll = ['kick', 'snare', 'hats'].map((k) => found(k).filter((o) => inRange(o.t)).length);
       menuAt(anchor, [
+        fAll.some(Boolean) ? ['✦ Mark the hits from the song', `${fAll[0]} kicks, ${fAll[1]} snares, ${fAll[2]} hats found ${where}`, () => { const c = markFound('all'); toast(`Marked ${c.kick} kicks, ${c.snare} snares, ${c.hats} hats (↶ undoes)`, { timeout: 2200 }); }] : false,
         ['Kick on every beat', where, () => stamp('kick', numbered.map((b) => b.t))],
         ['Kick on 1 and 3', where, () => stamp('kick', numbered.filter((b) => b.n === 0 || b.n === 2).map((b) => b.t))],
         ['Snare on 2 and 4', where, () => stamp('snare', numbered.filter((b) => b.n === 1 || b.n === 3).map((b) => b.t))],
@@ -1053,11 +1059,11 @@ const ThreeMedia = (() => {
         ['Remove doubles', `${where}: markers closer than 80 ms to the one before go`, () => dedupe(range)],
         null,
         ...shownLanes().map((ln) => [`Clear ${ln.name.toLowerCase()}${ln.id === 'bass' || ln.id === 'hats' ? '' : 's'}`, where, () => clear(ln.id)]),
-      ]);
+      ].filter((x) => x !== false));
     }
 
     // ---------- timeline view ----------
-    function setGridView(patch) { gridView = { ...gridView, ...patch }; store.set('three.gridView', gridView); waveCache.key = ''; sizeCanvas(); draw(); return gridView; }
+    function setGridView(patch) { gridView = { ...gridView, ...patch }; store.set('three.gridView', gridView); waveCache.key = ''; gridCache.key = ''; sizeCanvas(); draw(); return gridView; }
     // Beat light + click track: follow the grid while it plays (checked every frame in tick)
     let lastBeat = -1; let clickCtx = null;
     function beatTick() {
@@ -1065,7 +1071,7 @@ const ThreeMedia = (() => {
       const bs = beats(); const i = beatIndex(bs, now());
       if (i === lastBeat || i < 0) return;
       lastBeat = i;
-      const down = mod(beatNo(bs, i, map.grid), bpbNow()) === 0;
+      const down = mod(bno(bs, i), bpbNow()) === 0;
       // restart the beat light's flash without forcing a layout of the whole page (a reflow per beat, before)
       if (gridView.light !== false) { bpmRead.classList.toggle('down', down); for (const a of bpmRead.getAnimations()) a.cancel(); bpmRead.classList.remove('beat'); requestAnimationFrame(() => bpmRead.classList.add('beat')); }
       if (gridView.click) {
@@ -1104,20 +1110,28 @@ const ThreeMedia = (() => {
     function autoSections() {
       const a = st.analysis;
       if (!a?.sections?.length) { toast('The song is still being analyzed (or has no audio)', { type: 'error' }); return 0; }
-      let drops = 0;
+      // the analysis names them (intro / build / drop / break / outro, from bars of loudness, bass, highs and kicks);
+      // older analyses only know loud / quiet, named here the same way
+      const count = {};
       const names = a.sections.map((sec, i) => {
-        if (i === 0) return sec.energy === 'loud' ? 'Drop' : 'Intro';
-        if (i === a.sections.length - 1 && sec.energy !== 'loud') return 'Outro';
-        if (sec.energy === 'loud') { drops += 1; return drops > 1 ? `Drop ${drops}` : 'Drop'; }
-        return a.sections[i + 1]?.energy === 'loud' ? 'Build' : 'Break';
+        let n = sec.label;
+        if (!n) {
+          if (i === 0) n = sec.energy === 'loud' ? 'Drop' : 'Intro';
+          else if (i === a.sections.length - 1 && sec.energy !== 'loud') n = 'Outro';
+          else if (sec.energy === 'loud') n = 'Drop';
+          else n = a.sections[i + 1]?.energy === 'loud' ? 'Build' : 'Break';
+        }
+        count[n] = (count[n] || 0) + 1;
+        return count[n] > 1 ? `${n} ${count[n]}` : n;
       });
-      editCues({ add: a.sections.map((sec, i) => ({ time: snapT(sec.start), name: names[i] })) });
-      toast(`${a.sections.length} sections marked as cues (1–9 jump to them; right-click one to give it a look)`, { timeout: 3000 });
+      editCues({ add: a.sections.map((sec, i) => ({ time: i === 0 ? 0 : snapT(sec.start), name: names[i] })) });
+      const unsure = a.sections.filter((x) => x.conf != null && x.conf < 0.45).length;
+      toast(`${a.sections.length} sections marked as cues${unsure ? ` (${unsure} unsure: rename or move them)` : ''} · 1–9 jump to them; right-click one to give it a look`, { timeout: 3200 });
       return a.sections.length;
     }
     function sectionsMenu(anchor) {
       menuAt(anchor, [
-        ['Mark sections from the song', 'Intro / Build / Drop / Break / Outro from its loud and quiet parts', () => autoSections()],
+        ['Mark sections from the song', st.analysis?.sections?.[0]?.label ? `${st.analysis.sections.map((x) => x.label).join(' · ')}` : 'Intro / Build / Drop / Break / Outro from its loud and quiet parts', () => autoSections()],
         null,
         ...SECTION_NAMES.map((n) => [`${n} here`, `A "${n}" cue at the playhead (${fmtMs(now())})`, () => addCue(now(), n)]),
         null,
@@ -1154,7 +1168,7 @@ const ThreeMedia = (() => {
         ['Delete', 'Or double-click it · Delete key', () => deleteSelectedMark()],
         ['Nudge 10 ms earlier', '← (Alt: 1 ms, Shift: a grid step)', () => move(t - 0.01)],
         ['Nudge 10 ms later', '→', () => move(t + 0.01)],
-        [`Onto the grid (${qLabel()})`, 'Quantize just this one', () => move(snapTime(t, qMode(), map.grid, beats()))],
+        [`Onto the grid (${qLabel()})`, 'Quantize just this one', () => move(snapTime(t, qMode(), G(), beats(), dIdx()))],
         ['Onto the hit', 'The real attack in the audio nearby', () => { const h = snapToHit(t + 0.05, lane === 'kick' || lane === 'bass' ? 'kick' : lane); move(h); }],
         ['To the playhead', fmtMs(now()), () => move(now())],
         null,
@@ -1210,6 +1224,7 @@ const ThreeMedia = (() => {
       if (ctrl) return false;
       if (e.key.toLowerCase() === 'a' && !e.altKey && !e.shiftKey) { trackHandlers.onLanesAll?.(); return true; }
       if (e.key.toLowerCase() === 't' && !e.altKey && !e.repeat) { if (e.shiftKey) tapOne(); else tap(); return true; }
+      if (e.code === 'Comma' || e.code === 'Period') { nudgeByEar(e.code === 'Comma' ? -1 : 1, e); return true; }
       if (e.key.toLowerCase() === 'q' && !e.altKey && !e.shiftKey) { toast(setQuantize(!quantTaps) ? 'Quantize taps on: K / S / H land on the grid' : 'Quantize taps off: K / S / H land on the sound', { timeout: 1400 }); return true; }
       if ((e.key === '=' || e.key === '+') && !e.altKey) { zoomBy(1 / 1.6); return true; }
       if (e.key === '-' && !e.altKey) { zoomBy(1.6); return true; }
@@ -1229,10 +1244,10 @@ const ThreeMedia = (() => {
       if (e.key === ']') { setRegionEdge('b', now()); return true; }
       if ((e.key === 'Delete' || e.key === 'Backspace') && autoSel?.idx.size) { deletePoints(); return true; }
       if (e.key === 'Delete' || e.key === 'Backspace') return deleteSelectedMark();
-      if (e.key === 'Escape') { if (taps.length) { taps = []; tapBtn.textContent = 'Tap'; tapBtn.classList.remove('on'); } if (autoSel) { autoSel = null; draw(); return true; } selected = null; draw(); return true; }
+      if (e.key === 'Escape') { if (taps.length) { taps = []; tapSong = []; tapRaw = []; tapBtn.textContent = 'Tap'; tapBtn.classList.remove('on'); } if (autoSel) { autoSel = null; draw(); return true; } selected = null; draw(); return true; }
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         const dir = e.key === 'ArrowLeft' ? -1 : 1;
-        const d = dir * (e.shiftKey ? snapStep(snapMode, map.grid, bpmNow()) : e.altKey ? 0.001 : 0.01);
+        const d = dir * (e.shiftKey ? snapStep(snapMode, G(), bpmNow()) : e.altKey ? 0.001 : 0.01);
         if (autoSel?.idx.size) nudgePoints(d, 0, e.repeat);
         else if (selected?.type === 'edge' && region && !locked) setRegionEdge(selected.edge, region[selected.edge] + d, { exact: true });
         else if (selected?.type === 'mark') { if (!e.repeat || !nudgeKey.pushed) { pushUndo(); nudgeKey.pushed = true; } moveSelectedMark(selected.t + d); mapChanged(); }
@@ -1310,7 +1325,7 @@ const ThreeMedia = (() => {
       if (!D()) return false;
       if (locked) { toast('The loop is locked: unlock it first', { type: 'error' }); return false; }
       const t = now();
-      if (bars) { const bar = snapStep('bar', map.grid, bpmNow()); let a = snapTime(t, 'bar', map.grid, beats()); if (a > t + 1e-3) a -= bar; if (a < -1e-3) a += bar; setRegion({ a: Math.max(0, a), b: Math.min(D(), a + bar * bars) }); } else setRegion({ a: t, b: Math.min(D(), t + seconds) });
+      if (bars) { const bar = snapStep('bar', G(), bpmNow()); let a = snapTime(t, 'bar', G(), beats(), dIdx()); if (a > t + 1e-3) a -= bar; if (a < -1e-3) a += bar; setRegion({ a: Math.max(0, a), b: Math.min(D(), a + bar * bars) }); } else setRegion({ a: t, b: Math.min(D(), t + seconds) });
       if (!region) return false;
       startRecord('loop');
       return { ...region };
@@ -1358,9 +1373,27 @@ const ThreeMedia = (() => {
 
     // ---------- drawing ----------
     const RULER = 16; const LANE_H = 14;
+    const sizes = { cw: 0, ch: 0, mw: 0, mh: 0, cOk: false, mOk: false };
+    const cW = () => (sizes.cOk ? sizes.cw : canvas.clientWidth); const cH = () => (sizes.cOk ? sizes.ch : canvas.clientHeight);
+    const mW = () => (sizes.mOk ? sizes.mw : minimap.clientWidth); const mH = () => (sizes.mOk ? sizes.mh : minimap.clientHeight);
+    const shown = () => (sizes.cOk ? sizes.cw > 0 && sizes.ch > 0 : Boolean(canvas.offsetParent)); // the timeline is on screen (display: none → 0 × 0)
+    const ghostHint = {}; // lane → right edge (px) of its "✦ N found · keep them" note, for clicks
     const laneTop = (h) => h - shownLanes().length * LANE_H - tracksH();
     let raf = 0;
     const waveCache = { key: '', canvas: document.createElement('canvas') };
+    const gridCache = { key: '', canvas: document.createElement('canvas') };
+    // what the main canvas shows, as one string: draw() skips the canvas when it's unchanged
+    let lastFrameKey = ''; let anaVer = 0;
+    const sumOf = (list) => { let x = 0; for (const t of list) x += t; return `${list.length}:${x.toFixed(4)}`; };
+    function frameKey(W, h) {
+      const lanesMoving = tracks.some((tr) => lanesOf(tr).length); // the header column shows lane values at the playhead
+      // (while the strip scrolls this canvas only shows the header column: the view moving changes nothing on it)
+      return [W, h, devicePixelRatio, scroll.on ? 'strip' : `${v0()}|${span()}`, D(), anaVer, st.path, waveRGB, scroll.on, JSON.stringify(gridView), snapMode, bpmNow(), G()?.anchor, bpbNow(), dIdx(),
+        LANES.map((l) => sumOf(map.marks[l.id])).join(), map.cues.map((c) => `${c.t}${c.name}${c.looks?.length || 0}`).join(), region ? `${region.a}|${region.b}|${locked}|${st.loop}` : '',
+        selected ? JSON.stringify(selected) : '', notes.map((n) => `${n.t}${n.done}`).join(), JSON.stringify(tracks), autoSel ? `${autoSel.id}|${autoSel.prop}|${[...autoSel.idx].join(',')}` : '',
+        activeLane ? `${activeLane.id}|${activeLane.prop}` : '', lanesMoving ? Math.round(now() * 20) : ''].join('~');
+    }
+    let lastMiniKey = '';
     let lastFull = 0;
     function tick() {
       beatTick();
@@ -1381,6 +1414,7 @@ const ThreeMedia = (() => {
       draw();
     }
     const setText = (node, text) => { if (node.textContent !== text) node.textContent = text; };
+    const setDisplay = (node, on) => { const v = on ? '' : 'none'; if (node.style.display !== v) node.style.display = v; }; // per frame: only real changes
     // The playheads glide on the compositor: while a song plays each one gets a linear animation to where it will be
     // at the end of the view (the end of the song for the minimap), so it moves at the screen's refresh rate even when
     // the main thread is busy (the preview rendering, a reply streaming). JS only restarts it when the view, the rate
@@ -1406,7 +1440,7 @@ const ThreeMedia = (() => {
     // three views wide is drawn once and moved by a compositor animation (smooth even when the main thread is busy);
     // it's redrawn about every two views, or after a seek / zoom / resize. Near the end of the song the last view stays
     // and the playhead runs to the end.
-    const scrollWanted = () => Boolean(view) && st.playing && !locked && !dragging && gridView.follow !== false && D() > 0 && Boolean(canvas.offsetParent);
+    const scrollWanted = () => Boolean(view) && st.playing && !locked && !dragging && gridView.follow !== false && D() > 0 && shown();
     function scrollStop(nextView) {
       if (!scroll.on) return;
       scroll.on = false;
@@ -1432,7 +1466,7 @@ const ThreeMedia = (() => {
       Object.assign(scroll, { on: true, S: L, sp, w });
       view = { start: L, end: L + sp };
       stripClip.style.width = `${w}px`;
-      strip.style.width = `${3 * w}px`; strip.style.height = `${canvas.clientHeight}px`;
+      strip.style.width = `${3 * w}px`; strip.style.height = `${cH()}px`;
       draw({ canvas: strip, w: 3 * w, s0: L, sp: 3 * sp });
       stripClip.hidden = false;
       draw(); // the main canvas keeps only its header column now
@@ -1459,11 +1493,11 @@ const ThreeMedia = (() => {
       scrollUpdate(t);
       const x = scroll.on ? ANCHOR * w : D() ? ((t - v0()) / span()) * w : -10;
       const moving = st.playing && Boolean(D()) && !dragging && !scroll.on;
-      playheadEl.style.display = x >= -1 && x <= w + 1 && canvas.offsetParent ? '' : 'none';
+      setDisplay(playheadEl, x >= -1 && x <= w + 1 && shown());
       const vEnd = Math.min(v0() + span(), D() || 0);
       glide(playheadEl, x, ((vEnd - v0()) / span()) * w, ((vEnd - t) / rate) * 1000, `${v0()}|${span()}|${w}|${rate}`, moving);
-      const mw = minimap.clientWidth;
-      miniHeadEl.style.display = D() && mw && !minimap.hidden ? '' : 'none';
+      const mw = mW();
+      setDisplay(miniHeadEl, Boolean(D() && mw && !minimap.hidden));
       glide(miniHeadEl, D() ? (t / D()) * mw : 0, mw, ((D() - t) / rate) * 1000, `${D()}|${mw}|${rate}`, moving && mw > 0);
     }
     function now() { return st.playing ? Math.min(D() || Infinity, st.time + ((performance.now() - st.stampAt) / 1000) * st.rate) : st.time; }
@@ -1525,8 +1559,11 @@ const ThreeMedia = (() => {
         drawMinimap(t);
       }
       const cv = ov ? ov.canvas : canvas;
-      const W = ov ? ov.w : canvas.clientWidth; const h = canvas.clientHeight;
+      const W = ov ? ov.w : cW(); const h = cH();
       if (!W || !h) return;
+      // Nothing on the canvas changed since the last draw (a song playing in a still view: only the playhead, an
+      // element of its own, moves): keep the pixels, no repaint. Dragging always draws.
+      if (!ov) { const fk = dragging ? '' : frameKey(W, h); if (fk && fk === lastFrameKey) return; lastFrameKey = fk; }
       // the time area; the header column (GUT px) on the right holds the ▾ choosers and lane names
       const w = ov ? ov.w : tw();
       const dpr = devicePixelRatio || 1;
@@ -1557,7 +1594,7 @@ const ThreeMedia = (() => {
       }
       // The waveform is the heavy part (a color per pixel column): drawn once into an offscreen canvas and
       // reused until the view, size or song changes, so playback only repaints the light overlays.
-      const wkey = `${s0}|${sp}|${w}|${h}|${top}|${H}|${waveRGB}|${dpr}|${st.path}|${Boolean(a)}|${Boolean(st.samples)}|${gridView.sections}`;
+      const wkey = `${s0}|${sp}|${w}|${h}|${top}|${H}|${waveRGB}|${dpr}|${st.path}|${Boolean(a)}|${Boolean(st.samples)}|${Boolean(st.wave)}|${gridView.sections}`;
       if (waveCache.key !== wkey) {
         waveCache.key = wkey;
         const wc = waveCache.canvas;
@@ -1565,7 +1602,18 @@ const ThreeMedia = (() => {
         const wg = wc.getContext('2d');
         wg.setTransform(dpr, 0, 0, dpr, 0, 0);
         wg.clearRect(0, 0, w, h);
-        if (a && gridView.sections) for (const s of a.sections) if (s.energy === 'loud') { wg.fillStyle = '#ffd75e10'; wg.fillRect(X(s.start), top, X(s.end) - X(s.start), H); }
+        // the detected sections as soft bands in their colors (Drop red, Build orange, Intro / Outro blue, Break violet),
+        // named at the bottom (a "?" when the analysis isn't sure); older analyses only shade the loud parts
+        if (a && gridView.sections) {
+          wg.font = '10px Consolas, monospace';
+          for (const sc of a.sections) {
+            const xa = X(sc.start); const xb = X(sc.end);
+            if (xb < 0 || xa > w) continue;
+            if (!sc.label) { if (sc.energy === 'loud') { wg.fillStyle = '#ffd75e10'; wg.fillRect(xa, top, xb - xa, H); } continue; }
+            const col = SECTION_COLORS[sc.label.toLowerCase()] || '#ffd75e';
+            wg.fillStyle = `${col}10`; wg.fillRect(xa, top, xb - xa, H);
+          }
+        }
         // waveform: raw samples when very close, peaks when close, energy curves when far
         const mid = top + H / 2;
         if (sp < 3 && st.samples) {
@@ -1577,6 +1625,21 @@ const ThreeMedia = (() => {
             for (let i = i0; i < i1 && i < smp.length; i += 1) { if (smp[i] < lo) lo = smp[i]; if (smp[i] > hi) hi = smp[i]; }
             wg.fillRect(x, mid - hi * (H / 2 - 2), 1, Math.max(1, (hi - lo) * (H / 2 - 2)));
           }
+        } else if (waveRGB && st.wave) {
+          // 3-band waveform (like rekordbox's): bass outermost, then mids, highs innermost, each as tall as its own
+          // loudness, so kicks, bass lines, vocals and hats read apart at a glance
+          const wv = st.wave; const fr = wv.fps; const n = wv.low.length; const half = H / 2 - 2;
+          const band = (arr, color, k) => {
+            wg.fillStyle = color; wg.beginPath();
+            for (let x = 0; x < w; x += 1) {
+              const i0 = Math.max(0, Math.floor((s0 + (x / w) * sp) * fr)); const i1 = Math.min(n, Math.max(i0 + 1, Math.floor((s0 + ((x + 1) / w) * sp) * fr)));
+              let m = 0; for (let i = i0; i < i1; i += 1) if (arr[i] > m) m = arr[i];
+              const hh = (m / 255) * half * k;
+              if (hh > 0.4) wg.rect(x, mid - hh, 1, hh * 2);
+            }
+            wg.fill();
+          };
+          band(wv.low, '#ff6a4dd0', 1); band(wv.mid, '#ffd75ed0', 0.82); band(wv.high, '#8fe6ffe0', 0.62);
         } else if (sp < 25 && a?.peaks) {
           wg.fillStyle = '#ffd75e90';
           for (let x = 0; x < w; x += 1) {
@@ -1609,40 +1672,97 @@ const ThreeMedia = (() => {
           line(a.mid, '#48ddffaa', false);
           line(a.treble, '#bd8bffaa', false);
         }
-      }
-      g.drawImage(waveCache.canvas, 0, 0, w, h);
-      // beat grid: downbeats red with bar numbers (like rekordbox), beats white, subdivisions faint
-      const bs = beats(); const bpb = bpbNow(); const bpm = bpmNow() || 120;
-      const pxPerBeat = (60 / bpm / sp) * w;
-      const dimK = gridView.dim ? 0.45 : 1;
-      if (bs.length && pxPerBeat > 4 && gridView.lines) {
-        const div = gridView.subs ? DIV[snapMode] || 1 : 1;
-        g.globalAlpha = dimK;
-        const i0 = Math.max(0, beatIndex(bs, s0)); const i1 = Math.min(bs.length - 1, beatIndex(bs, s0 + sp) + 1);
-        for (let i = i0; i <= i1; i += 1) {
-          const n = beatNo(bs, i, map.grid); const down = mod(n, bpb) === 0;
-          const x = Math.round(X(bs[i]));
-          g.fillStyle = down ? '#ff6a6ad0' : '#ffffff55';
-          g.fillRect(x, top, down ? 2 : 1, H);
-          if (down && gridView.numbers && (pxPerBeat * bpb) > 26) { g.fillStyle = '#ff9a8a'; g.fillText(String(Math.floor(n / bpb) + 1), x + 3, top + 10); }
-          if (div > 1 && i < bs.length - 1 && (pxPerBeat / div) > 7) {
-            g.fillStyle = '#ffffff1c';
-            for (let k = 1; k < div; k += 1) g.fillRect(Math.round(X(bs[i] + ((bs[i + 1] - bs[i]) * k) / div)), top, 1, H);
+        // section names last, over the waveform: a colored strip along the bottom and the name on a dark tab
+        if (a && gridView.sections) {
+          for (const sc of a.sections) {
+            if (!sc.label) continue;
+            const xa = X(sc.start); const xb = X(sc.end);
+            if (xb < 0 || xa > w) continue;
+            const col = SECTION_COLORS[sc.label.toLowerCase()] || '#ffd75e';
+            wg.fillStyle = `${col}a0`; wg.fillRect(xa, top + H - 2, xb - xa, 2);
+            const name = `${sc.label}${sc.conf < 0.45 ? ' ?' : ''}`; const nw = wg.measureText(name).width;
+            if (xb - xa > nw + 12) { const nx = Math.max(2, xa + 2); wg.fillStyle = '#0d1013c0'; wg.fillRect(nx, top + H - 14, nw + 6, 12); wg.fillStyle = col; wg.fillText(name, nx + 3, top + H - 5); }
           }
         }
-        g.globalAlpha = 1;
-      } else if (bs.length && gridView.lines) {
-        g.fillStyle = '#eae0d540';
-        for (const b of bs) if (b >= s0 && b <= s0 + sp) g.fillRect(X(b), top, 1, 3);
       }
+      g.drawImage(waveCache.canvas, 0, 0, w, h);
+      // beat grid (drawn into its own cached canvas, redrawn only when the view or the grid changes): downbeats red
+      // with bar numbers like rekordbox, beats white, subdivisions faint; zoomed out, every 2nd / 4th / 8th… bar so
+      // the lines never melt into a smear, numbered every few bars
+      const bs = beats(); const bpb = bpbNow(); const bpm = bpmNow() || 120; const gr = G();
+      const gkey = `${s0}|${sp}|${w}|${h}|${top}|${H}|${dpr}|${bs.length}|${bs[0]}|${bpm}|${gr?.anchor}|${bpb}|${dIdx()}|${gridView.lines}|${gridView.numbers}|${gridView.subs}|${gridView.dim}|${snapMode}`;
+      if (gridCache.key !== gkey) {
+        gridCache.key = gkey;
+        const gc = gridCache.canvas;
+        gc.width = Math.round(w * dpr); gc.height = Math.round(h * dpr);
+        const gg = gc.getContext('2d');
+        gg.setTransform(dpr, 0, 0, dpr, 0, 0);
+        gg.clearRect(0, 0, w, h);
+        gg.font = '10px Consolas, monospace';
+        const pxPerBeat = (60 / bpm / sp) * w; const pxBar = pxPerBeat * bpb;
+        const steps = [1, 2, 4, 8, 16, 32, 64, 128];
+        const numStep = steps.find((k) => pxBar * k >= 34) || 256;
+        const i0 = Math.max(0, beatIndex(bs, s0)); const i1 = Math.min(bs.length - 1, beatIndex(bs, s0 + sp) + 1);
+        if (bs.length && gridView.lines) {
+          gg.globalAlpha = gridView.dim ? 0.45 : 1;
+          if (pxPerBeat > 4) {
+            const div = gridView.subs ? DIV[snapMode] || 1 : 1;
+            for (let i = i0; i <= i1; i += 1) {
+              const n = bno(bs, i); const down = mod(n, bpb) === 0;
+              const x = Math.round(X(bs[i]));
+              gg.fillStyle = down ? '#ff6a6ad0' : '#ffffff55';
+              gg.fillRect(x, top, down ? 2 : 1, H);
+              if (down && gridView.numbers && mod(Math.floor(n / bpb), numStep) === 0) { gg.fillStyle = '#ff9a8a'; gg.fillText(String(Math.floor(n / bpb) + 1), x + 3, top + 10); }
+              if (div > 1 && i < bs.length - 1 && (pxPerBeat / div) > 7) {
+                gg.fillStyle = '#ffffff1c';
+                for (let k = 1; k < div; k += 1) gg.fillRect(Math.round(X(bs[i] + ((bs[i + 1] - bs[i]) * k) / div)), top, 1, H);
+              }
+            }
+          } else {
+            // too dense for every beat: bars (or every 2nd, 4th… bar), phrases of 4 bars a little stronger
+            const barStep = steps.find((k) => pxBar * k >= 6) || 256;
+            for (let i = i0; i <= i1; i += 1) {
+              const n = bno(bs, i); if (mod(n, bpb) !== 0) continue;
+              const bar = Math.floor(n / bpb); if (mod(bar, barStep) !== 0) continue;
+              const x = Math.round(X(bs[i])); const phrase = mod(bar, barStep * 4) === 0;
+              gg.fillStyle = phrase ? '#ff6a6ab0' : '#ff6a6a55';
+              gg.fillRect(x, top, 1, phrase ? H : H * 0.35);
+              if (gridView.numbers && mod(bar, numStep) === 0) { gg.fillStyle = '#ff9a8ac0'; gg.fillText(String(bar + 1), x + 3, top + 10); }
+            }
+          }
+          gg.globalAlpha = 1;
+        }
+      }
+      g.drawImage(gridCache.canvas, 0, 0, w, h);
       if (a && gridView.drops) { g.fillStyle = '#ff6a6a'; for (const d of a.drops) { const x = X(d); g.beginPath(); g.moveTo(x - 4, top); g.lineTo(x + 4, top); g.lineTo(x, top + 7); g.fill(); } }
       // hit lanes
       shownLanes().forEach((ln, li) => {
         const y = LT + li * LANE_H;
         g.fillStyle = li % 2 ? '#ffffff06' : '#ffffff0c';
         g.fillRect(0, y, w, LANE_H);
-        g.fillStyle = `${ln.color}90`;
-        g.fillText(ln.name.toUpperCase(), 4, y + 10);
+        ghostHint[ln.id] = 0;
+        const ghosts = !map.marks[ln.id].length ? found(ln.id) : [];
+        if (ghosts.length) {
+          // the hits the analysis found, as faint outlines (thin ticks when dense) until you keep them: click the
+          // note at the left, ✦ Mark … in the K / S right-click menu, or /mark-kicks
+          const dense = (ghosts.length / Math.max(1, D())) * (sp / w) > 0.2; // more than one per 5 px
+          g.strokeStyle = `${ln.color}${dense ? '50' : '70'}`; g.lineWidth = 1; g.beginPath();
+          let lastX = -9;
+          for (const o of ghosts) {
+            if (o.t < s0 || o.t > s0 + sp) continue;
+            const x = Math.round(X(o.t)); if (x - lastX < 2) continue; lastX = x;
+            if (dense) { g.moveTo(x + 0.5, y + 4); g.lineTo(x + 0.5, y + LANE_H - 4); } else g.rect(x - 1.5, y + 3.5, 3, LANE_H - 7);
+          }
+          g.stroke();
+          const label = `${ln.name.toUpperCase()}  ✦ ${ghosts.length} found · keep them`;
+          const nw = g.measureText(label).width + 10;
+          g.fillStyle = '#0d1013e0'; g.fillRect(1, y + 1, nw, LANE_H - 2);
+          g.fillStyle = ln.color; g.fillText(label, 4, y + 10);
+          ghostHint[ln.id] = nw + 1;
+        } else {
+          g.fillStyle = `${ln.color}90`;
+          g.fillText(ln.name.toUpperCase(), 4, y + 10);
+        }
         for (const m of map.marks[ln.id]) {
           if (m < s0 || m > s0 + sp) continue;
           const x = X(m);
@@ -1695,6 +1815,7 @@ const ThreeMedia = (() => {
       // loop region
       if (region) {
         const xa = X(region.a); const xb = X(region.b);
+        if (st.loop) { g.fillStyle = '#05070966'; if (xa > 0) g.fillRect(0, RULER, xa, LT - RULER); if (xb < w) g.fillRect(xb, RULER, w - xb, LT - RULER); }
         g.fillStyle = locked ? '#48ddff1a' : '#ffd75e1a';
         g.fillRect(xa, 0, xb - xa, LT);
         g.fillStyle = locked ? '#48ddff0d' : '#ffd75e0d';
@@ -1847,34 +1968,55 @@ const ThreeMedia = (() => {
       }
       if (!keys.length) { g.fillStyle = '#eae0d570'; g.fillText(`${L.label}: click to add a point · Ctrl+drag to draw`, 6, top + 12); }
     }
+    // The overview: its picture (sections, loudness, layers, loop, drops, notes, cues) is drawn once into a cache and
+    // only redrawn when one of those changes; each draw just copies it and adds the zoomed view's box, and nothing
+    // is drawn at all while the box hasn't moved by a pixel (a song playing doesn't change the overview).
+    const miniCache = { key: '', canvas: document.createElement('canvas') };
     function drawMinimap(t) {
       minimap.hidden = !D();
-      const w = minimap.clientWidth; const h = minimap.clientHeight;
+      const w = mW(); const h = mH();
       if (!D() || !w || !h) return;
       const dpr = devicePixelRatio || 1;
+      const X = (tt) => (tt / D()) * w;
+      const sk = [w, h, dpr, D(), anaVer, st.path, region ? `${region.a}|${region.b}|${locked}` : '', tracks.map((tr) => `${tr.in}|${tr.out}|${tr.visible}|${tr.color}`).join(),
+        map.cues.map((c) => `${c.t}${c.name}`).join(), notes.map((n) => `${n.t}${n.done}`).join()].join('~');
+      const box = view ? `${Math.round(X(view.start) * 2)}|${Math.round(X(view.end) * 2)}|${locked}` : '';
+      if (`${sk}#${box}` === lastMiniKey) return;
+      lastMiniKey = `${sk}#${box}`;
+      if (miniCache.key !== sk) {
+        miniCache.key = sk;
+        const mc = miniCache.canvas; mc.width = Math.round(w * dpr); mc.height = Math.round(h * dpr);
+        const g = mc.getContext('2d');
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        g.clearRect(0, 0, w, h);
+        const a = st.analysis;
+        if (a) {
+          for (const sct of a.sections) {
+            if (sct.label) { g.fillStyle = `${SECTION_COLORS[sct.label.toLowerCase()] || '#ffd75e'}20`; g.fillRect(X(sct.start), 0, X(sct.end) - X(sct.start), h); }
+            else if (sct.energy === 'loud') { g.fillStyle = '#ffd75e14'; g.fillRect(X(sct.start), 0, X(sct.end) - X(sct.start), h); }
+          }
+          const n = a.level.length;
+          g.fillStyle = '#ffffff16';
+          for (let x = 0; x < w; x += 2) { const v = a.level[Math.min(n - 1, Math.floor((x / w) * n))]; g.fillRect(x, h - v * (h - 2), 2, v * (h - 2)); }
+        }
+        const rows = Math.max(1, tracks.length);
+        const rowH = Math.max(2, Math.min(5, (h - 4) / rows));
+        tracks.forEach((tr, i) => {
+          const x0 = X(tr.in ?? 0); const x1 = X(tr.out ?? D());
+          g.fillStyle = `${tr.color || '#7ad0ff'}${tr.visible === false ? '40' : 'd0'}`;
+          g.fillRect(x0, 2 + i * rowH, Math.max(2, x1 - x0), rowH - 1);
+        });
+        if (region) { g.fillStyle = locked ? '#48ddff40' : '#ffd75e40'; g.fillRect(X(region.a), 0, Math.max(2, X(region.b) - X(region.a)), h); }
+        if (a) { g.fillStyle = '#ff6a6a'; for (const d of a.drops) g.fillRect(X(d) - 1, 0, 2, 4); }
+        for (const n of notes) { g.fillStyle = n.done ? '#8f877d' : '#7cd992'; g.fillRect(X(n.t) - 1, h - 5, 3, 5); }
+        map.cues.forEach((c, i) => { g.fillStyle = cueColor(c, i); g.fillRect(X(c.t) - 1, 0, 3, 6); });
+      }
       if (minimap.width !== Math.round(w * dpr) || minimap.height !== Math.round(h * dpr)) { minimap.width = Math.round(w * dpr); minimap.height = Math.round(h * dpr); }
       const g = minimap.getContext('2d');
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.clearRect(0, 0, minimap.width, minimap.height);
+      g.drawImage(miniCache.canvas, 0, 0);
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
-      g.clearRect(0, 0, w, h);
-      const X = (tt) => (tt / D()) * w;
-      const a = st.analysis;
-      if (a) {
-        for (const sct of a.sections) if (sct.energy === 'loud') { g.fillStyle = '#ffd75e14'; g.fillRect(X(sct.start), 0, X(sct.end) - X(sct.start), h); }
-        const n = a.level.length;
-        g.fillStyle = '#ffffff16';
-        for (let x = 0; x < w; x += 2) { const v = a.level[Math.min(n - 1, Math.floor((x / w) * n))]; g.fillRect(x, h - v * (h - 2), 2, v * (h - 2)); }
-      }
-      const rows = Math.max(1, tracks.length);
-      const rowH = Math.max(2, Math.min(5, (h - 4) / rows));
-      tracks.forEach((tr, i) => {
-        const x0 = X(tr.in ?? 0); const x1 = X(tr.out ?? D());
-        g.fillStyle = `${tr.color || '#7ad0ff'}${tr.visible === false ? '40' : 'd0'}`;
-        g.fillRect(x0, 2 + i * rowH, Math.max(2, x1 - x0), rowH - 1);
-      });
-      if (region) { g.fillStyle = locked ? '#48ddff40' : '#ffd75e40'; g.fillRect(X(region.a), 0, Math.max(2, X(region.b) - X(region.a)), h); }
-      if (a) { g.fillStyle = '#ff6a6a'; for (const d of a.drops) g.fillRect(X(d) - 1, 0, 2, 4); }
-      for (const n of notes) { g.fillStyle = n.done ? '#8f877d' : '#7cd992'; g.fillRect(X(n.t) - 1, h - 5, 3, 5); }
-      map.cues.forEach((c, i) => { g.fillStyle = cueColor(c, i); g.fillRect(X(c.t) - 1, 0, 3, 6); });
       if (view) {
         const vx = X(view.start); const vw = Math.max(4, X(view.end) - vx);
         g.fillStyle = '#ffffff14';
@@ -1886,7 +2028,7 @@ const ThreeMedia = (() => {
     }
 
     // ---------- timeline mouse ----------
-    function tw() { return Math.max(40, canvas.clientWidth - GUT); }
+    function tw() { return Math.max(40, cW() - GUT); }
     const timeAt = (e) => { const r = canvas.getBoundingClientRect(); return v0() + ((e.clientX - r.left) / tw()) * span(); };
     const pxToT = (px) => (px / tw()) * span();
     const xOf = (tt) => ((tt - v0()) / span()) * tw();
@@ -1935,6 +2077,7 @@ const ThreeMedia = (() => {
       if (y >= LT) {
         const vis = shownLanes();
         const lane = vis[Math.min(vis.length - 1, Math.floor((y - LT) / LANE_H))].id;
+        if (ghostHint[lane] && x < ghostHint[lane] && !map.marks[lane].length) return { zone: 'ghost', lane };
         let mark = null; let best = 7;
         for (const m of map.marks[lane]) { const d = Math.abs(xOf(m) - x); if (d < best) { best = d; mark = m; } }
         return { zone: 'lane', lane, mark };
@@ -1951,6 +2094,10 @@ const ThreeMedia = (() => {
         if (hit.edge) { dragging = { kind: 'edge', edge: hit.edge }; selected = { type: 'edge', edge: hit.edge }; }
         else if (region && tt > region.a && tt < region.b) dragging = { kind: 'move', from: tt, orig: { ...region } };
         else dragging = { kind: 'new', from: snapT(tt) };
+      } else if (hit.zone === 'ghost') {
+        const n = markFound(hit.lane)?.[hit.lane] || 0;
+        toast(`${n} ${hit.lane}${n === 1 ? '' : 's'} marked from the song (↶ undoes · drag, nudge or delete any of them)`, { timeout: 2600 });
+        dragging = { kind: 'none' };
       } else if (hit.zone === 'lane') {
         if (hit.mark != null) { selected = { type: 'mark', lane: hit.lane, t: hit.mark }; dragging = { kind: 'mark', from: tt, orig: hit.mark, before: JSON.stringify(map) }; }
         else { addMarkAt(hit.lane, tt); dragging = { kind: 'mark', from: tt, orig: selected.t, added: true }; }
@@ -2406,7 +2553,7 @@ const ThreeMedia = (() => {
       if (!D()) return;
       const hit = hitTest(e);
       const tt = timeAt(e);
-      canvas.style.cursor = hit.zone === 'mute' || hit.zone === 'solo' ? 'pointer' : hit.zone === 'cue' ? 'grab' : hit.zone === 'auto' ? (e.ctrlKey ? 'crosshair' : hit.point >= 0 ? 'move' : hit.handle >= 0 ? 'ns-resize' : 'crosshair') : hit.zone === 'gutter' ? 'default' : hit.zone === 'chip' || hit.zone === 'note' || hit.zone === 'laneHead' || hit.zone === 'laneClose' ? 'pointer' : hit.zone === 'track' ? (hit.key ? 'move' : hit.edge ? 'ew-resize' : hit.inside ? 'grab' : 'default') : hit.zone === 'lane' ? (hit.mark != null ? 'ew-resize' : 'cell') : locked ? 'pointer' : hit.zone === 'ruler' ? (hit.edge ? 'ew-resize' : 'copy') : 'pointer';
+      canvas.style.cursor = hit.zone === 'mute' || hit.zone === 'solo' ? 'pointer' : hit.zone === 'cue' ? 'grab' : hit.zone === 'auto' ? (e.ctrlKey ? 'crosshair' : hit.point >= 0 ? 'move' : hit.handle >= 0 ? 'ns-resize' : 'crosshair') : hit.zone === 'gutter' ? 'default' : hit.zone === 'chip' || hit.zone === 'note' || hit.zone === 'ghost' || hit.zone === 'laneHead' || hit.zone === 'laneClose' ? 'pointer' : hit.zone === 'track' ? (hit.key ? 'move' : hit.edge ? 'ew-resize' : hit.inside ? 'grab' : 'default') : hit.zone === 'lane' ? (hit.mark != null ? 'ew-resize' : 'cell') : locked ? 'pointer' : hit.zone === 'ruler' ? (hit.edge ? 'ew-resize' : 'copy') : 'pointer';
       const tips = {
         ruler: locked ? 'Locked: click to jump' : 'Drag along this strip to draw a loop; drag its edges to adjust · C drops a cue at the playhead',
         wave: 'Click to jump · double-click to loop this part · wheel to zoom · Shift+wheel to scroll',
@@ -2426,7 +2573,7 @@ const ThreeMedia = (() => {
       // a hairline with the time under the mouse (and the bar · beat when there's a grid)
       const x = xOf(tt);
       const bs = beats(); const bi = beatIndex(bs, tt);
-      const bb = bi >= 0 ? beatNo(bs, bi, map.grid) : null;
+      const bb = bi >= 0 ? bno(bs, bi) : null;
       hoverEl.hidden = !(hit.zone === 'wave' || hit.zone === 'ruler' || hit.zone === 'lane');
       hoverEl.style.transform = `translateX(${Math.round(x)}px)`;
       const secName = sectionAt(tt).cue;
@@ -2436,7 +2583,7 @@ const ThreeMedia = (() => {
     // right-click the waveform / ruler: loop, cue, section and zoom actions at that spot
     function waveMenu(e, t) {
       const anchor = { getBoundingClientRect: () => ({ left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY }) };
-      const bar = snapStep('bar', map.grid, bpmNow()); let a = snapTime(t, 'bar', map.grid, beats()); if (a > t + 1e-3) a -= bar; if (a < -1e-3) a += bar;
+      const bar = snapStep('bar', G(), bpmNow()); let a = snapTime(t, 'bar', G(), beats(), dIdx()); if (a > t + 1e-3) a -= bar; if (a < -1e-3) a += bar;
       const sec = st.analysis?.sections.find((x) => t >= x.start && t < x.end);
       menuAt(anchor, [
         ['Play from here', fmtMs(t), () => { seek(t); toggle(true); }],
@@ -2469,8 +2616,10 @@ const ThreeMedia = (() => {
       minimap.addEventListener('pointermove', act);
       minimap.addEventListener('pointerup', () => minimap.removeEventListener('pointermove', act), { once: true });
     });
-    new ResizeObserver(() => draw()).observe(minimap);
-    new ResizeObserver(() => draw()).observe(canvas);
+    // sizes as the ResizeObservers last saw them: reading clientWidth right after the time text changed forced a
+    // layout of the page ten times a second while a song played
+    new ResizeObserver(() => { sizes.mw = minimap.clientWidth; sizes.mh = minimap.clientHeight; sizes.mOk = true; draw(); }).observe(minimap);
+    new ResizeObserver(() => { sizes.cw = canvas.clientWidth; sizes.ch = canvas.clientHeight; sizes.cOk = true; draw(); }).observe(canvas);
     paint();
 
     return {
@@ -2574,8 +2723,8 @@ const ThreeMedia = (() => {
       // N bars from the bar the playhead is in, looping on
       loopBars(n = 1) {
         if (!D()) return null;
-        const bar = snapStep('bar', map.grid, bpmNow()); const t = now();
-        let a = snapTime(t, 'bar', map.grid, beats()); if (a > t + 1e-3) a -= bar; if (a < -1e-3) a += bar;
+        const bar = snapStep('bar', G(), bpmNow()); const t = now();
+        let a = snapTime(t, 'bar', G(), beats(), dIdx()); if (a > t + 1e-3) a -= bar; if (a < -1e-3) a += bar;
         setRegion({ a: Math.max(0, a), b: Math.min(D(), a + bar * Math.max(1, n)) });
         if (!st.loop) loopBtn.click();
         return region ? { ...region } : null;
@@ -2583,9 +2732,37 @@ const ThreeMedia = (() => {
       setLoopOn(on) { if (Boolean(on) !== st.loop) loopBtn.click(); return st.loop; },
       lock: (on) => { setLocked(on ?? !locked); return locked; },
       tapLane: (lane) => addAtPlayhead(lane),
+      // ---------- round 5: the music side figures things out (tools/three-music.js) ----------
+      on(ev, fn) { (listeners[ev] ||= []).push(fn); return () => { listeners[ev] = listeners[ev].filter((x) => x !== fn); }; },
+      get analysis() { return st.analysis; },
+      get wave() { return st.wave; },
+      markFound: (kind) => markFound(kind),
+      found: (kind) => found(kind),
+      nudgeByEar: (dir, e) => nudgeByEar(dir, e),
+      get tapLatency() { return tapLat ? { ...tapLat } : null; },
+      forgetTapLatency() { tapLat = null; store.set('three.tapLatency', null); paintBpmRead(); },
+      // bar 1 and the tempo as detected (forget your grid)
+      useDetectedGrid() { if (!st.analysis) return false; if (map.grid) { pushUndo(); map.grid = null; mapChanged(); } return { bpm: bpmNow(), anchor: G()?.anchor ?? beats()[dIdx()] ?? 0 }; },
+      get gridSource() { return map.grid ? 'yours' : autoGrid() ? 'detected' : st.analysis ? 'tracked beats' : 'none'; },
+      get downbeat() { return G()?.anchor ?? beats()[dIdx()] ?? null; },
+      // re-run the analysis of the loaded song (keeps your grid, markers and cues)
+      async reanalyze() {
+        if (!st.bytes) return null;
+        const seq = loadSeq; analyzing = true; paint();
+        try {
+          const a = await analyze(st.bytes, { onProgress: (p) => { if (seq === loadSeq) setText(nameEl, `${st.name} · analyzing ${Math.round(p * 100)}%`); } });
+          if (seq !== loadSeq) return null;
+          st.samples = a.samples; st.wave = a.wave; delete a.samples; delete a.wave; st.analysis = a; anaVer += 1;
+          waveCache.key = ''; gridCache.key = '';
+          send({ type: 'media-analysis', analysis: st.analysis });
+          sendMap();
+          emit('analysis', st.analysis);
+          return st.analysis;
+        } finally { analyzing = false; paint(); }
+      },
       fill: (kind) => fillKind(kind),
       // seconds until the next beat / bar (for "freeze on the beat")
-      untilNext(unit = 'beat') { if (!D()) return null; const t = now(); if (unit === 'kick' || unit === 'snare' || unit === 'hit') { const m = map.marks[unit].find((x) => x > t + 0.01); return m == null ? null : (m - t) / (st.rate || 1); } const bs = beats(); const i = beatIndex(bs, t); for (let k = Math.max(0, i + 1); k < bs.length; k += 1) { if (unit === 'beat' || mod(beatNo(bs, k, map.grid), bpbNow()) === 0) return (bs[k] - t) / (st.rate || 1); } return null; },
+      untilNext(unit = 'beat') { if (!D()) return null; const t = now(); if (unit === 'kick' || unit === 'snare' || unit === 'hit') { const m = map.marks[unit].find((x) => x > t + 0.01); return m == null ? null : (m - t) / (st.rate || 1); } const bs = beats(); const i = beatIndex(bs, t); for (let k = Math.max(0, i + 1); k < bs.length; k += 1) { if (unit === 'beat' || mod(bno(bs, k), bpbNow()) === 0) return (bs[k] - t) / (st.rate || 1); } return null; },
       clearMarks(lane) { if (!D() || !map.marks[lane]) return 0; const range = region ? [region.a, region.b] : [0, D()]; pushUndo(); const n0 = map.marks[lane].length; map.marks[lane] = map.marks[lane].filter((t) => t < range[0] || t >= range[1]); mapChanged(); return n0 - map.marks[lane].length; },
       get markers() { return Object.fromEntries(LANES.map((l) => [l.id, map.marks[l.id].length])); },
       addCue, setRate,
@@ -2598,7 +2775,7 @@ const ThreeMedia = (() => {
         const pick = (arr) => arr.filter((t) => t >= from && t <= to).slice(0, 400);
         return {
           duration: Math.round(D() * 1000) / 1000, playhead: Math.round(now() * 1000) / 1000,
-          grid: map.grid ? { bpm: map.grid.bpm, downbeat: map.grid.anchor, beatsPerBar: map.grid.bpb, setBy: 'user' } : { bpm: bpmNow(), setBy: 'auto-detected' },
+          grid: map.grid ? { bpm: map.grid.bpm, downbeat: map.grid.anchor, beatsPerBar: map.grid.bpb, setBy: 'user' } : { bpm: bpmNow(), ...(autoGrid() ? { downbeat: autoGrid().anchor, beatsPerBar: 4 } : {}), setBy: 'auto-detected' },
           markers: Object.fromEntries(LANES.map((ln) => [ln.id, pick(map.marks[ln.id])])),
           cues: map.cues.map((c) => ({ time: c.t, name: c.name, ...(c.looks?.length ? { looks: c.looks } : {}) })),
           loop: region ? { start: region.a, end: region.b, locked } : null,
@@ -2621,7 +2798,7 @@ const ThreeMedia = (() => {
         const out = {
           loaded: true, file: st.path, video: st.video, duration: Math.round(D() * 1000) / 1000, time: Math.round(now() * 1000) / 1000, playing: st.playing,
           loop: region ? { start: region.a, end: region.b, locked, on: st.loop } : (st.loop ? 'whole song' : 'off'),
-          grid: map.grid ? { bpm: map.grid.bpm, firstDownbeat: map.grid.anchor, beatsPerBar: map.grid.bpb, setBy: 'the user (trust it)' } : { bpm: a?.bpm, setBy: 'auto-detected' },
+          grid: map.grid ? { bpm: map.grid.bpm, firstDownbeat: map.grid.anchor, beatsPerBar: map.grid.bpb, setBy: 'the user (trust it)' } : { bpm: a?.bpm, ...(a?.grid ? { firstDownbeat: autoGrid()?.anchor ?? beats()[dIdx()] ?? null, tempoSure: a.grid.tempoConf, barOneSure: a.grid.downbeatConf, straight: a.grid.straight } : {}), setBy: 'auto-detected' },
           hits: { ...hits, setBy: 'the user, by hand: cut and hit on these, not on guesses' },
         };
         if (!a) return { ...out, analysis: analyzing ? 'still analyzing' : 'none (no audio track)' };
@@ -2629,10 +2806,12 @@ const ThreeMedia = (() => {
         const avg = (arr, i) => { let s = 0; let c = 0; for (let k = i; k < Math.min(n, i + stepN); k += 1) { s += arr[k]; c += 1; } return Math.round((s / (c || 1)) * 100) / 100; };
         const energy = [];
         for (let i = 0; i < n; i += stepN) energy.push({ at: Math.round(i / a.fps), level: avg(a.level, i), bass: avg(a.bass, i), mid: avg(a.mid, i), highs: avg(a.treble, i) });
-        return { ...out, beats: beats().length, sections: a.sections, drops: a.drops, energyEvery5s: energy };
+        const found = a.onsets ? Object.fromEntries(Object.entries(a.onsets).map(([k, v]) => [k, v.length])) : null;
+        return { ...out, beats: beats().length, sections: a.sections, drops: a.drops, ...(found ? { detectedHits: { ...found, note: 'found in the audio; /mark-kicks writes them as markers' } } : {}), ...(a.style ? { style: { preset: a.style.preset, why: a.style.why } } : {}), energyEvery5s: energy };
       },
     };
   }
 
-  return { analyze, stage, player, isMedia, SIZES, _test: { gridBeats, snapTime, parseTime, fmtMs, beatIndex, addMark } };
+  // _test.core: the analysis math (tools/three-music-core.js) for unit tests on synthetic signals
+  return { analyze, stage, player, isMedia, SIZES, _test: { gridBeats, snapTime, parseTime, fmtMs, beatIndex, addMark, get core() { return typeof MusicCore === 'undefined' ? null : MusicCore; } } };
 })();

@@ -220,13 +220,14 @@
   }, (a) => pick(['one', '120', '128', '140', '174'], a));
   reg('bpm', 'Tempo of the beat grid: a number, x2, half, auto (detected) or one (the 1 at the playhead)', '<bpm|x2|half|auto|one>', async (args) => { const c = await lab(); if (!args) { const s = c.state; return s.bpm ? `${Math.round(s.bpm * 100) / 100} BPM` : 'No song loaded'; } return `${Math.round(c.bpm(args.toLowerCase()) * 100) / 100} BPM`; }, (a) => pick(['x2', 'half', 'auto', 'one', '120', '128', '140'], a), { aliases: ['tempo'] });
   reg('nudge-grid', 'Shift the beat grid earlier (negative) or later, in ms', '<ms>', async (args) => { (await lab()).nudgeGrid(Number(args) || 5); return `Grid moved ${Number(args) || 5} ms`; });
-  reg('live', 'Live sound: system (Spotify, YouTube…), mic or off; gain <×>, latency <ms>', '[system|mic|off] | gain <0.5–4> | latency <ms>', async (args) => {
+  reg('live', 'Live sound: system (Spotify, YouTube…), mic or off; gain <×|auto>, latency <ms>, calibrate (from your taps)', '[system|mic|off] | gain <auto|0.5–4> | latency <ms> | calibrate', async (args) => {
     const c = await lab(); const [a0, a1] = words(args).map((x) => x.toLowerCase());
-    if (a0 === 'gain') { const io = c.liveIo({ gain: Number(a1) || 1 }); return `Live gain ×${io.gain}`; }
+    if (a0 === 'gain') { const io = c.liveIo({ gain: a1 === 'auto' || !a1 ? 'auto' : Number(a1) || 1 }); return io.gain === 'auto' ? 'Live gain: auto (keeps the level steady)' : `Live gain ×${io.gain}`; }
+    if (a0 === 'calibrate') return 'Tap T on the beat you hear, 8 times, while live sound plays: the latency offset sets itself (/live-status shows it)';
     if (a0 === 'latency') { const io = c.liveIo({ latency: Math.max(0, Number(a1) || 0) }); return `Live latency offset ${io.latency} ms`; }
     const k = await c.live(a0 === 'system' || a0 === 'mic' || a0 === 'off' ? a0 : undefined);
     return k === 'off' ? 'Live sound off' : `● Live: ${k}`;
-  }, (a) => pick(['system', 'mic', 'off', 'gain 2', 'latency 80'], a));
+  }, (a) => pick(['system', 'mic', 'off', 'gain auto', 'gain 2', 'latency 80', 'calibrate'], a));
   reg('preset', 'A trigger preset (techno / house, hip-hop / trap, drum & bass, rock, ambient, or one of yours)', '<name>', async (args) => { const c = await lab(); if (!args) return `Presets: ${c.trigPresets().join(', ')}`; const n = c.trigPreset(args); return n ? null : `No preset "${args}". Presets: ${c.trigPresets().join(', ')}`; }, (a) => pick(peek()?.trigPresets() || ['Techno / house', 'Hip-hop / trap', 'Drum & bass', 'Rock / live drums', 'Ambient / soft'], a));
   reg('autobars', 'Fit the trigger bars to the sound playing now', '', async () => { await (await lab()).autoBars(); }, null, { aliases: ['auto-bars'] });
   reg('triggers', 'Open or close the ⚡ Triggers panel', '[on|off]', async (args) => { (await lab()).triggers(onOff(args)); }, (a) => pick(['on', 'off'], a));
