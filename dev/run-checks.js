@@ -8,7 +8,8 @@
 //   sh dev/run-checks.sh board editor         # groups, or check names (editor-more, journey-board…)
 //   sh dev/run-checks.sh unit                 # the Node-only tests (no Electron)
 //   sh dev/run-checks.sh --list               # groups and checks
-//   options: --out <dir> (logs and pictures, default <tmp>/hearth-checks) · --fixtures-only · --stop (first failure)
+//   options: --out <dir> (logs and pictures, default <tmp>/hearth-checks) · --shots (journeys keep a picture per step)
+//   · --fixtures-only · --stop (first failure)
 // Groups: qa, board, editor, capture, journeys, chat, lab, video, nodes, smooth, astra, unit, all.
 const fs = require('fs');
 const os = require('os');
@@ -101,7 +102,8 @@ for (const n of wanted) {
     r = spawnSync('node', [path.join(DEV, 'astra-smoke.js'), n.slice(6), '--shot', path.join(OUT, `${n}.png`)], { cwd: ROOT, encoding: 'utf8', timeout: 1800000, maxBuffer: 64 << 20 });
   } else {
     const shots = path.join(OUT, n);
-    const a = [path.join(DEV, 'smoke.js'), ...flagsOf(srcOf(n)), '--eval', `window.JOURNEY_SHOTS=${JSON.stringify(shots)}`, '--script', path.join(CHECKS, `${n}.js`), '--shot', path.join(OUT, `${n}.png`)];
+    // step pictures only when asked (--shots): a 1080×1080 screenshot mid-journey can starve a recording on a busy machine
+    const a = [path.join(DEV, 'smoke.js'), ...flagsOf(srcOf(n)), ...(argv.includes('--shots') ? ['--eval', `window.JOURNEY_SHOTS=${JSON.stringify(shots)}`] : []), '--script', path.join(CHECKS, `${n}.js`), '--shot', path.join(OUT, `${n}.png`)];
     r = spawnSync('node', a, { cwd: ROOT, encoding: 'utf8', timeout: 1800000, maxBuffer: 64 << 20 });
   }
   const text = `${r.stdout || ''}${r.stderr || ''}`;
