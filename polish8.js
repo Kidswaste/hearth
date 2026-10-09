@@ -2,7 +2,7 @@
 // as one calm Forgeheart app with the rest, following the owner's rule: "less info directly in my face, more
 // submenus, keep a high amount of customisability, right click used more, hide buttons behind Alt / Ctrl with the
 // keys button bottom left". Presentation and registrations only; the streams' own logic stays theirs:
-//   - tucked controls: rarer buttons of the board drawer, the editor bar and the captures dialogs wait behind Alt or
+//   - tucked controls: rarer buttons of the board drawer and the editor bar wait behind Alt or
 //     show on hover (Declutter.addRules, the same table as round 7), each listed under Customise this…
 //   - one menu shape: right-click menus (and the ⋯ menus) of the board, the editor and captures get the same order
 //     (primary → arrange → look → sound → send / export → More… → Delete), thin separators between the groups, and
@@ -30,7 +30,7 @@ const Polish8 = (() => {
   // ---------- 2. one menu shape ----------
   // Which part of the app a menu belongs to: the last pointer event before it opened.
   const AREAS = [
-    ['.bdd, .bd-rail-peek', 'Board drawer'], ['.bd-root', 'Board'], ['.vr-cut, .vi-panel', 'Editor'],
+    ['.bdd, .bd-rail-peek', 'Board drawer'], ['.bd-root', 'Board'], ['.vr-cut, .ed-insp', 'Editor'],
     ['dialog.cap-lib, dialog.cap-view, dialog.cap-read, .cap-ann', 'Capture'],
     ['.surface[data-id="tool:ae"]', 'Video Review'],
   ];
@@ -150,7 +150,7 @@ const Polish8 = (() => {
     if (typeof showMenu !== 'function' || showMenu.__p8) return;
     const orig = showMenu;
     const wrapped = function (x, y, items, parent = null, dir = 0) {
-      if (!parent) {
+      if (!parent && !(Array.isArray(items) && items[MARK])) { // (a ‹ back to the top level reopens a list already done)
         try { items = decorate(items); } catch (err) { console.warn('polish8 menu', err); }
         // over the board / the program monitor / a playing capture the menu drops its live blur (see polish8.css)
         document.documentElement.classList.toggle('p8-over-media', Boolean(performance.now() - last.t < 600 && last.target?.closest?.('.bd-root, .vr-stage, .vr-cut, dialog.cap-view')));
@@ -165,7 +165,7 @@ const Polish8 = (() => {
     const orig = Capture.menu; const origMain = Capture.mainItems;
     const MAIN = Symbol('capture main');
     Capture.mainItems = (...a) => { const l = origMain(...a); l[MAIN] = true; return l; };
-    Capture.menu = (x, y, items, ...rest) => { if (items?.[MAIN] || last.kind === 'context' && areaOf(last.target) === 'Capture' && performance.now() - last.t < 600) pendingArea = 'Capture'; return orig(x, y, items, ...rest); };
+    Capture.menu = (x, y, items, ...rest) => { if (items?.[MAIN] || last.kind === 'context' && areaOf(last.target) === 'Capture' && performance.now() - last.t < 600) pendingArea = 'Capture'; try { return orig(x, y, items, ...rest); } finally { pendingArea = null; } };
     Capture.menu.__p8 = true;
   }
 
