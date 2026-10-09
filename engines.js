@@ -328,7 +328,7 @@ function unsupportedFlag(text) {
 function claudeArgs(agent, session, options = {}) {
   const args = [
     '-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
-    '--setting-sources', 'project', '--disable-slash-commands', '--system-prompt-snapshot', 'off',
+    '--setting-sources', 'project', '--disable-slash-commands',
     ...claudeToolArgs(agent, options),
     '--system-prompt', buildPrompt(agent),
   ];
