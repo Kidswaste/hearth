@@ -58,7 +58,7 @@ const mo = new MutationObserver((list) => { mutations += list.length; });
 mo.observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
 const vis = (s) => [...document.querySelectorAll(s)].some((n) => n.checkVisibility?.({ visibilityProperty: true }) && n.getBoundingClientRect().width > 0);
 const globalSig = async () => JSON.stringify({ zoom: await window.hub.getZoom?.(), grid: H.grid, panel: H.panelOpen, active: H.activeId, palette: vis('.palette'), find: vis('.find-bar'), notes: vis('.notes-panel'), bar: vis('.cmdbar-input'), sheet: vis('.keys-sheet'), broadcast: !document.getElementById('broadcast')?.classList.contains('hidden'), atts: Native.view(H.claudeAgent().id)?.attachments?.length || 0, onTop: document.body.classList.contains('on-top') });
-const uiSig = () => JSON.stringify({ dialogs: document.querySelectorAll('dialog[open]').length, menu: vis('#menu'), toasts: [...document.querySelectorAll('.toast')].map((t) => t.textContent.slice(0, 30)).join('|'), focus: `${document.activeElement?.tagName}.${String(document.activeElement?.className).slice(0, 30)}` });
+const uiSig = () => JSON.stringify({ kids: document.body.children.length, overlays: document.querySelectorAll('.bd-compare, .bd-viewer, .bd-info, .bd-card, .ui-modal, [class*="-overlay"], [class*="-viewer"]').length, dialogs: document.querySelectorAll('dialog[open]').length, menu: vis('#menu'), toasts: [...document.querySelectorAll('.toast')].map((t) => t.textContent.slice(0, 30)).join('|'), focus: `${document.activeElement?.tagName}.${String(document.activeElement?.className).slice(0, 30)}` });
 // app-wide actions an area key may legitimately do itself (the key IS that action there)
 const OWN_GLOBAL = /palette|Ctrl\+K|Ctrl\+;|Ctrl\+\/|F1|Command|Settings|Notes|Find|sheet|Ctrl\+Shift\+M/i;
 async function tryKey(area, line, c, { sig, before, after }) {
@@ -74,7 +74,8 @@ async function tryKey(area, line, c, { sig, before, after }) {
   const dm = mutations - m1;
   const worked = s1 !== s0 || u1 !== u0 || dm > Math.max(3, idle * 3);
   out.pressed += 1;
-  if (worked) out.worked += 1; else out.dead.push(`${area} · ${c.label} · ${line.what}`);
+  const why = NOOP[`${area}|${c.label}`];
+  if (worked) out.worked += 1; else if (why) (out.noop ||= []).push(`${area} · ${c.label}: ${why}`); else out.dead.push(`${area} · ${c.label} · ${line.what}`);
   if (g1 !== g0 && !(area === 'Everywhere' || OWN_GLOBAL.test(line.what) || OWN_GLOBAL.test(c.label))) {
     const a = JSON.parse(g0); const b = JSON.parse(g1);
     out.globalToo.push(`${area} · ${c.label} (${line.what}) also changed: ${Object.keys(a).filter((k) => JSON.stringify(a[k]) !== JSON.stringify(b[k])).map((k) => `${k} ${JSON.stringify(a[k])}→${JSON.stringify(b[k])}`).join(', ')}`);
@@ -82,6 +83,8 @@ async function tryKey(area, line, c, { sig, before, after }) {
   if (errs.length > e0) out.errors.push(`${area} · ${c.label}: ${errs.slice(e0).join(' / ').slice(0, 200)}`);
   if (after) await after(c, line, { s0, s1, g0, g1 });
 }
+// keys that rightly do nothing in this test's setup (no music: no beats or sections)
+const NOOP = { 'Editor|Ctrl+C': 'copies to the editor\'s own clipboard (checked by Ctrl+V)',  'Editor|,': 'no music, no beats (by design)', 'Editor|.': 'no music, no beats (by design)', 'Video Review|,': 'no music, no beats', 'Video Review|.': 'no music, no beats', 'Video Review|<': 'no music, no sections', 'Video Review|>': 'no music, no sections' };
 const closeAll = async () => {
   for (const d of [...document.querySelectorAll('dialog[open]')]) { try { d.close(); } catch { /* gone */ } }
   try { hideMenu(); } catch { /* none */ }
@@ -94,15 +97,22 @@ const closeAll = async () => {
 };
 const SKIP_ALL = /^(Ctrl\+R|Ctrl\+Shift\+R|Ctrl\+Alt\+H|Ctrl\+Shift\+Space|Ctrl\+Shift\+T)$/; // reloads, the OS hotkey, ask-all sends, always-on-top
 const linesOf = (area) => Keys.all().filter((k) => k.area === area);
+// progress in a file (a stuck key shows where it stopped): QA_KEYS_LOG or the run's save folder
+const LOG = window.QA_KEYS_LOG || `${window.SMOKE_SAVES}/qa-keys-progress.txt`;
+let logText = '';
+const note = (s) => { logText += `${s}\n`; window.hub.fs.write(LOG, logText).catch(() => {}); };
+const within = (p, ms, what) => Promise.race([p, wait(ms).then(() => { throw new Error(`${what} still running after ${ms / 1000}s`); })]);
 async function runArea(area, opts) {
+  note(`== ${area}`);
   for (const line of linesOf(area)) {
     const cs = combos(line.keys);
     if (!cs.length) { out.skipped.push(`${area} · ${line.keys}`); continue; }
     for (const c of cs) {
       if (SKIP_ALL.test(c.label) || opts.skip?.test(c.label)) { out.skipped.push(`${area} · ${c.label}`); continue; }
-      try { await tryKey(area, line, c, opts); } catch (err) { out.errors.push(`${area} · ${c.label}: threw ${err.message}`); }
+      note(`${area} · ${c.label}`);
+      try { await within(tryKey(area, line, c, opts), 15000, 'the key'); } catch (err) { out.errors.push(`${area} · ${c.label}: ${err.message}`); }
       await closeAll();
-      if (opts.restore) await opts.restore(c, line);
+      if (opts.restore) { try { await within(opts.restore(c, line), 15000, 'putting things back'); } catch (err) { out.errors.push(`${area} · ${c.label}: ${err.message}`); } }
     }
   }
 }
@@ -127,7 +137,7 @@ if (AREAS.includes('Board')) {
     if (/^(C|Ctrl\+G|Ctrl\+Shift\+G|Ctrl\+]|Ctrl\+\[)$/.test(c.label)) return [img.id, note.id];
     return [img.id];
   };
-  const sig = () => JSON.stringify({ n: B.cur.items.length, sel: [...B.sel], v: B.view, items: B.cur.items.map((i) => [i.x, i.y, i.w, i.h, i.z, i.rot, i.opacity, i.group, i.stamp, i.star, i.hidden, i.t]), lens: B.lens, prefs: Board.prefs?.(), present: Boolean(B.presenting), hidden: B.hidden?.size });
+  const sig = () => JSON.stringify({ n: B.cur.items.length, sel: [...B.sel], v: B.view, items: B.cur.items.map((i) => [i.x, i.y, i.w, i.h, i.z, i.rot, i.opacity, i.group, i.stamp, i.star, i.hidden, i.t, i.lastT]), lens: B.lens, prefs: Board.prefs?.(), present: Boolean(B.presenting), hidden: B.hidden?.size });
   let snap = null;
   await runArea('Board', {
     sig,
@@ -141,7 +151,9 @@ if (AREAS.includes('Board')) {
     restore: async () => {
       document.activeElement?.blur?.();
       if (B.presenting) { await press(one('Escape')); await wait(200); }
-      for (let i = 0; i < 4 && JSON.stringify(B.cur.items) !== snap; i += 1) { Board.undo(); await wait(60); }
+      // put the items back as they were (undo can't: the key may itself have been an undo)
+      if (JSON.stringify(B.cur.items) !== snap) { B.cur.items = JSON.parse(snap); Board._.renderAll(); }
+      if (B.cur.lens) Board._.setLens?.(null);
       if (!vis('.bd-root')) activate('tool:board');
       await wait(60);
     },
@@ -155,10 +167,13 @@ if (AREAS.includes('Video Review') || AREAS.includes('Editor')) {
   await Review.load(true); await until(() => Review.videos.length >= 2);
   await Review.open(`${VIDS}/frames_a_30.mp4`); await Review.waitReady(); await wait(400);
   const root = H.surfaces.get('tool:ae').el;
-  const focusRoot = () => { (root.querySelector('.vr-player, .vr-main') || root).focus?.({ preventScroll: true }); if (!root.contains(document.activeElement)) { root.tabIndex = -1; root.focus({ preventScroll: true }); } };
+  // Video Review listens on its own mount (the parent of .vr, tabindex -1), not on the surface around it
+  const focusRoot = () => { const r = root.querySelector('.vr')?.parentElement || root; r.focus({ preventScroll: true }); };
   if (AREAS.includes('Video Review')) {
     if (VideoCut.active) VideoCut.leave();
-    const sigR = () => JSON.stringify({ t: Review.state?.t ?? root.querySelector('video')?.currentTime, paused: root.querySelector('video')?.paused, cmp: Review.state?.cmp, view: Review.state?.view, rate: root.querySelector('video')?.playbackRate, vol: root.querySelector('video')?.volume, muted: root.querySelector('video')?.muted, cls: root.className, lib: root.querySelector('.vr-lib, .vr-library')?.className, notes: Review.notes?.().length, editor: VideoCut.active, loop: Review.state?.loop, mirror: Review.state?.mirror, guides: Review.state?.guides, safe: Review.state?.safe, tc: root.querySelector('.vr-time')?.value });
+    await Review.addNote('first', { t: 0.5, frame: false }); await Review.addNote('second', { t: 2.5, frame: false });
+    const small = (o) => Object.fromEntries(Object.entries(o || {}).filter(([, v]) => { try { return !(v instanceof Node) && typeof v !== 'function' && JSON.stringify(v).length < 400; } catch { return false; } }));
+    const sigR = () => JSON.stringify({ st: small(Review.state), t: Review.state?.t ?? root.querySelector('video')?.currentTime, paused: root.querySelector('video')?.paused, cmp: Review.state?.cmp, view: Review.state?.view, rate: root.querySelector('video')?.playbackRate, vol: root.querySelector('video')?.volume, muted: root.querySelector('video')?.muted, cls: root.className, lib: root.querySelector('.vr-lib, .vr-library')?.className, notes: Review.notes?.().length, editor: VideoCut.active, loop: Review.state?.loop, mirror: Review.state?.mirror, guides: Review.state?.guides, safe: Review.state?.safe, tc: root.querySelector('.vr-time')?.value });
     await runArea('Video Review', {
       sig: sigR,
       skip: /^(F)$/, // F goes fullscreen (the window itself)
@@ -169,6 +184,7 @@ if (AREAS.includes('Video Review') || AREAS.includes('Editor')) {
   if (AREAS.includes('Editor')) {
     await VideoCut.enter(); await until(() => VideoCut.active, 8000);
     await VideoCut.addClip(`${VIDS}/frames_b_30.mp4`); await wait(500);
+    VideoCut.goto(0.5); VideoCut.addColor('#ff2e88', { at: 0.5, dur: 1.5, main: false }); VideoCut.marker('a'); VideoCut.goto(3); VideoCut.marker('b'); await wait(200);
     const base = JSON.stringify(VideoCut.edit);
     const sigE = () => JSON.stringify({ edit: VideoCut.edit, t: VideoCut.time, sel: VideoCut.selection, razor: VideoCut.razor, snap: VideoCut.snap, view: VideoCut.view, active: VideoCut.active, playing: VideoCut.playing, sug: Boolean(VideoCut.suggestion) });
     await runArea('Editor', {
@@ -176,9 +192,14 @@ if (AREAS.includes('Video Review') || AREAS.includes('Editor')) {
       before: async (c) => {
         if (!VideoCut.active) { await VideoCut.enter(); await until(() => VideoCut.active, 5000); }
         if (VideoCut.playing) VideoCut.pause();
-        VideoCut.goto(1.5); await wait(120);
+        // select first (select(i) also moves the playhead to that clip's start), then the playhead mid-clip
         if (!/^(Ctrl\+A|E|Esc)$/.test(c.label)) VideoCut.select(0);
-        if (/^Ctrl\+V$/.test(c.label)) { VideoCut.select(0); await press(one('Ctrl+C')); await wait(150); }
+        if (/^Ctrl\+V$/.test(c.label)) { focusRoot(); await press(one('Ctrl+C')); await wait(150); }
+        VideoCut.goto(1.5); await wait(150);
+        if (c.label === 'K') { VideoCut.play(); await wait(300); } // K stops: playing first
+        if (c.label === 'Shift+E') { VideoCut.goto(2); VideoCut.split(); VideoCut.goto(1.5); await wait(150); } // a cut with media on both sides
+        if (c.label === '\\') { VideoCut.centerView?.(); focusRoot(); await press(one('=')); await press(one('=')); await wait(200); } // fit: zoomed in first
+        if (/^Alt\+[←→↑↓]$/.test(c.label)) { const lay = (VideoCut.edit.tracks || []).flatMap((t) => t.items)[0]; if (lay) VideoCut.selectIds([lay.id]); }
         focusRoot();
       },
       restore: async () => {

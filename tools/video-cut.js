@@ -36,6 +36,8 @@ const VideoCut = (() => {
   const writeCuts = debounce(() => { pendingSave = false; window.hub.kvSet('video-cuts', cuts); }, 400);
   const saveCuts = () => { pendingSave = true; writeCuts(); };
   addEventListener('beforeunload', () => { if (pendingSave && cuts) { pendingSave = false; window.hub.kvSet('video-cuts', cuts); } });
+  // leaving Video Review (the board, the Lab, a chat) pauses the edit: it played on unseen, sound and compositor included
+  addEventListener('hearth:view', () => { try { if (st.on && P.playing && H.surfaceIdFor(H.activeId) !== 'tool:ae') pause(); } catch { /* not mounted yet */ } });
   async function loadCuts() {
     if (cuts) return cuts;
     cuts = (await window.hub.kvGet('video-cuts', {})) || {};

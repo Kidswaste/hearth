@@ -15,6 +15,7 @@ await window.hub.fs.write(`${VIDS}/.keep`, '');
 for (const f of ['frames_a_30.mp4', 'frames_b_30.mp4', 'music.wav']) await window.hub.fs.copy(`${SRC}/${f}`, `${VIDS}/${f}`);
 const claude = H.claudeAgent();
 const R = () => H.surfaces.get('tool:ae')?.el;
+const focusEd = () => (R().querySelector('.vr')?.parentElement || R()).focus({ preventScroll: true }); // Video Review listens on its mount
 const menuRows = () => [...document.querySelectorAll('#menu button, #menu-fly button, .menu-flyout button')].filter(visible);
 const row = (re) => menuRows().find((b) => re.test(b.textContent));
 // the frame number burned into the picture on screen (the compositor when the edit is rich, else the decoder)
@@ -28,10 +29,12 @@ function codeOnScreen() {
   return decodeFrameCode(g.getImageData(0, 0, w, h).data, w, h);
 }
 async function bar(line) { // the command bar over the tool (Ctrl+;), the way the owner drives a tool by words
-  await key(';', { ctrl: true }); await until(() => visible(document.querySelector('.cmdbar-input')), 3000);
-  const inp = document.querySelector('.cmdbar-input');
-  inp.focus(); inp.select?.(); await type(line); await key('Enter', { ctrl: true }); await wait(700);
-  return document.querySelector('.cmdbar-out')?.textContent || '';
+  const inp = () => document.querySelector('.cmdbar-input');
+  if (!visible(inp())) { await key(';', { ctrl: true }); await until(() => visible(inp()), 3000); }
+  inp().focus(); inp().select?.(); await type(line); await key('Enter'); await wait(800);
+  const text = document.querySelector('.cmdbar-out')?.textContent || '';
+  for (let i = 0; i < 2 && visible(inp()); i += 1) { await key('Escape'); await wait(150); } // clear, then close (the keys go back to the editor)
+  return text;
 }
 try {
 // 1. Video Review from the rail, the folder by command, a click on the clip
@@ -49,15 +52,15 @@ await until(() => /frames_a_30/.test(Review.current?.path || ''), 8000); await R
 step('the clip opens', /frames_a_30/.test(Review.current?.path || ''));
 
 // 2. E: the editor; 9:16 through the command bar
-R().focus?.({ preventScroll: true });
+focusEd();
 await key('e'); await until(() => VideoCut.active, 15000); await wait(400);
 step('E opens the editor', VideoCut.active);
 const fmtOut = await bar('/edit-format 9:16 30');
 step('Ctrl+; /edit-format 9:16 30 (the command bar over the editor)', /9:16/.test(R().querySelector('.vr-cut-fmt')?.textContent || '') && VideoCut.fps === 30, { chip: R().querySelector('.vr-cut-fmt')?.textContent, out: fmtOut.slice(0, 80) });
-await key('Escape'); await wait(200);
+
 
 // 3. exact frames: → ×30, Shift+→ ×2, a typed timecode, J K L
-R().focus?.({ preventScroll: true });
+focusEd();
 await key('Home'); await wait(200);
 for (let i = 0; i < 30; i += 1) await key('ArrowRight');
 await wait(500);
@@ -74,20 +77,20 @@ fi = await VideoCut.frameInfo();
 step('L plays, K stops on a whole frame (picture = counter)', fi.frame > 75 && codeOnScreen() === fi.frame, { frame: fi.frame, code: codeOnScreen() });
 
 // 4. cut, title, a second clip with a dissolve
-VideoCut.goto(1.5); await wait(300); R().focus?.({ preventScroll: true });
+VideoCut.goto(1.5); await wait(300); focusEd();
 await key('s'); await wait(300);
 step('S splits at the playhead', VideoCut.edit.clips.length === 2, VideoCut.edit.clips.length);
 await VideoCut.addClip(`${VIDS}/frames_b_30.mp4`); await wait(600);
 const tOut = await bar('/add-title Hearth | your agents, one window');
-await key('Escape'); await wait(200);
+
 step('/add-title: a title over the picture', (VideoCut.edit.tracks || []).some((t) => t.items.some((i) => /Hearth/.test(i.text || i.words || ''))), tOut.slice(0, 100));
 const trOut = await bar('/transition dissolve 0.5 all');
-await key('Escape'); await wait(200);
+
 step('/transition dissolve 0.5 all', VideoCut.edit.clips.slice(1).every((c) => c.trans?.type === 'dissolve'), { clips: VideoCut.edit.clips.map((c) => c.trans?.type || '-'), out: trOut.slice(0, 80) });
 await shot('edit');
 
 // 5. Alt: lane switches; right-click a clip: its menu with submenus; ? and Ctrl+/
-R().focus?.({ preventScroll: true });
+focusEd();
 await smoke({ cdp: 'Input.dispatchKeyEvent', params: { type: 'rawKeyDown', key: 'Alt', code: 'AltLeft', windowsVirtualKeyCode: 18, modifiers: 1 } });
 await wait(300);
 const altShown = R().querySelector('.vr-cut')?.classList.contains('alt') || R().querySelector('.vr-cut-wrap, .vr-cut-track')?.classList.contains('alt') || VideoCut._test?.alt?.() || document.documentElement.classList.contains('reveal-alt') || /alt/.test(R().querySelector('.vr-cut-track')?.className || '');
@@ -101,18 +104,19 @@ if (cv && main) {
   await mouse('mouseMoved', x, y, { button: 'none' }); await mouse('mousePressed', x, y, { button: 'right' }); await mouse('mouseReleased', x, y, { button: 'right' }); await wait(400);
 }
 step('right-click a clip: its menu with › submenus', menuRows().length >= 5 && menuRows().some((b) => /›/.test(b.textContent)), menuRows().map((b) => b.textContent.trim()).slice(0, 8));
-await key('Escape'); await wait(200);
-R().focus?.({ preventScroll: true });
+hideMenu(); await wait(150);
+
+focusEd();
 await key('?', { shift: true }); await wait(500);
 step('? lists the editor keys', /Split at the playhead|Razor/.test(document.querySelector('dialog[open]')?.textContent || ''));
 document.querySelectorAll('dialog[open]').forEach((d) => d.close()); await wait(200);
-R().focus?.({ preventScroll: true });
+focusEd();
 await key('/', { ctrl: true }); await wait(500);
 step('Ctrl+/ in the editor: the keys sheet starts with Editor', /^Editor/.test(document.querySelector('.keys-sheet .ks-group h4')?.textContent || ''), document.querySelector('.keys-sheet .ks-group h4')?.textContent);
 KeysUI.close(); await wait(200);
 
 // 6. switch to the board mid-playback; undo on the board doesn't touch the edit (and back)
-R().focus?.({ preventScroll: true });
+focusEd();
 await key(' '); await wait(500);
 const wasPlaying = VideoCut.playing;
 const editBefore = JSON.stringify(VideoCut.edit);
@@ -125,15 +129,15 @@ step('Ctrl+Z on the board undoes the board, not the edit', Board.items().length 
 activate('tool:ae'); await wait(800);
 step('back in Video Review: still editing, same edit', VideoCut.active && JSON.stringify(VideoCut.edit) === editBefore);
 const before3 = VideoCut.edit.clips.length;
-R().focus?.({ preventScroll: true }); VideoCut.goto(0.5); await wait(200); await key('s'); await wait(300);
+focusEd(); VideoCut.goto(0.5); await wait(200); await key('s'); await wait(300);
 const split3 = VideoCut.edit.clips.length === before3 + 1;
 const undoOut = await bar('/undo');
-await key('Escape'); await wait(200);
+
 step('/undo over the editor undoes the edit (not the last chat action)', split3 && VideoCut.edit.clips.length === before3, { split3, now: VideoCut.edit.clips.length, out: undoOut.slice(0, 60) });
 const redoOut = await bar('/redo');
-await key('Escape'); await wait(200);
+
 step('/redo redoes it', VideoCut.edit.clips.length === before3 + 1, redoOut.slice(0, 60));
-R().focus?.({ preventScroll: true }); await key('z', { ctrl: true }); await wait(300);
+focusEd(); await key('z', { ctrl: true }); await wait(300);
 step('Ctrl+Z in the editor undoes it again', VideoCut.edit.clips.length === before3);
 
 // 7. small windows: the transport, ＋ and the format chip stay on screen
@@ -150,7 +154,7 @@ await smoke({ cdp: 'Emulation.clearDeviceMetricsOverride', params: {} }); await 
 step('small windows: ＋, the format chip and the time box stay on screen', sizes.every((s) => s.add && s.chip && s.time && s.scrollX), sizes);
 
 // 8. render, ffprobe, frames read back from the file
-const total = CutData.layout(VideoCut.edit).reduce((a, x) => Math.max(a, x.start + x.dur), 0);
+const total = CutData.total(VideoCut.edit);
 const job = await VideoCut.exportCut({}).catch((e) => ({ error: e.message }));
 const ev = job?.done ? await Promise.race([job.done, wait(240000).then(() => ({ code: 'timeout' }))]) : null;
 step('render finished (ffmpeg)', ev?.code === 0, { out: job?.output || job?.error, ev });
@@ -161,7 +165,7 @@ step('the render lands next to its footage (exports/), named after the edit', jo
 await shot('rendered');
 localStorage.setItem('journey.editor', JSON.stringify({ path: VideoCut.path, clips: VideoCut.edit.clips.length, tracks: (VideoCut.edit.tracks || []).length, fmt: R().querySelector('.vr-cut-fmt')?.textContent }));
 // a last cut right before the reload (saved on unload, not lost with the pending save)
-R().focus?.({ preventScroll: true }); VideoCut.goto(0.3); await wait(150); await key('s'); await wait(50);
+focusEd(); VideoCut.goto(0.3); await wait(150); await key('s'); await wait(50);
 localStorage.setItem('journey.editor.last', String(VideoCut.edit.clips.length));
 } catch (e) { step(`stopped: ${e.message}`, false); }
 return J.done();

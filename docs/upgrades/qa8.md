@@ -51,3 +51,5 @@ what collided between them and with everything older. One line per bug, each wit
 31. Fixed: an edit made just before a reload or quit (a cut, then ⌘Q) was lost with its pending save (400 ms). The editor writes it when the window closes; Video Review's notes and library do the same.
 32. Fixed: "New board…" from the rail ▦'s right-click menu or the palette, before the board had ever been opened, failed ("Cannot read properties of null"). The boards are loaded first.
 33. Fixed: undoing the creation of a note while it was being edited could leave the board half-drawn (a "node to be removed is no longer a child" error stopped the redraw). The redraw skips a node its own blur handler already took out.
+34. Fixed: after the command bar (Ctrl/⌘+;) closed, the keyboard went nowhere: the editor's ← → J K L, the board's and the Lab's keys did nothing until you clicked the tool again. The keys go back to where they were.
+35. Fixed: switching to another tool (the board, the Lab, a chat) while the edit played left it playing unseen (its sound and the compositor kept running). Leaving Video Review now pauses the edit.
