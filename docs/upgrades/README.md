@@ -30,7 +30,7 @@ line count is lower than the number of upgrades).
 | Music (round 5): background analysis (tempo, bar 1, kick / snare / hat, sections, drops), Mark kicks for me, tap that learns, colored waveform, ✦ Make it react, live beat lock | [music.md](music.md) | 51 |
 | Scenes 2 (round 5): scene stills on chat rows, cross-fade between chat scenes, Jam filmstrip / recap / share, jams survive chat switches | [scenes2.md](scenes2.md) | 34 |
 | Brain (round 6): an app map both engines read on demand, a new layer per effect, node graphs by default, time first (music when asked), Claude ⇄ Astra take over each other's task in the same chat and scene (`/task`) | [brain.md](brain.md) | 63 |
-| **Total** | | **3,608** |
+| **Total** | | **3,701** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.

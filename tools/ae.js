@@ -627,6 +627,9 @@ const AEKit = (() => {
       { label: 'Video: copy frame', run: () => Review.copyFrame() },
       { label: 'Video: send feedback to the director', run: () => Review.sendFeedback('director') },
       { label: 'Video: keyboard shortcuts', run: () => Review.shortcutsHelp() },
+      { label: 'Video: cut clips (E)', run: () => VideoCut.toggle() },
+      { label: 'Video: auto-cut on every bar', run: async () => { await VideoCut.enter(); VideoCut.suggest('bars'); } },
+      { label: 'Video: export the cut as a new version', run: async () => { await VideoCut.enter(); VideoCut.exportCut({}); } },
     ],
   });
 

@@ -226,6 +226,32 @@ const VideoNodes = (() => {
       x.status(`${outs.length} files`);
       return { file: { paths: outs, path: outs[0], from: p } };
     }, cmd: (n) => `/export-all ${n.values?.fit || 'crop'}` });
+  // the cut (tools/video-cut.js): beat-cut the open video, then render the edit
+  exp({ type: 'autocut', title: 'Auto-cut on the music', desc: 'Splits the open video on every bar (2 / 4 bars, beats, drops, sections) in its ✂ cut, ready to trim and reorder', keywords: 'beat bar split clips cut',
+    inputs: [IN('video', 'video', { required: true })], widgets: [SEL('every', ['bars', '2bars', '4bars', 'beats', 'drops', 'sections'])], outputs: [OUT('video', 'video')], cmdBadge: (n) => n.values?.every || 'bars',
+    run: async (x) => {
+      const p = await show(videoOf(x));
+      for (let i = 0; i < 60 && !R().state.audio; i += 1) await new Promise((r) => setTimeout(r, 150)); // the beats come from the audio analysis
+      await VideoCut.enter();
+      VideoCut.suggest(x.v('every'));
+      const n = VideoCut.acceptSuggestion();
+      x.status(`${n} cuts · ${VideoCut.edit.clips.length} clips`);
+      return { video: { path: p } };
+    }, cmd: (n) => `/cut-auto ${n.values?.every || 'bars'} ; /cut-auto apply` });
+  exp({ type: 'cut-export', title: 'Export the cut', desc: 'Renders the open video\'s ✂ cut with ffmpeg: a new version next to it, or a social preset', keywords: 'edit clips render ffmpeg',
+    inputs: [IN('video', 'video', { required: true })], widgets: [SEL('preset', [{ value: 'new', label: 'New version (same size)' }, ...PRESET_OPTS]), SEL('fit', V.FIT_MODES)], outputs: [OUT('file', 'file')], cmdBadge: (n) => n.values?.preset || 'new',
+    run: async (x) => {
+      const p = await show(videoOf(x));
+      await VideoCut.enter();
+      const preset = x.v('preset');
+      const job = await VideoCut.exportCut(preset === 'new' ? {} : { preset, fit: x.v('fit') });
+      if (!job) throw new Error('The export did not start (ffmpeg?)');
+      x.job(job.id); x.status('rendering the cut…', 0);
+      const ev = await job.done;
+      if (ev.code !== 0) throw new Error(ev.cancelled ? 'Cancelled' : ev.error || `ffmpeg exited ${ev.code}`);
+      x.status(`${base(job.output)} · ${ev.seconds}s`);
+      return { file: { path: job.output, from: p } };
+    }, cmd: (n) => `/cut-export ${n.values?.preset || 'new'} ${n.values?.fit || 'crop'}` });
   exp({ type: 'proxy', title: 'Make a proxy', desc: 'A small H.264 copy that plays anywhere (for ProRes or huge renders)', inputs: [IN('video', 'video', { required: true })], outputs: [OUT('file', 'file')],
     run: async (x) => ({ file: await exportOne(x, 'proxy', 'crop') }), cmd: () => '/proxy' });
   exp({ type: 'reveal', title: 'Show in folder', desc: 'Shows the file in Finder / Explorer', inputs: [IN('file', 'file', { required: true })], outputs: [],

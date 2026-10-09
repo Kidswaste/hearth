@@ -566,7 +566,7 @@ const ThreeMedia = (() => {
       allMaps ||= await window.hub.kvGet('three-beatmaps', {});
       if (seq !== loadSeq) return { ok: false, error: 'Another file was loaded meanwhile' };
       const m = allMaps[path];
-      map = { grid: m?.grid || null, marks: emptyMarks(m?.marks), cues: m?.cues || [] };
+      map = { grid: m?.grid || null, marks: emptyMarks(m?.marks), cues: m?.cues || [], trim: m?.trim || null };
       mapUndo = [];
       sizeCanvas();
       store.set('three.media', path);
@@ -606,7 +606,7 @@ const ThreeMedia = (() => {
     let wish = null;
     function attach({ playing = wish && performance.now() - wish.at < 10000 ? wish.play : st.playing } = {}) {
       if (!st.bytes) return;
-      send({ type: 'media-load', buffer: st.bytes.slice(0), mime: st.mime, video: st.video, name: st.name, startAt: st.time, playing, loop: st.loop, volume: st.volume, analysis: st.analysis, region, rate: st.rate });
+      send({ type: 'media-load', buffer: st.bytes.slice(0), mime: st.mime, video: st.video, name: st.name, startAt: st.time, playing, loop: st.loop, volume: st.volume, analysis: st.analysis, region, rate: st.rate, trim: map.trim });
       sendMap();
     }
     function toggle(force) {
@@ -707,7 +707,7 @@ const ThreeMedia = (() => {
       sizeCanvas();
       cueIdx = -2;
       if (st.path && allMaps) {
-        const empty = !map.grid && !LANES.some((ln) => map.marks[ln.id].length) && !map.cues?.length;
+        const empty = !map.grid && !LANES.some((ln) => map.marks[ln.id].length) && !map.cues?.length && !map.trim;
         if (empty) delete allMaps[st.path]; else allMaps[st.path] = map;
         saveMaps();
       }
@@ -716,6 +716,7 @@ const ThreeMedia = (() => {
     }
     function sendMap() {
       if (!st.bytes) return;
+      send({ type: 'media', cmd: 'trim', value: map.trim || null });
       send({ type: 'media-map', beats: beats(), bpm: bpmNow(), bpb: bpbNow(), anchor: G()?.anchor ?? beats()[dIdx()] ?? 0, manual: Boolean(G()), downIndex: dIdx(), marks: map.marks, cues: map.cues.map((c) => ({ t: c.t, name: c.name })) });
     }
     // Tap tempo that learns (button or T): the median gap of the last 16 taps (stray taps ignored), shown live.
@@ -1209,6 +1210,51 @@ const ThreeMedia = (() => {
     const saveLoop = () => { if (st.path) store.set(loopKey(st.path), region ? { ...region, locked } : null); };
     const padded = (r) => { const pad = Math.max(0.05, (r.b - r.a) * 0.06); return { start: Math.max(0, r.a - pad), end: Math.min(D() || r.b + pad, r.b + pad) }; };
 
+    // ---------- trim + cut (round 6): the song starts at trim.a and stops at trim.b; the loop or trim can be saved as
+    // a file (ffmpeg) or sent to Video Review as a clip of its cut (tools/video-cut.js) ----------
+    function setTrim(r) {
+      if (!D()) return null;
+      pushUndo();
+      map.trim = r && r.b - r.a >= 0.05 ? { a: r4(clamp01(r.a, D())), b: r4(clamp01(r.b, D())) } : null;
+      if (map.trim && map.trim.a >= map.trim.b) map.trim = null;
+      mapChanged();
+      if (map.trim && (now() < map.trim.a || now() > map.trim.b)) seek(map.trim.a);
+      return map.trim ? { ...map.trim } : null;
+    }
+    const clamp01 = (t, d) => Math.max(0, Math.min(d, t));
+    function setTrimEdge(edge, t) {
+      const cur = map.trim || { a: 0, b: D() };
+      const r = { ...cur, [edge]: snapT(t) };
+      if (r.b < r.a) [r.a, r.b] = [r.b, r.a];
+      const out = setTrim(r);
+      if (out) toast(`Song ${edge === 'a' ? 'starts' : 'ends'} at ${fmtMs(out[edge])} · /song-trim off undoes it`, { timeout: 1800 });
+      return out;
+    }
+    const cutRange = () => (region ? { ...region, what: 'the loop' } : map.trim ? { ...map.trim, what: 'the trimmed song' } : { a: 0, b: D(), what: 'the whole file' });
+    async function cutLoop() {
+      if (!st.path || !D()) return null;
+      const tools = await window.hub.video.tools({ ffmpeg: H.settings().ffmpegPath || undefined });
+      if (!tools.ffmpeg) { toast(`Saving a part needs ffmpeg: ${tools.hint}`, { type: 'error', timeout: 8000 }); return null; }
+      const r = cutRange();
+      const ext = st.video ? 'mp4' : extOf(st.path) === 'wav' ? 'wav' : 'm4a';
+      const stamp = (t) => fmtMs(t).replace(/[:.]/g, '-');
+      const output = st.path.replace(/\.[^.\\/]+$/, '') + `_cut ${stamp(r.a)}_${stamp(r.b)}.${ext}`;
+      const codec = st.video ? ['-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '256k', '-movflags', '+faststart'] : ext === 'wav' ? ['-vn', '-c:a', 'pcm_s16le'] : ['-vn', '-c:a', 'aac', '-b:a', '256k'];
+      const args = ['-hide_banner', '-y', '-ss', String(r.a), '-i', 'INPUT', '-t', String(Math.max(0.05, r.b - r.a)), ...codec, 'OUTPUT'];
+      const job = await Review.startJob({ label: `Save ${r.what}`, input: st.path, output, args, duration: r.b - r.a, library: st.video });
+      if (!job) return null;
+      const ev = await job.done;
+      return ev.code === 0 ? output : null;
+    }
+    async function sendClip() {
+      if (!st.path || !D()) return false;
+      if (!st.video) { toast('Video Review takes videos: /cut-loop saves this part of the song as a file', { timeout: 3500 }); return false; }
+      if (typeof VideoCut === 'undefined') return false;
+      const r = cutRange();
+      if (st.playing) toggle(false);
+      return VideoCut.receive(st.path, { a: r.a, b: r.b });
+    }
+
     // ---------- keys (the Lab forwards them when you're not typing) ----------
     function onKey(e) {
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return false;
@@ -1240,6 +1286,8 @@ const ThreeMedia = (() => {
       if (e.key === 'PageDown' || e.key === 'PageUp') return jumpCue(e.key === 'PageDown' ? 1 : -1);
       const lane = CORE_LANES.find((l) => l.key === e.key.toLowerCase());
       if (lane && !e.altKey) { addAtPlayhead(lane.id); return true; }
+      if (e.key === '{') { setTrimEdge('a', now()); return true; }
+      if (e.key === '}') { setTrimEdge('b', now()); return true; }
       if (e.key === '[') { setRegionEdge('a', now()); return true; }
       if (e.key === ']') { setRegionEdge('b', now()); return true; }
       if ((e.key === 'Delete' || e.key === 'Backspace') && autoSel?.idx.size) { deletePoints(); return true; }
@@ -1389,7 +1437,7 @@ const ThreeMedia = (() => {
       const lanesMoving = tracks.some((tr) => lanesOf(tr).length); // the header column shows lane values at the playhead
       // (while the strip scrolls this canvas only shows the header column: the view moving changes nothing on it)
       return [W, h, devicePixelRatio, scroll.on ? 'strip' : `${v0()}|${span()}`, D(), anaVer, st.path, waveRGB, scroll.on, JSON.stringify(gridView), snapMode, bpmNow(), G()?.anchor, bpbNow(), dIdx(),
-        LANES.map((l) => sumOf(map.marks[l.id])).join(), map.cues.map((c) => `${c.t}${c.name}${c.looks?.length || 0}`).join(), region ? `${region.a}|${region.b}|${locked}|${st.loop}` : '',
+        LANES.map((l) => sumOf(map.marks[l.id])).join(), map.cues.map((c) => `${c.t}${c.name}${c.looks?.length || 0}`).join(), region ? `${region.a}|${region.b}|${locked}|${st.loop}` : '', map.trim ? `${map.trim.a}|${map.trim.b}` : '',
         selected ? JSON.stringify(selected) : '', notes.map((n) => `${n.t}${n.done}`).join(), JSON.stringify(tracks), autoSel ? `${autoSel.id}|${autoSel.prop}|${[...autoSel.idx].join(',')}` : '',
         activeLane ? `${activeLane.id}|${activeLane.prop}` : '', lanesMoving ? Math.round(now() * 20) : ''].join('~');
     }
@@ -1828,6 +1876,15 @@ const ThreeMedia = (() => {
           if (selected?.type === 'edge' && selected.edge === edge) { g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.strokeRect(Math.round(x) - 5, 0.5, 10, RULER - 1); }
         }
       }
+      // the song's trim: outside it is dimmed, cyan brackets at in / out
+      if (map.trim) {
+        const xa = X(map.trim.a); const xb = X(map.trim.b);
+        g.fillStyle = '#000000a8';
+        if (xa > 0) g.fillRect(0, 0, Math.min(w, xa), h);
+        if (xb < w) g.fillRect(Math.max(0, xb), 0, w - Math.max(0, xb), h);
+        g.fillStyle = '#48ddff';
+        for (const [x, d] of [[xa, 1], [xb, -1]]) if (x >= -2 && x <= w + 2) { g.fillRect(Math.round(x) - (d < 0 ? 2 : 0), 0, 2, h); g.fillRect(Math.round(x) - (d < 0 ? 8 : 0), 0, 8, 2); g.fillRect(Math.round(x) - (d < 0 ? 8 : 0), h - 2, 8, 2); }
+      }
       // notes on moments: green pins on the ruler (grey once done)
       for (const n of notes) {
         if (n.t < s0 || n.t > s0 + sp) continue;
@@ -1978,7 +2035,7 @@ const ThreeMedia = (() => {
       if (!D() || !w || !h) return;
       const dpr = devicePixelRatio || 1;
       const X = (tt) => (tt / D()) * w;
-      const sk = [w, h, dpr, D(), anaVer, st.path, region ? `${region.a}|${region.b}|${locked}` : '', tracks.map((tr) => `${tr.in}|${tr.out}|${tr.visible}|${tr.color}`).join(),
+      const sk = [w, h, dpr, D(), anaVer, st.path, region ? `${region.a}|${region.b}|${locked}` : '', map.trim ? `${map.trim.a}|${map.trim.b}` : '', tracks.map((tr) => `${tr.in}|${tr.out}|${tr.visible}|${tr.color}`).join(),
         map.cues.map((c) => `${c.t}${c.name}`).join(), notes.map((n) => `${n.t}${n.done}`).join()].join('~');
       const box = view ? `${Math.round(X(view.start) * 2)}|${Math.round(X(view.end) * 2)}|${locked}` : '';
       if (`${sk}#${box}` === lastMiniKey) return;
@@ -2007,6 +2064,7 @@ const ThreeMedia = (() => {
           g.fillRect(x0, 2 + i * rowH, Math.max(2, x1 - x0), rowH - 1);
         });
         if (region) { g.fillStyle = locked ? '#48ddff40' : '#ffd75e40'; g.fillRect(X(region.a), 0, Math.max(2, X(region.b) - X(region.a)), h); }
+        if (map.trim) { g.fillStyle = '#000000a0'; g.fillRect(0, 0, X(map.trim.a), h); g.fillRect(X(map.trim.b), 0, w - X(map.trim.b), h); }
         if (a) { g.fillStyle = '#ff6a6a'; for (const d of a.drops) g.fillRect(X(d) - 1, 0, 2, 4); }
         for (const n of notes) { g.fillStyle = n.done ? '#8f877d' : '#7cd992'; g.fillRect(X(n.t) - 1, h - 5, 3, 5); }
         map.cues.forEach((c, i) => { g.fillStyle = cueColor(c, i); g.fillRect(X(c.t) - 1, 0, 3, 6); });
@@ -2592,6 +2650,12 @@ const ThreeMedia = (() => {
         sec ? [`Loop this ${sec.energy} part`, `${fmtTime(sec.start)}–${fmtTime(sec.end)} · or double-click`, () => setRegion({ a: snapT(sec.start), b: snapT(sec.end) })] : false,
         region ? ['Remove the loop', '', () => setRegion(null)] : false,
         null,
+        ['Song starts here', '{ · trims the song (the sketch hears only the trimmed part)', () => setTrimEdge('a', t)],
+        ['Song ends here', '}', () => setTrimEdge('b', t)],
+        map.trim ? ['Untrim the song', `${fmtMs(map.trim.a)} → ${fmtMs(map.trim.b)}`, () => setTrim(null)] : false,
+        [`Save ${cutRange().what} as a file`, '/cut-loop · ffmpeg, next to the original', () => cutLoop()],
+        st.video ? [`Send ${cutRange().what} to Video Review`, '/send-clip · a clip on its ✂ track', () => sendClip()] : false,
+        null,
         ['Cue here', 'C at the playhead', () => addCue(t)],
         ['Section here…', 'Intro, Build, Drop…', () => menuAt(anchor, SECTION_NAMES.map((n) => [n, '', () => addCue(t, n)]))],
         ['The 1 is here', 'The grid\'s downbeat', () => editGrid((g) => { g.anchor = r4(snapToHit(t + 0.05, 'kick')); })],
@@ -2784,6 +2848,9 @@ const ThreeMedia = (() => {
         };
       },
       get duration() { return D(); },
+      get trim() { return map.trim ? { ...map.trim } : null; },
+      setTrim: (r) => setTrim(r), setTrimEdge: (edge, t) => setTrimEdge(edge, t ?? now()), cutLoop: () => cutLoop(), sendClip: () => sendClip(),
+      get isVideo() { return st.video; },
       get loop() { return region ? { ...region } : null; },
       setLoop(a, b) { if (locked) return false; setRegion(a == null ? null : { a, b }); return true; },
       get recording() { return Boolean(recording); },
@@ -2798,6 +2865,7 @@ const ThreeMedia = (() => {
         const out = {
           loaded: true, file: st.path, video: st.video, duration: Math.round(D() * 1000) / 1000, time: Math.round(now() * 1000) / 1000, playing: st.playing,
           loop: region ? { start: region.a, end: region.b, locked, on: st.loop } : (st.loop ? 'whole song' : 'off'),
+          ...(map.trim ? { trim: { start: map.trim.a, end: map.trim.b, note: 'the song plays only between these' } } : {}),
           grid: map.grid ? { bpm: map.grid.bpm, firstDownbeat: map.grid.anchor, beatsPerBar: map.grid.bpb, setBy: 'the user (trust it)' } : { bpm: a?.bpm, ...(a?.grid ? { firstDownbeat: autoGrid()?.anchor ?? beats()[dIdx()] ?? null, tempoSure: a.grid.tempoConf, barOneSure: a.grid.downbeatConf, straight: a.grid.straight } : {}), setBy: 'auto-detected' },
           hits: { ...hits, setBy: 'the user, by hand: cut and hit on these, not on guesses' },
         };

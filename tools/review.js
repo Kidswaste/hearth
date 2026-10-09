@@ -49,6 +49,9 @@ const Review = (() => {
   const vid = () => refs.video;
   const dur = () => vid()?.duration || 0;
   const frameNow = () => V.frameAt(vid()?.currentTime || 0, S.fps);
+  // While clips are being edited (tools/video-cut.js, E) the transport drives the edit instead of the source.
+  const VC = () => (typeof VideoCut !== 'undefined' ? VideoCut : null);
+  const Cut = () => (VC()?.active ? VideoCut : null);
 
   // ---------- persistence ----------
   const saveNotes = debounce(() => window.hub.kvSet('video-notes', S.notes), 300);
@@ -245,8 +248,10 @@ const Review = (() => {
     const f = fmtOf(v);
     const scrubBar = el('span', { class: 'vr-scrubbar' });
     const node = el('button', {
-      class: `vr-card${S.cur?.path === v.path ? ' on' : ''}${S.cmp.path === v.path ? ' is-b' : ''}`, title: v.path, dataset: { path: v.path },
+      class: `vr-card${S.cur?.path === v.path ? ' on' : ''}${S.cmp.path === v.path ? ' is-b' : ''}`, title: v.path, dataset: { path: v.path }, draggable: true,
       on: {
+        // drag a card onto the clip track (✂) to add it to the cut
+        dragstart: (e) => { e.dataTransfer.setData('text/x-hearth-video', v.path); e.dataTransfer.setData('text/plain', v.path); e.dataTransfer.effectAllowed = 'copy'; },
         // the list re-renders (this card is replaced): keep the keyboard on the player so Space / arrows work at once
         click: (e) => { if (e.altKey || e.shiftKey) compareWith(v.path); else openVideo(v); refs.root.classList.remove('lib-open'); refs.root.focus({ preventScroll: true }); },
         contextmenu: (e) => { e.preventDefault(); cardMenu(v, e.clientX, e.clientY); },
@@ -266,7 +271,8 @@ const Review = (() => {
       el('span', { class: 'vr-fmt', dataset: { fmt: f || '' }, text: f && f !== 'other' ? f : '' }),
       open ? el('span', { class: 'vr-badge', text: `✎ ${open}` }) : null,
       Date.now() - v.mtime < 3600e3 ? el('span', { class: 'vr-new', text: 'NEW' }) : null,
-      v.lab ? el('span', { class: 'vr-lab', text: 'LAB', title: 'Recorded in the Three.js Lab' }) : null),
+      v.lab ? el('span', { class: 'vr-lab', text: 'LAB', title: 'Recorded in the Three.js Lab' }) : null,
+      VC()?.hasCut(v.path) ? el('span', { class: 'vr-cutb', text: '✂', title: 'Has a cut (E opens it)' }) : null),
     el('span', { class: 'vr-card-text' },
       el('b', { class: 'vr-card-name' }, isFav(v.path) ? el('span', { class: 'vr-star', text: '★ ' }) : null, base(v.path)),
       el('span', { class: 'vr-card-meta', text: cardMeta(v) }),
@@ -281,6 +287,7 @@ const Review = (() => {
       { label: isFav(v.path) ? '☆ Remove from favorites' : '★ Favorite', action: () => toggleFav(v.path) },
       { label: 'Tags…', action: () => editTags(v.path) },
       { label: 'Export for social…', action: async () => { await openVideo(v); exportMenu(); } },
+      VC() && S.cur && S.cur.path !== v.path ? { label: '✂ Add to the cut of the open video', action: async () => { if (!VideoCut.active) await VideoCut.enter(); VideoCut.addClip(v.path); } } : null,
       S.tools?.ffmpeg ? { label: 'Make a playable copy (H.264 proxy)', action: () => runExport('proxy', { path: v.path }) } : null,
       { label: IS_MAC ? 'Show in Finder' : 'Show in folder', action: () => window.hub.fs.reveal(v.path) },
       { label: 'Open in default player', action: () => window.hub.fs.open(v.path) },
@@ -429,14 +436,16 @@ const Review = (() => {
     emit('seek', { t: d.currentTime });
   }
   function step(n) {
+    if (Cut()) { Cut().step(n); return; }
     pause();
     seek(V.timeOfFrame(frameNow() + n, S.fps));
   }
-  const play = () => { if (!vid()?.src) return; S.shuttle = 0; vid().playbackRate = Number(refs.speed.value); vid().play(); if (S.cmp.path) refs.cmp.play(); };
-  function pause() { S.shuttle = 0; vid()?.pause(); refs.cmp?.pause(); }
-  const togglePlay = () => (vid().paused && !S.shuttle ? play() : pause());
+  const play = () => { if (Cut()) { Cut().play(); return; } if (!vid()?.src) return; S.shuttle = 0; vid().playbackRate = Number(refs.speed.value); vid().play(); if (S.cmp.path) refs.cmp.play(); };
+  function pause() { if (Cut()) { Cut().pause(); return; } S.shuttle = 0; vid()?.pause(); refs.cmp?.pause(); }
+  const togglePlay = () => (Cut() ? Cut().togglePlay() : vid().paused && !S.shuttle ? play() : pause());
   // J / K / L: each L press speeds forward 1×→2×→4×→8×, J the same backwards, K stops.
   function shuttle(dir) {
+    if (Cut()) return Cut().shuttle(dir);
     const cur = S.shuttle;
     if (dir === 0) { pause(); return; }
     const idx = Math.sign(cur) === dir ? Math.min(SHUTTLE.length - 1, SHUTTLE.indexOf(Math.abs(cur)) + 1) : 0;
@@ -459,34 +468,6 @@ const Review = (() => {
     refs.loopBtn.classList.toggle('on', S.loop.a != null && S.loop.on);
   }
   let lastTick = 0;
-  // The playhead glides on the compositor: while the video plays it gets one linear animation to the end of the clip,
-  // so it moves at the screen's refresh rate even when the main thread is busy. JS only restarts it when the width,
-  // the speed or the play state changes, or when it drifted more than 2 px from the video (a seek, a loop jump).
-  // Before: `left: x%` written every frame (a layout of the whole player per frame).
-  let tlW = 0; let headX = NaN; let headAnim = null; let headKey = ''; let headX0 = 0; let headX1 = 0;
-  function placeHead(d, D) {
-    const rate = d.playbackRate || 1;
-    // on the frame's clock (what the animation runs on), not "now"
-    const lag = d.paused ? 0 : ((performance.now() - (document.timeline.currentTime ?? performance.now())) / 1000) * rate;
-    const t = Math.max(0, d.currentTime - lag);
-    const W = tlW;
-    const x = D && W ? (t / D) * W : 0;
-    const moving = !d.paused && S.shuttle >= 0 && D > 0 && W > 0 && !d.seeking && (D - t) / rate > 0.05;
-    const set = (px) => { headX = px; refs.head.style.transform = `translate3d(${px.toFixed(2)}px, 0, 0)`; };
-    if (!moving) {
-      if (headAnim) { headAnim.cancel(); headAnim = null; headX = NaN; }
-      if (Math.abs(headX - x) > 0.25 || Number.isNaN(headX)) set(x);
-      return;
-    }
-    const key = `${W}|${rate}|${D}`;
-    const at = headAnim ? headX0 + (headX1 - headX0) * (headAnim.effect.getComputedTiming().progress ?? 0) : NaN;
-    if (headAnim && headKey === key && Math.abs(at - x) <= 2) return;
-    headAnim?.cancel();
-    set(x);
-    headAnim = refs.head.animate([{ transform: `translate3d(${x.toFixed(2)}px, 0, 0)` }, { transform: `translate3d(${W.toFixed(2)}px, 0, 0)` }], { duration: ((D - t) / rate) * 1000, easing: 'linear', fill: 'forwards' });
-    headAnim.startTime = document.timeline.currentTime; // start at x now, not when it's first drawn
-    headKey = key; headX0 = x; headX1 = W;
-  }
   const onScreen = () => (refs.root.checkVisibility ? refs.root.checkVisibility({ visibilityProperty: true }) : Boolean(refs.root.offsetParent));
   function tick(now) {
     if (!refs.video?.isConnected) return;
@@ -498,6 +479,7 @@ const Review = (() => {
     // reverse shuttle: step the playhead back by hand (browsers can't play backwards)
     if (S.shuttle < 0 && lastTick) { const t = d.currentTime + (S.shuttle * (now - lastTick)) / 1000; if (t <= (S.loop.on && S.loop.a != null ? S.loop.a : 0) && !S.pingpong) { seek(S.loop.on && S.loop.b != null ? S.loop.b : D); } else seek(t); }
     lastTick = now;
+    if (Cut()) { Cut().frame(); requestAnimationFrame(tick); return; } // the edit paints its own time and playhead
     // only real changes touch the DOM (a paused player used to rewrite these every frame: style + observers)
     placeHead(d, D);
     if (document.activeElement !== refs.time) { const v = fmtTime(d.currentTime); if (refs.time.value !== v) refs.time.value = v; }
@@ -518,6 +500,33 @@ const Review = (() => {
     if (S.scopes && (d.paused ? scopesDirty : now - lastScope > 250)) drawScopes(now);
     showNoteDrawings();
     requestAnimationFrame(tick);
+  }
+  // The playhead glides on the compositor while the video plays (a linear animation to the end, or to the loop's
+  // out point): JS restarts it only on play / pause / seek / rate / size changes or when it drifts over 2 px.
+  const headG = { anim: null, key: '', x0: 0, x1: 0, x: -1 };
+  function placeHead(d, D) {
+    const W = refs.tlW || 0;
+    if (!W || !D) return;
+    const t = d.currentTime;
+    const x = (t / D) * W;
+    const rate = d.playbackRate || 1;
+    const end = S.loop.on && S.loop.a != null && t < (S.loop.b ?? D) ? S.loop.b ?? D : D;
+    const moving = !d.paused && !d.seeking && S.shuttle >= 0 && end - t > 0.05;
+    if (!moving) {
+      if (headG.anim) { headG.anim.cancel(); headG.anim = null; }
+      if (Math.abs(headG.x - x) > 0.05) { headG.x = x; refs.head.style.transform = `translate3d(${x.toFixed(2)}px, 0, 0)`; }
+      return;
+    }
+    const key = `${W}|${D}|${rate}|${end}`;
+    const at = headG.anim ? headG.x0 + (headG.x1 - headG.x0) * (headG.anim.effect.getComputedTiming().progress ?? 0) : NaN;
+    if (headG.anim && headG.key === key && Math.abs(at - x) <= Math.max(2, (0.08 * rate * W) / D)) return; // the decoder's clock moves in frame steps
+    headG.anim?.cancel();
+    const x1 = (end / D) * W;
+    headG.x = x;
+    refs.head.style.transform = `translate3d(${x.toFixed(2)}px, 0, 0)`;
+    headG.anim = refs.head.animate([{ transform: `translate3d(${x.toFixed(2)}px, 0, 0)` }, { transform: `translate3d(${x1.toFixed(2)}px, 0, 0)` }], { duration: ((end - t) / rate) * 1000, easing: 'linear', fill: 'forwards' });
+    headG.anim.startTime = document.timeline.currentTime;
+    Object.assign(headG, { key, x0: x, x1 });
   }
   // The time readout: timecode, seconds or frame numbers (click the total to switch).
   const fmtTime = (t) => (S.timeMode === 'sec' ? `${(t || 0).toFixed(3)}s` : S.timeMode === 'frames' ? `f${V.frameAt(t || 0, S.fps)}` : tc(t));
@@ -1020,6 +1029,7 @@ const Review = (() => {
     const n = notesOf().find((x) => x.id === id);
     if (!n) return;
     S.selNote = id;
+    if (Cut()) { const at = CutData.programTimes(Cut().edit, S.cur.path, n.t)[0]; if (at != null) Cut().goto(at); renderNotes(); renderMarkers(); return; }
     pause(); seek(n.t); shownDrawKey = '';
     renderNotes(); renderMarkers();
     refs.noteList.querySelector(`[data-id="${id}"]`)?.scrollIntoView({ block: 'nearest' });
@@ -1242,7 +1252,8 @@ const Review = (() => {
     if (ev.type === 'done') {
       exportJobs.delete(ev.id);
       j.toast.remove();
-      if (ev.code === 0) {
+      if (ev.code === 0 && j.library === false) toast(`${j.label} done (${ev.seconds}s)`, { action: { label: IS_MAC ? 'Show in Finder' : 'Show in folder', fn: () => window.hub.fs.open(dirOf(ev.output)) }, timeout: 9000 });
+      else if (ev.code === 0) {
         S.lib.exports = [...new Set([ev.output, ...S.lib.exports])].slice(0, 300); // exports show in the library even outside the watched folders
         saveLib();
         toast(`${j.label} done (${ev.seconds}s)`, { action: { label: 'Open', fn: () => load().then(() => openVideo(ev.output)) }, timeout: 9000 });
@@ -1265,12 +1276,17 @@ const Review = (() => {
     const useLoop = isCur && range !== 'all' && S.loop.a != null && S.loop.on;
     const { args, ext, w, h } = V.ffmpegArgs(p, info, { fit, offset: offset ?? (isCur ? S.overlay.cropOffset : 0.5), from: useLoop ? S.loop.a : undefined, to: useLoop ? S.loop.b : undefined });
     const output = out || join(dirOf(src), 'exports', `${noExt(base(src))}_${p.id}${w && h ? `_${w}x${h}` : ''}.${ext}`);
-    const id = `x${Date.now()}`;
-    const label = `Export ${p.name}`;
     const length = useLoop ? S.loop.b - S.loop.a : (isCur ? d.duration : m.d) || 0;
-    const done = new Promise((resolve) => exportJobs.set(id, { label, resolve, pct: 0, toast: toast(`${label}: starting…`, { timeout: 0, action: { label: 'Cancel', fn: () => window.hub.video.cancel(id) } }) }));
-    try { await window.hub.video.transcode({ id, input: src, output, args, duration: length }, ffOverrides()); } catch (err) { exportJobs.get(id)?.toast.remove(); exportJobs.delete(id); toast(err.message.replace(/^Error invoking remote method[^:]*: (Error: )?/, ''), { type: 'error' }); return null; }
-    emit('export', { preset: p.id, output });
+    const job = await startJob({ label: `Export ${p.name}`, input: src, output, args, duration: length });
+    if (job) emit('export', { preset: p.id, output });
+    return job;
+  }
+  // One ffmpeg job with a progress toast (Cancel) whose result joins the library (library: false for a folder of
+  // stills); args may hold INPUT / OUTPUT placeholders. Also used by the cut (tools/video-cut.js).
+  async function startJob({ label, input, output, args, duration, library = true }) {
+    const id = `x${Date.now()}${Math.random().toString(36).slice(2, 5)}`;
+    const done = new Promise((resolve) => exportJobs.set(id, { label, resolve, pct: 0, library, toast: toast(`${label}: starting…`, { timeout: 0, action: { label: 'Cancel', fn: () => window.hub.video.cancel(id) } }) }));
+    try { await window.hub.video.transcode({ id, input, output, args, duration }, ffOverrides()); } catch (err) { exportJobs.get(id)?.toast.remove(); exportJobs.delete(id); toast(err.message.replace(/^Error invoking remote method[^:]*: (Error: )?/, ''), { type: 'error' }); return null; }
     return { id, output, done };
   }
   // One render → the four social formats (9:16, 4:5, 1:1, 16:9 minus the one it already is), one after another.
@@ -1365,7 +1381,7 @@ const Review = (() => {
     ['Space / K', 'Play · pause'], ['J / L', 'Shuttle back / forward (press again: 2×, 4×, 8×)'], ['← / →', 'One frame (Shift: 10)'], ['↑ / ↓', 'Previous / next note'],
     [', / .', 'Previous / next beat'], ['Home / End', 'Start / end'], ['I / O', 'Loop in / out at the playhead'], ['X', 'Clear loop'], ['Shift+L', 'Loop on / off'],
     ['N', 'New note at the playhead'], ['D', 'Draw on the frame'], ['P', 'Color picker'], ['Y', 'Scopes'], ['C', 'Compare mode (with B open)'], ['\\', 'Swap A / B'],
-    ['G', 'Next guide'], ['S', 'Next safe zone'], ['Z', 'Zoom 100% / fit (wheel zooms, drag pans)'], ['F', 'Fullscreen'], ['M', 'Mute'], ['B', 'Show / hide the library'],
+    ['G', 'Next guide'], ['S', 'Next safe zone'], ['Z', 'Zoom 100% / fit (wheel zooms, drag pans)'], ['F', 'Fullscreen'], ['M', 'Mute'], ['B', 'Show / hide the library'], ['E', 'Cut clips: split, trim, reorder, speed, fades, export (? there lists its keys)'],
     ['[ / ]', 'Slower / faster'], ['< / >', 'Previous / next section or drop'], ['V', 'Next view: R / G / B / luma / negative…'], ['H', 'Mirror the frame'], ['T', 'Timecode / seconds / frames'], ['- / =', 'Volume'], [`${MOD}+C`, 'Copy frame'], [`${MOD}+S`, 'Save frame'], ['?', 'This list'],
   ];
   function shortcutsHelp() { Modal.alert('Video Review shortcuts', KEYS.map(([k, d]) => `${k.padEnd(12)} ${d}`).join('\n')); }
@@ -1373,6 +1389,11 @@ const Review = (() => {
     if (e.target.closest('input, textarea, select, [contenteditable]')) return;
     const k = e.key;
     const lk = k.toLowerCase();
+    if (Cut()?.onKey(e)) {
+      e.preventDefault();
+      if (k === ' ' && e.target.closest('button')) e.target.addEventListener('keyup', (u) => u.preventDefault(), { once: true });
+      return;
+    }
     if (e.ctrlKey && lk === 'c' && !getSelection().toString()) { e.preventDefault(); copyFrame(); return; }
     if (e.ctrlKey && lk === 's') { e.preventDefault(); saveFrame(); return; }
     if (e.ctrlKey || e.metaKey) return;
@@ -1387,7 +1408,7 @@ const Review = (() => {
       n: () => openComposer(), d: () => setDraw(), p: () => setPick(), y: () => setScopes(), c: () => cycleCompare(), '\\': swapAB,
       g: () => cycleOverlay('guide'), s: () => cycleOverlay('safe'), z: () => zoomTo(S.zoom.s === 1 ? '100' : 'fit'), f: fullscreen,
       m: () => { vid().muted = !vid().muted; flash(vid().muted ? 'Muted' : 'Sound on'); }, b: toggleLib,
-      '[': () => nudgeSpeed(-1), ']': () => nudgeSpeed(1), '?': shortcutsHelp, escape: () => { if (S.draw.on) setDraw(false); else if (S.pick) setPick(false); else if (S.compose) closeComposer(); },
+      '[': () => nudgeSpeed(-1), ']': () => nudgeSpeed(1), '?': shortcutsHelp, e: () => VC()?.toggle(), escape: () => { if (S.draw.on) setDraw(false); else if (S.pick) setPick(false); else if (S.compose) closeComposer(); },
     }[lk];
     if (act) {
       e.preventDefault();
@@ -1455,6 +1476,7 @@ const Review = (() => {
       { label: '🧰 After Effects toolkit', action: () => AEKit.openKit?.() },
       segBtn(/Flow/) ? { label: '⧉ Flow: the pipeline as nodes', action: () => segBtn(/Flow/)?.click() } : null,
       { label: 'Export for social…', action: () => exportMenu(anchor) },
+      VC() && S.cur ? { label: `✂ ${VideoCut.active ? 'Back to the review' : 'Cut clips'} (E)`, action: () => VideoCut.toggle() } : null,
       { more: true, label: 'Export presets and tips', action: presetsDialog },
       S.tools?.ffmpeg && S.cur ? { more: true, label: 'Make a playable copy (H.264 proxy)', action: () => runExport('proxy') } : null,
       { more: true, label: 'Contact sheet of this video (save)', action: async () => { if (!S.cur) return; const { canvas } = await contactSheet({ count: 16 }); const p = await window.hub.saveFile({ defaultPath: `${noExt(base(S.cur.path))} sheet.jpg`, filters: [{ name: 'JPEG', extensions: ['jpg'] }], content: canvas.toDataURL('image/jpeg', 0.85).split(',')[1], base64: true }); if (p) toast('Contact sheet saved'); } },
@@ -1549,9 +1571,9 @@ const Review = (() => {
     refs.hoverImg = el('img', { alt: '' });
     refs.hoverTc = el('span');
     refs.hover = el('div', { class: 'vr-hover', hidden: true }, refs.hoverImg, refs.hoverTc);
-    const tlBox = el('div', { class: 'vr-timeline', title: 'Drag to scrub · drag the top strip to set a loop · double-click a section to loop it' }, refs.tl, refs.markers, refs.head, refs.hover);
+    const tlBox = refs.tlBox = el('div', { class: 'vr-timeline', title: 'Drag to scrub · drag the top strip to set a loop · double-click a section to loop it' }, refs.tl, refs.markers, refs.head, refs.hover);
     timelineEvents(tlBox);
-    new ResizeObserver(() => { tlW = tlBox.clientWidth; headX = NaN; drawTimeline(); applyZoom(); }).observe(tlBox);
+    new ResizeObserver(() => { refs.tlW = tlBox.clientWidth; headG.key = ''; headG.x = -1; drawTimeline(); applyZoom(); }).observe(tlBox);
 
     // transport
     refs.play = el('button', { class: 'vr-play', text: '▶', title: 'Play / pause (Space)', on: { click: togglePlay } });
@@ -1571,11 +1593,11 @@ const Review = (() => {
     refs.bpm = el('span', { class: 'vr-bpm', title: 'Tempo and beats found in the audio (, and . jump between beats)' });
     refs.info = el('div', { class: 'vr-info' });
     const transport = el('div', { class: 'vr-transport' },
-      el('div', { class: 'vr-tgroup' }, ico('⏮', 'Start (Home)', () => seek(0), 'vr-skip'), ico('◂', 'Previous frame (←)', () => step(-1)), refs.play, ico('▸', 'Next frame (→)', () => step(1)), ico('⏭', 'End (End)', () => seek(dur()), 'vr-skip')),
+      el('div', { class: 'vr-tgroup' }, ico('⏮', 'Start (Home)', () => (Cut() ? Cut().goto(0) : seek(0)), 'vr-skip'), ico('◂', 'Previous frame (←)', () => step(-1)), refs.play, ico('▸', 'Next frame (→)', () => step(1)), ico('⏭', 'End (End)', () => (Cut() ? Cut().goto(1e9) : seek(dur())), 'vr-skip')),
       el('div', { class: 'vr-tgroup vr-tc-group' }, refs.time, refs.timeTotal),
       el('div', { class: 'vr-tgroup' }, refs.speed, refs.fpsBtn, refs.loopBtn),
       el('span', { class: 'spacer' }), refs.bpm,
-      el('div', { class: 'vr-tgroup' }, refs.cmpBtn, refs.overlayBtn, refs.viewBtn, refs.drawBtn, refs.pickBtn, refs.scopesBtn,
+      refs.toolGroup = el('div', { class: 'vr-tgroup' }, refs.cmpBtn, refs.overlayBtn, refs.viewBtn, refs.drawBtn, refs.pickBtn, refs.scopesBtn,
         ico('⧉', `Copy frame (${MOD}+C) · right-click: save PNG`, copyFrame), ico('⛶', 'Fullscreen review (F)', fullscreen)));
     transport.querySelector('[title^="Copy frame"]').addEventListener('contextmenu', (e) => { e.preventDefault(); saveFrame(); });
 
@@ -1595,6 +1617,7 @@ const Review = (() => {
       refs.versions, el('span', { class: 'spacer' }), seg, ico('⋯', 'More: export, frame rate, folders, shortcuts…', (e) => moreMenu(e.currentTarget)));
     refs.main = el('section', { class: 'vr-main' }, top, refs.stage, tlBox, transport, refs.info);
     window.VideoNodes?.attach?.({ main: refs.main, seg, top }); // "Flow" segment: the pipeline as runnable nodes (nodes-video.js)
+    VC()?.mount({ refs, S, fileUrl, startJob, flash }); // ✂ clip editing (tools/video-cut.js)
 
     // notes
     refs.noteCount = el('span', { class: 'vr-count' });
@@ -1660,6 +1683,7 @@ const Review = (() => {
   }
 
   function goto(text) {
+    if (Cut()) { const t = V.parseTime(text, S.fps, Cut().time, CutData.total(Cut().edit)); if (t == null) { toast(`Can't read the time “${text}”.`, { type: 'error' }); return null; } Cut().goto(t); return t; }
     const t = V.parseTime(text, S.fps, vid().currentTime, dur());
     if (t == null) { toast(`Can't read the time “${text}”. Try 1:23, 12.5, 00:00:04:12, f240, +10f or 50%.`, { type: 'error' }); return null; }
     pause(); seek(t);
@@ -1729,6 +1753,7 @@ const Review = (() => {
   const statusValue = () => {
     const d = vid();
     return { open: S.cur.path, resolution: `${d.videoWidth}x${d.videoHeight}`, format: V.aspectOf(d.videoWidth, d.videoHeight), duration: Number((d.duration || 0).toFixed(2)), time: Number(d.currentTime.toFixed(3)), timecode: tc(d.currentTime), frame: frameNow(), fps: S.fps, fpsSource: S.fpsSource, paused: d.paused,
+      cut: VC()?.statusOf(S.cur.path) || undefined,
       loop: S.loop.a != null ? { in: Number(S.loop.a.toFixed(3)), out: Number((S.loop.b ?? d.duration).toFixed(3)), on: S.loop.on } : null, bpm: S.audio?.bpm, comparingWith: S.cmp.path, compareMode: S.cmp.path ? S.cmp.mode : undefined, overlay: S.overlay.safe || S.overlay.guide || S.overlay.crop || null,
       notes: notesOf().map((n, i) => ({ n: i + 1, time: Number(n.t.toFixed(2)), timecode: tc(n.t), category: n.cat, text: n.text, resolved: n.done || undefined, color: n.color || undefined, by: n.by !== 'you' ? n.by : undefined })) };
   };
@@ -1847,14 +1872,14 @@ const Review = (() => {
   return {
     mount, reload: () => load(true), load, on, noteRecording, ensureMounted, waitReady, waitSeek,
     get state() { return S; }, get current() { return S.cur; }, get videos() { return S.videos; }, filtered, videoDirs, setFolders,
-    open: openVideo, play, pause, togglePlay, step, seek, goto, shuttle, setSpeed, setLoop, toggleLoop, setFpsUser,
+    open: openVideo, play, pause, togglePlay, step, seek: (t, o) => (Cut() ? Cut().goto(t) : seek(t, o)), goto, refreshCard: () => renderLibrary(), shuttle, setSpeed, setLoop, toggleLoop, setFpsUser,
     compare: compareWith, setCompareMode, stopCompare, swapAB, CMP_MODES, setWipe,
     setSafe, setGuide, setCrop, setDraw, setPick, setScopes, zoomTo, fullscreen, toggleLib, setView, setMirror, VIEWS, setVolume, cycleTimeMode, jumpDrop,
     setPingPong: (on) => { S.pingpong = on ?? !S.pingpong; return S.pingpong; }, exportAllSocials, allOpenNotes, estimateMB,
     addNote, updateNote, deleteNote, notes: notesOf, selectNote, openComposer, exportNotes, carryNotes,
     sendFeedback, agentFor, grabToAttachment, copyFrame, saveFrame, contactSheet,
     toggleFav, setTags, tagsOf, isFav, setFilter, versionsOf, verLabel, fmtOf, metaOf,
-    tool: handleTool, runExport, exportMenu, presetsDialog, renderAe, runAeScript, aeStatusText, setDock, directorSegment, shortcutsHelp, status: () => (S.cur ? statusValue() : null),
+    tool: handleTool, runExport, startJob, exportMenu, presetsDialog, renderAe, runAeScript, aeStatusText, setDock, directorSegment, shortcutsHelp, status: () => (S.cur ? statusValue() : null),
     // The render pipeline as nodes + edges (VideoData.pipeline) for the node editor; each node names its chat command.
     pipeline: (opts = {}) => V.pipeline({ file: S.cur?.path || '', source: S.cur?.lab ? 'lab' : 'ae', ...opts }),
   };
