@@ -526,6 +526,9 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
   if (options.lean) agent = { ...agent, chatTools: false, threeTools: false, videoTools: false, gameTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false };
   // "hubOnly" runs (a jam's build turns, jam.js) keep the agent's tool sets (Lab, video…) and drop the rest.
   if (options.hubOnly) agent = { ...agent, chatTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false };
+  // asDirector: 'three' (a jam's build turn on an agent that isn't a Lab director, e.g. your Astra): this one turn gets
+  // the Lab's tools, Codex through its MCP overrides
+  if (options.asDirector === 'three') agent = { ...agent, threeTools: true, hubTools: agent.engine === 'codex' ? true : agent.hubTools, dock: agent.dock || 'three' };
   if (chatId && !String(chatId).startsWith('once-') && hubToolsets(agent).some((k) => k !== 'chatTools')) agent = { ...agent, hubChatId: chatId };
   const original = text;
   if (engine === 'claude' && options.images?.length) {

@@ -29,9 +29,11 @@ const Jam = (() => {
   const natives = () => H.agents().filter((a) => a.mode === 'native');
   const builder = (engine) => natives().find((a) => a.threeTools && a.engine === engine && a.dock === 'three') || natives().find((a) => a.threeTools && a.engine === engine) || null;
   const talker = (engine) => natives().find((a) => a.engine === engine && !a.dock) || natives().find((a) => a.engine === engine) || null;
+  // Both sides build. Without a Lab director of its own, an engine's chat agent builds with the Lab's tools for that
+  // turn (engines.js asDirector), so Astra writes the three.js code in its rounds instead of only giving notes.
   const sides = () => ({
-    claude: { key: 'claude', name: 'Claude', build: builder('claude'), talk: talker('claude') },
-    astra: { key: 'astra', name: 'Astra', build: builder('codex'), talk: talker('codex') },
+    claude: { key: 'claude', name: 'Claude', build: builder('claude') || talker('claude'), talk: talker('claude') },
+    astra: { key: 'astra', name: 'Astra', build: builder('codex') || talker('codex'), talk: talker('codex') },
   });
   const hostAgent = () => natives().find((a) => a.dock === 'three') || builder('claude') || builder('codex');
 
@@ -291,7 +293,7 @@ const Jam = (() => {
 
   // ---------- the jam ----------
   function leadOf(n, S) {
-    const both = S.claude.build && S.astra.build && !J.astraDown;
+    const both = S.claude.build && S.astra.build && !J.astraDown && !J.astraNoTools;
     if (both) return n % 2 ? S.claude : S.astra;
     return S.claude.build ? S.claude : S.astra;
   }
@@ -341,9 +343,12 @@ const Jam = (() => {
     working(lead.key);
     paint(m);
     if (typeof ThreeDirector !== 'undefined') ThreeDirector.newTurn?.(); // fresh screenshot / read caches
-    const b = await run(lead.build, buildPrompt(m, R, lead, d, prev), { hubOnly: true });
+    const b = await run(lead.build, buildPrompt(m, R, lead, d, prev), { hubOnly: true, asDirector: 'three' });
     spend(m, lead.build, b);
     if (b.stopped || J.stopped) { R.status = 'stopped'; R.build = { by: lead.key, text: 'stopped' }; return; }
+    // Astra answered without touching the Lab (its Codex can't reach the tools): Claude builds the next rounds and
+    // Astra art-directs, said once on the card
+    if (lead.key === 'astra' && !b.tools?.length && !J.astraNoTools) { J.astraNoTools = true; noteOnce(m, "Astra couldn't use the Lab's tools here, so Claude builds and Astra directs from now on."); }
     let text = firstLine(b.text);
     const idea = !m.idea && text.match(/^Idea:\s*(.+?)\s+[—–-]+\s*(.*)$/i);
     if (idea) { m.idea = cap(idea[1], 80); text = idea[2] || text; }
