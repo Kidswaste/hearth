@@ -376,8 +376,9 @@ const ThreeSeq = (() => {
     }
     if (msg.type === 'seq-frame') { const f = S.frames.get(msg.n); if (f) { S.frames.delete(msg.n); f(msg); } return true; }
     if (msg.type === 'seq-offline') return true;
-    // the song's own state while the sequence plays it: the sequence owns the clock
-    if (S.view && msg.type === 'media-state') return false;
+    // the song's own state while the sequence plays it: the sequence owns the clock (the hidden music timeline
+    // would otherwise keep redrawing its time and beat readout for nothing)
+    if (S.view && msg.type === 'media-state' && !S.render) return true;
     return false;
   }
 
