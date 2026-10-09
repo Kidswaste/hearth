@@ -69,6 +69,7 @@ const post = (msg, transfer) => (window.__stageHost ? window.__stageHost.post({ 
 const mode = new URLSearchParams(location.search).get('mode') || 'sketch';
 // Real timer functions for the sandbox's own work; sketches get wrapped ones (see "run generations").
 const realSetTimeout = setTimeout.bind(window);
+const realClearTimeout = clearTimeout.bind(window);
 const realSetInterval = setInterval.bind(window);
 const realRAF = requestAnimationFrame.bind(window);
 
@@ -533,6 +534,20 @@ const media = {
   get video() { return isVideo ? mediaEl : null; },
   get width() { return isVideo ? mediaEl.videoWidth : 0; },
   get height() { return isVideo ? mediaEl.videoHeight : 0; },
+  // footage frames (round 8): the exact frame the decoder presented (what media.texture() shows), the footage's
+  // frame rate and frame count, its timecode, the cut part playing; onFrame(fn) runs once per presented frame
+  get frame() { return isVideo ? fpres.frame : -1; },
+  get fps() { return isVideo ? fclock?.fps || 0 : 0; },
+  get frames() { return isVideo ? fclock?.frames || 0 : 0; },
+  get frameTime() { return isVideo ? fpres.time : 0; },
+  get timecode() { return isVideo && fclock ? fTc(fpres.frame) : ''; },
+  get exact() { return Boolean(isVideo && fclock?.exact); },
+  get part() { return fparts ? fpart : -1; },
+  get parts() { return fparts ? fparts.map((p) => ({ ...p })) : null; },
+  timeOf(n) { return fTimeOf(n); },
+  frameAt(t) { return fFrameAt(t); },
+  // (tied to the layer that asked: a layer re-run or removed stops getting them)
+  onFrame(fn) { const id = currentLayer(); const c = { fn, layer: id, gen: id ? layerState(id).gen : 0 }; frameCbs.add(c); return () => frameCbs.delete(c); },
   texture() {
     if (!isVideo) return null;
     if (!videoTex || videoTex.image !== mediaEl) { videoTex = new THREE.VideoTexture(mediaEl); videoTex.colorSpace = THREE.SRGBColorSpace; }
@@ -628,7 +643,7 @@ globalThis.noise = (() => {
 })();
 globalThis.media = media;
 let stateTimer = 0;
-const sendState = () => { if (mediaEl) post({ type: 'media-state', time: mediaEl.currentTime, duration: mediaEl.duration || 0, playing: !mediaEl.paused, ended: mediaEl.ended }); };
+const sendState = () => { if (mediaEl) post({ type: 'media-state', time: mediaEl.currentTime, duration: mediaEl.duration || 0, playing: !mediaEl.paused, ended: mediaEl.ended, ...(fclock && isVideo ? { frame: fpres.frame } : {}) }); };
 // Loop points (A–B) are checked every frame here, so the loop is tight; a recording can stop exactly at B.
 let region = null;
 let trim = null; // the song's in / out (round 6, the Lab's /song-trim): plays only between them
@@ -639,6 +654,7 @@ function mediaTick() {
   realRAF(mediaTick);
   if (!mediaEl || mediaEl.paused) { prevT = mediaEl?.currentTime || 0; return; }
   const t = mediaEl.currentTime;
+  if (fparts && !(region && loopOn) && recUntil == null) { partTick(t); prevT = mediaEl.currentTime; return; }
   if (recUntil != null && t >= recUntil) {
     recUntil = null;
     stopRecording();
@@ -678,6 +694,8 @@ function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, lo
   if (recDest) srcNode.connect(recDest);
   gainNode.gain.value = volume;
   for (const ev of ['play', 'pause', 'ended', 'seeked', 'loadedmetadata']) m.addEventListener(ev, sendState);
+  fpres.frame = -1; fpres.time = 0; fpart = -1; fwant = null;
+  if (video) watchFrames(m);
   clearInterval(stateTimer);
   stateTimer = realSetInterval(() => { if (!m.paused) sendState(); }, 250);
   m.addEventListener('loadedmetadata', () => {
@@ -693,13 +711,14 @@ function unloadMedia() {
   mediaEl.pause(); srcNode?.disconnect(); mediaEl.removeAttribute('src'); mediaEl.load(); URL.revokeObjectURL(mediaUrl);
   clearInterval(stateTimer);
   mediaEl = null; mediaUrl = null; srcNode = null; analysis = null; beatMap = null; isVideo = false; region = null;
+  fclock = null; fparts = null; fpart = -1; fwant = null; fpres.frame = -1;
   try { videoTex?.dispose(); } catch {}
   videoTex = null;
 }
 // Play / pause asked for while the song is still on its way here (just loaded or the preview restarting): kept
 // and applied when it arrives (a play right after loading a song used to do nothing).
 let pendingPlay = null;
-function mediaCommand({ cmd, value }) {
+function mediaCommand({ cmd, value, req = null, frameStop = false }) {
   if (!mediaEl) { if (cmd === 'play' || cmd === 'pause') pendingPlay = cmd === 'play'; return; }
   if (cmd === 'play') {
     actx.resume();
@@ -707,16 +726,114 @@ function mediaCommand({ cmd, value }) {
     // Playing a locked-in loop from outside it starts at the loop start.
     if (region && loopOn && recUntil == null && (mediaEl.currentTime < region.a || mediaEl.currentTime >= region.b)) mediaEl.currentTime = region.a;
     else if (trim && !(region && loopOn) && (mediaEl.currentTime < trim.a - 0.01 || mediaEl.currentTime >= trim.b - 0.01)) mediaEl.currentTime = trim.a;
+    if (fparts && partAt(mediaEl.currentTime) < 0 && partAfter(mediaEl.currentTime) < 0) enterPart(0); // played from after the last part: from the top
     prevT = mediaEl.currentTime;
     mediaEl.play().catch(() => {});
   }
   if (cmd === 'region') { region = value; applyLoop(); }
   if (cmd === 'trim') { trim = value && value.b > value.a ? value : null; applyLoop(); }
-  if (cmd === 'pause') mediaEl.pause();
-  if (cmd === 'seek') { mediaEl.currentTime = Math.max(0, Math.min(value, (mediaEl.duration || value) - 0.01)); sendState(); }
+  if (cmd === 'pause') { mediaEl.pause(); if (frameStop && fclock && isVideo) stopOnFrame(req); }
+  if (cmd === 'seek') { if (fclock && isVideo) { fwant = req != null ? { req, at: performance.now() } : fwant; fholdUntil = 0; } mediaEl.currentTime = Math.max(0, Math.min(value, (mediaEl.duration || value) - (fclock && isVideo ? 0.0005 : 0.01))); if (fparts && isVideo) fpart = partAt(value); sendState(); }
   if (cmd === 'loop') { loopOn = Boolean(value); applyLoop(); }
   if (cmd === 'volume') gainNode.gain.value = value;
-  if (cmd === 'rate') { mediaEl.defaultPlaybackRate = value; mediaEl.playbackRate = value; sendState(); }
+  if (cmd === 'rate') { mediaEl.defaultPlaybackRate = value; mediaEl.playbackRate = value * (fparts?.[fpart]?.speed || 1); sendState(); }
+}
+
+// ---------- footage frames (round 8, labframes) ----------
+// The Lab sends the footage's clock (its true fps from ffprobe, or every frame's time for VFR footage) and its cut
+// list (the parts that play, in order: source seconds, a speed, or a held frame). A requestVideoFrameCallback loop on
+// the video keeps the frame the decoder really presented: media.frame is the exact frame on screen, the one
+// media.texture() shows (three.js updates a VideoTexture on the same callback). After a step or a seek the Lab gets
+// the presented frame back (media-frame) so its counter is never a guess; while playing, the frame rides along with
+// the usual media-state (4 a second), never a message per frame.
+let fclock = null; // { fps, times: [s] | null, frames, exact }
+let fparts = null; // [{ a, b, speed, hold }] (a hold: frame `a` shown for `hold` seconds)
+let fpart = -1;
+let fholdUntil = 0;
+const fpres = { frame: -1, time: 0, presented: 0 };
+const frameCbs = new Set();
+let fwant = null; // a step / seek / stop the Lab waits on: { req, at }
+function fFrameAt(t) {
+  if (!fclock) return -1;
+  if (fclock.times?.length) return Math.max(0, lastIdx(fclock.times, t + 2e-4));
+  return Math.max(0, Math.floor(t * fclock.fps + 1e-3));
+}
+const fTimeOf = (n) => (!fclock ? 0 : fclock.times?.length ? fclock.times[Math.max(0, Math.min(fclock.times.length - 1, n))] : n / fclock.fps);
+const fMid = (n) => (fclock?.times?.length ? (fTimeOf(n) + (fclock.times[n + 1] ?? fTimeOf(n) + 1 / fclock.fps)) / 2 : (n + 0.5) / (fclock?.fps || 30));
+function fTc(n) {
+  const nom = Math.round(fclock?.fps || 30); const p2 = (x) => String(Math.floor(x)).padStart(2, '0');
+  const s = Math.floor(n / nom);
+  return `${p2(s / 3600)}:${p2((s / 60) % 60)}:${p2(s % 60)}:${p2(n % nom)}`;
+}
+function watchFrames(m) {
+  if (!m.requestVideoFrameCallback) return;
+  const cb = (_now, meta) => {
+    if (mediaEl !== m) return;
+    fpres.time = meta.mediaTime; fpres.presented = meta.presentedFrames;
+    fpres.frame = fclock ? fFrameAt(meta.mediaTime) : -1;
+    if (fparts && !m.paused && recUntil == null && !(region && loopOn)) partFrame(meta.mediaTime, meta);
+    for (const c of frameCbs) {
+      if (c.layer && layers.get(c.layer)?.gen !== c.gen) { frameCbs.delete(c); continue; } // its layer re-ran or went
+      try { c.fn(fpres.frame, meta.mediaTime, meta); } catch (err) { console.error(err); }
+    }
+    if (fwant && m.paused && !m.seeking) { post({ type: 'media-frame', req: fwant.req, frame: fpres.frame, mediaTime: meta.mediaTime, time: m.currentTime }); fwant = null; }
+    m.requestVideoFrameCallback(cb);
+  };
+  m.requestVideoFrameCallback(cb);
+}
+// Pause on a whole frame: the decoder goes to the middle of the frame it was showing (K, Space).
+function stopOnFrame(req) {
+  const n = fpres.frame >= 0 ? fpres.frame : fFrameAt(mediaEl.currentTime);
+  fwant = { req, at: performance.now() };
+  mediaEl.currentTime = fMid(n);
+}
+const partAt = (t) => (fparts ? fparts.findIndex((p) => t >= p.a - 1e-4 && t < p.b - 1e-4) : -1);
+// the next part after source time t (in play order), or -1
+const partAfter = (t) => (fparts ? fparts.findIndex((p) => p.a >= t - 1e-4) : -1);
+function enterPart(i) {
+  const p = fparts[i]; fpart = i;
+  if (partEnd.timer) { realClearTimeout(partEnd.timer); partEnd.timer = 0; }
+  const base = mediaEl.defaultPlaybackRate || 1;
+  mediaEl.muted = Boolean(p.mute); // a part with its sound off: the sketch hears silence there too
+  // a held frame stands still (rate 0: the clock stops, the video stays "playing"); other parts at their speed
+  const want = p.hold ? 0 : base * (p.speed || 1);
+  if (mediaEl.playbackRate !== want) { try { mediaEl.playbackRate = want; } catch { mediaEl.playbackRate = base; } }
+  if (p.hold) { fholdUntil = performance.now() + (p.hold * 1000) / base; mediaEl.currentTime = fMid(fFrameAt(p.a)); return; }
+  fholdUntil = 0;
+  mediaEl.currentTime = fMid(fFrameAt(p.a));
+}
+function partEnd() {
+  if (fpart + 1 < fparts.length) { enterPart(fpart + 1); sendState(); return; }
+  if (loopOn) { enterPart(0); sendState(); return; }
+  mediaEl.pause(); post({ type: 'media-state', time: mediaEl.currentTime, duration: mediaEl.duration || 0, playing: false, ended: true, frame: fpres.frame });
+}
+// per presented frame: (re)schedule the jump for just before the part's first removed frame is due on screen
+// (from this frame's expected display time), so the last kept frame holds through the seek and a removed frame
+// never shows; a frame that already overshot (a slow machine skipped callbacks) jumps at once
+function partFrame(mt, meta) {
+  const p = fparts[fpart];
+  if (!p || p.hold) return;
+  if (partEnd.timer) { realClearTimeout(partEnd.timer); partEnd.timer = 0; }
+  if (mt >= p.b - 1e-4) { partEnd(); return; }
+  const rate = mediaEl.playbackRate || 1;
+  const due = (meta?.expectedDisplayTime ?? performance.now()) + ((p.b - mt) / rate) * 1000;
+  // how late this page's timers fire (a busy machine): jump that much earlier
+  const lead = (600 / (fclock?.fps || 30)) / rate + Math.min(120, partLate * 1.5);
+  const i = fpart; const want = Math.max(0, due - lead - performance.now()); const at = performance.now() + want;
+  partEnd.timer = realSetTimeout(() => { partEnd.timer = 0; partLate = partLate * 0.7 + Math.max(0, performance.now() - at) * 0.3; if (fpart === i && mediaEl && !mediaEl.paused) partEnd(); }, want);
+}
+let partLate = 0;
+// per animation frame: holds, seeks into removed parts while playing, and a safety net for missed callbacks
+function partTick(t) {
+  if (fpart < 0 || !fparts[fpart] || (t < fparts[fpart].a - 0.05 && !fparts[fpart].hold)) {
+    const i = partAt(t); const j = i >= 0 ? i : partAfter(t);
+    if (j < 0) { if (loopOn) enterPart(0); else partEnd(); return; }
+    if (i < 0) { enterPart(j); sendState(); return; }
+    fpart = i;
+  }
+  const p = fparts[fpart];
+  if (p.hold) { if (!mediaEl.seeking && Math.abs(mediaEl.currentTime - fMid(fFrameAt(p.a))) > 0.5 / (fclock?.fps || 30)) mediaEl.currentTime = fMid(fFrameAt(p.a)); if (performance.now() >= fholdUntil) partEnd(); return; }
+  if (t >= p.b - 1e-4) partEnd();
 }
 
 // ---------- recording ----------
@@ -4007,6 +4124,8 @@ addEventListener('message', async (e) => {
   if (msg.type === 'refs') { setRefs(msg.items); palette.splice(0, palette.length, ...(msg.palette || [])); }
   if (msg.type === 'media') mediaCommand(msg);
   if (msg.type === 'media-map') beatMap = msg;
+  if (msg.type === 'media-clock') { fclock = msg.clock ? { fps: msg.clock.fps || 30, times: msg.clock.times || null, frames: msg.clock.frames || 0, exact: Boolean(msg.clock.exact) } : null; if (mediaEl && fclock) fpres.frame = fFrameAt(fpres.time || mediaEl.currentTime); }
+  if (msg.type === 'media-cuts') { fparts = msg.parts?.length ? msg.parts : null; fpart = fparts && mediaEl ? partAt(mediaEl.currentTime) : -1; if (!fparts && mediaEl) { mediaEl.playbackRate = mediaEl.defaultPlaybackRate || 1; mediaEl.muted = false; fholdUntil = 0; } }
   if (msg.type === 'media-analysis' && mediaEl) analysis = { ...msg.analysis, name: analysis?.name };
   if (msg.type === 'record') { if (msg.cmd === 'start') startRecording(msg); else stopRecording(); }
   if (msg.type === 'shader') shader?.set(msg.code);

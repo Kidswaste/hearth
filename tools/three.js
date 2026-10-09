@@ -224,6 +224,8 @@ const ThreeLab = (() => {
         ['Shift+drag the waveform', 'Draw a loop'], ['= · - · 0', 'Zoom in · out · whole song'], ['[ · ]', 'Loop start / end'], ['Home · End', 'Start / end (of the loop)'], ['M', 'Mute the music (the sketch still reacts)'], ['A', 'Show every automation curve'], ['L', 'Loop this bar'], ['G', 'Next snap setting'],
         ['N', 'Note with a screenshot'], ['W', 'Write mode'], ['E', 'Edit the scene'],
         ['Alt+1–9', 'Hide / show a layer'], ['Alt+Shift+1–9', 'Only that layer'], ['Ctrl+R · Ctrl+Shift+Enter', 'Restart the simulation'], ['Ctrl+Z', 'Undo (timeline)'], ['Esc', 'Deselect, forget taps, leave Present']];
+      // with video footage on the timeline its frame keys come first (tools/three-frames.js)
+      if (typeof ThreeFrames !== 'undefined' && ThreeFrames.on) rows.unshift(...ThreeFrames.KEYS.map(([k, v]) => [k, `Footage: ${v}`]));
       const d = el('dialog', { class: 'lab-keys' }, el('h2', { text: 'Lab keys' }), el('div', { class: 'lab-keys-grid' }, rows.flatMap(([k, v]) => [el('kbd', { text: k }), el('span', { text: v })])),
         el('div', { class: 'dialog-actions' }, el('button', { class: 'primary', text: 'Got it', on: { click: () => d.close() } })));
       d.addEventListener('close', () => d.remove());
@@ -383,7 +385,7 @@ const ThreeLab = (() => {
       presentHud.hidden = !on; store.set('three.presentHud', on);
       clearInterval(hudTimer);
       if (!on) return;
-      const paint = () => { const z = stage.size; const sec = player.loaded ? player.sectionAt() : null; presentHud.textContent = `${sec?.cue ? `${sec.cue} · ` : ''}${current?.name || ''} · ${z.id === 'fit' ? `${z.width}×${z.height}` : `${z.id} ${z.width}×${z.height}`}${player.loaded ? ` · ${fmtClock(player.time)} / ${fmtClock(player.duration)} · ${Math.round(player.bpm)} BPM` : ''}${liveKind ? ` · live ${liveBpm?.bpm ? `${Math.round(liveBpm.bpm)} BPM` : ''}` : ''}${lastStats ? ` · ${lastStats.fps} fps` : ''}${frozenNow ? ' · ❚❚' : ''}`; };
+      const paint = () => { const z = stage.size; const sec = player.loaded ? player.sectionAt() : null; presentHud.textContent = `${sec?.cue ? `${sec.cue} · ` : ''}${current?.name || ''} · ${z.id === 'fit' ? `${z.width}×${z.height}` : `${z.id} ${z.width}×${z.height}`}${typeof ThreeFrames !== 'undefined' && ThreeFrames.on ? ` · ${ThreeFrames._pure.tc(ThreeFrames.clock, ThreeFrames.frame)} · f${ThreeFrames.frame}` : player.loaded ? ` · ${fmtClock(player.time)} / ${fmtClock(player.duration)} · ${Math.round(player.bpm)} BPM` : ''}${liveKind ? ` · live ${liveBpm?.bpm ? `${Math.round(liveBpm.bpm)} BPM` : ''}` : ''}${lastStats ? ` · ${lastStats.fps} fps` : ''}${frozenNow ? ' · ❚❚' : ''}`; };
       paint(); hudTimer = setInterval(paint, 250);
     }
     // PgUp / PgDn in Present: the previous / next sketch (most recent first, like the picker)
@@ -1437,6 +1439,7 @@ const ThreeLab = (() => {
             btn('Copy code', refUse(r), () => { navigator.clipboard.writeText(refUse(r)); toast(`Copied ${refUse(r)}`, { timeout: 1200 }); }),
             btn('Ask director', 'Start a message to the Three Director about this reference', () => askAboutRef(r), 'ghost small imp-ai'),
             btn('Show', 'Show the file', () => window.hub.fs.reveal(r.path)),
+            r.kind === 'video' && typeof ThreeFrames !== 'undefined' ? btn('🎞 Read ▾', 'Read this clip exactly: contact sheet, scenes, motion, pacing · match its pacing (its rhythm, not its footage)', (e) => { const rr = e.currentTarget.getBoundingClientRect(); refsDlg?.close(); ThreeFrames.refMenu(rr.left, rr.bottom + 4, r.path, r.key); }) : null,
             r.kind === 'image' ? btn('🎨 Palette', 'Use this picture\'s colors as the sketch palette', async () => { try { const cols = await paletteFrom(r.path); setPalette(cols); toast(`Palette: ${cols.join(' ')}`, { timeout: 2400 }); } catch (err) { toast(err.message, { type: 'error' }); } }) : null,
             btn('🗑', 'Remove (the copy goes to the Recycle Bin)', () => { removeRef(r); renderRefsDlg(); })));
       }) : [el('div', { class: 'refs-empty', text: 'No references yet. Add pictures, logos, video clips, 3D models (.glb), sounds or data files.' })]));
@@ -2020,6 +2023,8 @@ const ThreeLab = (() => {
         live: { kind: () => liveKind, bpm: () => liveBpm, io: () => liveIo(), setIo: (p) => setLiveIo(p), button: liveBtn, autoGain: () => (hubLive.gain ? hubLive.auto : null) },
       });
     }
+    // video footage on the timeline: exact frames, the cut list the sketch plays (tools/three-frames.js)
+    if (typeof ThreeFrames !== 'undefined') ThreeFrames.attach({ player, send: (msg) => box.send(msg), sketchId: () => current?.id });
     pane.addEventListener('keydown', (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
       const plain = !typing && !e.ctrlKey && !e.altKey && !e.metaKey;
@@ -3554,6 +3559,8 @@ ${frag}\`,
     for (let i = 0; i < 100 && !api.director; i += 1) await new Promise((r) => setTimeout(r, 100));
     const d = api.director;
     if (!d) return { ok: false, error: 'The sketch editor did not load.' };
+    // footage frames and the cut list (tools/three-frames.js): frame steps / reads, frames in keyframes and markers
+    if (typeof ThreeFrames !== 'undefined') { const r = await ThreeFrames.handle(tool, args, d); if (r) return r; }
     // the director's fast loop (tools/three-director.js): compact results, batches, diffs, screenshot options, undo
     if (typeof ThreeDirector !== 'undefined') { const r = await ThreeDirector.handle(tool, args, d); if (r) return r; }
     if (tool === 'three_get_code') return { ok: true, value: d.getCode() };

@@ -2367,7 +2367,22 @@ const VideoCut = (() => {
   }
 
   registerKeys(); // listed in the keys sheet before Video Review first opens (mount adds nothing new: Keys.add skips repeats)
+  // The Lab's footage timeline (tools/three-frames.js, round 8) shares a video's edit with the editor: it reads it and
+  // stores its cuts here (one undo step when that edit is open in the editor), and listens to 'change' for edits made here.
+  async function editFor(p) { await loadCuts(); return p === st.path && st.edit ? C.copy(st.edit) : cuts[p] ? C.normalize(cuts[p]) : null; }
+  async function storeEdit(p, e, label = 'From the Lab') {
+    await loadCuts();
+    if (st.edit && st.path === p) return commit(e ? C.normalize(e) : C.fromSource(p, srcDur(p)), label);
+    const d = e?.clips?.[0]?.max || 0;
+    if (!e || (!isSeq(p) && !C.isRich(e) && C.isIdentity(e, p, d) && !e.mark)) delete cuts[p]; else cuts[p] = e;
+    saveCuts();
+    R()?.refreshCard?.(p);
+    emit('change', { path: p, from: 'lab' });
+    return true;
+  }
+
   return {
+    editFor, storeEdit,
     mount, onKey, frame, enter, leave, toggle, statusOf, hasCut, receive, on: (ev, fn) => { (listeners[ev] ||= []).push(fn); },
     get active() { return st.on; }, get edit() { return st.edit; }, get path() { return st.path; }, get time() { return P.playing ? nowT() : P.T; }, get playing() { return P.playing; },
     get selection() { return selIds(); }, get suggestion() { return st.suggest ? { ...st.suggest } : null; }, get canUndo() { return st.undo.length > 0; },

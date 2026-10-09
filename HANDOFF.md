@@ -96,3 +96,11 @@ backstage scene's graph as data (`runOnData` in tools/three-nodes.js). `director
 `Astra.beforeSend`) restarts the session with the task state when `chat.sessionEngine` changed or `chat.handoffNext`
 is set (`Astra.switchDirector`, used by `/director-engine`, `/handoff` in a director chat and the ⚇ menu). It also
 serves `three_do task` and `three_do run` (allow-listed command areas). Fake engines: `direct: <ask>` keyword.
+
+Lab frames (round 8, docs/upgrades/labframes.md): `tools/three-frames.js` (`ThreeFrames`) makes the Lab timeline frame-exact
+on video footage through `player.hooks` in tools/three-media.js (seek / snap / keys / draw / messages / undo); the clock comes
+from FrameRead.info (ffprobe) or a decoder measurement, the sandbox keeps the presented frame with requestVideoFrameCallback
+(`media.frame`, `media.onFrame`, `media-clock` / `media-cuts` / `media-frame` messages) and plays the cut list, which is the
+video's own CutData edit in kv video-cuts (read / written through `VideoCut.editFor` / `storeEdit`). Commands in
+`tools/three-frames-cmds.js`, footage layers in `tools/three-frames-templates.js`, director: `three_media_control`
+frame / step / read and `three_do footage`. Tests: `node dev/make-lab-footage.js`, then `dev/checks/labframes*.js`.

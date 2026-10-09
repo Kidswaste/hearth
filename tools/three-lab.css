@@ -226,3 +226,16 @@ body.tw-scrubbing, body.tw-scrubbing * { cursor: ew-resize !important; }
 :root[data-motion=off] .lab-building.on::after, :root[data-motion=off] .ly-row.ly-building::after,
 :root[data-motion=off] .lab-building-dot, :root[data-motion=off] .ly-row.ly-building .ly-swatch { animation: none; }
 :root[data-motion=calm] .ly-row.ly-building::after, :root[data-motion=calm] .lab-building.on::after { animation-duration: 2.6s; }
+
+/* ---------- footage frames (round 8, tools/three-frames.js) ---------- */
+/* a silent video: the music-only controls (Tap, K S H, live sound, triggers, the grid row) tuck behind ⋯ */
+.media-bar.mb-footage-silent:not(.mb-all) .tb-group[data-cat="Beat"],
+.media-bar.mb-footage-silent:not(.mb-all) .mb-g-sound,
+.media-bar.mb-footage-silent:not(.mb-all) .mb-grid { display: none; }
+/* the time box as a frame counter: a fixed width, so stepping never moves the row (no layout per step) */
+.media-bar.mb-footage .mb-time { display: inline-block; min-width: 22ch; cursor: pointer; color: var(--text); contain: layout paint; border-bottom: 1px solid transparent; }
+.media-bar.mb-footage .mb-time.mb-frame-ok { border-bottom-color: color-mix(in srgb, #7cd992 70%, transparent); }
+.media-bar.mb-footage .mb-time.mb-frame-off { border-bottom-color: #ff9f43; color: #ffb672; }
+.media-bar .mb-framechip { font: 11px Consolas, monospace; padding-inline: 6px; }
+.media-bar .mb-framechip.on { color: #8fe6ff; border-color: color-mix(in srgb, #8fe6ff 40%, transparent); }
+.media-bar .mb-framechip[hidden] { display: none; }
