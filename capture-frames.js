@@ -486,6 +486,14 @@ const FrameRead = (() => {
     const a = String(arg || '').trim().replace(/^["']|["']$/g, '');
     if (a && !/^(last|latest|recording|open|review|current)$/i.test(a)) return a;
     if (/^(open|review|current)$/i.test(a) && typeof Review !== 'undefined' && Review.current?.path) return Review.current.path;
+    // nothing named: the video on screen first (Video Review's, or a clip selected on the board), then your newest
+    // recording (/pacing in Video Review read your last screen recording instead of the reference you were watching)
+    if (!a) {
+      let here = '';
+      try { here = H.surfaceIdFor(H.activeId); } catch { /* early */ }
+      if (here === 'tool:ae' && typeof Review !== 'undefined' && Review.current?.path) return Review.current.path;
+      if (here === 'tool:board' && typeof Board !== 'undefined') { const clip = Board.selected?.().find((i) => i.type === 'video' && i.src); if (clip) return clip.src; }
+    }
     const lastVid = Capture.recent().find((x) => x.kind === 'video');
     if (lastVid) return lastVid.path;
     if (!a && typeof Review !== 'undefined' && Review.current?.path) return Review.current.path;

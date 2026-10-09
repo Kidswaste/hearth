@@ -31,7 +31,13 @@ const VideoCut = (() => {
   const emit = (ev, d) => { for (const fn of listeners[ev] || []) { try { fn(d); } catch (err) { console.error(err); } } };
 
   // ---------- storage + history ----------
-  const saveCuts = debounce(() => window.hub.kvSet('video-cuts', cuts), 400);
+  // an edit made just before a reload / quit (a cut, then ⌘Q) used to be lost with the pending save: written at unload
+  let pendingSave = false;
+  const writeCuts = debounce(() => { pendingSave = false; window.hub.kvSet('video-cuts', cuts); }, 400);
+  const saveCuts = () => { pendingSave = true; writeCuts(); };
+  addEventListener('beforeunload', () => { if (pendingSave && cuts) { pendingSave = false; window.hub.kvSet('video-cuts', cuts); } });
+  // leaving Video Review (the board, the Lab, a chat) pauses the edit: it played on unseen, sound and compositor included
+  addEventListener('hearth:view', () => { try { if (st.on && P.playing && H.surfaceIdFor(H.activeId) !== 'tool:ae') pause(); } catch { /* not mounted yet */ } });
   async function loadCuts() {
     if (cuts) return cuts;
     cuts = (await window.hub.kvGet('video-cuts', {})) || {};
@@ -1948,14 +1954,15 @@ const VideoCut = (() => {
     ['I / O · X', 'In / out of the range · clear'], ['M · Shift+M', 'Marker · marker with a note'], ['Shift+F', 'Freeze frame (1 s)'], ['Shift+T · Alt+T', 'Title card · title over the picture'],
     ['N', 'Snapping on / off'], ['Shift+E', 'Extend edit: the nearest cut rolls to the playhead'], ['+ / − · \\', 'Zoom the timeline · fit'], [`${MODK}+wheel`, 'Zoom at the pointer (wheel scrolls when zoomed)'],
     ['Alt+← / →', 'Nudge the selection one frame (Shift: 10)'], ['Alt+, / .', 'Slip the clip one frame'], ['Alt+↑ / ↓', 'Move a layer to the track above / below'], ['Alt+K', 'Keyframe position, scale, rotation, opacity'],
-    ['Alt (hold)', 'Track switches: hide · mute · lock'], ['Enter', 'Accept the auto-cut, else open the inspector'], [`${MODK}+C / V`, 'Copy / paste clips and layers'], [`${MODK}+A`, 'Select everything'], [`${MODK}+Z / Shift+Z`, 'Undo / redo'],
+    ['Alt (hold)', 'Track switches: hide · mute · lock'], ['Enter', 'Accept the auto-cut, else open the inspector'], [`${MODK}+C / V`, 'Copy / paste clips and layers'], [`${MODK}+A`, 'Select everything'], [`${MODK}+Z / ${MODK}+Shift+Z`, 'Undo / redo'],
     ['Drag', 'Edge: trim (snaps; Alt: free) · Shift+edge: roll · body: reorder / move · Shift+body: slide · Ctrl+body: slip · gold squares: fades'], ['Drop', 'Videos, pictures, sounds or library cards'], ['Right-click', 'Clips, layers, cuts, markers, lanes and the ruler have menus'],
   ];
   function help() { Modal.alert('Video editor: keys', KEYS.map(([k, d]) => `${k.padEnd(16)} ${d}`).join('\n')); }
   // the keys button (bottom left) lists these while the editor is open
   function registerKeys() {
     if (typeof Keys === 'undefined') return;
-    Keys.add(KEYS.map(([keys, what]) => ({ area: 'Editor', keys, what, when: () => st.on })));
+    // the registry keeps Ctrl (keys-ui shows ⌘ on a Mac itself and must read the combo to press it for you)
+    Keys.add(KEYS.map(([keys, what]) => ({ area: 'Editor', keys: keys.replace(/⌘/g, 'Ctrl'), what, when: () => st.on })));
     Keys.add({ area: 'Video Review', keys: 'E', what: 'Open the video editor (cut, layers, titles, transitions, export)' });
   }
 
@@ -2090,9 +2097,9 @@ const VideoCut = (() => {
       if (jobs.length) {
         titleDir = join(typeof output === 'string' ? dirOf(output.includes('%') ? dirOf(output) : output) : join(homeDir() || dirOf(mainSrc(edit) || ''), 'exports'), `.hearth-titles-${Date.now().toString(36)}`);
         const t = toast('Drawing the titles…', { timeout: 0 });
-        try { titles = await VideoComp.renderTitles(jobs, Math.round(w0 / 2) * 2, Math.round(h0 / 2) * 2, F, titleDir, (pct) => { t.querySelector('span').textContent = `Drawing the titles… ${Math.round(pct * 100)}%`; }); } finally { t.remove(); }
+        try { titles = await VideoComp.renderTitles(jobs, Math.round(w0 / 2) * 2, Math.round(h0 / 2) * 2, F, titleDir, (pct) => { t.querySelector('span').textContent = `Drawing the titles… ${Math.round(pct * 100)}%`; }); } catch (err) { window.hub.video.rmtemp?.(titleDir).catch(() => {}); throw err; } finally { t.remove(); }
       }
-      g = CutFF.args(edit, info, { w: w0, h: h0, fps: F }, { preset: p, fit, offset: host.S.overlay.cropOffset, range, stills, stillsExt, titles, presetFilters: V.presetFilters, codecArgs: V.codecArgs });
+      try { g = CutFF.args(edit, info, { w: w0, h: h0, fps: F }, { preset: p, fit, offset: host.S.overlay.cropOffset, range, stills, stillsExt, titles, presetFilters: V.presetFilters, codecArgs: V.codecArgs }); } catch (err) { if (titleDir) window.hub.video.rmtemp?.(titleDir).catch(() => {}); throw err; }
     } else {
       // title cards need their pictures
       for (const c of edit.clips) if (c.kind === 'title' && !c.img) c.img = await titleImage(c.text || 'Title', c);
@@ -2103,9 +2110,18 @@ const VideoCut = (() => {
       // presets the plain graph doesn't know (size targets, HEVC, audio only) go through the full one
       if (p && !sp) g = CutFF.args(edit, info, { ...canvas }, { preset: p, fit, offset: host.S.overlay.cropOffset, range, stills, presetFilters: V.presetFilters, codecArgs: V.codecArgs });
     }
-    const final = typeof output === 'function' ? output(g) : output;
-    const job = await host.startJob({ label: label || `Edit → ${base(final)}`, input: g.inputs[0] || mainSrc(edit), output: final, args: [...g.args, 'OUTPUT'], duration: g.duration, library });
-    if (job && titleDir) job.done.then(() => window.hub.video.rmtemp?.(titleDir).catch(() => {}));
+    let final = typeof output === 'function' ? output(g) : output;
+    // a new version never replaces a file that is already there (another take, an earlier render): it gets " (2)"…
+    if (typeof final === 'string' && !/[\\/]exports[\\/]/.test(final) && !final.includes('%')) {
+      const stemOfFinal = final.replace(/\.[^./\\]+$/, ''); const ext = final.slice(stemOfFinal.length);
+      for (let i = 2; i < 100 && await window.hub.fs.stat(final).catch(() => null); i += 1) final = `${stemOfFinal} (${i})${ext}`;
+    }
+    // the title frames (a temp folder next to the export) go away however the render ends: done, failed, cancelled,
+    // or never started (they used to stay next to your footage when the job failed or didn't start)
+    const dropTitles = () => { if (titleDir) window.hub.video.rmtemp?.(titleDir).catch(() => {}); };
+    let job;
+    try { job = await host.startJob({ label: label || `Edit → ${base(final)}`, input: g.inputs[0] || mainSrc(edit), output: final, args: [...g.args, 'OUTPUT'], duration: g.duration, library }); } catch (err) { dropTitles(); throw err; }
+    if (job) Promise.resolve(job.done).then(dropTitles, dropTitles); else dropTitles();
     return job;
   }
   // Renders the edit. preset: a VideoData / EditFX preset id (social sizes, gif, webm, master, small files, audio…)

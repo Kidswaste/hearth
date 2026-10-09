@@ -90,8 +90,12 @@ const CmdBar = (() => {
     bar.classList.toggle('rec', Boolean(rec));
     chip.dataset.rec = rec ? `● REC ${rec.lines.length} ` : '';
   }
+  // where the keyboard was before the bar opened: it goes back there when the bar closes (the editor's ← → J K L,
+  // the Lab's keys, the board's keys kept working only after a click before)
+  let backTo = null;
   function open(text = '') {
     if (!bar) build();
+    if (bar.hidden && document.activeElement && !bar.contains(document.activeElement)) backTo = document.activeElement;
     bar.hidden = false;
     place();
     input.value = text || unsent;
@@ -107,7 +111,13 @@ const CmdBar = (() => {
   }
   // what you were typing when the bar closed comes back next time (Esc on an empty bar forgets it)
   let unsent = '';
-  function close() { if (!bar || bar.hidden) return; unsent = input.value.trim() ? input.value : ''; menuApi?.close(); bar.hidden = true; clearOut(); }
+  function close() {
+    if (!bar || bar.hidden) return;
+    const hadFocus = bar.contains(document.activeElement);
+    unsent = input.value.trim() ? input.value : ''; menuApi?.close(); bar.hidden = true; clearOut();
+    const to = backTo; backTo = null;
+    if (hadFocus && to?.isConnected && to !== document.body && to.checkVisibility?.({ visibilityProperty: true })) to.focus({ preventScroll: true });
+  }
   const isOpen = () => Boolean(bar && !bar.hidden);
   const toggle = (text) => (isOpen() ? close() : open(text));
 
@@ -279,6 +289,10 @@ const CmdBar = (() => {
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === ';' || e.code === 'Semicolon')) { e.preventDefault(); e.stopPropagation(); if (e.shiftKey) help(); else toggle(); }
   }, true);
+  // F1 anywhere: every command (the keys sheet and the help promise it; it only worked inside the command bar)
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'F1' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.defaultPrevented && !(bar && bar.contains(e.target))) { e.preventDefault(); help(); }
+  });
   window.hub.onShortcut?.((s) => { if (s?.key === ';') { if (s.shift) help(); else toggle(); } }); // Ctrl+Shift+; → the help view
 
   // ---------- help view ----------

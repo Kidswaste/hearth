@@ -161,7 +161,10 @@ function register(ipcMain, getWin, getSettings = () => ({})) {
   const writers = new Map();
   ipcMain.handle('capture:recOpen', (_e, o = {}) => {
     const folder = path.join(dir(), 'recordings');
-    const final = uniquePath(folder, safe(o.name) || `Hearth ${stamp()}`, o.ext || 'webm');
+    // free as a WebM *and* as the MP4 made from it (a named take whose WebM went to the Trash had its MP4 replaced)
+    const baseName = safe(o.name) || `Hearth ${stamp()}`;
+    let final = uniquePath(folder, baseName, o.ext || 'webm');
+    for (let i = 2; fs.existsSync(final.replace(/\.\w+$/, '.mp4')) && i < 1000; i += 1) final = path.join(folder, `${baseName} (${i}).${o.ext || 'webm'}`);
     const part = final.replace(/\.(\w+)$/, '.part.$1');
     const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     writers.set(id, { fd: fs.openSync(part, 'w'), part, final, bytes: 0 });
@@ -202,6 +205,8 @@ function register(ipcMain, getWin, getSettings = () => ({})) {
       try {
         await FR.convert(src, mp4, { mp4: true, fps: o.fps || null, crf: o.crf || 18, duration: out.duration, size: o.size || null, onProgress: (pct) => send('capture:progress', { id, pct }) });
         out.mp4 = mp4;
+        // the WebM may not say how long it is: the MP4's length is the real one (the renderer warns on a short take)
+        if (!(out.duration > 0)) { try { out.duration = (await FR.probe(mp4)).duration; } catch { /* unknown */ } }
         if (o.keep === false) { await shell.trashItem(src).catch(() => {}); out.webm = null; }
       } catch (err) { out.mp4Error = err.message; }
     }
@@ -218,7 +223,7 @@ function register(ipcMain, getWin, getSettings = () => ({})) {
     button{-webkit-app-region:no-drag;border:0;border-radius:10px;width:22px;height:20px;background:rgba(255,255,255,.12);color:#fff;font:inherit;cursor:pointer;padding:0}
     button:hover{background:rgba(255,255,255,.28)}
   </style><div class="pill" id="p"><span class="dot"></span><span id="t">0:00</span><span id="l"></span>
-  <button id="pa" title="Pause / resume (Ctrl+Alt+P)">❚❚</button><button id="st" title="Stop (Ctrl+Alt+R)">■</button></div>
+  <button id="pa" title="Pause / resume (${process.platform === 'darwin' ? '⌘⌥P' : 'Ctrl+Alt+P'})">❚❚</button><button id="st" title="Stop (${process.platform === 'darwin' ? '⌘⌥R' : 'Ctrl+Alt+R'})">■</button></div>
   <script>let n=0;const say=(a)=>{document.title=a+':'+(++n)};pa.onclick=()=>say('pause');st.onclick=()=>say('stop');
   window.set=(o)=>{t.textContent=o.time||'0:00';l.textContent=o.label||'';p.classList.toggle('paused',!!o.paused);pa.textContent=o.paused?'▶':'❚❚'};</script>`;
   function placeIndicator() {
@@ -288,7 +293,8 @@ function register(ipcMain, getWin, getSettings = () => ({})) {
     try {
       // a capture's GIF / trim goes next to it; anything made from the owner's own footage goes to captures/made
       const root = dir();
-      const inside = path.resolve(String(file)).startsWith(path.resolve(root) + path.sep);
+      const norm = (x) => (process.platform === 'linux' ? path.resolve(x) : path.resolve(x).toLowerCase()); // C:\ vs c:\
+      const inside = norm(String(file)).startsWith(norm(root) + path.sep);
       const o = inside && opts.here !== false ? {} : { dir: path.join(root, 'made') };
       return { ok: true, value: await FR.edit(String(op), String(file), args || {}, o) };
     } catch (err) { return { ok: false, error: err.message, code: err.code || null }; }
@@ -296,15 +302,21 @@ function register(ipcMain, getWin, getSettings = () => ({})) {
 
   // ---------- keys that must work wherever the keyboard is (the Lab's sandboxed frame, a video) ----------
   const KEYS = { s: 'menu', a: 'region', r: 'record', p: 'pause', v: 'library', t: 'tour' };
+  // the main window, and the website agents' webviews (the keys did nothing while a website had the keyboard)
+  app.on('web-contents-created', (_e, wc) => { if (wc.getType() === 'webview') wc.on('before-input-event', (event, input) => captureKey(event, input)); });
   app.on('browser-window-created', (_e, created) => setImmediate(() => {
     if (created !== getWin()) return;
-    created.webContents.on('before-input-event', (event, input) => {
-      if (input.type !== 'keyDown') return;
-      const mod = input.control || (process.platform === 'darwin' && input.meta);
-      const k = String(input.code || '').replace(/^Key/, '').toLowerCase(); // the key's place: ⌥S types ß on a Mac
-      if (mod && input.alt && !input.shift && KEYS[k]) { event.preventDefault(); send('capture:key', { key: KEYS[k] }); }
-    });
+    created.webContents.on('before-input-event', (event, input) => captureKey(event, input));
   }));
+  function captureKey(event, input) {
+    if (input.type !== 'keyDown') return;
+    const mod = input.control || (process.platform === 'darwin' && input.meta);
+    const k = String(input.code || '').replace(/^Key/, '').toLowerCase(); // the key's place: ⌥S types ß on a Mac
+    // Windows: AltGr is Ctrl+Alt, so AltGr+S / AltGr+A type ś / ą on Polish (and other) keyboards: a key that types
+    // another letter than its place is typing, not the capture key
+    if (process.platform === 'win32' && String(input.key || '').length === 1 && String(input.key).toLowerCase() !== k) return;
+    if (mod && input.alt && !input.shift && KEYS[k]) { event.preventDefault(); send('capture:key', { key: KEYS[k] }); }
+  }
 }
 
 module.exports = { register };

@@ -32,7 +32,7 @@ t = performance.now(); for (let i = 0; i < 10; i++) Commands.matching('lo'); out
 Native.newChat(claude.id);
 await Native.send(claude.id, 'code table suggest');
 for (let i = 0; i < 150 && Native.isBusy(H.activeChat[claude.id]); i++) await wait(100);
-const SKIP = /^(delete|del|restore|restore-backup|import|import-chats|backup|trash|reset|reload|relaunch|quit|unalias|forget|wipe|purge|empty|uninstall|clear|clear-all|new-window|update|sleep)$/;
+const SKIP = /^(rec|record|tour|tours|capture-folder|window-size|delete|del|restore|restore-backup|import|import-chats|backup|trash|reset|reload|relaunch|quit|unalias|forget|wipe|purge|empty|uninstall|clear|clear-all|new-window|update|sleep)$/;
 const SKIP_DESC = /\b(delete|remove|forget|wipe|erase|for good|restore|import|reset|quit|uninstall|reload)\b/i;
 const errs = [];
 const origErr = console.error;
@@ -40,9 +40,13 @@ console.error = (...a) => { errs.push(a.map(String).join(' ').slice(0, 200)); or
 const onErr = (e) => errs.push(`uncaught: ${e.message || e.reason?.message || e.reason}`);
 addEventListener('error', onErr); addEventListener('unhandledrejection', onErr);
 const results = { ran: 0, skipped: [], errors: [], slow: [] };
-for (const d of Commands.list().slice(window.QA_FROM || 0, window.QA_TO || 9999)) { // chunks: --eval "return (window.QA_FROM=0, window.QA_TO=150)"
+// window.QA_AREAS = ['Board', 'Video', 'Capture'] runs only those areas; window.QA_TOOL = 'tool:board' runs each from that tool
+const areasOnly = window.QA_AREAS ? new Set(window.QA_AREAS) : null;
+// window.QA_VIDEO = '/path.mp4': opened in Video Review with the editor on first (the editor's commands act on it)
+if (window.QA_VIDEO) { activate('tool:ae'); await Review.ensureMounted(); await Review.open(window.QA_VIDEO); await Review.waitReady?.(); await VideoCut.enter?.(); await wait(500); }
+for (const d of Commands.list().filter((x) => !areasOnly || areasOnly.has(x.area)).slice(window.QA_FROM || 0, window.QA_TO || 9999)) { // chunks: --eval "return (window.QA_FROM=0, window.QA_TO=150)"
   if (SKIP.test(d.name) || SKIP_DESC.test(d.desc)) { results.skipped.push(d.name); continue; }
-  activate(claude.id);
+  activate(window.QA_TOOL || claude.id);
   const before = (recentToasts?.() || []).length ? recentToasts()[0] : null;
   errs.length = 0;
   const t0 = performance.now();

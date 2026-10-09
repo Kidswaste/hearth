@@ -14,6 +14,7 @@ if (/Mac/.test(navigator.platform)) {
     }
   }
 
+  const MAC_TIPS = /Mac/.test(navigator.platform);
   // el('div', { class: 'x', on: { click }, attrs: {}, style: {}, dataset: {} }, ...children)
   function el(tag, props = {}, ...children) {
     const node = document.createElement(tag);
@@ -26,6 +27,8 @@ if (/Mac/.test(navigator.platform)) {
       else if (key === 'style') Object.assign(node.style, value);
       else if (key === 'dataset') Object.assign(node.dataset, value);
       else if (key === 'attrs') for (const [a, v] of Object.entries(value)) node.setAttribute(a, v);
+      // on a Mac the tooltips name ⌘ / ⌥ ("Undo (Ctrl+Z)" read Ctrl on every button; "Ctrl+click" stays: a right-click there)
+      else if (key === 'title' && MAC_TIPS) node.title = String(value).replace(/\bCtrl\+(?!click)/g, '⌘').replace(/\bAlt\+/g, '⌥').replace(/⌘\/⌘/g, '⌘').replace(/([⌘⌥])\+/g, '$1');
       else node[key] = value;
     }
     for (const child of children.flat()) {

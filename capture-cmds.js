@@ -145,7 +145,7 @@
     name: 'screenshot', when: (_ctx, args) => isShotArgs(args), whenLabel: 'with a target, a frame or options',
     args: '[tool|chat|transcript|dock|lab|region|element|.selector] [9:16|4:5|1:1|16:9…] [clean|norail|copy|annotate|attach|pretty|fit|jpg|3s]',
     desc: 'A screenshot of part of Hearth into your captures: a tool, the chat (or all of it as a tall picture), a region you drag, a social frame, clean, beautified',
-    examples: ['/screenshot tool 9:16 clean', '/shot transcript', '/shot region copy', '/shot lab', '/shot window pretty'], keywords: 'capture snapshot picture image png',
+    examples: ['/screenshot tool 9:16 clean', '/shot transcript', '/shot region copy', '/shot lab 9:16', '/shot window pretty'], keywords: 'capture snapshot picture image png',
     complete: opts(shotWordOpts),
     run: async (args) => {
       // burst: N shots every S seconds (hover states, a changing Lab, a timelapse of a build)
@@ -265,10 +265,13 @@
     desc: 'Make something from a video: a GIF, a frame-exact trim, a timelapse, a boomerang, PNG frames for After Effects, a 9:16 / 1:1 / 4:5 copy, the sound, a poster frame, a seamless loop',
     examples: ['/make gif last 1 3.5', '/make timelapse', '/make frames open 0 2', '/make 9:16 last', '/make loop'], keywords: 'export convert gif mp4 social reels after effects png sequence',
     complete: opts(Object.keys(MAKE_WORDS).map((k) => ({ value: k, hint: (D.EDITS.find((e) => e.id === MAKE_WORDS[k])?.label) || (k === 'loop' ? 'find and cut the best seamless loop' : '') }))),
-    run: async (args) => {
+    run: async (args, ctx) => {
       const w = words(args);
       if (!w.length) return D.EDITS.map((e) => `- ${e.label}`).join('\n') + '\nUse: /make gif [video | last | open] [from] [to]';
       const what = MAKE_WORDS[w[0].toLowerCase()];
+      // "/make it react" (the Lab's one-click music link, typed as words) and other words: not a crash
+      if (!what && /^it\s+react/i.test(String(args).trim()) && Commands.get('make-it-react')) return Commands.get('make-it-react').run(w.slice(2).join(' '), ctx);
+      if (!what) return `/make makes something from a video: ${Object.keys(MAKE_WORDS).slice(0, 12).join(', ')}… (/make gif last 1 3). In the Lab, /make-it-react links the sliders to the music.`;
       let i = 1; let file = null;
       if (w[1] && !FrameRead.parseTime(w[1])) { file = await FrameRead.resolveFile(w[1]); i = 2; } else file = await FrameRead.resolveFile('');
       if (!file) return 'Which video? A path, `last` or `open`.';
@@ -353,7 +356,8 @@
         await saveConfig();
         return on ? `${agent.name} can capture in every chat (capture_* tools).` : `${agent.name}'s chats no longer get the capture tools (unless you turn them on per chat).`;
       }
-      const chat = ctx.chat;
+      // a brand-new chat (nothing sent yet) is a chat too: it said "Run it in a chat." in the chat you were in
+      const chat = ctx.chat || (H.agent(ctx.agentId)?.mode === 'native' && Native.ensureChat ? Native.ensureChat(ctx.agentId) : null);
       if (!chat) return 'Run it in a chat.';
       const on = a === 'off' ? false : a === 'on' ? true : !chat.captureTools;
       if (on) chat.captureTools = true; else delete chat.captureTools;
@@ -385,13 +389,16 @@
   ].join('\n') });
 
   // ---------- keys (registered for the keys list; the main ones work anywhere through capturemain.js) ----------
-  const K = (keys, what) => Capture.keyAdd({ keys, what });
-  K(`${M}+Alt+S`, 'Capture menu (screenshots, recording, tours, captures)');
-  K(`${M}+Alt+A`, 'Screenshot of a region you drag (or a thing you click)');
-  K(`${M}+Alt+R`, 'Start / stop recording Hearth');
-  K(`${M}+Alt+P`, 'Pause / resume the recording');
-  K(`${M}+Alt+V`, 'Your captures');
-  K(`${M}+Alt+T`, 'Tours: pick one / stop the running one');
+  // run: what a click on the line in the keys sheet does (these keys are caught in the main process, so the sheet
+  // can't press them for you the way it presses the others)
+  const K = (keys, what, run) => Capture.keyAdd({ keys, what, ...(run ? { run } : {}) });
+  const go = (p) => () => Promise.resolve().then(p).catch((e) => toast(e.message, { type: 'error' }));
+  K(`${M}+Alt+S`, 'Capture menu (screenshots, recording, tours, captures)', () => Capture.menu(Math.max(8, innerWidth / 2 - 120), 80, Capture.mainItems()));
+  K(`${M}+Alt+A`, 'Screenshot of a region you drag (or a thing you click)', go(() => Capture.shot({ target: 'region' })));
+  K(`${M}+Alt+R`, 'Start / stop recording Hearth', go(() => Capture.toggleRecord()));
+  K(`${M}+Alt+P`, 'Pause / resume the recording', () => { if (Capture.status().paused) Capture.resume(); else if (Capture.recording) Capture.pause(); });
+  K(`${M}+Alt+V`, 'Your captures', () => CaptureView.library());
+  K(`${M}+Alt+T`, 'Tours: pick one / stop the running one', go(() => (CaptureTour.running() ? CaptureTour.stop() : CaptureTour.picker())));
   K('Esc', 'Stops a running tour');
   K('Shift (drag a region)', 'Keep the ratio of the chosen social frame');
   K('Alt (drag a region)', 'Draw the region from its center');

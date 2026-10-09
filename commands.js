@@ -97,7 +97,7 @@ const Commands = (() => {
   const info = new Map();
 
   // 'Ctrl+Shift+S' as the Mac shows it (⌘ does what Ctrl does in Hearth, Alt is ⌥)
-  const keyText = (k) => (/Mac/.test(navigator.platform) ? String(k).replace(/Ctrl\+/g, '⌘').replace(/Alt\+/g, '⌥') : k);
+  const keyText = (k) => (/Mac/.test(navigator.platform) ? String(k).replace(/Ctrl\+/g, '⌘').replace(/Alt\+/g, '⌥').replace(/([⌘⌥])\+/g, '$1') : k); // "⌘+Alt+R" (capture's own labels) → ⌘⌥R
   const dups = []; // [{ name, was, by }] names registered twice (see register)
   function noteDup(name, prev, def) {
     dups.push({ name, was: `/${prev.name} (${prev.area})`, by: `/${def.name} (${def.area || 'Other'})`, at: (new Error().stack || '').split('\n').slice(3, 6).map((l) => l.trim().replace(/^at /, '').replace(/\(?file:\/\/\S*\/([^/]+:\d+):\d+\)?/, '$1')).join(' < ') });
@@ -108,7 +108,10 @@ const Commands = (() => {
   // holds runs, otherwise the plain one. E.g. /compare is the Video A/B compare in Video Review, the token
   // comparison anywhere else.
   function combine(name, variants) {
-    const base = variants.find((v) => !v.when) || variants[0];
+    // every variant conditional (/play, /pause: the Lab's, Video Review's, the board's) and none holds: the one marked
+    // `fallback: true`, else the first (the Lab's /play played the hidden Lab's song from a chat; QA round 3 #16 says
+    // "elsewhere they drive Video Review", whose variants are now the fallback)
+    const base = variants.find((v) => !v.when) || variants.find((v) => v.fallback) || variants[0];
     const pick = (ctx, args) => variants.find((v) => v.when && v !== base && v.when(ctx, String(args || ''))) || base;
     const extra = variants.filter((v) => v !== base && v.whenLabel).map((v) => ` · ${v.whenLabel}: ${v.desc}`).join('');
     const aliases = [...new Set(variants.filter((v) => v.name === name).flatMap((v) => v.aliases || []))];

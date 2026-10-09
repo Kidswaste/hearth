@@ -131,8 +131,8 @@ function introPlan(msg) {
 }
 
 // A transparent layer (for directors without the node tool): one shape, sliders, motion on time only.
-function layerCode(name, seed) {
-  const color = JAM_COLORS[seed % JAM_COLORS.length];
+function layerCode(name, seed, vibeColor) {
+  const color = vibeColor || JAM_COLORS[seed % JAM_COLORS.length];
   return `import * as THREE from 'three';
 const P = tweak({ size: { value: 1, min: 0.2, max: 3, label: 'Size', group: 'Shape' }, color: { value: '${color}', label: 'Color', group: 'Color' }, spin: [0.4, -2, 2] });
 const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
@@ -170,7 +170,14 @@ function directorPlan(prompt, msg, engine) {
   } else {
     const preset = /tunnel/i.test(ask) ? 'keyed-tunnel' : /galaxy|stars/i.test(ask) ? 'section-galaxy' : /cube/i.test(ask) ? 'drift-cubes' : /ring|trail/i.test(ask) ? 'orbit-trails' : 'timed-shape';
     const name = ask.replace(/^(add|make|build|put)\s+(a|an|some|the)?\s*/i, '').slice(0, 24) || 'Layer';
-    calls.push(['three_nodes', { command: `layer ${preset}` }, ['three_add_layer', { name, code: layerCode(name, ask.length) }]]);
+    // a board vibe attached (board.js: "vibe · <name>.txt", or /board-use text): its palette colors the new layer,
+    // the reference media itself is never used (round 7: references give a vibe, not footage)
+    const vibe = (prompt.match(/<file name="vibe[^"]*">([\s\S]*?)<\/file>/i) || [])[1] || (/references give a vibe/i.test(prompt) ? prompt : '');
+    const palette = [...new Set((vibe.match(/#[0-9a-f]{6}\b/gi) || []).map((h) => h.toLowerCase()))];
+    if (palette.length) {
+      calls.push(['three_add_layer', { name, code: layerCode(name, ask.length, palette[0]) }]);
+      lines.push(`Took the references' vibe (palette ${palette.slice(0, 3).join(' ')}), not their footage.`);
+    } else calls.push(['three_nodes', { command: `layer ${preset}` }, ['three_add_layer', { name, code: layerCode(name, ask.length) }]]);
     calls.push(['three_do', { cmd: 'keyframes', layer: 'top', property: 'opacity', keys: [{ time: 0, value: 0 }, { time: 2, value: 1, ease: 'ease' }] }]);
     calls.push(['three_screenshot', { size: 'small' }]);
     lines.push(`Added "${name}" as its own layer, fading in over 2 s on the timeline.`);

@@ -23,7 +23,8 @@ const Capture = (() => {
   const IS_MAC = /Mac/.test(navigator.platform);
   const mod = IS_MAC ? '⌘' : 'Ctrl';
   const base = (p) => String(p || '').split(/[\\/]/).pop();
-  const fileUrl = (p) => `file:///${String(p).replace(/\\/g, '/').replace(/^\/+/, '')}`.replace(/#/g, '%23').replace(/\?/g, '%3F');
+  // every path segment encoded (a "100% final.mp4" or "take #2" didn't load: % # ? and friends), a drive letter kept
+  const fileUrl = (p) => (/^(data|blob|https?|file):/.test(String(p)) ? String(p) : `file:///${String(p).replace(/\\/g, '/').replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/').replace(/^([A-Za-z])%3A/, '$1:')}`);
 
   // ---------- preferences (remembered; one good default each) ----------
   const DEF = {
@@ -37,9 +38,12 @@ const Capture = (() => {
 
   // ---------- keys (keys.js lists every hidden gesture; queued until it loads) ----------
   const keyList = [];
-  const hasKeys = () => typeof Keys !== 'undefined' && Keys.add; // (Keys is a top-level const of keys.js, not a window property)
-  const keyAdd = (k) => { keyList.push(k); try { if (hasKeys()) Keys.add({ area: 'Capture', ...k }); } catch { /* the keys list is optional */ } };
-  addEventListener('DOMContentLoaded', () => { if (hasKeys() && !keyAdd.flushed) { keyAdd.flushed = true; for (const k of keyList) { try { Keys.add({ area: 'Capture', ...k }); } catch { /* optional */ } } } });
+  // keys.js defines `const Keys` (a global binding, not a window property): reach it by name
+  const keysReg = () => (typeof Keys !== 'undefined' ? Keys : window.Keys);
+  // the registry keeps Ctrl / Alt (keys-ui shows ⌘ / ⌥ on a Mac itself, and reads the combo to press it for you)
+  const plainKeys = (k) => String(k || '').replace(/⌘/g, 'Ctrl').replace(/⌥/g, 'Alt');
+  const keyAdd = (k) => { keyList.push(k); try { if (keysReg()?.add) keysReg().add({ area: 'Capture', ...k, keys: plainKeys(k.keys) }); } catch { /* the keys list is optional */ } };
+  addEventListener('DOMContentLoaded', () => { if (keysReg()?.add && !keyAdd.flushed) { keyAdd.flushed = true; for (const k of keyList) { try { keysReg().add({ area: 'Capture', ...k, keys: plainKeys(k.keys) }); } catch { /* optional */ } } } });
 
   // ---------- menus with submenus ----------
   // Items with `items: [...]` (or a function returning them) open in place with a "‹ back" row. Works with the
@@ -289,7 +293,7 @@ const Capture = (() => {
         if (!start) return;
         const dragged = rect && rect.width > 6 && rect.height > 6;
         start = null;
-        if (dragged && !e.ctrlKey) { finish({ rect, el: null }); return; } // Ctrl held: adjust with the arrows, Enter takes it
+        if (dragged && !e.ctrlKey && !e.metaKey) { finish({ rect, el: null }); return; } // Ctrl held: adjust with the arrows, Enter takes it
         if (!dragged) { const n = under(e.clientX, e.clientY); const r = n && rectOf(n); if (r) finish({ rect: r, el: n }); }
       });
       ov.addEventListener('contextmenu', (e) => { e.preventDefault(); finish(null); });
@@ -796,7 +800,8 @@ const Capture = (() => {
     if (!rec) return;
     const s = elapsed();
     api().indicator({ on: true, time: fmtClock(s), paused: Boolean(rec.pausedAt), label: rec.tour ? `tour ${rec.tour}` : rec.marks.length ? `◆${rec.marks.length}` : '' });
-    if (rec.opts.max && s >= rec.opts.max && !rec.pausedAt) stop().catch((e) => toast(e.message, { type: 'error' }));
+    // once: the ticks that come while the take is being finished used to stop it again (and show the same error 5 times)
+    if (rec.opts.max && s >= rec.opts.max && !rec.pausedAt && !pending.stop) stop().catch((e) => toast(e.message, { type: 'error' }));
   }
   // ---------- take extras: zoom toward your clicks, a camera bubble, chapter markers ----------
   // Auto zoom: a click zooms the view toward it (1.6×); after 2.2 s without clicks it eases back out.
@@ -914,6 +919,14 @@ const Capture = (() => {
       try { fin = await api().finish({ path: p, mp4: Boolean(r.opts.mp4 || r.final), fps: r.opts.fps, id: r.id, size: r.final }); } catch (err) { fin.error = err.message; } finally { busy?.remove(); }
       const main = fin.mp4 || fin.webm || p;
       const marks = r.marks;
+      // an encoder that fell behind (a busy machine, a software codec) keeps only the first frames: a 6 s take came
+      // out 0.3 s long without a word. Say so, and the next take uses another codec after two of them
+      if (fin.duration > 0 && duration > 1.5 && fin.duration < duration * 0.5 && !r.pausedMs) { // 0 = the file did not say (not short)
+        const codec = String(r.mime || '').match(/codecs=(\w+)/)?.[1];
+        if (codec && !r.opts.codec) codecStrikes[codec] = (codecStrikes[codec] || 0) + 1;
+        fin.short = `Only ${fin.duration.toFixed(1)} s of ${duration.toFixed(1)} s were recorded: the computer was too busy for the ${codec ? codec.toUpperCase() : 'video'} encoder. Try a lower frame rate or size (/record 30fps 720p).`;
+        toast(fin.short, { type: 'error', timeout: 12000 });
+      }
       if (r.opts.gif && typeof FrameRead !== 'undefined') { try { const g = await FrameRead.edit(fin.webm || main, 'gif', { fps: r.opts.fps || 15 }, { quiet: true }); fin.gif = g.path; } catch (err) { fin.gifError = err.message; } }
       if (marks.length) { const all = await window.hub.kvGet('capture-marks', {}); all[main] = marks; if (fin.webm && fin.webm !== main) all[fin.webm] = marks; window.hub.kvSet('capture-marks', all); }
       if (typeof Review !== 'undefined') { try { Review.noteRecording(main); } catch { /* the library is a bonus */ } }

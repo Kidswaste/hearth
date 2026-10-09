@@ -146,7 +146,8 @@ app.on('web-contents-created', (_event, contents) => {
   contents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown' || !(input.control || (process.platform === 'darwin' && input.meta))) return;
     const key = input.key.toLowerCase();
-    if (HUB_KEYS.has(key) || (input.shift && key === ' ')) {
+    // Ctrl/⌘+Shift+M: the board drawer, from a website agent too
+    if (HUB_KEYS.has(key) || (input.shift && (key === ' ' || key === 'm'))) {
       event.preventDefault();
       send('shortcut', { key, shift: input.shift });
     }

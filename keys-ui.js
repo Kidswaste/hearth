@@ -14,6 +14,9 @@ const KeysUI = (() => {
   // ---------- Mac symbols ----------
   const MAC_SYM = [[/\bCtrl\+/g, '⌘'], [/\bCtrl\b/g, '⌘'], [/\bAlt\+/g, '⌥'], [/\bAlt\b/g, '⌥'], [/\bShift\+/g, '⇧'], [/\bShift\b/g, '⇧'], [/\bEnter\b/g, '↩'], [/\bBackspace\b/g, '⌫'], [/\bTab\b/g, '⇥']];
   const keyText = (k) => (MAC ? MAC_SYM.reduce((s, [re, to]) => s.replace(re, to), String(k)) : String(k));
+  // the descriptions name keys too ("⌘ Command palette (Ctrl+K)"): on a Mac they read ⌘ / ⌥ there as well
+  // ("Ctrl+click" stays: on a Mac that is the right-click)
+  const whatText = (t) => (MAC ? String(t).replace(/\bCtrl\+(?!click)/g, '⌘').replace(/\bAlt\+/g, '⌥') : String(t));
   // "Ctrl+Shift+U / Alt+1…9" → <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>U</kbd> / <kbd>Alt</kbd><kbd>1…9</kbd>
   function kbds(keys) {
     const out = [];
@@ -162,12 +165,14 @@ const KeysUI = (() => {
   // what applies where you are: areas for the tool or chat on screen
   function hereAreas() {
     const id = H.surfaceIdFor?.(H.activeId) || H.activeId || '';
-    if (id === 'tool:three') return ['Lab', 'Lab timeline', 'Lab sliders & layers', 'Effects picker', 'Present', 'Director dock', 'Chat box', 'Nodes'];
-    if (id === 'tool:ae') return [...(typeof VideoCut !== 'undefined' && VideoCut.active ? ['Editor'] : []), 'Video Review', 'Director dock', 'Chat box'];
-    if (id === 'tool:board') return ['Board', 'Capture'];
-    if (id === 'tool:forgeheart') return ['Forge'];
-    if (H.agent(H.activeId)?.mode === 'native') return ['Chat box', 'Chats panel', ...(typeof BoardDrawer !== 'undefined' && BoardDrawer.isOpen() ? ['Board'] : [])];
-    return [];
+    // round 7's surfaces count too: a capture player / picture open, the board drawer, the editor in Video Review
+    const extra = [...(document.querySelector('dialog[open].cap-view, dialog[open].cap-lib, dialog[open].cap-ann') ? ['Capture'] : []), ...(typeof BoardDrawer !== 'undefined' && BoardDrawer.isOpen?.() ? ['Board'] : [])];
+    if (id === 'tool:three') return [...extra, 'Lab', 'Lab timeline', 'Lab sliders & layers', 'Effects picker', 'Present', 'Director dock', 'Chat box', 'Nodes'];
+    if (id === 'tool:ae') return [...extra, ...(typeof VideoCut !== 'undefined' && VideoCut.active ? ['Editor'] : []), 'Video Review', 'Director dock', 'Chat box'];
+    if (id === 'tool:board') return [...extra, 'Board', 'Capture'];
+    if (id === 'tool:forgeheart') return [...extra, 'Forge'];
+    if (H.agent(H.activeId)?.mode === 'native') return [...extra, 'Chat box', 'Chats panel'];
+    return extra;
   }
   const hereLabel = () => { const id = H.surfaceIdFor?.(H.activeId) || H.activeId || ''; return id.startsWith('tool:') ? Tools.get?.(id.slice(5))?.name || 'this tool' : H.agent(H.activeId)?.name || 'here'; };
   const visibleOne = (sel) => [...document.querySelectorAll(sel)].find((n) => n.checkVisibility?.({ visibilityProperty: true }) && n.getBoundingClientRect().width);
@@ -193,6 +198,10 @@ const KeysUI = (() => {
     if (area === 'Chat box') { const id = H.activeId; const v = Native.view?.(H.agent(id)?.mode === 'native' ? id : Tools.dockedAgent?.(String(H.surfaceIdFor?.(id)).replace('tool:', ''))?.id); return v?.input || null; }
     if (/^Lab|^Present/.test(area)) return s?.querySelector('.three-toolbar, .tb-group') || s;
     if (area === 'Video Review') return s?.querySelector('.vr-top, .tool-body') || s;
+    // round 7's surfaces listen on their own roots: a line clicked in the sheet pressed its key into the page body
+    if (area === 'Editor') return s?.querySelector('.vr')?.parentElement || s;
+    if (area === 'Board') return s?.querySelector('.bd-root') || s;
+    if (area === 'Capture') return document.querySelector('dialog[open].cap-ann, dialog[open].cap-view') || document.activeElement || document.body;
     return document.activeElement && document.activeElement !== document.body ? document.activeElement : document.body;
   }
   function runLine(e) {
@@ -242,7 +251,8 @@ const KeysUI = (() => {
       const words = q.value.toLowerCase().split(/\s+/).filter(Boolean);
       const here = hereAreas();
       const groups = [...Keys.groups(true)];
-      const rank = ([area]) => (here.includes(area) ? 0 : area === 'Hidden buttons' ? 1 : area === 'Right-click' ? 2 : area === 'Everywhere' ? 3 : area === 'Menus' ? 4 : area === 'Capture' ? 4.5 : 5); // capture keys work anywhere
+      // the areas that apply here keep their order (the open capture / the editor before the tool's own lines)
+      const rank = ([area]) => (here.includes(area) ? here.indexOf(area) / 100 : area === 'Hidden buttons' ? 1 : area === 'Right-click' ? 2 : area === 'Everywhere' ? 3 : area === 'Menus' ? 4 : area === 'Capture' ? 4.5 : 5); // capture keys work anywhere
       groups.sort((a, b) => rank(a) - rank(b));
       const out = [];
       for (const [area, lines] of groups) {
@@ -253,7 +263,7 @@ const KeysUI = (() => {
           ...hits.map((x) => {
             const applies = !x.when || (() => { try { return x.when(); } catch { return false; } })();
             return el('button', { type: 'button', class: `ks-line${applies ? '' : ' elsewhere'}`, title: x.run ? 'Click to do it' : x.area === 'Right-click' ? 'Click to open that menu' : comboOf(x.keys) ? 'Click to press it' : 'Click to see where', on: { click: () => runLine(x) } },
-              el('span', { class: 'ks-keys' }, kbds(x.keys)), el('span', { class: 'ks-what', text: x.what }));
+              el('span', { class: 'ks-keys' }, kbds(x.keys)), el('span', { class: 'ks-what', text: whatText(x.what) }));
           })));
       }
       body.replaceChildren(...(out.length ? out : [el('p', { class: 'hint ks-none', text: 'Nothing matches. Try a word like "freeze", "slider" or "copy".' })]));
@@ -267,7 +277,15 @@ const KeysUI = (() => {
       else if (e.key === 'Enter' && e.target === q) { e.preventDefault(); (lines[sel] || lines[0])?.click(); }
     });
     paint();
-    document.body.append(sheet);
+    // over a modal dialog (the captures, a capture's player, the annotator…) the rest of the page is inert: the sheet
+    // goes inside that dialog and on the top layer, so it can be used and Esc closes the sheet, not the dialog under it
+    const modal = [...document.querySelectorAll('dialog[open]')].filter((d) => d.matches(':modal')).at(-1);
+    if (modal) {
+      sheet.setAttribute('popover', 'manual');
+      Object.assign(sheet.style, { top: 'auto', right: 'auto', margin: '0' });
+      modal.append(sheet);
+      try { sheet.showPopover(); } catch { /* drawn in the dialog anyway */ }
+    } else document.body.append(sheet);
     btn?.classList.add('on');
     q.focus();
     setTimeout(() => addEventListener('pointerdown', away, true), 0);
@@ -379,8 +397,8 @@ const KeysUI = (() => {
       { area: 'Chat box', keys: 'Ctrl+Alt+D', what: 'Duo with Astra on / off', when: inChat },
       { area: 'Chat box', keys: 'Ctrl+Alt+M', what: 'Next model for this chat', when: inChat },
       { area: 'Chat box', keys: 'Ctrl+Alt+O', what: 'A second opinion from the other agent', when: inChat },
-      { area: 'Chat box', keys: 'Ctrl+Alt+H', what: 'Hand the chat to the other agent', when: inChat },
-      { area: 'Chat box', keys: 'Ctrl+Alt+S', what: 'Stop a Claude × Astra collaboration', when: inChat },
+      { area: 'Chat box', keys: 'Ctrl+Alt+G', what: 'Hand the chat to the other agent', when: inChat },
+      { area: 'Chat box', keys: 'Ctrl+Alt+X', what: 'Stop a Claude × Astra collaboration', when: inChat },
       // the chats panel
       { area: 'Chats panel', keys: '↑ / ↓', what: 'Move through the chats (from the search box: ↓)', sel: '#panel .item' },
       { area: 'Chats panel', keys: 'Enter', what: 'Open the chat', sel: '#panel .item' },
@@ -401,7 +419,10 @@ const KeysUI = (() => {
       { area: 'Lab', keys: 'Shift+R', what: 'The shuffle before', when: inLab, run: act('shuffleBack') },
       { area: 'Lab', keys: 'Ctrl+S', what: 'Save the sliders into the code', when: inLab, run: act('saveSliders') },
       { area: 'Lab', keys: 'Ctrl+Shift+S', what: 'Save the sliders as a look', when: inLab, run: act('saveLook') },
-      { area: 'Lab', keys: 'Shift+A / Shift+B / Shift+C', what: 'Recall slider slot A, B, C', when: inLab, run: act('slotA') },
+      // one line per slot, so a click on the line recalls that slot (the one line for A / B / C always recalled A)
+      { area: 'Lab', keys: 'Shift+A', what: 'Recall slider slot A', when: inLab, run: act('slotA') },
+      { area: 'Lab', keys: 'Shift+B', what: 'Recall slider slot B', when: inLab, run: act('slotB') },
+      { area: 'Lab', keys: 'Shift+C', what: 'Recall slider slot C', when: inLab, run: act('slotC') },
       { area: 'Lab', keys: 'P', what: 'Present: just the picture, fullscreen', when: inLab, run: act('present') },
       { area: 'Lab', keys: 'X', what: 'Effects & layers picker (Shift+X: everything)', when: inLab, run: () => ThreeFX.openPicker('add') },
       { area: 'Lab', keys: 'O', what: 'Your sketches, as pictures', when: inLab },
@@ -530,7 +551,6 @@ const KeysUI = (() => {
       { area: 'Lab', keys: 'Esc', what: 'From a Lab tool tab (model viewer, shaders…): back to the sketch', when: inLab },
       { area: 'Lab', keys: '.', what: 'While frozen: one frame forward', when: inLab },
       { area: 'Lab', keys: '\\', what: 'Freeze / unfreeze (like F)', when: inLab, run: act('freeze') },
-      { area: 'Lab sliders & layers', keys: 'Shift+C', what: 'Recall slider slot C', when: inLab, run: act('slotC') },
       { area: 'Lab sliders & layers', keys: '1…9', what: 'In the Triggers panel: pick trigger 1…9', when: inLab },
       { area: 'Present', keys: 'Space / F / 1…9', what: 'Play / pause, freeze and cues still work while presenting', when: inLab },
       // right-click menus: click a line to open it on screen

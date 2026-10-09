@@ -243,7 +243,8 @@
   function frameVibe(fr, agentId, focus = 'full') { return BoardDrawer.attach(agentId, { itemIds: B.contents(fr).map((i) => i.id), focus }); }
   async function toLab(focus = 'lab') {
     const dir = H.agents().find((a) => a.dock === 'three' && a.mode === 'native');
-    if (!dir) { toast('No Three Director chat'); return null; }
+    // no director yet: say how to get one, with the button (it was a dead end: "No Three Director chat")
+    if (!dir) { toast('No Three Director yet: set one up, then send the board\'s vibe again', { timeout: 9000, action: { label: 'Set it up', fn: () => Commands.run?.('director-setup', '', H.claudeAgent()?.id) } }); return null; }
     activate('tool:three');
     await wait(400);
     return BoardDrawer.attach(dir.id, { focus });

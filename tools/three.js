@@ -2262,6 +2262,10 @@ const ThreeLab = (() => {
           { label: '◐ Pin this frame to compare', key: '|', action: () => pinFrame() },
           { label: '🎞 Contact sheet', action: () => showSheet() },
           { label: '📌 Note at this moment', key: 'N', action: () => takeNote() },
+          // round 7's capture (screenshots / recordings of Hearth itself, in the captures folder) from here too
+          ...(typeof Capture !== 'undefined' ? ['-',
+            { label: '● Record the Lab preview…', hint: 'for your intro video', action: () => Capture.record({ target: 'lab' }).catch((e) => toast(e.message, { type: 'error' })) },
+            { label: '◉ More capture…', key: 'Ctrl+Alt+S', action: () => Capture.menu(Math.max(8, innerWidth / 2 - 120), 80, Capture.mainItems()) }] : []),
         ] },
         ctl ? { label: 'Sliders', items: () => [
           { label: '🎲 Shuffle', key: 'R', action: () => ctl.shuffle() },

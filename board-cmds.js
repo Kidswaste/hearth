@@ -34,7 +34,17 @@ const BoardCmds = (() => {
       const b = await boardOf(ctx); if (b !== B.current()) await B.open(b.id);
       const at = B.isMounted() && B.visible() ? null : freeSpot(b);
       let it;
-      if (/^([a-z]:\\|\/|~\/)/i.test(t) && !/\s/.test(t.replace(/\\ /g, ''))) it = (await B.addFiles([t], at))[0];
+      // a file path, also with spaces ("C:\Users\me\My Videos\clip.mp4", ~/Movies/Night drive.mov, a quoted or
+      // dragged-in path with \ escapes): it used to become a text note as soon as it had a space
+      const unq = t.replace(/^(["'])(.*)\1$/, '$2').replace(/\\ /g, ' ');
+      let file = null;
+      if (/^([a-z]:[\\/]|\/|~[\\/]|\\\\)/i.test(unq)) {
+        const p = /^~[\\/]/.test(unq) ? `${await window.hub.fs.home()}${unq.slice(1)}` : unq;
+        const st = await window.hub.fs.stat(p).catch(() => null);
+        if (st && !st.isDir) file = p;
+        else if (!/\s/.test(t)) file = p; // a plain path: let the board say what's wrong with it
+      }
+      if (file) it = (await B.addFiles([file], at))[0];
       else if (/^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(t) && !t.includes(' ')) it = await B.addUrl(`https://${t}`, at);
       else it = await B.addTextSmart(t, at);
       return it ? `Added to **${B.current().name}**: ${V.KIND_WORD[it.type] || it.type} ${it.title ? `"${it.title}"` : ''} (its vibe is read in the background).` : 'Nothing added.';
@@ -118,7 +128,13 @@ const BoardCmds = (() => {
   cmd({ name: 'board-undo', desc: 'Undo on the board (Ctrl+Z there)', run: async () => { await B.ready(); B.undo(); return null; } });
   cmd({ name: 'board-redo', desc: 'Redo on the board', run: async () => { await B.ready(); B.redo(); return null; } });
   cmd({ name: 'board-link', desc: 'Link this chat to a board (the drawer and /board-use pick it here)', args: '[board]', complete: (a) => opts(B.boards().map((b) => ({ value: b.name })), a),
-    run: async (args, ctx) => { await B.ready(); if (!ctx?.chatId) return 'Send a message first (the chat needs to exist).'; const e = args.trim() ? B.findBoard(args.trim()) : B.current(); if (!e) return 'No such board.'; B.linkChat(ctx.chatId, e.id); return `This chat now uses **${e.name}**.`; } });
+    run: async (args, ctx) => {
+      await B.ready();
+      // a brand-new chat (nothing sent yet) is made now: "Send a message first" stood between you and the link
+      const chatId = ctx?.chatId || (H.agent(ctx?.agentId)?.mode === 'native' && Native.ensureChat ? Native.ensureChat(ctx.agentId)?.id : null);
+      if (!chatId) return 'Run it in a Claude or Astra chat.';
+      const e = args.trim() ? B.findBoard(args.trim()) : B.current(); if (!e) return 'No such board.'; B.linkChat(chatId, e.id); return `This chat now uses **${e.name}**.`;
+    } });
   cmd({ name: 'board-unlink', desc: 'Unlink this chat from its board', run: async (_a, ctx) => { await B.ready(); if (ctx?.chatId) B.unlinkChat(ctx.chatId); return 'Unlinked.'; } });
   cmd({ name: 'board-use', desc: 'Attach the board\'s vibe (linked or current) to your next message; "send" sends it now', args: '[focus] [send]', examples: ['/board-use', '/board-use palette', '/board-use motion send', '/board-use opposite'], keywords: 'reference vibe style inspiration',
     complete: (a) => opts(D.FOCUS.map((f) => ({ value: f.id, hint: f.name })).concat([{ value: 'send', hint: 'send right away' }]), a),
@@ -149,9 +165,11 @@ const BoardCmds = (() => {
   cmd({ name: 'board-peek', aliases: ['board-drawer'], desc: 'The board drawer over this chat (Ctrl+Shift+M): drag a reference into the chat for its vibe', keys: 'Ctrl+Shift+M', run: async () => { await B.ready(); BoardDrawer.toggle(); return null; } });
   cmd({ name: 'board-save-reply', desc: 'Save the last reply of this chat as a note on the board', run: async (_a, ctx) => { const t = Native.lastReplyText?.(ctx?.agentId); if (!t) return 'No reply to save.'; const b = await boardOf(ctx); if (b !== B.current()) await B.open(b.id); B.addNote(t.slice(0, 4000), B.visible() ? null : freeSpot(b), { style: 'paper', w: 420, h: 360 }); return `Saved to **${b.name}**.`; } });
   cmd({ name: 'board-clean', desc: 'Move media no board uses any more to the Recycle Bin', run: async () => { await B.ready(); await Board._.cleanMedia(); return null; } });
-  cmd({ name: 'board-tools', desc: 'Let this agent use the board itself (board tools: list, vibe, add, arrange; ≈ 350 tokens a message): on, off, or directors', args: '<on|off|directors>', complete: (a) => opts(['on', 'off', 'directors'], a),
+  cmd({ name: 'board-tools', desc: 'Let this agent use the board itself (board tools: list, vibe, add, arrange; ≈ 550 tokens a message, see /director-cost): on, off, or directors', args: '<on|off|directors>', complete: (a) => opts(['on', 'off', 'directors'], a),
     run: async (args, ctx) => {
-      const w = args.trim() || 'on'; const on = w !== 'off';
+      // no word: say where they're on (it used to switch them on: ≈ 550 tokens a message by accident)
+      if (!args.trim()) { const on = H.agents().filter((a) => a.boardTools).map((a) => a.name); return on.length ? `Board tools are on for ${on.join(', ')} (/board-tools off here turns them off).` : 'Board tools are off everywhere (/board-tools on for this chat\'s agent, or directors).'; }
+      const w = args.trim(); const on = w !== 'off';
       const targets = w === 'directors' ? H.agents().filter((a) => a.dock && a.mode === 'native') : [H.agent(ctx?.agentId)].filter(Boolean);
       if (!targets.length) return 'Run this in a chat.';
       for (const a of targets) { if (on) a.boardTools = true; else delete a.boardTools; }
@@ -237,6 +255,18 @@ const BoardCmds = (() => {
       Commands.register({ area: AREA, ...d, aliases: (d.aliases || []).filter((a) => !Commands.get(a)) });
     }
     if (skipped.length) console.warn('Board: command names already taken', skipped);
+    // /undo and /redo where you are: on the board they undo the board (they used to undo the last chat action, a
+    // chat rename or delete, while you were arranging references); the video editor adds its own (tools/cut-cmds.js)
+    // /play and /pause on the board: its clips in view (they played the hidden Lab's song or opened Video Review)
+    for (const w of ['play', 'pause']) Commands.register({ name: w, area: AREA, when: (ctx) => ctx?.place === 'board' && H.activeId === 'tool:board', whenLabel: 'on the board', desc: w === 'play' ? 'Play the clips in view (four at most)' : 'Pause the clips on the board', run: (_a, ctx) => Commands.get('board-play')?.run(w, ctx) });
+    Commands.register({ name: 'undo', area: AREA, when: (ctx) => ctx?.place === 'board', whenLabel: 'on the board', desc: 'Undo on the board (Ctrl+Z)', run: async () => { await B.ready(); B.undo(); return null; } });
+    if (!Commands.get('redo')) {
+      Commands.register({ name: 'redo', area: 'App', desc: 'Redo where you are: the board, the video editor (Ctrl+Shift+Z)', run: async (_a, ctx) => {
+        if (ctx?.place === 'board') { await B.ready(); B.redo(); return null; }
+        if (ctx?.place === 'ae' && typeof VideoCut !== 'undefined' && VideoCut.active) return VideoCut.redo() ? 'Redone.' : 'Nothing to redo.';
+        return 'Nothing to redo here (on the board or in the video editor, /redo redoes their last change).';
+      } });
+    }
   }
   if (document.readyState === 'loading' || document.currentScript?.defer) addEventListener('DOMContentLoaded', registerAll, { once: true }); else registerAll();
   return { handle, defs };

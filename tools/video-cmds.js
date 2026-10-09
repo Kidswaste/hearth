@@ -115,8 +115,9 @@ const VideoCmds = (() => {
   });
 
   // ---------- player ----------
-  cmd({ name: 'play', desc: 'Play the open video', run: async () => { (await ready({ show: true })).play(); } });
-  cmd({ name: 'pause', aliases: ['stop-video'], desc: 'Pause the open video', run: async () => { const r = await ready(); r.pause(); return `⏸ \`${r.status().timecode}\``; } });
+  // fallback: from a chat (no Lab, no board on screen) /play and /pause drive Video Review (commands.js combine)
+  cmd({ name: 'play', fallback: true, desc: 'Play the open video', run: async () => { (await ready({ show: true })).play(); } });
+  cmd({ name: 'pause', fallback: true, aliases: ['stop-video'], desc: 'Pause the open video', run: async () => { const r = await ready(); r.pause(); return `⏸ \`${r.status().timecode}\``; } });
   cmd({
     name: 'step', desc: 'Step frames (default 1; negative goes back)', args: '±n', complete: (a) => opts([{ value: '1' }, { value: '-1' }, { value: '10' }, { value: '-10' }], a),
     run: async (args) => { const r = await ready(); r.step(Number(args) || 1); await r.waitSeek(); const s = r.status(); return `Frame ${s.frame} · \`${s.timecode}\``; },

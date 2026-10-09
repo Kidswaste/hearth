@@ -1703,7 +1703,7 @@ function toggleFold(hostId, m) {
       '- `/duo` side by side · `/relay a→b N` draft + improve · `/critique a→b N` review loop · `/debate N` · `/council seats` · `/compare-agents seats`.',
       '- `/handoff [agent|back]` · `/opinion` (both ways) · `/opinion-auto on` · `/ask-astra` · `/ask-claude`.',
       '- Seats: `claude`, `astra`, `astra:<model>`, `claude@<persona>`, `astra~low`, `all`. `/collab-preset` has ready-made ones.',
-      '- Keys: Ctrl/⌘+Alt+D duo · M next model · O second opinion · H hand off · S stop.',
+      '- Keys: Ctrl/⌘+Alt+D duo · M next model · O second opinion · G hand off · X stop.',
     ].join('\n') });
 
   // ---------- rail: a star marks agents running on the Astra (Codex) engine ----------
@@ -1733,8 +1733,10 @@ function toggleFold(hostId, m) {
       toast(`Model: ${next}`, { timeout: 1200 });
     }
     if (e.code === 'KeyO') { e.preventDefault(); Native.secondOpinion(targetId); }
-    if (e.code === 'KeyH') { e.preventDefault(); const o = partner(H.agent(targetId)); if (o) handoff(targetId, o.id).catch((err) => toast(err.message, { type: 'error' })); }
-    if (e.code === 'KeyS' && stopAllIn(targetId)) { e.preventDefault(); toast('Stopping the collaboration', { timeout: 1200 }); }
+    // G hands off, X stops: Ctrl+Alt+H is the global show / hide hotkey (⌘⌥H hides other apps on a Mac) and
+    // Ctrl/⌘+Alt+S opens the capture menu (caught in the main process), so H and S never reached this
+    if (e.code === 'KeyG') { e.preventDefault(); const o = partner(H.agent(targetId)); if (o) handoff(targetId, o.id).catch((err) => toast(err.message, { type: 'error' })); }
+    if (e.code === 'KeyX' && stopAllIn(targetId)) { e.preventDefault(); toast('Stopping the collaboration', { timeout: 1200 }); }
   });
   queueMicrotask(() => {
     if (typeof AppUI === 'undefined' || !AppUI.addAction) return;

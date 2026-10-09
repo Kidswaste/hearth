@@ -54,8 +54,17 @@ const Review = (() => {
   const Cut = () => (VC()?.active ? VideoCut : null);
 
   // ---------- persistence ----------
-  const saveNotes = debounce(() => window.hub.kvSet('video-notes', S.notes), 300);
-  const saveLib = debounce(() => window.hub.kvSet('video-library', S.lib), 300);
+  // a note or a library change just before a reload / quit is written at unload (only what is still pending)
+  const pending = new Set();
+  const writeNotes = debounce(() => { pending.delete('notes'); window.hub.kvSet('video-notes', S.notes); }, 300);
+  const writeLib = debounce(() => { pending.delete('lib'); window.hub.kvSet('video-library', S.lib); }, 300);
+  const saveNotes = () => { pending.add('notes'); writeNotes(); };
+  const saveLib = () => { pending.add('lib'); writeLib(); };
+  addEventListener('beforeunload', () => {
+    if (pending.has('notes')) window.hub.kvSet('video-notes', S.notes);
+    if (pending.has('lib')) window.hub.kvSet('video-library', S.lib);
+    pending.clear();
+  });
   const saveMeta = debounce(() => window.hub.kvSet('video-meta', S.meta), 2000);
   const notesOf = (p = S.cur?.path) => (p ? (S.notes[p] ||= []) : []);
   // Older notes were { t, text, frame, color }: give them ids and categories.

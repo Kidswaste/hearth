@@ -39,7 +39,8 @@ line count is lower than the number of upgrades).
 | Polish 8 (round 8): the board, the editor and capture in one menu shape (main action → arrange → look → send / export → More… → Delete → Customise this…), the app's SVG icons instead of emoji, the drawer / editor bar tidied behind Alt, right-click on chips and the editor bar, the keys sheet lists the editor and capture (with icons), Forgeheart look on every new surface, the editor's monitor no longer shows over other tools, `/tidy` | [polish8.md](polish8.md) | 244 |
 | Video projects (round 8): `/intro` plans your social intro (beats, length, 9:16 · 16:9 · 1:1), then board vibe → Claude ⇄ Astra Lab scenes → capture tours → editor → frame-exact review → every format, one live card, undo per step, redo a beat, 15 s / 6 s cuts | [intro.md](intro.md) | 401 |
 | Lab frames (round 8): the Lab timeline frame by frame on video footage with no song (timecode counter, exact steps, J K L), cuts the sketch plays (shared with the editor), sketches read the exact frame, 21 footage layers, reference pacing (`/footage`, `/match-pacing`) | [labframes.md](labframes.md) | 284 |
-| **Total** | | **8,570** |
+| QA 8 (round 8): integration fixes between board / editor / capture / declutter, key conflict table, three new end-to-end journeys (board, editor, capture), every key pressed on its surface, ⌘ on a Mac, one check runner | [qa8.md](qa8.md) | 75 |
+| **Total** | | **8,645** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.

@@ -189,7 +189,9 @@ function menuButton(it, onPick) {
   if (it.icon && typeof Icons !== 'undefined') { const ic = Icons.node(it.icon); if (ic) { ic.classList.add('menu-ico'); b.append(ic); b.classList.add('has-ico'); } } // drawn first by CSS (order: -1)
   if (it.hint) b.append(el('span', { class: 'menu-hint', text: it.hint }));
   const sub = Boolean(it.items);
-  const key = sub ? '›' : it.key || inlineKey;
+  // on a Mac the keys at the right of a menu read ⌘ ⌥ ⇧ (every stream's menus wrote "Ctrl+D", "Ctrl+Shift+S"…)
+  const key0 = sub ? '›' : it.key || inlineKey;
+  const key = key0 && !sub && /Mac/.test(navigator.platform) ? String(key0).replace(/\bCtrl\+(?!click)/g, '⌘').replace(/\bAlt\+/g, '⌥').replace(/\bShift\+/g, '⇧').replace(/([⌘⌥⇧])\+/g, '$1') : key0;
   if (key) b.append(el('span', { class: `menu-key${sub ? ' menu-sub' : ''}`, text: key }));
   if (sub) { b.classList.add('has-sub'); b.setAttribute('aria-haspopup', 'menu'); }
   if (it.checked) b.classList.add('checked');
@@ -672,6 +674,7 @@ function handleShortcut({ key, shift }) {
   else if (key === 'j') Notes.toggle();
   else if (key === 's' && shift) AppUI.snapshotToChat();
   else if (key === 't' && shift) AppUI.toggleOnTop();
+  else if (key === 'm' && shift && typeof BoardDrawer !== 'undefined') BoardDrawer.toggle(); // forwarded from a website agent (main.js)
   else if (key === ' ' && shift) { $('broadcast').classList.remove('hidden'); applyLayout(); $('broadcast-input').focus(); }
 }
 

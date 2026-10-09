@@ -187,6 +187,9 @@ async function cdpConnect() {
     };
     await send('Runtime.addBinding', { name: '__smoke' });
     await send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => { const w = new Map(); let n = 0; window.__smokeReply = (id, r) => { w.get(id)?.(JSON.parse(r)); w.delete(id); }; window.SMOKE_SAVES = ${JSON.stringify(saveDir)}; window.smoke = (req) => new Promise((res) => { const id = ++n; w.set(id, res); window.__smoke(JSON.stringify({ ...req, id })); }); })();` });
+    // --mac: the page believes it runs on a Mac (navigator.platform), so ⌘ / ⌥ labels and the ⌘-as-Ctrl key mapping
+    // (ui.js) can be checked here; the main process stays Linux
+    if (args.includes('--mac')) await send('Page.addScriptToEvaluateOnNewDocument', { source: "Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'MacIntel' });" });
     await send('Runtime.enable'); await send('Log.enable'); await send('Page.enable');
     await send('Fetch.enable', { patterns: CDN_PATTERNS });
     await send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true });
@@ -201,9 +204,27 @@ async function cdpConnect() {
     };
     const checks = [...evals];
     // --lib <file> (repeatable): shared helpers put in front of the --script body (e.g. dev/checks/journey-lib.js).
-    const libs = args.flatMap((a, i) => (a === '--lib' ? [fs.readFileSync(args[i + 1], 'utf8')] : []));
-    if (scriptFile) checks.push([...libs, fs.readFileSync(scriptFile, 'utf8')].join('\n'));
-    for (const c of checks) {
+    const libFiles = args.flatMap((a, i) => (a === '--lib' ? [path.resolve(args[i + 1])] : []));
+    // A check that uses a shared helper without its --lib gets it anyway (editor.js / cut.js used to fail plainly
+    // with "J is not defined"): J → journey-lib, M → smooth-lib, decodeFrameCode → dev/editor-frames.js.
+    if (scriptFile) {
+      const body = fs.readFileSync(scriptFile, 'utf8');
+      const AUTO = [[/\bJ\.\w|=\s*J;/, /\bconst J =/, 'checks/journey-lib.js'], [/\bM\.\w+\(|=\s*M;/, /\bconst M =/, 'checks/smooth-lib.js'], [/\bdecodeFrameCode\b/, /function decodeFrameCode/, 'editor-frames.js']];
+      for (const [uses, defines, lib] of AUTO) {
+        const f = path.join(__dirname, lib);
+        if (uses.test(body) && !defines.test(body) && !libFiles.includes(f)) libFiles.push(f);
+      }
+    }
+    const libs = libFiles.map((f) => fs.readFileSync(f, 'utf8'));
+    // A line "//@@ reload" splits a check: the part before it runs, the window reloads (everything is read back from
+    // disk, like a restart of the page), then the next part runs with the same helpers (state across: localStorage).
+    if (scriptFile) for (const part of fs.readFileSync(scriptFile, 'utf8').split(/\n\/\/@@ reload\b[^\n]*\n/)) checks.push([...libs, part].join('\n'));
+    for (const [ci, c] of checks.entries()) {
+      if (ci > evals.length && scriptFile) {
+        await send('Page.reload', {});
+        await new Promise((r) => setTimeout(r, waitMs));
+        for (let i = 0; i < 60; i++) { const ready = await run('document.readyState === "complete" && typeof H !== "undefined" && H.agents().length > 0'); if (ready.value === true) break; await new Promise((r) => setTimeout(r, 500)); }
+      }
       const r = await run(c);
       console.log(`\n▶ ${c.length > 160 ? `${c.slice(0, 160)}…` : c}\n${r.error ? `✖ ${r.error}` : typeof r.value === 'string' ? r.value : JSON.stringify(r.value, null, 2)}`);
       if (r.error) problems.push(`check failed: ${r.error}`);

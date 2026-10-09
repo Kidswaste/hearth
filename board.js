@@ -74,6 +74,8 @@ const Board = (() => {
   }
   addEventListener('beforeunload', flush);
   async function create(name, { quiet = false, template = null, open: openIt = true } = {}) {
+    // "New board…" from the rail ▦ menu or Ctrl+K before the board was ever opened: load the boards first
+    if (!S.index) await ready();
     const id = `b${now().toString(36)}${Math.floor(Math.random() * 46656).toString(36)}`;
     const b = { id, name: String(name || 'Board').slice(0, 60), created: now(), updated: now(), seq: 0, items: [], view: { x: 80, y: 80, z: 0.6 }, chats: [] };
     S.boards.set(id, b);
@@ -480,7 +482,8 @@ const Board = (() => {
   function renderAll() {
     if (!S.mounted || !S.cur) return;
     const ids = new Set(S.cur.items.map((i) => i.id));
-    for (const [id, n] of S.nodes) if (!ids.has(id)) { stopPreview(id); n.remove(); S.nodes.delete(id); lastOff.delete(id); }
+    // try: a note being edited when it was undone has already been taken out by its own blur handler
+    for (const [id, n] of S.nodes) if (!ids.has(id)) { stopPreview(id); try { n.remove(); } catch { /* gone already */ } S.nodes.delete(id); lastOff.delete(id); }
     for (const it of S.cur.items) syncItem(it);
     S.hidden = new Set(S.cur.items.filter((i) => i.hidden).map((i) => i.id));
     Board._.afterRender?.();
@@ -749,7 +752,7 @@ const Board = (() => {
       if (!drag.moved && Math.hypot(dx, dy) * S.view.z < 3) return;
       if (!drag.moved) { drag.moved = true; if (!drag.undoDone) pushUndo('move'); stopAllPreviews(); }
       if (e.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; } // one axis
-      const snapped = e.ctrlKey ? { dx, dy, gx: null, gy: null } : snapMove(drag, dx, dy);
+      const snapped = (e.ctrlKey || e.metaKey) ? { dx, dy, gx: null, gy: null } : snapMove(drag, dx, dy);
       for (const it of drag.items) { const s = drag.start.get(it.id); it.x = s.x + snapped.dx; it.y = s.y + snapped.dy; const n = S.nodes.get(it.id); if (n) n.style.transform = `translate(${it.x}px, ${it.y}px)${it.rot ? ` rotate(${it.rot}deg)` : ''}`; }
       showGuides(snapped.gx, snapped.gy);
       Board._.onMoveFrame?.(drag.items);
@@ -793,7 +796,7 @@ const Board = (() => {
     const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY; const dx = e.deltaMode === 1 ? e.deltaX * 16 : e.deltaX;
     // pinch on a trackpad and Ctrl+wheel zoom; a mouse wheel zooms too (Settings: wheel pans), two fingers pan
     const mouseWheel = e.deltaMode === 1 || (dx === 0 && Math.abs(dy) >= 50 && Number.isInteger(dy));
-    if (e.ctrlKey) { zoomAt(e.clientX, e.clientY, Math.exp(-Math.max(-60, Math.min(60, dy)) * 0.012), false); return; }
+    if (e.ctrlKey || e.metaKey) { zoomAt(e.clientX, e.clientY, Math.exp(-Math.max(-60, Math.min(60, dy)) * 0.012), false); return; }
     if (mouseWheel && prefs().wheel !== 'pan' && !e.shiftKey) { zoomAt(e.clientX, e.clientY, Math.exp(-Math.max(-240, Math.min(240, dy)) * 0.0022), true); return; }
     if (e.shiftKey && !dx) panBy(-dy, 0); else panBy(-dx, -dy);
   }
@@ -1004,6 +1007,9 @@ const Board = (() => {
   }
   async function onPaste(e) {
     if (!visible() || e.target.closest?.('input, textarea, [contenteditable="true"]')) return;
+    // a window open over the board (a capture's annotator or player, a dialog, the drawer, the command bar) keeps
+    // its paste: it used to land on the board behind it
+    if ([...document.querySelectorAll('dialog[open]')].some((d) => d.matches(':modal')) || e.target.closest?.('dialog, .bdd, .cmdbar, .keys-sheet')) return;
     const cd = e.clipboardData; if (!cd) return;
     e.preventDefault();
     const files = [...cd.files || []];
@@ -1078,7 +1084,7 @@ const Board = (() => {
     addEventListener('keydown', (e) => {
       if (!visible()) return;
       mods(e);
-      if (e.code === 'Space' && !e.repeat && !e.target.closest?.('input, textarea, [contenteditable="true"], button')) { S.space = true; ui.root.classList.add('bd-hand'); e.preventDefault(); }
+      if (e.code === 'Space' && !e.repeat && !e.target.closest?.('input, textarea, [contenteditable="true"], button, dialog')) { S.space = true; ui.root.classList.add('bd-hand'); e.preventDefault(); }
     }, true);
     addEventListener('keyup', (e) => { mods(e); if (e.code === 'Space') { S.space = false; ui.root.classList.remove('bd-hand'); } }, true);
     addEventListener('blur', () => { S.alt = S.ctrl = S.space = false; ui.root.classList.remove('bd-alt', 'bd-ctrl', 'bd-hand'); });

@@ -24,12 +24,16 @@ async function framesLocal(a) {
   const FR = require('../framereader');
   const file = String(a.path || '');
   if (!file || !path.isAbsolute(file) || !fs.existsSync(file)) return { ok: false, error: 'Hearth isn\'t running: give the video\'s full path.' };
-  const dir = path.join(__dirname, '..', 'data', 'captures', 'frames');
+  // the captures folder Settings chose (config.json settings.captureDir), like the hub does, else data/captures
+  let root = path.join(__dirname, '..', 'data', 'captures');
+  try { const s = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'config.json'), 'utf8')).settings || {}; if (s.captureDir) root = s.captureDir; FR.setOverrides({ ffmpeg: s.ffmpegPath || undefined }); } catch { /* defaults */ }
+  const dir = path.join(root, 'frames');
   const o = { dir, width: 768, format: 'jpg' };
   const mode = String(a.mode || 'sheet');
-  const fps = (await FR.probe(file)).exactFps;
+  let fps = 30;
   const list = (fr) => fr.map((f) => `${FR.tc(f.time, fps)} · f${f.frame} → ${f.path}`).join('\n');
   try {
+    fps = (await FR.probe(file)).exactFps; // inside the try: no ffmpeg / a broken file is a clear error, not a crash
     if (mode === 'info') { const p = await FR.probe(file); return { ok: true, value: { ...p, frames: (await FR.frameTimes(file)).length } }; }
     if (mode === 'at') { const fr = await FR.frames(file, { frames: a.frames || [], times: (a.times || (a.frames ? [] : [0])).map((t) => (typeof t === 'number' ? t : FR.parseTime(t, fps))) }, o); return { ok: true, value: list(fr), images: a.see === false ? [] : fr.slice(0, 6).map((f) => b64(f.path)) }; }
     if (mode === 'every' || mode === 'spread') { const fr = mode === 'every' ? await FR.every(file, { every: a.every || 10, from: a.from, to: a.to, max: 48 }, o) : await FR.spread(file, { count: a.count || 12, from: a.from, to: a.to }, o); return { ok: true, value: list(fr), images: a.see === false ? [] : fr.length > 6 ? [b64((await FR.sheet(file, { cols: 4, count: Math.min(16, fr.length), from: a.from, to: a.to, width: 1536 }, { dir, format: 'jpg' })).path)] : fr.map((f) => b64(f.path)) }; }

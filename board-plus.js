@@ -100,7 +100,12 @@
   async function addBridgeImage(tool, args, title) {
     const r = await HubBridge.call(tool, args);
     const img = r?.image || r?.images?.[0]?.data;
-    if (!r?.ok || !img) { toast(r?.error || 'Nothing to grab', { type: 'error' }); return null; }
+    // the bridge answers in the agents' words ("Use video_list and video_open first", "check three_console"): say it
+    // the owner's way
+    const said = String(r?.error || 'Nothing to grab')
+      .replace(/No video is open\.? Use video_list and video_open first\.?/i, 'Open a video in Video Review first.')
+      .replace(/\s*\(check three_console for errors\)/i, ': open the Lab and let it draw first');
+    if (!r?.ok || !img) { toast(said, { type: 'error' }); return null; }
     const mime = r.mime || r.images?.[0]?.mime || 'image/png';
     const p = await window.hub.board.save(`${title.replace(/\W+/g, '-')}.${/jpe?g/.test(mime) ? 'jpg' : 'png'}`, img);
     const [it] = await B.addFiles([p]);
