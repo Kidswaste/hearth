@@ -358,6 +358,7 @@ ipcMain.on('stage:fullscreen', () => { if (stageWin && !stageWin.isDestroyed()) 
 fsapi.registerIpc(ipcMain, () => win);
 gamebridge.start(() => win);
 aemain.registerIpc(ipcMain, () => win, () => settings().aePath);
+require('./capturemain').register(ipcMain, () => win, settings); // screenshots / recordings of Hearth itself, frame reader
 
 for (const file of [CONFIG_PATH, THEME_PATH]) {
   fs.watchFile(file, { interval: 400 }, () => send('config:changed', loadAll()));
