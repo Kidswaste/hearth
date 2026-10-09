@@ -73,3 +73,6 @@ what collided between them and with everything older. One line per bug, each wit
 51. Fixed: "Put Video Review's current frame / the Lab's picture on the board" (`/board-from-review`, `/board-from-lab`, the board's + Add menu) answered in the agents' words ("Use video_list and video_open first", "check three_console for errors"). It says what to do in plain words now.
 52. Fixed: `/edit-template` with no name answered with an error ("No template “”"). It lists the templates.
 53. Fixed: `/video-flow-link` with nothing after it failed with "Cannot read properties of undefined"; it shows how to use it.
+54. Fixed: a freeze frame (Shift+F, `/freeze-frame`) at a color matte inserted a "freeze" with no picture file, and the editor's filmstrip crashed drawing it ("Cannot read properties of undefined (reading 'replace')"). There's nothing to freeze there: it says so.
+55. Fixed: `/captions-import` with no file passed an empty path to the file reader ("Not an absolute path"). It opens a file picker for an SRT / VTT.
+56. Fixed: the editor's preset commands with nothing after them (`/blend-mode`, `/grade`, `/edit-motion`, `/sound-effect`, `/speed-ramp`) answered "No blend “undefined”" / "No look “”". They ask "Which look?" and list the first ones.

@@ -38,7 +38,8 @@ const CutEditCmds = (() => {
     return [];
   }
   const isTarget = (w) => /^\d+$/.test(w) || /^[VTA]\d+\.\d+$/i.test(w);
-  const pickPreset = (list, q, what) => { const p = FX.find(list, q); if (!p) throw new Error(`No ${what} “${q}”. ${list.slice(0, 8).map((x) => x.id).join(', ')}… (/edit-presets ${what}s lists them all).`); return p; };
+  // nothing named: say which there are (it answered 'No blend “undefined”' / 'No look “”')
+  const pickPreset = (list, q, what) => { const name = String(q ?? '').trim(); const p = name ? FX.find(list, name) : null; if (!p) throw new Error(`${name ? `No ${what} “${name}”.` : `Which ${what}?`} ${list.slice(0, 8).map((x) => x.id).join(', ')}… (/edit-presets ${what}s lists them all).`); return p; };
   const findVideo = (q) => (typeof VideoCmds !== 'undefined' ? VideoCmds.findVideo(q) : null);
   // a path or a library name
   async function pathOf(q) {
@@ -239,7 +240,12 @@ const CutEditCmds = (() => {
   cmd({ name: 'inspector', desc: 'Open the inspector for the selection (everything a clip can do)', args: '[n|V2.1]', run: async (args) => { await editing(); const [id] = targets(words(args)); VideoCut.inspect(id); return null; } });
 
   cmd({ name: 'captions-import', aliases: ['import-srt'], desc: 'Captions from an SRT / VTT file: title items on a new "Captions" text track (a caption style; restyle them all from the track)', args: '<path> [style]',
-    run: async (args) => { await editing(); const w = words(args); const style = w.length > 1 && FX.TSTYLE[w.at(-1)] ? w.pop() : 'caption-tiktok'; const n = await VideoCut.importCaptions(w.join(' ').replace(/^["']|["']$/g, ''), { style }); return n ? `${n} captions on the Captions track.` : 'No captions in that file.'; } });
+    run: async (args) => {
+      await editing(); const w = words(args); const style = w.length > 1 && FX.TSTYLE[w.at(-1)] ? w.pop() : 'caption-tiktok';
+      // no file named: pick one (an empty path reached the file reader: "Not an absolute path")
+      let file = w.join(' ').replace(/^["']|["']$/g, '');
+      if (!file) { const picked = await window.hub.openDialog?.({ title: 'Captions (SRT / VTT)', properties: ['openFile'], filters: [{ name: 'Captions', extensions: ['srt', 'vtt'] }] }); file = Array.isArray(picked) ? picked[0] : picked; if (!file) return 'No captions file picked (/captions-import <path.srt>).'; }
+      const n = await VideoCut.importCaptions(file, { style }); return n ? `${n} captions on the Captions track.` : 'No captions in that file.'; } });
   cmd({ name: 'captions-export', aliases: ['export-srt'], desc: 'Save every title of the edit as an SRT file (for the platforms\' own captions)', run: async () => { await editing({ show: false }); const f = await VideoCut.exportCaptions(); return f ? `Saved ${base(f)}.` : 'No titles.'; } });
   cmd({ name: 'match-look', aliases: ['color-match'], desc: 'Grade the selection toward a reference picture\'s look (exposure, contrast, saturation, warmth, tint): the vibe, not the footage', args: '<picture path>',
     run: async (args) => { await editing(); const p = String(args || '').trim().replace(/^["']|["']$/g, ''); if (!p) return 'Give a picture (a reference from your board, a still…).'; const c = await VideoCut.matchLook(p); return c ? `Matched: exposure ${c.exposure}, contrast ${c.contrast}, saturation ${c.saturation}, temp ${c.temp}, tint ${c.tint}.` : 'Select a video or a still first.'; } });

@@ -206,7 +206,8 @@ const CutData = (() => {
   // A held frame of the picture under T, `dur` long, inserted at T.
   function freeze(e, T, dur = 1) {
     const x = at(e, T);
-    if (!x || x.clip.kind === 'gap' || x.clip.kind === 'title') return e;
+    // a color matte or anything without a picture file has nothing to hold (it froze into a clip with no source and crashed the draw)
+    if (!x || x.clip.kind === 'gap' || x.clip.kind === 'title' || x.clip.kind === 'color' || !x.clip.src) return e;
     const src = x.clip.src; const held = x.clip.kind === 'freeze' ? x.clip.at : x.srcTime;
     return insertAt(e, T, { kind: 'freeze', src, at: r4(held), dur: r4(dur), mute: true });
   }
