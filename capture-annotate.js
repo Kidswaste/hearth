@@ -197,7 +197,7 @@ const CaptureAnnotate = (() => {
           el('button', { type: 'button', text: '→ Chat', title: 'Save and attach to the chat', on: { click: async () => { const p = await save(); await Capture.attachToChat(p); } } }),
           el('button', { type: 'button', class: 'primary', text: 'Save', title: 'Save as a new picture (Ctrl+S); the original stays', on: { click: () => save() } }));
         const dlg = el('dialog', { class: 'ui-modal cap-view cap-ann' },
-          el('div', { class: 'cap-view-head' }, el('h2', { text: '✎ Annotate' }), el('span', { class: 'hint', text: `${W}×${Hh} · Shift keeps it straight / square · V selects (drag to move, Delete removes) · double-click edits text` }), el('span', { class: 'spacer' }),
+          el('div', { class: 'cap-view-head' }, el('h2', { text: 'Annotate' }), el('span', { class: 'hint', text: `${W}×${Hh} · Shift keeps it straight / square · V selects (drag to move, Delete removes) · double-click edits text` }), el('span', { class: 'spacer' }),
             el('button', { type: 'button', class: 'ghost', text: '✕', title: 'Close without saving (Esc)', on: { click: () => dlg.close() } })),
           el('div', { class: 'cap-view-stage pic cap-ann-stage' }, canvas), foot);
         dlg.addEventListener('keydown', (e) => {

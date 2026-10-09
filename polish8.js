@@ -143,6 +143,25 @@ const Polish8 = (() => {
     Capture.menu.__p8 = true;
   }
 
+  // ---------- right-click on the few buttons these surfaces keep on screen ----------
+  // the board's chips and the editor bar's buttons open their own menu on a right-click too (with Customise this…);
+  // a right-click on the editor bar's empty part opens its ⋯ menu
+  function rightClicks() {
+    addEventListener('contextmenu', (e) => {
+      if (e.defaultPrevented) return;
+      const t = e.target;
+      const chip = t.closest?.('.bd-hud button.bd-chip');
+      const bar = !chip && t.closest?.('.vr-cut-headrow');
+      if (!chip && !bar) return;
+      const b = chip || t.closest('.vr-cut-headrow > button') || [...bar.querySelectorAll(':scope > button')].find((x) => x.textContent.trim() === '⋯');
+      if (!b || /^(✕|↶)$/.test(b.textContent.trim())) return; // close / undo have no menu: the browser's own stays away
+      e.preventDefault(); e.stopPropagation();
+      pendingArea = areaOf(b);
+      b.click();
+      pendingArea = null;
+    }, true);
+  }
+
   // ---------- 3. keys: what the round 7 surfaces left out of the keys sheet ----------
   function registerKeys() {
     if (typeof Keys === 'undefined') return;
@@ -155,6 +174,8 @@ const Polish8 = (() => {
       { area: 'Editor', keys: '?', what: 'The editor\'s keys in one list (⋯ › More › Keys)', when: ed },
       { area: 'Editor', keys: 'Double-click', what: 'A clip: the inspector · a title: edit it · the ruler: a marker', when: ed },
       { area: 'Editor', keys: 'Esc (inspector)', what: 'Close the inspector', when: ed },
+      { area: 'Board', keys: 'Right-click a chip', what: 'The chip\'s own menu: boards, add, zoom (ends with Customise this…)' },
+      { area: 'Editor', keys: 'Right-click the editor bar', what: 'Its ⋯ menu; on ＋, the format or Export: that button\'s menu', when: ed },
       { area: 'Board', keys: 'Esc (drawer)', what: 'Close the board drawer (also its ✕, Ctrl+Shift+M)' },
       { area: 'Capture', keys: '0 (picture)', what: 'Fit the picture to the viewer (double-click does too)' },
       { area: 'Capture', keys: 'Right-click (rail ⋯ › Capture)', what: 'The capture menu; Alt while it opens shows every item' },
@@ -194,14 +215,15 @@ const Polish8 = (() => {
   function commands() {
     if (typeof Commands === 'undefined') return;
     const reg = (c) => { if (!Commands.get(c.name)) Commands.register({ area: 'Look', ...c }); };
-    reg({ name: 'tidy-new', desc: 'The round 8 tidy: what the board, the editor and captures tuck behind Alt / show on hover (pin any back with right-click › Customise this…)',
-      run: () => `${RULES.map((r) => `- **${r.area}** · ${r.label} · ${Declutter.pinned(r.id) ? 'on screen (pinned)' : r.mode === 'hover' ? 'shows where you point' : 'hold Alt'}`).join('\n')}\n\nPin one back: \`/pin-control <name>\`. Everything at once: \`/calm off\`.` });
+    reg({ name: 'tidy', args: '[board|editor|drawer]', desc: 'What the board, its drawer and the video editor tuck behind Alt or show where you point (pin any back: right-click › Customise this…)',
+      complete: () => ['board', 'editor', 'drawer'].map((value) => ({ value })),
+      run: (a) => `${RULES.filter((r) => !String(a || '').trim() || r.area.toLowerCase().includes(String(a).trim().toLowerCase())).map((r) => `- **${r.area}** · ${r.label} · ${Declutter.pinned(r.id) ? 'on screen (pinned)' : r.mode === 'hover' ? 'shows where you point' : 'hold Alt'}`).join('\n')}\n\nPin one back: \`/pin-control <name>\`. Everything at once: \`/calm off\`.` });
   }
 
   // ---------- start ----------
   function start() {
     try { Declutter.addRules(RULES); } catch (err) { console.warn('polish8 rules', err); }
-    wrapMenu(); wrapCapture(); registerKeys(); styleSheet(); watchSheet(); commands();
+    wrapMenu(); wrapCapture(); registerKeys(); styleSheet(); watchSheet(); commands(); rightClicks();
     // the hidden rail button capture-cmds.js adds (pinned back on screen with Customise this…, it shows): the SVG icon
     const cb = document.getElementById('capture-btn');
     if (cb && typeof Icons !== 'undefined' && !cb.querySelector('svg')) cb.replaceChildren(Icons.node('capture'));
