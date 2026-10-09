@@ -690,3 +690,10 @@ svg.hi { width: 1em; height: 1em; display: block; flex: none; overflow: visible;
 /* the timeline's scrolling strip (three-media.js scroll): slides under the fixed playhead while a song plays */
 .media-bar .mb-strip-clip { position: absolute; left: 0; top: 0; bottom: 0; overflow: hidden; pointer-events: none; border-radius: 4px; }
 .media-bar .mb-strip { position: absolute; left: 0; top: 0; display: block; will-change: transform; }
+
+/* ---------- textures: a few tabs and headers, not the whole screen ----------
+   The grain and brushed-metal textures (look.css --tx-*-src) only show on the rail, tab bars and the tool / chat
+   headers; everything else is flat. /texture off still removes them everywhere. */
+:root:not([data-tex="off"]) :is(#rail, .tabbar, .tool-head, .native-head) {
+  --tx-noise: var(--tx-noise-src); --tx-brushed: var(--tx-brushed-src); --tx-brushed-v: var(--tx-brushed-v-src);
+}
