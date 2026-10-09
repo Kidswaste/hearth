@@ -134,7 +134,7 @@ const CaptureView = (() => {
           { label: 'Captures folder…', action: () => Capture.chooseFolder().then(refresh) },
         ]) } })),
       grid,
-      el('div', { class: 'dialog-actions' }, el('span', { class: 'hint', text: 'Double-click opens · right-click for more · drag into a chat or another app · Alt+click attaches to the chat' }), el('span', { class: 'spacer' }), el('button', { type: 'button', class: 'primary', text: 'Close', on: { click: () => libDlg.close() } })));
+      el('div', { class: 'dialog-actions' }, el('span', { class: 'hint', text: 'Double-click opens · right-click for more · drag it into a chat' }), el('span', { class: 'spacer' }), el('button', { type: 'button', class: 'primary', text: 'Close', on: { click: () => libDlg.close() } })));
     libDlg.addEventListener('close', () => { document.removeEventListener('hearth:capture', onCap); for (const v of libDlg.querySelectorAll('video')) { v.pause(); v.removeAttribute('src'); v.load(); } setTimeout(() => libDlg?.remove(), 0); });
     document.body.append(libDlg);
     libDlg.showModal();

@@ -78,7 +78,9 @@ const Polish8 = (() => {
   }
   // the verbs every surface shares get the same icon (Look, Arrange, Send … to a chat, Export, Present); the rest
   // stay text, so a menu isn't a wall of pictures
-  const VERB_ICON = [[/^Look\b/, 'sparkle'], [/^Arrange\b/, 'grid'], [/^(Send\b|Ask a chat)/, 'tochat'], [/^Export\b/, 'export'], [/^Present\b/, 'present']];
+  const VERB_ICON = [[/^Look\b/, 'sparkle'], [/^Arrange\b/, 'grid'], [/^(Send\b|Ask a chat)/, 'tochat'], [/^Export\b/, 'export'], [/^Present\b/, 'present'],
+    // the round 7 things themselves: video projects (sequences, templates), tours, frames read from a video
+    [/^(Sequence|Template)\b/, 'film'], [/^Tours?\b/, 'tour'], [/^Read frames/, 'frames'], [/^(Snapshots|Recent)\b/, 'recent'], [/^Vibe\b/, 'vibe']];
   const verbIcon = (it) => { if (!it || typeof it !== 'object' || it.icon) return it; const v = VERB_ICON.find(([re]) => re.test(labelOf(it))); return v ? { ...it, icon: v[1] } : it; };
   // the rail's ⋯: its entries carried emoji; they get the same SVGs as the buttons they stand for
   const RAIL_GLYPH = { '🗒': 'notes', '🧠': 'memory', '▦': 'grid', '⌨': 'broadcast', '⇪': 'export', '◉': 'capture' };
@@ -112,7 +114,7 @@ const Polish8 = (() => {
     }
     if (!area || typeof Declutter === 'undefined') return items;
     let list = (typeof items === 'function' ? items() : items || []).filter(Boolean);
-    if (last.kind === 'context' && area !== 'Video Review') list = ordered(list);
+    if (last.kind === 'context' && ['Board', 'Editor', 'Capture'].includes(area)) list = ordered(list); // (the drawer's and Video Review's menus are lists of choices: kept as they are)
     list = tailFirst(list).map(verbIcon);
     if (!hasCustomise(list)) list = [...list, ...Declutter.customiseItems(area, target, { exact: true })];
     list[MARK] = true;
@@ -203,12 +205,28 @@ const Polish8 = (() => {
     new MutationObserver((muts) => {
       for (const m of muts) for (const n of m.addedNodes) {
         if (n.nodeType !== 1) continue;
+        if (n.matches?.('dialog.cap-view')) setTimeout(() => viewerKeys(n), 0);
         if (n.classList?.contains('keys-sheet')) {
           keysSheetIcons(n);
           new MutationObserver(() => keysSheetIcons(n)).observe(n.querySelector('.ks-body') || n, { childList: true });
         }
       }
     }).observe(document.body, { childList: true });
+  }
+
+  // ---------- hold Ctrl: key badges on the new surfaces' buttons too (keys-ui.js reads data-key) ----------
+  // the capture viewer's buttons have keys (C copies, A annotates, Enter sends, Space plays, , . step, R reads)
+  const VIEWER_KEYS = { 'Copy': 'C', '✎ Annotate': 'A', '→ Chat': 'Enter', '▶': 'Space', '◀|': ',', '|▶': '.', '🎞 Read': 'R', '✕': 'Esc' };
+  function viewerKeys(dlg) { for (const b of dlg.querySelectorAll('button')) { const k = VIEWER_KEYS[b.textContent.trim()]; if (k && !b.dataset.key) b.dataset.key = k; } }
+  function chipKeys() {
+    const z = document.querySelector('.bd-hud .bd-zoom'); if (z && !z.dataset.key) z.dataset.key = 'Shift+1'; // zoom to fit
+    const x = [...document.querySelectorAll('.vr-cut-headrow > button')].find((b) => b.textContent.trim() === '✕'); if (x && !x.dataset.key) x.dataset.key = 'E';
+  }
+
+  // ---------- toasts clear the editor's bar and track while you edit (they sat on ⇪ Export, ⋯ and ✕) ----------
+  function editingClass() {
+    const on = typeof VideoCut !== 'undefined' && VideoCut.active && (H.surfaceIdFor?.(H.activeId) || H.activeId) === 'tool:ae';
+    document.documentElement.classList.toggle('p8-editing', Boolean(on));
   }
 
   // ---------- chat commands ----------
@@ -224,6 +242,8 @@ const Polish8 = (() => {
   function start() {
     try { Declutter.addRules(RULES); } catch (err) { console.warn('polish8 rules', err); }
     wrapMenu(); wrapCapture(); registerKeys(); styleSheet(); watchSheet(); commands(); rightClicks();
+    addEventListener('hearth:view', () => { setTimeout(chipKeys, 300); editingClass(); }); // the board / editor chips exist once their tool has mounted
+    if (typeof VideoCut !== 'undefined') VideoCut.on('mode', () => { editingClass(); setTimeout(chipKeys, 100); });
     // the hidden rail button capture-cmds.js adds (pinned back on screen with Customise this…, it shows): the SVG icon
     const cb = document.getElementById('capture-btn');
     if (cb && typeof Icons !== 'undefined' && !cb.querySelector('svg')) cb.replaceChildren(Icons.node('capture'));

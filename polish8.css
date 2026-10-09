@@ -46,8 +46,7 @@ html[data-skin~="forge"] .bd-chip { border-radius: 0; clip-path: var(--cut-sm, n
 .bd-empty span { font-size: 12.5px; }
 :root:not([data-motion=off]) .bd-empty { animation: hx-rise .4s var(--ease-out, ease-out) both; }
 /* the minimap, the quick bar, search, the selection: the look's metal and line */
-.bd-mini { border-radius: var(--r-md, 10px); border-color: var(--line-hi, var(--line)); box-shadow: 0 8px 22px #0007; }
-html[data-skin~="forge"] .bd-mini { clip-path: var(--cut-sm, none); }
+.bd-mini { border-radius: var(--r-md, 10px); border-color: var(--line-hi, var(--line)); } /* (no shadow or clip: it redraws while you move) */
 .bd-quick { border-radius: var(--r-md, 10px); border-color: var(--line-hi, var(--line)); background: color-mix(in srgb, var(--fh-pop, var(--sidebar)) 96%, transparent); }
 html[data-skin~="forge"] .bd-quick { clip-path: var(--cut-sm, none); }
 .bd-quick button { font-size: 12px; min-height: 24px; }
@@ -88,6 +87,16 @@ html[data-skin~="forge"] .bd-vibe-card .bd-pal { clip-path: var(--cut-sm, none);
 .bd-vibe-card .bd-meter i { background: linear-gradient(90deg, var(--fh-ember, var(--bd-gold)), var(--fh-gold, var(--bd-gold))); }
 .bd-vibe-card .bd-meters > span:nth-child(3n + 3) { font-family: var(--mono, ui-monospace, monospace); font-size: 11.5px; color: var(--muted); }
 .bd-vibe-card pre { border-radius: var(--r-md, 8px); border: 1px solid var(--line); font-family: var(--mono, ui-monospace, monospace); }
+
+/* pointing at a reference: a quiet gold edge says it can be picked up (not while the board moves) */
+.bd-root:not(.bd-moving):not(.bd-presenting) .bd-item:not(.bd-t-frame):not(.bd-t-link):not(.bd-locked):hover { outline: 1px solid color-mix(in srgb, var(--bd-gold) 45%, transparent); outline-offset: 2px; }
+.bd-root:not(.bd-moving) .bd-t-frame:hover .bd-ftitle { color: var(--bd-gold); }
+.bd-selinfo { background: color-mix(in srgb, var(--fh-pop, var(--bg)) 92%, transparent); border: 1px solid var(--line); }
+/* a reference dragged over a chat box: the box says what will happen */
+form.bdd-drop-hint { position: relative; }
+form.bdd-drop-hint::after { content: 'Drop: attach its vibe (not the file)'; position: absolute; left: 50%; top: 8px; transform: translateX(-50%); z-index: 3; pointer-events: none; white-space: nowrap;
+  padding: 3px 12px; font: 600 11.5px var(--font-head, var(--font)); letter-spacing: .05em; color: var(--m-gold-ink, #1a1206); background: var(--m-gold, var(--fh-gold, #e6b450)); border-radius: var(--r-pill, 999px); }
+html[data-skin~="forge"] form.bdd-drop-hint::after { border-radius: 0; clip-path: var(--cut-sm, none); }
 
 /* ---------- the board drawer (over any chat or tool) ---------- */
 /* closed, it is out of the page's way: not focusable, not read out (it was only moved off screen) */
@@ -147,8 +156,18 @@ html[data-skin~="forge"] .vr-cut-sug { border-radius: 0; }
 .vr-cut-btn.on { background: var(--m-gold, linear-gradient(180deg, #fff3c4, var(--vr-gold) 55%, #c9a23c)); color: var(--m-gold-ink, var(--vr-ink)); box-shadow: var(--m-bevel, none); }
 /* the program frame: a cut-corner hairline frame in Forgeheart (the picture itself is untouched) */
 html[data-skin~="forge"] .vr-stage.cutting { box-shadow: 0 0 0 1px var(--line-hi), 0 0 0 4px color-mix(in srgb, var(--fh-gold, #e6b450) calc(10% * var(--glow, 1)), transparent), 0 20px 60px #000a; }
+/* the inspector keeps the clip's name on top while you scroll its sections */
+.ed-head { position: sticky; top: -8px; z-index: 1; margin: -8px -8px 0; padding: 8px 8px 6px; background: var(--bg); border-bottom: 1px solid var(--line); }
+:root[data-look~=v2] .ed-head { background: linear-gradient(180deg, var(--fh-iron-1), var(--fh-iron-2)); }
+.ed-row select, .ed-row input:not([type=range]):not([type=color]):not([type=checkbox]) { min-height: 24px; font-size: 11.5px; }
+.ed-row input[type="color"] { border-color: var(--line-hi, var(--line)); border-radius: var(--r-sm, 4px); }
 /* light looks: the editor's gold labels on pale metal read in the darker gold text tone */
 :root[data-scheme=light] :is(.vr-cut-title, .vr-cut-export, .vr-cut-add, .ed-name b) { color: var(--fh-gold-text, #8a5a00); }
+/* Video Review's empty library: the film icon over its one line */
+.vr-list > .vr-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding-top: 24px; }
+.vr-list > .vr-empty::before { content: ''; width: 34px; height: 34px; background: var(--fh-gold, var(--accent)); opacity: .45; -webkit-mask: var(--p8-i-film) center / contain no-repeat; mask: var(--p8-i-film) center / contain no-repeat; }
+/* toasts rise above the editor's bar and track while you edit (they covered ⇪ Export, ⋯ and ✕) */
+html.p8-editing #toasts { bottom: 200px; }
 /* notes column: its one-line empty state */
 .vr-notes .vr-empty { font-size: 12px; line-height: 1.45; }
 
@@ -176,6 +195,18 @@ html[data-skin~="forge"] :is(.cap-card, .cap-view-stage, .cap-read-cell img) { b
 /* empty library: one line under the capture icon */
 .cap-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; color: var(--muted); }
 .cap-empty::before { content: ''; width: 40px; height: 40px; background: var(--fh-gold, var(--accent)); opacity: .5; -webkit-mask: var(--p8-i-capture) center / contain no-repeat; mask: var(--p8-i-capture) center / contain no-repeat; }
+/* the frame reader's results, pickers (tours, social frames, backgrounds), annotation tools */
+.cap-read-cell { transition: transform var(--t-fast, .12s); }
+.cap-read-cell:hover { transform: translateY(-1px); }
+.cap-read-cell:hover img { box-shadow: 0 0 0 1px var(--fh-gold, #ffc233); }
+.cap-read-text { font-family: var(--mono, ui-monospace, monospace); border: 1px solid var(--line); border-radius: var(--r-md, 8px); }
+html[data-skin~="forge"] :is(.cap-read-text, .cap-read-cell img, .cap-picker-row) { border-radius: 0; }
+.cap-picker-row b { font-family: var(--mono, ui-monospace, monospace); }
+.cap-picker-row:hover b { color: var(--fh-gold-text, var(--fh-gold, #ffc233)); }
+.cap-ann-tools { border: 1px solid var(--line); border-radius: var(--r-md, 10px); }
+html[data-skin~="forge"] .cap-ann-tools { border-radius: 0; clip-path: var(--cut-sm, none); }
+.cap-ann-tool:hover { background: var(--hover); }
+.cap-ann-swatch:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--fh-gold, #ffc233); }
 /* the player / viewer: the scrubber and timecode in the look's colors */
 .cap-scrub { border-radius: var(--r-pill, 7px); background: color-mix(in srgb, var(--text) 10%, transparent); }
 html[data-skin~="forge"] .cap-scrub { border-radius: 0; }
@@ -196,3 +227,13 @@ dialog.cap-view, dialog.cap-view::backdrop { backdrop-filter: none !important; -
 /* ---------- Forgeheart Classic keeps its colors; the shapes above apply to it too ---------- */
 html[data-skin~="forge"]:not([data-look~=v2]) .bd-add { color: var(--r-rare, var(--accent)); }
 html[data-skin~="forge"]:not([data-look~=v2]) .bdd { background: var(--sidebar); }
+
+/* ---------- reduced motion (the system setting, like /motion off): the entrances above don't move ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .bd-empty, .bd-ctrl .bd-quick:not(:empty), .bd-search, .bd-compare, .vr-cut:not([hidden]), .ed-insp:not([hidden]), .cap-pick-tip { animation: none !important; }
+  .bd-chip, .bdd-tile, .cap-card, .cap-read-cell { transition: none; }
+}
+/* keyboard rings on the remaining new controls */
+.bd-quick button:focus-visible, .cap-seg button:focus-visible, .bd-search button:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--fh-gold, var(--accent)); color: var(--fh-gold-text, var(--text)); }
+/* the system's "more contrast" setting: chips, the drawer and the format chip keep a full-strength edge */
+@media (prefers-contrast: more) { :is(.bd-chip, .bdd, .vr-cut-fmt, .cap-seg) { border-color: var(--text) !important; } }
