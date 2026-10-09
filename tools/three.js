@@ -270,7 +270,8 @@ const ThreeLab = (() => {
         ['Capture', 'Screenshot, copy', [
           ['📷 Screenshot', 'Save the picture (all layers) as it shows here', () => { copyNextShot = false; box.send({ type: 'screenshot' }); }, false, 'Screenshot'],
           ['📋 Copy a screenshot', 'To the clipboard', () => { copyNextShot = true; box.send({ type: 'screenshot' }); }],
-          ['🎞 Contact sheet', 'Frames across the song', () => showSheet()]]],
+          ['🎞 Contact sheet', 'Frames across the song', () => showSheet()],
+          ...(typeof Capture !== 'undefined' ? [['The capture menu…', 'Social frames, recording, tours · Ctrl/⌘+Alt+S', () => { const r = labMoreBtn.getBoundingClientRect(); Capture.menu(r.right - 300, r.bottom + 4, Capture.mainItems()); }]] : [])]], // (round 8) the Lab reaches the whole capture menu
         ['Console', CONSOLE_MODES.find(([m]) => m === consoleMode)[1], CONSOLE_MODES.map(([m, l]) => [l, '', () => setConsoleMode(m), consoleMode === m])],
         ['Code', `r${v.split('.')[1]}${autoRun ? ' · live' : ''}`, [
           ['Insert snippet…', 'At the cursor in the code', () => snippetMenu(), false, 'Insert snippet'],

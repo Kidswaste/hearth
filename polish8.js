@@ -30,7 +30,7 @@ const Polish8 = (() => {
   // ---------- 2. one menu shape ----------
   // Which part of the app a menu belongs to: the last pointer event before it opened.
   const AREAS = [
-    ['.bdd', 'Board drawer'], ['.bd-root', 'Board'], ['.vr-cut, .vi-panel', 'Editor'],
+    ['.bdd, .bd-rail-peek', 'Board drawer'], ['.bd-root', 'Board'], ['.vr-cut, .vi-panel', 'Editor'],
     ['dialog.cap-lib, dialog.cap-view, dialog.cap-read, .cap-ann', 'Capture'],
     ['.surface[data-id="tool:ae"]', 'Video Review'],
   ];
@@ -91,6 +91,20 @@ const Polish8 = (() => {
       return m && RAIL_GLYPH[m[2]] ? { ...it, label: `${m[1] || ''}${it.label.slice(m[0].length)}`, icon: RAIL_GLYPH[m[2]] } : it;
     });
   }
+  // the editor wrote its keys into the labels ("Split here (S)"); every other menu shows them on the right in the mono
+  // key column: same here, in its submenus too ("Title card here (Shift+T)…" → "Title card here…" · Shift+T)
+  const KEY_IN_LABEL = /^(.*\S) \(((?:(?:Shift|Alt|Ctrl|⌘)\+)*(?:[A-Z0-9?\\+−=-]|Del|Esc|Enter|Space|Home|End|[←→↑↓]))\)(…?)$/u;
+  function keyify(it) {
+    if (!it || typeof it !== 'object') return it;
+    let out = it;
+    const m = !it.key && KEY_IN_LABEL.exec(String(it.label || ''));
+    if (m) out = { ...it, label: `${m[1]}${m[3]}`, key: m[2] };
+    if (it.items) out = { ...out, items: () => (typeof it.items === 'function' ? it.items() : it.items || []).filter(Boolean).map(keyify) };
+    return out;
+  }
+  // and the two it left bare
+  const BARE_KEYS = { Undo: `${MOD}+Z`, Redo: `${MOD}+Shift+Z` };
+  const bareKey = (it) => (it && typeof it === 'object' && !it.key && BARE_KEYS[it.label] ? { ...it, key: BARE_KEYS[it.label] } : it);
   const MARK = Symbol('polish8');
   const hasCustomise = (list) => list.some((it) => it && typeof it === 'object' && it.label === 'Customise this…');
   function decorate(items) {
@@ -116,6 +130,12 @@ const Polish8 = (() => {
     let list = (typeof items === 'function' ? items() : items || []).filter(Boolean);
     if (last.kind === 'context' && ['Board', 'Editor', 'Capture'].includes(area)) list = ordered(list); // (the drawer's and Video Review's menus are lists of choices: kept as they are)
     list = tailFirst(list).map(verbIcon);
+    if (area === 'Editor') {
+      list = list.map(keyify).map(bareKey);
+      // the editor's ⋯: actions | tools, snapshots, sequence | undo, redo
+      const at = (l) => list.findIndex((it) => it && typeof it === 'object' && it.label === l);
+      for (const l of ['Undo', 'Tools']) { const i = at(l); if (i > 0 && list[i - 1] !== '-') list.splice(i, 0, '-'); }
+    }
     if (!hasCustomise(list)) list = [...list, ...Declutter.customiseItems(area, target, { exact: true })];
     list[MARK] = true;
     return list;

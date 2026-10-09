@@ -11,7 +11,7 @@
 :is(#menu, #menu-fly) button:hover .menu-ico, #menu button.kb-on .menu-ico { opacity: 1; filter: drop-shadow(0 0 calc(5px * var(--glow, 1)) var(--g-gold, transparent)); }
 /* a menu over playing media (the board's clips, the editor's program, a capture playing) keeps its glass look but
    doesn't re-blur the moving picture behind it on every frame */
-html.p8-over-media #menu, html.p8-over-media #menu-fly { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background: color-mix(in srgb, var(--fh-pop, var(--sidebar)) 96%, transparent); }
+html.p8-over-media #menu, html.p8-over-media #menu-fly { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background: var(--sidebar) !important; } /* solid: no blur means nothing may show through */
 
 /* ---------- the keys sheet: an icon per area, the new areas first where they apply ---------- */
 .keys-sheet .ks-group > h4[data-p8]::before {
@@ -59,6 +59,10 @@ html[data-skin~="forge"] .bd-search { border-radius: 0; clip-path: var(--cut-sm,
 .bd-present-cap { font-family: var(--font-head, inherit); letter-spacing: .05em; }
 :root:not([data-motion=off]) .bd-compare { animation: hx-fade .2s ease both; }
 .bd-cmp-head button { border-radius: var(--r-sm, 6px); }
+.bd-cmp-head b { font-family: var(--font-head, var(--font)); letter-spacing: .08em; text-transform: uppercase; font-size: 13px; color: var(--fh-gold-hi, #fff); }
+/* references can be picked up: the hand says so (not on locked ones, not while editing text) */
+.bd-root:not(.bd-hand) .bd-item:not(.bd-locked):not(.bd-t-link):hover { cursor: grab; }
+.bd-root .bd-item [contenteditable="true"] { cursor: text; }
 html[data-skin~="forge"] .bd-cmp-head button { clip-path: var(--cut-sm, none); }
 /* drop target: a calm dashed edge instead of a hard inset ring */
 .bd-dropping .bd-vp { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--bd-gold) 85%, transparent), inset 0 0 60px color-mix(in srgb, var(--bd-gold) 18%, transparent); }
