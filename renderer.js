@@ -524,12 +524,19 @@ function syncSurfaces() {
       Native.refresh(agent.id);
     }
     s.el.style.setProperty('--agent', agent.color || 'var(--accent)');
-    container.append(s.el); // re-append keeps config order
   }
   for (const tool of Tools.enabled()) {
     const id = `tool:${tool.id}`;
     if (!H.surfaces.has(id)) H.surfaces.set(id, Tools.createSurface(tool));
-    container.append(H.surfaces.get(id).el);
+  }
+  // Config order, moving only what is out of place: moving a surface reloads every frame inside it, and re-appending
+  // all of them on each config save blanked the Lab preview (its sandbox restarted empty, e.g. after /director-engine).
+  let at = container.firstChild;
+  for (const sid of [...H.railAgents().map((a) => a.id), ...Tools.enabled().map((t) => `tool:${t.id}`)]) {
+    const node = H.surfaces.get(sid)?.el;
+    if (!node) continue;
+    if (node === at) { at = at.nextSibling; continue; }
+    container.insertBefore(node, at);
   }
   Tools.syncDocks();
   if (!wanted.has(H.surfaceIdFor(H.activeId))) H.activeId = H.railAgents()[0]?.id ?? null;

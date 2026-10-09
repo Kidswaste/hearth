@@ -64,6 +64,9 @@ const ThreeLab = (() => {
       if (data.type === 'ready') {
         // A page being replaced by a newer load can still say "ready"; only the current load counts.
         if (data.n && data.n !== nonce) return;
+        // the same load saying "ready" twice: the browser restarted the page by itself (its frame was moved in the
+        // page), so it is up but empty; the owner runs its content again (data.again)
+        if (ready && data.n && ready.n === data.n) data.again = true;
         ready = data; retries = 0;
         // a sketch page uncovers once its layers have drawn (stack-drawn); the others right away
         if (mode !== 'sketch') setTimeout(uncover, 160);
@@ -2150,6 +2153,7 @@ const ThreeLab = (() => {
       if (/^edit-/.test(msg.type)) { onEditMessage(msg); return; }
       if (msg.type === 'live-tempo') { if (liveKind) { liveBpm = msg; paintLive(); if (typeof ThreeMusic !== 'undefined') ThreeMusic.liveTempo(msg); } return; }
       if (msg.type === 'live-state') { if (msg.error) toast(`Live sound: ${msg.error}`, { type: 'error', timeout: 5000 }); if (!msg.on && msg.error) { liveKind = null; paintLive(); } return; }
+      if (msg.type === 'ready' && msg.again && ranOnce) { console.warn('Lab preview restarted by itself: running the sketch again'); run({ again: true }); }
       if (msg.type === 'ready') { if (frozenNow) box.send({ type: 'freeze', on: true }); if (guides) box.send({ type: 'guides', kind: guides }); if (previewHost.classList.contains('presenting')) box.send({ type: 'present', on: true }); sendTriggers(); if (trigPanel) box.send({ type: 'trig-watch', on: true }); }
       if (msg.type === 'ready' && liveKind) {
         // a reloaded preview: the hub page keeps capturing, the Stage captures again by itself
@@ -2494,13 +2498,14 @@ const ThreeLab = (() => {
     //   reload  a new page, only for what needs one: another three.js version or pixel ratio (exact frame sizes),
     //           the Stage window, ⟲ Restart from scratch, a page that isn't up. It keeps a picture of the scene on screen
     //           and cross-fades once the new page has drawn (sandboxFrame `pretty`).
-    function run({ hot = false, layer = null, sync = false, reload = false } = {}) {
+    // again: the page restarted by itself and is up but empty: everything runs as on a new page, without loading another
+    function run({ hot = false, layer = null, sync = false, reload = false, again = false } = {}) {
       if (!current) return false;
-      const up = box.ready && ranOnce && !box.stale && !restartNext && !reload;
+      const up = !again && box.ready && ranOnce && !box.stale && !restartNext && !reload;
       // the Sequence view owns the preview: the sketch's changes reach the clips that use it; a page that has to be
       // replaced (a new frame size, a restart) is, and the sequence goes back on it ('ready')
       if (typeof ThreeSeq !== 'undefined' && ThreeSeq.keep(current.id)) {
-        if (!up) { if (!box.loading || box.stale || restartNext || reload) box.reload(restartNext); restartNext = false; ranOnce = true; player.attach({ playing: false }); box.send({ type: 'fps-cap', value: store.get('three.fpsCap', 0) }); }
+        if (!up) { if (!again && (!box.loading || box.stale || restartNext || reload)) box.reload(restartNext); restartNext = false; ranOnce = true; player.attach({ playing: false }); box.send({ type: 'fps-cap', value: store.get('three.fpsCap', 0) }); }
         ThreeSeq.sketchChanged(current.id);
         return true;
       }
@@ -2541,7 +2546,7 @@ const ThreeLab = (() => {
       unseen = { errors: 0, other: 0 };
       syncConsole();
       if (!partial) { lastStats = null; lastStatsAt = 0; hideStall(); }
-      if (fresh) { stats.hidden = true; if (!box.loading || box.stale || restartNext || reload) box.reload(restartNext); restartNext = false; }
+      if (fresh) { stats.hidden = true; if (!again && (!box.loading || box.stale || restartNext || reload)) box.reload(restartNext); restartNext = false; }
       box.send({ type: 'tweak-init', values, keys, mods: mergedMods() });
       if (fresh) { player.attach(); sendRefs(); } else if (!partial && ranSketch !== current.id) { sendRefs(); sendTriggers(); }
       if (!fresh && !partial && !player.path) box.send({ type: 'media-unload' }); // a sketch without a song: the last one stops
@@ -3345,6 +3350,7 @@ ${clips.length ? '// In your render loop: mixer?.update(clock.getDelta());\n' : 
         errorsBox.replaceChildren(...msg.errors.map((e) => el('div', { class: 'console-row error' }, e.line ? el('span', { class: 'console-line', text: `line ${e.line}` }) : null, el('span', { text: e.message }))));
         editor.setErrorLines(msg.errors.map((e) => e.line).filter((l) => l > 0));
       }
+      if (msg.type === 'ready' && msg.again) apply(); // the page restarted by itself: compile again
       if (msg.type === 'shader-ok') { status.textContent = 'Compiled'; status.className = 'hint ok'; errorsBox.replaceChildren(); editor.setErrorLines([]); }
       if (msg.type === 'shot') saveDataUrl(msg.dataUrl, 'shader.png');
     });
