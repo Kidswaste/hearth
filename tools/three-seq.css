@@ -1,0 +1,38 @@
+/* The Lab's Sequence view (tools/three-seq.js): the timeline strip's "▤ Sequence" tab turns the Lab timeline into
+   tracks. Calm on purpose: one row of five small controls, one canvas for every track, the playhead on the
+   compositor (one transform animation while playing), no blur over anything that moves. */
+.media-bar .sq-tab { padding: 0 8px; font-size: 11px; line-height: 16px; color: var(--muted); white-space: nowrap; }
+.media-bar .sq-tab.on { color: var(--ui-gold, #ffd75e); }
+.media-bar.seq-on > :not(.mb-handle):not(.sq-view) { display: none !important; }
+.media-bar.seq-on .mb-size, .media-bar.seq-on .mb-minitime { display: none !important; }
+.sq-view { display: flex; flex-direction: column; gap: 4px; min-width: 0; --sq-ink: var(--text, #d9d2c7); --sq-dim: var(--muted, #6d6760); --sq-gold: var(--ui-gold, #ffd75e); }
+.sq-view[hidden] { display: none; }
+.sq-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.sq-row .spacer { flex: 1; }
+.sq-row button { padding: 0 8px; line-height: 20px; }
+.sq-play { min-width: 30px; }
+.sq-time { font: 11px Consolas, ui-monospace, monospace; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 128px; cursor: pointer; }
+.sq-time:hover { color: var(--text); }
+.sq-name { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.sq-flash { font-size: 11px; color: var(--ui-gold, #ffd75e); opacity: 0; transition: opacity .25s; white-space: nowrap; pointer-events: none; }
+.sq-flash.on { opacity: 1; transition: none; }
+.sq-tl { position: relative; height: 112px; border-radius: 4px; background: color-mix(in srgb, #000 30%, transparent); overflow: hidden; outline: none; contain: strict; }
+.sq-tl:focus-visible { box-shadow: 0 0 0 1px var(--ui-gold, #ffd75e) inset; }
+.sq-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.sq-playhead { position: absolute; left: 0; top: 0; bottom: 0; width: 1px; background: var(--ui-gold, #ffd75e); box-shadow: 0 0 6px color-mix(in srgb, var(--ui-gold, #ffd75e) 60%, transparent); pointer-events: none; will-change: transform; }
+.sq-playhead::before { content: ''; position: absolute; top: 0; left: -4px; border: 4px solid transparent; border-top: 6px solid var(--ui-gold, #ffd75e); }
+.sq-hint { position: absolute; left: 0; right: 0; top: 58px; text-align: center; font-size: 11px; color: var(--muted); pointer-events: none; }
+.sq-hint[hidden] { display: none; }
+/* the ＋ picker: a small searchable grid of sources, each draggable onto the tracks */
+.sq-pick { position: fixed; z-index: 9000; width: 360px; max-height: 340px; display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface, #17140f); box-shadow: 0 12px 32px #0009; }
+.sq-pick-q { width: 100%; box-sizing: border-box; }
+.sq-pick-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; overflow: auto; min-height: 60px; }
+.sq-tile { display: flex; flex-direction: column; gap: 2px; padding: 4px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--text); text-align: left; cursor: grab; min-width: 0; }
+.sq-tile:hover { border-color: var(--ui-gold, #ffd75e); }
+.sq-tile-img { display: grid; place-items: center; height: 54px; border-radius: 4px; background: #0006; overflow: hidden; color: var(--muted); }
+.sq-tile-img img { width: 100%; height: 100%; object-fit: cover; }
+.sq-tile b { font-size: 11px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sq-tile small { font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sq-pick-row { display: flex; gap: 4px; flex-wrap: wrap; }
+.sq-pick-none { grid-column: 1 / -1; font-size: 12px; color: var(--muted); padding: 10px; text-align: center; }
+@media (prefers-reduced-motion: reduce) { .sq-flash { transition: none; } }
