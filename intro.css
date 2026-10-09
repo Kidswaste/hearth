@@ -1,0 +1,95 @@
+/* Video projects (intro-card.js): one compact live card per project in the chat. The steps as pills, the beats as a
+   filmstrip (width = length), one primary action; everything else behind ⋯ and right-click. */
+.intro-card {
+  --intro-accent: var(--fh-gold, #ffd75e);
+  margin: 10px 0; padding: 7px 9px 8px; border-radius: 12px; border: 1px solid var(--line); position: relative; font-size: 12px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--intro-accent) 6%, var(--surface)), var(--surface));
+}
+.intro-card::before {
+  content: ''; position: absolute; inset: 0 0 auto 0; height: 2px; border-radius: 12px 12px 0 0;
+  background: linear-gradient(90deg, var(--claude, #d97757), var(--intro-accent), var(--astra, #19c39c));
+}
+.intro-card.live::before { background-size: 200% 100%; animation: intro-flow 2.6s linear infinite; }
+@keyframes intro-flow { to { background-position: -200% 0; } }
+.intro-card.gone { opacity: .7; padding: 6px 10px; }
+.intro-card.gone::before { display: none; }
+.intro-head { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.intro-head .spacer, .intro-foot .spacer, .intro-beat .spacer { flex: 1; }
+.intro-title { font-weight: 700; letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+.intro-sub { color: var(--muted); white-space: nowrap; }
+.intro-fmts { display: inline-flex; gap: 3px; }
+.intro-fmt { font: 600 10px/1 ui-monospace, Consolas, monospace; padding: 2px 4px; border-radius: 5px; color: var(--muted); border: 1px solid var(--line); }
+.intro-fmt.main { color: var(--intro-accent); border-color: color-mix(in srgb, var(--intro-accent) 45%, transparent); }
+.intro-state { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 40%; }
+.intro-state.live { color: var(--fh-ai, #9b8bff); }
+.intro-card.error .intro-state { color: var(--danger, #ff6b6b); }
+.intro-tok { font: 11px/1 ui-monospace, Consolas, monospace; color: var(--muted); white-space: nowrap; }
+
+/* the steps */
+.intro-steps { display: flex; gap: 3px; margin-top: 6px; flex-wrap: wrap; }
+.intro-step {
+  --p: 0; position: relative; overflow: hidden; display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent; color: var(--muted); font: 600 11px/1.5 system-ui, sans-serif; cursor: pointer;
+}
+.intro-step::after { content: ''; position: absolute; inset: auto 0 0 0; height: 2px; background: var(--fh-ai, #9b8bff); transform-origin: 0 50%; transform: scaleX(var(--p)); opacity: 0; }
+.intro-step.running { color: var(--text); border-color: color-mix(in srgb, var(--fh-ai, #9b8bff) 60%, transparent); }
+.intro-step.running::after { opacity: 1; }
+.intro-step.done { color: var(--text); border-color: color-mix(in srgb, var(--intro-accent) 40%, transparent); background: color-mix(in srgb, var(--intro-accent) 8%, transparent); }
+.intro-step.done .intro-step-st { color: var(--intro-accent); }
+.intro-step.error { color: var(--danger, #ff6b6b); border-color: color-mix(in srgb, var(--danger, #ff6b6b) 50%, transparent); }
+.intro-step.stale { border-style: dashed; color: var(--text); }
+.intro-step:hover { border-color: var(--intro-accent); }
+.intro-step-ico { opacity: .8; }
+.intro-step-st { font-size: 10px; min-width: 8px; }
+.intro-step-name { white-space: nowrap; }
+
+/* the beats */
+.intro-film-wrap { position: relative; margin-top: 7px; }
+.intro-film { display: flex; gap: 3px; height: 44px; outline: none; border-radius: 8px; }
+.intro-film:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--intro-accent) 60%, transparent); }
+.intro-beat-frame {
+  position: relative; flex: 1 1 10%; min-width: 18px; padding: 0; overflow: hidden; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--line); background: color-mix(in srgb, var(--text, #fff) 5%, transparent); color: var(--muted);
+  display: grid; place-items: center; font: 600 12px system-ui, sans-serif;
+}
+.intro-beat-frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.intro-beat-frame.k-lab { background: color-mix(in srgb, var(--fh-ai, #9b8bff) 14%, transparent); }
+.intro-beat-frame.k-tour, .intro-beat-frame.k-shot { background: color-mix(in srgb, #6bc7ff 12%, transparent); }
+.intro-beat-frame.k-title, .intro-beat-frame.k-stat { background: color-mix(in srgb, var(--intro-accent) 12%, transparent); }
+.intro-beat-frame.k-end { background: color-mix(in srgb, #ff6b9a 12%, transparent); }
+.intro-beat-frame.has { border-color: color-mix(in srgb, var(--intro-accent) 35%, transparent); }
+.intro-beat-frame.on { box-shadow: 0 0 0 2px var(--intro-accent); border-color: transparent; }
+.intro-beat-frame.broken { border-color: var(--danger, #ff6b6b); }
+.intro-beat-frame.live { animation: intro-beat 1.2s ease-in-out infinite; }
+@keyframes intro-beat { 50% { box-shadow: 0 0 0 2px var(--fh-ai, #9b8bff); } }
+.intro-beat-n { position: absolute; left: 3px; top: 2px; font: 700 9px/1 system-ui, sans-serif; color: #fff; text-shadow: 0 1px 2px #000; }
+.intro-beat-ico { position: relative; }
+.intro-peek {
+  position: absolute; left: 0; right: 0; bottom: calc(100% + 4px); z-index: 3; padding: 3px 8px; border-radius: 7px; pointer-events: none;
+  background: #000d; color: #eee; font: 11.5px/1.4 system-ui, sans-serif; opacity: 0; transition: opacity .12s;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.intro-peek.on { opacity: 1; }
+.intro-beat { display: flex; align-items: center; gap: 6px; margin-top: 5px; min-width: 0; }
+.intro-beat-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
+
+/* the proposal, the outputs, the notes, the foot */
+.intro-proposal { margin-top: 6px; display: flex; flex-direction: column; gap: 2px; }
+.intro-prop-line { font-weight: 600; }
+.intro-outs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; align-items: center; }
+.intro-cover { height: 40px; border-radius: 5px; border: 1px solid var(--line); }
+.intro-out {
+  border: 1px solid color-mix(in srgb, var(--intro-accent) 35%, var(--line)); background: color-mix(in srgb, var(--intro-accent) 7%, transparent);
+  color: var(--text); border-radius: 999px; padding: 2px 9px; font: 600 11px/1.5 system-ui, sans-serif; cursor: pointer;
+}
+.intro-out:hover { background: color-mix(in srgb, var(--intro-accent) 16%, transparent); }
+.intro-note { margin-top: 4px; overflow: hidden; text-overflow: ellipsis; }
+.intro-foot { display: flex; align-items: center; gap: 7px; margin-top: 7px; padding-top: 5px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.intro-stop:hover { color: var(--danger, #ff6b6b); }
+@media (prefers-reduced-motion: reduce) { .intro-card.live::before, .intro-beat-frame.live { animation: none; } }
+/* the card's buttons are always there (a chat message's own actions only show on hover) */
+.intro-card .msg-act { opacity: 1; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--text); font: 600 11.5px/1.5 system-ui, sans-serif; }
+.intro-card .msg-act:hover { border-color: var(--intro-accent); }
+.intro-card .msg-act.primary-act { background: color-mix(in srgb, var(--intro-accent) 18%, transparent); border-color: color-mix(in srgb, var(--intro-accent) 55%, transparent); color: var(--text); }
+.intro-card .msg-act.primary-act:hover { background: color-mix(in srgb, var(--intro-accent) 30%, transparent); }
+.intro-head .msg-act { padding: 0 7px; }

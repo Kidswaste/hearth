@@ -35,7 +35,8 @@ const ELECTRON = process.env.ELECTRON || '/opt/hearth-electron/electron';
 const PORT = 9400 + Math.floor(Math.random() * 500);
 
 // Errors that come from the test environment, not the app (no GPU, no engines installed, no network).
-const IGNORE = [/GPU|gpu_|viz|dri3|libva|vaInitialize|Vulkan|EGL|GLES|ANGLE/i, /net::ERR_/, /Autofill\./, /ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|ERR_PROXY|ERR_TUNNEL/, /Electron Security Warning/, /favicon/i, /DevTools/, /dbus|org\.freedesktop/i];
+// (Chromium warns when the page capture's frame reader is cancelled with frames still queued: a GC note, not an app error)
+const IGNORE = [/A VideoFrame was garbage collected without being closed/, /GPU|gpu_|viz|dri3|libva|vaInitialize|Vulkan|EGL|GLES|ANGLE/i, /net::ERR_/, /Autofill\./, /ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|ERR_PROXY|ERR_TUNNEL/, /Electron Security Warning/, /favicon/i, /DevTools/, /dbus|org\.freedesktop/i];
 
 // https://cdn.jsdelivr.net/npm/three@V/<path> -> /opt/cdn-cache/three@V/package/<path> (fetched once from the npm registry).
 const CDN_CACHE = process.env.CDN_CACHE || '/opt/cdn-cache';

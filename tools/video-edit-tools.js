@@ -91,10 +91,13 @@ split {at?, all?} · trim {clip?, edge: in|out, at?} · move {clip, at?|to (main
 transition {clip?|all, type|off, dur?} · look {clip?, look|off, amt?} · effect {clip?, effect|off, amt? (0 removes)} · sound {clip?, effect|off, on?} · match {clip?, path (a reference picture: vibe only)} · captions {path? (import SRT; none: export)} · adjust {clip?, prop, value} · keyframe {clip?, prop: opacity|x|y|scale|rotate|volume, value?, at?, ease?}
 motion {clip?, preset} · speed {clip?, value} · ramp {clip?, preset} · reverse {clip?, on?} · set {clip?, props: {opacity, scale, x, y, rotate, volume, blend, mute, fadeIn, fadeOut, text, style, anim, out}}
 marker {at?, label?, note?, color?} · range {in, out}|{off} · select {clip} · undo · redo · render {preset?, fit?} · command {line: "/chat-command …"}
+project {action: status|plan|task|beat|redo|run|cover|cuts|note, …}: the owner's video project (/intro): its plan, beats, captures, edit and renders ({op:"project", action:"help"})
 presets: video_edit_read {what:"presets", kind}`;
   async function op(a) {
     const o = String(a.op || '').toLowerCase();
     if (o === 'help') return HELP;
+    // the owner's video project (intro-cmds.js): status, beats, redo, steps, covers, cut-downs
+    if (o === 'project') { if (typeof IntroCmds === 'undefined') throw new Error('Video projects aren\'t available.'); return IntroCmds.agentOp(a); }
     if (o === 'new') { await Review.ensureMounted(); const key = await VideoCut.newSequence(a.name || 'Sequence', { format: a.format || '9:16', template: a.template ? preset(FX.TEMPLATES, a.template, 'template').id : null }); return `new sequence ${key.slice(4)} · ${readEdit({ what: 'clips' }).split('\n')[0]}`; }
     if (o === 'open') {
       await Review.ensureMounted();
