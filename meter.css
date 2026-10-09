@@ -76,7 +76,11 @@ html[data-skin~="forge"] {
 .meter-pill .mp-bar { width: 26px; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--text) 12%, transparent); overflow: hidden; }
 .meter-pill .mp-bar i { display: block; height: 100%; width: var(--fill, 0%); background: var(--meter-active); }
 .meter-pill.is-live { opacity: 1; color: var(--meter-ai); }
-.meter-pill.is-live .mp-dot { opacity: 1; background: conic-gradient(from var(--mt-spin), var(--ui-cyan), var(--ui-ai), #ff6b9d, var(--ui-hot), var(--ui-gold), var(--ui-cyan)); animation: mt-spin 1.6s linear infinite; width: 7px; height: 7px; }
+/* the live dot's rainbow turns with a transform on the compositor (animating the gradient's angle restyled and
+   repainted it on the main thread every frame of a reply, beside a playing Lab) */
+.meter-pill.is-live .mp-dot { opacity: 1; background: none; overflow: hidden; width: 7px; height: 7px; }
+.meter-pill.is-live .mp-dot::before { content: ""; position: absolute; inset: -50%; background: conic-gradient(var(--ui-cyan), var(--ui-ai), #ff6b9d, var(--ui-hot), var(--ui-gold), var(--ui-cyan)); animation: mt-turn 1.6s linear infinite; }
+@keyframes mt-turn { to { transform: rotate(360deg); } }
 .meter-pill.b-warn .mp-bar i { background: var(--meter-warn); }
 .meter-pill.b-over .mp-bar i { background: var(--meter-over); }
 .meter-pill.b-over { color: var(--meter-over); }
