@@ -60,6 +60,8 @@ const FIX = [
   { re: /hearth-test-videos|VIDS\b/, path: `${T}/hearth-test-videos`, make: () => sh('sh', ['dev/make-test-videos.sh', `${T}/hearth-test-videos`]) },
   { re: /hearth-editor-videos|EDITOR_VIDS/, path: `${T}/hearth-editor-videos`, make: () => sh('node', ['dev/make-editor-videos.js', `${T}/hearth-editor-videos`]) },
   { re: /hearth-board-fixtures|BOARD_FIXTURES/, path: `${T}/hearth-board-fixtures`, make: () => sh('sh', ['dev/board-fixtures.sh', `${T}/hearth-board-fixtures`]) },
+  { re: /labframes-media|make-lab-footage|\bLF\./, path: `${T}/labframes-media`, make: () => sh('node', ['dev/make-lab-footage.js', `${T}/labframes-media`]) },
+  { re: /hearth-intro-song/, path: `${T}/hearth-intro-song.wav`, make: () => sh('node', ['dev/make-test-song.js', `${T}/hearth-intro-song.wav`, '120', '30']) },
   { re: /hearth-capture-test/, path: `${T}/hearth-capture-test`, make: () => sh('node', ['dev/capture-test.js', '--make', `${T}/hearth-capture-test`]) },
 ];
 const srcOf = (n) => (n.startsWith('unit:') ? fs.readFileSync(path.join(DEV, `${n.slice(5)}.js`), 'utf8') : fs.readFileSync(path.join(CHECKS, `${n}.js`), 'utf8'));

@@ -209,11 +209,16 @@ async function cdpConnect() {
     // with "J is not defined"): J → journey-lib, M → smooth-lib, decodeFrameCode → dev/editor-frames.js.
     if (scriptFile) {
       const body = fs.readFileSync(scriptFile, 'utf8');
-      const AUTO = [[/\bJ\.\w|=\s*J;/, /\bconst J =/, 'checks/journey-lib.js'], [/\bM\.\w+\(|=\s*M;/, /\bconst M =/, 'checks/smooth-lib.js'], [/\bdecodeFrameCode\b/, /function decodeFrameCode/, 'editor-frames.js']];
+      // LF → labframes-lib (which itself uses J, so the helpers already added count as users too)
+      const AUTO = [[/\bLF\.\w|=\s*LF;/, /\bconst LF =/, 'checks/labframes-lib.js'], [/\bJ\.\w|=\s*J;/, /\bconst J =/, 'checks/journey-lib.js'], [/\bM\.\w+\(|=\s*M;/, /\bconst M =/, 'checks/smooth-lib.js'], [/\bdecodeFrameCode\b/, /function decodeFrameCode/, 'editor-frames.js']];
       for (const [uses, defines, lib] of AUTO) {
         const f = path.join(__dirname, lib);
-        if (uses.test(body) && !defines.test(body) && !libFiles.includes(f)) libFiles.push(f);
+        const users = [body, ...libFiles.map((x) => fs.readFileSync(x, 'utf8'))].join('\n');
+        if (uses.test(users) && !defines.test(body) && !libFiles.includes(f)) libFiles.push(f);
       }
+      // a helper that uses another one goes after it (labframes-lib needs J from journey-lib)
+      const order = ['journey-lib.js', 'smooth-lib.js', 'editor-frames.js', 'labframes-lib.js'];
+      libFiles.sort((a, b) => (order.indexOf(path.basename(a)) + 1 || 99) - (order.indexOf(path.basename(b)) + 1 || 99));
     }
     const libs = libFiles.map((f) => fs.readFileSync(f, 'utf8'));
     // A line "//@@ reload" splits a check: the part before it runs, the window reloads (everything is read back from
