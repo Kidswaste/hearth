@@ -51,7 +51,6 @@ X.setBackdrop(null);
 
 // clips together, fit text, Alt+wheel opacity
 Board.zoomFit(false); await wait(400);
-out.dbg = { moving: X.S.moving, clipOff: X.lastOff.get(clip.id), clip: Board.item(clip.id)?.type, playing: X.playing.size, sel: [...X.S.sel] };
 ok(X.playAll() >= 1 && X.playing.size >= 1, 'play clips in view');
 ok(X.pauseAll() >= 1 && X.playing.size === 0, 'pause them');
 const tx = Board.addText('FIT ME', null, { w: 600, h: 200 }); Board.select(tx.id); X.fitText([Board.item(tx.id)]);
@@ -61,7 +60,6 @@ const na = X.S.nodes.get(a.id).getBoundingClientRect();
 await mouse('mouseWheel', na.left + na.width / 2, na.top + na.height / 2, { deltaX: 0, deltaY: 100, modifiers: 1 });
 await mouse('mouseWheel', na.left + na.width / 2, na.top + na.height / 2, { deltaX: 0, deltaY: 100, modifiers: 1 });
 await wait(100);
-out.dbg2 = { under: document.elementFromPoint(na.left + na.width / 2, na.top + na.height / 2)?.closest?.('.bd-item')?.dataset.id, a: a.id, sel: [...X.S.sel] };
 ok(Board.item(a.id).opacity === 0.9, `Alt+wheel opacity (${Board.item(a.id).opacity})`);
 
 // the drawer: drop a file on it from a chat, drop a tile onto the board

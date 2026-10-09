@@ -184,14 +184,15 @@ const BoardVibe = (() => {
   }
 
   // Seeks through a clip: ~4 samples a second (up to 200) at 48×27 for motion and cuts, 6 bigger frames for the look.
-  async function video(url, { maxSamples = 200, onProgress } = {}) {
+  async function video(url, { maxSamples = 200, onProgress, debug = false } = {}) {
     const v = document.createElement('video');
     v.muted = true; v.preload = 'auto'; v.playsInline = true; v.crossOrigin = 'anonymous';
     v.src = url;
     await new Promise((resolve, reject) => { v.onloadeddata = resolve; v.onerror = () => reject(new Error('The clip did not load')); setTimeout(() => reject(new Error('The clip took too long to open')), 20000); });
     const dur = Number.isFinite(v.duration) ? v.duration : 0;
     const vw = v.videoWidth || 16; const vh = v.videoHeight || 9;
-    const seek = (t) => new Promise((resolve) => { const done = () => { v.removeEventListener('seeked', done); resolve(); }; v.addEventListener('seeked', done); v.currentTime = t; setTimeout(done, 2500); });
+    // resolves true when the frame at t is really there (a busy machine can be slow to seek: such samples are skipped)
+    const seek = (t) => new Promise((resolve) => { let fin = false; const done = (ok) => { if (fin) return; fin = true; v.removeEventListener('seeked', onSeek); resolve(ok); }; const onSeek = () => done(true); v.addEventListener('seeked', onSeek); v.currentTime = t; setTimeout(() => done(!v.seeking), 6000); });
     const N = Math.max(6, Math.min(maxSamples, Math.round(dur / 0.25)));
     const step = dur / N || 0.25;
     const small = canvas(); small.width = 48; small.height = 27;
@@ -199,8 +200,9 @@ const BoardVibe = (() => {
     const lumas = []; const hists = []; const looks = [];
     const lookAt = new Set([0.08, 0.25, 0.42, 0.58, 0.75, 0.92].map((f) => Math.min(N - 1, Math.floor(f * N))));
     const lightCurve = [];
+    const valid = [];
     for (let i = 0; i < N; i++) {
-      await seek(Math.min(dur - 0.001, i * step + step / 2));
+      valid.push(await seek(Math.min(dur - 0.001, i * step + step / 2)));
       sctx.drawImage(v, 0, 0, 48, 27);
       const d = sctx.getImageData(0, 0, 48, 27).data;
       const L = new Float32Array(48 * 27); const hist = new Float32Array(24);
@@ -217,6 +219,7 @@ const BoardVibe = (() => {
     // frame differences: pixels + color histogram; a cut is a jump far above the clip's usual change
     const diffs = [];
     for (let i = 1; i < N; i++) {
+      if (!valid[i] || !valid[i - 1]) continue;
       let dp = 0; for (let p = 0; p < lumas[i].length; p++) dp += Math.abs(lumas[i][p] - lumas[i - 1][p]);
       let dh = 0; for (let j = 0; j < 24; j++) dh += Math.abs(hists[i][j] - hists[i - 1][j]);
       diffs.push({ t: i * step, px: dp / lumas[i].length, hist: dh / 6 });
@@ -243,6 +246,7 @@ const BoardVibe = (() => {
       kind: 'clip', duration: r2(dur), size: [vw, vh], aspect: aspectWord(vw, vh), motion, cuts: cuts.slice(0, 40), cutCount: cuts.length, pace, cutsPerMin: dur ? Math.round((cuts.length / dur) * 60) : 0, lightArc,
       colorDrift: looks.length > 2 ? r2(Math.abs(looks[0].warmth - looks.at(-1).warmth)) : 0 };
     out.moods = moods({ ...out });
+    if (debug) out.diffs = diffs.map((x) => [r2(x.t), Math.round(x.px * 1000) / 1000, Math.round(x.hist * 1000) / 1000]);
     v.removeAttribute('src'); v.load();
     return out;
   }
