@@ -70,7 +70,19 @@ async function version(bin, { cwd, fresh = false } = {}) {
   return v;
 }
 // Signed in? true / false, or null when this copy can't tell (an older Claude Code has no `auth status`).
+// An older Claude Code has no `auth` command and would take "auth status" as a prompt: its --help is read first (once
+// per binary) and `auth status` only asked when it lists `auth`.
+async function hasAuth(bin, cwd) {
+  const d = data();
+  const v = d.versions[binKey(bin)];
+  if (v && typeof v.auth === 'boolean') return v.auth;
+  const r = await quick(bin, ['--help'], 8000, cwd);
+  const auth = r.code === 0 && /^\s+auth\b/m.test(r.out);
+  if (v) { v.auth = auth; persist(); }
+  return auth;
+}
 async function signedIn(engine, bin, cwd) {
+  if (engine === 'claude' && !(await hasAuth(bin, cwd))) return { ok: null, text: '' };
   const r = await quick(bin, engine === 'codex' ? ['login', 'status'] : ['auth', 'status'], 8000, cwd);
   if (/not (logged|signed) in|no credentials|please (run|log ?in|sign ?in)|login required|logged out/i.test(r.out)) return { ok: false, text: lastLine(r.out) };
   if (r.code === 0) return { ok: true, text: lastLine(r.out) };

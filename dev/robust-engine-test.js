@@ -131,6 +131,14 @@ const fixed = (engine, action) => new Promise((resolve) => { const keep = setInt
   c = await engines.checkEngine('claude');
   assert(c.chosen === oldBin && c.from === 'settings' && c.newer?.path === newBin, JSON.stringify(c));
   ok('Settings → Engines still wins, and the check says a newer copy exists');
+  // an older Claude Code without `auth`: never asked "auth status" (it would take it as a prompt), sign-in unknown
+  fs.mkdirSync(path.join(bins, 'c'));
+  const noAuth = path.join(bins, 'c', 'claude');
+  fs.writeFileSync(noAuth, `#!/bin/sh\nFAKE_CLAUDE_NO_AUTH=1 exec "${process.execPath}" "${FAKE.claude}" "$@"\n`, { mode: 0o755 });
+  engines.setEnginePaths({ claude: noAuth, codex: FAKE.codex });
+  c = await engines.checkEngine('claude');
+  assert(c.chosen === noAuth && c.signedIn === null, JSON.stringify(c));
+  ok('a Claude Code whose --help has no `auth` is never asked "auth status"; its sign-in shows as unknown, not "signed out"');
   process.env.PATH = PATH0;
   engines.setEnginePaths(FAKE);
   delete I.data().learnedMin.claude; delete I.data().learnedMin.codex; I.persist();

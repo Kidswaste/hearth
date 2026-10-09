@@ -88,6 +88,8 @@ const EngineHealth = (() => {
     if (!left.length) toast(`${LABEL[engine]} ${e.semver || ''} is ready${e.signedIn ? ' and signed in' : ''} ✓`, { timeout: 6000 });
     else if (r.fixed.finished) toast(`${left[0].text}.`, { timeout: 12000, action: { label: left[0].label, fn: () => fix(engine, left[0].action) } });
     for (const id of H.agents().filter((a) => a.mode === 'native' && a.engine === engine).map((a) => a.id)) Native.refresh?.(id, { keepScroll: true });
+    // a /doctor card on screen shows the new state (it replaces itself)
+    if (doctorShown && Date.now() - doctorShown.at < 30 * 60000) runDoctor('', doctorShown.ctx).catch(() => {});
   });
 
   // ---------- the buttons under a failed reply ----------
@@ -120,6 +122,7 @@ const EngineHealth = (() => {
   const KIND = { homebrew: 'Homebrew', npm: 'npm', bun: 'Bun', desktop: 'desktop app', native: 'installer', other: 'on PATH', settings: 'Settings → Engines' };
   function actionsFor(r, ctx) {
     const acts = problems(r).map((p) => ({ label: p.label, run: () => fix(p.engine, p.action) }));
+    acts.push({ label: 'Test both (a few tokens)', title: 'Sends "Reply with just: OK" to one Claude and one Astra agent (lean: no tools, low effort)', run: () => testBoth(ctx) });
     acts.push({ label: 'Check again', run: () => runDoctor('', ctx) });
     return acts;
   }
@@ -135,7 +138,22 @@ const EngineHealth = (() => {
     }
     return lines.filter((l, i) => l !== 'All good.' && !(l === '' && lines[i - 1] === '')).join('\n').trim();
   }
-  let astraDoctor = null; // the Astra part (prompt sizes, tool servers, Astra's settings) from astra.js
+  // One tiny real message to each engine an agent uses: the end-to-end proof (sign-in, model, version, network).
+  async function testBoth(ctx) {
+    const lines = [];
+    for (const e of ENGINES) {
+      const a = H.agents().find((x) => x.mode === 'native' && x.engine === e);
+      if (!a) continue;
+      const t0 = Date.now();
+      const r = await window.hub.askOnce({ agentId: a.id, text: 'Reply with just: OK', options: { lean: true, effort: e === 'codex' ? 'minimal' : 'low', verbosity: 'low' } }).catch((err) => ({ ok: false, error: err.message }));
+      lines.push(`- ${r.ok ? '✓' : '✗'} ${LABEL[e]} (${a.name}): ${r.ok ? `"${String(r.text || '').trim().slice(0, 40)}" in ${((Date.now() - t0) / 1000).toFixed(1)} s` : String(r.error || '').split('\n')[0].slice(0, 200)}`);
+    }
+    const text = `**Engine test**\n${lines.join('\n') || 'No Claude or Astra agent to test.'}`;
+    if (ctx?.note) ctx.note(text, { id: 'doctor-test' }); else toast(text, { timeout: 8000 });
+    return text;
+  }
+  let astraDoctor = null;
+  let doctorShown = null; // the last /doctor card, refreshed after a fix it started // the Astra part (prompt sizes, tool servers, Astra's settings) from astra.js
   async function runDoctor(args, ctx) {
     const r = await check({ fresh: true }).catch((err) => ({ error: err.message }));
     if (r.error) return `Couldn't check the engines: ${r.error}`;
@@ -144,7 +162,7 @@ const EngineHealth = (() => {
     if (list.length) parts.push(`**To fix** (buttons below run it in a ${winName()} window; Hearth never sees your password)\n${list.map((p) => `- ${p.text}`).join('\n')}`);
     if (astraDoctor) { try { const t = await astraDoctor(args, ctx); if (t) parts.push(astraPart(t)); } catch (err) { parts.push(`(Astra details failed: ${err.message})`); } }
     const text = parts.join('\n\n');
-    if (ctx?.note) { ctx.note(text, { actions: actionsFor(r, ctx), id: 'doctor' }); return undefined; }
+    if (ctx?.note) { ctx.note(text, { actions: actionsFor(r, ctx), id: 'doctor' }); doctorShown = { ctx, at: Date.now() }; return undefined; }
     return text;
   }
 
@@ -196,5 +214,5 @@ const EngineHealth = (() => {
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 
-  return { check, problems, problemsOf, fix, notice, report: () => last, runDoctor };
+  return { check, problems, problemsOf, fix, notice, report: () => last, runDoctor, testBoth };
 })();

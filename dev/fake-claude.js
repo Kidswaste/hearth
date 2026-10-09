@@ -11,6 +11,9 @@ const F = require('./fake-common');
   const sw = F.switches();
   const version = sw.claudeVersion || '2.1.300';
   if (argv[0] === '--version') { console.log(`${version} (Claude Code) fake`); return; }
+  // claudeNoAuth: an older Claude Code whose --help has no `auth` command
+  if (argv[0] === '--help') { console.log(['Usage: claude [options] [command] [prompt]', '', 'Commands:', sw.claudeNoAuth ? null : '  auth              Manage authentication', '  mcp               Configure MCP servers', '  update            Check for updates and install'].filter((l) => l !== null).join('\n')); return; }
+  if (argv[0] === 'auth' && sw.claudeNoAuth) { console.log('(fake) "auth" taken as a prompt: an old Claude Code'); process.exit(2); }
   if (argv[0] === 'auth' && argv[1] === 'status') {
     if (sw.claudeLoggedOut) { console.log('Not logged in. Run claude auth login'); process.exit(1); }
     console.log('Logged in (fake Claude Max account)'); return;

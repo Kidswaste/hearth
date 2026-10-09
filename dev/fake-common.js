@@ -281,7 +281,8 @@ const serverFor = (servers, tool) => servers[{ three: 'three', video: 'video', a
 //                                  like current Codex) | 'old' (ignores that key, cancels unless approval_policy="never")
 //                                  | 'always'
 //   updateTo                       the version `claude update` installs (default 2.1.400)
-const SWITCHES = ['claudeVersion', 'codexVersion', 'claudeNeeds', 'codexNeeds', 'claudeLoggedOut', 'codexLoggedOut', 'claudeNetwork', 'codexNetwork', 'claudeMcpMissing', 'codexMcpCancel', 'updateTo'];
+//   claudeNoAuth                   an older Claude Code without the `auth` command (its --help doesn't list it)
+const SWITCHES = ['claudeNoAuth', 'claudeVersion', 'codexVersion', 'claudeNeeds', 'codexNeeds', 'claudeLoggedOut', 'codexLoggedOut', 'claudeNetwork', 'codexNetwork', 'claudeMcpMissing', 'codexMcpCancel', 'updateTo'];
 const kvFile = () => path.join(process.cwd(), '..', 'kv', 'fake-switches.json');
 function switches() {
   const env = {};
