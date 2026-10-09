@@ -38,7 +38,7 @@ hideMenu(); await wait(200);
 // 2. ⌘/Ctrl+Alt+S: the capture menu (caught in the main process, so it works with the Lab picture focused)
 await capKey('s'); await wait(500);
 step('Ctrl+Alt+S opens the capture menu from inside the Lab', Boolean(row(/Screenshot of this tool/)), menuRows().map((b) => b.textContent.trim()).slice(0, 6));
-const of = row(/Screenshot of…/);
+const of = row(/Screenshot of(?! this)/); // "Screenshot of…" (round 7) or "Screenshot of ›" (polish8 submenu)
 if (of) { await click(of); await wait(300); }
 const labRow = row(/The Lab preview/);
 step('› Screenshot of… has "The Lab preview at full size"', Boolean(labRow));

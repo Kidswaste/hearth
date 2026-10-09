@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const Module = require('module');
-const src = fs.readFileSync(process.argv[2], 'utf8').replace("require('./store')", 'globalThis.__fakeStore');
+const src = fs.readFileSync(process.argv[2] || path.join(__dirname, '..', 'importer.js'), 'utf8').replace("require('./store')", 'globalThis.__fakeStore');
 const saved = new Map();
 globalThis.__fakeStore = { getChat: (id) => saved.get(id) || null, saveChat: (c) => saved.set(c.id, c) };
 const m = new Module('importer-test');
