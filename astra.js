@@ -1387,7 +1387,7 @@ function toggleFold(hostId, m) {
         c.input ? `- Collaborations: ${c.input.toLocaleString()} in · ${c.output.toLocaleString()} out (/collab-stats per participant)` : null,
         chat.session?.totals ? `- Codex thread total so far: ${chat.session.totals.input.toLocaleString()} in (${(chat.session.totals.cached || 0).toLocaleString()} cached) · ${chat.session.totals.output.toLocaleString()} out` : null].filter(Boolean).join('\n');
     } });
-  R({ name: 'astra-doctor', aliases: ['doctor'], area: 'Astra', desc: 'Check Codex and Claude: found? version? signed in? with fixes',
+  R({ name: 'astra-doctor', area: 'Astra', desc: 'Check Codex and Claude: found? version? signed in? with fixes',
     args: '[--run]', complete: () => [{ value: '--run', hint: 'also send Astra a tiny test message (a few tokens)' }],
     run: async (args) => {
       const report = await doctorReport();

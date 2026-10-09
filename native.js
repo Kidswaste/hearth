@@ -1114,7 +1114,7 @@ const Native = (() => {
     } else {
       // what it wrote before failing stays (marked stopped), then the error
       if (visibleText(p.text)) chat.messages.push({ role: 'assistant', text: visibleText(p.text), at, stopped: true, ...extras });
-      chat.messages.push({ role: 'error', text: event.message, needsLogin: event.needsLogin, at });
+      chat.messages.push({ role: 'error', text: event.message, needsLogin: event.needsLogin, ...(event.fixAction ? { fixAction: event.fixAction, fixEngine: event.fixEngine } : {}), at });
       replyText = `Error: ${event.message}`;
     }
     chat.updatedAt = at;

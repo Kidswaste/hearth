@@ -98,6 +98,8 @@ function allIn(root, name, depth = 3, limit = 3) {
   return found.sort((a, b) => b.mtime - a.mtime).slice(0, limit).map((f) => f.full);
 }
 function candidates(engine) {
+  // a test copy of Hearth (dev/smoke.js) never picks up the machine's real engines: only Settings → Engines counts
+  if (process.env.HEARTH_TEST_SAVE_DIR) return [];
   const name = exe(engine);
   const list = [];
   const add = (file) => { if (file) list.push(file); };
