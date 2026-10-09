@@ -939,7 +939,8 @@ async function checkEngine(engine, { fresh = false, login = true } = {}) {
   return r;
 }
 async function checkInstalls(opts = {}) {
-  const out = { platform: process.platform, at: Date.now() };
+  // test: a dev/smoke.js copy (its startup notice leaves out engines that simply aren't there)
+  const out = { platform: process.platform, at: Date.now(), test: Boolean(process.env.HEARTH_TEST_SAVE_DIR) };
   for (const engine of opts.engines || Object.keys(ENGINES)) out[engine] = await checkEngine(engine, opts);
   return out;
 }

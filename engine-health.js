@@ -209,7 +209,8 @@ const EngineHealth = (() => {
   // ---------- startup: one check once the window is idle ----------
   function start() {
     registerCommands();
-    const go = () => check().then((r) => notice(r)).catch((err) => console.warn('engine check', err));
+    // (a test copy without engines set up isn't told to install them on every start)
+    const go = () => check().then((r) => { if (!(r.test && problems(r).every((p) => p.kind === 'missing'))) notice(r); }).catch((err) => console.warn('engine check', err));
     setTimeout(() => (window.requestIdleCallback ? requestIdleCallback(go, { timeout: 4000 }) : go()), 2500);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
