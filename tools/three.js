@@ -2014,7 +2014,7 @@ const ThreeLab = (() => {
         if (msg.tag === 'get') { const fn = pendingShot; pendingShot = null; fn?.(msg.dataUrl); return; }
         if (pendingShot) { pendingShot(msg.dataUrl); pendingShot = null; } else if (copyNextShot) {
           copyNextShot = false;
-          fetch(msg.dataUrl).then((r) => r.blob()).then((b) => navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]))
+          Promise.resolve().then(() => pngBlob(msg.dataUrl)).then((b) => navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]))
             .then(() => toast('Screenshot copied: paste it anywhere', { timeout: 1800 }), (err) => toast(`Couldn't copy: ${err.message}`, { type: 'error' }));
         } else saveDataUrl(msg.dataUrl, `${current?.name || 'sketch'}.png`);
       }
@@ -2226,7 +2226,7 @@ const ThreeLab = (() => {
       const z = ThreeMedia.SIZES.find((x) => x.id === (size || before));
       const name = `${current?.name || 'sketch'}${z?.w ? ` ${z.w}x${z.h}` : ''}${player.loaded ? ` ${fmtMs(player.time).replace(/:/g, '-')}` : ''}.png`.replace(/[\\/:*?"<>|]/g, '_');
       if (copy) {
-        const b = await (await fetch(url)).blob();
+        const b = pngBlob(url);
         await navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]).then(() => toast('Still copied', { timeout: 1200 }), (err) => toast(`Couldn't copy: ${err.message}`, { type: 'error' }));
       } else saveDataUrl(url, name);
       return url;
@@ -2251,6 +2251,8 @@ const ThreeLab = (() => {
       return dir;
     }
     const pngBytes = (url) => Uint8Array.from(atob(url.split(',')[1]), (ch) => ch.charCodeAt(0));
+    // a data URL as a Blob without fetch() (the page's CSP blocks fetching data: URLs, so copying a still failed)
+    function pngBlob(url) { return new Blob([pngBytes(url)], { type: 'image/png' }); }
     const safeName = (x) => String(x).replace(/[\\/:*?"<>|]/g, '_');
     async function stillsAt(kind = 'cues') {
       const dir = await stillsFolder();

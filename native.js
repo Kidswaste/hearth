@@ -1209,6 +1209,7 @@ const Native = (() => {
     const focused = await window.hub.isWindowFocused();
     if (onScreen && focused) return;
     const note = toast(`${agent?.name || 'An agent'} ${text}`, { timeout: 15000, action: { label: 'Open', fn: () => { document.querySelector('.lab-focus-exit')?.click(); open(agentId, chatId); } } });
+    if (typeof ChatScenes !== 'undefined') ChatScenes.markToast(note, chatId); // a director chat's color + mark
     if (!focused) {
       window.hub.flashWindow();
       const n = new Notification(`${agent?.name || 'Hearth'} ${text.split(':')[0]}`, { body: text, silent: false });

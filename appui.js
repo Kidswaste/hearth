@@ -419,14 +419,15 @@ const AppUI = (() => {
     // In the app but looking elsewhere: a small note you can click.
     if (focused && !document.fullscreenElement) {
       const gist = (text || '').replace(/[#*`>_]/g, '').replace(/\s+/g, ' ').trim().slice(0, 90);
-      toast(`${agent.name} replied${gist ? `: ${gist}${gist.length >= 90 ? '…' : ''}` : ''}`, {
+      const note = toast(`${agent.name} replied${gist ? `: ${gist}${gist.length >= 90 ? '…' : ''}` : ''}`, {
         timeout: 6000,
         action: { label: 'Open', fn: () => { if (dockHidden) document.querySelector('.lab-focus-exit')?.click(); Native.open(agentId, chatId); } },
       });
+      if (typeof ChatScenes !== 'undefined') ChatScenes.markToast(note, chatId); // a director chat's color + mark
     }
     if (!focused) {
       window.hub.flashWindow();
-      const n = new Notification(`${agent.name} replied`, { body: (text || '').replace(/[#*`>_]/g, '').slice(0, 160), silent: false });
+      const n = new Notification(typeof ChatScenes !== 'undefined' ? ChatScenes.noteTitle(chatId, `${agent.name} replied`) : `${agent.name} replied`, { body: (text || '').replace(/[#*`>_]/g, '').slice(0, 160), silent: false });
       n.onclick = () => { window.hub.showWindow(); Native.open(agentId, chatId); };
     }
   }

@@ -27,8 +27,25 @@ let m = await until(() => Jam.latest());
 out.badgeSeen = await until(() => document.querySelector('.jam-badge')?.textContent, 30000);
 await until(() => m.list.some((R) => R.status === 'directing'), 60000);
 out.badgeDirecting = document.querySelector('.jam-badge')?.textContent;
+// round 5: the scene tag shows both agents (the one at work lit) and the card's filmstrip grows
+{
+  const jamChat = Jam._test.state()?.chat?.id;
+  const tagAvs = [...document.querySelectorAll('.scene-tag .scene-av')];
+  out.tagDuringJam = { workers: ChatScenes.workers(jamChat), avatars: tagAvs.map((a) => `${a.dataset.engine}${a.classList.contains('on') ? '+' : ''}${a.querySelector('svg') ? ' svg' : ''}`), linked: ChatScenes.linkOf(jamChat) === m.sketchId };
+  out.filmDuringJam = { frames: card(m)?.querySelectorAll('.jam-frame[data-n]').length, todo: card(m)?.querySelectorAll('.jam-frame.todo').length, live: Boolean(card(m)?.querySelector('.jam-frame.live')) };
+}
 await smoke({ shot: `${shots}/jam-running.png` });
 await jamDone();
+{
+  const jamChat = H.activeChat[host.id];
+  out.afterJam = { workersCleared: !ChatScenes.workers(jamChat), rowStill: Boolean(ChatScenes.thumbOf(jamChat)), recap: m.recap, notificationRecap: m.recap && card(m)?.querySelector('.jam-recap')?.textContent === m.recap };
+  // the timeline: scrub previews a round in the card, a click keeps it
+  const wrap = card(m)?.querySelector('.jam-film-wrap');
+  wrap?.show(2);
+  out.scrub = { frames: card(m)?.querySelectorAll('.jam-frame[data-n]').length, peek: wrap?.querySelector('.jam-peek-text')?.textContent, shown: wrap?.classList.contains('scrubbing'), img: Boolean(wrap?.querySelector('.jam-peek-img')?.src) };
+  await smoke({ shot: `${shots}/jam-scrub.png` });
+  wrap?.show(null);
+}
 out.first = brief(m);
 out.buildPrompt = Jam._test.buildPrompt(m, { n: 2 }, { key: 'claude' }, ThreeLab.director, m.list[0]);
 out.firstSecs = Math.round((Date.now() - t0) / 1000);
@@ -41,9 +58,11 @@ out.chatText = m.text.slice(0, 200);
 out.looks = ThreeLab.peek()?.looks?.().map((l) => (typeof l === 'string' ? l : l.name));
 await smoke({ shot: `${shots}/jam-done.png` });
 
-// 2. /jam keep 1 puts round 1 back; a row click unfolds it
+// 2. /jam keep 1 puts round 1 back (here by a click on its frame in the timeline); a row click unfolds it
 const r1 = m.list[0].snap.layers.map((L) => L.code).join('\n');
-out.keep = await Jam.keep(1);
+card(m)?.querySelector('.jam-frame[data-n="1"]')?.click();
+await until(() => m.best?.n === 1, 8000);
+out.keep = m.best;
 out.keepMatches = ThreeLab.director.capture().layers.map((L) => L.code).join('\n') === r1;
 card(m)?.querySelectorAll('.jam-row')[1]?.click();
 await wait(150);
@@ -59,6 +78,63 @@ await jamDone();
 out.again = { rounds: m.list.length, status: m.status, best: m.best?.n, onJamSketch: ThreeLab.director.capture().sketchId === m.sketchId};
 await wait(900);
 { const own = (await window.hub.kvGet('three-sketches', [])).find((x) => x.id === m.start.snap.sketchId); out.ownSketchUntouched = Boolean(own) && JSON.stringify((own.layers || []).map((L) => L.code)) === JSON.stringify(m.start.snap.layers.map((L) => L.code)); }
+
+// 3b. round 5: switching chats mid-jam. The jam goes on backstage on its own sketch (its chat's scene); the other
+// chat's scene stays on screen untouched; coming back shows the jam. Then share the result, and /jam on a song
+// remembers that song's idea.
+{
+  const jamChat = H.activeChat[host.id];
+  Native.newChat(host.id);
+  await until(() => ThreeLab.scenes.get(ThreeLab.scenes.currentId())?.name === 'New chat', 8000);
+  await Native.send(host.id, 'Other chat: violet calm');
+  await until(() => !Native.isBusy(H.activeChat[host.id]), 30000);
+  const other = H.activeChat[host.id];
+  const otherSk = ChatScenes.linkOf(other);
+  Native.open(host.id, jamChat);
+  await until(() => ThreeLab.scenes.currentId() === m.sketchId, 8000);
+  await Commands.tryRun('/jam again 2', host.id);
+  await until(() => Jam.running(), 5000);
+  await until(() => m.list.at(-1)?.status === 'building', 20000);
+  Native.open(host.id, other); // mid-build
+  await until(() => ThreeLab.scenes.currentId() === otherSk, 8000);
+  const otherCode = ThreeLab.scenes.layersOf(ThreeLab.scenes.get(otherSk)).map((L) => L.code).join('\n');
+  const n0 = m.list.length;
+  await jamDone();
+  const S = ThreeLab.scenes;
+  out.midJamSwitch = {
+    status: m.status, rounds: m.list.length, since: n0, best: m.best?.n,
+    otherOnScreen: S.currentId() === otherSk,
+    otherUntouched: S.layersOf(S.get(otherSk)).map((L) => L.code).join('\n') === otherCode,
+    jamEditsInJamSketch: m.list.slice(-2).every((R) => R.snap?.sketchId === m.sketchId),
+    backstageCalls: ThreeBackstage.log().filter((e) => e.chatId === jamChat).map((e) => e.tool).slice(-6),
+    rowStill: Boolean(ChatScenes.thumbOf(jamChat)),
+  };
+  Native.open(host.id, jamChat);
+  await until(() => S.currentId() === m.sketchId, 8000);
+  out.midJamSwitch.backOnJam = S.currentId() === m.sketchId;
+  out.midJamSwitch.keptInLab = JSON.stringify(S.layersOf(S.get(m.sketchId)).map((L) => L.code)) === JSON.stringify(m.list.find((R) => R.n === m.best?.n)?.snap.layers.map((L) => L.code));
+  await wait(1200);
+  await smoke({ shot: `${shots}/jam-recap.png` });
+  // share: a still to the clipboard and a 10-second clip (saved to the test folder)
+  out.share = await Jam.share(m).catch((err) => `error: ${err.message}`);
+  out.shareRecording = (await until(() => ThreeLab.director.media?.recording, 5000)) ? 'recording' : 'not seen';
+  await wait(11500);
+  // the song's idea: a jam kept on a song is remembered; /jam with no idea on that song reuses it
+  const song = '/tmp/hearth-test-videos/drop_visual_16x9.mp4';
+  if (await window.hub.fs.stat(song).then(() => true, () => false)) {
+    const c = await ThreeLab.cmd();
+    await c.loadSong(song);
+    await until(() => ThreeLab.director.media?.loaded, 8000);
+    await Commands.tryRun('/jam 1', host.id);
+    const m1 = await until(() => (Jam.latest() !== m ? Jam.latest() : null));
+    await jamDone();
+    await Commands.tryRun('/jam 1', host.id);
+    const m2 = await until(() => (Jam.latest() !== m1 ? Jam.latest() : null));
+    await jamDone();
+    out.songIdea = { first: m1.idea, song: m1.song, remembered: Jam._test.ideas()[m1.song], second: m2.idea, from: m2.ideaFrom };
+    m = m2;
+  } else out.songIdea = 'skipped (no test video)';
+}
 
 // 4. broken builds: fixed first by the next turn; the jam never ends broken
 await Commands.tryRun('/jam 4 jam-break glitch rings', host.id);
