@@ -690,3 +690,10 @@ svg.hi { width: 1em; height: 1em; display: block; flex: none; overflow: visible;
 /* the timeline's scrolling strip (three-media.js scroll): slides under the fixed playhead while a song plays */
 .media-bar .mb-strip-clip { position: absolute; left: 0; top: 0; bottom: 0; overflow: hidden; pointer-events: none; border-radius: 4px; }
 .media-bar .mb-strip { position: absolute; left: 0; top: 0; display: block; will-change: transform; }
+
+/* ---------- smooth (round 5): no backdrop blur over things that move ----------
+   A backdrop-filter re-blurs whatever is behind it on every frame that content changes: over a playing video, the
+   live Lab picture, flowing node wires or a chat that scrolls / streams, that was a full-size blur per frame for a
+   small panel. These stay on their own (already dark, translucent) backgrounds; menus and dialogs keep their glass. */
+:is(.nv-hud-btn, .tn-switch, .nv-minimap, .vf-wait, .vr-scopes, .scene-tag, .ed-panel, .fg-watch, .jump-bottom, .pinned-strip, .chat-find),
+.three-preview :is(.present-hint, .present-hud) { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
