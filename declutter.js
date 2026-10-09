@@ -11,53 +11,54 @@
 // Everything here is also a chat command: /calm, /reveal, /customise, /pin-control, /unpin-control, /rightclick.
 const Declutter = (() => {
   // ---------- what leaves the surface ----------
-  // { id, area, label, sel, mode: 'alt' | 'hover', host (hover: the area you point at), keep (states that stay) }
+  // { id, area, label, sel, mode: 'alt' | 'hover', host (hover: the area you point at; sel is then written from inside
+  // the host), keep (states that stay) }
   const LAB = 'Lab';
   const REVEAL = [
     // rail (both stay in the rail's ⋯ and Ctrl+K / right-click on the rail)
     { id: 'rail-add', area: 'Rail', label: '＋ Add an agent or website', sel: '#rail #add-btn' },
     { id: 'rail-palette', area: 'Rail', label: '⌘ Command palette (Ctrl+K)', sel: '#rail #palette-btn' },
     // chats panel
-    { id: 'panel-filter', area: 'Chats panel', label: '⏷ Filter chats', sel: '#panel .panel-filter-btn', mode: 'hover', host: '#panel .panel-head', keep: '.on' },
-    { id: 'panel-add', area: 'Chats panel', label: '＋ New chat in each group', sel: '#panel .group-add', mode: 'hover', host: '#panel .group-head' },
-    { id: 'panel-kind', area: 'Chats panel', label: 'NATIVE / DOCKED labels', sel: '#panel .group-kind', mode: 'hover', host: '#panel .group-head' },
-    { id: 'panel-tags', area: 'Chats panel', label: '#tags on chat rows', sel: '#panel .item .item-tags', mode: 'hover', host: '#panel .item' },
-    { id: 'panel-tokens', area: 'Chats panel', label: 'Token counts on chat rows', sel: '#panel .item .item-tok', mode: 'hover', host: '#panel .item' },
+    { id: 'panel-filter', area: 'Chats panel', label: '⏷ Filter chats', sel: '.panel-filter-btn', mode: 'hover', host: '#panel .panel-head', keep: '.on' },
+    { id: 'panel-add', area: 'Chats panel', label: '＋ New chat in each group', sel: '.group-add', mode: 'hover', host: '#panel .group-head' },
+    { id: 'panel-kind', area: 'Chats panel', label: 'NATIVE / DOCKED labels', sel: '.group-kind', mode: 'hover', host: '#panel .group-head' },
+    { id: 'panel-tags', area: 'Chats panel', label: '#tags on chat rows', sel: '.item-tags', mode: 'hover', host: '#panel .item' },
+    { id: 'panel-tokens', area: 'Chats panel', label: 'Token counts on chat rows', sel: '.item-tok', mode: 'hover', host: '#panel .item' },
     // a chat
-    { id: 'chat-meta', area: 'Chat', label: 'Tokens-this-chat note in the header', sel: '.native-head .chat-meta', mode: 'hover', host: '.native-head' },
-    { id: 'chat-ctx', area: 'Chat', label: 'Context size in the header', sel: '.native-head .ctx-meter', mode: 'hover', host: '.native-head', keep: '.warn, .high' },
-    { id: 'chat-attach', area: 'Chat', label: '📎 Attach', sel: 'form.composer .attach-btn', mode: 'hover', host: 'form.composer' },
-    { id: 'chat-collab', area: 'Chat', label: '⚇ Work with Astra', sel: 'form.composer .collab-chip', mode: 'hover', host: 'form.composer', keep: '.on' },
-    { id: 'msg-actions', area: 'Chat', label: 'Copy / ⋯ under older messages', sel: '.messages .msg:not(:last-child) > .msg-foot :is(.copy-msg, .msg-more)', mode: 'hover', host: '.messages .msg' },
-    { id: 'msg-meta', area: 'Chat', label: 'Time and number under messages', sel: '.messages .msg:not(:last-child) > .msg-foot :is(.msg-time, .msg-num)', mode: 'hover', host: '.messages .msg' },
-    { id: 'msg-tokens', area: 'Chat', label: 'Token badges under older replies', sel: '.messages .msg:not(:last-child) > .msg-foot :is(.tok-badge, .mt-badge)', mode: 'hover', host: '.messages .msg' },
+    { id: 'chat-meta', area: 'Chat', label: 'Tokens-this-chat note in the header', sel: '.chat-meta', mode: 'hover', host: '.native-head' },
+    { id: 'chat-ctx', area: 'Chat', label: 'Context size in the header', sel: '.ctx-meter', mode: 'hover', host: '.native-head', keep: '.warn, .high' },
+    { id: 'chat-attach', area: 'Chat', label: '📎 Attach', sel: '.attach-btn', mode: 'hover', host: 'form.composer' },
+    { id: 'chat-collab', area: 'Chat', label: '⚇ Work with Astra', sel: '.collab-chip', mode: 'hover', host: 'form.composer', keep: '.on' },
+    { id: 'msg-actions', area: 'Chat', label: 'Copy / ⋯ under older messages', sel: '> .msg-foot :is(.copy-msg, .msg-more)', mode: 'hover', host: '.messages .msg:not(:last-child)' },
+    { id: 'msg-meta', area: 'Chat', label: 'Time and number under messages', sel: '> .msg-foot :is(.msg-time, .msg-num)', mode: 'hover', host: '.messages .msg:not(:last-child)' },
+    { id: 'msg-tokens', area: 'Chat', label: 'Token badges under older replies', sel: '> .msg-foot :is(.tok-badge, .mt-badge)', mode: 'hover', host: '.messages .msg:not(:last-child)' },
     // the docked director chat
     { id: 'dock-new', area: 'Director dock', label: '＋ New chat (Ctrl+N)', sel: '.tool-dock.dock-chat .native-head > button:last-of-type' },
     { id: 'dock-fold', area: 'Director dock', label: '⇥ Collapse the chat', sel: '.dd-strip .dd-fold' },
     { id: 'dock-chips', area: 'Director dock', label: 'Quick chips above the chat box', sel: '.tool-dock .dd-chips' },
-    { id: 'dock-sum', area: 'Director dock', label: 'Tool-call summary text', sel: '.dd-strip .dd-sum', mode: 'hover', host: '.dd-strip' },
+    { id: 'dock-sum', area: 'Director dock', label: 'Tool-call summary text', sel: '.dd-sum', mode: 'hover', host: '.dd-strip' },
     // Lab toolbar
     { id: 'lab-palette', area: LAB, label: '🎨 Palettes', sel: '.three-toolbar .lab-palette, .tb-group .lab-palette' },
     { id: 'lab-refs', area: LAB, label: '🖼 References', sel: '[data-feature="References"]' },
     { id: 'lab-stage', area: LAB, label: '🖥 Stage window', sel: '.tb-group [data-feature="Stage window"]' },
     { id: 'lab-livecode', area: LAB, label: 'Live code checkbox', sel: '.three-toolbar > label.check' },
-    { id: 'lab-stats', area: 'Lab preview', label: 'fps / draw-call line', sel: '.three-preview > .three-stats', mode: 'hover', host: '.three-preview', focus: false },
-    { id: 'lab-size', area: 'Lab preview', label: 'Pixel size readout', sel: '.stage-pill .stage-size', mode: 'hover', host: '.stage-pill', focus: false },
+    { id: 'lab-stats', area: 'Lab preview', label: 'fps / draw-call line', sel: '> .three-stats', mode: 'hover', host: '.three-preview', focus: false },
+    { id: 'lab-size', area: 'Lab preview', label: 'Pixel size readout', sel: '.stage-size', mode: 'hover', host: '.stage-pill', focus: false },
     // Lab timeline
     { id: 'tl-sizes', area: 'Lab timeline', label: '▤ ▭ ▁ timeline sizes', sel: '.media-bar .mb-size:not(.on)' },
     { id: 'tl-note', area: 'Lab timeline', label: '📌 Note (N)', sel: '.media-bar .mb-g-capture' },
     { id: 'tl-rare', area: 'Lab timeline', label: '× remove the song · volume · Q quantize taps', sel: '.media-bar :is(.mb-x, .mb-vol, .mb-quant)' },
-    { id: 'tl-empty', area: 'Lab timeline', label: '"No music loaded" line', sel: '.media-bar.mb-empty .mb-name', mode: 'hover', host: '.media-bar' },
+    { id: 'tl-empty', area: 'Lab timeline', label: '"No music loaded" line', sel: '.mb-name', mode: 'hover', host: '.media-bar.mb-empty' },
     // Lab layers and sliders
-    { id: 'ly-key', area: 'Lab layers', label: '◇ Keyframe buttons (until a layer is animated)', sel: '.layers .kf-btn.kf-none', mode: 'hover', host: '.layers .ly-field' },
+    { id: 'ly-key', area: 'Lab layers', label: '◇ Keyframe buttons (until a layer is animated)', sel: '.kf-btn.kf-none', mode: 'hover', host: '.layers .ly-field' },
     { id: 'ly-timebtns', area: 'Lab layers', label: 'Whole song / Loop only (layer timing)', sel: '.layers .ly-timebtns' },
     { id: 'tw-steps', area: 'Lab sliders', label: '‹ › Shuffle steps (Shift+R)', sel: '[data-feature="Shuffle back"], [data-feature="Shuffle forward"]' },
     { id: 'tw-shuffle-opts', area: 'Lab sliders', label: '▾ Shuffle options (right-click Shuffle)', sel: '[data-feature="Shuffle options"]' },
     { id: 'tw-save-opts', area: 'Lab sliders', label: '▾ Save options (right-click Save)', sel: '[data-feature="Save options"]' },
     { id: 'tw-tip', area: 'Lab sliders', label: 'Ask for named sliders', sel: '.tweaks .tw-tip' },
     { id: 'tw-asks', area: 'Lab sliders', label: 'Ask the director', sel: '.tweaks .tw-asks' },
-    { id: 'tw-badge', area: 'Lab sliders', label: '⚡ / ↻ / ○ badges on slider rows (how the sketch reads them)', sel: '.tw-row .tw-badge', mode: 'hover', host: '.tw-row' },
-    { id: 'tw-sec-reset', area: 'Lab sliders', label: '↺ on group titles', sel: '.tw-sec-head .tw-sec-btn', mode: 'hover', host: '.tw-sec-head' },
+    { id: 'tw-badge', area: 'Lab sliders', label: '⚡ / ↻ / ○ badges on slider rows (how the sketch reads them)', sel: '.tw-badge', mode: 'hover', host: '.tw-row' },
+    { id: 'tw-sec-reset', area: 'Lab sliders', label: '↺ on group titles', sel: '.tw-sec-btn', mode: 'hover', host: '.tw-sec-head' },
     // Lab console
     { id: 'tc-mode', area: 'Lab console', label: 'When the console shows', sel: '.three-console-head .tc-mode' },
     { id: 'tc-errors', area: 'Lab console', label: 'Errors only', sel: '.three-console-head > label.check' },
@@ -75,12 +76,12 @@ const Declutter = (() => {
     { id: 'vr-tools', area: 'Video Review', label: '◐ view (V) · ◉ color picker (P) · ▤ scopes (Y) · ⧉ copy frame (Ctrl+C)', sel: '.vr-tgroup .vr-ico:is([title^="View:"], [title^="Color picker"], [title^="Scopes"], [title^="Copy frame"])' },
     // long tab bars (Forgeheart's eleven): the first five and the open one stay, the rest wait behind Alt and in the
     // bar's right-click menu
-    { id: 'tool-desc', area: 'Tabs', label: 'A tool’s one-line description in its header', sel: '.tool-head .tool-desc', mode: 'hover', host: '.tool-head' },
+    { id: 'tool-desc', area: 'Tabs', label: 'A tool’s one-line description in its header', sel: '.tool-desc', mode: 'hover', host: '.tool-head' },
     { id: 'tabs-more', area: 'Tabs', label: 'Forgeheart’s tabs after the fifth', sel: '.tool-surface[data-id="tool:forgeheart"] .tabbar > button:nth-child(n+6):not(.on)' },
     // memory: the dialog's rarer buttons
     { id: 'mem-foot', area: 'Memory', label: 'Edit as text… / Import… / Export…', sel: 'dialog.memory-facts .dialog-actions > button.ghost' },
     // memory rows: the per-fact controls show on the row you point at
-    { id: 'mem-row', area: 'Memory', label: 'Category, expiry and who-remembers per fact', sel: '.memory-row :is(.memory-cat, .memory-move, button[title^="Set an expiry"])', mode: 'hover', host: '.memory-row' },
+    { id: 'mem-row', area: 'Memory', label: 'Category, expiry and who-remembers per fact', sel: '.memory-cat, .memory-move, button[title^="Set an expiry"]', mode: 'hover', host: '.memory-row' },
   ].map((r) => ({ mode: 'alt', ...r }));
   const byId = new Map(REVEAL.map((r) => [r.id, r]));
   const areas = () => [...new Set(REVEAL.map((r) => r.area))];
