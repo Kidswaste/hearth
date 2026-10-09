@@ -22,7 +22,10 @@ step('"▤ Sequence" sits in the timeline strip (one entry)', J.visible(tab) && 
 await J.click(tab);
 await until(() => ThreeSeq.active && ThreeSeq.edit, 8000); await wait(800);
 const first = ThreeSeq.edit;
-step('clicking it opens a sequence that starts with the scene on screen (no questions)', ThreeSeq.active && first.clips.length === 1 && first.clips[0].kind === 'scene' && first.clips[0].sketch === ids.red && first.seq.lab === true, ThreeSeq.status().clips);
+// (seq2: it is the scene's own sequence, made without asking: the scene as its first clip on its song, empty when the
+// scene has no song: this test scene has none, so its clip is added here)
+step('clicking it opens the scene\'s own sequence (no questions; empty: the scene has no song)', ThreeSeq.active && first.clips.length === 0 && first.seq.lab === true && first.seq.scene === ids.red, ThreeSeq.status().clips);
+await ThreeSeq.add({ sketch: ids.red }, { trans: null }); await wait(400);
 const row = bar.querySelector('.sq-row');
 const ctl = [...row.querySelectorAll('button, .sq-time')].filter((n) => J.visible(n));
 step('the sequence row stays calm: ≤ 7 controls on screen', ctl.length <= 7, ctl.map((n) => n.textContent.trim().slice(0, 14)));
