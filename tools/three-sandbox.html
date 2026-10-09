@@ -3398,7 +3398,8 @@ function installRunGuards() {
     const o = owner();
     const run = (t) => {
       if (!alive(o)) return;
-      if (frozen && !stepping) { realRAF(run); return; } // ❚❚ freeze: the picture holds (the music goes on)
+      // ❚❚ freeze: the picture holds (the music goes on); a layer re-run meanwhile still draws its first frame
+      if (frozen && !stepping && !(o.L && o.L.drawnGen !== o.L.gen)) { realRAF(run); return; }
       if (o.L && layerMix(o.L) <= 0) { realRAF(run); return; }
       if (!capOk(t)) { realRAF(run); return; }
       within(o, fn, [t]);

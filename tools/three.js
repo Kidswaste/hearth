@@ -2479,7 +2479,7 @@ const ThreeLab = (() => {
       if (!partial) { lastStats = null; lastStatsAt = 0; hideStall(); }
       if (fresh) { stats.hidden = true; if (!box.loading || box.stale || restartNext || reload) box.reload(restartNext); restartNext = false; }
       box.send({ type: 'tweak-init', values, keys, mods: mergedMods() });
-      if (fresh) { player.attach(); sendRefs(); } else if (!partial && ranSketch !== current.id) sendRefs();
+      if (fresh) { player.attach(); sendRefs(); } else if (!partial && ranSketch !== current.id) { sendRefs(); sendTriggers(); }
       if (!fresh && !partial && !player.path) box.send({ type: 'media-unload' }); // a sketch without a song: the last one stops
       const spec = (L) => ({ id: L.id, code: codeOf(L), ...layerProps(L) });
       // new code fades in over the old picture; a layer the sandbox doesn't run yet wipes in
