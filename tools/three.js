@@ -2504,7 +2504,8 @@ const ThreeLab = (() => {
       box.send({ type: 'tweak-init', values, keys, mods: mergedMods() });
       if (fresh) { player.attach(); sendRefs(); } else if (!partial && ranSketch !== current.id) { sendRefs(); sendTriggers(); }
       if (!fresh && !partial && !player.path) box.send({ type: 'media-unload' }); // a sketch without a song: the last one stops
-      const spec = (L) => ({ id: L.id, code: codeOf(L), ...layerProps(L) });
+      const valuesOf = (L) => { const p = preps.get(L.id); if (!p) return undefined; const b = baseOf(L); return Object.fromEntries(p.values.map((v, i) => [b + i, v])); };
+      const spec = (L) => ({ id: L.id, code: codeOf(L), values: valuesOf(L), ...layerProps(L) });
       // new code fades in over the old picture; a layer the sandbox doesn't run yet wipes in
       const fx = (L) => (ranCode.has(L.id) ? 'xfade' : 'reveal');
       if (partial) {

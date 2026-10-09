@@ -3576,6 +3576,9 @@ window.__labHealth = () => ({ contexts: glAlive(), renderers: renderers.size, li
 // ---------- sketch mode ----------
 // spec.fx: 'xfade' (new code for this layer: cross-fade from its old picture) | 'reveal' (a new layer: wipe in)
 async function runLayer(spec, hot = false) {
+  // the layer's own slider values come with its code, so the two always match (a separate table could arrive for
+  // another sketch's layers in between and shift every number this code reads)
+  if (spec.values) Object.assign(TV, spec.values);
   installRunGuards();
   const L = layerState(spec.id);
   // the picture on screen stays on top until the new code draws (rapid edits keep the first picture)
