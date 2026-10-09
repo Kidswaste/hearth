@@ -97,7 +97,7 @@ const Commands = (() => {
   const info = new Map();
 
   // 'Ctrl+Shift+S' as the Mac shows it (⌘ does what Ctrl does in Hearth, Alt is ⌥)
-  const keyText = (k) => (/Mac/.test(navigator.platform) ? String(k).replace(/Ctrl\+/g, '⌘').replace(/Alt\+/g, '⌥') : k);
+  const keyText = (k) => (/Mac/.test(navigator.platform) ? String(k).replace(/Ctrl\+/g, '⌘').replace(/Alt\+/g, '⌥').replace(/([⌘⌥])\+/g, '$1') : k); // "⌘+Alt+R" (capture's own labels) → ⌘⌥R
   const dups = []; // [{ name, was, by }] names registered twice (see register)
   function noteDup(name, prev, def) {
     dups.push({ name, was: `/${prev.name} (${prev.area})`, by: `/${def.name} (${def.area || 'Other'})`, at: (new Error().stack || '').split('\n').slice(3, 6).map((l) => l.trim().replace(/^at /, '').replace(/\(?file:\/\/\S*\/([^/]+:\d+):\d+\)?/, '$1')).join(' < ') });

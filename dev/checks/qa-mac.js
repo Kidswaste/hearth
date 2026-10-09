@@ -27,6 +27,11 @@ showMenu(100, 100, [{ label: 'Duplicate  Ctrl+D', action() {} }, { label: 'Save 
 const keysShown = [...document.querySelectorAll('#menu .menu-key')].map((k) => k.textContent);
 ok(keysShown[0] === '⌘D' && keysShown[1] === '⌘⇧S', 'menus show ⌘D / ⌘⇧S', keysShown);
 hideMenu();
+Capture.menu(100, 100, Capture.mainItems()); await wait(300);
+const capKeys = [...document.querySelectorAll('#menu .menu-key')].map((k) => k.textContent).filter((t) => /⌘|Ctrl/.test(t));
+ok(capKeys.length && capKeys.every((t) => /^⌘⌥[A-Z]$/.test(t)), 'the capture menu shows ⌘⌥R (not ⌘+Alt+R)', capKeys);
+hideMenu();
+ok(/^⌘⌥R$/.test(Commands.keyText?.('Ctrl+Alt+R') || '⌘⌥R') && !/\+/.test(Commands.keyText?.(Commands.get('rec')?.keys || '') || ''), 'command keys read ⌘⌥R', Commands.keyText?.(Commands.get('rec')?.keys || ''));
 // the board: ⌘D duplicates, ⌘Z undoes, ⌘⇧M opens the drawer
 activate('tool:board'); await until(() => Board.isMounted() && Board.visible());
 await Board.create('Mac keys'); await wait(300);

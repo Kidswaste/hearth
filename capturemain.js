@@ -220,7 +220,7 @@ function register(ipcMain, getWin, getSettings = () => ({})) {
     button{-webkit-app-region:no-drag;border:0;border-radius:10px;width:22px;height:20px;background:rgba(255,255,255,.12);color:#fff;font:inherit;cursor:pointer;padding:0}
     button:hover{background:rgba(255,255,255,.28)}
   </style><div class="pill" id="p"><span class="dot"></span><span id="t">0:00</span><span id="l"></span>
-  <button id="pa" title="Pause / resume (Ctrl+Alt+P)">❚❚</button><button id="st" title="Stop (Ctrl+Alt+R)">■</button></div>
+  <button id="pa" title="Pause / resume (${process.platform === 'darwin' ? '⌘⌥P' : 'Ctrl+Alt+P'})">❚❚</button><button id="st" title="Stop (${process.platform === 'darwin' ? '⌘⌥R' : 'Ctrl+Alt+R'})">■</button></div>
   <script>let n=0;const say=(a)=>{document.title=a+':'+(++n)};pa.onclick=()=>say('pause');st.onclick=()=>say('stop');
   window.set=(o)=>{t.textContent=o.time||'0:00';l.textContent=o.label||'';p.classList.toggle('paused',!!o.paused);pa.textContent=o.paused?'▶':'❚❚'};</script>`;
   function placeIndicator() {
