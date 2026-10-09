@@ -1,7 +1,7 @@
-// Chat commands for the Lab's motion-design kit (tools/three-motion.js): one open entry (/motion, or Alt+X / X → Motion
+// Chat commands for the Lab's motion-design kit (tools/three-motion.js): one open entry (/motion-kit, or Alt+X / X → Motion
 // in the Lab) and a command per family for what you'd type most (/kinetic, /camera-move, /logo-reveal, /end-card,
 // /hearth-on-screen…). Area "Three.js Lab" (/help motion). Registered after every script has loaded; a name another
-// stream already took is skipped (the family stays reachable through /motion <preset>). Ctrl+K actions at the bottom.
+// stream already took is skipped (the family stays reachable through /motion-kit <preset>). Ctrl+K actions at the bottom.
 (() => {
   const AREA = 'Three.js Lab';
   const M = () => ThreeMotion;
@@ -26,8 +26,8 @@
   const timeArg = (s, re) => { const m = re.exec(s); return m ? Number(m[1]) : null; };
 
   const DEFS = [
-    { name: 'motion', area: AREA, args: '[preset] [words]', desc: 'The motion-design kit: Hearth on screen, kinetic type, camera moves, logo reveals, end cards (no args: the picker, also Alt+X)',
-      keywords: 'motion design intro promo kinetic typography ui mockup device camera logo end card cta after effects', examples: ['/motion', '/motion cascade Made with Hearth', '/motion laptop', '/motion dolly in'],
+    { name: 'motion-kit', area: AREA, args: '[preset] [words]', desc: 'The motion-design kit: Hearth on screen, kinetic type, camera moves, logo reveals, end cards (no args: the picker, also Alt+X)',
+      keywords: 'motion design intro promo kinetic typography ui mockup device camera logo end card cta after effects', examples: ['/motion-kit', '/motion-kit cascade Made with Hearth', '/motion-kit laptop', '/motion-kit dolly in'],
       complete: (a) => opts(M().TEMPLATES.map((t) => ({ value: t.motion.preset, hint: t.name })), a),
       run: async (args) => {
         await lab();
@@ -121,7 +121,7 @@
   ];
   const register = () => {
     for (const d of DEFS) {
-      if (Commands.get?.(d.name)) continue; // another stream owns the name: /motion <preset> still reaches it
+      if (Commands.get?.(d.name)) continue; // another stream owns the name: /motion-kit <preset> still reaches it
       const aliases = (d.aliases || []).filter((a) => !Commands.get?.(a));
       Commands.register({ ...d, aliases });
     }

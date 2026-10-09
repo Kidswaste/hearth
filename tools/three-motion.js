@@ -234,7 +234,7 @@ const ThreeMotion = (() => {
         const graph = NodeView.normalize(g, ThreeNodes.registry);
         graph.meta = { motion: kind };
         const r = ThreeNodes.compile(graph);
-        if (!r.errors?.length && /motion\./.test(r.code)) return r.code;
+        if (!r.errors?.length && /motion-kit\./.test(r.code)) return r.code;
       } catch (err) { console.warn('motion nodes', err); }
     }
     return plainCode(kind, vals);
@@ -274,7 +274,7 @@ const ThreeMotion = (() => {
     const qq = norm(text).replace(/^(type|3d type|camera|motion)\s*[:·-]?\s*/, (m) => (kind ? '' : m));
     if (!qq) return null;
     const list = TEMPLATES.filter((t) => !kind || t.motion.kind === kind);
-    const key = (t) => [norm(t.name), norm(t.motion.preset), norm(t.id), norm(t.name.replace(/^[^:]+:\s*/, ''))];
+    const key = (t) => [norm(t.name), norm(t.motion.preset), norm(t.id), norm(t.name.replace(/^(Type|Camera):\s*/, ''))];
     return list.find((t) => key(t).includes(qq)) || list.find((t) => key(t).some((k) => k.startsWith(qq))) || list.find((t) => `${norm(t.name)} ${norm(t.desc)} ${norm(t.tags)}`.includes(qq)) || null;
   }
 
@@ -301,12 +301,12 @@ const ThreeMotion = (() => {
   // add a motion layer: { template | kind + values }, name, over (knob values), props (layer settings), position
   async function add(what, { over = {}, name = null, props = {}, position = null, wait = 1, select = true } = {}) {
     const t = typeof what === 'string' ? byId(what) || find(what) : what;
-    if (!t?.motion) throw new Error(`No motion preset "${what}" (/motion lists them)`);
+    if (!t?.motion) throw new Error(`No motion preset "${what}" (/motion-kit lists them)`);
     const d = await lab();
     const code = codeOf(t, over);
     const ls = d.layers().layers;
     const pos = position ?? (t.motion.bottom ? 'bottom' : null);
-    const r = await d.addLayer({ name: name || `${MARK}${t.name.replace(/^[^:]+:\s*/, '')}`, code, position: pos ?? undefined, props: { ...t.motion.props, ...props } }, wait);
+    const r = await d.addLayer({ name: name || `${MARK}${t.name.replace(/^(Type|Camera):\s*/, '')}`, code, position: pos ?? undefined, props: { ...t.motion.props, ...props } }, wait);
     if (!select) { /* the director's calls keep the selection the Lab gives them */ }
     ensureFont(d);
     (typeof Usage !== 'undefined') && Usage.track?.(`Lab Motion › ${t.name}`);
@@ -341,7 +341,7 @@ const ThreeMotion = (() => {
     let shots = (Capture.recent?.() || []).filter((x) => x.kind === 'shot' && x.path).slice(0, max).map((x) => x.path);
     if (!shots.length && fresh) { try { const s = await Capture.shot({ target: 'window', quiet: true }); if (s?.path) shots = [s.path]; } catch { /* mocks only */ } }
     for (const [i, p] of shots.entries()) {
-      try { const r = await ThreeLab.addRef?.(p, { key: `hearth-${i + 1}` }); if (r?.key) out.push(r.key); } catch { /* skip that one */ }
+      try { const r = await (await lab()).refs.add(p, `hearth-${i + 1}`); if (r?.key) out.push(r.key); } catch { /* skip that one */ }
     }
     return out;
   }
@@ -368,7 +368,7 @@ const ThreeMotion = (() => {
     added.push((await add('mo-ui-stack', { over: { layout: lay, frame: fr, pics: pics.join(', '), count: lay === 'single' || lay === 'hero' || lay === 'zoom' ? 1 : 3 }, name: `${MARK}Hearth on screen` })).added);
     added.push((await add('mo-cursor-arrow', { over: { start: 1.6 } })).added);
     added.push((await add('mo-type-rise', { over: { text: words || 'ONE WINDOW / FOR ALL YOUR AIs', y: 0.08, size: 0.09, start: 0.6 } })).added);
-    added.push((await add('mo-camera-dolly-in', { over: { length: 4 } })).added);
+    added.push((await add('mo-camera-dolly-in', { over: { length: 4, amount: 0.6 } })).added);
     return { layers: added, pictures: refs.length ? refs : ['(drawn Hearth screens: no capture yet)'], sketch: L.director?.layers().sketch };
   }
   function uniqueSketchName(base) {
@@ -384,7 +384,7 @@ const ThreeMotion = (() => {
     const t = typeof what === 'string' ? byId(what) || find(what) : what;
     if (!t?.motion) throw new Error(`No motion preset "${what}"`);
     if (!ThreeSeq.active) await ThreeSeq.enter?.();
-    const id = await ThreeSeq.add({ overlay: { name: `${MARK}${t.name.replace(/^[^:]+:\s*/, '')}`, code: codeOf(t, over), blend: t.motion.props?.blend || 'normal' } }, { at: at ?? ThreeSeq.time, dur: secs || (t.motion.kind === 'camera' ? 4 : 3.5) });
+    const id = await ThreeSeq.add({ overlay: { name: `${MARK}${t.name.replace(/^(Type|Camera):\s*/, '')}`, code: codeOf(t, over), blend: t.motion.props?.blend || 'normal' } }, { at: at ?? ThreeSeq.time, dur: secs || (t.motion.kind === 'camera' ? 4 : 3.5) });
     return { overlay: t.name, at: at ?? ThreeSeq.time, id };
   }
 
@@ -414,7 +414,7 @@ const ThreeMotion = (() => {
     const box = el('span', { class: 'fx-thumb mo-thumb' });
     box.style.background = `linear-gradient(135deg, ${a} 0%, ${a} 45%, ${z} 160%)`;
     const glyph = it.action ? '▶' : SPEC[it.tpl?.motion.kind]?.glyph || '◭';
-    box.append(el('b', { text: glyph, style: `color:${z}` }));
+    const g = el('b', { text: glyph }); g.style.color = z; box.append(g);
     return box;
   }
   function hint(it) { return it.action ? 'Enter: make it' : (typeof ThreeSeq !== 'undefined' && ThreeSeq.active ? 'Enter: add as a layer · Shift+Enter: over the sequence at the playhead' : 'Enter: add on top · Shift+Enter: above the selected layer'); }
@@ -432,7 +432,7 @@ const ThreeMotion = (() => {
     const mk = (name, layers) => L.scenes.create({ name: uniqueSketchName(name), layers: layers.map((x, i) => ThreeLayers.defaults({ name: x[0], code: x[1], slot: i, color: ThreeLayers.COLORS[i % ThreeLayers.COLORS.length], ...(x[2] || {}) })), code: layers[0][1], frame: format });
     const pics = 'mock:chat, mock:lab, mock:board';
     const s1 = mk('Motion · logo', [[`${MARK}Glow orb`, codeFor('brand', { style: 'glow orb' })], [`${MARK}Flame`, codeFor('logo', { style: 'line draw', speed: 1.2, tagline: 'Claude and Astra, in one app' })], [`${MARK}Grain`, codeFor('brand', { style: 'grain' }), { blend: 'overlay' }]]);
-    const s2 = mk('Motion · on screen', [[`${MARK}Forge gradient`, codeFor('brand', { style: 'forge gradient' })], [`${MARK}Hearth on screen`, codeFor('ui', { layout: 'stack', frame: 'browser', pics, count: 3, start: 0.1 })], [`${MARK}Cursor`, codeFor('cursor', { start: 1.2 })], [`${MARK}Title`, codeFor('type', { preset: 'rise', text: words || 'ONE WINDOW / FOR ALL YOUR AIs', y: 0.06, size: 0.09, start: 0.3 })], [`${MARK}Camera`, codeFor('camera', { move: 'dolly-in', length: 3.5 })]]);
+    const s2 = mk('Motion · on screen', [[`${MARK}Forge gradient`, codeFor('brand', { style: 'forge gradient' })], [`${MARK}Hearth on screen`, codeFor('ui', { layout: 'stack', frame: 'browser', pics, count: 3, start: 0.1 })], [`${MARK}Cursor`, codeFor('cursor', { start: 1.2 })], [`${MARK}Title`, codeFor('type', { preset: 'rise', text: words || 'ONE WINDOW / FOR ALL YOUR AIs', y: 0.06, size: 0.09, start: 0.3 })], [`${MARK}Camera`, codeFor('camera', { move: 'dolly-in', length: 3.5, amount: 0.6 })]]);
     const s3 = mk('Motion · end card', [[`${MARK}End card`, codeFor('endcard', { style: 'forge' })], [`${MARK}Embers`, codeFor('brand', { style: 'embers' }), { blend: 'add' }]]);
     await ThreeSeq.create('Motion intro', { empty: true, format, show: true });
     await ThreeSeq.add({ sketch: s1.id }, { dur: 3, trans: null });
@@ -464,7 +464,7 @@ const ThreeMotion = (() => {
         for (const k of ['layout', 'frame', 'style', 'mark', 'move']) if (args[k] != null) over[k] = args[k];
         if (op === 'seq') return { ok: true, value: await toSequence(t, { over, at: args.at != null ? Number(args.at) : null, secs: args.secs != null ? Number(args.secs) : null }) };
         const props = { ...t.motion.props, ...(args.in != null ? { in: Number(args.in) } : {}), ...(args.out != null ? { out: Number(args.out) } : {}) };
-        const r = await call('three_add_layer', { name: args.name || `${MARK}${t.name.replace(/^[^:]+:\s*/, '')}`, code: codeOf(t, over), position: t.motion.bottom ? 'bottom' : undefined, settings: props, wait: 1.5 });
+        const r = await call('three_add_layer', { name: args.name || `${MARK}${t.name.replace(/^(Type|Camera):\s*/, '')}`, code: codeOf(t, over), position: t.motion.bottom ? 'bottom' : undefined, settings: props, wait: 1.5 });
         if (r?.ok === false) return r;
         return { ok: true, value: { added: t.name, kind: t.motion.kind, note: 'One node in the Nodes view; its knobs are sliders (three_sliders / keyframes). Change words with op words.', report: r?.value ?? r } };
       }
@@ -497,7 +497,7 @@ const ThreeMotion = (() => {
     try { openPicker(); } catch (err) { toast(err.message, { type: 'error' }); }
     (typeof Usage !== 'undefined') && Usage.key?.('Alt+X', 'Lab');
   });
-  try { Keys.add({ area: 'Lab', keys: 'Alt+X', what: 'Motion design kit: Hearth on screen, kinetic type, camera moves, logos, end cards (the effects picker\'s Motion tab, /motion)', when: () => Boolean(document.querySelector('.layers')?.offsetParent), run: () => openPicker() }); } catch { /* keys list optional */ }
+  try { Keys.add({ area: 'Lab', keys: 'Alt+X', what: 'Motion design kit: Hearth on screen, kinetic type, camera moves, logos, end cards (the effects picker\'s Motion tab, /motion-kit)', when: () => Boolean(document.querySelector('.layers')?.offsetParent), run: () => openPicker() }); } catch { /* keys list optional */ }
 
   return { SPEC, KINDS, TEMPLATES, ACTIONS, find, byId, codeFor, plainCode, add, setValues, motionOf, hearthOnScreen, hearthPictures, toSequence, sampleSequence, handle, openPicker, ensureNodes, ensureFont, parseCursorPath, pickerItems, applyItem, HELP };
 })();
