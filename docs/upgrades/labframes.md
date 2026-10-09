@@ -354,7 +354,7 @@ Everything below is also in `/help footage` (area Three.js Lab) and the keys but
   holds the same cut, a cut made in the editor reaches the Lab, a sequence round trip; the director's tools; 25 fps
   with sound; 29.97 (f37 = 00:00:01:07); a reference's pacing (5 shots, 0.9 s) and /match-pacing; commands; keys;
   0 duplicate commands.
-- `dev/checks/labframes-more.js` (STEPSMORE steps, all ✓): all 21 footage templates compile and draw; the Footage layer shows the
+- `dev/checks/labframes-more.js` (46 steps, all ✓): all 21 footage templates compile and draw; the Footage layer shows the
   exact frame (decoded from its own pixels, f40 then f47); the menus; T; the filmstrip and exact zoomed frames; the
   clock without ffmpeg (measured 30 fps, f33 exact); cues and cuts at shots (0, 30, 45, 90, 105); in / out, roll
   with Alt+, , repeat, first, mute; a held frame and a 0.5× part as the sketch plays them; dragging a cut line,
@@ -372,7 +372,7 @@ Everything below is also in `/help footage` (area Three.js Lab) and the keys but
   scrubbing: DOM changes **158 → 13 / s**, painted **856 → 88 Mpx**, paint 189 → 39 ms, layout 149 → 118 ms.
 - `dev/checks/smooth-lab.js` (the music Lab, before → after): playing mutations 16 → 16 / s, painted 52 → 34 Mpx;
   slider drag 48 → 43 / s; dock streaming 78 → 59 / s (fps lower in the after run: the machine was busier).
-- Still green: `dev/checks/music.js` (36 steps), `sh dev/journeys.sh lab` (26 steps), `dev/checks/qa-commands.js`
+- Still green: `dev/checks/music.js` (36 steps), `sh dev/journeys.sh lab` (26 steps; one run missed its tap-tempo step at 127 BPM under load, the rerun passed), `dev/checks/qa-commands.js`
   (882 commands, 0 duplicates), `node dev/director-mcp-test.js` (the full-mode tool count moved 32 → 33).
 
 ## Not done / notes
