@@ -15,7 +15,10 @@ const Native = (() => {
   const unfolded = new Set(); // "chatId:index" of long replies the user unfolded (they stay open)
   // Extension points for chat-*.js: render(agentId, view, chat), message(node, m, index, agent),
   // event(event, chat), mark(chat, index, key, on), send(agentId, chat, text).
-  const hooks = { render: [], message: [], event: [], mark: [], send: [], newChat: [] }; // newChat(agentId): "New chat" (chat-scenes.js)
+  const hooks = { render: [], message: [], event: [], mark: [], send: [], newChat: [], finish: [], compose: [] }; // newChat(agentId): "New chat" (chat-scenes.js)
+  // (round 9, chatcore) finish(event, chat, extras): add fields to the reply about to be saved (chat-things.js: the
+  // captures / renders / board items / scenes a reply made). compose(agentId, chat, full, message): may return a new
+  // text for the engine (chat-context.js adds one short context line, only when your words point at the chat's things).
 
   // Follow-up suggestions the agent offers as buttons: <suggest>…</suggest>.
   const SUGGEST_TAG = /<suggest>([\s\S]*?)<\/suggest>/gi;
@@ -104,7 +107,8 @@ const Native = (() => {
 
     const chips = el('div', { class: 'attach-chips' });
     const input = el('textarea', { rows: 3, spellcheck: true });
-    const attachBtn = el('button', { type: 'button', class: 'ghost attach-btn', text: '📎', title: 'Attach files or images (or drop / paste them)' });
+    // (round 9) ＋ opens one menu: files, the board, captures, the Lab's frame, a screen region, recent renders (chat-attach.js)
+    const attachBtn = el('button', { type: 'button', class: 'ghost attach-btn', text: '＋', title: 'Attach: files, the board, captures, the Lab, the screen, renders (or drop / paste them)' });
     const sendBtn = el('button', { type: 'submit', class: 'primary', text: 'Send' });
     const counter = el('span', { class: 'composer-count' });
     const queueBox = el('div', { class: 'queue-chips', hidden: true });
@@ -154,7 +158,8 @@ const Native = (() => {
       if (files.length) { e.preventDefault(); addFiles(agentId, files); return; }
       smartPaste(agentId, e);
     });
-    attachBtn.addEventListener('click', async () => {
+    attachBtn.addEventListener('click', async (e) => {
+      if (typeof ChatAttach !== 'undefined' && !e.shiftKey) { ChatAttach.menu(agentId, attachBtn); return; } // Shift+click: the file picker straight away
       const paths = await window.hub.openDialog({ properties: ['openFile', 'multiSelections'], title: 'Attach files' });
       for (const p of paths) await addPath(agentId, p);
     });
@@ -387,6 +392,18 @@ const Native = (() => {
     if (H.agent(agentId)?.threeTools && typeof ThreeLab !== 'undefined' && ThreeLab.isReference(name) && !/\.(png|jpe?g|gif|webp|bmp)$/i.test(name)) {
       if (await labReference(agentId, path)) { renderChips(agentId); toast(`${name} added to the sketch's references`, { timeout: 2200 }); return; }
     }
+    // (round 9) a video (a capture, a render) attaches its contact sheet: engines read pictures, not video files
+    if (/\.(mp4|webm|mov|m4v|mkv)$/i.test(name) && !H.agent(agentId)?.workspace && typeof FrameRead !== 'undefined') {
+      try {
+        const busy = toast(`Reading ${name}…`, { timeout: 0 });
+        try {
+          const sheet = await FrameRead.sheet(path, { layout: '4x3' });
+          const p = await window.hub.saveAttachment(`${name.replace(/\.\w+$/, '')} · contact sheet.jpg`, await window.hub.fs.read(sheet.path, { encoding: 'base64' }));
+          v.attachments.push({ kind: 'image', name: `${name} · contact sheet`, path: p, preview: `file:///${p.replace(/\\/g, '/')}`, video: path });
+        } finally { busy.remove(); }
+        renderChips(agentId); return;
+      } catch (err) { toast(`Couldn't read ${name}: ${err.message}`, { type: 'error' }); return; }
+    }
     if (/\.(png|jpe?g|gif|webp|bmp)$/i.test(name)) {
       // The Three Director can turn attached pictures into sketch references, from the attachments folder.
       if (H.agent(agentId)?.threeTools) { try { path = await window.hub.saveAttachment(name, await window.hub.fs.read(path, { encoding: 'base64' })); } catch { /* keep the original path */ } }
@@ -555,7 +572,8 @@ const Native = (() => {
     if (m.role === 'error' && m.needsLogin) {
       node.append(el('button', { class: 'primary login-btn', text: `Sign in to ${ENGINE_LABEL[agent.engine] || agent.engine}`, dataset: { engine: agent.engine } }));
     }
-    if (m.tools?.length) node.prepend(el('div', { class: 'tool-chips', text: `Used ${[...new Set(m.tools.map(toolLabel))].join(', ')}` }));
+    // (round 9) one quiet line ("⚙ 4 steps · three, capture"); click it for the list
+    if (m.tools?.length) node.prepend(toolFold(m.tools));
     if (m.remembered?.length) {
       node.append(el('div', { class: 'memory-chip' }, `Saved to memory: ${m.remembered.join(' · ')} `,
         el('button', { class: 'undo-memory', text: 'Undo', dataset: { agent: agent.id, facts: JSON.stringify(m.remembered) } })));
@@ -591,6 +609,15 @@ const Native = (() => {
     return node;
   }
   const isRetryable = (m) => Boolean(m.stopped);
+  // The tool calls of a reply, folded: "⚙ 3 steps · three · capture", open for the list (repeats counted)
+  function toolFold(tools) {
+    const labels = tools.map(toolLabel);
+    const counts = new Map(); for (const l of labels) counts.set(l, (counts.get(l) || 0) + 1);
+    const where = [...new Set(tools.map((t) => (String(t).match(/^mcp__(?:claude_ai_)?([^_]+(?:_[^_]+)?)__/) || String(t).match(/^(\w+?)_/) || String(t).match(/^([\w ]+?) ·/) || [])[1]).filter(Boolean).map((x) => x.replace(/^hearth[-_]?/, '').replace(/_/g, ' ')))].slice(0, 3);
+    return el('details', { class: 'tool-chips tool-fold' },
+      el('summary', { text: `⚙ ${tools.length === 1 ? labels[0] : `${tools.length} steps`}${tools.length > 1 && where.length ? ` · ${where.join(' · ')}` : ''}`, title: [...counts].map(([l, n]) => `${l}${n > 1 ? ` ×${n}` : ''}`).join('\n') }),
+      el('ol', { class: 'tool-list' }, [...counts].map(([l, n]) => el('li', { text: `${l}${n > 1 ? `  ×${n}` : ''}` }))));
+  }
 
   // The ⋯ menu of a message: the usual actions first, the rest behind More… (each item has a chat command too).
   function messageMenu(agentId, index, anchor) {
@@ -1040,7 +1067,8 @@ const Native = (() => {
     else if (!compact && chat.style && !chat.session?.id) style = chat.style;
     // astra.js adds the chat's effort / persona / web search, a collaboration's outcome, and a fallback
     // (the conversation as context) in case the engine lost the session
-    const raw = last.sent || full || last.text;
+    let raw = last.sent || full || last.text;
+    if (!fromHistory && !compact) for (const fn of hooks.compose) { try { const t = await fn(agentId, chat, raw, last); if (typeof t === 'string' && t !== raw) { raw = t; last.sent = t; } } catch (err) { console.warn(err); } }
     const extra = typeof Astra !== 'undefined' ? Astra.beforeSend(chat, raw, withContext) : { text: withContext(chat, raw), options: {} };
     window.hub.send({
       agentId, chatId: chat.id, session: chat.session,
@@ -1094,6 +1122,7 @@ const Native = (() => {
     if (p.opinions.length) extras.opinions = p.opinions;
     if (p.progress) extras.progress = p.progress;
     if (p.shows.length) extras.shows = p.shows;
+    for (const fn of hooks.finish) { try { fn(event, chat, extras); } catch (err) { console.warn(err); } }
     let replyText = '';
     if (event.type === 'done') {
       const raw = event.text || p.text;
@@ -1192,7 +1221,7 @@ const Native = (() => {
     const now = Date.now();
     const copy = {
       id: `${agentId}-${now.toString(36)}`, agentId, title: `${chat.title} (branch)`, createdAt: now, updatedAt: now,
-      session: {}, continuedFrom: `"${chat.title}"`, model: chat.model,
+      session: {}, continuedFrom: `"${chat.title}"`, contextFrom: chat.id, model: chat.model, // contextFrom: the board, scene, captures… it worked with go along (chat-context.js)
       messages: chat.messages.slice(0, index + 1).map((m) => ({ ...m, lastReply: undefined })),
       ...(chat.compact && chat.compact.index <= index + 1 ? { compact: { ...chat.compact } } : {}),
     };
@@ -1217,7 +1246,7 @@ const Native = (() => {
       const now = Date.now();
       const fresh = {
         id: `${agentId}-${now.toString(36)}`, agentId, title: `${chat.title.replace(/ \(continued\)$/, '')} (continued)`, createdAt: now, updatedAt: now,
-        session: {}, continuedFrom: 'summary of the earlier chat', model: chat.model,
+        session: {}, continuedFrom: 'summary of the earlier chat', contextFrom: chat.id, model: chat.model,
         messages: [{ role: 'assistant', text: `**Where we are** (summary of "${chat.title}")\n\n${summary}`, at: now }],
       };
       chats.set(fresh.id, fresh);
@@ -1590,7 +1619,7 @@ const Native = (() => {
     const now = Date.now();
     const copy = {
       id: `${targetId}-${now.toString(36)}`, agentId: targetId, title: chat.title, createdAt: now, updatedAt: now,
-      session: {}, continuedFrom: from?.name || chat.agentId,
+      session: {}, continuedFrom: from?.name || chat.agentId, contextFrom: chat.id,
       messages: chat.messages.filter((m) => m.role !== 'error').map(({ role, text, at }) => ({ role, text, at })),
     };
     chats.set(copy.id, copy);
@@ -1747,5 +1776,8 @@ const Native = (() => {
       return (paths || []).length;
     },
     unreadFrom, rememberFacts, forgetFacts, fmt, clearNotes,
+    // (round 9) a card in a reply that is still streaming (chat-things.js); null when no reply runs in that chat
+    liveCard(chatId, node) { const p = pending.get(chatId); if (!p) return null; p.cards.push(node); repaintPending(chatId); return node; },
+    toolLabel, renderChips,
   };
 })();
