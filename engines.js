@@ -122,6 +122,9 @@ const HUB_TOOLSETS = {
   // Ask the user questions in the chat, get a second opinion from the other engine. On for every Claude agent
   // unless switched off; opt-in for Astra (it adds tool definitions to every Codex request).
   chatTools: { server: 'chat', script: 'chat-mcp.js' },
+  // Screenshots / recordings of Hearth and the exact frame reader (capture.js): opt-in per chat (/capture-tools on,
+  // options.captureTools) or per agent (agent.captureTools), never on by default (≈ 500 tokens per message, /director-cost).
+  captureTools: { server: 'capture', script: 'capture-mcp.js' },
 };
 // Claude agents get their tool sets (chat tools unless switched off). Codex agents (Astra) get the tool sets their
 // agent has (a director switched to Astra) and chat tools only as an opt-in (talk-back, or agent.hubTools).
@@ -164,7 +167,7 @@ function codexMcpArgs(agent) {
       '-c', `${p}.args=[${tomlStr(path.join(__dirname, 'mcp', script))}]`,
       '-c', `${p}.env={ ${Object.entries(hubToolEnv(agent)).map(([k, v]) => `${k}=${tomlStr(String(v))}`).join(', ')} }`,
       // a question to the user (chat_ask) or a render can take a long time
-      '-c', `${p}.tool_timeout_sec=${key === 'videoTools' || key === 'chatTools' ? 2700 : 300}`,
+      '-c', `${p}.tool_timeout_sec=${key === 'videoTools' || key === 'chatTools' || key === 'captureTools' ? 2700 : 300}`,
       '-c', `${p}.startup_timeout_sec=30`,
     );
   }
@@ -584,6 +587,8 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
   // asDirector: 'three' (a jam's build turn on an agent that isn't a Lab director, e.g. your Astra): this one turn gets
   // the Lab's tools, Codex through its MCP overrides
   if (options.asDirector === 'three') agent = { ...agent, threeTools: true, hubTools: agent.engine === 'codex' ? true : agent.hubTools, dock: agent.dock || 'three' };
+  // a chat that turned on /capture-tools gets the capture tool set for its runs (not lean ones)
+  if (options.captureTools && !options.lean) agent = { ...agent, captureTools: true };
   if (chatId && !String(chatId).startsWith('once-') && hubToolsets(agent).some((k) => k !== 'chatTools')) agent = { ...agent, hubChatId: chatId };
   const original = text;
   if (engine === 'claude' && options.images?.length) {
