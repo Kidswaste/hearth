@@ -28,8 +28,8 @@ function importFile(src) {
   if (st.size > MAX_IMPORT) throw new Error('That file is over 2 GB');
   if (inMedia(from)) return { path: from, size: st.size, name: path.basename(from) };
   const file = path.join(MEDIA_DIR, `${stamp()}-${safeName(path.basename(from))}`);
-  fs.copyFileSync(from, file);
-  return { path: file, size: st.size, name: path.basename(from) };
+  // copied off the main thread: a long reference clip (up to 2 GB) froze every window while it copied
+  return fs.promises.copyFile(from, file).then(() => ({ path: file, size: st.size, name: path.basename(from) }));
 }
 
 // Pictures the page makes (base64), named after what they are: "thumb-ab12.jpg", "grab-…png", exports.
@@ -142,7 +142,7 @@ function unused(keep) {
 function registerIpc(ipcMain) {
   ensureDirs();
   ipcMain.handle('board:dir', () => ({ dir: BOARD_DIR, media: MEDIA_DIR, exports: EXPORT_DIR }));
-  ipcMain.handle('board:import', (_e, src) => { try { return { ok: true, ...importFile(src) }; } catch (err) { return { ok: false, error: err.message }; } });
+  ipcMain.handle('board:import', async (_e, src) => { try { return { ok: true, ...(await importFile(src)) }; } catch (err) { return { ok: false, error: err.message }; } });
   ipcMain.handle('board:save', (_e, name, base64, opts) => saveData(name, base64, opts || {}));
   ipcMain.handle('board:fetch', async (_e, url) => { try { return { ok: true, ...(await fetchMedia(url)) }; } catch (err) { return { ok: false, error: err.message }; } });
   ipcMain.handle('board:snap', (_e, url, opts) => snapshot(url, opts || {}));
