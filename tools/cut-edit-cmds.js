@@ -53,7 +53,7 @@ const CutEditCmds = (() => {
 
   const defs = [];
   const cmd = (d) => defs.push(d);
-  const PRESET_KINDS = { transition: FX.TRANSITIONS, look: FX.LOOKS, effect: FX.EFFECTS, title: FX.TITLE_STYLES, anim: FX.TITLE_ANIMS, lower: FX.LOWER_THIRDS, motion: FX.MOTIONS, ramp: FX.RAMPS, format: FX.FORMATS, template: FX.TEMPLATES, export: FX.EXPORTS, easing: FX.EASES, blend: FX.BLENDS };
+  const PRESET_KINDS = { transition: FX.TRANSITIONS, look: FX.LOOKS, effect: FX.EFFECTS, sound: FX.AUDIO_FX, title: FX.TITLE_STYLES, anim: FX.TITLE_ANIMS, lower: FX.LOWER_THIRDS, motion: FX.MOTIONS, ramp: FX.RAMPS, format: FX.FORMATS, template: FX.TEMPLATES, export: FX.EXPORTS, easing: FX.EASES, blend: FX.BLENDS };
 
   // ---------- opening, sequences, templates, format ----------
   cmd({ name: 'editor', aliases: ['video-editor'], desc: 'The video editor: open (on the open video), off, new <name> [format], open <sequence>, list, keys', args: '[on|off|new <name>|open <name>|list|keys]', keys: 'E',
@@ -186,6 +186,9 @@ const CutEditCmds = (() => {
       VideoCut.setEffect(f.id, tg, rm ? 0 : amt ? Number(amt.slice(0, -1)) / 100 : 1);
       return rm ? `${f.name} removed.` : `✦ ${f.name}${amt ? ` at ${amt}` : ''}.`;
     } });
+  cmd({ name: 'sound-effect', aliases: ['audio-effect'], desc: 'A sound effect on the clip (heard in the render): voice, bass, lofi, radio, telephone, underwater, echo, hall, pitch-up, pitch-down, loud (−14 LUFS), compress, wide, mono, duck…; again: off; "off" clears', args: '<effect|off> [n…]',
+    complete: (a) => opts([...ids(FX.AUDIO_FX), { value: 'off' }], a, 24), examples: ['/sound-effect loud', '/sound-effect radio 2'],
+    run: async (args) => { await editing(); const w = words(args); const tg = targets(w.filter(isTarget)); if (w[0] === 'off') { VideoCut.setAudioFx('off', tg); return 'Sound effects removed.'; } const a = pickPreset(FX.AUDIO_FX, w.filter((x) => !isTarget(x)).join(' '), 'sound effect'); const r = VideoCut.setAudioFx(a.id, tg); return r ? `♪ ${a.name} toggled (heard in the render).` : 'Pick a clip with sound.'; } });
   cmd({ name: 'keyframe', aliases: ['key'], desc: 'A keyframe at the playhead on the selection: opacity (0–1), scale, x, y (−1…1), rotate (°), volume; optional value and curve', args: '<prop> [value] [curve]',
     complete: (a) => (words(a).length > 2 ? opts(ids(FX.EASES), a, 20) : opts(C.KEY_PROPS, a)), examples: ['/keyframe scale 1.2 expoOut', '/keyframe opacity 0', '/keyframe x -0.3'], keys: 'Alt+K',
     run: async (args) => { await editing(); const [p, v, e0] = words(args); if (!C.KEY_PROPS.includes(p)) return `Pick one of ${C.KEY_PROPS.join(', ')}.`; const id = targets([])[0]; const ease = e0 ? pickPreset(FX.EASES, e0, 'easing').id : 'ease'; const r = VideoCut.keyHere(p, v != null ? Number(v) : null, id, ease); return r ? `◆ ${p} ${Number(r.v).toFixed(3)} at ${fmt(VideoCut.time)} (${FX.EASE[ease].name}).` : 'No clip here.'; } });
@@ -232,6 +235,27 @@ const CutEditCmds = (() => {
   cmd({ name: 'copy-clips', desc: 'Copy the selected clips and layers (paste with /paste-clips or Ctrl+V)', run: async () => { await editing(); return VideoCut.copySel() ? 'Copied.' : 'Select something first.'; } });
   cmd({ name: 'paste-clips', desc: 'Paste copied clips and layers at the playhead', run: async () => { await editing(); return VideoCut.paste() ? `Pasted · ${summary()}` : 'Nothing copied yet.'; } });
   cmd({ name: 'inspector', desc: 'Open the inspector for the selection (everything a clip can do)', args: '[n|V2.1]', run: async (args) => { await editing(); const [id] = targets(words(args)); VideoCut.inspect(id); return null; } });
+
+  cmd({ name: 'clip-fill', aliases: ['fill-frame'], desc: 'The selection fills the frame (crops the edges) instead of fitting it: 16:9 footage in a 9:16 edit', args: '[n…]', run: async (args) => { await editing(); return VideoCut.fillFrame(targets(words(args))) ? 'Fills the frame.' : 'Pick a video or picture.'; } });
+  cmd({ name: 'reset-transform', desc: 'Position, scale, rotation and opacity back to normal (keyframes too)', args: '[n…]', run: async (args) => { await editing(); VideoCut.resetTransform(targets(words(args))); return 'Transform reset.'; } });
+  cmd({ name: 'clip-duration', aliases: ['clip-length'], desc: 'Make the clip last exactly N seconds (videos change speed, stills / titles change length)', args: '<seconds> [n]',
+    run: async (args) => { await editing(); const [s, n] = words(args); const [id] = targets(n ? [n] : []); const r = VideoCut.clipDuration(Number(String(s).replace(/s$/, '')), id); return r ? `Lasts ${s} s${typeof r === 'number' && r !== 1 ? ` (${r.toFixed(2)}×)` : ''}.` : 'That clip can\'t take that length.'; } });
+  cmd({ name: 'fit-to-fill', desc: 'A gap and the video after it: the video changes speed to fill the gap too', args: '[gap n]', run: async (args) => { await editing(); const [id] = targets(words(args)); return VideoCut.fitToFill(id) ? `Fit to fill · ${summary()}` : 'Pick a gap followed by a video.'; } });
+  cmd({ name: 'extend-edit', desc: 'The cut nearest the playhead rolls to it (Shift+E)', keys: 'Shift+E', run: async () => { await editing(); return VideoCut.extendEdit() ? `Edit extended · ${summary()}` : 'No cut to move.'; } });
+  cmd({ name: 'swap-next', desc: 'Swap a main-track clip with the one after it', args: '[n]', run: async (args) => { await editing(); const [id] = targets(words(args)); return VideoCut.swapNext(id) ? 'Swapped.' : 'Nothing after it.'; } });
+  cmd({ name: 'shuffle-clips', desc: 'Shuffle the main track (a montage idea; /cut undo puts it back)', run: async () => { await editing(); VideoCut.shuffleClips(); return `Shuffled · ${summary()}`; } });
+  cmd({ name: 'match-frame', desc: 'Open the source of the picture under the playhead in Review, on the same frame', run: async () => { await editing(); return (await VideoCut.matchFrame()) ? 'Source open on the same frame (E goes back to the edit).' : 'No video here.'; } });
+  cmd({ name: 'clip-label', desc: 'A label color on the selection: red, orange, gold, green, blue, violet, pink, none', args: '<color> [n…]', complete: (a) => opts(['none', 'red', 'orange', 'gold', 'green', 'blue', 'violet', 'pink'], a),
+    run: async (args) => { await editing(); const [col, ...rest] = words(args); VideoCut.setLabel(col || 'none', targets(rest)); return `Label ${col || 'none'}.`; } });
+  cmd({ name: 'clip-rename', desc: 'Name the selected clip (shown on the track)', args: '<name>', run: async (args) => { await editing(); const [id] = targets([]); VideoCut.commit(C.patchAny(VideoCut.edit, id, (c) => { if (String(args || '').trim()) c.name = String(args).trim().slice(0, 40); else delete c.name; }), 'Renamed'); return 'Renamed.'; } });
+  cmd({ name: 'clip-off', aliases: ['disable-clip'], desc: 'Turn the selection off (hidden and silent, kept in place) or back on', args: '[n…]', run: async (args) => { await editing(); VideoCut.toggleOff(targets(words(args))); return 'Toggled.'; } });
+  cmd({ name: 'range-selection', desc: 'In–out = the span of the selected clips (render or loop just that)', run: async () => { await editing(); const m = VideoCut.rangeFromSelection(); return m ? `In–out ${fmt(m.a)} → ${fmt(m.b)}.` : 'Select clips first.'; } });
+  cmd({ name: 'beat-markers', aliases: ['markers-on-beats'], desc: 'Markers on the music: every beat, bar, 2 or 4 bars (from the song on an audio track, else the clips\' sound)', args: '[beat|bar|2bars|4bars]', complete: (a) => opts(['beat', 'bar', '2bars', '4bars'], a),
+    run: async (args) => { await editing(); const w = words(args)[0] || 'bar'; const n = { beat: 1, bar: 4, '2bars': 8, '4bars': 16 }[w] || 4; for (let i = 0; i < 40; i += 1) { const r = VideoCut.beatMarkers(n); if (r) return `${r} markers on the music.`; await new Promise((res) => setTimeout(res, 250)); } return 'No beats found (is there music on an audio track?).'; } });
+  cmd({ name: 'copy-keyframes', desc: 'Copy the selection\'s keyframes (paste on other clips)', run: async () => { await editing(); return VideoCut.copyKeys(targets([])[0]) ? 'Keyframes copied.' : 'No keyframes here.'; } });
+  cmd({ name: 'paste-keyframes', desc: 'Paste copied keyframes on the selection', args: '[n…]', run: async (args) => { await editing(); return VideoCut.pasteKeys(targets(words(args))) ? 'Keyframes pasted.' : 'Copy keyframes first (/copy-keyframes).'; } });
+  cmd({ name: 'safe-check', aliases: ['title-safe'], desc: 'Which titles reach into the app buttons / captions of TikTok, Reels, Shorts (or a zone: tiktok, reels, shorts, feed45, youtube)', args: '[zone]', complete: (a) => opts(['all', 'tiktok', 'reels', 'shorts', 'feed45', 'youtube'], a),
+    run: async (args) => { await editing({ show: false }); const r = VideoCut.safeCheck(words(args)[0] || 'all'); if (!r.length) return 'No titles yet.'; return r.map((x) => `${x.inside ? '✓' : '✖'} ${x.track} “${x.text}” at ${fmt(x.at)}${x.inside ? '' : ' — move it into the safe area'}`).join('\n'); } });
 
   // ---------- markers, frames, view ----------
   cmd({ name: 'marker-note', desc: 'A marker at the playhead with a note (the chats read it in the edit)', args: '<note>', keys: 'Shift+M',

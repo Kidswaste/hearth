@@ -29,7 +29,7 @@ const VideoInspector = (() => {
     api.on('frame', () => { if (cur) paintKeys(); });
   }
   function open(id) { if (!root) return; cur = id; root.hidden = false; aside.classList.add('inspecting'); render(); }
-  function close() { if (!root) return; cur = null; root.hidden = true; root.replaceChildren(); aside?.classList.remove('inspecting'); }
+  function close() { if (!root) return; const had = root.contains(document.activeElement) || document.activeElement === document.body; cur = null; root.hidden = true; root.replaceChildren(); aside?.classList.remove('inspecting'); if (had) api.focus?.(); }
 
   // ---------- helpers ----------
   const f = () => (cur ? api.find(cur) : null);
@@ -98,7 +98,9 @@ const VideoInspector = (() => {
     if (visual && c.kind !== 'title') kids.push(colorSection(c));
     if (visual && c.kind !== 'title') kids.push(effectsSection(c));
     if (isMain && x.i > 0) kids.push(transSection(c));
+    const hadFocus = root.contains(document.activeElement) || document.activeElement === document.body;
     root.replaceChildren(...kids.filter(Boolean));
+    if (hadFocus) root.focus({ preventScroll: true }); // keys (Esc) keep reaching the inspector after it redraws
     paintKeys();
   }
   function titleSection(c) {
@@ -150,6 +152,7 @@ const VideoInspector = (() => {
       const kb = el('button', { class: 'ed-key', text: '◆', title: 'Keyframe the volume at the playhead', on: { click: () => toggleKey('volume') } });
       kb.dataset.prop = 'volume'; keyBtns.push(kb);
       kids.push(el('div', { class: 'ed-row ed-prop' }, el('span'), kb, el('span'), el('label', { text: 'Volume' }), s.inp, s.out));
+      kids.push(row('Sound fx', select(FX.AUDIO_FX, '', (v) => v && api.setAudioFx(v, [cur]), { none: (c.afx || []).length ? `${c.afx.map((x) => FX.AFX[x]?.name.split(' (')[0]).join(', ')} (toggle…)` : 'Add (heard in the render)…' })));
       kids.push(row('Mute', (() => { const i = el('input', { type: 'checkbox', checked: Boolean(c.mute) }); i.addEventListener('change', () => api.commit(patch((k) => { k.mute = i.checked; }), i.checked ? 'Muted' : 'Sound on')); return i; })()));
     }
     for (const edge of ['fadeIn', 'fadeOut']) {

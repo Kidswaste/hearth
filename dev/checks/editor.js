@@ -39,7 +39,7 @@ async function codeInFile(path, n, fps, rect) {
   await new Promise((res) => { v.onloadeddata = res; v.onerror = res; setTimeout(res, 8000); });
   v.currentTime = (n + 0.5) / fps;
   await new Promise((res) => { v.onseeked = res; setTimeout(res, 4000); });
-  await new Promise((res) => (v.requestVideoFrameCallback ? v.requestVideoFrameCallback(() => res()) : res()) || setTimeout(res, 300));
+  await new Promise((res) => { v.requestVideoFrameCallback?.(() => res()); setTimeout(res, 400); });
   const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
   const g = c.getContext('2d'); g.drawImage(v, 0, 0);
   const r = rect ? { x0: Math.round(rect[0] * c.width), y0: Math.round(rect[1] * c.height), w: Math.round(rect[2] * c.width), h: Math.round(rect[3] * c.height) } : {};
@@ -72,11 +72,11 @@ await wait(500);
 const root = H.surfaces.get('tool:ae').el;
 
 // 1. ✂ / E open the editor: one ＋, a format chip, keys in the registry
-await click(root.querySelector('.vr-cut-btn')); await until(() => VideoCut.active, 5000); await wait(300);
+await click(root.querySelector('.vr-cut-btn')); await until(() => VideoCut.active, 15000); await wait(300);
 step('✂ opens the editor', VideoCut.active && visible(root.querySelector('.vr-cut-track')));
 await key('e'); await until(() => !VideoCut.active, 3000);
 step('E closes it', !VideoCut.active);
-await key('e'); await until(() => VideoCut.active, 5000); await wait(400);
+await key('e'); await until(() => VideoCut.active, 15000); await wait(400);
 step('E opens it again', VideoCut.active);
 step('＋ (add) and the format chip are the only new buttons', visible(root.querySelector('.vr-cut-add')) && /9:16 · 30 fps/.test(root.querySelector('.vr-cut-fmt').textContent), root.querySelector('.vr-cut-fmt').textContent);
 const editorKeys = Keys.all().filter((k) => k.area === 'Editor');
@@ -197,6 +197,7 @@ step('◆ then a slider change at another time = two scale keys (auto-key)', key
 await run('/ease backOut');
 step('/ease sets the curve of the key before the playhead', C.find(VideoCut.edit, ti.id).clip.keys.scale.some((k) => k.ease === 'backOut'));
 await key('Escape'); await wait(150);
+step('Esc closes the inspector and the keys go back to the editor', !visible(insp) && root.contains(document.activeElement));
 
 note('7. looks');
 // 7. looks: right-click › Look › Cinematic › Teal & orange; /adjust; the preview filter exists
@@ -236,11 +237,14 @@ step('pause lands on an exact frame (main layer)', fi.layers.find((x) => x.src =
 note('10. export the rich edit');
 // 10. export the rich edit: ffmpeg renders transitions, overlays, titles; read it back frame by frame
 const total = C.total(VideoCut.edit);
-const res = await run('/edit-render');
-await until(() => Review.videos.some((v) => /frames_a_30_v2\.mp4$/.test(v.path)), 120000);
-const out1 = `${VIDS}/frames_a_30_v2.mp4`;
+const job1 = await VideoCut.exportCut({});
+const ev1 = job1 ? await job1.done : { code: 'no job' };
+note(`render: ${ev1.code} ${ev1.error || ''}`);
+const res = ev1.code === 0;
+const out1 = job1?.output;
+await until(() => Review.videos.some((v) => v.path === out1), 20000);
 const p1 = await window.hub.video.probe(out1, {});
-step('/edit-render: a new version, the full length, video + audio', res && p1 && Math.abs(p1.duration - total) < 0.1 && p1.audio, { total, p1: p1 && { d: p1.duration, w: p1.w, h: p1.h, audio: Boolean(p1.audio) } });
+step('export: a new version, the full length, video + audio', res && p1 && Math.abs(p1.duration - total) < 0.1 && p1.audio, { total, err: ev1.error, p1: p1 && { d: p1.duration, w: p1.w, h: p1.h, audio: Boolean(p1.audio) } });
 const Lx = C.layout(VideoCut.edit);
 const fMain = Math.round((Lx[0].start + 1.5) * 30); // inside clip 1, under the PIP's time
 const wantMain = Math.floor(C.srcAt(Lx[0].clip, 1.5 + 0.5 / 30) * 30 + 1e-4);

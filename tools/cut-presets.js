@@ -646,6 +646,31 @@ const EditFX = (() => {
   }
   const needsAlpha = (fx) => (fx || []).some((f) => EFFECT[f.id]?.alphaFF);
 
+  // ---------- sound effects (clip.afx = [ids]; heard in the render, the preview plays the clean sound) ----------
+  const AE = (id, name, ff) => ({ id, name, ff });
+  const AUDIO_FX = [
+    AE('voice', 'Voice boost (clearer speech)', ['highpass=f=90', 'equalizer=f=3000:t=q:w=1.2:g=4', 'acompressor=threshold=0.1:ratio=3:attack=5:release=120']),
+    AE('bass', 'Bass boost', ['bass=g=8:f=110']),
+    AE('treble', 'Bright (treble boost)', ['treble=g=6:f=6000']),
+    AE('warm', 'Warm (soft highs)', ['lowpass=f=9000', 'bass=g=3']),
+    AE('lofi', 'Lo-fi', ['lowpass=f=3800', 'highpass=f=180', 'acrusher=bits=10:mode=log:aa=1']),
+    AE('radio', 'Radio', ['highpass=f=400', 'lowpass=f=3500', 'acompressor=threshold=0.08:ratio=6']),
+    AE('telephone', 'Telephone', ['highpass=f=600', 'lowpass=f=2800', 'volume=1.4']),
+    AE('underwater', 'Underwater / muffled', ['lowpass=f=500', 'volume=1.3']),
+    AE('echo', 'Echo', ['aecho=0.8:0.6:280:0.4']),
+    AE('hall', 'Big room (reverb-ish)', ['aecho=0.8:0.7:40|70|110|170:0.35|0.25|0.18|0.12']),
+    AE('pitch-up', 'Pitch up (chipmunk-ish, same length)', ['asetrate=48000*1.25', 'aresample=48000', 'atempo=0.8']),
+    AE('pitch-down', 'Pitch down (deep, same length)', ['asetrate=48000*0.8', 'aresample=48000', 'atempo=1.25']),
+    AE('loud', 'Loudness to social level (−14 LUFS)', ['loudnorm=I=-14:TP=-1:LRA=11']),
+    AE('compress', 'Compressor (even level)', ['acompressor=threshold=0.125:ratio=4:attack=10:release=200:makeup=2']),
+    AE('wide', 'Wider stereo', ['extrastereo=m=1.8']),
+    AE('mono', 'Mono', ['pan=stereo|c0=0.5*c0+0.5*c1|c1=0.5*c0+0.5*c1']),
+    AE('duck', 'Ducked (−12 dB, a music bed under voice)', ['volume=0.25']),
+    AE('fade-tail', 'Long tail (gentle fade at the end)', ['areverse', 'afade=t=in:d=1.5', 'areverse']),
+  ];
+  const AFX = Object.fromEntries(AUDIO_FX.map((x) => [x.id, x]));
+  const audioFilters = (afx = []) => (afx || []).flatMap((id) => AFX[id]?.ff || []);
+
   // ---------- blend modes ----------
   // canvas: globalCompositeOperation; ff: the ffmpeg blend mode (null = plain overlay); neutral: the padding color
   // that leaves the picture under it unchanged in that mode.
@@ -824,6 +849,10 @@ const EditFX = (() => {
     M('zoom-out-exit', 'Zoom away', 'Exit', (d) => ({ scale: [[Math.max(0, d - 0.5), 1, 'expoIn'], [d, 0.1]], opacity: [[Math.max(0, d - 0.3), 1, 'linear'], [d, 0]] })),
     M('tilt', 'Tilt', 'Slow', (d) => ({ rotate: [[0, -4, 'easeInOut'], [d, 4]], scale: [[0, 1.12]] })),
     M('float', 'Float', 'Slow', (d) => { const k = []; const n = Math.max(2, Math.round(d)); for (let i = 0; i <= n; i += 1) k.push([(d * i) / n, i % 2 ? 0.02 : -0.02, 'easeInOut']); return { y: k, scale: [[0, 1.05]] }; }),
+    M('logo-tr', 'Logo bug (top right)', 'Layout', () => ({ scale: [[0, 0.16]], x: [[0, 0.38]], y: [[0, -0.42]], opacity: [[0, 0.85]] })),
+    M('logo-tl', 'Logo bug (top left)', 'Layout', () => ({ scale: [[0, 0.16]], x: [[0, -0.38]], y: [[0, -0.42]], opacity: [[0, 0.85]] })),
+    M('logo-br', 'Logo bug (bottom right)', 'Layout', () => ({ scale: [[0, 0.16]], x: [[0, 0.38]], y: [[0, 0.42]], opacity: [[0, 0.85]] })),
+    M('logo-bl', 'Logo bug (bottom left)', 'Layout', () => ({ scale: [[0, 0.16]], x: [[0, -0.38]], y: [[0, 0.42]], opacity: [[0, 0.85]] })),
     M('pip-tr', 'Picture in picture (top right)', 'Layout', () => ({ scale: [[0, 0.35]], x: [[0, 0.3]], y: [[0, -0.3]] })),
     M('pip-bl', 'Picture in picture (bottom left)', 'Layout', () => ({ scale: [[0, 0.35]], x: [[0, -0.3]], y: [[0, 0.3]] })),
     M('split-left', 'Split screen: left half', 'Layout', () => ({ scale: [[0, 0.5]], x: [[0, -0.25]] })),
@@ -982,7 +1011,7 @@ const EditFX = (() => {
   return {
     EASES, EASE, ease, bezier, keyValue, keyExpr,
     ADJ, LOOKS, LOOK, grade, colorMath, svgMatrix, colorFilters, cssFilter, hex3,
-    TRANSITIONS, TRANS, NEW_XFADE, BLENDS, BLEND, EFFECTS, EFFECT, effectFilters, needsAlpha,
+    TRANSITIONS, TRANS, NEW_XFADE, BLENDS, BLEND, EFFECTS, EFFECT, effectFilters, needsAlpha, AUDIO_FX, AFX, audioFilters,
     TITLE_STYLES, TSTYLE, TITLE_ANIMS, TANIM, LOWER_THIRDS, LTHIRD, FONT_SANS,
     MOTIONS, MOTION, RAMPS, RAMP, FORMATS, FPS, EXPORTS, exportCodec, TEMPLATES, TEMPLATE, MARKER_COLORS, find,
   };

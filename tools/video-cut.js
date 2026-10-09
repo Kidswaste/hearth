@@ -70,6 +70,8 @@ const VideoCut = (() => {
     if (P.T > total()) P.T = total();
     if (st.view && st.view.t1 > total()) st.view = null;
     fitTrackHeight();
+    // after a menu pick the focus fell to the page: the editor's keys keep working
+    if (st.on && document.activeElement === document.body) host.refs.root.focus({ preventScroll: true });
     refreshPicture();
     draw(); paintHead(); placeHead();
     emit('change', { path: st.path });
@@ -659,6 +661,9 @@ const VideoCut = (() => {
         for (const fx of [X(x.start + (cl.fadeIn || 0)), X(x.end - (cl.fadeOut || 0))]) g.fillRect(clamp(fx, x0 + 1, x1 - 7), top + 1, 6, 6);
         drawKeys(g, cl, x.start, top, lh);
       }
+      if (cl.label) { g.fillStyle = cl.label; g.fillRect(x0, top + lh - 3, cw, 3); }
+      if (cl.name) label(g, cl.name, x0, top + 14, Math.min(cw, 150));
+      if (cl.off) { g.fillStyle = '#000000b0'; g.fillRect(x0, top, cw, lh); g.fillStyle = '#ffffff80'; g.font = '10px system-ui'; g.fillText('off', x0 + 4, top + lh - 14); }
       if (!x.td) { g.fillStyle = '#000'; g.fillRect(x0 - 1, top, 1, lh); }
     }
     // transitions: a bow-tie over the overlap
@@ -701,6 +706,8 @@ const VideoCut = (() => {
           label(g, `${it.kind === 'image' ? '▣' : '▶'} ${noExt(base(it.src))}${it.blend && it.blend !== 'normal' ? ` · ${it.blend}` : ''}`, x0, ly, Math.min(cw, 170));
         }
         g.globalAlpha = 1;
+        if (it.label) { g.fillStyle = it.label; g.fillRect(x0, ly + lane.h - 3, cw, 3); }
+        if (it.off) { g.fillStyle = '#000000b0'; g.fillRect(x0, ly, cw, lane.h); }
         g.restore();
         if (st.sel.has(it.id)) { g.strokeStyle = '#ffd75e'; g.lineWidth = 2; g.strokeRect(x0 + 1, ly + 1, cw - 2, lane.h - 2); g.lineWidth = 1; drawKeys(g, it, s0, ly, lane.h); }
       }
@@ -1072,6 +1079,7 @@ const VideoCut = (() => {
         { label: `Fade in: ${c.fadeIn ? `${c.fadeIn.toFixed(2)} s` : 'off'}`, items: [0, 0.25, 0.5, 1, 2].map((s) => ({ label: s ? `${s} s` : 'Off', action: () => commit(C.patchAny(st.edit, ids, (k) => { k.fadeIn = Math.min(s, C.durOf(k) / 2); }), s ? `Fade in ${s} s` : 'No fade in') })) },
         { label: `Fade out: ${c.fadeOut ? `${c.fadeOut.toFixed(2)} s` : 'off'}`, items: [0, 0.25, 0.5, 1, 2].map((s) => ({ label: s ? `${s} s` : 'Off', action: () => commit(C.patchAny(st.edit, ids, (k) => { k.fadeOut = Math.min(s, C.durOf(k) / 2); }), s ? `Fade out ${s} s` : 'No fade out') })) },
       ] },
+      media ? { label: `Sound effects${c.afx?.length ? ` (${c.afx.length})` : ''}`, items: () => [...FX.AUDIO_FX.map((a) => ({ label: `${(c.afx || []).includes(a.id) ? '✓ ' : ''}${a.name}`, action: () => setAudioFx(a.id, ids) })), c.afx?.length ? { label: 'None', action: () => setAudioFx('off', ids) } : null].filter(Boolean) } : null,
       media ? { label: `${c.mute ? 'Unmute' : 'Mute'} the sound (A)`, action: () => commit(C.patchAny(st.edit, ids, (k) => { k.mute = !c.mute; }), c.mute ? 'Sound on' : 'Muted') } : null,
       media ? { label: `Volume${c.volume != null && c.volume !== 1 ? `: ${Math.round(c.volume * 100)}%` : ''}`, items: [0, 0.25, 0.5, 0.75, 1, 1.5, 2].map((v) => ({ label: `${Math.round(v * 100)}%`, action: () => commit(C.patchAny(st.edit, ids, (k) => { k.volume = v; }), `Volume ${Math.round(v * 100)}%`) })) } : null,
       isItem && visual ? { label: `Blend: ${FX.BLEND[c.blend || 'normal']?.name}`, items: FX.BLENDS.map((b) => ({ label: `${(c.blend || 'normal') === b.id ? '✓ ' : ''}${b.name}`, action: () => commit(C.patchAny(st.edit, ids, (k) => { k.blend = b.id; }), `Blend ${b.name}`) })) } : null,
@@ -1081,6 +1089,18 @@ const VideoCut = (() => {
       c.kind === 'title' ? { label: 'Title style', items: () => grouped(FX.TITLE_STYLES, (id) => commit(C.patchAny(st.edit, ids, (k) => { k.style = id; }), FX.TSTYLE[id].name), c.style) } : null,
       c.kind === 'title' ? { label: 'Title animation', items: () => [{ label: 'In', items: FX.TITLE_ANIMS.map((a) => ({ label: `${c.anim === a.id ? '✓ ' : ''}${a.name}`, action: () => commit(C.patchAny(st.edit, ids, (k) => { k.anim = a.id; }), `In: ${a.name}`) })) }, { label: 'Out', items: FX.TITLE_ANIMS.map((a) => ({ label: `${c.out === a.id ? '✓ ' : ''}${a.name}`, action: () => commit(C.patchAny(st.edit, ids, (k) => { k.out = a.id; }), `Out: ${a.name}`) })) }] } : null,
       c.kind === 'gap' && c.slot ? { label: 'Fill this slot with a video…', action: () => fillSlot(c.id) } : null,
+      { label: 'Clip', items: () => [
+        { label: 'Rename…', action: () => renameClip(c.id) },
+        { label: 'Label color', items: LABELS.map(([n0, col]) => ({ label: `${(c.label || '') === col ? '✓ ' : ''}${n0}`, action: () => setLabel(n0, ids) })) },
+        { label: c.off ? 'Turn it back on' : 'Turn off (hidden and silent)', action: () => toggleOff(ids) },
+        visual && c.kind !== 'title' ? { label: 'Fill the frame (crop the edges)', action: () => fillFrame(ids) } : null,
+        visual ? { label: 'Reset position, scale, rotation, opacity', action: () => resetTransform(ids) } : null,
+        { label: 'Copy keyframes', action: () => copyKeys(c.id) }, keysClip ? { label: 'Paste keyframes', action: () => pasteKeys(ids) } : null,
+        !isItem && i >= 0 && i < st.edit.clips.length - 1 ? { label: 'Swap with the next clip', action: () => swapNext(c.id) } : null,
+        c.kind === 'gap' && st.edit.clips[i + 1]?.kind === 'video' ? { label: 'Fit to fill (the next clip takes this gap)', action: () => fitToFill(c.id) } : null,
+        { label: 'In–out = the selection', action: rangeFromSelection },
+        c.src ? { label: 'Match frame (open the source on this frame)', action: matchFrame } : null,
+      ].filter(Boolean) },
       { label: 'Inspector', action: () => inspect(c.id) },
       c.src ? { more: true, label: 'Open the source in Review', action: () => { leave(); R().open(c.src); } } : null,
       c.src ? { more: true, label: 'Show the source file', action: () => window.hub.fs.reveal(c.src) } : null,
@@ -1291,6 +1311,18 @@ const VideoCut = (() => {
     }), amt > 0 ? `Effect: ${f.name}` : `${f.name} removed`);
     return f;
   }
+  // Sound effects (EditFX.AUDIO_FX, heard in the render): toggle one, or 'off'
+  function setAudioFx(id, ids = null, on = null) {
+    const list = (ids || targetAny()).filter((x) => /video|audio/.test(C.find(st.edit, x)?.clip.kind));
+    if (!list.length) return null;
+    if (id === 'off') { commit(C.patchAny(st.edit, list, (c) => { delete c.afx; }), 'Sound effects removed'); return 'off'; }
+    const a = FX.AFX[id] || FX.find(FX.AUDIO_FX, id);
+    if (!a) return null;
+    const first = C.find(st.edit, list[0]).clip;
+    const want = on ?? !(first.afx || []).includes(a.id);
+    commit(C.patchAny(st.edit, list, (c) => { const s0 = (c.afx || []).filter((x) => x !== a.id); if (want) s0.push(a.id); if (s0.length) c.afx = s0; else delete c.afx; }), want ? `Sound: ${a.name} (heard in the render)` : `${a.name} off`);
+    return a;
+  }
   // one adjustment (exposure, contrast… EditFX.ADJ) on the selection
   function adjust(key, value, ids = null) {
     const list = ids || targetAny();
@@ -1344,6 +1376,113 @@ const VideoCut = (() => {
     if (f?.where !== 'item') return false;
     const { start: _s, id: _i, ...rest } = f.clip;
     return commit(C.insertAt(C.removeItems(st.edit, [id]), P.T, rest), 'Moved to the main track');
+  }
+  // ---------- more NLE moves ----------
+  // Fill the frame (cover, cropping the edges) instead of fitting it: 16:9 footage in a 9:16 edit, say.
+  function fillFrame(ids = null) {
+    const list = (ids || targetAny()).filter((id) => { const k = C.find(st.edit, id)?.clip.kind; return k === 'video' || k === 'image' || k === 'freeze'; });
+    if (!list.length) return null;
+    const { W, H } = frameSize();
+    commit(C.patchAny(st.edit, list, (c) => {
+      const m = host.S.meta[c.src] || {}; const im = c.kind === 'image' ? imgThumb.get(c.src) : null;
+      const w0 = m.w || im?.naturalWidth || W; const h0 = m.h || im?.naturalHeight || H;
+      const fit = Math.min(W / w0, H / h0); const cover = Math.max(W / w0, H / h0);
+      c.scale = Number((cover / fit).toFixed(4)); c.x = 0; c.y = 0;
+    }), 'Fills the frame');
+    return true;
+  }
+  function resetTransform(ids = null) { const list = ids || targetAny(); commit(C.patchAny(st.edit, list, (c) => { for (const k of ['opacity', 'scale', 'x', 'y', 'rotate']) delete c[k]; if (c.keys) { for (const k of ['opacity', 'scale', 'x', 'y', 'rotate']) delete c.keys[k]; if (!Object.keys(c.keys).length) delete c.keys; } }), 'Transform reset'); return true; }
+  // Speed so the clip lasts exactly `secs` (fit to fill a slot, a beat, a title)
+  function clipDuration(secs, id = null) {
+    const cid = id || targetIds()[0]; const f = cid && C.find(st.edit, cid);
+    if (!f || !/video|audio/.test(f.clip.kind) || !(secs > 0)) { if (f && (f.clip.kind === 'image' || f.clip.kind === 'title' || f.clip.kind === 'color' || f.clip.kind === 'freeze' || f.clip.kind === 'gap')) { commit(C.patchAny(st.edit, cid, (c) => { c.dur = Number(secs); }), `Length ${secs} s`); return 1; } return null; }
+    const sp = (f.clip.out - f.clip.in) / secs;
+    if (sp < 0.1 || sp > 8) { host.flash('That would need a speed outside 0.1–8×'); return null; }
+    commit(C.patchAny(st.edit, cid, (c) => { c.speed = Number(sp.toFixed(4)); }), `Speed ${sp.toFixed(2)}× (lasts ${secs} s)`);
+    return sp;
+  }
+  // Fit to fill: the clip after a gap takes the gap's length by changing its speed (the gap goes)
+  function fitToFill(gapId) {
+    const i = st.edit.clips.findIndex((c) => c.id === gapId);
+    const g = st.edit.clips[i]; const c = st.edit.clips[i + 1];
+    if (!g || g.kind !== 'gap' || c?.kind !== 'video') { host.flash('Fit to fill: a gap followed by a video clip'); return false; }
+    let n = C.patchAny(st.edit, c.id, (x) => { x.speed = Number(((x.out - x.in) / (g.dur + C.durOf(x))).toFixed(4)); });
+    n = C.remove(n, [g.id], { ripple: true });
+    return commit(n, 'Fit to fill');
+  }
+  // Extend edit: the cut nearest the playhead rolls to it (Shift+E)
+  function extendEdit() {
+    const L = C.layout(st.edit);
+    if (L.length < 2) return false;
+    const near = L.slice(1).reduce((a, b) => (Math.abs(b.start - P.T) < Math.abs(a.start - P.T) ? b : a));
+    return commit(C.roll(st.edit, near.i, frameStart(P.T) - near.start), 'Edit extended to the playhead');
+  }
+  // Swap a main-track clip with the next one
+  function swapNext(id = null) { const cid = id || targetIds()[0]; const i = st.edit.clips.findIndex((c) => c.id === cid); if (i < 0 || i >= st.edit.clips.length - 1) return false; return commit(C.move(st.edit, cid, i + 2), 'Swapped with the next clip'); }
+  // Shuffle the main track's clips (a montage idea); undo puts them back
+  function shuffleClips() {
+    const n = C.copy(st.edit);
+    for (let i = n.clips.length - 1; i > 0; i -= 1) { const j = Math.floor(Math.random() * (i + 1)); [n.clips[i], n.clips[j]] = [n.clips[j], n.clips[i]]; }
+    for (const c of n.clips) delete c.trans;
+    return commit(n, 'Clips shuffled (⌘/Ctrl+Z undoes)');
+  }
+  // Match frame: the source of the clip under the playhead opens in Review on the same frame
+  async function matchFrame() {
+    const x = C.at(st.edit, Math.min(P.T, Math.max(0, C.mainTotal(st.edit) - 1e-4)));
+    const top = C.stackAt(st.edit, P.T).filter((L) => L.clip.src && /video/.test(L.clip.kind)).pop();
+    const c = top?.clip || x?.clip;
+    if (!c?.src) { host.flash('No video under the playhead'); return false; }
+    const t = c.kind === 'freeze' ? c.at : C.srcAt(c, P.T - (top ? top.start : x.start));
+    leave();
+    await R().open(c.src); await R().waitReady();
+    R().seek((Math.floor(t * fpsOf(c.src) + 0.01) + 0.5) / fpsOf(c.src));
+    return true;
+  }
+  // Labels, names, on / off
+  const LABELS = [['none', ''], ['red', '#ff4d4d'], ['orange', '#ff8c42'], ['gold', '#ffd75e'], ['green', '#4fd18b'], ['blue', '#6bc7ff'], ['violet', '#9b8bff'], ['pink', '#ff6b9a']];
+  function setLabel(color, ids = null) { const col = (LABELS.find(([n]) => n === color) || [0, color])[1]; commit(C.patchAny(st.edit, ids || targetAny(), (c) => { if (col) c.label = col; else delete c.label; }), col ? 'Label' : 'Label removed'); return true; }
+  async function renameClip(id = null) { const cid = id || targetAny()[0]; const f = cid && C.find(st.edit, cid); if (!f) return false; const v = await Modal.prompt('Clip name', { value: f.clip.name || '' }); if (v == null) return false; return commit(C.patchAny(st.edit, cid, (c) => { if (v.trim()) c.name = v.trim().slice(0, 40); else delete c.name; }), 'Renamed'); }
+  function toggleOff(ids = null) { const list = ids || targetAny(); const f = C.find(st.edit, list[0]); return commit(C.patchAny(st.edit, list, (c) => { c.off = !f?.clip.off; if (!c.off) delete c.off; }), f?.clip.off ? 'Clip on' : 'Clip off (hidden and silent)'); }
+  // In–out = the selection's span (render or loop just that part)
+  function rangeFromSelection() {
+    const spans = selIds().map((id) => { const f = C.find(st.edit, id); if (f.where === 'clip') { const x = C.layout(st.edit)[f.i]; return [x.start, x.end]; } return [f.clip.start, C.itemEnd(f.clip)]; });
+    if (!spans.length) { host.flash('Select clips first'); return null; }
+    return setMark(Math.min(...spans.map((s0) => s0[0])), Math.max(...spans.map((s0) => s0[1])));
+  }
+  // Markers on the music: every beat / bar (or N bars) of the songs on the audio tracks (and the main track's sound)
+  function beatMarkers(every = 4) {
+    const out = [];
+    const add = (src, a0, b0, start, speed) => { const a = analysisOf(src); if (!a?.beats) return false; a.beats.forEach((b, i) => { if (i % every === 0 && b >= a0 && b <= b0) out.push(start + (b - a0) / (speed || 1)); }); return true; };
+    let found = false;
+    for (const k of C.tracksOf(st.edit, 'audio')) for (const it of k.items) found = add(it.src, it.in, it.out, it.start, it.speed) || found;
+    if (!found) for (const x of C.layout(st.edit)) if (x.clip.kind === 'video') found = add(x.clip.src, x.clip.in, x.clip.out, x.start, x.clip.speed) || found;
+    if (!out.length) { host.flash(found ? 'No beats in that range' : 'The beats are still being found (music on an audio track, or a clip with sound)…'); return 0; }
+    let n = st.edit;
+    const have = new Set(st.edit.markers.map((m) => m.t.toFixed(2)));
+    out.sort((a, b) => a - b).forEach((t, i) => { if (!have.has(t.toFixed(2))) n = C.addMarker(n, t, every === 1 ? `beat ${i + 1}` : `bar ${i + 1}`); });
+    commit(n, `${out.length} markers on the ${every === 1 ? 'beats' : 'bars'}`);
+    return out.length;
+  }
+  // Keyframes: copy / paste between clips
+  let keysClip = null;
+  function copyKeys(id = null) { const f = C.find(st.edit, id || targetAny()[0]); keysClip = f?.clip.keys ? C.copy(f.clip.keys) : null; host.flash(keysClip ? 'Keyframes copied' : 'No keyframes here'); return Boolean(keysClip); }
+  function pasteKeys(ids = null) { if (!keysClip) return false; return commit(C.patchAny(st.edit, ids || targetAny(), (c) => { c.keys = C.copy(keysClip); }), 'Keyframes pasted'); }
+  // Titles against the safe zone of every vertical app: which ones reach into the app buttons / captions
+  function safeCheck(zone = 'all') {
+    const { W, H } = frameSize();
+    const z = V.zoneRects(zone, W, H);
+    if (!z) return [];
+    const [sx, sy, sw, sh] = z.safe;
+    const g = document.createElement('canvas').getContext('2d');
+    const out = [];
+    for (const k of C.tracksOf(st.edit, 'text')) for (const it of k.items) {
+      const s0 = VideoTitles.styleOf(it);
+      const Lt = VideoTitles.layoutText(g, s0, it.text, s0.size * H, W, H);
+      const box = [Lt.left / W, Lt.top / H, Lt.blockW / W, Lt.blockH / H];
+      const inside = box[0] >= sx - 1e-3 && box[1] >= sy - 1e-3 && box[0] + box[2] <= sx + sw + 1e-3 && box[1] + box[3] <= sy + sh + 1e-3;
+      out.push({ id: it.id, text: String(it.text).split('\n')[0], track: k.name, at: it.start, inside });
+    }
+    return out;
   }
   function rampClip(rampId, id = null) {
     const r = FX.RAMP[rampId] || FX.find(FX.RAMPS, rampId);
@@ -1627,6 +1766,7 @@ const VideoCut = (() => {
       '?': () => help(),
     };
     if (e.shiftKey && k === 'f') { freezeHere(); return true; }
+    if (e.shiftKey && k === 'e') { extendEdit(); return true; }
     if (e.shiftKey && k === 't') { addTitle(); return true; }
     if (e.shiftKey && k === 'l') return false;
     const fn = act[k];
@@ -1648,7 +1788,7 @@ const VideoCut = (() => {
     ['S', 'Split at the playhead'], ['Shift+S', 'Split every track at the playhead'], ['B', 'Razor: click clips to cut them'], ['Del', 'Delete (main track: leaves a gap)'], ['Shift+Del', 'Ripple delete (with I/O and nothing selected: the range)'],
     ['Q / W', 'Trim the start / end to the playhead'], ['D', 'Duplicate'], ['Shift+D', 'Cross dissolve on the nearest cut'], ['A', 'Mute the sound'], ['R', 'Reverse the clip'], ['[ / ]', 'Speed slower / faster (pitch kept)'],
     ['I / O · X', 'In / out of the range · clear'], ['M · Shift+M', 'Marker · marker with a note'], ['Shift+F', 'Freeze frame (1 s)'], ['Shift+T · Alt+T', 'Title card · title over the picture'],
-    ['N', 'Snapping on / off'], ['+ / − · \\', 'Zoom the timeline · fit'], [`${MODK}+wheel`, 'Zoom at the pointer (wheel scrolls when zoomed)'],
+    ['N', 'Snapping on / off'], ['Shift+E', 'Extend edit: the nearest cut rolls to the playhead'], ['+ / − · \\', 'Zoom the timeline · fit'], [`${MODK}+wheel`, 'Zoom at the pointer (wheel scrolls when zoomed)'],
     ['Alt+← / →', 'Nudge the selection one frame (Shift: 10)'], ['Alt+, / .', 'Slip the clip one frame'], ['Alt+↑ / ↓', 'Move a layer to the track above / below'], ['Alt+K', 'Keyframe position, scale, rotation, opacity'],
     ['Alt (hold)', 'Track switches: hide · mute · lock'], ['Enter', 'Accept the auto-cut, else open the inspector'], [`${MODK}+C / V`, 'Copy / paste clips and layers'], [`${MODK}+A`, 'Select everything'], [`${MODK}+Z / Shift+Z`, 'Undo / redo'],
     ['Drag', 'Edge: trim (snaps; Alt: free) · Shift+edge: roll · body: reorder / move · Shift+body: slide · Ctrl+body: slip · gold squares: fades'], ['Drop', 'Videos, pictures, sounds or library cards'], ['Right-click', 'Clips, layers, cuts, markers, lanes and the ruler have menus'],
@@ -1671,6 +1811,9 @@ const VideoCut = (() => {
       { label: 'Range (in–out)', items: () => [
         { label: 'Lift (leave a gap)', action: () => liftRange(false) }, { label: 'Extract (close up)', action: () => liftRange(true) },
         { label: 'Clear (X)', action: () => setMark(null) }] },
+      { label: 'Markers on the music', items: [[1, 'Every beat'], [4, 'Every bar'], [8, 'Every 2 bars'], [16, 'Every 4 bars']].map(([n0, l]) => ({ label: l, action: () => beatMarkers(n0) })) },
+      { label: 'Check titles against the safe zone', action: () => { const r0 = safeCheck(); const bad = r0.filter((x) => !x.inside); host.flash(r0.length ? (bad.length ? `${bad.length} title${bad.length === 1 ? '' : 's'} reach into the app buttons: ${bad.map((x) => `“${x.text}”`).join(', ')}` : 'Every title sits in the safe zone ✓') : 'No titles yet'); if (bad[0]) inspect(bad[0].id); } },
+      { label: 'Shuffle the clips (montage idea)', action: shuffleClips },
       { label: 'Freeze frame here (Shift+F)', action: () => freezeHere() },
       { label: 'Title card here (Shift+T)…', action: async () => { const v = await Modal.prompt('Title card', { value: '', label: 'The words on the card (a new line: \\n). 2 seconds, inserted at the playhead.' }); if (v?.trim()) addTitle(v.trim()); } },
       { label: 'Marker here (M)', action: () => marker() },
@@ -1771,7 +1914,7 @@ const VideoCut = (() => {
       const jobs = CutFF.titleJobs(edit);
       let titles = {};
       if (jobs.length) {
-        titleDir = join(dirOf(output.includes('%') ? dirOf(output) : output), `.hearth-titles-${Date.now().toString(36)}`);
+        titleDir = join(typeof output === 'string' ? dirOf(output.includes('%') ? dirOf(output) : output) : join(homeDir() || dirOf(mainSrc(edit) || ''), 'exports'), `.hearth-titles-${Date.now().toString(36)}`);
         const t = toast('Drawing the titles…', { timeout: 0 });
         try { titles = await VideoComp.renderTitles(jobs, Math.round(w0 / 2) * 2, Math.round(h0 / 2) * 2, F, titleDir, (pct) => { t.querySelector('span').textContent = `Drawing the titles… ${Math.round(pct * 100)}%`; }); } finally { t.remove(); }
       }
@@ -2015,8 +2158,9 @@ const VideoCut = (() => {
     commit: (next, label) => { if (liveBase) { st.edit = liveBase; liveBase = null; } return commit(next, label); },
     live: (next) => { if (!liveBase) liveBase = st.edit; st.edit = next; draw(); if (richOn) VideoComp.renderExact(P.T); },
     cancelLive: () => { if (liveBase) { st.edit = liveBase; liveBase = null; draw(); refreshPicture(); } },
-    seek: (t) => seek(t, { play: false }), keyHere, setTransition, setLook, applyMotion, adjust, setEffect, setSpeed, rampClip, flash: (s) => host.flash(s),
+    seek: (t) => seek(t, { play: false }), keyHere, setTransition, setLook, applyMotion, adjust, setEffect, setAudioFx, setSpeed, rampClip, flash: (s) => host.flash(s),
     select: (ids) => { st.sel = new Set(ids); paintHead(); draw(); },
+    focus: () => host.refs.root.focus({ preventScroll: true }),
     on: (ev, fn) => { (listeners[ev] ||= []).push(fn); },
   };
 
@@ -2052,8 +2196,8 @@ const VideoCut = (() => {
     get rich() { return richOn; }, get view() { return st.view ? { ...st.view } : null; }, get razor() { return st.razor; }, get snap() { return st.snap; }, get fps() { return progFps(); }, get lastCheck() { return lastCheck; },
     play: startPlay, pause, togglePlay: () => (P.playing ? pause() : startPlay()), seek: (t) => seek(t, { play: P.playing }), step, shuttle, goto: (t) => seek(frameMid(t), { play: false }), goFrame, frameInfo, frameSize, fmt: fmtProg,
     split, splitAll: splitAllHere, del, closeGaps, setSpeed, nudgeSpeed, freezeHere, addTitle, marker, setMark, suggest, acceptSuggestion, reset, addClip, undo, redo, help, exportCut, exportAll, jumpCut, jumpBeat, jumpMarker, jumpKey,
-    setTransition, setLook, adjust, setEffect, applyMotion, keyHere, rampClip, addOverlay, addImage, addAudio, addTitleItem, addColor, insertClip, overwriteClip, fillSlot, liftRange, toggleSnap, toggleRazor, setFormat, applyTemplate,
-    nestSelection, unnest, toOverlay, toMain, posterFrame, renderEdit, recordEdit, newSequence, sequences, deleteSequence, inspect, closeInspector, zoomBy, zoomFit, setView, nudge, slipSel, copySel, paste, selectAll,
+    setTransition, setLook, adjust, setEffect, setAudioFx, applyMotion, keyHere, rampClip, addOverlay, addImage, addAudio, addTitleItem, addColor, insertClip, overwriteClip, fillSlot, liftRange, toggleSnap, toggleRazor, setFormat, applyTemplate,
+    nestSelection, unnest, toOverlay, toMain, fillFrame, resetTransform, clipDuration, fitToFill, extendEdit, swapNext, shuffleClips, matchFrame, setLabel, renameClip, toggleOff, rangeFromSelection, beatMarkers, copyKeys, pasteKeys, safeCheck, posterFrame, renderEdit, recordEdit, newSequence, sequences, deleteSequence, inspect, closeInspector, zoomBy, zoomFit, setView, nudge, slipSel, copySel, paste, selectAll,
     selectIds: (ids) => { st.sel = new Set(ids.filter((id) => C.find(st.edit, id))); paintHead(); draw(); return selIds(); },
     select(i) { const c = st.edit?.clips[i]; if (!c) return null; st.sel = new Set([c.id]); paintHead(); draw(); const x = C.layout(st.edit)[i]; seek(x.start, { play: false }); return c; },
     commit, mute: (on) => { const ids = targetAny(); if (!ids.length) return null; commit(C.patchAny(st.edit, ids, (c) => { c.mute = on ?? !c.mute; }), 'Sound toggled'); return C.find(st.edit, ids[0])?.clip.mute; },

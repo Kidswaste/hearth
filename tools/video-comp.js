@@ -173,7 +173,7 @@ const VideoComp = (() => {
     const d = L.end - L.start;
     let op = C.propAt(c, 'opacity', local) * envelope(c, local, d);
     if (op <= 0.002) return;
-    if (c.kind === 'gap') return;
+    if (c.kind === 'gap' || c.off) return; // a gap, or a clip turned off
     if (c.kind === 'title') {
       const tc = titleCanvas(c.id, W, H);
       const tg = tc.getContext('2d');
@@ -435,7 +435,7 @@ const VideoComp = (() => {
       const want = srcTimeOf(L, T);
       const track = L.track ? tracks.get(L.track.id) : null;
       const local = T - L.start;
-      const muted = c.mute || c.kind === 'freeze' || track?.mute;
+      const muted = c.mute || c.off || c.kind === 'freeze' || track?.mute;
       const v = muted ? 0 : clamp(vol * C.propAt(c, 'volume', local) * envelope(c, local, L.end - L.start), 0, 1);
       if (Math.abs(d.el.volume - v) > 0.01) d.el.volume = v;
       if (c.kind === 'freeze' || c.reverse) {

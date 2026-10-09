@@ -191,5 +191,27 @@ const render = (edit, name, o) => { const g0 = FFX.args(edit, info, canvas, opts
   ok(`all ${FX.LOOKS.length} looks render`, !failed.length, failed.slice(0, 5));
 }
 
+// 8. every clip effect and every sound effect renders
+{
+  const small = { w: 96, h: 160, fps: 10 };
+  const failed = [];
+  for (const f of FX.EFFECTS) {
+    let x = C.empty(); x.clips = [C.videoClip(A, 0, 0.4, 6)]; x.seq = small;
+    x = C.patchAny(x, x.clips[0].id, (c) => { c.fx = [{ id: f.id, amt: 0.7 }, { id: 'mirror-left', amt: 1 }]; });
+    const g0 = FFX.args(x, info, small, opts());
+    try { execFileSync('ffmpeg', [...g0.args, path.join(OUT, `fx-${f.id}.mp4`)], { stdio: ['ignore', 'ignore', 'pipe'] }); } catch (err) { failed.push(`${f.id}: ${String(err.stderr).split('\n').filter(Boolean).slice(-1)}`); }
+  }
+  ok(`all ${FX.EFFECTS.length} clip effects render (stacked with a branching one)`, !failed.length, failed.slice(0, 5));
+  const af = [];
+  for (const a of FX.AUDIO_FX) {
+    let x = C.empty(); x.clips = [C.videoClip(A, 0, 2, 6)]; x.seq = small;
+    x = C.patchAny(x, x.clips[0].id, (c) => { c.afx = [a.id]; });
+    const g0 = FFX.args(x, info, small, opts());
+    const file = path.join(OUT, `afx-${a.id}.mp4`);
+    try { execFileSync('ffmpeg', [...g0.args, file], { stdio: ['ignore', 'ignore', 'pipe'] }); if (Math.abs(durOf(file) - 2) > 0.1) af.push(`${a.id}: length ${durOf(file)}`); } catch (err) { af.push(`${a.id}: ${String(err.stderr).split('\n').filter(Boolean).slice(-1)}`); }
+  }
+  ok(`all ${FX.AUDIO_FX.length} sound effects render and keep the length`, !af.length, af.slice(0, 5));
+}
+
 console.log(`${fail ? '✖' : '✓'} editor-test: ${pass} passed, ${fail} failed (renders in ${OUT})`);
 process.exit(fail ? 1 : 0);

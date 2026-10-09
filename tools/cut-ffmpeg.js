@@ -127,7 +127,7 @@ const CutFF = (() => {
       const s = c.speed || 1;
       if ((c.kind === 'video' || c.kind === 'audio') && !c.mute && (info[c.src]?.audio ?? true)) {
         const k = inputOf(c.src);
-        return `[${k}:a]atrim=start=${num(c.in)}:end=${num(c.out)},asetpts=PTS-STARTPTS${c.reverse ? ',areverse' : ''}${C.atempo(s).map((x) => `,${x}`).join('')},${AF},apad,atrim=duration=${num(d)}${[...volumeF(c), ...afadeF(c, d)].map((x) => `,${x}`).join('')}`;
+        return `[${k}:a]atrim=start=${num(c.in)}:end=${num(c.out)},asetpts=PTS-STARTPTS${c.reverse ? ',areverse' : ''}${C.atempo(s).map((x) => `,${x}`).join('')},${AF}${FX.audioFilters(c.afx).map((x) => `,${x}`).join('')},${AF},apad,atrim=duration=${num(d)}${[...volumeF(c), ...afadeF(c, d)].map((x) => `,${x}`).join('')}`;
       }
       return null;
     }
@@ -135,7 +135,8 @@ const CutFF = (() => {
     // ----- the main track: one W×H stream per clip -----
     const L0 = C.layout(e);
     const mains = L0.map((x, i) => {
-      const c = x.clip; const d = x.end - x.start;
+      // a clip turned off renders as black and silence (it keeps its place)
+      const c = x.clip.off ? { id: x.clip.id, kind: 'gap', dur: x.end - x.start, fadeIn: 0, fadeOut: 0, trans: x.clip.trans } : x.clip; const d = x.end - x.start;
       const src = source(c, d);
       const color = [...colorF(c), ...FX.effectFilters(c.fx, `c${i}`)];
       const v = `mv${i}`; const a = `ma${i}`;
@@ -188,6 +189,7 @@ const CutFF = (() => {
     const layers = C.tracksOf(e, 'video').concat(C.tracksOf(e, 'text'));
     for (const k of layers) {
       for (const it of k.items) {
+        if (it.off) continue;
         const d = C.itemDur(it); const S0 = it.start;
         if (!k.hide) {
           const src = source(it, d);
@@ -222,6 +224,7 @@ const CutFF = (() => {
     for (const k of C.tracksOf(e, 'audio')) {
       if (k.mute) continue;
       for (const it of k.items) {
+        if (it.off) continue;
         const d = C.itemDur(it);
         const au = audioOf({ ...it, kind: 'audio' }, d);
         if (au) { const al = L(); parts.push(`${au},adelay=delays=${Math.round(it.start * 1000)}:all=1[${al}]`); audioMix.push(al); }
