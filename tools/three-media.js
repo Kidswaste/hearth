@@ -577,7 +577,7 @@ const ThreeMedia = (() => {
         const a = await analyze(bytes, { onProgress: (p) => { if (seq === loadSeq) setText(nameEl, `${st.name} · analyzing ${Math.round(p * 100)}%`); } });
         st.samples = a.samples; st.wave = a.wave;
         delete a.samples; delete a.wave;
-        st.analysis = a;
+        st.analysis = a; anaVer += 1;
       } catch (err) { if (seq === loadSeq) { st.analysis = null; if (!quiet) toast(st.video ? `${st.name} has no audio track to analyze (it still works as a video texture)` : `Couldn't analyze ${st.name}: ${err.message}`, { type: 'error' }); } }
       if (seq !== loadSeq) return { ok: false, error: 'Another file was loaded meanwhile' };
       analyzing = false;
@@ -1373,11 +1373,27 @@ const ThreeMedia = (() => {
 
     // ---------- drawing ----------
     const RULER = 16; const LANE_H = 14;
+    const sizes = { cw: 0, ch: 0, mw: 0, mh: 0, cOk: false, mOk: false };
+    const cW = () => (sizes.cOk ? sizes.cw : canvas.clientWidth); const cH = () => (sizes.cOk ? sizes.ch : canvas.clientHeight);
+    const mW = () => (sizes.mOk ? sizes.mw : minimap.clientWidth); const mH = () => (sizes.mOk ? sizes.mh : minimap.clientHeight);
+    const shown = () => (sizes.cOk ? sizes.cw > 0 && sizes.ch > 0 : Boolean(canvas.offsetParent)); // the timeline is on screen (display: none → 0 × 0)
     const ghostHint = {}; // lane → right edge (px) of its "✦ N found · keep them" note, for clicks
     const laneTop = (h) => h - shownLanes().length * LANE_H - tracksH();
     let raf = 0;
     const waveCache = { key: '', canvas: document.createElement('canvas') };
     const gridCache = { key: '', canvas: document.createElement('canvas') };
+    // what the main canvas shows, as one string: draw() skips the canvas when it's unchanged
+    let lastFrameKey = ''; let anaVer = 0;
+    const sumOf = (list) => { let x = 0; for (const t of list) x += t; return `${list.length}:${x.toFixed(4)}`; };
+    function frameKey(W, h) {
+      const lanesMoving = tracks.some((tr) => lanesOf(tr).length); // the header column shows lane values at the playhead
+      // (while the strip scrolls this canvas only shows the header column: the view moving changes nothing on it)
+      return [W, h, devicePixelRatio, scroll.on ? 'strip' : `${v0()}|${span()}`, D(), anaVer, st.path, waveRGB, scroll.on, JSON.stringify(gridView), snapMode, bpmNow(), G()?.anchor, bpbNow(), dIdx(),
+        LANES.map((l) => sumOf(map.marks[l.id])).join(), map.cues.map((c) => `${c.t}${c.name}${c.looks?.length || 0}`).join(), region ? `${region.a}|${region.b}|${locked}|${st.loop}` : '',
+        selected ? JSON.stringify(selected) : '', notes.map((n) => `${n.t}${n.done}`).join(), JSON.stringify(tracks), autoSel ? `${autoSel.id}|${autoSel.prop}|${[...autoSel.idx].join(',')}` : '',
+        activeLane ? `${activeLane.id}|${activeLane.prop}` : '', lanesMoving ? Math.round(now() * 20) : ''].join('~');
+    }
+    let lastMiniKey = '';
     let lastFull = 0;
     function tick() {
       beatTick();
@@ -1398,6 +1414,7 @@ const ThreeMedia = (() => {
       draw();
     }
     const setText = (node, text) => { if (node.textContent !== text) node.textContent = text; };
+    const setDisplay = (node, on) => { const v = on ? '' : 'none'; if (node.style.display !== v) node.style.display = v; }; // per frame: only real changes
     // The playheads glide on the compositor: while a song plays each one gets a linear animation to where it will be
     // at the end of the view (the end of the song for the minimap), so it moves at the screen's refresh rate even when
     // the main thread is busy (the preview rendering, a reply streaming). JS only restarts it when the view, the rate
@@ -1423,7 +1440,7 @@ const ThreeMedia = (() => {
     // three views wide is drawn once and moved by a compositor animation (smooth even when the main thread is busy);
     // it's redrawn about every two views, or after a seek / zoom / resize. Near the end of the song the last view stays
     // and the playhead runs to the end.
-    const scrollWanted = () => Boolean(view) && st.playing && !locked && !dragging && gridView.follow !== false && D() > 0 && Boolean(canvas.offsetParent);
+    const scrollWanted = () => Boolean(view) && st.playing && !locked && !dragging && gridView.follow !== false && D() > 0 && shown();
     function scrollStop(nextView) {
       if (!scroll.on) return;
       scroll.on = false;
@@ -1449,7 +1466,7 @@ const ThreeMedia = (() => {
       Object.assign(scroll, { on: true, S: L, sp, w });
       view = { start: L, end: L + sp };
       stripClip.style.width = `${w}px`;
-      strip.style.width = `${3 * w}px`; strip.style.height = `${canvas.clientHeight}px`;
+      strip.style.width = `${3 * w}px`; strip.style.height = `${cH()}px`;
       draw({ canvas: strip, w: 3 * w, s0: L, sp: 3 * sp });
       stripClip.hidden = false;
       draw(); // the main canvas keeps only its header column now
@@ -1476,11 +1493,11 @@ const ThreeMedia = (() => {
       scrollUpdate(t);
       const x = scroll.on ? ANCHOR * w : D() ? ((t - v0()) / span()) * w : -10;
       const moving = st.playing && Boolean(D()) && !dragging && !scroll.on;
-      playheadEl.style.display = x >= -1 && x <= w + 1 && canvas.offsetParent ? '' : 'none';
+      setDisplay(playheadEl, x >= -1 && x <= w + 1 && shown());
       const vEnd = Math.min(v0() + span(), D() || 0);
       glide(playheadEl, x, ((vEnd - v0()) / span()) * w, ((vEnd - t) / rate) * 1000, `${v0()}|${span()}|${w}|${rate}`, moving);
-      const mw = minimap.clientWidth;
-      miniHeadEl.style.display = D() && mw && !minimap.hidden ? '' : 'none';
+      const mw = mW();
+      setDisplay(miniHeadEl, Boolean(D() && mw && !minimap.hidden));
       glide(miniHeadEl, D() ? (t / D()) * mw : 0, mw, ((D() - t) / rate) * 1000, `${D()}|${mw}|${rate}`, moving && mw > 0);
     }
     function now() { return st.playing ? Math.min(D() || Infinity, st.time + ((performance.now() - st.stampAt) / 1000) * st.rate) : st.time; }
@@ -1542,8 +1559,11 @@ const ThreeMedia = (() => {
         drawMinimap(t);
       }
       const cv = ov ? ov.canvas : canvas;
-      const W = ov ? ov.w : canvas.clientWidth; const h = canvas.clientHeight;
+      const W = ov ? ov.w : cW(); const h = cH();
       if (!W || !h) return;
+      // Nothing on the canvas changed since the last draw (a song playing in a still view: only the playhead, an
+      // element of its own, moves): keep the pixels, no repaint. Dragging always draws.
+      if (!ov) { const fk = dragging ? '' : frameKey(W, h); if (fk && fk === lastFrameKey) return; lastFrameKey = fk; }
       // the time area; the header column (GUT px) on the right holds the ▾ choosers and lane names
       const w = ov ? ov.w : tw();
       const dpr = devicePixelRatio || 1;
@@ -1948,37 +1968,55 @@ const ThreeMedia = (() => {
       }
       if (!keys.length) { g.fillStyle = '#eae0d570'; g.fillText(`${L.label}: click to add a point · Ctrl+drag to draw`, 6, top + 12); }
     }
+    // The overview: its picture (sections, loudness, layers, loop, drops, notes, cues) is drawn once into a cache and
+    // only redrawn when one of those changes; each draw just copies it and adds the zoomed view's box, and nothing
+    // is drawn at all while the box hasn't moved by a pixel (a song playing doesn't change the overview).
+    const miniCache = { key: '', canvas: document.createElement('canvas') };
     function drawMinimap(t) {
       minimap.hidden = !D();
-      const w = minimap.clientWidth; const h = minimap.clientHeight;
+      const w = mW(); const h = mH();
       if (!D() || !w || !h) return;
       const dpr = devicePixelRatio || 1;
+      const X = (tt) => (tt / D()) * w;
+      const sk = [w, h, dpr, D(), anaVer, st.path, region ? `${region.a}|${region.b}|${locked}` : '', tracks.map((tr) => `${tr.in}|${tr.out}|${tr.visible}|${tr.color}`).join(),
+        map.cues.map((c) => `${c.t}${c.name}`).join(), notes.map((n) => `${n.t}${n.done}`).join()].join('~');
+      const box = view ? `${Math.round(X(view.start) * 2)}|${Math.round(X(view.end) * 2)}|${locked}` : '';
+      if (`${sk}#${box}` === lastMiniKey) return;
+      lastMiniKey = `${sk}#${box}`;
+      if (miniCache.key !== sk) {
+        miniCache.key = sk;
+        const mc = miniCache.canvas; mc.width = Math.round(w * dpr); mc.height = Math.round(h * dpr);
+        const g = mc.getContext('2d');
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        g.clearRect(0, 0, w, h);
+        const a = st.analysis;
+        if (a) {
+          for (const sct of a.sections) {
+            if (sct.label) { g.fillStyle = `${SECTION_COLORS[sct.label.toLowerCase()] || '#ffd75e'}20`; g.fillRect(X(sct.start), 0, X(sct.end) - X(sct.start), h); }
+            else if (sct.energy === 'loud') { g.fillStyle = '#ffd75e14'; g.fillRect(X(sct.start), 0, X(sct.end) - X(sct.start), h); }
+          }
+          const n = a.level.length;
+          g.fillStyle = '#ffffff16';
+          for (let x = 0; x < w; x += 2) { const v = a.level[Math.min(n - 1, Math.floor((x / w) * n))]; g.fillRect(x, h - v * (h - 2), 2, v * (h - 2)); }
+        }
+        const rows = Math.max(1, tracks.length);
+        const rowH = Math.max(2, Math.min(5, (h - 4) / rows));
+        tracks.forEach((tr, i) => {
+          const x0 = X(tr.in ?? 0); const x1 = X(tr.out ?? D());
+          g.fillStyle = `${tr.color || '#7ad0ff'}${tr.visible === false ? '40' : 'd0'}`;
+          g.fillRect(x0, 2 + i * rowH, Math.max(2, x1 - x0), rowH - 1);
+        });
+        if (region) { g.fillStyle = locked ? '#48ddff40' : '#ffd75e40'; g.fillRect(X(region.a), 0, Math.max(2, X(region.b) - X(region.a)), h); }
+        if (a) { g.fillStyle = '#ff6a6a'; for (const d of a.drops) g.fillRect(X(d) - 1, 0, 2, 4); }
+        for (const n of notes) { g.fillStyle = n.done ? '#8f877d' : '#7cd992'; g.fillRect(X(n.t) - 1, h - 5, 3, 5); }
+        map.cues.forEach((c, i) => { g.fillStyle = cueColor(c, i); g.fillRect(X(c.t) - 1, 0, 3, 6); });
+      }
       if (minimap.width !== Math.round(w * dpr) || minimap.height !== Math.round(h * dpr)) { minimap.width = Math.round(w * dpr); minimap.height = Math.round(h * dpr); }
       const g = minimap.getContext('2d');
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.clearRect(0, 0, minimap.width, minimap.height);
+      g.drawImage(miniCache.canvas, 0, 0);
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
-      g.clearRect(0, 0, w, h);
-      const X = (tt) => (tt / D()) * w;
-      const a = st.analysis;
-      if (a) {
-        for (const sct of a.sections) {
-          if (sct.label) { g.fillStyle = `${SECTION_COLORS[sct.label.toLowerCase()] || '#ffd75e'}20`; g.fillRect(X(sct.start), 0, X(sct.end) - X(sct.start), h); }
-          else if (sct.energy === 'loud') { g.fillStyle = '#ffd75e14'; g.fillRect(X(sct.start), 0, X(sct.end) - X(sct.start), h); }
-        }
-        const n = a.level.length;
-        g.fillStyle = '#ffffff16';
-        for (let x = 0; x < w; x += 2) { const v = a.level[Math.min(n - 1, Math.floor((x / w) * n))]; g.fillRect(x, h - v * (h - 2), 2, v * (h - 2)); }
-      }
-      const rows = Math.max(1, tracks.length);
-      const rowH = Math.max(2, Math.min(5, (h - 4) / rows));
-      tracks.forEach((tr, i) => {
-        const x0 = X(tr.in ?? 0); const x1 = X(tr.out ?? D());
-        g.fillStyle = `${tr.color || '#7ad0ff'}${tr.visible === false ? '40' : 'd0'}`;
-        g.fillRect(x0, 2 + i * rowH, Math.max(2, x1 - x0), rowH - 1);
-      });
-      if (region) { g.fillStyle = locked ? '#48ddff40' : '#ffd75e40'; g.fillRect(X(region.a), 0, Math.max(2, X(region.b) - X(region.a)), h); }
-      if (a) { g.fillStyle = '#ff6a6a'; for (const d of a.drops) g.fillRect(X(d) - 1, 0, 2, 4); }
-      for (const n of notes) { g.fillStyle = n.done ? '#8f877d' : '#7cd992'; g.fillRect(X(n.t) - 1, h - 5, 3, 5); }
-      map.cues.forEach((c, i) => { g.fillStyle = cueColor(c, i); g.fillRect(X(c.t) - 1, 0, 3, 6); });
       if (view) {
         const vx = X(view.start); const vw = Math.max(4, X(view.end) - vx);
         g.fillStyle = '#ffffff14';
@@ -1990,7 +2028,7 @@ const ThreeMedia = (() => {
     }
 
     // ---------- timeline mouse ----------
-    function tw() { return Math.max(40, canvas.clientWidth - GUT); }
+    function tw() { return Math.max(40, cW() - GUT); }
     const timeAt = (e) => { const r = canvas.getBoundingClientRect(); return v0() + ((e.clientX - r.left) / tw()) * span(); };
     const pxToT = (px) => (px / tw()) * span();
     const xOf = (tt) => ((tt - v0()) / span()) * tw();
@@ -2578,8 +2616,10 @@ const ThreeMedia = (() => {
       minimap.addEventListener('pointermove', act);
       minimap.addEventListener('pointerup', () => minimap.removeEventListener('pointermove', act), { once: true });
     });
-    new ResizeObserver(() => draw()).observe(minimap);
-    new ResizeObserver(() => draw()).observe(canvas);
+    // sizes as the ResizeObservers last saw them: reading clientWidth right after the time text changed forced a
+    // layout of the page ten times a second while a song played
+    new ResizeObserver(() => { sizes.mw = minimap.clientWidth; sizes.mh = minimap.clientHeight; sizes.mOk = true; draw(); }).observe(minimap);
+    new ResizeObserver(() => { sizes.cw = canvas.clientWidth; sizes.ch = canvas.clientHeight; sizes.cOk = true; draw(); }).observe(canvas);
     paint();
 
     return {
@@ -2712,7 +2752,7 @@ const ThreeMedia = (() => {
         try {
           const a = await analyze(st.bytes, { onProgress: (p) => { if (seq === loadSeq) setText(nameEl, `${st.name} · analyzing ${Math.round(p * 100)}%`); } });
           if (seq !== loadSeq) return null;
-          st.samples = a.samples; st.wave = a.wave; delete a.samples; delete a.wave; st.analysis = a;
+          st.samples = a.samples; st.wave = a.wave; delete a.samples; delete a.wave; st.analysis = a; anaVer += 1;
           waveCache.key = ''; gridCache.key = '';
           send({ type: 'media-analysis', analysis: st.analysis });
           sendMap();
