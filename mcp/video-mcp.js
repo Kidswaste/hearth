@@ -21,7 +21,7 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: { project: { type: 'string' }, comp: { type: 'string' }, output: { type: 'string' }, omTemplate: { type: 'string' } }, required: ['project'] } },
   { name: 'ae_run_script', description: 'Run ExtendScript inside After Effects (starts it if needed) as one undoable step; errors show as an AE alert.', inputSchema: { type: 'object', properties: { code: { type: 'string' }, label: { type: 'string' } }, required: ['code'] } },
   // the app map (mcp/hearth-map.js), answered by this server without a trip to the hub
-  { name: 'hearth_help', description: 'How Hearth (the owner\'s app) fits together, by topic: app, video, lab, commands, handoff, habits.', inputSchema: { type: 'object', properties: { topic: { type: 'string' } } } },
+  { name: 'hearth_help', description: 'How Hearth (the owner\'s app) fits together and how Claude and Astra share a chat (Hearth keeps its task state), by topic: app, video, lab, commands, handoff, habits.', inputSchema: { type: 'object', properties: { topic: { type: 'string' } } } },
 ];
 const local = { hearth_help: (a) => ({ ok: true, value: MAP.topic(a.topic || 'app') || `Topics: ${Object.keys(MAP.TOPICS).join(', ')}.` }) };
 

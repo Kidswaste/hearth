@@ -87,3 +87,12 @@ it isn't the one on screen. Sketch data API for other modules: `ThreeLab.scenes`
 Syntax check: `electron\electron.exe --check <file>` with `ELECTRON_RUN_AS_NODE=1`. For UI checks, launch with `--remote-debugging-port=9333` and drive the page through CDP `Runtime.evaluate` (return `JSON.stringify(...)` so results serialize). Test with throwaway data and clean it up; never edit or delete the user's chats, sketches or Forgeheart files in tests.
 
 Start by asking me what I want to change next.
+
+Brain (round 6, docs/upgrades/brain.md): `mcp/hearth-map.js` is the app map (topics read through `three_do help` /
+`hearth_help`, one `LINE` in the Three Director prompt). The node tool is on for Three directors unless
+`agent.nodesTool === false` (`engines.js nodesOn` → `HUB_NODES_TOOL=1`); `three_nodes` routes by chat and edits a
+backstage scene's graph as data (`runOnData` in tools/three-nodes.js). `director-task.js` keeps per-chat task state
+(kv `director-tasks`, fed by `HubBridge.onResult` and `Native.hooks.send`) and `DirectorTask.handover` (called from
+`Astra.beforeSend`) restarts the session with the task state when `chat.sessionEngine` changed or `chat.handoffNext`
+is set (`Astra.switchDirector`, used by `/director-engine`, `/handoff` in a director chat and the ⚇ menu). It also
+serves `three_do task` and `three_do run` (allow-listed command areas). Fake engines: `direct: <ask>` keyword.

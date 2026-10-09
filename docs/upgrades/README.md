@@ -26,6 +26,7 @@ line count is lower than the number of upgrades).
 | Scenes (round 4): each director chat owns its scene, switching chats switches it, a color + mark per chat, directors work on their own scene (backstage when it isn't on screen), `/scene` | [scenes.md](scenes.md) | 33 |
 | Simplify (round 4): fewer controls on screen (357 → 180 on the main surfaces), short menus with More…, `/decide` lets Astra choose a look / effect / frame size / app look with Undo | [simplify.md](simplify.md) | 27 |
 | Assist (round 5): `/shuffle-pick` (hold 🎲 Shuffle) makes thumbnails, you click one or ✦ Astra picks; looks and sketches named from their colors and song; `/usual` frame; next-step chips after a director reply; `/review-astra` notes in Video Review; costs in `/assist` | [assist.md](assist.md) | 31 |
+| Brain (round 6): an app map both engines read on demand, a new layer per effect, node graphs by default, time first (music when asked), Claude ⇄ Astra take over each other's task in the same chat and scene (`/task`) | [brain.md](brain.md) | 63 |
 | **Total** | | **3,334** |
 
 ## Start here
@@ -42,8 +43,11 @@ line count is lower than the number of upgrades).
 - `/look` means the Lab's saved looks inside the Lab, the Appearance picker elsewhere; `/appearance` always opens the picker.
 - The Three Director's tool guide now lives in its system prompt and rarer tools sit behind one `three_do` tool (lean mode).
   If its quality drops, `/director-mode full` restores the long version (more tokens).
-- Opt-ins that cost tokens stay off: `/nodes-director on` (directors edit node graphs), `/director-mode full`,
-  Astra's file access / talk-back tools / suggestions, `/astra-tools on`.
+- Directors build in node graphs by default since round 6 (you asked for it; `/nodes-director off` drops the ≈ 75
+  tokens). Opt-ins that cost tokens stay off: `/director-mode full`, Astra's file access / talk-back tools /
+  suggestions, `/astra-tools on`.
+- Since round 6 a new effect is a new layer, scenes move on the timeline until you say "make it react", and
+  `/director-engine` / `/handoff` in a director chat switch Claude ⇄ Astra in place (same chat and scene, `/task`).
 
 ## Not verified (nothing here could run them)
 Real Claude Code / Codex CLIs (tested with faithful fakes), After Effects and AppleScript on a Mac, real claude.ai /

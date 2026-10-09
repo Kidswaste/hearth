@@ -152,6 +152,15 @@ step(/^- `timed-shape` ⏱ /.test(pl) && /♪ Beat-pulsing particles/.test(pl), 
 const shape = ThreeLayers.TEMPLATES.find((x) => x.id === 'empty').code;
 step(/punch: \{ value: 0,/.test(shape) && /breathe/.test(shape), 'the Shape template breathes on time; Kick punch starts at 0');
 
+// what the model reads from the everyday layer / timeline calls: compact (default) vs the old full Lab report
+const sz = (r) => (r?.ok === false ? -1 : HubBridge.fmtText(r?.value).length);
+const keysArgs = { cmd: 'keyframes', layer: 'top', property: 'opacity', keys: [{ time: 0, value: 0 }, { time: 1, value: 1 }] };
+const addC = await HubBridge.call('three_add_layer', { name: 'Probe', template: 'rings', wait: 1 }, { chatId: A });
+const addF = await HubBridge.call('three_add_layer', { name: 'Probe 2', template: 'rings', wait: 1, report: 'full' }, { chatId: A });
+const kC = await HubBridge.call('three_do', keysArgs, { chatId: A });
+const kF = await HubBridge.call('three_do', { ...keysArgs, report: 'full' }, { chatId: A });
+out.measure.resultChars = { addLayer: { compact: sz(addC), full: sz(addF) }, keyframes: { compact: sz(kC), full: sz(kF) } };
+step(sz(addC) > 0 && sz(addC) < sz(addF) && sz(kC) > 0 && sz(kC) < sz(kF) / 4, 'add_layer and keyframes results are compact', out.measure.resultChars);
 out.measure.asks = asks;
 out.measure.layersPerAsk = asks.reduce((n, a) => n + a.layersAdded, 0) / asks.length;
 out.measure.nodeLayers = S.layersOf(S.get(sketchA)).filter((L) => /@nodes:v1/.test(L.code)).length;

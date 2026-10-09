@@ -222,8 +222,7 @@ function buildPrompt(agent) {
       + (folder ? 'You can read and edit files: find the script or project that produced a render (look in and around the render\'s folder for .jsx, .py, .js, .aep, render logs), change it, then re-render with ae_render or run AE scripts with ae_run_script, and check the new render. '
         : 'You can re-render with ae_render and run AE scripts with ae_run_script; to edit script files the user can give you File access in your settings. ')
       + 'Keep replies short and concrete.');
-    // the app map line (≈ 60 tokens; the topics are read on demand) — the Three Director gets it with its guide below
-    if (!sets.includes('threeTools')) parts.push(hearthMap().LINE('hearth_help'));
+    // the app map: its hearth_help tool says what it is (the Three Director gets the map line with its guide below)
   }
   if (sets.includes('chatTools')) {
     // directors get the chat tools' when-to-use guide; plain chats only the <suggest> convention
