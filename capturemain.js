@@ -299,18 +299,21 @@ function register(ipcMain, getWin, getSettings = () => ({})) {
 
   // ---------- keys that must work wherever the keyboard is (the Lab's sandboxed frame, a video) ----------
   const KEYS = { s: 'menu', a: 'region', r: 'record', p: 'pause', v: 'library', t: 'tour' };
+  // the main window, and the website agents' webviews (the keys did nothing while a website had the keyboard)
+  app.on('web-contents-created', (_e, wc) => { if (wc.getType() === 'webview') wc.on('before-input-event', (event, input) => captureKey(event, input)); });
   app.on('browser-window-created', (_e, created) => setImmediate(() => {
     if (created !== getWin()) return;
-    created.webContents.on('before-input-event', (event, input) => {
-      if (input.type !== 'keyDown') return;
-      const mod = input.control || (process.platform === 'darwin' && input.meta);
-      const k = String(input.code || '').replace(/^Key/, '').toLowerCase(); // the key's place: ⌥S types ß on a Mac
-      // Windows: AltGr is Ctrl+Alt, so AltGr+S / AltGr+A type ś / ą on Polish (and other) keyboards: a key that types
-      // another letter than its place is typing, not the capture key
-      if (process.platform === 'win32' && String(input.key || '').length === 1 && String(input.key).toLowerCase() !== k) return;
-      if (mod && input.alt && !input.shift && KEYS[k]) { event.preventDefault(); send('capture:key', { key: KEYS[k] }); }
-    });
+    created.webContents.on('before-input-event', (event, input) => captureKey(event, input));
   }));
+  function captureKey(event, input) {
+    if (input.type !== 'keyDown') return;
+    const mod = input.control || (process.platform === 'darwin' && input.meta);
+    const k = String(input.code || '').replace(/^Key/, '').toLowerCase(); // the key's place: ⌥S types ß on a Mac
+    // Windows: AltGr is Ctrl+Alt, so AltGr+S / AltGr+A type ś / ą on Polish (and other) keyboards: a key that types
+    // another letter than its place is typing, not the capture key
+    if (process.platform === 'win32' && String(input.key || '').length === 1 && String(input.key).toLowerCase() !== k) return;
+    if (mod && input.alt && !input.shift && KEYS[k]) { event.preventDefault(); send('capture:key', { key: KEYS[k] }); }
+  }
 }
 
 module.exports = { register };

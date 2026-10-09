@@ -673,6 +673,7 @@ function handleShortcut({ key, shift }) {
   else if (key === 'j') Notes.toggle();
   else if (key === 's' && shift) AppUI.snapshotToChat();
   else if (key === 't' && shift) AppUI.toggleOnTop();
+  else if (key === 'm' && shift && typeof BoardDrawer !== 'undefined') BoardDrawer.toggle(); // forwarded from a website agent (main.js)
   else if (key === ' ' && shift) { $('broadcast').classList.remove('hidden'); applyLayout(); $('broadcast-input').focus(); }
 }
 
