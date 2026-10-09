@@ -95,10 +95,10 @@ const VideoData = (() => {
   // How a source frame fits a target: 'crop' fills (cutting edges), 'fit' letterboxes, 'blur' fills the bars with a blurred copy.
   const FIT_MODES = ['crop', 'fit', 'blur'];
   const even = (n) => Math.max(2, Math.round(n / 2) * 2);
-  // ffmpeg arguments for a preset. src = { w, h, fps }; opts = { fit, offset (0..1 where to crop), from, to, out }.
-  function ffmpegArgs(preset, src, { fit = 'crop', offset = 0.5, from, to, input, out } = {}) {
+  // The video filters that turn a source frame { w, h, fps } into a preset's frame (scale / crop / fit / blurred
+  // fill, frame rate): { vf: [filters], w, h }. Shared by single-file exports and the cut (tools/cut-data.js).
+  function presetFilters(preset, src, { fit = 'crop', offset = 0.5 } = {}) {
     const p = typeof preset === 'string' ? EXPORT_PRESETS.find((x) => x.id === preset) : preset;
-    if (!p) throw new Error(`Unknown preset ${preset}`);
     const W = p.w || (p.h && src.h ? even((src.w * p.h) / src.h) : src.w);
     const Hh = p.h || (p.w && src.w ? even((src.h * p.w) / src.w) : src.h);
     const vf = [];
@@ -115,6 +115,20 @@ const VideoData = (() => {
       }
     }
     if (p.fps && src.fps && Math.abs(p.fps - src.fps) > 0.01) vf.push(`fps=${p.fps}`);
+    return { vf, w: W, h: Hh };
+  }
+  // Encoder arguments of a preset (not GIF): { args, ext }.
+  function codecArgs(preset) {
+    const p = typeof preset === 'string' ? EXPORT_PRESETS.find((x) => x.id === preset) : preset;
+    if (p.codec === 'prores') return { args: ['-c:v', 'prores_ks', '-profile:v', '3', '-pix_fmt', 'yuv422p10le', '-c:a', 'pcm_s24le'], ext: 'mov' };
+    if (p.codec === 'vp9') return { args: ['-c:v', 'libvpx-vp9', '-b:v', `${p.mbps}M`, '-row-mt', '1', '-c:a', 'libopus', '-b:a', '160k'], ext: 'webm' };
+    return { args: ['-c:v', 'libx264', '-preset', 'slow', '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-b:v', `${p.mbps}M`, '-maxrate', `${Math.round(p.mbps * 1.5)}M`, '-bufsize', `${p.mbps * 2}M`, '-movflags', '+faststart', '-c:a', 'aac', '-b:a', /(\d+)k/.exec(p.audio)?.[1] ? `${/(\d+)k/.exec(p.audio)[1]}k` : '192k', '-ar', '48000'], ext: 'mp4' };
+  }
+  // ffmpeg arguments for a preset. src = { w, h, fps }; opts = { fit, offset (0..1 where to crop), from, to, out }.
+  function ffmpegArgs(preset, src, { fit = 'crop', offset = 0.5, from, to, input, out } = {}) {
+    const p = typeof preset === 'string' ? EXPORT_PRESETS.find((x) => x.id === preset) : preset;
+    if (!p) throw new Error(`Unknown preset ${preset}`);
+    const { vf, w: W, h: Hh } = presetFilters(p, src, { fit, offset });
     const args = ['-hide_banner', '-y'];
     if (from != null) args.push('-ss', String(from));
     args.push('-i', input || 'INPUT');
@@ -124,9 +138,7 @@ const VideoData = (() => {
       args.push('-filter_complex', `[0:v]${chain.join(',')},split[x][y];[x]palettegen=stats_mode=diff[pal];[y][pal]paletteuse=dither=sierra2_4a`, '-loop', '0');
     } else {
       if (vf.length) args.push(vf.some((f) => f.includes('[')) ? '-filter_complex' : '-vf', vf.join(','));
-      if (p.codec === 'prores') args.push('-c:v', 'prores_ks', '-profile:v', '3', '-pix_fmt', 'yuv422p10le', '-c:a', 'pcm_s24le');
-      else if (p.codec === 'vp9') args.push('-c:v', 'libvpx-vp9', '-b:v', `${p.mbps}M`, '-row-mt', '1', '-c:a', 'libopus', '-b:a', '160k');
-      else args.push('-c:v', 'libx264', '-preset', 'slow', '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-b:v', `${p.mbps}M`, '-maxrate', `${Math.round(p.mbps * 1.5)}M`, '-bufsize', `${p.mbps * 2}M`, '-movflags', '+faststart', '-c:a', 'aac', '-b:a', /(\d+)k/.exec(p.audio)?.[1] ? `${/(\d+)k/.exec(p.audio)[1]}k` : '192k', '-ar', '48000');
+      args.push(...codecArgs(p).args);
     }
     args.push(out || 'OUTPUT');
     return { args, w: W, h: Hh, ext: p.codec === 'prores' ? 'mov' : p.codec === 'vp9' ? 'webm' : p.codec === 'gif' ? 'gif' : 'mp4' };
@@ -263,7 +275,7 @@ const VideoData = (() => {
   const api = {
     FORMATS, MAIN_FORMATS, aspectOf, formatInfo, orientation,
     SAFE_ZONES, GUIDES, zoneRects, zonesFor,
-    EXPORT_PRESETS, FIT_MODES, ffmpegArgs, omTemplatesFor, cropWindow, CROP_RECIPES,
+    EXPORT_PRESETS, FIT_MODES, ffmpegArgs, presetFilters, codecArgs, omTemplatesFor, cropWindow, CROP_RECIPES,
     tc, short, frameAt, timeOfFrame, parseTime, versionInfo,
     CATEGORIES, category, guessCategory, notesToMarkdown, notesToCsv, pipeline,
   };
