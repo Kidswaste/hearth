@@ -78,6 +78,9 @@
       else if (lx === 'cursor') o.cursor = 'halo';
       else if (lx === 'clicks') o.clicks = 'ring';
       else if (lx === 'keys') o.keys = true;
+      else if (lx === 'autozoom' || lx === 'zooms') o.autozoom = true;
+      else if (lx === 'camera' || lx === 'facecam' || lx === 'webcam') o.camera = 'br';
+      else if (/^camera:(br|bl|tr|tl)$/.test(lx)) o.camera = lx.split(':')[1];
       else if (lx === 'clean') o.clean = true;
       else if (lx === '1080p' || lx === '720p' || lx === '2160p' || lx === '4k') o.size = lx === '4k' ? '2160p' : lx;
       else if (D.parseFrame(lx)) o.size = D.parseFrame(lx).id;
@@ -115,8 +118,8 @@
   const targetOpts = TARGET_WORDS.map((t) => ({ value: t, hint: Capture.TARGETS[t]?.label || '' }));
   const frameOpts = D.SOCIAL.map((f) => ({ value: f.id, hint: `${f.label} · ${f.w}×${f.h}` }));
   const shotWordOpts = [...targetOpts, ...frameOpts, { value: 'clean', hint: 'no toasts, menus, scrollbars' }, { value: 'norail', hint: 'without the rail and chats list' }, { value: 'copy' }, { value: 'annotate', hint: 'draw arrows / boxes first' }, { value: 'attach', hint: 'put it in this chat' }, { value: 'pretty', hint: 'on a gradient, for posts' }, { value: 'fit', hint: 'fit inside the frame (no crop)' }, { value: 'jpg' }, { value: 'webp' }, { value: '1x', hint: 'CSS size on a Retina screen' }, { value: '3s', hint: 'after a countdown' }];
-  const recWordOpts = [{ value: 'stop' }, { value: 'pause' }, { value: 'resume' }, { value: 'mark' }, { value: 'status' }, ...D.RECORD.map((p) => ({ value: p.id, hint: p.label })), ...targetOpts.filter((t) => t.value !== 'transcript'), { value: '60fps' }, { value: '30fps' }, { value: 'hq' }, { value: 'sound', hint: 'Hearth\'s own sound' }, { value: 'mic' }, { value: 'both' }, { value: 'mp4' }, { value: '10s', hint: 'stop after 10 seconds' }, { value: 'now', hint: 'no countdown' }, { value: 'clicks' }, { value: 'keys' }, ...frameOpts.slice(0, 8)];
-  const SHOT_WORDS = /^(burst|tool|panel|view|chat|messages|dock|director|lab|preview|canvas|region|area|element|thing|pick|transcript|tall|scroll|composer|rail|panel|sidebar|clean|norail|bare|copy|annotate|draw|attach|pretty|post|beautify|fit|jpg|webp|png|1x|delay|in|\d+s|last|sel:|selector:|css:|[.#[])/i;
+  const recWordOpts = [{ value: 'stop' }, { value: 'pause' }, { value: 'resume' }, { value: 'mark' }, { value: 'status' }, ...D.RECORD.map((p) => ({ value: p.id, hint: p.label })), ...targetOpts.filter((t) => t.value !== 'transcript'), { value: '60fps' }, { value: '30fps' }, { value: 'hq' }, { value: 'sound', hint: 'Hearth\'s own sound' }, { value: 'mic' }, { value: 'both' }, { value: 'mp4' }, { value: '10s', hint: 'stop after 10 seconds' }, { value: 'now', hint: 'no countdown' }, { value: 'clicks' }, { value: 'keys' }, { value: 'autozoom', hint: 'zoom in on your clicks' }, { value: 'camera', hint: 'your camera in a corner' }, ...frameOpts.slice(0, 8)];
+  const SHOT_WORDS = /^(all|burst|tool|panel|view|chat|messages|dock|director|lab|preview|canvas|region|area|element|thing|pick|transcript|tall|scroll|composer|rail|panel|sidebar|clean|norail|bare|copy|annotate|draw|attach|pretty|post|beautify|fit|jpg|webp|png|1x|delay|in|\d+s|last|sel:|selector:|css:|[.#[])/i;
   const isShotArgs = (args) => { const w = words(args); return w.length > 0 && w.some((x) => SHOT_WORDS.test(x) || D.parseFrame(x) || D.BEAUTIFY.some((b) => b.id === x.toLowerCase())) && !/^(window|lab)$/i.test(String(args).trim()); };
 
   reg({
@@ -155,6 +158,16 @@
         toast(`📷 ${paths.length} shots`, { timeout: 3000, action: { label: 'Show', fn: () => CaptureView.library({ kind: 'shot' }) } });
         return `${paths.length} shots, every ${every}s:\n${paths.map((p) => `- \`${p}\``).join('\n')}`;
       }
+      // all: a picture of every screen (each tool in the rail and each chat agent), then back where you were
+      if (/^all\b/i.test(String(args || '').trim())) {
+        const o = shotArgs(String(args).replace(/^all\b/i, ''));
+        const back = H.activeId; const paths = [];
+        const where = [...Tools.enabled().map((t) => `tool:${t.id}`), ...H.agents().filter((a) => a.mode === 'native' && !a.dock).map((a) => a.id)];
+        for (const id of where) { try { activate(id); await new Promise((r) => setTimeout(r, id.startsWith('tool:') ? 1200 : 500)); paths.push((await Capture.shot({ target: 'tool', ...o, quiet: true }))?.path); } catch { /* a screen that can't show */ } }
+        if (back) activate(back);
+        toast(`📷 ${paths.length} screens`, { timeout: 3000, action: { label: 'Show', fn: () => CaptureView.library({ kind: 'shot' }) } });
+        return `${paths.length} screens:\n${paths.map((p) => `- \`${p}\``).join('\n')}`;
+      }
       const r = await Capture.shot(shotArgs(args)); return r ? `📷 \`${r.path}\` (${r.w}×${r.h})` : 'Cancelled.';
     },
   });
@@ -172,15 +185,19 @@
     examples: ['/rec', '/rec stop', '/rec reel'], complete: opts(recWordOpts), run: recCommand,
   });
   reg({
-    name: 'tour', aliases: ['tours'], args: '[name | list | new | edit <name> | stop | steps | run "<steps>"]', desc: 'Hands-free scripted recordings: open tools, run commands, type, click, zoom, captions, titles (for an intro video)',
+    name: 'tour', aliases: ['tours'], args: '[name | list | new | edit <name> | tape [stop] | stop | steps | run "<steps>"]', desc: 'Hands-free scripted recordings: open tools, run commands, type, click, zoom, captions, titles (for an intro video)',
     keys: `${M}+Alt+T`, examples: ['/tour', '/tour intro', '/tour hello', '/tour edit intro', '/tour stop'], keywords: 'demo script automated walkthrough intro video',
-    complete: (args) => { const last = String(args || '').toLowerCase(); return [{ value: 'list' }, { value: 'new' }, { value: 'edit' }, { value: 'stop' }, { value: 'steps' }, ...D.TOURS.map((t) => ({ value: t.id, hint: t.label }))].filter((o) => o.value.startsWith(last)); },
+    complete: (args) => { const last = String(args || '').toLowerCase(); return [{ value: 'list' }, { value: 'new' }, { value: 'edit' }, { value: 'stop' }, { value: 'steps' }, { value: 'tape', hint: 'do it once, get the tour' }, ...D.TOURS.map((t) => ({ value: t.id, hint: t.label }))].filter((o) => o.value.startsWith(last)); },
     run: async (args, ctx) => {
       const a = String(args || '').trim();
       const [w0, ...rest] = words(a);
       const lw = String(w0 || '').toLowerCase();
       if (!a) { CaptureTour.picker(); return null; }
       if (lw === 'stop') { CaptureTour.stop(); return CaptureTour.running() ? 'Stopping the tour…' : 'No tour is running.'; }
+      if (lw === 'tape') {
+        if (/stop|done|end/i.test(rest[0] || '') || CaptureTour.taping()) { const text = CaptureTour.tape(false); if (!text) return 'Not taping.'; CaptureTour.editText(text); return 'Taped: edit it, then Save or Run.'; }
+        CaptureTour.tape(true); return 'Taping: do it once (clicks, screens, typing, shortcuts). `/tour tape stop` when done.';
+      }
       if (lw === 'list') { const l = await CaptureTour.list(); return l.map((t) => `- **${t.id}**: ${t.label}${t.own ? ' (yours)' : ''}`).join('\n'); }
       if (lw === 'new') { CaptureTour.edit(); return null; }
       if (lw === 'edit') { CaptureTour.edit(rest.join(' ') || null); return null; }

@@ -772,6 +772,9 @@ const Capture = (() => {
       // effects drawn into the page while filming (they are part of the picture on purpose)
       if (o.clean) clean(true);
       cursorFx.set(o.cursor, { clicks: o.clicks, keys: o.keys });
+      if (o.autozoom) autoZoom(true);
+      if (o.camera && o.camera !== 'off') await cameraBubble(o.camera);
+      if (o.chapters !== false) chapters(true);
       await countdown(Number(o.countdown) || 0, 'recording');
       recorder.start(1000);
       rec.started = performance.now();
@@ -792,8 +795,60 @@ const Capture = (() => {
     api().indicator({ on: true, time: fmtClock(s), paused: Boolean(rec.pausedAt), label: rec.tour ? `tour ${rec.tour}` : rec.marks.length ? `◆${rec.marks.length}` : '' });
     if (rec.opts.max && s >= rec.opts.max && !rec.pausedAt) stop().catch((e) => toast(e.message, { type: 'error' }));
   }
+  // ---------- take extras: zoom toward your clicks, a camera bubble, chapter markers ----------
+  // Auto zoom: a click zooms the view toward it (1.6×); after 2.2 s without clicks it eases back out.
+  let az = null;
+  function autoZoom(on) {
+    if (az) { removeEventListener('pointerdown', az.down, true); clearTimeout(az.timer); az = null; if (typeof CaptureTour !== 'undefined') CaptureTour.setView(1, 0, 0, 500); }
+    if (!on || typeof CaptureTour === 'undefined') return;
+    az = { timer: null };
+    az.down = (e) => {
+      if (!rec || e.target.closest?.('.cap-pick, dialog')) return;
+      const k = 1.6; const v = CaptureTour.viewState();
+      const ux = (e.clientX - v.x) / v.k; const uy = (e.clientY - v.y) / v.k; // the click without the current zoom
+      CaptureTour.setView(k, innerWidth / 2 - ux * k, innerHeight / 2 - uy * k, 650);
+      clearTimeout(az.timer);
+      az.timer = setTimeout(() => CaptureTour.setView(1, 0, 0, 700), 2200);
+    };
+    addEventListener('pointerdown', az.down, true);
+  }
+  // Camera bubble: your camera, round, in a corner of the picture (asks for the camera once)
+  let cam = null;
+  async function cameraBubble(corner) {
+    if (cam) { cam.stream.getTracks().forEach((t) => t.stop()); cam.node.remove(); cam = null; }
+    if (!corner || corner === 'off') return null;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 480, height: 480 }, audio: false });
+      const v = el('video', { muted: true, autoplay: true, playsInline: true });
+      v.srcObject = stream;
+      const node = el('div', { class: `cap-camera cap-camera-${corner}` }, v);
+      fx().append(node);
+      await v.play().catch(() => {});
+      cam = { stream, node };
+      return true;
+    } catch (err) { toast(`No camera: ${err.message}`, { type: 'error', timeout: 4000 }); return false; }
+  }
+  // Chapters: a marker each time the screen changes (another tool, another chat) while recording
+  let chap = null;
+  function chapters(on) {
+    if (chap) { removeEventListener('hearth:view', chap); chap = null; }
+    if (!on) return;
+    let lastSid = null;
+    chap = () => {
+      let sid = ''; try { sid = H.surfaceIdFor(H.activeId) || ''; } catch { return; }
+      if (!rec || sid === lastSid) return;
+      const first = lastSid === null; lastSid = sid;
+      if (first || rec.started === 0) return;
+      const name = sid.startsWith('tool:') ? (Tools.get(sid.slice(5))?.name || sid.slice(5)) : (H.agent(sid)?.name || sid);
+      mark(name);
+    };
+    chap();
+    addEventListener('hearth:view', chap);
+  }
+
   function cleanupRec() {
     if (!rec) return;
+    autoZoom(false); cameraBubble(null); chapters(false);
     clearInterval(rec.timer);
     clearInterval(rec.ticker);
     try { rec.display?.getTracks().forEach((t) => t.stop()); } catch { /* gone */ }
@@ -856,6 +911,7 @@ const Capture = (() => {
       try { fin = await api().finish({ path: p, mp4: Boolean(r.opts.mp4 || r.final), fps: r.opts.fps, id: r.id, size: r.final }); } catch (err) { fin.error = err.message; } finally { busy?.remove(); }
       const main = fin.mp4 || fin.webm || p;
       const marks = r.marks;
+      if (r.opts.gif && typeof FrameRead !== 'undefined') { try { const g = await FrameRead.edit(fin.webm || main, 'gif', { fps: r.opts.fps || 15 }, { quiet: true }); fin.gif = g.path; } catch (err) { fin.gifError = err.message; } }
       if (marks.length) { const all = await window.hub.kvGet('capture-marks', {}); all[main] = marks; if (fin.webm && fin.webm !== main) all[fin.webm] = marks; window.hub.kvSet('capture-marks', all); }
       if (typeof Review !== 'undefined') { try { Review.noteRecording(main); } catch { /* the library is a bonus */ } }
       const item = remember({ kind: 'video', path: main, webm: fin.webm, mp4: fin.mp4 || null, duration: fin.duration || duration, w: fin.w, h: fin.h, fps: r.opts.fps, marks });
@@ -865,7 +921,7 @@ const Capture = (() => {
       }
       document.dispatchEvent(new CustomEvent('hearth:recording', { detail: { recording: false, path: main } }));
       if (open) CaptureView.open(main);
-      return { path: main, webm: fin.webm, mp4: fin.mp4 || null, duration: Math.round((fin.duration || duration) * 100) / 100, size: fin.w ? `${fin.w}×${fin.h}` : r.size, fps: r.opts.fps, marks, audio: r.audioNote || r.opts.audio, error: fin.mp4Error || fin.error || null };
+      return { path: main, webm: fin.webm, mp4: fin.mp4 || null, ...(fin.gif ? { gif: fin.gif } : {}), duration: Math.round((fin.duration || duration) * 100) / 100, size: fin.w ? `${fin.w}×${fin.h}` : r.size, fps: r.opts.fps, marks, audio: r.audioNote || r.opts.audio, error: fin.mp4Error || fin.error || null };
     })();
     try { return await pending.stop; } finally { pending.stop = null; }
   }
@@ -914,6 +970,7 @@ const Capture = (() => {
       ] },
       typeof CaptureTour !== 'undefined' ? { label: '▶ Tours (hands-free recordings)…', items: () => CaptureTour.menuItems() } : null,
       { label: `▦ Captures  ${mod}+Alt+V`, action: () => CaptureView.library() },
+      recent.length ? { label: 'Recent…', items: () => recent.slice(0, 8).map((x) => ({ label: `${x.kind === 'video' ? '🎬' : '📷'} ${base(x.path)}`, action: () => CaptureView.open(x.path) })) } : null,
       { label: '🎞 Read frames of a video…', action: () => FrameRead.pickAndRead() },
       { label: 'Settings…', more: true, items: () => settingsItems() },
     ];
@@ -939,6 +996,9 @@ const Capture = (() => {
         { label: 'Cursor…', items: () => D.CURSORS.map((c) => setR('cursor', c.id, c.label)) },
         { label: 'Clicks…', items: () => D.CLICKS.map((c) => setR('clicks', c.id, c.label)) },
         { label: `${check(P.rec.keys)}Show the keys you press`, action: () => setPref('rec', 'keys', !P.rec.keys) },
+        { label: `${check(P.rec.autozoom)}Zoom in on clicks`, action: () => setPref('rec', 'autozoom', !P.rec.autozoom) },
+        { label: 'Camera bubble…', items: () => D.CAMERA.map((c) => setR('camera', c.id, c.label)) },
+        { label: `${check(P.rec.chapters !== false)}Markers when the screen changes`, action: () => setPref('rec', 'chapters', P.rec.chapters === false) },
         { label: 'Countdown…', items: () => D.COUNTDOWN.map((n) => setR('countdown', n, n ? `${n} seconds` : 'None')) },
         { label: 'Longest take…', items: () => D.MAX_LENGTH.map((n) => setR('max', n, n ? `${n >= 60 ? `${n / 60} min` : `${n} s`}` : 'No limit')) },
         { label: `${check(P.rec.mp4)}Also make an MP4 (ffmpeg)`, action: () => setPref('rec', 'mp4', !P.rec.mp4) },
@@ -1010,7 +1070,7 @@ const Capture = (() => {
   // (the capture tools for chats, commands and keys live in capture-cmds.js)
   return {
     shot, record, stop, pause, resume, mark, status, toggleRecord, pickRegion, beautify, socialCrop, loadImage, canvasData, paintBackground,
-    beautyArgs, beautyMix, setBeautyMix, anim, menu, mainItems, settingsItems, picker, pickFrame, chooseFolder, info, clean, fx, cursorFx, keyAdd, keys: () => keyList.slice(),
+    autoZoom, cameraBubble, beautyArgs, beautyMix, setBeautyMix, anim, menu, mainItems, settingsItems, picker, pickFrame, chooseFolder, info, clean, fx, cursorFx, keyAdd, keys: () => keyList.slice(),
     tourLabel, copyImage, attachToChat, openInReview, addToEdit, addToLab, elementFor, rectOf, targetId, TARGETS, surfaceEl, transcript, labPicture, countdown,
     last: () => last, recent: () => recent.slice(), remember, prefs, setPref, fileUrl, base, fmtClock, get recording() { return Boolean(rec); },
   };

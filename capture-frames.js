@@ -348,7 +348,7 @@ const FrameRead = (() => {
   }
 
   // ---------- one entry point for commands and agents ----------
-  const MODE_ALIAS = { blacks: 'black', fades: 'black', still: 'freeze', holds: 'freeze', frozen: 'freeze', quiet: 'silence', silent: 'silence', lufs: 'loudness', loud: 'loudness', volume: 'loudness', iframes: 'keyframes', bars: 'letterbox', crop: 'letterbox', colorbar: 'barcode', story: 'barcode', wave: 'waveform', sound: 'waveform', loops: 'loop', seamless: 'loop', frame: 'at', time: 'at', exact: 'at', n: 'every', step: 'every', even: 'spread', evenly: 'spread', cuts: 'scenes', shots: 'scenes', scene: 'scenes', contact: 'sheet', grid: 'sheet', energy: 'motion', rhythm: 'pacing', pace: 'pacing', colors: 'palette', colours: 'palette', brightness: 'light', luma: 'light', probe: 'info', fps: 'info', check: 'verify', compare: 'diff' };
+  const MODE_ALIAS = { feel: 'vibe', mood: 'vibe', card: 'vibe', blacks: 'black', fades: 'black', still: 'freeze', holds: 'freeze', frozen: 'freeze', quiet: 'silence', silent: 'silence', lufs: 'loudness', loud: 'loudness', volume: 'loudness', iframes: 'keyframes', bars: 'letterbox', crop: 'letterbox', colorbar: 'barcode', story: 'barcode', wave: 'waveform', sound: 'waveform', loops: 'loop', seamless: 'loop', frame: 'at', time: 'at', exact: 'at', n: 'every', step: 'every', even: 'spread', evenly: 'spread', cuts: 'scenes', shots: 'scenes', scene: 'scenes', contact: 'sheet', grid: 'sheet', energy: 'motion', rhythm: 'pacing', pace: 'pacing', colors: 'palette', colours: 'palette', brightness: 'light', luma: 'light', probe: 'info', fps: 'info', check: 'verify', compare: 'diff' };
   const modeOf = (m) => { const k = String(m || '').toLowerCase(); return D.READ_MODES.some((x) => x.id === k) ? k : MODE_ALIAS[k] || null; };
   async function read(file, mode = 'sheet', a = {}) {
     if (!file) throw new Error('Which video? (a path, "last" for the newest recording, or open one in Video Review)');
@@ -412,7 +412,31 @@ const FrameRead = (() => {
       const l = await main('loop', file, { from: Number(a.from) || 0, min: a.min || 0.8, max: a.max || 8 });
       return { value: l, text: `Best loop: ${tc(l.from, 30, 'ms')} → ${l.tc} (${l.length}s, ${Math.round(l.match * 100)} % alike). /make loop cuts it.`, images: [] };
     }
+    if (m === 'vibe') {
+      const v = await vibe(file);
+      return { value: v.value, text: v.text, images: [{ path: v.path, label: 'vibe card' }] };
+    }
     throw new Error(`Unknown mode ${mode}`);
+  }
+  // A reference's feel in one picture + a few words: palette, light, pacing, motion and 4 key frames. For chats that
+  // should bring the vibe of a reference, never its footage.
+  async function vibe(file) {
+    const [i, pal, li, pa, mo] = [await info(file), await palette(file, { count: 6 }), await light(file), await pacing(file).catch(() => null), await motion(file, { buckets: 32 })];
+    const keys = await spread(file, 4, {}, { width: 480, format: 'jpg' });
+    const W = 1600; const Hh = 900; const c = el('canvas', { width: W, height: Hh }); const g = c.getContext('2d');
+    g.fillStyle = '#0e0f12'; g.fillRect(0, 0, W, Hh);
+    const kw = (W - 50) / 4; const kh = Math.round((kw * (i.h || 9)) / (i.w || 16));
+    for (const [n, k] of keys.entries()) { try { g.drawImage(await Capture.loadImage(k.path), 10 + n * (kw + 10), 10, kw, kh); } catch { /* skip */ } }
+    let y = 10 + kh + 24;
+    pal.colors.forEach((cc, n) => { const w = (W - 20) * (cc.share / 100); const x = 10 + pal.colors.slice(0, n).reduce((a, b) => a + (W - 20) * (b.share / 100), 0); g.fillStyle = cc.hex; g.fillRect(x, y, Math.max(2, w), 70); });
+    y += 90;
+    const m = chart(mo, { W: W - 20, Hh: 200, cuts: (pa?.cuts || []).slice(1).map((x) => x.time) });
+    g.drawImage(m, 10, y); y += 220;
+    const words = [`${i.w}×${i.h} · ${i.fps} fps · ${tc(i.duration, i.fps, 'ms')}`, `Light: ${li.words}`, pa ? `Pacing: ${pa.words} (${pa.shots} shots, ${pa.average}s average, ${pa.perMinute} cuts/min)` : '', `Motion: ${mo.average > 0.06 ? 'high' : mo.average > 0.025 ? 'medium' : 'low'} energy, calm ${Math.round(mo.calm * 100)} %, busy ${Math.round(mo.busy * 100)} %`, `Palette: ${pal.colors.map((x) => x.hex).join(' ')}`].filter(Boolean);
+    g.fillStyle = '#f3efe6'; g.font = '600 26px system-ui, sans-serif';
+    words.forEach((t, n) => g.fillText(t, 14, y + n * 36));
+    const path = await api().save({ name: `${base(file).replace(/\.\w+$/, '')} vibe`, data: Capture.canvasData(c, 'jpg', 0.9), ext: 'jpg', sub: 'sheets' });
+    return { path, value: { palette: pal.colors.map((x) => x.hex), light: li.words, pacing: pa && { words: pa.words, shots: pa.shots, average: pa.average, perMinute: pa.perMinute }, motion: { average: mo.average, calm: mo.calm, busy: mo.busy } }, text: `${words.join('\n')}\nUse it for the feel (palette, light, rhythm, energy), not as footage.` };
   }
 
   // ---------- things made from a video (ffmpeg): a GIF, a trim, a timelapse, a boomerang, stills for After Effects… ----
@@ -503,5 +527,5 @@ const FrameRead = (() => {
     return f;
   }
 
-  return { edit, EDIT_LABEL, info, at, frames, every, spread, scenes, motion, pacing, palette, paletteOf, light, verify, diff, sheet, chart, read, show, toChatImages, resolveFile, pickAndRead, tc, parseTime, modeOf, curves, _videoOf: videoOf, _videoFrame: videoFrame, _setFfmpeg: (on) => { hasFf = on; } };
+  return { vibe, edit, EDIT_LABEL, info, at, frames, every, spread, scenes, motion, pacing, palette, paletteOf, light, verify, diff, sheet, chart, read, show, toChatImages, resolveFile, pickAndRead, tc, parseTime, modeOf, curves, _videoOf: videoOf, _videoFrame: videoFrame, _setFfmpeg: (on) => { hasFf = on; } };
 })();

@@ -199,3 +199,9 @@ dialog.cap-tour-edit { width: min(860px, 94vw); }
 .cap-progress i { display: block; height: 100%; background: linear-gradient(90deg, var(--fh-gold, #ffc233), #ff6a1a); transform-origin: 0 50%; transform: scaleX(0); transition: transform .4s ease; }
 .cap-confetti { position: fixed; top: -10px; width: 9px; height: 14px; border-radius: 2px; }
 .cap-emoji { font-size: 140px; line-height: 1; filter: drop-shadow(0 8px 24px rgba(0, 0, 0, .5)); }
+.cap-camera { position: fixed; width: 220px; height: 220px; border-radius: 50%; overflow: hidden; border: 4px solid rgba(255, 255, 255, .9); box-shadow: 0 10px 30px rgba(0, 0, 0, .5); background: #111; }
+.cap-camera video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+.cap-camera-br { right: 28px; bottom: 28px; }
+.cap-camera-bl { left: 28px; bottom: 28px; }
+.cap-camera-tr { right: 28px; top: 28px; }
+.cap-camera-tl { left: 28px; top: 28px; }

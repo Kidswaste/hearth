@@ -181,7 +181,9 @@ const CaptureData = (() => {
     { id: 'tutorial', label: 'Tutorial: cursor, clicks and keys shown, voice', fps: 30, mbps: 8, size: 'native', audio: 'app+mic', cursor: 'halo', clicks: 'ring', keys: true },
     { id: 'voice', label: 'Voice-over: your microphone only', fps: 30, mbps: 8, size: 'native', audio: 'mic' },
     { id: 'draft', label: 'Draft: small file, 24 fps', fps: 24, mbps: 3, size: '720p', audio: 'none' },
-    { id: 'gif', label: 'GIF-ready: 15 fps, 720p', fps: 15, mbps: 4, size: '720p', audio: 'none' },
+    { id: 'gif', label: 'GIF: 15 fps, 720p, makes a GIF when it stops', fps: 15, mbps: 4, size: '720p', audio: 'none', gif: true },
+    { id: 'studio', label: 'Studio: zooms in on your clicks, 60 fps, MP4 (like a screen-studio take)', fps: 60, mbps: 24, size: 'native', audio: 'app', cursor: 'arrow', clicks: 'ring', autozoom: true, mp4: true, clean: true },
+    { id: 'facecam', label: 'Facecam: your camera in a corner bubble, voice', fps: 30, mbps: 12, size: 'native', audio: 'app+mic', camera: 'br', mp4: true },
     { id: 'master', label: 'Master: 60 fps, near lossless (big files)', fps: 60, mbps: 50, size: 'native', audio: 'app' },
     { id: 'lab', label: 'Lab preview only, 60 fps', fps: 60, mbps: 20, size: 'native', audio: 'app', target: 'lab' },
     { id: 'chat', label: 'The chat only, 30 fps', fps: 30, mbps: 8, size: 'native', audio: 'none', target: 'chat' },
@@ -210,6 +212,8 @@ const CaptureData = (() => {
   ];
   const CLICKS = [{ id: 'off', label: 'No click effect' }, { id: 'ring', label: 'Ring ripple' }, { id: 'burst', label: 'Burst' }, { id: 'pulse', label: 'Soft pulse' }, { id: 'double', label: 'Double ring' }, { id: 'square', label: 'Square' }, { id: 'spark', label: 'Gold spark' }];
   const COUNTDOWN = [0, 3, 5, 10];
+  // the camera bubble's corner (tutorials, facecam): off or a corner
+  const CAMERA = [{ id: 'off', label: 'No camera' }, { id: 'br', label: 'Camera bottom right' }, { id: 'bl', label: 'Camera bottom left' }, { id: 'tr', label: 'Camera top right' }, { id: 'tl', label: 'Camera top left' }];
   const MAX_LENGTH = [0, 10, 15, 30, 60, 120, 300, 600];
 
   // ---------- tours: captions / titles / zooms ----------
@@ -273,6 +277,7 @@ const CaptureData = (() => {
     { id: 'barcode', label: 'Color barcode (the color story in one picture)', args: '' },
     { id: 'waveform', label: 'Sound waveform picture', args: '' },
     { id: 'loop', label: 'Best seamless loop point', args: '[from]' },
+    { id: 'vibe', label: 'Vibe card: palette, light, pacing, motion and key frames in one picture (a reference\'s feel, not its footage)', args: '' },
   ];
   // things made from a video (ffmpeg; the source is never changed)
   const EDITS = [
@@ -634,6 +639,6 @@ title "Shipped" "made in Hearth" 1.8s rainbow
 stop` },
   ];
 
-  return { PADS, CORNERS, SHADOWS, EDITS, SOCIAL, socialOf, parseFrame, BACKGROUNDS, CHROME, BEAUTIFY, COLORS, SIZES, TOOLS, RECORD, QUALITY, FPS, AUDIO, CURSORS, CLICKS, COUNTDOWN, MAX_LENGTH, CAPTIONS, TITLES, EASES, READ_MODES, SENSITIVITY, TC_STYLES, SHEETS, SHEET_THEMES, TOUR_STEPS, TOURS };
+  return { CAMERA, PADS, CORNERS, SHADOWS, EDITS, SOCIAL, socialOf, parseFrame, BACKGROUNDS, CHROME, BEAUTIFY, COLORS, SIZES, TOOLS, RECORD, QUALITY, FPS, AUDIO, CURSORS, CLICKS, COUNTDOWN, MAX_LENGTH, CAPTIONS, TITLES, EASES, READ_MODES, SENSITIVITY, TC_STYLES, SHEETS, SHEET_THEMES, TOUR_STEPS, TOURS };
 })();
 if (typeof module !== 'undefined') module.exports = CaptureData;

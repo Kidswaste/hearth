@@ -534,7 +534,68 @@ const CaptureTour = (() => {
       ...cache.map((t) => ({ label: `▶ ${t.label}`, action: () => run(t.id).catch(fail) })),
       { label: '✎ Edit a tour…', items: () => cache.map((t) => ({ label: t.label, action: () => edit(t.id) })) },
       { label: '+ New tour…', action: () => edit() },
+      { label: tapeState ? '■ Stop taping (then edit and save)' : '● Tape a tour (do it once, replay it exactly)', action: () => { if (tapeState) { const t = tape(false); if (t) editText(t); } else tape(true); } },
     ];
   }
-  return { run, stop, running, parse, lint, list, get, save, remove, edit, picker, menuItems: menuItemsSync, state: () => (state ? { name: state.name, i: state.i, total: state.total } : null), find, setView, OPS };
+  // ---------- taping: do it once, get the tour (clicks, screens, typing, shortcuts, the pauses between) ----------
+  let tapeState = null;
+  function describe(n) {
+    const t = n.closest('button, [role="button"], a, summary, label, .tab, .tool-btn, .agent-btn, h2, h3') || n;
+    const text = (t.textContent || '').trim().replace(/\s+/g, ' ');
+    if (text && text.length <= 32) {
+      const same = [...document.querySelectorAll('button, [role="button"], a, summary, label, .tab, h2, h3')].filter((x) => visible(x) && (x.textContent || '').trim().replace(/\s+/g, ' ') === text);
+      if (same.length === 1) return `"${text.replace(/"/g, '\\"')}"`;
+    }
+    if (t.id) return `#${t.id}`;
+    if (t.dataset?.id) return `[data-id="${t.dataset.id}"]`;
+    const cls = [...t.classList].filter((c) => !/^(on|active|hot|use-|is-)/.test(c)).slice(0, 2);
+    return cls.length ? `${t.tagName.toLowerCase()}.${cls.join('.')}` : t.tagName.toLowerCase();
+  }
+  function tape(on = !tapeState) {
+    if (!on) {
+      if (!tapeState) return null;
+      const T = tapeState; tapeState = null;
+      removeEventListener('click', T.click, true); removeEventListener('keydown', T.key, true); removeEventListener('input', T.input, true); removeEventListener('submit', T.submit, true); removeEventListener('hearth:view', T.view);
+      T.flush();
+      T.note?.remove();
+      return ['# taped: replay with Run (add "record" at the top to film it)', ...T.steps].join('\n');
+    }
+    const T = { steps: [], last: performance.now(), typed: '', sid: (() => { try { return H.surfaceIdFor(H.activeId); } catch { return ''; } })() };
+    const gap = () => { const now = performance.now(); const s = Math.min(5, (now - T.last) / 1000); T.last = now; if (s >= 0.3) T.steps.push(`wait ${s.toFixed(1)}s`); };
+    T.flush = () => { if (T.typed) { T.steps.push(`type "${T.typed.replace(/"/g, '\\"')}"`); T.typed = ''; } };
+    T.click = (e) => { if (e.target.closest?.('#toasts, dialog.cap-tour-edit, #cap-fx')) return; T.flush(); gap(); T.steps.push(`click ${describe(e.target)}`); };
+    T.key = (e) => {
+      if (!(e.ctrlKey || e.metaKey || e.altKey) && !['Escape', 'Enter', 'Tab'].includes(e.key)) return;
+      if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return;
+      if (e.key === 'Enter' && e.target.closest?.('.composer')) return; // the send is taped by "submit"
+      T.flush(); gap();
+      T.steps.push(`key ${[e.ctrlKey || e.metaKey ? 'Ctrl' : '', e.altKey ? 'Alt' : '', e.shiftKey ? 'Shift' : '', e.key.length === 1 ? e.key.toUpperCase() : e.key].filter(Boolean).join('+')}`);
+    };
+    T.input = (e) => { if (e.target.closest?.('.composer') && e.target.tagName === 'TEXTAREA') { if (!T.typed) gap(); T.typed = e.target.value; } };
+    T.submit = (e) => { if (e.target.closest?.('.composer') || e.target.classList?.contains('composer')) { T.flush(); gap(); T.steps.push('send'); } };
+    T.view = () => {
+      let sid = ''; try { sid = H.surfaceIdFor(H.activeId) || ''; } catch { return; }
+      if (sid === T.sid) return;
+      T.sid = sid;
+      // a click that switched the screen already says it
+      if (/^click /.test(T.steps[T.steps.length - 1] || '') && performance.now() - T.last < 500) return;
+      T.flush(); gap();
+      T.steps.push(`open ${sid.startsWith('tool:') ? sid.slice(5) : (H.agent(sid)?.name || sid)}`);
+    };
+    addEventListener('click', T.click, true); addEventListener('keydown', T.key, true); addEventListener('input', T.input, true); addEventListener('submit', T.submit, true); addEventListener('hearth:view', T.view);
+    T.note = toast('● Taping a tour: do it once (clicks, screens, typing). Stop to edit and save it.', { timeout: 0, action: { label: 'Stop', fn: () => { const text = tape(false); if (text) editText(text); } } });
+    tapeState = T;
+    return true;
+  }
+  // the editor with taped (or given) steps
+  async function editText(text, label = 'Taped tour') {
+    const dlg = await edit();
+    dlg.querySelector('input').value = label;
+    const area = dlg.querySelector('textarea');
+    area.value = text;
+    area.dispatchEvent(new Event('input'));
+    return dlg;
+  }
+
+  return { tape, taping: () => Boolean(tapeState), editText, viewState: () => ({ ...view }), run, stop, running, parse, lint, list, get, save, remove, edit, picker, menuItems: menuItemsSync, state: () => (state ? { name: state.name, i: state.i, total: state.total } : null), find, setView, OPS };
 })();
