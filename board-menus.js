@@ -159,6 +159,8 @@
       { label: 'Use this frame as the poster', action: () => posterHere(it) },
       { label: 'Step one frame forward  .', action: () => stepFrame(1, it) },
       { label: 'Step one frame back  ,', action: () => stepFrame(-1, it) },
+      { label: 'One still per shot', action: () => B._.shotsToStills(it) },
+      { label: 'Contact sheet (6 frames)', action: () => B._.clipSheet(it) },
       { label: 'Open in Video Review', action: async () => { activate('tool:ae'); await Review.ensureMounted?.(); Review.open(it.src); } },
     ];
   }
@@ -200,7 +202,7 @@
 
   // ---------- notes / text ----------
   function textItems(it) {
-    if (it.type === 'note') return [{ label: 'Edit  Enter', action: () => editText(it.id) }, { label: 'Note color', items: () => D.NOTE_STYLES.map((s) => ({ label: ck(it.style === s.id, s.name), action: () => B.patch(null, { style: s.id }, 'note color') })) }];
+    if (it.type === 'note') return [{ label: 'Edit  Enter', action: () => editText(it.id) }, { label: 'Note color', items: () => D.NOTE_STYLES.map((s) => ({ label: ck(it.style === s.id, s.name), action: () => B.patch(null, { style: s.id }, 'note color') })) }, { label: 'Text size', items: () => D.NOTE_SIZES.map(([, n, px]) => ({ label: ck((it.fsz || 17) === px, n), action: () => B.patch(null, { fsz: px === 17 ? undefined : px }, 'note text size') })) }];
     return [
       { label: 'Edit  Enter', action: () => editText(it.id) },
       { label: 'Text style', items: () => D.TEXT_STYLES.map((s) => ({ label: ck(it.textStyle === s.id, s.name), action: () => B.patch(null, { textStyle: s.id }, 'text style') })) },
@@ -285,9 +287,14 @@
     if (it) {
       if (it.type === 'video') primary.push({ label: 'Watch large', action: () => viewLarge(it) }, { label: 'Clip', items: () => videoItems(it) });
       else if (it.type === 'image' || it.type === 'gif') primary.push({ label: 'View large', action: () => viewLarge(it) });
-      else if (it.type === 'web') primary.push({ label: 'Open in browser', action: () => window.hub.openExternal(it.url) }, { label: 'Live preview', action: () => livePreview(it) }, { label: 'Refresh snapshot', action: () => refreshSnapshot([it.id]) });
-      else if (it.type === 'note' || it.type === 'text') primary.push(...textItems(it));
-      else if (it.type === 'frame') primary.push({ label: 'Zoom to frame', action: () => B.zoomToBox(it) }, { label: 'Rename…', action: () => renameFrame(it) }, { label: 'Frame color', items: () => D.FRAME_COLORS.map(([n, c]) => ({ label: ck((it.color || null) === c, n), action: () => B.patch([it.id], { color: c || undefined }, 'frame color') })) }, { label: 'Arrange inside', items: () => layoutItems([it.id]) }, { label: 'Fit to its contents', action: () => B._.fitFrame(it) });
+      else if (it.type === 'web') primary.push({ label: 'Open in browser', action: () => window.hub.openExternal(it.url) }, { label: 'Live preview', action: () => livePreview(it) }, { label: 'Refresh snapshot', action: () => refreshSnapshot([it.id]) }, { label: 'Snapshot at', items: () => D.SNAPS.map(([id, n]) => ({ label: n, action: () => B._.snapAs(id, [it]) })) }, { label: 'Copy the address', action: () => { copyText(it.url); toast('Copied'); } });
+      else if (it.type === 'note' || it.type === 'text') primary.push(...textItems(it), { label: it.type === 'note' ? 'Turn into big text' : 'Turn into a note', action: () => B._.convertText([it]) });
+      else if (it.type === 'shape') primary.push({ label: 'Shape', items: () => D.SHAPES.map(([id, n]) => ({ label: ck(it.shape === id, n), action: () => B.patch(null, { shape: id }, 'shape') })) }, { label: 'Color', items: () => colorChoices((c) => B.patch(null, { color: c || undefined }, 'shape color')) });
+      else if (it.type === 'arrow') primary.push({ label: 'Arrow', items: () => D.ARROWS.map(([, n, props]) => ({ label: n, action: () => B.patch(null, (a) => { for (const k of ['heads', 'curve', 'dash', 'width']) delete a[k]; Object.assign(a, props); }, 'arrow') })) }, { label: 'Color', items: () => colorChoices((c) => B.patch(null, { color: c || undefined }, 'arrow color')) });
+      else if (it.type === 'sticker') primary.push({ label: 'Sticker', items: () => D.STICKERS.map((g) => ({ label: ck(it.glyph === g, g), action: () => B.patch(null, { glyph: g, title: `Sticker ${g}` }, 'sticker') })) }, { label: 'Color', items: () => colorChoices((c) => B.patch(null, { color: c || undefined }, 'sticker color')) });
+      else if (it.type === 'frame') primary.push({ label: 'Zoom to frame', action: () => B.zoomToBox(it) }, { label: 'Rename…', action: () => renameFrame(it) }, { label: 'Frame color', items: () => D.FRAME_COLORS.map(([n, c]) => ({ label: ck((it.color || null) === c, n), action: () => B.patch([it.id], { color: c || undefined }, 'frame color') })) }, { label: 'Arrange inside', items: () => layoutItems([it.id]) }, { label: 'Fit to its contents', action: () => B._.fitFrame(it) },
+        { label: 'Send this frame\'s vibe', items: () => nativeAgents().map((a) => ({ label: a.name, items: D.FOCUS.map((f) => ({ label: f.name, action: () => B._.frameVibe(it, a.id, f.id) })) })) },
+        { label: 'Presentation', items: () => [{ label: 'Present from here', action: () => B._.presentFrom(it) }, { label: 'Earlier', action: () => B._.presentOrder(-1, it) }, { label: 'Later', action: () => B._.presentOrder(1, it) }, { label: 'Play its clips', action: () => B._.playFrame(it) }] });
       else if (it.type === 'swatch' || it.type === 'palette') primary.push({ label: 'Copy hex', action: () => { copyText((it.colors || [it.color]).join(' ')); toast('Copied'); } }, { label: 'Harmonies', items: () => D.HARMONIES.map((h) => ({ label: h.name, action: () => B.addSwatch(D.harmony(h.id, it.color || it.colors[0]), { x: it.x, y: it.y + it.h + 40 }, { title: h.name }) })) }, { label: 'Change color…', action: async () => { const c = await pickColor(it.color || it.colors[0]); if (c) B.patch([it.id], it.type === 'swatch' ? { color: c, title: D.colorName(c) } : { colors: [c, ...it.colors.slice(1)] }, 'color'); } });
     }
     if (list.length === 2) primary.push({ label: 'Compare the two', action: () => Board._.compare?.(list[0], list[1]) });
@@ -299,12 +306,13 @@
         { label: 'Copy the vibe text', action: () => { copyText(list.map((i) => V.text(i)).join('\n')); toast('Vibe copied'); } },
         { label: 'Palette card from it', action: () => paletteCard(list) },
         ...(it ? [{ label: 'Find similar', action: () => findSimilar(it) }] : []),
+        { label: 'Tags from its vibe', action: () => B._.tagByVibe(list) },
         { label: 'Read the vibe again', action: () => B.reanalyze(list.map((i) => i.id)) },
       ] },
       { label: 'Your note on it…', action: () => editNote() },
       { label: 'Tags', items: tagItems },
       { label: 'Stamp', items: stampItems },
-      ...(list.some((i) => B._.isMedia(i) || i.type === 'swatch' || i.type === 'palette') ? [{ label: 'Look', items: lookItems }] : []),
+      ...(list.some((i) => B._.isMedia(i) || ['swatch', 'palette', 'shape', 'sticker', 'arrow'].includes(i.type)) ? [{ label: 'Look', items: lookItems }] : []),
       { label: 'Arrange', items: () => arrangeItems() },
       { label: 'Duplicate  Ctrl+D', action: () => { const m = B.duplicateItems(ids()); B.select(m.map((i) => i.id)); } },
       { label: 'Copy  Ctrl+C', action: copy, more: true },
@@ -312,6 +320,11 @@
       { label: 'Frame them  F', action: () => B.frameSelection(), more: true },
       { label: list.some((i) => i.locked) ? 'Unlock' : 'Lock in place', action: () => B.patch(null, { locked: !list.some((i) => i.locked) || undefined }, 'lock'), more: true },
       { label: 'Rename…', action: () => renameItems(), more: true },
+      { label: 'Info…  I', action: () => B._.info(), more: true },
+      { label: 'Hide  H', action: () => B._.hide(), more: true },
+      { label: 'Move to board', items: () => B.boards().filter((b) => b.id !== S.cur.id).map((b) => ({ label: b.name, action: () => B._.toBoard(b.id, { move: true }) })), more: true },
+      { label: 'Copy to board', items: () => B.boards().filter((b) => b.id !== S.cur.id).map((b) => ({ label: b.name, action: () => B._.toBoard(b.id) })), more: true },
+      { label: 'Copy as a picture  Ctrl+Shift+C', action: () => B._.copyImage(), more: true },
       ...(it?.src ? [{ label: 'Show the file', action: () => window.hub.fs.reveal(it.src), more: true }, { label: 'Open with the system', action: () => window.hub.fs.open(it.src), more: true }, { label: 'Copy the file path', action: () => { copyText(it.src); toast('Path copied'); }, more: true }] : []),
       ...(it?.from ? [{ label: 'Go to the clip it came from', action: () => { B.select(it.from); B.zoomSel(); }, more: true }] : []),
       { label: `Delete${list.length > 1 ? ` ${list.length}` : ''}  Del`, danger: true, action: () => B.removeItems() },
@@ -326,6 +339,8 @@
       { label: 'Stack', items: () => [['h', 'In a row'], ['v', 'In a column']].map(([k, l]) => ({ label: l, action: () => stackSel(k) })) },
       { label: 'Match size', items: () => [['w', 'Same width'], ['h', 'Same height'], ['both', 'Same size']].map(([k, l]) => ({ label: l, action: () => matchSel(k) })) },
       { label: 'Auto-arrange', items: () => layoutItems() },
+      { label: 'Size', items: () => [{ label: 'Actual size (100 %)', action: () => B._.actualSize() }, { label: 'Reset size', action: () => B._.resetSize() }, { label: 'Fill its frame', action: () => B._.fillFrame() }] },
+      ...(sel().length === 2 ? [{ label: 'Swap the two', action: () => B._.swap() }] : []),
     ];
   }
   const layoutItems = (list) => D.LAYOUTS.map((l) => ({ label: l.name, action: () => { const n = B.arrange(l.id, list); if (!n) toast('Nothing to arrange'); } }));
@@ -365,8 +380,14 @@
         { label: 'Harmony from a color…', action: async () => { const c = await pickColor(); if (c) showMenu(...at(e0()), D.HARMONIES.map((h) => ({ label: h.name, action: () => B.addSwatch(D.harmony(h.id, c), p, { title: h.name }) }))); } },
       ] },
       { label: 'Frame', items: () => [{ label: 'Around the selection  F', action: () => B.frameSelection() }, ...D.FRAME_SIZES.map((f) => ({ label: `${f.name}`, action: () => B.addFrame({ title: f.name, w: f.w, h: f.h }, p) }))] },
+      { label: 'Shape', items: () => D.SHAPES.map(([id, n]) => ({ label: n, action: () => B.addShape(id, p) })) },
+      { label: 'Arrow or line', items: () => D.ARROWS.map(([id, n]) => ({ label: n, action: () => B.addArrow(id, p) })) },
+      { label: 'Sticker', items: () => D.STICKERS.map((g) => ({ label: g, action: () => B.addSticker(g, p) })) },
       { label: 'Template', items: templateItems },
       { label: 'From the clipboard', action: () => pasteClipboard(p) },
+      { label: 'A folder of pictures…', action: () => B._.importFolder(), more: true },
+      { label: 'A board file (.json)…', action: () => B._.importBoardFile(), more: true },
+      { label: 'A screenshot of Hearth', action: () => B._.screenshotHearth(), more: true },
     ];
   }
   const e0 = () => ({ clientX: innerWidth / 2, clientY: innerHeight / 3 });
@@ -402,6 +423,8 @@
       by((i) => i.type === 'swatch' || i.type === 'palette', 'Colors'), by((i) => i.type === 'frame', 'Frames'), by((i) => i.stamp, 'Stamped'), by((i) => !i.tags?.length && i.type !== 'frame', 'Untagged'),
       { label: 'With tag', items: () => allTags().map((t) => by((i) => i.tags?.includes(t), `#${t}`)) },
       { label: 'Same kind as selected', action: () => { const k = new Set(sel().map((i) => i.type)); B.select(B.items().filter((i) => k.has(i.type)).map((i) => i.id)); } },
+      by((i) => Date.now() - (i.added || 0) < 3600e3, 'Added in the last hour'), by((i) => new Date(i.added || 0).toDateString() === new Date().toDateString(), 'Added today'),
+      { label: 'Like the selected (vibe)', action: () => findSimilar() },
     ];
   }
   function viewItems() {
@@ -414,6 +437,7 @@
       { label: 'Minimap', items: () => [['auto', 'While moving'], ['on', 'Always'], ['off', 'Never']].map(([v, l]) => ({ label: ck((p.minimap || 'auto') === v, l), action: () => { B.setPref('minimap', v); Board._.minimap?.(); } })) },
       { label: ck(p.snap !== false, 'Snap to other items'), action: () => B.setPref('snap', p.snap === false) },
       { label: ck(Boolean(p.grid), 'Snap to a grid'), action: () => B.setPref('grid', !p.grid) },
+      { label: 'Grid size', items: () => D.GRID_SIZES.map((g) => ({ label: ck((p.gridSize || 20) === g, `${g}`), action: () => { B.setPref('gridSize', g); B.setPref('grid', true); } })) },
       { label: ck(p.wheel === 'pan', 'Mouse wheel pans (Ctrl+wheel zooms)'), action: () => B.setPref('wheel', p.wheel === 'pan' ? 'zoom' : 'pan') },
       { label: ck(Boolean(p.hand), 'Hand tool (drag pans)'), action: () => B.setPref('hand', !p.hand) },
     ];
@@ -427,13 +451,26 @@
       { label: 'Rename…', action: async () => { const n = await Modal.prompt('Rename board', { value: cur.name }); if (n) B.rename(n); } },
       { label: 'Link to a chat', items: () => recentChats().map((c) => ({ label: ck((cur.chats || []).includes(c.id), c.title || c.id), action: () => ((cur.chats || []).includes(c.id) ? B.unlinkChat(c.id) : B.linkChat(c.id, cur.id)) })) },
       { label: 'Export', items: () => D.EXPORTS.map(([id, l]) => ({ label: l, action: () => Board._.exportAs?.(id) })) },
+      { label: 'Brief…', action: () => B._.brief() },
+      { label: cur.readonly ? 'Unlock the board' : 'Lock the board', action: () => B._.lock() },
+      { label: 'Give the vibe to the Three Director', action: () => B._.toLab() },
       { label: 'Duplicate the board', action: () => B.duplicate(), more: true },
+      { label: ck(Boolean(S.index.list.find((x) => x.id === cur.id)?.star), 'Starred'), action: () => B._.star(), more: true },
+      { label: `Show hidden (${cur.items.filter((i) => i.hidden).length})`, action: () => B._.showHidden(), more: true },
+      { label: 'Statistics', action: () => Modal.alert('Board', B._.stats().replace(/\*\*/g, '')), more: true },
+      { label: 'Compare with another board', items: () => B.boards().filter((b) => b.id !== cur.id).map((b) => ({ label: b.name, action: async () => Modal.alert('Vibe differences', B._.diff(cur, await B.load(b.id))) })), more: true },
+      { label: 'Copy the board as a picture', action: () => B._.copyImage(B.items()), more: true },
       { label: 'Tidy media folder (unused files)', action: () => Board._.cleanMedia?.(), more: true },
       { label: `Delete "${cur.name}"`, danger: true, action: async () => { if (await Modal.confirm('Delete this board?', `"${cur.name}" and its ${cur.items.length} items (Undo in the notification).`, { ok: 'Delete', danger: true })) B.remove(cur.id); } },
     ];
   }
   const recentChats = () => (H.chats || []).filter((c) => H.agent(c.agentId)?.mode === 'native').slice(0, 14);
-  const presentItems = () => [{ label: 'Start  P', action: () => Board._.present?.() }, { label: 'Transition', items: () => D.TRANSITIONS.map((t) => ({ label: ck((B.prefs().transition || 'fly') === t.id, t.name), action: () => B.setPref('transition', t.id) })) }];
+  const presentItems = () => [
+    { label: 'Start  P', action: () => Board._.present?.() },
+    ...(one()?.type === 'frame' ? [{ label: 'Start from the selected frame', action: () => B._.presentFrom(one()) }] : []),
+    { label: 'Transition', items: () => D.TRANSITIONS.map((t) => ({ label: ck((B.prefs().transition || 'fly') === t.id, t.name), action: () => B.setPref('transition', t.id) })) },
+    { label: 'Advance', items: () => [0, 3, 5, 8, 12, 20].map((n) => ({ label: ck((B.prefs().presentAuto || 0) === n, n ? `Every ${n} s` : 'By hand'), action: () => B.setPref('presentAuto', n || undefined) })) },
+  ];
   function keysHelp() {
     const g = Keys.groups(true).get('Board') || [];
     Modal.alert('Keys on the board', g.map((k) => `${k.keys}  —  ${k.what}`).join('\n'));

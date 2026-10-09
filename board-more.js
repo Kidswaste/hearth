@@ -42,7 +42,9 @@
     if (kind === 'blocks' && pal.length) return { k: `b${pal.map((c) => c.hex).join()}`, node: () => el('div', { class: 'bd-lens bd-lens-blocks' }, pal.map((c) => el('span', { style: { background: c.hex, width: `${Math.max(12, Math.sqrt(c.share || 0.2) * 100)}%`, height: `${Math.max(12, Math.sqrt(c.share || 0.2) * 100)}%` } }))) };
     if (kind === 'heat') {
       if (it.type === 'frame') return null;
-      const val = lens.key === 'warmth' ? (v.warmth ?? 0) * 0.5 + 0.5 : v[lens.key];
+      const ref = lens.key === 'similar' ? B.selected().find((x) => x.vibe) : null;
+      if (lens.key === 'similar' && (!ref || ref === it)) return { k: ref === it ? 'self' : 'nosel', node: () => el('div', { class: 'bd-lens', style: { background: ref === it ? 'transparent' : '#0006' } }) };
+      const val = lens.key === 'similar' ? (it.vibe ? 1 - V.distance(ref.vibe, it.vibe) : null) : lens.key === 'warmth' ? (v.warmth ?? 0) * 0.5 + 0.5 : v[lens.key];
       if (val == null) return { k: 'none', node: () => el('div', { class: 'bd-lens', style: { background: '#000c' } }) };
       return { k: `${lens.key}${val}`, node: () => el('div', { class: 'bd-lens bd-lens-heat', style: { background: heat(val) }, title: `${lens.name}: ${val}` }) };
     }
@@ -63,6 +65,10 @@
     if (key === 'tags') return it.tags?.length ? it.tags.map((t) => `#${t}`).join(' ') : null;
     if (key === 'note') return it.note || null;
     if (key === 'aspect') return v.aspect || (it.w && it.h ? V.aspectWord(it.w, it.h) : null);
+    if (key === 'family') { const c = it.color || it.colors?.[0] || v.palette?.[0]?.hex; return c ? `${D.family(c)} · ${D.colorName(c)}` : null; }
+    if (key === 'duration') return it.duration ? `${B._.fmtTime(it.duration)}${it.vin || it.vout ? ` (plays ${B._.fmtTime(it.vin || 0)}–${B._.fmtTime(it.vout || it.duration)})` : ''}` : null;
+    if (key === 'added') return it.added ? timeAgo(it.added) : null;
+    if (key === 'resolution') return it.natural ? `${it.natural[0]} × ${it.natural[1]}` : null;
     return null;
   }
   const ONLY = { stamp: (i) => Boolean(i.stamp), video: (i) => i.type === 'video' || i.type === 'gif', image: (i) => i.type === 'image', web: (i) => i.type === 'web' };
@@ -95,7 +101,7 @@
       n.classList.toggle('bd-hide', hide);
     }
   }
-  B.onChange((what) => { if ((what === 'render' || what === 'vibe') && S.cur?.lens) refreshLens(false); });
+  B.onChange((what) => { if (((what === 'render' || what === 'vibe') && S.cur?.lens) || (what === 'select' && S.cur?.lens === 'similar')) refreshLens(false); });
 
   // ---------- search and filters ----------
   let searchBox = null;
@@ -250,6 +256,25 @@
         ctx.fillRect(x, y, w, h); ctx.strokeRect(x, y, w, h);
         ctx.fillStyle = it.color || textColor; ctx.font = `600 ${Math.max(12, 18 * s)}px system-ui`; ctx.textBaseline = 'bottom';
         ctx.fillText(it.title || 'Frame', x, y - 6 * s);
+      } else if (it.type === 'shape') {
+        ctx.fillStyle = it.color || '#e6b450'; ctx.strokeStyle = it.color || '#e6b450'; ctx.lineWidth = 6 * s;
+        const def = D.SHAPES.find(([id]) => id === it.shape) || D.SHAPES[0];
+        ctx.beginPath();
+        if (def[2]) { const pts = def[2].match(/[\d.]+% [\d.]+%|0 [\d.]+%|[\d.]+% 0|0 0/g) || []; pts.forEach((p2, i) => { const [px, py] = p2.split(' ').map((q) => parseFloat(q) / 100 || 0); if (i) ctx.lineTo(x + px * w, y + py * h); else ctx.moveTo(x + px * w, y + py * h); }); ctx.closePath(); }
+        else if (it.shape === 'circle' || it.shape === 'blob') ctx.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
+        else ctx.roundRect(x, y, w, h, it.shape === 'pill' ? h / 2 : it.shape === 'round' ? 22 * s : 0);
+        if (it.shape === 'frame-line') ctx.stroke(); else ctx.fill();
+      } else if (it.type === 'arrow') {
+        const sw = (it.width || 4) * s; const head = Math.max(10 * s, sw * 3.2); const heads = it.heads ?? 1;
+        ctx.strokeStyle = it.color || textColor; ctx.fillStyle = it.color || textColor; ctx.lineWidth = sw; ctx.lineCap = 'round';
+        if (it.dash) ctx.setLineDash([sw * 3, sw * 2.4]);
+        const yy = it.curve ? y + h * 0.8 : 0; const x0 = x + (heads === 2 ? head : 2); const x1 = x + w - (heads ? head : 2);
+        ctx.beginPath(); ctx.moveTo(x0, yy); if (it.curve) ctx.quadraticCurveTo(0, y - h * 0.4, x1, yy); else ctx.lineTo(x1, yy); ctx.stroke(); ctx.setLineDash([]);
+        const tip = (tx, dir) => { ctx.beginPath(); ctx.moveTo(tx, yy - head * 0.55); ctx.lineTo(tx + dir * head, yy); ctx.lineTo(tx, yy + head * 0.55); ctx.closePath(); ctx.fill(); };
+        if (heads) tip(x1, 1); if (heads === 2) tip(x0, -1);
+      } else if (it.type === 'sticker') {
+        ctx.font = `${Math.min(w, h) * 0.82}px system-ui, "Segoe UI Emoji", "Apple Color Emoji"`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = it.color || '#e6b450';
+        ctx.fillText(it.glyph || '★', 0, 0);
       } else { ctx.fillStyle = '#2a2d33'; ctx.fillRect(x, y, w, h); ctx.fillStyle = textColor; ctx.font = `${14 * s}px system-ui`; ctx.fillText(it.title || 'File', x + 10 * s, y + 24 * s); }
       ctx.restore();
     }

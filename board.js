@@ -67,6 +67,12 @@ const Board = (() => {
     emit('save');
     return Promise.resolve();
   }
+  // write every pending board now (closing / reloading the window)
+  function flush() {
+    for (const [id, t] of [...timers]) { clearTimeout(t); timers.delete(id); const b = S.boards.get(id); if (b) window.hub.kvSet(kvName(id), b); }
+    if (S.index) window.hub.kvSet('boards', S.index);
+  }
+  addEventListener('beforeunload', flush);
   async function create(name, { quiet = false, template = null, open: openIt = true } = {}) {
     const id = `b${now().toString(36)}${Math.floor(Math.random() * 46656).toString(36)}`;
     const b = { id, name: String(name || 'Board').slice(0, 60), created: now(), updated: now(), seq: 0, items: [], view: { x: 80, y: 80, z: 0.6 }, chats: [] };
@@ -95,7 +101,7 @@ const Board = (() => {
     if (S.cur && S.cur !== b) { S.cur.view = { ...S.view }; save(S.cur); }
     S.cur = b; S.index.current = b.id; saveIndex();
     S.sel.clear(); S.undo = []; S.redo = [];
-    if (S.mounted) { clearNodes(); S.view = { ...b.view }; applyView(true); renderAll(); applyBg(); setLens(b.lens || null, { quiet: true }); }
+    if (S.mounted) { clearNodes(); S.view = { ...b.view }; applyView(true); renderAll(); applyBg(); renderHud(); setLens(b.lens || null, { quiet: true }); for (const it of b.items) if (needsWork(it) && !it.vibe) queueWork(it, b); }
     emit('open');
     return b;
   }
@@ -144,7 +150,8 @@ const Board = (() => {
   function undo() { if (!S.undo.length) { toast('Nothing to undo'); return; } const st = S.undo.pop(); S.redo.push({ label: st.label, items: snapshot() }); S.cur.items = JSON.parse(st.items); afterEdit(); toast(`Undid ${st.label}`); }
   function redo() { if (!S.redo.length) { toast('Nothing to redo'); return; } const st = S.redo.pop(); S.undo.push({ label: st.label, items: snapshot() }); S.cur.items = JSON.parse(st.items); afterEdit(); toast(`Redid ${st.label}`); }
   // Every change goes through edit(): one undo step, then the page and storage catch up.
-  function edit(label, fn, { undoable = true, b = S.cur } = {}) {
+  function edit(label, fn, { undoable = true, b = S.cur, force = false } = {}) {
+    if (b?.readonly && !force) { toast(`"${b.name}" is locked (Board menu → Unlock to edit)`); return undefined; }
     if (b === S.cur && undoable) pushUndo(label);
     const r = fn(b);
     if (b === S.cur) afterEdit(); else save(b);
@@ -241,6 +248,9 @@ const Board = (() => {
     return list.length > 1 ? add('palette', { colors: list, title: props.title || 'Palette', x: pos.x, y: pos.y, auto: pos.auto, w: Math.max(300, list.length * 90), h: 200, ...props }, { b, label: 'add palette' })
       : add('swatch', { color: list[0] || '#e6b450', title: props.title || D.colorName(list[0] || '#e6b450'), x: pos.x, y: pos.y, auto: pos.auto, w: 200, h: 240, ...props }, { b, label: 'add color' });
   }
+  function addShape(shape = 'rect', at, props = {}, b = S.cur) { const pos = placeAt(at, 0, 240); return add('shape', { shape, color: props.color || '#e6b450', title: (D.SHAPES.find(([id]) => id === shape) || [, 'Shape'])[1], x: pos.x, y: pos.y, auto: pos.auto, w: 240, h: shape === 'pill' ? 110 : 240, ...props }, { b, label: 'add shape' }); }
+  function addArrow(kind = 'right', at, props = {}, b = S.cur) { const def = D.ARROWS.find(([id]) => id === kind) || D.ARROWS[0]; const pos = placeAt(at, 0, 320); return add('arrow', { title: def[1], x: pos.x, y: pos.y, auto: pos.auto, w: 320, h: def[2].curve ? 120 : 60, ...def[2], ...props }, { b, label: 'add arrow' }); }
+  function addSticker(glyph = '★', at, props = {}, b = S.cur) { const pos = placeAt(at, 0, 120); return add('sticker', { glyph, title: `Sticker ${glyph}`, x: pos.x, y: pos.y, auto: pos.auto, w: 120, h: 120, ...props }, { b, label: 'add sticker' }); }
   function addFrame(props = {}, at, b = S.cur) { const pos = at || placeAt(null, 0, props.w || 800); return add('frame', { title: 'Frame', w: 800, h: 600, x: pos.x, y: pos.y, auto: pos.auto, ...props }, { b, label: 'add frame' }); }
 
   // Pasted / dropped plain text: a link → card, colors → swatches, anything else → a note.
@@ -323,12 +333,13 @@ const Board = (() => {
     } else if (it.type === 'web') {
       it.snapping = true;
       if (b === S.cur && S.mounted) syncItem(it, true);
-      const r = await window.hub.board.snap(it.url);
+      const r = await window.hub.board.snap(it.url, it.snapSize ? { width: it.snapSize[0], height: it.snapSize[1] } : undefined);
       it.snapping = false; it.snapped = true;
       if (r.ok) {
         Object.assign(it, { title: r.title || it.title, favicon: r.favicon, description: r.description, themeColor: r.themeColor, fonts: r.fonts, snapError: null });
         if (r.shot) {
           it.src = r.shot;
+          if (it.snapSize) it.h = Math.round(Math.min(it.w * 2, (it.w * it.snapSize[1]) / it.snapSize[0]) + 34); // the card takes the page's shape
           it.tiny = await window.hub.board.save(`tiny-${it.id}.jpg`, await imgToJpeg(await V.loadImage(fileUrl(r.shot)), 256, 0.78));
           it.vibe = await V.image(fileUrl(r.shot));
         }
@@ -403,6 +414,7 @@ const Board = (() => {
     animateTo(target, 'ease');
   }
   function animateTo(target, mode = 'ease') {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { anim = null; S.view = target; writeView(); return; }
     const start = { ...S.view };
     anim = { target, start, t0: performance.now(), mode };
     const step = (t) => {
@@ -467,6 +479,7 @@ const Board = (() => {
     const ids = new Set(S.cur.items.map((i) => i.id));
     for (const [id, n] of S.nodes) if (!ids.has(id)) { stopPreview(id); n.remove(); S.nodes.delete(id); lastOff.delete(id); }
     for (const it of S.cur.items) syncItem(it);
+    S.hidden = new Set(S.cur.items.filter((i) => i.hidden).map((i) => i.id));
     const order = S.cur.items.map((i) => i.id).join(',');
     if (order !== lastOrder) { lastOrder = order; S.ui.world.append(...S.cur.items.map((i) => S.nodes.get(i.id))); }
     S.ui.empty.hidden = S.cur.items.length > 0;
@@ -476,6 +489,7 @@ const Board = (() => {
   const TYPE_BUILD = {};
   function build(it) {
     const n = el('div', { class: `bd-item bd-t-${it.type}`, dataset: { id: it.id } });
+    n.__type = it.type;
     (TYPE_BUILD[it.type] || TYPE_BUILD.file)(n, it);
     if (it.type === 'video' || it.type === 'gif') {
       n.addEventListener('pointerenter', () => { if (!S.moving && !drag) startPreview(it.id); });
@@ -497,6 +511,9 @@ const Board = (() => {
   TYPE_BUILD.swatch = (n) => { n.append(el('div', { class: 'bd-chip' }), el('div', { class: 'bd-hex' })); };
   TYPE_BUILD.palette = (n) => { n.append(el('div', { class: 'bd-stripes' }), el('div', { class: 'bd-hex' })); };
   TYPE_BUILD.frame = (n) => { n.append(el('div', { class: 'bd-ftitle' })); };
+  TYPE_BUILD.shape = (n) => { n.append(el('div', { class: 'bd-shape' })); };
+  TYPE_BUILD.sticker = (n) => { n.append(el('div', { class: 'bd-sticker' })); };
+  TYPE_BUILD.arrow = (n) => { const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('class', 'bd-arrow'); n.append(svg); };
   TYPE_BUILD.file = (n) => { n.append(el('div', { class: 'bd-filecard' }, el('span', { class: 'bd-fileicon', text: '📄' }), el('span', { class: 'bd-filename' }))); };
 
   const cropCss = (c) => {
@@ -508,7 +525,8 @@ const Board = (() => {
     if (!S.mounted) return;
     let n = S.nodes.get(it.id);
     if (!n) { n = build(it); S.nodes.set(it.id, n); S.ui.world.append(n); lastOrder = ''; force = true; }
-    const key = JSON.stringify([it.x, it.y, it.w, it.h, it.rot, it.opacity, it.blend, it.filter, it.flipX, it.flipY, it.crop, it.radius, it.shadow, it.border, it.locked, it.stamp, it.title, it.text, it.style, it.textStyle, it.fs, it.color, it.colors, it.src, it.thumb, it.tiny, it.poster, it.snapError, it.snapping, it.favicon, it.duration, it.vin, it.vout, it.group, it.tags, it.note, it.align]);
+    else if (n.__type !== it.type) { stopPreview(it.id); const nn = build(it); n.replaceWith(nn); S.nodes.set(it.id, nn); lastOff.delete(it.id); n = nn; force = true; } // note ⇄ text (and its undo)
+    const key = JSON.stringify([it.x, it.y, it.w, it.h, it.rot, it.opacity, it.blend, it.filter, it.flipX, it.flipY, it.crop, it.radius, it.shadow, it.border, it.locked, it.stamp, it.title, it.text, it.style, it.textStyle, it.fs, it.color, it.colors, it.src, it.thumb, it.tiny, it.poster, it.snapError, it.snapping, it.favicon, it.duration, it.vin, it.vout, it.group, it.tags, it.note, it.align, it.shape, it.heads, it.curve, it.dash, it.width, it.glyph, it.fsz, it.hidden]);
     if (!force && n.__key === key) return;
     n.__key = key;
     n.style.transform = `translate(${it.x}px, ${it.y}px)${it.rot ? ` rotate(${it.rot}deg)` : ''}`;
@@ -516,6 +534,7 @@ const Board = (() => {
     n.style.opacity = it.opacity != null && it.opacity < 1 ? String(it.opacity) : '';
     n.style.mixBlendMode = it.blend && it.blend !== 'normal' ? it.blend : '';
     n.classList.toggle('bd-locked', Boolean(it.locked));
+    n.classList.toggle('bd-hidden', Boolean(it.hidden));
     n.dataset.shadow = it.shadow || ''; n.dataset.border = it.border || ''; n.dataset.radius = it.radius || '';
     const clip = n.querySelector('.bd-clip');
     if (clip) {
@@ -550,6 +569,7 @@ const Board = (() => {
       const st = D.NOTE_STYLES.find((s) => s.id === it.style) || D.NOTE_STYLES[0];
       n.style.setProperty('--note-bg', st.bg); n.style.setProperty('--note-fg', st.fg); n.style.setProperty('--note-font', st.font || 'inherit');
       n.classList.toggle('bd-note-border', Boolean(st.border)); n.classList.toggle('bd-note-lines', Boolean(st.lines));
+      n.style.fontSize = it.fsz ? `${it.fsz}px` : '';
       const md = n.querySelector('.bd-md');
       if (md.__text !== it.text) { md.__text = it.text; md.innerHTML = window.renderMarkdown ? window.renderMarkdown(it.text || '') : ''; if (!window.renderMarkdown) md.textContent = it.text || ''; }
     },
@@ -572,6 +592,21 @@ const Board = (() => {
     },
     frame: (n, it) => { n.querySelector('.bd-ftitle').textContent = it.title || 'Frame'; n.style.setProperty('--frame', it.color || 'var(--bd-frame)'); },
     file: (n, it) => { n.querySelector('.bd-filename').textContent = it.title || it.file || 'File'; },
+    shape: (n, it) => {
+      const sh = n.querySelector('.bd-shape'); const def = D.SHAPES.find(([id]) => id === it.shape) || D.SHAPES[0];
+      sh.dataset.shape = def[0]; sh.style.clipPath = def[2] || ''; sh.style.setProperty('--shape', it.color || '#e6b450');
+    },
+    sticker: (n, it) => { const t = n.querySelector('.bd-sticker'); t.textContent = it.glyph || '★'; t.style.fontSize = `${Math.min(it.w, it.h) * 0.82}px`; t.style.color = it.color || ''; },
+    arrow: (n, it) => {
+      const svg = n.querySelector('svg'); const w = Math.max(10, it.w); const h = Math.max(10, it.h); const sw = it.width || 4; const c = it.color || 'currentColor';
+      const mid = h / 2; const heads = it.heads ?? 1; const head = Math.max(10, sw * 3.2);
+      const x0 = heads === 2 ? head : 2; const x1 = heads ? w - head : w - 2;
+      const path = it.curve ? `M${x0} ${h * 0.8} Q${w / 2} ${-h * 0.4} ${x1} ${h * 0.8}` : `M${x0} ${mid} L${x1} ${mid}`;
+      const tip = (x, y, dir) => `<path d="M${x} ${y - head * 0.55} L${x + dir * head} ${y} L${x} ${y + head * 0.55} Z" fill="${c}"/>`;
+      const endY = it.curve ? h * 0.8 : mid;
+      svg.setAttribute('viewBox', `0 0 ${w} ${h}`); svg.setAttribute('width', '100%'); svg.setAttribute('height', '100%'); svg.setAttribute('preserveAspectRatio', 'none');
+      svg.innerHTML = `<path d="${path}" fill="none" stroke="${c}" stroke-width="${sw}" stroke-linecap="round"${it.dash ? ` stroke-dasharray="${sw * 3} ${sw * 2.4}"` : ''}/>${heads ? tip(x1, endY, 1) : ''}${heads === 2 ? tip(x0, endY, -1) : ''}`;
+    },
   };
   const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
@@ -660,13 +695,14 @@ const Board = (() => {
     const w = toWorld(e.clientX, e.clientY);
     if (e.button === 1 || (e.button === 0 && S.space) || (e.button === 0 && prefs().hand)) { e.preventDefault(); drag = { mode: 'pan', sx: e.clientX, sy: e.clientY, vx: S.view.x, vy: S.view.y }; S.ui.root.classList.add('bd-panning'); capture(e); return; }
     if (e.button !== 0) return;
-    if (handle) { startHandle(handle, e, w); capture(e); return; }
+    if (handle && !S.cur.readonly) { startHandle(handle, e, w); capture(e); return; }
     if (node) {
       const it = item(node.dataset.id);
       if (!it) return;
       // frames are picked by their title or an empty spot inside; items in them stay clickable
       if (!S.sel.has(it.id)) select(it.id, { add: e.shiftKey });
       else if (e.shiftKey) { select(it.id, { toggle: true }); return; }
+      if (S.cur.readonly) return;
       const list = selected().filter((i) => !i.locked);
       if (!list.length) return;
       let moving = list;
@@ -1051,7 +1087,7 @@ const Board = (() => {
       emit('mount');
     });
   }
-  function renderHud() { if (S.mounted && S.cur) { S.ui.boardBtn.textContent = `▦ ${S.cur.name}`; } }
+  function renderHud() { if (S.mounted && S.cur) { S.ui.boardBtn.textContent = `${S.cur.readonly ? '🔒' : '▦'} ${S.cur.name}`; S.ui.vp.dataset.drop = `Drop to add to "${S.cur.name}"`; } }
   function applyBg() {
     if (!S.mounted) return;
     const bg = D.BACKGROUNDS.find((b) => b.id === (S.cur?.bg || prefs().bg || 'theme')) || D.BACKGROUNDS[0];
@@ -1081,11 +1117,11 @@ const Board = (() => {
   return {
     ready, open, create, rename, remove, duplicate, load, save, findBoard,
     boards: () => S.index?.list.slice() || [], current: () => S.cur, items: () => S.cur?.items || [], item, selected,
-    add, addFiles, addUrl, addNote, addText, addSwatch, addFrame, addTextSmart, applyTemplate, removeItems, patch, duplicateItems, reorder, group, ungroup, frameSelection, arrange, applyBoxes,
+    add, addFiles, addUrl, addNote, addText, addSwatch, addFrame, addShape, addArrow, addSticker, addTextSmart, applyTemplate, removeItems, patch, duplicateItems, reorder, group, ungroup, frameSelection, arrange, applyBoxes,
     select, undo, redo, edit, zoomFit, zoomSel, setZoom, zoomToBox, panBy, linkChat, unlinkChat, boardFor, reanalyze, prefs, setPref, applyBg, contents, frameOf,
     onChange: (fn) => { S.listeners.add(fn); return () => S.listeners.delete(fn); },
     vibeOf: (it) => V.text(it), fileUrl, isMounted: () => S.mounted, visible,
     // shared with board-*.js
-    _: { S, D, V, LY, item, syncItem, renderAll, updateOverlay, toWorld, toScreen, center, emit, pushUndo, afterEdit, queueWork, startPreview, stopPreview, liveVideo, stopAllPreviews, playing, fileUrl, imgToJpeg, blobB64, applyView, writeView, animateTo, settle, renderHud, uid, newItem, key, KEYS, fmtTime, cropCss, lastOff, isMedia, fitFrame, kindOf, saveIndex },
+    _: { S, D, V, LY, flush, avoidOverlap, item, syncItem, renderAll, updateOverlay, toWorld, toScreen, center, emit, pushUndo, afterEdit, queueWork, startPreview, stopPreview, liveVideo, stopAllPreviews, playing, fileUrl, imgToJpeg, blobB64, applyView, writeView, animateTo, settle, renderHud, uid, newItem, key, KEYS, fmtTime, cropCss, lastOff, isMedia, fitFrame, kindOf, saveIndex },
   };
 })();

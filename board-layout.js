@@ -41,6 +41,8 @@ const BoardLayout = (() => {
     motion: (it) => it.vibe?.motion ?? -1,
     edges: (it) => it.vibe?.edges ?? 0,
     added: (it) => it.added || 0,
+    newest: (it) => -(it.added || 0),
+    area: (it) => -(it.w * it.h),
     duration: (it) => it.vibe?.duration ?? 0,
     pacing: (it) => -(it.vibe?.pace ?? 99),
   };
@@ -198,6 +200,39 @@ const BoardLayout = (() => {
           let y = 0; for (const it of list) { const s = toWidth(it, W); set(it, x, y, s); y += s.h + gap; }
           x += W + gap * 3;
         }
+        break;
+      }
+      case 'shuffle': {
+        const seed = Date.now() % 9973;
+        const list = [...items].map((it, i) => [rnd(i, seed), it]).sort((a, c) => a[0] - c[0]).map(([, it]) => it);
+        gridOf(list, Math.max(1, Math.ceil(Math.sqrt(n))), mw, false);
+        break;
+      }
+      case 'cluster': {
+        // k-means on vibe vectors (light, contrast, saturation, warmth, edges, main hue); one column per cluster
+        const vec = (it) => { const v = it.vibe || {}; const h = hueKey(it); return [v.light ?? 0.5, v.contrast ?? 0.5, v.sat ?? 0.3, ((v.warmth ?? 0) + 1) / 2, v.edges ?? 0.3, h > 360 ? 0.5 : h / 360]; };
+        const k = Math.max(1, Math.min(6, Math.round(Math.sqrt(n / 2))));
+        const vs = items.map(vec);
+        let cs = vs.slice(0, k).map((v) => [...v]);
+        const asg = new Array(n).fill(0);
+        for (let it = 0; it < 12; it++) {
+          vs.forEach((v, i) => { let bi = 0; let bd = Infinity; cs.forEach((c, j) => { const d = c.reduce((a, x, q) => a + (x - v[q]) ** 2, 0); if (d < bd) { bd = d; bi = j; } }); asg[i] = bi; });
+          cs = cs.map((c, j) => { const m = vs.filter((_, i) => asg[i] === j); return m.length ? c.map((_, q) => m.reduce((a, v) => a + v[q], 0) / m.length) : c; });
+        }
+        let x = 0; const W = mw;
+        for (let j = 0; j < k; j++) {
+          const list = items.filter((_, i) => asg[i] === j); if (!list.length) continue;
+          let y = 0; for (const it of list) { const sz = toWidth(it, W); set(it, x, y, sz); y += sz.h + gap; }
+          x += W + gap * 3;
+        }
+        break;
+      }
+      case 'similar': {
+        const [first, ...rest] = items;
+        const dist = (a, c) => { const va = a.vibe || {}; const vc = c.vibe || {}; return ['light', 'contrast', 'sat', 'warmth', 'edges', 'grain'].reduce((s, q) => s + Math.abs((va[q] ?? 0.5) - (vc[q] ?? 0.5)), 0) + Math.abs(hueKey(a) - hueKey(c)) / 720; };
+        const list = [first, ...rest.sort((a, c) => dist(first, a) - dist(first, c))];
+        const cc = Math.max(mw, mh) * 0.62;
+        list.forEach((it, i) => { const a = i * 2.39996; const r = cc * Math.sqrt(i) * 1.15; set(it, r * Math.cos(a) - it.w / 2, r * Math.sin(a) - it.h / 2); });
         break;
       }
       default: return { boxes: {}, labels: [] };

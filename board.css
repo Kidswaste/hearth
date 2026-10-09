@@ -9,10 +9,12 @@
 .bd-hand .bd-vp { cursor: grab; }
 .bd-panning .bd-vp, .bd-panning .bd-item { cursor: grabbing !important; }
 .bd-dropping .bd-vp { box-shadow: inset 0 0 0 3px var(--bd-gold); }
+.bd-dropping .bd-vp::after { content: attr(data-drop); position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--sidebar); border: 1px solid var(--bd-gold); color: var(--text); padding: 6px 16px; border-radius: 999px; font-size: 13px; pointer-events: none; z-index: 8; }
 
 /* ---------- items ---------- */
 .bd-item { position: absolute; left: 0; top: 0; transform-origin: 50% 50%; user-select: none; -webkit-user-select: none; cursor: default; }
 .bd-off { visibility: hidden; content-visibility: hidden; }
+.bd-hidden { display: none; }
 .bd-clip { position: absolute; inset: 0; overflow: hidden; border-radius: 3px; background: color-mix(in srgb, var(--text) 6%, transparent); }
 .bd-media { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; display: block; }
 .bd-live { z-index: 1; }
@@ -71,6 +73,14 @@
 .bd-t-file { background: var(--surface); border-radius: 10px; }
 .bd-filecard { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 14px; text-align: center; padding: 12px; }
 .bd-fileicon { font-size: 48px; }
+
+/* shapes, arrows, stickers */
+.bd-shape { position: absolute; inset: 0; background: var(--shape); }
+.bd-shape[data-shape="round"] { border-radius: 22px; } .bd-shape[data-shape="circle"] { border-radius: 50%; } .bd-shape[data-shape="pill"] { border-radius: 999px; }
+.bd-shape[data-shape="blob"] { border-radius: 42% 58% 70% 30% / 45% 45% 55% 55%; }
+.bd-shape[data-shape="frame-line"] { background: none; border: 6px solid var(--shape); border-radius: 8px; }
+.bd-arrow { position: absolute; inset: 0; overflow: visible; color: var(--text); }
+.bd-sticker { position: absolute; inset: 0; display: grid; place-items: center; line-height: 1; color: var(--bd-gold); text-shadow: 0 4px 14px #0007; }
 
 /* frames: the title stays the same size on screen at every zoom (var --inv is set when the view settles) */
 .bd-t-frame { border: calc(1.5px * var(--inv)) solid color-mix(in srgb, var(--frame) 70%, transparent); background: color-mix(in srgb, var(--frame) 7%, transparent); border-radius: 12px; }

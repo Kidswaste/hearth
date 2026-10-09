@@ -60,6 +60,12 @@ const BoardData = (() => {
     L('cols-family', 'Columns by color family', 'groupBy', { by: 'family' }),
     L('cols-light', 'Low-key · mid · high-key', 'groupBy', { by: 'key' }),
     L('cols-aspect', 'Columns by shape', 'groupBy', { by: 'aspect' }, 'portrait / square / landscape'),
+    L('cluster', 'Clusters by vibe', 'cluster', { gap: 24 }, 'similar-feeling items grouped together'),
+    L('similar', 'Around the selected (most similar near)', 'similar', { gap: 24 }, 'the first selected in the middle, the closest vibes around it'),
+    L('newest', 'Newest first', 'sort', { by: 'newest', then: 'grid' }),
+    L('by-size', 'Biggest first', 'sort', { by: 'area', then: 'grid' }),
+    L('shuffle', 'Shuffle', 'shuffle', { gap: 24 }, 'a random grid: fresh eyes on the same refs'),
+    L('stairs', 'Staircase', 'diagonal', { gap: -40 }, 'overlapping steps'),
   ];
 
   // ---------- board starters ----------
@@ -175,6 +181,12 @@ const BoardData = (() => {
     LENS('sites', 'Sites only', 'only', 'only website cards', { test: 'web' }),
     LENS('outline', 'Outlines', 'outline', 'boxes only: the board\'s own composition'),
     LENS('focus', 'Focus selection', 'focus', 'everything but the selection fades'),
+    LENS('similar', 'Like the selection', 'heat', 'red = feels like what you selected, blue = far from it', { key: 'similar' }),
+    LENS('grain', 'Grain', 'heat', 'smooth to grainy', { key: 'grain' }),
+    LENS('family', 'Color families', 'label', 'each item\'s main color family', { key: 'family' }),
+    LENS('length', 'Clip length', 'label', 'duration of clips', { key: 'duration' }),
+    LENS('added', 'When added', 'label', 'how long ago each item came in', { key: 'added' }),
+    LENS('resolution', 'Resolution', 'label', 'pixel size of pictures and clips', { key: 'resolution' }),
   ];
 
   // ---------- item looks (CSS filters; the image export draws them too) ----------
@@ -309,6 +321,25 @@ const BoardData = (() => {
     ['Neutral', null], ['Gold', '#e6b450'], ['Ember', '#ff7a3d'], ['Red', '#ff5a5a'], ['Pink', '#ff4fa3'], ['Violet', '#9b7bff'], ['Blue', '#4f8cff'],
     ['Cyan', '#36d6e7'], ['Green', '#3bd16f'], ['Lime', '#b6e83f'], ['Sand', '#d8c39a'], ['Slate', '#7d8899'], ['White', '#ffffff'], ['Black', '#000000'],
   ];
+
+  // ---------- shapes, arrows, stickers (drawn items: structure on the board) ----------
+  const SHAPES = [
+    ['rect', 'Rectangle', null], ['round', 'Rounded rectangle', null], ['circle', 'Circle', null], ['pill', 'Pill', null],
+    ['triangle', 'Triangle', 'polygon(50% 0, 100% 100%, 0 100%)'], ['diamond', 'Diamond', 'polygon(50% 0, 100% 50%, 50% 100%, 0 50%)'],
+    ['hexagon', 'Hexagon', 'polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%)'],
+    ['star', 'Star', 'polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)'],
+    ['blob', 'Blob', null], ['frame-line', 'Outline box', null],
+  ];
+  const ARROWS = [
+    ['right', 'Arrow →', { rot: 0 }], ['left', 'Arrow ←', { rot: 180 }], ['down', 'Arrow ↓', { rot: 90 }], ['up', 'Arrow ↑', { rot: -90 }],
+    ['diag', 'Arrow ↘', { rot: 35 }], ['double', 'Double arrow ↔', { heads: 2 }], ['curved', 'Curved arrow', { curve: true }],
+    ['dashed', 'Dashed arrow', { dash: true }], ['line', 'Plain line', { heads: 0 }], ['thick', 'Bold arrow', { width: 10 }],
+  ];
+  const STICKERS = ['★', '♥', '✓', '✕', '?', '!', '☀', '☾', '⚡', '♪', '✿', '❄', '☁', '◆', '●', '▲', '✦', '❤', '☺', '☹', '👍', '👎', '🔥', '✨', '🎬', '🎨', '💡', '📌', '🎧', '🌙'];
+  // website snapshots: the size of the window that loads the page
+  const SNAPS = [['desktop', 'Desktop (1280 × 800)', 1280, 800], ['laptop', 'Laptop (1440 × 900)', 1440, 900], ['mobile', 'Phone (390 × 844)', 390, 844], ['tablet', 'Tablet (820 × 1180)', 820, 1180], ['tall', 'Tall page (1280 × 2400)', 1280, 2400], ['wide', 'Wide (1920 × 1080)', 1920, 1080]];
+  const NOTE_SIZES = [['small', 'Small text', 13], ['normal', 'Normal text', 17], ['large', 'Large text', 24], ['huge', 'Huge text', 36]];
+  const GRID_SIZES = [10, 20, 40, 80, 120];
 
   // ---------- crops ----------
   const CROPS = [
@@ -513,7 +544,7 @@ const BoardData = (() => {
   const find = (list, q) => { const s = String(q || '').toLowerCase().trim(); return list.find((x) => (x.id || '').toLowerCase() === s) || list.find((x) => (x.name || '').toLowerCase() === s) || list.find((x) => `${x.id} ${x.name}`.toLowerCase().includes(s)) || null; };
 
   const api = {
-    LAYOUTS, TEMPLATES, LENSES, FILTERS, BLENDS, NOTE_STYLES, TEXT_STYLES, BACKGROUNDS, FRAME_SIZES, FRAME_COLORS, CROPS, HARMONIES, PALETTES, FOCUS, TRANSITIONS, EXPORTS, STAMPS, MOODS,
+    LAYOUTS, TEMPLATES, LENSES, FILTERS, BLENDS, SHAPES, ARROWS, STICKERS, SNAPS, NOTE_SIZES, GRID_SIZES, NOTE_STYLES, TEXT_STYLES, BACKGROUNDS, FRAME_SIZES, FRAME_COLORS, CROPS, HARMONIES, PALETTES, FOCUS, TRANSITIONS, EXPORTS, STAMPS, MOODS,
     hexToRgb, rgbToHex, rgbToHsl, hslToRgb, hslHex, hexHsl, family, colorName, harmony, patternCss, find, clamp,
   };
   if (typeof module !== 'undefined') module.exports = api;
