@@ -506,6 +506,35 @@ const Declutter = (() => {
       { label: 'Close', action: () => dlg.close() },
     ];
   });
+  // Settings: jump to a section (the rarer ones sit folded in More settings)
+  ctx('dialog.settings-dialog', 'Settings', (dlg) => {
+    const more = dlg.querySelector('details.settings-more');
+    const go = (sec) => () => { if (more && more.contains(sec)) more.open = true; sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); sec.classList.add('ks-flash'); setTimeout(() => sec.classList.remove('ks-flash'), 1600); };
+    const secs = [...dlg.querySelectorAll('.settings-section')];
+    return [
+      { label: 'Appearance…', key: 'Ctrl+Shift+L', action: () => Look.openDialog() },
+      { label: 'Go to', items: () => secs.map((sec) => ({ label: sec.querySelector('h3')?.textContent || 'Section', hint: more?.contains(sec) ? 'more' : '', action: go(sec) })) },
+      { label: more?.open ? 'Fold More settings' : 'Open More settings', action: () => { if (more) more.open = !more.open; } },
+      { label: 'Back up now…', action: () => AppUI.exportData() },
+      { label: 'Your usage…', action: () => Usage.dialog() },
+      { label: 'Keys and hidden buttons…', key: 'Ctrl+/', action: () => KeysUI.open() },
+    ];
+  });
+  // the token dashboard: its ranges and tabs, copy and export
+  ctx('dialog.meter-dlg', 'Meter', (dlg) => [
+    { label: 'Range', items: () => [...dlg.querySelectorAll('.mt-seg > button')].map((b) => ({ label: b.textContent, checked: b.classList.contains('on'), action: () => b.click() })) },
+    { label: 'Show', items: () => [...dlg.querySelectorAll('.mt-tabs > button')].map((b) => ({ label: b.textContent, checked: b.classList.contains('on'), action: () => b.click() })) },
+    { label: 'Copy a summary (Markdown)', action: () => dlg.querySelector('[data-feature="Copy summary"]')?.click() },
+    { label: 'Export', items: [{ label: 'CSV…', action: () => Meter.exportUsage('csv') }, { label: 'JSON…', action: () => Meter.exportUsage('json') }] },
+    { label: 'Close', key: 'Esc', action: () => dlg.close() },
+  ]);
+  // the command bar (around its text box): your history, your pinned commands, every command
+  ctx('.cmdbar', 'Command bar', () => [
+    { label: 'Recent', items: () => { const h = [...new Set(Commands.history().slice().reverse())].slice(0, 10); return h.length ? h.map((line) => ({ label: line.slice(0, 48), action: () => CmdBar.runLine(line) })) : [{ label: 'Nothing yet', disabled: true }]; } },
+    { label: 'Pinned', items: () => { const f = Commands.favs(); return f.length ? f.map((n, i) => ({ label: `/${n}`, key: i < 9 ? `Alt+${i + 1}` : '', action: () => CmdBar.runLine(`/${n}`) })) : [{ label: '☆ in the / menu pins a command', disabled: true }]; } },
+    { label: 'Every command…', key: 'F1', action: () => CmdBar.help() },
+    { label: 'Close', key: 'Esc', action: () => CmdBar.close() },
+  ]);
   // a tab bar: every tab, the open one ✓ (long bars keep only five on screen)
   ctx('.tabbar', 'Tabs', (bar) => {
     const tabs = [...bar.querySelectorAll(':scope > button')];

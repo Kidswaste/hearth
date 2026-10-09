@@ -574,6 +574,15 @@ const KeysUI = (() => {
       { area: 'Right-click', keys: 'Right-click New', what: 'In the Lab: new sketch from a template list', sel: '.surface.active .imp-main' },
       { area: 'Right-click', keys: 'Right-click a quick chip', what: 'Your own director chip: remove it', sel: '.surface.active .dd-chip' },
       { area: 'Right-click', keys: 'Right-click a command', what: 'In /help: pin it, copy it, try it', sel: '.cmd-help-row' },
+      { area: 'Right-click', keys: 'Right-click a thinking block', what: 'Open / close it or all of them, copy the thinking', sel: '.msg details.thinking' },
+      { area: 'Right-click', keys: 'Right-click the ↓ button', what: 'Latest / first message', sel: '.jump-bottom' },
+      { area: 'Right-click', keys: 'Right-click an attachment', what: 'In the chat box: remove it, remove all, attach more', sel: '.composer .attach-chip' },
+      { area: 'Right-click', keys: 'Right-click a tool call', what: 'In the dock’s list of tool calls: copy the line, clear the list', sel: '.dd-list .dd-row' },
+      { area: 'Right-click', keys: 'Right-click a tab bar', what: 'Every tab of the tool (long bars keep five on screen)', sel: '.surface.active .tabbar' },
+      { area: 'Right-click', keys: 'Right-click Settings', what: 'Appearance, Go to › a section, More settings, back up, your usage', sel: 'dialog.settings-dialog' },
+      { area: 'Right-click', keys: 'Right-click the token dashboard', what: 'Range ›, Show ›, copy a summary, Export ›', sel: 'dialog.meter-dlg' },
+      { area: 'Right-click', keys: 'Right-click the command bar', what: 'Recent ›, Pinned ›, every command', sel: '.cmdbar' },
+      { area: 'Right-click', keys: 'Right-click Memory', what: 'Add a fact, search, edit as text, import, export', sel: 'dialog.memory-facts' },
     ]);
   }
 

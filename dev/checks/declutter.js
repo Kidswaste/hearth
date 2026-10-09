@@ -159,7 +159,18 @@ await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mousePressed', x
 await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseReleased', x: Math.round(mr.left + 10), y: Math.round(mr.top + 5), button: 'left', clickCount: 1 } });
 await wait(150);
 check('…and its items can be clicked there', window.__over === 1);
+ctxAt(document.querySelector('dialog.settings-dialog h2'), 10, 6); await wait(150);
+check('right-click Settings: Go to › sections', menuLabels().some((l) => /^Go to/.test(l)), menuLabels());
+close();
 document.querySelector('dialog.settings-dialog')?.close(); await wait(200);
+Meter.dashboard(); await wait(500);
+ctxAt(document.querySelector('dialog.meter-dlg .mt-head'), 10, 6); await wait(150);
+check('right-click the token dashboard: Range › / Show ›', menuLabels().some((l) => /^Range/.test(l)) && menuLabels().some((l) => /^Show/.test(l)), menuLabels());
+close(); document.querySelector('dialog.meter-dlg')?.close(); await wait(200);
+CmdBar.open(); await wait(300);
+ctxAt(document.querySelector('.cmdbar .cmdbar-row'), 2, 2); await wait(150);
+check('right-click the command bar: Recent › / Pinned ›', menuLabels().some((l) => /^Recent/.test(l)), menuLabels());
+close(); CmdBar.close(); await wait(150);
 
 // ---------- the Lab ----------
 activate('tool:three'); await wait(3000);
