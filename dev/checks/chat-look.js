@@ -2,7 +2,7 @@
 //   node dev/smoke.js --fake-engines --script dev/checks/chat-look.js --shot /tmp/look.png
 // Set window.LOOK_DOCK = true (or pass "dock" in the env through --eval) to show a docked director chat instead.
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const until = async (fn, ms = 15000) => { const t = Date.now(); while (Date.now() - t < ms) { if (await fn()) return true; await wait(80); } return false; };
+const until = async (fn, ms = 40000) => { const t = Date.now(); while (Date.now() - t < ms) { if (await fn()) return true; await wait(80); } return false; }; // (a "long" reply streams ≈ 15 s)
 let agent = H.claudeAgent();
 if (window.LOOK_DOCK) {
   H.config.agents.push({ id: 'threedirector', name: 'Three Director', icon: '◆', color: '#7c5cff', mode: 'native', engine: 'claude', dock: 'three', threeTools: true });

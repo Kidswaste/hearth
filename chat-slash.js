@@ -7,7 +7,7 @@ const ChatSlash = (() => {
   const PIN_MAX = 6; const RECENT_MAX = 6; const HERE_MAX = 6; const AREAS_SHOWN = 8;
   const MORE = '*more';
   // what the owner reaches for most in each tool (docs: the night brief's usage tracking)
-  const HABITS = { three: ['save', 'shuffle', 'tap', 'freeze', 'size', 'live', 'sequence'], ae: ['editor', 'frames', 'export'], board: ['board-use', 'board-add', 'vibe'] };
+  const HABITS = { three: ['save', 'shuffle', 'tap', 'freeze', 'size', 'live', 'sequence'], ae: ['editor', 'frames'], board: ['board-use', 'board-add', 'vibe'] };
   const cmdRow = (def) => ({ kind: 'command', def, label: `/${def.name}${def.args ? ` ${def.args}` : ''}`, hint: def.desc, keys: def.keys || '' });
   // the commands of an area, most used first, then by name
   function areaCmds(area) {

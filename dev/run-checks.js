@@ -34,7 +34,7 @@ const GROUPS = {
   editor: ['editor', 'editor-more', 'editor-mcp', 'cut'],
   capture: by(/^capture/),
   journeys: by(/^journey-/),
-  chat: by(/^chat-|^cmdbar$|^clutter$|^declutter/),
+  chat: by(/^chat-|^chatcore|^cmdbar$|^clutter$|^declutter/),
   lab: ['music', 'live', 'scenes', 'jam', 'assist', 'decide', 'brain', 'director-dock', 'director-tools', 'perf'],
   video: ['cut', 'nodes-video', 'editor'],
   nodes: by(/^nodes-/),
