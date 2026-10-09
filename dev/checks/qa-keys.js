@@ -38,7 +38,7 @@ function one(text) {
 // "Ctrl+Shift+Z / Ctrl+Y", "J / K / L", "I / O · X", "+ / − · \", "Space · J K L", "Shift+.  /  Shift+,", "1 … 9"
 function combos(keys) {
   const k = String(keys);
-  if (/^\d\s*…\s*\d$|1…9|1 … 9/.test(k)) { const p = k.match(/^(.*?)1\s*…\s*9/)?.[1] || ''; return [one(`${p}1`), one(`${p}2`)].filter(Boolean); }
+  if (/^\d\s*…\s*\d$|1…9|1 … 9/.test(k)) { const p = k.match(/^(.*?)1\s*…\s*9/)?.[1] || ''; return [one(`${p}2`), one(`${p}1`)].filter(Boolean); } // 2 first: 1 may already be the one showing (agent 1, cue 1…)
   const parts = k.split(/\s+[\/·]\s+|\s{2,}\/\s{2,}/).flatMap((p) => (/^[A-Z](\s[A-Z])+$/.test(p.trim()) ? p.trim().split(/\s/) : [p]));
   // "Ctrl+C / V / D / A": the later bare letters share the first one's modifiers
   const first = parts[0]?.match(/^((?:(?:Ctrl|Alt|Shift)\+)+)/i)?.[1] || '';
@@ -160,7 +160,12 @@ if (AREAS.includes('Board')) {
       if (/^Ctrl\+Shift\+G$/.test(c.label)) { Board.select([img.id, note.id]); Board.group?.(); }
       snap = JSON.stringify(B.cur.items);
       Board.select(pick({ ...c, what: '' })); B.ui.root.focus({ preventScroll: true });
-      if (/Shift\+[.,]/.test(c.label)) Board.select([clip.id]);
+      if (/Shift\+[.,]/.test(c.label)) {
+        Board.select([clip.id]);
+        // the selected clip plays: park it between its cuts so "next" and "previous" both have somewhere to go
+        Board._.startPreview?.(clip.id); const v = Board._.liveVideo?.(clip.id); const cs = clip.vibe?.cuts || [];
+        if (v && cs.length) { v.pause(); v.currentTime = cs.length > 1 ? (cs[0] + cs[1]) / 2 : cs[0] / 2 + 0.3; await wait(150); }
+      }
     },
     restore: async () => {
       document.activeElement?.blur?.();
