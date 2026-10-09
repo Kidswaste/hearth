@@ -33,7 +33,8 @@ line count is lower than the number of upgrades).
 | Cut (round 6): clip track in Video Review (E): split S, delete / ripple delete, trim with beat snapping, reorder, speed, fades, freeze frames, title cards, auto-cut on bars / drops (as a suggestion), gapless playback, export as the next version / socials / GIF / stills; song trim and /send-clip in the Lab | [cut.md](cut.md) | 93 |
 | Live (round 6): director edits no longer blank the Lab (it was pushed behind the window during every call), only changed layers re-run, scene switches and jam rounds stay in the page, new / changed / removed layers fade in place, unavoidable reloads cross-fade from a picture, a "building…" pill | [live.md](live.md) | 26 |
 | Declutter (round 7): hold Alt for tucked buttons, Ctrl for key badges, the keys button bottom left, right-click menus with › submenus everywhere, Customise this… (pin / tuck any button), 183 → 138 visible controls | [declutter.md](declutter.md) | 548 |
-| **Total** | | **4,275** |
+| Mood board (round 7): ▦ Board, references that give chats a vibe (never the footage), drawer over any chat (Ctrl+Shift+M), `/board-use`, `/ref`, `/vibe`, opt-in board tools for Claude / Astra | [board.md](board.md) | 1,309 |
+| **Total** | | **5,584** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.

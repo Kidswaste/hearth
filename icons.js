@@ -22,6 +22,8 @@ const Icons = (() => {
     clapper: S('<path d="M4 10h16v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19z"/><path d="M4 10l-.6-3.2 15.3-2.9.6 3.3zM8.2 6.5l2.2 2.6M12.6 5.7l2.2 2.6"/>'),
     // a jam: two voices interleaving
     jam: S('<path d="M3 13c2.2-5.5 4.4-5.5 6.6 0s4.4 5.5 6.6 0 3.7-4.2 4.8-2"/><path d="M3 11c2.2 5.5 4.4 5.5 6.6 0s4.4-5.5 6.6 0 3.7 4.2 4.8 2" opacity=".55"/>'),
+    // Board: a mood board of pinned references
+    board: S('<rect x="3.5" y="4" width="17" height="16" rx="2.4"/><rect x="6.5" y="7" width="5.5" height="6" rx="1" fill="currentColor" fill-opacity=".2"/><path d="M14.5 7.5h3M14.5 10.5h3M6.5 16.5h11"/><path d="M9.2 7l-.6-1.6" stroke-width="1.3"/>'),
     // rail buttons
     plus: S('<path d="M12 5v14M5 12h14"/>'),
     command: S('<rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M9.5 15.5l5-7"/>'),
@@ -34,7 +36,7 @@ const Icons = (() => {
     web: S('<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.4 3.5 5.2 3.5 8.5s-1.1 6.1-3.5 8.5c-2.4-2.4-3.5-5.2-3.5-8.5s1.1-6.1 3.5-8.5z"/>'),
   };
   // agent / tool id (or engine) -> icon
-  const BY_ID = { claude: 'claude', astra: 'astra', hearth: 'hearth', forgeheart: 'forge', forgedebug: 'forge', three: 'three', threedirector: 'director', ae: 'video', videodirector: 'clapper', jam: 'jam' };
+  const BY_ID = { claude: 'claude', astra: 'astra', hearth: 'hearth', forgeheart: 'forge', forgedebug: 'forge', three: 'three', threedirector: 'director', ae: 'video', videodirector: 'clapper', jam: 'jam', board: 'board' };
   const BY_ENGINE = { claude: 'claude', codex: 'astra' };
   const BY_BUTTON = { 'add-btn': 'plus', 'palette-btn': 'command', 'notes-btn': 'notes', 'memory-btn': 'memory', 'panel-btn': 'panel', 'grid-btn': 'grid', 'bar-btn': 'broadcast', 'config-btn': 'gear' };
 
