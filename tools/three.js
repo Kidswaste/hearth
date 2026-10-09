@@ -136,7 +136,7 @@ const ThreeLab = (() => {
     stats.addEventListener('click', () => { const c = !stats.classList.contains('compact'); stats.classList.toggle('compact', c); store.set('three.statsCompact', c); });
     // ?: the Lab's keys in one sheet
     function labKeys() {
-      const rows = [['Space', 'Play / pause'], ['T · Shift+T', 'Tap tempo · this tap is the 1'], ['K · S · H', 'Kick / snare / hit marker at the playhead'], ['Q', 'Quantize taps to the grid on / off'], ['C', 'Cue here'], ['1–9', 'Jump to cue'],
+      const rows = [['Space', 'Play / pause'], ['T · Shift+T', 'Tap tempo (locks to the song\'s grid) · this tap is the 1 · with live sound: sets the latency'], [', · .', 'Nudge the grid 5 ms earlier / later by ear (Shift 1 ms, Alt 20 ms)'], ['K · S · H', 'Kick / snare / hit marker at the playhead'], ['Q', 'Quantize taps to the grid on / off'], ['C', 'Cue here'], ['1–9', 'Jump to cue'],
         ['R · Shift+R', 'Shuffle the sliders · the shuffle before'], ['Ctrl+S · Ctrl+Shift+S', 'Save the sliders · as a look'], ['/', 'Find a slider'],
         ['F · \\', 'Freeze the picture'], ['.', 'One frame (while frozen)'], ['|', 'Pin this frame to compare (onion / wipe)'], ['Shift+1–5', 'Fit · 9:16 · 16:9 · 4:5 · 1:1'],
         ['Shift+L', 'Live sound on / off'], ['O', 'Your sketches'], ['`', 'Console'], ['P · Shift+F', 'Present · Focus'], ['I · PgUp / PgDn', 'In Present: info · other sketches'],
