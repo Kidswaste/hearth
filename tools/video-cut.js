@@ -1068,6 +1068,7 @@ const VideoCut = (() => {
       visual ? { label: `Look${c.color?.look ? `: ${FX.LOOK[c.color.look]?.name}` : ''}`, items: () => [
         ...grouped(FX.LOOKS, (id) => setLook(id, ids), c.color?.look),
         c.color ? { label: 'Strength', items: [0.25, 0.5, 0.75, 1].map((a) => ({ label: `${Math.round(a * 100)}%`, action: () => commit(C.patchAny(st.edit, ids, (k) => { k.color = { ...(k.color || {}), amt: a }; }), `Look ${Math.round(a * 100)}%`) })) } : null,
+        { label: 'Match a picture\'s look… (a reference: the vibe, not the footage)', action: async () => { const [p] = await window.hub.openDialog({ filters: [{ name: 'Picture', extensions: ['png', 'jpg', 'jpeg', 'webp'] }] }) || []; if (p) matchLook(p, ids); } },
         { label: 'Copy look', action: () => { lookClip = c.color ? C.copy(c.color) : null; host.flash(lookClip ? 'Look copied' : 'No look to copy'); } },
         lookClip ? { label: 'Paste look', action: () => commit(C.patchAny(st.edit, ids, (k) => { k.color = C.copy(lookClip); }), 'Look pasted') } : null,
         c.color ? { label: 'No look', action: () => commit(C.patchAny(st.edit, ids, (k) => { delete k.color; }), 'Look removed') } : null,
@@ -1484,6 +1485,55 @@ const VideoCut = (() => {
     }
     return out;
   }
+  // Captions: an SRT / VTT file becomes title items on a new text track (a caption style); and back to SRT
+  async function importCaptions(path, { style = 'caption-tiktok', anim = 'pop', offset = 0 } = {}) {
+    const text = await window.hub.fs.read(path);
+    const caps = C.parseCaptions(text);
+    if (!caps.length) { host.flash('No captions found in that file'); return 0; }
+    let n = C.addTrack(st.edit, 'text', 'Captions');
+    const tid = n.tracks[n.tracks.length - 1].id;
+    for (const c of caps) n = C.addItem(n, { kind: 'title', text: c.text, start: c.start + offset, dur: Math.max(0.2, c.end - c.start), style, anim, out: 'none', animDur: 0.25 }, { track: tid });
+    commit(n, `${caps.length} captions`);
+    return caps.length;
+  }
+  async function exportCaptions(out = null) {
+    const srt = C.toSrt(st.edit);
+    if (!srt.trim()) { host.flash('No titles to export as captions'); return null; }
+    const file = out || join(homeDir(), 'exports', `${stemOf()}.srt`);
+    await window.hub.fs.write(file, srt);
+    toast(`Saved ${base(file)}`, { action: { label: IS_MAC ? 'Show in Finder' : 'Show in folder', fn: () => window.hub.fs.reveal(file) }, timeout: 7000 });
+    return file;
+  }
+  // Match a picture's look (a reference gives the vibe, never the footage): the clip's exposure, contrast,
+  // saturation, temperature and tint move toward the picture's, measured on the frame at the playhead.
+  async function stats(src) {
+    const c = document.createElement('canvas'); c.width = 96; c.height = 96;
+    const g = c.getContext('2d'); g.drawImage(src, 0, 0, 96, 96);
+    const d = g.getImageData(0, 0, 96, 96).data;
+    let r = 0; let gg = 0; let b = 0; let l2 = 0; let ch = 0; const n = d.length / 4;
+    for (let i = 0; i < d.length; i += 4) { const R0 = d[i] / 255; const G0 = d[i + 1] / 255; const B0 = d[i + 2] / 255; const L0 = 0.2126 * R0 + 0.7152 * G0 + 0.0722 * B0; r += R0; gg += G0; b += B0; l2 += L0 * L0; ch += Math.max(R0, G0, B0) - Math.min(R0, G0, B0); }
+    r /= n; gg /= n; b /= n; const L = 0.2126 * r + 0.7152 * gg + 0.0722 * b;
+    return { r, g: gg, b, L, sd: Math.sqrt(Math.max(0, l2 / n - L * L)), chroma: ch / n };
+  }
+  async function matchLook(imagePath, ids = null) {
+    const list = (ids || targetAny()).filter((id) => /video|image|freeze/.test(C.find(st.edit, id)?.clip.kind));
+    if (!list.length) return null;
+    const im = new Image(); im.src = host.fileUrl(imagePath); await im.decode();
+    const ref = await stats(im);
+    const plain = C.patchAny(st.edit, list, (c) => { delete c.color; });
+    const fr = await VideoComp.frameImage(P.T, { maxW: 200, edit: plain });
+    const cur = await stats(fr.canvas);
+    const cl = (x, a, b) => Math.max(a, Math.min(b, x));
+    const color = {
+      exposure: Number(cl(Math.log2((ref.L + 0.02) / (cur.L + 0.02)), -1.5, 1.5).toFixed(2)),
+      contrast: Number(cl(ref.sd / Math.max(0.02, cur.sd) - 1, -0.6, 0.8).toFixed(2)),
+      saturation: Number(cl(ref.chroma / Math.max(0.02, cur.chroma) - 1, -0.9, 0.9).toFixed(2)),
+      temp: Number(cl(((ref.r - ref.b) - (cur.r - cur.b)) * 4, -1, 1).toFixed(2)),
+      tint: Number(cl(((cur.g - (cur.r + cur.b) / 2) - (ref.g - (ref.r + ref.b) / 2)) * 5, -1, 1).toFixed(2)),
+    };
+    commit(C.patchAny(st.edit, list, (c) => { c.color = { ...color, matched: base(imagePath) }; }), `Look matched to ${base(imagePath)}`);
+    return color;
+  }
   function rampClip(rampId, id = null) {
     const r = FX.RAMP[rampId] || FX.find(FX.RAMPS, rampId);
     const cid = id || targetIds()[0];
@@ -1611,7 +1661,13 @@ const VideoCut = (() => {
     const b = t.build();
     const f = FX.FORMATS.find((x) => x.id === t.fmt);
     let n = keep ? C.copy(st.edit) : { ...C.empty(), mark: null };
-    if (!keep) n.clips = b.clips.map((c) => ({ fadeIn: 0, fadeOut: 0, speed: 1, mute: true, ...c, id: C.uid() }));
+    if (!keep) {
+      n.clips = b.clips.map((c) => ({ fadeIn: 0, fadeOut: 0, speed: 1, mute: true, ...c, id: C.uid() }));
+      // transitions overlap the slots: the slots stretch so the edit lasts the template's length
+      const gaps = n.clips.filter((c) => c.kind === 'gap');
+      const short = t.secs - C.mainTotal(n);
+      if (gaps.length && Math.abs(short) > 1e-3) for (const g of gaps) g.dur = Number((g.dur + short / gaps.length).toFixed(4));
+    }
     n = C.setSeq(n, { w: f.w, h: f.h, fps: 30 });
     for (const m of b.markers || []) n = C.addMarker(n, m.t, m.label);
     for (const it of b.text || []) n = C.addItem(n, { ...it });
@@ -1811,6 +1867,9 @@ const VideoCut = (() => {
       { label: 'Range (in–out)', items: () => [
         { label: 'Lift (leave a gap)', action: () => liftRange(false) }, { label: 'Extract (close up)', action: () => liftRange(true) },
         { label: 'Clear (X)', action: () => setMark(null) }] },
+      { label: 'Captions', items: [
+        { label: 'Import an SRT / VTT file…', action: async () => { const [p] = await window.hub.openDialog({ filters: [{ name: 'Captions', extensions: ['srt', 'vtt'] }] }) || []; if (p) importCaptions(p); } },
+        { label: 'Save the titles as SRT', action: () => exportCaptions() }] },
       { label: 'Markers on the music', items: [[1, 'Every beat'], [4, 'Every bar'], [8, 'Every 2 bars'], [16, 'Every 4 bars']].map(([n0, l]) => ({ label: l, action: () => beatMarkers(n0) })) },
       { label: 'Check titles against the safe zone', action: () => { const r0 = safeCheck(); const bad = r0.filter((x) => !x.inside); host.flash(r0.length ? (bad.length ? `${bad.length} title${bad.length === 1 ? '' : 's'} reach into the app buttons: ${bad.map((x) => `“${x.text}”`).join(', ')}` : 'Every title sits in the safe zone ✓') : 'No titles yet'); if (bad[0]) inspect(bad[0].id); } },
       { label: 'Shuffle the clips (montage idea)', action: shuffleClips },
@@ -2197,7 +2256,7 @@ const VideoCut = (() => {
     play: startPlay, pause, togglePlay: () => (P.playing ? pause() : startPlay()), seek: (t) => seek(t, { play: P.playing }), step, shuttle, goto: (t) => seek(frameMid(t), { play: false }), goFrame, frameInfo, frameSize, fmt: fmtProg,
     split, splitAll: splitAllHere, del, closeGaps, setSpeed, nudgeSpeed, freezeHere, addTitle, marker, setMark, suggest, acceptSuggestion, reset, addClip, undo, redo, help, exportCut, exportAll, jumpCut, jumpBeat, jumpMarker, jumpKey,
     setTransition, setLook, adjust, setEffect, setAudioFx, applyMotion, keyHere, rampClip, addOverlay, addImage, addAudio, addTitleItem, addColor, insertClip, overwriteClip, fillSlot, liftRange, toggleSnap, toggleRazor, setFormat, applyTemplate,
-    nestSelection, unnest, toOverlay, toMain, fillFrame, resetTransform, clipDuration, fitToFill, extendEdit, swapNext, shuffleClips, matchFrame, setLabel, renameClip, toggleOff, rangeFromSelection, beatMarkers, copyKeys, pasteKeys, safeCheck, posterFrame, renderEdit, recordEdit, newSequence, sequences, deleteSequence, inspect, closeInspector, zoomBy, zoomFit, setView, nudge, slipSel, copySel, paste, selectAll,
+    nestSelection, unnest, toOverlay, toMain, fillFrame, resetTransform, clipDuration, importCaptions, exportCaptions, matchLook, fitToFill, extendEdit, swapNext, shuffleClips, matchFrame, setLabel, renameClip, toggleOff, rangeFromSelection, beatMarkers, copyKeys, pasteKeys, safeCheck, posterFrame, renderEdit, recordEdit, newSequence, sequences, deleteSequence, inspect, closeInspector, zoomBy, zoomFit, setView, nudge, slipSel, copySel, paste, selectAll,
     selectIds: (ids) => { st.sel = new Set(ids.filter((id) => C.find(st.edit, id))); paintHead(); draw(); return selIds(); },
     select(i) { const c = st.edit?.clips[i]; if (!c) return null; st.sel = new Set([c.id]); paintHead(); draw(); const x = C.layout(st.edit)[i]; seek(x.start, { play: false }); return c; },
     commit, mute: (on) => { const ids = targetAny(); if (!ids.length) return null; commit(C.patchAny(st.edit, ids, (c) => { c.mute = on ?? !c.mute; }), 'Sound toggled'); return C.find(st.edit, ids[0])?.clip.mute; },

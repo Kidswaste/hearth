@@ -630,6 +630,29 @@ const CutData = (() => {
   const frameOf = (T, fps) => Math.floor(T * fps + 1e-4);
   const frameTime = (n, fps) => (Math.max(0, n) + 0.5) / fps;
 
+  // ---------- captions (SRT / VTT) ----------
+  // "00:00:01,500 --> 00:00:03,000\ntext" blocks → [{ start, end, text }]
+  function parseCaptions(text) {
+    const ts = (s) => { const m = /(?:(\d+):)?(\d+):(\d+)[,.](\d+)/.exec(s); return m ? (Number(m[1] || 0) * 3600 + Number(m[2]) * 60 + Number(m[3]) + Number(`0.${m[4]}`)) : null; };
+    const out = [];
+    for (const block of String(text || '').replace(/\r/g, '').split(/\n\s*\n/)) {
+      const lines = block.split('\n').map((l) => l.trim()).filter(Boolean);
+      const k = lines.findIndex((l) => l.includes('-->'));
+      if (k < 0) continue;
+      const [a, b] = lines[k].split('-->').map(ts);
+      const words = lines.slice(k + 1).join('\n').replace(/<[^>]+>/g, '');
+      if (a != null && b > a && words) out.push({ start: a, end: b, text: words });
+    }
+    return out;
+  }
+  // the text items of an edit as SRT
+  function toSrt(e) {
+    const two = (n) => String(n).padStart(2, '0');
+    const t = (s) => { const ms = Math.round(s * 1000); return `${two(Math.floor(ms / 3600000))}:${two(Math.floor(ms / 60000) % 60)}:${two(Math.floor(ms / 1000) % 60)},${String(ms % 1000).padStart(3, '0')}`; };
+    const items = tracksOf(e, 'text').flatMap((k) => k.items).filter((x) => String(x.text || '').trim()).sort((a, b) => a.start - b.start);
+    return items.map((x, i) => `${i + 1}\n${t(x.start)} --> ${t(itemEnd(x))}\n${x.text}\n`).join('\n');
+  }
+
   // ---------- describing (tracks) ----------
   function describeAll(e, { tc = fmt } = {}) {
     const lines = describe(e, { tc });
@@ -652,7 +675,7 @@ const CutData = (() => {
   return {
     SPEEDS, MIN, uid, copy, fromSource, empty, normalize, videoClip, durOf, layout, total, at, programTimes, cuts, programBeats, snap,
     mainTotal, transDur, srcAt, TRACK_TYPES, itemDur, itemEnd, tracksOf, addTrack, removeTrack, patchTrack, trackFor, addItem, find, patchAny, removeItems, moveItem, trimItem, splitItems, splitAll,
-    roll, slip, slide, overwrite, lift, extract, fillGap, setTrans, transAll, KEY_PROPS, KEY_DEF, setKey, removeKey, splitKeys, keyAt, propAt, ramp, setReverse, patchMarker, setSeq, isRich, stackAt, frameOf, frameTime, describeAll,
+    parseCaptions, toSrt, roll, slip, slide, overwrite, lift, extract, fillGap, setTrans, transAll, KEY_PROPS, KEY_DEF, setKey, removeKey, splitKeys, keyAt, propAt, ramp, setReverse, patchMarker, setSeq, isRich, stackAt, frameOf, frameTime, describeAll,
     split, splitMany, remove, removeRange, slice, trim, trimTo, move, duplicate, setSpeed, setMute, setFade, nearestSpeed, insertAt, freeze, title, append,
     addMarker, removeMarker, isIdentity, suggest, describe, sources, atempo, ffmpegArgs, fmt,
   };

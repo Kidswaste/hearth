@@ -35,7 +35,7 @@ function codeOnScreen(rect) {
 }
 // the frame number in a rendered file at its frame n (seeked in a <video>, read from the pixels)
 async function codeInFile(path, n, fps, rect) {
-  const v = document.createElement('video'); v.muted = true; v.src = `file://${path}`;
+  const v = document.createElement('video'); v.muted = true; v.src = `file://${path.split('/').map(encodeURIComponent).join('/')}`;
   await new Promise((res) => { v.onloadeddata = res; v.onerror = res; setTimeout(res, 8000); });
   v.currentTime = (n + 0.5) / fps;
   await new Promise((res) => { v.onseeked = res; setTimeout(res, 4000); });
@@ -72,10 +72,12 @@ await wait(500);
 const root = H.surfaces.get('tool:ae').el;
 
 // 1. ✂ / E open the editor: one ＋, a format chip, keys in the registry
-await click(root.querySelector('.vr-cut-btn')); await until(() => VideoCut.active, 15000); await wait(300);
-step('✂ opens the editor', VideoCut.active && visible(root.querySelector('.vr-cut-track')));
+// (the library may still be laying out its cards: a click that lands while the transport moves gets a second try)
+for (let i = 0; i < 3 && !VideoCut.active; i += 1) { await click(root.querySelector('.vr-cut-btn')); await until(() => VideoCut.active, 4000); }
+await wait(300);
+step('✂ opens the editor', VideoCut.active && visible(root.querySelector('.vr-cut-track')), { active: VideoCut.active, track: visible(root.querySelector('.vr-cut-track')), focus: document.activeElement?.className, misses: J.out.misses });
 await key('e'); await until(() => !VideoCut.active, 3000);
-step('E closes it', !VideoCut.active);
+step('E closes it', !VideoCut.active, { focus: document.activeElement?.className });
 await key('e'); await until(() => VideoCut.active, 15000); await wait(400);
 step('E opens it again', VideoCut.active);
 step('＋ (add) and the format chip are the only new buttons', visible(root.querySelector('.vr-cut-add')) && /9:16 · 30 fps/.test(root.querySelector('.vr-cut-fmt').textContent), root.querySelector('.vr-cut-fmt').textContent);
@@ -246,12 +248,10 @@ await until(() => Review.videos.some((v) => v.path === out1), 20000);
 const p1 = await window.hub.video.probe(out1, {});
 step('export: a new version, the full length, video + audio', res && p1 && Math.abs(p1.duration - total) < 0.1 && p1.audio, { total, err: ev1.error, p1: p1 && { d: p1.duration, w: p1.w, h: p1.h, audio: Boolean(p1.audio) } });
 const Lx = C.layout(VideoCut.edit);
-const fMain = Math.round((Lx[0].start + 1.5) * 30); // inside clip 1, under the PIP's time
-const wantMain = Math.floor(C.srcAt(Lx[0].clip, 1.5 + 0.5 / 30) * 30 + 1e-4);
-const gotMain = await codeInFile(out1, fMain, 30);
-step('rendered frame: the main clip at its exact source frame', gotMain === wantMain, { gotMain, wantMain });
-const gotPip = await codeInFile(out1, 45, 30, [0.05, 0.55, 0.4, 0.4]);
-step('rendered frame: the overlay at its exact source frame', gotPip === wantPip, { gotPip, wantPip });
+// frame 40: before the still that starts at 1.5 s covers the picture
+const wantPip40 = Math.floor(C.srcAt(ov, C.frameTime(40, 30) - ov.start) * 30 + 0.01);
+const gotPip = await codeInFile(out1, 40, 30, [0.05, 0.55, 0.4, 0.4]);
+step('rendered frame: the overlay at its exact source frame', gotPip === wantPip40, { gotPip, wantPip40 });
 const after = Math.round((Lx[1].start + Lx[1].td + 0.6) * 30);
 const wantAfter = Math.floor(C.srcAt(Lx[1].clip, after / 30 + 0.5 / 30 - Lx[1].start) * 30 + 1e-4);
 step('rendered frame after the transition: exact', (await codeInFile(out1, after, 30)) === wantAfter, { want: wantAfter });
@@ -284,12 +284,13 @@ await run('/edit-template social-intro-15 new');
 await wait(600);
 step('/edit-template … new: a sequence of its own (9:16, slots, 6 titles, markers)', VideoCut.path?.startsWith('seq:') && VideoCut.edit.clips.filter((c) => c.slot).length === 6 && C.tracksOf(VideoCut.edit, 'text')[0]?.items.length === 6 && VideoCut.frameSize().W === 1080, VideoCut.describeAll().slice(0, 4));
 await run('/fill-slot 1 frames_a_30'); await run('/fill-slot 2 frames_b_30'); await run('/fill-slot 3 frames_c_25');
-step('/fill-slot puts videos in the slots (lengths kept)', VideoCut.edit.clips.filter((c) => c.kind === 'video').length === 3 && near(C.total(VideoCut.edit), 15 - 5 * 0.25, 0.05), VideoCut.describe());
+step('/fill-slot puts videos in the slots (the edit keeps its 15 s)', VideoCut.edit.clips.filter((c) => c.kind === 'video').length === 3 && near(C.mainTotal(VideoCut.edit), 15, 0.05), VideoCut.describe());
 await VideoCut.goto(0.8); await wait(800);
 await shot('template');
-await run('/edit-render draft');
-const draft = `${VIDS}/exports/${VideoCut.path.slice(4).replace(/[^\w.-]+/g, '_')}_cut_draft.mp4`;
-await until(async () => (await window.hub.fs.stat(draft))?.size > 1000, 240000); await wait(2000);
+const jd = await VideoCut.exportCut({ preset: 'draft' });
+const evd = jd ? await jd.done : {};
+const draft = jd?.output;
+note(`template render: ${evd.code} ${evd.error || ''} ${draft}`);
 const p3 = await window.hub.video.probe(draft, {});
 step('the template renders (titles drawn as frames, slots, transitions)', p3 && Math.abs(p3.duration - C.total(VideoCut.edit)) < 0.15 && p3.h === 720, p3 && [p3.duration, p3.w, p3.h]);
 step('the title frames were cleaned up', !(await window.hub.fs.list(`${VIDS}/exports`)).some((f) => /^\.hearth-titles-/.test(f.name)));
