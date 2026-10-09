@@ -188,8 +188,11 @@ const Commands = (() => {
     // the command you typed exactly (name or alias) first, so Enter runs it (/opinion, not /opinion-chat); then
     // pinned, what you ran here, recent anywhere
     const rec = [...favs(), ...recentAt(place().id), ...recentAll()];
-    const rank = (d) => (d.name === q ? -1 : (rec.indexOf(d.name) + 1 || 99));
+    // (round 9) then the commands of the place you're in (in the Lab: the Lab's first), then the rest
+    const here = place(); const hereArea = here.id === 'chat' ? null : here.area;
+    const rank = (d) => (d.name === q ? -1 : (rec.indexOf(d.name) + 1 || (hereArea && d.area === hereArea ? 50 : 99)));
     const sorted = starts.sort((a, b) => rank(a) - rank(b));
+    if (hereArea) has.sort((a, b) => (b.area === hereArea) - (a.area === hereArea));
     const exact = get(q);
     return exact && !exact.hidden ? [exact, ...sorted.filter((d) => d !== exact), ...has.filter((d) => d !== exact)] : [...sorted, ...has];
   }

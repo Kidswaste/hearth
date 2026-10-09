@@ -436,6 +436,7 @@ const Prompts = (() => {
     let seq = 0;
     let lastValue = '';
     let moved = false; // arrows used since the last keystroke (a plain-language row then takes Enter)
+    let slashArea = null; // (round 9, chat-slash.js) the area opened in place in the "/" view
     const close = () => { menu?.remove(); menu = null; };
     const setText = (text) => { textarea.value = text; textarea.dispatchEvent(new Event('input')); textarea.focus(); textarea.setSelectionRange(text.length, text.length); };
     const ctxNow = () => ({ agentId: typeof agentId === 'function' ? agentId() : agentId, chatId: H.activeChat?.[typeof agentId === 'function' ? agentId() : agentId] || null, source: bare ? 'bar' : 'chat' });
@@ -461,6 +462,8 @@ const Prompts = (() => {
       return Boolean(last) && want.startsWith(last) && want !== last && !/\s$/.test(textarea.value);
     };
     const pick = async (it) => {
+      // an area row of the "/" view opens in place; ‹ back returns (the menu stays open)
+      if (it.kind === 'area' || it.kind === 'back') { slashArea = it.kind === 'area' ? it.area : null; lastValue = null; textarea.focus(); update(); return; }
       close();
       if (it.kind === 'command') { setText(`/${it.def.name} `); return; }
       if (it.kind === 'arg') { setText(argText(it)); return; }
@@ -475,11 +478,21 @@ const Prompts = (() => {
       const my = ++seq;
       const value = textarea.value;
       if (value !== lastValue) { sel = 0; lastValue = value; moved = false; }
+      if (value !== '/') slashArea = null;
       const word = value.match(/^\/([\w-]*)$/);
       const withArgs = !word && value.match(/^\/([\w-]+)\s([^\n]*)$/);
       let next = [];
       let hint = null;
-      if (word) {
+      // (round 9) only "/" typed: the short view (pinned, recent, here, then one row per area) from chat-slash.js
+      const grown = word && !word[1] && typeof ChatSlash !== 'undefined' && store.get('chat.slashClassic', false) !== true;
+      if (grown) {
+        next = ChatSlash.rows({ expanded: slashArea, ctx: ctxNow() });
+        if (bare) { const pinned = [...(Commands.favs?.() || [])]; for (const r of next) if (r.kind === 'command') { const k = pinned.indexOf(r.def.name) + 1; if (k > 0 && k < 10) r.keys = `Alt+${k}`; } }
+        if (!slashArea) {
+          const prompts = (await load()).slice(0, 3);
+          if (prompts.length) next.push({ kind: 'head', label: 'Saved prompts' }, ...prompts.map((p) => ({ kind: 'prompt', prompt: p, label: p.name, hint: p.text.slice(0, 70).replace(/\n/g, ' ') })));
+        }
+      } else if (word) {
         const q = word[1].toLowerCase();
         const pinned = new Set(Commands.favs?.() || []);
         const here = Commands.place?.() || { id: 'chat', label: 'Chat' };
@@ -540,11 +553,11 @@ const Prompts = (() => {
         n += 1;
         const mine = n;
         return el('div', {
-          class: `slash-item${mine === sel ? ' sel' : ''}${it.kind === 'command' || it.kind === 'line' ? ' cmd' : ''}`, on: { mousedown: (e) => { e.preventDefault(); pick(it); } },
+          class: `slash-item${mine === sel ? ' sel' : ''}${it.kind === 'command' || it.kind === 'line' ? ' cmd' : ''}${it.kind === 'area' ? ' slash-area' : it.kind === 'back' ? ' slash-back' : ''}`, on: { mousedown: (e) => { e.preventDefault(); pick(it); } },
           // hover: the full description and a few examples
           title: it.kind === 'command' && it.def ? [it.def.desc, ...(Commands.examplesOf?.(it.def) || []).slice(0, 3).map((x) => `e.g. ${x}`)].join('\n') : (it.hint || ''),
         }, el('b', { text: it.label }), el('span', { class: 'hint', text: it.hint }), it.keys ? el('kbd', { text: Commands.keyText(it.keys) }) : null, it.kind === 'command' && Commands.toggleFav ? star(it.def) : null);
-      }), pickable.length ? el('div', { class: 'slash-foot', text: '↑↓ choose · Tab complete · Enter run · ☆ pin · Esc close' }) : null);
+      }), pickable.length ? el('div', { class: 'slash-foot', text: textarea.value === '/' ? (slashArea ? '↑↓ choose · Enter pick · ← all areas · type to filter · Esc close' : '↑↓ choose · → open an area · type to filter · Esc close') : '↑↓ choose · Tab complete · Enter run · ☆ pin · Esc close' }) : null);
       menu.querySelector('.slash-item.sel')?.scrollIntoView({ block: 'nearest' });
     };
     const pickableItems = () => items.filter((it) => it.kind !== 'head');
@@ -565,6 +578,9 @@ const Prompts = (() => {
       if (e.key === 'Enter' && !e.shiftKey && typedCmd && Commands.get(typedCmd[1])) { close(); return; }
       // (in a chat box, Enter on "/words that aren't a command" still goes to the chat's own "did you mean" step
       // unless you chose a row with the arrows; Tab always takes the highlighted row)
+      // in the "/" view: → opens the highlighted area, ← goes back to every area
+      if (e.key === 'ArrowRight' && textarea.value === '/' && list[sel]?.kind === 'area') { e.preventDefault(); e.stopImmediatePropagation(); pick(list[sel]); return; }
+      if (e.key === 'ArrowLeft' && textarea.value === '/' && slashArea) { e.preventDefault(); e.stopImmediatePropagation(); pick({ kind: 'back' }); return; }
       if (e.key === 'ArrowDown') move(1);
       else if (e.key === 'ArrowUp') move(-1);
       else if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && !done(list[sel]))) {

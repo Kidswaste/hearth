@@ -42,7 +42,8 @@ line count is lower than the number of upgrades).
 | QA 8 (round 8): integration fixes between board / editor / capture / declutter, key conflict table, three new end-to-end journeys (board, editor, capture), every key pressed on its surface, ⌘ on a Mac, one check runner | [qa8.md](qa8.md) | 75 |
 | Lab sequence (round 8): ▤ Sequence on the Lab timeline (`/sequence`) builds a video from your scenes, chat scenes, looks, footage, titles, overlays and the song; it plays in the preview without reloads, frame-exact, the editor's keys and transitions, finishes in the video editor and comes back, renders frame by frame in every social format; Claude / Astra build it with `three_do sequence` | [sequence.md](sequence.md) | 101 |
 | Robust (round 9): your real Claude Code / Codex installs known up front (every copy, the newest working one used, too old / signed out noticed), one calm notice with a one-click fix in a visible Terminal / PowerShell window, runs that heal themselves (too old → newer copy, MCP file, Codex cancelling tools, network), `/doctor` for both engines, the black Lab preview after `/director-engine astra` fixed | [robust.md](robust.md) | 35 |
-| **Total** | | **8,781** |
+| Chats at the core (round 9): what a reply makes shows inside it as cards (captures, Lab frames, renders, board items, scenes, sequences, projects; videos play on hover and scrub frame by frame; drag to the board / editor / a chat), ＋ attaches from anywhere (board, captures, Lab, screen, renders; `/attach-…`), a short `/` menu by area (the Lab first in the Lab), a chat remembers its board / scene / sequence / project ("use the board", "render it again" just work, carried over on handoff), tool calls folded, right-click on every message part | [chatcore.md](chatcore.md) | 90 |
+| **Total** | | **8,871** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.

@@ -1,0 +1,65 @@
+/* Chats at the core (round 9, chatcore): cards for what a reply made, the context line over the chat box, the "/"
+   menu's area rows, folded tool calls, and quieter secondary info (it comes back when you point at the message).
+   One plain rule per selector (no :has(), no long :is() lists): streaming replies restyle often. */
+
+/* ---------- things a reply made ---------- */
+.thing-strip { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }
+.live-cards .thing { margin: 6px 6px 0 0; display: inline-flex; vertical-align: top; }
+.thing { position: relative; width: 148px; display: flex; flex-direction: column; border-radius: 9px; overflow: hidden; cursor: pointer;
+  background: color-mix(in srgb, var(--text) 5%, var(--surface, transparent)); border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+  transition: border-color .12s, transform .12s; outline: none; }
+.thing:hover, .thing:focus-visible { border-color: color-mix(in srgb, var(--accent, #f5b942) 70%, transparent); }
+.thing:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #f5b942) 45%, transparent); }
+.thing-pic { position: relative; height: 84px; background: #0b0b0e; display: grid; place-items: center; overflow: hidden; }
+.thing-pic img, .thing-pic video { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+.thing-glyph { font-size: 28px; opacity: .6; color: var(--text); }
+.thing-foot { display: flex; align-items: center; gap: 5px; padding: 3px 7px 4px; font-size: 11px; line-height: 1.3; min-width: 0; color: var(--muted); }
+.thing-k { flex: none; opacity: .8; }
+.thing-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.thing-read { flex: none; font-family: var(--mono, ui-monospace, monospace); font-size: 10px; opacity: .85; }
+.thing-read:empty { display: none; }
+.thing-more { position: absolute; top: 4px; right: 4px; padding: 0 6px !important; min-height: 0 !important; height: 20px; line-height: 18px; font-size: 13px;
+  border-radius: 6px; background: rgba(0, 0, 0, .55) !important; color: #fff !important; border: 0 !important; opacity: 0; transition: opacity .12s; }
+.thing:hover .thing-more, .thing:focus-within .thing-more { opacity: 1; }
+.thing-scrub { position: absolute; left: 0; right: 0; bottom: 0; height: 14px; cursor: ew-resize; --at: 0%; }
+.thing-scrub i { position: absolute; left: 0; bottom: 0; height: 3px; width: var(--at); background: var(--accent, #f5b942); opacity: 0; transition: opacity .12s; }
+.thing:hover .thing-scrub i { opacity: .9; }
+.thing-pending .thing-pic { opacity: .5; }
+.thing-missing { opacity: .45; }
+.thing-missing .thing-pic::after { content: "file moved or deleted"; position: absolute; inset: auto 0 6px; text-align: center; font-size: 10px; color: #fff; }
+.thing-video .thing-pic::before { content: "▶"; position: absolute; left: 6px; bottom: 4px; font-size: 10px; color: #fff; opacity: .8; text-shadow: 0 0 3px #000; z-index: 1; pointer-events: none; }
+
+/* ---------- the context line over the chat box (shows while you point at / type in the box, or hold Alt) ---------- */
+.ctx-strip { position: absolute; left: 6px; bottom: calc(100% + 4px); z-index: 3; display: flex; align-items: center; gap: 4px; max-width: calc(100% - 12px);
+  overflow: hidden; padding: 2px 4px; border-radius: 8px; background: color-mix(in srgb, var(--bg, #111) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent); opacity: 0; visibility: hidden; transition: opacity .12s, visibility .12s; }
+.composer:hover .ctx-strip, .composer:focus-within .ctx-strip, :root.reveal-alt .ctx-strip { opacity: .92; visibility: visible; }
+.ctx-lead { font-size: 11px; color: var(--muted); padding: 0 2px; }
+.ctx-chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px !important; min-height: 0 !important; font-size: 11.5px !important; line-height: 18px;
+  border-radius: 6px; background: transparent !important; border: 1px solid transparent !important; color: var(--muted) !important; white-space: nowrap; }
+.ctx-chip:hover { color: var(--text) !important; border-color: color-mix(in srgb, var(--text) 18%, transparent) !important; }
+.ctx-g { opacity: .85; }
+.ctx-more { display: none; opacity: .75; }
+:root.reveal-alt .ctx-more { display: inline; }
+.ctx-sent { opacity: .55; cursor: help; margin-right: 2px; }
+
+/* ---------- the "/" menu: one row per area ---------- */
+.slash-menu .slash-area b { font-weight: 600; }
+.slash-menu .slash-area .hint { text-align: right; opacity: .7; }
+.slash-menu .slash-back b { color: var(--muted); font-weight: 500; }
+
+/* ---------- tool calls folded to one line ---------- */
+.msg .tool-fold { padding: 0; }
+.msg .tool-fold > summary { cursor: pointer; list-style: none; padding: 2px 8px; font-size: 11.5px; user-select: none; }
+.msg .tool-fold > summary::-webkit-details-marker { display: none; }
+.msg .tool-fold > summary::after { content: " ›"; opacity: .6; }
+.msg .tool-fold[open] > summary::after { content: " ⌄"; }
+.msg .tool-fold .tool-list { margin: 0; padding: 2px 10px 6px 28px; font-size: 11.5px; color: var(--muted); max-height: 180px; overflow-y: auto; }
+
+/* ---------- quieter secondary info: back when you point at the message ---------- */
+.msg .msg-attachments { opacity: .6; transition: opacity .12s; }
+.msg:hover .msg-attachments { opacity: 1; }
+.msg .tool-fold:not([open]) { opacity: .72; }
+.msg:hover .tool-fold { opacity: 1; }
+.msg .msg-marks { opacity: .7; }
+.messages .day-sep { opacity: .65; }

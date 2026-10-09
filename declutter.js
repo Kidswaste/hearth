@@ -27,7 +27,7 @@ const Declutter = (() => {
     // a chat
     { id: 'chat-meta', area: 'Chat', label: 'Tokens-this-chat note in the header', sel: '.chat-meta', mode: 'hover', host: '.native-head' },
     { id: 'chat-ctx', area: 'Chat', label: 'Context size in the header', sel: '.ctx-meter', mode: 'hover', host: '.native-head', keep: '.warn, .high' },
-    { id: 'chat-attach', area: 'Chat', label: '📎 Attach', sel: '.attach-btn', mode: 'hover', host: 'form.composer' },
+    { id: 'chat-attach', area: 'Chat', label: '＋ Attach', sel: '.attach-btn', mode: 'hover', host: 'form.composer' },
     { id: 'chat-collab', area: 'Chat', label: '⚇ Work with Astra', sel: '.collab-chip', mode: 'hover', host: 'form.composer', keep: '.on' },
     { id: 'msg-actions', area: 'Chat', label: 'Copy / ⋯ under older messages', sel: '> .msg-foot :is(.copy-msg, .msg-more)', mode: 'hover', host: '.messages .msg:not(:last-child)' },
     { id: 'msg-meta', area: 'Chat', label: 'Time and number under messages', sel: '> .msg-foot :is(.msg-time, .msg-num)', mode: 'hover', host: '.messages .msg:not(:last-child)' },
@@ -313,7 +313,8 @@ const Declutter = (() => {
     const v = Native.view(agentId);
     const busy = Boolean(Native.pendingFor?.(agentId));
     return [
-      { label: '📎 Attach files…', action: () => Native.pickFiles(agentId) },
+      typeof ChatAttach !== 'undefined' ? { label: '＋ Attach from…', hint: 'board, captures, Lab, screen, renders', action: () => ChatAttach.menu(agentId, form.querySelector('.attach-btn') || form) } : null,
+      { label: 'Attach files…', action: () => Native.pickFiles(agentId) },
       { label: 'Paste', action: async () => { try { const t = await navigator.clipboard.readText(); if (t) Native.insertDraft(agentId, t); } catch { v.input.focus(); toast('Press Ctrl+V in the chat box', { timeout: 1600 }); } } },
       { label: 'Commands', hint: 'type /', items: () => [
         ...Commands.recent().slice(0, 6).map((n) => ({ label: `/${n}`, action: () => { v.input.value = `/${n} `; v.input.focus(); v.input.dispatchEvent(new Event('input')); } })),
