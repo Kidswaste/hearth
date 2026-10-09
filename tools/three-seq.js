@@ -158,7 +158,7 @@ const ThreeSeq = (() => {
   async function ensureSong() {
     const s = songItem(); const P = lab()?.player;
     if (!s || !P) return;
-    if (P.path !== s.src) await P.load(s.src, { quiet: true });
+    if (P.path !== s.src) { S.gridTries = 0; await P.load(s.src, { quiet: true }); }
   }
   async function durationOf(p) {
     const pr = await probe(p);
@@ -761,6 +761,9 @@ const ThreeSeq = (() => {
     const ink = css.getPropertyValue('--sq-ink').trim() || '#c9c2b8'; const dim = css.getPropertyValue('--sq-dim').trim() || '#6d6760'; const gold = css.getPropertyValue('--sq-gold').trim() || '#ffd75e';
     // ruler: bars (with a song's grid) or seconds
     const v = span(); const gr = grid(); const off = songStart();
+    // the song's beat grid arrives after its analysis: look again a few times (bars on the ruler, snapping)
+    if (songItem() && !gr && !S.gridWait && (S.gridTries = (S.gridTries || 0) + 1) < 40) S.gridWait = setTimeout(() => { S.gridWait = 0; redraw(); }, 1000);
+    if (gr) S.gridTries = 0;
     g.font = '10px system-ui, sans-serif'; g.textBaseline = 'top';
     if (gr) {
       const bar = D.barLen(gr); const every = Math.max(1, Math.ceil(46 / (xOf(bar) - xOf(0))));
