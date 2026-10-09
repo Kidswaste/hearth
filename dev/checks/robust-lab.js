@@ -50,7 +50,8 @@ step('a sandbox restarted by the browser runs its sketch again (not black)', loa
 
 Commands.tryRun('/director-engine claude', dir.id);
 await until(() => H.agent(dir.id).engine === 'claude', 8000);
-await wait(1500);
-const p4 = await pixels();
+// the step above left the Lab's surface out of order, so this save puts it back (one more restart): wait for the
+// safety net to draw again instead of a fixed pause (it took longer than 1.5 s under load)
+const p4 = await drawing(15000);
 step('back to Claude: still drawing', p4?.canvas && p4.lum > 2, p4);
 return J.done();
