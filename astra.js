@@ -634,6 +634,10 @@ function toggleFold(hostId, m) {
       pendingSettings.delete(chat.agentId);
     }
     let text = withContext(chat, raw);
+    // Claude ⇄ Astra in the same chat (a director switched engines, /handoff, the ⚇ switch): the other engine's session
+    // can't be resumed, so this one starts fresh from the task state Hearth kept + the last messages (director-task.js)
+    const hand = typeof DirectorTask !== 'undefined' ? DirectorTask.handover(chat, agent, raw, withContext) : null;
+    if (hand) text = hand;
     if (chat.carry && chat.session?.id) text = `${chat.carry}\n\n${text}`;
     delete chat.carry;
     const options = {};
@@ -705,10 +709,31 @@ function toggleFold(hostId, m) {
     Native.adopt(origin);
     toast(`Back in "${origin.title}"${since ? ': your next message carries what happened meanwhile' : ''}`, { timeout: 3000 });
   }
+  // A docked director changes engine in place: same chat, same scene, its tools and guide identical on both engines
+  // (Astra directors get the chat tools too, agent.hubTools). The next message hands over the task state
+  // (director-task.js). Model / effort of the engine you leave are kept for switching back.
+  function switchDirector(d, engine) {
+    if (!d || engine === d.engine) return false;
+    const keep = { model: d.model, effort: d.effort };
+    const back = d.otherEngine || {};
+    const fallbackModel = engine === 'codex' ? astra()?.model : claude()?.model;
+    setAgent(d, { engine, model: back.model || fallbackModel || undefined, effort: EFFORTS[engine].includes(back.effort || d.effort) ? back.effort || d.effort : undefined, otherEngine: keep, ...(engine === 'codex' ? { hubTools: true } : {}) });
+    const chat = Native.chatOf(d.id);
+    if (chat) { chat.handoffNext = true; chat.handoffEngine = engine === 'codex' ? 'Claude' : 'Astra'; Native.save(chat); }
+    Native.refresh?.(d.id);
+    return true;
+  }
   async function handoff(hostId, targetId, { raw = false, from = null, model = null, persona = null } = {}) {
     const host = H.agent(hostId);
     const target = H.agent(targetId);
     const chat = Native.chatOf(hostId);
+    // a director keeps its chat and scene: the other engine takes over right here
+    if (host?.dock && host.mode === 'native') {
+      const engine = target?.engine && target.engine !== host.engine ? target.engine : host.engine === 'codex' ? 'claude' : 'codex';
+      switchDirector(host, engine);
+      toast(`${host.name} now runs on ${engineName(host)}: same chat and scene; your next message hands over the task state`, { timeout: 4000 });
+      return;
+    }
     if (!target || target.mode !== 'native') throw new Error('Hand off to which agent? e.g. /handoff astra');
     if (target.id === hostId) throw new Error(`This chat is already with ${host.name}.`);
     let summary = '';
@@ -798,6 +823,8 @@ function toggleFold(hostId, m) {
     const jam = typeof Jam !== 'undefined' ? Jam : window.Jam; // jam.js (another round-4 stream) may be a global const
     const items = [
       jam ? { label: `🎛 Jam: ${host.name} ⇄ ${other?.name || 'Astra'} build a visual together`, action: () => (Commands.get('jam') ? Native.setDraft(agentId, '/jam ') : (jam.start || jam.open)?.call(jam, { agentId })) } : null,
+      // a director's engine switch: the other engine picks up the task right here (same chat, same scene)
+      host?.dock ? { label: `⇄ Continue on ${host.engine === 'codex' ? 'Claude' : 'Astra'} (same chat and scene)`, action: () => handoff(agentId, null).catch((err) => toast(err.message, { type: 'error' })) } : null,
       { label: `👁 Second opinion from ${other?.name || 'Astra'}`, action: () => Native.secondOpinion(agentId) },
       MODES[st.mode] ? { label: `✓ ${MODES[st.mode].label} is on: back to just ${host.name}`, action: () => setMode(agentId, { mode: 'solo' }) } : null,
     ].filter(Boolean);
@@ -1372,27 +1399,26 @@ function toggleFold(hostId, m) {
   R({ name: 'astra-login', area: 'Astra', desc: 'Sign Codex in with your ChatGPT account (opens its own window)',
     run: async () => { const okv = await window.hub.login('codex'); doctorCache = null; return okv ? 'Finish signing in in the window that opened, then run /astra-doctor.' : 'Codex wasn\'t found: run /astra-doctor.'; } });
   R({ name: 'astra-settings', area: 'Astra', desc: 'Open Astra\'s agent settings', run: () => { const a = astra(); if (a) Manager.open(a.id); else Manager.open(); } });
-  R({ name: 'director-engine', area: 'Astra', args: '[three|video] [claude|astra]', desc: 'Run a docked director (Three / Video) on Claude or on Astra',
+  R({ name: 'director-engine', area: 'Astra', args: '[three|video] [claude|astra]', desc: 'Run a docked director (Three / Video) on Claude or on Astra: same chat, same scene, the task state handed over',
     complete: (a) => {
       const words = a.split(/\s+/);
       if (words.length <= 1) return natives().filter((x) => x.dock).map((x) => ({ value: `${x.dock} `, hint: `${x.name} · ${engineName(x)}` }));
       return [{ value: `${words[0]} claude`, hint: 'Claude engine' }, { value: `${words[0]} astra`, hint: 'Astra (Codex) engine' }];
     },
-    run: (args) => {
-      const [where, which] = args.toLowerCase().split(/\s+/);
+    run: (args, ctx) => {
+      let [where, which] = args.toLowerCase().split(/\s+/).filter(Boolean);
       const directors = natives().filter((x) => x.dock);
+      const ENG = (w) => (['astra', 'codex', 'gpt', 'chatgpt', 'a'].includes(w) ? 'codex' : ['claude', 'c'].includes(w) ? 'claude' : null);
+      // "/director-engine astra" alone: the director of this chat (or the Three Director)
+      if (where && !which && ENG(where)) { which = where; where = (H.agent(ctx?.agentId)?.dock ? H.agent(ctx.agentId) : directors.find((x) => x.dock === 'three') || directors[0])?.id || ''; }
       if (!where) return directors.length ? directors.map((d) => `- ${d.name} (${d.dock}): ${engineName(d)}${d.model ? ` · ${d.model}` : ''}`).join('\n') : 'No docked directors.';
       const d = directors.find((x) => x.dock === where || x.name.toLowerCase().startsWith(where) || x.id === where);
       if (!d) return `No director docked in “${where}”.`;
-      const engine = ['astra', 'codex', 'gpt', 'a'].includes(which) ? 'codex' : ['claude', 'c'].includes(which) ? 'claude' : null;
+      const engine = ENG(which);
       if (!engine) return `${d.name} runs on ${engineName(d)}. Say claude or astra.`;
       if (engine === d.engine) return `${d.name} already runs on ${engineName(d)}.`;
-      // the other engine's model / effort are kept so switching back restores them
-      const keep = { model: d.model, effort: d.effort };
-      const back = d.otherEngine || {};
-      const fallbackModel = engine === 'codex' ? astra()?.model : claude()?.model;
-      setAgent(d, { engine, model: back.model || fallbackModel || undefined, effort: EFFORTS[engine].includes(back.effort || d.effort) ? back.effort || d.effort : undefined, otherEngine: keep });
-      return `${d.name} now runs on ${engineName(d)}${d.model ? ` (${d.model})` : ''}. Its chats start fresh engine sessions; its tools work through MCP. ${engine === 'codex' ? 'Astra-backed directors cost more tokens per turn (tool definitions).' : ''}`;
+      switchDirector(d, engine);
+      return `${d.name} now runs on ${engineName(d)}${d.model ? ` (${d.model})` : ''}, in the same chat and scene, with the same tools and guide: its next message carries the task state (/task shows it).${engine === 'codex' ? ' Astra-backed directors cost more tokens per turn (tool definitions).' : ''}`;
     } });
 
   // ---------- collaboration presets (one searchable picker: /collab-preset) ----------
@@ -1721,7 +1747,7 @@ function toggleFold(hostId, m) {
   });
 
   return {
-    collabEl, emptyHints, beforeSend, start, handoff, stop, PERSONAS, MODES, PRESETS,
+    collabEl, emptyHints, beforeSend, start, handoff, switchDirector, stop, PERSONAS, MODES, PRESETS,
     _test: { parseSeat, parseLead, parseSeats, carryText, collabText, totals, live },
   };
 })();

@@ -48,7 +48,9 @@ function report(agents = DIRECTORS) {
     for (const k of Object.keys(SETS)) {
       const on = k === 'chatTools' ? a.chatTools !== false : a[k];
       if (!on) continue;
-      const m = k === 'threeTools' && (a.nodesTool || a.toolMode) ? measure(k, a) : sets.find((s) => s.key === k);
+      // Three directors get the node tool unless switched off (engines.js nodesOn)
+      const nodes = k === 'threeTools' && a.nodesTool !== false;
+      const m = k === 'threeTools' && (nodes || a.toolMode) ? measure(k, { nodesTool: nodes, toolMode: a.toolMode }) : sets.find((s) => s.key === k);
       parts.push({ what: m.server, tokens: m.total });
     }
     parts.push({ what: 'system prompt', tokens: promptPart(a) });

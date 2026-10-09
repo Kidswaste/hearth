@@ -195,7 +195,7 @@ const Jam = (() => {
     if (prev?.errors?.length && prev.reverted == null) out.push(`The last build left errors, fix them first: ${prev.errors.join(' | ')}`);
     if (prev?.dir) out.push(`${NAME[prev.dir.by]}'s direction (your art director this round; apply it):\n${prev.dir.text}`);
     else if (R.n === 1) out.push(`Work on the open sketch "${m.sketch || 'Jam'}" (a copy of the owner's: change it or replace it freely).`);
-    out.push('Use your Lab tools on the open sketch, keep the main knobs as tweak() sliders, check one small screenshot, fix errors, ask nothing. Reply with one short line: what you changed.');
+    out.push('Use your Lab tools on the open sketch (a new element goes in its own layer), keep the main knobs as tweak() sliders, check one small screenshot, fix errors, ask nothing. Reply with one short line: what you changed.');
     return out.join('\n');
   }
   function directPrompt(m, R, critic, look) {

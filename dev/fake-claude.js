@@ -38,12 +38,15 @@ const F = require('./fake-common');
     const calls = p.mcpCalls || [['three_console', {}]];
     const lines = [];
     const clients = {};
-    for (const [tool, a] of calls) {
+    for (const [tool0, a0, fallback] of calls) {
+      let [tool, a] = [tool0, a0];
       const spec = F.serverFor(servers, tool);
       if (!spec) { lines.push(`${tool}: no server`); continue; }
       const key = JSON.stringify(spec);
       clients[key] ||= await F.mcpClient(spec);
       const c = clients[key];
+      // [tool, args, [fallbackTool, args]]: what a director does when that tool isn't in its list (node tool off)
+      if (fallback && !c.tools.some((t) => t.name === tool)) [tool, a] = fallback;
       if (!c.reported && (c.reported = true)) lines.push(`server ${spec.args?.[0]?.split(/[\\/]/).pop()}: ${c.tools.length} tools, list ${JSON.stringify(c.tools).length} chars, instructions ${c.instructions.length} chars`);
       const server = Object.keys(servers).find((k) => JSON.stringify(servers[k]) === key);
       const id = `toolu_${F.uuid().slice(0, 8)}`;

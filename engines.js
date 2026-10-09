@@ -131,9 +131,12 @@ const hubToolsets = (agent) => (agent.noHubTools ? [] : Object.keys(HUB_TOOLSETS
   return Boolean(agent[k]);
 }));
 const gameTools = (agent) => hubToolsets(agent).includes('gameTools');
+// The node tool (three_nodes) is on for Three directors: the owner wants a node view of the visual work they make
+// (an explicit opt-in to its ≈ 75 tokens per message). `/nodes-director off` sets agent.nodesTool = false.
+const nodesOn = (agent) => Boolean(agent.threeTools) && agent.nodesTool !== false;
 // What every hub MCP server gets: Node mode, the agent (for chat_ tools), opt-ins that change the tool list.
 // HUB_CHAT_ID: the chat this run answers, so a director's tool calls reach that chat's own scene (chat-scenes.js).
-const hubToolEnv = (agent) => ({ ELECTRON_RUN_AS_NODE: '1', HUB_AGENT_ID: agent.id, ...(agent.hubChatId ? { HUB_CHAT_ID: agent.hubChatId } : {}), ...(agent.engine === 'codex' ? { HUB_PARTNER: 'Claude' } : {}), ...(agent.nodesTool ? { HUB_NODES_TOOL: '1' } : {}), ...(agent.toolMode === 'full' ? { HUB_TOOL_MODE: 'full' } : {}) });
+const hubToolEnv = (agent) => ({ ELECTRON_RUN_AS_NODE: '1', HUB_AGENT_ID: agent.id, ...(agent.hubChatId ? { HUB_CHAT_ID: agent.hubChatId } : {}), ...(agent.engine === 'codex' ? { HUB_PARTNER: 'Claude' } : {}), ...(nodesOn(agent) ? { HUB_NODES_TOOL: '1' } : {}), ...(agent.toolMode === 'full' ? { HUB_TOOL_MODE: 'full' } : {}) });
 // One file per chat run (two chats of the same director can start at once), removed when the run ends.
 const mcpConfigFile = (agent) => (agent.hubChatId
   ? path.join(DATA_DIR, 'mcp-runs', `${agent.id}-${String(agent.hubChatId).replace(/[^\w-]/g, '_')}.json`)
@@ -177,6 +180,7 @@ const partnerName = (agent) => (agent.engine === 'codex' ? 'Claude' : 'Astra');
 // Tool guides go into the system prompt, which the hub controls (the CLI may drop MCP server instructions when
 // --system-prompt replaces its own), once, instead of being repeated in tool descriptions.
 const threeGuide = () => require('./mcp/three-guide');
+const hearthMap = () => require('./mcp/hearth-map');
 function toolGuide(key) {
   try { return require(path.join(__dirname, 'mcp', HUB_TOOLSETS[key].script)).guide || ''; } catch { return ''; }
 }
@@ -218,6 +222,7 @@ function buildPrompt(agent) {
       + (folder ? 'You can read and edit files: find the script or project that produced a render (look in and around the render\'s folder for .jsx, .py, .js, .aep, render logs), change it, then re-render with ae_render or run AE scripts with ae_run_script, and check the new render. '
         : 'You can re-render with ae_render and run AE scripts with ae_run_script; to edit script files the user can give you File access in your settings. ')
       + 'Keep replies short and concrete.');
+    // the app map: its hearth_help tool says what it is (the Three Director gets the map line with its guide below)
   }
   if (sets.includes('chatTools')) {
     // directors get the chat tools' when-to-use guide; plain chats only the <suggest> convention
@@ -231,17 +236,22 @@ function buildPrompt(agent) {
   // Lean (default): the three-lab tool guide carries the how-to, so the prompt only sets the role. 'full' keeps the long version.
   if (sets.includes('threeTools') && agent.toolMode !== 'full') {
     parts.push('You are the Three Director. Prefer good-looking defaults (tone mapping, environment light, smooth motion, sensible performance) and small edits over rewrites.\n'
-      + threeGuide().CORE);
+      + threeGuide().CORE
+      + (nodesOn(agent) ? `\n${threeGuide().NODES_LINE}` : '')
+      + `\n${hearthMap().LINE('three_do help')}`);
   } else if (sets.includes('threeTools')) {
     parts.push('You turn the user\'s descriptions into three.js scenes in the Three.js Lab shown next to this chat. They prompt; you write the code. '
       + 'Build with three_set_code (complete sketches) and change existing code with three_edit_code (read / search big layers with three_read_code and three_search_code), read the errors it returns, look with three_screenshot, and iterate until it matches what they asked for. '
       + 'Don\'t paste the code into the chat unless they ask for it: describe what you made and what they can ask for next (camera, mood, motion, materials…). '
       + 'Prefer good-looking defaults: tone mapping, environment lighting, soft shadows, smooth animation, sensible performance. '
-      + 'The user mostly makes music visualizers (often 9:16 for Shorts) and does not write code: every sketch must have clearly named sliders made with tweak() (labels, groups, hints, sensible ranges, options for styles; see the tool guide), read live every frame, and react to the loaded music through the audio globals. '
-      + 'Check the track with three_media_info before designing around it: if the user placed kick / snare / hit markers or set a beat grid, build the hits on those (audio.kick, audio.snare, audio.hit, audio.beatInBar) instead of guessing from the audio. Look at a hit or drop (three_media_control) when you check your work. '
+      + 'The user mostly makes music visualizers (often 9:16 for Shorts) and does not write code: every sketch must have clearly named sliders made with tweak() (labels, groups, hints, sensible ranges, options for styles; see the tool guide), read live every frame. Animate on the timeline first, like After Effects (time, easing, keyframes, the song\'s cues and sections); add music reactivity only when they ask. '
+      + 'When they do, check the track with three_media_info: if the user placed kick / snare / hit markers or set a beat grid, build the hits on those (audio.kick, audio.snare, audio.hit, audio.beatInBar) instead of guessing from the audio, or link sliders with /make-it-react (three_run). Look at a hit or drop (three_media_control) when you check your work. '
+      + 'Every new element or effect goes in a new layer (three_add_layer); rewrite an existing layer only when asked. '
+      + (nodesOn(agent) ? `${threeGuide().NODES_LINE} ` : '')
       + 'Sketches can have layers (like Photoshop / After Effects): when the user asks to add, remove, time, fade, move or blend a layer, use the layer tools (three_add_layer, three_update_layer, three_remove_layer, three_layers); upper layers must be transparent. For changes over time ("fade in on the drop", "zoom during the build") use three_keyframes or three_animate presets. You can read and edit the timeline (three_timeline, three_timeline_edit) and the notes the user pins on moments (three_notes: they come with screenshots; mark them done when handled). Looks like ASCII, datamosh, found footage/VHS, glitch, CRT, pixelate, halftone, film, kaleidoscope, edge glow, thermal, duotone or glow are filter layers (three_add_layer with that template) placed above what they should affect. The user can give you reference files (pictures, logos, clips, models, sounds): three_references lists them and adds pictures they attach here; use them in code with refTexture(name) or refs.name. '
       + 'If three_get_code reports unsavedSliders, the user tuned those by hand: keep their values.');
     parts.push(threeGuide().FULL);
+    parts.push(hearthMap().LINE('three_help'));
   }
   if (web) parts.push('You can search the web when the answer depends on recent or specific facts; say briefly where facts come from.');
   if (!folder && !usesApps && !sets.length) parts.push(web ? 'Apart from web search you have no tools: never try to run commands or read files.' : 'You have no tools: never try to run commands, read files or browse the web.');
@@ -768,6 +778,6 @@ module.exports = {
   send, stop, stopAll, login, status, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
   doctor, EFFORTS, CODEX_DISABLED_FEATURES,
   // for tests (dev/astra-engine-test.js)
-  _test: { codexArgs, claudeArgs, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, LOST_SESSION },
+  _test: { codexArgs, claudeArgs, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, hubToolEnv, nodesOn, LOST_SESSION },
   buildPrompt, HUB_TOOLSETS, // the director cost report (mcp/cost.js)
 };
