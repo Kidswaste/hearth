@@ -35,7 +35,7 @@ const CutCmds = (() => {
   };
   const summary = (cut) => `${cut.edit.clips.length} clip${cut.edit.clips.length === 1 ? '' : 's'} · ${fmt(C.total(cut.edit))}`;
   const PRESET_OPTS = [{ value: 'new', hint: 'same size, a new version next to the video' }, ...['tiktok', 'reels', 'shorts', 'feed45', 'square', 'yt1080', 'gif', 'webm', 'master'].map((id) => ({ value: id, hint: VideoData.EXPORT_PRESETS.find((p) => p.id === id)?.name })), { value: 'stills', hint: 'a PNG for every frame' }];
-  const AUTO = [{ value: 'bars', hint: 'a cut on every bar' }, { value: '2bars', hint: 'every 2 bars' }, { value: '4bars', hint: 'every 4 bars' }, { value: 'beats', hint: 'every beat' }, { value: 'drops', hint: 'on the drops' }, { value: 'sections', hint: 'where the song changes' }, { value: 'apply', hint: 'make the suggested cuts' }, { value: 'off', hint: 'dismiss the suggestion' }];
+  const AUTO = [{ value: 'bars', hint: 'a cut on every bar' }, { value: '2bars', hint: 'every 2 bars' }, { value: '4bars', hint: 'every 4 bars' }, { value: 'beats', hint: 'every beat' }, { value: 'drops', hint: 'on the drops' }, { value: 'sections', hint: 'where the song changes' }, { value: 'markers', hint: 'at your markers and notes' }, { value: 'apply', hint: 'make the suggested cuts' }, { value: 'off', hint: 'dismiss the suggestion' }];
 
   const defs = [];
   const cmd = (d) => defs.push(d);
@@ -87,10 +87,11 @@ const CutCmds = (() => {
       if (mode === 'off') { cut.suggest('off'); return 'Suggestion dismissed.'; }
       if (!AUTO.some((x) => x.value === mode)) return `Pick one of: ${AUTO.map((x) => x.value).join(', ')}.`;
       // the beats come from the audio analysis, which runs in the background after a video opens
-      for (let i = 0; i < 40 && !Review.state.audio; i += 1) await new Promise((r) => setTimeout(r, 150));
+      for (let i = 0; i < 40 && mode !== 'markers' && !Review.state.audio; i += 1) await new Promise((r) => setTimeout(r, 150));
       const t = cut.suggest(mode);
-      return t?.length ? `✂ ${t.length} cuts suggested (dashed lines): Enter or **/cut-auto apply** makes them, Esc dismisses.` : 'No beats found for that (the video needs a sound track with a beat).';
+      return t?.length ? `✂ ${t.length} cuts suggested (dashed lines): Enter or **/cut-auto apply** makes them, Esc dismisses.` : mode === 'markers' ? 'No markers or notes to cut at (M adds a marker).' : 'No beats found for that (the video needs a sound track with a beat).';
     } });
+  cmd({ name: 'cut-close-gaps', aliases: ['close-gaps'], desc: 'Remove every black gap in the cut (the clips close up)', run: async () => { const cut = await editing(); const n = cut.closeGaps(); return n ? `${n} gap${n === 1 ? '' : 's'} closed · ${summary(cut)}` : 'No gaps.'; } });
   cmd({ name: 'cut-range', aliases: ['cut-inout'], desc: 'The in–out range of the cut (I / O): exports and plays only it; Shift+Del removes it. off clears', args: '<in> <out> | off', keys: 'I / O',
     run: async (args) => { const cut = await editing(); const w = words(args); if (!w.length || w[0] === 'off') { cut.setMark(null); return 'In–out cleared.'; } const a = timeArg(w[0]); const b = w[1] ? timeArg(w[1]) : C.total(cut.edit); const m = cut.setMark(a, b); return m ? `In–out ${fmt(m.a)} → ${fmt(m.b)}.` : 'That range is empty.'; } });
   cmd({ name: 'cut-add', aliases: ['add-clip'], desc: 'Add a video from the library to the end of the cut (optionally only from–to seconds)', args: '<video> [from] [to]', complete: (a) => (typeof Review === 'undefined' ? [] : Review.videos.filter((v) => !a || v.path.toLowerCase().includes(String(a).toLowerCase())).slice(0, 10).map((v) => ({ value: base(v.path) }))),

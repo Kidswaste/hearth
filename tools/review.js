@@ -481,8 +481,7 @@ const Review = (() => {
     lastTick = now;
     if (Cut()) { Cut().frame(); requestAnimationFrame(tick); return; } // the edit paints its own time and playhead
     // only real changes touch the DOM (a paused player used to rewrite these every frame: style + observers)
-    const left = D ? `${(d.currentTime / D) * 100}%` : '0';
-    if (refs.head.dataset.left !== left) { refs.head.dataset.left = left; refs.head.style.left = left; }
+    placeHead(d, D);
     if (document.activeElement !== refs.time) { const v = fmtTime(d.currentTime); if (refs.time.value !== v) refs.time.value = v; }
     const total = `/ ${fmtTime(D)}${S.timeMode === 'frames' ? '' : `  · f${frameNow()}`}`;
     if (refs.timeTotal.textContent !== total) refs.timeTotal.textContent = total;
@@ -495,6 +494,33 @@ const Review = (() => {
     if (S.scopes && (d.paused ? scopesDirty : now - lastScope > 250)) drawScopes(now);
     showNoteDrawings();
     requestAnimationFrame(tick);
+  }
+  // The playhead glides on the compositor while the video plays (a linear animation to the end, or to the loop's
+  // out point): JS restarts it only on play / pause / seek / rate / size changes or when it drifts over 2 px.
+  const headG = { anim: null, key: '', x0: 0, x1: 0, x: -1 };
+  function placeHead(d, D) {
+    const W = refs.tlW || 0;
+    if (!W || !D) return;
+    const t = d.currentTime;
+    const x = (t / D) * W;
+    const rate = d.playbackRate || 1;
+    const end = S.loop.on && S.loop.a != null && t < (S.loop.b ?? D) ? S.loop.b ?? D : D;
+    const moving = !d.paused && !d.seeking && S.shuttle >= 0 && end - t > 0.05;
+    if (!moving) {
+      if (headG.anim) { headG.anim.cancel(); headG.anim = null; }
+      if (Math.abs(headG.x - x) > 0.05) { headG.x = x; refs.head.style.transform = `translate3d(${x.toFixed(2)}px, 0, 0)`; }
+      return;
+    }
+    const key = `${W}|${D}|${rate}|${end}`;
+    const at = headG.anim ? headG.x0 + (headG.x1 - headG.x0) * (headG.anim.effect.getComputedTiming().progress ?? 0) : NaN;
+    if (headG.anim && headG.key === key && Math.abs(at - x) <= Math.max(2, (0.08 * rate * W) / D)) return; // the decoder's clock moves in frame steps
+    headG.anim?.cancel();
+    const x1 = (end / D) * W;
+    headG.x = x;
+    refs.head.style.transform = `translate3d(${x.toFixed(2)}px, 0, 0)`;
+    headG.anim = refs.head.animate([{ transform: `translate3d(${x.toFixed(2)}px, 0, 0)` }, { transform: `translate3d(${x1.toFixed(2)}px, 0, 0)` }], { duration: ((end - t) / rate) * 1000, easing: 'linear', fill: 'forwards' });
+    headG.anim.startTime = document.timeline.currentTime;
+    Object.assign(headG, { key, x0: x, x1 });
   }
   // The time readout: timecode, seconds or frame numbers (click the total to switch).
   const fmtTime = (t) => (S.timeMode === 'sec' ? `${(t || 0).toFixed(3)}s` : S.timeMode === 'frames' ? `f${V.frameAt(t || 0, S.fps)}` : tc(t));
@@ -1532,7 +1558,7 @@ const Review = (() => {
     refs.hover = el('div', { class: 'vr-hover', hidden: true }, refs.hoverImg, refs.hoverTc);
     const tlBox = refs.tlBox = el('div', { class: 'vr-timeline', title: 'Drag to scrub · drag the top strip to set a loop · double-click a section to loop it' }, refs.tl, refs.markers, refs.head, refs.hover);
     timelineEvents(tlBox);
-    new ResizeObserver(() => { drawTimeline(); applyZoom(); }).observe(tlBox);
+    new ResizeObserver(() => { refs.tlW = tlBox.clientWidth; headG.key = ''; headG.x = -1; drawTimeline(); applyZoom(); }).observe(tlBox);
 
     // transport
     refs.play = el('button', { class: 'vr-play', text: '▶', title: 'Play / pause (Space)', on: { click: togglePlay } });

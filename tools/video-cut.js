@@ -201,7 +201,7 @@ const VideoCut = (() => {
     if (T >= end - 1e-3) { atEnd(); return; }
     // a video clip switches from watchFrames (on its last frame); this catches stills, gaps, ended files and stalls
     if (x.clip.kind === 'video' ? active().ended || active().currentTime >= x.clip.out + 0.5 / fpsOf(x.clip.src) : T >= x.end) advance();
-    if ((loopN += 1) % 20 === 0) placeHead();
+    if ((loopN += 1) % 20 === 0) placeHead({ drift: true });
     paintTime();
     P.raf = requestAnimationFrame(loop);
   }
@@ -257,7 +257,7 @@ const VideoCut = (() => {
       prepareNext();
     }
     scheduleFade(nx);
-    placeHead();
+    placeHead({ drift: true });
   }
   // Fades: the picture's opacity runs as one compositor animation per clip (no per-frame writes); the sound fades
   // through the decoder's volume.
@@ -328,10 +328,15 @@ const VideoCut = (() => {
   const xOf = (T) => (total() ? (T / total()) * W() : 0);
   const tOf = (x) => (W() ? clamp(x / W(), 0, 1) * total() : 0);
   let headAnim = null; let headX = { x0: 0, x1: 0 };
-  function placeHead() {
+  // drift: only a check (every 20 frames while playing); the animation restarts when it is off by more than 80 ms
+  function placeHead({ drift = false } = {}) {
     if (!refs.head) return;
     const T = P.playing ? nowT() : P.T;
     const x = xOf(T);
+    if (drift && headAnim && P.playing) {
+      const at = headX.x0 + (headX.x1 - headX.x0) * (headAnim.effect.getComputedTiming().progress ?? 0);
+      if (Math.abs(at - x) <= Math.max(2, (0.08 * P.rate * W()) / Math.max(0.1, total()))) return;
+    }
     headAnim?.cancel(); headAnim = null;
     refs.head.style.transform = `translate3d(${x.toFixed(2)}px, 0, 0)`;
     if (!P.playing || !total()) return;
@@ -549,7 +554,7 @@ const VideoCut = (() => {
   }
 
   // ---------- pointer on the track ----------
-  const SUGGEST_LABEL = { bars: 'on every bar', '2bars': 'every 2 bars', '4bars': 'every 4 bars', beats: 'on every beat', drops: 'on the drops', sections: 'at the song\'s sections' };
+  const SUGGEST_LABEL = { bars: 'on every bar', '2bars': 'every 2 bars', '4bars': 'every 4 bars', beats: 'on every beat', drops: 'on the drops', sections: 'at the song\'s sections', markers: 'at the markers and notes' };
   function hit(e) {
     const r = refs.canvas.getBoundingClientRect();
     const x = e.clientX - r.left; const y = e.clientY - r.top;
@@ -757,7 +762,10 @@ const VideoCut = (() => {
   function suggest(mode = 'bars') {
     if (mode === 'off') { st.suggest = null; draw(); paintHead(); return null; }
     if (mode === 'apply') return acceptSuggestion();
-    const times = C.suggest(st.edit, analysisMap(), mode);
+    const have = [0, total(), ...C.cuts(st.edit)];
+    const times = mode === 'markers'
+      ? [...new Set([...st.edit.markers.map((m) => m.t), ...noteMarks().map((n) => n.t)])].filter((t) => have.every((h) => Math.abs(h - t) > 0.05)).sort((a, b) => a - b)
+      : C.suggest(st.edit, analysisMap(), mode);
     st.suggest = { mode, times };
     draw(); paintHead();
     return times;
@@ -769,6 +777,7 @@ const VideoCut = (() => {
     st.suggest = null; paintHead(); draw();
     return s.times.length;
   }
+  function closeGaps() { const ids = st.edit.clips.filter((c) => c.kind === 'gap').map((c) => c.id); if (!ids.length) return 0; commit(C.remove(st.edit, ids, { ripple: true }), 'Gaps closed'); return ids.length; }
   function reset() { const d = srcDur(st.path); if (!d) return false; commit(C.fromSource(st.path, d), 'Back to the whole video'); return true; }
   async function durationOf(p) {
     const m = host.S.meta[p];
@@ -849,12 +858,13 @@ const VideoCut = (() => {
       { label: 'Freeze frame here (Shift+F)', action: () => freezeHere() },
       { label: 'Title card here (Shift+T)…', action: async () => { const v = await Modal.prompt('Title card', { value: '', label: 'The words on the card (a new line: \\n). 2 seconds, inserted at the playhead.' }); if (v?.trim()) addTitle(v.trim()); } },
       { label: 'Marker here (M)', action: () => marker() },
+      st.edit.clips.some((c) => c.kind === 'gap') ? { label: 'Close the gaps', action: closeGaps } : null,
       { label: 'Add a video…', action: async () => { const [p] = await window.hub.openDialog({ filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'm4v', 'webm', 'mkv'] }] }); if (p) addClip(p); } },
       { label: 'Undo', action: undo }, { label: 'Redo', action: redo },
       { more: true, label: 'Copy the edit list', action: () => copyText(C.describe(st.edit).join('\n'), 'Edit list copied') },
       { more: true, label: 'Back to the whole video', danger: true, action: reset },
       { more: true, label: 'Keys (?)', action: help },
-    ]);
+    ].filter(Boolean));
   }
   function exportMenu(anchor) {
     const r = anchor.getBoundingClientRect();
@@ -967,6 +977,7 @@ const VideoCut = (() => {
   function onOpen({ path }) {
     if (!st.on) { st.edit = null; return; }
     if (path === st.path) return;
+    pause();
     st.on = false;
     R().waitReady().then(() => enter());
   }
@@ -1051,7 +1062,7 @@ const VideoCut = (() => {
     get active() { return st.on; }, get edit() { return st.edit; }, get path() { return st.path; }, get time() { return P.playing ? nowT() : P.T; }, get playing() { return P.playing; },
     get selection() { return selIds(); }, get suggestion() { return st.suggest ? { ...st.suggest } : null; }, get canUndo() { return st.undo.length > 0; },
     play: startPlay, pause, togglePlay: () => (P.playing ? pause() : startPlay()), seek: (t) => seek(t, { play: P.playing }), step, shuttle, goto: (t) => seek(t, { play: false }),
-    split, del, setSpeed, nudgeSpeed, freezeHere, addTitle, marker, setMark, suggest, acceptSuggestion, reset, addClip, undo, redo, help, exportCut, exportAll, jumpCut, jumpBeat,
+    split, del, closeGaps, setSpeed, nudgeSpeed, freezeHere, addTitle, marker, setMark, suggest, acceptSuggestion, reset, addClip, undo, redo, help, exportCut, exportAll, jumpCut, jumpBeat,
     select(i) { const c = st.edit?.clips[i]; if (!c) return null; st.sel = new Set([c.id]); paintHead(); draw(); const x = C.layout(st.edit)[i]; seek(x.start, { play: false }); return c; },
     commit, mute: (on) => { const ids = targetIds(); if (!ids.length) return null; commit(C.setMute(st.edit, ids, on), 'Sound toggled'); return st.edit.clips.find((c) => c.id === ids[0])?.mute; },
     fade: (edge, s) => { const ids = targetIds(); if (!ids.length) return null; commit(C.setFade(st.edit, ids, edge, s), `Fade ${edge}`); return true; },

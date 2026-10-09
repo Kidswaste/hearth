@@ -32,6 +32,17 @@ await until(() => Review.state.audio, 15000); // beats for snapping and auto-cut
 await wait(600);
 const root = H.surfaces.get('tool:ae').el;
 
+// 0. the review's own playhead glides on the compositor too (no per-frame style writes)
+Review.play(); await wait(500);
+const srcHead = root.querySelector('.vr-head');
+let styleWrites = 0;
+const mo0 = new MutationObserver((l) => { styleWrites += l.length; });
+mo0.observe(srcHead, { attributes: true });
+await wait(1000);
+mo0.disconnect();
+step('review playhead: one compositor animation while playing, ≤ 3 style writes a second', srcHead.getAnimations().length === 1 && styleWrites <= 3, { anims: srcHead.getAnimations().length, styleWrites });
+Review.pause(); await Review.seek(0); await wait(300);
+
 // 1. E opens the clip track
 const cutBtn = root.querySelector('.vr-cut-btn');
 step('✂ button in the transport', visible(cutBtn));
@@ -212,6 +223,24 @@ await run('/ripple-delete 2');
 step('/ripple-delete 2', VideoCut.edit.clips.length === n0 - 1);
 await run('/clip-speed 0.5 1');
 step('/clip-speed 0.5 1', VideoCut.edit.clips[0].speed === 0.5);
+// a gap, then close it; markers → cuts; the fade handle dragged
+await run('/cut-delete 2');
+step('/cut-delete 2 leaves a gap', VideoCut.edit.clips[1].kind === 'gap');
+await run('/cut-close-gaps');
+step('/cut-close-gaps', !VideoCut.edit.clips.some((c) => c.kind === 'gap'));
+await run('/goto 0.7'); await key('m'); await wait(150);
+await run('/cut-auto markers');
+step('/cut-auto markers suggests a cut at the marker', VideoCut.suggestion?.times.some((t) => near(t, 0.7, 0.05)), VideoCut.suggestion);
+await run('/cut-auto off');
+await run('/clip 2'); await wait(200);
+{
+  const L = C.layout(VideoCut.edit); const rr = cv.getBoundingClientRect(); const TT = C.total(VideoCut.edit);
+  const xs = rr.left + (L[1].start / TT) * rr.width + 4; const ys = rr.top + 13 + 2 + 4;
+  await mouse('mouseMoved', xs, ys, { button: 'none' }); await mouse('mousePressed', xs, ys);
+  for (let i = 1; i <= 6; i += 1) await mouse('mouseMoved', xs + (i * 0.25 * rr.width) / (TT * 6), ys, { buttons: 1 });
+  await mouse('mouseReleased', xs + (0.25 * rr.width) / TT, ys); await wait(250);
+  step('dragging the gold square fades the clip in', VideoCut.edit.clips[1].fadeIn > 0.15 && VideoCut.edit.clips[1].fadeIn < 0.4, VideoCut.edit.clips[1]);
+}
 const stat = await Review.tool('video_status', {});
 step('video_status tells the director about the cut', stat.value.cut?.clips === VideoCut.edit.clips.length, stat.value.cut);
 step('the cut is saved (kv video-cuts)', Boolean((await window.hub.kvGet('video-cuts', {}))[A]));
