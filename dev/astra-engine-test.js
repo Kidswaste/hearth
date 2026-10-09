@@ -36,6 +36,8 @@ function turn(agent, text, session = {}, options = {}, onStart) {
 
 (async () => {
   // ---- argument building
+  const a0 = T.codexArgs({ ...astra, threeTools: true }, {}, {});
+  assert(a0.some((x) => /^mcp_servers\.\w+\.default_tools_approval_mode="approve"$/.test(x)), 'Hearth tools pre-approved for codex exec');
   const a1 = T.codexArgs(astra, {}, {});
   assert(a1.includes('--ignore-user-config') && a1.includes('--ignore-rules') && a1.includes('--skip-git-repo-check'));
   assert(a1.includes('shell_tool') && a1.includes('web_search="disabled"') && a1.join(' ').includes('-s read-only'));

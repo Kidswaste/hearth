@@ -166,6 +166,9 @@ function codexMcpArgs(agent) {
       // a question to the user (chat_ask) or a render can take a long time
       '-c', `${p}.tool_timeout_sec=${key === 'videoTools' || key === 'chatTools' ? 2700 : 300}`,
       '-c', `${p}.startup_timeout_sec=30`,
+      // Hearth's own tools are pre-approved: `codex exec` can't show an approval prompt, so newer Codex versions
+      // cancelled every Lab / video / chat tool call ("Lab access was blocked"). Older versions ignore the key.
+      '-c', `${p}.default_tools_approval_mode="approve"`,
     );
   }
   return args;
