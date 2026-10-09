@@ -202,6 +202,8 @@ function register(ipcMain, getWin, getSettings = () => ({})) {
       try {
         await FR.convert(src, mp4, { mp4: true, fps: o.fps || null, crf: o.crf || 18, duration: out.duration, size: o.size || null, onProgress: (pct) => send('capture:progress', { id, pct }) });
         out.mp4 = mp4;
+        // the WebM may not say how long it is: the MP4's length is the real one (the renderer warns on a short take)
+        if (!(out.duration > 0)) { try { out.duration = (await FR.probe(mp4)).duration; } catch { /* unknown */ } }
         if (o.keep === false) { await shell.trashItem(src).catch(() => {}); out.webm = null; }
       } catch (err) { out.mp4Error = err.message; }
     }

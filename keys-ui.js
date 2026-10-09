@@ -412,7 +412,10 @@ const KeysUI = (() => {
       { area: 'Lab', keys: 'Shift+R', what: 'The shuffle before', when: inLab, run: act('shuffleBack') },
       { area: 'Lab', keys: 'Ctrl+S', what: 'Save the sliders into the code', when: inLab, run: act('saveSliders') },
       { area: 'Lab', keys: 'Ctrl+Shift+S', what: 'Save the sliders as a look', when: inLab, run: act('saveLook') },
-      { area: 'Lab', keys: 'Shift+A / Shift+B / Shift+C', what: 'Recall slider slot A, B, C', when: inLab, run: act('slotA') },
+      // one line per slot, so a click on the line recalls that slot (the one line for A / B / C always recalled A)
+      { area: 'Lab', keys: 'Shift+A', what: 'Recall slider slot A', when: inLab, run: act('slotA') },
+      { area: 'Lab', keys: 'Shift+B', what: 'Recall slider slot B', when: inLab, run: act('slotB') },
+      { area: 'Lab', keys: 'Shift+C', what: 'Recall slider slot C', when: inLab, run: act('slotC') },
       { area: 'Lab', keys: 'P', what: 'Present: just the picture, fullscreen', when: inLab, run: act('present') },
       { area: 'Lab', keys: 'X', what: 'Effects & layers picker (Shift+X: everything)', when: inLab, run: () => ThreeFX.openPicker('add') },
       { area: 'Lab', keys: 'O', what: 'Your sketches, as pictures', when: inLab },
@@ -541,7 +544,6 @@ const KeysUI = (() => {
       { area: 'Lab', keys: 'Esc', what: 'From a Lab tool tab (model viewer, shaders…): back to the sketch', when: inLab },
       { area: 'Lab', keys: '.', what: 'While frozen: one frame forward', when: inLab },
       { area: 'Lab', keys: '\\', what: 'Freeze / unfreeze (like F)', when: inLab, run: act('freeze') },
-      { area: 'Lab sliders & layers', keys: 'Shift+C', what: 'Recall slider slot C', when: inLab, run: act('slotC') },
       { area: 'Lab sliders & layers', keys: '1…9', what: 'In the Triggers panel: pick trigger 1…9', when: inLab },
       { area: 'Present', keys: 'Space / F / 1…9', what: 'Play / pause, freeze and cues still work while presenting', when: inLab },
       // right-click menus: click a line to open it on screen

@@ -42,7 +42,7 @@ const J = (() => {
     for (let i = 1; i <= steps; i++) await mouse('mouseMoved', x0 + ((x1 - x0) * i) / steps, y0 + ((y1 - y0) * i) / steps, { buttons: 1 });
     await mouse('mouseReleased', x1, y1); await wait(120);
   }
-  const KEYS = { Enter: [13, 'Enter', '\r'], Escape: [27, 'Escape'], Tab: [9, 'Tab'], Backspace: [8, 'Backspace'], ArrowDown: [40, 'ArrowDown'], ArrowUp: [38, 'ArrowUp'], ArrowLeft: [37, 'ArrowLeft'], ArrowRight: [39, 'ArrowRight'], ' ': [32, 'Space', ' '], Delete: [46, 'Delete'] };
+  const KEYS = { Home: [36, 'Home'], End: [35, 'End'], PageUp: [33, 'PageUp'], PageDown: [34, 'PageDown'], F1: [112, 'F1'], F2: [113, 'F2'], Enter: [13, 'Enter', '\r'], Escape: [27, 'Escape'], Tab: [9, 'Tab'], Backspace: [8, 'Backspace'], ArrowDown: [40, 'ArrowDown'], ArrowUp: [38, 'ArrowUp'], ArrowLeft: [37, 'ArrowLeft'], ArrowRight: [39, 'ArrowRight'], ' ': [32, 'Space', ' '], Delete: [46, 'Delete'] };
   // key('Enter'), key('k', { ctrl: true }), key('9', { shift: true }) (a shifted digit sends the digit key with Shift).
   async function key(k, { ctrl = false, shift = false, alt = false, meta = false } = {}) {
     const mods = (alt ? 1 : 0) | (ctrl ? 2 : 0) | (meta ? 4 : 0) | (shift ? 8 : 0);

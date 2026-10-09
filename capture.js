@@ -791,7 +791,8 @@ const Capture = (() => {
     if (!rec) return;
     const s = elapsed();
     api().indicator({ on: true, time: fmtClock(s), paused: Boolean(rec.pausedAt), label: rec.tour ? `tour ${rec.tour}` : rec.marks.length ? `◆${rec.marks.length}` : '' });
-    if (rec.opts.max && s >= rec.opts.max && !rec.pausedAt) stop().catch((e) => toast(e.message, { type: 'error' }));
+    // once: the ticks that come while the take is being finished used to stop it again (and show the same error 5 times)
+    if (rec.opts.max && s >= rec.opts.max && !rec.pausedAt && !pending.stop) stop().catch((e) => toast(e.message, { type: 'error' }));
   }
   // ---------- take extras: zoom toward your clicks, a camera bubble, chapter markers ----------
   // Auto zoom: a click zooms the view toward it (1.6×); after 2.2 s without clicks it eases back out.
@@ -911,7 +912,7 @@ const Capture = (() => {
       const marks = r.marks;
       // an encoder that fell behind (a busy machine, a software codec) keeps only the first frames: a 6 s take came
       // out 0.3 s long without a word. Say so, and the next take uses another codec after two of them
-      if (fin.duration != null && duration > 1.5 && fin.duration < duration * 0.5 && !r.pausedMs) {
+      if (fin.duration > 0 && duration > 1.5 && fin.duration < duration * 0.5 && !r.pausedMs) { // 0 = the file did not say (not short)
         const codec = String(r.mime || '').match(/codecs=(\w+)/)?.[1];
         if (codec && !r.opts.codec) codecStrikes[codec] = (codecStrikes[codec] || 0) + 1;
         fin.short = `Only ${fin.duration.toFixed(1)} s of ${duration.toFixed(1)} s were recorded: the computer was too busy for the ${codec ? codec.toUpperCase() : 'video'} encoder. Try a lower frame rate or size (/record 30fps 720p).`;

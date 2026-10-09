@@ -87,7 +87,7 @@ async function tryKey(area, line, c, { sig, before, after }) {
 // keys that rightly do nothing in this test's setup (no music: no beats or sections)
 const NOOP = {
   'Lab|Space': 'no song loaded here (journey-lab plays one)', 'Lab|T': 'taps count while a song plays (journey-lab)', 'Lab|Ctrl+Enter': 're-runs the layers: nothing to see change', 'Lab|Ctrl+Z': 'nothing to undo yet', 'Lab|Esc': 'only from a Lab tool tab', 'Lab|.': 'only while frozen',
-  'Capture|Esc': 'no tour running', 'Video Review|\\': 'swaps A and B only while comparing', 'Editor|Alt+↑': 'one overlay track: nowhere to move', 'Editor|Alt+↓': 'one overlay track: nowhere to move',
+  'Capture|Esc': 'no tour running', 'Capture|Ctrl+Z': 'nothing drawn to undo (capture-shots.js draws and undoes)', 'Capture|Ctrl+Shift+Z': 'nothing undone to redo', 'Editor|Alt+.': 'the clip already ends on its source\'s last frame (Alt+, slipped it)', 'Video Review|\\': 'swaps A and B only while comparing', 'Editor|Alt+↑': 'one overlay track: nowhere to move', 'Editor|Alt+↓': 'one overlay track: nowhere to move',
   'Editor|Ctrl+C': 'copies to the editor\'s own clipboard (checked by Ctrl+V)',  'Editor|,': 'no music, no beats (by design)', 'Editor|.': 'no music, no beats (by design)', 'Video Review|,': 'no music, no beats', 'Video Review|.': 'no music, no beats', 'Video Review|<': 'no music, no sections', 'Video Review|>': 'no music, no sections' };
 const closeAll = async () => {
   for (const d of [...document.querySelectorAll('dialog[open]')]) { try { d.close(); } catch { /* gone */ } }
@@ -247,6 +247,7 @@ if (AREAS.includes('Capture')) {
       if (where === 'player') { await CaptureView.open(vid); await until(() => document.querySelector('dialog[open].cap-view video')?.readyState >= 2, 5000); document.querySelector('dialog[open].cap-view')?.focus(); }
       if (where === 'picture') { await CaptureView.open(shotR.path); await wait(400); document.querySelector('dialog[open].cap-view')?.focus(); }
       if (where === 'annotate') { if (!document.querySelector('dialog[open].cap-ann')) CaptureAnnotate.open(shotR.path); await until(() => document.querySelector('dialog[open].cap-ann'), 4000); await wait(300); document.querySelector('dialog[open].cap-ann canvas, dialog[open].cap-ann')?.focus?.(); } // open() resolves only when the annotator closes
+      if (where === 'annotate' && c.label === '[') { await press(one(']')); await wait(150); } // a size to go down from
       if (/^Ctrl\+Alt\+P$/.test(c.label)) { await Capture.record({ target: 'composer', countdown: 0, mp4: false, audio: 'none' }); await wait(1200); }
     },
     restore: async (c) => {
@@ -267,7 +268,7 @@ if (AREAS.includes('Lab')) {
     sig: sigL,
     skip: /^(P|Shift\+F|Ctrl\+Shift\+Enter|Ctrl\+PgDn|Ctrl\+PgUp)$/, // fullscreen Present / Focus, a fresh page, sketch switching (journey-lab covers them)
     before: async () => { if (H.activeId !== 'tool:three') activate('tool:three'); const r = pic?.getBoundingClientRect(); if (r) { await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mousePressed', x: r.left + r.width / 2, y: r.top + r.height * 0.6, button: 'left', clickCount: 1 } }); await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseReleased', x: r.left + r.width / 2, y: r.top + r.height * 0.6, button: 'left', clickCount: 1 } }); } await wait(100); },
-    restore: async () => { if (lab.state.playing) lab.play?.(false); if (lab.state.frozen) lab.freeze?.(false); await press(one('Escape')); },
+    restore: async () => { if (lab.state.frozen) { await press(one('F')); await wait(200); } await press(one('Escape')); }, // keys, not calls (a size change can keep a call waiting for the next frame)
   });
 }
 
