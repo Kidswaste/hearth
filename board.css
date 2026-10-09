@@ -82,6 +82,7 @@
 .bd-shape[data-shape="round"] { border-radius: 22px; } .bd-shape[data-shape="circle"] { border-radius: 50%; } .bd-shape[data-shape="pill"] { border-radius: 999px; }
 .bd-shape[data-shape="blob"] { border-radius: 42% 58% 70% 30% / 45% 45% 55% 55%; }
 .bd-shape[data-shape="frame-line"] { background: none; border: 6px solid var(--shape); border-radius: 8px; }
+.bd-t-link { pointer-events: none; } .bd-t-link path { pointer-events: stroke; cursor: pointer; } /* a connector only catches clicks on its line */
 .bd-arrow { position: absolute; inset: 0; overflow: visible; color: var(--text); }
 .bd-sticker { position: absolute; inset: 0; display: grid; place-items: center; line-height: 1; color: var(--bd-gold); text-shadow: 0 4px 14px #0007; }
 

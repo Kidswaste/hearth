@@ -21,7 +21,7 @@ const BoardDrawer = (() => {
       const list = itemIds.map((id) => B.item(id, b)).filter(Boolean);
       body = `${fo.lead}:\n${list.map((it) => `- ${V.text(it, fo.keys)}`).join('\n')}`;
     } else {
-      const items = b.items.filter((i) => i.type !== 'frame' && !i.hidden);
+      const items = b.items.filter((i) => i.type !== 'frame' && i.type !== 'link' && !i.hidden);
       const avoid = items.filter((i) => isAvoid(b, i));
       body = `${fo.lead}:\n${b.brief ? `Brief: ${String(b.brief).slice(0, 300)}\n` : ''}${V.boardText(b.name, items.filter((i) => !avoid.includes(i)), fo.keys, { avoid: fo.id === 'full' || fo.id === 'lab' ? avoid : [] })}`;
     }
@@ -103,7 +103,7 @@ const BoardDrawer = (() => {
     const sel = el('select', { title: 'Board', on: { change: async () => { shownBoard = sel.value; render(); } } },
       B.boards().map((x) => el('option', { value: x.id, text: `${x.name} (${x.count || 0})`, selected: x.id === b.id })));
     const isLinked = Boolean(chatId && B.boards().find((x) => x.id === b.id)?.chats?.includes(chatId));
-    const items = b.items.filter((i) => i.type !== 'frame');
+    const items = b.items.filter((i) => i.type !== 'frame' && i.type !== 'link' && !i.hidden);
     const words = query.toLowerCase().split(/\s+/).filter(Boolean);
     const shown = words.length && Board._.haystack ? items.filter((i) => words.every((w) => Board._.haystack(i).includes(w))) : items;
     const s = V.summary(items);

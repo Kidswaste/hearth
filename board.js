@@ -158,6 +158,8 @@ const Board = (() => {
     return r;
   }
   function afterEdit() {
+    // connectors whose ends are gone go too
+    if (S.cur.items.some((i) => i.type === 'link')) { const ids = new Set(S.cur.items.map((i) => i.id)); S.cur.items = S.cur.items.filter((i) => i.type !== 'link' || (ids.has(i.from) && ids.has(i.to))); }
     for (const id of [...S.sel]) if (!item(id)) S.sel.delete(id);
     if (S.mounted) { renderAll(); updateOverlay(); }
     save();
@@ -269,7 +271,7 @@ const Board = (() => {
     const content = b.items.filter((i) => !i.arrangeLabel);
     const bb = content.length ? LY.bbox(content) : null;
     const origin = at || (bb ? { x: bb.x + bb.w + 240, y: bb.y } : b === S.cur && S.mounted ? center() : { x: 0, y: 0 });
-    const frames = LY.templateFrames(tpl, origin.x, origin.y + 120);
+    const frames = LY.templateFrames(tpl, origin.x, origin.y + 260); // room for frame titles, which grow when zoomed out
     const made = [];
     const run = (bb) => {
       if (tpl.title) { const t = newItem('text', { text: tpl.title, textStyle: 'wide', fs: 56, x: origin.x, y: origin.y, w: Math.max(700, tpl.title.length * 40), h: 80 }, bb); bb.items.push(t); made.push(t); }
@@ -366,13 +368,14 @@ const Board = (() => {
   // ---------- view ----------
   const toWorld = (cx, cy) => { const r = S.ui.vp.getBoundingClientRect(); return { x: (cx - r.left - S.view.x) / S.view.z, y: (cy - r.top - S.view.y) / S.view.z }; };
   const toScreen = (x, y) => ({ x: x * S.view.z + S.view.x, y: y * S.view.z + S.view.y });
-  let rafView = 0; let lastZoomText = '';
+  let rafView = 0; let lastZoomText = ''; let B_cancelAnim = null;
   // One transform on the world layer + the background pattern; nothing else moves while you pan or zoom.
   function applyView(now0 = false) {
     if (now0) { cancelAnimationFrame(rafView); rafView = 0; writeView(); return; }
     if (rafView) return;
     rafView = requestAnimationFrame(() => { rafView = 0; writeView(); });
   }
+  B_cancelAnim = () => { anim = null; };
   function writeView() {
     const { x, y, z } = S.view;
     S.ui.world.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${z})`;
@@ -436,7 +439,7 @@ const Board = (() => {
     if (!S.mounted || !box || !(box.w || box.h)) return;
     const r = S.ui.vp.getBoundingClientRect();
     const t = LY.fitView(box, r.width, r.height, pad, ZMIN, ZMAX);
-    if (smooth) animateTo(t, 'fly'); else { S.view = t; applyView(true); }
+    if (smooth) animateTo(t, 'fly'); else { anim = null; S.view = t; applyView(true); }
   }
   const zoomFit = (smooth = true) => { const list = S.cur.items.filter((i) => !S.hidden.has(i.id)); if (list.length) zoomToBox(LY.bbox(list), 70, smooth); else { S.view = { x: 80, y: 80, z: 1 }; applyView(); } };
   const zoomSel = () => { const s = selected(); if (s.length) zoomToBox(LY.bbox(s), 90); else zoomFit(); };
@@ -480,6 +483,7 @@ const Board = (() => {
     for (const [id, n] of S.nodes) if (!ids.has(id)) { stopPreview(id); n.remove(); S.nodes.delete(id); lastOff.delete(id); }
     for (const it of S.cur.items) syncItem(it);
     S.hidden = new Set(S.cur.items.filter((i) => i.hidden).map((i) => i.id));
+    Board._.afterRender?.();
     const order = S.cur.items.map((i) => i.id).join(',');
     if (order !== lastOrder) { lastOrder = order; S.ui.world.append(...S.cur.items.map((i) => S.nodes.get(i.id))); }
     S.ui.empty.hidden = S.cur.items.length > 0;
@@ -514,6 +518,7 @@ const Board = (() => {
   TYPE_BUILD.shape = (n) => { n.append(el('div', { class: 'bd-shape' })); };
   TYPE_BUILD.sticker = (n) => { n.append(el('div', { class: 'bd-sticker' })); };
   TYPE_BUILD.arrow = (n) => { const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('class', 'bd-arrow'); n.append(svg); };
+  TYPE_BUILD.link = (n) => { const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('class', 'bd-arrow'); n.append(svg); };
   TYPE_BUILD.file = (n) => { n.append(el('div', { class: 'bd-filecard' }, el('span', { class: 'bd-fileicon', text: '📄' }), el('span', { class: 'bd-filename' }))); };
 
   const cropCss = (c) => {
@@ -526,7 +531,7 @@ const Board = (() => {
     let n = S.nodes.get(it.id);
     if (!n) { n = build(it); S.nodes.set(it.id, n); S.ui.world.append(n); lastOrder = ''; force = true; }
     else if (n.__type !== it.type) { stopPreview(it.id); const nn = build(it); n.replaceWith(nn); S.nodes.set(it.id, nn); lastOff.delete(it.id); n = nn; force = true; } // note ⇄ text (and its undo)
-    const key = JSON.stringify([it.x, it.y, it.w, it.h, it.rot, it.opacity, it.blend, it.filter, it.flipX, it.flipY, it.crop, it.radius, it.shadow, it.border, it.locked, it.stamp, it.title, it.text, it.style, it.textStyle, it.fs, it.color, it.colors, it.src, it.thumb, it.tiny, it.poster, it.snapError, it.snapping, it.favicon, it.duration, it.vin, it.vout, it.group, it.tags, it.note, it.align, it.shape, it.heads, it.curve, it.dash, it.width, it.glyph, it.fsz, it.hidden]);
+    const key = JSON.stringify([it.x, it.y, it.w, it.h, it.rot, it.opacity, it.blend, it.filter, it.flipX, it.flipY, it.crop, it.radius, it.shadow, it.border, it.locked, it.stamp, it.title, it.text, it.style, it.textStyle, it.fs, it.color, it.colors, it.src, it.thumb, it.tiny, it.poster, it.snapError, it.snapping, it.favicon, it.duration, it.vin, it.vout, it.group, it.tags, it.note, it.align, it.shape, it.heads, it.curve, it.dash, it.width, it.glyph, it.fsz, it.hidden, it.from, it.to, it.label]);
     if (!force && n.__key === key) return;
     n.__key = key;
     n.style.transform = `translate(${it.x}px, ${it.y}px)${it.rot ? ` rotate(${it.rot}deg)` : ''}`;
@@ -747,6 +752,7 @@ const Board = (() => {
       const snapped = e.ctrlKey ? { dx, dy, gx: null, gy: null } : snapMove(drag, dx, dy);
       for (const it of drag.items) { const s = drag.start.get(it.id); it.x = s.x + snapped.dx; it.y = s.y + snapped.dy; const n = S.nodes.get(it.id); if (n) n.style.transform = `translate(${it.x}px, ${it.y}px)${it.rot ? ` rotate(${it.rot}deg)` : ''}`; }
       showGuides(snapped.gx, snapped.gy);
+      Board._.onMoveFrame?.(drag.items);
       updateOverlay();
       return;
     }
@@ -922,8 +928,8 @@ const Board = (() => {
     // one frame selected: arrange what's inside it
     if (list.length === 1 && list[0].type === 'frame') { const fr = list[0]; list = contents(fr); if (list.length) { const r = LY.arrange(list, preset, { x: fr.x + 40, y: fr.y + 60 }); applyBoxes(r, `arrange: ${preset.name}`); fitFrame(fr); return list.length; } }
     // one item (or nothing) selected: arrange the whole board (what isn't inside a frame)
-    if (list.length < 2) list = S.cur.items.filter((i) => i.type !== 'frame' && !i.locked && !i.arrangeLabel && !frameOf(i));
-    list = list.filter((i) => i.type !== 'frame' && !i.locked);
+    if (list.length < 2) list = S.cur.items.filter((i) => i.type !== 'frame' && i.type !== 'link' && !i.locked && !i.arrangeLabel && !frameOf(i));
+    list = list.filter((i) => i.type !== 'frame' && i.type !== 'link' && !i.locked);
     if (!list.length) return 0;
     applyBoxes(LY.arrange(list, preset), `arrange: ${preset.name}`);
     return list.length;
@@ -987,8 +993,8 @@ const Board = (() => {
   // ---------- drops and paste ----------
   async function onDrop(e) {
     const dt = e.dataTransfer; if (!dt) return;
-    if (dt.types.includes('application/x-hearth-ref')) return; // a board reference dragged within Hearth (the drawer handles chats)
     e.preventDefault();
+    if (dt.types.includes('application/x-hearth-ref')) { Board._.dropRef?.(dt.getData('application/x-hearth-ref'), toWorld(e.clientX, e.clientY)); return; } // from the drawer
     S.ui.root.classList.remove('bd-dropping');
     const at = toWorld(e.clientX, e.clientY);
     if (dt.files?.length) { await addFiles([...dt.files], at); return; }
@@ -1057,7 +1063,7 @@ const Board = (() => {
       const node = e.target.closest('.bd-item');
       if (node) { if (!S.sel.has(node.dataset.id)) select(node.dataset.id); Board._.itemMenu(e); } else Board._.canvasMenu(e, toWorld(e.clientX, e.clientY));
     });
-    ui.root.addEventListener('dragover', (e) => { if (e.dataTransfer?.types.some((t) => t === 'Files' || t === 'text/uri-list' || t === 'text/plain') && !e.dataTransfer.types.includes('application/x-hearth-ref')) { e.preventDefault(); ui.root.classList.add('bd-dropping'); } });
+    ui.root.addEventListener('dragover', (e) => { if (e.dataTransfer?.types.some((t) => t === 'Files' || t === 'text/uri-list' || t === 'text/plain' || t === 'application/x-hearth-ref')) { e.preventDefault(); ui.root.classList.add('bd-dropping'); } });
     ui.root.addEventListener('dragleave', (e) => { if (!ui.root.contains(e.relatedTarget)) ui.root.classList.remove('bd-dropping'); });
     ui.root.addEventListener('drop', onDrop);
     ui.root.addEventListener('keydown', onKey);
@@ -1122,6 +1128,6 @@ const Board = (() => {
     onChange: (fn) => { S.listeners.add(fn); return () => S.listeners.delete(fn); },
     vibeOf: (it) => V.text(it), fileUrl, isMounted: () => S.mounted, visible,
     // shared with board-*.js
-    _: { S, D, V, LY, flush, avoidOverlap, item, syncItem, renderAll, updateOverlay, toWorld, toScreen, center, emit, pushUndo, afterEdit, queueWork, startPreview, stopPreview, liveVideo, stopAllPreviews, playing, fileUrl, imgToJpeg, blobB64, applyView, writeView, animateTo, settle, renderHud, uid, newItem, key, KEYS, fmtTime, cropCss, lastOff, isMedia, fitFrame, kindOf, saveIndex },
+    _: { cancelAnim: () => B_cancelAnim?.(), TYPE_BUILD, SYNC, S, D, V, LY, flush, avoidOverlap, item, syncItem, renderAll, updateOverlay, toWorld, toScreen, center, emit, pushUndo, afterEdit, queueWork, startPreview, stopPreview, liveVideo, stopAllPreviews, playing, fileUrl, imgToJpeg, blobB64, applyView, writeView, animateTo, settle, renderHud, uid, newItem, key, KEYS, fmtTime, cropCss, lastOff, isMedia, fitFrame, kindOf, saveIndex },
   };
 })();

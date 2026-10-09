@@ -114,7 +114,7 @@
   }
   function matches(q) {
     const words = String(q || '').toLowerCase().split(/\s+/).filter(Boolean);
-    return B.items().filter((it) => it.type !== 'frame' && words.every((w) => haystack(it).includes(w)));
+    return B.items().filter((it) => it.type !== 'frame' && it.type !== 'link' && words.every((w) => haystack(it).includes(w)));
   }
   function applyFilter(list) {
     const keep = list ? new Set(list.map((i) => i.id)) : null;
@@ -209,6 +209,14 @@
     ctx.fillStyle = bg; ctx.fillRect(0, 0, c.width, c.height);
     const textColor = getComputedStyle(document.body).color || '#eee';
     for (const it of items) {
+      if (it.type === 'link') { // connectors: a line between the two items' edges
+        const e = B._.ends?.(it); if (!e) continue;
+        ctx.save(); ctx.strokeStyle = it.color || textColor; ctx.fillStyle = it.color || textColor; ctx.lineWidth = (it.width || 3) * s; if (it.dash) ctx.setLineDash([9 * s, 7 * s]);
+        const P = { x: (e.p.x - bx.x) * s, y: (e.p.y - bx.y) * s }; const Q = { x: (e.q.x - bx.x) * s, y: (e.q.y - bx.y) * s };
+        ctx.beginPath(); ctx.moveTo(P.x, P.y); ctx.lineTo(Q.x, Q.y); ctx.stroke(); ctx.setLineDash([]);
+        if ((it.heads ?? 1)) { const a = Math.atan2(Q.y - P.y, Q.x - P.x); const hd = 14 * s; ctx.beginPath(); ctx.moveTo(Q.x, Q.y); ctx.lineTo(Q.x - hd * Math.cos(a - 0.45), Q.y - hd * Math.sin(a - 0.45)); ctx.lineTo(Q.x - hd * Math.cos(a + 0.45), Q.y - hd * Math.sin(a + 0.45)); ctx.fill(); }
+        ctx.restore(); continue;
+      }
       ctx.save();
       ctx.translate((it.x - bx.x + it.w / 2) * s, (it.y - bx.y + it.h / 2) * s);
       if (it.rot) ctx.rotate((it.rot * Math.PI) / 180);
@@ -406,6 +414,7 @@
     const target = LY.fitView(stop.box, vr.width, vr.height, 40, 0.02, 32);
     const tr = D.find(D.TRANSITIONS, B.prefs().transition || 'fly') || D.TRANSITIONS[0];
     pres.cap.textContent = `${stop.title ? `${stop.title} · ` : ''}${i + 1} / ${pres.list.length}`;
+    B._.cancelAnim();
     const done = () => { S.view = target; B._.writeView(); for (const it of stop.items.filter((x) => x.type === 'video').slice(0, 2)) B._.startPreview(it.id); };
     const world = S.ui.world;
     const tf = (v) => `translate3d(${v.x}px, ${v.y}px, 0) scale(${v.z})`;

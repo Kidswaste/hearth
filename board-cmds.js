@@ -180,7 +180,7 @@ const BoardCmds = (() => {
     }
     if (tool === 'board_vibe') {
       const b = await boardArg(a, ctx);
-      const fo = D.find(D.FOCUS, a.focus || 'full') || D.FOCUS[0];
+      const fo = D.find(D.FOCUS, a.focus || b.focus || 'full') || D.FOCUS[0];
       if (a.item) {
         const it = b.items.find((i) => i.id === a.item) || b.items.find((i) => (i.title || '').toLowerCase().includes(String(a.item).toLowerCase()));
         if (!it) return { ok: false, error: `No item "${a.item}" on "${b.name}" (board_vibe { items: true } lists them).` };
@@ -188,7 +188,13 @@ const BoardCmds = (() => {
         if (a.image) { const im = await smallPreview(it).catch(() => null); if (im) out.image = im.data, out.mime = im.mime; }
         return out;
       }
-      const value = { vibe: BoardDrawer.vibeText({ board: b, focus: fo.id, rule: false }) };
+      if (a.frame) {
+        const fr = b.items.find((i) => i.type === 'frame' && (i.id === a.frame || (i.title || '').toLowerCase() === String(a.frame).toLowerCase()));
+        if (!fr) return { ok: false, error: `No frame "${a.frame}" (frames: ${b.items.filter((i) => i.type === 'frame').map((i) => i.title).join(', ') || 'none'}).` };
+        const inside = b.items.filter((i) => i.type !== 'frame' && i.type !== 'link' && i.x + i.w / 2 >= fr.x && i.x + i.w / 2 <= fr.x + fr.w && i.y + i.h / 2 >= fr.y && i.y + i.h / 2 <= fr.y + fr.h);
+        return { ok: true, value: { frame: fr.title, vibe: BoardDrawer.vibeText({ board: b, itemIds: inside.map((i) => i.id), focus: a.focus, rule: false }) } };
+      }
+      const value = { vibe: BoardDrawer.vibeText({ board: b, focus: a.focus, rule: false }) };
       if (a.items) { const list = b.items.filter((i) => i.type !== 'frame'); const q = String(a.query || '').toLowerCase(); value.items = (q ? list.filter((i) => JSON.stringify([i.title, i.tags, i.note, i.text, i.vibe?.moods]).toLowerCase().includes(q)) : list).slice(0, Math.min(60, a.limit || 40)).map(itemLine); }
       if (a.query && !a.items) { const q = String(a.query).toLowerCase(); value.matches = b.items.filter((i) => i.type !== 'frame' && JSON.stringify([i.title, i.tags, i.note, i.text, i.vibe?.moods]).toLowerCase().includes(q)).slice(0, 8).map((i) => V.text(i, fo.keys)); }
       return { ok: true, value };
@@ -196,7 +202,8 @@ const BoardCmds = (() => {
     if (tool === 'board_add') {
       const b = await boardArg(a, ctx);
       if (b !== B.current()) await B.open(b.id);
-      const at = B.visible() ? null : freeSpot(b);
+      const fr = a.frame && b.items.find((i) => i.type === 'frame' && (i.id === a.frame || (i.title || '').toLowerCase() === String(a.frame).toLowerCase()));
+      const at = fr ? { x: fr.x + 30 + Math.random() * Math.max(0, fr.w - 300), y: fr.y + 40 + Math.random() * Math.max(0, fr.h - 260) } : B.visible() ? null : freeSpot(b);
       const kind = a.kind || (a.url ? 'url' : a.colors ? 'colors' : a.path ? 'file' : 'note');
       let it;
       if (kind === 'url') it = await B.addUrl(a.url, at);
