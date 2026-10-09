@@ -923,6 +923,7 @@ const ThreeTweaks = (() => {
         ...(keyframes && it.key != null && (it.kind === 'number' || it.kind === 'color') ? [['◆ Keyframe at the playhead', '', () => { keyframes.toggle(it.key, values[i]); r.paintKey?.(); }]] : []),
         learn && it.key != null ? ['🎛 Map to a MIDI knob…', 'Then turn the knob or fader', () => learn(it.key, labelOf(it))] : null,
         [`Show line ${it.line} in the code`, '', () => goToLine(it.line)],
+        ...(typeof Declutter !== 'undefined' ? Declutter.popItems('Lab sliders') : []),
       ]);
     }
 

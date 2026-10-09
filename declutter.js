@@ -57,6 +57,8 @@ const Declutter = (() => {
     { id: 'tw-save-opts', area: 'Lab sliders', label: '▾ Save options (right-click Save)', sel: '[data-feature="Save options"]' },
     { id: 'tw-tip', area: 'Lab sliders', label: 'Ask for named sliders', sel: '.tweaks .tw-tip' },
     { id: 'tw-asks', area: 'Lab sliders', label: 'Ask the director', sel: '.tweaks .tw-asks' },
+    { id: 'tw-badge', area: 'Lab sliders', label: '⚡ / ↻ / ○ badges on slider rows (how the sketch reads them)', sel: '.tw-row .tw-badge', mode: 'hover', host: '.tw-row' },
+    { id: 'tw-sec-reset', area: 'Lab sliders', label: '↺ on group titles', sel: '.tw-sec-head .tw-sec-btn', mode: 'hover', host: '.tw-sec-head' },
     // Lab console
     { id: 'tc-mode', area: 'Lab console', label: 'When the console shows', sel: '.three-console-head .tc-mode' },
     { id: 'tc-errors', area: 'Lab console', label: 'Errors only', sel: '.three-console-head > label.check' },
@@ -184,6 +186,13 @@ const Declutter = (() => {
       { label: 'Keys and hidden buttons…', key: 'Ctrl+/', action: () => KeysUI.open() },
     ].filter(Boolean);
     return ['-', { label: 'Customise this…', items }];
+  }
+
+  // the same entry for the Lab's two-column menus (popMenu): ['Customise this…', '', [...]]
+  function popItems(area, target = null) {
+    const conv = (it) => (it === '-' || typeof it === 'string' ? null : it.items ? [it.label, it.hint || '', (typeof it.items === 'function' ? it.items() : it.items).map(conv).filter(Boolean)] : [it.label, it.hint || it.key || '', it.action, Boolean(it.checked)]);
+    const entry = customiseItems(area, target)[1];
+    return [['Customise this…', '', entry.items.map(conv).filter(Boolean)]];
   }
 
   // ---------- right-click menus ----------
@@ -427,6 +436,17 @@ const Declutter = (() => {
     { label: 'Everything in the picker', key: 'Shift+X', action: () => ThreeFX.openPicker('all') },
     { label: 'Hide / show layer n', key: 'Alt+1…9', action: () => toast('Alt+1…9 hides or shows a layer (Alt+Shift: solo). Right-click a layer for all of its options.', { timeout: 3200 }) },
   ]);
+  // one console line: copy it, go to its line, ask the director about it
+  ctx('.three-console .console-row, .three-console-wrap .console-row', 'Lab console', (row) => {
+    const text = row.querySelector(':scope > span:last-child')?.textContent || row.textContent;
+    const err = row.classList.contains('error') || row.classList.contains('warn');
+    return [
+      { label: 'Copy this line', action: () => copyText(text, 'Copied') },
+      row.querySelector('.console-line') ? { label: `Go to ${row.querySelector('.console-line').textContent} in the code`, action: () => row.querySelector('.console-line').click() } : null,
+      row.querySelector('.console-layer') ? { label: `Select the layer “${row.querySelector('.console-layer').textContent}”`, action: () => row.querySelector('.console-layer').click() } : null,
+      err ? { label: 'Ask the director about it', action: () => { const a = Tools.dockedAgent?.('three'); if (a) { Native.setDraft?.(a.id, `The Lab console says: ${text}\nFind the cause and fix it.`); Tools.openDock('three'); } else toast('Set up the Three Director first (/director-setup)', { type: 'error' }); } } : null,
+    ].filter(Boolean);
+  });
   ctx('.three-console-wrap', 'Lab console', (wrap) => [
     { label: 'Ask the director to fix it', action: clickIn(wrap, '.tc-fix') },
     { label: 'Copy everything', action: clickIn(wrap, 'button[title^="Copy everything"]') },
@@ -434,6 +454,13 @@ const Declutter = (() => {
     { label: 'Errors only', checked: Boolean(wrap.querySelector('.three-console-head > label.check input')?.checked), action: clickIn(wrap, '.three-console-head > label.check input') },
     { label: 'Shows', items: () => [['always', 'Always'], ['code', 'Only with the code'], ['never', 'Only when I open it']].map(([v, l]) => ({ label: l, checked: wrap.querySelector('.tc-mode')?.value === v, action: () => { const s = wrap.querySelector('.tc-mode'); s.value = v; s.dispatchEvent(new Event('change')); } })) },
     { label: 'Hide the console', key: '`', action: clickIn(wrap, '.three-console-head > button:last-of-type') },
+  ]);
+  // a row of the effects picker (X): add it, use it on the selected layer, ★, copy its name
+  ctx('.fx-picker .fx-row', 'Effects picker', (row) => [
+    { label: 'Add it', key: 'Enter', action: () => row.click() },
+    { label: 'Use it on the selected layer', key: 'Shift+Enter', action: () => row.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true })) },
+    { label: row.querySelector('.fx-star.on') ? '★ Unfavorite' : '★ Favorite', key: 'Ctrl+D', action: () => row.querySelector('.fx-star')?.click() },
+    { label: 'Copy its name', action: () => copyText(row.querySelector('.fx-name b')?.textContent || '', 'Copied') },
   ]);
   // the timeline's controls (the waveform, markers and tracks have their own menus)
   ctx('.media-bar', 'Lab timeline', (bar, e) => {
@@ -612,7 +639,7 @@ const Declutter = (() => {
   if (document.readyState !== 'loading') queueMicrotask(registerCommands);
 
   return {
-    REVEAL, ctx, customiseItems, pin, tuck, mine: () => mine.slice(), selectorFor, pinned: (id) => pins.has(id), find, paint, setOff, isOff: () => off, areas,
+    REVEAL, ctx, customiseItems, popItems, pin, tuck, mine: () => mine.slice(), selectorFor, pinned: (id) => pins.has(id), find, paint, setOff, isOff: () => off, areas,
     tucked: (area) => REVEAL.filter((r) => (!area || r.area === area) && !pins.has(r.id)),
     railItems, labToolbar,
   };

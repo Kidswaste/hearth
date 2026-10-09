@@ -1670,7 +1670,8 @@ const ThreeLab = (() => {
         ...[1, 0.75, 0.5, 0.25].map((o) => [`${Math.round(o * 100)}%`, '', () => editLayer(L.id, { opacity: o }), Math.abs((L.opacity ?? 1) - o) < 0.01]),
         'Blend',
         ...ThreeLayers.BLENDS.slice(0, 6).map(([v, label]) => [label, '', () => editLayer(L.id, { blend: v }), (L.blend || 'normal') === v]),
-        Ls.length > 1 ? ['Delete…', 'With Undo', () => removeLayer(L.id), false, 'Delete layer'] : null]);
+        Ls.length > 1 ? ['Delete…', 'With Undo', () => removeLayer(L.id), false, 'Delete layer'] : null,
+        ...(typeof Declutter !== 'undefined' ? Declutter.popItems('Lab layers') : [])]);
     });
     function renderLayers() {
       if (!current) return;

@@ -632,6 +632,7 @@ const Native = (() => {
         { label: 'Save to notes', action: () => Notes.append(m.text) },
         m.role !== 'user' ? { label: 'Show the Markdown source', action: () => toggleRaw(agentId, index) } : null,
       ] },
+      ...(typeof Declutter !== 'undefined' ? Declutter.customiseItems('Chat') : []), // round 7: pin / tuck what's under messages
     ].filter(Boolean);
     showMenu(r.left, r.bottom + 4, items);
   }
@@ -1472,6 +1473,7 @@ const Native = (() => {
       { label: 'Import a chat from a file…', action: () => Commands.exec('/import', agentId) },
       { label: 'Chat commands…', key: '/help', action: () => Commands.exec('/help', agentId) },
     ];
+    if (typeof Declutter !== 'undefined') items.push(...Declutter.customiseItems('Chat'));
     const r = e.currentTarget?.getBoundingClientRect?.() || { left: e.clientX, bottom: e.clientY - 4 };
     showMenu(r.left, r.bottom + 4, items);
   }

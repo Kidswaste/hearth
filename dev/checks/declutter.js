@@ -217,11 +217,17 @@ const sub = pop?.querySelector('.menu-item.has-sub');
 if (sub) { sub.click(); await wait(120); check('Lab menu submenu with ‹ back', pop.querySelector('.menu-back') != null, [...pop.querySelectorAll('.menu-item b')].map((b) => b.textContent)); }
 await shot('slider-menu');
 close();
+// the effects picker: right-click a row
+ThreeFX.openPicker('add'); await wait(800);
+const fxRow = [...document.querySelectorAll('.fx-picker .fx-row')].find(vis);
+if (fxRow) { ctxAt(fxRow, 40, 8); await wait(150); check('right-click an effect: add / use on the layer / ★', menuLabels().some((l) => /Use it on the selected layer/.test(l)), menuLabels()); close(); }
+ThreeFX.close(); await wait(150);
 // a layer: Opacity › / Blend ›
 const ly = [...L.querySelectorAll('.ly-row')].find(vis);
 ctxAt(ly, 60, 8); await wait(200);
 out.layerMenu = [...(document.querySelector('.mb-menu.lab-pop')?.querySelectorAll('.menu-item b') || [])].map((b) => b.textContent);
 check('right-click a layer: folded into Opacity › / Blend ›', out.layerMenu.includes('Opacity') && out.layerMenu.includes('Blend'), out.layerMenu);
+check('Lab menus end with Customise this…', out.layerMenu.at(-1) === 'Customise this…', out.layerMenu);
 close();
 // the preview picture (a real right-click inside the sandboxed iframe)
 const frame = [...L.querySelectorAll('.three-preview iframe')].find(vis);

@@ -706,21 +706,26 @@ function apply({ config, themeCss, error }) {
 const POP_FOLD_AT = 11;
 function popFold(list) {
   list = list.filter((it) => typeof it === 'string' || (Array.isArray(it) && it.length && it[0] !== ''));
-  if (list.filter(Array.isArray).length <= POP_FOLD_AT) return list;
+  // "Customise this…" (declutter.js) always closes the menu, outside any folded section
+  const tail = list.filter((it) => Array.isArray(it) && it[0] === 'Customise this…');
+  if (tail.length) list = list.filter((it) => !tail.includes(it));
+  if (list.filter(Array.isArray).length <= POP_FOLD_AT) return [...list, ...tail];
   const out = [];
+  const made = new Set(); // the sections folded here (a caller's own submenu stays a submenu)
   let sec = null;
   list.forEach((it, i) => {
     if (typeof it === 'string') {
       // the menu's title line and the first section stay open
       if (i === 0 || !out.some(Array.isArray)) { out.push(it); sec = null; return; }
       sec = [it, '', []];
+      made.add(sec);
       out.push(sec);
       return;
     }
     if (sec) sec[2].push(it); else out.push(it);
   });
   // a folded section of one item stays inline
-  return out.flatMap((x) => (Array.isArray(x) && Array.isArray(x[2]) && x[2].length <= 1 ? x[2] : [x]));
+  return [...out.flatMap((x) => (made.has(x) && x[2].length <= 1 ? x[2] : [x])), ...tail];
 }
 function popMenu(x, y, items, { width = 300 } = {}) {
   document.querySelector('.mb-menu.lab-pop')?.remove();
