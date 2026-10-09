@@ -32,6 +32,7 @@ line count is lower than the number of upgrades).
 | Brain (round 6): an app map both engines read on demand, a new layer per effect, node graphs by default, time first (music when asked), Claude ⇄ Astra take over each other's task in the same chat and scene (`/task`) | [brain.md](brain.md) | 63 |
 | Cut (round 6): clip track in Video Review (E): split S, delete / ripple delete, trim with beat snapping, reorder, speed, fades, freeze frames, title cards, auto-cut on bars / drops (as a suggestion), gapless playback, export as the next version / socials / GIF / stills; song trim and /send-clip in the Lab | [cut.md](cut.md) | 93 |
 | Live (round 6): director edits no longer blank the Lab (it was pushed behind the window during every call), only changed layers re-run, scene switches and jam rounds stay in the page, new / changed / removed layers fade in place, unavoidable reloads cross-fade from a picture, a "building…" pill | [live.md](live.md) | 26 |
+| Mood board (round 7): ▦ Board, references that give chats a vibe (never the footage), drawer over any chat (Ctrl+Shift+M), `/board-use`, `/ref`, `/vibe`, opt-in board tools for Claude / Astra | [board.md](board.md) | 1,309 |
 | **Total** | | **3,727** |
 
 ## Start here

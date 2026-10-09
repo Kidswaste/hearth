@@ -28,7 +28,7 @@ const BoardCmds = (() => {
   cmd({ name: 'board-rename', desc: 'Rename the current board', args: '<name>', run: async (args) => { await B.ready(); await B.rename(args); return `Renamed to **${B.current().name}**.`; } });
   cmd({ name: 'board-delete', desc: 'Delete the current board (Undo in the notification)', run: async () => { await B.ready(); const n = B.current().name; if (!await Modal.confirm('Delete this board?', `"${n}"`, { ok: 'Delete', danger: true })) return 'Kept.'; await B.remove(); return `Deleted **${n}**.`; } });
   cmd({ name: 'board-duplicate', desc: 'Copy the current board', run: async () => { await B.ready(); const b = await B.duplicate(); return `Copied as **${b.name}**.`; } });
-  cmd({ name: 'board-add', aliases: ['pin'], desc: 'Add a website, a picture / clip link or file path, colors or a note to the board (the chat\'s linked board)', args: '<url | path | #hex… | text>', examples: ['/board-add https://example.com', '/board-add #ff2e88 #0b0f1a', '/board-add warm grain, slow push-ins'],
+  cmd({ name: 'board-add', desc: 'Add a website, a picture / clip link or file path, colors or a note to the board (the chat\'s linked board)', args: '<url | path | #hex… | text>', examples: ['/board-add https://example.com', '/board-add #ff2e88 #0b0f1a', '/board-add warm grain, slow push-ins'],
     run: async (args, ctx) => {
       const t = args.trim(); if (!t) return 'Give a link, a file path, colors or text.';
       const b = await boardOf(ctx); if (b !== B.current()) await B.open(b.id);
@@ -129,7 +129,7 @@ const BoardCmds = (() => {
       await BoardDrawer.attach(ctx?.agentId, { boardId: b.id, focus: f.id, send: w.includes('send') });
       return w.includes('send') ? null : `Attached **${b.name}**'s vibe (${f.name.toLowerCase()}) to your message: add what you want and send.`;
     } });
-  cmd({ name: 'ref', aliases: ['refs'], desc: 'Attach the vibe of the references matching your words (or the selection) to your next message', args: '<words> [| focus]', examples: ['/ref neon', '/ref #hero | palette', '/ref'],
+  cmd({ name: 'ref', desc: 'Attach the vibe of the references matching your words (or the selection) to your next message', args: '<words> [| focus]', examples: ['/ref neon', '/ref #hero | palette', '/ref'],
     complete: (a) => (a.includes('|') ? opts(D.FOCUS.map((f) => ({ value: `${a.split('|')[0].trim()} | ${f.id}`, hint: f.name })), a.split('|')[1]) : opts((Board._.allTags?.() || []).map((t) => `#${t}`), a)),
     run: async (args, ctx) => {
       const [q, fq] = args.split('|').map((s) => s.trim()); const b = await boardOf(ctx); if (b !== B.current()) await B.open(b.id);
