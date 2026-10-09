@@ -687,10 +687,12 @@ const ThreeSeq = (() => {
     S.T = 0; send({ type: 'seq-seek', T: 0 });
     await sleep(500);
     const got = new Promise((resolve, reject) => { S.recWait = { resolve, reject }; setTimeout(() => reject(new Error('The recording never came back')), (dur + 30) * 1000); });
+    let failed = null;
+    got.catch((err) => { failed = err; }); // a refusal from the page ends the take early (awaited below)
     send({ type: 'record', cmd: 'start', fps: e.seq?.fps || 30, bitrate: 16e6 });
     send({ type: 'seq-play', on: true, rate: 1 });
     const t0 = performance.now();
-    while ((performance.now() - t0) / 1000 < dur + 0.2) { if (S.render?.cancel) break; onProgress?.(Math.min(0.99, (performance.now() - t0) / 1000 / dur)); await sleep(200); }
+    while ((performance.now() - t0) / 1000 < dur + 0.2) { if (S.render?.cancel || failed) break; onProgress?.(Math.min(0.99, (performance.now() - t0) / 1000 / dur)); await sleep(200); }
     send({ type: 'seq-play', on: false });
     send({ type: 'record', cmd: 'stop' });
     const msg = await got;

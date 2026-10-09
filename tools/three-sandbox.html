@@ -842,9 +842,11 @@ function partTick(t) {
 // ---------- recording ----------
 let recorder = null;
 function startRecording({ fps = 60, bitrate = 16e6, until = null } = {}) {
-  recUntil = lastRenderer ? until : null;
-  if (!lastRenderer) { post({ type: 'record-error', message: 'Nothing is rendering yet.' }); recUntil = null; return; }
-  const merged = needsComposite();
+  // a Lab sequence always records its merged program (its scenes may draw on 2D canvases, and change mid-take)
+  const seqRec = typeof SQ !== 'undefined' && SQ.on;
+  recUntil = lastRenderer || seqRec ? until : null;
+  if (!lastRenderer && !seqRec) { post({ type: 'record-error', message: 'Nothing is rendering yet.' }); recUntil = null; return; }
+  const merged = seqRec || needsComposite();
   const canvas = merged ? (compRec = composite(document.createElement('canvas'))) : lastRenderer.domElement;
   const stream = canvas.captureStream(fps);
   if (mediaEl || liveSrc) {
