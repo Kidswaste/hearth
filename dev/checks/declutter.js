@@ -45,6 +45,14 @@ check('Ctrl+/ opens the sheet', vis(document.querySelector('.keys-sheet')));
 document.querySelector('.keys-sheet').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await wait(250);
 check('Esc closes the sheet', !document.querySelector('.keys-sheet:not(.out)'));
 
+// right-click the keys button: the switches; the sheet's Customise… lists every area
+ctxAt(kb, 8, 8); await wait(150);
+check('right-click the keys button', menuLabels().some((l) => /Key badges/.test(l)) && menuLabels().some((l) => /^Customise/.test(l)), menuLabels());
+[...document.querySelectorAll('#menu > button')].find((b) => /^Customise/.test(b.textContent))?.click(); await wait(150);
+check('Customise lists every area', menuLabels().some((l) => /^Lab sliders/.test(l)) && menuLabels().some((l) => /^Chat/.test(l)), menuLabels());
+await shot('customise-areas');
+close();
+
 // ---------- Alt reveal ----------
 const add = document.getElementById('add-btn');
 check('＋ add agent tucked away', !vis(add));
@@ -87,7 +95,7 @@ document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: tr
 
 // ---------- right-click: a message, submenus, keys, flyout ----------
 const v = Native.view(claude.id);
-v.input.value = 'hello there'; v.form.requestSubmit();
+v.input.value = 'think hello there'; v.form.requestSubmit();
 await until(() => v.root.querySelector('.msg.assistant .msg-foot') && !Native.isBusy(Native.chatOf(claude.id)?.id), 15000); await wait(300);
 const reply = [...v.root.querySelectorAll('.msg.assistant')].at(-1);
 ctxAt(reply.querySelector('.body'), 40, 8); await wait(200);
@@ -106,6 +114,9 @@ key('keydown', 'ArrowDown'); key('keydown', 'ArrowDown'); await wait(60);
 check('↓ highlights rows', document.querySelectorAll('#menu > button.kb-on').length === 1, document.querySelector('#menu > button.kb-on')?.textContent);
 key('keydown', 'Escape'); await wait(80);
 check('Esc closes the menu', !menuOpen());
+// a thinking block
+const th = reply.querySelector('details.thinking');
+if (th) { ctxAt(th, 30, 6); await wait(150); check('right-click a thinking block', menuLabels().some((l) => /every thinking/.test(l)), menuLabels()); close(); }
 // the chat header
 ctxAt(v.root.querySelector('.native-head'), 200, 10); await wait(200);
 check('right-click the chat header: chat menu with submenus', menuLabels().some((l) => /^View/.test(l)) && menuLabels().some((l) => /^Organise/.test(l)), menuLabels());
@@ -167,6 +178,10 @@ out.ctrlHintsLab = [...document.querySelectorAll('.key-hint')].map((h) => h.text
 check('Ctrl badges in the Lab (F, Shift+2…, R, Ctrl+S)', out.ctrlHintsLab.includes('F') && out.ctrlHintsLab.some((h) => /⇧2|Shift\+2/.test(h)), out.ctrlHintsLab);
 await shot('lab-ctrl');
 key('keyup', 'Control'); await wait(60);
+const pick = [...L.querySelectorAll('.three-sketch-select')].find(vis);
+ctxAt(pick, 20, 8); await wait(150);
+check('right-click the sketch picker (its own Lab menu, filterable)', Boolean(document.querySelector('.mb-menu.lab-pop .menu-item')), document.querySelector('.mb-menu.lab-pop')?.textContent?.slice(0, 80));
+close();
 const tb = [...L.querySelectorAll('.tb-group')].find(vis);
 ctxAt(tb, 2, 2); await wait(150);
 check('right-click the Lab toolbar', menuLabels().some((l) => /^Sketch/.test(l)) && menuLabels().some((l) => /^Capture/.test(l)), menuLabels());
@@ -211,6 +226,17 @@ if (frame) {
   await shot('preview-menu');
   close();
 }
+
+// ---------- Video Review: rarer tools wait behind Alt ----------
+activate('tool:ae'); await wait(2000);
+const VR = H.surfaces.get('tool:ae').el;
+const scopes = VR.querySelector('.vr-tgroup .vr-ico[title^="Scopes"]');
+check('Video Review scopes tucked', scopes && !vis(scopes));
+key('keydown', 'Alt', { altKey: true }); await wait(260);
+check('Alt shows them in Video Review', vis(scopes));
+await shot('video-alt');
+key('keyup', 'Alt'); await wait(60);
+await shot('video-calm');
 
 // ---------- director dock ----------
 activate(claude.id); await wait(300);

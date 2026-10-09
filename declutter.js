@@ -63,6 +63,14 @@ const Declutter = (() => {
     // notes: the head keeps New, Preview, ⋯ and ×; the foot keeps Send to Claude (right-click the panel for the rest)
     { id: 'notes-pin', area: 'Notes', label: '📌 Pin the note', sel: '.notes-head .notes-pin' },
     { id: 'notes-foot', area: 'Notes', label: 'Copy / Save as file / Delete under a note', sel: '.notes-foot > button:is(:nth-of-type(1), :nth-of-type(3), :nth-of-type(4))' },
+    // Video Review (used lightly): rarer library filters and player tools wait behind Alt; each has a key too.
+    // (CSS only, matched by their titles: nothing in tools/review.js changes)
+    { id: 'vr-chips', area: 'Video Review', label: '4:5 / 1:1 / open notes / Lab filters', sel: '.vr-chips .vr-chip:is([title^="Portrait"], [title^="Square"], [title="Has open notes"], [title^="Recorded in the Three.js Lab"])' },
+    { id: 'vr-rescan', area: 'Video Review', label: '⟳ Rescan', sel: '.vr-lib-head .vr-ico[title="Rescan now"]' },
+    { id: 'vr-folders', area: 'Video Review', label: 'Folders… (also in ⋯)', sel: '.vr-lib-foot .vr-link' },
+    { id: 'vr-skip', area: 'Video Review', label: '⏮ ⏭ start / end (Home / End)', sel: '.vr-tgroup .vr-skip' },
+    { id: 'vr-fps', area: 'Video Review', label: 'fps readout', sel: '.vr-tgroup .vr-fps' },
+    { id: 'vr-tools', area: 'Video Review', label: '◐ view (V) · ◉ color picker (P) · ▤ scopes (Y) · ⧉ copy frame (Ctrl+C)', sel: '.vr-tgroup .vr-ico:is([title^="View:"], [title^="Color picker"], [title^="Scopes"], [title^="Copy frame"])' },
     // memory rows: the per-fact controls show on the row you point at
     { id: 'mem-row', area: 'Memory', label: 'Category, expiry and who-remembers per fact', sel: '.memory-row :is(.memory-cat, .memory-move, button[title^="Set an expiry"])', mode: 'hover', host: '.memory-row' },
   ].map((r) => ({ mode: 'alt', ...r }));
@@ -138,7 +146,7 @@ const Declutter = (() => {
   // text fields keep theirs.
   const CTX = [];
   function ctx(sel, area, build) { CTX.push({ sel, area, build }); }
-  const editable = (t) => t.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"], .code-editor, webview, iframe');
+  const editable = (t) => t.closest?.('input, textarea, [contenteditable=""], [contenteditable="true"], .code-editor, webview, iframe');
   function onContext(e) {
     if (e.defaultPrevented) return;
     const t = e.target;
@@ -189,6 +197,24 @@ const Declutter = (() => {
       pre.classList.contains('code-folded') ? { label: 'Show every line', action: clickIn(pre, '.code-unfold') } : null,
       { label: 'More…', items: () => [{ label: 'Copy as a quote', action: () => copyText(code.split('\n').map((l) => `> ${l}`).join('\n'), 'Copied as a quote') }, { label: 'The code’s own ⋯ menu', action: clickIn(pre, '.code-act[data-act="more"]') }] },
     ].filter(Boolean);
+  });
+  // a thinking block: open / close them all, copy it
+  ctx('.msg details.thinking', 'Chat', (d) => {
+    const agentId = agentOf(d);
+    return [
+      { label: d.open ? 'Close it' : 'Open it', action: () => { d.open = !d.open; } },
+      { label: 'Open / close every thinking block', key: 'Alt+T', action: () => Native.toggleThinking(agentId) },
+      { label: 'Copy the thinking', action: () => copyText([...d.childNodes].filter((n) => n.nodeName !== 'SUMMARY').map((n) => n.textContent).join('').trim(), 'Thinking copied') },
+    ];
+  });
+  // the ↓ button over a chat
+  ctx('.jump-bottom', 'Chat', (b) => {
+    const list = b.closest('.messages-wrap')?.querySelector('.messages') || b.parentElement?.querySelector('.messages');
+    return [
+      { label: 'Latest message', key: 'Alt+End', action: () => b.click() },
+      { label: 'First message', key: 'Alt+Home', action: () => { if (list) list.scrollTop = 0; } },
+      { label: 'My messages, one by one', key: 'Ctrl+↑', action: () => toast('Ctrl+↑ / Ctrl+↓ in the chat box jumps between your own messages', { timeout: 2600 }) },
+    ];
   });
   // links and pictures in messages
   ctx('.msg .body a[href]', 'Chat', (a) => [
