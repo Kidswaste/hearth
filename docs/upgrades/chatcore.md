@@ -141,7 +141,9 @@ a real capture_shot), counted like `dev/checks/declutter-count.js`:
 
 Streaming stays as smooth: the cards are added once per tool result (never per streamed piece), the context line only
 redraws when what it shows changes (compared before writing), and the new rules are plain selectors
-(`dev/checks/smooth-chat.js` before / after below).
+(`dev/checks/smooth-chat.js`, run back to back on a shared, loaded test machine, so read the
+numbers as "the same"): a streaming reply, before → after: DOM changes 61 → 63–67 a second, style 11 → 11–13 ms,
+layout 46 → 28–36 ms, paint area 72 → 72–73 Mpx; wheel scrolling and switching chats within the run-to-run noise.
 
 ## For development (not counted)
 - `Native.hooks.finish(event, chat, extras)` (add fields to the reply about to be saved) and `Native.hooks.compose(agentId,
@@ -156,3 +158,14 @@ redraws when what it shows changes (compared before writing), and the new rules 
   `dev/checks/chatcore-count.js` (the table above). `dev/run-checks.sh chat` runs the first two.
 - `dev/checks/chat-look.js` waits up to 40 s for its "long" reply (it streams ≈ 15.2 s on the test machine, so the old
   15 s wait failed before this stream too).
+
+## Tested
+- `sh dev/run-checks.sh chat qa board capture smooth-chat journey-chat intro`: 29 / 31 passed. chatcore, chatcore-lab,
+  chatcore-count, every chat check, cmdbar, clutter, declutter, declutter-count, qa-commands (no duplicate commands),
+  qa-mac, polish, every board check, capture-extras / frames / lab / more / shots, smooth-chat, journey-chat and intro (the
+  whole video-project flow) pass. The two failures belong to the loaded test machine (load ≈ 15 on 4 CPUs, other
+  streams' checks running): capture-record ("Timeout starting video source", as noted in intro.md) and qa-keys (a
+  different board / Lab key each run timed out; it passed in the first run).
+- Screenshots looked at: the cards under a reply (a capture, a video card scrubbed to frame 76), the ＋ menu, the short
+  "/" view, the context line while typing, the Three Director's dock with scene / frame / sequence / board cards and the
+  Lab-first "/" view.
