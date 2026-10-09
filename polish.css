@@ -704,3 +704,6 @@ html[data-skin~="forge"] :is(#rail, #broadcast, .msg.assistant.streaming, .palet
 html[data-skin~="forge"] .composer-box:focus-within::after,
 html[data-skin~="swirl"] :is(#rail, .agent-btn.active, .item.active, .primary, #broadcast button, .msg.assistant.streaming)::before,
 :root[data-look~=v2] .meter-strip.is-live::before { animation: none !important; }
+/* the chat list is sized by its flex parent, never by its messages: contained, a streaming reply lays out only the
+   list, not the window around it (the docked director chat sits beside the playing Lab) */
+.messages-wrap > .messages { contain: strict; }
