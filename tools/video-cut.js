@@ -507,11 +507,12 @@ const VideoCut = (() => {
     const out = [{ kind: 'ruler', y: 0, h: RULER }];
     if (!e) return out;
     let y = RULER + 2;
-    const push = (kind, track, h) => { out.push({ kind, track, y, h }); y += h + 2; };
+    const push = (kind, track, h) => { const hh = kind === 'main' ? h : Math.round(h * (st.laneK || 1)); out.push({ kind, track, y, h: hh }); y += hh + 2; };
     for (const k of C.tracksOf(e, 'text').slice().reverse()) push('text', k, LANE_H.text);
     for (const k of C.tracksOf(e, 'video').slice().reverse()) push('video', k, LANE_H.video);
     const solo = !(e.tracks || []).length;
-    push('main', null, solo ? Math.max(LANE_H.main, (refs.sizes?.h || 66) - y - 2) : LANE_H.main);
+    const K = st.laneK || 1;
+    push('main', null, solo ? Math.max(LANE_H.main * K, (refs.sizes?.h || 66) - y - 2) : LANE_H.main * K);
     for (const k of C.tracksOf(e, 'audio')) push('audio', k, LANE_H.audio);
     out.height = y;
     return out;
@@ -520,7 +521,7 @@ const VideoCut = (() => {
   function fitTrackHeight() {
     if (!refs.track || !st.edit) return;
     const n = (st.edit.tracks || []).length;
-    const want = n ? `${Math.min(320, lanes().height + 2)}px` : '';
+    const want = n || (st.laneK || 1) !== 1 ? `${Math.min(420, Math.max(66 * (st.laneK || 1), lanes().height + 2))}px` : '';
     if (refs.track.style.height !== want) { refs.track.style.height = want; measure(); }
   }
   const laneOf = (y) => lanes().find((l) => y >= l.y && y < l.y + l.h + 2) || null;
@@ -1101,6 +1102,8 @@ const VideoCut = (() => {
         c.kind === 'gap' && st.edit.clips[i + 1]?.kind === 'video' ? { label: 'Fit to fill (the next clip takes this gap)', action: () => fitToFill(c.id) } : null,
         { label: 'In–out = the selection', action: rangeFromSelection },
         c.src ? { label: 'Match frame (open the source on this frame)', action: matchFrame } : null,
+        !isItem && c.kind === 'video' ? { label: 'Hold the first frame (1 s before)', action: () => holdFrame('first', 1, c.id) } : null,
+        !isItem && c.kind === 'video' ? { label: 'Hold the last frame (1 s after)', action: () => holdFrame('last', 1, c.id) } : null,
       ].filter(Boolean) },
       { label: 'Inspector', action: () => inspect(c.id) },
       c.src ? { more: true, label: 'Open the source in Review', action: () => { leave(); R().open(c.src); } } : null,
@@ -1116,10 +1119,13 @@ const VideoCut = (() => {
       { label: `${k.mute ? 'Unmute' : 'Mute'} ${k.name}`, action: () => commit(C.patchTrack(st.edit, k.id, { mute: !k.mute }), `${k.name} ${k.mute ? 'on' : 'muted'}`) },
       { label: `${k.lock ? 'Unlock' : 'Lock'} ${k.name}`, action: () => commit(C.patchTrack(st.edit, k.id, { lock: !k.lock }), `${k.name} ${k.lock ? 'unlocked' : 'locked'}`) },
       { label: 'Rename…', action: async () => { const v = await Modal.prompt('Track name', { value: k.name }); if (v?.trim()) commit(C.patchTrack(st.edit, k.id, { name: v.trim().slice(0, 24) }), 'Renamed'); } },
+      k.type === 'text' && k.items.length ? { label: 'Every title on it: style', items: () => grouped(FX.TITLE_STYLES, (id) => restyleTrack(k.id, { style: id }), null) } : null,
+      k.type === 'text' && k.items.length ? { label: 'Every title on it: animation', items: () => FX.TITLE_ANIMS.map((a) => ({ label: a.name, action: () => restyleTrack(k.id, { anim: a.id }) })) } : null,
+      k.items.length ? { label: 'Shift it', items: [-10, -1, 1, 10].map((f) => ({ label: `${f > 0 ? '+' : ''}${f} frame${Math.abs(f) > 1 ? 's' : ''}`, action: () => shiftTrack(k.id, f) })) } : null,
       { label: 'Add here', items: addItems(T, k) },
       add,
       { label: `Delete ${k.name}${k.items.length ? ` and its ${k.items.length} item${k.items.length === 1 ? '' : 's'}` : ''}`, danger: true, action: () => commit(C.removeTrack(st.edit, k.id), `${k.name} deleted`) },
-    ]);
+    ].filter(Boolean));
   }
   function markerMenu(m, x, y) {
     showMenu(x, y, [
@@ -1534,6 +1540,90 @@ const VideoCut = (() => {
     commit(C.patchAny(st.edit, list, (c) => { c.color = { ...color, matched: base(imagePath) }; }), `Look matched to ${base(imagePath)}`);
     return color;
   }
+  // ---------- edit housekeeping ----------
+  // Snapshots: named copies of the edit to try another idea and come back (kv video-edit-snapshots)
+  async function snapshot(name = '') {
+    const all = (await window.hub.kvGet('video-edit-snapshots', {})) || {};
+    const list = all[st.path] || [];
+    list.unshift({ name: name || `Snapshot ${list.length + 1}`, at: Date.now(), edit: C.copy(st.edit) });
+    all[st.path] = list.slice(0, 30);
+    await window.hub.kvSet('video-edit-snapshots', all);
+    host.flash(`Saved “${list[0].name}”`);
+    return list[0].name;
+  }
+  let snapCache = [];
+  async function snapshots() { const all = (await window.hub.kvGet('video-edit-snapshots', {})) || {}; snapCache = all[st.path] || []; return snapCache; }
+  async function restoreSnapshot(which) {
+    const list = await snapshots();
+    const s0 = typeof which === 'number' ? list[which] : list.find((x) => x.name.toLowerCase() === String(which).toLowerCase()) || list.find((x) => x.name.toLowerCase().includes(String(which).toLowerCase()));
+    if (!s0) return null;
+    commit(C.normalize(s0.edit), `Back to “${s0.name}”`);
+    return s0.name;
+  }
+  // The edit as an EDL (CMX 3600) next to the video, for other editors
+  async function exportEdl() {
+    const file = join(homeDir(), 'exports', `${stemOf()}.edl`);
+    await window.hub.fs.write(file, C.toEdl(st.edit, { fps: progFps(), title: stemOf().toUpperCase() }));
+    toast(`Saved ${base(file)}`, { action: { label: IS_MAC ? 'Show in Finder' : 'Show in folder', fn: () => window.hub.fs.reveal(file) }, timeout: 7000 });
+    return file;
+  }
+  // Sequences: duplicate / rename / delete the one you're in
+  async function duplicateSequence(name = null) {
+    const nm = name || `${isSeq() ? st.path.slice(4) : stemOf()} copy`;
+    let key = `seq:${nm}`; for (let i = 2; cuts[key]; i += 1) key = `seq:${nm} ${i}`;
+    const { lastItem: _l, ...keep } = C.copy(st.edit);
+    if (!keep.seq) { const f = frameSize(); keep.seq = { w: f.W, h: f.H, fps: f.F }; }
+    cuts[key] = keep; saveCuts();
+    leave(); st.edit = null;
+    await enter({ path: key });
+    return key;
+  }
+  function renameSequence(name) {
+    if (!isSeq() || !name) return null;
+    const key = `seq:${name}`;
+    if (cuts[key]) return null;
+    cuts[key] = cuts[st.path]; delete cuts[st.path]; saveCuts();
+    st.path = key; refs.title.textContent = `✂ ${name}`;
+    return key;
+  }
+  // Lane height: compact / normal / tall (remembered)
+  function laneSize(k) { st.laneK = { compact: 0.75, normal: 1, tall: 1.5 }[k] || 1; pref.set('cut.lanes', st.laneK); fitTrackHeight(); draw(); placeHead(); return st.laneK; }
+  // the view centers on the playhead (zoomed in)
+  function centerView() { if (!st.view) return false; const len = st.view.t1 - st.view.t0; setView(P.T - len / 2, P.T + len / 2); return true; }
+  function markersAtCuts() { let n = st.edit; for (const t of C.cuts(st.edit)) n = C.addMarker(n, t, 'cut'); return commit(n, 'A marker on every cut'); }
+  function clearMarkers() { const n = C.copy(st.edit); n.markers = []; return commit(n, 'Markers removed'); }
+  // Hold the first / last frame of a clip for N seconds (a freeze right before / after it)
+  function holdFrame(edge = 'last', dur = 1, id = null) {
+    const cid = id || targetIds()[0]; const i = st.edit.clips.findIndex((c) => c.id === cid); const c = st.edit.clips[i];
+    if (!c || c.kind !== 'video') return false;
+    const L = C.layout(st.edit)[i];
+    const fps = fpsOf(c.src);
+    const at = edge === 'last' ? (c.reverse ? c.in : c.out - 1 / fps) : (c.reverse ? c.out - 1 / fps : c.in);
+    return commit(C.insertAt(st.edit, edge === 'last' ? L.end : L.start, { kind: 'freeze', src: c.src, at: Number(at.toFixed(4)), dur, mute: true }), `Holds the ${edge} frame ${dur} s`);
+  }
+  // Every title of a text track takes a style / animation (captions restyled in one go)
+  function restyleTrack(trackId, { style = null, anim = null } = {}) {
+    const k = (st.edit.tracks || []).find((x) => x.id === trackId); if (!k) return false;
+    return commit(C.patchAny(st.edit, k.items.map((x) => x.id), (x) => { if (style) { x.style = style; delete x.lower; } if (anim) x.anim = anim; }), style ? `Track restyled: ${FX.TSTYLE[style]?.name}` : `Track animated: ${FX.TANIM[anim]?.name}`);
+  }
+  // Shift a whole track by N frames (sync music / captions)
+  function shiftTrack(trackId, frames) {
+    const k = (st.edit.tracks || []).find((x) => x.id === trackId); if (!k) return false;
+    const d = frames / progFps();
+    return commit(C.patchAny(st.edit, k.items.map((x) => x.id), (x) => { x.start = Number(Math.max(0, x.start + d).toFixed(4)); }), `${k.name} ${frames > 0 ? '+' : ''}${frames} frames`);
+  }
+  // Every clip with sound gets the social loudness (−14 LUFS)
+  function normalizeAll() {
+    const ids = [...st.edit.clips.filter((c) => c.kind === 'video').map((c) => c.id), ...(st.edit.tracks || []).flatMap((k) => k.items.filter((x) => /video|audio/.test(x.kind)).map((x) => x.id))];
+    return commit(C.patchAny(st.edit, ids, (c) => { const a = (c.afx || []).filter((x) => x !== 'loud'); a.push('loud'); c.afx = a; }), 'Every sound at −14 LUFS (in the render)');
+  }
+  // Solo: only the selected clips keep their sound (again: everyone back)
+  function soloSound(ids = null) {
+    const keep = new Set(ids || targetAny());
+    const all = [...st.edit.clips, ...(st.edit.tracks || []).flatMap((k) => k.items)].filter((c) => /video|audio/.test(c.kind));
+    const soloed = all.some((c) => c.soloMuted);
+    return commit(C.patchAny(st.edit, all.map((c) => c.id), (c) => { if (soloed) { if (c.soloMuted) { delete c.soloMuted; c.mute = false; } } else if (!keep.has(c.id) && !c.mute) { c.mute = true; c.soloMuted = true; } }), soloed ? 'Every sound back' : 'Solo: only the selection is heard');
+  }
   function rampClip(rampId, id = null) {
     const r = FX.RAMP[rampId] || FX.find(FX.RAMPS, rampId);
     const cid = id || targetIds()[0];
@@ -1860,6 +1950,7 @@ const VideoCut = (() => {
   // ---------- menus ----------
   function moreMenu(anchor) {
     const r = anchor.getBoundingClientRect();
+    snapshots().catch(() => {}); // refresh the cache; the submenu reads it when hovered
     showMenu(Math.max(8, r.right - 300), r.bottom + 4, [
       { label: '✂ Auto-cut on the music', items: Object.entries(SUGGEST_LABEL).map(([k, l]) => ({ label: `Cut ${l}`, action: () => suggest(k) })) },
       { label: 'Transitions on every cut', items: () => [...grouped(FX.TRANSITIONS.filter((t) => t.id !== 'cut'), (id) => commit(C.transAll(st.edit, id, FX.TRANS[id].d), `${FX.TRANS[id].name} on every cut`), null), { label: 'Remove them all', action: () => commit(C.transAll(st.edit, null, 0), 'Straight cuts') }] },
@@ -1882,7 +1973,19 @@ const VideoCut = (() => {
         { label: 'Split every track here (Shift+S)', action: () => splitAllHere() }, { label: 'Select everything', action: selectAll },
         { label: 'Zoom to fit (\\)', action: zoomFit }, { label: 'Frame-check the playhead', action: async () => { const r0 = await frameInfo(); host.flash(`${r0.timecode} · f${r0.frame}${r0.layers.map((x) => ` · ${base(x.src)} f${x.got}${x.got === x.want ? ' ✓' : ` (want ${x.want})`}`).join('')}`); } },
         { label: 'Nest the selection (compound clip)', action: () => nestSelection() },
-      ] },
+        { label: 'Lane height', items: [['compact', 'Compact'], ['normal', 'Normal'], ['tall', 'Tall']].map(([k0, l]) => ({ label: `${(st.laneK || 1) === { compact: 0.75, normal: 1, tall: 1.5 }[k0] ? '✓ ' : ''}${l}`, action: () => laneSize(k0) })) },
+        st.view ? { label: 'Center on the playhead', action: centerView } : null,
+        { label: 'A marker on every cut', action: markersAtCuts },
+        st.edit.markers.length ? { label: 'Remove every marker', action: clearMarkers } : null,
+        { label: 'Every sound at social loudness (−14 LUFS)', action: normalizeAll },
+        { label: 'Solo the selection\'s sound (again: all back)', action: () => soloSound() },
+      ].filter(Boolean) },
+      { label: 'Snapshots', items: () => [{ label: 'Save a snapshot of this edit…', action: async () => { const v = await Modal.prompt('Snapshot name', { value: '' }); if (v != null) snapshot(v.trim()); } }, ...snapCache.map((s0, i) => ({ label: `Back to “${s0.name}” (${new Date(s0.at).toLocaleTimeString()})`, action: () => restoreSnapshot(i) }))] },
+      { label: 'Sequence', items: () => [
+        { label: 'Duplicate this edit as a new sequence', action: () => duplicateSequence() },
+        isSeq() ? { label: 'Rename the sequence…', action: async () => { const v = await Modal.prompt('Sequence name', { value: st.path.slice(4) }); if (v?.trim()) renameSequence(v.trim()); } } : null,
+        { label: 'Save as an EDL (for other editors)', action: () => exportEdl() },
+      ].filter(Boolean) },
       { label: 'Undo', action: undo }, { label: 'Redo', action: redo },
       { more: true, label: 'Copy the edit list', action: () => copyText(C.describeAll(st.edit, { tc: fmtProg }).join('\n'), 'Edit list copied') },
       { more: true, label: 'Back to the whole video', danger: true, action: reset },
@@ -2121,6 +2224,7 @@ const VideoCut = (() => {
     host = h;
     const r = h.refs;
     st.snap = pref.get('cut.snap', true);
+    st.laneK = pref.get('cut.lanes', 1);
     // program monitor: inside the frame, under the overlays
     refs.pa = el('video', { class: 'vr-p', playsInline: true, preload: 'auto' });
     refs.pb = el('video', { class: 'vr-p', playsInline: true, preload: 'auto' });
@@ -2256,7 +2360,7 @@ const VideoCut = (() => {
     play: startPlay, pause, togglePlay: () => (P.playing ? pause() : startPlay()), seek: (t) => seek(t, { play: P.playing }), step, shuttle, goto: (t) => seek(frameMid(t), { play: false }), goFrame, frameInfo, frameSize, fmt: fmtProg,
     split, splitAll: splitAllHere, del, closeGaps, setSpeed, nudgeSpeed, freezeHere, addTitle, marker, setMark, suggest, acceptSuggestion, reset, addClip, undo, redo, help, exportCut, exportAll, jumpCut, jumpBeat, jumpMarker, jumpKey,
     setTransition, setLook, adjust, setEffect, setAudioFx, applyMotion, keyHere, rampClip, addOverlay, addImage, addAudio, addTitleItem, addColor, insertClip, overwriteClip, fillSlot, liftRange, toggleSnap, toggleRazor, setFormat, applyTemplate,
-    nestSelection, unnest, toOverlay, toMain, fillFrame, resetTransform, clipDuration, importCaptions, exportCaptions, matchLook, fitToFill, extendEdit, swapNext, shuffleClips, matchFrame, setLabel, renameClip, toggleOff, rangeFromSelection, beatMarkers, copyKeys, pasteKeys, safeCheck, posterFrame, renderEdit, recordEdit, newSequence, sequences, deleteSequence, inspect, closeInspector, zoomBy, zoomFit, setView, nudge, slipSel, copySel, paste, selectAll,
+    nestSelection, unnest, toOverlay, toMain, fillFrame, resetTransform, clipDuration, snapshot, snapshots, restoreSnapshot, exportEdl, duplicateSequence, renameSequence, laneSize, centerView, markersAtCuts, clearMarkers, holdFrame, restyleTrack, shiftTrack, normalizeAll, soloSound, importCaptions, exportCaptions, matchLook, fitToFill, extendEdit, swapNext, shuffleClips, matchFrame, setLabel, renameClip, toggleOff, rangeFromSelection, beatMarkers, copyKeys, pasteKeys, safeCheck, posterFrame, renderEdit, recordEdit, newSequence, sequences, deleteSequence, inspect, closeInspector, zoomBy, zoomFit, setView, nudge, slipSel, copySel, paste, selectAll,
     selectIds: (ids) => { st.sel = new Set(ids.filter((id) => C.find(st.edit, id))); paintHead(); draw(); return selIds(); },
     select(i) { const c = st.edit?.clips[i]; if (!c) return null; st.sel = new Set([c.id]); paintHead(); draw(); const x = C.layout(st.edit)[i]; seek(x.start, { play: false }); return c; },
     commit, mute: (on) => { const ids = targetAny(); if (!ids.length) return null; commit(C.patchAny(st.edit, ids, (c) => { c.mute = on ?? !c.mute; }), 'Sound toggled'); return C.find(st.edit, ids[0])?.clip.mute; },

@@ -653,6 +653,25 @@ const CutData = (() => {
     return items.map((x, i) => `${i + 1}\n${t(x.start)} --> ${t(itemEnd(x))}\n${x.text}\n`).join('\n');
   }
 
+  // ---------- EDL (CMX 3600, for other editors) ----------
+  function toEdl(e, { fps = 30, title = 'HEARTH EDIT' } = {}) {
+    const F = Math.round(fps);
+    const tc = (s) => { const f = Math.round(s * fps); const two = (n) => String(n).padStart(2, '0'); return `${two(Math.floor(f / (F * 3600)))}:${two(Math.floor(f / (F * 60)) % 60)}:${two(Math.floor(f / F) % 60)}:${two(f % F)}`; };
+    const lines = [`TITLE: ${title}`, 'FCM: NON-DROP FRAME', ''];
+    let n = 0;
+    for (const x of layout(e)) {
+      const c = x.clip;
+      if (c.kind !== 'video') continue;
+      n += 1;
+      const reel = base(c.src).replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9]/g, '').slice(0, 8).toUpperCase() || 'AX';
+      const dis = x.td ? `D    ${String(Math.round(x.td * fps)).padStart(3, '0')}` : 'C        ';
+      lines.push(`${String(n).padStart(3, '0')}  ${reel.padEnd(8)} V     ${dis} ${tc(c.in)} ${tc(c.out)} ${tc(x.start)} ${tc(x.end)}`);
+      lines.push(`* FROM CLIP NAME: ${base(c.src)}`);
+      if (c.speed && c.speed !== 1) lines.push(`M2   ${reel.padEnd(8)}       ${(fps * c.speed).toFixed(1).padStart(5)}                ${tc(c.in)}`);
+    }
+    return `${lines.join('\n')}\n`;
+  }
+
   // ---------- describing (tracks) ----------
   function describeAll(e, { tc = fmt } = {}) {
     const lines = describe(e, { tc });
@@ -675,7 +694,7 @@ const CutData = (() => {
   return {
     SPEEDS, MIN, uid, copy, fromSource, empty, normalize, videoClip, durOf, layout, total, at, programTimes, cuts, programBeats, snap,
     mainTotal, transDur, srcAt, TRACK_TYPES, itemDur, itemEnd, tracksOf, addTrack, removeTrack, patchTrack, trackFor, addItem, find, patchAny, removeItems, moveItem, trimItem, splitItems, splitAll,
-    parseCaptions, toSrt, roll, slip, slide, overwrite, lift, extract, fillGap, setTrans, transAll, KEY_PROPS, KEY_DEF, setKey, removeKey, splitKeys, keyAt, propAt, ramp, setReverse, patchMarker, setSeq, isRich, stackAt, frameOf, frameTime, describeAll,
+    parseCaptions, toSrt, toEdl, roll, slip, slide, overwrite, lift, extract, fillGap, setTrans, transAll, KEY_PROPS, KEY_DEF, setKey, removeKey, splitKeys, keyAt, propAt, ramp, setReverse, patchMarker, setSeq, isRich, stackAt, frameOf, frameTime, describeAll,
     split, splitMany, remove, removeRange, slice, trim, trimTo, move, duplicate, setSpeed, setMute, setFade, nearestSpeed, insertAt, freeze, title, append,
     addMarker, removeMarker, isIdentity, suggest, describe, sources, atempo, ffmpegArgs, fmt,
   };

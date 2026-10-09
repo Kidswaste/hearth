@@ -303,6 +303,46 @@ const CutEditCmds = (() => {
     complete: (a) => opts(Object.keys(PRESET_KINDS).map((k) => `${k}s`), a),
     run: async (args) => { const [k0, ...q] = words(args); const k = String(k0 || '').replace(/s$/, ''); const list = PRESET_KINDS[k]; if (!list) return `Kinds: ${Object.keys(PRESET_KINDS).map((x) => `${x}s`).join(', ')}.`; const s = q.join(' ').toLowerCase(); const hits = list.filter((x) => !s || x.id.includes(s) || x.name.toLowerCase().includes(s)); return `${hits.length} ${k}${hits.length === 1 ? '' : 's'}:\n${hits.map((x) => `\`${x.id}\` ${x.name}${x.group ? ` · ${x.group}` : ''}`).join('\n')}`; } });
 
+  // ---------- housekeeping: snapshots, EDL, sequences, lanes, markers, holds, track-wide changes ----------
+  const trackNamed = (n) => { const k = (VideoCut.edit.tracks || []).find((x) => x.name.toLowerCase() === String(n || '').toLowerCase()); if (!k) throw new Error(`No track ${n || ''} (/edit-list shows them).`); return k; };
+  cmd({ name: 'edit-snapshot', aliases: ['edit-snapshots'], desc: 'Snapshots of the edit: save [name], list, or back <name|number> (try an idea, come back)', args: '[save <name>|list|back <name>]',
+    complete: (a) => opts(['save', 'list', 'back'], a), examples: ['/edit-snapshot save calm version', '/edit-snapshot back calm'],
+    run: async (args) => {
+      await editing(); const [act = 'list', ...rest] = words(args); const q = rest.join(' ');
+      if (act === 'save') return `Saved “${await VideoCut.snapshot(q)}”.`;
+      if (act === 'back') { const list = await VideoCut.snapshots(); const n = /^\d+$/.test(q) ? Number(q) - 1 : q; const nm = await VideoCut.restoreSnapshot(n); return nm ? `Back to “${nm}” (undo returns).` : `No snapshot “${q}” (${list.length} saved).`; }
+      const list = await VideoCut.snapshots();
+      return list.length ? list.map((s0, i) => `${i + 1}. ${s0.name} · ${new Date(s0.at).toLocaleString()}`).join('\n') : 'No snapshots yet: /edit-snapshot save <name>.';
+    } });
+  cmd({ name: 'edit-edl', desc: 'Save the edit as an EDL (CMX 3600) in exports/, for other editors', run: async () => { await editing(); return `Saved ${base(await VideoCut.exportEdl())}.`; } });
+  cmd({ name: 'sequence-duplicate', desc: 'Copy the open edit into a new sequence and open it', args: '[name]', run: async (args) => { await editing(); const k = await VideoCut.duplicateSequence(String(args || '').trim() || null); return `Opened ${k.slice(4)}.`; } });
+  cmd({ name: 'sequence-rename', desc: 'Rename the sequence you are in', args: '<name>', run: async (args) => { await editing(); const n = String(args || '').trim(); if (!n) return 'Give the new name.'; return VideoCut.renameSequence(n) ? `Renamed to ${n}.` : 'Only a sequence can be renamed, and the name must be free.'; } });
+  cmd({ name: 'lane-height', desc: 'Timeline lane height: compact, normal or tall (remembered)', args: '<compact|normal|tall>', complete: (a) => opts(['compact', 'normal', 'tall'], a),
+    run: async (args) => { await editing(); const k = words(args)[0] || 'normal'; VideoCut.laneSize(k); return `Lanes: ${k}.`; } });
+  cmd({ name: 'markers-at-cuts', desc: 'A marker on every cut of the main track', run: async () => { await editing(); VideoCut.markersAtCuts(); return `${VideoCut.edit.markers.length} markers.`; } });
+  cmd({ name: 'markers-clear', desc: 'Remove every marker (undoable)', run: async () => { await editing(); VideoCut.clearMarkers(); return 'Markers removed (undo brings them back).'; } });
+  cmd({ name: 'hold-frame', desc: 'Hold the first or last frame of a clip for N seconds (a freeze before / after it)', args: '[first|last] [seconds] [clip]', examples: ['/hold-frame last 1.5', '/hold-frame first 0.5 2'],
+    run: async (args) => {
+      await editing(); const w = words(args); const edge = w.includes('first') ? 'first' : 'last';
+      const nums = w.filter((x) => /^\d*\.?\d+s?$/.test(x)); const secs = nums.length ? parseFloat(nums[0]) : 1; // first number = seconds, a second = the clip
+      const t = [...nums.slice(1), ...w.filter((x) => /^[VTA]\d+\.\d+$/i.test(x))]; const ids = targets(t.length ? [t.at(-1)] : []);
+      return VideoCut.holdFrame(edge, secs, ids[0]) ? `Holds the ${edge} frame ${secs} s.` : 'That works on a video clip of the main track.';
+    } });
+  cmd({ name: 'track-style', desc: 'Every title on a text track takes a style and/or animation (captions in one go)', args: '<T1> [style] [anim]',
+    complete: (a) => { const w = words(a); if (w.length <= 1) return opts((VideoCut.edit?.tracks || []).filter((k) => k.type === 'text').map((k) => k.name), a); return opts([...ids(FX.TITLE_STYLES), ...ids(FX.TITLE_ANIMS)], a); },
+    run: async (args) => {
+      await editing(); const [n, ...rest] = words(args); const k = trackNamed(n);
+      let style = null; let anim = null;
+      for (const q of rest) { if (!style && FX.TSTYLE[q]) style = q; else if (!anim && FX.TANIM[q]) anim = q; else { const s1 = FX.find(FX.TITLE_STYLES, q); const a1 = FX.find(FX.TITLE_ANIMS, q); if (!style && s1) style = s1.id; else if (!anim && a1) anim = a1.id; } }
+      if (!style && !anim) return 'Name a title style or animation (/edit-presets titles, /edit-presets anims).';
+      if (style) VideoCut.restyleTrack(k.id, { style }); if (anim) VideoCut.restyleTrack(k.id, { anim });
+      return `${k.name}: ${[style && FX.TSTYLE[style].name, anim && FX.TANIM[anim].name].filter(Boolean).join(' + ')}.`;
+    } });
+  cmd({ name: 'track-shift', desc: 'Shift a whole track by N frames (sync music or captions)', args: '<V2|T1|A1> <±frames>', examples: ['/track-shift A1 -3'],
+    run: async (args) => { await editing(); const [n, f] = words(args); const k = trackNamed(n); const fr = parseInt(f, 10); if (!fr) return 'Give the frames, e.g. -3 or 12.'; VideoCut.shiftTrack(k.id, fr); return `${k.name} ${fr > 0 ? '+' : ''}${fr} frames.`; } });
+  cmd({ name: 'normalize-all', desc: 'Every sound at the social loudness (−14 LUFS) in the render', run: async () => { await editing(); VideoCut.normalizeAll(); return 'Every sound at −14 LUFS (applies in the render).'; } });
+  cmd({ name: 'solo-sound', desc: 'Only the selected clips keep their sound; again brings every sound back', args: '[clip…]', run: async (args) => { await editing(); const ids0 = words(args).length ? targets(words(args)) : null; VideoCut.soloSound(ids0); return 'Solo toggled.'; } });
+
   // ---------- the Lab hands its media to the editor ----------
   async function labPlayer() {
     if (typeof ThreeLab === 'undefined') throw new Error('The Three.js Lab isn\'t loaded.');

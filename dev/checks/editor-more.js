@@ -101,6 +101,31 @@ try {
   const st0 = await window.hub.fs.stat(ev.output);
   step('real-time recording (MediaRecorder, the no-ffmpeg path) writes a WebM of the range', /\.webm$/.test(ev.output) && st0?.size > 2000, { out: ev.output.split('/').pop(), size: st0?.size });
   VideoCut.setMark(null);
+  // housekeeping: snapshots, EDL, markers, hold frame, lanes, track shift, solo
+  const n0 = VideoCut.edit.clips.length;
+  await run('/edit-snapshot save before-hold');
+  await run('/hold-frame last 0.5 1');
+  step('/hold-frame adds a freeze after the clip', VideoCut.edit.clips.length === n0 + 1 && VideoCut.edit.clips[1].kind === 'freeze' && VideoCut.edit.clips[1].dur === 0.5, VideoCut.edit.clips.map((c) => c.kind).join(','));
+  await run('/edit-snapshot back before-hold');
+  step('/edit-snapshot back restores the saved edit', VideoCut.edit.clips.length === n0, VideoCut.edit.clips.length);
+  const snapList = await run('/edit-snapshot list');
+  step('/edit-snapshot list names it', /before-hold/.test(said), said);
+  await run('/markers-clear');
+  await run('/markers-at-cuts');
+  step('/markers-at-cuts: one per cut', VideoCut.edit.markers.length === Math.max(0, VideoCut.edit.clips.length - 1), VideoCut.edit.markers.length);
+  await run('/edit-edl');
+  const edl = (await window.hub.fs.list(`${VIDS}/exports`)).find((f) => /\.edl$/.test(f.name));
+  const edlText = edl ? await window.hub.fs.read(`${VIDS}/exports/${edl.name}`) : '';
+  step('/edit-edl writes a CMX 3600 EDL', /^TITLE:/m.test(String(edlText)) && /\b001\b/.test(String(edlText)), edl?.name);
+  const style0 = document.querySelector('.vr-cut-track')?.style.height; const h0 = Math.round(document.querySelector('.vr-cut-track').getBoundingClientRect().height);
+  await run('/lane-height tall'); await wait(300); const saidLane = said; const styleLane = document.querySelector('.vr-cut-track')?.style.height;
+  const h1 = Math.round(document.querySelector('.vr-cut-track').getBoundingClientRect().height); // the box's height animates (CSS transition), which a background test window may not advance
+  await run('/lane-height normal');
+  step('/lane-height tall makes the lanes taller', parseInt(styleLane, 10) > (parseInt(style0, 10) || h0), { style0, h0, h1, saidLane, styleLane, tracks: (VideoCut.edit.tracks || []).map((k) => k.name).join(',') });
+  await run('/solo-sound 1');
+  const muted = VideoCut.edit.clips.filter((c, i) => i > 0 && c.kind === 'video').every((c) => c.mute);
+  await run('/solo-sound');
+  step('/solo-sound mutes the others, again brings them back', muted && !VideoCut.edit.clips.some((c) => c.soloMuted), muted);
   // the Lab hands its video to the editor
   const lab = await ThreeLab.cmd({ show: true });
   await lab.loadSong(B);
