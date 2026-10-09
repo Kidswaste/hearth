@@ -46,7 +46,7 @@ out.idleAfter = brief(await measure(2000));
 out.idleAfterAnimations = running();
 // the owner's look (Forgeheart skin, v2 look) at idle with the cursor in the composer (where it usually rests)
 document.documentElement.dataset.skin = 'forge'; document.documentElement.dataset.look = 'v2';
-v.input.focus(); await wait(800);
+v.input.focus(); await wait(2500);
 out.forgeIdleAnimations = running();
 out.forgeIdle = brief(await measure(2500));
 return JSON.stringify(out, null, 1);
