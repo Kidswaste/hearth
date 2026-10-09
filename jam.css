@@ -23,15 +23,13 @@
 .jam-row.start { cursor: default; }
 .jam-row.best { background: color-mix(in srgb, var(--fh-gold, #ffd75e) 10%, transparent); }
 .jam-row.broken .jam-line { color: var(--danger, #ff6b6b); }
-.jam-thumb { width: 44px; height: 26px; object-fit: cover; border-radius: 4px; flex: none; background: #000; border: 1px solid var(--line); }
-.jam-thumb.none { display: inline-block; }
 .jam-n { width: 14px; text-align: center; font-weight: 700; color: var(--muted); flex: none; }
 .jam-row.best .jam-n { color: var(--fh-gold, #ffd75e); }
 .jam-line { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .jam-row.open .jam-line { white-space: normal; }
 .jam-back { flex: none; padding: 0 6px; opacity: 0; }
 .jam-row:hover .jam-back, .jam-back:focus-visible { opacity: 1; }
-.jam-more { margin: 0 0 3px 58px; }
+.jam-more { margin: 0 0 3px 44px; }
 .jam-more.folded { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .jam-dir { white-space: pre-wrap; padding: 3px 7px; border-left: 2px solid var(--astra, #19c39c); border-radius: 0 6px 6px 0; background: color-mix(in srgb, var(--astra, #19c39c) 7%, transparent); }
 .jam-dir.by-claude { border-left-color: var(--claude, #d97757); background: color-mix(in srgb, var(--claude, #d97757) 7%, transparent); }
@@ -42,12 +40,47 @@
 
 /* the badge on the Lab preview while a jam runs */
 .jam-badge {
-  position: absolute; right: 10px; bottom: 40px; z-index: 6; display: inline-flex; align-items: center; gap: 7px;
-  padding: 3px 4px 3px 10px; border-radius: 999px; background: #000b; color: #eee; font: 600 11.5px system-ui, sans-serif;
-  border: 1px solid color-mix(in srgb, var(--fh-gold, #ffd75e) 45%, transparent); cursor: pointer; backdrop-filter: blur(6px); white-space: nowrap;
+  position: absolute; right: 8px; bottom: 66px; z-index: 6; display: inline-flex; align-items: center; gap: 7px; /* above the scene tag */
+  padding: 3px 4px 3px 10px; border-radius: 999px; background: #000d; color: #eee; font: 600 11.5px system-ui, sans-serif;
+  border: 1px solid color-mix(in srgb, var(--fh-gold, #ffd75e) 45%, transparent); cursor: pointer; white-space: nowrap;
+  /* no backdrop blur: it sits over the live preview, which redraws every frame */
 }
 .jam-badge-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fh-gold, #ffd75e); animation: jam-pulse 1.4s ease-in-out infinite; }
 @keyframes jam-pulse { 50% { opacity: .3; } }
 .jam-badge-stop { border: 0; background: #fff1; color: #ddd; border-radius: 999px; width: 20px; height: 20px; padding: 0; font-size: 9px; cursor: pointer; }
 .jam-badge-stop:hover { background: var(--danger, #e5484d); color: #fff; }
 @media (prefers-reduced-motion: reduce) { .jam-card.running::before, .jam-badge-dot { animation: none; } }
+
+/* round 5 (scenes2): the jam timeline, who led each round, the recap */
+/* who led / directed: Claude's spark, Astra's star (icons.js) */
+.jam-who { flex: none; display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; color: #fff; background: var(--claude, #d97757); font: 700 9px/1 system-ui, sans-serif; }
+.jam-who.by-astra { background: var(--astra, #10a37f); }
+.jam-who.none { background: color-mix(in srgb, var(--text, #fff) 14%, transparent); color: var(--muted); }
+.jam-who svg { width: 11px; height: 11px; stroke-width: 2.3; }
+/* the filmstrip: the start and every round, the rounds to come as empty slots */
+.jam-film-wrap { position: relative; margin-top: 7px; }
+.jam-film { display: flex; gap: 4px; padding: 3px 2px; border-radius: 8px; overflow-x: auto; scrollbar-width: none; outline: none; }
+.jam-film:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--fh-gold, #ffd75e) 55%, transparent); }
+.jam-frame { position: relative; flex: 0 1 52px; min-width: 28px; height: 30px; padding: 0; border: 0; border-radius: 5px; overflow: hidden; cursor: pointer; background: #000; box-shadow: 0 0 0 1px var(--line); transition: transform .12s, box-shadow .12s; }
+.jam-frame img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+.jam-frame .jam-who, .jam-frame .jam-frame-s { position: absolute; left: 2px; bottom: 2px; width: 12px; height: 12px; box-shadow: 0 0 0 1px #0009; pointer-events: none; }
+.jam-frame .jam-who svg { width: 8px; height: 8px; }
+.jam-frame-s { display: grid; place-items: center; border-radius: 50%; background: #000a; color: #fffc; font: 700 8px/1 system-ui, sans-serif; }
+.jam-frame-star { position: absolute; right: 3px; top: 1px; color: var(--fh-gold, #ffd75e); font-size: 10px; text-shadow: 0 0 3px #000; pointer-events: none; }
+.jam-frame.best { box-shadow: 0 0 0 1.5px var(--fh-gold, #ffd75e); }
+.jam-frame.broken { box-shadow: 0 0 0 1.5px var(--danger, #ff6b6b); }
+.jam-frame.broken img { opacity: .55; }
+.jam-frame.on { transform: translateY(-2px); box-shadow: 0 0 0 1.5px var(--text, #fff), 0 3px 8px #0008; }
+.jam-frame.todo { cursor: default; background: transparent; box-shadow: inset 0 0 0 1px var(--line); opacity: .55; }
+.jam-frame-empty { display: block; width: 100%; height: 100%; }
+/* the round being made: a soft breathing edge (opacity only, on the compositor) */
+.jam-frame.live::after { content: ''; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1.5px var(--fh-gold, #ffd75e); animation: jam-pulse 1.4s ease-in-out infinite; pointer-events: none; }
+/* scrubbing: the version under the pointer, bigger, above the strip */
+.jam-peek { position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 5; width: min(100%, 300px); padding: 4px; border-radius: 9px; background: #0b0c10f2; border: 1px solid var(--line); box-shadow: 0 8px 24px #000a; opacity: 0; transform: translateY(3px); transition: opacity .12s, transform .12s; pointer-events: none; }
+.jam-film-wrap.scrubbing .jam-peek { opacity: 1; transform: none; }
+.jam-peek-img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: contain; border-radius: 6px; background: #000; }
+.jam-peek-text { margin-top: 4px; color: #e9e6df; font-size: 11.5px; line-height: 1.35; }
+/* the recap at the end */
+.jam-recap { margin-top: 6px; padding: 5px 8px; border-radius: 8px; line-height: 1.45; background: color-mix(in srgb, var(--text, #fff) 4%, transparent); }
+@media (prefers-reduced-motion: reduce) { .jam-frame.live::after { animation: none; } .jam-frame, .jam-peek { transition: none; } }
+:root[data-motion=calm] .jam-frame.live::after { animation: none; }
