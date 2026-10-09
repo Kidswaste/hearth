@@ -91,6 +91,21 @@ ok(fv.ok && /hour/.test(fv.value.vibe) && fv.value.frame === 'Warm', 'board_vibe
 const fa = await HubBridge.call('board_add', { kind: 'note', text: 'inside', frame: 'Warm' });
 const inside = Board.items().find((i) => i.text === 'inside');
 ok(fa.ok && Board.frameOf(inside)?.title === 'Warm', 'board_add into a frame');
+// fifth layer: footage permission, views, loop a shot, cuts, untangle, gather
+Board.select(clip.id); X.allowFootage([Board.item(clip.id)], true);
+ok(BoardVibe.text(Board.item(clip.id)).includes('FOOTAGE ALLOWED') && !BoardVibe.text(Board.item(a.id)).includes('FOOTAGE'), 'footage only where allowed');
+X.allowFootage([Board.item(clip.id)], false);
+X.saveView('Here'); Board.setZoom(4, false); await wait(200); ok(X.goView('Here'), 'saved view'); await wait(700);
+ok(Math.abs(X.S.view.z - Board.current().views.at(-1).view.z) < 1e-6, 'fly to a saved view');
+X.startPreview(clip.id); const lv = X.liveVideo(clip.id); if (lv) { lv.currentTime = 2.5; await wait(200); }
+const shot = X.loopShot(Board.item(clip.id));
+ok(Array.isArray(shot) && shot[0] === 2 && shot[1] === 4, `loop this shot (${shot})`);
+X.stopPreview(clip.id);
+const n1 = Board.addNote('one', { x: 0, y: 9000 }); const n2 = Board.addNote('two', { x: 30, y: 9020 });
+Board.select([n1.id, n2.id]); ok(X.untangle() > 0, 'untangle');
+const A = Board.item(n1.id); const Bn = Board.item(n2.id);
+ok(A.x + A.w <= Bn.x || Bn.x + Bn.w <= A.x || A.y + A.h <= Bn.y || Bn.y + Bn.h <= A.y, 'no overlap left');
+ok(X.gather() === 2, 'gather');
 Board.zoomFit(false); await wait(400);
 await smoke({ shot: '/tmp/board-shots/10-links.png' });
 out.fail = fail;

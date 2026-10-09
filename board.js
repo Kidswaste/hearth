@@ -628,8 +628,8 @@ const Board = (() => {
     if (playing.size >= 2) stopPreview(playing.keys().next().value);
     const v = el('video', { class: 'bd-media bd-live', muted: true, loop: false, playsInline: true, preload: 'auto' });
     v.muted = it.muted !== false;
-    v.playbackRate = it.speed || 1;
     v.src = fileUrl(it.src);
+    v.defaultPlaybackRate = v.playbackRate = it.speed || 1; // after src: loading resets the rate to the default
     Object.assign(v.style, cropCss(it.crop) || {});
     v.currentTime = it.lastT || it.vin || 0;
     v.addEventListener('timeupdate', () => { const out = it.vout || v.duration; if (v.currentTime >= out - 0.03) { if (it.loop === false) v.pause(); else v.currentTime = it.vin || 0; } });

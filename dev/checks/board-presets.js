@@ -54,6 +54,20 @@ for (const p of D.PALETTES) { const it = Board.addSwatch(p.colors, { x: 0, y: -5
 for (const [id] of D.SHAPES) { const s = Board.addShape(id); ok('shapes', node(s.id).querySelector('.bd-shape').dataset.shape === id, id); }
 for (const [id] of D.ARROWS) { const a = Board.addArrow(id); ok('arrows', node(a.id).querySelector('svg path'), id); }
 for (const g of D.STICKERS) { const s = Board.addSticker(g); ok('stickers', node(s.id).querySelector('.bd-sticker').textContent === g, g); }
+// board styles, note starters, connector styles, palette card styles, clip speeds
+for (const [id, n] of X.STYLES) { ok('board styles', X.styleBoard(id), n); }
+for (const [id, n] of X.NOTE_STARTERS) { const nt = X.starter(id); ok('note starters', Board.item(nt.id).text.length > 5, n); }
+const ca = Board.addNote('a'); const cb = Board.addNote('b'); Board.select([ca.id, cb.id]); const [lk] = X.connect();
+for (const [, n, props] of X.LINK_STYLES) { Board.patch([lk.id], (x) => { for (const k of ['heads', 'dash', 'curve', 'width']) delete x[k]; Object.assign(x, props); }, 's'); ok('connector styles', node(lk.id).querySelector('svg path'), n); }
+const pc = Board.addSwatch(['#ff0000', '#00ff00', '#0000ff']);
+for (const [id, n] of X.PALETTE_STYLES) { Board.patch([pc.id], { pstyle: id === 'stripes' ? undefined : id }, 'ps'); await wait(0); ok('palette styles', node(pc.id).querySelector('.bd-stripes').dataset.style === id, n); }
+for (const sp of [0.25, 0.5, 0.75, 1, 1.5, 2, 4]) { Board.patch([clip.id], { speed: sp === 1 ? undefined : sp }, 'sp'); X.startPreview(clip.id); const lv = X.liveVideo(clip.id); ok('clip speeds', !lv || lv.playbackRate === sp, sp); X.stopPreview(clip.id); }
+// ask presets: each drafts its question with the vibe attached (nothing is sent)
+const C = H.claudeAgent(); activate(C.id); await until(() => Native.hasView(C.id));
+for (const [id, n] of X.ASKS) { Native.view(C.id).attachments.length = 0; const q = await X.ask(id, { agentId: C.id, itemIds: [img.id] }); ok('ask presets', Native.view(C.id).input.value === q && Native.view(C.id).attachments.length === 1, n); }
+Native.view(C.id).attachments.length = 0; Native.setDraft(C.id, '');
+ok('ask presets', !Native.current(C.id)?.messages?.length, 'nothing was sent');
+activate('tool:board'); await wait(300);
 // vibe focuses
 for (const f of D.FOCUS) { const t = BoardDrawer.vibeText({ focus: f.id }); ok('focus', t.startsWith(f.lead), f.id); }
 // templates (on a board of their own)
@@ -64,11 +78,11 @@ await Board.open(tb.id); Board.zoomFit(false); await wait(200);
 for (const tr of D.TRANSITIONS) {
   Board.setPref('transition', tr.id);
   X.present(0); await wait(50);
-  dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+  X.go(1); // the key path (→) is driven in board.js
   const stop = X.stops()[1].box; const r = X.S.ui.vp.getBoundingClientRect();
   const want = BoardLayout.fitView(stop, r.width, r.height, 40, 0.02, 32);
-  await until(() => Math.abs(X.S.view.z - want.z) < 1e-6, tr.ms + 2500); // the view lands when the compositor animation ends
-  ok('transitions', Math.abs(X.S.view.z - want.z) < 1e-6 && Math.abs(X.S.view.x - want.x) < 0.5, tr.id);
+  await until(() => Math.abs(X.S.view.z - want.z) < 1e-6 && Math.abs(X.S.view.x - want.x) < 0.5, tr.ms + 2500); // the view lands when the compositor animation ends
+  ok('transitions', Math.abs(X.S.view.z - want.z) < 1e-6 && Math.abs(X.S.view.x - want.x) < 0.5, `${tr.id} z ${X.S.view.z.toFixed(4)}/${want.z.toFixed(4)} x ${X.S.view.x.toFixed(1)}/${want.x.toFixed(1)} i ${X.S.presenting}`);
   X.stopPresent();
 }
 // exports
