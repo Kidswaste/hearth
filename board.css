@@ -3,7 +3,7 @@
 .tool-body.bd-body { position: relative; padding: 0; overflow: hidden; }
 .bd-root { position: absolute; inset: 0; outline: none; --bd-gold: var(--fh-gold, #e6b450); --bd-frame: color-mix(in srgb, var(--text) 45%, transparent); --inv: 1; contain: strict; }
 .bd-vp { position: absolute; inset: 0; overflow: hidden; touch-action: none; background: var(--bg); cursor: default; }
-.bd-bg { position: absolute; left: 0; top: 0; width: calc(100% + 96px); height: calc(100% + 96px); transform-origin: 0 0; pointer-events: none; }
+.bd-bg { position: absolute; left: 0; top: 0; width: calc(100% + 96px); height: calc(100% + 96px); transform-origin: 0 0; pointer-events: none; will-change: transform; }
 .bd-world { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
 .bd-moving .bd-world { will-change: transform; }
 .bd-hand .bd-vp { cursor: grab; }
@@ -104,7 +104,7 @@
 .bd-marquee { position: absolute; left: 0; top: 0; border: 1px dashed var(--bd-gold); background: color-mix(in srgb, var(--bd-gold) 10%, transparent); }
 
 /* ---------- the few controls on screen ---------- */
-.bd-hud { position: absolute; left: 10px; right: 10px; top: 10px; display: flex; gap: 6px; align-items: center; pointer-events: none; z-index: 5; }
+.bd-hud { position: absolute; left: 10px; right: 10px; top: 10px; display: flex; gap: 6px; align-items: center; pointer-events: none; z-index: 5; will-change: transform; /* its own layer: the zoom readout changes while you zoom */ }
 .bd-hud > * { pointer-events: auto; }
 .bd-chip { border: 1px solid var(--line); background: color-mix(in srgb, var(--sidebar) 92%, transparent); border-radius: 999px; padding: 4px 12px; cursor: pointer; font-size: 13px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bd-chip:hover { border-color: color-mix(in srgb, var(--bd-gold) 60%, var(--line)); }

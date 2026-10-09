@@ -192,7 +192,8 @@ const Board = (() => {
   const needsWork = (it) => ['image', 'gif', 'video'].includes(it.type) || (it.type === 'web' && !it.snapped);
 
   // Files from a drop, a paste or the file picker: copied into the board's media folder first.
-  async function addFiles(files, at, b = S.cur) {
+  async function addFiles(files, at, b = null) {
+    await ready(); b ||= S.cur;
     const out = [];
     let i = 0;
     const batch = `f${now().toString(36)}`; // dropped together: they line up again once their real sizes are known
@@ -220,7 +221,8 @@ const Board = (() => {
     return btoa(bin);
   }
   // A web address: pictures / clips are downloaded, pages become a card with a live snapshot.
-  async function addUrl(url, at, b = S.cur) {
+  async function addUrl(url, at, b = null) {
+    await ready(); b ||= S.cur;
     let u; try { u = new URL(String(url).trim()); } catch { toast('That is not a web address', { type: 'error' }); return null; }
     const kind = kindOf(u.pathname);
     if (/^https?:$/.test(u.protocol) && kind !== 'file') {
@@ -375,7 +377,7 @@ const Board = (() => {
   function moved() {
     if (!S.moving) { S.moving = true; S.ui.root.classList.add('bd-moving'); emit('moving'); }
     const t = performance.now();
-    if (t - cullAt > 160) { cullAt = t; cull(false); }
+    if (t - cullAt > 250) { cullAt = t; cull(false); }
     clearTimeout(settleT);
     settleT = setTimeout(settle, 140);
   }
@@ -433,14 +435,15 @@ const Board = (() => {
   function cull(lod) {
     if (!S.mounted || !S.cur) return;
     const r = S.ui.vp.getBoundingClientRect();
-    const m = 0.5; // half a screen of margin: no holes while panning between checks
+    const m = lod ? 0.5 : 1; // a screen of margin while moving (fewer reveals, no holes), half a screen at rest
     const x0 = (-S.view.x - r.width * m) / S.view.z; const y0 = (-S.view.y - r.height * m) / S.view.z;
     const x1 = (r.width * (1 + m) - S.view.x) / S.view.z; const y1 = (r.height * (1 + m) - S.view.y) / S.view.z;
     for (const it of S.cur.items) {
       const node = S.nodes.get(it.id); if (!node) continue;
       const pad = it.rot ? Math.max(it.w, it.h) * 0.42 : 0;
       const off = it.x + it.w + pad < x0 || it.x - pad > x1 || it.y + it.h + pad < y0 || it.y - pad > y1;
-      if (lastOff.get(it.id) !== off) { lastOff.set(it.id, off); node.classList.toggle('bd-off', off); if (off) stopPreview(it.id); }
+      // while moving, only reveal what comes into reach (hiding changes the layer's content: that waits for the settle)
+      if (lastOff.get(it.id) !== off && (lod || !off)) { lastOff.set(it.id, off); node.classList.toggle('bd-off', off); if (off) stopPreview(it.id); }
       if (lod && !off) pickSource(it, node);
     }
   }
