@@ -38,7 +38,11 @@ capture). "Tidy" is what you see by default.
 | Captures library | 6 | 6 | 6 |
 | Capture viewer | 5 | 5 | 5 |
 | **Round 7 surfaces** | **60** | **52** | **73** |
-| **All surfaces in declutter-count.js** | **118** | **109** | **172** |
+| **All surfaces in declutter-count.js** | **118** | **110** | **173** |
+
+`dev/checks/clutter.js` (the round 4 counter, now with these surfaces) agrees: board drawer (4 references) 6 → 4, editor
+bar 6 → 5, Video Review with the editor 31 → 29; the board item / canvas, editor ⋯ and capture menus each gain one row
+(Customise this…, which they lacked), so its grand total reads 242 → 248 while what's on screen went down by 5.
 
 The board drawer counts 2 + one → per reference before (11 with 6 references); now 4 whatever the board holds.
 The menus got *shorter to read* rather than shorter: the same rows, grouped with separators, the rare ones in More….
@@ -299,6 +303,11 @@ The menus got *shorter to read* rather than shorter: the same rows, grouped with
 237. The system's "more contrast" setting gives the board chips, the drawer, the editor's format chip and the capture tabs full-strength edges.
 
 ## J. Smoothness (measured with `dev/checks/polish8-smooth.js`, before → after on the same machine)
+(Under Xvfb + SwiftShader on a shared machine the frame rates swung 17–50 fps between identical runs, so they can't
+show a few-percent change either way. What the probe does show reliably: the menu over a playing clip and the capture
+viewer had `blur(16px)` / `blur(3px)` backdrops in round 7 and have none now, and board panning / zooming with 20
+references stayed in the same range — no regression from this pass. Idle stays at 0 animations, 0 DOM writes
+(`smooth-app.js`).)
 238. A dialog that plays a video (the capture viewer) no longer re-blurs the app behind it every frame (its glass is a solid forged panel, its backdrop a darkened gradient).
 239. A menu opened over the board, the program monitor or a playing capture drops its live blur (it was set to re-blur moving pictures when the look's glass is on).
 240. In light looks such a menu is solid (without the blur, the busy board or timeline showed through it).
