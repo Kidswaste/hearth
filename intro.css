@@ -87,3 +87,9 @@
 .intro-foot { display: flex; align-items: center; gap: 7px; margin-top: 7px; padding-top: 5px; border-top: 1px solid var(--line); flex-wrap: wrap; }
 .intro-stop:hover { color: var(--danger, #ff6b6b); }
 @media (prefers-reduced-motion: reduce) { .intro-card.live::before, .intro-beat-frame.live { animation: none; } }
+/* the card's buttons are always there (a chat message's own actions only show on hover) */
+.intro-card .msg-act { opacity: 1; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--text); font: 600 11.5px/1.5 system-ui, sans-serif; }
+.intro-card .msg-act:hover { border-color: var(--intro-accent); }
+.intro-card .msg-act.primary-act { background: color-mix(in srgb, var(--intro-accent) 18%, transparent); border-color: color-mix(in srgb, var(--intro-accent) 55%, transparent); color: var(--text); }
+.intro-card .msg-act.primary-act:hover { background: color-mix(in srgb, var(--intro-accent) 30%, transparent); }
+.intro-head .msg-act { padding: 0 7px; }

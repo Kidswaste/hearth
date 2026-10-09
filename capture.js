@@ -845,10 +845,11 @@ const Capture = (() => {
     autoZoom(false); cameraBubble(null); chapters(false);
     clearInterval(rec.timer);
     clearInterval(rec.ticker);
+    // the frame reader first (its queued frames are released), then the tracks
+    try { rec.reader?.cancel(); } catch { /* done */ }
     try { rec.display?.getTracks().forEach((t) => t.stop()); } catch { /* gone */ }
     try { rec.mic?.getTracks().forEach((t) => t.stop()); } catch { /* gone */ }
     try { rec.audioCtx?.close(); } catch { /* gone */ }
-    try { rec.reader?.cancel(); } catch { /* done */ }
     if (rec.video) { rec.video.srcObject = null; rec.video.remove(); rec.video = null; }
     if (rec.opts?.clean) clean(false);
     cursorFx.set('off', { clicks: 'off', keys: false });

@@ -151,7 +151,7 @@ const IntroCard = (() => {
   }
   function proposalEl(p) {
     const n = p.plan.beats.length;
-    const kinds = Object.entries(p.plan.beats.reduce((a, b) => ({ ...a, [b.kind]: (a[b.kind] || 0) + 1 }), {})).map(([k, c]) => `${c} ${D.KINDS[k].label.toLowerCase()}`).join(' · ');
+    const kinds = Object.entries(p.plan.beats.reduce((a, b) => ({ ...a, [b.kind]: (a[b.kind] || 0) + 1 }), {})).map(([k, c]) => `${c}× ${D.KINDS[k].label.toLowerCase()}`).join(' · ');
     const T = D.TEMPLATE[p.plan.template];
     return el('div', { class: 'intro-proposal' },
       el('div', { class: 'intro-prop-line', text: `Proposed: ${n} beats (${kinds}) · ${D.total(p.plan)} s · ${p.plan.formats.join(' · ')} · ${D.TITLE_LOOKS.find((x) => x.id === p.plan.style.titles)?.name || p.plan.style.titles} titles, ${D.TRANSITION_SETS.find((x) => x.id === p.plan.style.trans)?.name.split(':')[0] || p.plan.style.trans} cuts` }),
@@ -162,7 +162,7 @@ const IntroCard = (() => {
     const row = el('div', { class: 'intro-outs' });
     if (p.coverThumb) row.append(el('img', { class: 'intro-cover', src: p.coverThumb, alt: 'cover', title: `The cover (${D.COVER_MODES.find((x) => x.id === p.cover?.mode)?.name || 'best frame'}) · right-click the card › Output › Cover` }));
     for (const o of p.outputs) row.append(outEl(p, o, `${o.fmt}${o.dur ? ` · ${o.dur} s` : ''}`));
-    for (const c of p.cuts) for (const o of c.outputs) row.append(outEl(p, o, `${c.secs} s · ${o.fmt}`));
+    for (const c of p.cuts) for (const o of c.outputs) row.append(outEl(p, o, `${c.loop ? 'loop' : `${c.secs} s`} · ${o.fmt}`));
     return row;
   }
   function outEl(p, o, label) {
@@ -224,6 +224,9 @@ const IntroCard = (() => {
       { label: 'Titles', hint: p.plan.style.titles, items: () => D.TITLE_LOOKS.map((t) => ({ label: t.name, ...checked(t.id === p.plan.style.titles), action: ch({ titles: t.id }) })) },
       { label: 'Cuts', hint: p.plan.style.trans, items: () => D.TRANSITION_SETS.map((t) => ({ label: t.name, ...checked(t.id === p.plan.style.trans), action: ch({ trans: t.id }) })) },
       { label: 'Grade', hint: p.plan.style.grade, items: () => D.GRADES.map((g) => ({ label: g, ...checked(g === p.plan.style.grade), action: ch({ grade: g }) })) },
+      { label: 'Colors', hint: `${p.plan.style.backdrop} · ${p.plan.style.accent}`, items: () => [
+        { label: 'Backdrop of the word beats', items: () => [...new Set([...Object.values(D.BACKDROPS), ...(p.vibe?.palette || [])])].map((hex) => ({ label: hex, hint: Object.entries(D.BACKDROPS).find(([, v]) => v === hex)?.[0] || 'from the board', ...checked(hex === p.plan.style.backdrop), action: go(() => { p.plan.style.backdrop = hex; p.styleLocked = true; Intro.stale(p, 'edit'); Intro.changed(p); return null; }) })) },
+        { label: 'Accent (glows, rings)', items: () => [...new Set([...(p.vibe?.palette || []), '#ffd75e', '#ff7a3c', '#9b8bff', '#2de2e6', '#ff2e88', '#ffffff'])].map((hex) => ({ label: hex, ...checked(hex === p.plan.style.accent), action: go(() => { p.plan.style.accent = hex; Intro.stale(p, 'edit'); Intro.changed(p); return null; }) })) }] },
       { label: 'Words', items: () => [
         { label: '✦ Astra rewrites every line', action: go(() => Intro.rewriteWords(p)) },
         { label: 'Hook', hint: cap(p.plan.vars?.hook, 30), items: () => D.HOOKS.map((h) => D.fill(h, { name: p.plan.name })).map((h) => ({ label: h, action: go(() => { p.plan.vars.hook = h; const b0 = p.plan.beats[0]; if (b0?.kind === 'title') b0.words = h; Intro.stale(p, 'edit'); Intro.changed(p); return null; }) })) },
@@ -245,6 +248,8 @@ const IntroCard = (() => {
         { label: 'Pick a song…', action: go(async () => { const f = await window.hub.openDialog({ properties: ['openFile'], filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac', 'mp4', 'mov'] }] }); const path = Array.isArray(f) ? f[0] : f; return path ? Intro.setMusic(p, path) : null; }) },
         { label: 'The Lab\'s song', action: go(() => Intro.setMusic(p, 'lab')) },
         { label: 'No music', ...checked(!p.music), action: go(() => Intro.setMusic(p, null)) },
+        { label: 'Volume', hint: `${Math.round((p.musicVol ?? 0.9) * 100)} %`, disabled: !p.music, items: () => [0.5, 0.7, 0.9, 1].map((v) => ({ label: `${Math.round(v * 100)} %`, ...checked(Math.abs((p.musicVol ?? 0.9) - v) < 0.01), action: go(() => { p.musicVol = v; Intro.stale(p, 'edit'); Intro.changed(p); return null; }) })) },
+        { label: 'Fade out at the end', ...checked(p.musicFade !== false), disabled: !p.music, action: go(() => { p.musicFade = p.musicFade === false; Intro.stale(p, 'edit'); Intro.changed(p); return null; }) },
         { label: 'Cuts on the music', hint: D.CUT_MODE[p.cutMode]?.name, items: () => D.CUT_MODES.map((c) => ({ label: c.name, ...checked(c.id === p.cutMode), action: go(async () => { p.cutMode = c.id; if (p.music) { p.music.analysis ||= null; await Intro.fitMusic(p); Intro.stale(p, 'edit'); } Intro.changed(p); return null; }) })) }] },
       { label: 'The vibe as text', disabled: !p.vibe, action: go(() => { navigator.clipboard.writeText(p.vibe.line); return 'Vibe copied'; }) },
     ];
@@ -255,6 +260,7 @@ const IntroCard = (() => {
       live ? { label: '■ Stop', key: 'Esc', action: () => Intro.stop() } : { label: '▶ Make it (every step)', action: go(() => { Intro.run(p).catch(err); return null; }) },
       { label: 'From a step', disabled: live, items: () => D.STEPS.filter((s) => s.id !== 'plan').map((s) => ({ label: `${s.icon} From ${s.name}`, hint: p.steps[s.id]?.status || 'todo', action: go(() => { Intro.run(p, { from: s.id }).catch(err); return null; }) })) },
       { label: 'Only one step', disabled: live, items: () => D.STEPS.filter((s) => s.id !== 'plan').map((s) => ({ label: `${s.icon} ${s.name} only`, hint: s.what, action: go(() => { Intro.run(p, { only: s.id }).catch(err); return null; }) })) },
+      { label: 'Capture frame rate', hint: `${p.fps || 30} fps`, items: () => [24, 30, 60].map((f) => ({ label: `${f} fps`, hint: f === 60 ? 'smoothest, bigger files' : f === 24 ? 'film' : 'the default', ...checked((p.fps || 30) === f), action: go(() => { p.fps = f; Intro.stale(p, 'captures'); Intro.changed(p); return null; }) })) },
       { label: 'Undo a step', disabled: live || !p.history.length, items: () => [...new Set(p.history.map((h) => h.step))].reverse().map((id) => ({ label: `↺ Before ${D.STEP[id]?.name || id}`, action: go(() => Intro.undo(p, id)) })) },
     ];
   }
@@ -275,9 +281,16 @@ const IntroCard = (() => {
     return [
       { label: '✂ Open the edit', disabled: !p.seq, action: go(() => Intro.openTheEdit(p).then(() => null)) },
       { label: 'Cut-downs', items: () => [{ label: '15 s + 6 s', action: go(() => Intro.makeCuts(p, [15, 6]).then((m) => `${m.length} cut-downs made`)) },
-        ...D.CUTDOWNS.filter((c) => !c.loop).map((c) => ({ label: c.name, action: go(() => Intro.makeCuts(p, [c.secs]).then(() => `${c.secs} s cut made`)) })),
+        ...D.CUTDOWNS.map((c) => ({ label: c.name, action: go(() => Intro.makeCuts(p, [c.loop ? 'loop' : c.secs]).then(() => `${c.loop ? 'Loop' : `${c.secs} s cut`} made`)) })),
         { label: 'Every format for each cut', action: go(() => Intro.makeCuts(p, [15, 6], { all: true }).then((m) => `${m.length} cut-downs in every format`)) }] },
       { label: 'Cover', hint: D.COVER_MODES.find((x) => x.id === p.cover?.mode)?.name.split(' (')[0] || 'best', disabled: !p.seq, items: () => D.COVER_MODES.map((c) => ({ label: c.name, ...checked(c.id === (p.cover?.mode || 'best')), action: go(async () => { p.cover = { ...(p.cover || {}), mode: c.id }; Intro.pickCoverTime(p, c.id); const f = await Intro.makeCovers(p); return `Cover: ${Object.keys(f).length} format${Object.keys(f).length > 1 ? 's' : ''}`; }) })) },
+      { label: 'Make from the render', disabled: !p.outputs.length, items: () => [
+        { label: 'A GIF for chats (15 fps)', action: go(() => Intro.extra(p, 'gif').then((f) => `GIF: ${base(f)}`)) },
+        { label: 'A boomerang loop', action: go(() => Intro.extra(p, 'boomerang').then((f) => `Boomerang: ${base(f)}`)) },
+        { label: 'PNG frames (for After Effects)', action: go(() => Intro.extra(p, 'frames').then((f) => `Frames: ${base(f)}`)) }] },
+      { label: 'Captions (SRT) from the words', disabled: !p.seq, action: go(() => Intro.extra(p, 'srt').then((f) => (f ? `Captions: ${base(f)}` : null))) },
+      { label: 'An EDL for other editors', disabled: !p.seq, more: true, action: go(() => Intro.extra(p, 'edl').then((f) => (f ? `EDL: ${base(f)}` : null))) },
+      { label: 'Pin the cover on the board', disabled: !p.cover?.files, more: true, action: go(() => Intro.extra(p, 'board')) },
       { label: 'Post text', items: () => D.POSTS.map((x) => ({ label: x.name, action: go(() => { navigator.clipboard.writeText(Intro.postText(p, x.id)); return `${x.name} text copied`; }) })) },
       { label: 'Render one format', disabled: !p.seq, items: () => p.plan.formats.map((f) => ({ label: f, action: go(() => { Intro.run(p, { only: 'render', formats: [f] }).catch(err); return null; }) })) },
       { label: IS_MAC ? 'Show in Finder' : 'Show the folder', action: go(() => Intro.folder(p).then(() => null)) },
@@ -292,6 +305,7 @@ const IntroCard = (() => {
       { label: 'Claude ⇄ Astra', items: () => engineItems(p) },
       { label: 'Output', items: () => outputItems(p) },
       { label: 'Status', more: true, action: go(() => { Native.note?.(H.activeId, Intro.status(p)); return null; }) },
+      { label: 'Duplicate (try another take)', more: true, action: go(async () => { const q = await Intro.duplicate(p, { agentId: H.activeId }); return `“${q.name}”: the same plan, nothing made yet`; }) },
       { label: 'Rename…', more: true, action: go(async () => { const v = await Modal.prompt('Rename the video project', { value: p.name }); if (v) { p.name = v.trim(); Intro.changed(p); } return null; }) },
       { label: 'Your video projects…', more: true, action: () => listMenu() },
       { label: 'Remove from the list', more: true, danger: true, action: go(async () => ((await Modal.confirm('Remove this video project?', `“${p.name}” leaves your video projects. Its recordings, renders and sequence stay where they are.`, { ok: 'Remove', danger: true })) ? Intro.remove(p) : null)) },

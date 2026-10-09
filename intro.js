@@ -81,7 +81,7 @@ const Intro = (() => {
     const items = b.items.filter((i) => i.type !== 'frame' && !(i.stamp === '✕'));
     const s = BoardVibe.summary(items);
     const text = BoardVibe.boardText(b.name, items, ['palette', 'light', 'color', 'motion', 'mood']);
-    return { line: text.split('\n').slice(0, 5).join(' · '), palette: (s.palette || []).slice(0, 5).map((c) => c.hex), moods: s.moods || [], summary: { palette: s.palette, light: s.light, contrast: s.contrast, sat: s.sat, warmth: s.warmth, motion: s.motion, pace: s.pace, moods: s.moods }, board: { id: b.id, name: b.name, items: items.length } };
+    return { line: text.split('\n').slice(1, 5).join(' · '), palette: (s.palette || []).slice(0, 5).map((c) => c.hex), moods: s.moods || [], summary: { palette: s.palette, light: s.light, contrast: s.contrast, sat: s.sat, warmth: s.warmth, motion: s.motion, pace: s.pace, moods: s.moods }, board: { id: b.id, name: b.name, items: items.length } };
   }
 
   // ---------- creating a project: a plan proposed in one card ----------
@@ -91,7 +91,7 @@ const Intro = (() => {
     [/number|stat/i, 'stat-hype'], [/cinema|trailer/i, 'cinematic'], [/countdown|3.?2.?1/i, 'countdown'], [/tip/i, 'daily-tip'], [/behind|making of/i, 'behind-scenes'], [/bumper|6 ?s(ec)?\b/i, 'bumper'],
     [/hook|shorts/i, 'shorts-hook'], [/thank|milestone/i, 'milestone'], [/dev ?log/i, 'dev-log'], [/lab|visuals? only/i, 'lab-showcase'], [/carousel|screenshots|stills/i, 'carousel'], [/tour|features/i, 'feature-tour'], [/spotlight|one feature/i, 'one-feature']];
   function guess(idea) { for (const [re, id] of GUESS) if (re.test(idea)) return id; return 'product-intro'; }
-  const secsIn = (idea) => { const m = String(idea || '').match(/(\d{1,3})\s*(s|sec|secs|seconds)\b/i); return m ? Number(m[1]) : null; };
+  const secsIn = (idea) => { const m = String(idea || '').match(/(\d{1,3})\s*(s|sec|secs|second|seconds)\b/i); return m ? Number(m[1]) : null; };
   const fmtsIn = (idea) => [...String(idea || '').matchAll(/\b(9:16|16:9|1:1|4:5|vertical|square|wide|portrait)\b/gi)].map((m) => D.parseFormat(m[1])).filter(Boolean);
 
   async function create({ idea = '', template = null, secs = null, formats = null, name = null, agentId = null, chatId = null, boardId } = {}) {
@@ -461,7 +461,7 @@ const Intro = (() => {
     if (b.sketchId && S?.get(b.sketchId) && S.currentId() !== b.sketchId) { await ThreeLab.idle?.(); S.open(b.sketchId); await sleep(1600); }
     try { c.size(fmt0); } catch { /* the Lab keeps its size */ }
     await sleep(900);
-    await Capture.record({ target: 'lab', size: fmt0, fps: 30, countdown: 0, audio: 'none', cursor: 'off', clicks: 'off', keys: false, mp4: true, name: `${p.name} beat ${b.n} Lab` });
+    await Capture.record({ target: 'lab', size: fmt0, fps: p.fps || 30, countdown: 0, audio: 'none', cursor: 'off', clicks: 'off', keys: false, mp4: true, name: `${p.name} beat ${b.n} Lab` });
     const t0 = performance.now();
     while ((performance.now() - t0) / 1000 < b.secs + pad) { if (R.stopped) break; await sleep(100); }
     const r = await Capture.stop({ quiet: true });
@@ -472,7 +472,7 @@ const Intro = (() => {
     const recipe = D.recipeFor(b.area);
     // the tour is padded with a wait so the take lasts the beat (and a little more for the transition)
     const extra = Math.max(0, b.secs + pad - recipe.secs);
-    const text = D.tourText({ ...recipe, steps: `${recipe.steps}${extra > 0.05 ? `\nwait ${extra.toFixed(2)}s` : ''}` }, fmt0);
+    const text = D.tourText({ ...recipe, steps: `${recipe.steps}${extra > 0.05 ? `\nwait ${extra.toFixed(2)}s` : ''}` }, fmt0, { fps: p.fps || 30 });
     const out = await CaptureTour.run(text, { name: `${p.name} · ${recipe.name}` });
     const rec = out.recording;
     if (!rec?.path) throw new Error(`the tour “${recipe.name}” made no recording${out.skipped?.length ? ` (${out.skipped[0]})` : ''}`);
@@ -560,7 +560,7 @@ const Intro = (() => {
     // the music: its first beat at 0, faded out at the end
     if (p.music?.path) {
       const a = p.musicFit?.start || 0; const total = C.total(e); const max = p.music.analysis?.duration || a + total + 1;
-      e = C.addItem(e, { kind: 'audio', src: p.music.path, in: a, out: Math.min(max, a + total), max, start: 0, volume: 0.9, fadeIn: 0, fadeOut: Math.min(1.2, total / 4) });
+      e = C.addItem(e, { kind: 'audio', src: p.music.path, in: a, out: Math.min(max, a + total), max, start: 0, volume: p.musicVol ?? 0.9, fadeIn: 0, fadeOut: p.musicFade === false ? 0 : Math.min(1.2, total / 4) });
     }
     // a marker at each beat (its kind and words), the edit's playhead story for the review and the agents
     const MC = Object.fromEntries((FX.MARKER_COLORS || []).map(([n, hex]) => [n, hex]));
@@ -577,6 +577,7 @@ const Intro = (() => {
     p.plan.beats.forEach((b, i) => { b.at = starts[i]; });
     VideoCut.commit(edit, `Video project: ${p.name}`);
     await VideoCut.goto(0);
+    p.steps.edit.secs = D.r2(CutData.total(edit));
     progress(p, 'edit', 1, 2, `${edit.clips.length} clips · ${(edit.tracks || []).reduce((n, k) => n + k.items.length, 0)} titles / layers${p.music ? ' · music' : ''}`);
     if (p.directorPass && !R.stopped) await directorPass(p);
     progress(p, 'edit', 2, 2);
@@ -708,26 +709,45 @@ const Intro = (() => {
       outs.push({ fmt: p.plan.formats[0], path: ev.output, at: Date.now() });
       note(p, 'ffmpeg isn\'t installed: the main format was recorded in real time as WebM; the other formats need ffmpeg.');
     } else {
-      for (const [i, fmt0] of fmts.entries()) {
+      // the main format renders the sequence as it is (titles drawn, everything composited, once); the others
+      // reframe that render with a blurred fill, so the words stay inside the frame and nothing is drawn twice
+      const main = p.plan.formats[0];
+      const mainOut = join(dir, `${stem}_${main.replace(':', 'x')}.mp4`);
+      const order = [main, ...fmts.filter((f) => f !== main)];
+      let mainInfo = fmts.includes(main) ? null : await probe(mainOut);
+      for (const [i, fmt0] of order.entries()) {
         if (R.stopped) return;
-        const f = D.FORMAT[fmt0];
-        const out = join(dir, `${stem}_${fmt0.replace(':', 'x')}.mp4`);
-        progress(p, 'render', i, fmts.length, `rendering ${fmt0}`);
-        // the main format renders the sequence as it is; the others reframe the program (blurred fill), so the
-        // words stay inside the frame
-        const job = fmt0 === p.plan.formats[0] ? await VideoCut.exportCut({ out }) : await VideoCut.exportCut({ preset: f.preset, fit: 'blur', out });
-        if (!job) throw new Error('The render did not start.');
-        const ev = await job.done;
-        if (ev.code !== 0) throw new Error(`The ${fmt0} render failed: ${ev.error || ev.code}`);
-        const pr = await probe(out);
+        progress(p, 'render', i, order.length, `rendering ${fmt0}`);
+        const out = fmt0 === main ? mainOut : join(dir, `${stem}_${fmt0.replace(':', 'x')}.mp4`);
+        if (fmt0 === main) {
+          if (!fmts.includes(main)) continue; // only other formats asked: reframe the main render there is
+          const job = await VideoCut.exportCut({ out });
+          if (!job) throw new Error('The render did not start.');
+          const ev = await job.done;
+          if (ev.code !== 0) throw new Error(`The ${fmt0} render failed: ${ev.error || ev.code}`);
+          mainInfo = await probe(out);
+        } else await reframe(mainOut, mainInfo, fmt0, out);
+        const pr = fmt0 === main ? mainInfo : await probe(out);
         outs.push({ fmt: fmt0, path: out, w: pr?.w, h: pr?.h, dur: pr?.duration ? D.r2(pr.duration) : null, fps: pr?.fps, at: Date.now() });
-        progress(p, 'render', i + 1, fmts.length);
+        progress(p, 'render', i + 1, order.length);
       }
     }
     // keep renders of other formats from earlier runs (a single-format re-render replaces only its own)
     p.outputs = [...p.outputs.filter((o) => !outs.some((x) => x.fmt === o.fmt)), ...outs].sort((a, b) => p.plan.formats.indexOf(a.fmt) - p.plan.formats.indexOf(b.fmt));
     try { await makeCovers(p, dir); } catch (err) { note(p, `Covers: ${err.message}`); }
   };
+  // A render reframed for another format (Video Review's export preset, blurred fill): one ffmpeg pass
+  async function reframe(src, info, fmt0, out) {
+    if (!info?.w) throw new Error(`The ${p0(fmt0)} copy needs the main render first.`);
+    const f = D.FORMAT[fmt0];
+    const { args } = VideoData.ffmpegArgs(f.preset, { w: info.w, h: info.h, fps: info.fps }, { fit: 'blur' });
+    const job = await Review.startJob({ label: `Video project → ${fmt0}`, input: src, output: out, args, duration: info.duration || 0 });
+    if (!job) throw new Error(`The ${fmt0} copy did not start.`);
+    const ev = await job.done;
+    if (ev.code !== 0) throw new Error(`The ${fmt0} copy failed: ${ev.error || ev.code}`);
+    return out;
+  }
+  const p0 = (f) => D.FORMAT[f]?.label || f;
   // The cover: the chosen frame as a PNG at the main format, then a copy fitted to each other format
   async function makeCovers(p, dir = null) {
     dir ||= await projectDir(p);
@@ -829,10 +849,13 @@ const Intro = (() => {
     R = { p, stopped: false, step: 'render', runIds: new Set() };
     p.status = 'running'; changed(p);
     try {
-      for (const secs of secsList) {
+      for (const want0 of secsList) {
         if (R.stopped) break;
-        const plan = D.cutDown(p.plan, secs);
-        const sub = { ...p, plan: { ...plan, beats: plan.beats }, music: p.music, musicFit: p.musicFit, seq: null, name: `${p.name} · ${secs} s` };
+        // 'loop': the 6 s cut that ends where it starts
+        const isLoop = want0 === 'loop';
+        const secs = isLoop ? 6 : Number(want0);
+        const plan = { ...D.cutDown(p.plan, secs), ...(isLoop ? { loop: true } : {}) };
+        const sub = { ...p, plan: { ...plan, beats: plan.beats }, music: p.music, musicFit: p.musicFit, seq: null, name: `${p.name} · ${isLoop ? 'loop' : `${secs} s`}` };
         if (p.music?.analysis) { const f = D.fitToMusic(plan.beats, p.music.analysis, p.cutMode); sub.plan.beats = f.beats; }
         activate('tool:ae', { focus: false });
         await Review.ensureMounted();
@@ -842,17 +865,21 @@ const Intro = (() => {
         VideoCut.commit(edit, `Cut-down ${secs} s`);
         const dir = await projectDir(p);
         const outs = [];
+        let mainInfo = null; let mainOut = null;
         for (const fmt0 of all ? plan.formats : [plan.formats[0]]) {
           if (!info.ffmpeg) break;
-          const out = join(dir, `${D.slug(p.name)}_${secs}s_${fmt0.replace(':', 'x')}.mp4`);
-          const job = fmt0 === plan.formats[0] ? await VideoCut.exportCut({ out }) : await VideoCut.exportCut({ preset: D.FORMAT[fmt0].preset, fit: 'blur', out });
-          const ev = await job.done;
-          if (ev.code !== 0) throw new Error(`The ${secs} s render failed: ${ev.error || ev.code}`);
-          const pr = await probe(out);
+          const out = join(dir, `${D.slug(p.name)}_${isLoop ? 'loop' : `${secs}s`}_${fmt0.replace(':', 'x')}.mp4`);
+          if (fmt0 === plan.formats[0]) {
+            const job = await VideoCut.exportCut({ out });
+            const ev = await job.done;
+            if (ev.code !== 0) throw new Error(`The ${secs} s render failed: ${ev.error || ev.code}`);
+            mainOut = out; mainInfo = await probe(out);
+          } else await reframe(mainOut, mainInfo, fmt0, out);
+          const pr = fmt0 === plan.formats[0] ? mainInfo : await probe(out);
           outs.push({ fmt: fmt0, path: out, dur: pr?.duration ? D.r2(pr.duration) : null, w: pr?.w, h: pr?.h });
         }
-        const c = { secs, seq: key, beats: plan.beats.length, outputs: outs, at: Date.now() };
-        p.cuts = [...p.cuts.filter((x) => x.secs !== secs), c].sort((a, b) => b.secs - a.secs);
+        const c = { secs, ...(isLoop ? { loop: true } : {}), seq: key, beats: plan.beats.length, outputs: outs, at: Date.now() };
+        p.cuts = [...p.cuts.filter((x) => x.secs !== secs || Boolean(x.loop) !== isLoop), c].sort((a, b) => b.secs - a.secs);
         made.push(c);
         changed(p);
       }
@@ -862,6 +889,42 @@ const Intro = (() => {
     // back to the main edit
     if (p.seq) { try { await openEdit(p); } catch { /* fine */ } }
     return made;
+  }
+
+  // ---------- more from one project ----------
+  // A copy of the plan (another template / words to try): the vibe, the music and the beats' scenes come along, nothing
+  // it made (captures, edit, renders) does.
+  async function duplicate(p, { agentId } = {}) {
+    const at = Date.now();
+    const q = { ...clone(p), id: `v${at.toString(36)}`, name: `${p.name} (2)`, at, updated: at, status: 'planned', chats: [], history: [], notes: [], tokens: {}, outputs: [], cuts: [], cover: null, seq: null, review: null, director: null, coverThumb: null, sheetThumb: null, toolsChat: null };
+    q.steps = { plan: { status: 'proposed', at } };
+    q.plan.beats = q.plan.beats.map((b) => { const x = { ...b }; for (const k of ['clip', 'shot', 'thumb', 'review', 'error', 'status', 'at', 'redo']) delete x[k]; return x; });
+    data.list.unshift(q);
+    const host = hostFor(agentId);
+    if (host) { const chat = Native.ensureChat(host.id, q.name); q.chatId = chat.id; q.agentId = host.id; post(q, chat, host); }
+    changed(q);
+    return q;
+  }
+  // Extras from the main render (local, ffmpeg): a GIF, a boomerang, PNG frames for After Effects, captions, an EDL,
+  // the cover pinned on the board (it's your own picture, so it may go there)
+  async function extra(p, kind) {
+    const main = p.outputs[0]?.path;
+    if (['gif', 'boomerang', 'frames'].includes(kind)) {
+      if (!main) throw new Error('Render it first.');
+      const r = await FrameRead.edit(main, kind === 'frames' ? 'sequence' : kind, kind === 'gif' ? { fps: 15, w: 540 } : {});
+      p.extras = { ...(p.extras || {}), [kind]: r.path }; changed(p);
+      return r.path;
+    }
+    if (kind === 'srt' || kind === 'edl') { await openEdit(p); const f = kind === 'srt' ? await VideoCut.exportCaptions() : await VideoCut.exportEdl(); if (f) { p.extras = { ...(p.extras || {}), [kind]: f }; changed(p); } return f; }
+    if (kind === 'board') {
+      const f = p.cover?.files?.[p.plan.formats[0]];
+      if (!f) throw new Error('Make the cover first (Output › Cover).');
+      const b = await boardOf(p);
+      if (!b) throw new Error('No board linked.');
+      await Board.addFiles([f], null, b);
+      return `Cover pinned on “${b.name}”`;
+    }
+    throw new Error(`Extras: gif, boomerang, frames, srt, edl, board`);
   }
 
   // ---------- opening things ----------
@@ -893,7 +956,7 @@ const Intro = (() => {
   return {
     load, save, get, find, list: () => data.list.slice(), latest, ofChat, onChange: (fn) => { listeners.add(fn); return () => listeners.delete(fn); }, changed,
     create, reopen, post, run, stop, running, current: () => R?.p || null, runningStep: () => (R ? { step: R.step, beat: R.beat } : null),
-    undo, decide, replan, stale, setMusic, fitMusic, redoBeat, handoff, takeOver, directorPass, rewriteWords, wordsFor, postText, makeCuts, makeCovers, pickCoverTime,
+    undo, decide, replan, stale, setMusic, fitMusic, redoBeat, duplicate, extra, handoff, takeOver, directorPass, rewriteWords, wordsFor, postText, makeCuts, makeCovers, pickCoverTime,
     openOutput, openTheEdit, folder, remove, status, textOf, taskText, counts, readVibe, guess, totals, fmt, NAME, other,
     agents: { claude: claudeTalk, astra: astraTalk, video: videoDirector },
     _test: { buildEdit, statsOf, snapshot, STEP_FN, state: () => R },

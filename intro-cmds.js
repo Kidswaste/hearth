@@ -27,6 +27,8 @@ const IntroCmds = (() => {
     ['cover ', 'best|hook|lab|end|middle|playhead'], ['cut-downs ', '15 6 [all]: shorter cuts from the same captures'], ['post ', 'instagram|tiktok|youtube|x|linkedin|threads: the words under the video'],
     ['render ', '[format] render again'], ['review', 'the frame-exact review again'], ['edit', 'open the edit'], ['list', 'your video projects'], ['open ', '<name> show a project in this chat'],
     ['rename ', '<name>'], ['rounds ', '1–4 jam rounds per scene'], ['quick ', 'on|off: scenes from the open sketch, no jams'], ['templates', 'the beat templates'], ['tours', 'the tour recipes (one Hearth moment each)'],
+    ['titles ', 'the title look (giant, forge, chrome, neon, kinetic…)'], ['trans ', 'the cuts: calm, bold, hype, forge, clean, cinema…'], ['grade ', 'the color grade of the whole edit'], ['colors ', '<backdrop #hex> [accent #hex]'],
+    ['fps ', '24|30|60: the captures\' frame rate'], ['volume ', '50–100: the music'], ['make ', 'gif|boomerang|frames|srt|edl|board: more from the render'], ['duplicate', 'the same plan, a fresh take'],
     ['folder', 'its files'], ['remove ', '<name> from the list (files stay)'], ['help', 'how it works'],
   ];
   const HELP = [
@@ -113,9 +115,9 @@ const IntroCmds = (() => {
       }
       case 'cover': { const mode = D.COVER_MODES.find((x) => x.id === rest.toLowerCase())?.id || 'best'; p.cover = { ...(p.cover || {}), mode }; Intro.pickCoverTime(p, mode); const f = await Intro.makeCovers(p); return `Cover (${mode}) at ${(p.cover.t || 0).toFixed(2)} s: ${Object.values(f).map((x) => x.split(/[\\/]/).pop()).join(', ')}`; }
       case 'cut-downs': case 'cutdowns': case 'cuts-down': {
-        const secs = rest.split(/\s+/).map(Number).filter((x) => x >= 2 && x <= 60);
+        const secs = rest.split(/\s+/).map((x) => (/^loop$/i.test(x) ? 'loop' : Number(x))).filter((x) => x === 'loop' || (x >= 2 && x <= 60));
         const made = await Intro.makeCuts(p, secs.length ? secs : [15, 6], { all: /\ball\b/i.test(rest) });
-        return made.map((c) => `✂ ${c.secs} s: ${c.beats} beats${c.outputs.length ? ` → ${c.outputs.map((o) => `${o.fmt} ${o.dur || ''}s`).join(', ')}` : ''}`).join('\n') || 'No cut made.';
+        return made.map((c) => `✂ ${c.loop ? 'loop' : `${c.secs} s`}: ${c.beats} beats${c.outputs.length ? ` → ${c.outputs.map((o) => `${o.fmt} ${o.dur || ''}s`).join(', ')}` : ''}`).join('\n') || 'No cut made.';
       }
       case 'post': { const t = Intro.postText(p, rest.toLowerCase() || 'instagram'); ctx.draft?.(t); return ctx.draft ? null : t; }
       case 'render': { const f = D.parseFormat(rest); Intro.run(p, { only: 'render', formats: f ? [f] : null }).catch((e) => toast(e.message, { type: 'error' })); return `Rendering ${f || p.plan.formats.join(' · ')}…`; }
@@ -124,6 +126,14 @@ const IntroCmds = (() => {
       case 'rename': if (!rest) return 'A name: /intro rename Hearth teaser'; p.name = rest.slice(0, 60); Intro.changed(p); return `Renamed “${p.name}”.`;
       case 'rounds': { const n = Number(rest); if (!(n >= 1 && n <= 4)) return 'Jam rounds per scene: 1–4'; p.rounds = n; Intro.changed(p); return `${n} jam round${n > 1 ? 's' : ''} per scene.`; }
       case 'quick': p.quick = rest ? /^(on|yes|true)$/i.test(rest) : !p.quick; Intro.changed(p); return p.quick ? 'Quick scenes: the open sketch, no jams (no tokens).' : 'Scenes: Claude ⇄ Astra jam each one.';
+      case 'titles': { const t = D.TITLE_LOOKS.find((x) => x.id === rest.toLowerCase() || x.name.toLowerCase() === rest.toLowerCase()); if (!t) return `Title looks: ${D.TITLE_LOOKS.map((x) => x.id).join(', ')}`; p.plan.style.titles = t.id; p.styleLocked = true; Intro.stale(p, 'edit'); Intro.changed(p); return `Titles: ${t.name}.`; }
+      case 'trans': case 'transitions': { const t = D.TRANSITION_SETS.find((x) => x.id === rest.toLowerCase()); if (!t) return `Cuts: ${D.TRANSITION_SETS.map((x) => x.id).join(', ')}`; p.plan.style.trans = t.id; p.styleLocked = true; Intro.stale(p, 'edit'); Intro.changed(p); return t.name; }
+      case 'grade': { const g = rest.toLowerCase(); if (!D.GRADES.includes(g) && !(typeof EditFX !== 'undefined' && EditFX.LOOK[g])) return `Grades: ${D.GRADES.join(', ')} (or any look: /edit-presets look)`; p.plan.style.grade = g; p.styleLocked = true; Intro.stale(p, 'edit'); Intro.changed(p); return `Grade: ${g}.`; }
+      case 'colors': case 'colours': { const hex = rest.match(/#[0-9a-f]{6}/gi) || []; if (!hex.length) return 'Colors: /intro colors #0b0710 #ffd75e (backdrop, then accent)'; p.plan.style.backdrop = hex[0]; if (hex[1]) p.plan.style.accent = hex[1]; p.styleLocked = true; Intro.stale(p, 'edit'); Intro.changed(p); return `Backdrop ${hex[0]}${hex[1] ? ` · accent ${hex[1]}` : ''}.`; }
+      case 'fps': { const f = Number(rest); if (![24, 25, 30, 50, 60].includes(f)) return 'Frame rate: 24, 30 or 60'; p.fps = f; Intro.stale(p, 'captures'); Intro.changed(p); return `Captures at ${f} fps.`; }
+      case 'volume': { const v = Number(String(rest).replace('%', '')); if (!(v >= 0 && v <= 100)) return 'Music volume: /intro volume 70'; p.musicVol = v / 100; Intro.stale(p, 'edit'); Intro.changed(p); return `Music at ${v} %.`; }
+      case 'make': { const k = rest.toLowerCase(); const f = await Intro.extra(p, k); return typeof f === 'string' && f.includes('/') ? `${k}: ${f.split(/[\\/]/).pop()}` : f; }
+      case 'duplicate': { const q = await Intro.duplicate(p, { agentId: ctx.agentId }); return `“${q.name}”: the same plan, a fresh take.`; }
       case 'folder': return `Files: ${await Intro.folder(p)}`;
       case 'remove': case 'delete': { const q = rest ? Intro.find(rest) : p; if (!q) return 'Which one? /intro list'; return Intro.remove(q); }
       default: return HELP;
@@ -150,11 +160,17 @@ const IntroCmds = (() => {
         if (s === 'cover') return pick(D.COVER_MODES.map((m) => ({ value: `cover ${m.id}`, hint: m.name })));
         if (s === 'post') return pick(D.POSTS.map((m) => ({ value: `post ${m.id}`, hint: m.name })));
         if (s === 'run' || s === 'from' || s === 'undo') return pick(D.STEPS.slice(1).map((m) => ({ value: `${s} ${m.id}`, hint: m.what })));
+        if (s === 'titles') return pick(D.TITLE_LOOKS.map((m) => ({ value: `titles ${m.id}`, hint: m.name })));
+        if (s === 'trans') return pick(D.TRANSITION_SETS.map((m) => ({ value: `trans ${m.id}`, hint: m.name })));
+        if (s === 'grade') return pick(D.GRADES.map((g) => ({ value: `grade ${g}`, hint: 'color grade' })));
+        if (s === 'make') return pick([['gif', 'a GIF for chats'], ['boomerang', 'a boomerang loop'], ['frames', 'PNG frames for After Effects'], ['srt', 'captions from the words'], ['edl', 'an EDL'], ['board', 'the cover on the board']].map(([v, h]) => ({ value: `make ${v}`, hint: h })));
+        if (s === 'fps') return [24, 30, 60].map((f) => ({ value: `fps ${f}`, hint: 'captures' }));
+        if (s === 'redo' || s === 'beat') { const p0 = Intro.latest(); return (p0?.plan.beats || []).map((b) => ({ value: `${s} ${b.n}`, hint: `${b.kind} ${b.words || ''}` })); }
         if (s === 'music') return [{ value: 'music lab', hint: 'the song loaded in the Lab' }, { value: 'music none', hint: 'no music' }];
         if (s === 'board') return [...(typeof Board !== 'undefined' ? Board.boards() : []).map((b) => ({ value: `board ${b.name}`, hint: 'its vibe' })), { value: 'board none', hint: 'Hearth\'s own colors' }];
         if (s === 'open' || s === 'remove') return Intro.list().map((p) => ({ value: `${s} ${p.name}`, hint: p.status }));
         if (s === 'copy') return Object.keys(D.LINES).map((k) => ({ value: `copy ${k}`, hint: 'word suggestions' }));
-        if (s === 'cut-downs') return [{ value: 'cut-downs 15 6', hint: 'the 15 s and the 6 s' }, { value: 'cut-downs 30', hint: '30 s' }, { value: 'cut-downs 15 6 all', hint: 'every format' }];
+        if (s === 'cut-downs') return [{ value: 'cut-downs 15 6', hint: 'the 15 s and the 6 s' }, { value: 'cut-downs 30', hint: '30 s' }, { value: 'cut-downs 15 6 all', hint: 'every format' }, { value: 'cut-downs loop', hint: 'a 6 s loop that ends where it starts' }];
         return [];
       }
       return SUBS.map(([value, hint]) => ({ value, hint })).filter((x) => !w || x.value.startsWith(w));
