@@ -23,7 +23,8 @@ const Capture = (() => {
   const IS_MAC = /Mac/.test(navigator.platform);
   const mod = IS_MAC ? '⌘' : 'Ctrl';
   const base = (p) => String(p || '').split(/[\\/]/).pop();
-  const fileUrl = (p) => `file:///${String(p).replace(/\\/g, '/').replace(/^\/+/, '')}`.replace(/#/g, '%23').replace(/\?/g, '%3F');
+  // every path segment encoded (a "100% final.mp4" or "take #2" didn't load: % # ? and friends), a drive letter kept
+  const fileUrl = (p) => (/^(data|blob|https?|file):/.test(String(p)) ? String(p) : `file:///${String(p).replace(/\\/g, '/').replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/').replace(/^([A-Za-z])%3A/, '$1:')}`);
 
   // ---------- preferences (remembered; one good default each) ----------
   const DEF = {

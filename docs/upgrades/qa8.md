@@ -111,3 +111,4 @@ is settled (the one that has the focus wins; the other stays reachable as writte
 64. Fixed: `/board-link` in a brand-new chat answered "Send a message first". Same fix.
 65. Checked end to end (no change needed): with `/board-tools on` and `/capture-tools on`, Claude and Astra (fake engines, real MCP servers over stdio) list boards, read the linked board's vibe, add a note, list captures and take a screenshot.
 66. Fixed: adding a long clip to the board (up to 2 GB is allowed) copied it on the main process's thread, so every window froze until the copy finished. It copies in the background now.
+67. Fixed: a capture whose file name had a % (or other characters a web address reserves, like "take 100% final.mp4") didn't load in the captures, the player or the frame reader; only # and ? were escaped. Every part of the path is encoded now (as the board and Video Review already did).
