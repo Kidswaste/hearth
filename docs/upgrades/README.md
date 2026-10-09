@@ -32,7 +32,8 @@ line count is lower than the number of upgrades).
 | Brain (round 6): an app map both engines read on demand, a new layer per effect, node graphs by default, time first (music when asked), Claude ⇄ Astra take over each other's task in the same chat and scene (`/task`) | [brain.md](brain.md) | 63 |
 | Cut (round 6): clip track in Video Review (E): split S, delete / ripple delete, trim with beat snapping, reorder, speed, fades, freeze frames, title cards, auto-cut on bars / drops (as a suggestion), gapless playback, export as the next version / socials / GIF / stills; song trim and /send-clip in the Lab | [cut.md](cut.md) | 93 |
 | Live (round 6): director edits no longer blank the Lab (it was pushed behind the window during every call), only changed layers re-run, scene switches and jam rounds stay in the page, new / changed / removed layers fade in place, unavoidable reloads cross-fade from a picture, a "building…" pill | [live.md](live.md) | 26 |
-| **Total** | | **3,727** |
+| Declutter (round 7): hold Alt for tucked buttons, Ctrl for key badges, the keys button bottom left, right-click menus with › submenus everywhere, Customise this… (pin / tuck any button), 183 → 138 visible controls | [declutter.md](declutter.md) | 548 |
+| **Total** | | **4,275** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.
