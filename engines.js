@@ -306,6 +306,25 @@ function claudeToolArgs(agent, options = {}) {
   return args;
 }
 
+// Nice-to-have Claude flags (name -> how many values follow it). Claude Code versions come and go with these, so
+// when the CLI says "unknown option" for one, send() drops it for the rest of this run and retries at once.
+const CLAUDE_OPTIONAL = { '--system-prompt-snapshot': 1, '--disable-slash-commands': 0, '--setting-sources': 1, '--include-partial-messages': 0, '--thinking-display': 1, '--effort': 1 };
+const claudeDropped = new Set();
+function dropUnsupported(args) {
+  if (!claudeDropped.size) return args;
+  const out = [];
+  for (let i = 0; i < args.length; i++) {
+    if (claudeDropped.has(args[i])) { i += CLAUDE_OPTIONAL[args[i]]; continue; }
+    out.push(args[i]);
+  }
+  return out;
+}
+// The optional flag an "unknown option" error names, if it's one Hearth can do without.
+function unsupportedFlag(text) {
+  const m = /unknown option '?(--[\w-]+)/i.exec(text || '');
+  return m && m[1] in CLAUDE_OPTIONAL && !claudeDropped.has(m[1]) ? m[1] : null;
+}
+
 function claudeArgs(agent, session, options = {}) {
   const args = [
     '-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
@@ -322,7 +341,7 @@ function claudeArgs(agent, session, options = {}) {
   if (agent.showThinking !== false) args.push('--thinking-display', 'summarized');
   if (session.id) args.push('--resume', session.id);
   else args.push('--session-id', crypto.randomUUID());
-  return args;
+  return dropUnsupported(args);
 }
 
 // The instructions file is named after its content, so two runs of the same agent with different personas
@@ -590,6 +609,15 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
       send({ agent, chatId, session: {}, text: options.fallbackText, options: { ...options, fallbackText: undefined, persona: undefined, lean: undefined } }, emit);
       return;
     }
+    // An older / newer Claude Code that doesn't know an optional flag: run again without it.
+    const flag = event.type === 'error' && engine === 'claude' && !streamed ? unsupportedFlag(`${event.message}\n${stderr}`) : null;
+    if (flag) {
+      log(`claude doesn't know ${flag}, retrying without it`);
+      claudeDropped.add(flag);
+      if (running.get(chatId) === child) running.delete(chatId);
+      send({ agent, chatId, session, text: original, options }, emit);
+      return;
+    }
     if (event.type === 'error') Object.assign(event, friendlyError(engine, event.message));
     if (event.type === 'done') { try { addUsage(agent.id, event.usage, { chatId, model: options.model || agent.model || '', dock: agent.dock || '', ms: Date.now() - startedAt, tools: toolCount }); } catch { /* usage stats are best-effort */ } }
     emit({ ...event, session: state });
@@ -778,6 +806,6 @@ module.exports = {
   send, stop, stopAll, login, status, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
   doctor, EFFORTS, CODEX_DISABLED_FEATURES,
   // for tests (dev/astra-engine-test.js)
-  _test: { codexArgs, claudeArgs, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, hubToolEnv, nodesOn, LOST_SESSION },
+  _test: { codexArgs, claudeArgs, unsupportedFlag, claudeDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, hubToolEnv, nodesOn, LOST_SESSION },
   buildPrompt, HUB_TOOLSETS, // the director cost report (mcp/cost.js)
 };

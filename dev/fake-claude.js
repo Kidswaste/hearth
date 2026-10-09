@@ -8,6 +8,9 @@ const F = require('./fake-common');
 (async () => {
   const argv = process.argv.slice(2);
   if (argv[0] === 'auth' || argv[0] === '--version') { console.log('fake-claude 0.0.0'); return; }
+  // FAKE_CLAUDE_REJECT=--flag,--other acts like a Claude Code version that doesn't know those options
+  const reject = (process.env.FAKE_CLAUDE_REJECT || '').split(',').find((f) => f && argv.includes(f));
+  if (reject) { process.stderr.write(`error: unknown option '${reject}'\n`); process.exit(1); }
   const arg = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : null; };
   const sessionId = arg('--resume') || arg('--session-id') || F.uuid();
   const model = arg('--model') || 'fake-opus';
