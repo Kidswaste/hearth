@@ -43,7 +43,7 @@ if (other) {
   await Review.compare(other.path, 'wipe'); await wait(500);
   Review.play(); await until(() => !vid.paused, 3000); await wait(300);
   out.wipePlay = brief(await measure(2500));
-  out.wipeState = { paused: vid.paused, t: vid.currentTime.toFixed(2), cmp: Review.state.cmp.path?.split('/').pop(), mode: Review.state.cmp.mode, loop: Review.state.loop };
+  out.wipePlaying = !vid.paused || vid.ended;
   Review.setCompareMode('onion'); if (vid.paused) Review.play(); await wait(300);
   out.onionPlay = brief(await measure(2500));
   Review.stopCompare(); await wait(300);

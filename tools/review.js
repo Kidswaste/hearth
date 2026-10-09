@@ -1616,6 +1616,13 @@ const Review = (() => {
     root.tabIndex = -1;
     vid().addEventListener('seeked', () => { scopesDirty = true; });
     vid().addEventListener('pause', () => { scopesDirty = true; });
+    // a loop that ends at the clip's end: when a frame comes late the video can reach its end before the per-frame
+    // check sends it back, and it stopped there; it loops on instead
+    vid().addEventListener('ended', () => {
+      const { a, on } = S.loop;
+      if (!on || a == null || S.shuttle) return;
+      if (S.pingpong) { refs.cmp.pause(); S.shuttle = -Number(refs.speed.value || 1); } else { seek(a); play(); }
+    });
     requestAnimationFrame(tick);
     window.hub.video?.tools(ffOverrides()).then((t) => { S.tools = t; });
     load();
