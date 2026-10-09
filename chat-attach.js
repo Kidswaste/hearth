@@ -166,6 +166,15 @@ const ChatAttach = (() => {
     }).catch(() => Native.insertDraft(a.id, t));
   }, true);
 
+  // Alt+A in a chat box: the ＋ menu (read from e.code: on a Mac ⌥A types a letter)
+  addEventListener('keydown', (e) => {
+    if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.code !== 'KeyA' || !e.target?.matches?.('.composer textarea')) return;
+    const a = viewUnder(e.target);
+    if (!a) return;
+    e.preventDefault(); e.stopPropagation();
+    menu(a.id, Native.view(a.id).form.querySelector('.attach-btn') || e.target).catch(fail);
+  }, true);
+
   // ---------- commands ----------
   function register() {
     if (typeof Commands === 'undefined') return;
@@ -235,6 +244,7 @@ const ChatAttach = (() => {
   if (document.readyState === 'loading') addEventListener('DOMContentLoaded', register); else register();
   try {
     Keys.add(
+      { area: 'Chat', keys: 'Alt+A', what: 'the ＋ menu of the chat box (attach from anywhere)', sel: '.composer .attach-btn' },
       { area: 'Chat', keys: '＋ in the chat box', what: 'attach: files, the board, captures, the Lab frame / scene, a screen region, recent renders' },
       { area: 'Chat', keys: 'Shift+click ＋', what: 'the file picker straight away' },
       { area: 'Chat', keys: 'Drop a video from Video Review / a capture', what: 'attaches its contact sheet (engines read pictures)' },

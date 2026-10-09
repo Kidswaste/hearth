@@ -642,6 +642,8 @@ const Native = (() => {
         m.role === 'assistant' && last && agent.engine === 'claude' ? { label: '🔍 Review: check its own result', action: () => send(agentId, REVIEW_PROMPT).catch((err) => toast(err.message, { type: 'error' })) } : null,
         m.role === 'assistant' && last && astra && astra.id !== agentId ? { label: `👁 Second opinion from ${astra.name}`, key: 'Ctrl+Alt+O', action: () => secondOpinion(agentId) } : null,
       ] },
+      // (round 9) what this reply made (chat-things.js): open any of them
+      m.things?.length && typeof ChatThings !== 'undefined' ? { label: 'Made here', hint: String(m.things.length), items: () => m.things.filter((t) => !t.gone).map((t) => ({ label: `${ChatThings.GLYPH[t.k] || '◇'} ${String(t.name || ChatThings.KIND[t.k]).slice(0, 36)}`, action: () => ChatThings.openThing(t, { agentId, index }) })) } : null,
       { label: 'Mark', items: () => [
         { label: '📌 Pin message', checked: Boolean(m.pinnedMsg), action: () => toggleMark(agentId, index, 'pinnedMsg') },
         { label: '🔖 Bookmark', checked: Boolean(m.bookmark), action: () => toggleMark(agentId, index, 'bookmark') },
@@ -1484,6 +1486,8 @@ const Native = (() => {
         { label: 'Chat stats', action: () => chatStats(chat) },
         { label: 'Chat commands…', key: '/help', action: () => Commands.exec('/help', agentId) },
       ] },
+      // (round 9) the board, scene, sequence, project, captures this chat works with (chat-context.js)
+      ...(typeof ChatContext !== 'undefined' ? (() => { const w = ChatContext.attachItems(agentId).filter((x) => typeof x === 'object'); return w.length ? [{ label: 'Works with', hint: String(w.length), items: () => [...w, '-', { label: 'What it is and how your words use it', action: () => Commands.exec('/chat-context', agentId) }] }] : []; })() : []),
       { label: 'Organise', items: () => [
         { label: 'Rename…', action: () => renameCurrent(agentId) },
         { label: 'Pin to top', checked: Boolean(chat.pinned), action: () => togglePin(chat.id) },

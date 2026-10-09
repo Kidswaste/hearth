@@ -6,6 +6,8 @@
 const ChatSlash = (() => {
   const PIN_MAX = 6; const RECENT_MAX = 6; const HERE_MAX = 6; const AREAS_SHOWN = 8;
   const MORE = '*more';
+  // what the owner reaches for most in each tool (docs: the night brief's usage tracking)
+  const HABITS = { three: ['save', 'shuffle', 'tap', 'freeze', 'size', 'live', 'sequence'], ae: ['editor', 'frames', 'export'], board: ['board-use', 'board-add', 'vibe'] };
   const cmdRow = (def) => ({ kind: 'command', def, label: `/${def.name}${def.args ? ` ${def.args}` : ''}`, hint: def.desc, keys: def.keys || '' });
   // the commands of an area, most used first, then by name
   function areaCmds(area) {
@@ -14,7 +16,11 @@ const ChatSlash = (() => {
   }
   // a few commands for what's on screen: the place's area, or the chat's own things
   function hereRows(place, ctx) {
-    if (place.id !== 'chat') return { label: `In ${place.label}`, list: areaCmds(place.area).slice(0, HERE_MAX) };
+    if (place.id !== 'chat') {
+      // your habits there first (the Lab: Save, Shuffle, Tap, Freeze, frame sizes, Live sound, the sequence), then its most used
+      const first = (HABITS[place.id] || []).map((x) => Commands.get(x)).filter(Boolean);
+      return { label: `In ${place.label}`, list: [...new Set([...first, ...areaCmds(place.area)])].slice(0, HERE_MAX) };
+    }
     const chat = ctx?.agentId ? Native.current?.(ctx.agentId) : null;
     const made = chat && typeof ChatThings !== 'undefined' ? ChatThings.ofChat(chat) : [];
     const c = chat && typeof ChatContext !== 'undefined' && ChatContext.data ? ChatContext.gather(chat.id, chat) : {};
