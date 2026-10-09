@@ -41,7 +41,8 @@ line count is lower than the number of upgrades).
 | Lab frames (round 8): the Lab timeline frame by frame on video footage with no song (timecode counter, exact steps, J K L), cuts the sketch plays (shared with the editor), sketches read the exact frame, 21 footage layers, reference pacing (`/footage`, `/match-pacing`) | [labframes.md](labframes.md) | 284 |
 | QA 8 (round 8): integration fixes between board / editor / capture / declutter, key conflict table, three new end-to-end journeys (board, editor, capture), every key pressed on its surface, ⌘ on a Mac, one check runner | [qa8.md](qa8.md) | 75 |
 | Lab sequence (round 8): ▤ Sequence on the Lab timeline (`/sequence`) builds a video from your scenes, chat scenes, looks, footage, titles, overlays and the song; it plays in the preview without reloads, frame-exact, the editor's keys and transitions, finishes in the video editor and comes back, renders frame by frame in every social format; Claude / Astra build it with `three_do sequence` | [sequence.md](sequence.md) | 101 |
-| **Total** | | **8,746** |
+| Lab sequence 2 (round 9): each scene (each director chat's scene) owns its sequence and switching chats switches it; ✦ Arrange lays your scenes on the song's sections (cuts on bars, a transition per section change, a new look when a scene comes back; 10 templates, Astra can pick; 15 s / 6 s versions; fill a gap); 10 Lab-only transitions (camera fly-through, morph through shared layers, depth wipe, datamosh, match cut, flash on the beat…) also in the editor; V variations per clip, roll / slide, nested sequences, clipboard across sequences, markers, clip pictures, waveform; clip-relative hits, footage sound in real-time takes, a tested editor export (`/arrange`, `/sequence make`) | [seq2.md](seq2.md) | 93 |
+| **Total** | | **8,839** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.

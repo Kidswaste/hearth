@@ -1625,7 +1625,7 @@ const ThreeSeq = (() => {
     refs.flash = el('span', { class: 'sq-flash', attrs: { 'aria-live': 'polite' } });
     refs.cv = el('canvas', { class: 'sq-canvas' });
     refs.head = el('div', { class: 'sq-playhead' });
-    refs.hint = el('div', { class: 'sq-hint', text: 'Drag a scene here (＋), or right-click the preview → Add this scene to the sequence' });
+    refs.hint = el('div', { class: 'sq-hint', text: 'Drag a scene here (＋), ⋯ → ✦ Arrange my scenes on the song, or right-click the preview → Add this scene' });
     refs.tl = el('div', { class: 'sq-tl', attrs: { tabindex: '0' } }, refs.cv, refs.head, refs.hint);
     refs.view = el('div', { class: 'sq-view', hidden: true }, el('div', { class: 'sq-row' }, refs.play, refs.time, refs.name, el('span', { class: 'spacer' }), refs.flash, refs.add, refs.render, refs.more), refs.tl);
     bar.append(refs.view);
