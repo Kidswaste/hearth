@@ -103,3 +103,5 @@ is settled (the one that has the focus wins; the other stays reachable as writte
 ## More fixes found by the journeys
 57. Fixed: the app map told Claude and Astra "/record" records Hearth; typed (or offered as a chip) in the Lab's director chat it records the *sketch*. The map now says `/rec` records Hearth anywhere and `/record` in the Lab records the sketch.
 58. Fixed (dev): the journeys' clicks landed on the row above in a menu that was still springing open (round 7's menu animation moves the rows for ≈ 150 ms): `dev/checks/editor.js` picked "Opacity ›" instead of "Transition in ›". Clicks wait for a menu, flyout, dialog or the keys sheet to finish opening; `J.key` knows Home, End, PgUp, PgDn, F1, F2.
+59. Fixed: pasting (⌘/Ctrl+V) into a capture's annotator, a dialog, the drawer or the keys sheet open over the board also pasted onto the board behind it. The window on top keeps its paste.
+60. Fixed: Space in a capture player or dialog open over the board also switched the board into its "hand" (pan) mode.

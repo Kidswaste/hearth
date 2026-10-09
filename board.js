@@ -1007,6 +1007,9 @@ const Board = (() => {
   }
   async function onPaste(e) {
     if (!visible() || e.target.closest?.('input, textarea, [contenteditable="true"]')) return;
+    // a window open over the board (a capture's annotator or player, a dialog, the drawer, the command bar) keeps
+    // its paste: it used to land on the board behind it
+    if ([...document.querySelectorAll('dialog[open]')].some((d) => d.matches(':modal')) || e.target.closest?.('dialog, .bdd, .cmdbar, .keys-sheet')) return;
     const cd = e.clipboardData; if (!cd) return;
     e.preventDefault();
     const files = [...cd.files || []];
@@ -1080,7 +1083,7 @@ const Board = (() => {
     addEventListener('keydown', (e) => {
       if (!visible()) return;
       mods(e);
-      if (e.code === 'Space' && !e.repeat && !e.target.closest?.('input, textarea, [contenteditable="true"], button')) { S.space = true; ui.root.classList.add('bd-hand'); e.preventDefault(); }
+      if (e.code === 'Space' && !e.repeat && !e.target.closest?.('input, textarea, [contenteditable="true"], button, dialog')) { S.space = true; ui.root.classList.add('bd-hand'); e.preventDefault(); }
     }, true);
     addEventListener('keyup', (e) => { mods(e); if (e.code === 'Space') { S.space = false; ui.root.classList.remove('bd-hand'); } }, true);
     addEventListener('blur', () => { S.alt = S.ctrl = S.space = false; ui.root.classList.remove('bd-alt', 'bd-ctrl', 'bd-hand'); });
