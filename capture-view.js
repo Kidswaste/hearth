@@ -47,8 +47,8 @@ const CaptureView = (() => {
       { label: isVid ? '▶ Play' : '🖼 Open', action: () => open(p) },
       isVid ? null : { label: 'Copy the picture', action: tryRun(async () => { await Capture.copyImage(p); toast('Copied', { timeout: 1200 }); }) },
       isVid && frameOf ? { label: 'Copy this frame', action: tryRun(async () => { const f = await frameOf(); await Capture.copyImage(f.path); toast(`Frame ${f.frame} copied`, { timeout: 1400 }); }) } : null,
-      { label: isVid ? '→ Chat (its contact sheet)' : '→ Chat', action: tryRun(() => Capture.attachToChat(p)) },
-      { label: '→ Chat…', items: () => agents().map((a) => ({ label: a.name, action: tryRun(() => Capture.attachToChat(p, a.id)) })) },
+      { label: isVid ? '→ Send to this chat (its contact sheet)' : '→ Send to this chat', action: tryRun(() => Capture.attachToChat(p)) },
+      { label: '→ Send to a chat', items: () => agents().map((a) => ({ label: a.name, action: tryRun(() => Capture.attachToChat(p, a.id)) })) },
       isVid ? { label: 'Open in Video Review', action: tryRun(() => Capture.openInReview(p)) } : null,
       isVid ? { label: 'Open in the editor timeline', action: tryRun(() => Capture.openInReview(p, { cut: true })) } : null,
       isVid && typeof VideoCut !== 'undefined' && VideoCut.active ? { label: 'Add to the edit', action: tryRun(() => Capture.addToEdit(p)) } : null,
@@ -117,7 +117,7 @@ const CaptureView = (() => {
       const s = q.value.trim().toLowerCase();
       const list = items.filter((it) => (kind === 'all' || it.kind === kind) && (!s || it.name.toLowerCase().includes(s))).sort(SORTS[sort] || SORTS.new);
       grid.replaceChildren(...list.slice(0, 400).map(card));
-      if (!list.length) grid.append(el('p', { class: 'hint cap-empty', text: items.length ? 'Nothing matches.' : `No captures yet. ${IS_MAC ? '⌘' : 'Ctrl'}+Alt+S opens the capture menu; /shot and /record do it from a chat.` }));
+      if (!list.length) grid.append(el('p', { class: 'hint cap-empty', text: items.length ? 'Nothing matches.' : `No captures yet: ${IS_MAC ? '⌘' : 'Ctrl'}+Alt+S, or /shot in any chat.` }));
       count.textContent = `${list.length} of ${items.length}`;
     };
     q.addEventListener('input', paint);

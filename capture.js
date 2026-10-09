@@ -48,15 +48,23 @@ const Capture = (() => {
   addEventListener('keydown', (e) => { if (e.key === 'Alt') altDown = true; }, true);
   addEventListener('keyup', (e) => { if (e.key === 'Alt') altDown = false; }, true);
   addEventListener('blur', () => { altDown = false; });
-  function menu(x, y, items, parent = null) {
-    let list = (typeof items === 'function' ? items() : items).filter(Boolean);
-    if (altDown) list = list.map((it) => ({ ...it, more: false })); // Alt: the rare items too, without "More…"
-    const conv = list.map((it) => (it.items ? {
-      label: `${it.label}  ›`, more: it.more, danger: it.danger,
-      action: () => setTimeout(() => menu(x, y, it.items, list), 0),
-    } : it));
-    if (parent) conv.unshift({ label: '‹ back', action: () => setTimeout(() => menu(x, y, parent), 0) });
-    showMenu(x, y, conv);
+  // The app menu's own submenus (renderer.js showMenu: › rows, flyouts, ‹ back, type-to-filter) carry it; leading
+  // symbols become the app's SVG icons (icons.js) and a submenu row loses its "…" (› already says there's more).
+  const GLYPH_ICON = { '📷': 'shot', '⬚': 'social', '✨': 'sparkle', '●': 'rec', '■': 'stop', '▦': 'grid', '🎞': 'frames', '🎬': 'film', '✎': 'pen', '✂': 'cut', '→': 'tochat', '◉': 'capture', '◆': 'clock' };
+  const listOf = (items) => (typeof items === 'function' ? items() : items || []).filter(Boolean);
+  function iconize(it) {
+    if (!it || typeof it !== 'object') return it;
+    let out = it;
+    const m = /^(\S+)\s+/u.exec(it.label || '');
+    if (m && GLYPH_ICON[m[1]]) out = { ...it, label: it.label.slice(m[0].length), icon: GLYPH_ICON[m[1]] };
+    if (/^▶ Tours/.test(it.label || '')) out = { ...it, label: it.label.slice(2), icon: 'tour' };
+    if (it.items) out = { ...out, label: String(out.label).replace(/…(\s|$)/, '$1').trim(), items: () => listOf(it.items).map(iconize) };
+    return out;
+  }
+  function menu(x, y, items) {
+    let list = listOf(items);
+    if (altDown) list = list.map((it) => (typeof it === 'object' ? { ...it, more: false } : it)); // Alt: the rare items too, without "More…"
+    showMenu(x, y, list.map(iconize));
   }
   const check = (on) => (on ? '✓ ' : '');
 
@@ -958,12 +966,14 @@ const Capture = (() => {
       ] },
       { label: '⬚ Social frame…', items: () => [...crops, { label: 'More sizes…', action: () => pickFrame((f) => shot({ target: 'tool', crop: f.id })) }] },
       { label: '✨ Beautified (for posts)…', items: () => D.BEAUTIFY.map((b) => shotItem(b.label, { target: 'window', beautify: b.id, clean: true })) },
+      '-',
       R ? null : { label: `● Record Hearth  ${mod}+Alt+R`, action: () => record().catch((e) => toast(e.message, { type: 'error' })) },
       R ? null : { label: '● Record…', items: () => [
         ...D.RECORD.map((p) => ({ label: p.label, action: () => record({ preset: p.id }).catch((e) => toast(e.message, { type: 'error' })) })),
         { label: 'Record a region (drag / click)', action: () => record({ target: 'region' }).catch((e) => toast(e.message, { type: 'error' })) },
       ] },
       typeof CaptureTour !== 'undefined' ? { label: '▶ Tours (hands-free recordings)…', items: () => CaptureTour.menuItems() } : null,
+      '-',
       { label: `▦ Captures  ${mod}+Alt+V`, action: () => CaptureView.library() },
       recent.length ? { label: 'Recent…', items: () => recent.slice(0, 8).map((x) => ({ label: `${x.kind === 'video' ? '🎬' : '📷'} ${base(x.path)}`, action: () => CaptureView.open(x.path) })) } : null,
       { label: '🎞 Read frames of a video…', action: () => FrameRead.pickAndRead() },

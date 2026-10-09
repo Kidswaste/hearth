@@ -1033,9 +1033,10 @@ const Board = (() => {
       hd('nw'), hd('ne'), hd('sw'), hd('se'), hd('rot', 'bd-alt-only'),
       hd('cl', 'bd-crop'), hd('cr', 'bd-crop'), hd('ct', 'bd-crop'), hd('cb', 'bd-crop'), ui.selInfo,
       el('div', { class: 'bd-quick' }));
-    ui.empty = el('div', { class: 'bd-empty' },
-      el('b', { text: 'Drop pictures, clips or links here' }),
-      el('span', { text: 'or paste (Ctrl+V), or + Add. Right-click for everything else.' }));
+    ui.empty = el('div', { class: 'bd-empty' }, // one line that teaches, under the board's icon
+      (typeof Icons !== 'undefined' && Icons.node('board')) || '', el('b', { text: 'Drop pictures, clips or links — or paste, or + Add' }),
+      el('span', { text: 'Right-click for everything else' }));
+    ui.empty.querySelector('svg')?.classList.add('p8-ico');
     ui.overlay.append(ui.marquee, ui.gv, ui.gh, ui.selbox);
     ui.vp.append(ui.bg, ui.world, ui.overlay, ui.empty);
     // the few things always on screen: which board, + Add, the zoom
@@ -1093,7 +1094,16 @@ const Board = (() => {
       emit('mount');
     });
   }
-  function renderHud() { if (S.mounted && S.cur) { S.ui.boardBtn.textContent = `${S.cur.readonly ? '🔒' : '▦'} ${S.cur.name}`; S.ui.vp.dataset.drop = `Drop to add to "${S.cur.name}"`; } }
+  function renderHud() {
+    if (!S.mounted || !S.cur) return;
+    const k = `${S.cur.readonly ? 1 : 0}|${S.cur.name}`; // (only when it changed: the chip sits over the moving board)
+    if (S.ui.boardBtn.__k === k) return;
+    S.ui.boardBtn.__k = k;
+    const icon = typeof Icons !== 'undefined' ? Icons.node(S.cur.readonly ? 'lock' : 'board') : null;
+    icon?.classList.add('p8-ico');
+    S.ui.boardBtn.replaceChildren(icon || (S.cur.readonly ? '🔒 ' : '▦ '), document.createTextNode(S.cur.name));
+    S.ui.vp.dataset.drop = `Drop to add to "${S.cur.name}"`;
+  }
   function applyBg() {
     if (!S.mounted) return;
     const bg = D.BACKGROUNDS.find((b) => b.id === (S.cur?.bg || prefs().bg || 'theme')) || D.BACKGROUNDS[0];

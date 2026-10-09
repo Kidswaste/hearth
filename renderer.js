@@ -186,6 +186,7 @@ function menuButton(it, onPick) {
   b.setAttribute('role', 'menuitem');
   const [text, inlineKey] = menuLabel(it);
   b.textContent = text; // the label stays the first text node (usage counts and checks read it)
+  if (it.icon && typeof Icons !== 'undefined') { const ic = Icons.node(it.icon); if (ic) { ic.classList.add('menu-ico'); b.append(ic); b.classList.add('has-ico'); } } // drawn first by CSS (order: -1)
   if (it.hint) b.append(el('span', { class: 'menu-hint', text: it.hint }));
   const sub = Boolean(it.items);
   const key = sub ? '›' : it.key || inlineKey;

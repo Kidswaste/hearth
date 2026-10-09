@@ -1144,7 +1144,7 @@ const Review = (() => {
         n.frame ? el('img', { class: 'vr-note-frame', src: fileUrl(n.frame), alt: '', loading: 'lazy', on: { click: () => selectNote(n.id) } }) : null,
         text,
         n.color ? el('span', { class: 'vr-colortag' }, el('i', { style: { background: n.color } }), n.color) : null);
-    }) : [el('p', { class: 'hint vr-empty', text: all.length ? 'No notes match.' : 'Pause where something should change and press N. Draw on the frame with D. Each note keeps the timecode, a category and a frame grab.' })]));
+    }) : [el('p', { class: 'hint vr-empty', text: all.length ? 'No notes match.' : 'Pause where something should change and press N (D draws on the frame).' })]));
     refs.sendBtn.disabled = !open;
   }
   function noteMenu(n, x, y) {

@@ -163,9 +163,10 @@ const KeysUI = (() => {
   function hereAreas() {
     const id = H.surfaceIdFor?.(H.activeId) || H.activeId || '';
     if (id === 'tool:three') return ['Lab', 'Lab timeline', 'Lab sliders & layers', 'Effects picker', 'Present', 'Director dock', 'Chat box', 'Nodes'];
-    if (id === 'tool:ae') return ['Video Review', 'Director dock', 'Chat box'];
+    if (id === 'tool:ae') return [...(typeof VideoCut !== 'undefined' && VideoCut.active ? ['Editor'] : []), 'Video Review', 'Director dock', 'Chat box'];
+    if (id === 'tool:board') return ['Board', 'Capture'];
     if (id === 'tool:forgeheart') return ['Forge'];
-    if (H.agent(H.activeId)?.mode === 'native') return ['Chat box', 'Chats panel'];
+    if (H.agent(H.activeId)?.mode === 'native') return ['Chat box', 'Chats panel', ...(typeof BoardDrawer !== 'undefined' && BoardDrawer.isOpen() ? ['Board'] : [])];
     return [];
   }
   const hereLabel = () => { const id = H.surfaceIdFor?.(H.activeId) || H.activeId || ''; return id.startsWith('tool:') ? Tools.get?.(id.slice(5))?.name || 'this tool' : H.agent(H.activeId)?.name || 'here'; };
@@ -241,7 +242,7 @@ const KeysUI = (() => {
       const words = q.value.toLowerCase().split(/\s+/).filter(Boolean);
       const here = hereAreas();
       const groups = [...Keys.groups(true)];
-      const rank = ([area]) => (here.includes(area) ? 0 : area === 'Hidden buttons' ? 1 : area === 'Right-click' ? 2 : area === 'Everywhere' ? 3 : area === 'Menus' ? 4 : 5);
+      const rank = ([area]) => (here.includes(area) ? 0 : area === 'Hidden buttons' ? 1 : area === 'Right-click' ? 2 : area === 'Everywhere' ? 3 : area === 'Menus' ? 4 : area === 'Capture' ? 4.5 : 5); // capture keys work anywhere
       groups.sort((a, b) => rank(a) - rank(b));
       const out = [];
       for (const [area, lines] of groups) {

@@ -1585,7 +1585,7 @@ const VideoCut = (() => {
     const key = `seq:${name}`;
     if (cuts[key]) return null;
     cuts[key] = cuts[st.path]; delete cuts[st.path]; saveCuts();
-    st.path = key; refs.title.textContent = `✂ ${name}`;
+    st.path = key; setTitle(name);
     return key;
   }
   // Lane height: compact / normal / tall (remembered)
@@ -2172,7 +2172,7 @@ const VideoCut = (() => {
     host.refs.stage.classList.add('cutting');
     refs.root.hidden = false;
     refs.btn?.classList.add('on');
-    refs.title.textContent = isSeq() ? `✂ ${st.path.slice(4)}` : '✂ Edit';
+    setTitle(isSeq() ? st.path.slice(4) : 'Edit');
     P.rate = 1; P.idx = -1;
     lastTime = '';
     fitTrackHeight();
@@ -2314,6 +2314,8 @@ const VideoCut = (() => {
     registerKeys();
     loadCuts().then(() => R().refreshCard?.());
   }
+  // the editor bar's title: the editor icon (icons.js) and the edit's name
+  function setTitle(name) { const i = typeof Icons !== 'undefined' ? Icons.node('editor') : null; if (!i) { refs.title.textContent = `✂ ${name}`; return; } i.classList.add('p8-ico'); refs.title.replaceChildren(i, String(name)); }
   // the inspector (tools/video-inspector.js) opens on the selection
   // (attached on first use: Review builds its notes column after mounting the editor)
   let inspAttached = false;

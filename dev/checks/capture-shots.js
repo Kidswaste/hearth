@@ -113,7 +113,7 @@ ok(out.railMenu.length === 1, 'one Capture entry in the rail ⋯ menu');
 await sleep(200);
 out.capMenu = [...document.querySelectorAll('#menu button')].map((b) => b.textContent);
 ok(out.capMenu.some((x) => /Screenshot of this tool/.test(x)) && out.capMenu.some((x) => /›/.test(x)), 'capture menu with submenus');
-[...document.querySelectorAll('#menu button')].find((b) => /Screenshot of…/.test(b.textContent))?.click();
+[...document.querySelectorAll('#menu button')].find((b) => /Screenshot of(…|›)/.test(b.textContent))?.click();
 await sleep(150);
 out.subMenu = [...document.querySelectorAll('#menu button')].map((b) => b.textContent).slice(0, 4);
 ok(/back/.test(out.subMenu[0] || ''), 'submenu has a back row');

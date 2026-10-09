@@ -85,6 +85,11 @@ const Declutter = (() => {
   ].map((r) => ({ mode: 'alt', ...r }));
   const byId = new Map(REVEAL.map((r) => [r.id, r]));
   const areas = () => [...new Set(REVEAL.map((r) => r.area))];
+  // later surfaces add their own rows (polish8.js: the board, the editor, capture); same shape as REVEAL
+  function addRules(list) {
+    for (const r of list) { const x = { mode: 'alt', ...r }; if (byId.has(x.id)) continue; REVEAL.push(x); byId.set(x.id, x); }
+    if (typeof paint === 'function') paint();
+  }
 
   let pins = new Set(store.get('declutter.pins', []));
   // buttons you tucked yourself (Customise this… → Tuck “…” behind Alt): [{ sel, label, area }]
@@ -653,6 +658,6 @@ const Declutter = (() => {
   return {
     REVEAL, ctx, customiseItems, popItems, pin, tuck, mine: () => mine.slice(), selectorFor, pinned: (id) => pins.has(id), find, paint, setOff, isOff: () => off, areas,
     tucked: (area) => REVEAL.filter((r) => (!area || r.area === area) && !pins.has(r.id)),
-    railItems, labToolbar,
+    railItems, labToolbar, addRules,
   };
 })();

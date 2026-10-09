@@ -1,0 +1,177 @@
+/* Round 8 (polish8): the mood board, the video editor and capture in the same Forgeheart language as the rest —
+   the same corners (/corners), control heights, rings, menus, motion (/motion off stills it) and light looks.
+   Loaded after board.css / capture.css / tools/video.css; presentation only. Rules of the house kept here:
+   no backdrop-filter over moving media (board clips, the program monitor, a playing capture), no idle loops,
+   materials (chrome / glass) only on the one primary control of a surface. */
+
+/* ====================================================================================================== */
+/* ---------- menus: icons, the same rhythm everywhere ---------- */
+:is(#menu, #menu-fly) button .menu-ico { order: -1; flex: none; width: 15px; height: 15px; align-self: center; margin-right: -9px; color: var(--fh-gold, var(--accent)); opacity: .9; }
+:is(#menu, #menu-fly) button.danger .menu-ico { color: inherit; }
+:is(#menu, #menu-fly) button:hover .menu-ico, #menu button.kb-on .menu-ico { opacity: 1; filter: drop-shadow(0 0 calc(5px * var(--glow, 1)) var(--g-gold, transparent)); }
+/* a menu over playing media (the board's clips, the editor's program, a capture playing) keeps its glass look but
+   doesn't re-blur the moving picture behind it on every frame */
+html.p8-over-media #menu, html.p8-over-media #menu-fly { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background: color-mix(in srgb, var(--fh-pop, var(--sidebar)) 96%, transparent); }
+
+/* ---------- the keys sheet: an icon per area, the new areas first where they apply ---------- */
+.keys-sheet .ks-group > h4[data-p8]::before {
+  content: ''; display: inline-block; width: 12px; height: 12px; margin-right: 7px; vertical-align: -1px; background: currentColor;
+  -webkit-mask: var(--p8-mask) center / contain no-repeat; mask: var(--p8-mask) center / contain no-repeat; opacity: .9;
+}
+
+/* ====================================================================================================== */
+/* ---------- mood board ---------- */
+/* the chips over the board: the look's corners, its control height, a ring for the keyboard, no glass (clips play
+   under them) */
+.bd-chip { height: 28px; display: inline-flex; align-items: center; gap: 6px; border-radius: var(--r-pill, 999px); border-color: var(--line-hi, var(--line));
+  background: color-mix(in srgb, var(--fh-pop, var(--sidebar)) 94%, transparent); box-shadow: 0 4px 14px #0006; transition: border-color var(--t-fast, .12s), color var(--t-fast, .12s), transform var(--t-fast, .12s); }
+html[data-skin~="forge"] .bd-chip { border-radius: 0; clip-path: var(--cut-sm, none); }
+.bd-chip:hover { color: var(--fh-gold-text, var(--text)); }
+.bd-chip:active { transform: translateY(1px); }
+.bd-chip .p8-ico { width: 15px; height: 15px; flex: none; color: var(--fh-gold, var(--accent)); }
+.bd-zoom { justify-content: center; font-family: var(--mono, ui-monospace, monospace); font-size: 12px; }
+/* + Add is the board's one primary action: the molten-gold chrome, like Run in the Lab */
+:root[data-look~=v2] .bd-add {
+  color: var(--m-gold-ink, #1a1206); font-family: var(--font-head, inherit); letter-spacing: .06em; text-transform: uppercase; font-size: 12px; font-weight: 700; border: 0;
+  background: var(--m-gold, linear-gradient(180deg, #ffe7a3, var(--fh-gold) 55%, #b9831b)); box-shadow: var(--m-bevel, none), 0 4px 14px #0006;
+}
+:root[data-look~=v2] .bd-add:hover { color: var(--m-gold-ink, #1a1206); filter: brightness(1.08); }
+:root[data-look~=v2][data-scheme=light] .bd-chip { box-shadow: 0 3px 10px #0002; }
+.bd-hud :is(button):focus-visible, .bd-root:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--fh-gold, var(--accent)), 0 0 0 3px color-mix(in srgb, var(--fh-gold, var(--accent)) 28%, transparent); }
+.bd-root:focus-visible { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--fh-gold, var(--accent)) 55%, transparent); }
+/* the empty board teaches in one line, under its icon */
+.bd-empty { gap: 10px; }
+.bd-empty .p8-ico { width: 44px; height: 44px; color: var(--fh-gold, var(--accent)); opacity: .55; filter: drop-shadow(0 0 calc(14px * var(--glow, 1)) var(--g-gold, transparent)); }
+.bd-empty b { font-family: var(--font-head, inherit); font-size: 15px; letter-spacing: .04em; color: var(--text); }
+.bd-empty span { font-size: 12.5px; }
+:root:not([data-motion=off]) .bd-empty { animation: hx-rise .4s var(--ease-out, ease-out) both; }
+/* the minimap, the quick bar, search, the selection: the look's metal and line */
+.bd-mini { border-radius: var(--r-md, 10px); border-color: var(--line-hi, var(--line)); box-shadow: 0 8px 22px #0007; }
+html[data-skin~="forge"] .bd-mini { clip-path: var(--cut-sm, none); }
+.bd-quick { border-radius: var(--r-md, 10px); border-color: var(--line-hi, var(--line)); background: color-mix(in srgb, var(--fh-pop, var(--sidebar)) 96%, transparent); }
+html[data-skin~="forge"] .bd-quick { clip-path: var(--cut-sm, none); }
+.bd-quick button { font-size: 12px; min-height: 24px; }
+:root:not([data-motion=off]) .bd-ctrl .bd-quick:not(:empty) { animation: hx-pop .14s var(--ease-out, ease-out) both; }
+.bd-search { border-radius: var(--r-pill, 999px); border-color: var(--line-hi, var(--line)); background: color-mix(in srgb, var(--fh-pop, var(--sidebar)) 96%, transparent); }
+html[data-skin~="forge"] .bd-search { border-radius: 0; clip-path: var(--cut-sm, none); }
+.bd-search:focus-within { border-color: color-mix(in srgb, var(--fh-gold, var(--accent)) 65%, var(--line)); }
+:root:not([data-motion=off]) .bd-search { animation: hx-pop .16s var(--ease-out, ease-out) both; }
+.bd-selinfo { font-family: var(--mono, ui-monospace, monospace); font-size: 10.5px; letter-spacing: .02em; }
+.bd-present-cap { font-family: var(--font-head, inherit); letter-spacing: .05em; }
+:root:not([data-motion=off]) .bd-compare { animation: hx-fade .2s ease both; }
+.bd-cmp-head button { border-radius: var(--r-sm, 6px); }
+html[data-skin~="forge"] .bd-cmp-head button { clip-path: var(--cut-sm, none); }
+/* drop target: a calm dashed edge instead of a hard inset ring */
+.bd-dropping .bd-vp { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--bd-gold) 85%, transparent), inset 0 0 60px color-mix(in srgb, var(--bd-gold) 18%, transparent); }
+.bd-dropping .bd-vp::after { font-family: var(--font-head, inherit); letter-spacing: .04em; border-radius: var(--r-pill, 999px); }
+html[data-skin~="forge"] .bd-dropping .bd-vp::after { border-radius: 0; clip-path: var(--cut-sm, none); }
+/* light looks: the board's own shadows were made for dark grounds */
+:root[data-scheme=light] .bd-item[data-shadow="soft"] .bd-clip { box-shadow: 0 10px 26px #0003; }
+:root[data-scheme=light] :is(.bd-t-web, .bd-t-note, .bd-t-swatch, .bd-t-palette) { box-shadow: 0 6px 18px #0002; }
+:root[data-scheme=light] .bd-badge { background: #000a; }
+
+/* ---------- the board drawer (over any chat or tool) ---------- */
+/* closed, it is out of the page's way: not focusable, not read out (it was only moved off screen) */
+.bdd { visibility: hidden; transition: transform .26s cubic-bezier(.3, .7, .2, 1), visibility 0s .26s; border-color: var(--line-hi, var(--line)); border-radius: var(--r-lg, 14px); }
+.bdd.open { visibility: visible; transition: transform .26s cubic-bezier(.3, .7, .2, 1), visibility 0s; }
+html[data-skin~="forge"] .bdd { clip-path: var(--cut, none); }
+:root[data-look~=v2] .bdd { background: var(--hairline) top / 100% 1px no-repeat, linear-gradient(180deg, var(--fh-iron-1), var(--fh-iron-3)); }
+.bdd-head { padding-top: 12px; }
+.bdd-head::before { content: ''; flex: none; width: 15px; height: 15px; background: var(--fh-gold, var(--accent)); -webkit-mask: var(--p8-i-board) center / contain no-repeat; mask: var(--p8-i-board) center / contain no-repeat; }
+.bdd-head select, .bdd-search { height: 28px; border-radius: var(--r-sm, 8px); border-color: var(--line-hi, var(--line)); }
+.bdd-head button, .bdd-foot button { min-height: 26px; border-radius: var(--r-sm, 8px); border-color: var(--line-hi, var(--line)); color: var(--text); }
+html[data-skin~="forge"] :is(.bdd-head button, .bdd-foot button, .bdd-tile, .bdd-vibe, .bdd-head select, .bdd-search) { border-radius: 0; clip-path: var(--cut-sm, none); }
+.bdd-search:focus { border-color: color-mix(in srgb, var(--fh-gold, var(--accent)) 65%, var(--line)); outline: none; }
+.bdd-vibe { border: 1px solid var(--line); transition: border-color var(--t-fast, .12s); }
+.bdd-vibe:hover { border-color: color-mix(in srgb, var(--fh-gold, var(--accent)) 55%, var(--line)); color: var(--text); }
+.bdd-tile { transition: border-color var(--t-fast, .12s), transform var(--t-fast, .12s); }
+.bdd-tile:hover { transform: translateY(-1px); }
+.bdd-tile:focus-visible, .bdd-tile:focus-within { outline: none; border-color: var(--fh-gold, var(--accent)); box-shadow: 0 0 0 2px color-mix(in srgb, var(--fh-gold, var(--accent)) 30%, transparent); }
+.bdd-tile .bdd-send { border-radius: var(--r-sm, 6px); background: color-mix(in srgb, var(--fh-gold, #e6b450) 92%, #000); color: var(--m-gold-ink, #1a1206); font-weight: 700; }
+.bdd-tile .bdd-k { font-family: var(--mono, ui-monospace, monospace); letter-spacing: .03em; }
+.bdd-grid:empty::after { content: 'Drop or paste references here — they give chats a vibe, never the footage.'; grid-column: 1 / -1; padding: 24px 10px; text-align: center; color: var(--muted); font-size: 12px; }
+.bdd-foot { border-top-color: var(--line-hi, var(--line)); min-height: 42px; }
+.bdd-foot > button:first-child { color: var(--fh-gold-text, var(--text)); }
+:root[data-scheme=light] .bdd { box-shadow: 0 18px 50px #0003; }
+@media (prefers-reduced-motion: reduce) { .bdd, .bdd.open { transition: visibility 0s; } }
+:root[data-motion=off] .bdd, :root[data-motion=off] .bdd.open { transition: visibility 0s; }
+
+/* ====================================================================================================== */
+/* ---------- the video editor (Video Review › ✂) ---------- */
+.vr-cut-headrow { min-height: 28px; gap: 4px; }
+.vr-cut-title { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-head, inherit); letter-spacing: .1em; text-transform: uppercase; font-size: 11.5px; padding-right: 4px; }
+.vr-cut-title .p8-ico { width: 15px; height: 15px; filter: drop-shadow(0 0 calc(6px * var(--glow, 1)) var(--g-gold, transparent)); }
+.vr-cut-headrow > :is(button, .vr-ico) { min-height: 26px; }
+.vr-cut-sum { font-size: 10.5px; letter-spacing: .02em; }
+.vr-cut-fmt { border: 1px solid var(--line-hi, var(--line)); border-radius: var(--r-sm, 6px); height: 24px; }
+html[data-skin~="forge"] .vr-cut-fmt { border-radius: 0; clip-path: var(--cut-sm, none); }
+.vr-cut-export { font-family: var(--font-head, inherit); letter-spacing: .06em; text-transform: uppercase; font-size: 11px; }
+.vr-cut-sug { border-color: color-mix(in srgb, var(--fh-info, #7fd8ff) 80%, transparent); color: color-mix(in srgb, var(--fh-info, #7fd8ff) 60%, var(--text)); border-radius: var(--r-pill, 999px); }
+html[data-skin~="forge"] .vr-cut-sug { border-radius: 0; }
+/* the clip track: the look's line, a forged inset, a gold edge when it has the keyboard */
+.vr-cut-track { box-shadow: inset 0 0 0 1px var(--line-hi, var(--line)), inset 0 1px 6px #0007; }
+:root[data-scheme=light] .vr-cut-track { box-shadow: inset 0 0 0 1px var(--line-hi, var(--line)), inset 0 1px 4px #0002; }
+.vr-cut-track:focus-within, .vr-cut-track:focus-visible { box-shadow: inset 0 0 0 1px var(--fh-gold, var(--accent)), inset 0 1px 6px #0007; }
+.vr-cut-ph { background: var(--fh-gold-hi, #fff); box-shadow: 0 0 calc(8px * var(--glow, 1)) var(--fh-gold, #fff); }
+/* entering the editor: the bar and track rise in; the inspector slides in from the right */
+:root:not([data-motion=off]) .vr-cut:not([hidden]) { animation: hx-rise .2s var(--ease-out, ease-out) both; }
+:root:not([data-motion=off]) .ed-insp:not([hidden]) { animation: vr-slide .18s var(--ease-out, ease-out) both; }
+.ed-insp { border-left: 1px solid var(--line-hi, var(--line)); scrollbar-width: thin; }
+.ed-head .ed-name b { font-family: var(--font-head, inherit); letter-spacing: .04em; }
+.ed-sec > summary, .ed-sub > summary { list-style: none; display: flex; align-items: center; gap: 6px; color: var(--text); }
+.ed-sec > summary::before, .ed-sub > summary::before { content: '›'; display: inline-block; width: 10px; color: var(--fh-gold, var(--accent)); transition: transform var(--t-fast, .12s); }
+.ed-sec[open] > summary::before, .ed-sub[open] > summary::before { transform: rotate(90deg); }
+.ed-sec > summary::-webkit-details-marker, .ed-sub > summary::-webkit-details-marker { display: none; }
+.ed-sec > summary:focus-visible, .ed-sub > summary:focus-visible { outline: none; color: var(--fh-gold-text, var(--text)); }
+.ed-key:focus-visible, .ed-nav:focus-visible { outline: 1px solid var(--fh-gold, var(--accent)); outline-offset: 1px; opacity: 1; }
+/* the transport's ✂ when the editor is open: the molten gold of an active control in every look */
+.vr-cut-btn.on { background: var(--m-gold, linear-gradient(180deg, #fff3c4, var(--vr-gold) 55%, #c9a23c)); color: var(--m-gold-ink, var(--vr-ink)); box-shadow: var(--m-bevel, none); }
+/* the program frame: a cut-corner hairline frame in Forgeheart (the picture itself is untouched) */
+html[data-skin~="forge"] .vr-stage.cutting { box-shadow: 0 0 0 1px var(--line-hi), 0 0 0 4px color-mix(in srgb, var(--fh-gold, #e6b450) calc(10% * var(--glow, 1)), transparent), 0 20px 60px #000a; }
+/* notes column: its one-line empty state */
+.vr-notes .vr-empty { font-size: 12px; line-height: 1.45; }
+
+/* ====================================================================================================== */
+/* ---------- capture ---------- */
+/* segmented control in the captures library: the app's own (the gold "on" state had dark text on dark metal) */
+:root .cap-seg { border-color: var(--line-hi, var(--line)); border-radius: var(--r-sm, 8px); }
+html[data-skin~="forge"] .cap-seg { border-radius: 0; clip-path: var(--cut-sm, none); }
+:root .cap-seg button { min-height: 28px; color: var(--muted); background: transparent; box-shadow: none; }
+:root .cap-seg button:hover { color: var(--text); background: var(--hover); }
+:root .cap-seg button.on { color: var(--fh-gold-text, var(--text)); background: linear-gradient(180deg, color-mix(in srgb, var(--fh-gold, #ffc233) 26%, transparent), color-mix(in srgb, var(--fh-gold, #ffc233) 12%, transparent)); box-shadow: inset 0 -2px 0 var(--fh-gold, #ffc233); }
+:root .cap-ann-tool.on { color: var(--fh-gold-text, var(--text)); background: color-mix(in srgb, var(--fh-gold, #ffc233) 22%, transparent); box-shadow: inset 0 -2px 0 var(--fh-gold, #ffc233); }
+/* the dialogs' heads: the forge title with the capture icon, controls at one height */
+:is(.cap-view-head, .cap-lib-head) h2 { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-head, inherit); letter-spacing: .08em; }
+.cap-lib-head h2::before { content: ''; flex: none; width: 16px; height: 16px; background: currentColor; -webkit-mask: var(--p8-i-capture) center / contain no-repeat; mask: var(--p8-i-capture) center / contain no-repeat; }
+:is(.cap-view-foot, .cap-view-head, .cap-lib-head) button:not(.primary):not(.cap-ann-tool):not(.cap-ann-swatch) { border-color: var(--line-hi, var(--line)); border-radius: var(--r-sm, 8px); }
+html[data-skin~="forge"] :is(.cap-view-foot, .cap-view-head, .cap-lib-head) button:not(.primary):not(.cap-ann-swatch) { border-radius: 0; clip-path: var(--cut-sm, none); }
+.cap-lib-q { height: 30px; }
+/* captures: cards rise a little under the pointer, a ring for the keyboard */
+.cap-card { transition: border-color var(--t-fast, .12s), transform var(--t-fast, .12s); }
+.cap-card:hover { transform: translateY(-1px); }
+.cap-card:focus-visible { outline: none; border-color: var(--fh-gold, #ffc233); box-shadow: 0 0 0 2px color-mix(in srgb, var(--fh-gold, #ffc233) 30%, transparent); }
+html[data-skin~="forge"] :is(.cap-card, .cap-view-stage, .cap-read-cell img) { border-radius: 0; }
+.cap-card figcaption small { font-family: var(--mono, ui-monospace, monospace); font-size: 10.5px; }
+/* empty library: one line under the capture icon */
+.cap-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; color: var(--muted); }
+.cap-empty::before { content: ''; width: 40px; height: 40px; background: var(--fh-gold, var(--accent)); opacity: .5; -webkit-mask: var(--p8-i-capture) center / contain no-repeat; mask: var(--p8-i-capture) center / contain no-repeat; }
+/* the player / viewer: the scrubber and timecode in the look's colors */
+.cap-scrub { border-radius: var(--r-pill, 7px); background: color-mix(in srgb, var(--text) 10%, transparent); }
+html[data-skin~="forge"] .cap-scrub { border-radius: 0; }
+.cap-scrub-fill { background: linear-gradient(90deg, var(--fh-gold, #ffc233), var(--fh-ember, #ff6a1a)); }
+.cap-tc { color: var(--fh-gold-text, var(--fh-gold, #ffc233)); }
+.cap-view-stage { box-shadow: inset 0 0 0 1px var(--line-hi, var(--line)); }
+/* a dialog that plays a video: its backdrop doesn't re-blur the app behind it every frame of the video */
+dialog.cap-view, dialog.cap-view::backdrop { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+:root[data-look~=v2] dialog.cap-view { background: var(--hairline) top / 100% 1px no-repeat, linear-gradient(180deg, var(--fh-iron-1), var(--fh-iron-3)); }
+:root[data-look~=v2] dialog.cap-view::backdrop { background: radial-gradient(ellipse at 50% 30%, color-mix(in srgb, var(--fh-heat) calc(8% * var(--glow)), #000a), #000d); }
+/* the region picker's tip and size readout: the forge pill */
+.cap-pick-tip { font-family: var(--font-head, system-ui); letter-spacing: .04em; border: 1px solid color-mix(in srgb, var(--fh-gold, #ffc233) 45%, transparent); }
+:root:not([data-motion=off]) .cap-pick-tip { animation: hx-pop .18s var(--ease-out, ease-out) both; }
+.cap-picker-row { border-radius: var(--r-sm, 6px); }
+.cap-picker-row:focus-visible { outline: none; box-shadow: inset 2px 0 0 var(--fh-gold, #ffc233); }
+
+/* ====================================================================================================== */
+/* ---------- Forgeheart Classic keeps its colors; the shapes above apply to it too ---------- */
+html[data-skin~="forge"]:not([data-look~=v2]) .bd-add { color: var(--r-rare, var(--accent)); }
+html[data-skin~="forge"]:not([data-look~=v2]) .bdd { background: var(--sidebar); }
