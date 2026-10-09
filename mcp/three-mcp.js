@@ -64,10 +64,13 @@ const MORE_TOOLS = [
   { name: 'three_references', description: 'The sketch\'s reference files: action list (default, with pictures) | add (path of a chat attachment, name?) | rename (name, to) | remove (name) | palette (from: picture name, colors: [...] or coolors: link). In code: refTexture(\'name\'), refs.name (URL).',
     inputSchema: obj({ action: { type: 'string', enum: ['list', 'add', 'rename', 'remove', 'palette'] }, path: { type: 'string' }, name: { type: 'string' }, to: { type: 'string' }, from: { type: 'string' }, colors: { type: 'array', items: { type: 'string' } }, coolors: { type: 'string' } }) },
   { name: 'three_triggers', description: 'The user\'s ⚡ Triggers (which band fires kick / bass / snare / hats / hit without markers or in live sound). set: { hats: { lo, hi (Hz), thr (0..1), gap (ms), on } } changes some; only when asked.', inputSchema: obj({ set: { type: 'object' } }) },
-  { name: 'three_media_info', description: 'The loaded music / video: file, duration, bpm, beats, drops, sections, energy every 5 s, markers, playhead (and live input / what\'s playing).', inputSchema: obj({}) },
+  { name: 'three_media_info', description: 'The loaded song / video: file, duration, beat grid (and how sure), labeled sections, drops, hits found in the audio, style, energy every 5 s, the owner\'s markers, playhead (and live input / what\'s playing).', inputSchema: obj({}) },
   { name: 'three_load_media', description: 'Load an audio / video file by absolute path into the Lab and analyze it.', inputSchema: obj({ path: { type: 'string' } }, ['path']) },
   { name: 'three_set_frame', description: 'Set the output frame: fit, 9:16 (1080×1920), 16:9, 1:1, 4:5 (1080×1350).', inputSchema: obj({ size: { type: 'string', enum: ['fit', '9:16', '16:9', '1:1', '4:5'] } }, ['size']) },
   { name: 'three_new_sketch', description: 'Create, open and run a new named sketch (the user\'s other sketches stay untouched).', inputSchema: obj({ name: { type: 'string' }, code: { type: 'string' } }, ['name', 'code']) },
+  { name: 'three_run', description: 'Run a Lab / music / nodes / video chat command, e.g. "/make-it-react" or "/size 9:16"; returns what it printed.', inputSchema: obj({ command: { type: 'string' } }, ['command']) },
+  { name: 'three_task', description: 'This chat\'s task state kept by Hearth (goal, what was done, layers, open todos); todo: [...] replaces the open todos.', inputSchema: obj({ todo: { type: 'array', items: { type: 'string' } } }) },
+  { name: 'three_help', description: 'The app map and the Lab guide by topic: app, lab, nodes, react, commands, handoff, habits, video.', inputSchema: obj({ topic: { type: 'string' } }) },
 ];
 // On by default for Three directors (the owner wants a node view of visual work; `/nodes-director off` drops it).
 const NODES_TOOL = { name: 'three_nodes', description: 'Layers as node graphs (the owner\'s Nodes view). command: "layer <preset>" (new layer), "presets", "types [word]", "list", "add <type> k=v [to=n.in]", "link a.out b.in", "unlink b.in", "set <n> k=v", "rm <n>", "preset <p>" (replace), "rebuild". help nodes.', inputSchema: obj({ command: { type: 'string' } }, ['command']) };
@@ -91,7 +94,7 @@ help {topic} explains any of these (app: the whole app).`,
 
 const tools = [...CORE_TOOLS, ...(FULL ? MORE_TOOLS : [DO_TOOL]), ...(process.env.HUB_NODES_TOOL === '1' ? [NODES_TOOL] : [])];
 // three_do help is answered here, without a trip to the hub.
-const local = { three_do: (args) => (args.cmd === 'help' ? { ok: true, value: G.help(args.topic) } : null) };
+const local = { three_do: (args) => (args.cmd === 'help' ? { ok: true, value: G.help(args.topic) } : null), three_help: (args) => ({ ok: true, value: G.help(args.topic || 'app') }) };
 
 // three_nodes (≈ 75 tokens per message) is on for Three directors unless agent.nodesTool === false (engines.js sets HUB_NODES_TOOL).
 module.exports = serve({ name: 'three-lab', instructions: '', guide: FULL ? G.FULL : G.CORE, tools, local, all: [...CORE_TOOLS, ...MORE_TOOLS, DO_TOOL, NODES_TOOL], doCommands: DO_CMDS }, module);

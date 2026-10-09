@@ -104,6 +104,17 @@ after = layersNow();
 record('add rings (Claude again)', before, after);
 step(/^Picking up:/.test(r.text) && after.length === before.length + 1, 'Claude picks up again and adds one layer', r.text.split('\n')[0]);
 
+// the composer's engine switch (⚇ menu in the docked chat): same chat, same scene
+const chip = H.surfaces.get('tool:three').el.querySelector('.tool-dock .collab-chip');
+chip?.click();
+await wait(200);
+const item = [...document.querySelectorAll('#menu button')].find((b) => /Continue on Astra \(same chat and scene\)/.test(b.textContent));
+item?.click();
+await until(() => H.agent(agent.id).engine === 'codex', 5000);
+step(Boolean(item) && H.agent(agent.id).engine === 'codex' && H.activeChat[agent.id] === A && Native.current(agent.id).handoffNext === true, 'the ⚇ menu\'s "Continue on Astra" switches in place and arms the handover', item?.textContent);
+await say('/director-engine claude', agent.id);
+await until(() => H.agent(agent.id).engine === 'claude', 5000);
+
 // 5. the node tool on another chat's scene (backstage): only that chat's sketch changes
 Native.newChat(agent.id);
 await until(() => S.get(S.currentId())?.name === 'New chat', 8000);
