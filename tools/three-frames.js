@@ -488,7 +488,7 @@ const ThreeFrames = (() => {
     h.undo = (entry) => { if (entry.cut !== undefined) undoCut(entry); };
     h.message = (msg) => {
       if (msg.type === 'media-frame') { F.pres = { frame: msg.frame, req: msg.req, at: performance.now() }; paintCounter(); return true; }
-      if (msg.type === 'media-state' && msg.frame != null) F.pres = { frame: msg.frame, req: -1, at: performance.now(), playing: msg.playing };
+      if (msg.type === 'media-state' && msg.frame != null) { F.pres = { frame: msg.frame, req: -1, at: performance.now(), playing: msg.playing }; if (!msg.playing && msg.frame !== F.sent) F.sent = -1; }
       return false;
     };
     h.key = (e, sel) => keys(e, sel);
@@ -529,7 +529,7 @@ const ThreeFrames = (() => {
     };
     pl.on('load', (x) => { onLoad(x); });
     pl.on('unload', () => onUnload());
-    pl.on('attach', () => { if (F.clock) sendClock(); if (F.path) sendCuts(); });
+    pl.on('attach', () => { F.sent = -1; if (F.clock) sendClock(); if (F.path) sendCuts(); }); // a fresh page: forget where we sent it
   }
 
   // ---------- the counter: timecode + frame (the time box in frame mode) ----------

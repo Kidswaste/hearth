@@ -37,19 +37,21 @@ const copyU = { uV: { value: blank }, uRes: { value: new THREE.Vector2(innerWidt
 const copyScene = new THREE.Scene();
 copyScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({ uniforms: copyU, vertexShader: VS,
   fragmentShader: OUT('uniform sampler2D uV; uniform vec2 uRes; uniform vec2 uVid; uniform float uFit; varying vec2 vUv;\\n' + FIT_GLSL + 'void main() { vec2 u = fitUv(vUv, uRes, uVid, uFit); gl_FragColor = texture2D(uV, u) * inside(u); }') })));
-let head = 0; let lastFrame = -2; let pushed = 0;
+let head = 0; let lastFrame = -2; let pushed = 0; let idle = 0;
 // a new frame on screen goes into the next tile (only when the presented frame changes: a paused video adds nothing)
 function pushFrame(fit) {
   // a video that hasn't decoded its picture yet adds nothing (paused, the same frame would never be pushed again)
   if (!media.video || media.video.readyState < 2 || !(video().version > 0)) return false;
-  if ((media.frame === lastFrame || media.frame < 0) && pushed > 0) return false;
-  lastFrame = media.frame;
-  head = (head + 1) % HIST; pushed += 1;
+  const same = (media.frame === lastFrame || media.frame < 0) && pushed > 0;
+  // the same frame (paused): every half second its tile is drawn again in place, so a copy that came out empty
+  // (the decoder still busy) heals itself
+  if (same && (idle += 1) % 30) return false;
+  if (!same) { lastFrame = media.frame; head = (head + 1) % HIST; pushed += 1; idle = 0; }
   copyU.uV.value = video(); vidSize(copyU.uVid.value); copyU.uRes.value.set(innerWidth, innerHeight); copyU.uFit.value = fit;
   const col = head % COLS; const row = Math.floor(head / COLS);
   atlas.viewport.set(col * tileW, row * tileH, tileW, tileH); atlas.scissor.set(col * tileW, row * tileH, tileW, tileH); atlas.scissorTest = true;
   renderer.setRenderTarget(atlas); renderer.render(copyScene, camera); renderer.setRenderTarget(null);
-  return true;
+  return !same;
 }
 const PAST_GLSL = 'uniform sampler2D uAtlas; uniform float uHead; uniform float uPushed;\\nvec4 past(float k, vec2 uv) { k = min(k, uPushed - 1.0); float i = mod(uHead - max(0.0, k) + 16.0, 16.0); vec2 t = vec2(mod(i, 4.0), floor(i / 4.0)); return texture2D(uAtlas, (t + clamp(uv, 0.0, 1.0)) / 4.0); }\\n';
 const histUniforms = () => ({ uAtlas: { value: atlas.texture }, uHead: { value: 0 }, uPushed: { value: 1 } });
