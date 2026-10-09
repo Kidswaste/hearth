@@ -36,6 +36,7 @@ line count is lower than the number of upgrades).
 | Mood board (round 7): ▦ Board, references that give chats a vibe (never the footage), drawer over any chat (Ctrl+Shift+M), `/board-use`, `/ref`, `/vibe`, opt-in board tools for Claude / Astra | [board.md](board.md) | 1,309 |
 | Capture (round 7): Hearth screenshots and records itself (◉ Capture in the rail ⋯ menu, `/shot`, `/record`), hands-free scripted tours for an intro video (`/tour`), exact frame reading of any video for you and the chats (`/frames`, contact sheets, scenes, pacing), `/make` GIF / trims / social copies, opt-in capture tools for Claude / Astra | [capture.md](capture.md) | 668 |
 | Editor (round 7): the Video Review timeline is a whole video editor for any footage (E / ✂): exact frame stepping (←/→, J/K/L, timecode), video / overlay / text / sound tracks, roll / slip / slide, keyframes with easing, 131 transitions, 197 looks, titles and lower thirds, 70 shapes / motion graphics, 48 templates (social intros), ffmpeg render; chats read and edit it (`video_edit*` tools, `/editor`, `/add-title`, `/transition`…) | [editor.md](editor.md) | 1389 |
+| Lab frames (round 8): the Lab timeline frame by frame on video footage with no song (timecode counter, exact steps, J K L), cuts the sketch plays (shared with the editor), sketches read the exact frame, 21 footage layers, reference pacing (`/footage`, `/match-pacing`) | [labframes.md](labframes.md) | 284 |
 | **Total** | | **7,641** |
 
 ## Start here
