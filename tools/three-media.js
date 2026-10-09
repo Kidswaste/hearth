@@ -1246,13 +1246,20 @@ const ThreeMedia = (() => {
       const ev = await job.done;
       return ev.code === 0 ? output : null;
     }
-    async function sendClip() {
+    // as: 'clip' (the open edit's main track), 'edit' (opens it in the video editor as its own edit), 'overlay'
+    // (a layer above the open edit at its playhead) or 'music' (the song on the edit's audio track)
+    async function sendClip(as = 'clip') {
       if (!st.path || !D()) return false;
-      if (!st.video) { toast('Video Review takes videos: /cut-loop saves this part of the song as a file', { timeout: 3500 }); return false; }
       if (typeof VideoCut === 'undefined') return false;
       const r = cutRange();
       if (st.playing) toggle(false);
-      return VideoCut.receive(st.path, { a: r.a, b: r.b });
+      if (as === 'music') {
+        await Review.ensureMounted(); activate('tool:ae');
+        if (!VideoCut.active && !(await VideoCut.enter())) return false;
+        return Boolean(await VideoCut.addAudio(st.path, { at: 0, a: r.a, b: r.b }));
+      }
+      if (!st.video) { toast('The video editor takes videos here: "Use as the edit\'s music" puts a song under it, /cut-loop saves this part as a file', { timeout: 4000 }); return false; }
+      return VideoCut.receive(st.path, { a: r.a, b: r.b, as });
     }
 
     // ---------- keys (the Lab forwards them when you're not typing) ----------
@@ -2655,6 +2662,9 @@ const ThreeMedia = (() => {
         map.trim ? ['Untrim the song', `${fmtMs(map.trim.a)} → ${fmtMs(map.trim.b)}`, () => setTrim(null)] : false,
         [`Save ${cutRange().what} as a file`, '/cut-loop · ffmpeg, next to the original', () => cutLoop()],
         st.video ? [`Send ${cutRange().what} to Video Review`, '/send-clip · a clip on its ✂ track', () => sendClip()] : false,
+        st.video ? ['Edit it in the video editor', '/lab-to-editor · its own edit, frame by frame', () => sendClip('edit')] : false,
+        st.video ? [`Overlay ${cutRange().what} on the open edit`, '/lab-overlay · a layer at the edit\'s playhead', () => sendClip('overlay')] : false,
+        ['Use as the edit\'s music', '/lab-music · on the editor\'s audio track', () => sendClip('music')],
         null,
         ['Cue here', 'C at the playhead', () => addCue(t)],
         ['Section here…', 'Intro, Build, Drop…', () => menuAt(anchor, SECTION_NAMES.map((n) => [n, '', () => addCue(t, n)]))],
@@ -2849,7 +2859,7 @@ const ThreeMedia = (() => {
       },
       get duration() { return D(); },
       get trim() { return map.trim ? { ...map.trim } : null; },
-      setTrim: (r) => setTrim(r), setTrimEdge: (edge, t) => setTrimEdge(edge, t ?? now()), cutLoop: () => cutLoop(), sendClip: () => sendClip(),
+      setTrim: (r) => setTrim(r), setTrimEdge: (edge, t) => setTrimEdge(edge, t ?? now()), cutLoop: () => cutLoop(), sendClip: (as) => sendClip(as),
       get isVideo() { return st.video; },
       get loop() { return region ? { ...region } : null; },
       setLoop(a, b) { if (locked) return false; setRegion(a == null ? null : { a, b }); return true; },

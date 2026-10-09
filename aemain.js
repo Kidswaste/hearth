@@ -312,7 +312,8 @@ const jobs = new Map();
 function transcode(job, emit, overrides) {
   const { ffmpeg } = ffStatus(overrides);
   if (!ffmpeg) throw new Error(ffStatus().hint);
-  if (!exists(job.input)) throw new Error(`File not found: ${job.input}`);
+  // an edit with no footage at all (colors, titles, shapes) has no INPUT to check: its inputs are inside the args
+  if ((job.args || []).includes('INPUT') && !exists(job.input)) throw new Error(`File not found: ${job.input}`);
   fs.mkdirSync(path.dirname(job.output), { recursive: true });
   const args = job.args.map((a) => (a === 'INPUT' ? job.input : a === 'OUTPUT' ? job.output : a));
   args.splice(args.length - 1, 0, '-progress', 'pipe:1', '-nostats');
@@ -352,6 +353,12 @@ function registerIpc(ipcMain, getWin, getOverride) {
   ipcMain.handle('video:probe', (_e, file, overrides) => probe(file, overrides));
   ipcMain.handle('video:transcode', (_e, job, overrides) => transcode(job, sendJob, overrides));
   ipcMain.handle('video:cancel', (_e, id) => { jobs.get(id)?.kill(); return true; });
+  // the editor's temporary title frames (a folder it made itself, named .hearth-titles-…) go away after a render
+  ipcMain.handle('video:rmtemp', (_e, dir) => {
+    if (typeof dir !== 'string' || !path.isAbsolute(dir) || !/^\.hearth-titles-[a-z0-9]+$/.test(path.basename(dir))) return false;
+    fs.rmSync(dir, { recursive: true, force: true });
+    return true;
+  });
 }
 
 module.exports = { registerIpc, templates, status, running, ffStatus, probe, _test: { locate, macError, findTool } };

@@ -251,3 +251,37 @@ html[data-skin="forge"] .vr-note { border-radius: 0; }
 html[data-skin="forge"] .vr-kit { border-left-color: var(--line-hi); }
 /* the time readout changes every frame while playing: its own layer, so the player around it isn't repainted */
 .vr-tc-group { will-change: transform; contain: layout paint; }
+
+/* ---------- video editor (round 7): compositor, lanes, inspector ---------- */
+.vr-pcomp { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: none; }
+.vr-pcomp.on { display: block; }
+.vr-pwrap.rich .vr-pfade { visibility: hidden; }
+.vr-pdecks { position: absolute; left: 0; top: 0; width: 2px; height: 2px; overflow: hidden; opacity: .01; pointer-events: none; }
+.vr-pdeck { width: 2px; height: 2px; }
+.vr-frame.mirrored .vr-pcomp { transform: scaleX(-1); }
+.vr-cut-add { font-size: 15px; color: var(--vr-gold); }
+.vr-cut-fmt { font: 10.5px var(--mono, monospace); padding: 0 7px; opacity: .9; white-space: nowrap; }
+.vr-cut-track { max-height: 320px; transition: height .12s; }
+.vr-notes { position: relative; }
+.ed-insp { position: absolute; inset: 0; z-index: 3; overflow: auto; padding: 8px; background: var(--bg); display: flex; flex-direction: column; gap: 6px; font-size: 12px; overscroll-behavior: contain; }
+.ed-insp[hidden] { display: none; }
+.ed-head { display: flex; align-items: flex-start; gap: 6px; }
+.ed-name { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ed-name b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vr-gold); }
+.ed-where, .ed-tc { color: var(--muted); font: 10.5px var(--mono, monospace); }
+.ed-sec { border-top: 1px solid var(--line); padding-top: 4px; }
+.ed-sec > summary, .ed-sub > summary { cursor: pointer; font-weight: 600; font-size: 11.5px; padding: 2px 0; user-select: none; }
+.ed-sub { margin-top: 4px; }
+.ed-row { display: grid; grid-template-columns: 74px minmax(0, 1fr) auto; align-items: center; gap: 6px; min-height: 24px; }
+.ed-row > label { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ed-row select, .ed-row input[type="range"] { width: 100%; min-width: 0; }
+.ed-row input[type="color"] { width: 36px; height: 22px; padding: 0; border: 1px solid var(--line); background: none; }
+.ed-prop { grid-template-columns: 14px 18px 14px 62px minmax(0, 1fr) 46px; gap: 3px; }
+.ed-v { font: 10.5px var(--mono, monospace); color: var(--muted); text-align: right; min-width: 38px; }
+.ed-key, .ed-nav { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0; font-size: 11px; line-height: 1; opacity: .55; }
+.ed-key.some { opacity: .9; color: color-mix(in srgb, var(--vr-gold) 60%, var(--muted)); }
+.ed-key.on { opacity: 1; color: var(--vr-gold); text-shadow: 0 0 6px color-mix(in srgb, var(--vr-gold) 60%, transparent); }
+.ed-nav:hover, .ed-key:hover { opacity: 1; }
+.ed-insp textarea { width: 100%; resize: vertical; min-height: 40px; font: inherit; }
+html[data-skin="forge"] .ed-insp { border-radius: 0; }
+.ed-fxend { display: inline-flex; align-items: center; gap: 2px; }
