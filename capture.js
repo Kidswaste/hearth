@@ -43,8 +43,13 @@ const Capture = (() => {
   // ---------- menus with submenus ----------
   // Items with `items: [...]` (or a function returning them) open in place with a "‹ back" row. Works with the
   // plain showMenu of renderer.js and keeps working if it learns submenus itself.
+  let altDown = false;
+  addEventListener('keydown', (e) => { if (e.key === 'Alt') altDown = true; }, true);
+  addEventListener('keyup', (e) => { if (e.key === 'Alt') altDown = false; }, true);
+  addEventListener('blur', () => { altDown = false; });
   function menu(x, y, items, parent = null) {
-    const list = (typeof items === 'function' ? items() : items).filter(Boolean);
+    let list = (typeof items === 'function' ? items() : items).filter(Boolean);
+    if (altDown) list = list.map((it) => ({ ...it, more: false })); // Alt: the rare items too, without "More…"
     const conv = list.map((it) => (it.items ? {
       label: `${it.label}  ›`, more: it.more, danger: it.danger,
       action: () => setTimeout(() => menu(x, y, it.items, list), 0),
@@ -490,6 +495,7 @@ const Capture = (() => {
     const o = { ...prefs.shot, ...opts };
     let t = targetId(o.target) || (String(o.target || '').startsWith('selector:') ? o.target : 'window');
     if (o.selector) t = `selector:${o.selector}`;
+    if (t === 'lab' && o.crop && ['9:16', '16:9', '4:5', '1:1'].includes(D.parseFrame(o.crop)?.id) && !o.labSize) { o.labSize = D.parseFrame(o.crop).id; o.crop = ''; }
     const frame = o.crop ? D.parseFrame(o.crop) : null;
     if (o.crop && !frame) throw new Error(`Unknown frame "${o.crop}" (try 9:16, 4:5, 1:1, 16:9, reels…)`);
     let rect = null; let node = null;
@@ -718,6 +724,7 @@ const Capture = (() => {
             x = Math.max(0, Math.min(sw - w, cx - w / 2)); y = Math.max(0, Math.min(shh - h, cy - h / 2));
           }
           g.drawImage(f, x, y, w, h, 0, 0, size.w, size.h);
+          R.fresh = true;
         };
         draw(first); if (first.close) first.close();
         (async () => {
@@ -736,7 +743,9 @@ const Capture = (() => {
         R.lastIn = performance.now(); R.lastPoke = 0;
         R.ticker = setInterval(() => {
           if (rec !== R || R.pausedAt) return;
-          g.drawImage(c, 0, 0); videoTrack.requestFrame(); R.framesOut = (R.framesOut || 0) + 1;
+          if (!R.fresh) g.drawImage(c, 0, 0); // only a still screen needs the self-repaint
+          R.fresh = false;
+          videoTrack.requestFrame(); R.framesOut = (R.framesOut || 0) + 1;
           const now = performance.now();
           if (now - R.lastIn > period * 2.5 && now - R.lastPoke > period * 2.5) { R.lastPoke = now; poke(); }
         }, period);
@@ -759,7 +768,7 @@ const Capture = (() => {
       const file = await api().recOpen({ name: o.name || `Hearth ${o.target === 'window' ? 'recording' : o.target} ${new Date().toISOString().slice(0, 19).replace('T', ' ').replace(/:/g, '-')}` });
       rec.id = file.id; rec.path = file.path;
       const R0 = rec;
-      recorder.ondataavailable = (e) => { if (e.data?.size) R0.chunks = R0.chunks.then(async () => api().recWrite(file.id, new Uint8Array(await e.data.arrayBuffer()))); };
+      recorder.ondataavailable = (e) => { if (e.data?.size) { R0.bytes = (R0.bytes || 0) + e.data.size; R0.chunks = R0.chunks.then(async () => api().recWrite(file.id, new Uint8Array(await e.data.arrayBuffer()))); } };
       // effects drawn into the page while filming (they are part of the picture on purpose)
       if (o.clean) clean(true);
       cursorFx.set(o.cursor, { clicks: o.clicks, keys: o.keys });
@@ -821,6 +830,11 @@ const Capture = (() => {
     pending.stop = (async () => {
       const duration = elapsed();
       // no new frames, then a moment for the encoder to finish the ones it still holds (big frames on a slow machine)
+      // an encoder that hasn't written anything yet (slow to start on a busy machine): ask for data, give it a moment
+      if (!r.bytes && r.recorder.state === 'recording') {
+        try { r.recorder.requestData(); } catch { /* stopping anyway */ }
+        for (let i = 0; i < 40 && !r.bytes; i += 1) await sleep(100);
+      }
       clearInterval(r.ticker); r.ticker = null;
       try { if (r.recorder.state === 'recording') r.recorder.pause(); } catch { /* stopping anyway */ }
       await sleep(Math.min(1200, 250 + (r.canvas ? (r.canvas.width * r.canvas.height) / 4000 : 0)));

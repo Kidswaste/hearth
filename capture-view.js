@@ -111,9 +111,11 @@ const CaptureView = (() => {
       c.addEventListener('dragstart', (e) => { e.preventDefault(); api().startDrag(it.path); });
       return c;
     };
+    let sort = store.get('capture.libSort', 'new');
+    const SORTS = { new: (a, b) => b.mtime - a.mtime, old: (a, b) => a.mtime - b.mtime, big: (a, b) => b.size - a.size, name: (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }) };
     const paint = () => {
       const s = q.value.trim().toLowerCase();
-      const list = items.filter((it) => (kind === 'all' || it.kind === kind) && (!s || it.name.toLowerCase().includes(s)));
+      const list = items.filter((it) => (kind === 'all' || it.kind === kind) && (!s || it.name.toLowerCase().includes(s))).sort(SORTS[sort] || SORTS.new);
       grid.replaceChildren(...list.slice(0, 400).map(card));
       if (!list.length) grid.append(el('p', { class: 'hint cap-empty', text: items.length ? 'Nothing matches.' : `No captures yet. ${IS_MAC ? '⌘' : 'Ctrl'}+Alt+S opens the capture menu; /shot and /record do it from a chat.` }));
       count.textContent = `${list.length} of ${items.length}`;
@@ -127,6 +129,7 @@ const CaptureView = (() => {
         el('button', { type: 'button', class: 'ghost', text: '⋯', title: 'More: take a shot, record, folder, settings', on: { click: (e) => Capture.menu(e.clientX, e.clientY, [
           { label: '📷 Screenshot of this tool', action: () => { libDlg.close(); setTimeout(() => Capture.shot({ target: 'tool' }).catch(fail), 250); } },
           { label: '● Record Hearth', action: () => { libDlg.close(); setTimeout(() => Capture.record().catch(fail), 250); } },
+          { label: 'Sort…', items: () => [['new', 'Newest first'], ['old', 'Oldest first'], ['big', 'Biggest first'], ['name', 'By name']].map(([k, l]) => ({ label: `${sort === k ? '✓ ' : ''}${l}`, action: () => { sort = k; store.set('capture.libSort', k); paint(); } })) },
           { label: 'Open the folder', action: async () => window.hub.fs.open((await Capture.info()).dir) },
           { label: 'Captures folder…', action: () => Capture.chooseFolder().then(refresh) },
         ]) } })),
@@ -193,7 +196,7 @@ const CaptureView = (() => {
   async function openVideo(p, { frame = null, time = null } = {}) {
     const v = el('video', { src: Capture.fileUrl(p), preload: 'auto', playsInline: true });
     const stage = el('div', { class: 'cap-view-stage vid' }, v);
-    const tcEl = el('span', { class: 'cap-tc', text: '00:00:00:00' });
+    const tcEl = el('span', { class: 'cap-tc', text: '00:00:00:00', title: 'Click: timecode / seconds / frame number' });
     const bar = el('div', { class: 'cap-scrub' }, el('div', { class: 'cap-scrub-fill' }), el('div', { class: 'cap-scrub-marks' }));
     const playBtn = el('button', { type: 'button', class: 'cap-play', text: '▶', title: 'Play / pause (Space)' });
     const back = el('button', { type: 'button', text: '◀|', title: 'One frame back (←, Shift+← = 10)' });
@@ -206,9 +209,12 @@ const CaptureView = (() => {
     let cur = 0; // the frame on screen
     const fps = () => inf.fps || 30;
     const total = () => Math.max(1, inf.frames || Math.floor((v.duration || 0) * fps()));
+    const STYLES = ['smpte', 'ms', 's'];
+    let tcStyle = store.get('capture.playerTc', 'smpte');
+    tcEl.addEventListener('click', () => { tcStyle = STYLES[(STYLES.indexOf(tcStyle) + 1) % STYLES.length]; store.set('capture.playerTc', tcStyle); paint(); });
     const paint = () => {
       const t = cur / fps();
-      const text = `${FrameRead.tc(t, fps(), 'smpte')} · f${cur} / ${total() - 1}`;
+      const text = `${FrameRead.tc(t, fps(), tcStyle)} · f${cur} / ${total() - 1}`;
       if (tcEl.textContent !== text) tcEl.textContent = text;
       bar.firstChild.style.transform = `scaleX(${Math.min(1, cur / Math.max(1, total() - 1))})`;
     };

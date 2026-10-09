@@ -381,6 +381,8 @@
   K('Space (drag a region)', 'Move the region while dragging');
   K(`${M}+release (drag a region)`, 'Keep adjusting: arrows move, Alt+arrows resize, Enter takes it');
   K('Click (region picker)', 'Capture the thing under the pointer');
+  K('Alt (opening a capture menu)', 'Show every item at once (no More…)');
+  K('Click the timecode (player)', 'Timecode / seconds / frame number');
   K('← / → (player)', 'One frame back / on (Shift: 10)');
   K(', / . (player)', 'One frame back / on');
   K('Space / K (player)', 'Play / pause');
