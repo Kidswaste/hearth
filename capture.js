@@ -109,6 +109,26 @@ const Capture = (() => {
     document.body.append(fxRoot);
     return fxRoot;
   }
+  // While recording, animations run on the main thread (an outline color rides along, which can't be composited):
+  // the page capture only sees frames the page commits, and compositor-only animations reach it at a fraction of the
+  // rate (measured 6 vs 13 frames a second on a slow machine). Outside recordings they stay on the compositor.
+  function anim(node, frames, opts) {
+    const k = rec ? frames.map((f, i) => ({ ...f, outlineColor: `rgba(0,0,0,${i ? 0.01 : 0})` })) : frames;
+    return node.animate(k, opts);
+  }
+  // A 2-pixel poke while recording: the page capture only sends a frame when the page repaints, and can drop a lone
+  // change that lands right after the previous frame. When no frame came for a while, one tiny repaint makes it send the
+  // current picture (a static screen costs a few 2-pixel repaints a second; a moving one none).
+  let beat = null;
+  function heartbeat(on) {
+    beat?.dot.remove(); beat = null;
+    if (!on) return;
+    const dot = el('i', { class: 'cap-beat' });
+    document.body.append(dot); // its own 2-pixel layer, never the full-window overlay (that would repaint the window)
+    beat = { dot, n: 0 };
+  }
+  function poke() { if (!beat) return; beat.n ^= 1; beat.dot.style.backgroundColor = beat.n ? 'rgba(0,0,0,0.02)' : 'rgba(0,0,0,0.03)'; }
+
   // a cursor drawn into the page (the page capture has no OS cursor): follows the mouse, or glides on tours
   const cursorFx = {
     style: 'off', node: null, x: innerWidth / 2, y: innerHeight / 2, keys: false, clicks: 'off',
@@ -129,7 +149,7 @@ const Capture = (() => {
     async glide(x, y, ms = 700, ease = D.EASES[0].css) {
       if (!this.node) { this.place(x, y); return; }
       const from = `translate(${this.x}px, ${this.y}px)`; const to = `translate(${x}px, ${y}px)`;
-      const a = this.node.animate([{ transform: from }, { transform: to }], { duration: ms, easing: ease, fill: 'forwards' });
+      const a = anim(this.node, [{ transform: from }, { transform: to }], { duration: ms, easing: ease, fill: 'forwards' });
       await a.finished.catch(() => {});
       this.place(x, y); a.cancel();
     },
@@ -139,7 +159,7 @@ const Capture = (() => {
       r.style.transform = `translate(${x}px, ${y}px)`;
       fx().append(r);
       const k = this.clicks === 'burst' ? [{ opacity: 1, scale: 0.3 }, { opacity: 0, scale: 2.2 }] : this.clicks === 'pulse' ? [{ opacity: 0.7, scale: 0.6 }, { opacity: 0, scale: 1.6 }] : [{ opacity: 0.9, scale: 0.2 }, { opacity: 0, scale: 1.8 }];
-      const a = r.animate(k.map((f) => ({ opacity: f.opacity, transform: `translate(${x}px, ${y}px) scale(${f.scale})` })), { duration: 520, easing: 'cubic-bezier(.2,.7,.3,1)' });
+      const a = anim(r, k.map((f) => ({ opacity: f.opacity, transform: `translate(${x}px, ${y}px) scale(${f.scale})` })), { duration: 520, easing: 'cubic-bezier(.2,.7,.3,1)' });
       a.finished.finally(() => r.remove());
     },
     keyShow(text) {
@@ -149,8 +169,8 @@ const Capture = (() => {
       const k = el('kbd', { text });
       box.append(k);
       while (box.children.length > 4) box.firstChild.remove();
-      k.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 140, easing: 'ease-out' });
-      setTimeout(() => k.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300 }).finished.finally(() => k.remove()), 1400);
+      anim(k, [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 140, easing: 'ease-out' });
+      setTimeout(() => anim(k, [{ opacity: 1 }, { opacity: 0 }], { duration: 300 }).finished.finally(() => k.remove()), 1400);
     },
     listening: false,
     onMove: null, onDown: null, onKey: null,
@@ -539,7 +559,7 @@ const Capture = (() => {
   function elapsed() { if (!rec) return 0; const now = rec.pausedAt || performance.now(); return Math.max(0, (now - rec.started - rec.pausedMs) / 1000); }
   function status() {
     if (!rec) return { recording: false, last: last ? { path: last.path, kind: last.kind } : null };
-    return { recording: true, paused: Boolean(rec.pausedAt), seconds: Math.round(elapsed() * 10) / 10, target: rec.opts.target, fps: rec.opts.fps, size: rec.size, audio: rec.audioNote || rec.opts.audio, marks: rec.marks.length, path: rec.path, tour: rec.tour || null };
+    return { recording: true, paused: Boolean(rec.pausedAt), seconds: Math.round(elapsed() * 10) / 10, framesIn: rec.framesIn || 0, framesOut: rec.framesOut || 0, target: rec.opts.target, fps: rec.opts.fps, size: rec.size, audio: rec.audioNote || rec.opts.audio, marks: rec.marks.length, path: rec.path, tour: rec.tour || null };
   }
   function resolveRec(opts = {}) {
     const preset = D.RECORD.find((p) => p.id === (opts.preset || prefs.rec.preset)) || null;
@@ -579,17 +599,23 @@ const Capture = (() => {
     return { tracks, note };
   }
   // output size of the canvas pipeline: native (device pixels of the target), 1080p / 720p (fit), or a social frame
+  // The take's size. final: what the file should be (a social frame, 1080p / 720p, or the target's own pixels).
+  // The canvas records the target's own pixels in the final shape and never upscales: the MP4 step scales to the final
+  // size (Lanczos), so the encoder isn't fed 1080×1920 frames from a 940-pixel-high window (a Retina screen is ≈ native).
   function outSize(o, srcW, srcH) {
-    const frame = /^\d|^[a-z-]+$/.test(o.size) && o.size !== 'native' && !/^\d+p$/.test(o.size) ? D.parseFrame(o.size) : null;
-    if (frame) return { w: frame.w, h: frame.h, frame };
     const even = (n) => Math.max(2, Math.round(n / 2) * 2);
-    if (o.size === '1080p' || o.size === '720p' || o.size === '2160p') {
-      const H = Number.parseInt(o.size, 10);
-      const k = srcW >= srcH ? H / srcH : H / srcW;
-      return { w: even(srcW * k), h: even(srcH * k), frame: null };
-    }
-    return { w: even(srcW), h: even(srcH), frame: null };
+    const frame = o.size && o.size !== 'native' && !/^\d+p$/.test(o.size) ? D.parseFrame(o.size) : null;
+    let final;
+    if (frame) final = { w: frame.w, h: frame.h };
+    else if (/^\d+p$/.test(o.size)) { const H = Number.parseInt(o.size, 10); const k = srcW >= srcH ? H / srcH : H / srcW; final = { w: even(srcW * k), h: even(srcH * k) }; }
+    else final = { w: even(srcW), h: even(srcH) };
+    const ratio = final.w / final.h;
+    let nw = srcW; let nh = srcH;
+    if (nw / nh > ratio) nw = nh * ratio; else nh = nw / ratio;
+    const s = Math.min(1, final.w / nw);
+    return { w: even(nw * s), h: even(nh * s), frame, final };
   }
+  const codecStrikes = {};
   async function record(opts = {}) {
     if (rec) return status();
     const o = resolveRec(opts);
@@ -614,7 +640,9 @@ const Capture = (() => {
       const vTrack = display.getVideoTracks()[0];
       // whole window at its own size: the page capture goes straight to the recorder; anything else is drawn into a
       // canvas each captured frame (crop to the target, scale, social frame)
-      const direct = o.target === 'window' && o.size === 'native';
+      // every take goes through a canvas on a steady clock: the page capture only sends a frame when something changed,
+      // so without it a still screen would make a file that ends at the last change, at a varying frame rate
+      const direct = false;
       let videoTrack = vTrack;
       if (!direct) {
         // frames straight from the capture track (WebCodecs): no <video> to keep on screen; the page capture only sends a
@@ -622,7 +650,7 @@ const Capture = (() => {
         const R = rec;
         let source = null; let sw = 0; let shh = 0;
         let next = null;
-        if (typeof MediaStreamTrackProcessor !== 'undefined') {
+        if (o.reader !== 'video' && typeof MediaStreamTrackProcessor !== 'undefined') {
           const reader = new MediaStreamTrackProcessor({ track: vTrack }).readable.getReader();
           R.reader = reader;
           next = async () => { const { value, done } = await reader.read(); return done ? null : value; };
@@ -635,7 +663,10 @@ const Capture = (() => {
           R.video = v;
           next = () => new Promise((res) => requestAnimationFrame(() => res(R.video === v && v.videoWidth ? v : null)));
         }
-        const first = await Promise.race([next(), sleep(4000).then(() => null)]);
+        // a still page may not send its first picture until it repaints: poke it while waiting
+        heartbeat(true);
+        const pokes = setInterval(poke, 300);
+        const first = await Promise.race([next(), sleep(8000).then(() => null)]).finally(() => clearInterval(pokes));
         if (!first) throw new Error('The page capture sent no picture');
         const dimsOf = (f) => (f instanceof HTMLVideoElement ? [f.videoWidth, f.videoHeight] : [f.displayWidth, f.displayHeight]);
         [sw, shh] = dimsOf(first);
@@ -664,19 +695,38 @@ const Capture = (() => {
           for (;;) {
             source = await next().catch(() => null);
             if (!source || rec !== R) { source?.close?.(); break; }
+            R.framesIn = (R.framesIn || 0) + 1;
+            R.lastIn = performance.now();
             try { draw(source); } finally { source.close?.(); }
           }
         })();
-        videoTrack = c.captureStream(o.fps).getVideoTracks()[0];
+        // a frame every 1/fps whether or not the picture changed (constant frame rate, the real length)
+        videoTrack = c.captureStream(0).getVideoTracks()[0];
+        // (an unchanged canvas sends nothing: it repaints itself first, a GPU copy)
+        const period = 1000 / o.fps;
+        R.lastIn = performance.now(); R.lastPoke = 0;
+        R.ticker = setInterval(() => {
+          if (rec !== R || R.pausedAt) return;
+          g.drawImage(c, 0, 0); videoTrack.requestFrame(); R.framesOut = (R.framesOut || 0) + 1;
+          const now = performance.now();
+          if (now - R.lastIn > period * 2.5 && now - R.lastPoke > period * 2.5) { R.lastPoke = now; poke(); }
+        }, period);
         R.canvas = c;
         R.size = `${size.w}×${size.h}`;
+        R.final = size.final.w !== size.w || size.final.h !== size.h ? size.final : null;
       } else {
         const s = vTrack.getSettings();
         rec.size = `${s.width || '?'}×${s.height || '?'}`;
       }
-      const mime = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find((m) => MediaRecorder.isTypeSupported(m));
+      // Mac / Windows: H.264 first (their hardware encoders keep up at 1080×1920 60 fps); elsewhere VP9 / VP8. A codec
+      // that gave two empty takes this session is skipped until Hearth restarts.
+      const bad = Object.entries(codecStrikes).filter(([, n]) => n >= 2).map(([c]) => c);
+      const order = /Mac|Win/.test(navigator.platform) ? ['h264', 'vp9', 'vp8'] : ['vp9', 'vp8', 'h264'];
+      const mime = [...(o.codec ? [o.codec] : []), ...order].filter((c) => c === o.codec || !bad.includes(c)).map((c) => `video/webm;codecs=${c},opus`).concat(['video/webm']).find((m) => MediaRecorder.isTypeSupported(m));
+      rec.mime = mime;
       const recorder = new MediaRecorder(new MediaStream([videoTrack, ...audioTracks]), { mimeType: mime, videoBitsPerSecond: Math.round(o.mbps * 1e6), audioBitsPerSecond: 192000 });
       rec.recorder = recorder;
+      recorder.onerror = (e) => { rec && (rec.recError = e.error?.message || 'encoder error'); console.warn('capture: recorder', e.error); };
       const file = await api().recOpen({ name: o.name || `Hearth ${o.target === 'window' ? 'recording' : o.target} ${new Date().toISOString().slice(0, 19).replace('T', ' ').replace(/:/g, '-')}` });
       rec.id = file.id; rec.path = file.path;
       const R0 = rec;
@@ -707,6 +757,7 @@ const Capture = (() => {
   function cleanupRec() {
     if (!rec) return;
     clearInterval(rec.timer);
+    clearInterval(rec.ticker);
     try { rec.display?.getTracks().forEach((t) => t.stop()); } catch { /* gone */ }
     try { rec.mic?.getTracks().forEach((t) => t.stop()); } catch { /* gone */ }
     try { rec.audioCtx?.close(); } catch { /* gone */ }
@@ -714,6 +765,7 @@ const Capture = (() => {
     if (rec.video) { rec.video.srcObject = null; rec.video.remove(); rec.video = null; }
     if (rec.opts?.clean) clean(false);
     cursorFx.set('off', { clicks: 'off', keys: false });
+    heartbeat(false);
     api().indicator({ on: false });
     document.documentElement.classList.remove('cap-recording');
   }
@@ -739,15 +791,26 @@ const Capture = (() => {
     const r = rec;
     pending.stop = (async () => {
       const duration = elapsed();
+      // no new frames, then a moment for the encoder to finish the ones it still holds (big frames on a slow machine)
+      clearInterval(r.ticker); r.ticker = null;
+      try { if (r.recorder.state === 'recording') r.recorder.pause(); } catch { /* stopping anyway */ }
+      await sleep(Math.min(1200, 250 + (r.canvas ? (r.canvas.width * r.canvas.height) / 4000 : 0)));
       await new Promise((res) => { r.recorder.onstop = res; try { if (r.recorder.state !== 'inactive') r.recorder.stop(); else res(); } catch { res(); } });
       cleanupRec();
       rec = null;
       await r.chunks;
       const p = await api().recClose(r.id);
-      if (!p) throw new Error('Nothing was recorded');
+      if (!p) {
+        // an encoder that wrote nothing in a real take: two strikes and the next takes use another codec
+        const codec = String(r.mime || '').match(/codecs=(\w+)/)?.[1];
+        if (duration < 1.5) throw new Error('Nothing was recorded: the take was too short');
+        if (codec && !r.opts.codec) codecStrikes[codec] = (codecStrikes[codec] || 0) + 1;
+        throw new Error(`Nothing was recorded${codec ? ` (the ${codec.toUpperCase()} encoder gave nothing${r.recError ? `: ${r.recError}` : ''})` : ''}`);
+      }
+      if (r.mime) delete codecStrikes[String(r.mime).match(/codecs=(\w+)/)?.[1]];
       const busy = quiet ? null : toast(r.opts.mp4 ? 'Finishing the recording (MP4)…' : 'Finishing the recording…', { timeout: 0 });
       let fin = { webm: p };
-      try { fin = await api().finish({ path: p, mp4: Boolean(r.opts.mp4), fps: r.opts.fps, id: r.id }); } catch (err) { fin.error = err.message; } finally { busy?.remove(); }
+      try { fin = await api().finish({ path: p, mp4: Boolean(r.opts.mp4 || r.final), fps: r.opts.fps, id: r.id, size: r.final }); } catch (err) { fin.error = err.message; } finally { busy?.remove(); }
       const main = fin.mp4 || fin.webm || p;
       const marks = r.marks;
       if (marks.length) { const all = await window.hub.kvGet('capture-marks', {}); all[main] = marks; if (fin.webm && fin.webm !== main) all[fin.webm] = marks; window.hub.kvSet('capture-marks', all); }
@@ -904,7 +967,7 @@ const Capture = (() => {
   // (the capture tools for chats, commands and keys live in capture-cmds.js)
   return {
     shot, record, stop, pause, resume, mark, status, toggleRecord, pickRegion, beautify, socialCrop, loadImage, canvasData, paintBackground,
-    menu, mainItems, settingsItems, picker, pickFrame, chooseFolder, info, clean, fx, cursorFx, keyAdd, keys: () => keyList.slice(),
+    anim, menu, mainItems, settingsItems, picker, pickFrame, chooseFolder, info, clean, fx, cursorFx, keyAdd, keys: () => keyList.slice(),
     tourLabel, copyImage, attachToChat, openInReview, addToEdit, addToLab, elementFor, rectOf, targetId, TARGETS, surfaceEl, transcript, labPicture, countdown,
     last: () => last, recent: () => recent.slice(), remember, prefs, setPref, fileUrl, base, fmtClock, get recording() { return Boolean(rec); },
   };

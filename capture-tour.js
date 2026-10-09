@@ -103,7 +103,7 @@ const CaptureTour = (() => {
     const from = `translate(${view.x}px, ${view.y}px) scale(${view.k})`; const to = `translate(${cx}px, ${cy}px) scale(${k})`;
     app.style.transformOrigin = '0 0';
     Object.assign(view, { k, x: cx, y: cy });
-    const a = app.animate([{ transform: from }, { transform: to }], { duration: Math.max(1, ms), easing: ease || D.EASES[0].css, fill: 'forwards' });
+    const a = Capture.anim(app, [{ transform: from }, { transform: to }], { duration: Math.max(1, ms), easing: ease || D.EASES[0].css, fill: 'forwards' });
     return a.finished.catch(() => {}).then(() => { app.style.transform = k === 1 && cx === 0 && cy === 0 ? '' : to; a.cancel(); });
   }
   function zoomTo(n, k = 1.5, ms = 1000) {
@@ -117,35 +117,35 @@ const CaptureTour = (() => {
   async function caption(text, secs = 2.5, style = 'lower') {
     const box = el('div', { class: `cap-caption cap-caption-${style}` }, el('span', { text: style === 'typewriter' ? '' : text }));
     Capture.fx().append(box);
-    box.animate([{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'backwards' });
+    Capture.anim(box, [{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'backwards' });
     if (style === 'typewriter') { for (let i = 1; i <= text.length; i += 1) { box.firstChild.textContent = text.slice(0, i); await sleep(Math.min(60, (secs * 400) / text.length)); } }
     await sleep(Math.max(0, secs * 1000 - 320));
-    await box.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, fill: 'forwards' }).finished.catch(() => {});
+    await Capture.anim(box, [{ opacity: 1 }, { opacity: 0 }], { duration: 260, fill: 'forwards' }).finished.catch(() => {});
     box.remove();
   }
   async function title(t, sub = '', secs = 2, style = 'forge') {
     const box = el('div', { class: `cap-title cap-title-${style}` }, el('h1', { text: t }), sub ? el('p', { text: sub }) : null);
     Capture.fx().append(box);
-    await box.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 420, fill: 'forwards' }).finished.catch(() => {});
-    box.querySelector('h1').animate([{ letterSpacing: '0.02em', opacity: 0.6 }, { letterSpacing: '0.08em', opacity: 1 }], { duration: secs * 1000, easing: 'ease-out', fill: 'forwards' });
+    await Capture.anim(box, [{ opacity: 0 }, { opacity: 1 }], { duration: 420, fill: 'forwards' }).finished.catch(() => {});
+    Capture.anim(box.querySelector('h1'), [{ letterSpacing: '0.02em', opacity: 0.6 }, { letterSpacing: '0.08em', opacity: 1 }], { duration: secs * 1000, easing: 'ease-out', fill: 'forwards' });
     await sleep(Math.max(0, secs * 1000 - 420));
-    await box.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 420, fill: 'forwards' }).finished.catch(() => {});
+    await Capture.anim(box, [{ opacity: 1 }, { opacity: 0 }], { duration: 420, fill: 'forwards' }).finished.catch(() => {});
     box.remove();
   }
   async function highlight(n, secs = 2) {
     const r = n.getBoundingClientRect();
     const spot = el('div', { class: 'cap-spot', style: { left: `${r.left - 6}px`, top: `${r.top - 6}px`, width: `${r.width + 12}px`, height: `${r.height + 12}px` } });
     Capture.fx().append(spot);
-    await spot.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, fill: 'forwards' }).finished.catch(() => {});
+    await Capture.anim(spot, [{ opacity: 0 }, { opacity: 1 }], { duration: 300, fill: 'forwards' }).finished.catch(() => {});
     await sleep(Math.max(0, secs * 1000 - 600));
-    await spot.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300, fill: 'forwards' }).finished.catch(() => {});
+    await Capture.anim(spot, [{ opacity: 1 }, { opacity: 0 }], { duration: 300, fill: 'forwards' }).finished.catch(() => {});
     spot.remove();
   }
   let fadeBox = null;
   async function fade(dir = 'in', secs = 0.6) {
     if (!fadeBox?.isConnected) { fadeBox = el('div', { class: 'cap-fade' }); Capture.fx().append(fadeBox); }
     const a = dir === 'out' ? [0, 1] : [1, 0];
-    await fadeBox.animate([{ opacity: a[0] }, { opacity: a[1] }], { duration: secs * 1000, fill: 'forwards' }).finished.catch(() => {});
+    await Capture.anim(fadeBox, [{ opacity: a[0] }, { opacity: a[1] }], { duration: secs * 1000, fill: 'forwards' }).finished.catch(() => {});
     if (dir !== 'out') { fadeBox.remove(); fadeBox = null; }
   }
   function pressKey(combo) {

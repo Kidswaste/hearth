@@ -11,25 +11,28 @@ html.cap-norail #rail, html.cap-norail #panel { display: none !important; }
 html.cap-stitching .jump-bottom { display: none !important; }
 
 /* ---------- the overlay layer (in the picture on purpose): cursor, clicks, keys, captions, titles ---------- */
-#cap-fx { position: fixed; inset: 0; pointer-events: none; z-index: 2147483000; overflow: hidden; }
+/* the overlay root is a zero-size box: a window-sized layer on top makes every captured frame cost a full composite
+   (measured: 20 → 11 page frames a second while recording). Children that cover the window are fixed themselves. */
+#cap-fx { position: fixed; left: 0; top: 0; width: 0; height: 0; overflow: visible; pointer-events: none; z-index: 2147483000; }
+#cap-fx :is(.cap-keys, .cap-count, .cap-caption, .cap-title, .cap-spot, .cap-fade) { position: fixed; pointer-events: none; }
 .cap-cursor { position: absolute; left: 0; top: 0; will-change: transform; }
 .cap-cursor::before { content: ''; position: absolute; border-radius: 50%; }
 .cap-cursor-dot::before { width: 14px; height: 14px; left: -7px; top: -7px; background: rgba(255, 106, 26, .9); box-shadow: 0 0 0 2px rgba(255, 255, 255, .85); }
 .cap-cursor-ring::before { width: 34px; height: 34px; left: -17px; top: -17px; border: 3px solid rgba(255, 194, 51, .95); box-shadow: 0 0 10px rgba(255, 194, 51, .5); }
 .cap-cursor-halo::before { width: 56px; height: 56px; left: -28px; top: -28px; background: radial-gradient(circle, rgba(255, 225, 77, .55), rgba(255, 225, 77, 0) 70%); }
-.cap-cursor-spotlight::before { width: 3200px; height: 3200px; left: -1600px; top: -1600px; background: radial-gradient(circle, transparent 0 110px, rgba(0, 0, 0, .55) 150px); }
+.cap-cursor-spotlight::before { width: 1600px; height: 1600px; left: -800px; top: -800px; background: radial-gradient(circle, transparent 0 110px, rgba(0, 0, 0, .55) 150px); }
 .cap-cursor-arrow::before { width: 26px; height: 32px; left: -3px; top: -2px; border-radius: 0; background: #fff; clip-path: polygon(0 0, 0 78%, 22% 60%, 40% 100%, 54% 94%, 37% 56%, 66% 56%); filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .6)); }
 .cap-cursor-arrow::after { content: ''; position: absolute; width: 20px; height: 25px; left: 0; top: 2px; background: #111; clip-path: polygon(0 0, 0 74%, 22% 57%, 40% 96%, 50% 92%, 33% 53%, 60% 53%); }
 .cap-ripple { position: absolute; left: 0; top: 0; width: 0; height: 0; }
 .cap-ripple::before { content: ''; position: absolute; width: 60px; height: 60px; left: -30px; top: -30px; border-radius: 50%; border: 3px solid rgba(255, 194, 51, .95); }
 .cap-ripple-burst::before { border: 0; background: radial-gradient(circle, rgba(255, 106, 26, .8), rgba(255, 106, 26, 0) 70%); }
 .cap-ripple-pulse::before { border: 0; background: rgba(155, 107, 255, .45); }
-.cap-keys { position: absolute; left: 50%; bottom: 46px; transform: translateX(-50%); display: flex; gap: 8px; }
+.cap-keys { left: 50%; bottom: 46px; transform: translateX(-50%); display: flex; gap: 8px; }
 .cap-keys kbd { font: 600 22px/1 system-ui, -apple-system, "Segoe UI", sans-serif; color: #fff; background: rgba(18, 16, 14, .82); border: 1px solid rgba(255, 255, 255, .25); border-radius: 10px; padding: 10px 16px; box-shadow: 0 6px 20px rgba(0, 0, 0, .4); }
-.cap-count { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 8px; background: rgba(0, 0, 0, .35); }
+.cap-count { inset: 0; display: grid; place-content: center; justify-items: center; gap: 8px; background: rgba(0, 0, 0, .35); }
 .cap-count b { font: 800 120px/1 system-ui, sans-serif; color: #fff; text-shadow: 0 6px 30px rgba(0, 0, 0, .6); }
 .cap-count span { color: rgba(255, 255, 255, .8); font: 600 15px system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; }
-.cap-caption { position: absolute; font: 700 30px/1.25 system-ui, -apple-system, "Segoe UI", sans-serif; color: #fff; }
+.cap-caption { font: 700 30px/1.25 system-ui, -apple-system, "Segoe UI", sans-serif; color: #fff; }
 .cap-caption span { display: inline-block; padding: 12px 20px; border-radius: 12px; background: rgba(14, 12, 10, .82); box-shadow: 0 10px 30px rgba(0, 0, 0, .4); }
 .cap-caption-lower { left: 48px; bottom: 56px; max-width: 62%; }
 .cap-caption-lower span { border-left: 5px solid var(--fh-gold, #ffc233); }
@@ -41,7 +44,7 @@ html.cap-stitching .jump-bottom { display: none !important; }
 .cap-caption-pill { right: 28px; top: 28px; font-size: 18px; }
 .cap-caption-pill span { border-radius: 999px; padding: 8px 16px; background: var(--fh-gold, #ffc233); color: #1a1209; }
 .cap-caption-typewriter { left: 48px; bottom: 56px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 28px; }
-.cap-title { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 10px; }
+.cap-title { inset: 0; display: grid; place-content: center; text-align: center; gap: 10px; }
 .cap-title h1 { margin: 0; font: 800 96px/1 system-ui, -apple-system, "Segoe UI", sans-serif; letter-spacing: .02em; }
 .cap-title p { margin: 0; font: 500 30px/1.2 system-ui, sans-serif; opacity: .85; }
 .cap-title-forge { background: radial-gradient(ellipse at 50% 45%, #a8340f 0, #2a0f05 60%, #120603 100%); color: #ffc233; }
@@ -49,8 +52,8 @@ html.cap-stitching .jump-bottom { display: none !important; }
 .cap-title-clean { background: #000; color: #fff; }
 .cap-title-glass { background: rgba(10, 10, 14, .55); backdrop-filter: blur(18px) saturate(1.3); color: #fff; }
 .cap-title-rainbow { background: linear-gradient(90deg, #ff3b30, #ffb020, #ffe14d, #34c759, #3aa7d9, #5b2bd6); color: #fff; text-shadow: 0 4px 24px rgba(0, 0, 0, .45); }
-.cap-spot { position: absolute; border-radius: 12px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .58), 0 0 0 3px var(--fh-gold, #ffc233); }
-.cap-fade { position: absolute; inset: 0; background: #000; }
+.cap-spot { border-radius: 12px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .58), 0 0 0 3px var(--fh-gold, #ffc233); }
+.cap-fade { inset: 0; background: #000; }
 
 /* ---------- region / element picker ---------- */
 .cap-pick { position: fixed; inset: 0; z-index: 2147483100; cursor: crosshair; background: rgba(0, 0, 0, .18); }
@@ -122,3 +125,4 @@ dialog.cap-tour-edit { width: min(860px, 94vw); }
 .cap-view-foot button.primary { padding: 5px 14px; min-height: 30px; border-radius: 8px; }
 .cap-lib-head h2 { flex: none; }
 .cap-hidden-video { position: fixed; left: 0; top: 0; width: 2px; height: 2px; opacity: .01; pointer-events: none; }
+.cap-beat { position: fixed; left: 0; top: 0; width: 2px; height: 2px; contain: strict; z-index: 2147483001; pointer-events: none; }

@@ -194,10 +194,11 @@ function register(ipcMain, getWin, getSettings = () => ({})) {
     const fixed = src.replace(/\.webm$/i, '.fixed.webm');
     try { await FR.convert(src, fixed); fs.renameSync(fixed, src); } catch (err) { try { fs.unlinkSync(fixed); } catch { /* none */ } out.remuxError = err.message; }
     try { const p = await FR.probe(src); out.duration = p.duration; out.w = p.w; out.h = p.h; out.fps = p.fps; } catch { /* probe is a bonus */ }
+    if (o.size && o.size.w) { out.w = o.size.w; out.h = o.size.h; }
     if (o.mp4) {
       const mp4 = src.replace(/\.webm$/i, '.mp4');
       try {
-        await FR.convert(src, mp4, { mp4: true, fps: o.fps || null, crf: o.crf || 18, duration: out.duration, onProgress: (pct) => send('capture:progress', { id, pct }) });
+        await FR.convert(src, mp4, { mp4: true, fps: o.fps || null, crf: o.crf || 18, duration: out.duration, size: o.size || null, onProgress: (pct) => send('capture:progress', { id, pct }) });
         out.mp4 = mp4;
         if (o.keep === false) { await shell.trashItem(src).catch(() => {}); out.webm = null; }
       } catch (err) { out.mp4Error = err.message; }
