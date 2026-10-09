@@ -470,6 +470,16 @@ const Intro = (() => {
   const pad = 0.8; // seconds recorded past a beat (transitions overlap the next beat)
   async function probe(path) { try { return await window.hub.video.probe(path); } catch { return null; } }
   async function recordLab(p, b, fmt0) {
+    // the Lab sequence renders the beat's scene frame by frame at exactly its length (tools/three-seq.js): no screen
+    // recording that a busy machine can make too short; the recording below stays the fallback
+    if (typeof ThreeSeq !== 'undefined' && typeof ThreeSeqData !== 'undefined' && ThreeSeqData.FORMATS[fmt0] && b.sketchId && ThreeLab.scenes?.get(b.sketchId) && !ThreeSeq.rendering) {
+      try {
+        await ThreeLab.cmd({ show: true });
+        const r = await ThreeSeq.renderScene(b.sketchId, { secs: b.secs + pad, format: fmt0, fps: p.fps || 30, name: `${p.name} beat ${b.n} Lab` });
+        const info = await probe(r.path);
+        return { path: r.path, dur: info?.duration || r.frames / (r.fps || 30) || b.secs + pad, w: info?.w || r.w, h: info?.h || r.h, at: Date.now(), from: 'lab', exact: !r.realtime };
+      } catch (err) { note(p, `Beat ${b.n}: the frame-exact Lab render didn't work (${cap(err.message, 80)}); recording the Lab instead.`); }
+    }
     const c = await ThreeLab.cmd({ show: true });
     const S = ThreeLab.scenes;
     if (b.sketchId && S?.get(b.sketchId) && S.currentId() !== b.sketchId) { await ThreeLab.idle?.(); S.open(b.sketchId); await sleep(1600); }
