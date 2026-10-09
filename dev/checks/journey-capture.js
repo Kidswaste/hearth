@@ -29,6 +29,12 @@ await click(pic, { at: [0.5, 0.6] });
 await key('2', { shift: true }); await wait(2500);
 step('Shift+2: the Lab at 9:16', /1080.?1920|9:16/.test(JSON.stringify(c.state.size || c.state.frame || ThreeLab.state?.size || '')) || /9:16/.test(L.textContent), c.state.size || c.state.frame);
 
+// right-click the Lab picture › Capture ›: the capture tools are there too
+await click(pic, { right: true, at: [0.5, 0.6] }); await wait(400);
+const capSub = row(/^Capture/);
+if (capSub) { await click(capSub); await wait(400); }
+step('right-click the Lab picture › Capture › has "Record the Lab preview…" and "More capture…"', Boolean(row(/Record the Lab preview/)) && Boolean(row(/More capture/)), menuRows().map((b) => b.textContent.trim()).slice(0, 12));
+hideMenu(); await wait(200);
 // 2. ⌘/Ctrl+Alt+S: the capture menu (caught in the main process, so it works with the Lab picture focused)
 await capKey('s'); await wait(500);
 step('Ctrl+Alt+S opens the capture menu from inside the Lab', Boolean(row(/Screenshot of this tool/)), menuRows().map((b) => b.textContent.trim()).slice(0, 6));
