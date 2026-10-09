@@ -272,4 +272,15 @@ await run('/song-trim off');
 step('/song-trim off', !lab.player.trim);
 activate('tool:ae'); await wait(800);
 await shot('final');
+
+// 13. video flow: library → auto-cut on bars → export the cut (square)
+VideoCut.leave();
+await run('/video-nodes on'); await until(() => VideoNodes.view, 5000);
+VideoNodes.view.setGraph(NodeView.emptyGraph('video'));
+await run('/video-flow-add library video=drop_visual_16x9_v2');
+await run('/video-flow-add autocut every=bars');
+await run('/video-flow-add cut-export preset=square fit=crop');
+const fr = await VideoNodes.run();
+step('flow: auto-cut + export the cut', fr.ok, fr.results.map((x) => `${x.id}:${x.state}:${x.text}`));
+await run('/video-nodes off');
 return J.done();
