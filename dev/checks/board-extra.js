@@ -122,6 +122,22 @@ if (dir) {
 }
 activate('tool:board'); await wait(300);
 
+// Alt / Ctrl reveal: rotate + crop handles, the quick bar
+Board.zoomFit(false); await wait(300);
+Board.select(img.id); await wait(50);
+const rot = X.S.ui.selbox.querySelector('.bd-h-rot');
+ok(getComputedStyle(rot).display === 'none', 'rotate handle hidden at rest');
+await smoke({ cdp: 'Input.dispatchKeyEvent', params: { type: 'rawKeyDown', key: 'Alt', code: 'AltLeft', modifiers: 1, windowsVirtualKeyCode: 18 } });
+await wait(50);
+ok(getComputedStyle(rot).display === 'block' && getComputedStyle(X.S.ui.selbox.querySelector('.bd-h-cl')).display === 'block', 'Alt shows rotate + crop handles');
+await smoke({ cdp: 'Input.dispatchKeyEvent', params: { type: 'keyUp', key: 'Alt', code: 'AltLeft', windowsVirtualKeyCode: 18 } });
+await smoke({ cdp: 'Input.dispatchKeyEvent', params: { type: 'rawKeyDown', key: 'Control', code: 'ControlLeft', modifiers: 2, windowsVirtualKeyCode: 17 } });
+await wait(50);
+const quick = X.S.ui.selbox.querySelector('.bd-quick');
+ok(getComputedStyle(quick).display === 'flex' && quick.querySelectorAll('button').length >= 4, 'Ctrl shows the quick bar');
+await smoke({ shot: '/tmp/board-shots/11-ctrl.png' });
+await smoke({ cdp: 'Input.dispatchKeyEvent', params: { type: 'keyUp', key: 'Control', code: 'ControlLeft', windowsVirtualKeyCode: 17 } });
+
 // third layer: versions, list view, overview, default focus, palette styles, exports, keys
 await X.saveVersion('before cleanup');
 const nBefore = Board.items().length;
