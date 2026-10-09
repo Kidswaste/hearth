@@ -388,13 +388,16 @@
   ].join('\n') });
 
   // ---------- keys (registered for the keys list; the main ones work anywhere through capturemain.js) ----------
-  const K = (keys, what) => Capture.keyAdd({ keys, what });
-  K(`${M}+Alt+S`, 'Capture menu (screenshots, recording, tours, captures)');
-  K(`${M}+Alt+A`, 'Screenshot of a region you drag (or a thing you click)');
-  K(`${M}+Alt+R`, 'Start / stop recording Hearth');
-  K(`${M}+Alt+P`, 'Pause / resume the recording');
-  K(`${M}+Alt+V`, 'Your captures');
-  K(`${M}+Alt+T`, 'Tours: pick one / stop the running one');
+  // run: what a click on the line in the keys sheet does (these keys are caught in the main process, so the sheet
+  // can't press them for you the way it presses the others)
+  const K = (keys, what, run) => Capture.keyAdd({ keys, what, ...(run ? { run } : {}) });
+  const go = (p) => () => Promise.resolve().then(p).catch((e) => toast(e.message, { type: 'error' }));
+  K(`${M}+Alt+S`, 'Capture menu (screenshots, recording, tours, captures)', () => Capture.menu(Math.max(8, innerWidth / 2 - 120), 80, Capture.mainItems()));
+  K(`${M}+Alt+A`, 'Screenshot of a region you drag (or a thing you click)', go(() => Capture.shot({ target: 'region' })));
+  K(`${M}+Alt+R`, 'Start / stop recording Hearth', go(() => Capture.toggleRecord()));
+  K(`${M}+Alt+P`, 'Pause / resume the recording', () => { if (Capture.status().paused) Capture.resume(); else if (Capture.recording) Capture.pause(); });
+  K(`${M}+Alt+V`, 'Your captures', () => CaptureView.library());
+  K(`${M}+Alt+T`, 'Tours: pick one / stop the running one', go(() => (CaptureTour.running() ? CaptureTour.stop() : CaptureTour.picker())));
   K('Esc', 'Stops a running tour');
   K('Shift (drag a region)', 'Keep the ratio of the chosen social frame');
   K('Alt (drag a region)', 'Draw the region from its center');

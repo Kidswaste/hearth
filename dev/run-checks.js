@@ -28,7 +28,7 @@ const all = fs.readdirSync(CHECKS).filter((f) => f.endsWith('.js')).map((f) => f
 const UNIT = ['board-unit-test', 'board-mcp-test', 'capture-mcp-test', 'editor-mcp-test', 'director-mcp-test', 'cut-test', 'editor-test', 'capture-test', 'music-test', 'code-flow-test', 'importer-test', 'director-cost', 'astra-engine-test', 'test-aemain-mac'];
 const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
-  qa: ['qa-commands', 'qa-keys', 'polish'],
+  qa: ['qa-commands', 'qa-keys', 'qa-mac', 'polish'],
   board: by(/^board/),
   editor: ['editor', 'editor-more', 'editor-mcp', 'cut'],
   capture: by(/^capture/),

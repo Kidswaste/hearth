@@ -186,6 +186,9 @@ async function cdpConnect() {
     };
     await send('Runtime.addBinding', { name: '__smoke' });
     await send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => { const w = new Map(); let n = 0; window.__smokeReply = (id, r) => { w.get(id)?.(JSON.parse(r)); w.delete(id); }; window.SMOKE_SAVES = ${JSON.stringify(saveDir)}; window.smoke = (req) => new Promise((res) => { const id = ++n; w.set(id, res); window.__smoke(JSON.stringify({ ...req, id })); }); })();` });
+    // --mac: the page believes it runs on a Mac (navigator.platform), so ⌘ / ⌥ labels and the ⌘-as-Ctrl key mapping
+    // (ui.js) can be checked here; the main process stays Linux
+    if (args.includes('--mac')) await send('Page.addScriptToEvaluateOnNewDocument', { source: "Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'MacIntel' });" });
     await send('Runtime.enable'); await send('Log.enable'); await send('Page.enable');
     await send('Fetch.enable', { patterns: CDN_PATTERNS });
     await send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true });

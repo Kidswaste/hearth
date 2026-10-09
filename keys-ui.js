@@ -14,6 +14,9 @@ const KeysUI = (() => {
   // ---------- Mac symbols ----------
   const MAC_SYM = [[/\bCtrl\+/g, '⌘'], [/\bCtrl\b/g, '⌘'], [/\bAlt\+/g, '⌥'], [/\bAlt\b/g, '⌥'], [/\bShift\+/g, '⇧'], [/\bShift\b/g, '⇧'], [/\bEnter\b/g, '↩'], [/\bBackspace\b/g, '⌫'], [/\bTab\b/g, '⇥']];
   const keyText = (k) => (MAC ? MAC_SYM.reduce((s, [re, to]) => s.replace(re, to), String(k)) : String(k));
+  // the descriptions name keys too ("⌘ Command palette (Ctrl+K)"): on a Mac they read ⌘ / ⌥ there as well
+  // ("Ctrl+click" stays: on a Mac that is the right-click)
+  const whatText = (t) => (MAC ? String(t).replace(/\bCtrl\+(?!click)/g, '⌘').replace(/\bAlt\+/g, '⌥') : String(t));
   // "Ctrl+Shift+U / Alt+1…9" → <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>U</kbd> / <kbd>Alt</kbd><kbd>1…9</kbd>
   function kbds(keys) {
     const out = [];
@@ -195,6 +198,10 @@ const KeysUI = (() => {
     if (area === 'Chat box') { const id = H.activeId; const v = Native.view?.(H.agent(id)?.mode === 'native' ? id : Tools.dockedAgent?.(String(H.surfaceIdFor?.(id)).replace('tool:', ''))?.id); return v?.input || null; }
     if (/^Lab|^Present/.test(area)) return s?.querySelector('.three-toolbar, .tb-group') || s;
     if (area === 'Video Review') return s?.querySelector('.vr-top, .tool-body') || s;
+    // round 7's surfaces listen on their own roots: a line clicked in the sheet pressed its key into the page body
+    if (area === 'Editor') return s?.querySelector('.vr')?.parentElement || s;
+    if (area === 'Board') return s?.querySelector('.bd-root') || s;
+    if (area === 'Capture') return document.querySelector('dialog[open].cap-ann, dialog[open].cap-view') || document.activeElement || document.body;
     return document.activeElement && document.activeElement !== document.body ? document.activeElement : document.body;
   }
   function runLine(e) {
@@ -256,7 +263,7 @@ const KeysUI = (() => {
           ...hits.map((x) => {
             const applies = !x.when || (() => { try { return x.when(); } catch { return false; } })();
             return el('button', { type: 'button', class: `ks-line${applies ? '' : ' elsewhere'}`, title: x.run ? 'Click to do it' : x.area === 'Right-click' ? 'Click to open that menu' : comboOf(x.keys) ? 'Click to press it' : 'Click to see where', on: { click: () => runLine(x) } },
-              el('span', { class: 'ks-keys' }, kbds(x.keys)), el('span', { class: 'ks-what', text: x.what }));
+              el('span', { class: 'ks-keys' }, kbds(x.keys)), el('span', { class: 'ks-what', text: whatText(x.what) }));
           })));
       }
       body.replaceChildren(...(out.length ? out : [el('p', { class: 'hint ks-none', text: 'Nothing matches. Try a word like "freeze", "slider" or "copy".' })]));
