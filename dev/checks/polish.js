@@ -15,7 +15,8 @@ await wait(1200);
 out.tokens = { rmd: cs(root, '--r-md'), gold: cs(root, '--ui-gold') !== '', ai: cs(root, '--ui-ai') };
 
 // /appearance opens the picker; /look stays the Lab's saved slider looks
-out.lookCmd = Commands.get('look')?.area;
+// /look is shared by name since round 2 (qa #6): the Appearance picker is the base, the Lab's looks a `when` variant
+out.lookCmd = (Commands.get('look')?.variants || []).map((v) => v.area).join(' | ');
 out.appearanceCmd = Commands.get('appearance')?.area;
 await cmd('/appearance');
 await wait(400);
@@ -73,6 +74,6 @@ if (sh) {
 }
 out.freezeBg = (cs(document.querySelector('.freeze-btn'), 'background-image') || '').slice(0, 15);
 out.tapBorder = cs(document.querySelector('.mb-tap'), 'border-top-color');
-const ok = out.tokens.rmd === '0px' && out.lookCmd !== 'Look' && out.appearanceCmd === 'Look' && out.appearanceOpens && out.menuKey === 'F2' && out.menuText === 'Rename'
+const ok = out.tokens.rmd === '0px' && /Three\.js Lab/.test(out.lookCmd) && out.appearanceCmd === 'Look' && out.appearanceOpens && out.menuKey === 'F2' && out.menuText === 'Rename'
   && out.roundRmd === '8px' && out.cutRmd === '0px' && out.calmWire === 'none' && out.fullWire === 'nv-flow' && /very long chat title/.test(out.fullTip || '') && out.die !== false;
 return JSON.stringify({ ok, ...out });

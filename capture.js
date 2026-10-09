@@ -37,8 +37,10 @@ const Capture = (() => {
 
   // ---------- keys (keys.js lists every hidden gesture; queued until it loads) ----------
   const keyList = [];
-  const keyAdd = (k) => { keyList.push(k); try { if (window.Keys?.add) window.Keys.add({ area: 'Capture', ...k }); } catch { /* the keys list is optional */ } };
-  addEventListener('DOMContentLoaded', () => { if (window.Keys?.add && !keyAdd.flushed) { keyAdd.flushed = true; for (const k of keyList) { try { window.Keys.add({ area: 'Capture', ...k }); } catch { /* optional */ } } } });
+  // keys.js defines `const Keys` (a global binding, not a window property): reach it by name
+  const keysReg = () => (typeof Keys !== 'undefined' ? Keys : window.Keys);
+  const keyAdd = (k) => { keyList.push(k); try { if (keysReg()?.add) keysReg().add({ area: 'Capture', ...k }); } catch { /* the keys list is optional */ } };
+  addEventListener('DOMContentLoaded', () => { if (keysReg()?.add && !keyAdd.flushed) { keyAdd.flushed = true; for (const k of keyList) { try { keysReg().add({ area: 'Capture', ...k }); } catch { /* optional */ } } } });
 
   // ---------- menus with submenus ----------
   // Items with `items: [...]` (or a function returning them) open in place with a "‹ back" row. Works with the

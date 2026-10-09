@@ -200,7 +200,18 @@ async function cdpConnect() {
     };
     const checks = [...evals];
     // --lib <file> (repeatable): shared helpers put in front of the --script body (e.g. dev/checks/journey-lib.js).
-    const libs = args.flatMap((a, i) => (a === '--lib' ? [fs.readFileSync(args[i + 1], 'utf8')] : []));
+    const libFiles = args.flatMap((a, i) => (a === '--lib' ? [path.resolve(args[i + 1])] : []));
+    // A check that uses a shared helper without its --lib gets it anyway (editor.js / cut.js used to fail plainly
+    // with "J is not defined"): J → journey-lib, M → smooth-lib, decodeFrameCode → dev/editor-frames.js.
+    if (scriptFile) {
+      const body = fs.readFileSync(scriptFile, 'utf8');
+      const AUTO = [[/\bJ\.\w|=\s*J;/, /\bconst J =/, 'checks/journey-lib.js'], [/\bM\.\w+\(|=\s*M;/, /\bconst M =/, 'checks/smooth-lib.js'], [/\bdecodeFrameCode\b/, /function decodeFrameCode/, 'editor-frames.js']];
+      for (const [uses, defines, lib] of AUTO) {
+        const f = path.join(__dirname, lib);
+        if (uses.test(body) && !defines.test(body) && !libFiles.includes(f)) libFiles.push(f);
+      }
+    }
+    const libs = libFiles.map((f) => fs.readFileSync(f, 'utf8'));
     if (scriptFile) checks.push([...libs, fs.readFileSync(scriptFile, 'utf8')].join('\n'));
     for (const c of checks) {
       const r = await run(c);

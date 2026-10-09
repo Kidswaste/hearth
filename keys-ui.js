@@ -378,8 +378,8 @@ const KeysUI = (() => {
       { area: 'Chat box', keys: 'Ctrl+Alt+D', what: 'Duo with Astra on / off', when: inChat },
       { area: 'Chat box', keys: 'Ctrl+Alt+M', what: 'Next model for this chat', when: inChat },
       { area: 'Chat box', keys: 'Ctrl+Alt+O', what: 'A second opinion from the other agent', when: inChat },
-      { area: 'Chat box', keys: 'Ctrl+Alt+H', what: 'Hand the chat to the other agent', when: inChat },
-      { area: 'Chat box', keys: 'Ctrl+Alt+S', what: 'Stop a Claude × Astra collaboration', when: inChat },
+      { area: 'Chat box', keys: 'Ctrl+Alt+G', what: 'Hand the chat to the other agent', when: inChat },
+      { area: 'Chat box', keys: 'Ctrl+Alt+X', what: 'Stop a Claude × Astra collaboration', when: inChat },
       // the chats panel
       { area: 'Chats panel', keys: '↑ / ↓', what: 'Move through the chats (from the search box: ↓)', sel: '#panel .item' },
       { area: 'Chats panel', keys: 'Enter', what: 'Open the chat', sel: '#panel .item' },

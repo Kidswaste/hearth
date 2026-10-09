@@ -176,7 +176,7 @@ quick asks run "lean" (no hub tools, no file tools), so each turn costs about on
 157. **Live streaming** into the card while each seat writes.
 158. **Per-participant token totals** in the card header (hover for in / out / turns) and a Σ total.
 159. **Per-turn tokens and time** on every part.
-160. **■ Stop** on a running card, `/collab-stop`, and Ctrl/⌘+Alt+S.
+160. **■ Stop** on a running card, `/collab-stop`, and Ctrl/⌘+Alt+X (was S, now the capture menu).
 161. **Retry a failed seat** (card ⋯) without re-running the others.
 162. **Run it again** and **Run again, order swapped** (card ⋯), `/collab-again [new task]`.
 163. **Put the final answer in the composer** (card ⋯).
@@ -194,7 +194,7 @@ quick asks run "lean" (no hub tools, no file tools), so each turn costs about on
 175. **Usage events for the token meter** (`hearth:usage` with agent, tokens and source: collab, second opinion, quick ask).
 176. **Handoff** (`/handoff [agent]`): continues this chat with the other agent from a compact summary written in the current agent's own session.
 177. **`/handoff --raw`**: a short excerpt of the last messages instead, no extra turn.
-178. **Ctrl/⌘+Alt+H** hands off to the partner.
+178. **Ctrl/⌘+Alt+G** hands off to the partner (was H, the global show / hide hotkey).
 179. **Ctrl/⌘+Alt+D** turns Duo mode on / off.
 180. Palette action **Collab: Duo mode on / off**.
 181. Palette action **Collab: second opinion on the last reply**.
