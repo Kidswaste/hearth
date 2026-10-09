@@ -354,12 +354,12 @@
   function canvasMenu(e, p) {
     menu(e, [
       ...(clip ? [{ label: `Paste ${clip.length} here`, action: () => pasteItems(`${CLIP_MARK}`, p) }] : []),
-      { label: 'Add', items: () => addItems(p) },
+      { label: 'Add', items: () => Board._.addItems(p) },
       { label: 'Arrange everything', items: () => layoutItems([]) },
       { label: 'Lens', items: lensItems },
       { label: 'Select', items: selectItems },
       { label: 'View', items: viewItems },
-      { label: 'Board', items: boardItems },
+      { label: 'Board', items: () => Board._.boardItems() },
       { label: 'Present', items: presentItems },
       { label: 'Search and filter…  /', action: () => Board._.search?.() },
       { label: 'Send the board\'s vibe to a chat', items: () => sendItems([]) },
@@ -367,6 +367,7 @@
       { label: 'Keys on the board…', action: keysHelp, more: true },
     ]);
   }
+  B._.addItemsBase = null;
   function addItems(p) {
     return [
       { label: 'Pictures or clips…', action: () => pickFiles(p) },
@@ -477,9 +478,10 @@
   }
 
   // chips on the board
-  function addMenu(e) { const r = e.currentTarget.getBoundingClientRect(); showMenu(r.left, r.bottom + 4, addItems(null)); }
-  function viewMenu(e) { const r = e.currentTarget.getBoundingClientRect(); showMenu(r.right - 220, r.bottom + 4, viewItems()); }
-  function boardMenu(e) { const r = e.currentTarget.getBoundingClientRect(); showMenu(r.left, r.bottom + 4, boardItems()); }
+  // the chips and right-click menus go through Board._ so later layers (board-plus.js) can add entries
+  function addMenu(e) { const r = e.currentTarget.getBoundingClientRect(); showMenu(r.left, r.bottom + 4, Board._.addItems(null)); }
+  function viewMenu(e) { if (e.altKey) { B.zoomFit(); return; } const r = e.currentTarget.getBoundingClientRect(); showMenu(r.right - 220, r.bottom + 4, viewItems()); }
+  function boardMenu(e) { const r = e.currentTarget.getBoundingClientRect(); showMenu(r.left, r.bottom + 4, Board._.boardItems()); }
 
   Object.assign(Board._, {
     openItem, editText, itemMenu, canvasMenu, addMenu, viewMenu, boardMenu, copy, pasteItems, askUrl, pickFiles, vibeCard, frameGrab, posterHere, stepFrame, cropTo, resetLook,

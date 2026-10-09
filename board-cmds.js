@@ -124,7 +124,7 @@ const BoardCmds = (() => {
     complete: (a) => opts(D.FOCUS.map((f) => ({ value: f.id, hint: f.name })).concat([{ value: 'send', hint: 'send right away' }]), a),
     run: async (args, ctx) => {
       const w = words(args.toLowerCase()); const b = await boardOf(ctx);
-      const f = focusOf(w.find((x) => x !== 'send') || 'full') || D.FOCUS[0];
+      const word = w.find((x) => x !== 'send'); const f = (word && focusOf(word)) || D.find(D.FOCUS, b.focus || 'full');
       if (!b.items.some((i) => i.type !== 'frame')) return `**${b.name}** is empty: /board-add a link, or drop pictures on the board.`;
       await BoardDrawer.attach(ctx?.agentId, { boardId: b.id, focus: f.id, send: w.includes('send') });
       return w.includes('send') ? null : `Attached **${b.name}**'s vibe (${f.name.toLowerCase()}) to your message: add what you want and send.`;

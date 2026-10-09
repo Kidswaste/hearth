@@ -69,6 +69,9 @@
 .bd-t-palette { background: var(--surface); border-radius: 10px; overflow: hidden; box-shadow: 0 6px 18px #0005; }
 .bd-stripes { position: absolute; inset: 0 0 46px 0; display: flex; }
 .bd-stripes span { flex: 1; position: relative; }
+.bd-stripes[data-style="gradient"] span { opacity: 0; }
+.bd-stripes[data-style="dots"] { gap: 6%; padding: 8% 6%; } .bd-stripes[data-style="dots"] span { border-radius: 50%; aspect-ratio: 1; flex: 1; align-self: center; }
+.bd-stripes[data-style="blocks"] { flex-wrap: wrap; } .bd-stripes[data-style="blocks"] span { flex: 1 1 34%; }
 .bd-stripes span:hover::after { content: attr(data-hex); position: absolute; left: 6px; bottom: 6px; font: 600 12px ui-monospace, monospace; color: #fff; text-shadow: 0 1px 2px #000; }
 .bd-t-file { background: var(--surface); border-radius: 10px; }
 .bd-filecard { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 14px; text-align: center; padding: 12px; }

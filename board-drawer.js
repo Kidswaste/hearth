@@ -11,9 +11,10 @@ const BoardDrawer = (() => {
   // ---------- references → text ----------
   // Items inside a frame named like "Avoid" / "Don't", or stamped ✕, become an "avoid" line instead.
   const isAvoid = (b, it) => it.stamp === '✕' || b.items.some((f) => f.type === 'frame' && /avoid|don.?t|not this|\bno\b/i.test(f.title || '') && it.x + it.w / 2 >= f.x && it.x + it.w / 2 <= f.x + f.w && it.y + it.h / 2 >= f.y && it.y + it.h / 2 <= f.y + f.h);
-  function vibeText({ board, itemIds = [], focus = 'full', rule = true } = {}) {
+  function vibeText({ board, itemIds = [], focus, rule = true } = {}) {
     const b = board || B.current();
     if (!b) return '';
+    focus ||= b.focus || 'full'; // the board's default (Board menu → Chats get…, /board-focus)
     const fo = D.find(D.FOCUS, focus) || D.FOCUS[0];
     let body;
     if (itemIds.length) {
@@ -35,7 +36,7 @@ const BoardDrawer = (() => {
   }
   const currentChatId = () => { const a = currentAgentId(); return a ? H.activeChat?.[a] || null : null; };
   // Attach a vibe to a chat's next message (a small text attachment chip); send: true sends it at once.
-  async function attach(agentId, { boardId, itemIds = [], focus = 'full', send = false, quiet = false } = {}) {
+  async function attach(agentId, { boardId, itemIds = [], focus, send = false, quiet = false } = {}) {
     agentId ||= currentAgentId();
     const agent = H.agent(agentId);
     if (!agent || agent.mode !== 'native') { toast('Pick a Claude or Astra chat', { type: 'error' }); return null; }
@@ -73,7 +74,7 @@ const BoardDrawer = (() => {
     if (!a) return;
     e.preventDefault(); e.stopPropagation();
     let ref = {}; try { ref = JSON.parse(e.dataTransfer.getData(REF_TYPE)); } catch { /* bad payload */ }
-    attach(a.id, { boardId: ref.boardId, itemIds: ref.itemIds || [], focus: ref.focus || 'full' });
+    attach(a.id, { boardId: ref.boardId, itemIds: ref.itemIds || [], focus: ref.focus });
   }, true);
   addEventListener('dragend', () => { hinted?.classList.remove('bdd-drop-hint'); hinted = null; }, true);
   function dragRef(e, boardId, itemIds) {

@@ -121,6 +121,31 @@ if (dir) {
   v.attachments.length = 0;
 }
 activate('tool:board'); await wait(300);
+
+// third layer: versions, list view, overview, default focus, palette styles, exports, keys
+await X.saveVersion('before cleanup');
+const nBefore = Board.items().length;
+Board.removeItems(Board.items().filter((i) => i.type === 'shape').map((i) => i.id));
+ok(Board.items().length < nBefore, 'cleanup');
+await X.restoreVersion(0);
+ok(Board.items().length === nBefore, 'version restored');
+ok(X.listView() > 10 && document.querySelector('dialog .data-table'), 'list view table'); document.querySelector('dialog.ui-modal')?.close();
+X.overview(); ok(document.querySelectorAll('dialog.ui-modal button.ghost').length >= 2, 'boards overview'); document.querySelector('dialog.ui-modal')?.close();
+X.setFocus('motion');
+ok(BoardDrawer.vibeText().startsWith('Match the motion energy'), 'default focus per board');
+X.setFocus('full');
+const pal = Board.addSwatch(['#ff0000', '#00ff00', '#0000ff']);
+Board.select(pal.id); await Commands.tryRun('/board-palette-style gradient', H.claudeAgent().id, null, { say: () => {} });
+await wait(50);
+ok(X.S.nodes.get(pal.id).querySelector('.bd-stripes').style.background.includes('linear-gradient'), 'palette gradient style');
+const html = await X.exportAs('html'); ok(html && (await window.hub.fs.stat(html)).size > 500, 'web page export');
+const bj = await X.exportAs('board-json'); ok(bj && JSON.parse(await window.hub.fs.read(bj)).items.length === Board.items().length, 'board file export');
+X.S.ui.root.focus();
+const lensBefore = Board.current().lens || null;
+await smoke({ cdp: 'Input.dispatchKeyEvent', params: { type: 'keyDown', key: 'l', code: 'KeyL', windowsVirtualKeyCode: 76 } });
+await wait(100);
+ok(Board.current().lens !== lensBefore, `L cycles the lens (${Board.current().lens})`);
+X.setLens(null, { quiet: true });
 Board.zoomFit(false); await wait(500);
 await smoke({ shot: '/tmp/board-shots/9-extra.png' });
 out.fail = fail;
