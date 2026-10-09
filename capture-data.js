@@ -44,7 +44,9 @@ const CaptureData = (() => {
     if (!(a > 0 && b > 0)) return null;
     const known = SOCIAL.find((s) => Math.abs(s.w / s.h - a / b) < 0.002 && /^\d/.test(s.id));
     if (a >= 100 && b >= 100) return { id: `${a}x${b}`, label: `${a}×${b}`, w: Math.round(a), h: Math.round(b) };
-    return known || { id: `${a}:${b}`, label: `${a}:${b}`, w: Math.round(1080 * Math.min(1, a / b) * (a / b >= 1 ? a / b : 1)), h: Math.round((1080 * Math.min(1, a / b) * (a / b >= 1 ? a / b : 1)) / (a / b)) };
+    // a free ratio: the long side 1920 px, even numbers
+    const even = (n) => Math.round(n / 2) * 2;
+    return known || { id: `${a}:${b}`, label: `${a}:${b}`, w: a >= b ? 1920 : even((1920 * a) / b), h: a >= b ? even((1920 * b) / a) : 1920 };
   }
 
   // ---------- backgrounds for beautified shots (padding around the window picture) ----------
