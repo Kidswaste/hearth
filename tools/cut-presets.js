@@ -1010,6 +1010,79 @@ const EditFX = (() => {
   ];
   const LTHIRD = Object.fromEntries(LOWER_THIRDS.map((l) => [l.id, l]));
 
+
+  // ---------- shapes and graphics (motion design): drawn by VideoTitles like a title with no words, so they take
+  // the title animations, render as PNG frames and match the preview. sh: { kind, size (fraction of the frame
+  // height), ar (width / height), x, y (center, fractions), color, color2, line (stroke, fraction of size),
+  // fill, r (corner, fraction), rot (deg), n (points / sides / count), alpha } ----------
+  const SH = (id, name, group, sh) => ({ id, name, group, sh: { kind: 'rect', size: 0.2, ar: 1, x: 0.5, y: 0.5, color: '#ffffff', line: 0, fill: true, r: 0, rot: 0, n: 5, alpha: 1, ...sh } });
+  const SHAPES = [
+    // basic
+    SH('box', 'Box', 'Basic', { kind: 'rect', ar: 1.6 }),
+    SH('box-outline', 'Box outline', 'Basic', { kind: 'rect', ar: 1.6, fill: false, line: 0.04 }),
+    SH('rounded', 'Rounded box', 'Basic', { kind: 'rect', ar: 1.6, r: 0.18 }),
+    SH('rounded-outline', 'Rounded outline', 'Basic', { kind: 'rect', ar: 1.6, r: 0.18, fill: false, line: 0.04 }),
+    SH('pill', 'Pill', 'Basic', { kind: 'rect', ar: 3, size: 0.08, r: 0.5, color: '#ffc93b' }),
+    SH('pill-outline', 'Pill outline', 'Basic', { kind: 'rect', ar: 3, size: 0.08, r: 0.5, fill: false, line: 0.08 }),
+    SH('circle', 'Circle', 'Basic', { kind: 'ellipse' }),
+    SH('ring', 'Ring', 'Basic', { kind: 'ellipse', fill: false, line: 0.06 }),
+    SH('triangle', 'Triangle', 'Basic', { kind: 'polygon', n: 3 }),
+    SH('diamond', 'Diamond', 'Basic', { kind: 'polygon', n: 4 }),
+    SH('hexagon', 'Hexagon', 'Basic', { kind: 'polygon', n: 6, rot: 30 }),
+    SH('hexagon-outline', 'Hexagon outline', 'Basic', { kind: 'polygon', n: 6, rot: 30, fill: false, line: 0.05 }),
+    SH('star', 'Star', 'Basic', { kind: 'star', n: 5, color: '#ffd75e' }),
+    SH('burst', 'Starburst', 'Basic', { kind: 'star', n: 14, inner: 0.72, color: '#ffc93b' }),
+    SH('plus', 'Plus', 'Basic', { kind: 'plus', size: 0.12 }),
+    SH('cross', 'Cross (×)', 'Basic', { kind: 'plus', size: 0.12, rot: 45, color: '#ff3b3b' }),
+    SH('check', 'Check mark', 'Basic', { kind: 'check', size: 0.14, color: '#22c55e', line: 0.14 }),
+    SH('heart', 'Heart', 'Basic', { kind: 'heart', size: 0.16, color: '#ff4f6b' }),
+    // lines and arrows
+    SH('line', 'Line', 'Lines and arrows', { kind: 'line', size: 0.5, line: 0.012 }),
+    SH('line-v', 'Vertical line', 'Lines and arrows', { kind: 'line', size: 0.5, line: 0.012, rot: 90 }),
+    SH('underline', 'Underline', 'Lines and arrows', { kind: 'line', size: 0.4, line: 0.02, y: 0.6, color: '#ffc93b' }),
+    SH('double-line', 'Double line', 'Lines and arrows', { kind: 'line', size: 0.5, line: 0.01, n: 2 }),
+    SH('dashed-line', 'Dashed line', 'Lines and arrows', { kind: 'line', size: 0.5, line: 0.012, dash: true }),
+    ...[['right', 0], ['left', 180], ['up', -90], ['down', 90], ['up-right', -45], ['down-right', 45]].map(([d, rot]) => SH(`arrow-${d}`, `Arrow ${d.replace('-', ' ')}`, 'Lines and arrows', { kind: 'arrow', size: 0.3, line: 0.08, rot, color: '#ffc93b' })),
+    SH('chevrons', 'Chevrons »', 'Lines and arrows', { kind: 'chevrons', size: 0.12, n: 3, line: 0.12 }),
+    SH('chevrons-up', 'Chevrons up (swipe up)', 'Lines and arrows', { kind: 'chevrons', size: 0.1, n: 3, line: 0.12, rot: -90, y: 0.82 }),
+    // frames
+    SH('corners', 'Viewfinder corners', 'Frames', { kind: 'corners', size: 0.7, ar: 0.62, line: 0.012 }),
+    SH('corners-wide', 'Viewfinder corners (wide)', 'Frames', { kind: 'corners', size: 0.6, ar: 1.6, line: 0.012 }),
+    SH('border', 'Frame border', 'Frames', { kind: 'border', line: 0.012 }),
+    SH('border-gold', 'Gold frame border', 'Frames', { kind: 'border', line: 0.02, color: '#ffc93b' }),
+    SH('letterbox', 'Letterbox bars (2.39)', 'Frames', { kind: 'bars', color: '#000000', n: 2.39 }),
+    SH('letterbox-thin', 'Thin letterbox bars', 'Frames', { kind: 'bars', color: '#000000', h: 0.06 }),
+    SH('divider', 'Split divider', 'Frames', { kind: 'line', size: 1.1, line: 0.006, rot: 90 }),
+    SH('rec', 'Recording frame (corners + red dot)', 'Frames', { kind: 'rec', size: 0.86, ar: 0.55, line: 0.01 }),
+    SH('thirds', 'Rule-of-thirds grid', 'Frames', { kind: 'grid', n: 3, line: 0.003, alpha: 0.6 }),
+    // callouts
+    SH('highlight-circle', 'Highlight circle', 'Callouts', { kind: 'ellipse', ar: 1.4, fill: false, line: 0.05, color: '#ff5a1f' }),
+    SH('spotlight', 'Spotlight (dark around a circle)', 'Callouts', { kind: 'spotlight', size: 0.35, color: '#000000', alpha: 0.65 }),
+    SH('pin', 'Map pin', 'Callouts', { kind: 'pin', size: 0.14, color: '#ff3b3b' }),
+    SH('bubble', 'Speech bubble', 'Callouts', { kind: 'bubble', size: 0.18, ar: 1.7 }),
+    SH('badge', 'Badge (starburst, gold)', 'Callouts', { kind: 'star', n: 20, inner: 0.84, size: 0.16, color: '#ffc93b', rot: 9 }),
+    SH('dot', 'Dot', 'Callouts', { kind: 'ellipse', size: 0.04, color: '#ff3b3b' }),
+    SH('tag', 'Tag (outlined pill)', 'Callouts', { kind: 'rect', ar: 3.4, size: 0.07, r: 0.5, fill: false, line: 0.07, color: '#ffc93b' }),
+    // backgrounds and light
+    ...[['sunset', '#ff5a1f', '#7a2bff'], ['ocean', '#22d3ee', '#1e3a8a'], ['forge', '#ff5a1f', '#ffc93b'], ['night', '#4c1d95', '#05050a'], ['mint', '#6bffc8', '#1f6bff'], ['rose', '#ff6b9a', '#ffd1a1']].map(([n0, c1, c2]) => SH(`grad-${n0}`, `Gradient (${n0})`, 'Backgrounds', { kind: 'gradient', color: c1, color2: c2 })),
+    SH('fade-bottom', 'Dark fade at the bottom (caption backing)', 'Backgrounds', { kind: 'fade', color: '#000000', alpha: 0.75 }),
+    SH('fade-top', 'Dark fade at the top', 'Backgrounds', { kind: 'fade', color: '#000000', alpha: 0.75, rot: 180 }),
+    SH('scrim', 'Scrim (dims the picture)', 'Backgrounds', { kind: 'scrim', color: '#000000', alpha: 0.45 }),
+    SH('vignette-dark', 'Dark vignette', 'Backgrounds', { kind: 'glow', color: '#000000', alpha: 0.85, inv: true }),
+    ...[['white', '#ffffff'], ['ember', '#ff5a1f'], ['violet', '#9a6bff'], ['cyan', '#22d3ee']].map(([n0, c]) => SH(`glow-${n0}`, `Center glow (${n0})`, 'Backgrounds', { kind: 'glow', color: c, alpha: 0.55 })),
+    // motion graphics (they move by themselves over the item's length)
+    SH('progress', 'Progress bar (fills over its length)', 'Motion graphics', { kind: 'progress', y: 0.97, line: 0.012, color: '#ffc93b' }),
+    SH('progress-ring', 'Progress ring', 'Motion graphics', { kind: 'ring-progress', size: 0.2, line: 0.08, color: '#22d3ee' }),
+    SH('countdown-ring', 'Countdown ring (empties)', 'Motion graphics', { kind: 'ring-progress', size: 0.2, line: 0.08, color: '#ff5a1f', back: true }),
+    SH('loading-dots', 'Loading dots', 'Motion graphics', { kind: 'dots', size: 0.05, n: 3 }),
+    SH('rays', 'Light rays (turning)', 'Motion graphics', { kind: 'rays', size: 1.4, n: 16, color: '#ffc93b', alpha: 0.35 }),
+    SH('scan-line', 'Scan line (sweeps down)', 'Motion graphics', { kind: 'scan', line: 0.006, color: '#22d3ee' }),
+    SH('pulse-ring', 'Pulse rings', 'Motion graphics', { kind: 'pulse', size: 0.35, line: 0.02, n: 3, color: '#ffffff' }),
+    SH('orbit', 'Orbit (dot circling)', 'Motion graphics', { kind: 'orbit', size: 0.3, line: 0.01, color: '#ffc93b' }),
+    SH('equalizer', 'Equalizer bars', 'Motion graphics', { kind: 'eq', size: 0.18, ar: 1.4, n: 7, color: '#ff5a1f' }),
+  ];
+  const SHAPE = Object.fromEntries(SHAPES.map((x) => [x.id, x]));
+
   // ---------- clip motion presets (keyframes on position / scale / rotation / opacity) ----------
   // fn(d) → { prop: [[t, v, ease]] } for a clip d seconds long (t from the clip's start).
   const M = (id, name, group, fn) => ({ id, name, group, fn });
@@ -1265,7 +1338,7 @@ const EditFX = (() => {
     ADJ, LOOKS, LOOK, grade, colorMath, svgMatrix, colorFilters, cssFilter, hex3,
     TRANSITIONS, TRANS, NEW_XFADE, BLENDS, BLEND, EFFECTS, EFFECT, effectFilters, needsAlpha, AUDIO_FX, AFX, audioFilters,
     TITLE_STYLES, TSTYLE, TITLE_ANIMS, TANIM, LOWER_THIRDS, LTHIRD, FONT_SANS,
-    MOTIONS, MOTION, RAMPS, RAMP, FORMATS, FPS, EXPORTS, exportCodec, TEMPLATES, TEMPLATE, MARKER_COLORS, find,
+    MOTIONS, MOTION, RAMPS, RAMP, FORMATS, FPS, EXPORTS, exportCodec, TEMPLATES, TEMPLATE, MARKER_COLORS, SHAPES, SHAPE, find,
   };
 })();
 if (typeof module !== 'undefined') module.exports = EditFX;

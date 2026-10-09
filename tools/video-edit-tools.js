@@ -57,7 +57,7 @@ const VideoEditTools = (() => {
   function readEdit({ what = 'all', kind, search } = {}) {
     const e = VideoCut.edit; const s = VideoCut.frameSize();
     if (what === 'presets') {
-      const map = { transition: FX.TRANSITIONS, look: FX.LOOKS, effect: FX.EFFECTS, sound: FX.AUDIO_FX, title: FX.TITLE_STYLES, anim: FX.TITLE_ANIMS, lower: FX.LOWER_THIRDS, motion: FX.MOTIONS, ramp: FX.RAMPS, format: FX.FORMATS, template: FX.TEMPLATES, export: [...VideoData.EXPORT_PRESETS, ...FX.EXPORTS], easing: FX.EASES, blend: FX.BLENDS, adjust: FX.ADJ };
+      const map = { transition: FX.TRANSITIONS, look: FX.LOOKS, effect: FX.EFFECTS, sound: FX.AUDIO_FX, title: FX.TITLE_STYLES, anim: FX.TITLE_ANIMS, lower: FX.LOWER_THIRDS, shape: FX.SHAPES, motion: FX.MOTIONS, ramp: FX.RAMPS, format: FX.FORMATS, template: FX.TEMPLATES, export: [...VideoData.EXPORT_PRESETS, ...FX.EXPORTS], easing: FX.EASES, blend: FX.BLENDS, adjust: FX.ADJ };
       const k = String(kind || '').replace(/s$/, '');
       if (!map[k]) return `kinds: ${Object.keys(map).join(', ')}`;
       const q = String(search || '').toLowerCase();
@@ -86,7 +86,7 @@ const VideoEditTools = (() => {
   // ---------- changing ----------
   const HELP = `ops (one undo step each; clip = 3 or "V2.1"; times in s, "00:00:04:12" or "f120"):
 open {path?|sequence?} · new {name, format?} · template {template, keep?} · format {format: 9:16|4:5|1:1|16:9|WxH|source, fps?}
-add {kind: video|overlay|image|audio|title|lower|color, path?, text?, at?, dur?, from?, to?, style?, anim?, out?, track?, main?} (video = main track; overlay/image/title above)
+add {kind: video|overlay|image|audio|title|lower|shape|color, path?, text?, at?, dur?, from?, to?, style?, anim?, out?, track?, main?} (video = main track; overlay/image/title above)
 split {at?, all?} · trim {clip?, edge: in|out, at?} · move {clip, at?|to (main-track position)} · delete {clip?, ripple?} · roll|slip|slide {clip?, frames}
 transition {clip?|all, type|off, dur?} · look {clip?, look|off, amt?} · effect {clip?, effect|off, amt? (0 removes)} · sound {clip?, effect|off, on?} · match {clip?, path (a reference picture: vibe only)} · captions {path? (import SRT; none: export)} · adjust {clip?, prop, value} · keyframe {clip?, prop: opacity|x|y|scale|rotate|volume, value?, at?, ease?}
 motion {clip?, preset} · speed {clip?, value} · ramp {clip?, preset} · reverse {clip?, on?} · set {clip?, props: {opacity, scale, x, y, rotate, volume, blend, mute, fadeIn, fadeOut, text, style, anim, out}}
@@ -113,6 +113,7 @@ presets: video_edit_read {what:"presets", kind}`;
         const at = T(a.at, cut.time); const k = String(a.kind || (a.text ? 'title' : 'video'));
         if (k === 'title') { const id = cut.addTitleItem(String(a.text || 'Title').replace(/\\n/g, '\n'), { at, dur: Number(a.dur) || 3, style: a.style || 'bold', anim: a.anim || 'fade-up', out: a.out || 'fade', track: a.track || null }); return `title ${id ? 'added' : 'failed'} at ${tc(at)} · ${sum()}`; }
         if (k === 'lower') { cut.addTitleItem(String(a.text || 'Name\nRole').replace(/\\n/g, '\n'), { at, dur: Number(a.dur) || 4, lower: a.style || a.preset || 'bar-gold' }); return `lower third at ${tc(at)}`; }
+        if (k === 'shape') { const sh = preset(FX.SHAPES, a.shape || a.style || a.preset, 'shape'); cut.addShape(sh.id, { at, dur: Number(a.dur) || 3, anim: a.anim || 'pop', out: a.out || 'fade', color: a.color || null }); return `shape ${sh.id} at ${tc(at)} · ${sum()}`; }
         if (k === 'color') { cut.addColor(a.color || '#000000', { at, dur: Number(a.dur) || 2, main: a.main !== false }); return `color at ${tc(at)} · ${sum()}`; }
         const p = await pathOf(a.path);
         if (k === 'video' && a.track == null) { const mode = a.mode || (a.at != null ? 'insert' : 'append'); if (mode === 'overwrite') await cut.overwriteClip(p, { a: Number(a.from) || 0, b: a.to != null ? Number(a.to) : null, at }); else if (mode === 'insert') await cut.insertClip(p, { a: Number(a.from) || 0, b: a.to != null ? Number(a.to) : null, at }); else await cut.addClip(p, { a: Number(a.from) || 0, b: a.to != null ? Number(a.to) : null }); return `${base(p)} on the main track (${mode}) · ${sum()}`; }
@@ -157,7 +158,7 @@ presets: video_edit_read {what:"presets", kind}`;
       case 'reverse': { cut.commit(C.setReverse(cut.edit, ids(a.clip), a.on), 'Reverse'); return 'reverse toggled'; }
       case 'set': {
         const p = a.props || {};
-        const allowed = ['opacity', 'scale', 'x', 'y', 'rotate', 'volume', 'blend', 'mute', 'fadeIn', 'fadeOut', 'text', 'style', 'anim', 'out', 'animDur', 'size', 'color', 'fill', 'dur', 'lower', 'align'];
+        const allowed = ['opacity', 'scale', 'x', 'y', 'rotate', 'volume', 'blend', 'mute', 'fadeIn', 'fadeOut', 'text', 'style', 'anim', 'out', 'animDur', 'size', 'color', 'fill', 'dur', 'lower', 'align', 'shape'];
         const bad = Object.keys(p).filter((k) => !allowed.includes(k));
         if (bad.length) throw new Error(`props can be: ${allowed.join(', ')}`);
         cut.commit(C.patchAny(cut.edit, ids(a.clip), (c) => { for (const [k, v] of Object.entries(p)) { if (k === 'color' && typeof v === 'object') continue; c[k] = typeof v === 'string' && k === 'text' ? v.replace(/\\n/g, '\n') : v; } }), 'Changed');

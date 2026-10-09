@@ -126,6 +126,23 @@ try {
   const muted = VideoCut.edit.clips.filter((c, i) => i > 0 && c.kind === 'video').every((c) => c.mute);
   await run('/solo-sound');
   step('/solo-sound mutes the others, again brings them back', muted && !VideoCut.edit.clips.some((c) => c.soloMuted), muted);
+  // shapes and graphics: drawn by the title renderer in the preview and in the export
+  await VideoCut.goFrame(15); await wait(200);
+  await run('/add-shape box 2 #ff00ff');
+  const shapeItem = (VideoCut.edit.tracks || []).flatMap((k) => k.items).find((x) => x.shape === 'box');
+  step('/add-shape lays a shape on a text track', Boolean(shapeItem) && shapeItem.color === '#ff00ff' && near(shapeItem.dur, 2), said);
+  await VideoCut.goFrame(45); await wait(300);
+  const fim = await VideoComp.frameImage(VideoCut.time, { maxW: 320, mime: 'image/png' });
+  const px = fim.canvas.getContext('2d').getImageData(Math.round(fim.canvas.width / 2), Math.round(fim.canvas.height / 2), 1, 1).data;
+  step('the shape shows in the preview (magenta box at the center)', px[0] > 200 && px[1] < 60 && px[2] > 200, [...px]);
+  const read = await VideoEditTools.handle('video_edit_read', { what: 'tracks' }).catch((e0) => String(e0));
+  step('video_edit_read describes the shape', /shape box/.test(JSON.stringify(read)), String(JSON.stringify(read)).slice(0, 200));
+  VideoCut.setMark(0, 2);
+  const jsh = await VideoCut.exportCut({});
+  const evs = jsh ? await jsh.done : { code: 'no job' };
+  const psh = evs.code === 0 ? await window.hub.video.probe(jsh.output, {}) : null;
+  step('a render with a shape (title frames) succeeds', evs.code === 0 && psh && near(psh.duration, 2, 0.1), { code: evs.code, err: evs.error, d: psh?.duration });
+  VideoCut.setMark(null);
   // the Lab hands its video to the editor
   const lab = await ThreeLab.cmd({ show: true });
   await lab.loadSong(B);

@@ -692,7 +692,7 @@ const VideoCut = (() => {
         if (it.kind === 'title') {
           g.fillStyle = '#3a2a66'; g.fillRect(x0, ly, cw, lane.h);
           g.fillStyle = '#e7dcff'; g.font = '600 10px system-ui, sans-serif'; g.textBaseline = 'middle';
-          g.fillText(`T ${String(it.text || '').replace(/\n/g, ' / ')}${it.anim ? `  ↗ ${FX.TANIM[it.anim]?.name || it.anim}` : ''}`, x0 + 5, ly + lane.h / 2);
+          g.fillText(`${it.shape && !String(it.text || '').trim() ? `◆ ${FX.SHAPE[it.shape]?.name || it.shape}` : `T ${String(it.text || '').replace(/\n/g, ' / ')}`}${it.anim ? `  ↗ ${FX.TANIM[it.anim]?.name || it.anim}` : ''}`, x0 + 5, ly + lane.h / 2);
         } else if (it.kind === 'audio') {
           const hh = hue(it.src);
           g.fillStyle = `hsl(${hh} 35% 14%)`; g.fillRect(x0, ly, cw, lane.h);
@@ -1088,6 +1088,8 @@ const VideoCut = (() => {
       visual ? { label: 'Opacity', items: [1, 0.85, 0.7, 0.5, 0.3, 0.15].map((o) => ({ label: `${Math.round(o * 100)}%`, action: () => commit(C.patchAny(st.edit, ids, (k) => { k.opacity = o; }), `Opacity ${Math.round(o * 100)}%`) })) } : null,
       !isItem && i > 0 ? { label: `Transition in${c.trans ? `: ${FX.TRANS[c.trans.type]?.name}` : ''}`, items: () => grouped(FX.TRANSITIONS.filter((t) => t.id !== 'cut'), (id) => setTransition(id, null, [c.id]), c.trans?.type) } : null,
       c.kind === 'title' ? { label: 'Edit the title…', action: () => (isItem ? inspect(c.id) : editTitle(c)) } : null,
+      c.kind === 'title' && c.shape ? { label: 'Shape', items: () => grouped(FX.SHAPES, (id) => commit(C.patchAny(st.edit, ids, (k) => { k.shape = id; }), FX.SHAPE[id].name), c.shape) } : null,
+      c.kind === 'title' && c.shape ? { label: 'Shape color', items: [['Preset', null], ['White', '#ffffff'], ['Gold', '#ffc93b'], ['Ember', '#ff5a1f'], ['Violet', '#9a6bff'], ['Cyan', '#22d3ee'], ['Pink', '#ff4fa3'], ['Black', '#000000']].map(([n0, col]) => ({ label: `${(c.color || null) === col ? '✓ ' : ''}${n0}`, action: () => commit(C.patchAny(st.edit, ids, (k) => { if (col) k.color = col; else delete k.color; }), `Shape color: ${n0}`) })) } : null,
       c.kind === 'title' ? { label: 'Title style', items: () => grouped(FX.TITLE_STYLES, (id) => commit(C.patchAny(st.edit, ids, (k) => { k.style = id; }), FX.TSTYLE[id].name), c.style) } : null,
       c.kind === 'title' ? { label: 'Title animation', items: () => [{ label: 'In', items: FX.TITLE_ANIMS.map((a) => ({ label: `${c.anim === a.id ? '✓ ' : ''}${a.name}`, action: () => commit(C.patchAny(st.edit, ids, (k) => { k.anim = a.id; }), `In: ${a.name}`) })) }, { label: 'Out', items: FX.TITLE_ANIMS.map((a) => ({ label: `${c.out === a.id ? '✓ ' : ''}${a.name}`, action: () => commit(C.patchAny(st.edit, ids, (k) => { k.out = a.id; }), `Out: ${a.name}`) })) }] } : null,
       c.kind === 'gap' && c.slot ? { label: 'Fill this slot with a video…', action: () => fillSlot(c.id) } : null,
@@ -1674,6 +1676,15 @@ const VideoCut = (() => {
     st.sel = new Set([n.lastItem]); paintHead(); draw();
     return n.lastItem;
   }
+  // Shapes and graphics (EditFX.SHAPES): a text-track item with no words, animated like a title
+  function addShape(id, { at = P.T, dur = 3, anim = 'pop', out = 'fade', color = null, track = null, ...props } = {}) {
+    const sh = FX.SHAPE[id] || FX.find(FX.SHAPES, id); if (!sh) return null;
+    const an = FX.TANIM[anim] ? anim : FX.find(FX.TITLE_ANIMS, anim)?.id || 'pop';
+    const n = C.addItem(st.edit, { kind: 'title', text: '', shape: sh.id, start: frameStart(at), dur, anim: an, out, animDur: 0.5, ...(color ? { color } : {}), ...props }, { track });
+    commit(n, `Shape: ${sh.name}`);
+    st.sel = new Set([n.lastItem]); paintHead(); draw();
+    return n.lastItem;
+  }
   function addColor(fill = '#000000', { at = P.T, dur = 2, main = true } = {}) {
     if (main) { commit(C.insertAt(st.edit, at, { kind: 'color', fill, dur, mute: true }), 'Color matte'); return true; }
     const n = C.addItem(st.edit, { kind: 'color', fill, start: at, dur, opacity: 0.5 });
@@ -1692,6 +1703,7 @@ const VideoCut = (() => {
       lab.length ? { label: 'Lab recordings', items: lab.map((p) => ({ label: base(p.path || p), action: () => addOverlay(p.path || p, { at }) })) } : null,
       { label: 'Title', items: () => grouped(FX.TITLE_STYLES, (id) => askTitle({ at, style: id, track: tid }), null) },
       { label: 'Lower third', items: () => FX.LOWER_THIRDS.map((l) => ({ label: l.name, action: () => askTitle({ at, lower: l.id, track: tid, value: 'Name Surname\\nRole' }) })) },
+      { label: 'Shape or graphic', items: () => grouped(FX.SHAPES, (id) => addShape(id, { at, track: tid }), null) },
       { label: 'Music or sound…', action: async () => { const [p] = await window.hub.openDialog({ filters: [{ name: 'Sound', extensions: ['wav', 'mp3', 'm4a', 'aac', 'ogg', 'flac', 'mp4', 'mov'] }] }) || []; if (p) addAudio(p, { at: track ? at : 0, track: tid }); } },
       { label: 'Color matte', items: [['Black', '#000000'], ['White', '#ffffff'], ['Gold', '#ffc93b'], ['Ember', '#ff5a1f'], ['Violet', '#7a4bff'], ['Night blue', '#0b1230']].map(([n0, col]) => ({ label: n0, action: () => addColor(col, { at, main: !track }) })) },
       { label: 'Freeze frame here', action: () => freezeHere() },
@@ -2360,7 +2372,7 @@ const VideoCut = (() => {
     play: startPlay, pause, togglePlay: () => (P.playing ? pause() : startPlay()), seek: (t) => seek(t, { play: P.playing }), step, shuttle, goto: (t) => seek(frameMid(t), { play: false }), goFrame, frameInfo, frameSize, fmt: fmtProg,
     split, splitAll: splitAllHere, del, closeGaps, setSpeed, nudgeSpeed, freezeHere, addTitle, marker, setMark, suggest, acceptSuggestion, reset, addClip, undo, redo, help, exportCut, exportAll, jumpCut, jumpBeat, jumpMarker, jumpKey,
     setTransition, setLook, adjust, setEffect, setAudioFx, applyMotion, keyHere, rampClip, addOverlay, addImage, addAudio, addTitleItem, addColor, insertClip, overwriteClip, fillSlot, liftRange, toggleSnap, toggleRazor, setFormat, applyTemplate,
-    nestSelection, unnest, toOverlay, toMain, fillFrame, resetTransform, clipDuration, snapshot, snapshots, restoreSnapshot, exportEdl, duplicateSequence, renameSequence, laneSize, centerView, markersAtCuts, clearMarkers, holdFrame, restyleTrack, shiftTrack, normalizeAll, soloSound, importCaptions, exportCaptions, matchLook, fitToFill, extendEdit, swapNext, shuffleClips, matchFrame, setLabel, renameClip, toggleOff, rangeFromSelection, beatMarkers, copyKeys, pasteKeys, safeCheck, posterFrame, renderEdit, recordEdit, newSequence, sequences, deleteSequence, inspect, closeInspector, zoomBy, zoomFit, setView, nudge, slipSel, copySel, paste, selectAll,
+    nestSelection, unnest, toOverlay, toMain, fillFrame, resetTransform, clipDuration, addShape, snapshot, snapshots, restoreSnapshot, exportEdl, duplicateSequence, renameSequence, laneSize, centerView, markersAtCuts, clearMarkers, holdFrame, restyleTrack, shiftTrack, normalizeAll, soloSound, importCaptions, exportCaptions, matchLook, fitToFill, extendEdit, swapNext, shuffleClips, matchFrame, setLabel, renameClip, toggleOff, rangeFromSelection, beatMarkers, copyKeys, pasteKeys, safeCheck, posterFrame, renderEdit, recordEdit, newSequence, sequences, deleteSequence, inspect, closeInspector, zoomBy, zoomFit, setView, nudge, slipSel, copySel, paste, selectAll,
     selectIds: (ids) => { st.sel = new Set(ids.filter((id) => C.find(st.edit, id))); paintHead(); draw(); return selIds(); },
     select(i) { const c = st.edit?.clips[i]; if (!c) return null; st.sel = new Set([c.id]); paintHead(); draw(); const x = C.layout(st.edit)[i]; seek(x.start, { play: false }); return c; },
     commit, mute: (on) => { const ids = targetAny(); if (!ids.length) return null; commit(C.patchAny(st.edit, ids, (c) => { c.mute = on ?? !c.mute; }), 'Sound toggled'); return C.find(st.edit, ids[0])?.clip.mute; },

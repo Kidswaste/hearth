@@ -77,6 +77,7 @@ const VideoTitles = (() => {
     const s = styleOf(it);
     const dur = it.dur || 2;
     if (it.bg && it.where !== 'item') { g.fillStyle = it.bg; g.fillRect(0, 0, W, H); }
+    if (it.shape) { drawShape(g, it, t, W, H); if (!String(it.text || '').trim()) return; }
     if (!String(it.text || '').trim()) return;
     let px = s.size * H;
     g.save();
@@ -153,6 +154,74 @@ const VideoTitles = (() => {
       g.fillStyle = s.color || '#fff';
       g.fillRect(u.x + (shown ? u.w : 0) + u.r.px * 0.06, u.r.top + u.r.h * 0.18, Math.max(2, u.r.px * 0.08), u.r.h * 0.64);
     }
+    g.restore();
+  }
+  // Shapes and graphics (EditFX.SHAPES): an item with `shape` and no words. The whole-item animation moves,
+  // scales, turns, fades, blurs and reveals it (left to right: lines and arrows draw on).
+  function drawShape(g, it, t, W, H) {
+    const P0 = FX.SHAPE[it.shape]; if (!P0) return;
+    const sh = { ...P0.sh, ...(it.color ? { color: it.color } : {}), ...(it.x != null ? { x: it.x } : {}), ...(it.y != null ? { y: it.y } : {}) };
+    const dur = it.dur || 2;
+    const st = stateAt(it, 0, 1, t, dur, FX.TANIM[it.anim || 'fade']?.unit || 'all', FX.TANIM[it.out || 'fade']?.unit || 'all');
+    if (st.a <= 0.003 || st.k <= 0) return;
+    const S0 = sh.size * H * (it.size || 1); const w = S0 * sh.ar; const h = S0;
+    const cx = sh.x * W + st.x * S0 * 0.25; const cy = sh.y * H + st.y * S0 * 0.25;
+    const lw = Math.max(1, sh.line * S0);
+    const q = clamp(t / dur, 0, 1);
+    g.save();
+    g.globalAlpha = clamp(st.a * sh.alpha, 0, 1);
+    if (st.b > 0.2) g.filter = `blur(${((st.b * H) / 1080).toFixed(1)}px)`;
+    g.translate(cx, cy);
+    g.rotate((((sh.rot || 0) + st.r) * Math.PI) / 180);
+    g.scale(st.s * st.sx, st.s * st.sy);
+    const fullW = ['border', 'bars', 'gradient', 'fade', 'scrim', 'glow', 'grid', 'scan', 'progress'].includes(sh.kind);
+    if (st.k < 1 && !fullW && sh.kind !== 'spotlight') { g.beginPath(); const bw = Math.max(w, h) * 1.2; g.rect(-bw / 2, -H * 1.5, bw * st.k, H * 3); g.clip(); }
+    g.fillStyle = sh.color; g.strokeStyle = sh.color; g.lineWidth = lw; g.lineCap = 'round'; g.lineJoin = 'round';
+    const paint0 = () => { if (sh.fill) g.fill(); else g.stroke(); };
+    const poly = (pts) => { g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); };
+    const k = sh.kind;
+    if (k === 'rect') { roundRect(g, -w / 2, -h / 2, w, h, Math.min(w, h) * (sh.r || 0)); paint0(); }
+    else if (k === 'ellipse') { g.beginPath(); g.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2); paint0(); }
+    else if (k === 'polygon') { const n = sh.n; poly(Array.from({ length: n }, (_, i) => { const a = -Math.PI / 2 + (i * 2 * Math.PI) / n; return [Math.cos(a) * w / 2, Math.sin(a) * h / 2]; })); paint0(); }
+    else if (k === 'star') { const n = sh.n; const inn = sh.inner || 0.45; poly(Array.from({ length: n * 2 }, (_, i) => { const a = -Math.PI / 2 + (i * Math.PI) / n; const rr = i % 2 ? inn : 1; return [Math.cos(a) * rr * w / 2, Math.sin(a) * rr * h / 2]; })); paint0(); }
+    else if (k === 'plus') { const a = w * 0.2; g.fillRect(-w / 2, -a / 2, w, a); g.fillRect(-a / 2, -h / 2, a, h); }
+    else if (k === 'check') { g.beginPath(); g.moveTo(-w * 0.42, 0); g.lineTo(-w * 0.12, h * 0.3); g.lineTo(w * 0.45, -h * 0.35); g.stroke(); }
+    else if (k === 'heart') { g.beginPath(); g.moveTo(0, h * 0.35); g.bezierCurveTo(-w * 0.9, -h * 0.2, -w * 0.3, -h * 0.75, 0, -h * 0.25); g.bezierCurveTo(w * 0.3, -h * 0.75, w * 0.9, -h * 0.2, 0, h * 0.35); g.fill(); }
+    else if (k === 'line') {
+      const L = S0; const n = sh.n === 2 ? 2 : 1;
+      if (sh.dash) g.setLineDash([lw * 3, lw * 2.5]);
+      g.lineWidth = sh.line * H;
+      for (let i = 0; i < n; i += 1) { const y = n === 2 ? (i - 0.5) * sh.line * H * 3 : 0; g.beginPath(); g.moveTo(-L / 2, y); g.lineTo(L / 2, y); g.stroke(); }
+    }
+    else if (k === 'arrow') { const L = w; const hd = L * 0.28; g.beginPath(); g.moveTo(-L / 2, 0); g.lineTo(L / 2 - lw * 0.6, 0); g.stroke(); poly([[L / 2, 0], [L / 2 - hd, -hd * 0.7], [L / 2 - hd, hd * 0.7]]); g.fill(); }
+    else if (k === 'chevrons') { const n = sh.n; for (let i = 0; i < n; i += 1) { const x0 = (i - (n - 1) / 2) * w * 0.55; g.globalAlpha = clamp(st.a * sh.alpha * (0.45 + 0.55 * ((Math.sin(t * 5 - i) + 1) / 2)), 0, 1); g.beginPath(); g.moveTo(x0 - w * 0.2, -h * 0.4); g.lineTo(x0 + w * 0.2, 0); g.lineTo(x0 - w * 0.2, h * 0.4); g.stroke(); } }
+    else if (k === 'corners' || k === 'rec') {
+      const a = Math.min(w, h) * 0.14; g.lineWidth = sh.line * H;
+      for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { g.beginPath(); g.moveTo(sx * w / 2, sy * (h / 2 - a)); g.lineTo(sx * w / 2, sy * h / 2); g.lineTo(sx * (w / 2 - a), sy * h / 2); g.stroke(); }
+      if (k === 'rec' && Math.floor(t * 2) % 2 === 0) { g.fillStyle = '#ff2a2a'; g.beginPath(); g.arc(-w / 2 + a * 0.9, -h / 2 + a * 0.9, a * 0.28, 0, Math.PI * 2); g.fill(); }
+    }
+    else if (fullW) {
+      g.setTransform(1, 0, 0, 1, 0, 0); // the frame-wide kinds ignore the anchor (alpha and reveal still apply)
+      if (st.k < 1) { g.beginPath(); g.rect(0, 0, W * st.k, H); g.clip(); }
+      if (k === 'border') { const b = sh.line * H; g.lineWidth = b; g.strokeRect(b * 1.5, b * 1.5, W - b * 3, H - b * 3); }
+      else if (k === 'bars') { const bh = sh.h ? sh.h * H : Math.max(0, (H - W / sh.n) / 2); g.fillRect(0, 0, W, bh); g.fillRect(0, H - bh, W, bh); }
+      else if (k === 'gradient') { const gr = g.createLinearGradient(0, 0, W, H); gr.addColorStop(0, sh.color); gr.addColorStop(1, sh.color2); g.fillStyle = gr; g.fillRect(0, 0, W, H); }
+      else if (k === 'fade') { const top = sh.rot === 180; const gr = g.createLinearGradient(0, top ? 0 : H, 0, top ? H * 0.45 : H * 0.55); gr.addColorStop(0, sh.color); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, W, H); }
+      else if (k === 'scrim') g.fillRect(0, 0, W, H);
+      else if (k === 'glow') { const [r0, g0, b0] = FX.hex3(sh.color).map((v) => Math.round(v * 255)); const gr = g.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.hypot(W, H) / 2); gr.addColorStop(sh.inv ? 0.45 : 0, `rgba(${r0},${g0},${b0},${sh.inv ? 0 : 1})`); gr.addColorStop(1, `rgba(${r0},${g0},${b0},${sh.inv ? 1 : 0})`); g.fillStyle = gr; g.fillRect(0, 0, W, H); }
+      else if (k === 'grid') { g.lineWidth = Math.max(1, sh.line * H); for (let i = 1; i < sh.n; i += 1) { g.beginPath(); g.moveTo((W * i) / sh.n, 0); g.lineTo((W * i) / sh.n, H); g.moveTo(0, (H * i) / sh.n); g.lineTo(W, (H * i) / sh.n); g.stroke(); } }
+      else if (k === 'scan') { const y = H * q; g.fillRect(0, y - (sh.line * H) / 2, W, sh.line * H); g.globalAlpha *= 0.25; g.fillRect(0, y - sh.line * H * 4, W, sh.line * H * 8); }
+      else if (k === 'progress') { const b = sh.line * H; g.globalAlpha *= 0.3; g.fillRect(0, sh.y * H - b / 2, W, b); g.globalAlpha = clamp(st.a * sh.alpha, 0, 1); g.fillRect(0, sh.y * H - b / 2, W * q, b); }
+    }
+    else if (k === 'spotlight') { g.setTransform(1, 0, 0, 1, 0, 0); g.beginPath(); g.rect(0, 0, W, H); g.arc(cx, cy, (S0 / 2) * st.s, 0, Math.PI * 2, true); g.fill('evenodd'); }
+    else if (k === 'pin') { g.beginPath(); g.arc(0, -h * 0.15, w * 0.32, Math.PI * 0.85, Math.PI * 0.15); g.lineTo(0, h * 0.5); g.closePath(); g.fill(); g.globalCompositeOperation = 'destination-out'; g.beginPath(); g.arc(0, -h * 0.15, w * 0.13, 0, Math.PI * 2); g.fill(); g.globalCompositeOperation = 'source-over'; }
+    else if (k === 'bubble') { roundRect(g, -w / 2, -h / 2, w, h * 0.8, h * 0.25); g.fill(); poly([[-w * 0.2, h * 0.28], [-w * 0.32, h * 0.5], [-w * 0.05, h * 0.28]]); g.fill(); }
+    else if (k === 'ring-progress') { const r0 = w / 2; g.globalAlpha *= 0.25; g.beginPath(); g.arc(0, 0, r0, 0, Math.PI * 2); g.stroke(); g.globalAlpha = clamp(st.a * sh.alpha, 0, 1); const p = sh.back ? 1 - q : q; g.beginPath(); g.arc(0, 0, r0, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * p); g.stroke(); }
+    else if (k === 'dots') { for (let i = 0; i < sh.n; i += 1) { const ph = (Math.sin(t * 6 - i * 0.9) + 1) / 2; g.globalAlpha = clamp(st.a * (0.3 + 0.7 * ph), 0, 1); g.beginPath(); g.arc((i - (sh.n - 1) / 2) * w * 1.6, -ph * h * 0.3, w / 2, 0, Math.PI * 2); g.fill(); } }
+    else if (k === 'rays') { g.rotate(t * 0.25); for (let i = 0; i < sh.n; i += 1) { g.rotate((Math.PI * 2) / sh.n); poly([[0, 0], [w, -w * 0.08], [w, w * 0.08]]); g.fill(); } }
+    else if (k === 'pulse') { for (let i = 0; i < sh.n; i += 1) { const ph = ((t * 0.8 + i / sh.n) % 1); g.globalAlpha = clamp(st.a * (1 - ph), 0, 1); g.beginPath(); g.arc(0, 0, (w / 2) * ph, 0, Math.PI * 2); g.stroke(); } }
+    else if (k === 'orbit') { g.globalAlpha *= 0.35; g.beginPath(); g.arc(0, 0, w / 2, 0, Math.PI * 2); g.stroke(); g.globalAlpha = clamp(st.a * sh.alpha, 0, 1); const a = t * 2.4; g.beginPath(); g.arc(Math.cos(a) * w / 2, Math.sin(a) * w / 2, lw * 3, 0, Math.PI * 2); g.fill(); }
+    else if (k === 'eq') { const bw = w / (sh.n * 1.6); for (let i = 0; i < sh.n; i += 1) { const v = 0.2 + 0.8 * Math.abs(Math.sin(t * (3 + i * 0.7) + i * 1.3)); g.fillRect(-w / 2 + i * bw * 1.6, h / 2 - h * v, bw, h * v); } }
     g.restore();
   }
   function paint(g, s, str, x, y, px, H, rgb = 0) {

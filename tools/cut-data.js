@@ -678,7 +678,7 @@ const CutData = (() => {
     for (const k of e.tracks || []) {
       lines.push(`${k.name} (${k.type}${k.mute ? ', muted' : ''}${k.hide ? ', hidden' : ''}${k.lock ? ', locked' : ''}):${k.items.length ? '' : ' empty'}`);
       k.items.forEach((x, j) => {
-        const what = x.kind === 'title' ? `title “${String(x.text || '').replace(/\n/g, ' / ')}”${x.style ? ` [${x.style}]` : ''}${x.lower ? ` [lower third ${x.lower}]` : ''}${x.anim ? ` in:${x.anim}` : ''}${x.out ? ` out:${x.out}` : ''}` : x.kind === 'color' ? `color ${x.fill || ''}` : `${x.kind} ${base(x.src)}${MEDIA.has(x.kind) ? ` ${fmt(x.in)}–${fmt(x.out)}` : ''}`;
+        const what = x.kind === 'title' && x.shape && !String(x.text || '').trim() ? `shape ${x.shape}${x.color ? ` ${x.color}` : ''}${x.anim ? ` in:${x.anim}` : ''}${x.out ? ` out:${x.out}` : ''}` : x.kind === 'title' ? `title “${String(x.text || '').replace(/\n/g, ' / ')}”${x.style ? ` [${x.style}]` : ''}${x.lower ? ` [lower third ${x.lower}]` : ''}${x.anim ? ` in:${x.anim}` : ''}${x.out ? ` out:${x.out}` : ''}` : x.kind === 'color' ? `color ${x.fill || ''}` : `${x.kind} ${base(x.src)}${MEDIA.has(x.kind) ? ` ${fmt(x.in)}–${fmt(x.out)}` : ''}`;
         lines.push(`  ${k.name}.${j + 1} ${tc(x.start)} → ${tc(itemEnd(x))} · ${what}${extras(x)}`);
       });
     }

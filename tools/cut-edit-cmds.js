@@ -53,7 +53,7 @@ const CutEditCmds = (() => {
 
   const defs = [];
   const cmd = (d) => defs.push(d);
-  const PRESET_KINDS = { transition: FX.TRANSITIONS, look: FX.LOOKS, effect: FX.EFFECTS, sound: FX.AUDIO_FX, title: FX.TITLE_STYLES, anim: FX.TITLE_ANIMS, lower: FX.LOWER_THIRDS, motion: FX.MOTIONS, ramp: FX.RAMPS, format: FX.FORMATS, template: FX.TEMPLATES, export: FX.EXPORTS, easing: FX.EASES, blend: FX.BLENDS };
+  const PRESET_KINDS = { transition: FX.TRANSITIONS, look: FX.LOOKS, effect: FX.EFFECTS, sound: FX.AUDIO_FX, title: FX.TITLE_STYLES, anim: FX.TITLE_ANIMS, lower: FX.LOWER_THIRDS, shape: FX.SHAPES, motion: FX.MOTIONS, ramp: FX.RAMPS, format: FX.FORMATS, template: FX.TEMPLATES, export: FX.EXPORTS, easing: FX.EASES, blend: FX.BLENDS };
 
   // ---------- opening, sequences, templates, format ----------
   cmd({ name: 'editor', aliases: ['video-editor'], desc: 'The video editor: open (on the open video), off, new <name> [format], open <sequence>, list, keys', args: '[on|off|new <name>|open <name>|list|keys]', keys: 'E',
@@ -302,6 +302,18 @@ const CutEditCmds = (() => {
   cmd({ name: 'edit-presets', desc: 'The editor\'s presets: transitions, looks, titles, anims, lowers, motions, ramps, formats, templates, exports, easings, blends', args: '<kind> [search]',
     complete: (a) => opts(Object.keys(PRESET_KINDS).map((k) => `${k}s`), a),
     run: async (args) => { const [k0, ...q] = words(args); const k = String(k0 || '').replace(/s$/, ''); const list = PRESET_KINDS[k]; if (!list) return `Kinds: ${Object.keys(PRESET_KINDS).map((x) => `${x}s`).join(', ')}.`; const s = q.join(' ').toLowerCase(); const hits = list.filter((x) => !s || x.id.includes(s) || x.name.toLowerCase().includes(s)); return `${hits.length} ${k}${hits.length === 1 ? '' : 's'}:\n${hits.map((x) => `\`${x.id}\` ${x.name}${x.group ? ` · ${x.group}` : ''}`).join('\n')}`; } });
+
+  cmd({ name: 'add-shape', aliases: ['shape'], desc: 'A shape or graphic over the picture at the playhead (arrows, frames, gradients, progress bars, rays…), animated like a title', args: '<shape> [seconds] [anim] [#color]',
+    complete: (a) => opts(ids(FX.SHAPES), a), examples: ['/add-shape arrow-right 2', '/add-shape progress 6', '/add-shape grad-sunset 4 fade'], keywords: 'graphic motion design arrow box circle frame gradient',
+    run: async (args) => {
+      await editing(); const w = words(args); if (!w.length) return `Shapes: ${FX.SHAPES.slice(0, 14).map((x) => x.id).join(', ')}… (/edit-presets shapes).`;
+      const sh = pickPreset(FX.SHAPES, w[0], 'shape');
+      const secs = Number(w.find((x) => /^\d*\.?\d+s?$/.test(x))?.replace(/s$/, '')) || 3;
+      const color = w.find((x) => /^#[0-9a-f]{3,8}$/i.test(x)) || null;
+      const anim = w.slice(1).find((x) => FX.TANIM[x]) || 'pop';
+      const id = VideoCut.addShape(sh.id, { dur: secs, anim, color });
+      return id ? `◆ ${sh.name} at ${fmt(VideoCut.time)} for ${secs} s.` : 'Could not add it.';
+    } });
 
   // ---------- housekeeping: snapshots, EDL, sequences, lanes, markers, holds, track-wide changes ----------
   const trackNamed = (n) => { const k = (VideoCut.edit.tracks || []).find((x) => x.name.toLowerCase() === String(n || '').toLowerCase()); if (!k) throw new Error(`No track ${n || ''} (/edit-list shows them).`); return k; };
