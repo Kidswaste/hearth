@@ -31,6 +31,21 @@ const Native = (() => {
   const fmt = (n) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n));
   const draftKey = (agentId) => `draft.${agentId}.${H.activeChat[agentId] || 'new'}`;
   const nearBottom = (list) => list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+  // Auto-scroll follows a reply only while you're at the bottom (v.follow). Your own scrolling decides it (wheel, keys,
+  // a drag on the scrollbar): up stops it, back down to the bottom starts it again. It used to be decided by "within
+  // 80 px of the bottom" at each paint, which pulled you back down when you had just scrolled up a little.
+  const follows = (v) => (v ? v.follow !== false && !v.scrollLock : true);
+  // Scrolls to the bottom once per frame, after the frame's DOM changes (one layout, not one per paint). It jumps:
+  // a smooth scroll restarted by every paint (~16× a second) barely moves (each restart eases in again).
+  function scrollToEnd(list, v) {
+    if (list.endRaf) return;
+    list.endRaf = requestAnimationFrame(() => {
+      list.endRaf = 0;
+      if (v && !follows(v)) return; // you scrolled up in the meantime
+      const top = list.scrollHeight - list.clientHeight;
+      if (top - list.scrollTop >= 1) list.scrollTop = top;
+    });
+  }
 
   function mount(agentId, root) {
     const title = el('span', { class: 'chat-title', title: 'Double-click to rename' });
@@ -68,13 +83,24 @@ const Native = (() => {
       Object.assign(quoteSel.style, { left: `${r.left + r.width / 2}px`, top: `${r.top - 30}px` });
       quoteSel.hidden = false;
     }));
-    list.addEventListener('scroll', () => { quoteSel.hidden = true; });
+    list.addEventListener('scroll', () => { if (!quoteSel.hidden) quoteSel.hidden = true; });
     document.body.append(quoteSel);
     queueMicrotask(() => list.parentElement?.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'c') { e.preventDefault(); copyLastReply(agentId); }
     }));
-    const jump = el('button', { class: 'jump-bottom', text: '↓', title: 'Jump to the latest message', hidden: true, on: { click: () => { list.scrollTop = list.scrollHeight; } } });
-    list.addEventListener('scroll', () => { jump.hidden = nearBottom(list); if (nearBottom(list)) jump.classList.remove('has-new'); });
+    const jump = el('button', { class: 'jump-bottom', text: '↓', title: 'Jump to the latest message', hidden: true, on: { click: () => { v.follow = true; list.scrollTop = list.scrollHeight; } } });
+    // the user's own scrolling (see follows): input in the last moment + where the scroll ended up
+    let userAt = 0;
+    const byUser = () => { userAt = performance.now(); };
+    for (const ev of ['wheel', 'touchmove', 'pointerdown', 'keydown']) list.addEventListener(ev, byUser, { passive: true });
+    list.addEventListener('scroll', () => {
+      const gap = list.scrollHeight - list.scrollTop - list.clientHeight;
+      if (gap < 4) v.follow = true; // at the very bottom (End, ↓, the jump button, or scrolled there): follow again
+      else if (performance.now() - userAt < 700) v.follow = gap < 24;
+      const near = gap < 80;
+      if (jump.hidden !== near) jump.hidden = near;
+      if (near && jump.classList.contains('has-new')) jump.classList.remove('has-new');
+    });
 
     const chips = el('div', { class: 'attach-chips' });
     const input = el('textarea', { rows: 3, spellcheck: true });
@@ -84,7 +110,7 @@ const Native = (() => {
     const queueBox = el('div', { class: 'queue-chips', hidden: true });
     const styleBox = el('div', { class: 'style-chips', hidden: true });
     const form = el('form', { class: 'composer' }, el('div', { class: 'composer-box' }, styleBox, queueBox, chips, input, counter), attachBtn, sendBtn);
-    const v = { root, title, meta, ctx, modelSel, list, input, sendBtn, chips, counter, jump, attachments: [], queue: [], queueBox, styleBox, form };
+    const v = { root, title, meta, ctx, modelSel, list, input, sendBtn, chips, counter, jump, attachments: [], queue: [], queueBox, styleBox, form, follow: true };
 
     const saveDraft = debounce(() => store.set(draftKey(agentId), input.value || null), 400);
     input.addEventListener('input', () => { autosize(input); updateCounter(v); saveDraft(); });
@@ -725,19 +751,23 @@ const Native = (() => {
     renderQueue(agentId);
     // Long replies start folded so the conversation stays scannable.
     requestAnimationFrame(() => {
-      for (const node of v.list.querySelectorAll('.msg.assistant:not(.streaming)')) {
-        const body = node.querySelector('.body');
-        if (store.get('chat.autoFold', true) !== false && body.scrollHeight > COLLAPSE_PX && node !== v.list.querySelector('.msg.assistant:last-of-type') && !unfolded.has(`${chat?.id}:${node.dataset.index}`)) {
-          node.classList.add('collapsed');
-          const words = (node.dataset.raw.match(/\S+/g) || []).length;
-          node.append(el('button', { class: 'show-more-msg msg-act', text: `Show full reply · ${words.toLocaleString()} words`, dataset: { msgAct: 'more' } }));
-        }
+      // measure every reply first, then fold: folding one between two measurements made each measurement lay out the
+      // whole chat again (one full layout per folded reply)
+      const autoFold = store.get('chat.autoFold', true) !== false;
+      const lastReply = v.list.querySelector('.msg.assistant:last-of-type');
+      const toFold = !autoFold ? [] : [...v.list.querySelectorAll('.msg.assistant:not(.streaming)')]
+        .filter((node) => node !== lastReply && !unfolded.has(`${chat?.id}:${node.dataset.index}`) && node.querySelector('.body').scrollHeight > COLLAPSE_PX);
+      for (const node of toFold) {
+        node.classList.add('collapsed');
+        const words = (node.dataset.raw.match(/\S+/g) || []).length;
+        node.append(el('button', { class: 'show-more-msg msg-act', text: `Show full reply · ${words.toLocaleString()} words`, dataset: { msgAct: 'more' } }));
       }
       const newSep = v.list.querySelector('.new-sep');
-      if (keepScroll && !wasNearBottom) v.list.scrollTop = prevScroll;
+      if (keepScroll && !(wasNearBottom && v.follow !== false)) v.list.scrollTop = prevScroll;
       else if (newSep && !keepScroll) v.list.scrollTop = Math.max(0, newSep.offsetTop - 40);
-      else if (!(v.scrollLock && keepScroll)) v.list.scrollTop = v.list.scrollHeight;
-      v.jump.hidden = nearBottom(v.list);
+      else if (!(v.scrollLock && keepScroll)) { v.follow = true; v.list.scrollTop = v.list.scrollHeight; }
+      const near = nearBottom(v.list);
+      if (v.jump.hidden !== near) v.jump.hidden = near;
       for (const fn of hooks.render) { try { fn(agentId, v, chat); } catch (err) { console.warn(err); } }
     });
   }
@@ -816,17 +846,21 @@ const Native = (() => {
     if (p.thinking) {
       let th = p.el.querySelector('.thinking');
       if (!th) { th = thinkingEl('', true); p.el.prepend(th); }
-      th.querySelector('.thinking-text').textContent = p.thinking.trim();
-      th.querySelector('summary').textContent = text ? 'Thought process' : 'Thinking…';
+      // (only what changed is written: this runs ~16× a second while a reply streams)
+      const tt = th.querySelector('.thinking-text'); const thinking = p.thinking.trim();
+      const grew = tt.textContent !== thinking;
+      if (grew) tt.textContent = thinking;
+      const sum = th.querySelector('summary'); const label = text ? 'Thought process' : 'Thinking…';
+      if (sum.textContent !== label) sum.textContent = label;
       // it folds itself once the answer starts, unless you asked for thinking to stay open (/thinking always)
       if (text && !p.thinkClosed) { if (!store.get('chat.thinkingOpen', false)) th.open = false; p.thinkClosed = true; }
-      if (th.open) { const tt = th.querySelector('.thinking-text'); tt.scrollTop = tt.scrollHeight; }
+      if (th.open && grew) tt.scrollTop = tt.scrollHeight;
     }
     if (p.tools.length) {
       let chips = p.el.querySelector('.tool-chips');
       if (!chips) { chips = el('div', { class: 'tool-chips' }); body.before(chips); }
-      chips.textContent = `${p.tools.length > 1 ? `Step ${p.tools.length} · ` : ''}Using ${toolLabel(p.tools.at(-1))}…`;
-      chips.title = p.tools.map(toolLabel).join('\n');
+      const using = `${p.tools.length > 1 ? `Step ${p.tools.length} · ` : ''}Using ${toolLabel(p.tools.at(-1))}…`;
+      if (chips.textContent !== using) { chips.textContent = using; chips.title = p.tools.map(toolLabel).join('\n'); }
     }
     patchHTML(body, text ? renderMarkdown(text) : '');
     if (!text && !p.cards.some((c) => c.classList.contains('ask-card') && !c.classList.contains('answered'))) body.insertAdjacentHTML('beforeend', '<span class="typing"><i></i><i></i><i></i></span>');
@@ -843,7 +877,8 @@ const Native = (() => {
     const secs = Math.round((Date.now() - p.started) / 1000);
     const words = (visibleText(p.text).match(/\S+/g) || []).length;
     const doing = p.text ? 'Writing' : p.tools.length ? 'Working' : p.thinking ? 'Thinking' : 'Starting';
-    st.textContent = `${doing} · ${secs} s${words ? ` · ${words.toLocaleString()} words` : ''}${p.tools.length ? ` · ${p.tools.length} step${p.tools.length > 1 ? 's' : ''}` : ''} · Esc stops`;
+    const line = `${doing} · ${secs} s${words ? ` · ${words.toLocaleString()} words` : ''}${p.tools.length ? ` · ${p.tools.length} step${p.tools.length > 1 ? 's' : ''}` : ''} · Esc stops`;
+    if (st.textContent !== line) st.textContent = line;
   }
   // The folded "Thought for N s" block. /thinking open keeps finished ones open; Alt+T opens / closes all.
   function thinkingEl(text, open, ms) {
@@ -885,10 +920,9 @@ const Native = (() => {
     if (!p?.el?.isConnected) return;
     const list = p.el.closest('.messages');
     const v = views.get(chats.get(chatId)?.agentId);
-    const stick = nearBottom(list) && !v?.scrollLock;
     paintStreaming(p);
-    if (stick) list.scrollTop = list.scrollHeight;
-    else v?.jump.classList.add('has-new'); // "↓" turns into "↓ new" while the reply grows below
+    if (v ? follows(v) : nearBottom(list)) scrollToEnd(list, v);
+    else if (v && !v.jump.classList.contains('has-new')) v.jump.classList.add('has-new'); // "↓" turns into "↓ new" while the reply grows below
   }
   function syncSendBtn(agentId) {
     const v = views.get(agentId);
@@ -1554,8 +1588,9 @@ const Native = (() => {
   function enterAnim(agentId) {
     const list = views.get(agentId)?.list;
     if (!list) return;
-    list.classList.remove('chat-enter');
-    void list.offsetWidth; // restart the animation
+    // restart it without forcing a layout of the chat you're leaving (that was a full layout of a long chat per switch)
+    const running = list.getAnimations().find((a) => a.animationName === 'hx-chat');
+    if (running) { running.currentTime = 0; running.play(); return; }
     list.classList.add('chat-enter');
     list.addEventListener('animationend', () => list.classList.remove('chat-enter'), { once: true });
   }

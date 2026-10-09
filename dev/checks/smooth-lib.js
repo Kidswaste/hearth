@@ -39,8 +39,9 @@ const M = (() => {
       trace: { paints: trace.paints, paintedKpx: Math.round(trace.paintedPx / 1000), paintMs: trace.paintMs, rasterMs: trace.rasterMs, styleMs: trace.styleMs, styles: trace.styles, layoutMs: trace.layoutMs, layouts: trace.layouts, layoutObjects: trace.layoutObjects, top: trace.top?.slice(0, 4) },
     };
   }
-  // a compact one-line summary for before / after tables
-  const brief = (r) => `fps ${r.frames.fps} worst ${r.frames.worst}ms drops ${r.frames.over25} · LoAF ${r.loaf.n}/${r.loaf.blockingMs}ms · mut ${r.mut.perSec}/s · paint ${r.trace.paints}× ${r.trace.paintedKpx}kpx ${r.trace.paintMs}ms · style ${r.trace.styles}× ${r.trace.styleMs}ms · layout ${r.trace.layouts}× ${r.trace.layoutMs}ms ${r.trace.layoutObjects ?? '?'}obj`;
+  // a compact one-line summary for before / after tables (window.SMOOTH_DEBUG: plus the busiest mutations / layers / scripts)
+  const brief = (r) => (window.SMOOTH_DEBUG ? { line: briefLine(r), mut: r.mut.top, paint: r.trace.top, loaf: r.loaf.top } : briefLine(r));
+  const briefLine = (r) => `fps ${r.frames.fps} worst ${r.frames.worst}ms drops ${r.frames.over25} · LoAF ${r.loaf.n}/${r.loaf.blockingMs}ms · mut ${r.mut.perSec}/s · paint ${r.trace.paints}× ${r.trace.paintedKpx}kpx ${r.trace.paintMs}ms raster ${r.trace.rasterMs}ms · style ${r.trace.styles}× ${r.trace.styleMs}ms · layout ${r.trace.layouts}× ${r.trace.layoutMs}ms ${r.trace.layoutObjects ?? '?'}obj`;
   async function mouse(type, x, y, extra = {}) { return smoke({ cdp: 'Input.dispatchMouseEvent', params: { type, x, y, button: 'left', clickCount: 1, ...extra } }); }
   return { wait, until, measure, brief, mouse };
 })();
