@@ -189,6 +189,77 @@ await shot('5-chat-A');
 const tintOf = (id) => S.layersOf(S.get(id))[0].code.match(/tint: \{ value: '(#\w+)'/)?.[1];
 const tints = { A: [tintOf(skA), ChatScenes.identity(A).color], B: [tintOf(skB), ChatScenes.identity(B).color], C: [tintOf(skC), ChatScenes.identity(C).color] };
 step(Object.values(tints).every(([t, c]) => t === c), 'each starter keeps its chat\'s color', tints);
+// 7b. round 5 (scenes2): stills on the rows, the cross-fade, rapid switching, icons, picker, notifications
+{
+  const cover = () => host.querySelector('.three-preview > .scene-cover');
+  const rowIdent = (id) => document.querySelector(`#chat-groups .item[data-key="${CSS.escape(id)}"] > .chat-ident`);
+  // leaving A's scene takes its still (the cross-fade's picture) for A's row, and lays it over the preview
+  await wait(1500);
+  let snapSeen = false;
+  const mo = new MutationObserver(() => { if (cover()?.classList.contains('snap') && cover().style.backgroundImage.startsWith('url(')) snapSeen = true; });
+  mo.observe(cover(), { attributes: true, attributeFilter: ['class', 'style'] });
+  Native.open(agent.id, B);
+  await until(() => S.currentId() === skB, 8000);
+  await until(() => cover().classList.contains('out'), 8000);
+  mo.disconnect();
+  step(snapSeen, 'switching cross-fades from a picture of the old scene', ChatScenes.lastSnap());
+  await until(() => !cover().classList.contains('snap'), 3000);
+  step(!cover().classList.contains('snap') && !cover().style.backgroundImage, 'the picture is cleared once faded (no stale scene later)');
+  await until(() => rowIdent(A)?.classList.contains('thumb'), 4000);
+  step(rowIdent(A)?.classList.contains('thumb') && /url\("data:image\/jpeg/.test(rowIdent(A).style.backgroundImage), 'A\'s row shows a still of its scene', rowIdent(A)?.style.backgroundImage.slice(0, 40));
+  step(ChatScenes.thumbOf(A)?.length < 12000, 'the still is small', ChatScenes.thumbOf(A)?.length);
+  await shot('7-row-stills');
+  // 10 switches in 2 s: the last chat's scene ends up on screen, no cover left
+  const order = [A, C, B, A, C, A, B, C, B, A];
+  for (const id of order) { Native.open(agent.id, id); await wait(200); }
+  const last = order.at(-1);
+  await until(() => S.currentId() === ChatScenes.linkOf(last), 10000);
+  await until(() => cover().classList.contains('out') && !cover().classList.contains('snap'), 9000);
+  await wait(600);
+  step(S.currentId() === ChatScenes.linkOf(last) && H.activeChat[agent.id] === last, '10 switches in 2 s → the last chat\'s scene', cur()?.name);
+  step(cover().classList.contains('out') && !cover().classList.contains('snap') && getComputedStyle(cover()).visibility === 'hidden', 'no cover left over the preview', cover().className);
+  const drew2 = await until(() => { const st = ThreeLab.director.report().stats; return st && typeof st === 'object' && st.fps > 0; }, 15000);
+  step(drew2, 'and it draws');
+  // switching while a director edits its scene (slow turn with an edit) and the backstage is busy
+  const busyCalls = [['three_edit_code', { edits: [{ find: 'drift: { value:', replace: 'drift: { value: 0.9, was:' }] }], ['three_screenshot', { size: 'small' }]];
+  const bCode = S.layersOf(S.get(skB))[0].code;
+  Native.open(agent.id, A);
+  await until(() => S.currentId() === ChatScenes.linkOf(A), 8000);
+  await Native.send(agent.id, `think slow mcp\nmcp: ${JSON.stringify(busyCalls)}`);
+  const bgEdit = HubBridge.call('three_eval', { code: '1+1' }, { chatId: C }); // C works backstage meanwhile
+  await wait(300);
+  Native.open(agent.id, B);
+  Native.open(agent.id, C);
+  Native.open(agent.id, B);
+  await bgEdit;
+  await until(() => !Native.isBusy(A), 60000);
+  await until(() => S.currentId() === skB && cover().classList.contains('out'), 8000);
+  step(S.currentId() === skB && S.layersOf(S.get(skB))[0].code === bCode, 'mid-edit switches: B on screen, B untouched');
+  step(S.layersOf(S.get(ChatScenes.linkOf(A)))[0].code.includes('was:'), 'A\'s edit landed in A\'s scene (backstage after the switch)');
+  // Claude's spark / Astra's star on the tag; in a jam the one at work glows
+  ChatScenes.setWorkers(B, ['claude', 'codex'], 'codex');
+  await wait(50);
+  const avs = [...host.querySelectorAll('.scene-tag .scene-av')];
+  step(avs.length === 2 && avs.every((a) => a.querySelector('svg.hi')) && avs.find((a) => a.dataset.engine === 'codex')?.classList.contains('on') && !avs.find((a) => a.dataset.engine === 'claude')?.classList.contains('on'), 'tag avatars: SVG icons, the active one lit', avs.map((a) => `${a.dataset.engine}${a.classList.contains('on') ? '+' : ''}`));
+  const sig1 = host.querySelector('.scene-tag').dataset.sig;
+  ChatScenes.paintAll(); await wait(20);
+  step(host.querySelector('.scene-tag').dataset.sig === sig1 && host.querySelector('.scene-tag .scene-av') === avs[0], 'the tag isn\'t redrawn when nothing changed');
+  await shot('8-tag-duo');
+  ChatScenes.setWorkers(B, null);
+  // the picker carries the owning chat's color; notifications about a chat carry its mark
+  const pk = host.querySelector('.three-sketch-select');
+  step(pk.classList.contains('has-scene') && pk.style.getPropertyValue('--scene-color') === ChatScenes.identity(B).color, 'sketch picker in the chat\'s color', pk.style.getPropertyValue('--scene-color'));
+  const tn = ChatScenes.markToast(toast('test note', { timeout: 1500 }), B);
+  step(tn.classList.contains('scene-toast') && tn.querySelector('.chat-ident')?.textContent === ChatScenes.identity(B).glyph, 'a toast about a chat shows its mark');
+  step(ChatScenes.noteTitle(B, 'Three Director replied').startsWith(ChatScenes.identity(B).glyph), 'system notifications too', ChatScenes.noteTitle(B, 'Three Director replied'));
+  // the backstage still: an edit there refreshes that chat's row
+  const before = ChatScenes.thumbOf(C);
+  await HubBridge.call('three_edit_code', { edits: [{ find: 'opacity: 0.55', replace: 'opacity: 0.9' }] }, { chatId: C });
+  await until(() => ChatScenes.thumbOf(C) !== before, 5000);
+  step(ChatScenes.thumbOf(C) && ChatScenes.thumbOf(C) !== before, 'a backstage edit refreshes that chat\'s still');
+  out.backstageRunning = ThreeBackstage.running;
+}
+
 // 8. Video Director: each chat comes back to its video (needs the test videos: sh dev/make-test-videos.sh /tmp/hearth-test-videos)
 const V1 = '/tmp/hearth-test-videos/neon_tunnel_v1.mp4'; const V2 = '/tmp/hearth-test-videos/square_loop.mp4';
 if (await window.hub.fs.stat(V1).then(() => true, () => false)) {

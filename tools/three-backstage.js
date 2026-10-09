@@ -211,12 +211,28 @@ const ThreeBackstage = (() => {
     }
     return { ok: false, error: `Unknown tool ${tool}` };
   }
+  // A background chat's row shows a still of its scene (chat-scenes.js): refreshed after an edit lands here (at most
+  // every few seconds per chat) and from the director's own screenshots, so its row tells what changed backstage.
+  const EDITS = new Set(['three_edit_code', 'three_set_code', 'three_update_layer', 'three_add_layer', 'three_remove_layer', 'three_new_sketch', 'three_set_frame']);
+  const stillAt = new Map();
+  async function rowStill(tool, route, r) {
+    if (typeof ChatScenes === 'undefined' || !route.chatId || r?.ok === false || !box) return;
+    const img = tool === 'three_screenshot' && r?.images?.[0];
+    if (!img && (!EDITS.has(tool) || Date.now() - (stillAt.get(route.chatId) || 0) < 4000)) return;
+    stillAt.set(route.chatId, Date.now());
+    const url = img ? `data:${img.mime || 'image/png'};base64,${img.data}` : await director(route.sketchId, route).shot();
+    if (url) ChatScenes.setThumb(route.chatId, url);
+  }
   // One at a time: two background chats take turns with the sandbox.
   function handle(tool, args, route) {
     const p = chain.then(async () => {
       log.push({ at: Date.now(), chatId: route.chatId, sketch: route.sketchId, tool });
       if (log.length > 30) log.shift();
-      try { return await run(tool, args || {}, route); } catch (err) { return { ok: false, error: err.message }; } finally { sleepSoon(); }
+      try {
+        const r = await run(tool, args || {}, route);
+        await rowStill(tool, route, r).catch(() => {});
+        return r;
+      } catch (err) { return { ok: false, error: err.message }; } finally { sleepSoon(); }
     });
     chain = p.catch(() => {});
     return p;

@@ -20,12 +20,12 @@ const ChatScenes = (() => {
   const PALETTE = [['#ffc23d', 'gold'], ['#ff7a1a', 'ember'], ['#a970ff', 'violet'], ['#ff3d7f', 'rose'], ['#56c6ff', 'sky'], ['#7cd992', 'mint'], ['#c8f04a', 'lime'], ['#c9d3ff', 'ice']];
   const GLYPHS = ['◆', '▲', '●', '■', '★', '✦', '⬢', '✚', '❖', '✿', '♥', '♣'];
   const NEUTRAL = '#ffc23d';
-  const AVATARS = { claude: { glyph: '✳', name: 'Claude', color: '#d97757' }, codex: { glyph: 'A', name: 'Astra', color: '#10a37f' } };
+  const AVATARS = { claude: { glyph: '✳', icon: 'claude', name: 'Claude', color: '#d97757' }, codex: { glyph: 'A', icon: 'astra', name: 'Astra', color: '#10a37f' } };
 
   let data = { links: {}, videos: {}, idents: {} };
   let loaded = false;
   const save = debounce(() => window.hub.kvSet('chat-scenes', data), 400);
-  const workers = new Map(); // chatId -> ['claude', 'astra'] set by a jam (jam.js) while it runs
+  const workers = new Map(); // chatId -> { list: ['claude', 'codex'], active: 'codex' | null } set by a jam (jam.js) while it runs
 
   // ---------- identity ----------
   function hash(str) { let h = 0x811c9dc5; for (const ch of String(str)) { h ^= ch.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; } return h >>> 0; }
@@ -56,7 +56,7 @@ const ChatScenes = (() => {
   const isDirector = (agent) => Boolean(agent?.mode === 'native' && agent.dock);
   const isThreeChat = (chatId) => agentOfChat(chatId)?.dock === 'three';
   const titleOf = (chatId) => summaryOf(chatId)?.title || 'New chat';
-  const busy = (chatId) => Boolean(chatId && (Native.isBusy(chatId) || HubBridge.log().some((e) => e.running && e.chatId === chatId)));
+  const busy = (chatId) => Boolean(chatId && (Native.isBusy(chatId) || workers.has(chatId) || HubBridge.log().some((e) => e.running && e.chatId === chatId)));
   // The agents on a chat's scene: its own engine, or both while a jam runs on it.
   function jamOn(chatId) {
     const J = window.Jam;
@@ -64,7 +64,7 @@ const ChatScenes = (() => {
     try { return Boolean(J.activeFor?.(chatId) ?? J.isActive?.(chatId) ?? (J.chatId === chatId && J.running)); } catch { return false; }
   }
   function agentsOn(chatId) {
-    if (workers.get(chatId)?.length) return workers.get(chatId);
+    if (workers.get(chatId)?.list.length) return workers.get(chatId).list;
     if (jamOn(chatId)) return ['claude', 'codex'];
     return [agentOfChat(chatId)?.engine || 'claude'];
   }
@@ -210,9 +210,9 @@ renderer.setAnimationLoop((now) => {
     await ThreeLab.idle(); // a director call changing the sketch on screen finishes first
     if (chatId) {
       const sk = linkOf(chatId);
-      if (sk) S.open(sk);
+      if (sk) await openScene(sk);
       // an older chat without a scene keeps what's open; it becomes its scene on first use
-    } else S.open(draftSketch().id); // a new chat: a fresh starter
+    } else await openScene(draftSketch().id); // a new chat: a fresh starter
     followTitles();
     paintAll();
   }
@@ -268,6 +268,9 @@ renderer.setAnimationLoop((now) => {
   function routeThree(tool, chatId) {
     const S = lab();
     if (!S || !loaded) return null;
+    // a jam's turns (jam.js) run under their own ids: they work on the jam's sketch, on screen or backstage
+    const jr = chatId && window.Jam?.routeFor?.(chatId);
+    if (jr?.sketchId && S.get(jr.sketchId)) { setTimeout(paintAll, 0); return jr; }
     if (!chatId || !isThreeChat(chatId)) {
       // no chat given (tests, /director try, an older run): the one director chat that's answering, if only one is
       const working = H.chats.filter((c) => isThreeChat(c.id) && Native.isBusy(c.id));
@@ -291,9 +294,11 @@ renderer.setAnimationLoop((now) => {
   function relink(chatId, sketchId) { if (chatId && sketchId) { data.links[chatId] = { sketch: sketchId, auto: '', at: Date.now() }; save(); paintAll(); } }
 
   // ---------- painting ----------
+  // Claude's spark / Astra's star (icons.js), lit while that agent works on the scene
   function avatar(engine, on) {
     const a = AVATARS[engine] || AVATARS.claude;
-    const n = el('span', { class: `scene-av${on ? ' on' : ''}`, text: a.glyph, title: `${a.name}${on ? ' is working on it' : ''}` });
+    const svg = typeof Icons !== 'undefined' ? Icons.node(a.icon) : null;
+    const n = el('span', { class: `scene-av${on ? ' on' : ''}${svg ? ' svg' : ''}`, dataset: { engine }, title: `${a.name}${on ? ' is working on it' : ''}` }, svg || a.glyph);
     n.style.setProperty('--av', a.color);
     return n;
   }
@@ -311,13 +316,22 @@ renderer.setAnimationLoop((now) => {
     tag ||= el('button', { type: 'button', class: 'scene-tag', dataset: { feature: 'Scene tag' }, on: { click: () => tagClick() } });
     const viewing = H.activeChat[agent.id] !== owner;
     const working = busy(owner);
+    const who = agentsOn(owner);
+    const active = workers.get(owner)?.active || null; // a jam: the one building / directing right now
     tag.style.setProperty('--scene-color', id.color);
     tag.classList.toggle('viewing', viewing);
-    tag.classList.toggle('busy', working);
-    tag.replaceChildren(el('span', { class: 'scene-glyph', text: id.glyph }), el('span', { class: 'scene-name', text: titleOf(owner) }),
-      viewing ? el('span', { class: 'scene-note', text: 'other chat' }) : null,
-      ...agentsOn(owner).map((e) => avatar(e, working)));
-    tag.title = viewing ? `The scene of the chat "${titleOf(owner)}" (not the chat in the dock). Click to go to that chat.` : `This is the scene of the chat "${titleOf(owner)}"${working ? ': working on it now' : ''}. Each director chat has its own scene (/scene).`;
+    tag.classList.toggle('at-work', working);
+    tag.classList.toggle('duo', who.length > 1);
+    // the tag is redrawn only when what it shows changes (no DOM churn while a director works)
+    const sig = [id.glyph, titleOf(owner), viewing, ...who.map((e) => `${e}${working && (!active || active === e) ? '+' : ''}`)].join('|');
+    if (tag.dataset.sig !== sig) {
+      tag.dataset.sig = sig;
+      tag.replaceChildren(el('span', { class: 'scene-glyph', text: id.glyph }), el('span', { class: 'scene-name', text: titleOf(owner) }),
+        viewing ? el('span', { class: 'scene-note', text: 'other chat' }) : null,
+        el('span', { class: 'scene-avs' }, ...who.map((e) => avatar(e, working && (!active || active === e)))));
+    }
+    const whoText = who.length > 1 ? `Claude and Astra are jamming on it${active ? ` (${AVATARS[active]?.name} now)` : ''}` : working ? 'working on it now' : '';
+    tag.title = viewing ? `The scene of the chat "${titleOf(owner)}" (not the chat in the dock). Click to go to that chat.` : `This is the scene of the chat "${titleOf(owner)}"${whoText ? `: ${whoText}` : ''}. Each director chat has its own scene (/scene).`;
     if (tag.parentElement !== host) host.append(tag);
   }
   function tagClick() {
@@ -336,7 +350,7 @@ renderer.setAnimationLoop((now) => {
     let g = v.title.previousElementSibling?.classList.contains('chat-ident') ? v.title.previousElementSibling : null;
     if (!g) { g = el('span', { class: 'chat-ident' }); v.title.before(g); }
     g.textContent = id.glyph;
-    g.classList.toggle('busy', busy(chat?.id));
+    g.classList.toggle('at-work', busy(chat?.id));
     g.title = chat ? `This chat's color and mark: its scene in the Lab has the same (/scene)` : 'A new chat: it gets its own color and scene when you send';
   }
   function paintHeads() { for (const a of H.agents().filter(isDirector)) { const v = Native.view(a.id); if (v) paintHead(a.id, v, Native.current(a.id)); } }
@@ -346,13 +360,26 @@ renderer.setAnimationLoop((now) => {
     const id = identity(item.chatId);
     r.style.setProperty('--chat-ident', id.color);
     r.classList.add('has-ident');
-    r.prepend(el('span', { class: 'chat-ident', text: id.glyph }));
+    r.prepend(paintIdent(el('span', { class: 'chat-ident' }), item.chatId));
+  }
+  // A row's mark: the scene's still with the chat's glyph in its corner, or the glyph alone (no picture yet).
+  // Written only when the picture changed.
+  function paintIdent(node, chatId) {
+    const id = identity(chatId);
+    const url = thumbOf(chatId);
+    if (node.textContent !== id.glyph) node.textContent = id.glyph;
+    if ((node.dataset.thumb || '') === String(url ? url.length + url.slice(-24) : '')) return node;
+    node.dataset.thumb = url ? url.length + url.slice(-24) : '';
+    node.classList.toggle('thumb', Boolean(url));
+    node.style.backgroundImage = url ? `url("${url}")` : '';
+    node.title = url ? 'This chat\'s scene (its own sketch in the Lab)' : '';
+    return node;
   }
   // a working chat you aren't looking at: its busy dot turns into a small dot in its color
   function paintRows() {
     for (const r of document.querySelectorAll('#chat-groups .item.has-ident')) {
       let b = r.querySelector('.busy');
-      const on = Native.isBusy(r.dataset.key);
+      const on = Native.isBusy(r.dataset.key) || workers.has(r.dataset.key); // a jam works on it too
       if (!on) { if (b?.dataset.scene) b.remove(); continue; } // a dot we added (the list didn't redraw since)
       if (!b) { r.querySelector('.unread-dot')?.remove(); b = el('span', { class: 'busy', dataset: { scene: '1' } }); r.append(b); }
       const agentId = r.closest('.group')?.dataset.id;
@@ -361,12 +388,119 @@ renderer.setAnimationLoop((now) => {
       b.title = bg ? 'Working in the background on its own scene' : 'Working';
     }
   }
+  // "Your sketches": the picker carries the color of the chat that owns the open sketch, each option its owner's
+  let pickerSeen = null;
+  function paintPicker() {
+    const picker = document.querySelector('.three-sketch-select');
+    if (!picker) return;
+    if (pickerSeen !== picker) { pickerSeen = picker; new MutationObserver(() => paintPicker()).observe(picker, { childList: true }); }
+    const owner = ownerOf(picker.value);
+    const color = owner ? identity(owner).color : '';
+    if (picker.style.getPropertyValue('--scene-color') !== color) picker.style.setProperty('--scene-color', color);
+    picker.classList.toggle('has-scene', Boolean(owner));
+    for (const o of picker.options) { const c = ownerOf(o.value) ? identity(ownerOf(o.value)).color : ''; if (o.style.color !== c && (o.style.color || c)) o.style.color = c; }
+  }
   let painting = false;
   function paintAll() {
     if (painting) return;
     painting = true;
-    queueMicrotask(() => { painting = false; try { paintTag(); paintHeads(); paintRows(); } catch (err) { console.warn(err); } });
+    queueMicrotask(() => { painting = false; try { paintTag(); paintHeads(); paintRows(); paintPicker(); } catch (err) { console.warn(err); } });
   }
+
+  // ---------- scene stills (rows) and the cross-fade between scenes ----------
+  // Each director chat keeps a small still of its scene (kv 'chat-scene-thumbs'), refreshed only when the scene
+  // changes: when you leave it (the picture the cross-fade uses anyway), when a director turn ends on it, after a
+  // backstage edit (three-backstage.js) and at each jam round (jam.js). Nothing runs per frame.
+  let thumbs = {};
+  const saveThumbs = debounce(() => { for (const id of Object.keys(thumbs)) if (!summaryOf(id)) delete thumbs[id]; window.hub.kvSet('chat-scene-thumbs', thumbs); }, 1500);
+  function thumbOf(chatId) {
+    if (!chatId) return null;
+    if (thumbs[chatId]?.url) return thumbs[chatId].url;
+    const sk = data.links[chatId]?.sketch;
+    try { return (sk && lab()?.thumbOf?.(sk)) || null; } catch { return null; }
+  }
+  async function shrink(url, max = 112) {
+    const img = new Image();
+    img.src = url;
+    try { await img.decode(); } catch { return null; }
+    if (!img.width || !img.height) return null;
+    const k = Math.min(1, max / Math.max(img.width, img.height));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.72);
+  }
+  async function setThumb(chatId, url) {
+    if (!chatId || !url || !summaryOf(chatId)) return false;
+    const small = await shrink(url);
+    if (!small) return false;
+    thumbs[chatId] = { url: small, at: Date.now() };
+    saveThumbs();
+    for (const n of document.querySelectorAll(`#chat-groups .item[data-key="${CSS.escape(chatId)}"] > .chat-ident`)) paintIdent(n, chatId);
+    return true;
+  }
+  const previewCover = () => lab()?.previewHost()?.querySelector(':scope > .scene-cover') || null;
+  const labShown = () => { const h = lab()?.previewHost(); return Boolean(h?.offsetParent) && !h.classList.contains('on-stage') && document.visibilityState === 'visible'; };
+  // The picture on screen now: null when the Lab isn't showing, its page is still loading, or it takes too long.
+  let lastSnap = null; // the last picture taken for a switch (tests: why there was no fade)
+  async function snapNow(ms = 700) {
+    const cover = previewCover();
+    const t0 = performance.now();
+    lastSnap = { shown: labShown(), loading: !cover?.classList.contains('out') };
+    if (!lastSnap.shown || lastSnap.loading || !ThreeLab.director?.shot) return null;
+    const S = lab(); const at = S.currentId();
+    const url = await Promise.race([ThreeLab.director.shot().catch(() => null), new Promise((r) => { setTimeout(() => r(null), ms); })]);
+    Object.assign(lastSnap, { ms: Math.round(performance.now() - t0), got: Boolean(url) });
+    return url && S.currentId() === at ? url : null;
+  }
+  // Switching scenes: the old picture lies over the preview while the new scene loads, then fades away
+  // (polish.css .scene-cover, an opacity animation on the compositor). Switching again while it loads keeps the
+  // first picture; it's cleared as soon as it has faded, so a later reload never flashes an old scene.
+  let fadeN = 0;
+  function clearCover(cover) { if (cover.classList.contains('snap')) { cover.classList.remove('snap'); cover.style.backgroundImage = ''; } }
+  async function openScene(sketchId) {
+    const S = lab();
+    if (!S || !sketchId) return;
+    if (S.currentId() === sketchId) { S.open(sketchId); return; }
+    const leaving = S.currentId();
+    const owner = ownerOf(leaving);
+    const url = await snapNow();
+    const cover = previewCover();
+    const n = ++fadeN;
+    if (url && cover) { cover.style.backgroundImage = `url("${url}")`; cover.classList.add('snap'); }
+    if (url && owner) setThumb(owner, url); // the scene you leave, as you left it
+    if (S.currentId() !== sketchId) S.open(sketchId);
+    if (!cover) return;
+    if (!cover.dataset.fade) { cover.dataset.fade = '1'; cover.addEventListener('animationend', () => { if (cover.classList.contains('out')) clearCover(cover); }); }
+    if (cover.classList.contains('out') && url) { clearCover(cover); return; } // nothing reloaded (the Stage window…)
+    setTimeout(() => { if (fadeN === n && cover.classList.contains('out')) clearCover(cover); }, 6000);
+  }
+  // a director turn ended on the scene on screen: a fresh still once it has drawn
+  const refreshT = new Map();
+  function refreshThumbSoon(chatId, ms = 1600) {
+    clearTimeout(refreshT.get(chatId));
+    refreshT.set(chatId, setTimeout(async () => {
+      refreshT.delete(chatId);
+      const S = lab();
+      if (!S || linkOf(chatId) !== S.currentId()) return;
+      const url = await snapNow(1500);
+      if (url && linkOf(chatId) === S.currentId()) setThumb(chatId, url);
+    }, ms));
+  }
+
+  // ---------- notifications about a chat carry its color and mark ----------
+  const markOf = (chatId) => { const c = chatId && summaryOf(chatId); return c && isDirector(H.agent(c.agentId)) ? identity(chatId) : null; };
+  // a toast (ui.js) about a director chat: its glyph in front, a thin edge in its color
+  function markToast(node, chatId) {
+    const id = markOf(chatId);
+    if (!node || !id) return node;
+    node.classList.add('scene-toast');
+    node.style.setProperty('--chat-ident', id.color);
+    node.prepend(el('span', { class: 'chat-ident', text: id.glyph }));
+    return node;
+  }
+  // a system notification's title: "▲ Three Director · Scene A replied"
+  const noteTitle = (chatId, text) => { const id = markOf(chatId); return id ? `${id.glyph} ${text} · ${titleOf(chatId)}` : text; };
 
   // The glyph of the chat that owns a sketch (the Lab's sketch list shows it).
   function glyphFor(sketchId) { const o = ownerOf(sketchId); return o ? identity(o).glyph : ''; }
@@ -390,12 +524,12 @@ renderer.setAnimationLoop((now) => {
     shown.three = 'new';
     await ThreeLab.idle();
     const cur = S.currentId();
-    if (!(isDraft(cur) && !ownerOf(cur))) S.open(draftSketch().id);
+    if (!(isDraft(cur) && !ownerOf(cur))) await openScene(draftSketch().id);
     paintAll();
   }
   Native.hooks.newChat?.push(onNewChat);
   Native.hooks.send.push(onSend);
-  Native.hooks.event.push(() => paintAll());
+  Native.hooks.event.push((ev, chat) => { paintAll(); if (ev?.type === 'done' && chat && isThreeChat(chat.id)) refreshThumbSoon(chat.id); });
   Native.hooks.send.push(() => paintAll());
   Native.hooks.render.push(paintHead);
   if (Panel.hooks) { Panel.hooks.row.push(paintRow); Panel.hooks.render.push(() => { followTitles(); paintAll(); }); }
@@ -403,6 +537,7 @@ renderer.setAnimationLoop((now) => {
 
   (async () => {
     try { const d = await window.hub.kvGet('chat-scenes', null); if (d) data = { links: d.links || {}, videos: d.videos || {}, idents: d.idents || {} }; } catch { /* first run */ }
+    try { thumbs = (await window.hub.kvGet('chat-scene-thumbs', null)) || {}; } catch { /* first run */ }
     loaded = true;
     sync();
     Panel.render();
@@ -467,10 +602,20 @@ renderer.setAnimationLoop((now) => {
 
   return {
     identity, linkOf, ownerOf, link, unlink, relink, routeThree, glyphFor, sync, paintAll, starter,
+    // scene stills: the row picture of a chat (jam rounds and backstage edits refresh it), and the switch's fade
+    setThumb, thumbOf, openScene, markToast, noteTitle,
     // tools/three.js at start: the sketch of the chat on screen, if it owns one (else null)
     startSketch(ids) { const a = threeAgent(); const sk = a && loaded ? data.links[H.activeChat[a.id]]?.sketch : null; return sk && ids.includes(sk) ? sk : null; },
-    // jam.js: who works on a chat's scene while a jam runs (['claude', 'codex']), null when it ends
-    setWorkers(chatId, list) { if (list?.length) workers.set(chatId, list); else workers.delete(chatId); paintAll(); },
+    // jam.js: who works on a chat's scene while a jam runs (['claude', 'codex'], and which one is at it now: its
+    // avatar glows), null when it ends
+    setWorkers(chatId, list, active = null) {
+      if (!chatId) return;
+      const was = workers.get(chatId);
+      if (list?.length) { if (was?.active === active && String(was.list) === String(list)) return; workers.set(chatId, { list: [...list], active }); } else if (!was) return; else workers.delete(chatId);
+      paintAll();
+    },
+    workers: (chatId) => workers.get(chatId) || null,
+    lastSnap: () => lastSnap,
     data: () => data,
   };
 })();
