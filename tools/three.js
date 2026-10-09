@@ -64,6 +64,9 @@ const ThreeLab = (() => {
       if (data.type === 'ready') {
         // A page being replaced by a newer load can still say "ready"; only the current load counts.
         if (data.n && data.n !== nonce) return;
+        // The current load saying "ready" a second time: the page started over by itself (an iframe moved in the DOM
+        // reloads, e.g. its surface re-appended): what ran in it is gone, so the owner runs it again (`again`).
+        if (ready) data = { ...data, again: true };
         ready = data; retries = 0;
         // a sketch page uncovers once its layers have drawn (stack-drawn); the others right away
         if (mode !== 'sketch') setTimeout(uncover, 160);
@@ -2055,6 +2058,7 @@ const ThreeLab = (() => {
     let ranOnce = false;
     // what the preview runs now (see run()): each layer's code as sent (instrumented for sliders or not), and the sketch
     const ranCode = new Map(); let ranSketch = null;
+    let pageAgain = false; // the preview page started over by itself: the next run() fills it like a new page
     let rebuildWaiting = false;
     // Per-sketch looks and music links for the sliders, song, frame size and selected layer.
     let extras = {};
@@ -2146,6 +2150,8 @@ const ThreeLab = (() => {
       if (/^edit-/.test(msg.type)) { onEditMessage(msg); return; }
       if (msg.type === 'live-tempo') { if (liveKind) { liveBpm = msg; paintLive(); if (typeof ThreeMusic !== 'undefined') ThreeMusic.liveTempo(msg); } return; }
       if (msg.type === 'live-state') { if (msg.error) toast(`Live sound: ${msg.error}`, { type: 'error', timeout: 5000 }); if (!msg.on && msg.error) { liveKind = null; paintLive(); } return; }
+      // a page that started over by itself (sandboxFrame `again`): the scene and its media run again in it
+      if (msg.type === 'ready' && msg.again && ranOnce) { pageAgain = true; run(); }
       if (msg.type === 'ready') { if (frozenNow) box.send({ type: 'freeze', on: true }); if (guides) box.send({ type: 'guides', kind: guides }); if (previewHost.classList.contains('presenting')) box.send({ type: 'present', on: true }); sendTriggers(); if (trigPanel) box.send({ type: 'trig-watch', on: true }); }
       if (msg.type === 'ready' && liveKind) {
         // a reloaded preview: the hub page keeps capturing, the Stage captures again by itself
@@ -2491,7 +2497,7 @@ const ThreeLab = (() => {
     //           and cross-fades once the new page has drawn (sandboxFrame `pretty`).
     function run({ hot = false, layer = null, sync = false, reload = false } = {}) {
       if (!current) return false;
-      const up = box.ready && ranOnce && !box.stale && !restartNext && !reload;
+      const up = box.ready && ranOnce && !box.stale && !restartNext && !reload && !pageAgain;
       if ((hot || sync) && !up) { hot = false; sync = false; }
       if (player.recording) {
         // A rebuild would end the recording; it waits until the video is saved.
@@ -2529,7 +2535,8 @@ const ThreeLab = (() => {
       unseen = { errors: 0, other: 0 };
       syncConsole();
       if (!partial) { lastStats = null; lastStatsAt = 0; hideStall(); }
-      if (fresh) { stats.hidden = true; if (!box.loading || box.stale || restartNext || reload) box.reload(restartNext); restartNext = false; }
+      // (a page that started over by itself is already a new page: no need to load another)
+      if (fresh) { stats.hidden = true; if ((!box.loading && !pageAgain) || box.stale || restartNext || reload) box.reload(restartNext); restartNext = false; pageAgain = false; }
       box.send({ type: 'tweak-init', values, keys, mods: mergedMods() });
       if (fresh) { player.attach(); sendRefs(); } else if (!partial && ranSketch !== current.id) { sendRefs(); sendTriggers(); }
       if (!fresh && !partial && !player.path) box.send({ type: 'media-unload' }); // a sketch without a song: the last one stops
@@ -3332,6 +3339,7 @@ ${clips.length ? '// In your render loop: mixer?.update(clock.getDelta());\n' : 
       }
       if (msg.type === 'shader-ok') { status.textContent = 'Compiled'; status.className = 'hint ok'; errorsBox.replaceChildren(); editor.setErrorLines([]); }
       if (msg.type === 'shot') saveDataUrl(msg.dataUrl, 'shader.png');
+      if (msg.type === 'ready' && msg.again) apply(); // the page started over by itself
     });
     function apply() { box.send({ type: 'shader', code: editor.value }); }
     function copyMaterial() {

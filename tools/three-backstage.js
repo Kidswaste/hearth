@@ -23,6 +23,7 @@ const ThreeBackstage = (() => {
   const log = []; // { at, chatId, sketch, tool } the last calls (/scene shows them)
 
   function onMessage(m) {
+    if (m.type === 'ready' && m.again) loaded = null; // the page started over by itself: the next call runs the sketch afresh
     // a fresh page has started at its first stats; a layer re-run in place once it has drawn
     if (onStart && (m.type === 'drawn' || m.type === 'error' || (m.type === 'stats' && !waitDrawn))) { const fn = onStart; onStart = null; fn(); }
     if (m.type === 'error') errors.push({ layer: m.layer || null, message: String(m.message || ''), line: m.line || null });

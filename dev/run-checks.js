@@ -35,7 +35,7 @@ const GROUPS = {
   capture: by(/^capture/),
   journeys: by(/^journey-/),
   chat: by(/^chat-|^cmdbar$|^clutter$|^declutter/),
-  lab: ['music', 'live', 'scenes', 'jam', 'assist', 'decide', 'brain', 'director-dock', 'director-tools', 'perf'],
+  lab: ['music', 'live', 'scenes', 'jam', 'assist', 'decide', 'brain', 'director-dock', 'director-tools', 'director-engine-preview', 'perf'],
   video: ['cut', 'nodes-video', 'editor'],
   nodes: by(/^nodes-/),
   smooth: by(/^smooth-/),

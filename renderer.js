@@ -508,6 +508,10 @@ function createSurface(agent) {
 function syncSurfaces() {
   const container = $('surfaces');
   const wanted = new Set([...H.railAgents().map((a) => a.id), ...Tools.enabled().map((t) => `tool:${t.id}`)]);
+  // Surfaces in config order. Only one out of place moves: moving an element reloads the iframes and webviews in it
+  // (a re-append of every surface on each config save left the Lab preview black after /director-engine).
+  let slot = 0;
+  const place = (node) => { const at = container.children[slot]; if (at !== node) container.insertBefore(node, at || null); slot += 1; };
   for (const [id, s] of H.surfaces) {
     if (!wanted.has(id)) { s.el.remove(); H.surfaces.delete(id); }
   }
@@ -524,12 +528,12 @@ function syncSurfaces() {
       Native.refresh(agent.id);
     }
     s.el.style.setProperty('--agent', agent.color || 'var(--accent)');
-    container.append(s.el); // re-append keeps config order
+    place(s.el);
   }
   for (const tool of Tools.enabled()) {
     const id = `tool:${tool.id}`;
     if (!H.surfaces.has(id)) H.surfaces.set(id, Tools.createSurface(tool));
-    container.append(H.surfaces.get(id).el);
+    place(H.surfaces.get(id).el);
   }
   Tools.syncDocks();
   if (!wanted.has(H.surfaceIdFor(H.activeId))) H.activeId = H.railAgents()[0]?.id ?? null;
