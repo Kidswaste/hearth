@@ -210,6 +210,25 @@ const ThreeSeqData = (() => {
     n.lastItem = it.id;
     return n;
   }
+  // Roll (Shift+drag a cut): the cut between clip i − 1 and i moves, one gets longer, the other shorter, the total
+  // stays; a scene after the cut keeps its content in place (its in-point moves with the cut, like a video's).
+  function roll(e, i, delta) {
+    const b0 = e.clips[i];
+    const n = C.roll(e, i, delta);
+    if (n === e || b0?.kind !== 'scene') return n;
+    const d = r4(b0.dur - n.clips[i].dur); // how far the cut really moved
+    return C.patchAny(n, [b0.id], (c) => { c.in = r4(Math.max(0, (c.in || 0) + d)); });
+  }
+  // Slide (Shift+drag a clip): the clip keeps its content and moves; its neighbours trim (a scene after it keeps
+  // its content in place too)
+  function slide(e, id, delta) {
+    const i = e.clips.findIndex((c) => c.id === id);
+    const c0 = e.clips[i + 1];
+    const n = C.slide(e, id, delta);
+    if (n === e || c0?.kind !== 'scene') return n;
+    const d = r4(c0.dur - n.clips[i + 1].dur);
+    return C.patchAny(n, [c0.id], (c) => { c.in = r4(Math.max(0, (c.in || 0) + d)); });
+  }
   const setTrans = (e, id, type, dur = 0.5) => gapsHold(e, C.setTrans(e, [id], type, dur), id, 'trans');
   const setDur = (e, id, secs) => { const f = find(e, id); if (!f) return e; return f.clip.kind === 'video' ? C.trim(e, id, 'out', Math.max(MIN, secs) - C.durOf(f.clip)) : C.patchAny(e, id, (c) => { c.dur = r4(Math.max(MIN, secs)); }); };
 
@@ -275,7 +294,8 @@ const ThreeSeqData = (() => {
   }
   const fmt = (t) => `${Math.floor(Math.max(0, t) / 60)}:${(Math.max(0, t) % 60).toFixed(2).padStart(5, '0')}`;
   function clipLabel(c) {
-    if (c.kind === 'scene') return `scene “${c.name}”${c.look ? ` · look ${c.look}` : ''}${c.vibe ? ' · board vibe' : ''}${c.in ? ` · from ${c.in.toFixed(2)} s` : ''}`;
+    if (c.kind === 'scene') return `scene “${c.name}”${c.look ? ` · look ${c.look}` : ''}${c.vary ? ` · variation ${c.vary.seed % 1000}` : ''}${c.vibe ? ' · board vibe' : ''}${c.in ? ` · from ${c.in.toFixed(2)} s` : ''}`;
+    if (c.kind === 'seq') return `sequence “${c.name}”${c.in ? ` from ${fmt(c.in)}` : ''}`;
     if (c.kind === 'video') return `footage ${base(c.src)} ${fmt(c.in)}–${fmt(c.out)}${c.speed !== 1 ? ` ${c.speed}×` : ''}${c.mute ? '' : ' (sound)'}`;
     if (c.kind === 'title') return `title card “${c.text}”`;
     if (c.kind === 'gap') return 'gap';
@@ -304,11 +324,128 @@ const ThreeSeqData = (() => {
   const scenes = (e) => e.clips.filter((c) => c.kind === 'scene');
   const total = (e) => C.total(e);
 
+  // ---------- variations (seq2): the same scene, another look, per clip ----------
+  // A seeded nudge of a scene's sliders (named numbers within their range, every color's hue), as values by item
+  // index; the same seed always gives the same variation, so a clip keeps "its" look.
+  const UNIT = /opacity|alpha|amount|mix|strength|intensity|chance|prob|ratio|fade|blend|level|power|glow|bloom|roughness|metal/i;
+  function rangeOf(it) {
+    if (it.min != null && it.max != null) return [it.min, it.max];
+    const v = Number(it.orig) || 0; const name = it.name || it.key || '';
+    if (UNIT.test(name) && v >= 0 && v <= 1) return [0, 1];
+    if (it.int) return [Math.max(0, Math.min(1, v)), Math.max(Math.abs(v) * 3, 8)];
+    if (v === 0) return [-2, 2];
+    const a = Math.abs(v); return v < 0 ? [-a * 2.5, 0] : [0, a * 2.5];
+  }
+  function shiftHue(hex, turn) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '')); if (!m) return hex;
+    const n = parseInt(m[1], 16); const r = (n >> 16) / 255; const g = ((n >> 8) & 255) / 255; const b = (n & 255) / 255;
+    const mx = Math.max(r, g, b); const mn = Math.min(r, g, b); const l = (mx + mn) / 2; const d = mx - mn;
+    const s = d ? d / (1 - Math.abs(2 * l - 1)) : 0;
+    let h = 0; if (d) h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    h = (((h / 6 + turn) % 1) + 1) % 1;
+    const c = (1 - Math.abs(2 * l - 1)) * s; const x = c * (1 - Math.abs(((h * 6) % 2) - 1)); const mm = l - c / 2;
+    const [R, G, B] = h < 1 / 6 ? [c, x, 0] : h < 2 / 6 ? [x, c, 0] : h < 3 / 6 ? [0, c, x] : h < 4 / 6 ? [0, x, c] : h < 5 / 6 ? [x, 0, c] : [c, 0, x];
+    const to = (v) => Math.round(clamp(v + mm, 0, 1) * 255).toString(16).padStart(2, '0');
+    return `#${to(R)}${to(G)}${to(B)}`;
+  }
+  function varyValues(items, { seed = 1, amount = 0.4 } = {}, current = null) {
+    let s = (seed >>> 0) || 1;
+    const rand = () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const turn = (rand() - 0.5) * Math.min(1, amount * 1.4); // one hue turn for the whole palette (it stays a palette)
+    const out = {};
+    items.forEach((it, i) => {
+      const v = current && i in current ? current[i] : it.orig;
+      const r = rand();
+      if (it.kind === 'color' && typeof v === 'string') out[i] = shiftHue(v, turn + (r - 0.5) * 0.08 * amount);
+      else if (it.kind === 'number' && it.key != null && typeof v === 'number') {
+        const [lo, hi] = rangeOf(it); const span = hi - lo;
+        let x = clamp(v + (r * 2 - 1) * amount * span, lo, hi);
+        if (it.int) x = Math.round(x); else x = Number(x.toPrecision(5));
+        out[i] = x;
+      }
+    });
+    return out;
+  }
+
+  // ---------- nested sequences (seq2): a sequence as a clip ----------
+  // { kind: 'seq', ref: 'seq:<name>', name, dur, in }: plays that sequence's pictures and titles from `in` for `dur`.
+  // flatten() swaps each one for what it holds (cut to the window, moved to the clip's place, ids prefixed), so the
+  // preview, the render and the editor's bake see ordinary clips. getEdit(ref) → that sequence's edit (or null).
+  function flatten(e, getEdit, depth = 0, seen = new Set()) {
+    if (!e.clips.some((c) => c.kind === 'seq')) return e;
+    const L = C.layout(e);
+    const n = C.copy(e);
+    n.clips = []; n.tracks = (n.tracks || []).map((k) => ({ ...k, items: [...k.items] }));
+    for (const x of L) {
+      const c = x.clip;
+      if (c.kind !== 'seq') { n.clips.push(C.copy(c)); continue; }
+      const sub0 = depth < 3 && !seen.has(c.ref) ? getEdit(c.ref) : null;
+      if (!sub0) { n.clips.push({ id: c.id, kind: 'title', text: `Missing sequence “${c.name || String(c.ref).slice(4)}”`, dur: C.durOf(c), trans: c.trans, mute: true, speed: 1, fadeIn: 0, fadeOut: 0, style: 'bold' }); continue; }
+      const sub = flatten(sub0, getEdit, depth + 1, new Set([...seen, c.ref]));
+      const a = c.in || 0; const b = a + C.durOf(c);
+      // the main track: split at the window's edges, keep what's inside
+      let s2 = split(sub, b); s2 = split(s2, a);
+      const parts = C.layout(s2).filter((y) => y.start >= a - 1e-3 && y.end <= b + 1e-3);
+      parts.forEach((y, j) => {
+        const cc = { ...C.copy(y.clip), id: `${c.id}/${y.clip.id}` };
+        if (j === 0) { if (c.trans) cc.trans = c.trans; else delete cc.trans; }
+        n.clips.push(cc);
+      });
+      if (!parts.length) n.clips.push({ id: c.id, kind: 'gap', dur: C.durOf(c), mute: true, speed: 1, fadeIn: 0, fadeOut: 0 });
+      // its pictures and titles over the window (its sound stays its own: the sequence's song leads)
+      const shift = x.start - a;
+      for (const k of (sub.tracks || []).filter((kk) => kk.type !== 'audio' && !kk.hide)) {
+        const items = k.items.filter((it) => it.start < b - 1e-3 && C.itemEnd(it) > a + 1e-3).map((it) => {
+          const s = Math.max(a, it.start); const t = Math.min(b, C.itemEnd(it));
+          const o = { ...C.copy(it), id: `${c.id}/${it.id}`, start: r4(s + shift) };
+          if (it.kind === 'video' || it.kind === 'audio') { o.in = r4(it.in + (s - it.start) * (it.speed || 1)); o.out = r4(o.in + (t - s) * (it.speed || 1)); } else o.dur = r4(t - s);
+          return o;
+        });
+        if (!items.length) continue;
+        const same = n.tracks.find((kk) => kk.type === k.type && kk.name === k.name);
+        if (same) { same.items.push(...items); same.items.sort((p, q) => p.start - q.start); } else n.tracks.push({ ...k, id: `${c.id}/${k.id}`, items });
+      }
+    }
+    return n;
+  }
+  const seqClip = (ref, name, dur) => ({ id: C.uid(), kind: 'seq', ref, name: name || String(ref).replace(/^seq:/, ''), dur: r4(Math.max(MIN, dur)), in: 0, mute: true, speed: 1, fadeIn: 0, fadeOut: 0 });
+
+  // ---------- clips between sequences (seq2) ----------
+  // copy: the clips (main or items) as data, in program order with their offsets from the first; paste puts them at T
+  function copyClips(e, ids) {
+    const L = C.layout(e);
+    const main = L.filter((x) => ids.includes(x.clip.id)).map((x) => ({ main: true, t: x.start, clip: C.copy(x.clip) }));
+    const items = (e.tracks || []).flatMap((k) => k.items.filter((x) => ids.includes(x.id)).map((x) => ({ main: false, t: x.start, type: k.type, name: k.name, clip: C.copy(x) })));
+    const all = [...main, ...items].sort((a, b) => a.t - b.t);
+    const t0 = all[0]?.t || 0;
+    return all.map((x) => ({ ...x, t: r4(x.t - t0) }));
+  }
+  function pasteClips(e, list, T, { grid = null } = {}) {
+    let n = e;
+    const ids = [];
+    // main clips go in one after another at the nearest cut to T; items keep their offsets
+    let idx = null;
+    for (const x of list.filter((y) => y.main)) {
+      const c = { ...C.copy(x.clip), id: C.uid() };
+      if (idx == null) { n = place(n, c, { at: T, trans: c.trans === undefined ? undefined : c.trans || null, grid }); idx = n.clips.findIndex((y) => y.id === c.id); } else { idx += 1; n = place(n, c, { index: idx, trans: c.trans || null, grid }); }
+      ids.push(c.id);
+    }
+    for (const x of list.filter((y) => !y.main)) {
+      const { id: _i, ...it } = C.copy(x.clip);
+      const role = x.type === 'text' ? 'titles' : x.type === 'audio' ? 'sound' : 'overlays';
+      if (it.song) delete it.song;
+      n = addTo(n, role, { ...it, start: r4(Math.max(0, T + x.t)) });
+      ids.push(n.tracks.flatMap((k) => k.items).find((y) => y.start === r4(Math.max(0, T + x.t)) && (y.text ?? y.src ?? y.name) === (it.text ?? it.src ?? it.name))?.id);
+    }
+    return { edit: n, ids: ids.filter(Boolean) };
+  }
+
   return {
     FORMATS, TRACKS, DEFAULT_SECS, DEFAULT_BARS, DEFAULT_TRANS, isLab, create, setFormat, formatOf,
     beatLen, barLen, gridTimes, barAt, defaultDur, defaultTransDur,
     ensureTrack, trackOf, sceneClip, insertIndex, place, addScene, addFootage, addTitle, addOverlay, setSong, songOf, addAudio,
     find, split, remove, trim, slip, move, duplicate, setTrans, setDur, fitBars, timing, showing, snapTargets, snap, fmt, clipLabel, describe, resolve, scenes, total,
+    roll, slide, varyValues, shiftHue, rangeOf, flatten, seqClip, copyClips, pasteClips,
   };
 })();
 if (typeof module !== 'undefined') module.exports = ThreeSeqData;

@@ -2147,6 +2147,8 @@ const VideoCut = (() => {
   async function exportCut({ preset = null, fit = 'crop', stills = false, stillsExt = 'png', out, record = false } = {}) {
     if (!st.edit?.clips.length && !(st.edit?.tracks || []).some((k) => k.items.length)) throw new Error('The edit is empty');
     const tools = host.S.tools || (host.S.tools = await window.hub.video.tools({ ffmpeg: H.settings().ffmpegPath || undefined }));
+    // a Lab sequence with scenes: the Lab plays it into its own recorder (the editor's would only show their pictures)
+    if ((record || !tools.ffmpeg) && st.edit?.seq?.lab && typeof ThreeSeq !== 'undefined' && ThreeSeq.needsBake(st.edit)) { await ThreeLab.cmd({ show: true }); try { return await ThreeSeq.recordForEditor(st.path); } finally { activate('tool:ae'); } }
     if (record || !tools.ffmpeg) return recordEdit({ note: !tools.ffmpeg ? `ffmpeg isn't installed (${tools.hint}), so the edit is recorded in real time as WebM.` : '' });
     const p = preset ? findPreset(preset) : null;
     if (preset && !p) throw new Error(`Unknown preset “${preset}”. Try /presets.`);

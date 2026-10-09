@@ -35,4 +35,7 @@
 .sq-tile small { font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sq-pick-row { display: flex; gap: 4px; flex-wrap: wrap; }
 .sq-pick-none { grid-column: 1 / -1; font-size: 12px; color: var(--muted); padding: 10px; text-align: center; }
+/* a chat row whose scene has its own sequence: a small ▤ in the still's corner (chat-scenes.js) */
+.chat-ident.has-seq { position: relative; }
+.chat-ident.has-seq::after { content: '▤'; position: absolute; right: -4px; bottom: -5px; font-size: 7px; line-height: 1; color: var(--ui-gold, #ffd75e); text-shadow: 0 0 2px #000; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .sq-flash { transition: none; } }
