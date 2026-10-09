@@ -258,7 +258,9 @@ const ThreeTweaks = (() => {
   function instrument(code, items, base = 0) {
     let out = '';
     let p = 0;
-    items.forEach((it, i) => { out += code.slice(p, it.start) + (/[\w$]/.test(code[it.start - 1] || '') ? ' ' : '') + `__tv(${base + i})`; p = it.end; });
+    // the literal rides along as a fallback, for a read before its live value arrived (fast layer re-runs)
+    const fb = (v) => (typeof v === 'number' && Number.isFinite(v) ? `, ${v}` : typeof v === 'string' && !/[\n\r]/.test(v) ? `, ${JSON.stringify(v)}` : typeof v === 'boolean' ? `, ${v}` : '');
+    items.forEach((it, i) => { out += code.slice(p, it.start) + (/[\w$]/.test(code[it.start - 1] || '') ? ' ' : '') + `__tv(${base + i}${fb(it.orig)})`; p = it.end; });
     return out + code.slice(p);
   }
 

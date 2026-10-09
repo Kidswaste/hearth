@@ -731,10 +731,17 @@ const markRead = (i) => {
 const valueOf = (i, base) => {
   const m = mods[i];
   if (!m || typeof base !== 'number') return base;
-  const v = base + m.amount * m.span * audio[m.band];
+  const v = base + m.amount * m.span * (audio[m.band] || 0);
   return m.int ? Math.round(v) : v;
 };
-globalThis.__tv = (i) => { markRead(i); return valueOf(i, TV[i]); };
+// d: the literal from the code, used when the live value isn't there yet or a music binding gives NaN
+globalThis.__tv = (i, d) => {
+  markRead(i);
+  const base = TV[i] === undefined ? d : TV[i];
+  const v = valueOf(i, base);
+  if (typeof v === 'number' && !Number.isFinite(v)) return typeof base === 'number' && Number.isFinite(base) ? base : d;
+  return v;
+};
 // for three_eval: the live value of a named slider (any layer), e.g. __slider('size')
 globalThis.__slider = (key) => { const e = Object.entries(tweakKeys).find(([n]) => n.endsWith(`.${key}`)); return e ? valueOf(e[1], TV[e[1]]) : undefined; };
 // The user's reference files for this sketch: refs.<name> is a URL any loader can use (TextureLoader,
