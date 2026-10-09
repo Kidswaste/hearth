@@ -72,6 +72,8 @@ const CutEditCmds = (() => {
     complete: (a) => opts([...ids(FX.TEMPLATES), { value: 'keep' }, { value: 'new' }], a, 30), examples: ['/edit-template social-intro-15', '/edit-template app-teaser-15 new'],
     run: async (args) => {
       const w = words(args); const keep = w.includes('keep'); const fresh = w.includes('new');
+      // no name: the templates (it answered 'No template “”' as an error)
+      if (!w.filter((x) => x !== 'keep' && x !== 'new').length) return `Templates: ${FX.TEMPLATES.slice(0, 12).map((x) => `\`${x.id}\``).join(', ')}… (/edit-presets templates lists all ${FX.TEMPLATES.length}). Use: /edit-template social-intro-15`;
       const t = pickPreset(FX.TEMPLATES, w.filter((x) => x !== 'keep' && x !== 'new').join(' '), 'template');
       if (fresh || (!Review.current && !VideoCut.active)) { await VideoCmds.ready({ needVideo: false }); await VideoCut.newSequence(t.name, { template: t.id, format: t.fmt }); return `New sequence from **${t.name}** · ${summary()} · drop videos on the ＋ slots (or /fill-slot 1 <video>).`; }
       await editing();
