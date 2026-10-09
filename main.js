@@ -257,7 +257,12 @@ ipcMain.handle('pick-folder', async (_e, current, title) => {
 });
 ipcMain.handle('engine:stop', (_e, chatId) => engines.stop(chatId));
 ipcMain.handle('engine:stopAll', () => engines.stopAll());
-ipcMain.handle('engine:login', (_e, engine) => engines.login(engine));
+ipcMain.handle('engine:login', (_e, engine) => { engines.setEnginePaths(settings().enginePaths); return engines.login(engine); });
+// Every Claude Code / Codex copy, the one in use, too old? signed in? (engine-health.js at startup, /doctor), and the
+// update / install / sign-in run in a visible window; the check after it comes back as 'engine:installs'.
+ipcMain.handle('engine:installs', (_e, opts) => { engines.setEnginePaths(settings().enginePaths); return engines.checkInstalls(opts || {}); });
+ipcMain.handle('engine:fix', (_e, engine, action) => { engines.setEnginePaths(settings().enginePaths); return engines.fix(String(engine), String(action || 'update')); });
+engines.onInstalls((report, info) => send('engine:installs', { ...report, fixed: info }));
 ipcMain.handle('engine:status', () => { engines.setEnginePaths(settings().enginePaths); return engines.status(); });
 
 // ---------- window & desktop ----------

@@ -268,4 +268,43 @@ function mcpClient({ command, args = [], env = {} }) {
 // Which server a tool belongs to (by prefix), from the servers the CLI was given.
 const serverFor = (servers, tool) => servers[{ three: 'three', video: 'video', ae: 'video', forge: 'forgeheart', chat: 'chat', capture: 'capture', board: 'board', hearth: 'video' }[tool.split('_')[0]]] || null;
 
-module.exports = { readStdin, sleep, out, uuid, loadState, saveState, plan, pieces, delayMs, mcpClient, serverFor };
+// ---------- failure switches (round 9 "robust": behave like the owner's real installs) ----------
+// Each one from the env (FAKE_CLAUDE_VERSION=2.1.1 …) or from data/kv/fake-switches.json of the Hearth copy running the
+// fake (its runs and its --version / status probes start in <data>/workspace), so a check flips them with
+// hub.kvSet('fake-switches', { … }) and `claude update` / `auth login` change them like the real thing would.
+//   claudeVersion / codexVersion   what --version prints (default 2.1.300 / 0.50.0)
+//   claudeNeeds / codexNeeds       the model refuses a copy older than this ("version X or newer is required")
+//   claudeLoggedOut / codexLoggedOut   status says not signed in, every run fails with "please run /login"
+//   claudeNetwork / codexNetwork   'once' | 'always': the run fails with a dropped connection
+//   claudeMcpMissing               'once' | 'always': the --mcp-config file disappears before the run reads it
+//   codexMcpCancel                 'new' (cancels Hearth's tool calls unless pre-approved with default_tools_approval_mode,
+//                                  like current Codex) | 'old' (ignores that key, cancels unless approval_policy="never")
+//                                  | 'always'
+//   updateTo                       the version `claude update` installs (default 2.1.400)
+const SWITCHES = ['claudeVersion', 'codexVersion', 'claudeNeeds', 'codexNeeds', 'claudeLoggedOut', 'codexLoggedOut', 'claudeNetwork', 'codexNetwork', 'claudeMcpMissing', 'codexMcpCancel', 'updateTo'];
+const kvFile = () => path.join(process.cwd(), '..', 'kv', 'fake-switches.json');
+function switches() {
+  const env = {};
+  for (const k of SWITCHES) { const v = process.env[`FAKE_${k.replace(/[A-Z]/g, (c) => `_${c}`).toUpperCase()}`]; if (v) env[k] = v; }
+  let kv = {};
+  try { kv = JSON.parse(fs.readFileSync(kvFile(), 'utf8')) || {}; } catch { /* none */ }
+  return { ...env, ...kv };
+}
+function setSwitch(patch) {
+  let kv = {};
+  try { kv = JSON.parse(fs.readFileSync(kvFile(), 'utf8')) || {}; } catch { /* none */ }
+  for (const [k, v] of Object.entries(patch)) { if (v == null) delete kv[k]; else kv[k] = v; }
+  try { fs.writeFileSync(kvFile(), JSON.stringify(kv)); } catch { /* no data folder: env only */ }
+}
+// 'once': true the first time per Hearth copy (a marker next to the switches), 'always': always
+function trip(name, mode) {
+  if (mode === 'always') return true;
+  if (mode !== 'once') return false;
+  const marker = fs.existsSync(path.dirname(kvFile())) ? path.join(path.dirname(kvFile()), `fake-once-${name}.json`) : path.join(STATE_DIR, `once-${name}-${process.env.FAKE_ONCE_TAG || ''}`);
+  if (fs.existsSync(marker)) return false;
+  try { fs.writeFileSync(marker, '1'); } catch { /* best effort */ }
+  return true;
+}
+const older = (a, b) => { const pa = String(a).match(/\d+/g) || []; const pb = String(b).match(/\d+/g) || []; for (let i = 0; i < 3; i++) { const d = (+pa[i] || 0) - (+pb[i] || 0); if (d) return d < 0; } return false; };
+
+module.exports = { readStdin, sleep, out, uuid, loadState, saveState, plan, pieces, delayMs, mcpClient, serverFor, switches, setSwitch, trip, older };

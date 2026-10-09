@@ -7,17 +7,28 @@ const F = require('./fake-common');
 
 (async () => {
   const argv = process.argv.slice(2);
-  if (argv[0] === 'auth' || argv[0] === '--version') { console.log('fake-claude 0.0.0'); return; }
+  // failure switches (fake-common.js): an old copy, signed out, too old for the model, network, MCP config
+  const sw = F.switches();
+  const version = sw.claudeVersion || '2.1.300';
+  if (argv[0] === '--version') { console.log(`${version} (Claude Code) fake`); return; }
+  if (argv[0] === 'auth' && argv[1] === 'status') {
+    if (sw.claudeLoggedOut) { console.log('Not logged in. Run claude auth login'); process.exit(1); }
+    console.log('Logged in (fake Claude Max account)'); return;
+  }
+  if (argv[0] === 'auth' || argv[0] === '/login') { F.setSwitch({ claudeLoggedOut: null }); console.log('(fake) signed in'); return; }
+  if (argv[0] === 'update') { const to = sw.updateTo || '2.1.400'; F.setSwitch({ claudeVersion: to }); console.log(`Successfully updated from ${version} to version ${to}`); return; }
   // FAKE_CLAUDE_REJECT=--flag,--other acts like a Claude Code version that doesn't know those options
   const reject = (process.env.FAKE_CLAUDE_REJECT || '').split(',').find((f) => f && argv.includes(f));
   if (reject) { process.stderr.write(`error: unknown option '${reject}'\n`); process.exit(1); }
   // like the real CLI: a --mcp-config file that isn't there stops it before anything else
   const mcpAt = argv.indexOf('--mcp-config');
+  if (mcpAt >= 0 && F.trip('claude-mcp', sw.claudeMcpMissing)) require('fs').rmSync(argv[mcpAt + 1], { force: true });
   if (mcpAt >= 0 && !require('fs').existsSync(argv[mcpAt + 1])) { process.stderr.write(`Error: Invalid MCP configuration:\nMCP config file not found: ${argv[mcpAt + 1]}\n`); process.exit(1); }
   const arg = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : null; };
   const sessionId = arg('--resume') || arg('--session-id') || F.uuid();
   const model = arg('--model') || 'fake-opus';
   const prompt = await F.readStdin();
+  if (F.trip('claude-network', sw.claudeNetwork)) { process.stderr.write('Error: getaddrinfo ENOTFOUND api.anthropic.com\n'); process.exit(1); }
   const tools = (arg('--allowedTools') || '').split(',').filter(Boolean);
   F.out({ type: 'system', subtype: 'init', session_id: sessionId, model, tools: ['Read', ...tools], mcp_servers: [], cwd: process.cwd() });
   const { p, thinking } = F.plan(prompt, 'claude');
@@ -25,6 +36,8 @@ const F = require('./fake-common');
   const state = F.loadState(`claude-${sessionId}`);
   const wait = F.delayMs(p);
 
+  if (sw.claudeLoggedOut) { F.out({ type: 'result', subtype: 'error', is_error: true, result: 'Invalid API key · Please run /login', session_id: sessionId }); return; }
+  if (sw.claudeNeeds && F.older(version, sw.claudeNeeds)) { F.out({ type: 'result', subtype: 'error', is_error: true, result: `API Error: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Claude Code version ${sw.claudeNeeds} or newer is required to use this model."}}`, session_id: sessionId }); return; }
   if (p.login) { F.out({ type: 'result', subtype: 'error', is_error: true, result: 'Invalid API key · Please run /login', session_id: sessionId }); return; }
   if (p.crash) { process.stderr.write('fake-claude: simulated crash\n'); process.exit(3); }
 

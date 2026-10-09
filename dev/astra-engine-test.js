@@ -9,7 +9,7 @@ const assert = require('assert');
 
 const ROOT = path.join(__dirname, '..');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'astra-engine-'));
-for (const f of ['engines.js', 'store.js']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
+for (const f of ['engines.js', 'store.js', 'installs.js']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
 fs.cpSync(path.join(ROOT, 'mcp'), path.join(dir, 'mcp'), { recursive: true });
 const engines = require(path.join(dir, 'engines.js'));
 engines.setEnginePaths({ codex: path.join(__dirname, 'fake-codex-astra.js'), claude: path.join(__dirname, 'fake-claude-astra.js') });

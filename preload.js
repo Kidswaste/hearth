@@ -44,6 +44,9 @@ contextBridge.exposeInMainWorld('hub', {
   login: call('engine:login'),
   engineStatus: call('engine:status'),
   engineDoctor: call('engine:doctor'),
+  engineInstalls: call('engine:installs'),
+  engineFix: call('engine:fix'),
+  onEngineInstalls: on('engine:installs'),
   onEngineEvent: on('engine:event'),
 
   // window & desktop

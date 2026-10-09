@@ -7,6 +7,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { DATA_DIR, ATTACH_DIR, getMemory, addUsage } = require('./store');
+const Installs = require('./installs');
 
 const WORKSPACE = path.join(DATA_DIR, 'workspace');
 const PROMPTS_DIR = path.join(DATA_DIR, 'prompts');
@@ -85,13 +86,16 @@ function newestIn(root, exeName, depth = 3) {
   return best?.full ?? null;
 }
 
+// The newest working copy the last install check found (installs.js; Settings → Engines still wins), else the usual
+// places in order. The check runs at startup, off the window's thread, and after an update.
+const preferred = (name) => { const p = Installs.data().chosen[name]; return p && fs.existsSync(p) ? p : null; };
 const LOCATE = {
-  claude: () => given('claude') || findOnPath('claude')
+  claude: () => given('claude') || preferred('claude') || findOnPath('claude')
     || (IS_WIN ? newestIn(path.join(process.env.APPDATA || '', 'Claude', 'claude-code'), 'claude.exe') : null)
     || (IS_MAC ? newestIn(path.join(os.homedir(), 'Library', 'Application Support', 'Claude', 'claude-code'), 'claude') : null)
     || [path.join(os.homedir(), '.local', 'bin', exe('claude')), path.join(os.homedir(), '.claude', 'local', exe('claude'))].find((f) => fs.existsSync(f))
     || null,
-  codex: () => given('codex') || findOnPath('codex')
+  codex: () => given('codex') || preferred('codex') || findOnPath('codex')
     || (IS_WIN ? newestIn(path.join(process.env.LOCALAPPDATA || '', 'OpenAI', 'Codex', 'bin'), 'codex.exe') : null)
     || (IS_MAC ? newestIn('/Applications/Codex.app/Contents', 'codex', 4) || newestIn('/Applications/ChatGPT.app/Contents', 'codex', 4) || newestIn(path.join(os.homedir(), 'Library', 'Application Support', 'Codex'), 'codex', 4) : null)
     || null,
@@ -444,6 +448,9 @@ function codexArgs(agent, session, options = {}) {
   const verbosity = pick(options.verbosity, VERBOSITY) || pick(agent.verbosity, VERBOSITY);
   if (verbosity) args.push('-c', `model_verbosity="${verbosity}"`);
   args.push(...codexMcpArgs(agent));
+  // the second try after Codex cancelled a Hearth tool call: no approvals at all (exec can't show one anyway; the
+  // sandbox stays as it was)
+  if (options._approvalRetry) args.push('-c', 'approval_policy="never"');
   const model = options.model || agent.model;
   if (model) args.push('-m', model);
   if (!session.id) args.push('-s', edit ? 'workspace-write' : 'read-only', '-C', WORKSPACE);
@@ -490,6 +497,7 @@ function claudeParser(session) {
   };
 }
 
+const CANCELLED = /cancel|approval|not approved|declined|denied by (the )?user|rejected by (the )?user/i;
 // Codex `exec --json` events: thread.started, turn.started, item.started / item.updated / item.completed
 // (agent_message, reasoning, command_execution, file_change, mcp_tool_call, web_search, todo_list, error),
 // turn.completed (usage), turn.failed, error.
@@ -524,6 +532,10 @@ function codexParser(session, agent = {}) {
     }
     if (msg.type === 'item.started' && /tool_call/.test(item.type || '')) {
       return { type: 'tool', name: [item.server, item.tool].filter(Boolean).join(' · ') || item.type };
+    }
+    // a tool call Codex cancelled itself (an approval `codex exec` can't ask for): send() retries / explains (no reply text yet)
+    if (msg.type === 'item.completed' && /tool_call/.test(item.type || '') && (item.status === 'failed' || item.error) && CANCELLED.test(JSON.stringify(item.error || item.result || ''))) {
+      return { type: 'blocked', name: [item.server, item.tool].filter(Boolean).join(' · ') || item.type, message: String(item.error?.message || 'cancelled').slice(0, 200) };
     }
     if (msg.type === 'item.started' && item.type === 'command_execution') return { type: 'tool', name: `Shell · ${short(item.command)}` };
     if (msg.type === 'item.started' && item.type === 'web_search') return { type: 'tool', name: `Web search · ${short(item.query, 50)}` };
@@ -562,22 +574,34 @@ function codexParser(session, agent = {}) {
 }
 
 // Known failures with what to do about them (shown under the error in the chat).
+// What the copy in use is, for a fix that names it (send() sets it before a run; friendlyError reads it).
+const usedBin = {};
+const TOO_OLD = /version_too_old|version [\d.]+ or newer is required|does not support this model|requires? a newer version of (claude|codex)|(please )?(update|upgrade) (claude code|codex) to (the latest|a newer)/i;
+const NETWORK = /ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|getaddrinfo|socket hang up|fetch failed|network (error|is unreachable)|stream disconnected|connection (closed|reset|error|refused)/i;
+const MCP_CONFIG = /Invalid MCP configuration|MCP config file not found/i;
+// The update command for the copy in use, as the fix line (and the Update button runs it in a window).
+function updateFix(e) {
+  const bin = usedBin[e] || LOCATE[e]?.();
+  const plan = Installs.updatePlan(e, bin);
+  const pinned = given(e) ? ' Settings → Engines points at this copy; /doctor shows every copy Hearth found.' : '';
+  return `This ${ENGINES[e].label} is too old for the model. Press Update (it runs \`${plan.command}\` in a ${Installs.IS_WIN ? 'PowerShell' : 'Terminal'} window and Hearth checks again when it's done), then Retry.${pinned}`;
+}
 const FIXES = [
   [/model\b.*\b(not supported|does not exist|not found|unavailable|unknown)|unsupported model|invalid model|model_not_found/i,
     (e) => `That model isn't available on your ${ENGINES[e].account} account. Pick another one in the chat header's Model menu${e === 'codex' ? ' or with /astra-model' : ''}.`],
   [/usage limit|rate.?limit|too many requests|\b429\b|quota/i,
     (e) => `Your plan's usage limit was reached for now. Wait for it to reset, or use a lighter model / lower effort${e === 'codex' ? ' (/astra-model, /astra-effort low)' : ''}.`],
   [/Invalid MCP configuration/i,
-    () => "Claude Code couldn't read Hearth's tool settings for this chat (the reason is above). Press Retry; if it comes back, run /astra-doctor and send the reason to Claude."],
-  [/version_too_old|version [\d.]+ or newer is required|does not support this model/i,
-    (e) => e === 'codex' ? 'This Codex is too old for the model: update the Codex / ChatGPT app, then press Retry.'
-      : 'This Claude Code is too old: run `claude update` in a terminal (Homebrew: `brew upgrade claude-code`, npm: `npm i -g @anthropic-ai/claude-code@latest`), then press Retry. /astra-doctor shows which copy Hearth uses.'],
+    () => "Claude Code couldn't read Hearth's tool settings for this chat (the reason is above; Hearth already tried once with a fresh file). Press Retry; if it comes back, run /doctor."],
+  [TOO_OLD, updateFix, 'update'],
   [/unexpected argument|unrecognized (option|argument)|unknown (option|flag|argument)|invalid value for|found argument .* which wasn't expected/i,
-    (e) => `This ${ENGINES[e].label} version doesn't know one of Hearth's options. Update the ${e === 'codex' ? 'Codex' : 'Claude'} app, then run /astra-doctor.`],
+    (e) => `This ${ENGINES[e].label} version doesn't know one of Hearth's options. Press Update (or run /doctor), then Retry.`, 'update'],
+  [/cancelled Hearth's tool call/i,
+    () => 'This Codex cancels tools it would have to ask about, and doesn\'t know the setting that pre-approves Hearth\'s own. Press Update, then Retry.', 'update'],
   [/ENOENT|EACCES|EPERM|spawn /i,
-    (e) => `Hearth couldn't start ${ENGINES[e].label}. Check its path in Settings → Engines, or run /astra-doctor.`],
+    (e) => `Hearth couldn't start ${ENGINES[e].label}. Check its path in Settings → Engines, or run /doctor.`, 'doctor'],
   [/ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|network|stream disconnected|connection (closed|reset)|getaddrinfo/i,
-    () => 'Network problem: check the internet connection (or VPN / proxy), then press Retry.'],
+    () => 'Network problem (Hearth already tried again once): check the internet connection (or VPN / proxy), then press Retry.'],
   [/context (window|length)|maximum context|too many tokens|prompt is too long|input too long/i,
     () => 'The conversation is too long for the model: compact it (🗜 in the chat menu) or start a new chat from a summary.'],
   [/sandbox|landlock|seatbelt|seccomp/i,
@@ -591,7 +615,7 @@ function friendlyError(engine, message) {
   const hit = FIXES.find(([re]) => re.test(message));
   if (!hit) return { message };
   const fix = hit[1](engine);
-  return { message: `${message}\n\nFix: ${fix}`, fix };
+  return { message: `${message}\n\nFix: ${fix}`, fix, ...(hit[2] ? { fixAction: hit[2], fixEngine: engine } : {}) };
 }
 
 // The engine has no saved session under that id anymore (cleared, other machine, other version).
@@ -618,11 +642,12 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
   if (engine === 'claude' && options.images?.length) {
     text += `\n\n[Attached image${options.images.length > 1 ? 's' : ''}: open with your Read tool before answering]\n${options.images.join('\n')}`;
   }
-  const bin = LOCATE[engine]?.();
+  const bin = options._bin || LOCATE[engine]?.();
   if (!bin) {
-    emit({ type: 'error', message: `Couldn't find ${ENGINES[engine]?.label || engine} on this ${IS_MAC ? 'Mac' : 'PC'}.\n\nFix: install the ${engine === 'codex' ? 'Codex (ChatGPT)' : 'Claude'} desktop app, or set its path in Settings → Engines. /astra-doctor shows what Hearth looked for.` });
+    emit({ type: 'error', message: `Couldn't find ${ENGINES[engine]?.label || engine} on this ${IS_MAC ? 'Mac' : 'PC'}.\n\nFix: press Install (it runs \`${Installs.updatePlan(engine, null).command}\` in a ${IS_WIN ? 'PowerShell' : 'Terminal'} window), install the ${engine === 'codex' ? 'Codex (ChatGPT)' : 'Claude'} desktop app, or set its path in Settings → Engines. /doctor shows what Hearth looked for.`, fixAction: 'install', fixEngine: engine });
     return;
   }
+  usedBin[engine] = bin;
   if (agent.workspace && !fileFolder(agent)) {
     emit({ type: 'error', message: `The file access folder ${agent.workspace} doesn't exist anymore. Change it in the agent's settings.` });
     return;
@@ -674,9 +699,56 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
       send({ agent, chatId, session, text: original, options }, emit);
       return;
     }
+    if (heal(event)) return;
     if (event.type === 'error') Object.assign(event, friendlyError(engine, event.message));
     if (event.type === 'done') { try { addUsage(agent.id, event.usage, { chatId, model: options.model || agent.model || '', dock: agent.dock || '', ms: Date.now() - startedAt, tools: toolCount }); } catch { /* usage stats are best-effort */ } }
     emit({ ...event, session: state });
+  };
+  // Self-healing (round 9): each known failure that a second try can fix gets one, before anything was streamed.
+  const again = (extra, note) => {
+    if (running.get(chatId) === child) running.delete(chatId);
+    if (child.exitCode === null && child.signalCode === null) { child.hubStopped = true; try { kill(child); } catch { /* gone */ } }
+    if (note) emit({ type: 'thinking', text: `⚠ ${note}\n\n` });
+    send({ agent, chatId, session, text: original, options: { ...options, ...extra } }, emit);
+  };
+  const heal = (event) => {
+    const why = `${event.message || ''}\n${stderr}`;
+    // Codex cancelled one of Hearth's tool calls: once more with approvals off, then the precise fix
+    if (event.type === 'blocked') {
+      if (!streamed && !options._approvalRetry) { log(`${engine} ${chatId} cancelled ${event.name}, retrying with approvals off`); again({ _approvalRetry: true }, `${ENGINES[engine].label} cancelled a Hearth tool call (${event.name}); trying again with Hearth's tools approved.`); return true; }
+      try { kill(child); } catch { /* gone */ }
+      Object.assign(event, { type: 'error', message: `${ENGINES[engine].label} cancelled Hearth's tool call ${event.name} (${event.message}).` });
+      return false;
+    }
+    if (event.type !== 'error' || streamed) return false;
+    // the tool-settings file went missing under the run: a fresh run writes a fresh one
+    if (engine === 'claude' && !options._mcpRetry && MCP_CONFIG.test(why)) { log(`claude ${chatId} MCP config problem, retrying with a fresh file`); again({ _mcpRetry: true }); return true; }
+    // a dropped connection: one more try after a short pause (Stop still works while it waits)
+    if (!options._netRetry && NETWORK.test(why) && !TOO_OLD.test(why)) {
+      log(`${engine} ${chatId} network problem, retrying in 3 s`);
+      if (running.get(chatId) === child) running.delete(chatId);
+      emit({ type: 'thinking', text: '⚠ The connection dropped; trying again in 3 s…\n\n' });
+      const wait = { retryTimer: setTimeout(() => { if (running.get(chatId) !== wait) return; running.delete(chatId); send({ agent, chatId, session, text: original, options: { ...options, _netRetry: true } }, emit); }, 3000), onStop: () => emit({ type: 'stopped', session: state }) };
+      running.set(chatId, wait);
+      return true;
+    }
+    // too old for the model: remember the minimum it named, and continue with a newer copy on this computer if there is one
+    if (TOO_OLD.test(why)) {
+      learnTooOld(engine, bin, why);
+      if (options._newerRetry || given(engine)) return false;
+      checkEngine(engine).then((r) => {
+        if (r.chosen && r.chosen !== bin && Installs.meetsMin(engine, r.semver) !== false) {
+          log(`${engine} ${chatId} ${bin} too old, continuing with ${r.chosen} (${r.version})`);
+          emit({ type: 'thinking', text: `⚠ This ${ENGINES[engine].label} is too old for the model; continuing with the newer copy Hearth found (${r.version}).\n\n` });
+          send({ agent, chatId, session, text: original, options: { ...options, _newerRetry: true, _bin: r.chosen } }, emit);
+        } else {
+          Object.assign(event, friendlyError(engine, event.message));
+          emit({ ...event, session: state });
+        }
+      }).catch(() => { Object.assign(event, friendlyError(engine, event.message)); emit({ ...event, session: state }); });
+      return true;
+    }
+    return false;
   };
   const handleLine = (raw) => {
     const line = raw.trim();
@@ -742,6 +814,8 @@ function stop(chatId) {
   log(`stop requested ${chatId}`);
   const child = running.get(chatId);
   if (!child) return false;
+  // a retry waiting out a dropped connection: it doesn't start
+  if (child.retryTimer) { clearTimeout(child.retryTimer); running.delete(chatId); child.onStop?.(); return true; }
   child.hubStopped = true; // an engine that exits cleanly on SIGTERM still counts as stopped, not failed
   kill(child);
   return true;
@@ -763,27 +837,14 @@ function stopAll() {
   return count;
 }
 
-// Opens a console window where you sign in yourself; the hub never sees your password.
+// Opens a Terminal / PowerShell / terminal window where you sign in yourself; the hub never sees your password. On a
+// Mac a program started from the app has no window to show, hence the window (a .command file); a Claude Code without
+// `auth login` falls back to its interactive /login. Hearth checks the engine again when the window's work ends.
+let installsListener = () => {};
+function onInstalls(fn) { installsListener = typeof fn === 'function' ? fn : () => {}; }
 function login(engine) {
-  const bin = LOCATE[engine]?.();
-  if (!bin) return false;
-  // On a Mac a program started from the app has no window to show, so the sign-in runs in a Terminal window
-  // (a .command file). If this Claude Code has no `auth login`, it falls back to its interactive /login.
-  if (IS_MAC) {
-    const q = (x) => `'${String(x).replace(/'/g, `'\\''`)}'`;
-    const { label, loginArgs } = ENGINES[engine];
-    const file = path.join(os.tmpdir(), `hearth-${engine}-login.command`);
-    fs.writeFileSync(file, [
-      '#!/bin/sh', 'clear', `echo "Sign in to ${label} for Hearth (Hearth never sees your password)."`, 'echo',
-      `${q(bin)} ${loginArgs.join(' ')}${engine === 'claude' ? ` || ${q(bin)} /login` : ''}`,
-      'echo', 'echo "Done: go back to Hearth and press Retry. You can close this window."', '',
-    ].join('\n'), { mode: 0o755 });
-    spawn('open', ['-a', 'Terminal', file], { detached: true, stdio: 'ignore' }).on('error', (err) => log(`login window: ${err.message}`)).unref();
-    return true;
-  }
-  // On Windows a detached console program gets its own visible console window.
-  spawn(bin, ENGINES[engine].loginArgs, { detached: true, stdio: 'ignore', windowsHide: false }).unref();
-  return true;
+  if (!LOCATE[engine]?.()) return false;
+  return fix(engine, 'login', (rep, info) => installsListener(rep, info)).ok;
 }
 
 // Runs a short command of an engine (version, login status) and returns its output; never throws.
@@ -806,7 +867,7 @@ async function doctor(agents = []) {
   const report = {};
   for (const engine of Object.keys(ENGINES)) {
     const bin = LOCATE[engine]();
-    const from = !bin ? null : given(engine) ? 'Settings → Engines' : findOnPath(engine) === bin ? 'PATH' : 'desktop app';
+    const from = !bin ? null : given(engine) ? 'Settings → Engines' : Installs.KIND_LABEL[Installs.kindOf(engine, bin)];
     const r = { label: ENGINES[engine].label, found: Boolean(bin), path: bin, from };
     if (bin) {
       const v = await quick(bin, ['--version']);
@@ -834,6 +895,85 @@ async function doctor(agents = []) {
       args: shownArgs(a) };
   });
   return report;
+}
+
+// ---------- installs (round 9): which copy, how old, signed in, and the one-click fix ----------
+// "version 2.1.280 or newer is required" → that minimum is remembered; a too-old error without a number marks the copy
+// in use (and anything older) as too old.
+function learnTooOld(engine, bin, text) {
+  const d = Installs.data();
+  const named = Installs.semverOf((/version ([\d.]+) or newer/i.exec(text) || [])[1]);
+  const cur = d.versions[Installs.binKey(bin)]?.semver;
+  const min = named || (cur ? cur.replace(/\d+$/, (n) => String(Number(n) + 1)) : null);
+  if (!min || (d.learnedMin[engine] && Installs.cmp(d.learnedMin[engine], min) >= 0)) return;
+  d.learnedMin[engine] = min;
+  Installs.persist();
+  log(`${engine} needs ${min} or newer (learned from: ${text.split('\n')[0].slice(0, 160)})`);
+}
+// Every copy of one engine, the newest working one chosen (Settings → Engines wins), its sign-in state.
+// fresh: read the versions again (after an update). login: false skips the sign-in check.
+async function checkEngine(engine, { fresh = false, login = true } = {}) {
+  const pinned = given(engine);
+  const files = Installs.candidates(engine);
+  if (pinned && !files.includes(pinned)) files.unshift(pinned);
+  const copies = [];
+  for (const file of files.slice(0, 12)) {
+    const v = await Installs.version(file, { cwd: WORKSPACE, fresh });
+    copies.push({ path: file, kind: file === pinned ? 'settings' : Installs.kindOf(engine, file), version: v.text, semver: v.semver });
+  }
+  const working = copies.filter((c) => c.version);
+  const newest = working.reduce((best, c) => (!best || Installs.cmp(c.semver, best.semver) > 0 ? c : best), null);
+  const pick = pinned ? copies.find((c) => c.path === pinned) : newest || copies[0] || null;
+  const d = Installs.data();
+  if (!pinned && pick && d.chosen[engine] !== pick.path) { d.chosen[engine] = pick.path; Installs.persist(); }
+  if (!pinned && !pick && d.chosen[engine]) { delete d.chosen[engine]; Installs.persist(); }
+  for (const c of copies) { c.chosen = c === pick; c.ok = Installs.meetsMin(engine, c.semver); }
+  const r = { engine, label: ENGINES[engine].label, found: Boolean(pick), chosen: pick?.path || null, from: pick ? (pinned ? 'settings' : pick.kind) : null,
+    version: pick?.version || null, semver: pick?.semver || null, min: Installs.minFor(engine), copies };
+  r.tooOld = pick ? Installs.meetsMin(engine, pick.semver) === false : false;
+  r.broken = Boolean(pick && !pick.version);
+  // Settings → Engines names an older copy than one Hearth found
+  if (pinned && newest && newest.path !== pinned && Installs.cmp(newest.semver, pick?.semver) > 0) r.newer = { path: newest.path, version: newest.version };
+  r.plan = Installs.updatePlan(engine, pick?.path || null);
+  if (pick && login && !r.broken) { const s = await Installs.signedIn(engine, pick.path, WORKSPACE); r.signedIn = s.ok; r.signText = s.text; }
+  return r;
+}
+async function checkInstalls(opts = {}) {
+  const out = { platform: process.platform, at: Date.now() };
+  for (const engine of opts.engines || Object.keys(ENGINES)) out[engine] = await checkEngine(engine, opts);
+  return out;
+}
+// Runs the update / install / sign-in for one engine in a visible window; when the window's work ends, the engine is
+// checked again (fresh versions) and onDone(report) is called (main.js sends it to the window).
+const fixWatch = {};
+function fix(engine, action = 'update', onDone = (rep, info) => installsListener(rep, info)) {
+  if (!ENGINES[engine]) return { ok: false, error: `No engine ${engine}` };
+  const bin = LOCATE[engine]();
+  const label = ENGINES[engine].label;
+  let title; let lines;
+  if (action === 'login') {
+    if (!bin) return { ok: false, error: `${label} wasn't found` };
+    title = `Sign in to ${label} for Hearth`; lines = [Installs.loginPlan(engine, bin)];
+  } else {
+    const plan = Installs.updatePlan(engine, action === 'install' ? null : bin);
+    title = `${plan.how === 'install' ? 'Install' : 'Update'} ${label} for Hearth`; lines = [plan.command];
+  }
+  const marker = path.join(os.tmpdir(), `hearth-fix-${engine}-${crypto.randomUUID().slice(0, 8)}.done`);
+  const r = Installs.runInTerminal({ title, lines, marker, cwd: WORKSPACE, bin });
+  log(`${engine} ${action}: ${lines.join(' ; ')} → ${r.ok ? r.window : r.error}`);
+  if (!r.ok) return { ...r, command: lines.join('\n') };
+  clearInterval(fixWatch[engine]);
+  const started = Date.now();
+  fixWatch[engine] = setInterval(() => {
+    const done = fs.existsSync(marker);
+    if (!done && Date.now() - started < 20 * 60000) return;
+    clearInterval(fixWatch[engine]);
+    fs.rm(marker, { force: true }, () => {});
+    if (engine === 'claude') claudeBinKey = ''; // a new binary: its options are learned again
+    checkInstalls({ engines: [engine], fresh: true }).then((rep) => onDone(rep, { engine, action, finished: done })).catch(() => {});
+  }, 1500);
+  fixWatch[engine].unref?.();
+  return { ok: true, window: r.window, command: lines.join('\n') };
 }
 
 function status() {
@@ -880,9 +1020,9 @@ function discoverConnectors() {
 }
 
 module.exports = {
-  send, stop, stopAll, login, status, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
+  send, stop, stopAll, login, status, checkInstalls, checkEngine, fix, onInstalls, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
   doctor, EFFORTS, CODEX_DISABLED_FEATURES,
   // for tests (dev/astra-engine-test.js)
-  _test: { lastErrorLine, codexArgs, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, hubToolEnv, nodesOn, LOST_SESSION },
+  _test: { lastErrorLine, codexArgs, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION },
   buildPrompt, HUB_TOOLSETS, // the director cost report (mcp/cost.js)
 };
