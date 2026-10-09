@@ -223,9 +223,10 @@
       const codex = /^(astra|codex|gpt|chatgpt)$/i.test(args);
       if (!codex && !/^claude$/i.test(args)) return 'claude or astra';
       if ((a.engine === 'codex') === codex) return `${a.name} already runs on ${codex ? 'Astra' : 'Claude'}.`;
-      await saveAgent(a, { engine: codex ? 'codex' : 'claude', model: undefined, effort: a.effort, ...(codex ? { hubTools: true } : {}) });
-      Native.newChat?.(a.id);
-      return `${a.name} now runs on **${codex ? 'Astra (Codex, with the hub tools over MCP)' : 'Claude'}**, in a new chat (engine sessions can't move between CLIs).${codex ? ' Codex support for MCP tools depends on your Codex version: if a tool call fails, `/director-engine claude` switches back.' : ''}`;
+      // same chat, same scene: the other engine picks up from the task state Hearth keeps (director-task.js)
+      if (typeof Astra !== 'undefined' && Astra.switchDirector) Astra.switchDirector(a, codex ? 'codex' : 'claude');
+      else await saveAgent(a, { engine: codex ? 'codex' : 'claude', model: undefined, effort: a.effort, ...(codex ? { hubTools: true } : {}) });
+      return `${a.name} now runs on **${codex ? 'Astra (Codex, with the hub tools over MCP)' : 'Claude'}**, in the same chat and scene: its next message carries the task state (/task).${codex ? ' Codex support for MCP tools depends on your Codex version: if a tool call fails, `/director-engine claude` switches back.' : ''}`;
     },
   });
   cmd({

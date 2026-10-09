@@ -323,6 +323,16 @@ const ThreeDirector = (() => {
     return `${total} match${total === 1 ? '' : 'es'} in ${inLayers} layer${inLayers === 1 ? '' : 's'} for “${pattern}”${shown < total ? ` (first ${shown}; pass max for more)` : ''}:\n${blocks.join('\n')}`;
   }
 
+  // A rewrite of a layer that was really in use: it had sliders and wasn't a Lab starter, and the new code is a
+  // different piece (not the same code with changes).
+  function rewroteReal(before, after) {
+    if (!/\btweak\s*\(/.test(before) || before.split('\n').length < 12) return false;
+    if (typeof ThreeData !== 'undefined' && (ThreeData.TEMPLATES || []).some((t) => t.code === before)) return false;
+    const a = new Set(before.split('\n').map((l) => l.trim()).filter((l) => l.length > 8));
+    const b = after.split('\n').map((l) => l.trim()).filter((l) => l.length > 8);
+    return b.filter((l) => a.has(l)).length < b.length * 0.5;
+  }
+
   // ---------- the handler ----------
   const consoleTail = (d) => d.report().console || [];
   // Errors with a line number get that line of code next to them, which saves a read_code call to look.
@@ -385,9 +395,19 @@ const ThreeDirector = (() => {
     if (tool === 'three_set_code') {
       if (!String(args.code || '').trim()) return { ok: false, error: 'No code given.' };
       const before = d.codeOf();
-      toast('Three Director updated the sketch', { timeout: 1500 });
+      if (!d.backstage) toast('Three Director updated the sketch', { timeout: 1500 });
       const r = await d.setCode(String(args.code), Number(args.wait) || 2.5);
       record({ sketchId: before.sketchId, sketch: before.sketch, layerId: before.id, layer: before.name, before: before.code, after: String(args.code), tool });
+      const value = args.report === 'full' ? r : withErrorLines(d, compact(r), r);
+      // the owner's rule: a new effect is a new layer. Rewriting a real layer (one with sliders, not a starter) gets a
+      // one-line reminder, so the habit holds for the rest of the chat (≈ 30 tokens, only then).
+      if (args.report !== 'full' && rewroteReal(before.code, String(args.code))) value.note = `Rewrote "${before.name}" (/undo-edit restores it). New elements or effects go in a new layer: three_add_layer.`;
+      return { ok: true, value };
+    }
+    if (tool === 'three_add_layer') {
+      if (!args.code && !args.template) return { ok: false, error: 'Give complete code (alpha: true, no background) or a template.' };
+      if (!d.backstage) toast(`Three Director added a layer${args.name ? ` "${args.name}"` : ''}`, { timeout: 1500 });
+      const r = await d.addLayer({ name: args.name, code: args.code, template: args.template, position: args.position, props: args.settings || {} }, Number(args.wait) || 2.5);
       return { ok: true, value: args.report === 'full' ? r : withErrorLines(d, compact(r), r) };
     }
     if (tool === 'three_update_layer') {

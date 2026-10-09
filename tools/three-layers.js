@@ -86,12 +86,13 @@ addEventListener('resize', () => {
 `;
   const TEMPLATES = [
     {
-      id: 'empty', name: 'Shape', desc: 'One wireframe shape that pumps on kicks: a starting point to describe what you want',
+      id: 'empty', name: 'Shape', desc: 'One wireframe shape that turns and breathes over time: a starting point to describe what you want',
       code: `${HEAD}const P = tweak({
   color: { value: '#ffd75e', label: 'Color', group: 'Look' },
   size: { value: 1, min: 0.1, max: 4, label: 'Size', group: 'Look' },
   spin: { value: 0.5, min: -3, max: 3, label: 'Spin', group: 'Motion' },
-  punch: { value: 0.6, min: 0, max: 2, label: 'Kick punch', group: 'Music', hint: 'How much it grows on your kick markers (or on beats if none are marked)' },
+  breathe: { value: 0.5, min: 0, max: 3, label: 'Breathing', group: 'Motion', hint: 'A slow swell over time (no music needed)' },
+  punch: { value: 0, min: 0, max: 2, label: 'Kick punch', group: 'Music', hint: '0 = calm; raise it to grow on your kick markers (or the beat)' },
 });
 
 ${BODY}
@@ -103,7 +104,7 @@ renderer.setAnimationLoop((now) => {
   const hit = audio.hits.kick.length ? audio.kick : audio.beat;
   pump = Math.max(pump * 0.88, hit);
   mesh.material.color.set(P.color);
-  mesh.scale.setScalar(P.size * (1 + pump * P.punch * 0.4));
+  mesh.scale.setScalar(P.size * (1 + Math.sin(now / 1000 * P.breathe * Math.PI) * 0.08) * (1 + pump * P.punch * 0.4));
   mesh.rotation.y += P.spin * 0.01;
   mesh.rotation.x += P.spin * 0.004;
   renderer.render(scene, camera);
@@ -111,14 +112,15 @@ renderer.setAnimationLoop((now) => {
 `,
     },
     {
-      id: 'rings', name: 'Pulse rings', desc: 'Glowing rings that swell on kicks',
+      id: 'rings', name: 'Pulse rings', desc: 'Glowing rings turning and breathing over time (Kick punch makes them swell on kicks)',
       code: `${HEAD}const P = tweak({
   rings: { value: 6, min: 1, max: 24, step: 1, label: 'Rings', group: 'Shape' },
   size: { value: 1, min: 0.2, max: 3, label: 'Size', group: 'Shape' },
   thickness: { value: 0.025, min: 0.005, max: 0.15, label: 'Thickness', group: 'Shape' },
   color: { value: '#48ddff', label: 'Color', group: 'Color' },
   spin: { value: 0.2, min: -2, max: 2, label: 'Spin', group: 'Motion' },
-  punch: { value: 0.8, min: 0, max: 2, label: 'Kick punch', group: 'Music', hint: 'How much the rings grow on kicks (or beats)' },
+  breathe: { value: 0.4, min: 0, max: 3, label: 'Breathing', group: 'Motion', hint: 'A slow swell over time (no music needed)' },
+  punch: { value: 0, min: 0, max: 2, label: 'Kick punch', group: 'Music', hint: '0 = calm; raise it to grow on kicks (or beats)' },
 });
 
 ${BODY}
@@ -128,25 +130,25 @@ scene.add(group);
 for (let i = 0; i < P.rings; i++) group.add(new THREE.Mesh(new THREE.TorusGeometry(1 + i * 0.35, P.thickness, 8, 160), mat));
 
 let pump = 0;
-renderer.setAnimationLoop(() => {
+renderer.setAnimationLoop((now) => {
   const hit = audio.hits.kick.length ? audio.kick : audio.beat;
   pump = Math.max(pump * 0.9, hit);
   mat.color.set(P.color);
-  group.scale.setScalar(P.size * (1 + pump * P.punch * 0.25));
+  group.scale.setScalar(P.size * (1 + Math.sin(now / 1000 * P.breathe * Math.PI) * 0.06) * (1 + pump * P.punch * 0.25));
   group.rotation.z += P.spin * 0.01;
   renderer.render(scene, camera);
 });
 `,
     },
     {
-      id: 'particles', name: 'Particle field', desc: 'A cloud of drifting dots that flashes on snares',
+      id: 'particles', name: 'Particle field', desc: 'A cloud of slowly drifting dots (Snare flash makes them flash on snares)',
       code: `${HEAD}const P = tweak({
   count: { value: 4000, min: 500, max: 20000, step: 100, label: 'Particles', group: 'Shape' },
   spread: { value: 6, min: 1, max: 15, label: 'Spread', group: 'Shape' },
   size: { value: 0.05, min: 0.005, max: 0.25, label: 'Dot size', group: 'Look' },
   color: { value: '#bd8bff', label: 'Color', group: 'Color' },
   drift: { value: 0.15, min: 0, max: 1, label: 'Drift speed', group: 'Motion' },
-  flash: { value: 0.8, min: 0, max: 2, label: 'Snare flash', group: 'Music', hint: 'Brightness burst on snares (or beats)' },
+  flash: { value: 0, min: 0, max: 2, label: 'Snare flash', group: 'Music', hint: '0 = calm; raise it for a brightness burst on snares (or beats)' },
 });
 
 ${BODY}
@@ -235,28 +237,28 @@ filter('${type}', P);
   colors: { value: 'source', options: ['source', 'white', 'green', 'amber'], label: 'Colors', group: 'ASCII' },
   tint: { value: '#ffffff', label: 'Tint', group: 'ASCII' },
   background: { value: 0, min: 0, max: 0.6, label: 'Picture behind', group: 'ASCII', hint: 'How much of the original shows behind the characters' },`) },
-    { id: 'datamosh', name: 'Datamosh', desc: 'Smeared, blocky trails of earlier frames, bursting on hits', code: fx('datamosh', 'datamosh (frames melting into each other)', `  amount: { value: 0.5, min: 0, max: 1, label: 'Mosh amount', group: 'Datamosh' },
+    { id: 'datamosh', name: 'Datamosh', desc: 'Smeared, blocky trails of earlier frames (Burst on hits: in time with the music)', code: fx('datamosh', 'datamosh (frames melting into each other)', `  amount: { value: 0.5, min: 0, max: 1, label: 'Mosh amount', group: 'Datamosh' },
   block: { value: 24, min: 4, max: 96, step: 1, label: 'Block size', group: 'Datamosh' },
   smear: { value: 0.6, min: 0, max: 2, label: 'Smear', group: 'Datamosh', hint: 'How far moshed blocks slide' },
   persist: { value: 0.92, min: 0, max: 0.99, label: 'Trail length', group: 'Datamosh' },
-  onHits: { value: true, label: 'Burst on hits', group: 'Music', hint: 'Mosh harder on your kick and snare markers (or the beat)' },`) },
+  onHits: { value: false, label: 'Burst on hits', group: 'Music', hint: 'On: mosh harder on your kick and snare markers (or the beat)' },`) },
     { id: 'vhs', name: 'Found footage', desc: 'VHS tape: jitter, tracking bands, grain, color fringes, REC timecode', code: fx('vhs', 'found footage / VHS camcorder', `  grain: { value: 0.35, min: 0, max: 1, label: 'Grain', group: 'Tape' },
   aberration: { value: 0.4, min: 0, max: 1, label: 'Color fringes', group: 'Tape' },
   jitter: { value: 0.3, min: 0, max: 1, label: 'Jitter', group: 'Tape' },
   tracking: { value: 0.35, min: 0, max: 1, label: 'Tracking bands', group: 'Tape' },
   vignette: { value: 0.5, min: 0, max: 1, label: 'Dark corners', group: 'Look' },
   fade: { value: 0.35, min: 0, max: 1, label: 'Washed out', group: 'Look' },`) },
-    { id: 'glitch', name: 'Glitch', desc: 'RGB split and torn slices on hits', code: fx('glitch', 'digital glitch', `  amount: { value: 0.6, min: 0, max: 1, label: 'Glitch amount', group: 'Glitch' },
+    { id: 'glitch', name: 'Glitch', desc: 'RGB split and torn slices (Glitch on hits: in time with the music)', code: fx('glitch', 'digital glitch', `  amount: { value: 0.6, min: 0, max: 1, label: 'Glitch amount', group: 'Glitch' },
   split: { value: 0.5, min: 0, max: 2, label: 'RGB split', group: 'Glitch' },
   slices: { value: 24, min: 2, max: 120, step: 1, label: 'Slices', group: 'Glitch' },
-  onHits: { value: true, label: 'Glitch on hits', group: 'Music', hint: 'Fire on your kick / snare / hit markers (or the beat)' },`) },
+  onHits: { value: false, label: 'Glitch on hits', group: 'Music', hint: 'On: fire on your kick / snare / hit markers (or the beat); off: glitches over time' },`) },
     { id: 'crt', name: 'CRT', desc: 'Old TV: curved screen, scanlines, phosphor dots', code: fx('crt', 'old CRT television', `  curve: { value: 0.5, min: 0, max: 1.5, label: 'Screen curve', group: 'CRT' },
   scanlines: { value: 0.6, min: 0, max: 1, label: 'Scanlines', group: 'CRT' },
   mask: { value: 0.4, min: 0, max: 1, label: 'Phosphor dots', group: 'CRT' },
   glow: { value: 0.3, min: 0, max: 1.5, label: 'Glow', group: 'CRT' },`) },
     { id: 'pixelate', name: 'Pixelate', desc: 'Chunky pixels with fewer colors', code: fx('pixelate', 'pixel art', `  size: { value: 8, min: 1, max: 64, step: 1, label: 'Pixel size', group: 'Pixels' },
   levels: { value: 0, min: 0, max: 16, step: 1, label: 'Colors (0 = all)', group: 'Pixels' },
-  punch: { value: 0.5, min: 0, max: 2, label: 'Kick punch', group: 'Music', hint: 'Pixels get bigger on kicks' },`) },
+  punch: { value: 0, min: 0, max: 2, label: 'Kick punch', group: 'Music', hint: 'Pixels get bigger on kicks (0 = off)' },`) },
     { id: 'halftone', name: 'Halftone', desc: 'Printed dots, like a comic or newspaper', code: fx('halftone', 'halftone print', `  dot: { value: 10, min: 3, max: 40, label: 'Dot size', group: 'Halftone' },
   angle: { value: 25, min: 0, max: 90, label: 'Angle', group: 'Halftone' },
   colors: { value: 'source', options: ['source', 'ink'], label: 'Colors', group: 'Halftone' },
@@ -273,7 +275,7 @@ filter('${type}', P);
     { id: 'edges', name: 'Edge glow', desc: 'Neon outlines of everything below', code: fx('edges', 'neon edges', `  strength: { value: 2, min: 0, max: 6, label: 'Edge strength', group: 'Edges' },
   glow: { value: '#48ddff', label: 'Edge color', group: 'Edges' },
   keep: { value: 0.25, min: 0, max: 1, label: 'Original picture', group: 'Edges' },
-  punch: { value: 0.6, min: 0, max: 2, label: 'Kick punch', group: 'Music' },`) },
+  punch: { value: 0, min: 0, max: 2, label: 'Kick punch', group: 'Music', hint: '0 = off' },`) },
     { id: 'thermal', name: 'Thermal', desc: 'Heat-camera colors', code: fx('thermal', 'thermal camera', `  mix: { value: 1, min: 0, max: 1, label: 'Amount', group: 'Thermal' },
   contrast: { value: 1.2, min: 0.5, max: 3, label: 'Contrast', group: 'Thermal' },`) },
     { id: 'duotone', name: 'Duotone', desc: 'Two colors: one for shadows, one for highlights', code: fx('duotone', 'duotone', `  shadows: { value: '#1b0f3b', label: 'Shadows', group: 'Duotone' },
@@ -283,7 +285,7 @@ filter('${type}', P);
     { id: 'glow', name: 'Glow', desc: 'Soft bloom around bright parts', code: fx('glow', 'glow / bloom', `  strength: { value: 0.8, min: 0, max: 3, label: 'Glow strength', group: 'Glow' },
   radius: { value: 1, min: 0.2, max: 4, label: 'Glow size', group: 'Glow' },
   threshold: { value: 0.55, min: 0, max: 1, label: 'Only above brightness', group: 'Glow' },
-  punch: { value: 0.5, min: 0, max: 2, label: 'Kick punch', group: 'Music' },`) },
+  punch: { value: 0, min: 0, max: 2, label: 'Kick punch', group: 'Music', hint: '0 = off' },`) },
   ];
   const isFilter = (code) => /\bfilter\(\s*['"]/.test(code || '');
 

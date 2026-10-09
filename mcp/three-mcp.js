@@ -15,38 +15,39 @@ const LAYER_D = { description: 'name, id, number (1 = bottom), "top", "bottom" o
 const obj = (properties, required) => ({ type: 'object', properties, ...(required ? { required } : {}) });
 
 // ---------- the everyday tools (own entries in both modes) ----------
+const TEMPLATES = ['empty', 'rings', 'particles', 'ascii', 'datamosh', 'vhs', 'glitch', 'crt', 'pixelate', 'halftone', 'film', 'kaleido', 'edges', 'thermal', 'duotone', 'glow'];
 const CORE_TOOLS = [
-  { name: 'three_eval', description: 'Run JS inside the live preview (expression, or statements with return; await works) and get the value; three.js objects come back summarized. __scenes[layer name] = { scene, camera, renderer }; window.game etc. if the code exposes them. Results over max chars (default 3000) are cut. samples: n with every: ms returns n values over time (watch something react).',
+  // every new element or effect is a new layer (the owner's rule), so this is an everyday tool, not a three_do command
+  { name: 'three_add_layer', description: 'A NEW layer for each new element or effect (top unless position), selected and run: complete code (alpha: true, no background) or a template (filters restyle the layers below). settings like update_layer.',
+    inputSchema: obj({ name: { type: 'string' }, code: { type: 'string' }, template: { type: 'string', enum: TEMPLATES }, position: { description: '"top", "bottom" or n (1 = bottom)' }, settings: { type: 'object' }, wait: { type: 'number' } }) },
+  { name: 'three_eval', description: 'Run JS in the live preview (expression, or statements with return; await works); three.js objects come back summarized. __scenes[layer name] = { scene, camera, renderer }; window.game etc. if exposed. Results cut at max chars (3000). samples: n, every: ms = n values over time.',
     inputSchema: obj({ code: { type: 'string' }, max: { type: 'number' }, samples: { type: 'number' }, every: { type: 'number' } }, ['code']) },
   { name: 'three_edit_code', description: 'Change code and re-run: edits [{ find, replace, all? } | { lines: [from, to], replace }] in order (find = exact text, must match once unless all). An edit can name its own layer (batch across layers). Returns a short diff, errors, new console lines and fps; shot: true adds a small preview; report: "full" the whole Lab report.',
     inputSchema: obj({ layer: LAYER, edits: { type: 'array', items: { type: 'object' } }, shot: { type: 'boolean' }, report: { type: 'string', enum: ['compact', 'full'] }, wait: { type: 'number' } }, ['edits']) },
-  { name: 'three_screenshot', description: 'Picture of the preview. size: small (512) | medium (1024, default) | large (1280); region [x, y, w, h] 0..1 crops; at: seconds, "drop", "kick", "snare", "hit" or a cue name seeks the song first; compare: true sets it beside the previous screenshot; frames: n (2–8) = a strip of n frames every gap s (default 0.5). An unchanged view comes back as a note (force: true sends it).',
+  { name: 'three_screenshot', description: 'Picture of the preview. size small 512 | medium 1024 (default) | large 1280; region [x, y, w, h] 0..1 crops; at: seconds, "drop", "kick", "snare", "hit" or a cue (seeks first); compare: true = beside the previous one; frames: 2–8 = a strip every gap s (0.5). Unchanged views come back as a note (force: true sends).',
     inputSchema: obj({ size: { type: 'string', enum: ['small', 'medium', 'large'] }, region: { type: 'array', items: { type: 'number' } }, at: {}, compare: { type: 'boolean' }, frames: { type: 'number' }, gap: { type: 'number' }, force: { type: 'boolean' } }) },
   { name: 'three_read_code', description: 'Read a layer\'s code with line numbers (default: selected layer, lines 1–250); from / to read further, or around: line ± 20.',
     inputSchema: obj({ layer: LAYER, from: { type: 'number' }, to: { type: 'number' }, around: { type: 'number' } }) },
   { name: 'three_search_code', description: 'Find text (regex: true for a regex) in every layer (or one). Returns matches by layer with line numbers and trimmed context (default 1 line, max 40 hits).',
     inputSchema: obj({ pattern: { type: 'string' }, layer: LAYER, regex: { type: 'boolean' }, context: { type: 'number' }, max: { type: 'number' } }, ['pattern']) },
-  { name: 'three_sliders', description: 'Read or move a layer\'s tweak() sliders without changing code, like the user dragging them: set { key or label: value } (number, \'#rrggbb\', bool or option). Shown as unsaved (the user saves, undoes or compares). Locked sliders are skipped. Returns sliders + saved looks.',
+  { name: 'three_sliders', description: 'Read or move a layer\'s tweak() sliders like the owner dragging them (no code change): set { key or label: value }. Shown unsaved (they keep or undo); locked ones are skipped. Returns sliders + looks.',
     inputSchema: obj({ layer: LAYER, set: { type: 'object' } }) },
-  { name: 'three_set_code', description: 'Replace the selected layer\'s code with a complete sketch and run it (the old code stays in history). Returns errors (with lines), console, fps, frame, sliders found and music; report: "full" for everything.',
+  { name: 'three_set_code', description: 'Rewrite the selected layer with a complete module and run it (old code kept in history): for an empty sketch, or when the owner asks to rewrite this layer; new elements go in a new layer (three_add_layer). Returns errors (with lines), console, fps, frame, sliders and music; report: "full" for everything.',
     inputSchema: obj({ code: { type: 'string' }, wait: { type: 'number', description: 'seconds before reporting (default 2.5)' }, report: { type: 'string', enum: ['compact', 'full'] } }, ['code']) },
   { name: 'three_get_code', description: 'The selected layer\'s code (an outline with line numbers past 350 lines), the layers, frame size, sliders with values and music links, and slider changes the user hasn\'t saved.', inputSchema: obj({}) },
   { name: 'three_console', description: 'Errors, recent console lines and fps / draw calls of the running sketch; full: true adds sliders, layers and music.', inputSchema: obj({ full: { type: 'boolean' } }) },
-  { name: 'three_media_control', description: 'Play, pause or seek the loaded music (time in s), or set the A–B loop (action "loop", time = start, end; no time clears; leave a locked loop alone).',
+  { name: 'three_media_control', description: 'Play, pause or seek the music (time s), or loop (time = start, end; no time clears; leave a locked loop alone).',
     inputSchema: obj({ action: { type: 'string', enum: ['play', 'pause', 'seek', 'loop'] }, time: { type: 'number' }, end: { type: 'number' } }, ['action']) },
-  { name: 'three_input', description: 'Play-test in the preview, in order: { key: "ArrowLeft", ms } holds a key, { keys: ["w", "Shift"], ms }, { click: [x, y] } (0..1 across the view), { move: [x, y] }, { wait: ms }. screenshot: true returns a picture after.',
+  { name: 'three_input', description: 'Play-test the preview, in order: { key: "ArrowLeft", ms } (held), { keys: ["w", "Shift"], ms }, { click: [x, y] } (0..1), { move: [x, y] }, { wait: ms }. screenshot: true = a picture after.',
     inputSchema: obj({ actions: { type: 'array', items: { type: 'object' } }, screenshot: { type: 'boolean' } }, ['actions']) },
-  { name: 'three_contact_sheet', description: 'One image with a numbered, timed frame at each of the user\'s cues (or count frames over the loop / song, or the given times in s). Use it to judge the whole piece (intro → drop → outro).',
+  { name: 'three_contact_sheet', description: 'One image of numbered, timed frames at the owner\'s cues (or count over the loop / song, or times in s): judge the whole piece.',
     inputSchema: obj({ times: { type: 'array', items: { type: 'number' } }, count: { type: 'number' } }) },
 ];
 
-// ---------- the rest: own tools in full mode, three_do commands in lean mode ----------
-const TEMPLATES = ['empty', 'rings', 'particles', 'ascii', 'datamosh', 'vhs', 'glitch', 'crt', 'pixelate', 'halftone', 'film', 'kaleido', 'edges', 'thermal', 'duotone', 'glow'];
+
 const MORE_TOOLS = [
   { name: 'three_layers', description: 'The layers (bottom first): selected, visibility, opacity, blend, time range on the song, transform, placements, sliders.', inputSchema: obj({}) },
   { name: 'three_select_layer', description: 'Select a layer (code tools then default to it). Returns its code.', inputSchema: obj({ layer: LAYER_D }, ['layer']) },
-  { name: 'three_add_layer', description: 'Add a layer (on top unless position), select and run it: complete transparent code, or a template (scenes: empty, rings, particles; filters that restyle the layers below: ascii, datamosh, vhs, glitch, crt, pixelate, halftone, film, kaleido, edges, thermal, duotone, glow). settings like update_layer.',
-    inputSchema: obj({ name: { type: 'string' }, code: { type: 'string' }, template: { type: 'string', enum: TEMPLATES }, position: { description: '"top", "bottom" or n (1 = bottom)' }, settings: { type: 'object' }, wait: { type: 'number' } }) },
   { name: 'three_update_layer', description: 'Change a layer: settings { in, out (s on the song, null = whole song), fadeIn, fadeOut, opacity 0..1, blend (normal|add|screen|lighten|overlay|soft-light|multiply|darken|difference|exclusion|color-dodge), x, y (% of frame), scale, rotate (deg), visible, name }, order ("top", "bottom", n), and/or code (complete module).',
     inputSchema: obj({ layer: LAYER, settings: { type: 'object' }, order: {}, code: { type: 'string' }, wait: { type: 'number' } }, ['layer']) },
   { name: 'three_remove_layer', description: 'Remove a layer (the user can undo it).', inputSchema: obj({ layer: LAYER }, ['layer']) },
@@ -68,27 +69,29 @@ const MORE_TOOLS = [
   { name: 'three_set_frame', description: 'Set the output frame: fit, 9:16 (1080×1920), 16:9, 1:1, 4:5 (1080×1350).', inputSchema: obj({ size: { type: 'string', enum: ['fit', '9:16', '16:9', '1:1', '4:5'] } }, ['size']) },
   { name: 'three_new_sketch', description: 'Create, open and run a new named sketch (the user\'s other sketches stay untouched).', inputSchema: obj({ name: { type: 'string' }, code: { type: 'string' } }, ['name', 'code']) },
 ];
-const NODES_TOOL = { name: 'three_nodes', description: 'Edit the selected layer as a node graph (the user\'s Nodes view; it compiles to the layer code, knobs = sliders). command: "presets", "types [filter]", "list", "preset|new|layer <preset>", "add <type> [field=value…] [to=node.input]", "link <node.output> <node.input>", "unlink <node.input>", "set <node> field=value…", "rm <node…>", "layout", "rebuild". Layers made with nodes: edit them here, not with three_edit_code.', inputSchema: obj({ command: { type: 'string' } }, ['command']) };
+// On by default for Three directors (the owner wants a node view of visual work; `/nodes-director off` drops it).
+const NODES_TOOL = { name: 'three_nodes', description: 'Layers as node graphs (the owner\'s Nodes view). command: "layer <preset>" (new layer), "presets", "types [word]", "list", "add <type> k=v [to=n.in]", "link a.out b.in", "unlink b.in", "set <n> k=v", "rm <n>", "preset <p>" (replace), "rebuild". help nodes.', inputSchema: obj({ command: { type: 'string' } }, ['command']) };
 
-const DO_CMDS = ['layers', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'help'];
+// add_layer stays a command (older habits keep working) but is described as its own tool now
+const DO_CMDS = ['layers', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'help'];
 const DO_TOOL = {
   name: 'three_do',
   description: `More Lab actions: { cmd, ...args }. layer = name, id, number (1 = bottom), "top", "bottom" or "selected".
 layers · select_layer {layer} · remove_layer {layer} (undoable)
-add_layer {name, code | template, position, settings} (templates: empty rings particles; filters on what's below: ${TEMPLATES.slice(3).join(' ')})
 update_layer {layer, settings: {in, out, fadeIn, fadeOut, opacity, blend, x, y, scale, rotate, visible, name}, order, code}
 keyframes {layer, property, keys: [{time, value, ease}] | clear} · animate {layer, preset}
 timeline {from, to} · timeline_edit {grid, markers, loop, zoom, cues, speed, lane}
 looks {action: list|save|apply|delete, name} · notes {action: list|done|reopen|edit|delete|add, id, time, text}
 references {action: list|add|rename|remove|palette, path, name, to, from, colors}
 triggers {set} · media_info · load_media {path} · set_frame {size: fit|9:16|16:9|1:1|4:5} · new_sketch {name, code}
-help {topic} explains any of these.`,
+run {command: "/make-it-react"} runs a chat command · task {todo} this chat's task state
+help {topic} explains any of these (app: the whole app).`,
   inputSchema: { type: 'object', properties: { cmd: { type: 'string', enum: DO_CMDS } }, required: ['cmd'] },
 };
 
-const tools = [...CORE_TOOLS, ...(FULL ? MORE_TOOLS : [DO_TOOL]), ...(process.env.HUB_NODES_TOOL ? [NODES_TOOL] : [])];
+const tools = [...CORE_TOOLS, ...(FULL ? MORE_TOOLS : [DO_TOOL]), ...(process.env.HUB_NODES_TOOL === '1' ? [NODES_TOOL] : [])];
 // three_do help is answered here, without a trip to the hub.
 const local = { three_do: (args) => (args.cmd === 'help' ? { ok: true, value: G.help(args.topic) } : null) };
 
-// three_nodes costs ~90 tokens per message, so it's only offered when the agent opts in (agent.nodesTool, `/nodes-director on`).
+// three_nodes (≈ 75 tokens per message) is on for Three directors unless agent.nodesTool === false (engines.js sets HUB_NODES_TOOL).
 module.exports = serve({ name: 'three-lab', instructions: '', guide: FULL ? G.FULL : G.CORE, tools, local, all: [...CORE_TOOLS, ...MORE_TOOLS, DO_TOOL, NODES_TOOL], doCommands: DO_CMDS }, module);

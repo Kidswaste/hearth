@@ -5,6 +5,7 @@
 const HubBridge = (() => {
   const handlers = [];
   const listeners = new Set();
+  const results = new Set(); // (call) => …: every finished agent call with its arguments (director-task.js keeps the task state)
   const log = []; // newest last: { id, tool, cmd, summary, at, ms, ok, error, image, running }
   const LOG_MAX = 60;
   let lastImage = null; // { tool, url (data: URL, small), at }
@@ -90,6 +91,7 @@ const HubBridge = (() => {
     // what the agent will read: the text as the MCP server formats it (mcp/common.js) + pictures (≈ w×h / 750 tokens)
     entry.tokens = Math.round((result.ok === false ? String(result.error || '').length + 7 : fmtText(result.value).length) / 4);
     window.hub.gameResult(id, result);
+    for (const fn of results) { try { fn({ tool, via: r0.via || null, args: args || {}, result, chatId: hubChatId, agentId: args?.agentId || null }); } catch (err) { console.warn(err); } }
     for (const im of imgs) entry.tokens += await imageTokens(im);
     emit(entry);
   });
@@ -98,6 +100,7 @@ const HubBridge = (() => {
     register(prefixes, fn) { for (const prefix of prefixes) handlers.push({ prefix, fn }); },
     // the docked director's activity strip (tools.js) and /director commands
     onCall(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+    onResult(fn) { results.add(fn); return () => results.delete(fn); },
     log: () => log.slice(),
     lastImage: () => lastImage,
     clearLog() { log.length = 0; lastImage = null; emit(null); },

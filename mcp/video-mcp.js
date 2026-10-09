@@ -3,6 +3,7 @@
 // How to work (scripts build the videos, look before judging, speak visually) is in the director's system prompt
 // (engines.js); the descriptions here only say what each tool does. Times are seconds everywhere.
 const { serve } = require('./common');
+const MAP = require('./hearth-map');
 
 const TOOLS = [
   { name: 'video_list', description: 'Recent renders the hub found, newest first (path, size, modified); search filters by path.', inputSchema: { type: 'object', properties: { limit: { type: 'integer', default: 20 }, search: { type: 'string' } } } },
@@ -19,6 +20,9 @@ const TOOLS = [
   { name: 'ae_render', description: 'Render an .aep with aerender in the background (AE stays usable); waits, returns the result + log tail; the file then shows in Video Review. No comp = the project\'s render queue.',
     inputSchema: { type: 'object', properties: { project: { type: 'string' }, comp: { type: 'string' }, output: { type: 'string' }, omTemplate: { type: 'string' } }, required: ['project'] } },
   { name: 'ae_run_script', description: 'Run ExtendScript inside After Effects (starts it if needed) as one undoable step; errors show as an AE alert.', inputSchema: { type: 'object', properties: { code: { type: 'string' }, label: { type: 'string' } }, required: ['code'] } },
+  // the app map (mcp/hearth-map.js), answered by this server without a trip to the hub
+  { name: 'hearth_help', description: 'How Hearth (the owner\'s app) fits together, by topic: app, video, lab, commands, handoff, habits.', inputSchema: { type: 'object', properties: { topic: { type: 'string' } } } },
 ];
+const local = { hearth_help: (a) => ({ ok: true, value: MAP.topic(a.topic || 'app') || `Topics: ${Object.keys(MAP.TOPICS).join(', ')}.` }) };
 
-module.exports = serve({ name: 'video-review', instructions: '', guide: '', tools: TOOLS }, module);
+module.exports = serve({ name: 'video-review', instructions: '', guide: '', tools: TOOLS, local }, module);

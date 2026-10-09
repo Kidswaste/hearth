@@ -132,8 +132,24 @@ function paletteColor(cols, t) {
 function spectrumAt(p) { const s = audio.spectrum; return s.length ? s[Math.min(s.length - 1, Math.floor(Math.pow(Math.max(0, Math.min(1, p)), 1.6) * s.length * 0.72))] / 255 : 0; }`;
   const BEATS = `// beats since the song started (from the beat grid)
 function beatCount() { return ((audio.bar || 1) - 1) * audio.beatsPerBar + ((audio.beatInBar || 1) - 1) + (audio.beatPhase || 0); }`;
+  const KEYS = `// a value along keyframes [[time, value], …] at time x; ease 0 smooth, 1 linear, 2 hold; loop wraps at the last key
+function keyAt(K, x, ease, loop) {
+  if (!K.length) return 0;
+  const end = K[K.length - 1][0];
+  if (loop && end > 0) x = ((x % end) + end) % end;
+  if (x <= K[0][0]) return K[0][1];
+  for (let i = 1; i < K.length; i += 1) {
+    if (x >= K[i][0]) continue;
+    const [a, va] = K[i - 1]; const [b, vb] = K[i];
+    if (ease === 2) return va;
+    let u = (x - a) / Math.max(1e-6, b - a);
+    if (ease === 0) u = u * u * (3 - 2 * u);
+    return va + (vb - va) * u;
+  }
+  return K[K.length - 1][1];
+}`;
   const helper = (c, name) => {
-    const code = { mixColor: MIXCOLOR, shiftColor: HUESHIFT, paletteColor: PALCOLOR, dotTexture: DOT, spectrumAt: SPEC, beatCount: BEATS }[name];
+    const code = { mixColor: MIXCOLOR, shiftColor: HUESHIFT, paletteColor: PALCOLOR, dotTexture: DOT, spectrumAt: SPEC, beatCount: BEATS, keyAt: KEYS }[name];
     if (name === 'paletteColor') c.helper('mixColor', MIXCOLOR);
     c.helper(name, code);
     return name;
@@ -713,6 +729,22 @@ let ${id}Travel = 0;`);
   time({ type: 'noiseWave', title: 'Noise', idBase: 'noise', desc: 'Smooth random wandering (Perlin noise), -1..1 or 0..1', keywords: 'perlin random smooth wander organic',
     inputs: [N('speed', 0.5, 0, 6), N('seed', 1, 0, 100, { step: 1 }), N('amplitude', 1, 0, 10), B('positive', true, { label: '0..1' })], outputs: [O('out', 'num', 'Value')],
     compile: (c) => ({ out: `(${c.in('amplitude')} * (${c.in('positive')} ? 0.5 + 0.5 * noise(t * ${c.in('speed')}, ${c.in('seed')} * 7.13) : noise(t * ${c.in('speed')}, ${c.in('seed')} * 7.13)))` }) });
+  // Keyframes in a node (After Effects style): the default way to move things over the song without music reactivity.
+  // "0:0.6, 4:1, 8:0.6" = seconds (or beats / bars) : value. The song's time when a song is loaded, else the sketch's clock.
+  time({ type: 'keys', title: 'Keyframes', idBase: 'keys', desc: 'A value over the song\'s time from keyframes (time:value, time:value…) with easing; loops at the last key unless Loop is off. Like After Effects keys, no music needed.', keywords: 'keyframe animate timeline curve ease automation after effects',
+    widgets: [{ name: 'keys', kind: 'text', value: '0:0, 4:1, 8:0', label: 'Keys (time:value)', slider: false }, SEL('ease', ['smooth', 'linear', 'hold'], { label: 'Easing' }), SEL('unit', ['seconds', 'beats', 'bars'], { label: 'Times in' })],
+    inputs: [B('loop', true, { label: 'Loop', slider: false }), N('amount', 1, 0, 4, { label: 'Amount' }), N('offset', 0, -10, 10, { label: 'Offset', slider: false })], outputs: [O('out', 'num', 'Value'), O('time', 'num', 'Key time')],
+    compile: (c) => {
+      helper(c, 'keyAt');
+      const keys = String(c.value('keys') || '').split(/[,;\n]+/).map((x) => x.split(':').map(Number)).filter((k) => k.length === 2 && k.every(Number.isFinite)).sort((a, b) => a[0] - b[0]);
+      c.setup(`const ${c.id}K = ${lit(keys.length ? keys : [[0, 0]])};`);
+      const per = { beats: ' * (audio.bpm || 120) / 60', bars: ' * (audio.bpm || 120) / 60 / (audio.beatsPerBar || 4)' }[c.value('unit')] || '';
+      const kt = `((audio.duration ? audio.time : t)${per})`;
+      const ease = { linear: 1, hold: 2 }[c.value('ease')] ?? 0;
+      const v = `keyAt(${c.id}K, ${kt}, ${ease}, ${c.in('loop')})`;
+      const amt = c.in('amount'); const off = c.in('offset');
+      return { out: `${off === '0' ? '' : `${off} + `}${amt === '1' ? v : `${v} * ${amt}`}`, time: kt };
+    } });
   time({ type: 'ramp', title: 'Ramp', desc: 'Goes 0 → 1 over Seconds, then starts again', keywords: 'loop timer progress', inputs: [N('seconds', 4, 0.1, 60)], outputs: [O('out', 'num', 'Ramp')],
     compile: (c) => ({ out: `fract(t / ${c.in('seconds')})` }) });
   define({ type: 'random', title: 'Random number', category: 'Math', color: '#48ddff', desc: 'A random number between Min and Max, the same every run for the same seed', keywords: 'seed constant dice',
@@ -995,6 +1027,47 @@ let ${id}Travel = 0;`);
     graph.meta = { preset: p.id };
     return graph;
   }
+  // ⏱ Timeline-first presets (listed first; the default): they move on the song's time with keyframes and cues and
+  // don't react to the music until the owner asks ("make it react" wires Music nodes in, or /make-it-react).
+  preset('timed-shape', 'Timed shape', 'A glowing wireframe shape that breathes on keyframes over the song and drifts through the palette', (g) => {
+    const geo = g.add('icosahedron', { detail: 1 }); const mat = g.add('basicMat', { color: '#ffd75e', wireframe: true }); const pal = g.add('palette', { drift: 0.04 });
+    const mesh = g.add('mesh'); const keys = g.add('keys', { keys: '0:0.8, 2:1.15, 4:1, 8:0.8', ease: 'smooth' }, 'Size over time');
+    const spin = g.add('spin', { axis: 'all', speed: 0.25 }); const bloom = g.add('bloom', { strength: 0.6 }); const out = g.add('output');
+    g.link(`${geo}.geo`, `${mesh}.geometry`); g.link(`${mat}.mat`, `${mesh}.material`); g.link(`${pal}.out`, `${mat}.color`); g.link(`${keys}.out`, `${mesh}.scale`);
+    g.link(`${mesh}.obj`, `${spin}.obj`); g.link(`${spin}.obj`, `${out}.objects`); g.link(`${bloom}.pass`, `${out}.post`);
+    g.frame('Motion', [keys, spin]);
+  }, 'timeline keyframes starter simple calm');
+  preset('keyed-tunnel', 'Tunnel flight', 'Rings rushing past: slow intro, faster at 8 s, full speed at 16 s, easing out (keyframed speed)', (g) => {
+    const tun = g.add('tunnel', { rings: 48, radius: 3.2, twist: 0.12 }); const keys = g.add('keys', { keys: '0:2, 8:6, 16:14, 24:3, 32:2', ease: 'smooth' }, 'Speed over time');
+    const cam = g.add('camera', { mode: 'fly', distance: 8, speed: 0.4 }); const bloom = g.add('bloom', { strength: 0.8, radius: 0.6 }); const out = g.add('output');
+    g.link(`${keys}.out`, `${tun}.speed`); g.link(`${tun}.obj`, `${out}.objects`); g.link(`${cam}.cam`, `${out}.camera`); g.link(`${bloom}.pass`, `${out}.post`);
+    g.frame('Motion', [keys]);
+  }, 'timeline keyframes tunnel fly');
+  preset('section-galaxy', 'Galaxy by sections', 'A slowly turning spiral galaxy whose colors step along the palette at each of your cues (Intro, Drop…)', (g) => {
+    const pts = g.add('particles', { shape: 'galaxy', count: 14000, spread: 6, size: 0.05, spin: 0.06, rotation: [65, 0, 0] });
+    const cue = g.add('cue'); const pos = g.add('remap', { inMin: 0, inMax: 6, outMin: 0, outMax: 1 }, 'Section → color'); const pal = g.add('palette', { drift: 0.01 });
+    const cam = g.add('camera', { mode: 'drift', speed: 0.08, distance: 9 }); const bloom = g.add('bloom', { strength: 0.7 }); const out = g.add('output');
+    g.link(`${cue}.index`, `${pos}.value`); g.link(`${pos}.out`, `${pal}.position`); g.link(`${pal}.out`, `${pts}.color`);
+    g.link(`${pts}.obj`, `${out}.objects`); g.link(`${cam}.cam`, `${out}.camera`); g.link(`${bloom}.pass`, `${out}.post`);
+  }, 'timeline cues sections galaxy space');
+  preset('drift-cubes', 'Drifting cubes', 'A floor of palette cubes in a slow wave that swells over the song and settles back (keyframed amount)', (g) => {
+    const box = g.add('box', { width: 0.5, height: 0.5, depth: 0.5 }); const mat = g.add('standardMat', { color: '#ffffff', roughness: 0.5, metalness: 0.1 });
+    const grid = g.add('gridCopies', { mode: 'wave', columns: 18, rows: 18, spacing: 0.7, palette: true, rotation: [50, 0, 0] });
+    const keys = g.add('keys', { keys: '0:0.3, 8:1.6, 16:0.6, 24:0.3', ease: 'smooth' }, 'Waves over time');
+    const sun = g.add('dirLight', { intensity: 2.5 }); const amb = g.add('ambientLight', { intensity: 0.5 }); const out = g.add('output');
+    g.link(`${box}.geo`, `${grid}.geometry`); g.link(`${mat}.mat`, `${grid}.material`); g.link(`${keys}.out`, `${grid}.amount`);
+    for (const x of [grid, sun, amb]) g.link(`${x}.obj`, `${out}.objects`);
+  }, 'timeline keyframes cubes wave grid');
+  preset('orbit-trails', 'Orbit trails', 'A glowing ring dancing a figure 8 with long trails; its size eases in over the first bars', (g) => {
+    const geo = g.add('torus', { radius: 0.7, tube: 0.12 }); const mat = g.add('basicMat', { additive: true }); const rb = g.add('rainbow', { speed: 0.08 });
+    const mesh = g.add('mesh'); const path = g.add('circlePath', { shape: 'figure 8', radius: 3, speed: 0.3 }); const move = g.add('move');
+    const spin = g.add('spin', { axis: 'all', speed: 1.2 }); const keys = g.add('keys', { keys: '0:0.2, 4:1, 16:1, 20:0.6, 24:1', unit: 'bars', ease: 'smooth' }, 'Size over bars');
+    const trails = g.add('afterimage', { length: 0.92 }); const bloom = g.add('bloom', { strength: 0.85 }); const out = g.add('output');
+    g.link(`${geo}.geo`, `${mesh}.geometry`); g.link(`${mat}.mat`, `${mesh}.material`); g.link(`${rb}.out`, `${mat}.color`); g.link(`${keys}.out`, `${mesh}.scale`);
+    g.link(`${mesh}.obj`, `${move}.obj`); g.link(`${path}.out`, `${move}.offset`); g.link(`${move}.obj`, `${spin}.obj`); g.link(`${spin}.obj`, `${out}.objects`);
+    g.link(`${trails}.pass`, `${out}.post`); g.link(`${bloom}.pass`, `${out}.post`);
+  }, 'timeline keyframes trails dance');
+  // ♪ Music presets (react to the song)
   // 1
   preset('beat-particles', 'Beat-pulsing particles', 'A sphere of glowing dots that swells on every kick, with bloom', (g) => {
     const hits = g.add('hits'); const pump = g.add('peak', { release: 0.86 });
@@ -1236,6 +1309,26 @@ let ${id}Travel = 0;`);
   }, 'video mp4 footage screen');
   // 29
   preset('empty', 'Empty graph', 'Just the Output: add nodes with Tab', (g) => { g.add('output'); }, 'blank start');
+
+  // The preset a layer starts from when none is named: timeline-driven (the owner: not every scene reacts to music).
+  const DEFAULT_PRESET = 'timed-shape';
+  // ⏱ moves on the timeline (keyframes, cues), ♪ reacts to the music: shown in preset lists so the director and the
+  // owner can tell them apart. Worked out once per preset from the graph it builds.
+  const reactsCache = new Map();
+  function reacts(p) {
+    if (!reactsCache.has(p.id)) {
+      let on = false;
+      try {
+        on = buildPreset(p).nodes.some((n) => {
+          const d = reg.get(n.type);
+          return d?.category === 'Music' || /^(spectrumBars|waveLine)$/.test(n.type) || (/^(ringCopies|gridCopies)$/.test(n.type) && n.values.mode === 'spectrum');
+        });
+      } catch { /* a broken preset just gets no mark */ }
+      reactsCache.set(p.id, on);
+    }
+    return reactsCache.get(p.id);
+  }
+  const markOf = (p) => (/\btimeline\b/.test(p.tags) ? '⏱ ' : reacts(p) ? '♪ ' : '');
 
   // ---------- the Lab: Code ⇄ Nodes ----------
   let lab = null; // set by attach()
@@ -1509,14 +1602,14 @@ let ${id}Travel = 0;`);
     const [verb, ...rest] = String(line || '').trim().split(/\s+/);
     const args = rest.join(' ');
     const v = (verb || 'list').toLowerCase().replace(/^\/?nodes-?/, '') || 'show';
-    if (v === 'presets') return PRESETS.filter((p) => !args || `${p.id} ${p.name} ${p.tags}`.toLowerCase().includes(args.toLowerCase())).map((p) => `- \`${p.id}\` ${p.name}: ${p.desc}`).join('\n');
+    if (v === 'presets') return PRESETS.filter((p) => !args || `${p.id} ${p.name} ${p.tags}`.toLowerCase().includes(args.toLowerCase())).map((p) => `- \`${p.id}\` ${markOf(p)}${p.name}: ${p.desc}`).join('\n');
     if (v === 'types') return typeList(args);
     const L = await ensureLab();
     if (v === 'show' || v === 'on' || v === 'nodes') { ThreeLab.act('noop'); L.setMode('nodes'); return null; }
     if (v === 'code' || v === 'off') { L.setMode('code'); return null; }
-    if (v === 'new' || v === 'sketch') { const p = L.usePreset(args || 'shape', 'sketch'); return `New sketch "${p.name}" from nodes.\n${summary(L.view.getGraph())}`; }
-    if (v === 'layer') { const p = L.usePreset(args || 'shape', 'layer'); return `Added the layer "${p.name}" (nodes).\n${summary(L.view.getGraph())}`; }
-    if (v === 'preset' || v === 'replace') { L.setMode('nodes', { quiet: true }); const p = L.usePreset(args || 'shape', 'replace'); return `This layer is now "${p.name}".\n${summary(L.view.getGraph())}`; }
+    if (v === 'new' || v === 'sketch') { const p = L.usePreset(args || DEFAULT_PRESET, 'sketch'); return `New sketch "${p.name}" from nodes.\n${summary(L.view.getGraph())}`; }
+    if (v === 'layer') { const p = L.usePreset(args || DEFAULT_PRESET, 'layer'); return `Added the layer "${p.name}" (nodes).\n${summary(L.view.getGraph())}`; }
+    if (v === 'preset' || v === 'replace') { L.setMode('nodes', { quiet: true }); const p = L.usePreset(args || DEFAULT_PRESET, 'replace'); return `This layer is now "${p.name}".\n${summary(L.view.getGraph())}`; }
     if (v === 'list' || v === 'graph') { if (L.mode !== 'nodes') L.setMode('nodes', { quiet: true }); return L.state === 'code' ? 'This layer is code, not nodes. Start one with /nodes-new <preset> or /nodes-preset <preset>.' : `${L.state === 'edited' ? '(Read-only: the code was edited outside the nodes; /nodes-rebuild writes the nodes back.)\n' : ''}${summary(L.view.getGraph(), { full: args === 'all' })}`; }
     if (v === 'rebuild') { L.rebuild(); return 'Code rebuilt from the nodes.'; }
     if (v === 'from-code' || v === 'outline') { L.showOutline(); return null; }
@@ -1576,15 +1669,16 @@ let ${id}Travel = 0;`);
   const nodeIds = () => (lab ? lab.view.getGraph().nodes.map((n) => n.id) : []);
   const cmd = (name, o) => Commands.register({ name, area, ...o, run: async (args) => { const r = await run(`${o.verb || name} ${args}`); return r || undefined; } });
   if (typeof Commands !== 'undefined') {
-    // The director only gets its three_nodes tool when you opt in (it adds ~90 tokens to each of its messages).
+    // Directors get their three_nodes tool by default (the owner wants a node view of visual work; ≈ 75 tokens per
+    // message). Off sets agent.nodesTool = false (engines.js nodesOn).
     Commands.register({
-      name: 'nodes-director', area, args: 'on|off', desc: 'Let Three.js director agents edit node graphs themselves (adds ~90 tokens per message)',
+      name: 'nodes-director', area, args: 'on|off', desc: 'Three.js directors build in node graphs (on by default, ≈ 75 tokens per message); off: code only',
       complete: () => [{ value: 'on' }, { value: 'off' }],
       run: async (a) => {
         const dirs = H.config.agents.filter((x) => x.threeTools);
         if (!dirs.length) return 'No Three.js director agent yet.';
-        const want = a.trim() ? a.trim() === 'on' : !dirs[0].nodesTool;
-        for (const d of dirs) d.nodesTool = want || undefined;
+        const want = a.trim() ? a.trim() === 'on' : dirs[0].nodesTool === false;
+        for (const d of dirs) d.nodesTool = want ? undefined : false;
         await saveConfig();
         return want ? `Directors can now edit node graphs (${dirs.map((d) => d.name).join(', ')}). Takes effect in their next new chat.` : 'Directors no longer get the node tool; you can still use /nodes yourself.';
       },
@@ -1613,8 +1707,120 @@ let ${id}Travel = 0;`);
     AppUI.addAction('Lab: Node presets…', () => ensureLab().then((L) => { ThreeLab.act('noop'); L.setMode('nodes'); L.presetPicker('replace'); }));
     AppUI.addAction('Lab: New layer from a node preset…', () => ensureLab().then((L) => { ThreeLab.act('noop'); L.presetPicker('layer'); }));
   }
-  // The Three Director's three_nodes tool: one command line, the same verbs as the chat commands.
-  async function tool(args = {}) {
+  // ---------- the director's tool on a scene that isn't on screen (per-chat scenes) ----------
+  // Same verbs, on the graph as data: read the chat's selected layer from its sketch, change the graph, compile it and
+  // write the code back through the Lab tools (HubBridge routes those to that chat's scene, backstage). So Claude or
+  // Astra keep building in nodes while the owner looks at another chat.
+  function graphEditor(graph) {
+    const g = NodeView.normalize(graph || NodeView.emptyGraph('three'), reg);
+    const nodeOf = (id) => g.nodes.find((n) => n.id === id);
+    const port = (id, name, dir) => {
+      const n = nodeOf(id); const d = n && reg.get(n.type);
+      if (!d) throw new Error(`No node "${id}". Nodes: ${g.nodes.map((x) => x.id).join(', ') || 'none'}`);
+      const list = dir === 'out' ? d.outputs : d.inputs;
+      const f = list.find((x) => x.name === name) || (!name && list[0]);
+      if (!f) throw new Error(`${id} has no ${dir === 'out' ? 'output' : 'input'} "${name}" (${list.map((x) => x.name).join(', ') || 'none'})`);
+      return f;
+    };
+    return {
+      graph: g,
+      add(def, values = {}) {
+        const id = reg.idFor(def, g);
+        const n = { id, type: def.type, x: 0, y: 0, values: {} };
+        for (const f of def.fields) if (f.value !== undefined) n.values[f.name] = JSON.parse(JSON.stringify(f.value));
+        Object.assign(n.values, values);
+        g.nodes.push(n);
+        return id;
+      },
+      connect(a, ap, b, bp) {
+        const o = port(a, ap, 'out'); const i = port(b, bp, 'in');
+        if (!reg.compatible(o.type, i.type)) throw new Error(`Can't wire ${a}.${o.name} (${o.type}) into ${b}.${i.name} (${i.type}).`);
+        if (!i.multi) g.links = g.links.filter((l) => !(l.to[0] === b && l.to[1] === i.name));
+        g.links.push({ from: [a, o.name], to: [b, i.name] });
+      },
+      disconnect(b, bp) { g.links = g.links.filter((l) => !(l.to[0] === b && (!bp || l.to[1] === bp))); },
+      setValue(id, k, v) { const n = nodeOf(id); const d = n && reg.get(n.type); if (!d?.fields.some((f) => f.name === k)) return false; n.values[k] = v; return true; },
+      remove(ids) { g.nodes = g.nodes.filter((n) => !ids.includes(n.id)); g.links = g.links.filter((l) => !ids.includes(l.from[0]) && !ids.includes(l.to[0])); },
+    };
+  }
+  const findPreset = (id) => PRESETS.find((x) => x.id === id) || PRESETS.find((x) => x.name.toLowerCase() === String(id).toLowerCase()) || PRESETS.find((x) => `${x.id} ${x.name} ${x.tags}`.toLowerCase().includes(String(id).toLowerCase()));
+  async function runOnData(line, ctx) {
+    const [verb, ...rest] = String(line || '').trim().split(/\s+/);
+    const args = rest.join(' ');
+    const v = (verb || 'list').toLowerCase().replace(/^\/?nodes-?/, '') || 'list';
+    if (v === 'presets' || v === 'types') return run(line);
+    const call = async (name, a) => { const r = await HubBridge.call(name, a, ctx); if (r?.ok === false) throw new Error(r.error); return r?.value; };
+    const S = ThreeLab.scenes;
+    const sketch = S.get(ctx.sketchId);
+    if (!sketch) throw new Error('This chat\'s sketch is gone.');
+    const layers = S.layersOf(sketch);
+    const L = layers.find((x) => x.id === S.selectedOf(sketch.id)) || layers.at(-1);
+    const write = async (graph, msg) => {
+      NodeView.autoLayout(graph, reg, { colW: 240 });
+      const r = compile(graph);
+      await call('three_update_layer', { layer: L.id, code: r.code, wait: 1.5 });
+      return `${msg}\n${summary(graph)}${r.errors.length ? `\nerrors: ${r.errors.map((e) => `${e.node || ''} ${e.message}`.trim()).join('; ')}` : ''}`;
+    };
+    if (v === 'new' || v === 'sketch' || v === 'layer') {
+      const p = findPreset(args || DEFAULT_PRESET);
+      if (!p) throw new Error(`No preset "${args}". Presets: ${PRESETS.map((x) => x.id).join(', ')}`);
+      const graph = buildPreset(p);
+      const code = compile(graph).code;
+      if (v === 'layer') await call('three_add_layer', { name: p.name, code, wait: 1.5 }); else await call('three_new_sketch', { name: p.name, code });
+      return `${v === 'layer' ? `Added the layer "${p.name}"` : `New sketch "${p.name}"`} (nodes, backstage: the owner sees it when they open this chat).\n${summary(graph)}`;
+    }
+    const found = fromCode(L.code);
+    if (v === 'preset' || v === 'replace') {
+      const p = findPreset(args || DEFAULT_PRESET);
+      if (!p) throw new Error(`No preset "${args}".`);
+      return write(buildPreset(p), `"${L.name}" is now "${p.name}".`);
+    }
+    if (v === 'list' || v === 'graph') return found ? `${found.edited ? '(Read-only: its code was edited outside the nodes; "rebuild" writes the nodes back.)\n' : ''}${summary(found.graph, { full: args === 'all' })}` : `"${L.name}" is code, not nodes. Start one with "layer <preset>" (a new layer) or "preset <preset>".`;
+    if (v === 'rebuild') { if (!found) throw new Error(`"${L.name}" has no graph.`); return write(found.graph, 'Code rebuilt from the nodes.'); }
+    if (!found && v !== 'add') throw new Error(`"${L.name}" is code, not nodes ("list" shows it; "layer <preset>" starts a node layer).`);
+    const E = graphEditor(found?.graph || buildPreset(findPreset('empty')));
+    if (v === 'add') {
+      const [type, ...kv] = args.split(/\s+/);
+      filterDefs();
+      const def = reg.get(type) || reg.list().find((d) => d.title.toLowerCase() === String(type).toLowerCase()) || reg.list().find((d) => `${d.type} ${d.title}`.toLowerCase().includes(String(type).toLowerCase()));
+      if (!def) throw new Error(`No node type "${type}" ("types" lists them).`);
+      const vals = Object.fromEntries(pairs(kv.join(' ')));
+      const to = vals.to; delete vals.to;
+      const id = E.add(def, vals);
+      if (to) {
+        const [tid, tport] = ref(to);
+        const tf = reg.get(E.graph.nodes.find((n) => n.id === tid)?.type)?.inputs.find((f) => f.name === tport);
+        const o = tf && def.outputs.find((x) => reg.compatible(x.type, tf.type));
+        if (o) E.connect(id, o.name, tid, tport);
+      }
+      return write(E.graph, `Added ${id} (${def.title}). Inputs: ${def.inputs.map((f) => f.name).join(', ') || '–'}; outputs: ${def.outputs.map((o) => o.name).join(', ') || '–'}.`);
+    }
+    if (v === 'link' || v === 'connect') {
+      const [a, b] = args.split(/\s+|→|->/).filter(Boolean);
+      if (!b) throw new Error('Use: link <node.output> <node.input>');
+      const [x, xp] = ref(a); const [y, yp] = ref(b);
+      E.connect(x, xp, y, yp);
+      return write(E.graph, `Connected ${a} → ${b}.`);
+    }
+    if (v === 'unlink' || v === 'disconnect') { const [y, yp] = ref(args); E.disconnect(y, yp || null); return write(E.graph, `Disconnected ${args}.`); }
+    if (v === 'set') {
+      const [id, ...kv] = args.split(/\s+/);
+      const done = pairs(kv.join(' ')).filter(([k, val]) => E.setValue(id, k, val)).map(([k]) => k);
+      if (!done.length) throw new Error(`Nothing set on ${id}.`);
+      return write(E.graph, `Set ${done.map((k) => `${id}.${k}`).join(', ')}.`);
+    }
+    if (v === 'rm' || v === 'remove' || v === 'delete') { const ids = args.split(/[\s,]+/).filter(Boolean); E.remove(ids); return write(E.graph, `Removed ${ids.join(', ')}.`); }
+    if (v === 'layout') return write(E.graph, 'Tidied.');
+    throw new Error(`Backstage the node tool does: layer, preset, list, add, link, unlink, set, rm, layout, rebuild, presets, types (not ${verb}).`);
+  }
+
+  // The Three Director's three_nodes tool: one command line, the same verbs as the chat commands. A call from a chat
+  // whose scene isn't on screen works on that scene's data (runOnData) instead of the Lab view.
+  async function tool(args = {}, ctx = {}) {
+    const route = typeof ChatScenes !== 'undefined' && typeof ThreeLab !== 'undefined' && ThreeLab.scenes ? ChatScenes.routeThree('three_nodes', ctx.chatId) : null;
+    if (route?.sketchId && route.sketchId !== ThreeLab.scenes.currentId() && ThreeLab.scenes.get(route.sketchId)) {
+      try { return { ok: true, value: { result: await runOnData(String(args.command || 'list'), { chatId: route.chatId || ctx.chatId, sketchId: route.sketchId }) } }; } catch (err) { return { ok: false, error: err.message }; }
+    }
     try {
       const text = await run(String(args.command || 'list'));
       const L = lab;
@@ -1623,7 +1829,7 @@ let ${id}Travel = 0;`);
       return { ok: true, value: { result: text || 'done', ...(r ? { errors: r.errors.map((e) => `${e.node || ''} ${e.message}`.trim()), warnings: r.warnings.map((e) => e.message) } : {}), note: 'It runs in the Lab now; three_console / three_screenshot show the result.' } };
     } catch (err) { return { ok: false, error: err.message }; }
   }
-  if (typeof HubBridge !== 'undefined') HubBridge.register(['three_nodes'], (name, args) => tool(args));
+  if (typeof HubBridge !== 'undefined') HubBridge.register(['three_nodes'], (name, args, ctx) => tool(args, ctx));
   // NodeView.openCode(code) for three.js sketches: a sketch made with nodes reopens as nodes in the Lab. Other
   // three.js code opens in the code flow view (nodes-code.js), which offers "Open in the Lab" from there.
   NodeView.registerAdapter({

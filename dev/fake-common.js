@@ -11,6 +11,10 @@
 //   big       reports a huge input usage (auto-compact) echo     replies with the exact prompt it got
 //   mcp       really calls the hub MCP servers it was given (--mcp-config / -c mcp_servers.*): the tools in a line
 //             `mcp: [["three_console", {}], ["three_do", {"cmd": "layers"}]]` (default: tools/list + three_console)
+//   direct    a director turn with the owner's habits (round 6): "direct: add a tunnel" builds a NEW layer through
+//             three_nodes (a timeline preset; falls back to three_add_layer with code when the node tool is off),
+//             animates it with keyframes and looks with a small screenshot; "make it react" runs /make-it-react;
+//             a "[Task state…" handover is acknowledged ("Picking up: <goal>").
 // Jam turns (jam.js) are recognized by their first line ("Jam · round 2/4 · you build" / "you direct" / "Jam · final
 // pick"): a build sets a real sketch through the Lab's MCP tools, a direction is two short lines, a pick names a round.
 // In the jam's idea: jam-break makes builds fail (until a "fix the errors first" turn), jam-break-hard always,
@@ -46,7 +50,7 @@ function saveState(id, s) { try { fs.writeFileSync(path.join(STATE_DIR, `${id}.j
 
 // The user's own words: what follows any context the hub wrapped around it.
 function userPart(prompt) {
-  const cut = prompt.split(/<\/(?:earlier_conversation|summary|since_then)>/).pop();
+  const cut = prompt.split(/<\/(?:earlier_conversation|summary|since_then|recent_messages)>/).pop();
   return cut.replace(/<file name="[^"]*">[\s\S]*?<\/file>/g, '').trim();
 }
 
@@ -103,9 +107,62 @@ function jamPlan(msg, engine) {
   return null;
 }
 
+// A transparent layer (for directors without the node tool): one shape, sliders, motion on time only.
+function layerCode(name, seed) {
+  const color = JAM_COLORS[seed % JAM_COLORS.length];
+  return `import * as THREE from 'three';
+const P = tweak({ size: { value: 1, min: 0.2, max: 3, label: 'Size', group: 'Shape' }, color: { value: '${color}', label: 'Color', group: 'Color' }, spin: [0.4, -2, 2] });
+const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+document.body.append(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100);
+camera.position.z = 5;
+const mesh = new THREE.Mesh(new THREE.TorusGeometry(1, 0.08, 16, 96), new THREE.MeshBasicMaterial({ color: P.color }));
+mesh.name = ${JSON.stringify(name)};
+scene.add(mesh);
+renderer.setAnimationLoop((now) => {
+  mesh.rotation.z = now / 1000 * P.spin;
+  mesh.scale.setScalar(P.size * (1 + 0.1 * Math.sin(now / 900)));
+  mesh.material.color.set(P.color);
+  renderer.render(scene, camera);
+});`;
+}
+// The owner's director habits as a fake director follows them: each ask = a new layer (nodes first), time-driven
+// motion, a look; reactivity only when asked; a handover is picked up from the task state.
+function directorPlan(prompt, msg, engine) {
+  const ask = (msg.match(/^direct:\s*(.+)$/im) || [])[1];
+  if (!ask) return null;
+  const calls = [];
+  const lines = [];
+  const handed = (prompt.match(/\[Task state[^\n]*\n(?:Goal: (.+))?/) || []);
+  if (/\[Task state/.test(prompt)) {
+    const done = (prompt.match(/^Done so far: (.+)$/m) || [])[1];
+    lines.push(`Picking up: ${handed[1] || 'the task'}${done ? ` (${done.split('; ').length} things done)` : ''} on ${engine === 'codex' ? 'Astra' : 'Claude'}.`);
+    calls.push(['three_do', { cmd: 'task' }]);
+  }
+  if (/make it react|react to the music/i.test(ask)) {
+    calls.push(['three_do', { cmd: 'run', command: '/make-it-react' }]);
+    lines.push('Linked the sliders to the music.');
+  } else {
+    const preset = /tunnel/i.test(ask) ? 'keyed-tunnel' : /galaxy|stars/i.test(ask) ? 'section-galaxy' : /cube/i.test(ask) ? 'drift-cubes' : /ring|trail/i.test(ask) ? 'orbit-trails' : 'timed-shape';
+    const name = ask.replace(/^(add|make|build|put)\s+(a|an|some|the)?\s*/i, '').slice(0, 24) || 'Layer';
+    calls.push(['three_nodes', { command: `layer ${preset}` }, ['three_add_layer', { name, code: layerCode(name, ask.length) }]]);
+    calls.push(['three_do', { cmd: 'keyframes', layer: 'top', property: 'opacity', keys: [{ time: 0, value: 0 }, { time: 2, value: 1, ease: 'ease' }] }]);
+    calls.push(['three_screenshot', { size: 'small' }]);
+    lines.push(`Added "${name}" as its own layer, fading in over 2 s on the timeline.`);
+  }
+  return { mcpCalls: calls, text: lines.join(' ') };
+}
+
 function plan(prompt, engine = 'claude') {
   const msg = userPart(prompt);
   const jam = jamPlan(msg, engine);
+  const dir = jam ? null : directorPlan(prompt, msg, engine);
+  if (dir) {
+    const p = { mcp: true, mcpCalls: dir.mcpCalls };
+    return { p, text: dir.text, thinking: '' };
+  }
   const has = (w) => new RegExp(`\\b${w}\\b`, 'i').test(msg);
   const p = {
     think: has('think'), tool: has('tool'), tools3: has('tools3'), code: has('code'), table: has('table'), long: has('long'),

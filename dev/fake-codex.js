@@ -44,11 +44,13 @@ const F = require('./fake-common');
   if (p.mcp) {
     const lines = [`servers: ${Object.keys(servers).join(', ') || 'none'}`];
     const clients = {};
-    for (const [tool, a] of p.mcpCalls || [['three_console', {}]]) {
+    for (const [tool0, a0, fallback] of p.mcpCalls || [['three_console', {}]]) {
+      let [tool, a] = [tool0, a0];
       const spec = F.serverFor(servers, tool);
       if (!spec) { lines.push(`${tool}: no server`); continue; }
       const name = Object.keys(servers).find((k) => servers[k] === spec);
       clients[name] ||= await F.mcpClient(spec);
+      if (fallback && !clients[name].tools.some((t) => t.name === tool)) [tool, a] = fallback;
       const id = `item_${n++}`;
       F.out({ type: 'item.started', item: { id, type: 'mcp_tool_call', server: name, tool, arguments: a, status: 'in_progress' } });
       const r = await clients[name].call(tool, a);
