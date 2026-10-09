@@ -10,7 +10,10 @@ const SRC = window.EDITOR_VIDS || '/tmp/hearth-editor-videos';
 const VIDS = `${window.SMOKE_SAVES}/renders`;
 await window.hub.fs.write(`${VIDS}/.keep`, '');
 for (const f of (await window.hub.fs.list(SRC)).filter((x) => !x.isDir)) await window.hub.fs.copy(f.path, `${VIDS}/${f.name}`);
-await Commands.tryRun('/director-setup video', H.claudeAgent().id);
+Commands.tryRun('/director-setup video', H.claudeAgent().id);
+// it asks first: "Add it"
+await until(() => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Add it'), 8000);
+[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Add it')?.click();
 await until(() => H.agents().some((a) => a.dock === 'ae'));
 const agent = H.agents().find((a) => a.dock === 'ae');
 activate('tool:ae');
