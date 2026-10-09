@@ -27,6 +27,8 @@ showMenu(100, 100, [{ label: 'Duplicate  Ctrl+D', action() {} }, { label: 'Save 
 const keysShown = [...document.querySelectorAll('#menu .menu-key')].map((k) => k.textContent);
 ok(keysShown[0] === '⌘D' && keysShown[1] === '⌘⇧S', 'menus show ⌘D / ⌘⇧S', keysShown);
 hideMenu();
+const tips = ['Undo (⌘/Ctrl+Z)', 'Board drawer (Ctrl+Shift+M)', 'Capture menu (⌘/Ctrl+Alt+S)', 'Ctrl+click on a Mac'].map((t) => el('button', { title: t }).title);
+ok(tips[0] === 'Undo (⌘Z)' && tips[1] === 'Board drawer (⌘Shift+M)'.replace('Shift+', 'Shift+') && tips[2] === 'Capture menu (⌘⌥S)' && tips[3] === 'Ctrl+click on a Mac', 'tooltips read ⌘ / ⌥', tips);
 Capture.menu(100, 100, Capture.mainItems()); await wait(300);
 const capKeys = [...document.querySelectorAll('#menu .menu-key')].map((k) => k.textContent).filter((t) => /⌘|Ctrl/.test(t));
 ok(capKeys.length && capKeys.every((t) => /^⌘⌥[A-Z]$/.test(t)), 'the capture menu shows ⌘⌥R (not ⌘+Alt+R)', capKeys);
