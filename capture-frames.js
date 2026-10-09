@@ -357,14 +357,12 @@ const FrameRead = (() => {
     const fps0 = async () => (await info(file)).fps;
     if (m === 'info') { const v = await info(file); return { value: v, text: `${base(file)}: ${v.w}×${v.h}, ${v.fps} fps${v.vfr ? ' (variable)' : ''}, ${v.frames} frames, ${tc(v.duration, v.fps, 'ms')}${v.codec ? `, ${v.codec}` : ''}${v.exact ? '' : ' (estimated without ffmpeg)'}`, images: [] }; }
     if (m === 'at') {
-      const wants = [].concat(a.frames ?? []).map((frame) => ({ frame })).concat([].concat(a.times ?? a.time ?? (a.frames ? [] : [0])).map((t) => (typeof t === 'string' ? (parseTime(t, 30) || { time: 0 }) : { time: t })));
       const fps = await fps0();
+      // timecodes and "f12" are read with the video's own rate (00:00:01:05 is frame 30 at 25 fps, 35 at 30)
+      const asTime = (t) => (typeof t === 'number' ? { time: t } : parseTime(t, fps) || { time: 0 });
+      const wants = [].concat(a.frames ?? []).map((frame) => ({ frame: Number(frame) })).concat([].concat(a.times ?? a.time ?? (a.frames ? [] : [0])).map(asTime));
       const out = [];
-      for (const w of wants.slice(0, 24)) {
-        const fixed = w.frame == null && w.time == null ? w : w.frame != null ? w : { time: w.time };
-        if (typeof w.tc === 'string') fixed.tc = w.tc;
-        out.push(await at(file, fixed, { width: a.width, format: a.format || 'png' }));
-      }
+      for (const w of wants.slice(0, 24)) out.push(await at(file, w, { width: a.width, format: a.format || 'png' }));
       return { value: out.map(({ frame, time, tc: t, path, exact }) => ({ frame, time, tc: t, path, ...(exact === false ? { exact } : {}) })), text: out.map((f) => `${tc(f.time, fps, 'both')} → ${f.path}`).join('\n'), images: out.map((f) => ({ path: f.path, label: tc(f.time, fps, 'both') })) };
     }
     if (m === 'every' || m === 'spread') {

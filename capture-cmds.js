@@ -195,7 +195,8 @@
     const toChat = rest.some((x) => /^(chat|attach|send)$/i.test(x));
     const nums = rest.filter((x) => !/^(chat|attach|send)$/i.test(x));
     const a = {};
-    if (mode === 'at') { a.times = []; a.frames = []; for (const x of nums) { const p = FrameRead.parseTime(x); if (p?.frame != null) a.frames.push(p.frame); else if (p?.time != null) a.times.push(p.time); else if (/^\d+:\d+:\d+:\d+$/.test(x)) a.times.push(x); } if (!a.times.length && !a.frames.length) a.times = [0]; }
+    // times stay text: the reader parses timecodes / f12 with the video's real frame rate
+    if (mode === 'at') { a.times = nums.filter((x) => FrameRead.parseTime(x)); if (!a.times.length) a.times = [0]; }
     if (mode === 'every') a.every = Number(nums[0]) || 10;
     if (mode === 'spread') a.count = Number(nums[0]) || 12;
     if (mode === 'scenes' || mode === 'pacing') a.sensitivity = nums.find((x) => D.SENSITIVITY.some((s) => s.id === x)) || 'normal';
