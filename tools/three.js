@@ -1664,6 +1664,8 @@ const ThreeLab = (() => {
         at < Ls.length - 1 ? ['Move up', '', () => move(at + 1)] : null,
         at > 0 ? ['Move down', '', () => move(at - 1)] : null,
         at < Ls.length - 1 ? ['To the top', '', () => move(Ls.length)] : null,
+        // (round 7) the layer's timing, whose two buttons wait behind Alt now
+        player.loaded ? ['Plays', L.in != null || L.out != null ? 'part of the song' : 'the whole song', [['The whole song', '', () => editLayer(L.id, { in: null, out: null }), L.in == null && L.out == null], player.loop ? ['Only during the loop', '', () => editLayer(L.id, { in: player.loop.a, out: player.loop.b })] : null].filter(Boolean)] : null,
         'Opacity',
         ...[1, 0.75, 0.5, 0.25].map((o) => [`${Math.round(o * 100)}%`, '', () => editLayer(L.id, { opacity: o }), Math.abs((L.opacity ?? 1) - o) < 0.01]),
         'Blend',

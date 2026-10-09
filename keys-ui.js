@@ -69,6 +69,8 @@ const KeysUI = (() => {
     ['[data-feature="Layers & sliders"]', '/'], ['[data-feature="Edit scene"]', 'E'], ['[data-feature="Live sound"]', 'Shift+L'], ['[data-feature="Shuffle"]', 'R'],
     ['[data-feature="Shuffle back"]', 'Shift+R'], ['[data-feature="Save"]', 'Ctrl+S'], ['.layers .tw-head .primary', 'X'], ['.three-sketch-select', 'O'],
     ['.mb-g-capture button', 'N'], ['.dd-undo', 'Alt+Shift+Z'], ['.dd-fold', 'Alt+Shift+D'], ['.dd-rail', 'Alt+Shift+D'], ['.tool-dock .native-head > button:last-of-type', 'Ctrl+N'],
+    ['[data-feature="Console"]', '`'], ['[data-feature="Present"]', 'P'], ['.ly-eye', 'Alt+1…9'], ['.notes-panel button[title^="Close"]', 'Ctrl+J'],
+    ['.tw-search', '/'], ['[data-feature="Freeze"]', 'F'], ['.vr-play', 'Space'], ['.vr-libtoggle', 'B'],
   ];
   const TITLE_KEY = /(?:^|[\s(·,])((?:(?:Ctrl|Alt|Shift|⌘|⌥|⇧)\+)+(?:F\d{1,2}|Enter|Space|Tab|Home|End|PgUp|PgDn|Delete|Esc|[A-Z0-9]|[,.;/\\[\]`=+\-|?]|←|→|↑|↓))|\((F\d{1,2}|Space|Esc|Home|End|[A-Z0-9?`|\\/.,[\]←→↑↓])(?:\s+or\s+[^)]*)?\)/;
   function keyFor(b) {
@@ -231,6 +233,7 @@ const KeysUI = (() => {
       el('div', { class: 'ks-head' }, el('b', { text: 'Keys & hidden buttons' }), el('span', { class: 'spacer' }), latchBtn, el('button', { type: 'button', class: 'ks-x', text: '×', title: 'Close (Esc)', on: { click: () => close() } })),
       q, tips, body,
       el('div', { class: 'ks-foot' }, el('span', { text: 'Not a shortcut person? Every line here is also in a menu or a /command.' }), el('span', { class: 'spacer' }),
+        el('button', { type: 'button', class: 'ks-link', text: 'Customise…', title: 'What waits behind Alt, what you pinned back on screen', on: { click: (e) => { const r = e.currentTarget.getBoundingClientRect(); close(); showMenu(r.left, r.top - 8, customiseMenu()); } } }),
         el('button', { type: 'button', class: 'ks-link', text: '/help', title: 'Every chat command', on: { click: () => { close(); Commands.exec('/help', H.claudeAgent()?.id); } } }),
         el('button', { type: 'button', class: 'ks-link', text: 'Table', title: 'The printable table of keys', on: { click: () => { close(); AppUI.shortcutsHelp(); } } })));
     let sel = -1;
@@ -287,7 +290,24 @@ const KeysUI = (() => {
     btn = el('button', { class: 'tool-btn keys-btn', id: 'keys-btn', title: `Keys & hidden buttons (${keyText('Ctrl+/')}) · hold ${MAC ? '⌥' : 'Alt'} for tucked buttons, ${MAC ? '⌘' : 'Ctrl'} for key badges`, dataset: { feature: 'Keys button' } });
     btn.innerHTML = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M7.5 14h9"/></svg>';
     btn.addEventListener('click', () => open());
+    // right-click the keys button: the reveal switches in one short menu
+    btn.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showMenu(e.clientX + 6, e.clientY - 150, [
+        { label: 'Keys & hidden buttons…', key: 'Ctrl+/', action: () => open() },
+        { label: 'Show the tucked buttons', key: 'Alt Alt', checked: latched, action: () => latch() },
+        { label: 'Key badges while Ctrl is held', checked: store.get('keys.ctrlHints', true), action: () => store.set('keys.ctrlHints', !store.get('keys.ctrlHints', true)) },
+        { label: 'Customise', items: customiseMenu },
+        { label: 'Show everything, always', hint: '/calm', checked: typeof Declutter !== 'undefined' && Declutter.isOff(), action: () => Commands.exec(`/calm ${Declutter.isOff() ? 'on' : 'off'}`, H.claudeAgent()?.id) },
+      ]);
+    });
     rail.append(btn);
+  }
+
+  // every area's Customise this… in one menu (the sheet's Customise…, a right-click on the keys button)
+  function customiseMenu() {
+    if (typeof Declutter === 'undefined') return [];
+    return Declutter.areas().map((a) => ({ label: a, hint: `${Declutter.REVEAL.filter((r) => r.area === a && Declutter.pinned(r.id)).length || ''}`, items: () => (Declutter.customiseItems(a, null, { exact: true })[1]?.items || []).filter((it) => it !== '-' && !/Customise|Keys and hidden/.test(it.label || '')) }));
   }
 
   // ---------- the registry: every key, reveal and right-click menu in the app ----------
@@ -469,6 +489,48 @@ const KeysUI = (() => {
       { area: 'Video Review', keys: 'T', what: 'Time as timecode / seconds / frames', when: inVideo },
       { area: 'Video Review', keys: 'Ctrl+C / Ctrl+S', what: 'Copy the frame / save it as a PNG', when: inVideo },
       { area: 'Video Review', keys: '?', what: 'Every Video Review key', when: inVideo },
+      // the command bar (Ctrl+;) and the palette (Ctrl+K)
+      { area: 'Command bar', keys: 'Enter', what: 'Run the line and keep the bar for the next one', run: () => CmdBar.open() },
+      { area: 'Command bar', keys: 'Ctrl+Enter', what: 'Run it and close the bar' },
+      { area: 'Command bar', keys: 'Alt+Enter', what: 'Run it and keep the text' },
+      { area: 'Command bar', keys: '↑ / ↓', what: 'Commands you ran before' },
+      { area: 'Command bar', keys: 'Tab', what: 'In an empty bar: your last command again' },
+      { area: 'Command bar', keys: 'Ctrl+R', what: 'Search your command history' },
+      { area: 'Command bar', keys: 'Ctrl+Z', what: 'In an empty bar: take back the last command (when it can be undone)' },
+      { area: 'Command bar', keys: 'Ctrl+L', what: 'Clear the result card' },
+      { area: 'Command bar', keys: 'Alt+1…9', what: 'Run your pinned command 1…9 (☆ in the / menu pins one)' },
+      { area: 'Command bar', keys: 'Esc', what: 'Clear the line, then close' },
+      { area: 'Command bar', keys: 'F1', what: 'Every command, searchable', run: () => CmdBar.help() },
+      { area: 'Command palette', keys: '↑ / ↓ / Enter', what: 'Pick an action', run: () => AppUI.palette() },
+      { area: 'Command palette', keys: '?', what: 'Typed first: search the messages of every chat' },
+      { area: 'Command palette', keys: '/', what: 'Typed first: hands over to the command bar' },
+      // the / menu in a chat box
+      { area: 'Chat box', keys: '↑ / ↓', what: 'In the / menu: move (Enter runs, Esc closes)', when: inChat },
+      { area: 'Chat box', keys: 'Tab', what: 'In the / menu: complete the command or argument', when: inChat },
+      // the effects picker (X in the Lab)
+      { area: 'Effects picker', keys: '↑ / ↓ / PgUp / PgDn', what: 'Move through the list', when: inLab },
+      { area: 'Effects picker', keys: 'Enter', what: 'Add it (Shift+Enter: replace the selected layer’s look)', when: inLab },
+      { area: 'Effects picker', keys: 'Tab / Shift+Tab', what: 'Browse all · next / previous tab', when: inLab },
+      { area: 'Effects picker', keys: 'Ctrl+D', what: '★ Favorite the highlighted one', when: inLab },
+      { area: 'Effects picker', keys: 'Alt+R', what: 'Surprise me: a random one', when: inLab },
+      { area: 'Effects picker', keys: 'Esc', what: 'Close the picker', when: inLab },
+      // notes, find
+      { area: 'Notes', keys: 'Ctrl+Enter', what: 'Tick / untick the checklist line under the cursor (or make it one)', sel: '.notes-panel' },
+      { area: 'Notes', keys: 'Ctrl+J', what: 'Open / close Notes', run: () => Notes.toggle() },
+      { area: 'Find', keys: 'Enter / Shift+Enter', what: 'Next / previous match (Ctrl+F opens it)', run: () => AppUI.find() },
+      { area: 'Find', keys: 'Esc', what: 'Close find' },
+      // node picker and presets
+      { area: 'Nodes', keys: 'Double-click', what: 'Empty space: add a node there (the picker: ↑ ↓ Enter, Esc)' },
+      { area: 'Nodes', keys: '← → ↑ ↓', what: 'In the presets grid: move · Enter: use it' },
+      // the Kit tool, Forge and the Lab's tool tabs
+      { area: 'Kit', keys: 'T', what: 'Tap tempo (in the Kit’s BPM tool)' },
+      { area: 'Kit', keys: 'Enter', what: 'Read a color / palette / frame size you typed' },
+      { area: 'Lab', keys: 'Esc', what: 'From a Lab tool tab (model viewer, shaders…): back to the sketch', when: inLab },
+      { area: 'Lab', keys: '.', what: 'While frozen: one frame forward', when: inLab },
+      { area: 'Lab', keys: '\\', what: 'Freeze / unfreeze (like F)', when: inLab, run: act('freeze') },
+      { area: 'Lab sliders & layers', keys: 'Shift+C', what: 'Recall slider slot C', when: inLab, run: act('slotC') },
+      { area: 'Lab sliders & layers', keys: '1…9', what: 'In the Triggers panel: pick trigger 1…9', when: inLab },
+      { area: 'Present', keys: 'Space / F / 1…9', what: 'Play / pause, freeze and cues still work while presenting', when: inLab },
       // right-click menus: click a line to open it on screen
       { area: 'Right-click', keys: 'Right-click a message', what: 'A message: Copy, Read aloud, Reply ›, Mark ›, Copy & save ›', sel: '.messages .msg[data-index]' },
       { area: 'Right-click', keys: 'Right-click a code block', what: 'A code block: copy, save, open in the Lab / nodes, insert', sel: '.msg .body pre' },
@@ -502,6 +564,16 @@ const KeysUI = (() => {
       { area: 'Right-click', keys: 'Right-click a memory fact', what: 'A memory fact: pin, edit, copy, expires, forget', sel: '.memory-row' },
       { area: 'Right-click', keys: 'Right-click in Video Review', what: 'Video Review: a render card, a note, the picture', sel: '.surface.active .vr-card, .surface.active .vr-note' },
       { area: 'Right-click', keys: 'Right-click in the nodes', what: 'Nodes: add a node here, a node’s options', sel: '.surface.active .nv-root, .surface.active .tn-pane' },
+      { area: 'Right-click', keys: 'Right-click a link', what: 'In a reply: open, copy the link, copy its text', sel: '.msg .body a[href]' },
+      { area: 'Right-click', keys: 'Right-click a picture', what: 'In a reply: open, copy the picture, copy its address', sel: '.msg img' },
+      { area: 'Right-click', keys: 'Right-click a look', what: 'A saved look chip: morph into it, update it, store in a slot', sel: '.surface.active .tw-look' },
+      { area: 'Right-click', keys: 'Right-click a slot', what: 'Slider slot A / B / C: store, recall, clear', sel: '.surface.active .tw-slotbtn' },
+      { area: 'Right-click', keys: 'Right-click a group', what: 'A slider group: shuffle it by an amount, reset, lock, favorite, make it breathe', sel: '.surface.active .tw-sec-head' },
+      { area: 'Right-click', keys: 'Right-click a sketch card', what: 'In Your sketches: open, pin, duplicate, rename, delete', sel: '.sb-card' },
+      { area: 'Right-click', keys: 'Right-click Still', what: 'A still at 9:16 / 16:9 / 4:5 / 1:1, copy this frame', sel: '.surface.active [data-feature="Still"]' },
+      { area: 'Right-click', keys: 'Right-click New', what: 'In the Lab: new sketch from a template list', sel: '.surface.active .imp-main' },
+      { area: 'Right-click', keys: 'Right-click a quick chip', what: 'Your own director chip: remove it', sel: '.surface.active .dd-chip' },
+      { area: 'Right-click', keys: 'Right-click a command', what: 'In /help: pin it, copy it, try it', sel: '.cmd-help-row' },
     ]);
   }
 
@@ -514,5 +586,5 @@ const KeysUI = (() => {
     Commands.register({ name: 'shortcuts', aliases: ['keysheet', 'cheatsheet'], args: '[word]', area: 'App', desc: 'The keys sheet: every key, Alt / Ctrl reveal and right-click menu (the keys button, bottom left)', keywords: 'keys keyboard hotkeys hidden buttons right click alt ctrl', examples: ['/shortcuts freeze'], run: (a) => { open(String(a || '').trim() || ''); return null; } });
   });
 
-  return { open, close, latch, isLatched: () => latched, showHints, hideHints, keyText, kbds, isOpen: () => Boolean(sheet), comboOf, runLine, hereAreas };
+  return { customiseMenu, open, close, latch, isLatched: () => latched, showHints, hideHints, keyText, kbds, isOpen: () => Boolean(sheet), comboOf, runLine, hereAreas };
 })();

@@ -21,6 +21,7 @@ const Declutter = (() => {
     { id: 'panel-filter', area: 'Chats panel', label: '⏷ Filter chats', sel: '#panel .panel-filter-btn', mode: 'hover', host: '#panel .panel-head', keep: '.on' },
     { id: 'panel-add', area: 'Chats panel', label: '＋ New chat in each group', sel: '#panel .group-add', mode: 'hover', host: '#panel .group-head' },
     { id: 'panel-kind', area: 'Chats panel', label: 'NATIVE / DOCKED labels', sel: '#panel .group-kind', mode: 'hover', host: '#panel .group-head' },
+    { id: 'panel-tags', area: 'Chats panel', label: '#tags on chat rows', sel: '#panel .item .item-tags', mode: 'hover', host: '#panel .item' },
     { id: 'panel-tokens', area: 'Chats panel', label: 'Token counts on chat rows', sel: '#panel .item .item-tok', mode: 'hover', host: '#panel .item' },
     // a chat
     { id: 'chat-meta', area: 'Chat', label: 'Tokens-this-chat note in the header', sel: '.native-head .chat-meta', mode: 'hover', host: '.native-head' },
@@ -48,6 +49,8 @@ const Declutter = (() => {
     { id: 'tl-empty', area: 'Lab timeline', label: '"No music loaded" line', sel: '.media-bar.mb-empty .mb-name', mode: 'hover', host: '.media-bar' },
     // Lab layers and sliders
     { id: 'ly-key', area: 'Lab layers', label: '◇ Keyframe buttons (until a layer is animated)', sel: '.layers .kf-btn.kf-none', mode: 'hover', host: '.layers .ly-field' },
+    { id: 'ly-timebtns', area: 'Lab layers', label: 'Whole song / Loop only (layer timing)', sel: '.layers .ly-timebtns' },
+    { id: 'ly-notime', area: 'Lab layers', label: '"Load a song to time layers" row', sel: '.layers .ly-time:has(> .hint)' },
     { id: 'tw-steps', area: 'Lab sliders', label: '‹ › Shuffle steps (Shift+R)', sel: '[data-feature="Shuffle back"], [data-feature="Shuffle forward"]' },
     { id: 'tw-shuffle-opts', area: 'Lab sliders', label: '▾ Shuffle options (right-click Shuffle)', sel: '[data-feature="Shuffle options"]' },
     { id: 'tw-save-opts', area: 'Lab sliders', label: '▾ Save options (right-click Save)', sel: '[data-feature="Save options"]' },
@@ -111,8 +114,8 @@ const Declutter = (() => {
   // ---------- Customise this… ----------
   // The last entry of every right-click menu: pin / tuck the controls of this area, hide the button under the
   // pointer, bring hidden buttons back, or show everything for now.
-  function customiseItems(area, target = null) {
-    const rules = REVEAL.filter((r) => r.area === area || (area === LAB && r.area.startsWith('Lab')));
+  function customiseItems(area, target = null, { exact = false } = {}) {
+    const rules = REVEAL.filter((r) => r.area === area || (!exact && area === LAB && r.area.startsWith('Lab')));
     const btn = target?.closest?.('button, select');
     // (Usage hides a button by its name in the bars it watches: toolbars, the timeline, chat headers, message feet)
     const key = btn?.closest('.three-toolbar, .media-bar .mb-main, .native-head, .msg-foot, .tw-head, .tool-head') && Usage.keyOf?.(btn);
@@ -224,6 +227,22 @@ const Declutter = (() => {
       v?.input.value ? { label: 'Clear the message', action: () => { v.input.value = ''; v.input.dispatchEvent(new Event('input')); } } : null,
     ].filter(Boolean);
   });
+
+  // an attachment waiting in the chat box
+  ctx('.composer .attach-chip', 'Chat', (chip) => {
+    const agentId = agentOf(chip);
+    return [
+      { label: 'Remove it', action: () => chip.querySelector('button')?.click() },
+      { label: 'Remove every attachment', action: () => { const v = Native.view(agentId); if (v) { v.attachments.length = 0; v.chips.replaceChildren(); } } },
+      { label: '📎 Attach more…', action: () => Native.pickFiles(agentId) },
+    ];
+  });
+  // a row of the director's tool-call list (click the icons in the dock's strip)
+  ctx('.dd-list .dd-row', 'Director dock', (row) => [
+    { label: 'Copy this line', action: () => copyText(row.textContent.trim(), 'Copied') },
+    { label: 'Copy what it said', action: () => copyText(row.querySelector('.dd-row-sum')?.textContent || '', 'Copied') },
+    { label: 'Clear the list', action: () => HubBridge.clearLog() },
+  ]);
 
   // the rail's empty space and its own buttons (agents and tools have their own menus)
   const railItems = () => [
@@ -459,6 +478,15 @@ const Declutter = (() => {
     if (alt.length) Keys.add({ area: 'Hidden buttons', keys: `Hold Alt in ${WHERE[area] || area}`, what: alt.map((r) => r.label).join(' · '), run: () => KeysUI.latch(true), sel: alt.map((r) => r.sel).join(', ') });
     if (hov.length) Keys.add({ area: 'Hidden buttons', keys: `Point at ${WHERE[area] || area}`, what: `${hov.map((r) => r.label).join(' · ')} show`, sel: hov.map((r) => r.host).join(', ') });
   }
+
+  // the same from the palette (Ctrl+K)
+  queueMicrotask(() => {
+    if (typeof AppUI === 'undefined' || !AppUI.addAction) return;
+    AppUI.addAction('Show the tucked buttons (like holding Alt)', () => KeysUI.latch(true));
+    AppUI.addAction('Show every button, always (/calm off) / tidy again', () => { setOff(!off); toast(off ? 'Everything shows' : 'Tidy again', { timeout: 1400 }); });
+    AppUI.addAction('Customise: what is tucked away, what is pinned', () => Commands.exec('/customise', H.claudeAgent()?.id));
+    AppUI.addAction('Right-click menu of this view', () => Commands.exec(`/rightclick ${H.isTool(H.activeId) && H.activeId === 'tool:three' ? 'lab' : 'chat'}`, H.claudeAgent()?.id));
+  });
 
   paint();
   addEventListener('DOMContentLoaded', registerCommands);
