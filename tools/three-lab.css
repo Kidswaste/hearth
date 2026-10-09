@@ -196,3 +196,33 @@ body.tw-scrubbing, body.tw-scrubbing * { cursor: ew-resize !important; }
 .live-lock { display: inline-block; width: 9px; height: 9px; margin: 0 4px 0 -2px; border-radius: 50%; border: 1.5px solid var(--muted); vertical-align: middle; flex: none; contain: strict; }
 .live-lock.locked { border-color: var(--ui-red); background: var(--ui-red); will-change: transform, opacity; }
 .live-lock[hidden] { display: none; }
+
+/* ---------- live edits (round 6): "building…" while the director works ----------
+   A small pill in the preview's top-left corner and a light sweep over the layer row being rebuilt. Both are
+   compositor animations (transform / opacity); hidden ones don't animate. */
+.lab-building {
+  position: absolute; top: 8px; left: 8px; z-index: 5; display: inline-flex; align-items: center; gap: 6px; overflow: hidden;
+  padding: 3px 9px 3px 7px; border-radius: 999px; pointer-events: none;
+  font-weight: 600; font-size: 11px; line-height: 1.4; letter-spacing: .02em; color: #f4f1eae6;
+  background: #0b0c10d9; border: 1px solid color-mix(in srgb, var(--fh-ai, #a78bfa) 55%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--fh-ai, #a78bfa) 30%, transparent);
+  opacity: 0; visibility: hidden; transform: translateY(-3px);
+  transition: opacity .25s ease, transform .25s ease, visibility 0s linear .25s;
+}
+.lab-building.on { opacity: 1; visibility: visible; transform: none; transition: opacity .2s ease, transform .2s ease, visibility 0s; }
+.lab-building-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fh-ai, #a78bfa); box-shadow: 0 0 6px var(--fh-ai, #a78bfa); }
+.lab-building.on .lab-building-dot { animation: lab-build-pulse 1.1s ease-in-out infinite alternate; }
+.lab-building::after, .ly-row.ly-building::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(100deg, transparent 20%, color-mix(in srgb, var(--fh-ai, #a78bfa) 26%, transparent) 50%, transparent 80%);
+  transform: translateX(-100%);
+}
+.lab-building.on::after, .ly-row.ly-building::after { animation: lab-shimmer 1.4s cubic-bezier(.4, 0, .2, 1) infinite; }
+.ly-row.ly-building { position: relative; overflow: hidden; }
+.ly-row.ly-building .ly-swatch { animation: lab-build-pulse .9s ease-in-out infinite alternate; }
+@keyframes lab-shimmer { to { transform: translateX(100%); } }
+@keyframes lab-build-pulse { from { opacity: .45; } to { opacity: 1; } }
+.three-preview.presenting .lab-building, .three-preview:fullscreen .lab-building { display: none; }
+:root[data-motion=off] .lab-building.on::after, :root[data-motion=off] .ly-row.ly-building::after,
+:root[data-motion=off] .lab-building-dot, :root[data-motion=off] .ly-row.ly-building .ly-swatch { animation: none; }
+:root[data-motion=calm] .ly-row.ly-building::after, :root[data-motion=calm] .lab-building.on::after { animation-duration: 2.6s; }

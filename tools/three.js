@@ -35,59 +35,98 @@ const ThreeLab = (() => {
   // One iframe per mode; messages from it are routed by `source`.
   // lazy: the first load waits for the first run (the sketch tab runs its sketch right away; loading the page at mount
   // too meant a reload ~0.3 s later, while the first page was still starting, which could leave the preview black)
-  function sandboxFrame(parent, mode, onMessage, extraParams = () => '', { lazy = false } = {}) {
+  // pretty: a reload of a page that shows something (the Lab preview) keeps a picture of it on screen and cross-fades
+  // into the new page once its layers have drawn their first frame (never a black flash; see "live" below).
+  function sandboxFrame(parent, mode, onMessage, extraParams = () => '', { lazy = false, pretty = false, name = mode } = {}) {
     // No allow-same-origin: sketch code (which may come from a chat) can't reach the hub's APIs.
     const frame = el('iframe', { class: 'three-frame', attrs: { sandbox: 'allow-scripts allow-pointer-lock allow-downloads', allow: 'display-capture; microphone; autoplay' } });
     parent.append(frame);
-    // A full reload (another sketch, a fresh run) hides the half-built picture under a cover that fades away once
-    // the new scene is up, instead of flashing black (polish.css .scene-cover).
+    // A full reload (a new three.js version, a new pixel ratio, a restart) hides the half-built picture under a cover
+    // that fades away once the new scene is up, instead of flashing black (polish.css .scene-cover; with a picture of
+    // the scene you had: chat-scenes.css .scene-cover.snap).
     const cover = el('div', { class: 'scene-cover out' });
     parent.append(cover);
+    cover.addEventListener('animationend', () => { if (cover.classList.contains('out') && cover.dataset.own) { delete cover.dataset.own; cover.classList.remove('snap'); cover.style.backgroundImage = ''; } });
     let coverT = 0;
+    const uncover = () => { clearTimeout(coverT); cover.classList.add('out'); };
     let ready = null;
     let queue = [];
     let nonce = null; // which load of the frame we're waiting for
+    let loadedWith = null; // the query the page was loaded with (a new pixel ratio or three.js version needs a new page)
     // 'frame' = the iframe here; 'stage' = the separate Stage window (main.js relays its messages).
     let target = 'frame';
     let stageSize = () => null; // → { width, height } for exact frame sizes (read at every load)
     const deliver = (m) => (target === 'stage' ? window.hub.stageSend(m) : frame.contentWindow.postMessage(m, '*'));
+    let coverShot = null; // resolves with the picture the page answered for the cover
     const handle = (data) => {
       if (data?.source !== 'three-sandbox') return;
+      if (data.type === 'shot' && data.tag === 'cover') { const fn = coverShot; coverShot = null; fn?.(data.dataUrl); return; }
       if (data.type === 'ready') {
         // A page being replaced by a newer load can still say "ready"; only the current load counts.
         if (data.n && data.n !== nonce) return;
         ready = data; retries = 0;
-        setTimeout(() => cover.classList.add('out'), 160);
+        // a sketch page uncovers once its layers have drawn (stack-drawn); the others right away
+        if (mode !== 'sketch') setTimeout(uncover, 160);
+        else { clearTimeout(coverT); coverT = setTimeout(uncover, 2600); }
         for (const m of queue) deliver(m);
         queue = [];
       }
+      if (data.type === 'stack-drawn' && ready && !cover.classList.contains('out')) requestAnimationFrame(uncover);
       onMessage(data);
     };
     const listener = (e) => { if (target === 'frame' && e.source === frame.contentWindow) handle(e.data); };
     addEventListener('message', listener);
+    const RUNS = /^(run-layers|swap-layers)$/;
     const send = (msg) => {
       const m = { target: 'three-sandbox', ...msg };
-      if (ready) deliver(m); else queue.push(m);
+      live.sent(name, m.type);
+      if (ready) { deliver(m); return; }
+      // a newer whole run replaces the runs still waiting for the page (each would run every layer again)
+      if (RUNS.test(m.type)) queue = queue.filter((x) => !RUNS.test(x.type) && x.type !== 'hot-layer' && x.type !== 'remove-layer');
+      queue.push(m);
     };
     // fresh: a brand-new page (the iframe is taken out and put back, the Stage window is recreated), for when a
     // sketch bugs out: hung code, a lost GPU context, stuck audio.
     // A load that never says "ready" (seen when a reload lands while the page before it is still starting: black
     // preview, nothing plays, "not rendering") is retried with a fresh page, twice at most.
     let watchdog = 0; let retries = 0;
+    const queryNow = () => `?mode=${mode}&v=${store.get('three.version', ThreeData.VERSIONS[0])}${extraParams()}`;
     const load = (fresh = false) => {
+      const showing = pretty && ready && target === 'frame' && frame.isConnected && frame.checkVisibility?.({ visibilityProperty: true });
       ready = null;
       nonce = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
       clearTimeout(watchdog);
       const mine = nonce;
+      live.reload(name);
       watchdog = setTimeout(() => { if (!ready && nonce === mine && target === 'frame' && frame.isConnected && retries < 2) { retries += 1; console.warn(`Lab ${mode} preview didn't start; reloading it (${retries})`); load(true); } }, 10000);
-      const query = `?mode=${mode}&v=${store.get('three.version', ThreeData.VERSIONS[0])}${extraParams()}&n=${nonce}`;
+      loadedWith = queryNow();
+      const query = `${loadedWith}&n=${nonce}`;
       const sz = target === 'stage' ? stageSize() : null;
-      if (target === 'frame') { cover.classList.remove('out'); clearTimeout(coverT); coverT = setTimeout(() => cover.classList.add('out'), 4000); } // never left covered
-      if (target === 'stage') window.hub.stageOpen({ query: `${query}${sz ? `&fw=${sz.width}&fh=${sz.height}` : ''}`, width: sz?.width, height: sz?.height, fresh });
-      else {
-        if (fresh && frame.parentNode) { const p = frame.parentNode; const next = frame.nextSibling; frame.remove(); p.insertBefore(frame, next); }
-        frame.src = `${SANDBOX}${query}`;
-      }
+      const go = () => {
+        if (nonce !== mine) return; // a newer load took over while the picture came
+        if (target === 'stage') window.hub.stageOpen({ query: `${query}${sz ? `&fw=${sz.width}&fh=${sz.height}` : ''}`, width: sz?.width, height: sz?.height, fresh });
+        else {
+          if (fresh && frame.parentNode) { const p = frame.parentNode; const next = frame.nextSibling; frame.remove(); p.insertBefore(frame, next); }
+          frame.src = `${SANDBOX}${query}`;
+        }
+      };
+      const coverUp = (url) => {
+        if (target !== 'frame') return;
+        if (url) { cover.style.backgroundImage = `url("${url}")`; cover.classList.add('snap'); cover.dataset.own = '1'; }
+        cover.classList.remove('out'); clearTimeout(coverT); coverT = setTimeout(uncover, 4000); // never left covered
+      };
+      // The picture on screen now, as the cover (a quick JPEG from the page itself), then the reload. The old page
+      // keeps playing while it answers; a picture that comes too late still goes on the cover if that's still up.
+      if (showing) {
+        let done = false;
+        const finish = (url) => {
+          if (done) { if (url && nonce === mine && !cover.classList.contains('out') && !cover.style.backgroundImage) { cover.style.backgroundImage = `url("${url}")`; cover.classList.add('snap'); cover.dataset.own = '1'; } return; }
+          done = true; if (nonce === mine) coverUp(url); go();
+        };
+        coverShot = finish;
+        try { deliver({ target: 'three-sandbox', type: 'screenshot', tag: 'cover' }); } catch { finish(null); }
+        setTimeout(() => finish(null), 700);
+      } else { coverUp(null); go(); }
     };
     let stageWired = false;
     let onStageClosed = null;
@@ -108,8 +147,28 @@ const ThreeLab = (() => {
       set onStageClosed(fn) { onStageClosed = fn; },
       get onStage() { return target === 'stage'; },
       get revision() { return ready?.revision; }, get ready() { return Boolean(ready); },
+      // a load is on its way (its runs wait in the queue): no need to load again
+      get loading() { return Boolean(nonce) && !ready; },
+      // the page was loaded for another three.js version or pixel ratio than the one wanted now
+      get stale() { return loadedWith !== queryNow(); },
     };
   }
+
+  // ---------- live: what each change does to the preview ----------
+  // Page reloads vs in-place updates of the Lab preview (and the backstage), with why, for dev/checks/live.js and
+  // docs/upgrades/live.md (ThreeLab.live.counts()). `why` is the director tool being handled, else 'ui'.
+  const live = (() => {
+    const c = { reloads: {}, sent: {}, log: [] };
+    let why = null;
+    const COUNTED = /^(hot-layer|swap-layers|run-layers|remove-layer|layer-props|media-unload)$/;
+    const note = (what) => { c.log.push({ at: Date.now(), what, why: why || 'ui' }); if (c.log.length > 200) c.log.splice(0, c.log.length - 200); };
+    return {
+      reload(name) { c.reloads[name] = (c.reloads[name] || 0) + 1; note(`reload ${name}`); },
+      sent(name, type) { if (!COUNTED.test(type)) return; const k = `${name} ${type}`; c.sent[k] = (c.sent[k] || 0) + 1; if (type !== 'layer-props') note(k); },
+      set why(v) { why = v; }, get why() { return why; },
+      counts: () => JSON.parse(JSON.stringify(c)),
+    };
+  })();
 
   // ---------- Sketch tab ----------
   // A sketch is a stack of layers (tools/three-layers.js); a sketch without `layers` is one layer whose
@@ -1493,7 +1552,7 @@ const ThreeLab = (() => {
             box.send({ type: 'tweak-mods', mods: mergedMods() });
           } else box.send(msg);
         },
-        rerun: (o) => run({ hot: Boolean(o?.hot), layer: id }),
+        rerun: () => run({ hot: true, layer: id }), // in place (a page that isn't up yet gets a full run anyway)
         persist: (kind, data) => { const Lx = layerById(id); if (!Lx || !current) return; extrasOf(Lx)[kind] = data; saveExtras(); },
         quickAsk: (text) => askDirector(text === '3 variations to pick from'
           ? `Make 3 clearly different variations of the layer "${layerById(id)?.name}" using only its sliders (three_sliders), no code changes. For each: set the values, save it as a look named "Variation A", "B" or "C" (three_looks), and show it to me with chat_show. Then ask me with chat_ask which one I like (A, B, C or none) and apply that look.`
@@ -1522,6 +1581,39 @@ const ThreeLab = (() => {
       return c;
     }
     const selCtl = () => (sel() ? ctlFor(sel()) : null);
+    // ---------- "building…" while the director works ----------
+    // A shimmer on the preview's corner while a director turn runs on this scene (or its tool calls do), and on the
+    // row of each layer that is being (re)built until its first new frame is drawn. CSS animations only (three-lab.css).
+    const buildPill = el('div', { class: 'lab-building', attrs: { 'aria-hidden': 'true' } }, el('span', { class: 'lab-building-dot' }), 'building…');
+    const builds = new Map(); // layer id → { t: safety timer (a layer that never draws stops anyway), loud: the director's }
+    const turns = new Set(); // director chats answering right now
+    let works = 0; // director tool calls in flight on the scene on screen
+    const onThisScene = (chatId) => typeof ChatScenes === 'undefined' || !ChatScenes.linkOf?.(chatId) || ChatScenes.linkOf(chatId) === current?.id;
+    const directorWorking = () => works > 0 || [...turns].some(onThisScene);
+    function building(id, on) {
+      const was = builds.get(id);
+      clearTimeout(was?.t);
+      if (on) builds.set(id, { t: setTimeout(() => building(id, false), 6000), loud: Boolean(was?.loud) || directorWorking() });
+      else if (!builds.delete(id)) return;
+      paintBuilding();
+    }
+    let buildOffT = 0;
+    function paintBuilding() {
+      for (const row of layersPanel.el.querySelectorAll('.ly-row[data-id]')) {
+        const b = builds.has(row.dataset.id);
+        if (row.classList.contains('ly-building') !== b) row.classList.toggle('ly-building', b);
+      }
+      // a short linger, so quick calls one after another read as one stretch of work
+      const busy = () => directorWorking() || [...builds.values()].some((b) => b.loud);
+      if (busy()) { clearTimeout(buildOffT); buildOffT = 0; if (!buildPill.classList.contains('on')) buildPill.classList.add('on'); }
+      else if (buildPill.classList.contains('on') && !buildOffT) buildOffT = setTimeout(() => { buildOffT = 0; if (!busy()) buildPill.classList.remove('on'); }, 700);
+    }
+    api.directorWork = (d) => { works = Math.max(0, works + d); paintBuilding(); };
+    if (typeof Native !== 'undefined' && Native.hooks) {
+      Native.hooks.send.push((agentId, chat) => { const a = H.agent?.(agentId); if (chat?.id && (a?.threeTools || a?.dock === 'three')) { turns.add(chat.id); paintBuilding(); } });
+      Native.hooks.event.push((ev, chat) => { if (chat?.id && ev?.type !== 'delta' && turns.delete(chat.id)) paintBuilding(); });
+    }
+    addEventListener('hearth:sketch', () => paintBuilding());
     const tweaksSlot = el('div', { class: 'tw-slot' });
     const layersPanel = ThreeLayers.panel({
       onSolo: (id) => setSolo(soloId === id ? null : id),
@@ -1566,6 +1658,7 @@ const ThreeLab = (() => {
     function renderLayers() {
       if (!current) return;
       layersPanel.render(layersOf(), selId);
+      paintBuilding();
       player.setTracks(trackList(), trackHandlers);
       syncKeyUI(true);
     }
@@ -1648,7 +1741,8 @@ const ThreeLab = (() => {
       controllers.get(id)?.destroy?.();
       controllers.delete(id);
       delete layerMods[id];
-      box.send({ type: 'remove-layer', id });
+      box.send({ type: 'remove-layer', id, fade: true }); // its last picture fades out
+      ranCode.delete(id);
       box.send({ type: 'tweak-mods', mods: mergedMods() });
       if (selId === id) selectLayer(layersOf()[Math.min(at, layersOf().length - 1)].id);
       for (const x of layersOf()) box.send({ type: 'layer-props', id: x.id, props: layerProps(x) });
@@ -1681,7 +1775,7 @@ const ThreeLab = (() => {
       send: (msg) => box.send(msg),
       sketchName: () => current?.name,
       onPick: (path) => assignMedia(path),
-      onLoaded: (o) => { if (o?.unloaded) assignMedia(null); else songTriggers(); if (o?.reload) run(); renderLayers(); },
+      onLoaded: (o) => { if (o?.unloaded) assignMedia(null); else songTriggers(); if (o?.reload) box.send({ type: 'media-unload' }); renderLayers(); }, // the song you took out stops (no page reload)
       // ✦ cue looks: each layer plays the look of the last cue (at or before the playhead) that set one for it
       onCue: ({ index, cues, playing }) => {
         for (const L of layersOf()) {
@@ -1740,14 +1834,15 @@ const ThreeLab = (() => {
       split.classList.toggle('with-tweaks', show);
       slidersBtn.classList.toggle('on', show);
       store.set('three.showSliders', show);
-      if (show && !was && current) run(); // sliders need the instrumented run
+      if (show && !was && current) run({ sync: true }); // sliders need the instrumented run (each layer re-runs in place)
     }
     setCodeVisible(store.get('three.showCode', false));
     column.hidden = true;
     setSlidersVisible(store.get('three.showSliders', true));
     pane.append(toolbar, split);
     let stage = null;
-    const box = sandboxFrame(previewHost, 'sketch', onMessage, () => stage?.params || '', { lazy: true });
+    const box = sandboxFrame(previewHost, 'sketch', onMessage, () => stage?.params || '', { lazy: true, pretty: true, name: 'preview' });
+    previewHost.append(buildPill);
     box.onStageClosed = () => { stageBtn.classList.remove('on'); stageNote.hidden = true; previewHost.classList.remove('on-stage'); run(); };
     queueMicrotask(() => { stage?.pill?.prepend(freezeBtn, compareBtn); stage?.pill?.append(stillBtn, previewMoreBtn); });
     stage = ThreeMedia.stage(previewHost, box.frame, { onChange: ({ id, reload }) => {
@@ -1932,6 +2027,8 @@ const ThreeLab = (() => {
     });
     pane.tabIndex = -1;
     let ranOnce = false;
+    // what the preview runs now (see run()): each layer's code as sent (instrumented for sliders or not), and the sketch
+    const ranCode = new Map(); let ranSketch = null;
     let rebuildWaiting = false;
     // Per-sketch looks and music links for the sliders, song, frame size and selected layer.
     let extras = {};
@@ -1991,8 +2088,10 @@ const ThreeLab = (() => {
         player.onMessage(msg);
         if (msg.type === 'recording' && rebuildWaiting) { rebuildWaiting = false; run({ hot: true }); }
       }
+      if (msg.type === 'drawn') { building(msg.layer, false); return; }
       if (msg.type === 'error') {
         const lid = msg.layer || (layersOf().length === 1 ? layersOf()[0].id : null);
+        if (lid) building(lid, false);
         if (lid && controllers.get(lid)?.onError(msg)) return; // couldn't attach sliders: it re-runs as-is
         errors.push({ ...msg, layer: lid });
         log('error', msg.message, msg.line, lid);
@@ -2329,24 +2428,28 @@ const ThreeLab = (() => {
       if (!visible) { lastStatsAt = Math.max(lastStatsAt, Date.now() - 2000); return; } // hidden views draw nothing
       if (Date.now() - lastStatsAt > 8000) showStall('The preview stopped responding.');
     }, 2000);
-    function run({ hot = false, layer = null } = {}) {
+    // How a change reaches the preview (round 6 "live": no whole-page reloads for edits):
+    //   hot     one layer re-runs in place (its old picture cross-fades into the new one; a new layer wipes in)
+    //   sync    only the layers whose code changed re-run, removed ones fade out, the others just get their props
+    //           (a jam round, an undo, a backstage edit, sliders attached / detached)
+    //   (none)  every layer runs again from the start, in the same page (another sketch, ▶ Run): the old picture
+    //           cross-fades into the new one, three.js stays loaded, the music and live sound go on
+    //   reload  a new page, only for what needs one: another three.js version or pixel ratio (exact frame sizes),
+    //           the Stage window, ⟲ Restart from scratch, a page that isn't up. It keeps a picture of the scene on screen
+    //           and cross-fades once the new page has drawn (sandboxFrame `pretty`).
+    function run({ hot = false, layer = null, sync = false, reload = false } = {}) {
       if (!current) return false;
-      if (hot && (!box.ready || !ranOnce)) hot = false;
+      const up = box.ready && ranOnce && !box.stale && !restartNext && !reload;
+      if ((hot || sync) && !up) { hot = false; sync = false; }
       if (player.recording) {
         // A rebuild would end the recording; it waits until the video is saved.
-        if (hot) { if (!rebuildWaiting) toast('That change rebuilds the scene: it applies when you stop recording', { timeout: 2500 }); rebuildWaiting = true; return false; }
+        if (hot || sync) { if (!rebuildWaiting) toast('That change rebuilds the scene: it applies when you stop recording', { timeout: 2500 }); rebuildWaiting = true; return false; }
         toast('Stop the recording first', { type: 'error' });
         return false;
       }
       snapshot();
       const target = hot ? layerById(layer || selId) : null;
       if (hot && !target) hot = false;
-      consoleLines = consoleLines.filter((l) => hot && l.layer && l.layer !== target?.name);
-      errors = hot ? errors.filter((e) => e.layer && e.layer !== target.id) : [];
-      editor.setErrorLines(errors.filter((e) => e.layer === selId).map((e) => e.line).filter(Boolean));
-      consoleBox.replaceChildren();
-      unseen = { errors: 0, other: 0 };
-      syncConsole();
       // every layer's sliders go into one table, each layer at its own offset
       const values = {}; const keys = {}; const preps = new Map();
       for (const L of layersOf()) {
@@ -2358,16 +2461,45 @@ const ThreeLab = (() => {
         for (const [k, i] of Object.entries(p.keys)) keys[`${L.id}|${k}`] = b + i;
         layerMods[L.id] = Object.fromEntries(Object.entries(p.mods || {}).map(([i, m]) => [Number(i) + b, m]));
       }
-      if (!hot) { lastStats = null; lastStatsAt = 0; hideStall(); stats.hidden = true; box.reload(restartNext); restartNext = false; }
+      const codeOf = (L) => preps.get(L.id)?.code ?? L.code;
+      // sync: which layers actually need to run again
+      const rerun = sync ? layersOf().filter((L) => ranCode.get(L.id) !== codeOf(L)) : hot ? [target] : layersOf();
+      const gone = sync ? [...ranCode.keys()].filter((id) => !layerById(id)) : [];
+      const fresh = !hot && !sync && !up; // a new page
+      const partial = hot || sync;
+      if (partial) {
+        const ids = new Set(rerun.map((L) => L.id));
+        consoleLines = consoleLines.filter((l) => l.layer && ![...ids].some((id) => layerById(id)?.name === l.layer));
+        errors = errors.filter((e) => e.layer && !ids.has(e.layer) && layerById(e.layer));
+      } else { consoleLines = []; errors = []; }
+      editor.setErrorLines(errors.filter((e) => e.layer === selId).map((e) => e.line).filter(Boolean));
+      consoleBox.replaceChildren();
+      unseen = { errors: 0, other: 0 };
+      syncConsole();
+      if (!partial) { lastStats = null; lastStatsAt = 0; hideStall(); }
+      if (fresh) { stats.hidden = true; if (!box.loading || box.stale || restartNext || reload) box.reload(restartNext); restartNext = false; }
       box.send({ type: 'tweak-init', values, keys, mods: mergedMods() });
-      if (!hot) { player.attach(); sendRefs(); }
-      const spec = (L) => ({ id: L.id, code: preps.get(L.id)?.code ?? L.code, ...layerProps(L) });
-      if (hot) box.send({ type: 'hot-layer', layer: spec(target) });
-      else box.send({ type: 'run-layers', layers: layersOf().map(spec) });
-      if (editOn && !hot && sel()) box.send({ type: 'edit', cmd: 'on', layer: sel().id });
-      if (!hot) box.send({ type: 'fps-cap', value: store.get('three.fpsCap', 0) });
+      if (fresh) { player.attach(); sendRefs(); } else if (!partial && ranSketch !== current.id) sendRefs();
+      if (!fresh && !partial && !player.path) box.send({ type: 'media-unload' }); // a sketch without a song: the last one stops
+      const spec = (L) => ({ id: L.id, code: codeOf(L), ...layerProps(L) });
+      // new code fades in over the old picture; a layer the sandbox doesn't run yet wipes in
+      const fx = (L) => (ranCode.has(L.id) ? 'xfade' : 'reveal');
+      if (partial) {
+        for (const id of gone) { box.send({ type: 'remove-layer', id, fade: true }); ranCode.delete(id); }
+        for (const L of layersOf()) if (!rerun.includes(L)) box.send({ type: 'layer-props', id: L.id, props: layerProps(L) });
+        for (const L of rerun) { box.send({ type: 'hot-layer', layer: { ...spec(L), fx: fx(L) } }); building(L.id, true); }
+      } else {
+        box.send(fresh ? { type: 'run-layers', layers: layersOf().map(spec) } : { type: 'swap-layers', layers: layersOf().map(spec), fx: 'xfade' });
+        for (const id of [...builds.keys()]) if (!layerById(id)) building(id, false);
+        for (const L of layersOf()) building(L.id, true);
+      }
+      if (!partial) ranCode.clear();
+      for (const L of rerun) ranCode.set(L.id, codeOf(L));
+      ranSketch = current.id;
+      if (editOn && !partial && sel()) box.send({ type: 'edit', cmd: 'on', layer: sel().id });
+      if (fresh) box.send({ type: 'fps-cap', value: store.get('three.fpsCap', 0) });
       ranOnce = true;
-      if (!hot) scheduleThumb();
+      if (!partial) scheduleThumb();
       return true;
     }
 
@@ -2493,7 +2625,7 @@ const ThreeLab = (() => {
           left.code = left.layers?.[0]?.code ?? left.code;
           left.updatedAt = Date.now();
           save();
-          if (current === left) { editor.setValue(sel().code); run(); }
+          if (current === left) { editor.setValue(sel().code); run({ sync: true }); }
           toast(`Saved into "${left.name}"`);
         } } });
       }
@@ -2523,6 +2655,18 @@ const ThreeLab = (() => {
       run();
       loadRefBytes().then((added) => { if (added && layersOf().some((L) => /\brefs\b|refTexture/.test(L.code))) run(); });
       dispatchEvent(new CustomEvent('hearth:sketch', { detail: { id: current.id, from: left?.id || null, by: opts.by || 'user' } }));
+    }
+    // The sketch on screen changed as data (a jam round, a backstage edit, an undo of several layers): the editor,
+    // sliders and layer list follow, and only the layers whose code changed run again (in place).
+    function refreshInPlace(want = null) {
+      if (!current) return;
+      materialize(current);
+      for (const [lid, c] of controllers) if (!layerById(lid)) { c.destroy?.(); controllers.delete(lid); delete layerMods[lid]; }
+      selId = layerById(want)?.id || layerById(selId)?.id || layerById(extras[current.id]?.selectedLayer)?.id || layersOf()[layersOf().length - 1].id;
+      editor.setValue(sel().code);
+      tweaksSlot.replaceChildren(ctlFor(sel()).el);
+      renderLayers();
+      run({ sync: true });
     }
     function create(name, code, layers) {
       const s = { id: `s${Date.now()}`, name, code, updatedAt: Date.now(), ...(layers ? { layers: JSON.parse(JSON.stringify(layers)) } : {}) };
@@ -2693,7 +2837,7 @@ ${code}
         x.code = x.layers?.[0]?.code ?? x.code;
         x.updatedAt = Date.now();
         save();
-        if (x === current) { editor.setValue(sel().code); run(); }
+        if (x === current) refreshInPlace();
       },
       layersOf: (x) => materialize(x),
       frameOf: (id) => extras[id]?.frame || null,
@@ -2773,7 +2917,7 @@ ${code}
           s.updatedAt = Date.now();
           if (snap.selId) (extras[s.id] ||= {}).selectedLayer = snap.selId;
           save();
-          openSketch(s.id);
+          if (s === current) refreshInPlace(snap.selId); else openSketch(s.id);
         }
         await sleep(Math.min(15, Math.max(0.3, wait)) * 1000);
         return report();
@@ -2784,7 +2928,7 @@ ${code}
         editor.setValue(code);
         persist();
         renderPicker();
-        if (layersOf().length > 1) run({ hot: true, layer: selId }); else run();
+        run({ hot: true, layer: selId }); // one layer or many: it re-runs in place
         await sleep(Math.min(15, Math.max(1, wait)) * 1000);
         return report();
       },
@@ -3355,7 +3499,8 @@ ${frag}\`,
     // A hidden view renders no frames, so let the Lab render (behind the current view) while the director works.
     const surface = H.surfaces.get('tool:three')?.el;
     surface?.classList.add('capturing');
-    try { return await directorCall(tool, args); } finally { surface?.classList.remove('capturing'); }
+    api.directorWork?.(1); live.why = tool;
+    try { return await directorCall(tool, args); } finally { surface?.classList.remove('capturing'); api.directorWork?.(-1); live.why = null; }
   }
   async function directorCall(tool, args) {
     for (let i = 0; i < 100 && !api.director; i += 1) await new Promise((r) => setTimeout(r, 100));
@@ -3512,7 +3657,8 @@ ${frag}\`,
     get scenes() { return api.scenes || null; }, // the sketches as data, for per-chat scenes (chat-scenes.js)
     // resolves when no director call is changing the sketch on screen (a chat switch waits for it)
     idle: () => (inflight ? new Promise((r) => idleWaiters.push(r)) : Promise.resolve()),
-    _sandbox: (parent, onMessage, params) => sandboxFrame(parent, 'sketch', onMessage, params, { lazy: true }), // tools/three-backstage.js
+    _sandbox: (parent, onMessage, params) => sandboxFrame(parent, 'sketch', onMessage, params, { lazy: true, name: 'backstage' }), // tools/three-backstage.js
+    live: { counts: () => live.counts() }, // reloads vs in-place updates of the preview (dev/checks/live.js)
     _util: { codeOrOutline, numbered },
     // A picture of the Lab preview (data URL) for second opinions; null when nothing renders.
     shot: async () => (api.director ? api.director.shot() : null),

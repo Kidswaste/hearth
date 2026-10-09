@@ -12,6 +12,7 @@
   body.sketch { background: #000; }
   .lab-layer { position: fixed; inset: 0; overflow: hidden; pointer-events: none; transform-origin: 50% 50%; }
   .lab-layer.interactive { pointer-events: auto; }
+  .lab-ghost { position: fixed; inset: 0; overflow: hidden; pointer-events: none; transform-origin: 50% 50%; }
 </style>
 <script>
   // Import map built from ?v= so the Lab can switch three.js versions.
@@ -105,6 +106,7 @@ function instrument(renderFn) {
     }
     const t0 = performance.now();
     renderFn.call(this, scene, camera);
+    if (EL && EL.drawnGen !== EL.gen) layerDrew(EL);
     frameMs = performance.now() - t0;
     lastRenderer = this;
     this.__lastScene = scene; this.__lastCamera = camera;
@@ -141,9 +143,14 @@ for (const m of ['setClearColor', 'setClearAlpha']) {
 // WebGL canvases get an alpha channel (layers show the ones below) and keep their last frame (so all
 // layers can be merged into one picture for recordings and screenshots).
 const realGetContext = HTMLCanvasElement.prototype.getContext;
+let glRefs = []; // WeakRefs to the WebGL contexts made here (__labHealth counts the ones still alive)
+const glAlive = () => { glRefs = glRefs.filter((w) => { const c = w.deref(); return c && !c.isContextLost(); }); return glRefs.length; };
 HTMLCanvasElement.prototype.getContext = function (type, opts) {
-  if (mode === 'sketch' && /^(webgl2?|experimental-webgl)$/.test(type)) opts = { ...(opts || {}), alpha: true, preserveDrawingBuffer: true };
-  return realGetContext.call(this, type, opts);
+  const gl3d = /^(webgl2?|experimental-webgl)$/.test(type);
+  if (mode === 'sketch' && gl3d) opts = { ...(opts || {}), alpha: true, preserveDrawingBuffer: true };
+  const ctx = realGetContext.call(this, type, opts);
+  if (gl3d && ctx && !ctx.__counted) { ctx.__counted = true; glRefs.push(new WeakRef(ctx)); if (glRefs.length > 64) glAlive(); }
+  return ctx;
 };
 // Adaptive resolution: when the preview can't keep up (frames dropping: the GPU is busy drawing a big frame size),
 // it draws at a lower internal resolution, step by step down to half, and climbs back when there's headroom. The
@@ -656,6 +663,16 @@ function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, lo
     if (playing) { actx.resume(); m.play().catch((err) => post({ type: 'console', level: 'warn', text: `Couldn't start playback: ${err.message}` })); }
   }, { once: true });
   m.addEventListener('error', () => post({ type: 'error', message: `Couldn't play ${name} (${m.error?.message || 'unsupported format'})` }));
+}
+// The sketch you switch to has no song: the one playing stops and goes (the page stays).
+function unloadMedia() {
+  pendingPlay = null;
+  if (!mediaEl) return;
+  mediaEl.pause(); srcNode?.disconnect(); mediaEl.removeAttribute('src'); mediaEl.load(); URL.revokeObjectURL(mediaUrl);
+  clearInterval(stateTimer);
+  mediaEl = null; mediaUrl = null; srcNode = null; analysis = null; beatMap = null; isVideo = false; region = null;
+  try { videoTex?.dispose(); } catch {}
+  videoTex = null;
 }
 // Play / pause asked for while the song is still on its way here (just loaded or the preview restarting): kept
 // and applied when it arrives (a play right after loading a song used to do nothing).
@@ -1202,15 +1219,17 @@ function styleLayer(L) {
   L.box.classList.toggle('interactive', Boolean(p.selected));
 }
 const ordered = () => [...layers.values()].sort((a, b) => (a.props.z ?? 0) - (b.props.z ?? 0));
+// A layer's own canvases (not the picture of its previous version fading out over it, see "live edits")
+const layerCanvases = (L) => [...L.box.querySelectorAll('canvas')].filter((cv) => !cv.classList.contains('lab-xfade'));
 // Merging is needed for recordings / screenshots once more than one layer shows, or one is transformed.
 function needsComposite() {
   const act = ordered().filter((L) => layerMix(L) > 0);
   if (act.length !== 1) return act.length > 1;
   const L = act[0]; const p = L.props; const t = xform(L);
-  return layerMix(L) < 1 || Boolean(t.x || t.y || t.rotate) || t.scale !== 1 || (p.blend && p.blend !== 'normal') || L.box.querySelectorAll('canvas').length > 1;
+  return layerMix(L) < 1 || Boolean(t.x || t.y || t.rotate) || t.scale !== 1 || (p.blend && p.blend !== 'normal') || layerCanvases(L).length > 1;
 }
-function composite(target) {
-  const W = Math.round(innerWidth * devicePixelRatio); const H = Math.round(innerHeight * devicePixelRatio);
+function composite(target, k = 1) {
+  const W = Math.max(1, Math.round(innerWidth * devicePixelRatio * k)); const H = Math.max(1, Math.round(innerHeight * devicePixelRatio * k));
   const c = target || document.createElement('canvas');
   if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
   const g = c.getContext('2d');
@@ -1231,7 +1250,7 @@ function composite(target) {
     g.rotate((rotate * Math.PI) / 180);
     g.scale(scale, scale);
     g.translate(-W / 2, -H / 2);
-    for (const cv of L.box.querySelectorAll('canvas')) g.drawImage(cv, 0, 0, W, H);
+    for (const cv of layerCanvases(L)) g.drawImage(cv, 0, 0, W, H);
     g.restore();
   }
   return c;
@@ -3104,7 +3123,7 @@ function compositeBelow(L, c) {
     g.rotate((rotate * Math.PI) / 180);
     g.scale(scale, scale);
     g.translate(-W / 2, -H / 2);
-    for (const cv of B.box.querySelectorAll('canvas')) g.drawImage(cv, 0, 0, W, H);
+    for (const cv of layerCanvases(B)) g.drawImage(cv, 0, 0, W, H);
     g.restore();
   }
   return c;
@@ -3350,9 +3369,12 @@ function installRunGuards() {
   if (guardsInstalled) return;
   guardsInstalled = true;
   const add = EventTarget.prototype.addEventListener;
+  // (a bare addEventListener(…) in a module calls this with `this` undefined: that's the window too, and was missed,
+  // so every re-run added another resize / key listener)
   EventTarget.prototype.addEventListener = function (type, fn, opts) {
-    if (sketchRunning && (this === window || this === document)) sketchListeners.push([this, type, fn, opts, currentLayer()]);
-    return add.call(this, type, fn, opts);
+    const self = this ?? window;
+    if (sketchRunning && (self === window || self === document)) { const id = currentLayer(); if (id) sketchListeners.push([self, type, fn, opts, id]); }
+    return add.call(self, type, fn, opts);
   };
   // Things a layer appends to <body> go into its own box.
   const redirect = (orig) => function (...args) {
@@ -3387,10 +3409,14 @@ function installRunGuards() {
   window.setInterval = (fn, ms, ...a) => {
     if (typeof fn !== 'function') return realSetInterval(fn, ms, ...a);
     const o = owner();
-    const id = realSetInterval((...b) => { if (alive(o)) within(o, fn, b); else clearInterval(id); }, ms, ...a);
+    const id = realSetInterval((...b) => { if (alive(o)) within(o, fn, b); else { realClearInterval(id); sketchIntervals.delete(id); } }, ms, ...a);
+    sketchIntervals.add(id);
     return id;
   };
+  window.clearInterval = (id) => { sketchIntervals.delete(id); realClearInterval(id); };
 }
+const realClearInterval = clearInterval.bind(window);
+const sketchIntervals = new Set(); // sketch intervals still running (a dead layer's stop at their next tick)
 function teardownLayer(L) {
   L.gen += 1;
   for (const r of L.renderers) {
@@ -3412,13 +3438,16 @@ function teardownLayer(L) {
   for (const set of [usedAtSetup, usedLive]) for (const i of [...set]) if (i >= lo && i < lo + SLOT) set.delete(i);
   slotPast[L.slot || 0] = false;
 }
-function removeLayer(id) {
+// fade: a director / user removing one layer (it fades out instead of vanishing)
+function removeLayer(id, { fade = false } = {}) {
   const L = layers.get(id);
   if (!L) return;
+  if (fade) ghost(L);
   teardownLayer(L);
   L.box.remove();
   layers.delete(id);
-  if (L.url) urlLayer.delete(L.url);
+  if (L.url) { urlLayer.delete(L.url); URL.revokeObjectURL(L.url); }
+  stackDrew(id);
 }
 function setLayerProps(L, props) {
   const { code, id, ...rest } = props;
@@ -3427,13 +3456,110 @@ function setLayerProps(L, props) {
   styleLayer(L);
 }
 
+// ---------- live edits: things build in front of you ----------
+// A re-run layer keeps a picture of its previous version on top and fades it away once the new code has drawn its
+// first frame (cross-fade); a new layer wipes in; a removed one fades out; a whole new stack (another sketch, ▶ Run)
+// cross-fades from a picture of the old stack, in this same page (three.js stays loaded, the music keeps playing).
+// All of it runs as Web Animations on opacity / clip-path: nothing is moved from JS per frame.
+const calm = matchMedia('(prefers-reduced-motion: reduce)');
+const dur = (n) => (calm.matches ? 1 : n);
+const EASE_OUT = 'cubic-bezier(.2,.7,.2,1)';
+function fadeAway(node, ms = 320) {
+  if (node.__fading) return;
+  node.__fading = true;
+  node.animate([{ opacity: 1 }, { opacity: 0 }], { duration: dur(ms), easing: 'ease-out', fill: 'forwards' }).finished.catch(() => {}).then(() => node.remove());
+}
+// Pictures of a layer's canvases as they are now (WebGL canvases keep their last frame), laid where they were.
+function layerPictures(L) {
+  if (layerMix(L) <= 0) return [];
+  const out = [];
+  for (const cv of layerCanvases(L)) {
+    const w = cv.offsetWidth; const h = cv.offsetHeight;
+    if (!cv.width || !cv.height || !w || !h) continue;
+    let x = 0; let y = 0;
+    for (let n = cv; n && n !== L.box && n !== document.body; n = n.offsetParent) { x += n.offsetLeft; y += n.offsetTop; }
+    const k = Math.min(1, 1600 / Math.max(cv.width, cv.height));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(cv.width * k)); c.height = Math.max(1, Math.round(cv.height * k));
+    try { c.getContext('2d').drawImage(cv, 0, 0, c.width, c.height); } catch { continue; }
+    c.className = 'lab-xfade';
+    c.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;z-index:2147483000;pointer-events:none`;
+    out.push(c);
+  }
+  return out;
+}
+// a removed layer: its last picture, styled like its box, fades out
+function ghost(L) {
+  const pics = layerPictures(L);
+  if (!pics.length) return;
+  const g = document.createElement('div');
+  g.className = 'lab-ghost';
+  g.style.cssText = L.box.style.cssText;
+  g.style.display = '';
+  g.append(...pics);
+  document.body.appendChild(g);
+  fadeAway(g, 300);
+}
+// a new layer: wipes in from the top while it fades in (to its own opacity)
+function reveal(L) {
+  const op = Number(L.box.style.opacity || 1);
+  L.box.animate([{ opacity: 0, clipPath: 'inset(0 0 100% 0)' }, { opacity: op, clipPath: 'inset(0 0 0% 0)' }], { duration: dur(560), easing: EASE_OUT });
+}
+// The new code drew its first frame (or had nothing to draw in time, or failed): the old picture can go.
+function layerDrew(L) {
+  if (L.drawnGen === L.gen) return;
+  L.drawnGen = L.gen;
+  post({ type: 'drawn', layer: L.id });
+  const pics = L.pics; L.pics = null;
+  for (const c of pics || []) fadeAway(c);
+  if (L.reveal) { L.reveal = false; reveal(L); }
+  stackDrew(L.id);
+}
+// Waiting for every layer of a new stack to draw: then the cover over it fades / the hub's cover goes.
+let stackWait = null;
+function waitStack(ids, done, max = 1800) {
+  const prev = stackWait;
+  const w = { ids: new Set(ids), fired: false };
+  w.fire = () => { if (w.fired) return; w.fired = true; if (stackWait === w) stackWait = null; done(); };
+  stackWait = w;
+  realSetTimeout(w.fire, max);
+  prev?.fire();
+  if (!w.ids.size) w.fire();
+}
+function stackDrew(id) { const w = stackWait; if (!w) return; w.ids.delete(id); if (!w.ids.size) w.fire(); }
+// What a sketch can leave on the page outside its layers (styles on <body>, <style> / <link> tags), put back
+// between two sketches running in the same page.
+const PAGE_PROPS = ['background', 'backgroundColor', 'backgroundImage', 'color', 'filter', 'cursor'];
+let page0 = null;
+const notePage = () => { page0 = { body: Object.fromEntries(PAGE_PROPS.map((k) => [k, document.body.style[k]])), html: document.documentElement.style.background, head: new Set(document.head.children), cls: document.body.className }; };
+function resetPage() {
+  if (!page0) return;
+  for (const k of PAGE_PROPS) if (document.body.style[k] !== page0.body[k]) document.body.style[k] = page0.body[k];
+  if (document.documentElement.style.background !== page0.html) document.documentElement.style.background = page0.html;
+  for (const n of [...document.head.children]) if (!page0.head.has(n) && /^(STYLE|LINK)$/.test(n.tagName)) n.remove();
+  if (document.body.className !== page0.cls) document.body.className = page0.cls;
+}
+// For the live check (dev/checks/live.js): what runs leave behind. Nothing here should grow with edits.
+window.__labHealth = () => ({ contexts: glAlive(), renderers: renderers.size, listeners: sketchListeners.length, intervals: sketchIntervals.size, layers: layers.size,
+  overlays: document.querySelectorAll('.lab-xfade, .lab-swap, .lab-ghost').length, heapMB: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : null });
+
 // ---------- sketch mode ----------
+// spec.fx: 'xfade' (new code for this layer: cross-fade from its old picture) | 'reveal' (a new layer: wipe in)
 async function runLayer(spec, hot = false) {
   installRunGuards();
   const L = layerState(spec.id);
-  if (hot) teardownLayer(L);
+  // the picture on screen stays on top until the new code draws (rapid edits keep the first picture)
+  let pics = null;
+  if (hot && spec.fx === 'xfade') {
+    pics = (L.pics || []).filter((c) => c.isConnected && !c.__fading);
+    if (!pics.length) pics = layerPictures(L);
+  }
+  if (hot || L.url) teardownLayer(L);
+  if (pics?.length) L.box.append(...pics);
+  L.pics = pics?.length ? pics : null;
+  L.reveal = spec.fx === 'reveal';
   setLayerProps(L, spec);
-  if (L.url) urlLayer.delete(L.url);
+  if (L.url) { urlLayer.delete(L.url); URL.revokeObjectURL(L.url); }
   const url = URL.createObjectURL(new Blob([spec.code], { type: 'text/javascript' }));
   L.url = url;
   urlLayer.set(url, L.id);
@@ -3442,16 +3568,48 @@ async function runLayer(spec, hot = false) {
   try {
     await import(url);
     if (L.gen !== g) return;
-    post({ type: 'ran', hot, layer: L.id });
+    post({ type: 'ran', hot, swap: Boolean(spec.swap), layer: L.id });
     realRAF(() => realRAF(() => { if (L.gen === g) slotPast[L.slot || 0] = true; }));
+    // a layer that draws without a WebGLRenderer (2D canvas, DOM) or is hidden right now: done after a moment
+    realSetTimeout(() => { if (L.gen === g && layers.get(L.id) === L) layerDrew(L); }, 700);
   } catch (err) {
     post({ type: 'error', layer: L.id, message: `${err.name}: ${err.message}`, line: Number(/blob:[^\s)]*?:(\d+):\d+/.exec(err.stack || '')?.[1]) || null });
+    if (L.gen === g) layerDrew(L);
   }
 }
-// All layers, bottom first.
+// All layers, bottom first (a fresh page). A layer that already runs is torn down first (a run sent twice).
 function runLayers(specs) {
   for (const id of [...layers.keys()]) if (!specs.some((s) => s.id === id)) removeLayer(id);
+  waitStack(specs.map((s) => s.id), () => post({ type: 'stack-drawn' }));
   specs.forEach((s, z) => runLayer({ z, ...s }));
+}
+// A whole new stack in this same page (another sketch, ▶ Run, a jam round): a picture of the old stack lies on top
+// and fades once every new layer has drawn. three.js, the music and the live sound keep going.
+function swapLayers(specs, fx = 'xfade') {
+  let cover = null;
+  if (fx && ordered().some((L) => layerMix(L) > 0)) {
+    try {
+      cover = composite(null, Math.min(1, 1280 / (Math.max(innerWidth, innerHeight) * devicePixelRatio)));
+      cover.className = 'lab-swap';
+      cover.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:99990;pointer-events:none';
+      document.body.appendChild(cover);
+    } catch { cover = null; }
+  }
+  for (const id of [...layers.keys()]) removeLayer(id);
+  // what the old stack left that no layer could be told from: timers, window listeners, renderers, page styles
+  gen += 1;
+  for (const [t, type, fn, opts] of sketchListeners) t.removeEventListener(type, fn, opts);
+  sketchListeners = [];
+  for (const r of [...renderers]) {
+    try { r.setAnimationLoop(null); } catch {}
+    try { r.dispose(); r.forceContextLoss(); } catch {}
+    r.domElement?.remove();
+    renderers.delete(r);
+  }
+  lastRenderer = null;
+  resetPage();
+  waitStack(specs.map((s) => s.id), () => { if (cover) fadeAway(cover, 420); post({ type: 'stack-drawn' }); });
+  specs.forEach((s, z) => runLayer({ z, ...s, swap: true }));
 }
 
 // ---------- shader mode ----------
@@ -3762,9 +3920,11 @@ addEventListener('message', async (e) => {
   if (msg.type === 'hot-run') runLayer({ id: 'main', code: msg.code, slot: 0, selected: true }, true);
   if (msg.type === 'run-layers') runLayers(msg.layers);
   if (msg.type === 'hot-layer') runLayer(msg.layer, true);
+  if (msg.type === 'swap-layers') swapLayers(msg.layers, msg.fx ?? 'xfade');
   if (msg.type === 'layer-props') { const L = layers.get(msg.id); if (L) setLayerProps(L, msg.props); }
-  if (msg.type === 'remove-layer') removeLayer(msg.id);
+  if (msg.type === 'remove-layer') removeLayer(msg.id, { fade: Boolean(msg.fade) });
   if (msg.type === 'media-load') loadMedia(msg);
+  if (msg.type === 'media-unload') unloadMedia();
   if (msg.type === 'freeze') frozen = Boolean(msg.on);
   if (msg.type === 'guides') setGuides(msg.kind || null);
   if (msg.type === 'present') { presentCursor = Boolean(msg.on); document.documentElement.style.cursor = msg.on ? 'none' : ''; }
@@ -3787,10 +3947,12 @@ addEventListener('message', async (e) => {
   if (msg.type === 'shader') shader?.set(msg.code);
   if (msg.type === 'load') viewer?.load(msg);
   if (msg.type === 'viewer') viewer?.command(msg);
+  // the hub covers the preview with this picture while the page reloads (a small JPEG, right now: no waiting for a frame)
+  if (msg.type === 'screenshot' && msg.tag === 'cover') { try { post({ type: 'shot', tag: 'cover', dataUrl: composite(null, Math.min(1, 1280 / (Math.max(innerWidth, innerHeight) * devicePixelRatio))).toDataURL('image/jpeg', 0.82) }); } catch { post({ type: 'shot', tag: 'cover', dataUrl: null }); } return; }
   if (msg.type === 'screenshot') { shotTag = msg.tag || null; requestShot(); }
 });
 
-if (mode === 'sketch') document.body.classList.add('sketch');
+if (mode === 'sketch') { document.body.classList.add('sketch'); notePage(); }
 if (mode === 'shader') setupShader();
 if (mode === 'viewer') await setupViewer();
 post({ type: 'ready', mode, revision: THREE.REVISION, n: new URLSearchParams(location.search).get('n') });
