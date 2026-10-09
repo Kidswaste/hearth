@@ -20,8 +20,15 @@ const TOOLS = [
   { name: 'ae_render', description: 'Render an .aep with aerender in the background (AE stays usable); waits, returns the result + log tail; the file then shows in Video Review. No comp = the project\'s render queue.',
     inputSchema: { type: 'object', properties: { project: { type: 'string' }, comp: { type: 'string' }, output: { type: 'string' }, omTemplate: { type: 'string' } }, required: ['project'] } },
   { name: 'ae_run_script', description: 'Run ExtendScript inside After Effects (starts it if needed) as one undoable step; errors show as an AE alert.', inputSchema: { type: 'object', properties: { code: { type: 'string' }, label: { type: 'string' } }, required: ['code'] } },
+  // the video editor (Video Review ✂, tools/video-edit-tools.js): read the edit, see an exact frame, change it
+  { name: 'video_edit_read', description: 'The edit open in the video editor as text: format, fps, clips with timecodes and transitions, tracks / layers / titles, keyframes, markers with notes. what: all|clips|tracks|markers|presets (+ kind, search).',
+    inputSchema: { type: 'object', properties: { what: { type: 'string', enum: ['all', 'clips', 'tracks', 'markers', 'presets'] }, kind: { type: 'string' }, search: { type: 'string' } } } },
+  { name: 'video_edit_frame', description: 'Image of the edited program at an exact frame (frame number, or time: seconds / "00:00:04:12"), every layer composited; says which source frame each layer shows.',
+    inputSchema: { type: 'object', properties: { frame: { type: 'integer' }, time: {}, width: { type: 'integer', default: 720 } } } },
+  { name: 'video_edit', description: 'Change the edit, one undo step per call: op add|split|trim|move|delete|roll|slip|slide|transition|look|adjust|keyframe|motion|speed|ramp|reverse|set|marker|range|template|format|new|open|undo|redo|render|command. clip: 3 (main track) or "V2.1". {op:"help"} lists the fields. Mood-board references give a vibe, never footage, unless the owner says so.',
+    inputSchema: { type: 'object', properties: { op: { type: 'string' }, clip: {}, at: {}, type: { type: 'string' }, path: { type: 'string' }, text: { type: 'string' }, preset: { type: 'string' } }, required: ['op'], additionalProperties: true } },
   // the app map (mcp/hearth-map.js), answered by this server without a trip to the hub
-  { name: 'hearth_help', description: 'How Hearth (the owner\'s app) fits together and how Claude and Astra share a chat (Hearth keeps its task state), by topic: app, video, lab, commands, handoff, habits.', inputSchema: { type: 'object', properties: { topic: { type: 'string' } } } },
+  { name: 'hearth_help', description: 'How Hearth (the owner\'s app) fits together and how Claude and Astra share a chat (Hearth keeps its task state), by topic: app, video, editor, lab, commands, handoff, habits.', inputSchema: { type: 'object', properties: { topic: { type: 'string' } } } },
 ];
 const local = { hearth_help: (a) => ({ ok: true, value: MAP.topic(a.topic || 'app') || `Topics: ${Object.keys(MAP.TOPICS).join(', ')}.` }) };
 

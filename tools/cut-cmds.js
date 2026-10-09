@@ -12,12 +12,14 @@ const CutCmds = (() => {
   const inVideo = (ctx) => H.activeId === 'tool:ae' || H.agent(ctx?.agentId)?.dock === 'ae';
   // Video Review mounted, a video open and the clip track on.
   async function editing({ show = true } = {}) {
+    // already editing (a video or a sequence of its own): no video needs to be open
+    if (VideoCut.active && VideoCut.edit) { if (show) activate('tool:ae'); return VideoCut; }
     await VideoCmds.ready({ show });
     if (!VideoCut.active) await VideoCut.enter();
     if (!VideoCut.edit) throw new Error('No cut: open a video first (/review <name>).');
     return VideoCut;
   }
-  const timeArg = (s) => { if (s == null || s === '') return null; const t = VideoData.parseTime(s, Review.state.fps, VideoCut.time, C.total(VideoCut.edit)); if (t == null) throw new Error(`Can't read the time “${s}”: try 2.5, 0:03.2, f90 or +1s.`); return t; };
+  const timeArg = (s) => { if (s == null || s === '') return null; const t = VideoData.parseTime(s, VideoCut.fps || Review.state.fps, VideoCut.time, C.total(VideoCut.edit)); if (t == null) throw new Error(`Can't read the time “${s}”: try 2.5, 0:03.2, f90 or +1s.`); return t; };
   // "/x 3" acts on clip 3 (selects it first); no number = the selected clip(s), else the one under the playhead
   function pickClips(cut, list) {
     const ns = list.filter((w) => /^\d+$/.test(w)).map(Number);

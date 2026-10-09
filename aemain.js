@@ -352,6 +352,12 @@ function registerIpc(ipcMain, getWin, getOverride) {
   ipcMain.handle('video:probe', (_e, file, overrides) => probe(file, overrides));
   ipcMain.handle('video:transcode', (_e, job, overrides) => transcode(job, sendJob, overrides));
   ipcMain.handle('video:cancel', (_e, id) => { jobs.get(id)?.kill(); return true; });
+  // the editor's temporary title frames (a folder it made itself, named .hearth-titles-…) go away after a render
+  ipcMain.handle('video:rmtemp', (_e, dir) => {
+    if (typeof dir !== 'string' || !path.isAbsolute(dir) || !/^\.hearth-titles-[a-z0-9]+$/.test(path.basename(dir))) return false;
+    fs.rmSync(dir, { recursive: true, force: true });
+    return true;
+  });
 }
 
 module.exports = { registerIpc, templates, status, running, ffStatus, probe, _test: { locate, macError, findTool } };

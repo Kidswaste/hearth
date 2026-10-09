@@ -129,6 +129,7 @@ contextBridge.exposeInMainWorld('hub', {
     probe: call('video:probe'),
     transcode: call('video:transcode'),
     cancel: call('video:cancel'),
+    rmtemp: call('video:rmtemp'),
     onJob: on('video:job-event'),
   },
 });

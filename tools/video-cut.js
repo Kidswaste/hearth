@@ -9,6 +9,10 @@
 const VideoCut = (() => {
   const C = CutData;
   const V = VideoData;
+  const FX = EditFX;
+  const IS_MAC = /Mac/.test(navigator.platform);
+  // small preferences in localStorage (this module's own store() saves the edits)
+  const pref = { get: (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* not critical */ } } };
   const R = () => Review;
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   const base = (p) => String(p || '').split(/[\\/]/).pop();
@@ -20,7 +24,7 @@ const VideoCut = (() => {
   const clean = (msg) => String(msg).replace(/^Error invoking remote method[^:]*: (Error: )?/, '');
 
   let host = null; // what Review hands over at mount: { refs, S, fileUrl, startJob, flash }
-  const st = { on: false, path: null, edit: null, sel: new Set(), undo: [], redo: [], suggest: null, drag: null, snapAt: null };
+  const st = { on: false, path: null, edit: null, sel: new Set(), undo: [], redo: [], suggest: null, drag: null, snapAt: null, view: null, alt: false, razor: false, snap: true, hoverX: null };
   let cuts = null; // kv video-cuts: { [video path]: edit }
   const refs = {};
   const listeners = {};
@@ -45,7 +49,7 @@ const VideoCut = (() => {
   function store(path, e) {
     if (!cuts) return;
     const had = hasCut(path);
-    if (C.isIdentity(e, path, srcDur(path)) && !e.mark) delete cuts[path]; else cuts[path] = e;
+    if (!isSeq(path) && !C.isRich(e) && C.isIdentity(e, path, srcDur(path)) && !e.mark) delete cuts[path]; else { const { lastItem: _l, ...keep } = e; cuts[path] = keep; }
     saveCuts();
     if (had !== hasCut(path)) R().refreshCard?.(path); // the ✂ badge on its library card
   }
@@ -61,10 +65,11 @@ const VideoCut = (() => {
   }
   function apply(next) {
     st.edit = next;
-    const ids = new Set(next.clips.map((c) => c.id));
-    for (const id of [...st.sel]) if (!ids.has(id)) st.sel.delete(id);
+    for (const id of [...st.sel]) if (!C.find(next, id)) st.sel.delete(id);
     store(st.path, next);
     if (P.T > total()) P.T = total();
+    if (st.view && st.view.t1 > total()) st.view = null;
+    fitTrackHeight();
     refreshPicture();
     draw(); paintHead(); placeHead();
     emit('change', { path: st.path });
@@ -79,7 +84,35 @@ const VideoCut = (() => {
   const active = () => els()[P.act];
   const standby = () => els()[1 - P.act];
   const fpsOf = (src) => host?.S.meta[src]?.fps || (src === host?.S.cur?.path ? host.S.fps : 30) || 30;
-  const progFps = () => fpsOf(st.path);
+  // The program's frame: the sequence's when set (a format / template), else the video's own.
+  const isSeq = (p = st.path) => String(p || '').startsWith('seq:');
+  const mainSrc = (e = st.edit) => (isSeq() ? e?.clips.find((c) => c.src)?.src || C.tracksOf(e || C.empty(), 'video').flatMap((k) => k.items).find((x) => x.src)?.src : st.path);
+  const progFps = () => st.edit?.seq?.fps || (mainSrc() ? fpsOf(mainSrc()) : 30);
+  function frameSize(e = st.edit) {
+    if (e?.seq?.w) return { W: e.seq.w, H: e.seq.h, F: e.seq.fps || progFps() };
+    const m = host?.S.meta[mainSrc(e)] || {};
+    const v = host?.refs.video;
+    return { W: m.w || (mainSrc(e) === host?.S.cur?.path && v?.videoWidth) || 1080, H: m.h || (mainSrc(e) === host?.S.cur?.path && v?.videoHeight) || 1920, F: progFps() };
+  }
+  // Rich edits (layers, transitions, keyframes, looks, a set format…) play through the compositor (video-comp.js).
+  const rich = () => Boolean(st.edit && C.isRich(st.edit));
+  let richOn = false;
+  function syncRich() {
+    const on = st.on && rich();
+    if (on !== richOn) {
+      richOn = on;
+      if (on) { for (const e0 of els()) e0.pause(); P.fadeAnim?.cancel(); refs.pfade.style.opacity = ''; show('none'); }
+      refs.pwrap?.classList.toggle('rich', on);
+      VideoComp.show(on);
+    }
+    // the frame takes the program's shape
+    if (st.on) {
+      const { W, H } = frameSize();
+      const ar = String(W / H || 9 / 16);
+      if (host.refs.stage.style.getPropertyValue('--ar') !== ar) host.refs.stage.style.setProperty('--ar', ar);
+    }
+    return on;
+  }
   const keyOf = (c) => (c ? `${c.src}|${c.kind === 'freeze' ? c.at : c.in}` : '');
   function loadEl(el, src) {
     if (el.dataset.src === src && el.readyState >= 1) return Promise.resolve(true);
@@ -90,6 +123,10 @@ const VideoCut = (() => {
   function seekEl(el, t) {
     const to = clamp(t, 0, Math.max(0, (el.duration || t + 1) - 0.001));
     if (Math.abs(el.currentTime - to) < 1e-4 && !el.seeking && el.readyState >= 2) return Promise.resolve();
+    // the frame actually presented after the seek (frame checks read it: frameInfo)
+    el._seekId = (el._seekId || 0) + 1;
+    const sid = el._seekId;
+    el.requestVideoFrameCallback?.((_n, m) => { if (el._seekId === sid) { el._mt = m.mediaTime; el._mtId = sid; } });
     el.currentTime = to;
     return new Promise((res) => { const f = () => { el.removeEventListener('seeked', f); res(); }; el.addEventListener('seeked', f); setTimeout(f, 3000); });
   }
@@ -120,6 +157,7 @@ const VideoCut = (() => {
   // Seek the program (paused display, or keeps playing). Newer seeks cancel older ones.
   async function seek(T, { play = P.playing } = {}) {
     if (!st.edit) return;
+    if (syncRich()) return seekRich(T, { play });
     const seq = ++P.seq;
     stopClock();
     P.T = clamp(T, 0, total());
@@ -133,9 +171,30 @@ const VideoCut = (() => {
     if (x.clip.kind === 'video' || x.clip.kind === 'freeze') showActive();
     prepareNext();
     staticFade(x);
-    if (play) startPlay(); else { P.playing = false; placeHead(); paintPlay(); }
+    if (play) startPlay(); else { P.playing = false; placeHead(); paintPlay(); emit('frame', { T: P.T }); }
   }
   function refreshPicture() { if (st.on) seek(P.T, { play: P.playing }); }
+  // ----- rich edits: the compositor plays and draws (tools/video-comp.js) -----
+  let lastCheck = null; // what the decoders showed at the last exact render (frame checks)
+  async function seekRich(T, { play = false } = {}) {
+    stopClock();
+    VideoComp.pause();
+    P.T = clamp(T, 0, total());
+    placeHead(); paintTime();
+    if (play) { startPlay(); return; }
+    P.playing = false; paintPlay();
+    const r = await VideoComp.renderExact(P.T);
+    if (r) { lastCheck = r; emit('frame', r); }
+  }
+  function playRich() {
+    P.playing = true;
+    const end = st.edit.mark && P.T < st.edit.mark.b - 1e-3 ? st.edit.mark.b : total();
+    VideoComp.play(P.T, { rate: P.rate, end, onEnd: (T) => { P.T = T; atEnd(); } });
+    cancelAnimationFrame(P.raf);
+    const tick = () => { if (!P.playing || !richOn) return; P.T = VideoComp.time; if ((loopN += 1) % 20 === 0) placeHead({ drift: true }); paintTime(); P.raf = requestAnimationFrame(tick); };
+    P.raf = requestAnimationFrame(tick);
+    placeHead(); paintPlay();
+  }
   // The clip after the current one waits in the other decoder at its first frame, so the cut is instant.
   function prepareNext() {
     const L = C.layout(st.edit);
@@ -155,6 +214,7 @@ const VideoCut = (() => {
   function startPlay() {
     if (!st.edit || !total()) return;
     if (P.T >= total() - 1e-3) { seek(st.edit.mark ? st.edit.mark.a : 0, { play: true }); return; }
+    if (syncRich()) { playRich(); return; }
     P.playing = true;
     const L = C.layout(st.edit); const x = L[P.idx];
     P.clockT = P.T; P.clockAt = performance.now();
@@ -175,6 +235,7 @@ const VideoCut = (() => {
     if (!P.playing && !P.rev) { paintPlay(); return; }
     P.playing = false; P.rev = 0;
     stopClock();
+    if (richOn) { P.T = VideoComp.pause(); seekRich(P.T); paintPlay(); return; }
     for (const e of els()) e.pause();
     P.T = nowT();
     const x = C.layout(st.edit)[P.idx];
@@ -184,6 +245,7 @@ const VideoCut = (() => {
   function stopClock() { cancelAnimationFrame(P.raf); clearTimeout(P.timer); P.timer = 0; }
   // program time now: from the decoder of a playing video clip, else the clock
   function nowT() {
+    if (richOn) return P.playing ? VideoComp.time : P.T;
     const x = st.edit ? C.layout(st.edit)[P.idx] : null;
     if (!x) return P.T;
     if (P.playing && x.clip.kind === 'video' && !active().seeking && active().dataset.key) return clamp(x.start + (active().currentTime - x.clip.in) / (x.clip.speed || 1), x.start, x.end);
@@ -323,24 +385,49 @@ const VideoCut = (() => {
     return -P.rev;
   }
 
-  // ---------- playhead (compositor) ----------
+  // ---------- view (zoom) + playhead (compositor) ----------
+  // The track shows view.t0 … view.t1 (Ctrl+wheel or + / − zoom, wheel scrolls, \ fits); null = the whole edit.
   const W = () => refs.sizes?.w || 0;
-  const xOf = (T) => (total() ? (T / total()) * W() : 0);
-  const tOf = (x) => (W() ? clamp(x / W(), 0, 1) * total() : 0);
+  function span() {
+    if (st.view) return st.view;
+    const D = st.drag?.preview ? Math.max(total(), C.total(st.drag.preview)) : total();
+    return { t0: 0, t1: Math.max(D, 0.1) };
+  }
+  const xOf = (T) => { const v = span(); return ((T - v.t0) / (v.t1 - v.t0)) * W(); };
+  const tOf = (x) => { const v = span(); return W() ? v.t0 + clamp(x / W(), 0, 1) * (v.t1 - v.t0) : 0; };
+  function setView(t0, t1) {
+    const D = Math.max(total(), 0.1);
+    const len = clamp(t1 - t0, Math.min(D, 4 / progFps()), D);
+    if (len >= D - 1e-6) st.view = null;
+    else { const a = clamp(t0, 0, D - len); st.view = { t0: a, t1: a + len }; }
+    draw(); placeHead();
+    return st.view;
+  }
+  // zoom by k around program time T (k > 1 zooms in)
+  function zoomBy(k, T = P.T) { const v = span(); const len = (v.t1 - v.t0) / k; const f = (T - v.t0) / (v.t1 - v.t0 || 1); return setView(T - len * f, T - len * f + len); }
+  const zoomFit = () => setView(0, total());
+  // keep the playhead on screen while zoomed in (pages like an NLE)
+  function follow(T) {
+    if (!st.view) return;
+    const v = st.view; const len = v.t1 - v.t0;
+    if (T > v.t1 - len * 0.02 || T < v.t0) setView(T - len * 0.05, T - len * 0.05 + len);
+  }
   let headAnim = null; let headX = { x0: 0, x1: 0 };
   // drift: only a check (every 20 frames while playing); the animation restarts when it is off by more than 80 ms
   function placeHead({ drift = false } = {}) {
     if (!refs.head) return;
     const T = P.playing ? nowT() : P.T;
+    if (st.view) follow(T);
     const x = xOf(T);
+    const v = span();
     if (drift && headAnim && P.playing) {
       const at = headX.x0 + (headX.x1 - headX.x0) * (headAnim.effect.getComputedTiming().progress ?? 0);
-      if (Math.abs(at - x) <= Math.max(2, (0.08 * P.rate * W()) / Math.max(0.1, total()))) return;
+      if (Math.abs(at - x) <= Math.max(2, (0.08 * P.rate * W()) / Math.max(0.1, v.t1 - v.t0))) return;
     }
     headAnim?.cancel(); headAnim = null;
     refs.head.style.transform = `translate3d(${x.toFixed(2)}px, 0, 0)`;
     if (!P.playing || !total()) return;
-    const ms = ((total() - T) / P.rate) * 1000;
+    const ms = ((v.t1 - T) / P.rate) * 1000;
     if (!(ms > 30)) return;
     headAnim = refs.head.animate([{ transform: `translate3d(${x.toFixed(2)}px, 0, 0)` }, { transform: `translate3d(${W().toFixed(2)}px, 0, 0)` }], { duration: ms, easing: 'linear', fill: 'forwards' });
     headAnim.startTime = document.timeline.currentTime;
@@ -401,12 +488,93 @@ const VideoCut = (() => {
   }
   const analysisMap = () => Object.fromEntries(C.sources(st.edit || C.empty()).map((s) => [s, analysisOf(s)]).filter(([, a]) => a));
 
-  // ---------- drawing the clip track (only when something changed) ----------
+  // ---------- lanes ----------
+  // Top to bottom: ruler, text tracks, overlay video tracks (V3 above V2), the main track (V1), audio tracks.
   const RULER = 13;
+  const LANE_H = { text: 20, video: 30, main: 46, audio: 24 };
+  function lanes(e = st.edit) {
+    const out = [{ kind: 'ruler', y: 0, h: RULER }];
+    if (!e) return out;
+    let y = RULER + 2;
+    const push = (kind, track, h) => { out.push({ kind, track, y, h }); y += h + 2; };
+    for (const k of C.tracksOf(e, 'text').slice().reverse()) push('text', k, LANE_H.text);
+    for (const k of C.tracksOf(e, 'video').slice().reverse()) push('video', k, LANE_H.video);
+    const solo = !(e.tracks || []).length;
+    push('main', null, solo ? Math.max(LANE_H.main, (refs.sizes?.h || 66) - y - 2) : LANE_H.main);
+    for (const k of C.tracksOf(e, 'audio')) push('audio', k, LANE_H.audio);
+    out.height = y;
+    return out;
+  }
+  // the track box grows with its lanes (one style write when the count changes)
+  function fitTrackHeight() {
+    if (!refs.track || !st.edit) return;
+    const n = (st.edit.tracks || []).length;
+    const want = n ? `${Math.min(320, lanes().height + 2)}px` : '';
+    if (refs.track.style.height !== want) { refs.track.style.height = want; measure(); }
+  }
+  const laneOf = (y) => lanes().find((l) => y >= l.y && y < l.y + l.h + 2) || null;
+  const itemLaneY = (k) => lanes().find((l) => l.track?.id === k.id);
+
+  // ---------- drawing the clip track (only when something changed) ----------
   const hue = (s) => { let h = 0; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) % 360; return h; };
   function noteMarks() {
-    if (!st.edit || !st.path) return [];
+    if (!st.edit || !st.path || isSeq()) return [];
     return R().notes(st.path).flatMap((n) => C.programTimes(st.edit, st.path, n.t).map((t) => ({ t, color: V.category(n.cat).color, done: n.done, text: n.text })));
+  }
+  const imgThumb = new Map();
+  function stillOf(src) {
+    let im = imgThumb.get(src);
+    if (!im) { im = new Image(); im.onload = () => draw(); im.src = host.fileUrl(src); imgThumb.set(src, im); }
+    return im.complete && im.naturalWidth ? im : null;
+  }
+  function drawStrip(g, cl, x0, y0, cw, lh, X0, X1, start, end) {
+    const th = cl.kind === 'image' ? null : thumbsOf(cl.src);
+    const sv = host.S.meta[cl.src];
+    const im = cl.kind === 'image' ? stillOf(cl.src) : null;
+    const ar = im ? im.naturalWidth / im.naturalHeight : sv?.w ? sv.w / sv.h : 9 / 16;
+    const tw = Math.max(8, lh * ar);
+    g.globalAlpha = 0.85;
+    if (im) { for (let px = x0; px < x0 + cw; px += tw) g.drawImage(im, px, y0, tw, lh); } else if (th?.length) {
+      for (let px = x0; px < x0 + cw; px += tw) {
+        const T = start + ((px + tw / 2 - X0) / Math.max(1, X1 - X0)) * (end - start);
+        const st0 = cl.kind === 'freeze' ? cl.at : C.srcAt(cl, T - start);
+        const f = th.reduce((a, b) => (Math.abs(b.t - st0) < Math.abs(a.t - st0) ? b : a));
+        g.drawImage(f.img, px, y0, tw, lh);
+      }
+    }
+    g.globalAlpha = 1;
+  }
+  function drawWave(g, cl, x0, wy, cw, wh, X0, X1, color) {
+    const a = analysisOf(cl.src);
+    if (!a?.peaks?.length) return;
+    g.fillStyle = color;
+    const per = a.peaks.length / (a.duration || 1);
+    const span0 = X1 - X0;
+    for (let px = Math.max(0, -X0 + x0) - (x0 - X0); px < cw; px += 1) {
+      const s0 = C.srcAt(cl, ((px + (x0 - X0)) / Math.max(1, span0)) * (C.durOf(cl)));
+      const s1 = C.srcAt(cl, ((px + 1 + (x0 - X0)) / Math.max(1, span0)) * (C.durOf(cl)));
+      const lo = Math.min(s0, s1); const hi = Math.max(s0, s1);
+      let m = 0; for (let k = Math.floor(lo * per); k < Math.max(Math.floor(lo * per) + 1, Math.floor(hi * per)) && k < a.peaks.length; k += 1) m = Math.max(m, a.peaks[k] || 0);
+      const hh = m * wh * 0.9; g.fillRect(x0 + px, wy + (wh - hh) / 2, 1, hh || 1);
+    }
+  }
+  const KEY_COLORS = { opacity: '#ffffff', x: '#7fd8ff', y: '#7fd8ff', scale: '#ffd75e', rotate: '#ff8c42', volume: '#4fd18b' };
+  function drawKeys(g, cl, start, top, lh) {
+    if (!cl.keys) return;
+    for (const [prop, list] of Object.entries(cl.keys)) for (const k of list) {
+      const x = xOf(start + k.t);
+      g.fillStyle = KEY_COLORS[prop] || '#fff';
+      g.save(); g.translate(x, top + lh - 5); g.rotate(Math.PI / 4); g.fillRect(-3, -3, 6, 6); g.restore();
+    }
+  }
+  function label(g, text, x, y, maxW) {
+    if (maxW < 14) return;
+    g.font = '10px system-ui, sans-serif'; g.textBaseline = 'top';
+    const w = Math.min(maxW, g.measureText(text).width + 8);
+    g.fillStyle = '#000a'; g.fillRect(x, y, w, 13);
+    g.save(); g.beginPath(); g.rect(x, y, w, 13); g.clip();
+    g.fillStyle = '#fff'; g.fillText(text, x + 4, y + 2);
+    g.restore();
   }
   function draw() {
     const c = refs.canvas;
@@ -418,73 +586,56 @@ const VideoCut = (() => {
     const g = c.getContext('2d');
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.fillStyle = '#07080a'; g.fillRect(0, 0, w, h);
-    const D = total();
     const drag = st.drag;
     const edit = drag?.preview || st.edit;
     const L = C.layout(edit);
-    const Dv = C.total(edit) || 1;
-    const X = (T) => (T / Math.max(D, Dv)) * w;
-    // ruler
+    const v = span();
+    const X = xOf;
+    const LN = lanes(edit);
+    // ruler (time labels in timecode when zoomed in to frames)
     g.fillStyle = '#111419'; g.fillRect(0, 0, w, RULER);
-    const stepS = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60].find((s) => (s / Math.max(D, 0.1)) * w > 44) || 120;
+    const len = v.t1 - v.t0;
+    const F = progFps();
+    const steps = [1 / F, 2 / F, 5 / F, 10 / F, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300];
+    const stepS = steps.find((s) => (s / Math.max(len, 1e-3)) * w > 44) || 600;
     g.fillStyle = '#8a8f98'; g.font = '9px ui-monospace, Consolas, monospace'; g.textBaseline = 'top';
-    for (let s = 0; s <= D + 1e-6; s += stepS) { const x = X(s); g.fillRect(x, 0, 1, 4); g.fillText(stepS < 1 ? `${s.toFixed(2)}` : `${Math.round(s)}s`, x + 3, 2); }
+    for (let s = Math.ceil(v.t0 / stepS) * stepS; s <= v.t1 + 1e-6; s += stepS) {
+      const x = X(s); g.fillRect(x, 0, 1, 4);
+      const lab0 = stepS < 1 / F * 11 ? `f${Math.round(s * F)}` : stepS < 1 ? `${s.toFixed(2)}` : `${Math.round(s)}s`;
+      g.fillText(lab0, x + 3, 2);
+    }
     // in–out range
     const mk = edit.mark;
     if (mk) { g.fillStyle = '#ffd75e22'; g.fillRect(X(mk.a), 0, X(mk.b) - X(mk.a), h); g.fillStyle = '#ffd75e'; g.fillRect(X(mk.a), 0, X(mk.b) - X(mk.a), 2); g.fillRect(X(mk.a), 0, 2, RULER); g.fillRect(X(mk.b) - 2, 0, 2, RULER); }
-    // clips
-    const top = RULER + 2; const lh = h - top - 2;
-    const an = analysisMap();
+    const mainLane = LN.find((l) => l.kind === 'main');
+    const top = mainLane.y; const lh = mainLane.h;
+    // the main track
     for (const x of L) {
       const cl = x.clip;
       const x0 = X(x.start); const x1 = X(x.end); const cw = Math.max(1, x1 - x0 - 1);
+      if (x1 < -2 || x0 > w + 2) continue;
       const dragged = drag?.kind === 'move' && drag.id === cl.id;
       g.save();
       g.beginPath(); g.rect(x0, top, cw, lh); g.clip();
       if (cl.kind === 'gap') {
         g.fillStyle = '#0d0f12'; g.fillRect(x0, top, cw, lh);
         g.strokeStyle = '#ffffff12'; for (let k = -lh; k < cw; k += 8) { g.beginPath(); g.moveTo(x0 + k, top + lh); g.lineTo(x0 + k + lh, top); g.stroke(); }
+        if (cl.slot) { g.fillStyle = '#ffd75e99'; g.font = '600 10px system-ui, sans-serif'; g.textBaseline = 'middle'; g.fillText(`＋ slot ${cl.slot}`, x0 + 6, top + lh / 2); }
       } else if (cl.kind === 'title') {
         g.fillStyle = cl.bg || '#000'; g.fillRect(x0, top, cw, lh);
         g.fillStyle = cl.fg || '#fff'; g.font = '600 11px system-ui, sans-serif'; g.textBaseline = 'middle';
-        g.fillText(`T  ${cl.text || ''}`, x0 + 6, top + lh / 2);
+        g.fillText(`T  ${String(cl.text || '').replace(/\n/g, ' ')}`, x0 + 6, top + lh / 2);
+      } else if (cl.kind === 'color') {
+        g.fillStyle = cl.fill || '#000'; g.fillRect(x0, top, cw, lh);
+        label(g, `■ ${cl.fill || ''}`, x0, top, Math.min(cw, 150));
       } else {
         const hh = hue(cl.src);
         g.fillStyle = `hsl(${hh} 30% 16%)`; g.fillRect(x0, top, cw, lh);
-        const th = thumbsOf(cl.src);
-        const sv = host.S.meta[cl.src];
-        const ar = sv?.w ? sv.w / sv.h : 9 / 16;
-        const tw = Math.max(8, (lh * 0.62) * ar);
-        if (th.length) {
-          g.globalAlpha = 0.85;
-          for (let px = x0; px < x0 + cw; px += tw) {
-            const T = x.start + ((px + tw / 2 - x0) / Math.max(1, x1 - x0)) * (x.end - x.start);
-            const st0 = cl.kind === 'freeze' ? cl.at : cl.in + (T - x.start) * (cl.speed || 1);
-            const f = th.reduce((a, b) => (Math.abs(b.t - st0) < Math.abs(a.t - st0) ? b : a));
-            g.drawImage(f.img, px, top, tw, lh * 0.62);
-          }
-          g.globalAlpha = 1;
-        }
-        // waveform of the clip's sound
-        const a = an[cl.src];
-        if (a?.peaks?.length && cl.kind === 'video') {
-          const wy = top + lh * 0.62; const wh = lh * 0.38;
-          g.fillStyle = cl.mute ? '#ffffff22' : `hsl(${hh} 80% 70% / .75)`;
-          const per = a.peaks.length / (a.duration || 1);
-          for (let px = 0; px < cw; px += 1) {
-            const s0 = cl.in + (px / Math.max(1, x1 - x0)) * (cl.out - cl.in);
-            const s1 = cl.in + ((px + 1) / Math.max(1, x1 - x0)) * (cl.out - cl.in);
-            let m = 0; for (let k = Math.floor(s0 * per); k < Math.max(Math.floor(s0 * per) + 1, Math.floor(s1 * per)) && k < a.peaks.length; k += 1) m = Math.max(m, a.peaks[k]);
-            const hh2 = m * wh * 0.9; g.fillRect(x0 + px, wy + (wh - hh2) / 2, 1, hh2 || 1);
-          }
-        }
-        // labels: name, speed, mute, freeze
-        g.fillStyle = '#000a'; g.fillRect(x0, top, Math.min(cw, 150), 13);
-        g.fillStyle = '#fff'; g.font = '10px system-ui, sans-serif'; g.textBaseline = 'top';
-        const tag = [cl.kind === 'freeze' ? '❄ freeze' : noExt(base(cl.src)), cl.speed && cl.speed !== 1 ? `${cl.speed}×` : '', cl.mute && cl.kind === 'video' ? '🔇' : ''].filter(Boolean).join(' · ');
-        g.fillText(tag, x0 + 4, top + 2);
+        drawStrip(g, cl, x0, top, cw, lh * 0.62, x0, x1, x.start, x.end);
+        if (cl.kind === 'video') drawWave(g, cl, x0, top + lh * 0.62, cw, lh * 0.38, x0, x1, cl.mute ? '#ffffff22' : `hsl(${hh} 80% 70% / .75)`);
+        const tag = [cl.kind === 'freeze' ? '❄ freeze' : cl.kind === 'image' ? `▣ ${noExt(base(cl.src))}` : noExt(base(cl.src)), cl.speed && cl.speed !== 1 ? `${cl.speed}×` : '', cl.reverse ? '◀ rev' : '', cl.mute && cl.kind === 'video' ? '🔇' : '', cl.color ? `◐ ${FX.LOOK[cl.color.look]?.name || 'graded'}` : ''].filter(Boolean).join(' · ');
+        label(g, tag, x0, top, Math.min(cw, 190));
       }
-      // fades: a ramp over the clip
       if (cl.fadeIn > 0 || cl.fadeOut > 0) {
         g.fillStyle = '#000000a0';
         const fi = X(x.start + (cl.fadeIn || 0)) - x0; const fo = x1 - X(x.end - (cl.fadeOut || 0));
@@ -493,22 +644,86 @@ const VideoCut = (() => {
       }
       g.restore();
       if (dragged) { g.fillStyle = '#ffd75e30'; g.fillRect(x0, top, cw, lh); }
-      // selection + fade handles
       if (st.sel.has(cl.id)) {
         g.strokeStyle = '#ffd75e'; g.lineWidth = 2; g.strokeRect(x0 + 1, top + 1, cw - 2, lh - 2); g.lineWidth = 1;
         g.fillStyle = '#ffd75e';
-        for (const fx of [X(x.start + (cl.fadeIn || 0)), X(x.end - (cl.fadeOut || 0))]) g.fillRect(clamp(fx, x0 + 1, x1 - 7) , top + 1, 6, 6);
+        for (const fx of [X(x.start + (cl.fadeIn || 0)), X(x.end - (cl.fadeOut || 0))]) g.fillRect(clamp(fx, x0 + 1, x1 - 7), top + 1, 6, 6);
+        drawKeys(g, cl, x.start, top, lh);
       }
-      // the cut line
-      g.fillStyle = '#000'; g.fillRect(x1 - 1, top, 1, lh);
+      if (!x.td) { g.fillStyle = '#000'; g.fillRect(x0 - 1, top, 1, lh); }
+    }
+    // transitions: a bow-tie over the overlap
+    for (const x of L) {
+      if (!x.td) continue;
+      const a = X(x.start); const b = X(x.start + x.td); const mid = (a + b) / 2;
+      g.fillStyle = '#7fd8ff40'; g.strokeStyle = '#7fd8ff';
+      g.beginPath(); g.moveTo(a, top + 2); g.lineTo(b, top + lh - 2); g.lineTo(b, top + 2); g.lineTo(a, top + lh - 2); g.closePath(); g.fill(); g.stroke();
+      if (b - a > 26) { g.fillStyle = '#bfeaff'; g.font = '9px system-ui, sans-serif'; g.textBaseline = 'bottom'; g.textAlign = 'center'; g.fillText((FX.TRANS[x.clip.trans.type]?.name || x.clip.trans.type).slice(0, 18), mid, top + lh - 2); g.textAlign = 'left'; }
+    }
+    // other tracks
+    for (const lane of LN) {
+      if (!lane.track) continue;
+      const k = lane.track;
+      g.fillStyle = lane.kind === 'text' ? '#0d0b14' : lane.kind === 'audio' ? '#0a120d' : '#0b0d12';
+      g.fillRect(0, lane.y, w, lane.h);
+      for (const it of k.items) {
+        const s0 = it.start; const e0 = C.itemEnd(it);
+        const moving = drag?.kind === 'item' && drag.id === it.id;
+        const x0 = X(moving ? drag.start : s0); const x1 = X((moving ? drag.start : s0) + (e0 - s0)); const cw = Math.max(2, x1 - x0 - 1);
+        if (x1 < -2 || x0 > w + 2) continue;
+        const ly = moving && drag.lane ? drag.lane.y : lane.y;
+        g.save(); g.beginPath(); g.rect(x0, ly, cw, lane.h); g.clip();
+        g.globalAlpha = k.hide || k.mute ? 0.4 : 1;
+        if (it.kind === 'title') {
+          g.fillStyle = '#3a2a66'; g.fillRect(x0, ly, cw, lane.h);
+          g.fillStyle = '#e7dcff'; g.font = '600 10px system-ui, sans-serif'; g.textBaseline = 'middle';
+          g.fillText(`T ${String(it.text || '').replace(/\n/g, ' / ')}${it.anim ? `  ↗ ${FX.TANIM[it.anim]?.name || it.anim}` : ''}`, x0 + 5, ly + lane.h / 2);
+        } else if (it.kind === 'audio') {
+          const hh = hue(it.src);
+          g.fillStyle = `hsl(${hh} 35% 14%)`; g.fillRect(x0, ly, cw, lane.h);
+          drawWave(g, it, x0, ly, cw, lane.h, x0, x1, `hsl(${hh} 80% 65% / .8)`);
+          label(g, `♪ ${noExt(base(it.src))}${it.volume != null && it.volume !== 1 ? ` · ${Math.round(it.volume * 100)}%` : ''}`, x0, ly, Math.min(cw, 170));
+        } else if (it.kind === 'color') {
+          g.fillStyle = it.fill || '#444'; g.fillRect(x0, ly, cw, lane.h);
+        } else {
+          const hh = hue(it.src);
+          g.fillStyle = `hsl(${hh} 30% 18%)`; g.fillRect(x0, ly, cw, lane.h);
+          drawStrip(g, it, x0, ly, cw, lane.h, x0, x1, s0, e0);
+          label(g, `${it.kind === 'image' ? '▣' : '▶'} ${noExt(base(it.src))}${it.blend && it.blend !== 'normal' ? ` · ${it.blend}` : ''}`, x0, ly, Math.min(cw, 170));
+        }
+        g.globalAlpha = 1;
+        g.restore();
+        if (st.sel.has(it.id)) { g.strokeStyle = '#ffd75e'; g.lineWidth = 2; g.strokeRect(x0 + 1, ly + 1, cw - 2, lane.h - 2); g.lineWidth = 1; drawKeys(g, it, s0, ly, lane.h); }
+      }
+    }
+    // lane labels (V1, V2, T1, A1…); Alt shows their switches (👁 🔇 🔒)
+    for (const lane of LN) {
+      if (lane.kind === 'ruler') continue;
+      const k = lane.track;
+      const name = k ? k.name : 'V1';
+      const flags = k ? `${k.hide ? ' ⊘' : ''}${k.mute ? ' 🔇' : ''}${k.lock ? ' 🔒' : ''}` : '';
+      g.font = '600 9px ui-monospace, Consolas, monospace'; g.textBaseline = 'top';
+      const tw = g.measureText(name + flags).width + 6;
+      g.fillStyle = '#000000b0'; g.fillRect(0, lane.y, tw, 11);
+      g.fillStyle = lane.kind === 'main' ? '#ffd75e' : lane.kind === 'text' ? '#c9b6ff' : lane.kind === 'audio' ? '#8ff0b0' : '#9fd6ff';
+      g.fillText(name + flags, 3, lane.y + 1);
+      if (st.alt && k) {
+        const ico = [['👁', 'hide'], ['🔇', 'mute'], ['🔒', 'lock']];
+        ico.forEach(([s0, f], i) => { const bx = tw + 2 + i * 16; g.fillStyle = k[f] ? '#ffd75e' : '#ffffff30'; g.fillRect(bx, lane.y, 15, 11); g.fillStyle = '#000'; g.font = '9px system-ui'; g.fillText(s0, bx + 2, lane.y + 1); });
+      }
     }
     // beats (faint) and bars on the ruler, drops in red
-    const pb = C.programBeats(edit, an);
+    const pb = C.programBeats(edit, analysisMap());
     g.fillStyle = '#ffd75e55'; for (const b of pb.beats) g.fillRect(X(b), RULER - 4, 1, 4);
     g.fillStyle = '#ffd75ecc'; for (const b of pb.bars) g.fillRect(X(b), RULER - 7, 1, 7);
     g.fillStyle = '#ff4d4d'; for (const d0 of pb.drops) g.fillRect(X(d0) - 1, RULER - 7, 2, 7);
-    // markers: yours (gold flags) and the notes (their category color)
-    for (const m of edit.markers) { const x = X(m.t); g.fillStyle = '#ffd75e'; g.beginPath(); g.moveTo(x, RULER); g.lineTo(x - 4, 3); g.lineTo(x + 4, 3); g.fill(); g.fillRect(x, RULER, 1, h - RULER); }
+    // markers: yours (flags in their color, a dot when they have a note) and the notes (their category color)
+    for (const m of edit.markers) {
+      const x = X(m.t); g.fillStyle = m.color || '#ffd75e';
+      g.beginPath(); g.moveTo(x, RULER); g.lineTo(x - 4, 3); g.lineTo(x + 4, 3); g.fill(); g.fillRect(x, RULER, 1, h - RULER);
+      if (m.note) { g.fillStyle = '#fff'; g.fillRect(x - 1, 0, 3, 3); }
+      if (m.label && st.view) { g.font = '9px system-ui, sans-serif'; g.fillStyle = m.color || '#ffd75e'; g.fillText(m.label.slice(0, 16), x + 5, 2); }
+    }
     for (const n of noteMarks()) { const x = X(n.t); g.globalAlpha = n.done ? 0.35 : 1; g.fillStyle = n.color; g.save(); g.translate(x, RULER / 2 + 1); g.rotate(Math.PI / 4); g.fillRect(-3, -3, 6, 6); g.restore(); g.globalAlpha = 1; }
     // a pending auto-cut suggestion: dashed lines
     if (st.suggest?.times.length) {
@@ -518,33 +733,55 @@ const VideoCut = (() => {
       g.fillStyle = '#7fd8ff'; g.font = '10px system-ui, sans-serif'; g.textBaseline = 'top';
       for (const t of st.suggest.times) g.fillText('✂', Math.round(X(t)) + 3, 1);
     }
-    // reorder drop line + snap line
+    // reorder drop line + snap line + razor
     if (drag?.kind === 'move' && drag.to != null) {
+      const Dv = C.mainTotal(edit);
       const at = drag.to >= L.length ? Dv : L[drag.to]?.start ?? Dv;
       g.fillStyle = '#ffd75e'; g.fillRect(X(at) - 1.5, top - 2, 3, lh + 4);
     }
     if (st.snapAt != null) { g.fillStyle = '#7fd8ff'; g.fillRect(X(st.snapAt), 0, 1, h); }
+    if (st.razor && st.hoverX != null) { g.fillStyle = '#ff4d4d'; g.fillRect(st.hoverX, RULER, 1, h - RULER); }
+    // zoomed: a thin bar shows where the view is in the whole edit
+    if (st.view) { const D = total() || 1; g.fillStyle = '#ffffff22'; g.fillRect(0, h - 2, w, 2); g.fillStyle = '#ffd75e'; g.fillRect((v.t0 / D) * w, h - 2, Math.max(4, ((v.t1 - v.t0) / D) * w), 2); }
   }
   let lastSum = '';
   function paintHead() {
     if (!refs.sum || !st.edit) return;
-    const n = st.edit.clips.length; const i = [...st.sel].map((id) => st.edit.clips.findIndex((c) => c.id === id)).filter((k) => k >= 0).sort((a, b) => a - b);
+    const n = st.edit.clips.length; const sel = selIds();
     const mk = st.edit.mark;
-    const text = `${n} clip${n === 1 ? '' : 's'} · ${fmt(total())}${mk ? ` · in–out ${fmt(mk.a)} → ${fmt(mk.b)}` : ''}${i.length ? ` · ${i.length > 1 ? `${i.length} selected` : `clip ${i[0] + 1}`}` : ''}`;
+    const layers = (st.edit.tracks || []).reduce((a, k) => a + k.items.length, 0);
+    const F = progFps();
+    const text = `${n} clip${n === 1 ? '' : 's'}${layers ? ` + ${layers} on tracks` : ''} · ${fmt(total())}${mk ? ` · in–out ${fmt(mk.a)} → ${fmt(mk.b)}` : ''}${sel.length ? ` · ${sel.length > 1 ? `${sel.length} selected` : selName(sel[0])}` : ''}${st.razor ? ' · ✂ razor' : ''}${st.view ? ` · zoom ${Math.round(total() / (st.view.t1 - st.view.t0))}×` : ''}`;
     if (text !== lastSum) { lastSum = text; refs.sum.textContent = text; }
     const s = st.suggest;
     refs.sug.hidden = !s;
     if (s) refs.sugText.textContent = s.times.length ? `${s.times.length} cut${s.times.length === 1 ? '' : 's'} ${SUGGEST_LABEL[s.mode] || s.mode}` : `No ${SUGGEST_LABEL[s.mode] || s.mode} found (the beats come from the audio)`;
     refs.undoBtn.disabled = !st.undo.length;
+    const { W: fw, H: fh } = frameSize();
+    const fmtTxt = `${V.aspectOf(fw, fh) !== 'other' ? V.aspectOf(fw, fh) : `${fw}×${fh}`} · ${Number(F.toFixed(3))} fps`;
+    if (refs.fmtBtn && refs.fmtBtn.textContent !== fmtTxt) refs.fmtBtn.textContent = fmtTxt;
+    emit('select', { ids: sel });
+  }
+  function selName(id) {
+    const f = C.find(st.edit, id);
+    if (!f) return '';
+    if (f.where === 'clip') return `clip ${f.i + 1}`;
+    return `${f.track.name}.${f.track.items.indexOf(f.clip) + 1}`;
   }
   let lastTime = '';
+  // the transport shows program timecode HH:MM:SS:FF (or seconds / frames, T or a click on the total switches)
+  const fmtProg = (T) => { const F = progFps(); const m = host.S.timeMode; return m === 'sec' ? `${(T || 0).toFixed(3)}s` : m === 'frames' ? `f${C.frameOf(T || 0, F)}` : V.tc(T, F); };
   function paintTime() {
     const r = host?.refs;
     if (!r || !st.on) return;
     const T = P.playing ? nowT() : P.T;
-    if (document.activeElement !== r.time) { const v = fmt(T); if (v !== lastTime) { lastTime = v; r.time.value = v; } }
-    const tot = `/ ${fmt(total())}  · ✂`;
-    if (r.timeTotal.textContent !== tot) r.timeTotal.textContent = tot;
+    if (document.activeElement !== r.time) { const v = fmtProg(T); if (v !== lastTime) { lastTime = v; r.time.value = v; } }
+    const tot = `/ ${fmtProg(total())}${host.S.timeMode === 'frames' ? '' : ` · f${C.frameOf(T, progFps())}`} · ✂`;
+    if (r.timeTotal.textContent !== tot) {
+      const chars = tot.length;
+      if (r.timeTotal.textContent.length !== chars || !r.timeTotal.style.width) r.timeTotal.style.width = `${chars}ch`;
+      r.timeTotal.textContent = tot;
+    }
   }
   function paintPlay() {
     const r = host?.refs;
@@ -559,27 +796,50 @@ const VideoCut = (() => {
     const r = refs.canvas.getBoundingClientRect();
     const x = e.clientX - r.left; const y = e.clientY - r.top;
     const T = tOf(x);
-    if (y < RULER) return { zone: 'ruler', T, x };
-    const L = C.layout(st.edit);
-    const top = RULER + 2;
-    for (const it of L) {
-      const x0 = xOf(it.start); const x1 = xOf(it.end);
-      if (x < x0 - 5 || x > x1 + 5) continue;
-      if (st.sel.has(it.clip.id) && y < top + 9) {
-        const fi = xOf(it.start + (it.clip.fadeIn || 0)); const fo = xOf(it.end - (it.clip.fadeOut || 0));
-        if (Math.abs(x - fi - 3) <= 6) return { zone: 'fade', edge: 'in', it, T, x };
-        if (Math.abs(x - fo + 3) <= 6) return { zone: 'fade', edge: 'out', it, T, x };
-      }
-      if (Math.abs(x - x0) <= 5 && it.i > 0 && x >= x0) return { zone: 'edge', edge: 'in', it, T, x };
-      if (Math.abs(x - x1) <= 5 && x <= x1) return { zone: 'edge', edge: 'out', it, T, x };
-      if (Math.abs(x - x0) <= 5 && it.i === 0) return { zone: 'edge', edge: 'in', it, T, x };
-      if (x >= x0 && x <= x1) return { zone: 'clip', it, T, x };
+    if (y < RULER) {
+      const m = st.edit.markers.find((mm) => Math.abs(xOf(mm.t) - x) <= 5);
+      return m ? { zone: 'marker', m, T, x, y } : { zone: 'ruler', T, x, y };
     }
-    return { zone: 'empty', T, x };
+    const lane = laneOf(y);
+    if (!lane) return { zone: 'empty', T, x, y };
+    if (lane.track && x < 24 + (st.alt ? 50 : 0)) {
+      if (st.alt) { const tw = 24; const i = Math.floor((x - tw) / 16); const f = ['hide', 'mute', 'lock'][i]; if (x > tw && f) return { zone: 'switch', lane, flag: f, T, x, y }; }
+      if (x < 22) return { zone: 'label', lane, T, x, y };
+    }
+    if (lane.kind === 'main') {
+      const L = C.layout(st.edit);
+      const top = lane.y;
+      // a transition's bow-tie
+      for (const it of L) if (it.td && x >= xOf(it.start) - 2 && x <= xOf(it.start + it.td) + 2 && y > top + lane.h * 0.3) return { zone: 'trans', it, T, x, y, lane };
+      for (const it of L) {
+        const x0 = xOf(it.start); const x1 = xOf(it.end);
+        if (x < x0 - 5 || x > x1 + 5) continue;
+        if (st.sel.has(it.clip.id) && y < top + 9) {
+          const fi = xOf(it.start + (it.clip.fadeIn || 0)); const fo = xOf(it.end - (it.clip.fadeOut || 0));
+          if (Math.abs(x - fi - 3) <= 6) return { zone: 'fade', edge: 'in', it, T, x, y, lane };
+          if (Math.abs(x - fo + 3) <= 6) return { zone: 'fade', edge: 'out', it, T, x, y, lane };
+        }
+        if (Math.abs(x - x0) <= 5 && it.i > 0 && x >= x0) return { zone: 'edge', edge: 'in', it, T, x, y, lane };
+        if (Math.abs(x - x1) <= 5 && x <= x1) return { zone: 'edge', edge: 'out', it, T, x, y, lane };
+        if (Math.abs(x - x0) <= 5 && it.i === 0) return { zone: 'edge', edge: 'in', it, T, x, y, lane };
+        if (x >= x0 && x <= x1) return { zone: 'clip', it, T, x, y, lane };
+      }
+      return { zone: 'empty', T, x, y, lane };
+    }
+    const k = lane.track;
+    for (const itm of k.items) {
+      const x0 = xOf(itm.start); const x1 = xOf(C.itemEnd(itm));
+      if (x < x0 - 5 || x > x1 + 5) continue;
+      if (Math.abs(x - x0) <= 5) return { zone: 'iedge', edge: 'in', item: itm, track: k, T, x, y, lane };
+      if (Math.abs(x - x1) <= 5) return { zone: 'iedge', edge: 'out', item: itm, track: k, T, x, y, lane };
+      if (x >= x0 && x <= x1) return { zone: 'item', item: itm, track: k, T, x, y, lane };
+    }
+    return { zone: 'lane', lane, T, x, y };
   }
   function targets(exclude) {
     const out = [{ t: 0 }, { t: total() }, { t: P.T, kind: 'playhead' }];
     for (const x of C.layout(st.edit)) if (x.clip.id !== exclude) out.push({ t: x.start, kind: 'cut' }, { t: x.end, kind: 'cut' });
+    for (const k of st.edit.tracks || []) for (const it of k.items) if (it.id !== exclude) out.push({ t: it.start, kind: 'item' }, { t: C.itemEnd(it), kind: 'item' });
     for (const m of st.edit.markers) out.push({ t: m.t, kind: 'marker' });
     for (const n of noteMarks()) out.push({ t: n.t, kind: 'note' });
     if (st.edit.mark) out.push({ t: st.edit.mark.a }, { t: st.edit.mark.b });
@@ -587,12 +847,17 @@ const VideoCut = (() => {
     for (const b of pb.beats) out.push({ t: b, kind: 'beat' });
     return out;
   }
+  // Snap to edges, markers, beats and the playhead (Alt: free); with snapping off, or nothing near, to the frame.
+  const toFrame = (T) => { const F = progFps(); return Math.round(T * F) / F; };
   const snapT = (T, e, exclude) => {
-    if (e.altKey) { st.snapAt = null; return T; }
-    const s = C.snap(T, targets(exclude), (8 / Math.max(1, W())) * total());
+    if (e.altKey || !st.snap) { st.snapAt = null; return toFrame(T); }
+    const v = span();
+    const s = C.snap(T, targets(exclude), (8 / Math.max(1, W())) * (v.t1 - v.t0));
     st.snapAt = s.snapped ? s.t : null;
-    return s.t;
+    return s.snapped ? s.t : toFrame(T);
   };
+  // scrubbing lands on frames: the middle of the frame under the pointer
+  const scrubT = (T, e) => { const s = snapT(T, e); const F = progFps(); return st.snapAt != null ? s : (Math.floor(T * F + 1e-6) + 0.5) / F; };
   function trackDown(e) {
     if (!st.edit || e.button === 2) return;
     host.refs.root.focus({ preventScroll: true }); // keys (S, Del, Q…) go to Video Review
@@ -600,29 +865,76 @@ const VideoCut = (() => {
     const start = st.edit;
     refs.canvas.setPointerCapture(e.pointerId);
     let moved = false;
-    const x0 = e.clientX;
+    const x0 = e.clientX; const y0 = e.clientY;
     const wasPlaying = P.playing;
-    if (h.zone === 'ruler' || h.zone === 'empty') {
-      pause(); seek(h.T);
-      const mv = (ev) => seek(snapT(hit(ev).T, ev));
+    if (h.zone === 'switch') { commit(C.patchTrack(st.edit, h.lane.track.id, { [h.flag]: !h.lane.track[h.flag] }), `${h.lane.track.name}: ${h.flag} ${h.lane.track[h.flag] ? 'off' : 'on'}`); return; }
+    if (h.zone === 'label') { trackMenu(h.lane.track, e.clientX, e.clientY); return; }
+    if (h.zone === 'marker') { pause(); seek(h.m.t, { play: false }); return; }
+    // razor: a click splits whatever is under it
+    if (st.razor && (h.zone === 'clip' || h.zone === 'item' || h.zone === 'edge' || h.zone === 'iedge')) {
+      const T = snapT(h.T, e);
+      if (h.item) commit(C.splitItems(st.edit, T, [h.item.id]), '✂ Razor'); else commit(C.split(st.edit, T), '✂ Razor');
+      st.snapAt = null; draw();
+      return;
+    }
+    if (h.zone === 'ruler' || h.zone === 'empty' || h.zone === 'lane') {
+      pause(); seek(scrubT(h.T, e), { play: false });
+      if (h.zone !== 'ruler') { st.sel.clear(); paintHead(); draw(); }
+      const mv = (ev) => seek(scrubT(hit(ev).T, ev), { play: false });
       refs.canvas.addEventListener('pointermove', mv);
       refs.canvas.addEventListener('pointerup', () => { refs.canvas.removeEventListener('pointermove', mv); st.snapAt = null; draw(); }, { once: true });
+      return;
+    }
+    if (h.zone === 'trans') { st.sel = new Set([h.it.clip.id]); paintHead(); draw(); return; }
+    // track items: move (also to another track of the same kind), trim an edge
+    if (h.zone === 'item' || h.zone === 'iedge') {
+      const it0 = h.item; const id = it0.id;
+      if (h.track.lock) { host.flash(`${h.track.name} is locked`); return; }
+      const grab = h.T - it0.start;
+      const mv = (ev) => {
+        if (!moved && Math.abs(ev.clientX - x0) < 4 && Math.abs(ev.clientY - y0) < 4) return;
+        if (!moved) { moved = true; if (wasPlaying) pause(); }
+        const hh = hit(ev);
+        if (h.zone === 'iedge') st.drag = { kind: 'itrim', id, preview: C.trimItem(start, id, h.edge, snapT(hh.T, ev, id)) };
+        else {
+          let s0 = snapT(hh.T - grab, ev, id);
+          const endSnap = snapT(hh.T - grab + C.itemDur(it0), ev, id);
+          if (st.snapAt != null && Math.abs(endSnap - (hh.T - grab + C.itemDur(it0))) < Math.abs(s0 - (hh.T - grab))) s0 = endSnap - C.itemDur(it0);
+          const lane = laneOf(ev.clientY - refs.canvas.getBoundingClientRect().top);
+          const to = lane?.track && lane.track.type === h.track.type && !lane.track.lock ? lane : null;
+          st.drag = { kind: 'item', id, start: Math.max(0, s0), lane: to, preview: C.moveItem(start, id, Math.max(0, s0), to?.track.id) };
+        }
+        draw();
+      };
+      refs.canvas.addEventListener('pointermove', mv);
+      refs.canvas.addEventListener('pointerup', () => {
+        refs.canvas.removeEventListener('pointermove', mv);
+        const d = st.drag; st.drag = null; st.snapAt = null;
+        if (!moved) { if (e.shiftKey) { if (st.sel.has(id)) st.sel.delete(id); else st.sel.add(id); } else st.sel = new Set([id]); paintHead(); draw(); seek(h.T, { play: false }); return; }
+        if (d?.preview) commit(d.preview, d.kind === 'itrim' ? 'Trimmed' : 'Moved'); else draw();
+      }, { once: true });
       return;
     }
     if (h.zone === 'edge' || h.zone === 'fade') { st.sel = new Set([h.it.clip.id]); paintHead(); }
     const id = h.it.clip.id;
     const L0 = C.layout(start);
+    const mode = h.zone === 'edge' && e.shiftKey ? 'roll' : h.zone === 'clip' && (e.ctrlKey || e.metaKey) ? 'slip' : h.zone === 'clip' && e.shiftKey ? 'slide' : null;
     const mv = (ev) => {
       if (!moved && Math.abs(ev.clientX - x0) < 4) return;
       if (!moved) { moved = true; if (wasPlaying) pause(); }
       const T = hit(ev).T;
-      if (h.zone === 'edge') {
-        const it = L0[h.it.i];
+      const it = L0[h.it.i];
+      if (mode === 'roll') {
+        const i = h.edge === 'in' ? h.it.i : h.it.i + 1;
+        const cut = h.edge === 'in' ? it.start : it.end;
+        st.drag = { kind: 'roll', id, preview: C.roll(start, i, snapT(T, ev, id) - cut) };
+      } else if (mode === 'slip') st.drag = { kind: 'slip', id, preview: C.slip(start, id, -(T - h.T)) };
+      else if (mode === 'slide') st.drag = { kind: 'slide', id, preview: C.slide(start, id, toFrame(T - h.T)) };
+      else if (h.zone === 'edge') {
         const P1 = snapT(T, ev, id);
         const delta = h.edge === 'in' ? P1 - it.start : P1 - it.end;
         st.drag = { kind: 'trim', id, preview: C.trim(start, id, h.edge, delta) };
       } else if (h.zone === 'fade') {
-        const it = L0[h.it.i];
         const len = h.edge === 'in' ? T - it.start : it.end - T;
         st.drag = { kind: 'fade', id, preview: C.setFade(start, id, h.edge, len) };
       } else {
@@ -631,64 +943,186 @@ const VideoCut = (() => {
         if (to < 0) to = L0.length;
         st.drag = { kind: 'move', id, to, preview: null };
       }
+      if (st.drag?.preview && (mode === 'slip' || mode === 'roll' || mode === 'slide')) liveFrame(st.drag.preview);
       draw();
     };
     refs.canvas.addEventListener('pointermove', mv);
-    refs.canvas.addEventListener('pointerup', (ev) => {
+    refs.canvas.addEventListener('pointerup', () => {
       refs.canvas.removeEventListener('pointermove', mv);
       const d = st.drag; st.drag = null; st.snapAt = null;
       if (!moved) {
         // a click: select (Shift adds) and put the playhead there
         if (e.shiftKey) { if (st.sel.has(id)) st.sel.delete(id); else st.sel.add(id); } else st.sel = new Set([id]);
         paintHead(); draw();
-        if (h.zone === 'clip') seek(h.T);
+        if (h.zone === 'clip') seek(scrubT(h.T, e), { play: false });
         return;
       }
       if (d?.kind === 'move') { const i = L0.findIndex((x) => x.clip.id === id); if (d.to !== i && d.to !== i + 1) commit(C.move(start, id, d.to), 'Clip moved'); else draw(); }
-      else if (d?.preview) commit(d.preview, d.kind === 'fade' ? 'Fade' : 'Trimmed');
+      else if (d?.preview) commit(d.preview, { fade: 'Fade', roll: 'Rolled', slip: 'Slipped', slide: 'Slid' }[d.kind] || 'Trimmed');
       else draw();
-      void ev;
     }, { once: true });
+  }
+  // while slipping / rolling the picture follows (the frame at the playhead of the previewed edit)
+  let liveT = 0;
+  function liveFrame(preview) {
+    if (performance.now() - liveT < 60) return;
+    liveT = performance.now();
+    if (richOn) VideoComp.renderExact(P.T, { edit: preview, g: refs.pwrap.querySelector('.vr-pcomp').getContext('2d'), W: refs.pwrap.querySelector('.vr-pcomp').width, H: refs.pwrap.querySelector('.vr-pcomp').height });
   }
   function trackHover(e) {
     if (st.drag || e.buttons) return;
     const h = hit(e);
-    const cur = h.zone === 'edge' ? 'col-resize' : h.zone === 'fade' ? 'ew-resize' : h.zone === 'clip' ? 'grab' : 'pointer';
+    const cur = st.razor && /clip|item|edge/.test(h.zone) ? 'crosshair' : h.zone === 'edge' || h.zone === 'iedge' ? (e.shiftKey ? 'ew-resize' : 'col-resize') : h.zone === 'fade' ? 'ew-resize' : h.zone === 'clip' || h.zone === 'item' ? 'grab' : h.zone === 'label' || h.zone === 'switch' || h.zone === 'marker' || h.zone === 'trans' ? 'pointer' : 'text';
     if (refs.canvas.style.cursor !== cur) refs.canvas.style.cursor = cur;
+    if (st.razor) { st.hoverX = h.x; draw(); }
   }
-  function trackMenu(e) {
+  function trackMenuAt(e) {
     e.preventDefault();
     const h = hit(e);
-    if (h.zone !== 'clip' && h.zone !== 'edge' && h.zone !== 'fade') { moreMenu({ getBoundingClientRect: () => ({ left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY }) }); return; }
+    const x = e.clientX; const y = e.clientY;
+    if (h.zone === 'marker') { markerMenu(h.m, x, y); return; }
+    if (h.zone === 'ruler') { rulerMenu(h.T, x, y); return; }
+    if (h.zone === 'label' || h.zone === 'switch' || h.zone === 'lane') { trackMenu(h.lane.track, x, y, h.T); return; }
+    if (h.zone === 'trans') { st.sel = new Set([h.it.clip.id]); paintHead(); draw(); transMenu(h.it.clip, x, y); return; }
+    if (h.zone === 'item' || h.zone === 'iedge') { if (!st.sel.has(h.item.id)) { st.sel = new Set([h.item.id]); paintHead(); draw(); } clipMenu(h.item, h.T, x, y); return; }
+    if (h.zone !== 'clip' && h.zone !== 'edge' && h.zone !== 'fade') { moreMenu({ getBoundingClientRect: () => ({ left: x, right: x, top: y, bottom: y }) }); return; }
     const c = h.it.clip;
     if (!st.sel.has(c.id)) { st.sel = new Set([c.id]); paintHead(); draw(); }
-    clipMenu(c, h.T, e.clientX, e.clientY);
+    clipMenu(c, h.T, x, y);
+  }
+  function trackWheel(e) {
+    if (!st.edit) return;
+    e.preventDefault();
+    const r = refs.canvas.getBoundingClientRect();
+    if (e.ctrlKey || e.metaKey) { zoomBy(e.deltaY < 0 ? 1.25 : 0.8, tOf(e.clientX - r.left)); paintHead(); return; }
+    if (!st.view) return;
+    const v = st.view; const len = v.t1 - v.t0;
+    const d = ((Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY) / Math.max(1, W())) * len;
+    setView(v.t0 + d, v.t0 + d + len);
+  }
+
+  // ---------- menus on the track (right-click) ----------
+  const sel1 = (c) => (st.sel.has(c.id) ? selIds() : [c.id]);
+  const groupsOf = (list) => [...new Set(list.map((x) => x.group))];
+  // a two-level picker: groups › entries (each entry runs pick(id))
+  const grouped = (list, pick, cur) => groupsOf(list).map((gname) => ({ label: gname, items: () => list.filter((x) => x.group === gname).map((x) => ({ label: `${x.id === cur ? '✓ ' : ''}${x.name}`, action: () => pick(x.id) })) }));
+  function transMenu(c, x, y) {
+    const i = st.edit.clips.findIndex((k) => k.id === c.id);
+    if (i <= 0) return;
+    const cur = c.trans?.type;
+    showMenu(x, y, [
+      { label: cur ? `Transition: ${FX.TRANS[cur]?.name || cur}` : 'Add a transition', items: grouped(FX.TRANSITIONS.filter((t) => t.id !== 'cut'), (id) => setTransition(id, null, [c.id]), cur) },
+      { label: 'Length', items: [0.2, 0.3, 0.5, 0.75, 1, 1.5, 2].map((s) => ({ label: `${s} s${c.trans?.dur === s ? ' ✓' : ''}`, action: () => setTransition(cur || 'dissolve', s, [c.id]) })) },
+      { label: 'Same on every cut', action: () => commit(C.transAll(st.edit, cur || 'dissolve', c.trans?.dur || 0.5), 'Transition on every cut') },
+      cur ? { label: 'Remove (straight cut)', action: () => setTransition(null, 0, [c.id]) } : null,
+      { more: true, label: 'Inspector…', action: () => inspect(c.id) },
+    ].filter(Boolean));
   }
   function clipMenu(c, T, x, y) {
-    const ids = [...st.sel];
-    const sub = (items) => () => setTimeout(() => showMenu(x, y, items), 0);
+    const ids = sel1(c);
+    const f = C.find(st.edit, c.id);
+    const isItem = f?.where === 'item';
+    const media = c.kind === 'video' || c.kind === 'audio';
+    const visual = c.kind !== 'audio' && c.kind !== 'gap';
+    const i = isItem ? -1 : f?.i ?? -1;
     showMenu(x, y, [
-      { label: 'Split here (S)', action: () => commit(C.split(st.edit, T), 'Split') },
-      { label: 'Delete, leave a gap (Del)', action: () => del(false) },
-      { label: 'Ripple delete (Shift+Del)', action: () => del(true) },
-      { label: 'Duplicate (D)', action: () => commit(C.duplicate(st.edit, c.id), 'Duplicated') },
-      c.kind === 'video' ? { label: `${c.mute ? 'Unmute' : 'Mute'} the sound (A)`, action: () => commit(C.setMute(st.edit, ids), c.mute ? 'Sound on' : 'Muted') } : null,
-      c.kind === 'video' ? { label: `Speed: ${c.speed || 1}× ▸`, action: sub(C.SPEEDS.map((s) => ({ label: `${(c.speed || 1) === s ? '✓ ' : '   '}${s}×${s === 1 ? ' (normal)' : ''}`, action: () => setSpeed(s) }))) } : null,
-      { label: `Fade in: ${c.fadeIn ? `${c.fadeIn.toFixed(2)} s` : 'off'} ▸`, action: sub([0, 0.25, 0.5, 1, 2].map((s) => ({ label: s ? `${s} s` : 'Off', action: () => commit(C.setFade(st.edit, ids, 'in', s), s ? `Fade in ${s} s` : 'No fade in') }))) },
-      { label: `Fade out: ${c.fadeOut ? `${c.fadeOut.toFixed(2)} s` : 'off'} ▸`, action: sub([0, 0.25, 0.5, 1, 2].map((s) => ({ label: s ? `${s} s` : 'Off', action: () => commit(C.setFade(st.edit, ids, 'out', s), s ? `Fade out ${s} s` : 'No fade out') }))) },
-      { label: 'Trim the start to the playhead (Q)', action: () => commit(C.trimTo(st.edit, P.T, 'in'), 'Trimmed') },
-      { label: 'Trim the end to the playhead (W)', action: () => commit(C.trimTo(st.edit, P.T, 'out'), 'Trimmed') },
-      c.kind !== 'gap' && c.kind !== 'title' ? { label: 'Freeze frame at the playhead (Shift+F)', action: () => freezeHere() } : null,
-      c.kind === 'title' ? { label: 'Edit the title…', action: () => editTitle(c) } : null,
+      { label: 'Split here (S)', action: () => (isItem ? commit(C.splitItems(st.edit, T, ids), '✂ Split') : commit(C.split(st.edit, T), 'Split')) },
+      isItem ? { label: 'Delete (Del)', action: () => commit(C.removeItems(st.edit, ids), 'Deleted') } : { label: 'Delete', items: [
+        { label: 'Leave a gap (Del)', action: () => del(false) }, { label: 'Ripple delete (Shift+Del)', action: () => del(true) }] },
+      { label: 'Edit', items: () => [
+        !isItem ? { label: 'Duplicate (D)', action: () => commit(C.duplicate(st.edit, c.id), 'Duplicated') } : { label: 'Duplicate (D)', action: () => commit(C.addItem(st.edit, { ...c, start: C.itemEnd(c) }, { track: f.track.id }), 'Duplicated') },
+        { label: 'Trim the start to the playhead (Q)', action: () => trimToHead('in', c.id) },
+        { label: 'Trim the end to the playhead (W)', action: () => trimToHead('out', c.id) },
+        !isItem && i > 0 ? { label: 'Roll the cut before to the playhead', action: () => commit(C.roll(st.edit, i, P.T - C.layout(st.edit)[i].start), 'Rolled') } : null,
+        media ? { label: 'Slip ±10 frames ‹ ›', items: [-10, -1, 1, 10].map((n) => ({ label: `${n > 0 ? '+' : ''}${n} frame${Math.abs(n) > 1 ? 's' : ''}`, action: () => commit(C.slip(st.edit, c.id, n / progFps()), 'Slipped') })) } : null,
+        !isItem && i > 0 && i < st.edit.clips.length - 1 ? { label: 'Slide ±10 frames', items: [-10, -1, 1, 10].map((n) => ({ label: `${n > 0 ? '+' : ''}${n} frame${Math.abs(n) > 1 ? 's' : ''}`, action: () => commit(C.slide(st.edit, c.id, n / progFps()), 'Slid') })) } : null,
+        c.kind !== 'gap' && c.kind !== 'title' && !isItem ? { label: 'Freeze frame at the playhead (Shift+F)', action: () => freezeHere() } : null,
+        !isItem && c.kind === 'video' ? { label: 'Move to a track above (overlay)', action: () => toOverlay(c.id) } : null,
+        isItem && c.kind === 'video' ? { label: 'Move to the main track (at the playhead)', action: () => toMain(c.id) } : null,
+        !isItem ? { label: 'Nest the selection (compound clip)', action: () => nestSelection() } : null,
+        c.nest ? { label: 'Un-nest (back to its clips)', action: () => unnest(c.id) } : null,
+      ].filter(Boolean) },
+      media ? { label: `Speed: ${c.speed || 1}×${c.reverse ? ' reversed' : ''}`, items: () => [
+        ...C.SPEEDS.map((s) => ({ label: `${(c.speed || 1) === s ? '✓ ' : '   '}${s}×${s === 1 ? ' (normal)' : ''}`, action: () => setSpeed(s, ids) })),
+        { label: `${c.reverse ? '✓ ' : ''}Reverse`, action: () => commit(C.setReverse(st.edit, ids), c.reverse ? 'Forward' : '◀ Reversed') },
+        !isItem ? { label: 'Speed ramp', items: FX.RAMPS.map((r0) => ({ label: r0.name, action: () => rampClip(r0.id, c.id) })) } : null,
+      ].filter(Boolean) } : null,
+      visual ? { label: `Look${c.color?.look ? `: ${FX.LOOK[c.color.look]?.name}` : ''}`, items: () => [
+        ...grouped(FX.LOOKS, (id) => setLook(id, ids), c.color?.look),
+        c.color ? { label: 'Strength', items: [0.25, 0.5, 0.75, 1].map((a) => ({ label: `${Math.round(a * 100)}%`, action: () => commit(C.patchAny(st.edit, ids, (k) => { k.color = { ...(k.color || {}), amt: a }; }), `Look ${Math.round(a * 100)}%`) })) } : null,
+        { label: 'Copy look', action: () => { lookClip = c.color ? C.copy(c.color) : null; host.flash(lookClip ? 'Look copied' : 'No look to copy'); } },
+        lookClip ? { label: 'Paste look', action: () => commit(C.patchAny(st.edit, ids, (k) => { k.color = C.copy(lookClip); }), 'Look pasted') } : null,
+        c.color ? { label: 'No look', action: () => commit(C.patchAny(st.edit, ids, (k) => { delete k.color; }), 'Look removed') } : null,
+      ].filter(Boolean) } : null,
+      visual && c.kind !== 'title' ? { label: 'Motion', items: () => grouped(FX.MOTIONS, (id) => applyMotion(id, ids), null) } : null,
+      { label: 'Keyframe at the playhead', items: () => C.KEY_PROPS.filter((p) => (p === 'volume' ? media : visual)).map((p) => ({ label: `◆ ${p}${c.keys?.[p] ? ` (${c.keys[p].length})` : ''}`, action: () => keyHere(p, null, c.id) })).concat(c.keys ? [{ label: 'Remove every keyframe', action: () => commit(C.patchAny(st.edit, ids, (k) => { delete k.keys; }), 'Keyframes removed') }] : []) },
+      { label: 'Fades', items: () => [
+        { label: `Fade in: ${c.fadeIn ? `${c.fadeIn.toFixed(2)} s` : 'off'}`, items: [0, 0.25, 0.5, 1, 2].map((s) => ({ label: s ? `${s} s` : 'Off', action: () => commit(C.patchAny(st.edit, ids, (k) => { k.fadeIn = Math.min(s, C.durOf(k) / 2); }), s ? `Fade in ${s} s` : 'No fade in') })) },
+        { label: `Fade out: ${c.fadeOut ? `${c.fadeOut.toFixed(2)} s` : 'off'}`, items: [0, 0.25, 0.5, 1, 2].map((s) => ({ label: s ? `${s} s` : 'Off', action: () => commit(C.patchAny(st.edit, ids, (k) => { k.fadeOut = Math.min(s, C.durOf(k) / 2); }), s ? `Fade out ${s} s` : 'No fade out') })) },
+      ] },
+      media ? { label: `${c.mute ? 'Unmute' : 'Mute'} the sound (A)`, action: () => commit(C.patchAny(st.edit, ids, (k) => { k.mute = !c.mute; }), c.mute ? 'Sound on' : 'Muted') } : null,
+      media ? { label: `Volume${c.volume != null && c.volume !== 1 ? `: ${Math.round(c.volume * 100)}%` : ''}`, items: [0, 0.25, 0.5, 0.75, 1, 1.5, 2].map((v) => ({ label: `${Math.round(v * 100)}%`, action: () => commit(C.patchAny(st.edit, ids, (k) => { k.volume = v; }), `Volume ${Math.round(v * 100)}%`) })) } : null,
+      isItem && visual ? { label: `Blend: ${FX.BLEND[c.blend || 'normal']?.name}`, items: FX.BLENDS.map((b) => ({ label: `${(c.blend || 'normal') === b.id ? '✓ ' : ''}${b.name}`, action: () => commit(C.patchAny(st.edit, ids, (k) => { k.blend = b.id; }), `Blend ${b.name}`) })) } : null,
+      visual ? { label: 'Opacity', items: [1, 0.85, 0.7, 0.5, 0.3, 0.15].map((o) => ({ label: `${Math.round(o * 100)}%`, action: () => commit(C.patchAny(st.edit, ids, (k) => { k.opacity = o; }), `Opacity ${Math.round(o * 100)}%`) })) } : null,
+      !isItem && i > 0 ? { label: `Transition in${c.trans ? `: ${FX.TRANS[c.trans.type]?.name}` : ''}`, items: () => grouped(FX.TRANSITIONS.filter((t) => t.id !== 'cut'), (id) => setTransition(id, null, [c.id]), c.trans?.type) } : null,
+      c.kind === 'title' ? { label: 'Edit the title…', action: () => (isItem ? inspect(c.id) : editTitle(c)) } : null,
+      c.kind === 'title' ? { label: 'Title style', items: () => grouped(FX.TITLE_STYLES, (id) => commit(C.patchAny(st.edit, ids, (k) => { k.style = id; }), FX.TSTYLE[id].name), c.style) } : null,
+      c.kind === 'title' ? { label: 'Title animation', items: () => [{ label: 'In', items: FX.TITLE_ANIMS.map((a) => ({ label: `${c.anim === a.id ? '✓ ' : ''}${a.name}`, action: () => commit(C.patchAny(st.edit, ids, (k) => { k.anim = a.id; }), `In: ${a.name}`) })) }, { label: 'Out', items: FX.TITLE_ANIMS.map((a) => ({ label: `${c.out === a.id ? '✓ ' : ''}${a.name}`, action: () => commit(C.patchAny(st.edit, ids, (k) => { k.out = a.id; }), `Out: ${a.name}`) })) }] } : null,
+      c.kind === 'gap' && c.slot ? { label: 'Fill this slot with a video…', action: () => fillSlot(c.id) } : null,
+      { label: 'Inspector', action: () => inspect(c.id) },
       c.src ? { more: true, label: 'Open the source in Review', action: () => { leave(); R().open(c.src); } } : null,
       c.src ? { more: true, label: 'Show the source file', action: () => window.hub.fs.reveal(c.src) } : null,
     ].filter(Boolean));
   }
+  let lookClip = null;
+  function trackMenu(k, x, y, T = P.T) {
+    const add = { label: 'Add a track', items: [['video', 'Video / overlay track'], ['text', 'Text track'], ['audio', 'Audio track']].map(([t, l]) => ({ label: l, action: () => commit(C.addTrack(st.edit, t), `${l} added`) })) };
+    if (!k) { showMenu(x, y, [add, { label: 'Add here', items: addItems(T) }]); return; }
+    showMenu(x, y, [
+      { label: `${k.hide ? 'Show' : 'Hide'} ${k.name}`, action: () => commit(C.patchTrack(st.edit, k.id, { hide: !k.hide }), `${k.name} ${k.hide ? 'shown' : 'hidden'}`) },
+      { label: `${k.mute ? 'Unmute' : 'Mute'} ${k.name}`, action: () => commit(C.patchTrack(st.edit, k.id, { mute: !k.mute }), `${k.name} ${k.mute ? 'on' : 'muted'}`) },
+      { label: `${k.lock ? 'Unlock' : 'Lock'} ${k.name}`, action: () => commit(C.patchTrack(st.edit, k.id, { lock: !k.lock }), `${k.name} ${k.lock ? 'unlocked' : 'locked'}`) },
+      { label: 'Rename…', action: async () => { const v = await Modal.prompt('Track name', { value: k.name }); if (v?.trim()) commit(C.patchTrack(st.edit, k.id, { name: v.trim().slice(0, 24) }), 'Renamed'); } },
+      { label: 'Add here', items: addItems(T, k) },
+      add,
+      { label: `Delete ${k.name}${k.items.length ? ` and its ${k.items.length} item${k.items.length === 1 ? '' : 's'}` : ''}`, danger: true, action: () => commit(C.removeTrack(st.edit, k.id), `${k.name} deleted`) },
+    ]);
+  }
+  function markerMenu(m, x, y) {
+    showMenu(x, y, [
+      { label: `Go to ${m.label || 'the marker'} (${fmtProg(m.t)})`, action: () => seek(m.t, { play: false }) },
+      { label: 'Rename…', action: async () => { const v = await Modal.prompt('Marker', { value: m.label || '' }); if (v != null) commit(C.patchMarker(st.edit, m.id, { label: v.trim() }), 'Marker renamed'); } },
+      { label: m.note ? 'Edit the note…' : 'Add a note…', action: () => markerNote(m) },
+      { label: 'Color', items: FX.MARKER_COLORS.map(([n, col]) => ({ label: `${(m.color || '#ffd75e') === col ? '✓ ' : ''}${n}`, action: () => commit(C.patchMarker(st.edit, m.id, { color: col }), `Marker ${n}`) })) },
+      { label: 'In point here', action: () => setMark(m.t, st.edit.mark?.b ?? total()) },
+      { label: 'Out point here', action: () => setMark(st.edit.mark?.a ?? 0, m.t) },
+      { label: 'Split here', action: () => commit(C.split(st.edit, m.t), 'Split at the marker') },
+      { label: 'Delete the marker', danger: true, action: () => commit(C.removeMarker(st.edit, m.id), 'Marker deleted') },
+    ]);
+  }
+  async function markerNote(m) {
+    const v = await Modal.prompt('Marker note', { value: m.note || '', label: `A note on ${m.label || 'the marker'} at ${fmtProg(m.t)} (the chats see it in the edit)` });
+    if (v != null) commit(C.patchMarker(st.edit, m.id, { note: v.trim() }), v.trim() ? 'Note saved' : 'Note removed');
+  }
+  function rulerMenu(T, x, y) {
+    showMenu(x, y, [
+      { label: `Marker at ${fmtProg(T)}`, action: () => { seek(T, { play: false }); marker(); } },
+      { label: 'In point here (I)', action: () => setMark(T, st.edit.mark?.b ?? total()) },
+      { label: 'Out point here (O)', action: () => setMark(st.edit.mark?.a ?? 0, T) },
+      st.edit.mark ? { label: 'Clear in–out (X)', action: () => setMark(null) } : null,
+      { label: 'Zoom', items: [{ label: 'Zoom in (+)', action: () => zoomBy(2, T) }, { label: 'Zoom out (−)', action: () => zoomBy(0.5, T) }, { label: 'Fit the edit (\\)', action: zoomFit }, { label: 'Frames (zoom to 1 s)', action: () => setView(T - 0.5, T + 0.5) }] },
+      { label: `${st.snap ? '✓ ' : ''}Snapping (N)`, action: () => toggleSnap() },
+    ].filter(Boolean));
+  }
 
   // ---------- actions ----------
-  const selIds = () => [...st.sel].filter((id) => st.edit.clips.some((c) => c.id === id));
-  const underHead = () => C.at(st.edit, Math.min(P.T, Math.max(0, total() - 1e-4)))?.clip || null;
-  const targetIds = () => (selIds().length ? selIds() : underHead() ? [underHead().id] : []);
+  const selIds = () => [...st.sel].filter((id) => C.find(st.edit, id));
+  const selClips = () => selIds().filter((id) => st.edit.clips.some((c) => c.id === id));
+  const selItems = () => selIds().filter((id) => C.find(st.edit, id)?.where === 'item');
+  const underHead = () => (P.T < C.mainTotal(st.edit) ? C.at(st.edit, Math.min(P.T, Math.max(0, C.mainTotal(st.edit) - 1e-4)))?.clip || null : null);
+  const targetIds = () => (selClips().length ? selClips() : underHead() ? [underHead().id] : []);
+  // the selection, items included; else the main-track clip under the playhead
+  const targetAny = () => (selIds().length ? selIds() : underHead() ? [underHead().id] : []);
   function split(T = P.T) {
     const next = C.split(st.edit, T);
     if (next === st.edit) { host.flash('Nothing to split here'); return false; }
@@ -701,17 +1135,21 @@ const VideoCut = (() => {
   function del(ripple) {
     const mk = st.edit.mark;
     if (!selIds().length && mk) { const n = C.removeRange(st.edit, mk.a, mk.b, { ripple }); n.mark = null; commit(n, ripple ? 'In–out removed' : 'In–out lifted'); return true; }
+    const items = selItems();
     const ids = targetIds();
-    if (!ids.length) return false;
-    commit(C.remove(st.edit, ids, { ripple }), ripple ? 'Ripple delete' : 'Deleted (gap left)');
+    if (!ids.length && !items.length) return false;
+    let n = st.edit;
+    if (ids.length) n = C.remove(n, ids, { ripple });
+    if (items.length) n = C.removeItems(n, items);
+    commit(n, items.length && !ids.length ? 'Deleted' : ripple ? 'Ripple delete' : 'Deleted (gap left)');
     st.sel.clear(); paintHead(); draw();
     return true;
   }
-  function setSpeed(s) {
-    const ids = targetIds().filter((id) => st.edit.clips.find((c) => c.id === id)?.kind === 'video');
+  function setSpeed(s, given) {
+    const ids = (given || targetAny()).filter((id) => /video|audio/.test(C.find(st.edit, id)?.clip.kind));
     if (!ids.length) return null;
     const v = clamp(Number(s) || 1, 0.25, 4);
-    commit(C.setSpeed(st.edit, ids, v), `${v}×`);
+    commit(C.patchAny(st.edit, ids, (c) => { c.speed = v; const d = C.durOf(c); c.fadeIn = Math.min(c.fadeIn || 0, d / 2); c.fadeOut = Math.min(c.fadeOut || 0, d / 2); }), `${v}×`);
     return v;
   }
   function nudgeSpeed(dir) {
@@ -806,8 +1244,318 @@ const VideoCut = (() => {
     return true;
   }
 
+  // ---------- the editor's actions (menus, inspector, commands and the agents all come here) ----------
+  const IMG = /\.(png|jpe?g|webp|gif|bmp|avif)$/i;
+  const AUD = /\.(wav|mp3|m4a|aac|ogg|flac|opus)$/i;
+  const VID = /\.(mp4|m4v|mov|webm|mkv|avi)$/i;
+  function setTransition(type, dur = null, ids = null) {
+    const list = (ids || targetIds()).filter((id) => st.edit.clips.findIndex((c) => c.id === id) > 0);
+    if (!list.length) { host.flash('Select a clip after a cut (the transition goes into it)'); return null; }
+    const t = type ? FX.TRANS[type] || FX.find(FX.TRANSITIONS, type) : null;
+    if (type && !t) return null;
+    const d = dur ?? (st.edit.clips.find((c) => c.id === list[0])?.trans?.dur || t?.d || 0.5);
+    commit(C.setTrans(st.edit, list, t?.id || null, t ? d : 0), t ? `${t.name} · ${d} s` : 'Straight cut');
+    return t ? { type: t.id, dur: d } : null;
+  }
+  function setLook(id, ids = null, amt = null) {
+    const list = ids || targetAny();
+    if (!list.length) return null;
+    const l = id ? FX.LOOK[id] || FX.find(FX.LOOKS, id) : null;
+    if (id && !l) return null;
+    commit(C.patchAny(st.edit, list, (c) => { if (!l) delete c.color; else c.color = { ...(c.color || {}), look: l.id, ...(amt != null ? { amt } : {}) }; }), l ? `Look: ${l.name}` : 'Look removed');
+    return l;
+  }
+  // one adjustment (exposure, contrast… EditFX.ADJ) on the selection
+  function adjust(key, value, ids = null) {
+    const list = ids || targetAny();
+    const a = FX.ADJ.find((x) => x.id === key);
+    if (!list.length || !a) return null;
+    commit(C.patchAny(st.edit, list, (c) => { c.color = { ...(c.color || {}), [key]: clamp(Number(value) || 0, a.min, a.max) }; }), `${a.name} ${value}`);
+    return true;
+  }
+  function applyMotion(id, ids = null) {
+    const m = FX.MOTION[id] || FX.find(FX.MOTIONS, id);
+    const list = ids || targetAny();
+    if (!m || !list.length) return null;
+    let n = st.edit;
+    for (const cid of list) {
+      const f = C.find(n, cid); if (!f) continue;
+      const d = f.where === 'clip' ? C.durOf(f.clip) : C.itemDur(f.clip);
+      n = C.patchAny(n, cid, (c) => { if (c.keys) { for (const p of ['x', 'y', 'scale', 'rotate', 'opacity']) delete c.keys[p]; if (!Object.keys(c.keys).length) delete c.keys; } });
+      for (const [prop, keys] of Object.entries(m.fn(d))) for (const [t, v, ease] of keys) n = C.setKey(n, cid, prop, t, v, ease || 'ease');
+    }
+    commit(n, `Motion: ${m.name}`);
+    return m;
+  }
+  // A keyframe at the playhead on a property (value: the current value when null).
+  function keyHere(prop, value = null, id = null, ease = 'ease') {
+    const cid = id || targetAny()[0];
+    const f = cid ? C.find(st.edit, cid) : null;
+    if (!f || !C.KEY_PROPS.includes(prop)) return null;
+    const start = f.where === 'clip' ? C.layout(st.edit)[f.i].start : f.clip.start;
+    const t = clamp(P.T - start, 0, f.where === 'clip' ? C.durOf(f.clip) : C.itemDur(f.clip));
+    const v = value ?? C.propAt(f.clip, prop, t);
+    commit(C.setKey(st.edit, cid, prop, t, v, ease), `◆ ${prop} ${Number(v).toFixed(2)} at ${fmtProg(P.T)}`);
+    return { t, v };
+  }
+  function trimToHead(edge, id = null) {
+    const f = id ? C.find(st.edit, id) : null;
+    if (f?.where === 'item') return commit(C.trimItem(st.edit, id, edge, P.T), 'Trimmed');
+    return commit(C.trimTo(st.edit, P.T, edge), edge === 'in' ? 'Start trimmed to the playhead' : 'End trimmed to the playhead');
+  }
+  // a main-track clip goes up to an overlay track at the same time (a gap stays)
+  function toOverlay(id) {
+    const f = C.find(st.edit, id);
+    if (f?.where !== 'clip') return false;
+    const start = C.layout(st.edit)[f.i].start;
+    let n = C.remove(st.edit, [id], { ripple: false });
+    const { id: _o, trans: _t, ...rest } = f.clip;
+    n = C.addItem(n, { ...rest, start });
+    return commit(n, 'Moved to an overlay track');
+  }
+  function toMain(id) {
+    const f = C.find(st.edit, id);
+    if (f?.where !== 'item') return false;
+    const { start: _s, id: _i, ...rest } = f.clip;
+    return commit(C.insertAt(C.removeItems(st.edit, [id]), P.T, rest), 'Moved to the main track');
+  }
+  function rampClip(rampId, id = null) {
+    const r = FX.RAMP[rampId] || FX.find(FX.RAMPS, rampId);
+    const cid = id || targetIds()[0];
+    if (!r || !cid) return null;
+    const n = C.ramp(st.edit, cid, r.speeds);
+    if (n === st.edit) return null;
+    commit(n, `Speed ramp: ${r.name}`);
+    return r;
+  }
+  // Items on tracks: overlay video / still, music, titles, lower thirds, color mattes
+  async function addOverlay(path, { at = P.T, a = 0, b = null, track = null, ...props } = {}) {
+    if (IMG.test(path)) return addImage(path, { at, track, ...props });
+    if (AUD.test(path)) return addAudio(path, { at, a, b, track, ...props });
+    const d = await durationOf(path);
+    if (!d) { toast(`Can't read ${base(path)} as a video`, { type: 'error' }); return null; }
+    const n = C.addItem(st.edit, { kind: 'video', src: path, in: clamp(a, 0, d), out: clamp(b ?? d, 0, d), max: d, start: at, ...props }, { track });
+    commit(n, `Overlay: ${noExt(base(path))}`);
+    st.sel = new Set([n.lastItem]); paintHead(); draw();
+    return n.lastItem;
+  }
+  async function addImage(path, { at = P.T, dur = 3, track = null, main = false, ...props } = {}) {
+    if (main) { commit(C.insertAt(st.edit, at, { kind: 'image', src: path, dur, mute: true }), `Still: ${base(path)}`); return true; }
+    const n = C.addItem(st.edit, { kind: 'image', src: path, start: at, dur, ...props }, { track });
+    commit(n, `Still: ${base(path)}`);
+    st.sel = new Set([n.lastItem]); paintHead(); draw();
+    return n.lastItem;
+  }
+  async function audioDuration(p) {
+    const a = document.createElement('audio'); a.preload = 'metadata'; a.src = host.fileUrl(p);
+    const out = await new Promise((res) => { a.onloadedmetadata = () => res(a.duration); a.onerror = () => res(0); setTimeout(() => res(0), 8000); });
+    a.removeAttribute('src');
+    return out;
+  }
+  async function addAudio(path, { at = 0, a = 0, b = null, track = null, volume = 1 } = {}) {
+    const d = VID.test(path) ? await durationOf(path) : await audioDuration(path);
+    if (!d) { toast(`Can't read the sound of ${base(path)}`, { type: 'error' }); return null; }
+    const n = C.addItem(st.edit, { kind: 'audio', src: path, in: clamp(a, 0, d), out: clamp(b ?? d, 0, d), max: d, start: at, volume }, { track });
+    commit(n, `Audio: ${noExt(base(path))}`);
+    analysisOf(path);
+    return n.lastItem;
+  }
+  function addTitleItem(text = 'Title', { at = P.T, dur = 3, style = 'bold', anim = 'fade-up', out = 'fade', lower = null, track = null, ...props } = {}) {
+    const st0 = FX.TSTYLE[style] ? style : FX.find(FX.TITLE_STYLES, style)?.id || 'bold';
+    const an = FX.TANIM[anim] ? anim : FX.find(FX.TITLE_ANIMS, anim)?.id || 'fade-up';
+    const lt = lower ? FX.LTHIRD[lower]?.id || FX.find(FX.LOWER_THIRDS, lower)?.id || 'bar-gold' : null;
+    const n = C.addItem(st.edit, { kind: 'title', text: String(text), start: at, dur, style: lt ? undefined : st0, lower: lt || undefined, anim: lt ? FX.LTHIRD[lt].s.anim || an : an, out, animDur: 0.6, ...props }, { track });
+    commit(n, lt ? `Lower third: ${FX.LTHIRD[lt].name}` : `Title: ${FX.TSTYLE[st0].name}`);
+    st.sel = new Set([n.lastItem]); paintHead(); draw();
+    return n.lastItem;
+  }
+  function addColor(fill = '#000000', { at = P.T, dur = 2, main = true } = {}) {
+    if (main) { commit(C.insertAt(st.edit, at, { kind: 'color', fill, dur, mute: true }), 'Color matte'); return true; }
+    const n = C.addItem(st.edit, { kind: 'color', fill, start: at, dur, opacity: 0.5 });
+    commit(n, 'Color layer');
+    return n.lastItem;
+  }
+  // the "Add" menu (＋, right-click on a lane or empty track)
+  function addItems(T = P.T, track = null) {
+    const lab = (R().state.lib?.recordings || []).slice(-12).reverse();
+    const lib = R().videos.slice(0, 16);
+    const at = T;
+    const tid = track?.id || null;
+    return [
+      { label: 'Video or picture file…', action: async () => { const ps = await window.hub.openDialog({ properties: ['openFile', 'multiSelections'], filters: [{ name: 'Video / picture / sound', extensions: ['mp4', 'mov', 'm4v', 'webm', 'mkv', 'png', 'jpg', 'jpeg', 'webp', 'gif', 'wav', 'mp3', 'm4a'] }] }); let t = at; for (const p of ps || []) { if (track) await addOverlay(p, { at: t, track: tid }); else if (VID.test(p)) await addClip(p, { at: t }); else await addOverlay(p, { at: t }); t += 0; } } },
+      lib.length ? { label: 'From the library', items: lib.map((v) => ({ label: base(v.path), items: [{ label: 'At the end of the main track', action: () => addClip(v.path) }, { label: 'Insert at the playhead', action: () => insertClip(v.path) }, { label: 'Overwrite at the playhead', action: () => overwriteClip(v.path) }, { label: 'As an overlay at the playhead', action: () => addOverlay(v.path, { at }) }] })) } : null,
+      lab.length ? { label: 'Lab recordings', items: lab.map((p) => ({ label: base(p.path || p), action: () => addOverlay(p.path || p, { at }) })) } : null,
+      { label: 'Title', items: () => grouped(FX.TITLE_STYLES, (id) => askTitle({ at, style: id, track: tid }), null) },
+      { label: 'Lower third', items: () => FX.LOWER_THIRDS.map((l) => ({ label: l.name, action: () => askTitle({ at, lower: l.id, track: tid, value: 'Name Surname\\nRole' }) })) },
+      { label: 'Music or sound…', action: async () => { const [p] = await window.hub.openDialog({ filters: [{ name: 'Sound', extensions: ['wav', 'mp3', 'm4a', 'aac', 'ogg', 'flac', 'mp4', 'mov'] }] }) || []; if (p) addAudio(p, { at: track ? at : 0, track: tid }); } },
+      { label: 'Color matte', items: [['Black', '#000000'], ['White', '#ffffff'], ['Gold', '#ffc93b'], ['Ember', '#ff5a1f'], ['Violet', '#7a4bff'], ['Night blue', '#0b1230']].map(([n0, col]) => ({ label: n0, action: () => addColor(col, { at, main: !track }) })) },
+      { label: 'Freeze frame here', action: () => freezeHere() },
+      { label: 'Marker here', action: () => marker() },
+      { label: 'Empty track', items: [['video', 'Video / overlay'], ['text', 'Text'], ['audio', 'Audio']].map(([t, l]) => ({ label: l, action: () => commit(C.addTrack(st.edit, t), `${l} track added`) })) },
+    ].filter(Boolean);
+  }
+  async function askTitle({ at = P.T, style = 'bold', lower = null, track = null, value = '' } = {}) {
+    const v = await Modal.prompt(lower ? 'Lower third' : 'Title', { value, label: 'The words (a new line: \\n). The inspector changes style, animation and place.' });
+    if (v?.trim()) return addTitleItem(v.trim().replace(/\\n/g, '\n'), { at, style, lower, track });
+    return null;
+  }
+  // Insert (ripple) / overwrite a library video at the playhead on the main track.
+  async function insertClip(path, { a = 0, b = null, at = P.T } = {}) {
+    const d = await durationOf(path); if (!d) return false;
+    return commit(C.insertAt(st.edit, at, C.videoClip(path, clamp(a, 0, d), clamp(b ?? d, 0, d), d)), `Inserted ${noExt(base(path))}`);
+  }
+  async function overwriteClip(path, { a = 0, b = null, at = P.T } = {}) {
+    const d = await durationOf(path); if (!d) return false;
+    return commit(C.overwrite(st.edit, at, C.videoClip(path, clamp(a, 0, d), clamp(b ?? d, 0, d), d)), `Overwrote with ${noExt(base(path))}`);
+  }
+  // put a video in a template slot (a gap): it fills the slot's length
+  async function fillSlot(gapId, path = null) {
+    const p = path || (await window.hub.openDialog({ filters: [{ name: 'Video or picture', extensions: ['mp4', 'mov', 'm4v', 'webm', 'mkv', 'png', 'jpg', 'jpeg', 'webp'] }] }) || [])[0];
+    if (!p) return false;
+    if (IMG.test(p)) return commit(C.fillGap(st.edit, gapId, { kind: 'image', src: p, mute: true }), `Slot: ${base(p)}`);
+    const d = await durationOf(p); if (!d) return false;
+    return commit(C.fillGap(st.edit, gapId, C.videoClip(p, 0, d, d)), `Slot: ${base(p)}`);
+  }
+  const splitAllHere = (T = P.T) => commit(C.splitAll(st.edit, T), '✂ Split every track');
+  function liftRange(extract = false) {
+    const mk = st.edit.mark;
+    if (!mk) { host.flash('Set in and out first (I / O)'); return false; }
+    const n = extract ? C.extract(st.edit, mk.a, mk.b) : C.lift(st.edit, mk.a, mk.b);
+    n.mark = null;
+    return commit(n, extract ? 'Extracted (closed up)' : 'Lifted (gap left)');
+  }
+  function toggleSnap(on) { st.snap = on ?? !st.snap; pref.set('cut.snap', st.snap); host.flash(st.snap ? 'Snapping on' : 'Snapping off (frames only)'); paintHead(); return st.snap; }
+  function toggleRazor(on) { st.razor = on ?? !st.razor; st.hoverX = null; host.flash(st.razor ? '✂ Razor: click a clip to cut it (B or Esc ends)' : 'Razor off'); paintHead(); draw(); return st.razor; }
+  // The program's frame: a social format (9:16…), a size, a frame rate; null goes back to the video's own.
+  function setFormat(fmt0, fps = null) {
+    if (fmt0 === null || fmt0 === 'source' || fmt0 === 'off') { commit(C.setSeq(st.edit, null), 'Format: the video\'s own'); return frameSize(); }
+    const f = typeof fmt0 === 'object' ? fmt0 : FX.FORMATS.find((x) => x.id === fmt0) || FX.find(FX.FORMATS, fmt0);
+    const m = /^(\d{2,5})\s*[x×]\s*(\d{2,5})$/.exec(String(fmt0 || ''));
+    const size = f ? { w: f.w, h: f.h } : m ? { w: Number(m[1]), h: Number(m[2]) } : null;
+    const cur = frameSize();
+    const seq = { w: size?.w || cur.W, h: size?.h || cur.H, fps: Number(fps) || st.edit.seq?.fps || cur.F };
+    commit(C.setSeq(st.edit, seq), `Format ${seq.w}×${seq.h} · ${seq.fps} fps`);
+    syncRich();
+    return frameSize();
+  }
+  // A template: a whole starting edit (format, slots, titles, transitions, markers). The open edit is replaced
+  // (undoable); with keep, the template's titles and markers are laid over the clips you have.
+  function applyTemplate(id, { keep = false } = {}) {
+    const t = FX.TEMPLATE[id] || FX.find(FX.TEMPLATES, id);
+    if (!t) return null;
+    const b = t.build();
+    const f = FX.FORMATS.find((x) => x.id === t.fmt);
+    let n = keep ? C.copy(st.edit) : { ...C.empty(), mark: null };
+    if (!keep) n.clips = b.clips.map((c) => ({ fadeIn: 0, fadeOut: 0, speed: 1, mute: true, ...c, id: C.uid() }));
+    n = C.setSeq(n, { w: f.w, h: f.h, fps: 30 });
+    for (const m of b.markers || []) n = C.addMarker(n, m.t, m.label);
+    for (const it of b.text || []) n = C.addItem(n, { ...it });
+    if (b.look) n = C.patchAny(n, n.clips.map((c) => c.id), (c) => { c.color = { look: b.look }; });
+    if (b.motion) for (const c of n.clips) for (const [prop, keys] of Object.entries(FX.MOTION[b.motion].fn(C.durOf(c)))) for (const [tt, v, e0] of keys) n = C.setKey(n, c.id, prop, tt, v, e0 || 'ease');
+    commit(n, `Template: ${t.name}`);
+    seek(0, { play: false });
+    return t;
+  }
+  // Compound clip: the selected main-track clips rendered into one file (kept with the clip so it can be un-nested).
+  async function nestSelection() {
+    const ids = selClips();
+    if (ids.length < 2) { host.flash('Select two or more clips (Shift+click) to nest them'); return false; }
+    const L = C.layout(st.edit);
+    const idx = ids.map((id) => L.findIndex((x) => x.clip.id === id)).sort((a, b) => a - b);
+    if (idx.some((v, i) => i && v !== idx[i - 1] + 1)) { host.flash('Nest clips that sit next to each other'); return false; }
+    const part = { ...C.empty(), clips: idx.map((i) => C.copy(st.edit.clips[i])), seq: st.edit.seq };
+    delete part.clips[0].trans;
+    const dir = join(dirOf(mainSrc() || R().state.videos[0]?.path || ''), 'exports');
+    const out = join(dir, `${noExt(base(mainSrc() || 'edit'))}_nest_${Date.now().toString(36)}.mp4`);
+    const job = await renderEdit(part, { out, label: 'Nesting the clips…', library: false });
+    if (!job) return false;
+    const ev = await job.done;
+    if (ev.code !== 0) { toast(`Couldn't nest: ${ev.error || ev.code}`, { type: 'error' }); return false; }
+    const d = C.total(part);
+    const n = C.copy(st.edit);
+    const nest = { kind: 'video', src: out, in: 0, out: Number(d.toFixed(4)), max: d, speed: 1, mute: false, fadeIn: 0, fadeOut: 0, id: C.uid(), nest: part.clips, trans: st.edit.clips[idx[0]].trans };
+    n.clips.splice(idx[0], idx.length, nest);
+    commit(n, `Nested ${idx.length} clips`);
+    return true;
+  }
+  function unnest(id) {
+    const i = st.edit.clips.findIndex((c) => c.id === id);
+    const c = st.edit.clips[i];
+    if (!c?.nest) return false;
+    const n = C.copy(st.edit);
+    n.clips.splice(i, 1, ...c.nest.map((x) => ({ ...x, id: C.uid() })));
+    return commit(n, 'Un-nested');
+  }
+  // Exact frames: where the playhead is, what each decoder shows (requestVideoFrameCallback), the timecode.
+  async function frameInfo() {
+    const F = progFps();
+    const T = P.T;
+    const n = C.frameOf(T, F);
+    if (richOn) { const r = await VideoComp.renderExact(T); return { frame: n, timecode: V.tc(T, F), fps: F, time: Number(T.toFixed(4)), layers: r?.checks || [] }; }
+    const x = C.at(st.edit, Math.min(T, Math.max(0, total() - 1e-4)));
+    const el0 = active();
+    const out = { frame: n, timecode: V.tc(T, F), fps: F, time: Number(T.toFixed(4)), layers: [] };
+    if (x?.clip.kind === 'video' && el0?.dataset.key) {
+      const fps = fpsOf(x.clip.src);
+      for (let i = 0; i < 30 && el0._seekId && el0._mtId !== el0._seekId; i += 1) await new Promise((r) => setTimeout(r, 20));
+      const mt = el0._seekId && el0._mtId === el0._seekId ? el0._mt : null;
+      out.layers.push({ id: x.clip.id, src: x.clip.src, fps, want: Math.floor(x.srcTime * fps + 1e-4), got: mt == null ? Math.floor(el0.currentTime * fps + 1e-4) : Math.floor(mt * fps + 0.5), via: mt == null ? 'currentTime' : 'requestVideoFrameCallback' });
+    }
+    return out;
+  }
+  // go to program frame n (or a timecode / time text)
+  function goFrame(n) { const F = progFps(); return seek(C.frameTime(Number(n) || 0, F), { play: false }); }
+
   // ---------- keys (only while editing) ----------
-  const SWALLOW = new Set(['n', 'p', 'y', 'c', '\\']); // Review keys that act on the source video, not the edit
+  const SWALLOW = new Set(['p', 'y', 'c']); // Review keys that act on the source video, not the edit
+  let clipboard = null; // copied clips / items (Ctrl+C with a selection)
+  // nudge the selection by n frames: items move, a main-track clip slides
+  function nudge(n) {
+    const F = progFps(); const d = n / F;
+    let next = st.edit;
+    for (const id of selIds()) {
+      const f = C.find(next, id);
+      if (f?.where === 'item') next = C.moveItem(next, id, Math.max(0, f.clip.start + d));
+      else if (f) next = C.slide(next, id, d);
+    }
+    if (next !== st.edit) commit(next, `${n > 0 ? '+' : ''}${n} frame${Math.abs(n) > 1 ? 's' : ''}`);
+  }
+  function slipSel(n) { const ids = targetAny(); if (ids.length) commit(C.slip(st.edit, ids, n / progFps()), `Slip ${n > 0 ? '+' : ''}${n}`); }
+  // move a selected item to the next track of its kind above (dir −1) or below (+1)
+  function itemTrack(dir) {
+    const id = selItems()[0]; const f = id ? C.find(st.edit, id) : null;
+    if (!f) return;
+    const list = C.tracksOf(st.edit, f.track.type);
+    const i = list.findIndex((k) => k.id === f.track.id);
+    const to = list[i - dir]; // lanes draw higher tracks first
+    if (to) commit(C.moveItem(st.edit, id, f.clip.start, to.id), `To ${to.name}`);
+  }
+  function jumpKey(dir) {
+    const id = targetAny()[0]; const f = id ? C.find(st.edit, id) : null;
+    if (!f?.clip.keys) return null;
+    const start = f.where === 'clip' ? C.layout(st.edit)[f.i].start : f.clip.start;
+    const times = [...new Set(Object.values(f.clip.keys).flat().map((k) => start + k.t))].sort((a, b) => a - b);
+    const t = dir > 0 ? times.find((x) => x > P.T + 1e-3) : [...times].reverse().find((x) => x < P.T - 1e-3);
+    if (t != null) seek(t, { play: false });
+    return t;
+  }
+  function jumpMarker(dir) { const list = st.edit.markers.map((m) => m.t); const t = dir > 0 ? list.find((x) => x > P.T + 1e-3) : [...list].reverse().find((x) => x < P.T - 1e-3); if (t != null) seek(t, { play: false }); return t; }
+  function copySel() {
+    const ids = selIds();
+    if (!ids.length) return false;
+    clipboard = ids.map((id) => { const f = C.find(st.edit, id); return { where: f.where, clip: C.copy(f.clip), track: f.track?.type, start: f.where === 'item' ? f.clip.start : C.layout(st.edit)[f.i].start }; });
+    host.flash(`${ids.length} copied`);
+    return true;
+  }
+  function paste() {
+    if (!clipboard?.length) return false;
+    const t0 = Math.min(...clipboard.map((x) => x.start));
+    let n = st.edit;
+    for (const x of clipboard.filter((y) => y.where === 'clip').reverse()) { const { id: _i, trans: _t, ...rest } = x.clip; n = C.insertAt(n, P.T, rest); }
+    for (const x of clipboard.filter((y) => y.where === 'item')) { const { id: _i, ...rest } = x.clip; n = C.addItem(n, { ...rest, start: P.T + (x.start - t0) }); }
+    return commit(n, `${clipboard.length} pasted`);
+  }
+  function selectAll() { st.sel = new Set([...st.edit.clips.map((c) => c.id), ...(st.edit.tracks || []).flatMap((k) => k.items.map((x) => x.id))]); paintHead(); draw(); }
   function onKey(e) {
     if (!st.on) return false;
     const k = e.key.toLowerCase();
@@ -815,20 +1563,39 @@ const VideoCut = (() => {
     if (mod && k === 'z') { if (e.shiftKey) redo(); else undo(); return true; }
     if (mod && k === 'y') { redo(); return true; }
     if (mod && k === 'd') { const id = targetIds()[0]; if (id) commit(C.duplicate(st.edit, id), 'Duplicated'); return true; }
-    if (mod || e.altKey) return false;
+    if (mod && k === 'c' && selIds().length && !getSelection().toString()) return copySel();
+    if (mod && k === 'v' && clipboard) return paste();
+    if (mod && k === 'a') { selectAll(); return true; }
+    if (mod && (k === '=' || k === '+')) { zoomBy(2); paintHead(); return true; }
+    if (mod && k === '-') { zoomBy(0.5); paintHead(); return true; }
+    if (mod) return false;
+    if (e.altKey) {
+      const alt = {
+        arrowleft: () => nudge(e.shiftKey ? -10 : -1), arrowright: () => nudge(e.shiftKey ? 10 : 1),
+        arrowup: () => itemTrack(-1), arrowdown: () => itemTrack(1),
+        ',': () => slipSel(-1), '.': () => slipSel(1), '≤': () => slipSel(-1), '≥': () => slipSel(1),
+        k: () => { for (const p of ['opacity', 'x', 'y', 'scale', 'rotate']) keyHere(p); }, '˚': () => { for (const p of ['opacity', 'x', 'y', 'scale', 'rotate']) keyHere(p); },
+        t: () => askTitle({ at: P.T }), '†': () => askTitle({ at: P.T }),
+      }[k];
+      if (alt) { alt(); return true; }
+      return false;
+    }
     const act = {
       ' ': () => (P.playing ? pause() : startPlay()), k: () => shuttle(0), l: () => shuttle(1), j: () => shuttle(-1),
       arrowleft: () => step(e.shiftKey ? -10 : -1), arrowright: () => step(e.shiftKey ? 10 : 1),
-      arrowup: () => jumpCut(-1), arrowdown: () => jumpCut(1), home: () => seek(0, { play: false }), end: () => seek(total(), { play: false }),
+      arrowup: () => (e.shiftKey ? jumpKey(-1) : jumpCut(-1)), arrowdown: () => (e.shiftKey ? jumpKey(1) : jumpCut(1)), home: () => seek(0, { play: false }), end: () => seek(total(), { play: false }),
+      pageup: () => jumpMarker(-1), pagedown: () => jumpMarker(1),
       ',': () => jumpBeat(-1), '.': () => jumpBeat(1),
-      s: () => split(), delete: () => del(e.shiftKey), backspace: () => del(e.shiftKey),
-      q: () => commit(C.trimTo(st.edit, P.T, 'in'), 'Start trimmed to the playhead'), w: () => commit(C.trimTo(st.edit, P.T, 'out'), 'End trimmed to the playhead'),
-      d: () => { const id = targetIds()[0]; if (id) commit(C.duplicate(st.edit, id), 'Duplicated'); },
-      a: () => { const ids = targetIds(); if (ids.length) commit(C.setMute(st.edit, ids), 'Sound toggled'); },
-      '[': () => nudgeSpeed(-1), ']': () => nudgeSpeed(1), m: () => marker(),
+      s: () => (e.shiftKey ? splitAllHere() : split()), delete: () => del(e.shiftKey), backspace: () => del(e.shiftKey),
+      q: () => trimToHead('in', selItems()[0]), w: () => trimToHead('out', selItems()[0]),
+      d: () => (e.shiftKey ? toggleDissolve() : (() => { const id = targetIds()[0]; if (id) commit(C.duplicate(st.edit, id), 'Duplicated'); })()),
+      a: () => { const ids = targetAny(); if (ids.length) commit(C.patchAny(st.edit, ids, (c) => { c.mute = !c.mute; }), 'Sound toggled'); },
+      '[': () => nudgeSpeed(-1), ']': () => nudgeSpeed(1), m: () => (e.shiftKey ? markerWithNote() : marker()),
       i: () => setMark(P.T, st.edit.mark?.b ?? total()), o: () => setMark(st.edit.mark?.a ?? 0, P.T), x: () => setMark(null),
-      enter: () => acceptSuggestion(), e: () => leave(),
-      escape: () => { if (st.suggest) suggest('off'); else if (st.sel.size) { st.sel.clear(); paintHead(); draw(); } else leave(); },
+      b: () => toggleRazor(), n: () => toggleSnap(), r: () => { const ids = targetAny(); if (ids.length) commit(C.setReverse(st.edit, ids), 'Reverse toggled'); },
+      '+': () => { zoomBy(2); paintHead(); }, '=': () => { zoomBy(2); paintHead(); }, '-': () => { zoomBy(0.5); paintHead(); }, '\\': () => { zoomFit(); paintHead(); },
+      enter: () => (st.suggest ? acceptSuggestion() : selIds().length ? inspect(selIds()[0]) : null), e: () => leave(),
+      escape: () => { if (st.razor) toggleRazor(false); else if (st.suggest) suggest('off'); else if (st.sel.size) { st.sel.clear(); paintHead(); draw(); } else leave(); },
       '?': () => help(),
     };
     if (e.shiftKey && k === 'f') { freezeHere(); return true; }
@@ -836,34 +1603,72 @@ const VideoCut = (() => {
     if (e.shiftKey && k === 'l') return false;
     const fn = act[k];
     if (fn) { fn(); return true; }
-    if (SWALLOW.has(k)) { host.flash('Notes, picker and compare work on the source: E leaves the cut'); return true; }
+    if (SWALLOW.has(k)) { host.flash('Picker, scopes and compare work on the source: E leaves the edit'); return true; }
     return false;
   }
+  function toggleDissolve() {
+    // Shift+D: a cross dissolve on the cut nearest the playhead (again: removes it)
+    const L = C.layout(st.edit);
+    if (L.length < 2) return null;
+    const near = L.slice(1).reduce((a, b) => (Math.abs(b.start + b.td / 2 - P.T) < Math.abs(a.start + a.td / 2 - P.T) ? b : a));
+    return setTransition(near.clip.trans ? null : 'dissolve', near.clip.trans ? 0 : 0.5, [near.clip.id]);
+  }
+  async function markerWithNote() { marker(); const m = st.edit.markers.reduce((a, b) => (Math.abs(b.t - P.T) < Math.abs(a.t - P.T) ? b : a)); await markerNote(m); }
+  const MODK = /Mac/.test(navigator.platform) ? '⌘' : 'Ctrl';
   const KEYS = [
-    ['E / Esc', 'Edit clips on / off'], ['Space · J K L', 'Play the edit · shuttle'], ['← / →', 'One frame (Shift: 10)'], ['↑ / ↓', 'Previous / next cut'], [', / .', 'Previous / next beat'],
-    ['S', 'Split at the playhead'], ['Del', 'Delete the clip (leaves a gap)'], ['Shift+Del', 'Ripple delete (closes the gap; with I/O and nothing selected: the range)'],
-    ['Q / W', 'Trim the clip\'s start / end to the playhead'], ['D', 'Duplicate'], ['A', 'Mute the clip\'s sound'], ['[ / ]', 'Clip speed slower / faster (0.25–4×, pitch kept)'],
-    ['I / O · X', 'In / out of the range (export, play, remove) · clear'], ['M', 'Marker at the playhead'], ['Shift+F', 'Freeze frame (1 s)'], ['Shift+T', 'Title card (2 s)'],
-    ['Enter', 'Accept the auto-cut suggestion'], [`${/Mac/.test(navigator.platform) ? '⌘' : 'Ctrl'}+Z / Shift+Z`, 'Undo / redo'],
-    ['Drag', 'An edge trims (snaps to beats, cuts, markers, playhead; Alt: free) · the body reorders · the gold squares fade'], ['Drop', 'Videos or library cards on the track add clips'],
+    ['E / Esc', 'Edit on / off'], ['Space · J K L', 'Play the edit · shuttle'], ['← / →', 'One frame (Shift: 10)'], ['↑ / ↓', 'Previous / next cut (Shift: keyframe)'], [', / .', 'Previous / next beat'], ['PgUp / PgDn', 'Previous / next marker'],
+    ['S', 'Split at the playhead'], ['Shift+S', 'Split every track at the playhead'], ['B', 'Razor: click clips to cut them'], ['Del', 'Delete (main track: leaves a gap)'], ['Shift+Del', 'Ripple delete (with I/O and nothing selected: the range)'],
+    ['Q / W', 'Trim the start / end to the playhead'], ['D', 'Duplicate'], ['Shift+D', 'Cross dissolve on the nearest cut'], ['A', 'Mute the sound'], ['R', 'Reverse the clip'], ['[ / ]', 'Speed slower / faster (pitch kept)'],
+    ['I / O · X', 'In / out of the range · clear'], ['M · Shift+M', 'Marker · marker with a note'], ['Shift+F', 'Freeze frame (1 s)'], ['Shift+T · Alt+T', 'Title card · title over the picture'],
+    ['N', 'Snapping on / off'], ['+ / − · \\', 'Zoom the timeline · fit'], [`${MODK}+wheel`, 'Zoom at the pointer (wheel scrolls when zoomed)'],
+    ['Alt+← / →', 'Nudge the selection one frame (Shift: 10)'], ['Alt+, / .', 'Slip the clip one frame'], ['Alt+↑ / ↓', 'Move a layer to the track above / below'], ['Alt+K', 'Keyframe position, scale, rotation, opacity'],
+    ['Alt (hold)', 'Track switches: hide · mute · lock'], ['Enter', 'Accept the auto-cut, else open the inspector'], [`${MODK}+C / V`, 'Copy / paste clips and layers'], [`${MODK}+A`, 'Select everything'], [`${MODK}+Z / Shift+Z`, 'Undo / redo'],
+    ['Drag', 'Edge: trim (snaps; Alt: free) · Shift+edge: roll · body: reorder / move · Shift+body: slide · Ctrl+body: slip · gold squares: fades'], ['Drop', 'Videos, pictures, sounds or library cards'], ['Right-click', 'Clips, layers, cuts, markers, lanes and the ruler have menus'],
   ];
-  function help() { Modal.alert('Cut: clip editing', KEYS.map(([k, d]) => `${k.padEnd(14)} ${d}`).join('\n')); }
+  function help() { Modal.alert('Video editor: keys', KEYS.map(([k, d]) => `${k.padEnd(16)} ${d}`).join('\n')); }
+  // the keys button (bottom left) lists these while the editor is open
+  function registerKeys() {
+    if (typeof Keys === 'undefined') return;
+    Keys.add(KEYS.map(([keys, what]) => ({ area: 'Editor', keys, what, when: () => st.on })));
+    Keys.add({ area: 'Video Review', keys: 'E', what: 'Open the video editor (cut, layers, titles, transitions, export)' });
+  }
 
   // ---------- menus ----------
   function moreMenu(anchor) {
     const r = anchor.getBoundingClientRect();
-    const sub = (items) => () => setTimeout(() => showMenu(r.left, r.bottom + 4, items), 0);
     showMenu(Math.max(8, r.right - 300), r.bottom + 4, [
-      { label: '✂ Auto-cut on the music ▸', action: sub(Object.entries(SUGGEST_LABEL).map(([k, l]) => ({ label: `Cut ${l}`, action: () => suggest(k) }))) },
+      { label: '✂ Auto-cut on the music', items: Object.entries(SUGGEST_LABEL).map(([k, l]) => ({ label: `Cut ${l}`, action: () => suggest(k) })) },
+      { label: 'Transitions on every cut', items: () => [...grouped(FX.TRANSITIONS.filter((t) => t.id !== 'cut'), (id) => commit(C.transAll(st.edit, id, FX.TRANS[id].d), `${FX.TRANS[id].name} on every cut`), null), { label: 'Remove them all', action: () => commit(C.transAll(st.edit, null, 0), 'Straight cuts') }] },
+      { label: 'Template', items: () => FX.TEMPLATES.map((t) => ({ label: t.name, items: [{ label: 'Start from it (replaces the edit, undoable)', action: () => applyTemplate(t.id) }, { label: 'Lay its titles and markers over my clips', action: () => applyTemplate(t.id, { keep: true }) }] })) },
+      { label: 'Range (in–out)', items: () => [
+        { label: 'Lift (leave a gap)', action: () => liftRange(false) }, { label: 'Extract (close up)', action: () => liftRange(true) },
+        { label: 'Clear (X)', action: () => setMark(null) }] },
       { label: 'Freeze frame here (Shift+F)', action: () => freezeHere() },
       { label: 'Title card here (Shift+T)…', action: async () => { const v = await Modal.prompt('Title card', { value: '', label: 'The words on the card (a new line: \\n). 2 seconds, inserted at the playhead.' }); if (v?.trim()) addTitle(v.trim()); } },
       { label: 'Marker here (M)', action: () => marker() },
       st.edit.clips.some((c) => c.kind === 'gap') ? { label: 'Close the gaps', action: closeGaps } : null,
-      { label: 'Add a video…', action: async () => { const [p] = await window.hub.openDialog({ filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'm4v', 'webm', 'mkv'] }] }); if (p) addClip(p); } },
+      { label: 'Tools', items: () => [
+        { label: `${st.razor ? '✓ ' : ''}Razor (B)`, action: () => toggleRazor() }, { label: `${st.snap ? '✓ ' : ''}Snapping (N)`, action: () => toggleSnap() },
+        { label: 'Split every track here (Shift+S)', action: () => splitAllHere() }, { label: 'Select everything', action: selectAll },
+        { label: 'Zoom to fit (\\)', action: zoomFit }, { label: 'Frame-check the playhead', action: async () => { const r0 = await frameInfo(); host.flash(`${r0.timecode} · f${r0.frame}${r0.layers.map((x) => ` · ${base(x.src)} f${x.got}${x.got === x.want ? ' ✓' : ` (want ${x.want})`}`).join('')}`); } },
+        { label: 'Nest the selection (compound clip)', action: () => nestSelection() },
+      ] },
       { label: 'Undo', action: undo }, { label: 'Redo', action: redo },
-      { more: true, label: 'Copy the edit list', action: () => copyText(C.describe(st.edit).join('\n'), 'Edit list copied') },
+      { more: true, label: 'Copy the edit list', action: () => copyText(C.describeAll(st.edit, { tc: fmtProg }).join('\n'), 'Edit list copied') },
       { more: true, label: 'Back to the whole video', danger: true, action: reset },
       { more: true, label: 'Keys (?)', action: help },
+    ].filter(Boolean));
+  }
+  // the format chip: the program's shape and frame rate, safe zones
+  function formatMenu(anchor) {
+    const r = anchor.getBoundingClientRect();
+    const { W: w0, H: h0, F } = frameSize();
+    showMenu(r.left, r.bottom + 4, [
+      ...FX.FORMATS.slice(0, 4).map((f) => ({ label: `${w0 === f.w && h0 === f.h ? '✓ ' : ''}${f.name}`, action: () => setFormat(f.id) })),
+      { label: 'More sizes', items: FX.FORMATS.slice(4).map((f) => ({ label: `${w0 === f.w && h0 === f.h ? '✓ ' : ''}${f.name} · ${f.w}×${f.h}`, action: () => setFormat(f.id) })) },
+      { label: `Frame rate: ${Number(F.toFixed(3))} fps`, items: FX.FPS.map((x) => ({ label: `${Math.abs(x - F) < 0.01 ? '✓ ' : ''}${x} fps`, action: () => setFormat({ w: w0, h: h0 }, x) })) },
+      { label: 'Safe zones', items: [['', 'Off'], ['all', 'Every vertical app'], ['tiktok', 'TikTok'], ['reels', 'Reels'], ['shorts', 'Shorts'], ['feed45', 'Feed 4:5'], ['youtube', 'YouTube']].map(([id, l]) => ({ label: `${(host.S.overlay.safe || '') === id ? '✓ ' : ''}${l}`, action: () => R().setSafe(id) })) },
+      st.edit.seq ? { label: 'The video\'s own format', action: () => setFormat(null) } : null,
     ].filter(Boolean));
   }
   function exportMenu(anchor) {
@@ -872,14 +1677,17 @@ const VideoCut = (() => {
     const P0 = (id) => V.EXPORT_PRESETS.find((p) => p.id === id);
     const socials = ['tiktok', 'reels', 'shorts', 'feed45', 'square', 'yt1080'];
     showMenu(Math.max(8, r.right - 320), r.bottom + 4, [
-      { label: `⇪ Export the cut${mk ? ' (in–out)' : ''} as a new version`, action: () => exportCut({}) },
-      ...socials.map((id) => ({ label: `${P0(id).name} · ${P0(id).w}×${P0(id).h}`, action: () => exportCut({ preset: id }) })),
-      { label: 'All 4 socials (9:16 · 4:5 · 1:1 · 16:9)', action: () => exportAll() },
-      { more: true, label: 'All 4 socials, blurred fill', action: () => exportAll({ fit: 'blur' }) },
-      { more: true, label: 'GIF loop', action: () => exportCut({ preset: 'gif' }) },
-      { more: true, label: 'PNG stills (every frame)', action: () => exportCut({ stills: true }) },
-      { more: true, label: 'WebM (VP9)', action: () => exportCut({ preset: 'webm' }) },
-      { more: true, label: 'ProRes 422 HQ master', action: () => exportCut({ preset: 'master' }) },
+      { label: `⇪ Export the edit${mk ? ' (in–out)' : ''} as a new version`, action: () => exportCut({}) },
+      { label: 'Socials', items: [...socials.map((id) => ({ label: `${P0(id).name} · ${P0(id).w}×${P0(id).h}`, action: () => exportCut({ preset: id }) })),
+        { label: 'All 4 socials (9:16 · 4:5 · 1:1 · 16:9)', action: () => exportAll() }, { label: 'All 4 socials, blurred fill', action: () => exportAll({ fit: 'blur' }) },
+        ...V.EXPORT_PRESETS.filter((p) => !socials.includes(p.id) && !['gif', 'webm', 'master', 'proxy'].includes(p.id)).map((p) => ({ label: `${p.name}${p.w && p.h ? ` · ${p.w}×${p.h}` : ''}`, action: () => exportCut({ preset: p.id }) })),
+        ...FX.EXPORTS.filter((p) => p.w && p.h && !p.codec).map((p) => ({ label: `${p.name} · ${p.w}×${p.h}`, action: () => exportCut({ preset: p.id }) }))] },
+      { label: 'Small files', items: FX.EXPORTS.filter((p) => p.size || p.fast || p.id === 'whatsapp').map((p) => ({ label: p.name, action: () => exportCut({ preset: p.id }) })) },
+      { label: 'Loops and web', items: [{ label: 'GIF loop', action: () => exportCut({ preset: 'gif' }) }, ...FX.EXPORTS.filter((p) => p.codec === 'gif').map((p) => ({ label: p.name, action: () => exportCut({ preset: p.id }) })), { label: 'WebM (VP9)', action: () => exportCut({ preset: 'webm' }) }, { label: FX.EXPORTS.find((p) => p.id === 'webm-alpha').name, action: () => exportCut({ preset: 'webm-alpha' }) }] },
+      { label: 'Masters', items: [{ label: 'ProRes 422 HQ master', action: () => exportCut({ preset: 'master' }) }, ...FX.EXPORTS.filter((p) => p.id === 'hq-same' || p.id === 'hevc').map((p) => ({ label: p.name, action: () => exportCut({ preset: p.id }) }))] },
+      { label: 'Stills and sound', items: [{ label: 'PNG stills (every frame)', action: () => exportCut({ stills: true }) }, { label: 'JPEG stills (every frame)', action: () => exportCut({ stills: true, stillsExt: 'jpg' }) }, { label: 'Poster frame (the playhead, PNG)', action: () => posterFrame() },
+        ...FX.EXPORTS.filter((p) => /^audio-/.test(p.id)).map((p) => ({ label: p.name, action: () => exportCut({ preset: p.id }) }))] },
+      { more: true, label: 'Record in real time (WebM, no ffmpeg needed)', action: () => exportCut({ record: true }) },
     ]);
   }
 
@@ -891,9 +1699,14 @@ const VideoCut = (() => {
     let pr = null;
     try { pr = await window.hub.video.probe(p, { ffmpeg: H.settings().ffmpegPath || undefined }); } catch { /* no ffprobe */ }
     const out = { w: pr?.w || m.w, h: pr?.h || m.h, fps: pr?.fps || m.fps || 30, audio: pr ? Boolean(pr.audio) : true };
+    if (IMG.test(p) && !out.w) { const im = new Image(); im.src = host.fileUrl(p); await im.decode().catch(() => {}); out.w = im.naturalWidth; out.h = im.naturalHeight; out.audio = false; }
     probes.set(p, out);
+    // the true frame rate also feeds stepping (ffprobe beats the browser's guess)
+    if (pr?.fps && !host.S.meta[p]?.fpsUser) host.S.meta[p] = { ...(host.S.meta[p] || {}), fps: pr.fps, fpsSrc: 'file' };
     return out;
   }
+  // every file the edit uses (main track and tracks)
+  const allSources = (e) => [...new Set([...C.sources(e), ...(e.tracks || []).flatMap((k) => k.items.filter((x) => x.src).map((x) => x.src))])];
   function nextVersionPath(p) {
     const dir = dirOf(p); const name = noExt(base(p));
     const vi = V.versionInfo(base(p));
@@ -904,27 +1717,69 @@ const VideoCut = (() => {
     const width = vi.ver != null && m ? m[2].length : 1;
     return join(dir, `${stem}${String(next).padStart(width, '0')}.mp4`);
   }
-  // Renders the cut with ffmpeg. preset: a VideoData preset id (social sizes, gif, webm, master) or none (same size,
-  // high quality, saved as the next version next to the video); stills: a PNG per frame.
-  async function exportCut({ preset = null, fit = 'crop', stills = false, out } = {}) {
-    if (!st.edit?.clips.length) throw new Error('The cut is empty');
+  const findPreset = (id) => V.EXPORT_PRESETS.find((x) => x.id === id) || FX.EXPORTS.find((x) => x.id === id) || null;
+  // Where an export of this edit goes: next to its video (or, for a sequence, next to its first source / the
+  // first watched folder) in exports/.
+  function homeDir() {
+    if (!isSeq()) return dirOf(st.path);
+    const src = mainSrc();
+    if (src) return dirOf(src);
+    return R().state.videos[0] ? dirOf(R().state.videos[0].path) : '';
+  }
+  const stemOf = () => (isSeq() ? st.path.slice(4).replace(/[^\w.-]+/g, '_') || 'sequence' : noExt(base(st.path)));
+  // Renders an edit with ffmpeg: plain cuts through CutData.ffmpegArgs, anything richer through CutFF (titles are
+  // drawn into PNG frames first). Resolves with the job ({ output, done }) or null.
+  async function renderEdit(edit, { preset = null, fit = 'crop', stills = false, stillsExt = 'png', out, label, library = true, range = null } = {}) {
     const tools = host.S.tools || (host.S.tools = await window.hub.video.tools({ ffmpeg: H.settings().ffmpegPath || undefined }));
-    if (!tools.ffmpeg) { toast(`ffmpeg isn't installed, so the cut can't be rendered here. ${tools.hint}.`, { type: 'error', timeout: 9000 }); return null; }
-    const p = preset ? V.EXPORT_PRESETS.find((x) => x.id === preset) : null;
+    if (!tools.ffmpeg) return null;
+    const p = preset ? (typeof preset === 'object' ? preset : findPreset(preset)) : null;
     if (preset && !p) throw new Error(`Unknown preset “${preset}”. Try /presets.`);
-    // title cards need their pictures
-    for (const c of st.edit.clips) if (c.kind === 'title' && !c.img) c.img = await titleImage(c.text || 'Title', c);
     const info = {};
-    for (const s of C.sources(st.edit)) info[s] = await infoOf(s);
-    const main = info[st.path] || Object.values(info)[0] || { w: 1080, h: 1920, fps: 30 };
-    const canvas = { w: main.w || 1080, h: main.h || 1920, fps: main.fps || 30 };
-    const g = C.ffmpegArgs(st.edit, info, canvas, { preset: p, fit, offset: host.S.overlay.cropOffset, range: st.edit.mark, stills, presetFilters: V.presetFilters, codecArgs: V.codecArgs });
-    const stem = noExt(base(st.path));
-    const output = out || (stills ? join(dirOf(st.path), 'exports', `${stem}_cut_stills`, 'frame_%05d.png')
-      : p ? join(dirOf(st.path), 'exports', `${stem}_cut_${p.id}${g.w && g.h ? `_${g.w}x${g.h}` : ''}.${g.ext}`) : nextVersionPath(st.path));
-    const label = stills ? 'Cut → PNG stills' : `Cut → ${p ? p.name : base(output)}`;
-    const job = await host.startJob({ label, input: g.inputs[0] || st.path, output, args: [...g.args, 'OUTPUT'], duration: g.duration, library: !stills });
-    if (job) emit('export', { output, preset: preset || 'cut' });
+    for (const s of allSources(edit)) info[s] = await infoOf(s);
+    const output = out;
+    let g; let titleDir = null;
+    if (C.isRich(edit)) {
+      const { W: w0, H: h0, F } = frameSize(edit);
+      const jobs = CutFF.titleJobs(edit);
+      let titles = {};
+      if (jobs.length) {
+        titleDir = join(dirOf(output.includes('%') ? dirOf(output) : output), `.hearth-titles-${Date.now().toString(36)}`);
+        const t = toast('Drawing the titles…', { timeout: 0 });
+        try { titles = await VideoComp.renderTitles(jobs, Math.round(w0 / 2) * 2, Math.round(h0 / 2) * 2, F, titleDir, (pct) => { t.querySelector('span').textContent = `Drawing the titles… ${Math.round(pct * 100)}%`; }); } finally { t.remove(); }
+      }
+      g = CutFF.args(edit, info, { w: w0, h: h0, fps: F }, { preset: p, fit, offset: host.S.overlay.cropOffset, range, stills, stillsExt, titles, presetFilters: V.presetFilters, codecArgs: V.codecArgs });
+    } else {
+      // title cards need their pictures
+      for (const c of edit.clips) if (c.kind === 'title' && !c.img) c.img = await titleImage(c.text || 'Title', c);
+      const main = info[mainSrc(edit)] || Object.values(info)[0] || { w: 1080, h: 1920, fps: 30 };
+      const canvas = { w: main.w || 1080, h: main.h || 1920, fps: main.fps || 30 };
+      const sp = p && FX.exportCodec(p, C.total(edit)) ? null : p;
+      g = C.ffmpegArgs(edit, info, canvas, { preset: sp, fit, offset: host.S.overlay.cropOffset, range, stills, presetFilters: V.presetFilters, codecArgs: V.codecArgs });
+      // presets the plain graph doesn't know (size targets, HEVC, audio only) go through the full one
+      if (p && !sp) g = CutFF.args(edit, info, { ...canvas }, { preset: p, fit, offset: host.S.overlay.cropOffset, range, stills, presetFilters: V.presetFilters, codecArgs: V.codecArgs });
+    }
+    const final = typeof output === 'function' ? output(g) : output;
+    const job = await host.startJob({ label: label || `Edit → ${base(final)}`, input: g.inputs[0] || mainSrc(edit), output: final, args: [...g.args, 'OUTPUT'], duration: g.duration, library });
+    if (job && titleDir) job.done.then(() => window.hub.video.rmtemp?.(titleDir).catch(() => {}));
+    return job;
+  }
+  // Renders the edit. preset: a VideoData / EditFX preset id (social sizes, gif, webm, master, small files, audio…)
+  // or none (same size, high quality, saved as the next version next to the video); stills: a PNG (or JPEG) per
+  // frame; record: real time WebM through the browser (also used when ffmpeg isn't installed).
+  async function exportCut({ preset = null, fit = 'crop', stills = false, stillsExt = 'png', out, record = false } = {}) {
+    if (!st.edit?.clips.length && !(st.edit?.tracks || []).some((k) => k.items.length)) throw new Error('The edit is empty');
+    const tools = host.S.tools || (host.S.tools = await window.hub.video.tools({ ffmpeg: H.settings().ffmpegPath || undefined }));
+    if (record || !tools.ffmpeg) return recordEdit({ note: !tools.ffmpeg ? `ffmpeg isn't installed (${tools.hint}), so the edit is recorded in real time as WebM.` : '' });
+    const p = preset ? findPreset(preset) : null;
+    if (preset && !p) throw new Error(`Unknown preset “${preset}”. Try /presets.`);
+    const stem = stemOf();
+    const dir = homeDir();
+    const output = out || ((g) => (stills ? join(dir, 'exports', `${stem}_cut_stills`, `frame_%05d.${stillsExt}`)
+      : p ? join(dir, 'exports', `${stem}_cut_${p.id}${g.w && g.h ? `_${g.w}x${g.h}` : ''}.${g.ext}`) : isSeq() ? join(dir, 'exports', `${stem}.mp4`) : nextVersionPath(st.path)));
+    const label = stills ? `Edit → ${stillsExt.toUpperCase()} stills` : `Edit → ${p ? p.name : 'new version'}`;
+    const audioOnly = p && FX.exportCodec(p, 1)?.audioOnly;
+    const job = await renderEdit(st.edit, { preset: p, fit, stills, stillsExt, out: output, label, library: !stills && !audioOnly, range: st.edit.mark });
+    if (job) emit('export', { output: job.output, preset: preset || 'cut' });
     return job;
   }
   async function exportAll({ fit = 'crop' } = {}) {
@@ -932,26 +1787,54 @@ const VideoCut = (() => {
     for (const id of ['reels', 'feed45', 'square', 'yt1080']) { const j = await exportCut({ preset: id, fit }); if (!j) break; outs.push(j.output); await j.done; }
     return outs;
   }
+  // No ffmpeg (or asked): the compositor plays the edit into a MediaRecorder; the WebM lands in exports/.
+  async function recordEdit({ note = '' } = {}) {
+    pause();
+    const mk = st.edit.mark;
+    const output = join(homeDir(), 'exports', `${stemOf()}_recorded_${Date.now().toString(36)}.webm`);
+    const t = toast(`${note ? `${note} ` : ''}Recording the edit…`, { timeout: 0 });
+    let bytes;
+    try { bytes = await VideoComp.record({ a: mk?.a || 0, b: mk?.b ?? null, onProgress: (pct) => { t.querySelector('span').textContent = `Recording the edit… ${Math.round(pct * 100)}%`; } }); } finally { t.remove(); }
+    await window.hub.fs.write(output, bytes);
+    R().noteRecording?.(output);
+    toast(`Recorded ${base(output)}`, { action: { label: 'Open', fn: () => R().open(output) }, timeout: 9000 });
+    const ev = { code: 0, output, seconds: 0 };
+    emit('export', { output, preset: 'record' });
+    return { output, done: Promise.resolve(ev) };
+  }
+  // the frame at the playhead as a full-size PNG in exports/
+  async function posterFrame() {
+    const im = await VideoComp.frameImage(P.T, { maxW: frameSize().W, edit: st.edit, mime: 'image/png' });
+    const out = join(homeDir(), 'exports', `${stemOf()}_${V.tc(P.T, progFps()).replace(/:/g, '-')}.png`);
+    await window.hub.fs.write(out, Uint8Array.from(atob(im.url.split(',')[1]), (ch) => ch.charCodeAt(0)));
+    toast(`Saved ${base(out)}`, { action: { label: IS_MAC ? 'Show in Finder' : 'Show in folder', fn: () => window.hub.fs.reveal(out) }, timeout: 7000 });
+    return out;
+  }
 
   // ---------- entering / leaving ----------
-  async function enter() {
-    if (!host || !host.S.cur) { toast('Open a video first', { type: 'error' }); return false; }
+  // enter({ path: 'seq:Intro' }) edits a sequence of its own (no video needed); otherwise the open video's edit.
+  async function enter({ path = null } = {}) {
+    const seqPath = path && isSeq(path) ? path : null;
+    if (!host || (!host.S.cur && !seqPath)) { toast('Open a video first (or start from a template: /edit-template)', { type: 'error' }); return false; }
     await loadCuts();
-    if (!host.refs.video.duration) await R().waitReady();
-    const fresh = st.path !== host.S.cur.path || !st.edit;
-    if (fresh) { st.path = host.S.cur.path; st.edit = editOf(st.path); st.undo = []; st.redo = []; st.sel.clear(); st.suggest = null; }
+    if (!seqPath && !host.refs.video.duration) await R().waitReady();
+    const want = seqPath || host.S.cur.path;
+    const fresh = st.path !== want || !st.edit;
+    if (fresh) { st.path = want; st.edit = editOf(st.path); st.undo = []; st.redo = []; st.sel.clear(); st.suggest = null; st.view = null; }
     R().pause();
     st.on = true;
     host.refs.main.classList.add('cutting');
     host.refs.stage.classList.add('cutting');
     refs.root.hidden = false;
     refs.btn?.classList.add('on');
+    refs.title.textContent = isSeq() ? `✂ ${st.path.slice(4)}` : '✂ Edit';
     P.rate = 1; P.idx = -1;
     lastTime = '';
+    fitTrackHeight();
     requestAnimationFrame(() => { measure(); draw(); placeHead(); });
     paintHead();
     // start where the source playhead is, when that frame is in the edit
-    const t0 = fresh ? (C.programTimes(st.edit, st.path, host.refs.video.currentTime)[0] ?? 0) : P.T;
+    const t0 = fresh ? (isSeq() ? 0 : C.programTimes(st.edit, st.path, host.refs.video.currentTime)[0] ?? 0) : P.T;
     await seek(t0, { play: false });
     emit('mode', { on: true });
     return true;
@@ -960,33 +1843,54 @@ const VideoCut = (() => {
     if (!st.on) return false;
     pause();
     st.on = false;
+    syncRich();
     host.refs.main.classList.remove('cutting');
     host.refs.stage.classList.remove('cutting');
     refs.root.hidden = true;
     refs.btn?.classList.remove('on');
     for (const e of els()) { e.pause(); }
+    // the frame goes back to the video's shape
+    const v = host.refs.video;
+    if (v.videoWidth) host.refs.stage.style.setProperty('--ar', String(v.videoWidth / v.videoHeight));
     // the source picks up where the edit was
-    const x = C.at(st.edit, P.T);
-    if (x?.clip.src === st.path && x.srcTime != null) R().seek(x.srcTime);
+    if (!isSeq()) { const x = C.at(st.edit, Math.min(P.T, Math.max(0, C.mainTotal(st.edit) - 1e-4))); if (x?.clip.src === st.path && x.srcTime != null) R().seek(x.srcTime); }
     host.refs.timeTotal.textContent = '';
+    closeInspector();
     emit('mode', { on: false });
     return true;
   }
   const toggle = (on) => ((on ?? !st.on) ? enter() : leave());
-  // Review opened another video: the edit follows it.
+  // Review opened another video: the edit follows it (a sequence stays).
   function onOpen({ path }) {
-    if (!st.on) { st.edit = null; return; }
-    if (path === st.path) return;
+    if (!st.on) { if (!isSeq()) st.edit = null; return; }
+    if (path === st.path || isSeq()) return;
     pause();
     st.on = false;
     R().waitReady().then(() => enter());
   }
+  // A sequence of its own (not tied to one video): a template, or empty in a format.
+  async function newSequence(name = 'Sequence', { template = null, format = '9:16' } = {}) {
+    await loadCuts();
+    let key = `seq:${String(name).trim() || 'Sequence'}`;
+    for (let i = 2; cuts[key]; i += 1) key = `seq:${name} ${i}`;
+    const f = FX.FORMATS.find((x) => x.id === format) || FX.FORMATS[0];
+    cuts[key] = C.setSeq({ ...C.empty(), clips: [{ id: C.uid(), kind: 'gap', dur: 5, slot: 1 }] }, { w: f.w, h: f.h, fps: 30 });
+    saveCuts();
+    if (st.on) leave();
+    st.edit = null;
+    await enter({ path: key });
+    if (template) applyTemplate(template);
+    return key;
+  }
+  const sequences = () => Object.keys(cuts || {}).filter((k) => isSeq(k)).map((k) => ({ key: k, name: k.slice(4), seconds: Number(C.total(C.normalize(cuts[k])).toFixed(2)) }));
+  function deleteSequence(key) { if (!cuts?.[key]) return false; if (st.path === key && st.on) leave(); delete cuts[key]; saveCuts(); return true; }
 
   // ---------- mount (called by Review.mount) ----------
   function measure() { if (!refs.track) return; const r = refs.track.getBoundingClientRect(); refs.sizes = { w: r.width, h: r.height }; }
   function mount(h) {
     host = h;
     const r = h.refs;
+    st.snap = pref.get('cut.snap', true);
     // program monitor: inside the frame, under the overlays
     refs.pa = el('video', { class: 'vr-p', playsInline: true, preload: 'auto' });
     refs.pb = el('video', { class: 'vr-p', playsInline: true, preload: 'auto' });
@@ -994,10 +1898,11 @@ const VideoCut = (() => {
     refs.pfade = el('div', { class: 'vr-pfade' }, refs.pa, refs.pb, refs.pimg);
     refs.pwrap = el('div', { class: 'vr-pwrap' }, refs.pfade);
     r.cmp.after(refs.pwrap);
+    VideoComp.attach({ S: h.S, fileUrl: h.fileUrl, wrap: refs.pwrap, size: (e) => frameSize(e || st.edit), edit: () => st.edit, volume: () => (h.refs.video.muted ? 0 : h.refs.video.volume), fpsOf });
     // the clip track (replaces the source timeline while editing)
     refs.canvas = el('canvas', { class: 'vr-cut-cv' });
     refs.head = el('div', { class: 'vr-cut-ph' });
-    refs.track = el('div', { class: 'vr-cut-track', title: 'Click: playhead + select · drag an edge: trim · drag a clip: move · right-click: clip menu · drop videos to add' }, refs.canvas, refs.head);
+    refs.track = el('div', { class: 'vr-cut-track', title: 'Click: playhead + select · drag an edge: trim · drag a clip: move · right-click: menus · drop videos, pictures or sounds · Ctrl+wheel: zoom' }, refs.canvas, refs.head);
     refs.sum = el('span', { class: 'vr-cut-sum' });
     refs.sugText = el('span');
     refs.sug = el('span', { class: 'vr-cut-sug', hidden: true }, refs.sugText,
@@ -1005,50 +1910,105 @@ const VideoCut = (() => {
       el('button', { class: 'ghost small', text: '✕', title: 'Dismiss (Esc)', on: { click: () => suggest('off') } }));
     const ico = (text, title, fn, cls = '') => el('button', { class: `vr-ico ${cls}`, text, title, on: { click: fn } });
     refs.undoBtn = ico('↶', 'Undo (⌘/Ctrl+Z)', undo);
+    refs.title = el('b', { class: 'vr-cut-title', text: '✂ Edit' });
+    refs.addBtn = ico('＋', 'Add: a video, picture, title, lower third, music, Lab recording, color, track…', (e) => { const rr = e.currentTarget.getBoundingClientRect(); showMenu(rr.left, rr.bottom + 4, addItems(P.T)); }, 'vr-cut-add');
+    refs.fmtBtn = el('button', { class: 'vr-ico vr-cut-fmt', text: '', title: 'The program\'s shape and frame rate (9:16, 4:5, 1:1, 16:9…), safe zones', on: { click: (e) => formatMenu(e.currentTarget) } });
     refs.root = el('div', { class: 'vr-cut', hidden: true },
       el('div', { class: 'vr-cut-headrow' },
-        el('b', { class: 'vr-cut-title', text: '✂ Cut' }), refs.sum, refs.sug, el('span', { class: 'spacer' }), refs.undoBtn,
-        el('button', { class: 'vr-ico vr-cut-export', text: '⇪ Export', title: 'Render the cut with ffmpeg: a new version, a social format, GIF, stills', on: { click: (e) => exportMenu(e.currentTarget) } }),
-        ico('⋯', 'Auto-cut on the music, freeze frame, title card, markers, add a video…', (e) => moreMenu(e.currentTarget)),
+        refs.title, refs.addBtn, refs.sum, refs.sug, el('span', { class: 'spacer' }), refs.fmtBtn, refs.undoBtn,
+        el('button', { class: 'vr-ico vr-cut-export', text: '⇪ Export', title: 'Render the edit with ffmpeg: a new version, socials, small files, GIF, stills, sound', on: { click: (e) => exportMenu(e.currentTarget) } }),
+        ico('⋯', 'Auto-cut, transitions on every cut, templates, range, tools, keys…', (e) => moreMenu(e.currentTarget)),
         ico('✕', 'Back to the review (E)', () => leave())),
       refs.track);
     r.tlBox.after(refs.root);
     refs.canvas.addEventListener('pointerdown', trackDown);
     refs.canvas.addEventListener('pointermove', trackHover);
-    refs.canvas.addEventListener('contextmenu', trackMenu);
-    refs.canvas.addEventListener('dblclick', (e) => { const h0 = hit(e); if (h0.it?.clip.kind === 'title') editTitle(h0.it.clip); });
+    refs.canvas.addEventListener('pointerleave', () => { if (st.razor) { st.hoverX = null; draw(); } });
+    refs.canvas.addEventListener('contextmenu', trackMenuAt);
+    refs.canvas.addEventListener('wheel', trackWheel, { passive: false });
+    refs.canvas.addEventListener('dblclick', (e) => {
+      const h0 = hit(e);
+      if (h0.zone === 'ruler') { seek(h0.T, { play: false }); marker(); return; }
+      if (h0.zone === 'trans') { inspect(h0.it.clip.id); return; }
+      const c = h0.it?.clip || h0.item;
+      if (c?.kind === 'title' && h0.it) editTitle(c); else if (c) inspect(c.id);
+      if (h0.it?.clip.kind === 'gap' && h0.it.clip.slot) fillSlot(h0.it.clip.id);
+    });
+    // Alt held: the lanes show their switches (hide · mute · lock)
+    const altOn = (on) => { if (st.alt !== on) { st.alt = on; if (st.on) draw(); } };
+    addEventListener('keydown', (e) => { if (e.key === 'Alt') altOn(true); });
+    addEventListener('keyup', (e) => { if (e.key === 'Alt') altOn(false); });
+    addEventListener('blur', () => altOn(false));
     new ResizeObserver(() => { measure(); draw(); placeHead(); }).observe(refs.track);
-    // drop videos (files or library cards) on the track
+    // drop videos, pictures, sounds (files or library cards): on the main lane they join the edit, on a track lane
+    // they go on that track at the drop point
     refs.root.addEventListener('dragover', (e) => { if ([...e.dataTransfer.types].some((t) => t === 'Files' || t === 'text/x-hearth-video')) { e.preventDefault(); refs.root.classList.add('drop'); } });
     refs.root.addEventListener('dragleave', () => refs.root.classList.remove('drop'));
     refs.root.addEventListener('drop', async (e) => {
       e.preventDefault(); refs.root.classList.remove('drop');
-      const at = tOf(e.clientX - refs.canvas.getBoundingClientRect().left);
-      const paths = [e.dataTransfer.getData('text/x-hearth-video'), ...[...e.dataTransfer.files].map((f) => window.hub.pathForFile?.(f))].filter((p) => p && /\.(mp4|m4v|mov|webm|mkv)$/i.test(p));
-      for (const p of paths) await addClip(p, { at });
+      const rc = refs.canvas.getBoundingClientRect();
+      const at = tOf(e.clientX - rc.left);
+      const lane = laneOf(e.clientY - rc.top);
+      const paths = [e.dataTransfer.getData('text/x-hearth-video'), ...[...e.dataTransfer.files].map((f) => window.hub.pathForFile?.(f))].filter((p) => p && (VID.test(p) || IMG.test(p) || AUD.test(p)));
+      const slot = lane?.kind === 'main' ? C.at(st.edit, at) : null;
+      for (const p of paths) {
+        if (slot?.clip.kind === 'gap' && slot.clip.slot && !AUD.test(p)) { await fillSlot(slot.clip.id, p); continue; }
+        if (lane?.track) await addOverlay(p, { at: toFrame(at), track: lane.track.id });
+        else if (VID.test(p)) await addClip(p, { at });
+        else if (IMG.test(p)) await addImage(p, { at: toFrame(at), main: lane?.kind === 'main' });
+        else await addAudio(p, { at: toFrame(at) });
+      }
     });
     // ✂ in the transport
-    refs.btn = el('button', { class: 'vr-ico vr-cut-btn', text: '✂', title: 'Cut clips: split, trim, reorder, speed, fades… then export (E)', on: { click: () => toggle() } });
+    refs.btn = el('button', { class: 'vr-ico vr-cut-btn', text: '✂', title: 'Edit: cut, layers, titles, transitions, keyframes, looks… then export (E)', on: { click: () => toggle() } });
     r.toolGroup?.prepend(refs.btn);
     R().on('open', onOpen);
     R().on('audio', () => { if (st.on) draw(); });
     R().on('note', () => { if (st.on) draw(); });
+    registerKeys();
     loadCuts().then(() => R().refreshCard?.());
   }
+  // the inspector (tools/video-inspector.js) opens on the selection
+  // (attached on first use: Review builds its notes column after mounting the editor)
+  let inspAttached = false;
+  function inspect(id) {
+    if (!id || typeof VideoInspector === 'undefined') return false;
+    if (!inspAttached) { const aside = host.refs.root.querySelector('.vr-notes'); if (!aside) return false; VideoInspector.attach({ aside, api: inspectorApi }); inspAttached = true; }
+    st.sel = new Set([id]); paintHead(); draw();
+    VideoInspector.open(id);
+    return true;
+  }
+  function closeInspector() { if (inspAttached) VideoInspector.close(); }
+  // what the inspector reads and changes; live() previews a drag without an undo step, then commit() keeps it
+  let liveBase = null;
+  const inspectorApi = {
+    get edit() { return st.edit; }, get time() { return P.T; }, fps: () => progFps(), fmt: (t) => fmtProg(t), find: (id) => C.find(st.edit, id),
+    startOf: (id) => { const f = C.find(st.edit, id); return f ? (f.where === 'clip' ? C.layout(st.edit)[f.i].start : f.clip.start) : 0; },
+    commit: (next, label) => { if (liveBase) { st.edit = liveBase; liveBase = null; } return commit(next, label); },
+    live: (next) => { if (!liveBase) liveBase = st.edit; st.edit = next; draw(); if (richOn) VideoComp.renderExact(P.T); },
+    cancelLive: () => { if (liveBase) { st.edit = liveBase; liveBase = null; draw(); refreshPicture(); } },
+    seek: (t) => seek(t, { play: false }), keyHere, setTransition, setLook, applyMotion, adjust, setSpeed, rampClip, flash: (s) => host.flash(s),
+    select: (ids) => { st.sel = new Set(ids); paintHead(); draw(); },
+    on: (ev, fn) => { (listeners[ev] ||= []).push(fn); },
+  };
 
   // ---------- for Review (tick, status) and the commands ----------
   function frame() { if (st.on) paintTime(); }
   function statusOf(p) {
     const e = p === st.path && st.edit ? st.edit : cuts?.[p] ? C.normalize(cuts[p]) : null;
     if (!e) return null;
-    return { clips: e.clips.length, seconds: Number(C.total(e).toFixed(2)), editing: st.on && p === st.path, list: C.describe(e).slice(0, 12) };
+    const layers = (e.tracks || []).reduce((n, k) => n + k.items.length, 0);
+    return { clips: e.clips.length, layers: layers || undefined, seconds: Number(C.total(e).toFixed(2)), editing: st.on && p === st.path, list: C.describe(e).slice(0, 12), more: layers ? 'video_edit_read lists the layers, titles and transitions' : undefined };
   }
   // The Lab (or a command) sends a clip: added to the cut of the video open in Video Review, or opens it.
-  async function receive(path, { a = 0, b = null } = {}) {
+  // as: 'clip' (main track, default), 'overlay' (on a track at the playhead) or 'edit' (open it as its own edit).
+  async function receive(path, { a = 0, b = null, as = 'clip' } = {}) {
     await R().ensureMounted();
     activate('tool:ae');
-    if (!host.S.cur) { await R().open(path); await R().waitReady(); }
+    if (as === 'edit') { await R().open(path); await R().waitReady(); if (st.on && st.path !== path) leave(); await enter(); if (a > 0 || b != null) { const d = await durationOf(path); commit(C.slice(C.fromSource(path, d), a, b ?? d), 'Clip from the Lab'); } return true; }
+    if (!host.S.cur && !st.on) { await R().open(path); await R().waitReady(); }
     if (!st.on) await enter();
+    if (as === 'overlay') return Boolean(await addOverlay(path, { at: P.T, a, b }));
     if (st.edit.clips.length === 1 && st.edit.clips[0].src === path && C.isIdentity(st.edit, path, srcDur(path)) && (a > 0 || b != null)) {
       const d = await durationOf(path);
       commit(C.slice(C.fromSource(path, d), a, b ?? d), 'Clip from the Lab');
@@ -1061,15 +2021,19 @@ const VideoCut = (() => {
     mount, onKey, frame, enter, leave, toggle, statusOf, hasCut, receive, on: (ev, fn) => { (listeners[ev] ||= []).push(fn); },
     get active() { return st.on; }, get edit() { return st.edit; }, get path() { return st.path; }, get time() { return P.playing ? nowT() : P.T; }, get playing() { return P.playing; },
     get selection() { return selIds(); }, get suggestion() { return st.suggest ? { ...st.suggest } : null; }, get canUndo() { return st.undo.length > 0; },
-    play: startPlay, pause, togglePlay: () => (P.playing ? pause() : startPlay()), seek: (t) => seek(t, { play: P.playing }), step, shuttle, goto: (t) => seek(t, { play: false }),
-    split, del, closeGaps, setSpeed, nudgeSpeed, freezeHere, addTitle, marker, setMark, suggest, acceptSuggestion, reset, addClip, undo, redo, help, exportCut, exportAll, jumpCut, jumpBeat,
+    get rich() { return richOn; }, get view() { return st.view ? { ...st.view } : null; }, get razor() { return st.razor; }, get snap() { return st.snap; }, get fps() { return progFps(); }, get lastCheck() { return lastCheck; },
+    play: startPlay, pause, togglePlay: () => (P.playing ? pause() : startPlay()), seek: (t) => seek(t, { play: P.playing }), step, shuttle, goto: (t) => seek(t, { play: false }), goFrame, frameInfo, frameSize, fmt: fmtProg,
+    split, splitAll: splitAllHere, del, closeGaps, setSpeed, nudgeSpeed, freezeHere, addTitle, marker, setMark, suggest, acceptSuggestion, reset, addClip, undo, redo, help, exportCut, exportAll, jumpCut, jumpBeat, jumpMarker, jumpKey,
+    setTransition, setLook, adjust, applyMotion, keyHere, rampClip, addOverlay, addImage, addAudio, addTitleItem, addColor, insertClip, overwriteClip, fillSlot, liftRange, toggleSnap, toggleRazor, setFormat, applyTemplate,
+    nestSelection, unnest, toOverlay, toMain, posterFrame, renderEdit, recordEdit, newSequence, sequences, deleteSequence, inspect, closeInspector, zoomBy, zoomFit, setView, nudge, slipSel, copySel, paste, selectAll,
+    selectIds: (ids) => { st.sel = new Set(ids.filter((id) => C.find(st.edit, id))); paintHead(); draw(); return selIds(); },
     select(i) { const c = st.edit?.clips[i]; if (!c) return null; st.sel = new Set([c.id]); paintHead(); draw(); const x = C.layout(st.edit)[i]; seek(x.start, { play: false }); return c; },
-    commit, mute: (on) => { const ids = targetIds(); if (!ids.length) return null; commit(C.setMute(st.edit, ids, on), 'Sound toggled'); return st.edit.clips.find((c) => c.id === ids[0])?.mute; },
-    fade: (edge, s) => { const ids = targetIds(); if (!ids.length) return null; commit(C.setFade(st.edit, ids, edge, s), `Fade ${edge}`); return true; },
-    trimTo: (edge) => commit(C.trimTo(st.edit, P.T, edge), 'Trimmed'),
+    commit, mute: (on) => { const ids = targetAny(); if (!ids.length) return null; commit(C.patchAny(st.edit, ids, (c) => { c.mute = on ?? !c.mute; }), 'Sound toggled'); return C.find(st.edit, ids[0])?.clip.mute; },
+    fade: (edge, s) => { const ids = targetAny(); if (!ids.length) return null; commit(C.patchAny(st.edit, ids, (c) => { c[edge === 'in' ? 'fadeIn' : 'fadeOut'] = Math.max(0, Math.min(Number(s) || 0, C.durOf(c) / 2)); }), `Fade ${edge}`); return true; },
+    trimTo: (edge) => trimToHead(edge, selItems()[0]),
     duplicate: () => { const id = targetIds()[0]; return id ? commit(C.duplicate(st.edit, id), 'Duplicated') : false; },
     move: (from, to) => { const c = st.edit?.clips[from]; return c ? commit(C.move(st.edit, c.id, to), 'Clip moved') : false; },
-    describe: () => (st.edit ? C.describe(st.edit) : []),
-    _test: { P, st, draw, nowT },
+    describe: () => (st.edit ? C.describe(st.edit) : []), describeAll: () => (st.edit ? C.describeAll(st.edit, { tc: fmtProg }) : []),
+    _test: { P, st, draw, nowT, lanes, hit, xOf, tOf },
   };
 })();
