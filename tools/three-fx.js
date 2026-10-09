@@ -18,13 +18,24 @@ const ThreeFX = (() => {
   const KIND_LABEL = { layer: 'Layer', filter: 'Filter', look: 'Look', palette: 'Palette', trigger: 'Trigger preset', animate: 'Animation', ease: 'Ease', blend: 'Blend' };
   const ICON = { Shapes: '◇', Backgrounds: '▦', Visualizers: '▮', 'Text & HUD': 'T', Social: '◫', '3D': '⬢' };
   const norm = (s) => String(s || '').toLowerCase();
+  // Other packs add a family of their own (a tab, items, how to apply / draw them): tools/three-motion.js's Motion tab.
+  //   ThreeFX.extend({ kind, label, tab: [id, label, title], items(), apply(it, { alt }), thumb(it), hint(it) })
+  const EXT = [];
+  function extend(x) {
+    if (!x?.kind || EXT.some((e) => e.kind === x.kind)) return;
+    EXT.push(x);
+    KIND_LABEL[x.kind] = x.label || x.kind;
+    if (x.tab && !TABS.some((t) => t[0] === x.tab[0])) TABS.splice(TABS.length - 1, 0, x.tab);
+  }
+  const extOf = (it) => EXT.find((e) => e.kind === it?.kind) || null;
   const CAT_ORDER = ['Forgeheart', 'Glitch', 'Film', 'Color', 'LUT', 'Stylize', 'Distort', 'Blur & light', 'Feedback', 'Beat', 'Frame', 'Cinematic', 'Retro', 'Neon', 'Dreamy', 'Art', 'Mono', 'Social'];
 
   // ---------- the catalog ----------
   function items(kind = 'all') {
     const out = [];
     const want = (k) => kind === 'all' || kind === k || (kind === 'add' && (k === 'layer' || k === 'filter'));
-    if (want('layer')) for (const t of ThreeLayers.TEMPLATES) out.push({ kind: 'layer', id: t.id, name: t.name, cat: t.cat || 'Shapes', desc: t.desc, tags: t.tags || '', colors: (t.code.match(/#[0-9a-f]{6}\b/gi) || []).slice(0, 3) });
+    for (const x of EXT) if (kind === 'all' || kind === x.kind || kind === x.tab?.[0]) { try { out.push(...x.items()); } catch { /* a pack that failed to list */ } }
+    if (want('layer')) for (const t of ThreeLayers.TEMPLATES.filter((x) => !EXT.some((e) => e.kind === x.pack))) out.push({ kind: 'layer', id: t.id, name: t.name, cat: t.cat || 'Shapes', desc: t.desc, tags: t.tags || '', colors: (t.code.match(/#[0-9a-f]{6}\b/gi) || []).slice(0, 3) });
     if (want('filter')) for (const t of ThreeLayers.FILTERS) out.push({ kind: 'filter', id: t.id, name: t.name, cat: t.cat || 'Stylize', desc: t.desc, tags: t.tags || '', type: t.type });
     if (want('look')) for (const l of ThreeFXData.LOOKS) out.push({ kind: 'look', id: l.name, name: l.name, cat: l.cat, desc: l.desc, tags: l.fx.map((f) => f.id).join(' '), colors: l.colors, look: l });
     if (want('palette')) for (const p of ThreeFXData.PALETTES) out.push({ kind: 'palette', id: p.name, name: p.name, cat: p.cat, desc: p.colors.join(' '), colors: p.colors });
@@ -90,6 +101,7 @@ const ThreeFX = (() => {
     const d = await lab();
     pushRecent(it);
     (typeof Usage !== 'undefined') && Usage.track?.(`Lab FX › ${KIND_LABEL[it.kind]}: ${it.name}`);
+    if (extOf(it)) return extOf(it).apply(it, { alt });
     const say = (text) => { toast(text, { timeout: 2200 }); return text; };
     if (it.kind === 'layer') {
       const r = await d.addLayer({ template: it.id, ...(alt ? { position: indexOfSel(d) + 2 } : {}) }, 1);
@@ -147,7 +159,7 @@ const ThreeFX = (() => {
     }
     return '';
   }
-  const hint = (it) => ({
+  const hint = (it) => (extOf(it) ? extOf(it).hint?.(it) || '' : {
     layer: 'Enter: add on top · Shift+Enter: add above the selected layer',
     filter: 'Enter: add above the selected layer · Shift+Enter: on top of everything',
     look: 'Enter: palette + recolor + filters · Shift+Enter: colors only',
@@ -159,7 +171,7 @@ const ThreeFX = (() => {
   }[it?.kind] || '');
 
   async function surprise(kind = 'all') {
-    const list = items(kind === 'add' ? 'filter' : kind).filter((it) => !['ease', 'animate'].includes(it.kind) || kind === it.kind);
+    const list = items(kind === 'add' ? 'filter' : kind).filter((it) => !it.action && (!['ease', 'animate'].includes(it.kind) || kind === it.kind));
     const it = list[Math.floor(Math.random() * list.length)];
     if (!it) return '';
     const msg = await apply(it);
@@ -202,6 +214,7 @@ const ThreeFX = (() => {
     return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
   }
   function thumb(it) {
+    if (extOf(it)?.thumb) return extOf(it).thumb(it);
     const box = el('span', { class: 'fx-thumb' });
     if (it.kind === 'filter') {
       const img = el('img', { alt: '' });
@@ -329,7 +342,7 @@ const ThreeFX = (() => {
     }
     async function run(it, alt) {
       if (!it) return;
-      const keep = it.kind === 'ease' || it.kind === 'blend' || it.kind === 'palette' || it.kind === 'trigger';
+      const keep = it.kind === 'ease' || it.kind === 'blend' || it.kind === 'palette' || it.kind === 'trigger' || Boolean(extOf(it)?.keepOpen?.(it));
       if (!keep) close();
       try { await apply(it, { alt }); } catch (err) { toast(err.message, { type: 'error' }); }
     }
@@ -370,5 +383,5 @@ const ThreeFX = (() => {
   for (const [label, kind] of [['Lab: Effects & layers picker (X)', 'add'], ['Lab: Looks…', 'look'], ['Lab: Palettes…', 'palette'], ['Lab: Trigger presets…', 'trigger'], ['Lab: Animate the selected layer…', 'animate'], ['Lab: Keyframe eases…', 'ease'], ['Lab: Blend presets…', 'blend']]) AppUI.addAction?.(label, open(kind));
   AppUI.addAction?.('Lab: Surprise me (random filter)', async () => { try { toast(await surprise('filter'), { timeout: 2600 }); } catch (err) { toast(err.message, { type: 'error' }); } });
 
-  return { openPicker, close, items, find, apply, surprise, toggleFav, KIND_LABEL, TABS, SUGGESTED, keyOf };
+  return { openPicker, close, items, find, apply, surprise, toggleFav, extend, KIND_LABEL, TABS, SUGGESTED, keyOf };
 })();

@@ -58,7 +58,7 @@ ok('describe: one line per clip, readable for the chats', () => { const L = D.de
 ok('the app map has a "sequence" topic (and seq / storyboard aliases)', () => { assert(/THE LAB SEQUENCE/.test(MAP.topic('sequence'))); assert.strictEqual(MAP.topic('seq'), MAP.topic('sequence')); assert(/sequence/.test(MAP.TOPICS.app)); });
 ok('the Three Director reaches it through three_do (lean) and three_sequence (full)', () => {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'mcp', 'three-mcp.js'), 'utf8');
-  assert(/'footage', 'sequence', 'help'\]/.test(src)); assert(/name: 'three_sequence'/.test(src));
+  assert(/'footage', 'sequence', ('motion', )?'help'\]/.test(src)); assert(/name: 'three_sequence'/.test(src));
 });
 ok('a gap holds the time: trimming the clip before it, a transition into the clip after it, an in-trim', () => {
   let x = D.addScene(D.create(), { sketch: 'a' }, { dur: 8 });

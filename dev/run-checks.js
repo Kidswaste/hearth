@@ -10,7 +10,7 @@
 //   sh dev/run-checks.sh --list               # groups and checks
 //   options: --out <dir> (logs and pictures, default <tmp>/hearth-checks) · --shots (journeys keep a picture per step)
 //   · --fixtures-only · --stop (first failure)
-// Groups: qa, board, editor, capture, journeys, chat, lab, video, nodes, smooth, astra, sequence, robust, unit, all.
+// Groups: qa, board, editor, capture, journeys, chat, lab, video, nodes, smooth, astra, sequence, robust, motion, unit, all.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -42,6 +42,7 @@ const GROUPS = {
   astra: ['astra-collab', 'astra-ui', 'astra-manager'],
   sequence: by(/^sequence/),
   robust: by(/^robust/),
+  motion: by(/^motion/),
   unit: UNIT.map((u) => `unit:${u}`),
 };
 GROUPS.all = [...new Set([...all.filter((n) => !/^astra-/.test(n)), ...GROUPS.astra, ...GROUPS.unit])];
