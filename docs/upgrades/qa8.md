@@ -76,3 +76,26 @@ what collided between them and with everything older. One line per bug, each wit
 54. Fixed: a freeze frame (Shift+F, `/freeze-frame`) at a color matte inserted a "freeze" with no picture file, and the editor's filmstrip crashed drawing it ("Cannot read properties of undefined (reading 'replace')"). There's nothing to freeze there: it says so.
 55. Fixed: `/captions-import` with no file passed an empty path to the file reader ("Not an absolute path"). It opens a file picker for an SRT / VTT.
 56. Fixed: the editor's preset commands with nothing after them (`/blend-mode`, `/grade`, `/edit-motion`, `/sound-effect`, `/speed-ramp`) answered "No blend “undefined”" / "No look “”". They ask "Which look?" and list the first ones.
+
+## Shortcut conflicts: the table
+`dev/checks/qa-keys.js` lists every key bound in two areas that are on screen together, and presses each key for
+real to see which one wins and whether an app-wide action fires as well (none does since the fixes above). How each
+is settled (the one that has the focus wins; the other stays reachable as written):
+
+| Key | Where | Who wins | The other one |
+|---|---|---|---|
+| ⌘/Ctrl+Alt+S | Capture menu ⇄ chat box "stop the collaboration" | Capture (caught first) | stop moved to ⌘/Ctrl+Alt+X (#2) |
+| ⌘/Ctrl+Alt+H | global show / hide hotkey (Mac: Hide others) ⇄ chat box "hand off" | the system | hand off moved to ⌘/Ctrl+Alt+G (#3) |
+| AltGr+S / A… (Windows) | capture keys ⇄ typing ś, ą… | typing (#24) | the capture keys with the real Ctrl+Alt |
+| Ctrl+G | board "group" ⇄ "all agents side by side" | the board, while it has the keyboard | side by side: anywhere else, or the ⋯ menu |
+| Ctrl+0 | board "zoom to fit" ⇄ text size 100 % | the board | text size: anywhere else, Settings |
+| Ctrl+Shift+S | board "save a version" ⇄ Lab "save as a look" ⇄ "snapshot into the chat" | the board on the board, the Lab in the Lab | snapshot: anywhere else, the palette |
+| Ctrl+Shift+C | board "copy as a picture" ⇄ chat box "copy the last reply" | the focused one (board or chat box) | — |
+| Ctrl+F / / | board "search" ⇄ "find in the view" | the board | find: anywhere else |
+| E, Esc, Space, J K L, ← →, ↑ ↓, , ., S, B, D, [ ], − =, \, I O X, N, T, Ctrl+C | editor ⇄ Video Review | the editor while it's open (its keys come first in the sheet) | Video Review's: E leaves the editor; safe zones (S), library (B), draw (D), compare (\\) also in ⋯ and Alt-revealed buttons |
+| Alt+T, Alt+↑ ↓, Enter, Ctrl+V | editor ⇄ the docked Video Director's chat box | the focused one (the chat box ignores the editor's keys and the editor ignores typing) | — |
+| ↑ ↓ | Video Review notes ⇄ the `/` menu in a chat box | the focused one | — |
+| Esc | board / editor / Lab / chat box / tour / menus | the innermost: a menu or dialog first, then the surface | a running tour stops on any real Esc |
+| . | Lab "one frame while frozen" ⇄ timeline "nudge by ear" | frozen: the frame step | the nudge when not frozen |
+| Shift+C | Lab "recall slot C" (listed twice) | one line now (#43) | — |
+| F1 | command bar help ⇄ (nothing) | everywhere now (#38) | — |
