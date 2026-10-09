@@ -519,6 +519,8 @@ renderer.setAnimationLoop((now) => {
     toast(`"${lab()?.get(id)?.name}" is the scene of the chat "${titleOf(owner)}"`, { timeout: 6000, action: { label: 'Go to that chat', fn: () => { shown.three = owner; Native.open(agent.id, owner); Tools.openDock('three'); } } });
   });
   addEventListener('hearth:lab-ready', () => sync());
+  // a scene's sequence changed (tools/three-seq.js): the rows' marks follow (written only when they differ)
+  addEventListener('hearth:sequences', () => { for (const r of document.querySelectorAll('#chat-groups .item.has-ident')) { const n = r.querySelector('.chat-ident'); if (n && r.dataset.key) paintIdent(n, r.dataset.key); } });
   addEventListener('hearth:view', () => { sync(); if (typeof DirectorDock !== 'undefined') for (const t of ['three', 'ae']) DirectorDock.entry(t)?.paint(); });
 
   // "New chat" (also when the dock already shows an empty one): a fresh starter

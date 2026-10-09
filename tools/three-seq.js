@@ -97,6 +97,8 @@ const ThreeSeq = (() => {
     listCache = out;
     S.index = new Map();
     for (const x of out) if (x.scene && (!S.index.has(x.scene) || store.get('three.seq.byScene', {})[x.scene] === x.key)) S.index.set(x.scene, x);
+    const sig = JSON.stringify([...S.index.values()].map((x) => [x.scene, x.key, x.clips, x.seconds]));
+    if (sig !== S.indexSig) { S.indexSig = sig; dispatchEvent(new CustomEvent('hearth:sequences')); }
     return out;
   }
   let listCache = [];
@@ -456,7 +458,9 @@ const ThreeSeq = (() => {
     refs.tab.classList.remove('on');
     refs.view.hidden = true;
     head().getAnimations().forEach((a) => a.cancel());
-    if (S.sizeBefore && L.stage.size.id !== S.sizeBefore && rerun) L.stage.setMode(S.sizeBefore);
+    // the scene on screen gets its own frame size back (another scene may have come on while the sequence showed)
+    const own = L.scenes.frameOf?.(L.sketchId()) || S.sizeBefore;
+    if (own && L.stage.size.id !== own && rerun) L.stage.setMode(own);
     S.sizeBefore = null;
     if (rerun) {
       const sid = L.sketchId();

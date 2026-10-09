@@ -2701,14 +2701,17 @@ const ThreeLab = (() => {
       controllers.clear();
       for (const k of Object.keys(layerMods)) delete layerMods[k];
       rememberMedia();
-      if (left && stage) { (extras[left.id] ||= {}).frame = stage.size.id; saveExtras(); }
+      // (the Lab sequence on screen keeps its own shape and song: the scenes' come back when it closes)
+      const seqOn = typeof ThreeSeq !== 'undefined' && ThreeSeq.active;
+      if (left && stage && !seqOn) { (extras[left.id] ||= {}).frame = stage.size.id; saveExtras(); }
       current = sketches.find((s) => s.id === id) || sketches[0];
       materialize(current);
       // This sketch's frame size and song (with where it was in the song).
       const ex = extras[current.id] || {};
-      if (ex.frame) stage.setMode(ex.frame, { silent: true });
+      if (ex.frame && !seqOn) stage.setMode(ex.frame, { silent: true });
       const want = ex.media?.path || null;
-      if (!want) { if (player.loaded || player.path) player.unload({ silent: true }); }
+      if (seqOn) { /* the sequence's song stays */ }
+      else if (!want) { if (player.loaded || player.path) player.unload({ silent: true }); }
       else if (want !== player.path) { player.unload({ silent: true }); player.load(want, { startAt: ex.media.time || 0, quiet: true }); }
       else player.seek(ex.media.time || 0);
       store.set('three.current', current.id);
