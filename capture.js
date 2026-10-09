@@ -50,7 +50,7 @@ const Capture = (() => {
   addEventListener('blur', () => { altDown = false; });
   // The app menu's own submenus (renderer.js showMenu: › rows, flyouts, ‹ back, type-to-filter) carry it; leading
   // symbols become the app's SVG icons (icons.js) and a submenu row loses its "…" (› already says there's more).
-  const GLYPH_ICON = { '📷': 'shot', '⬚': 'social', '✨': 'sparkle', '●': 'rec', '■': 'stop', '▦': 'grid', '🎞': 'frames', '🎬': 'film', '✎': 'pen', '✂': 'cut', '→': 'tochat', '◉': 'capture', '◆': 'clock' };
+  const GLYPH_ICON = { '🖼': 'shot', '▶': 'present', '📷': 'shot', '⬚': 'social', '✨': 'sparkle', '●': 'rec', '■': 'stop', '▦': 'grid', '🎞': 'frames', '🎬': 'film', '✎': 'pen', '✂': 'cut', '→': 'tochat', '◉': 'capture', '◆': 'clock' };
   const listOf = (items) => (typeof items === 'function' ? items() : items || []).filter(Boolean);
   function iconize(it) {
     if (!it || typeof it !== 'object') return it;

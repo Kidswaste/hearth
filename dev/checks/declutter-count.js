@@ -53,6 +53,39 @@ labRows('tidy');
 await Commands.tryRun('/calm off', claude.id); await wait(200);
 labRows('everything');
 await Commands.tryRun('/calm on', claude.id); await wait(200);
+// round 8 (polish8): the board, the board drawer, the video editor and captures, the same two ways
+// (fixtures: sh dev/board-fixtures.sh, node dev/make-editor-videos.js /tmp/hearth-editor-videos; skipped when missing)
+const has = async (p) => { try { return (await window.hub.fs.list(p)).length > 0; } catch { return false; } };
+const measure = async (name, fn) => { (rows[name] ||= {}).tidy = fn(); await Commands.tryRun('/calm off', claude.id); await wait(200); rows[name].everything = fn(); await Commands.tryRun('/calm on', claude.id); await wait(200); };
+activate('tool:board'); await until(() => Board.isMounted() && Board.current(), 8000); await wait(300);
+if (await has('/tmp/hearth-board-fixtures')) { await Board.addFiles(['neon big.png', 'golden-hour.jpg', 'cuts.mp4'].map((f) => `/tmp/hearth-board-fixtures/${f}`)); await wait(1500); }
+await measure('board', () => count(document.querySelector('.bd-root'), '.bd-world'));
+activate(claude.id); await wait(300);
+BoardDrawer.toggle(true); await wait(700);
+await measure('board drawer', () => count(document.querySelector('.bdd')));
+BoardDrawer.toggle(false); await wait(300);
+if (await has('/tmp/hearth-editor-videos')) {
+  const VIDS = `${window.SMOKE_SAVES || '/tmp'}/dc-renders`;
+  await window.hub.fs.write(`${VIDS}/.keep`, '');
+  for (const f of (await window.hub.fs.list('/tmp/hearth-editor-videos')).filter((x) => /frames_a_30\.mp4$/.test(x.name))) await window.hub.fs.copy(f.path, `${VIDS}/${f.name}`);
+  activate('tool:ae'); await Review.ensureMounted();
+  H.config.settings = { ...H.config.settings, videoDirs: [VIDS] };
+  await Review.load(true); await until(() => Review.videos.length >= 1, 8000);
+  await Review.open(Review.videos[0].path); await Review.waitReady(); await VideoCut.enter(); await wait(500);
+  const ae = H.surfaces.get('tool:ae').el;
+  await measure('editor bar', () => count(ae.querySelector('.vr-cut-headrow')));
+  await measure('editor (whole tool)', () => count(ae, '.vr-item, .vr-lib-item, .vr-card, .vr-note'));
+  await VideoCut.leave?.(); await wait(200);
+}
+activate(claude.id); await wait(200);
+const cap = await Capture.shot({ target: 'window', quiet: true });
+await CaptureView.library(); await wait(600);
+await measure('captures library', () => count(document.querySelector('dialog.cap-lib[open]')));
+document.querySelector('dialog.cap-lib[open]')?.close(); await wait(200);
+await CaptureView.open(cap.path); await wait(700);
+await measure('capture viewer', () => count(document.querySelector('dialog.cap-view[open]')));
+document.querySelector('dialog.cap-view[open]')?.close(); await wait(200);
+
 // the top level of the menus
 const menus = {};
 const top = () => [...document.querySelectorAll('#menu > button')].length;

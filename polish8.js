@@ -25,9 +25,6 @@ const Polish8 = (() => {
     { id: 'bdd-add', area: 'Board drawer', label: '＋ Add pictures from the drawer (or drop them on it)', sel: '.bdd-foot > button[title^="Add pictures"]' },
     { id: 'bdd-count', area: 'Board drawer', label: 'Reference count in the drawer foot', sel: '.bdd-foot > span:not(.spacer)', mode: 'hover', host: '.bdd' },
     { id: 'bdd-send', area: 'Board drawer', label: '→ on each reference (attach its vibe; dragging does it too)', sel: '.bdd-send', mode: 'hover', host: '.bdd-tile' },
-    // captures: the library's ⋯ and the viewer's rarer buttons show where you point
-    { id: 'cap-lib-more', area: 'Capture', label: '⋯ in the captures library (right-click a capture does more)', sel: 'dialog.cap-lib .cap-lib-head > button.ghost', mode: 'hover', host: 'dialog.cap-lib' },
-    { id: 'cap-view-more', area: 'Capture', label: '⋯ in the capture viewer (right-click the picture does the same)', sel: 'dialog.cap-view .cap-view-head > button.ghost:not([title^="Close"])', mode: 'hover', host: 'dialog.cap-view' },
   ];
 
   // ---------- 2. one menu shape ----------
@@ -79,13 +76,32 @@ const Polish8 = (() => {
     while (main.length && main[main.length - 1] === '-') main.pop();
     return main.filter((it, i) => !(it === '-' && main[i - 1] === '-'));
   }
+  // the verbs every surface shares get the same icon (Look, Arrange, Send … to a chat, Export, Present); the rest
+  // stay text, so a menu isn't a wall of pictures
+  const VERB_ICON = [[/^Look\b/, 'sparkle'], [/^Arrange\b/, 'grid'], [/^(Send\b|Ask a chat)/, 'tochat'], [/^Export\b/, 'export'], [/^Present\b/, 'present']];
+  const verbIcon = (it) => { if (!it || typeof it !== 'object' || it.icon) return it; const v = VERB_ICON.find(([re]) => re.test(labelOf(it))); return v ? { ...it, icon: v[1] } : it; };
+  // the rail's ⋯: its entries carried emoji; they get the same SVGs as the buttons they stand for
+  const RAIL_GLYPH = { '🗒': 'notes', '🧠': 'memory', '▦': 'grid', '⌨': 'broadcast', '⇪': 'export', '◉': 'capture' };
+  function railIcons(list) {
+    return list.map((it) => {
+      if (!it || typeof it !== 'object') return it;
+      const m = /^(✓ )?(\S+)\s+/u.exec(it.label || '');
+      return m && RAIL_GLYPH[m[2]] ? { ...it, label: `${m[1] || ''}${it.label.slice(m[0].length)}`, icon: RAIL_GLYPH[m[2]] } : it;
+    });
+  }
   const MARK = Symbol('polish8');
   const hasCustomise = (list) => list.some((it) => it && typeof it === 'object' && it.label === 'Customise this…');
   function decorate(items) {
     if (Array.isArray(items) && items[MARK]) return items;
     const recent = performance.now() - last.t < 600;
     let area = pendingArea; pendingArea = null;
-    let target = last.target;
+    const target = last.target;
+    if (!area && recent && last.kind === 'click' && target?.closest?.('#rail-more')) {
+      const list = railIcons((typeof items === 'function' ? items() : items || []).filter(Boolean));
+      const out = typeof Declutter !== 'undefined' ? [...list, ...Declutter.customiseItems('Rail')] : list;
+      out[MARK] = true;
+      return out;
+    }
     if (!area && recent) {
       area = areaOf(target);
       // a click opens a menu here only from a ⋯ / chip button (not pickers like the color swatch)
@@ -97,7 +113,7 @@ const Polish8 = (() => {
     if (!area || typeof Declutter === 'undefined') return items;
     let list = (typeof items === 'function' ? items() : items || []).filter(Boolean);
     if (last.kind === 'context' && area !== 'Video Review') list = ordered(list);
-    list = tailFirst(list);
+    list = tailFirst(list).map(verbIcon);
     if (!hasCustomise(list)) list = [...list, ...Declutter.customiseItems(area, target, { exact: true })];
     list[MARK] = true;
     return list;
@@ -186,6 +202,9 @@ const Polish8 = (() => {
   function start() {
     try { Declutter.addRules(RULES); } catch (err) { console.warn('polish8 rules', err); }
     wrapMenu(); wrapCapture(); registerKeys(); styleSheet(); watchSheet(); commands();
+    // the hidden rail button capture-cmds.js adds (pinned back on screen with Customise this…, it shows): the SVG icon
+    const cb = document.getElementById('capture-btn');
+    if (cb && typeof Icons !== 'undefined' && !cb.querySelector('svg')) cb.replaceChildren(Icons.node('capture'));
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 

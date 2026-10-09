@@ -26,6 +26,11 @@ KeysUI.open(); await wait(500); await shot('keys-sheet');
 out.keysAreas = [...Keys.groups(true).keys()];
 KeysUI.close(); await wait(200);
 
+document.getElementById('rail-more')?.click(); await wait(300);
+out.menus['rail ⋯'] = menuRows();
+await shot('rail-more');
+hideMenu();
+
 // ---------- board ----------
 activate('tool:board');
 await until(() => Board.isMounted() && Board.current());
@@ -80,6 +85,8 @@ await wait(300);
 await CaptureView.library?.(); await wait(800);
 rec('captures library', document.querySelector('dialog[open]'));
 await shot('capture-library');
+const card = document.querySelector('dialog[open] .cap-card');
+if (card) { const cr0 = card.getBoundingClientRect(); await rclick(card, cr0.left + 30, cr0.top + 30); out.menus['capture card'] = menuRows(); await shot('capture-card-menu'); hideMenu(); }
 document.querySelector('dialog[open]')?.close(); await wait(200);
 await CaptureView.open(cap.path); await wait(900);
 rec('capture viewer', document.querySelector('dialog[open]'));
@@ -124,9 +131,14 @@ hideMenu();
 out.menus['editor ⋯'] = menuRows();
 await shot('editor-more-menu');
 hideMenu();
+VideoCut.inspect(VideoCut.edit.clips.find((c) => c.kind === 'video')?.id); await wait(500);
+await shot('editor-inspector');
+VideoCut.closeInspector?.(); await wait(200);
 aeRoot.querySelector('.vr-cut-export')?.click(); await wait(250);
 out.menus['editor export'] = menuRows();
 hideMenu();
+
+KeysUI.open('editor'); await wait(400); await shot('keys-editor'); KeysUI.close(); await wait(200);
 
 // ---------- Lab ⋯ for comparison ----------
 activate('tool:three'); await wait(3000);

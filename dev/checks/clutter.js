@@ -96,6 +96,52 @@ const dock = [...lab().querySelectorAll('.tool-dock')].find(vis);
 add('director dock', dock, { skip: '.messages' });
 await shot('dock');
 
+// ---------- round 8 (polish8): the mood board, its drawer, the video editor, captures ----------
+// (fixtures when present: sh dev/board-fixtures.sh; node dev/make-editor-videos.js /tmp/hearth-editor-videos)
+const hasDir = async (p) => { try { return (await window.hub.fs.list(p)).length > 0; } catch { return false; } };
+activate('tool:board'); await until(() => Board.isMounted() && Board.current(), 8000); await wait(400);
+add('board (empty)', document.querySelector('.bd-root'), { skip: '.bd-world' });
+if (await hasDir('/tmp/hearth-board-fixtures')) { await Board.addFiles(['neon big.png', 'golden-hour.jpg', 'loop.gif', 'cuts.mp4'].map((f) => `/tmp/hearth-board-fixtures/${f}`)); await wait(1500); }
+Board.zoomFit(); await wait(800);
+add('board', document.querySelector('.bd-root'), { skip: '.bd-world', items: () => Board.items().length });
+await shot('board');
+const bi = document.querySelector('.bd-item'); const bir = bi?.getBoundingClientRect();
+if (bi) { Board.select([bi.dataset.id]); bi.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: bir.left + 10, clientY: bir.top + 10 })); await wait(250); rows['board item menu'] = { controls: menuCount() }; closeMenus(); }
+document.querySelector('.bd-vp')?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 400, clientY: 700 })); await wait(250);
+rows['board canvas menu'] = { controls: menuCount() }; closeMenus();
+activate(claude.id); await wait(300);
+BoardDrawer.toggle(true); await wait(700);
+add('board drawer', document.querySelector('.bdd'), { skip: '.bdd-tile', items: () => document.querySelectorAll('.bdd-tile').length });
+await shot('board-drawer');
+BoardDrawer.toggle(false); await wait(300);
+if (await hasDir('/tmp/hearth-editor-videos')) {
+  const VIDS = `${window.SMOKE_SAVES || '/tmp'}/clutter-renders`;
+  await window.hub.fs.write(`${VIDS}/.keep`, '');
+  for (const f of (await window.hub.fs.list('/tmp/hearth-editor-videos')).filter((x) => /frames_[ab]_30\.mp4$/.test(x.name))) await window.hub.fs.copy(f.path, `${VIDS}/${f.name}`);
+  activate('tool:ae'); await Review.ensureMounted();
+  H.config.settings = { ...H.config.settings, videoDirs: [VIDS] };
+  await Review.load(true); await until(() => Review.videos.length >= 2, 8000);
+  await Review.open(Review.videos[0].path); await Review.waitReady(); await VideoCut.enter(); await wait(600);
+  const ae = H.surfaces.get('tool:ae').el;
+  add('editor bar', ae.querySelector('.vr-cut-headrow'));
+  add('editor (whole Video Review)', ae, { skip: '.vr-item, .vr-lib-item, .vr-card, .vr-note' });
+  await shot('editor');
+  [...ae.querySelectorAll('.vr-cut-headrow .vr-ico')].find((b) => b.textContent === '⋯')?.click(); await wait(250);
+  rows['editor ⋯ menu'] = { controls: menuCount() }; closeMenus();
+  await VideoCut.leave?.(); await wait(300);
+}
+activate(claude.id); await wait(300);
+Capture.menu(80, 120, Capture.mainItems()); await wait(250);
+rows['capture menu'] = { controls: menuCount() }; await shot('capture-menu'); closeMenus();
+const capShot = await Capture.shot({ target: 'window', quiet: true });
+await CaptureView.library(); await wait(600);
+add('captures library', document.querySelector('dialog.cap-lib[open]'), { skip: '.cap-card', items: () => document.querySelectorAll('dialog.cap-lib[open] .cap-card').length });
+await shot('captures');
+document.querySelector('dialog.cap-lib[open]')?.close(); await wait(200);
+await CaptureView.open(capShot.path); await wait(700);
+add('capture viewer', document.querySelector('dialog.cap-view[open]'));
+document.querySelector('dialog.cap-view[open]')?.close(); await wait(200);
+
 const total = Object.values(rows).reduce((s, r) => s + (r.controls || 0), 0);
 const width = Math.max(...Object.keys(rows).map((k) => k.length));
 const table = Object.entries(rows).map(([k, r]) => `${k.padEnd(width)}  ${String(r.controls ?? '-').padStart(4)}${r.items != null ? `  (+${r.items} items)` : ''}${r.list ? `   ${r.list}` : ''}`).join('\n');

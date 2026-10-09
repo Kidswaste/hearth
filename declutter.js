@@ -202,7 +202,7 @@ const Declutter = (() => {
       { label: off ? 'Tidy again (tuck them away)' : 'Show everything, always', hint: '/calm', action: () => { setOff(!off); toast(off ? 'Everything shows (/calm on tucks it away again)' : 'Tidy again', { timeout: 1800 }); } },
       { label: 'Keys and hidden buttons…', key: 'Ctrl+/', action: () => KeysUI.open() },
     ].filter(Boolean);
-    return ['-', { label: 'Customise this…', items }];
+    return ['-', { label: 'Customise this…', icon: 'sliders', items }];
   }
 
   // the same entry for the Lab's two-column menus (popMenu): ['Customise this…', '', [...]]

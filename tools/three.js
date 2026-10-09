@@ -277,7 +277,8 @@ const ThreeLab = (() => {
           [`three.js version · r${v.split('.')[1]}`, 'Switch and re-run', () => versionMenu(), false, 'three.js version'],
           ['Live code', 'Apply code changes a moment after you stop typing', () => { autoBox.checked = !autoBox.checked; autoBox.dispatchEvent(new Event('change')); }, autoRun]]],
         ['Key hints on hover', 'Little key badges on the main buttons (hold Ctrl for all of them)', () => { const off = !document.body.classList.contains('lab-nohints'); document.body.classList.toggle('lab-nohints', off); store.set('three.keyHints', !off); }, !document.body.classList.contains('lab-nohints')],
-        ['Lab keys', '? · the keys button, bottom left', () => (typeof KeysUI !== 'undefined' ? KeysUI.open() : labKeys())]];
+        ['Lab keys', '? · the keys button, bottom left', () => (typeof KeysUI !== 'undefined' ? KeysUI.open() : labKeys())],
+        ...(typeof Declutter !== 'undefined' ? Declutter.popItems('Lab') : [])]; // (round 8) ends like every menu
       // (copy / export are in Sketch ▾, the frame rate in the preview's ⋯)
     }
     function snippetMenu() {

@@ -128,6 +128,8 @@ html[data-skin~="forge"] .vr-cut-sug { border-radius: 0; }
 .vr-cut-btn.on { background: var(--m-gold, linear-gradient(180deg, #fff3c4, var(--vr-gold) 55%, #c9a23c)); color: var(--m-gold-ink, var(--vr-ink)); box-shadow: var(--m-bevel, none); }
 /* the program frame: a cut-corner hairline frame in Forgeheart (the picture itself is untouched) */
 html[data-skin~="forge"] .vr-stage.cutting { box-shadow: 0 0 0 1px var(--line-hi), 0 0 0 4px color-mix(in srgb, var(--fh-gold, #e6b450) calc(10% * var(--glow, 1)), transparent), 0 20px 60px #000a; }
+/* light looks: the editor's gold labels on pale metal read in the darker gold text tone */
+:root[data-scheme=light] :is(.vr-cut-title, .vr-cut-export, .vr-cut-add, .ed-name b) { color: var(--fh-gold-text, #8a5a00); }
 /* notes column: its one-line empty state */
 .vr-notes .vr-empty { font-size: 12px; line-height: 1.45; }
 
