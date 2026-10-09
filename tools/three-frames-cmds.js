@@ -41,7 +41,7 @@
     ['in', 'The part here starts on this frame'], ['out', 'The part here ends on this frame'], ['roll', 'roll <±frames>: move the nearest cut'],
     ['repeat', 'The part here plays again right after'], ['first', 'The part here plays first'], ['last', 'The part here plays last'], ['mute', 'The part\'s sound off / on'],
     ['edl', 'Save the cut as an EDL next to the video'], ['copy', 'Copy this frame\'s timecode'], ['still', 'A still of the sketch at this frame'], ['storyboard', 'The sketch at every part, one sheet'],
-    ['zoom', 'zoom <second|12f|part|all>'], ['palette', 'The sketch palette from this frame'], ['board', 'Pin this frame to the mood board'], ['render', 'Render the cut as a video (the editor\'s ffmpeg)'],
+    ['zoom', 'zoom <second|12f|part|all>'], ['looks', 'Each part its own look'], ['key', 'key <setting> <a> <b>: keyframes at every cut, alternating'], ['layer-part', 'The selected layer plays only in this part'], ['motion-to', 'motion-to <slider>: the footage\'s motion as keyframes'], ['palette', 'The sketch palette from this frame'], ['board', 'Pin this frame to the mood board'], ['render', 'Render the cut as a video (the editor\'s ffmpeg)'],
   ];
   reg({ name: 'footage', aliases: ['frames-lab'], desc: 'The Lab\'s video footage, frame by frame: status, step / go to frames, cut (the sketch plays the parts), shots, the editor, readings', args: '[status|step n|go f120|cut|delete|restore|speed x|hold s|clear|parts|scenes|cues|shots|editor|sequence|from|sheet|motion|pacing|read|check|time|film|on|off|keys]',
     examples: ['/footage', '/footage go 00:00:02:12', '/footage step -5', '/footage cut', '/footage scenes'], keywords: 'video frames timecode cut footage step',
@@ -83,6 +83,10 @@
       if (sub === 'still') { await T().stillHere(); return `Still at ${here()}.`; }
       if (sub === 'storyboard') { const r = await T().storyboard(); return `Storyboard of ${r.frames?.length || 0} frames.`; }
       if (sub === 'zoom') return `Zoomed: ${T().zoom(rest || 'second')}.`;
+      if (sub === 'looks') { await T().looksPerPart(); return `Each part has its own look (${ThreeLab.director.media.cues.length} cues).`; }
+      if (sub === 'key') { const [prop = 'opacity', ...vals] = w.slice(1); const v = vals.map(Number).filter(Number.isFinite); const r = await T().keyAtCuts(prop, v.length ? v : [1, 0]); return `${r.layer}.${r.property}: ${r.keyframes} keys, one per cut.`; }
+      if (sub === 'layer-part') { const r = await T().layerToPart(); return `${r.updated || 'The layer'} plays only in this part.`; }
+      if (sub === 'motion-to') { if (!rest) return 'Name a slider (or opacity, scale…).'; const r = await T().motionToSlider(ThreeFrames._F.path, rest); return `${r.layer}.${r.property}: ${r.keyframes} keys from the footage's motion.`; }
       if (sub === 'palette') return `Palette: ${(await T().paletteHere()).join(' ')}`;
       if (sub === 'board') { await T().frameToBoard(); return `${here()} pinned to the board.`; }
       if (sub === 'render') { const job = await T().renderCut(); return job ? 'Rendering the cut (the editor shows the progress).' : 'Nothing to render.'; }
@@ -127,6 +131,11 @@
     run: async (args) => { await need(); const n = await T().cutAtScenes(SENS.includes(args.trim()) ? args.trim() : 'normal'); return n ? `✂ ${n}\n${parts()}` : 'No shot changes found.'; } });
   reg({ name: 'cut-bars', desc: 'Cut the footage on every bar (or beat / 2 bars) of its own sound', args: '[bar|beat|2bars]', complete: (a) => opts(['bar', 'beat', '2bars'], a),
     run: async (args) => { await need(); if (!ThreeLab.director.media.analysis) return 'This footage has no sound to find a beat in.'; const n = T().cutOnBeats(words(args)[0] || 'bar'); return n ? `✂ ${n}\n${parts()}` : 'No beats found.'; } });
+  reg({ name: 'cut-markers', desc: 'Cut the Lab\'s footage at every kick, snare or hit marker (yours, the triggers\' or pace hits)', args: '[kick|snare|hit]', complete: (a) => opts(['kick', 'snare', 'hit'], a),
+    run: async (args) => { await need(); const n = T().cutAtMarkers(words(args)[0] || 'hit'); return n ? `✂ ${n}\n${parts()}` : 'No markers of that kind.'; } });
+  reg({ name: 'pace-check', desc: 'How the Lab footage\'s cut compares with a reference clip\'s pacing (shots, average shot, cuts a minute)', args: '<clip>',
+    complete: (a) => refSoon(a),
+    run: async (args) => { await need(); const r = await T().findRef(args.trim()); if (!r) return 'No such reference clip.'; const c = await T().comparePacing(r.path, r.name); return `${c.verdict} · yours: ${c.yours.shots} shots, ${c.yours.cutsPerMinute} cuts a minute · ${c.reference.file}: ${c.reference.shots} shots, ${c.reference.cutsPerMinute} cuts a minute (${c.reference.words})`; } });
   reg({ name: 'lab-cuts', aliases: ['footage-parts'], desc: 'The Lab footage\'s cut, part by part (frames, timecodes, speeds, held frames)', run: async () => { await need(); return parts(); } });
   reg({ name: 'footage-scenes', aliases: ['shot-cues'], desc: 'A cue at every shot of the footage (exact frames)', args: '[gentle|normal|sensitive|every]', complete: (a) => opts(SENS, a),
     run: async (args) => { await need(); return `${await T().cuesAtScenes(SENS.includes(args.trim()) ? args.trim() : 'normal')} cues.`; } });

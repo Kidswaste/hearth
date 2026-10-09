@@ -387,6 +387,45 @@ const ThreeFrames = (() => {
     for (let i = 0; i < 60 && !(VideoCut.active && VideoCut.path === F.path); i += 1) await wait(100);
     return VideoCut.exportCut({});
   }
+  // ---------- motion design on the cut ----------
+  // keyframes on every part's first frame: a setting of a layer alternating between values (A, B, A…) or one value
+  async function keyAtCuts(property, values = [1, 0], { layer = 'selected', ease = 'hold' } = {}) {
+    if (!F.ps?.length) throw new Error('Cut the footage first (S)');
+    const starts = F.ps.filter((p) => !p.hold).map((p) => p.a);
+    const keys = starts.map((t, i) => ({ time: t, value: values[i % values.length], ease }));
+    return ThreeLab.director.setKeyframes(layer, property, keys, false);
+  }
+  // the selected layer plays only during the part under the playhead
+  async function layerToPart(layer = 'selected', t = here()) {
+    const i = inPart(F.ps, t); const p = i >= 0 ? F.ps[i] : null;
+    if (!p) throw new Error('No part plays here');
+    return ThreeLab.director.updateLayer(layer, { in: p.a, out: p.b }, 0.4);
+  }
+  // cut at every kick / snare / hit marker (yours, the triggers', or pace hits)
+  function cutAtMarkers(kind = 'hit') {
+    const list = P().timeline().markers[kind] || [];
+    if (!list.length) return 0;
+    return ops.splitMany(list, `Cut at every ${kind} marker`) ? list.length : 0;
+  }
+  // every part gets its own look: a cue at each cut, then a bold shuffle of the selected layer's sliders per cue
+  async function looksPerPart() {
+    if (!F.ps?.length) throw new Error('Cut the footage first (S)');
+    cuesAtCuts();
+    const c = await ThreeLab.cmd();
+    return c.looksForSections?.();
+  }
+  // how the Lab's cut compares with a reference's pacing (the vibe: rhythm, not footage)
+  function cutPacing() {
+    const ps = (F.ps || [{ a: 0, b: srcEnd(), speed: 1 }]).map((p) => (p.hold ? p.hold : (p.b - p.a) / (p.speed || 1)));
+    const total = ps.reduce((a, b) => a + b, 0);
+    return { shots: ps.length, seconds: Math.round(total * 100) / 100, averageShot: Math.round((total / Math.max(1, ps.length)) * 100) / 100, cutsPerMinute: Math.round((Math.max(0, ps.length - 1) / Math.max(1e-6, total)) * 600) / 10 };
+  }
+  async function comparePacing(file, name) {
+    const ref = await pacingOf(file, name); const mine = cutPacing();
+    const r = mine.averageShot / Math.max(1e-6, ref.averageShot);
+    const words = r < 0.8 ? 'your cut is faster' : r > 1.25 ? 'your cut is slower' : 'about the same pace';
+    return { yours: mine, reference: { file: ref.file, shots: ref.shots, averageShot: ref.averageShot, cutsPerMinute: ref.cutsPerMinute, words: ref.words }, verdict: `${words} (${mine.averageShot} s against ${ref.averageShot} s a shot)` };
+  }
   function copyText(text, what) { navigator.clipboard?.writeText(text).catch(() => {}); toast(`Copied ${what}`, { timeout: 1200 }); return text; }
 
   // ---------- moving the playhead: exact frames ----------
@@ -664,7 +703,8 @@ const ThreeFrames = (() => {
       g.fillStyle = '#ff9f43';
       g.fillRect(Math.round(xa) - 1, 0, 2, h); g.fillRect(Math.round(xb) - 1, 0, 2, h);
       g.beginPath(); g.moveTo(xa - 4, 0); g.lineTo(xa + 4, 0); g.lineTo(xa, 6); g.fill();
-      const lab = `${i + 1}${p.speed !== 1 ? ` · ${p.speed}×` : ''}${p.reverse ? ' ◀' : ''}`;
+      const len = (p.b - p.a) / (p.speed || 1);
+      const lab = `${i + 1}${p.speed !== 1 ? ` · ${p.speed}×` : ''}${p.reverse ? ' ◀' : ''}${xb - xa > 90 ? ` · ${len < 10 ? len.toFixed(2) : len.toFixed(1)} s` : ''}`;
       if (xb - xa > g.measureText(lab).width + 10) { g.fillStyle = '#0d1013c0'; g.fillRect(xa + 3, LT - 15, g.measureText(lab).width + 6, 12); g.fillStyle = '#ffb672'; g.fillText(lab, xa + 6, LT - 6); }
     });
   }
@@ -793,12 +833,19 @@ const ThreeFrames = (() => {
       pl.loop ? { label: 'Remove the loop part', action: () => ops.cutRange(pl.loop.a, pl.loop.b) } : null,
       { label: 'Cut at every shot', items: [['gentle', 'Hard cuts only'], ['normal', 'Normal'], ['sensitive', 'Soft cuts and flashes too']].map(([id, hint]) => ({ label: id[0].toUpperCase() + id.slice(1), hint, action: () => cutAtScenes(id) })) },
       pl.cues.length ? { label: 'Cut at every cue', hint: `${pl.cues.length}`, action: () => ops.splitMany(pl.cues.map((x) => x.time), 'Cut at every cue') } : null,
+      ['kick', 'snare', 'hit'].some((k) => (pl.timeline().markers[k] || []).length) ? { label: 'Cut at every marker', items: ['kick', 'snare', 'hit'].filter((k) => (pl.timeline().markers[k] || []).length).map((k) => ({ label: `${k[0].toUpperCase()}${k.slice(1)} markers`, hint: String(pl.timeline().markers[k].length), action: () => cutAtMarkers(k) })) } : null,
       pl.analysis ? { label: 'Cut on every bar', action: () => cutOnBeats('bar'), more: true } : null,
       F.ps ? { label: 'The whole video again', hint: 'clears the cut', action: () => ops.clear(), more: true } : null,
       F.ps ? { label: 'List the parts', action: () => toast(describe().join('\n'), { timeout: 8000 }), more: true } : null,
       F.ps ? { label: 'Copy the parts as text', action: () => copyText(describe().join('\n'), 'the parts'), more: true } : null,
       { label: 'Save the cut as an EDL', hint: 'next to the video, for other editors', action: () => saveEdl().catch((e) => toast(e.message, { type: 'error' })), more: true },
       '-',
+      F.ps ? { label: 'Motion design on the cut', items: [
+        { label: 'Each part its own look', hint: 'a cue per cut, a bold shuffle each', action: () => looksPerPart().catch((e) => toast(e.message, { type: 'error' })) },
+        { label: 'Opacity on / off at every cut', hint: 'the selected layer, held keys', action: () => keyAtCuts('opacity', [1, 0]).catch((e) => toast(e.message, { type: 'error' })) },
+        { label: 'Scale pulse at every cut', hint: 'the selected layer: 1.15 then 1', action: () => keyAtCuts('scale', [1.15, 1], { ease: 'ease' }).catch((e) => toast(e.message, { type: 'error' })) },
+        { label: 'The selected layer plays only in this part', action: () => layerToPart().catch((e) => toast(e.message, { type: 'error' })) },
+      ] } : null,
       { label: 'Cues', items: [
         { label: 'Cue at this frame', key: 'C', action: () => pl.addCue(here()) },
         { label: 'A cue at every cut', action: () => cuesAtCuts() },
@@ -1039,6 +1086,7 @@ const ThreeFrames = (() => {
         on() ? { label: 'Cut the footage to it', action: () => matchPacing(path, 'fit', { cut: true, name }).catch((e) => toast(e.message, { type: 'error' })) } : null,
         { label: 'As hits the sketch reacts to', hint: 'audio.hit fires on its rhythm', action: () => matchPacing(path, 'fit', { hits: true, name }).catch((e) => toast(e.message, { type: 'error' })) },
       ].filter(Boolean) },
+      on() ? { label: 'Compare my cut\'s pacing', action: () => comparePacing(path, name).then((r) => toast(r.verdict, { timeout: 4000 })).catch((e) => toast(e.message, { type: 'error' })) } : null,
       { label: 'Its motion on a slider…', action: async () => { const s = await Modal.prompt('Which slider follows its motion?', { placeholder: 'speed, glow…' }); if (s) motionToSlider(path, s).then(() => toast('Keyframed from the reference\'s motion', { timeout: 1600 })).catch((e) => toast(e.message, { type: 'error' })); } },
       '-',
       { label: 'Load it as the Lab\'s footage', hint: 'only if you want the clip itself', action: () => P().load(path), more: true },
@@ -1118,9 +1166,10 @@ const ThreeFrames = (() => {
     const need = () => { if (!on()) throw new Error(P()?.loaded && P().isVideo ? 'Frame mode is off for this video (/footage on).' : 'Load video footage first (three_do load_media).'); };
     try {
       if (act === 'info') return { ok: true, value: status() };
-      if (act === 'pacing' || act === 'match') {
+      if (act === 'pacing' || act === 'match' || act === 'compare') {
         const r = await findRef(a.ref);
         if (!r) return { ok: false, error: `No reference clip${a.ref ? ` "${a.ref}"` : ''}: ${(await refVideos()).map((x) => x.name).join(', ') || 'none in the Lab references or on the board'}` };
+        if (a.compare || act === 'compare') return { ok: true, value: await comparePacing(r.path, r.name) };
         if (act === 'pacing') { const p = await pacingOf(r.path, r.name); return { ok: true, value: { ...p, cuts: p.cuts.slice(0, 40), note: 'A reference: use its rhythm and energy, never its footage.' } }; }
         return { ok: true, value: await matchPacing(r.path, a.mode || 'fit', { cut: Boolean(a.cut), hits: Boolean(a.hits), name: r.name }) };
       }
@@ -1151,10 +1200,14 @@ const ThreeFrames = (() => {
       else if (act === 'repeat') ops.repeat(t);
       else if (act === 'first' || act === 'last') ops.order(act, t);
       else if (act === 'mute') ops.mute(a.value == null ? undefined : Boolean(a.value), t);
+      else if (act === 'looks') { await looksPerPart(); return { ok: true, value: { looks: (P().cues || []).length, parts: describe() } }; }
+      else if (act === 'key_cuts') return { ok: true, value: await keyAtCuts(String(a.property || 'opacity'), Array.isArray(a.value) ? a.value : [1, 0], { layer: a.layer || 'selected' }) };
+      else if (act === 'layer_part') return { ok: true, value: await layerToPart(a.layer || 'selected', t) };
+      else if (act === 'cut_markers') return { ok: true, value: { cuts: cutAtMarkers(a.value || 'hit'), parts: describe() } };
       else if (act === 'palette') { if (a.frame != null || a.time != null) go(frameAt(F.clock, t)); await settle(); return { ok: true, value: { palette: await paletteHere(), frame: frameNow() } }; }
       else if (act === 'zoom') return { ok: true, value: { zoom: zoom(a.value || 'second') } };
       else if (act === 'storyboard') { const r = await storyboard(); return { ok: true, value: { frames: r.frames }, ...(r.path ? { images: [{ data: await window.hub.fs.read(r.path, { encoding: 'base64' }), mime: 'image/jpeg' }] } : {}) }; }
-      else return { ok: false, error: 'action: info, cuts, split, delete, restore, speed, hold, keep, clear, in, out, roll, repeat, first, last, mute, cut_scenes, cue, palette, zoom, sheet, scenes, motion, pacing, match, storyboard, editor' };
+      else return { ok: false, error: 'action: info, cuts, split, delete, restore, speed, hold, keep, clear, in, out, roll, repeat, first, last, mute, cut_scenes, cut_markers, cue, looks, key_cuts, layer_part, palette, zoom, sheet, scenes, motion, pacing, match, compare, storyboard, editor' };
       return { ok: true, value: { frame: frameAt(F.clock, t), parts: describe() } };
     } catch (err) { return { ok: false, error: err.message }; }
   }
@@ -1170,7 +1223,8 @@ const ThreeFrames = (() => {
   }
   const api = {
     attach, handle, status, refMenu, refVideos, findRef, pacingOf, matchPacing, motionToSlider, readFootage, readFrame, checkFrame, fromSequence, toSequence, toEditor, sequenceNames,
-    step, go, shuttle, jumpPoint, ops, describe, setMode, cutLength, saveEdl, stillHere, storyboard, copyText, zoom, paletteHere, frameToBoard, renderCut, moveEdge, cuesAtCuts, cuesAtScenes, cutAtScenes, cutOnBeats, loopFrames, loopPart, menuItems, askGoto,
+    step, go, shuttle, jumpPoint, ops, describe, setMode, cutLength, saveEdl, stillHere, storyboard, copyText, zoom, paletteHere, frameToBoard, renderCut, moveEdge,
+    keyAtCuts, layerToPart, cutAtMarkers, looksPerPart, cutPacing, comparePacing, cuesAtCuts, cuesAtScenes, cutAtScenes, cutOnBeats, loopFrames, loopPart, menuItems, askGoto,
     get on() { return on(); }, get clock() { return F.clock; }, get parts() { return F.ps ? F.ps.map((p) => ({ ...p })) : null; }, get frame() { return frameNow(); }, get presented() { return F.pres; },
     get display() { return display(); }, setDisplay: (d) => { if (!['tc', 'frames', 'seconds'].includes(d)) return null; F.display = d; store.set('three.frameDisplay', d); P()?.redraw?.(); return d; },
     KEYS: KEY_LIST, _pure: pure, _F: F,

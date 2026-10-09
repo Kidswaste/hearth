@@ -168,6 +168,22 @@ await say('/footage board');
 step('/footage board: this frame pinned to the mood board', Board.items().length === nBoard + 1 && Board.items().at(-1).type === 'image', Board.items().at(-1)?.title);
 await say('/cut-clear');
 
+// ---------- 5c. motion design on the cut ----------
+await say('/footage go f45'); await say('/footage cut'); await say('/footage go f90'); await say('/footage cut');
+const ky = await say('/footage key opacity 1 0.2');
+const kj = JSON.stringify(d().timeline().layers);
+step('/footage key: keyframes on every part\'s first frame, alternating (0s=1, 1.5s=0.2, 3s=1)', /0s=1 \(hold\)/.test(kj) && /1\.5s=0\.2 \(hold\)/.test(kj) && /3s=1 \(hold\)/.test(kj), { ky, kj: kj.slice(0, 240) });
+await say('/footage go f60');
+const lp = await say('/footage layer-part');
+step('/footage layer-part: the selected layer plays only in this part (1.5 s → 3 s)', /plays only/.test(lp) && /1\.5/.test(JSON.stringify(d().timeline().layers)), { lp, layers: JSON.stringify(d().timeline().layers).slice(0, 200) });
+await d().media.editMarkers({ add: { hit: [0.5, 2.5] }, snap: false });
+await say('/cut-clear');
+const cm = await say('/cut-markers hit');
+step('/cut-markers hit: the footage cut at every hit marker', ThreeFrames.parts?.length >= 3, { cm, parts: ThreeFrames.describe() });
+const lk = await say('/footage looks');
+step('/footage looks: each part its own look (a cue with a look per cut)', d().media.cues.filter((c) => c.looks?.length).length >= 3, { lk, cues: d().media.cues.length });
+await say('/cut-clear');
+
 // ---------- 6. EDL, storyboard, timecode copy ----------
 await say('/footage go f30'); await say('/footage cut'); await say('/footage go f60'); await say('/footage cut');
 const edlMsg = await say('/footage edl');
@@ -214,6 +230,8 @@ await say('/cut-clear');
 await d().refs.add(`${M}/ref_cuts.mp4`, 'refCuts');
 await d().media.load(`${M}/frames_silent_24.mp4`);
 await until(() => ThreeFrames.clock?.fps === 24, 10000); await wait(800);
+const pc = await say('/pace-check refCuts');
+step('/pace-check: the cut against the reference\'s pacing', /a shot/.test(pc) && /refCuts/.test(pc), pc);
 const hitsBefore = d().media.timeline().markers.hit.length;
 const mph = await say('/match-pacing refCuts hits');
 step('/match-pacing … hits: Hit markers at the reference\'s rhythm (the sketch\'s audio.hit fires on them)', d().media.timeline().markers.hit.length === hitsBefore + 4, { mph, hits: d().media.timeline().markers.hit });
