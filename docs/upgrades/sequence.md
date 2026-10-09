@@ -51,74 +51,76 @@ then one row of five small controls; the rest is right-click, keys and chat.
 36. **New scenes fit the bars** of the song by themselves.
 37. **Dropped clips never split another clip**: they go to the nearest cut.
 38. **"At bar 9"** (from a command or a director) keeps that time, with a gap before it if needed.
+39. **A gap holds the time**: trimming the clip before it, or a transition into the clip after it, never moves what follows.
 
 ## Editing (the editor's keys)
-39. **S** splits the clip under the playhead (a scene's second half carries on in the scene's own time).
-40. **Delete** lifts (a gap keeps the timing).
-41. **Shift+Delete** ripple deletes (the rest moves up).
-42. **D** duplicates.
-43. **Q / W**: the clip starts / ends at the playhead.
-44. **Drag a clip** to move it between two others (the gold line shows where); items move freely.
-45. **Drag an edge** to trim (a scene's content stays in place, like a video's in-point).
-46. **Alt+drag** slips (the same place and length, another part of the scene or footage).
-47. **Alt+← / →** slips the selected clip one frame.
-48. **M** adds a marker; right-click the ruler for ＋ Marker here.
-49. **⌘/Ctrl+C / V** copy and paste a clip.
-50. **⌘/Ctrl+Z / Shift+Z** undo / redo (150 steps).
-51. **Esc** deselects; Shift+click adds to the selection.
-52. **Double-click a scene** to edit it (the sequence waits on the tab); a title to retype it.
-53. **Snapping** to bars, beats, markers, clip edges and the playhead (edges win a tie), with a gold guide.
-54. **Snapping on / off** in ⋯ (remembered).
-55. **Right-click a scene**: Edit, Look ›, Replace with ›, Remove the board vibe, Transition in ›, Length ›, Split, Duplicate, Starts / Ends here, Delete, Ripple delete.
-56. **Right-click a title**: Text…, Style › (the editor's styles), Animation › (the editor's animations).
-57. **Right-click footage**: its sound on / off.
-58. **Transition in ›**: ten common ones, More transitions › (every editor transition by group), 0.25 / 0.5 / 1 s.
-59. **Length ›**: 1 / 2 / 4 / 8 bars (with a song), 1 / 2 / 4 / 8 s, or type one ("4 bars").
-60. **⋯ → ▦ Every cut on a bar** (the whole sequence fitted to the song).
-61. **⋯ → Transitions everywhere ›**.
-62. **⋯ → Clear the sequence…** (undoable; the song stays).
-63. **⌘/Ctrl+wheel** zooms the tracks; the wheel pans when zoomed; **\\** zooms to fit.
+40. **S** splits the clip under the playhead (a scene's second half carries on in the scene's own time).
+41. **Delete** lifts (a gap keeps the timing).
+42. **Shift+Delete** ripple deletes (the rest moves up).
+43. **D** duplicates.
+44. **Q / W**: the clip starts / ends at the playhead.
+45. **Drag a clip** to move it between two others (the gold line shows where); items move freely.
+46. **Drag an edge** to trim (a scene's content stays in place, like a video's in-point).
+47. **Alt+drag** slips (the same place and length, another part of the scene or footage).
+48. **Alt+← / →** slips the selected clip one frame.
+49. **M** adds a marker; right-click the ruler for ＋ Marker here.
+50. **⌘/Ctrl+C / V** copy and paste a clip.
+51. **⌘/Ctrl+Z / Shift+Z** undo / redo (150 steps).
+52. **Esc** deselects; Shift+click adds to the selection.
+53. **Double-click a scene** to edit it (the sequence waits on the tab); a title to retype it.
+54. **Snapping** to bars, beats, markers, clip edges and the playhead (edges win a tie), with a gold guide.
+55. **Snapping on / off** in ⋯ (remembered).
+56. **Right-click a scene**: Edit, Look ›, Replace with ›, Remove the board vibe, Transition in ›, Length ›, Split, Duplicate, Starts / Ends here, Delete, Ripple delete.
+57. **Right-click a title**: Text…, Style › (the editor's styles), Animation › (the editor's animations).
+58. **Right-click footage**: its sound on / off.
+59. **Transition in ›**: ten common ones, More transitions › (every editor transition by group), 0.25 / 0.5 / 1 s.
+60. **Length ›**: 1 / 2 / 4 / 8 bars (with a song), 1 / 2 / 4 / 8 s, or type one ("4 bars").
+61. **⋯ → ▦ Every cut on a bar** (the whole sequence fitted to the song).
+62. **⋯ → Transitions everywhere ›**.
+63. **⋯ → Clear the sequence…** (undoable; the song stays).
+64. **⌘/Ctrl+wheel** zooms the tracks; the wheel pans when zoomed; **\\** zooms to fit.
 
 ## Playing and frames
-64. **Space** plays the sequence in the preview; scenes switch and cross-fade in the same page (no reload).
-65. **Frame-exact seeks**: any frame of any scene (each scene's own clock: `performance.now`, frame timestamps, THREE.Clock, `layer.time` count from the clip's start).
-66. **Keyframes move with the clip** (layer keyframes and slider keyframes are relative to the clip).
-67. **Only the clips around the playhead run** in the page (the next one warms up hidden, so it has drawn when it shows).
-68. **The editor's own transition drawing** in the Lab preview (what the editor shows is what the Lab shows).
-69. **The editor's own title drawing** in the Lab preview (styles, animations, the Oxanium font).
-70. **Footage at its exact frame** while paused; it plays along while playing.
-71. **The song leads the clock** while it plays (the wall clock smooths it), so the music stays in sync.
-72. **J / K / L**: backward · stop · forward; again: faster.
-73. **← / →** one frame (Shift: ten); **Home / End**; **↑ / ↓** previous / next edit point.
-74. **Click the timecode** to go to a time, `f120`, `00:00:04:12` or `bar 9`.
-75. **⋯ → ⟲ Loop**.
-76. **The playhead moves on the compositor** while playing (one animation, no per-frame DOM writes).
-77. **A sketch edit (yours or a director's) reaches the clips using it** without leaving the sequence.
+65. **Space** plays the sequence in the preview; scenes switch and cross-fade in the same page (no reload).
+66. **Frame-exact seeks**: any frame of any scene (each scene's own clock: `performance.now`, frame timestamps, THREE.Clock, `layer.time` count from the clip's start).
+67. **Keyframes move with the clip** (layer keyframes and slider keyframes are relative to the clip).
+68. **Only the clips around the playhead run** in the page (the next one warms up hidden, so it has drawn when it shows).
+69. **The editor's own transition drawing** in the Lab preview (what the editor shows is what the Lab shows).
+70. **The editor's own title drawing** in the Lab preview (styles, animations, the Oxanium font).
+71. **Footage at its exact frame** while paused; it plays along while playing.
+72. **The song leads the clock** while it plays (the wall clock smooths it), so the music stays in sync.
+73. **J / K / L**: backward · stop · forward; again: faster.
+74. **← / →** one frame (Shift: ten); **Home / End**; **↑ / ↓** previous / next edit point.
+75. **Click the timecode** to go to a time, `f120`, `00:00:04:12` or `bar 9`.
+76. **⋯ → ⟲ Loop**.
+77. **The playhead moves on the compositor** while playing (one animation, no per-frame DOM writes).
+78. **A sketch edit (yours or a director's) reaches the clips using it** without leaving the sequence.
 
 ## One model with the editor
-78. **⋯ → ✂ Finish in the video editor**: the same sequence opens in Video Review's editor.
-79. **Scene clips show in the editor** with their thumbnail (◭ Lab scene · look), overlays as ◭ Lab layers.
-80. **The editor's monitor shows a scene's picture** (its thumbnail) where it has no video.
-81. **The editor renders Lab scenes** by having the Lab render each one to a video first (exact length, frame size).
-82. **Changes made in the editor come back** to the Lab sequence (titles, transitions, trims…).
-83. **Editor → Sequence › ◭ Back to the Lab sequence** (and right-click a scene clip there → ◭ Edit it in the Lab).
-84. **A song longer than the pictures** ends the editor's range where the pictures end.
+79. **⋯ → ✂ Finish in the video editor**: the same sequence opens in Video Review's editor.
+80. **Scene clips show in the editor** with their thumbnail (◭ Lab scene · look), overlays as ◭ Lab layers.
+81. **The editor's monitor shows a scene's picture** (its thumbnail) where it has no video.
+82. **The editor renders Lab scenes** by having the Lab render each one to a video first (exact length, frame size).
+83. **Changes made in the editor come back** to the Lab sequence (titles, transitions, trims…).
+84. **Editor → Sequence › ◭ Back to the Lab sequence** (and right-click a scene clip there → ◭ Edit it in the Lab).
+85. **The Video Director reads Lab scene and Lab layer clips by name** in the editor (`video_edit_read`), and its help mentions the sequence.
+86. **A song longer than the pictures** ends the editor's range where the pictures end.
 
 ## Render
-85. **⇪ Render** frame by frame: the preview's clock steps one frame at a time, each frame drawn at the exact frame size (1080×1920 for 9:16…), then ffmpeg muxes the sound.
-86. **Every social format** from ⇪ (9:16 · 16:9 · 1:1 · 4:5), or **Render every format**.
-87. **The sound mixed in**: the song from its in-point, audio clips, footage with its sound on.
-88. **Music reactivity in the offline render**: the song's spectrum is computed per frame, so what reacts to it reacts the same.
-89. **Into Video Review's library**, with an Open in Video Review button; cancel from the toast.
-90. **Without ffmpeg**: it plays once in real time into the page's recorder (WebM / MP4 with the song).
-91. **Your frame size and the sequence view come back** after a render.
+87. **⇪ Render** frame by frame: the preview's clock steps one frame at a time, each frame drawn at the exact frame size (1080×1920 for 9:16…), then ffmpeg muxes the sound.
+88. **Every social format** from ⇪ (9:16 · 16:9 · 1:1 · 4:5), or **Render every format**.
+89. **The sound mixed in**: the song from its in-point, audio clips, footage with its sound on.
+90. **Music reactivity in the offline render**: the song's spectrum is computed per frame, so what reacts to it reacts the same.
+91. **Into Video Review's library**, with an Open in Video Review button; cancel from the toast.
+92. **Without ffmpeg**: it plays once in real time into the page's recorder (WebM / MP4 with the song).
+93. **Your frame size and the sequence view come back** after a render.
 
 ## Chats and directors
-92. **`/sequence`** (alias `/seq`): no args shows / hides it; sub-commands status, list, new, open, add, footage, title, overlay, song, transition, length, look, split, delete, move, duplicate, fit, format, play, pause, go, render, editor, back, undo, redo, keys (with completions).
-93. **`/add-scene [scene] [at bar 9] [for 4 bars] [look name]`**.
-94. **`/sequence-render [9:16|16:9|1:1|4:5|all]`**.
-95. **Ctrl+K actions**: Lab: Sequence, Add this scene to the sequence, Render the sequence 9:16, Finish the sequence in the video editor.
-96. **Directors (Claude and Astra)**: `three_do { cmd: "sequence", op }` builds, edits, seeks, looks at a frame (with its picture) and renders the sequence (full mode: `three_sequence`); clips by number, "Titles.2" or name.
-97. **Help topic `sequence`** in the app map (also `seq`, `montage`, `storyboard`), read on demand (no extra prompt tokens).
-98. **Video projects (`/intro`)**: each Lab beat is now rendered frame by frame at exactly its length through the sequence (the screen recording stays the fallback).
-99. **Keys in the keys button** (area "Lab sequence"), and ⋯ → Keys lists them.
+94. **`/sequence`** (alias `/seq`): no args shows / hides it; sub-commands status, list, new, open, add, footage, title, overlay, song, transition, length, look, split, delete, move, duplicate, fit, format, play, pause, go, render, editor, back, undo, redo, keys (with completions).
+95. **`/add-scene [scene] [at bar 9] [for 4 bars] [look name]`**.
+96. **`/sequence-render [9:16|16:9|1:1|4:5|all]`**.
+97. **Ctrl+K actions**: Lab: Sequence, Add this scene to the sequence, Render the sequence 9:16, Finish the sequence in the video editor.
+98. **Directors (Claude and Astra)**: `three_do { cmd: "sequence", op }` builds, edits, seeks, looks at a frame (with its picture) and renders the sequence (full mode: `three_sequence`); clips by number, "Titles.2" or name.
+99. **Help topic `sequence`** in the app map (also `seq`, `montage`, `storyboard`), read on demand (no extra prompt tokens).
+100. **Video projects (`/intro`)**: each Lab beat is now rendered frame by frame at exactly its length through the sequence (the screen recording stays the fallback).
+101. **Keys in the keys button** (area "Lab sequence"), and ⋯ → Keys lists them.

@@ -40,7 +40,8 @@ line count is lower than the number of upgrades).
 | Video projects (round 8): `/intro` plans your social intro (beats, length, 9:16 · 16:9 · 1:1), then board vibe → Claude ⇄ Astra Lab scenes → capture tours → editor → frame-exact review → every format, one live card, undo per step, redo a beat, 15 s / 6 s cuts | [intro.md](intro.md) | 401 |
 | Lab frames (round 8): the Lab timeline frame by frame on video footage with no song (timecode counter, exact steps, J K L), cuts the sketch plays (shared with the editor), sketches read the exact frame, 21 footage layers, reference pacing (`/footage`, `/match-pacing`) | [labframes.md](labframes.md) | 284 |
 | QA 8 (round 8): integration fixes between board / editor / capture / declutter, key conflict table, three new end-to-end journeys (board, editor, capture), every key pressed on its surface, ⌘ on a Mac, one check runner | [qa8.md](qa8.md) | 75 |
-| **Total** | | **8,645** |
+| Lab sequence (round 8): ▤ Sequence on the Lab timeline (`/sequence`) builds a video from your scenes, chat scenes, looks, footage, titles, overlays and the song; it plays in the preview without reloads, frame-exact, the editor's keys and transitions, finishes in the video editor and comes back, renders frame by frame in every social format; Claude / Astra build it with `three_do sequence` | [sequence.md](sequence.md) | 101 |
+| **Total** | | **8,746** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.
