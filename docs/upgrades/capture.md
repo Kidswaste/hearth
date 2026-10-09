@@ -242,7 +242,7 @@ A shot on a background with padding, rounded corners, a shadow and a window bar:
 218. The keys you press shown at the bottom (`/keys-overlay on`, `/record keys`); letters typed in a box aren't shown.
 219. Hide toasts while recording (Settings, and on by default for the promo / reel / social presets).
 220. While recording, tour and cursor animations run so every frame reaches the file; outside recordings they stay on the compositor (smooth UI).
-221. A tiny repaint poke when nothing changed for a moment, so a lone change is never lost between frames.
+221. A still page is nudged to send its first picture, so a take starts at once.
 222. The effects layer is a zero-size box (a full-window layer on top would make every captured frame cost a full composite).
 223. After a take: a toast with Open; the recording is listed in Video Review's library.
 224. One click opens it in Video Review, in the editor timeline, adds it to the current edit, or loads it in the Lab as media (the capture's menu).

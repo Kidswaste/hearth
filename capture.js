@@ -121,9 +121,8 @@ const Capture = (() => {
     const k = rec ? frames.map((f, i) => ({ ...f, outlineColor: `rgba(0,0,0,${i ? 0.01 : 0})` })) : frames;
     return node.animate(k, opts);
   }
-  // A 2-pixel poke while recording: the page capture only sends a frame when the page repaints, and can drop a lone
-  // change that lands right after the previous frame. When no frame came for a while, one tiny repaint makes it send the
-  // current picture (a static screen costs a few 2-pixel repaints a second; a moving one none).
+  // A 2-pixel poke: a still page may not send its first picture until it repaints. Only used while a take waits for
+  // its first frame: every repaint is a captured frame, and steady pokes measurably cost the encoder frames.
   let beat = null;
   function heartbeat(on) {
     beat?.dot.remove(); beat = null;
@@ -701,7 +700,7 @@ const Capture = (() => {
         // a still page may not send its first picture until it repaints: poke it while waiting
         heartbeat(true);
         const pokes = setInterval(poke, 300);
-        const first = await Promise.race([next(), sleep(8000).then(() => null)]).finally(() => clearInterval(pokes));
+        const first = await Promise.race([next(), sleep(8000).then(() => null)]).finally(() => { clearInterval(pokes); heartbeat(false); });
         if (!first) throw new Error('The page capture sent no picture');
         const dimsOf = (f) => (f instanceof HTMLVideoElement ? [f.videoWidth, f.videoHeight] : [f.displayWidth, f.displayHeight]);
         [sw, shh] = dimsOf(first);
@@ -724,7 +723,6 @@ const Capture = (() => {
             x = Math.max(0, Math.min(sw - w, cx - w / 2)); y = Math.max(0, Math.min(shh - h, cy - h / 2));
           }
           g.drawImage(f, x, y, w, h, 0, 0, size.w, size.h);
-          R.fresh = true;
         };
         draw(first); if (first.close) first.close();
         (async () => {
@@ -740,14 +738,10 @@ const Capture = (() => {
         videoTrack = c.captureStream(0).getVideoTracks()[0];
         // (an unchanged canvas sends nothing: it repaints itself first, a GPU copy)
         const period = 1000 / o.fps;
-        R.lastIn = performance.now(); R.lastPoke = 0;
         R.ticker = setInterval(() => {
           if (rec !== R || R.pausedAt) return;
-          if (!R.fresh) g.drawImage(c, 0, 0); // only a still screen needs the self-repaint
-          R.fresh = false;
+          g.drawImage(c, 0, 0); // an unchanged canvas sends nothing: repaint it (a GPU copy)
           videoTrack.requestFrame(); R.framesOut = (R.framesOut || 0) + 1;
-          const now = performance.now();
-          if (now - R.lastIn > period * 2.5 && now - R.lastPoke > period * 2.5) { R.lastPoke = now; poke(); }
         }, period);
         R.canvas = c;
         R.size = `${size.w}×${size.h}`;
