@@ -161,10 +161,23 @@ let menuState = null; // { x, y, given, parent, kb: index of the keyboard-highli
 const MENU_FILTER_AT = 9;
 const menuSubItems = (it) => { try { return ((typeof it.items === 'function' ? it.items() : it.items) || []).filter(Boolean); } catch (err) { console.warn(err); return []; } };
 const menuLabel = (it) => String(it.label ?? '').split(/\s{2,}(?=\S+$)/);
-// Menus go in the top layer (a manual popover), so they also open over a modal dialog (Settings, Memory, /help…)
+// Menus go in the top layer (a manual popover), so they also open over a modal dialog (Settings, Memory, /help…).
+// A modal makes the rest of the page inert, so while one is open the menu moves inside it (still drawn on top, at the
+// same place); hideMenu puts #menu back in <body> so closing the dialog never takes it along.
 function topLayer(node, on) {
   if (!node.hasAttribute('popover')) node.setAttribute('popover', 'manual');
-  try { if (on && !node.matches(':popover-open')) node.showPopover(); else if (!on && node.matches(':popover-open')) node.hidePopover(); } catch { /* not connected yet */ }
+  try {
+    if (on) {
+      const host = [...document.querySelectorAll('dialog[open]')].filter((d) => d.matches(':modal')).at(-1) || document.body;
+      if (node.parentElement !== host) { if (node.matches(':popover-open')) node.hidePopover(); host.append(node); }
+      if (!node.matches(':popover-open')) node.showPopover();
+    } else if (node.matches(':popover-open')) node.hidePopover();
+  } catch { /* not connected yet */ }
+}
+function menuNode() {
+  let menu = $('menu');
+  if (!menu) { menu = el('div', { id: 'menu', hidden: true }); document.body.append(menu); }
+  return menu;
 }
 
 function menuButton(it, onPick) {
@@ -189,8 +202,7 @@ function menuButton(it, onPick) {
 }
 
 function showMenu(x, y, items, parent = null, dir = 0) {
-  const menu = $('menu');
-  if (!menu) return;
+  const menu = menuNode();
   hideMenuFly();
   const given = items;
   let list = (typeof items === 'function' ? items() : items || []).filter(Boolean);
@@ -243,7 +255,7 @@ function showMenu(x, y, items, parent = null, dir = 0) {
 }
 function hideMenu() {
   const menu = $('menu');
-  if (menu) { menu.hidden = true; topLayer(menu, false); }
+  if (menu) { menu.hidden = true; topLayer(menu, false); if (menu.parentElement !== document.body) document.body.append(menu); }
   hideMenuFly();
   menuState = null;
 }
@@ -321,7 +333,7 @@ function showMenuFly(row, it, ctx) {
   fly.style.top = `${Math.max(4, Math.min(r.top - 5, innerHeight - fh - 8))}px`;
   fly.classList.toggle('to-left', !right);
 }
-function hideMenuFly() { clearTimeout(menuFlyTimer); const f = $('menu-fly'); if (f) { f.hidden = true; topLayer(f, false); } }
+function hideMenuFly() { clearTimeout(menuFlyTimer); const f = $('menu-fly'); if (f) { f.hidden = true; topLayer(f, false); if (f.parentElement !== document.body) document.body.append(f); } }
 
 // the menu's keys (capture: while it's open, arrows and letters belong to it, not to the Lab or the chat)
 addEventListener('keydown', (e) => {

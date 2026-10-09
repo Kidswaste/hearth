@@ -177,7 +177,24 @@ const tickFrames = (t) => {
 };
 realRAF(tickFrames);
 addEventListener('webglcontextlost', () => post({ type: 'gpu-lost' }), true);
-addEventListener('contextmenu', (e) => { if (mode !== 'sketch' || e.defaultPrevented) return; e.preventDefault(); post({ type: 'ctx', x: e.clientX, y: e.clientY }); }); // (a sketch that uses right-click itself prevents it first)
+// Right-click the picture: the Lab's menu. A still right-click opens it even over OrbitControls (which takes every
+// right-click for its pan); a right-drag stays the sketch's. (Round 7: menus where you point.) The menu opens when the
+// button comes up, so on a Mac / Linux, where contextmenu fires on the way down, a drag can still cancel it.
+let ctxDown = null;
+addEventListener('pointerdown', (e) => { if (e.button === 2) ctxDown = { x: e.clientX, y: e.clientY, up: false, want: false }; }, true);
+addEventListener('contextmenu', (e) => {
+  if (mode !== 'sketch') return;
+  e.preventDefault();
+  if (ctxDown && !ctxDown.up) { ctxDown.want = true; return; } // wait for the button to come up
+  if (!ctxDown || Math.hypot(e.clientX - ctxDown.x, e.clientY - ctxDown.y) < 6) post({ type: 'ctx', x: e.clientX, y: e.clientY });
+  ctxDown = null;
+}, true);
+addEventListener('pointerup', (e) => {
+  if (e.button !== 2 || !ctxDown) return;
+  ctxDown.up = true;
+  if (ctxDown.want && Math.hypot(e.clientX - ctxDown.x, e.clientY - ctxDown.y) < 6) post({ type: 'ctx', x: e.clientX, y: e.clientY });
+  if (ctxDown.want) ctxDown = null;
+}, true);
 // composition guides over the picture (not in screenshots or recordings): 'thirds' | 'center' | 'golden' | off
 let guideEl = null;
 function setGuides(kind) {

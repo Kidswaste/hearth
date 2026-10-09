@@ -1441,7 +1441,6 @@ const Native = (() => {
     ]; };
     const items = chat ? [
       { label: '＋ New chat', key: 'Ctrl+N', action: () => newChat(agentId) },
-      { label: 'Rename…', action: () => renameCurrent(agentId) },
       { label: '🗜 Compact context', action: () => compactChat(agentId) },
       { label: 'Model', hint: chat.model || H.agent(agentId).model || 'default', items: modelItems },
       { label: 'View', items: () => [
@@ -1452,8 +1451,10 @@ const Native = (() => {
         { label: 'Jump to the first message', action: () => { const l = views.get(agentId)?.list; if (l) l.scrollTop = 0; } },
         { label: 'Read the last reply aloud', key: 'Alt+R', action: () => speak(lastReplyText(agentId)) },
         { label: 'Chat stats', action: () => chatStats(chat) },
+        { label: 'Chat commands…', key: '/help', action: () => Commands.exec('/help', agentId) },
       ] },
       { label: 'Organise', items: () => [
+        { label: 'Rename…', action: () => renameCurrent(agentId) },
         { label: 'Pin to top', checked: Boolean(chat.pinned), action: () => togglePin(chat.id) },
         { label: 'Tags and folder…', key: '/tag', action: () => Commands.exec('/tags', agentId) },
         { label: 'Duplicate this chat', action: () => { const n = chat.messages.length; if (n) branchFrom(agentId, n - 1); } },
@@ -1465,7 +1466,6 @@ const Native = (() => {
         { label: 'Export as Markdown file…', action: async () => { const p = await window.hub.saveFile({ defaultPath: `${chat.title.replace(/[\\/:*?"<>|]/g, '_')}.md`, filters: [{ name: 'Markdown', extensions: ['md'] }], content: chatMarkdown(chat) }); if (p) toast('Chat exported', { action: { label: 'Show', fn: () => window.hub.fs.reveal(p) } }); } },
         { label: 'Export as JSON (to import later)…', action: () => Commands.exec('/export json file', agentId) },
       ] },
-      { label: 'Chat commands…', key: '/help', action: () => Commands.exec('/help', agentId) },
       { label: 'Delete chat', danger: true, action: async () => { if (await Modal.confirm('Delete chat?', `"${chat.title}" moves to Recently deleted (Ctrl+K → Recently deleted chats) for 30 days.`, { ok: 'Delete', danger: true })) remove(chat.id); } },
     ] : [
       { label: 'Model', hint: H.agent(agentId).model || 'default', items: modelItems },

@@ -264,17 +264,20 @@ const ThreeLab = (() => {
     labMoreBtn.dataset.feature = 'Lab more';
     function labMoreItems() {
       const v = store.get('three.version', ThreeData.VERSIONS[0]);
+      // (round 7) six open entries: Capture ›, Console ›, Code › branch into the detail
       return ['View',
         ['⛶ Focus', 'Almost fullscreen · Shift+F (Esc leaves)', () => setFocus(!focusOn), focusOn, 'Focus'],
-        ['📷 Screenshot', 'Save the picture (all layers) as it shows here', () => { copyNextShot = false; box.send({ type: 'screenshot' }); }, false, 'Screenshot'],
-        ['📋 Copy a screenshot', 'To the clipboard', () => { copyNextShot = true; box.send({ type: 'screenshot' }); }],
-        ['Console: always / with the code / when I open it', `Now: ${CONSOLE_MODES.find(([m]) => m === consoleMode)[1]}`, () => setConsoleMode(CONSOLE_MODES[(CONSOLE_MODES.findIndex(([m]) => m === consoleMode) + 1) % 3][0])],
-        [`${document.body.classList.contains('lab-nohints') ? '' : '✓ '}Key hints on hover`, 'Little key badges on the main buttons', () => { const off = !document.body.classList.contains('lab-nohints'); document.body.classList.toggle('lab-nohints', off); store.set('three.keyHints', !off); }],
-        ['Lab keys', '?', () => labKeys()],
-        'Code',
-        ['Insert snippet…', 'At the cursor in the code', () => snippetMenu(), false, 'Insert snippet'],
-        [`three.js version · r${v.split('.')[1]}`, 'Switch and re-run', () => versionMenu(), false, 'three.js version'],
-        [`${autoRun ? '✓ ' : ''}Live code`, 'Apply code changes a moment after you stop typing', () => { autoBox.checked = !autoBox.checked; autoBox.dispatchEvent(new Event('change')); }]];
+        ['Capture', 'Screenshot, copy', [
+          ['📷 Screenshot', 'Save the picture (all layers) as it shows here', () => { copyNextShot = false; box.send({ type: 'screenshot' }); }, false, 'Screenshot'],
+          ['📋 Copy a screenshot', 'To the clipboard', () => { copyNextShot = true; box.send({ type: 'screenshot' }); }],
+          ['🎞 Contact sheet', 'Frames across the song', () => showSheet()]]],
+        ['Console', CONSOLE_MODES.find(([m]) => m === consoleMode)[1], CONSOLE_MODES.map(([m, l]) => [l, '', () => setConsoleMode(m), consoleMode === m])],
+        ['Code', `r${v.split('.')[1]}${autoRun ? ' · live' : ''}`, [
+          ['Insert snippet…', 'At the cursor in the code', () => snippetMenu(), false, 'Insert snippet'],
+          [`three.js version · r${v.split('.')[1]}`, 'Switch and re-run', () => versionMenu(), false, 'three.js version'],
+          ['Live code', 'Apply code changes a moment after you stop typing', () => { autoBox.checked = !autoBox.checked; autoBox.dispatchEvent(new Event('change')); }, autoRun]]],
+        ['Key hints on hover', 'Little key badges on the main buttons (hold Ctrl for all of them)', () => { const off = !document.body.classList.contains('lab-nohints'); document.body.classList.toggle('lab-nohints', off); store.set('three.keyHints', !off); }, !document.body.classList.contains('lab-nohints')],
+        ['Lab keys', '? · the keys button, bottom left', () => (typeof KeysUI !== 'undefined' ? KeysUI.open() : labKeys())]];
       // (copy / export are in Sketch ▾, the frame rate in the preview's ⋯)
     }
     function snippetMenu() {
@@ -2265,8 +2268,8 @@ const ThreeLab = (() => {
         ] },
         '-',
         { label: '⟲ Restart from scratch', key: 'Ctrl+Shift+Enter', action: () => restartSim() },
-        { label: 'Lab keys', key: '?', action: () => (window.KeysUI ? KeysUI.open() : labKeys()) },
-        ...(window.Declutter ? Declutter.customiseItems('Lab preview') : []),
+        { label: 'Lab keys', key: '?', action: () => (typeof KeysUI !== 'undefined' ? KeysUI.open() : labKeys()) },
+        ...(typeof Declutter !== 'undefined' ? Declutter.customiseItems('Lab preview') : []),
       ];
     }
     // ⌗ composition guides over the picture (not in screenshots / videos)
@@ -2440,8 +2443,7 @@ const ThreeLab = (() => {
         ['◐ Pin this frame to compare', '|', () => pinFrame()],
         typeof Decide !== 'undefined' ? ['✦ Let Astra pick the frame size', 'For this picture · Undo puts yours back', () => Decide.run('size')] : null,
         [box.onStage ? '🖥 Back from the Stage window' : '🖥 Stage window', 'Its own window, steady frames', () => setStage(!box.onStage), box.onStage, 'Stage window'],
-        'Frame rate',
-        ...[['0', 'Max fps'], ['60', '60 fps'], ['30', '30 fps']].map(([v, l]) => [l, '', () => { fpsSel.value = v; fpsSel.dispatchEvent(new Event('change')); }, String(store.get('three.fpsCap', 0)) === v, 'Preview fps'])];
+        ['Frame rate', ({ 0: 'Max fps', 60: '60 fps', 30: '30 fps' })[store.get('three.fpsCap', 0)] || '', [['0', 'Max fps'], ['60', '60 fps'], ['30', '30 fps']].map(([v, l]) => [l, '', () => { fpsSel.value = v; fpsSel.dispatchEvent(new Event('change')); }, String(store.get('three.fpsCap', 0)) === v, 'Preview fps'])]];
     }
     let restartNext = false;
     function restartSim() {

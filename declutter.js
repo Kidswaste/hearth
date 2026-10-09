@@ -21,7 +21,9 @@ const Declutter = (() => {
     { id: 'panel-filter', area: 'Chats panel', label: '⏷ Filter chats', sel: '#panel .panel-filter-btn', mode: 'hover', host: '#panel .panel-head', keep: '.on' },
     { id: 'panel-add', area: 'Chats panel', label: '＋ New chat in each group', sel: '#panel .group-add', mode: 'hover', host: '#panel .group-head' },
     { id: 'panel-kind', area: 'Chats panel', label: 'NATIVE / DOCKED labels', sel: '#panel .group-kind', mode: 'hover', host: '#panel .group-head' },
+    { id: 'panel-tokens', area: 'Chats panel', label: 'Token counts on chat rows', sel: '#panel .item .item-tok', mode: 'hover', host: '#panel .item' },
     // a chat
+    { id: 'chat-meta', area: 'Chat', label: 'Tokens-this-chat note in the header', sel: '.native-head .chat-meta', mode: 'hover', host: '.native-head' },
     { id: 'chat-ctx', area: 'Chat', label: 'Context size in the header', sel: '.native-head .ctx-meter', mode: 'hover', host: '.native-head', keep: '.warn, .high' },
     { id: 'chat-attach', area: 'Chat', label: '📎 Attach', sel: 'form.composer .attach-btn', mode: 'hover', host: 'form.composer' },
     { id: 'chat-collab', area: 'Chat', label: '⚇ Work with Astra', sel: 'form.composer .collab-chip', mode: 'hover', host: 'form.composer', keep: '.on' },
@@ -45,7 +47,7 @@ const Declutter = (() => {
     { id: 'tl-note', area: 'Lab timeline', label: '📌 Note (N)', sel: '.media-bar .mb-g-capture' },
     { id: 'tl-empty', area: 'Lab timeline', label: '"No music loaded" line', sel: '.media-bar.mb-empty .mb-name', mode: 'hover', host: '.media-bar' },
     // Lab layers and sliders
-    { id: 'ly-key', area: 'Lab layers', label: '◇ Keyframe buttons (until a layer is animated)', sel: '.ly-row .kf-btn.kf-none', mode: 'hover', host: '.ly-row' },
+    { id: 'ly-key', area: 'Lab layers', label: '◇ Keyframe buttons (until a layer is animated)', sel: '.layers .kf-btn.kf-none', mode: 'hover', host: '.layers .ly-field' },
     { id: 'tw-steps', area: 'Lab sliders', label: '‹ › Shuffle steps (Shift+R)', sel: '[data-feature="Shuffle back"], [data-feature="Shuffle forward"]' },
     { id: 'tw-shuffle-opts', area: 'Lab sliders', label: '▾ Shuffle options (right-click Shuffle)', sel: '[data-feature="Shuffle options"]' },
     { id: 'tw-save-opts', area: 'Lab sliders', label: '▾ Save options (right-click Save)', sel: '[data-feature="Save options"]' },
@@ -55,6 +57,9 @@ const Declutter = (() => {
     { id: 'tc-mode', area: 'Lab console', label: 'When the console shows', sel: '.three-console-head .tc-mode' },
     { id: 'tc-errors', area: 'Lab console', label: 'Errors only', sel: '.three-console-head > label.check' },
     { id: 'tc-copy', area: 'Lab console', label: 'Copy / Clear', sel: '.three-console-head > button[title^="Copy everything"], .three-console-head > button[title="Empty the console"]' },
+    // notes: the head keeps New, Preview, ⋯ and ×; the foot keeps Send to Claude (right-click the panel for the rest)
+    { id: 'notes-pin', area: 'Notes', label: '📌 Pin the note', sel: '.notes-head .notes-pin' },
+    { id: 'notes-foot', area: 'Notes', label: 'Copy / Save as file / Delete under a note', sel: '.notes-foot > button:is(:nth-of-type(1), :nth-of-type(3), :nth-of-type(4))' },
     // memory rows: the per-fact controls show on the row you point at
     { id: 'mem-row', area: 'Memory', label: 'Category, expiry and who-remembers per fact', sel: '.memory-row :is(.memory-cat, .memory-move, button[title^="Set an expiry"])', mode: 'hover', host: '.memory-row' },
   ].map((r) => ({ mode: 'alt', ...r }));
@@ -387,11 +392,17 @@ const Declutter = (() => {
     { label: 'Dismiss', action: () => t.remove() },
     { label: 'Dismiss all', key: 'Shift+Esc', action: () => document.querySelectorAll('#toasts .toast').forEach((x) => x.remove()) },
   ]);
-  ctx('.notes-panel', 'Notes', () => [
+  ctx('.notes-panel', 'Notes', (panel) => [
+    { label: 'Send to Claude', action: clickIn(panel, '.notes-foot > button:nth-of-type(2)') },
+    { label: 'Copy the note', action: clickIn(panel, '.notes-foot > button:nth-of-type(1)') },
+    { label: '📌 Pin to the front', action: clickIn(panel, '.notes-pin') },
+    { label: 'Save as a file…', action: clickIn(panel, '.notes-foot > button:nth-of-type(3)') },
+    '-',
     { label: '＋ New note', action: () => Notes.create() },
     { label: 'Today’s note', action: () => Notes.daily() },
     { label: 'Export all…', action: () => Notes.exportAll() },
     { label: 'Close', key: 'Ctrl+J', action: () => Notes.close() },
+    { label: 'Delete this note', danger: true, action: clickIn(panel, '.notes-foot > button.danger') },
   ]);
   ctx('.memory-row', 'Memory', (row) => {
     const text = row.querySelector('.memory-text')?.value || '';
@@ -439,6 +450,15 @@ const Declutter = (() => {
 
   // the rail's ⋯ also lists the two buttons that left the rail (simplify.js builds that menu from its TUCKED list)
   if (typeof Simplify !== 'undefined' && Array.isArray(Simplify.TUCKED)) Simplify.TUCKED.unshift(['palette-btn', '⌘ Command palette  Ctrl+K'], ['add-btn', '＋ Add an agent or website']);
+
+  // the keys sheet lists what each area tucks away (hold Alt / point at it)
+  const WHERE = { Rail: 'the rail', 'Chats panel': 'the chats list', Chat: 'a chat', 'Director dock': 'the dock', Lab: 'the Lab', 'Lab preview': 'the picture', 'Lab timeline': 'the timeline', 'Lab layers': 'a layer', 'Lab sliders': 'the sliders', 'Lab console': 'the console', Notes: 'Notes', Memory: 'a memory fact' };
+  for (const area of areas()) {
+    const alt = REVEAL.filter((r) => r.area === area && r.mode === 'alt');
+    const hov = REVEAL.filter((r) => r.area === area && r.mode === 'hover');
+    if (alt.length) Keys.add({ area: 'Hidden buttons', keys: `Hold Alt in ${WHERE[area] || area}`, what: alt.map((r) => r.label).join(' · '), run: () => KeysUI.latch(true), sel: alt.map((r) => r.sel).join(', ') });
+    if (hov.length) Keys.add({ area: 'Hidden buttons', keys: `Point at ${WHERE[area] || area}`, what: `${hov.map((r) => r.label).join(' · ')} show`, sel: hov.map((r) => r.host).join(', ') });
+  }
 
   paint();
   addEventListener('DOMContentLoaded', registerCommands);

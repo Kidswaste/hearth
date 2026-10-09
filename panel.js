@@ -82,26 +82,34 @@ const Panel = (() => {
 
   function itemMenu(agent, item, row, e) {
     e.preventDefault();
+    const openIt = () => (item.chatId ? Native.open(agent.id, item.chatId) : openWebChat(agent.id, item.url));
+    // (round 7) the frequent ones first, the rest in Organise › / Copy & export › / Continue with ›
+    const others = H.agents().filter((a) => a.mode === 'native' && a.id !== agent.id);
     const items = item.chatId
       ? [
-        { label: item.pinned ? 'Unpin' : 'Pin to top', action: () => Native.togglePin(item.chatId) },
-        { label: 'Rename  F2', action: () => startRename(row, item.chatId, item.title) },
-        { label: 'Copy as Markdown', action: async () => copyText(await Native.markdownOf(item.chatId), 'Chat copied') },
-        { label: 'Duplicate', action: () => onChat(agent.id, item.chatId, '/duplicate') },
-        { label: 'Export…', action: () => onChat(agent.id, item.chatId, '/export md file') },
-        { label: 'Tag…', action: async () => { const t = await Modal.prompt('Tags', { value: (item.tags || []).join(', '), label: 'Comma-separated; filter with /filter tag:<name>' }); if (t != null) ChatUX.setMeta(item.chatId, { tags: [...new Set(t.split(/[,\s]+/).map((x) => x.replace(/^#/, '').trim().toLowerCase()).filter(Boolean))] }); } },
-        { label: 'Move to folder…', action: async () => { const f = await Modal.prompt('Folder', { value: item.folder || '', label: `Existing: ${ChatUX.allFolders().join(', ') || 'none yet'} (empty = no folder)` }); if (f != null) ChatUX.setMeta(item.chatId, { folder: f.trim().slice(0, 40) }); } },
-        { label: item.archived ? 'Unarchive' : 'Archive (hide from the list)', action: () => ChatUX.setMeta(item.chatId, { archived: !item.archived }) },
-        { label: H.unreadChats?.has(item.chatId) ? 'Mark as read' : 'Mark as unread', action: () => { if (H.unreadChats.has(item.chatId)) H.unreadChats.delete(item.chatId); else H.unreadChats.add(item.chatId); render(); } },
-        ...H.agents().filter((a) => a.mode === 'native' && a.id !== agent.id).map((a) => ({ label: `Continue with ${a.name}`, action: () => Native.continueWith(item.chatId, a.id) })),
-        { label: 'Delete chat  Del', danger: true, action: () => { if (confirm(`Delete "${item.title}"? You can restore it for 30 days (Ctrl+K → Recently deleted chats).`)) Native.remove(item.chatId); } },
+        { label: 'Open', action: openIt },
+        { label: 'Pin to top', checked: Boolean(item.pinned), action: () => Native.togglePin(item.chatId) },
+        { label: 'Rename', key: 'F2', action: () => startRename(row, item.chatId, item.title) },
+        { label: 'Organise', items: () => [
+          { label: 'Tag…', action: async () => { const t = await Modal.prompt('Tags', { value: (item.tags || []).join(', '), label: 'Comma-separated; filter with /filter tag:<name>' }); if (t != null) ChatUX.setMeta(item.chatId, { tags: [...new Set(t.split(/[,\s]+/).map((x) => x.replace(/^#/, '').trim().toLowerCase()).filter(Boolean))] }); } },
+          { label: 'Move to folder…', hint: item.folder || '', action: async () => { const f = await Modal.prompt('Folder', { value: item.folder || '', label: `Existing: ${ChatUX.allFolders().join(', ') || 'none yet'} (empty = no folder)` }); if (f != null) ChatUX.setMeta(item.chatId, { folder: f.trim().slice(0, 40) }); } },
+          { label: item.archived ? 'Unarchive' : 'Archive (hide from the list)', action: () => ChatUX.setMeta(item.chatId, { archived: !item.archived }) },
+          { label: H.unreadChats?.has(item.chatId) ? 'Mark as read' : 'Mark as unread', action: () => { if (H.unreadChats.has(item.chatId)) H.unreadChats.delete(item.chatId); else H.unreadChats.add(item.chatId); render(); } },
+        ] },
+        { label: 'Copy & export', items: () => [
+          { label: 'Copy as Markdown', action: async () => copyText(await Native.markdownOf(item.chatId), 'Chat copied') },
+          { label: 'Duplicate', action: () => onChat(agent.id, item.chatId, '/duplicate') },
+          { label: 'Export…', action: () => onChat(agent.id, item.chatId, '/export md file') },
+        ] },
+        others.length ? { label: 'Continue with', items: () => others.map((a) => ({ label: a.name, action: () => Native.continueWith(item.chatId, a.id) })) } : null,
+        { label: 'Delete chat', key: 'Del', danger: true, action: () => { if (confirm(`Delete "${item.title}"? You can restore it for 30 days (Ctrl+K → Recently deleted chats).`)) Native.remove(item.chatId); } },
       ]
       : [
         { label: 'Open', action: () => openWebChat(agent.id, item.url) },
         { label: 'Copy link', action: () => navigator.clipboard.writeText(item.url) },
         { label: 'Remove from list', action: () => removeWebItem(agent.id, item.url) },
       ];
-    showMenu(e.clientX, e.clientY, items);
+    showMenu(e.clientX, e.clientY, [...items.filter(Boolean), ...(typeof Declutter !== 'undefined' ? Declutter.customiseItems('Chats panel') : [])]);
   }
 
   function removeWebItem(agentId, url) {

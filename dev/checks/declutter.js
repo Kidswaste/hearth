@@ -137,6 +137,19 @@ check('filter finds submenu items', menuLabels().some((l) => /Sub › Deep treas
 key('keydown', 'Enter'); await wait(60);
 check('Enter runs the first match', window.__picked === 'deep', window.__picked);
 
+// ---------- a menu over a modal dialog (menus live in the top layer) ----------
+AppUI.openSettings(); await wait(500);
+window.__over = 0;
+showMenu(300, 200, [{ label: 'Over the dialog', action: () => { window.__over = 1; } }]); await wait(150);
+const mb = document.querySelector('#menu > button');
+const mr = mb.getBoundingClientRect();
+check('a menu opens above a modal dialog', document.elementFromPoint(mr.left + 10, mr.top + 5)?.closest?.('#menu') != null);
+await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mousePressed', x: Math.round(mr.left + 10), y: Math.round(mr.top + 5), button: 'left', clickCount: 1 } });
+await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseReleased', x: Math.round(mr.left + 10), y: Math.round(mr.top + 5), button: 'left', clickCount: 1 } });
+await wait(150);
+check('…and its items can be clicked there', window.__over === 1);
+document.querySelector('dialog.settings-dialog')?.close(); await wait(200);
+
 // ---------- the Lab ----------
 activate('tool:three'); await wait(3000);
 await ThreeLab.cmd(); await wait(1500);
@@ -151,7 +164,7 @@ await shot('lab-alt');
 key('keyup', 'Alt'); await wait(80);
 key('keydown', 'Control', { ctrlKey: true }); await wait(520);
 out.ctrlHintsLab = [...document.querySelectorAll('.key-hint')].map((h) => h.textContent);
-check('Ctrl badges in the Lab (F, Shift+2…, R, Ctrl+S)', out.ctrlHintsLab.includes('F') && out.ctrlHintsLab.some((h) => /Shift\+2/.test(h)), out.ctrlHintsLab);
+check('Ctrl badges in the Lab (F, Shift+2…, R, Ctrl+S)', out.ctrlHintsLab.includes('F') && out.ctrlHintsLab.some((h) => /⇧2|Shift\+2/.test(h)), out.ctrlHintsLab);
 await shot('lab-ctrl');
 key('keyup', 'Control'); await wait(60);
 const tb = [...L.querySelectorAll('.tb-group')].find(vis);

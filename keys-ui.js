@@ -21,7 +21,8 @@ const KeysUI = (() => {
       if (i % 2) { out.push(el('span', { class: 'ks-sep', text: part.trim() === '/' ? '/' : ` ${part.trim()} ` })); return; }
       const lead = part.match(/^(Right-click|Double-click|Hold|Point at|Type)\s+(.+)$/);
       // "Right-click a slider" → [Right-click] a slider · "Hold Alt" → hold [Alt]
-      if (lead && /^(Hold|Point at|Type)$/.test(lead[1])) { out.push(el('span', { class: 'ks-word', text: lead[1].toLowerCase() }), ...lead[2].split(/\+(?=.)/).map((t) => el('kbd', { text: keyText(t) }))); return; }
+      if (lead && /^(Hold|Type)$/.test(lead[1])) { const [k, ...rest] = lead[2].split(' '); out.push(el('span', { class: 'ks-word', text: lead[1].toLowerCase() }), ...k.split(/\+(?=.)/).map((t) => el('kbd', { text: keyText(t) })), rest.length ? el('span', { class: 'ks-word', text: rest.join(' ') }) : ''); return; }
+      if (lead && lead[1] === 'Point at') { out.push(el('span', { class: 'ks-word', text: `point at ${lead[2]}` })); return; }
       if (lead) { out.push(el('kbd', { text: lead[1] }), el('span', { class: 'ks-word', text: keyText(lead[2]) })); return; }
       const toks = part.length > 1 ? part.split(/\+(?=.)/) : [part];
       toks.forEach((t) => { if (t) out.push(/\s/.test(t) ? el('span', { class: 'ks-word', text: keyText(t) }) : el('kbd', { text: keyText(t) })); });
