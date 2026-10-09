@@ -143,6 +143,14 @@ try {
   const psh = evs.code === 0 ? await window.hub.video.probe(jsh.output, {}) : null;
   step('a render with a shape (title frames) succeeds', evs.code === 0 && psh && near(psh.duration, 2, 0.1), { code: evs.code, err: evs.error, d: psh?.duration });
   VideoCut.setMark(null);
+  // a motion-design template with no footage at all: shapes + kinetic words on a color clip, rendered
+  await run('/edit-template kinetic-words-8 new');
+  await until(() => (VideoCut.edit.tracks || []).some((k) => k.items.some((x) => x.shape === 'grad-night')), 8000);
+  const jk = await VideoCut.exportCut({ preset: 'draft' });
+  const evk = jk ? await jk.done : { code: 'no job' };
+  const pk = evk.code === 0 ? await window.hub.video.probe(jk.output, {}) : null;
+  step('template kinetic-words-8 (no footage: gradient shape + stamped words) renders 8 s', evk.code === 0 && pk && near(pk.duration, 8, 0.15), { said, code: evk.code, err: evk.error, d: pk?.duration });
+  await shot('more-kinetic');
   // the Lab hands its video to the editor
   const lab = await ThreeLab.cmd({ show: true });
   await lab.loadSong(B);

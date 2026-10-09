@@ -1411,6 +1411,7 @@ const EditFX = (() => {
   const TP = (id, name, fmt, secs, build, hint = '') => ({ id, name, fmt, secs, build, hint });
   const titleItem = (text, start, dur, style, anim, extra = {}) => ({ kind: 'title', text, start, dur, style, anim, out: extra.out || 'fade', animDur: extra.animDur || 0.5, ...extra });
   const slots = (n, len, trans = null, td = 0.3) => Array.from({ length: n }, (_, i) => ({ kind: 'gap', dur: len, slot: i + 1, trans: i && trans ? { type: trans, dur: td } : undefined }));
+  const shapeItem = (shape, start, dur, anim = 'pop', extra = {}) => ({ kind: 'title', text: '', shape, start, dur, anim, out: extra.out || 'fade', animDur: extra.animDur || 0.5, ...extra });
   const beatMarkers = (bpm, secs, every = 4) => { const out = []; const b = 60 / bpm; for (let t = 0, i = 0; t < secs - 1e-3; t += b * every, i += 1) out.push({ t: Number(t.toFixed(4)), label: `bar ${i + 1}` }); return out; };
   const TEMPLATES = [
     TP('social-intro-15', 'Social intro 15 s (9:16)', '9:16', 15, () => ({
@@ -1447,6 +1448,31 @@ const EditFX = (() => {
       clips: slots(8, 2.6, 'whip-left', 0.25),
       text: [titleItem('One window.', 0.2, 2.2, 'big', 'mask-up'), titleItem('Every AI you use.', 2.5, 2.2, 'bold', 'words-rise'), titleItem('Chat', 4.9, 2, 'kinetic', 'kinetic'), titleItem('Three.js Lab', 7.2, 2, 'kinetic', 'kinetic'), titleItem('Video editor', 9.5, 2, 'kinetic', 'kinetic'), titleItem('Mood board', 11.8, 2, 'kinetic', 'kinetic'), titleItem('Claude + Astra, together', 14.1, 2.4, 'bold', 'words-rise'), titleItem('HEARTH', 17, 2.8, 'gold', 'zoom-out')],
       markers: beatMarkers(124, 20) }), 'Eight quick slots with a word each, gold end card'),
+    // motion-design templates with shapes and graphics
+    TP('logo-reveal-5', 'Logo reveal 5 s (rays and glow)', '9:16', 5, () => ({
+      clips: slots(1, 5),
+      text: [shapeItem('glow-ember', 0, 5, 'fade', { animDur: 0.8 }), shapeItem('rays', 0.3, 4.7, 'zoom-in', { animDur: 0.8 }), titleItem('BRAND', 0.8, 4, 'intro-ember', 'zoom-through', { animDur: 0.8 }), titleItem('your line here', 2, 2.8, 'intro-wide', 'tracking-blur', { y: 0.6 })] }), 'One slot under a turning light burst; the name zooms through'),
+    TP('countdown-6', 'Countdown intro 6 s (3 · 2 · 1)', '9:16', 6, () => ({
+      clips: slots(2, 3, 'flash-white', 0.2),
+      text: [...[3, 2, 1].map((n, i) => titleItem(String(n), i, 0.95, 'hook-number', 'pop', { out: 'none', animDur: 0.25 })), ...[0, 1, 2].map((i) => shapeItem('countdown-ring', i, 0.95, 'none', { out: 'none', size: 1.6 })), titleItem('GO', 3.1, 2.7, 'intro-giant', 'stamp', { animDur: 0.35 })] }), 'Numbers with emptying rings, then a stamped word'),
+    TP('progress-story-15', 'Story with a progress bar 15 s', '9:16', 15, () => ({
+      clips: slots(5, 3, 'dissolve', 0.25),
+      text: [shapeItem('progress', 0, 15, 'none', { out: 'none' }), titleItem('Step one', 0.3, 2.4, 'hook-top', 'pop'), titleItem('Step two', 3.3, 2.4, 'hook-top', 'pop'), titleItem('Step three', 6.3, 2.4, 'hook-top', 'pop'), titleItem('Step four', 9.3, 2.4, 'hook-top', 'pop'), titleItem('Done', 12.3, 2.5, 'hook-end-card', 'pop-elastic')] }), 'A bar fills across the whole video; one step per slot'),
+    TP('feature-callouts-12', 'Feature callouts 12 s', '9:16', 12, () => ({
+      clips: slots(4, 3, 'push-left', 0.25),
+      text: [0, 1, 2, 3].flatMap((i) => [shapeItem('highlight-circle', i * 3 + 0.4, 2.2, 'wipe', { size: 1.4 }), shapeItem('arrow-down-right', i * 3 + 0.2, 2.4, 'wipe', { x: 0.3, y: 0.35 }), titleItem(`Feature ${i + 1}`, i * 3 + 0.3, 2.4, 'hook-yellow', 'pop')]) }), 'A circle, an arrow and a caption point at something in each slot'),
+    TP('viewfinder-10', 'Camera viewfinder intro 10 s (16:9)', '16:9', 10, () => ({
+      clips: slots(3, 3.4, 'zoom-in', 0.3),
+      text: [shapeItem('rec', 0, 10, 'fade', { out: 'fade' }), titleItem('REC  00:00', 0.2, 9.6, 'intro-mono-tag', 'fade', { align: 'left', x: 0.08, y: 0.1 }), titleItem('Title', 6.5, 3.3, 'intro-wide', 'tracking-blur')] }), 'Corners, a blinking red dot and a mono tag over three slots'),
+    TP('kinetic-words-8', 'Kinetic words 8 s (no footage needed)', '9:16', 8, () => ({
+      clips: [{ kind: 'color', fill: '#05050a', dur: 8, mute: true }],
+      text: [shapeItem('grad-night', 0, 8, 'fade', { animDur: 0.6 }), ...['THIS', 'IS', 'HOW', 'WE', 'MAKE', 'IT'].map((w, i) => titleItem(w, 0.2 + i * 1.05, 1, 'intro-giant', 'stamp', { out: 'none', animDur: 0.25 })), titleItem('your name', 6.5, 1.4, 'intro-wide', 'fade-up')] }), 'Words stamp one by one on a gradient; nothing to film'),
+    TP('end-card-5', 'End card 5 s (follow)', '9:16', 5, () => ({
+      clips: slots(1, 5),
+      text: [shapeItem('scrim', 0, 5, 'fade'), shapeItem('chevrons-up', 1.2, 3.8, 'fade-up'), titleItem('Follow for more', 0.3, 4.6, 'hook-end-card', 'pop-elastic', { y: 0.5 }), titleItem('@yourname', 1, 3.9, 'intro-wide', 'fade', { y: 0.6 })] }), 'Dimmed last shot, a call to action and swipe chevrons'),
+    TP('square-promo-10', 'Square promo 10 s (1:1)', '1:1', 10, () => ({
+      clips: slots(4, 2.5, 'iris-tl', 0.3),
+      text: [shapeItem('border-gold', 0, 10, 'fade'), titleItem('NEW', 0.2, 2, 'hook-red', 'stamp'), shapeItem('badge', 7.3, 2.6, 'spin-in', { x: 0.78, y: 0.22 }), titleItem('Out now', 7.5, 2.4, 'huge-gold', 'zoom-out')] }), 'Gold frame, a stamped NEW, a spinning badge at the end'),
     TP('carousel-teaser', 'Carousel teaser 8 s (4:5)', '4:5', 8, () => ({ clips: slots(4, 2, 'push-left', 0.25), text: [titleItem('Swipe →', 6.2, 1.8, 'boxed-gold', 'pop')] })),
     TP('quote-reel', 'Quote reel 10 s', '9:16', 10, () => ({ clips: slots(1, 10), text: [titleItem('“Your quote here.”', 0.6, 8, 'quote-gold', 'words-fade'), titleItem('— Name', 3, 6, 'tiny-label', 'fade', { y: 0.62 })], look: 'matte' })),
     TP('three-features-169', 'Three features (16:9, 15 s)', '16:9', 15, () => ({ clips: slots(3, 5, 'slide-fade-left', 0.4), text: ['Feature one', 'Feature two', 'Feature three'].map((t, i) => titleItem(t, i * 4.6 + 0.3, 3.5, 'headline-left', 'lines-slide-left')) })),
