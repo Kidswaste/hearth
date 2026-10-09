@@ -71,7 +71,7 @@
     if (key === 'resolution') return it.natural ? `${it.natural[0]} × ${it.natural[1]}` : null;
     return null;
   }
-  const ONLY = { stamp: (i) => Boolean(i.stamp), video: (i) => i.type === 'video' || i.type === 'gif', image: (i) => i.type === 'image', web: (i) => i.type === 'web' };
+  const ONLY = { stamp: (i) => Boolean(i.stamp), video: (i) => i.type === 'video' || i.type === 'gif', image: (i) => i.type === 'image', web: (i) => i.type === 'web', warm: (i) => (i.vibe?.warmth ?? 0) > 0.15, cool: (i) => (i.vibe?.warmth ?? 0) < -0.12, dark: (i) => i.vibe?.light != null && i.vibe.light < 0.33, bright: (i) => (i.vibe?.light ?? 0) > 0.6, words: (i) => i.type === 'note' || i.type === 'text', colors: (i) => i.type === 'swatch' || i.type === 'palette' };
   function setLens(id, { quiet = false } = {}) {
     const lens = id ? D.find(D.LENSES, id) : null;
     S.cur.lens = lens?.id || undefined;

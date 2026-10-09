@@ -66,6 +66,11 @@ const BoardData = (() => {
     L('by-size', 'Biggest first', 'sort', { by: 'area', then: 'grid' }),
     L('shuffle', 'Shuffle', 'shuffle', { gap: 24 }, 'a random grid: fresh eyes on the same refs'),
     L('stairs', 'Staircase', 'diagonal', { gap: -40 }, 'overlapping steps'),
+    L('grid-5', 'Grid · 5 columns', 'grid', { cols: 5, gap: 20 }), L('grid-8', 'Grid · 8 columns', 'grid', { cols: 8, gap: 12 }), L('grid-10', 'Grid · 10 columns', 'grid', { cols: 10, gap: 8 }),
+    L('masonry-2', 'Masonry · 2 columns', 'masonry', { cols: 2, gap: 24 }), L('masonry-4', 'Masonry · 4 columns', 'masonry', { cols: 4, gap: 18 }), L('masonry-6', 'Masonry · 6 columns', 'masonry', { cols: 6, gap: 12 }),
+    L('filmstrip-tall', 'Tall filmstrip', 'row', { gap: 4, height: 520 }), L('row-small', 'Small row', 'row', { gap: 12, height: 160 }), L('column-wide', 'Wide column', 'column', { gap: 32, width: 760 }),
+    L('contact-tiny', 'Tiny contact sheet', 'grid', { gap: 2, square: true, size: 120 }), L('scatter-wide', 'Wide scatter', 'scatter', { spread: 2.4, rotate: 0 }), L('pile-tight', 'Tight pile', 'stack', { offset: 8, rotate: 3 }),
+    L('collage-airy', 'Airy collage', 'collage', { gap: 40, rotate: 0 }), L('honeycomb-big', 'Big honeycomb', 'honeycomb', { gap: 30 }),
   ];
 
   // ---------- board starters ----------
@@ -146,6 +151,43 @@ const BoardData = (() => {
     T('neon-night', 'Neon night', 'Color', ['Signs', 'Rain', 'Reflections', 'Palette'], { color: '#ff2e88' }),
     T('golden-hour', 'Golden hour', 'Color', ['Skies', 'Skin', 'Shadows', 'Palette'], { color: '#f2a03d' }),
     T('forgeheart', 'Forgeheart look', 'Color', ['Gold', 'Molten', 'Chrome', 'Glass', 'Embers'], { color: '#e6b450' }),
+    T('hearth-intro', 'Hearth intro (social)', 'Social', [['Logo sting', ...SOC], ['The app moving', ...SOC], ['Chats in action', ...SOC], ['The Lab', ...SOC], ['Outro', ...SOC]], { cols: 5, notes: { 'The app moving': 'Recordings of Hearth itself' } }),
+    T('tiktok-trend', 'Trend remake', 'Social', [['Original', ...SOC], ['Our take', ...SOC], ['Sound', 400, 300], ['Captions', 400, 300]], { cols: 4 }),
+    T('yt-video', 'YouTube video look', 'Social', [['Thumbnail', 640, 360], ['Intro', 640, 360], ['B-roll', 640, 360], ['Lower thirds', 640, 360], ['End screen', 640, 360]], { cols: 3 }),
+    T('podcast', 'Podcast cover + clips', 'Social', [['Cover', 600, 600], ['Clip frames', ...SOC], 'Waveform style', 'Type']),
+    T('ad', 'Ad spot', 'Social', ['Hook', 'Product', 'Benefit', 'Proof', 'Offer', 'End card']),
+    T('music-promo', 'Single release promo', 'Music', [['Cover', 600, 600], ['Canvas loop', ...SOC], ['Teaser', ...SOC], 'Palette', 'Type'], { cols: 5 }),
+    T('live-visuals', 'Live show visuals', 'Music', ['LED wall', 'Stage light', 'Loops', 'Transitions', 'Palette by song'], { notes: { 'Palette by song': 'One color mood per song' } }),
+    T('beat-map', 'Beat-synced moments', 'Music', ['Intro', 'Verse', 'Pre', 'Drop', 'Break', 'Outro'], { cols: 6, size: [380, 300] }),
+    T('genre-techno', 'Techno visual', 'Music', ['Monochrome', 'Strobes', 'Geometry', 'Tunnels'], { color: '#ffffff' }),
+    T('genre-ambient', 'Ambient visual', 'Music', ['Slow forms', 'Fog & light', 'Water', 'Palette'], { color: '#7fd8cf' }),
+    T('genre-hiphop', 'Hip-hop visual', 'Music', ['Streets', 'Type', 'Gold', 'Crew', 'Cars']),
+    T('genre-pop', 'Pop visual', 'Music', ['Color', 'Dance', 'Fashion', 'Sets', 'Type']),
+    T('genre-rock', 'Rock visual', 'Music', ['Live energy', 'Grain', 'Type', 'Merch']),
+    T('lab-particles', 'Lab: particles', '3D / games', ['Swarms', 'Trails', 'Bursts', 'Colors', 'Camera']),
+    T('lab-tunnel', 'Lab: tunnel', '3D / games', ['Shapes', 'Speed', 'Light', 'Palette']),
+    T('lab-terrain', 'Lab: terrain', '3D / games', ['Landforms', 'Sky', 'Fog', 'Flyover']),
+    T('lab-glass', 'Lab: glass & chrome', '3D / games', ['Refraction', 'Reflections', 'Lighting', 'Backgrounds']),
+    T('lab-type', 'Lab: 3D type', '3D / games', ['Letterforms', 'Materials', 'Motion', 'Lighting']),
+    T('lab-abstract', 'Lab: abstract loops', '3D / games', ['Patterns', 'Noise', 'Color ramps', 'Loops']),
+    T('noir', 'Neo-noir', 'Film', ['Shadows', 'Rain', 'Neon', 'Faces', 'Type'], { color: '#9b7bff' }),
+    T('scifi', 'Sci-fi', 'Film', ['Worlds', 'Interfaces', 'Ships', 'Light', 'Palette']),
+    T('horror', 'Horror', 'Film', ['Dread', 'Light', 'Faces', 'Places', 'Sound']),
+    T('western', 'Western', 'Film', ['Landscapes', 'Dust', 'Faces', 'Type']),
+    T('road-movie', 'Road movie', 'Film', ['Roads', 'Cars', 'Motels', 'Skies', 'Night']),
+    T('trailer', 'Trailer', 'Film', ['Hook', 'World', 'Conflict', 'Montage', 'Title card'], { cols: 5 }),
+    T('mood-week', 'Mood of the week', 'Basics', ['Colors', 'Pictures', 'Words', 'Sounds']),
+    T('inbox', 'Inbox (sort later)', 'Basics', [['Inbox', 1400, 900]], { notes: { Inbox: 'Drop everything here, sort later (Arrange › Clusters by vibe)' } }),
+    T('yes-maybe-no', 'Yes · maybe · no', 'Basics', [['Yes', 480, 900, '#3bd16f'], ['Maybe', 480, 900, '#e6b450'], ['No', 480, 900, '#ff5a5a']]),
+    T('palette-light-motion', 'Palette · light · motion · type', 'Basics', ['Palette', 'Light', 'Motion', 'Type'], { cols: 4 }),
+    T('reference-vs-ours', 'Reference vs ours', 'Basics', [['Reference', 760, 560], ['Ours', 760, 560], ['Notes', 760, 300]], { cols: 2 }),
+    T('client-review', 'Review round', 'Business', ['Option A', 'Option B', 'Option C', 'Feedback', 'Decision']),
+    T('brand-refresh', 'Brand refresh', 'Business', ['Old', 'New direction', 'Competitors', 'Palette', 'Type']),
+    T('app-store', 'App store screenshots', 'Web', [['Shot 1', 393, 852], ['Shot 2', 393, 852], ['Shot 3', 393, 852], ['Shot 4', 393, 852], ['Shot 5', 393, 852]], { cols: 5 }),
+    T('onboarding', 'App onboarding', 'Web', [['Screen 1', 393, 852], ['Screen 2', 393, 852], ['Screen 3', 393, 852]], { cols: 3 }),
+    T('dashboard', 'Dashboard look', 'Web', ['Layouts', 'Charts', 'Cards', 'Palette', 'Dark / light']),
+    T('icon-app', 'App icon', 'Design', [['Icon', 512, 512], 'Variations', 'Colors', 'In the dock']),
+    T('merch', 'Merch', 'Design', ['Shirts', 'Stickers', 'Posters', 'Palette']),
   ];
 
   // ---------- lenses: look at the board through one part of its vibe ----------
@@ -187,6 +229,9 @@ const BoardData = (() => {
     LENS('length', 'Clip length', 'label', 'duration of clips', { key: 'duration' }),
     LENS('added', 'When added', 'label', 'how long ago each item came in', { key: 'added' }),
     LENS('resolution', 'Resolution', 'label', 'pixel size of pictures and clips', { key: 'resolution' }),
+    LENS('warm-only', 'Warm only', 'only', 'only the warm references', { test: 'warm' }), LENS('cool-only', 'Cool only', 'only', 'only the cool references', { test: 'cool' }),
+    LENS('dark-only', 'Low-key only', 'only', 'only the dark references', { test: 'dark' }), LENS('bright-only', 'High-key only', 'only', 'only the bright references', { test: 'bright' }),
+    LENS('notes-only', 'Notes and text only', 'only', 'only your words', { test: 'words' }), LENS('colors-only', 'Colors only', 'only', 'only swatches and palettes', { test: 'colors' }),
   ];
 
   // ---------- item looks (CSS filters; the image export draws them too) ----------
@@ -238,6 +283,18 @@ const BoardData = (() => {
     F('posterize', 'Poster', 'contrast(2.4) saturate(1.6)'),
     F('washed', 'Washed out', 'brightness(1.25) contrast(0.75) saturate(0.8)'),
     F('moody', 'Moody', 'brightness(0.82) contrast(1.15) saturate(0.8)'),
+    F('vhs', 'VHS-ish', 'saturate(1.4) contrast(1.15) blur(0.6px) hue-rotate(-6deg)'), F('cinema', 'Cinema', 'contrast(1.12) saturate(0.85) sepia(0.12) brightness(0.96)'),
+    F('ektar', 'Vivid print', 'saturate(1.5) contrast(1.12) hue-rotate(-4deg)'), F('portra', 'Soft portrait', 'saturate(0.9) contrast(0.92) brightness(1.06) sepia(0.12)'),
+    F('tri-x', 'Grainy B&W', 'grayscale(1) contrast(1.35) brightness(0.95)'), F('selenium', 'Cool B&W', 'grayscale(1) sepia(0.2) hue-rotate(180deg) contrast(1.1)'),
+    F('platinum', 'Warm B&W', 'grayscale(1) sepia(0.35) contrast(1.05)'), F('infrared', 'Infrared-ish', 'hue-rotate(180deg) saturate(1.8) contrast(1.2) invert(0.1)'),
+    F('lofi', 'Lo-fi', 'contrast(1.5) saturate(1.3) brightness(0.9)'), F('summer', 'Summer', 'brightness(1.1) saturate(1.35) sepia(0.15)'),
+    F('winter', 'Winter', 'brightness(1.08) saturate(0.6) hue-rotate(15deg)'), F('autumn', 'Autumn', 'sepia(0.4) saturate(1.4) hue-rotate(-14deg)'),
+    F('spring', 'Spring', 'brightness(1.08) saturate(1.2) hue-rotate(8deg)'), F('neon-pink', 'Pink cast', 'sepia(0.3) hue-rotate(290deg) saturate(2)'),
+    F('green-cast', 'Green cast', 'sepia(0.3) hue-rotate(60deg) saturate(1.6)'), F('blue-cast', 'Blue cast', 'sepia(0.3) hue-rotate(170deg) saturate(1.6)'),
+    F('red-cast', 'Red cast', 'sepia(0.5) hue-rotate(-30deg) saturate(2.2)'), F('amber', 'Amber', 'sepia(0.7) saturate(1.8) hue-rotate(-10deg)'),
+    F('ink', 'Ink', 'grayscale(1) contrast(3) brightness(1.1)'), F('fog', 'Fog', 'contrast(0.6) brightness(1.25) saturate(0.7) blur(0.8px)'),
+    F('dusk', 'Dusk', 'brightness(0.8) sepia(0.25) hue-rotate(-20deg) saturate(1.3)'), F('midnight', 'Midnight', 'brightness(0.6) hue-rotate(210deg) saturate(1.4) contrast(1.3)'),
+    F('acid', 'Acid', 'hue-rotate(90deg) saturate(3) contrast(1.4)'), F('soft-focus', 'Soft focus', 'blur(1.6px) brightness(1.05)'),
   ];
 
   const BLENDS = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity'];
@@ -254,6 +311,8 @@ const BoardData = (() => {
     N('glass', 'Glass', 'rgba(255,255,255,0.14)', 'inherit', { border: true }),
     N('forge', 'Forge', '#16120c', '#e6b450', { border: true }),
     N('index', 'Index card', '#ffffff', '#24324a', { lines: true }),
+    N('teal', 'Teal', '#7fd8cf'), N('coral', 'Coral', '#ff9f8a'), N('lavender', 'Lavender', '#c9b8ff'), N('sand', 'Sand', '#ecdcb8'),
+    N('night', 'Night', '#0e1530', '#cfe0ff'), N('wine', 'Wine', '#4a1022', '#ffd9e2'), N('moss', 'Moss', '#2c3a1e', '#e2f0c4'), N('chrome', 'Chrome', '#c9ced6', '#1a1d22', { border: true }),
   ];
 
   // ---------- text styles (headline items) ----------
@@ -289,6 +348,16 @@ const BoardData = (() => {
     TX('small-caps', 'Small caps', { fontFamily: 'Georgia, serif', fontVariant: 'small-caps', letterSpacing: '0.08em' }),
     TX('label', 'Label', { fontFamily: 'system-ui, sans-serif', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', fontSize: '0.5em', opacity: '0.75' }),
     TX('quote', 'Quote', { fontFamily: 'Georgia, serif', fontStyle: 'italic', fontWeight: 400, opacity: '0.92' }),
+    TX('tight', 'Tight heavy', { fontFamily: 'system-ui, sans-serif', fontWeight: 900, letterSpacing: '-0.05em' }),
+    TX('airy', 'Airy light caps', { fontFamily: 'system-ui, sans-serif', fontWeight: 300, textTransform: 'uppercase', letterSpacing: '0.5em' }),
+    TX('lowercase', 'All lowercase', { fontFamily: 'system-ui, sans-serif', fontWeight: 600, textTransform: 'lowercase' }),
+    TX('mono-caps', 'Mono caps', { fontFamily: 'ui-monospace, Consolas, monospace', textTransform: 'uppercase', letterSpacing: '0.15em' }),
+    TX('serif-caps', 'Serif caps', { fontFamily: 'Georgia, serif', textTransform: 'uppercase', letterSpacing: '0.2em' }),
+    TX('sticker', 'Sticker', { fontFamily: '"Arial Black", Impact, sans-serif', fontWeight: 900, color: '#fff', WebkitTextStroke: '3px #111', textShadow: '4px 4px 0 #111' }),
+    TX('ember', 'Ember glow', { fontFamily: 'system-ui, sans-serif', fontWeight: 800, color: '#ffb36b', textShadow: '0 0 8px #ff7a3d, 0 0 26px #ff7a3dcc' }),
+    TX('ice-glow', 'Ice glow', { fontFamily: 'system-ui, sans-serif', fontWeight: 700, color: '#d8f6ff', textShadow: '0 0 8px #36d6e7, 0 0 24px #36d6e7aa' }),
+    TX('rainbow', 'Rainbow', { fontFamily: 'system-ui, sans-serif', fontWeight: 900, backgroundImage: 'linear-gradient(90deg,#ff5a5a,#ffd23f,#3bd16f,#36d6e7,#9b7bff)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }),
+    TX('subtle', 'Subtle caption', { fontFamily: 'system-ui, sans-serif', fontWeight: 400, opacity: '0.6', fontSize: '0.6em' }),
   ];
 
   // ---------- canvas backgrounds ----------
@@ -303,6 +372,9 @@ const BoardData = (() => {
     BG('forge', 'Forge', '#120e09', 'grid', '#e6b4501c'), BG('night', 'Night blue', '#0b1020', 'dots', '#8fb4ff22'), BG('plum', 'Plum', '#1c1020', 'dots', '#ff8fe522'),
     BG('olive', 'Olive', '#1a1c12', 'lines', '#d6e6a01a'), BG('sand', 'Sand', '#e8dcc4', 'dots', '#5a432222'), BG('mint', 'Mint', '#e3f4ec', 'grid', '#1c6b4a1c'),
     BG('cork', 'Cork', '#b98d5a', 'dots', '#4a2f1433'), BG('felt', 'Green felt', '#1f4a35', 'none', null),
+    BG('slate', 'Slate', '#2a2f38', 'grid', '#ffffff10'), BG('wine', 'Wine', '#22090f', 'dots', '#ff8fa822'), BG('ocean', 'Ocean', '#06202b', 'lines', '#7fd8cf1c'),
+    BG('ember', 'Ember', '#1e0c06', 'dots', '#ff7a3d26'), BG('fog', 'Fog', '#c9ccd1', 'none', null), BG('cream', 'Cream', '#faf6ec', 'lines', '#00000014'),
+    BG('lilac', 'Lilac', '#ece6fa', 'dots', '#5b3fa022'), BG('teal', 'Deep teal', '#062a2a', 'grid', '#7fffd41a'), BG('crosses-light', 'Light crosses', '#f2f2f2', 'cross', '#0000002a'), BG('void', 'Void', '#050507', 'dots', '#ffffff0d'),
   ];
 
   // ---------- frames ----------
@@ -316,6 +388,10 @@ const BoardData = (() => {
     FS('album', 'Album cover', 600, 600), FS('vinyl', 'Vinyl sleeve', 620, 620), FS('ultrawide', '21:9', 1260, 540), FS('vertical-45', '4:5 tall', 480, 600),
     FS('pano', 'Panorama 4:1', 1600, 400), FS('card', 'Business card', 525, 300), FS('sticky', 'Sticky size', 300, 300), FS('column', 'Tall column', 520, 1400),
     FS('section', 'Big section', 1600, 1000), FS('huge', 'Huge area', 3000, 2000),
+    FS('pin', 'Pinterest pin 2:3', 500, 750), FS('canvas', 'Spotify Canvas 9:16', 540, 960), FS('li-banner', 'LinkedIn banner 4:1', 1584, 396), FS('yt-banner', 'YouTube banner', 1280, 720),
+    FS('twitch', 'Twitch panel', 640, 320), FS('og', 'Link preview 1.91:1', 1200, 628), FS('ig-land', '1.91:1 feed', 1080, 566), FS('a3', 'A3 portrait', 842, 1191),
+    FS('a5', 'A5 portrait', 420, 595), FS('postcard', 'Postcard', 600, 400), FS('cd', 'CD cover', 600, 600), FS('bookmark', 'Bookmark strip', 200, 600),
+    FS('watch', 'Watch face', 396, 484), FS('square-big', 'Big square', 1200, 1200),
   ];
   const FRAME_COLORS = [
     ['Neutral', null], ['Gold', '#e6b450'], ['Ember', '#ff7a3d'], ['Red', '#ff5a5a'], ['Pink', '#ff4fa3'], ['Violet', '#9b7bff'], ['Blue', '#4f8cff'],
@@ -329,13 +405,16 @@ const BoardData = (() => {
     ['hexagon', 'Hexagon', 'polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%)'],
     ['star', 'Star', 'polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)'],
     ['blob', 'Blob', null], ['frame-line', 'Outline box', null],
+    ['pentagon', 'Pentagon', 'polygon(50% 0, 100% 38%, 82% 100%, 18% 100%, 0 38%)'], ['octagon', 'Octagon', 'polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%)'],
+    ['chevron', 'Chevron', 'polygon(0 0, 70% 0, 100% 50%, 70% 100%, 0 100%, 30% 50%)'], ['cross', 'Cross', 'polygon(35% 0, 65% 0, 65% 35%, 100% 35%, 100% 65%, 65% 65%, 65% 100%, 35% 100%, 35% 65%, 0 65%, 0 35%, 35% 35%)'],
+    ['parallelogram', 'Parallelogram', 'polygon(25% 0, 100% 0, 75% 100%, 0 100%)'], ['trapezoid', 'Trapezoid', 'polygon(20% 0, 80% 0, 100% 100%, 0 100%)'],
   ];
   const ARROWS = [
     ['right', 'Arrow →', { rot: 0 }], ['left', 'Arrow ←', { rot: 180 }], ['down', 'Arrow ↓', { rot: 90 }], ['up', 'Arrow ↑', { rot: -90 }],
     ['diag', 'Arrow ↘', { rot: 35 }], ['double', 'Double arrow ↔', { heads: 2 }], ['curved', 'Curved arrow', { curve: true }],
     ['dashed', 'Dashed arrow', { dash: true }], ['line', 'Plain line', { heads: 0 }], ['thick', 'Bold arrow', { width: 10 }],
   ];
-  const STICKERS = ['★', '♥', '✓', '✕', '?', '!', '☀', '☾', '⚡', '♪', '✿', '❄', '☁', '◆', '●', '▲', '✦', '❤', '☺', '☹', '👍', '👎', '🔥', '✨', '🎬', '🎨', '💡', '📌', '🎧', '🌙'];
+  const STICKERS = ['★', '♥', '✓', '✕', '?', '!', '☀', '☾', '⚡', '♪', '✿', '❄', '☁', '◆', '●', '▲', '✦', '❤', '☺', '☹', '👍', '👎', '🔥', '✨', '🎬', '🎨', '💡', '📌', '🎧', '🌙', '🎵', '🎥', '📷', '🌈', '🌊', '⭐', '💎', '🌀', '🖤', '🤍', '💜', '💛', '🧡', '💚', '💙', '👀', '🤔', '🚀'];
   // website snapshots: the size of the window that loads the page
   const SNAPS = [['desktop', 'Desktop (1280 × 800)', 1280, 800], ['laptop', 'Laptop (1440 × 900)', 1440, 900], ['mobile', 'Phone (390 × 844)', 390, 844], ['tablet', 'Tablet (820 × 1180)', 820, 1180], ['tall', 'Tall page (1280 × 2400)', 1280, 2400], ['wide', 'Wide (1920 × 1080)', 1920, 1080]];
   const NOTE_SIZES = [['small', 'Small text', 13], ['normal', 'Normal text', 17], ['large', 'Large text', 24], ['huge', 'Huge text', 36]];
@@ -409,6 +488,10 @@ const BoardData = (() => {
     H('cool', 'Cooler steps', (h, s, l) => [0, 14, 28, 42, 56].map((d) => [h + d, s, l])),
     H('neutral', 'Color + neutrals', (h, s, l) => [[h, s, l], [h, 0.06, 0.95], [h, 0.05, 0.7], [h, 0.06, 0.35], [h, 0.08, 0.08]]),
     H('accent', 'Dark + accent', (h, s, l) => [[h, 0.25, 0.08], [h, 0.2, 0.16], [h, 0.15, 0.3], [h, Math.max(0.7, s), 0.55], [h + 180, 0.8, 0.6]]),
+    H('pastels', 'Pastel set', (h) => [0, 72, 144, 216, 288].map((d) => [h + d, 0.7, 0.85])),
+    H('neon', 'Neon set', (h) => [0, 60, 150, 210, 300].map((d) => [h + d, 1, 0.55])),
+    H('earth', 'Earthy', (h) => [[h, 0.35, 0.2], [h + 15, 0.4, 0.35], [h + 30, 0.45, 0.5], [h + 45, 0.35, 0.68], [h + 60, 0.25, 0.85]]),
+    H('duotone', 'Duotone pair', (h, s, l) => [[h, s, 0.15], [h, s, 0.35], [h + 180, s, 0.55], [h + 180, s, 0.75], [h, 0.1, 0.95]]),
   ];
   const harmony = (id, hex) => { const hm = HARMONIES.find((x) => x.id === id) || HARMONIES[0]; const [h, s, l] = hexHsl(hex); return hm.fn(h, s, l).map(([a, b, c]) => hslHex(a, b, c)); };
 
@@ -471,6 +554,39 @@ const BoardData = (() => {
     P('Fantasy', '1b1033 3c2a6b 7d5ba6 e0b04c f6e7c1', 'magic gold'), P('Steampunk', '1e1611 4a3423 8c6239 c9a227 e8d8b0', 'brass'),
     P('Cyber yellow', '0d0d0d ffd300 ff006e 00f5d4 f1f1f1', 'cyber'), P('Holo foil', 'c9f0ff ffc9f5 fff7c9 c9ffd9 e0c9ff', 'iridescent'),
     P('Opal', 'f7f7ff dfe7fd cde5f7 f5d9ec e8f6ef', 'soft pearl'), P('Obsidian', '050608 0e1116 1b2029 2e3746 5c6b80', 'dark'),
+    P('Sodium vapour', '0d0a05 3a2408 c96a12 f2a33a ffd88a', 'night warm'), P('Mercury vapour', '050d0c 0f2b26 2f7a68 8fd1b8 e6fff6', 'night cool'),
+    P('Tungsten', '1a1208 4d3418 a8743a e8b06a fff0d4', 'warm light'), P('Daylight', 'f7f9fb dce6ef a9c1d6 6b8fae 2c4760', 'cool light'),
+    P('Overcast', 'e4e6e8 c2c7cc 9aa1a8 6f777f 3d4349', 'gray soft'), P('Thunderstorm', '101418 26303a 4c5b69 9fb0bf f5d76e', 'storm'),
+    P('Desert night', '0f0b1e 2b1f45 6a3d6e d6845a f7c58a', 'night warm'), P('Polar night', '020a14 0a2238 1d4f74 5fa8c9 c6ecff', 'night cold'),
+    P('Rooftop sunset', '2a1638 6b2d5c c2456b f28b5b fbd38d', 'sunset'), P('Harbour dawn', '1c2b3a 4d6a82 a7b9c6 f0c9a4 fbe7d3', 'dawn'),
+    P('Concrete jungle', '1b1c1e 3d3f42 6e7174 a4a7aa f2c14e', 'urban'), P('Subway', '101010 2a2a2a f2c500 00843d e4002b', 'urban signal'),
+    P('Arcade', '0b0221 3a0ca3 f72585 4cc9f0 ffd60a', 'retro game'), P('Pixel pastel', 'f7d6e0 f2b5d4 eff7f6 b2f7ef 7bdff2', 'retro soft'),
+    P('Chrome age', '0f1114 2f343b 8a9199 c8cdd2 f4f6f8', 'metal'), P('Brushed gold', '2b2112 5e4521 a77d3c dcb565 f7e2a5', 'metal warm'),
+    P('Copper', '1e0f08 5a2a14 a5532b d98a52 f4c49a', 'metal warm'), P('Patina', '13241f 2c5249 4f8c7b 8cc2a8 d6ead9', 'metal green'),
+    P('Glacier blue', 'e9f6fb bfe4f2 7fc4e3 3d8fb8 154e6b', 'cold'), P('Aurora green', '04140f 0b3d2b 1a8f5a 52e8a0 c3ffe4', 'glow'),
+    P('Sunset strip', '1f0b2e 5c1a6b b5338a f26b6b ffc069', 'sunset 80s'), P('Miami vice', '00b2ca 7dcfb6 fbd1a2 f79256 f15bb5', 'retro bright'),
+    P('Film negative', 'f2e3c6 c49a6c 7d5a44 3c2f2f 1a1a1a', 'film'), P('Cross-processed', '0b3c49 2a9d8f e9c46a f4a261 e76f51', 'film'),
+    P('Bleach bypass', '1c1d1f 3e4144 7b7f83 b9bcbe e8e8e6', 'film muted'), P('Day for night', '05080f 0e1b33 1f3a66 5a7fb0 b8cbe6', 'film night'),
+    P('Technicolor', 'c81d25 ffe066 0b6e4f 0353a4 f4f1de', 'film classic'), P('Super 8', '3b2f2f 8a5a44 d9a066 f2d49b 94a3a4', 'film home'),
+    P('Polar fleece', 'f2f4f7 d0d8e2 9aaabf 5c708a 2a3647', 'calm cool'), P('Cashmere', 'f6efe6 e5d5c3 c9ad8f 9c7b5b 5b4330', 'calm warm'),
+    P('Velvet', '14060d 3d0f24 6e1840 a8335f e0789a', 'luxury deep'), P('Champagne', 'fbf6ea f2e4c4 e0c98f bfa064 7d6638', 'luxury light'),
+    P('Bubble tea', 'f7e6d4 e8c4a0 b5835a 6b4a35 2b1d16', 'sweet brown'), P('Matcha latte', 'f4f6e8 d8e3b5 a9c27a 6d8a45 3a4a23', 'green calm'),
+    P('Strawberry', 'fff0f3 ffc2d1 ff8fab fb6f92 c9184a', 'sweet red'), P('Blueberry', 'eef0ff c3c8f5 8b93e0 4e58b5 232a6b', 'sweet blue'),
+    P('Lemonade', 'fffbe6 fff3a3 ffe14d f2c200 a37c00', 'sweet yellow'), P('Mint mojito', 'effff8 c2f5de 7de0b6 2fb889 0f6b4c', 'fresh green'),
+    P('Rainforest', '061a10 0f3d22 1f6e3a 4fa35a a8d672', 'green lush'), P('Savanna', 'f3e3b8 e0bd76 b8863f 7a5a2b 3a2e1c', 'earth warm'),
+    P('Tundra', 'eef2f0 c9d3cf 93a39b 5a6b63 2a3530', 'earth cold'), P('Coral sea', 'ff7f6a ffb199 fde2d0 4fb0c6 1d6f8a', 'sea warm'),
+    P('Deep sea', '00040d 00172e 003b5c 007a8a 3fd6c8', 'sea deep'), P('Lagoon', 'e6fbf8 a8ece2 4fd1c2 0f9b8e 05544e', 'sea bright'),
+    P('Volcano glass', '0a0a0c 1e1b24 3d2f4a 7a4b6e c47f8e', 'dark violet'), P('Plasma', '0d0221 4a0e8f 9e1fd0 ff3cac ffd1f0', 'glow violet'),
+    P('Laser', '000000 ff0040 00ff9f 00b8ff ffffff', 'rave'), P('UV paint', '0a001a 3f00ff a000ff ff00c8 c8ff00', 'rave glow'),
+    P('Smoke machine', '0b0b0f 2a2a35 5b5b70 9a9ab0 e0e0ec', 'club haze'), P('Strobe', '000000 ffffff 000000 f5f5f5 222222', 'club'),
+    P('Vinyl crackle', '1a1612 3d342b 7a6a55 c2ad8e efe2c9', 'music warm'), P('Cassette', 'f2e8d5 e4572e 17bebb ffc914 2e282a', 'music retro'),
+    P('Festival', 'ff6b35 f7c59f efefd0 004e89 1a659e', 'music bright'), P('Orchestra', '1b120c 4a2f1d 8a5a32 c9a36a f2e6cf', 'music classic'),
+    P('Synth pads', '120f2b 2d2a6e 5f5fd0 a4a4ff e4e4ff', 'music cool'), P('808', '0d0d0d 1f1f1f ff3b30 ffcc00 f2f2f2', 'music bold'),
+    P('Brutalist', 'e9e9e6 bdbdb8 6e6e6a 2f2f2d ff4d00', 'design raw'), P('Scandinavian', 'f7f5f0 e3ddd2 c2b8a3 7d8c84 2f3b36', 'design calm'),
+    P('Mid-century', 'f2e3c6 e09f3e 9e2a2b 335c67 1b2b34', 'design retro'), P('Art deco', '0f0f0f 1f3a3d c9a227 e8d5a3 f7f3e9', 'design luxury'),
+    P('Y2K', 'c0c0ff ff99ff 99ffff ffffff 9999ff', 'retro 2000'), P('Grunge', '1a1a14 3d3b2e 6b6650 a19c7a d9d3b0', 'raw muted'),
+    P('Kodak gold', 'f5c518 e09b1a b5651d 6b3a1f 2b1a10', 'film warm'), P('Fuji green', 'e9f0e1 b9cfa3 7fa36d 3f6b4a 1d3529', 'film cool'),
+    P('Neon sign', '0a0a12 ff2079 ff8c00 39ff14 00e5ff', 'night neon'), P('Ghost town', 'e8e2d4 c4b89c 8f7f63 5a4e3c 2b251c', 'western'),
   ];
 
   // ---------- what part of a vibe a chat gets (/board-use <focus>, "Send vibe ›") ----------
@@ -492,6 +608,14 @@ const BoardData = (() => {
     FO('blend', 'Blend them', ['palette', 'light', 'color', 'motion', 'mood'], 'Blend these references into one look'),
     FO('lab', 'For a Lab scene', ['palette', 'light', 'motion', 'texture', 'mood'], 'Build the scene with this vibe (colors, light, motion, texture), not the footage'),
     FO('edit', 'For an edit', ['motion', 'light', 'palette', 'mood'], 'Edit with this rhythm and look'),
+    FO('poster', 'For a poster', ['palette', 'compose', 'type', 'mood'], 'Design the poster with this palette, composition and type feel'),
+    FO('titles', 'For titles / type', ['type', 'palette', 'mood'], 'Set the titles in this type feel and these colors'),
+    FO('thumbnail', 'For a thumbnail', ['palette', 'light', 'compose'], 'Make the thumbnail with this color, light and framing'),
+    FO('reel', 'For a social reel', ['motion', 'palette', 'light', 'mood'], 'Cut the reel with this pacing, palette and light'),
+    FO('grade', 'For a color grade', ['palette', 'light', 'color'], 'Grade toward these colors, contrast and warmth'),
+    FO('music', 'For a music visual', ['palette', 'motion', 'texture', 'mood'], 'Make the music visual feel like this (colors, energy, texture, mood)'),
+    FO('contrast-only', 'Contrast and light', ['light'], 'Copy only the contrast and light key'),
+    FO('composition-light', 'Framing + light', ['compose', 'light'], 'Frame and light it like these references'),
   ];
 
   // ---------- presentation (fly between frames) ----------
@@ -501,6 +625,7 @@ const BoardData = (() => {
     TR('bounce', 'Bounce', 900, 'cubic-bezier(.3,1.4,.5,1)'), TR('cut', 'Cut', 0, 'linear', 'cut'), TR('fade', 'Fade through black', 700, 'ease', 'fade'),
     TR('zoom-out', 'Zoom out, then in', 1300, 'ease-in-out', 'arc'), TR('dolly', 'Dolly (scale only)', 900, 'ease-in-out', 'dolly'), TR('drift', 'Drift', 2600, 'ease-in-out'),
     TR('spin', 'Spin', 1000, 'cubic-bezier(.6,0,.2,1)', 'spin'), TR('snap', 'Snap', 220, 'cubic-bezier(.9,0,.1,1)'), TR('glide', 'Glide (linear)', 1200, 'linear'),
+    TR('soft-fade', 'Slow fade', 1400, 'ease', 'fade'), TR('punch', 'Punch in', 520, 'cubic-bezier(.2,1.6,.4,1)'), TR('wide-arc', 'Big arc', 2000, 'ease-in-out', 'arc'), TR('slow-dolly', 'Slow dolly', 1800, 'ease-in-out', 'dolly'),
   ];
 
   // ---------- exports ----------
@@ -528,6 +653,11 @@ const BoardData = (() => {
     [(v) => v.edges < 0.12, ['clean', 'minimal']], [(v) => v.space > 0.55, ['spacious', 'calm']], [(v) => v.symmetry > 0.82, ['symmetric', 'formal']],
     [(v) => v.motion > 0.6, ['frantic', 'energetic']], [(v) => v.motion > 0.3 && v.motion <= 0.6, ['lively']], [(v) => v.motion != null && v.motion < 0.12, ['still', 'meditative']],
     [(v) => v.pace != null && v.pace < 0.8, ['rapid-fire cuts']], [(v) => v.pace != null && v.pace > 4, ['long takes']], [(v) => v.colorful > 0.55, ['colorful']],
+    [(v) => v.grain > 0.55, ['filmic', 'textured']], [(v) => v.grain < 0.08 && v.edges < 0.2, ['glossy', 'digital']], [(v) => v.light > 0.55 && v.warmth > 0.2 && v.sat < 0.5, ['nostalgic', 'sunlit']],
+    [(v) => v.light < 0.35 && v.sat > 0.55, ['neon-lit', 'nightlife']], [(v) => v.contrast > 0.8, ['graphic', 'bold']], [(v) => v.contrast < 0.25, ['hazy', 'dreamy']],
+    [(v) => v.space > 0.7 && v.light > 0.6, ['zen', 'quiet']], [(v) => v.symmetry < 0.35 && v.edges > 0.4, ['chaotic', 'raw']], [(v) => v.warmth < -0.3 && v.light > 0.6, ['icy', 'crisp']],
+    [(v) => v.warmth > 0.35 && v.light < 0.35, ['moody', 'candlelit']], [(v) => v.lightArc === 'strobing', ['strobing', 'clubby']], [(v) => v.lightArc === 'brightening', ['uplifting', 'building']],
+    [(v) => v.lightArc === 'darkening', ['ominous', 'fading']], [(v) => v.centered > 0.8, ['iconic', 'centered']], [(v) => v.horizon != null && v.horizon > 0.6, ['big sky', 'open']],
   ];
 
   // Background patterns as CSS (a cell of `size` px)

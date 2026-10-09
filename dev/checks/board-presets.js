@@ -65,9 +65,9 @@ for (const tr of D.TRANSITIONS) {
   Board.setPref('transition', tr.id);
   X.present(0); await wait(50);
   dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
-  await wait(tr.ms + 250);
   const stop = X.stops()[1].box; const r = X.S.ui.vp.getBoundingClientRect();
   const want = BoardLayout.fitView(stop, r.width, r.height, 40, 0.02, 32);
+  await until(() => Math.abs(X.S.view.z - want.z) < 1e-6, tr.ms + 2500); // the view lands when the compositor animation ends
   ok('transitions', Math.abs(X.S.view.z - want.z) < 1e-6 && Math.abs(X.S.view.x - want.x) < 0.5, tr.id);
   X.stopPresent();
 }
