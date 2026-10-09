@@ -1948,14 +1948,15 @@ const VideoCut = (() => {
     ['I / O · X', 'In / out of the range · clear'], ['M · Shift+M', 'Marker · marker with a note'], ['Shift+F', 'Freeze frame (1 s)'], ['Shift+T · Alt+T', 'Title card · title over the picture'],
     ['N', 'Snapping on / off'], ['Shift+E', 'Extend edit: the nearest cut rolls to the playhead'], ['+ / − · \\', 'Zoom the timeline · fit'], [`${MODK}+wheel`, 'Zoom at the pointer (wheel scrolls when zoomed)'],
     ['Alt+← / →', 'Nudge the selection one frame (Shift: 10)'], ['Alt+, / .', 'Slip the clip one frame'], ['Alt+↑ / ↓', 'Move a layer to the track above / below'], ['Alt+K', 'Keyframe position, scale, rotation, opacity'],
-    ['Alt (hold)', 'Track switches: hide · mute · lock'], ['Enter', 'Accept the auto-cut, else open the inspector'], [`${MODK}+C / V`, 'Copy / paste clips and layers'], [`${MODK}+A`, 'Select everything'], [`${MODK}+Z / Shift+Z`, 'Undo / redo'],
+    ['Alt (hold)', 'Track switches: hide · mute · lock'], ['Enter', 'Accept the auto-cut, else open the inspector'], [`${MODK}+C / V`, 'Copy / paste clips and layers'], [`${MODK}+A`, 'Select everything'], [`${MODK}+Z / ${MODK}+Shift+Z`, 'Undo / redo'],
     ['Drag', 'Edge: trim (snaps; Alt: free) · Shift+edge: roll · body: reorder / move · Shift+body: slide · Ctrl+body: slip · gold squares: fades'], ['Drop', 'Videos, pictures, sounds or library cards'], ['Right-click', 'Clips, layers, cuts, markers, lanes and the ruler have menus'],
   ];
   function help() { Modal.alert('Video editor: keys', KEYS.map(([k, d]) => `${k.padEnd(16)} ${d}`).join('\n')); }
   // the keys button (bottom left) lists these while the editor is open
   function registerKeys() {
     if (typeof Keys === 'undefined') return;
-    Keys.add(KEYS.map(([keys, what]) => ({ area: 'Editor', keys, what, when: () => st.on })));
+    // the registry keeps Ctrl (keys-ui shows ⌘ on a Mac itself and must read the combo to press it for you)
+    Keys.add(KEYS.map(([keys, what]) => ({ area: 'Editor', keys: keys.replace(/⌘/g, 'Ctrl'), what, when: () => st.on })));
     Keys.add({ area: 'Video Review', keys: 'E', what: 'Open the video editor (cut, layers, titles, transitions, export)' });
   }
 

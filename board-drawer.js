@@ -40,7 +40,9 @@ const BoardDrawer = (() => {
     agentId ||= currentAgentId();
     const agent = H.agent(agentId);
     if (!agent || agent.mode !== 'native') { toast('Pick a Claude or Astra chat', { type: 'error' }); return null; }
-    const b = boardId ? await B.load(boardId) : B.current();
+    // no board named: the chat's linked board first (as the drawer and /board-use do), else the current one
+    const chatId = H.activeChat?.[agentId];
+    const b = boardId ? await B.load(boardId) : (chatId && await B.boardFor(chatId).catch(() => null)) || B.current();
     const text = vibeText({ board: b, itemIds, focus });
     const label = itemIds.length === 1 ? B.item(itemIds[0], b)?.title || 'reference' : itemIds.length ? `${itemIds.length} references` : b.name;
     const fo = D.find(D.FOCUS, focus);
@@ -77,11 +79,12 @@ const BoardDrawer = (() => {
     attach(a.id, { boardId: ref.boardId, itemIds: ref.itemIds || [], focus: ref.focus });
   }, true);
   addEventListener('dragend', () => { hinted?.classList.remove('bdd-drop-hint'); hinted = null; }, true);
-  function dragRef(e, boardId, itemIds) {
-    const b = B.current();
-    e.dataTransfer.setData(REF_TYPE, JSON.stringify({ boardId, itemIds }));
+  function dragRef(e, board, itemIds) {
+    // the board the drawer shows (it can be another than the current one: the chat's linked board, the picker)
+    const b = typeof board === 'object' && board ? board : B.current();
+    e.dataTransfer.setData(REF_TYPE, JSON.stringify({ boardId: b?.id, itemIds }));
     // dropped in any other text field, it types the vibe
-    e.dataTransfer.setData('text/plain', vibeText({ board: b?.id === boardId ? b : b, itemIds }));
+    e.dataTransfer.setData('text/plain', vibeText({ board: b, itemIds }));
     e.dataTransfer.effectAllowed = 'copy';
   }
 
@@ -109,12 +112,12 @@ const BoardDrawer = (() => {
     const s = V.summary(items);
     const agentName = H.agent(currentAgentId())?.name || 'the chat';
     const vibe = el('div', { class: 'bdd-vibe', draggable: true, title: `Drag into a chat (or click) to attach the whole board's vibe`,
-      on: { dragstart: (e) => dragRef(e, b.id, []), click: (e) => showMenu(e.clientX, e.clientY, D.FOCUS.map((f) => ({ label: `${f.name} → ${agentName}`, action: () => attach(null, { boardId: b.id, focus: f.id }) }))) } },
+      on: { dragstart: (e) => dragRef(e, b, []), click: (e) => showMenu(e.clientX, e.clientY, D.FOCUS.map((f) => ({ label: `${f.name} → ${agentName}`, action: () => attach(null, { boardId: b.id, focus: f.id }) }))) } },
     el('div', { class: 'bd-pal' }, s.palette.map((c) => el('span', { style: { background: c.hex, '--s': String(c.share) } }))),
     el('div', { text: [s.light != null ? `${V.words.keyWord(s.light)}, ${V.words.contrastWord(s.contrast)} contrast` : null, s.sat != null ? V.words.satWord(s.sat) : null, s.motion != null ? `motion ${V.words.motionWord(s.motion)}` : null, s.moods.slice(0, 3).join(', ')].filter(Boolean).join(' · ') || 'Add pictures, clips or sites: Hearth reads their vibe.' }));
     const tile = (it) => {
       const img = it.tiny || it.thumb || it.poster || (it.type === 'web' || it.type === 'image' ? it.src : null);
-      const t = el('div', { class: 'bdd-tile', draggable: true, title: `${it.title || it.type}\nDrag into a chat to attach its vibe`, on: { dragstart: (e) => dragRef(e, b.id, [it.id]) } },
+      const t = el('div', { class: 'bdd-tile', draggable: true, title: `${it.title || it.type}\nDrag into a chat to attach its vibe`, on: { dragstart: (e) => dragRef(e, b, [it.id]) } },
         img ? el('img', { src: B.fileUrl(img), alt: '', loading: 'lazy', draggable: false }) : null,
         it.type === 'swatch' || it.type === 'palette' ? el('div', { class: 'bdd-t', style: { background: it.type === 'swatch' ? it.color : `linear-gradient(90deg, ${(it.colors || []).join(', ')})` } }) : null,
         it.type === 'note' || it.type === 'text' ? el('div', { class: 'bdd-t', text: String(it.text || '').replace(/[*_#`>]+/g, ''), style: { background: it.type === 'note' ? (D.NOTE_STYLES.find((q) => q.id === it.style) || D.NOTE_STYLES[0]).bg : 'var(--surface)', color: it.type === 'note' ? (D.NOTE_STYLES.find((q) => q.id === it.style) || D.NOTE_STYLES[0]).fg : 'inherit' } }) : null,

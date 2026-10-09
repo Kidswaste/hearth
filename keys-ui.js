@@ -162,11 +162,14 @@ const KeysUI = (() => {
   // what applies where you are: areas for the tool or chat on screen
   function hereAreas() {
     const id = H.surfaceIdFor?.(H.activeId) || H.activeId || '';
-    if (id === 'tool:three') return ['Lab', 'Lab timeline', 'Lab sliders & layers', 'Effects picker', 'Present', 'Director dock', 'Chat box', 'Nodes'];
-    if (id === 'tool:ae') return ['Video Review', 'Director dock', 'Chat box'];
-    if (id === 'tool:forgeheart') return ['Forge'];
-    if (H.agent(H.activeId)?.mode === 'native') return ['Chat box', 'Chats panel'];
-    return [];
+    // round 7's surfaces count too: a capture player / picture open, the board drawer, the editor in Video Review
+    const extra = [...(document.querySelector('dialog[open].cap-view, dialog[open].cap-lib, dialog[open].cap-ann') ? ['Capture'] : []), ...(typeof BoardDrawer !== 'undefined' && BoardDrawer.isOpen?.() ? ['Board'] : [])];
+    if (id === 'tool:three') return [...extra, 'Lab', 'Lab timeline', 'Lab sliders & layers', 'Effects picker', 'Present', 'Director dock', 'Chat box', 'Nodes'];
+    if (id === 'tool:ae') return [...extra, ...(typeof VideoCut !== 'undefined' && VideoCut.active ? ['Editor'] : []), 'Video Review', 'Director dock', 'Chat box'];
+    if (id === 'tool:board') return [...extra, 'Board'];
+    if (id === 'tool:forgeheart') return [...extra, 'Forge'];
+    if (H.agent(H.activeId)?.mode === 'native') return [...extra, 'Chat box', 'Chats panel'];
+    return extra;
   }
   const hereLabel = () => { const id = H.surfaceIdFor?.(H.activeId) || H.activeId || ''; return id.startsWith('tool:') ? Tools.get?.(id.slice(5))?.name || 'this tool' : H.agent(H.activeId)?.name || 'here'; };
   const visibleOne = (sel) => [...document.querySelectorAll(sel)].find((n) => n.checkVisibility?.({ visibilityProperty: true }) && n.getBoundingClientRect().width);

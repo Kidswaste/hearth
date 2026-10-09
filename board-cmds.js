@@ -34,7 +34,17 @@ const BoardCmds = (() => {
       const b = await boardOf(ctx); if (b !== B.current()) await B.open(b.id);
       const at = B.isMounted() && B.visible() ? null : freeSpot(b);
       let it;
-      if (/^([a-z]:\\|\/|~\/)/i.test(t) && !/\s/.test(t.replace(/\\ /g, ''))) it = (await B.addFiles([t], at))[0];
+      // a file path, also with spaces ("C:\Users\me\My Videos\clip.mp4", ~/Movies/Night drive.mov, a quoted or
+      // dragged-in path with \ escapes): it used to become a text note as soon as it had a space
+      const unq = t.replace(/^(["'])(.*)\1$/, '$2').replace(/\\ /g, ' ');
+      let file = null;
+      if (/^([a-z]:[\\/]|\/|~[\\/]|\\\\)/i.test(unq)) {
+        const p = /^~[\\/]/.test(unq) ? `${await window.hub.fs.home()}${unq.slice(1)}` : unq;
+        const st = await window.hub.fs.stat(p).catch(() => null);
+        if (st && !st.isDir) file = p;
+        else if (!/\s/.test(t)) file = p; // a plain path: let the board say what's wrong with it
+      }
+      if (file) it = (await B.addFiles([file], at))[0];
       else if (/^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(t) && !t.includes(' ')) it = await B.addUrl(`https://${t}`, at);
       else it = await B.addTextSmart(t, at);
       return it ? `Added to **${B.current().name}**: ${V.KIND_WORD[it.type] || it.type} ${it.title ? `"${it.title}"` : ''} (its vibe is read in the background).` : 'Nothing added.';

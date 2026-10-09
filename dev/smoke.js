@@ -212,8 +212,15 @@ async function cdpConnect() {
       }
     }
     const libs = libFiles.map((f) => fs.readFileSync(f, 'utf8'));
-    if (scriptFile) checks.push([...libs, fs.readFileSync(scriptFile, 'utf8')].join('\n'));
-    for (const c of checks) {
+    // A line "//@@ reload" splits a check: the part before it runs, the window reloads (everything is read back from
+    // disk, like a restart of the page), then the next part runs with the same helpers (state across: localStorage).
+    if (scriptFile) for (const part of fs.readFileSync(scriptFile, 'utf8').split(/\n\/\/@@ reload\b[^\n]*\n/)) checks.push([...libs, part].join('\n'));
+    for (const [ci, c] of checks.entries()) {
+      if (ci > evals.length && scriptFile) {
+        await send('Page.reload', {});
+        await new Promise((r) => setTimeout(r, waitMs));
+        for (let i = 0; i < 60; i++) { const ready = await run('document.readyState === "complete" && typeof H !== "undefined" && H.agents().length > 0'); if (ready.value === true) break; await new Promise((r) => setTimeout(r, 500)); }
+      }
       const r = await run(c);
       console.log(`\n▶ ${c.length > 160 ? `${c.slice(0, 160)}…` : c}\n${r.error ? `✖ ${r.error}` : typeof r.value === 'string' ? r.value : JSON.stringify(r.value, null, 2)}`);
       if (r.error) problems.push(`check failed: ${r.error}`);

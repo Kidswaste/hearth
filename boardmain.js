@@ -135,7 +135,8 @@ async function snapOnce(url, { width, height, wait, timeout }) {
 function unused(keep) {
   ensureDirs();
   const used = new Set((keep || []).map((p) => norm(p)));
-  return fs.readdirSync(MEDIA_DIR).map((n) => path.join(MEDIA_DIR, n)).filter((p) => !used.has(norm(p)));
+  // files only: a folder in there (an editor export of a board clip lands in media/exports) is not "unused media"
+  return fs.readdirSync(MEDIA_DIR, { withFileTypes: true }).filter((d) => d.isFile()).map((d) => path.join(MEDIA_DIR, d.name)).filter((p) => !used.has(norm(p)));
 }
 
 function registerIpc(ipcMain) {

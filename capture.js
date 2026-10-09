@@ -39,8 +39,10 @@ const Capture = (() => {
   const keyList = [];
   // keys.js defines `const Keys` (a global binding, not a window property): reach it by name
   const keysReg = () => (typeof Keys !== 'undefined' ? Keys : window.Keys);
-  const keyAdd = (k) => { keyList.push(k); try { if (keysReg()?.add) keysReg().add({ area: 'Capture', ...k }); } catch { /* the keys list is optional */ } };
-  addEventListener('DOMContentLoaded', () => { if (keysReg()?.add && !keyAdd.flushed) { keyAdd.flushed = true; for (const k of keyList) { try { keysReg().add({ area: 'Capture', ...k }); } catch { /* optional */ } } } });
+  // the registry keeps Ctrl / Alt (keys-ui shows ⌘ / ⌥ on a Mac itself, and reads the combo to press it for you)
+  const plainKeys = (k) => String(k || '').replace(/⌘/g, 'Ctrl').replace(/⌥/g, 'Alt');
+  const keyAdd = (k) => { keyList.push(k); try { if (keysReg()?.add) keysReg().add({ area: 'Capture', ...k, keys: plainKeys(k.keys) }); } catch { /* the keys list is optional */ } };
+  addEventListener('DOMContentLoaded', () => { if (keysReg()?.add && !keyAdd.flushed) { keyAdd.flushed = true; for (const k of keyList) { try { keysReg().add({ area: 'Capture', ...k, keys: plainKeys(k.keys) }); } catch { /* optional */ } } } });
 
   // ---------- menus with submenus ----------
   // Items with `items: [...]` (or a function returning them) open in place with a "‹ back" row. Works with the
