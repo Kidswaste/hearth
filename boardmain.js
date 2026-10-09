@@ -76,13 +76,14 @@ async function snapOnce(url, { width, height, wait, timeout }) {
     ses.on('will-download', (e) => e.preventDefault());
   }
   const w = new BrowserWindow({
-    show: false, width, height, useContentSize: true,
+    show: false, width, height, useContentSize: true, enableLargerThanScreen: true, // tall / wide snapshots aren't clipped to the screen
     webPreferences: { offscreen: true, sandbox: true, contextIsolation: true, nodeIntegration: false, partition: 'board-snap', backgroundThrottling: false, autoplayPolicy: 'document-user-activation-required', spellcheck: false },
   });
   const wc = w.webContents;
   wc.setAudioMuted(true);
   wc.setWindowOpenHandler(() => ({ action: 'deny' }));
   try { wc.setFrameRate(8); } catch { /* older Electron */ }
+  try { w.setContentSize(width, height); } catch { /* clamped by the system */ }
   let favicon = null;
   let lastPaint = null;
   wc.on('page-favicon-updated', (_e, icons) => { favicon = icons?.[0] || favicon; });
@@ -107,7 +108,7 @@ async function snapOnce(url, { width, height, wait, timeout }) {
         headingFont: font('h1, h2, header, .title'), bodyFont: font('p, article, main, body'), headingWeight: weight('h1, h2'), background: bg, icon,
         words: (document.body?.innerText || '').split(/\\s+/).length };
     })()`, true), new Promise((r) => setTimeout(() => r({}), 3000))]).catch(() => ({}));
-    let img = await wc.capturePage().catch(() => null);
+    let img = await Promise.race([wc.capturePage().catch(() => null), new Promise((r) => setTimeout(() => r(null), 4000))]);
     if (!img || img.isEmpty()) img = lastPaint;
     let shot = null;
     if (img && !img.isEmpty()) {
