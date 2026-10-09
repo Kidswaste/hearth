@@ -993,6 +993,7 @@ const ThreeFrames = (() => {
       if (!['step', 'frame', 'read'].includes(act) && args.frame == null) return null;
       if (!P()?.loaded) return { ok: false, error: 'No music or footage loaded.' };
       if (!on()) return { ok: false, error: P().isVideo ? 'Frame mode is off for this video (/footage on).' : 'Frames work on video footage: the loaded file is a song (seek with time).' };
+      await ensureSandbox();
       if (act === 'step') step(Math.round(Number(args.n ?? args.frames ?? 1)) || 1);
       else if (act === 'frame' || args.frame != null) { const n = resolve(F.clock, typeof args.frame === 'number' ? { frame: args.frame } : parse(F.clock, args.frame ?? args.time), frameNow()); if (n == null) return { ok: false, error: 'frame: a number, "f120", "+10f" or a timecode' }; go(n); }
       await settle();
@@ -1003,6 +1004,14 @@ const ThreeFrames = (() => {
     }
     if (tool === 'three_footage') return footageTool(args);
     return null;
+  }
+  // the preview page lost the footage (a page that came back without a run): send it again, with its clock and cut
+  async function ensureSandbox() {
+    const has = async () => { const r = await ThreeLab.director?.evalInSketch?.('return media.fps').catch(() => null); return r?.ok && r.value > 0; };
+    if (await has()) return true;
+    P().attach({ playing: false });
+    for (let i = 0; i < 40; i += 1) { await wait(100); if (await has()) { await wait(150); return true; } }
+    return false;
   }
   async function settle() { const t = performance.now(); while (performance.now() - t < 1500 && F.pres?.req !== F.req && !P().playing) await wait(40); }
   async function footageTool(a) {
