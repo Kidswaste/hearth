@@ -111,6 +111,7 @@ const ThreeSeq = (() => {
     if (!e.seq?.lab) e.seq = { ...(e.seq || {}), lab: true };
     S.key = key; S.edit = e; S.undo = []; S.redo = []; S.sel.clear(); S.T = 0; S.vr = null;
     store.set('three.seq.current', key);
+    emit('change', { key }); // the name chip follows
     await ensureSong();
     if (show) await enter();
     else { redraw(); pushPlan(); }
@@ -1017,6 +1018,7 @@ const ThreeSeq = (() => {
     await VC().storeEdit(key, e, 'Renamed');
     VideoCut.deleteSequence(S.key);
     S.key = key; S.edit = e; store.set('three.seq.current', key);
+    emit('change', { key });
     flash(`“${name}”`);
     return key;
   }

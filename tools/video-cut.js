@@ -1060,6 +1060,7 @@ const VideoCut = (() => {
     const visual = c.kind !== 'audio' && c.kind !== 'gap';
     const i = isItem ? -1 : f?.i ?? -1;
     showMenu(x, y, [
+      c.kind === 'scene' && typeof ThreeSeq !== 'undefined' ? { label: `◭ Edit “${c.name || 'the scene'}” in the Lab`, action: () => ThreeSeq.fromEditor(st.path).catch((err) => toast(err.message, { type: 'error' })) } : null,
       { label: 'Split here (S)', action: () => (isItem ? commit(C.splitItems(st.edit, T, ids), '✂ Split') : commit(C.split(st.edit, T), 'Split')) },
       isItem ? { label: 'Delete (Del)', action: () => commit(C.removeItems(st.edit, ids), 'Deleted') } : { label: 'Delete', items: [
         { label: 'Leave a gap (Del)', action: () => del(false) }, { label: 'Ripple delete (Shift+Del)', action: () => del(true) }] },
@@ -2010,6 +2011,8 @@ const VideoCut = (() => {
       ].filter(Boolean) },
       { label: 'Snapshots', items: () => [{ label: 'Save a snapshot of this edit…', action: async () => { const v = await Modal.prompt('Snapshot name', { value: '' }); if (v != null) snapshot(v.trim()); } }, ...snapCache.map((s0, i) => ({ label: `Back to “${s0.name}” (${new Date(s0.at).toLocaleTimeString()})`, action: () => restoreSnapshot(i) }))] },
       { label: 'Sequence', items: () => [
+        // a Lab sequence (tools/three-seq.js): the same edit goes back to the Lab's timeline
+        st.edit.seq?.lab && typeof ThreeSeq !== 'undefined' ? { label: '◭ Back to the Lab sequence', action: () => ThreeSeq.fromEditor(st.path).catch((err) => toast(err.message, { type: 'error' })) } : null,
         { label: 'Duplicate this edit as a new sequence', action: () => duplicateSequence() },
         isSeq() ? { label: 'Rename the sequence…', action: async () => { const v = await Modal.prompt('Sequence name', { value: st.path.slice(4) }); if (v?.trim()) renameSequence(v.trim()); } } : null,
         { label: 'Save as an EDL (for other editors)', action: () => exportEdl() },
