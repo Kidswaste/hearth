@@ -594,6 +594,9 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
   // asDirector: 'three' (a jam's build turn on an agent that isn't a Lab director, e.g. your Astra): this one turn gets
   // the Lab's tools, Codex through its MCP overrides
   if (options.asDirector === 'three') agent = { ...agent, threeTools: true, hubTools: agent.engine === 'codex' ? true : agent.hubTools, dock: agent.dock || 'three' };
+  // asDirector: 'video' (a video project's director pass, intro.js, on an agent that isn't the Video Director, e.g. Astra):
+  // this one run gets the editor and the capture tools
+  if (options.asDirector === 'video') agent = { ...agent, videoTools: true, captureTools: true, hubTools: agent.engine === 'codex' ? true : agent.hubTools };
   // a chat that turned on /capture-tools gets the capture tool set for its runs (not lean ones)
   if (options.captureTools && !options.lean) agent = { ...agent, captureTools: true };
   if (chatId && !String(chatId).startsWith('once-') && hubToolsets(agent).some((k) => k !== 'chatTools')) agent = { ...agent, hubChatId: chatId };

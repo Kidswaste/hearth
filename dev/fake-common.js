@@ -19,6 +19,10 @@
 // pick"): a build sets a real sketch through the Lab's MCP tools, a direction is two short lines, a pick names a round.
 // In the jam's idea: jam-break makes builds fail (until a "fix the errors first" turn), jam-break-hard always,
 // jam-astra-down fails Codex.
+// Video project turns (intro.js) are recognized by their first line too: "Intro · plan" (Astra decides: template /
+// hook / end / titles / cuts lines), "Intro · words" (one "n | words" line per beat), "Intro · director" (the director
+// pass: real MCP calls to video_edit_read, video_edit op project / transition and capture_list). The review uses the
+// assist reply ("m:ss | note" lines).
 // Env: FAKE_DELAY (ms between pieces, default 15), FAKE_STATE (folder for per-session turn counts).
 const fs = require('fs');
 const os = require('os');
@@ -107,6 +111,25 @@ function jamPlan(msg, engine) {
   return null;
 }
 
+// Video projects (intro.js): Astra decides the plan, rewrites the words, a director polishes the edit with real tools.
+function introPlan(msg) {
+  const head = msg.split('\n')[0];
+  if (!/^Intro · /.test(head)) return null;
+  if (/^Intro · plan/.test(head)) return { text: 'template: launch\nhook: Two AIs. One window.\nend: out now\ntitles: forge\ncuts: bold' };
+  if (/^Intro · words/.test(head)) {
+    const n = Number((msg.match(/numbered 1–(\d+)/) || [])[1]) || 3;
+    const words = ['One window.', 'Two minds.', 'Shape it live.', 'Cut every frame.', 'Your references, a vibe.', 'Made in Hearth.', 'Out now.', 'Try it tonight.'];
+    return { text: Array.from({ length: n }, (_, i) => `${i + 1} | ${words[i % words.length]}`).join('\n') };
+  }
+  if (/^Intro · director/.test(head)) {
+    return {
+      mcpCalls: [['video_edit_read', { what: 'clips' }], ['video_edit', { op: 'project', action: 'status' }], ['video_edit', { op: 'transition', all: true, type: 'dissolve', dur: 0.3 }], ['video_edit', { op: 'project', action: 'note', text: 'Dissolves on every cut' }], ['capture_list', {}]],
+      text: 'Polished it: dissolves on every cut, checked the project status and the captures.',
+    };
+  }
+  return null;
+}
+
 // A transparent layer (for directors without the node tool): one shape, sliders, motion on time only.
 function layerCode(name, seed) {
   const color = JAM_COLORS[seed % JAM_COLORS.length];
@@ -157,6 +180,11 @@ function directorPlan(prompt, msg, engine) {
 
 function plan(prompt, engine = 'claude') {
   const msg = userPart(prompt);
+  const intro = introPlan(msg);
+  if (intro) {
+    const p = { mcp: Boolean(intro.mcpCalls), mcpCalls: intro.mcpCalls || null };
+    return { p, text: intro.text, thinking: '' };
+  }
   const jam = jamPlan(msg, engine);
   const dir = jam ? null : directorPlan(prompt, msg, engine);
   if (dir) {
@@ -231,6 +259,6 @@ function mcpClient({ command, args = [], env = {} }) {
   })();
 }
 // Which server a tool belongs to (by prefix), from the servers the CLI was given.
-const serverFor = (servers, tool) => servers[{ three: 'three', video: 'video', ae: 'video', forge: 'forgeheart', chat: 'chat' }[tool.split('_')[0]]] || null;
+const serverFor = (servers, tool) => servers[{ three: 'three', video: 'video', ae: 'video', forge: 'forgeheart', chat: 'chat', capture: 'capture', board: 'board', hearth: 'video' }[tool.split('_')[0]]] || null;
 
 module.exports = { readStdin, sleep, out, uuid, loadState, saveState, plan, pieces, delayMs, mcpClient, serverFor };
