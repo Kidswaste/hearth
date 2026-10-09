@@ -61,6 +61,12 @@ const EditFX = (() => {
     { id: 'settle', name: 'Settle (soft spring)', fn: (p) => 1 - Math.exp(-5 * p) * Math.cos(7 * p) * (1 - p) },
     { id: 'steps2', name: 'Steps ×2', fn: (p) => (p >= 1 ? 1 : Math.floor(p * 2) / 2) },
     { id: 'steps12', name: 'Steps ×12 (stop motion, fine)', fn: (p) => (p >= 1 ? 1 : Math.floor(p * 12) / 12) },
+    { id: 'slowmid', name: 'Slow middle (fast, slow, fast)', fn: (p) => 0.5 + Math.sign(p - 0.5) * Math.abs(2 * p - 1) ** 3 / 2 },
+    { id: 'bounce-soft', name: 'Soft bounce', fn: (p) => 1 - Math.abs(Math.cos(p * PI * 2.5)) * (1 - p) ** 2 },
+    { id: 'expo-strong', name: 'Expo out (stronger)', fn: (p) => (p >= 1 ? 1 : 1 - 2 ** (-14 * p)) },
+    { id: 'sine-wave', name: 'Sine wave (back and forth, ends at 1)', fn: (p) => p + Math.sin(p * PI * 4) * 0.15 * Math.sin(p * PI) },
+    { id: 'late', name: 'Late (waits, then moves)', fn: bezier(0.9, 0, 0.6, 1) },
+    { id: 'early', name: 'Early (moves, then waits)', fn: bezier(0.1, 0.6, 0.2, 1) },
     ...Object.keys(BASE).flatMap((k) => [
       { id: `${k}In`, name: `${NAMES[k]} in`, fn: BASE[k] },
       { id: `${k}Out`, name: `${NAMES[k]} out`, fn: outOf(BASE[k]) },
@@ -641,6 +647,17 @@ const EditFX = (() => {
       T('stretch', 'Stretch through', 'Motion', null, (g, A, B, q, W, H) => { const S0 = q < 0.5 ? A : B; const k = 1 + 3 * Math.sin(q * PI); g.drawImage(S0, (W - W * k) / 2, 0, W * k, H); }, 0.4, { expr: `if(lt(${p},0.5),${pick('a', `(X-W/2)/(1+3*sin(${p}*PI))+W/2`, 'Y')},${pick('b', `(X-W/2)/(1+3*sin(${p}*PI))+W/2`, 'Y')})` }),
       T('ripple', 'Ripple', 'Motion', null, (g, A, B, q, W, H) => { const n = 24; const amp = W * 0.03 * Math.sin(q * PI); for (let j = 0; j < n; j += 1) { const y = (j * H) / n; const dx = Math.sin(j * 0.8 + q * 20) * amp; g.globalAlpha = 1; g.drawImage(A, 0, (y / H) * A.height, A.width, A.height / n, dx, y, W, H / n + 1); g.globalAlpha = q; g.drawImage(B, 0, (y / H) * B.height, B.width, B.height / n, dx, y, W, H / n + 1); } g.globalAlpha = 1; }, 0.7, { expr: `${pick('a', `X+sin(Y/20+${p}*20)*W*0.03*sin(${p}*PI)`, 'Y')}*P+${pick('b', `X+sin(Y/20+${p}*20)*W*0.03*sin(${p}*PI)`, 'Y')}*${p}` }),
       T('slide-fade-left', 'Slide and fade left', 'Push', null, (g, A, B, q, W, H) => { g.globalAlpha = 1 - q; g.drawImage(A, -W * 0.2 * q, 0, W, H); g.globalAlpha = q; g.drawImage(B, W * 0.2 * (1 - q), 0, W, H); g.globalAlpha = 1; }, 0.5, { expr: `${pick('a', `X+W*0.2*${p}`, 'Y')}*P+${pick('b', `X-W*0.2*P`, 'Y')}*${p}` }),
+      ...[['left', 1, 0], ['right', -1, 0], ['up', 0, 1], ['down', 0, -1]].map(([d, sx, sy]) => T(`blur-push-${d}`, `Push with motion blur ${d}`, 'Push', null, (g, A, B, q, W, H) => { g.filter = `blur(${(Math.sin(q * PI) * 10).toFixed(1)}px)`; slide(d, 'push')(g, A, B, q, W, H); g.filter = 'none'; }, 0.4, { expr: (() => { const sm = (who, k) => pick(who, `X+(${sx}*W*${p})+${sx}*${k}*W*0.015*sin(${p}*PI)`, `Y+(${sy}*H*${p})+${sy}*${k}*H*0.015*sin(${p}*PI)`); const inA = `between(X+${sx}*W*${p},0,W-1)*between(Y+${sy}*H*${p},0,H-1)`; const bb = (k) => pick('b', `X+${sx}*W*${p}-${sx}*W+${sx}*${k}*W*0.015*sin(${p}*PI)`, `Y+${sy}*H*${p}-${sy}*H+${sy}*${k}*H*0.015*sin(${p}*PI)`); return `if(${inA},(${sm('a', -1)}+${sm('a', 0)}+${sm('a', 1)})/3,(${bb(-1)}+${bb(0)}+${bb(1)})/3)`; })() })),
+      ...[['tl', 0, 0], ['tr', 1, 0], ['bl', 0, 1], ['br', 1, 1]].map(([n0, cx, cy]) => T(`iris-${n0}`, `Iris from the ${{ tl: 'top left', tr: 'top right', bl: 'bottom left', br: 'bottom right' }[n0]} corner`, 'Shape', null, (g, A, B, q, W, H) => { full(g, A, W, H); sub(g, () => { g.beginPath(); g.arc(cx * W, cy * H, Math.hypot(W, H) * q, 0, PI * 2); g.clip(); full(g, B, W, H); }); }, 0.6, { expr: AorB(`lt(hypot(X-${cx}*W,Y-${cy}*H),hypot(W,H)*${p})`) })),
+      T('diamond-close', 'Diamond close', 'Shape', null, (g, A, B, q, W, H) => { full(g, B, W, H); sub(g, () => { const k = (1 - q) * 1.05; g.beginPath(); g.moveTo(W / 2, H / 2 - H * k); g.lineTo(W / 2 + W * k, H / 2); g.lineTo(W / 2, H / 2 + H * k); g.lineTo(W / 2 - W * k, H / 2); g.closePath(); g.clip(); full(g, A, W, H); }); }, 0.6, { expr: `if(lt(abs(X-W/2)/W+abs(Y-H/2)/H,P*1.05),A,B)` }),
+      T('checker-big', 'Checkerboard (big squares)', 'Shape', null, gridRule(4, 7, (i, j, q) => q > 0.5 * ((i + j) % 2)), 0.6, { expr: AorB(`gt(${p},0.5*mod(floor(X/(W/4))+floor(Y/(H/7)),2))`) }),
+      T('blocks-fine', 'Random blocks (fine)', 'Shape', null, gridRule(18, 32, (i, j, q) => jsHash(i, j) < q), 0.6, { expr: AorB(`lt(${hash('floor(X/(W/18))', 'floor(Y/(H/32))')},${p})`) }),
+      T('blinds-diag', 'Diagonal blinds', 'Shape', null, (g, A, B, q, W, H) => { full(g, A, W, H); sub(g, () => { g.beginPath(); const n = 12; const L0 = W + H; for (let i = -1; i < n + 1; i += 1) { const x0 = (i * L0) / n - H; g.moveTo(x0, 0); g.lineTo(x0 + (L0 / n) * q, 0); g.lineTo(x0 + (L0 / n) * q + H, H); g.lineTo(x0 + H, H); g.closePath(); } g.clip(); full(g, B, W, H); }); }, 0.6, { expr: AorB(`lt(mod(X+Y,(W+H)/12),${p}*(W+H)/12)`) }),
+      ...[['ember', '#ff7a2b'], ['violet', '#9a6bff'], ['cyan', '#22d3ee'], ['pink', '#ff4fa3']].map(([n0, col]) => T(`flash-${n0}`, `Flash (${n0})`, 'Dip', null, flash(col), 0.3, { expr: flashExpr(col) })),
+      ...[['ember', '#ff5a1f'], ['violet', '#8a5bff'], ['cyan', '#22d3ee'], ['pink', '#ff4fa3']].map(([n0, col]) => { const c3 = yuv(col); return T(`leak-${n0}`, `Light leak (${n0})`, 'Light', null, (g, A, B, q, W, H) => { dissolve(g, A, B, q, W, H); const [r, gg, b] = hex3(col).map((v) => Math.round(v * 255)); const gr = g.createLinearGradient(W, 0, 0, H); gr.addColorStop(0, `rgba(${r},${gg},${b},0)`); gr.addColorStop(0.5, `rgba(${r},${gg},${b},${(0.8 * Math.sin(q * PI)).toFixed(2)})`); gr.addColorStop(1, `rgba(${r},${gg},${b},0)`); g.globalCompositeOperation = 'screen'; g.fillStyle = gr; g.fillRect(0, 0, W, H); g.globalCompositeOperation = 'source-over'; }, 0.8, { expr: `min(255,A*P+B*${p}+(${C3(c3)}-if(eq(PLANE,0),16,128))*0.8*sin(${p}*PI)*(1-abs(((W-X)/W+Y/H)/2-0.5)*2))` }); }),
+      T('black-crush', 'Crush to black and back', 'Light', null, (g, A, B, q, W, H) => { full(g, q < 0.5 ? A : B, W, H); g.globalAlpha = Math.sin(q * PI) ** 0.5; g.fillStyle = '#000'; g.fillRect(0, 0, W, H); g.globalAlpha = 1; }, 0.5, { expr: `if(lt(${p},0.5),A,B)*(1-pow(sin(${p}*PI),0.5))+${C3(yuv('#000000'))}*pow(sin(${p}*PI),0.5)` }),
+      T('stretch-v', 'Stretch through (vertical)', 'Motion', null, (g, A, B, q, W, H) => { const S0 = q < 0.5 ? A : B; const k = 1 + 3 * Math.sin(q * PI); g.drawImage(S0, 0, (H - H * k) / 2, W, H * k); }, 0.4, { expr: `if(lt(${p},0.5),${pick('a', 'X', `(Y-H/2)/(1+3*sin(${p}*PI))+H/2`)},${pick('b', 'X', `(Y-H/2)/(1+3*sin(${p}*PI))+H/2`)})` }),
+      ...[['white', '#ffffff'], ['cyan', '#22d3ee'], ['violet', '#9a6bff']].map(([n0, col]) => T(`edge-wipe-${n0}`, `Wipe with a ${n0} edge`, 'Wipe', null, (g, A, B, q, W, H) => { wipe('left')(g, A, B, q, W, H); g.fillStyle = col; g.fillRect(W * (1 - q) - W * 0.012, 0, W * 0.024, H); }, 0.5, { expr: `if(lt(abs(X-W*(1-${p})),W*0.012),${C3(yuv(col))},${AorB(`gt(X,W*(1-${p}))`)})` })),
       T('slide-fade-up', 'Slide and fade up', 'Push', null, (g, A, B, q, W, H) => { g.globalAlpha = 1 - q; g.drawImage(A, 0, -H * 0.2 * q, W, H); g.globalAlpha = q; g.drawImage(B, 0, H * 0.2 * (1 - q), W, H); g.globalAlpha = 1; }, 0.5, { expr: `${pick('a', 'X', `Y+H*0.2*${p}`)}*P+${pick('b', 'X', 'Y-H*0.2*P')}*${p}` }),
     ];
   }
@@ -688,6 +705,18 @@ const EditFX = (() => {
     E('pulse', 'Brightness pulse', 'Animated', { pulse: true, ff: (a) => [`eq=brightness='${(0.08 + 0.15 * a).toFixed(3)}*sin(t*2*PI*2)':eval=frame`] }),
     E('fade-gray', 'Desaturate over the clip', 'Animated', { fadeGray: true, ff: () => ["hue=s='max(0,1-t/2)'"] }),
   ];
+  EFFECTS.push(
+    E('quad-mirror', 'Kaleido (four mirrored corners)', 'Geometry', { geo: 'quad', ff: () => ['crop=iw/2:ih/2:0:0', 'split[ma][mb]', '[mb]hflip[mc]', '[ma][mc]hstack', 'split[md][me]', '[me]vflip[mf]', '[md][mf]vstack'] }),
+    E('tile-2', 'Tile 2 × 2', 'Geometry', { tile: 2, ff: () => ['scale=iw/2:ih/2', 'split[ma][mb]', '[ma][mb]hstack', 'split[mc][md]', '[mc][md]vstack'] }),
+    E('tile-3', 'Tile 3 × 3', 'Geometry', { tile: 3, ff: () => ['scale=trunc(iw/6)*2:trunc(ih/6)*2', 'split=3[ma][mb][mc]', '[ma][mb][mc]hstack=3', 'split=3[md][me][mf]', '[md][me][mf]vstack=3'] }),
+    E('polaroid', 'Instant-photo frame', 'Frame', { polaroid: true, ff: () => ["drawbox=x=0:y=0:w=iw:h=ih:c=0xf4f1ea:t='iw*0.045'", "drawbox=x=0:y='ih*0.84':w=iw:h='ih*0.16':c=0xf4f1ea:t=fill"] }),
+    E('vignette-white', 'White vignette (dreamy)', 'Frame', { whiteVig: true, ff: () => ['negate', 'vignette=angle=0.7', 'negate'] }),
+    E('denoise', 'Denoise (clean grain)', 'Stylize', { css: () => 'blur(0.4px)', ff: () => ['hqdn3d=4:3:6:4'] }),
+    E('glow-gold', 'Gold glow', 'Stylize', { glow: 0.6, css: () => 'sepia(0.25) saturate(1.2)', ff: (a) => ['split[ga][gb]', `[gb]gblur=sigma=${(14 + 20 * a).toFixed(1)},colorchannelmixer=rr=1.1:gg=0.85:bb=0.4[gc]`, `[ga][gc]blend=all_mode=screen:all_opacity=${(0.4 + 0.3 * a).toFixed(2)}`] }),
+    E('neon-edges', 'Neon edges (glowing outlines)', 'Stylize', { svg: 'edges', glow: 0.7, ff: () => ['edgedetect=mode=colormix:high=0.15:low=0.04', 'split[ga][gb]', '[gb]gblur=sigma=8[gc]', '[ga][gc]blend=all_mode=screen'] }),
+    E('chroma-strong', 'Strong chromatic split', 'Glitch', { rgb: (a) => 10 + 20 * a, ff: (a) => { const o = Math.round(10 + 20 * a); return [`rgbashift=rh=-${o}:bh=${o}:gv=${Math.round(o / 3)}`]; } }),
+    E('color-noise', 'Color noise', 'Glitch', { noise: 0.55, ff: (a) => [`noise=c0s=${Math.round(10 + 30 * a)}:c1s=${Math.round(20 + 40 * a)}:c2s=${Math.round(20 + 40 * a)}:allf=t`] }),
+  );
   const EFFECT = Object.fromEntries(EFFECTS.map((x) => [x.id, x]));
   void lin;
   // ffmpeg filters of a clip's effects, as one chain (effects that branch, like glow, use labelled pads inside).
@@ -700,7 +729,9 @@ const EditFX = (() => {
       if (!d) continue;
       const parts = d.ff(f.amt ?? 1);
       n += 1;
-      out.push(parts.map((x) => x.replace(/\[(m[a-z]+|g[a-z]+)\]/g, `[$1${tag}${n}]`)).join(parts.some((x) => x.includes('[')) ? ';' : ','));
+      // a part that starts with a labelled input begins a new chain (;), the rest continue the chain (,)
+      const named = parts.map((x) => x.replace(/\[(m[a-z]+|g[a-z]+)\]/g, `[$1${tag}${n}]`));
+      out.push(named.map((x, i) => (i === 0 ? x : `${x.startsWith('[') ? ';' : ','}${x}`)).join(''));
     }
     return out;
   }
@@ -728,6 +759,20 @@ const EditFX = (() => {
     AE('duck', 'Ducked (−12 dB, a music bed under voice)', ['volume=0.25']),
     AE('fade-tail', 'Long tail (gentle fade at the end)', ['areverse', 'afade=t=in:d=1.5', 'areverse']),
   ];
+  AUDIO_FX.push(
+    AE('boost', 'Louder (+6 dB)', ['volume=2']),
+    AE('quieter', 'Quieter (−6 dB)', ['volume=0.5']),
+    AE('limiter', 'Limiter (no clipping)', ['alimiter=limit=0.89']),
+    AE('gate', 'Noise gate', ['agate=threshold=0.02:ratio=4']),
+    AE('denoise', 'Noise reduction', ['afftdn=nr=12']),
+    AE('deess', 'De-ess (softer s sounds)', ['deesser=i=0.5']),
+    AE('chorus', 'Chorus', ['chorus=0.6:0.9:50|60:0.4|0.32:0.25|0.4:2|2.3']),
+    AE('flanger', 'Flanger', ['flanger=delay=2:depth=4:speed=0.4']),
+    AE('phaser', 'Phaser', ['aphaser=type=t:speed=0.6']),
+    AE('tremolo', 'Tremolo', ['tremolo=f=6:d=0.6']),
+    AE('autopan', 'Auto-pan (left ↔ right)', ['apulsator=hz=0.5']),
+    AE('high-cut', 'Soft (cut the highs)', ['lowpass=f=4500']),
+  );
   const AFX = Object.fromEntries(AUDIO_FX.map((x) => [x.id, x]));
   const audioFilters = (afx = []) => (afx || []).flatMap((id) => AFX[id]?.ff || []);
 
@@ -822,6 +867,14 @@ const EditFX = (() => {
     S('stamp', 'Stamp', 'Titles', { box: '#e0202a', pad: 0.3, size: 0.07, weight: 900, upper: true, rotate: -7, tracking: 0.04 }),
     S('quote-gold', 'Gold quote', 'Titles', { font: FONT_SERIF, italic: true, weight: 400, size: 0.06, line: 1.3, color: '#ffd75e' }),
   ];
+  // color families of the most used treatments (neon, outline, box, caption, huge)
+  const TCOLORS = [['white', '#ffffff'], ['gold', '#ffd75e'], ['ember', '#ff6a2b'], ['red', '#ff3b3b'], ['pink', '#ff4fa3'], ['violet', '#9a6bff'], ['blue', '#4d7cff'], ['cyan', '#22d3ee'], ['green', '#22c55e'], ['lime', '#b8ff3b']];
+  for (const [n, c] of TCOLORS) {
+    if (!['gold', 'cyan', 'green', 'violet'].includes(n)) TITLE_STYLES.push(S(`neon-${n}`, `Neon (${n})`, 'Neon colors', { color: '#ffffff', glow: c, size: 0.09, weight: 700 }));
+    if (!['cyan', 'pink', 'gold'].includes(n)) TITLE_STYLES.push(S(`outline-${n}`, `Outline (${n})`, 'Outline colors', { color: 'rgba(0,0,0,0)', stroke: c, strokeW: 0.045, size: 0.11, weight: 900, upper: true }));
+    if (!['red', 'violet', 'gold', 'white'].includes(n)) TITLE_STYLES.push(S(`boxed-${n}`, `Box (${n})`, 'Box colors', { box: c, color: ['lime', 'cyan', 'green'].includes(n) ? '#0a0a0a' : '#ffffff', pad: 0.35, size: 0.06, weight: 800, upper: true }));
+    if (!['gold', 'white'].includes(n)) TITLE_STYLES.push(S(`caption-${n}`, `Caption (${n})`, 'Caption colors', { size: 0.045, weight: 800, y: 0.78, color: c, stroke: '#000', strokeW: 0.08 }));
+  }
   const TSTYLE = Object.fromEntries(TITLE_STYLES.map((s) => [s.id, s]));
   // ---------- titles: animations ----------
   // unit: what moves on its own (all, line, word, char); stagger: how much of the animation time the units are
@@ -902,6 +955,28 @@ const EditFX = (() => {
     A('float-up', 'Float up (slow)', 'all', 0, 'easeOut', (p) => ({ a: p, y: (1 - p) * 1.5 })),
     A('zoom-blur', 'Zoom blur in', 'all', 0, 'expoOut', (p) => ({ a: p, s: 1.6 - 0.6 * p, b: (1 - p) * 24 })),
   ];
+  TITLE_ANIMS.push(
+    A('slide-up', 'Slide in from below', 'all', 0, 'expoOut', (p) => ({ a: Math.min(1, p * 3), y: (1 - p) * 3 })),
+    A('slide-down', 'Slide in from above', 'all', 0, 'expoOut', (p) => ({ a: Math.min(1, p * 3), y: -(1 - p) * 3 })),
+    A('letters-left', 'Letters from the left', 'char', 0.7, 'expoOut', (p) => ({ a: p, x: -(1 - p) * 2 })),
+    A('letters-up', 'Letters from below', 'char', 0.7, 'expoOut', (p) => ({ a: p, y: (1 - p) * 1.5 })),
+    A('letters-pop-spin', 'Letters pop and spin', 'char', 0.7, 'backOut', (p) => ({ a: Math.min(1, p * 2), s: p, r: (1 - p) * -90 })),
+    A('letters-stretch', 'Letters stretch in', 'char', 0.7, 'expoOut', (p) => ({ a: p, sy: 0.2 + 0.8 * p })),
+    A('words-left', 'Words from the left', 'word', 0.6, 'expoOut', (p) => ({ a: p, x: -(1 - p) * 1.5 })),
+    A('words-up', 'Words from below (big move)', 'word', 0.6, 'expoOut', (p) => ({ a: p, y: (1 - p) * 2 })),
+    A('words-blur-zoom', 'Words zoom and blur in', 'word', 0.6, 'expoOut', (p) => ({ a: p, s: 1.5 - 0.5 * p, b: (1 - p) * 20 })),
+    A('words-elastic', 'Words elastic', 'word', 0.6, 'elasticOut', (p) => ({ a: Math.min(1, p * 3), s: p })),
+    A('lines-rise-blur', 'Lines rise and sharpen', 'line', 0.4, 'expoOut', (p) => ({ a: p, y: (1 - p) * 1, b: (1 - p) * 18 })),
+    A('lines-drop-bounce', 'Lines drop and bounce', 'line', 0.4, 'bounceOut', (p) => ({ a: Math.min(1, p * 2), y: -(1 - p) * 2 })),
+    A('spin-zoom', 'Spin and zoom (whole)', 'all', 0, 'backOut', (p) => ({ a: p, s: p, r: (1 - p) * 180 })),
+    A('wipe-reveal-fast', 'Wipe reveal (fast)', 'all', 0, 'expoOut', (p) => ({ k: p })),
+    A('fade-slow', 'Slow fade', 'all', 0, 'easeInOut', (p) => ({ a: p * p })),
+    A('drift-right', 'Drift in from the left (slow)', 'all', 0, 'easeOut', (p) => ({ a: p, x: -(1 - p) * 0.8 })),
+    A('rise-scale', 'Rise and grow', 'all', 0, 'expoOut', (p) => ({ a: p, y: (1 - p) * 0.8, s: 0.85 + 0.15 * p })),
+    A('glitch-heavy', 'Heavy glitch', 'all', 0, 'linear', (p) => ({ a: p > 0.1 ? 1 : 0, x: p < 1 ? Math.sin(p * 140) * (1 - p) * 1.5 : 0, rgb: 1.5 * (1 - p) })),
+    A('neon-on', 'Neon switch-on (whole)', 'all', 0, 'linear', (p) => ({ a: p >= 1 ? 1 : (Math.abs(Math.sin(p * 61)) > 0.7 - p * 0.7 ? 1 : 0.08) })),
+    A('scale-down-in', 'Shrink in (from huge)', 'all', 0, 'expoOut', (p) => ({ a: Math.min(1, p * 2), s: 4 - 3 * p })),
+  );
   const TANIM = Object.fromEntries(TITLE_ANIMS.map((a) => [a.id, a]));
   // Lower thirds: two lines (name · role) with an accent; each a style + animation + bar.
   const LT = (id, name, s) => ({ id, name, s: { font: FONT_SANS, weight: 800, size: 0.045, color: '#ffffff', align: 'left', x: 0.07, y: 0.8, line: 1.25, sub: 0.6, ...s } });
@@ -991,6 +1066,23 @@ const EditFX = (() => {
     M('sway', 'Sway', 'Slow', (d) => { const k = []; const n = Math.max(2, Math.round(d * 1.5)); for (let i = 0; i <= n; i += 1) k.push([(d * i) / n, i % 2 ? 2 : -2, 'easeInOut']); return { rotate: k, scale: [[0, 1.08]] }; }),
     M('reset', 'No motion (reset)', 'Layout', () => ({})),
   ];
+  for (const [n, sx, sy] of [['tl', -1, -1], ['tr', 1, -1], ['bl', -1, 1], ['br', 1, 1]]) {
+    const where = { tl: 'top left', tr: 'top right', bl: 'bottom left', br: 'bottom right' }[n];
+    MOTIONS.push(M(`kb-${n}`, `Ken Burns toward the ${where}`, 'Slow', (d) => ({ scale: [[0, 1.05, 'easeInOut'], [d, 1.25]], x: [[0, 0, 'easeInOut'], [d, sx * 0.06]], y: [[0, 0, 'easeInOut'], [d, sy * 0.06]] })));
+    MOTIONS.push(M(`pan-${n}`, `Diagonal pan to the ${where}`, 'Slow', (d) => ({ scale: [[0, 1.25]], x: [[0, -sx * 0.06, 'linear'], [d, sx * 0.06]], y: [[0, -sy * 0.06, 'linear'], [d, sy * 0.06]] })));
+    MOTIONS.push(M(`pip-small-${n}`, `Small picture in picture (${where})`, 'Layout', () => ({ scale: [[0, 0.25]], x: [[0, sx * 0.35]], y: [[0, sy * 0.36]] })));
+    MOTIONS.push(M(`pip-in-${n}`, `Picture in picture flies in (${where})`, 'Layout', (d) => ({ scale: [[0, 0.35]], x: [[0, sx * 1.2, 'expoOut'], [Math.min(0.6, d / 2), sx * 0.3]], y: [[0, sy * 0.3]] })));
+  }
+  MOTIONS.push(
+    M('thirds-left', 'Thirds: left third', 'Layout', () => ({ scale: [[0, 0.333]], x: [[0, -0.333]] })),
+    M('thirds-center', 'Thirds: middle third', 'Layout', () => ({ scale: [[0, 0.333]] })),
+    M('thirds-right', 'Thirds: right third', 'Layout', () => ({ scale: [[0, 0.333]], x: [[0, 0.333]] })),
+    M('card', 'Card (80 %, centered)', 'Layout', () => ({ scale: [[0, 0.8]] })),
+    M('tilted-card', 'Tilted card', 'Layout', () => ({ scale: [[0, 0.75]], rotate: [[0, -6]] })),
+    M('pulse-beat', 'Pulse on 120 bpm', 'Hits', (d) => { const k = []; for (let t = 0; t < d; t += 0.5) { k.push([t, 1.08, 'expoOut']); k.push([Math.min(d, t + 0.25), 1, 'linear']); } return { scale: k.length ? k : [[0, 1]] }; }),
+    M('flicker', 'Flicker', 'Hits', (d) => { const k = []; const n0 = Math.max(4, Math.round(d * 10)); for (let i = 0; i <= n0; i += 1) k.push([(d * i) / n0, i % 3 === 1 ? 0.25 : 1, 'hold']); return { opacity: k }; }),
+    M('fade-in-out', 'Fade in and out', 'Enter', (d) => ({ opacity: [[0, 0, 'ease'], [Math.min(0.5, d / 3), 1, 'linear'], [Math.max(d / 2, d - 0.5), 1, 'ease'], [d, 0]] })),
+  );
   const MOTION = Object.fromEntries(MOTIONS.map((m) => [m.id, m]));
 
   // ---------- speed ramps ----------
@@ -1031,8 +1123,14 @@ const EditFX = (() => {
     F('2.39', 'Scope 2.39:1', 1920, 804, 'Movie letterbox'),
     F('1.85', 'Flat 1.85:1', 1998, 1080, 'Cinema flat'),
     F('story', 'Story 9:16 with safe margins', 1080, 1920, 'Stories'),
+    F('9:16-4k', '9:16 4K', 2160, 3840, 'Vertical masters'),
+    F('16:9-1440', '16:9 1440p', 2560, 1440, 'YouTube\'s better encode'),
+    F('1:1-720', '1:1 720 (light)', 720, 720, 'Drafts'),
+    F('4:5-720', '4:5 720 (light)', 720, 900, 'Drafts'),
+    F('2:1', 'Wide 2:1', 2000, 1000, 'Web banners'),
+    F('5:4', 'Classic 5:4', 1350, 1080, 'Print-like'),
   ];
-  const FPS = [23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60];
+  const FPS = [12, 15, 23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60, 100, 120];
 
   // ---------- more export presets (on top of VideoData.EXPORT_PRESETS) ----------
   // Same fields as VideoData's presets (w, h, fps, mbps, codec, audio…); the cut's export passes them through

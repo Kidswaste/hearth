@@ -266,6 +266,12 @@ const VideoComp = (() => {
       pixCanvas.getContext('2d').drawImage(pic, 0, 0, pixCanvas.width, pixCanvas.height);
       const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
       g.drawImage(pixCanvas, x0, y0, fw, fh); g.imageSmoothingEnabled = sm;
+    } else if (has('quad')) {
+      // the top-left quarter, mirrored into all four corners
+      for (const [sx, sy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) { g.save(); g.scale(sx, sy); g.drawImage(pic, 0, 0, pw / 2, ph / 2, x0, y0, fw / 2, fh / 2); g.restore(); }
+    } else if (has('tile')) {
+      const n = has('tile').tile;
+      for (let i = 0; i < n; i += 1) for (let j = 0; j < n; j += 1) g.drawImage(pic, x0 + (i * fw) / n, y0 + (j * fh) / n, fw / n, fh / n);
     } else if (has('symL')) {
       g.drawImage(pic, 0, 0, pw / 2, ph, x0, y0, fw / 2, fh);
       g.save(); g.scale(-1, 1); g.drawImage(pic, 0, 0, pw / 2, ph, x0, y0, fw / 2, fh); g.restore();
@@ -306,6 +312,8 @@ const VideoComp = (() => {
         g.save(); g.translate(-ox, -ox); g.fillStyle = pat; g.fillRect(x0 + ox, y0 + ox, fw, fh); g.restore();
         g.globalCompositeOperation = 'source-over'; g.globalAlpha = a0;
       }
+      if (f.polaroid) { g.fillStyle = '#f4f1ea'; const t = fw * 0.045; g.fillRect(x0, y0, fw, t); g.fillRect(x0, y0, t, fh); g.fillRect(x0 + fw - t, y0, t, fh); g.fillRect(x0, y0 + fh * 0.84, fw, fh * 0.16); }
+      if (f.whiteVig) { const gr = g.createRadialGradient(0, 0, Math.min(fw, fh) * 0.3, 0, 0, Math.hypot(fw, fh) / 2); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(1, 'rgba(255,255,255,0.75)'); g.fillStyle = gr; g.fillRect(x0, y0, fw, fh); }
       if (f.vignette) { const gr = g.createRadialGradient(0, 0, Math.min(fw, fh) * 0.25, 0, 0, Math.hypot(fw, fh) / 2); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, `rgba(0,0,0,${(f.vignette * 0.85).toFixed(2)})`); g.fillStyle = gr; g.fillRect(x0, y0, fw, fh); }
       if (f.strobe && T % 0.5 < 0.06) { g.fillStyle = 'rgba(255,255,255,0.45)'; g.fillRect(x0, y0, fw, fh); }
     }
