@@ -221,8 +221,9 @@ const BoardVibe = (() => {
       let dh = 0; for (let j = 0; j < 24; j++) dh += Math.abs(hists[i][j] - hists[i - 1][j]);
       diffs.push({ t: i * step, px: dp / lumas[i].length, hist: dh / 6 });
     }
-    const med = median(diffs.map((x) => x.px));
-    const cuts = diffs.filter((x) => x.px > Math.max(0.12, med * 3.2) && x.hist > 0.08).map((x) => r2(x.t));
+    const med = median(diffs.map((x) => x.px)); const medH = median(diffs.map((x) => x.hist));
+    // a jump in brightness, or a jump in color alone (red → blue can keep the same brightness)
+    const cuts = diffs.filter((x) => (x.px > Math.max(0.12, med * 3.2) && x.hist > 0.08) || x.hist > Math.max(0.3, medH * 4)).map((x) => r2(x.t));
     const calm = diffs.filter((x) => !cuts.includes(r2(x.t))).map((x) => x.px);
     const motion = r2(clamp((calm.length ? calm.reduce((a, b) => a + b, 0) / calm.length : 0) * (0.25 / step) / 0.07));
     const shots = cuts.length + 1;

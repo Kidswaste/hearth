@@ -9,7 +9,7 @@ const TOPICS = {
   Claude and Astra are interchangeable directors: same tools, same guide, same chat, same scene. Hearth keeps the chat's task state for whoever runs next (topic handoff).
   Everything is drivable by chat commands (/name args); suggest them to the owner, run Lab ones yourself (topic commands).
   The owner doesn't write code; they describe, then shape results with sliders, looks, frame sizes and the timeline. They want few choices: decide small things yourself.
-  Topics: lab, nodes, react, commands, handoff, habits, video, then the Lab's own (layers, sliders, keyframes, timeline, filters, looks, audio, refs, notes, scene, live, games, frame, bigcode).`,
+  Topics: lab, nodes, react, commands, handoff, habits, video, board, then the Lab's own (layers, sliders, keyframes, timeline, filters, looks, audio, refs, notes, scene, live, games, frame, bigcode).`,
   lab: `THE LAB'S MODEL (After Effects with code), bottom up:
   sketch (one per director chat; the owner's other sketches stay untouched)
   → layers, stacked bottom first; each is its own three.js module (renderer, scene, camera), with opacity, blend, x / y / scale / rotate and an in / out time on the song with fades. Filter layers (ascii, vhs, glitch, crt, glow…) restyle every layer below them.
@@ -42,11 +42,15 @@ const TOPICS = {
   5. Look before claiming it works (three_screenshot small, or shot: true on an edit); fix errors first.
   6. Decide small things yourself; ask (chat_ask) only for real choices. Don't paste code: say what you made and what to ask next.`,
   video: `VIDEO REVIEW (the Video Director's tool): the owner's renders (newest first), a player with A/B compare (wipe, side, onion, difference), timecoded notes with categories, safe zones and crops for socials, contact sheets, ffmpeg export presets (tiktok, reels, shorts, feed45, yt1080…), After Effects renders (aerender) and ExtendScript. Lab recordings land there too. Tools: video_* and ae_*; the owner's notes are in video_status.`,
+  board: `MOOD BOARD (the "Board" rail tool; Ctrl+Shift+M opens it as a drawer over any chat): the owner's references — pictures, clips, websites (live snapshots), notes, colors, frames — on an infinite canvas, several boards, a board can be linked to a chat.
+  REFERENCES GIVE A VIBE, NOT FOOTAGE: take palette, light (key, contrast), color (saturation, warmth), texture (edges, grain), motion energy and cut pacing, composition, type and mood from them; never put the reference media into what you make unless the owner explicitly asks for the clip itself.
+  Hearth reads each reference's vibe locally (no tokens) and sends it as short text: the owner drags a reference into the chat, or types /board-use [palette|light|motion|…], /ref <words>, /vibe. Items in a frame named "Avoid" or stamped ✕ are what NOT to do.
+  With the board tools (opt-in: /board-tools on): board_list, board_vibe { board?, item?, focus?, items?, image? }, board_add { kind, text|url|colors… }, board_arrange { layout }. Commands: /board, /board-add <url>, /board-note, /board-layout, /board-lens, /board-template, /board-export (help board lists all).`,
 };
 
 const LINE = (helpCall) => `HEARTH (the owner's app: Claude and Astra chats, the Lab, Video Review, chat commands): Claude and Astra share this chat, its scene and the task state Hearth keeps. Map: ${helpCall} app|lab|nodes|react|commands|handoff|habits.`;
 
-const ALIAS = { hearth: 'app', overview: 'app', program: 'app', map: 'app', model: 'lab', graph: 'nodes', node: 'nodes', reactive: 'react', reactivity: 'react', command: 'commands', cmds: 'commands', slash: 'commands', task: 'handoff', switch: 'handoff', engines: 'handoff', astra: 'handoff', claude: 'handoff', rules: 'habits', conventions: 'habits', review: 'video', renders: 'video' };
+const ALIAS = { hearth: 'app', overview: 'app', program: 'app', map: 'app', model: 'lab', graph: 'nodes', node: 'nodes', reactive: 'react', reactivity: 'react', command: 'commands', cmds: 'commands', slash: 'commands', task: 'handoff', switch: 'handoff', engines: 'handoff', astra: 'handoff', claude: 'handoff', rules: 'habits', conventions: 'habits', review: 'video', renders: 'video', moodboard: 'board', boards: 'board', refs: 'board', references: 'board', vibe: 'board' };
 
 // topic → text, or null when it isn't a map topic
 function topic(name) {

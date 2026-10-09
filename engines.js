@@ -122,6 +122,8 @@ const HUB_TOOLSETS = {
   // Ask the user questions in the chat, get a second opinion from the other engine. On for every Claude agent
   // unless switched off; opt-in for Astra (it adds tool definitions to every Codex request).
   chatTools: { server: 'chat', script: 'chat-mcp.js' },
+  // The owner's mood board (board.js): read vibes, add, arrange. Opt-in per agent (/board-tools on | directors).
+  boardTools: { server: 'board', script: 'board-mcp.js' },
 };
 // Claude agents get their tool sets (chat tools unless switched off). Codex agents (Astra) get the tool sets their
 // agent has (a director switched to Astra) and chat tools only as an opt-in (talk-back, or agent.hubTools).
@@ -229,11 +231,13 @@ function buildPrompt(agent) {
   }
   if (sets.includes('chatTools')) {
     // directors get the chat tools' when-to-use guide; plain chats only the <suggest> convention
-    if (agent.dock || sets.length > 1) parts.push(toolGuide('chatTools'));
+    if (agent.dock || sets.filter((k) => k !== 'boardTools').length > 1) parts.push(toolGuide('chatTools'));
     parts.push('At the end of a reply, when it helps, offer up to 3 short next steps the user might want, each as <suggest>…</suggest> (they become buttons; keep each under 8 words).');
   } else if (agent.suggestNext) {
     parts.push('At the end of a reply, when it helps, offer up to 3 short next steps the user might want, each as <suggest>…</suggest> (they become buttons; keep each under 8 words).');
   }
+  // the board's one-line guide (references give a vibe, never footage) only for agents that have its tools
+  if (sets.includes('boardTools')) parts.push(toolGuide('boardTools'));
   // Directors (agents docked in a tool) check their own work unless switched off.
   if (agent.selfReview ?? Boolean(agent.dock)) parts.push('Before you finish, check your result against what was asked (for visual work, look at a fresh screenshot). Fix real problems you find, then mention in one line what you checked.');
   // Lean (default): the three-lab tool guide carries the how-to, so the prompt only sets the role. 'full' keeps the long version.
@@ -581,7 +585,7 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
   // A per-run persona replaces the agent's own instructions; "lean" runs (collaborations, quick asks) drop
   // the hub tool sets and file tools so they cost no more than a plain chat turn.
   if (options.persona) agent = { ...agent, systemPrompt: String(options.persona).slice(0, 4000) };
-  if (options.lean) agent = { ...agent, chatTools: false, threeTools: false, videoTools: false, gameTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false };
+  if (options.lean) agent = { ...agent, chatTools: false, threeTools: false, videoTools: false, gameTools: false, boardTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false };
   // "hubOnly" runs (a jam's build turns, jam.js) keep the agent's tool sets (Lab, video…) and drop the rest.
   if (options.hubOnly) agent = { ...agent, chatTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false };
   // asDirector: 'three' (a jam's build turn on an agent that isn't a Lab director, e.g. your Astra): this one turn gets
