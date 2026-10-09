@@ -443,7 +443,17 @@ const Intro = (() => {
       R.beat = b.n;
       b.status = 'capturing'; b.error = null; changed(p);
       try {
-        if (b.kind === 'lab') b.clip = await recordLab(p, b, fmt0);
+        if (b.kind === 'lab') {
+          // a take much shorter than the beat (a busy machine whose encoder fell behind) is taken again once; then
+          // the scene's still with a slow push stands in, said on the card
+          b.clip = await recordLab(p, b, fmt0);
+          if (!R.stopped && (b.clip.dur || 0) < b.secs * 0.6) b.clip = await recordLab(p, b, fmt0);
+          if (!R.stopped && (b.clip.dur || 0) < b.secs * 0.6) {
+            note(p, `Beat ${b.n}: the Lab take was too short (${(b.clip.dur || 0).toFixed(1)} s), so a still of the scene with a slow push stands in (redo the beat to film it again).`);
+            b.shot = (await Capture.shot({ target: 'lab', crop: fmt0, fit: 'crop', clean: true, quiet: true, name: `beat ${b.n} lab still` })).path;
+            b.clip = null;
+          } else b.shot = null;
+        }
         else if (b.kind === 'tour') b.clip = await recordTour(p, b, fmt0);
         else { b.shot = await shotOf(b, fmt0); b.clip = null; }
         b.status = 'captured';
@@ -524,7 +534,12 @@ const Intro = (() => {
         const a = Math.min(0.3, Math.max(0, max - dur)); // skip the take's first frames (a tour settling)
         clip = { ...C.videoClip(b.clip.path, a, Math.min(max, a + dur), max), mute: true };
         if (clip.out - clip.in < dur - 0.02) { clip.speed = Math.max(0.25, (clip.out - clip.in) / dur); } // a short take plays a little slower
-      } else if (b.shot) clip = { id: C.uid(), kind: 'image', src: b.shot, dur, mute: true };
+      } else if (b.shot) {
+        clip = { id: C.uid(), kind: 'image', src: b.shot, dur, mute: true };
+        // a slow push in on a still (the editor's Ken Burns keyframes)
+        const mo = FX.MOTION?.['ken-burns-in']?.fn?.(dur);
+        if (mo) for (const [prop, keys] of Object.entries(mo)) for (const [tt, v, e0] of keys) { clip.keys ||= {}; (clip.keys[prop] ||= []).push({ t: tt, v, ease: e0 || 'ease' }); }
+      }
       else clip = { id: C.uid(), kind: 'color', fill: b.kind === 'end' ? st.backdrop : b.kind === 'stat' ? st.backdrop : st.backdrop, dur, mute: true };
       clip.fadeIn = 0; clip.fadeOut = 0;
       clip.label = `${b.n} ${D.KINDS[b.kind].label}`;
@@ -588,7 +603,13 @@ const Intro = (() => {
     let agent = null; let options = { hubOnly: true, captureTools: true };
     if (side === 'astra') { agent = astraTalk(); options = { ...options, asDirector: 'video' }; } else {
       agent = videoDirector();
-      if (!agent) { await Commands.exec?.('/director-setup video', claudeTalk()?.id); for (let i = 0; i < 30 && !(agent = videoDirector()); i += 1) await sleep(100); }
+      // no Video Director yet: made on the spot (you turned the pass on), docked in Video Review like /director-setup video
+      if (!agent) {
+        H.config.agents.push({ id: `videodirector${H.agent('videodirector') ? Date.now() : ''}`, name: 'Video Director', icon: '🎬', color: '#bd8bff', mode: 'native', engine: 'claude', dock: 'ae', videoTools: true, selfReview: true, enabled: true });
+        await saveConfig();
+        setTimeout(() => { try { Tools.syncDocks?.(); } catch { /* the dock shows later */ } }, 300);
+        for (let i = 0; i < 30 && !(agent = videoDirector()); i += 1) await sleep(100);
+      }
       if (!agent) { agent = claudeTalk(); options = { ...options, asDirector: 'video' }; }
     }
     if (!agent) { note(p, 'No director for the pass.'); return null; }
@@ -616,6 +637,7 @@ const Intro = (() => {
   function small(img, w = 132) { const c = document.createElement('canvas'); c.width = w; c.height = Math.round(w * img.height / img.width); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', 0.7); }
   STEP_FN.review = async (p) => {
     await openEdit(p);
+    const fitted = fitSafe(p);
     const e = VideoCut.edit; const fps = VideoCut.fps;
     const beats = p.plan.beats;
     progress(p, 'review', 0, beats.length);
@@ -637,13 +659,13 @@ const Intro = (() => {
       frames.push({ b, img, t: CutData.frameTime(mid, fps), s });
       progress(p, 'review', i + 1, beats.length);
     }
-    // titles that reach into the apps' buttons / captions (the safe zones of every vertical app)
-    const safe = (() => { try { return (VideoCut.safeCheck('all') || []).filter((x) => !x.inside && x.text); } catch { return []; } })();
+    // titles that reach into the apps' buttons / captions are fitted into the safe zone first (smaller, higher)
+    const safe = (() => { try { return (VideoCut.safeCheck(zoneOf(p)) || []).filter((x) => !x.inside && x.text); } catch { return []; } })();
     const black = beats.filter((b) => b.review?.black).map((b) => b.n);
     const inexact = beats.filter((b) => b.review && !b.review.exact).map((b) => b.n);
     // a contact sheet of the beats for the one lean look (and the card)
     const sheet = await sheetOf(p, frames);
-    p.review = { at: Date.now(), exact: beats.length - inexact.length, of: beats.length, inexact, black, safe: safe.slice(0, 6).map((x) => `${cap(x.text, 40)} (${x.at.toFixed(1)} s)`), sheet, notes: [] };
+    p.review = { fitted, at: Date.now(), exact: beats.length - inexact.length, of: beats.length, inexact, black, safe: safe.slice(0, 6).map((x) => `${cap(x.text, 40)} (${x.at.toFixed(1)} s)`), sheet, notes: [] };
     if (p.reviewAsk !== false && sheet && !R.stopped) {
       const side = p.reviewBy || other(p.lead);
       const r = await ask(p, side, [`Intro · review. A ${p.plan.secs} s video for socials (${p.plan.formats[0]}); the picture shows one frame per beat, left to right, each labelled with its time.`,
@@ -661,6 +683,23 @@ const Intro = (() => {
     if (!p.cover) p.cover = { mode: 'best' };
     pickCoverTime(p);
   };
+  // The safe zone of the main format: every vertical app for 9:16, the feed grid for 4:5, YouTube's player for 16:9
+  const zoneOf = (p) => ({ '9:16': 'all', '4:5': 'feed45', '16:9': 'youtube' }[p.plan.formats[0]] || 'all');
+  // Words outside it get smaller and move toward the middle, a few passes, one undo step; returns how many moved
+  function fitSafe(p) {
+    if (!['9:16', '4:5', '16:9'].includes(p.plan.formats[0]) || p.safeFit === false) return 0;
+    let e; const moved = new Set();
+    for (let pass = 0; pass < 6; pass += 1) {
+      let bad = [];
+      try { bad = (VideoCut.safeCheck(zoneOf(p)) || []).filter((x) => !x.inside && x.text); } catch { break; }
+      if (!bad.length) break;
+      e = CutData.patchAny(VideoCut.edit, bad.map((x) => x.id), (it) => { it.size = Math.round((it.size || 1) * 0.86 * 100) / 100; const y = it.y ?? EditFX.TSTYLE[it.style]?.s?.y ?? 0.5; if (y > 0.66) it.y = Math.max(0.62, Math.round((y - 0.05) * 100) / 100); if (y < 0.2) it.y = 0.22; });
+      for (const x of bad) moved.add(x.id);
+      VideoCut.commit(e, 'Video project: words into the safe zone');
+    }
+    if (moved.size) note(p, `${moved.size} title${moved.size > 1 ? 's' : ''} fitted into the safe zone (smaller / higher).`);
+    return moved.size;
+  }
   async function sheetOf(p, frames) {
     const ok = frames.filter((x) => x.img);
     if (!ok.length) return null;

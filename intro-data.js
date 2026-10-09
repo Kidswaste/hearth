@@ -155,9 +155,9 @@ const IntroData = (() => {
     { id: 'lab', area: 'Lab', name: 'The Lab', secs: 3, steps: 'open three\nwait 0.6s\nzoom ".three-preview" 1.25 1s\nwait 1s\nzoom out 0.4s' },
     { id: 'lab-push', area: 'Lab', name: 'A slow push on the Lab picture', secs: 3, steps: 'open three\nwait 0.5s\npush ".three-preview" 1.35 2.5s' },
     { id: 'lab-sizes', area: 'Lab', name: 'The frame sizes', secs: 3, steps: 'open three\nwait 0.4s\nhighlight ".three-preview" 1.5s\nwait 1.2s' },
-    { id: 'lab-sliders', area: 'Lab', name: 'The sliders', secs: 3, steps: 'open three\nwait 0.4s\nhover ".tw-panel"\nzoom ".tw-panel" 1.3 0.9s\nwait 1.4s\nzoom out 0.4s' },
-    { id: 'lab-timeline', area: 'Lab', name: 'The music timeline', secs: 3, steps: 'open three\nwait 0.4s\nzoom ".three-player" 1.4 0.9s\nwait 1.4s\nzoom out 0.4s' },
-    { id: 'lab-layers', area: 'Lab', name: 'The layers', secs: 3, steps: 'open three\nwait 0.4s\nhighlight ".lab-layers" 1.4s\nwait 1.2s' },
+    { id: 'lab-sliders', area: 'Lab', name: 'The sliders', secs: 3, steps: 'open three\nwait 0.4s\nhover ".tweaks"\nzoom ".tweaks" 1.3 0.9s\nwait 1.4s\nzoom out 0.4s' },
+    { id: 'lab-timeline', area: 'Lab', name: 'The music timeline', secs: 3, steps: 'open three\nwait 0.4s\nzoom ".media-bar" 1.4 0.9s\nwait 1.4s\nzoom out 0.4s' },
+    { id: 'lab-layers', area: 'Lab', name: 'The layers', secs: 3, steps: 'open three\nwait 0.4s\nhighlight ".layers" 1.4s\nwait 1.2s' },
     { id: 'lab-tilt', area: 'Lab', name: 'The Lab in 3D', secs: 3, steps: 'open three\nwait 0.4s\ntilt 12 -8 1.2s\nwait 1s\ntilt 0 0 0.6s' },
     { id: 'director', area: 'Lab', name: 'The Three Director', secs: 3, steps: 'open three\nwait 0.4s\nzoom ".tool-dock" 1.25 1s\nwait 1.2s\nzoom out 0.4s' },
     { id: 'jam', area: 'Jam', name: 'Claude and Astra jamming', secs: 4, steps: 'open three\nwait 0.4s\nhighlight ".jam-card" 1.6s\nzoom ".tool-dock" 1.3 1s\nwait 1.4s\nzoom out 0.5s' },
@@ -165,7 +165,7 @@ const IntroData = (() => {
     { id: 'board', area: 'Board', name: 'The mood board', secs: 3, steps: 'open board\nwait 0.6s\npush ".bd-vp" 1.25 2.2s' },
     { id: 'board-vibe', area: 'Board', name: 'The board\'s vibe', secs: 3, steps: 'open board\nwait 0.5s\nzoom ".bd-vp" 1.5 1s\nwait 1.2s\nzoom out 0.5s' },
     { id: 'board-drift', area: 'Board', name: 'Drifting over the board', secs: 3, steps: 'open board\nwait 0.4s\nzoom ".bd-vp" 1.3 0.6s\npan 120 40 1.6s\nwait 0.4s' },
-    { id: 'editor', area: 'Editor', name: 'The video editor', secs: 3, steps: 'open ae\nwait 0.6s\nzoom ".vr-cut-track" 1.35 1s\nwait 1.2s\nzoom out 0.4s' },
+    { id: 'editor', area: 'Editor', name: 'The video editor', secs: 3, steps: 'open ae\nwait 0.6s\nzoom ".vr-timeline" 1.35 1s\nwait 1.2s\nzoom out 0.4s' },
     { id: 'editor-stage', area: 'Editor', name: 'The program monitor', secs: 3, steps: 'open ae\nwait 0.5s\npush ".vr-stage" 1.2 2.4s' },
     { id: 'editor-timeline', area: 'Editor', name: 'The timeline, close', secs: 3, steps: 'open ae\nwait 0.4s\nzoom ".vr-timeline" 1.6 1s\nwait 1.4s\nzoom out 0.4s' },
     { id: 'review', area: 'Editor', name: 'Video Review', secs: 3, steps: 'open ae\nwait 0.5s\nhighlight ".vr-stage" 1.6s\nwait 1s' },
@@ -184,7 +184,11 @@ const IntroData = (() => {
   function tourText(recipe, format = '9:16', { fps = 30 } = {}) {
     const r = typeof recipe === 'string' ? RECIPE[recipe] : recipe;
     if (!r) return '';
-    return `# ${r.name} (for a video project)\nrecord ${format} ${fps}fps mute mp4\n${r.steps}\nstop`;
+    // the screen it films is opened (and settles) before the recording starts, so the take begins on it
+    const lines = String(r.steps).split('\n');
+    let k = 0; while (k < lines.length && /^(open|wait)\b/.test(lines[k])) k += 1;
+    const pre = lines.slice(0, k);
+    return `# ${r.name} (for a video project)\n${pre.length ? `${pre.join('\n')}\nwait 0.5s\n` : ''}record ${format} ${fps}fps mute mp4\n${lines.slice(k).join('\n')}\nstop`;
   }
   const recipeFor = (area) => RECIPE[area] || RECIPES.find((r) => r.area.toLowerCase() === String(area || '').toLowerCase()) || RECIPE.chats;
 

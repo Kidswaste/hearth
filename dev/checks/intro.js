@@ -19,6 +19,7 @@ const shots = window.SMOKE_SAVES || '/tmp';
 const run = async (line, agentId = C.id) => { let said = ''; let err = ''; await Commands.tryRun(line, agentId, null, { say: (t) => { said += `${t}\n`; }, note: (t) => { said += `${t}\n`; }, error: (m) => { err = m; }, source: 'code', history: false }); return err ? `ERR ${err}` : said.trim(); };
 const card = (p) => document.querySelector(`.intro-card[data-pid="${p.id}"]`);
 const t0 = Date.now();
+try {
 
 // ---------- commands, keys, entry ----------
 out.cmds = ['intro', 'video-projects', 'cut-downs', 'post-text', 'film'].map((n) => [n, Commands.get(n)?.area]);
@@ -100,7 +101,9 @@ out.steps = Object.fromEntries(Object.entries(p.steps).map(([k, v]) => [k, `${v.
 ok(p.status === 'done', `the project is done (${p.status}: ${p.error}) ${JSON.stringify(out.steps)}`);
 out.beats = p.plan.beats.map((b) => `${b.n} ${b.kind} ${b.secs}s${b.clip ? ` clip ${b.clip.path.split('/').pop()} ${b.clip.dur}s ${b.clip.w}x${b.clip.h}` : ''}${b.shot ? ' shot' : ''}${b.jam ? ` jam ${b.jam.status} best ${b.jam.best}/${b.jam.rounds}` : ''}${b.review ? ` review exact ${b.review.exact} luma ${b.review.luma}` : ''}${b.error ? ` ⚠ ${b.error}` : ''} “${b.words || ''}”`);
 out.notes = p.notes;
-ok(p.plan.beats.filter((b) => b.kind === 'lab').every((b) => b.jam?.status === 'done' && b.sketchId && b.clip), 'every Lab beat jammed and recorded');
+// (software WebGL can make the Lab take too short to use: then the scene's still with a push stands in, said on the card)
+ok(p.plan.beats.filter((b) => b.kind === 'lab').every((b) => b.jam?.status === 'done' && b.sketchId && (b.clip?.dur >= b.secs * 0.6 || (b.shot && p.notes.some((n) => /Lab take was too short/.test(n))))), 'every Lab beat jammed and recorded (or its still, said)');
+out.labTakes = p.plan.beats.filter((b) => b.kind === 'lab').map((b) => (b.clip ? `clip ${b.clip.dur}s` : `still ${b.shot?.split('/').pop()}`));
 ok(p.plan.beats.filter((b) => b.kind === 'tour').every((b) => b.clip?.dur > b.secs), 'every tour beat filmed (long enough)');
 out.tokens = p.tokens;
 ok(p.tokens.claude?.turns >= 2 && p.tokens.astra?.turns >= 2, `both engines worked ${JSON.stringify(p.tokens)}`);
@@ -119,7 +122,7 @@ ok(p.director?.ok && p.director.tools >= 4, `the director pass ${JSON.stringify(
 ok(e.clips.slice(1).every((c) => c.trans?.type === 'dissolve'), 'the director put dissolves on every cut');
 ok(p.notes.some((n) => /Dissolves on every cut/.test(n)), 'the director noted it on the card (video_edit op project)');
 // the review
-out.review = { exact: p.review?.exact, of: p.review?.of, black: p.review?.black, safe: p.review?.safe, notes: p.review?.notes, by: p.review?.by, sheet: Boolean(p.review?.sheet) };
+out.review = { fitted: p.review?.fitted, exact: p.review?.exact, of: p.review?.of, black: p.review?.black, safe: p.review?.safe, notes: p.review?.notes, by: p.review?.by, sheet: Boolean(p.review?.sheet) };
 ok(p.review && p.review.exact === p.review.of && p.review.of === p.plan.beats.length, `every beat frame-exact ${JSON.stringify(out.review)}`);
 ok(p.review?.notes?.length === 2 && e.markers.filter((m) => m.note).length >= 2, 'review notes as markers');
 // renders: three formats, the right sizes and length
@@ -137,7 +140,7 @@ activate(C.id); await wait(500);
 await smoke({ shot: `${shots}/intro-done.png` });
 if (OUT) {
   for (const o of p.outputs) await window.hub.fs.copy(o.path, `${OUT}/${o.path.split('/').pop()}`);
-  for (const f of Object.values(p.cover.files)) await window.hub.fs.copy(f, `${OUT}/${f.split('/').pop()}`);
+  for (const f of Object.values(p.cover?.files || {})) await window.hub.fs.copy(f, `${OUT}/${f.split('/').pop()}`);
   if (p.review?.sheet) await window.hub.fs.copy(p.review.sheet, `${OUT}/sheet.jpg`);
   for (const b of p.plan.beats) if (b.clip) await window.hub.fs.copy(b.clip.path, `${OUT}/beat${b.n}-${b.kind}.${b.clip.path.split('.').pop()}`);
 }
@@ -147,5 +150,6 @@ const m = Native.chatOf(C.id).messages.find((x) => x.role === 'intro' && x.pid =
 out.contextText = m?.text;
 ok(/Video project/.test(m?.text || '') && /Render done/.test(m?.text || ''), 'the card leaves a short text in the chat');
 
+} catch (err) { out.thrown = String(err.stack || err).slice(0, 600); out.fails.push(`threw: ${err.message}`); }
 out.secs = Math.round((Date.now() - t0) / 1000);
 return JSON.stringify(out, null, 1);

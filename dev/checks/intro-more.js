@@ -14,6 +14,7 @@ const run = async (line, agentId = C.id) => { let said = ''; let err = ''; await
 const card = (p) => document.querySelector(`.surface.active .intro-card[data-pid="${p.id}"]`) || document.querySelector(`.intro-card[data-pid="${p.id}"]`);
 const menuLabels = () => [...document.querySelectorAll('#menu button')].map((b) => b.firstChild?.textContent?.trim()).filter(Boolean);
 const t0 = Date.now();
+try {
 activate(C.id); await wait(300);
 Native.ensureChat(C.id, 'Intro controls');
 const chatId = Native.chatOf(C.id).id;
@@ -198,5 +199,6 @@ await until(() => document.querySelector('.intro-card.gone'));
 ok(document.querySelector('.intro-card.gone'), 'its cards say it was removed');
 out.dups = Commands.duplicates();
 ok(!out.dups.length, 'no duplicate commands');
+} catch (err) { out.thrown = String(err.stack || err).slice(0, 600); out.fails.push(`threw: ${err.message}`); }
 out.secs = Math.round((Date.now() - t0) / 1000);
 return JSON.stringify(out, null, 1);

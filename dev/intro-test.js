@@ -38,6 +38,7 @@ for (const t of D.TEMPLATES) {
 for (const r of D.RECIPES) {
   const txt = D.tourText(r, '16:9');
   ok(/^record 16:9 30fps mute mp4$/m.test(txt) && /\nstop$/.test(txt), `tour ${r.id}`);
+  ok(!/^open /m.test(txt.split('record ')[1]), `tour ${r.id} opens its screen before recording`);
   ok(!/\b(cmd|type|send|click)\b/.test(r.steps), `recipe ${r.id} only looks (no clicks, commands or typing)`);
 }
 // formats
