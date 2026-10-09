@@ -12,7 +12,7 @@ const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (
   for (const mode of ['lean', 'full']) {
     const c = await F.mcpClient({ command: process.execPath, args: [path.join(root, 'mcp', 'three-mcp.js')], env: mode === 'full' ? { HUB_TOOL_MODE: 'full' } : { HUB_TOOL_MODE: '' } });
     const names = c.tools.map((t) => t.name);
-    check(mode === 'lean' ? names.includes('three_do') && names.length === 14 : !names.includes('three_do') && names.length === 33, `${mode}: ${names.length} tools`);
+    check(mode === 'lean' ? names.includes('three_do') && names.length === 14 : !names.includes('three_do') && names.length === 34, `${mode}: ${names.length} tools`);
     check(names.includes('three_add_layer') && names.filter((n) => n === 'three_add_layer').length === 1, `${mode}: three_add_layer is an everyday tool (layers always)`);
     check(!c.instructions, `${mode}: no MCP instructions`);
     const h = await c.call('three_do', { cmd: 'help', topic: 'cues' });

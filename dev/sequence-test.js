@@ -60,4 +60,9 @@ ok('the Three Director reaches it through three_do (lean) and three_sequence (fu
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'mcp', 'three-mcp.js'), 'utf8');
   assert(/'footage', 'sequence', 'help'\]/.test(src)); assert(/name: 'three_sequence'/.test(src));
 });
+ok('the Video Director reads scene clips and Lab layers by name in the editor (not as gaps)', () => {
+  const x = D.addOverlay(D.addScene(D.create(), { sketch: 'a', name: 'Rings', look: 'Neon' }), { name: 'Glow' }, { at: 0, dur: 2 });
+  const L = C.describeAll(x).join('\n');
+  assert(/Lab scene “Rings” look Neon/.test(L), L); assert(/Lab layer “Glow”/.test(L), L); assert(!/gap/.test(L));
+});
 console.log(`${n} tests passed`);

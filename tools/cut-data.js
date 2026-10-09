@@ -252,7 +252,7 @@ const CutData = (() => {
   function describe(e, { tc = fmt } = {}) {
     return layout(e).map((x, i) => {
       const c = x.clip;
-      const what = c.kind === 'video' ? `${base(c.src)} ${fmt(c.in)}–${fmt(c.out)}` : c.kind === 'freeze' ? `freeze of ${base(c.src)} at ${fmt(c.at)}` : c.kind === 'title' ? `title “${c.text}”` : c.kind === 'image' ? `still ${base(c.src)}` : c.kind === 'color' ? `color ${c.fill || ''}` : `gap (black)${c.slot ? ` · slot ${c.slot}` : ''}`;
+      const what = c.kind === 'video' ? `${base(c.src)} ${fmt(c.in)}–${fmt(c.out)}` : c.kind === 'freeze' ? `freeze of ${base(c.src)} at ${fmt(c.at)}` : c.kind === 'title' ? `title “${c.text}”` : c.kind === 'image' ? `still ${base(c.src)}` : c.kind === 'color' ? `color ${c.fill || ''}` : c.kind === 'scene' ? `Lab scene “${c.name || ''}”${c.look ? ` look ${c.look}` : ''} (the Lab sequence draws it)` : `gap (black)${c.slot ? ` · slot ${c.slot}` : ''}`;
       const plain = [c.speed && c.speed !== 1 ? `${c.speed}×` : '', c.mute && c.kind === 'video' ? 'muted' : '', c.fadeIn ? `fade in ${c.fadeIn.toFixed(2)} s` : '', c.fadeOut ? `fade out ${c.fadeOut.toFixed(2)} s` : ''].filter(Boolean).join(', ');
       const rich = [x.td ? `${c.trans.type} ${x.td.toFixed(2)} s in` : '', c.reverse ? 'reversed' : '', c.color ? `look ${c.color.look || 'custom'}` : '', c.fx?.length ? `fx ${c.fx.map((f) => f.id).join('+')}` : '', c.afx?.length ? `sound ${c.afx.join('+')}` : '', c.keys ? `keys ${Object.entries(c.keys).map(([k, v]) => `${k}×${v.length}`).join(' ')}` : '', c.scale != null && c.scale !== 1 ? `scale ${c.scale}` : '', c.opacity != null && c.opacity !== 1 ? `opacity ${c.opacity}` : ''].filter(Boolean).join(', ');
       const extra = [plain, rich].filter(Boolean).join(', ');
@@ -679,7 +679,7 @@ const CutData = (() => {
     for (const k of e.tracks || []) {
       lines.push(`${k.name} (${k.type}${k.mute ? ', muted' : ''}${k.hide ? ', hidden' : ''}${k.lock ? ', locked' : ''}):${k.items.length ? '' : ' empty'}`);
       k.items.forEach((x, j) => {
-        const what = x.kind === 'title' && x.shape && !String(x.text || '').trim() ? `shape ${x.shape}${x.color ? ` ${x.color}` : ''}${x.anim ? ` in:${x.anim}` : ''}${x.out ? ` out:${x.out}` : ''}` : x.kind === 'title' ? `title “${String(x.text || '').replace(/\n/g, ' / ')}”${x.style ? ` [${x.style}]` : ''}${x.lower ? ` [lower third ${x.lower}]` : ''}${x.anim ? ` in:${x.anim}` : ''}${x.out ? ` out:${x.out}` : ''}` : x.kind === 'color' ? `color ${x.fill || ''}` : `${x.kind} ${base(x.src)}${MEDIA.has(x.kind) ? ` ${fmt(x.in)}–${fmt(x.out)}` : ''}`;
+        const what = x.kind === 'title' && x.shape && !String(x.text || '').trim() ? `shape ${x.shape}${x.color ? ` ${x.color}` : ''}${x.anim ? ` in:${x.anim}` : ''}${x.out ? ` out:${x.out}` : ''}` : x.kind === 'title' ? `title “${String(x.text || '').replace(/\n/g, ' / ')}”${x.style ? ` [${x.style}]` : ''}${x.lower ? ` [lower third ${x.lower}]` : ''}${x.anim ? ` in:${x.anim}` : ''}${x.out ? ` out:${x.out}` : ''}` : x.kind === 'color' ? `color ${x.fill || ''}` : x.kind === 'layer' ? `Lab layer “${x.name || ''}”` : `${x.kind} ${base(x.src)}${MEDIA.has(x.kind) ? ` ${fmt(x.in)}–${fmt(x.out)}` : ''}`;
         lines.push(`  ${k.name}.${j + 1} ${tc(x.start)} → ${tc(itemEnd(x))} · ${what}${extras(x)}`);
       });
     }

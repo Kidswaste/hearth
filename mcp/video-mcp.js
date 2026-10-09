@@ -28,7 +28,7 @@ const TOOLS = [
   { name: 'video_edit', description: 'Change the edit, one undo step per call: op add|split|trim|move|delete|roll|slip|slide|transition|look|effect|sound|adjust|keyframe|motion|speed|ramp|reverse|set|marker|range|template|format|new|open|undo|redo|render|command|project. clip: 3 (main track) or "V2.1". {op:"help"} lists the fields. Mood-board references give a vibe, never footage, unless the owner says so.',
     inputSchema: { type: 'object', properties: { op: { type: 'string' }, clip: {}, at: {}, type: { type: 'string' }, path: { type: 'string' }, text: { type: 'string' }, preset: { type: 'string' } }, required: ['op'], additionalProperties: true } },
   // the app map (mcp/hearth-map.js), answered by this server without a trip to the hub
-  { name: 'hearth_help', description: 'How Hearth (the owner\'s app) fits together and how Claude and Astra share a chat (Hearth keeps its task state), by topic: app, video, editor, intro (the owner\'s video project), lab, commands, handoff, habits.', inputSchema: { type: 'object', properties: { topic: { type: 'string' } } } },
+  { name: 'hearth_help', description: 'How Hearth (the owner\'s app) fits together and how Claude and Astra share a chat (Hearth keeps its task state), by topic: app, video, editor, sequence (the Lab\'s), intro (the owner\'s video project), lab, commands, handoff, habits.', inputSchema: { type: 'object', properties: { topic: { type: 'string' } } } },
 ];
 const local = { hearth_help: (a) => ({ ok: true, value: MAP.topic(a.topic || 'app') || `Topics: ${Object.keys(MAP.TOPICS).join(', ')}.` }) };
 
