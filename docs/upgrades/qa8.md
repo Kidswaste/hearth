@@ -107,3 +107,6 @@ is settled (the one that has the focus wins; the other stays reachable as writte
 60. Fixed: Space in a capture player or dialog open over the board also switched the board into its "hand" (pan) mode.
 61. Fixed (Mac): on the board, ⌘+drag didn't move without snapping (it read Ctrl only, and Ctrl+click is the Mac's right-click), and ⌘+wheel didn't zoom. Both take ⌘ now.
 62. Fixed (Mac): finishing a capture region with ⌘ held (to keep adjusting it with the arrows) took the shot at once; it waits like Ctrl does on Windows.
+63. Fixed: `/capture-tools on` in a brand-new chat (nothing sent yet) answered "Run it in a chat." while you were in one. The chat is made on the spot, so you can turn the tools on before your first message.
+64. Fixed: `/board-link` in a brand-new chat answered "Send a message first". Same fix.
+65. Checked end to end (no change needed): with `/board-tools on` and `/capture-tools on`, Claude and Astra (fake engines, real MCP servers over stdio) list boards, read the linked board's vibe, add a note, list captures and take a screenshot.

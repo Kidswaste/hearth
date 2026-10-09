@@ -128,7 +128,13 @@ const BoardCmds = (() => {
   cmd({ name: 'board-undo', desc: 'Undo on the board (Ctrl+Z there)', run: async () => { await B.ready(); B.undo(); return null; } });
   cmd({ name: 'board-redo', desc: 'Redo on the board', run: async () => { await B.ready(); B.redo(); return null; } });
   cmd({ name: 'board-link', desc: 'Link this chat to a board (the drawer and /board-use pick it here)', args: '[board]', complete: (a) => opts(B.boards().map((b) => ({ value: b.name })), a),
-    run: async (args, ctx) => { await B.ready(); if (!ctx?.chatId) return 'Send a message first (the chat needs to exist).'; const e = args.trim() ? B.findBoard(args.trim()) : B.current(); if (!e) return 'No such board.'; B.linkChat(ctx.chatId, e.id); return `This chat now uses **${e.name}**.`; } });
+    run: async (args, ctx) => {
+      await B.ready();
+      // a brand-new chat (nothing sent yet) is made now: "Send a message first" stood between you and the link
+      const chatId = ctx?.chatId || (H.agent(ctx?.agentId)?.mode === 'native' && Native.ensureChat ? Native.ensureChat(ctx.agentId)?.id : null);
+      if (!chatId) return 'Run it in a Claude or Astra chat.';
+      const e = args.trim() ? B.findBoard(args.trim()) : B.current(); if (!e) return 'No such board.'; B.linkChat(chatId, e.id); return `This chat now uses **${e.name}**.`;
+    } });
   cmd({ name: 'board-unlink', desc: 'Unlink this chat from its board', run: async (_a, ctx) => { await B.ready(); if (ctx?.chatId) B.unlinkChat(ctx.chatId); return 'Unlinked.'; } });
   cmd({ name: 'board-use', desc: 'Attach the board\'s vibe (linked or current) to your next message; "send" sends it now', args: '[focus] [send]', examples: ['/board-use', '/board-use palette', '/board-use motion send', '/board-use opposite'], keywords: 'reference vibe style inspiration',
     complete: (a) => opts(D.FOCUS.map((f) => ({ value: f.id, hint: f.name })).concat([{ value: 'send', hint: 'send right away' }]), a),

@@ -356,7 +356,8 @@
         await saveConfig();
         return on ? `${agent.name} can capture in every chat (capture_* tools).` : `${agent.name}'s chats no longer get the capture tools (unless you turn them on per chat).`;
       }
-      const chat = ctx.chat;
+      // a brand-new chat (nothing sent yet) is a chat too: it said "Run it in a chat." in the chat you were in
+      const chat = ctx.chat || (H.agent(ctx.agentId)?.mode === 'native' && Native.ensureChat ? Native.ensureChat(ctx.agentId) : null);
       if (!chat) return 'Run it in a chat.';
       const on = a === 'off' ? false : a === 'on' ? true : !chat.captureTools;
       if (on) chat.captureTools = true; else delete chat.captureTools;
