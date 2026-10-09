@@ -4384,9 +4384,9 @@ function sqMorph(g2, ga, gb, p, k, W, H) {
   const e = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
   g2.drawImage(SQ.ca, 0, 0, W, H);
   g2.globalAlpha = e(0.2, 0.8, p); g2.drawImage(SQ.cb, 0, 0, W, H);
-  g2.globalCompositeOperation = 'lighten';
-  g2.globalAlpha = 1 - e(0.3, 0.7, p); g2.drawImage(SQ.cs, 0, 0, W, H);
-  g2.globalAlpha = e(0.3, 0.7, p); g2.drawImage(SQ.cs2, 0, 0, W, H);
+  // the shared layers: one side into the other at full strength (they are the same layer), over the rest
+  const sc = SQ.cs.getContext('2d'); sc.globalAlpha = e(0.3, 0.7, p); sc.drawImage(SQ.cs2, 0, 0); sc.globalAlpha = 1;
+  g2.globalAlpha = 1; g2.globalCompositeOperation = 'lighten'; g2.drawImage(SQ.cs, 0, 0, W, H);
   g2.globalCompositeOperation = 'source-over'; g2.globalAlpha = 1;
   return true;
 }
@@ -4638,6 +4638,15 @@ window.__seqProbe = ({ size = 240, y = 0.04, x = 0.5, yc = 0.66 } = {}) => {
   for (let k = 0; k < 12; k += 1) { const [r, g, b] = at((k + 0.5) / 12, y); const l = 0.299 * r + 0.587 * g + 0.114 * b; if (l > 170) { n |= 1 << k; ok += 1; } else if (l < 70) ok += 1; }
   return { center: at(x, yc), code: ok === 12 ? n : null, T: SQ.T };
 };
+// checks: how many bright pixels the program has now (size × size), and the color at a point
+window.__seqPixels = ({ size = 120, x = 0.5, y = 0.5, only = null } = {}) => {
+  const c = composite(null, 1, { w: size, h: size }, only ? new Set(only) : null);
+  const d = c.getContext('2d').getImageData(0, 0, size, size).data;
+  let bright = 0; for (let i = 0; i < d.length; i += 4) if (d[i] > 128) bright += 1;
+  const i = (Math.min(size - 1, Math.round(y * size)) * size + Math.min(size - 1, Math.round(x * size))) * 4;
+  return { bright, at: [d[i], d[i + 1], d[i + 2]] };
+};
+window.__seqLayers = () => [...layers.values()].map((L) => ({ id: L.id, share: L.props.share || null, hide: Boolean(L.seqHide), blend: L.props.blend, group: L.props.seqGroup || null, mix: layerMix(L) }));
 window.__seqInfo = () => ({ on: SQ.on, T: SQ.T, playing: SQ.playing, off: SQ.off, mounted: [...SQ.mounted.keys()], layers: [...layers.keys()].length, libs: Boolean(SQ.libs), showing: SQ.on ? (() => { const s = sqShowing(SQ.T); return s.a ? { trans: s.type, p: s.p, from: s.a.id, to: s.b.id } : { clip: s.show?.id || null }; })() : null });
 function sqMessage(msg) {
   if (msg.type === 'seq-libs') { try { SQ.libs = new Function(`${msg.code}\nreturn { EditFX, VideoTitles };`)(); } catch (err) { post({ type: 'console', level: 'warn', text: `Sequence titles / transitions: ${err.message}` }); } return; }

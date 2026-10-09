@@ -2888,6 +2888,7 @@ ${code}
         if (extras[id]) { extras[copy.id] = JSON.parse(JSON.stringify(extras[id])); saveExtras(); }
         save();
         renderPicker();
+        if (typeof ThreeSeq !== 'undefined') ThreeSeq.sceneCopied(id, copy.id).catch(() => {}); // its sequence comes along
         return copy;
       },
       rename(id, name) {

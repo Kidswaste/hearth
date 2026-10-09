@@ -41,6 +41,18 @@ const SeqArrange = (() => {
     while (a < -1e-6) a += bar;
     return { a: r4(a), b: r4(Math.min(dur || a + len, a + len)) };
   }
+  // the song's sections; a short or flat song (one section, or none) gets the usual shape on its bars instead:
+  // an intro, a build, the drop, an outro (a quarter, a quarter, a third, the rest)
+  function sectionsOf(song) {
+    const secs = (song?.sections || []).filter((s) => s.end > s.start);
+    if (secs.length >= 2 || !song?.dur) return secs;
+    const bar = barOf(song); const a0 = song.grid?.anchor || 0;
+    const nb = Math.floor((song.dur - Math.max(0, a0)) / bar);
+    if (nb < 6) return secs.length ? secs : [{ start: 0, end: song.dur, label: 'Drop', energy: 'loud' }];
+    const at = (k) => r4(Math.max(0, a0 + k * bar));
+    const b1 = Math.max(1, Math.round(nb * 0.25)); const b2 = Math.max(b1 + 1, Math.round(nb * 0.5)); const b3 = Math.max(b2 + 1, Math.round(nb * 0.85));
+    return [{ start: 0, end: at(b1), label: 'Intro', energy: 'quiet' }, { start: at(b1), end: at(b2), label: 'Build', energy: 'medium' }, { start: at(b2), end: at(b3), label: 'Drop', energy: 'loud' }, { start: at(b3), end: r4(song.dur), label: 'Outro', energy: 'quiet', made: true }].map((x) => ({ ...x, made: true }));
+  }
   // the section at song time t
   const sectionAt = (song, t) => (song.sections || []).find((s) => t >= s.start - 1e-3 && t < s.end - 1e-3) || null;
   // cut lines on the bars: a cut at each section change and every `pace` bars inside a section
@@ -135,6 +147,7 @@ const SeqArrange = (() => {
   function arrange(e, { scenes, song = null, template = null, secs = null, seed = 1, lines = null, name = null, keepOrder = false } = {}) {
     if (!scenes?.length) throw new Error('No scenes to arrange');
     const T = tmpl(template);
+    if (song) song = { ...song, sections: sectionsOf(song) };
     const grid = song?.grid?.bpm ? song.grid : null;
     const win = song?.dur ? windowOf(T, song, secs || T.secs) : null;
     let pieces = win ? songPieces(T, song, win) : plainPieces(T, scenes.length, secs);
@@ -252,6 +265,6 @@ const SeqArrange = (() => {
     const secs = (song.sections || []).map((s) => `${s.label || s.energy} ${Math.round(s.start)}–${Math.round(s.end)} s`).slice(0, 10).join(', ');
     return `${Math.round(song.dur)} s${song.grid?.bpm ? ` at ${Math.round(song.grid.bpm)} BPM` : ''}${secs ? `; sections: ${secs}` : ''}`;
   }
-  return { arrange, cutdown, fillGap, varySections, windowOf, songPieces, plainPieces, transOf, assign, scenesOf, templateFor, songWords, rng, TEMPLATES: TP.TEMPLATES, find: TP.find };
+  return { sectionsOf, arrange, cutdown, fillGap, varySections, windowOf, songPieces, plainPieces, transOf, assign, scenesOf, templateFor, songWords, rng, TEMPLATES: TP.TEMPLATES, find: TP.find };
 })();
 if (typeof module !== 'undefined') module.exports = SeqArrange;

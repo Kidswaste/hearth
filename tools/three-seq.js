@@ -705,11 +705,11 @@ const ThreeSeq = (() => {
     return arrange({ scenes: clips, keepOrder: true, song: songPath, template: S.edit.seq?.arranged?.template || 'music-video' });
   }
   // the 15 s and 6 s versions: new sequences (this scene's too) around the drop of the same song
-  async function versions(list = [15, 6], { render: doRender = false } = {}) {
+  async function versions(lens = [15, 6], { render: doRender = false } = {}) {
     if (!S.edit) await current();
     const song = await songInfo();
     const made = [];
-    for (const secs of list) {
+    for (const secs of lens) {
       const r = A.cutdown(S.edit, Number(secs), { song, seed: newSeed() });
       const key = await uniqueKey(`${S.key.slice(4)} ${secs}s`);
       r.edit.seq = { ...r.edit.seq, name: key.slice(4), scene: S.owner || r.edit.seq?.scene || null };
@@ -1387,9 +1387,10 @@ const ThreeSeq = (() => {
   // a named marker at each section of the song (intro, build, drop…), from the Lab's analysis
   async function sectionMarkers() {
     const song = await songInfo();
-    if (!song?.sections?.length) throw new Error('The song has no sections yet (still analyzing?)');
+    const secs = song ? A.sectionsOf(song) : [];
+    if (!secs.length) throw new Error('The song has no sections yet (still analyzing?)');
     const off = songStart();
-    const ms = song.sections.map((x) => ({ t: r4(x.start + off), label: x.label || x.energy })).filter((m) => m.t >= 0 && m.t < total());
+    const ms = secs.map((x) => ({ t: r4(x.start + off), label: x.label || x.energy })).filter((m) => m.t >= 0 && m.t < total());
     return commit({ ...S.edit, markers: [...(S.edit.markers || []).filter((m) => !m.section), ...ms.map((m) => ({ ...m, section: true }))] }, `${ms.length} section markers`);
   }
   function sketchItems(fn) {
@@ -1701,7 +1702,8 @@ const ThreeSeq = (() => {
       const ask = a.of ?? (op !== 'add' && op !== 'arrange' ? a.scene : null);
       const sid = (ask != null ? await sceneRef(ask) : null) || ctx.sketchId || lab()?.sketchId() || null;
       if (ask != null && !sid) return { ok: false, error: `No scene "${ask}"` };
-      if (!S.edit || (sid && S.owner !== sid)) await current({ scene: sid });
+      // (a sequence you opened on purpose stays the one commands act on, until another scene comes on screen)
+      if (!S.edit || (sid && S.owner !== sid && !(S.explicit && ask == null && !ctx.sketchId))) await current({ scene: sid });
       if (op === 'status' || op === 'read') return { ok: true, value: status() };
       if (op === 'show') { await enter(); return { ok: true, value: status() }; }
       if (op === 'hide') { await leave(); return { ok: true, value: { on: false } }; }
