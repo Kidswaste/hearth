@@ -759,6 +759,13 @@ const valueOf = (i, base) => {
   return m.int ? Math.round(v) : v;
 };
 // d: the literal from the code, used when the live value isn't there yet or a music binding gives NaN
+const tvRuns = new Map(); // "layerId#gen" -> the slider values that run started with
+globalThis.__tvRun = (id, g, i, d) => {
+  const L = layers.get(id);
+  if (L && L.gen === g) return globalThis.__tv(i, d);
+  const v = tvRuns.get(`${id}#${g}`)?.[i];
+  return v === undefined || (d !== undefined && typeof v !== typeof d) ? d : v;
+};
 globalThis.__tv = (i, d) => {
   markRead(i);
   // a value of another kind than the code's literal (a layer's code changed and an old value landed on this slot)
@@ -3593,10 +3600,16 @@ async function runLayer(spec, hot = false) {
   L.reveal = spec.fx === 'reveal';
   setLayerProps(L, spec);
   if (L.url) { urlLayer.delete(L.url); URL.revokeObjectURL(L.url); }
-  const url = URL.createObjectURL(new Blob([spec.code], { type: 'text/javascript' }));
+  const g = L.gen;
+  // This run's code reads sliders through its own __tv: the live table while it's the layer's current run, the values
+  // it was started with once a newer run replaced it (a module that was still loading would otherwise build its
+  // scene from the next sketch's numbers). Same line count: errors still point at the right line.
+  for (const k of tvRuns.keys()) if (k.startsWith(`${L.id}#`)) tvRuns.delete(k);
+  tvRuns.set(`${L.id}#${g}`, spec.values || null);
+  const code = /__tv\(/.test(spec.code) ? `const __tv = (i, d) => globalThis.__tvRun(${JSON.stringify(L.id)}, ${g}, i, d);${spec.code}` : spec.code;
+  const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
   L.url = url;
   urlLayer.set(url, L.id);
-  const g = L.gen;
   sketchRunning = true;
   try {
     await import(url);
