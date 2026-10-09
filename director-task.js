@@ -160,8 +160,8 @@ const DirectorTask = (() => {
     chat.session = {};
     if (!isDirector(agent)) return withContext(chat, raw);
     const state = text(chat.id, { from });
-    const recent = chat.messages.slice(0, -1).filter((m) => (m.role === 'user' || m.role === 'assistant') && m.text).slice(-4)
-      .map((m) => `${m.role === 'user' ? 'User' : 'Director'}: ${cap(m.text, 360)}`).join('\n');
+    const recent = chat.messages.slice(0, -1).filter((m) => (m.role === 'user' || m.role === 'assistant') && m.text).slice(-3)
+      .map((m) => `${m.role === 'user' ? 'User' : 'Director'}: ${cap(m.text, 300)}`).join('\n');
     return [state || `[You are taking over this chat from ${from}, in the same scene.]`, recent ? `<recent_messages>\n${recent}\n</recent_messages>` : '', raw].filter(Boolean).join('\n\n');
   }
 

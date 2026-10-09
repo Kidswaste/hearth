@@ -419,6 +419,15 @@ const ThreeDirector = (() => {
       if (before) record({ sketchId: before.sketchId, sketch: before.sketch, layerId: before.id, layer: before.name, before: before.code, after: String(args.code), tool });
       return { ok: true, value: args.report === 'full' ? r : compact(r) };
     }
+    // keyframes / animation presets are the everyday way to move things (time first): a one-line result, not the
+    // whole Lab report (≈ 2.8k characters before)
+    if ((tool === 'three_keyframes' && d.setKeyframes) || (tool === 'three_animate' && d.applyPreset)) {
+      const r = tool === 'three_keyframes' ? d.setKeyframes(args.layer, args.property, args.keys, args.clear) : d.applyPreset(args.layer, args.preset);
+      if (args.report === 'full') return { ok: true, value: r };
+      const errs = (r.errors || []).map((e) => `${e.layer ? `[${e.layer}] ` : ''}${clip(e.message, 200)}`);
+      const what = tool === 'three_keyframes' ? `${r.layer}.${r.property}: ${r.keyframes} key${r.keyframes === 1 ? '' : 's'}` : `${r.layer || args.layer}: ${args.preset}${r.keys != null ? ` (${r.keys} keys)` : ''}`;
+      return { ok: true, value: { set: what, ...(errs.length ? { errors: errs } : {}), layers: (r.layers || []).map((L) => L.name).join(', ') || undefined } };
+    }
     if (tool === 'three_console') return { ok: true, value: args.full ? d.report() : compact(d.report(), { lines: 14 }) };
     if (tool === 'three_screenshot') return screenshot(d, args);
     if (tool === 'three_read_code') return { ok: true, value: readCode(d, args) };

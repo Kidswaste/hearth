@@ -27,12 +27,12 @@ const TOPICS = {
   Code: the audio globals (help audio); build hits on the owner's markers (audio.kick / snare / hit) when the song has them.
   Until then, scenes move on the timeline: time, keyframes, easing, cues and sections (help keyframes, help timeline).`,
   commands: `CHAT COMMANDS: the owner types /name args. Offer them as <suggest>/name …</suggest>; run Lab, music, nodes and video ones yourself with three_do { cmd: "run", command: "/name args" } (results come back as text).
-  Lab: /save-look, /shuffle [colors], /fix-errors, /size 9:16, /freeze, /present, /record, /layer, /look.
+  Lab: /save-look, /shuffle [colors], /fix-errors, /size 9:16, /freeze, /present, /record, /layer.
   Music: /make-it-react [undo], /analyze, /drops next, /downbeat, /auto-preset.
   Nodes: /nodes, /nodes-layer <preset>, /nodes-presets.
   Director: /undo-edit, /redo-edit, /director-engine claude|astra, /handoff, /task, /director-cost, /director-mode lean|full, /nodes-director on|off.
   Together: /jam (Claude ⇄ Astra build a visual in turns), /opinion (second opinion).
-  Video: /review, /help video. Everything else: /help <area>.`,
+  Video: /help video. Everything else: /help <area>.`,
   handoff: `HANDOFF: Hearth (not the model) keeps each director chat's task state: the goal, recent asks, what was done (layers added, edits, nodes, keyframes…), the scene's layers, open todos and the last screenshot. Whichever engine runs next in the chat gets it once as "[Task state…]" (after /director-engine, /handoff or the ⚇ menu's switch), so Claude can pick up Astra's work and the other way round, in the same chat and scene. Read it any time: three_do { cmd: "task" }. Keep todos current with chat_progress (or three_do { cmd: "task", todo: [...] }) so the next one knows what's left.`,
   habits: `HABITS the owner asked for:
   1. Every new effect or element = a NEW layer (three_add_layer, three_nodes "layer …"), never piled into one big layer. Rewrite an existing layer (three_set_code / update_layer code) only when the owner asks to; small changes: three_edit_code.
