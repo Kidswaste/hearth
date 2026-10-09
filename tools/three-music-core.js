@@ -495,7 +495,8 @@ const MusicCore = (() => {
       sections: secs, fps: SFPS, level: down(L), bass: down(B), mid: down(M), treble: down(T),
       peaks: Array.from(bp.PK, (x) => Math.round((x / (pmx || 1)) * 100) / 100),
       // new in round 5: where bar 1 is, how sure the tempo / bar 1 are, the hits found in each band, the style pick
-      grid: { bpm, anchor: r4(downbeatT - Math.floor(downbeatT / (period * 4)) * period * 4), bpb: 4, straight, straightness: r2(straightness), tempoConf: r2(tp.conf), downbeatConf: db.conf },
+      // how sure of the tempo: a straight grid the tracked beats sit on, and a clear winner over other tempos
+      grid: { bpm, anchor: r4(downbeatT - Math.floor(downbeatT / (period * 4)) * period * 4), bpb: 4, straight, straightness: r2(straightness), tempoConf: r2(clamp(0.6 * straightness + 0.4 * Math.min(1, tp.conf * 2.5), 0, 1)), downbeatConf: db.conf },
       downIndex, onsets: { kick: kicks, snare: snares, hats }, style,
       // 100 fps peaks per band for the timeline's 3-band waveform (0..255; kept by the player, not sent to the sketch)
       wave: { fps: FPS, low: peakNorm(bp.WL), mid: peakNorm(bp.WM), high: peakNorm(bp.WH) },

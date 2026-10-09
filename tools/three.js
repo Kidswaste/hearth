@@ -340,21 +340,23 @@ const ThreeLab = (() => {
     const autoBarsBtn = btn('Auto bars', 'Fit every trigger bar to the last few seconds of sound (opens ⚡ Triggers for a moment if it\'s closed)', () => autoBars(), 'ghost small mb-quick');
     autoBarsBtn.dataset.feature = 'Auto bars';
     const trigPresets = () => ({ ...(ThreeTriggers.PRESETS || {}) });
-    function applyTrigPreset(name) {
+    function applyTrigPreset(name, { quiet = false } = {}) {
       const saved = store.get('three.trigPresets', []).find((x) => x.name.toLowerCase() === String(name).toLowerCase());
       if (saved) { trigCfg = ThreeTriggers.merge(saved.cfg); trigTuned = true; sendTriggers(); saveTriggers(); trigPanel?.set(trigCfg); toast(`Triggers: ${saved.name}`, { timeout: 1400 }); return saved.name; }
       const all = trigPresets();
       const key = Object.keys(all).find((k) => k.toLowerCase() === String(name).toLowerCase()) || Object.keys(all).find((k) => k.toLowerCase().includes(String(name).toLowerCase()));
       if (!key) return null;
       setTriggers(Object.fromEntries(Object.entries(all[key]).map(([id, p]) => [id, { ...p }])));
-      toast(`Triggers: ${key} (bars kept · Auto bars fits them to the sound)`, { timeout: 2000 });
+      if (typeof ThreeMusic !== 'undefined') ThreeMusic.presetPicked(key);
+      if (!quiet) toast(`Triggers: ${key} (bars kept · Auto bars fits them to the sound)`, { timeout: 2000 });
       return key;
     }
     function trigPresetMenu(anchor) {
       const r = anchor.getBoundingClientRect();
       const saved = store.get('three.trigPresets', []);
       const songs = Object.entries(store.get('three.triggersBySong', {})).filter(([p0]) => p0 !== player.path).slice(0, 8);
-      ThreeTweaks.menu(r.left, r.bottom + 4, ['Trigger presets', ...Object.keys(trigPresets()).map((n) => [n, 'Bands and timing · your bars stay', () => applyTrigPreset(n)]),
+      const mp = typeof ThreeMusic !== 'undefined' ? ThreeMusic.presetInfo() : null; // the pick from the song (tools/three-music.js)
+      ThreeTweaks.menu(r.left, r.bottom + 4, ['Trigger presets', mp?.guess ? [`✦ From the song: ${mp.guess.preset}`, mp.guess.why, () => ThreeMusic.autoPreset({ force: true })] : null, ...Object.keys(trigPresets()).map((n) => [`${mp?.current === n ? '● ' : ''}${n}`, 'Bands and timing · your bars stay', () => applyTrigPreset(n)]),
         saved.length ? 'Yours' : null, ...saved.map((x) => [`★ ${x.name}`, 'Bands and bars', () => applyTrigPreset(x.name)]),
         songs.length ? 'From another song' : null, ...songs.map(([p0, c]) => [`♪ ${p0.split(/[\\/]/).pop()}`, '', () => { trigCfg = ThreeTriggers.merge(c); trigTuned = true; sendTriggers(); saveTriggers(); trigPanel?.set(trigCfg); }]),
         ['Auto bars', 'Fit the bars to the sound', () => autoBars()], ['⚡ Open the triggers', 'Bands, bars, fade, sensitivity', () => toggleTriggers(true)]]);
@@ -407,10 +409,10 @@ const ThreeLab = (() => {
     // Input gain (×0.5…×4) and a latency offset (the sketch reacts N ms later, to line up with a speaker or a
     // Bluetooth delay) apply here; the input picker chooses which microphone / line-in.
     const hubLive = { stream: null, ctx: null, analyser: null, timer: 0, gain: null, queue: [] };
-    const liveIo = () => ({ gain: 1, latency: 0, device: '', ...store.get('three.liveIo', {}) });
+    const liveIo = () => ({ gain: 'auto', latency: 0, device: '', ...store.get('three.liveIo', {}) });
     function setLiveIo(patch) {
       store.set('three.liveIo', { ...liveIo(), ...patch });
-      if (hubLive.gain && patch.gain != null) hubLive.gain.gain.value = Number(patch.gain) || 1;
+      if (hubLive.gain && patch.gain != null && patch.gain !== 'auto') hubLive.gain.gain.value = Number(patch.gain) || 1;
       if (patch.device != null && liveKind === 'mic') setLive('mic');
       return liveIo();
     }
@@ -426,13 +428,22 @@ const ThreeLab = (() => {
         const ctx = new AudioContext();
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 2048; analyser.smoothingTimeConstant = 0.6;
-        const gain = ctx.createGain(); gain.gain.value = io.gain || 1;
+        const gain = ctx.createGain(); gain.gain.value = typeof io.gain === 'number' ? io.gain : 1;
         ctx.createMediaStreamSource(stream).connect(gain).connect(analyser);
-        Object.assign(hubLive, { stream, ctx, analyser, gain, queue: [] });
+        Object.assign(hubLive, { stream, ctx, analyser, gain, queue: [], lvl: 0, agcAt: 0, auto: 1 });
         box.send({ type: 'live-remote', on: true, kind });
         const f = new Uint8Array(1024); const w = new Float32Array(2048);
         hubLive.timer = setInterval(() => {
           analyser.getByteFrequencyData(f); analyser.getFloatTimeDomainData(w);
+          // auto gain (the default): quiet or loud playback reaches the sketch and the triggers at about the same
+          // level; it follows a louder part fast and a quieter one slowly, and holds through silence
+          if (liveIo().gain === 'auto') {
+            let ss = 0; for (let i = 0; i < w.length; i += 4) ss += w[i] * w[i];
+            const rms = Math.sqrt(ss / (w.length / 4)) / (gain.gain.value || 1);
+            hubLive.lvl += (rms - hubLive.lvl) * (rms > hubLive.lvl ? 0.2 : 0.01);
+            const tA = performance.now();
+            if (tA - hubLive.agcAt > 250 && hubLive.lvl > 0.002) { hubLive.agcAt = tA; hubLive.auto = Math.max(0.5, Math.min(8, 0.12 / hubLive.lvl)); gain.gain.setTargetAtTime(hubLive.auto, ctx.currentTime, 0.6); }
+          }
           const frame = { type: 'live-frame', freq: f.slice(), wave: w.slice(), rate: ctx.sampleRate };
           const lat = liveIo().latency || 0;
           if (!lat) { box.send(frame); return; }
@@ -467,7 +478,7 @@ const ThreeLab = (() => {
         ['⚡ Triggers & sensitivity…', 'What fires kick / bass / snare / hats / hit, and how strongly the sketch reacts', () => toggleTriggers(true)],
         'Input',
         ['Microphone / line-in…', liveIo().device ? 'A chosen input' : 'The default input', () => inputMenu(anchor)],
-        ['Gain', `×${liveIo().gain} · how loud the sketch hears it (in the Lab preview)`, () => popup(r.left, r.bottom + 4, ['Gain', ...[0.5, 1, 1.5, 2, 3, 4].map((g) => [`×${g}`, g === 1 ? 'as it comes' : g < 1 ? 'quieter' : 'louder', () => setLiveIo({ gain: g }), liveIo().gain === g])])],
+        ['Gain', `${liveIo().gain === 'auto' ? `Auto${hubLive.gain ? ` (×${Math.round((hubLive.auto || 1) * 10) / 10} now)` : ''}` : `×${liveIo().gain}`} · how loud the sketch hears it (in the Lab preview)`, () => popup(r.left, r.bottom + 4, ['Gain', ['Auto', 'Keeps the level steady, quiet or loud', () => setLiveIo({ gain: 'auto' }), liveIo().gain === 'auto'], ...[0.5, 1, 1.5, 2, 3, 4].map((g) => [`×${g}`, g === 1 ? 'as it comes' : g < 1 ? 'quieter' : 'louder', () => setLiveIo({ gain: g }), liveIo().gain === g])])],
         ['Latency offset', `${liveIo().latency} ms · the sketch reacts later, to line up with what you hear`, () => popup(r.left, r.bottom + 4, ['Latency offset', ...[0, 20, 40, 60, 80, 120, 160, 200, 300].map((ms) => [`${ms} ms`, ms ? `for a speaker / Bluetooth delay` : 'none', () => setLiveIo({ latency: ms }), liveIo().latency === ms])])],
         liveKind ? ['Restart live sound', 'Capture again (after changing devices)', () => setLive(liveKind)] : null,
         'Now playing',
@@ -484,7 +495,7 @@ const ThreeLab = (() => {
         ...devs.filter((d) => d.deviceId && d.deviceId !== 'default').map((d, k) => [d.label || `Input ${k + 1}`, d.label ? '' : 'names show after the first capture', () => setLiveIo({ device: d.deviceId }), d.deviceId === cur])]);
     }
     async function setLive(kind) {
-      if (!kind) { liveKind = null; hubLiveStop(); box.send({ type: 'live-stop' }); paintLive(); trigPanel?.refreshSense(); return; }
+      if (!kind) { liveKind = null; hubLiveStop(); box.send({ type: 'live-stop' }); paintLive(); trigPanel?.refreshSense(); if (typeof ThreeMusic !== 'undefined') ThreeMusic.liveTempo(null); return; }
       liveKind = kind; liveBpm = null;
       store.set('three.lastLive', kind);
       if (player.playing) player.toggle(false); // the song would play over it
@@ -1886,6 +1897,13 @@ const ThreeLab = (() => {
       recolor: () => recolor(), refs: () => openRefs(), note: (text) => takeNote(text ? { text } : {}), sheet: () => showSheet(),
       tools: (id) => { tabs?.show(id || "sketch"); return id || "sketch"; },
     };
+    if (typeof ThreeMusic !== 'undefined') {
+      ThreeMusic.attach({
+        player, selCtl, layers: () => layersOf().map((L) => ({ id: L.id, name: L.name, ctl: ctlFor(L) })), selectedLayer: () => sel()?.id,
+        triggers: { apply: (n, o) => applyTrigPreset(n, o), names: () => Object.keys(trigPresets()), songHasOwn: () => Boolean(player.path && store.get('three.triggersBySong', {})[player.path]), button: trigPresetBtn, cfg: () => trigCfg, restore: (c) => { trigCfg = ThreeTriggers.merge(c); trigTuned = true; sendTriggers(); saveTriggers(); trigPanel?.set(trigCfg); } },
+        live: { kind: () => liveKind, bpm: () => liveBpm, io: () => liveIo(), setIo: (p) => setLiveIo(p), button: liveBtn, autoGain: () => (hubLive.gain ? hubLive.auto : null) },
+      });
+    }
     pane.addEventListener('keydown', (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
       const plain = !typing && !e.ctrlKey && !e.altKey && !e.metaKey;
@@ -1908,6 +1926,7 @@ const ThreeLab = (() => {
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'p') { e.preventDefault(); togglePresent(); return; }
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'w') { e.preventDefault(); setWrite(!writeArmed); return; }
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'e') { e.preventDefault(); setEdit(!editOn); return; }
+      if (liveKind && !typing && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && !e.repeat && e.key.toLowerCase() === 't' && typeof ThreeMusic !== 'undefined') { e.preventDefault(); ThreeMusic.liveTap(); return; }
       // (Space on the button you just clicked, e.g. Tap, plays / pauses without also pressing that button on key-up)
       if (player.onKey(e)) { e.preventDefault(); if (e.key === ' ' && e.target.closest?.('button')) e.target.addEventListener('keyup', (u) => u.preventDefault(), { once: true }); if (!e.repeat) Usage.key(`${e.ctrlKey ? 'Ctrl+' : ''}${e.key === ' ' ? 'Space' : e.key.length === 1 ? e.key.toUpperCase() : e.key}`, 'Lab'); }
     });
@@ -2000,7 +2019,7 @@ const ThreeLab = (() => {
           el('span', { text: `${msg.geometries} geo · ${msg.textures} tex · ${msg.programs} shaders` }));
       }
       if (/^edit-/.test(msg.type)) { onEditMessage(msg); return; }
-      if (msg.type === 'live-tempo') { if (liveKind) { liveBpm = msg; paintLive(); } return; }
+      if (msg.type === 'live-tempo') { if (liveKind) { liveBpm = msg; paintLive(); if (typeof ThreeMusic !== 'undefined') ThreeMusic.liveTempo(msg); } return; }
       if (msg.type === 'live-state') { if (msg.error) toast(`Live sound: ${msg.error}`, { type: 'error', timeout: 5000 }); if (!msg.on && msg.error) { liveKind = null; paintLive(); } return; }
       if (msg.type === 'ready') { if (frozenNow) box.send({ type: 'freeze', on: true }); if (guides) box.send({ type: 'guides', kind: guides }); if (previewHost.classList.contains('presenting')) box.send({ type: 'present', on: true }); sendTriggers(); if (trigPanel) box.send({ type: 'trig-watch', on: true }); }
       if (msg.type === 'ready' && liveKind) {

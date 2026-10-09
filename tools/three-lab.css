@@ -190,3 +190,9 @@ body.tw-scrubbing, body.tw-scrubbing * { cursor: ew-resize !important; }
 
 /* sliders: the crossfader glows while it auto-morphs */
 .tw-morph.auto { accent-color: var(--ui-gold); filter: drop-shadow(0 0 4px color-mix(in srgb, var(--ui-gold) 53%, transparent)); }
+
+/* music (round 5): Tap locked to the song's grid; the live beat-lock light next to 🎧 Live (pulses on the compositor) */
+.media-bar .mb-tap.locked { border-color: color-mix(in srgb, var(--ui-green, #7cd992) 60%, var(--line)); }
+.live-lock { display: inline-block; width: 9px; height: 9px; margin: 0 4px 0 -2px; border-radius: 50%; border: 1.5px solid var(--muted); vertical-align: middle; flex: none; contain: strict; }
+.live-lock.locked { border-color: var(--ui-red); background: var(--ui-red); will-change: transform, opacity; }
+.live-lock[hidden] { display: none; }
