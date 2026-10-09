@@ -731,6 +731,20 @@ function stopAll() {
 function login(engine) {
   const bin = LOCATE[engine]?.();
   if (!bin) return false;
+  // On a Mac a program started from the app has no window to show, so the sign-in runs in a Terminal window
+  // (a .command file). If this Claude Code has no `auth login`, it falls back to its interactive /login.
+  if (IS_MAC) {
+    const q = (x) => `'${String(x).replace(/'/g, `'\\''`)}'`;
+    const { label, loginArgs } = ENGINES[engine];
+    const file = path.join(os.tmpdir(), `hearth-${engine}-login.command`);
+    fs.writeFileSync(file, [
+      '#!/bin/sh', 'clear', `echo "Sign in to ${label} for Hearth (Hearth never sees your password)."`, 'echo',
+      `${q(bin)} ${loginArgs.join(' ')}${engine === 'claude' ? ` || ${q(bin)} /login` : ''}`,
+      'echo', 'echo "Done: go back to Hearth and press Retry. You can close this window."', '',
+    ].join('\n'), { mode: 0o755 });
+    spawn('open', ['-a', 'Terminal', file], { detached: true, stdio: 'ignore' }).on('error', (err) => log(`login window: ${err.message}`)).unref();
+    return true;
+  }
   // On Windows a detached console program gets its own visible console window.
   spawn(bin, ENGINES[engine].loginArgs, { detached: true, stdio: 'ignore', windowsHide: false }).unref();
   return true;
