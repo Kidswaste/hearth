@@ -1831,7 +1831,7 @@ const ThreeSeq = (() => {
     enter, leave, toggle, open, create, current, list, add, addCurrent, applyVibe, select, split, del, dup, slipBy, trimToHead, marker, setTransition, setLength, setLook, fit, setFormat,
     play, seek, step, shuttle, jump, settle, undo, redo, render, renderEdit, renderScene, toEditor, fromEditor, needsBake, bake, compile, status, handle, timeOf, secsOf, zoomBy,
     arrange, again, retime, versions, fillGap, vary, varySections, copyLook, pasteLook, swapLooks, nest, unnest, copySel, paste, zoomTo, sectionMarkers, decideArrangement, recordForEditor,
-    keyForScene, switchTo, summaryFor, sceneCopied, songInfo, pickScenes, bakeRuns, get owner() { return S.owner; },
+    outDir, keyForScene, switchTo, summaryFor, sceneCopied, songInfo, pickScenes, bakeRuns, get owner() { return S.owner; },
     on: (ev, fn) => { (listeners[ev] ||= []).push(fn); },
     get active() { return S.view; }, get key() { return S.key; }, get edit() { return S.edit ? C.copy(S.edit) : null; }, get time() { return S.T; }, get playing() { return S.playing; }, get fps() { return fps(); },
     get selection() { return selIds(); }, get rendering() { return Boolean(S.render); }, KEYS, _S: S, _draw: () => draw(), _hit: hit, _xOf: (t) => xOf(t), _lanes: () => lanes(),
