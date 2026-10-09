@@ -480,24 +480,31 @@ const ThreeTweaks = (() => {
 
     const dirtyCount = () => (scanned ? scanned.items.filter((it, i) => !same(it, values[i])).length : 0);
     const runtime = (it, v) => (it.kind === 'color' && !it.quote ? parseInt(v.slice(1), 16) : v);
+    // Only what changed is written: this runs for every slider move (a drag rewrote the whole panel's state ~60× a
+    // second before). setValue calls refreshSoon: once per frame.
+    const put = (node, prop, v) => { if (node[prop] !== v) node[prop] = v; };
+    let refreshRaf = 0;
+    const refreshSoon = () => { if (!refreshRaf) refreshRaf = requestAnimationFrame(() => { refreshRaf = 0; refreshState(); }); };
     function refreshState() {
+      if (refreshRaf) { cancelAnimationFrame(refreshRaf); refreshRaf = 0; }
       const d = dirtyCount();
-      saveBtn.disabled = !d; resetBtn.disabled = !d;
-      abBtn.hidden = !d; // A/B only means something once a value differs from the code
-      undoBtn.disabled = !undoStack.length;
-      shuffleBtn.disabled = shufMore.disabled = !scanned?.items.some((it) => it.key != null);
-      shufBack.disabled = shufPos <= 0;
-      shufFwd.disabled = shuffleBtn.disabled;
-      saveMore.disabled = !scanned?.items.length;
-      saveBtn.textContent = d ? `Save ${d}` : 'Save';
+      put(saveBtn, 'disabled', !d); put(resetBtn, 'disabled', !d);
+      put(abBtn, 'hidden', !d); // A/B only means something once a value differs from the code
+      put(undoBtn, 'disabled', !undoStack.length);
+      const noKeys = !scanned?.items.some((it) => it.key != null);
+      put(shuffleBtn, 'disabled', noKeys); put(shufMore, 'disabled', noKeys);
+      put(shufBack, 'disabled', shufPos <= 0);
+      put(shufFwd, 'disabled', shuffleBtn.disabled);
+      put(saveMore, 'disabled', !scanned?.items.length);
+      put(saveBtn, 'textContent', d ? `Save ${d}` : 'Save');
       root.classList.toggle('dirty', d > 0);
-      status.className = `tw-status${d ? ' dirty' : ''}`;
-      status.textContent = !scanned?.items.length ? '' : d
+      put(status, 'className', `tw-status${d ? ' dirty' : ''}`);
+      put(status, 'textContent', !scanned?.items.length ? '' : d
         ? `${d} change${d > 1 ? 's' : ''} live · Save keeps ${d > 1 ? 'them' : 'it'} · ↶ in ⋯`
-        : 'Changes show live as you move a slider. Nothing to save.';
+        : 'Changes show live as you move a slider. Nothing to save.');
       rows.forEach((r) => r.el.classList.toggle('changed', !same(r.it, values[r.i])));
       body.querySelectorAll('.tw-sec').forEach((sec) => sec.paintChanged?.());
-      const cc = chips.querySelector('.tw-gchip-changed'); if (cc) cc.textContent = `• Changed${d ? ` ${d}` : ''}`;
+      const cc = chips.querySelector('.tw-gchip-changed'); if (cc) put(cc, 'textContent', `• Changed${d ? ` ${d}` : ''}`);
       if (changedOnly) applyFilter();
     }
     function setValue(i, v, { release = false, external = false } = {}) {
@@ -514,7 +521,7 @@ const ThreeTweaks = (() => {
       }
       values[i] = v;
       send({ type: 'tweak', index: i, value: runtime(it, v), call: it.call, key: it.key });
-      refreshState();
+      if (release) refreshState(); else refreshSoon();
       if (needsRebuild(i)) rebuild();
       if (release) { checkpoint(); remember(i); }
     }
@@ -1445,7 +1452,7 @@ const ThreeTweaks = (() => {
           det.append(grid, ...knobs.map(([, i]) => rows.find((r) => r.i === i && r.knob)?.panelEl).filter(Boolean));
         }
         for (const [it, i] of others) det.append(row(it, i));
-        det.paintChanged = () => { const n = changed(); badgeEl.textContent = n ? `${n} changed` : ''; };
+        det.paintChanged = () => { const n = changed(); const t = n ? `${n} changed` : ''; if (badgeEl.textContent !== t) badgeEl.textContent = t; };
         det.paintChanged();
         return det;
       };

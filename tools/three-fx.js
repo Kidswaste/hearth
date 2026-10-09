@@ -180,8 +180,11 @@ const ThreeFX = (() => {
     try {
       const d = ThreeLab.director;
       while (d && thumbQueue.length && root?.isConnected) {
-        const batch = thumbQueue.splice(0, 6).filter(([it, img]) => img.isConnected && !thumbCache.has(it.id));
+        // one at a time, with a couple of frames between: six shader compiles in one go froze the live preview for
+        // a second or more (the thumbnails render in the same page as the picture)
+        const batch = thumbQueue.splice(0, 1).filter(([it, img]) => img.isConnected && !thumbCache.has(it.id));
         if (!batch.length) continue;
+        await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 34)));
         const list = batch.map(([it]) => ({ id: it.id, type: it.type, P: ThreeLayers.filterValues(it.id) }));
         const r = await d.evalInSketch(`return filter.thumbs(${JSON.stringify(list)}, 96, 60)`);
         const urls = r?.ok ? r.value || {} : {};

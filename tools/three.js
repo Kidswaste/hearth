@@ -65,9 +65,27 @@ const ThreeLab = (() => {
     };
     const listener = (e) => { if (target === 'frame' && e.source === frame.contentWindow) handle(e.data); };
     addEventListener('message', listener);
+    const post = (m) => { if (ready) deliver(m); else queue.push(m); };
+    // Slider moves arrive faster than the picture redraws (several pointer events per frame, more with a fast mouse):
+    // only the latest value per slider is sent, once per frame, so the sandbox doesn't run a slider's onChange for
+    // values nobody sees. Any other message sends the waiting moves first, so the order stays the same. (The timer is
+    // for a hidden window, where frames don't run: the Stage window still shows the picture.)
+    const tweaks = new Map(); let tweakRaf = 0; let tweakTimer = 0;
+    const flushTweaks = () => {
+      cancelAnimationFrame(tweakRaf); clearTimeout(tweakTimer); tweakRaf = 0; tweakTimer = 0;
+      const list = [...tweaks.values()]; tweaks.clear();
+      for (const m of list) post(m);
+    };
     const send = (msg) => {
       const m = { target: 'three-sandbox', ...msg };
-      if (ready) deliver(m); else queue.push(m);
+      if (m.type === 'tweak') {
+        const k = `${m.layer ?? ''}|${m.index}`;
+        tweaks.delete(k); tweaks.set(k, m); // re-inserted: a slider moved again goes after the others
+        if (!tweakRaf) { tweakRaf = requestAnimationFrame(flushTweaks); tweakTimer = setTimeout(flushTweaks, 50); }
+        return;
+      }
+      if (tweaks.size) flushTweaks();
+      post(m);
     };
     // fresh: a brand-new page (the iframe is taken out and put back, the Stage window is recreated), for when a
     // sketch bugs out: hung code, a lost GPU context, stuck audio.
@@ -75,6 +93,7 @@ const ThreeLab = (() => {
     // preview, nothing plays, "not rendering") is retried with a fresh page, twice at most.
     let watchdog = 0; let retries = 0;
     const load = (fresh = false) => {
+      if (tweaks.size) flushTweaks(); // to the page they were meant for, as before
       ready = null;
       nonce = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
       clearTimeout(watchdog);
