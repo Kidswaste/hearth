@@ -142,10 +142,10 @@ const nodesOn = (agent) => Boolean(agent.threeTools) && agent.nodesTool !== fals
 // What every hub MCP server gets: Node mode, the agent (for chat_ tools), opt-ins that change the tool list.
 // HUB_CHAT_ID: the chat this run answers, so a director's tool calls reach that chat's own scene (chat-scenes.js).
 const hubToolEnv = (agent) => ({ ELECTRON_RUN_AS_NODE: '1', HUB_AGENT_ID: agent.id, ...(agent.hubChatId ? { HUB_CHAT_ID: agent.hubChatId } : {}), ...(agent.engine === 'codex' ? { HUB_PARTNER: 'Claude' } : {}), ...(nodesOn(agent) ? { HUB_NODES_TOOL: '1' } : {}), ...(agent.toolMode === 'full' ? { HUB_TOOL_MODE: 'full' } : {}) });
-// One file per chat run (two chats of the same director can start at once), removed when the run ends.
-const mcpConfigFile = (agent) => (agent.hubChatId
-  ? path.join(DATA_DIR, 'mcp-runs', `${agent.id}-${String(agent.hubChatId).replace(/[^\w-]/g, '_')}.json`)
-  : path.join(DATA_DIR, `mcp-${agent.id}.json`));
+// One file per run, removed when that run ends: a retry of the same chat (a lost session, an option the CLI doesn't
+// know) starts while the previous run is still closing, and a shared file was deleted under the new run
+// ("Invalid MCP configuration: … not found").
+const mcpConfigFile = (agent) => path.join(DATA_DIR, 'mcp-runs', `${agent.id}-${String(agent.hubChatId || 'once').replace(/[^\w-]/g, '_')}-${crypto.randomUUID().slice(0, 8)}.json`);
 function hubMcpConfig(agent) {
   const mcpServers = {};
   for (const key of hubToolsets(agent)) {
@@ -358,6 +358,18 @@ function unsupportedFlag(text) {
   return m && m[1] in CLAUDE_OPTIONAL && !claudeDropped.has(m[1]) ? m[1] : null;
 }
 
+// The command line a new chat would run, for /astra-flags (prompt text shortened; its tool-server file removed again).
+function shownArgs(a) {
+  const args = a.engine === 'codex' ? codexArgs(a, {}, {}) : claudeArgs(a, {}, {});
+  if (args.includes('--mcp-config')) fs.rm(args[args.indexOf('--mcp-config') + 1], { force: true }, () => {});
+  return args.map((x) => (x.length > 160 ? `${x.slice(0, 157)}…` : x));
+}
+// Run files left by a crash or a force quit go at startup (a day old: a long chat run never loses its own).
+try {
+  const dirRuns = path.join(DATA_DIR, 'mcp-runs');
+  for (const f of fs.readdirSync(dirRuns)) { const p = path.join(dirRuns, f); if (Date.now() - fs.statSync(p).mtimeMs > 864e5) fs.rmSync(p, { force: true }); }
+} catch { /* no runs yet */ }
+
 function claudeArgs(agent, session, options = {}) {
   const args = [
     '-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
@@ -555,6 +567,8 @@ const FIXES = [
     (e) => `That model isn't available on your ${ENGINES[e].account} account. Pick another one in the chat header's Model menu${e === 'codex' ? ' or with /astra-model' : ''}.`],
   [/usage limit|rate.?limit|too many requests|\b429\b|quota/i,
     (e) => `Your plan's usage limit was reached for now. Wait for it to reset, or use a lighter model / lower effort${e === 'codex' ? ' (/astra-model, /astra-effort low)' : ''}.`],
+  [/Invalid MCP configuration/i,
+    () => "Claude Code couldn't read Hearth's tool settings for this chat (the reason is above). Press Retry; if it comes back, run /astra-doctor and send the reason to Claude."],
   [/version_too_old|version [\d.]+ or newer is required|does not support this model/i,
     (e) => e === 'codex' ? 'This Codex is too old for the model: update the Codex / ChatGPT app, then press Retry.'
       : 'This Claude Code is too old: run `claude update` in a terminal (Homebrew: `brew upgrade claude-code`, npm: `npm i -g @anthropic-ai/claude-code@latest`), then press Retry. /astra-doctor shows which copy Hearth uses.'],
@@ -689,7 +703,8 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
   child.on('error', (err) => finish({ type: 'error', message: err.message }));
   child.on('close', (code, signal) => {
     if (running.get(chatId) === child) running.delete(chatId);
-    if (agent.hubChatId && engine === 'claude') fs.rm(mcpConfigFile(agent), { force: true }, () => {});
+    const mcpFile = engine === 'claude' && args[args.indexOf('--mcp-config') + 1];
+    if (args.includes('--mcp-config') && mcpFile) fs.rm(mcpFile, { force: true }, () => {});
     if (buffer.trim()) { handleLine(buffer); buffer = ''; } // the last line may come without a newline
     log(`${engine} ${chatId} exit=${code} signal=${signal} finished=${finished} stderr=${JSON.stringify(stderr.slice(-400))}`);
     if (child.hubIdle) finish({ type: 'error', message: `${ENGINES[engine].label} printed nothing for ${IDLE_MS / 60000} minutes, so Hearth stopped it. Press Retry.` });
@@ -700,9 +715,12 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
 // Events that stream into the live reply (everything else ends it).
 const STREAM_EVENTS = new Set(['delta', 'tool', 'thinking', 'progress']);
 // The most telling stderr line: an "Error:" line when there is one, else the last line.
+// A line ending in ":" ("Error: Invalid MCP configuration:") keeps the lines after it, where the reason is.
 function lastErrorLine(stderr) {
   const lines = stderr.trim().split('\n').map((l) => l.trim()).filter(Boolean);
-  return [...lines].reverse().find((l) => /error/i.test(l)) || lines.pop() || '';
+  const i = lines.map((l) => /error/i.test(l)).lastIndexOf(true);
+  if (i < 0) return lines.pop() || '';
+  return /:$/.test(lines[i]) ? lines.slice(i, i + 4).join('\n') : lines[i];
 }
 
 // One question, one answer, no saved chat: second opinions, quick asks and collaborations that don't stream.
@@ -813,7 +831,7 @@ async function doctor(agents = []) {
     const text = buildPrompt(a);
     return { id: a.id, name: a.name, engine: a.engine, chars: text.length, tokens: Math.ceil(text.length / 4), tools: hubToolsets(a), text,
       // the command line a new chat would run (prompt text shortened), for /astra-flags
-      args: (a.engine === 'codex' ? codexArgs(a, {}, {}) : claudeArgs(a, {}, {})).map((x) => (x.length > 160 ? `${x.slice(0, 157)}…` : x)) };
+      args: shownArgs(a) };
   });
   return report;
 }
@@ -865,6 +883,6 @@ module.exports = {
   send, stop, stopAll, login, status, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
   doctor, EFFORTS, CODEX_DISABLED_FEATURES,
   // for tests (dev/astra-engine-test.js)
-  _test: { codexArgs, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, hubToolEnv, nodesOn, LOST_SESSION },
+  _test: { lastErrorLine, codexArgs, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, hubToolEnv, nodesOn, LOST_SESSION },
   buildPrompt, HUB_TOOLSETS, // the director cost report (mcp/cost.js)
 };

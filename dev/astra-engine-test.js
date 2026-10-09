@@ -154,6 +154,16 @@ function turn(agent, text, session = {}, options = {}, onStart) {
   assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'data', 'claude-flags.json'), 'utf8')).dropped.sort(), ['--disable-slash-commands', '--permission-prompts', '--restricted', '--thinking-display']);
   assert.strictEqual(T.unsupportedFlag("error: unknown option '--model'"), null);
   ok('unknown optional Claude flags are dropped and the turn retried');
+  // each run gets its own tool-server file, removed when that run ends (a retry used to lose the shared one)
+  const mf = (a) => a[a.indexOf('--mcp-config') + 1];
+  const f1 = mf(T.claudeArgs({ ...claude, chatTools: true, hubChatId: 'c1' }, {}, {})), f2 = mf(T.claudeArgs({ ...claude, chatTools: true, hubChatId: 'c1' }, {}, {}));
+  assert(f1 && f2 && f1 !== f2 && fs.existsSync(f1) && fs.existsSync(f2));
+  assert.strictEqual(T.lastErrorLine('boot\nError: Invalid MCP configuration:\nMCP config file not found: /x.json\n'), 'Error: Invalid MCP configuration:\nMCP config file not found: /x.json');
+  r = await turn({ ...claude, chatTools: true }, 'hello again');
+  assert.strictEqual(r.end.type, 'done', JSON.stringify(r.end));
+  await new Promise((res) => setTimeout(res, 300));
+  const left = fs.readdirSync(path.join(dir, 'data', 'mcp-runs')).filter((f) => !/-c1-|-once-/.test(f)); // (claudeArgs called directly above leaves its file: only send() runs clean up) assert.deepStrictEqual(left, [], 'run files are removed: ' + left.join(' '));
+  ok('one tool-server file per run, removed after it; the reason under "Invalid MCP configuration:" is kept');
   console.log(`\n${passed} checks passed`);
   fs.rmSync(dir, { recursive: true, force: true });
   process.exit(0);

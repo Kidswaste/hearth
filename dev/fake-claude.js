@@ -11,6 +11,9 @@ const F = require('./fake-common');
   // FAKE_CLAUDE_REJECT=--flag,--other acts like a Claude Code version that doesn't know those options
   const reject = (process.env.FAKE_CLAUDE_REJECT || '').split(',').find((f) => f && argv.includes(f));
   if (reject) { process.stderr.write(`error: unknown option '${reject}'\n`); process.exit(1); }
+  // like the real CLI: a --mcp-config file that isn't there stops it before anything else
+  const mcpAt = argv.indexOf('--mcp-config');
+  if (mcpAt >= 0 && !require('fs').existsSync(argv[mcpAt + 1])) { process.stderr.write(`Error: Invalid MCP configuration:\nMCP config file not found: ${argv[mcpAt + 1]}\n`); process.exit(1); }
   const arg = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : null; };
   const sessionId = arg('--resume') || arg('--session-id') || F.uuid();
   const model = arg('--model') || 'fake-opus';
