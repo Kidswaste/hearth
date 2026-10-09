@@ -96,6 +96,7 @@ const closeAll = async () => {
   if (typeof KeysUI !== 'undefined') KeysUI.close?.();
   document.querySelector('.find-bar .find-close, .find-bar button:last-child')?.click();
   if (vis('.notes-panel')) Notes.close?.();
+  if (typeof ThreeFX !== 'undefined') ThreeFX.close?.(); // the Lab's effects picker (X, Alt+X)
   if (vis('.cmdbar-input')) document.querySelector('.cmdbar-input')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   await wait(60);
 };

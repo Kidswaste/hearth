@@ -497,7 +497,8 @@ const ThreeMotion = (() => {
     try { openPicker(); } catch (err) { toast(err.message, { type: 'error' }); }
     (typeof Usage !== 'undefined') && Usage.key?.('Alt+X', 'Lab');
   });
-  try { Keys.add({ area: 'Lab', keys: 'Alt+X', what: 'Motion design kit: Hearth on screen, kinetic type, camera moves, logos, end cards (the effects picker\'s Motion tab, /motion-kit)', when: () => Boolean(document.querySelector('.layers')?.offsetParent), run: () => openPicker() }); } catch { /* keys list optional */ }
+  // listed after the Lab's own keys (keys-ui adds them once the page is parsed)
+  addEventListener('DOMContentLoaded', () => { try { Keys.add({ area: 'Lab', keys: 'Alt+X', what: 'Motion design kit: Hearth on screen, kinetic type, camera moves, logos, end cards (the effects picker\'s Motion tab, /motion-kit)', when: () => Boolean(document.querySelector('.layers')?.offsetParent), run: () => openPicker() }); } catch { /* keys list optional */ } });
 
   return { SPEC, KINDS, TEMPLATES, ACTIONS, find, byId, codeFor, plainCode, add, setValues, motionOf, hearthOnScreen, hearthPictures, toSequence, sampleSequence, handle, openPicker, ensureNodes, ensureFont, parseCursorPath, pickerItems, applyItem, HELP };
 })();
