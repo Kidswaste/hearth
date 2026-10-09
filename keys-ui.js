@@ -162,8 +162,8 @@ const KeysUI = (() => {
   // what applies where you are: areas for the tool or chat on screen
   function hereAreas() {
     const id = H.surfaceIdFor?.(H.activeId) || H.activeId || '';
-    if (id === 'tool:three') return ['Lab', 'Lab timeline', 'Lab sliders & layers', 'Present', 'Director dock', 'Nodes'];
-    if (id === 'tool:ae') return ['Video Review', 'Director dock'];
+    if (id === 'tool:three') return ['Lab', 'Lab timeline', 'Lab sliders & layers', 'Effects picker', 'Present', 'Director dock', 'Chat box', 'Nodes'];
+    if (id === 'tool:ae') return ['Video Review', 'Director dock', 'Chat box'];
     if (id === 'tool:forgeheart') return ['Forge'];
     if (H.agent(H.activeId)?.mode === 'native') return ['Chat box', 'Chats panel'];
     return [];
@@ -357,6 +357,7 @@ const KeysUI = (() => {
       { area: 'Menus', keys: '← / Backspace', what: 'Back out of a submenu' },
       { area: 'Menus', keys: 'Type', what: 'Filter a long menu (its submenus too) · jump to a letter in a short one' },
       { area: 'Menus', keys: 'Point at ›', what: 'A submenu opens beside the menu; click there to run an item directly' },
+      { area: 'Menus', keys: 'Shift+F10', what: 'The right-click menu of what has the focus (the menu key ≣ too; Ctrl+click on a Mac)' },
       // the chat box
       { area: 'Chat box', keys: 'Enter / Shift+Enter', what: 'Send / new line', when: inChat },
       { area: 'Chat box', keys: '/', what: 'Chat commands (at the start of the message box)', when: inChat, sel: 'form.composer textarea' },
