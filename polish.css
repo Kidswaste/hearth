@@ -713,3 +713,105 @@ html[data-skin~="swirl"] :is(#rail, .agent-btn.active, .item.active, .primary, #
 /* the chat list is sized by its flex parent, never by its messages: contained, a streaming reply lays out only the
    list, not the window around it (the docked director chat sits beside the playing Lab) */
 .messages-wrap > .messages { contain: strict; }
+
+/* ---------- declutter (round 7): menus that branch, Alt / Ctrl reveal, the keys sheet ----------
+   One menu look everywhere (#menu, its hover flyout #menu-fly and the Lab's two-column .lab-pop): a quiet hint after
+   the label, › on rows that open a submenu, ✓ on checked rows, thin separators, a filter field on long menus, a gold
+   bar on the row the arrow keys are on. Submenus slide in from the right and back out to the left. */
+#menu[popover], #menu-fly[popover], .mb-menu.lab-pop[popover] { inset: auto; margin: 0; color: var(--text); overflow-y: auto; }
+#menu-fly {
+  position: fixed; z-index: 10001; min-width: 170px; max-width: 340px; max-height: min(70vh, 520px); padding: 4px; display: flex; flex-direction: column;
+  background: var(--sidebar); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 28px #0009;
+}
+#menu-fly[hidden] { display: none; }
+#menu-fly button { border: 0; background: none; text-align: left; padding: 6px 10px; border-radius: 5px; cursor: pointer; display: flex; align-items: baseline; gap: 18px; white-space: nowrap; color: inherit; font: inherit; }
+#menu-fly button:hover { background: var(--hover); }
+:root[data-look~=v2] #menu-fly { background: var(--tx-noise), color-mix(in srgb, var(--fh-pop) 92%, transparent); border: 1px solid var(--line-hi); box-shadow: var(--m-glass-edge), 0 14px 40px #000a; }
+:root[data-look~=v2] #menu-fly button:hover { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 18%, transparent), transparent); color: var(--fh-gold-text); box-shadow: inset 2px 0 0 var(--fh-gold); }
+html[data-skin~="forge"] #menu-fly { border-radius: 0; clip-path: var(--cut-sm); }
+:is(#menu, #menu-fly) .menu-key { margin-left: auto; font: 10.5px var(--mono, ui-monospace, monospace); letter-spacing: .04em; color: var(--muted); opacity: .85; }
+:is(#menu, #menu-fly) .menu-key.menu-sub { font-size: 13px; opacity: .7; letter-spacing: 0; }
+:is(#menu, #menu-fly) .menu-hint { font-size: 11px; color: var(--muted); opacity: .8; max-width: 180px; overflow: hidden; text-overflow: ellipsis; margin-left: -8px; }
+:is(#menu, #menu-fly) button.checked::before { content: "✓"; color: var(--ui-gold, var(--accent)); margin-left: -2px; margin-right: -10px; width: 10px; flex: none; }
+:is(#menu, #menu-fly) button:disabled { opacity: .45; cursor: default; }
+:is(#menu, #menu-fly) .menu-sep { height: 1px; margin: 4px 8px; background: var(--line); flex: none; }
+:is(#menu, #menu-fly) .menu-head { padding: 6px 10px 2px; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: color-mix(in srgb, var(--ui-gold, var(--accent)) 45%, var(--muted)); }
+#menu .menu-back { color: var(--muted); font-size: 12px; }
+#menu .menu-back .menu-key { font-family: inherit; letter-spacing: 0; text-transform: none; }
+#menu .menu-deep { font-size: 12.5px; }
+:is(#menu, .mb-menu.lab-pop) .menu-filter {
+  margin: 2px 2px 4px; padding: 5px 8px; font-size: 12px; border-radius: var(--r-sm, 4px); border: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 70%, transparent); color: inherit; flex: none; outline: none;
+}
+:is(#menu, .mb-menu.lab-pop) .menu-filter:focus { border-color: color-mix(in srgb, var(--ui-gold, var(--accent)) 60%, var(--line)); }
+:is(#menu, #menu-fly) button.kb-on, .mb-menu.lab-pop .menu-item.kb-on { background: color-mix(in srgb, var(--ui-gold, var(--accent)) 16%, transparent); box-shadow: inset 2px 0 0 var(--ui-gold, var(--accent)); }
+.mb-menu.lab-pop .menu-item.has-sub .hint { opacity: 1; color: color-mix(in srgb, var(--ui-gold, var(--accent)) 60%, var(--muted)); }
+.mb-menu.lab-pop .menu-item.menu-back b { font-weight: 400; color: var(--muted); }
+/* submenus slide in place: forward from the right, back from the left */
+@keyframes dc-in { from { opacity: 0; transform: translateX(12px); } }
+@keyframes dc-back { from { opacity: 0; transform: translateX(-12px); } }
+@keyframes dc-fly { from { opacity: 0; transform: translateX(-6px) scale(.98); } }
+@keyframes dc-fly-left { from { opacity: 0; transform: translateX(6px) scale(.98); } }
+:root:not([data-motion=off]) :is(#menu, .mb-menu.lab-pop).m-in > * { animation-name: dc-in; animation-duration: .18s; }
+:root:not([data-motion=off]) :is(#menu, .mb-menu.lab-pop).m-back > * { animation-name: dc-back; animation-duration: .18s; }
+:root:not([data-motion=off]) #menu-fly:not([hidden]) { animation: dc-fly .16s cubic-bezier(.2, .9, .3, 1.1) both; }
+:root:not([data-motion=off]) #menu-fly.to-left:not([hidden]) { animation-name: dc-fly-left; }
+
+/* Alt held (or tapped twice): the tucked buttons come back in place, outlined (declutter.js writes the rules) */
+@keyframes dc-reveal { from { opacity: 0; transform: translateY(3px) scale(.9); } }
+:root[data-motion=off].reveal-alt * { animation: none !important; }
+:root.reveal-latched #keys-btn { opacity: 1; color: var(--ui-gold, var(--accent)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ui-gold, var(--accent)) 50%, transparent); }
+
+/* Ctrl held: a key badge under every button that has one (placed once, on a layer of its own) */
+.key-hint-layer { position: fixed; inset: 0; z-index: 10002; pointer-events: none; contain: strict; }
+.key-hint {
+  position: absolute; transform: translateX(-50%); padding: 1px 5px; border-radius: 4px; white-space: nowrap;
+  font: 600 10px/1.45 var(--mono, ui-monospace, monospace); letter-spacing: .02em;
+  color: #1a1305; background: var(--ui-gold, var(--accent)); box-shadow: 0 2px 8px #0008, 0 0 0 1px #0006;
+}
+:root:not([data-motion=off]) .key-hint { animation: dc-hint .16s cubic-bezier(.2, .9, .3, 1.3) both; }
+@keyframes dc-hint { from { opacity: 0; transform: translate(-50%, -3px) scale(.85); } }
+
+/* the keys button, bottom left of the rail: calm until pointed at */
+#keys-btn { width: 32px; height: 28px; margin-top: 2px; opacity: .42; display: grid; place-items: center; font-size: 0; color: var(--muted); }
+#keys-btn:hover, #keys-btn.on { opacity: .95; color: var(--text); }
+#keys-btn svg { pointer-events: none; }
+
+/* the keys sheet: a calm panel over the bottom-left corner */
+.keys-sheet {
+  position: fixed; left: calc(var(--sidebar-w, 64px) + 10px); bottom: 12px; z-index: 9000; width: min(440px, calc(100vw - 100px)); max-height: min(78vh, 680px);
+  display: flex; flex-direction: column; gap: 6px; padding: 10px 10px 8px; border-radius: var(--r-lg, 10px);
+  background: var(--sidebar); border: 1px solid var(--line); box-shadow: 0 18px 50px #000b; color: var(--text);
+}
+:root[data-look~=v2] .keys-sheet { background: var(--tx-noise), color-mix(in srgb, var(--fh-pop) 96%, transparent); border-color: var(--line-hi); box-shadow: var(--m-glass-edge), 0 18px 50px #000b; }
+:root:not([data-motion=off]) .keys-sheet { animation: hx-rise .2s cubic-bezier(.2, .9, .3, 1.1) both; transform-origin: bottom left; }
+:root:not([data-motion=off]) .keys-sheet.out { animation: hx-reveal .14s ease both; }
+.keys-sheet .ks-head { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.keys-sheet .ks-head b { font-family: var(--font-head, inherit); letter-spacing: .02em; }
+.keys-sheet .ks-x { border: 0; background: none; color: var(--muted); font-size: 16px; cursor: pointer; padding: 0 4px; }
+.keys-sheet .ks-latch { font-size: 11px; padding: 3px 8px; border-radius: var(--r-pill, 999px); border: 1px solid var(--line); background: none; color: var(--muted); cursor: pointer; }
+.keys-sheet .ks-latch.on, .keys-sheet .ks-latch:hover { color: var(--ui-gold, var(--accent)); border-color: color-mix(in srgb, var(--ui-gold, var(--accent)) 50%, var(--line)); }
+.keys-sheet .ks-search { width: 100%; box-sizing: border-box; padding: 6px 9px; font-size: 12.5px; border-radius: var(--r-sm, 4px); border: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 70%, transparent); color: inherit; outline: none; }
+.keys-sheet .ks-search:focus { border-color: color-mix(in srgb, var(--ui-gold, var(--accent)) 55%, var(--line)); }
+.keys-sheet .ks-tips { display: flex; gap: 6px; flex-wrap: wrap; }
+.keys-sheet .ks-tip { display: flex; align-items: center; gap: 6px; padding: 4px 8px; font-size: 11.5px; color: var(--muted); border: 1px solid var(--line); border-radius: var(--r-md, 6px); background: color-mix(in srgb, var(--bg) 40%, transparent); cursor: pointer; }
+.keys-sheet .ks-tip:hover { color: var(--text); border-color: color-mix(in srgb, var(--ui-gold, var(--accent)) 45%, var(--line)); }
+.keys-sheet .ks-body { overflow-y: auto; scrollbar-width: thin; scrollbar-gutter: stable; padding-right: 2px; min-height: 80px; }
+.keys-sheet .ks-group h4 { margin: 10px 4px 3px; font-size: 10.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: color-mix(in srgb, var(--ui-gold, var(--accent)) 50%, var(--muted)); }
+.keys-sheet .ks-group:first-child h4 { margin-top: 2px; }
+.keys-sheet .ks-group.away h4 { color: var(--muted); opacity: .75; }
+.keys-sheet .ks-line { display: grid; grid-template-columns: minmax(104px, max-content) 1fr; align-items: baseline; gap: 10px; width: 100%; padding: 4px 6px; border: 0; border-radius: var(--r-sm, 4px); background: none; color: inherit; text-align: left; font-size: 12.5px; cursor: pointer; }
+.keys-sheet .ks-line:hover, .keys-sheet .ks-line.kb-on { background: color-mix(in srgb, var(--ui-gold, var(--accent)) 11%, transparent); box-shadow: inset 2px 0 0 var(--ui-gold, var(--accent)); }
+.keys-sheet .ks-line.elsewhere { opacity: .55; }
+.keys-sheet .ks-line.elsewhere:hover { opacity: 1; }
+.keys-sheet .ks-what { color: color-mix(in srgb, var(--text) 86%, var(--muted)); line-height: 1.35; }
+.keys-sheet .ks-keys { white-space: nowrap; }
+.keys-sheet kbd, .keys-sheet .ks-word { display: inline-block; font: 600 10.5px/1.5 var(--mono, ui-monospace, monospace); padding: 0 5px; margin-right: 3px; border-radius: 4px; }
+.keys-sheet kbd { border: 1px solid color-mix(in srgb, var(--text) 18%, transparent); border-bottom-width: 2px; background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--text); }
+.keys-sheet .ks-word { font-family: inherit; font-weight: 400; padding: 0 2px; color: var(--muted); }
+.keys-sheet .ks-sep { color: var(--muted); margin: 0 3px 0 0; font-size: 11px; }
+.keys-sheet .ks-foot { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); padding: 4px 2px 0; border-top: 1px solid var(--line); }
+.keys-sheet .ks-link { border: 0; background: none; color: var(--ui-gold, var(--accent)); cursor: pointer; font-size: 11px; padding: 2px 4px; }
+.keys-sheet .ks-none { padding: 10px 6px; }
+/* a line clicked in the sheet points at its control */
+@keyframes ks-flash { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 30% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-gold, var(--accent)) 80%, transparent), 0 0 18px color-mix(in srgb, var(--ui-gold, var(--accent)) 40%, transparent); } }
+.ks-flash { animation: ks-flash 1.5s ease both !important; }

@@ -161,6 +161,11 @@ let menuState = null; // { x, y, given, parent, kb: index of the keyboard-highli
 const MENU_FILTER_AT = 9;
 const menuSubItems = (it) => { try { return ((typeof it.items === 'function' ? it.items() : it.items) || []).filter(Boolean); } catch (err) { console.warn(err); return []; } };
 const menuLabel = (it) => String(it.label ?? '').split(/\s{2,}(?=\S+$)/);
+// Menus go in the top layer (a manual popover), so they also open over a modal dialog (Settings, Memory, /help…)
+function topLayer(node, on) {
+  if (!node.hasAttribute('popover')) node.setAttribute('popover', 'manual');
+  try { if (on && !node.matches(':popover-open')) node.showPopover(); else if (!on && node.matches(':popover-open')) node.hidePopover(); } catch { /* not connected yet */ }
+}
 
 function menuButton(it, onPick) {
   const b = document.createElement('button');
@@ -230,6 +235,7 @@ function showMenu(x, y, items, parent = null, dir = 0) {
   menu.classList.toggle('m-long', Boolean(filter));
   menuState = { x, y, given, parent, list, pick, kb: -1, filter };
   menu.hidden = false;
+  topLayer(menu, true);
   menuOpenedAt = performance.now(); // the click that opened it must not close it (start.js)
   const { innerWidth: w, innerHeight: h } = window;
   menu.style.left = `${Math.max(4, Math.min(x, w - menu.offsetWidth - 8))}px`;
@@ -237,7 +243,7 @@ function showMenu(x, y, items, parent = null, dir = 0) {
 }
 function hideMenu() {
   const menu = $('menu');
-  if (menu) menu.hidden = true;
+  if (menu) { menu.hidden = true; topLayer(menu, false); }
   hideMenuFly();
   menuState = null;
 }
@@ -305,6 +311,7 @@ function showMenuFly(row, it, ctx) {
     });
   }));
   fly.hidden = false;
+  topLayer(fly, true);
   fly.dataset.for = menuLabel(it)[0];
   const r = row.getBoundingClientRect();
   const m = $('menu').getBoundingClientRect();
@@ -314,7 +321,7 @@ function showMenuFly(row, it, ctx) {
   fly.style.top = `${Math.max(4, Math.min(r.top - 5, innerHeight - fh - 8))}px`;
   fly.classList.toggle('to-left', !right);
 }
-function hideMenuFly() { clearTimeout(menuFlyTimer); const f = $('menu-fly'); if (f) f.hidden = true; }
+function hideMenuFly() { clearTimeout(menuFlyTimer); const f = $('menu-fly'); if (f) { f.hidden = true; topLayer(f, false); } }
 
 // the menu's keys (capture: while it's open, arrows and letters belong to it, not to the Lab or the chat)
 addEventListener('keydown', (e) => {
@@ -644,7 +651,7 @@ function handleShortcut({ key, shift }) {
   else if (key === ',') AppUI.openSettings();
   else if (key === 'k') AppUI.palette();
   else if (key === 'f') AppUI.find();
-  else if (key === '/') AppUI.shortcutsHelp();
+  else if (key === '/') { if (typeof KeysUI !== 'undefined') KeysUI.open(); else AppUI.shortcutsHelp(); } // the keys sheet (keys-ui.js)
   else if (key === '=' || key === '+') AppUI.zoom(0.1);
   else if (key === '-') AppUI.zoom(-0.1);
   else if (key === '0') AppUI.zoom(0);
@@ -761,6 +768,7 @@ function popMenu(x, y, items, { width = 300 } = {}) {
   render(items);
   Object.assign(m.style, { left: `${Math.max(8, Math.min(innerWidth - width - 12, x))}px`, top: `${Math.max(8, y)}px`, transform: 'none', maxHeight: '70vh', overflowY: 'auto' });
   document.body.append(m);
+  topLayer(m, true);
   setTimeout(() => { addEventListener('pointerdown', away, true); addEventListener('keydown', keys, true); });
   return m;
 }

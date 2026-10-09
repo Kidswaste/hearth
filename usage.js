@@ -217,7 +217,7 @@ const Usage = (() => {
   }
 
   return {
-    init, track, dialog, decorate,
+    init, track, dialog, decorate, keyOf, // keyOf(button): its "Area › Label" name (declutter.js: Customise this… → Hide)
     // shortcuts, opened agents / tools, an agent's tool calls
     key: (combo, what) => track(`Shortcut › ${combo}${what ? ` (${what})` : ''}`, { area: 'Shortcuts' }),
     open: (id) => track(`Open › ${id}`, { area: 'Opened', label: id }),
