@@ -284,3 +284,4 @@ html[data-skin="forge"] .vr-kit { border-left-color: var(--line-hi); }
 .ed-nav:hover, .ed-key:hover { opacity: 1; }
 .ed-insp textarea { width: 100%; resize: vertical; min-height: 40px; font: inherit; }
 html[data-skin="forge"] .ed-insp { border-radius: 0; }
+.ed-fxend { display: inline-flex; align-items: center; gap: 2px; }

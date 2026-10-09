@@ -53,7 +53,7 @@ const CutEditCmds = (() => {
 
   const defs = [];
   const cmd = (d) => defs.push(d);
-  const PRESET_KINDS = { transition: FX.TRANSITIONS, look: FX.LOOKS, title: FX.TITLE_STYLES, anim: FX.TITLE_ANIMS, lower: FX.LOWER_THIRDS, motion: FX.MOTIONS, ramp: FX.RAMPS, format: FX.FORMATS, template: FX.TEMPLATES, export: FX.EXPORTS, easing: FX.EASES, blend: FX.BLENDS };
+  const PRESET_KINDS = { transition: FX.TRANSITIONS, look: FX.LOOKS, effect: FX.EFFECTS, title: FX.TITLE_STYLES, anim: FX.TITLE_ANIMS, lower: FX.LOWER_THIRDS, motion: FX.MOTIONS, ramp: FX.RAMPS, format: FX.FORMATS, template: FX.TEMPLATES, export: FX.EXPORTS, easing: FX.EASES, blend: FX.BLENDS };
 
   // ---------- opening, sequences, templates, format ----------
   cmd({ name: 'editor', aliases: ['video-editor'], desc: 'The video editor: open (on the open video), off, new <name> [format], open <sequence>, list, keys', args: '[on|off|new <name>|open <name>|list|keys]', keys: 'E',
@@ -176,6 +176,16 @@ const CutEditCmds = (() => {
   cmd({ name: 'adjust', aliases: ['color-adjust'], desc: 'One color adjustment on the selection: exposure, contrast, saturation, temp, tint, hue, gamma, highlights, shadows, fade, mono, sepia, vignette, grain, blur, sharpen', args: '<adjustment> <value>',
     complete: (a) => opts(FX.ADJ.map((x) => ({ value: x.id, hint: `${x.name} ${x.min}…${x.max}` })), a, 20), examples: ['/adjust exposure 0.3', '/adjust temp -0.4', '/adjust vignette 0.5'],
     run: async (args) => { await editing(); const [k, v, ...rest] = words(args); const a = FX.ADJ.find((x) => x.id === k || x.name.toLowerCase().startsWith(String(k || '').toLowerCase())); if (!a || v == null) return `Usage: /adjust exposure 0.3 (${FX.ADJ.map((x) => x.id).join(', ')}).`; VideoCut.adjust(a.id, Number(v), targets(rest)); return `${a.name} ${v}.`; } });
+  cmd({ name: 'effect', aliases: ['clip-effect', 'fx-clip'], desc: 'An effect on the selection: mirror, blur, soft-glow, bloom, pixelate, posterize, rgb-shift, vhs, crt, scanlines, letterbox-239, rounded, border-gold, hue-cycle, strobe…; amount %; "remove <effect>" or off', args: '<effect|off|remove effect> [amount%] [n…]',
+    complete: (a) => opts([...ids(FX.EFFECTS), { value: 'off' }, { value: 'remove' }], a, 36), examples: ['/effect soft-glow 60%', '/effect vhs', '/effect off'],
+    run: async (args) => {
+      await editing(); const w = words(args); const amt = w.find((x) => /^\d+%$/.test(x)); const tg = targets(w.filter(isTarget));
+      if (w[0] === 'off') { VideoCut.setEffect('off', tg); return 'Effects removed.'; }
+      const rm = w[0] === 'remove';
+      const f = pickPreset(FX.EFFECTS, w.filter((x) => !isTarget(x) && x !== amt && x !== 'remove').join(' '), 'effect');
+      VideoCut.setEffect(f.id, tg, rm ? 0 : amt ? Number(amt.slice(0, -1)) / 100 : 1);
+      return rm ? `${f.name} removed.` : `✦ ${f.name}${amt ? ` at ${amt}` : ''}.`;
+    } });
   cmd({ name: 'keyframe', aliases: ['key'], desc: 'A keyframe at the playhead on the selection: opacity (0–1), scale, x, y (−1…1), rotate (°), volume; optional value and curve', args: '<prop> [value] [curve]',
     complete: (a) => (words(a).length > 2 ? opts(ids(FX.EASES), a, 20) : opts(C.KEY_PROPS, a)), examples: ['/keyframe scale 1.2 expoOut', '/keyframe opacity 0', '/keyframe x -0.3'], keys: 'Alt+K',
     run: async (args) => { await editing(); const [p, v, e0] = words(args); if (!C.KEY_PROPS.includes(p)) return `Pick one of ${C.KEY_PROPS.join(', ')}.`; const id = targets([])[0]; const ease = e0 ? pickPreset(FX.EASES, e0, 'easing').id : 'ease'; const r = VideoCut.keyHere(p, v != null ? Number(v) : null, id, ease); return r ? `◆ ${p} ${Number(r.v).toFixed(3)} at ${fmt(VideoCut.time)} (${FX.EASE[ease].name}).` : 'No clip here.'; } });
@@ -264,7 +274,21 @@ const CutEditCmds = (() => {
     complete: (a) => opts(Object.keys(PRESET_KINDS).map((k) => `${k}s`), a),
     run: async (args) => { const [k0, ...q] = words(args); const k = String(k0 || '').replace(/s$/, ''); const list = PRESET_KINDS[k]; if (!list) return `Kinds: ${Object.keys(PRESET_KINDS).map((x) => `${x}s`).join(', ')}.`; const s = q.join(' ').toLowerCase(); const hits = list.filter((x) => !s || x.id.includes(s) || x.name.toLowerCase().includes(s)); return `${hits.length} ${k}${hits.length === 1 ? '' : 's'}:\n${hits.map((x) => `\`${x.id}\` ${x.name}${x.group ? ` · ${x.group}` : ''}`).join('\n')}`; } });
 
+  // ---------- the Lab hands its media to the editor ----------
+  async function labPlayer() {
+    if (typeof ThreeLab === 'undefined') throw new Error('The Three.js Lab isn\'t loaded.');
+    const p = (await ThreeLab.cmd({ show: false })).player;
+    if (!p?.loaded) throw new Error('Load a song or video in the Lab first (🎵 Load audio / video…).');
+    return p;
+  }
+  const labDefs = [
+    { name: 'lab-to-editor', aliases: ['edit-lab-video'], desc: 'Open the Lab\'s video (its loop or trim) in the video editor as its own edit, to cut it frame by frame', run: async () => { const p = await labPlayer(); return (await p.sendClip('edit')) ? `Editing the Lab's video · ${summary()}` : 'The Lab has no video loaded (a song goes in with /lab-music).'; } },
+    { name: 'lab-overlay', desc: 'Lay the Lab\'s video (its loop or trim) over the open edit, at its playhead', run: async () => { const p = await labPlayer(); return (await p.sendClip('overlay')) ? `Overlay from the Lab · ${summary()}` : 'The Lab has no video loaded.'; } },
+    { name: 'lab-music', desc: 'Put the Lab\'s song (its loop or trim) under the open edit, on an audio track', run: async () => { const p = await labPlayer(); return (await p.sendClip('music')) ? `♪ The Lab's song is on the edit · ${summary()}` : 'Open a video in Video Review first.'; } },
+  ];
+
   function registerAll() {
+    for (const d of labDefs) if (!Commands.get(d.name)) Commands.register({ area: 'Three.js Lab', ...d, aliases: (d.aliases || []).filter((a) => !Commands.get(a)) });
     for (const d of defs) {
       Commands.register({ area: AREA, ...d, when: inVideo, whenLabel: 'in Video Review', aliases: (d.aliases || []).filter((a) => !Commands.get(a)) });
     }

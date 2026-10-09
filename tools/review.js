@@ -1578,7 +1578,7 @@ const Review = (() => {
     // transport
     refs.play = el('button', { class: 'vr-play', text: '▶', title: 'Play / pause (Space)', on: { click: togglePlay } });
     refs.time = el('input', { class: 'vr-time', value: '00:00:00:00', title: 'Type a time and press Enter: 1:23, 12.5, 00:00:04:12, f240, +10f, 50%', on: {
-      keydown: (e) => { e.stopPropagation(); if (e.key === 'Enter') { goto(refs.time.value); refs.time.blur(); } else if (e.key === 'Escape') refs.time.blur(); },
+      keydown: (e) => { e.stopPropagation(); if (e.key === 'Enter' || e.key === 'Escape') { if (e.key === 'Enter') goto(refs.time.value); refs.time.blur(); refs.root.focus({ preventScroll: true }); } }, // keys keep working after Enter
     } });
     refs.timeTotal = el('span', { class: 'vr-time-total', title: 'Click: timecode / seconds / frames (T)', on: { click: () => cycleTimeMode() } });
     refs.speed = el('select', { class: 'vr-speed', title: 'Playback speed ([ and ])', on: { change: (e) => setSpeed(e.target.value) } }, SPEEDS.map((s) => el('option', { value: s, text: `${s}×`, selected: s === 1 })));
@@ -1683,7 +1683,7 @@ const Review = (() => {
   }
 
   function goto(text) {
-    if (Cut()) { const t = V.parseTime(text, S.fps, Cut().time, CutData.total(Cut().edit)); if (t == null) { toast(`Can't read the time “${text}”.`, { type: 'error' }); return null; } Cut().goto(t); return t; }
+    if (Cut()) { const t = V.parseTime(text, Cut().fps || S.fps, Cut().time, CutData.total(Cut().edit)); if (t == null) { toast(`Can't read the time “${text}”.`, { type: 'error' }); return null; } Cut().goto(t); return t; }
     const t = V.parseTime(text, S.fps, vid().currentTime, dur());
     if (t == null) { toast(`Can't read the time “${text}”. Try 1:23, 12.5, 00:00:04:12, f240, +10f or 50%.`, { type: 'error' }); return null; }
     pause(); seek(t);

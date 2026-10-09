@@ -126,9 +126,16 @@ const VideoCut = (() => {
     // the frame actually presented after the seek (frame checks read it: frameInfo)
     el._seekId = (el._seekId || 0) + 1;
     const sid = el._seekId;
-    el.requestVideoFrameCallback?.((_n, m) => { if (el._seekId === sid) { el._mt = m.mediaTime; el._mtId = sid; } });
     el.currentTime = to;
-    return new Promise((res) => { const f = () => { el.removeEventListener('seeked', f); res(); }; el.addEventListener('seeked', f); setTimeout(f, 3000); });
+    return new Promise((res) => {
+      const f = () => {
+        el.removeEventListener('seeked', f);
+        // the next frame presented after 'seeked' is the one the seek landed on
+        if (el._seekId === sid) el.requestVideoFrameCallback?.((_n, m) => { if (el._seekId === sid) { el._mt = m.mediaTime; el._mtId = sid; } });
+        res();
+      };
+      el.addEventListener('seeked', f); setTimeout(f, 3000);
+    });
   }
   // what the stage shows: 'a' | 'b' (a decoder), 'img' (title card) or 'black' (gap)
   let shown = '';
@@ -235,9 +242,11 @@ const VideoCut = (() => {
     if (!P.playing && !P.rev) { paintPlay(); return; }
     P.playing = false; P.rev = 0;
     stopClock();
-    if (richOn) { P.T = VideoComp.pause(); seekRich(P.T); paintPlay(); return; }
+    if (richOn) { P.T = frameMid(VideoComp.pause()); seekRich(P.T); paintPlay(); return; }
     for (const e of els()) e.pause();
     P.T = nowT();
+    // stop on a whole frame: the decoder goes to the middle of the frame the counter shows
+    if (P.T < total() - 1e-3) { const T0 = frameMid(P.T); if (Math.abs(T0 - P.T) > 1e-4) { P.T = T0; seek(T0, { play: false }); } }
     const x = C.layout(st.edit)[P.idx];
     if (x) staticFade(x);
     placeHead(); paintTime(); paintPlay();
@@ -849,6 +858,8 @@ const VideoCut = (() => {
   }
   // Snap to edges, markers, beats and the playhead (Alt: free); with snapping off, or nothing near, to the frame.
   const toFrame = (T) => { const F = progFps(); return Math.round(T * F) / F; };
+  // the start of the frame a time is in (things added "at the playhead" start on its frame)
+  const frameStart = (T) => { const F = progFps(); return Math.floor(T * F + 1e-4) / F; };
   const snapT = (T, e, exclude) => {
     if (e.altKey || !st.snap) { st.snapAt = null; return toFrame(T); }
     const v = span();
@@ -1055,6 +1066,7 @@ const VideoCut = (() => {
         c.color ? { label: 'No look', action: () => commit(C.patchAny(st.edit, ids, (k) => { delete k.color; }), 'Look removed') } : null,
       ].filter(Boolean) } : null,
       visual && c.kind !== 'title' ? { label: 'Motion', items: () => grouped(FX.MOTIONS, (id) => applyMotion(id, ids), null) } : null,
+      visual && c.kind !== 'title' ? { label: `Effects${c.fx?.length ? ` (${c.fx.length})` : ''}`, items: () => [...grouped(FX.EFFECTS, (id) => setEffect(id, ids, (c.fx || []).some((f) => f.id === id) ? 0 : 1), null).map((gr) => ({ ...gr, items: () => gr.items().map((it) => ({ ...it, label: (c.fx || []).some((f) => FX.EFFECT[f.id]?.name === it.label.replace(/^✓ /, '')) ? `✓ ${it.label}` : it.label })) })), c.fx?.length ? { label: 'Remove every effect', action: () => setEffect('off', ids) } : null].filter(Boolean) } : null,
       { label: 'Keyframe at the playhead', items: () => C.KEY_PROPS.filter((p) => (p === 'volume' ? media : visual)).map((p) => ({ label: `◆ ${p}${c.keys?.[p] ? ` (${c.keys[p].length})` : ''}`, action: () => keyHere(p, null, c.id) })).concat(c.keys ? [{ label: 'Remove every keyframe', action: () => commit(C.patchAny(st.edit, ids, (k) => { delete k.keys; }), 'Keyframes removed') }] : []) },
       { label: 'Fades', items: () => [
         { label: `Fade in: ${c.fadeIn ? `${c.fadeIn.toFixed(2)} s` : 'off'}`, items: [0, 0.25, 0.5, 1, 2].map((s) => ({ label: s ? `${s} s` : 'Off', action: () => commit(C.patchAny(st.edit, ids, (k) => { k.fadeIn = Math.min(s, C.durOf(k) / 2); }), s ? `Fade in ${s} s` : 'No fade in') })) },
@@ -1265,6 +1277,20 @@ const VideoCut = (() => {
     commit(C.patchAny(st.edit, list, (c) => { if (!l) delete c.color; else c.color = { ...(c.color || {}), look: l.id, ...(amt != null ? { amt } : {}) }; }), l ? `Look: ${l.name}` : 'Look removed');
     return l;
   }
+  // Effects (EditFX.EFFECTS): add one (or set its amount), remove one with amt 0, 'off' clears them all.
+  function setEffect(id, ids = null, amt = 1) {
+    const list = ids || targetAny();
+    if (!list.length) return null;
+    if (id === 'off' || id == null) { commit(C.patchAny(st.edit, list, (c) => { delete c.fx; }), 'Effects removed'); return 'off'; }
+    const f = FX.EFFECT[id] || FX.find(FX.EFFECTS, id);
+    if (!f) return null;
+    commit(C.patchAny(st.edit, list, (c) => {
+      const fx = (c.fx || []).filter((x) => x.id !== f.id);
+      if (amt > 0) fx.push({ id: f.id, amt: clamp(Number(amt) || 1, 0, 1) });
+      if (fx.length) c.fx = fx; else delete c.fx;
+    }), amt > 0 ? `Effect: ${f.name}` : `${f.name} removed`);
+    return f;
+  }
   // one adjustment (exposure, contrast… EditFX.ADJ) on the selection
   function adjust(key, value, ids = null) {
     const list = ids || targetAny();
@@ -1334,14 +1360,14 @@ const VideoCut = (() => {
     if (AUD.test(path)) return addAudio(path, { at, a, b, track, ...props });
     const d = await durationOf(path);
     if (!d) { toast(`Can't read ${base(path)} as a video`, { type: 'error' }); return null; }
-    const n = C.addItem(st.edit, { kind: 'video', src: path, in: clamp(a, 0, d), out: clamp(b ?? d, 0, d), max: d, start: at, ...props }, { track });
+    const n = C.addItem(st.edit, { kind: 'video', src: path, in: clamp(a, 0, d), out: clamp(b ?? d, 0, d), max: d, start: frameStart(at), ...props }, { track });
     commit(n, `Overlay: ${noExt(base(path))}`);
     st.sel = new Set([n.lastItem]); paintHead(); draw();
     return n.lastItem;
   }
   async function addImage(path, { at = P.T, dur = 3, track = null, main = false, ...props } = {}) {
     if (main) { commit(C.insertAt(st.edit, at, { kind: 'image', src: path, dur, mute: true }), `Still: ${base(path)}`); return true; }
-    const n = C.addItem(st.edit, { kind: 'image', src: path, start: at, dur, ...props }, { track });
+    const n = C.addItem(st.edit, { kind: 'image', src: path, start: frameStart(at), dur, ...props }, { track });
     commit(n, `Still: ${base(path)}`);
     st.sel = new Set([n.lastItem]); paintHead(); draw();
     return n.lastItem;
@@ -1355,7 +1381,7 @@ const VideoCut = (() => {
   async function addAudio(path, { at = 0, a = 0, b = null, track = null, volume = 1 } = {}) {
     const d = VID.test(path) ? await durationOf(path) : await audioDuration(path);
     if (!d) { toast(`Can't read the sound of ${base(path)}`, { type: 'error' }); return null; }
-    const n = C.addItem(st.edit, { kind: 'audio', src: path, in: clamp(a, 0, d), out: clamp(b ?? d, 0, d), max: d, start: at, volume }, { track });
+    const n = C.addItem(st.edit, { kind: 'audio', src: path, in: clamp(a, 0, d), out: clamp(b ?? d, 0, d), max: d, start: frameStart(at), volume }, { track });
     commit(n, `Audio: ${noExt(base(path))}`);
     analysisOf(path);
     return n.lastItem;
@@ -1364,7 +1390,7 @@ const VideoCut = (() => {
     const st0 = FX.TSTYLE[style] ? style : FX.find(FX.TITLE_STYLES, style)?.id || 'bold';
     const an = FX.TANIM[anim] ? anim : FX.find(FX.TITLE_ANIMS, anim)?.id || 'fade-up';
     const lt = lower ? FX.LTHIRD[lower]?.id || FX.find(FX.LOWER_THIRDS, lower)?.id || 'bar-gold' : null;
-    const n = C.addItem(st.edit, { kind: 'title', text: String(text), start: at, dur, style: lt ? undefined : st0, lower: lt || undefined, anim: lt ? FX.LTHIRD[lt].s.anim || an : an, out, animDur: 0.6, ...props }, { track });
+    const n = C.addItem(st.edit, { kind: 'title', text: String(text), start: frameStart(at), dur, style: lt ? undefined : st0, lower: lt || undefined, anim: lt ? FX.LTHIRD[lt].s.anim || an : an, out, animDur: 0.6, ...props }, { track });
     commit(n, lt ? `Lower third: ${FX.LTHIRD[lt].name}` : `Title: ${FX.TSTYLE[st0].name}`);
     st.sel = new Set([n.lastItem]); paintHead(); draw();
     return n.lastItem;
@@ -1505,6 +1531,8 @@ const VideoCut = (() => {
   }
   // go to program frame n (or a timecode / time text)
   function goFrame(n) { const F = progFps(); return seek(C.frameTime(Number(n) || 0, F), { play: false }); }
+  // a typed / asked time lands in the middle of its frame (a decoder at an exact frame boundary may show the one before)
+  function frameMid(t) { const F = progFps(); const D = total(); if (!(t > 0)) return 0.5 / F; if (t >= D - 0.5 / F) return D; return Math.min(D, (Math.floor(t * F + 1e-4) + 0.5) / F); }
 
   // ---------- keys (only while editing) ----------
   const SWALLOW = new Set(['p', 'y', 'c']); // Review keys that act on the source video, not the edit
@@ -1987,7 +2015,7 @@ const VideoCut = (() => {
     commit: (next, label) => { if (liveBase) { st.edit = liveBase; liveBase = null; } return commit(next, label); },
     live: (next) => { if (!liveBase) liveBase = st.edit; st.edit = next; draw(); if (richOn) VideoComp.renderExact(P.T); },
     cancelLive: () => { if (liveBase) { st.edit = liveBase; liveBase = null; draw(); refreshPicture(); } },
-    seek: (t) => seek(t, { play: false }), keyHere, setTransition, setLook, applyMotion, adjust, setSpeed, rampClip, flash: (s) => host.flash(s),
+    seek: (t) => seek(t, { play: false }), keyHere, setTransition, setLook, applyMotion, adjust, setEffect, setSpeed, rampClip, flash: (s) => host.flash(s),
     select: (ids) => { st.sel = new Set(ids); paintHead(); draw(); },
     on: (ev, fn) => { (listeners[ev] ||= []).push(fn); },
   };
@@ -2022,9 +2050,9 @@ const VideoCut = (() => {
     get active() { return st.on; }, get edit() { return st.edit; }, get path() { return st.path; }, get time() { return P.playing ? nowT() : P.T; }, get playing() { return P.playing; },
     get selection() { return selIds(); }, get suggestion() { return st.suggest ? { ...st.suggest } : null; }, get canUndo() { return st.undo.length > 0; },
     get rich() { return richOn; }, get view() { return st.view ? { ...st.view } : null; }, get razor() { return st.razor; }, get snap() { return st.snap; }, get fps() { return progFps(); }, get lastCheck() { return lastCheck; },
-    play: startPlay, pause, togglePlay: () => (P.playing ? pause() : startPlay()), seek: (t) => seek(t, { play: P.playing }), step, shuttle, goto: (t) => seek(t, { play: false }), goFrame, frameInfo, frameSize, fmt: fmtProg,
+    play: startPlay, pause, togglePlay: () => (P.playing ? pause() : startPlay()), seek: (t) => seek(t, { play: P.playing }), step, shuttle, goto: (t) => seek(frameMid(t), { play: false }), goFrame, frameInfo, frameSize, fmt: fmtProg,
     split, splitAll: splitAllHere, del, closeGaps, setSpeed, nudgeSpeed, freezeHere, addTitle, marker, setMark, suggest, acceptSuggestion, reset, addClip, undo, redo, help, exportCut, exportAll, jumpCut, jumpBeat, jumpMarker, jumpKey,
-    setTransition, setLook, adjust, applyMotion, keyHere, rampClip, addOverlay, addImage, addAudio, addTitleItem, addColor, insertClip, overwriteClip, fillSlot, liftRange, toggleSnap, toggleRazor, setFormat, applyTemplate,
+    setTransition, setLook, adjust, setEffect, applyMotion, keyHere, rampClip, addOverlay, addImage, addAudio, addTitleItem, addColor, insertClip, overwriteClip, fillSlot, liftRange, toggleSnap, toggleRazor, setFormat, applyTemplate,
     nestSelection, unnest, toOverlay, toMain, posterFrame, renderEdit, recordEdit, newSequence, sequences, deleteSequence, inspect, closeInspector, zoomBy, zoomFit, setView, nudge, slipSel, copySel, paste, selectAll,
     selectIds: (ids) => { st.sel = new Set(ids.filter((id) => C.find(st.edit, id))); paintHead(); draw(); return selIds(); },
     select(i) { const c = st.edit?.clips[i]; if (!c) return null; st.sel = new Set([c.id]); paintHead(); draw(); const x = C.layout(st.edit)[i]; seek(x.start, { play: false }); return c; },

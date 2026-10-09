@@ -57,7 +57,7 @@ const VideoEditTools = (() => {
   function readEdit({ what = 'all', kind, search } = {}) {
     const e = VideoCut.edit; const s = VideoCut.frameSize();
     if (what === 'presets') {
-      const map = { transition: FX.TRANSITIONS, look: FX.LOOKS, title: FX.TITLE_STYLES, anim: FX.TITLE_ANIMS, lower: FX.LOWER_THIRDS, motion: FX.MOTIONS, ramp: FX.RAMPS, format: FX.FORMATS, template: FX.TEMPLATES, export: [...VideoData.EXPORT_PRESETS, ...FX.EXPORTS], easing: FX.EASES, blend: FX.BLENDS, adjust: FX.ADJ };
+      const map = { transition: FX.TRANSITIONS, look: FX.LOOKS, effect: FX.EFFECTS, title: FX.TITLE_STYLES, anim: FX.TITLE_ANIMS, lower: FX.LOWER_THIRDS, motion: FX.MOTIONS, ramp: FX.RAMPS, format: FX.FORMATS, template: FX.TEMPLATES, export: [...VideoData.EXPORT_PRESETS, ...FX.EXPORTS], easing: FX.EASES, blend: FX.BLENDS, adjust: FX.ADJ };
       const k = String(kind || '').replace(/s$/, '');
       if (!map[k]) return `kinds: ${Object.keys(map).join(', ')}`;
       const q = String(search || '').toLowerCase();
@@ -88,7 +88,7 @@ const VideoEditTools = (() => {
 open {path?|sequence?} · new {name, format?} · template {template, keep?} · format {format: 9:16|4:5|1:1|16:9|WxH|source, fps?}
 add {kind: video|overlay|image|audio|title|lower|color, path?, text?, at?, dur?, from?, to?, style?, anim?, out?, track?, main?} (video = main track; overlay/image/title above)
 split {at?, all?} · trim {clip?, edge: in|out, at?} · move {clip, at?|to (main-track position)} · delete {clip?, ripple?} · roll|slip|slide {clip?, frames}
-transition {clip?|all, type|off, dur?} · look {clip?, look|off, amt?} · adjust {clip?, prop, value} · keyframe {clip?, prop: opacity|x|y|scale|rotate|volume, value?, at?, ease?}
+transition {clip?|all, type|off, dur?} · look {clip?, look|off, amt?} · effect {clip?, effect|off, amt? (0 removes)} · adjust {clip?, prop, value} · keyframe {clip?, prop: opacity|x|y|scale|rotate|volume, value?, at?, ease?}
 motion {clip?, preset} · speed {clip?, value} · ramp {clip?, preset} · reverse {clip?, on?} · set {clip?, props: {opacity, scale, x, y, rotate, volume, blend, mute, fadeIn, fadeOut, text, style, anim, out}}
 marker {at?, label?, note?, color?} · range {in, out}|{off} · select {clip} · undo · redo · render {preset?, fit?} · command {line: "/chat-command …"}
 presets: video_edit_read {what:"presets", kind}`;
@@ -139,6 +139,7 @@ presets: video_edit_read {what:"presets", kind}`;
         return r ? `${r.type} ${r.dur}s · ${sum()}` : off ? 'straight cut' : 'needs a clip after a cut';
       }
       case 'look': { const off = !a.look || a.look === 'off'; const l = off ? null : preset(FX.LOOKS, a.look, 'look'); cut.setLook(l?.id || null, ids(a.clip), a.amt != null ? Number(a.amt) : null); return off ? 'look removed' : `look ${l.id}`; }
+      case 'effect': { const off = !a.effect || a.effect === 'off'; if (off) { cut.setEffect('off', ids(a.clip)); return 'effects removed'; } const f = preset(FX.EFFECTS, a.effect, 'effect'); cut.setEffect(f.id, ids(a.clip), a.amt != null ? Number(a.amt) : 1); return `effect ${f.id}${a.amt === 0 ? ' removed' : ''}`; }
       case 'adjust': { const k = FX.ADJ.find((x) => x.id === a.prop); if (!k) throw new Error(`prop: ${FX.ADJ.map((x) => x.id).join(', ')}`); cut.adjust(k.id, Number(a.value), ids(a.clip)); return `${k.id} ${a.value}`; }
       case 'keyframe': {
         if (!C.KEY_PROPS.includes(a.prop)) throw new Error(`prop: ${C.KEY_PROPS.join(', ')}`);

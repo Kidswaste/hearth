@@ -96,6 +96,7 @@ const VideoInspector = (() => {
     if (c.kind === 'title') kids.push(transformSection(c, d, false));
     if (media || c.kind === 'image' || c.kind === 'title' || c.kind === 'color') kids.push(clipSection(c, x, media));
     if (visual && c.kind !== 'title') kids.push(colorSection(c));
+    if (visual && c.kind !== 'title') kids.push(effectsSection(c));
     if (isMain && x.i > 0) kids.push(transSection(c));
     root.replaceChildren(...kids.filter(Boolean));
     paintKeys();
@@ -178,6 +179,19 @@ const VideoInspector = (() => {
       c.color?.look ? row('Strength', amt.inp, amt.out) : null,
       el('details', { class: 'ed-sub' }, el('summary', { text: 'Adjust' }), ...adj, row('Wash color', wash, washAmt.inp, washAmt.out),
         el('button', { class: 'ghost small', text: 'Reset the color', on: { click: () => api.commit(patch((k) => { delete k.color; }), 'Color reset') } })));
+  }
+  // effects stack (mirror, glow, pixelate, VHS…): one row each with its amount and ✕
+  function effectsSection(c) {
+    const rows = (c.fx || []).map((f) => {
+      const d = FX.EFFECT[f.id];
+      const s = slider({ min: 0, max: 1, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%`, def: 1 }, f.amt ?? 1,
+        (v) => api.live(patch((k) => { k.fx = (k.fx || []).map((x) => (x.id === f.id ? { ...x, amt: v } : x)); })),
+        (v) => api.commit(patch((k) => { k.fx = (k.fx || []).map((x) => (x.id === f.id ? { ...x, amt: v } : x)); }), `${d?.name || f.id} ${Math.round(v * 100)}%`));
+      return el('div', { class: 'ed-row' }, el('label', { text: d?.name || f.id, title: d?.name || f.id }), s.inp,
+        el('span', { class: 'ed-fxend' }, s.out, el('button', { class: 'ed-nav', text: '✕', title: 'Remove this effect', on: { click: () => api.setEffect(f.id, [cur], 0) } })));
+    });
+    return section(`Effects${c.fx?.length ? ` (${c.fx.length})` : ''}`, Boolean(c.fx?.length), ...rows,
+      row('Add', select(FX.EFFECTS, '', (v) => v && api.setEffect(v, [cur], 1), { groups: true, none: 'Effect…' })));
   }
   function transSection(c) {
     const len = slider({ min: 0.1, max: 3, step: 0.05, fmt: (v) => `${v.toFixed(2)} s`, def: 0.5 }, c.trans?.dur || 0.5, (v) => { if (c.trans) api.live(C.setTrans(api.edit, cur, c.trans.type, v)); }, (v) => api.setTransition(c.trans?.type || 'dissolve', v, [cur]));

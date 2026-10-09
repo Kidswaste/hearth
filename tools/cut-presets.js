@@ -550,11 +550,101 @@ const EditFX = (() => {
     T('glitch', 'Glitch', 'Digital', null, glitch, 0.4, { expr: glitchExpr() }),
     T('rgb-split', 'RGB split', 'Digital', null, rgbSplit, 0.35, { expr: rgbExpr() }),
     T('pixelate', 'Pixelate', 'Digital', 'pixelize', pixelize, 0.6),
+    ...EXTRA_TRANSITIONS(),
     T('cut', 'Cut (no transition)', 'Basic', null, null, 0),
   ];
+  // More shapes and light, each a custom xfade expression (p = 1 − P runs 0 → 1) and the same rule on the canvas.
+  function EXTRA_TRANSITIONS() {
+    const p = '(1-P)';
+    const hash = (a, b) => `mod(abs(sin(${a}*12.9898+${b}*78.233)*43758.5453),1)`;
+    const jsHash = (a, b) => Math.abs(Math.sin(a * 12.9898 + b * 78.233) * 43758.5453) % 1;
+    const AorB = (cond) => `if(${cond},B,A)`;
+    const gridRule = (n, m, rule) => (g, A, B, q, W, H) => {
+      full(g, A, W, H);
+      sub(g, () => { g.beginPath(); for (let i = 0; i < n; i += 1) for (let j = 0; j < m; j += 1) if (rule(i, j, q)) g.rect((i * W) / n, (j * H) / m, W / n + 1, H / m + 1); g.clip(); full(g, B, W, H); });
+    };
+    const gold = yuv('#ffc93b'); const ember = yuv('#ff7a2b'); const white = yuv('#ffffff');
+    const C3 = (c) => planeOf(c[0], c[1], c[2]);
+    return [
+      T('checker', 'Checkerboard', 'Shape', null, gridRule(8, 14, (i, j, q) => q > 0.25 + 0.5 * ((i + j) % 2) - 0.25), 0.6, { expr: AorB(`gt(${p},0.5*mod(floor(X/(W/8))+floor(Y/(H/14)),2))`) }),
+      T('blinds-h', 'Blinds (horizontal)', 'Shape', null, (g, A, B, q, W, H) => { full(g, A, W, H); sub(g, () => { g.beginPath(); const n = 10; for (let i = 0; i < n; i += 1) g.rect(0, (i * H) / n, W, (H / n) * q); g.clip(); full(g, B, W, H); }); }, 0.6, { expr: AorB(`lt(mod(Y,H/10),${p}*H/10)`) }),
+      T('blinds-v', 'Blinds (vertical)', 'Shape', null, (g, A, B, q, W, H) => { full(g, A, W, H); sub(g, () => { g.beginPath(); const n = 8; for (let i = 0; i < n; i += 1) g.rect((i * W) / n, 0, (W / n) * q, H); g.clip(); full(g, B, W, H); }); }, 0.6, { expr: AorB(`lt(mod(X,W/8),${p}*W/8)`) }),
+      T('diamond', 'Diamond iris', 'Shape', null, (g, A, B, q, W, H) => { full(g, A, W, H); sub(g, () => { const k = q * 1.05; g.beginPath(); g.moveTo(W / 2, H / 2 - H * k); g.lineTo(W / 2 + W * k, H / 2); g.lineTo(W / 2, H / 2 + H * k); g.lineTo(W / 2 - W * k, H / 2); g.closePath(); g.clip(); full(g, B, W, H); }); }, 0.6, { expr: AorB(`lt(abs(X-W/2)/W+abs(Y-H/2)/H,${p}*1.05)`) }),
+      T('blocks', 'Random blocks', 'Shape', null, gridRule(9, 16, (i, j, q) => jsHash(i, j) < q), 0.6, { expr: AorB(`lt(${hash('floor(X/(W/9))', 'floor(Y/(H/16))')},${p})`) }),
+      T('bars-wipe', 'Bars wipe (ragged)', 'Wipe', null, (g, A, B, q, W, H) => { full(g, A, W, H); sub(g, () => { g.beginPath(); const n = 18; for (let j = 0; j < n; j += 1) g.rect(0, (j * H) / n, W * clamp(q * 1.6 - jsHash(0, j) * 0.6, 0, 1), H / n + 1); g.clip(); full(g, B, W, H); }); }, 0.6, { expr: AorB(`lt(X/W,${p}*1.6-${hash(0, 'floor(Y/(H/18))')}*0.6)`) }),
+      T('shutter', 'Shutter (bars close, then open)', 'Shape', null, (g, A, B, q, W, H) => { full(g, q < 0.5 ? A : B, W, H); const k = Math.sin(q * PI); g.fillStyle = '#000'; g.fillRect(0, 0, W, (H / 2) * k); g.fillRect(0, H - (H / 2) * k, W, (H / 2) * k); }, 0.5, { expr: `if(gt(abs(Y-H/2),H/2*(1-sin(${p}*PI))),${C3(yuv('#000000'))},if(lt(${p},0.5),A,B))` }),
+      T('iris-black', 'Iris to black and open', 'Shape', null, (g, A, B, q, W, H) => { g.fillStyle = '#000'; g.fillRect(0, 0, W, H); const R = Math.hypot(W, H) / 2; const r0 = q < 0.5 ? R * (1 - 2 * q) : R * (2 * q - 1); sub(g, () => { g.beginPath(); g.arc(W / 2, H / 2, r0, 0, PI * 2); g.clip(); full(g, q < 0.5 ? A : B, W, H); }); }, 0.8, { expr: `if(lt(hypot(X-W/2,Y-H/2),hypot(W,H)/2*abs(1-2*${p})),if(lt(${p},0.5),A,B),${C3(yuv('#000000'))})` }),
+      T('gold-edge-wipe', 'Wipe with a gold edge', 'Wipe', null, (g, A, B, q, W, H) => { wipe('left')(g, A, B, q, W, H); g.fillStyle = '#ffc93b'; g.fillRect(W * (1 - q) - W * 0.012, 0, W * 0.024, H); }, 0.5, { expr: `if(lt(abs(X-W*(1-${p})),W*0.012),${C3(gold)},${AorB(`gt(X,W*(1-${p}))`)})` }),
+      T('light-leak', 'Light leak (gold)', 'Light', null, (g, A, B, q, W, H) => { dissolve(g, A, B, q, W, H); const gr = g.createLinearGradient(0, 0, W, H); gr.addColorStop(0, 'rgba(255,201,59,0)'); gr.addColorStop(0.5, `rgba(255,170,60,${(0.85 * Math.sin(q * PI)).toFixed(2)})`); gr.addColorStop(1, 'rgba(255,90,31,0)'); g.globalCompositeOperation = 'screen'; g.fillStyle = gr; g.fillRect(0, 0, W, H); g.globalCompositeOperation = 'source-over'; }, 0.8, { expr: `min(255,A*P+B*${p}+(${C3(gold)}-if(eq(PLANE,0),16,128))*0.85*sin(${p}*PI)*(1-abs((X/W+Y/H)/2-0.5)*2))` }),
+      T('film-burn', 'Film burn (ember)', 'Light', null, (g, A, B, q, W, H) => { dissolve(g, A, B, q, W, H); const gr = g.createRadialGradient(W * 0.3, H * 0.6, 0, W * 0.3, H * 0.6, Math.hypot(W, H) * 0.7); gr.addColorStop(0, `rgba(255,240,200,${(0.95 * Math.sin(q * PI)).toFixed(2)})`); gr.addColorStop(0.5, `rgba(255,122,43,${(0.6 * Math.sin(q * PI)).toFixed(2)})`); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.globalCompositeOperation = 'screen'; g.fillStyle = gr; g.fillRect(0, 0, W, H); g.globalCompositeOperation = 'source-over'; }, 0.8, { expr: `min(255,A*P+B*${p}+(${C3(ember)}-if(eq(PLANE,0),16,128))*sin(${p}*PI)*max(0,1-hypot(X/W-0.3,Y/H-0.6)/0.7))` }),
+      T('white-out', 'Overexpose (white out)', 'Light', null, (g, A, B, q, W, H) => { full(g, q < 0.5 ? A : B, W, H); g.globalCompositeOperation = 'lighter'; g.globalAlpha = Math.sin(q * PI); g.fillStyle = '#fff'; g.fillRect(0, 0, W, H); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; }, 0.5, { expr: `min(${C3(white)},if(lt(${p},0.5),A,B)+(${C3(white)}-if(eq(PLANE,0),16,128))*sin(${p}*PI))` }),
+      T('stretch', 'Stretch through', 'Motion', null, (g, A, B, q, W, H) => { const S0 = q < 0.5 ? A : B; const k = 1 + 3 * Math.sin(q * PI); g.drawImage(S0, (W - W * k) / 2, 0, W * k, H); }, 0.4, { expr: `if(lt(${p},0.5),${pick('a', `(X-W/2)/(1+3*sin(${p}*PI))+W/2`, 'Y')},${pick('b', `(X-W/2)/(1+3*sin(${p}*PI))+W/2`, 'Y')})` }),
+      T('ripple', 'Ripple', 'Motion', null, (g, A, B, q, W, H) => { const n = 24; const amp = W * 0.03 * Math.sin(q * PI); for (let j = 0; j < n; j += 1) { const y = (j * H) / n; const dx = Math.sin(j * 0.8 + q * 20) * amp; g.globalAlpha = 1; g.drawImage(A, 0, (y / H) * A.height, A.width, A.height / n, dx, y, W, H / n + 1); g.globalAlpha = q; g.drawImage(B, 0, (y / H) * B.height, B.width, B.height / n, dx, y, W, H / n + 1); } g.globalAlpha = 1; }, 0.7, { expr: `${pick('a', `X+sin(Y/20+${p}*20)*W*0.03*sin(${p}*PI)`, 'Y')}*P+${pick('b', `X+sin(Y/20+${p}*20)*W*0.03*sin(${p}*PI)`, 'Y')}*${p}` }),
+      T('slide-fade-left', 'Slide and fade left', 'Push', null, (g, A, B, q, W, H) => { g.globalAlpha = 1 - q; g.drawImage(A, -W * 0.2 * q, 0, W, H); g.globalAlpha = q; g.drawImage(B, W * 0.2 * (1 - q), 0, W, H); g.globalAlpha = 1; }, 0.5, { expr: `${pick('a', `X+W*0.2*${p}`, 'Y')}*P+${pick('b', `X-W*0.2*P`, 'Y')}*${p}` }),
+      T('slide-fade-up', 'Slide and fade up', 'Push', null, (g, A, B, q, W, H) => { g.globalAlpha = 1 - q; g.drawImage(A, 0, -H * 0.2 * q, W, H); g.globalAlpha = q; g.drawImage(B, 0, H * 0.2 * (1 - q), W, H); g.globalAlpha = 1; }, 0.5, { expr: `${pick('a', 'X', `Y+H*0.2*${p}`)}*P+${pick('b', 'X', 'Y-H*0.2*P')}*${p}` }),
+    ];
+  }
   const TRANS = Object.fromEntries(TRANSITIONS.map((t) => [t.id, t]));
   // xfade names only some ffmpeg builds have (cover / reveal came in 6.1): older builds fall back to a dissolve.
   const NEW_XFADE = /^(cover|reveal)/;
+
+  // ---------- clip effects ----------
+  // clip.fx = [{ id, amt (0..1) }], stacked in order after the look. Each effect has the two halves of the same
+  // idea: css (a canvas filter for the preview, or svg: a filter primitive the preview builds), draw (geometry the
+  // preview paints: pixelate, mirror, bars, borders…) and ff(amt, t-expression helpers) → ffmpeg filters.
+  const E = (id, name, group, def) => ({ id, name, group, amt: 1, ...def });
+  const lin = (a, b) => (k) => a + (b - a) * k;
+  const EFFECTS = [
+    E('mirror', 'Mirror (flip left ↔ right)', 'Geometry', { geo: 'mirror', ff: () => ['hflip'] }),
+    E('flip', 'Upside down', 'Geometry', { geo: 'flip', ff: () => ['vflip'] }),
+    E('mirror-left', 'Symmetry (left half mirrored)', 'Geometry', { geo: 'symL', ff: () => ['split[ma][mb]', '[ma]crop=iw/2:ih:0:0[ml]', '[mb]crop=iw/2:ih:0:0,hflip[mr]', '[ml][mr]hstack'] }),
+    E('mirror-top', 'Symmetry (top half mirrored)', 'Geometry', { geo: 'symT', ff: () => ['split[ma][mb]', '[ma]crop=iw:ih/2:0:0[mt]', '[mb]crop=iw:ih/2:0:0,vflip[mbb]', '[mt][mbb]vstack'] }),
+    E('letterbox-239', 'Letterbox 2.39 (cinema bars)', 'Frame', { bars: 2.39, ff: () => ["drawbox=x=0:y=0:w=iw:h='max(0,(ih-iw/2.39)/2)':c=black:t=fill", "drawbox=x=0:y='ih-max(0,(ih-iw/2.39)/2)':w=iw:h='max(0,(ih-iw/2.39)/2)':c=black:t=fill"] }),
+    E('letterbox-185', 'Letterbox 1.85', 'Frame', { bars: 1.85, ff: () => ["drawbox=x=0:y=0:w=iw:h='max(0,(ih-iw/1.85)/2)':c=black:t=fill", "drawbox=x=0:y='ih-max(0,(ih-iw/1.85)/2)':w=iw:h='max(0,(ih-iw/1.85)/2)':c=black:t=fill"] }),
+    E('border-white', 'White border', 'Frame', { border: '#ffffff', ff: (a) => [`drawbox=x=0:y=0:w=iw:h=ih:c=white:t=${Math.max(2, Math.round(6 + 18 * a))}`] }),
+    E('border-gold', 'Gold border', 'Frame', { border: '#ffc93b', ff: (a) => [`drawbox=x=0:y=0:w=iw:h=ih:c=0xffc93b:t=${Math.max(2, Math.round(6 + 18 * a))}`] }),
+    E('border-black', 'Black border', 'Frame', { border: '#000000', ff: (a) => [`drawbox=x=0:y=0:w=iw:h=ih:c=black:t=${Math.max(2, Math.round(6 + 18 * a))}`] }),
+    E('rounded', 'Rounded corners', 'Frame', { round: true, alphaFF: true, ff: (a) => { const r = Math.round(20 + 60 * a); return ['format=rgba', `geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*if(gt(hypot(max(0,abs(X-W/2)-(W/2-${r})),max(0,abs(Y-H/2)-(H/2-${r}))),${r}),0,1)'`]; } }),
+    E('blur', 'Blur', 'Stylize', { css: (a) => `blur(${(2 + 10 * a).toFixed(1)}px)`, ff: (a) => [`gblur=sigma=${(3 + 20 * a).toFixed(2)}`] }),
+    E('soft-glow', 'Soft glow', 'Stylize', { glow: 0.45, ff: (a) => ['split[ga][gb]', `[gb]gblur=sigma=${(10 + 20 * a).toFixed(1)}[gc]`, `[ga][gc]blend=all_mode=screen:all_opacity=${(0.35 + 0.35 * a).toFixed(2)}`] }),
+    E('bloom', 'Bloom (strong glow)', 'Stylize', { glow: 0.85, ff: (a) => ['split[ga][gb]', `[gb]gblur=sigma=${(18 + 30 * a).toFixed(1)},eq=brightness=0.06:contrast=1.3[gc]`, `[ga][gc]blend=all_mode=screen:all_opacity=${(0.6 + 0.35 * a).toFixed(2)}`] }),
+    E('sharpen', 'Sharpen', 'Stylize', { css: (a) => `contrast(${(1 + 0.12 * a).toFixed(2)})`, ff: (a) => [`unsharp=5:5:${(0.8 + 1.6 * a).toFixed(2)}:5:5:0`] }),
+    E('pixelate', 'Pixelate', 'Stylize', { pixel: (a) => Math.round(8 + 40 * a), ff: (a) => { const k = Math.round(8 + 40 * a); return [`scale=iw/${k}:ih/${k}:flags=neighbor`, `scale=iw*${k}:ih*${k}:flags=neighbor`]; } }),
+    E('posterize', 'Posterize', 'Stylize', { svg: 'posterize', ff: (a) => { const n = Math.max(2, Math.round(6 - 3 * a)); return [`lutrgb=r='floor(val/256*${n})*255/${n - 1}':g='floor(val/256*${n})*255/${n - 1}':b='floor(val/256*${n})*255/${n - 1}'`]; }, levels: (a) => Math.max(2, Math.round(6 - 3 * a)) }),
+    E('threshold', 'Threshold (black & white ink)', 'Stylize', { svg: 'threshold', ff: () => ['format=gray', "lut='if(gt(val,128),255,0)'", 'format=yuv420p'] }),
+    E('invert', 'Invert', 'Stylize', { css: () => 'invert(1)', ff: () => ['negate'] }),
+    E('grayscale', 'Gray', 'Stylize', { css: () => 'grayscale(1)', ff: () => ['hue=s=0'] }),
+    E('solarize', 'Solarize', 'Stylize', { svg: 'solarize', ff: () => ["lutrgb=r='if(gt(val,128),255-val,val)*2':g='if(gt(val,128),255-val,val)*2':b='if(gt(val,128),255-val,val)*2'"] }),
+    E('edges', 'Edge detect (neon lines)', 'Stylize', { svg: 'edges', ff: () => ['edgedetect=mode=colormix:high=0.2:low=0.05'] }),
+    E('emboss', 'Emboss', 'Stylize', { svg: 'emboss', ff: () => ["convolution='-2 -1 0 -1 1 1 0 1 2:-2 -1 0 -1 1 1 0 1 2:-2 -1 0 -1 1 1 0 1 2:-2 -1 0 -1 1 1 0 1 2'"] }),
+    E('rgb-shift', 'RGB shift (chromatic aberration)', 'Glitch', { rgb: (a) => 2 + 10 * a, ff: (a) => { const o = Math.round(2 + 10 * a); return [`rgbashift=rh=-${o}:bh=${o}`]; } }),
+    E('scanlines', 'Scanlines', 'Glitch', { lines: true, ff: (a) => [`drawgrid=w=iw:h=4:t=${a > 0.6 ? 2 : 1}:c=black@${(0.25 + 0.4 * a).toFixed(2)}`] }),
+    E('static', 'Static noise', 'Glitch', { noise: 0.5, ff: (a) => [`noise=alls=${Math.round(20 + 50 * a)}:allf=t+u`] }),
+    E('vhs', 'VHS', 'Glitch', { rgb: (a) => 3 + 5 * a, lines: true, noise: 0.25, css: () => 'saturate(1.25) blur(0.6px)', ff: (a) => [`rgbashift=rh=-${Math.round(3 + 5 * a)}:bh=${Math.round(3 + 5 * a)}`, 'gblur=sigma=0.8', 'eq=saturation=1.25', `noise=alls=${Math.round(10 + 14 * a)}:allf=t+u`, 'drawgrid=w=iw:h=4:t=1:c=black@0.3'] }),
+    E('crt', 'CRT screen', 'Glitch', { lines: true, vignette: 0.6, css: () => 'contrast(1.1) saturate(1.15)', ff: () => ['eq=contrast=1.1:saturation=1.15', 'drawgrid=w=iw:h=3:t=1:c=black@0.35', 'vignette=angle=0.75'] }),
+    E('old-film', 'Old film (flicker, grain, sepia)', 'Glitch', { css: () => 'sepia(0.6)', noise: 0.4, vignette: 0.55, flicker: true, ff: () => ['colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131', "eq=brightness='0.04*sin(t*37)':eval=frame", 'noise=alls=22:allf=t+u', 'vignette=angle=0.6'] }),
+    E('hue-cycle', 'Hue cycle (colors rotate over time)', 'Animated', { hueSpeed: (a) => 60 + 240 * a, ff: (a) => [`hue=h='t*${Math.round(60 + 240 * a)}'`] }),
+    E('strobe', 'Strobe (white flashes on the beat, 120 bpm)', 'Animated', { strobe: 0.5, ff: () => ["eq=brightness='0.45*lt(mod(t,0.5),0.06)':eval=frame"] }),
+    E('pulse', 'Brightness pulse', 'Animated', { pulse: true, ff: (a) => [`eq=brightness='${(0.08 + 0.15 * a).toFixed(3)}*sin(t*2*PI*2)':eval=frame`] }),
+    E('fade-gray', 'Desaturate over the clip', 'Animated', { fadeGray: true, ff: () => ["hue=s='max(0,1-t/2)'"] }),
+  ];
+  const EFFECT = Object.fromEntries(EFFECTS.map((x) => [x.id, x]));
+  void lin;
+  // ffmpeg filters of a clip's effects, as one chain (effects that branch, like glow, use labelled pads inside).
+  // tag: unique per clip in the graph, so branching effects (glow, symmetry) get pads of their own
+  function effectFilters(fx = [], tag = 'x') {
+    const out = [];
+    let n = 0;
+    for (const f of fx || []) {
+      const d = EFFECT[f.id];
+      if (!d) continue;
+      const parts = d.ff(f.amt ?? 1);
+      n += 1;
+      out.push(parts.map((x) => x.replace(/\[(m[a-z]+|g[a-z]+)\]/g, `[$1${tag}${n}]`)).join(parts.some((x) => x.includes('[')) ? ';' : ','));
+    }
+    return out;
+  }
+  const needsAlpha = (fx) => (fx || []).some((f) => EFFECT[f.id]?.alphaFF);
 
   // ---------- blend modes ----------
   // canvas: globalCompositeOperation; ff: the ffmpeg blend mode (null = plain overlay); neutral: the padding color
@@ -892,7 +982,7 @@ const EditFX = (() => {
   return {
     EASES, EASE, ease, bezier, keyValue, keyExpr,
     ADJ, LOOKS, LOOK, grade, colorMath, svgMatrix, colorFilters, cssFilter, hex3,
-    TRANSITIONS, TRANS, NEW_XFADE, BLENDS, BLEND,
+    TRANSITIONS, TRANS, NEW_XFADE, BLENDS, BLEND, EFFECTS, EFFECT, effectFilters, needsAlpha,
     TITLE_STYLES, TSTYLE, TITLE_ANIMS, TANIM, LOWER_THIRDS, LTHIRD, FONT_SANS,
     MOTIONS, MOTION, RAMPS, RAMP, FORMATS, FPS, EXPORTS, exportCodec, TEMPLATES, TEMPLATE, MARKER_COLORS, find,
   };

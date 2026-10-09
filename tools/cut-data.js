@@ -253,7 +253,7 @@ const CutData = (() => {
       const c = x.clip;
       const what = c.kind === 'video' ? `${base(c.src)} ${fmt(c.in)}–${fmt(c.out)}` : c.kind === 'freeze' ? `freeze of ${base(c.src)} at ${fmt(c.at)}` : c.kind === 'title' ? `title “${c.text}”` : c.kind === 'image' ? `still ${base(c.src)}` : c.kind === 'color' ? `color ${c.fill || ''}` : `gap (black)${c.slot ? ` · slot ${c.slot}` : ''}`;
       const plain = [c.speed && c.speed !== 1 ? `${c.speed}×` : '', c.mute && c.kind === 'video' ? 'muted' : '', c.fadeIn ? `fade in ${c.fadeIn.toFixed(2)} s` : '', c.fadeOut ? `fade out ${c.fadeOut.toFixed(2)} s` : ''].filter(Boolean).join(', ');
-      const rich = [x.td ? `${c.trans.type} ${x.td.toFixed(2)} s in` : '', c.reverse ? 'reversed' : '', c.color ? `look ${c.color.look || 'custom'}` : '', c.keys ? `keys ${Object.entries(c.keys).map(([k, v]) => `${k}×${v.length}`).join(' ')}` : '', c.scale != null && c.scale !== 1 ? `scale ${c.scale}` : '', c.opacity != null && c.opacity !== 1 ? `opacity ${c.opacity}` : ''].filter(Boolean).join(', ');
+      const rich = [x.td ? `${c.trans.type} ${x.td.toFixed(2)} s in` : '', c.reverse ? 'reversed' : '', c.color ? `look ${c.color.look || 'custom'}` : '', c.fx?.length ? `fx ${c.fx.map((f) => f.id).join('+')}` : '', c.keys ? `keys ${Object.entries(c.keys).map(([k, v]) => `${k}×${v.length}`).join(' ')}` : '', c.scale != null && c.scale !== 1 ? `scale ${c.scale}` : '', c.opacity != null && c.opacity !== 1 ? `opacity ${c.opacity}` : ''].filter(Boolean).join(', ');
       const extra = [plain, rich].filter(Boolean).join(', ');
       return `${i + 1}. ${tc(x.start)} → ${tc(x.end)} · ${what}${extra ? ` (${extra})` : ''}`;
     });
@@ -614,7 +614,7 @@ const CutData = (() => {
     if (!e) return false;
     if ((e.tracks || []).some((k) => k.items.length)) return true;
     if (e.seq) return true;
-    return e.clips.some((c) => c.trans || c.keys || c.color || c.reverse || c.kind === 'image' || c.kind === 'color' || (c.kind === 'title' && (c.style || c.anim)) || (c.opacity != null && c.opacity !== 1) || (c.scale != null && c.scale !== 1) || c.x || c.y || c.rotate || (c.blend && c.blend !== 'normal') || (c.volume != null && c.volume !== 1));
+    return e.clips.some((c) => c.trans || c.keys || c.color || c.fx?.length || c.reverse || c.kind === 'image' || c.kind === 'color' || (c.kind === 'title' && (c.style || c.anim)) || (c.opacity != null && c.opacity !== 1) || (c.scale != null && c.scale !== 1) || c.x || c.y || c.rotate || (c.blend && c.blend !== 'normal') || (c.volume != null && c.volume !== 1));
   }
   // Everything visible at program time T, bottom first: [{ clip, where: 'main' | 'item', start, end, track }].
   function stackAt(e, T) {
@@ -645,7 +645,7 @@ const CutData = (() => {
   function extras(c) {
     return [c.speed && c.speed !== 1 ? `${c.speed}×` : '', c.reverse ? 'reversed' : '', c.mute && MEDIA.has(c.kind) ? 'muted' : '', c.volume != null && c.volume !== 1 ? `vol ${c.volume}` : '',
       c.opacity != null && c.opacity !== 1 ? `opacity ${c.opacity}` : '', c.scale != null && c.scale !== 1 ? `scale ${c.scale}` : '', c.x || c.y ? `pos ${c.x || 0},${c.y || 0}` : '', c.rotate ? `rot ${c.rotate}°` : '',
-      c.blend && c.blend !== 'normal' ? `blend ${c.blend}` : '', c.color ? `look ${c.color.look || 'custom'}` : '', c.keys ? `keys ${Object.entries(c.keys).map(([k, v]) => `${k}×${v.length}`).join(' ')}` : '',
+      c.blend && c.blend !== 'normal' ? `blend ${c.blend}` : '', c.color ? `look ${c.color.look || 'custom'}` : '', c.fx?.length ? `fx ${c.fx.map((f) => f.id).join('+')}` : '', c.keys ? `keys ${Object.entries(c.keys).map(([k, v]) => `${k}×${v.length}`).join(' ')}` : '',
       c.fadeIn ? `fade in ${c.fadeIn.toFixed(2)} s` : '', c.fadeOut ? `fade out ${c.fadeOut.toFixed(2)} s` : ''].filter(Boolean).map((s) => ` (${s})`).join('');
   }
 

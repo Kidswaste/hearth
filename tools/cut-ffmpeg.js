@@ -137,16 +137,17 @@ const CutFF = (() => {
     const mains = L0.map((x, i) => {
       const c = x.clip; const d = x.end - x.start;
       const src = source(c, d);
-      const color = colorF(c);
+      const color = [...colorF(c), ...FX.effectFilters(c.fx, `c${i}`)];
       const v = `mv${i}`; const a = `ma${i}`;
-      if (hasTransform(c)) {
+      if (hasTransform(c) || FX.needsAlpha(c.fx)) {
         const lay = layerFilters(c, src.w, src.h, W, H, 0);
         const bg = L(); const ly = L();
         parts.push(`color=c=black:s=${W}x${H}:r=${num(F)}:d=${num(d)}[${bg}]`);
         parts.push(`${src.v}${color.length ? `,${color.join(',')}` : ''},format=rgba,${lay.f.join(',')}[${ly}]`);
         parts.push(`[${bg}][${ly}]overlay=x=${q(lay.x)}:y=${q(lay.y)}:eval=frame:eof_action=pass,${norm},${padTo(d)}${fadeF(c, d).map((f) => `,${f}`).join('')}[${v}]`);
       } else {
-        parts.push(`${src.v}${src.full ? (src.alpha ? `,format=rgba,pad=${W}:${H}:0:0:color=black,format=yuv420p` : '') : `,${fitTo}`}${color.length ? `,${color.join(',')}` : ''},${norm},${padTo(d)}${fadeF(c, d).map((f) => `,${f}`).join('')}[${v}]`);
+        // the look and effects work on the picture itself (then it is fitted into the frame), like the preview
+        parts.push(`${src.v}${color.length ? `,${color.join(',')}` : ''}${src.full ? (src.alpha ? `,format=rgba,pad=${W}:${H}:0:0:color=black,format=yuv420p` : '') : `,${fitTo}`},${norm},${padTo(d)}${fadeF(c, d).map((f) => `,${f}`).join('')}[${v}]`);
       }
       const au = audioOf(c, d);
       parts.push(au ? `${au}[${a}]` : `${silence(d)},${AF}[${a}]`);
@@ -190,7 +191,7 @@ const CutFF = (() => {
         const d = C.itemDur(it); const S0 = it.start;
         if (!k.hide) {
           const src = source(it, d);
-          const color = colorF(it);
+          const color = [...colorF(it), ...FX.effectFilters(it.fx, `i${lab}`)];
           const ly = L(); const nb = L();
           if (src.full && it.kind === 'title') {
             parts.push(`${src.v},format=rgba${fadeF(it, d, true).map((f) => `,${f}`).join('')},setpts=PTS-STARTPTS+${num(S0)}/TB[${ly}]`);

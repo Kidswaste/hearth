@@ -116,10 +116,10 @@ const VideoComp = (() => {
   // presented frame with requestVideoFrameCallback (resolves { want, got }).
   function seekExact(d, t, fps) {
     const el0 = d.el;
-    const want = Math.max(0, Math.floor(t * fps + 1e-4));
+    const want = Math.max(0, Math.floor(t * fps + 0.01)); // a hair under a frame boundary (rounded edit times) counts as that frame
     const dur = el0.duration || Infinity;
     const to = Math.min((want + 0.5) / fps, Math.max(0, dur - 0.5 / fps));
-    const wantF = Math.floor(to * fps + 1e-4);
+    const wantF = Math.floor(to * fps + 0.01);
     if (d.frame === wantF && Math.abs(el0.currentTime - to) < 1e-4 && !el0.seeking && el0.readyState >= 2) return Promise.resolve({ want: wantF, got: d.frame });
     return new Promise((res) => {
       let finished = false;
@@ -194,15 +194,19 @@ const VideoComp = (() => {
     const s = C.propAt(c, 'scale', local); const x = C.propAt(c, 'x', local); const y = C.propAt(c, 'y', local); const r = C.propAt(c, 'rotate', local);
     const look = filterOf(c);
     const blend = FX.BLEND[c.blend]?.canvas || 'source-over';
+    const fx = (c.fx || []).map((f) => ({ ...FX.EFFECT[f.id], amt: f.amt ?? 1 })).filter((f) => f.id);
     g.save();
     g.translate(W / 2 + x * W, H / 2 + y * H);
     if (r) g.rotate((r * Math.PI) / 180);
     g.scale(s, s);
     g.globalAlpha = clamp(op, 0, 1);
     g.globalCompositeOperation = blend;
-    if (look?.css) g.filter = look.css;
-    g.drawImage(pic, -fw / 2, -fh / 2, fw, fh);
+    const css = [look?.css, ...fx.map((f) => effectCss(f, local, T))].filter(Boolean).join(' ');
+    if (css) g.filter = css;
+    if (fx.some((f) => f.round)) { const rr = Math.min(fw, fh) * 0.04 * (1 + 2 * (fx.find((f) => f.round).amt)); g.beginPath(); if (g.roundRect) g.roundRect(-fw / 2, -fh / 2, fw, fh, rr); else g.rect(-fw / 2, -fh / 2, fw, fh); g.clip(); }
+    paintPicture(g, pic, fw, fh, fx, pw, ph);
     g.filter = 'none';
+    effectsOver(g, fw, fh, fx, local, T, op);
     if (look?.vignette > 0.005) {
       const gr = g.createRadialGradient(0, 0, Math.min(fw, fh) * 0.25, 0, 0, Math.hypot(fw, fh) / 2);
       gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, `rgba(0,0,0,${(look.vignette * 0.85).toFixed(3)})`);
@@ -216,6 +220,96 @@ const VideoComp = (() => {
       g.translate(-ox, -oy); g.fillStyle = pat; g.fillRect(-fw / 2 + ox, -fh / 2 + oy, fw, fh);
     }
     g.restore();
+  }
+  // ---------- clip effects in the preview (EditFX.EFFECTS; the render has their ffmpeg twins) ----------
+  const svgFx = new Map();
+  function effectSvg(kind, f) {
+    const key = `${kind}|${f.levels ? f.levels(f.amt) : ''}`;
+    if (svgFx.has(key)) return svgFx.get(key);
+    const NS = 'http://www.w3.org/2000/svg';
+    const fl = document.createElementNS(NS, 'filter'); const id = `edfx-e${svgFx.size + 1}`;
+    fl.id = id; fl.setAttribute('color-interpolation-filters', 'sRGB');
+    const add = (tag, attrs, kids = []) => { const n = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); for (const k of kids) n.append(k); fl.append(n); return n; };
+    const funcs = (type, table) => ['R', 'G', 'B'].map((ch) => { const n = document.createElementNS(NS, `feFunc${ch}`); n.setAttribute('type', type); n.setAttribute('tableValues', table); return n; });
+    if (kind === 'posterize') { const n = f.levels(f.amt); add('feComponentTransfer', {}, funcs('discrete', Array.from({ length: n }, (_, i) => (i / (n - 1)).toFixed(3)).join(' '))); }
+    if (kind === 'threshold') { add('feColorMatrix', { type: 'saturate', values: '0' }); add('feComponentTransfer', {}, funcs('discrete', '0 1')); }
+    if (kind === 'solarize') add('feComponentTransfer', {}, funcs('table', '0 1 0'));
+    if (kind === 'edges') add('feConvolveMatrix', { order: '3', kernelMatrix: '-1 -1 -1 -1 8 -1 -1 -1 -1', preserveAlpha: 'true' });
+    if (kind === 'emboss') add('feConvolveMatrix', { order: '3', kernelMatrix: '-2 -1 0 -1 1 1 0 1 2', preserveAlpha: 'true' });
+    ensureSvg().firstChild.append(fl);
+    const out = `url(#${id})`;
+    svgFx.set(key, out);
+    return out;
+  }
+  function effectCss(f, local, T) {
+    const parts = [];
+    if (f.css) parts.push(f.css(f.amt));
+    if (f.svg) parts.push(effectSvg(f.svg, f));
+    if (f.hueSpeed) parts.push(`hue-rotate(${Math.round((T * f.hueSpeed(f.amt)) % 360)}deg)`);
+    if (f.pulse) parts.push(`brightness(${(1 + (0.08 + 0.15 * f.amt) * Math.sin(T * 2 * Math.PI * 2)).toFixed(3)})`);
+    if (f.fadeGray) parts.push(`grayscale(${Math.min(1, local / 2).toFixed(3)})`);
+    if (f.flicker) parts.push(`brightness(${(1 + 0.04 * Math.sin(T * 37)).toFixed(3)})`);
+    return parts.join(' ');
+  }
+  let pixCanvas = null;
+  // the picture itself, with the effects that change how it is drawn (mirror, symmetry, pixels, RGB split, glow)
+  function paintPicture(g, pic, fw, fh, fx, pw, ph) {
+    const x0 = -fw / 2; const y0 = -fh / 2;
+    const has = (k) => fx.find((f) => f[k] || f.geo === k);
+    if (has('mirror')) g.scale(-1, 1);
+    if (has('flip')) g.scale(1, -1);
+    const px = has('pixel');
+    if (px) {
+      const k = px.pixel(px.amt);
+      pixCanvas ||= document.createElement('canvas');
+      pixCanvas.width = Math.max(1, Math.round(fw / k)); pixCanvas.height = Math.max(1, Math.round(fh / k));
+      pixCanvas.getContext('2d').drawImage(pic, 0, 0, pixCanvas.width, pixCanvas.height);
+      const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
+      g.drawImage(pixCanvas, x0, y0, fw, fh); g.imageSmoothingEnabled = sm;
+    } else if (has('symL')) {
+      g.drawImage(pic, 0, 0, pw / 2, ph, x0, y0, fw / 2, fh);
+      g.save(); g.scale(-1, 1); g.drawImage(pic, 0, 0, pw / 2, ph, x0, y0, fw / 2, fh); g.restore();
+    } else if (has('symT')) {
+      g.drawImage(pic, 0, 0, pw, ph / 2, x0, y0, fw, fh / 2);
+      g.save(); g.scale(1, -1); g.drawImage(pic, 0, 0, pw, ph / 2, x0, y0, fw, fh / 2); g.restore();
+    } else if (has('rgb')) {
+      const f = has('rgb'); const o = (f.rgb(f.amt) * fw) / 1080;
+      const base0 = g.filter && g.filter !== 'none' ? `${g.filter} ` : '';
+      g.drawImage(pic, x0, y0, fw, fh);
+      const op0 = g.globalCompositeOperation;
+      g.globalCompositeOperation = 'lighter';
+      g.filter = `${base0}url(#edfx-r)`; g.drawImage(pic, x0 - o, y0, fw, fh);
+      g.filter = `${base0}url(#edfx-b)`; g.drawImage(pic, x0 + o, y0, fw, fh);
+      g.globalCompositeOperation = op0;
+    } else g.drawImage(pic, x0, y0, fw, fh);
+    const glow = has('glow');
+    if (glow) {
+      const op0 = g.globalCompositeOperation; const a0 = g.globalAlpha;
+      g.globalCompositeOperation = 'screen'; g.globalAlpha = a0 * (0.35 + 0.35 * glow.amt) * (glow.glow > 0.6 ? 1.4 : 1);
+      g.filter = `blur(${((10 + 20 * glow.amt) * fw / 1080).toFixed(1)}px) brightness(1.1)`;
+      g.drawImage(pic, x0, y0, fw, fh);
+      g.globalCompositeOperation = op0; g.globalAlpha = a0;
+    }
+  }
+  // what goes over the picture: bars, borders, scanlines, static, vignette, strobe
+  function effectsOver(g, fw, fh, fx, local, T, op) {
+    const x0 = -fw / 2; const y0 = -fh / 2;
+    g.globalCompositeOperation = 'source-over';
+    for (const f of fx) {
+      if (f.bars) { const bh = Math.max(0, (fh - fw / f.bars) / 2); g.fillStyle = '#000'; g.fillRect(x0, y0, fw, bh); g.fillRect(x0, y0 + fh - bh, fw, bh); }
+      if (f.border) { const t = Math.max(2, (6 + 18 * f.amt) * (fw / 1080)); g.strokeStyle = f.border; g.lineWidth = t * 2; g.strokeRect(x0, y0, fw, fh); }
+      if (f.lines) { g.fillStyle = `rgba(0,0,0,${(0.25 + 0.35 * f.amt).toFixed(2)})`; const step = Math.max(2, (4 * fh) / 1920 * 2); for (let yy = y0; yy < y0 + fh; yy += step) g.fillRect(x0, yy, fw, Math.max(1, step / 3)); }
+      if (f.noise) {
+        const n = noiseCanvas(); const a0 = g.globalAlpha;
+        g.globalCompositeOperation = 'overlay'; g.globalAlpha = clamp(op * (f.noise + 0.3 * f.amt), 0, 1);
+        const pat = g.createPattern(n, 'repeat'); const ox = Math.floor(Math.random() * 256);
+        g.save(); g.translate(-ox, -ox); g.fillStyle = pat; g.fillRect(x0 + ox, y0 + ox, fw, fh); g.restore();
+        g.globalCompositeOperation = 'source-over'; g.globalAlpha = a0;
+      }
+      if (f.vignette) { const gr = g.createRadialGradient(0, 0, Math.min(fw, fh) * 0.25, 0, 0, Math.hypot(fw, fh) / 2); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, `rgba(0,0,0,${(f.vignette * 0.85).toFixed(2)})`); g.fillStyle = gr; g.fillRect(x0, y0, fw, fh); }
+      if (f.strobe && T % 0.5 < 0.06) { g.fillStyle = 'rgba(255,255,255,0.45)'; g.fillRect(x0, y0, fw, fh); }
+    }
+    void local;
   }
   const offs = [null, null];
   function off(i, W, H) {
