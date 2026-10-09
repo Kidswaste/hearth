@@ -179,7 +179,7 @@ async function cdpConnect() {
           top: Object.entries(byLayer).sort((a, b) => b[1].px - a[1].px).slice(0, 8).map(([k, v]) => `${k}: ${v.n}× ${Math.round(v.px / 1000)}k px ${Math.round(v.ms)} ms`) };
       } else if (req.shot) {
         const img = await send('Page.captureScreenshot', { format: 'png' });
-        if (img.result?.data) fs.writeFileSync(req.shot, Buffer.from(img.result.data, 'base64'));
+        if (img.result?.data) { fs.mkdirSync(path.dirname(req.shot), { recursive: true }); fs.writeFileSync(req.shot, Buffer.from(img.result.data, 'base64')); }
         result = { saved: req.shot };
       } else result = (await send(req.cdp, req.params || {})).result || {};
       send('Runtime.evaluate', { expression: `window.__smokeReply && window.__smokeReply(${req.id}, ${JSON.stringify(JSON.stringify(result))})` });

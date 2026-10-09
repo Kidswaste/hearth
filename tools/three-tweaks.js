@@ -260,7 +260,9 @@ const ThreeTweaks = (() => {
     let p = 0;
     // the literal rides along as a fallback, for a read before its live value arrived (fast layer re-runs)
     const fb = (v) => (typeof v === 'number' && Number.isFinite(v) ? `, ${v}` : typeof v === 'string' && !/[\n\r]/.test(v) ? `, ${JSON.stringify(v)}` : typeof v === 'boolean' ? `, ${v}` : '');
-    items.forEach((it, i) => { out += code.slice(p, it.start) + (/[\w$]/.test(code[it.start - 1] || '') ? ' ' : '') + `__tv(${base + i}${fb(it.orig)})`; p = it.end; });
+    // (the same form the sliders send: a 0x… color is a number, see runtime())
+    const lit = (it) => (it.kind === 'color' && !it.quote && typeof it.orig === 'string' ? parseInt(it.orig.slice(1), 16) : it.orig);
+    items.forEach((it, i) => { out += code.slice(p, it.start) + (/[\w$]/.test(code[it.start - 1] || '') ? ' ' : '') + `__tv(${base + i}${fb(lit(it))})`; p = it.end; });
     return out + code.slice(p);
   }
 

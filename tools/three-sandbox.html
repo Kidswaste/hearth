@@ -761,7 +761,9 @@ const valueOf = (i, base) => {
 // d: the literal from the code, used when the live value isn't there yet or a music binding gives NaN
 globalThis.__tv = (i, d) => {
   markRead(i);
-  const base = TV[i] === undefined ? d : TV[i];
+  // a value of another kind than the code's literal (a layer's code changed and an old value landed on this slot)
+  // or not a real number falls back to the literal
+  const base = TV[i] === undefined || (d !== undefined && typeof TV[i] !== typeof d) ? d : TV[i];
   const v = valueOf(i, base);
   if (typeof v === 'number' && !Number.isFinite(v)) return typeof base === 'number' && Number.isFinite(base) ? base : d;
   return v;
