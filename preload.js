@@ -113,6 +113,8 @@ contextBridge.exposeInMainWorld('hub', {
   fetchText: call('net:text'),
   openDialog: call('dialog:open'),
   saveFile: call('dialog:saveFile'),
+  // mood board (boardmain.js): copies into data/board/media, page pictures, website snapshots
+  board: { dir: call('board:dir'), import: call('board:import'), save: call('board:save'), fetch: call('board:fetch'), snap: call('board:snap'), unused: call('board:unused') },
   ae: {
     status: call('ae:status'),
     templates: call('ae:templates'),
