@@ -759,6 +759,22 @@ const EditFX = (() => {
     E('chroma-strong', 'Strong chromatic split', 'Glitch', { rgb: (a) => 10 + 20 * a, ff: (a) => { const o = Math.round(10 + 20 * a); return [`rgbashift=rh=-${o}:bh=${o}:gv=${Math.round(o / 3)}`]; } }),
     E('color-noise', 'Color noise', 'Glitch', { noise: 0.55, ff: (a) => [`noise=c0s=${Math.round(10 + 30 * a)}:c1s=${Math.round(20 + 40 * a)}:c2s=${Math.round(20 + 40 * a)}:allf=t`] }),
   );
+  EFFECTS.push(
+    E('hue-shift', 'Hue shift', 'Color', { css: (a) => `hue-rotate(${Math.round(30 + 150 * a)}deg)`, ff: (a) => [`hue=h=${Math.round(30 + 150 * a)}`] }),
+    E('oversaturate', 'Oversaturate', 'Color', { css: (a) => `saturate(${(1.4 + 1.2 * a).toFixed(2)})`, ff: (a) => [`eq=saturation=${(1.4 + 1.2 * a).toFixed(2)}`] }),
+    E('contrast-crush', 'Crushed contrast', 'Color', { css: (a) => `contrast(${(1.3 + 0.7 * a).toFixed(2)})`, ff: (a) => [`eq=contrast=${(1.3 + 0.7 * a).toFixed(2)}`] }),
+    E('sepia-tone', 'Sepia tone', 'Color', { css: () => 'sepia(1)', ff: () => ['colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131'] }),
+    E('bw-hard', 'Hard black & white', 'Color', { css: () => 'grayscale(1) contrast(1.6)', ff: () => ['hue=s=0', 'eq=contrast=1.6'] }),
+    E('night-vision', 'Night vision', 'Color', { css: () => 'grayscale(1) sepia(1) hue-rotate(55deg) saturate(3) brightness(1.15)', noise: 0.4, vignette: 0.6, ff: () => ['hue=s=0', 'colorchannelmixer=.15:.15:.15:0:.45:.45:.45:0:.12:.12:.12:0', 'eq=brightness=0.06:contrast=1.2', 'noise=alls=24:allf=t+u', 'vignette=angle=0.8'] }),
+    E('dream', 'Dream (soft and bright)', 'Stylize', { css: (a) => `blur(${(1 + 2 * a).toFixed(1)}px) brightness(1.12)`, ff: (a) => [`gblur=sigma=${(2 + 4 * a).toFixed(1)}`, 'eq=brightness=0.06'] }),
+    E('vignette-strong', 'Strong vignette', 'Frame', { vignette: 0.95, ff: () => ['vignette=angle=PI/3'] }),
+    E('border-ember', 'Ember border', 'Frame', { border: '#ff5a1f', ff: (a) => [`drawbox=x=0:y=0:w=iw:h=ih:c=0xff5a1f:t=${Math.max(2, Math.round(6 + 18 * a))}`] }),
+    E('border-violet', 'Violet border', 'Frame', { border: '#9a6bff', ff: (a) => [`drawbox=x=0:y=0:w=iw:h=ih:c=0x9a6bff:t=${Math.max(2, Math.round(6 + 18 * a))}`] }),
+    E('letterbox-2', 'Letterbox 2:1', 'Frame', { bars: 2, ff: () => ["drawbox=x=0:y=0:w=iw:h='max(0,(ih-iw/2)/2)':c=black:t=fill", "drawbox=x=0:y='ih-max(0,(ih-iw/2)/2)':w=iw:h='max(0,(ih-iw/2)/2)':c=black:t=fill"] }),
+    E('scanlines-thick', 'Thick scanlines', 'Glitch', { lines: true, ff: (a) => [`drawgrid=w=iw:h=8:t=3:c=black@${(0.3 + 0.4 * a).toFixed(2)}`] }),
+    E('noise-heavy', 'Heavy grain', 'Glitch', { noise: 0.85, ff: (a) => [`noise=alls=${Math.round(45 + 40 * a)}:allf=t+u`] }),
+    E('flicker', 'Flicker', 'Animated', { flicker: true, ff: (a) => [`eq=brightness='${(0.05 + 0.08 * a).toFixed(3)}*sin(t*37)':eval=frame`] }),
+  );
   const EFFECT = Object.fromEntries(EFFECTS.map((x) => [x.id, x]));
   void lin;
   // ffmpeg filters of a clip's effects, as one chain (effects that branch, like glow, use labelled pads inside).
@@ -814,6 +830,15 @@ const EditFX = (() => {
     AE('tremolo', 'Tremolo', ['tremolo=f=6:d=0.6']),
     AE('autopan', 'Auto-pan (left ↔ right)', ['apulsator=hz=0.5']),
     AE('high-cut', 'Soft (cut the highs)', ['lowpass=f=4500']),
+    AE('bass-cut', 'Cut the rumble (low cut)', ['highpass=f=120']),
+    AE('karaoke', 'Karaoke (center voice out)', ['pan=stereo|c0=c0-c1|c1=c1-c0']),
+    AE('backwards', 'Backwards', ['areverse']),
+    AE('stadium', 'Stadium echo', ['aecho=0.8:0.85:120|240|400:0.4|0.3|0.2']),
+    AE('bitcrush', 'Bitcrush (8-bit)', ['acrusher=bits=6:mode=lin:aa=0']),
+    AE('swap-lr', 'Swap left and right', ['pan=stereo|c0=c1|c1=c0']),
+    AE('level', 'Even level (dynamic normalizer)', ['dynaudnorm=f=200:g=15']),
+    AE('left-only', 'Left channel only (both sides)', ['pan=stereo|c0=c0|c1=c0']),
+    AE('right-only', 'Right channel only (both sides)', ['pan=stereo|c0=c1|c1=c1']),
   );
   const AFX = Object.fromEntries(AUDIO_FX.map((x) => [x.id, x]));
   const audioFilters = (afx = []) => (afx || []).flatMap((id) => AFX[id]?.ff || []);
@@ -1043,6 +1068,26 @@ const EditFX = (() => {
     A('glitch-heavy', 'Heavy glitch', 'all', 0, 'linear', (p) => ({ a: p > 0.1 ? 1 : 0, x: p < 1 ? Math.sin(p * 140) * (1 - p) * 1.5 : 0, rgb: 1.5 * (1 - p) })),
     A('neon-on', 'Neon switch-on (whole)', 'all', 0, 'linear', (p) => ({ a: p >= 1 ? 1 : (Math.abs(Math.sin(p * 61)) > 0.7 - p * 0.7 ? 1 : 0.08) })),
     A('scale-down-in', 'Shrink in (from huge)', 'all', 0, 'expoOut', (p) => ({ a: Math.min(1, p * 2), s: 4 - 3 * p })),
+  );
+  TITLE_ANIMS.push(
+    A('letters-rise-blur', 'Letters rise out of a blur', 'char', 0.7, 'expoOut', (p) => ({ a: p, y: (1 - p) * 0.8, b: (1 - p) * 20 })),
+    A('letters-bounce', 'Letters bounce in', 'char', 0.7, 'bounceOut', (p) => ({ a: Math.min(1, p * 3), y: -(1 - p) * 1.5 })),
+    A('letters-elastic', 'Letters spring up', 'char', 0.6, 'elasticOut', (p) => ({ a: Math.min(1, p * 3), y: (1 - p) * 1.2 })),
+    A('letters-random', 'Letters appear at random', 'char', 0, 'linear', (p, u) => ({ a: Math.max(0, Math.min(1, p * 3 - ((u * 0.618034) % 1) * 2)) })),
+    A('words-pop-spin', 'Words pop and turn', 'word', 0.6, 'backOut', (p) => ({ a: Math.min(1, p * 2), s: p, r: (1 - p) * -90 })),
+    A('words-shrink', 'Words shrink into place', 'word', 0.6, 'expoOut', (p) => ({ a: p, s: 2 - p })),
+    A('words-swing', 'Words swing in', 'word', 0.6, 'easeOut', (p) => ({ a: p, r: (1 - p) * -45, y: (1 - p) * 0.4 })),
+    A('lines-fade', 'Lines fade one by one', 'line', 0.6, 'ease', (p) => ({ a: p })),
+    A('lines-slide-right', 'Lines slide in from the left', 'line', 0.4, 'expoOut', (p) => ({ a: Math.min(1, p * 3), x: -(1 - p) * 4 })),
+    A('flip-in-x', 'Flip in (turning)', 'all', 0, 'expoOut', (p) => ({ a: Math.min(1, p * 2), sx: Math.max(0.01, Math.sin((p * Math.PI) / 2)) })),
+    A('flip-in-y', 'Flip in (tumbling)', 'all', 0, 'expoOut', (p) => ({ a: Math.min(1, p * 2), sy: Math.max(0.01, Math.sin((p * Math.PI) / 2)) })),
+    A('drop-spin', 'Drop and spin', 'all', 0, 'bounceOut', (p) => ({ a: Math.min(1, p * 3), y: -(1 - p) * 2, r: (1 - p) * 30 })),
+    A('slide-left-blur', 'Slide from the right with blur', 'all', 0, 'expoOut', (p) => ({ a: Math.min(1, p * 2), x: (1 - p) * 4, b: (1 - p) * 25 })),
+    A('slide-right-blur', 'Slide from the left with blur', 'all', 0, 'expoOut', (p) => ({ a: Math.min(1, p * 2), x: -(1 - p) * 4, b: (1 - p) * 25 })),
+    A('tracking-blur', 'Spaced letters close in, from a blur', 'all', 0, 'expoOut', (p) => ({ a: p, track: (1 - p) * 0.8, b: (1 - p) * 20 })),
+    A('zoom-through', 'Zoom through (from the camera)', 'all', 0, 'expoOut', (p) => ({ a: Math.min(1, p * 2), s: 1 + (1 - p) * 5, b: (1 - p) * 30 })),
+    A('rise-slow', 'Slow rise', 'all', 0, 'easeInOut', (p) => ({ a: p, y: (1 - p) * 0.4 })),
+    A('pop-elastic', 'Pop (springy)', 'all', 0, 'elasticOut', (p) => ({ a: Math.min(1, p * 3), s: p })),
   );
   const TANIM = Object.fromEntries(TITLE_ANIMS.map((a) => [a.id, a]));
   // Lower thirds: two lines (name · role) with an accent; each a style + animation + bar.
