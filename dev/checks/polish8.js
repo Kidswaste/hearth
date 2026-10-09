@@ -53,7 +53,7 @@ const tiles = [...dr.querySelectorAll('.bdd-tile')];
 ok(tiles.length >= 3 && tiles.every((t) => !vis(t.querySelector('.bdd-send'))), 'drawer: → waits for the pointer');
 ok(!vis(dr.querySelector('.bdd-head > button[title="Open the board"]')), 'drawer: ↗ behind Alt');
 const tr = tiles[0].getBoundingClientRect(); await rclick(tiles[0], tr.left + 10, tr.top + 10); shape('drawer tile');
-BoardDrawer.toggle(false); await wait(500);
+BoardDrawer.toggle(false); await until(() => getComputedStyle(dr).visibility === 'hidden', 4000);
 ok(getComputedStyle(dr).visibility === 'hidden', 'closed drawer: hidden (not focusable)');
 
 // ---------- capture ----------
