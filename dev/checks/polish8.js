@@ -115,6 +115,7 @@ const areas = [...Keys.groups(true).keys()];
 for (const a of ['Board', 'Editor', 'Capture']) ok(areas.includes(a), `keys sheet has ${a}`);
 out.keyCounts = Object.fromEntries(['Board', 'Editor', 'Capture'].map((a) => [a, (Keys.groups(true).get(a) || []).length]));
 ok(out.keyCounts.Capture > 40, 'capture keys reach the sheet');
+ok(Keys.all().filter((k) => ['Board', 'Editor', 'Capture'].includes(k.area) && k.run).length >= 10, 'the new keys-sheet lines run when clicked');
 activate('tool:board'); await wait(300);
 KeysUI.open(); await wait(400);
 ok(document.querySelector('.keys-sheet .ks-group > h4')?.textContent.startsWith('Board'), 'on the board, the sheet starts with Board');

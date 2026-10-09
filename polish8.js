@@ -65,8 +65,12 @@ const Polish8 = (() => {
     if (buckets.tail.length) out.push('-', ...buckets.tail);
     return out;
   }
+  // a menu's own "Keys" row opens the keys sheet on that area (like the Lab's), not a plain list in a dialog
+  const KEYS_ROW = /^Keys( on the board)?(…| \(\?\))?$/;
+  const keysRow = (it, area) => (it && typeof it === 'object' && KEYS_ROW.test(it.label || '') && typeof KeysUI !== 'undefined' ? { ...it, action: () => KeysUI.open(area.toLowerCase()) } : it);
   // More… (the rare items, as the renderer folds them) and a closing Delete come last, just above Customise this…
-  function tailFirst(list) {
+  function tailFirst(list, area = '') {
+    list = list.map((it) => keysRow(it, area));
     const rest = list.filter((it) => it && typeof it === 'object' && it.more);
     let main = list.filter((it) => !(it && typeof it === 'object' && it.more));
     if (rest.length === 1) main.push({ ...rest[0], more: false });
@@ -129,7 +133,7 @@ const Polish8 = (() => {
     if (!area || typeof Declutter === 'undefined') return items;
     let list = (typeof items === 'function' ? items() : items || []).filter(Boolean);
     if (last.kind === 'context' && ['Board', 'Editor', 'Capture'].includes(area)) list = ordered(list); // (the drawer's and Video Review's menus are lists of choices: kept as they are)
-    list = tailFirst(list).map(verbIcon);
+    list = tailFirst(list, area).map(verbIcon);
     if (area === 'Editor') {
       list = list.map(keyify).map(bareKey);
       // the editor's ⋯: actions | tools, snapshots, sequence | undo, redo
@@ -188,19 +192,22 @@ const Polish8 = (() => {
   function registerKeys() {
     if (typeof Keys === 'undefined') return;
     const ed = () => typeof VideoCut !== 'undefined' && VideoCut.active;
+    // clicking a line in the sheet does it (the owner isn't a shortcut person)
+    const VC = (fn) => () => { if (typeof VideoCut !== 'undefined' && VideoCut.active) fn(VideoCut); else toast('Open the editor first (E in Video Review)', { timeout: 1600 }); };
+    const rc = (sel) => () => { const b = document.querySelector(sel); if (!b?.checkVisibility?.({ visibilityProperty: true })) return; const r = b.getBoundingClientRect(); b.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 4, clientY: r.top + 4 })); };
     Keys.add(
-      { area: 'Editor', keys: 'Home / End', what: 'First / last frame of the edit (also ⏮ ⏭ behind Alt)', when: ed },
-      { area: 'Editor', keys: `${MOD}+D`, what: 'Duplicate the selected clip (right-click › Edit › Duplicate)', when: ed },
-      { area: 'Editor', keys: `${MOD}+Y`, what: 'Redo (⋯ › Redo)', when: ed },
-      { area: 'Editor', keys: `${MOD}+= / ${MOD}+−`, what: 'Zoom the timeline in / out (right-click the ruler › Zoom)', when: ed },
-      { area: 'Editor', keys: '?', what: 'The editor\'s keys in one list (⋯ › More › Keys)', when: ed },
+      { area: 'Editor', keys: 'Home / End', what: 'First / last frame of the edit (also ⏮ ⏭ behind Alt)', when: ed, run: VC((v) => v.goto(0)) },
+      { area: 'Editor', keys: `${MOD}+D`, what: 'Duplicate the selected clip (right-click › Edit › Duplicate)', when: ed, run: VC((v) => v.duplicate()) },
+      { area: 'Editor', keys: `${MOD}+Y`, what: 'Redo (⋯ › Redo)', when: ed, run: VC((v) => v.redo()) },
+      { area: 'Editor', keys: `${MOD}+= / ${MOD}+−`, what: 'Zoom the timeline in / out (right-click the ruler › Zoom)', when: ed, run: VC((v) => v.zoomBy(2)) },
+      { area: 'Editor', keys: '?', what: 'The editor\'s keys in one list (⋯ › More › Keys)', when: ed, run: VC((v) => v.help()) },
       { area: 'Editor', keys: 'Double-click', what: 'A clip: the inspector · a title: edit it · the ruler: a marker', when: ed },
-      { area: 'Editor', keys: 'Esc (inspector)', what: 'Close the inspector', when: ed },
-      { area: 'Board', keys: 'Right-click a chip', what: 'The chip\'s own menu: boards, add, zoom (ends with Customise this…)' },
-      { area: 'Editor', keys: 'Right-click the editor bar', what: 'Its ⋯ menu; on ＋, the format or Export: that button\'s menu', when: ed },
-      { area: 'Board', keys: 'Esc (drawer)', what: 'Close the board drawer (also its ✕, Ctrl+Shift+M)' },
+      { area: 'Editor', keys: 'Esc (inspector)', what: 'Close the inspector', when: ed, run: VC((v) => v.closeInspector?.()) },
+      { area: 'Board', keys: 'Right-click a chip', what: 'The chip\'s own menu: boards, add, zoom (ends with Customise this…)', run: rc('.bd-hud .bd-boardbtn') },
+      { area: 'Editor', keys: 'Right-click the editor bar', what: 'Its ⋯ menu; on ＋, the format or Export: that button\'s menu', when: ed, run: rc('.vr-cut-headrow .vr-cut-sum') },
+      { area: 'Board', keys: 'Esc (drawer)', what: 'Close the board drawer (also its ✕, Ctrl+Shift+M)', run: () => BoardDrawer.toggle(false) },
       { area: 'Capture', keys: '0 (picture)', what: 'Fit the picture to the viewer (double-click does too)' },
-      { area: 'Capture', keys: 'Right-click (rail ⋯ › Capture)', what: 'The capture menu; Alt while it opens shows every item' },
+      { area: 'Capture', keys: 'Right-click (rail ⋯ › Capture)', what: 'The capture menu; Alt while it opens shows every item', run: () => Capture.menu(Math.max(8, innerWidth / 2 - 130), 90, Capture.mainItems()) },
     );
   }
 
