@@ -27,8 +27,8 @@ line count is lower than the number of upgrades).
 | Simplify (round 4): fewer controls on screen (357 → 180 on the main surfaces), short menus with More…, `/decide` lets Astra choose a look / effect / frame size / app look with Undo | [simplify.md](simplify.md) | 27 |
 | Assist (round 5): `/shuffle-pick` (hold 🎲 Shuffle) makes thumbnails, you click one or ✦ Astra picks; looks and sketches named from their colors and song; `/usual` frame; next-step chips after a director reply; `/review-astra` notes in Video Review; costs in `/assist` | [assist.md](assist.md) | 31 |
 | Smooth (round 5): Video Review, chats, node editor, Lab sliders / FX thumbnails and the meter measured and made cheaper (playhead on the compositor, auto-scroll that never fights you, wires patched in place, no blur over moving content); before → after numbers | [smooth.md](smooth.md) | 31 |
-| Music | [music.md](music.md) | 51 |
-| Scenes2 | [scenes2.md](scenes2.md) | 34 |
+| Music (round 5): background analysis (tempo, bar 1, kick / snare / hat, sections, drops), Mark kicks for me, tap that learns, colored waveform, ✦ Make it react, live beat lock | [music.md](music.md) | 51 |
+| Scenes 2 (round 5): scene stills on chat rows, cross-fade between chat scenes, Jam filmstrip / recap / share, jams survive chat switches | [scenes2.md](scenes2.md) | 34 |
 | **Total** | | **3,545** |
 
 ## Start here
