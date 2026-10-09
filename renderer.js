@@ -132,9 +132,13 @@ function showToolMenu(id, x, y) {
 
 let menuOpenedAt = 0;
 // Items marked `more: true` (rare actions) wait behind one "More…" at the end, so menus stay short.
-function showMenu(x, y, items) {
+// An item with `items: [...]` (or a function returning them) is a submenu: it opens in place with a "‹ back" row,
+// so a short top menu can still reach every detail.
+function showMenu(x, y, items, parent = null) {
   const menu = $('menu');
-  items = items.filter(Boolean);
+  const given = items;
+  items = items.filter(Boolean).map((it) => (it.items ? { ...it, label: `${it.label}  ›`, action: () => setTimeout(() => showMenu(x, y, typeof it.items === 'function' ? it.items() : it.items, { x, y, items: given, parent }), 0) } : it));
+  if (parent) items.unshift({ label: '‹ back', action: () => setTimeout(() => showMenu(parent.x, parent.y, parent.items, parent.parent), 0) });
   const rest = items.filter((it) => it.more);
   if (rest.length > 1) {
     const main = items.filter((it) => !it.more);
