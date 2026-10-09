@@ -198,11 +198,15 @@ step(Object.values(tints).every(([t, c]) => t === c), 'each starter keeps its ch
   let snapSeen = false;
   const mo = new MutationObserver(() => { if (cover()?.classList.contains('snap') && cover().style.backgroundImage.startsWith('url(')) snapSeen = true; });
   mo.observe(cover(), { attributes: true, attributeFilter: ['class', 'style'] });
+  // (round 6 "live": a switch runs the new scene in the same page, which cross-fades from a picture of the old stack
+  // itself (swap-layers); a switch that needs a new page shows the picture on the hub's cover instead)
+  const swaps = () => ThreeLab.live?.counts().sent['preview swap-layers'] || 0;
+  const swaps0 = swaps();
   Native.open(agent.id, B);
   await until(() => S.currentId() === skB, 8000);
   await until(() => cover().classList.contains('out'), 8000);
   mo.disconnect();
-  step(snapSeen, 'switching cross-fades from a picture of the old scene', ChatScenes.lastSnap());
+  step(snapSeen || swaps() > swaps0, 'switching cross-fades from a picture of the old scene', { ...ChatScenes.lastSnap(), inPlace: swaps() > swaps0 });
   await until(() => !cover().classList.contains('snap'), 3000);
   step(!cover().classList.contains('snap') && !cover().style.backgroundImage, 'the picture is cleared once faded (no stale scene later)');
   await until(() => rowIdent(A)?.classList.contains('thumb'), 4000);

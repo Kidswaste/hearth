@@ -338,7 +338,7 @@ filter('${type}', P);
           if (v?.trim()) onChange(L.id, { name: v.trim() }, { live: false });
         });
         const tags = [isFilter(L.code) ? 'FX' : '', L.blend && L.blend !== 'normal' ? BLENDS.find((b) => b[0] === L.blend)?.[1].split(' ')[0] : '', (L.opacity ?? 1) < 1 ? `${Math.round(L.opacity * 100)}%` : '', L.in != null || L.out != null ? '⏱' : ''].filter(Boolean).join(' · ');
-        const row = el('div', { class: `ly-row${L.id === selectedId ? ' on' : ''}${L.visible === false ? ' hidden-layer' : ''}`, attrs: { draggable: 'true' }, title: 'Click to select · drag to reorder', on: { click: () => onSelect(L.id) } },
+        const row = el('div', { class: `ly-row${L.id === selectedId ? ' on' : ''}${L.visible === false ? ' hidden-layer' : ''}`, attrs: { draggable: 'true' }, dataset: { id: L.id }, title: 'Click to select · drag to reorder', on: { click: () => onSelect(L.id) } },
           eye, el('span', { class: 'ly-swatch', style: { background: L.color } }), name, el('span', { class: 'ly-tags', text: tags }));
         row.addEventListener('dragstart', (e) => { dragId = L.id; e.dataTransfer.effectAllowed = 'move'; row.classList.add('dragging'); });
         row.addEventListener('dragend', () => { dragId = null; row.classList.remove('dragging'); });

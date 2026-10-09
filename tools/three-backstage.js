@@ -16,14 +16,15 @@ const ThreeBackstage = (() => {
   let host = null; let box = null;
   let loaded = null; // { id, sig } of what the sandbox runs
   let errors = []; let consoleLines = []; let lastStats = null; let pendingShot = null;
-  let started = null; let onStart = null; // resolves when a fresh page draws its first frame (or fails)
+  let started = null; let onStart = null; let waitDrawn = false; // resolves when a fresh page / a re-run layer draws (or fails)
   const evals = new Map();
   let chain = Promise.resolve();
   let idleTimer = 0;
   const log = []; // { at, chatId, sketch, tool } the last calls (/scene shows them)
 
   function onMessage(m) {
-    if ((m.type === 'stats' || m.type === 'error') && onStart) { const fn = onStart; onStart = null; fn(); }
+    // a fresh page has started at its first stats; a layer re-run in place once it has drawn
+    if (onStart && (m.type === 'drawn' || m.type === 'error' || (m.type === 'stats' && !waitDrawn))) { const fn = onStart; onStart = null; fn(); }
     if (m.type === 'error') errors.push({ layer: m.layer || null, message: String(m.message || ''), line: m.line || null });
     else if (m.type === 'console') { consoleLines.push({ level: m.level, text: clip(m.text, 500), layer: m.layer || null }); if (consoleLines.length > 60) consoleLines.splice(0, consoleLines.length - 60); }
     else if (m.type === 'stats') lastStats = { fps: m.fps, worstFrameMs: m.worst, renderMs: m.ms, drawCalls: m.calls, triangles: m.triangles, points: m.points, lines: m.lines, textures: m.textures };
@@ -52,22 +53,41 @@ const ThreeBackstage = (() => {
   const layersOf = (s) => ThreeLab.scenes.layersOf(s);
   const sigOf = (s) => JSON.stringify(layersOf(s).map((L) => [L.id, L.code, L.visible, L.opacity, L.blend, L.x, L.y, L.scale, L.rotate]));
 
-  // (Re)runs the sketch from scratch: a fresh page, every layer bottom first.
+  const specOf = (L, z) => ({ id: L.id, code: L.code, z, slot: L.slot ?? z, name: L.name, visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal', x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, overrides: L.overrides || null });
+  // Runs the sketch: the first time (or another sketch, or forced) a fresh page with every layer bottom first; when
+  // this sketch already runs here, only the layers whose code changed run again, in place (no new page: round 6 "live").
+  // Returns true for a fresh page.
   async function load(s, { force = false } = {}) {
     ensureBox();
     clearTimeout(idleTimer);
     const sig = sigOf(s);
     if (!force && loaded?.id === s.id && loaded.sig === sig && box.ready) return false;
+    const Ls = layersOf(s);
+    if (!force && loaded?.id === s.id && loaded.codes && box.ready) {
+      const ids = new Set(Ls.map((L) => L.id));
+      const rerun = new Set(Ls.filter((L) => loaded.codes.get(L.id) !== L.code).map((L) => L.id));
+      for (const id of loaded.codes.keys()) if (!ids.has(id)) box.send({ type: 'remove-layer', id });
+      errors = errors.filter((e) => e.layer && ids.has(e.layer) && !rerun.has(e.layer));
+      consoleLines = consoleLines.filter((l) => l.layer && ids.has(l.layer) && !rerun.has(l.layer));
+      if (rerun.size) { waitDrawn = true; started = new Promise((r) => { onStart = r; setTimeout(r, 6000); }); }
+      Ls.forEach((L, z) => {
+        const { code, ...props } = specOf(L, z);
+        if (rerun.has(L.id)) box.send({ type: 'hot-layer', layer: { code, ...props } });
+        else box.send({ type: 'layer-props', id: L.id, props });
+      });
+      loaded = { id: s.id, sig, codes: new Map(Ls.map((L) => [L.id, L.code])) };
+      return false;
+    }
     const f = frameOf(s.id);
     const k = LONG / Math.max(f.width, f.height);
     host.style.width = `${Math.round(f.width * k)}px`;
     host.style.height = `${Math.round(f.height * k)}px`;
-    errors = []; consoleLines = []; lastStats = null;
+    errors = []; consoleLines = []; lastStats = null; waitDrawn = false;
     started = new Promise((r) => { onStart = r; setTimeout(r, 9000); });
     box.reload();
     box.send({ type: 'tweak-init', values: {}, keys: {}, mods: {} });
-    box.send({ type: 'run-layers', layers: layersOf(s).map((L, z) => ({ id: L.id, code: L.code, z, slot: L.slot ?? z, name: L.name, visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal', x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, overrides: L.overrides || null })) });
-    loaded = { id: s.id, sig };
+    box.send({ type: 'run-layers', layers: Ls.map(specOf) });
+    loaded = { id: s.id, sig, codes: new Map(Ls.map((L) => [L.id, L.code])) };
     return true;
   }
   // a fresh page takes a moment to load three.js: wait for its first frame, then a little for the change to show
