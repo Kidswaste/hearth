@@ -60,7 +60,7 @@ function turn(agent, text, session = {}, options = {}, onStart) {
   assert(ed.includes('sandbox_mode="workspace-write"') && ed.includes(`sandbox_workspace_write.writable_roots=[${JSON.stringify(folder)}]`) && ed.includes('sandbox_workspace_write.network_access=false'));
   ok('opt-in file access: read-only sandbox, or writes only inside the folder (paths with quotes survive)');
   const dir2 = T.codexArgs({ ...astra, threeTools: true, chatTools: true }, {}, {});
-  assert(dir2.some((x) => /^mcp_servers\.three\.command=/.test(x)) && dir2.some((x) => /^mcp_servers\.chat\.env=\{ ELECTRON_RUN_AS_NODE="1", HUB_AGENT_ID="astra", HUB_PARTNER="Claude" \}$/.test(x)));
+  assert(dir2.some((x) => /^mcp_servers\.three\.command=/.test(x)) && dir2.some((x) => /^mcp_servers\.chat\.env=\{ ELECTRON_RUN_AS_NODE="1", HUB_AGENT_ID="astra", HUB_PARTNER="Claude"(, HUB_NODES_TOOL="1")? \}$/.test(x)));
   ok('a director (three tools) and talk-back tools run on Codex through MCP config overrides');
   assert(T.hubToolsets(claude).includes('chatTools') && !T.hubToolsets(astra).includes('chatTools'));
   ok('talk-back tools stay on by default for Claude, opt-in for Astra');
