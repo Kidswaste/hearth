@@ -238,6 +238,32 @@ await shot('video-alt');
 key('keyup', 'Alt'); await wait(60);
 await shot('video-calm');
 
+// ---------- a long tab bar (Forgeheart) and tucking any button yourself ----------
+activate('tool:forgeheart'); await wait(1500);
+const FH = H.surfaces.get('tool:forgeheart')?.el;
+const tabs = [...(FH?.querySelectorAll('.tabbar > button') || [])];
+check('long tab bar keeps 5 + the open one', tabs.length >= 7 && tabs.filter(vis).length <= 6, [tabs.length, tabs.filter(vis).length]);
+ctxAt(FH.querySelector('.tabbar'), 10, 6); await wait(150);
+check('right-click a tab bar lists every tab', menuLabels().filter((l) => !/Customise/.test(l)).length === tabs.length, menuLabels());
+await shot('forge-tabs');
+close();
+const panelBtn = document.getElementById('panel-btn');
+ctxAt(panelBtn, 6, 6); await wait(150);
+const tuckRow = [...document.querySelectorAll('#menu > button')].find((b) => /Customise this/.test(b.textContent));
+tuckRow?.click(); await wait(150);
+const tk = [...document.querySelectorAll('#menu > button')].find((b) => /^Tuck “/.test(b.textContent));
+check('Customise this… offers to tuck the button you right-clicked', Boolean(tk), menuLabels());
+tk?.click(); await wait(150);
+check('a button you tucked leaves the screen', !vis(panelBtn));
+key('keydown', 'Alt', { altKey: true }); await wait(260);
+check('…and holding Alt shows it', vis(panelBtn));
+key('keyup', 'Alt'); await wait(60);
+let tucked = ''; await Commands.tryRun('/tucked', claude.id, null, { say: (t) => { tucked += t; } });
+check('/tucked lists it', /panel/i.test(tucked) || /Show\/hide chats/i.test(tucked), tucked.slice(0, 80));
+await Commands.tryRun('/tucked clear', claude.id, null, { say: () => {} }); await wait(100);
+check('/tucked clear brings it back', vis(panelBtn));
+document.querySelectorAll('#toasts .toast').forEach((t) => t.remove());
+
 // ---------- director dock ----------
 activate(claude.id); await wait(300);
 await Commands.tryRun('/director-setup', claude.id);

@@ -815,3 +815,8 @@ html[data-skin~="forge"] #menu-fly { border-radius: 0; clip-path: var(--cut-sm);
 /* a line clicked in the sheet points at its control */
 @keyframes ks-flash { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 30% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-gold, var(--accent)) 80%, transparent), 0 0 18px color-mix(in srgb, var(--ui-gold, var(--accent)) 40%, transparent); } }
 .ks-flash { animation: ks-flash 1.5s ease both !important; }
+
+/* a long tab bar keeps five tabs and the open one: a quiet note says where the rest are (declutter.js tabs-more) */
+:root:not(.reveal-alt):not(.calm-off):not([data-pins~="tabs-more"]) .tool-surface .tabbar:has(> button:nth-child(7))::after {
+  content: "⋯ more: hold Alt or right-click"; align-self: center; margin-left: 8px; font-size: 11px; color: var(--muted); opacity: .7; white-space: nowrap; pointer-events: none;
+}

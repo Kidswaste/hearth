@@ -46,6 +46,7 @@ const Declutter = (() => {
     // Lab timeline
     { id: 'tl-sizes', area: 'Lab timeline', label: '▤ ▭ ▁ timeline sizes', sel: '.media-bar .mb-size:not(.on)' },
     { id: 'tl-note', area: 'Lab timeline', label: '📌 Note (N)', sel: '.media-bar .mb-g-capture' },
+    { id: 'tl-rare', area: 'Lab timeline', label: '× remove the song · volume · Q quantize taps', sel: '.media-bar :is(.mb-x, .mb-vol, .mb-quant)' },
     { id: 'tl-empty', area: 'Lab timeline', label: '"No music loaded" line', sel: '.media-bar.mb-empty .mb-name', mode: 'hover', host: '.media-bar' },
     // Lab layers and sliders
     { id: 'ly-key', area: 'Lab layers', label: '◇ Keyframe buttons (until a layer is animated)', sel: '.layers .kf-btn.kf-none', mode: 'hover', host: '.layers .ly-field' },
@@ -71,6 +72,12 @@ const Declutter = (() => {
     { id: 'vr-skip', area: 'Video Review', label: '⏮ ⏭ start / end (Home / End)', sel: '.vr-tgroup .vr-skip' },
     { id: 'vr-fps', area: 'Video Review', label: 'fps readout', sel: '.vr-tgroup .vr-fps' },
     { id: 'vr-tools', area: 'Video Review', label: '◐ view (V) · ◉ color picker (P) · ▤ scopes (Y) · ⧉ copy frame (Ctrl+C)', sel: '.vr-tgroup .vr-ico:is([title^="View:"], [title^="Color picker"], [title^="Scopes"], [title^="Copy frame"])' },
+    // long tab bars (Forgeheart's eleven): the first five and the open one stay, the rest wait behind Alt and in the
+    // bar's right-click menu
+    { id: 'tool-desc', area: 'Tabs', label: 'A tool’s one-line description in its header', sel: '.tool-head .tool-desc', mode: 'hover', host: '.tool-head' },
+    { id: 'tabs-more', area: 'Tabs', label: 'Tabs after the fifth in long tab bars', sel: '.tool-surface .tabbar:has(> button:nth-child(7)) > button:nth-child(n+6):not(.on)' },
+    // memory: the dialog's rarer buttons
+    { id: 'mem-foot', area: 'Memory', label: 'Edit as text… / Import… / Export…', sel: 'dialog.memory-facts .dialog-actions > button.ghost' },
     // memory rows: the per-fact controls show on the row you point at
     { id: 'mem-row', area: 'Memory', label: 'Category, expiry and who-remembers per fact', sel: '.memory-row :is(.memory-cat, .memory-move, button[title^="Set an expiry"])', mode: 'hover', host: '.memory-row' },
   ].map((r) => ({ mode: 'alt', ...r }));
@@ -78,6 +85,8 @@ const Declutter = (() => {
   const areas = () => [...new Set(REVEAL.map((r) => r.area))];
 
   let pins = new Set(store.get('declutter.pins', []));
+  // buttons you tucked yourself (Customise this… → Tuck “…” behind Alt): [{ sel, label, area }]
+  let mine = store.get('declutter.mine', []);
   let off = store.get('declutter.off', false);
   const styleEl = el('style', { id: 'declutter-style' });
   document.head.append(styleEl);
@@ -90,6 +99,7 @@ const Declutter = (() => {
     const hover = live.filter((r) => r.mode === 'hover');
     const notKeep = (r) => (r.keep ? `:not(${r.keep})` : '');
     const css = [];
+    if (!off) for (const m of mine) alt.push({ sel: m.sel });
     if (alt.length) {
       const sel = alt.map((r) => r.sel.split(/,\s*(?![^()]*\))/).map((s) => `${s}${notKeep(r)}`).join(', ')).join(', ');
       css.push(`:root:not(.reveal-alt) :is(${sel}) { display: none !important; }`);
@@ -103,8 +113,39 @@ const Declutter = (() => {
     }
     styleEl.textContent = css.join('\n');
     document.documentElement.classList.toggle('calm-off', off);
+    document.documentElement.dataset.pins = [...pins].join(' ');
   }
   const savePins = () => { store.set('declutter.pins', [...pins]); paint(); };
+  // a selector that finds this button again after a re-render: its id, its feature name or its title
+  const q = (v) => String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  function selectorFor(b) {
+    if (!b?.tagName) return null;
+    const tag = b.tagName.toLowerCase();
+    if (b.id) return `${tag}[id="${q(b.id)}"]`;
+    if (b.dataset.feature) return `${tag}[data-feature="${q(b.dataset.feature)}"]`;
+    if (b.title && b.title.length < 160) return `${tag}[title="${q(b.title)}"]`;
+    return null;
+  }
+  const nameOf = (b) => (b.dataset.feature || b.textContent.trim() || b.title.split(/[(·:\n]/)[0] || b.tagName).trim().slice(0, 40);
+  function tuck(b, area, on = true) {
+    const sel = typeof b === 'string' ? b : selectorFor(b);
+    if (!sel) return false;
+    mine = mine.filter((m) => m.sel !== sel);
+    if (on) mine.push({ sel, label: typeof b === 'string' ? sel : nameOf(b), area: area || 'Elsewhere' });
+    store.set('declutter.mine', mine);
+    paint();
+    return true;
+  }
+  const isMine = (b) => mine.some((m) => { try { return b.matches(m.sel); } catch { return false; } });
+  // the buttons in this part of the screen you have never used (Usage counts clicks; after a few days of tracking)
+  function neverUsedIn(root) {
+    if (!root || typeof Usage === 'undefined' || !Usage.data?.items || (Usage.trackedDays?.() || 0) < 3) return [];
+    return [...root.querySelectorAll('button, select')].filter((b) => {
+      if (!b.checkVisibility?.({ visibilityProperty: true }) || isMine(b)) return false;
+      const it = Usage.data.items[Usage.keyOf?.(b)];
+      return it && it.n === 0 && Date.now() - it.first > 3 * 864e5 && selectorFor(b);
+    });
+  }
   function pin(id, on = !pins.has(id)) {
     const r = byId.get(id) || find(id);
     if (!r) return null;
@@ -131,6 +172,11 @@ const Declutter = (() => {
     const items = [
       ...rules.map((r) => ({ label: r.label, checked: pins.has(r.id), hint: pins.has(r.id) ? 'on screen' : r.mode === 'alt' ? 'Alt' : 'on hover', action: () => { const p = pin(r.id); toast(p.pinned ? `“${r.label}” stays on screen` : `“${r.label}” is tucked away (${r.mode === 'alt' ? 'hold Alt' : 'point at it'})`, { timeout: 1800, action: { label: 'Undo', fn: () => pin(r.id) } }); } })),
       rules.length ? '-' : null,
+      btn && !btn.closest('#menu') && selectorFor(btn) ? (isMine(btn)
+        ? { label: `Keep “${nameOf(btn).slice(0, 24)}” on screen`, action: () => { mine = mine.filter((m) => { try { return !btn.matches(m.sel); } catch { return true; } }); store.set('declutter.mine', mine); paint(); } }
+        : { label: `Tuck “${nameOf(btn).slice(0, 24)}” behind Alt`, action: () => { tuck(btn, area); toast(`“${nameOf(btn)}” waits behind Alt now`, { timeout: 2400, action: { label: 'Undo', fn: () => tuck(btn, area, false) } }); } }) : null,
+      (() => { const never = neverUsedIn(target?.closest?.('.surface, #rail, #panel, .notes-panel, dialog') || null); return never.length ? { label: 'Tuck what I never use here', hint: String(never.length), action: () => { never.forEach((b) => tuck(b, area)); toast(`${never.length} button${never.length === 1 ? '' : 's'} you never used wait behind Alt now`, { timeout: 3000, action: { label: 'Undo', fn: () => never.forEach((b) => tuck(b, area, false)) } }); } } : null; })(),
+      mine.length ? { label: 'Your tucked buttons', hint: String(mine.length), items: () => mine.map((m) => ({ label: m.label, hint: m.area, action: () => { mine = mine.filter((x) => x !== m); store.set('declutter.mine', mine); paint(); toast(`“${m.label}” is back on screen`, { timeout: 1600 }); } })) } : null,
       key && !btn.closest('#menu') ? { label: `Hide “${(btn.dataset.feature || btn.textContent || btn.title).trim().slice(0, 24)}” everywhere`, action: () => { Usage.setHidden(key, true); toast('Hidden. Customise this… → Bring back hidden buttons shows it again.', { timeout: 3000, action: { label: 'Undo', fn: () => Usage.setHidden(key, false) } }); } } : null,
       hidden.length ? { label: 'Bring back hidden buttons', hint: String(hidden.length), items: () => hidden.map((k) => ({ label: k.split(' › ').pop(), hint: k.split(' › ')[0], action: () => Usage.setHidden(k, false) })) } : null,
       { label: 'Show the tucked buttons for now', key: 'Alt Alt', action: () => KeysUI.latch(true) },
@@ -449,6 +495,22 @@ const Declutter = (() => {
     { label: 'Close', key: 'Ctrl+J', action: () => Notes.close() },
     { label: 'Delete this note', danger: true, action: clickIn(panel, '.notes-foot > button.danger') },
   ]);
+  ctx('dialog.memory-facts', 'Memory', (dlg) => {
+    const by = (t) => () => [...dlg.querySelectorAll('.dialog-actions button')].find((b) => b.textContent.startsWith(t))?.click();
+    return [
+      { label: 'Add a fact', action: () => dlg.querySelector('.memory-add input')?.focus() },
+      { label: 'Search memory', action: () => dlg.querySelector('input[type=search]')?.focus() },
+      { label: 'Edit as text…', action: by('Edit as text') },
+      { label: 'Import…', action: by('Import') },
+      { label: 'Export…', action: by('Export') },
+      { label: 'Close', action: () => dlg.close() },
+    ];
+  });
+  // a tab bar: every tab, the open one ✓ (long bars keep only five on screen)
+  ctx('.tabbar', 'Tabs', (bar) => {
+    const tabs = [...bar.querySelectorAll(':scope > button')];
+    return tabs.length > 1 ? tabs.map((b) => ({ label: b.textContent.trim() || b.title, checked: b.classList.contains('on'), action: () => b.click() })) : null;
+  });
   ctx('.memory-row', 'Memory', (row) => {
     const text = row.querySelector('.memory-text')?.value || '';
     const pinBtn = row.querySelector('button');
@@ -478,6 +540,8 @@ const Declutter = (() => {
     reg({ name: 'pin-control', args: '<name>', desc: 'Keep a tucked control on screen (see /customise)',
       complete: () => REVEAL.map((r) => ({ value: r.id, label: r.label, hint: r.area })),
       run: (a) => { const r = pin(a, true); return r ? `“${r.rule.label}” stays on screen.` : 'No such control: /customise lists them.'; } });
+    reg({ name: 'tucked', args: '[clear]', desc: 'The buttons you tucked behind Alt yourself (right-click → Customise this… → Tuck); /tucked clear brings them all back',
+      run: (a) => { if (/^clear$/i.test(String(a || '').trim())) { const n = mine.length; mine = []; store.set('declutter.mine', mine); paint(); return `${n} button${n === 1 ? '' : 's'} back on screen.`; } return mine.length ? mine.map((m) => `- ${m.label} (${m.area})`).join('\n') + '\n\n/tucked clear brings them back; Customise this… → Your tucked buttons, one by one.' : 'Nothing tucked by you yet: right-click a button → Customise this… → Tuck it behind Alt.'; } });
     reg({ name: 'unpin-control', args: '<name>', desc: 'Tuck a control away again (Alt or hover shows it)',
       complete: () => [...pins].map((id) => ({ value: id, label: byId.get(id)?.label })),
       run: (a) => { const r = pin(a, false); return r ? `“${r.rule.label}” is tucked away again.` : 'No such control: /customise lists them.'; } });
@@ -497,7 +561,7 @@ const Declutter = (() => {
   if (typeof Simplify !== 'undefined' && Array.isArray(Simplify.TUCKED)) Simplify.TUCKED.unshift(['palette-btn', '⌘ Command palette  Ctrl+K'], ['add-btn', '＋ Add an agent or website']);
 
   // the keys sheet lists what each area tucks away (hold Alt / point at it)
-  const WHERE = { Rail: 'the rail', 'Chats panel': 'the chats list', Chat: 'a chat', 'Director dock': 'the dock', Lab: 'the Lab', 'Lab preview': 'the picture', 'Lab timeline': 'the timeline', 'Lab layers': 'a layer', 'Lab sliders': 'the sliders', 'Lab console': 'the console', Notes: 'Notes', Memory: 'a memory fact' };
+  const WHERE = { Rail: 'the rail', 'Chats panel': 'the chats list', Chat: 'a chat', 'Director dock': 'the dock', Lab: 'the Lab', 'Lab preview': 'the picture', 'Lab timeline': 'the timeline', 'Lab layers': 'a layer', 'Lab sliders': 'the sliders', 'Lab console': 'the console', Notes: 'Notes', Memory: 'Memory', Tabs: 'a tool’s header', 'Video Review': 'Video Review' };
   for (const area of areas()) {
     const alt = REVEAL.filter((r) => r.area === area && r.mode === 'alt');
     const hov = REVEAL.filter((r) => r.area === area && r.mode === 'hover');
@@ -519,7 +583,7 @@ const Declutter = (() => {
   if (document.readyState !== 'loading') queueMicrotask(registerCommands);
 
   return {
-    REVEAL, ctx, customiseItems, pin, pinned: (id) => pins.has(id), find, paint, setOff, isOff: () => off, areas,
+    REVEAL, ctx, customiseItems, pin, tuck, mine: () => mine.slice(), selectorFor, pinned: (id) => pins.has(id), find, paint, setOff, isOff: () => off, areas,
     tucked: (area) => REVEAL.filter((r) => (!area || r.area === area) && !pins.has(r.id)),
     railItems, labToolbar,
   };

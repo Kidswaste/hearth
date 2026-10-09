@@ -676,7 +676,7 @@ function toggleFold(hostId, m) {
         el('div', { class: 'astra-try' }, `${chips.slice(0, 2).map(([, t]) => t).join(' · ')} · `, el('a', { href: '#', text: '/astra', on: { click: (e) => { e.preventDefault(); Native.setDraft(agent.id, '/astra-'); } } }), ' for the rest'));
     }
     if (astra() && agent.engine === 'claude') {
-      return el('div', { class: 'astra-hints' }, el('div', { class: 'astra-try' }, `⚇ next to Send: jam or a second opinion with ${astra().name}`));
+      return el('div', { class: 'astra-hints' }, el('div', { class: 'astra-try' }, `⚇ in the chat box (point at it): jam or a second opinion with ${astra().name}`));
     }
     return null;
   }
