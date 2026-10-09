@@ -545,6 +545,9 @@ const FIXES = [
     (e) => `That model isn't available on your ${ENGINES[e].account} account. Pick another one in the chat header's Model menu${e === 'codex' ? ' or with /astra-model' : ''}.`],
   [/usage limit|rate.?limit|too many requests|\b429\b|quota/i,
     (e) => `Your plan's usage limit was reached for now. Wait for it to reset, or use a lighter model / lower effort${e === 'codex' ? ' (/astra-model, /astra-effort low)' : ''}.`],
+  [/version_too_old|version [\d.]+ or newer is required|does not support this model/i,
+    (e) => e === 'codex' ? 'This Codex is too old for the model: update the Codex / ChatGPT app, then press Retry.'
+      : 'This Claude Code is too old: run `claude update` in a terminal (Homebrew: `brew upgrade claude-code`, npm: `npm i -g @anthropic-ai/claude-code@latest`), then press Retry. /astra-doctor shows which copy Hearth uses.'],
   [/unexpected argument|unrecognized (option|argument)|unknown (option|flag|argument)|invalid value for|found argument .* which wasn't expected/i,
     (e) => `This ${ENGINES[e].label} version doesn't know one of Hearth's options. Update the ${e === 'codex' ? 'Codex' : 'Claude'} app, then run /astra-doctor.`],
   [/ENOENT|EACCES|EPERM|spawn /i,
