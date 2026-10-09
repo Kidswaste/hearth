@@ -368,11 +368,15 @@ renderer.setAnimationLoop((now) => {
     const id = identity(chatId);
     const url = thumbOf(chatId);
     if (node.textContent !== id.glyph) node.textContent = id.glyph;
-    if ((node.dataset.thumb || '') === String(url ? url.length + url.slice(-24) : '')) return node;
+    // the scene's own sequence (tools/three-seq.js), in the still's tooltip and a small ▤ mark
+    const sq = typeof ThreeSeq !== 'undefined' ? ThreeSeq.summaryFor?.(linkOf(chatId)) : null;
+    const sqTip = sq ? ` · ▤ its sequence: ${sq.clips} clip${sq.clips === 1 ? '' : 's'}, ${sq.seconds.toFixed(1)} s` : '';
+    if (node.classList.contains('has-seq') !== Boolean(sq?.clips)) node.classList.toggle('has-seq', Boolean(sq?.clips));
+    if ((node.dataset.thumb || '') === String(url ? url.length + url.slice(-24) : '')) { const t = url ? `This chat's scene (its own sketch in the Lab)${sqTip}` : sqTip.slice(3); if (node.title !== t) node.title = t; return node; }
     node.dataset.thumb = url ? url.length + url.slice(-24) : '';
     node.classList.toggle('thumb', Boolean(url));
     node.style.backgroundImage = url ? `url("${url}")` : '';
-    node.title = url ? 'This chat\'s scene (its own sketch in the Lab)' : '';
+    node.title = url ? `This chat's scene (its own sketch in the Lab)${sqTip}` : sqTip.slice(3);
     return node;
   }
   // a working chat you aren't looking at: its busy dot turns into a small dot in its color
@@ -515,6 +519,8 @@ renderer.setAnimationLoop((now) => {
     toast(`"${lab()?.get(id)?.name}" is the scene of the chat "${titleOf(owner)}"`, { timeout: 6000, action: { label: 'Go to that chat', fn: () => { shown.three = owner; Native.open(agent.id, owner); Tools.openDock('three'); } } });
   });
   addEventListener('hearth:lab-ready', () => sync());
+  // a scene's sequence changed (tools/three-seq.js): the rows' marks follow (written only when they differ)
+  addEventListener('hearth:sequences', () => { for (const r of document.querySelectorAll('#chat-groups .item.has-ident')) { const n = r.querySelector('.chat-ident'); if (n && r.dataset.key) paintIdent(n, r.dataset.key); } });
   addEventListener('hearth:view', () => { sync(); if (typeof DirectorDock !== 'undefined') for (const t of ['three', 'ae']) DirectorDock.entry(t)?.paint(); });
 
   // "New chat" (also when the dock already shows an empty one): a fresh starter

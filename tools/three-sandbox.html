@@ -107,7 +107,9 @@ function instrument(renderFn) {
       this.setPixelRatio(this.__basePR * q);
     }
     const t0 = performance.now();
-    renderFn.call(this, scene, camera);
+    // a Lab sequence's camera fly-through moves this scene's own camera for the frame (put back right after)
+    const camBack = EL && SQ.cam ? sqCamFx(EL, camera) : null;
+    try { renderFn.call(this, scene, camera); } finally { camBack?.(); }
     if (EL && EL.drawnGen !== EL.gen) layerDrew(EL);
     frameMs = performance.now() - t0;
     lastRenderer = this;
@@ -512,6 +514,8 @@ const audio = {
   // 1 when a trigger fires, fading over ~120 ms: 'kick' | 'bass' | 'snare' | 'hats' | 'hit'. Kick / snare / hit use the
   // user's hand-placed markers when the song has some; otherwise (and with live sound) the ⚡ Triggers bands.
   trigger(name) {
+    const own = sqOwnMarks(name); // a sequence scene's own hits, moved with its clip (like its keyframes)
+    if (own) return pulse(own.marks, own.t, trigFade(name) / 1000);
     const marks = beatMap?.marks?.[name];
     if (mediaEl && !liveKind && marks?.length) return pulse(marks, mediaEl.currentTime, trigFade(name) / 1000);
     if (mediaEl || liveKind) { update(); return trigOn(name) ? trigPulse(name) : 0; }
@@ -520,10 +524,10 @@ const audio = {
   },
   get bassHit() { return this.trigger('bass'); },
   get triggers() { return Object.fromEntries(TRIG_NAMES.map((n) => [n, this.trigger(n)])); },
-  get hits() { return beatMap?.marks || { kick: [], snare: [], hit: [] }; },
+  get hits() { return sqOwnMarks('kick', true)?.all || beatMap?.marks || { kick: [], snare: [], hit: [] }; },
   // Seconds since the last / until the next marker of a kind ('kick', 'snare', 'hit', 'beat').
-  since(kind) { const t = this.time; const arr = kind === 'beat' ? (beatMap?.beats || analysis?.beats) : beatMap?.marks?.[kind]; const k = arr?.length ? lastIdx(arr, t) : -1; return k < 0 ? Infinity : t - arr[k]; },
-  next(kind) { const t = this.time; const arr = kind === 'beat' ? (beatMap?.beats || analysis?.beats) : beatMap?.marks?.[kind]; const k = arr?.length ? lastIdx(arr, t) : -1; return arr && k + 1 < arr.length ? arr[k + 1] - t : Infinity; },
+  since(kind) { const own = kind !== 'beat' && sqOwnMarks(kind); if (own) { const k = lastIdx(own.marks, own.t); return k < 0 ? Infinity : own.t - own.marks[k]; } const t = this.time; const arr = kind === 'beat' ? (beatMap?.beats || analysis?.beats) : beatMap?.marks?.[kind]; const k = arr?.length ? lastIdx(arr, t) : -1; return k < 0 ? Infinity : t - arr[k]; },
+  next(kind) { const own = kind !== 'beat' && sqOwnMarks(kind); if (own) { const k = lastIdx(own.marks, own.t); return k + 1 < own.marks.length ? own.marks[k + 1] - own.t : Infinity; } const t = this.time; const arr = kind === 'beat' ? (beatMap?.beats || analysis?.beats) : beatMap?.marks?.[kind]; const k = arr?.length ? lastIdx(arr, t) : -1; return arr && k + 1 < arr.length ? arr[k + 1] - t : Infinity; },
   get beatInBar() { return barInfo(this.time).beatInBar; },
   get bar() { return barInfo(this.time).bar; },
   get beatPhase() { return barInfo(this.time).beatPhase; },
@@ -849,9 +853,13 @@ function startRecording({ fps = 60, bitrate = 16e6, until = null } = {}) {
   const merged = seqRec || needsComposite();
   const canvas = merged ? (compRec = composite(document.createElement('canvas'))) : lastRenderer.domElement;
   const stream = canvas.captureStream(fps);
-  if (mediaEl || liveSrc) {
+  // a sequence's footage with its sound on and its sound clips play through its own bus: recorded too
+  const seqSound = seqRec && (SQ.plan?.sounds?.length || (SQ.plan?.groups || []).some((g) => g.kind === 'footage' && !g.mute));
+  if (mediaEl || liveSrc || seqSound) {
     // the song, or the live sound (Spotify…), goes into the video
+    graph();
     if (!recDest) { recDest = actx.createMediaStreamDestination(); if (srcNode) srcNode.connect(recDest); if (liveSrc) liveSrc.connect(recDest); }
+    if (seqSound) sqBus();
     for (const tr of recDest.stream.getAudioTracks()) stream.addTrack(tr);
   }
   const mime = ['video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm'].find((t) => MediaRecorder.isTypeSupported(t));
@@ -4110,7 +4118,7 @@ async function setupViewer() {
 // a moment before its clip, drawing hidden, and stops after it). A scene's own time (performance.now inside its
 // layers, their frame timestamps, layer.time) is T − t0, so the sequence seeks frame-exactly into any scene. An
 // offline render steps T frame by frame: layer frames are queued and run once per step (seq-frame → a JPEG back).
-const SQ = { on: false, plan: null, T: 0, T0: 0, at0: 0, playing: false, rate: 1, loop: false, off: false, offQ: [], libs: null, assets: new Map(), mounted: new Map(), importing: 0, lastPost: 0, pcm: null, pcmRate: 44100, smooth: null, ended: false, titlesDrawn: false, ca: null, cb: null, out: null };
+const SQ = { on: false, plan: null, T: 0, T0: 0, at0: 0, playing: false, rate: 1, loop: false, off: false, offQ: [], libs: null, assets: new Map(), mounted: new Map(), importing: 0, lastPost: 0, pcm: null, pcmRate: 44100, smooth: null, ended: false, titlesDrawn: false, ca: null, cb: null, out: null, cam: null, bus: null, snd: new Map(), cs: null, cs2: null };
 const WARM = 0.35; // seconds a group runs (hidden) before its clip: its first frames are drawn when it shows
 const PRE = 1.2; // seconds ahead a group is mounted while playing
 // layer frames during an offline render wait for the next step instead of the screen
@@ -4135,6 +4143,42 @@ if (THREE.Clock?.prototype?.start) {
   THREE.Clock.prototype.start = function () { clockStart.call(this); if (sqLayerHere()) { this.startTime = 0; this.oldTime = 0; } };
 }
 const sqAsset = (id) => SQ.assets.get(id) || null;
+// a sequence scene's own kick / snare / hit markers (from its own song's beat map), in its own time: they move with
+// its clip like its keyframes do (null: the scene has none, the sequence's song's markers apply)
+function sqOwnMarks(name, all = false) {
+  if (!SQ.on) return null;
+  const h = sqLayerHere();
+  const m = h?.L.props.seqMarks;
+  if (!m) return null;
+  const t = SQ.T - h.L.props.seqT0;
+  if (all) return { all: m, t };
+  return m[name]?.length ? { marks: m[name], t } : null;
+}
+// the camera fly-through (Lab transitions with lab: 'cam'): for one frame of a scene on either side of the cut, its
+// own camera moves along its view (forward: out of A past its subject, into B from behind; pull-back: the reverse)
+function sqCamFx(EL, camera) {
+  const c = SQ.cam;
+  if (!c || !camera?.isCamera || !camera.position || !camera.getWorldDirection) return null;
+  const side = EL.props.seqGroup === c.a ? 1 : EL.props.seqGroup === c.b ? 2 : 0;
+  if (!side) return null;
+  const e = (x) => { const t = Math.max(0, Math.min(1, x)); return t * t * (3 - 2 * t); };
+  const pos = camera.position.clone(); const fov = camera.fov; const zoom = camera.zoom;
+  const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+  const dist = Math.max(1, camera.position.length());
+  const k = side === 1 ? e(c.p / 0.65) : -(1 - e((c.p - 0.35) / 0.65));
+  camera.position.addScaledVector(dir, k * dist * 0.9 * c.dir);
+  if (camera.isPerspectiveCamera) camera.fov = Math.min(150, fov * (1 + 0.45 * Math.sin(Math.PI * Math.max(0, Math.min(1, c.p)))));
+  else if (camera.isOrthographicCamera) camera.zoom = Math.max(0.05, zoom * (1 + k * c.dir * 2));
+  camera.updateProjectionMatrix?.();
+  return () => { camera.position.copy(pos); if (camera.isPerspectiveCamera) camera.fov = fov; if (camera.isOrthographicCamera) camera.zoom = zoom; camera.updateProjectionMatrix?.(); };
+}
+// the sequence's own sound bus (footage with its sound on, sound clips): to the speakers, and into a recording
+function sqBus() {
+  graph();
+  if (!SQ.bus) { SQ.bus = actx.createGain(); SQ.bus.connect(actx.destination); }
+  if (recDest) SQ.bus.connect(recDest);
+  return SQ.bus;
+}
 const sqSong = () => (SQ.plan?.song && mediaEl ? SQ.plan.song : null);
 const sqInSong = (T) => { const s = sqSong(); return Boolean(s && T >= s.start - 1e-4 && T < s.end - 1e-3); };
 // the canvas a group draws into (footage, cards) or the titles / transition overlay
@@ -4187,7 +4231,7 @@ function sqMount(g) {
 }
 // footage with its sound on plays it (through the page's audio, not the analyser: the music stays what reacts)
 function sqSound(st, v) {
-  try { graph(); const n = actx.createMediaElementSource(v); const gn = actx.createGain(); gn.gain.value = st.g.volume ?? 1; n.connect(gn); gn.connect(actx.destination); v.muted = false; st.audioNode = n; } catch { /* stays muted */ }
+  try { const bus = sqBus(); const n = actx.createMediaElementSource(v); const gn = actx.createGain(); gn.gain.value = st.g.volume ?? 1; n.connect(gn); gn.connect(bus); v.muted = false; st.audioNode = n; } catch { /* stays muted */ }
 }
 function sqUnmount(id) {
   const st = SQ.mounted.get(id);
@@ -4195,6 +4239,29 @@ function sqUnmount(id) {
   SQ.mounted.delete(id);
   for (const lid of st.ids) removeLayer(lid);
   if (st.video) { try { st.audioNode?.disconnect(); } catch {} st.video.pause(); st.video.removeAttribute('src'); st.video.load(); }
+}
+// sound clips on the Sound track (not the song): an <audio> each through the bus, mounted around T, following the clock
+// (offline renders mix them with ffmpeg instead)
+function sqSounds(T) {
+  const list = SQ.off ? [] : (SQ.plan?.sounds || []).filter((x) => T >= x.start - PRE && T < x.end + 0.25 && sqAsset(x.asset));
+  const want = new Set(list.map((x) => x.id));
+  for (const [id, s] of SQ.snd) if (!want.has(id)) { s.el.pause(); try { s.node.disconnect(); } catch {} s.el.removeAttribute('src'); s.el.load(); SQ.snd.delete(id); }
+  for (const x of list) {
+    let s = SQ.snd.get(x.id);
+    if (!s || s.src !== x.asset) {
+      const el = new Audio(); el.preload = 'auto'; el.src = sqAsset(x.asset).url;
+      s = { el, src: x.asset, node: null };
+      try { const bus = sqBus(); s.node = actx.createMediaElementSource(el); const gn = actx.createGain(); gn.gain.value = x.volume ?? 1; s.node.connect(gn); gn.connect(bus); } catch { /* plain element */ }
+      SQ.snd.set(x.id, s);
+    }
+    const on = SQ.playing && T >= x.start && T < x.end;
+    const want0 = x.a + Math.max(0, T - x.start) * (x.speed || 1);
+    if (on) {
+      const rate = (x.speed || 1) * SQ.rate;
+      if (s.el.playbackRate !== rate) s.el.playbackRate = rate;
+      if (s.el.paused) { s.el.currentTime = want0; s.el.play().catch(() => {}); } else if (Math.abs(s.el.currentTime - want0) > 0.08) s.el.currentTime = want0;
+    } else if (!s.el.paused) s.el.pause();
+  }
 }
 // which groups run around T (realtime: from PRE before to a moment after; offline: the ones that show, and the next
 // one a frame early so it has drawn when it shows)
@@ -4299,6 +4366,30 @@ function sqShowing(T) {
   }
   return { a: null, b: null, p: 0, show: main[main.length - 1] || null };
 }
+// morph: the layers both scenes share (same layer name) stay on screen through the cut while the rest changes:
+// the parts that differ dissolve underneath, the shared ones are drawn over them from both sides (lighten)
+function sqMorph(g2, ga, gb, p, k, W, H) {
+  if (!ga || !gb) return false;
+  const shareOf = (lid) => layers.get(lid)?.props.share || null;
+  const bShares = new Set(gb.ids.map(shareOf).filter(Boolean));
+  const aShared = ga.ids.filter((lid) => bShares.has(shareOf(lid)));
+  if (!aShared.length) return false;
+  const aShares = new Set(aShared.map(shareOf));
+  const bShared = gb.ids.filter((lid) => aShares.has(shareOf(lid)));
+  const size = { w: W, h: H };
+  SQ.ca = composite(SQ.ca, k, size, new Set(ga.ids.filter((lid) => !aShared.includes(lid))));
+  SQ.cb = composite(SQ.cb, k, size, new Set(gb.ids.filter((lid) => !bShared.includes(lid))));
+  SQ.cs = composite(SQ.cs, k, size, new Set(aShared));
+  SQ.cs2 = composite(SQ.cs2, k, size, new Set(bShared));
+  const e = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  g2.drawImage(SQ.ca, 0, 0, W, H);
+  g2.globalAlpha = e(0.2, 0.8, p); g2.drawImage(SQ.cb, 0, 0, W, H);
+  // the shared layers: one side into the other at full strength (they are the same layer), over the rest
+  const sc = SQ.cs.getContext('2d'); sc.globalAlpha = e(0.3, 0.7, p); sc.drawImage(SQ.cs2, 0, 0); sc.globalAlpha = 1;
+  g2.globalAlpha = 1; g2.globalCompositeOperation = 'lighten'; g2.drawImage(SQ.cs, 0, 0, W, H);
+  g2.globalCompositeOperation = 'source-over'; g2.globalAlpha = 1;
+  return true;
+}
 function sqApply(T, { full = false } = {}) {
   const sh = sqShowing(T);
   const inTrans = new Set(sh.a ? [sh.a.id, sh.b.id] : []);
@@ -4309,6 +4400,9 @@ function sqApply(T, { full = false } = {}) {
     if (st.video && !SQ.off) sqSyncVideo(st, T);
   }
   for (const st of SQ.mounted.values()) if (!st.g.layers) sqDrawPseudo(st, T);
+  // a camera fly-through moves the two scenes' own cameras while it runs (sqCamFx, in the render hook)
+  const camT = sh.a ? SQ.libs?.EditFX?.TRANS?.[sh.type] : null;
+  SQ.cam = camT?.lab === 'cam' ? { a: sh.a.id, b: sh.b.id, p: sh.p, dir: camT.cam || 1 } : null;
   // the transition: both sides merged on black, mixed by the editor's own transition drawing
   const tr = layers.get('~sq-trans');
   if (tr) {
@@ -4323,8 +4417,13 @@ function sqApply(T, { full = false } = {}) {
       const g2 = c.getContext('2d');
       g2.setTransform(1, 0, 0, 1, 0, 0); g2.globalAlpha = 1; g2.globalCompositeOperation = 'source-over'; g2.filter = 'none';
       g2.fillStyle = '#000'; g2.fillRect(0, 0, W, H);
-      const fx = SQ.libs?.EditFX?.TRANS?.[sh.type]?.preview;
-      try { if (fx) fx(g2, SQ.ca, SQ.cb, sh.p, W, H); else { g2.drawImage(SQ.ca, 0, 0, W, H); g2.globalAlpha = sh.p; g2.drawImage(SQ.cb, 0, 0, W, H); } } catch { g2.drawImage(sh.p < 0.5 ? SQ.ca : SQ.cb, 0, 0, W, H); }
+      const TT = SQ.libs?.EditFX?.TRANS?.[sh.type];
+      const fx = TT?.labMix || TT?.preview;
+      try {
+        if (TT?.lab === 'shared' && sqMorph(g2, ga, gb, sh.p, k, W, H)) { /* drawn: the layers both scenes share stay */ }
+        else if (fx) fx(g2, SQ.ca, SQ.cb, sh.p, W, H);
+        else { g2.drawImage(SQ.ca, 0, 0, W, H); g2.globalAlpha = sh.p; g2.drawImage(SQ.cb, 0, 0, W, H); }
+      } catch { g2.drawImage(sh.p < 0.5 ? SQ.ca : SQ.cb, 0, 0, W, H); }
       g2.setTransform(1, 0, 0, 1, 0, 0); g2.globalAlpha = 1; g2.globalCompositeOperation = 'source-over'; g2.filter = 'none';
     }
   }
@@ -4383,6 +4482,7 @@ function sqTick() {
   SQ.T = Math.max(0, T);
   sqManage(SQ.T);
   sqSyncSong(SQ.T);
+  if (SQ.snd.size || SQ.plan?.sounds?.length) sqSounds(SQ.T);
   sqApply(SQ.T);
   if (SQ.playing) sqState();
 }
@@ -4408,9 +4508,21 @@ function sqSet(plan) {
   // the hub's cover (a page that just reloaded) goes once the program has drawn
   if (first) Promise.all(ready).then(() => realRAF(() => realRAF(() => post({ type: 'stack-drawn' }))));
 }
+// another scene's sequence comes in: a picture of the old program on top fades away (on the compositor)
+function sqFadeOut() {
+  try {
+    const c = composite(null, 0.5);
+    c.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:99990;pointer-events:none';
+    document.body.appendChild(c);
+    const a = c.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 450, easing: 'ease-out', fill: 'forwards' });
+    a.onfinish = () => c.remove();
+    realSetTimeout(() => c.remove(), 1200);
+  } catch { /* a cut */ }
+}
 function sqOff() {
   SQ.playing = false; SQ.on = false; SQ.off = false; SQ.offQ = []; SQ.T = 0;
   for (const id of [...SQ.mounted.keys()]) sqUnmount(id);
+  SQ.cam = null; SQ.plan = null; sqSounds(0);
   removeLayer('~sq-trans'); removeLayer('~sq-titles');
   if (mediaEl && !mediaEl.paused) mediaEl.pause();
   if (!liveKind) { remoteFreq = null; remoteWave = null; }
@@ -4430,6 +4542,7 @@ function sqPlay(on, rate = 1) {
   if (on) { graph(); actx.resume(); }
   sqSyncSong(SQ.T);
   if (!on) for (const st of SQ.mounted.values()) st.video?.pause();
+  sqSounds(SQ.T);
   sqState(true);
 }
 // offline: the song's samples (for the spectrum the analyser would have heard at each frame)
@@ -4438,6 +4551,7 @@ async function sqOffline(on) {
   SQ.playing = false;
   if (mediaEl && !mediaEl.paused) mediaEl.pause();
   for (const st of SQ.mounted.values()) st.video?.pause();
+  sqSounds(SQ.T);
   if (!on) {
     const q = SQ.offQ; SQ.offQ = [];
     for (const fn of q) realRAF(fn); // layers go back to the screen's frames
@@ -4524,18 +4638,32 @@ window.__seqProbe = ({ size = 240, y = 0.04, x = 0.5, yc = 0.66 } = {}) => {
   for (let k = 0; k < 12; k += 1) { const [r, g, b] = at((k + 0.5) / 12, y); const l = 0.299 * r + 0.587 * g + 0.114 * b; if (l > 170) { n |= 1 << k; ok += 1; } else if (l < 70) ok += 1; }
   return { center: at(x, yc), code: ok === 12 ? n : null, T: SQ.T };
 };
+// checks: how many bright pixels the program has now (size × size), and the color at a point
+window.__seqPixels = ({ size = 120, x = 0.5, y = 0.5, only = null } = {}) => {
+  const c = composite(null, 1, { w: size, h: size }, only ? new Set(only) : null);
+  const d = c.getContext('2d').getImageData(0, 0, size, size).data;
+  let bright = 0; for (let i = 0; i < d.length; i += 4) if (d[i] > 128) bright += 1;
+  const i = (Math.min(size - 1, Math.round(y * size)) * size + Math.min(size - 1, Math.round(x * size))) * 4;
+  return { bright, at: [d[i], d[i + 1], d[i + 2]] };
+};
+window.__seqLayers = () => [...layers.values()].map((L) => ({ id: L.id, share: L.props.share || null, hide: Boolean(L.seqHide), blend: L.props.blend, group: L.props.seqGroup || null, mix: layerMix(L) }));
 window.__seqInfo = () => ({ on: SQ.on, T: SQ.T, playing: SQ.playing, off: SQ.off, mounted: [...SQ.mounted.keys()], layers: [...layers.keys()].length, libs: Boolean(SQ.libs), showing: SQ.on ? (() => { const s = sqShowing(SQ.T); return s.a ? { trans: s.type, p: s.p, from: s.a.id, to: s.b.id } : { clip: s.show?.id || null }; })() : null });
 function sqMessage(msg) {
   if (msg.type === 'seq-libs') { try { SQ.libs = new Function(`${msg.code}\nreturn { EditFX, VideoTitles };`)(); } catch (err) { post({ type: 'console', level: 'warn', text: `Sequence titles / transitions: ${err.message}` }); } return; }
   if (msg.type === 'seq-asset') { const old = SQ.assets.get(msg.id); if (old) URL.revokeObjectURL(old.url); SQ.assets.set(msg.id, { url: URL.createObjectURL(new Blob([msg.buffer], { type: msg.mime || 'video/mp4' })), mime: msg.mime }); return; }
   if (msg.type === 'seq-font') { try { new FontFace(msg.name, msg.buffer).load().then((f) => document.fonts.add(f)).catch(() => {}); } catch { /* the fallback fonts */ } return; }
-  if (msg.type === 'seq-set') { sqSet(msg.plan); return; }
+  if (msg.type === 'seq-set') { if (msg.fade && SQ.on) sqFadeOut(); sqSet(msg.plan); return; }
   if (msg.type === 'seq-off') { sqOff(); return; }
   if (msg.type === 'seq-seek') { sqSeek(msg.T); return; }
   if (msg.type === 'seq-play') { sqPlay(msg.on, msg.rate); return; }
   if (msg.type === 'seq-loop') { SQ.loop = Boolean(msg.on); return; }
   if (msg.type === 'seq-offline') { sqOffline(msg.on).then((r) => post({ type: 'seq-offline', ...r, on: SQ.off })); return; }
   if (msg.type === 'seq-frame') sqFrame(msg).catch((err) => post({ type: 'seq-frame', n: msg.n, error: err.message }));
+  // a small picture of what shows now, for the clip under the playhead (the sequence's clip thumbnails)
+  if (msg.type === 'seq-thumb') {
+    if (!SQ.on || SQ.off) return;
+    try { const c = composite(SQ.thumbC || (SQ.thumbC = document.createElement('canvas')), 1, { w: msg.w || 96, h: msg.h || 170 }); post({ type: 'seq-thumb', id: msg.id, key: msg.key, url: c.toDataURL('image/jpeg', 0.7) }); } catch { /* none */ }
+  }
 }
 
 addEventListener('message', async (e) => {

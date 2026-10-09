@@ -28,7 +28,11 @@ const ThreeSeq = (() => {
     L: null, view: false, key: null, edit: null, sel: new Set(), undo: [], redo: [], T: 0, playing: false, rate: 1, shuttle: 0, loop: false,
     snap: store.get('three.seq.snap', true), vr: null, sent: { libs: false, assets: new Set(), plan: '' }, entered: null, storing: false,
     render: null, probes: new Map(), drag: null, hover: null, waits: [], frames: new Map(),
+    // seq2: songs' beat maps (each scene's own hits and cue looks), nested sequences' edits, clip pictures
+    maps: {}, nested: new Map(), thumbs: new Map(),
   };
+  const A = typeof SeqArrange !== 'undefined' ? SeqArrange : null;
+  const TR = () => (typeof SeqTrans !== 'undefined' ? SeqTrans : null);
   const listeners = {};
   const emit = (ev, d) => { for (const fn of listeners[ev] || []) { try { fn(d); } catch (err) { console.error(err); } } };
   const lab = () => S.L;
@@ -37,7 +41,8 @@ const ThreeSeq = (() => {
   const frameStart = (n) => Math.max(0, n) / fps();
   const total = () => (S.edit ? programEnd(S.edit) : 0);
   // the program ends with the last picture (a longer song is cut there); a sequence with only sound lasts the sound
-  function programEnd(e) {
+  function programEnd(e0) {
+    const e = flat(e0);
     const vis = Math.max(C.mainTotal(e), ...(e.tracks || []).filter((k) => k.type !== 'audio').flatMap((k) => k.items.map((x) => C.itemEnd(x))), 0);
     if (vis > 0) return vis;
     return Math.max(0, ...(e.tracks || []).flatMap((k) => k.items.map((x) => C.itemEnd(x))));
@@ -65,14 +70,38 @@ const ThreeSeq = (() => {
     return e;
   }
   const saveSoon = debounce(() => writeEdit(), 300);
+  // nested sequences (a sequence as a clip): their edits, loaded before the program is compiled
+  async function loadNested(e, depth = 0) {
+    for (const c of e?.clips || []) {
+      if (c.kind !== 'seq' || depth > 3) continue;
+      const sub = await readEdit(c.ref).catch(() => null);
+      if (sub) { S.nested.set(c.ref, sub); await loadNested(sub, depth + 1); }
+    }
+  }
+  const flat = (e) => (e?.clips?.some((c) => c.kind === 'seq') ? D.flatten(e, (ref) => S.nested.get(ref) || null, 0, new Set(S.key ? [S.key] : [])) : e);
+  // the songs' beat maps (kv three-beatmaps): a scene's own hits and cue looks travel with its clips
+  async function loadMaps() { try { S.maps = (await window.hub.kvGet('three-beatmaps', {})) || {}; } catch { S.maps = {}; } }
   async function list() {
     const v = VC();
     if (!v) return [];
     await v.editFor('seq:__probe__'); // loads the kv once
     const out = [];
-    for (const s of v.sequences()) { const e = await readEdit(s.key); if (D.isLab(e)) out.push({ key: s.key, name: s.name, seconds: r4(programEnd(e)), clips: e.clips.length, format: D.formatOf(e) }); }
+    const alive = (id) => Boolean(id && lab()?.scenes?.get(id));
+    for (const s of v.sequences()) {
+      const e = await readEdit(s.key);
+      if (!D.isLab(e)) continue;
+      const scene = alive(e.seq?.scene) ? e.seq.scene : null;
+      out.push({ key: s.key, name: s.name, seconds: r4(programEnd(e)), clips: e.clips.length, format: D.formatOf(e), scene, firstScene: e.clips.find((c) => c.kind === 'scene')?.sketch || null });
+    }
+    // what the chat rows and the scene menus show without asking again (each scene's own sequence)
+    listCache = out;
+    S.index = new Map();
+    for (const x of out) if (x.scene && (!S.index.has(x.scene) || store.get('three.seq.byScene', {})[x.scene] === x.key)) S.index.set(x.scene, x);
+    const sig = JSON.stringify([...S.index.values()].map((x) => [x.scene, x.key, x.clips, x.seconds]));
+    if (sig !== S.indexSig) { S.indexSig = sig; dispatchEvent(new CustomEvent('hearth:sequences')); }
     return out;
   }
+  let listCache = [];
   async function uniqueKey(name) {
     const v = VC();
     await v?.editFor('seq:__probe__');
@@ -109,8 +138,14 @@ const ThreeSeq = (() => {
     const e = await readEdit(key);
     if (!e) throw new Error(`No sequence "${String(key).replace(/^seq:/, '')}"`);
     if (!e.seq?.lab) e.seq = { ...(e.seq || {}), lab: true };
-    S.key = key; S.edit = e; S.undo = []; S.redo = []; S.sel.clear(); S.T = 0; S.vr = null;
+    S.key = key; S.edit = e; S.undo = []; S.redo = []; S.sel.clear(); S.T = 0; S.vr = null; S.thumbs.clear();
+    S.loop = Boolean(e.seq?.loop);
+    // the scene it belongs to (the one it was opened for, when it belongs to none: an "other" sequence)
+    S.owner = e.seq?.scene || lab()?.sketchId() || null;
+    S.explicit = true; // opened on purpose: it stays until another scene comes on screen
     store.set('three.seq.current', key);
+    if (e.seq?.scene) store.set('three.seq.byScene', { ...store.get('three.seq.byScene', {}), [e.seq.scene]: key });
+    await loadNested(e);
     emit('change', { key }); // the name chip follows
     await ensureSong();
     if (show) await enter();
@@ -118,31 +153,90 @@ const ThreeSeq = (() => {
     return key;
   }
   // a new sequence: the frame size you're on, the scene on screen as its first clip, with its song (no decisions)
-  async function create(name = null, { format = null, empty = false, show = true } = {}) {
+  async function create(name = null, { format = null, empty = false, show = true, scene = undefined } = {}) {
     const L = lab();
-    const sid = L?.sketchId();
+    const sid = scene === undefined ? L?.sketchId() : scene;
     const sk = sid ? L.scenes.get(sid) : null;
     const fmt = format || (D.FORMATS[L?.stage?.size?.id] ? L.stage.size.id : '9:16');
     const key = await uniqueKey(name || (sk ? `${sk.name} sequence` : 'Sequence'));
     let e = D.create({ format: fmt, fps: 30, name: key.slice(4) });
+    if (sid) e.seq.scene = sid; // each scene owns its sequence (it travels with the scene)
     const song = sid ? L.scenes.songOf(sid) : null;
     if (song && AUD.test(song)) { const d = (L.player.path === song && L.player.duration) || (await durationOf(song)); if (d) e = D.setSong(e, song, d); }
     S.key = key; S.edit = e;
     await ensureSong();
     const g = grid();
-    if (!empty && sk) e = D.addScene(e, sceneOf(sk), { grid: g });
+    // no questions: the scene as one clip on its song (empty when it has no song: ✦ Arrange or ＋ fill it)
+    if (!empty && sk && D.songOf(e)) e = D.addScene(e, sceneOf(sk), { grid: g });
     if (!empty && sk && g) e = D.fitBars(e, g, { songStart: songStart(e) });
     S.edit = e;
     await writeEdit('New Lab sequence');
     return open(key, { show });
   }
-  async function current({ make = true } = {}) {
-    if (S.key && S.edit) return S.key;
+  // The scene's own sequence: the one it owns (the last one you opened for it, if it has several); a sequence
+  // made before scenes owned them is taken over by the scene it starts with; else a new one, made without asking.
+  async function keyForScene(sid, { make = true } = {}) {
+    const all = await list();
+    const mine = all.filter((x) => x.scene === sid);
+    const last = store.get('three.seq.byScene', {})[sid];
+    let k = mine.find((x) => x.key === last)?.key || mine[0]?.key || null;
+    if (!k && sid) {
+      const legacy = all.find((x) => !x.scene && x.firstScene === sid);
+      if (legacy) { const e = await readEdit(legacy.key); e.seq = { ...e.seq, scene: sid }; await VC()?.storeEdit(legacy.key, e, 'Belongs to its scene'); k = legacy.key; }
+    }
+    if (!k && make) {
+      const L = lab();
+      const was = { key: S.key, edit: S.edit };
+      k = await create(null, { show: false, scene: sid, name: L?.scenes.get(sid) ? `${L.scenes.get(sid).name} sequence` : null });
+      if (was.key && S.view) { S.key = was.key; S.edit = was.edit; }
+    }
+    return k;
+  }
+  async function current({ make = true, scene = undefined } = {}) {
+    const sid = scene === undefined ? lab()?.sketchId() || null : scene;
+    if (S.key && S.edit && (!sid || S.owner === sid || (S.explicit && scene === undefined))) return S.key;
+    if (sid) { const k = await keyForScene(sid, { make }); if (!k) return null; if (k !== S.key || !S.edit) await open(k, { show: false }); S.explicit = false; S.owner = sid; return k; }
     const want = store.get('three.seq.current', null);
     const all = await list();
     const k = all.find((x) => x.key === want)?.key || all[0]?.key;
     if (k) return open(k, { show: false });
     return make ? create(null, { show: false }) : null;
+  }
+  // another scene came on screen (you, a chat switch, a jam): its own sequence takes the view, cross-fading in the
+  // same page like a scene switch (no reload)
+  let switching = null;
+  async function switchTo(sid) {
+    if (!sid || S.render) return;
+    const run0 = (switching = Symbol('switch'));
+    const k = await keyForScene(sid);
+    if (switching !== run0 || !k) return;
+    if (k !== S.key) { await open(k, { show: false }); }
+    S.owner = sid; S.entered = sid; S.explicit = false;
+    if (!S.view) return;
+    await Promise.all([ensureSong(), loadMaps()]);
+    if (switching !== run0) return;
+    S.sent.plan = '';
+    await sendPlan({ force: true, fade: true });
+    send({ type: 'seq-seek', T: S.T });
+    send({ type: 'seq-loop', on: S.loop });
+    redraw(); placeHead(); paintTime();
+    emit('switch', { scene: sid, key: S.key });
+  }
+  // a scene's sequence in a few words (the chat rows' still, the scene menus): from the last listing, no reads
+  function summaryFor(sid) { const x = S.index?.get(sid); return x ? { key: x.key, name: x.name, clips: x.clips, seconds: x.seconds } : null; }
+  // a scene copied (Duplicate): its sequence comes along, owned by the copy (clips of the scene itself follow it)
+  async function sceneCopied(from, to) {
+    const k = await keyForScene(from, { make: false });
+    if (!k) return null;
+    const e = await readEdit(k);
+    const copy = C.copy(e);
+    copy.seq = { ...copy.seq, scene: to };
+    copy.clips = copy.clips.map((c) => (c.kind === 'scene' && c.sketch === from ? { ...c, sketch: to, name: lab()?.scenes.get(to)?.name || c.name } : c));
+    const key = await uniqueKey(`${lab()?.scenes.get(to)?.name || 'Scene'} sequence`);
+    copy.seq.name = key.slice(4);
+    await VC()?.storeEdit(key, copy, 'Copied with its scene');
+    await list();
+    return key;
   }
   const sceneOf = (sk, extra = {}) => ({ sketch: sk.id, name: sk.name, poster: null, ...extra });
 
@@ -197,7 +291,7 @@ const ThreeSeq = (() => {
   const runtime = (it, v) => (it.kind === 'color' && !it.quote && typeof v === 'string' ? parseInt(v.slice(1), 16) : v);
   const shiftKeys = (keys, dt) => keys.map((k) => ({ ...k, t: r4(k.t + dt) }));
   const ANIM = ['opacity', 'x', 'y', 'scale', 'rotate'];
-  function prepLayer(L, slot, { look = null, palette = null, t0 = 0 } = {}) {
+  function prepLayer(L, slot, { look = null, palette = null, t0 = 0, vary = null, cues = null } = {}) {
     const keys = Object.fromEntries(ANIM.filter((p) => L.keys?.[p]?.length).map((p) => [p, shiftKeys(L.keys[p], t0)]));
     const sc = scanOf(L.code || '');
     if (!sc?.items?.length) return { code: L.code || '', values: undefined, keys, sliderKeys: {} };
@@ -205,12 +299,23 @@ const ThreeSeq = (() => {
     const ids = idsFor(sc.items);
     const vals = sc.items.map((it) => it.orig);
     if (look) ids.forEach((id, i) => { if (id in look) vals[i] = look[id]; });
+    // a variation of the clip (seeded: the same clip always looks the same)
+    if (vary) for (const [i, v] of Object.entries(D.varyValues(sc.items, vary, vals))) vals[i] = v;
     if (palette?.length) { let k = 0; sc.items.forEach((it, i) => { if (it.kind === 'color') { vals[i] = palette[k % palette.length]; k += 1; } }); }
     const sliderKeys = {};
     for (const [prop, ks] of Object.entries(L.keys || {})) {
       if (!prop.startsWith('s:') || !ks?.length) continue;
       const i = sc.items.findIndex((it) => it.key === prop.slice(2));
       if (i >= 0) sliderKeys[b + i] = { call: sc.items[i].call, key: sc.items[i].key, num: sc.items[i].kind === 'color' && !sc.items[i].quote, keys: shiftKeys(ks, t0) };
+    }
+    // the scene's cue looks (✦ a look per song section) move with the clip too: held slider keys at the cues' times
+    if (cues?.length) {
+      ids.forEach((id, i) => {
+        if (sliderKeys[b + i] || !cues.some((q) => id in q.values)) return;
+        const ks = [{ t: -1e6, v: runtime(sc.items[i], vals[i]), ease: 'hold' }];
+        for (const q of cues) if (id in q.values) ks.push({ t: r4(q.t + t0), v: runtime(sc.items[i], q.values[id]), ease: 'hold' });
+        sliderKeys[b + i] = { call: sc.items[i].call, key: sc.items[i].key, num: false, keys: ks };
+      });
     }
     let code = sc.code;
     try { code = ThreeTweaks.instrument(sc.code, sc.items, b); } catch { return { code: L.code, values: undefined, keys, sliderKeys: {} }; }
@@ -229,16 +334,25 @@ const ThreeSeq = (() => {
     if (!sk) return null;
     const t0 = r4(x.start - (c.in || 0));
     const looks = looksOf(sk);
+    // its own song's hand-placed hits and cue looks (in the scene's own time: they move with the clip)
+    const map = S.maps?.[L.scenes.songOf?.(sk.id)] || null;
+    const marks = map?.marks && ['kick', 'snare', 'hit'].some((k) => map.marks[k]?.length) ? { kick: map.marks.kick || [], snare: map.marks.snare || [], hit: map.marks.hit || [] } : null;
     return L.scenes.layersOf(sk).filter((ly) => ly.visible !== false).map((ly, j) => {
-      const look = c.look ? (looks[ly.id] || looks.main || []).find((l) => l.name === c.look)?.values : null;
-      const p = prepLayer(ly, slot0 + j, { look, palette: c.vibe?.palette, t0 });
-      return { id: `${c.id}~${ly.id}`, code: p.code, values: p.values, props: { name: `${c.name} · ${ly.name}`, opacity: ly.opacity ?? 1, blend: ly.blend || 'normal', x: ly.x || 0, y: ly.y || 0, scale: ly.scale ?? 1, rotate: ly.rotate || 0, in: ly.in != null ? r4(ly.in + t0) : null, out: ly.out != null ? r4(ly.out + t0) : null, keys: p.keys, sliderKeys: p.sliderKeys } };
+      const mine = looks[ly.id] || looks.main || [];
+      const look = c.look ? mine.find((l) => l.name === c.look)?.values : null;
+      const cues = !c.look && map?.cues?.length ? map.cues.map((q) => ({ t: q.t, name: q.looks?.find((l) => l.layer === ly.id || l.layer === ly.name)?.name })).filter((q) => q.name).map((q) => ({ t: q.t, values: mine.find((l) => l.name === q.name)?.values })).filter((q) => q.values) : null;
+      const p = prepLayer(ly, slot0 + j, { look, palette: c.vibe?.palette, t0, vary: c.vary ? { seed: (c.vary.seed || 1) + j * 101, amount: c.vary.amount ?? 0.4 } : null, cues });
+      return { id: `${c.id}~${ly.id}`, code: p.code, values: p.values, props: { name: `${c.name} · ${ly.name}`, share: shareKey(ly), opacity: ly.opacity ?? 1, blend: ly.blend || 'normal', x: ly.x || 0, y: ly.y || 0, scale: ly.scale ?? 1, rotate: ly.rotate || 0, in: ly.in != null ? r4(ly.in + t0) : null, out: ly.out != null ? r4(ly.out + t0) : null, keys: p.keys, sliderKeys: p.sliderKeys, ...(marks ? { seqMarks: marks } : {}) } };
     });
   }
+  // what makes two scenes' layers "the same layer" for a morph: its name, or its code when the name says nothing
+  const hashStr = (t) => { let h = 2166136261; for (let i = 0; i < t.length; i += 1) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
+  const shareKey = (ly) => { const nm = String(ly.name || '').trim(); return !nm || /^(main|layer\s*\d*|new layer.*)$/i.test(nm) ? `code:${hashStr(ly.code || '')}` : nm.toLowerCase(); };
   const TITLE_KEYS = ['text', 'style', 'anim', 'out', 'animDur', 'lower', 'x', 'y', 'size', 'color', 'align', 'font', 'weight', 'stroke', 'strokeW', 'shadow', 'glow', 'box', 'upper', 'tracking', 'shape', 'bg', 'fg', 'italic', 'rotate'];
   const titleOf = (x) => Object.fromEntries(TITLE_KEYS.filter((k) => x[k] != null).map((k) => [k, x[k]]));
-  function compile(e = S.edit) {
-    const groups = []; const titles = []; const assets = new Set();
+  function compile(e0 = S.edit) {
+    const e = flat(e0); // nested sequences play what they hold
+    const groups = []; const titles = []; const assets = new Set(); const sounds = [];
     let slot = 100;
     for (const x of D.timing(e)) {
       const c = x.clip;
@@ -264,7 +378,9 @@ const ThreeSeq = (() => {
     for (const k of (e.tracks || []).filter((x) => x.type === 'text' && !x.hide)) for (const it of k.items) if (!it.off) titles.push({ id: it.id, start: r4(it.start), end: r4(C.itemEnd(it)), item: titleOf(it) });
     const s = D.songOf(e);
     const song = s ? { offset: r4(s.start - s.in), start: r4(s.start), end: r4(s.start + (s.out - s.in) / (s.speed || 1)), src: s.src } : null;
-    return { plan: { fps: e.seq?.fps || 30, w: e.seq?.w || 1080, h: e.seq?.h || 1920, dur: r4(programEnd(e)), song, groups, titles }, assets: [...assets] };
+    // the other sound clips play in the preview too (and in the real-time recording)
+    for (const k of (e.tracks || []).filter((x) => x.type === 'audio' && !x.mute)) for (const it of k.items) if (!it.song && !it.off && it.src) { sounds.push({ id: it.id, asset: it.src, start: r4(it.start), end: r4(C.itemEnd(it)), a: r4(it.in || 0), volume: it.volume ?? 1, speed: it.speed || 1 }); assets.add(it.src); }
+    return { plan: { fps: e.seq?.fps || 30, w: e.seq?.w || 1080, h: e.seq?.h || 1920, dur: r4(programEnd(e)), song, groups, titles, sounds }, assets: [...assets] };
   }
   // the editor's drawing code for titles and transitions, the footage files: sent once per preview page
   const appDir = () => { let p = decodeURIComponent(new URL('.', location.href).pathname); if (/^\/[A-Za-z]:/.test(p)) p = p.slice(1); return p.replace(/[\\/]$/, ''); };
@@ -272,12 +388,12 @@ const ThreeSeq = (() => {
   async function libs() {
     if (libText) return libText;
     const dir = appDir();
-    const [a, b] = await Promise.all(['tools/cut-presets.js', 'tools/video-titles.js'].map((f) => window.hub.fs.read(`${dir}/${f}`)));
-    libText = `${a}\n${b}`;
+    const [a, b, c] = await Promise.all(['tools/cut-presets.js', 'tools/video-titles.js', 'tools/three-seq-trans.js'].map((f) => window.hub.fs.read(`${dir}/${f}`)));
+    libText = `${a}\n${b}\n${c}`; // (the Lab transitions add themselves to EditFX in there too)
     return libText;
   }
   let planSeq = 0;
-  async function sendPlan({ force = false } = {}) {
+  async function sendPlan({ force = false, fade = false } = {}) {
     const L = lab();
     if (!L || !S.view || !S.edit) return;
     const my = ++planSeq;
@@ -293,13 +409,13 @@ const ThreeSeq = (() => {
     for (const p of assets) {
       if (S.sent.assets.has(p)) continue;
       S.sent.assets.add(p);
-      try { const bytes = await window.hub.fs.read(p, { encoding: 'buffer' }); L.send({ type: 'seq-asset', id: p, buffer: bytes, mime: IMG.test(p) ? `image/${/png$/i.test(p) ? 'png' : 'jpeg'}` : 'video/mp4' }); } catch (err) { S.sent.assets.delete(p); toast(`Couldn't read ${base(p)}: ${err.message}`, { type: 'error' }); }
+      try { const bytes = await window.hub.fs.read(p, { encoding: 'buffer' }); L.send({ type: 'seq-asset', id: p, buffer: bytes, mime: IMG.test(p) ? `image/${/png$/i.test(p) ? 'png' : 'jpeg'}` : AUD.test(p) ? `audio/${({ mp3: 'mpeg', m4a: 'mp4', aac: 'aac', wav: 'wav', ogg: 'ogg', flac: 'flac', opus: 'ogg' })[p.split('.').pop().toLowerCase()] || 'mpeg'}` : 'video/mp4' }); } catch (err) { S.sent.assets.delete(p); toast(`Couldn't read ${base(p)}: ${err.message}`, { type: 'error' }); }
     }
     if (my !== planSeq) return;
     const text = JSON.stringify(fresh);
     if (!force && text === S.sent.plan) return;
     S.sent.plan = text;
-    L.send({ type: 'seq-set', plan: fresh });
+    L.send({ type: 'seq-set', plan: fresh, fade });
     plan.dur = fresh.dur;
   }
   const pushPlan = debounce(() => { sendPlan().catch((err) => console.warn(err)); }, 40);
@@ -308,7 +424,7 @@ const ThreeSeq = (() => {
   async function enter() {
     const L = lab();
     if (!L) throw new Error('Open the Three.js Lab first');
-    if (!S.edit) await current();
+    await current(); // the scene on screen's own sequence
     if (S.view) { redraw(); return true; }
     if (L.player.recording) throw new Error('Stop the recording first');
     S.view = true;
@@ -317,7 +433,7 @@ const ThreeSeq = (() => {
     L.bar.classList.add('seq-on');
     refs.tab.classList.add('on');
     refs.view.hidden = false;
-    await ensureSong();
+    await Promise.all([ensureSong(), loadMaps(), loadNested(S.edit)]);
     S.playing = false;
     if (L.player.playing) L.player.toggle(false);
     // the preview takes the sequence's shape (one pretty reload when it was "fit"); the size you had comes back after
@@ -326,6 +442,7 @@ const ThreeSeq = (() => {
     if (L.stage.size.id !== fmt) L.stage.setMode(fmt);
     await sendPlan({ force: true });
     L.send({ type: 'seq-seek', T: S.T });
+    L.send({ type: 'seq-loop', on: S.loop });
     requestAnimationFrame(() => { measure(); redraw(); placeHead(); paintTime(); });
     emit('mode', { on: true });
     return true;
@@ -341,7 +458,9 @@ const ThreeSeq = (() => {
     refs.tab.classList.remove('on');
     refs.view.hidden = true;
     head().getAnimations().forEach((a) => a.cancel());
-    if (S.sizeBefore && L.stage.size.id !== S.sizeBefore && rerun) L.stage.setMode(S.sizeBefore);
+    // the scene on screen gets its own frame size back (another scene may have come on while the sequence showed)
+    const own = L.scenes.frameOf?.(L.sketchId()) || S.sizeBefore;
+    if (own && L.stage.size.id !== own && rerun) L.stage.setMode(own);
     S.sizeBefore = null;
     if (rerun) {
       const sid = L.sketchId();
@@ -357,7 +476,8 @@ const ThreeSeq = (() => {
   // opened takes the page back)
   function keep(sketchId) {
     if (!S.view) return false;
-    if (sketchId && S.entered && sketchId !== S.entered) { leave({ rerun: false }); return false; }
+    // another scene: its own sequence takes the view (the page stays)
+    if (sketchId && S.entered && sketchId !== S.entered) { S.entered = sketchId; switchTo(sketchId).catch((err) => console.warn('Sequence switch', err)); }
     return true;
   }
   // a sketch changed (an edit, a director call): the clips using it play the new version
@@ -370,10 +490,12 @@ const ThreeSeq = (() => {
       if (S.shuttle >= 0 || !S.shuttleTimer) S.T = msg.T;
       S.playing = msg.playing;
       if (msg.ended && was) emit('ended', {});
-      paintTime(); placeHead(); paintPlay();
+      paintTime(); follow(); placeHead(); paintPlay();
+      if (!msg.playing) thumbSoon();
       for (const w of S.waits.splice(0)) w(msg);
       return true;
     }
+    if (msg.type === 'seq-thumb') { onThumb(msg); return true; }
     if (msg.type === 'seq-frame') { const f = S.frames.get(msg.n); if (f) { S.frames.delete(msg.n); f(msg); } return true; }
     if (msg.type === 'seq-offline') return true;
     // the song's own state while the sequence plays it: the sequence owns the clock (the hidden music timeline
@@ -442,7 +564,7 @@ const ThreeSeq = (() => {
     const list = ids.length ? ids : S.edit.clips.slice(1).map((c) => c.id);
     const t = type === 'cut' || type === 'none' ? 'cut' : (EditFX.TRANS[type] ? type : EditFX.find(EditFX.TRANSITIONS, type)?.id);
     if (!t) throw new Error(`No transition "${type}" (try dissolve, dip-black, wipe-left, push-left, zoom-in…)`);
-    const d = dur ?? (t === 'cut' ? 0 : D.defaultTransDur(grid()) || EditFX.TRANS[t]?.d || 0.5);
+    const d = dur ?? (t === 'cut' ? 0 : EditFX.TRANS[t]?.group === 'Lab' ? EditFX.TRANS[t].d : D.defaultTransDur(grid()) || EditFX.TRANS[t]?.d || 0.5);
     let n = S.edit;
     for (const x of list) n = D.setTrans(n, x, t, d);
     commit(n, t === 'cut' ? 'Cut' : `${EditFX.TRANS[t].name}${ids.length ? '' : ' between every clip'}`);
@@ -484,6 +606,8 @@ const ThreeSeq = (() => {
     if (what.text != null) { n = D.addTitle(n, what.text, { at: at ?? S.T, dur: len || 2.5, style: what.style || 'bold', anim: what.anim || 'fade-up' }); commit(n, '＋ Title'); select(n.lastItem); return n.lastItem; }
     if (what.overlay) { n = D.addOverlay(n, what.overlay, { at: at ?? S.T, dur: len || Math.max(1, (total() || 4) - (at ?? S.T)) }); commit(n, `＋ ${what.overlay.name}`); select(n.lastItem); return n.lastItem; }
     if (what.board) return applyVibe(what.board, { at });
+    if (what.seq) return nest(what.seq, { at });
+    if (what.arrange) return arrange();
     throw new Error('Nothing to add');
   }
   // a mood-board reference gives a clip its VIBE (its palette on the scene's colors), never its footage
@@ -515,6 +639,142 @@ const ThreeSeq = (() => {
     redraw();
   }
 
+  // ---------- ✦ arranging (seq2): fewer decisions (tools/three-seq-arrange.js, tools/three-seq-templates.js) ----------
+  const sceneSpec = (id) => { const sk = lab()?.scenes.get(id); return sk ? { sketch: id, name: sk.name, looks: lookNames(sk), song: lab().scenes.songOf?.(id) || null } : null; };
+  // the scenes to arrange: the one on screen (this chat's), the other chats' scenes, then your latest sketches
+  function pickScenes({ from = 'auto', names = null, max = 6 } = {}) {
+    const L = lab(); if (!L) return [];
+    const out = []; const add = (id) => { if (id && !out.includes(id) && L.scenes.get(id)) out.push(id); };
+    if (names?.length) { for (const nm of names) add(sceneRefSync(nm)); return out.map(sceneSpec).filter(Boolean); }
+    add(S.owner || L.sketchId());
+    if (from !== 'recent' && typeof ChatScenes !== 'undefined') for (const c of [...(H.chats || [])].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))) add(ChatScenes.linkOf?.(c.id));
+    if (from !== 'chats') for (const sk of [...L.scenes.all()].sort((a, b) => b.updatedAt - a.updatedAt)) add(sk.id);
+    return out.slice(0, max).map(sceneSpec).filter(Boolean);
+  }
+  function sceneRefSync(v) {
+    const L = lab(); if (!L || v == null) return null;
+    if (L.scenes.get(v)) return v;
+    const q = String(v).toLowerCase(); const all = L.scenes.all();
+    return (all.find((x) => x.name.toLowerCase() === q) || all.find((x) => x.name.toLowerCase().includes(q)))?.id || null;
+  }
+  // the song as the arranger needs it: its length, beat grid and sections (waits for the Lab's analysis)
+  async function songInfo(e = S.edit) {
+    const s = e ? D.songOf(e) : null; const P = lab()?.player;
+    if (!s || !P) return null;
+    if (P.path !== s.src) await P.load(s.src, { quiet: true });
+    for (let i = 0; i < 120 && !P.analysis && P.path === s.src; i += 1) await sleep(200);
+    const g = grid(); const a = P.analysis;
+    return { src: s.src, dur: P.duration || s.max || s.out, grid: g ? { bpm: g.bpm, anchor: g.anchor, bpb: g.bpb } : null, sections: a?.sections || [], drops: a?.drops || [] };
+  }
+  const newSeed = () => Math.floor(Math.random() * 1e5) + 1;
+  async function arrange({ template = null, scenes = null, from = 'auto', names = null, secs = null, seed = null, lines = null, keepOrder = false, song: songPath = null } = {}) {
+    if (!A) throw new Error('The arranger is not loaded');
+    if (!S.edit) await current();
+    const sc = scenes || pickScenes({ from, names });
+    if (!sc.length) throw new Error('No scenes to arrange yet: make one in the Lab first');
+    let base = S.edit;
+    // the song: the one asked for, the sequence's own, else the scene's
+    const want = songPath || (!D.songOf(base) && sc[0]?.song && AUD.test(sc[0].song) ? sc[0].song : null);
+    if (want) { const d = await durationOf(want); if (d) base = D.setSong(base, want, d); }
+    await ensureSongOf(base);
+    const song = await songInfo(base);
+    const T = A.find(template) || A.find(base.seq?.arranged?.template) || A.find('music-video');
+    const r = A.arrange(base, { scenes: sc, song, template: T, secs, seed: seed ?? newSeed(), lines, name: base.seq?.name, keepOrder });
+    commit(r.edit, `✦ ${r.info.name}: ${r.info.clips} clips${r.info.cutsOnBars ? ', cuts on bars' : ''}`);
+    S.loop = Boolean(r.edit.seq?.loop); send({ type: 'seq-loop', on: S.loop });
+    S.vr = null; seek(0);
+    return r.info;
+  }
+  // a template from the menu: lyric videos and changelogs ask for their lines (one per line; empty: placeholders)
+  async function arrangeAs(t) {
+    let lines = null;
+    if (t.lines) { const v = await Modal.prompt(t.lines === 'lyric' ? 'The lyrics, one line each (or leave it empty)' : 'The items, one per line (or leave it empty)', { value: '', multiline: true }); if (v == null) return null; lines = String(v).split(/\r?\n/).map((x) => x.trim()).filter(Boolean); }
+    return arrange({ template: t.id, lines }).catch((err) => toast(err.message, { type: 'error' }));
+  }
+  // ✦ Let Astra pick the arrangement: one small question (decide.js), applied with Undo
+  async function decideArrangement(goal = '') {
+    if (typeof Decide === 'undefined' || !Decide.KINDS?.arrangement) return arrange();
+    if (!S.edit) await current();
+    const song = D.songOf(S.edit) ? await songInfo() : null;
+    const names = pickScenes().map((x) => x.name).join(', ');
+    return Decide.run('arrangement', { goal: `${goal ? `${goal}. ` : ''}the shape that suits these scenes (${names}) on this song (${A.songWords(song)})` });
+  }
+  // ✦ Again: the same template, another arrangement (like 🎲 Shuffle)
+  const again = () => arrange({ template: S.edit?.seq?.arranged?.template || null, secs: S.edit?.seq?.arranged?.secs || null });
+  // re-time to a song: the clips keep their order and looks, the cuts move to the new song's bars and sections
+  async function retime(songPath = null) {
+    if (!S.edit) await current();
+    const clips = S.edit.clips.filter((c) => c.kind === 'scene');
+    if (!clips.length) throw new Error('No scene clips to re-time');
+    return arrange({ scenes: clips, keepOrder: true, song: songPath, template: S.edit.seq?.arranged?.template || 'music-video' });
+  }
+  // the 15 s and 6 s versions: new sequences (this scene's too) around the drop of the same song
+  async function versions(lens = [15, 6], { render: doRender = false } = {}) {
+    if (!S.edit) await current();
+    const song = await songInfo();
+    const made = [];
+    for (const secs of lens) {
+      const r = A.cutdown(S.edit, Number(secs), { song, seed: newSeed() });
+      const key = await uniqueKey(`${S.key.slice(4)} ${secs}s`);
+      r.edit.seq = { ...r.edit.seq, name: key.slice(4), scene: S.owner || r.edit.seq?.scene || null };
+      await VC()?.storeEdit(key, r.edit, `${secs} s version`);
+      made.push({ key, secs: Number(secs), clips: r.info.clips, seconds: r.info.seconds });
+      if (doRender) { const out = await renderEdit(r.edit, { name: key.slice(4) }); made[made.length - 1].file = out.path; }
+    }
+    await list();
+    toast(`Made ${made.map((m) => `${m.secs} s`).join(' and ')} version${made.length > 1 ? 's' : ''} (▾ the name chip opens them)`, { timeout: 4000, action: made[0] ? { label: `Open ${made[0].secs} s`, fn: () => open(made[0].key) } : null });
+    return made;
+  }
+  async function fillGap(id) {
+    const r = A.fillGap(S.edit, id, pickScenes(), { grid: grid(), seed: newSeed() });
+    commit(r.edit, `✦ Filled with “${r.scene}”`);
+    if (r.id) select(r.id);
+    return r;
+  }
+  // a variation of a clip (V: another one, like Shuffle; Shift+V: back to the scene as saved)
+  function vary(id = targets()[0], { amount = null, reset = false } = {}) {
+    const f = id && C.find(S.edit, id);
+    if (!f || f.clip.kind !== 'scene') { flash('Select a scene clip'); return false; }
+    const amt = amount ?? f.clip.vary?.amount ?? 0.4;
+    return commit(C.patchAny(S.edit, [id], (c) => { if (reset) delete c.vary; else c.vary = { seed: newSeed(), amount: r4(clamp(amt, 0.05, 1)) }; }), reset ? 'As saved' : `Variation ${Math.round(amt * 100)} %`);
+  }
+  const varySections = () => commit(A.varySections(S.edit, { seed: newSeed() }), 'A variation per section');
+  // the look (saved look, variation, board vibe) of one clip onto another, or two clips swapping theirs
+  let lookClip = null;
+  const lookOf = (c) => ({ look: c.look || null, vary: c.vary || null, vibe: c.vibe || null });
+  function copyLook(id) { const c = C.find(S.edit, id)?.clip; if (c?.kind !== 'scene') return false; lookClip = lookOf(c); flash('Look copied'); return true; }
+  function pasteLook(id) { if (!lookClip) return false; return commit(C.patchAny(S.edit, [].concat(id), (c) => { if (c.kind !== 'scene') return; c.look = lookClip.look; if (lookClip.vary) c.vary = { ...lookClip.vary }; else delete c.vary; if (lookClip.vibe) c.vibe = lookClip.vibe; else delete c.vibe; }), 'Look pasted'); }
+  function swapLooks(id) {
+    const i = S.edit.clips.findIndex((c) => c.id === id);
+    const j = S.edit.clips.findIndex((c, k) => k > i && c.kind === 'scene');
+    if (i < 0 || j < 0) { flash('No scene after it'); return false; }
+    const a = lookOf(S.edit.clips[i]); const b = lookOf(S.edit.clips[j]);
+    const put = (c, x) => { c.look = x.look; if (x.vary) c.vary = x.vary; else delete c.vary; if (x.vibe) c.vibe = x.vibe; else delete c.vibe; };
+    return commit(C.patchAny(C.patchAny(S.edit, [S.edit.clips[i].id], (c) => put(c, b)), [S.edit.clips[j].id], (c) => put(c, a)), 'Looks swapped');
+  }
+  // a sequence as a clip (nested): it plays that sequence's pictures and titles
+  async function nest(key, { at = null } = {}) {
+    if (!S.edit) await current();
+    if (key === S.key) throw new Error('A sequence can\'t hold itself');
+    const sub = await readEdit(key);
+    if (!sub) throw new Error('No such sequence');
+    S.nested.set(key, sub); await loadNested(sub);
+    const clip = D.seqClip(key, key.slice(4), programEnd(sub));
+    commit(D.place(S.edit, clip, { at, grid: grid() }), `＋ ▤ ${key.slice(4)}`);
+    return clip.id;
+  }
+  // a nested clip back to its own clips (here, editable)
+  function unnest(id) {
+    const f = C.find(S.edit, id);
+    if (f?.clip.kind !== 'seq') return false;
+    const only = C.copy(S.edit);
+    const others = only.clips.filter((c) => c.kind === 'seq' && c.id !== id).map((c) => c.id);
+    only.clips = only.clips.map((c) => (others.includes(c.id) ? { ...c, kind: '__seq' } : c));
+    const n = D.flatten(only, (ref) => S.nested.get(ref) || null, 0, new Set([S.key]));
+    n.clips = n.clips.map((c) => (c.kind === '__seq' ? { ...c, kind: 'seq' } : c));
+    return commit(n, 'Unnested');
+  }
+
   // ---------- the editor (Video Review): the same edit ----------
   async function toEditor() {
     if (!S.key) await current();
@@ -537,22 +797,56 @@ const ThreeSeq = (() => {
   }
   // the editor renders scene clips through the Lab: each one becomes a video of exactly its length (offline, at the
   // sequence's frame size), the rest of the edit renders as usual
-  const needsBake = (e) => Boolean(e?.clips?.some((c) => c.kind === 'scene') || (e?.tracks || []).some((k) => k.items.some((x) => x.kind === 'layer')));
-  async function bake(e, { onProgress } = {}) {
-    if (!needsBake(e)) return e;
-    const n = C.copy(e);
-    const jobs = [...n.clips.filter((c) => c.kind === 'scene'), ...(n.tracks || []).flatMap((k) => k.items.filter((x) => x.kind === 'layer'))];
-    for (const [i, c] of jobs.entries()) {
-      const one = D.create({ format: D.formatOf(n), fps: n.seq?.fps || 30, name: 'bake' });
-      one.seq.w = n.seq?.w || one.seq.w; one.seq.h = n.seq?.h || one.seq.h;
-      let solo = c.kind === 'scene' ? { ...one, clips: [{ ...C.copy(c), trans: undefined }] } : D.addOverlay(one, { name: c.name, code: c.code, opacity: 1 }, { at: 0, dur: C.durOf(c) });
-      solo = C.normalize(solo);
-      const out = await renderEdit(solo, { name: `${c.name || 'scene'} (baked)`, quiet: true, library: false, onProgress: (p) => onProgress?.((i + p) / jobs.length) });
+  const needsBake = (e) => Boolean(e?.clips?.some((c) => c.kind === 'scene' || c.kind === 'seq') || (e?.tracks || []).some((k) => k.items.some((x) => x.kind === 'layer')));
+  // Scenes joined by a transition only the Lab can draw (a morph through shared layers, a camera fly-through) are
+  // baked together, transition included, so the editor's export shows exactly what the Lab shows; the others one
+  // by one (the editor draws their transitions itself, Lab ones through their ffmpeg version).
+  function bakeRuns(e) {
+    const runs = [];
+    e.clips.forEach((c, i) => {
+      if (c.kind !== 'scene') return;
+      const prev = runs[runs.length - 1];
+      if (prev && prev.end === i - 1 && c.trans && TR()?.bakeTogether(c.trans.type)) prev.end = i; else runs.push({ start: i, end: i });
+    });
+    return runs;
+  }
+  async function bake(e0, { onProgress } = {}) {
+    if (!needsBake(e0)) return e0;
+    await loadNested(e0);
+    const n = C.copy(flat(e0));
+    const runs = bakeRuns(n);
+    const items = (n.tracks || []).flatMap((k) => k.items.filter((x) => x.kind === 'layer'));
+    const jobs = runs.length + items.length;
+    let done = 0;
+    const one = () => { const o = D.create({ format: D.formatOf(n), fps: n.seq?.fps || 30, name: 'bake' }); o.seq.w = n.seq?.w || o.seq.w; o.seq.h = n.seq?.h || o.seq.h; return o; };
+    // from the last run back (the indices before it stay right)
+    for (const r of [...runs].reverse()) {
+      const clips = n.clips.slice(r.start, r.end + 1).map((c, j) => (j ? C.copy(c) : { ...C.copy(c), trans: undefined }));
+      const solo = C.normalize({ ...one(), clips });
+      const name = clips.map((c) => c.name || 'scene').join(' + ');
+      const out = await renderEdit(solo, { name: `${name} (baked)`, quiet: true, library: false, onProgress: (p) => onProgress?.((done + p) / jobs) });
+      done += 1;
+      const d = C.mainTotal(solo);
+      const first = n.clips[r.start];
+      n.clips.splice(r.start, r.end - r.start + 1, { ...C.videoClip(out.path, 0, d, d), mute: true, trans: first.trans, name, fromScene: first.sketch });
+    }
+    for (const c of items) {
+      const solo = C.normalize(D.addOverlay(one(), { name: c.name, code: c.code, opacity: 1 }, { at: 0, dur: C.durOf(c) }));
+      const out = await renderEdit(solo, { name: `${c.name || 'layer'} (baked)`, quiet: true, library: false, onProgress: (p) => onProgress?.((done + p) / jobs) });
+      done += 1;
       const d = C.durOf(c);
-      const v = { ...C.videoClip(out.path, 0, d, d), mute: true };
-      if (c.kind === 'scene') { const k = n.clips.indexOf(c); n.clips[k] = { ...v, trans: c.trans, name: c.name, fromScene: c.sketch }; } else Object.assign(c, { kind: 'video', src: out.path, in: 0, out: d, max: d, mute: true, blend: c.blend || 'screen' });
+      Object.assign(c, { kind: 'video', src: out.path, in: 0, out: d, max: d, mute: true, blend: c.blend || 'screen' });
     }
     return n;
+  }
+  // the editor's export without ffmpeg (or "record"): its own recorder can only show a scene's picture, so the Lab
+  // plays the sequence in real time into its recorder instead (scenes, transitions, footage and their sound)
+  async function recordForEditor(key) {
+    const e = await readEdit(key);
+    if (!e) throw new Error('No such sequence');
+    await loadNested(e);
+    const r = await renderEdit(e, { realtime: true, name: `${key.slice(4)} (from the editor)` });
+    return { output: r.path, done: Promise.resolve({ code: 0, output: r.path, seconds: 0 }) };
   }
 
   // ---------- render: frame by frame, at the frame size, muxed with the sound ----------
@@ -572,7 +866,8 @@ const ThreeSeq = (() => {
     return wrote;
   }
   // the sound: the song from its in-point at its start, audio clips, footage with its sound on
-  function audioPlan(e, dur) {
+  function audioPlan(e0, dur) {
+    const e = flat(e0);
     const parts = [];
     for (const k of (e.tracks || []).filter((x) => x.type === 'audio' && !x.mute)) for (const it of k.items) if (it.src && !it.off) parts.push({ src: it.src, at: it.start, a: it.in, len: (it.out - it.in) / (it.speed || 1), volume: it.volume ?? 1 });
     for (const x of D.timing(e)) { const c = x.clip; if (c.kind === 'video' && !c.mute && !c.off) parts.push({ src: c.src, at: x.start, a: c.in, len: x.end - x.start, volume: c.volume ?? 1, speed: c.speed || 1 }); }
@@ -739,8 +1034,63 @@ const ThreeSeq = (() => {
   const xOf = (t) => { const v = span(); return ((t - v.t0) / (v.t1 - v.t0)) * W(); };
   const tOf = (x) => { const v = span(); return v.t0 + (x / W()) * (v.t1 - v.t0); };
   function zoomBy(k, at = S.T) { const v = span(); const len = clamp((v.t1 - v.t0) / k, 0.5, Math.max(8, total() * 2)); const f = (at - v.t0) / (v.t1 - v.t0 || 1); S.vr = { t0: Math.max(0, at - len * f), t1: Math.max(0, at - len * f) + len }; redraw(); placeHead(); }
+  // zoom presets: the whole sequence, a few bars or seconds around the playhead (frames show at 1 s)
+  function zoomTo(what) {
+    if (what === 'fit' || what == null) { S.vr = null; redraw(); placeHead(); return null; }
+    const g = grid();
+    const secs = typeof what === 'number' ? what : /bars?$/.test(what) ? (parseFloat(what) || 1) * (g ? D.barLen(g) : 2) : parseFloat(what) || 4;
+    const t0 = Math.max(0, S.T - secs * 0.2);
+    S.vr = { t0, t1: t0 + secs }; redraw(); placeHead();
+    return secs;
+  }
+  const ZOOMS = [['fit', 'The whole sequence', '\\'], ['8 bars', '8 bars'], ['4 bars', '4 bars'], ['1 bar', '1 bar'], [10, '10 s'], [5, '5 s'], [1, '1 s (frames)']];
+  // playing while zoomed in: the view turns the page when the playhead nears its edge (one redraw a page, never a
+  // scroll every frame)
+  function follow() {
+    if (!S.vr || !S.playing || S.drag) return;
+    const v = span(); const len = v.t1 - v.t0;
+    if (S.T > v.t1 - len * 0.04 || S.T < v.t0) { S.vr = { t0: Math.max(0, S.T - len * 0.05), t1: Math.max(0, S.T - len * 0.05) + len }; redraw(); placeHead(); }
+  }
   const posters = new Map();
+  // clip pictures: the clip as it shows in the sequence (its look, its variation), taken from the preview when the
+  // playhead rests in it; until then the scene's own thumbnail; footage: its first frame
+  const clipKey = (c) => JSON.stringify([c.kind, c.sketch || c.ref || c.src, c.look || null, c.vary?.seed || null, c.vibe?.palette || null]);
+  const thumbSoon = debounce(() => {
+    if (!S.view || S.playing || S.render || S.drag || !S.edit) return;
+    const x = C.at(S.edit, Math.min(S.T, Math.max(0, C.mainTotal(S.edit) - 1e-4)));
+    const c = x?.clip;
+    if (!c || !['scene', 'seq', 'video', 'image'].includes(c.kind)) return;
+    const key = clipKey(c);
+    if (S.thumbs.get(c.id)?.key === key) return;
+    const h = 72; const w = Math.max(24, Math.round(h * (S.edit.seq?.w || 1080) / (S.edit.seq?.h || 1920)));
+    send({ type: 'seq-thumb', id: c.id, key, w, h });
+  }, 450);
+  function onThumb(msg) {
+    if (!msg.url) return;
+    const im = new Image(); im.onload = () => redraw(); im.src = msg.url;
+    S.thumbs.set(msg.id, { key: msg.key, img: im });
+    if (S.thumbs.size > 300) S.thumbs.delete(S.thumbs.keys().next().value);
+  }
+  const footPics = new Map();
+  function footThumb(c) {
+    const k = `${c.src}|${Math.round((c.in || 0) * 10)}`;
+    let r = footPics.get(k);
+    if (r) return r.img?.complete && r.img.naturalWidth ? r.img : null;
+    r = {}; footPics.set(k, r);
+    if (footPics.size > 120) footPics.delete(footPics.keys().next().value);
+    const v = document.createElement('video'); v.muted = true; v.preload = 'auto';
+    v.addEventListener('loadeddata', () => { v.currentTime = Math.min((c.in || 0) + 0.04, Math.max(0, (v.duration || 1) - 0.05)); }, { once: true });
+    v.addEventListener('seeked', () => {
+      try { const cv = document.createElement('canvas'); cv.height = 64; cv.width = Math.max(16, Math.round((64 * v.videoWidth) / (v.videoHeight || 1))); cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height); const im = new Image(); im.onload = () => redraw(); im.src = cv.toDataURL('image/jpeg', 0.7); r.img = im; } catch { /* no picture */ }
+      v.removeAttribute('src'); v.load();
+    }, { once: true });
+    v.src = `file://${c.src}`;
+    return null;
+  }
   function poster(c) {
+    const own = S.thumbs.get(c.id);
+    if (own && own.key === clipKey(c) && own.img.complete && own.img.naturalWidth) return own.img;
+    if (c.kind === 'video') return footThumb(c);
     const url = c.kind === 'scene' ? lab()?.scenes.thumbOf(c.sketch) : null;
     if (!url) return null;
     let im = posters.get(url);
@@ -774,7 +1124,7 @@ const ThreeSeq = (() => {
       const stepS = [0.5, 1, 2, 5, 10, 30, 60].find((s) => xOf(s) - xOf(0) > 46) || 60;
       for (let t = Math.floor(v.t0 / stepS) * stepS; t <= v.t1; t += stepS) { const x = xOf(t); g.fillStyle = dim; g.fillRect(Math.round(x), 2, 1, RULER - 2); g.fillStyle = ink; g.fillText(stepS < 1 ? `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}` : `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`, x + 3, 1); }
     }
-    for (const m of e?.markers || []) { const x = xOf(m.t); g.fillStyle = gold; g.beginPath(); g.moveTo(x - 4, 0); g.lineTo(x + 4, 0); g.lineTo(x, 6); g.fill(); }
+    for (const m of e?.markers || []) { const x = xOf(m.t); g.fillStyle = gold; g.beginPath(); g.moveTo(x - 4, 0); g.lineTo(x + 4, 0); g.lineTo(x, 6); g.fill(); if (m.label && x > -40 && x < w) { g.font = '9px system-ui, sans-serif'; g.textBaseline = 'top'; g.fillText(m.label, x + 5, 4, 70); g.font = '10px system-ui, sans-serif'; } }
     const Ls = lanes();
     const lane = (id) => Ls.find((l) => l.id === id);
     for (const l of Ls) { g.fillStyle = 'rgba(255,255,255,0.025)'; g.fillRect(0, l.y, w, l.h); }
@@ -799,8 +1149,8 @@ const ThreeSeq = (() => {
     for (const x of D.timing(e)) {
       const c = x.clip; const x0 = xOf(x.start); const x1 = xOf(x.end);
       if (c.kind === 'gap') { g.strokeStyle = dim; g.setLineDash([3, 3]); g.strokeRect(x0 + 0.5, main.y + 0.5, x1 - x0 - 1, main.h - 1); g.setLineDash([]); continue; }
-      const color = c.kind === 'scene' ? `hsl(${hue(c.sketch)} 45% 30%)` : c.kind === 'video' ? 'hsl(205 40% 28%)' : c.kind === 'title' ? 'hsl(40 45% 26%)' : 'hsl(0 0% 22%)';
-      const label = c.kind === 'scene' ? `${c.name}${c.look ? ` · ${c.look}` : ''}${c.vibe ? ' ◐' : ''}` : c.kind === 'video' ? `🎞 ${base(c.src)}${c.mute ? '' : ' 🔊'}` : c.kind === 'title' ? `T ${c.text}` : c.kind;
+      const color = c.kind === 'scene' ? `hsl(${hue(c.sketch)} 45% 30%)` : c.kind === 'video' ? 'hsl(205 40% 28%)' : c.kind === 'title' ? 'hsl(40 45% 26%)' : c.kind === 'seq' ? 'hsl(280 30% 26%)' : 'hsl(0 0% 22%)';
+      const label = c.kind === 'scene' ? `${c.name}${c.look ? ` · ${c.look}` : ''}${c.vary ? ' ✦' : ''}${c.vibe ? ' ◐' : ''}` : c.kind === 'video' ? `🎞 ${base(c.src)}${c.mute ? '' : ' 🔊'}` : c.kind === 'title' ? `T ${c.text}` : c.kind === 'seq' ? `▤ ${c.name}` : c.kind;
       drawClip(c, x0, x1, main, S.sel.has(c.id), label, color, poster(c));
       // the transition into it: a bow tie over the overlap
       if (x.td > 0) { const a = xOf(x.start); const b = xOf(x.start + x.td); g.fillStyle = 'rgba(255,215,94,0.28)'; g.beginPath(); g.moveTo(a, main.y); g.lineTo(b, main.y + main.h); g.lineTo(b, main.y); g.lineTo(a, main.y + main.h); g.closePath(); g.fill(); }
@@ -814,11 +1164,29 @@ const ThreeSeq = (() => {
         drawClip(it, x0, x1, l, S.sel.has(it.id), label, color, null);
       }
     }
+    // the song's waveform on the sound lane (from the Lab's analysis: peaks per column, drawn only on redraws)
+    drawWave(g, lane('sound'), v, w);
     // beats on the sound lane
     if (gr) { const l = lane('sound'); g.fillStyle = 'rgba(255,255,255,0.18)'; for (const t of D.gridTimes(gr, v.t1, { every: 'beat', offset: off })) { if (t < v.t0) continue; const x = xOf(t); if (x - xOf(t - D.beatLen(gr)) < 4) break; g.fillRect(Math.round(x), l.y + l.h - 4, 1, 4); } }
     if (S.drop != null) { g.fillStyle = gold; g.fillRect(Math.round(xOf(S.drop)) - 1, main.y - 2, 2, main.h + 4); }
     if (S.snapAt != null) { g.fillStyle = 'rgba(255,215,94,0.6)'; g.fillRect(Math.round(xOf(S.snapAt)), RULER, 1, hh - RULER); }
     refs.hint.hidden = Boolean(e.clips.length || (e.tracks || []).some((k) => k.items.length));
+  }
+  function drawWave(g, l, v, w) {
+    const s = songItem(); const P = lab()?.player;
+    const wv = P?.path === s?.src ? P.wave : null;
+    if (!s || !wv?.low?.length) return;
+    const fr = wv.fps || 100; const n = wv.low.length;
+    const x0 = Math.max(0, Math.floor(xOf(s.start))); const x1 = Math.min(w, Math.ceil(xOf(C.itemEnd(s))));
+    const pps = (xOf(1) - xOf(0)) || 1;
+    g.fillStyle = 'rgba(150, 230, 190, 0.42)';
+    for (let x = x0; x < x1; x += 1) {
+      const t = (tOf(x) - s.start) * (s.speed || 1) + (s.in || 0);
+      const a = Math.max(0, Math.floor(t * fr)); const b = Math.min(n, Math.max(a + 1, Math.floor((t + (s.speed || 1) / pps) * fr)));
+      let m = 0; for (let i = a; i < b; i += 1) { const q = Math.max(wv.low[i], wv.mid[i], wv.high[i]); if (q > m) m = q; }
+      const hh = (m / 255) * (l.h - 2);
+      if (hh > 0.5) g.fillRect(x, l.y + (l.h - hh) / 2, 1, hh);
+    }
   }
   // the playhead: placed once when still; one compositor animation to the end while playing (no per-frame writes)
   let headAnim = null; let headFrom = null;
@@ -886,7 +1254,10 @@ const ThreeSeq = (() => {
     if (h.zone === 'clip') {
       if (!S.sel.has(h.clip.id) || !ev.shiftKey) select(h.clip.id, { add: ev.shiftKey });
       const orig = S.edit;
-      S.drag = { h, orig, x0: ev.clientX, mode: ev.altKey ? 'slip' : h.edge ? 'trim' : 'move', moved: false };
+      // Alt / Ctrl+drag: slip · Shift+drag an edge: roll the cut · Shift+drag a clip: slide it · else trim / move
+      const main = h.where === 'clip';
+      const mode = ev.altKey || ev.ctrlKey || ev.metaKey ? 'slip' : h.edge ? (ev.shiftKey && main ? 'roll' : 'trim') : ev.shiftKey && main ? 'slide' : 'move';
+      S.drag = { h, orig, x0: ev.clientX, mode, moved: false };
     } else {
       if (!ev.shiftKey) { S.sel.clear(); redraw(); }
       S.drag = { mode: 'scrub' };
@@ -895,7 +1266,7 @@ const ThreeSeq = (() => {
   }
   function onMove(ev) {
     const dr = S.drag;
-    if (!dr) { const h = hit(ev); const cur = h.zone === 'clip' && h.edge ? 'ew-resize' : h.zone === 'clip' ? 'grab' : 'default'; if (refs.cv.style.cursor !== cur) refs.cv.style.cursor = cur; return; }
+    if (!dr) { const h = hit(ev); const cur = h.zone === 'clip' && h.edge ? (ev.shiftKey ? 'col-resize' : 'ew-resize') : h.zone === 'clip' ? 'grab' : 'default'; if (refs.cv.style.cursor !== cur) refs.cv.style.cursor = cur; return; }
     const r = refs.cv.getBoundingClientRect(); const t = tOf(ev.clientX - r.left);
     if (dr.mode === 'scrub') { seek(snapT(t)); redraw(); return; }
     const dx = ev.clientX - dr.x0;
@@ -905,6 +1276,12 @@ const ThreeSeq = (() => {
     const id = dr.h.clip.id;
     let next = dr.orig;
     if (dr.mode === 'slip') next = D.slip(dr.orig, id, -dt);
+    else if (dr.mode === 'roll') {
+      // the cut at this edge moves (the clip before gets longer, the one after shorter)
+      const i = dr.h.edge === 'out' ? dr.h.i + 1 : dr.h.i;
+      const T0 = D.timing(dr.orig);
+      if (i > 0 && i < T0.length) { const cut = T0[i].start; const want = snapT(cut + dt, id); next = D.roll(dr.orig, i, want - cut); }
+    } else if (dr.mode === 'slide') next = D.slide(dr.orig, id, dt);
     else if (dr.mode === 'trim') {
       const edgeT = dr.h.edge === 'in' ? dr.h.start : dr.h.end;
       const want = snapT(edgeT + dt, id);
@@ -931,7 +1308,7 @@ const ThreeSeq = (() => {
     if (!dr.moved) { play(false); seek(dr.h.t); redraw(); return; }
     const after = dr.mode === 'move' && dr.h.where === 'clip' ? D.move(dr.orig, dr.h.clip.id, dr.to) : S.edit;
     S.edit = dr.orig;
-    commit(after, dr.mode === 'slip' ? 'Slip' : dr.mode === 'trim' ? 'Trim' : 'Moved');
+    commit(after, { slip: 'Slip', trim: 'Trim', roll: 'Rolled', slide: 'Slid' }[dr.mode] || 'Moved');
   }
   function onWheel(ev) {
     if (ev.ctrlKey || ev.metaKey) { ev.preventDefault(); const r = refs.cv.getBoundingClientRect(); zoomBy(ev.deltaY < 0 ? 1.25 : 0.8, tOf(ev.clientX - r.left)); return; }
@@ -944,7 +1321,7 @@ const ThreeSeq = (() => {
     else if (h.clip.kind === 'title') retitle(h.clip.id);
   }
   async function retitle(id) { const f = C.find(S.edit, id); const v = await Modal.prompt('Title text', { value: f?.clip.text || '' }); if (v != null) commit(C.patchAny(S.edit, [id], (c) => { c.text = v; }), 'Title text'); }
-  async function editScene(c) { await leave({ rerun: false }); lab().scenes.open(c.sketch); flash(''); toast(`Editing “${c.name}”. ▤ Sequence on the timeline brings the sequence back.`, { timeout: 3500, action: { label: '▤ Sequence', fn: () => enter() } }); }
+  async function editScene(c) { await leave({ rerun: false }); S.hold = true; S.explicit = true; lab().scenes.open(c.sketch); flash(''); toast(`Editing “${c.name}”. ▤ Sequence on the timeline brings the sequence back.`, { timeout: 3500, action: { label: '▤ Sequence', fn: () => enter() } }); }
 
   // ---------- menus (right-click; submenus; Customise-friendly labels) ----------
   const TRANS_TOP = ['cut', 'dissolve', 'dip-black', 'dip-white', 'wipe-left', 'push-left', 'zoom-in', 'whip-left', 'glitch', 'iris-open'];
@@ -953,7 +1330,7 @@ const ThreeSeq = (() => {
     const cur = c?.trans?.type || 'cut';
     const it = (t) => ({ label: EditFX.TRANS[t]?.name || 'Cut', checked: cur === t, action: () => setTransition(t, id) });
     const groups = [...new Set(EditFX.TRANSITIONS.map((t) => t.group))].filter((gname) => gname !== 'Basic');
-    return [...TRANS_TOP.map(it), { label: 'More transitions', items: () => groups.map((gname) => ({ label: gname, items: () => EditFX.TRANSITIONS.filter((t) => t.group === gname).map((t) => it(t.id)) })) },
+    return [...TRANS_TOP.map(it), { label: '✦ Lab moves', hint: '3D, only here', items: () => (TR()?.LAB || []).map((t) => ({ ...it(t.id), hint: t.desc })) }, { label: 'More transitions', items: () => groups.map((gname) => ({ label: gname, items: () => EditFX.TRANSITIONS.filter((t) => t.group === gname).map((t) => it(t.id)) })) },
       '-', ...[0.25, 0.5, 1].map((d) => ({ label: `${d} s`, checked: Math.abs((c?.trans?.dur || 0) - d) < 1e-3, action: () => setTransition(c?.trans?.type || D.DEFAULT_TRANS, id, d) }))];
   }
   function lengthItems(id) {
@@ -968,7 +1345,11 @@ const ThreeSeq = (() => {
       const sk = lab().scenes.get(c.sketch);
       const looks = sk ? lookNames(sk) : [];
       items.push({ label: `✎ Edit “${c.name}”`, hint: 'opens the scene', action: () => editScene(c) });
-      items.push({ label: 'Look', hint: c.look || 'as saved', items: () => [{ label: 'As saved (no look)', checked: !c.look, action: () => setLook(c.id, null) }, ...looks.map((n) => ({ label: n, checked: c.look === n, action: () => setLook(c.id, n) }))] });
+      items.push({ label: 'Look', hint: c.look || (c.vary ? 'a variation' : 'as saved'), items: () => [{ label: 'As saved (no look)', checked: !c.look && !c.vary, action: () => { setLook(c.id, null); if (c.vary) vary(c.id, { reset: true }); } }, ...looks.map((n) => ({ label: n, checked: c.look === n, action: () => setLook(c.id, n) })),
+        '-', { label: '✦ A new variation', key: 'V', hint: 'its sliders, nudged', action: () => vary(c.id) },
+        { label: 'Variation strength', hint: c.vary ? `${Math.round((c.vary.amount || 0.4) * 100)} %` : '', items: () => [0.15, 0.3, 0.5, 0.8].map((a) => ({ label: `${Math.round(a * 100)} %`, checked: Math.abs((c.vary?.amount || 0) - a) < 1e-3, action: () => vary(c.id, { amount: a }) })) },
+        { label: 'Copy this look', action: () => copyLook(c.id) }, { label: 'Paste the look', disabled: !lookClip, action: () => pasteLook(selIds().length > 1 ? selIds() : c.id) },
+        { label: 'Swap looks with the next scene', action: () => swapLooks(c.id) }] });
       items.push({ label: 'Replace with', items: () => sketchItems((sid) => commit(C.patchAny(S.edit, [c.id], (cc) => { const s2 = lab().scenes.get(sid); cc.sketch = sid; cc.name = s2.name; cc.look = null; }), 'Replaced')) });
       if (c.vibe) items.push({ label: 'Remove the board vibe', action: () => commit(C.patchAny(S.edit, [c.id], (cc) => { delete cc.vibe; }), 'Vibe removed') });
     }
@@ -977,13 +1358,44 @@ const ThreeSeq = (() => {
       items.push({ label: 'Style', hint: c.style, items: () => EditFX.TITLE_STYLES.map((s) => ({ label: s.name, checked: c.style === s.id, action: () => commit(C.patchAny(S.edit, [c.id], (cc) => { cc.style = s.id; }), s.name) })) });
       items.push({ label: 'Animation', hint: c.anim, items: () => EditFX.TITLE_ANIMS.map((a) => ({ label: a.name, checked: c.anim === a.id, action: () => commit(C.patchAny(S.edit, [c.id], (cc) => { cc.anim = a.id; }), a.name) })) });
     }
+    if (c.kind === 'gap') items.push({ label: '✦ Fill this gap', key: 'G', hint: 'a scene that fits, in a look of its own', action: () => fillGap(c.id).catch((err) => toast(err.message, { type: 'error' })) }, { label: 'Fill with', items: () => sketchItems((sid) => commit(C.fillGap(S.edit, c.id, { ...D.sceneClip({ sketch: sid, name: lab().scenes.get(sid).name }, c.dur) }), 'Filled')) });
+    if (c.kind === 'seq') items.push({ label: `▤ Open “${c.name}”`, action: () => open(c.ref) }, { label: 'Unnest (its clips here)', action: () => unnest(c.id) });
     if (c.kind === 'video') items.push({ label: c.mute ? '🔊 Its sound on' : '🔇 Its sound off', action: () => commit(C.patchAny(S.edit, [c.id], (cc) => { cc.mute = !cc.mute; }), c.mute ? 'Sound on' : 'Muted') });
     if (h.where === 'clip' && h.i > 0) items.push({ label: 'Transition in', hint: c.trans ? EditFX.TRANS[c.trans.type]?.name : 'Cut', items: () => transItems(c.id) });
     items.push({ label: 'Length', hint: `${(h.end - h.start).toFixed(2)} s`, items: () => lengthItems(c.id) });
     items.push('-', { label: '✂ Split here', key: 'S', action: () => split() }, { label: 'Duplicate', key: 'D', action: () => dup(c.id) },
       { label: 'Starts here', key: 'Q', action: () => trimToHead('in', c.id) }, { label: 'Ends here', key: 'W', action: () => trimToHead('out', c.id) },
+      { label: 'Copy', key: `${MOD}+C`, action: () => copySel(S.sel.has(c.id) ? selIds() : [c.id]) },
+      ...(h.where === 'clip' ? [{ label: 'Edit points', more: true, items: () => [
+        { label: 'Roll the cut before to the playhead', hint: 'Shift+drag an edge', disabled: !h.i, action: () => { const T0 = D.timing(S.edit); commit(D.roll(S.edit, h.i, S.T - T0[h.i].start), 'Rolled'); } },
+        { label: 'Slide it to the playhead', hint: 'Shift+drag the clip', action: () => commit(D.slide(S.edit, c.id, S.T - h.start), 'Slid') },
+        { label: 'Slip one frame earlier / later', hint: 'Alt+← / →', items: () => [{ label: '− 1 frame', action: () => slipBy(-1, c.id) }, { label: '+ 1 frame', action: () => slipBy(1, c.id) }, { label: '+ 1 beat', action: () => slipBy(Math.round(D.beatLen(grid()) * fps()), c.id) }] },
+      ] }] : []),
       { label: 'Delete', key: 'Delete', danger: true, action: () => del(false, [c.id]) }, { label: 'Ripple delete', key: 'Shift+Delete', danger: true, action: () => del(true, [c.id]) });
     showMenu(x, y, items);
+  }
+  // the ruler: a marker under the pointer has its own menu (rename, go to, split there, delete)
+  function rulerMenu(h, x, y) {
+    const mk = (S.edit?.markers || []).find((m) => Math.abs(xOf(m.t) - h.x) <= 6);
+    const zoom = { label: 'Zoom', items: () => ZOOMS.map(([z, label, key]) => ({ label, key, action: () => zoomTo(z) })) };
+    if (!mk) { showMenu(x, y, [{ label: '＋ Marker here', key: 'M', action: () => { seek(snapT(h.t)); marker(); } }, zoom, { label: 'Markers at the song\'s sections', disabled: !songItem(), action: () => sectionMarkers().catch((err) => toast(err.message, { type: 'error' })) }]); return; }
+    const patch = (fn, label) => commit({ ...S.edit, markers: S.edit.markers.map((m) => (m === mk ? fn({ ...m }) : m)) }, label);
+    showMenu(x, y, [
+      { label: `Go to “${mk.label || 'marker'}”`, action: () => { play(false); seek(mk.t); } },
+      { label: 'Rename…', action: async () => { const v = await Modal.prompt('Marker', { value: mk.label || '' }); if (v != null) patch((m) => ({ ...m, label: v.trim() }), 'Marker renamed'); } },
+      { label: '✂ Split there', action: () => { seek(mk.t); split(); } },
+      { label: 'Delete the marker', danger: true, action: () => commit({ ...S.edit, markers: S.edit.markers.filter((m) => m !== mk) }, 'Marker deleted') },
+      '-', zoom,
+    ]);
+  }
+  // a named marker at each section of the song (intro, build, drop…), from the Lab's analysis
+  async function sectionMarkers() {
+    const song = await songInfo();
+    const secs = song ? A.sectionsOf(song) : [];
+    if (!secs.length) throw new Error('The song has no sections yet (still analyzing?)');
+    const off = songStart();
+    const ms = secs.map((x) => ({ t: r4(x.start + off), label: x.label || x.energy })).filter((m) => m.t >= 0 && m.t < total());
+    return commit({ ...S.edit, markers: [...(S.edit.markers || []).filter((m) => !m.section), ...ms.map((m) => ({ ...m, section: true }))] }, `${ms.length} section markers`);
   }
   function sketchItems(fn) {
     const L = lab();
@@ -1008,27 +1420,45 @@ const ThreeSeq = (() => {
     const filters = (typeof ThreeLayers !== 'undefined' ? ThreeLayers.FILTERS || [] : []).slice(0, 40).map((f) => ({ label: `✦ ${f.name}`, hint: 'filter', action: () => add({ overlay: { name: f.name, code: f.code } }, { at }) }));
     return [...own, ...(filters.length ? ['-', { label: 'Filters', items: () => filters }] : [])];
   }
-  let clip = null;
-  function copySel() { const f = selIds().map((id) => C.find(S.edit, id)).find(Boolean); clip = f ? C.copy(f.clip) : null; if (clip) flash('Copied'); return Boolean(clip); }
+  // the clipboard: several clips at once, kept across sequences (and restarts), so clips go from one scene's
+  // sequence into another's
+  let clip = (() => { const x = store.get('three.seq.clipboard', null); return Array.isArray(x) ? x : null; })();
+  function copySel(ids = selIds()) {
+    const list = ids.length ? D.copyClips(S.edit, ids) : [];
+    clip = list.length ? list : null;
+    try { store.set('three.seq.clipboard', clip); } catch { /* too big for storage: this session only */ }
+    if (clip) flash(`Copied ${clip.length} clip${clip.length > 1 ? 's' : ''}`);
+    return Boolean(clip);
+  }
   function paste(at = S.T) {
-    if (!clip) return false;
-    const c = { ...C.copy(clip), id: C.uid() };
-    if (c.start != null) { const { id: _i, ...it } = c; return commit(C.addItem(S.edit, { ...it, start: at }), 'Pasted'); }
-    return commit(D.place(S.edit, c, { at }), 'Pasted');
+    if (!clip?.length) return false;
+    const r = D.pasteClips(S.edit, clip, at, { grid: grid() });
+    const ok = commit(r.edit, `Pasted ${clip.length}`);
+    if (ok) { S.sel = new Set(r.ids); redraw(); }
+    return ok;
   }
   function nameMenu(anchor) {
     const r = anchor.getBoundingClientRect();
-    list().then((all) => showMenu(r.left, r.bottom + 4, [
-      ...all.map((s) => ({ label: s.name, hint: `${s.seconds.toFixed(1)} s · ${s.format}`, checked: s.key === S.key, action: () => open(s.key) })),
-      '-', { label: '＋ New sequence', action: () => create() },
+    list().then((all) => {
+      const sid = S.owner || lab()?.sketchId();
+      const row = (s) => ({ label: s.name, hint: `${s.seconds.toFixed(1)} s · ${s.format}`, checked: s.key === S.key, action: () => open(s.key) });
+      const mine = all.filter((s) => s.scene === sid); const others = all.filter((s) => s.scene !== sid);
+      const sceneName = lab()?.scenes.get(sid)?.name || 'this scene';
+      return showMenu(r.left, r.bottom + 4, [
+      ...(mine.length ? [{ label: `${sceneName}'s`, disabled: true }, ...mine.map(row)] : []),
+      ...(others.length ? [{ label: 'Other sequences', hint: String(others.length), items: () => [
+        ...others.map((s) => ({ ...row(s), hint: `${lab()?.scenes.get(s.scene)?.name || 'no scene'} · ${s.seconds.toFixed(1)} s` })),
+      ] }, { label: '＋ Nest one here', hint: 'a sequence as a clip', more: true, items: () => others.map((s) => ({ label: s.name, action: () => nest(s.key, { at: S.T }).catch((err) => toast(err.message, { type: 'error' })) })) }] : []),
+      '-', { label: '＋ New sequence', hint: `for ${sceneName}`, action: () => create() },
+      { label: 'Give this one to the scene on screen', more: true, disabled: !lab()?.sketchId() || S.edit?.seq?.scene === lab()?.sketchId(), action: () => { commit({ ...S.edit, seq: { ...S.edit.seq, scene: lab().sketchId() } }, 'Belongs to this scene'); S.owner = lab().sketchId(); list(); } },
       { label: 'Rename…', action: async () => { const v = await Modal.prompt('Sequence name', { value: S.key.slice(4) }); if (v?.trim()) rename(v.trim()); } },
       { label: 'Format', hint: D.formatOf(S.edit), items: () => Object.keys(D.FORMATS).map((f) => ({ label: f, checked: D.formatOf(S.edit) === f, action: () => setFormat(f) })) },
       { label: 'Delete this sequence…', danger: true, more: true, action: async () => { if (await Modal.confirm('Delete the sequence?', `"${S.key.slice(4)}" goes (the scenes and files stay).`, { ok: 'Delete', danger: true })) { VideoCut.deleteSequence(S.key); S.key = null; S.edit = null; await current(); redraw(); pushPlan(); } } },
-    ]));
+    ]); });
   }
   async function rename(name) {
     const key = await uniqueKey(name);
-    const e = C.copy(S.edit); e.seq = { ...e.seq, name };
+    const e = C.copy(S.edit); e.seq = { ...e.seq, name }; // (its scene stays)
     await VC().storeEdit(key, e, 'Renamed');
     VideoCut.deleteSequence(S.key);
     S.key = key; S.edit = e; store.set('three.seq.current', key);
@@ -1038,13 +1468,21 @@ const ThreeSeq = (() => {
   }
   function moreMenu(anchor) {
     const r = anchor.getBoundingClientRect();
+    const arr = S.edit?.seq?.arranged;
     showMenu(r.right - 240, r.bottom + 4, [
+      { label: '✦ Arrange my scenes on the song', hint: arr ? `again: ${A?.find(arr.template)?.name || ''}` : 'no questions', action: () => (arr ? again() : arrange()).catch((err) => toast(err.message, { type: 'error' })) },
+      { label: 'Arrange as', items: () => [...(A?.TEMPLATES || []).map((t) => ({ label: t.name, hint: t.desc, checked: arr?.template === t.id, action: () => arrangeAs(t) })), '-', { label: '✦ Let Astra pick one', action: () => decideArrangement().catch((err) => toast(err.message, { type: 'error' })) }] },
+      { label: 'Shorter versions', items: () => [[15], [6], [15, 6], [30]].map((l) => ({ label: l.map((x) => `${x} s`).join(' + '), hint: 'new sequences around the drop', action: () => versions(l).catch((err) => toast(err.message, { type: 'error' })) })) },
+      { label: '✦ A variation per section', hint: 'scenes that come back look different', action: () => varySections() },
+      { label: 'Re-time to a song…', more: true, action: async () => { const [p] = await window.hub.openDialog({ title: 'Re-time the sequence to a song', filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac'] }] }); if (p) retime(p).catch((err) => toast(err.message, { type: 'error' })); } },
+      '-',
       { label: '▦ Every cut on a bar', hint: grid() ? '' : 'needs a song', disabled: !grid(), action: () => fit() },
-      { label: 'Transitions everywhere', items: () => TRANS_TOP.map((t) => ({ label: EditFX.TRANS[t]?.name || 'Cut', action: () => setTransition(t) })) },
+      { label: 'Transitions everywhere', items: () => [...TRANS_TOP.map((t) => ({ label: EditFX.TRANS[t]?.name || 'Cut', action: () => setTransition(t) })), { label: '✦ Lab moves', items: () => (TR()?.LAB || []).map((t) => ({ label: t.name, hint: t.desc, action: () => setTransition(t.id) })) }] },
       { label: '✂ Finish in the video editor', hint: 'the same sequence', action: () => toEditor() },
       { label: S.loop ? '⟲ Loop off' : '⟲ Loop', action: () => { S.loop = !S.loop; send({ type: 'seq-loop', on: S.loop }); } },
       { label: S.snap ? 'Snapping off' : 'Snapping on', hint: 'bars, beats, markers, edges', action: () => { S.snap = !S.snap; store.set('three.seq.snap', S.snap); } },
-      { label: 'Zoom to fit', key: '\\', action: () => { S.vr = null; redraw(); placeHead(); } },
+      { label: 'Zoom', key: '\\ + −', items: () => ZOOMS.map(([z, label, key]) => ({ label, key, action: () => zoomTo(z) })) },
+      { label: 'Markers', more: true, items: () => [{ label: 'At the song\'s sections', action: () => sectionMarkers().catch((err) => toast(err.message, { type: 'error' })) }, { label: 'Clear the markers', danger: true, action: () => commit({ ...S.edit, markers: [] }, 'Markers cleared') }] },
       { label: 'Keys', action: () => Modal.alert('Lab sequence: keys', KEYS.map(([k, w]) => `${k.padEnd(18)} ${w}`).join('\n')) },
       { label: '♪ Song…', more: true, action: async () => { const [p] = await window.hub.openDialog({ title: 'The song', filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac'] }] }); if (p) add({ path: p, song: true }); } },
       { label: 'Clear the sequence…', danger: true, more: true, action: async () => { if (await Modal.confirm('Clear the sequence?', 'Every clip and title goes (Undo brings them back).', { ok: 'Clear', danger: true })) commit({ ...S.edit, clips: [], tracks: (S.edit.tracks || []).map((k) => ({ ...k, items: k.type === 'audio' ? k.items.filter((x) => x.song) : [] })), markers: [] }, 'Cleared'); } },
@@ -1083,6 +1521,8 @@ const ThreeSeq = (() => {
       const s = q.value.trim().toLowerCase();
       const ok = (n) => !s || String(n).toLowerCase().includes(s);
       const out = [];
+      if (!s && A) out.push(tile('✦ Arrange my scenes', 'on the song, no questions', null, { arrange: true }));
+      for (const x of (S.index ? [...listCache] : []).filter((y) => y.key !== S.key && ok(y.name)).slice(0, 6)) out.push(tile(`▤ ${x.name}`, 'a sequence, as a clip', null, { seq: x.key }));
       const chats = typeof ChatScenes !== 'undefined' ? H.chats.filter((c) => ChatScenes.linkOf?.(c.id)).slice(0, 12) : [];
       for (const c of chats) { const sid = ChatScenes.linkOf(c.id); const sk = L.scenes.get(sid); if (sk && ok(c.title) ) out.push(tile(c.title || sk.name, `chat scene ${ChatScenes.glyphFor(sid)}`, L.scenes.thumbOf(sid), { chat: c.id })); }
       const pins = new Set(store.get('three.sketchPins', []));
@@ -1132,7 +1572,9 @@ const ThreeSeq = (() => {
     ['Space', 'Play / pause the sequence'], ['J / K / L', 'Backward · stop · forward (again: faster)'], ['← / →', 'One frame (Shift: ten)'], ['Home / End', 'Start / end'],
     ['↑ / ↓', 'Previous / next edit point'], ['S', 'Split at the playhead'], ['Delete', 'Delete (keeps a gap)'], ['Shift+Delete', 'Ripple delete (closes the gap)'],
     ['D', 'Duplicate'], ['Q / W', 'The clip starts / ends at the playhead'], ['Alt+← / →', 'Slip the clip one frame'], ['Alt+drag', 'Slip (another part of the scene / footage)'],
-    ['M', 'Marker'], [`${MOD}+C / ${MOD}+V`, 'Copy / paste a clip'], [`${MOD}+Z / ${MOD}+Shift+Z`, 'Undo / redo'], [`${MOD}+wheel`, 'Zoom the sequence'], ['\\', 'Zoom to fit'], ['Esc', 'Deselect'],
+    ['M', 'Marker'], [`${MOD}+C / ${MOD}+V`, 'Copy / paste clips (also into another sequence)'], [`${MOD}+Z / ${MOD}+Shift+Z`, 'Undo / redo'], [`${MOD}+wheel`, 'Zoom the sequence'], ['\\', 'Zoom to fit'], ['Esc', 'Deselect'],
+    ['V', 'A new variation of the scene clip (like Shuffle)'], ['Shift+V', 'The clip back to its scene as saved'], ['G', 'Fill the gap under the playhead with a scene'], ['+ / −', 'Zoom in / out at the playhead'],
+    ['Shift+drag an edge', 'Roll the cut (one clip longer, the next shorter)'], ['Shift+drag a clip', 'Slide it (its neighbours trim)'], [`${MOD}+drag`, 'Slip (like Alt+drag)'],
   ];
   function onKey(e) {
     if (!S.view || !S.edit) return;
@@ -1163,6 +1605,10 @@ const ThreeSeq = (() => {
     if (low === 'w') { trimToHead('out'); done(); return; }
     if (low === 'm') { marker(); done(); return; }
     if (k === '\\') { S.vr = null; redraw(); placeHead(); done(); return; }
+    if (low === 'v') { vary(undefined, { reset: e.shiftKey }); done(); return; }
+    if (low === 'g' && !e.shiftKey) { const x = C.at(S.edit, S.T); if (x?.clip.kind === 'gap') fillGap(x.clip.id).catch((err) => toast(err.message, { type: 'error' })); else flash('No gap under the playhead'); done(); return; }
+    if (k === '+' || k === '=') { zoomBy(1.5); done(); return; }
+    if (k === '-' || k === '_') { zoomBy(1 / 1.5); done(); return; }
     if (k === 'Escape' && S.sel.size) { S.sel.clear(); redraw(); done(); }
   }
 
@@ -1179,7 +1625,7 @@ const ThreeSeq = (() => {
     refs.flash = el('span', { class: 'sq-flash', attrs: { 'aria-live': 'polite' } });
     refs.cv = el('canvas', { class: 'sq-canvas' });
     refs.head = el('div', { class: 'sq-playhead' });
-    refs.hint = el('div', { class: 'sq-hint', text: 'Drag a scene here (＋), or right-click the preview → Add this scene to the sequence' });
+    refs.hint = el('div', { class: 'sq-hint', text: 'Drag a scene here (＋), ⋯ → ✦ Arrange my scenes on the song, or right-click the preview → Add this scene' });
     refs.tl = el('div', { class: 'sq-tl', attrs: { tabindex: '0' } }, refs.cv, refs.head, refs.hint);
     refs.view = el('div', { class: 'sq-view', hidden: true }, el('div', { class: 'sq-row' }, refs.play, refs.time, refs.name, el('span', { class: 'spacer' }), refs.flash, refs.add, refs.render, refs.more), refs.tl);
     bar.append(refs.view);
@@ -1189,7 +1635,7 @@ const ThreeSeq = (() => {
     refs.cv.addEventListener('pointercancel', onUp);
     refs.cv.addEventListener('dblclick', onDbl);
     refs.cv.addEventListener('wheel', onWheel, { passive: false });
-    refs.cv.addEventListener('contextmenu', (e) => { e.preventDefault(); const h = hit(e); if (h.zone === 'clip') { select(h.clip.id); clipMenu(h, e.clientX, e.clientY); } else if (h.zone !== 'ruler') laneMenu(h, e.clientX, e.clientY); else showMenu(e.clientX, e.clientY, [{ label: '＋ Marker here', action: () => { seek(snapT(h.t)); marker(); } }, { label: 'Zoom to fit', action: () => { S.vr = null; redraw(); placeHead(); } }]); });
+    refs.cv.addEventListener('contextmenu', (e) => { e.preventDefault(); const h = hit(e); if (h.zone === 'clip') { select(h.clip.id); clipMenu(h, e.clientX, e.clientY); } else if (h.zone !== 'ruler') laneMenu(h, e.clientX, e.clientY); else rulerMenu(h, e.clientX, e.clientY); });
     refs.tl.addEventListener('dragover', onDragOver);
     refs.tl.addEventListener('dragleave', () => { S.drop = null; redraw(); });
     refs.tl.addEventListener('drop', onDrop);
@@ -1230,7 +1676,7 @@ const ThreeSeq = (() => {
     if (!S.edit) return { sequence: null, note: 'No Lab sequence yet: op "new" (or add a scene: one is made).' };
     const sh = D.showing(S.edit, S.T);
     return {
-      sequence: S.key.slice(4), format: D.formatOf(S.edit), fps: fps(), seconds: r4(total()), frames: Math.round(total() * fps()), on: S.view,
+      sequence: S.key.slice(4), scene: lab()?.scenes.get(S.edit.seq?.scene || S.owner)?.name || null, format: D.formatOf(S.edit), fps: fps(), seconds: r4(total()), frames: Math.round(total() * fps()), on: S.view,
       playhead: { time: r4(S.T), frame: frameOf(S.T), timecode: tc(S.T), showing: sh.trans ? `${sh.trans.type} ${Math.round(sh.trans.p * 100)}%` : sh.main ? D.clipLabel(sh.main) : 'nothing' },
       song: songItem() ? base(songItem().src) : null, grid: grid() ? { bpm: grid().bpm, bar: r4(D.barLen(grid())) } : null,
       clips: D.describe(S.edit).slice(0, 40),
@@ -1251,12 +1697,17 @@ const ThreeSeq = (() => {
     if (tool !== 'three_sequence') return null;
     const op = String(a.op || a.action || 'status');
     try {
-      if (op === 'help') return { ok: true, value: 'ops: status | list | new {name, format} | open {name} | show | hide | add {scene | footage (path) | title (text) | overlay (layer / filter name) | song (path), at (s | "bar 9" | "f120"), bars | secs, look} | transition {clip, type, dur} (clip omitted: every cut) | length {clip, secs | bars} | trim {clip, edge: in|out, to} | split {at} | delete {clip, ripple} | move {clip, to (position 1..n)} | duplicate {clip} | slip {clip, frames} | look {clip, name} | fit (cuts on bars) | format {format} | seek {at} | frame {at, see} | play | pause | render {format: 9:16|16:9|1:1|4:5} | editor | back | undo | redo. clip = number (1 = first on the main track), "Titles.2", or a scene / title name.' };
+      if (op === 'help') return { ok: true, value: 'ops: status | list | new {name, format} | open {name} | show | hide | add {scene | footage (path) | title (text) | overlay (layer / filter name) | song (path), at (s | "bar 9" | "f120"), bars | secs, look} | transition {clip, type, dur} (clip omitted: every cut) | length {clip, secs | bars} | trim {clip, edge: in|out, to} | split {at} | delete {clip, ripple} | move {clip, to (position 1..n)} | duplicate {clip} | slip {clip, frames} | look {clip, name} | fit (cuts on bars) | format {format} | seek {at} | frame {at, see} | play | pause | render {format: 9:16|16:9|1:1|4:5} | editor | back | undo | redo · arrange {template, scenes: [names], secs, lines} (the scenes on the song sections, cuts on bars; again: another one) | templates | versions {secs: [15, 6], render} | fill {clip (a gap)} | vary {clip, amount, reset} | vary_sections | swap_looks {clip} | retime {song} | nest {name} | unnest {clip} | copy {clips: [..]} | paste {at, into (sequence name)} | roll {clip, to} | slide {clip, by} | marker {at, label} | section_markers | zoom {to: fit | "4 bars" | secs} | render {format: all}. Each scene owns its sequence: ops act on the current scene one; of (or scene, except for add): another scene. clip = number (1 = first on the main track), "Titles.2", or a scene / title name.' };
       if (op === 'list') return { ok: true, value: { sequences: await list(), open: S.key?.slice(4) || null } };
       await ThreeLab.cmd({ show: true });
       if (op === 'new') { await create(a.name || null, { format: a.format || null, empty: Boolean(a.empty) }); return { ok: true, value: status() }; }
       if (op === 'open') { const all = await list(); const s = all.find((x) => x.name.toLowerCase() === String(a.name || '').toLowerCase()) || all.find((x) => x.name.toLowerCase().includes(String(a.name || '').toLowerCase())); if (!s) return { ok: false, error: `No sequence "${a.name}": ${all.map((x) => x.name).join(', ') || 'none yet'}` }; await open(s.key); return { ok: true, value: status() }; }
-      if (!S.edit) await current();
+      // each scene owns its sequence: the one asked for (of / scene), the director chat's scene, else the one on screen
+      const ask = a.of ?? (op !== 'add' && op !== 'arrange' ? a.scene : null);
+      const sid = (ask != null ? await sceneRef(ask) : null) || ctx.sketchId || lab()?.sketchId() || null;
+      if (ask != null && !sid) return { ok: false, error: `No scene "${ask}"` };
+      // (a sequence you opened on purpose stays the one commands act on, until another scene comes on screen)
+      if (!S.edit || (sid && S.owner !== sid && !(S.explicit && ask == null && !ctx.sketchId))) await current({ scene: sid });
       if (op === 'status' || op === 'read') return { ok: true, value: status() };
       if (op === 'show') { await enter(); return { ok: true, value: status() }; }
       if (op === 'hide') { await leave(); return { ok: true, value: { on: false } }; }
@@ -1304,6 +1755,33 @@ const ThreeSeq = (() => {
         if (op === 'frame' && a.see !== false) { const url = await lab().director()?.shot?.(); if (url) out.images = [{ data: url.split(',')[1], mime: url.slice(5, url.indexOf(';')) }]; }
         return out;
       }
+      if (op === 'templates') return { ok: true, value: (A?.TEMPLATES || []).map((t) => `${t.id}: ${t.name}, ${t.desc}`) };
+      if (op === 'arrange' || op === 'again') {
+        const names = [].concat(a.scenes || []).filter(Boolean);
+        const info = op === 'again' ? await again() : await arrange({ template: a.template || null, names: names.length ? names : null, secs: a.secs != null ? Number(a.secs) : null, lines: a.lines ? [].concat(a.lines) : null, seed: a.seed != null ? Number(a.seed) : null });
+        return { ok: true, value: { arranged: info, ...status() } };
+      }
+      if (op === 'decide') { const r = await decideArrangement(a.goal || ''); return { ok: true, value: { picked: r?.pick || null, by: r?.by || null, ...status() } }; }
+      if (op === 'versions' || op === 'cutdown') { const made = await versions([].concat(a.secs || [15, 6]).map(Number), { render: Boolean(a.render) }); return { ok: true, value: { made } }; }
+      if (op === 'fill') { const id = a.clip != null ? clipId(a.clip) : C.at(S.edit, S.T)?.clip.id; const r = await fillGap(id); return { ok: true, value: { filled: r.scene, ...status() } }; }
+      if (op === 'vary') { vary(clipId(a.clip), { amount: a.amount != null ? Number(a.amount) : null, reset: Boolean(a.reset) }); return { ok: true, value: status() }; }
+      if (op === 'vary_sections') { varySections(); return { ok: true, value: status() }; }
+      if (op === 'swap_looks') { swapLooks(clipId(a.clip)); return { ok: true, value: status() }; }
+      if (op === 'retime') { const info = await retime(a.song || a.path || null); return { ok: true, value: { arranged: info, ...status() } }; }
+      if (op === 'nest') { const all = await list(); const q = String(a.name || '').toLowerCase(); const s0 = all.find((x) => x.name.toLowerCase() === q) || all.find((x) => x.name.toLowerCase().includes(q)); if (!s0) return { ok: false, error: `No sequence "${a.name}"` }; await nest(s0.key, { at: timeOf(a.at) }); return { ok: true, value: status() }; }
+      if (op === 'unnest') { unnest(clipId(a.clip)); return { ok: true, value: status() }; }
+      if (op === 'copy') { copySel([].concat(a.clips ?? a.clip ?? []).map((x) => clipId(x))); return { ok: true, value: { copied: clip?.length || 0 } }; }
+      if (op === 'paste') {
+        if (!clip?.length) return { ok: false, error: 'Nothing copied (op copy first)' };
+        if (a.into) { const all = await list(); const q = String(a.into).toLowerCase(); const s0 = all.find((x) => x.name.toLowerCase() === q) || all.find((x) => x.name.toLowerCase().includes(q)); if (!s0) return { ok: false, error: `No sequence "${a.into}"` }; await open(s0.key, { show: S.view }); }
+        paste(timeOf(a.at) ?? S.T); return { ok: true, value: status() };
+      }
+      if (op === 'roll') { const id = clipId(a.clip); const i = S.edit.clips.findIndex((c) => c.id === id); const T0 = D.timing(S.edit); const to = timeOf(a.to); if (i < 1 || to == null) return { ok: false, error: 'roll {clip (2..n): the cut before it, to: a time}' }; commit(D.roll(S.edit, i, to - T0[i].start), 'Rolled'); return { ok: true, value: status() }; }
+      if (op === 'slide') { commit(D.slide(S.edit, clipId(a.clip), Number(a.by) || 0), 'Slid'); return { ok: true, value: status() }; }
+      if (op === 'marker') { if (a.at != null) seek(timeOf(a.at) ?? S.T); marker(a.label || ''); return { ok: true, value: { markers: (S.edit.markers || []).map((m) => `${m.t.toFixed(2)} ${m.label || ''}`.trim()) } }; }
+      if (op === 'section_markers') { await sectionMarkers(); return { ok: true, value: { markers: (S.edit.markers || []).map((m) => `${m.t.toFixed(2)} ${m.label || ''}`.trim()) } }; }
+      if (op === 'zoom') { zoomTo(a.to === 'fit' || a.to == null ? 'fit' : /bar/.test(String(a.to)) ? String(a.to) : Number(a.to)); return { ok: true, value: { view: S.vr ? [r4(S.vr.t0), r4(S.vr.t1)] : 'all' } }; }
+      if (op === 'render' && /^all$/i.test(String(a.format || ''))) { const out = []; for (const f of Object.keys(D.FORMATS)) out.push((await render({ format: f })).path); return { ok: true, value: { files: out, note: 'In Video Review (library)' } }; }
       if (op === 'render') { const r = await render({ format: a.format || null }); return { ok: true, value: { file: r.path, frames: r.frames, format: r.format, size: `${r.w}×${r.h}`, note: 'In Video Review (library)' } }; }
       if (op === 'editor') { await toEditor(); return { ok: true, value: { opened: 'Video Review editor, the same sequence', key: S.key } }; }
       if (op === 'back') { await fromEditor(); return { ok: true, value: status() }; }
@@ -1332,10 +1810,28 @@ const ThreeSeq = (() => {
     return { label: '▤ Add this scene to the sequence', hint: S.key ? S.key.slice(4) : 'a new one', action: () => addCurrent().catch((err) => toast(err.message, { type: 'error' })) };
   }
 
+  // "/decide arrangement" (and ✦ Let Astra pick one): Astra picks the template from a picture of the scene and a few
+  // words about the scenes and the song (decide.js: one small question, Undo, a local default without tokens)
+  addEventListener('DOMContentLoaded', () => {
+    if (typeof Decide === 'undefined' || !Decide.KINDS || Decide.KINDS.arrangement || !A) return;
+    Decide.KINDS.arrangement = {
+      label: 'an arrangement for the Lab sequence', goal: 'the shape that suits these scenes on this song', visual: true,
+      candidates: () => A.TEMPLATES.filter((t) => !t.lines).slice(0, 8).map((t) => ({ id: t.id, name: t.name })),
+      async apply(c) { const before = S.edit ? JSON.stringify(S.edit) : null; await arrange({ template: c.id }); return () => { if (before) commit(JSON.parse(before), 'Back to before'); }; },
+      local: async (cands) => { const song = S.edit && D.songOf(S.edit) ? await songInfo() : null; const want = !song ? 'reel' : song.dur > 90 ? 'teaser' : 'music-video'; return cands.find((c) => c.id === want) || cands[0]; },
+    };
+  });
+  // each scene's sequence in a few words for the chat rows / scene menus, once the Lab is up (no reads after that
+  // but the listings the sequence makes anyway)
+  // another scene on screen while the sequence is hidden: the next ▤ Sequence opens that scene's own
+  addEventListener('hearth:sketch', () => { if (S.hold) { S.hold = false; return; } if (!S.view && !S.render) S.explicit = false; });
+  addEventListener('hearth:lab-ready', () => { setTimeout(() => list().then(() => emit('index', {})).catch(() => {}), 1500); });
   const api = {
     attach, onMessage, takeRecording, keep, posterImage, owns: () => S.view, sketchChanged, previewItem,
     enter, leave, toggle, open, create, current, list, add, addCurrent, applyVibe, select, split, del, dup, slipBy, trimToHead, marker, setTransition, setLength, setLook, fit, setFormat,
     play, seek, step, shuttle, jump, settle, undo, redo, render, renderEdit, renderScene, toEditor, fromEditor, needsBake, bake, compile, status, handle, timeOf, secsOf, zoomBy,
+    arrange, again, retime, versions, fillGap, vary, varySections, copyLook, pasteLook, swapLooks, nest, unnest, copySel, paste, zoomTo, sectionMarkers, decideArrangement, recordForEditor,
+    outDir, keyForScene, switchTo, summaryFor, sceneCopied, songInfo, pickScenes, bakeRuns, get owner() { return S.owner; },
     on: (ev, fn) => { (listeners[ev] ||= []).push(fn); },
     get active() { return S.view; }, get key() { return S.key; }, get edit() { return S.edit ? C.copy(S.edit) : null; }, get time() { return S.T; }, get playing() { return S.playing; }, get fps() { return fps(); },
     get selection() { return selIds(); }, get rendering() { return Boolean(S.render); }, KEYS, _S: S, _draw: () => draw(), _hit: hit, _xOf: (t) => xOf(t), _lanes: () => lanes(),

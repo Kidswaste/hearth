@@ -2088,7 +2088,7 @@ const VideoCut = (() => {
     if (!isSeq()) return dirOf(st.path);
     const src = mainSrc();
     if (src) return dirOf(src);
-    return R().state.videos[0] ? dirOf(R().state.videos[0].path) : '';
+    return R().state.videos[0] ? dirOf(R().state.videos[0].path) : host.S.labHome || ''; // (a Lab sequence: the Lab's renders folder)
   }
   const stemOf = () => (isSeq() ? st.path.slice(4).replace(/[^\w.-]+/g, '_') || 'sequence' : noExt(base(st.path)));
   // Renders an edit with ffmpeg: plain cuts through CutData.ffmpegArgs, anything richer through CutFF (titles are
@@ -2147,9 +2147,13 @@ const VideoCut = (() => {
   async function exportCut({ preset = null, fit = 'crop', stills = false, stillsExt = 'png', out, record = false } = {}) {
     if (!st.edit?.clips.length && !(st.edit?.tracks || []).some((k) => k.items.length)) throw new Error('The edit is empty');
     const tools = host.S.tools || (host.S.tools = await window.hub.video.tools({ ffmpeg: H.settings().ffmpegPath || undefined }));
+    // a Lab sequence with scenes: the Lab plays it into its own recorder (the editor's would only show their pictures)
+    if ((record || !tools.ffmpeg) && st.edit?.seq?.lab && typeof ThreeSeq !== 'undefined' && ThreeSeq.needsBake(st.edit)) { await ThreeLab.cmd({ show: true }); try { return await ThreeSeq.recordForEditor(st.path); } finally { activate('tool:ae'); } }
     if (record || !tools.ffmpeg) return recordEdit({ note: !tools.ffmpeg ? `ffmpeg isn't installed (${tools.hint}), so the edit is recorded in real time as WebM.` : '' });
     const p = preset ? findPreset(preset) : null;
     if (preset && !p) throw new Error(`Unknown preset “${preset}”. Try /presets.`);
+    // a sequence with no video of its own (Lab scenes only) exports next to the Lab's renders, not into "/exports"
+    if (isSeq() && !homeDir() && typeof ThreeSeq !== 'undefined') host.S.labHome = await ThreeSeq.outDir().catch(() => '');
     const stem = stemOf();
     const dir = homeDir();
     const output = out || ((g) => (stills ? join(dir, 'exports', `${stem}_cut_stills`, `frame_%05d.${stillsExt}`)
