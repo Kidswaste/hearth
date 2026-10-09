@@ -617,13 +617,31 @@ const Capture = (() => {
       const direct = o.target === 'window' && o.size === 'native';
       let videoTrack = vTrack;
       if (!direct) {
-        const v = el('video', { muted: true, playsInline: true, autoplay: true });
-        v.srcObject = new MediaStream([vTrack]);
-        await v.play().catch(() => {});
-        for (let i = 0; i < 50 && !v.videoWidth; i += 1) await sleep(40);
+        // frames straight from the capture track (WebCodecs): no <video> to keep on screen; the page capture only sends a
+        // frame when something changed, so a still UI costs nothing
+        const R = rec;
+        let source = null; let sw = 0; let shh = 0;
+        let next = null;
+        if (typeof MediaStreamTrackProcessor !== 'undefined') {
+          const reader = new MediaStreamTrackProcessor({ track: vTrack }).readable.getReader();
+          R.reader = reader;
+          next = async () => { const { value, done } = await reader.read(); return done ? null : value; };
+        } else {
+          // older engines: a hidden <video> on the page, drawn on each animation frame while it plays
+          const v = el('video', { muted: true, playsInline: true, autoplay: true, class: 'cap-hidden-video' });
+          v.srcObject = new MediaStream([vTrack]);
+          document.body.append(v);
+          await v.play().catch(() => {});
+          R.video = v;
+          next = () => new Promise((res) => requestAnimationFrame(() => res(R.video === v && v.videoWidth ? v : null)));
+        }
+        const first = await Promise.race([next(), sleep(4000).then(() => null)]);
+        if (!first) throw new Error('The page capture sent no picture');
+        const dimsOf = (f) => (f instanceof HTMLVideoElement ? [f.videoWidth, f.videoHeight] : [f.displayWidth, f.displayHeight]);
+        [sw, shh] = dimsOf(first);
         const srcRect = () => {
           const r = fixedRect || (node ? rectOf(node) : null) || { x: 0, y: 0, width: innerWidth, height: innerHeight };
-          const k = v.videoWidth / innerWidth;
+          const k = sw / innerWidth;
           return { x: r.x * k, y: r.y * k, w: r.width * k, h: r.height * k };
         };
         const r0 = srcRect();
@@ -631,23 +649,27 @@ const Capture = (() => {
         const c = el('canvas', { width: size.w, height: size.h });
         const g = c.getContext('2d', { alpha: false });
         g.imageSmoothingQuality = 'high';
-        const draw = () => {
-          if (!rec || rec.video !== v) return;
-          const r = srcRect();
-          let { x, y, w, h } = r;
+        const draw = (f) => {
+          [sw, shh] = dimsOf(f);
+          let { x, y, w, h } = srcRect();
           if (size.frame) { // cover the social frame, centered on the target
             const k = size.w / size.h; const cx = x + w / 2; const cy = y + h / 2;
             if (w / h > k) w = h * k; else h = w / k;
-            x = Math.max(0, Math.min(v.videoWidth - w, cx - w / 2)); y = Math.max(0, Math.min(v.videoHeight - h, cy - h / 2));
+            x = Math.max(0, Math.min(sw - w, cx - w / 2)); y = Math.max(0, Math.min(shh - h, cy - h / 2));
           }
-          g.drawImage(v, x, y, w, h, 0, 0, size.w, size.h);
-          v.requestVideoFrameCallback(draw);
+          g.drawImage(f, x, y, w, h, 0, 0, size.w, size.h);
         };
-        rec.video = v;
-        v.requestVideoFrameCallback(draw);
+        draw(first); if (first.close) first.close();
+        (async () => {
+          for (;;) {
+            source = await next().catch(() => null);
+            if (!source || rec !== R) { source?.close?.(); break; }
+            try { draw(source); } finally { source.close?.(); }
+          }
+        })();
         videoTrack = c.captureStream(o.fps).getVideoTracks()[0];
-        rec.canvas = c;
-        rec.size = `${size.w}×${size.h}`;
+        R.canvas = c;
+        R.size = `${size.w}×${size.h}`;
       } else {
         const s = vTrack.getSettings();
         rec.size = `${s.width || '?'}×${s.height || '?'}`;
@@ -657,7 +679,8 @@ const Capture = (() => {
       rec.recorder = recorder;
       const file = await api().recOpen({ name: o.name || `Hearth ${o.target === 'window' ? 'recording' : o.target} ${new Date().toISOString().slice(0, 19).replace('T', ' ').replace(/:/g, '-')}` });
       rec.id = file.id; rec.path = file.path;
-      recorder.ondataavailable = (e) => { if (e.data?.size) rec.chunks = rec.chunks.then(async () => api().recWrite(file.id, new Uint8Array(await e.data.arrayBuffer()))); };
+      const R0 = rec;
+      recorder.ondataavailable = (e) => { if (e.data?.size) R0.chunks = R0.chunks.then(async () => api().recWrite(file.id, new Uint8Array(await e.data.arrayBuffer()))); };
       // effects drawn into the page while filming (they are part of the picture on purpose)
       if (o.clean) clean(true);
       cursorFx.set(o.cursor, { clicks: o.clicks, keys: o.keys });
@@ -679,7 +702,7 @@ const Capture = (() => {
     if (!rec) return;
     const s = elapsed();
     api().indicator({ on: true, time: fmtClock(s), paused: Boolean(rec.pausedAt), label: rec.tour ? `tour ${rec.tour}` : rec.marks.length ? `◆${rec.marks.length}` : '' });
-    if (rec.opts.max && s >= rec.opts.max && !rec.pausedAt) stop();
+    if (rec.opts.max && s >= rec.opts.max && !rec.pausedAt) stop().catch((e) => toast(e.message, { type: 'error' }));
   }
   function cleanupRec() {
     if (!rec) return;
@@ -687,7 +710,8 @@ const Capture = (() => {
     try { rec.display?.getTracks().forEach((t) => t.stop()); } catch { /* gone */ }
     try { rec.mic?.getTracks().forEach((t) => t.stop()); } catch { /* gone */ }
     try { rec.audioCtx?.close(); } catch { /* gone */ }
-    if (rec.video) { rec.video.srcObject = null; rec.video = null; }
+    try { rec.reader?.cancel(); } catch { /* done */ }
+    if (rec.video) { rec.video.srcObject = null; rec.video.remove(); rec.video = null; }
     if (rec.opts?.clean) clean(false);
     cursorFx.set('off', { clicks: 'off', keys: false });
     api().indicator({ on: false });
@@ -728,14 +752,14 @@ const Capture = (() => {
       const marks = r.marks;
       if (marks.length) { const all = await window.hub.kvGet('capture-marks', {}); all[main] = marks; if (fin.webm && fin.webm !== main) all[fin.webm] = marks; window.hub.kvSet('capture-marks', all); }
       if (typeof Review !== 'undefined') { try { Review.noteRecording(main); } catch { /* the library is a bonus */ } }
-      const item = remember({ kind: 'video', path: main, webm: fin.webm, mp4: fin.mp4 || null, duration: fin.duration || duration, w: fin.w, h: fin.h, fps: fin.fps || r.opts.fps, marks });
+      const item = remember({ kind: 'video', path: main, webm: fin.webm, mp4: fin.mp4 || null, duration: fin.duration || duration, w: fin.w, h: fin.h, fps: r.opts.fps, marks });
       if (!quiet) {
         const extra = fin.mp4Error ? ' (MP4 failed: kept the WebM)' : !fin.ffmpeg && r.opts.mp4 ? ' (WebM: install ffmpeg for MP4)' : '';
         toast(`🎬 ${base(main)} · ${fmtClock(item.duration || 0)}${r.audioNote ? ` · ${r.audioNote}` : ''}${extra}`, { timeout: 7000, action: { label: 'Open', fn: () => CaptureView.open(main) } });
       }
       document.dispatchEvent(new CustomEvent('hearth:recording', { detail: { recording: false, path: main } }));
       if (open) CaptureView.open(main);
-      return { path: main, webm: fin.webm, mp4: fin.mp4 || null, duration: Math.round((fin.duration || duration) * 100) / 100, size: r.size, fps: fin.fps || r.opts.fps, marks, audio: r.audioNote || r.opts.audio, error: fin.mp4Error || fin.error || null };
+      return { path: main, webm: fin.webm, mp4: fin.mp4 || null, duration: Math.round((fin.duration || duration) * 100) / 100, size: fin.w ? `${fin.w}×${fin.h}` : r.size, fps: r.opts.fps, marks, audio: r.audioNote || r.opts.audio, error: fin.mp4Error || fin.error || null };
     })();
     try { return await pending.stop; } finally { pending.stop = null; }
   }

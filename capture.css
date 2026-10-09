@@ -121,3 +121,4 @@ dialog.cap-tour-edit { width: min(860px, 94vw); }
 :is(.cap-view-foot, .cap-view-head, .cap-lib-head) button:not(.primary):not(.cap-ann-tool):not(.cap-ann-swatch):hover { border-color: var(--fh-gold, #ffc233); }
 .cap-view-foot button.primary { padding: 5px 14px; min-height: 30px; border-radius: 8px; }
 .cap-lib-head h2 { flex: none; }
+.cap-hidden-video { position: fixed; left: 0; top: 0; width: 2px; height: 2px; opacity: .01; pointer-events: none; }

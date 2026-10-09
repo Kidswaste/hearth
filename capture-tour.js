@@ -31,7 +31,7 @@ const CaptureTour = (() => {
   function parse(text) {
     const steps = [];
     String(text || '').split('\n').forEach((raw, n) => {
-      const line = raw.replace(/\s+#.*$/, '').trim();
+      const line = raw.replace(/\s+#\s.*$/, '').trim(); // "# comment" (a #selector has no space after the #)
       if (!line || line.startsWith('#')) return;
       const t = tokens(line);
       let op = String(t[0]).toLowerCase();
@@ -196,6 +196,8 @@ const CaptureTour = (() => {
     const cur = Capture.cursorFx;
     const hadCursor = cur.style;
     if (cur.style === 'off') cur.set('arrow', { clicks: 'ring' }); // a tour always shows where it clicks
+    Capture.clean(true); // no toasts / menus / scrollbars in a tour's pictures
+    state.restore.push(() => Capture.clean(false));
     let startedRec = false;
     try {
       for (const [i, s] of steps.entries()) {

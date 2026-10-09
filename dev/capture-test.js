@@ -5,6 +5,7 @@
 // extraction (select=eq(n,N)) pixel for pixel, and checks every-N, scenes, motion, sheets and the timecode helpers.
 //   node dev/capture-test.js            (needs ffmpeg + ffprobe; makes its videos in a temp folder)
 //   node dev/capture-test.js --keep     (keeps the folder; prints it)
+//   node dev/capture-test.js --make DIR  (only makes the test videos in DIR, for dev/checks/capture-frames.js)
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
@@ -15,7 +16,8 @@ const fails = [];
 const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (!ok) fails.push(what); };
 const T = FR.tools();
 if (!T.ffmpeg) { console.log('ffmpeg not found: skipped'); process.exit(0); }
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-frames-test-'));
+const makeOnly = process.argv.includes('--make') ? process.argv[process.argv.indexOf('--make') + 1] : null;
+const dir = makeOnly ? (fs.mkdirSync(makeOnly, { recursive: true }), makeOnly) : fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-frames-test-'));
 const BITS = 11;
 // bar code: bit k of the frame number = a white 22×22 square at x = 10 + 26k, y = 200 (black when 0)
 function barcode() {
@@ -62,6 +64,7 @@ const rawOf = (file, filter) => execFileSync(T.ffmpeg, ['-v', 'error', '-i', fil
     cuts: make('cuts', { rate: '30', seconds: 8, scenes: ['color=c=red', 'testsrc2', 'color=c=0x2040ff', 'smptebars'] }),
     moving: make('moving', { rate: '30', seconds: 4, move: true }),
   };
+  if (makeOnly) { console.log(JSON.stringify(videos)); process.exit(0); }
   const info = await FR.probe(videos.cfr2997);
   check(Math.abs(info.fps - 29.97) < 0.01 && info.rate === '30000/1001' && info.w === 320, `probe: ${info.fps} fps (${info.rate}), ${info.w}×${info.h}, ${info.frames} frames`);
   const vinfo = await FR.probe(videos.vfr);

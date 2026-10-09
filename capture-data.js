@@ -145,11 +145,11 @@ const CaptureData = (() => {
   const RECORD = [
     { id: 'quick', label: 'Quick: window, 30 fps, good quality', fps: 30, mbps: 8, size: 'native', audio: 'none' },
     { id: 'smooth', label: 'Smooth: 60 fps, high quality', fps: 60, mbps: 16, size: 'native', audio: 'none' },
-    { id: 'promo', label: 'Promo: 60 fps, very high quality, MP4, clicks shown', fps: 60, mbps: 30, size: 'native', audio: 'app', cursor: 'ring', clicks: 'ring', mp4: true },
-    { id: 'reel', label: 'Reel: 9:16 1080×1920, 60 fps, MP4', fps: 60, mbps: 20, size: '9:16', audio: 'app', mp4: true },
-    { id: 'square', label: 'Square post: 1080×1080, 30 fps, MP4', fps: 30, mbps: 14, size: '1:1', audio: 'app', mp4: true },
-    { id: 'feed', label: 'Feed: 4:5 1080×1350, 30 fps, MP4', fps: 30, mbps: 14, size: '4:5', audio: 'app', mp4: true },
-    { id: 'youtube', label: 'YouTube: 1920×1080, 60 fps, MP4', fps: 60, mbps: 20, size: '1080p', audio: 'app', mp4: true },
+    { id: 'promo', label: 'Promo: 60 fps, very high quality, MP4, clicks shown', fps: 60, mbps: 30, size: 'native', audio: 'app', cursor: 'ring', clicks: 'ring', mp4: true, clean: true },
+    { id: 'reel', label: 'Reel: 9:16 1080×1920, 60 fps, MP4', fps: 60, mbps: 20, size: '9:16', audio: 'app', mp4: true, clean: true },
+    { id: 'square', label: 'Square post: 1080×1080, 30 fps, MP4', fps: 30, mbps: 14, size: '1:1', audio: 'app', mp4: true, clean: true },
+    { id: 'feed', label: 'Feed: 4:5 1080×1350, 30 fps, MP4', fps: 30, mbps: 14, size: '4:5', audio: 'app', mp4: true, clean: true },
+    { id: 'youtube', label: 'YouTube: 1920×1080, 60 fps, MP4', fps: 60, mbps: 20, size: '1080p', audio: 'app', mp4: true, clean: true },
     { id: 'tutorial', label: 'Tutorial: cursor, clicks and keys shown, voice', fps: 30, mbps: 8, size: 'native', audio: 'app+mic', cursor: 'halo', clicks: 'ring', keys: true },
     { id: 'voice', label: 'Voice-over: your microphone only', fps: 30, mbps: 8, size: 'native', audio: 'mic' },
     { id: 'draft', label: 'Draft: small file, 24 fps', fps: 24, mbps: 3, size: '720p', audio: 'none' },
@@ -157,7 +157,7 @@ const CaptureData = (() => {
     { id: 'master', label: 'Master: 60 fps, near lossless (big files)', fps: 60, mbps: 50, size: 'native', audio: 'app' },
     { id: 'lab', label: 'Lab preview only, 60 fps', fps: 60, mbps: 20, size: 'native', audio: 'app', target: 'lab' },
     { id: 'chat', label: 'The chat only, 30 fps', fps: 30, mbps: 8, size: 'native', audio: 'none', target: 'chat' },
-    { id: 'cinema', label: 'Cinematic 24 fps, 21:9', fps: 24, mbps: 16, size: '21:9', audio: 'app', mp4: true },
+    { id: 'cinema', label: 'Cinematic 24 fps, 21:9', fps: 24, mbps: 16, size: '21:9', audio: 'app', mp4: true, clean: true },
   ];
   const QUALITY = [{ id: 'draft', label: 'Draft', mbps: 3 }, { id: 'good', label: 'Good', mbps: 8 }, { id: 'high', label: 'High', mbps: 16 }, { id: 'very', label: 'Very high', mbps: 30 }, { id: 'master', label: 'Master', mbps: 50 }];
   const FPS = [15, 24, 25, 30, 50, 60];

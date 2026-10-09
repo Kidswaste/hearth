@@ -397,7 +397,9 @@ async function sheet(file, { cols = 4, rows, count, from, to, width = 1600 } = {
 function convert(input, output, { mp4 = false, fps = null, crf = 18, onProgress, duration } = {}) {
   const { ffmpeg } = need();
   const args = ['-v', 'error', '-y', '-i', input];
-  if (mp4) args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', String(crf), '-pix_fmt', 'yuv420p', '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', ...(fps ? ['-r', String(fps)] : []), '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart');
+  // the page capture sends frames only when something changed: a constant-rate MP4 repeats them, cut at the real length
+  if (mp4 && duration) args.push('-t', String(duration));
+  if (mp4) args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', String(crf), '-pix_fmt', 'yuv420p', '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', ...(fps ? ['-r', String(fps), '-fps_mode', 'cfr'] : []), '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart');
   else args.push('-c', 'copy');
   args.push('-progress', 'pipe:1', '-nostats', output);
   return new Promise((resolve, reject) => {
