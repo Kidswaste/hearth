@@ -342,9 +342,12 @@ const NodeView = (() => {
     const nodesLayer = el('div', { class: 'nv-nodes' });
     const framesLayer = el('div', { class: 'nv-frames' });
     const wires = svg('svg', { class: 'nv-wires', width: '1', height: '1' });
+    // the flowing dots of live wires on their own layer: their animation repaints only this, not every wire (with
+    // its glow) under it
+    const flows = svg('svg', { class: 'nv-wires nv-flows', width: '1', height: '1' });
     const tempWire = svg('path', { class: 'nv-wire temp' });
     const boxSel = el('div', { class: 'nv-boxsel', hidden: true });
-    const canvas = el('div', { class: 'nv-canvas' }, framesLayer, wires, nodesLayer);
+    const canvas = el('div', { class: 'nv-canvas' }, framesLayer, wires, flows, nodesLayer);
     const mini = el('canvas', { class: 'nv-minimap', width: 180, height: 112, title: 'Minimap: click or drag to move the view' });
     const zoomLbl = el('button', { class: 'nv-hud-btn nv-zoom', title: 'Zoom: click for 100%, double-click to fit (F)', text: '100%' });
     const status = el('div', { class: 'nv-status' });
@@ -355,7 +358,10 @@ const NodeView = (() => {
     const extraBtns = hudExtra.filter(Boolean).map((b) => { const x = el('button', { class: `nv-hud-btn ${b.cls || ''}`, text: b.text, title: b.title || '' }); x.addEventListener('click', () => b.run?.(api, x)); return x; });
     const roPill = el('span', { class: 'nv-ro-pill', text: 'read-only', title: 'This graph can be looked at, not changed', hidden: true });
     const hud = el('div', { class: 'nv-hud' }, addBtn, moreBtn, ...extraBtns, zoomLbl, roPill, searchBox);
-    const root = el('div', { class: 'nv', tabIndex: 0 }, canvas, boxSel, hud, mini, status);
+    // the dotted grid on its own layer: panning slides it with a transform (the grid used to be the root's background,
+    // repainted and re-rastered over the whole editor on every frame of a pan)
+    const grid = el('div', { class: 'nv-grid' });
+    const root = el('div', { class: 'nv', tabIndex: 0 }, grid, canvas, boxSel, hud, mini, status);
     // run status per node (adapters that run steps: queued · running · ok · warn · error · skip) and badges
     const runState = new Map(); // id → { state, text, pct }
     container.append(root);
@@ -365,12 +371,25 @@ const NodeView = (() => {
     const rect = () => root.getBoundingClientRect();
     const toGraph = (cx, cy) => { const r = rect(); return { x: (cx - r.left - view.x) / view.z, y: (cy - r.top - view.y) / view.z }; };
     const snapV = (v) => (snap ? Math.round(v / GRID) * GRID : v);
+    // Pointer moves and wheel steps come faster than frames: the view is applied once per frame.
+    let viewRaf = 0; let gridZ = 0;
     function applyView() {
+      if (!viewRaf) viewRaf = requestAnimationFrame(applyViewNow);
+    }
+    function applyViewNow() {
+      cancelAnimationFrame(viewRaf); viewRaf = 0;
       canvas.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.z})`;
-      root.style.backgroundPosition = `${view.x}px ${view.y}px`;
-      root.style.backgroundSize = `${GRID * view.z * 4}px ${GRID * view.z * 4}px, ${GRID * view.z * 4}px ${GRID * view.z * 4}px, ${GRID * view.z}px ${GRID * view.z}px, ${GRID * view.z}px ${GRID * view.z}px`;
+      const big = GRID * view.z * 4; const small = GRID * view.z;
+      if (gridZ !== view.z) { // the grid's scale changes with the zoom only
+        gridZ = view.z;
+        grid.style.backgroundSize = `${big}px ${big}px, ${big}px ${big}px, ${small}px ${small}px, ${small}px ${small}px`;
+        grid.style.width = `calc(100% + ${big}px)`; grid.style.height = `calc(100% + ${big}px)`;
+      }
+      const mod = (v) => ((v % big) + big) % big;
+      grid.style.transform = `translate3d(${mod(view.x) - big}px, ${mod(view.y) - big}px, 0)`;
       root.classList.toggle('nv-far', view.z < 0.42);
-      zoomLbl.textContent = `${Math.round(view.z * 100)}%`;
+      const zl = `${Math.round(view.z * 100)}%`;
+      if (zoomLbl.textContent !== zl) zoomLbl.textContent = zl;
       drawMiniSoon();
     }
     function zoomAt(cx, cy, z) {
@@ -521,8 +540,15 @@ const NodeView = (() => {
       return p ? { x: n.x + p[0], y: n.y + p[1] } : { x: n.x + (dir === 'out' ? P.w : 0), y: n.y + 14 };
     }
     const wirePath = (a, b) => { const dx = Math.max(36, Math.abs(b.x - a.x) * 0.5); return `M${a.x} ${a.y}C${a.x + dx} ${a.y} ${b.x - dx} ${b.y} ${b.x} ${b.y}`; };
+    // Wires are patched in place: dragging a node rewrites only its own wires' paths (every wire was rebuilt from
+    // scratch each frame before: with 100+ nodes that was most of the drag's time).
+    let wireEls = []; // per link: { key, g, hit, wire, flow, d }
+    const setAttr = (n, k, v) => { if (n.getAttribute(k) !== v) n.setAttribute(k, v); };
+    const sameKids = (box, list, tail) => box.childNodes.length === list.length + (tail ? 1 : 0) && list.every((n, i) => box.childNodes[i] === n) && (!tail || box.lastChild === tail);
     function drawWires() {
-      const frag = document.createDocumentFragment();
+      const next = [];
+      const pool = new Map(); // the wires drawn last time, by what they connect
+      for (const w of wireEls) { if (!pool.has(w.key)) pool.set(w.key, []); pool.get(w.key).push(w); }
       graph.links.forEach((l, i) => {
         const a = portPos(l.from[0], l.from[1], 'out'); const b = portPos(l.to[0], l.to[1], 'in');
         if (!a || !b) return;
@@ -531,12 +557,21 @@ const NodeView = (() => {
         const isLive = live && dynamic.has(`${l.from[0]}.${l.from[1]}`);
         // a wire into a running step flows too, and one out of a finished step stays lit
         const isRun = runState.get(l.to[0])?.state === 'running' && runState.get(l.from[0])?.state === 'ok';
-        const g = svg('g', { class: `nv-link${selWire === i ? ' sel' : ''}${isLive || isRun ? ' live' : ''}${isRun ? ' run' : ''}${hoverId && (l.from[0] === hoverId || l.to[0] === hoverId) ? ' hl' : ''}`, 'data-link': String(i), 'data-a': l.from[0], 'data-b': l.to[0], style: `--pc:${reg.typeColor(t)}` });
-        g.append(svg('path', { class: 'nv-wire-hit', d }), svg('path', { class: 'nv-wire', d }));
-        if (isLive || isRun) g.append(svg('path', { class: 'nv-wire-flow', d }));
-        frag.append(g);
+        const key = `${l.from[0]}.${l.from[1]}>${l.to[0]}.${l.to[1]}`;
+        let w = pool.get(key)?.shift() || null;
+        if (!w) { w = { key, g: svg('g', {}), hit: svg('path', { class: 'nv-wire-hit' }), wire: svg('path', { class: 'nv-wire' }), flow: null, d: '' }; w.g.append(w.hit, w.wire); }
+        setAttr(w.g, 'class', `nv-link${selWire === i ? ' sel' : ''}${isLive || isRun ? ' live' : ''}${isRun ? ' run' : ''}${hoverId && (l.from[0] === hoverId || l.to[0] === hoverId) ? ' hl' : ''}`);
+        setAttr(w.g, 'data-link', String(i)); setAttr(w.g, 'data-a', l.from[0]); setAttr(w.g, 'data-b', l.to[0]);
+        setAttr(w.g, 'style', `--pc:${reg.typeColor(t)}`);
+        if (isLive || isRun) { if (!w.flow) w.flow = svg('path', { class: 'nv-wire-flow' }); } else w.flow = null;
+        if (w.d !== d) { w.d = d; w.hit.setAttribute('d', d); w.wire.setAttribute('d', d); }
+        if (w.flow) setAttr(w.flow, 'd', d);
+        next.push(w);
       });
-      wires.replaceChildren(frag, tempWire);
+      wireEls = next;
+      const gs = next.map((w) => w.g); const fs = next.filter((w) => w.flow).map((w) => w.flow);
+      if (!sameKids(wires, gs, tempWire)) wires.replaceChildren(...gs, tempWire);
+      if (!sameKids(flows, fs)) flows.replaceChildren(...fs);
     }
     // hovering a node lights up its wires (what feeds it and what it feeds); the others dim
     let hoverId = null;
@@ -835,9 +870,14 @@ const NodeView = (() => {
       if (drag?.kind === 'pan' && drag.moved) return;
       contextMenu(e);
     });
+    // While you pan, zoom or drag, the flowing dots hold still (.nv-moving): animating every live wire on top of
+    // moving the view halved the frame rate with 100+ flowing wires. They flow on as soon as you let go.
+    let movingT = 0;
+    const moving = (ms = 0) => { clearTimeout(movingT); if (!root.classList.contains('nv-moving')) root.classList.add('nv-moving'); if (ms) movingT = setTimeout(() => root.classList.remove('nv-moving'), ms); };
     root.addEventListener('pointermove', (e) => {
       lastPointer = { cx: e.clientX, cy: e.clientY };
       if (!drag) return;
+      if (drag.kind === 'pan' || drag.kind === 'move') moving();
       if (drag.kind === 'pan') {
         const dx = e.clientX - drag.x0; const dy = e.clientY - drag.y0;
         if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
@@ -885,6 +925,7 @@ const NodeView = (() => {
     root.addEventListener('pointerup', (e) => {
       const d = drag;
       drag = null;
+      if (root.classList.contains('nv-moving')) moving(120);
       if (!d) return;
       if (d.kind === 'move') {
         if (d.moved) commit('move'); else if (d.clickSelect) { sel.clear(); sel.add(d.clickSelect); paintSelection(); }
@@ -896,6 +937,7 @@ const NodeView = (() => {
     root.addEventListener('wheel', (e) => {
       if (e.target.closest('.nv-picker, .nv-menu, textarea')) return;
       e.preventDefault();
+      moving(200);
       const trackpad = !e.ctrlKey && (Math.abs(e.deltaX) > 0 || (e.deltaMode === 0 && Math.abs(e.deltaY) < 40 && !Number.isInteger(e.deltaY)));
       if (trackpad || e.shiftKey) { view.x -= e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX; view.y -= e.shiftKey && !e.deltaX ? 0 : e.deltaY; applyView(); return; }
       zoomAt(e.clientX, e.clientY, view.z * Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)));
@@ -1462,12 +1504,12 @@ const NodeView = (() => {
       for (const s of root.querySelectorAll('.nv-live')) {
         const v = values[s.dataset.k];
         if (v === undefined) { if (s.textContent) { s.textContent = ''; s.style.removeProperty('--lv'); } continue; }
-        s.textContent = fmt(v);
-        if (isNum(v)) s.style.setProperty('--lv', `${clamp(Math.abs(v), 0, 1) * 100}%`);
+        const t = fmt(v); if (s.textContent !== t) s.textContent = t; // live values arrive many times a second
+        if (isNum(v)) { const lv = `${clamp(Math.abs(v), 0, 1) * 100}%`; if (s.style.getPropertyValue('--lv') !== lv) s.style.setProperty('--lv', lv); }
       }
     }
 
-    applyView();
+    applyViewNow();
     renderAll();
     requestAnimationFrame(() => { if (graph.nodes.length) fit(null, { maxZoom: 1, minZoom: 0.5 }); });
 

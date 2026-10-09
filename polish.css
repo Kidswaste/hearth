@@ -44,7 +44,7 @@ html[data-skin~="swirl"] { --r-sm: 6px; --r-md: 9px; --r-lg: 14px; --r-pill: 999
   *, *::before, *::after { animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
 }
 /* calm motion: the new UI's ambient loops rest too (wires, meter, recording blinks keep a still "on" state) */
-:root[data-motion=calm] .nv-wire-flow, :root[data-motion=calm] .meter-strip.is-live::before, :root[data-motion=calm] .meter-pill.is-live .mp-dot,
+:root[data-motion=calm] .nv-wire-flow, :root[data-motion=calm] .meter-strip.is-live::before, :root[data-motion=calm] .meter-pill.is-live .mp-dot, :root[data-motion=calm] .meter-pill.is-live .mp-dot::before,
 :root[data-motion=calm] .ms-live.is-live::first-letter, :root[data-motion=calm] .stream-status::before, :root[data-motion=calm] .m-working::after,
 :root[data-motion=calm] .msg.assistant.streaming::after, :root[data-motion=calm] .msg.streaming .tool-chips::after { animation: none !important; }
 :root[data-motion=calm] .nv-wire-flow { opacity: .25; }
@@ -697,3 +697,19 @@ svg.hi { width: 1em; height: 1em; display: block; flex: none; overflow: visible;
 :root:not([data-tex="off"]) :is(#rail, .tabbar, .tool-head, .native-head) {
   --tx-noise: var(--tx-noise-src); --tx-brushed: var(--tx-brushed-src); --tx-brushed-v: var(--tx-brushed-v-src);
 }
+/* ---------- smooth (round 5): no backdrop blur over things that move ----------
+   A backdrop-filter re-blurs whatever is behind it on every frame that content changes: over a playing video, the
+   live Lab picture, flowing node wires or a chat that scrolls / streams, that was a full-size blur per frame for a
+   small panel. These stay on their own (already dark, translucent) backgrounds; menus and dialogs keep their glass. */
+:is(.nv-hud-btn, .tn-switch, .nv-minimap, .vf-wait, .vr-scopes, .scene-tag, .ed-panel, .fg-watch, .jump-bottom, .pinned-strip, .chat-find),
+.three-preview :is(.present-hint, .present-hud) { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+/* Rainbows that never turned: --rainbow / --sw-swirl are worked out once on the root, where their var(--fh-spin) /
+   var(--sw-turn) is 0deg, so animating the angle on these elements changed nothing on screen and only restyled them
+   every frame (at idle too: the composer's line runs whenever it has the cursor). They look exactly as before. */
+html[data-skin~="forge"] :is(#rail, #broadcast, .msg.assistant.streaming, .palette-card)::before,
+html[data-skin~="forge"] .composer-box:focus-within::after,
+html[data-skin~="swirl"] :is(#rail, .agent-btn.active, .item.active, .primary, #broadcast button, .msg.assistant.streaming)::before,
+:root[data-look~=v2] .meter-strip.is-live::before { animation: none !important; }
+/* the chat list is sized by its flex parent, never by its messages: contained, a streaming reply lays out only the
+   list, not the window around it (the docked director chat sits beside the playing Lab) */
+.messages-wrap > .messages { contain: strict; }

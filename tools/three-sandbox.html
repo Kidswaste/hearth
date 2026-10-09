@@ -3247,13 +3247,26 @@ function testCard(c) {
   for (let i = 0; i < 6; i += 1) { g.beginPath(); g.moveTo(0, H * (0.75 + i * 0.05)); g.lineTo(W, H * (0.7 + i * 0.06)); g.stroke(); }
   g.fillStyle = '#000'; g.font = `bold ${Math.round(H / 4)}px sans-serif`; g.fillText('FX', W * 0.6, H * 0.55);
 }
+// One renderer serves a run of thumbnails (the FX picker asks in small batches while you scroll): a new WebGL context
+// per batch stalled the live preview each time. It's let go 3 s after the last batch.
+let thumbR = null;
+function dropThumbR() { if (!thumbR) return; clearTimeout(thumbR.timer); try { thumbR.renderer.dispose(); thumbR.renderer.forceContextLoss(); } catch {} renderers.delete(thumbR.renderer); thumbR = null; }
 function withThumbRenderer(w, h, fn) {
-  const canvas = document.createElement('canvas');
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: true });
-  renderer.__keepClear = true;
-  renderer.setPixelRatio(1); renderer.setSize(w, h, false);
-  renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
-  try { return fn(renderer, canvas); } finally { renderer.dispose(); renderer.forceContextLoss(); renderers.delete(renderer); }
+  if (!thumbR || thumbR.w !== w || thumbR.h !== h) {
+    dropThumbR();
+    const canvas = document.createElement('canvas');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: true });
+    renderer.__keepClear = true;
+    renderer.setPixelRatio(1); renderer.setSize(w, h, false);
+    renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+    thumbR = { renderer, canvas, w, h, timer: 0 };
+  }
+  const { renderer, canvas } = thumbR;
+  clearTimeout(thumbR.timer);
+  try { return fn(renderer, canvas); } finally {
+    renderers.delete(renderer); [...layers.values()].forEach((L) => L.renderers.delete(renderer)); // never part of a sketch
+    thumbR.timer = realSetTimeout(dropThumbR, 3000);
+  }
 }
 filter.thumbs = (list = [], w = 120, h = 80, { card = false } = {}) => withThumbRenderer(w, h, (renderer, canvas) => {
   const src = document.createElement('canvas'); src.width = w; src.height = h;

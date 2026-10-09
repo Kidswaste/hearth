@@ -255,11 +255,11 @@ const Review = (() => {
           const frames = hoverStrips.get(keyOf(v));
           const r = img.getBoundingClientRect();
           const x = clamp((e.clientX - r.left) / r.width, 0, 0.999);
-          scrubBar.style.width = `${x * 100}%`;
-          if (frames) img.src = frames[Math.floor(x * frames.length)];
+          scrubBar.style.transform = `scaleX(${x.toFixed(3)})`; // a transform: no layout per pointer move
+          if (frames) { const src = frames[Math.floor(x * frames.length)]; if (img.getAttribute('src') !== src) img.src = src; }
           else if (!node.dataset.asked) { node.dataset.asked = '1'; enqueue({ kind: 'strip', v }, true); }
         },
-        pointerleave: () => { scrubBar.style.width = '0'; if (thumbs.has(keyOf(v))) img.src = thumbs.get(keyOf(v)); },
+        pointerleave: () => { scrubBar.style.transform = ''; if (thumbs.has(keyOf(v)) && img.getAttribute('src') !== thumbs.get(keyOf(v))) img.src = thumbs.get(keyOf(v)); },
       },
     },
     el('span', { class: 'vr-thumb-wrap' }, img, scrubBar,
@@ -455,10 +455,38 @@ const Review = (() => {
       const lo = Math.min(a, b ?? dur()); const hi = Math.max(a, b ?? dur());
       S.loop = { a: clamp(lo, 0, dur()), b: clamp(hi, 0, dur()), on: true };
     }
-    renderMarkers(); drawTimeline();
+    drawTimelineSoon(); // a loop drag calls this per pointer move: one redraw per frame (the note markers don't change)
     refs.loopBtn.classList.toggle('on', S.loop.a != null && S.loop.on);
   }
   let lastTick = 0;
+  // The playhead glides on the compositor: while the video plays it gets one linear animation to the end of the clip,
+  // so it moves at the screen's refresh rate even when the main thread is busy. JS only restarts it when the width,
+  // the speed or the play state changes, or when it drifted more than 2 px from the video (a seek, a loop jump).
+  // Before: `left: x%` written every frame (a layout of the whole player per frame).
+  let tlW = 0; let headX = NaN; let headAnim = null; let headKey = ''; let headX0 = 0; let headX1 = 0;
+  function placeHead(d, D) {
+    const rate = d.playbackRate || 1;
+    // on the frame's clock (what the animation runs on), not "now"
+    const lag = d.paused ? 0 : ((performance.now() - (document.timeline.currentTime ?? performance.now())) / 1000) * rate;
+    const t = Math.max(0, d.currentTime - lag);
+    const W = tlW;
+    const x = D && W ? (t / D) * W : 0;
+    const moving = !d.paused && S.shuttle >= 0 && D > 0 && W > 0 && !d.seeking && (D - t) / rate > 0.05;
+    const set = (px) => { headX = px; refs.head.style.transform = `translate3d(${px.toFixed(2)}px, 0, 0)`; };
+    if (!moving) {
+      if (headAnim) { headAnim.cancel(); headAnim = null; headX = NaN; }
+      if (Math.abs(headX - x) > 0.25 || Number.isNaN(headX)) set(x);
+      return;
+    }
+    const key = `${W}|${rate}|${D}`;
+    const at = headAnim ? headX0 + (headX1 - headX0) * (headAnim.effect.getComputedTiming().progress ?? 0) : NaN;
+    if (headAnim && headKey === key && Math.abs(at - x) <= 2) return;
+    headAnim?.cancel();
+    set(x);
+    headAnim = refs.head.animate([{ transform: `translate3d(${x.toFixed(2)}px, 0, 0)` }, { transform: `translate3d(${W.toFixed(2)}px, 0, 0)` }], { duration: ((D - t) / rate) * 1000, easing: 'linear', fill: 'forwards' });
+    headAnim.startTime = document.timeline.currentTime; // start at x now, not when it's first drawn
+    headKey = key; headX0 = x; headX1 = W;
+  }
   const onScreen = () => (refs.root.checkVisibility ? refs.root.checkVisibility({ visibilityProperty: true }) : Boolean(refs.root.offsetParent));
   function tick(now) {
     if (!refs.video?.isConnected) return;
@@ -471,11 +499,16 @@ const Review = (() => {
     if (S.shuttle < 0 && lastTick) { const t = d.currentTime + (S.shuttle * (now - lastTick)) / 1000; if (t <= (S.loop.on && S.loop.a != null ? S.loop.a : 0) && !S.pingpong) { seek(S.loop.on && S.loop.b != null ? S.loop.b : D); } else seek(t); }
     lastTick = now;
     // only real changes touch the DOM (a paused player used to rewrite these every frame: style + observers)
-    const left = D ? `${(d.currentTime / D) * 100}%` : '0';
-    if (refs.head.dataset.left !== left) { refs.head.dataset.left = left; refs.head.style.left = left; }
+    placeHead(d, D);
     if (document.activeElement !== refs.time) { const v = fmtTime(d.currentTime); if (refs.time.value !== v) refs.time.value = v; }
     const total = `/ ${fmtTime(D)}${S.timeMode === 'frames' ? '' : `  · f${frameNow()}`}`;
-    if (refs.timeTotal.textContent !== total) refs.timeTotal.textContent = total;
+    if (refs.timeTotal.textContent !== total) {
+      // its width (in ch, monospace) only changes with the text's length: the per-frame text change then lays out
+      // this span alone (it's size-contained), not the transport row
+      const chars = total.replace(/\s+/g, ' ').length; // as rendered (nowrap collapses the double space)
+      if (refs.timeTotal.textContent.replace(/\s+/g, ' ').length !== chars || !refs.timeTotal.style.width) refs.timeTotal.style.width = `${chars}ch`;
+      refs.timeTotal.textContent = total;
+    }
     const icon = d.paused && S.shuttle <= 0 ? '▶' : '❚❚';
     if (refs.play.textContent !== icon) refs.play.textContent = icon;
     const { a, b, on: lo } = S.loop;
@@ -862,15 +895,19 @@ const Review = (() => {
     } catch { audioCache.set(key, null); /* no audio track */ }
   }
   const RULER = 14;
+  let tlRaf = 0;
+  const drawTimelineSoon = () => { if (!tlRaf) tlRaf = requestAnimationFrame(() => { tlRaf = 0; drawTimeline(); }); };
   function drawTimeline() {
     const c = refs.tl;
     if (!c?.isConnected) return;
+    if (tlRaf) { cancelAnimationFrame(tlRaf); tlRaf = 0; }
     const dpr = devicePixelRatio || 1;
     const W = c.clientWidth; const Hh = c.clientHeight;
     if (!W) return;
-    c.width = Math.round(W * dpr); c.height = Math.round(Hh * dpr);
+    // resize the backing store only when the size changed (setting width reallocates it, even to the same value)
+    if (c.width !== Math.round(W * dpr) || c.height !== Math.round(Hh * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(Hh * dpr); }
     const g = c.getContext('2d');
-    g.scale(dpr, dpr);
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.fillStyle = '#07080a'; g.fillRect(0, 0, W, Hh);
     const D = dur();
     // filmstrip, faint
@@ -908,7 +945,8 @@ const Review = (() => {
       g.fillStyle = S.loop.on ? '#ffd75e30' : '#ffffff14'; g.fillRect(x0, 0, x1 - x0, Hh);
       g.fillStyle = S.loop.on ? '#ffd75e' : '#888'; g.fillRect(x0, 0, x1 - x0, 3); g.fillRect(x0, 0, 2, Hh); g.fillRect(x1 - 2, 0, 2, Hh);
     }
-    refs.bpm.textContent = a?.bpm ? `${a.bpm} bpm · ${a.beats.length} beats` : '';
+    const bpmText = a?.bpm ? `${a.bpm} bpm · ${a.beats.length} beats` : '';
+    if (refs.bpm.textContent !== bpmText) refs.bpm.textContent = bpmText;
   }
   function renderMarkers() {
     const D = dur();
@@ -943,7 +981,9 @@ const Review = (() => {
         if (mode === 'new') { S.loop = { a: t0, b: t0, on: true }; }
       } else {
         pause(); seek(t0);
-        mv = (ev) => seek(timeAt(ev));
+        // one seek per frame however fast the pointer events come (each seek starts a decode)
+        let want = null; let raf = 0;
+        mv = (ev) => { want = timeAt(ev); if (!raf) raf = requestAnimationFrame(() => { raf = 0; if (want != null) seek(want); want = null; }); };
       }
       box.addEventListener('pointermove', mv);
       box.addEventListener('pointerup', () => {
@@ -956,12 +996,14 @@ const Review = (() => {
       const t = timeAt(e);
       const r = box.getBoundingClientRect();
       const f = S.strip.length ? S.strip.reduce((a, b) => (Math.abs(b.t - t) < Math.abs(a.t - t) ? b : a)) : null;
-      refs.hover.hidden = false;
-      refs.hover.style.left = `${clamp(e.clientX - r.left, 50, r.width - 50)}px`;
-      refs.hoverImg.hidden = !f;
-      if (f) refs.hoverImg.src = f.url;
+      // moved with a transform and only what changed is written (the frame picture changes ~24 times across the clip)
+      if (refs.hover.hidden) refs.hover.hidden = false;
+      refs.hover.style.transform = `translate3d(${clamp(e.clientX - r.left, 50, r.width - 50)}px, 0, 0) translate(-50%, -100%)`;
+      if (refs.hoverImg.hidden !== !f) refs.hoverImg.hidden = !f;
+      if (f && refs.hoverImg.getAttribute('src') !== f.url) refs.hoverImg.src = f.url;
       const beat = S.audio?.beats ? S.audio.beats.findIndex((b) => b > t) : -1;
-      refs.hoverTc.textContent = `${tc(t)}${beat > 0 ? ` · beat ${beat}` : ''}`;
+      const label = `${tc(t)}${beat > 0 ? ` · beat ${beat}` : ''}`;
+      if (refs.hoverTc.textContent !== label) refs.hoverTc.textContent = label;
     });
     box.addEventListener('pointerleave', () => { refs.hover.hidden = true; });
     box.addEventListener('dblclick', (e) => {
@@ -1509,7 +1551,7 @@ const Review = (() => {
     refs.hover = el('div', { class: 'vr-hover', hidden: true }, refs.hoverImg, refs.hoverTc);
     const tlBox = el('div', { class: 'vr-timeline', title: 'Drag to scrub · drag the top strip to set a loop · double-click a section to loop it' }, refs.tl, refs.markers, refs.head, refs.hover);
     timelineEvents(tlBox);
-    new ResizeObserver(() => { drawTimeline(); applyZoom(); }).observe(tlBox);
+    new ResizeObserver(() => { tlW = tlBox.clientWidth; headX = NaN; drawTimeline(); applyZoom(); }).observe(tlBox);
 
     // transport
     refs.play = el('button', { class: 'vr-play', text: '▶', title: 'Play / pause (Space)', on: { click: togglePlay } });
@@ -1574,6 +1616,13 @@ const Review = (() => {
     root.tabIndex = -1;
     vid().addEventListener('seeked', () => { scopesDirty = true; });
     vid().addEventListener('pause', () => { scopesDirty = true; });
+    // a loop that ends at the clip's end: when a frame comes late the video can reach its end before the per-frame
+    // check sends it back, and it stopped there; it loops on instead
+    vid().addEventListener('ended', () => {
+      const { a, on } = S.loop;
+      if (!on || a == null || S.shuttle) return;
+      if (S.pingpong) { refs.cmp.pause(); S.shuttle = -Number(refs.speed.value || 1); } else { seek(a); play(); }
+    });
     requestAnimationFrame(tick);
     window.hub.video?.tools(ffOverrides()).then((t) => { S.tools = t; });
     load();

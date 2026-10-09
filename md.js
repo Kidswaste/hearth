@@ -150,5 +150,17 @@
     return out.join('');
   }
 
-  window.renderMarkdown = renderMarkdown;
+  // Finished messages are rendered again on every chat switch / redraw: the same text gives the same HTML, so recent
+  // results are kept (a long chat re-opens without re-parsing hundreds of replies). Small texts aren't worth it.
+  const mdCache = new Map();
+  function renderMarkdownCached(src) {
+    if (typeof src !== 'string' || src.length < 200) return renderMarkdown(src);
+    const hit = mdCache.get(src);
+    if (hit !== undefined) { mdCache.delete(src); mdCache.set(src, hit); return hit; }
+    const html = renderMarkdown(src);
+    mdCache.set(src, html);
+    if (mdCache.size > 600) mdCache.delete(mdCache.keys().next().value);
+    return html;
+  }
+  window.renderMarkdown = renderMarkdownCached;
 })();

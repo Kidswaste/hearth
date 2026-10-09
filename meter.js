@@ -328,13 +328,18 @@ const Meter = (() => {
     const r = readings();
     // the pill: today's total, rainbow while live, budget colors
     const today = tot(r._today);
-    pill.querySelector('.mp-num').textContent = live.size ? fmt([...live.values()].reduce((s, l) => s + estimate(l), 0)) : fmt(today);
+    // (only what changed is written: this runs ~8× a second while a reply streams, beside a playing Lab)
+    const num = pill.querySelector('.mp-num');
+    const numText = live.size ? fmt([...live.values()].reduce((s, l) => s + estimate(l), 0)) : fmt(today);
+    if (num.textContent !== numText) num.textContent = numText;
     pill.classList.toggle('is-live', live.size > 0);
     pill.classList.toggle('b-warn', budgetState() === 'warn');
     pill.classList.toggle('b-over', budgetState() === 'over');
     const budgetTotal = Object.values(prefs.budgets).reduce((s, b) => s + (b || 0), 0);
-    pill.style.setProperty('--fill', `${Math.min(100, budgetTotal ? pct(today, budgetTotal) : pct(r._ctx, r._win))}%`);
-    pill.title = `${live.size ? 'Streaming now · ' : ''}Tokens today: ${full(today)}${budgetTotal ? ` of ${fmt(budgetTotal)} budget` : ''} · click for the dashboard · right-click for options`;
+    const fill = `${Math.min(100, budgetTotal ? pct(today, budgetTotal) : pct(r._ctx, r._win))}%`;
+    if (pill.style.getPropertyValue('--fill') !== fill) pill.style.setProperty('--fill', fill);
+    const pillTitle = `${live.size ? 'Streaming now · ' : ''}Tokens today: ${full(today)}${budgetTotal ? ` of ${fmt(budgetTotal)} budget` : ''} · click for the dashboard · right-click for options`;
+    if (pill.title !== pillTitle) pill.title = pillTitle;
     if (strip.hidden) return;
     const sig = JSON.stringify([prefs.fields, Object.entries(r).filter(([k]) => !k.startsWith('_')).map(([, v]) => v), live.size]);
     if (!force && sig === painted) return;

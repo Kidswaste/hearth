@@ -170,11 +170,12 @@ async function cdpConnect() {
         const done = new Promise((r) => { traceDone = r; });
         await send('Tracing.end'); await done;
         const paints = traceEvents.filter((e) => e.name === 'Paint' && e.args?.data?.clip);
-        const area = (q) => Math.abs((q[2] - q[0]) * (q[5] - q[1]));
+        const c = (n) => Math.max(0, Math.min(4096, n)); // a layer's clip can be 'infinite' (2^25 px): count what can be on screen
+        const area = (q) => Math.abs((c(q[2]) - c(q[0])) * (c(q[5]) - c(q[1])));
         const byLayer = {};
         for (const e of paints) { const k = `layer ${e.args.data.layerId ?? '?'} node ${e.args.data.nodeId ?? '?'}`; const b = byLayer[k] ||= { n: 0, px: 0, ms: 0 }; b.n++; b.px += area(e.args.data.clip); b.ms += (e.dur || 0) / 1000; }
         const sum = (name) => traceEvents.filter((e) => e.name === name).reduce((a, e) => a + (e.dur || 0) / 1000, 0);
-        result = { paints: paints.length, paintedPx: Math.round(paints.reduce((a, e) => a + area(e.args.data.clip), 0)), paintMs: Math.round(sum('Paint')), rasterMs: Math.round(sum('RasterTask')), layerizeMs: Math.round(sum('Layerize')), styleMs: Math.round(sum('UpdateLayoutTree')), layoutMs: Math.round(sum('Layout')),
+        result = { paints: paints.length, paintedPx: Math.round(paints.reduce((a, e) => a + area(e.args.data.clip), 0)), paintMs: Math.round(sum('Paint')), rasterMs: Math.round(sum('RasterTask')), layerizeMs: Math.round(sum('Layerize')), styleMs: Math.round(sum('UpdateLayoutTree')), layoutMs: Math.round(sum('Layout')), layouts: traceEvents.filter((e) => e.name === 'Layout').length, layoutObjects: traceEvents.filter((e) => e.name === 'Layout').reduce((a, e) => a + (e.args?.beginData?.dirtyObjects || 0), 0), styles: traceEvents.filter((e) => e.name === 'UpdateLayoutTree').length,
           top: Object.entries(byLayer).sort((a, b) => b[1].px - a[1].px).slice(0, 8).map(([k, v]) => `${k}: ${v.n}× ${Math.round(v.px / 1000)}k px ${Math.round(v.ms)} ms`) };
       } else if (req.shot) {
         const img = await send('Page.captureScreenshot', { format: 'png' });

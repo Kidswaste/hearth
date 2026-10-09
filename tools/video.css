@@ -33,7 +33,7 @@
 .vr-thumb-wrap { position: relative; width: 74px; height: 58px; background: #000; overflow: hidden; border-radius: 5px; display: grid; place-items: center; }
 .vr-thumb { max-width: 100%; max-height: 100%; object-fit: contain; }
 .vr-thumb:not([src]), .vr-thumb.nothumb { opacity: 0; }
-.vr-scrubbar { position: absolute; left: 0; bottom: 0; height: 2px; width: 0; background: var(--vr-gold); box-shadow: 0 0 6px var(--vr-gold); }
+.vr-scrubbar { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; transform: scaleX(0); transform-origin: left; background: var(--vr-gold); box-shadow: 0 0 6px var(--vr-gold); }
 .vr-fmt { position: absolute; left: 3px; top: 3px; font: 600 9px/1 var(--mono, ui-monospace, monospace); padding: 2px 3px; border-radius: 3px; background: #000b; color: #ddd; }
 .vr-fmt:empty { display: none; }
 .vr-fmt[data-fmt="9:16"] { color: #ff6b9a; } .vr-fmt[data-fmt="16:9"] { color: var(--ui-cyan); } .vr-fmt[data-fmt="4:5"] { color: #ffb547; } .vr-fmt[data-fmt="1:1"] { color: var(--ui-ok); }
@@ -125,8 +125,9 @@
 .vr-mark { position: absolute; top: 15px; width: 9px; height: 9px; margin-left: -4.5px; background: var(--c, var(--vr-hot)); transform: rotate(45deg); pointer-events: auto; cursor: pointer; box-shadow: 0 0 6px var(--c, var(--vr-hot)); border: 1px solid #000a; }
 .vr-mark.done { opacity: .35; box-shadow: none; }
 .vr-mark.sel { outline: 2px solid #fff; }
-.vr-head { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 8px #fff; pointer-events: none; }
-.vr-hover { position: absolute; bottom: calc(100% - 12px); transform: translate(-50%, -100%); display: flex; flex-direction: column; align-items: center; gap: 2px; pointer-events: none; z-index: 9; }
+/* the playhead: left 0 + a transform (review.js placeHead glides it on the compositor while the video plays) */
+.vr-head { position: absolute; left: 0; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 8px #fff; pointer-events: none; will-change: transform; }
+.vr-hover { position: absolute; left: 0; bottom: calc(100% - 12px); transform: translate(-50%, -100%); display: flex; flex-direction: column; align-items: center; gap: 2px; pointer-events: none; z-index: 9; }
 .vr-timeline { overflow: visible; }
 .vr-hover img { max-width: 120px; max-height: 90px; border-radius: 4px; border: 1px solid #fff4; box-shadow: 0 4px 16px #000c; }
 .vr-hover span { font: 10.5px var(--mono, monospace); background: #000d; padding: 1px 5px; border-radius: 3px; color: var(--vr-gold); white-space: nowrap; }
@@ -138,7 +139,7 @@
 .vr-play:active { transform: translateY(1px); }
 .vr-time { width: 12.5ch; font: 13px var(--mono, ui-monospace, Consolas, monospace); color: var(--vr-gold); background: transparent; border: 1px solid transparent; padding: 2px 4px; border-radius: 4px; }
 .vr-time:hover, .vr-time:focus { border-color: var(--line); background: #0006; }
-.vr-time-total { font: 11px var(--mono, monospace); color: var(--muted); white-space: nowrap; }
+.vr-time-total { font: 11px var(--mono, monospace); color: var(--muted); white-space: nowrap; display: inline-block; contain: size layout paint; height: 1.3em; line-height: 1.3em; } /* width set in ch by review.js */
 .vr-speed { font-size: 11.5px; padding: 2px 4px; height: 26px; }
 .vr-fps { font-size: 11px; font-variant-numeric: tabular-nums; }
 .vr-ab { font: 600 10.5px var(--mono, monospace); }
@@ -223,3 +224,5 @@ html[data-skin="forge"] .vr-seg, html[data-skin="forge"] .vr-seg button, html[da
 html[data-skin="forge"] .vr-chip.on { background: var(--r-rare); }
 html[data-skin="forge"] .vr-note { border-radius: 0; }
 html[data-skin="forge"] .vr-kit { border-left-color: var(--line-hi); }
+/* the time readout changes every frame while playing: its own layer, so the player around it isn't repainted */
+.vr-tc-group { will-change: transform; contain: layout paint; }
