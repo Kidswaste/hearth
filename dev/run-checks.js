@@ -110,8 +110,9 @@ for (const n of wanted) {
   }
   const text = `${r.stdout || ''}${r.stderr || ''}`;
   fs.writeFileSync(log, text);
-  // failed: a non-zero exit, a result with "ok": false, a ✖ step, or a FAIL line from a Node test
-  const bad = r.status !== 0 || /"ok":\s*false/.test(text) || /^\s*"?✖/m.test(text) || /^(FAIL|✖)/m.test(text);
+  // failed: a non-zero exit, a result with a top-level "ok": false (not one nested in what a check reports), a ✖ step,
+  // or a FAIL line from a Node test
+  const bad = r.status !== 0 || /^(?:\{ ?| )"ok":\s*false/m.test(text) || /^\s*"?✖/m.test(text) || /^(FAIL|✖)/m.test(text);
   const why = bad ? (text.match(/\d+ problem\(s\):\n([^\n]*)/)?.[1] || text.match(/^\s*"?✖[^\n]*/m)?.[0] || text.match(/"problems":\s*\[[^\]]*\]/)?.[0] || (r.error ? r.error.message : `exit ${r.status}`)).trim().slice(0, 200) : '';
   results.push({ n, ok: !bad, s: Math.round((Date.now() - started) / 1000), why });
   console.log(`${bad ? '✖' : '✓'} ${n.padEnd(22)} ${String(results.at(-1).s).padStart(4)} s${bad ? `  ${why}` : ''}`);

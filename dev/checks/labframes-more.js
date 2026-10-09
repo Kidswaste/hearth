@@ -122,11 +122,13 @@ await say('/footage go f15');
 await sbx('__lf.seen = []; __lf.rates = []; media.onFrame(() => __lf.rates.push(media.video.playbackRate)); return 1');
 d().media.toggle(true);
 await until(() => d().media.playing, 4000);
-await wait(3200);
+// play until the sketch is past the slow part (software rendering plays slower than real time, so no fixed wait)
+await wait(3200); await until(async () => (await sbx('return Math.max(0, ...__lf.seen)')) > 31, 12000);
 d().media.toggle(false); await wait(400);
-const seen = await sbx('return { seen: __lf.seen.slice(), rates: [...new Set(__lf.rates)] }');
-const run20 = (seen?.seen || []).filter((n) => n === 20).length;
-step('playing: f20 holds (presented once, then still), the slow part plays at 0.5×', (seen?.rates || []).includes(0.5) && run20 >= 1 && (seen?.seen || []).some((n) => n > 31), seen);
+// summed up in the sandbox: arrays coming back from it are cut to 60 items (a slow renderer sees more frames than that)
+const seen = await sbx('const s = __lf.seen; return { seen: [...new Set(s)], max: Math.max(0, ...s), n20: s.filter((n) => n === 20).length, rates: [...new Set(__lf.rates)] }');
+const run20 = seen?.n20 || 0;
+step('playing: f20 holds (presented once, then still), the slow part plays at 0.5×', (seen?.rates || []).includes(0.5) && run20 >= 1 && (seen?.max || 0) > 31, seen);
 await say('/cut-clear');
 
 // ---------- 5b. the mouse on cut lines, double-click a removed part, the waveform's menu, zoom presets ----------

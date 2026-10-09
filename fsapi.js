@@ -359,7 +359,7 @@ function registerIpc(ipcMain, getWin) {
   handle('fs:open', (p) => shell.openPath(assertAbs(p)));
   handle('fs:watch', (id, file) => watch(id, file, (p) => getWin()?.webContents.send('fs:changed', { id, path: p })));
   handle('fs:unwatch', (id) => unwatch(id));
-  handle('fs:copy', (from, to) => { fs.copyFileSync(assertAbs(from), assertAbs(to)); return true; });
+  handle('fs:copy', (from, to) => { fs.mkdirSync(path.dirname(assertAbs(to)), { recursive: true }); fs.copyFileSync(assertAbs(from), assertAbs(to)); return true; });
   handle('fs:home', () => os.homedir());
   handle('backup:now', (opts) => backupNow(opts));
   handle('backup:list', () => listBackups());
