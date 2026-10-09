@@ -157,10 +157,34 @@ const ThreeSeqData = (() => {
     const f = find(e, id);
     if (!f) return e;
     if (f.where === 'item') return C.trimItem(e, id, edge, edge === 'in' ? f.clip.start + delta : C.itemEnd(f.clip) + delta);
-    if (f.clip.kind !== 'scene') return C.trim(e, id, edge, delta);
-    return C.patchAny(e, id, (c) => {
+    const n = f.clip.kind !== 'scene' ? C.trim(e, id, edge, delta) : C.patchAny(e, id, (c) => {
       if (edge === 'in') { const d = clamp(delta, -(c.in || 0), c.dur - MIN); c.in = r4((c.in || 0) + d); c.dur = r4(c.dur - d); } else c.dur = r4(Math.max(MIN, c.dur + delta));
     });
+    return gapsHold(e, n, id, edge);
+  }
+  // A gap next to an edited clip absorbs the change, so what comes after it keeps its time ("at bar 9" stays at bar 9):
+  // a clip trimmed before a gap (its end moved), or a clip after a gap whose start moved (an in-trim, a transition).
+  function gapsHold(before, after, id, edge) {
+    if (after === before) return after;
+    const i = after.clips.findIndex((c) => c.id === id);
+    const A = C.layout(before);
+    if (i < 0 || !A[i]) return after;
+    let n = after;
+    // a gap before it: the clip's start stays (an in-trim, a new transition)
+    const pv = n.clips[i - 1];
+    if (edge !== 'out' && pv?.kind === 'gap') {
+      const B = C.layout(n);
+      const d = edge === 'in' ? (B[i].end - B[i].start) - (A[i].end - A[i].start) : B[i].start - A[i].start;
+      if (Math.abs(d) > 1e-6 && pv.dur - d >= MIN) { n = C.copy(n); n.clips[i - 1].dur = r4(pv.dur - d); }
+    }
+    // a gap after it: what follows keeps its time
+    const nb = n.clips[i + 1];
+    if (nb?.kind === 'gap') {
+      const B = C.layout(n);
+      const d = B[i].end - A[i].end;
+      if (Math.abs(d) > 1e-6 && nb.dur - d >= MIN) { n = n === after ? C.copy(n) : n; n.clips[i + 1].dur = r4(nb.dur - d); }
+    }
+    return n;
   }
   // Alt: slip (the same place and length, another part of the scene / footage)
   function slip(e, id, delta) {
@@ -186,7 +210,7 @@ const ThreeSeqData = (() => {
     n.lastItem = it.id;
     return n;
   }
-  const setTrans = (e, id, type, dur = 0.5) => C.setTrans(e, [id], type, dur);
+  const setTrans = (e, id, type, dur = 0.5) => gapsHold(e, C.setTrans(e, [id], type, dur), id, 'trans');
   const setDur = (e, id, secs) => { const f = find(e, id); if (!f) return e; return f.clip.kind === 'video' ? C.trim(e, id, 'out', Math.max(MIN, secs) - C.durOf(f.clip)) : C.patchAny(e, id, (c) => { c.dur = r4(Math.max(MIN, secs)); }); };
 
   // ---------- fitting to the music ----------

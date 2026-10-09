@@ -34,7 +34,8 @@ function start(getWin) {
     win.webContents.send('game:call', { id, tool, args });
     // Renders can run for a long time; everything else should answer within a minute.
     // (three_do / forge_patch carry the real command in their arguments; the bridge routes them in the renderer)
-    const slow = tool === 'ae_render' || tool === 'video_export' || tool === 'chat_ask';
+    // (a Lab sequence render steps every frame: minutes for a long one)
+    const slow = tool === 'ae_render' || tool === 'video_export' || tool === 'chat_ask' || ((tool === 'three_sequence' || (tool === 'three_do' && args?.cmd === 'sequence')) && /^render$/.test(String(args?.op || '')));
     // capture: a recording for N seconds or a scripted tour can run for minutes
     const limit = slow ? 45 * 60000 : tool === 'capture_record' || tool === 'capture_frames' ? 15 * 60000 : tool === 'chat_second_opinion' ? 6 * 60000 : tool === 'three_load_media' || (tool === 'three_do' && args?.cmd === 'load_media') ? 3 * 60000 : 60000;
     setTimeout(() => {

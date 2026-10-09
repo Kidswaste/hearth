@@ -60,6 +60,16 @@ ok('the Three Director reaches it through three_do (lean) and three_sequence (fu
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'mcp', 'three-mcp.js'), 'utf8');
   assert(/'footage', 'sequence', 'help'\]/.test(src)); assert(/name: 'three_sequence'/.test(src));
 });
+ok('a gap holds the time: trimming the clip before it, a transition into the clip after it, an in-trim', () => {
+  let x = D.addScene(D.create(), { sketch: 'a' }, { dur: 8 });
+  x = D.addScene(x, { sketch: 'b' }, { at: 16, gap: true });
+  const at = () => D.timing(x).find((t) => t.clip.sketch === 'b').start;
+  assert(near(at(), 16));
+  x = D.trim(x, x.clips[0].id, 'out', -2); assert(near(at(), 16), `trim: ${at()}`);
+  x = D.setTrans(x, x.clips[2].id, 'dip-black', 0.5); assert(near(at(), 16), `transition: ${at()}`);
+  const end0 = D.timing(x)[2].end;
+  x = D.trim(x, x.clips[2].id, 'in', 1); assert(near(D.timing(x)[2].end, end0) && near(at(), 17), `in-trim: ${at()}`);
+});
 ok('the Video Director reads scene clips and Lab layers by name in the editor (not as gaps)', () => {
   const x = D.addOverlay(D.addScene(D.create(), { sketch: 'a', name: 'Rings', look: 'Neon' }), { name: 'Glow' }, { at: 0, dur: 2 });
   const L = C.describeAll(x).join('\n');

@@ -443,7 +443,7 @@ const ThreeSeq = (() => {
     if (!t) throw new Error(`No transition "${type}" (try dissolve, dip-black, wipe-left, push-left, zoom-in…)`);
     const d = dur ?? (t === 'cut' ? 0 : D.defaultTransDur(grid()) || EditFX.TRANS[t]?.d || 0.5);
     let n = S.edit;
-    for (const x of list) n = C.setTrans(n, [x], t, d);
+    for (const x of list) n = D.setTrans(n, x, t, d);
     commit(n, t === 'cut' ? 'Cut' : `${EditFX.TRANS[t].name}${ids.length ? '' : ' between every clip'}`);
     return t;
   }
@@ -588,14 +588,22 @@ const ThreeSeq = (() => {
     for (let i = 2; i < 200 && await window.hub.fs.stat(p).catch(() => null); i += 1) p = `${dir}/${stem} (${i}).${ext}`;
     return p;
   }
+  // ffmpeg jobs: one listener for all of them (the bridge's onJob can't be unsubscribed)
+  const jobs = new Map();
+  let jobsOn = false;
   function runJob(job) {
-    return new Promise((resolve, reject) => {
-      const off = window.hub.video.onJob((ev) => {
-        if (ev.id !== job.id) return;
-        if (ev.type === 'progress') job.onProgress?.(ev.pct);
-        if (ev.type === 'done') { off?.(); if (ev.code === 0) resolve(ev); else reject(new Error(ev.error || `ffmpeg ended with ${ev.code}`)); }
+    if (!jobsOn) {
+      jobsOn = true;
+      window.hub.video.onJob((ev) => {
+        const j = jobs.get(ev.id);
+        if (!j) return;
+        if (ev.type === 'progress') j.job.onProgress?.(ev.pct);
+        if (ev.type === 'done') { jobs.delete(ev.id); if (ev.code === 0) j.resolve(ev); else j.reject(new Error(ev.error || `ffmpeg ended with ${ev.code}`)); }
       });
-      window.hub.video.transcode({ id: job.id, input: job.input, output: job.output, args: job.args, duration: job.duration }, { ffmpeg: H.settings().ffmpegPath || undefined }).catch((err) => { off?.(); reject(err); });
+    }
+    return new Promise((resolve, reject) => {
+      jobs.set(job.id, { job, resolve, reject });
+      window.hub.video.transcode({ id: job.id, input: job.input, output: job.output, args: job.args, duration: job.duration }, { ffmpeg: H.settings().ffmpegPath || undefined }).catch((err) => { jobs.delete(job.id); reject(err); });
     });
   }
   // an edit (the sequence, or one baked scene) → an mp4. Needs the Lab preview at the frame size (the page draws the

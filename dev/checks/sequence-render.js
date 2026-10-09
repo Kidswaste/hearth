@@ -32,7 +32,8 @@ const FR = [15, 40, 52, 75, 110, 168, 200];
 const dir = `${OUT}/.hearth-titles-chk${Date.now().toString(36)}`;
 const job = (args, output, input) => new Promise((resolve, reject) => {
   const id = `chk${Math.random().toString(36).slice(2)}`;
-  const off = window.hub.video.onJob((ev) => { if (ev.id !== id || ev.type !== 'done') return; off?.(); if (ev.code === 0) resolve(ev); else reject(new Error(ev.error || 'ffmpeg failed')); });
+  let done = false;
+  window.hub.video.onJob((ev) => { if (ev.id !== id || ev.type !== 'done' || done) return; done = true; if (ev.code === 0) resolve(ev); else reject(new Error(ev.error || 'ffmpeg failed')); });
   window.hub.video.transcode({ id, input, output, args, duration: 7 }).catch(reject);
 });
 await job(['-y', '-i', 'INPUT', '-vf', `select='${FR.map((n) => `eq(n\\,${n})`).join('+')}'`, '-vsync', '0', 'OUTPUT'], `${dir}/f_%02d.png`, full);
