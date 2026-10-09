@@ -461,3 +461,7 @@ One searchable **FX picker** in the Three.js Lab (**X**, the Layers **＋ Layer*
 ## Simplify (round 4, docs/upgrades/simplify.md)
 - ✓ Less on screen: short menus (rare items behind More…), messages show Copy + ⋯, the header only ⋯, the rail one ⋯, the meter a rail pill, the ask-all bar hidden, Settings → More settings, Appearance with 3 looks (+ More looks, Advanced), the FX picker opens on Suggested, a lighter Lab toolbar and sliders. Everything stays reachable by menu, shortcut or command.
 - ✓ `/decide [look|effect|palette|template|size|theme]` (and ✦ buttons in Appearance, the FX picker and the preview ⋯): Astra picks with one small question (Claude, then a local default as fallbacks), applied with Undo; `/decide log` shows the cost.
+## Scenes 2 + Jam polish (scenes2 stream, round 5: docs/upgrades/scenes2.md)
+- ✓ Every Three Director chat row shows a small still of its own scene (refreshed only when the scene changes); switching chats cross-fades from the old scene to the new one; Claude / Astra icons on the scene tag; the chat's color + mark on the sketch picker and its notifications.
+- ✓ Jam: a filmstrip timeline in the card (who led each round, scrub to preview, click to keep), a one-line recap at the end (no extra model call), ⤴ Share (still to the clipboard + a 10-second clip, `/jam share`), `/jam` reuses the idea of your last jam on the same song.
+- ✓ Robust: a jam keeps going backstage when you switch chats, never touching the scene on screen; ten switches in two seconds end on the right scene with no cover left.
