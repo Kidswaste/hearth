@@ -207,6 +207,9 @@ const VideoData = (() => {
   // "neon_tunnel_v3.mp4" → { stem: 'neon_tunnel', ver: 3 }; "final", "copy", "(2)" and dates count as versions too.
   function versionInfo(fileName) {
     const name = String(fileName).replace(/\.[^.]+$/, '');
+    // a time stamp is not a version: "Hearth tool 2026-10-09 07-38-03" (a capture) read as v3, so its edit
+    // rendered to "… 07-38-04", the name of the take recorded a second later
+    if (/\d{4}-\d{2}-\d{2}[ T_]\d{2}[-.:]\d{2}[-.:]\d{2}$/.test(name)) return { stem: name.toLowerCase(), ver: null };
     const m = name.match(/^(.*?)[\s_.-]+(?:v|ver|version|rev)\.?[\s_]?(\d{1,4})$/i) || name.match(/^(.*?[a-z])v(\d{1,3})$/i) || name.match(/^(.*?)[\s_-]*\((\d+)\)$/) || name.match(/^(.*?)[\s_-]+(\d{1,3})$/);
     if (m && m[1]) return { stem: m[1].toLowerCase().replace(/[\s_.-]+$/, ''), ver: Number(m[2]) };
     const f = name.match(/^(.*?)[\s_-]*(final|copy|new|fix|edit|alt)\d*$/i);

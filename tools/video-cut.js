@@ -2110,7 +2110,12 @@ const VideoCut = (() => {
       // presets the plain graph doesn't know (size targets, HEVC, audio only) go through the full one
       if (p && !sp) g = CutFF.args(edit, info, { ...canvas }, { preset: p, fit, offset: host.S.overlay.cropOffset, range, stills, presetFilters: V.presetFilters, codecArgs: V.codecArgs });
     }
-    const final = typeof output === 'function' ? output(g) : output;
+    let final = typeof output === 'function' ? output(g) : output;
+    // a new version never replaces a file that is already there (another take, an earlier render): it gets " (2)"…
+    if (typeof final === 'string' && !/[\\/]exports[\\/]/.test(final) && !final.includes('%')) {
+      const stemOfFinal = final.replace(/\.[^./\\]+$/, ''); const ext = final.slice(stemOfFinal.length);
+      for (let i = 2; i < 100 && await window.hub.fs.stat(final).catch(() => null); i += 1) final = `${stemOfFinal} (${i})${ext}`;
+    }
     // the title frames (a temp folder next to the export) go away however the render ends: done, failed, cancelled,
     // or never started (they used to stay next to your footage when the job failed or didn't start)
     const dropTitles = () => { if (titleDir) window.hub.video.rmtemp?.(titleDir).catch(() => {}); };
