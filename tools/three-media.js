@@ -626,11 +626,16 @@ const ThreeMedia = (() => {
       send({ type: 'media', cmd: play ? 'play' : 'pause', ...(play ? {} : hooks.pauseMsg?.() || {}) });
     }
     function seek(t) {
+      const was = st.time;
       st.time = Math.max(0, Math.min(t, st.duration || t));
       st.stampAt = performance.now();
       // footage: the playhead lands on the start of a whole frame, the decoder is sent to that frame's middle
       const fx = hooks.seek?.(st.time);
-      if (fx) { st.time = fx.time; if (fx.target != null) send({ type: 'media', cmd: 'seek', value: fx.target, ...(fx.msg || {}) }); } else send({ type: 'media', cmd: 'seek', value: st.time });
+      if (fx) {
+        st.time = fx.time;
+        if (fx.target == null && st.time === was && !st.playing) return; // the same frame (a scrub inside one frame): nothing to send or redraw
+        if (fx.target != null) send({ type: 'media', cmd: 'seek', value: fx.target, ...(fx.msg || {}) });
+      } else send({ type: 'media', cmd: 'seek', value: st.time });
       // A jump outside the zoomed view brings the view along (unless it's locked).
       if (view && !locked && !dragging && (st.time < view.start || st.time > view.end)) setView({ start: st.time - span() / 2, end: st.time + span() / 2 });
       paint();
@@ -2640,6 +2645,8 @@ const ThreeMedia = (() => {
     }, { passive: false });
     canvas.addEventListener('mousemove', (e) => {
       if (!D()) return;
+      // while a drag scrubs or moves something the playhead shows where it is: no hairline, no tooltip churn
+      if (dragging) { if (!hoverEl.hidden) hoverEl.hidden = true; return; }
       const hit = hitTest(e);
       const tt = timeAt(e);
       canvas.style.cursor = hit.zone === 'mute' || hit.zone === 'solo' ? 'pointer' : hit.zone === 'cue' ? 'grab' : hit.zone === 'auto' ? (e.ctrlKey ? 'crosshair' : hit.point >= 0 ? 'move' : hit.handle >= 0 ? 'ns-resize' : 'crosshair') : hit.zone === 'gutter' ? 'default' : hit.zone === 'chip' || hit.zone === 'note' || hit.zone === 'ghost' || hit.zone === 'laneHead' || hit.zone === 'laneClose' ? 'pointer' : hit.zone === 'track' ? (hit.key ? 'move' : hit.edge ? 'ew-resize' : hit.inside ? 'grab' : 'default') : hit.zone === 'lane' ? (hit.mark != null ? 'ew-resize' : 'cell') : locked ? 'pointer' : hit.zone === 'ruler' ? (hit.edge ? 'ew-resize' : 'copy') : 'pointer';
@@ -2658,15 +2665,16 @@ const ThreeMedia = (() => {
         note: hit.note ? `Note at ${fmtMs(hit.note.t)}: ${hit.note.text}` : '',
         track: hit.key ? `Keyframe at ${fmtMs(hit.key.t)}: click to jump there · drag to move · double-click to delete · right-click for Ease / Linear / Hold` : `${hit.track?.name || 'Layer'}: drag the bar to move it in time · drag its ends to trim · double-click to fit it to the loop (again: whole song)`,
       };
-      canvas.title = `${fmtMs(tt)}\n${tips[hit.zone]}`;
+      setProp(canvas, 'title', `${hooks.hoverText?.(tt) ?? fmtMs(tt)}\n${tips[hit.zone]}`);
       // a hairline with the time under the mouse (and the bar · beat when there's a grid)
       const x = xOf(tt);
       const bs = beats(); const bi = beatIndex(bs, tt);
       const bb = bi >= 0 ? bno(bs, bi) : null;
-      hoverEl.hidden = !(hit.zone === 'wave' || hit.zone === 'ruler' || hit.zone === 'lane');
-      hoverEl.style.transform = `translateX(${Math.round(x)}px)`;
+      setProp(hoverEl, 'hidden', !(hit.zone === 'wave' || hit.zone === 'ruler' || hit.zone === 'lane'));
+      hoverEl.style.transform = `translateX(${Math.round(hooks.hoverX?.(tt, xOf) ?? x)}px)`;
       const secName = sectionAt(tt).cue;
-      hoverEl.dataset.t = `${span() < 20 ? fmtMs(tt) : fmtTime(tt)}${bb != null ? ` · ${Math.floor(bb / bpbNow()) + 1}.${mod(bb, bpbNow()) + 1}` : ''}${secName ? ` · ${secName}` : ''}`;
+      const label = `${hooks.hoverText?.(tt) ?? (span() < 20 ? fmtMs(tt) : fmtTime(tt))}${bb != null ? ` · ${Math.floor(bb / bpbNow()) + 1}.${mod(bb, bpbNow()) + 1}` : ''}${secName ? ` · ${secName}` : ''}`;
+      if (hoverEl.dataset.t !== label) hoverEl.dataset.t = label;
     });
     canvas.addEventListener('mouseleave', () => { hoverEl.hidden = true; });
     // right-click the waveform / ruler: loop, cue, section and zoom actions at that spot

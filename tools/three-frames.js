@@ -142,6 +142,8 @@ const ThreeFrames = (() => {
   const on = () => Boolean(F.player?.loaded && F.player.isVideo && F.clock && modeOf()[F.path] !== false);
   const clockNow = () => F.clock;
   const D = () => F.player?.duration || 0;
+  // the footage's real end: the end of its last frame (a browser can report the last frame's start as the duration)
+  const srcEnd = () => { const c = F.clock; const d = D(); if (!c || c.source === 'guess' || !c.frames) return d; const n = c.frames - 1; return Math.max(d, r6(timeOf(c, n) + durOf(c, n))); };
   const display = () => F.display || store_('three.frameDisplay', 'tc');
 
   // ---------- loading a video: its clock and its edit ----------
@@ -203,11 +205,11 @@ const ThreeFrames = (() => {
   // the edit changed (here, in the editor, or by undo): parts → the sandbox, the timeline redraws
   function setEdit(e, { store: save = true, label = '' } = {}) {
     fixFrames();
-    F.edit = e && !identity(e, F.path, D()) ? e : null;
+    F.edit = e && !identity(e, F.path, srcEnd()) ? e : null;
     F.ps = F.edit ? parts(F.edit, F.path, F.clock) : null;
     if (F.ps && !F.ps.length) F.ps = []; // everything removed: nothing plays (the editor still has it)
     F.send?.({ type: 'media-cuts', parts: F.ps?.map(({ a, b, speed, hold }) => ({ a, b, speed, ...(hold ? { hold } : {}) })) || null });
-    if (save && F.path) storeEdit(F.path, F.edit || C()?.fromSource(F.path, D()), label).catch((err) => toast(err.message, { type: 'error' }));
+    if (save && F.path) storeEdit(F.path, F.edit || C()?.fromSource(F.path, srcEnd()), label).catch((err) => toast(err.message, { type: 'error' }));
     paintChrome();
     P()?.redraw?.();
   }
@@ -217,7 +219,7 @@ const ThreeFrames = (() => {
     if (!Cd || !F.path || !D()) { toast('Load a video first', { type: 'error' }); return null; }
     fixFrames();
     const before = F.edit ? JSON.parse(JSON.stringify(F.edit)) : null;
-    const cur = F.edit || Cd.fromSource(F.path, D());
+    const cur = F.edit || Cd.fromSource(F.path, srcEnd());
     const next = fn(cur, Cd);
     if (!next || next === cur) return null;
     P().pushUndo?.({ cut: before });
@@ -235,12 +237,12 @@ const ThreeFrames = (() => {
     restore(t = here()) {
       return changeEdit((e, Cd) => {
         if (clipAtSource(e, t)) return null;
-        const gap = removed(parts(e, F.path, F.clock), D()).find(([a, b]) => t >= a - 1e-6 && t < b);
+        const gap = removed(parts(e, F.path, F.clock), srcEnd()).find(([a, b]) => t >= a - 1e-6 && t < b);
         if (!gap) return null;
         const n = JSON.parse(JSON.stringify(e));
         let k = n.clips.findIndex((cl) => cl.kind === 'video' && cl.src === F.path && cl.in >= gap[1] - 1e-6);
         if (k < 0) k = n.clips.length;
-        const clip = { id: `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, kind: 'video', src: F.path, in: gap[0], out: gap[1], max: D(), speed: 1, mute: false, fadeIn: 0, fadeOut: 0 };
+        const clip = { id: `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, kind: 'video', src: F.path, in: gap[0], out: gap[1], max: srcEnd(), speed: 1, mute: false, fadeIn: 0, fadeOut: 0 };
         n.clips.splice(k, 0, clip);
         return n;
       }, 'Part back in');
@@ -254,7 +256,7 @@ const ThreeFrames = (() => {
       toast('The whole video plays again', { timeout: 1400 });
       return [];
     },
-    keepOnly(a, b) { return changeEdit((e, Cd) => Cd.slice(Cd.fromSource(F.path, D()), snapT(F.clock, a), snapT(F.clock, b)), `Only ${label(a)} → ${label(b)} plays`); },
+    keepOnly(a, b) { return changeEdit((e, Cd) => Cd.slice(Cd.fromSource(F.path, srcEnd()), snapT(F.clock, a), snapT(F.clock, b)), `Only ${label(a)} → ${label(b)} plays`); },
     cutRange(a, b) {
       return changeEdit((e, Cd) => {
         let n = e;
@@ -353,17 +355,19 @@ const ThreeFrames = (() => {
     };
     h.key = (e, sel) => keys(e, sel);
     h.timeText = (t) => (on() ? timeText(t) : undefined);
-    h.frameKey = () => (on() ? `${F.clock.fps}|${F.clock.frames}|${F.ps ? F.ps.map((p) => `${p.a}-${p.b}-${p.speed}-${p.hold || ''}`).join() : ''}|${F.film ? F.film.length : 0}|${F.exactFilm.size}|${zoomedFrames() ? frameNow() : ''}` : '');
+    // the hairline under the mouse names the frame there (and sits on its start)
+    h.hoverText = (t) => (on() ? `f${frameAt(F.clock, t)} · ${tc(F.clock, frameAt(F.clock, t))}${F.ps && inPart(F.ps, t) < 0 ? ' · removed' : ''}` : undefined);
+    h.hoverX = (t, xOf) => (on() ? xOf(timeOf(F.clock, frameAt(F.clock, t))) : undefined);
+    h.frameKey = () => (on() ? `${F.clock.fps}|${F.clock.frames}|${F.ps ? F.ps.map((p) => `${p.a}-${p.b}-${p.speed}-${p.hold || ''}`).join() : ''}|${F.film ? F.film.length : 0}|${F.exactFilm.size}|${F.boxOn && !pl.playing ? frameNow() : ''}` : '');
     h.miniKey = () => (on() && F.ps ? F.ps.map((p) => `${p.a}-${p.b}`).join() : '');
     h.drawUnder = (g, o) => { if (on()) drawFilm(g, o); };
     h.drawOver = (g, o) => { if (on()) drawCuts(g, o); };
-    h.drawMini = (g, o) => { if (on() && F.ps) { g.fillStyle = '#000000b0'; for (const [a, b] of removed(F.ps, D())) g.fillRect(o.X(a), 0, Math.max(1, o.X(b) - o.X(a)), o.h); g.fillStyle = '#ff9f43'; for (const p of F.ps) if (!p.hold) g.fillRect(o.X(p.a) - 0.5, 0, 1, o.h); } };
+    h.drawMini = (g, o) => { if (on() && F.ps) { g.fillStyle = '#000000b0'; for (const [a, b] of removed(F.ps, srcEnd())) g.fillRect(o.X(a), 0, Math.max(1, o.X(b) - o.X(a)), o.h); g.fillStyle = '#ff9f43'; for (const p of F.ps) if (!p.hold) g.fillRect(o.X(p.a) - 0.5, 0, 1, o.h); } };
     h.paint = () => paintChrome();
     pl.on('load', (x) => { onLoad(x); });
     pl.on('unload', () => onUnload());
     pl.on('attach', () => { if (F.clock) sendClock(); if (F.path) F.send?.({ type: 'media-cuts', parts: F.ps?.map(({ a, b, speed, hold }) => ({ a, b, speed, ...(hold ? { hold } : {}) })) || null }); });
   }
-  const zoomedFrames = () => { const v = P()?.view; return v && F.clock ? (v.end - v.start) * F.clock.fps < 160 : false; };
 
   // ---------- the counter: timecode + frame (the time box in frame mode) ----------
   function timeText(t) {
@@ -423,7 +427,9 @@ const ThreeFrames = (() => {
   function keys(e, sel) {
     if (!on() || e.ctrlKey || e.metaKey) return null;
     const k = e.key; const lower = k.length === 1 ? k.toLowerCase() : k;
-    const busy = sel.points || sel.selected; // a marker / loop edge / curve points selected: the arrows move those
+    // a marker or curve points selected: the arrows move those (a loop edge you just set with [ ] doesn't count: on
+    // footage the arrows step frames; drag an edge, or Alt+drag, to move it)
+    const busy = sel.points || sel.selected?.type === 'mark';
     if ((k === 'ArrowLeft' || k === 'ArrowRight') && !busy) { stopShuttle(); step((k === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 10 : 1), { raw: e.altKey }); return true; }
     if ((e.code === 'Comma' || e.code === 'Period') && !e.altKey) { stopShuttle(); step((e.code === 'Comma' ? -1 : 1) * (e.shiftKey ? 10 : 1)); return true; }
     if ((k === 'ArrowUp' || k === 'ArrowDown') && !sel.points && !e.altKey && !e.shiftKey) { jumpPoint(k === 'ArrowUp' ? -1 : 1); return true; }
@@ -433,7 +439,7 @@ const ThreeFrames = (() => {
     if (k === 'Home' && !e.shiftKey) { go(F.ps?.length ? frameAt(F.clock, F.ps[0].a) : 0); return true; }
     if (k === 'End' && !e.shiftKey) { const last = F.ps?.filter((p) => !p.hold).at(-1); go(last ? frameAt(F.clock, last.b) - 1 : (F.clock.frames || 1) - 1); return true; }
     if (lower === 's' && !e.shiftKey && !e.repeat) { if (!ops.split()) toast('Nothing to cut here (too close to a cut, or a removed part)', { timeout: 1400 }); return true; }
-    if ((k === 'Delete' || k === 'Backspace') && !sel.selected && !sel.points) { if (e.shiftKey) { if (!ops.restore()) toast('This part already plays', { timeout: 1200 }); } else if (!ops.del()) toast('Nothing plays here to remove', { timeout: 1200 }); return true; }
+    if ((k === 'Delete' || k === 'Backspace') && !busy) { if (e.shiftKey) { if (!ops.restore()) toast('This part already plays', { timeout: 1200 }); } else if (!ops.del()) toast('Nothing plays here to remove', { timeout: 1200 }); return true; }
     if (lower === 't' && !e.shiftKey && !e.repeat) { const order = ['tc', 'frames', 'seconds']; F.display = order[(order.indexOf(display()) + 1) % 3]; store.set('three.frameDisplay', F.display); P().redraw?.(); toast(`Time as ${F.display === 'tc' ? 'timecode · frame' : F.display}`, { timeout: 900 }); return true; }
     return null;
   }
@@ -459,6 +465,7 @@ const ThreeFrames = (() => {
     const { X, s0, sp, w, h, top, LT, ruler } = o;
     const c = F.clock;
     const pxF = w / (sp * c.fps); // px per frame
+    F.boxOn = pxF >= 6; // the frame box follows the playhead (the canvas redraws per step only then)
     // frame ticks on the ruler (and numbers on the waveform's top edge) once frames are wide enough to see
     if (pxF >= 3) {
       const n0 = Math.max(0, frameAt(c, s0)); const n1 = Math.min((c.frames || 1) - 1, frameAt(c, s0 + sp) + 1);
@@ -472,7 +479,7 @@ const ThreeFrames = (() => {
     }
     if (!F.ps) return;
     // removed parts: dark, hatched (the sketch never sees them)
-    for (const [a, b] of removed(F.ps, D())) {
+    for (const [a, b] of removed(F.ps, srcEnd())) {
       const xa = Math.max(0, X(a)); const xb = Math.min(w, X(b));
       if (xb <= xa) continue;
       g.fillStyle = '#05070acc'; g.fillRect(xa, 0, xb - xa, h);
@@ -498,20 +505,22 @@ const ThreeFrames = (() => {
   function drawFilm(g, o) {
     const { X, s0, sp, w, top, H } = o;
     if (!store_('three.filmstrip', true)) return;
-    if (sp * F.clock.fps <= 160) queueExact(s0, sp);
+    const pxF = w / Math.max(1e-6, sp * F.clock.fps); // px per frame: every frame gets its own picture once they're this wide
+    if (pxF >= 20) queueExact(s0, sp);
     if (!F.film?.length && !F.exactFilm.size) return;
     const alpha = P().analysis ? 0.28 : 0.62;
     g.save(); g.globalAlpha = alpha;
     g.beginPath(); g.rect(0, top, w, H); g.clip();
     const c = F.clock;
-    const exactOn = (sp * c.fps) <= 160 && F.exactFilm.size;
+    const exactOn = pxF >= 20 && F.exactFilm.size;
     const list = exactOn ? [...F.exactFilm.entries()].map(([n, img]) => ({ t: timeOf(c, n), img })).sort((a, b) => a.t - b.t) : F.film;
     for (let i = 0; i < list.length; i += 1) {
       const it = list[i]; const t1 = list[i + 1]?.t ?? D();
       const xa = X(it.t); const xb = X(t1);
       if (xb < 0 || xa > w || !it.img) continue;
       const ih = H; const iw = (it.img.width / it.img.height) * ih;
-      for (let x = xa; x < xb; x += iw) g.drawImage(it.img, 0, 0, Math.min(it.img.width, ((xb - x) / iw) * it.img.width), it.img.height, x, top, Math.min(iw, xb - x), ih);
+      // whole pictures side by side; a part narrower than one shows its middle
+      for (let x = xa; x < xb; x += iw) { const sw = Math.min(it.img.width, ((xb - x) / iw) * it.img.width); g.drawImage(it.img, (it.img.width - sw) / 2, 0, sw, it.img.height, x, top, Math.min(iw, xb - x), ih); }
     }
     g.restore();
   }
@@ -562,7 +571,7 @@ const ThreeFrames = (() => {
   }
   let exactTimer = 0;
   function queueExact(s0, sp) {
-    if (!F.clock || (sp * F.clock.fps) > 160) return;
+    if (!F.clock || (sp * F.clock.fps) > 200) return;
     clearTimeout(exactTimer);
     exactTimer = setTimeout(async () => {
       const path = F.path; const c = F.clock;
@@ -711,7 +720,7 @@ const ThreeFrames = (() => {
     if (!F.path || typeof VideoCut === 'undefined') return null;
     name ||= await Modal.prompt('Sequence name', { value: `Lab · ${base(F.path).replace(/\.\w+$/, '')}` });
     if (!name) return null;
-    const e = JSON.parse(JSON.stringify(F.edit || CutData.fromSource(F.path, D())));
+    const e = JSON.parse(JSON.stringify(F.edit || CutData.fromSource(F.path, srcEnd())));
     await Review.ensureMounted?.(); activate('tool:ae');
     const key = await VideoCut.newSequence(name);
     const v = F.sampler?.v;
@@ -745,23 +754,23 @@ const ThreeFrames = (() => {
   // ---------- reference footage: exact readings and "match this pacing" (the vibe, not the footage) ----------
   // A reference's pacing profile, compact for chats: shots, average shot length, cuts a minute, words, the cut
   // rhythm (relative times) and a 24-step motion curve (0..1)
-  async function pacingOf(file) {
-    if (F.refRead.has(file)) return F.refRead.get(file);
+  async function pacingOf(file, name = null) {
+    if (F.refRead.has(file)) return { ...F.refRead.get(file), ...(name ? { file: name } : {}) };
     if (typeof FrameRead === 'undefined') throw new Error('The frame reader isn\'t loaded');
     const p = await FrameRead.pacing(file);
     const m = await FrameRead.motion(file, { buckets: 24 }).catch(() => null);
     const top = m ? Math.max(1e-6, ...m.curve.map((x) => x.motion)) : 1;
-    const prof = { file: base(file), shots: p.shots, seconds: p.duration, averageShot: p.average, cutsPerMinute: p.perMinute, words: p.words, cuts: p.cuts.map((x) => Math.round(x.time * 1000) / 1000), motion: m ? m.curve.map((x) => Math.round((x.motion / top) * 100) / 100) : null };
+    const prof = { file: name || base(file).replace(/^\d{10,}-/, ''), shots: p.shots, seconds: p.duration, averageShot: p.average, cutsPerMinute: p.perMinute, words: p.words, cuts: p.cuts.map((x) => Math.round(x.time * 1000) / 1000), motion: m ? m.curve.map((x) => Math.round((x.motion / top) * 100) / 100) : null };
     F.refRead.set(file, prof);
     return prof;
   }
   // Cues on the Lab timeline at the reference's rhythm: fit (stretched over the loop / footage / song), seconds
   // (its own shot lengths, repeated) or beats (fitted, then each on the nearest beat); on frames with footage
-  async function matchPacing(file, mode = 'fit', { cut = false } = {}) {
+  async function matchPacing(file, mode = 'fit', { cut = false, name = null } = {}) {
     const pl = P();
     if (!pl.loaded) throw new Error('Load the song or footage to pace first');
-    const prof = await pacingOf(file);
-    const lp = pl.loop; const a = lp ? lp.a : 0; const b = lp ? lp.b : D();
+    const prof = await pacingOf(file, name);
+    const lp = pl.loop; const a = lp ? lp.a : 0; const b = lp ? lp.b : (on() ? srcEnd() : D());
     let times = pacingTimes(prof.cuts, prof.seconds, a, b, mode === 'seconds' ? 'seconds' : 'fit');
     if (mode === 'beats' && pl.analysis) { const bs = pl.beatsIn(a, b); if (bs.length) times = times.map((t) => bs.reduce((x, y) => (Math.abs(y - t) < Math.abs(x - t) ? y : x), bs[0])); }
     if (on()) times = times.map((t) => snapT(F.clock, t));
@@ -809,10 +818,10 @@ const ThreeFrames = (() => {
       { label: 'Vibe card', action: () => readFootage('vibe', path) },
       '-',
       { label: 'Match this pacing', items: [
-        { label: 'Fit to the loop / the footage / the song', action: () => matchPacing(path, 'fit').catch((e) => toast(e.message, { type: 'error' })) },
-        { label: 'Its own shot lengths', action: () => matchPacing(path, 'seconds').catch((e) => toast(e.message, { type: 'error' })) },
-        { label: 'On the beat', action: () => matchPacing(path, 'beats').catch((e) => toast(e.message, { type: 'error' })) },
-        on() ? { label: 'Cut the footage to it', action: () => matchPacing(path, 'fit', { cut: true }).catch((e) => toast(e.message, { type: 'error' })) } : null,
+        { label: 'Fit to the loop / the footage / the song', action: () => matchPacing(path, 'fit', { name }).catch((e) => toast(e.message, { type: 'error' })) },
+        { label: 'Its own shot lengths', action: () => matchPacing(path, 'seconds', { name }).catch((e) => toast(e.message, { type: 'error' })) },
+        { label: 'On the beat', action: () => matchPacing(path, 'beats', { name }).catch((e) => toast(e.message, { type: 'error' })) },
+        on() ? { label: 'Cut the footage to it', action: () => matchPacing(path, 'fit', { cut: true, name }).catch((e) => toast(e.message, { type: 'error' })) } : null,
       ].filter(Boolean) },
       { label: 'Its motion on a slider…', action: async () => { const s = await Modal.prompt('Which slider follows its motion?', { placeholder: 'speed, glow…' }); if (s) motionToSlider(path, s).then(() => toast('Keyframed from the reference\'s motion', { timeout: 1600 })).catch((e) => toast(e.message, { type: 'error' })); } },
       '-',
@@ -836,6 +845,8 @@ const ThreeFrames = (() => {
   }
 
   // ---------- the director (three_media_control / three_do footage), lean ----------
+  // a frame given as a number, "f120", "+5f" or a timecode → its start time
+  const frameTime = (v) => { if (v == null || v === '') return null; const n = typeof v === 'number' ? Math.round(v) : resolve(F.clock, parse(F.clock, /^\d+$/.test(String(v).trim()) ? `f${String(v).trim()}` : v), frameNow()); return n == null ? null : timeOf(F.clock, Math.max(0, n)); };
   const toTime = (v) => { if (v == null || v === '') return null; if (typeof v === 'number') return v; const p = parse(F.clock, v); const n = resolve(F.clock, p, frameNow()); return n == null ? null : timeOf(F.clock, n); };
   // frames written as "f120" (or { frame }) in other three tools become times on this footage's clock
   function framesToTimes(args) {
@@ -873,8 +884,8 @@ const ThreeFrames = (() => {
       if (act === 'pacing' || act === 'match') {
         const r = await findRef(a.ref);
         if (!r) return { ok: false, error: `No reference clip${a.ref ? ` "${a.ref}"` : ''}: ${(await refVideos()).map((x) => x.name).join(', ') || 'none in the Lab references or on the board'}` };
-        if (act === 'pacing') { const p = await pacingOf(r.path); return { ok: true, value: { ...p, cuts: p.cuts.slice(0, 40), note: 'A reference: use its rhythm and energy, never its footage.' } }; }
-        return { ok: true, value: await matchPacing(r.path, a.mode || 'fit', { cut: Boolean(a.cut) }) };
+        if (act === 'pacing') { const p = await pacingOf(r.path, r.name); return { ok: true, value: { ...p, cuts: p.cuts.slice(0, 40), note: 'A reference: use its rhythm and energy, never its footage.' } }; }
+        return { ok: true, value: await matchPacing(r.path, a.mode || 'fit', { cut: Boolean(a.cut), name: r.name }) };
       }
       if (act === 'sheet' || act === 'scenes' || act === 'motion') {
         const r = a.ref ? await findRef(a.ref) : { path: F.path, name: base(F.path) };
@@ -885,7 +896,7 @@ const ThreeFrames = (() => {
         return { ok: true, value: { file: r.name, text: String(res.text || '').slice(0, 1500) }, ...(imgs.length ? { images: imgs } : {}) };
       }
       need();
-      const t = a.frame != null || a.time != null ? toTime(a.frame ?? a.time) : here();
+      const t = a.frame != null ? frameTime(a.frame) : a.time != null ? toTime(a.time) : here();
       if (t == null) return { ok: false, error: 'frame: a number, "f120" or a timecode' };
       if (act === 'cuts') return { ok: true, value: { parts: describe(), fps: F.clock.fps } };
       if (act === 'split') ops.split(t);
@@ -894,7 +905,7 @@ const ThreeFrames = (() => {
       else if (act === 'speed') ops.speed(Number(a.value) || 1, t);
       else if (act === 'hold') ops.hold(Number(a.value) || 1, t);
       else if (act === 'clear') ops.clear();
-      else if (act === 'keep') ops.keepOnly(toTime(a.from ?? a.frame), toTime(a.to));
+      else if (act === 'keep') ops.keepOnly(frameTime(a.from ?? a.frame), frameTime(a.to));
       else if (act === 'cut_scenes') await cutAtScenes(a.value || 'normal');
       else if (act === 'cue') P().editCues({ add: [{ time: t, name: a.value || undefined }] });
       else if (act === 'editor') { await toEditor(); return { ok: true, value: { opened: 'Video Review editor, the same cut' } }; }

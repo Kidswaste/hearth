@@ -36,8 +36,8 @@ const CORE_TOOLS = [
     inputSchema: obj({ code: { type: 'string' }, wait: { type: 'number', description: 'seconds before reporting (default 2.5)' }, report: { type: 'string', enum: ['compact', 'full'] } }, ['code']) },
   { name: 'three_get_code', description: 'The selected layer\'s code (an outline with line numbers past 350 lines), the layers, frame size, sliders with values and music links, and slider changes the user hasn\'t saved.', inputSchema: obj({}) },
   { name: 'three_console', description: 'Errors, recent console lines and fps / draw calls of the running sketch; full: true adds sliders, layers and music.', inputSchema: obj({ full: { type: 'boolean' } }) },
-  { name: 'three_media_control', description: 'Play, pause or seek the music (time s), or loop (time = start, end; no time clears; leave a locked loop alone).',
-    inputSchema: obj({ action: { type: 'string', enum: ['play', 'pause', 'seek', 'loop'] }, time: { type: 'number' }, end: { type: 'number' } }, ['action']) },
+  { name: 'three_media_control', description: 'Play, pause or seek the music (time s), or loop (time = start, end; no time clears; leave a locked loop alone). Video footage: frame (n, "f120" or timecode), step n frames, read = the exact frame now (see: picture).',
+    inputSchema: obj({ action: { type: 'string', enum: ['play', 'pause', 'seek', 'loop', 'frame', 'step', 'read'] }, time: { type: 'number' }, end: { type: 'number' }, frame: {}, n: { type: 'number' }, see: { type: 'boolean' } }, ['action']) },
   { name: 'three_input', description: 'Play-test the preview, in order: { key: "ArrowLeft", ms } (held), { keys: ["w", "Shift"], ms }, { click: [x, y] } (0..1), { move: [x, y] }, { wait: ms }. screenshot: true = a picture after.',
     inputSchema: obj({ actions: { type: 'array', items: { type: 'object' } }, screenshot: { type: 'boolean' } }, ['actions']) },
   { name: 'three_contact_sheet', description: 'One image of numbered, timed frames at the owner\'s cues (or count over the loop / song, or times in s): judge the whole piece.',
@@ -71,12 +71,14 @@ const MORE_TOOLS = [
   { name: 'three_run', description: 'Run a Lab / music / nodes / video chat command, e.g. "/make-it-react" or "/size 9:16"; returns what it printed.', inputSchema: obj({ command: { type: 'string' } }, ['command']) },
   { name: 'three_task', description: 'This chat\'s task state kept by Hearth (goal, what was done, layers, open todos); todo: [...] replaces the open todos.', inputSchema: obj({ todo: { type: 'array', items: { type: 'string' } } }) },
   { name: 'three_help', description: 'The app map and the Lab guide by topic: app, lab, nodes, react, commands, handoff, habits, video.', inputSchema: obj({ topic: { type: 'string' } }) },
+  { name: 'three_footage', description: 'Video footage frame by frame and its cut list (the sketch plays the parts; the editor shares it). action: info | cuts | split | delete | restore | speed | hold (value) | keep (from, to) | clear | cut_scenes | cue | sheet | scenes | motion | pacing / match (ref: a reference clip; its rhythm, never its footage) | editor; frame: n, "f120" or timecode.',
+    inputSchema: obj({ action: { type: 'string' }, frame: {}, value: {}, ref: { type: 'string' }, from: {}, to: {}, mode: { type: 'string' }, cut: { type: 'boolean' } }) },
 ];
 // On by default for Three directors (the owner wants a node view of visual work; `/nodes-director off` drops it).
 const NODES_TOOL = { name: 'three_nodes', description: 'Layers as node graphs (the owner\'s Nodes view). command: "layer <preset>" (new layer), "presets", "types [word]", "list", "add <type> k=v [to=n.in]", "link a.out b.in", "unlink b.in", "set <n> k=v", "rm <n>", "preset <p>" (replace), "rebuild". help nodes.', inputSchema: obj({ command: { type: 'string' } }, ['command']) };
 
 // add_layer stays a command (older habits keep working) but is described as its own tool now
-const DO_CMDS = ['layers', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'help'];
+const DO_CMDS = ['layers', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'footage', 'help'];
 const DO_TOOL = {
   name: 'three_do',
   description: `More Lab actions: { cmd, ...args }. layer = name, id, number (1 = bottom), "top", "bottom" or "selected".
@@ -88,6 +90,7 @@ looks {action: list|save|apply|delete, name} · notes {action: list|done|reopen|
 references {action: list|add|rename|remove|palette, path, name, to, from, colors}
 triggers {set} · media_info · load_media {path} · set_frame {size: fit|9:16|16:9|1:1|4:5} · new_sketch {name, code}
 run {command: "/make-it-react"} runs a chat command · task {todo} this chat's task state
+footage {action, frame, value, ref} video frames + cut list (help footage)
 help {topic} explains any of these (app: the whole app).`,
   inputSchema: { type: 'object', properties: { cmd: { type: 'string', enum: DO_CMDS } }, required: ['cmd'] },
 };

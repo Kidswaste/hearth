@@ -69,6 +69,7 @@ const post = (msg, transfer) => (window.__stageHost ? window.__stageHost.post({ 
 const mode = new URLSearchParams(location.search).get('mode') || 'sketch';
 // Real timer functions for the sandbox's own work; sketches get wrapped ones (see "run generations").
 const realSetTimeout = setTimeout.bind(window);
+const realClearTimeout = clearTimeout.bind(window);
 const realSetInterval = setInterval.bind(window);
 const realRAF = requestAnimationFrame.bind(window);
 
@@ -769,7 +770,7 @@ function watchFrames(m) {
     if (mediaEl !== m) return;
     fpres.time = meta.mediaTime; fpres.presented = meta.presentedFrames;
     fpres.frame = fclock ? fFrameAt(meta.mediaTime) : -1;
-    if (fparts && !m.paused && recUntil == null && !(region && loopOn)) partFrame(meta.mediaTime);
+    if (fparts && !m.paused && recUntil == null && !(region && loopOn)) partFrame(meta.mediaTime, meta);
     for (const fn of frameCbs) { try { fn(fpres.frame, meta.mediaTime, meta); } catch (err) { console.error(err); } }
     if (fwant && m.paused && !m.seeking) { post({ type: 'media-frame', req: fwant.req, frame: fpres.frame, mediaTime: meta.mediaTime, time: m.currentTime }); fwant = null; }
     m.requestVideoFrameCallback(cb);
@@ -787,6 +788,7 @@ const partAt = (t) => (fparts ? fparts.findIndex((p) => t >= p.a - 1e-4 && t < p
 const partAfter = (t) => (fparts ? fparts.findIndex((p) => p.a >= t - 1e-4) : -1);
 function enterPart(i) {
   const p = fparts[i]; fpart = i;
+  if (partEnd.timer) { realClearTimeout(partEnd.timer); partEnd.timer = 0; }
   const base = mediaEl.defaultPlaybackRate || 1;
   if (mediaEl.playbackRate !== base * (p.speed || 1)) mediaEl.playbackRate = base * (p.speed || 1);
   if (p.hold) { fholdUntil = performance.now() + (p.hold * 1000) / base; mediaEl.currentTime = fMid(fFrameAt(p.a)); return; }
@@ -798,17 +800,22 @@ function partEnd() {
   if (loopOn) { enterPart(0); sendState(); return; }
   mediaEl.pause(); post({ type: 'media-state', time: mediaEl.currentTime, duration: mediaEl.duration || 0, playing: false, ended: true, frame: fpres.frame });
 }
-// per presented frame: leave the part before its first removed frame shows
-function partFrame(mt) {
+// per presented frame: (re)schedule the jump for just before the part's first removed frame is due on screen
+// (from this frame's expected display time), so the last kept frame holds through the seek and a removed frame
+// never shows; a frame that already overshot (a slow machine skipped callbacks) jumps at once
+function partFrame(mt, meta) {
   const p = fparts[fpart];
   if (!p || p.hold) return;
-  const step = (fclock?.times?.length ? (fclock.times[fFrameAt(mt) + 1] ?? mt + 1 / 30) - mt : 1 / (fclock?.fps || 30));
-  if (mt + step > p.b - 1e-4 && !partEnd.timer) {
-    // this is the part's last frame: leave when the next one would show (a removed frame never appears)
-    const i = fpart; const rate = mediaEl.playbackRate || 1;
-    partEnd.timer = realSetTimeout(() => { partEnd.timer = 0; if (fpart === i && mediaEl && !mediaEl.paused) partEnd(); }, Math.max(0, (step / rate) * 1000 - 6));
-  }
+  if (partEnd.timer) { realClearTimeout(partEnd.timer); partEnd.timer = 0; }
+  if (mt >= p.b - 1e-4) { partEnd(); return; }
+  const rate = mediaEl.playbackRate || 1;
+  const due = (meta?.expectedDisplayTime ?? performance.now()) + ((p.b - mt) / rate) * 1000;
+  // how late this page's timers fire (a busy machine): jump that much earlier
+  const lead = (600 / (fclock?.fps || 30)) / rate + Math.min(120, partLate * 1.5);
+  const i = fpart; const want = Math.max(0, due - lead - performance.now()); const at = performance.now() + want;
+  partEnd.timer = realSetTimeout(() => { partEnd.timer = 0; partLate = partLate * 0.7 + Math.max(0, performance.now() - at) * 0.3; if (fpart === i && mediaEl && !mediaEl.paused) partEnd(); }, want);
 }
+let partLate = 0;
 // per animation frame: holds, seeks into removed parts while playing, and a safety net for missed callbacks
 function partTick(t) {
   if (fpart < 0 || !fparts[fpart] || (t < fparts[fpart].a - 0.05 && !fparts[fpart].hold)) {

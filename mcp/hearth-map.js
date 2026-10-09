@@ -16,6 +16,7 @@ const TOPICS = {
   → per layer: tweak() sliders (the owner's knobs: Save, Shuffle, undo, ♪ links to the music), keyframes on slider values and layer settings, looks (saved slider sets, morphed by cues).
   → node graphs: the Nodes view (Alt+N) shows a layer as nodes + wires; the graph compiles to the layer's code and its knobs are the layer's sliders (topic nodes).
   → the timeline: the song (or a demo clock), beat grid, kick / snare / hit markers, named cues (Intro, Drop…), the loop; layer tracks with keyframe lanes.
+  → video footage instead of (or with) a song: exact frames (media.frame, media.onFrame), a timecode counter, a cut list the sketch plays, shared with the editor (topic footage).
   The owner's habits: Save and Shuffle sliders constantly, switch social frame sizes (9:16, 1:1, 4:5, 16:9), Freeze frames, Present, record to Video Review.`,
   nodes: `NODES (three_nodes { command }): build visual layers as node graphs so the owner sees what you made in the Nodes view.
   "layer <preset>" adds a NEW layer from a preset (presets [word] lists them: ⏱ = timeline-driven, ♪ = reacts to music) · "preset <preset>" replaces the selected layer · "add <type> k=v… to=node.input" · "link a.out b.in" · "unlink b.in" · "set <node> k=v…" · "rm <node…>" · "list" (the graph, changed values, wires) · "types [word]" (types with their ports) · "layout" · "rebuild".
@@ -29,6 +30,7 @@ const TOPICS = {
   commands: `CHAT COMMANDS: the owner types /name args. Offer them as <suggest>/name …</suggest>; run Lab, music, nodes and video ones yourself with three_do { cmd: "run", command: "/name args" } (results come back as text).
   Lab: /save-look, /shuffle [colors], /fix-errors, /size 9:16, /freeze, /present, /record, /layer.
   Music: /make-it-react [undo], /analyze, /drops next, /downbeat, /auto-preset.
+  Footage: /footage [go f120|step n|cut|delete|scenes|editor], /match-pacing <clip>, /ref-frames <clip>.
   Nodes: /nodes, /nodes-layer <preset>, /nodes-presets.
   Director: /undo-edit, /redo-edit, /director-engine claude|astra, /handoff, /task, /director-cost, /director-mode lean|full, /nodes-director on|off.
   Together: /jam (Claude ⇄ Astra build a visual in turns), /opinion (second opinion).

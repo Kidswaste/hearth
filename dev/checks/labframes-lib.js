@@ -32,6 +32,7 @@ for (let k = 0; k < 12; k++) { const x = Math.round(W * (k + 0.5) / 12); const i
     await wait(2200);
     const r = await c.loadSong(file);
     await until(() => ThreeFrames.status().footage && ThreeFrames.clock && ThreeFrames.clock.source !== 'guess', 12000);
+    await until(async () => (await sbx('return typeof __lf === "object" && media.frame >= 0')) === true, 12000);
     await wait(600);
     return { c, loaded: r?.ok, status: ThreeFrames.status() };
   }
