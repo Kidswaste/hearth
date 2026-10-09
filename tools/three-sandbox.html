@@ -72,6 +72,7 @@ const realSetTimeout = setTimeout.bind(window);
 const realClearTimeout = clearTimeout.bind(window);
 const realSetInterval = setInterval.bind(window);
 const realRAF = requestAnimationFrame.bind(window);
+const realNow = performance.now.bind(performance); // (a sequence gives each scene its own clock: see "the sequence")
 
 // ---------- performance stats for whatever renderer the sketch makes ----------
 let frames = 0;
@@ -239,6 +240,7 @@ function requestShot() {
 //   media.video (the <video> for mp4s), media.texture() (a THREE.VideoTexture of it)
 let mediaEl = null;
 let mediaUrl = null;
+let lastMediaBytes = null;
 let isVideo = false;
 let analysis = null;
 let actx = null;
@@ -407,7 +409,7 @@ function graph() {
 }
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
 function update() {
-  const now = performance.now();
+  const now = realNow();
   if (now - lastUpdate < 8) return;
   const dt = Math.min(0.1, (now - lastUpdate) / 1000);
   lastUpdate = now;
@@ -680,6 +682,7 @@ function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, lo
   analysis = a ? { ...a, name } : { name };
   isVideo = Boolean(video);
   mediaUrl = URL.createObjectURL(new Blob([buffer], { type: mime || (video ? 'video/mp4' : 'audio/mpeg') }));
+  lastMediaBytes = buffer; SQ.pcm = null; // (a sequence's offline render reads the song's samples from these)
   const m = document.createElement('video');
   m.playsInline = true;
   m.preload = 'auto';
@@ -1323,7 +1326,7 @@ function evalKeys(keys, t, base) {
   if (typeof a.v === 'string' && typeof b.v === 'string') return mixColor(a.v, b.v, u);
   return a.v + (b.v - a.v) * u;
 }
-const songTime = () => (mediaEl ? mediaEl.currentTime : null);
+const songTime = () => (SQ.on ? SQ.T : mediaEl ? mediaEl.currentTime : null);
 const prop = (L, name, def) => evalKeys(L.props.keys?.[name], songTime(), L.props[name] ?? def);
 function applySliderKeys(L) {
   const sk = L.props.sliderKeys;
@@ -1347,8 +1350,8 @@ function layerMix(L) {
   const p = L.props;
   if (p.visible === false) return 0;
   const op = prop(L, 'opacity', 1);
-  if (!mediaEl) return op;
-  const t = mediaEl.currentTime;
+  if (!mediaEl && !SQ.on) return op;
+  const t = SQ.on ? SQ.T : mediaEl.currentTime;
   if (p.in != null && t < p.in) return 0;
   if (p.out != null && t >= p.out) return 0;
   let k = 1;
@@ -1364,6 +1367,8 @@ function styleLayer(L) {
   const s = L.box.style;
   const disp = mix > 0 ? '' : 'none';
   if (s.display !== disp) s.display = disp;
+  const vis = L.seqHide ? 'hidden' : '';
+  if (s.visibility !== vis) s.visibility = vis;
   const op = String(Math.round(mix * 1000) / 1000);
   if (s.opacity !== op) s.opacity = op;
   const bl = BLEND_CSS[p.blend] || 'normal';
@@ -1385,8 +1390,8 @@ function needsComposite() {
   const L = act[0]; const p = L.props; const t = xform(L);
   return layerMix(L) < 1 || Boolean(t.x || t.y || t.rotate) || t.scale !== 1 || (p.blend && p.blend !== 'normal') || layerCanvases(L).length > 1;
 }
-function composite(target, k = 1) {
-  const W = Math.max(1, Math.round(innerWidth * devicePixelRatio * k)); const H = Math.max(1, Math.round(innerHeight * devicePixelRatio * k));
+function composite(target, k = 1, size = null, only = null) {
+  const W = size ? size.w : Math.max(1, Math.round(innerWidth * devicePixelRatio * k)); const H = size ? size.h : Math.max(1, Math.round(innerHeight * devicePixelRatio * k));
   const c = target || document.createElement('canvas');
   if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
   const g = c.getContext('2d');
@@ -1396,6 +1401,7 @@ function composite(target, k = 1) {
   g.fillStyle = '#000';
   g.fillRect(0, 0, W, H);
   for (const L of ordered()) {
+    if (only ? !only.has(L.id) : L.seqHide) continue; // (a sequence transition merges its two sides itself)
     const mix = layerMix(L);
     if (mix <= 0) continue;
     const p = L.props;
@@ -1427,8 +1433,8 @@ Object.defineProperty(globalThis, 'layer', {
     const L = layers.get(currentLayer() || 'main');
     if (!L) return null;
     const p = L.props;
-    const t = mediaEl ? mediaEl.currentTime : performance.now() / 1000;
-    return { id: L.id, name: p.name, in: p.in ?? null, out: p.out ?? null, time: p.in != null ? t - p.in : t, progress: p.in != null && p.out != null ? (t - p.in) / (p.out - p.in) : null, mix: layerMix(L) };
+    const t = SQ.on ? SQ.T : mediaEl ? mediaEl.currentTime : performance.now() / 1000;
+    return { id: L.id, name: p.name, in: p.in ?? null, out: p.out ?? null, time: p.seqT0 != null ? t - p.seqT0 : p.in != null ? t - p.in : t, progress: p.in != null && p.out != null ? (t - p.in) / (p.out - p.in) : null, mix: layerMix(L) };
   },
 });
 
@@ -3569,12 +3575,12 @@ function installRunGuards() {
     const run = (t) => {
       if (!alive(o)) return;
       // ❚❚ freeze: the picture holds (the music goes on); a layer re-run meanwhile still draws its first frame
-      if (frozen && !stepping && !(o.L && o.L.drawnGen !== o.L.gen)) { realRAF(run); return; }
-      if (o.L && layerMix(o.L) <= 0) { realRAF(run); return; }
-      if (!capOk(t)) { realRAF(run); return; }
-      within(o, fn, [t]);
+      if (frozen && !stepping && !SQ.off && !(o.L && o.L.drawnGen !== o.L.gen)) { sched(run); return; }
+      if (o.L && layerMix(o.L) <= 0) { sched(run); return; }
+      if (!SQ.off && !capOk(t)) { sched(run); return; }
+      within(o, fn, [o.L?.props.seqT0 != null && SQ.on ? (SQ.T - o.L.props.seqT0) * 1000 : t]);
     };
-    return realRAF(run);
+    return sched(run);
   };
   window.setTimeout = (fn, ms, ...a) => { if (typeof fn !== 'function') return realSetTimeout(fn, ms, ...a); const o = owner(); return realSetTimeout((...b) => { if (alive(o)) within(o, fn, b); }, ms, ...a); };
   window.setInterval = (fn, ms, ...a) => {
@@ -4092,9 +4098,448 @@ async function setupViewer() {
   });
 }
 
+// ---------- the sequence (the Lab's Sequence view, tools/three-seq.js) ----------
+// The hub sends a plan of the program: groups (a main-track clip or an overlay over a range): scene clips run their
+// sketch's layers (own code, slider values / look, keyframes moved to the clip), footage clips draw a <video> into a
+// layer box, title cards / colors draw on a canvas; titles and transitions use the editor's own drawing code
+// (cut-presets.js + video-titles.js, sent once as text: what the editor shows is what the Lab shows); the song is the
+// regular media element (so the music analysis still drives whatever reacts to it).
+// One program clock T: the song while it plays, else the page's clock. Only the groups around T run (a group starts
+// a moment before its clip, drawing hidden, and stops after it). A scene's own time (performance.now inside its
+// layers, their frame timestamps, layer.time) is T − t0, so the sequence seeks frame-exactly into any scene. An
+// offline render steps T frame by frame: layer frames are queued and run once per step (seq-frame → a JPEG back).
+const SQ = { on: false, plan: null, T: 0, T0: 0, at0: 0, playing: false, rate: 1, loop: false, off: false, offQ: [], libs: null, assets: new Map(), mounted: new Map(), importing: 0, lastPost: 0, pcm: null, pcmRate: 44100, smooth: null, ended: false, titlesDrawn: false, ca: null, cb: null, out: null };
+const WARM = 0.35; // seconds a group runs (hidden) before its clip: its first frames are drawn when it shows
+const PRE = 1.2; // seconds ahead a group is mounted while playing
+// layer frames during an offline render wait for the next step instead of the screen
+function sched(fn) { if (SQ.off) { SQ.offQ.push(fn); return 0; } return realRAF(fn); }
+// a sequence scene's own clock: performance.now inside its layers is its time (ms) since its own start, and 0 while
+// its module sets up (a start time a sketch keeps from its setup is the scene's start, wherever the clip was entered);
+// a THREE.Clock started in it counts from the scene's start too
+function sqLayerHere() {
+  if (!SQ.on || !SQ.mounted.size) return null;
+  let id = ctxLayer; let setup = false;
+  if (!id && SQ.importing) { id = layerOfStack(new Error().stack); setup = true; }
+  const L = id ? layers.get(id) : null;
+  return L?.props.seqT0 != null ? { L, setup } : null;
+}
+performance.now = function () {
+  const h = sqLayerHere();
+  if (h) return h.setup ? 0 : (SQ.T - h.L.props.seqT0) * 1000;
+  return realNow();
+};
+if (THREE.Clock?.prototype?.start) {
+  const clockStart = THREE.Clock.prototype.start;
+  THREE.Clock.prototype.start = function () { clockStart.call(this); if (sqLayerHere()) { this.startTime = 0; this.oldTime = 0; } };
+}
+const sqAsset = (id) => SQ.assets.get(id) || null;
+const sqSong = () => (SQ.plan?.song && mediaEl ? SQ.plan.song : null);
+const sqInSong = (T) => { const s = sqSong(); return Boolean(s && T >= s.start - 1e-4 && T < s.end - 1e-3); };
+// the canvas a group draws into (footage, cards) or the titles / transition overlay
+function sqCanvas(L, k = 1) {
+  let c = L.box.querySelector('canvas.sq-canvas');
+  const W = Math.max(2, Math.round(innerWidth * devicePixelRatio * k)); const H = Math.max(2, Math.round(innerHeight * devicePixelRatio * k));
+  if (!c) { c = document.createElement('canvas'); c.className = 'sq-canvas'; c.style.cssText = 'position:absolute;inset:0;width:100%;height:100%'; L.box.appendChild(c); }
+  if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
+  return c;
+}
+function sqPseudo(id, props) {
+  const L = layerState(id);
+  L.pseudo = true;
+  Object.assign(L.props, { visible: true, opacity: 1, blend: 'normal', ...props });
+  return L;
+}
+// ---------- mounting groups ----------
+const sqKeyOf = (g) => JSON.stringify([g.kind, g.layers?.map((L) => [L.id, L.code, L.values]), g.asset, g.card, g.mute]);
+function sqProps(g, L, j) {
+  const p = L?.props || {};
+  const lin = p.in != null ? Math.max(g.start - WARM, p.in) : g.start - WARM;
+  const lout = p.out != null ? Math.min(g.end, p.out) : g.end;
+  return { ...p, z: g.z + j, in: lin, out: lout, fadeIn: 0, fadeOut: 0, seqT0: g.t0 ?? g.start, seqGroup: g.id, visible: p.visible !== false };
+}
+function sqMount(g) {
+  const st = { g, key: sqKeyOf(g), ids: [], ready: null, video: null, fresh: true };
+  SQ.mounted.set(g.id, st);
+  if (g.layers) {
+    st.ids = g.layers.map((L) => L.id);
+    SQ.importing += 1;
+    st.ready = Promise.all(g.layers.map((L, j) => runLayer({ id: L.id, code: L.code, values: L.values, ...sqProps(g, L, j) }).catch(() => {}))).finally(() => { SQ.importing -= 1; });
+  } else {
+    const id = `${g.id}~p`;
+    st.ids = [id];
+    const L = sqPseudo(id, sqProps(g, null, 0));
+    if (g.kind === 'footage' && sqAsset(g.asset)) {
+      const v = document.createElement('video');
+      v.muted = true; v.playsInline = true; v.preload = 'auto';
+      v.src = sqAsset(g.asset).url;
+      st.video = v;
+      if (!g.mute) sqSound(st, v);
+      st.ready = new Promise((r) => { v.addEventListener('loadeddata', r, { once: true }); v.addEventListener('error', r, { once: true }); realSetTimeout(r, 4000); });
+    } else if (g.kind === 'image' && sqAsset(g.asset)) {
+      const im = new Image(); im.src = sqAsset(g.asset).url; st.image = im;
+      st.ready = im.decode().catch(() => {});
+    } else st.ready = Promise.resolve();
+    styleLayer(L);
+  }
+  return st;
+}
+// footage with its sound on plays it (through the page's audio, not the analyser: the music stays what reacts)
+function sqSound(st, v) {
+  try { graph(); const n = actx.createMediaElementSource(v); const gn = actx.createGain(); gn.gain.value = st.g.volume ?? 1; n.connect(gn); gn.connect(actx.destination); v.muted = false; st.audioNode = n; } catch { /* stays muted */ }
+}
+function sqUnmount(id) {
+  const st = SQ.mounted.get(id);
+  if (!st) return;
+  SQ.mounted.delete(id);
+  for (const lid of st.ids) removeLayer(lid);
+  if (st.video) { try { st.audioNode?.disconnect(); } catch {} st.video.pause(); st.video.removeAttribute('src'); st.video.load(); }
+}
+// which groups run around T (realtime: from PRE before to a moment after; offline: the ones that show, and the next
+// one a frame early so it has drawn when it shows)
+function sqWanted(T, offline) {
+  const fps = SQ.plan?.fps || 30;
+  const ahead = offline ? WARM : PRE * Math.max(1, SQ.rate);
+  return (SQ.plan?.groups || []).filter((g) => T >= g.start - ahead - 1 / fps && T < g.end + (offline ? 0 : 0.25));
+}
+function sqManage(T, offline = false) {
+  const want = sqWanted(T, offline);
+  const ids = new Set(want.map((g) => g.id));
+  for (const id of [...SQ.mounted.keys()]) if (!ids.has(id)) sqUnmount(id);
+  const ready = [];
+  for (const g of want) {
+    let st = SQ.mounted.get(g.id);
+    // the layers were swept away (a whole new stack ran) or the clip's code / look changed: again
+    if (st && (st.key !== sqKeyOf(g) || st.ids.some((lid) => !layers.has(lid)))) { sqUnmount(g.id); st = null; }
+    if (!st) st = sqMount(g);
+    else if (st.g !== g) {
+      // same content, new timing (moved, trimmed): props only
+      st.g = g;
+      if (g.layers) g.layers.forEach((L, j) => { const lr = layers.get(st.ids[j]); if (lr) setLayerProps(lr, sqProps(g, L, j)); });
+      else { const lr = layers.get(st.ids[0]); if (lr) setLayerProps(lr, sqProps(g, null, 0)); }
+    }
+    if (st.ready) ready.push(st.ready);
+  }
+  return ready;
+}
+// ---------- drawing what isn't a layer ----------
+function sqFit(g2, src, sw, sh, W, H, fit = 'cover') {
+  if (!sw || !sh) return;
+  const k = fit === 'contain' ? Math.min(W / sw, H / sh) : Math.max(W / sw, H / sh);
+  const w = sw * k; const h = sh * k;
+  g2.drawImage(src, (W - w) / 2, (H - h) / 2, w, h);
+}
+const sqSrcTime = (g, T) => g.a + Math.max(0, T - g.start) * (g.speed || 1);
+const sqFrameMid = (g, t) => { const f = g.fps || 30; return (Math.floor(t * f + 1e-4) + 0.5) / f; };
+function sqDrawPseudo(st, T) {
+  const g = st.g; const L = layers.get(st.ids[0]);
+  if (!L || layerMix(L) <= 0) return;
+  const c = sqCanvas(L);
+  const g2 = c.getContext('2d');
+  const W = c.width; const H = c.height;
+  if (g.kind === 'footage') {
+    const v = st.video;
+    if (!v || v.readyState < 2) return;
+    g2.fillStyle = '#000'; g2.fillRect(0, 0, W, H);
+    sqFit(g2, v, v.videoWidth, v.videoHeight, W, H, g.fit);
+  } else if (g.kind === 'image') {
+    if (!st.image?.naturalWidth) return;
+    g2.fillStyle = '#000'; g2.fillRect(0, 0, W, H);
+    sqFit(g2, st.image, st.image.naturalWidth, st.image.naturalHeight, W, H, g.fit);
+  } else if (g.kind === 'card' || g.kind === 'color') {
+    g2.setTransform(1, 0, 0, 1, 0, 0); g2.globalAlpha = 1;
+    g2.fillStyle = g.card?.bg || g.card?.fill || '#000'; g2.fillRect(0, 0, W, H);
+    if (g.kind === 'card') { g2.save(); sqTitle(g2, { ...g.card, dur: g.end - g.start, where: 'main' }, T - g.start, W, H); g2.restore(); }
+  }
+}
+function sqTitle(g2, item, local, W, H) {
+  const VT = SQ.libs?.VideoTitles;
+  if (VT) { try { VT.draw(g2, item, local, W, H); return; } catch { /* plain text below */ } }
+  g2.fillStyle = item.color || item.fg || '#fff'; g2.font = `700 ${Math.round(H * 0.07)}px system-ui, sans-serif`; g2.textAlign = 'center'; g2.textBaseline = 'middle';
+  g2.globalAlpha = Math.max(0, Math.min(1, local / 0.3, (item.dur - local) / 0.3)); g2.fillText(String(item.text || ''), W / 2, H * (item.y ?? 0.5));
+}
+// footage decoders follow the clock (playing: they play along, re-synced past a few frames; paused: the exact frame)
+function sqSyncVideo(st, T) {
+  const g = st.g; const v = st.video;
+  if (!v || v.readyState < 1) return;
+  const want = Math.min(Math.max(0, sqSrcTime(g, T)), (v.duration || 1e9) - 0.001);
+  const showing = T >= g.start - 0.05 && T < g.end;
+  if (SQ.playing && showing) {
+    const rate = (g.speed || 1) * SQ.rate;
+    if (v.playbackRate !== rate) v.playbackRate = rate;
+    if (v.paused) { v.currentTime = want; v.play().catch(() => {}); } else if (Math.abs(v.currentTime - want) > 4 / (g.fps || 30)) v.currentTime = want;
+  } else {
+    if (!v.paused) v.pause();
+    const mid = Math.min(sqFrameMid(g, want), (v.duration || 1e9) - 0.001);
+    if (!v.seeking && Math.abs(v.currentTime - mid) > 0.25 / (g.fps || 30)) v.currentTime = mid;
+  }
+}
+// offline: seek the decoder to the frame and wait until it shows it
+function sqSeekVideo(st, T) {
+  const v = st.video;
+  if (!v) return Promise.resolve();
+  const g = st.g;
+  const mid = Math.min(sqFrameMid(g, Math.max(0, sqSrcTime(g, T))), (v.duration || 1e9) - 0.001);
+  if (Math.abs(v.currentTime - mid) < 1e-4 && !v.seeking && v.readyState >= 2) return Promise.resolve();
+  return new Promise((r) => {
+    let done = false; const fin = () => { if (!done) { done = true; r(); } };
+    v.addEventListener('seeked', () => { if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(() => fin()); realSetTimeout(fin, 250); }, { once: true });
+    realSetTimeout(fin, 2500);
+    v.currentTime = mid;
+  });
+}
+// ---------- one moment of the program ----------
+// the main groups showing at T (during a transition: two, the later one coming in)
+function sqShowing(T) {
+  const main = (SQ.plan?.groups || []).filter((g) => g.main && T >= g.start - 1e-6 && T < g.end - 1e-6);
+  if (main.length >= 2) {
+    const b = main[main.length - 1]; const a = main[main.length - 2];
+    if (b.td > 0 && T < b.start + b.td) return { a, b, p: Math.max(0, Math.min(1, (T - b.start) / b.td)), type: b.trans || 'dissolve' };
+  }
+  return { a: null, b: null, p: 0, show: main[main.length - 1] || null };
+}
+function sqApply(T, { full = false } = {}) {
+  const sh = sqShowing(T);
+  const inTrans = new Set(sh.a ? [sh.a.id, sh.b.id] : []);
+  for (const st of SQ.mounted.values()) {
+    const g = st.g;
+    const hide = inTrans.has(g.id) || T < g.start - 1e-6 || T >= g.end - 1e-6;
+    for (const lid of st.ids) { const L = layers.get(lid); if (!L) continue; if (L.seqHide !== hide) L.seqHide = hide; styleLayer(L); }
+    if (st.video && !SQ.off) sqSyncVideo(st, T);
+  }
+  for (const st of SQ.mounted.values()) if (!st.g.layers) sqDrawPseudo(st, T);
+  // the transition: both sides merged on black, mixed by the editor's own transition drawing
+  const tr = layers.get('~sq-trans');
+  if (tr) {
+    const on = Boolean(sh.a);
+    if (tr.props.visible !== on) { tr.props.visible = on; styleLayer(tr); }
+    if (on) {
+      const k = full || SQ.off ? 1 : 0.5;
+      const c = sqCanvas(tr, k); const W = c.width; const H = c.height;
+      const ga = SQ.mounted.get(sh.a.id); const gb = SQ.mounted.get(sh.b.id);
+      SQ.ca = composite(SQ.ca, k, { w: W, h: H }, new Set(ga?.ids || []));
+      SQ.cb = composite(SQ.cb, k, { w: W, h: H }, new Set(gb?.ids || []));
+      const g2 = c.getContext('2d');
+      g2.setTransform(1, 0, 0, 1, 0, 0); g2.globalAlpha = 1; g2.globalCompositeOperation = 'source-over'; g2.filter = 'none';
+      g2.fillStyle = '#000'; g2.fillRect(0, 0, W, H);
+      const fx = SQ.libs?.EditFX?.TRANS?.[sh.type]?.preview;
+      try { if (fx) fx(g2, SQ.ca, SQ.cb, sh.p, W, H); else { g2.drawImage(SQ.ca, 0, 0, W, H); g2.globalAlpha = sh.p; g2.drawImage(SQ.cb, 0, 0, W, H); } } catch { g2.drawImage(sh.p < 0.5 ? SQ.ca : SQ.cb, 0, 0, W, H); }
+      g2.setTransform(1, 0, 0, 1, 0, 0); g2.globalAlpha = 1; g2.globalCompositeOperation = 'source-over'; g2.filter = 'none';
+    }
+  }
+  // titles over everything
+  const tl = layers.get('~sq-titles');
+  if (tl) {
+    const act = (SQ.plan?.titles || []).filter((x) => T >= x.start - 1e-6 && T < x.end - 1e-6);
+    const on = act.length > 0;
+    if (tl.props.visible !== on) { tl.props.visible = on; styleLayer(tl); }
+    if (on || SQ.titlesDrawn) {
+      const c = sqCanvas(tl); const g2 = c.getContext('2d');
+      g2.setTransform(1, 0, 0, 1, 0, 0); g2.clearRect(0, 0, c.width, c.height);
+      for (const x of act) { g2.save(); sqTitle(g2, { ...x.item, dur: x.end - x.start, where: 'item' }, T - x.start, c.width, c.height); g2.restore(); }
+      SQ.titlesDrawn = on;
+    }
+  }
+}
+// ---------- the realtime clock ----------
+function sqClock() {
+  if (!SQ.playing) return SQ.T;
+  const s = sqSong();
+  const wall = SQ.T0 + ((realNow() - SQ.at0) / 1000) * SQ.rate;
+  if (s && !mediaEl.paused && !mediaEl.seeking && sqInSong(wall)) {
+    const t = mediaEl.currentTime + s.offset;
+    // the song leads while it plays (a few ms of jitter in its clock are smoothed by the wall clock)
+    if (Math.abs(t - wall) > 0.03) { SQ.T0 = t; SQ.at0 = realNow(); return t; }
+  }
+  return wall;
+}
+function sqSyncSong(T) {
+  const s = sqSong();
+  if (!s) return;
+  const inSong = sqInSong(T);
+  if (SQ.playing && !SQ.off && inSong) {
+    if (mediaEl.playbackRate !== SQ.rate) mediaEl.playbackRate = SQ.rate;
+    if (mediaEl.paused) { mediaEl.currentTime = T - s.offset; actx?.resume(); mediaEl.play().catch(() => {}); }
+  } else {
+    if (!mediaEl.paused) mediaEl.pause();
+    if (inSong && !SQ.playing && !SQ.off && !mediaEl.seeking && Math.abs(mediaEl.currentTime - (T - s.offset)) > 0.02) mediaEl.currentTime = T - s.offset;
+  }
+}
+function sqState(force = false) {
+  const now = realNow();
+  if (!force && now - SQ.lastPost < 200) return;
+  SQ.lastPost = now;
+  post({ type: 'seq-state', T: SQ.T, playing: SQ.playing, ended: SQ.ended, mounted: SQ.mounted.size });
+}
+function sqTick() {
+  realRAF(sqTick);
+  if (!SQ.on || SQ.off) return;
+  let T = sqClock();
+  const D = SQ.plan?.dur || 0;
+  if (SQ.playing && T >= D) {
+    if (SQ.loop && D > 0) { T = 0; SQ.T0 = 0; SQ.at0 = realNow(); const s = sqSong(); if (s && sqInSong(0)) mediaEl.currentTime = -s.offset; } else { T = D; SQ.playing = false; SQ.ended = true; sqState(true); }
+  }
+  SQ.T = Math.max(0, T);
+  sqManage(SQ.T);
+  sqSyncSong(SQ.T);
+  sqApply(SQ.T);
+  if (SQ.playing) sqState();
+}
+realRAF(sqTick);
+// ---------- messages ----------
+function sqSet(plan) {
+  const first = !SQ.on;
+  SQ.plan = plan;
+  SQ.on = true;
+  SQ.ended = false;
+  if (first) {
+    // the program takes the page: the sketch's own layers go (the hub runs them again when the sequence closes)
+    for (const id of [...layers.keys()]) removeLayer(id);
+    region = null; trim = null; loopOn = false; applyLoop(); fparts = null;
+    if (mediaEl) mediaEl.pause();
+  }
+  sqPseudo('~sq-trans', { z: 9000, visible: false });
+  sqPseudo('~sq-titles', { z: 30000, visible: false });
+  SQ.T = Math.max(0, Math.min(SQ.T, plan.dur || 0));
+  const ready = sqManage(SQ.T);
+  sqApply(SQ.T);
+  sqState(true);
+  // the hub's cover (a page that just reloaded) goes once the program has drawn
+  if (first) Promise.all(ready).then(() => realRAF(() => realRAF(() => post({ type: 'stack-drawn' }))));
+}
+function sqOff() {
+  SQ.playing = false; SQ.on = false; SQ.off = false; SQ.offQ = []; SQ.T = 0;
+  for (const id of [...SQ.mounted.keys()]) sqUnmount(id);
+  removeLayer('~sq-trans'); removeLayer('~sq-titles');
+  if (mediaEl && !mediaEl.paused) mediaEl.pause();
+  if (!liveKind) { remoteFreq = null; remoteWave = null; }
+  SQ.plan = null;
+}
+function sqSeek(T) {
+  SQ.T = Math.max(0, Math.min(Number(T) || 0, SQ.plan?.dur || 0));
+  SQ.T0 = SQ.T; SQ.at0 = realNow(); SQ.ended = false;
+  const s = sqSong();
+  if (s && sqInSong(SQ.T)) mediaEl.currentTime = SQ.T - s.offset;
+  sqManage(SQ.T); sqApply(SQ.T); sqState(true);
+}
+function sqPlay(on, rate = 1) {
+  if (!SQ.on) return;
+  if (on && SQ.T >= (SQ.plan?.dur || 0) - 1e-3) SQ.T = 0;
+  SQ.playing = Boolean(on); SQ.rate = rate || 1; SQ.T0 = SQ.T; SQ.at0 = realNow(); SQ.ended = false;
+  if (on) { graph(); actx.resume(); }
+  sqSyncSong(SQ.T);
+  if (!on) for (const st of SQ.mounted.values()) st.video?.pause();
+  sqState(true);
+}
+// offline: the song's samples (for the spectrum the analyser would have heard at each frame)
+async function sqOffline(on) {
+  SQ.off = Boolean(on);
+  SQ.playing = false;
+  if (mediaEl && !mediaEl.paused) mediaEl.pause();
+  for (const st of SQ.mounted.values()) st.video?.pause();
+  if (!on) {
+    const q = SQ.offQ; SQ.offQ = [];
+    for (const fn of q) realRAF(fn); // layers go back to the screen's frames
+    if (!liveKind) { remoteFreq = null; remoteWave = null; }
+    return { ok: true };
+  }
+  SQ.smooth = null;
+  if (sqSong() && lastMediaBytes && !SQ.pcm) {
+    try {
+      const buf = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(lastMediaBytes.slice(0));
+      const mono = new Float32Array(buf.length);
+      for (let c = 0; c < buf.numberOfChannels; c += 1) { const d = buf.getChannelData(c); for (let i = 0; i < mono.length; i += 1) mono[i] += d[i] / buf.numberOfChannels; }
+      SQ.pcm = mono; SQ.pcmRate = buf.sampleRate;
+    } catch { SQ.pcm = null; }
+  }
+  return { ok: true, pcm: Boolean(SQ.pcm) };
+}
+// a 2048-point spectrum of the song at t (Blackman window, the analyser's dB range and smoothing)
+function sqSpectrum(t) {
+  const N = 2048; const pcm = SQ.pcm; const sr = SQ.pcmRate;
+  const end = Math.round(t * sr);
+  const re = new Float32Array(N); const im = new Float32Array(N); const wv = new Float32Array(N);
+  for (let i = 0; i < N; i += 1) { const x = pcm[end - N + i] || 0; wv[i] = x; const w = 0.42 - 0.5 * Math.cos((2 * Math.PI * i) / N) + 0.08 * Math.cos((4 * Math.PI * i) / N); re[i] = x * w; }
+  for (let i = 1, j = 0; i < N; i += 1) { let bit = N >> 1; for (; j & bit; bit >>= 1) j ^= bit; j ^= bit; if (i < j) { const t0 = re[i]; re[i] = re[j]; re[j] = t0; } }
+  for (let len = 2; len <= N; len <<= 1) {
+    const ang = (-2 * Math.PI) / len; const wr = Math.cos(ang); const wi = Math.sin(ang);
+    for (let i = 0; i < N; i += len) {
+      let cr = 1; let ci = 0;
+      for (let k = 0; k < len / 2; k += 1) {
+        const a = i + k; const b = a + len / 2;
+        const xr = re[b] * cr - im[b] * ci; const xi = re[b] * ci + im[b] * cr;
+        re[b] = re[a] - xr; im[b] = im[a] - xi; re[a] += xr; im[a] += xi;
+        const nr = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = nr;
+      }
+    }
+  }
+  const sm = SQ.smooth || (SQ.smooth = new Float32Array(N / 2));
+  const out = new Uint8Array(N / 2);
+  for (let k = 0; k < N / 2; k += 1) {
+    const mag = Math.hypot(re[k], im[k]) / N;
+    sm[k] = 0.6 * sm[k] + 0.4 * mag;
+    const db = 20 * Math.log10(sm[k] + 1e-12);
+    out[k] = Math.max(0, Math.min(255, Math.round(((db + 100) / 70) * 255)));
+  }
+  remoteFreq = out; remoteWave = wv; remoteRate = sr;
+}
+// one frame of the program at T, exactly, at w × h: everything drawn, merged, sent back as a JPEG
+async function sqFrame({ n, T, w, h, q = 0.92, kind = 'image/jpeg', ret = true }) {
+  if (!SQ.on) { post({ type: 'seq-frame', n, error: 'no sequence' }); return; }
+  if (!SQ.off) await sqOffline(true);
+  SQ.T = T;
+  await Promise.all(sqManage(T, true));
+  const s = sqSong();
+  if (s && sqInSong(T)) {
+    const want = T - s.offset;
+    if (Math.abs(mediaEl.currentTime - want) > 1e-4) await new Promise((r) => { mediaEl.addEventListener('seeked', r, { once: true }); realSetTimeout(r, 1500); mediaEl.currentTime = want; });
+    if (SQ.pcm) sqSpectrum(want);
+  }
+  await Promise.all([...SQ.mounted.values()].filter((st) => st.video && T >= st.g.start - 1e-6 && T < st.g.end).map((st) => sqSeekVideo(st, T)));
+  sqApply(T, { full: true });
+  for (const L of layers.values()) applySliderKeys(L);
+  // the layers draw this frame (a group that just started gets a second pass: its first callback may only set up)
+  const fresh = [...SQ.mounted.values()].some((st) => st.fresh);
+  for (let pass = 0; pass < (fresh ? 2 : 1); pass += 1) {
+    const qd = SQ.offQ; SQ.offQ = [];
+    for (const fn of qd) { try { fn(T * 1000); } catch (err) { post({ type: 'error', message: String(err?.message || err) }); } }
+  }
+  for (const st of SQ.mounted.values()) st.fresh = false;
+  sqApply(T, { full: true }); // transitions / titles from what the layers just drew
+  if (!ret) { post({ type: 'seq-frame', n, ok: true }); return; }
+  const c = (SQ.out ||= document.createElement('canvas'));
+  composite(c, 1, { w, h });
+  const blob = await new Promise((r) => c.toBlob(r, kind, q));
+  const buffer = await blob.arrayBuffer();
+  post({ type: 'seq-frame', n, buffer, w, h }, [buffer]);
+}
+// what the sequence shows right now (checks: sum-ups stay inside the page)
+// checks: the program as it shows now, small: the color in the middle and a 12-band code across the top
+window.__seqProbe = ({ size = 240, y = 0.04, x = 0.5, yc = 0.66 } = {}) => {
+  const c = composite(null, 1, { w: size, h: size });
+  const px = c.getContext('2d').getImageData(0, 0, size, size).data;
+  const at = (fx, fy) => { const i = (Math.min(size - 1, Math.round(fy * size)) * size + Math.min(size - 1, Math.round(fx * size))) * 4; return [px[i], px[i + 1], px[i + 2]]; };
+  let n = 0; let ok = 0;
+  for (let k = 0; k < 12; k += 1) { const [r, g, b] = at((k + 0.5) / 12, y); const l = 0.299 * r + 0.587 * g + 0.114 * b; if (l > 170) { n |= 1 << k; ok += 1; } else if (l < 70) ok += 1; }
+  return { center: at(x, yc), code: ok === 12 ? n : null, T: SQ.T };
+};
+window.__seqInfo = () => ({ on: SQ.on, T: SQ.T, playing: SQ.playing, off: SQ.off, mounted: [...SQ.mounted.keys()], layers: [...layers.keys()].length, libs: Boolean(SQ.libs), showing: SQ.on ? (() => { const s = sqShowing(SQ.T); return s.a ? { trans: s.type, p: s.p, from: s.a.id, to: s.b.id } : { clip: s.show?.id || null }; })() : null });
+function sqMessage(msg) {
+  if (msg.type === 'seq-libs') { try { SQ.libs = new Function(`${msg.code}\nreturn { EditFX, VideoTitles };`)(); } catch (err) { post({ type: 'console', level: 'warn', text: `Sequence titles / transitions: ${err.message}` }); } return; }
+  if (msg.type === 'seq-asset') { const old = SQ.assets.get(msg.id); if (old) URL.revokeObjectURL(old.url); SQ.assets.set(msg.id, { url: URL.createObjectURL(new Blob([msg.buffer], { type: msg.mime || 'video/mp4' })), mime: msg.mime }); return; }
+  if (msg.type === 'seq-font') { try { new FontFace(msg.name, msg.buffer).load().then((f) => document.fonts.add(f)).catch(() => {}); } catch { /* the fallback fonts */ } return; }
+  if (msg.type === 'seq-set') { sqSet(msg.plan); return; }
+  if (msg.type === 'seq-off') { sqOff(); return; }
+  if (msg.type === 'seq-seek') { sqSeek(msg.T); return; }
+  if (msg.type === 'seq-play') { sqPlay(msg.on, msg.rate); return; }
+  if (msg.type === 'seq-loop') { SQ.loop = Boolean(msg.on); return; }
+  if (msg.type === 'seq-offline') { sqOffline(msg.on).then((r) => post({ type: 'seq-offline', ...r, on: SQ.off })); return; }
+  if (msg.type === 'seq-frame') sqFrame(msg).catch((err) => post({ type: 'seq-frame', n: msg.n, error: err.message }));
+}
+
 addEventListener('message', async (e) => {
   const msg = e.data || {};
   if (msg.target !== 'three-sandbox') return;
+  if (typeof msg.type === 'string' && msg.type.startsWith('seq-')) { sqMessage(msg); return; }
   if (msg.type === 'tweak-init') { TV = { ...(msg.values || {}) }; tweakKeys = msg.keys || {}; mods = msg.mods || {}; }
   if (msg.type === 'tweak') setTweak(msg);
   if (msg.type === 'tweak-mods') mods = msg.mods || {};

@@ -185,6 +185,9 @@ const VideoComp = (() => {
       return;
     }
     let pic = null; let pw = W; let ph = H;
+    // a Lab scene (the Lab's Sequence): its picture here; the render draws it through the Lab (tools/three-seq.js)
+    if (c.kind === 'scene') { const im = typeof ThreeSeq !== 'undefined' ? ThreeSeq.posterImage(c) : null; if (!im) { g.save(); g.globalAlpha = op; g.fillStyle = '#16121c'; g.fillRect(0, 0, W, H); g.fillStyle = '#c9b8ff'; g.font = `600 ${Math.round(H * 0.035)}px system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(`◭ ${c.name || 'Lab scene'}`, W / 2, H / 2); g.restore(); return; } pic = im; pw = im.naturalWidth; ph = im.naturalHeight; }
+    if (c.kind === 'layer') return; // a Lab layer over a range: only in the render
     if (c.kind === 'color') { g.save(); g.globalAlpha = op; g.fillStyle = c.fill || '#000'; g.fillRect(0, 0, W, H); g.restore(); return; }
     if (c.kind === 'image') { const im = image(c.src); if (!im.complete || !im.naturalWidth) return; pic = im; pw = im.naturalWidth; ph = im.naturalHeight; }
     if (isMedia(c)) { const dk = decks.get(c.id); if (!dk || dk.el.readyState < 2) return; pic = dk.el; pw = dk.el.videoWidth; ph = dk.el.videoHeight; dk.used = performance.now(); }

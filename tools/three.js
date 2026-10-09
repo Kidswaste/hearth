@@ -2025,6 +2025,8 @@ const ThreeLab = (() => {
     }
     // video footage on the timeline: exact frames, the cut list the sketch plays (tools/three-frames.js)
     if (typeof ThreeFrames !== 'undefined') ThreeFrames.attach({ player, send: (msg) => box.send(msg), sketchId: () => current?.id });
+    // the Lab's Sequence: the timeline as a video timeline of scenes, footage, titles and the song (tools/three-seq.js)
+    if (typeof ThreeSeq !== 'undefined') ThreeSeq.attach({ player, bar: player.el, pane, send: (msg) => box.send(msg), sketchId: () => current?.id, rerun: () => run(), director: () => api.director, get stage() { return stage; }, get scenes() { return api.scenes; } });
     pane.addEventListener('keydown', (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
       const plain = !typing && !e.ctrlKey && !e.altKey && !e.metaKey;
@@ -2097,6 +2099,8 @@ const ThreeLab = (() => {
       editor.syncScroll();
     }
     function onMessage(msg) {
+      // the sequence's own messages (and a realtime render's recording) go to tools/three-seq.js
+      if (typeof ThreeSeq !== 'undefined' && (ThreeSeq.onMessage(msg) || ThreeSeq.takeRecording(msg))) return;
       // a key pressed while the picture had focus: the Lab's shortcuts handle it as if pressed here
       if (msg.type === 'host-key') { const { type: _t, source: _s, ...k } = msg; pane.dispatchEvent(new KeyboardEvent('keydown', { ...k, bubbles: true, cancelable: true })); return; }
       if (msg.type === 'console') log(msg.level, msg.text, null, msg.layer);
@@ -2251,6 +2255,7 @@ const ThreeLab = (() => {
       const ctl = selCtl();
       return [
         { label: frozenNow ? '▶ Unfreeze' : '❚❚ Freeze', key: 'F', action: () => setFreeze(!frozenNow) },
+        ...(typeof ThreeSeq !== 'undefined' ? [ThreeSeq.previewItem()] : []),
         { label: 'Frame size', hint: stage.size.id === 'fit' ? 'Fit' : stage.size.id, items: () => [
           ...stage.pillOrder.map((id, k) => ({ label: id === 'fit' ? 'Fit' : id, hint: ThreeMedia.SIZES.find((z) => z.id === id)?.title || '', key: `Shift+${k + 1}`, checked: stage.size.id === id, action: () => stage.setMode(id) })),
           '-', { label: 'Safe zones', checked: Boolean(stage.safe), action: () => stage.setSafe() },
@@ -2492,6 +2497,13 @@ const ThreeLab = (() => {
     function run({ hot = false, layer = null, sync = false, reload = false } = {}) {
       if (!current) return false;
       const up = box.ready && ranOnce && !box.stale && !restartNext && !reload;
+      // the Sequence view owns the preview: the sketch's changes reach the clips that use it; a page that has to be
+      // replaced (a new frame size, a restart) is, and the sequence goes back on it ('ready')
+      if (typeof ThreeSeq !== 'undefined' && ThreeSeq.keep(current.id)) {
+        if (!up) { if (!box.loading || box.stale || restartNext || reload) box.reload(restartNext); restartNext = false; ranOnce = true; player.attach({ playing: false }); box.send({ type: 'fps-cap', value: store.get('three.fpsCap', 0) }); }
+        ThreeSeq.sketchChanged(current.id);
+        return true;
+      }
       if ((hot || sync) && !up) { hot = false; sync = false; }
       if (player.recording) {
         // A rebuild would end the recording; it waits until the video is saved.
@@ -2610,6 +2622,7 @@ const ThreeLab = (() => {
         showMenu(e.clientX, e.clientY, [
           { label: 'Open', action: () => { dlg.close(); if (sk.id !== current?.id) openSketch(sk.id); } },
           { label: '▣ Open and present', action: () => { dlg.close(); if (sk.id !== current?.id) openSketch(sk.id); setTimeout(() => togglePresent(), 400); } },
+          ...(typeof ThreeSeq !== 'undefined' ? [{ label: '▤ Add to the sequence', action: () => { dlg.close(); ThreeSeq.add({ sketch: sk.id }).then(() => ThreeSeq.enter()).catch((err) => toast(err.message, { type: 'error' })); } }] : []),
           { label: p.has(sk.id) ? '☆ Unpin' : '★ Pin to the top', action: () => togglePin(sk.id) },
           { label: 'Rename…', action: async () => { const n = await Modal.prompt('Rename sketch', { value: sk.name }); if (n?.trim()) { sk.name = n.trim(); save(); renderPicker(); fill(); } } },
           { label: 'Duplicate', action: () => { if (sk.id === current?.id) persist(); const copy = { ...JSON.parse(JSON.stringify(sk)), id: `s${Date.now()}`, name: `${sk.name} copy`, updatedAt: Date.now() }; sketches.push(copy); if (extras[sk.id]?.media) (extras[copy.id] ||= {}).media = { ...extras[sk.id].media }; saveExtras(); save(); renderPicker(); fill(); toast(`Duplicated "${sk.name}"`, { timeout: 1500 }); } },
@@ -2897,6 +2910,7 @@ ${code}
       setFrame(id, f) { (extras[id] ||= {}).frame = f; saveExtras(); if (id === current?.id) stage.setMode(f); },
       selectedOf: (id) => extras[id]?.selectedLayer || null,
       songOf: (id) => extras[id]?.media?.path || null,
+      extrasOf: (id) => extras[id] || null, // looks / music links per layer (the Lab sequence applies a clip's look)
       thumbOf: (id) => thumbs[id]?.url || null,
       previewHost: () => previewHost,
     };
@@ -3535,6 +3549,8 @@ ${frag}\`,
     if (!tabs) return { ok: false, error: 'Three.js Lab could not be loaded.' };
     for (let i = 0; i < 100 && !api.director; i += 1) await new Promise((r) => setTimeout(r, 100));
     const route = typeof ChatScenes !== 'undefined' && api.scenes ? ChatScenes.routeThree(tool, ctx.chatId) : null;
+    // the Lab sequence is one for every chat (its scenes are anyone's): never backstage
+    if (tool === 'three_sequence' && typeof ThreeSeq !== 'undefined') return ThreeSeq.handle(tool, args, { sketchId: route?.sketchId || null });
     if (route && route.sketchId !== api.scenes.currentId() && typeof ThreeBackstage !== 'undefined') {
       const r = await ThreeBackstage.handle(tool, args, route);
       if (tool === 'three_new_sketch' && r?.newSketchId) ChatScenes.relink(route.chatId, r.newSketchId);

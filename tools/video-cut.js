@@ -646,6 +646,12 @@ const VideoCut = (() => {
       } else if (cl.kind === 'color') {
         g.fillStyle = cl.fill || '#000'; g.fillRect(x0, top, cw, lh);
         label(g, `■ ${cl.fill || ''}`, x0, top, Math.min(cw, 150));
+      } else if (cl.kind === 'scene') {
+        // a Lab scene (the Lab's Sequence, tools/three-seq.js): its picture; it renders through the Lab
+        g.fillStyle = `hsl(${hue(cl.sketch)} 40% 18%)`; g.fillRect(x0, top, cw, lh);
+        const im = typeof ThreeSeq !== 'undefined' ? ThreeSeq.posterImage(cl, () => draw()) : null;
+        if (im) { const iw = (im.naturalWidth / im.naturalHeight) * lh; for (let px = x0; px < x1 && px < w; px += iw) if (px + iw > 0) g.drawImage(im, px, top, iw, lh); }
+        label(g, `◭ Lab scene${cl.look ? ` · ${cl.look}` : ''}`, x0, top, Math.min(cw, 220));
       } else {
         const hh = hue(cl.src);
         g.fillStyle = `hsl(${hh} 30% 16%)`; g.fillRect(x0, top, cw, lh);
@@ -706,6 +712,9 @@ const VideoCut = (() => {
           label(g, `♪ ${noExt(base(it.src))}${it.volume != null && it.volume !== 1 ? ` · ${Math.round(it.volume * 100)}%` : ''}`, x0, ly, Math.min(cw, 170));
         } else if (it.kind === 'color') {
           g.fillStyle = it.fill || '#444'; g.fillRect(x0, ly, cw, lane.h);
+        } else if (it.kind === 'layer') {
+          g.fillStyle = 'hsl(270 35% 22%)'; g.fillRect(x0, ly, cw, lane.h);
+          label(g, `◭ ${it.name || 'Lab layer'} · Lab`, x0, ly, Math.min(cw, 170));
         } else {
           const hh = hue(it.src);
           g.fillStyle = `hsl(${hh} 30% 18%)`; g.fillRect(x0, ly, cw, lane.h);
@@ -2084,6 +2093,11 @@ const VideoCut = (() => {
   async function renderEdit(edit, { preset = null, fit = 'crop', stills = false, stillsExt = 'png', out, label, library = true, range = null } = {}) {
     const tools = host.S.tools || (host.S.tools = await window.hub.video.tools({ ffmpeg: H.settings().ffmpegPath || undefined }));
     if (!tools.ffmpeg) return null;
+    // Lab scenes / layers (a Lab sequence finished here): the Lab renders each one to a video first (tools/three-seq.js)
+    if (typeof ThreeSeq !== 'undefined' && ThreeSeq.needsBake(edit)) {
+      const t = toast('The Lab is rendering its scenes…', { timeout: 0 });
+      try { await ThreeLab.cmd({ show: true }); edit = await ThreeSeq.bake(edit, { onProgress: (p) => { const sp = t.querySelector('span'); if (sp) sp.textContent = `The Lab is rendering its scenes… ${Math.round(p * 100)}%`; } }); } finally { t.remove(); activate('tool:ae'); }
+    }
     const p = preset ? (typeof preset === 'object' ? preset : findPreset(preset)) : null;
     if (preset && !p) throw new Error(`Unknown preset “${preset}”. Try /presets.`);
     const info = {};
