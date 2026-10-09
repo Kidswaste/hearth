@@ -56,5 +56,14 @@ for (let k = 0; k < 12; k++) { const x = Math.round(W * (k + 0.5) / 12); const i
       if (gap) await wait(gap);
     }
   }
-  return { wait, until, MEDIA, setup, shown, press, sbx };
+  // a fresh copy of the reading sketch (the footage stays loaded): a clean stack of layers
+  async function fresh(file = ThreeFrames._F.path) {
+    const n = ThreeFrames.frame;
+    ThreeLab.openCode(SKETCH); await wait(1500);
+    // the new sketch has no song of its own: load the footage into it again (and go back to the frame)
+    if (file) { await (await ThreeLab.cmd()).loadSong(file); await until(() => ThreeFrames._F.path === file && ThreeFrames.clock && ThreeFrames.clock.source !== 'guess', 12000); await wait(500); ThreeFrames.go(n); }
+    await until(async () => (await sbx('return typeof __lf === "object" && media.frame >= 0')) === true, 12000);
+    await wait(400);
+  }
+  return { wait, until, MEDIA, setup, shown, press, sbx, fresh, SKETCH };
 })();

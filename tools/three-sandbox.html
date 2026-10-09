@@ -790,7 +790,10 @@ function enterPart(i) {
   const p = fparts[i]; fpart = i;
   if (partEnd.timer) { realClearTimeout(partEnd.timer); partEnd.timer = 0; }
   const base = mediaEl.defaultPlaybackRate || 1;
-  if (mediaEl.playbackRate !== base * (p.speed || 1)) mediaEl.playbackRate = base * (p.speed || 1);
+  mediaEl.muted = Boolean(p.mute); // a part with its sound off: the sketch hears silence there too
+  // a held frame stands still (rate 0: the clock stops, the video stays "playing"); other parts at their speed
+  const want = p.hold ? 0 : base * (p.speed || 1);
+  if (mediaEl.playbackRate !== want) { try { mediaEl.playbackRate = want; } catch { mediaEl.playbackRate = base; } }
   if (p.hold) { fholdUntil = performance.now() + (p.hold * 1000) / base; mediaEl.currentTime = fMid(fFrameAt(p.a)); return; }
   fholdUntil = 0;
   mediaEl.currentTime = fMid(fFrameAt(p.a));
@@ -4118,7 +4121,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'media') mediaCommand(msg);
   if (msg.type === 'media-map') beatMap = msg;
   if (msg.type === 'media-clock') { fclock = msg.clock ? { fps: msg.clock.fps || 30, times: msg.clock.times || null, frames: msg.clock.frames || 0, exact: Boolean(msg.clock.exact) } : null; if (mediaEl && fclock) fpres.frame = fFrameAt(fpres.time || mediaEl.currentTime); }
-  if (msg.type === 'media-cuts') { fparts = msg.parts?.length ? msg.parts : null; fpart = fparts && mediaEl ? partAt(mediaEl.currentTime) : -1; if (!fparts && mediaEl) { mediaEl.playbackRate = mediaEl.defaultPlaybackRate || 1; fholdUntil = 0; } }
+  if (msg.type === 'media-cuts') { fparts = msg.parts?.length ? msg.parts : null; fpart = fparts && mediaEl ? partAt(mediaEl.currentTime) : -1; if (!fparts && mediaEl) { mediaEl.playbackRate = mediaEl.defaultPlaybackRate || 1; mediaEl.muted = false; fholdUntil = 0; } }
   if (msg.type === 'media-analysis' && mediaEl) analysis = { ...msg.analysis, name: analysis?.name };
   if (msg.type === 'record') { if (msg.cmd === 'start') startRecording(msg); else stopRecording(); }
   if (msg.type === 'shader') shader?.set(msg.code);

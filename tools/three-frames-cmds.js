@@ -38,6 +38,9 @@
     ['editor', 'Open the same cut in the video editor'], ['sequence', 'sequence [name]: a copy as a new editor sequence'], ['from', 'from <sequence>: take its cut back'],
     ['sheet', 'Contact sheet of the footage (exact frames)'], ['motion', 'Motion curve'], ['pacing', 'Pacing'], ['read', 'This frame as a picture'], ['check', 'Is the frame on screen the right one?'],
     ['time', 'time <tc|frames|seconds>'], ['film', 'film <on|off>: the filmstrip'], ['keys', 'The footage keys'],
+    ['in', 'The part here starts on this frame'], ['out', 'The part here ends on this frame'], ['roll', 'roll <±frames>: move the nearest cut'],
+    ['repeat', 'The part here plays again right after'], ['first', 'The part here plays first'], ['last', 'The part here plays last'], ['mute', 'The part\'s sound off / on'],
+    ['edl', 'Save the cut as an EDL next to the video'], ['copy', 'Copy this frame\'s timecode'], ['still', 'A still of the sketch at this frame'], ['storyboard', 'The sketch at every part, one sheet'],
   ];
   reg({ name: 'footage', aliases: ['frames-lab'], desc: 'The Lab\'s video footage, frame by frame: status, step / go to frames, cut (the sketch plays the parts), shots, the editor, readings', args: '[status|step n|go f120|cut|delete|restore|speed x|hold s|clear|parts|scenes|cues|shots|editor|sequence|from|sheet|motion|pacing|read|check|time|film|on|off|keys]',
     examples: ['/footage', '/footage go 00:00:02:12', '/footage step -5', '/footage cut', '/footage scenes'], keywords: 'video frames timecode cut footage step',
@@ -69,6 +72,15 @@
       if (sub === 'sequence') { const k = await T().toSequence(rest || undefined); return k ? `Sequence "${String(k).slice(4)}" made from the Lab's cut.` : null; }
       if (sub === 'from') { if (!rest) return `Sequences: ${(await T().sequenceNames()).join(', ') || 'none'}`; const r = await T().fromSequence(rest); return `The cut of "${r.from}": ${r.parts} part${r.parts === 1 ? '' : 's'} of ${r.file}${r.other.length ? ` (its other files stay in the editor: ${r.other.join(', ')})` : ''}.`; }
       if (sub === 'check') { const r = await T().checkFrame(); return r.text; }
+      if (sub === 'in' || sub === 'out') return T().ops.edge(sub, rest ? timeArg(rest) : undefined) ? parts() : 'No part to trim here.';
+      if (sub === 'roll') { const k = Math.round(Number(rest) || 1); return T().ops.roll(k) ? parts() : 'No cut to move here.'; }
+      if (sub === 'repeat') return T().ops.repeat() ? parts() : 'No part plays here.';
+      if (sub === 'first' || sub === 'last') return T().ops.order(sub) ? parts() : 'No part plays here.';
+      if (sub === 'mute') { const m = /^off$/i.test(rest) ? true : /^on$/i.test(rest) ? false : undefined; return T().ops.mute(m) ? `${parts()} (mute ${rest || 'toggled'})` : 'No part plays here.'; } // "mute off" = the part's sound off
+      if (sub === 'edl') return `Saved ${base(await T().saveEdl())}.`;
+      if (sub === 'copy') { const s2 = T().status(); T().copyText(`${s2.timecode} (f${s2.frame})`, s2.timecode); return `${s2.timecode} (f${s2.frame}) copied.`; }
+      if (sub === 'still') { await T().stillHere(); return `Still at ${here()}.`; }
+      if (sub === 'storyboard') { const r = await T().storyboard(); return `Storyboard of ${r.frames?.length || 0} frames.`; }
       // a bare frame or timecode: go there
       try { T().go(frameArg(args.trim())); await settle(); return here(); } catch { return `Try: ${FOOTAGE_SUBS.map(([v]) => v).join(', ')}.`; }
     } });
@@ -142,7 +154,7 @@
     run: async (args) => {
       await lab(); const w = words(args); if (w.length < 2) return 'Name the clip and the slider: /ref-motion teaser speed';
       const slider = w.pop(); const r = await T().findRef(w.join(' ')); if (!r) return 'No such reference clip.';
-      const x = await T().motionToSlider(r.path, slider); return `${x.layer}.${x.property}: ${x.keyframes} keys from ${base(r.path)}'s motion.`;
+      const x = await T().motionToSlider(r.path, slider); return `${x.layer}.${x.property}: ${x.keyframes} keys from ${r.name}'s motion.`;
     } });
 
   // ---------- the editor's frame commands, on the Lab's footage ----------
