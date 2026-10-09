@@ -5,7 +5,7 @@ const path = require('path');
 
 const tok = (s) => Math.round(String(s || '').length / 4);
 const SETS = {
-  threeTools: 'three-mcp.js', videoTools: 'video-mcp.js', gameTools: 'forge-game-mcp.js', chatTools: 'chat-mcp.js',
+  threeTools: 'three-mcp.js', videoTools: 'video-mcp.js', gameTools: 'forge-game-mcp.js', chatTools: 'chat-mcp.js', captureTools: 'capture-mcp.js',
 };
 // The directors as they're usually set up (a real agent's flags are passed in by the hub).
 const DIRECTORS = [

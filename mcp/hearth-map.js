@@ -9,7 +9,7 @@ const TOPICS = {
   Claude and Astra are interchangeable directors: same tools, same guide, same chat, same scene. Hearth keeps the chat's task state for whoever runs next (topic handoff).
   Everything is drivable by chat commands (/name args); suggest them to the owner, run Lab ones yourself (topic commands).
   The owner doesn't write code; they describe, then shape results with sliders, looks, frame sizes and the timeline. They want few choices: decide small things yourself.
-  Topics: lab, nodes, react, commands, handoff, habits, video, board, then the Lab's own (layers, sliders, keyframes, timeline, filters, looks, audio, refs, notes, scene, live, games, frame, bigcode).`,
+  Topics: lab, nodes, react, commands, handoff, habits, video, board, capture, then the Lab's own (layers, sliders, keyframes, timeline, filters, looks, audio, refs, notes, scene, live, games, frame, bigcode).`,
   lab: `THE LAB'S MODEL (After Effects with code), bottom up:
   sketch (one per director chat; the owner's other sketches stay untouched)
   → layers, stacked bottom first; each is its own three.js module (renderer, scene, camera), with opacity, blend, x / y / scale / rotate and an in / out time on the song with fades. Filter layers (ascii, vhs, glitch, crt, glow…) restyle every layer below them.
@@ -41,6 +41,12 @@ const TOPICS = {
   4. Knobs, not code: tweak() sliders with plain labels and groups; keep the owner's unsaved slider values.
   5. Look before claiming it works (three_screenshot small, or shot: true on an edit); fix errors first.
   6. Decide small things yourself; ask (chat_ask) only for real choices. Don't paste code: say what you made and what to ask next.`,
+  capture: `CAPTURE (Hearth screenshots / records itself; reads any video's frames exactly). For the owner: one menu (Ctrl/⌘+Alt+S, or ⋯ in the rail → Capture), files in the captures folder (data/captures: shots, recordings, frames, sheets).
+  Screenshots: window, tool (the screen on show), chat, transcript (the whole chat as one tall picture), dock, lab (the Lab preview at its exact frame size), a region / thing the owner drags or clicks; social frames (9:16 1080×1920, 4:5, 1:1, 16:9 and 19 more), clean (no toasts / menus / scrollbars), beautified (gradient, window bar, shadow), annotation (arrows, boxes, text, badges, blur).
+  Recording: the hub page's own frame (no OS cursor, no other windows) + Hearth's own sound (mic optional; the whole computer's sound only on Windows), any fps, a tool / region / social frame, pause, markers, countdown, clicks / keys shown; the REC light is a separate window, never in the picture; WebM + MP4 (ffmpeg); opens in Video Review, the editor timeline, or the Lab as media.
+  Tours: scripted hands-free recordings, one step per line (record, open, cmd /x, type, click, zoom, caption, title, highlight, wait, stop); /tour steps lists them, /tour intro is a 30 s app intro.
+  Frame reader: exact frames by time / frame / timecode (ffprobe's true fps and packet times; VFR safe), every N, scenes, contact sheets, motion curve, pacing, palette, black / frozen / quiet stretches, loudness, letterbox, a color barcode, the best loop. /make (or capture_frames mode make) turns a video into a GIF, a trim, a timelapse, a boomerang, PNG frames for After Effects or a 9:16 / 1:1 / 4:5 copy. Reference footage is for the VIBE (pacing, motion, palette, light), never to reuse unless the owner says so.
+  Commands: /shot, /record, /tour, /frames, /captures, /scenes, /contact, /pacing (see /capture-help). Tools (only when the chat opted in with /capture-tools on): capture_shot, capture_record, capture_frames, capture_list.`,
   video: `VIDEO REVIEW (the Video Director's tool): the owner's renders (newest first), a player with A/B compare (wipe, side, onion, difference), timecoded notes with categories, safe zones and crops for socials, contact sheets, ffmpeg export presets (tiktok, reels, shorts, feed45, yt1080…), After Effects renders (aerender) and ExtendScript. Lab recordings land there too. Tools: video_* and ae_*; the owner's notes are in video_status.`,
   board: `MOOD BOARD (the "Board" rail tool; Ctrl+Shift+M opens it as a drawer over any chat): the owner's references — pictures, clips, websites (live snapshots), notes, colors, frames — on an infinite canvas, several boards, a board can be linked to a chat.
   REFERENCES GIVE A VIBE, NOT FOOTAGE: take palette, light (key, contrast), color (saturation, warmth), texture (edges, grain), motion energy and cut pacing, composition, type and mood from them; never put the reference media into what you make unless the owner explicitly asks for the clip itself.
@@ -50,7 +56,7 @@ const TOPICS = {
 
 const LINE = (helpCall) => `HEARTH (the owner's app: Claude and Astra chats, the Lab, Video Review, chat commands): Claude and Astra share this chat, its scene and the task state Hearth keeps. Map: ${helpCall} app|lab|nodes|react|commands|handoff|habits.`;
 
-const ALIAS = { hearth: 'app', overview: 'app', program: 'app', map: 'app', model: 'lab', graph: 'nodes', node: 'nodes', reactive: 'react', reactivity: 'react', command: 'commands', cmds: 'commands', slash: 'commands', task: 'handoff', switch: 'handoff', engines: 'handoff', astra: 'handoff', claude: 'handoff', rules: 'habits', conventions: 'habits', review: 'video', renders: 'video', moodboard: 'board', boards: 'board', refs: 'board', references: 'board', vibe: 'board' };
+const ALIAS = { hearth: 'app', overview: 'app', program: 'app', map: 'app', model: 'lab', graph: 'nodes', node: 'nodes', reactive: 'react', reactivity: 'react', command: 'commands', cmds: 'commands', slash: 'commands', task: 'handoff', switch: 'handoff', engines: 'handoff', astra: 'handoff', claude: 'handoff', rules: 'habits', conventions: 'habits', review: 'video', renders: 'video', moodboard: 'board', boards: 'board', refs: 'board', references: 'board', vibe: 'board', footage: 'capture', frames: 'capture', record: 'capture', recording: 'capture', screenshot: 'capture', screenshots: 'capture', tour: 'capture', tours: 'capture' };
 
 // topic → text, or null when it isn't a map topic
 function topic(name) {
