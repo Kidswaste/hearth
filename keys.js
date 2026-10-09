@@ -1,7 +1,9 @@
 // The shortcut registry behind the keys button (bottom left): every feature that hides a control behind Alt / Ctrl,
 // a key or a right-click registers a line here, so the owner can look them up instead of memorising them.
 //   Keys.add({ area: 'Board', keys: 'Alt+drag', what: 'duplicate an item' })   (area groups the list; `when` is an
-//   optional () => bool that keeps a line to the tool where it applies)
+//   optional () => bool that keeps a line to the tool where it applies; `run` an optional () => void the keys sheet
+//   calls when the line is clicked; `sel` an optional CSS selector of the control it acts on, which the sheet
+//   points at when there's nothing to run)
 const Keys = (() => {
   const list = [];
   const seen = new Set();
@@ -10,7 +12,7 @@ const Keys = (() => {
       const id = `${e.area}|${e.keys}`;
       if (!e.keys || !e.what || seen.has(id)) continue;
       seen.add(id);
-      list.push({ area: e.area || 'General', keys: e.keys, what: e.what, when: e.when || null });
+      list.push({ area: e.area || 'General', keys: e.keys, what: e.what, when: e.when || null, run: e.run || null, sel: e.sel || null });
     }
   }
   // The lines that apply now (all when `all`), grouped by area in the order areas were first added.

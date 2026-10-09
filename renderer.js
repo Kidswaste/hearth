@@ -109,61 +109,240 @@ function renderRail() {
   for (const btn of rail.querySelectorAll('.agent-btn')) btn.classList.toggle('active', btn.dataset.id === H.surfaceIdFor(H.activeId));
 }
 
+// Right-click an agent in the rail: open it, a new chat, its recent chats, then the rarer edits in submenus.
 function showAgentMenu(id, x, y) {
   const agent = H.agent(id);
-  const items = [{ label: 'Edit…', action: () => Manager.open(id) }];
-  if (agent.mode === 'web') items.push({ label: 'Reload', action: () => H.surfaces.get(id)?.webview?.reload() });
-  if (agent.mode === 'native') items.push({ label: 'New chat', action: () => { activate(id); Native.newChat(id); } });
-  items.push(
-    { label: 'Move up', action: () => moveAgent(id, -1) },
-    { label: 'Move down', action: () => moveAgent(id, 1) },
-    { label: 'Remove', danger: true, action: () => Manager.remove(id) },
-  );
-  showMenu(x, y, items);
-}
-
-function showToolMenu(id, x, y) {
+  if (!agent) return;
+  const i = H.railAgents().findIndex((a) => a.id === id);
+  const recent = agent.mode === 'native' ? H.chats.filter((c) => c.agentId === id).slice(0, 10) : (H.history[id] || []).slice(-10).reverse();
   showMenu(x, y, [
-    { label: 'Move up', action: () => Tools.move(id, -1) },
-    { label: 'Move down', action: () => Tools.move(id, 1) },
-    { label: 'Hide from rail (Settings brings it back)', action: () => Tools.setHidden(id, true) },
+    { label: `Open ${agent.name}`, key: i >= 0 && i < 9 ? `Ctrl+${i + 1}` : '', action: () => activate(id) },
+    agent.mode === 'native' ? { label: 'New chat', key: 'Ctrl+N', action: () => { activate(id); Native.newChat(id); } } : null,
+    recent.length ? { label: 'Recent chats', items: () => recent.map((c) => (agent.mode === 'native'
+      ? { label: (c.title || 'Untitled').slice(0, 48), hint: timeAgo(c.updatedAt || c.at || Date.now()), action: () => { activate(id); Native.open(id, c.id); } }
+      : { label: (c.title || c.url).slice(0, 48), action: () => { activate(id); H.surfaces.get(id)?.webview?.loadURL(c.url); } })) } : null,
+    agent.mode === 'web' ? { label: 'Reload', key: 'Ctrl+R', action: () => H.surfaces.get(id)?.webview?.reload() } : null,
+    '-',
+    { label: 'Edit…', action: () => Manager.open(id) },
+    { label: 'Move', items: [
+      { label: 'Up', action: () => moveAgent(id, -1) },
+      { label: 'Down', action: () => moveAgent(id, 1) },
+      { label: 'To the top', action: () => moveAgentTo(id, 0) },
+      { label: 'To the bottom', action: () => moveAgentTo(id, H.config.agents.length - 1) },
+    ] },
+    { label: 'Remove', danger: true, action: () => Manager.remove(id) },
   ]);
 }
 
+// Right-click a tool in the rail: open it (or its director chat), then move / hide.
+function showToolMenu(id, x, y) {
+  const docked = Tools.dockedAgent?.(id);
+  showMenu(x, y, [
+    { label: `Open ${Tools.get?.(id)?.name || 'the tool'}`, action: () => activate(`tool:${id}`) },
+    docked ? { label: `${docked.name} chat`, hint: 'Docked beside it', action: () => { activate(`tool:${id}`); Tools.openDock(id); } } : null,
+    '-',
+    { label: 'Move', items: [{ label: 'Up', action: () => Tools.move(id, -1) }, { label: 'Down', action: () => Tools.move(id, 1) }] },
+    { label: 'Hide from the rail', hint: 'Settings brings it back', action: () => Tools.setHidden(id, true) },
+  ]);
+}
+
+// ---------- the menu ----------
+// showMenu(x, y, items): the app's one pop-up menu (#menu). An item is { label, action } plus, all optional:
+//   items: [...] or () => [...]   a submenu: click / → / Enter opens it in place with a "‹ back" row; pointing at
+//                                  it for a moment shows it beside the menu (click there runs an item directly)
+//   more: true      a rare action: waits behind one "More…" at the end, so menus stay short
+//   checked: bool   a ✓ in front · key: 'Ctrl+K' on the right ("Label  Key", two spaces before the last word, too)
+//   hint: 'text'    a quiet note after the label · danger · disabled
+// A string item is a small heading, '-' a separator. Keys: ↑ ↓ Home End move, Enter / Space run, → opens a
+// submenu, ← or Backspace goes back, Esc closes. A long menu has a filter field (typing anywhere fills it) that
+// also finds the items of its submenus; a short one jumps to the first item starting with the typed letter.
 let menuOpenedAt = 0;
-// Items marked `more: true` (rare actions) wait behind one "More…" at the end, so menus stay short.
-// An item with `items: [...]` (or a function returning them) is a submenu: it opens in place with a "‹ back" row,
-// so a short top menu can still reach every detail.
-function showMenu(x, y, items, parent = null) {
+let menuState = null; // { x, y, given, parent, kb: index of the keyboard-highlighted row }
+const MENU_FILTER_AT = 9;
+const menuSubItems = (it) => { try { return ((typeof it.items === 'function' ? it.items() : it.items) || []).filter(Boolean); } catch (err) { console.warn(err); return []; } };
+const menuLabel = (it) => String(it.label ?? '').split(/\s{2,}(?=\S+$)/);
+
+function menuButton(it, onPick) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.setAttribute('role', 'menuitem');
+  const [text, inlineKey] = menuLabel(it);
+  b.textContent = text; // the label stays the first text node (usage counts and checks read it)
+  if (it.hint) b.append(el('span', { class: 'menu-hint', text: it.hint }));
+  const sub = Boolean(it.items);
+  const key = sub ? '›' : it.key || inlineKey;
+  if (key) b.append(el('span', { class: `menu-key${sub ? ' menu-sub' : ''}`, text: key }));
+  if (sub) { b.classList.add('has-sub'); b.setAttribute('aria-haspopup', 'menu'); }
+  if (it.checked) b.classList.add('checked');
+  if (it.danger) b.classList.add('danger');
+  if (it.back) b.classList.add('menu-back');
+  if (it.deep) b.classList.add('menu-deep');
+  if (it.disabled) b.disabled = true;
+  if (it.feature) b.dataset.feature = it.feature;
+  b.addEventListener('click', (e) => { e.stopPropagation(); onPick(it, b); });
+  return b;
+}
+
+function showMenu(x, y, items, parent = null, dir = 0) {
   const menu = $('menu');
+  if (!menu) return;
+  hideMenuFly();
   const given = items;
-  items = items.filter(Boolean).map((it) => (it.items ? { ...it, label: `${it.label}  ›`, action: () => setTimeout(() => showMenu(x, y, typeof it.items === 'function' ? it.items() : it.items, { x, y, items: given, parent }), 0) } : it));
-  if (parent) items.unshift({ label: '‹ back', action: () => setTimeout(() => showMenu(parent.x, parent.y, parent.items, parent.parent), 0) });
-  const rest = items.filter((it) => it.more);
+  let list = (typeof items === 'function' ? items() : items || []).filter(Boolean);
+  // rare items behind one "More…" (a submenu, so ‹ back returns here)
+  const rest = list.filter((it) => typeof it === 'object' && it.more);
   if (rest.length > 1) {
-    const main = items.filter((it) => !it.more);
+    const main = list.filter((it) => !(typeof it === 'object' && it.more));
     const at = main.findIndex((it) => it.danger); // "More…" goes above a closing Delete
-    main.splice(at < 0 ? main.length : at, 0, { label: `More…  ${rest.length}`, action: () => setTimeout(() => showMenu(x, y, rest.map((it) => ({ ...it, more: false }))), 0) });
-    items = main;
-  }
-  else if (rest.length) rest[0].more = false;
-  menu.replaceChildren(...items.map(({ label, action, danger }) => {
-    const b = document.createElement('button');
-    // "Rename  F2": two spaces before a last word mark a shortcut, shown on the right (polish.css .menu-key)
-    const [text, key] = String(label).split(/\s{2,}(?=\S+$)/);
-    b.textContent = text;
-    if (key) b.append(el('span', { class: 'menu-key', text: key }));
-    if (danger) b.className = 'danger';
-    b.addEventListener('click', () => { hideMenu(); action(); });
+    main.splice(at < 0 ? main.length : at, 0, { label: 'More…', hint: String(rest.length), items: rest.map((it) => ({ ...it, more: false })) });
+    list = main;
+  } else if (rest.length) list = list.map((it) => (it === rest[0] ? { ...it, more: false } : it));
+  if (parent) list.unshift({ label: '‹ back', key: parent.label || '', back: true, action: () => showMenu(parent.x, parent.y, parent.items, parent.parent, -1) });
+  const pick = (it, node) => {
+    if (it.disabled) return;
+    if (it.items) { menuOpenedAt = performance.now(); setTimeout(() => showMenu(x, y, menuSubItems(it), { x, y, items: given, parent, label: menuLabel(it)[0] }, 1), 0); return; }
+    if (it.back) { menuOpenedAt = performance.now(); setTimeout(() => it.action(), 0); return; }
+    hideMenu();
+    try { it.action?.(node); } catch (err) { toast(err.message, { type: 'error' }); }
+  };
+  const rows = list.map((it) => {
+    if (it === '-' || it.sep) return el('div', { class: 'menu-sep', role: 'separator' });
+    if (typeof it === 'string') return el('div', { class: 'menu-head', text: it });
+    const b = menuButton(it, pick);
+    if (it.items) {
+      b.addEventListener('pointerenter', () => { clearTimeout(menuFlyTimer); menuFlyTimer = setTimeout(() => showMenuFly(b, it, { x, y, given, parent }), 230); });
+      b.addEventListener('pointerleave', () => clearTimeout(menuFlyTimer));
+    } else b.addEventListener('pointerenter', () => { clearTimeout(menuFlyTimer); menuFlyTimer = setTimeout(hideMenuFly, 160); });
     return b;
-  }));
+  });
+  const buttons = rows.filter((n) => n.tagName === 'BUTTON');
+  // a long menu gets a filter field (typing anywhere goes into it)
+  let filter = null;
+  if (buttons.length >= MENU_FILTER_AT) {
+    filter = el('input', { class: 'menu-filter', type: 'search', placeholder: 'Type to filter…', spellcheck: false, autocomplete: 'off' });
+    filter.addEventListener('input', () => filterMenu(filter.value));
+    filter.addEventListener('keydown', (e) => { if (e.key === 'Escape' && filter.value) { e.preventDefault(); e.stopPropagation(); filter.value = ''; filterMenu(''); } });
+  }
+  menu.replaceChildren(...(filter ? [filter] : []), ...rows);
+  menu.setAttribute('role', 'menu');
+  menu.classList.toggle('m-in', dir > 0);
+  menu.classList.toggle('m-back', dir < 0);
+  menu.classList.toggle('m-long', Boolean(filter));
+  menuState = { x, y, given, parent, list, pick, kb: -1, filter };
   menu.hidden = false;
   menuOpenedAt = performance.now(); // the click that opened it must not close it (start.js)
   const { innerWidth: w, innerHeight: h } = window;
-  menu.style.left = `${Math.min(x, w - menu.offsetWidth - 8)}px`;
-  menu.style.top = `${Math.min(y, h - menu.offsetHeight - 8)}px`;
+  menu.style.left = `${Math.max(4, Math.min(x, w - menu.offsetWidth - 8))}px`;
+  menu.style.top = `${Math.max(4, Math.min(y, h - menu.offsetHeight - 8))}px`;
 }
-function hideMenu() { $('menu').hidden = true; }
+function hideMenu() {
+  const menu = $('menu');
+  if (menu) menu.hidden = true;
+  hideMenuFly();
+  menuState = null;
+}
+// A menu under an element (a button's own menu): showMenuAt(button, items)
+function showMenuAt(anchor, items) {
+  const r = anchor.getBoundingClientRect();
+  showMenu(r.left, r.bottom + 4, items);
+}
+
+// typing in a long menu: matching rows stay, and the items of its submenus show as "Look › Glow"
+function filterMenu(q) {
+  const menu = $('menu');
+  if (!menuState) return;
+  q = String(q || '').trim().toLowerCase();
+  menu.querySelectorAll('.menu-deep').forEach((n) => n.remove());
+  for (const n of menu.children) {
+    if (n.classList.contains('menu-filter')) continue;
+    const isRow = n.tagName === 'BUTTON';
+    n.style.display = !q ? '' : isRow && !n.classList.contains('menu-back') && n.textContent.toLowerCase().includes(q) ? '' : 'none';
+  }
+  if (q) {
+    const deep = [];
+    for (const it of menuState.list) {
+      if (typeof it !== 'object' || !it.items || deep.length >= 30) continue;
+      const head = menuLabel(it)[0];
+      for (const sub of menuSubItems(it)) {
+        if (typeof sub !== 'object' || sub.items || sub.sep || !String(sub.label || '').toLowerCase().includes(q)) continue;
+        deep.push(menuButton({ ...sub, label: `${head} › ${menuLabel(sub)[0]}`, deep: true }, (s) => { hideMenu(); try { sub.action?.(); } catch (err) { toast(err.message, { type: 'error' }); } }));
+      }
+    }
+    menu.append(...deep);
+    if (!deep.length && ![...menu.children].some((n) => n.tagName === 'BUTTON' && n.style.display !== 'none')) menu.append(el('div', { class: 'menu-head menu-deep', text: 'Nothing matches' }));
+  }
+  menuState.kb = -1;
+  menuKb(q ? 0 : -1);
+}
+const menuRows = () => [...($('menu')?.querySelectorAll(':scope > button') || [])].filter((b) => b.style.display !== 'none' && !b.disabled);
+function menuKb(i) {
+  const rows = menuRows();
+  rows.forEach((b) => b.classList.remove('kb-on'));
+  if (!menuState || i < 0 || !rows.length) { if (menuState) menuState.kb = -1; return; }
+  menuState.kb = (i + rows.length) % rows.length;
+  const b = rows[menuState.kb];
+  b.classList.add('kb-on');
+  b.scrollIntoView({ block: 'nearest' });
+}
+
+// pointing at a submenu row: its items show beside the menu (a second panel, #menu-fly)
+let menuFlyTimer = 0;
+function showMenuFly(row, it, ctx) {
+  if (!row.isConnected || !menuState) return;
+  let fly = $('menu-fly');
+  if (!fly) { fly = el('div', { id: 'menu-fly', role: 'menu' }); document.body.append(fly); fly.addEventListener('pointerenter', () => clearTimeout(menuFlyTimer)); }
+  const items = menuSubItems(it);
+  if (!items.length) { hideMenuFly(); return; }
+  const parentCtx = { x: ctx.x, y: ctx.y, items: ctx.given, parent: ctx.parent, label: menuLabel(it)[0] };
+  fly.replaceChildren(...items.map((sub) => {
+    if (sub === '-' || sub.sep) return el('div', { class: 'menu-sep' });
+    if (typeof sub === 'string') return el('div', { class: 'menu-head', text: sub });
+    return menuButton(sub, (s) => {
+      if (s.items) { menuOpenedAt = performance.now(); setTimeout(() => showMenu(ctx.x, ctx.y, menuSubItems(s), { x: ctx.x, y: ctx.y, items: items, parent: parentCtx, label: menuLabel(s)[0] }, 1), 0); hideMenuFly(); return; }
+      if (s.disabled) return;
+      hideMenu();
+      try { s.action?.(); } catch (err) { toast(err.message, { type: 'error' }); }
+    });
+  }));
+  fly.hidden = false;
+  fly.dataset.for = menuLabel(it)[0];
+  const r = row.getBoundingClientRect();
+  const m = $('menu').getBoundingClientRect();
+  const fw = fly.offsetWidth; const fh = fly.offsetHeight;
+  const right = m.right + 2 + fw < innerWidth - 4;
+  fly.style.left = `${right ? m.right + 2 : Math.max(4, m.left - fw - 2)}px`;
+  fly.style.top = `${Math.max(4, Math.min(r.top - 5, innerHeight - fh - 8))}px`;
+  fly.classList.toggle('to-left', !right);
+}
+function hideMenuFly() { clearTimeout(menuFlyTimer); const f = $('menu-fly'); if (f) f.hidden = true; }
+
+// the menu's keys (capture: while it's open, arrows and letters belong to it, not to the Lab or the chat)
+addEventListener('keydown', (e) => {
+  const menu = $('menu');
+  if (!menu || menu.hidden || !menuState || e.ctrlKey || e.metaKey || e.altKey) return;
+  const rows = menuRows();
+  const at = menuState.kb;
+  const typing = e.target === menuState.filter;
+  const done = () => { e.preventDefault(); e.stopPropagation(); };
+  if (e.key === 'ArrowDown') { done(); menuKb(at < 0 ? 0 : at + 1); }
+  else if (e.key === 'ArrowUp') { done(); menuKb(at < 0 ? rows.length - 1 : at - 1); }
+  else if (e.key === 'Home' && !typing) { done(); menuKb(0); }
+  else if (e.key === 'End' && !typing) { done(); menuKb(rows.length - 1); }
+  else if (e.key === 'Enter' || (e.key === ' ' && !typing && at >= 0)) {
+    const b = at >= 0 ? rows[at] : menuState.filter?.value ? rows[0] : null;
+    if (b) { done(); b.click(); }
+  } else if (e.key === 'ArrowRight' && at >= 0 && rows[at].classList.contains('has-sub')) { done(); rows[at].click(); }
+  else if ((e.key === 'ArrowLeft' || (e.key === 'Backspace' && !menuState.filter?.value)) && menuState.parent) { done(); menu.querySelector('.menu-back')?.click(); }
+  else if (e.key === 'Escape') { done(); hideMenu(); }
+  else if (e.key.length === 1 && e.key !== ' ' && !/^(INPUT|TEXTAREA)$/.test(e.target.tagName) && !e.target.isContentEditable) {
+    if (menuState.filter) { done(); menuState.filter.focus(); menuState.filter.value += e.key; filterMenu(menuState.filter.value); return; }
+    const k = e.key.toLowerCase();
+    const from = rows.findIndex((b, i) => i > at && b.textContent.trim().replace(/^[^\p{L}\p{N}]+/u, '').toLowerCase().startsWith(k));
+    const i = from >= 0 ? from : rows.findIndex((b) => b.textContent.trim().replace(/^[^\p{L}\p{N}]+/u, '').toLowerCase().startsWith(k));
+    if (i >= 0) { done(); menuKb(i); }
+  }
+}, true);
+addEventListener('resize', () => hideMenu());
 
 function moveAgent(id, delta) {
   const list = H.config.agents;
@@ -171,6 +350,13 @@ function moveAgent(id, delta) {
   const j = i + delta;
   if (j < 0 || j >= list.length) return;
   [list[i], list[j]] = [list[j], list[i]];
+  saveConfig();
+}
+function moveAgentTo(id, to) {
+  const list = H.config.agents;
+  const i = list.findIndex((a) => a.id === id);
+  if (i < 0 || i === to) return;
+  list.splice(Math.max(0, Math.min(list.length - 1, to)), 0, ...list.splice(i, 1));
   saveConfig();
 }
 
@@ -491,4 +677,90 @@ function apply({ config, themeCss, error }) {
   applyLayout();
   Panel.render();
   activate(H.activeId, { focus: false });
+}
+
+// ---------- the Lab's pop-up menus ----------
+// popMenu(x, y, items): the two-column menus of the Lab (.mb-menu.lab-pop; ThreeTweaks.menu and the Lab's own
+// menus use it). An item is [label, hint, fn, on, feature]; a string is a heading. Since round 7:
+// [label, hint, [...items]] is a submenu that opens in place with a "‹ back" row, a long menu folds each section after
+// the first into one "Heading ›" row, a long list gets a filter field, and ↑ ↓ Enter → ← Esc work like in #menu.
+const POP_FOLD_AT = 11;
+function popFold(list) {
+  list = list.filter((it) => typeof it === 'string' || (Array.isArray(it) && it.length && it[0] !== ''));
+  if (list.filter(Array.isArray).length <= POP_FOLD_AT) return list;
+  const out = [];
+  let sec = null;
+  list.forEach((it, i) => {
+    if (typeof it === 'string') {
+      // the menu's title line and the first section stay open
+      if (i === 0 || !out.some(Array.isArray)) { out.push(it); sec = null; return; }
+      sec = [it, '', []];
+      out.push(sec);
+      return;
+    }
+    if (sec) sec[2].push(it); else out.push(it);
+  });
+  // a folded section of one item stays inline
+  return out.flatMap((x) => (Array.isArray(x) && Array.isArray(x[2]) && x[2].length <= 1 ? x[2] : [x]));
+}
+function popMenu(x, y, items, { width = 300 } = {}) {
+  document.querySelector('.mb-menu.lab-pop')?.remove();
+  const m = el('div', { class: 'mb-menu lab-pop', role: 'menu' });
+  const stack = [];
+  let kb = -1;
+  const off = () => { removeEventListener('pointerdown', away, true); removeEventListener('keydown', keys, true); };
+  const close = () => { m.remove(); off(); };
+  const rowsNow = () => [...m.querySelectorAll(':scope > .menu-item')].filter((b) => b.style.display !== 'none');
+  const mark = (i) => {
+    const rows = rowsNow();
+    rows.forEach((b) => b.classList.remove('kb-on'));
+    if (!rows.length || i < 0) { kb = -1; return; }
+    kb = (i + rows.length) % rows.length;
+    rows[kb].classList.add('kb-on');
+    rows[kb].scrollIntoView({ block: 'nearest' });
+  };
+  const row = (it, onClick, extra = '') => el('button', { type: 'button', role: 'menuitem', class: `menu-item${it[3] ? ' on' : ''}${extra}`, dataset: it[4] ? { feature: it[4] } : {}, on: { click: onClick } }, el('b', { text: it[0] }), el('span', { class: 'hint', text: it[1] || '' }));
+  function render(list, dir = 0) {
+    const nodes = [];
+    if (stack.length) nodes.push(row(['‹ back', stack.at(-1).title], () => { const prev = stack.pop(); render(prev.list, -1); }, ' menu-back'));
+    for (const it of popFold(list.filter(Boolean))) {
+      if (typeof it === 'string') nodes.push(el('div', { class: 'menu-head', text: it }));
+      else if (Array.isArray(it[2])) nodes.push(row([it[0], `${it[1] ? `${it[1]}  ` : ''}›`, null, it[3], it[4]], () => { stack.push({ list, title: it[0] }); render(it[2], 1); }, ' has-sub'));
+      else nodes.push(row(it, () => { close(); it[2]?.(); }));
+    }
+    let filter = null;
+    if (nodes.filter((n) => n.classList.contains('menu-item')).length >= 14) {
+      filter = el('input', { class: 'menu-filter', type: 'search', placeholder: 'Type to filter…', spellcheck: false });
+      filter.addEventListener('input', () => {
+        const q = filter.value.trim().toLowerCase();
+        for (const n of m.children) if (n !== filter) n.style.display = !q || (n.classList.contains('menu-item') && !n.classList.contains('menu-back') && n.textContent.toLowerCase().includes(q)) ? '' : 'none';
+        mark(q ? 0 : -1);
+      });
+    }
+    m.replaceChildren(...(filter ? [filter] : []), ...nodes);
+    m.classList.toggle('m-in', dir > 0);
+    m.classList.toggle('m-back', dir < 0);
+    kb = -1;
+    requestAnimationFrame(() => { const r = m.getBoundingClientRect(); if (r.bottom > innerHeight - 8) m.style.top = `${Math.max(8, innerHeight - 8 - r.height)}px`; });
+  }
+  const away = (e) => { if (!m.contains(e.target)) close(); };
+  const keys = (e) => {
+    if (!m.isConnected) { off(); return; }
+    const rows = rowsNow();
+    const filter = m.querySelector('.menu-filter');
+    const typingElsewhere = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && e.target !== filter;
+    const done = () => { e.preventDefault(); e.stopPropagation(); };
+    if (e.key === 'Escape') { done(); if (filter?.value) { filter.value = ''; filter.dispatchEvent(new Event('input')); } else close(); }
+    else if (e.key === 'ArrowDown') { done(); mark(kb + 1); }
+    else if (e.key === 'ArrowUp') { done(); mark(kb < 0 ? rows.length - 1 : kb - 1); }
+    else if (e.key === 'Enter') { const b = rows[kb] || (filter?.value ? rows[0] : null); if (b) { done(); b.click(); } }
+    else if (e.key === 'ArrowRight' && rows[kb]?.classList.contains('has-sub')) { done(); rows[kb].click(); }
+    else if ((e.key === 'ArrowLeft' || (e.key === 'Backspace' && !filter?.value)) && stack.length && !typingElsewhere) { done(); m.querySelector('.menu-back')?.click(); }
+    else if (filter && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && e.target !== filter && !typingElsewhere) { done(); filter.focus(); filter.value += e.key; filter.dispatchEvent(new Event('input')); }
+  };
+  render(items);
+  Object.assign(m.style, { left: `${Math.max(8, Math.min(innerWidth - width - 12, x))}px`, top: `${Math.max(8, y)}px`, transform: 'none', maxHeight: '70vh', overflowY: 'auto' });
+  document.body.append(m);
+  setTimeout(() => { addEventListener('pointerdown', away, true); addEventListener('keydown', keys, true); });
+  return m;
 }

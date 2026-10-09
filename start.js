@@ -31,7 +31,7 @@ $('chat-search').addEventListener('input', (e) => Panel.setFilter(e.target.value
 // Checks the export first (what's new, duplicates, empty chats), then imports with progress (addons-cmds.js).
 $('import-btn').addEventListener('click', () => Addons.importChats());
 
-document.addEventListener('click', (e) => { if (!e.target.closest('#menu') && performance.now() - menuOpenedAt > 40) hideMenu(); });
+document.addEventListener('click', (e) => { if (!e.target.closest('#menu, #menu-fly') && performance.now() - menuOpenedAt > 40) hideMenu(); });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') hideMenu();
   // Code editors handle their own Ctrl shortcuts (comment toggle, duplicate line…).

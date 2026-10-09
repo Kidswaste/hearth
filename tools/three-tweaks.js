@@ -303,19 +303,8 @@ const ThreeTweaks = (() => {
   const hashSeed = (s) => [...String(s)].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) >>> 0, 7);
   const flash = (node) => { if (!node) return; node.classList.remove('tw-flash'); void node.offsetWidth; node.classList.add('tw-flash'); };
   // A small menu with headings and hints, used across the Lab: items are 'Heading' | [label, hint, fn, on?, feature?] | null.
-  function menu(x, y, items) {
-    document.querySelector('.mb-menu.lab-pop')?.remove();
-    const m = el('div', { class: 'mb-menu lab-pop' }, items.filter(Boolean).map((it) => (typeof it === 'string'
-      ? el('div', { class: 'menu-head', text: it })
-      : el('button', { class: `menu-item${it[3] ? ' on' : ''}`, dataset: it[4] ? { feature: it[4] } : {}, on: { click: () => { m.remove(); it[2](); } } }, el('b', { text: it[0] }), el('span', { class: 'hint', text: it[1] || '' })))));
-    Object.assign(m.style, { left: `${Math.max(8, Math.min(innerWidth - 312, x))}px`, top: `${Math.max(8, y)}px`, transform: 'none', maxHeight: '70vh', overflowY: 'auto' });
-    document.body.append(m);
-    requestAnimationFrame(() => { const r = m.getBoundingClientRect(); if (r.bottom > innerHeight - 8) m.style.top = `${Math.max(8, innerHeight - 8 - r.height)}px`; });
-    const close = (e) => { if (!m.contains(e.target)) { m.remove(); removeEventListener('pointerdown', close, true); removeEventListener('keydown', esc, true); } };
-    const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); m.remove(); removeEventListener('pointerdown', close, true); removeEventListener('keydown', esc, true); } };
-    setTimeout(() => { addEventListener('pointerdown', close, true); addEventListener('keydown', esc, true); });
-    return m;
-  }
+  // (round 7: the shared popMenu in renderer.js: submenus, long sections folded, filter, arrow keys)
+  function menu(x, y, items) { return popMenu(x, y, items, { width: 300 }); }
   // camelCase / snake_case keys → "Orb size"
   const humanize = (k) => {
     const words = String(k).replace(/[_-]+/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2').trim().split(/\s+/);

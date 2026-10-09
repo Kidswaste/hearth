@@ -60,8 +60,8 @@ const DirectorDock = (() => {
     const sum = el('span', { class: 'dd-sum' });
     const thumb = el('button', { type: 'button', class: 'dd-thumb', hidden: true, title: 'The last picture the director looked at (click to enlarge)' }, el('img', { alt: '' }));
     const undoBtn = el('button', { type: 'button', class: 'dd-btn dd-undo', text: '↶', hidden: toolId !== 'three', title: 'Undo the director\'s last code edit' });
-    const askBtn = el('button', { type: 'button', class: 'dd-btn', text: '✦', title: 'Quick asks and dock options' });
-    const foldBtn = el('button', { type: 'button', class: 'dd-btn', text: '⇥', title: 'Collapse the chat to a thin bar (double-click the divider too)' });
+    const askBtn = el('button', { type: 'button', class: 'dd-btn dd-ask', text: '✦', title: 'Quick asks and dock options (right-click the dock for the same)' });
+    const foldBtn = el('button', { type: 'button', class: 'dd-btn dd-fold', text: '⇥', title: 'Collapse the chat to a thin bar (double-click the divider too)' });
     const list = el('div', { class: 'dd-list', hidden: true });
     const strip = el('div', { class: 'dd-strip', dataset: { feature: 'Director activity' } }, calls, sum, el('span', { class: 'spacer' }), thumb, undoBtn, askBtn, foldBtn, list);
     const chips = el('div', { class: 'dd-chips', dataset: { feature: 'Director chips' } });
@@ -114,14 +114,26 @@ const DirectorDock = (() => {
     foldBtn.addEventListener('click', () => setCollapsed(s, true));
     rail.addEventListener('click', () => { rail.classList.remove('unread'); setCollapsed(s, false); });
 
+    // ✦ (and right-click anywhere on the dock): the quick asks first, the dock's own options in a few submenus
     function menuItems() {
+      const w = widthOf(s);
       return [
-        ...chipList(toolId).map((c) => ({ label: c.label, action: () => useChip(c) })),
-        { label: store.get('director.chips', true) ? 'Hide the quick chips' : 'Show the quick chips', action: () => { store.set('director.chips', !store.get('director.chips', true)); refreshAll(); } },
-        { label: 'Add a quick chip…', action: async () => { const t = await Modal.prompt('New quick chip', { label: 'What it sends to the director (start with / to run a command instead)' }); if (t?.trim()) { store.set(`director.chips.${toolId}`, [...store.get(`director.chips.${toolId}`, []), t.trim()]); refreshAll(); } } },
-        ...(toolId === 'three' ? [{ label: 'Redo the undone edit', action: () => redoEdit() }] : []),
+        ...chipList(toolId).map((c) => ({ label: c.label, hint: c.run ? 'free' : '', action: () => useChip(c) })),
+        '-',
+        ...(toolId === 'three' ? [
+          { label: '↶ Undo the director’s last edit', key: 'Alt+Shift+Z', action: () => undoEdit() },
+          { label: '↷ Redo the undone edit', key: 'Alt+Shift+Y', action: () => redoEdit() },
+        ] : []),
+        { label: 'Quick chips', items: () => [
+          { label: 'Show them above the chat box', checked: store.get('director.chips', true), action: () => { store.set('director.chips', !store.get('director.chips', true)); refreshAll(); } },
+          { label: 'Add a quick chip…', action: async () => { const t = await Modal.prompt('New quick chip', { label: 'What it sends to the director (start with / to run a command instead)' }); if (t?.trim()) { store.set(`director.chips.${toolId}`, [...store.get(`director.chips.${toolId}`, []), t.trim()]); refreshAll(); } } },
+          ...chipList(toolId).filter((c) => c.own).map((c) => ({ label: `Remove “${c.label}”`, danger: true, action: () => { store.set(`director.chips.${toolId}`, store.get(`director.chips.${toolId}`, []).filter((t) => t !== (c.run || c.send))); refreshAll(); } })),
+        ] },
+        { label: 'Dock', items: () => [
+          { label: 'Width', hint: `${w} px`, items: () => [...WIDTHS.map((px) => ({ label: `${px} px`, checked: w === px, action: () => setWidth(s, px) })), { label: 'Reset (420 px)', action: () => setWidth(s, 420) }] },
+          { label: 'Collapse to a thin bar', key: 'Alt+Shift+D', action: () => setCollapsed(s, true) },
+        ] },
         { label: 'What this director costs per message', action: () => Commands.exec('/director-cost', agent.id) },
-        { label: 'Collapse to a thin bar', action: () => setCollapsed(s, true) },
       ];
     }
     function useChip(c) {
@@ -168,7 +180,7 @@ const DirectorDock = (() => {
     applyCollapsed(s);
     divider(s);
     const entry = {
-      s, agentId: agent.id, strip, chips, rail, paint, paintChips,
+      s, agentId: agent.id, strip, chips, rail, paint, paintChips, menuItems,
       off() {
         offCall(); offHist(); mo.disconnect();
         Native.hooks.send.splice(Native.hooks.send.indexOf(onSend) >>> 0, 1);
@@ -266,6 +278,7 @@ const DirectorDock = (() => {
   return {
     attach, detach, refreshAll, applyCollapsed, undoEdit, redoEdit, setCollapsed, setWidth, widthOf, viewImage, chipList, iconOf, ICONS, CHIPS, WIDTHS,
     entry: (toolId) => attached.get(toolId) || null,
+    menu: (toolId) => attached.get(toolId)?.menuItems() || null, // the ✦ menu's items (right-click the dock: declutter.js)
     surface: (toolId) => attached.get(toolId)?.s || H.surfaces.get(`tool:${toolId}`) || null,
   };
 })();

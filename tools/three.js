@@ -942,17 +942,7 @@ const ThreeLab = (() => {
       return out;
     }
     const animatedProps = (L) => laneProps(L).map((x) => x.prop).filter((p) => keysOf(L, p).length);
-    function popup(x, y, items) {
-      document.querySelector('.mb-menu.lab-pop')?.remove();
-      const menu = el('div', { class: 'mb-menu lab-pop' }, items.filter(Boolean).map((it) => (typeof it === 'string'
-        ? el('div', { class: 'menu-head', text: it })
-        : el('button', { class: `menu-item${it[3] ? ' on' : ''}`, on: { click: () => { menu.remove(); it[2](); } } }, el('b', { text: it[0] }), el('span', { class: 'hint', text: it[1] || '' })))));
-      Object.assign(menu.style, { left: `${Math.max(8, Math.min(innerWidth - 290, x))}px`, top: `${Math.max(8, y)}px`, transform: 'none', maxHeight: '64vh', overflowY: 'auto' });
-      document.body.append(menu);
-      requestAnimationFrame(() => { const r = menu.getBoundingClientRect(); if (r.bottom > innerHeight - 8) menu.style.top = `${Math.max(8, innerHeight - 8 - r.height)}px`; });
-      const close = (e) => { if (!menu.contains(e.target)) { menu.remove(); removeEventListener('pointerdown', close, true); } };
-      setTimeout(() => addEventListener('pointerdown', close, true));
-    }
+    function popup(x, y, items) { return popMenu(x, y, items, { width: 290 }); } // renderer.js (submenus, filter, keys)
     function setSolo(id) {
       soloId = id && layerById(id) ? id : null;
       for (const x of layersOf()) box.send({ type: 'layer-props', id: x.id, props: { visible: x.visible !== false && (!soloId || x.id === soloId) } });
@@ -2243,17 +2233,40 @@ const ThreeLab = (() => {
     if (lookCycle) queueMicrotask(() => setLookCycle(lookCycle));
     // ⟲ Restart: everything from scratch (a new page, GPU context and audio), when a sketch bugs out.
     // right-click on the picture
+    // Right-click the picture (round 7): the frequent things first, the rest in a few open submenus.
     function previewMenuItems() {
+      const ctl = selCtl();
       return [
-        { label: '📷 Save a screenshot', action: () => box.send({ type: 'screenshot' }) },
-        { label: '📋 Copy a screenshot', action: () => { copyNextShot = true; box.send({ type: 'screenshot' }); } },
-        { label: frozenNow ? '▶ Unfreeze (\\)' : '❚❚ Freeze the picture (\\)', action: () => setFreeze(!frozenNow) },
-        { label: `⌗ Guides: ${GUIDES.find(([k]) => k === guides)[1]} → ${GUIDES[(GUIDES.findIndex(([k]) => k === guides) + 1) % GUIDES.length][1]}`, action: () => cycleGuides() },
-        { label: '📌 Note at this moment (N)', action: () => takeNote() },
-        { label: '⟲ Restart from scratch', action: () => restartSim() },
-        { label: '▣ Present (P)', action: () => togglePresent() },
-        { label: box.onStage ? '🖥 Back from the Stage window' : '🖥 Open in a Stage window', action: () => setStage(!box.onStage) },
-        { label: 'Lab keys (?)', action: () => labKeys() },
+        { label: frozenNow ? '▶ Unfreeze' : '❚❚ Freeze', key: 'F', action: () => setFreeze(!frozenNow) },
+        { label: 'Frame size', hint: stage.size.id === 'fit' ? 'Fit' : stage.size.id, items: () => [
+          ...stage.pillOrder.map((id, k) => ({ label: id === 'fit' ? 'Fit' : id, hint: ThreeMedia.SIZES.find((z) => z.id === id)?.title || '', key: `Shift+${k + 1}`, checked: stage.size.id === id, action: () => stage.setMode(id) })),
+          '-', { label: 'Safe zones', checked: Boolean(stage.safe), action: () => stage.setSafe() },
+        ] },
+        { label: 'Capture', items: () => [
+          { label: '📷 Still at the frame size', action: () => still() },
+          { label: '📋 Copy this frame', action: () => still({ copy: true }) },
+          { label: 'Save a screenshot', hint: 'as it shows here', action: () => box.send({ type: 'screenshot' }) },
+          { label: '◐ Pin this frame to compare', key: '|', action: () => pinFrame() },
+          { label: '🎞 Contact sheet', action: () => showSheet() },
+          { label: '📌 Note at this moment', key: 'N', action: () => takeNote() },
+        ] },
+        ctl ? { label: 'Sliders', items: () => [
+          { label: '🎲 Shuffle', key: 'R', action: () => ctl.shuffle() },
+          { label: 'The shuffle before', key: 'Shift+R', action: () => ctl.shuffleStep(-1) },
+          { label: '💾 Save into the code', key: 'Ctrl+S', action: () => { ctl.save(); toast('Sliders saved into the code', { timeout: 1200 }); } },
+          { label: 'Save as a look', key: 'Ctrl+Shift+S', action: () => ctl.quickLook() },
+          { label: 'Next look', action: () => ctl.lookStep(1) },
+        ] } : null,
+        { label: 'View', items: () => [
+          { label: '▣ Present', key: 'P', action: () => togglePresent() },
+          { label: box.onStage ? '🖥 Back from the Stage window' : '🖥 Stage window', action: () => setStage(!box.onStage) },
+          { label: '⛶ Focus', key: 'Shift+F', checked: focusOn, action: () => setFocus(!focusOn) },
+          { label: 'Guides', hint: GUIDES.find(([k]) => k === guides)[1], items: () => GUIDES.map(([k, l]) => ({ label: l, checked: k === guides, action: () => { guides = k; store.set('three.guides', k); box.send({ type: 'guides', kind: k }); guidesBtn.classList.toggle('on', Boolean(k)); } })) },
+        ] },
+        '-',
+        { label: '⟲ Restart from scratch', key: 'Ctrl+Shift+Enter', action: () => restartSim() },
+        { label: 'Lab keys', key: '?', action: () => (window.KeysUI ? KeysUI.open() : labKeys()) },
+        ...(window.Declutter ? Declutter.customiseItems('Lab preview') : []),
       ];
     }
     // ⌗ composition guides over the picture (not in screenshots / videos)
