@@ -2364,6 +2364,7 @@ const VideoCut = (() => {
     return addClip(path, { a, b });
   }
 
+  registerKeys(); // listed in the keys sheet before Video Review first opens (mount adds nothing new: Keys.add skips repeats)
   return {
     mount, onKey, frame, enter, leave, toggle, statusOf, hasCut, receive, on: (ev, fn) => { (listeners[ev] ||= []).push(fn); },
     get active() { return st.on; }, get edit() { return st.edit; }, get path() { return st.path; }, get time() { return P.playing ? nowT() : P.T; }, get playing() { return P.playing; },

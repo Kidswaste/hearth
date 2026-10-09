@@ -169,7 +169,7 @@
 .vr-stage.cutting :is(.vr-a, .vr-b) { visibility: hidden; }
 .vr-pfade { position: absolute; inset: 0; }
 .vr-p { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; visibility: hidden; filter: var(--vr-filter, none); }
-.vr-p.on { visibility: visible; }
+.vr-p.on { visibility: inherit; } /* inherit: a hidden Video Review surface must hide its program monitor too */
 .vr-frame.mirrored .vr-p { transform: scaleX(-1); }
 .vr-cutb { position: absolute; right: 3px; bottom: 4px; font: 700 10px/1 var(--mono, monospace); padding: 2px 4px; background: #000c; color: var(--vr-gold); border-radius: 3px; }
 html[data-skin="forge"] .vr-cut-track { border-radius: 0; }
@@ -229,7 +229,7 @@ html[data-skin="forge"] .vr-cut-track { border-radius: 0; }
 @container (max-width: 940px) {
   .vr, .lib-hidden .vr { grid-template-columns: minmax(0, 1fr) 232px; }
   .vr-lib { position: absolute; z-index: 15; left: 0; top: 0; bottom: 0; width: 250px; background: var(--bg); box-shadow: 20px 0 50px #000a; display: none; }
-  .lib-open .vr-lib { display: flex; visibility: visible; padding: 8px; }
+  .lib-open .vr-lib { display: flex; visibility: inherit; padding: 8px; }
   .vr-sub, .vr-versions { display: none; }
   .vr-seg button { padding: 3px 7px; }
   .vr-skip { display: none; }
