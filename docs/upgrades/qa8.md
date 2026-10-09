@@ -99,3 +99,7 @@ is settled (the one that has the focus wins; the other stays reachable as writte
 | . | Lab "one frame while frozen" ⇄ timeline "nudge by ear" | frozen: the frame step | the nudge when not frozen |
 | Shift+C | Lab "recall slot C" (listed twice) | one line now (#43) | — |
 | F1 | command bar help ⇄ (nothing) | everywhere now (#38) | — |
+
+## More fixes found by the journeys
+57. Fixed: the app map told Claude and Astra "/record" records Hearth; typed (or offered as a chip) in the Lab's director chat it records the *sketch*. The map now says `/rec` records Hearth anywhere and `/record` in the Lab records the sketch.
+58. Fixed (dev): the journeys' clicks landed on the row above in a menu that was still springing open (round 7's menu animation moves the rows for ≈ 150 ms): `dev/checks/editor.js` picked "Opacity ›" instead of "Transition in ›". Clicks wait for a menu, flyout, dialog or the keys sheet to finish opening; `J.key` knows Home, End, PgUp, PgDn, F1, F2.

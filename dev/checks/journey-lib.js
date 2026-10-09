@@ -20,6 +20,10 @@ const J = (() => {
   async function click(sel, { right = false, double = false, at } = {}) {
     const n = q(sel);
     if (!visible(n)) throw new Error(`click: not visible: ${typeof sel === 'string' ? sel : n?.className || n}`);
+    // a menu / flyout / dialog still springing open moves its rows under the pointer: let its animation end first
+    const pop = n.closest?.('#menu, #menu-fly, dialog, .keys-sheet');
+    const anims = pop?.getAnimations?.({ subtree: true }).filter((a) => a.playState === 'running') || [];
+    if (anims.length) await Promise.race([Promise.all(anims.map((a) => a.finished.catch(() => {}))), wait(800)]);
     n.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
     // smooth-scrolling panes: wait until the element stops moving
     let r = n.getBoundingClientRect();
