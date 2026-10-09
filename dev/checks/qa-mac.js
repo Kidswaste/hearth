@@ -23,6 +23,10 @@ KeysUI.close();
 const capMenu = Capture.mainItems().map((i) => i?.label || '').join(' ');
 ok(/⌘/.test(capMenu) && !/Ctrl\+Alt/.test(capMenu), 'capture menu shows ⌘', capMenu.slice(0, 120));
 
+showMenu(100, 100, [{ label: 'Duplicate  Ctrl+D', action() {} }, { label: 'Save a version now  Ctrl+Shift+S', action() {} }]);
+const keysShown = [...document.querySelectorAll('#menu .menu-key')].map((k) => k.textContent);
+ok(keysShown[0] === '⌘D' && keysShown[1] === '⌘⇧S', 'menus show ⌘D / ⌘⇧S', keysShown);
+hideMenu();
 // the board: ⌘D duplicates, ⌘Z undoes, ⌘⇧M opens the drawer
 activate('tool:board'); await until(() => Board.isMounted() && Board.visible());
 await Board.create('Mac keys'); await wait(300);

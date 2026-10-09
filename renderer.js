@@ -188,7 +188,9 @@ function menuButton(it, onPick) {
   b.textContent = text; // the label stays the first text node (usage counts and checks read it)
   if (it.hint) b.append(el('span', { class: 'menu-hint', text: it.hint }));
   const sub = Boolean(it.items);
-  const key = sub ? '›' : it.key || inlineKey;
+  // on a Mac the keys at the right of a menu read ⌘ ⌥ ⇧ (every stream's menus wrote "Ctrl+D", "Ctrl+Shift+S"…)
+  const key0 = sub ? '›' : it.key || inlineKey;
+  const key = key0 && !sub && /Mac/.test(navigator.platform) ? String(key0).replace(/\bCtrl\+(?!click)/g, '⌘').replace(/\bAlt\+/g, '⌥').replace(/\bShift\+/g, '⇧') : key0;
   if (key) b.append(el('span', { class: `menu-key${sub ? ' menu-sub' : ''}`, text: key }));
   if (sub) { b.classList.add('has-sub'); b.setAttribute('aria-haspopup', 'menu'); }
   if (it.checked) b.classList.add('checked');

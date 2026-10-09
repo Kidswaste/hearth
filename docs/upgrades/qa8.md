@@ -64,3 +64,4 @@ what collided between them and with everything older. One line per bug, each wit
 44. Fixed: clicking an Editor, Board or Capture line in the keys sheet did nothing (the sheet pressed the key into the page instead of the editor, the board or the open capture window). It presses it where it applies now.
 45. Fixed: the main capture keys (⌘/Ctrl+Alt+S / A / R / P / V / T) can't be pressed for you (they're caught before the page), so their lines in the keys sheet did nothing when clicked. Each now does its action (opens the capture menu, starts / stops the recording…).
 46. Fixed: on a Mac the keys sheet's descriptions still said "Ctrl" ("⌘ Command palette (Ctrl+K)", "New chat (Ctrl+N)", "copy frame (Ctrl+C)"). They say ⌘ / ⌥ now ("Ctrl+click", the Mac's right-click, stays).
+47. Fixed: on a Mac every right-click and ⋯ menu showed "Ctrl+D", "Ctrl+Shift+S", "Alt+T" at the right of its items (the board's, the editor's, the Lab's…). Menus show ⌘D, ⌘⇧S, ⌥T there now.
