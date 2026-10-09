@@ -139,7 +139,7 @@ if (AREAS.includes('Board')) {
   const fresh = async () => {
     await Board.create(`Keys check ${Date.now() % 1000}`, { quiet: true }); await wait(300);
     [img] = await Board.addFiles([`${FIX}/golden-hour.jpg`]); [clip] = await Board.addFiles([`${FIX}/cuts.mp4`]);
-    note = Board.addNote('a note'); fr = Board.addFrame?.({ title: 'Frame' }) || null;
+    note = Board.addNote('a note'); fr = Board.addFrame?.({ title: 'Frame' }) || null; Board.addFrame?.({ title: 'Frame 2', x: 4000, y: 3000, w: 400, h: 300 }); // 2 needs a second frame
     await until(() => clip.vibe?.cuts, 20000); await wait(300);
   };
   await fresh();
@@ -237,7 +237,7 @@ if (AREAS.includes('Capture')) {
   const vid = `${dir}/recordings/keys check.mp4`;
   await window.hub.fs.copy(`${EV}/frames_a_30.mp4`, vid);
   const shotR = await Capture.shot({ target: 'window', quiet: true });
-  const sigC = () => JSON.stringify({ rec: Capture.status(), v: document.querySelector('dialog[open].cap-view video')?.currentTime, p: document.querySelector('dialog[open].cap-view video')?.paused, ann: CaptureAnnotate.current ? JSON.stringify(CaptureAnnotate.current).length : 0, tool: document.querySelector('dialog[open].cap-ann .on, dialog[open].cap-ann [aria-pressed="true"]')?.textContent, region: vis('.cap-region, .cap-pick'), tour: typeof CaptureTour !== 'undefined' && CaptureTour.running?.() });
+  const sigC = () => JSON.stringify({ rec: Capture.status(), v: document.querySelector('dialog[open].cap-view video')?.currentTime, p: document.querySelector('dialog[open].cap-view video')?.paused, ann: CaptureAnnotate.current ? JSON.stringify(CaptureAnnotate.current).length : 0, tool: document.querySelector('dialog[open].cap-ann .on, dialog[open].cap-ann [aria-pressed="true"]')?.textContent, size: document.querySelector('dialog[open].cap-ann button[title^="Thickness"]')?.textContent, region: vis('.cap-region, .cap-pick'), tour: typeof CaptureTour !== 'undefined' && CaptureTour.running?.() });
   await runArea('Capture', {
     sig: sigC,
     skip: /^(G|Ctrl\+Alt\+T)$/, // G makes a GIF (minutes on this machine); the tour picker is checked by journey-capture
