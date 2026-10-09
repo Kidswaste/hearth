@@ -36,7 +36,7 @@ const CORE_TOOLS = [
     inputSchema: obj({ code: { type: 'string' }, wait: { type: 'number', description: 'seconds before reporting (default 2.5)' }, report: { type: 'string', enum: ['compact', 'full'] } }, ['code']) },
   { name: 'three_get_code', description: 'The selected layer\'s code (an outline with line numbers past 350 lines), the layers, frame size, sliders with values and music links, and slider changes the user hasn\'t saved.', inputSchema: obj({}) },
   { name: 'three_console', description: 'Errors, recent console lines and fps / draw calls of the running sketch; full: true adds sliders, layers and music.', inputSchema: obj({ full: { type: 'boolean' } }) },
-  { name: 'three_media_control', description: 'Play, pause or seek the music (time s), or loop (time = start, end; no time clears; leave a locked loop alone). Video footage: frame (n, "f120" or timecode), step n frames, read = the exact frame now (see: picture).',
+  { name: 'three_media_control', description: 'Play, pause or seek the music (time s), or loop (time = start, end; no time clears; leave a locked loop alone). Footage: frame (n | "f120" | timecode), step n, read (exact frame; see: picture).',
     inputSchema: obj({ action: { type: 'string', enum: ['play', 'pause', 'seek', 'loop', 'frame', 'step', 'read'] }, time: { type: 'number' }, end: { type: 'number' }, frame: {}, n: { type: 'number' }, see: { type: 'boolean' } }, ['action']) },
   { name: 'three_input', description: 'Play-test the preview, in order: { key: "ArrowLeft", ms } (held), { keys: ["w", "Shift"], ms }, { click: [x, y] } (0..1), { move: [x, y] }, { wait: ms }. screenshot: true = a picture after.',
     inputSchema: obj({ actions: { type: 'array', items: { type: 'object' } }, screenshot: { type: 'boolean' } }, ['actions']) },
@@ -90,7 +90,7 @@ looks {action: list|save|apply|delete, name} · notes {action: list|done|reopen|
 references {action: list|add|rename|remove|palette, path, name, to, from, colors}
 triggers {set} · media_info · load_media {path} · set_frame {size: fit|9:16|16:9|1:1|4:5} · new_sketch {name, code}
 run {command: "/make-it-react"} runs a chat command · task {todo} this chat's task state
-footage {action, frame, value, ref} video frames + cut list (help footage)
+footage {action, frame} frames + cut list (help footage)
 help {topic} explains any of these (app: the whole app).`,
   inputSchema: { type: 'object', properties: { cmd: { type: 'string', enum: DO_CMDS } }, required: ['cmd'] },
 };

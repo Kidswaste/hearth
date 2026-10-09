@@ -41,6 +41,7 @@
     ['in', 'The part here starts on this frame'], ['out', 'The part here ends on this frame'], ['roll', 'roll <±frames>: move the nearest cut'],
     ['repeat', 'The part here plays again right after'], ['first', 'The part here plays first'], ['last', 'The part here plays last'], ['mute', 'The part\'s sound off / on'],
     ['edl', 'Save the cut as an EDL next to the video'], ['copy', 'Copy this frame\'s timecode'], ['still', 'A still of the sketch at this frame'], ['storyboard', 'The sketch at every part, one sheet'],
+    ['zoom', 'zoom <second|12f|part|all>'], ['palette', 'The sketch palette from this frame'], ['board', 'Pin this frame to the mood board'], ['render', 'Render the cut as a video (the editor\'s ffmpeg)'],
   ];
   reg({ name: 'footage', aliases: ['frames-lab'], desc: 'The Lab\'s video footage, frame by frame: status, step / go to frames, cut (the sketch plays the parts), shots, the editor, readings', args: '[status|step n|go f120|cut|delete|restore|speed x|hold s|clear|parts|scenes|cues|shots|editor|sequence|from|sheet|motion|pacing|read|check|time|film|on|off|keys]',
     examples: ['/footage', '/footage go 00:00:02:12', '/footage step -5', '/footage cut', '/footage scenes'], keywords: 'video frames timecode cut footage step',
@@ -81,6 +82,10 @@
       if (sub === 'copy') { const s2 = T().status(); T().copyText(`${s2.timecode} (f${s2.frame})`, s2.timecode); return `${s2.timecode} (f${s2.frame}) copied.`; }
       if (sub === 'still') { await T().stillHere(); return `Still at ${here()}.`; }
       if (sub === 'storyboard') { const r = await T().storyboard(); return `Storyboard of ${r.frames?.length || 0} frames.`; }
+      if (sub === 'zoom') return `Zoomed: ${T().zoom(rest || 'second')}.`;
+      if (sub === 'palette') return `Palette: ${(await T().paletteHere()).join(' ')}`;
+      if (sub === 'board') { await T().frameToBoard(); return `${here()} pinned to the board.`; }
+      if (sub === 'render') { const job = await T().renderCut(); return job ? 'Rendering the cut (the editor shows the progress).' : 'Nothing to render.'; }
       // a bare frame or timecode: go there
       try { T().go(frameArg(args.trim())); await settle(); return here(); } catch { return `Try: ${FOOTAGE_SUBS.map(([v]) => v).join(', ')}.`; }
     } });
@@ -139,15 +144,15 @@
       const r = await T().findRef(w.join(' ')); if (!r) return `No reference clip. ${(await refList()).map((x) => x.value).join(', ') || 'Add one in the Lab\'s 🖼 References or on the board.'}`;
       await T().readFootage(mode, r.path); return null;
     } });
-  reg({ name: 'match-pacing', aliases: ['pace-like'], desc: 'Cues at a reference clip\'s rhythm (its cuts, fitted to the loop / footage / song, its own shot lengths, or on the beat); "cut" also cuts the footage to it. The vibe, never its footage.', args: '[clip] [fit|seconds|beats] [cut]',
+  reg({ name: 'match-pacing', aliases: ['pace-like'], desc: 'Cues at a reference clip\'s rhythm (its cuts, fitted to the loop / footage / song, its own shot lengths, or on the beat); "cut" also cuts the footage to it. The vibe, never its footage.', args: '[clip] [fit|seconds|beats] [cut|hits]',
     examples: ['/match-pacing', '/match-pacing teaser beats', '/match-pacing teaser fit cut'],
-    complete: (a) => { const w = words(a); return w.length > 1 ? opts(['fit', 'seconds', 'beats', 'cut'], w.at(-1)) : refSoon(a); },
+    complete: (a) => { const w = words(a); return w.length > 1 ? opts(['fit', 'seconds', 'beats', 'cut', 'hits'], w.at(-1)) : refSoon(a); },
     run: async (args) => {
-      await lab(); const w = words(args); const cut = w.includes('cut'); const mode = w.find((x) => ['fit', 'seconds', 'beats'].includes(x)) || 'fit';
-      const name = w.filter((x) => !['fit', 'seconds', 'beats', 'cut'].includes(x)).join(' ');
+      await lab(); const w = words(args); const cut = w.includes('cut'); const hits = w.includes('hits'); const mode = w.find((x) => ['fit', 'seconds', 'beats'].includes(x)) || 'fit';
+      const name = w.filter((x) => !['fit', 'seconds', 'beats', 'cut', 'hits'].includes(x)).join(' ');
       const r = await T().findRef(name); if (!r) return `No reference clip${name ? ` "${name}"` : ''}. ${(await refList()).map((x) => x.value).join(', ')}`;
-      const m = await T().matchPacing(r.path, mode, { cut, name: r.name });
-      return `${m.cues} pace cues from **${m.file}** (${m.shots} shots, ${m.averageShot} s average, ${m.cutsPerMinute} cuts a minute: ${m.words})${cut ? ' · footage cut to it' : ''}.`;
+      const m = await T().matchPacing(r.path, mode, { cut, hits, name: r.name });
+      return `${m.cues} pace ${hits ? 'hits' : 'cues'} from **${m.file}** (${m.shots} shots, ${m.averageShot} s average, ${m.cutsPerMinute} cuts a minute: ${m.words})${cut ? ' · footage cut to it' : ''}.`;
     } });
   reg({ name: 'ref-motion', desc: 'A reference clip\'s motion energy as keyframes on a slider of the selected layer (busy = high)', args: '<clip> <slider>',
     complete: (a) => (words(a).length > 1 ? [] : refSoon(a)),

@@ -2184,6 +2184,15 @@ const ThreeMedia = (() => {
       const tt = timeAt(e);
       if (typeof Usage !== 'undefined') Usage.track(`Timeline › canvas: ${hit.zone}${e.ctrlKey ? ' (draw)' : e.shiftKey ? ' (select)' : ''}`, { area: 'Timeline' });
       canvas.setPointerCapture(e.pointerId);
+      // footage: a cut line under the pointer drags (tools/three-frames.js decides; it commits once on release)
+      const hd = (hit.zone === 'wave' || hit.zone === 'ruler') && !e.shiftKey && !e.altKey && !e.ctrlKey && !locked ? hooks.pointerDown?.(e, tt, { xOf }) : null;
+      if (hd) {
+        dragging = { kind: 'hook' };
+        const mv = (ev) => { hd.move(Math.max(0, Math.min(D(), timeAt(ev)))); draw(); };
+        canvas.addEventListener('pointermove', mv);
+        canvas.addEventListener('pointerup', () => { canvas.removeEventListener('pointermove', mv); dragging = null; hd.up(); paint(); }, { once: true });
+        return;
+      }
       if (hit.zone === 'ruler' && !locked) {
         if (hit.edge) { dragging = { kind: 'edge', edge: hit.edge }; selected = { type: 'edge', edge: hit.edge }; }
         else if (region && tt > region.a && tt < region.b) dragging = { kind: 'move', from: tt, orig: { ...region } };
@@ -2561,6 +2570,7 @@ const ThreeMedia = (() => {
     let lastLaneAdd = 0;
     canvas.addEventListener('dblclick', (e) => {
       const hit = hitTest(e);
+      if (hooks.dblclick?.(hit, timeAt(e))) return;
       if (hit.zone === 'laneHead') { if (e.clientY - canvas.getBoundingClientRect().top >= hit.lr.top + 16) trackHandlers.onLaneTall?.(hit.track.id, hit.lane.prop); return; }
       if (hit.zone === 'auto') {
         // double-click a point to delete it (not the one this double-click just created)
@@ -2666,6 +2676,8 @@ const ThreeMedia = (() => {
         track: hit.key ? `Keyframe at ${fmtMs(hit.key.t)}: click to jump there · drag to move · double-click to delete · right-click for Ease / Linear / Hold` : `${hit.track?.name || 'Layer'}: drag the bar to move it in time · drag its ends to trim · double-click to fit it to the loop (again: whole song)`,
       };
       setProp(canvas, 'title', `${hooks.hoverText?.(tt) ?? fmtMs(tt)}\n${tips[hit.zone]}`);
+      const cur = hooks.cursorAt?.(tt, hit, xOf) || '';
+      if (canvas.style.cursor !== cur) canvas.style.cursor = cur;
       // a hairline with the time under the mouse (and the bar · beat when there's a grid)
       const x = xOf(tt);
       const bs = beats(); const bi = beatIndex(bs, tt);
@@ -2682,7 +2694,9 @@ const ThreeMedia = (() => {
       const anchor = { getBoundingClientRect: () => ({ left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY }) };
       const bar = snapStep('bar', G(), bpmNow()); let a = snapTime(t, 'bar', G(), beats(), dIdx()); if (a > t + 1e-3) a -= bar; if (a < -1e-3) a += bar;
       const sec = st.analysis?.sections.find((x) => t >= x.start && t < x.end);
+      const extra = hooks.waveItems?.(t) || [];
       menuAt(anchor, [
+        ...extra, ...(extra.length ? [null] : []),
         ['Play from here', fmtMs(t), () => { seek(t); toggle(true); }],
         ['Loop this bar', 'L at the playhead', () => setRegion({ a, b: a + bar })],
         ['Loop 4 bars from here', '', () => setRegion({ a, b: Math.min(D(), a + bar * 4) })],

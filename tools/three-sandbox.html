@@ -546,7 +546,8 @@ const media = {
   get parts() { return fparts ? fparts.map((p) => ({ ...p })) : null; },
   timeOf(n) { return fTimeOf(n); },
   frameAt(t) { return fFrameAt(t); },
-  onFrame(fn) { frameCbs.add(fn); return () => frameCbs.delete(fn); },
+  // (tied to the layer that asked: a layer re-run or removed stops getting them)
+  onFrame(fn) { const id = currentLayer(); const c = { fn, layer: id, gen: id ? layerState(id).gen : 0 }; frameCbs.add(c); return () => frameCbs.delete(c); },
   texture() {
     if (!isVideo) return null;
     if (!videoTex || videoTex.image !== mediaEl) { videoTex = new THREE.VideoTexture(mediaEl); videoTex.colorSpace = THREE.SRGBColorSpace; }
@@ -771,7 +772,10 @@ function watchFrames(m) {
     fpres.time = meta.mediaTime; fpres.presented = meta.presentedFrames;
     fpres.frame = fclock ? fFrameAt(meta.mediaTime) : -1;
     if (fparts && !m.paused && recUntil == null && !(region && loopOn)) partFrame(meta.mediaTime, meta);
-    for (const fn of frameCbs) { try { fn(fpres.frame, meta.mediaTime, meta); } catch (err) { console.error(err); } }
+    for (const c of frameCbs) {
+      if (c.layer && layers.get(c.layer)?.gen !== c.gen) { frameCbs.delete(c); continue; } // its layer re-ran or went
+      try { c.fn(fpres.frame, meta.mediaTime, meta); } catch (err) { console.error(err); }
+    }
     if (fwant && m.paused && !m.seeking) { post({ type: 'media-frame', req: fwant.req, frame: fpres.frame, mediaTime: meta.mediaTime, time: m.currentTime }); fwant = null; }
     m.requestVideoFrameCallback(cb);
   };

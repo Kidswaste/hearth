@@ -40,7 +40,9 @@ copyScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMate
 let head = 0; let lastFrame = -2; let pushed = 0;
 // a new frame on screen goes into the next tile (only when the presented frame changes: a paused video adds nothing)
 function pushFrame(fit) {
-  if (media.frame === lastFrame || media.frame < 0) return false;
+  // a video that hasn't decoded its picture yet adds nothing (paused, the same frame would never be pushed again)
+  if (!media.video || media.video.readyState < 2 || !(video().version > 0)) return false;
+  if ((media.frame === lastFrame || media.frame < 0) && pushed > 0) return false;
   lastFrame = media.frame;
   head = (head + 1) % HIST; pushed += 1;
   copyU.uV.value = video(); vidSize(copyU.uVid.value); copyU.uRes.value.set(innerWidth, innerHeight); copyU.uFit.value = fit;
@@ -271,6 +273,161 @@ renderer.setAnimationLoop(() => {
   renderer.render(scene, camera);
 });
 `, 'freeze stop hold beat');
+
+  // ---------- batch 2: blends, keys, social fill, cut accents ----------
+  add('footage-blur-frames', 'Frame blend', 'Motion blur from the footage\'s own frames: this frame blended with the ones before it', `${HEAD}${HISTORY}
+const P = tweak({
+  frames: { value: 3, min: 1, max: 8, step: 1, label: 'Frames blended', group: 'Blur' },
+  fit: { value: 'cover', options: ['cover', 'fit', 'stretch'], label: 'Fit', group: 'Frame' },
+});
+${quad(`PAST_GLSL + 'uniform float uN;\\nvoid main() { vec4 acc = past(0.0, vUv); float n = 1.0; for (int i = 1; i <= 7; i++) { if (float(i) >= uN) break; acc += past(float(i), vUv); n += 1.0; } gl_FragColor = acc / n; }'`, ', ...histUniforms(), uN: { value: 3 }')}
+renderer.setAnimationLoop(() => {
+  pushFrame(FITS.indexOf(P.fit)); syncHist(uniforms);
+  uniforms.uN.value = P.frames;
+  renderer.render(scene, camera);
+});
+`, 'motion blur smear average');
+
+  add('footage-strobe', 'Frame strobe', 'Shows one frame in N and leaves the rest dark (or a color): a strobing, flickering footage', `${HEAD}
+const P = tweak({
+  every: { value: 3, min: 2, max: 12, step: 1, label: 'One frame in', group: 'Strobe' },
+  gap: { value: '#000000', label: 'Between', group: 'Strobe' },
+  gapAlpha: { value: 1, min: 0, max: 1, label: 'Between opacity', group: 'Strobe' },
+  fit: { value: 'cover', options: ['cover', 'fit', 'stretch'], label: 'Fit', group: 'Frame' },
+});
+${quad(`'uniform float uOn; uniform vec3 uGap; uniform float uGapA; uniform float uFit;\\nvoid main() { vec2 u = fitUv(vUv, uRes, uVid, uFit); vec4 c = texture2D(uV, u) * inside(u); gl_FragColor = uOn > 0.5 ? c : vec4(uGap, uGapA); }'`, ', uOn: { value: 1 }, uGap: { value: new THREE.Color() }, uGapA: { value: 1 }, uFit: { value: 0 }')}
+renderer.setAnimationLoop(() => {
+  uniforms.uV.value = video(); vidSize(uniforms.uVid.value); uniforms.uRes.value.set(innerWidth, innerHeight); uniforms.uFit.value = FITS.indexOf(P.fit);
+  uniforms.uOn.value = media.frame < 0 || media.frame % Math.max(2, P.every) === 0 ? 1 : 0;
+  uniforms.uGap.value.set(P.gap); uniforms.uGapA.value = P.gapAlpha;
+  renderer.render(scene, camera);
+});
+`, 'flicker strobe blink');
+
+  add('footage-then-now', 'Then / now', 'Split screen in time: one side is this frame, the other N frames ago, with a moving divider', `${HEAD}${HISTORY}
+const P = tweak({
+  delay: { value: 8, min: 1, max: 15, step: 1, label: 'Frames ago', group: 'Split' },
+  split: { value: 0.5, min: 0, max: 1, label: 'Divider', group: 'Split' },
+  vertical: { value: true, label: 'Side by side', group: 'Split' },
+  line: { value: '#ffd75e', label: 'Line color', group: 'Split' },
+  fit: { value: 'cover', options: ['cover', 'fit', 'stretch'], label: 'Fit', group: 'Frame' },
+});
+${quad(`PAST_GLSL + 'uniform float uD; uniform float uS; uniform float uVert; uniform vec3 uLine;\\nvoid main() { float x = uVert > 0.5 ? vUv.x : vUv.y; vec4 c = x < uS ? past(uD, vUv) : past(0.0, vUv); float l = 1.0 - smoothstep(0.0, 0.003, abs(x - uS)); gl_FragColor = vec4(mix(c.rgb, uLine, l), max(c.a, l)); }'`, ', ...histUniforms(), uD: { value: 8 }, uS: { value: 0.5 }, uVert: { value: 1 }, uLine: { value: new THREE.Color() }')}
+renderer.setAnimationLoop(() => {
+  pushFrame(FITS.indexOf(P.fit)); syncHist(uniforms);
+  uniforms.uD.value = P.delay; uniforms.uS.value = P.split; uniforms.uVert.value = P.vertical ? 1 : 0; uniforms.uLine.value.set(P.line);
+  renderer.render(scene, camera);
+});
+`, 'before after compare split time');
+
+  add('footage-punch-cuts', 'Punch-in on cuts', 'The footage zooms in for a few frames on every cut, then settles (a classic edit accent)', `${HEAD}
+const P = tweak({
+  amount: { value: 0.12, min: 0, max: 0.6, label: 'Punch', group: 'Punch' },
+  frames: { value: 6, min: 1, max: 24, step: 1, label: 'Length (frames)', group: 'Punch' },
+  fit: { value: 'cover', options: ['cover', 'fit', 'stretch'], label: 'Fit', group: 'Frame' },
+});
+${quad(`'uniform float uZoom; uniform float uFit;\\nvoid main() { vec2 u = fitUv((vUv - 0.5) / uZoom + 0.5, uRes, uVid, uFit); gl_FragColor = texture2D(uV, u) * inside(u); }'`, ', uZoom: { value: 1 }, uFit: { value: 0 }')}
+let lastPart = media.part; let lastFrame = media.frame; let left = 0;
+media.onFrame((n) => { const jumped = lastFrame >= 0 && n !== lastFrame + 1 && n !== lastFrame && audio.playing; if (media.part !== lastPart || jumped) left = P.frames; else if (left > 0) left -= 1; lastPart = media.part; lastFrame = n; });
+renderer.setAnimationLoop(() => {
+  uniforms.uV.value = video(); vidSize(uniforms.uVid.value); uniforms.uRes.value.set(innerWidth, innerHeight); uniforms.uFit.value = FITS.indexOf(P.fit);
+  const k = left > 0 ? left / Math.max(1, P.frames) : 0;
+  uniforms.uZoom.value = 1 + P.amount * k * k;
+  renderer.render(scene, camera);
+});
+`, 'zoom punch cut accent');
+
+  add('footage-shake-cuts', 'Shake on cuts', 'A short camera shake on every cut of the footage', `${HEAD}
+const P = tweak({
+  amount: { value: 0.03, min: 0, max: 0.15, label: 'Shake', group: 'Shake' },
+  frames: { value: 8, min: 1, max: 24, step: 1, label: 'Length (frames)', group: 'Shake' },
+  fit: { value: 'cover', options: ['cover', 'fit', 'stretch'], label: 'Fit', group: 'Frame' },
+});
+${quad(`'uniform vec2 uOff; uniform float uFit;\\nvoid main() { vec2 u = fitUv((vUv - 0.5) * 0.94 + 0.5 + uOff, uRes, uVid, uFit); gl_FragColor = texture2D(uV, u) * inside(u); }'`, ', uOff: { value: new THREE.Vector2() }, uFit: { value: 0 }')}
+let lastPart = media.part; let lastFrame = media.frame; let left = 0;
+const rnd = seeded(7);
+media.onFrame((n) => { const jumped = lastFrame >= 0 && n !== lastFrame + 1 && n !== lastFrame && audio.playing; if (media.part !== lastPart || jumped) left = P.frames; else if (left > 0) left -= 1; lastPart = media.part; lastFrame = n; });
+renderer.setAnimationLoop(() => {
+  uniforms.uV.value = video(); vidSize(uniforms.uVid.value); uniforms.uRes.value.set(innerWidth, innerHeight); uniforms.uFit.value = FITS.indexOf(P.fit);
+  const k = left > 0 ? left / Math.max(1, P.frames) : 0;
+  uniforms.uOff.value.set((rnd() - 0.5) * 2 * P.amount * k, (rnd() - 0.5) * 2 * P.amount * k);
+  renderer.render(scene, camera);
+});
+`, 'camera shake jolt cut');
+
+  add('footage-glitch-cuts', 'Glitch on cuts', 'RGB tearing for a few frames on every cut, clean in between', `${HEAD}
+const P = tweak({
+  amount: { value: 0.03, min: 0, max: 0.15, label: 'Tear', group: 'Glitch' },
+  frames: { value: 5, min: 1, max: 24, step: 1, label: 'Length (frames)', group: 'Glitch' },
+  fit: { value: 'cover', options: ['cover', 'fit', 'stretch'], label: 'Fit', group: 'Frame' },
+});
+${quad(`'uniform float uAmt; uniform float uFit; uniform float uSeed;\\nfloat h(float x) { return fract(sin(x * 91.7 + uSeed) * 43758.5); }\\nvoid main() { float band = floor(vUv.y * 24.0); float s = (h(band) - 0.5) * uAmt * step(0.6, h(band + 3.0)); vec2 u = fitUv(vUv + vec2(s, 0.0), uRes, uVid, uFit); float r = texture2D(uV, u + vec2(uAmt * 0.5, 0.0)).r; vec4 g = texture2D(uV, u); float b = texture2D(uV, u - vec2(uAmt * 0.5, 0.0)).b; gl_FragColor = vec4(r, g.g, b, g.a) * inside(u); }'`, ', uAmt: { value: 0 }, uFit: { value: 0 }, uSeed: { value: 0 }')}
+let lastPart = media.part; let lastFrame = media.frame; let left = 0;
+media.onFrame((n) => { const jumped = lastFrame >= 0 && n !== lastFrame + 1 && n !== lastFrame && audio.playing; if (media.part !== lastPart || jumped) left = P.frames; else if (left > 0) left -= 1; lastPart = media.part; lastFrame = n; });
+renderer.setAnimationLoop(() => {
+  uniforms.uV.value = video(); vidSize(uniforms.uVid.value); uniforms.uRes.value.set(innerWidth, innerHeight); uniforms.uFit.value = FITS.indexOf(P.fit);
+  uniforms.uAmt.value = left > 0 ? P.amount * (left / Math.max(1, P.frames)) : 0; uniforms.uSeed.value = media.frame;
+  renderer.render(scene, camera);
+});
+`, 'rgb tear glitch accent');
+
+  add('footage-luma-key', 'Luma key', 'Keeps the bright (or the dark) parts of the footage and lets the layers below show through the rest', `${HEAD}
+const P = tweak({
+  keep: { value: 'bright', options: ['bright', 'dark'], label: 'Keep', group: 'Key' },
+  threshold: { value: 0.5, min: 0, max: 1, label: 'Threshold', group: 'Key' },
+  soft: { value: 0.1, min: 0.001, max: 0.5, label: 'Softness', group: 'Key' },
+  fit: { value: 'cover', options: ['cover', 'fit', 'stretch'], label: 'Fit', group: 'Frame' },
+});
+${quad(`'uniform float uDark; uniform float uT; uniform float uSoft; uniform float uFit;\\nvoid main() { vec2 u = fitUv(vUv, uRes, uVid, uFit); vec4 c = texture2D(uV, u) * inside(u); float l = dot(c.rgb, vec3(0.299, 0.587, 0.114)); float a = smoothstep(uT - uSoft, uT + uSoft, l); if (uDark > 0.5) a = 1.0 - a; gl_FragColor = vec4(c.rgb, c.a * a); }'`, ', uDark: { value: 0 }, uT: { value: 0.5 }, uSoft: { value: 0.1 }, uFit: { value: 0 }')}
+renderer.setAnimationLoop(() => {
+  uniforms.uV.value = video(); vidSize(uniforms.uVid.value); uniforms.uRes.value.set(innerWidth, innerHeight); uniforms.uFit.value = FITS.indexOf(P.fit);
+  uniforms.uDark.value = P.keep === 'dark' ? 1 : 0; uniforms.uT.value = P.threshold; uniforms.uSoft.value = P.soft;
+  renderer.render(scene, camera);
+});
+`, 'key transparent bright dark');
+
+  add('footage-chroma-key', 'Green screen', 'Removes a color (green by default) from the footage so the sketch shows behind it', `${HEAD}
+const P = tweak({
+  key: { value: '#00ff00', label: 'Key color', group: 'Key' },
+  tolerance: { value: 0.35, min: 0.01, max: 1, label: 'Tolerance', group: 'Key' },
+  soft: { value: 0.1, min: 0.001, max: 0.5, label: 'Softness', group: 'Key' },
+  spill: { value: 0.5, min: 0, max: 1, label: 'Spill removal', group: 'Key' },
+  fit: { value: 'cover', options: ['cover', 'fit', 'stretch'], label: 'Fit', group: 'Frame' },
+});
+${quad(`'uniform vec3 uKey; uniform float uTol; uniform float uSoft; uniform float uSpill; uniform float uFit;\\nvec2 cbcr(vec3 c) { return vec2(dot(c, vec3(-0.169, -0.331, 0.5)), dot(c, vec3(0.5, -0.419, -0.081))); }\\nvoid main() { vec2 u = fitUv(vUv, uRes, uVid, uFit); vec4 c = texture2D(uV, u) * inside(u); float d = distance(cbcr(c.rgb), cbcr(uKey)); float a = smoothstep(uTol * 0.5, uTol * 0.5 + uSoft, d); vec3 col = c.rgb; float g = max(col.g - max(col.r, col.b), 0.0); col.g -= g * uSpill; gl_FragColor = vec4(col, c.a * a); }'`, ', uKey: { value: new THREE.Color() }, uTol: { value: 0.35 }, uSoft: { value: 0.1 }, uSpill: { value: 0.5 }, uFit: { value: 0 }')}
+renderer.setAnimationLoop(() => {
+  uniforms.uV.value = video(); vidSize(uniforms.uVid.value); uniforms.uRes.value.set(innerWidth, innerHeight); uniforms.uFit.value = FITS.indexOf(P.fit);
+  uniforms.uKey.value.set(P.key); uniforms.uTol.value = P.tolerance; uniforms.uSoft.value = P.soft; uniforms.uSpill.value = P.spill;
+  renderer.render(scene, camera);
+});
+`, 'chroma key green screen blue screen');
+
+  add('footage-blur-fill', 'Fit on a blurred fill', 'The whole footage fitted in the frame over a blurred, zoomed copy of itself (the social 9:16 reframe)', `${HEAD}
+const P = tweak({
+  blur: { value: 0.02, min: 0, max: 0.06, label: 'Blur', group: 'Fill' },
+  dim: { value: 0.55, min: 0, max: 1, label: 'Fill brightness', group: 'Fill' },
+  size: { value: 1, min: 0.5, max: 1, label: 'Picture size', group: 'Picture' },
+});
+${quad(`'uniform float uBlur; uniform float uDim; uniform float uSize;\\nvoid main() { vec2 cu = fitUv(vUv, uRes, uVid, 0.0); vec3 acc = vec3(0.0); for (int i = 0; i < 12; i++) { float a = float(i) * 0.5236; vec2 o = vec2(cos(a), sin(a)) * uBlur * (0.5 + mod(float(i), 3.0) * 0.5); acc += texture2D(uV, cu + o).rgb; } vec3 bg = acc / 12.0 * uDim; vec2 fu = fitUv((vUv - 0.5) / uSize + 0.5, uRes, uVid, 1.0); vec4 fg = texture2D(uV, fu); float m = inside(fu); gl_FragColor = vec4(mix(bg, fg.rgb, m), 1.0); }'`, ', uBlur: { value: 0.02 }, uDim: { value: 0.55 }, uSize: { value: 1 }')}
+renderer.setAnimationLoop(() => {
+  uniforms.uV.value = video(); vidSize(uniforms.uVid.value); uniforms.uRes.value.set(innerWidth, innerHeight);
+  uniforms.uBlur.value = P.blur; uniforms.uDim.value = P.dim; uniforms.uSize.value = P.size;
+  renderer.render(scene, camera);
+});
+`, 'reframe vertical social 9:16 blur background');
+
+  add('footage-frame-wall', 'Frame wall', 'The last 16 frames as a 4 × 4 wall, newest top left: the motion laid out', `${HEAD}${HISTORY}
+const P = tweak({
+  gap: { value: 0.004, min: 0, max: 0.02, label: 'Gap', group: 'Wall' },
+  fit: { value: 'cover', options: ['cover', 'fit', 'stretch'], label: 'Fit', group: 'Frame' },
+});
+${quad(`PAST_GLSL + 'uniform float uGap;\\nvoid main() { vec2 cell = floor(vUv * 4.0); vec2 f = fract(vUv * 4.0); float idx = cell.x + (3.0 - cell.y) * 4.0; vec2 g = step(vec2(uGap * 4.0), f) * step(f, vec2(1.0 - uGap * 4.0)); gl_FragColor = past(idx, f) * g.x * g.y; }'`, ', ...histUniforms(), uGap: { value: 0.004 }')}
+renderer.setAnimationLoop(() => {
+  pushFrame(FITS.indexOf(P.fit)); syncHist(uniforms);
+  uniforms.uGap.value = P.gap;
+  renderer.render(scene, camera);
+});
+`, 'grid contact sheet wall');
 
   const CATS = ThreeLayers.TEMPLATES;
   for (const t of T) if (!CATS.some((x) => x.id === t.id)) CATS.push(t);

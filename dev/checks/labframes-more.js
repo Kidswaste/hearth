@@ -17,24 +17,31 @@ const d = () => ThreeLab.director;
 await LF.setup(`${M}/frames_silent_24.mp4`);
 await say('/footage go f40');
 const ids = ThreeLayers.TEMPLATES.filter((t) => t.cat === 'Footage').map((t) => t.id);
-step('11 footage layer templates in the Layers picker (category Footage)', ids.length === 11, ids);
+step('21 footage layer templates in the Layers picker (category Footage)', ids.length === 21, ids);
 const bad = [];
-for (const [k, id] of ids.entries()) {
-  if (k && k % 4 === 0) await LF.fresh(); // a clean stack every few templates (each layer is its own WebGL context)
+const litOf = (id) => sbx(`const s = __scenes[${JSON.stringify(`T ${id}`)}]; if (!s) return { missing: true }; const cv = s.renderer.domElement; const c2 = document.createElement('canvas'); c2.width = 64; c2.height = 64; const g = c2.getContext('2d'); g.drawImage(cv, 0, 0, 64, 64); const p = g.getImageData(0, 0, 64, 64).data; let n = 0; for (let i = 3; i < p.length; i += 4) if (p[i] > 8) n++; return { lit: n }`);
+const retried = [];
+async function tryTemplate(id) {
   const r = await call('three_add_layer', { template: id, name: `T ${id}`, wait: 2 });
   let px = null;
-  for (let k = 0; k < 10 && !(px?.lit > 50 || (id === 'footage-cut-flash' && k > 1)); k++) { await wait(700); px = await sbx(`const s = __scenes[${JSON.stringify(`T ${id}`)}]; if (!s) return { missing: true }; const cv = s.renderer.domElement; const c2 = document.createElement('canvas'); c2.width = 64; c2.height = 64; const g = c2.getContext('2d'); g.drawImage(cv, 0, 0, 64, 64); const p = g.getImageData(0, 0, 64, 64).data; let n = 0; for (let i = 3; i < p.length; i += 4) if (p[i] > 8) n++; return { lit: n }`); }
+  for (let k = 0; k < 10 && !(px?.lit > 50 || (id === 'footage-cut-flash' && k > 1)); k++) { await wait(700); px = await litOf(id); }
   const errs = (d().report().errors || []).filter((e) => String(e.layer || e.text || '').includes(id) || /shader|GLSL|WebGL/i.test(JSON.stringify(e)));
-  const drawsSomething = id === 'footage-cut-flash' ? true : (px?.lit || 0) > 50;
-  if (!r.ok || px?.missing || errs.length || !drawsSomething) bad.push({ id, ok: r.ok, err: r.error, px, errs: errs.slice(0, 2) });
-  if (id === 'footage-fill') {
-    const s = await sbx(`const cv = __scenes['T footage-fill'].renderer.domElement; const W = 240; const Hh = Math.round(cv.height / cv.width * W); const c2 = document.createElement('canvas'); c2.width = W; c2.height = Hh; const g = c2.getContext('2d'); g.drawImage(cv, 0, 0, W, Hh); const px = g.getImageData(0, 0, W, Hh).data; return { w: cv.width, h: cv.height }`);
-    step('the Footage template layer is up', Boolean(s?.w), s);
-  }
+  const ok = r.ok && !px?.missing && !errs.length && (id === 'footage-cut-flash' || (px?.lit || 0) > 50);
+  const diag = ok ? null : await sbx(`const s = __scenes[${JSON.stringify(`T ${id}`)}]; const gl = s?.renderer.getContext(); return { lost: gl?.isContextLost(), err: gl?.getError(), frames: s?.renderer.info.render.frame, mem: s?.renderer.info.memory, progs: s?.renderer.info.programs?.length, video: [media.video?.readyState, media.frame, media.texture()?.version], layers: Object.keys(__scenes).length, canvases: document.querySelectorAll('canvas').length }`);
+  if (!ok) d().report().console?.slice(-4).forEach((l) => console.log('[diag console]', JSON.stringify(l).slice(0, 300)));
+  if (id === 'footage-fill' && ok) step('the Footage template layer is up', true);
   await call('three_do', { cmd: 'remove_layer', layer: `T ${id}` });
   await wait(300);
+  return { ok, id, err: r.error, px, errs: errs.slice(0, 2), diag: ok ? undefined : diag };
 }
-step('every footage template compiles and draws (no shader / console errors)', !bad.length, bad);
+for (const [k, id] of ids.entries()) {
+  if (k && k % 4 === 0) await LF.fresh(); // a clean stack every few templates (each layer is its own WebGL context)
+  let res = await tryTemplate(id);
+  // the software renderer here sometimes stops drawing new contexts late in a long run: once more in a clean stack
+  if (!res.ok) { await LF.fresh(); retried.push(id); res = await tryTemplate(id); }
+  if (!res.ok) bad.push(res);
+}
+step('every footage template compiles and draws (no shader / console errors)', !bad.length, { bad, retriedInACleanStack: retried });
 // the Footage template set to stretch shows the exact frame: decode its picture at f40, step, decode again
 await LF.fresh(); await say('/footage go f40');
 const dec = (name) => sbx(`const cv = __scenes[${JSON.stringify(name)}].renderer.domElement; const W = 240; const Hh = Math.max(8, Math.round(cv.height / cv.width * W)); const c2 = document.createElement('canvas'); c2.width = W; c2.height = Hh; const g = c2.getContext('2d'); g.drawImage(cv, 0, 0, W, Hh); const px = g.getImageData(0, 0, W, Hh).data; const y = Math.round(Hh * 0.05); let n = 0; let ok = 0; for (let k = 0; k < 12; k++) { const x = Math.round(W * (k + 0.5) / 12); const i = (y * W + x) * 4; const l = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2]; if (l > 150) { n |= 1 << k; ok++; } else if (l < 70) ok++; } return { pixels: ok === 12 ? n : null, frame: media.frame }`);
@@ -122,6 +129,45 @@ const run20 = (seen?.seen || []).filter((n) => n === 20).length;
 step('playing: f20 holds (presented once, then still), the slow part plays at 0.5×', (seen?.rates || []).includes(0.5) && run20 >= 1 && (seen?.seen || []).some((n) => n > 31), seen);
 await say('/cut-clear');
 
+// ---------- 5b. the mouse on cut lines, double-click a removed part, the waveform's menu, zoom presets ----------
+await say('/cut-clear');
+await say('/footage go f60'); await say('/footage cut');
+d().media.zoomTo(1.5, 2.5); await wait(600);
+{
+  const tl = bar.querySelector('.mb-timeline'); const b = tl.getBoundingClientRect(); const w = b.width - 122;
+  const xOf = (t) => b.left + ((t - 1.5) / 1) * w; const y = b.top + 40;
+  await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseMoved', x: xOf(2), y, button: 'none' } }); await wait(150);
+  const cursor = tl.style.cursor;
+  await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mousePressed', x: xOf(2), y, button: 'left', clickCount: 1 } });
+  for (let i = 1; i <= 6; i++) { await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseMoved', x: xOf(2 + i * (5 / 30) / 6), y, button: 'left', buttons: 1 } }); await wait(30); }
+  await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseReleased', x: xOf(2 + 5 / 30), y, button: 'left', clickCount: 1 } }); await wait(400);
+  step('drag a cut line: the cut moves 5 frames (both parts follow), col-resize cursor over it', cursor === 'col-resize' && Math.abs((ThreeFrames.parts?.[0]?.b ?? 0) - 65 / 30) < 1e-6 && Math.abs((ThreeFrames.parts?.[1]?.a ?? 0) - 65 / 30) < 1e-6, { cursor, parts: ThreeFrames.describe() });
+  await say('/footage go f70'); await press('Delete');
+  const n0 = ThreeFrames.parts?.length;
+  await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mousePressed', x: xOf(2.4), y, button: 'left', clickCount: 1 } });
+  await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseReleased', x: xOf(2.4), y, button: 'left', clickCount: 1 } });
+  await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mousePressed', x: xOf(2.4), y, button: 'left', clickCount: 2 } });
+  await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseReleased', x: xOf(2.4), y, button: 'left', clickCount: 2 } }); await wait(400);
+  step('double-click a removed part: it plays again', n0 === 1 && ThreeFrames.parts?.length === 2, { n0, parts: ThreeFrames.describe() });
+  await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mousePressed', x: xOf(1.8), y, button: 'right', clickCount: 1 } });
+  await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseReleased', x: xOf(1.8), y, button: 'right', clickCount: 1 } }); await wait(300);
+  const mrows = [...document.querySelectorAll('.mb-menu b')].map((x) => x.textContent);
+  step('right-click the waveform: the footage moves at that frame come first', /^Cut at f54$/.test(mrows[0] || '') && mrows.includes('Remove this part') && mrows.includes('Cue at f54'), mrows.slice(0, 5));
+  document.querySelector('.mb-menu')?.remove();
+}
+await say('/footage go f30');
+await say('/footage zoom second'); const z1 = d().media.view;
+await say('/footage zoom part'); const z2 = d().media.view;
+await say('/footage zoom all'); const z3 = d().media.view;
+step('zoom presets: one second of frames, the part, the whole footage', z1 && Math.abs((z1.end - z1.start) - 1) < 0.01 && z2 && z2.end > 2 && !z3, { z1, z2, z3 });
+const palMsg = await say('/footage palette');
+step('/footage palette: the sketch palette from this exact frame', /Palette: (#[0-9a-f]{6} ?){2,}/.test(palMsg) && (d().refs.palette() || []).length >= 2, { palMsg, now: d().refs.palette() });
+await Board.ready();
+const nBoard = Board.items().length;
+await say('/footage board');
+step('/footage board: this frame pinned to the mood board', Board.items().length === nBoard + 1 && Board.items().at(-1).type === 'image', Board.items().at(-1)?.title);
+await say('/cut-clear');
+
 // ---------- 6. EDL, storyboard, timecode copy ----------
 await say('/footage go f30'); await say('/footage cut'); await say('/footage go f60'); await say('/footage cut');
 const edlMsg = await say('/footage edl');
@@ -160,6 +206,9 @@ await say('/cut-clear');
 await d().refs.add(`${M}/ref_cuts.mp4`, 'refCuts');
 await d().media.load(`${M}/frames_silent_24.mp4`);
 await until(() => ThreeFrames.clock?.fps === 24, 10000); await wait(800);
+const hitsBefore = d().media.timeline().markers.hit.length;
+const mph = await say('/match-pacing refCuts hits');
+step('/match-pacing … hits: Hit markers at the reference\'s rhythm (the sketch\'s audio.hit fires on them)', d().media.timeline().markers.hit.length === hitsBefore + 4, { mph, hits: d().media.timeline().markers.hit });
 const mps = await say('/match-pacing refCuts seconds');
 const pace = d().media.cues.filter((c) => /^Pace /.test(c.name)).map((c) => Math.round(c.time * 1000) / 1000);
 step('/match-pacing … seconds: the reference\'s own shot lengths (1, 1.5, 3, 3.5 s)', JSON.stringify(pace) === JSON.stringify([1, 1.5, 3, 3.5]), { pace, mps, loop: d().media.loop });
