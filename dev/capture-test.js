@@ -158,6 +158,60 @@ const rawOf = (file, filter) => execFileSync(T.ffmpeg, ['-v', 'error', '-i', fil
     const p = await FR.probe(mp4);
     check(p.codec === 'h264' && p.frames === 120, `convert webm → mp4: ${p.codec}, ${p.frames} frames`);
   }
+  // more readings: black, freeze, silence, loudness, keyframes, letterbox, barcode, waveform, loop
+  {
+    const av = path.join(dir, 'av.mp4');
+    const seg = (v, a, d, i) => `${v}${v.includes('=') ? ':' : '='}size=320x240:rate=30:duration=${d},format=yuv420p,setsar=1[v${i}];${a}${a.includes('=') ? ':' : '='}duration=${d}:sample_rate=48000,aformat=channel_layouts=mono[a${i}]`;
+    const parts = [seg('testsrc2', 'sine=frequency=440', 2, 0), seg('color=c=black', 'anullsrc=r=48000', 1, 1), seg('color=c=0x335577', 'sine=frequency=660', 1.5, 2), seg('testsrc2', 'sine=frequency=880', 1, 3)];
+    execFileSync(T.ffmpeg, ['-v', 'error', '-y', '-filter_complex', `${parts.join(';')};[v0][a0][v1][a1][v2][a2][v3][a3]concat=n=4:v=1:a=1[v][a]`, '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-g', '30', '-pix_fmt', 'yuv420p', '-c:a', 'aac', av]);
+    const bl = await FR.black(av);
+    check(bl.length === 1 && Math.abs(bl[0].start - 2) < 0.05 && Math.abs(bl[0].length - 1) < 0.1, `black: ${JSON.stringify(bl)}`);
+    const fz = await FR.freeze(av);
+    check(fz.some((f) => Math.abs(f.start - 2) < 0.1) && fz.some((f) => f.start >= 2.9 && f.end <= 4.6), `freeze: ${JSON.stringify(fz)}`);
+    const si = await FR.silence(av);
+    check(si.length === 1 && Math.abs(si[0].start - 2) < 0.08 && Math.abs(si[0].length - 1) < 0.12, `silence: ${JSON.stringify(si)}`);
+    const ld = await FR.loudness(av);
+    check(ld && ld.integrated < -5 && ld.integrated > -40 && ld.truePeak != null, `loudness: ${JSON.stringify(ld)}`);
+    const kf = await FR.keyframes(av);
+    check(kf[0] === 0 && kf.length >= 5 && kf.every((t, i) => !i || t > kf[i - 1]), `keyframes every second: ${kf.join(', ')}`);
+    const lb = path.join(dir, 'letterbox.mp4');
+    execFileSync(T.ffmpeg, ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=640x274:rate=25:duration=3', '-vf', 'pad=640:360:0:43:black', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', lb]);
+    const cr = await FR.crop(lb);
+    check(cr.bars && Math.abs(cr.h - 274) <= 4 && cr.w === 640, `letterbox found: ${JSON.stringify(cr)}`);
+    const nb = await FR.crop(videos.cuts);
+    check(!nb.bars, 'no bars on a full-frame video');
+    const bc = await FR.barcode(videos.cuts, { width: 160, height: 40 }, { dir });
+    const bp = await FR.probe(bc.path);
+    check(bp.w === 160 && bp.h === 40, `movie barcode ${bp.w}×${bp.h}`);
+    const wf = await FR.waveform(av, { width: 400, height: 80 }, { dir });
+    check(fs.existsSync(wf.path), 'waveform picture');
+    const lp = await FR.loop(videos.moving, { from: 0, min: 0.3, max: 3 });
+    check(Math.abs(lp.length - 0.6) < 0.05 || Math.abs(lp.length - 1.2) < 0.05 || Math.abs(lp.length - 1.8) < 0.05 || Math.abs(lp.length - 2.4) < 0.05, `loop point of a box sliding every 0.6 s: ${JSON.stringify(lp)}`);
+    // edits
+    const gif = await FR.edit('gif', videos.cfr25, { from: 1, to: 2, fps: 10, width: 160 }, { dir });
+    const gp = await FR.probe(gif.path);
+    check(gp.codec === 'gif' && gp.w === 160 && (await FR.frameTimes(gif.path)).length === 10, `GIF of 1–2 s at 10 fps: ${(await FR.frameTimes(gif.path)).length} frames`);
+    const tr = await FR.edit('trim', videos.cfr25, { from: 1, to: 2.4 }, { dir });
+    const tp = await FR.probe(tr.path);
+    const firstOfTrim = await FR.frameAt(tr.path, { frame: 0 }, { dir });
+    check(Math.abs(tp.duration - 1.4) < 0.06 && readNumber(firstOfTrim.path) === 25, `trim 1–2.4 s: ${tp.duration}s, starts on frame 25`);
+    const sp = await FR.edit('speed', av, { factor: 4 }, { dir });
+    const spp = await FR.probe(sp.path);
+    check(Math.abs(spp.duration - 5.5 / 4) < 0.15 && spp.audio, `4× timelapse: ${spp.duration}s with sound`);
+    const bo = await FR.edit('boomerang', videos.cfr25, { from: 0, to: 1 }, { dir });
+    check(Math.abs((await FR.probe(bo.path)).duration - 2) < 0.1, 'boomerang doubles the range');
+    const sq = await FR.edit('sequence', videos.cfr25, { from: 0, to: 1 }, { dir });
+    check(sq.files === 25, `PNG sequence for After Effects: ${sq.files} files`);
+    const rf = await FR.edit('reframe', videos.cfr25, { w: 1080, h: 1920, fit: 'fit' }, { dir });
+    const rfp = await FR.probe(rf.path);
+    check(rfp.w === 1080 && rfp.h === 1920, 'reframe to 9:16 with a blurred fill');
+    const mu = await FR.edit('mute', av, {}, { dir });
+    check(!(await FR.probe(mu.path)).audio, 'mute');
+    const au = await FR.edit('audio', av, {}, { dir });
+    check(/\.m4a$/.test(au.path) && fs.existsSync(au.path), 'sound only (m4a)');
+    const po = await FR.edit('poster', videos.cfr25, { time: 2 }, { dir });
+    check(readNumber(po.path) === 50, 'poster frame at 2 s = frame 50');
+  }
   // errors
   let err = null; try { await FR.frameAt(path.join(dir, 'nope.mp4'), { frame: 1 }); } catch (e) { err = e; }
   check(err && /not found/i.test(err.message), 'missing file: clear error');

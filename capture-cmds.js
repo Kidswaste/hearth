@@ -116,7 +116,7 @@
   const frameOpts = D.SOCIAL.map((f) => ({ value: f.id, hint: `${f.label} · ${f.w}×${f.h}` }));
   const shotWordOpts = [...targetOpts, ...frameOpts, { value: 'clean', hint: 'no toasts, menus, scrollbars' }, { value: 'norail', hint: 'without the rail and chats list' }, { value: 'copy' }, { value: 'annotate', hint: 'draw arrows / boxes first' }, { value: 'attach', hint: 'put it in this chat' }, { value: 'pretty', hint: 'on a gradient, for posts' }, { value: 'fit', hint: 'fit inside the frame (no crop)' }, { value: 'jpg' }, { value: 'webp' }, { value: '1x', hint: 'CSS size on a Retina screen' }, { value: '3s', hint: 'after a countdown' }];
   const recWordOpts = [{ value: 'stop' }, { value: 'pause' }, { value: 'resume' }, { value: 'mark' }, { value: 'status' }, ...D.RECORD.map((p) => ({ value: p.id, hint: p.label })), ...targetOpts.filter((t) => t.value !== 'transcript'), { value: '60fps' }, { value: '30fps' }, { value: 'hq' }, { value: 'sound', hint: 'Hearth\'s own sound' }, { value: 'mic' }, { value: 'both' }, { value: 'mp4' }, { value: '10s', hint: 'stop after 10 seconds' }, { value: 'now', hint: 'no countdown' }, { value: 'clicks' }, { value: 'keys' }, ...frameOpts.slice(0, 8)];
-  const SHOT_WORDS = /^(tool|panel|view|chat|messages|dock|director|lab|preview|canvas|region|area|element|thing|pick|transcript|tall|scroll|composer|rail|panel|sidebar|clean|norail|bare|copy|annotate|draw|attach|pretty|post|beautify|fit|jpg|webp|png|1x|delay|in|\d+s|last|sel:|selector:|css:|[.#[])/i;
+  const SHOT_WORDS = /^(burst|tool|panel|view|chat|messages|dock|director|lab|preview|canvas|region|area|element|thing|pick|transcript|tall|scroll|composer|rail|panel|sidebar|clean|norail|bare|copy|annotate|draw|attach|pretty|post|beautify|fit|jpg|webp|png|1x|delay|in|\d+s|last|sel:|selector:|css:|[.#[])/i;
   const isShotArgs = (args) => { const w = words(args); return w.length > 0 && w.some((x) => SHOT_WORDS.test(x) || D.parseFrame(x) || D.BEAUTIFY.some((b) => b.id === x.toLowerCase())) && !/^(window|lab)$/i.test(String(args).trim()); };
 
   reg({
@@ -144,7 +144,19 @@
     desc: 'A screenshot of part of Hearth into your captures: a tool, the chat (or all of it as a tall picture), a region you drag, a social frame, clean, beautified',
     examples: ['/screenshot tool 9:16 clean', '/shot transcript', '/shot region copy', '/shot lab', '/shot window pretty'], keywords: 'capture snapshot picture image png',
     complete: opts(shotWordOpts),
-    run: async (args) => { const r = await Capture.shot(shotArgs(args)); return r ? `📷 \`${r.path}\` (${r.w}×${r.h})` : 'Cancelled.'; },
+    run: async (args) => {
+      // burst: N shots every S seconds (hover states, a changing Lab, a timelapse of a build)
+      const b = String(args || '').match(/\bburst\s+(\d+)(?:\s+(?:every\s+)?(\d+(?:\.\d+)?)\s*s?)?/i);
+      if (b) {
+        const n = Math.min(60, Number(b[1])); const every = Number(b[2] || 1);
+        const o = shotArgs(String(args).replace(b[0], ''));
+        const paths = [];
+        for (let k = 0; k < n; k += 1) { paths.push((await Capture.shot({ ...o, quiet: true }))?.path); if (k < n - 1) await new Promise((r) => setTimeout(r, every * 1000)); }
+        toast(`📷 ${paths.length} shots`, { timeout: 3000, action: { label: 'Show', fn: () => CaptureView.library({ kind: 'shot' }) } });
+        return `${paths.length} shots, every ${every}s:\n${paths.map((p) => `- \`${p}\``).join('\n')}`;
+      }
+      const r = await Capture.shot(shotArgs(args)); return r ? `📷 \`${r.path}\` (${r.w}×${r.h})` : 'Cancelled.';
+    },
   });
   // /record: the Lab's /record records the sketch; outside the Lab (or with a Hearth word) this one records Hearth itself
   const recWhen = (ctx, args) => ctx?.place !== 'three' || /^(app|hearth|window|tool|chat|dock|region|element|composer|panel|rail|selector:|sel:|status|pause|resume|mark|marker|toggle)\b/i.test(String(args || '').trim()) || (Capture.recording && /^(stop|end|done)\b/i.test(String(args || '').trim()));
@@ -228,6 +240,35 @@
   reg({ name: 'motion-curve', args: '[video | last | open] [chat]', desc: 'Motion energy over a video as a chart (busy / calm moments, the busiest timecodes)', examples: ['/motion-curve open'], run: (args, ctx) => framesCommand(args, ctx, 'motion') });
   reg({ name: 'frame-palette', args: '[video | last | open] [time]', desc: 'The main colors of a video (or of the frame at a time)', examples: ['/frame-palette open', '/frame-palette last 2.5'], run: (args, ctx) => framesCommand(args, ctx, 'palette') });
 
+  // /make gif|trim|timelapse|… [video|last|open] [from] [to]: a new file next to the video (the source never changes)
+  const MAKE_WORDS = { gif: 'gif', 'small-gif': 'gif-small', trim: 'trim', cut: 'trim', timelapse: 'speed4', '2x': 'speed2', '4x': 'speed4', '8x': 'speed8', slow: 'slow', 'slow-mo': 'slow', boomerang: 'boomerang', frames: 'sequence', png: 'sequence', jpg: 'sequence-jpg', sequence: 'sequence', reels: 'reels', 'reels-fit': 'reels-fit', '9:16': 'reels-fit', square: 'square', '1:1': 'square', feed: 'feed', '4:5': 'feed', wide: 'wide', '16:9': 'wide', mute: 'mute', silent: 'mute', sound: 'audio', audio: 'audio', poster: 'poster', still: 'poster', loop: 'loop' };
+  reg({
+    name: 'make', when: (_ctx, args) => Boolean(MAKE_WORDS[String(args || '').trim().split(/\s+/)[0]?.toLowerCase()]) || !String(args || '').trim(), whenLabel: 'from a video (gif, trim, timelapse…)',
+    args: '<gif|trim|timelapse|2x|slow|boomerang|frames|9:16|1:1|4:5|16:9|mute|sound|poster|loop> [video | last | open] [from] [to]',
+    desc: 'Make something from a video: a GIF, a frame-exact trim, a timelapse, a boomerang, PNG frames for After Effects, a 9:16 / 1:1 / 4:5 copy, the sound, a poster frame, a seamless loop',
+    examples: ['/make gif last 1 3.5', '/make timelapse', '/make frames open 0 2', '/make 9:16 last', '/make loop'], keywords: 'export convert gif mp4 social reels after effects png sequence',
+    complete: opts(Object.keys(MAKE_WORDS).map((k) => ({ value: k, hint: (D.EDITS.find((e) => e.id === MAKE_WORDS[k])?.label) || (k === 'loop' ? 'find and cut the best seamless loop' : '') }))),
+    run: async (args) => {
+      const w = words(args);
+      if (!w.length) return D.EDITS.map((e) => `- ${e.label}`).join('\n') + '\nUse: /make gif [video | last | open] [from] [to]';
+      const what = MAKE_WORDS[w[0].toLowerCase()];
+      let i = 1; let file = null;
+      if (w[1] && !FrameRead.parseTime(w[1])) { file = await FrameRead.resolveFile(w[1]); i = 2; } else file = await FrameRead.resolveFile('');
+      if (!file) return 'Which video? A path, `last` or `open`.';
+      const fps = (await FrameRead.info(file)).fps;
+      const t = (x) => { const p = FrameRead.parseTime(x, fps); return p ? (p.frame != null ? p.frame / fps : p.time) : undefined; };
+      const range = { ...(w[i] ? { from: t(w[i]) } : {}), ...(w[i + 1] ? { to: t(w[i + 1]) } : {}) };
+      if (what === 'loop') {
+        const l = (await FrameRead.read(file, 'loop', { from: range.from || 0 })).value;
+        const r = await FrameRead.edit(file, 'trim', { from: l.from, to: l.to });
+        return `Seamless loop ${l.from}s → ${l.to}s (${Math.round(l.match * 100)} % alike): \`${r.path}\``;
+      }
+      const e = D.EDITS.find((x) => x.id === what);
+      const r = await FrameRead.edit(file, e.op || e.id, { ...(e.args || {}), ...range });
+      return `${e.label}: \`${r.path}\`${r.files ? ` (${r.files} files)` : ''}`;
+    },
+  });
+
   reg({ name: 'captures', aliases: ['shots'], args: '[pictures | videos]', desc: 'Your screenshots and recordings (double-click opens, right-click for more, drag into a chat or another app)', keys: `${M}+Alt+V`,
     complete: opts([{ value: 'pictures' }, { value: 'videos' }]),
     run: async (args) => { const a = String(args || '').toLowerCase(); CaptureView.library(a.startsWith('pic') || a.startsWith('shot') ? { kind: 'shot' } : a.startsWith('vid') ? { kind: 'video' } : {}); return null; } });
@@ -242,9 +283,17 @@
   reg({ name: 'capture-last', args: '', desc: 'Open your newest capture (screenshot or recording)', run: async () => { const p = await lastOr(''); if (!p) return 'No captures yet.'; CaptureView.open(p); return null; } });
   reg({ name: 'annotate', args: '[last | path]', desc: 'Draw on a screenshot: arrows, boxes, text, numbered badges, blur / pixelate private bits, spotlight, crop', examples: ['/annotate'],
     run: async (args) => { const p = await lastOr(args, 'shot'); if (!p) return 'No screenshot yet: /shot first.'; const out = await CaptureAnnotate.open(p); return out ? `✎ Saved \`${out}\`` : null; } });
-  reg({ name: 'beautify', args: '[look] [last | path]', desc: 'Your screenshot on a gradient with padding, rounded corners, a shadow and a window bar, for posts (15 looks)', examples: ['/beautify', '/beautify violet', '/beautify phone'],
-    complete: opts(D.BEAUTIFY.map((b) => ({ value: b.id, hint: b.label }))),
-    run: async (args) => { const w = words(args); const look = w.find((x) => D.BEAUTIFY.some((b) => b.id === x.toLowerCase())) || 'forge'; const p = await lastOr(w.find((x) => x !== look), 'shot'); if (!p) return 'No screenshot yet: /shot first.'; const out = await CaptureView.derive(p, (img) => Capture.beautify(img, look.toLowerCase()), look); return `✨ \`${out}\``; } });
+  reg({ name: 'beautify', args: '[look] [bg:… pad:… corners:… shadow:… bar:…] [last | path]', desc: 'Your screenshot on a gradient with padding, rounded corners, a shadow and a window bar, for posts (15 looks, 59 backgrounds, or your own mix)', examples: ['/beautify', '/beautify violet', '/beautify bg:nebula pad:l corners:24 bar:mac'],
+    complete: opts([...D.BEAUTIFY.map((b) => ({ value: b.id, hint: b.label })), ...D.BACKGROUNDS.map((b) => ({ value: `bg:${b.id}`, hint: b.label })), ...D.PADS.map((x) => ({ value: `pad:${x.id}`, hint: `padding ${x.label}` })), ...D.CORNERS.map((x) => ({ value: `corners:${x.id}`, hint: x.label })), ...D.SHADOWS.map((x) => ({ value: `shadow:${x.id}`, hint: x.label })), ...D.CHROME.map((x) => ({ value: `bar:${x.id}`, hint: x.label }))]),
+    run: async (args) => {
+      const w = words(args);
+      const look = w.find((x) => D.BEAUTIFY.some((b) => b.id === x.toLowerCase()) || x.toLowerCase() === 'mine') || (w.some((x) => x.includes(':')) ? 'mine' : 'forge');
+      const over = Capture.beautyArgs(w);
+      const p = await lastOr(w.find((x) => x !== look && !x.includes(':')), 'shot');
+      if (!p) return 'No screenshot yet: /shot first.';
+      const out = await CaptureView.derive(p, (img) => Capture.beautify(img, look.toLowerCase(), over), look === 'mine' ? 'beautified' : look);
+      return `✨ \`${out}\``;
+    } });
   reg({ name: 'crop-shot', args: '<9:16|4:5|1:1|16:9|…> [fit] [last | path]', desc: 'Your screenshot cropped (or fitted) to a social frame at its exact size (23 frames)', examples: ['/crop-shot 9:16', '/crop-shot 4:5 fit'],
     complete: opts([...frameOpts, { value: 'fit' }]),
     run: async (args) => { const w = words(args); const f = w.map((x) => D.parseFrame(x)).find(Boolean); if (!f) return 'Which frame? 9:16, 4:5, 1:1, 16:9, reels, og…'; const fit = w.includes('fit') ? 'fit' : 'crop'; const p = await lastOr(w.find((x) => !D.parseFrame(x) && x !== 'fit'), 'shot'); if (!p) return 'No screenshot yet: /shot first.'; const out = await CaptureView.derive(p, (img) => Capture.socialCrop(img, f, { fit }), `${f.id.replace(':', 'x')}${fit === 'fit' ? ' fit' : ''}`); return `⬚ \`${out}\` (${f.w}×${f.h})`; } });
@@ -343,6 +392,9 @@
   K('S (player)', 'Save the frame on screen');
   K('Enter (player)', 'Send the frame on screen to the chat');
   K('Right-click (speed button)', 'Pick a playback speed');
+  K('I / O (player)', 'Set the start / end of a part (for Make…: a GIF, a trim, a loop)');
+  K('X (player)', 'Clear the I / O part');
+  K('G (player)', 'A GIF of the I / O part (or of the whole video)');
   K('Wheel / double-click (picture)', 'Zoom / fit');
   K('A (picture)', 'Annotate');
   K('C (picture)', 'Copy');
@@ -376,6 +428,9 @@
   act('your captures', () => CaptureView.library(), `${M}+Alt+V`);
   act('read frames of a video', () => FrameRead.pickAndRead());
   act('tours (hands-free recordings)', () => CaptureTour.picker(), `${M}+Alt+T`);
+  act('make a GIF of the newest recording', async () => { const f = await FrameRead.resolveFile('last'); if (!f) throw new Error('No recording yet'); return FrameRead.edit(f, 'gif', { fps: 15 }); });
+  act('PNG frames of the newest recording (for After Effects)', async () => { const f = await FrameRead.resolveFile('last'); if (!f) throw new Error('No recording yet'); return FrameRead.edit(f, 'sequence', {}); });
+  act('the newest recording in 9:16', async () => { const f = await FrameRead.resolveFile('last'); if (!f) throw new Error('No recording yet'); return FrameRead.edit(f, 'reframe', { w: 1080, h: 1920, fit: 'fit' }); });
   act('the capture menu', () => Capture.menu(Math.max(8, innerWidth / 2 - 130), 90, Capture.mainItems()), `${M}+Alt+S`);
 
   // ---------- the one entry on screen: "Capture" in the rail's ⋯ menu (a hidden rail button it clicks) ----------
@@ -438,6 +493,12 @@
     if (tool === 'capture_frames') {
       const file = await FrameRead.resolveFile(a.path || 'last');
       if (!file) return { ok: false, error: 'No video: give a path ("last" = the newest recording, "open" = Video Review\'s).' };
+      if (String(a.mode) === 'make') {
+        const e = D.EDITS.find((x) => x.id === a.op || x.op === a.op);
+        if (!e) return { ok: false, error: `op: ${[...new Set(D.EDITS.map((x) => x.op || x.id))].join(', ')}` };
+        const r = await FrameRead.edit(file, e.op || e.id, { ...(e.args || {}), ...(a.from != null ? { from: a.from } : {}), ...(a.to != null ? { to: a.to } : {}), ...(a.width ? { width: a.width } : {}) }, { quiet: true });
+        return { ok: true, value: { made: r.path, ...(r.files ? { files: r.files } : {}) } };
+      }
       const mode = FrameRead.modeOf(a.mode || 'sheet');
       if (!mode) return { ok: false, error: `mode: ${D.READ_MODES.map((m) => m.id).join(', ')}` };
       const args = { ...a };

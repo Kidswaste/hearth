@@ -348,7 +348,7 @@ const FrameRead = (() => {
   }
 
   // ---------- one entry point for commands and agents ----------
-  const MODE_ALIAS = { frame: 'at', time: 'at', exact: 'at', n: 'every', step: 'every', even: 'spread', evenly: 'spread', cuts: 'scenes', shots: 'scenes', scene: 'scenes', contact: 'sheet', grid: 'sheet', energy: 'motion', rhythm: 'pacing', pace: 'pacing', colors: 'palette', colours: 'palette', brightness: 'light', luma: 'light', probe: 'info', fps: 'info', check: 'verify', compare: 'diff' };
+  const MODE_ALIAS = { blacks: 'black', fades: 'black', still: 'freeze', holds: 'freeze', frozen: 'freeze', quiet: 'silence', silent: 'silence', lufs: 'loudness', loud: 'loudness', volume: 'loudness', iframes: 'keyframes', bars: 'letterbox', crop: 'letterbox', colorbar: 'barcode', story: 'barcode', wave: 'waveform', sound: 'waveform', loops: 'loop', seamless: 'loop', frame: 'at', time: 'at', exact: 'at', n: 'every', step: 'every', even: 'spread', evenly: 'spread', cuts: 'scenes', shots: 'scenes', scene: 'scenes', contact: 'sheet', grid: 'sheet', energy: 'motion', rhythm: 'pacing', pace: 'pacing', colors: 'palette', colours: 'palette', brightness: 'light', luma: 'light', probe: 'info', fps: 'info', check: 'verify', compare: 'diff' };
   const modeOf = (m) => { const k = String(m || '').toLowerCase(); return D.READ_MODES.some((x) => x.id === k) ? k : MODE_ALIAS[k] || null; };
   async function read(file, mode = 'sheet', a = {}) {
     if (!file) throw new Error('Which video? (a path, "last" for the newest recording, or open one in Video Review)');
@@ -387,7 +387,47 @@ const FrameRead = (() => {
     if (m === 'light') { const l = await light(file); return { value: l, text: `Brightness ${l.brightness.avg} (${l.brightness.min}–${l.brightness.max}), saturation ${l.saturation.avg}: ${l.words}.`, images: [] }; }
     if (m === 'verify') { const v = await verify(file, a.frame ?? a.n ?? 0); return { value: v, text: v.ok ? `✓ The player shows frame ${v.presented} (media time ${v.mediaTime}s at ${v.fps} fps).` : `✖ Asked for frame ${v.asked}, the player showed ${v.presented} (media time ${v.mediaTime}s).`, images: [] }; }
     if (m === 'diff') { const d = await diff(file, a.a ?? a.frames?.[0] ?? 0, a.b ?? a.frames?.[1] ?? 1); return { value: { score: d.score, path: d.path }, text: `Difference f${d.a.frame} → f${d.b.frame}: ${Math.round(d.score * 1000) / 10} % (${d.path})`, images: [{ path: d.path, label: 'difference' }] }; }
+    // ffmpeg's own detectors (they need ffmpeg: the player can't hear silence or measure loudness)
+    const needFf = async () => { if (!await ff()) throw new Error('This reading needs ffmpeg (Video Review → ⋯ → ffmpeg, or brew / winget install ffmpeg)'); };
+    const stretches = (list, what) => (list.length ? list.map((x) => `${tc(x.start, 30, 'ms')} → ${tc(x.end, 30, 'ms')} (${x.length.toFixed(2)}s)`).join('\n') : `No ${what}.`);
+    if (m === 'black' || m === 'freeze' || m === 'silence') {
+      await needFf();
+      const list = await main(m, file, { min: a.min, from: a.from, to: a.to });
+      const what = { black: 'black stretches', freeze: 'frozen stretches (holds)', silence: 'quiet stretches' }[m];
+      return { value: list, text: `${list.length} ${what}:\n${stretches(list, what)}`, images: [] };
+    }
+    if (m === 'loudness') {
+      await needFf();
+      const l = await main('loudness', file);
+      if (!l) return { value: null, text: 'No sound in this video.', images: [] };
+      const advice = l.integrated == null ? '' : l.integrated < -18 ? ' Quiet for socials (they aim near -14 LUFS).' : l.integrated > -10 ? ' Loud: platforms will turn it down.' : ' Right for socials.';
+      return { value: l, text: `Loudness ${l.integrated} LUFS, range ${l.range} LU, true peak ${l.truePeak} dBFS.${advice}`, images: [] };
+    }
+    if (m === 'keyframes') { await needFf(); const k = await main('keyframes', file); return { value: k, text: `${k.length} keyframes (clean cut points): ${k.slice(0, 40).map((t) => t.toFixed(2)).join(', ')}${k.length > 40 ? '…' : ''}`, images: [] }; }
+    if (m === 'letterbox') { await needFf(); const c = await main('crop', file); const v = await info(file); return { value: c, text: c.bars ? `Bars: the picture is ${c.w}×${c.h} (ratio ${c.ratio}) inside ${v.w}×${v.h}, at ${c.x}, ${c.y}.` : `No black bars: the picture fills ${v.w}×${v.h}.`, images: [] }; }
+    if (m === 'barcode') { await needFf(); const b = await main('barcode', file, { width: a.width || 1200, height: a.height || 240 }); return { value: b, text: `Color over time (each column is a moment): ${b.path}`, images: [{ path: b.path, label: 'color barcode' }] }; }
+    if (m === 'waveform') { await needFf(); const w = await main('waveform', file, { width: a.width || 1600, height: a.height || 240 }); return { value: w, text: `Sound waveform: ${w.path}`, images: [{ path: w.path, label: 'waveform' }] }; }
+    if (m === 'loop') {
+      await needFf();
+      const l = await main('loop', file, { from: Number(a.from) || 0, min: a.min || 0.8, max: a.max || 8 });
+      return { value: l, text: `Best loop: ${tc(l.from, 30, 'ms')} → ${l.tc} (${l.length}s, ${Math.round(l.match * 100)} % alike). /make loop cuts it.`, images: [] };
+    }
     throw new Error(`Unknown mode ${mode}`);
+  }
+
+  // ---------- things made from a video (ffmpeg): a GIF, a trim, a timelapse, a boomerang, stills for After Effects… ----
+  const EDIT_LABEL = { gif: 'GIF', trim: 'trim', speed: 'timelapse', boomerang: 'boomerang', sequence: 'PNG frames', reframe: 'reframed copy', mute: 'silent copy', audio: 'sound', poster: 'poster frame' };
+  async function edit(file, op, a = {}, { quiet = false } = {}) {
+    if (!await ff()) throw new Error('Making a GIF / trim / timelapse needs ffmpeg (brew install ffmpeg · winget install Gyan.FFmpeg)');
+    const busy = quiet ? null : toast(`Making the ${EDIT_LABEL[op] || op}…`, { timeout: 0 });
+    let r;
+    try { r = await api().edit(op, file, a); } finally { busy?.remove(); }
+    if (!r.ok) throw new Error(r.error);
+    const out = r.value.path;
+    if (/\.(mp4|webm|gif)$/i.test(out) && typeof Review !== 'undefined') { try { Review.noteRecording(out); } catch { /* the library is a bonus */ } }
+    Capture.remember({ kind: /\.(mp4|webm|mov)$/i.test(out) ? 'video' : 'shot', path: out });
+    if (!quiet) toast(`${EDIT_LABEL[op] || op}: ${base(out)}${r.value.files ? ` (${r.value.files} files)` : ''}`, { timeout: 6000, action: op === 'sequence' ? { label: 'Show', fn: () => window.hub.fs.open(out) } : { label: 'Open', fn: () => CaptureView.open(out) } });
+    return r.value;
   }
 
   // ---------- the results panel ----------
@@ -463,5 +503,5 @@ const FrameRead = (() => {
     return f;
   }
 
-  return { info, at, frames, every, spread, scenes, motion, pacing, palette, paletteOf, light, verify, diff, sheet, chart, read, show, toChatImages, resolveFile, pickAndRead, tc, parseTime, modeOf, curves, _videoOf: videoOf, _videoFrame: videoFrame, _setFfmpeg: (on) => { hasFf = on; } };
+  return { edit, EDIT_LABEL, info, at, frames, every, spread, scenes, motion, pacing, palette, paletteOf, light, verify, diff, sheet, chart, read, show, toChatImages, resolveFile, pickAndRead, tc, parseTime, modeOf, curves, _videoOf: videoOf, _videoFrame: videoFrame, _setFfmpeg: (on) => { hasFf = on; } };
 })();

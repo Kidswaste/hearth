@@ -15,7 +15,31 @@ const CaptureView = (() => {
   const tryRun = (fn) => () => Promise.resolve().then(fn).catch(fail);
 
   // ---------- one menu for a capture, wherever it shows ----------
-  function itemsFor(p, { frameOf = null } = {}) {
+  // Beautify: the 15 looks, then your own mix (background, padding, corners, shadow, window bar), remembered
+  function beautyItems(p) {
+    const apply = (look, over = {}) => tryRun(() => derive(p, (img) => Capture.beautify(img, look, over), look === 'mine' ? 'beautified' : look));
+    const mix = (k, v, label) => ({ label, action: tryRun(() => { Capture.setBeautyMix(k, v); return derive(p, (img) => Capture.beautify(img, 'mine'), 'beautified'); }) });
+    const m = Capture.beautyMix();
+    const cur = (k, v) => (m[k] === v ? '✓ ' : '');
+    return [
+      ...D.BEAUTIFY.map((b) => ({ label: b.label, action: apply(b.id) })),
+      { label: 'Your mix', action: apply('mine') },
+      { label: 'Background…', action: () => Capture.picker('Background', D.BACKGROUNDS.map((b) => ({ id: b.id, label: b.label })), (b) => { Capture.setBeautyMix('bg', b.id); derive(p, (img) => Capture.beautify(img, 'mine'), 'beautified').catch(fail); }) },
+      { label: 'Padding…', items: () => D.PADS.map((x) => mix('pad', x.pad, `${cur('pad', x.pad)}${x.label}`)) },
+      { label: 'Corners…', items: () => D.CORNERS.map((x) => mix('radius', x.radius, `${cur('radius', x.radius)}${x.label}`)) },
+      { label: 'Shadow…', items: () => D.SHADOWS.map((x) => mix('shadow', x.shadow, `${cur('shadow', x.shadow)}${x.label}`)) },
+      { label: 'Window bar…', items: () => D.CHROME.map((x) => mix('chrome', x.id, `${cur('chrome', x.id)}${x.label}`)) },
+    ];
+  }
+  // Make…: a GIF, a trim, a timelapse, a reframe… of a video (the part between I and O in the player when set)
+  function makeItems(p, range = null) {
+    return D.EDITS.map((e) => ({ label: `${e.label}${range && !['mute', 'poster'].includes(e.op || e.id) ? '  I–O' : ''}`, action: tryRun(async () => {
+      const r = range?.() || {};
+      await FrameRead.edit(p, e.op || e.id, { ...(e.args || {}), ...(['mute'].includes(e.op || e.id) ? {} : r), ...((e.op || e.id) === 'poster' && r.from == null && frameTime ? { time: frameTime() } : {}) });
+    }) }));
+  }
+  let frameTime = null; // the player's current time, for "Poster frame"
+  function itemsFor(p, { frameOf = null, range = null } = {}) {
     const isVid = VIDEO.test(p);
     const agents = () => H.agents().filter((a) => a.mode === 'native');
     const read = (mode, args = {}) => tryRun(async () => { const busy = toast(`Reading ${base(p)}…`, { timeout: 0 }); try { FrameRead.show(await FrameRead.read(p, mode, args), p); } finally { busy.remove(); } });
@@ -40,7 +64,8 @@ const CaptureView = (() => {
         { label: 'More…', action: () => FrameRead.pickAndRead(p) },
       ] } : null,
       !isVid && typeof CaptureAnnotate !== 'undefined' ? { label: '✎ Annotate', action: tryRun(async () => { const out = await CaptureAnnotate.open(p); if (out) open(out); }) } : null,
-      !isVid ? { label: '✨ Beautify…', items: () => D.BEAUTIFY.map((b) => ({ label: b.label, action: tryRun(() => derive(p, (img) => Capture.beautify(img, b.id), b.id)) })) } : null,
+      !isVid ? { label: '✨ Beautify…', items: () => beautyItems(p) } : null,
+      isVid ? { label: '✂ Make…', items: () => makeItems(p, range) } : null,
       !isVid ? { label: '⬚ Social frame…', items: () => [
         ...D.SOCIAL.slice(0, 6).map((f) => ({ label: `${f.id}  ${f.w}×${f.h}`, action: tryRun(() => derive(p, (img) => Capture.socialCrop(img, f), f.id.replace(':', 'x'))) })),
         { label: 'Fit inside (no crop)…', items: () => D.SOCIAL.slice(0, 6).map((f) => ({ label: `${f.id}  ${f.w}×${f.h}`, action: tryRun(() => derive(p, (img) => Capture.socialCrop(img, f, { fit: 'fit' }), `${f.id.replace(':', 'x')} fit`)) })) },
@@ -124,7 +149,7 @@ const CaptureView = (() => {
   function shell(p, body, foot, onKey) {
     const dlg = el('dialog', { class: 'ui-modal cap-view' },
       el('div', { class: 'cap-view-head' }, el('h2', { text: base(p), title: p }), el('span', { class: 'cap-view-info hint' }), el('span', { class: 'spacer' }),
-        el('button', { type: 'button', class: 'ghost', text: '⋯', title: 'Everything you can do with it', on: { click: (e) => Capture.menu(e.clientX, e.clientY, itemsFor(p, { frameOf: dlg.frameOf })) } }),
+        el('button', { type: 'button', class: 'ghost', text: '⋯', title: 'Everything you can do with it', on: { click: (e) => Capture.menu(e.clientX, e.clientY, itemsFor(p, { frameOf: dlg.frameOf, range: dlg.range })) } }),
         el('button', { type: 'button', class: 'ghost', text: '✕', title: 'Close (Esc)', on: { click: () => dlg.close() } })),
       body, foot);
     dlg.addEventListener('keydown', (e) => { if (onKey && !e.target.closest('input, textarea')) onKey(e); });
@@ -175,7 +200,8 @@ const CaptureView = (() => {
     const fwd = el('button', { type: 'button', text: '|▶', title: 'One frame on (→, Shift+→ = 10)' });
     const speed = el('button', { type: 'button', class: 'ghost', text: '1×', title: 'Speed (click: next · right-click: pick)' });
     const foot = el('div', { class: 'cap-view-foot' }, back, playBtn, fwd, tcEl, el('span', { class: 'spacer' }), speed,
-      el('button', { type: 'button', class: 'ghost', text: '🎞 Read', title: 'Read frames: contact sheet, scenes, motion, exact frames… (R)', on: { click: () => FrameRead.pickAndRead(p) } }));
+      el('button', { type: 'button', class: 'ghost', text: '🎞 Read', title: 'Read frames: contact sheet, scenes, motion, exact frames… (R)', on: { click: () => FrameRead.pickAndRead(p) } }),
+      el('button', { type: 'button', class: 'ghost', text: '✂ Make', title: 'A GIF, a trim, a timelapse, a reframe… (I / O set the part; G makes a GIF)', on: { click: (e) => Capture.menu(e.clientX, e.clientY, makeItems(p, dlg.range)) } }));
     let inf = { fps: 30, frames: 0, duration: 0, exact: false };
     let cur = 0; // the frame on screen
     const fps = () => inf.fps || 30;
@@ -203,8 +229,20 @@ const CaptureView = (() => {
     const seekAt = (e) => { const r = bar.getBoundingClientRect(); go(Math.round(((e.clientX - r.left) / r.width) * (total() - 1))); };
     bar.addEventListener('pointerdown', (e) => { bar.setPointerCapture(e.pointerId); seekAt(e); const mv = (ev) => seekAt(ev); bar.addEventListener('pointermove', mv); bar.addEventListener('pointerup', () => bar.removeEventListener('pointermove', mv), { once: true }); });
     stage.addEventListener('click', toggle);
-    stage.addEventListener('contextmenu', (e) => { e.preventDefault(); Capture.menu(e.clientX, e.clientY, itemsFor(p, { frameOf: dlg.frameOf })); });
+    stage.addEventListener('contextmenu', (e) => { e.preventDefault(); Capture.menu(e.clientX, e.clientY, itemsFor(p, { frameOf: dlg.frameOf, range: dlg.range })); });
     const frameOf = async () => FrameRead.at(p, { frame: cur }, { format: 'png' });
+    // I / O: a range for Make… (a GIF, a trim, a loop…), shown on the scrub bar
+    const io = { a: null, b: null };
+    const ioBox = el('div', { class: 'cap-scrub-io', hidden: true });
+    bar.append(ioBox);
+    const paintIo = () => {
+      const T = Math.max(1, total() - 1);
+      if (io.a == null && io.b == null) { ioBox.hidden = true; return; }
+      const a = (io.a ?? 0) / T; const b = (io.b ?? T) / T;
+      Object.assign(ioBox.style, { left: `${Math.min(a, b) * 100}%`, width: `${Math.abs(b - a) * 100}%` });
+      ioBox.hidden = false;
+    };
+    const range = () => (io.a == null && io.b == null ? null : { from: Math.round(((io.a ?? 0) / fps()) * 1000) / 1000, to: io.b == null ? undefined : Math.round(((io.b + 1) / fps()) * 1000) / 1000 });
     const dlg = shell(p, el('div', { class: 'cap-view-body' }, stage, bar), foot, (e) => {
       const k = e.key;
       if (k === ' ' || k === 'k' || k === 'K') { e.preventDefault(); toggle(); }
@@ -218,11 +256,17 @@ const CaptureView = (() => {
       else if (k === 'c' || k === 'C') { e.preventDefault(); frameOf().then((f) => Capture.copyImage(f.path)).then(() => toast(`Frame ${cur} copied`, { timeout: 1200 })).catch(fail); }
       else if (k === 's' || k === 'S') { e.preventDefault(); frameOf().then((f) => toast(`Frame ${f.frame} saved`, { timeout: 2500, action: { label: 'Show', fn: () => window.hub.fs.reveal(f.path) } })).catch(fail); }
       else if (k === 'Enter') { e.preventDefault(); frameOf().then((f) => Capture.attachToChat(f.path)).catch(fail); }
+      else if (k === 'i' || k === 'I') { io.a = cur; paintIo(); toast(`In: frame ${cur}`, { timeout: 900 }); }
+      else if (k === 'o' || k === 'O') { io.b = cur; paintIo(); toast(`Out: frame ${cur}`, { timeout: 900 }); }
+      else if (k === 'x' || k === 'X') { io.a = null; io.b = null; paintIo(); }
+      else if (k === 'g' || k === 'G') { e.preventDefault(); FrameRead.edit(p, 'gif', { fps: 15, ...(range() || {}) }).catch(fail); }
       else if (k === 'm' || k === 'M') { const mk = marks.find((x) => Math.floor(x.time * fps()) > cur) || marks[0]; if (mk) go(Math.floor(mk.time * fps())); }
     });
     dlg.frameOf = frameOf;
+    dlg.range = range;
+    frameTime = () => cur / fps();
     dlg.cleanup = () => { v.pause(); v.removeAttribute('src'); v.load(); };
-    dlg.player = { video: v, go, step, get frame() { return cur; }, get info() { return inf; } };
+    dlg.player = { video: v, go, step, io, range, setIn: (n) => { io.a = n; paintIo(); }, setOut: (n) => { io.b = n; paintIo(); }, get frame() { return cur; }, get info() { return inf; } };
     let marks = [];
     await new Promise((r) => { if (v.readyState >= 1) r(); else { v.addEventListener('loadedmetadata', r, { once: true }); v.addEventListener('error', r, { once: true }); setTimeout(r, 6000); } });
     try { inf = await FrameRead.info(p); } catch { /* the estimate below */ }
@@ -234,5 +278,5 @@ const CaptureView = (() => {
     return dlg;
   }
 
-  return { library, open, itemsFor, derive, get viewer() { return viewDlg; } };
+  return { beautyItems, makeItems, library, open, itemsFor, derive, get viewer() { return viewDlg; } };
 })();

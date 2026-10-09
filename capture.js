@@ -328,6 +328,18 @@ const Capture = (() => {
       g.drawImage(img, -W * 0.1, -H * 0.1, W * 1.2, H * 1.2); g.restore(); return;
     }
     const st = bg.stops || ['#000'];
+    if (bg.kind === 'mesh') {
+      // a mesh gradient: the first color as the base, soft blobs of the others at fixed spots
+      g.fillStyle = st[0]; g.fillRect(0, 0, W, H);
+      const spots = [[0.18, 0.22, 0.75], [0.82, 0.3, 0.7], [0.5, 0.85, 0.8], [0.12, 0.88, 0.55], [0.88, 0.9, 0.5]];
+      st.slice(1).forEach((c, i) => {
+        const [x, y, r] = spots[i % spots.length];
+        const gr = g.createRadialGradient(x * W, y * H, 0, x * W, y * H, Math.max(W, H) * r);
+        gr.addColorStop(0, c); gr.addColorStop(1, 'rgba(0,0,0,0)');
+        g.globalAlpha = 0.85; g.fillStyle = gr; g.fillRect(0, 0, W, H); g.globalAlpha = 1;
+      });
+      return;
+    }
     let fill = st[0];
     if (bg.kind === 'linear' && st.length > 1) {
       const a = ((bg.angle ?? 135) * Math.PI) / 180; const r = Math.hypot(W, H) / 2;
@@ -341,8 +353,25 @@ const Capture = (() => {
   }
   const roundRect = (g, x, y, w, h, r) => { g.beginPath(); g.roundRect ? g.roundRect(x, y, w, h, r) : g.rect(x, y, w, h); };
   // The picture on a background with padding, rounded corners, a shadow and an optional window bar / phone bezel.
+  // "bg:aurora pad:l corners:24 shadow:strong bar:mac" (any order, each optional) → overrides for beautify()
+  function beautyArgs(words) {
+    const o = {};
+    for (const w of [].concat(words || [])) {
+      const [k, v] = String(w).toLowerCase().split(':');
+      if (v == null) continue;
+      if ((k === 'bg' || k === 'background') && D.BACKGROUNDS.some((b) => b.id === v)) o.bg = v;
+      else if (k === 'pad' || k === 'padding') { const p = D.PADS.find((x) => x.id === v); if (p) o.pad = p.pad; else if (Number.isFinite(Number(v))) o.pad = Math.min(0.4, Number(v) / 100); }
+      else if (k === 'corners' || k === 'radius') { const c = D.CORNERS.find((x) => x.id === v); o.radius = c ? c.radius : Math.max(0, Number(v) || 0); }
+      else if (k === 'shadow') { const sh = D.SHADOWS.find((x) => x.id === v); if (sh) o.shadow = sh.shadow; }
+      else if ((k === 'bar' || k === 'chrome' || k === 'window') && D.CHROME.some((c) => c.id === v)) o.chrome = v;
+    }
+    return o;
+  }
+  // the owner's own mix, remembered (menus: Beautify → Background / Padding / Corners / Shadow / Window bar)
+  const beautyMix = () => store.get('capture.beautyMix', {});
+  function setBeautyMix(k, v) { const m = { ...beautyMix(), [k]: v }; store.set('capture.beautyMix', m); return m; }
   function beautify(img, preset = 'forge', over = {}) {
-    const p = { ...(D.BEAUTIFY.find((b) => b.id === preset) || D.BEAUTIFY[1]), ...over };
+    const p = { ...(D.BEAUTIFY.find((b) => b.id === preset) || D.BEAUTIFY[1]), ...(preset === 'mine' ? beautyMix() : {}), ...over };
     const { w: iw, h: ih } = dims(img);
     const pad = Math.round(Math.max(iw, ih) * (p.pad ?? 0.08));
     const bar = p.chrome === 'mac' || p.chrome === 'win' || p.chrome === 'minimal' ? Math.round(Math.max(28, iw * 0.022)) : p.chrome === 'browser' ? Math.round(Math.max(44, iw * 0.034)) : 0;
@@ -967,7 +996,7 @@ const Capture = (() => {
   // (the capture tools for chats, commands and keys live in capture-cmds.js)
   return {
     shot, record, stop, pause, resume, mark, status, toggleRecord, pickRegion, beautify, socialCrop, loadImage, canvasData, paintBackground,
-    anim, menu, mainItems, settingsItems, picker, pickFrame, chooseFolder, info, clean, fx, cursorFx, keyAdd, keys: () => keyList.slice(),
+    beautyArgs, beautyMix, setBeautyMix, anim, menu, mainItems, settingsItems, picker, pickFrame, chooseFolder, info, clean, fx, cursorFx, keyAdd, keys: () => keyList.slice(),
     tourLabel, copyImage, attachToChat, openInReview, addToEdit, addToLab, elementFor, rectOf, targetId, TARGETS, surfaceEl, transcript, labPicture, countdown,
     last: () => last, recent: () => recent.slice(), remember, prefs, setPref, fileUrl, base, fmtClock, get recording() { return Boolean(rec); },
   };

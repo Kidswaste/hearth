@@ -85,6 +85,30 @@ const CaptureData = (() => {
     { id: 'steel', label: 'Steel', kind: 'linear', angle: 135, stops: ['#2c3e50', '#bdc3c7'] },
     { id: 'lavender', label: 'Lavender', kind: 'linear', angle: 135, stops: ['#e0c3fc', '#8ec5fc'] },
     { id: 'cyber', label: 'Cyber', kind: 'linear', angle: 135, stops: ['#00f5a0', '#00d9f5', '#7b2ff7'] },
+    { id: 'dusk', label: 'Dusk', kind: 'linear', angle: 170, stops: ['#2c3e50', '#fd746c'] },
+    { id: 'tropical', label: 'Tropical', kind: 'linear', angle: 135, stops: ['#11998e', '#38ef7d'] },
+    { id: 'berry', label: 'Berry', kind: 'linear', angle: 135, stops: ['#8e2de2', '#ff6a88'] },
+    { id: 'sky', label: 'Sky', kind: 'linear', angle: 180, stops: ['#2980b9', '#6dd5fa', '#ffffff'] },
+    { id: 'coral', label: 'Coral', kind: 'linear', angle: 135, stops: ['#ff9966', '#ff5e62'] },
+    { id: 'slate', label: 'Slate', kind: 'linear', angle: 160, stops: ['#232526', '#414345'] },
+    { id: 'onyx', label: 'Onyx', kind: 'radial', stops: ['#2a2a2e', '#050506'] },
+    { id: 'pearl', label: 'Pearl', kind: 'linear', angle: 135, stops: ['#fdfbfb', '#ebedee'] },
+    { id: 'sakura', label: 'Sakura', kind: 'linear', angle: 135, stops: ['#fbd3e9', '#bb377d'] },
+    { id: 'matrix', label: 'Matrix', kind: 'linear', angle: 180, stops: ['#000000', '#0f9b0f'] },
+    { id: 'lagoon', label: 'Lagoon', kind: 'linear', angle: 135, stops: ['#43cea2', '#185a9d'] },
+    { id: 'citrus', label: 'Citrus', kind: 'linear', angle: 135, stops: ['#fdc830', '#f37335'] },
+    { id: 'plum', label: 'Plum', kind: 'linear', angle: 135, stops: ['#3a1c71', '#d76d77', '#ffaf7b'] },
+    { id: 'arctic', label: 'Arctic', kind: 'linear', angle: 180, stops: ['#e0eafc', '#cfdef3'] },
+    { id: 'copper', label: 'Copper', kind: 'linear', angle: 135, stops: ['#3d1f0d', '#b87333', '#f0c08a'] },
+    { id: 'jade', label: 'Jade', kind: 'radial', stops: ['#3ddc97', '#0b3d2e'] },
+    { id: 'noir', label: 'Noir', kind: 'linear', angle: 180, stops: ['#000000', '#434343'] },
+    { id: 'velvet', label: 'Velvet', kind: 'radial', stops: ['#7b1e3a', '#200510'] },
+    { id: 'solar', label: 'Solar flare', kind: 'radial', stops: ['#fff3b0', '#ff8c00', '#5a0f00'] },
+    { id: 'nebula', label: 'Nebula (mesh)', kind: 'mesh', stops: ['#0b0620', '#5b2bd6', '#ff4fa3', '#22e0ff'] },
+    { id: 'forge-mesh', label: 'Forge glow (mesh)', kind: 'mesh', stops: ['#120603', '#ff6a1a', '#ffc233', '#a8340f'] },
+    { id: 'aurora-mesh', label: 'Aurora (mesh)', kind: 'mesh', stops: ['#00111a', '#00a37a', '#7cffc4', '#5b2bd6'] },
+    { id: 'candy-mesh', label: 'Candy (mesh)', kind: 'mesh', stops: ['#fff0f6', '#ff9ac1', '#a0e7ff', '#ffe29a'] },
+    { id: 'ocean-mesh', label: 'Deep ocean (mesh)', kind: 'mesh', stops: ['#020b1a', '#0a4d8c', '#22e0ff', '#123a5c'] },
   ];
   const CHROME = [
     { id: 'none', label: 'No window bar' },
@@ -94,6 +118,10 @@ const CaptureData = (() => {
     { id: 'browser', label: 'Browser with an address bar' },
     { id: 'phone', label: 'Phone bezel' },
   ];
+  // beautify options (each also works alone: /beautify bg:aurora pad:l corners:24 shadow:strong bar:mac)
+  const PADS = [{ id: 'none', label: 'No padding', pad: 0 }, { id: 's', label: 'Small', pad: 0.04 }, { id: 'm', label: 'Medium', pad: 0.08 }, { id: 'l', label: 'Large', pad: 0.12 }, { id: 'xl', label: 'Huge', pad: 0.18 }];
+  const CORNERS = [{ id: '0', label: 'Square', radius: 0 }, { id: '8', label: 'Soft', radius: 8 }, { id: '14', label: 'Round', radius: 14 }, { id: '24', label: 'Rounder', radius: 24 }, { id: '40', label: 'Very round', radius: 40 }];
+  const SHADOWS = [{ id: 'none', label: 'No shadow', shadow: 0 }, { id: 'soft', label: 'Soft', shadow: 0.3 }, { id: 'medium', label: 'Medium', shadow: 0.5 }, { id: 'strong', label: 'Strong', shadow: 0.7 }];
   // whole looks: background + padding (fraction of the picture's long side) + corner radius + shadow + chrome
   const BEAUTIFY = [
     { id: 'clean', label: 'Clean: white, soft shadow', bg: 'white', pad: 0.06, radius: 14, shadow: 0.35, chrome: 'none' },
@@ -175,8 +203,12 @@ const CaptureData = (() => {
     { id: 'halo', label: 'Soft yellow halo' },
     { id: 'spotlight', label: 'Spotlight (dims around the cursor)' },
     { id: 'arrow', label: 'Big arrow' },
+    { id: 'hand', label: 'Pointing hand' },
+    { id: 'crosshair', label: 'Crosshair' },
+    { id: 'glow', label: 'Violet glow' },
+    { id: 'square', label: 'Square focus box' },
   ];
-  const CLICKS = [{ id: 'off', label: 'No click effect' }, { id: 'ring', label: 'Ring ripple' }, { id: 'burst', label: 'Burst' }, { id: 'pulse', label: 'Soft pulse' }];
+  const CLICKS = [{ id: 'off', label: 'No click effect' }, { id: 'ring', label: 'Ring ripple' }, { id: 'burst', label: 'Burst' }, { id: 'pulse', label: 'Soft pulse' }, { id: 'double', label: 'Double ring' }, { id: 'square', label: 'Square' }, { id: 'spark', label: 'Gold spark' }];
   const COUNTDOWN = [0, 3, 5, 10];
   const MAX_LENGTH = [0, 10, 15, 30, 60, 120, 300, 600];
 
@@ -188,12 +220,28 @@ const CaptureData = (() => {
     { id: 'center', label: 'Big centered words' },
     { id: 'pill', label: 'Small pill (top right)' },
     { id: 'typewriter', label: 'Typewriter (letters appear)' },
+    { id: 'kinetic', label: 'Kinetic (words pop in one by one)' },
+    { id: 'neon', label: 'Neon sign' },
+    { id: 'glass', label: 'Frosted glass card' },
+    { id: 'tag', label: 'Gold tag (left)' },
+    { id: 'quote', label: 'Quote (big quotation marks)' },
+    { id: 'bubble', label: 'Chat bubble' },
+    { id: 'label', label: 'Small caps label (top left)' },
+    { id: 'outline', label: 'Huge outlined words' },
   ];
   const TITLES = [
     { id: 'forge', label: 'Forge: gold on ember' },
     { id: 'clean', label: 'Clean: white on black' },
     { id: 'glass', label: 'Glass over the app' },
     { id: 'rainbow', label: 'Hearth rainbow' },
+    { id: 'neon', label: 'Neon on black' },
+    { id: 'minimal', label: 'Minimal: small and calm' },
+    { id: 'gradient', label: 'Violet gradient' },
+    { id: 'split', label: 'Split: title left, subtitle right' },
+    { id: 'chrome', label: 'Chrome letters' },
+    { id: 'ember', label: 'Ember glow' },
+    { id: 'paper', label: 'Paper and ink' },
+    { id: 'mono', label: 'Monospace terminal' },
   ];
   const EASES = [
     { id: 'smooth', label: 'Smooth', css: 'cubic-bezier(.45,.05,.2,1)' },
@@ -216,6 +264,36 @@ const CaptureData = (() => {
     { id: 'info', label: 'True fps, frame count, duration, size, codec', args: '' },
     { id: 'verify', label: 'Check the shown frame in the player matches (requestVideoFrameCallback)', args: '<frame>' },
     { id: 'diff', label: 'Difference between two frames', args: '<a> <b>' },
+    { id: 'black', label: 'Black stretches (fades to black, gaps)', args: '' },
+    { id: 'freeze', label: 'Frozen stretches (holds, still shots)', args: '' },
+    { id: 'silence', label: 'Quiet stretches in the sound', args: '' },
+    { id: 'loudness', label: 'Loudness (LUFS) for socials', args: '' },
+    { id: 'keyframes', label: 'Keyframes (clean cut points)', args: '' },
+    { id: 'letterbox', label: 'Black bars: the picture\'s real area', args: '' },
+    { id: 'barcode', label: 'Color barcode (the color story in one picture)', args: '' },
+    { id: 'waveform', label: 'Sound waveform picture', args: '' },
+    { id: 'loop', label: 'Best seamless loop point', args: '[from]' },
+  ];
+  // things made from a video (ffmpeg; the source is never changed)
+  const EDITS = [
+    { id: 'gif', label: 'GIF (15 fps, 720 px)', args: { fps: 15 } },
+    { id: 'gif-small', op: 'gif', label: 'Small GIF (10 fps, 480 px)', args: { fps: 10, width: 480 } },
+    { id: 'trim', label: 'Trim (frame-exact MP4)' },
+    { id: 'speed2', op: 'speed', label: 'Timelapse 2×', args: { factor: 2 } },
+    { id: 'speed4', op: 'speed', label: 'Timelapse 4×', args: { factor: 4 } },
+    { id: 'speed8', op: 'speed', label: 'Timelapse 8× (silent)', args: { factor: 8 } },
+    { id: 'slow', op: 'speed', label: 'Slow motion 0.5×', args: { factor: 0.5 } },
+    { id: 'boomerang', label: 'Boomerang (forward + back)' },
+    { id: 'sequence', label: 'PNG frames for After Effects' },
+    { id: 'sequence-jpg', op: 'sequence', label: 'JPEG frames (smaller)', args: { format: 'jpg' } },
+    { id: 'reels', op: 'reframe', label: 'Reframe to 9:16 (crop)', args: { w: 1080, h: 1920 } },
+    { id: 'reels-fit', op: 'reframe', label: 'Reframe to 9:16 (fit on a blurred fill)', args: { w: 1080, h: 1920, fit: 'fit' } },
+    { id: 'square', op: 'reframe', label: 'Reframe to 1:1', args: { w: 1080, h: 1080 } },
+    { id: 'feed', op: 'reframe', label: 'Reframe to 4:5', args: { w: 1080, h: 1350 } },
+    { id: 'wide', op: 'reframe', label: 'Reframe to 16:9 (fit)', args: { w: 1920, h: 1080, fit: 'fit' } },
+    { id: 'mute', label: 'A copy without sound' },
+    { id: 'audio', label: 'The sound only (m4a)' },
+    { id: 'poster', label: 'Poster frame (PNG)' },
   ];
   const SENSITIVITY = [
     { id: 'gentle', label: 'Gentle: only hard cuts', threshold: 0.45 },
@@ -247,12 +325,21 @@ const CaptureData = (() => {
     { id: 'scenes', label: 'One frame per shot (scene changes)', cols: 4, rows: 0, scenes: true },
     { id: 'polaroid', label: 'Polaroids (white frames, handwritten feel)', cols: 4, rows: 2, polaroid: true },
     { id: 'minimal', label: 'Minimal: no labels, tight', cols: 4, rows: 3, label: 'none', gap: 2 },
+    { id: '3x4', label: '3 × 4 (portrait page)', cols: 3, rows: 4 },
+    { id: '7x7', label: '7 × 7 (the whole video at a glance)', cols: 7, rows: 7 },
+    { id: 'long-strip', label: 'Long strip (one row of 12)', cols: 12, rows: 1, film: true },
+    { id: 'frames', label: 'With frame numbers instead of timecodes', cols: 4, rows: 3, label: 'frame' },
+    { id: 'both', label: 'Timecode + frame number', cols: 4, rows: 3, label: 'both' },
   ];
   const SHEET_THEMES = [
     { id: 'dark', label: 'Dark', bg: '#0e0f12', fg: '#f3efe6', sub: '#9a978f' },
     { id: 'light', label: 'Light', bg: '#f4f1ea', fg: '#1c1b18', sub: '#6b6760' },
     { id: 'forge', label: 'Forge', bg: '#1a0d07', fg: '#ffc233', sub: '#ff8a3d' },
     { id: 'film', label: 'Film', bg: '#000000', fg: '#ffffff', sub: '#c8c8c8' },
+    { id: 'violet', label: 'Violet', bg: '#120a24', fg: '#e6dbff', sub: '#9b6bff' },
+    { id: 'blueprint', label: 'Blueprint', bg: '#0b2a4a', fg: '#dff1ff', sub: '#7fb8e6' },
+    { id: 'paper', label: 'Paper', bg: '#efe8da', fg: '#2b2620', sub: '#8a7f6e' },
+    { id: 'mint', label: 'Mint', bg: '#e8fff4', fg: '#0b3d2e', sub: '#2f7d4f' },
   ];
 
   // ---------- tours: scripted, repeatable recordings (capture-tour.js reads these) ----------
@@ -286,6 +373,26 @@ const CaptureData = (() => {
     ['fade in|out [0.6s]', 'Fade the picture from / to black'],
     ['say "<text>"', 'A note in the chat (not sent)'],
     ['esc', 'Close menus and dialogs'],
+    ['tilt <x°> [y°] [1s]', 'Tilt the whole app in 3D (camera move)'],
+    ['spin <deg> [1s]', 'Rotate the view'],
+    ['push <selector> [1.3] [3s]', 'A slow push in (Ken Burns)'],
+    ['shake [strength] [0.4s]', 'Camera shake'],
+    ['whip out|in [left|right] [0.35s]', 'Whip pan out (blurred) and back in, between scenes'],
+    ['flash [white|gold|#hex] [0.25s]', 'A flash frame'],
+    ['blur in|out [0.6s]', 'Focus pull from / to blur'],
+    ['letterbox on|off [2.39]', 'Cinema bars'],
+    ['vignette on|off', 'Darker corners'],
+    ['grain on|off', 'Film grain over the picture'],
+    ['watermark "<text>" [corner] | off', 'A small mark in a corner for the whole take'],
+    ['timecode on|off', 'A running clock in the corner'],
+    ['progress on|off', 'A thin bar showing the tour\'s progress'],
+    ['confetti [count]', 'A burst of Hearth-colored confetti'],
+    ['emoji "🔥" [x y]', 'A big emoji pop'],
+    ['ease <smooth|snappy|slow|linear>', 'Easing for the next moves and zooms'],
+    ['bpm <120>', 'Tempo for beat waits'],
+    ['beat [n]', 'Wait n beats (sync a tour to music)'],
+    ['drag <from> <to> [0.8s]', 'Press, glide and release (sliders, timelines)'],
+    ['hide <selector> / show <selector>', 'Hide a part of the app for the take (back after the tour)'],
   ];
   const TOURS = [
     { id: 'hello', label: 'Hello Hearth (10 s)', steps: `# a short hello: title, the chat, a caption
@@ -404,8 +511,129 @@ wait 2s
 cmd /shuffle
 wait 2s
 stop` },
+    { id: 'cinematic', label: 'Cinematic intro (bars, tilt, push, whip)', steps: `record promo
+letterbox on
+fade in 0.8s
+title "Hearth" "the studio for your AI" 2s ember
+tilt 8 -12 1.2s
+open claude
+caption "Talk to Claude and Astra" 2s lower
+tilt 0 0 1s
+whip out left 0.35s
+open three
+whip in 0.35s
+push .three-preview 1.3 2.5s
+caption "Visuals you shape by hand" 2s lower
+zoom out 0.8s
+flash gold 0.25s
+title "Hearth" "" 1.5s chrome
+fade out 0.8s
+letterbox off
+stop` },
+    { id: 'beat', label: 'On the beat (120 BPM cuts)', steps: `# every cut lands on the beat: set the song's tempo with bpm
+record promo
+bpm 120
+open claude
+beat 2
+flash white 0.15s
+open three
+beat 2
+flash white 0.15s
+open ae
+beat 2
+flash white 0.15s
+open claude
+beat 2
+stop` },
+    { id: 'kinetic', label: 'Kinetic words (text-led)', steps: `record promo
+caption "One window" 1.2s kinetic
+caption "Every AI" 1.2s kinetic
+caption "Your rules" 1.2s kinetic
+title "Hearth" "" 1.6s neon
+stop` },
+    { id: 'tutorial', label: 'Tutorial style (cursor, clicks, keys)', steps: `record tutorial
+cursor halo ring
+open claude
+caption "Type / to see every command" 2s subtitle
+click ".composer textarea"
+type "/" slow
+wait 1.2s
+key Escape
+caption "Ctrl+; runs them from anywhere" 2s subtitle
+key Ctrl+;
+wait 1s
+esc
+stop` },
+    { id: 'zooms', label: 'Zoom showcase (UI details)', steps: `record smooth
+open claude
+ease snappy
+zoom #rail 1.8 0.8s
+wait 1s
+pan 0 300 0.8s
+wait 0.6s
+zoom out 0.6s
+ease smooth
+zoom .composer 1.6 1s
+wait 1s
+zoom out 0.8s
+stop` },
+    { id: 'clean-ui', label: 'Clean UI shots of each screen (no rail)', steps: `hide #rail
+hide #panel
+open claude
+wait 0.4s
+shot window
+open three
+wait 1.2s
+shot window
+open ae
+wait 0.8s
+shot window
+show #rail
+show #panel` },
+    { id: 'social-set', label: 'Screenshots in all four social sizes', steps: `open three
+wait 1s
+shot lab 9:16
+shot lab 4:5
+shot lab 1:1
+shot lab 16:9` },
+    { id: 'square-post', label: 'Square post (1:1) of the chats', steps: `record square
+open claude
+caption "Hearth" 1.6s center
+wait 0.4s
+open astra
+wait 1.4s
+stop` },
+    { id: 'glitch', label: 'Glitchy transitions', steps: `record promo
+open claude
+shake 0.6 0.3s
+flash #ff4fa3 0.12s
+open three
+blur in 0.4s
+shake 0.4 0.25s
+flash #22e0ff 0.12s
+open ae
+wait 0.8s
+stop` },
+    { id: 'watermarked', label: 'Watermarked walkthrough with a clock', steps: `record quick
+watermark "made with Hearth" br
+timecode on
+progress on
+open claude
+wait 1s
+open three
+wait 1.5s
+open ae
+wait 1s
+stop` },
+    { id: 'celebrate', label: 'Celebration ending', steps: `record promo
+open three
+wait 0.6s
+confetti 80
+emoji "🔥"
+title "Shipped" "made in Hearth" 1.8s rainbow
+stop` },
   ];
 
-  return { SOCIAL, socialOf, parseFrame, BACKGROUNDS, CHROME, BEAUTIFY, COLORS, SIZES, TOOLS, RECORD, QUALITY, FPS, AUDIO, CURSORS, CLICKS, COUNTDOWN, MAX_LENGTH, CAPTIONS, TITLES, EASES, READ_MODES, SENSITIVITY, TC_STYLES, SHEETS, SHEET_THEMES, TOUR_STEPS, TOURS };
+  return { PADS, CORNERS, SHADOWS, EDITS, SOCIAL, socialOf, parseFrame, BACKGROUNDS, CHROME, BEAUTIFY, COLORS, SIZES, TOOLS, RECORD, QUALITY, FPS, AUDIO, CURSORS, CLICKS, COUNTDOWN, MAX_LENGTH, CAPTIONS, TITLES, EASES, READ_MODES, SENSITIVITY, TC_STYLES, SHEETS, SHEET_THEMES, TOUR_STEPS, TOURS };
 })();
 if (typeof module !== 'undefined') module.exports = CaptureData;

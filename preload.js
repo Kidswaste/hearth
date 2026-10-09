@@ -139,6 +139,7 @@ contextBridge.exposeInMainWorld('hub', {
     finish: call('capture:finish'),
     indicator: call('capture:indicator'),
     frames: call('capture:frames'),
+    edit: call('capture:edit'),
     windowSize: call('capture:windowSize'),
     startDrag: (p) => ipcRenderer.send('capture:drag', p),
     onKey: on('capture:key'),

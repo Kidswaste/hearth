@@ -24,6 +24,12 @@
 //   sheet(file, { cols, rows, count, from, to, width }, o) → { path, frames } tiled by ffmpeg (no labels; the hub draws labelled ones)
 //   tc(seconds, fps, style)                   → timecode text (sync). style: 'smpte' (00:00:01:12, default), 'ms', 'frames', 's'
 //   parseTime(text, fps)                      → seconds (sync): "12.5", "1:02.5", "00:00:01:12", "f120" / "#120" (a frame)
+//   black / freeze / silence(file, { min, from, to }) → stretches [{ start, end, length }] (blackdetect, freezedetect, silencedetect)
+//   loudness(file) → { integrated (LUFS), range, truePeak } · keyframes(file) → [seconds] · crop(file) → letterbox { w, h, x, y, bars }
+//   barcode(file, { width, height }, o) → a picture of the average color over time · waveform(file, { width, height }, o) → the sound
+//   loop(file, { from, min, max }) → the best seamless loop end { to, frame, tc, length, match }
+//   edit(op, file, { from, to, … }, o) → { path }: gif (fps, width), trim, speed (factor), boomerang, sequence (PNG frames
+//     for After Effects), reframe (w, h, fit: crop|fit), mute, audio (m4a), poster (time). Never changes the source file.
 const { execFile, spawn } = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -412,4 +418,156 @@ function convert(input, output, { mp4 = false, fps = null, crf = 18, onProgress,
   });
 }
 
-module.exports = { tools, setOverrides, probe, frameTimes, locate, frameAt, frames, every, spread, analyze: curves, scenes, motion, sheet, convert, tc, parseTime, outDir, _test: { grab, grabPass, rangeFrames, findTool } };
+// ---------- more readings (ffmpeg's own detectors) ----------
+// a pass that prints filter logs on stderr (blackdetect, freezedetect, silencedetect, ebur128, cropdetect)
+async function logPass(file, args, { from, to } = {}) {
+  const { ffmpeg } = need();
+  const { err } = await run(ffmpeg, ['-hide_banner', '-nostats', ...(from != null ? ['-ss', String(from)] : []), '-i', file, ...(to != null ? ['-t', String(Math.max(0.05, to - (from || 0)))] : []), ...args, '-f', 'null', '-'], { timeout: 30 * 60000, maxBuffer: 256 << 20 });
+  return String(err || '');
+}
+const r3 = (n) => Math.round(Number(n) * 1000) / 1000;
+// black stretches (fades to black, gaps): [{ start, end, length }]
+async function black(file, { min = 0.1, pixel = 0.1, from, to } = {}) {
+  const log = await logPass(file, ['-map', '0:v:0', '-vf', `blackdetect=d=${min}:pix_th=${pixel}`, '-an'], { from, to });
+  return [...log.matchAll(/black_start:([\d.]+) black_end:([\d.]+) black_duration:([\d.]+)/g)].map((m) => ({ start: r3(Number(m[1]) + (from || 0)), end: r3(Number(m[2]) + (from || 0)), length: r3(m[3]) }));
+}
+// frozen stretches (still shots, holds): [{ start, end, length }]
+async function freeze(file, { min = 0.5, noise = 0.003, from, to } = {}) {
+  const log = await logPass(file, ['-map', '0:v:0', '-vf', `freezedetect=n=${noise}:d=${min}`, '-an'], { from, to });
+  const starts = [...log.matchAll(/freeze_start: ([\d.]+)/g)].map((m) => Number(m[1]));
+  const ends = [...log.matchAll(/freeze_end: ([\d.]+)/g)].map((m) => Number(m[1]));
+  const info = await probe(file);
+  return starts.map((st, i) => { const en = ends[i] ?? info.duration; return { start: r3(st + (from || 0)), end: r3(en + (from || 0)), length: r3(en - st) }; });
+}
+// quiet stretches in the sound: [{ start, end, length }]
+async function silence(file, { min = 0.3, db = -40, from, to } = {}) {
+  const info = await probe(file);
+  if (!info.audio) return [];
+  const log = await logPass(file, ['-map', '0:a:0', '-af', `silencedetect=n=${db}dB:d=${min}`, '-vn'], { from, to });
+  const starts = [...log.matchAll(/silence_start: (-?[\d.]+)/g)].map((m) => Number(m[1]));
+  const ends = [...log.matchAll(/silence_end: ([\d.]+)/g)].map((m) => Number(m[1]));
+  return starts.map((st, i) => { const en = ends[i] ?? info.duration; return { start: r3(Math.max(0, st) + (from || 0)), end: r3(en + (from || 0)), length: r3(en - Math.max(0, st)) }; });
+}
+// loudness (EBU R128): integrated LUFS, range, true peak; social platforms aim near -14 LUFS
+async function loudness(file) {
+  const info = await probe(file);
+  if (!info.audio) return null;
+  const log = await logPass(file, ['-map', '0:a:0', '-af', 'ebur128=peak=true', '-vn']);
+  const tail = log.slice(log.lastIndexOf('Summary:'));
+  const num = (re) => { const m = tail.match(re); return m ? Number(m[1]) : null; };
+  return { integrated: num(/I:\s+(-?[\d.]+) LUFS/), range: num(/LRA:\s+(-?[\d.]+) LU/), truePeak: num(/Peak:\s+(-?[\d.]+) dBFS/) };
+}
+// keyframes (I-frames) from packets: where the video can be cut without re-encoding
+async function keyframes(file, { max = 400 } = {}) {
+  const { ffprobe } = need();
+  const out = await run(ffprobe, ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'packet=pts_time,flags', '-of', 'csv=p=0', file], { timeout: 120000, maxBuffer: 256 << 20, stdoutToo: false });
+  const t0 = (await frameTimes(file))[0] || 0;
+  return out.split('\n').filter((l) => /,K/.test(l)).map((l) => r3(Number(l.split(',')[0]) - t0)).filter(Number.isFinite).sort((a, b) => a - b).slice(0, max);
+}
+// letterbox / pillarbox bars: the picture's real area { w, h, x, y } (cropdetect over a few seconds)
+async function crop(file, { from, to } = {}) {
+  const info = await probe(file);
+  const a = from ?? Math.min(1, info.duration / 4); const b = to ?? Math.min(info.duration, a + 6);
+  const log = await logPass(file, ['-map', '0:v:0', '-vf', 'cropdetect=limit=24:round=2:reset=0', '-an'], { from: a, to: b });
+  const all = [...log.matchAll(/crop=(\d+):(\d+):(\d+):(\d+)/g)];
+  if (!all.length) return { w: info.w, h: info.h, x: 0, y: 0, bars: false };
+  const [, w, h, x, y] = all[all.length - 1].map(Number);
+  return { w, h, x, y, bars: w < info.w - 4 || h < info.h - 4, ratio: r3(w / h) };
+}
+// a "movie barcode": the average color of each moment, side by side (the color story of a reference in one picture)
+async function barcode(file, { width = 1200, height = 240, from, to } = {}, o = {}) {
+  const { ffmpeg } = need();
+  const info = await probe(file);
+  const span = Math.max(0.1, (to ?? info.duration) - (from || 0));
+  const cols = Math.max(16, Math.min(4000, Math.round(width)));
+  const out = o.out || path.join(outDir(file, o), `barcode-${cols}-${Date.now().toString(36)}.png`);
+  await run(ffmpeg, ['-v', 'error', '-y', ...(from != null ? ['-ss', String(from)] : []), '-i', file, '-t', String(span), '-map', '0:v:0', '-vf', `fps=${cols / span},scale=1:1:flags=area,scale=1:${Math.round(height)}:flags=neighbor,tile=${cols}x1`, '-frames:v', '1', out], { timeout: 30 * 60000 });
+  return { path: out, w: cols, h: Math.round(height) };
+}
+// the sound as a picture (waveform), for timing cuts by eye
+async function waveform(file, { width = 1600, height = 240, color = 'ffc233' } = {}, o = {}) {
+  const { ffmpeg } = need();
+  const info = await probe(file);
+  if (!info.audio) throw new Error('No sound in this video');
+  const out = o.out || path.join(outDir(file, o), `waveform-${Date.now().toString(36)}.png`);
+  await run(ffmpeg, ['-v', 'error', '-y', '-i', file, '-filter_complex', `[0:a:0]aformat=channel_layouts=mono,showwavespic=s=${Math.round(width)}x${Math.round(height)}:colors=${color}`, '-frames:v', '1', out], { timeout: 10 * 60000 });
+  return { path: out, w: Math.round(width), h: Math.round(height) };
+}
+// the best loop: the later frame that looks most like the start of the range (a seamless loop for a reel / a GIF)
+async function loop(file, { from = 0, min = 0.8, max = 8 } = {}) {
+  const info = await probe(file);
+  const { ffmpeg } = need();
+  const start = await frameAt(file, { time: from }, { width: 64, format: 'png', dir: tmpRoot() });
+  const span = Math.max(0.1, Math.min(max, info.duration - from) - min);
+  const { err } = await run(ffmpeg, ['-hide_banner', '-nostats', '-ss', String(from + min), '-t', String(span), '-i', file, '-loop', '1', '-i', start.path, '-filter_complex', '[0:v:0]scale=64:-2,format=gray[a];[1:v]scale=64:-2,format=gray[b];[a][b]blend=all_mode=difference:shortest=1,signalstats,metadata=print:key=lavfi.signalstats.YAVG', '-f', 'null', '-'], { timeout: 10 * 60000, maxBuffer: 128 << 20 });
+  let best = null; let t = null;
+  for (const line of String(err).split('\n')) {
+    const m = line.match(/pts_time:([\d.]+)/); if (m) t = Number(m[1]);
+    const v = line.match(/YAVG=([\d.]+)/); if (v && t != null) { const score = Number(v[1]); if (!best || score < best.score) best = { time: r3(from + min + t), score }; }
+  }
+  if (!best) throw new Error('No loop point found');
+  const at = await locate(file, { time: best.time });
+  return { from, to: at.time, frame: at.frame, tc: at.tc, length: r3(at.time - from), match: r3(1 - best.score / 255) };
+}
+
+// ---------- making things from a video (captures, references): a GIF, a trim, a timelapse, stills for After Effects ----
+const jobOut = (file, o, suffix, ext) => o.out || path.join(o.dir || path.dirname(file), `${path.basename(file).replace(/\.[^.]+$/, '')} ${suffix}.${ext}`);
+function uniq(p) { if (!exists(p)) return p; const m = p.match(/^(.*?)(\.[^.]+)?$/); for (let i = 2; ; i += 1) { const q = `${m[1]} (${i})${m[2] || ''}`; if (!exists(q)) return q; } }
+const rangeArgs = (from, to) => [...(from != null ? ['-ss', String(from)] : []), ...(to != null ? ['-to', String(to)] : [])];
+// op: gif (fps, width), trim, speed (factor), boomerang, sequence (fps, format), reframe (w, h, fit), mute, audio, poster (time)
+async function edit(op, file, a = {}, o = {}) {
+  const { ffmpeg } = need();
+  const info = await probe(file);
+  const range = rangeArgs(a.from, a.to);
+  const label = a.from != null || a.to != null ? ` ${Number(a.from || 0).toFixed(2)}-${Number(a.to ?? info.duration).toFixed(2)}` : '';
+  const x264 = ['-c:v', 'libx264', '-preset', 'medium', '-crf', String(a.crf || 18), '-pix_fmt', 'yuv420p', '-movflags', '+faststart'];
+  let out; let args;
+  if (op === 'gif') {
+    const fps = a.fps || 15; const w = a.width || Math.min(720, info.w);
+    out = uniq(jobOut(file, o, `gif${label}`, 'gif'));
+    args = ['-i', file, ...range, '-vf', `fps=${fps},scale=${w}:-1:flags=lanczos,split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=sierra2_4a`, '-loop', '0', out];
+  } else if (op === 'trim') {
+    out = uniq(jobOut(file, o, `trim${label}`, 'mp4'));
+    args = ['-i', file, ...range, ...x264, ...(info.audio ? ['-c:a', 'aac', '-b:a', '192k'] : []), out];
+  } else if (op === 'speed') {
+    const k = Math.max(0.25, Math.min(16, Number(a.factor) || 2));
+    out = uniq(jobOut(file, o, `${k}x`, 'mp4'));
+    const atempo = []; let rest = k; while (rest > 2) { atempo.push('atempo=2'); rest /= 2; } while (rest < 0.5) { atempo.push('atempo=0.5'); rest /= 0.5; } atempo.push(`atempo=${rest}`);
+    const sound = info.audio && k <= 4;
+    args = ['-i', file, ...range, '-vf', `setpts=PTS/${k}`, ...(sound ? ['-af', atempo.join(',')] : ['-an']), ...x264, ...(sound ? ['-c:a', 'aac'] : []), out];
+  } else if (op === 'boomerang') {
+    out = uniq(jobOut(file, o, `boomerang${label}`, 'mp4'));
+    // the range is trimmed inside the graph (an output -to would cut the doubled clip)
+    const cut = a.from != null || a.to != null ? `trim=start=${Number(a.from || 0)}${a.to != null ? `:end=${Number(a.to)}` : ''},setpts=PTS-STARTPTS,` : '';
+    args = ['-i', file, '-filter_complex', `[0:v]${cut}split[a][b];[b]reverse[r];[a][r]concat=n=2:v=1:a=0[v]`, '-map', '[v]', '-an', ...x264, out];
+  } else if (op === 'sequence') {
+    const dir = uniq(jobOut(file, o, `frames${label}`, 'seq').replace(/\.seq$/, ''));
+    fs.mkdirSync(dir, { recursive: true });
+    out = dir;
+    args = ['-i', file, ...range, ...(a.fps ? ['-vf', `fps=${a.fps}`] : []), '-fps_mode', a.fps ? 'cfr' : 'passthrough', path.join(dir, `frame_%05d.${a.format === 'jpg' ? 'jpg' : 'png'}`)];
+  } else if (op === 'reframe') {
+    const w = Math.round((a.w || 1080) / 2) * 2; const h = Math.round((a.h || 1920) / 2) * 2;
+    out = uniq(jobOut(file, o, `${w}x${h}${a.fit === 'fit' ? ' fit' : ''}`, 'mp4'));
+    const vf = a.fit === 'fit'
+      ? `split[a][b];[a]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},boxblur=24:2[bg];[b]scale=${w}:${h}:force_original_aspect_ratio=decrease[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2`
+      : `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}`;
+    args = ['-i', file, ...range, '-filter_complex', `[0:v]${vf},setsar=1[v]`, '-map', '[v]', ...(info.audio ? ['-map', '0:a:0', '-c:a', 'aac'] : []), ...x264, out];
+  } else if (op === 'mute') {
+    out = uniq(jobOut(file, o, 'no sound', path.extname(file).slice(1) || 'mp4'));
+    args = ['-i', file, '-map', '0:v:0', '-c', 'copy', '-an', out];
+  } else if (op === 'audio') {
+    if (!info.audio) throw new Error('No sound in this video');
+    out = uniq(jobOut(file, o, `sound${label}`, 'm4a'));
+    args = ['-i', file, ...range, '-vn', '-c:a', 'aac', '-b:a', '256k', out];
+  } else if (op === 'poster') {
+    out = uniq(jobOut(file, o, 'poster', 'png'));
+    const at = await locate(file, { time: a.time ?? a.from ?? 0 });
+    await grab(file, at.frame, await frameTimes(file), { out, fresh: true });
+    return { path: out, frame: at.frame, tc: at.tc };
+  } else throw new Error(`Unknown edit: ${op}`);
+  await run(ffmpeg, ['-v', 'error', '-y', ...args], { timeout: 60 * 60000 });
+  if (!exists(out)) throw new Error('ffmpeg made nothing');
+  return { path: out, ...(op === 'sequence' ? { files: fs.readdirSync(out).length } : {}) };
+}
+
+module.exports = { tools, setOverrides, probe, frameTimes, locate, frameAt, frames, every, spread, analyze: curves, scenes, motion, sheet, convert, tc, parseTime, outDir, black, freeze, silence, loudness, keyframes, crop, barcode, waveform, loop, edit, _test: { grab, grabPass, rangeFrames, findTool } };

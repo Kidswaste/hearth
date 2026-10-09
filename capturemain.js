@@ -14,7 +14,9 @@
 //   recOpen({ name, ext }) / recWrite(id, bytes) / recClose(id) → a recording streamed to disk while it records
 //   finish({ path, mp4, fps, keep }) → { webm, mp4?, duration } fixes MediaRecorder's WebM (duration / seeking) and makes an MP4
 //   indicator({ on, paused, elapsed, label }) → the small REC window: on top of Hearth but never in the recorded frame
-//   frames(op, file, args, opts)   → framereader.js op (probe, locate, at, frames, every, spread, scenes, motion, analyze, sheet, times)
+//   frames(op, file, args, opts)   → framereader.js op (probe, locate, at, frames, every, spread, scenes, motion, analyze, sheet, times,
+//                                    black, freeze, silence, loudness, keyframes, crop, barcode, waveform, loop)
+//   edit(op, file, args, opts)     → framereader.js edit: gif, trim, speed, boomerang, sequence, reframe, mute, audio, poster
 //   trash(path)                    → moved to the Recycle Bin / Trash (never a permanent delete)
 //   startDrag(path)                → a native file drag (drop it in a chat, the board, Finder, an editor)
 //   windowSize({ width, height })  → { before, now } the window's content at an exact size (tours), or just the size
@@ -26,7 +28,7 @@ const path = require('path');
 const FR = require('./framereader');
 const { DATA_DIR } = require('./store');
 
-const SUBS = ['shots', 'recordings', 'frames', 'sheets', 'tours'];
+const SUBS = ['shots', 'recordings', 'frames', 'sheets', 'tours', 'made'];
 const IMAGE = /\.(png|jpe?g|webp|gif)$/i;
 const VIDEO = /\.(webm|mp4|mov|m4v|mkv)$/i;
 
@@ -268,13 +270,27 @@ function register(ipcMain, getWin, getSettings = () => ({})) {
   });
 
   // ---------- frame reader ----------
-  const OPS = { probe: (f) => FR.probe(f), times: (f) => FR.frameTimes(f), locate: (f, a) => FR.locate(f, a), at: (f, a, o) => FR.frameAt(f, a, o), frames: (f, a, o) => FR.frames(f, a, o), every: (f, a, o) => FR.every(f, a, o), spread: (f, a, o) => FR.spread(f, a, o), scenes: (f, a, o) => FR.scenes(f, a, o), motion: (f, a) => FR.motion(f, a), analyze: (f, a) => FR.analyze(f, a), sheet: (f, a, o) => FR.sheet(f, a, o) };
+  const OPS = { probe: (f) => FR.probe(f), times: (f) => FR.frameTimes(f), locate: (f, a) => FR.locate(f, a), at: (f, a, o) => FR.frameAt(f, a, o), frames: (f, a, o) => FR.frames(f, a, o), every: (f, a, o) => FR.every(f, a, o), spread: (f, a, o) => FR.spread(f, a, o), scenes: (f, a, o) => FR.scenes(f, a, o), motion: (f, a) => FR.motion(f, a), analyze: (f, a) => FR.analyze(f, a), sheet: (f, a, o) => FR.sheet(f, a, o),
+    black: (f, a) => FR.black(f, a), freeze: (f, a) => FR.freeze(f, a), silence: (f, a) => FR.silence(f, a), loudness: (f) => FR.loudness(f), keyframes: (f, a) => FR.keyframes(f, a), crop: (f, a) => FR.crop(f, a), barcode: (f, a, o) => FR.barcode(f, a, o), waveform: (f, a, o) => FR.waveform(f, a, o), loop: (f, a) => FR.loop(f, a) };
   ipcMain.handle('capture:frames', async (_e, op, file, args = {}, opts = {}) => {
     FR.setOverrides(ffOverrides());
     const fn = OPS[op];
     if (!fn) throw new Error(`Unknown frame op: ${op}`);
     try {
       return { ok: true, value: await fn(String(file), args || {}, { dir: path.join(dir(), op === 'sheet' ? 'sheets' : 'frames'), ...(opts || {}) }) };
+    } catch (err) { return { ok: false, error: err.message, code: err.code || null }; }
+  });
+
+  // Things made from a video (a GIF, a trim, a timelapse, a PNG sequence…): saved next to it (or in the captures folder
+  // for references elsewhere when asked), never touching the source.
+  ipcMain.handle('capture:edit', async (_e, op, file, args = {}, opts = {}) => {
+    FR.setOverrides(ffOverrides());
+    try {
+      // a capture's GIF / trim goes next to it; anything made from the owner's own footage goes to captures/made
+      const root = dir();
+      const inside = path.resolve(String(file)).startsWith(path.resolve(root) + path.sep);
+      const o = inside && opts.here !== false ? {} : { dir: path.join(root, 'made') };
+      return { ok: true, value: await FR.edit(String(op), String(file), args || {}, o) };
     } catch (err) { return { ok: false, error: err.message, code: err.code || null }; }
   });
 

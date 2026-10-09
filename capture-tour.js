@@ -9,8 +9,9 @@ const CaptureTour = (() => {
   const D = CaptureData;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const frames2 = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-  const OPS = ['record', 'stop', 'open', 'wait', 'cmd', 'type', 'send', 'click', 'hover', 'move', 'key', 'zoom', 'pan', 'caption', 'title', 'highlight', 'scroll', 'shot', 'mark', 'pause', 'resume', 'cursor', 'clean', 'theme', 'size', 'fade', 'say', 'esc'];
-  const ALIAS = { run: 'cmd', command: 'cmd', sleep: 'wait', delay: 'wait', go: 'open', show: 'open', press: 'key', keys: 'key', text: 'caption', sub: 'caption', subtitle: 'caption', card: 'title', spot: 'highlight', spotlight: 'highlight', screenshot: 'shot', snap: 'shot', marker: 'mark', unpause: 'resume', escape: 'esc', look: 'theme', window: 'size', end: 'stop', rec: 'record' };
+  const OPS = ['record', 'stop', 'open', 'wait', 'cmd', 'type', 'send', 'click', 'hover', 'move', 'key', 'zoom', 'pan', 'caption', 'title', 'highlight', 'scroll', 'shot', 'mark', 'pause', 'resume', 'cursor', 'clean', 'theme', 'size', 'fade', 'say', 'esc',
+    'tilt', 'spin', 'push', 'shake', 'whip', 'flash', 'blur', 'letterbox', 'vignette', 'grain', 'watermark', 'timecode', 'progress', 'confetti', 'emoji', 'ease', 'bpm', 'beat', 'drag', 'hide', 'show'];
+  const ALIAS = { rotate: 'spin', kenburns: 'push', 'ken-burns': 'push', bars: 'letterbox', cinema: 'letterbox', noise: 'grain', logo: 'watermark', clock: 'timecode', party: 'confetti', beats: 'beat', tempo: 'bpm', easing: 'ease', run: 'cmd', command: 'cmd', sleep: 'wait', delay: 'wait', go: 'open', show: 'open', press: 'key', keys: 'key', text: 'caption', sub: 'caption', subtitle: 'caption', card: 'title', spot: 'highlight', spotlight: 'highlight', screenshot: 'shot', snap: 'shot', marker: 'mark', unpause: 'resume', escape: 'esc', look: 'theme', window: 'size', end: 'stop', rec: 'record' };
 
   // ---------- parsing ----------
   // words, "quoted strings" (with \" inside), and a /command takes the rest of the line
@@ -93,29 +94,71 @@ const CaptureTour = (() => {
   }
 
   // ---------- the view: zoom / pan on the compositor (one transform on #app) ----------
-  const view = { k: 1, x: 0, y: 0 };
-  function setView(k, x, y, ms, ease) {
+  const view = { k: 1, x: 0, y: 0, rx: 0, ry: 0, rz: 0 };
+  let easeNow = D.EASES[0].css; // "ease snappy" changes it for the next moves
+  const tf = (v) => {
+    const rot = v.rx || v.ry || v.rz;
+    return `translate(${v.x}px, ${v.y}px) scale(${v.k})${rot ? ` translate(${innerWidth / 2}px, ${innerHeight / 2}px) perspective(1600px) rotateX(${v.rx}deg) rotateY(${v.ry}deg) rotateZ(${v.rz}deg) translate(${-innerWidth / 2}px, ${-innerHeight / 2}px)` : ''}`;
+  };
+  function setView(k, x, y, ms, ease, rot = {}) {
     const app = document.getElementById('app');
     if (!app) return Promise.resolve();
     const W = innerWidth; const Hh = innerHeight;
     // keep the zoomed picture covering the window (no empty edges)
     const cx = Math.min(0, Math.max(W - W * k, x)); const cy = Math.min(0, Math.max(Hh - Hh * k, y));
-    const from = `translate(${view.x}px, ${view.y}px) scale(${view.k})`; const to = `translate(${cx}px, ${cy}px) scale(${k})`;
+    const before = { ...view };
+    Object.assign(view, { k, x: cx, y: cy, ...rot });
+    // both ends in the same form, so the move interpolates smoothly
+    const both = before.rx || before.ry || before.rz || view.rx || view.ry || view.rz;
+    const form = (v) => (both ? tf({ ...v, rx: v.rx || 0.0001 }) : tf(v));
+    const from = form(before); const to = form(view);
     app.style.transformOrigin = '0 0';
-    Object.assign(view, { k, x: cx, y: cy });
-    const a = Capture.anim(app, [{ transform: from }, { transform: to }], { duration: Math.max(1, ms), easing: ease || D.EASES[0].css, fill: 'forwards' });
-    return a.finished.catch(() => {}).then(() => { app.style.transform = k === 1 && cx === 0 && cy === 0 ? '' : to; a.cancel(); });
+    const a = Capture.anim(app, [{ transform: from }, { transform: to }], { duration: Math.max(1, ms), easing: ease || easeNow, fill: 'forwards' });
+    const still = view.k === 1 && view.x === 0 && view.y === 0 && !view.rx && !view.ry && !view.rz;
+    return a.finished.catch(() => {}).then(() => { app.style.transform = still ? '' : tf(view); a.cancel(); });
   }
-  function zoomTo(n, k = 1.5, ms = 1000) {
+  function zoomTo(n, k = 1.5, ms = 1000, ease) {
     // where the thing is without the current zoom
     const r = n.getBoundingClientRect();
     const ux = (r.left + r.width / 2 - view.x) / view.k; const uy = (r.top + r.height / 2 - view.y) / view.k;
-    return setView(k, innerWidth / 2 - ux * k, innerHeight / 2 - uy * k, ms);
+    return setView(k, innerWidth / 2 - ux * k, innerHeight / 2 - uy * k, ms, ease);
+  }
+  // fixed overlays that stay until switched off (letterbox, vignette, grain, watermark, clock, progress)
+  const keep = {};
+  function overlay(id, make) {
+    keep[id]?.remove?.(); delete keep[id];
+    if (!make) return null;
+    const n = make();
+    Capture.fx().append(n);
+    keep[id] = n;
+    Capture.anim(n, [{ opacity: 0 }, { opacity: 1 }], { duration: 400, fill: 'backwards' });
+    return n;
+  }
+  function clearOverlays() { for (const id of Object.keys(keep)) { clearInterval(keep[id]?.timer); keep[id]?.remove?.(); delete keep[id]; } }
+  const fmtClock = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}.${String(Math.floor((s % 1) * 10))}`;
+  const CONFETTI = ['#ff6a1a', '#ffc233', '#9b6bff', '#3aa7ff', '#34c759', '#ff4fa3', '#ffffff'];
+  // a point from a step's words: a selector / "text" (its center) or "x,y" / "x y" (pixels or 0..1 of the window)
+  function pointOf(t) {
+    const m = String(t || '').match(/^(-?[\d.]+)\s*[, ]\s*(-?[\d.]+)$/);
+    if (m) { let x = Number(m[1]); let y = Number(m[2]); if (x <= 1 && y <= 1) { x *= innerWidth; y *= innerHeight; } return { x, y }; }
+    const n = find(t);
+    return n ? center(n) : null;
+  }
+  function pointer(type, x, y) {
+    const target = document.elementFromPoint(x, y) || document.body;
+    const init = { clientX: x, clientY: y, bubbles: true, cancelable: true, pointerId: 1, isPrimary: true, pointerType: 'mouse', button: 0, buttons: type === 'up' ? 0 : 1 };
+    target.dispatchEvent(new PointerEvent(`pointer${type}`, init));
+    target.dispatchEvent(new MouseEvent(`mouse${type}`, init));
   }
 
   // ---------- overlays in the frame: captions, titles, highlight, fade ----------
   async function caption(text, secs = 2.5, style = 'lower') {
-    const box = el('div', { class: `cap-caption cap-caption-${style}` }, el('span', { text: style === 'typewriter' ? '' : text }));
+    const kinetic = style === 'kinetic';
+    const box = el('div', { class: `cap-caption cap-caption-${style}` }, el('span', { text: style === 'typewriter' || kinetic ? '' : text }));
+    if (kinetic) {
+      const words = String(text).split(/\s+/).filter(Boolean);
+      words.forEach((w, i) => { const sp = el('b', { text: `${w} ` }); box.firstChild.append(sp); Capture.anim(sp, [{ opacity: 0, transform: 'translateY(30px) scale(.6)' }, { opacity: 1, transform: 'none' }], { duration: 360, delay: i * Math.min(220, (secs * 500) / words.length), easing: 'cubic-bezier(.2,1.4,.3,1)', fill: 'backwards' }); });
+    }
     Capture.fx().append(box);
     Capture.anim(box, [{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'backwards' });
     if (style === 'typewriter') { for (let i = 1; i <= text.length; i += 1) { box.firstChild.textContent = text.slice(0, i); await sleep(Math.min(60, (secs * 400) / text.length)); } }
@@ -190,7 +233,7 @@ const CaptureTour = (() => {
     if (known) { text = known.steps; label = label || known.label; }
     const steps = parse(text);
     if (!steps.length) throw new Error('This tour has no steps');
-    state = { name: label || 'tour', i: 0, total: steps.length, abort: false, restore: [] };
+    state = { name: label || 'tour', i: 0, total: steps.length, abort: false, restore: [], bpm: 120, t0: performance.now() };
     const out = { name: state.name, steps: 0, shots: [], recording: null, skipped: [], ms: 0 };
     const t0 = performance.now();
     const cur = Capture.cursorFx;
@@ -204,14 +247,18 @@ const CaptureTour = (() => {
         if (state.abort) break;
         state.i = i + 1;
         Capture.tourLabel?.(`${i + 1}/${steps.length}`);
+        if (keep.progress) keep.progress.firstChild.style.transform = `scaleX(${(i + 1) / steps.length})`;
         try { await step(s, out, () => { startedRec = true; }); out.steps += 1; } catch (err) { out.skipped.push(`line ${s.line} (${s.raw}): ${err.message}`); }
       }
     } finally {
       // put everything back: zoom, overlays, window size, cursor, clean mode, a recording the tour started
-      await setView(1, 0, 0, 300).catch(() => {});
+      await setView(1, 0, 0, 300, null, { rx: 0, ry: 0, rz: 0 }).catch(() => {});
+      clearOverlays();
+      const app = document.getElementById('app'); if (app) { app.style.filter = ''; app.getAnimations().forEach((x) => x.cancel()); }
+      easeNow = D.EASES[0].css;
       for (const fn of state.restore.reverse()) { try { await fn(); } catch { /* best effort */ } }
       if (fadeBox) { fadeBox.remove(); fadeBox = null; }
-      for (const n of Capture.fx().querySelectorAll('.cap-caption, .cap-title, .cap-spot')) n.remove();
+      for (const n of Capture.fx().querySelectorAll('.cap-caption, .cap-title, .cap-spot, .cap-flash, .cap-confetti, .cap-emoji')) n.remove();
       if (Capture.recording && startedRec) { try { out.recording = await Capture.stop({ quiet: true }); } catch (err) { out.skipped.push(`stop: ${err.message}`); } }
       cur.set(hadCursor === 'off' ? 'off' : hadCursor);
       out.ms = Math.round(performance.now() - t0);
@@ -336,6 +383,116 @@ const CaptureTour = (() => {
       case 'fade': await fade(String(a[0] || 'in').toLowerCase() === 'out' ? 'out' : 'in', dur(a[1], 0.6)); return;
       case 'say': toast(String(a[0] || ''), { timeout: 2500 }); return;
       case 'esc': pressKey('Escape'); hideMenu?.(); for (const d of [...document.querySelectorAll('dialog[open]')]) { if (!d.classList.contains('cap-tour-edit')) d.close(); } await sleep(120); return;
+      case 'tilt': { const nums = a.filter((x) => /^-?[\d.]+$/.test(x)).map(Number); await setView(view.k, view.x, view.y, dur(a.find(isDur), 1) * 1000, null, { rx: nums[0] || 0, ry: nums[1] || 0 }); return; }
+      case 'spin': await setView(view.k, view.x, view.y, dur(a.find(isDur), 1) * 1000, null, { rz: Number(a[0]) || 0 }); return;
+      case 'push': {
+        const n = find(a[0]) || document.getElementById('app');
+        const k = Number(a.find((x) => /^[\d.]+$/.test(x))) || 1.3;
+        await zoomTo(n, k, dur(a.find(isDur), 3) * 1000, D.EASES.find((e) => e.id === 'slow').css);
+        return;
+      }
+      case 'shake': {
+        const app = document.getElementById('app');
+        const k = (Number(a.find((x) => /^[\d.]+$/.test(x))) || 0.5) * 14;
+        const base = tf(view);
+        const frames = Array.from({ length: 9 }, (_, i) => ({ transform: i === 0 || i === 8 ? base : `${base} translate(${(Math.random() - 0.5) * 2 * k}px, ${(Math.random() - 0.5) * 2 * k}px)` }));
+        await Capture.anim(app, frames, { duration: dur(a.find(isDur), 0.4) * 1000 }).finished.catch(() => {});
+        return;
+      }
+      case 'whip': {
+        const app = document.getElementById('app');
+        const dir = a.includes('right') ? 1 : -1; const ms = dur(a.find(isDur), 0.35) * 1000; const base = tf(view);
+        if ((a[0] || 'out') === 'out') {
+          const an = Capture.anim(app, [{ transform: base, filter: 'blur(0px)' }, { transform: `${base} translateX(${dir * innerWidth * 0.6}px)`, filter: 'blur(18px)', opacity: 0.4 }], { duration: ms, easing: 'cubic-bezier(.5,0,.9,.4)', fill: 'forwards' });
+          await an.finished.catch(() => {});
+          state.whip = { an, dir };
+        } else {
+          const d = state.whip?.dir ?? dir; state.whip?.an?.cancel(); state.whip = null;
+          await Capture.anim(app, [{ transform: `${base} translateX(${-d * innerWidth * 0.6}px)`, filter: 'blur(18px)', opacity: 0.4 }, { transform: base, filter: 'blur(0px)', opacity: 1 }], { duration: ms, easing: 'cubic-bezier(.1,.6,.5,1)' }).finished.catch(() => {});
+        }
+        return;
+      }
+      case 'flash': {
+        const col = { white: '#fff', gold: '#ffc233', black: '#000', red: '#ff3b30', violet: '#9b6bff' }[String(a[0] || 'white').toLowerCase()] || (/^#[\da-f]{3,8}$/i.test(a[0] || '') ? a[0] : '#fff');
+        const f = el('div', { class: 'cap-flash', style: { background: col } });
+        Capture.fx().append(f);
+        await Capture.anim(f, [{ opacity: 0 }, { opacity: 0.92, offset: 0.25 }, { opacity: 0 }], { duration: dur(a.find(isDur), 0.25) * 1000 }).finished.catch(() => {});
+        f.remove();
+        return;
+      }
+      case 'blur': {
+        const app = document.getElementById('app');
+        const out = String(a[0] || 'in').toLowerCase() === 'out';
+        await Capture.anim(app, [{ filter: `blur(${out ? 0 : 14}px)` }, { filter: `blur(${out ? 14 : 0}px)` }], { duration: dur(a.find(isDur), 0.6) * 1000, fill: 'forwards' }).finished.catch(() => {});
+        app.getAnimations().filter((x) => x.effect?.getKeyframes?.().some((k) => k.filter)).forEach((x) => x.cancel());
+        app.style.filter = out ? 'blur(14px)' : '';
+        return;
+      }
+      case 'letterbox': {
+        if (/^off|no$/i.test(a[0] || '')) { overlay('letterbox', null); return; }
+        const ratio = Number(a.find((x) => /^[\d.]+$/.test(x))) || 2.39;
+        const bar = Math.max(0, (innerHeight - innerWidth / ratio) / 2);
+        overlay('letterbox', () => el('div', { class: 'cap-letterbox', style: { '--bar': `${Math.round(bar)}px` } }, el('i'), el('i')));
+        return;
+      }
+      case 'vignette': overlay('vignette', /^off|no$/i.test(a[0] || '') ? null : () => el('div', { class: 'cap-vignette' })); return;
+      case 'grain': overlay('grain', /^off|no$/i.test(a[0] || '') ? null : () => el('div', { class: 'cap-grain' })); return;
+      case 'watermark': {
+        if (/^off$/i.test(a[0] || '')) { overlay('watermark', null); return; }
+        const corner = a.find((x) => /^(tl|tr|bl|br)$/i.test(x)) || 'br';
+        overlay('watermark', () => el('div', { class: `cap-watermark cap-wm-${corner.toLowerCase()}`, text: a[0] || 'Hearth' }));
+        return;
+      }
+      case 'timecode': {
+        if (/^off|no$/i.test(a[0] || '')) { overlay('timecode', null); return; }
+        const t0 = performance.now();
+        const n = overlay('timecode', () => el('div', { class: 'cap-clock', text: '00:00.0' }));
+        n.timer = setInterval(() => { const s2 = Capture.recording ? Capture.status().seconds : (performance.now() - t0) / 1000; n.textContent = fmtClock(s2); }, 100);
+        return;
+      }
+      case 'progress': overlay('progress', /^off|no$/i.test(a[0] || '') ? null : () => el('div', { class: 'cap-progress' }, el('i'))); return;
+      case 'confetti': {
+        const n = Math.max(5, Math.min(200, Number(a[0]) || 60));
+        const all = [];
+        for (let i = 0; i < n; i += 1) {
+          const c = el('i', { class: 'cap-confetti', style: { left: `${Math.random() * 100}vw`, background: CONFETTI[i % CONFETTI.length] } });
+          Capture.fx().append(c);
+          const fall = innerHeight * (0.8 + Math.random() * 0.4); const drift = (Math.random() - 0.5) * 240;
+          all.push(Capture.anim(c, [{ transform: 'translate(0, -20px) rotate(0deg)', opacity: 1 }, { transform: `translate(${drift}px, ${fall}px) rotate(${Math.random() * 720}deg)`, opacity: 0.2 }], { duration: 1400 + Math.random() * 900, easing: 'cubic-bezier(.2,.6,.4,1)', delay: Math.random() * 250 }).finished.catch(() => {}).then(() => c.remove()));
+        }
+        await Promise.race([Promise.all(all), sleep(2600)]);
+        return;
+      }
+      case 'emoji': {
+        const p = a.length >= 3 ? pointOf(`${a[1]},${a[2]}`) : { x: innerWidth / 2, y: innerHeight / 2 };
+        const e = el('div', { class: 'cap-emoji', text: a[0] || '🔥', style: { left: `${p.x}px`, top: `${p.y}px` } });
+        Capture.fx().append(e);
+        await Capture.anim(e, [{ transform: 'translate(-50%, -50%) scale(0)', opacity: 0 }, { transform: 'translate(-50%, -50%) scale(1.25)', opacity: 1, offset: 0.3 }, { transform: 'translate(-50%, -50%) scale(1)', opacity: 1, offset: 0.7 }, { transform: 'translate(-50%, -80%) scale(.9)', opacity: 0 }], { duration: 1200 }).finished.catch(() => {});
+        e.remove();
+        return;
+      }
+      case 'ease': { const e = D.EASES.find((x) => x.id === String(a[0] || '').toLowerCase()); if (!e) throw new Error(`eases: ${D.EASES.map((x) => x.id).join(', ')}`); easeNow = e.css; return; }
+      case 'bpm': { const b = Number(a[0]); if (!(b > 20 && b < 400)) throw new Error('bpm 20–400'); state.bpm = b; return; }
+      case 'beat': await sleep((Number(a[0]) || 1) * (60 / state.bpm) * 1000); return;
+      case 'drag': {
+        const from = pointOf(a[0]); const to = pointOf(a[1]);
+        if (!from || !to) throw new Error(`can't find ${!from ? a[0] : a[1]}`);
+        const ms = dur(a[2], 0.8) * 1000;
+        await cur.glide(from.x, from.y, 400);
+        pointer('down', from.x, from.y);
+        const steps = Math.max(6, Math.round(ms / 40));
+        const glide = cur.glide(to.x, to.y, ms);
+        for (let i = 1; i <= steps; i += 1) { await sleep(ms / steps); pointer('move', from.x + ((to.x - from.x) * i) / steps, from.y + ((to.y - from.y) * i) / steps); }
+        await glide;
+        pointer('up', to.x, to.y);
+        return;
+      }
+      case 'hide': case 'show': {
+        const n = find(a[0]);
+        if (!n) throw new Error(`can't find ${a[0]}`);
+        if (s.op === 'hide') { const was = n.style.visibility; n.style.visibility = 'hidden'; state.restore.push(() => { n.style.visibility = was; }); } else n.style.visibility = '';
+        return;
+      }
       default: throw new Error(`unknown step "${s.op}"`);
     }
   }

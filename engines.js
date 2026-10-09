@@ -123,7 +123,7 @@ const HUB_TOOLSETS = {
   // unless switched off; opt-in for Astra (it adds tool definitions to every Codex request).
   chatTools: { server: 'chat', script: 'chat-mcp.js' },
   // Screenshots / recordings of Hearth and the exact frame reader (capture.js): opt-in per chat (/capture-tools on,
-  // options.captureTools) or per agent (agent.captureTools), never on by default (≈ 500 tokens per message, /director-cost).
+  // options.captureTools) or per agent (agent.captureTools), never on by default (≈ 550 tokens per message, /director-cost).
   captureTools: { server: 'capture', script: 'capture-mcp.js' },
 };
 // Claude agents get their tool sets (chat tools unless switched off). Codex agents (Astra) get the tool sets their
