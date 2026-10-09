@@ -41,7 +41,8 @@ line count is lower than the number of upgrades).
 | Lab frames (round 8): the Lab timeline frame by frame on video footage with no song (timecode counter, exact steps, J K L), cuts the sketch plays (shared with the editor), sketches read the exact frame, 21 footage layers, reference pacing (`/footage`, `/match-pacing`) | [labframes.md](labframes.md) | 284 |
 | QA 8 (round 8): integration fixes between board / editor / capture / declutter, key conflict table, three new end-to-end journeys (board, editor, capture), every key pressed on its surface, ⌘ on a Mac, one check runner | [qa8.md](qa8.md) | 75 |
 | Lab sequence (round 8): ▤ Sequence on the Lab timeline (`/sequence`) builds a video from your scenes, chat scenes, looks, footage, titles, overlays and the song; it plays in the preview without reloads, frame-exact, the editor's keys and transitions, finishes in the video editor and comes back, renders frame by frame in every social format; Claude / Astra build it with `three_do sequence` | [sequence.md](sequence.md) | 101 |
-| **Total** | | **8,746** |
+| Motion design kit (round 9): X → Motion / Alt+X in the Lab — Put Hearth on screen (captures or Hearth drawn as 3D screens, laptop / phone / browser frames, parallax, explode, UI elements, a clicking cursor), 33 kinetic-type animations fitted to the safe zone, 23 camera moves (a rig or the whole picture, rack focus, whip pan), flame / anvil logo reveals, brand looks, end cards; each one node, time-driven, in the Lab sequence; `/motion-kit`, `/kinetic`, `/camera-move`, `three_do motion` | [motion.md](motion.md) | 176 |
+| **Total** | | **8,922** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.

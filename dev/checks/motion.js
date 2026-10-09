@@ -3,7 +3,7 @@
 // sandbox (SwiftShader WebGL here), draws (pixels sampled from its own layer box) without console / shader errors; its
 // code carries its node graph (one Motion design node, read back by the node view); the Motion tab of the effects picker
 // (Alt+X) adds one with Enter; the chat commands and the director's three_do motion work; a picture is kept per family.
-//   node dev/smoke.js --check-timeout 900000 --script dev/checks/motion-kit.js --shot /tmp/motion-kit.png
+//   node dev/smoke.js --check-timeout 1600000 --script dev/checks/motion.js --shot /tmp/motion.png
 const { step } = J;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 8000) => { const t = Date.now(); while (Date.now() - t < ms) { try { if (await fn()) return true; } catch { /* not yet */ } await wait(120); } return false; };
@@ -25,7 +25,7 @@ step('the sandbox has motion.<kind>()', has === true, has);
 // the sketch runs with each layer's in point at 0 and no song: a layer then counts from 0 on the timeline (no loop)
 // and shows its settled state, the frame it holds after its entrance
 const fresh = async (name) => { ThreeLab.scenes.create({ name, code: '// empty\n', open: true }); await until(() => d()?.layers().sketch === name, 8000); await wait(700); };
-const litOf = (id) => sbx(`const b = document.querySelector('.lab-layer[data-layer="${id}"]'); if (!b) return { missing: true }; let n = 0; let a = 0; let cs = 0; for (const cv of b.querySelectorAll('canvas')) { if (cv.classList.contains('lab-xfade')) continue; cs++; const c2 = document.createElement('canvas'); c2.width = 48; c2.height = 48; const g = c2.getContext('2d'); g.drawImage(cv, 0, 0, 48, 48); const p = g.getImageData(0, 0, 48, 48).data; for (let i = 0; i < p.length; i += 4) if (p[i + 3] > 8 && p[i] + p[i + 1] + p[i + 2] > 20) n++; if (p[i + 3] > 8) a++; } return { lit: n, alpha: a, canvases: cs }`);
+const litOf = (id) => sbx(`const b = document.querySelector('.lab-layer[data-layer="${id}"]'); if (!b) return { missing: true }; let n = 0; let a = 0; let cs = 0; for (const cv of b.querySelectorAll('canvas')) { if (cv.classList.contains('lab-xfade')) continue; cs++; const c2 = document.createElement('canvas'); c2.width = 48; c2.height = 48; const g = c2.getContext('2d'); g.drawImage(cv, 0, 0, 48, 48); const p = g.getImageData(0, 0, 48, 48).data; for (let i = 0; i < p.length; i += 4) { if (p[i + 3] > 8 && p[i] + p[i + 1] + p[i + 2] > 20) n++; if (p[i + 3] > 8) a++; } } return { lit: n, alpha: a, canvases: cs }`);
 const bad = []; const shots = [];
 let k = 0;
 for (const t of T) {
@@ -53,8 +53,8 @@ step('pictures of each family were kept to look at', shots.length >= 6, shots);
 const code = ThreeMotion.codeFor('type', { preset: 'slam', text: 'TWO AIS / ONE APP' });
 const g = ThreeNodes.fromCode(code);
 step('a motion layer\'s code carries its graph: one Motion design node with its values, not edited', g && !g.edited && g.graph.nodes.length === 1 && g.graph.nodes[0].type === 'motion-type' && g.graph.nodes[0].values.text === 'TWO AIS / ONE APP', { edited: g?.edited, nodes: g?.graph.nodes.map((x) => x.type) });
-step('its knobs are Lab sliders with plain labels and groups (Text, Look, Timing)', /group: 'Timing'/.test(code) && /label: 'Animation'/.test(code) && /motion-kit\.type\(\{/.test(code), code.split('\n').slice(0, 6).join(' | '));
-step('without the node compiler it still works as plain tweak() code', /const M = tweak\(\{/.test(ThreeMotion.plainCode('camera', { move: 'orbit' })) && /motion-kit\.camera\(M\)/.test(ThreeMotion.plainCode('camera', { move: 'orbit' })));
+step('its knobs are Lab sliders with plain labels and groups (Text, Look, Timing)', /group: 'Timing'/.test(code) && /label: 'Animation'/.test(code) && /motion\.type\(\{/.test(code), code.split('\n').slice(0, 6).join(' | '));
+step('without the node compiler it still works as plain tweak() code', /const M = tweak\(\{/.test(ThreeMotion.plainCode('camera', { move: 'orbit' })) && /motion\.camera\(M\)/.test(ThreeMotion.plainCode('camera', { move: 'orbit' })));
 
 // ---------- 3. the Motion tab (Alt+X) ----------
 await fresh('Motion picker');
@@ -68,7 +68,7 @@ const rows = pick ? pick.querySelectorAll('.fx-row').length : 0;
 step('Alt+X opens the effects picker on its Motion tab, every motion preset listed', Boolean(pick) && tabOn === 'Motion' && rows >= T.length, { tabOn, rows });
 const input = pick?.querySelector('.fx-search');
 if (input) { input.value = 'zoom punch'; input.dispatchEvent(new Event('input')); await wait(200); }
-const first = pick?.querySelector('.fx-row.on b')?.textContent;
+const first = pick?.querySelector('.fx-row.on .fx-name b')?.textContent;
 step('searching "zoom punch" finds the camera move', first === 'Camera: Zoom punch', first);
 const nBefore = d().layers().layers.length;
 input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
@@ -125,7 +125,7 @@ await wait(3000);
 const hs = d().layers();
 step('/hearth-on-screen: a new sketch with backdrop, screens, cursor, title and camera', /Hearth on screen/.test(hs.sketch) && hs.layers.length === 5 && hs.layers.some((L) => L.name === '◭ Hearth on screen'), { said: c10.slice(0, 200), layers: hs.layers.map((L) => L.name) });
 const refs = ThreeLab.director.refs?.list?.() || [];
-step('…a fresh capture of Hearth became the sketch\'s reference (hearth-1)', refs.some((r) => r.key === 'hearth-1') && /hearth-1/.test(c10), refs.map((r) => r.key));
+step('…a fresh capture of Hearth became the sketch\'s reference (hearth-1)', refs.some((r) => /^hearth-?1$/.test(r.key)) && /hearth-?1/.test(c10), refs.map((r) => r.key));
 const er2 = (d().report().errors || []).map((e) => String(e.message).slice(0, 140));
 step('…no errors', !er2.length, er2);
 await smoke({ shot: `${OUT}/motion-hearth-on-screen.png` });

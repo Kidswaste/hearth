@@ -234,7 +234,7 @@ const ThreeMotion = (() => {
         const graph = NodeView.normalize(g, ThreeNodes.registry);
         graph.meta = { motion: kind };
         const r = ThreeNodes.compile(graph);
-        if (!r.errors?.length && /motion-kit\./.test(r.code)) return r.code;
+        if (!r.errors?.length && /motion\./.test(r.code)) return r.code;
       } catch (err) { console.warn('motion nodes', err); }
     }
     return plainCode(kind, vals);
