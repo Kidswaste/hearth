@@ -732,6 +732,7 @@ const ThreeFrames = (() => {
         { label: 'Pacing', action: () => readFootage('pacing') },
         { label: 'Check the frame on screen', hint: 'requestVideoFrameCallback', action: () => checkFrame().then((r) => toast(r.text, { timeout: 4000 })) },
       ] },
+      { label: 'Record the sketch over the cut', hint: 'plays every part once, from the top', action: () => { go(0); P().record('track'); } },
       { label: 'Editor', items: [
         { label: 'Edit it in the video editor', hint: 'the same cut, frame by frame', action: () => toEditor() },
         { label: 'As a new sequence…', action: () => toSequence() },

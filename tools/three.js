@@ -224,6 +224,8 @@ const ThreeLab = (() => {
         ['Shift+drag the waveform', 'Draw a loop'], ['= · - · 0', 'Zoom in · out · whole song'], ['[ · ]', 'Loop start / end'], ['Home · End', 'Start / end (of the loop)'], ['M', 'Mute the music (the sketch still reacts)'], ['A', 'Show every automation curve'], ['L', 'Loop this bar'], ['G', 'Next snap setting'],
         ['N', 'Note with a screenshot'], ['W', 'Write mode'], ['E', 'Edit the scene'],
         ['Alt+1–9', 'Hide / show a layer'], ['Alt+Shift+1–9', 'Only that layer'], ['Ctrl+R · Ctrl+Shift+Enter', 'Restart the simulation'], ['Ctrl+Z', 'Undo (timeline)'], ['Esc', 'Deselect, forget taps, leave Present']];
+      // with video footage on the timeline its frame keys come first (tools/three-frames.js)
+      if (typeof ThreeFrames !== 'undefined' && ThreeFrames.on) rows.unshift(...ThreeFrames.KEYS.map(([k, v]) => [k, `Footage: ${v}`]));
       const d = el('dialog', { class: 'lab-keys' }, el('h2', { text: 'Lab keys' }), el('div', { class: 'lab-keys-grid' }, rows.flatMap(([k, v]) => [el('kbd', { text: k }), el('span', { text: v })])),
         el('div', { class: 'dialog-actions' }, el('button', { class: 'primary', text: 'Got it', on: { click: () => d.close() } })));
       d.addEventListener('close', () => d.remove());
@@ -381,7 +383,7 @@ const ThreeLab = (() => {
       presentHud.hidden = !on; store.set('three.presentHud', on);
       clearInterval(hudTimer);
       if (!on) return;
-      const paint = () => { const z = stage.size; const sec = player.loaded ? player.sectionAt() : null; presentHud.textContent = `${sec?.cue ? `${sec.cue} · ` : ''}${current?.name || ''} · ${z.id === 'fit' ? `${z.width}×${z.height}` : `${z.id} ${z.width}×${z.height}`}${player.loaded ? ` · ${fmtClock(player.time)} / ${fmtClock(player.duration)} · ${Math.round(player.bpm)} BPM` : ''}${liveKind ? ` · live ${liveBpm?.bpm ? `${Math.round(liveBpm.bpm)} BPM` : ''}` : ''}${lastStats ? ` · ${lastStats.fps} fps` : ''}${frozenNow ? ' · ❚❚' : ''}`; };
+      const paint = () => { const z = stage.size; const sec = player.loaded ? player.sectionAt() : null; presentHud.textContent = `${sec?.cue ? `${sec.cue} · ` : ''}${current?.name || ''} · ${z.id === 'fit' ? `${z.width}×${z.height}` : `${z.id} ${z.width}×${z.height}`}${typeof ThreeFrames !== 'undefined' && ThreeFrames.on ? ` · ${ThreeFrames._pure.tc(ThreeFrames.clock, ThreeFrames.frame)} · f${ThreeFrames.frame}` : player.loaded ? ` · ${fmtClock(player.time)} / ${fmtClock(player.duration)} · ${Math.round(player.bpm)} BPM` : ''}${liveKind ? ` · live ${liveBpm?.bpm ? `${Math.round(liveBpm.bpm)} BPM` : ''}` : ''}${lastStats ? ` · ${lastStats.fps} fps` : ''}${frozenNow ? ' · ❚❚' : ''}`; };
       paint(); hudTimer = setInterval(paint, 250);
     }
     // PgUp / PgDn in Present: the previous / next sketch (most recent first, like the picker)

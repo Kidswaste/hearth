@@ -169,6 +169,33 @@
   ];
   for (const d of SHARED) defs.push({ ...d, when: (ctx) => footageHere(ctx), whenLabel: 'in the Lab with footage', shared: true });
 
+  // Ctrl+K: the footage's main moves (each also a command and a menu entry)
+  const palette = () => {
+    const three = typeof Tools !== 'undefined' && Tools.get?.('three');
+    if (!three) return false;
+    if (three.footagePalette) return true;
+    const run = (line) => () => Commands.tryRun(line, H.claudeAgent()?.id);
+    const mine = [
+      { label: 'Lab footage: go to a frame or timecode…', run: () => T().askGoto() },
+      { label: 'Lab footage: the frames menu', run: () => showMenu(innerWidth / 2 - 140, innerHeight / 3, T().menuItems()) },
+      { label: 'Lab footage: cut here (S)', run: run('/cut-here') },
+      { label: 'Lab footage: remove the part here (Delete)', run: run('/cut-delete') },
+      { label: 'Lab footage: cut at every shot', run: run('/cut-scenes') },
+      { label: 'Lab footage: a cue at every shot', run: run('/footage-scenes') },
+      { label: 'Lab footage: contact sheet (exact frames)', run: run('/footage sheet') },
+      { label: 'Lab footage: storyboard of the cut', run: run('/footage storyboard') },
+      { label: 'Lab footage: open the cut in the video editor', run: run('/footage-editor') },
+      { label: 'Lab footage: match a reference clip\'s pacing', run: run('/match-pacing') },
+    ];
+    // the Lab's list is a getter (built when the palette opens): ours go after it
+    const desc = Object.getOwnPropertyDescriptor(three, 'commands');
+    const before = desc?.get ? () => desc.get.call(three) : () => desc?.value || [];
+    Object.defineProperty(three, 'commands', { get: () => [...before(), ...mine], configurable: true, enumerable: true });
+    three.footagePalette = true;
+    return true;
+  };
+  if (!palette()) addEventListener('DOMContentLoaded', () => { if (!palette()) addEventListener('load', palette, { once: true }); }, { once: true });
+
   for (const d of defs) {
     const { shared, ...def } = d;
     if (!shared && Commands.get(def.name)) { console.warn(`three-frames-cmds: /${def.name} is taken, skipped`); continue; }

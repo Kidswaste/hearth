@@ -138,13 +138,31 @@ const cs2 = await call('three_contact_sheet', { frames: [10, 40, 70] });
 step('three_contact_sheet with frames [10, 40, 70]', cs2.ok && cs2.value?.frames?.length === 3 && Math.abs(cs2.value.frames[1].time - 1.35) < 0.02, cs2.value || cs2.error);
 await say('/cut-clear');
 
+// ---------- 6b. palette actions, the keys sheet, recording the sketch over the cut ----------
+const pal = (Tools.get('three').commands || []).filter((c) => /^Lab footage:/.test(c.label));
+step('Ctrl+K: 10 footage actions', pal.length === 10, pal.map((c) => c.label));
+(await ThreeLab.cmd()).keys(); await wait(300);
+const sheetRows = [...document.querySelectorAll('dialog.lab-keys span')].map((x) => x.textContent);
+step('the Lab keys sheet (?) lists the footage keys first', /^Footage:/.test(sheetRows[0] || ''), sheetRows.slice(0, 3));
+document.querySelector('dialog.lab-keys')?.close();
+await say('/cut-keep f0 f24');
+const before = ((await window.hub.fs.list(window.SMOKE_SAVES).catch(() => [])) || []).length;
+ThreeFrames.go(0); await wait(300);
+d().media.record('track');
+await until(() => d().media.recording, 4000);
+await until(() => !d().media.recording, 20000);
+await until(async () => ((await window.hub.fs.list(window.SMOKE_SAVES).catch(() => [])) || []).length > before, 8000);
+const saved = ((await window.hub.fs.list(window.SMOKE_SAVES).catch(() => [])) || []).filter((f) => /\.(mp4|webm)$/.test(f.name || f));
+step('record the sketch over the cut: it plays the part once and saves a video', saved.length > 0 && !d().media.recording, saved.map((f) => f.name || f));
+await say('/cut-clear');
+
 // ---------- 7. references: seconds pacing, motion on a slider, board clips, the References panel ----------
 await d().refs.add(`${M}/ref_cuts.mp4`, 'refCuts');
 await d().media.load(`${M}/frames_silent_24.mp4`);
 await until(() => ThreeFrames.clock?.fps === 24, 10000); await wait(800);
-await say('/match-pacing refCuts seconds');
+const mps = await say('/match-pacing refCuts seconds');
 const pace = d().media.cues.filter((c) => /^Pace /.test(c.name)).map((c) => Math.round(c.time * 1000) / 1000);
-step('/match-pacing … seconds: the reference\'s own shot lengths (1, 1.5, 3, 3.5 s)', JSON.stringify(pace) === JSON.stringify([1, 1.5, 3, 3.5]), pace);
+step('/match-pacing … seconds: the reference\'s own shot lengths (1, 1.5, 3, 3.5 s)', JSON.stringify(pace) === JSON.stringify([1, 1.5, 3, 3.5]), { pace, mps, loop: d().media.loop });
 await call('three_add_layer', { template: 'footage-fill', name: 'Paced', wait: 2 });
 const rm = await say('/ref-motion refCuts zoom');
 step('/ref-motion: the reference\'s motion as keyframes on a slider', /keys from/.test(rm) && /zoom|Zoom/.test(JSON.stringify(d().timeline().layers)), rm);
