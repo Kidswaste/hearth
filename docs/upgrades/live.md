@@ -7,7 +7,17 @@ Every change from the Three Director, Astra, a jam, the nodes, your sliders or a
 running preview**: three.js stays loaded, the music and live sound keep playing, the other layers keep running with
 their slider values and camera. The preview page is only rebuilt for what truly needs a new page (another three.js
 version, a frame size that needs another pixel ratio, the Stage window, ⟲ Restart from scratch), and then it holds a
-picture of your scene and cross-fades. The Hearth window itself never reloads. No new settings, buttons or commands.
+picture of your scene and cross-fades. The Hearth window itself never reloads, and the Lab view no longer blanks out while the director works (below). No new
+settings, buttons or commands.
+
+## The window itself was blanking on every director call
+The biggest find: while the Three Director ran **any** Lab tool, the whole Lab view (the preview, the sliders and the
+docked director chat) was pushed behind the window for the length of the call (a style meant for a Lab that is *not*
+on screen, so it keeps drawing in the background, was also put on the Lab you were looking at), and with the
+Forgeheart / Swirl looks its entrance animation replayed when the call ended. With `three_edit_code` waiting 2.5 s for
+its result, that is a blank window for 2.5 s at every edit, then the whole view sliding back in: the "whole window
+renewing". Now the Lab on screen stays exactly where it is during director calls; only a Lab that's hidden renders
+behind the current view (`dev/checks/live.js` checks the Lab keeps its place mid-call: before z-index -1, after auto).
 
 ## Before / after: page reloads per action
 Measured by `dev/checks/live.js` (it counts what the preview page itself reports: a reloaded page says "ready", an
@@ -44,6 +54,7 @@ listeners 2 → 2, sketch intervals 2 → 2, canvases 2 → 2, layer boxes 2 →
 JS heap 10 MB → 10 MB.
 
 ## Local changes instead of reloads
+0. **The Lab and its docked chat stay on screen during director calls** (see above); same for the Forgeheart game beside its chat during a director screenshot.
 1. **One-layer sketches re-run in place.** `three_set_code` on a sketch with a single layer used to reload the whole preview; now it re-runs that layer like any other edit.
 2. **Jam rounds and restores apply in place.** Putting a round back (jam.js, undo points, ↺) re-runs only the layers whose code changed; the rest keep running, props update.
 3. **Scene switches without a new page.** Switching chats or sketches runs the new scene's layers in the same page: three.js stays loaded, the live sound stays on, a song shared by both scenes keeps playing, and a scene without a song stops the previous one.

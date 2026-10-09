@@ -90,7 +90,9 @@ await measure('three_edit_code', async () => {
   out.transitions.edit = await probe(async () => {
     const p = call('three_edit_code', { layer: 'Rings', edits: [{ find: '1.4, 0.05', replace: '1.6, 0.04' }], wait: 1.2 });
     await wait(120);
-    out.buildingDuringEdit = { pill: host.querySelector('.lab-building')?.classList.contains('on'), row: Boolean(host.querySelector('.ly-row.ly-building')) };
+    // the Lab on screen (and its docked chat) must stay on screen while the director works in it
+    out.duringEdit = { labZ: getComputedStyle(host).zIndex, labVisible: getComputedStyle(host).visibility, pill: host.querySelector('.lab-building')?.classList.contains('on'), row: Boolean(host.querySelector('.ly-row.ly-building')) };
+    if (out.duringEdit.labZ === '-1' || out.duringEdit.labVisible !== 'visible') out.problems.push(`the Lab dropped behind the window during a director call (z-index ${out.duringEdit.labZ})`);
     await p;
   });
 });
@@ -149,22 +151,24 @@ for (const k of ['contexts', 'renderers', 'listeners', 'resizeListeners', 'inter
 }
 
 // ---- truly global changes: these may reload (prettily) ----
-await measure('frame size fit → 9:16 (new pixel ratio)', async () => { d.setFrame('9:16'); }, { expectReload: true });
-await measure('frame size 9:16 → 1:1 (same ratio)', async () => { d.setFrame('1:1'); });
-await measure('frame size back to fit', async () => { d.setFrame('fit'); }, { expectReload: true });
 // a reload that can't be avoided: the cover holds a picture of the scene until the new page has drawn
-await measure('restart from scratch', async () => {
+async function watchCover(fn) {
   const states = new Set(); let on = true;
   (async () => { while (on) { const c = cover(); states.add(c.classList.contains('out') ? 'uncovered' : c.style.backgroundImage ? 'covered with the old picture' : 'covered, no picture'); await wait(25); } })();
-  cmd.restart();
+  await fn();
   await until(() => cover().classList.contains('out') && states.size > 1, 8000);
   on = false;
-  out.coverDuringReload = [...states];
-}, { expectReload: true });
+  return [...states];
+}
+out.coverDuringReload = {};
+await measure('frame size fit → 9:16 (new pixel ratio)', async () => { out.coverDuringReload.frameSize = await watchCover(async () => d.setFrame('9:16')); }, { expectReload: true });
+await measure('frame size 9:16 → 1:1 (same ratio)', async () => { d.setFrame('1:1'); });
+await measure('frame size back to fit', async () => { d.setFrame('fit'); }, { expectReload: true });
+await measure('restart from scratch', async () => { out.coverDuringReload.restart = await watchCover(async () => cmd.restart()); }, { expectReload: true });
 
 const want = { edit: 'lab-xfade:opacity', addLayer: 'lab-layer:opacity+clipPath', removeLayer: 'lab-ghost:opacity', sceneSwitch: 'lab-swap:opacity' };
 for (const [k, a] of Object.entries(want)) if (!out.transitions[k]?.animations.some((x) => x.split(':')[0].split(' ')[0] === a.split(':')[0] && x.endsWith(a.split(':')[1]))) out.problems.push(`no ${a} animation during ${k}`);
-if (!out.coverDuringReload?.includes('covered with the old picture')) out.problems.push('the restart reload showed no picture of the old scene');
+for (const [k, st] of Object.entries(out.coverDuringReload)) if (!st.includes('covered with the old picture')) out.problems.push(`the ${k} reload showed no picture of the old scene`);
 out.hubWindowReloaded = !window.__liveMarker;
 if (out.hubWindowReloaded) out.problems.push('the hub window reloaded');
 out.coverOut = host.querySelector('.three-preview > .scene-cover')?.classList.contains('out');

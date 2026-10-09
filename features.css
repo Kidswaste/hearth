@@ -144,7 +144,10 @@ select option { background: var(--sidebar); }
 .composer { align-items: flex-end; }
 
 /* ---------- live game beside a chat ---------- */
-.surface.capturing { visibility: visible !important; z-index: -1; }
+/* a hidden tool surface renders behind the view on screen while a director works in it; the one on screen (or in
+   the grid) stays where it is (it used to drop behind too: the whole Lab and its docked chat went blank during every
+   director call) */
+#surfaces:not(.grid) > .surface.capturing:not(.active) { visibility: visible !important; z-index: -1; }
 .surface.with-companion { flex-direction: row; }
 .companion-game { flex: 0 0 var(--companion-w, 58%); min-width: 0; display: flex; flex-direction: column; background: #050608; }
 .companion-divider { flex: 0 0 5px; cursor: col-resize; background: var(--line); }

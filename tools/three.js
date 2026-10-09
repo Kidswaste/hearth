@@ -117,7 +117,8 @@ const ThreeLab = (() => {
       };
       // The picture on screen now, as the cover (a quick JPEG from the page itself), then the reload. The old page
       // keeps playing while it answers; a picture that comes too late still goes on the cover if that's still up.
-      if (showing) {
+      // (a picture already laid on the cover by the caller, chat-scenes.js switching chats, is used as it is)
+      if (showing && cover.classList.contains('snap') && cover.style.backgroundImage) { coverUp(null); go(); } else if (showing) {
         let done = false;
         const finish = (url) => {
           if (done) { if (url && nonce === mine && !cover.classList.contains('out') && !cover.style.backgroundImage) { cover.style.backgroundImage = `url("${url}")`; cover.classList.add('snap'); cover.dataset.own = '1'; } return; }
@@ -3497,10 +3498,14 @@ ${frag}\`,
   async function handleVisible(tool, args) {
     tabs.show('sketch');
     // A hidden view renders no frames, so let the Lab render (behind the current view) while the director works.
+    // Only while it's hidden: the Lab on screen keeps its place (marking it too dropped the whole view, docked chat
+    // included, behind the window for the length of every call, and replayed the skins' entrance animation after it).
     const surface = H.surfaces.get('tool:three')?.el;
-    surface?.classList.add('capturing');
+    const capture = () => { if (surface) { const on = !surface.classList.contains('active'); if (surface.classList.contains('capturing') !== on) surface.classList.toggle('capturing', on); } };
+    capture();
+    addEventListener('hearth:view', capture);
     api.directorWork?.(1); live.why = tool;
-    try { return await directorCall(tool, args); } finally { surface?.classList.remove('capturing'); api.directorWork?.(-1); live.why = null; }
+    try { return await directorCall(tool, args); } finally { removeEventListener('hearth:view', capture); surface?.classList.remove('capturing'); api.directorWork?.(-1); live.why = null; }
   }
   async function directorCall(tool, args) {
     for (let i = 0; i < 100 && !api.director; i += 1) await new Promise((r) => setTimeout(r, 100));

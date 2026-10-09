@@ -108,7 +108,7 @@ const ForgeGame = (() => {
       if (!view || !ready) return { ok: false, error: 'The game is still loading.' };
       // A hidden view renders no frames, so let the game surface render (behind the current view) while capturing.
       const surface = view.closest('.surface');
-      surface?.classList.add('capturing');
+      if (!surface?.classList.contains('active')) surface?.classList.add('capturing'); // (the one on screen stays put)
       let img = null;
       try {
         for (let i = 0; i < 4 && !img; i += 1) {
