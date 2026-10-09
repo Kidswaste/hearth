@@ -265,6 +265,9 @@ const ThreeMedia = (() => {
     let beatCache = { key: '', beats: [] };
     // listeners (tools/three-music.js): 'analysis' (a song was analysed), 'tap' (tap tempo learned something)
     const listeners = {};
+    // Synchronous hooks for the footage side (tools/three-frames.js, round 8): seek / snap / keys / drawing / time text
+    // on exact frames when a video is loaded. Unset, the player behaves as before.
+    const hooks = {};
     const emit = (ev, data) => { for (const fn of listeners[ev] || []) { try { fn(data); } catch (err) { console.error(err); } } };
     const btn = (text, title, fn, cls = 'ghost small') => el('button', { class: cls, text, title, on: { click: fn } });
     const sep = () => el('span', { class: 'mb-sep' });
@@ -347,8 +350,12 @@ const ThreeMedia = (() => {
     bpmRead.addEventListener('click', () => { setAll(true); requestAnimationFrame(() => { bpmIn.focus(); bpmIn.select(); }); });
     // the song's own tempo guesses, one click each
     const bpmCands = el('span', { class: 'mb-cands' });
+    let candsKey = '';
     function paintCands() {
       const c = st.analysis?.bpmCandidates || [];
+      const k = `${c.join()}|${bpmNow()}`;
+      if (k === candsKey) return; // rebuilt only when the guesses or the tempo change (paint() runs on every seek)
+      candsKey = k;
       bpmCands.replaceChildren(...c.map((b) => btn(String(b), `Use ${b} BPM`, () => editGrid((g) => { g.bpm = b; }), `ghost small mb-cand${Math.abs(b - bpmNow()) < 0.05 ? ' on' : ''}`)));
     }
     const snapTapsBox = el('input', { type: 'checkbox', checked: store.get('three.snapTaps', true) });
@@ -557,6 +564,7 @@ const ThreeMedia = (() => {
       } catch (err) { if (!quiet) toast(`Couldn't open ${base(path)}: ${err.message}`, { type: 'error' }); return { ok: false, error: err.message }; }
       if (seq !== loadSeq) return { ok: false, error: 'Another file was loaded meanwhile' };
       Object.assign(st, { path, name: base(path), bytes, mime: MIME[extOf(path)], video: VIDEO_EXT.includes(extOf(path)), analysis: null, samples: null, wave: null, time: startAt, duration: 0, playing: false });
+      emit('load', { path, video: st.video });
       const saved = store.get(loopKey(path), null);
       region = saved?.a != null ? { a: saved.a, b: saved.b } : null;
       locked = Boolean(saved?.locked && region);
@@ -578,7 +586,7 @@ const ThreeMedia = (() => {
         st.samples = a.samples; st.wave = a.wave;
         delete a.samples; delete a.wave;
         st.analysis = a; anaVer += 1;
-      } catch (err) { if (seq === loadSeq) { st.analysis = null; if (!quiet) toast(st.video ? `${st.name} has no audio track to analyze (it still works as a video texture)` : `Couldn't analyze ${st.name}: ${err.message}`, { type: 'error' }); } }
+      } catch (err) { if (seq === loadSeq) { st.analysis = null; if (!quiet && !(st.video && hooks.silentVideo?.(st))) toast(st.video ? `${st.name} has no audio track to analyze (it still works as a video texture)` : `Couldn't analyze ${st.name}: ${err.message}`, { type: 'error' }); } }
       if (seq !== loadSeq) return { ok: false, error: 'Another file was loaded meanwhile' };
       analyzing = false;
       if (st.analysis) { st.duration = st.analysis.duration; send({ type: 'media-analysis', analysis: st.analysis }); }
@@ -595,6 +603,7 @@ const ThreeMedia = (() => {
       analyzing = false;
       Object.assign(st, { path: null, name: null, bytes: null, analysis: null, samples: null, wave: null, time: 0, duration: 0, playing: false });
       region = null; locked = false; view = null; selected = null;
+      emit('unload', {});
       map = { grid: null, marks: emptyMarks(), cues: [] };
       store.set('three.media', null);
       paint();
@@ -606,24 +615,28 @@ const ThreeMedia = (() => {
     let wish = null;
     function attach({ playing = wish && performance.now() - wish.at < 10000 ? wish.play : st.playing } = {}) {
       if (!st.bytes) return;
-      send({ type: 'media-load', buffer: st.bytes.slice(0), mime: st.mime, video: st.video, name: st.name, startAt: st.time, playing, loop: st.loop, volume: st.volume, analysis: st.analysis, region, rate: st.rate, trim: map.trim });
+      send({ type: 'media-load', buffer: st.bytes.slice(0), mime: st.mime, video: st.video, name: st.name, startAt: hooks.startAt?.(st.time) ?? st.time, playing, loop: st.loop, volume: st.volume, analysis: st.analysis, region, rate: st.rate, trim: map.trim });
       sendMap();
+      emit('attach', { path: st.path });
     }
     function toggle(force) {
       if (!st.bytes) { pick(); return; }
       const play = force ?? !st.playing;
       wish = { play, at: performance.now() };
-      send({ type: 'media', cmd: play ? 'play' : 'pause' });
+      send({ type: 'media', cmd: play ? 'play' : 'pause', ...(play ? {} : hooks.pauseMsg?.() || {}) });
     }
     function seek(t) {
       st.time = Math.max(0, Math.min(t, st.duration || t));
       st.stampAt = performance.now();
-      send({ type: 'media', cmd: 'seek', value: st.time });
+      // footage: the playhead lands on the start of a whole frame, the decoder is sent to that frame's middle
+      const fx = hooks.seek?.(st.time);
+      if (fx) { st.time = fx.time; if (fx.target != null) send({ type: 'media', cmd: 'seek', value: fx.target, ...(fx.msg || {}) }); } else send({ type: 'media', cmd: 'seek', value: st.time });
       // A jump outside the zoomed view brings the view along (unless it's locked).
       if (view && !locked && !dragging && (st.time < view.start || st.time > view.end)) setView({ start: st.time - span() / 2, end: st.time + span() / 2 });
       paint();
     }
     function onMessage(msg) {
+      if (hooks.message?.(msg)) return;
       if (msg.type === 'media-state') {
         // the sandbox sends this a few times a second while it plays: only a real change (play / pause / end / a new
         // song length) repaints the control row; plain time updates just re-sync the clock
@@ -635,7 +648,7 @@ const ThreeMedia = (() => {
           const predicted = now(); const err = msg.time - predicted;
           if (Math.abs(err) < 0.3) { st.time = predicted + err * 0.15; st.stampAt = performance.now(); if (!wish) return; }
         }
-        Object.assign(st, { time: msg.time, duration: msg.duration || st.duration, playing: msg.playing, stampAt: performance.now() });
+        Object.assign(st, { time: hooks.stateTime ? hooks.stateTime(msg.time, msg.playing) : msg.time, duration: msg.duration || st.duration, playing: msg.playing, stampAt: performance.now() });
         if (same && !wish) { if (!st.playing) livePaint(); return; }
         if (wish && wish.play === msg.playing) wish = null;
         if (recording && !recording.stopping && msg.ended && recording.kind === 'track') stopRecord();
@@ -665,7 +678,8 @@ const ThreeMedia = (() => {
     const bpmNow = () => G()?.bpm || st.analysis?.bpm || 0;
     const bpbNow = () => G()?.bpb || 4;
     // "Hits": the nearest kick / snare / hit marker or cue within a beat, else the 1/16 grid.
-    const snapT = (t) => {
+    const snapT = (t) => (hooks.snap ? hooks.snap(snapT0(t), t) : snapT0(t));
+    const snapT0 = (t) => {
       if (snapMode !== 'hits') return snapTime(t, snapMode, G(), beats(), dIdx());
       const range = 60 / (bpmNow() || 120);
       let best = null; let bd = range;
@@ -689,6 +703,7 @@ const ThreeMedia = (() => {
     function undoMap() {
       const prev = mapUndo.pop();
       if (!prev) return;
+      if (prev.hook) { hooks.undo?.(prev.hook); paint(); return; }
       if (typeof prev === 'object') {
         const { id, prop, keys } = prev.lane;
         autoSel = null;
@@ -813,11 +828,11 @@ const ThreeMedia = (() => {
     function paintBpmRead() {
       const b = bpmNow();
       const sure = tapInfo && taps.length ? ` · ${Math.round(tapInfo.conf * 100)}%` : '';
-      bpmRead.textContent = b ? `${Math.round(b * 100) / 100} BPM${sure}` : '';
+      setText(bpmRead, b ? `${Math.round(b * 100) / 100} BPM${sure}` : '');
       bpmRead.classList.toggle('mine', Boolean(map.grid));
       bpmRead.classList.toggle('sure', Boolean(tapInfo && tapInfo.conf >= 0.75));
       const ag = !map.grid && st.analysis?.grid;
-      bpmRead.title = `${map.grid ? 'Your grid' : 'Detected tempo'}${ag ? ` (${Math.round((ag.tempoConf ?? 0) * 100)}% sure${ag.straight ? `, bar 1 at ${fmtMs(ag.anchor)}, ${Math.round((ag.downbeatConf ?? 0) * 100)}% sure` : ', played: the beats follow the band'})` : ''}${tapInfo ? ` · last taps: ${tapInfo.n} at ${tapInfo.tapped}, ±${tapInfo.spread} BPM, ${Math.round(tapInfo.conf * 100)}% even${tapInfo.lock ? ', locked to the song\'s grid' : ''}` : ''}${map.grid ? ` · the 1 at ${fmtMs(map.grid.anchor)}` : ''}${tapLat?.n ? ` · you tap about ${Math.abs(tapLat.ms)} ms ${tapLat.ms >= 0 ? 'late' : 'early'} (learned)` : ''} · click to type it`;
+      setProp(bpmRead, 'title', `${map.grid ? 'Your grid' : 'Detected tempo'}${ag ? ` (${Math.round((ag.tempoConf ?? 0) * 100)}% sure${ag.straight ? `, bar 1 at ${fmtMs(ag.anchor)}, ${Math.round((ag.downbeatConf ?? 0) * 100)}% sure` : ', played: the beats follow the band'})` : ''}${tapInfo ? ` · last taps: ${tapInfo.n} at ${tapInfo.tapped}, ±${tapInfo.spread} BPM, ${Math.round(tapInfo.conf * 100)}% even${tapInfo.lock ? ', locked to the song\'s grid' : ''}` : ''}${map.grid ? ` · the 1 at ${fmtMs(map.grid.anchor)}` : ''}${tapLat?.n ? ` · you tap about ${Math.abs(tapLat.ms)} ms ${tapLat.ms >= 0 ? 'late' : 'early'} (learned)` : ''} · click to type it`);
     }
     // Shift+T: this tap is the 1 (the downbeat). With a grid, the beat line nearest your tap becomes the 1 (the tempo
     // and phase stay exactly as they were: only which beat counts as "1" changes); without one, the real hit near it.
@@ -1269,6 +1284,8 @@ const ThreeMedia = (() => {
       if (!st.bytes) return false;
       const ctrl = e.ctrlKey || e.metaKey;
       if (ctrl && e.key.toLowerCase() === 'z') { undoMap(); return true; }
+      const hk = hooks.key?.(e, { selected, points: Boolean(autoSel?.idx.size) });
+      if (hk != null) return hk;
       // curve points: copy / paste at the playhead / duplicate after themselves / select all in the lane
       if (ctrl && e.key.toLowerCase() === 'c' && autoSel?.idx.size) { copyPoints(); return true; }
       if (ctrl && e.key.toLowerCase() === 'v' && autoClip && activeLane) { pastePoints(); return true; }
@@ -1302,7 +1319,7 @@ const ThreeMedia = (() => {
       if (e.key === 'Escape') { if (taps.length) { taps = []; tapSong = []; tapRaw = []; tapBtn.textContent = 'Tap'; tapBtn.classList.remove('on'); } if (autoSel) { autoSel = null; draw(); return true; } selected = null; draw(); return true; }
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         const dir = e.key === 'ArrowLeft' ? -1 : 1;
-        const d = dir * (e.shiftKey ? snapStep(snapMode, G(), bpmNow()) : e.altKey ? 0.001 : 0.01);
+        const d = hooks.arrowStep?.(dir, e) ?? dir * (e.shiftKey ? snapStep(snapMode, G(), bpmNow()) : e.altKey ? 0.001 : 0.01);
         if (autoSel?.idx.size) nudgePoints(d, 0, e.repeat);
         else if (selected?.type === 'edge' && region && !locked) setRegionEdge(selected.edge, region[selected.edge] + d, { exact: true });
         else if (selected?.type === 'mark') { if (!e.repeat || !nudgeKey.pushed) { pushUndo(); nudgeKey.pushed = true; } moveSelectedMark(selected.t + d); mapChanged(); }
@@ -1446,7 +1463,7 @@ const ThreeMedia = (() => {
       return [W, h, devicePixelRatio, scroll.on ? 'strip' : `${v0()}|${span()}`, D(), anaVer, st.path, waveRGB, scroll.on, JSON.stringify(gridView), snapMode, bpmNow(), G()?.anchor, bpbNow(), dIdx(),
         LANES.map((l) => sumOf(map.marks[l.id])).join(), map.cues.map((c) => `${c.t}${c.name}${c.looks?.length || 0}`).join(), region ? `${region.a}|${region.b}|${locked}|${st.loop}` : '', map.trim ? `${map.trim.a}|${map.trim.b}` : '',
         selected ? JSON.stringify(selected) : '', notes.map((n) => `${n.t}${n.done}`).join(), JSON.stringify(tracks), autoSel ? `${autoSel.id}|${autoSel.prop}|${[...autoSel.idx].join(',')}` : '',
-        activeLane ? `${activeLane.id}|${activeLane.prop}` : '', lanesMoving ? Math.round(now() * 20) : ''].join('~');
+        activeLane ? `${activeLane.id}|${activeLane.prop}` : '', lanesMoving ? Math.round(now() * 20) : '', hooks.frameKey?.() || ''].join('~');
     }
     let lastMiniKey = '';
     let lastFull = 0;
@@ -1469,6 +1486,7 @@ const ThreeMedia = (() => {
       draw();
     }
     const setText = (node, text) => { if (node.textContent !== text) node.textContent = text; };
+    const setProp = (node, k, v) => { if (node[k] !== v) node[k] = v; };
     const setDisplay = (node, on) => { const v = on ? '' : 'none'; if (node.style.display !== v) node.style.display = v; }; // per frame: only real changes
     // The playheads glide on the compositor: while a song plays each one gets a linear animation to where it will be
     // at the end of the view (the end of the song for the minimap), so it moves at the screen's refresh rate even when
@@ -1556,42 +1574,45 @@ const ThreeMedia = (() => {
       glide(miniHeadEl, D() ? (t / D()) * mw : 0, mw, ((D() - t) / rate) * 1000, `${D()}|${mw}|${rate}`, moving && mw > 0);
     }
     function now() { return st.playing ? Math.min(D() || Infinity, st.time + ((performance.now() - st.stampAt) / 1000) * st.rate) : st.time; }
+    // paint() runs on every seek, step and state change: each control is only written when its value changes (a
+    // same-value write still counts as a DOM change and restyles the row)
     function paint() {
       bar.classList.toggle('mb-empty', !st.bytes);
       bar.classList.toggle('locked', locked);
-      nameEl.textContent = st.name ? (analyzing ? `${st.name} · analyzing…` : st.name) : 'No music loaded: sketches get a demo beat';
-      loadBtn.textContent = st.bytes ? '🎵' : '🎵 Load audio / video…';
-      nameEl.title = st.path || '';
-      unloadBtn.hidden = !st.bytes;
-      playBtn.textContent = st.playing ? '⏸' : '▶';
+      setText(nameEl, st.name ? (analyzing ? `${st.name} · analyzing…` : st.name) : 'No music loaded: sketches get a demo beat');
+      setText(loadBtn, st.bytes ? '🎵' : '🎵 Load audio / video…');
+      setProp(nameEl, 'title', st.path || '');
+      setProp(unloadBtn, 'hidden', !st.bytes);
+      setText(playBtn, st.playing ? '⏸' : '▶');
       loopBtn.classList.toggle('on', st.loop);
-      zoomOut.disabled = zoomIn.disabled = locked || !D();
-      zoomAll.disabled = locked || !view;
-      zoomLoop.hidden = !region;
-      zoomLoop.disabled = locked;
-      for (const x of loopBox.querySelectorAll('button, input')) x.disabled = locked || !D();
-      clearBtn.hidden = !region;
-      if (document.activeElement !== aIn) aIn.value = region ? fmtMs(region.a) : '';
-      if (document.activeElement !== bIn) bIn.value = region ? fmtMs(region.b) : '';
-      aIn.placeholder = 'start'; bIn.placeholder = 'end';
-      loopLen.textContent = region ? `⟲ ${bpmNow() ? `${(((region.b - region.a) * bpmNow()) / 60).toFixed(2).replace(/\.00$/, '')} beats · ` : ''}${(region.b - region.a).toFixed(2)} s` : '';
-      loopChip.hidden = !region;
+      setProp(zoomOut, 'disabled', locked || !D()); setProp(zoomIn, 'disabled', locked || !D());
+      setProp(zoomAll, 'disabled', locked || !view);
+      setProp(zoomLoop, 'hidden', !region);
+      setProp(zoomLoop, 'disabled', locked);
+      for (const x of loopBox.querySelectorAll('button, input')) setProp(x, 'disabled', locked || !D());
+      setProp(clearBtn, 'hidden', !region);
+      if (document.activeElement !== aIn) setProp(aIn, 'value', region ? fmtMs(region.a) : '');
+      if (document.activeElement !== bIn) setProp(bIn, 'value', region ? fmtMs(region.b) : '');
+      setProp(aIn, 'placeholder', 'start'); setProp(bIn, 'placeholder', 'end');
+      setText(loopLen, region ? `⟲ ${bpmNow() ? `${(((region.b - region.a) * bpmNow()) / 60).toFixed(2).replace(/\.00$/, '')} beats · ` : ''}${(region.b - region.a).toFixed(2)} s` : '');
+      setProp(loopChip, 'hidden', !region);
       loopChip.classList.toggle('off', !st.loop);
-      loopChip.title = region ? `Loop ${fmtMs(region.a)} → ${fmtMs(region.b)}${locked ? ' (locked)' : ''} · Shift+drag the waveform for a new one` : '';
+      setProp(loopChip, 'title', region ? `Loop ${fmtMs(region.a)} → ${fmtMs(region.b)}${locked ? ' (locked)' : ''} · Shift+drag the waveform for a new one` : '');
       paintBpmRead();
-      lockBtn.textContent = locked ? '🔒 Locked' : '🔓';
+      setText(lockBtn, locked ? '🔒 Locked' : '🔓');
       lockBtn.classList.toggle('on', locked);
-      lockBtn.disabled = !region && !locked;
-      if (document.activeElement !== bpmIn) bpmIn.value = bpmNow() ? bpmNow().toFixed(2) : '';
-      meterSel.value = String(bpbNow());
+      setProp(lockBtn, 'disabled', !region && !locked);
+      if (document.activeElement !== bpmIn) setProp(bpmIn, 'value', bpmNow() ? bpmNow().toFixed(2) : '');
+      setProp(meterSel, 'value', String(bpbNow()));
       paintCands();
-      gridState.textContent = map.grid ? `yours · 1 at ${fmtMs(map.grid.anchor)}` : (st.analysis ? 'detected' : '');
+      setText(gridState, map.grid ? `yours · 1 at ${fmtMs(map.grid.anchor)}` : (st.analysis ? 'detected' : ''));
       gridState.classList.toggle('mine', Boolean(map.grid));
-      autoBtn.disabled = !map.grid;
-      undoBtn.disabled = !mapUndo.length;
-      CORE_LANES.forEach((ln, i) => { laneBtns[i].textContent = `${ln.key.toUpperCase()} ${ln.name} ${map.marks[ln.id].length || ''}`.trim(); });
-      recBtn.textContent = recording ? (recording.stopping ? '… saving' : `⏹ Stop ${fmtTime((performance.now() - recording.startedAt) / 1000)}`) : '⏺ Record';
+      setProp(autoBtn, 'disabled', !map.grid);
+      setProp(undoBtn, 'disabled', !mapUndo.length);
+      CORE_LANES.forEach((ln, i) => { setText(laneBtns[i], `${ln.key.toUpperCase()} ${ln.name} ${map.marks[ln.id].length || ''}`.trim()); });
+      setText(recBtn, recording ? (recording.stopping ? '… saving' : `⏹ Stop ${fmtTime((performance.now() - recording.startedAt) / 1000)}`) : '⏺ Record');
       recBtn.classList.toggle('on', Boolean(recording));
+      hooks.paint?.();
       if (view && st.playing && !locked && !dragging && gridView.follow !== false && !scroll.on) {
         const t = now();
         if (t > view.end || t < view.start) setView({ start: t - span() * 0.1, end: t - span() * 0.1 + span() });
@@ -1608,7 +1629,7 @@ const ThreeMedia = (() => {
     function draw(ov = null) {
       const t = now();
       if (!ov) {
-        setText(timeEl, D() ? `${span() < 20 ? fmtMs(t) : fmtTime(t)} / ${fmtTime(D())}` : fmtTime(t));
+        setText(timeEl, hooks.timeText?.(t) ?? (D() ? `${span() < 20 ? fmtMs(t) : fmtTime(t)} / ${fmtTime(D())}` : fmtTime(t)));
         setText(miniTime, D() ? `${fmtTime(t)} / ${fmtTime(D())}` : '');
         setText(miniPlay, st.playing ? '⏸' : '▶');
         drawMinimap(t);
@@ -1740,6 +1761,7 @@ const ThreeMedia = (() => {
           }
         }
       }
+      hooks.drawUnder?.(g, { X, s0, sp, w, h, top, H, LT });
       g.drawImage(waveCache.canvas, 0, 0, w, h);
       // beat grid (drawn into its own cached canvas, redrawn only when the view or the grid changes): downbeats red
       // with bar numbers like rekordbox, beats white, subdivisions faint; zoomed out, every 2nd / 4th / 8th… bar so
@@ -1892,6 +1914,7 @@ const ThreeMedia = (() => {
         g.fillStyle = '#48ddff';
         for (const [x, d] of [[xa, 1], [xb, -1]]) if (x >= -2 && x <= w + 2) { g.fillRect(Math.round(x) - (d < 0 ? 2 : 0), 0, 2, h); g.fillRect(Math.round(x) - (d < 0 ? 8 : 0), 0, 8, 2); g.fillRect(Math.round(x) - (d < 0 ? 8 : 0), h - 2, 8, 2); }
       }
+      hooks.drawOver?.(g, { X, s0, sp, w, h, top, H, LT, ruler: RULER });
       // notes on moments: green pins on the ruler (grey once done)
       for (const n of notes) {
         if (n.t < s0 || n.t > s0 + sp) continue;
@@ -2043,7 +2066,7 @@ const ThreeMedia = (() => {
       const dpr = devicePixelRatio || 1;
       const X = (tt) => (tt / D()) * w;
       const sk = [w, h, dpr, D(), anaVer, st.path, region ? `${region.a}|${region.b}|${locked}` : '', map.trim ? `${map.trim.a}|${map.trim.b}` : '', tracks.map((tr) => `${tr.in}|${tr.out}|${tr.visible}|${tr.color}`).join(),
-        map.cues.map((c) => `${c.t}${c.name}`).join(), notes.map((n) => `${n.t}${n.done}`).join()].join('~');
+        map.cues.map((c) => `${c.t}${c.name}`).join(), notes.map((n) => `${n.t}${n.done}`).join(), hooks.miniKey?.() || ''].join('~');
       const box = view ? `${Math.round(X(view.start) * 2)}|${Math.round(X(view.end) * 2)}|${locked}` : '';
       if (`${sk}#${box}` === lastMiniKey) return;
       lastMiniKey = `${sk}#${box}`;
@@ -2075,6 +2098,7 @@ const ThreeMedia = (() => {
         if (a) { g.fillStyle = '#ff6a6a'; for (const d of a.drops) g.fillRect(X(d) - 1, 0, 2, 4); }
         for (const n of notes) { g.fillStyle = n.done ? '#8f877d' : '#7cd992'; g.fillRect(X(n.t) - 1, h - 5, 3, 5); }
         map.cues.forEach((c, i) => { g.fillStyle = cueColor(c, i); g.fillRect(X(c.t) - 1, 0, 3, 6); });
+        hooks.drawMini?.(g, { X, w, h });
       }
       if (minimap.width !== Math.round(w * dpr) || minimap.height !== Math.round(h * dpr)) { minimap.width = Math.round(w * dpr); minimap.height = Math.round(h * dpr); }
       const g = minimap.getContext('2d');
@@ -2699,6 +2723,14 @@ const ThreeMedia = (() => {
     return {
       el: bar,
       load, pick, attach, toggle, seek, onMessage, unload, onKey, setTracks, setNotes, setSize, restoreSize,
+      // ---------- for the footage side (tools/three-frames.js) ----------
+      hooks,
+      redraw: () => draw(), paintAll: () => paint(),
+      pushUndo(entry) { mapUndo.push({ hook: entry }); if (mapUndo.length > 80) mapUndo.shift(); paint(); },
+      // J / L shuttle speeds (2×, 4×, 8×) outside the speed menu; 1 goes back to normal
+      shuttleRate(r) { const t = now(); st.rate = r > 0 ? r : 1; st.time = t; st.stampAt = performance.now(); send({ type: 'media', cmd: 'rate', value: st.rate }); rateSel.classList.toggle('on', st.rate !== 1); paint(); },
+      get view() { return view ? { ...view } : null; },
+      get selection() { return selected ? { ...selected } : autoSel ? { points: autoSel.idx.size } : null; },
       tapHit: (lane) => addAtPlayhead(lane),
       toggleAllControls: () => setAll(!allCtl), toggleMute, loopBar, cycleSnap,
       quantize: () => quantize(region ? [region.a, region.b] : [0, D()]), dedupe: () => dedupe(region ? [region.a, region.b] : [0, D()]),

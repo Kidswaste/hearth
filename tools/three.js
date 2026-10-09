@@ -1435,6 +1435,7 @@ const ThreeLab = (() => {
             btn('Copy code', refUse(r), () => { navigator.clipboard.writeText(refUse(r)); toast(`Copied ${refUse(r)}`, { timeout: 1200 }); }),
             btn('Ask director', 'Start a message to the Three Director about this reference', () => askAboutRef(r), 'ghost small imp-ai'),
             btn('Show', 'Show the file', () => window.hub.fs.reveal(r.path)),
+            r.kind === 'video' && typeof ThreeFrames !== 'undefined' ? btn('🎞 Read ▾', 'Read this clip exactly: contact sheet, scenes, motion, pacing · match its pacing (its rhythm, not its footage)', (e) => { const rr = e.currentTarget.getBoundingClientRect(); refsDlg?.close(); ThreeFrames.refMenu(rr.left, rr.bottom + 4, r.path, r.key); }) : null,
             r.kind === 'image' ? btn('🎨 Palette', 'Use this picture\'s colors as the sketch palette', async () => { try { const cols = await paletteFrom(r.path); setPalette(cols); toast(`Palette: ${cols.join(' ')}`, { timeout: 2400 }); } catch (err) { toast(err.message, { type: 'error' }); } }) : null,
             btn('🗑', 'Remove (the copy goes to the Recycle Bin)', () => { removeRef(r); renderRefsDlg(); })));
       }) : [el('div', { class: 'refs-empty', text: 'No references yet. Add pictures, logos, video clips, 3D models (.glb), sounds or data files.' })]));
@@ -2018,6 +2019,8 @@ const ThreeLab = (() => {
         live: { kind: () => liveKind, bpm: () => liveBpm, io: () => liveIo(), setIo: (p) => setLiveIo(p), button: liveBtn, autoGain: () => (hubLive.gain ? hubLive.auto : null) },
       });
     }
+    // video footage on the timeline: exact frames, the cut list the sketch plays (tools/three-frames.js)
+    if (typeof ThreeFrames !== 'undefined') ThreeFrames.attach({ player, send: (msg) => box.send(msg), sketchId: () => current?.id });
     pane.addEventListener('keydown', (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
       const plain = !typing && !e.ctrlKey && !e.altKey && !e.metaKey;
@@ -3552,6 +3555,8 @@ ${frag}\`,
     for (let i = 0; i < 100 && !api.director; i += 1) await new Promise((r) => setTimeout(r, 100));
     const d = api.director;
     if (!d) return { ok: false, error: 'The sketch editor did not load.' };
+    // footage frames and the cut list (tools/three-frames.js): frame steps / reads, frames in keyframes and markers
+    if (typeof ThreeFrames !== 'undefined') { const r = await ThreeFrames.handle(tool, args, d); if (r) return r; }
     // the director's fast loop (tools/three-director.js): compact results, batches, diffs, screenshot options, undo
     if (typeof ThreeDirector !== 'undefined') { const r = await ThreeDirector.handle(tool, args, d); if (r) return r; }
     if (tool === 'three_get_code') return { ok: true, value: d.getCode() };
