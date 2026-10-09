@@ -82,9 +82,12 @@ const base = ThreeData.TEMPLATES.find((t) => t.name === 'Basic scene').code
 ThreeLab.openCode(base);
 await until(() => c.sliders().some((s) => s.key === 'glow'), 12000);
 await wait(2500); // the sketch reports which values it reads every frame
-// how busy the main thread is while the song loads and analyses (the Worker should take the work)
-const longs = []; const po = new PerformanceObserver((l) => { for (const e of l.getEntries()) longs.push(Math.round(e.duration)); });
-try { po.observe({ type: 'longtask', buffered: false }); } catch { /* no long-task API */ }
+// how busy the main thread is while the song loads and analyses (the Worker should take the work): slow frames
+// (Long Animation Frames) blamed on the music code; the preview's own WebGL frames (slow in this software
+// renderer) don't count
+const longs = []; const ours = [];
+const po = new PerformanceObserver((l) => { for (const e of l.getEntries()) { longs.push(Math.round(e.duration)); const mine = (e.scripts || []).filter((x) => /three-media|three-music/.test(x.sourceURL || '')); if (mine.length) ours.push({ ms: Math.round(e.duration), by: mine.map((x) => `${(x.sourceURL || '').split('/').pop()} ${x.sourceFunctionName || x.invoker || ''} ${Math.round(x.duration)}ms`).slice(0, 3) }); } });
+try { po.observe({ type: 'long-animation-frame', buffered: false }); } catch { /* no LoAF API */ }
 const t0 = performance.now();
 const r = await c.loadSong(SONG);
 const loadMs = Math.round(performance.now() - t0);
@@ -93,7 +96,7 @@ const L = H.surfaces.get('tool:three')?.el;
 const P = ThreeMusic.presetInfo();
 step('song loaded and analysed', r.ok && c.state.bpm > 0, { loadMs, bpm: c.state.bpm });
 step('analysis ran in a Worker', ThreeMedia.analyze.lastWorker === true);
-step('the main thread stays free while it analyses (no task over 200 ms)', Math.max(0, ...longs) < 200, { longTasks: longs.slice(0, 12) });
+step('the main thread stays free while it analyses (no music frame over 100 ms)', ours.every((x) => x.ms < 100), { musicFrames: ours.slice(0, 6), allSlowFrames: longs.slice(0, 10) });
 step(`tempo ${BPM}`, Math.abs(c.state.bpm - BPM) < 0.05, c.state.bpm);
 const an = await say('/analyze');
 {
@@ -108,7 +111,7 @@ step('/analyze lists sections with confidence and the drops', /Sections: .*Drop/
   const m = said.match(/drop, (\d+):(\d+)/); const at = m ? Number(m[1]) * 60 + Number(m[2]) : NaN;
   step('/drops jumps to the first drop (and there are two)', Math.abs(at - T.drops[0]) < bar && /2 drops/.test(said), { said, truth: T.drops.map((x) => Math.round(x * 10) / 10) });
 }
-step('the trigger preset was picked from the song and shows on Presets ▾', Boolean(P.current) && [...L.querySelectorAll('.mb-quick')].some((b) => b.textContent.includes(P.current.slice(0, 8))), P);
+step('the trigger preset was picked from the song and shows on Presets ▾ (short)', Boolean(P.current) && [...L.querySelectorAll('.mb-quick')].some((b) => b.textContent === `${P.current.split(' / ')[0]} ▾` && b.title.includes(P.current)), { current: P.current, why: P.guess?.why });
 await wait(1400);
 step('one toast offers "✦ Make it react"', [...document.querySelectorAll('#toasts .toast button')].some((b) => /Make it react/.test(b.textContent)), [...document.querySelectorAll('#toasts .toast span')].map((s) => s.textContent).slice(-2));
 
@@ -128,6 +131,17 @@ await J.click([...L.querySelectorAll('.three-preview')].find(J.visible) || canva
 await key('z', { ctrl: true }); await wait(600);
 const bm0 = (await window.hub.kvGet('three-beatmaps')) || {};
 step('Ctrl+Z takes the marked kicks back', !(bm0[SONG]?.marks?.kick?.length), bm0[SONG]?.marks?.kick?.length || 0);
+// the ghost note in the empty kick lane ("KICK ✦ 77 found · keep them"), clicked like a person
+{
+  c.zoom(null); await wait(400);
+  const rc = canvas.getBoundingClientRect();
+  const y = rc.bottom - 16 - 3 * 14 + 7; // the kick lane: above the snare and hit lanes and one layer's track
+  await J.mouse('mouseMoved', rc.left + 40, y, { button: 'none' }); await J.mouse('mousePressed', rc.left + 40, y); await J.mouse('mouseReleased', rc.left + 40, y);
+  await wait(500);
+  const bm = (await window.hub.kvGet('three-beatmaps')) || {};
+  step('a click on the "✦ found · keep them" note marks the kicks', (bm[SONG]?.marks?.kick?.length || 0) >= T.kicks.length * 0.9, bm[SONG]?.marks?.kick?.length || 0);
+  await key('z', { ctrl: true }); await wait(400);
+}
 const all = await say('/mark-kicks all');
 step('/mark-kicks all marks kicks, snares and hats', /kick.*snare.*hats/.test(all), all.slice(0, 100));
 
@@ -171,6 +185,21 @@ const lg = await say('/live gain auto');
 step('/live gain auto', /auto/.test(lg), lg);
 step('no duplicate command names', Commands.duplicates().length === 0, Commands.duplicates().map((d) => d.name));
 for (const n of ['analyze', 'mark-kicks', 'drops', 'make-it-react', 'auto-preset', 'downbeat', 'tap-latency', 'live-status']) if (Commands.get(n)?.area !== 'Three.js Lab') step(`/${n} registered`, false);
+
+// ---------- the live beat-lock light: pulses on the compositor, not restarted by a steady tempo ----------
+{
+  const beatAt = performance.timeOrigin + performance.now() - 123;
+  ThreeMusic.liveTempo({ bpm: 120, locked: true, lock: 0.9, period: 0.5, beatAt });
+  const dot = L.querySelector('.live-lock');
+  const a1 = dot?.getAnimations()[0];
+  ThreeMusic.liveTempo({ bpm: 120, locked: true, lock: 0.92, period: 0.5, beatAt: beatAt + 500 * 7 + 3 });
+  const a2 = dot?.getAnimations()[0];
+  step('live beat-lock light pulses with the beat (one compositor animation, kept while the tempo holds)', Boolean(a1) && a1 === a2 && dot.classList.contains('locked') && Math.round(a1.effect.getTiming().duration) === 500);
+  ThreeMusic.liveTempo({ bpm: 0, locked: false, period: 0, beatAt: 0 });
+  step('… grey while it listens', !dot.classList.contains('locked') && !dot.getAnimations().length);
+  ThreeMusic.liveTempo(null);
+  step('… gone when live sound stops', dot.hidden);
+}
 
 // ---------- 6. smoothness while it plays (zoomed in, scrolling) ----------
 c.zoom(T.drops[0], T.drops[0] + bar * 2); c.seek(T.drops[0]); c.play(true);
