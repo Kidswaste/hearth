@@ -251,6 +251,8 @@ const BoardCmds = (() => {
     if (skipped.length) console.warn('Board: command names already taken', skipped);
     // /undo and /redo where you are: on the board they undo the board (they used to undo the last chat action, a
     // chat rename or delete, while you were arranging references); the video editor adds its own (tools/cut-cmds.js)
+    // /play and /pause on the board: its clips in view (they played the hidden Lab's song or opened Video Review)
+    for (const w of ['play', 'pause']) Commands.register({ name: w, area: AREA, when: (ctx) => ctx?.place === 'board' && H.activeId === 'tool:board', whenLabel: 'on the board', desc: w === 'play' ? 'Play the clips in view (four at most)' : 'Pause the clips on the board', run: (_a, ctx) => Commands.get('board-play')?.run(w, ctx) });
     Commands.register({ name: 'undo', area: AREA, when: (ctx) => ctx?.place === 'board', whenLabel: 'on the board', desc: 'Undo on the board (Ctrl+Z)', run: async () => { await B.ready(); B.undo(); return null; } });
     if (!Commands.get('redo')) {
       Commands.register({ name: 'redo', area: 'App', desc: 'Redo where you are: the board, the video editor (Ctrl+Shift+Z)', run: async (_a, ctx) => {

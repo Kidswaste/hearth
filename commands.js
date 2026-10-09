@@ -108,7 +108,10 @@ const Commands = (() => {
   // holds runs, otherwise the plain one. E.g. /compare is the Video A/B compare in Video Review, the token
   // comparison anywhere else.
   function combine(name, variants) {
-    const base = variants.find((v) => !v.when) || variants[0];
+    // every variant conditional (/play, /pause: the Lab's, Video Review's, the board's) and none holds: the one marked
+    // `fallback: true`, else the first (the Lab's /play played the hidden Lab's song from a chat; QA round 3 #16 says
+    // "elsewhere they drive Video Review", whose variants are now the fallback)
+    const base = variants.find((v) => !v.when) || variants.find((v) => v.fallback) || variants[0];
     const pick = (ctx, args) => variants.find((v) => v.when && v !== base && v.when(ctx, String(args || ''))) || base;
     const extra = variants.filter((v) => v !== base && v.whenLabel).map((v) => ` · ${v.whenLabel}: ${v.desc}`).join('');
     const aliases = [...new Set(variants.filter((v) => v.name === name).flatMap((v) => v.aliases || []))];
