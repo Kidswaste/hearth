@@ -2588,9 +2588,10 @@ const ThreeLab = (() => {
       const id = current?.id;
       if (!id || (thumbs[id] && Date.now() - thumbs[id].at < 3 * 60000)) return;
       thumbTimer = setTimeout(() => {
-        if (current?.id !== id || pendingShot || errors.length) return;
+        // (the Lab sequence's program on screen isn't this sketch's picture)
+        if (current?.id !== id || pendingShot || errors.length || (typeof ThreeSeq !== 'undefined' && ThreeSeq.active)) return;
         thumbShot = async (url) => {
-          if (!url) return;
+          if (!url || (typeof ThreeSeq !== 'undefined' && ThreeSeq.active)) return;
           const img = new Image(); img.src = url;
           try { await img.decode(); } catch { return; }
           const c = document.createElement('canvas'); const sc = Math.min(1, 360 / Math.max(img.width, img.height));
