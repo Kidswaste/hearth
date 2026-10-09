@@ -1821,6 +1821,7 @@ const ThreeLab = (() => {
     const ctl = () => { const c = selCtl(); if (!c) throw new Error('No sketch is open'); if (!c.visible) setSlidersVisible(true); return c; };
     const needSong = () => { if (!player.loaded) throw new Error('Load a song first (🎵 in the timeline, or drop one on the preview)'); };
     api.cmd = {
+      get player() { return player; }, // the song / video timeline (tools/cut-cmds.js: /song-trim, /cut-loop, /send-clip)
       get state() { return { sketch: current?.name, layer: sel()?.name, frame: stage.size, frozen: frozenNow, live: liveKind, song: player.loaded ? player.info().file : null, bpm: player.loaded ? player.bpm : liveBpm?.bpm ?? null, playing: player.playing, presenting: document.fullscreenElement === previewHost }; },
       run: () => run(), restart: () => restartSim(),
       // a sketch that has a song is still loading it (just opened): wait for it a moment

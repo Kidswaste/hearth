@@ -148,6 +148,32 @@
 .vr-main:fullscreen { padding: 14px; background: #000; }
 .vr-main:fullscreen .vr-stage { border-radius: 0; }
 
+/* cut: the clip track (tools/video-cut.js) replaces the source timeline while editing; the program plays in the frame */
+.vr-main.cutting > .vr-timeline { display: none; }
+.vr-cut { display: flex; flex-direction: column; gap: 3px; flex: none; contain: layout paint; }
+.vr-cut[hidden] { display: none; }
+.vr-cut-headrow { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 11.5px; }
+.vr-cut-title { color: var(--vr-gold); font-size: 12px; white-space: nowrap; }
+.vr-cut-sum { color: var(--muted); font: 11px var(--mono, monospace); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.vr-cut-sug { display: inline-flex; align-items: center; gap: 4px; padding: 1px 2px 1px 8px; border-radius: 999px; border: 1px dashed #7fd8ff; color: #bfeaff; white-space: nowrap; }
+.vr-cut-sug[hidden] { display: none; }
+.vr-cut-sug button { padding: 1px 8px; font-size: 11px; }
+.vr-cut-export { font-size: 11.5px; padding: 0 8px; color: var(--vr-gold); }
+.vr-cut-track { position: relative; height: 66px; border-radius: 6px; overflow: hidden; touch-action: none; box-shadow: inset 0 0 0 1px var(--line); contain: strict; }
+.vr-cut.drop .vr-cut-track { box-shadow: inset 0 0 0 2px var(--vr-gold), 0 0 16px color-mix(in srgb, var(--vr-gold) 35%, transparent); }
+.vr-cut-cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.vr-cut-ph { position: absolute; top: 0; bottom: 0; left: -1px; width: 2px; background: #fff; box-shadow: 0 0 8px #fff; pointer-events: none; will-change: transform; }
+.vr-cut-btn.on { color: var(--vr-ink); background: linear-gradient(180deg, #fff3c4, var(--vr-gold) 55%, #c9a23c); }
+.vr-pwrap { display: none; position: absolute; inset: 0; background: #000; z-index: 1; }
+.vr-stage.cutting .vr-pwrap { display: block; }
+.vr-stage.cutting :is(.vr-a, .vr-b) { visibility: hidden; }
+.vr-pfade { position: absolute; inset: 0; }
+.vr-p { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; visibility: hidden; filter: var(--vr-filter, none); }
+.vr-p.on { visibility: visible; }
+.vr-frame.mirrored .vr-p { transform: scaleX(-1); }
+.vr-cutb { position: absolute; right: 3px; bottom: 4px; font: 700 10px/1 var(--mono, monospace); padding: 2px 4px; background: #000c; color: var(--vr-gold); border-radius: 3px; }
+html[data-skin="forge"] .vr-cut-track { border-radius: 0; }
+
 /* notes */
 .vr-notes { display: flex; flex-direction: column; gap: 6px; min-height: 0; min-width: 0; overflow: hidden; padding: 8px; border-left: 1px solid var(--line); }
 .vr-notes-head { display: flex; align-items: center; gap: 4px; min-width: 0; }
