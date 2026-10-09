@@ -249,6 +249,16 @@ const BoardCmds = (() => {
       Commands.register({ area: AREA, ...d, aliases: (d.aliases || []).filter((a) => !Commands.get(a)) });
     }
     if (skipped.length) console.warn('Board: command names already taken', skipped);
+    // /undo and /redo where you are: on the board they undo the board (they used to undo the last chat action, a
+    // chat rename or delete, while you were arranging references); the video editor adds its own (tools/cut-cmds.js)
+    Commands.register({ name: 'undo', area: AREA, when: (ctx) => ctx?.place === 'board', whenLabel: 'on the board', desc: 'Undo on the board (Ctrl+Z)', run: async () => { await B.ready(); B.undo(); return null; } });
+    if (!Commands.get('redo')) {
+      Commands.register({ name: 'redo', area: 'App', desc: 'Redo where you are: the board, the video editor (Ctrl+Shift+Z)', run: async (_a, ctx) => {
+        if (ctx?.place === 'board') { await B.ready(); B.redo(); return null; }
+        if (ctx?.place === 'ae' && typeof VideoCut !== 'undefined' && VideoCut.active) return VideoCut.redo() ? 'Redone.' : 'Nothing to redo.';
+        return 'Nothing to redo here (on the board or in the video editor, /redo redoes their last change).';
+      } });
+    }
   }
   if (document.readyState === 'loading' || document.currentScript?.defer) addEventListener('DOMContentLoaded', registerAll, { once: true }); else registerAll();
   return { handle, defs };

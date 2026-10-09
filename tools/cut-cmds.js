@@ -142,6 +142,8 @@ const CutCmds = (() => {
   function registerAll() {
     for (const d of defs) Commands.register({ area: AREA, ...d, when: inVideo, whenLabel: 'in Video Review', aliases: (d.aliases || []).filter((a) => !Commands.get(a)) });
     for (const d of labDefs) if (!Commands.get(d.name)) Commands.register({ area: 'Three.js Lab', ...d, aliases: (d.aliases || []).filter((a) => !Commands.get(a)) });
+    // /undo in the video editor undoes the edit (it undid the last chat action before; /cut undo still works)
+    Commands.register({ name: 'undo', area: AREA, when: (ctx) => ctx?.place === 'ae' && typeof VideoCut !== 'undefined' && VideoCut.active, whenLabel: 'in the video editor', desc: 'Undo the last edit (Ctrl+Z)', run: () => (VideoCut.undo() ? 'Undone.' : 'Nothing to undo.') });
   }
   if (document.readyState === 'loading' || document.currentScript?.defer) addEventListener('DOMContentLoaded', registerAll, { once: true }); else registerAll();
   return { editing };

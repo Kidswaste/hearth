@@ -145,7 +145,7 @@
     name: 'screenshot', when: (_ctx, args) => isShotArgs(args), whenLabel: 'with a target, a frame or options',
     args: '[tool|chat|transcript|dock|lab|region|element|.selector] [9:16|4:5|1:1|16:9…] [clean|norail|copy|annotate|attach|pretty|fit|jpg|3s]',
     desc: 'A screenshot of part of Hearth into your captures: a tool, the chat (or all of it as a tall picture), a region you drag, a social frame, clean, beautified',
-    examples: ['/screenshot tool 9:16 clean', '/shot transcript', '/shot region copy', '/shot lab', '/shot window pretty'], keywords: 'capture snapshot picture image png',
+    examples: ['/screenshot tool 9:16 clean', '/shot transcript', '/shot region copy', '/shot lab 9:16', '/shot window pretty'], keywords: 'capture snapshot picture image png',
     complete: opts(shotWordOpts),
     run: async (args) => {
       // burst: N shots every S seconds (hover states, a changing Lab, a timelapse of a build)
@@ -265,10 +265,13 @@
     desc: 'Make something from a video: a GIF, a frame-exact trim, a timelapse, a boomerang, PNG frames for After Effects, a 9:16 / 1:1 / 4:5 copy, the sound, a poster frame, a seamless loop',
     examples: ['/make gif last 1 3.5', '/make timelapse', '/make frames open 0 2', '/make 9:16 last', '/make loop'], keywords: 'export convert gif mp4 social reels after effects png sequence',
     complete: opts(Object.keys(MAKE_WORDS).map((k) => ({ value: k, hint: (D.EDITS.find((e) => e.id === MAKE_WORDS[k])?.label) || (k === 'loop' ? 'find and cut the best seamless loop' : '') }))),
-    run: async (args) => {
+    run: async (args, ctx) => {
       const w = words(args);
       if (!w.length) return D.EDITS.map((e) => `- ${e.label}`).join('\n') + '\nUse: /make gif [video | last | open] [from] [to]';
       const what = MAKE_WORDS[w[0].toLowerCase()];
+      // "/make it react" (the Lab's one-click music link, typed as words) and other words: not a crash
+      if (!what && /^it\s+react/i.test(String(args).trim()) && Commands.get('make-it-react')) return Commands.get('make-it-react').run(w.slice(2).join(' '), ctx);
+      if (!what) return `/make makes something from a video: ${Object.keys(MAKE_WORDS).slice(0, 12).join(', ')}… (/make gif last 1 3). In the Lab, /make-it-react links the sliders to the music.`;
       let i = 1; let file = null;
       if (w[1] && !FrameRead.parseTime(w[1])) { file = await FrameRead.resolveFile(w[1]); i = 2; } else file = await FrameRead.resolveFile('');
       if (!file) return 'Which video? A path, `last` or `open`.';

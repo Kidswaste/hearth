@@ -244,7 +244,8 @@ const KeysUI = (() => {
       const words = q.value.toLowerCase().split(/\s+/).filter(Boolean);
       const here = hereAreas();
       const groups = [...Keys.groups(true)];
-      const rank = ([area]) => (here.includes(area) ? 0 : area === 'Hidden buttons' ? 1 : area === 'Right-click' ? 2 : area === 'Everywhere' ? 3 : area === 'Menus' ? 4 : 5);
+      // the areas that apply here keep their order (the open capture / the editor before the tool's own lines)
+      const rank = ([area]) => (here.includes(area) ? here.indexOf(area) / 100 : area === 'Hidden buttons' ? 1 : area === 'Right-click' ? 2 : area === 'Everywhere' ? 3 : area === 'Menus' ? 4 : 5);
       groups.sort((a, b) => rank(a) - rank(b));
       const out = [];
       for (const [area, lines] of groups) {
@@ -269,7 +270,15 @@ const KeysUI = (() => {
       else if (e.key === 'Enter' && e.target === q) { e.preventDefault(); (lines[sel] || lines[0])?.click(); }
     });
     paint();
-    document.body.append(sheet);
+    // over a modal dialog (the captures, a capture's player, the annotator…) the rest of the page is inert: the sheet
+    // goes inside that dialog and on the top layer, so it can be used and Esc closes the sheet, not the dialog under it
+    const modal = [...document.querySelectorAll('dialog[open]')].filter((d) => d.matches(':modal')).at(-1);
+    if (modal) {
+      sheet.setAttribute('popover', 'manual');
+      Object.assign(sheet.style, { top: 'auto', right: 'auto', margin: '0' });
+      modal.append(sheet);
+      try { sheet.showPopover(); } catch { /* drawn in the dialog anyway */ }
+    } else document.body.append(sheet);
     btn?.classList.add('on');
     q.focus();
     setTimeout(() => addEventListener('pointerdown', away, true), 0);

@@ -74,6 +74,8 @@ const Board = (() => {
   }
   addEventListener('beforeunload', flush);
   async function create(name, { quiet = false, template = null, open: openIt = true } = {}) {
+    // "New board…" from the rail ▦ menu or Ctrl+K before the board was ever opened: load the boards first
+    if (!S.index) await ready();
     const id = `b${now().toString(36)}${Math.floor(Math.random() * 46656).toString(36)}`;
     const b = { id, name: String(name || 'Board').slice(0, 60), created: now(), updated: now(), seq: 0, items: [], view: { x: 80, y: 80, z: 0.6 }, chats: [] };
     S.boards.set(id, b);
@@ -480,7 +482,8 @@ const Board = (() => {
   function renderAll() {
     if (!S.mounted || !S.cur) return;
     const ids = new Set(S.cur.items.map((i) => i.id));
-    for (const [id, n] of S.nodes) if (!ids.has(id)) { stopPreview(id); n.remove(); S.nodes.delete(id); lastOff.delete(id); }
+    // try: a note being edited when it was undone has already been taken out by its own blur handler
+    for (const [id, n] of S.nodes) if (!ids.has(id)) { stopPreview(id); try { n.remove(); } catch { /* gone already */ } S.nodes.delete(id); lastOff.delete(id); }
     for (const it of S.cur.items) syncItem(it);
     S.hidden = new Set(S.cur.items.filter((i) => i.hidden).map((i) => i.id));
     Board._.afterRender?.();

@@ -37,3 +37,17 @@ what collided between them and with everything older. One line per bug, each wit
 21. Fixed: after installing ffmpeg while Hearth was open (`brew install ffmpeg`, `winget install Gyan.FFmpeg`), Hearth kept saying "ffmpeg not found" until a restart. A miss is looked up again after a minute.
 22. Fixed: made-from-a-video files (`/make` GIFs, trims…) of a capture whose path differed in letter case from the captures folder went to `captures/made` instead of next to the capture (Windows / Mac).
 23. Fixed: editor keys and capture keys were stored with ⌘ on a Mac, so the keys sheet couldn't press them for you when you clicked their line ("Ctrl" is stored, ⌘ / ⌥ are shown). The editor's redo line now reads Ctrl+Shift+Z (it said "Shift+Z").
+24. Fixed: Windows AltGr is Ctrl+Alt to the system, so AltGr+S / AltGr+A (ś / ą on Polish and other keyboards) opened the capture menu or the region picker instead of typing the letter. A key that types another letter than its place is now left to the text.
+
+## Capture
+25. Fixed: the keys sheet opened over a modal capture window (your captures, a capture's player, the annotator) was unusable (the rest of the page is inert under a modal), and Esc closed the captures behind it instead of the sheet. The sheet now opens inside that window, on top, and Esc closes the sheet first.
+26. Fixed: with a capture window open, the keys sheet now lists the capture keys first ("Capture · …"), and the areas that apply where you are keep their order (in the Lab the Lab's keys come before the chat box's; before, the chat box's came first).
+27. Fixed: `/make it react` (the Lab's one-click music link, typed as words) crashed `/make` ("Cannot read properties of undefined"); any unknown `/make` word did the same. It now runs `/make-it-react`, and other words get the list of things `/make` makes.
+28. Fixed: the capture command's examples offered `/shot lab`, which runs the chat's own screenshot (a picture in your message), not a capture. The example is now `/shot lab 9:16`.
+
+## Undo and saving across tools
+29. Fixed: `/undo` in the video editor (the command bar or the Video Director's chat) undid the last *chat* action (a rename, a delete) instead of the edit. In the editor it now undoes the edit; on the board it undoes the board; elsewhere it is still the chat's undo.
+30. New: `/redo` redoes the board's or the editor's last undo where you are (there was no `/redo`).
+31. Fixed: an edit made just before a reload or quit (a cut, then ⌘Q) was lost with its pending save (400 ms). The editor writes it when the window closes; Video Review's notes and library do the same.
+32. Fixed: "New board…" from the rail ▦'s right-click menu or the palette, before the board had ever been opened, failed ("Cannot read properties of null"). The boards are loaded first.
+33. Fixed: undoing the creation of a note while it was being edited could leave the board half-drawn (a "node to be removed is no longer a child" error stopped the redraw). The redraw skips a node its own blur handler already took out.

@@ -31,7 +31,11 @@ const VideoCut = (() => {
   const emit = (ev, d) => { for (const fn of listeners[ev] || []) { try { fn(d); } catch (err) { console.error(err); } } };
 
   // ---------- storage + history ----------
-  const saveCuts = debounce(() => window.hub.kvSet('video-cuts', cuts), 400);
+  // an edit made just before a reload / quit (a cut, then ⌘Q) used to be lost with the pending save: written at unload
+  let pendingSave = false;
+  const writeCuts = debounce(() => { pendingSave = false; window.hub.kvSet('video-cuts', cuts); }, 400);
+  const saveCuts = () => { pendingSave = true; writeCuts(); };
+  addEventListener('beforeunload', () => { if (pendingSave && cuts) { pendingSave = false; window.hub.kvSet('video-cuts', cuts); } });
   async function loadCuts() {
     if (cuts) return cuts;
     cuts = (await window.hub.kvGet('video-cuts', {})) || {};
