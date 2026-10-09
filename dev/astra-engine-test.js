@@ -141,13 +141,15 @@ function turn(agent, text, session = {}, options = {}, onStart) {
   ok('doctor reports path, version and sign-in');
   // a Claude Code version that doesn't know an optional flag: Hearth drops it and retries without an error
   engines.setEnginePaths({ codex: path.join(__dirname, 'fake-codex-astra.js'), claude: path.join(__dirname, 'fake-claude.js') });
-  process.env.FAKE_CLAUDE_REJECT = '--disable-slash-commands,--thinking-display';
-  r = await turn(claude, 'hello there');
+  process.env.FAKE_CLAUDE_REJECT = '--disable-slash-commands,--thinking-display,--permission-prompts,--restricted,--system-prompt-snapshot';
+  r = await turn({ ...claude, chatTools: true }, 'hello there', {}, { images: [path.join(__dirname, 'x.png')] });
   delete process.env.FAKE_CLAUDE_REJECT;
   assert.strictEqual(r.end.type, 'done', JSON.stringify(r.end));
   assert(T.claudeDropped.has('--disable-slash-commands') && T.claudeDropped.has('--thinking-display'));
   const a9 = T.claudeArgs(claude, {}, {});
   assert(!a9.includes('--system-prompt-snapshot') && !a9.includes('--disable-slash-commands') && !a9.includes('--thinking-display') && a9.includes('--setting-sources'));
+  assert(T.claudeArgs({ ...claude, chatTools: true }, {}, { images: ['x'] }).includes('--strict-mcp-config'));
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'data', 'claude-flags.json'), 'utf8')).dropped.sort(), ['--disable-slash-commands', '--permission-prompts', '--restricted', '--thinking-display']);
   assert.strictEqual(T.unsupportedFlag("error: unknown option '--model'"), null);
   ok('unknown optional Claude flags are dropped and the turn retried');
   console.log(`\n${passed} checks passed`);

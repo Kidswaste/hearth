@@ -306,10 +306,33 @@ function claudeToolArgs(agent, options = {}) {
   return args;
 }
 
-// Nice-to-have Claude flags (name -> how many values follow it). Claude Code versions come and go with these, so
-// when the CLI says "unknown option" for one, send() drops it for the rest of this run and retries at once.
-const CLAUDE_OPTIONAL = { '--system-prompt-snapshot': 1, '--disable-slash-commands': 0, '--setting-sources': 1, '--include-partial-messages': 0, '--thinking-display': 1, '--effort': 1 };
-const claudeDropped = new Set();
+// Claude flags Hearth can do without (name -> how many values follow it). Claude Code versions differ in which of
+// these they know, so when the CLI says "unknown option" for one, send() drops it and retries at once. What a
+// given Claude binary rejected is remembered (data/claude-flags.json) until that binary changes (an update).
+const CLAUDE_OPTIONAL = {
+  '--system-prompt-snapshot': 1, '--disable-slash-commands': 0, '--setting-sources': 1, '--include-partial-messages': 0,
+  '--thinking-display': 1, '--effort': 1, '--permission-prompts': 1, '--restricted': 0, '--strict-mcp-config': 0,
+  '--permission-mode': 1, '--session-id': 1, '--tools': 1,
+};
+const CLAUDE_FLAGS_FILE = path.join(DATA_DIR, 'claude-flags.json');
+let claudeDropped = new Set();
+let claudeBinKey = '';
+function binKey(bin) { try { const st = fs.statSync(bin); return `${bin}|${st.size}|${st.mtimeMs}`; } catch { return bin || ''; } }
+// Loads what this Claude binary rejected before (a different or updated binary starts clean).
+function loadDropped(bin) {
+  const key = binKey(bin);
+  if (key === claudeBinKey) return;
+  claudeBinKey = key;
+  claudeDropped = new Set();
+  try {
+    const saved = JSON.parse(fs.readFileSync(CLAUDE_FLAGS_FILE, 'utf8'));
+    if (saved.bin === key) claudeDropped = new Set((saved.dropped || []).filter((f) => f in CLAUDE_OPTIONAL));
+  } catch { /* nothing saved yet */ }
+}
+function rememberDropped(flag) {
+  claudeDropped.add(flag);
+  try { fs.writeFileSync(CLAUDE_FLAGS_FILE, JSON.stringify({ bin: claudeBinKey, dropped: [...claudeDropped] })); } catch { /* only saves a retry next time */ }
+}
 function dropUnsupported(args) {
   if (!claudeDropped.size) return args;
   const out = [];
@@ -319,9 +342,9 @@ function dropUnsupported(args) {
   }
   return out;
 }
-// The optional flag an "unknown option" error names, if it's one Hearth can do without.
+// The optional flag an "unknown option" error names, if it's one Hearth can do without (and hasn't dropped yet).
 function unsupportedFlag(text) {
-  const m = /unknown option '?(--[\w-]+)/i.exec(text || '');
+  const m = /(?:unknown|unrecognized|unexpected) (?:option|argument|flag):? ['"`]?(--[\w-]+)/i.exec(text || '');
   return m && m[1] in CLAUDE_OPTIONAL && !claudeDropped.has(m[1]) ? m[1] : null;
 }
 
@@ -575,6 +598,7 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
   // Sessions always live in the hub's own workspace so chats resume even after the folder changes;
   // the project folder is reached through --add-dir (Claude) or the sandbox's writable roots (Codex).
   const state = { ...session };
+  if (engine === 'claude') loadDropped(bin);
   const args = engine === 'claude' ? claudeArgs(agent, state, options) : codexArgs(agent, state, options);
   const parse = engine === 'claude' ? claudeParser(state) : codexParser(state, agent);
 
@@ -613,7 +637,7 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
     const flag = event.type === 'error' && engine === 'claude' && !streamed ? unsupportedFlag(`${event.message}\n${stderr}`) : null;
     if (flag) {
       log(`claude doesn't know ${flag}, retrying without it`);
-      claudeDropped.add(flag);
+      rememberDropped(flag);
       if (running.get(chatId) === child) running.delete(chatId);
       send({ agent, chatId, session, text: original, options }, emit);
       return;
@@ -746,6 +770,8 @@ async function doctor(agents = []) {
     report[engine] = r;
   }
   report.platform = process.platform;
+  // options this Claude Code doesn't know, which Hearth leaves out
+  if (LOCATE.claude()) { loadDropped(LOCATE.claude()); report.claudeSkipped = [...claudeDropped]; }
   report.workspace = WORKSPACE;
   try { fs.accessSync(WORKSPACE, fs.constants.W_OK); report.workspaceOk = true; } catch { report.workspaceOk = false; }
   // the hub's MCP tool servers (talk-back, directors) and the bridge they call
@@ -769,11 +795,12 @@ function status() {
 function discoverConnectors() {
   const bin = LOCATE.claude();
   if (!bin) return Promise.resolve(readConnectorCache());
+  loadDropped(bin);
   return new Promise((resolve) => {
-    const child = spawn(bin, [
+    const child = spawn(bin, dropUnsupported([
       '-p', '--output-format', 'stream-json', '--verbose', '--setting-sources', 'project',
       '--tools', '', '--disable-slash-commands', '--permission-prompts', 'none',
-    ], { cwd: WORKSPACE, windowsHide: true });
+    ]), { cwd: WORKSPACE, windowsHide: true });
     let buffer = '';
     const done = (result) => {
       clearTimeout(timer);
@@ -806,6 +833,6 @@ module.exports = {
   send, stop, stopAll, login, status, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
   doctor, EFFORTS, CODEX_DISABLED_FEATURES,
   // for tests (dev/astra-engine-test.js)
-  _test: { codexArgs, claudeArgs, unsupportedFlag, claudeDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, hubToolEnv, nodesOn, LOST_SESSION },
+  _test: { codexArgs, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, hubToolEnv, nodesOn, LOST_SESSION },
   buildPrompt, HUB_TOOLSETS, // the director cost report (mcp/cost.js)
 };
