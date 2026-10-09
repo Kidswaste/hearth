@@ -149,9 +149,11 @@ const BoardCmds = (() => {
   cmd({ name: 'board-peek', aliases: ['board-drawer'], desc: 'The board drawer over this chat (Ctrl+Shift+M): drag a reference into the chat for its vibe', keys: 'Ctrl+Shift+M', run: async () => { await B.ready(); BoardDrawer.toggle(); return null; } });
   cmd({ name: 'board-save-reply', desc: 'Save the last reply of this chat as a note on the board', run: async (_a, ctx) => { const t = Native.lastReplyText?.(ctx?.agentId); if (!t) return 'No reply to save.'; const b = await boardOf(ctx); if (b !== B.current()) await B.open(b.id); B.addNote(t.slice(0, 4000), B.visible() ? null : freeSpot(b), { style: 'paper', w: 420, h: 360 }); return `Saved to **${b.name}**.`; } });
   cmd({ name: 'board-clean', desc: 'Move media no board uses any more to the Recycle Bin', run: async () => { await B.ready(); await Board._.cleanMedia(); return null; } });
-  cmd({ name: 'board-tools', desc: 'Let this agent use the board itself (board tools: list, vibe, add, arrange; ≈ 350 tokens a message): on, off, or directors', args: '<on|off|directors>', complete: (a) => opts(['on', 'off', 'directors'], a),
+  cmd({ name: 'board-tools', desc: 'Let this agent use the board itself (board tools: list, vibe, add, arrange; ≈ 550 tokens a message, see /director-cost): on, off, or directors', args: '<on|off|directors>', complete: (a) => opts(['on', 'off', 'directors'], a),
     run: async (args, ctx) => {
-      const w = args.trim() || 'on'; const on = w !== 'off';
+      // no word: say where they're on (it used to switch them on: ≈ 550 tokens a message by accident)
+      if (!args.trim()) { const on = H.agents().filter((a) => a.boardTools).map((a) => a.name); return on.length ? `Board tools are on for ${on.join(', ')} (/board-tools off here turns them off).` : 'Board tools are off everywhere (/board-tools on for this chat\'s agent, or directors).'; }
+      const w = args.trim(); const on = w !== 'off';
       const targets = w === 'directors' ? H.agents().filter((a) => a.dock && a.mode === 'native') : [H.agent(ctx?.agentId)].filter(Boolean);
       if (!targets.length) return 'Run this in a chat.';
       for (const a of targets) { if (on) a.boardTools = true; else delete a.boardTools; }

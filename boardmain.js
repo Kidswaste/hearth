@@ -13,7 +13,9 @@ const EXPORT_DIR = path.join(BOARD_DIR, 'exports');
 const MAX_IMPORT = 2 * 1024 * 1024 * 1024; // 2 GB: a long reference clip is fine, a disk image isn't
 const safeName = (name) => String(name || 'file').replace(/[^\w.\- ]+/g, '_').replace(/\s+/g, ' ').slice(-80) || 'file';
 const stamp = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36).padStart(2, '0')}`;
-const inMedia = (p) => path.resolve(p).startsWith(path.resolve(MEDIA_DIR) + path.sep);
+// Windows and macOS paths compare without case (C:\Users vs c:\users, a file dropped from Finder)
+const norm = (p) => (process.platform === 'linux' ? path.resolve(p) : path.resolve(p).toLowerCase());
+const inMedia = (p) => norm(p).startsWith(norm(MEDIA_DIR) + path.sep);
 
 function ensureDirs() { for (const d of [MEDIA_DIR, EXPORT_DIR]) fs.mkdirSync(d, { recursive: true }); }
 
@@ -46,9 +48,14 @@ async function fetchMedia(url) {
   const res = await session.fromPartition('board-snap').fetch(u.href, { signal: AbortSignal.timeout(20000) });
   if (!res.ok) throw new Error(`The site answered ${res.status}`);
   const type = res.headers.get('content-type') || '';
+  // too big: refused before downloading it into memory (when the site says its size)
+  if (Number(res.headers.get('content-length')) > 300 * 1048576) throw new Error('Over 300 MB');
   const buf = Buffer.from(await res.arrayBuffer());
   if (buf.length > 300 * 1048576) throw new Error('Over 300 MB');
-  const ext = path.extname(u.pathname) || (/png/.test(type) ? '.png' : /gif/.test(type) ? '.gif' : /webp/.test(type) ? '.webp' : /mp4/.test(type) ? '.mp4' : /webm/.test(type) ? '.webm' : /jpe?g/.test(type) ? '.jpg' : '');
+  // the type the site sent wins over the address's extension (image.php?id=3, /photo.aspx, /media/1234)
+  const fromType = /png/.test(type) ? '.png' : /gif/.test(type) ? '.gif' : /webp/.test(type) ? '.webp' : /avif/.test(type) ? '.avif' : /svg/.test(type) ? '.svg' : /mp4/.test(type) ? '.mp4' : /webm/.test(type) ? '.webm' : /quicktime/.test(type) ? '.mov' : /jpe?g/.test(type) ? '.jpg' : '';
+  const urlExt = path.extname(u.pathname).toLowerCase();
+  const ext = /^\.(png|jpe?g|gif|webp|avif|svg|bmp|mp4|webm|mov|m4v|mkv)$/.test(urlExt) ? urlExt : fromType || urlExt;
   const file = path.join(MEDIA_DIR, `${stamp()}-${safeName(path.basename(u.pathname, path.extname(u.pathname)) || u.hostname)}${ext}`);
   fs.writeFileSync(file, buf);
   return { path: file, size: buf.length, type };
@@ -127,8 +134,8 @@ async function snapOnce(url, { width, height, wait, timeout }) {
 // Removes media no board uses any more (to the trash folder logic of the page: it passes the paths still in use).
 function unused(keep) {
   ensureDirs();
-  const used = new Set((keep || []).map((p) => path.resolve(p)));
-  return fs.readdirSync(MEDIA_DIR).map((n) => path.join(MEDIA_DIR, n)).filter((p) => !used.has(path.resolve(p)));
+  const used = new Set((keep || []).map((p) => norm(p)));
+  return fs.readdirSync(MEDIA_DIR).map((n) => path.join(MEDIA_DIR, n)).filter((p) => !used.has(norm(p)));
 }
 
 function registerIpc(ipcMain) {

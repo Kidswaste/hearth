@@ -288,7 +288,8 @@ function register(ipcMain, getWin, getSettings = () => ({})) {
     try {
       // a capture's GIF / trim goes next to it; anything made from the owner's own footage goes to captures/made
       const root = dir();
-      const inside = path.resolve(String(file)).startsWith(path.resolve(root) + path.sep);
+      const norm = (x) => (process.platform === 'linux' ? path.resolve(x) : path.resolve(x).toLowerCase()); // C:\ vs c:\
+      const inside = norm(String(file)).startsWith(norm(root) + path.sep);
       const o = inside && opts.here !== false ? {} : { dir: path.join(root, 'made') };
       return { ok: true, value: await FR.edit(String(op), String(file), args || {}, o) };
     } catch (err) { return { ok: false, error: err.message, code: err.code || null }; }

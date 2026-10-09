@@ -45,10 +45,14 @@ const toolCache = {};
 let overridesNow = {};
 function findTool(name, override) {
   if (override && exists(override)) return override;
-  if (toolCache[name] !== undefined) return toolCache[name];
+  // a miss is checked again after a minute (ffmpeg installed while Hearth runs: brew / winget), a hit is kept
+  const c = toolCache[name];
+  if (c !== undefined && (c || Date.now() - (toolCache[`${name}@`] || 0) < 60000)) return c;
+  toolCache[`${name}@`] = Date.now();
   const exe = IS_WIN ? `${name}.exe` : name;
   const dirs = [
-    ...(process.env.PATH || '').split(path.delimiter),
+    // Windows PATH entries can be quoted ("C:\\Program Files\\ffmpeg\\bin")
+    ...(process.env.PATH || '').split(path.delimiter).map((d) => d.trim().replace(/^"(.*)"$/, '$1')),
     ...(IS_MAC ? ['/opt/homebrew/bin', '/usr/local/bin', '/opt/local/bin', path.join(os.homedir(), 'bin')] : []),
     ...(IS_WIN ? ['C:\\ffmpeg\\bin', 'C:\\Program Files\\ffmpeg\\bin', 'C:\\ProgramData\\chocolatey\\bin', path.join(os.homedir(), 'scoop', 'shims'), path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WinGet', 'Links')] : ['/usr/bin', '/usr/local/bin']),
   ].filter(Boolean);
