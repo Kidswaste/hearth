@@ -419,6 +419,44 @@ const EditFX = (() => {
   // Duotones: two-color looks (shadows tinted by the wash, mono base)
   const DUOS = [['gold-black', '#ffc93b'], ['violet-night', '#7a4bff'], ['cyan-ink', '#2bd6ff'], ['rose', '#ff6b9a'], ['mint', '#6bffc8'], ['blood', '#c2142b'], ['ocean-duo', '#1f6bff'], ['amber', '#ffa31a']];
   for (const [n, c] of DUOS) LOOKS.push(L(`duo-${n}`, `Duotone: ${n.replace(/-/g, ' ')}`, 'Duotones', { mono: 1, tintColor: c, tintAmt: 0.75, contrast: 0.2 }));
+  LOOKS.push(
+    // social (made for phones: bright, clean skin, readable)
+    L('soc-clean-skin', 'Clean skin', 'Social', { exposure: 0.12, contrast: -0.05, saturation: -0.05, temp: 0.08, tint: 0.05, blur: 0.02 }),
+    L('soc-food', 'Food pop', 'Social', { saturation: 0.35, temp: 0.18, contrast: 0.15, sharpen: 0.25, exposure: 0.08 }),
+    L('soc-travel', 'Travel vivid', 'Social', { saturation: 0.4, contrast: 0.2, temp: 0.05, highlights: -0.1, shadows: 0.1 }),
+    L('soc-fitness', 'Fitness punch', 'Social', { contrast: 0.35, saturation: -0.15, sharpen: 0.4, temp: -0.05, vignette: 0.3 }),
+    L('soc-beauty', 'Beauty soft', 'Social', { exposure: 0.18, contrast: -0.12, tint: 0.12, blur: 0.04, fade: 0.06 }),
+    L('soc-product', 'Product white', 'Social', { exposure: 0.25, contrast: 0.12, saturation: 0.05, temp: -0.08, highlights: 0.12 }),
+    L('soc-vlog', 'Vlog warm', 'Social', { temp: 0.25, exposure: 0.08, saturation: 0.1, fade: 0.05 }),
+    L('soc-tech', 'Tech cool', 'Social', { temp: -0.25, contrast: 0.2, saturation: -0.1, sharpen: 0.3 }),
+    L('soc-fashion', 'Fashion matte', 'Social', { fade: 0.18, contrast: 0.1, saturation: -0.2, temp: 0.05, sharpen: 0.15 }),
+    L('soc-street', 'Street contrast', 'Social', { contrast: 0.45, saturation: -0.25, grain: 0.2, vignette: 0.35 }),
+    L('soc-night-out', 'Night out', 'Social', { exposure: -0.1, saturation: 0.35, tint: 0.2, contrast: 0.25, highlights: 0.15 }),
+    L('soc-real-estate', 'Bright interior', 'Social', { exposure: 0.35, shadows: 0.25, contrast: -0.05, temp: 0.05 }),
+    // decades
+    L('dec-1920', '1920s silent film', 'Decades', { mono: 1, sepia: 0.25, contrast: 0.35, grain: 0.6, vignette: 0.75, blur: 0.06, fade: 0.1 }),
+    L('dec-1950', '1950s Technicolor-style', 'Decades', { saturation: 0.45, contrast: 0.2, temp: 0.12, tint: 0.08, fade: 0.05 }),
+    L('dec-1960', '1960s print', 'Decades', { saturation: -0.1, temp: 0.2, fade: 0.2, grain: 0.25, tintColor: '#e8c37a', tintAmt: 0.1 }),
+    L('dec-2000', '2000s digicam', 'Decades', { exposure: 0.15, contrast: 0.25, saturation: 0.15, temp: -0.12, sharpen: 0.45 }),
+    L('dec-2010', '2010s photo filter', 'Decades', { fade: 0.22, temp: 0.2, contrast: -0.08, vignette: 0.35, saturation: -0.1 }),
+    // weather
+    L('wx-rain', 'Rainy day', 'Weather', { temp: -0.3, saturation: -0.3, contrast: 0.1, exposure: -0.15, tintColor: '#5f7a99', tintAmt: 0.12 }),
+    L('wx-heat', 'Heatwave', 'Weather', { temp: 0.7, exposure: 0.2, saturation: 0.1, fade: 0.12, blur: 0.02 }),
+    L('wx-haze', 'Haze', 'Weather', { fade: 0.35, contrast: -0.2, saturation: -0.15, exposure: 0.1 }),
+    L('wx-smog', 'Smog', 'Weather', { fade: 0.25, temp: 0.3, tint: -0.15, saturation: -0.35, contrast: -0.1 }),
+    L('wx-after-rain', 'After the rain', 'Weather', { saturation: 0.3, contrast: 0.2, temp: -0.1, sharpen: 0.25 }),
+    // sport
+    L('sport-arena', 'Arena lights', 'Sport', { contrast: 0.4, highlights: 0.2, saturation: 0.2, vignette: 0.4 }),
+    L('sport-grit', 'Gritty training', 'Sport', { mono: 0.5, contrast: 0.5, grain: 0.3, sharpen: 0.4, vignette: 0.5 }),
+    L('sport-pitch', 'Green pitch', 'Sport', { tint: -0.2, saturation: 0.3, contrast: 0.2 }),
+    L('sport-ice', 'Ice rink', 'Sport', { temp: -0.45, exposure: 0.2, contrast: 0.2, saturation: -0.1 }),
+  );
+  // Split tones: a wash plus the opposite white balance (warm wash / cool base and the reverse)
+  const SPLITS = [['orange-teal', '#ff8a2b', -0.35], ['teal-orange', '#1f8a99', 0.35], ['magenta-green', '#ff3bd8', -0.25], ['gold-blue', '#ffc93b', -0.4], ['blue-gold', '#3b6bff', 0.4], ['red-cyan', '#ff3b3b', -0.3], ['violet-amber', '#9a6bff', 0.35], ['pink-mint', '#ff6b9a', -0.2]];
+  for (const [n, c, temp] of SPLITS) LOOKS.push(L(`split-${n}`, `Split tone: ${n.replace('-', ' / ')}`, 'Split tones', { tintColor: c, tintAmt: 0.22, temp, contrast: 0.15 }));
+  // Pastels: lifted blacks, soft contrast, one color
+  const PASTELS = [['peach', '#ffb38a'], ['lilac', '#c8a2ff'], ['mint', '#9dffd0'], ['sky', '#9ccfff'], ['butter', '#ffe89a'], ['rose', '#ffb0c8'], ['sage', '#b8d8a8'], ['lavender', '#b8b0ff']];
+  for (const [n, c] of PASTELS) LOOKS.push(L(`pastel-${n}`, `Pastel: ${n}`, 'Pastels', { fade: 0.25, contrast: -0.15, saturation: -0.2, exposure: 0.15, tintColor: c, tintAmt: 0.2 }));
   const LOOK = Object.fromEntries(LOOKS.map((l) => [l.id, l]));
 
   // ---------- transitions ----------
@@ -658,6 +696,10 @@ const EditFX = (() => {
       T('black-crush', 'Crush to black and back', 'Light', null, (g, A, B, q, W, H) => { full(g, q < 0.5 ? A : B, W, H); g.globalAlpha = Math.sin(q * PI) ** 0.5; g.fillStyle = '#000'; g.fillRect(0, 0, W, H); g.globalAlpha = 1; }, 0.5, { expr: `if(lt(${p},0.5),A,B)*(1-pow(sin(${p}*PI),0.5))+${C3(yuv('#000000'))}*pow(sin(${p}*PI),0.5)` }),
       T('stretch-v', 'Stretch through (vertical)', 'Motion', null, (g, A, B, q, W, H) => { const S0 = q < 0.5 ? A : B; const k = 1 + 3 * Math.sin(q * PI); g.drawImage(S0, 0, (H - H * k) / 2, W, H * k); }, 0.4, { expr: `if(lt(${p},0.5),${pick('a', 'X', `(Y-H/2)/(1+3*sin(${p}*PI))+H/2`)},${pick('b', 'X', `(Y-H/2)/(1+3*sin(${p}*PI))+H/2`)})` }),
       ...[['white', '#ffffff'], ['cyan', '#22d3ee'], ['violet', '#9a6bff']].map(([n0, col]) => T(`edge-wipe-${n0}`, `Wipe with a ${n0} edge`, 'Wipe', null, (g, A, B, q, W, H) => { wipe('left')(g, A, B, q, W, H); g.fillStyle = col; g.fillRect(W * (1 - q) - W * 0.012, 0, W * 0.024, H); }, 0.5, { expr: `if(lt(abs(X-W*(1-${p})),W*0.012),${C3(yuv(col))},${AorB(`gt(X,W*(1-${p}))`)})` })),
+      ...[['red', '#ff2a2a'], ['green', '#22c55e'], ['blue', '#3b6bff']].map(([n0, col]) => T(`flash-${n0}`, `Flash (${n0})`, 'Dip', null, flash(col), 0.3, { expr: flashExpr(col) })),
+      ...[['gold', '#ffb020'], ['red', '#ff3b2b'], ['green', '#3bff8a'], ['white', '#fff4e0']].map(([n0, col]) => { const c3 = yuv(col); return T(`leak-${n0}`, `Light leak (${n0})`, 'Light', null, (g, A, B, q, W, H) => { dissolve(g, A, B, q, W, H); const [r, gg, b] = hex3(col).map((v) => Math.round(v * 255)); const gr = g.createLinearGradient(W, 0, 0, H); gr.addColorStop(0, `rgba(${r},${gg},${b},0)`); gr.addColorStop(0.5, `rgba(${r},${gg},${b},${(0.8 * Math.sin(q * PI)).toFixed(2)})`); gr.addColorStop(1, `rgba(${r},${gg},${b},0)`); g.globalCompositeOperation = 'screen'; g.fillStyle = gr; g.fillRect(0, 0, W, H); g.globalCompositeOperation = 'source-over'; }, 0.8, { expr: `min(255,A*P+B*${p}+(${C3(c3)}-if(eq(PLANE,0),16,128))*0.8*sin(${p}*PI)*(1-abs(((W-X)/W+Y/H)/2-0.5)*2))` }); }),
+      ...[['gold', '#ffc93b'], ['ember', '#ff5a1f'], ['pink', '#ff4fa3'], ['black', '#000000']].map(([n0, col]) => T(`edge-wipe-${n0}`, `Wipe with a ${n0} edge`, 'Wipe', null, (g, A, B, q, W, H) => { wipe('left')(g, A, B, q, W, H); g.fillStyle = col; g.fillRect(W * (1 - q) - W * 0.012, 0, W * 0.024, H); }, 0.5, { expr: `if(lt(abs(X-W*(1-${p})),W*0.012),${C3(yuv(col))},${AorB(`gt(X,W*(1-${p}))`)})` })),
+      ...[['top', 0.5, 0], ['bottom', 0.5, 1], ['left', 0, 0.5], ['right', 1, 0.5]].map(([n0, cx, cy]) => T(`iris-${n0}`, `Iris from the ${n0} edge`, 'Shape', null, (g, A, B, q, W, H) => { full(g, A, W, H); sub(g, () => { g.beginPath(); g.arc(cx * W, cy * H, Math.hypot(W, H) * q, 0, PI * 2); g.clip(); full(g, B, W, H); }); }, 0.6, { expr: AorB(`lt(hypot(X-${cx}*W,Y-${cy}*H),hypot(W,H)*${p})`) })),
       T('slide-fade-up', 'Slide and fade up', 'Push', null, (g, A, B, q, W, H) => { g.globalAlpha = 1 - q; g.drawImage(A, 0, -H * 0.2 * q, W, H); g.globalAlpha = q; g.drawImage(B, 0, H * 0.2 * (1 - q), W, H); g.globalAlpha = 1; }, 0.5, { expr: `${pick('a', 'X', `Y+H*0.2*${p}`)}*P+${pick('b', 'X', 'Y-H*0.2*P')}*${p}` }),
     ];
   }
@@ -875,6 +917,31 @@ const EditFX = (() => {
     if (!['red', 'violet', 'gold', 'white'].includes(n)) TITLE_STYLES.push(S(`boxed-${n}`, `Box (${n})`, 'Box colors', { box: c, color: ['lime', 'cyan', 'green'].includes(n) ? '#0a0a0a' : '#ffffff', pad: 0.35, size: 0.06, weight: 800, upper: true }));
     if (!['gold', 'white'].includes(n)) TITLE_STYLES.push(S(`caption-${n}`, `Caption (${n})`, 'Caption colors', { size: 0.045, weight: 800, y: 0.78, color: c, stroke: '#000', strokeW: 0.08 }));
   }
+  TITLE_STYLES.push(
+    // intro / motion design
+    S('intro-wide', 'Wide spaced capitals', 'Intro', { font: FONT_DISPLAY, weight: 600, size: 0.06, upper: true, tracking: 0.45 }),
+    S('intro-chrome', 'Chrome', 'Intro', { font: FONT_DISPLAY, weight: 800, size: 0.11, upper: true, color: '#e8edf5', shadow: 'rgba(40,60,90,0.9)', glow: '#9fb7d9' }),
+    S('intro-ember', 'Ember headline', 'Intro', { font: FONT_DISPLAY, weight: 800, size: 0.12, upper: true, color: '#fff1e0', glow: '#ff5a1f', tracking: 0.02 }),
+    S('intro-violet', 'Violet glow headline', 'Intro', { font: FONT_DISPLAY, weight: 800, size: 0.12, upper: true, color: '#f1e9ff', glow: '#9a6bff', tracking: 0.02 }),
+    S('intro-mono-tag', 'Mono tag', 'Intro', { font: FONT_MONO, weight: 600, size: 0.035, upper: true, tracking: 0.25, color: '#9ae6ff' }),
+    S('intro-stroke-fill', 'Stroke and fill', 'Intro', { size: 0.12, weight: 900, upper: true, color: '#ffc93b', stroke: '#0a0a0a', strokeW: 0.06 }),
+    S('intro-giant', 'Giant one word', 'Intro', { size: 0.22, weight: 900, upper: true, tracking: -0.04, line: 0.9 }),
+    S('intro-giant-outline', 'Giant outline word', 'Intro', { size: 0.22, weight: 900, upper: true, tracking: -0.04, color: 'rgba(0,0,0,0)', stroke: '#ffffff', strokeW: 0.025 }),
+    S('intro-serif-big', 'Big serif', 'Intro', { font: FONT_SERIF, weight: 700, size: 0.13, line: 1 }),
+    S('intro-tilted', 'Tilted bold', 'Intro', { size: 0.1, weight: 900, upper: true, rotate: -6 }),
+    S('intro-bottom-left', 'Bottom-left headline', 'Intro', { size: 0.08, weight: 900, upper: true, align: 'left', x: 0.07, y: 0.82, line: 0.95 }),
+    S('intro-top', 'Top headline', 'Intro', { size: 0.07, weight: 800, upper: true, y: 0.16 }),
+    // social hooks (the first second of a reel)
+    S('hook-top', 'Hook (top, boxed white)', 'Social hooks', { box: '#ffffff', color: '#0a0a0a', pad: 0.35, size: 0.05, weight: 800, y: 0.2 }),
+    S('hook-yellow', 'Hook (yellow, stroked)', 'Social hooks', { size: 0.07, weight: 900, color: '#ffe14d', stroke: '#000', strokeW: 0.09, y: 0.25, upper: true }),
+    S('hook-question', 'Question hook', 'Social hooks', { size: 0.065, weight: 900, color: '#ffffff', shadow: 'rgba(0,0,0,0.85)', y: 0.3 }),
+    S('hook-number', 'Big number', 'Social hooks', { size: 0.2, weight: 900, color: '#ffc93b', stroke: '#000', strokeW: 0.04 }),
+    S('hook-pov', 'POV line', 'Social hooks', { size: 0.045, weight: 700, color: '#ffffff', box: '#000000a0', pad: 0.4, y: 0.15, align: 'left', x: 0.06 }),
+    S('hook-red', 'Red alert', 'Social hooks', { box: '#e0202a', pad: 0.3, size: 0.06, weight: 900, upper: true, y: 0.22 }),
+    S('hook-subtitle', 'Two-line hook', 'Social hooks', { size: 0.06, weight: 900, upper: true, sub: 0.55, line: 1.1, y: 0.25 }),
+    S('hook-end-card', 'End card call to action', 'Social hooks', { size: 0.055, weight: 800, box: '#ffc93b', color: '#111111', pad: 0.4, y: 0.75 }),
+  );
+  for (const [n, c] of TCOLORS) TITLE_STYLES.push(S(`huge-${n}`, `Huge (${n})`, 'Huge colors', { size: 0.13, weight: 800, upper: true, tracking: -0.02, color: c }));
   const TSTYLE = Object.fromEntries(TITLE_STYLES.map((s) => [s.id, s]));
   // ---------- titles: animations ----------
   // unit: what moves on its own (all, line, word, char); stagger: how much of the animation time the units are
@@ -1007,6 +1074,16 @@ const EditFX = (() => {
     LT('glitch', 'Glitch', { weight: 900, upper: true, anim: 'glitch-letters', bar: '#ff3bd8' }),
     LT('words', 'Word by word', { weight: 800, anim: 'words-rise' }),
     LT('right-box', 'Box (right)', { align: 'right', x: 0.93, box: '#0c0d10e0', pad: 0.5, anim: 'box-reveal' }),
+    LT('bar-green', 'Green bar', { bar: '#22c55e', anim: 'wipe' }),
+    LT('bar-white', 'White bar', { bar: '#ffffff', anim: 'wipe' }),
+    LT('box-ember', 'Ember box', { box: '#ff5a1f', pad: 0.5, anim: 'box-reveal' }),
+    LT('box-cyan', 'Cyan box', { box: '#22d3ee', color: '#06141a', pad: 0.5, anim: 'box-reveal' }),
+    LT('glass-dark', 'Dark glass card', { box: 'rgba(10,12,16,0.6)', pad: 0.55, anim: 'fade-up' }),
+    LT('news-blue', 'News strap (blue)', { box: '#1f4bd8', pad: 0.45, upper: true, anim: 'slide-right' }),
+    LT('sport', 'Sport (italic, gold box)', { box: '#ffc93b', color: '#111111', italic: true, weight: 900, upper: true, pad: 0.45, anim: 'slide-right' }),
+    LT('outline', 'Outlined name', { color: 'rgba(0,0,0,0)', stroke: '#ffffff', strokeW: 0.05, weight: 900, upper: true, anim: 'fade-up' }),
+    LT('neon-violet', 'Neon (violet)', { glow: '#9a6bff', anim: 'neon-flicker' }),
+    LT('top-right', 'Top right tag', { y: 0.1, align: 'right', x: 0.93, size: 0.035, upper: true, box: '#000000a0', pad: 0.45, anim: 'slide-left' }),
   ];
   const LTHIRD = Object.fromEntries(LOWER_THIRDS.map((l) => [l.id, l]));
 
@@ -1156,6 +1233,20 @@ const EditFX = (() => {
     M('flicker', 'Flicker', 'Hits', (d) => { const k = []; const n0 = Math.max(4, Math.round(d * 10)); for (let i = 0; i <= n0; i += 1) k.push([(d * i) / n0, i % 3 === 1 ? 0.25 : 1, 'hold']); return { opacity: k }; }),
     M('fade-in-out', 'Fade in and out', 'Enter', (d) => ({ opacity: [[0, 0, 'ease'], [Math.min(0.5, d / 3), 1, 'linear'], [Math.max(d / 2, d - 0.5), 1, 'ease'], [d, 0]] })),
   );
+  MOTIONS.push(
+    ...[['top', 0, -1], ['bottom', 0, 1], ['left', -1, 0], ['right', 1, 0]].map(([n, sx, sy]) => M(`kb-${n}`, `Ken Burns toward the ${n}`, 'Slow', (d) => ({ scale: [[0, 1.05, 'easeInOut'], [d, 1.22]], x: [[0, 0, 'easeInOut'], [d, sx * 0.07]], y: [[0, 0, 'easeInOut'], [d, sy * 0.07]] }))),
+    M('spin-slow', 'Slow full turn', 'Slow', (d) => ({ rotate: [[0, 0, 'linear'], [d, 360]] })),
+    M('tilt-left', 'Tilted left', 'Layout', () => ({ rotate: [[0, -6]], scale: [[0, 1.12]] })),
+    M('tilt-right', 'Tilted right', 'Layout', () => ({ rotate: [[0, 6]], scale: [[0, 1.12]] })),
+    M('zoom-hold', 'Zoom then hold', 'Slow', (d) => ({ scale: [[0, 1, 'expoOut'], [Math.min(1, d / 2), 1.15]] })),
+    M('fade-scale-in', 'Fade and settle in', 'Enter', (d) => ({ opacity: [[0, 0, 'easeOut'], [Math.min(0.6, d / 2), 1]], scale: [[0, 0.9, 'expoOut'], [Math.min(0.6, d / 2), 1]] })),
+    M('pop-out-exit', 'Pop out (exit)', 'Exit', (d) => ({ scale: [[Math.max(0, d - 0.4), 1, 'backIn'], [d, 0]] })),
+    M('slide-out-top', 'Slide out to the top', 'Exit', (d) => ({ y: [[Math.max(0, d - 0.6), 0, 'expoIn'], [d, -1]] })),
+    M('slide-out-bottom', 'Slide out to the bottom', 'Exit', (d) => ({ y: [[Math.max(0, d - 0.6), 0, 'expoIn'], [d, 1]] })),
+    M('blur-scale-exit', 'Fade and grow out (exit)', 'Exit', (d) => ({ opacity: [[Math.max(0, d - 0.5), 1, 'easeIn'], [d, 0]], scale: [[Math.max(0, d - 0.5), 1, 'easeIn'], [d, 1.3]] })),
+    M('shake-soft', 'Soft handheld shake', 'Energy', (d) => { const k = []; const n = Math.max(4, Math.round(d * 6)); for (let i = 0; i <= n; i += 1) k.push([(d * i) / n, (Math.sin(i * 2.3) * 0.006), 'easeInOut']); return { scale: [[0, 1.05]], x: k }; }),
+    M('wobble', 'Wobble (rotation)', 'Energy', (d) => { const k = []; const n = Math.max(4, Math.round(d * 4)); for (let i = 0; i <= n; i += 1) k.push([(d * i) / n, i % 2 ? 2.5 : -2.5, 'easeInOut']); return { rotate: k, scale: [[0, 1.08]] }; }),
+  );
   const MOTION = Object.fromEntries(MOTIONS.map((m) => [m.id, m]));
 
   // ---------- speed ramps ----------
@@ -1176,6 +1267,14 @@ const EditFX = (() => {
     R('pulse', 'Pulse (fast · slow · fast)', [2, 0.5, 2, 0.5, 2]),
     R('stutter', 'Stutter', [1, 0.25, 1, 0.25, 1, 0.25]),
     R('drop-hit', 'Drop hit (fast, freeze-ish, fast)', [2.5, 2, 0.3, 0.25, 1.5, 2.5]),
+    R('quarter', 'Quarter speed', [0.25]),
+    R('triple', 'Triple speed', [3]),
+    R('quadruple', 'Four times', [4]),
+    R('wind-up', 'Wind up (slow → fast)', [0.5, 0.8, 1.5, 3]),
+    R('brake', 'Brake (fast → slow)', [3, 1.5, 0.6, 0.3]),
+    R('surge', 'Surge (1 → 4 → 1)', [1, 2, 4, 2, 1]),
+    R('dip', 'Dip (fast, slow, fast)', [2, 0.3, 2]),
+    R('heartbeat', 'Heartbeat', [1.5, 0.4, 1.5, 0.4]),
   ];
   const RAMP = Object.fromEntries(RAMPS.map((r) => [r.id, r]));
 
