@@ -68,6 +68,7 @@ async function tryKey(area, line, c, { sig, before, after }) {
   const m0 = mutations; await wait(250); const idle = mutations - m0;
   const e0 = errs.length;
   const m1 = mutations;
+  const focusAt = `${document.activeElement?.tagName}.${String(document.activeElement?.className || '').slice(0, 24)}`;
   await press(c);
   await wait(c.slow ? 900 : 450);
   const s1 = sig(); const g1 = await globalSig(); const u1 = uiSig();
@@ -75,7 +76,7 @@ async function tryKey(area, line, c, { sig, before, after }) {
   const worked = s1 !== s0 || u1 !== u0 || dm > Math.max(3, idle * 3);
   out.pressed += 1;
   const why = NOOP[`${area}|${c.label}`];
-  if (worked) out.worked += 1; else if (why) (out.noop ||= []).push(`${area} · ${c.label}: ${why}`); else out.dead.push(`${area} · ${c.label} · ${line.what}`);
+  if (worked) out.worked += 1; else if (why) (out.noop ||= []).push(`${area} · ${c.label}: ${why}`); else out.dead.push(`${area} · ${c.label} · ${line.what} (keys at ${focusAt})`);
   if (g1 !== g0 && !(area === 'Everywhere' || OWN_GLOBAL.test(line.what) || OWN_GLOBAL.test(c.label))) {
     const a = JSON.parse(g0); const b = JSON.parse(g1);
     out.globalToo.push(`${area} · ${c.label} (${line.what}) also changed: ${Object.keys(a).filter((k) => JSON.stringify(a[k]) !== JSON.stringify(b[k])).map((k) => `${k} ${JSON.stringify(a[k])}→${JSON.stringify(b[k])}`).join(', ')}`);
@@ -84,7 +85,10 @@ async function tryKey(area, line, c, { sig, before, after }) {
   if (after) await after(c, line, { s0, s1, g0, g1 });
 }
 // keys that rightly do nothing in this test's setup (no music: no beats or sections)
-const NOOP = { 'Editor|Ctrl+C': 'copies to the editor\'s own clipboard (checked by Ctrl+V)',  'Editor|,': 'no music, no beats (by design)', 'Editor|.': 'no music, no beats (by design)', 'Video Review|,': 'no music, no beats', 'Video Review|.': 'no music, no beats', 'Video Review|<': 'no music, no sections', 'Video Review|>': 'no music, no sections' };
+const NOOP = {
+  'Lab|Space': 'no song loaded here (journey-lab plays one)', 'Lab|T': 'taps count while a song plays (journey-lab)', 'Lab|Ctrl+Enter': 're-runs the layers: nothing to see change', 'Lab|Ctrl+Z': 'nothing to undo yet', 'Lab|Esc': 'only from a Lab tool tab', 'Lab|.': 'only while frozen',
+  'Capture|Esc': 'no tour running', 'Video Review|\\': 'swaps A and B only while comparing', 'Editor|Alt+↑': 'one overlay track: nowhere to move', 'Editor|Alt+↓': 'one overlay track: nowhere to move',
+  'Editor|Ctrl+C': 'copies to the editor\'s own clipboard (checked by Ctrl+V)',  'Editor|,': 'no music, no beats (by design)', 'Editor|.': 'no music, no beats (by design)', 'Video Review|,': 'no music, no beats', 'Video Review|.': 'no music, no beats', 'Video Review|<': 'no music, no sections', 'Video Review|>': 'no music, no sections' };
 const closeAll = async () => {
   for (const d of [...document.querySelectorAll('dialog[open]')]) { try { d.close(); } catch { /* gone */ } }
   try { hideMenu(); } catch { /* none */ }
@@ -110,7 +114,10 @@ async function runArea(area, opts) {
     for (const c of cs) {
       if (SKIP_ALL.test(c.label) || opts.skip?.test(c.label)) { out.skipped.push(`${area} · ${c.label}`); continue; }
       note(`${area} · ${c.label}`);
+      const d0 = out.dead.length;
       try { await within(tryKey(area, line, c, opts), 15000, 'the key'); } catch (err) { out.errors.push(`${area} · ${c.label}: ${err.message}`); }
+      // nothing seen: once more on a fresh surface (an earlier key's leftovers can swallow it), then it counts
+      if (out.dead.length > d0 && opts.reset) { out.dead.pop(); out.pressed -= 1; await closeAll(); try { await within(opts.reset(), 20000, 'a fresh surface'); await within(tryKey(area, line, c, opts), 15000, 'the key'); } catch (err) { out.errors.push(`${area} · ${c.label}: ${err.message}`); } }
       await closeAll();
       if (opts.restore) { try { await within(opts.restore(c, line), 15000, 'putting things back'); } catch (err) { out.errors.push(`${area} · ${c.label}: ${err.message}`); } }
     }
@@ -128,8 +135,14 @@ for (const f of ['frames_a_30.mp4', 'frames_b_30.mp4']) await window.hub.fs.copy
 if (AREAS.includes('Board')) {
   activate('tool:board'); await until(() => Board.isMounted() && Board.visible());
   await Board.create('Keys check'); await wait(300);
-  const [img] = await Board.addFiles([`${FIX}/golden-hour.jpg`]); const [clip] = await Board.addFiles([`${FIX}/cuts.mp4`]);
-  const note = Board.addNote('a note'); const fr = Board.addFrame?.({ title: 'Frame' }) || null; await wait(800);
+  let img; let clip; let note; let fr;
+  const fresh = async () => {
+    await Board.create(`Keys check ${Date.now() % 1000}`, { quiet: true }); await wait(300);
+    [img] = await Board.addFiles([`${FIX}/golden-hour.jpg`]); [clip] = await Board.addFiles([`${FIX}/cuts.mp4`]);
+    note = Board.addNote('a note'); fr = Board.addFrame?.({ title: 'Frame' }) || null;
+    await until(() => clip.vibe?.cuts, 20000); await wait(300);
+  };
+  await fresh();
   const B = Board._.S;
   const pick = (c) => {
     if (/^(,|\.|Shift\+\.|Shift\+,)$/.test(c.label) || /clip/.test(c.what || '')) return [clip.id];
@@ -141,6 +154,7 @@ if (AREAS.includes('Board')) {
   let snap = null;
   await runArea('Board', {
     sig,
+    reset: fresh,
     skip: /^(E|Ctrl\+V)$/, // E opens the system eyedropper (a native picker); Ctrl+V needs the clipboard
     before: async (c) => {
       if (/^Ctrl\+Shift\+G$/.test(c.label)) { Board.select([img.id, note.id]); Board.group?.(); }
@@ -197,6 +211,8 @@ if (AREAS.includes('Video Review') || AREAS.includes('Editor')) {
         if (/^Ctrl\+V$/.test(c.label)) { focusRoot(); await press(one('Ctrl+C')); await wait(150); }
         VideoCut.goto(1.5); await wait(150);
         if (c.label === 'K') { VideoCut.play(); await wait(300); } // K stops: playing first
+        if (c.label === 'X') VideoCut.setMark(0.5, 2.5); // clears a range: one first
+        if (/^Alt\+[,.]$/.test(c.label)) { VideoCut.goto(2); VideoCut.split(); VideoCut.select(1); } // slip needs media on both sides
         if (c.label === 'Shift+E') { VideoCut.goto(2); VideoCut.split(); VideoCut.goto(1.5); await wait(150); } // a cut with media on both sides
         if (c.label === '\\') { VideoCut.centerView?.(); focusRoot(); await press(one('=')); await press(one('=')); await wait(200); } // fit: zoomed in first
         if (/^Alt\+[←→↑↓]$/.test(c.label)) { const lay = (VideoCut.edit.tracks || []).flatMap((t) => t.items)[0]; if (lay) VideoCut.selectIds([lay.id]); }
@@ -230,7 +246,7 @@ if (AREAS.includes('Capture')) {
       c.slow = where === 'global';
       if (where === 'player') { await CaptureView.open(vid); await until(() => document.querySelector('dialog[open].cap-view video')?.readyState >= 2, 5000); document.querySelector('dialog[open].cap-view')?.focus(); }
       if (where === 'picture') { await CaptureView.open(shotR.path); await wait(400); document.querySelector('dialog[open].cap-view')?.focus(); }
-      if (where === 'annotate') { await CaptureAnnotate.open(shotR.path); await wait(500); document.querySelector('dialog[open].cap-ann canvas, dialog[open].cap-ann')?.focus?.(); }
+      if (where === 'annotate') { if (!document.querySelector('dialog[open].cap-ann')) CaptureAnnotate.open(shotR.path); await until(() => document.querySelector('dialog[open].cap-ann'), 4000); await wait(300); document.querySelector('dialog[open].cap-ann canvas, dialog[open].cap-ann')?.focus?.(); } // open() resolves only when the annotator closes
       if (/^Ctrl\+Alt\+P$/.test(c.label)) { await Capture.record({ target: 'composer', countdown: 0, mp4: false, audio: 'none' }); await wait(1200); }
     },
     restore: async (c) => {

@@ -289,6 +289,10 @@ const CmdBar = (() => {
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === ';' || e.code === 'Semicolon')) { e.preventDefault(); e.stopPropagation(); if (e.shiftKey) help(); else toggle(); }
   }, true);
+  // F1 anywhere: every command (the keys sheet and the help promise it; it only worked inside the command bar)
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'F1' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.defaultPrevented && !(bar && bar.contains(e.target))) { e.preventDefault(); help(); }
+  });
   window.hub.onShortcut?.((s) => { if (s?.key === ';') { if (s.shift) help(); else toggle(); } }); // Ctrl+Shift+; → the help view
 
   // ---------- help view ----------

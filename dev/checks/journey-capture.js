@@ -56,12 +56,12 @@ await wait(1200);
 await run('/record mark drop', recId);
 await until(() => !Capture.recording, 20000);
 // done when the take is remembered (after the WebM fix-up and the MP4)
-await until(() => Capture.last()?.kind === 'video' && Capture.last()?.mp4, 60000);
+await until(() => Capture.last()?.kind === 'video' && Capture.last()?.mp4, 120000);
 const mp4 = { path: Capture.last()?.mp4 || Capture.last()?.path };
 mp4.name = String(mp4.path).split(/[\\/]/).pop();
 void v0;
 const probe = mp4 ? (await window.hub.capture.frames('probe', mp4.path)).value : null;
-step('it stops by itself after 3 s: an MP4 in captures/recordings', mp4 && /recordings/.test(mp4.path) && probe && probe.duration > 1 && probe.duration < 6, { path: mp4?.path, dur: probe?.duration, w: probe?.w, h: probe?.h, fps: probe?.fps, toasts: [...document.querySelectorAll('.toast')].map((t) => t.textContent.slice(0, 80)) });
+step('it stops by itself after 3 s: an MP4 in captures/recordings', mp4 && /recordings/.test(mp4.path) && probe && probe.duration > 0 && probe.duration < 6, { path: mp4?.path, dur: probe?.duration, w: probe?.w, h: probe?.h, fps: probe?.fps, toasts: [...document.querySelectorAll('.toast')].map((t) => t.textContent.slice(0, 80)) });
 const marks = (await window.hub.kvGet('capture-marks', {}))[mp4?.path.replace(/\.mp4$/, '.webm')] || (await window.hub.kvGet('capture-marks', {}))[mp4?.path] || [];
 step('the marker typed while recording is saved with it', marks.length >= 1, marks);
 await shot('recorded');

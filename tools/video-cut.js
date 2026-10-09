@@ -2097,9 +2097,9 @@ const VideoCut = (() => {
       if (jobs.length) {
         titleDir = join(typeof output === 'string' ? dirOf(output.includes('%') ? dirOf(output) : output) : join(homeDir() || dirOf(mainSrc(edit) || ''), 'exports'), `.hearth-titles-${Date.now().toString(36)}`);
         const t = toast('Drawing the titles…', { timeout: 0 });
-        try { titles = await VideoComp.renderTitles(jobs, Math.round(w0 / 2) * 2, Math.round(h0 / 2) * 2, F, titleDir, (pct) => { t.querySelector('span').textContent = `Drawing the titles… ${Math.round(pct * 100)}%`; }); } finally { t.remove(); }
+        try { titles = await VideoComp.renderTitles(jobs, Math.round(w0 / 2) * 2, Math.round(h0 / 2) * 2, F, titleDir, (pct) => { t.querySelector('span').textContent = `Drawing the titles… ${Math.round(pct * 100)}%`; }); } catch (err) { window.hub.video.rmtemp?.(titleDir).catch(() => {}); throw err; } finally { t.remove(); }
       }
-      g = CutFF.args(edit, info, { w: w0, h: h0, fps: F }, { preset: p, fit, offset: host.S.overlay.cropOffset, range, stills, stillsExt, titles, presetFilters: V.presetFilters, codecArgs: V.codecArgs });
+      try { g = CutFF.args(edit, info, { w: w0, h: h0, fps: F }, { preset: p, fit, offset: host.S.overlay.cropOffset, range, stills, stillsExt, titles, presetFilters: V.presetFilters, codecArgs: V.codecArgs }); } catch (err) { if (titleDir) window.hub.video.rmtemp?.(titleDir).catch(() => {}); throw err; }
     } else {
       // title cards need their pictures
       for (const c of edit.clips) if (c.kind === 'title' && !c.img) c.img = await titleImage(c.text || 'Title', c);
@@ -2111,8 +2111,12 @@ const VideoCut = (() => {
       if (p && !sp) g = CutFF.args(edit, info, { ...canvas }, { preset: p, fit, offset: host.S.overlay.cropOffset, range, stills, presetFilters: V.presetFilters, codecArgs: V.codecArgs });
     }
     const final = typeof output === 'function' ? output(g) : output;
-    const job = await host.startJob({ label: label || `Edit → ${base(final)}`, input: g.inputs[0] || mainSrc(edit), output: final, args: [...g.args, 'OUTPUT'], duration: g.duration, library });
-    if (job && titleDir) job.done.then(() => window.hub.video.rmtemp?.(titleDir).catch(() => {}));
+    // the title frames (a temp folder next to the export) go away however the render ends: done, failed, cancelled,
+    // or never started (they used to stay next to your footage when the job failed or didn't start)
+    const dropTitles = () => { if (titleDir) window.hub.video.rmtemp?.(titleDir).catch(() => {}); };
+    let job;
+    try { job = await host.startJob({ label: label || `Edit → ${base(final)}`, input: g.inputs[0] || mainSrc(edit), output: final, args: [...g.args, 'OUTPUT'], duration: g.duration, library }); } catch (err) { dropTitles(); throw err; }
+    if (job) Promise.resolve(job.done).then(dropTitles, dropTitles); else dropTitles();
     return job;
   }
   // Renders the edit. preset: a VideoData / EditFX preset id (social sizes, gif, webm, master, small files, audio…)

@@ -909,6 +909,14 @@ const Capture = (() => {
       try { fin = await api().finish({ path: p, mp4: Boolean(r.opts.mp4 || r.final), fps: r.opts.fps, id: r.id, size: r.final }); } catch (err) { fin.error = err.message; } finally { busy?.remove(); }
       const main = fin.mp4 || fin.webm || p;
       const marks = r.marks;
+      // an encoder that fell behind (a busy machine, a software codec) keeps only the first frames: a 6 s take came
+      // out 0.3 s long without a word. Say so, and the next take uses another codec after two of them
+      if (fin.duration != null && duration > 1.5 && fin.duration < duration * 0.5 && !r.pausedMs) {
+        const codec = String(r.mime || '').match(/codecs=(\w+)/)?.[1];
+        if (codec && !r.opts.codec) codecStrikes[codec] = (codecStrikes[codec] || 0) + 1;
+        fin.short = `Only ${fin.duration.toFixed(1)} s of ${duration.toFixed(1)} s were recorded: the computer was too busy for the ${codec ? codec.toUpperCase() : 'video'} encoder. Try a lower frame rate or size (/record 30fps 720p).`;
+        toast(fin.short, { type: 'error', timeout: 12000 });
+      }
       if (r.opts.gif && typeof FrameRead !== 'undefined') { try { const g = await FrameRead.edit(fin.webm || main, 'gif', { fps: r.opts.fps || 15 }, { quiet: true }); fin.gif = g.path; } catch (err) { fin.gifError = err.message; } }
       if (marks.length) { const all = await window.hub.kvGet('capture-marks', {}); all[main] = marks; if (fin.webm && fin.webm !== main) all[fin.webm] = marks; window.hub.kvSet('capture-marks', all); }
       if (typeof Review !== 'undefined') { try { Review.noteRecording(main); } catch { /* the library is a bonus */ } }
