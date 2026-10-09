@@ -105,3 +105,5 @@ is settled (the one that has the focus wins; the other stays reachable as writte
 58. Fixed (dev): the journeys' clicks landed on the row above in a menu that was still springing open (round 7's menu animation moves the rows for ≈ 150 ms): `dev/checks/editor.js` picked "Opacity ›" instead of "Transition in ›". Clicks wait for a menu, flyout, dialog or the keys sheet to finish opening; `J.key` knows Home, End, PgUp, PgDn, F1, F2.
 59. Fixed: pasting (⌘/Ctrl+V) into a capture's annotator, a dialog, the drawer or the keys sheet open over the board also pasted onto the board behind it. The window on top keeps its paste.
 60. Fixed: Space in a capture player or dialog open over the board also switched the board into its "hand" (pan) mode.
+61. Fixed (Mac): on the board, ⌘+drag didn't move without snapping (it read Ctrl only, and Ctrl+click is the Mac's right-click), and ⌘+wheel didn't zoom. Both take ⌘ now.
+62. Fixed (Mac): finishing a capture region with ⌘ held (to keep adjusting it with the arrows) took the shot at once; it waits like Ctrl does on Windows.

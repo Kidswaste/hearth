@@ -284,7 +284,7 @@ const Capture = (() => {
         if (!start) return;
         const dragged = rect && rect.width > 6 && rect.height > 6;
         start = null;
-        if (dragged && !e.ctrlKey) { finish({ rect, el: null }); return; } // Ctrl held: adjust with the arrows, Enter takes it
+        if (dragged && !e.ctrlKey && !e.metaKey) { finish({ rect, el: null }); return; } // Ctrl held: adjust with the arrows, Enter takes it
         if (!dragged) { const n = under(e.clientX, e.clientY); const r = n && rectOf(n); if (r) finish({ rect: r, el: n }); }
       });
       ov.addEventListener('contextmenu', (e) => { e.preventDefault(); finish(null); });

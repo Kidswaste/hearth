@@ -752,7 +752,7 @@ const Board = (() => {
       if (!drag.moved && Math.hypot(dx, dy) * S.view.z < 3) return;
       if (!drag.moved) { drag.moved = true; if (!drag.undoDone) pushUndo('move'); stopAllPreviews(); }
       if (e.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; } // one axis
-      const snapped = e.ctrlKey ? { dx, dy, gx: null, gy: null } : snapMove(drag, dx, dy);
+      const snapped = (e.ctrlKey || e.metaKey) ? { dx, dy, gx: null, gy: null } : snapMove(drag, dx, dy);
       for (const it of drag.items) { const s = drag.start.get(it.id); it.x = s.x + snapped.dx; it.y = s.y + snapped.dy; const n = S.nodes.get(it.id); if (n) n.style.transform = `translate(${it.x}px, ${it.y}px)${it.rot ? ` rotate(${it.rot}deg)` : ''}`; }
       showGuides(snapped.gx, snapped.gy);
       Board._.onMoveFrame?.(drag.items);
@@ -796,7 +796,7 @@ const Board = (() => {
     const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY; const dx = e.deltaMode === 1 ? e.deltaX * 16 : e.deltaX;
     // pinch on a trackpad and Ctrl+wheel zoom; a mouse wheel zooms too (Settings: wheel pans), two fingers pan
     const mouseWheel = e.deltaMode === 1 || (dx === 0 && Math.abs(dy) >= 50 && Number.isInteger(dy));
-    if (e.ctrlKey) { zoomAt(e.clientX, e.clientY, Math.exp(-Math.max(-60, Math.min(60, dy)) * 0.012), false); return; }
+    if (e.ctrlKey || e.metaKey) { zoomAt(e.clientX, e.clientY, Math.exp(-Math.max(-60, Math.min(60, dy)) * 0.012), false); return; }
     if (mouseWheel && prefs().wheel !== 'pan' && !e.shiftKey) { zoomAt(e.clientX, e.clientY, Math.exp(-Math.max(-240, Math.min(240, dy)) * 0.0022), true); return; }
     if (e.shiftKey && !dx) panBy(-dy, 0); else panBy(-dx, -dy);
   }
