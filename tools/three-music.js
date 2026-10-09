@@ -8,6 +8,7 @@
 const ThreeMusic = (() => {
   let lab = null; // { player, selCtl, layers, selectedLayer, triggers, live }
   const offered = new Set(); // songs + sketches already offered "Make it react" this session
+  const noted = new Set(); // songs whose "found" note was shown this session
   let current = null; // the trigger preset in use (picked from the song, or by you)
   let guess = null; // the analysis' style pick { preset, why, conf }
   let reactUndo = null; // [{ layer, key, prev }] the bindings before the last "Make it react"
@@ -114,10 +115,14 @@ const ThreeMusic = (() => {
     if (drop != null) parts.push(`drop at ${fmt(drop)}`);
     if (picked) parts.push(`triggers: ${picked.preset}`);
     // the sketch may still be starting: its sliders show up a moment later
+    // once per song and sketch this session (switching sketches or chats reloads songs: no note every time)
     setTimeout(() => {
       const key = `${p.path}|${lab.layers().map((L) => L.id).join(',')}`;
-      const plan = !offered.has(key) && !anyFollows() ? reactPlan() : [];
+      if (offered.has(key)) return;
       offered.add(key);
+      const plan = !anyFollows() ? reactPlan() : [];
+      if (!plan.length && noted.has(p.path)) return;
+      noted.add(p.path);
       toast(parts.join(' · '), plan.length ? { timeout: 9000, action: { label: '✦ Make it react', fn: () => reactToast(makeItReact()) } } : { timeout: 4000 });
     }, 1200);
   }
