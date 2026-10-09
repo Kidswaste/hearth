@@ -161,7 +161,10 @@ function register(ipcMain, getWin, getSettings = () => ({})) {
   const writers = new Map();
   ipcMain.handle('capture:recOpen', (_e, o = {}) => {
     const folder = path.join(dir(), 'recordings');
-    const final = uniquePath(folder, safe(o.name) || `Hearth ${stamp()}`, o.ext || 'webm');
+    // free as a WebM *and* as the MP4 made from it (a named take whose WebM went to the Trash had its MP4 replaced)
+    const baseName = safe(o.name) || `Hearth ${stamp()}`;
+    let final = uniquePath(folder, baseName, o.ext || 'webm');
+    for (let i = 2; fs.existsSync(final.replace(/\.\w+$/, '.mp4')) && i < 1000; i += 1) final = path.join(folder, `${baseName} (${i}).${o.ext || 'webm'}`);
     const part = final.replace(/\.(\w+)$/, '.part.$1');
     const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     writers.set(id, { fd: fs.openSync(part, 'w'), part, final, bytes: 0 });
