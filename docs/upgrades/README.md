@@ -25,6 +25,7 @@ line count is lower than the number of upgrades).
 | Jam (round 4): `/jam`, Claude and Astra take turns making a music visual in the Lab (Astra art-directs from a picture), one card, undo per round, best round kept | [jam.md](jam.md) | 31 |
 | Scenes (round 4): each director chat owns its scene, switching chats switches it, a color + mark per chat, directors work on their own scene (backstage when it isn't on screen), `/scene` | [scenes.md](scenes.md) | 33 |
 | Simplify (round 4): fewer controls on screen (357 → 180 on the main surfaces), short menus with More…, `/decide` lets Astra choose a look / effect / frame size / app look with Undo | [simplify.md](simplify.md) | 27 |
+| Smooth (round 5): Video Review, chats, node editor, Lab sliders / FX thumbnails and the meter measured and made cheaper (playhead on the compositor, auto-scroll that never fights you, wires patched in place, no blur over moving content); before → after numbers | [smooth.md](smooth.md) | 31 |
 | **Total** | | **3,303** |
 
 ## Start here
