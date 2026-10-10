@@ -168,7 +168,7 @@ function compPlan(msg) {
   const part = /^Comp part (\d+)\/(\d+)/.exec(head);
   if (part) {
     const n = Number(part[1]);
-    const pause = /comp-slow/.test(msg) ? 9000 : 2500;
+    const pause = /comp-slow/.test(msg) ? 30000 : 2500; // comp-slow: a draft that stays (the dispatch check looks at it)
     return { mcpCalls: [['three_set_code', { code: compCode(n, 'draft'), wait: 0.6 }], ['sleep', pause], ['three_set_code', { code: compCode(n, 'final'), wait: 0.6 }]],
       text: `Built part ${n}: a ${COMP_COLORS[(n - 1) % COMP_COLORS.length]} field with a white bar sweeping across on the scene's timeline.` };
   }

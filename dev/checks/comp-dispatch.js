@@ -52,7 +52,8 @@ async function at(t) { if (P.playing) P.toggle(false); P.seek(t); await until(as
 Native.newChat(agent.id);
 await wait(1500);
 const t0 = performance.now();
-await Native.send(agent.id, 'comp: dispatch embers gathering into a red field | astra: a blue field that holds');
+// comp-slow: each part's draft stays 30 s (the first look at the main scene can take 30 s while the precomps mount; 2.5 s was a coin toss)
+await Native.send(agent.id, 'comp: dispatch embers gathering into a red field comp-slow | astra: a blue field that holds comp-slow');
 const M = H.activeChat[agent.id];
 const parts = () => CompDispatch.cards().at(-1)?.parts || [];
 await until(() => parts().length === 2, 60000);
