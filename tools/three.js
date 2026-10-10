@@ -3336,7 +3336,8 @@ ${code}
         const mine = (url) => { prev?.(url); resolve(url); };
         pendingShot = mine;
         box.send({ type: 'screenshot', tag: 'get' });
-        setTimeout(() => { if (pendingShot === mine) { pendingShot = null; mine(null); } }, 5000);
+        // a slow frame (a heavy scene, a shader still compiling, software rendering) is not "not rendering": wait 15 s
+        setTimeout(() => { if (pendingShot === mine) { pendingShot = null; mine(null); } }, 15000);
       }),
     };
     api.runSketch = run;
