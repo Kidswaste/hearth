@@ -705,6 +705,8 @@ renderer.setAnimationLoop((now) => {
 
   return {
     identity, linkOf, ownerOf, link, unlink, relink, routeThree, glyphFor, sync, paintAll, starter,
+    // comp-dispatch.js: a chat (made in the background) gets a fresh scene of its own, in its color, not opened
+    fresh(chatId) { const sk = freshScene(chatId); link(chatId, sk.id, { rename: false }); data.links[chatId].auto = sk.name; save(); return sk; },
     // scene stills: the row picture of a chat (jam rounds and backstage edits refresh it), and the switch's fade
     setThumb, thumbOf, openScene, markToast, noteTitle,
     // tools/three.js at start: the sketch of the chat on screen, if it owns one (else null)

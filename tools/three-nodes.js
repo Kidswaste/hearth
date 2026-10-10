@@ -1487,7 +1487,8 @@ let ${id}Travel = 0;`);
     host.classList.add('tn-host');
     window.ShaderNodes?.setLabHook?.(hook); // shader-node layers write back to the Lab through this hook
     let mode = store.get(MODE_KEY, 'code');
-    let state = 'none'; // none | ok | edited | code (no graph) | outline
+    let state = 'none'; // none | ok | edited | code (no graph) | outline | precomp (tools/three-comp.js)
+    let pcLayer = null; // the precomp layer shown as one node
     let applied = null; // the code we wrote last (so our own writes aren't read back)
     let layerKey = null;
     const graphCache = new Map(); // layer → its last graph
@@ -1546,6 +1547,17 @@ let ${id}Travel = 0;`);
       const sameLayer = k === layerKey;
       layerKey = k;
       if (!force && sameLayer && code === applied) return;
+      // a precomp (another scene as this layer, tools/three-comp.js): one node, its knobs are the precomp's
+      const pcg = typeof ThreeComp !== 'undefined' ? ThreeComp.nodeGraph(code) : null;
+      if (pcg) {
+        state = 'precomp'; pcLayer = pcg.layerId;
+        empty.hidden = true;
+        view.setReadOnly(false);
+        view.setGraph(pcg.graph, { history: false });
+        setBanner(pcg.note, '', pcg.buttons || []);
+        view.setStatus(pcg.status || '');
+        return;
+      }
       // a layer whose graph belongs to another node editor (Shader nodes): offer that editor
       const other = NodeView.extract(code)?.graph;
       if (other?.kind && other.kind !== 'three') {
@@ -1616,6 +1628,7 @@ let ${id}Travel = 0;`);
     const applySoon = debounce((graph) => apply(graph), 220);
     function onGraph(graph, info) {
       if (state === 'edited') return;
+      if (state === 'precomp') { if (/value|undo|redo/.test(info.kind || '') || info.live) ThreeComp.fromNode(graph, pcLayer); return; }
       if (state === 'code' && info.kind !== 'value') { state = 'ok'; empty.hidden = true; }
       // dragging a knob that is a Lab slider: move the slider live, write the code when you let go
       if (info.live && info.node && info.field) {

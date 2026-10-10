@@ -1677,6 +1677,7 @@ const ThreeLab = (() => {
         at < Ls.length - 1 ? ['To the top', '', () => move(Ls.length)] : null,
         // (round 7) the layer's timing, whose two buttons wait behind Alt now
         player.loaded ? ['Plays', L.in != null || L.out != null ? 'part of the song' : 'the whole song', [['The whole song', '', () => editLayer(L.id, { in: null, out: null }), L.in == null && L.out == null], player.loop ? ['Only during the loop', '', () => editLayer(L.id, { in: player.loop.a, out: player.loop.b })] : null].filter(Boolean)] : null,
+        ...(typeof ThreeComp !== 'undefined' ? ThreeComp.layerMenu(L) : []), // ◫ Precomp › / ◫ Comp › (tools/three-comp.js)
         'Opacity',
         ...[1, 0.75, 0.5, 0.25].map((o) => [`${Math.round(o * 100)}%`, '', () => editLayer(L.id, { opacity: o }), Math.abs((L.opacity ?? 1) - o) < 0.01]),
         'Blend',
@@ -2158,6 +2159,8 @@ const ThreeLab = (() => {
     if (typeof ThreeFrames !== 'undefined') ThreeFrames.attach({ player, send: (msg) => box.send(msg), sketchId: () => current?.id });
     // the Lab's Sequence: the timeline as a video timeline of scenes, footage, titles and the song (tools/three-seq.js)
     if (typeof ThreeSeq !== 'undefined') ThreeSeq.attach({ player, bar: player.el, pane, send: (msg) => box.send(msg), sketchId: () => current?.id, rerun: () => run(), director: () => api.director, get stage() { return stage; }, get scenes() { return api.scenes; } });
+    // precomps (tools/three-comp.js): other scenes as layers of this one, kept live in the preview
+    if (typeof ThreeComp !== 'undefined') ThreeComp.attach({ send: (msg) => box.send(msg), sketchId: () => current?.id, persist: () => persist(), select: (id) => selectLayer(id), player });
     pane.addEventListener('keydown', (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
       const plain = !typing && !e.ctrlKey && !e.altKey && !e.metaKey;
@@ -2388,6 +2391,7 @@ const ThreeLab = (() => {
       return [
         { label: frozenNow ? '▶ Unfreeze' : '❚❚ Freeze', key: 'F', action: () => setFreeze(!frozenNow) },
         ...(typeof ThreeSeq !== 'undefined' ? [ThreeSeq.previewItem()] : []),
+        ...(typeof ThreeComp !== 'undefined' ? [ThreeComp.previewItem()] : []),
         { label: 'Frame size', hint: stage.size.id === 'fit' ? 'Fit' : stage.size.id, items: () => [
           ...stage.pillOrder.map((id, k) => ({ label: id === 'fit' ? 'Fit' : id, hint: ThreeMedia.SIZES.find((z) => z.id === id)?.title || '', key: `Shift+${k + 1}`, checked: stage.size.id === id, action: () => stage.setMode(id) })),
           '-', { label: 'Safe zones', checked: Boolean(stage.safe), action: () => stage.setSafe() },
@@ -2679,7 +2683,9 @@ const ThreeLab = (() => {
       if (fresh) { player.attach(); sendRefs(); } else if (!partial && ranSketch !== current.id) { sendRefs(); sendTriggers(); }
       if (!fresh && !partial && !player.path) box.send({ type: 'media-unload' }); // a sketch without a song: the last one stops
       const valuesOf = (L) => { const p = preps.get(L.id); if (!p) return undefined; const b = baseOf(L); return Object.fromEntries(p.values.map((v, i) => [b + i, v])); };
-      const spec = (L) => ({ id: L.id, code: codeOf(L), values: valuesOf(L), ...layerProps(L) });
+      // (a precomp: another scene as this layer, tools/three-comp.js: its scene's layers come with it)
+      const pcOf = (L) => (L.precomp && typeof ThreeComp !== 'undefined' ? ThreeComp.specFor(L, current.id, layersOf().indexOf(L)) : null);
+      const spec = (L) => { const pc = pcOf(L); return { id: L.id, code: codeOf(L), values: valuesOf(L), ...layerProps(L), ...(pc ? { precomp: pc } : {}) }; };
       // new code fades in over the old picture; a layer the sandbox doesn't run yet wipes in
       const fx = (L) => (ranCode.has(L.id) ? 'xfade' : 'reveal');
       if (partial) {
@@ -3042,6 +3048,7 @@ ${code}
         x.updatedAt = Date.now();
         save();
         if (x === current) refreshInPlace();
+        dispatchEvent(new CustomEvent('hearth:scene-changed', { detail: { id } })); // (precomps showing it follow: tools/three-comp.js)
       },
       layersOf: (x) => materialize(x),
       frameOf: (id) => extras[id]?.frame || null,
@@ -3062,7 +3069,7 @@ ${code}
     // What the Three Director (Claude) uses to build scenes from the user's prompts.
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const layersSummary = () => layersOf().map((L, i) => ({
-      id: L.id, name: L.name, ...(ThreeLayers.isFilter(L.code) ? { kind: 'filter (changes the layers below it)' } : {}), order: `${i + 1} of ${layersOf().length} (1 = bottom)`, selected: L.id === selId,
+      id: L.id, name: L.name, ...(ThreeLayers.isFilter(L.code) ? { kind: 'filter (changes the layers below it)' } : {}), ...(L.precomp && typeof ThreeComp !== 'undefined' && ThreeComp.isComp(L) ? { kind: `precomp of ${ThreeComp.describe(L)} (three_do comp)` } : {}), order: `${i + 1} of ${layersOf().length} (1 = bottom)`, selected: L.id === selId,
       visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal',
       ...(L.overrides ? { placedByUser: Object.fromEntries(Object.entries(L.overrides).map(([k, o]) => [k, { position: o.p, rotationDegrees: o.rd, scale: o.s, ...(o.v === false ? { hidden: true } : {}), ...(o.fov ? { fov: o.fov } : {}) }])) } : {}),
       plays: L.in == null && L.out == null ? 'whole song' : { from: L.in ?? 0, to: L.out ?? 'end', fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0 },
@@ -3702,6 +3709,8 @@ ${frag}\`,
     if (tool === 'three_sequence' && typeof ThreeSeq !== 'undefined') return ThreeSeq.handle(tool, args, { sketchId: route?.sketchId || null });
     // the motion-design kit (tools/three-motion.js): its layers go through three_add_layer, so they reach this chat's scene
     if (tool === 'three_motion' && typeof ThreeMotion !== 'undefined') return ThreeMotion.handle(args, { chatId: ctx.chatId, call: (t, a) => handleTool(t, a, ctx) });
+    // comp (tools/three-comp.js): precomps in this chat's scene (on screen or not), parts dispatched to other chats
+    if (tool === 'three_comp' && typeof ThreeComp !== 'undefined') return ThreeComp.handle(args, { chatId: ctx.chatId, sketchId: route?.sketchId || null });
     if (route && route.sketchId !== api.scenes.currentId() && typeof ThreeBackstage !== 'undefined') {
       const r = await ThreeBackstage.handle(tool, args, route);
       if (tool === 'three_new_sketch' && r?.newSketchId) ChatScenes.relink(route.chatId, r.newSketchId);

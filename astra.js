@@ -627,7 +627,9 @@ function toggleFold(hostId, m) {
   // ---------- Native hooks ----------
   // Per-chat options + a pending collab outcome + the fallback context for a lost engine session.
   function beforeSend(chat, raw, withContext) {
-    const agent = H.agent(chat.agentId);
+    // a chat with its own engine (a comp part on Astra while the director runs on Claude, comp-dispatch.js): that engine
+    const agent0 = H.agent(chat.agentId);
+    const agent = chat.engine && agent0 && chat.engine !== agent0.engine ? { ...agent0, engine: chat.engine } : agent0;
     const waiting = pendingSettings.get(chat.agentId);
     if (waiting && chat.messages.filter((m) => m.role === 'user').length <= 1) {
       for (const [k, v] of Object.entries(waiting)) { if (v == null) delete chat[k]; else chat[k] = v; }
@@ -646,6 +648,12 @@ function toggleFold(hostId, m) {
     if (chat.verbosity) options.verbosity = chat.verbosity;
     if (chat.persona) options.persona = personaText(agent, chat.persona);
     if (chat.model) options.model = chat.model;
+    if (agent !== agent0) {
+      const twin = H.agents().find((a) => a.mode === 'native' && a.engine === chat.engine);
+      options.engine = chat.engine;
+      if (!options.model && twin?.model) options.model = twin.model;
+      if (!options.effort && twin?.effort) options.effort = twin.effort;
+    }
     const once = nextOnce.get(chat.agentId); // one message only
     if (once) { Object.assign(options, once); nextOnce.delete(chat.agentId); }
     if (chat.session?.id && chat.messages.length > 1) options.fallbackText = withContext({ ...chat, session: {} }, raw);

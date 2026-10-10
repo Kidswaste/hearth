@@ -51,7 +51,10 @@ const ThreeBackstage = (() => {
 
   const sketchOf = (id) => { const s = ThreeLab.scenes?.get(id); if (!s) throw new Error('This chat\'s sketch is gone (deleted?). Ask the owner, or make one with three_new_sketch.'); return s; };
   const layersOf = (s) => ThreeLab.scenes.layersOf(s);
-  const sigOf = (s) => JSON.stringify(layersOf(s).map((L) => [L.id, L.code, L.visible, L.opacity, L.blend, L.x, L.y, L.scale, L.rotate]));
+  // (a precomp layer, tools/three-comp.js: what it shows counts as its code)
+  const pcSpec = (L, s) => (L.precomp && typeof ThreeComp !== 'undefined' ? ThreeComp.specOf(L, s.id, { slotBase: 2000 + layersOf(s).indexOf(L) * 64 }) : null);
+  const codeKey = (L, s) => (L.precomp ? `${L.code}|${pcSpec(L, s)?.sig || ''}` : L.code);
+  const sigOf = (s) => JSON.stringify(layersOf(s).map((L) => [L.id, codeKey(L, s), L.visible, L.opacity, L.blend, L.x, L.y, L.scale, L.rotate]));
 
   const specOf = (L, z) => ({ id: L.id, code: L.code, z, slot: L.slot ?? z, name: L.name, visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal', x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, overrides: L.overrides || null });
   // Runs the sketch: the first time (or another sketch, or forced) a fresh page with every layer bottom first; when
@@ -65,17 +68,17 @@ const ThreeBackstage = (() => {
     const Ls = layersOf(s);
     if (!force && loaded?.id === s.id && loaded.codes && box.ready) {
       const ids = new Set(Ls.map((L) => L.id));
-      const rerun = new Set(Ls.filter((L) => loaded.codes.get(L.id) !== L.code).map((L) => L.id));
+      const rerun = new Set(Ls.filter((L) => loaded.codes.get(L.id) !== codeKey(L, s)).map((L) => L.id));
       for (const id of loaded.codes.keys()) if (!ids.has(id)) box.send({ type: 'remove-layer', id });
       errors = errors.filter((e) => e.layer && ids.has(e.layer) && !rerun.has(e.layer));
       consoleLines = consoleLines.filter((l) => l.layer && ids.has(l.layer) && !rerun.has(l.layer));
       if (rerun.size) { waitDrawn = true; started = new Promise((r) => { onStart = r; setTimeout(r, 6000); }); }
       Ls.forEach((L, z) => {
         const { code, ...props } = specOf(L, z);
-        if (rerun.has(L.id)) box.send({ type: 'hot-layer', layer: { code, ...props } });
+        if (rerun.has(L.id)) box.send({ type: 'hot-layer', layer: { code, ...props, ...(L.precomp ? { precomp: pcSpec(L, s) } : {}) } });
         else box.send({ type: 'layer-props', id: L.id, props });
       });
-      loaded = { id: s.id, sig, codes: new Map(Ls.map((L) => [L.id, L.code])) };
+      loaded = { id: s.id, sig, codes: new Map(Ls.map((L) => [L.id, codeKey(L, s)])) };
       return false;
     }
     const f = frameOf(s.id);
@@ -86,8 +89,8 @@ const ThreeBackstage = (() => {
     started = new Promise((r) => { onStart = r; setTimeout(r, 9000); });
     box.reload();
     box.send({ type: 'tweak-init', values: {}, keys: {}, mods: {} });
-    box.send({ type: 'run-layers', layers: Ls.map(specOf) });
-    loaded = { id: s.id, sig, codes: new Map(Ls.map((L) => [L.id, L.code])) };
+    box.send({ type: 'run-layers', layers: Ls.map((L, z) => ({ ...specOf(L, z), ...(L.precomp ? { precomp: pcSpec(L, s) } : {}) })) });
+    loaded = { id: s.id, sig, codes: new Map(Ls.map((L) => [L.id, codeKey(L, s)])) };
     return true;
   }
   // a fresh page takes a moment to load three.js: wait for its first frame, then a little for the change to show

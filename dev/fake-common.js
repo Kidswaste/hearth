@@ -19,6 +19,11 @@
 // pick"): a build sets a real sketch through the Lab's MCP tools, a direction is two short lines, a pick names a round.
 // In the jam's idea: jam-break makes builds fail (until a "fix the errors first" turn), jam-break-hard always,
 // jam-astra-down fails Codex.
+// Comp turns (comp-dispatch.js, round 10): a part's brief ("Comp part 2/3 · for …") builds that part's scene through
+// the real MCP tools in two steps a few seconds apart (a dim draft, then the final: a full-frame color per part with a
+// white bar moving on the scene's clock, so pixels tell the parts apart and show the live update); "Comp feedback ·"
+// rebuilds it brighter; in a main chat, "comp: dispatch a | astra: b" calls three_do comp dispatch (then reads the
+// parts), "comp: {json}" any three_do comp op. In a brief: comp-slow (a longer pause), comp-hang (never ends: stuck).
 // Video project turns (intro.js) are recognized by their first line too: "Intro · plan" (Astra decides: template /
 // hook / end / titles / cuts lines), "Intro · words" (one "n | words" line per beat), "Intro · director" (the director
 // pass: real MCP calls to video_edit_read, video_edit op project / transition and capture_list). The review uses the
@@ -130,6 +135,58 @@ function introPlan(msg) {
   return null;
 }
 
+// A part's scene: the whole frame in the part's color (draft: dim), a white bar sweeping across on the scene's own
+// clock (its x = the scene time: frame-exact pictures), a label in the console
+const COMP_COLORS = ['#ff3030', '#2f6bff', '#30d060', '#ffcc22', '#c040ff', '#00d0d0'];
+const shade = (hex, k) => `#${[1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * k).toString(16).padStart(2, '0')).join('')}`;
+function compCode(n, stage) {
+  const base = COMP_COLORS[(n - 1) % COMP_COLORS.length];
+  const color = stage === 'draft' ? shade(base, 0.35) : stage === 'fixed' ? shade(base, 1) : base;
+  return `import * as THREE from 'three';
+const P = tweak({ color: { value: '${color}', label: 'Color', group: 'Part' }, bar: { value: 0.18, min: 0.02, max: 0.6, label: 'Bar width', group: 'Part' } });
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setSize(innerWidth, innerHeight);
+document.body.append(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(P.color);
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
+camera.position.z = 2;
+const bar = new THREE.Mesh(new THREE.PlaneGeometry(1, 2.4), new THREE.MeshBasicMaterial({ color: '#ffffff' }));
+scene.add(bar);
+console.log('comp part ${n} ${stage}');
+renderer.setAnimationLoop((now) => {
+  const t = (now / 1000) % 4;
+  bar.scale.x = P.bar;
+  bar.position.x = -1 + t / 2;
+  scene.background.set(P.color);
+  renderer.render(scene, camera);
+});`;
+}
+function compPlan(msg) {
+  const head = msg.split('\n')[0];
+  if (/^Comp /.test(head) && /comp-hang/.test(msg)) return { mcpCalls: [['three_console', {}], ['sleep', 3600000]], text: '' };
+  const part = /^Comp part (\d+)\/(\d+)/.exec(head);
+  if (part) {
+    const n = Number(part[1]);
+    const pause = /comp-slow/.test(msg) ? 9000 : 2500;
+    return { mcpCalls: [['three_set_code', { code: compCode(n, 'draft'), wait: 0.6 }], ['sleep', pause], ['three_set_code', { code: compCode(n, 'final'), wait: 0.6 }]],
+      text: `Built part ${n}: a ${COMP_COLORS[(n - 1) % COMP_COLORS.length]} field with a white bar sweeping across on the scene's timeline.` };
+  }
+  if (/^Comp feedback ·/.test(head)) {
+    const n = Number((msg.match(/part (\d+)/) || [])[1]) || 1;
+    return { mcpCalls: [['three_edit_code', { edits: [{ find: 'value: 0.18', replace: 'value: 0.4' }] }]], text: `Applied the feedback${n ? '' : ''}: a wider bar.` };
+  }
+  if (/^Comp · continue/.test(head)) return { mcpCalls: [['three_do', { cmd: 'task' }], ['three_console', {}]], text: 'Picked the part up and checked it: nothing missing.' };
+  const d = /^comp:\s*dispatch\s+(.+)$/im.exec(msg);
+  if (d) {
+    const layout = /--split\b/.test(d[1]) ? 'split' : /--stack\b/.test(d[1]) ? 'stack' : 'time';
+    const parts = d[1].replace(/--\w+/g, '').split('|').map((x) => x.trim()).filter(Boolean).map((x) => { const m = /^(astra|claude):\s*/i.exec(x); return { brief: m ? x.slice(m[0].length) : x, engine: m ? m[1].toLowerCase() : 'claude' }; });
+    return { mcpCalls: [['three_do', { cmd: 'comp', op: 'dispatch', parts, layout }], ['three_do', { cmd: 'comp', op: 'parts' }]], text: `Dispatched ${parts.length} parts; each builds its scene in its own chat and shows here as a layer.` };
+  }
+  const j = /^comp:\s*(\{[\s\S]*\})\s*$/im.exec(msg);
+  if (j) { try { return { mcpCalls: [['three_do', { cmd: 'comp', ...JSON.parse(j[1]) }]], text: 'Done.' }; } catch { /* not JSON */ } }
+  return null;
+}
 // A transparent layer (for directors without the node tool): one shape, sliders, motion on time only.
 function layerCode(name, seed, vibeColor) {
   const color = vibeColor || JAM_COLORS[seed % JAM_COLORS.length];
@@ -207,6 +264,8 @@ function plan(prompt, engine = 'claude') {
     const p = { mcp: Boolean(intro.mcpCalls), mcpCalls: intro.mcpCalls || null };
     return { p, text: intro.text, thinking: '' };
   }
+  const comp = compPlan(msg);
+  if (comp) return { p: { mcp: true, mcpCalls: comp.mcpCalls }, text: comp.text, thinking: '' };
   const jam = jamPlan(msg, engine);
   const dir = jam ? null : directorPlan(prompt, msg, engine);
   if (dir) {
