@@ -72,6 +72,8 @@
       else if (['mute', 'silent', 'nosound'].includes(lx)) o.audio = 'none';
       else if (lx === 'mp4') o.mp4 = true;
       else if (lx === 'webm') o.mp4 = false;
+      else if (['clicksound', 'click-sound', 'ticks', 'clack'].includes(lx)) o.clickSound = lx === 'clack' ? 'mech' : 'soft'; // pack11
+      else if (['raw-cursor', 'rawcursor'].includes(lx)) o.smoothCursor = 0;
       else if (lx === 'now') o.countdown = 0;
       else if (lx === 'countdown') { o.countdown = Number(w[i + 1]) || 3; i += 1; }
       else if (D.CURSORS.some((c) => c.id === lx) && lx !== 'off') o.cursor = lx;
@@ -185,15 +187,17 @@
     examples: ['/rec', '/rec stop', '/rec reel'], complete: opts(recWordOpts), run: recCommand,
   });
   reg({
-    name: 'tour', aliases: ['tours'], args: '[name | list | new | edit <name> | tape [stop] | stop | steps | run "<steps>"]', desc: 'Hands-free scripted recordings: open tools, run commands, type, click, zoom, captions, titles (for an intro video)',
+    name: 'tour', aliases: ['tours'], args: '[name | list | new | edit <name> | preview <name> | tape [stop] | stop | steps | run "<steps>"]', desc: 'Hands-free scripted recordings: open tools, run commands, type, click, zoom, captions, titles (for an intro video)',
     keys: `${M}+Alt+T`, examples: ['/tour', '/tour intro', '/tour hello', '/tour edit intro', '/tour stop'], keywords: 'demo script automated walkthrough intro video',
-    complete: (args) => { const last = String(args || '').toLowerCase(); return [{ value: 'list' }, { value: 'new' }, { value: 'edit' }, { value: 'stop' }, { value: 'steps' }, { value: 'tape', hint: 'do it once, get the tour' }, ...D.TOURS.map((t) => ({ value: t.id, hint: t.label }))].filter((o) => o.value.startsWith(last)); },
+    complete: (args) => { const last = String(args || '').toLowerCase(); return [{ value: 'list' }, { value: 'new' }, { value: 'edit' }, { value: 'preview', hint: 'play it, record nothing' }, { value: 'stop' }, { value: 'steps' }, { value: 'tape', hint: 'do it once, get the tour' }, ...D.TOURS.map((t) => ({ value: t.id, hint: t.label }))].filter((o) => o.value.startsWith(last)); },
     run: async (args, ctx) => {
       const a = String(args || '').trim();
       const [w0, ...rest] = words(a);
       const lw = String(w0 || '').toLowerCase();
       if (!a) { CaptureTour.picker(); return null; }
       if (lw === 'stop') { CaptureTour.stop(); return CaptureTour.running() ? 'Stopping the tour…' : 'No tour is running.'; }
+      // pack11: play it without recording anything, with each step's timing
+      if (lw === 'preview' || lw === 'dry') { const r = await CaptureTour.run(rest.join(' ') || 'hello', { dry: true }); return CaptureTour.previewLine(r); }
       if (lw === 'tape') {
         if (/stop|done|end/i.test(rest[0] || '') || CaptureTour.taping()) { const text = CaptureTour.tape(false); if (!text) return 'Not taping.'; CaptureTour.editText(text); return 'Taped: edit it, then Save or Run.'; }
         CaptureTour.tape(true); return 'Taping: do it once (clicks, screens, typing, shortcuts). `/tour tape stop` when done.';
@@ -502,8 +506,8 @@
       if (act === 'mark') { const m = Capture.mark(a.label || ''); return m ? { ok: true, value: m } : { ok: false, error: 'Not recording.' }; }
       if (act === 'stop') { if (!Capture.recording) return { ok: false, error: 'Not recording.' }; return { ok: true, value: await Capture.stop({ quiet: true }) }; }
       if (act === 'tour') {
-        const r = await CaptureTour.run(a.steps ? String(a.steps) : String(a.name || ''), { name: a.name || 'from chat' });
-        return { ok: true, value: { steps: r.steps, recording: r.recording?.path || null, duration: r.recording?.duration, shots: r.shots, skipped: r.skipped, aborted: r.aborted } };
+        const r = await CaptureTour.run(a.steps ? String(a.steps) : String(a.name || ''), { name: a.name || 'from chat', dry: Boolean(a.dry) });
+        return { ok: true, value: { steps: r.steps, recording: r.recording?.path || null, duration: r.recording?.duration, shots: r.shots, skipped: r.skipped, aborted: r.aborted, ...(r.dry ? { preview: CaptureTour.previewLine(r), timeline: r.timeline } : {}) } };
       }
       if (act === 'start') {
         if (Capture.recording) return { ok: false, error: 'Already recording: stop first.' };
