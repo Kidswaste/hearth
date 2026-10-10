@@ -33,8 +33,15 @@
     ['decide', 'decide [goal]: Astra picks the arrangement'], ['versions', 'versions [15 6] [render]: shorter cuts around the drop'], ['fill', 'fill [clip n]: a scene in the gap'],
     ['vary', 'vary [clip n] [30%|reset]: a variation of a scene clip'], ['sections', 'A variation per section (scenes that come back look different)'], ['swap', 'swap <clip n>: swap looks with the next scene'],
     ['retime', 'retime [song path]: the cuts follow the (new) song\'s bars and sections'], ['nest', 'nest <sequence name>: a sequence as a clip'], ['unnest', 'unnest <clip n>'],
-    ['copy', 'copy <clip n…>: clips to paste into any sequence'], ['paste', 'paste [at …] [into <name>]'], ['marker', 'marker [label]: a marker at the playhead'], ['markers', 'Markers at the song\'s sections'],
-    ['zoom', 'zoom <fit | 4 bars | 5 s>'], ['scene', 'scene <name>: that scene\'s own sequence'],
+    ['copy', 'copy <clip n…>: clips to paste into any sequence'], ['paste', 'paste [at …] [into <name>]'], ['marker', 'marker [label]: a marker at the playhead'],
+    ['zoom', 'zoom <fit | selection | 4 bars | 5 s>'], ['scene', 'scene <name>: that scene\'s own sequence'],
+    // seqguard (round 13)
+    ['nudge', 'nudge [clip n…] <+1 | -2 | +1 beat>: move clips by frames or beats (, . keys)'], ['trim', 'trim <clip n> <in | out> <+2 | -1> frames ([ ] { } keys)'],
+    ['speed', 'speed [clip n…] <0.5 | 2 | 150%>: a scene\'s clock, footage, sound'], ['color', 'color [clip n…] <red | orange | yellow | green | teal | blue | violet | pink | none>'],
+    ['ripple', 'ripple <clip n>: delete and close the gap'], ['markers', 'markers: at the song\'s sections · markers list | go <n | name | next | prev> | rename <n> <label> | delete <n>'],
+    ['snap', 'snap [on | off]: snapping to bars, beats, markers, edges'], ['select', 'select <all | none | after | 2 3 | from 4 to 8>'], ['history', 'history [back n | forward n]: the undo list'],
+    ['clip', 'clip <n | name>: go to a clip (selected)'], ['around', 'Play around the playhead and come back'], ['health', 'The preview watchdog: what it restored'],
+    ['range', 'range <in | out | clip n | 2.5 6 | clear>: the In–Out range (⟲ loop it, render it)'], ['close-gaps', 'Close every gap (the clips after move up)'],
   ];
   const call = async (args) => { const r = await Q().handle('three_sequence', args); if (!r.ok) throw new Error(r.error); return r.value; };
   const clipArg = (w) => (/^\d+$/.test(w || '') ? Number(w) : w);
@@ -49,7 +56,15 @@
       if (/^add$/i.test(w[0])) return opts(['this', ...names()].map((n) => `add ${n}`), a);
       if (/^transition$/i.test(w[0])) return opts(['dissolve', 'dip-black', 'dip-white', 'wipe-left', 'push-left', 'zoom-in', 'whip-left', 'glitch', 'cut', ...(typeof SeqTrans !== 'undefined' ? SeqTrans.LAB.map((t) => t.id) : [])].map((t) => `transition ${t}`), a);
       if (/^(make|arrange)$/i.test(w[0])) return opts((typeof SeqTemplates !== 'undefined' ? SeqTemplates.TEMPLATES : []).map((t) => ({ value: `${w[0]} ${t.id}`, hint: t.name })), a);
-      if (/^zoom$/i.test(w[0])) return opts(['fit', '1 bar', '4 bars', '8 bars', '5 s', '1 s'].map((z) => `zoom ${z}`), a);
+      if (/^zoom$/i.test(w[0])) return opts(['fit', 'selection', '1 bar', '4 bars', '8 bars', '5 s', '1 s'].map((z) => `zoom ${z}`), a);
+      if (/^color$/i.test(w[0])) return opts([...Object.keys(Q().SWATCHES || {}), 'none'].map((c) => `color ${c}`), a);
+      if (/^speed$/i.test(w[0])) return opts(['0.5', '0.75', '1.5', '2', '4', '1'].map((r) => `speed ${r}`), a);
+      if (/^nudge$/i.test(w[0])) return opts(['+1', '-1', '+1 beat', '-1 beat', '+10', '-10'].map((r) => `nudge ${r}`), a);
+      if (/^markers?$/i.test(w[0]) && w.length <= 2) return opts(['list', 'go next', 'go prev', 'sections', 'rename 1 ', 'delete 1'].map((r) => `markers ${r}`), a);
+      if (/^select$/i.test(w[0])) return opts(['all', 'none', 'after', 'from 0 to 4'].map((r) => `select ${r}`), a);
+      if (/^snap$/i.test(w[0])) return opts(['on', 'off'].map((r) => `snap ${r}`), a);
+      if (/^range$/i.test(w[0])) return opts(['in', 'out', 'clip 1', 'clear', 'render'].map((r) => `range ${r}`), a);
+      if (/^history$/i.test(w[0])) return opts(['back 1', 'back 3', 'forward 1'].map((r) => `history ${r}`), a);
       if (/^(versions)$/i.test(w[0])) return opts(['15 6', '15', '6', '30', '15 6 render'].map((z) => `versions ${z}`), a);
       if (/^scene$/i.test(w[0])) return opts(names().map((n) => `scene ${n}`), a);
       if (/^(render|format|new)$/i.test(w[0])) return opts(['9:16', '16:9', '1:1', '4:5', ...(/^render$/i.test(w[0]) ? ['all', 'realtime'] : [])].map((f) => `${w[0]} ${f}`), a);
@@ -95,6 +110,7 @@
       }
       if (sub === 'editor') { await call({ op: 'editor' }); return 'The sequence is open in the video editor (the same edit): finish it there, /sequence back brings it to the Lab.'; }
       if (sub === 'back') return lines(await call({ op: 'back' }));
+      if ((sub === 'undo' || sub === 'redo') && /^\d+$/.test(w[1] || '')) { await call({ op: 'history', [sub === 'undo' ? 'back' : 'forward']: Number(w[1]) }); return lines(await call({ op: 'status' })); }
       if (sub === 'undo' || sub === 'redo') return lines(await call({ op: sub }));
       if (sub === 'keys') return Q().KEYS.map(([k, d]) => `\`${k}\` ${d}`).join('\n');
       // ---- seq2: arranging, versions, variations, nesting, the clipboard ----
@@ -116,9 +132,42 @@
       if (sub === 'unnest') return lines(await call({ op: 'unnest', clip: clipArg(w[1]) }));
       if (sub === 'copy') { const v = await call({ op: 'copy', clips: w.slice(1).map(clipArg) }); return `Copied ${v.copied} clip${v.copied === 1 ? '' : 's'}: /sequence paste (any sequence)`; }
       if (sub === 'paste') { const into = /\binto\s+(.+)$/i.exec(rest); const p = parseAdd(rest.replace(/\binto\s+.+$/i, '')); return lines(await call({ op: 'paste', at: p.at || undefined, into: into ? into[1].trim() : undefined })); }
+      const mlist = (ms) => (ms.length ? ms.map((m) => `${m.n}. ${m.timecode}${m.label ? ` ${m.label}` : ''}`).join('\n') : 'No markers yet (M at the playhead, /sequence marker <name>)');
+      if (sub === 'marker' && /^(go|jump|rename|delete|list)$/i.test(w[1] || '')) return runSeq(`markers ${rest}`, ctx);
       if (sub === 'marker') { const v = await call({ op: 'marker', label: rest }); return `Markers: ${v.markers.join(' · ')}`; }
-      if (sub === 'markers') { const v = await call({ op: 'section_markers' }); return `Markers: ${v.markers.join(' · ')}`; }
+      if (sub === 'markers') {
+        const verb = (w[1] || '').toLowerCase();
+        if (verb === 'sections' || verb === 'song') { const v = await call({ op: 'section_markers' }); return `Markers: ${v.markers.join(' · ')}`; }
+        if (verb === 'go' || verb === 'jump') { const v = await call({ op: 'marker_go', name: w.slice(2).join(' ') || 'next' }); return `▾ ${v.label} · ${v.at.toFixed(2)} s`; }
+        if (verb === 'rename') { const v = await call({ op: 'marker_rename', n: w[2], label: w.slice(3).join(' ') }); return mlist(v.markers); }
+        if (verb === 'delete' || verb === 'remove') { const v = await call({ op: 'marker_delete', n: w.slice(2).join(' ') }); return mlist(v.markers); }
+        if (verb === 'list') { const v = await call({ op: 'markers_list' }); return mlist(v.markers); }
+        const v = await call({ op: 'section_markers' }); return `Markers: ${v.markers.join(' · ')}`;
+      }
+      if (sub === 'zoom' && /^sel/i.test(rest)) { const v = await call({ op: 'zoom_selection' }); return `Zoom: ${Array.isArray(v.view) ? `${v.view[0]}–${v.view[1]} s` : 'the whole sequence'}`; }
       if (sub === 'zoom') { const v = await call({ op: 'zoom', to: /^fit$/i.test(rest) ? 'fit' : /bar/i.test(rest) ? rest : parseFloat(rest) || 'fit' }); return `Zoom: ${Array.isArray(v.view) ? `${v.view[0]}–${v.view[1]} s` : 'the whole sequence'}`; }
+      // ---- seqguard (round 13) ----
+      // "2 3 +1 beat" → clips [2, 3], the amount after them
+      const clipsThen = () => { const c = []; let k = 1; while (k < w.length && /^\d+$/.test(w[k]) && !/^[+-]/.test(w[k]) && k < w.length - 1) { c.push(Number(w[k])); k += 1; } return { clips: c.length ? c : undefined, tail: w.slice(k).join(' ') }; };
+      if (sub === 'nudge') { const { clips, tail } = clipsThen(); const n = parseFloat(tail) || 1; const v = await call({ op: 'nudge', clips, ...(/beat/i.test(tail) ? { beats: n } : { frames: n }) }); return lines(v); }
+      if (sub === 'trim') { const edge = /^in|start/i.test(w[2] || '') ? 'in' : 'out'; return lines(await call({ op: 'trim_frames', clip: clipArg(w[1]), edge, frames: parseFloat(w[3] ?? w[2]) || 0 })); }
+      if (sub === 'speed') { const { clips, tail } = clipsThen(); return lines(await call({ op: 'speed', clips, rate: tail || '1' })); }
+      if (sub === 'color' || sub === 'colour') { const { clips, tail } = clipsThen(); return lines(await call({ op: 'color', clips, color: tail || 'none' })); }
+      if (sub === 'ripple') return lines(await call({ op: 'delete', clip: clipArg(w[1]), ripple: true }));
+      if (sub === 'snap') { const v = await call({ op: 'snap', on: /^off$/i.test(w[1] || '') ? false : /^on$/i.test(w[1] || '') ? true : undefined }); return v.snap ? 'Snapping on: bars, beats, markers, edges' : 'Snapping off'; }
+      if (sub === 'select') { const m = /from\s+(\S+)\s+to\s+(\S+)/i.exec(rest); const v = await call(m ? { op: 'select', what: 'range', from: m[1], until: m[2] } : /^\d/.test(rest) ? { op: 'select', what: 'clips', clips: w.slice(1).map(clipArg) } : { op: 'select', what: rest || 'all' }); return `${v.selected} selected${v.clips.length ? `:\n${v.clips.slice(0, 12).join('\n')}` : ''}`; }
+      if (sub === 'history') { const back = /back\s+(\d+)/i.exec(rest); const fwd = /forward\s+(\d+)/i.exec(rest); const v = await call({ op: 'history', back: back ? Number(back[1]) : undefined, forward: fwd ? Number(fwd[1]) : undefined }); return v.back.length || v.forward.length ? [...v.forward.map((x) => `↷ ${x.label}`), ...v.back.slice(0, 15).map((x) => `${x.steps}. ${x.label} · ${x.ago}`)].join('\n') : 'No changes yet.'; }
+      if (sub === 'clip' || sub === 'goto') { const v = await call({ op: 'clip', clip: clipArg(rest) }); return `${v.timecode} · f${v.frame} · ${v.showing}`; }
+      if (sub === 'range') {
+        const v0 = (w[1] || '').toLowerCase();
+        if (v0 === 'render') { const r = await Q().render({ range: Q().rangeOf() }); return `Rendered the range: **${r.path.split(/[\\/]/).pop()}** (${r.frames} frames)`; }
+        const args0 = v0 === 'in' ? { in: Q().time } : v0 === 'out' ? { out: Q().time } : v0 === 'clear' ? { clear: true } : v0 === 'clip' ? { clip: clipArg(w[2]) } : w[1] ? { in: w[1], out: w[2] } : {};
+        const v = await call({ op: 'range', ...args0 });
+        return v.range ? `Range ${v.range.from} – ${v.range.to} (⟲ Loop plays it, ⇪ Render can render just it)` : 'No range';
+      }
+      if (sub === 'close-gaps' || sub === 'gaps') return lines(await call({ op: 'close_gaps' }));
+      if (sub === 'around') { Q().playAround(); return 'Playing around the playhead (2 s before, 1 s after).'; }
+      if (sub === 'health' || sub === 'watchdog') { const v = await call({ op: 'health' }); const r = v.restores; return `Watchdog ${v.watching ? 'watching' : 'idle (the sequence isn\'t on screen)'} · restored ${r.soft + r.hard + r.remount + r.assets}× (clock / lost plan ${r.soft}, fresh page ${r.hard}, clips ${r.remount}, files ${r.assets})${v.last ? ` · last: ${v.last.why}` : ''}`; }
       if (sub === 'scene') { const v = await call({ op: 'show', of: rest || undefined }); return lines(v); }
       // a scene name on its own: add it
       if (names().some((n) => n.toLowerCase() === String(args).trim().toLowerCase())) return lines(await call({ op: 'add', scene: String(args).trim() }));
