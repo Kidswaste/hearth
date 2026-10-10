@@ -104,6 +104,8 @@ function createEngine(o) {
   let status = { state: 'idle', at: 0, pending: 0, conflicts: 0, cloudOnly: [], skippedBig: [], unreadable: [], held: null, error: '', last: null };
   let running = null; let again = false; let stopping = false;
   const pulledPrev = new Map(); // rel → the value this computer had before a pull (cloud form): the guard's base
+  // (the oldest one is kept until the app reloads it: that is the version still in its memory; huge stores aren't kept)
+  const remember = (rel, value, size = 0) => { if (!pulledPrev.has(rel) && size < 16e6) pulledPrev.set(rel, value); };
 
   // ---------- path forms ----------
   let aliases = { data: [], cloud: [], home: [] };
@@ -346,7 +348,7 @@ function createEngine(o) {
       try { v = JSON.parse(text); } catch { return now() - L.mtime < 5000 ? INFLIGHT : BAD; }
       if (rel === 'app/config.json') v = S.portableConfig(v);
       const t = canon(S.toCloud(v, ctx));
-      texts.set(`l:${rel}`, t);
+      if (t.length < 2e6) texts.set(`l:${rel}`, t);
       h = sha(t);
     } else if (L.size <= SMALL) h = sha(await fsp.readFile(L.file));
     else h = await hashFile(L.file, () => stopping);
@@ -385,7 +387,7 @@ function createEngine(o) {
       let v;
       try { v = JSON.parse(await fsp.readFile(C.file, 'utf8')); } catch { return now() - C.mtime < 30 * 60 * 1000 ? INFLIGHT : BAD; }
       const t = canon(v);
-      texts.set(`c:${rel}`, t);
+      if (t.length < 2e6) texts.set(`c:${rel}`, t);
       h = sha(t);
     } else if (C.size > SMALL && j && j.s === C.size && j.h) h = j.h;
     else if (C.size <= SMALL) h = sha(await fsp.readFile(C.file));
@@ -460,12 +462,12 @@ function createEngine(o) {
     if (S.isJsonRel(rel)) {
       const text = await cloudText(rel, C);
       if (sha(text) !== h) return false;
-      const value = JSON.parse(text);
+      const value = S.toCloud(JSON.parse(text), ctx); // (old paths of another computer written as-is are fixed too)
       const prev = L ? await localText(rel, L).catch(() => null) : null;
       ok = await casWrite(file, lent, localJsonText(rel, S.fromCloud(value, ctx), L), 'pull');
       if (ok) {
         setBase(rel, h, text);
-        if (prev !== null) pulledPrev.set(rel, JSON.parse(prev)); else pulledPrev.set(rel, null);
+        remember(rel, prev === null ? null : JSON.parse(prev), prev ? prev.length : 0);
         // what this computer now has, in cloud form (equal to h unless a path couldn't be expressed here)
         let lh = h; try { lh = await relHashNow(rel); } catch { /* keep h */ }
         await afterLocalWrite(rel, lh);
@@ -498,7 +500,7 @@ function createEngine(o) {
     if (S.isJsonRel(rel) && lh !== BAD && ch !== BAD) {
       const ours = JSON.parse(await localText(rel, L));
       const theirsText = await cloudText(rel, C);
-      const theirs = JSON.parse(theirsText);
+      const theirs = S.toCloud(JSON.parse(theirsText), ctx);
       const base = state.base[rel] ? readBase(rel) : null;
       const r = S.merge3(base, ours, theirs, { counters: S.isCounterRel(rel) });
       const text = canon(r.value);
@@ -508,7 +510,7 @@ function createEngine(o) {
       if (hm !== lh) {
         const ok = await casWrite(L.file, lent, localJsonText(rel, S.fromCloud(r.value, ctx), L), 'merge-local');
         if (!ok) return false;
-        pulledPrev.set(rel, ours);
+        remember(rel, ours);
         await afterLocalWrite(rel, hm);
         notePulled(rel, kindOf(rel));
       }
@@ -605,7 +607,7 @@ function createEngine(o) {
     const L = local.get(cp.orig);
     try {
       if (S.isJsonRel(cp.orig) && !cp.placeholder && L && !L.unavailable) {
-        let theirs; try { theirs = JSON.parse(await fsp.readFile(cp.file, 'utf8')); } catch { return; }
+        let theirs; try { theirs = S.toCloud(JSON.parse(await fsp.readFile(cp.file, 'utf8')), ctx); } catch { return; }
         const ours = JSON.parse(await localText(cp.orig, L));
         const base = state.base[cp.orig] ? readBase(cp.orig) : null;
         const r = S.merge3(base, ours, theirs, { counters: S.isCounterRel(cp.orig) });
@@ -613,7 +615,7 @@ function createEngine(o) {
         if (sha(text) !== state.local[cp.orig]?.[2]) {
           const ok = await casWrite(L.file, L, localJsonText(cp.orig, S.fromCloud(r.value, ctx), L), 'absorb');
           if (!ok) return;
-          pulledPrev.set(cp.orig, ours);
+          remember(cp.orig, ours);
           await afterLocalWrite(cp.orig, sha(text));
           notePulled(cp.orig, kindOf(cp.orig));
         }
@@ -697,7 +699,7 @@ function createEngine(o) {
     }
     const ops = live.filter((p) => !p.used);
     // many deletions at once (a folder emptied, the wrong drive): wait for a yes
-    const dels = ops.filter((p) => p.op === 'deleteHere' || p.op === 'deleteThere');
+    const dels = ops.filter((p) => (p.op === 'deleteHere' || p.op === 'deleteThere') && !/^trash\//.test(p.rel));
     const known = Object.keys(state.base).length;
     if (dels.length > 25 && dels.length > known * 0.3 && opts.mass !== 'apply') {
       if (opts.mass === 'keep') {
@@ -758,6 +760,18 @@ function createEngine(o) {
       let ds = []; try { ds = await fsp.readdir(root); } catch { continue; }
       for (const d of ds) if (/^\d{4}-\d\d-\d\d$/.test(d) && d < cutoff) await fsp.rm(path.join(root, d), { recursive: true, force: true });
     }
+    // temp files of a crash (a day old) and parts of copies whose source is gone (a week old), on both sides
+    const sweep = async (dir, depth = 0) => {
+      let ents = []; try { ents = await fsp.readdir(dir, { withFileTypes: true }); } catch { return; }
+      for (const e of ents) {
+        const f = path.join(dir, e.name);
+        if (e.isDirectory()) { if (depth < 8 && !['sync', 'workspace', 'node_modules', '.git'].includes(e.name)) await sweep(f, depth + 1); continue; }
+        const tmp = /^\.hearth-tmp-/.test(e.name); const part = /^\.hearth-part-/.test(e.name);
+        if (!tmp && !part) continue;
+        try { const st = await fsp.stat(f); if (now() - st.mtimeMs > (tmp ? 864e5 : 7 * 864e5)) await fsp.rm(f, { force: true }); } catch { /* gone */ }
+      }
+    };
+    await sweep(FILES); await sweep(dataDir);
   }
   async function listConflicts() {
     const out = [];
@@ -775,7 +789,7 @@ function createEngine(o) {
     const copy = path.join(CONFL, rec.copy);
     if (keep === 'theirs') {
       const file = localPathOf(rec.rel);
-      if (S.isJsonRel(rec.rel)) { try { const v = JSON.parse(fs.readFileSync(file, 'utf8')); pulledPrev.set(rec.rel, S.toCloud(rec.rel === 'app/config.json' ? S.portableConfig(v) : v, ctx)); } catch { /* none */ } }
+      if (S.isJsonRel(rec.rel)) { try { const v = JSON.parse(fs.readFileSync(file, 'utf8')); remember(rec.rel, S.toCloud(rec.rel === 'app/config.json' ? S.portableConfig(v) : v, ctx)); } catch { /* none */ } }
       if (rec.kind === 'json') {
         const v = JSON.parse(await fsp.readFile(copy, 'utf8'));
         await atomicWrite(file, localJsonText(rec.rel, S.fromCloud(v, ctx), statSync(file) ? { file } : null));

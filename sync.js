@@ -223,6 +223,7 @@ const Sync = (() => {
     return sec;
   }
   const listeners = new Set();
+  let configArrived = false;
 
   // ---------- arrivals from the other computer ----------
   async function onPulled(list) {
@@ -234,7 +235,7 @@ const Sync = (() => {
       for (const a of H.agents?.() || []) if (chatIds.includes(H.activeChat?.[a.id]) && Native.hasView(a.id)) Native.refresh(a.id, { keepScroll: true });
       if (done.length) api().ack(done);
     }
-    if (list.some((x) => x.kind === 'config')) api().ack(['app/config.json']); // config.json hot-reloads by itself
+    if (list.some((x) => x.kind === 'config')) configArrived = true; // config.json hot-reloads by itself: acked once the app has it
     const other = list.filter((x) => !/^chats\//.test(x.rel) && !['config', 'theme', 'file', 'file-deleted'].includes(x.kind));
     if (other.length) {
       const from = other.find((x) => x.from && x.from !== 'trash')?.from || 'your other computer';
@@ -253,7 +254,7 @@ const Sync = (() => {
     Commands.register({
       name: 'sync', args: '[status|now|on|pause|resume|conflicts|trash|restore <name>|open|big on/off|off]', area: 'App',
       desc: 'Sync with your cloud drive (Mac ⇄ PC): is everything synced?, sync now, conflicts, deleted files',
-      keywords: 'cloud icloud dropbox google drive onedrive backup other computer mac pc offline',
+      keywords: 'cloud icloud dropbox google drive onedrive backup other computer mac pc offline synced is everything synced up to date',
       examples: ['/sync status', '/sync now', '/sync conflicts'],
       complete: (a) => SUBS.filter((s) => s.startsWith(String(a || '').trim().split(/\s+/)[0] || '')).map((value) => ({ value })),
       run: async (args, ctx) => {
@@ -303,7 +304,21 @@ const Sync = (() => {
     Keys.add({ area: 'Everywhere', keys: 'Right-click the sync dot', what: 'sync now, pause, open the cloud folder, conflicts, deleted files, big videos', sel: '#sync-dot', run: () => menu() });
     await refresh();
     // the rail is rebuilt now and then (config changes): put the dot back
-    window.hub.onConfigChanged?.(() => setTimeout(mountDot, 60));
+    window.hub.onConfigChanged?.(() => {
+      setTimeout(mountDot, 60);
+      if (configArrived) { configArrived = false; setTimeout(() => api().ack(['app/config.json']), 300); }
+    });
+    offerJoin();
+  }
+  // the second computer: a Hearth is already in one of its drives and sync is off here → offered once, one click
+  async function offerJoin() {
+    if (st.on || store.get('sync.joinOffered', false)) return;
+    const d = await api().detect().catch(() => null);
+    const p = d?.proposed;
+    if (!p?.hearth || d.inside) return;
+    store.set('sync.joinOffered', true);
+    const who = (p.hearth.machines || []).map((m) => m.name).filter(Boolean).join(', ');
+    toast(`Found Hearth in ${p.label}${who ? ` (from ${who})` : ''}. Use it to keep this computer in sync (merged, nothing overwritten).`, { action: { label: 'Use this Hearth', fn: () => setup() }, timeout: 15000 });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(init, 0));
   else setTimeout(init, 0);

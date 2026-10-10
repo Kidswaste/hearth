@@ -117,5 +117,21 @@ step('/sync status answers in the chat', /Everything is synced/.test(lastNote())
 step('the keys sheet lists the dot\'s right-click', Keys.all().some((k) => /sync dot/.test(k.keys)));
 step('no duplicate command names', !Commands.duplicates?.().length, Commands.duplicates?.());
 await smoke({ shot: '/tmp/sync-dot.png' });
+
+// 8. "Use this Hearth": another drive that already has a Hearth (made on "the Mac"): joined and merged both ways
+await api.off();
+await until(() => !dot(), 3000);
+step('off: the dot goes away', !dot());
+const C2 = `${CLOUD}-2`;
+await window.hub.fs.write(`${C2}/Hearth/.sync/machines/mac-1234abcd.json`, JSON.stringify({ id: 'mac-1234abcd', name: 'Studio Mac', platform: 'darwin', dataDir: '/Users/q/Library/Application Support/Hearth/data', home: '/Users/q', lastSeen: Date.now() - 60000 }));
+await window.hub.fs.write(`${C2}/Hearth/files/chats/synctest-mac2.json`, JSON.stringify({ id: 'synctest-mac2', agentId: claude.id, title: 'From the Studio Mac', updatedAt: Date.now(), messages: [{ role: 'user', at: 5, text: '/Users/q/Library/Application Support/Hearth/data/refs/r.png' }] }));
+await settle();
+const since = Date.now();
+await run(`/sync on ${C2}`);
+await until(() => Sync.status().state === 'synced' && (H.chats || []).some((c) => c.id === 'synctest-mac2'), 15000);
+step('joined: "from Studio Mac" said, its chat arrived', recentToasts().some((t) => t.at >= since - 50 && /Studio Mac/.test(t.message)) || /joined/.test(lastNote()), lastNote().slice(0, 100));
+const m2 = await window.hub.getChat('synctest-mac2');
+step('the Mac\'s old path now points into this data folder', m2?.messages?.[0]?.text?.startsWith(attDir.replace(/[\\/]attachments$/, '')) && m2.messages[0].text.endsWith('r.png'), m2?.messages?.[0]?.text);
+step('our chats went up to that Hearth too (merge, nothing overwritten)', Boolean(await window.hub.fs.stat(`${C2}/Hearth/files/chats/synctest-mine.json`).catch(() => null)));
 await api.off();
 return J.done();
