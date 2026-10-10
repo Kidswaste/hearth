@@ -265,7 +265,7 @@ const FlowsData = (() => {
         if (list.length <= CHUNK + 6) { groups.set(g, list); continue; }
         const abc = [...list].sort((a, b) => a.name.localeCompare(b.name));
         const parts = Math.ceil(abc.length / CHUNK);
-        for (let i = 0; i < parts; i++) { const part = abc.slice(Math.round((i * abc.length) / parts), Math.round(((i + 1) * abc.length) / parts)); groups.set(`${g} (${part[0].name.split('-').pop()[0] || ''}${part[0].name[0]}–${part.at(-1).name[0]})`, part); }
+        for (let i = 0; i < parts; i++) { const part = abc.slice(Math.round((i * abc.length) / parts), Math.round(((i + 1) * abc.length) / parts)); const a = part[0].name.slice(0, 2); const b = part.at(-1).name.slice(0, 2); const label = `${g} (${a}–${b})`; groups.set(a === b || groups.has(label) ? `${g} ${i + 1}/${parts}` : label, part); }
       }
       const order = [...groups.keys()];
       nodes.push({ id: 'pick', kind: 'choice', title: 'What do you want to do?', var: 'group', options: order.map((g, i) => ({ label: `${g} · ${groups.get(g).length}`, value: `g${i + 1}`, next: `g${i + 1}` })) });

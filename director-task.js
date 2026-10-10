@@ -194,7 +194,8 @@ const DirectorTask = (() => {
     if (!m) return { ok: false, error: 'Give a chat command line like "/make-it-react" or "/size 9:16".' };
     const def = Commands.get(m[1]);
     if (!def) return { ok: false, error: `No command /${m[1]} (three_do help commands lists the useful ones).` };
-    if (RUN_DENY.test(def.name) || !RUN_AREAS.test(def.area || '')) return { ok: false, error: `/${def.name} (${def.area}) is the owner's to run: suggest it with <suggest>/${def.name}</suggest>.` };
+    // (round 10) and where the owner's flows are / their next step when the owner asks (flows-ui.js)
+    if ((RUN_DENY.test(def.name) || !RUN_AREAS.test(def.area || '')) && !/^flow-(status|step)$/.test(def.name)) return { ok: false, error: `/${def.name} (${def.area}) is the owner's to run: suggest it with <suggest>/${def.name}</suggest>.` };
     if (/[|;]/.test(line.slice(m[0].length))) return { ok: false, error: 'One command at a time (no pipes or chains).' };
     const chatId = chatFor(ctx);
     const agentId = (H.chats || []).find((c) => c.id === chatId)?.agentId || H.agents().find((a) => a.dock === 'three')?.id;
