@@ -104,7 +104,7 @@ const ChatSlash = (() => {
   }
   // (round 11) the Commands page: every command explained, with a preview, run one question at a time
   function pageRow() {
-    return typeof CmdPage === 'undefined' ? [] : [{ kind: 'run', run: () => CmdPage.open(), label: '☰ Every command, step by step…', hint: 'the Commands page · Ctrl+Shift+F' }];
+    return typeof CmdPage === 'undefined' ? [] : [{ kind: 'run', run: () => setTimeout(() => CmdPage.open(), 30), label: '☰ Every command, step by step…', hint: 'the Commands page · Ctrl+Shift+F' }];
   }
   return { rows, areaCmds, hereRows, flowRows };
 })();
