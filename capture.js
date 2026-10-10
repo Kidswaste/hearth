@@ -926,7 +926,7 @@ const Capture = (() => {
       if (r.mime) delete codecStrikes[String(r.mime).match(/codecs=(\w+)/)?.[1]];
       const busy = quiet ? null : toast('Finishing the recording…', { timeout: 0 });
       let fin = { webm: p };
-      try { fin = await api().finish({ path: p, mp4: r.opts.mp4 !== false, fps: r.opts.fps, id: r.id, size: r.final, crf: 14, keep: Boolean(r.opts.keepWebm) }); } catch (err) { fin.error = err.message; } finally { busy?.remove(); }
+      try { fin = await api().finish({ path: p, mp4: r.opts.mp4 !== false, fps: r.opts.fps, id: r.id, size: r.final, crf: 14, keep: Boolean(r.opts.keepWebm), ms: Math.round(duration * 1000) }); } catch (err) { fin.error = err.message; } finally { busy?.remove(); }
       const main = fin.mp4 || fin.webm || p;
       const marks = r.marks;
       // an encoder that fell behind (a busy machine, a software codec) keeps only the first frames: a 6 s take came

@@ -27,6 +27,7 @@ const VideoComp = (() => {
     refs.decks = el('div', { class: 'vr-pdecks', 'aria-hidden': 'true' });
     h.wrap.append(refs.canvas, refs.decks);
     ensureSvg();
+    if (typeof VideoSound !== 'undefined') VideoSound.attach({ fileUrl: h.fileUrl, wrap: refs.decks }); // audio tracks + sound effects in the preview (pack11)
   }
   // SVG filters for the looks (canvas filter: url(#id)) and the RGB-split channels
   const filterIds = new Map();
@@ -369,7 +370,7 @@ const VideoComp = (() => {
   function show(on) {
     st.on = on;
     refs.canvas?.classList.toggle('on', on);
-    if (!on) { pause(); for (const d of decks.values()) d.el.pause(); }
+    if (!on) { pause(); for (const d of decks.values()) d.el.pause(); if (typeof VideoSound !== 'undefined') VideoSound.pause(); }
   }
   // Every decoder the frame at T needs, seeked to the exact frame; then drawn. Newer calls win.
   async function renderExact(T, { g = null, W = 0, H = 0, edit = null } = {}) {
@@ -412,6 +413,7 @@ const VideoComp = (() => {
     st.T = now(); st.playing = false;
     cancelAnimationFrame(st.raf);
     for (const d of decks.values()) if (!d.el.paused) d.el.pause();
+    if (typeof VideoSound !== 'undefined') VideoSound.pause();
     return st.T;
   }
   function loop() {
@@ -446,7 +448,7 @@ const VideoComp = (() => {
       const want = srcTimeOf(L, T);
       const track = L.track ? tracks.get(L.track.id) : null;
       const local = T - L.start;
-      const muted = c.mute || c.off || c.kind === 'freeze' || track?.mute;
+      const muted = c.mute || c.off || c.kind === 'freeze' || track?.mute || (typeof VideoSound !== 'undefined' && VideoSound.owns(c));
       const v = muted ? 0 : clamp(vol * C.propAt(c, 'volume', local) * envelope(c, local, L.end - L.start), 0, 1);
       if (Math.abs(d.el.volume - v) > 0.01) d.el.volume = v;
       if (c.kind === 'freeze' || c.reverse) {
@@ -460,6 +462,7 @@ const VideoComp = (() => {
       if (d.el.paused) { if (drift > 1 / fps) d.el.currentTime = want; d.el.play().catch(() => {}); } else if ((hard || drift > 3 / fps) && !d.el.seeking) d.el.currentTime = want;
     }
     for (const [id, d] of decks) if (!live.has(id) && !d.el.paused) d.el.pause();
+    if (typeof VideoSound !== 'undefined') VideoSound.sync(e, T, { hard, rate: st.rate, vol, playing: st.playing });
   }
 
   // ---------- frame images (agents, checks) ----------
@@ -516,6 +519,9 @@ const VideoComp = (() => {
       for (const d of decks.values()) {
         try { const s = d.el.captureStream?.(); if (s?.getAudioTracks().length) actx.createMediaStreamSource(s).connect(dest); } catch { /* not capturable */ }
       }
+      // the audio tracks and the clips heard through their sound effects (pack11): mixed into the same track (a
+      // recorder keeps one audio track)
+      if (typeof VideoSound !== 'undefined') { const ts = VideoSound.recordTracks(); if (ts.length) actx.createMediaStreamSource(new MediaStream(ts)).connect(dest); }
       for (const t of dest.stream.getAudioTracks()) stream.addTrack(t);
     } catch { /* video only */ }
     const mime = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find((m) => MediaRecorder.isTypeSupported(m));
@@ -539,11 +545,14 @@ const VideoComp = (() => {
       step();
     });
     for (const d of decks.values()) d.el.pause();
+    if (typeof VideoSound !== 'undefined') VideoSound.pause();
     rec.stop();
     await stopped;
     try { actx?.close(); } catch { /* closed */ }
     const blob = new Blob(chunks, { type: 'video/webm' });
-    return new Uint8Array(await blob.arrayBuffer());
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    // the browser's live WebM has no length in its header: write it (players show and scrub the real length)
+    return typeof WebmDuration !== 'undefined' ? WebmDuration.fix(bytes, (end - a) * 1000) : bytes;
   }
 
   function forget() { for (const d of decks.values()) { d.el.pause(); d.el.removeAttribute('src'); d.el.load(); d.el.remove(); } decks.clear(); titleCanvases.clear(); }
