@@ -208,7 +208,8 @@ async function build(spec, opts = {}) {
     if (kind === 'folder' && !hasIndex) notes.push(hasPkg ? 'No index.html here but a package.json: publish it as a project (Vercel / Netlify build it).' : 'No index.html in this folder: the address will show a 404.');
     return { dir: spec.path, slug, kind, ...dirSize(spec.path), notes, asIs: true };
   }
-  const dir = path.join(ROOT(), 'builds', `${slug}-${stamp()}`);
+  // builds/<time>/<slug>/: the folder's own name is the site's name (Vercel names a new project after it)
+  const dir = path.join(ROOT(), 'builds', `${stamp()}-${Math.random().toString(36).slice(2, 6)}`, slug);
   fs.mkdirSync(dir, { recursive: true });
   const notes = [];
   if (kind === 'page') fs.writeFileSync(path.join(dir, 'index.html'), String(spec.html || ''));

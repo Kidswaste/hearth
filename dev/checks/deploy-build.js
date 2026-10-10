@@ -84,7 +84,7 @@ try {
   ok(/is live on Vercel: https:\/\/deploy-check-[a-z0-9-]+\.vercel\.app/.test(ltext), `live on Vercel (${ltext.slice(0, 120)})`);
   const calls = (await window.hub.fs.read('/tmp/hearth-fake-deploy/calls.jsonl').catch(() => '')).trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
   const dep = calls.filter((c) => c.cli === 'vercel' && c.args[0] === 'deploy').pop();
-  ok(dep && dep.args.includes('--prod') && dep.args.includes('--yes') && /[\\/]deploy[\\/]builds[\\/]deploy-check-/.test(dep.args[1]) && dep.args[4] === b.slug, `vercel deploy <build> --yes --name <slug> --prod (${dep?.args.join(' ').slice(0, 140)})`);
+  ok(dep && dep.args.includes('--prod') && dep.args.includes('--yes') && /[\\/]deploy[\\/]builds[\\/][^\\/]+[\\/]deploy-check-/.test(dep.args[1]) && dep.args[4] === b.slug, `vercel deploy <build> --yes --name <slug> --prod (${dep?.args.join(' ').slice(0, 140)})`);
   // the second publish (another build of the same scene) replaces the first
   const again = say(`/publish scene ${name}`);
   ok(await answer(true), 'Publish again (the default service is now Vercel)');

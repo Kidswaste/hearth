@@ -91,6 +91,7 @@ step('a Lab scene builds into a self-contained page (three.js + addons + referen
   const b = await M.build({ kind: 'scene', name: 'Neon Orb', version: '0.186.1', layers: [{ id: 'main', code, name: 'Layer 1', opacity: 0.8, blend: 'screen' }, { id: 'l2', code: 'console.log(audio.bass)' }], refs: [{ key: 'tex', kind: 'image', path: ref }, { key: 'gone', kind: 'image', path: '/nope.png' }], palette: ['#ff0000'], frame: { w: 1080, h: 1920 } }, { threeDir: THREE });
   sceneBuild = b;
   assert.strictEqual(b.slug, 'neon-orb');
+  assert.strictEqual(path.basename(b.dir), 'neon-orb', 'the build folder is named after the site (Vercel names new projects after it)');
   for (const f of ['index.html', 'lab.html', 'three/build/three.module.js', 'three/build/three.core.js', 'three/examples/jsm/postprocessing/EffectComposer.js', 'three/examples/jsm/postprocessing/Pass.js', 'three/examples/jsm/shaders/CopyShader.js', 'three/examples/jsm/controls/OrbitControls.js', 'assets/tex.png', 'hearth-build.json']) assert.ok(fs.existsSync(path.join(b.dir, f)), f);
   const lab = fs.readFileSync(path.join(b.dir, 'lab.html'), 'utf8');
   assert.ok(!lab.includes('cdn.jsdelivr.net/npm/three@'), 'three.js comes from ./three/');
