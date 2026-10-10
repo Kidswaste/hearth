@@ -26,6 +26,8 @@ const Makes = (() => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const cap = C.cap;
   const base = (p) => String(p || '').split(/[\\/]/).pop();
+  // the make's color on a node (custom properties need setProperty: el()'s style object can't set them)
+  const tint = (node, color) => { node.style.setProperty('--mk', color); return node; };
   let data = { list: [] };
   let loaded = false;
   const ready = (async () => {
@@ -261,7 +263,7 @@ const Makes = (() => {
     const c = next.chatId && summary(next.chatId);
     if (c) {
       setTimeout(async () => {
-        Native.setDraft(c.agentId, `From “${C.roomTitle(make, part)}”${last ? `: ${last}` : ''}\n${next.brief ? `Now: ${next.brief}` : 'Take it from here.'}`);
+        Native.setDraft(c.agentId, `From “${C.roomTitle(make, part)}”${last ? `: ${last}` : ''}\n${/\s/.test(next.brief || '') ? `Now: ${next.brief}` : 'Take it from here.'}`);
         if (out && next.kind === 'video') { try { await Native.attachPaths(c.agentId, [out.path]); } catch { /* the file moved */ } }
       }, 350);
     }
@@ -430,7 +432,7 @@ const Makes = (() => {
       const key = `make:${make.id}`;
       const st = C.statusOf(make);
       const closed = collapsed.has(key) && !q;
-      const group = el('div', { class: `group mk-group mk-${st}`, dataset: { id: key, make: make.id }, style: { '--agent': make.ident.color, '--mk': make.ident.color } });
+      const group = el('div', { class: `group mk-group mk-${st}`, dataset: { id: key, make: make.id } }); tint(group, make.ident.color); group.style.setProperty('--agent', make.ident.color);
       const pct = C.pctOf(make);
       const toggle = el('button', { class: 'group-toggle', type: 'button', title: `${make.name} · ${C.CATS[make.cat] || 'Make'} · ${C.chain(make)} · ${C.STATUS_LABEL[st]}${pct ? ` · ${pct} %` : ''}\nRight-click: rooms, rename, dismiss…`, on: { click: () => toggleGroup(key) } },
         el('span', { class: 'caret', text: closed ? '▸' : '▾' }), el('span', { class: 'mk-mark', text: make.ident.glyph }), el('span', { class: 'group-name', text: make.name }),
@@ -447,6 +449,9 @@ const Makes = (() => {
           const r = row(agent, itemOf(c));
           r.dataset.agent = agent.id;
           r.classList.add('mk-room');
+          // under its make's name the row says only its room ("Lab 1/2 · red pulse"); the full title stays in the tooltip
+          const t = r.querySelector('.item-title');
+          if (t && t.textContent.startsWith(`${make.name} · `)) t.textContent = t.textContent.slice(make.name.length + 3);
           if (!r.querySelector('.chat-ident')) r.prepend(el('span', { class: 'chat-ident mk-ident', text: make.ident.glyph }));
           const tag = ST_TAG[p.status];
           if (tag && !r.querySelector('.busy')) r.append(el('span', { class: `mk-tag mk-t-${p.status}`, text: tag, title: C.waitText(make, p) }));
@@ -515,11 +520,11 @@ const Makes = (() => {
       !started && part.brief ? el('button', { class: 'ghost small', type: 'button', text: '✎ Start here', title: 'Put this room\'s part in the chat box (nothing is sent)', on: { click: () => Native.setDraft(chat.agentId, part.brief.replace(/^\w/, (x) => x.toUpperCase())) } }) : null,
       started && next ? el('button', { class: 'ghost small', type: 'button', text: `⇢ Hand off to ${C.label(next, make)}`, title: 'This part is done: open the next room with what was made here', on: { click: () => handoff(make, part) } }) : null,
       el('button', { class: 'ghost small', type: 'button', text: '⋯', title: 'This make: rooms, rename, dismiss…', on: { click: (e) => showMenuAt(e.currentTarget, makeMenu(make)) } }));
-    const card = el('div', { class: `mk-room-card${started ? ' mk-slim' : ''}`, dataset: { make: make.id }, style: { '--mk': make.ident.color } },
+    const card = tint(el('div', { class: `mk-room-card${started ? ' mk-slim' : ''}`, dataset: { make: make.id } },
       el('div', { class: 'mk-rc-head' }, el('span', { class: 'mk-mark', text: make.ident.glyph }), el('b', { text: make.name }), el('span', { class: 'mk-room-name', text: `· ${C.label(part, make)}` }),
         el('span', { class: `mk-pill mk-c-${part.status}`, text: started ? (C.STATUS_LABEL[part.status] || part.status) : wait })),
       started ? null : el('p', { class: 'mk-holds', text: `This room will hold ${part.brief ? `the ${part.brief}` : C.KINDS[part.kind]?.holds || 'its part'}${C.KINDS[part.kind]?.who ? ` (${C.KINDS[part.kind].who})` : ''}. Nothing is made here yet.` }),
-      make.parts.length > 1 ? strip : null, acts);
+      make.parts.length > 1 ? strip : null, acts), make.ident.color);
     card.addEventListener('contextmenu', (e) => { e.preventDefault(); showMenu(e.clientX, e.clientY, makeMenu(make)); });
     return card;
   }
@@ -588,10 +593,10 @@ const Makes = (() => {
   }
   function pageRow(m) {
     const st = C.statusOf(m);
-    return el('button', { class: `cp-row mk-row mk-${st}`, type: 'button', dataset: { ext: `make:${m.id}` }, style: { '--mk': m.ident.color }, title: lineOf(m) },
+    return tint(el('button', { class: `cp-row mk-row mk-${st}`, type: 'button', dataset: { ext: `make:${m.id}` }, title: lineOf(m) },
       el('span', { class: 'cp-pv mk-pv', text: m.ident.glyph }),
       el('span', { class: 'cp-rtext' }, el('b', { text: m.name }), el('span', { class: 'cp-desc', text: `${C.chain(m) || C.CATS[m.cat]} · ${C.STATUS_LABEL[st]}${C.pctOf(m) && st !== 'done' ? ` · ${C.pctOf(m)} %` : ''}` })),
-      el('span', { class: 'cp-area', text: (C.CATS[m.cat] || 'make').toLowerCase() }));
+      el('span', { class: 'cp-area', text: (C.CATS[m.cat] || 'make').toLowerCase() })), m.ident.color);
   }
   function pagePick(id, right) {
     if (id === 'makes:all') { renderAll(right); return; }
@@ -625,7 +630,7 @@ const Makes = (() => {
     const outs = make.outputs.slice(0, 8).map((o) => el('div', { class: 'mk-out' }, el('span', { class: 'mk-picon', text: o.kind === 'video' ? '▶' : o.kind === 'still' ? '▣' : '•' }), el('span', { class: 'mk-ptext', text: base(o.path), title: o.path }),
       el('button', { class: 'ghost small', type: 'button', text: 'Open', on: { click: () => openOutput(o.path) } }), el('button', { class: 'ghost small', type: 'button', text: '⧉', title: 'Show in folder', on: { click: () => window.hub.fs.reveal(o.path) } })));
     const first = make.parts.find((p) => p.chatId || p.frameId);
-    const box = el('div', { class: 'cp-example mk-detail', style: { '--mk': make.ident.color }, dataset: { make: make.id } },
+    const box = tint(el('div', { class: 'cp-example mk-detail', dataset: { make: make.id } },
       el('div', { class: 'cp-big mk-big' }, el('span', { class: 'mk-bigmark', text: make.ident.glyph }), el('span', { class: 'mk-bigname', text: make.name })),
       el('div', { class: 'cp-ex-head' }, el('h2', { text: make.name }), el('span', { class: 'cp-area', text: C.CATS[make.cat] || 'Make' }), el('span', { class: `mk-pill mk-c-${st}`, text: `${C.STATUS_LABEL[st]}${pct && st !== 'done' ? ` · ${pct} %` : ''}` }), el('span', { class: 'spacer' }),
         el('button', { class: 'ghost small', type: 'button', text: '⋯', title: 'Rooms, rename, hand off, dismiss…', on: { click: (e) => showMenuAt(e.currentTarget, makeMenu(make)) } })),
@@ -637,7 +642,7 @@ const Makes = (() => {
       el('div', { class: 'cp-row-btns' },
         first && !make.dismissed ? el('button', { class: 'primary', type: 'button', text: `↗ Open ${C.label(first, make)}`, on: { click: () => openRoom(make, first) } }) : null,
         el('button', { class: 'ghost', type: 'button', text: '✎ Rename', on: { click: () => renamePrompt(make) } }),
-        make.dismissed ? el('button', { class: 'ghost', type: 'button', text: '↺ Restore', on: { click: () => restore(make) } }) : el('button', { class: 'ghost', type: 'button', text: 'Dismiss…', on: { click: () => dismissAsk(make) } })));
+        make.dismissed ? el('button', { class: 'ghost', type: 'button', text: '↺ Restore', on: { click: () => restore(make) } }) : el('button', { class: 'ghost', type: 'button', text: 'Dismiss…', on: { click: () => dismissAsk(make) } }))), make.ident.color);
     right.replaceChildren(box);
   }
   function paintPage() {
