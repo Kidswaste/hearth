@@ -61,8 +61,8 @@ const ProgressUI = (() => {
     }
     if (b.bar.parentElement !== host) host.append(b.bar);
     const indet = it.meta?.indeterminate && it.state !== 'done';
-    // half-percent steps: the CSS transition makes it glide, so finer writes would only cost style work
-    const f = indet ? 1 : Math.round(Math.max(0.02, it.shown / 100) * 200) / 200;
+    // 2 % steps: the CSS transition makes it glide, so finer writes would only cost style work (it was ½ %)
+    const f = indet ? 1 : Math.round(Math.max(0.02, it.shown / 100) * 50) / 50;
     const cls = `pg-bar${b.bar.classList.contains('pg-anim') ? ' pg-anim' : ''}${it.estimated && it.state !== 'done' ? ' pg-est' : ''}${indet ? ' pg-indet' : ''} pg-${it.state}`;
     if (cls !== b.cls) { b.bar.className = cls; b.cls = cls; }
     if (f !== b.f) { b.fill.style.transform = `scaleX(${f})`; b.f = f; }

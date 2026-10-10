@@ -907,7 +907,7 @@ const ThreeSeq = (() => {
   }
   // an edit (the sequence, or one baked scene) → an mp4. Needs the Lab preview at the frame size (the page draws the
   // scenes at their real pixels), so it switches there first and comes back after.
-  async function renderEdit(e, { format = null, name = null, quiet = false, library = true, onProgress = null, realtime = false } = {}) {
+  async function renderEdit(e, { format = null, name = null, quiet = false, library = true, onProgress = null, realtime = false, fps = null, crf = 18, sound = true } = {}) {
     const L = lab();
     if (!L) throw new Error('Open the Three.js Lab first');
     if (S.render) throw new Error('A render is running');
@@ -915,6 +915,7 @@ const ThreeSeq = (() => {
     const [w, h] = D.FORMATS[fmt] || [e.seq?.w || 1080, e.seq?.h || 1920];
     let re = C.copy(e);
     if (format) re = D.setFormat(re, fmt);
+    if (fps) re = { ...re, seq: { ...(re.seq || {}), fps: Number(fps) } };
     const F = re.seq?.fps || 30;
     const dur = programEnd(re);
     if (!(dur > 0)) throw new Error('The sequence is empty');
@@ -948,14 +949,14 @@ const ThreeSeq = (() => {
         await renderFrames(re, { w, h, n0: 0, n1: N, dir: tmp, onProgress: (p) => { onProgress?.(p * 0.85); say(`Rendering the sequence… frame ${Math.round(p * N)} / ${N}`); } });
         send({ type: 'seq-offline', on: false });
         output = await uniqueOut(dir, stem, 'mp4');
-        const parts = audioPlan(re, N / F);
+        const parts = sound ? audioPlan(re, N / F) : [];
         const args = ['-y', '-framerate', String(F), '-i', `${tmp}/frame_%05d.jpg`];
         parts.forEach((p) => args.push('-i', p.src));
         if (parts.length) {
           const chains = parts.map((p, i) => `[${i + 1}:a]atrim=start=${p.a.toFixed(4)}:duration=${(p.len * (p.speed || 1)).toFixed(4)},asetpts=PTS-STARTPTS${p.speed && p.speed !== 1 ? `,atempo=${clamp(p.speed, 0.5, 2)}` : ''},volume=${p.volume.toFixed(3)},adelay=${Math.round(p.at * 1000)}|${Math.round(p.at * 1000)}[a${i}]`);
           args.push('-filter_complex', `${chains.join(';')};${parts.map((_, i) => `[a${i}]`).join('')}amix=inputs=${parts.length}:normalize=0:duration=longest[aout]`, '-map', '0:v', '-map', '[aout]', '-c:a', 'aac', '-b:a', '192k');
         } else args.push('-map', '0:v');
-        args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(F), '-t', (N / F).toFixed(4), '-movflags', '+faststart', 'OUTPUT');
+        args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', String(Math.max(10, Math.min(30, Number(crf) || 18))), '-pix_fmt', 'yuv420p', '-r', String(F), '-t', (N / F).toFixed(4), '-movflags', '+faststart', 'OUTPUT');
         say('Rendering the sequence… muxing the sound');
         await runJob({ id: `seq${Date.now().toString(36)}`, input: `${tmp}/frame_00000.jpg`, output, args, duration: N / F, onProgress: (p) => onProgress?.(0.85 + p * 0.15) });
       } finally { window.hub.video.rmtemp?.(tmp).catch(() => {}); }
@@ -1498,6 +1499,64 @@ const ThreeSeq = (() => {
       { label: 'Clear the sequence…', danger: true, more: true, action: async () => { if (await Modal.confirm('Clear the sequence?', 'Every clip and title goes (Undo brings them back).', { ok: 'Clear', danger: true })) commit({ ...S.edit, clips: [], tracks: (S.edit.tracks || []).map((k) => ({ ...k, items: k.type === 'audio' ? k.items.filter((x) => x.song) : [] })), markers: [] }, 'Cleared'); } },
     ]);
   }
+  // ⇪ Render: one panel with the choices that matter (formats, frame rate, quality, sound), remembered for next time;
+  // right-click the button for the quick menu
+  const QUALITY = { draft: { crf: 24, label: 'Draft', hint: 'small file, quick look' }, high: { crf: 18, label: 'High', hint: 'for posting' }, best: { crf: 14, label: 'Best', hint: 'near lossless, big file' } };
+  async function renderPanel() {
+    if (S.render) { toast('A render is already running (the bar at the bottom of the rail can stop it)'); return; }
+    if (!S.edit) await current();
+    const cur = D.formatOf(S.edit);
+    const last = store.get('three.seq.renderOpts', {});
+    const st = { formats: new Set((last.formats || []).filter((f) => D.FORMATS[f])), fps: last.fps || S.edit?.seq?.fps || 30, quality: QUALITY[last.quality] ? last.quality : 'high', sound: last.sound !== false, open: last.open !== false };
+    if (!st.formats.size) st.formats.add(cur);
+    const dlg = el('dialog', { class: 'ui-modal sq-render-panel' });
+    const chip = (on, text, title, click) => el('button', { type: 'button', class: `sq-chip${on ? ' on' : ''}`, text, title, on: { click } });
+    const body = el('div', { class: 'sq-rp-body' });
+    const go = el('button', { type: 'button', class: 'primary', text: '⇪ Render' });
+    const len = programEnd(S.edit);
+    function paint() {
+      const n = st.formats.size;
+      body.replaceChildren(
+        el('div', { class: 'sq-rp-row' }, el('b', { text: 'Format' }), el('div', { class: 'sq-chips' }, Object.keys(D.FORMATS).map((f) => chip(st.formats.has(f), f, `${D.FORMATS[f].join('×')}${f === cur ? ' (the sequence\'s own)' : ''}`, () => { if (st.formats.has(f) && st.formats.size > 1) st.formats.delete(f); else st.formats.add(f); paint(); })))),
+        el('div', { class: 'sq-rp-row' }, el('b', { text: 'Frame rate' }), el('div', { class: 'sq-chips' }, [24, 30, 60].map((f) => chip(st.fps === f, `${f} fps`, '', () => { st.fps = f; paint(); })))),
+        el('div', { class: 'sq-rp-row' }, el('b', { text: 'Quality' }), el('div', { class: 'sq-chips' }, Object.entries(QUALITY).map(([k, q]) => chip(st.quality === k, q.label, q.hint, () => { st.quality = k; paint(); })))),
+        el('label', { class: 'sq-rp-check' }, el('input', { type: 'checkbox', checked: st.sound, on: { change: (e) => { st.sound = e.target.checked; } } }), ' With the sound'),
+        el('label', { class: 'sq-rp-check' }, el('input', { type: 'checkbox', checked: st.open, on: { change: (e) => { st.open = e.target.checked; } } }), ' Open in Video Review when it\'s done'),
+        el('div', { class: 'sq-rp-sum', text: `${len > 0 ? `${len.toFixed(1)} s · ${Math.round(len * st.fps)} frames` : 'The sequence is empty'}${n > 1 ? ` · ${n} videos, one after the other` : ''}` }),
+      );
+      go.disabled = !(len > 0);
+      go.textContent = n > 1 ? `⇪ Render ${n} formats` : `⇪ Render ${[...st.formats][0]}`;
+    }
+    const realtime = el('button', { type: 'button', class: 'ghost small', text: 'Record in real time instead', title: 'Without ffmpeg: the sequence plays once into a recording' });
+    dlg.append(el('h3', { text: 'Render the sequence' }), body, el('div', { class: 'modal-actions' }, realtime, el('span', { class: 'spacer' }), el('button', { type: 'button', class: 'ghost', text: 'Cancel', on: { click: () => dlg.close() } }), go));
+    document.body.append(dlg);
+    dlg.addEventListener('close', () => dlg.remove());
+    paint();
+    dlg.showModal();
+    const start = async (opts) => {
+      store.set('three.seq.renderOpts', { formats: [...st.formats], fps: st.fps, quality: st.quality, sound: st.sound, open: st.open });
+      dlg.close();
+      let lastOut = null;
+      for (const f of st.formats) {
+        try { lastOut = await render({ format: f, fps: st.fps, crf: QUALITY[st.quality].crf, sound: st.sound, ...opts }); } catch (err) { toast(err.message, { type: 'error' }); break; }
+      }
+      if (st.open && lastOut?.path) openOutput(lastOut.path);
+    };
+    go.addEventListener('click', () => start({}));
+    realtime.addEventListener('click', () => start({ realtime: true }));
+    return dlg;
+  }
+  // ↻: a fresh preview page when the sequence gets stuck (it happens while frames swap): the page reloads, and the
+  // sequence, its song and the playhead come back where they were (sent again on the page's "ready")
+  function reloadPreview() {
+    const L = lab();
+    if (!L?.reloadPage) return false;
+    if (S.render) { toast('A render is running: wait for it, or stop it from the bar at the bottom of the rail'); return false; }
+    flash('↻ Reloading the preview…');
+    S.sent = { libs: false, assets: new Set(), plan: '' };
+    L.reloadPage();
+    return true;
+  }
   function renderMenu(anchor) {
     const r = anchor.getBoundingClientRect();
     const cur = D.formatOf(S.edit);
@@ -1625,19 +1684,22 @@ const ThreeSeq = (() => {
   // ---------- mount (tools/three.js calls attach once the Lab's player exists) ----------
   function build(bar) {
     refs.tab = el('button', { class: 'ghost small sq-tab', text: '▤ Sequence', title: 'Build a video from your scenes, footage, titles and the song, right here (/sequence)', dataset: { feature: 'Sequence' }, on: { click: () => toggle().catch((err) => toast(err.message, { type: 'error' })) } });
-    bar.querySelector('.mb-handle')?.append(refs.tab);
+    // ⇪ Render on the strip too: the scene (its own sequence: the scene on its timeline) without opening ▤ first
+    refs.renderTab = el('button', { class: 'ghost small sq-render-tab', text: '⇪ Render', title: 'Render this scene as a video: format, frame rate, quality, sound (it renders the scene\'s own sequence)', dataset: { feature: 'Scene render' }, on: { click: async () => { try { await current(); if (!(programEnd(S.edit) > 0)) { await addCurrent?.({ at: 0 }); } await renderPanel(); } catch (err) { toast(err.message, { type: 'error' }); } } } });
+    bar.querySelector('.mb-handle')?.append(refs.tab, refs.renderTab);
     refs.play = el('button', { class: 'ghost small sq-play', text: '▶', title: 'Play / pause the sequence (Space)', on: { click: () => play() } });
     refs.time = el('span', { class: 'sq-time', title: 'Timecode · frame (click to go to a time or frame)', on: { click: async () => { const v = await Modal.prompt('Go to (seconds, f120, 00:00:04:12, bar 9)', { value: tc(S.T) }); const t = v != null ? timeOf(v) : null; if (t != null) { play(false); seek(t); } } } });
     refs.name = el('button', { class: 'ghost small sq-name', title: 'Your Lab sequences · new · rename · format', on: { click: (e) => nameMenu(e.currentTarget) } });
     refs.add = el('button', { class: 'ghost small sq-add', text: '＋', title: 'Add a scene, a chat scene, a look, footage, a title or an overlay (or drag one onto the tracks)', dataset: { feature: 'Sequence add' }, on: { click: (e) => picker(e.currentTarget) } });
-    refs.render = el('button', { class: 'ghost small sq-render', text: '⇪', title: 'Render the sequence frame by frame (9:16 · 16:9 · 1:1 · 4:5) into Video Review', dataset: { feature: 'Sequence render' }, on: { click: (e) => renderMenu(e.currentTarget) } });
+    refs.render = el('button', { class: 'primary small sq-render', text: '⇪ Render', title: 'Render the sequence: format, frame rate, quality, sound (right-click: quick menu)', dataset: { feature: 'Sequence render' }, on: { click: () => renderPanel().catch((err) => toast(err.message, { type: 'error' })), contextmenu: (e) => { e.preventDefault(); renderMenu(e.currentTarget); } } });
+    refs.reload = el('button', { class: 'ghost small sq-reload', text: '↻', title: 'Reload the preview (when the sequence gets stuck): it comes back where it was', dataset: { feature: 'Sequence reload' }, on: { click: () => reloadPreview() } });
     refs.more = el('button', { class: 'ghost small sq-more', text: '⋯', title: 'Fit to bars, transitions, the video editor, loop, snapping, keys', on: { click: (e) => moreMenu(e.currentTarget) } });
     refs.flash = el('span', { class: 'sq-flash', attrs: { 'aria-live': 'polite' } });
     refs.cv = el('canvas', { class: 'sq-canvas' });
     refs.head = el('div', { class: 'sq-playhead' });
     refs.hint = el('div', { class: 'sq-hint', text: 'Drag a scene here (＋), ⋯ → ✦ Arrange my scenes on the song, or right-click the preview → Add this scene' });
     refs.tl = el('div', { class: 'sq-tl', attrs: { tabindex: '0' } }, refs.cv, refs.head, refs.hint);
-    refs.view = el('div', { class: 'sq-view', hidden: true }, el('div', { class: 'sq-row' }, refs.play, refs.time, refs.name, el('span', { class: 'spacer' }), refs.flash, refs.add, refs.render, refs.more), refs.tl);
+    refs.view = el('div', { class: 'sq-view', hidden: true }, el('div', { class: 'sq-row' }, refs.play, refs.time, refs.name, el('span', { class: 'spacer' }), refs.flash, refs.reload, refs.add, refs.render, refs.more), refs.tl);
     bar.append(refs.view);
     refs.cv.addEventListener('pointerdown', onDown);
     refs.cv.addEventListener('pointermove', onMove);
@@ -1816,7 +1878,7 @@ const ThreeSeq = (() => {
 
   // the preview's right-click: add the scene on screen to the sequence
   function previewItem() {
-    if (S.view) return { label: '▤ Sequence', items: () => [{ label: '＋ Add this scene here', hint: 'at the playhead', action: () => addCurrent({ at: S.T }) }, { label: '⇪ Render…', action: () => renderMenu(refs.render) }, { label: '← Back to the scene', action: () => leave() }] };
+    if (S.view) return { label: '▤ Sequence', items: () => [{ label: '＋ Add this scene here', hint: 'at the playhead', action: () => addCurrent({ at: S.T }) }, { label: '⇪ Render…', action: () => renderPanel() }, { label: '↻ Reload the preview', action: () => reloadPreview() }, { label: '← Back to the scene', action: () => leave() }] };
     return { label: '▤ Add this scene to the sequence', hint: S.key ? S.key.slice(4) : 'a new one', action: () => addCurrent().catch((err) => toast(err.message, { type: 'error' })) };
   }
 
@@ -1837,7 +1899,7 @@ const ThreeSeq = (() => {
   addEventListener('hearth:sketch', () => { if (S.hold) { S.hold = false; return; } if (!S.view && !S.render) S.explicit = false; });
   addEventListener('hearth:lab-ready', () => { setTimeout(() => list().then(() => emit('index', {})).catch(() => {}), 1500); });
   const api = {
-    attach, onMessage, takeRecording, keep, posterImage, owns: () => S.view, sketchChanged, previewItem,
+    renderPanel, reloadPreview, attach, onMessage, takeRecording, keep, posterImage, owns: () => S.view, sketchChanged, previewItem,
     enter, leave, toggle, open, create, current, list, add, addCurrent, applyVibe, select, split, del, dup, slipBy, trimToHead, marker, setTransition, setLength, setLook, fit, setFormat,
     play, seek, step, shuttle, jump, settle, undo, redo, render, renderEdit, renderScene, toEditor, fromEditor, needsBake, bake, compile, status, handle, timeOf, secsOf, zoomBy,
     arrange, again, retime, versions, fillGap, vary, varySections, copyLook, pasteLook, swapLooks, nest, unnest, copySel, paste, zoomTo, sectionMarkers, decideArrangement, recordForEditor,

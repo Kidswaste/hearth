@@ -39,7 +39,7 @@
   const call = async (args) => { const r = await Q().handle('three_sequence', args); if (!r.ok) throw new Error(r.error); return r.value; };
   const clipArg = (w) => (/^\d+$/.test(w || '') ? Number(w) : w);
   Commands.register({
-    name: 'sequence', aliases: ['seq'], area: AREA, args: '[add|title|transition|render|editor|…]',
+    name: 'sequence', aliases: ['seq'], area: AREA, args: '[add|title|transition|render [options]|reload|editor|…]',
     desc: 'The Lab sequence: a video timeline of your scenes, footage, titles and the song, played in the preview (no args: show / hide it)',
     keywords: 'timeline video edit scenes clips montage storyboard cut transitions render reel',
     examples: ['/sequence', '/sequence add Rings at bar 9', '/sequence transition dip-black 2', '/sequence render 9:16'],
@@ -86,6 +86,8 @@
       if (sub === 'format') return lines(await call({ op: 'format', format: w[1] }));
       if (sub === 'play' || sub === 'pause') { await call({ op: sub }); return sub === 'play' ? 'Playing the sequence.' : 'Paused.'; }
       if (sub === 'go' || sub === 'seek') { const v = await call({ op: 'seek', at: rest }); return `${v.timecode} · f${v.frame} · ${v.showing}`; }
+      if (sub === 'reload') { if (!Q().reloadPreview()) return 'Open the Lab first (or wait for the render to end).'; return 'Reloading the preview: the sequence comes back where it was.'; }
+      if (sub === 'render' && /^(options|…|\.\.\.)$/i.test(w[1] || '')) { await Q().renderPanel(); return undefined; }
       if (sub === 'render') {
         if (/^all$/i.test(w[1] || '')) { const out = []; for (const f of ['9:16', '16:9', '1:1', '4:5']) out.push((await Q().render({ format: f })).path); return `Rendered ${out.length} formats into Video Review:\n${out.map((p) => `• ${p}`).join('\n')}`; }
         const r = await Q().render({ format: /^\d+:\d+$/.test(w[1] || '') ? w[1] : null, realtime: /^realtime$/i.test(w[1] || '') });

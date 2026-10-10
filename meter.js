@@ -331,7 +331,8 @@ const Meter = (() => {
     // (only what changed is written: this runs ~8× a second while a reply streams, beside a playing Lab)
     const num = pill.querySelector('.mp-num');
     const numText = live.size ? fmt([...live.values()].reduce((s, l) => s + estimate(l), 0)) : fmt(today);
-    if (num.textContent !== numText) num.textContent = numText;
+    // while a reply streams the live count moves on every piece: written at most twice a second
+    if (num.textContent !== numText && (!live.size || force || performance.now() - (paint.numAt || 0) > 500)) { num.textContent = numText; paint.numAt = performance.now(); }
     pill.classList.toggle('is-live', live.size > 0);
     pill.classList.toggle('b-warn', budgetState() === 'warn');
     pill.classList.toggle('b-over', budgetState() === 'over');

@@ -2158,7 +2158,7 @@ const ThreeLab = (() => {
     // video footage on the timeline: exact frames, the cut list the sketch plays (tools/three-frames.js)
     if (typeof ThreeFrames !== 'undefined') ThreeFrames.attach({ player, send: (msg) => box.send(msg), sketchId: () => current?.id });
     // the Lab's Sequence: the timeline as a video timeline of scenes, footage, titles and the song (tools/three-seq.js)
-    if (typeof ThreeSeq !== 'undefined') ThreeSeq.attach({ player, bar: player.el, pane, send: (msg) => box.send(msg), sketchId: () => current?.id, rerun: () => run(), director: () => api.director, get stage() { return stage; }, get scenes() { return api.scenes; } });
+    if (typeof ThreeSeq !== 'undefined') ThreeSeq.attach({ player, bar: player.el, pane, send: (msg) => box.send(msg), sketchId: () => current?.id, rerun: () => run(), reloadPage: () => box.reload(true), director: () => api.director, get stage() { return stage; }, get scenes() { return api.scenes; } });
     // precomps (tools/three-comp.js): other scenes as layers of this one, kept live in the preview
     if (typeof ThreeComp !== 'undefined') ThreeComp.attach({ send: (msg) => box.send(msg), sketchId: () => current?.id, persist: () => persist(), select: (id) => selectLayer(id), player });
     pane.addEventListener('keydown', (e) => {

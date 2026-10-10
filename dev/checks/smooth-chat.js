@@ -36,7 +36,7 @@ await window.hub.saveChat(big); await window.hub.saveChat(small);
 Native.save(big); Native.save(small); await wait(300);
 let t = performance.now();
 Native.open(claude.id, big.id);
-await until(() => v().list.querySelectorAll('.msg').length >= 300, 10000);
+await until(() => v().list.querySelectorAll('.msg').length >= 40, 10000); // a long chat opens on its last 40 messages (↑ Show earlier brings the rest)
 await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
 out.openLongChatMs = Math.round(performance.now() - t);
 await wait(800);

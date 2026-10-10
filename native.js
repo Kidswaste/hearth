@@ -762,8 +762,18 @@ const Native = (() => {
       const pins = chat.messages.map((m, i) => (m.pinnedMsg ? i : -1)).filter((i) => i >= 0);
       if (pins.length) v.list.append(pinnedStrip(agentId, chat, pins));
       const firstNew = unreadFrom.get(chat.id);
+      // A long chat opens on its last 40 messages (switching to one rebuilt every message: ~36k laid-out objects);
+      // "↑ Show earlier" or scrolling up to it brings the rest, and jumpTo() loads them when it needs an older one.
+      const from = shownFrom(chat, firstNew);
+      if (from > 0) {
+        const more = el('button', { type: 'button', class: 'ghost show-earlier', text: `↑ Show ${from} earlier message${from === 1 ? '' : 's'}`, on: { click: () => showEarlier(agentId) } });
+        v.list.append(more);
+        // reaching it by scrolling up loads them too (after the chat has settled at the bottom)
+        setTimeout(() => { if (!more.isConnected) return; const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); showEarlier(agentId); } }, { root: v.list }); io.observe(more); }, 600);
+      }
       let day = '';
       chat.messages.forEach((m, i) => {
+        if (i < from) return;
         if (m.compactReq) return; // the "please compact" request is shown as part of the divider
         // a quiet date line where the day changes (Today / Yesterday / the date)
         const d = m.at ? dayLabel(m.at) : '';
@@ -856,9 +866,27 @@ const Native = (() => {
     });
     return strip;
   }
+  const WINDOW = 40;
+  const fullChats = new Set(); // chats whose earlier messages are shown (this session)
+  function shownFrom(chat, firstNew) {
+    if (fullChats.has(chat.id) || chat.messages.length <= WINDOW + 10) return 0;
+    let from = chat.messages.length - WINDOW;
+    if (firstNew != null && firstNew < from) from = Math.max(0, firstNew - 2);
+    return from;
+  }
+  // the earlier messages of the open chat, keeping what's on screen where it is
+  function showEarlier(agentId) {
+    const v = views.get(agentId); const id = H.activeChat[agentId];
+    if (!v || !id || fullChats.has(id)) return;
+    fullChats.add(id);
+    const h0 = v.list.scrollHeight; const t0 = v.list.scrollTop;
+    render(agentId);
+    v.list.scrollTop = t0 + (v.list.scrollHeight - h0);
+  }
   // Scrolls to message #index (0-based) and flashes it; unfolds it when folded.
   function jumpTo(agentId, index) {
     const v = views.get(agentId);
+    if (v && !v.list.querySelector(`.msg[data-index="${index}"]`) && H.activeChat[agentId] && !fullChats.has(H.activeChat[agentId])) { fullChats.add(H.activeChat[agentId]); render(agentId); }
     const node = v?.list.querySelector(`.msg[data-index="${index}"]`);
     if (!node) return false;
     node.scrollIntoView({ block: index === 0 ? 'start' : 'center' });
@@ -915,7 +943,11 @@ const Native = (() => {
     if (!p.el) return;
     let st = p.el.querySelector('.stream-status');
     if (!st) { st = el('div', { class: 'stream-status' }); p.el.append(st); }
-    const secs = Math.round((Date.now() - p.started) / 1000);
+    // at most twice a second (it was rewritten on every streamed piece: ~15 writes a second for a clock in seconds)
+    const now = Date.now(); const phase = p.text ? 1 : p.tools.length ? 2 : p.thinking ? 3 : 0;
+    if (st.textContent && now - (p.statusAt || 0) < 500 && p.statusPhase === phase) return;
+    p.statusAt = now; p.statusPhase = phase;
+    const secs = Math.round((now - p.started) / 1000);
     const words = (visibleText(p.text).match(/\S+/g) || []).length;
     const doing = p.text ? 'Writing' : p.tools.length ? 'Working' : p.thinking ? 'Thinking' : 'Starting';
     const line = `${doing} · ${secs} s${words ? ` · ${words.toLocaleString()} words` : ''}${p.tools.length ? ` · ${p.tools.length} step${p.tools.length > 1 ? 's' : ''}` : ''} · Esc stops`;
@@ -1770,7 +1802,7 @@ const Native = (() => {
     return chat;
   }
 
-  return { isDraft,
+  return { showEarlier, isDraft,
     chatOf, ensureChat, adopt, save: remember, loadChat, partnerOf, rememberFacts, forgetFacts,
     takeAttachments: (agentId) => packAttachments(agentId, ''),
     secondOpinion,

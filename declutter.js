@@ -659,6 +659,6 @@ const Declutter = (() => {
   return {
     REVEAL, ctx, customiseItems, popItems, pin, tuck, mine: () => mine.slice(), selectorFor, pinned: (id) => pins.has(id), find, paint, setOff, isOff: () => off, areas,
     tucked: (area) => REVEAL.filter((r) => (!area || r.area === area) && !pins.has(r.id)),
-    railItems, labToolbar, addRules,
+    railItems, labToolbar, addRules, neverUsedIn,
   };
 })();

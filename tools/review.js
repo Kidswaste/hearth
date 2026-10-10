@@ -481,13 +481,24 @@ const Review = (() => {
     refs.loopBtn.classList.toggle('on', S.loop.a != null && S.loop.on);
   }
   let lastTick = 0;
+  let parked = false; let wakeWired = false;
+  function parkTick() {
+    parked = true;
+    if (wakeWired) return;
+    wakeWired = true;
+    const wake = () => { if (parked) { parked = false; requestAnimationFrame(tick); } };
+    refs.video?.addEventListener('play', wake); refs.cmp?.addEventListener('play', wake);
+    document.addEventListener('hearth:activate', (e) => { if (e.detail?.surfaceId === 'tool:ae' || e.detail?.id === 'tool:ae') setTimeout(wake, 0); });
+    Review.wakeTick = wake;
+  }
   const onScreen = () => (refs.root.checkVisibility ? refs.root.checkVisibility({ visibilityProperty: true }) : Boolean(refs.root.offsetParent));
   function tick(now) {
     if (!refs.video?.isConnected) return;
     const d = vid();
     // hidden tool and nothing playing: check again a few times a second instead of every frame
     // (hidden surfaces are visibility: hidden, so offsetParent alone said "on screen" and this ran every frame)
-    if (!onScreen() && d.paused && !S.shuttle) { lastTick = 0; setTimeout(() => requestAnimationFrame(tick), 300); return; }
+    // (round 12) parked instead: it woke 3× a second for nothing; a play, or showing Video Review again, wakes it
+    if (!onScreen() && d.paused && !S.shuttle) { lastTick = 0; parkTick(); return; }
     const D = d.duration || 0;
     // reverse shuttle: step the playhead back by hand (browsers can't play backwards)
     if (S.shuttle < 0 && lastTick) { const t = d.currentTime + (S.shuttle * (now - lastTick)) / 1000; if (t <= (S.loop.on && S.loop.a != null ? S.loop.a : 0) && !S.pingpong) { seek(S.loop.on && S.loop.b != null ? S.loop.b : D); } else seek(t); }
