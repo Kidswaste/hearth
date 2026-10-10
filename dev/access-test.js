@@ -84,6 +84,9 @@ assert.strictEqual(R.norm('C:\\Users\\X\\..\\Y\\f.txt'), 'c:/users/y/f.txt');
 assert(R.insideAny(R.norm('C:\\Proj\\Sub\\a.txt'), [R.norm('c:\\proj')]));
 assert.strictEqual(R.classify({ tool: 'Write', input: { file_path: 'C:\\Proj\\a.txt' }, level: 'write', folders: ['C:\\proj'] }).verdict, 'allow');
 assert.strictEqual(R.norm('~/x', '', '/home/u'), '/home/u/x');
+const wr = R.classify({ tool: 'Bash', input: { command: 'cd /c/Users/me/Proj && rm a.txt' }, level: 'full', folders: ['C:\\Users\\me\\proj'], home: 'C:\\Users\\me', cwd: 'C:\\hearth\\data\\workspace' });
+assert.deepStrictEqual(wr.trash, ['c:/users/me/proj/a.txt'], JSON.stringify(wr));
+assert.strictEqual(bash('cd /c/x && ls').verdict, 'allow', 'on a Mac /c/x stays a plain path');
 ok('Windows paths (case, backslashes, drive letters) and ~ compare correctly');
 
 const g1 = bash('cd /home/u/proj && rm a.txt b.txt'); const g2 = bash('rm /home/u/proj/sub/c.txt');

@@ -97,6 +97,25 @@ step('/access log opens the activity list with Undo / Show buttons', document.qu
 await smoke({ shot: '/tmp/access-log.png' });
 document.querySelector('.access-log-modal')?.close();
 
+// 3b. a folder dropped on the chat joins it; "Allow for this chat" on a delete there stops the next one asking
+const dir2 = `${dir}-dropped`;
+await fsx.write(`${dir2}/d.txt`, 'd');
+await fsx.write(`${dir2}/e.txt`, 'e');
+await Native.addPath(claude.id, dir2);
+step('a folder dropped on the chat joins its folders', Native.chatOf(claude.id).access.folders.includes(dir2));
+Native.send(claude.id, `access: ${JSON.stringify([['Bash', { command: `cd "${dir2}" && rm d.txt` }], ['Bash', { command: `cd "${dir2}" && rm e.txt` }]])}`);
+await wait(400);
+let cards2 = 0;
+const t2 = Date.now();
+while (Native.isBusy(H.activeChat[claude.id]) && Date.now() - t2 < 60000) {
+  const card = [...document.querySelectorAll('.access-card:not(.answered)')].pop();
+  if (card && !card.dataset.handled) { card.dataset.handled = '1'; cards2 += 1; await click([...card.querySelectorAll('button')].find((b) => b.textContent === 'Allow for this chat')); }
+  await wait(150);
+}
+await wait(300);
+const reply2 = Native.chatOf(claude.id).messages.at(-1)?.text || '';
+step('Allow for this chat: the second delete in that folder passes without a card (both to the Trash)', cards2 === 1 && (reply2.match(/Hearth moved 1 item to the Trash/g) || []).length === 2 && !(await fsx.stat(`${dir2}/e.txt`)), { cards2, grants: Native.chatOf(claude.id).access.grants });
+
 // 4. Access.ask for other features: the same card, "Allow for this chat" remembered
 const p1 = Access.ask({ agentId: claude.id, action: 'publish', target: 'my-site', risk: 'high', detail: 'Deploy to production (token=abc123456789)' });
 await until(() => document.querySelector('.access-card:not(.answered)'), 3000);
@@ -120,7 +139,7 @@ step('/access shows the level, folders and buttons for each level', /Access: Ful
 Access.panel(claude.id);
 await until(() => document.querySelector('.access-modal .access-levels'), 3000);
 await wait(700);
-step('the panel: four levels, folders, allowed-without-asking list', document.querySelectorAll('.access-modal .access-level').length === 4 && document.querySelectorAll('.access-modal .access-folder').length === 2 && /publish/.test(document.querySelector('.access-modal .access-grants')?.textContent || ''));
+step('the panel: four levels, folders, allowed-without-asking list', document.querySelectorAll('.access-modal .access-level').length === 4 && document.querySelectorAll('.access-modal .access-folder').length === 3 && /publish/.test(document.querySelector('.access-modal .access-grants')?.textContent || ''));
 await smoke({ shot: '/tmp/access-panel.png' });
 document.querySelector('.access-modal')?.close();
 await Commands.tryRun('/access read', claude.id);

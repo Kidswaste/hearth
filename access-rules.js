@@ -26,8 +26,11 @@ const AccessRules = (() => {
   const isWinPath = (p) => /^[A-Za-z]:[\\/]/.test(p) || /^\\\\/.test(p);
   const isAbs = (p) => p.startsWith('/') || isWinPath(p);
   // One comparable form: forward slashes, no trailing slash, `.` / `..` resolved, Windows paths lower-cased.
+  let winHost = false; // set by classify() when Hearth runs on Windows
   function norm(p, base = '', home = '') {
     let s = String(p || '').trim();
+    // Git Bash on Windows (where Claude Code runs commands) writes C:\x as /c/x
+    if (winHost && /^\/[A-Za-z](\/|$)/.test(s)) s = `${s[1]}:/${s.slice(3)}`;
     if (!s) return '';
     if (home && (s === '~' || s.startsWith('~/') || s.startsWith('~\\'))) s = home + s.slice(1);
     if (!isAbs(s) && base) s = `${base}/${s}`;
@@ -267,6 +270,7 @@ const AccessRules = (() => {
 
   // The decision for one tool call. folders: the chat's folders (absolute); cwd: where the engine runs (relative paths).
   function classify({ tool, input = {}, level = 'off', folders = [], cwd = '', home = '' } = {}) {
+    winHost = isWinPath(String(home || ''));
     const fs0 = folders.map((f) => norm(f, '', home)).filter(Boolean);
     const base = norm(cwd || '', '', home);
     const L = LEVELS.includes(level) ? level : 'off';
