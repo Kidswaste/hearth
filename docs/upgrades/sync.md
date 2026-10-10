@@ -82,24 +82,26 @@ the bottom of the rail (only while sync is on) and one line in Settings. Everyth
 64. **Accented file names** match between the Mac and Windows (Unicode forms).
 65. **Windows**: a rename over a file your cloud client or antivirus holds for a moment is retried.
 66. **Leftovers swept**: temp files of a crash (after a day) and pieces of copies whose source is gone (after a week).
+67. **A data folder copied to another computer with its sync state** (a restored backup, a hand copy) is noticed: that computer gets its own id and merges like a first join.
+68. **Backups and "Pack Hearth for a Mac" leave sync's state out** (it belongs to each computer).
 
 ## Light
-67. **Watches both folders** and syncs a moment after things go quiet (2.5 s here, 4 s from the drive, at most every 20 s while busy), plus a calm check every minute (a drive coming back is noticed).
-68. **Hashes only what changed** (size + time remembered); big files streamed.
-69. **Runs in the background of the main process**, nothing in the window; no tokens, ever.
-70. **At start, what the other computer did arrives before the window reads it** (up to 1.5 s, then it carries on in the background).
-71. **Offline is normal**, not an error: the dot turns to a hollow ring, everything keeps working, changes go up when the drive is back.
-72. **Pause survives a restart**.
-73. **A README in the cloud Hearth folder** says what it is and not to edit it by hand.
+69. **Watches both folders** and syncs a moment after things go quiet (2.5 s here, 4 s from the drive, at most every 20 s while busy), plus a calm check every minute (a drive coming back is noticed).
+70. **Hashes only what changed** (size + time remembered); big files streamed.
+71. **Runs in the background of the main process**, nothing in the window; no tokens, ever.
+72. **At start, what the other computer did arrives before the window reads it** (up to 1.5 s, then it carries on in the background).
+73. **Offline is normal**, not an error: the dot turns to a hollow ring, everything keeps working, changes go up when the drive is back.
+74. **Pause survives a restart**.
+75. **A README in the cloud Hearth folder** says what it is and not to edit it by hand.
 
 ## Tested here
-`node dev/sync-test.js` (100 checks, no Electron): two computers with two data folders and one shared "cloud" folder in a
+`node dev/sync-test.js` (102 checks, no Electron): two computers with two data folders and one shared "cloud" folder in a
 temp dir — edits on both sides, concurrent edits and merges, conflicts and resolving them, deletes + restore, a delete
 against an edit, renames, a 9 MB and a 12 MB file in pieces, big videos off, cloud temp files, an iCloud stub, a
 half-arrived file and a half-written store, a Dropbox conflicted copy, offline then back, the cloud folder deleted,
 mass deletions held, the write guard, portable config, Mac ⇄ Windows path forms (Windows paths simulated), drives found
 on a simulated Mac and PC, a crash mid-push and a big copy cut mid-way (resumed), both computers syncing at the same
-moment, a third computer joining, and a randomized run (two computers, ~500 random edits, passes sometimes at the same
+moment, a third computer joining, a copied computer id, and a randomized run (two computers, ~500 random edits, passes sometimes at the same
 time, sometimes during edits): both end identical and no message is lost (8 seeds). `dev/checks/sync.js` (smoke, 26
 steps): turn on, the dot, Settings, arrivals, a conflict and "Use the other one", the menu, pause, deleted files,
 `/sync status`, joining an existing Hearth.

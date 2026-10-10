@@ -216,7 +216,7 @@ function createEngine(o) {
   }
 
   // ---------- peers and journals ----------
-  let peers = [];
+  let peers = []; let cloned = false;
   const journalLatest = new Map(); // rel → { h, s, t, m } (other computers' newest entry)
   const journalSeen = {};
   async function readPeers() {
@@ -224,7 +224,20 @@ function createEngine(o) {
     try {
       for (const f of await fsp.readdir(path.join(META, 'machines'))) {
         if (!f.endsWith('.json')) continue;
-        try { const j = JSON.parse(await fsp.readFile(path.join(META, 'machines', f), 'utf8')); if (j.id && j.id !== machine.id) list.push(j); } catch { /* being written */ }
+        try {
+          const j = JSON.parse(await fsp.readFile(path.join(META, 'machines', f), 'utf8'));
+          // this computer's id on another computer (its data folder was copied, sync state and all): a new id here,
+          // and no base, so the next pass merges both sides like a first join
+          if (j.id === machine.id && j.dataDir && j.dataDir !== dataDir && j.name !== machine.name && !cloned) {
+            cloned = true;
+            machine = { ...machine, id: `${String(machine.name).replace(/[^\w-]+/g, '').slice(0, 20) || 'pc'}-${rand()}`, created: now() };
+            writeJsonSync(machineFile, { id: machine.id, created: machine.created });
+            state = { v: 1, cloudRoot, base: {}, local: {}, cloud: {}, ext: state.ext || {}, lastPass: 0, lastOk: 0, purgedAt: 0 };
+            try { fs.rmSync(path.join(stateDir, 'base'), { recursive: true, force: true }); } catch { /* fine */ }
+            log('machine id was a copy: new id', machine.id);
+          }
+          if (j.id && j.id !== machine.id) list.push(j);
+        } catch { /* being written */ }
       }
     } catch { /* none yet */ }
     peers = list;

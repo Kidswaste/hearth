@@ -370,6 +370,19 @@ async function main() {
   ok(eqj(snapshot(A), snapshot(B)) && eqj(snapshot(A), snapshot(C3)), 'three computers match');
   if (!eqj(snapshot(A), snapshot(C3)) || !eqj(snapshot(A), snapshot(B))) { const [a, b, c] = [snapshot(A), snapshot(B), snapshot(C3)]; for (const k of new Set([...Object.keys(a), ...Object.keys(b), ...Object.keys(c)])) if (a[k] !== b[k] || a[k] !== c[k]) console.log('  differs:', k, Boolean(a[k]), Boolean(b[k]), Boolean(c[k]), C3.e.status().state, C3.e.status().pending); }
 
+  // a data folder copied to another computer with its sync state (same computer id): it gets its own id and merges
+  const w2 = world('clone');
+  const P1 = computer(w2, 'PC');
+  W(P1.p('chats/k1.json'), JSON.stringify(chat('k1', [msg('user', 1, 'pc')])));
+  await P1.e.pass();
+  fs.cpSync(P1.data, path.join(w2.dir, 'Mac', 'data'), { recursive: true });
+  const M1 = computer(w2, 'Mac');
+  ok(M1.e.machine().id === P1.e.machine().id, 'the copy starts with the same computer id');
+  const k = J(M1.p('chats/k1.json')); k.messages.push(msg('user', 2, 'mac')); W(M1.p('chats/k1.json'), JSON.stringify(k));
+  W(P1.p('kv/pc.json'), '{"x":1}');
+  await settle(M1, P1);
+  ok(M1.e.machine().id !== P1.e.machine().id && J(P1.p('chats/k1.json')).messages.length === 2 && has(M1.p('kv/pc.json')), 'a copied computer id is noticed: new id, both sides merged');
+
   await fuzz();
 
   console.log(`\n${passes} passed, ${failures} failed`);

@@ -312,7 +312,7 @@ ipcMain.handle('data:export', async () => {
     { path: THEME_PATH, name: 'theme.css' },
   ].filter((e) => fs.existsSync(e.path));
   // Website logins live in Electron's own profile, not data/, so they're never in the backup.
-  return fsapi.zip(entries, r.filePath, { skipDirs: ['workspace', 'ae'] });
+  return fsapi.zip(entries, r.filePath, { skipDirs: ['workspace', 'ae', 'sync'] });
 });
 
 // One zip with the app, your data and settings, to set Hearth up on a Mac (see mac/README.md).
