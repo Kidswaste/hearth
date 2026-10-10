@@ -126,6 +126,7 @@ try {
   dlg().close();
 
   // ---- the chat card ----
+  activate(C.id); await wait(200); // (round 11) Flows › left the Commands page on screen
   const r2 = await FlowsUI.startIn('doctor', { agentId: C.id, chatId: H.activeChat[C.id] });
   const card = () => v().list.querySelector(`.msg.note[data-note-id="flow-${r2.id}"]`);
   await until(() => /waiting for you/.test(card()?.innerText || ''), 15000);
@@ -214,6 +215,7 @@ try {
   out.keys = Keys.all().filter((k) => k.area === 'Flows' || /Flows/.test(k.what)).length;
   ok(out.keys >= 6, `keys listed (${out.keys})`);
   // Ctrl+Shift+F opens the Commands page now (round 11); /flows nodes the node view
+  activate(C.id); await wait(200);
   document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'F', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }));
   await wait(300);
   ok(CmdPage.isOpen(), 'Ctrl+Shift+F opens the Commands page');
