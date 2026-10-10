@@ -115,8 +115,27 @@ const ChatScenes = (() => {
     }
   }
 
-  // ---------- the starter for a new chat ----------
-  const starter = (tint) => `import * as THREE from 'three';
+  // ---------- the starter for a new chat: the orb (round 10) ----------
+  // A new chat's scene is a glowing orb built as node graphs in two layers (Backdrop at the bottom, Orb on top), in
+  // the chat's color, moving on the scene's own timeline (10 s, frame-exact, with keyframes already on it: the orb
+  // breathes, its glow swells, the camera drifts), not on the music until you ask ("make it react").
+  // tools/three-nodes.js builds the graphs (ThreeNodes.orbScene); the timeline lives with the sketch (tools/three.js).
+  const orbOf = (tint) => (typeof ThreeNodes !== 'undefined' && ThreeNodes.orbScene ? ThreeNodes.orbScene(tint) : null);
+  function starterLayers(tint) {
+    const sc = orbOf(tint);
+    if (!sc) return null;
+    return sc.layers.map((L, i) => ({ ...(typeof ThreeLayers !== 'undefined' ? ThreeLayers.defaults() : {}), id: i ? 'orb' : 'main', name: L.name, code: L.code, color: (typeof ThreeLayers !== 'undefined' ? ThreeLayers.COLORS : ['#ffd75e', '#48ddff'])[i], slot: i, keys: JSON.parse(JSON.stringify(L.keys || {})), ...(L.lanes ? { lanes: [...L.lanes] } : {}) }));
+  }
+  const starterTimeline = () => ({ ...(orbOf('#ffc23d')?.timeline || { len: 10, fps: 30 }) });
+  // one sketch's worth of starter: { name, code, layers, timeline } for ThreeLab.scenes.create
+  function starterSketch(name, tint, frame) {
+    const layers = starterLayers(tint);
+    return layers ? { name, code: layers[0].code, layers, timeline: starterTimeline(), frame } : { name, code: legacyStarter(tint), frame };
+  }
+  // The orb layer's code on its own (a whole sketch: tests and /scene use it as "a starter").
+  const starter = (tint) => orbOf(tint)?.layers[1].code || legacyStarter(tint);
+  // The previous starter (rounds 4–9): kept to recognise an untouched one and to bring it up to the orb.
+  const legacyStarter = (tint) => `import * as THREE from 'three';
 
 // A calm start for this chat's scene: a slow glowing shape on a soft gradient. Ask the director for anything.
 const P = tweak({
@@ -158,28 +177,51 @@ renderer.setAnimationLoop((now) => {
   const DRAFT_KEY = 'scenes.draft.three';
   const isDraft = (sketchId) => store.get(DRAFT_KEY, null)?.id === sketchId;
   const clearDraft = (sketchId) => { if (isDraft(sketchId)) store.set(DRAFT_KEY, null); };
-  const pristine = (sk, tint) => { const code = (lab()?.layersOf(sk) || [])[0]?.code ?? sk.code; return (sk.layers?.length || 1) === 1 && code === starter(tint); };
+  // untouched: the orb's two layers with their code and keyframes as made (or the previous one-layer starter)
+  const keysSig = (Ls) => JSON.stringify(Ls.map((L) => L.keys || {}));
+  function pristine(sk, tint) {
+    const Ls = lab()?.layersOf(sk) || [];
+    const want = starterLayers(tint);
+    if (want && Ls.length === want.length && Ls.every((L, i) => L.code === want[i].code) && keysSig(Ls) === keysSig(want)) return true;
+    return Ls.length <= 1 && (Ls[0]?.code ?? sk.code) === legacyStarter(tint);
+  }
+  const isLegacy = (sk) => (lab()?.layersOf(sk) || []).length <= 1;
+  // an untouched starter takes the orb in place (the previous starter, or another color): same sketch, new layers
+  function makeOrb(sk, tint) {
+    const S = lab();
+    const layers = starterLayers(tint);
+    if (!layers) return false;
+    const have = S.layersOf(sk);
+    // the same layers (a recolor): changed in place, so the Lab's sliders keep their layers; else the orb's layers
+    if (have.length === layers.length && have.every((L, i) => L.id === layers[i].id)) have.forEach((L, i) => { L.code = layers[i].code; L.keys = layers[i].keys; });
+    else { sk.layers = layers; S.setTimeline?.(sk.id, starterTimeline()); }
+    sk.code = S.layersOf(sk)[0].code;
+    S.changed(sk.id);
+    return true;
+  }
   function draftSketch() {
     const S = lab();
     const d = store.get(DRAFT_KEY, null);
     const have = d && S.get(d.id);
-    if (have && !ownerOf(have.id) && pristine(have, d.tint)) return have;
-    const sk = S.create({ name: 'New chat', code: starter(NEUTRAL), frame: S.frameOf(S.currentId()) });
+    if (have && !ownerOf(have.id) && pristine(have, d.tint)) {
+      if (isLegacy(have) && starterLayers(d.tint)) makeOrb(have, d.tint); // an untouched draft from before the orb
+      return have;
+    }
+    const sk = S.create(starterSketch('New chat', NEUTRAL, S.frameOf(S.currentId())));
     store.set(DRAFT_KEY, { id: sk.id, tint: NEUTRAL });
     return sk;
   }
   function freshScene(chatId) {
     const S = lab();
-    const sk = S.create({ name: titleOf(chatId), code: starter(identity(chatId).color), frame: S.frameOf(S.currentId()) });
-    return sk;
+    return S.create(starterSketch(titleOf(chatId), identity(chatId).color, S.frameOf(S.currentId())));
   }
   function recolorStarter(sk, tint) {
-    const S = lab();
     const d = store.get(DRAFT_KEY, null);
     const from = d?.id === sk.id ? d.tint : NEUTRAL;
-    if (!pristine(sk, from) || from === tint) return;
-    S.layersOf(sk)[0].code = starter(tint);
-    S.changed(sk.id);
+    if (!pristine(sk, from) || (from === tint && !isLegacy(sk))) return;
+    if (makeOrb(sk, tint)) return;
+    lab().layersOf(sk)[0].code = legacyStarter(tint);
+    lab().changed(sk.id);
   }
 
   // ---------- following the chat on screen ----------
@@ -601,7 +643,62 @@ renderer.setAnimationLoop((now) => {
         const x = S.get(sk);
         const song = S.songOf(sk)?.split(/[\\/]/).pop();
         const onScreen = S.currentId() === sk;
-        return `${id.glyph} **${x.name}** is this chat's scene (${id.colorName}) · ${S.layersOf(x).length} layer${S.layersOf(x).length === 1 ? '' : 's'} · ${S.frameOf(sk) || 'fit'}${song ? ` · ♪ ${song}` : ''} · ${onScreen ? 'on screen' : 'not on screen (the director works on it backstage)'}`;
+        const own = !song && S.timelineOf?.(sk);
+        return `${id.glyph} **${x.name}** is this chat's scene (${id.colorName}) · ${S.layersOf(x).length} layer${S.layersOf(x).length === 1 ? '' : 's'} · ${S.frameOf(sk) || 'fit'}${song ? ` · ♪ ${song}` : own ? ` · ⏱ its own timeline, ${own.len} s (/scene-timeline)` : ''} · ${onScreen ? 'on screen' : 'not on screen (the director works on it backstage)'}`;
+      },
+    });
+  }
+
+  // ---------- /scene-timeline: the scene's one clock (round 10, orb) ----------
+  // The scene on screen's timeline: its song, else its own (length, frame-exact). Every keyframe, cue and the
+  // sequence sit on it. No new buttons: the timeline's name opens its length menu; this is the chat side.
+  if (!Commands.get('scene-timeline')) {
+    const fmtS = (t) => `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}`;
+    Commands.register({
+      name: 'scene-timeline', area: 'Three.js Lab', args: '[length <s> | go <time|f120> | play | pause | snap]',
+      desc: 'The scene\'s timeline (its song, else its own, no song needed): what is on it · its length · go to a time or frame · play / pause · snap keyframes and cues to the song\'s bars',
+      keywords: 'scene timeline clock length seconds frames keyframes no song orb',
+      examples: ['/scene-timeline', '/scene-timeline length 20', '/scene-timeline go f120', '/scene-timeline snap'],
+      complete: (a) => [{ value: 'length 10', hint: 'seconds (no song)' }, { value: 'length 20', hint: 'seconds (no song)' }, { value: 'go 0', hint: 'a time (s, m:ss) or a frame (f120)' }, { value: 'play' }, { value: 'pause' }, { value: 'snap', hint: 'keyframes and cues to the song\'s bars' }].filter((x) => x.value.startsWith(String(a || '').trim().toLowerCase().split(' ')[0] || '')),
+      run: async (args) => {
+        const c = await ThreeLab.cmd({ show: false });
+        for (let i = 0; i < 50 && !lab(); i += 1) await new Promise((r) => setTimeout(r, 100));
+        const S = lab(); const d = ThreeLab.director;
+        if (!S || !d) return 'The Lab did not load.';
+        const P = c.player || d.media;
+        const id = S.currentId();
+        const [sub, ...rest] = String(args || '').trim().split(/\s+/);
+        const v = rest.join(' ');
+        const verb = (sub || '').toLowerCase();
+        if (verb === 'length') {
+          const n = Number.parseFloat(v);
+          if (!(n >= 1 && n <= 600)) return 'A length in seconds, 1 to 600: /scene-timeline length 20';
+          if (S.songOf(id)) return `This scene plays on its song (${S.songOf(id).split(/[\\/]/).pop()}): its timeline is the song. Its own timeline comes back when you take the song out.`;
+          S.setTimeline(id, { ...(S.timelineOf(id) || { fps: 30 }), len: n });
+          return `⏱ The scene's timeline is ${n} s now (its keyframes stay where they are).`;
+        }
+        if (!P.loaded) d.ensureTimeline();
+        if (verb === 'go') {
+          const f = /^f(\d+)$/i.exec(v) || /^(\d+)f$/i.exec(v);
+          const fps = P.clock?.fps || 30;
+          const m = /^(\d+):(\d+(?:\.\d+)?)$/.exec(v);
+          const t = f ? Number(f[1]) / fps : m ? Number(m[1]) * 60 + Number(m[2]) : Number.parseFloat(v);
+          if (!Number.isFinite(t)) return 'Go where? A time (4.5, 0:04.5) or a frame (f120).';
+          P.seek(t);
+          return `⏱ ${fmtS(P.time)}${P.clock ? ` · f${P.clock.frame}` : ''}`;
+        }
+        if (verb === 'play' || verb === 'pause') { P.toggle(verb === 'play'); return verb === 'play' ? '▶ Playing the scene\'s timeline' : '⏸ Paused'; }
+        if (verb === 'snap') {
+          const r = d.snapToBars();
+          return r ? `✦ ${r.keys} keyframes and ${r.cues} cues on the song's ${r.unit}s (/undo-… : the toast's Undo, or Ctrl+Z for the cues)` : 'No song with bars on this scene: snapping needs one (🎵 loads a song; keyframes keep their seconds).';
+        }
+        if (verb) return 'Use /scene-timeline, /scene-timeline length <s>, go <time|f120>, play, pause or snap.';
+        const tl = d.timeline();
+        const keys = (tl.layers || []).reduce((n, L) => n + Object.values(L.keyframes || {}).reduce((m, ks) => m + ks.length, 0), 0);
+        const seq = typeof ThreeSeq !== 'undefined' ? ThreeSeq.summaryFor?.(id) : null;
+        const song = S.songOf(id);
+        const own = P.clock;
+        return `⏱ **${S.get(id)?.name}** · ${song ? `on its song ${song.split(/[\\/]/).pop()} (${fmtS(tl.duration)}, ${Math.round(tl.grid?.bpm || 0)} BPM)` : own ? `its own timeline: ${tl.duration} s at ${own.fps} fps, frame ${own.frame} of ${own.frames} (no song: nothing reacts to music)` : 'no timeline yet'} · ${keys} keyframe${keys === 1 ? '' : 's'} · ${tl.cues?.length || 0} cue${tl.cues?.length === 1 ? '' : 's'}${seq ? ` · ▤ its sequence: ${seq.clips} clip${seq.clips === 1 ? '' : 's'}, ${seq.seconds.toFixed(1)} s` : ''}`;
       },
     });
   }

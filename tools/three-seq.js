@@ -166,8 +166,11 @@ const ThreeSeq = (() => {
     S.key = key; S.edit = e;
     await ensureSong();
     const g = grid();
-    // no questions: the scene as one clip on its song (empty when it has no song: ✦ Arrange or ＋ fill it)
+    // no questions: the scene as one clip on its song; a scene with its own timeline (no song, the orb) as one clip
+    // of its timeline's length; else empty (✦ Arrange or ＋ fill it)
+    const own = sid && !D.songOf(e) ? L.scenes.timelineOf?.(sid) : null;
     if (!empty && sk && D.songOf(e)) e = D.addScene(e, sceneOf(sk), { grid: g });
+    else if (!empty && sk && own) e = D.addScene(e, sceneOf(sk), { dur: own.len });
     if (!empty && sk && g) e = D.fitBars(e, g, { songStart: songStart(e) });
     S.edit = e;
     await writeEdit('New Lab sequence');
@@ -465,7 +468,7 @@ const ThreeSeq = (() => {
     if (rerun) {
       const sid = L.sketchId();
       const song = sid ? L.scenes.songOf(sid) : null;
-      if (song) { if (L.player.path !== song) await L.player.load(song, { quiet: true }); else L.player.attach({ playing: false }); } else if (L.player.loaded) { L.player.unload({ silent: true }); L.send({ type: 'media-unload' }); }
+      if (song) { if (L.player.path !== song) await L.player.load(song, { quiet: true }); else L.player.attach({ playing: false }); } else if (sid && L.scenes.timelineOf?.(sid)) { L.player.unload({ silent: true }); L.send({ type: 'media-unload' }); L.scenes.mediaUp(sid); } else if (L.player.loaded) { L.player.unload({ silent: true }); L.send({ type: 'media-unload' }); }
       L.rerun();
     }
     emit('mode', { on: false });

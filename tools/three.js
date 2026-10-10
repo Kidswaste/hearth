@@ -388,7 +388,7 @@ const ThreeLab = (() => {
       presentHud.hidden = !on; store.set('three.presentHud', on);
       clearInterval(hudTimer);
       if (!on) return;
-      const paint = () => { const z = stage.size; const sec = player.loaded ? player.sectionAt() : null; presentHud.textContent = `${sec?.cue ? `${sec.cue} · ` : ''}${current?.name || ''} · ${z.id === 'fit' ? `${z.width}×${z.height}` : `${z.id} ${z.width}×${z.height}`}${typeof ThreeFrames !== 'undefined' && ThreeFrames.on ? ` · ${ThreeFrames._pure.tc(ThreeFrames.clock, ThreeFrames.frame)} · f${ThreeFrames.frame}` : player.loaded ? ` · ${fmtClock(player.time)} / ${fmtClock(player.duration)} · ${Math.round(player.bpm)} BPM` : ''}${liveKind ? ` · live ${liveBpm?.bpm ? `${Math.round(liveBpm.bpm)} BPM` : ''}` : ''}${lastStats ? ` · ${lastStats.fps} fps` : ''}${frozenNow ? ' · ❚❚' : ''}`; };
+      const paint = () => { const z = stage.size; const sec = player.loaded ? player.sectionAt() : null; presentHud.textContent = `${sec?.cue ? `${sec.cue} · ` : ''}${current?.name || ''} · ${z.id === 'fit' ? `${z.width}×${z.height}` : `${z.id} ${z.width}×${z.height}`}${typeof ThreeFrames !== 'undefined' && ThreeFrames.on ? ` · ${ThreeFrames._pure.tc(ThreeFrames.clock, ThreeFrames.frame)} · f${ThreeFrames.frame}` : player.loaded ? ` · ${fmtClock(player.time)} / ${fmtClock(player.duration)}${player.isClock ? ` · f${player.clock.frame}` : ` · ${Math.round(player.bpm)} BPM`}` : ''}${liveKind ? ` · live ${liveBpm?.bpm ? `${Math.round(liveBpm.bpm)} BPM` : ''}` : ''}${lastStats ? ` · ${lastStats.fps} fps` : ''}${frozenNow ? ' · ❚❚' : ''}`; };
       paint(); hudTimer = setInterval(paint, 250);
     }
     // PgUp / PgDn in Present: the previous / next sketch (most recent first, like the picker)
@@ -825,6 +825,7 @@ const ThreeLab = (() => {
       L.keys ||= {};
       if (keys.length) L.keys[prop] = keys; else delete L.keys[prop];
       sendKeys(L);
+      fitClock();
       touch();
       renderTracksOnly();
       syncKeyUI(true);
@@ -832,6 +833,7 @@ const ThreeLab = (() => {
     function toggleKeyFor(id, prop, value) {
       const L = layerById(id);
       if (!L) return;
+      if (!player.loaded) ensureTimeline(); // no song: the scene's own timeline
       if (!player.loaded) { toast('Load a song first: keyframes sit on the song timeline', { type: 'error' }); return; }
       const ks = keysOf(L, prop);
       const at = keyAt(ks, player.time);
@@ -1012,6 +1014,7 @@ const ThreeLab = (() => {
       const L = layerById(id);
       const pr = ThreeLayers.PRESETS.find((x) => x.id === presetId);
       if (!L || !pr) return null;
+      if (!player.loaded) ensureTimeline(); // no song: the scene's own timeline
       if (!player.loaded) { toast('Load a song first: animations sit on the song timeline', { type: 'error' }); return null; }
       const lp = player.loop;
       const a = L.in ?? lp?.a ?? 0;
@@ -1801,7 +1804,7 @@ const ThreeLab = (() => {
       send: (msg) => box.send(msg),
       sketchName: () => current?.name,
       onPick: (path) => assignMedia(path),
-      onLoaded: (o) => { if (o?.unloaded) assignMedia(null); else songTriggers(); if (o?.reload) box.send({ type: 'media-unload' }); renderLayers(); }, // the song you took out stops (no page reload)
+      onLoaded: (o) => { if (o?.unloaded) assignMedia(null); else songTriggers(); if (o?.reload) box.send({ type: 'media-unload' }); if (o?.unloaded && !o.clock) songOut(o.from); renderLayers(); }, // the song you took out stops (no page reload); the scene's own timeline comes back
       // ✦ cue looks: each layer plays the look of the last cue (at or before the playhead) that set one for it
       onCue: ({ index, cues, playing }) => {
         for (const L of layersOf()) {
@@ -1831,10 +1834,14 @@ const ThreeLab = (() => {
     }
     function assignMedia(path) {
       if (!current) return;
+      if (path) songOnScene(path); // a song on a scene that had its own timeline: its cues come along
       (extras[current.id] ||= {}).media = path ? { path, time: 0 } : null;
       saveExtras();
     }
     function rememberMedia() {
+      // the scene's own timeline: where its playhead is (no song)
+      const tl = current && extras[current.id]?.timeline;
+      if (tl && !extras[current.id].media && player.path === clockPath(current.id)) { const t = Math.round(player.time * 1000) / 1000; if (tl.time !== t) { tl.time = t; saveExtras(); } return; }
       if (!current || !extras[current.id]?.media || extras[current.id].media.path !== player.path) return;
       const t = Math.round(player.time * 1000) / 1000;
       if (extras[current.id].media.time === t) return; // paused: no rewrite of the kv file every 5 s
@@ -1842,6 +1849,126 @@ const ThreeLab = (() => {
       saveExtras();
     }
     setInterval(rememberMedia, 5000);
+    // ---------- the scene's own timeline (round 10, orb) ----------
+    // One clock per scene. A scene with a song plays on the song (as before); a scene without one plays on its own
+    // timeline, extras[id].timeline = { len, fps, time }: the player's silent clock (tools/three-media.js loadClock),
+    // so keyframes, slider keys, cues, the loop, Space and frame steps work with no song, and nothing reacts to music.
+    // Loading a song on it keeps the keyframes at their seconds and brings its cues / markers along (✦ snap them to
+    // bars, one click); taking the song out goes back to the scene's timeline. It travels with the scene: switching,
+    // Duplicate, jams and Claude ⇄ Astra handoffs keep it, and its sequence (tools/three-seq.js) starts with it.
+    const clockPath = (id) => `scene:${id}`;
+    const lastKeyT = (sk) => { let m = 0; for (const L of materialize(sk)) for (const ks of Object.values(L.keys || {})) for (const k of ks || []) if (k.t > m) m = k.t; return m; };
+    const fitLen = (sk) => Math.max(10, Math.ceil(lastKeyT(sk) - 1e-3));
+    function timelineOf(id) {
+      const ex = extras[id];
+      if (ex?.timeline) return ex.timeline;
+      // an older scene with keyframes and no song (they never played without one): it gets a timeline that holds them
+      const sk = sketches.find((x) => x.id === id);
+      if (!sk || ex?.media?.path || !(lastKeyT(sk) > 0)) return null;
+      (extras[id] ||= {}).timeline = { len: fitLen(sk), fps: 30 };
+      saveExtras();
+      return extras[id].timeline;
+    }
+    const seqShowing = () => typeof ThreeSeq !== 'undefined' && ThreeSeq.active;
+    // The Lab timeline of a scene: its song (as before), else its own timeline, else none.
+    function sceneMedia(id, { playing = true } = {}) {
+      const ex = extras[id] || {};
+      const want = ex.media?.path || null;
+      if (want) {
+        if (want !== player.path) { player.unload({ silent: true }); player.load(want, { startAt: ex.media.time || 0, quiet: true }); } else player.seek(ex.media.time || 0);
+        return 'song';
+      }
+      const tl = timelineOf(id);
+      if (tl) {
+        if (player.path !== clockPath(id) || Math.abs((player.duration || 0) - tl.len) > 1e-3) { player.unload({ silent: true }); player.loadClock({ key: id, seconds: tl.len, fps: tl.fps || 30, startAt: tl.time || 0, playing }); }
+        return 'timeline';
+      }
+      if (player.loaded || player.path) player.unload({ silent: true });
+      return null;
+    }
+    function setTimeline(id, tl) {
+      if (!sketches.some((x) => x.id === id)) return null;
+      (extras[id] ||= {}).timeline = tl ? { len: Math.max(1, Math.min(600, Number(tl.len) || 10)), fps: Number(tl.fps) || 30, ...(tl.time ? { time: tl.time } : {}) } : null;
+      if (!tl) delete extras[id].timeline;
+      saveExtras();
+      if (id === current?.id && !seqShowing()) sceneMedia(id);
+      return extras[id].timeline || null;
+    }
+    // Something wants the timeline (keyframes, cues, a director's timeline edit) on a scene with no song and no
+    // timeline yet: it gets its own, there and then (no "load a song first").
+    function ensureTimeline() {
+      if (!current || player.loaded || seqShowing()) return Boolean(player.loaded);
+      setTimeline(current.id, { len: fitLen(current), fps: 30 });
+      return Boolean(player.loaded);
+    }
+    // keyframes past the end of the scene's own timeline make it longer (never shorter)
+    function fitClock() {
+      if (!current || player.path !== clockPath(current.id)) return;
+      const tl = extras[current.id]?.timeline;
+      const last = lastKeyT(current);
+      if (!tl || last <= tl.len + 1e-3) return;
+      tl.len = Math.ceil(last);
+      saveExtras();
+      player.setClockLength(tl.len);
+    }
+    player.on('clock-length', (n) => { if (current && extras[current.id]?.timeline) { extras[current.id].timeline.len = n; saveExtras(); } });
+    // A song loaded on a scene that played on its own timeline: its cues and markers come along at the same seconds
+    // (keyframes are in seconds on the layers already), and once the song's bars are known one click snaps them.
+    let carried = null; // { to: song path, sketch }
+    function songOnScene(path) {
+      if (!current || !path || player.path !== clockPath(current.id)) return;
+      player.carry(player.path, path);
+      carried = { to: path, sketch: current.id };
+    }
+    player.on('analysis', () => {
+      const c = carried;
+      if (!c || c.to !== player.path || c.sketch !== current?.id) return;
+      carried = null;
+      const keys = layersOf().reduce((n, L) => n + Object.values(L.keys || {}).reduce((m, ks) => m + (ks?.length || 0), 0), 0);
+      const cues = player.cues.length;
+      if (!keys && !cues) return;
+      toast(`The scene's ${keys ? `${keys} keyframe${keys === 1 ? '' : 's'}` : ''}${keys && cues ? ' and ' : ''}${cues ? `${cues} cue${cues === 1 ? '' : 's'}` : ''} stay at their seconds on the song`, { timeout: 9000, action: { label: '✦ Snap them to bars', fn: () => { const r = snapToBars(); toast(r ? `${r.keys} keyframes and ${r.cues} cues on the song's ${r.unit}s` : 'No bars found on this song', { timeout: 5000, ...(r ? { action: { label: 'Undo', fn: r.undo } } : {}) }); } } });
+    });
+    // every keyframe and cue to the nearest bar line (to the nearest beat for a setting whose keys would land on the
+    // same bar); returns { keys, cues, unit, undo } or null without a grid
+    function snapToBars() {
+      const g = player.timeline().grid;
+      if (!g?.bpm || !player.loaded || player.isClock) return null;
+      const beat = 60 / g.bpm; const bar = beat * (g.beatsPerBar || 4); const a0 = g.downbeat ?? 0;
+      const at = (t, step) => Math.max(0, Math.round((a0 + Math.round((t - a0) / step) * step) * 1000) / 1000);
+      const before = layersOf().map((L) => [L.id, JSON.parse(JSON.stringify(L.keys || {}))]);
+      let nk = 0; let unit = 'bar';
+      for (const L of layersOf()) {
+        for (const [prop, ks] of Object.entries(L.keys || {})) {
+          if (!ks?.length) continue;
+          let ts = ks.map((k) => at(k.t, bar));
+          if (new Set(ts).size < ts.length) { ts = ks.map((k) => at(k.t, beat)); unit = 'beat'; }
+          if (new Set(ts).size < ts.length) continue; // too close for either: left alone
+          L.keys[prop] = ks.map((k, i) => ({ ...k, t: ts[i] })).sort((p, q) => p.t - q.t);
+          nk += ks.length;
+        }
+        sendKeys(L);
+      }
+      const cues = player.cues;
+      const moved = cues.map((c) => ({ ...c, to: at(c.time, bar) })).filter((c) => Math.abs(c.to - c.time) > 1e-3);
+      if (moved.length) player.editCues({ remove: moved.map((c) => c.time), add: moved.map((c) => ({ time: c.to, name: c.name, looks: c.looks })) });
+      touch(); renderTracksOnly(); syncKeyUI(true);
+      return {
+        keys: nk, cues: cues.length, unit,
+        undo: () => { for (const [id, k] of before) { const L = layerById(id); if (L) { L.keys = k; sendKeys(L); } } if (moved.length) player.undo?.(); touch(); renderTracksOnly(); syncKeyUI(true); },
+      };
+    }
+    // The song taken out (×): the scene goes back to its own timeline (when it had one or has keyframes), with the
+    // song's cues and markers, so nothing placed on the song is lost.
+    function songOut(from) {
+      if (!current || seqShowing()) return;
+      const id = current.id;
+      if (!extras[id]?.timeline && !(lastKeyT(current) > 0)) return;
+      if (from) player.carry(from, clockPath(id));
+      if (!extras[id]?.timeline) (extras[id] ||= {}).timeline = { len: fitLen(current), fps: 30 };
+      saveExtras();
+      sceneMedia(id, { playing: false });
+    }
     addEventListener('beforeunload', () => { rememberMedia(); if (extrasLoaded) window.hub.kvSet('three-lab-extras', extras); });
     split = el('div', { class: 'three-split' }, editorHost, el('div', { class: 'three-right' }, previewHost, player.el, consoleWrap), column);
     previewHost.append(presentHint, presentHud, blackout, editPanel, stageNote);
@@ -1940,7 +2067,8 @@ const ThreeLab = (() => {
     api.restartVisible = () => { if (!box.onStage && !previewHost.offsetParent) return false; restartSim(); return true; };
     // ---------- everything the chat commands drive (tools/three-cmds.js); each returns a short result ----------
     const ctl = () => { const c = selCtl(); if (!c) throw new Error('No sketch is open'); if (!c.visible) setSlidersVisible(true); return c; };
-    const needSong = () => { if (!player.loaded) throw new Error('Load a song first (🎵 in the timeline, or drop one on the preview)'); };
+    // the scene's timeline: its song, else its own (made there and then when it has none yet: no "load a song first")
+    const needSong = () => { if (!player.loaded) ensureTimeline(); if (!player.loaded) throw new Error('Load a song first (🎵 in the timeline, or drop one on the preview)'); };
     api.cmd = {
       get player() { return player; }, // the song / video timeline (tools/cut-cmds.js: /song-trim, /cut-loop, /send-clip)
       get state() { return { sketch: current?.name, layer: sel()?.name, frame: stage.size, frozen: frozenNow, live: liveKind, song: player.loaded ? player.info().file : null, bpm: player.loaded ? player.bpm : liveBpm?.bpm ?? null, playing: player.playing, presenting: document.fullscreenElement === previewHost }; },
@@ -2010,7 +2138,7 @@ const ThreeLab = (() => {
       gridView: (patch) => player.setGridView(patch || {}),
       play: (on) => { needSong(); player.toggle(on); }, seek: (t) => { needSong(); player.seek(t); return player.time; }, speed: (r) => { player.setRate(r); return player.rate; },
       mute: () => player.toggleMute(), music: () => player.pick(),
-      loadSong: async (path) => { const r = await player.load(path); if (r.ok) assignMedia(path); return r; }, zoom: (a, b) => player.setView(a, b),
+      loadSong: async (path) => { songOnScene(path); const r = await player.load(path); if (r.ok) assignMedia(path); return r; }, zoom: (a, b) => player.setView(a, b),
       record: (kind, o) => player.record(kind, o),
       trigPreset: (name) => applyTrigPreset(name), trigPresets: () => [...Object.keys(trigPresets()), ...store.get('three.trigPresets', []).map((x) => x.name)],
       autoBars: () => autoBars(), triggers: (on) => toggleTriggers(on ?? !trigPanel),
@@ -2632,7 +2760,7 @@ const ThreeLab = (() => {
             { label: '▤ Its own sequence', hint: (() => { const x = ThreeSeq.summaryFor(sk.id); return x ? `${x.clips} clip${x.clips === 1 ? '' : 's'} · ${x.seconds.toFixed(1)} s` : 'made when you open it'; })(), action: () => { dlg.close(); if (sk.id !== current?.id) openSketch(sk.id); setTimeout(() => ThreeSeq.enter().catch((err) => toast(err.message, { type: 'error' })), 300); } }] : []),
           { label: p.has(sk.id) ? '☆ Unpin' : '★ Pin to the top', action: () => togglePin(sk.id) },
           { label: 'Rename…', action: async () => { const n = await Modal.prompt('Rename sketch', { value: sk.name }); if (n?.trim()) { sk.name = n.trim(); save(); renderPicker(); fill(); } } },
-          { label: 'Duplicate', action: () => { if (sk.id === current?.id) persist(); const copy = { ...JSON.parse(JSON.stringify(sk)), id: `s${Date.now()}`, name: `${sk.name} copy`, updatedAt: Date.now() }; sketches.push(copy); if (extras[sk.id]?.media) (extras[copy.id] ||= {}).media = { ...extras[sk.id].media }; saveExtras(); save(); renderPicker(); fill(); if (typeof ThreeSeq !== 'undefined') ThreeSeq.sceneCopied(sk.id, copy.id).catch(() => {}); toast(`Duplicated "${sk.name}"`, { timeout: 1500 }); } },
+          { label: 'Duplicate', action: () => { if (sk.id === current?.id) persist(); const copy = { ...JSON.parse(JSON.stringify(sk)), id: `s${Date.now()}`, name: `${sk.name} copy`, updatedAt: Date.now() }; sketches.push(copy); if (extras[sk.id]?.media) (extras[copy.id] ||= {}).media = { ...extras[sk.id].media }; if (extras[sk.id]?.timeline) { (extras[copy.id] ||= {}).timeline = { ...extras[sk.id].timeline }; player.copyMap(clockPath(sk.id), clockPath(copy.id)).catch(() => {}); } saveExtras(); save(); renderPicker(); fill(); if (typeof ThreeSeq !== 'undefined') ThreeSeq.sceneCopied(sk.id, copy.id).catch(() => {}); toast(`Duplicated "${sk.name}"`, { timeout: 1500 }); } },
           { label: 'Delete…', danger: true, action: async () => {
             if (sketches.length === 1) { toast('Keep at least one sketch', { type: 'error' }); return; }
             if (!(await Modal.confirm('Delete sketch?', `"${sk.name}" will be deleted. You can bring it back from History.`, { ok: 'Delete', danger: true }))) return;
@@ -2714,11 +2842,7 @@ const ThreeLab = (() => {
       // This sketch's frame size and song (with where it was in the song).
       const ex = extras[current.id] || {};
       if (ex.frame && !seqOn) stage.setMode(ex.frame, { silent: true });
-      const want = ex.media?.path || null;
-      if (seqOn) { /* the sequence's song stays */ }
-      else if (!want) { if (player.loaded || player.path) player.unload({ silent: true }); }
-      else if (want !== player.path) { player.unload({ silent: true }); player.load(want, { startAt: ex.media.time || 0, quiet: true }); }
-      else player.seek(ex.media.time || 0);
+      if (!seqOn) sceneMedia(current.id); // its song, else its own timeline (the sequence's song stays while it shows)
       store.set('three.current', current.id);
       selId = layerById(ex.selectedLayer)?.id || layersOf()[layersOf().length - 1].id;
       editor.setValue(sel().code);
@@ -2744,9 +2868,10 @@ const ThreeLab = (() => {
       renderLayers();
       run({ sync: true });
     }
-    function create(name, code, layers) {
+    function create(name, code, layers, { timeline = null } = {}) {
       const s = { id: `s${Date.now()}`, name, code, updatedAt: Date.now(), ...(layers ? { layers: JSON.parse(JSON.stringify(layers)) } : {}) };
       sketches.push(s);
+      if (timeline) { (extras[s.id] ||= {}).timeline = { len: timeline.len, fps: timeline.fps || 30 }; saveExtras(); }
       save();
       openSketch(s.id);
       return s;
@@ -2755,7 +2880,7 @@ const ThreeLab = (() => {
       const name = await Modal.prompt('Rename sketch', { value: current.name });
       if (name) { current.name = name.trim(); save(); renderPicker(); }
     }
-    function duplicate() { persist(); const from = current.id; const s = create(`${current.name} copy`, current.code, current.layers); if (typeof ThreeSeq !== 'undefined') ThreeSeq.sceneCopied(from, s.id).catch(() => {}); }
+    function duplicate() { persist(); const from = current.id; const tl = extras[from]?.timeline; const s = create(`${current.name} copy`, current.code, current.layers, { timeline: tl }); if (tl) player.copyMap(clockPath(from), clockPath(s.id)).then((ok) => { if (ok && current === s) { player.unload({ silent: true }); sceneMedia(s.id); } }).catch(() => {}); if (typeof ThreeSeq !== 'undefined') ThreeSeq.sceneCopied(from, s.id).catch(() => {}); }
     async function removeSketch() {
       if (sketches.length === 1) { toast('Keep at least one sketch', { type: 'error' }); return; }
       if (!(await Modal.confirm('Delete sketch?', `"${current.name}" will be deleted. You can bring it back from History.`, { ok: 'Delete', danger: true }))) return;
@@ -2878,10 +3003,11 @@ ${code}
         if (id !== current?.id) { persist(); openSketch(id, { by: 'scene' }); }
         return true;
       },
-      create({ name, code, layers = null, open = false, frame = null }) {
+      create({ name, code, layers = null, open = false, frame = null, timeline = null }) {
         const x = { id: `s${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`, name, code, updatedAt: Date.now(), ...(layers ? { layers: JSON.parse(JSON.stringify(layers)) } : {}) };
         sketches.push(x);
         if (frame) { (extras[x.id] ||= {}).frame = frame; saveExtras(); }
+        if (timeline) { (extras[x.id] ||= {}).timeline = { len: timeline.len || 10, fps: timeline.fps || 30 }; saveExtras(); } // its own timeline (the orb)
         save();
         if (open) { persist(); openSketch(x.id, { by: 'scene' }); } else renderPicker();
         return x;
@@ -2894,6 +3020,7 @@ ${code}
         const copy = { ...JSON.parse(JSON.stringify(src)), id: `s${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`, name, updatedAt: Date.now() };
         sketches.push(copy);
         if (extras[id]) { extras[copy.id] = JSON.parse(JSON.stringify(extras[id])); saveExtras(); }
+        if (extras[id]?.timeline) player.copyMap(clockPath(id), clockPath(copy.id)).catch(() => {}); // its timeline's cues and markers
         save();
         renderPicker();
         if (typeof ThreeSeq !== 'undefined') ThreeSeq.sceneCopied(id, copy.id).catch(() => {}); // its sequence comes along
@@ -2921,6 +3048,10 @@ ${code}
       setFrame(id, f) { (extras[id] ||= {}).frame = f; saveExtras(); if (id === current?.id) stage.setMode(f); },
       selectedOf: (id) => extras[id]?.selectedLayer || null,
       songOf: (id) => extras[id]?.media?.path || null,
+      // the scene's own timeline (no song): { len, fps, time } or null; set / clear it; the Lab timeline of the scene
+      // on screen back to its song or its own timeline (the Lab sequence calls it when it leaves)
+      timelineOf: (id) => timelineOf(id), setTimeline: (id, tl) => setTimeline(id, tl),
+      mediaUp: (id = current?.id) => (id ? sceneMedia(id, { playing: false }) : null),
       extrasOf: (id) => extras[id] || null, // looks / music links per layer (the Lab sequence applies a clip's look)
       thumbOf: (id) => thumbs[id]?.url || null,
       previewHost: () => previewHost,
@@ -2949,7 +3080,7 @@ ${code}
       frame: stage.size,
       ...(selCtl()?.controls().length ? { sliders: selCtl().controls() } : { sliders: 'none: add named controls with tweak()' }),
       ...(selCtl()?.unsaved().length ? { unsavedSliders: selCtl().unsaved() } : {}),
-      music: player.loaded ? (({ file, bpm, duration, time, playing }) => ({ file, bpm, duration, time, playing }))(player.info()) : 'none loaded (demo 120 bpm beat)',
+      music: player.isClock ? `none: the scene's own timeline (${player.duration} s at ${player.clock.fps} fps; nothing reacts to music)` : player.loaded ? (({ file, bpm, duration, time, playing }) => ({ file, bpm, duration, time, playing }))(player.info()) : 'none loaded (demo 120 bpm beat)',
       ...(document.hidden || !document.hasFocus() ? { note: 'The hub window is in the background, so fps is throttled here; judge performance by renderMs.' } : {}),
     });
     // "top", "bottom", "selected", a number (1 = bottom), an id or a name.
@@ -2966,7 +3097,7 @@ ${code}
     const director = {
       getCode: () => ({ sketch: current?.name, layer: sel()?.name, layers: layersSummary(), frame: stage.size, lines: editor.value.split('\n').length, ...codeOrOutline(editor.value), ...(selCtl()?.controls().length ? { sliders: selCtl().controls() } : {}), ...(selCtl()?.unsaved().length ? { unsavedSliders: selCtl().unsaved(), note: 'The user moved these sliders but has not saved them into the code; keep their values when you rewrite.' } : {}) }),
       media: player,
-      assignMedia,
+      assignMedia, songOnScene, ensureTimeline, snapToBars,
       // a layer's code as it is now (the editor's text for the selected one), for diffs and the director's undo
       codeOf(ref = null) {
         const L = ref ? findLayer(ref) : sel();
@@ -3062,6 +3193,7 @@ ${code}
         }
         const list = clear ? [] : (keys || []).map((k) => ({ t: Math.round(Number(k.time) * 1000) / 1000, v: k.value, ease: (ThreeLayers.EASE_IDS || ['linear', 'ease', 'hold']).includes(k.ease) ? k.ease : 'ease' })).filter((k) => Number.isFinite(k.t) && k.v != null).sort((a, b) => a.t - b.t);
         setKeys(L, prop, list);
+        if (list.length) ensureTimeline(); // no song: the keys play on the scene's own timeline
         return { layer: L.name, property: prop.replace(/^s:/, ''), keyframes: list.length, ...report() };
       },
       async removeLayer(ref) {
@@ -3133,9 +3265,13 @@ ${code}
       timeline(range) {
         return { ...player.timeline(range || {}), layers: layersSummary().map((x) => ({ name: x.name, plays: x.plays, keyframes: x.keyframes, lanes: lanesOf(layerById(x.id) || {}).map((p) => p.replace(/^s:/, 'slider ')) })), notes: notesOf().map(({ id, t, text, done }) => ({ id, time: t, text, done })) };
       },
-      timelineEdit({ grid, markers, loop, zoom, lane, cues, speed } = {}) {
+      timelineEdit({ grid, markers, loop, zoom, lane, cues, speed, length, snapToBars: snapBars } = {}) {
+        if (!player.loaded) ensureTimeline(); // no song: the scene's own timeline
         if (!player.loaded) throw new Error('No song loaded.');
         const did = [];
+        // the scene's own timeline (no song): its length in seconds; with a song: keyframes and cues to its bars
+        if (length != null) { if (!player.isClock) throw new Error('This scene plays on its song: its length is the song\'s.'); setTimeline(current.id, { ...extras[current.id].timeline, len: Number(length) }); did.push('length'); }
+        if (snapBars) { const r = snapToBars(); if (!r) throw new Error('No song with bars on this scene.'); did.push(`snapped ${r.keys} keyframes and ${r.cues} cues to ${r.unit}s`); }
         if (grid === 'auto') { player.clearGrid(); did.push('grid back to the detected beats'); } else if (grid) { player.setGrid(grid); did.push('grid'); }
         if (markers) { player.editMarkers({ add: markers.add || {}, remove: markers.remove || {}, clear: markers.clear || [], range: markers.range || null, snap: markers.snap !== false }); did.push('markers'); }
         if (loop !== undefined) { if (!player.setLoop(loop ? loop.start : null, loop?.end)) throw new Error('The user locked the loop.'); did.push('loop'); }
@@ -3611,6 +3747,7 @@ ${frag}\`,
     if (tool === 'three_triggers') return { ok: true, value: { triggers: d.triggers(args.set || null), note: 'thr is the bar (0..1 of the analyser level), gap the shortest time between two triggers in ms, lo / hi the band in Hz' } };
     if (tool === 'three_media_info') { const live = d.live(); return { ok: true, value: live.input || live.nowPlaying ? { ...d.media.info(), live } : d.media.info() }; }
     if (tool === 'three_load_media') {
+      d.songOnScene(String(args.path || '')); // a song on the scene's own timeline: its cues come along
       const r = await d.media.load(String(args.path || ''));
       if (r.ok) d.assignMedia(String(args.path));
       if (!r.ok) return { ok: false, error: r.error };
@@ -3618,6 +3755,7 @@ ${frag}\`,
       return { ok: true, value: d.media.info() };
     }
     if (tool === 'three_media_control') {
+      if (!d.media.loaded) d.ensureTimeline(); // no song: the scene's own timeline
       if (!d.media.loaded) return { ok: false, error: 'No music loaded.' };
       if (args.action === 'loop') {
         if (!d.media.setLoop(args.time == null ? null : Number(args.time), Number(args.end))) return { ok: false, error: 'The user locked the loop points; ask them before changing it.' };

@@ -238,7 +238,9 @@ const ThreeMusic = (() => {
       if (/^undo$/i.test(args.trim())) return undoReact() ? 'The sliders follow what they followed before' : 'Nothing to undo';
       if (!l.layers().length) return 'Open a sketch first';
       const r = makeItReact();
-      return r.plan.length ? `✦ ${r.text} · /make-it-react undo takes it back` : r.text;
+      // a scene on its own timeline (no song): the sliders follow the music as soon as there is some
+      const quiet = l.player?.isClock ? ' · no song on this scene yet: it moves with the music once you load one (🎵) or turn on 🎧 Live' : '';
+      return r.plan.length ? `✦ ${r.text}${quiet} · /make-it-react undo takes it back` : r.text;
     }, (a) => pick(['undo'], a), { aliases: ['react-music', 'auto-react'], undo: '/make-it-react undo', keywords: 'audio reactive bind sliders music follow' });
     reg('auto-preset', 'Pick the trigger preset from the song\'s style and tempo (shows why)', '', async () => {
       await song();

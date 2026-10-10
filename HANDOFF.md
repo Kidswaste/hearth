@@ -104,3 +104,9 @@ from FrameRead.info (ffprobe) or a decoder measurement, the sandbox keeps the pr
 video's own CutData edit in kv video-cuts (read / written through `VideoCut.editFor` / `storeEdit`). Commands in
 `tools/three-frames-cmds.js`, footage layers in `tools/three-frames-templates.js`, director: `three_media_control`
 frame / step / read and `three_do footage`. Tests: `node dev/make-lab-footage.js`, then `dev/checks/labframes*.js`.
+
+Orb (round 10, docs/upgrades/orb.md): a new director chat's scene is `ThreeNodes.orbScene(tint)` (two node layers, keys on the
+Orb layer's sliders). One clock per scene: the song (`extras[id].media`), else the scene's own timeline (`extras[id].timeline =
+{ len, fps, time }`), played as a silent in-memory WAV by `player.loadClock` (path `scene:<sketch id>`, its cues / markers in
+three-beatmaps under that name); `sceneMedia(id)` in tools/three.js picks one on every scene switch (and `ThreeLab.scenes.mediaUp`
+when the Lab sequence leaves). Node code reads the scene's time with `sceneTime()` = sandbox `layer.scene` (clip time in a sequence).
