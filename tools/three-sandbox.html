@@ -5957,7 +5957,7 @@ function sqTick() {
   let T = sqClock();
   const D = SQ.plan?.dur || 0;
   if (SQ.playing && T >= D) {
-    if (SQ.loop && D > 0) { T = 0; SQ.T0 = 0; SQ.at0 = realNow(); const s = sqSong(); if (s && sqInSong(0)) mediaEl.currentTime = -s.offset; } else { T = D; SQ.playing = false; SQ.ended = true; sqState(true); }
+    if (SQ.loop && D > 0) { T = 0; SQ.T0 = 0; SQ.at0 = realNow(); const s = sqSong(); if (s && sqInSong(0)) mediaEl.currentTime = -s.offset; } else { T = D - 1e-3; SQ.playing = false; SQ.ended = true; sqState(true); } // holds the last frame: at T = dur every clip has ended (black)
   }
   SQ.T = Math.max(0, T);
   sqManage(SQ.T);
@@ -6009,7 +6009,7 @@ function sqOff() {
   SQ.plan = null;
 }
 function sqSeek(T) {
-  SQ.T = Math.max(0, Math.min(Number(T) || 0, SQ.plan?.dur || 0));
+  SQ.T = Math.max(0, Math.min(Number(T) || 0, (SQ.plan?.dur || 0) - 1e-3));
   SQ.T0 = SQ.T; SQ.at0 = realNow(); SQ.ended = false;
   const s = sqSong();
   if (s && sqInSong(SQ.T)) mediaEl.currentTime = SQ.T - s.offset;

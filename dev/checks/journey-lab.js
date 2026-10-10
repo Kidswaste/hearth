@@ -96,11 +96,13 @@ step('look applied (palette / filters changed)', JSON.stringify(c.palette()) !==
 await shot('fx-look');
 
 // 7. shuffle and save, several times (the buttons the owner uses most)
-const shuffleBtn = [...L.querySelectorAll('button')].find((b) => /Shuffle/.test(b.textContent) && visible(b));
-const saveBtn = [...L.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Save' && visible(b));
+// looked up each round: the sliders panel can redraw its buttons after a shuffle
+const shuffleBtnNow = () => [...L.querySelectorAll('button')].find((b) => /Shuffle/.test(b.textContent) && visible(b));
+const saveBtnNow = () => [...L.querySelectorAll('button.tw-save')].find(visible); // reads "Save 5" with 5 changed values
 let saves = 0;
 for (let i = 0; i < 3; i++) {
-  await click(shuffleBtn); await wait(500);
+  await click(shuffleBtnNow()); await wait(500);
+  const saveBtn = saveBtnNow();
   const dirty = !saveBtn.disabled;
   await click(saveBtn); await wait(700);
   if (dirty) saves++;
