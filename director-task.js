@@ -91,7 +91,9 @@ const DirectorTask = (() => {
     if (!chatId) return;
     const s = stateOf(chatId);
     const agent = agentOfChat(chatId);
-    if (agent?.engine) { s.engine = agent.engine; s.by[agent.engine] = (s.by[agent.engine] || 0) + 1; }
+    // (a chat with its own engine, a comp part: comp-dispatch.js)
+    const engine = (H.chats || []).find((c) => c.id === chatId)?.engine || agent?.engine;
+    if (engine) { s.engine = engine; s.by[engine] = (s.by[engine] || 0) + 1; }
     s.at = Date.now();
     if (tool === 'chat_progress') {
       const steps = (args.steps || []).slice(0, 8).map((x) => ({ text: cap(x.text, 80), status: x.status || 'todo' }));

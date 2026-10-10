@@ -537,6 +537,9 @@ Parts made by other chats at once: dispatch {parts: [{brief, engine: claude|astr
     ['parts', 'The dispatched parts: chat, agent, status'], ['feedback', 'feedback <part n> <words>'], ['again', 'again <part n> [fresh]'], ['swap', 'swap <part n>: Claude ⇄ Astra']];
   function parseKV(s) {
     const out = {}; let rest = String(s || '');
+    // source= takes the rest of the line (chat titles have spaces)
+    const src = /\bsource=(.+)$/.exec(rest);
+    if (src) { out.source = src[1].trim().replace(/^"|"$/g, ''); rest = rest.slice(0, src.index); }
     rest = rest.replace(/(\w+)=("[^"]*"|\S+)/g, (_, k, v) => { out[k] = v.replace(/^"|"$/g, ''); return ''; });
     return { kv: out, rest: rest.trim() };
   }

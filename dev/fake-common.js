@@ -164,10 +164,10 @@ renderer.setAnimationLoop((now) => {
 }
 function compPlan(msg) {
   const head = msg.split('\n')[0];
+  if (/^Comp /.test(head) && /comp-hang/.test(msg)) return { mcpCalls: [['three_console', {}], ['sleep', 3600000]], text: '' };
   const part = /^Comp part (\d+)\/(\d+)/.exec(head);
   if (part) {
     const n = Number(part[1]);
-    if (/comp-hang/.test(msg)) return { mcpCalls: [['three_console', {}], ['sleep', 3600000]], text: '' };
     const pause = /comp-slow/.test(msg) ? 9000 : 2500;
     return { mcpCalls: [['three_set_code', { code: compCode(n, 'draft'), wait: 0.6 }], ['sleep', pause], ['three_set_code', { code: compCode(n, 'final'), wait: 0.6 }]],
       text: `Built part ${n}: a ${COMP_COLORS[(n - 1) % COMP_COLORS.length]} field with a white bar sweeping across on the scene's timeline.` };

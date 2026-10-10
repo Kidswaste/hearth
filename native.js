@@ -1014,7 +1014,7 @@ const Native = (() => {
 
   function remember(chat) {
     window.hub.saveChat(chat);
-    const summary = { id: chat.id, agentId: chat.agentId, title: chat.title, updatedAt: chat.updatedAt, pinned: Boolean(chat.pinned), model: chat.model };
+    const summary = { id: chat.id, agentId: chat.agentId, title: chat.title, updatedAt: chat.updatedAt, pinned: Boolean(chat.pinned), model: chat.model, ...(chat.engine ? { engine: chat.engine } : {}) };
     H.chats = [summary, ...H.chats.filter((c) => c.id !== chat.id)];
     Panel.render();
   }

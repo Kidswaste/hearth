@@ -171,7 +171,7 @@ Your scene is one part of a bigger video, made at the same time as the other par
         any = true;
         const busy = Native.isBusy(p.chatId);
         const quiet = now - Math.max(p.sentAt || 0, lastAct.get(p.chatId) || 0);
-        if (busy && quiet > STUCK_MS) { p.state = 'stuck'; p.last = `no tool call or reply for ${Math.round(quiet / 60000)} min`; paint(m); saveSoon(m); }
+        if (busy && quiet > (window.COMP_STUCK_MS || STUCK_MS)) { p.state = 'stuck'; p.last = `no tool call or reply for ${Math.round(quiet / 60000)} min`; paint(m); saveSoon(m); }
         else if (!busy && p.state === 'sent' && now - (p.sentAt || 0) > 15000) { p.state = 'waiting'; paint(m); }
         else paintSoft(m);
       }
