@@ -858,6 +858,7 @@ const ThreeSeq = (() => {
     const F = e.seq?.fps || 30;
     let wrote = 0;
     for (let n = n0; n < n1; n += 1) {
+      while (S.render?.paused && !S.render.cancel) await sleep(200); // (round 13) paused from the render queue
       if (S.render?.cancel) throw new Error('Render cancelled');
       const msg = await new Promise((r) => { const t = setTimeout(() => { S.frames.delete(n); r({ error: 'The preview stopped answering' }); }, 30000); S.frames.set(n, (m) => { clearTimeout(t); r(m); }); L.send({ type: 'seq-frame', n, T: r4(n / F), w, h }); });
       if (msg.error) throw new Error(`Frame ${n}: ${msg.error}`);
@@ -928,6 +929,9 @@ const ThreeSeq = (() => {
     window.Progress?.set(pgKey, { title: `▤ Render · ${stem}`, icon: '▤', kind: 'seq-render', pct: 0, label: 'getting the preview ready', where: ['rail:tool:three', '.sq-view > .sq-row'], jump: () => activate('tool:three'), actions: [{ label: '■', title: 'Cancel the render', run: () => { if (S.render) S.render.cancel = true; } }] });
     onProgress = (p) => { window.Progress?.set(pgKey, { pct: p * 100, label: p < 0.85 ? `frame ${Math.round((p / 0.85) * Math.max(1, Math.round(dur * F)))} / ${Math.max(1, Math.round(dur * F))}` : 'muxing the sound' }); pgUser?.(p); };
     let pgOk = false;
+    // (round 13) the render queue shows it (pause / cancel / time left / the make), says when it's done and keeps it in the history
+    const rq = window.Renders?.track?.({ kind: 'seq', title: `▤ ${stem}`, pk: pgKey, quiet, cancel: () => { if (S.render) S.render.cancel = true; }, pause: (on) => { if (S.render) S.render.paused = on; }, again: !quiet && S.key ? { type: 'seq-direct', key: S.key, opts: { format: fmt, fps: F, crf, sound, realtime } } : null });
+    const rqEnd = {};
     const wasView = S.view; const wasKey = S.key; const wasEdit = S.edit; const wasT = S.T; const wasSize = L.stage.size.id;
     const t = quiet ? null : toast('Rendering the sequence…', { timeout: 0, action: { label: 'Cancel', fn: () => { if (S.render) S.render.cancel = true; } } });
     const say = (txt) => { const sp = t?.querySelector('span'); if (sp) sp.textContent = txt; };
@@ -941,7 +945,7 @@ const ThreeSeq = (() => {
       await ensureSongOf(re);
       await sendPlan({ force: true });
       await sleep(300);
-      if (!tools) { const rt = await recordRealtime(re, { w, h, dir, stem, dur, say, onProgress: (p) => { window.Progress?.set(pgKey, { pct: p * 100, label: 'recording in real time (no ffmpeg)' }); pgUser?.(p); } }); pgOk = true; return rt; }
+      if (!tools) { const rt = await recordRealtime(re, { w, h, dir, stem, dur, say, onProgress: (p) => { window.Progress?.set(pgKey, { pct: p * 100, label: 'recording in real time (no ffmpeg)' }); pgUser?.(p); } }); pgOk = true; rqEnd.out = rt?.path; if (rq) rq.job.quiet = true; return rt; }
       const tmp = `${dir}/.hearth-titles-seq${Date.now().toString(36)}`;
       const N = Math.max(1, Math.round(dur * F));
       let output;
@@ -962,12 +966,13 @@ const ThreeSeq = (() => {
       } finally { window.hub.video.rmtemp?.(tmp).catch(() => {}); }
       if (library && typeof Review !== 'undefined') { try { await Review.noteRecording(output); } catch { /* the library is a bonus */ } }
       const secs = Math.round((performance.now() - S.render.t0) / 100) / 10;
-      if (!quiet) toast(`Rendered ${base(output)} (${N} frames, ${fmt}) in ${secs} s`, { timeout: 6000, action: { label: 'Open in Video Review', fn: () => openOutput(output) } });
+      if (!quiet && !rq?.notifies) toast(`Rendered ${base(output)} (${N} frames, ${fmt}) in ${secs} s`, { timeout: 6000, action: { label: 'Open in Video Review', fn: () => openOutput(output) } });
       emit('render', { output, frames: N, format: fmt });
-      pgOk = true;
+      pgOk = true; rqEnd.out = output;
       return { path: output, frames: N, fps: F, w, h, format: fmt, seconds: secs };
-    } finally {
+    } catch (err) { rqEnd.err = err; throw err; } finally {
       if (pgOk) window.Progress?.done(pgKey); else window.Progress?.done(pgKey, { ok: false, label: S.render?.cancel ? 'cancelled' : 'failed' });
+      if (pgOk) rq?.done(rqEnd.out); else rq?.fail(S.render?.cancel ? 'Render cancelled' : rqEnd.err || 'The render stopped');
       t?.remove();
       send({ type: 'seq-offline', on: false });
       S.render = null;
@@ -1528,7 +1533,8 @@ const ThreeSeq = (() => {
       go.textContent = n > 1 ? `⇪ Render ${n} formats` : `⇪ Render ${[...st.formats][0]}`;
     }
     const realtime = el('button', { type: 'button', class: 'ghost small', text: 'Record in real time instead', title: 'Without ffmpeg: the sequence plays once into a recording' });
-    dlg.append(el('h3', { text: 'Render the sequence' }), body, el('div', { class: 'modal-actions' }, realtime, el('span', { class: 'spacer' }), el('button', { type: 'button', class: 'ghost', text: 'Cancel', on: { click: () => dlg.close() } }), go));
+    const more = window.Renders ? el('button', { type: 'button', class: 'ghost small', text: 'More formats…', title: 'GIF, WebM, ProRes master, audio only, YouTube 4K, Story, all socials (the render queue\'s presets)', on: { click: () => { dlg.close(); Renders.panel({ source: 'seq' }); } } }) : null; // (round 13)
+    dlg.append(el('h3', { text: 'Render the sequence' }), body, el('div', { class: 'modal-actions' }, realtime, more, el('span', { class: 'spacer' }), el('button', { type: 'button', class: 'ghost', text: 'Cancel', on: { click: () => dlg.close() } }), go));
     document.body.append(dlg);
     dlg.addEventListener('close', () => dlg.remove());
     paint();
@@ -1538,7 +1544,7 @@ const ThreeSeq = (() => {
       dlg.close();
       let lastOut = null;
       for (const f of st.formats) {
-        try { lastOut = await render({ format: f, fps: st.fps, crf: QUALITY[st.quality].crf, sound: st.sound, ...opts }); } catch (err) { toast(err.message, { type: 'error' }); break; }
+        try { lastOut = await render({ format: f, fps: st.fps, crf: QUALITY[st.quality].crf, sound: st.sound, ...opts }); } catch (err) { if (!window.Renders) toast(err.message, { type: 'error' }); break; } // (the render queue says why, with the fix)
       }
       if (st.open && lastOut?.path) openOutput(lastOut.path);
     };

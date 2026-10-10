@@ -1,0 +1,56 @@
+/* The render queue (round 13, renders.js): the ⇪ badge at the bottom of the rail (only while something renders or a
+   failure waits to be seen), its list, the Render panel and the done / failed notes. Compositor-only motion: the bars
+   reuse progress.css (scaleX + a transition); nothing animates layout. */
+#rq-badge { width: 32px; height: 20px; padding: 0; margin: 2px 0 0; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px; opacity: .85; font-size: 12px; }
+#rq-badge[hidden] { display: none; }
+#rq-badge:hover { opacity: 1; }
+#rq-badge .rq-b-ic { text-align: center; color: var(--fh-gold, #f5c451); line-height: 1; }
+#rq-badge .rq-b-n { font-size: 10px; font-weight: 600; line-height: 1; min-width: 9px; color: var(--muted, #8a8f98); font-variant-numeric: tabular-nums; }
+#rq-badge[data-state="wait"] .rq-b-ic, #rq-badge[data-state="paused"] .rq-b-ic { opacity: .55; }
+#rq-badge[data-state="failed"] .rq-b-ic, #rq-badge[data-state="failed"] .rq-b-n { color: var(--fh-red, #ff5a5a); }
+
+.rq-pop { position: fixed; z-index: 9000; width: 360px; max-height: min(64vh, 520px); overflow: auto; padding: 8px; border-radius: 10px;
+  background: var(--surface, #1b1d22); border: 1px solid var(--line, #2c2f36); box-shadow: 0 10px 32px rgba(0, 0, 0, .35); font-size: 12px; }
+.rq-head { display: flex; align-items: center; gap: 4px; padding: 0 2px 6px; }
+.rq-head .spacer { flex: 1; }
+.rq-head button { height: 22px; padding: 0 8px; font-size: 11px; }
+.rq-tab { background: transparent; border: 0; color: var(--muted, #8a8f98); text-transform: uppercase; letter-spacing: .06em; cursor: pointer; border-radius: 6px; }
+.rq-tab.on { color: var(--text, #e6e6e6); background: color-mix(in srgb, var(--fh-ai, #a98bff) 12%, transparent); }
+.rq-empty { padding: 10px 6px; color: var(--muted, #8a8f98); line-height: 1.4; }
+.rq-row { position: relative; padding: 6px 6px 9px; border-radius: 7px; }
+.rq-row:hover { background: color-mix(in srgb, var(--fh-ai, #a98bff) 8%, transparent); }
+.rq-row-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.rq-row-head .rq-t { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.rq-row-head .rq-w { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted, #8a8f98); font-variant-numeric: tabular-nums; }
+.rq-row-head .rq-q { flex: none; padding: 0 5px; height: 20px; font-size: 11px; opacity: .7; }
+.rq-row:hover .rq-q { opacity: 1; }
+.rq-ic { flex: none; width: 16px; text-align: center; opacity: .8; font-size: 11px; }
+.rq-mk { flex: none; font-size: 11px; }
+.rq-row > .rq-bar { left: 6px; right: 6px; bottom: 3px; }
+.rq-paused > .rq-bar > i, .rq-queued > .rq-bar > i { opacity: .4; }
+.rq-done .rq-ic { color: var(--fh-ok, #5fc98a); }
+.rq-failed .rq-ic, .rq-failed .rq-w { color: var(--fh-red, #ff5a5a); }
+.rq-cancelled, .rq-trashed { opacity: .6; }
+.rq-fix { margin: 3px 0 0 22px; color: var(--muted, #8a8f98); line-height: 1.35; }
+
+.rq-dialog { min-width: 420px; max-width: 560px; }
+.rq-dialog .rq-d-body { display: grid; gap: 10px; margin: 8px 0 14px; }
+.rq-dialog .rq-d-row { display: grid; grid-template-columns: 78px 1fr; align-items: start; gap: 8px; }
+.rq-dialog .rq-d-row > b { padding-top: 4px; font-size: 12px; opacity: .8; }
+.rq-dialog .sq-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.rq-dialog .sq-chip { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line, #333); background: transparent; color: inherit; cursor: pointer; font-size: 12px; }
+.rq-dialog .sq-chip.on { background: var(--accent, #e08a5b); border-color: transparent; color: #111; }
+.rq-dialog .sq-chip.rq-all { border-style: dashed; }
+.rq-dialog .sq-chip.rq-all.on { border-style: solid; }
+.rq-dialog .rq-d-more { justify-self: start; }
+.rq-dialog .rq-d-details { display: grid; gap: 10px; padding: 8px 0 2px; border-top: 1px solid var(--line, #2c2f36); }
+.rq-dialog .sq-rp-check { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.rq-dialog .rq-d-sum { font-size: 12px; opacity: .7; line-height: 1.4; }
+.rq-dialog .modal-actions { display: flex; align-items: center; gap: 8px; }
+.rq-dialog .modal-actions .spacer { flex: 1; }
+
+.toast.rq-done, .toast.rq-fail { white-space: pre-line; }
+.toast.rq-done button, .toast.rq-fail button { margin-left: 4px; }
+.toast.rq-fail { border-left: 3px solid var(--fh-red, #ff5a5a); }
+.toast.rq-done { border-left: 3px solid var(--fh-ok, #5fc98a); }
+@media (prefers-reduced-motion: reduce) { .rq-row > .rq-bar > i { transition: none; } }
