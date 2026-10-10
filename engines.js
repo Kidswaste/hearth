@@ -156,6 +156,8 @@ function hubMcpConfig(agent) {
     const { server, script } = HUB_TOOLSETS[key];
     mcpServers[server] = { command: process.execPath, args: [path.join(__dirname, 'mcp', script)], env: hubToolEnv(agent) };
   }
+  // (round 14) the permission check behind --permission-prompt-tool, for a chat with file access
+  if (accessAsks(agent)) mcpServers.access = { command: process.execPath, args: [path.join(__dirname, 'mcp', 'access-mcp.js')], env: accessEnv(agent) };
   const file = mcpConfigFile(agent);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify({ mcpServers }, null, 2));
@@ -185,8 +187,52 @@ function codexMcpArgs(agent) {
 
 // The opt-in project folder (both engines). Claude edits it with its file tools; Astra looks with read-only
 // shell commands inside Codex's sandbox, and edits only when its file mode is "edit".
+// A chat with its own access setting (round 14, below) replaces the agent's folder for its runs.
 function fileFolder(agent) {
+  if (agent.access) return null;
   return agent.workspace && fs.existsSync(agent.workspace) ? agent.workspace : null;
+}
+
+// ---------- per-chat file access (round 14, access.js) ----------
+// A chat's ⋯ → Access (or /access) picks one level and its folders; they arrive as options.access = { level, folders }.
+//   read   Claude: Read / Glob / Grep in the folders.  Codex: shell in a read-only sandbox.
+//   write  + Edit / Write.  Codex: workspace-write sandbox, writable roots = the folders, no network.
+//   full   + Bash (Claude).  Codex: the same sandbox (it can't ask, so the risky parts stay off).
+// Claude's permission requests (edits, commands, anything outside the folders) go to mcp/access-mcp.js through
+// --permission-prompt-tool: Hearth decides silently for safe things and shows an approval card for risky ones. A
+// Claude Code that doesn't know that flag drops it (CLAUDE_OPTIONAL) and gets what a project folder always had: file
+// tools with acceptEdits, no commands. Nothing is added to the prompt unless access is on (then one line).
+const ACCESS_LEVELS = ['off', 'read', 'write', 'full'];
+const PERMISSION_TOOL = 'mcp__access__access_permission';
+function accessOf(agent) {
+  const a = agent.access;
+  if (!a || !ACCESS_LEVELS.includes(a.level) || a.level === 'off') return null;
+  const folders = [...new Set((Array.isArray(a.folders) ? a.folders : []).filter((f) => typeof f === 'string' && path.isAbsolute(f) && fs.existsSync(f)))].slice(0, 12);
+  return { level: a.level, folders };
+}
+// Claude asks Hearth (the permission tool) unless this Claude Code rejected the flag before.
+const accessAsks = (agent) => agent.engine !== 'codex' && Boolean(accessOf(agent)) && !claudeDropped.has('--permission-prompt-tool');
+function accessLine(agent, acc) {
+  const where = acc.folders.length ? acc.folders.join(', ') : 'no folder yet (ask the user to add one with /access add)';
+  const label = { read: 'read only', write: 'read & write', full: 'full: files and commands' }[acc.level];
+  if (agent.engine === 'codex') {
+    return acc.level === 'read' ? `File access (${label}): ${where}. Look with short read-only commands (ls, cat, rg, sed -n); you can't change files.`
+      : `File access (${label}): ${where}. ${acc.level === 'write' ? 'Edit with apply_patch; ' : ''}commands run sandboxed (writes only there, no network); to delete, move files into .hearth-trash/ at the top of that folder (Hearth sends them to the Trash).`;
+  }
+  if (acc.level === 'read') return `File access (${label}): ${where}. Use Read, Glob and Grep there.`;
+  if (!accessAsks(agent)) return `File access (read & write): ${where}. Edit with your file tools; you can't run commands, so tell the user what to run.`;
+  return acc.level === 'write' ? `File access (${label}): ${where}. Edit with your file tools; Hearth asks the user before risky changes.`
+    : `File access (${label}): ${where}. Start commands with cd into it; deletes go to the Trash; a denied call means the user said no; never run commands that ask for a password (sudo, ssh): ask the user to run those in a terminal.`;
+}
+// What the access server needs: the chat to show its cards in, and where relative paths start.
+const accessEnv = (agent) => ({ ELECTRON_RUN_AS_NODE: '1', HUB_AGENT_ID: agent.id, HUB_ACCESS_CHAT: agent.accessChatId || '', HUB_ACCESS_CWD: WORKSPACE });
+// Which file / command a tool call touches, for the chat's activity log (access.js), from the engines' own events.
+function toolAccess(name, input = {}) {
+  const target = input.file_path || input.notebook_path || input.path || input.pattern || '';
+  if (/^(Read|Glob|Grep|LS|NotebookRead)$/.test(name)) return { action: 'read', target, tool: name };
+  if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(name)) return { action: 'write', target, tool: name };
+  if (name === 'Bash') return { action: 'run', target: String(input.command || '').slice(0, 400), tool: name };
+  return null;
 }
 const partnerName = (agent) => (agent.engine === 'codex' ? 'Claude' : 'Astra');
 // Tool guides go into the system prompt, which the hub controls (the CLI may drop MCP server instructions when
@@ -206,6 +252,8 @@ function buildPrompt(agent) {
       || `You are ${agent.name}, chatting with the user in their personal desktop app. `
         + 'Answer conversationally and directly, using Markdown when it helps.',
   ];
+  const acc = accessOf(agent);
+  if (acc) parts.push(accessLine(agent, acc));
   if (folder && agent.engine === 'codex') {
     parts.push(agent.codexFiles === 'edit'
       ? `You can read and edit files in the project folder ${folder}: look with short read-only commands (ls, cat, rg, sed -n) and edit with apply_patch. `
@@ -270,7 +318,7 @@ function buildPrompt(agent) {
     parts.push(hearthMap().LINE('three_help'));
   }
   if (web) parts.push('You can search the web when the answer depends on recent or specific facts; say briefly where facts come from.');
-  if (!folder && !usesApps && !sets.length) parts.push(web ? 'Apart from web search you have no tools: never try to run commands or read files.' : 'You have no tools: never try to run commands, read files or browse the web.');
+  if (!folder && !acc && !usesApps && !sets.length) parts.push(web ? 'Apart from web search you have no tools: never try to run commands or read files.' : 'You have no tools: never try to run commands, read files or browse the web.');
   const memory = getMemory();
   const notes = [memory.shared, memory.agents?.[agent.id]].map((m) => (m || '').trim()).filter(Boolean);
   if (notes.length) {
@@ -294,18 +342,28 @@ function claudeToolArgs(agent, options = {}) {
   const folder = fileFolder(agent);
   // Attached images are read with the Read tool from the hub's attachments folder.
   const images = Boolean(options.images?.length);
+  // (round 14) a chat's own access level: reads in its folders are free, edits / commands go through Hearth's check
+  const acc = accessOf(agent);
+  const asks = accessAsks(agent);
   let args;
-  if (folder) args = ['--tools', FILE_TOOLS.join(','), '--restricted', '--add-dir', folder, ATTACH_DIR, '--permission-mode', 'acceptEdits'];
+  let accessAllowed = [];
+  if (acc) {
+    const tools = acc.level === 'read' ? ['Read', 'Glob', 'Grep'] : acc.level === 'full' && asks ? [...FILE_TOOLS, 'Bash'] : [...FILE_TOOLS];
+    args = ['--tools', tools.join(','), ...(acc.level === 'full' && asks ? [] : ['--restricted']), '--add-dir', ...acc.folders, ATTACH_DIR];
+    // an older Claude Code without the permission tool: what a project folder always had (edits accepted, no commands)
+    if (!asks) { accessAllowed = tools; if (acc.level !== 'read') args.push('--permission-mode', 'acceptEdits'); }
+  } else if (folder) args = ['--tools', FILE_TOOLS.join(','), '--restricted', '--add-dir', folder, ATTACH_DIR, '--permission-mode', 'acceptEdits'];
   else if (images) args = ['--tools', 'Read', '--restricted', '--add-dir', ATTACH_DIR];
   else args = ['--tools', ''];
   const sets = hubToolsets(agent);
-  if (!enabled.size && !folder && !images && !sets.length) return [...args, '--strict-mcp-config'];
+  if (!enabled.size && !folder && !acc && !images && !sets.length) return [...args, '--strict-mcp-config'];
   // --strict-mcp-config limits MCP servers to the ones passed with --mcp-config (or none).
-  if (sets.length) args.push('--mcp-config', hubMcpConfig(agent));
+  if (sets.length || asks) args.push('--mcp-config', hubMcpConfig(agent));
   if (!enabled.size) args.push('--strict-mcp-config');
-  args.push('--permission-prompts', 'none');
+  if (asks) args.push('--permission-prompt-tool', PERMISSION_TOOL);
+  else args.push('--permission-prompts', 'none');
   const { claude } = readConnectorCache();
-  const allowed = folder ? [...FILE_TOOLS] : images ? ['Read'] : [];
+  const allowed = acc ? accessAllowed : folder ? [...FILE_TOOLS] : images ? ['Read'] : [];
   for (const key of sets) allowed.push(`mcp__${HUB_TOOLSETS[key].server}`);
   const denied = [];
   for (const server of enabled.size ? claude?.servers || [] : []) {
@@ -329,6 +387,8 @@ const CLAUDE_OPTIONAL = {
   '--system-prompt-snapshot': 1, '--disable-slash-commands': 0, '--setting-sources': 1, '--include-partial-messages': 0,
   '--thinking-display': 1, '--effort': 1, '--permission-prompts': 1, '--restricted': 0, '--strict-mcp-config': 0,
   '--permission-mode': 1, '--session-id': 1, '--tools': 1,
+  // (round 14) chat file access asks Hearth through it; without it, no commands (see accessOf)
+  '--permission-prompt-tool': 1,
 };
 const CLAUDE_FLAGS_FILE = path.join(DATA_DIR, 'claude-flags.json');
 let claudeDropped = new Set();
@@ -419,13 +479,14 @@ prunePrompts();
 function codexArgs(agent, session, options = {}) {
   const file = promptFile(agent);
   const folder = fileFolder(agent);
-  const edit = Boolean(folder) && agent.codexFiles === 'edit';
+  const acc = accessOf(agent);
+  const edit = (Boolean(folder) && agent.codexFiles === 'edit') || Boolean(acc && acc.level !== 'read');
   const args = ['exec'];
   if (session.id) args.push('resume', session.id);
   args.push('--json', '--skip-git-repo-check', '--ignore-user-config', '--ignore-rules');
   let disabled = agent.chatgptApps ? CODEX_DISABLED_FEATURES.filter((f) => f !== 'apps') : CODEX_DISABLED_FEATURES;
   // File access (opt-in): Codex looks at files with its shell tool, which runs inside its OS sandbox.
-  if (folder) disabled = disabled.filter((f) => f !== 'shell_tool');
+  if (folder || acc) disabled = disabled.filter((f) => f !== 'shell_tool');
   // Features switched back on for this agent (/astra-feature): each adds its tool definitions to every message.
   if (Array.isArray(agent.codexFeatures)) disabled = disabled.filter((f) => !agent.codexFeatures.includes(f));
   for (const feature of disabled) args.push('--disable', feature);
@@ -435,10 +496,13 @@ function codexArgs(agent, session, options = {}) {
     '-c', 'project_doc_max_bytes=0',
     '-c', `web_search="${web}"`,
   );
-  if (folder) {
-    // resumed runs get the sandbox again (-s only applies to new sessions); writes only inside the folder, no network
+  if (folder || acc) {
+    // resumed runs get the sandbox again (-s only applies to new sessions); writes only inside the folder(s), no network.
+    // `codex exec` can't show an approval prompt, so approvals stay off and the sandbox is the safety (round 14: each
+    // access level maps here: read → read-only, read & write / full → workspace-write on the chat's folders).
+    const roots = acc ? acc.folders : [folder];
     args.push('-c', `sandbox_mode="${edit ? 'workspace-write' : 'read-only'}"`, '-c', 'approval_policy="never"');
-    if (edit) args.push('-c', `sandbox_workspace_write.writable_roots=[${tomlStr(folder)}]`, '-c', 'sandbox_workspace_write.network_access=false');
+    if (edit) args.push('-c', `sandbox_workspace_write.writable_roots=[${roots.map(tomlStr).join(', ')}]`, '-c', 'sandbox_workspace_write.network_access=false');
   }
   let effort = pick(options.effort, EFFORTS.codex) || pick(agent.effort, EFFORTS.codex);
   // minimal reasoning can't use the web search tool: with web on it becomes low instead of failing
@@ -477,7 +541,9 @@ function claudeParser(session) {
     const toolUse = msg.type === 'assistant' && msg.message?.content?.find((c) => c.type === 'tool_use');
     if (toolUse) {
       const target = toolUse.input?.file_path || toolUse.input?.pattern;
-      return { type: 'tool', name: target ? `${toolUse.name} · ${path.basename(target)}` : toolUse.name };
+      // (round 14) what it touches, for the chat's activity log (access.js)
+      const access = toolAccess(toolUse.name, toolUse.input || {});
+      return { type: 'tool', name: target ? `${toolUse.name} · ${path.basename(target)}` : toolUse.name, ...(access ? { access: { ...access, id: toolUse.id } } : {}) };
     }
     if (msg.type === 'result') {
       if (msg.is_error) return { type: 'error', message: msg.result || 'Claude returned an error' };
@@ -539,11 +605,12 @@ function codexParser(session, agent = {}) {
     if (msg.type === 'item.completed' && /tool_call/.test(item.type || '') && (item.status === 'failed' || item.error) && CANCELLED.test(JSON.stringify(item.error || item.result || ''))) {
       return { type: 'blocked', name: [item.server, item.tool].filter(Boolean).join(' · ') || item.type, message: String(item.error?.message || 'cancelled').slice(0, 200) };
     }
-    if (msg.type === 'item.started' && item.type === 'command_execution') return { type: 'tool', name: `Shell · ${short(item.command)}` };
+    if (msg.type === 'item.started' && item.type === 'command_execution') return { type: 'tool', name: `Shell · ${short(item.command)}`, access: { action: 'run', target: String(item.command || '').slice(0, 400), tool: 'Shell', id: item.id } };
     if (msg.type === 'item.started' && item.type === 'web_search') return { type: 'tool', name: `Web search · ${short(item.query, 50)}` };
     if (msg.type === 'item.completed' && item.type === 'file_change') {
       const files = (item.changes || []).map((c) => path.basename(c.path || '')).filter(Boolean);
-      return { type: 'tool', name: `${item.status === 'failed' ? 'Edit failed' : 'Edited'} · ${short(files.join(', ') || 'files')}` };
+      const changes = (item.changes || []).filter((c) => c.path).slice(0, 20).map((c) => ({ path: c.path, kind: c.kind || 'update' }));
+      return { type: 'tool', name: `${item.status === 'failed' ? 'Edit failed' : 'Edited'} · ${short(files.join(', ') || 'files')}`, ...(item.status !== 'failed' && changes.length ? { access: { action: 'write', changes, tool: 'apply_patch', id: item.id } } : {}) };
     }
     // Its own plan (todo list) becomes the chat's live checklist.
     if ((msg.type === 'item.started' || msg.type === 'item.updated' || msg.type === 'item.completed') && item.type === 'todo_list' && Array.isArray(item.items)) {
@@ -632,6 +699,8 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
   // the hub tool sets and file tools so they cost no more than a plain chat turn.
   if (options.persona) agent = { ...agent, systemPrompt: String(options.persona).slice(0, 4000) };
   if (options.lean) agent = { ...agent, chatTools: false, threeTools: false, videoTools: false, gameTools: false, boardTools: false, captureTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false };
+  // (round 14) the chat's own file access (access.js); lean / hub-only runs never get it
+  else if (options.access && typeof options.access === 'object' && !options.hubOnly) agent = { ...agent, access: { level: String(options.access.level || 'off'), folders: options.access.folders }, accessChatId: chatId };
   // "hubOnly" runs (a jam's build turns, jam.js) keep the agent's tool sets (Lab, video…) and drop the rest.
   if (options.hubOnly) agent = { ...agent, chatTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false };
   // asDirector: 'three' (a jam's build turn on an agent that isn't a Lab director, e.g. your Astra): this one turn gets
@@ -653,7 +722,7 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
     return;
   }
   usedBin[engine] = bin;
-  if (agent.workspace && !fileFolder(agent)) {
+  if (agent.workspace && !agent.access && !fileFolder(agent)) {
     emit({ type: 'error', message: `The file access folder ${agent.workspace} doesn't exist anymore. Change it in the agent's settings.` });
     return;
   }
@@ -1029,6 +1098,6 @@ module.exports = {
   send, stop, stopAll, login, status, checkInstalls, checkEngine, fix, onInstalls, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
   doctor, EFFORTS, CODEX_DISABLED_FEATURES,
   // for tests (dev/astra-engine-test.js)
-  _test: { lastErrorLine, codexArgs, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION },
+  _test: { lastErrorLine, codexArgs, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION },
   buildPrompt, HUB_TOOLSETS, // the director cost report (mcp/cost.js)
 };

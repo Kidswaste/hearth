@@ -79,6 +79,36 @@ const F = require('./fake-common');
     for (const c of Object.values(clients)) c.close();
     text += `\n\nMCP calls:\n${lines.map((l) => `- ${l}`).join('\n')}`;
   }
+  // `access` (round 14): shell commands and file edits under the sandbox Hearth set (-c sandbox_mode / writable_roots)
+  if (p.accessCalls) {
+    const fs = require('fs');
+    const path = require('path');
+    const cfg = (key) => { const a = argv.find((x, i) => argv[i - 1] === '-c' && x.startsWith(`${key}=`)); return a ? a.slice(key.length + 1) : null; };
+    const mode = JSON.parse(cfg('sandbox_mode') || 'null') || (argv.includes('-s') ? argv[argv.indexOf('-s') + 1] : 'read-only');
+    let roots = [];
+    try { roots = JSON.parse(cfg('sandbox_workspace_write.writable_roots') || '[]'); } catch { /* none */ }
+    const shell = !argv.some((x, i) => x === 'shell_tool' && argv[i - 1] === '--disable');
+    const lines = [`sandbox: ${mode}; roots: ${roots.join(', ') || 'none'}; shell: ${shell ? 'on' : 'off'}; network: ${cfg('sandbox_workspace_write.network_access') || 'default'}; approvals: ${cfg('approval_policy') || 'default'}`];
+    for (const [tool, input] of p.accessCalls) {
+      const id = `item_${n++}`;
+      if (tool === 'Bash') {
+        if (!shell) { lines.push('Bash: no shell tool'); continue; }
+        F.out({ type: 'item.started', item: { id, type: 'command_execution', command: input.command, status: 'in_progress' } });
+        const writes = /(^|[;&|]\s*)(rm|mv|touch|mkdir|cp|tee)\b|>/.test(input.command || '');
+        const res = mode === 'read-only' && writes ? { ok: false, text: 'sandbox: read-only file system' } : F.runTool('Bash', input);
+        F.out({ type: 'item.completed', item: { id, type: 'command_execution', command: input.command, aggregated_output: res.text, exit_code: res.ok ? 0 : 1, status: res.ok ? 'completed' : 'failed' } });
+        lines.push(`Bash: ${res.ok ? 'ran' : 'failed'} · ${res.text.replace(/\s+/g, ' ').slice(0, 160)}`);
+      } else if (tool === 'Write' || tool === 'Edit') {
+        const file = path.resolve(input.file_path);
+        const can = mode !== 'read-only' && roots.some((r) => file === path.resolve(r) || file.startsWith(path.resolve(r) + path.sep));
+        const kind = fs.existsSync(file) ? 'update' : 'add';
+        const res = can ? F.runTool(tool, input) : { ok: false, text: 'sandbox: not writable' };
+        F.out({ type: 'item.completed', item: { id, type: 'file_change', changes: [{ path: file, kind }], status: res.ok ? 'completed' : 'failed' } });
+        lines.push(`${tool}: ${res.ok ? 'ran' : 'failed'} · ${res.text.slice(0, 160)}`);
+      } else lines.push(`${tool}: not a Codex tool`);
+    }
+    text += `\n\nAccess calls:\n${lines.map((l) => `- ${l}`).join('\n')}`;
+  }
   if (p.error) { F.out({ type: 'turn.failed', error: { message: 'Fake Codex error: stream disconnected' } }); return; }
   // Codex sends whole messages, not deltas: wait about as long as a stream would take, then send it.
   await F.sleep(Math.min(6000, F.pieces(text).length * wait));

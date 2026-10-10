@@ -57,7 +57,8 @@ line count is lower than the number of upgrades).
 | Speed (round 13): menus, palette, command bar and Commands page ranked by your habits; Ctrl/⌘+. Again and recent actions; a pick-up card when the app opens; repeated routines offered as one-key macros; your own keys first on the keys sheet; one-click fixes on known errors; a safer weekly tidy with Undo and `/habits restore` | [speed.md](speed.md) | 61 |
 | Renders (round 13): one render queue for every render, recording and export (progress, time left, pause / cancel / retry, joins its make), presets in one panel (Reels / TikTok / Shorts, Story, Feed, Square, YouTube 1080p / 4K, GIF, WebM, ProRes master, audio, All socials), done note with Open / Reveal / Copy path / Video Review, history with re-render, `/renders` | [renders.md](renders.md) | 67 |
 | Sequence guard (round 13): 9 frame-swap bugs fixed (playback stopping after Fit, the clock jumping after a reload, the playhead pulled back, footage flashing black…), a watchdog that repairs the preview by itself ("Preview restored"), nudge / key trims / per-clip speed / colors / markers / snapping / In–Out range / close gaps / history, `/sequence health` | [seqguard.md](seqguard.md) | 60 |
-| **Total** | | **9,917** |
+| Access (round 14): each chat reads / writes / deletes / runs in its own folders (⋯ → Access: Off · Read · Read & write · Full, `/access`), risky things ask with a card in the chat (Allow once · for this chat · Deny + note, no answer = no), deletes to the Trash, Undo for edits, an activity log per chat, passwords never handled, Astra mapped to its sandbox | [access.md](access.md) | 41 |
+| **Total** | | **9,958** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.

@@ -1,0 +1,56 @@
+/* Chat file access (round 14, access.js): the approval card, the tray for cards outside a reply, the badge, the panel
+   and the activity log. Compact: one card per request, everything else behind ⋯ → Access or /access. */
+.access-card { --acc: var(--ui-gold, #ffb84d); position: relative; overflow: hidden; margin: 8px 0; padding: 10px 12px 12px; border-radius: 10px; border: 1px solid var(--acc); background: color-mix(in srgb, var(--acc) 9%, var(--bg, #111)); display: flex; flex-direction: column; gap: 5px; animation: ask-in .25s ease-out; font-size: 13px; }
+.access-card.risk-high { --acc: var(--ui-red, #ff5d5d); }
+.access-head { display: flex; align-items: center; gap: 8px; }
+.access-ico { font-size: 15px; }
+.access-risk { margin-left: auto; padding: 1px 7px; border-radius: 99px; font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--acc); border: 1px solid color-mix(in srgb, var(--acc) 60%, transparent); }
+.access-what { font-family: var(--mono, ui-monospace, monospace); font-size: 12px; word-break: break-word; }
+.access-where, .access-why { color: var(--muted); font-size: 12px; }
+.access-detail summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+.access-detail pre { max-height: 160px; overflow: auto; margin: 4px 0 0; padding: 6px 8px; border-radius: 6px; background: color-mix(in srgb, var(--text) 6%, transparent); font-size: 11.5px; white-space: pre-wrap; }
+.access-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 3px; }
+.access-row .danger { color: var(--ui-red, #ff5d5d); }
+.access-note { flex: 1; min-width: 140px; font: inherit; font-size: 12px; padding: 4px 8px; }
+/* how long until no answer denies: one compositor animation, no per-frame JS */
+.access-clock { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; background: var(--acc); transform-origin: left; animation: access-clock linear forwards; opacity: .7; }
+@keyframes access-clock { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.access-card.answered { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 10px; font-size: 12.5px; background: transparent; border-color: color-mix(in srgb, var(--text) 15%, transparent); }
+.access-card.answered .access-clock { display: none; }
+.access-done { color: var(--muted); }
+.access-pw { border-color: var(--ui-red, #ff5d5d); }
+/* cards that aren't inside a streaming reply (Access.ask from an app window, a chat that isn't answering) */
+.access-tray { position: fixed; right: 16px; bottom: 110px; z-index: 900; width: min(420px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.access-tray > * { pointer-events: auto; margin: 0; box-shadow: 0 8px 28px rgba(0, 0, 0, .45); }
+.access-tray:empty { display: none; }
+/* the chip after the chat title */
+.access-badge { margin-left: 6px; padding: 0 7px; border-radius: 99px; border: 1px solid color-mix(in srgb, var(--text) 18%, transparent); background: transparent; color: var(--muted); font-size: 11px; line-height: 18px; cursor: pointer; }
+.access-badge:hover { color: var(--text); border-color: var(--accent); }
+/* panel */
+.access-modal { width: min(560px, calc(100vw - 32px)); }
+.access-panel h4, .access-recent h4, .access-grants h4 { margin: 12px 0 6px; font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.access-levels { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.access-level { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; text-align: left; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--line, #333); background: transparent; color: var(--text); cursor: pointer; }
+.access-level small { color: var(--muted); font-size: 10.5px; line-height: 1.25; }
+.access-level.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.access-folders { display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: 8px; border: 1px dashed var(--line, #333); }
+.access-folders.dropping { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.access-folder { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.access-fname { white-space: nowrap; }
+.access-fpath { flex: 1; min-width: 0; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.access-recent h4 .link { margin-left: 6px; padding: 0; border: 0; background: none; color: var(--accent); font: inherit; text-transform: none; letter-spacing: 0; cursor: pointer; }
+.access-add { align-self: flex-start; }
+.access-grant { display: flex; justify-content: space-between; align-items: center; font-family: var(--mono, monospace); font-size: 11.5px; }
+.access-foot { margin-top: 10px; font-size: 11.5px; }
+/* log */
+.access-log { display: flex; flex-direction: column; gap: 2px; max-height: 60vh; overflow: auto; min-width: min(520px, 80vw); }
+.access-entry { display: flex; gap: 8px; align-items: center; padding: 3px 4px; border-radius: 6px; font-size: 12.5px; }
+.access-entry:hover { background: var(--hover, rgba(255, 255, 255, .05)); }
+.access-eico { width: 18px; text-align: center; }
+.access-etext { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.access-eres { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.access-entry.r-denied .access-eres, .access-entry.r-refused .access-eres, .access-entry.r-timeout .access-eres { color: var(--ui-red, #ff5d5d); }
+.access-entry button { padding: 0 6px; min-height: 0; line-height: 18px; font-size: 11.5px; }
+/* the line a reply keeps about what it did with your files */
+.access-sum { display: block; margin-top: 4px; padding: 0; border: 0; background: none; color: var(--muted); font-size: 11.5px; cursor: pointer; }
+.access-sum:hover { color: var(--text); text-decoration: underline; }

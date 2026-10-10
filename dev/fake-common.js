@@ -12,6 +12,10 @@
 //   progress  hidden <progress pct="35|75" note="…"/> tags inside the reply (round 11)
 //   mcp       really calls the hub MCP servers it was given (--mcp-config / -c mcp_servers.*): the tools in a line
 //             `mcp: [["three_console", {}], ["three_do", {"cmd": "layers"}]]` (default: tools/list + three_console)
+//   access    (round 14) built-in tool calls in a line `access: [["Write", {"file_path": "…", "content": "…"}], ["Bash",
+//             {"command": "…"}]]`, permitted like the real CLIs: Claude allows --allowedTools, reads inside its working
+//             dirs, acceptEdits edits there, and asks the --permission-prompt-tool for the rest (denied without one);
+//             Codex runs them under its sandbox_mode / writable_roots. Then they really run (fake-common runTool).
 //   direct    a director turn with the owner's habits (round 6): "direct: add a tunnel" builds a NEW layer through
 //             three_nodes (a timeline preset; falls back to three_add_layer with code when the node tool is off),
 //             animates it with keyframes and looks with a small screenshot; "make it react" runs /make-it-react;
@@ -282,6 +286,9 @@ function plan(prompt, engine = 'claude') {
     remember: has('remember'), suggest: has('suggest'), slow: has('slow'), error: has('error'), login: has('login'),
     crash: has('crash'), big: has('big'), echo: has('echo'), mcp: has('mcp'), progress: has('progress'),
     mcpCalls: (() => { const m = msg.match(/^mcp:\s*(\[[\s\S]*\])\s*$/m); try { return m ? JSON.parse(m[1]) : null; } catch { return null; } })(),
+    // (round 14) `access: [["Write", {"file_path": "/x/a.txt", "content": "hi"}], ["Bash", {"command": "ls"}]]`: built-in
+    // tool calls, permitted like the real CLIs do (see accessTool below), then really run
+    accessCalls: (() => { const m = msg.match(/^access:\s*(\[[\s\S]*\])\s*$/m); try { return m ? JSON.parse(m[1]) : null; } catch { return null; } })(),
     compact: /Compact our context|moving to a fresh chat/i.test(msg),
     summarize: /^Summari[sz]e\b/i.test(msg),
     title: /short title for this chat/i.test(msg),
@@ -345,6 +352,29 @@ function mcpClient({ command, args = [], env = {} }) {
     };
   })();
 }
+// (round 14) Runs one built-in tool for real, like the CLI would once it is permitted: Read / Write / Edit files, Bash
+// commands (in the engine's cwd, 15 s at most). Returns { ok, text }.
+function runTool(tool, input = {}) {
+  try {
+    const file = input.file_path || input.path;
+    if (tool === 'Read') return { ok: true, text: fs.readFileSync(file, 'utf8').slice(0, 300) };
+    if (tool === 'Write') { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, String(input.content ?? '')); return { ok: true, text: `Wrote ${String(input.content ?? '').length} bytes to ${file}` }; }
+    if (tool === 'Edit') {
+      const before = fs.readFileSync(file, 'utf8');
+      if (!before.includes(input.old_string)) return { ok: false, text: 'old_string not found' };
+      fs.writeFileSync(file, before.replace(input.old_string, input.new_string ?? ''));
+      return { ok: true, text: `Edited ${file}` };
+    }
+    if (tool === 'Bash') {
+      const out = require('child_process').execSync(String(input.command || ''), { cwd: process.cwd(), shell: process.platform === 'win32' ? undefined : '/bin/sh', timeout: 15000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+      return { ok: true, text: out.trim().slice(0, 300) || '(no output)' };
+    }
+    return { ok: true, text: 'ok' };
+  } catch (err) { return { ok: false, text: String(err.stderr || err.message || err).trim().slice(0, 300) }; }
+}
+// Whether a path is inside one of the dirs (the CLI's working directories).
+const within = (p, dirs) => { const r = path.resolve(String(p || '')); return dirs.some((d) => { const x = path.resolve(d); return r === x || r.startsWith(x + path.sep); }); };
+
 // Which server a tool belongs to (by prefix), from the servers the CLI was given.
 const serverFor = (servers, tool) => servers[{ three: 'three', video: 'video', ae: 'video', forge: 'forgeheart', chat: 'chat', capture: 'capture', board: 'board', hearth: 'video' }[tool.split('_')[0]]] || null;
 
@@ -388,4 +418,4 @@ function trip(name, mode) {
 }
 const older = (a, b) => { const pa = String(a).match(/\d+/g) || []; const pb = String(b).match(/\d+/g) || []; for (let i = 0; i < 3; i++) { const d = (+pa[i] || 0) - (+pb[i] || 0); if (d) return d < 0; } return false; };
 
-module.exports = { readStdin, sleep, out, uuid, loadState, saveState, plan, pieces, delayMs, mcpClient, serverFor, switches, setSwitch, trip, older };
+module.exports = { readStdin, sleep, out, uuid, loadState, saveState, plan, pieces, delayMs, mcpClient, serverFor, switches, setSwitch, trip, older, runTool, within };

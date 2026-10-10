@@ -83,6 +83,40 @@ const F = require('./fake-common');
     for (const c of Object.values(clients)) c.close();
     mcpReport = `\n\nMCP calls:\n${lines.map((l) => `- ${l}`).join('\n')}`;
   }
+  // `access`: built-in tools, permitted the way Claude Code does it (round 14, chat file access)
+  if (p.accessCalls) {
+    const fs = require('fs');
+    const list = (name) => { const i = argv.indexOf(name); if (i < 0) return []; const out = []; for (let j = i + 1; j < argv.length && !argv[j].startsWith('--'); j++) out.push(argv[j]); return out; };
+    const given = (arg('--tools') || '').split(',').filter(Boolean);
+    const dirs = [process.cwd(), ...list('--add-dir')];
+    const mode = arg('--permission-mode') || 'default';
+    const ppt = arg('--permission-prompt-tool');
+    let servers = {};
+    try { servers = JSON.parse(fs.readFileSync(arg('--mcp-config'), 'utf8')).mcpServers || {}; } catch { /* none */ }
+    let pc = null;
+    const pm = ppt && /^mcp__(.+?)__(.+)$/.exec(ppt);
+    if (pm && servers[pm[1]]) pc = await F.mcpClient(servers[pm[1]]);
+    const lines = [`permission tool: ${ppt ? (pc ? 'yes' : 'missing server') : 'none'}; tools: ${given.join(',') || 'none'}`];
+    for (const [tool, input0] of p.accessCalls) {
+      const id = `toolu_${F.uuid().slice(0, 8)}`;
+      F.out({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: tool, input: input0 }] }, session_id: sessionId });
+      let input = input0; let ok = false; let why = '';
+      const file = input0.file_path || input0.path;
+      if (!given.includes(tool)) why = `No such tool available: ${tool}`;
+      else if (tools.includes(tool) || (['Read', 'Glob', 'Grep'].includes(tool) && (!file || F.within(file, dirs))) || (mode === 'acceptEdits' && ['Edit', 'Write'].includes(tool) && F.within(file, dirs))) ok = true;
+      else if (pc) {
+        const r = await pc.call(pm[2], { tool_name: tool, input: input0, tool_use_id: id });
+        const text = (r.content || []).filter((x) => x.type === 'text').map((x) => x.text).join('');
+        let d = {}; try { d = JSON.parse(text); } catch { why = `bad permission answer: ${text.slice(0, 120)}`; }
+        if (d.behavior === 'allow') { ok = true; input = d.updatedInput || input0; } else if (d.behavior === 'deny') why = d.message || 'denied';
+      } else why = `Claude requested permissions to use ${tool}, but you haven't granted it yet.`;
+      const res = ok ? F.runTool(tool, input) : { ok: false, text: why };
+      F.out({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: res.text, is_error: !res.ok }] }, session_id: sessionId });
+      lines.push(`${tool}: ${ok ? (res.ok ? 'ran' : 'failed') : 'denied'} · ${res.text.replace(/\s+/g, ' ').slice(0, 200)}`);
+    }
+    pc?.close();
+    mcpReport += `\n\nAccess calls:\n${lines.map((l) => `- ${l}`).join('\n')}`;
+  }
   const toolCalls = p.tools3 ? ['mcp__three__three_screenshot', 'mcp__three__three_eval', 'mcp__three__three_edit_code'] : p.tool ? ['mcp__claude_ai_Gmail__search_threads'] : [];
   for (const name of toolCalls) {
     const id = `toolu_${F.uuid().slice(0, 8)}`;
