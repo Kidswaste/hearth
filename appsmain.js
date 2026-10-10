@@ -249,8 +249,9 @@ function paste(id, { text, field, strict } = {}) {
     setTimeout(() => { if (pasteWaits.has(reqId)) { pasteWaits.delete(reqId); resolve({ ok: false, error: 'The page didn\'t answer (still loading?)' }); } }, 15000);
   });
 }
-async function pagePicture(id) {
-  const g = guestOf(wins.get(id) || {});
+async function pagePicture(id, { whole = false } = {}) {
+  // whole: the window with its chrome (a picture of how the app window looks), else the app's page only
+  const g = whole ? wins.get(id)?.win?.webContents : guestOf(wins.get(id) || {});
   if (!g) return null;
   try { const img = await g.capturePage(); if (img.isEmpty()) return null; const s = img.getSize(); const small = s.width > 1600 ? img.resize({ width: 1600 }) : img; return store.saveAttachment(`${id}-page.jpg`, small.toJPEG(85).toString('base64')); } catch { return null; }
 }
@@ -378,9 +379,13 @@ function register(ipcMain, gw, deps = {}) {
   h('apps:close', (id, o) => closeWindow(String(id), o || {}));
   h('apps:closeAll', () => { closeAll(); return { ok: true }; });
   h('apps:windows', () => listWindows());
-  h('apps:nav', (id, op, url) => { if (!wins.has(id)) return { ok: false, error: 'Not open' }; toChrome(id, 'appwin:key', op === 'url' ? { op: 'url', url } : op); return { ok: true }; });
+  h('apps:nav', (id, op, url) => {
+    if (!wins.has(id)) return { ok: false, error: 'Not open' };
+    // a file fetched in the app's own session (its sign-in cookies apply), landing like any download from the window
+    if (op === 'download') { const g = guestOf(wins.get(id)); if (!g || !/^https?:/i.test(String(url))) return { ok: false, error: 'No page' }; g.downloadURL(String(url)); return { ok: true }; }
+    toChrome(id, 'appwin:key', op === 'url' ? { op: 'url', url } : op); return { ok: true }; });
   h('apps:paste', (id, o) => paste(String(id), o || {}));
-  h('apps:picture', (id) => pagePicture(String(id)));
+  h('apps:picture', (id, o) => pagePicture(String(id), o || {}));
   h('apps:catalog', (list) => { catalog = Array.isArray(list) ? list.slice(0, 200) : []; for (const id of wins.keys()) toChrome(id, 'appwin:catalog', catalog); return true; });
   h('apps:downloads', (appId) => listDownloads(appId || null));
   h('apps:dirs', () => ({ downloads: downloadsRoot(), meshy: meshyDir() }));

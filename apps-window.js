@@ -53,7 +53,7 @@
     else if (op === 'close') window.appWin.hide();
     else if (op === 'to-chat') toChat();
     else if (op === 'copy-link') { navigator.clipboard.writeText(url).then(() => toast('Address copied')); }
-    else if (op?.op === 'url' && /^https?:/i.test(op.url)) view.loadURL(op.url);
+    else if (op?.op === 'url' && /^https?:/i.test(op.url)) view.loadURL(op.url).catch(() => {});
   }
   async function toChat() {
     let selection = '';
@@ -179,7 +179,7 @@
     $('aw-where').addEventListener('click', () => go('copy-link'));
     window.appWin.onDownloads((list) => { downloads = list || []; paintDl(); });
     window.appWin.onCatalog((list) => { catalog = list || []; });
-    window.appWin.onNavigate((u) => { if (/^https?:/i.test(u)) view.loadURL(u); });
+    window.appWin.onNavigate((u) => { if (/^https?:/i.test(u)) view.loadURL(u).catch(() => {}); });
     window.appWin.onKey(go);
     window.appWin.onPaste(pasteIn);
     addEventListener('keydown', (e) => {

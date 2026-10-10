@@ -202,7 +202,7 @@ const Apps = (() => {
     document.querySelector('dialog.apps-grid')?.close();
     const body = el('div', { class: 'apps-cards' });
     const paint = (list) => body.replaceChildren(...(list.length ? list.map((it) => el('div', { class: 'apps-card', title: it.tip || it.title },
-      el('div', { class: 'apps-thumb' }, it.thumb ? el('img', { src: fileUrl(it.thumb), alt: '', loading: 'lazy', on: { error: (e) => e.target.replaceWith(el('span', { text: it.icon || '▣' })) } }) : el('span', { text: it.icon || '▣' })),
+      el('div', { class: 'apps-thumb' }, it.thumb && !/^http:/i.test(it.thumb) ? el('img', { src: fileUrl(it.thumb), alt: '', loading: 'lazy', on: { error: (e) => e.target.replaceWith(el('span', { text: it.icon || '▣' })) } }) : el('span', { text: it.icon || '▣' })),
       el('b', { text: it.title }), it.sub ? el('small', { text: it.sub }) : null,
       el('div', { class: 'apps-card-acts' }, (it.actions || []).map((a) => el('button', { class: `ghost small${a.primary ? ' primary' : ''}`, text: a.label, title: a.hint || '', on: { click: async (e) => { e.stopPropagation(); if (a.close !== false) dlg.close(); try { await a.run(); } catch (err) { toast(err.message, { type: 'error', timeout: 6000 }); } } } })))))
       : [el('p', { class: 'hint', text: empty })]));

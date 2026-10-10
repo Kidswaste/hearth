@@ -79,8 +79,8 @@ function start(port = 0) {
         const body = /\.glb$/.test(name) ? glb() : /\.wav$/.test(name) ? wav() : png();
         return send(200, body, /\.glb$/.test(name) ? 'model/gltf-binary' : /\.wav$/.test(name) ? 'audio/wav' : 'image/png', { 'Content-Disposition': `attachment; filename="${name}"` });
       }
-      if (u.pathname.startsWith('/web/coolors/')) return send(200, PAGES.coolors, 'text/html');
-      if (u.pathname.startsWith('/web/')) return send(200, PAGES[u.pathname.slice(5)] || PAGES.plain, 'text/html');
+      if (u.pathname.startsWith('/web/coolors/')) return send(200, PAGES.coolors, 'text/html; charset=utf-8');
+      if (u.pathname.startsWith('/web/')) return send(200, PAGES[u.pathname.slice(5)] || PAGES.plain, 'text/html; charset=utf-8');
       // ---------- Poly Haven ----------
       if (u.pathname === '/ph/assets') {
         const t = u.searchParams.get('t');
