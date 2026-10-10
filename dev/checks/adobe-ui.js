@@ -39,11 +39,21 @@ try {
   ok(ts.ok && /Photoshop/.test(ts.value), 'adobe_do status');
   const to = await AdobeCmds.handle('adobe_do', { app: 'photoshop', action: 'open', path: 'lab' });
   ok(!to.ok && /only runs on macOS and Windows/.test(to.error), `adobe_do open: a clean error (${to.error})`);
+  // (the access stream's Access.ask when it is in: recorded and answered here; else the Modal confirm, clicked)
+  const realAccess = window.Access;
+  let asked = null;
+  if (realAccess?.ask) window.Access = { ...realAccess, ask: async (o) => { asked = o; return false; } };
   const scr = AdobeCmds.handle('adobe_do', { app: 'photoshop', action: 'script', code: 'return app.name;' });
-  const dlg = await until(() => document.querySelector('dialog[open]'), 8000);
-  ok(dlg && /Run a script in Photoshop/.test(dlg.textContent) && /return app\.name/.test(dlg.textContent), 'its own script asks the owner first (and shows the code)');
-  [...(dlg?.querySelectorAll('button') || [])].find((b) => /cancel/i.test(b.textContent))?.click();
+  if (realAccess?.ask) {
+    await until(() => asked, 8000);
+    ok(asked?.risk === 'high' && /Run a script in Photoshop/.test(asked.action) && /return app\.name/.test(asked.detail), 'its own script asks the owner first (high risk, with the code)');
+  } else {
+    const dlg = await until(() => document.querySelector('dialog[open]'), 8000);
+    ok(dlg && /Run a script in Photoshop/.test(dlg.textContent) && /return app\.name/.test(dlg.textContent), 'its own script asks the owner first (and shows the code)');
+    [...(dlg?.querySelectorAll('button') || [])].find((b) => /cancel/i.test(b.textContent))?.click();
+  }
   const sr = await scr;
+  if (realAccess) window.Access = realAccess;
   ok(!sr.ok && /said no/.test(sr.error), 'and a no is a no');
   ok(!(await AdobeCmds.handle('adobe_do', { app: 'photoshop', action: 'dance' })).ok, 'an unknown action is an error, not a crash');
 

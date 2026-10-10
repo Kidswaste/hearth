@@ -12,7 +12,19 @@ const ok = (cond, what) => { if (!cond) fail.push(what); return Boolean(cond); }
 const C = H.claudeAgent();
 const say = async (line) => { let text = ''; await Commands.tryRun(line, C.id, null, { say: (t) => { text = String(t); }, note: (t) => { text = String(t); } }); return text; };
 // answers the confirm the publish flow shows (Access.ask when that stream is in, else a Modal)
+// With the access stream's Access.ask in the app, its asks are recorded and answered here (its own UI has its own
+// checks); without it, the Modal confirm is clicked like a user would.
+const asks = []; let waiting = null;
+if (window.Access?.ask) window.Access = { ...window.Access, ask: (o) => new Promise((res) => { asks.push(o); waiting = res; }) };
 async function answer(yes) {
+  if (asks.length || waiting) {
+    await until(() => waiting, 30000);
+    const o = asks[asks.length - 1];
+    out.dialogs = [...(out.dialogs || []), `Access.ask ${o?.risk}: ${o?.action}`];
+    const r = waiting; waiting = null; r?.(yes);
+    return Boolean(r) && o?.risk === 'high'; // publishing / rolling back is outward-facing: always high
+  }
+  if (window.Access?.ask) { await until(() => waiting, 30000); return answer(yes); }
   const d = await until(() => [...document.querySelectorAll('dialog[open]')].pop(), 30000);
   if (!d) return false;
   const btns = [...d.querySelectorAll('button')];
