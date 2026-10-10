@@ -40,7 +40,9 @@ out.summary = {
 };
 // the bars write at most a few times a second (4 ticks × a transform or a class, a line of words when it changes)
 if (out.summary.barWritesPerSec > 16) fail.push(`the bars wrote ${out.summary.barWritesPerSec} times a second`);
-if (!runs.filter((x) => x.on).every((x) => x.writes > 0)) fail.push('the bars never moved while on');
+// (a window can be still: an estimate that grew less than half a percent in 2.5 s writes nothing)
+if (!runs.filter((x) => x.on).some((x) => x.writes > 0)) fail.push('the bars never moved while on');
+if (runs.filter((x) => !x.on).some((x) => x.writes > 0)) fail.push('the bars wrote while off');
 await window.hub.stop(H.activeChat[C.id]);
 await until(() => !Native.isBusy(H.activeChat[C.id]), 10000);
 return JSON.stringify({ ok: !fail.length, problems: fail, ...out }, null, 1);
