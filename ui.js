@@ -8,7 +8,9 @@ if (/Mac/.test(navigator.platform)) {
 // their own (the listener below); finiteDur(d) turns Infinity / NaN into 0 for code that only draws.
 function realDuration(v, ms = 6000) {
   if (Number.isFinite(v.duration)) return Promise.resolve(v.duration);
-  if (!v.currentSrc && !v.src) return Promise.resolve(0);
+  // only files: a live stream (srcObject) or an in-memory source (blob:, MediaSource) is endless on purpose
+  const src = v.currentSrc || v.src || '';
+  if (v.srcObject || !src || /^(blob|mediastream|data):/i.test(src)) return Promise.resolve(0);
   if (v._durFix) return v._durFix;
   v._durFix = new Promise((res) => {
     const back = v.currentTime || 0;
@@ -27,7 +29,7 @@ function realDuration(v, ms = 6000) {
   return v._durFix;
 }
 const finiteDur = (d) => (Number.isFinite(d) && d > 0 ? d : 0);
-document.addEventListener('loadedmetadata', (e) => { if (e.target instanceof HTMLMediaElement && e.target.duration === Infinity) realDuration(e.target); }, true);
+document.addEventListener('loadedmetadata', (e) => { const v = e.target; if (v instanceof HTMLMediaElement && v.duration === Infinity && !v.srcObject && !/^(blob|mediastream|data):/i.test(v.currentSrc || '')) realDuration(v); }, true);
 // Shared UI building blocks: element helper, toasts, modals, tabs, formatting, syntax highlighting
 // and a lightweight code editor. Loaded before every other renderer module.
 (() => {

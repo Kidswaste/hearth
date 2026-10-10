@@ -20,11 +20,12 @@ await sleep(1300);
 const r1 = await Capture.stop({ quiet: true });
 out.window = r1;
 const p1 = await probe(r1.mp4);
-const w1 = await probe(r1.webm);
+const w1 = await probe(r1.webm || r1.mp4); // one final MP4 since ffmpeg makes it (the WebM goes)
 out.windowProbe = { mp4: p1 && { w: p1.w, h: p1.h, fps: p1.fps, dur: p1.duration, codec: p1.codec, audio: p1.audio }, webm: w1 && { w: w1.w, h: w1.h, dur: w1.duration, codec: w1.codec, audio: w1.audio } };
 ok(p1 && p1.codec === 'h264' && p1.w === innerWidth && p1.h === innerHeight, 'mp4 at the window size');
 ok(p1 && Math.abs(p1.fps - 30) < 0.01, 'mp4 at the chosen 30 fps (constant)');
-ok(w1 && w1.duration > 2.2 && w1.duration < 2.9, `webm duration fixed (~2.5 s without the pause): ${w1?.duration}`);
+ok(w1 && w1.duration > 2.2 && w1.duration < 2.9, `the take's length is right (~2.5 s without the pause): ${w1?.duration}`);
+ok(!r1.webm || /\.mp4$/.test(r1.path), 'one file per take: the MP4 (no WebM left beside it)');
 ok(p1?.audio && w1?.audio, 'Hearth\'s own sound track recorded');
 ok(r1.marks.length === 1 && Math.abs(r1.marks[0].time - 1.2) < 0.4, 'marker kept with its time');
 ok((await window.hub.kvGet('capture-marks', {}))[r1.path]?.length === 1, 'markers saved for the player / Video Review');
@@ -55,7 +56,7 @@ const f3 = await FrameRead.at(r3.path, { frame: -1 }, { format: 'png' });
 out.cursorPixel = await pixel(f3.path, 32, 500);
 ok(out.cursorPixel && out.cursorPixel[0] > 180 && out.cursorPixel[1] < 170 && out.cursorPixel[2] < 110, `cursor dot drawn into the recording (${out.cursorPixel})`);
 // the whole-window take from 1): its top-right corner (where the REC window sits) is the app, not the red light
-const f1 = await FrameRead.at(r1.webm, { frame: -1 }, { format: 'png' });
+const f1 = await FrameRead.at(r1.webm || r1.path, { frame: -1 }, { format: 'png' });
 const corner = await pixel(f1.path, innerWidth - 120, 20);
 out.cornerPixel = corner;
 ok(corner && !(corner[0] > 200 && corner[1] < 80), 'no REC light in the frame');
