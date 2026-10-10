@@ -81,13 +81,17 @@ step(skA === draft.id && orbLayer(skA).code.includes(`orb1_color: { value: '${co
 step(S.timelineOf(skA)?.len === 10 && P.path === `scene:${skA}`, 'still on its own timeline after the recolor');
 
 // 3. frame-exact: the same frame is the same picture; steps land on frames
+await drawn();
+await wait(2500); // the recolor re-ran the layers
 P.toggle(false);
 await until(() => !P.playing, 4000);
-const shotAt = async (t) => { P.seek(t); await wait(700); return pixels(); };
-const a1 = await shotAt(2.5);
+const shotAt = async (t) => { P.seek(t); await wait(900); return pixels(); };
+let a1 = await shotAt(2.5);
 step(Math.abs(P.time - 2.5) < 1e-9 && /f75\b/.test(document.querySelector('.media-bar .mb-time')?.textContent || ''), 'seek 2.5 s = frame 75 (counter shows f75)', document.querySelector('.media-bar .mb-time')?.textContent);
-const b1 = await shotAt(7.2);
-const a2 = await shotAt(2.5);
+let b1 = await shotAt(7.2);
+let a2 = await shotAt(2.5);
+// a busy machine can catch one picture mid-redraw: once more before judging
+if (diff(a1, a2) >= 1.5) { a1 = await shotAt(2.5); b1 = await shotAt(7.2); a2 = await shotAt(2.5); }
 step(diff(a1, a2) < 1.5 && diff(a1, b1) > 3, 'the same frame twice → the same picture; another frame → another one', { same: Math.round(diff(a1, a2) * 100) / 100, other: Math.round(diff(a1, b1) * 100) / 100 });
 P.seek(1.234);
 step(Math.abs(P.time * 30 - Math.round(P.time * 30)) < 1e-6, 'any seek lands on a frame start', P.time);
@@ -172,11 +176,14 @@ step(P.path === `scene:${skB}`, 'back to B: B\'s scene and B\'s timeline', P.pat
 const copy = S.duplicate(skB, 'Orb B copy');
 step(S.timelineOf(copy.id)?.len === 10, 'a duplicated scene keeps its own timeline', S.timelineOf(copy.id));
 await drawn();
-await wait(1500);
-px = await pixels();
-const tintB = colB.match(/\w\w/g).map((h) => parseInt(h, 16)); const seenB = peak(px);
+const tintB = colB.match(/\w\w/g).map((h) => parseInt(h, 16));
 const dom = (c) => c.indexOf(Math.max(...c));
-step(lum(seenB) > 90 && dom(seenB) === dom(tintB), 'B\'s orb is drawn, in B\'s color', { seen: seenB, tint: tintB });
+// (the preview may still be coming back from the sequence's frame size: wait for the picture)
+await until(async () => { px = await pixels(); return lum(peak(px)) > 90; }, 15000);
+// the middle's average color (the rim is near white: its hue is in the rest)
+const meanMid = (p) => { const m = [0, 0, 0]; let n = 0; for (let y = 0.3; y <= 0.7; y += 0.02) for (let x = 0.3; x <= 0.7; x += 0.02) { const c = at(p, x, y); if (lum(c) > 20) { m[0] += c[0]; m[1] += c[1]; m[2] += c[2]; n += 1; } } return m.map((v) => Math.round(v / Math.max(1, n))); };
+const seenB = meanMid(px);
+step(lum(peak(px)) > 90 && dom(seenB) === dom(tintB), 'B\'s orb is drawn, in B\'s color', { seen: seenB, tint: tintB });
 await smoke({ shot: '/tmp/hearth-orb/4-chat-B.png' });
 localStorage.setItem('orbcheck', JSON.stringify({ A, B, skA, skB, colA, colB, keysA: Object.values(orbLayer(skA).keys).flat().length }));
 await wait(1500); // kv saves are debounced

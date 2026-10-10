@@ -260,7 +260,7 @@ step(Object.values(tints).every(([t, c]) => t === c), 'each starter keeps its ch
   step(ChatScenes.noteTitle(B, 'Three Director replied').startsWith(ChatScenes.identity(B).glyph), 'system notifications too', ChatScenes.noteTitle(B, 'Three Director replied'));
   // the backstage still: an edit there refreshes that chat's row
   const before = ChatScenes.thumbOf(C);
-  await HubBridge.call('three_edit_code', { edits: [{ find: 'opacity: 0.55', replace: 'opacity: 0.9' }] }, { chatId: C });
+  await HubBridge.call('three_edit_code', { edits: [{ find: 'orb1_rimPower: { value: 2.4', replace: 'orb1_rimPower: { value: 3.2' }] }, { chatId: C });
   await until(() => ChatScenes.thumbOf(C) !== before, 5000);
   step(ChatScenes.thumbOf(C) && ChatScenes.thumbOf(C) !== before, 'a backstage edit refreshes that chat\'s still');
   out.backstageRunning = ThreeBackstage.running;
