@@ -15,7 +15,7 @@ const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'assets', 'cmd-clips');
 const MANIFEST = path.join(ROOT, 'cmdpage-clips.js');
 // name → tour (steps as in /tour run; "record <target>" starts the take, "stop" ends it)
-const LAB = 'open three\nwait 2.5s';
+const LAB = 'open three\nwait 2.5s\ncmd /fps 30\nwait 0.5s'; // a lighter preview while recording (the headless GPU is slow)
 const CHAT = 'open claude\nwait 0.5s';
 const said = (line, after = 2.2) => `${CHAT}\nrecord tool\nwait 1.5s\ntype "${line}"\nsend\nwait ${after}s\nstop`;
 const warm = 'type "hello, a short answer please"\nsend\nwait 2.5s';
