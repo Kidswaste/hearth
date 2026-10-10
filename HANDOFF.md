@@ -110,3 +110,18 @@ Orb layer's sliders). One clock per scene: the song (`extras[id].media`), else t
 { len, fps, time }`), played as a silent in-memory WAV by `player.loadClock` (path `scene:<sketch id>`, its cues / markers in
 three-beatmaps under that name); `sceneMedia(id)` in tools/three.js picks one on every scene switch (and `ThreeLab.scenes.mediaUp`
 when the Lab sequence leaves). Node code reads the scene's time with `sceneTime()` = sandbox `layer.scene` (clip time in a sequence).
+
+Sync (round 10, docs/upgrades/sync.md): `sync-engine.js` (main process, plain Node: one `pass()` compares this computer's
+file, the cloud copy in `<drive>/Hearth/files/` and the base = last common version, hashes cached by size + mtime in
+`data/sync/state.json`, JSON bases in `data/sync/base/`; push / pull / merge / delete-to-trash / rename with temp + rename
+checked right before the rename, big files in resumable `.hearth-part-*` pieces; per-computer journal and machine record
+in `Hearth/.sync/`, conflicts in `Hearth/.sync/conflicts/`, synced trash in `Hearth/trash/<day>/`), `sync-merge.js` (pure:
+what syncs (`localOnly`, `ignoredName`), `merge3`, path forms `hearth-data:/…` / `hearth-cloud:/…` / `hearth-home:/…` so
+paths are relative to the data folder, the portable part of config.json (`app/config.json` in the mirror), drive
+detection), `syncmain.js` (settings in data/sync/settings.json, per computer; watchers + debounce, IPC `sync:*`,
+`ready()` before the window, the store write guard: `store.setBeforeWrite` merges a save of an older in-memory version
+with what just arrived; `guardConfig` in config:save), `sync.js` / `sync.css` (dot, menu, setup, conflicts, trash,
+Settings section, `/sync`; chats arriving → `Native.forget` + refresh). Tests: `node dev/sync-test.js` (two computers +
+a temp cloud, fuzz with `--fuzz N --seed S`), `dev/checks/sync.js`; `sh dev/run-checks.sh sync`. Never point tests at a
+real drive. New data in `data/` syncs by default; add a path to `LOCAL_FILES` / `LOCAL_DIRS` in sync-merge.js if it is
+per-computer.

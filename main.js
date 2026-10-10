@@ -10,6 +10,7 @@ const portable = require('./portable');
 const nowplaying = require('./nowplaying');
 const aemain = require('./aemain');
 const gamebridge = require('./gamebridge');
+const syncmain = require('./syncmain');
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const THEME_PATH = path.join(__dirname, 'theme.css');
@@ -156,6 +157,7 @@ app.on('web-contents-created', (_event, contents) => {
 
 ipcMain.handle('config:get', () => loadAll());
 ipcMain.handle('config:save', (_e, config) => {
+  config = syncmain.guardConfig(config); // a config that just arrived from another computer is merged, not undone
   fs.writeFileSync(CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`);
   return appshell.applySettings(win, config.settings || {});
 });
@@ -310,7 +312,7 @@ ipcMain.handle('data:export', async () => {
     { path: THEME_PATH, name: 'theme.css' },
   ].filter((e) => fs.existsSync(e.path));
   // Website logins live in Electron's own profile, not data/, so they're never in the backup.
-  return fsapi.zip(entries, r.filePath, { skipDirs: ['workspace', 'ae'] });
+  return fsapi.zip(entries, r.filePath, { skipDirs: ['workspace', 'ae', 'sync'] });
 });
 
 // One zip with the app, your data and settings, to set Hearth up on a Mac (see mac/README.md).
@@ -375,7 +377,7 @@ ipcMain.handle('live:start', async (_e, kind) => {
 ipcMain.handle('np:start', () => nowplaying.start((info) => { if (win && !win.isDestroyed()) win.webContents.send('np:update', info); }));
 ipcMain.handle('np:stop', () => nowplaying.stop());
 ipcMain.handle('np:control', (_e, cmd) => nowplaying.control(String(cmd)));
-app.on('before-quit', () => nowplaying.stop());
+app.on('before-quit', () => { nowplaying.stop(); syncmain.quit(); });
 ipcMain.on('stage:fullscreen', () => { if (stageWin && !stageWin.isDestroyed()) stageWin.setFullScreen(!stageWin.isFullScreen()); });
 
 fsapi.registerIpc(ipcMain, () => win);
@@ -383,12 +385,13 @@ gamebridge.start(() => win);
 aemain.registerIpc(ipcMain, () => win, () => settings().aePath);
 require('./boardmain').registerIpc(ipcMain, () => win); // mood board: file import, website snapshots
 require('./capturemain').register(ipcMain, () => win, settings); // screenshots / recordings of Hearth itself, frame reader
+syncmain.register(ipcMain, () => win, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, themePath: THEME_PATH, store }); // sync through a cloud drive folder
 
 for (const file of [CONFIG_PATH, THEME_PATH]) {
   fs.watchFile(file, { interval: 400 }, () => send('config:changed', loadAll()));
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // data moved here from another computer (or folder): point saved file locations at the new data folder
   try { const r = portable.fixMovedPaths(); if (r.moved) console.log(`Hearth: data moved from ${r.from}, fixed ${r.changed} paths in ${r.files} files`); } catch (err) { console.error('fixMovedPaths', err); }
   // "System sound" in the Lab: the sound of the whole computer (Windows), without a picker
@@ -405,6 +408,7 @@ app.whenReady().then(() => {
     ]));
     try { app.dock?.setIcon(appshell.ensureIcon()); } catch { /* the icon is optional */ }
   }
+  await syncmain.ready().catch(() => {}); // sync on: what the other computer did arrives before the window reads it (≤ 1.5 s)
   createWindow();
 });
 app.on('window-all-closed', () => app.quit());

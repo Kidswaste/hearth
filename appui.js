@@ -118,6 +118,7 @@ const AppUI = (() => {
       // Round 4: what people change sits on top; the rest folds into "More settings" (all still here).
       section('General', field('Open on start', startOn), notifyRow),
       section('Appearance', Look.picker()),
+      typeof Sync !== 'undefined' ? Sync.settingsSection(section) : null, // round 10: sync through your cloud drive
       el('details', { class: 'settings-more' }, el('summary', { text: 'More settings: startup, tray, hotkey, spell check, rail tools, engines, folders, backups' }),
       section('Startup and tray', trayRow, startupRow,
         field('Unload websites I haven\'t opened (frees memory; they load again when you open them)', sleepSel),

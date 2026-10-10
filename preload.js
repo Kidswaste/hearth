@@ -153,6 +153,13 @@ contextBridge.exposeInMainWorld('hub', {
     onIndicator: on('capture:indicator'),
     onProgress: on('capture:progress'),
   },
+  // Sync through a cloud drive folder (syncmain.js)
+  sync: {
+    status: call('sync:status'), detect: call('sync:detect'), on: call('sync:on'), off: call('sync:off'), now: call('sync:now'),
+    pause: call('sync:pause'), big: call('sync:big'), conflicts: call('sync:conflicts'), resolve: call('sync:resolve'),
+    trash: call('sync:trash'), restore: call('sync:restore'), open: call('sync:open'), download: call('sync:download'), ack: call('sync:ack'),
+    onStatus: on('sync:status'), onPulled: on('sync:pulled'),
+  },
   video: {
     tools: call('video:tools'),
     probe: call('video:probe'),

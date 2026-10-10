@@ -63,7 +63,7 @@ function packForMac(out) {
     .filter((n) => !skipTop.has(n) && !/\.zip$/i.test(n))
     .map((n) => ({ path: path.join(APP_DIR, n), name: path.join('Hearth', n) }));
   writeOrigin({ dataDir: DATA_DIR, appDir: APP_DIR, platform: process.platform, at: Date.now() });
-  return fsapi.zip(entries, out, { skipDirs: ['workspace', 'ae'] });
+  return fsapi.zip(entries, out, { skipDirs: ['workspace', 'ae', 'sync'] }); // sync's state is this computer's own
 }
 
 module.exports = { fixMovedPaths, packForMac, defaultPackName: () => path.join(os.homedir(), 'Desktop', `Hearth for Mac ${new Date().toISOString().slice(0, 10)}.zip`) };
