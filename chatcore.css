@@ -63,3 +63,14 @@
 .msg:hover .tool-fold { opacity: 1; }
 .msg .msg-marks { opacity: .7; }
 .messages .day-sep { opacity: .65; }
+
+/* pictures / videos a reply made, big under its text (chat-media.js) */
+.cm-heroes { display: grid; gap: 8px; margin: 8px 0 2px; max-width: 720px; align-items: start; }
+.cm-heroes.n2 { grid-template-columns: 1fr 1fr; }
+.cm-hero { margin: 0; border-radius: 10px; overflow: hidden; background: var(--panel-2, rgba(255,255,255,.04)); border: 1px solid var(--border, rgba(255,255,255,.08)); }
+.cm-hero .cm-media { display: block; width: 100%; height: auto; max-height: 62vh; object-fit: contain; background: #000; cursor: zoom-in; }
+.cm-hero.vid .cm-media { cursor: default; }
+.cm-hero figcaption { display: flex; align-items: center; gap: 4px; padding: 4px 6px 4px 10px; font-size: 12px; color: var(--muted, #999); }
+.cm-hero .cm-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-hero.cm-missing .cm-media { display: none; }
+.cm-hero.cm-missing .cm-name::after { content: ' · file moved or deleted'; }

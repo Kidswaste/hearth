@@ -17,6 +17,7 @@ const lastMsg = (role) => [...v().list.querySelectorAll(`.msg.${role}`)].at(-1);
 const reply = async (text) => { await Native.send(C.id, text); await wait(150); await until(() => !Native.isBusy(H.activeChat[C.id]), 60000); await wait(300); return Native.current(C.id).messages.at(-1); };
 const rclick = (node) => { const r = node.getBoundingClientRect(); node.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 6, clientY: r.top + 6 })); };
 try {
+  store.set('chat.media', false); // the small cards (big pictures / videos: chat-media.js, its own check)
   activate(C.id);
   await until(() => Native.hasView(C.id));
   Native.newChat(C.id);

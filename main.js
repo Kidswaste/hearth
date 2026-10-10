@@ -392,6 +392,7 @@ require('./boardmain').registerIpc(ipcMain, () => win); // mood board: file impo
 require('./capturemain').register(ipcMain, () => win, settings); // screenshots / recordings of Hearth itself, frame reader
 require('./rendersmain').register(ipcMain, () => win, settings); // the render queue: pause / resume / cancel ffmpeg jobs
 syncmain.register(ipcMain, () => win, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, themePath: THEME_PATH, store }); // sync through a cloud drive folder
+require('./chatmediamain').register(ipcMain, { workspace: path.join(store.DATA_DIR, 'workspace') }); // pictures / videos a chat made, shown in the reply
 
 for (const file of [CONFIG_PATH, THEME_PATH]) {
   fs.watchFile(file, { interval: 400 }, () => send('config:changed', loadAll()));
