@@ -41,7 +41,7 @@ the preview, `/comp`, `/dispatch`, and the directors' `three_do comp`.
 29. **One node in the Nodes view**: a precomp shows as one "◫ Precomp" node whose knobs are its time, place and look (start, speed, offset, loop, opacity, scale, x, y, rotate, blur, saturation, hue, blend, mask); ↗ Open its scene on the banner.
 30. **Backstage too**: a director working on a main scene that isn't on screen sees its precomps in its screenshots.
 31. **A precomp rewritten as code becomes an ordinary code layer** (nothing breaks when a director or you replace its code).
-32. **Errors and console lines** from a precomp's layers show under the precomp, marked with the source layer's name.
+32. **Errors from a precomp's layers** show under the precomp layer, marked with the source layer's name ("[◫ Orb] …"); its console lines show under it too.
 
 ## Reaching it (progressive disclosure)
 33. **Alt+C in the Lab**: the Comp menu (another scene as a layer, as picture in picture, dispatch parts, the parts' status, each precomp's own submenu, render). Listed in the keys button.
@@ -89,10 +89,21 @@ the preview, `/comp`, `/dispatch`, and the directors' `three_do comp`.
 69. **`three_comp`** in full mode (`/director-mode full`).
 70. **App map topic `comp`** (also precomp, dispatch, parts), read on demand: what a precomp is, every op, when to split a video into parts.
 
-## Performance (measured in the test container: software GPU, 1–2 CPUs; see the test notes)
-The preview stays one page; a precomp adds its source's layers (one WebGL context each) and nothing else per frame on
-the page side but its compositor look. Numbers from `dev/checks/comp.js` are in the run's `perf` block (fps and render
-ms before / with two precomps, contexts, each precomp's ms and automatic resolution, the 9:16 render time).
+## Performance (measured in the test container: software GPU (SwiftShader), 1–2 busy CPUs)
+- One page: two precomps added 6 layers to the preview page (2 → 8) and 4 WebGL contexts (one per running layer, all
+  accounted for: contexts = renderers, nothing left behind after re-runs and removals); no extra frame or page.
+- Per frame, a precomp's own layers cost what they cost as a scene (0.12–0.35 ms of render-call time each here); the
+  precomp itself adds no per-frame work in the page (its look is CSS on the compositor; merges only when recording or
+  taking a still).
+- Automatic resolution: on this slow software GPU both precomps settled at 40 % of the pixels, a picture-in-picture at
+  30 %; on a real GPU with headroom they stay at 100 % (it only steps down while frames are lost or a precomp costs
+  more than ~8 ms).
+- Precomps with an in / out only run around their time: a 2-part comp runs one part's layers most of the time.
+- The 9:16 render, frame by frame at 1080×1920: ≈ 1.4 s a frame on the software GPU (60 frames in 86 s), the same path
+  as the Lab sequence's render.
+- Dispatch: both parts' chats were working 0.8 s after the main chat's message; both parts built (draft + final, through
+  the real MCP tools, backstage one call at a time) in ≈ 104 s with the fake engines.
+- fps on this machine (0–6) says nothing about a real GPU and isn't compared.
 
 ## For testing (not counted)
 - `sh dev/run-checks.sh comp comp-dispatch` (fake engines; the fakes build each part's scene through the real MCP tools).
