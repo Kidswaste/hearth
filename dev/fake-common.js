@@ -23,7 +23,7 @@
 // the real MCP tools in two steps a few seconds apart (a dim draft, then the final: a full-frame color per part with a
 // white bar moving on the scene's clock, so pixels tell the parts apart and show the live update); "Comp feedback ·"
 // rebuilds it brighter; in a main chat, "comp: dispatch a | astra: b" calls three_do comp dispatch (then reads the
-// parts), "comp: {json}" any three_do comp op. In a brief: comp-slow (a longer pause), comp-hang (never ends: stuck).
+// parts), "comp: {json}" any three_do comp op; "make: plan <words>" plans a make (three_do make, round 11). In a brief: comp-slow (a longer pause), comp-hang (never ends: stuck).
 // Video project turns (intro.js) are recognized by their first line too: "Intro · plan" (Astra decides: template /
 // hook / end / titles / cuts lines), "Intro · words" (one "n | words" line per beat), "Intro · director" (the director
 // pass: real MCP calls to video_edit_read, video_edit op project / transition and capture_list). The review uses the
@@ -183,6 +183,9 @@ function compPlan(msg) {
     const parts = d[1].replace(/--\w+/g, '').split('|').map((x) => x.trim()).filter(Boolean).map((x) => { const m = /^(astra|claude):\s*/i.exec(x); return { brief: m ? x.slice(m[0].length) : x, engine: m ? m[1].toLowerCase() : 'claude' }; });
     return { mcpCalls: [['three_do', { cmd: 'comp', op: 'dispatch', parts, layout }], ['three_do', { cmd: 'comp', op: 'parts' }]], text: `Dispatched ${parts.length} parts; each builds its scene in its own chat and shows here as a layer.` };
   }
+  // (round 11, makes) "make: plan <words>" plans a make through three_do make (its rooms are made at once)
+  const mk = /^make:\s*plan\s+(.+)$/im.exec(msg);
+  if (mk) return { mcpCalls: [['three_do', { cmd: 'make', op: 'plan', text: mk[1].trim() }], ['three_do', { cmd: 'make', op: 'list' }]], text: 'Planned it: its rooms are in your chats list.' };
   const j = /^comp:\s*(\{[\s\S]*\})\s*$/im.exec(msg);
   if (j) { try { return { mcpCalls: [['three_do', { cmd: 'comp', ...JSON.parse(j[1]) }]], text: 'Done.' }; } catch { /* not JSON */ } }
   return null;

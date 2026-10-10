@@ -126,6 +126,15 @@ step(im && proj && im.name === proj.name && im.parts.length >= 6 && im.by?.cmd =
 Makes.rename(im, 'Board Teaser');
 step(Intro.get(im.src.id)?.name === 'Board Teaser', 'renaming that make renames the project');
 
+// ---- 9b. a director plans a make through its tool (three_do make, the real MCP server) ----
+const nBefore = Makes.live().length;
+const hostId = H.activeChat[D.id];
+await Native.send(D.id, 'make: plan a shader loop then a reel', { chatId: host.id });
+await until(() => !Native.isBusy(host.id), 120000);
+const am = Makes.live().find((m) => m.by?.agent);
+step(Makes.live().length === nBefore + 1 && am && am.parts.map((p) => p.kind).join() === 'lab,video' && am.parts.every((p) => summary(p.chatId)), 'the director planned a make with three_do make: both rooms made', am && am.parts.map((p) => summary(p.chatId)?.title));
+step(am && am.from === host.id, 'it knows the chat it came from (and didn\'t open over it)', [am?.from === host.id, H.activeChat[D.id] === hostId]);
+
 // ---- 10. the creators audit: every command Makes routes exists; what made a make is on it ----
 const missing = Object.keys(Makes.core.CREATORS).filter((n) => !Commands.get(n));
 step(!missing.length, 'every creator command in the audit exists in the registry', missing);

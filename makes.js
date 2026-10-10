@@ -32,13 +32,14 @@ const Makes = (() => {
   let loaded = false;
   const ready = (async () => {
     try { const d = await window.hub.kvGet(KEY, null); if (d && Array.isArray(d.list)) data = { list: d.list }; } catch { /* first run */ }
-    loaded = true;
+    loaded = true; idx = null;
   })();
   let saveT = 0;
   function save() { clearTimeout(saveT); saveT = setTimeout(() => window.hub.kvSet(KEY, { list: data.list.slice(0, 200) }).catch(() => {}), 300); }
   const listeners = new Set();
   let panelT = 0;
   function changed(make, why = 'change', extra = {}) {
+    idx = null;
     if (make) make.updated = Date.now();
     save();
     const detail = { make, id: make?.id || null, why, ...extra };
@@ -57,10 +58,12 @@ const Makes = (() => {
     if (/^\d+$/.test(s)) return live()[Number(s) - 1] || null;
     return get(q) || live().find((m) => m.name.toLowerCase() === s) || live().find((m) => m.name.toLowerCase().includes(s)) || data.list.find((m) => m.name.toLowerCase().includes(s)) || null;
   }
+  // chat id → { make, part }: an index made again after any change (the chats list asks for every row)
+  let idx = null;
   function roomOf(chatId) {
     if (!chatId) return null;
-    for (const make of data.list) { const part = make.parts.find((p) => p.chatId === chatId); if (part) return { make, part }; }
-    return null;
+    if (!idx) { idx = new Map(); for (const make of data.list) for (const part of make.parts) if (part.chatId && !idx.has(part.chatId)) idx.set(part.chatId, { make, part }); }
+    return idx.get(chatId) || null;
   }
   const ofSrc = (kind, id) => data.list.find((m) => m.src?.kind === kind && m.src.id === id) || null;
   const summary = (chatId) => (H.chats || []).find((c) => c.id === chatId) || null;
@@ -144,7 +147,7 @@ const Makes = (() => {
     const agent = await ensureAgent(part.kind);
     const at = Date.now();
     const chat = { id: `${agent.id}-${at.toString(36)}${part.id}`, agentId: agent.id, title: C.roomTitle(make, part), createdAt: at, updatedAt: at, session: {}, messages: [], make: { id: make.id, part: part.id } };
-    part.chatId = chat.id; part.agentId = agent.id;
+    part.chatId = chat.id; part.agentId = agent.id; idx = null;
     Native.adopt(chat, { openIt: false });
     if (part.kind === 'lab' && scenes) await sceneFor(part);
   }
@@ -296,7 +299,7 @@ const Makes = (() => {
     for (const cp of m.parts || []) {
       const part = make.parts.find((p) => p.compId === m.id && p.compN === cp.n);
       if (!part) continue;
-      if (cp.chatId && part.chatId !== cp.chatId) { part.chatId = cp.chatId; part.own = summary(cp.chatId)?.title === C.roomTitle(make, part) || !summary(cp.chatId); dirty = true; }
+      if (cp.chatId && part.chatId !== cp.chatId) { part.chatId = cp.chatId; idx = null; part.own = summary(cp.chatId)?.title === C.roomTitle(make, part) || !summary(cp.chatId); dirty = true; }
       const st = COMP_STATE[cp.state] || 'working';
       if (part.status !== st) { part.status = st; dirty = true; }
       const last = cap(cp.last || '', 120);
