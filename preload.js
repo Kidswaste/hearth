@@ -169,5 +169,12 @@ contextBridge.exposeInMainWorld('hub', {
     onJob: on('video:job-event'),
   },
   // The render queue (rendersmain.js): run / pause / resume / cancel a queued ffmpeg job, encoders of this ffmpeg
+  // App windows (appsmain.js): each app in its own window and session, downloads, keys (never readable here), Meshy jobs
+  apps: {
+    open: call('apps:open'), close: call('apps:close'), closeAll: call('apps:closeAll'), windows: call('apps:windows'), nav: call('apps:nav'),
+    paste: call('apps:paste'), picture: call('apps:picture'), catalog: call('apps:catalog'), downloads: call('apps:downloads'), dirs: call('apps:dirs'),
+    key: call('apps:key'), fetchTo: call('apps:fetchTo'), fetchJson: call('apps:fetchJson'), meshy: call('apps:meshy'), status: call('apps:status'),
+    onEvent: on('apps:event'),
+  },
   renders: { run: call('renders:run'), pause: call('renders:pause'), resume: call('renders:resume'), cancel: call('renders:cancel'), relay: call('renders:relay'), encoders: call('renders:encoders') },
 });

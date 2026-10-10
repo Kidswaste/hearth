@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: file:; script-src 'self'">
+  <title>Hearth app</title>
+  <link rel="stylesheet" href="apps.css">
+</head>
+<body class="aw">
+  <header class="aw-bar">
+    <button class="aw-btn" id="aw-back" title="Back (Alt+←)" disabled>‹</button>
+    <button class="aw-btn" id="aw-reload" title="Reload (Ctrl+R)">↻</button>
+    <button class="aw-app" id="aw-app" title="Other apps"><span id="aw-icon"></span><b id="aw-name"></b></button>
+    <span class="aw-where" id="aw-where" title="Click to copy the address"></span>
+    <span class="aw-load" id="aw-load" hidden></span>
+    <button class="aw-btn" id="aw-dl" title="Downloads from this app" hidden>⤓<span class="aw-count" id="aw-dl-n"></span></button>
+    <button class="aw-btn aw-chat" id="aw-chat" title="Send this page to the chat (Ctrl+Shift+Enter): its address, a picture and what you selected">💬</button>
+    <button class="aw-btn" id="aw-ext" title="Open in your browser">↗</button>
+    <button class="aw-btn" id="aw-more" title="More">⋯</button>
+  </header>
+  <div class="aw-main" id="aw-main"></div>
+  <div class="aw-pop" id="aw-pop" hidden></div>
+  <div class="aw-toast" id="aw-toast" hidden></div>
+  <script src="apps-core.js"></script>
+  <script src="apps-window.js"></script>
+</body>
+</html>

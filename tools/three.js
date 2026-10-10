@@ -3644,7 +3644,7 @@ ${frag}\`,
     const r = anchor.getBoundingClientRect();
     ThreeTweaks.menu(r.left, r.bottom + 4, ['Tools', ['◭ Sketch', 'The Lab (Esc from any tool)', () => tabs.show('sketch'), tabs.current === 'sketch', 'Tools: Sketch'],
       ...TOOL_TABS.map(([id, label, hint, , icon]) => [`${icon} ${label}`, hint, () => tabs.show(id), tabs.current === id, `Tools: ${label}`]),
-      'Quick', ['Open a 3D model…', 'GLB, FBX, OBJ, STL, PLY', () => { tabs.show('models'); setTimeout(() => api.openModel?.(), 80); }], ['Paste a shader…', 'Opens the playground with your clipboard', async () => { let t = ''; try { t = await navigator.clipboard.readText(); } catch { /* none */ } tabs.show('shader'); if (/void\s+main|mainImage/.test(t)) setTimeout(() => api.openShader?.(t), 80); }]]);
+      'Quick', ['Open a 3D model…', 'GLB, FBX, OBJ, STL, PLY', () => { tabs.show('models'); setTimeout(() => api.openModel?.(), 80); }], ...(typeof Apps !== 'undefined' ? [['▣ Apps: Meshy, Poly Haven, Sketchfab…', 'Free skies and models, Meshy 3D models: straight into this sketch', () => Apps.menu(r.left, r.bottom + 4)]] : []), ['Paste a shader…', 'Opens the playground with your clipboard', async () => { let t = ''; try { t = await navigator.clipboard.readText(); } catch { /* none */ } tabs.show('shader'); if (/void\s+main|mainImage/.test(t)) setTimeout(() => api.openShader?.(t), 80); }]]);
   }
   Tools.define({
     id: 'three', name: 'Three.js Lab', icon: '◭', color: '#4f8cff',

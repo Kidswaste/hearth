@@ -11,6 +11,7 @@ const nowplaying = require('./nowplaying');
 const aemain = require('./aemain');
 const gamebridge = require('./gamebridge');
 const syncmain = require('./syncmain');
+const appsmain = require('./appsmain');
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const THEME_PATH = path.join(__dirname, 'theme.css');
@@ -150,6 +151,7 @@ app.on('web-contents-created', (_event, contents) => {
   });
 
   contents.on('before-input-event', (event, input) => {
+    if (appsmain.isAppGuest(contents)) return; // an app window's page keeps its keys (appsmain.js handles them)
     if (input.type !== 'keyDown' || !(input.control || (process.platform === 'darwin' && input.meta))) return;
     const key = input.key.toLowerCase();
     // Ctrl/⌘+Shift+M: the board drawer, from a website agent too
@@ -391,6 +393,7 @@ aemain.registerIpc(ipcMain, () => win, () => settings().aePath);
 require('./boardmain').registerIpc(ipcMain, () => win); // mood board: file import, website snapshots
 require('./capturemain').register(ipcMain, () => win, settings); // screenshots / recordings of Hearth itself, frame reader
 require('./rendersmain').register(ipcMain, () => win, settings); // the render queue: pause / resume / cancel ffmpeg jobs
+appsmain.register(ipcMain, () => win, { store, appshell }); // app windows (Meshy, Suno, Figma…), their downloads, the Meshy API
 syncmain.register(ipcMain, () => win, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, themePath: THEME_PATH, store }); // sync through a cloud drive folder
 
 for (const file of [CONFIG_PATH, THEME_PATH]) {

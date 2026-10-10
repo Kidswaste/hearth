@@ -267,9 +267,13 @@ function attachContextMenu(contents, send) {
 }
 
 // ---------- downloads from website agents ----------
+// sessions whose downloads another module routes itself (app windows: appsmain.js)
+const SKIP_DOWNLOADS = new Set();
+const skipDownloads = (ses) => { if (ses?.storagePath) SKIP_DOWNLOADS.add(ses.storagePath); };
 function setupDownloads(send) {
   const hook = (ses) => {
     ses.on('will-download', (_e, item) => {
+      if (ses.storagePath && SKIP_DOWNLOADS.has(ses.storagePath)) return;
       const dir = app.getPath('downloads');
       const parsed = path.parse(item.getFilename());
       let target = path.join(dir, parsed.base);
@@ -291,6 +295,6 @@ function setupDownloads(send) {
 
 module.exports = {
   ensureIcon, loadWindowState, trackWindowState, setupTray, applySettings, setupCloseToTray,
-  createShortcuts, restartApp, writeIconFiles, APP_NAME, ICON_ICO_PATH: ICON_ICO, attachContextMenu, setupDownloads, toggleWindow, ICON_ICO,
+  createShortcuts, restartApp, writeIconFiles, APP_NAME, ICON_ICO_PATH: ICON_ICO, attachContextMenu, setupDownloads, skipDownloads, toggleWindow, ICON_ICO,
   markQuitting: () => { quitting = true; },
 };
