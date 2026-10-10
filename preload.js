@@ -175,5 +175,12 @@ contextBridge.exposeInMainWorld('hub', {
   // Publishing (deploymain.js): CLIs + sign-in, build, local preview + check, deploy, remove, roll back
   deploy: { status: call('deploy:status'), login: call('deploy:login'), build: call('deploy:build'), preview: call('deploy:preview'), verify: call('deploy:verify'), run: call('deploy:run'), remove: call('deploy:remove'), rollback: call('deploy:rollback'), dir: call('deploy:dir'), onEvent: (cb) => { const fn = (_e, d) => cb(d); ipcRenderer.on('deploy:event', fn); return () => ipcRenderer.removeListener('deploy:event', fn); } },
   // The render queue (rendersmain.js): run / pause / resume / cancel a queued ffmpeg job, encoders of this ffmpeg
+  // App windows (appsmain.js): each app in its own window and session, downloads, keys (never readable here), Meshy jobs
+  apps: {
+    open: call('apps:open'), close: call('apps:close'), closeAll: call('apps:closeAll'), windows: call('apps:windows'), nav: call('apps:nav'),
+    paste: call('apps:paste'), picture: call('apps:picture'), catalog: call('apps:catalog'), downloads: call('apps:downloads'), dirs: call('apps:dirs'),
+    key: call('apps:key'), fetchTo: call('apps:fetchTo'), fetchJson: call('apps:fetchJson'), meshy: call('apps:meshy'), status: call('apps:status'),
+    onEvent: on('apps:event'),
+  },
   renders: { run: call('renders:run'), pause: call('renders:pause'), resume: call('renders:resume'), cancel: call('renders:cancel'), relay: call('renders:relay'), encoders: call('renders:encoders') },
 });

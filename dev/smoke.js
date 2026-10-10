@@ -10,6 +10,7 @@
 //   node dev/smoke.js --fake-engines --script dev/checks/chat-stream.js   # native chats answered by dev/fake-*.js
 //   node dev/smoke.js --lib dev/checks/journey-lib.js --script dev/checks/journey-lab.js   # helpers before the script
 //   node dev/smoke.js --data dev/old-data --script dev/checks/journey-upgrade.js     # start from a copy of a data/ folder
+//   node dev/smoke.js --fake-meshy --script dev/checks/apps-meshy.js   # app windows against dev/fake-meshy.js (no network)
 //
 // Check scripts can drive real input and take pictures mid-run through the `__smoke` page binding the harness adds:
 //   await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mousePressed', x, y, button: 'left', clickCount: 1 } })
@@ -104,6 +105,12 @@ async function cdpConnect() {
   const saveDir = opt('--save-dir', path.join(dir, 'test-saves'));
   fs.mkdirSync(saveDir, { recursive: true });
   const env = { ...process.env, HEARTH_TEST_SAVE_DIR: saveDir, ...(opt('--open') != null ? { HEARTH_TEST_OPEN: opt('--open') } : {}) };
+  // --fake-meshy: a local fake of Meshy's API, Poly Haven's API and test web pages (dev/fake-meshy.js) for the apps
+  // checks; the app finds it through HEARTH_MESHY_BASE (checks read it back with hub.apps.status().testBase)
+  if (args.includes('--fake-meshy')) {
+    const fake = await require('./fake-meshy').start();
+    Object.assign(env, { HEARTH_MESHY_BASE: fake.base, HEARTH_POLYHAVEN_BASE: `${fake.base}/ph`, HEARTH_APPS_PARK_MS: '4000' });
+  }
   const child = spawn('xvfb-run', ['-a', '-s', '-screen 0 1600x1000x24', ELECTRON, dir, '--no-sandbox', `--remote-debugging-port=${PORT}`, `--user-data-dir=${userData}`, ...(process.env.SMOKE_GPU_FLAGS || '--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist').split(' ').filter(Boolean)], { stdio: ['ignore', 'pipe', 'pipe'], detached: true, env });
   // Kill Xvfb + Electron (their own process group) however the harness ends, so no stray instances pile up.
   const killAll = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* gone */ } try { execFileSync('pkill', ['-9', '-f', dir]); } catch { /* gone */ } };

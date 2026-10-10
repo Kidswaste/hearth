@@ -1,0 +1,78 @@
+/* Apps (round 14): an app window's slim chrome (apps-window.html, .aw…) and, in the hub, the card pickers
+   (Meshy models, Poly Haven skies, downloads) and the key dialog. The chrome reads the hub's colors from the
+   variables apps.js passes (--aw-*), with dark defaults of its own. */
+
+/* ---------- the app window ---------- */
+body.aw {
+  --aw-bg: #101217; --aw-surface: #181b22; --aw-text: #e8e6e1; --aw-muted: #9a9890; --aw-line: #2a2e38; --aw-accent: #e6b450; --aw-app: var(--aw-accent);
+  margin: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--aw-bg); color: var(--aw-text); font: 13px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.aw-bar {
+  height: 36px; flex: none; display: flex; align-items: center; gap: 4px; padding: 0 6px;
+  background: var(--aw-surface); border-bottom: 1px solid var(--aw-line);
+  box-shadow: inset 0 -2px 0 -1px color-mix(in srgb, var(--aw-app) 40%, transparent);
+}
+.aw-btn, .aw-app {
+  height: 26px; min-width: 26px; padding: 0 6px; border: 1px solid transparent; border-radius: 7px;
+  background: transparent; color: var(--aw-text); font: inherit; font-size: 14px; cursor: pointer; position: relative;
+}
+.aw-btn:hover:not(:disabled), .aw-app:hover { background: color-mix(in srgb, var(--aw-text) 9%, transparent); border-color: var(--aw-line); }
+.aw-btn:disabled { opacity: .35; cursor: default; }
+.aw-btn:active:not(:disabled) { transform: translateY(1px); }
+.aw-app { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.aw-app b { font-weight: 600; }
+.aw-where {
+  flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  color: var(--aw-muted); font-size: 12px; padding: 0 6px; cursor: copy;
+}
+.aw-load { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--aw-line); border-top-color: var(--aw-app); animation: aw-spin .8s linear infinite; }
+@keyframes aw-spin { to { transform: rotate(360deg); } }
+.aw-chat { font-size: 13px; }
+.aw-count { position: absolute; top: -3px; right: -3px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; background: var(--aw-app); color: #111; font-size: 10px; line-height: 14px; font-weight: 700; }
+.aw-count:empty { display: none; }
+#aw-dl.busy { color: var(--aw-app); }
+.aw-main { flex: 1; min-height: 0; display: flex; }
+.aw-view { flex: 1; border: 0; background: #fff; }
+.aw-pop {
+  position: fixed; z-index: 10; min-width: 240px; max-width: min(420px, 92vw); max-height: 70vh; overflow: auto; padding: 4px;
+  background: var(--aw-surface); border: 1px solid var(--aw-line); border-radius: 10px; box-shadow: 0 12px 32px #0008;
+}
+.aw-pop hr { border: 0; border-top: 1px solid var(--aw-line); margin: 4px 2px; }
+.aw-head { padding: 6px 8px 4px; font-weight: 600; font-size: 12px; color: var(--aw-muted); text-transform: uppercase; letter-spacing: .04em; }
+.aw-sub { padding: 6px 8px 2px; font-size: 11px; color: var(--aw-muted); }
+.aw-item { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; width: 100%; padding: 6px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--aw-text); font: inherit; text-align: left; cursor: pointer; }
+.aw-item:hover { background: color-mix(in srgb, var(--aw-app) 16%, transparent); }
+.aw-item small { color: var(--aw-muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55%; }
+.aw-dl { padding: 6px 8px; border-bottom: 1px solid var(--aw-line); }
+.aw-dl-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aw-dl-sub { color: var(--aw-muted); font-size: 11px; margin: 2px 0 4px; }
+.aw-dl-go { display: flex; flex-wrap: wrap; gap: 4px; }
+.aw-chip { padding: 3px 8px; border-radius: 999px; border: 1px solid var(--aw-line); background: color-mix(in srgb, var(--aw-text) 5%, transparent); color: var(--aw-text); font: inherit; font-size: 11px; cursor: pointer; }
+.aw-chip:hover { border-color: var(--aw-app); background: color-mix(in srgb, var(--aw-app) 18%, transparent); }
+.aw-empty { padding: 10px 8px; color: var(--aw-muted); }
+.aw-toast {
+  position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 11; max-width: 80vw;
+  padding: 8px 14px; border-radius: 9px; background: var(--aw-surface); border: 1px solid var(--aw-line); box-shadow: 0 8px 24px #0009;
+}
+
+/* ---------- in the hub: card pickers ---------- */
+dialog.apps-grid { width: min(920px, 94vw); max-height: 86vh; display: flex; flex-direction: column; }
+dialog.apps-grid:not([open]) { display: none; }
+.apps-grid-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.apps-grid-head h2 { margin: 0; font-size: 16px; }
+.apps-filter { width: 180px; }
+.apps-grid-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.apps-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 10px; overflow: auto; padding: 2px; }
+.apps-card {
+  display: flex; flex-direction: column; gap: 3px; padding: 6px; border-radius: 10px;
+  background: var(--surface, #181b22); border: 1px solid var(--line, #2a2e38); min-width: 0;
+}
+.apps-card:hover { border-color: color-mix(in srgb, var(--accent, #e6b450) 55%, var(--line, #2a2e38)); }
+.apps-thumb { aspect-ratio: 4 / 3; border-radius: 7px; overflow: hidden; display: grid; place-items: center; background: color-mix(in srgb, var(--text, #fff) 5%, transparent); font-size: 34px; }
+.apps-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.apps-card b { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.apps-card small { color: var(--muted, #9a9890); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.apps-card-acts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.apps-card-acts button { padding: 2px 7px; font-size: 11px; }
+dialog.apps-key input { width: 100%; font-family: ui-monospace, monospace; }

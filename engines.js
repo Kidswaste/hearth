@@ -135,6 +135,8 @@ const HUB_TOOLSETS = {
   // /deploy-tools on), one tool each. Publishing and the agent's own scripts ask the owner first.
   adobeTools: { server: 'adobe', script: 'adobe-mcp.js' },
   deployTools: { server: 'deploy', script: 'deploy-mcp.js' },
+  // The owner's app windows and Meshy 3D models (apps.js): opt-in per agent (/apps-tools on | directors).
+  appsTools: { server: 'apps', script: 'apps-mcp.js' },
 };
 // Claude agents get their tool sets (chat tools unless switched off). Codex agents (Astra) get the tool sets their
 // agent has (a director switched to Astra) and chat tools only as an opt-in (talk-back, or agent.hubTools).
@@ -179,7 +181,7 @@ function codexMcpArgs(agent) {
       '-c', `${p}.args=[${tomlStr(path.join(__dirname, 'mcp', script))}]`,
       '-c', `${p}.env={ ${Object.entries(hubToolEnv(agent)).map(([k, v]) => `${k}=${tomlStr(String(v))}`).join(', ')} }`,
       // a question to the user (chat_ask) or a render can take a long time
-      '-c', `${p}.tool_timeout_sec=${key === 'videoTools' || key === 'chatTools' || key === 'captureTools' || key === 'adobeTools' || key === 'deployTools' ? 2700 : 300}`,
+      '-c', `${p}.tool_timeout_sec=${key === 'videoTools' || key === 'chatTools' || key === 'captureTools' || key === 'adobeTools' || key === 'deployTools' || key === 'appsTools' ? 2700 : 300}`,
       '-c', `${p}.startup_timeout_sec=30`,
       // Hearth's own tools are pre-approved: `codex exec` can't show an approval prompt, so newer Codex versions
       // cancelled every Lab / video / chat tool call ("Lab access was blocked"). Older versions ignore the key.
@@ -290,13 +292,14 @@ function buildPrompt(agent) {
   }
   if (sets.includes('chatTools')) {
     // directors get the chat tools' when-to-use guide; plain chats only the <suggest> convention
-    if (agent.dock || sets.filter((k) => !['boardTools', 'captureTools', 'adobeTools', 'deployTools'].includes(k)).length > 1) parts.push(toolGuide('chatTools'));
+    if (agent.dock || sets.filter((k) => !['boardTools', 'captureTools', 'adobeTools', 'deployTools', 'appsTools'].includes(k)).length > 1) parts.push(toolGuide('chatTools'));
     parts.push('At the end of a reply, when it helps, offer up to 3 short next steps the user might want, each as <suggest>…</suggest> (they become buttons; keep each under 8 words).');
   } else if (agent.suggestNext) {
     parts.push('At the end of a reply, when it helps, offer up to 3 short next steps the user might want, each as <suggest>…</suggest> (they become buttons; keep each under 8 words).');
   }
   // the board's one-line guide (references give a vibe, never footage) only for agents that have its tools
   if (sets.includes('boardTools')) parts.push(toolGuide('boardTools'));
+  if (sets.includes('appsTools')) parts.push(toolGuide('appsTools')); // Meshy costs credits: one line
   // Directors (agents docked in a tool) check their own work unless switched off.
   if (agent.selfReview ?? Boolean(agent.dock)) parts.push('Before you finish, check your result against what was asked (for visual work, look at a fresh screenshot). Fix real problems you find, then mention in one line what you checked.');
   // (round 11) opt-in (`/progress tags on`, directors only): the agent says how far it is; Hearth draws the bar and hides the tag
@@ -702,7 +705,7 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
   // A per-run persona replaces the agent's own instructions; "lean" runs (collaborations, quick asks) drop
   // the hub tool sets and file tools so they cost no more than a plain chat turn.
   if (options.persona) agent = { ...agent, systemPrompt: String(options.persona).slice(0, 4000) };
-  if (options.lean) agent = { ...agent, chatTools: false, threeTools: false, videoTools: false, gameTools: false, boardTools: false, captureTools: false, adobeTools: false, deployTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false };
+  if (options.lean) agent = { ...agent, chatTools: false, threeTools: false, videoTools: false, gameTools: false, boardTools: false, captureTools: false, adobeTools: false, deployTools: false, appsTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false };
   // (round 14) the chat's own file access (access.js); lean / hub-only runs never get it
   else if (options.access && typeof options.access === 'object' && !options.hubOnly) agent = { ...agent, access: { level: String(options.access.level || 'off'), folders: options.access.folders }, accessChatId: chatId };
   // "hubOnly" runs (a jam's build turns, jam.js) keep the agent's tool sets (Lab, video…) and drop the rest.
