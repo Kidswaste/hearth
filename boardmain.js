@@ -139,8 +139,9 @@ function unused(keep) {
   return fs.readdirSync(MEDIA_DIR, { withFileTypes: true }).filter((d) => d.isFile()).map((d) => path.join(MEDIA_DIR, d.name)).filter((p) => !used.has(norm(p)));
 }
 
-function registerIpc(ipcMain) {
+function registerIpc(ipcMain, getWin) {
   ensureDirs();
+  require('./boardpinsmain').register(ipcMain, getWin); // (round 14) the Pinterest window: pick pins onto the board
   ipcMain.handle('board:dir', () => ({ dir: BOARD_DIR, media: MEDIA_DIR, exports: EXPORT_DIR }));
   ipcMain.handle('board:import', async (_e, src) => { try { return { ok: true, ...(await importFile(src)) }; } catch (err) { return { ok: false, error: err.message }; } });
   ipcMain.handle('board:save', (_e, name, base64, opts) => saveData(name, base64, opts || {}));

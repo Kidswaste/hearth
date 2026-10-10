@@ -227,3 +227,24 @@
 .bdp-shot:hover { background: #ffd75e33; }
 .bdp-shot:last-child { border-right: 0; }
 @media (max-width: 640px) { .bdp-row { grid-template-columns: 90px 1fr; } .bdp-meta { grid-column: 1 / -1; text-align: left; } }
+
+/* ---------- board eyes (round 14, board-eyes-ui.js): what a chat looked at, in its reply ---------- */
+.eyes-strip { display: flex; flex-direction: column; gap: 4px; margin: 2px 0 6px; }
+.live-cards .eyes-card { margin: 6px 6px 0 0; }
+.eyes-card { display: flex; gap: 8px; align-items: flex-start; max-width: 560px; padding: 5px 8px; border-radius: 9px; border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 70%, transparent); font-size: 12px; color: var(--muted); }
+.eyes-thumb { width: 54px; height: 40px; object-fit: cover; border-radius: 5px; cursor: pointer; flex: none; background: #0b0b0e; }
+.eyes-main { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.eyes-head b { color: var(--text); font-weight: 600; }
+.eyes-size { opacity: .8; font-variant-numeric: tabular-nums; }
+.eyes-items { display: flex; flex-wrap: wrap; gap: 4px; }
+.eyes-ref { color: var(--bd-gold, #ffc233); text-decoration: none; border-bottom: 1px dotted currentColor; cursor: pointer; }
+.eyes-items .eyes-ref { border: 1px solid color-mix(in srgb, var(--bd-gold, #ffc233) 35%, transparent); border-radius: 999px; padding: 0 7px; font-size: 11px; }
+.eyes-ref:hover { color: var(--text); }
+.eyes-pin { font: inherit; font-size: 11px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--text); cursor: pointer; }
+.eyes-pin:hover { border-color: #e60023; }
+.eyes-fold > summary { cursor: pointer; font-size: 12px; color: var(--muted); list-style: none; padding: 2px 0; }
+.eyes-fold > summary::-webkit-details-marker { display: none; }
+.eyes-fold[open] > summary { margin-bottom: 4px; }
+.eyes-fold > .eyes-card + .eyes-card { margin-top: 4px; }
+.msg .body a.eyes-ref { color: var(--bd-gold, #ffc233); text-decoration: none; }

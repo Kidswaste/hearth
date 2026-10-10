@@ -222,17 +222,20 @@ const BoardPack = (() => {
   if (document.readyState === 'loading' || document.currentScript?.defer) addEventListener('DOMContentLoaded', registerAll, { once: true }); else registerAll();
 
   // ---------- the agents' board_do (mcp/board-mcp.js) ----------
-  async function handle(tool, a = {}) {
+  async function handle(tool, a = {}, ctx = {}) {
     try {
       await B.ready();
       const op = String(a.op || '');
+      // (round 14) board eyes / Pinterest ops live in board-eyes.js / board-pins.js
+      const more = { ...(typeof BoardEyes !== 'undefined' ? BoardEyes.OPS : {}), ...(typeof BoardPins !== 'undefined' ? BoardPins.OPS : {}) };
+      if (more[op]) return await more[op](a, ctx);
       if (op === 'collections') return { ok: true, value: { saved: collections().map((c) => ({ ...c, n: B._.matches(c.query).length })), moods: moodCollections(refs()) } };
       if (op === 'collection') { const r = saveCollection(a.name, a.query); return { ok: true, value: r }; }
       if (op === 'show') { const r = showCollection(a.name || a.query); return { ok: true, value: { name: r.name, n: r.n, items: r.items.slice(0, 30).map((i) => `${i.id} ${i.title || i.type}`) } }; }
       if (op === 'groups') { activate('tool:board'); return { ok: true, value: vibeGroups({ k: Number(a.k) || 0 }) }; }
       if (op === 'lab-look') { const r = await labLook({ name: a.name || null }); return { ok: true, value: r }; }
       if (op === 'timeline') return { ok: true, value: timelineText() || 'no clips on this board' };
-      return { ok: false, error: 'op: collections | collection {name, query} | show {name} | groups {k?} | lab-look {name?} | timeline' };
+      return { ok: false, error: 'op: collections | collection {name, query} | show {name} | groups {k?} | lab-look {name?} | timeline | find {query} | caption {item, text} | pinterest {phrases | aesthetic}' };
     } catch (err) { return { ok: false, error: err.message }; }
   }
   if (typeof HubBridge !== 'undefined') HubBridge.register(['board_do'], handle);

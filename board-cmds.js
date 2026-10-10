@@ -165,7 +165,7 @@ const BoardCmds = (() => {
   cmd({ name: 'board-peek', aliases: ['board-drawer'], desc: 'The board drawer over this chat (Ctrl+Shift+M): drag a reference into the chat for its vibe', keys: 'Ctrl+Shift+M', run: async () => { await B.ready(); BoardDrawer.toggle(); return null; } });
   cmd({ name: 'board-save-reply', desc: 'Save the last reply of this chat as a note on the board', run: async (_a, ctx) => { const t = Native.lastReplyText?.(ctx?.agentId); if (!t) return 'No reply to save.'; const b = await boardOf(ctx); if (b !== B.current()) await B.open(b.id); B.addNote(t.slice(0, 4000), B.visible() ? null : freeSpot(b), { style: 'paper', w: 420, h: 360 }); return `Saved to **${b.name}**.`; } });
   cmd({ name: 'board-clean', desc: 'Move media no board uses any more to the Recycle Bin', run: async () => { await B.ready(); await Board._.cleanMedia(); return null; } });
-  cmd({ name: 'board-tools', desc: 'Let this agent use the board itself (board tools: list, vibe, add, arrange; ≈ 550 tokens a message, see /director-cost): on, off, or directors', args: '<on|off|directors>', complete: (a) => opts(['on', 'off', 'directors'], a),
+  cmd({ name: 'board-tools', desc: 'Let this agent use the board itself (board tools: list, vibe, look, watch, add, arrange; ≈ 1,100 tokens a message, see /director-cost): on, off, or directors', args: '<on|off|directors>', complete: (a) => opts(['on', 'off', 'directors'], a),
     run: async (args, ctx) => {
       // no word: say where they're on (it used to switch them on: ≈ 550 tokens a message by accident)
       if (!args.trim()) { const on = H.agents().filter((a) => a.boardTools).map((a) => a.name); return on.length ? `Board tools are on for ${on.join(', ')} (/board-tools off here turns them off).` : 'Board tools are off everywhere (/board-tools on for this chat\'s agent, or directors).'; }
@@ -232,6 +232,10 @@ const BoardCmds = (() => {
       else it = B.addNote(a.text || '', at, a.style ? { style: a.style } : {});
       if (!it) return { ok: false, error: 'Nothing added.' };
       const patch = {}; if (a.title && kind !== 'frame' && kind !== 'colors') patch.title = a.title; if (a.note) patch.note = a.note; if (a.tags) patch.tags = [].concat(a.tags).map(Board._.cleanTag);
+      // (round 14) a picture a chat found: where it came from and whose it is stay on the item (Info, the vibe text)
+      if (a.source && /^https?:\/\//i.test(String(a.source))) patch.source = String(a.source).slice(0, 500);
+      if (a.credit) patch.credit = String(a.credit).replace(/\s+/g, ' ').slice(0, 120);
+      if (a.source || a.credit) patch.addedBy = 'chat';
       if (Object.keys(patch).length) B.patch([it.id], patch, 'tag');
       return { ok: true, value: `added ${it.id} (${V.KIND_WORD[it.type] || it.type}) to "${b.name}"` };
     }

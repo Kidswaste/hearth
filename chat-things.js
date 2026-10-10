@@ -49,7 +49,8 @@ const ChatThings = (() => {
     }
     // a picture with no file (the Lab's screenshot, a sequence frame): the latest one becomes a "frame" card at the end
     const imgs = [].concat(result.images || (result.image ? [{ data: result.image, mime: result.mime }] : [])).filter((x) => x?.data);
-    const frame = !found.some((t) => t.k === 'image') && imgs.length && !/^capture_frames/.test(tool) ? { data: imgs.at(-1).data, mime: imgs.at(-1).mime || 'image/png', tool } : null;
+    // (round 14) what a chat looked at on the board shows as its own card (board-eyes-ui.js), not as a saved frame
+    const frame = !found.some((t) => t.k === 'image') && imgs.length && !/^capture_frames|^board_/.test(tool) ? { data: imgs.at(-1).data, mime: imgs.at(-1).mime || 'image/png', tool } : null;
     return { found, frame };
   }
   function add(chatId, things) {

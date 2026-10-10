@@ -787,6 +787,8 @@ const Board = (() => {
     const d = drag; drag = null;
     S.ui.root.classList.remove('bd-panning');
     S.ui.marquee.hidden = true; showGuides(null, null);
+    // (round 14) dropped on a chat beside the board: shown to that chat, not moved (board-eyes-ui.js)
+    if (d.mode === 'move' && d.moved && Board._.dropOut?.(e, d)) return;
     if (d.mode === 'move' && d.moved) { for (const it of d.items) { it.x = Math.round(it.x * 10) / 10; it.y = Math.round(it.y * 10) / 10; delete it.flow; } afterEdit(); }
     else if (['resize', 'rotate', 'crop'].includes(d.mode) && d.changed) afterEdit();
     else if (d.mode === 'move' && !d.moved) { const node = e.target.closest?.('.bd-item'); if (node && !e.shiftKey && S.sel.size > 1 && !item(node.dataset.id)?.group) select(node.dataset.id); }

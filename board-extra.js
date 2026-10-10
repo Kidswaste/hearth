@@ -22,7 +22,8 @@
       it.natural && `Size: ${it.natural[0]} × ${it.natural[1]} px${v.aspect ? ` (${v.aspect})` : ''}`, it.duration && `Length: ${B._.fmtTime(it.duration)}${v.cutCount != null ? ` · ${v.cutCount} cuts` : ''}`,
       `On the board: ${Math.round(it.w)} × ${Math.round(it.h)} at ${Math.round(it.x)}, ${Math.round(it.y)}${it.rot ? ` · ${it.rot}°` : ''}`,
       it.added && `Added: ${new Date(it.added).toLocaleString()}`, it.tags?.length && `Tags: ${it.tags.map((t) => `#${t}`).join(' ')}`, it.note && `Your note: ${it.note}`,
-      it.fonts?.heading && `Fonts: ${[it.fonts.heading, it.fonts.body].filter(Boolean).join(' / ')}`, it.snapError && `Snapshot: ${it.snapError}`, `Id: ${it.id}`,
+      it.source && `Source: ${it.source}`, it.credit && `Credit: ${it.credit}`, it.alt && `Seen as: ${it.alt}${it.altBy === 'chat' ? ' (written by a chat)' : ''}`,
+      it.fonts?.heading && `Fonts:${[it.fonts.heading, it.fonts.body].filter(Boolean).join(' / ')}`, it.snapError && `Snapshot: ${it.snapError}`, `Id: ${it.id}`,
     ].filter(Boolean);
     Modal.alert(it.title || 'Item', lines.join('\n'));
     return lines;

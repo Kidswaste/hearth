@@ -1,0 +1,20 @@
+<!doctype html>
+<!-- A local stand-in for Pinterest's search results (dev/checks/eyes-pins.js): a masonry of pins, each a link to
+     /pin/<id>/ around a picture with a srcset, like the real page. Pictures come from the board fixtures. -->
+<html><head><meta charset="utf-8"><title>Pinterest-like search</title>
+<style>
+body { margin: 0; font: 14px system-ui, sans-serif; background: #fff; color: #111; }
+header { position: sticky; top: 0; background: #fff; padding: 14px 20px; border-bottom: 1px solid #eee; font-weight: 700; }
+.grid { columns: 4 220px; column-gap: 16px; padding: 16px; }
+a.pin { display: block; break-inside: avoid; margin-bottom: 16px; border-radius: 16px; overflow: hidden; }
+a.pin img { width: 100%; display: block; }
+</style></head>
+<body>
+<header>Results for “<span id="q"></span>”</header>
+<div class="grid">
+  <a class="pin" href="/pin/101/"><img alt="Golden hour hill" src="file:///tmp/hearth-board-fixtures/golden-hour.jpg" srcset="file:///tmp/hearth-board-fixtures/golden-hour.jpg 1x"></a>
+  <a class="pin" href="/pin/202/"><img alt="Neon pink and teal blocks" src="file:///tmp/hearth-board-fixtures/golden-hour.jpg" srcset="file:///tmp/hearth-board-fixtures/golden-hour.jpg 1x, file:///tmp/hearth-board-fixtures/neon%20big.png 2x"></a>
+  <a class="pin" href="/pin/303/"><img alt="Hue loop" src="file:///tmp/hearth-board-fixtures/loop.gif"></a>
+</div>
+<script>document.getElementById('q').textContent = new URLSearchParams(location.search).get('q') || '';</script>
+</body></html>
