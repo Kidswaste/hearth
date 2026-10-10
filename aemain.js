@@ -366,4 +366,4 @@ function registerIpc(ipcMain, getWin, getOverride) {
 }
 
 function forgetTools() { for (const k of Object.keys(toolCache)) delete toolCache[k]; }
-module.exports = { forgetTools, registerIpc, templates, status, running, ffStatus, probe, _test: { locate, macError, findTool } };
+module.exports = { forgetTools, registerIpc, templates, status, running, ffStatus, probe, transcode, _jobs: jobs, _test: { locate, macError, findTool } }; // transcode / _jobs: the render queue (rendersmain.js)

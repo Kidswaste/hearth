@@ -1272,11 +1272,12 @@ const Review = (() => {
   window.hub.video?.onJob?.((ev) => {
     const j = exportJobs.get(ev.id);
     if (!j) return;
-    if (ev.type === 'progress') { j.pct = ev.pct; j.toast.querySelector('span').textContent = `${j.label}: ${Math.round(ev.pct * 100)}%`; }
+    if (ev.type === 'progress') { j.pct = ev.pct; const sp = j.toast?.querySelector('span'); if (sp) sp.textContent = `${j.label}: ${Math.round(ev.pct * 100)}%`; }
     if (ev.type === 'done') {
       exportJobs.delete(ev.id);
-      j.toast.remove();
-      if (ev.code === 0 && j.library === false) toast(`${j.label} done (${ev.seconds}s)`, { action: { label: IS_MAC ? 'Show in Finder' : 'Show in folder', fn: () => window.hub.fs.open(dirOf(ev.output)) }, timeout: 9000 });
+      j.toast?.remove();
+      const rq = window.Renders?.owns?.(ev.id); // (round 13) the render queue says done / failed (with Open, Reveal, the fix)
+      if (rq) { if (ev.code === 0 && j.library !== false) { S.lib.exports = [...new Set([ev.output, ...S.lib.exports])].slice(0, 300); saveLib(); load(); } } else if (ev.code === 0 && j.library === false) toast(`${j.label} done (${ev.seconds}s)`, { action: { label: IS_MAC ? 'Show in Finder' : 'Show in folder', fn: () => window.hub.fs.open(dirOf(ev.output)) }, timeout: 9000 });
       else if (ev.code === 0) {
         S.lib.exports = [...new Set([ev.output, ...S.lib.exports])].slice(0, 300); // exports show in the library even outside the watched folders
         saveLib();
@@ -1309,9 +1310,10 @@ const Review = (() => {
   // stills); args may hold INPUT / OUTPUT placeholders. Also used by the cut (tools/video-cut.js).
   async function startJob({ label, input, output, args, duration, library = true }) {
     const id = `x${Date.now()}${Math.random().toString(36).slice(2, 5)}`;
-    const done = new Promise((resolve) => exportJobs.set(id, { label, resolve, pct: 0, library, toast: toast(`${label}: starting…`, { timeout: 0, action: { label: 'Cancel', fn: () => window.hub.video.cancel(id) } }) }));
+    const RQ = window.Renders; // (round 13) the render queue runs it in its turn, in the background (its bar and the ⇪ badge show it)
+    const done = new Promise((resolve) => exportJobs.set(id, { label, resolve, pct: 0, library, toast: RQ ? null : toast(`${label}: starting…`, { timeout: 0, action: { label: 'Cancel', fn: () => window.hub.video.cancel(id) } }) }));
     window.ProgressHooks?.job(id, { title: `⇪ ${label}`, sub: base(output) }); // (round 11) its bar (ffmpeg's own progress)
-    try { await window.hub.video.transcode({ id, input, output, args, duration }, ffOverrides()); } catch (err) { exportJobs.get(id)?.toast.remove(); exportJobs.delete(id); toast(err.message.replace(/^Error invoking remote method[^:]*: (Error: )?/, ''), { type: 'error' }); return null; }
+    try { await (RQ ? RQ.transcode({ id, input, output, args, duration }, ffOverrides(), { title: label, library }) : window.hub.video.transcode({ id, input, output, args, duration }, ffOverrides())); } catch (err) { exportJobs.get(id)?.toast?.remove(); exportJobs.delete(id); toast(err.message.replace(/^Error invoking remote method[^:]*: (Error: )?/, ''), { type: 'error' }); return null; }
     return { id, output, done };
   }
   // One render → the four social formats (9:16, 4:5, 1:1, 16:9 minus the one it already is), one after another.
@@ -1337,6 +1339,7 @@ const Review = (() => {
       return { label: `${p.name}${p.w && p.h ? ` · ${p.w}×${p.h}` : ''}${p.fps ? ` · ${p.fps} fps` : ''}${p.mbps ? ` · ${p.mbps} Mbps` : ''}${mb ? ` · ≈${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB` : ''}${reshape ? ` (${crop === pf ? 'your crop' : 'center crop'})` : ''}`, action: () => (ff ? runExport(p.id) : showPreset(p)) };
     });
     showMenu(r.left, r.top - 8, [
+      window.Renders ? { label: '⇪ Render with a preset… (the render queue)', action: () => Renders.panel({ source: 'video' }) } : null, // (round 13)
       ff ? { label: 'Open the exports folder', action: () => S.cur && window.hub.fs.open(join(dirOf(S.cur.path), 'exports')).catch(() => toast('No exports yet')) } : null,
       { label: ff ? `Export with ffmpeg${S.loop.a != null && S.loop.on ? ' (the loop range)' : ''}:` : 'ffmpeg not found: click a preset to see its settings', action: () => (ff ? null : presetsDialog()) },
       ...items,

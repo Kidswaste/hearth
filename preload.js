@@ -168,4 +168,6 @@ contextBridge.exposeInMainWorld('hub', {
     rmtemp: call('video:rmtemp'),
     onJob: on('video:job-event'),
   },
+  // The render queue (rendersmain.js): run / pause / resume / cancel a queued ffmpeg job, encoders of this ffmpeg
+  renders: { run: call('renders:run'), pause: call('renders:pause'), resume: call('renders:resume'), cancel: call('renders:cancel'), relay: call('renders:relay'), encoders: call('renders:encoders') },
 });

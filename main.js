@@ -390,6 +390,7 @@ gamebridge.start(() => win);
 aemain.registerIpc(ipcMain, () => win, () => settings().aePath);
 require('./boardmain').registerIpc(ipcMain, () => win); // mood board: file import, website snapshots
 require('./capturemain').register(ipcMain, () => win, settings); // screenshots / recordings of Hearth itself, frame reader
+require('./rendersmain').register(ipcMain, () => win, settings); // the render queue: pause / resume / cancel ffmpeg jobs
 syncmain.register(ipcMain, () => win, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, themePath: THEME_PATH, store }); // sync through a cloud drive folder
 
 for (const file of [CONFIG_PATH, THEME_PATH]) {
