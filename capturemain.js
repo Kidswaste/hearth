@@ -127,7 +127,7 @@ function register(ipcMain, getWin, getSettings = () => ({})) {
     if (img.isEmpty()) throw new Error('Not a picture');
     // older Electron: writeImage; Electron 44's clipboard is the async one (write({ image }))
     if (typeof clipboard.writeImage === 'function') clipboard.writeImage(img);
-    else await clipboard.write({ image: img });
+    else await clipboard.write([new (require('electron').ClipboardItem)({ 'image/png': img.toPNG() })]); // Electron 44: ClipboardItem objects (a plain { image } threw)
     return true;
   });
   ipcMain.handle('capture:trash', async (_e, p) => { await shell.trashItem(String(p)); return true; });

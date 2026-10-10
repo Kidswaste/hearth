@@ -1,4 +1,4 @@
-# Apps (round 14): your services in their own windows, Meshy 3D models from chat, Suno prompts from your scene
+# Apps (round 14): your services and 40+ AI apps in their own windows, Meshy 3D models from chat, Suno prompts from your scene, Discover
 
 You asked for "a bunch of app integrations with their own windows that could help me", Meshy and Suno first (you're
 subscribed to both). Now every service you use opens in **its own window** with a slim bar on top (back, reload,
@@ -129,13 +129,52 @@ Counted honestly: one line per thing you can see or use.
 100. **YouTube Studio**, **Instagram**, **TikTok Studio**: ⋯ **"Show my newest render"** (its file shown and its path copied, ready to drop into the upload box).
 101. **Pinterest** (a stand-in until the board stream's own Pinterest window replaces it): pins onto the board.
 
+## More AI apps (you asked: "pack other AI in Apps, make me discover things")
+Each is light: its own window and sign-in, one line on what it's good for, free / paid, where its downloads go.
+106. **Midjourney** (painterly, cinematic stills; paid).
+107. **Ideogram** (images with readable text: posters, titles, logos; free tier).
+108. **Krea** (real-time images, upscaling, video; free tier).
+109. **Leonardo** (images and game-style textures; free tier).
+110. **Recraft** (vector art, icons, brand illustration; free tier).
+111. **Adobe Firefly** with your Adobe sign-in (a stand-in the Adobe stream's own Firefly replaces).
+112. **Pika** (short playful clips and effects from a picture; free tier).
+113. **Luma Dream Machine** (smooth realistic camera moves; free tier).
+114. **Kling** (long physical video shots; free daily credits).
+115. **Tripo** (fast 3D from a picture or words: GLB into the Lab; free tier).
+116. **Luma Genie** (quick 3D objects from a sentence; free).
+117. **CSM** (image / sketch to 3D; free tier).
+118. **Udio** (songs with strong vocals: a second take next to Suno; free tier).
+119. **Stable Audio** (loops, textures, sound design by length and bpm; free tier).
+120. **ChatGPT**, **Claude.ai**, **Gemini**, **Perplexity**, **NotebookLM**, **Grok** as windows (their own apps, research with sources, docs → podcast…).
+121. **v0**, **Bolt**, **Lovable**, **Replit**, **Framer** (a page, an app or a portfolio site from a description).
+122. **Shadertoy** (shaders to learn from, for the Lab's shader playground; free).
+123. **Descript** (edit video by its transcript), **CapCut** (quick social edits, auto captions), **Captions** (animated captions).
+124. **New kinds in the picker**: Edit, Chat, Code (next to 3D, Sound, Make, Design, Assets, Social); each app shows free / paid.
+125. **🔎 Search every app** (the Apps menu, `/apps search <words>`): every app as a card, favorites and recents first, filter as you type.
+126. **★ Favorites** (the ☆ on a card, `/apps fav <app>`): first in the Apps menu.
+
+## Discover
+127. **✨ Discover** at the top of the Apps menu: three apps you haven't opened yet that fit what you're doing now, each with why.
+128. **It follows you**: in the Lab → 3D and video AI; a song in the Lab → music AI; on the board → picture AI; in the editor → video editing AI; in a chat → research and site builders.
+129. **A new three each day**, never the same ones on repeat.
+130. **It learns**: an app you've opened stops being suggested; "Not for me" twice and it's never suggested again (kept in kv apps-habits, synced like the rest).
+131. **A quiet "Try this" note, at most once a day**, never while Hearth is starting; its × counts as "not for me".
+132. `/apps discover` (a picker with Open, ☆, Not for me), `/apps discover off` / `on`, `/apps discover now`.
+133. **Chats can suggest an app**: `/apps suggest <app> [why]` or the `apps_open` tool (suggest) puts a card in the chat with **Open** and **Not for me**; `apps_open { op: discover }` lets them read what fits.
+
+## Send to app
+134. `/apps send-to <app> [board | lab | render | file]`: a board picture (the selected one, else the newest), a still of the Lab, your newest render or any file goes on the clipboard (a picture as a picture; a video / sound as its path, its folder shown), the app's window opens and says "paste here (⌘V)" / "drag it in".
+135. **Right-click a board picture → "✨ Send to an AI app ›"** (every app that takes a picture).
+136. Chats can do it too (`apps_open` with `send`).
+137. Fixed on the way: copying a picture to the clipboard (Capture's "Copy" and this) failed on Electron 44 ("clipboard.write expects an array of ClipboardItem").
+
 ## For your chats
-102. `/apps-tools on | off | directors`: give a chat's agent the app tools (open an app, type a prompt, ask Meshy). Off by default: they add a few tool definitions to each message.
-103. **`apps_open`**: list the apps, open one (at an address), type into its page, run one of its actions.
-104. **The app map** knows the apps (`hearth_help apps`): what goes where, that Meshy costs credits and needs your yes, that Suno has no API.
+138. `/apps-tools on | off | directors`: give a chat's agent the app tools (open an app, type a prompt, ask Meshy). Off by default: they add a few tool definitions to each message.
+139. **`apps_open`**: list the apps, open one (at an address), type into its page, run one of its actions.
+140. **The app map** knows the apps (`hearth_help apps`): what goes where, that Meshy costs credits and needs your yes, that Suno has no API.
 
 ## For other parts of Hearth (and the other streams)
-105. `Apps.register({ id, name, icon, url?, open(), describe(), commands?, actions?, routes?, partition?, group? })`: any feature adds an app (Adobe and deploy apps, the board's Pinterest), sharing one sign-in between apps when they set the same `partition`; `Apps.route(file, 'lab-model' | 'board' | …)`, `Apps.ask(…)`, `Apps.grid(…)` for card pickers.
+141. `Apps.register({ id, name, icon, url?, open(), describe(), commands?, actions?, routes?, partition?, group? })`: any feature adds an app (Adobe and deploy apps, the board's Pinterest), sharing one sign-in between apps when they set the same `partition`; `Apps.route(file, 'lab-model' | 'board' | …)`, `Apps.ask(…)`, `Apps.grid(…)` for card pickers.
 
 ## Behaviour worth knowing
 - Hearth never calls a Suno API (there is no public one); it only types into Suno's page, and you press Create.
@@ -147,7 +186,7 @@ Counted honestly: one line per thing you can see or use.
 `sh dev/run-checks.sh apps`: `dev/fake-meshy.js` fakes Meshy's API (tasks, polling, a real tiny GLB), Poly Haven's API
 and the web pages (a Suno-like page with Title / Style / Lyrics boxes, a song download, a Meshy page with a GLB, a
 Coolors address). `apps-windows` drives the windows, downloads, routes, Suno paste, Coolors, Poly Haven, parking;
-`apps-meshy` the key, the cost question (yes and no), text / image / agent / retexture / failure, Access.ask, the
+`apps-discover` the AI catalog, Discover by place, learning, the daily note, favorites, search, suggest cards and send-to; `apps-meshy` the key, the cost question (yes and no), text / image / agent / retexture / failure, Access.ask, the
 library, a reload; `dev/apps-unit-test.js` the adapter against the fake server. Not verified: the real Meshy API
 (the adapter follows Meshy's documented v1 / v2 shapes in one file, `apps-meshy-api.js`, easy to fix), the real
 Suno page's boxes (found by their labels; falls back to the clipboard), real sign-ins, Mac windows.

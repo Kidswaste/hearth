@@ -54,6 +54,7 @@
     else if (op === 'to-chat') toChat();
     else if (op === 'copy-link') { navigator.clipboard.writeText(url).then(() => toast('Address copied')); }
     else if (op?.op === 'url' && /^https?:/i.test(op.url)) view.loadURL(op.url).catch(() => {});
+    else if (op?.op === 'hint') toast(op.text, 9000);
   }
   async function toChat() {
     let selection = '';

@@ -383,7 +383,7 @@ function register(ipcMain, gw, deps = {}) {
     if (!wins.has(id)) return { ok: false, error: 'Not open' };
     // a file fetched in the app's own session (its sign-in cookies apply), landing like any download from the window
     if (op === 'download') { const g = guestOf(wins.get(id)); if (!g || !/^https?:/i.test(String(url))) return { ok: false, error: 'No page' }; g.downloadURL(String(url)); return { ok: true }; }
-    toChrome(id, 'appwin:key', op === 'url' ? { op: 'url', url } : op); return { ok: true }; });
+    toChrome(id, 'appwin:key', op === 'url' || op === 'hint' ? { op, url, text: String(url || '').slice(0, 300) } : op); return { ok: true }; });
   h('apps:paste', (id, o) => paste(String(id), o || {}));
   h('apps:picture', (id, o) => pagePicture(String(id), o || {}));
   h('apps:catalog', (list) => { catalog = Array.isArray(list) ? list.slice(0, 200) : []; for (const id of wins.keys()) toChrome(id, 'appwin:catalog', catalog); return true; });

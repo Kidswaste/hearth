@@ -19,8 +19,8 @@
 const Apps = (() => {
   const C = AppsCore;
   const reg = new Map();
-  const GROUPS = ['3D', 'Sound', 'Make', 'Design', 'Assets', 'Social', 'Deploy', 'More'];
-  const GROUP_ICON = { '3D': '🧊', Sound: '🎵', Make: '✨', Design: '◈', Assets: '🖼', Social: '📣', Deploy: '🚀', More: '▣' };
+  const GROUPS = ['3D', 'Sound', 'Make', 'Edit', 'Design', 'Assets', 'Chat', 'Code', 'Social', 'Deploy', 'More'];
+  const GROUP_ICON = { '3D': '🧊', Sound: '🎵', Make: '✨', Edit: '✂', Design: '◈', Assets: '🖼', Chat: '💬', Code: '⌨', Social: '📣', Deploy: '🚀', More: '▣' };
   const api = () => window.hub?.apps || null;
   const listeners = new Map(); // type → Set(fn)
   const downloads = new Map(); // id → d (newest last)
@@ -95,6 +95,7 @@ const Apps = (() => {
     const app = get(id);
     if (!app) throw new Error(`No app "${id}" (/apps lists them)`);
     noteRecent(app.id);
+    window.AppsDiscover?.noteOpen(app.id); // what gets opened stops being suggested
     return app.open(opts);
   }
   const RECENT = 'apps.recent';
@@ -107,7 +108,8 @@ const Apps = (() => {
     const rec = recent().map(get).filter(Boolean);
     const groups = GROUPS.map((g) => [g, list().filter((a) => a.group === g)]).filter(([, l]) => l.length);
     return [
-      ...rec.map(row),
+      ...(window.AppsDiscover ? AppsDiscover.menuTop() : []),
+      ...rec.filter((a) => !window.AppsDiscover?.isFav(a.id)).map(row),
       ...(rec.length ? ['-'] : []),
       ...groups.map(([g, l]) => ({ label: `${GROUP_ICON[g]} ${g}`, hint: l.map((a) => a.name).slice(0, 4).join(', '), items: () => l.map(row) })),
       '-',
@@ -132,7 +134,12 @@ const Apps = (() => {
     for (const m of H.mru || []) { const x = H.agent?.(m); if (x?.mode === 'native') return x; }
     return H.claudeAgent();
   }
-  async function route(p, target, { name, app } = {}) {
+  async function route(p, target, o = {}) {
+    const r = await route0(p, target, o);
+    emit('routed', { target, file: p });
+    return r;
+  }
+  async function route0(p, target, { name, app } = {}) {
     const file = String(p || '');
     if (!file) throw new Error('No file');
     switch (target) {
@@ -268,20 +275,32 @@ const Apps = (() => {
   function commands() {
     if (typeof Commands === 'undefined' || Commands.get('apps')) return;
     Commands.register({
-      name: 'apps', area: 'Apps', args: '[app] [action|reload|back|send|hide] | list | downloads | folder | close [app|all]',
+      name: 'apps', area: 'Apps', args: '[app] [action|reload|back|send|hide] | list | search [words] | discover [off|on] | fav <app> | send-to <app> [board|lab|render|file] | suggest <app> | downloads | folder | close [app|all]',
       desc: 'The services you use, each in its own window (Meshy, Suno, Figma, Poly Haven…): /apps alone shows them',
       keywords: 'app windows integrations meshy suno figma spline runway elevenlabs fonts coolors sketchfab poly haven unsplash youtube instagram tiktok pinterest mixamo',
-      examples: ['/apps', '/apps figma', '/apps coolors palette', '/apps downloads', '/apps close all'],
+      examples: ['/apps', '/apps figma', '/apps discover', '/apps search video', '/apps send-to midjourney board', '/apps coolors palette', '/apps close all'],
       complete: (a) => {
         const [first, ...rest] = String(a || '').split(/\s+/);
         if (rest.length) { const app = get(first); return (app?.actions || []).map((x) => ({ value: `${app.id} ${x.id}`, label: x.label })); }
-        return [...['list', 'downloads', 'folder', 'close', 'windows'].map((v) => ({ value: v })), ...list().map((x) => ({ value: x.id, label: `${x.icon} ${x.name}`, hint: x.desc || '' }))].filter((x) => x.value.startsWith((first || '').toLowerCase()));
+        return [...['list', 'search', 'discover', 'discover off', 'fav', 'send-to', 'suggest', 'downloads', 'folder', 'close', 'windows'].map((v) => ({ value: v })), ...list().map((x) => ({ value: x.id, label: `${x.icon} ${x.name}`, hint: x.desc || '' }))].filter((x) => x.value.startsWith((first || '').toLowerCase()));
       },
       run: async (args, ctx) => {
         const [first = '', ...rest] = String(args || '').trim().split(/\s+/);
         const sub = first.toLowerCase();
         if (!sub) { if (ctx.source === 'chat' || ctx.source === 'bar') { menuCenter(); return null; } return describeAll(); }
         if (sub === 'list' || sub === 'help') return describeAll();
+        const D = window.AppsDiscover;
+        if (sub === 'discover' && D) {
+          const a = rest[0]?.toLowerCase();
+          if (a === 'off' || a === 'on') { await D.setOff(a === 'off'); return a === 'off' ? 'No more "Try this" notes (/apps discover still suggests).' : '"Try this" notes are back (once a day at most).'; }
+          if (a === 'now') { const s = await D.maybeChip({ force: true }); return s ? null : 'Nothing new to suggest.'; }
+          if (ctx.source === 'chat' || ctx.source === 'bar') { D.dialog(); return null; }
+          return D.text();
+        }
+        if ((sub === 'search' || sub === 'all') && D) { D.searchDialog(rest.join(' ')); return null; }
+        if ((sub === 'fav' || sub === 'star') && D) { const app = get(rest.join(' ')); if (!app) return `No app "${rest.join(' ')}".`; const on = await D.toggleFav(app.id); return on ? `★ ${app.name} comes first in the Apps menu.` : `${app.name} is no longer a favorite.`; }
+        if (sub === 'suggest' && D) { const app = get(rest[0]); if (!app) return `No app "${rest[0] || ''}".`; D.suggestCard(ctx.agentId, app.id, rest.slice(1).join(' ')); return null; }
+        if (sub === 'send-to' && D) { const app = get(rest[0]); if (!app) return `No app "${rest[0] || ''}". Apps that take a picture: ${D.sendable().map((x) => x.id).join(', ')}`; return D.sendTo(app.id, rest.slice(1).join(' ') || 'board'); }
         if (sub === 'downloads') { await downloadsDialog(); return null; }
         if (sub === 'folder') { const d = await api()?.dirs(); if (d) window.hub.fs.reveal(d.downloads); return d ? `Downloads from apps go to ${d.downloads}` : 'App windows need the desktop app.'; }
         if (sub === 'windows') { const w = await api()?.windows() || []; return w.length ? w.map((x) => `- ${x.name}: ${x.visible ? 'on screen' : 'hidden (parked soon)'}${x.audible ? ' · playing sound' : ''}${x.title ? ` · ${x.title}` : ''}`).join('\n') : 'No app window is open.'; }
@@ -334,7 +353,11 @@ const Apps = (() => {
   // ---------- agents' tools (mcp/apps-mcp.js → gamebridge.js → here) ----------
   async function handleTool(tool, a = {}, ctx = {}) {
     if (tool === 'apps_open') {
-      if (!a.app || a.op === 'list') return { ok: true, value: list().map((x) => `${x.id}: ${x.name} (${x.group})${x.desc ? ` · ${x.desc}` : ''}`).join('\n') };
+      const agentOf = () => (ctx.agentId || H.agents().find((x) => ctx.chatId && H.activeChat?.[x.id] === ctx.chatId)?.id || chatAgent()?.id);
+      if (a.suggest && a.app && window.AppsDiscover) { const app = get(a.app); if (!app) return { ok: false, error: `No app "${a.app}"` }; AppsDiscover.suggestCard(agentOf(), app.id, String(a.why || '')); return { ok: true, value: `Suggested ${app.name} to the owner (a card with an Open button).` }; }
+      if (a.op === 'discover' && window.AppsDiscover) return { ok: true, value: AppsDiscover.text(6) };
+      if (a.send && a.app && window.AppsDiscover) { try { return { ok: true, value: await AppsDiscover.sendTo(get(a.app)?.id || a.app, String(a.send)) }; } catch (err) { return { ok: false, error: err.message }; } }
+      if (!a.app || a.op === 'list') return { ok: true, value: list().map((x) => `${x.id}: ${x.name} (${x.group}${x.price ? `, ${x.price}` : ''})${x.desc ? ` · ${x.desc}` : ''}`).join('\n') };
       const app = get(a.app);
       if (!app) return { ok: false, error: `No app "${a.app}". Apps: ${list().map((x) => x.id).join(', ')}` };
       if (a.paste) {
