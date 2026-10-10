@@ -156,8 +156,11 @@ function sceneTime() { return globalThis.layer?.scene ?? t; }`;
   const ORBGLSL = `// soft 3D value noise for the shaders (GLSL)
 const ORB_NOISE = 'float oh(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }\\n'
   + 'float on3(vec3 x) { vec3 i = floor(x); vec3 f = fract(x); f = f * f * (3.0 - 2.0 * f); return mix(mix(mix(oh(i), oh(i + vec3(1.0, 0.0, 0.0)), f.x), mix(oh(i + vec3(0.0, 1.0, 0.0)), oh(i + vec3(1.0, 1.0, 0.0)), f.x), f.y), mix(mix(oh(i + vec3(0.0, 0.0, 1.0)), oh(i + vec3(1.0, 0.0, 1.0)), f.x), mix(oh(i + vec3(0.0, 1.0, 1.0)), oh(i + vec3(1.0, 1.0, 1.0)), f.x), f.y), f.z); }\\n';`;
+  // tall frames (9:16, 4:5) see less sideways: the orb and its halo shrink to stay inside the frame
+  const ASPECTFIT = `// 1 in wide frames, smaller in tall ones (9:16, 4:5), so what sits in the middle stays inside the frame
+function aspectFit() { return Math.min(1, innerWidth / Math.max(1, innerHeight) / 0.85); }`;
   const helper = (c, name) => {
-    const code = { mixColor: MIXCOLOR, shiftColor: HUESHIFT, paletteColor: PALCOLOR, dotTexture: DOT, spectrumAt: SPEC, beatCount: BEATS, keyAt: KEYS, sceneTime: SCENET, orbNoise: ORBGLSL }[name];
+    const code = { aspectFit: ASPECTFIT, mixColor: MIXCOLOR, shiftColor: HUESHIFT, paletteColor: PALCOLOR, dotTexture: DOT, spectrumAt: SPEC, beatCount: BEATS, keyAt: KEYS, sceneTime: SCENET, orbNoise: ORBGLSL }[name];
     if (name === 'paletteColor') c.helper('mixColor', MIXCOLOR);
     c.helper(name, code);
     return name;
@@ -571,18 +574,18 @@ const ${id}Base = ${id}.geometry.attributes.position.array.slice();`);
     outputs: [O('obj', 'obj', 'Orb')],
     compile: (c) => {
       const id = c.id;
-      helper(c, 'orbNoise');
+      helper(c, 'orbNoise'); helper(c, 'aspectFit');
       c.setup(`const ${id} = new THREE.Mesh(new THREE.SphereGeometry(${c.in('radius')}, Math.round(${c.in('detail')}), Math.round(${c.in('detail')} / 2)), new THREE.ShaderMaterial({
   uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color() }, uRim: { value: new THREE.Color() }, uGlow: { value: 1 }, uPower: { value: 2 }, uRipple: { value: 0 }, uLumps: { value: 1 }, uFlow: { value: 0 } },
   vertexShader: ORB_NOISE + 'uniform float uTime; uniform float uRipple; uniform float uLumps; uniform float uFlow; varying vec3 vN; varying vec3 vV; varying float vD;\\nvoid main() {\\n  vec3 d = normalize(position);\\n  float n = on3(d * uLumps + vec3(0.0, uTime * uFlow, 0.0)) * 0.65 + on3(d * uLumps * 2.3 - vec3(uTime * uFlow * 0.7)) * 0.35;\\n  vD = n;\\n  vec4 mv = modelViewMatrix * vec4(position * (1.0 + (n - 0.5) * uRipple), 1.0);\\n  vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv;\\n}',
-  fragmentShader: 'uniform vec3 uColor; uniform vec3 uRim; uniform float uGlow; uniform float uPower; varying vec3 vN; varying vec3 vV; varying float vD;\\nvoid main() {\\n  float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), uPower);\\n  vec3 core = uColor * (0.18 + 0.62 * smoothstep(0.25, 0.85, vD));\\n  vec3 c = core + mix(uColor, uRim, f) * f * uGlow * 1.5 + uColor * pow(max(0.0, 1.0 - f), 4.0) * 0.12 * uGlow;\\n  gl_FragColor = vec4(c, 1.0);\\n}',
+  fragmentShader: 'uniform vec3 uColor; uniform vec3 uRim; uniform float uGlow; uniform float uPower; varying vec3 vN; varying vec3 vV; varying float vD;\\nvoid main() {\\n  float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), uPower);\\n  vec3 core = uColor * (0.07 + 0.55 * smoothstep(0.35, 0.95, vD));\\n  vec3 c = core + mix(uColor, uRim, f) * f * uGlow * 1.8 + uColor * pow(max(0.0, 1.0 - f), 3.0) * 0.08 * uGlow;\\n  gl_FragColor = vec4(c, 1.0);\\n}',
 }));`);
       const tm = c.in('time');
       c.frame(`{
   const u = ${id}.material.uniforms;
   u.uTime.value = ${tm}; u.uColor.value.set(${c.in('color')}); u.uRim.value.set(${c.in('rim')}); u.uGlow.value = ${c.in('glow')}; u.uPower.value = ${c.in('rimPower')};
   u.uRipple.value = ${c.in('ripple')}; u.uLumps.value = ${c.in('lumps')}; u.uFlow.value = ${c.in('flow')};
-  ${id}.scale.setScalar(${c.in('scale')});
+  ${id}.scale.setScalar(${c.in('scale')} * aspectFit());
   ${id}.rotation.set(Math.sin(${tm} * 0.21) * 0.25, ${tm} * ${c.in('spin')} * Math.PI * 0.2, 0);
 }`);
       return { obj: id };
@@ -591,13 +594,13 @@ const ${id}Base = ${id}.geometry.attributes.position.array.slice();`);
   // Orb halo: a soft glow behind the orb (a sprite) and a tilted ring of motes turning around it, on the timeline.
   define({
     type: 'orbHalo', title: 'Orb halo', category: 'Particles', color: '#bd8bff', idBase: 'halo', desc: 'A soft glow around an orb and a tilted ring of glowing motes turning around it (wire the Timeline to Time)', keywords: 'glow aura ring dust motes orbit sprite',
-    inputs: [N('time', 0, 0, 60, { label: 'Time', slider: false }), C('color', '#ffc23d'), N('size', 5.5, 0.5, 20, { label: 'Glow size' }), N('strength', 0.55, 0, 2, { label: 'Glow' }),
+    inputs: [N('time', 0, 0, 60, { label: 'Time', slider: false }), C('color', '#ffc23d'), N('size', 5.5, 0.5, 20, { label: 'Glow size' }), N('strength', 0.7, 0, 2, { label: 'Glow' }),
       I('count', 700, 0, 6000, { step: 50, label: 'Motes' }), S('radius', 2.6, 0.5, 10, { label: 'Ring size' }), N('moteSize', 0.06, 0.005, 0.4, { label: 'Mote size' }),
       N('speed', 0.35, -2, 2, { label: 'Turns / 10 s' }), N('tilt', 22, -90, 90, { label: 'Tilt °' })],
     outputs: [O('obj', 'obj', 'Halo')],
     compile: (c) => {
       const id = c.id;
-      helper(c, 'dotTexture');
+      helper(c, 'dotTexture'); helper(c, 'aspectFit');
       c.setup(`const ${id} = new THREE.Group();
 const ${id}Glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotTexture(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
 const ${id}Motes = (() => {
@@ -610,7 +613,7 @@ const ${id}Motes = (() => {
 })();
 ${id}.add(${id}Glow, ${id}Motes);`);
       const tm = c.in('time');
-      c.frame(`${id}Glow.scale.setScalar(${c.in('size')}); ${id}Glow.material.color.set(${c.in('color')}); ${id}Glow.material.opacity = ${c.in('strength')};`);
+      c.frame(`${id}.scale.setScalar(aspectFit()); ${id}Glow.scale.setScalar(${c.in('size')}); ${id}Glow.material.color.set(${c.in('color')}); ${id}Glow.material.opacity = ${c.in('strength')};`);
       c.frame(`${id}Motes.material.color.set(${c.in('color')}); ${id}Motes.material.size = ${c.in('moteSize')}; ${id}Motes.rotation.set(THREE.MathUtils.degToRad(${c.in('tilt')}), ${tm} * ${c.in('speed')} * Math.PI * 0.2, 0);`);
       return { obj: id };
     },

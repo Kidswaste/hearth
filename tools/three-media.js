@@ -658,6 +658,7 @@ const ThreeMedia = (() => {
       useMap();
       sizeCanvas();
       paint();
+      wish = playing ? { play: true, at: performance.now() } : null; // a preview that reloads meanwhile still starts it
       attach({ playing });
       if (!allMaps) window.hub.kvGet('three-beatmaps', {}).then((all) => { allMaps ||= all || {}; if (seq !== loadSeq) return; useMap(); sizeCanvas(); sendMap(); paint(); });
       else sendMap();

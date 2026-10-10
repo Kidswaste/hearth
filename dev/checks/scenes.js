@@ -23,9 +23,11 @@ const S = ThreeLab.scenes;
 const host = H.surfaces.get('tool:three').el;
 const cur = () => S.get(S.currentId());
 const firstSketch = S.currentId();
+// a new chat's scene is the orb (round 10): its Orb layer (the top one) carries the chat's color and the knobs
+const orbCode = (id) => S.layersOf(S.get(id)).at(-1).code;
 step(Boolean(S && ChatScenes), 'Lab and chat scenes loaded', cur()?.name);
 
-// 1. chat A: "New chat" opens a calm starter; the first message links it and names it after the chat
+// 1. chat A: "New chat" opens the orb starter; the first message links it and names it after the chat
 Native.newChat(agent.id);
 await until(() => cur()?.name === 'New chat' && S.currentId() !== firstSketch, 8000);
 step(cur()?.name === 'New chat', 'a new chat opens a fresh starter', cur()?.name);
@@ -34,7 +36,7 @@ await until(() => !Native.isBusy(H.activeChat[agent.id]), 30000);
 const A = H.activeChat[agent.id];
 const skA = ChatScenes.linkOf(A);
 step(skA === S.currentId() && S.get(skA).name === 'Scene A: calm gold mist', 'chat A owns its starter, named after the chat', S.get(skA)?.name);
-step(S.layersOf(S.get(skA))[0].code.includes(ChatScenes.identity(A).color), 'starter tinted with chat A\'s color', ChatScenes.identity(A));
+step(orbCode(skA).includes(ChatScenes.identity(A).color), 'starter tinted with chat A\'s color', ChatScenes.identity(A));
 
 // 2. chat B and C: their own scenes
 Native.newChat(agent.id);
@@ -82,10 +84,10 @@ await wait(1500);
 await shot('1-chat-B');
 
 // 4. the director of A edits A's scene while B is on screen (HubBridge.call as A's run would)
-const bBefore = S.layersOf(S.get(skB))[0].code;
-const r1 = await HubBridge.call('three_edit_code', { edits: [{ find: 'drift: { value: 0.25', replace: 'drift: { value: 1.4' }], shot: true }, { chatId: A });
-step(r1.ok !== false && S.layersOf(S.get(skA))[0].code.includes('drift: { value: 1.4'), 'backstage edit lands in A\'s sketch', r1.ok === false ? r1.error : r1.value?.changed);
-step(S.layersOf(S.get(skB))[0].code === bBefore && S.currentId() === skB, 'B\'s scene untouched and still on screen');
+const bBefore = orbCode(skB);
+const r1 = await HubBridge.call('three_edit_code', { edits: [{ find: 'orb1_flow: { value: 0.22', replace: 'orb1_flow: { value: 1.4' }], layer: 'Orb', shot: true }, { chatId: A });
+step(r1.ok !== false && orbCode(skA).includes('orb1_flow: { value: 1.4'), 'backstage edit lands in A\'s sketch', r1.ok === false ? r1.error : r1.value?.changed);
+step(orbCode(skB) === bBefore && S.currentId() === skB, 'B\'s scene untouched and still on screen');
 step(/Backstage/.test(r1.value?.note || ''), 'the director is told it works backstage', String(r1.value?.note || '').slice(0, 80));
 const r2 = await HubBridge.call('three_screenshot', { size: 'small' }, { chatId: A });
 step(r2.ok !== false && r2.images?.length === 1, 'backstage screenshot', r2.value || r2.error);
@@ -98,9 +100,9 @@ const r5 = await HubBridge.call('three_sliders', {}, { chatId: A });
 step(r5.ok === false && /on screen/.test(r5.error), 'on-screen-only tools explain themselves', r5.error?.slice(0, 90));
 // the dock's undo of that edit: undone in A's sketch, the Lab stays on B
 const u = await ThreeDirector.undo();
-step(u?.restored === 'before' && !S.layersOf(S.get(skA))[0].code.includes('drift: { value: 1.4') && S.currentId() === skB && S.layersOf(S.get(skB))[0].code === bBefore, 'undo of a background edit stays in its scene', u?.layer);
+step(u?.restored === 'before' && !orbCode(skA).includes('orb1_flow: { value: 1.4') && S.currentId() === skB && orbCode(skB) === bBefore, 'undo of a background edit stays in its scene', u?.layer);
 await ThreeDirector.redo();
-step(S.layersOf(S.get(skA))[0].code.includes('drift: { value: 1.4'), 'redo too');
+step(orbCode(skA).includes('orb1_flow: { value: 1.4'), 'redo too');
 // a jam on B: both agents on the tag
 ChatScenes.setWorkers(B, ['claude', 'codex']);
 await wait(50);
@@ -115,7 +117,7 @@ step(r6.ok !== false && S.currentId() === skB, 'calls without a chat use the ske
 // 5. the real path: the fake director in chat C calls the MCP server (HUB_CHAT_ID) while A is on screen
 Native.open(agent.id, C);
 await until(() => S.currentId() === skC, 8000);
-const calls = [['three_edit_code', { edits: [{ find: 'breathe: { value: 0.35', replace: 'breathe: { value: 1.1' }] }], ['three_screenshot', { size: 'small' }]];
+const calls = [['three_edit_code', { edits: [{ find: 'orb1_lumps: { value: 1.7', replace: 'orb1_lumps: { value: 1.1' }], layer: 'Orb' }], ['three_screenshot', { size: 'small' }]];
 await Native.send(agent.id, `think slow mcp\nmcp: ${JSON.stringify(calls)}`);
 await wait(400);
 Native.open(agent.id, A);
@@ -125,9 +127,9 @@ step(Boolean(document.querySelector(`#chat-groups .item[data-key="${CSS.escape(C
 await shot('3-C-working-in-background');
 await until(() => !Native.isBusy(C), 90000);
 const replyC = (await Native.load(C)).messages.at(-1);
-const aCode = S.layersOf(S.get(skA))[0].code;
-step(S.layersOf(S.get(skC))[0].code.includes('breathe: { value: 1.1'), 'C\'s director edited C\'s scene (via MCP, backstage)', replyC?.text?.split('\n').filter((l) => l.startsWith('- ')).map((l) => l.slice(0, 110)));
-step(!aCode.includes('breathe: { value: 1.1') && S.currentId() === skA, 'A\'s scene (on screen) untouched');
+const aCode = orbCode(skA);
+step(orbCode(skC).includes('orb1_lumps: { value: 1.1'), 'C\'s director edited C\'s scene (via MCP, backstage)', replyC?.text?.split('\n').filter((l) => l.startsWith('- ')).map((l) => l.slice(0, 110)));
+step(!aCode.includes('orb1_lumps: { value: 1.1') && S.currentId() === skA, 'A\'s scene (on screen) untouched');
 const logC = HubBridge.log().filter((e) => e.chatId === C).map((e) => e.tool);
 step(logC.includes('three_edit_code'), 'calls carry the chat id', logC);
 
@@ -186,7 +188,7 @@ const drew = await until(() => { const st = ThreeLab.director.report().stats; re
 step(drew, 'the preview draws after all the switching', ThreeLab.director.report().stats?.fps);
 await wait(800);
 await shot('5-chat-A');
-const tintOf = (id) => S.layersOf(S.get(id))[0].code.match(/tint: \{ value: '(#\w+)'/)?.[1];
+const tintOf = (id) => orbCode(id).match(/orb1_color: \{ value: '(#\w+)'/)?.[1];
 const tints = { A: [tintOf(skA), ChatScenes.identity(A).color], B: [tintOf(skB), ChatScenes.identity(B).color], C: [tintOf(skC), ChatScenes.identity(C).color] };
 step(Object.values(tints).every(([t, c]) => t === c), 'each starter keeps its chat\'s color', tints);
 // 7b. round 5 (scenes2): stills on the rows, the cross-fade, rapid switching, icons, picker, notifications
@@ -225,8 +227,8 @@ step(Object.values(tints).every(([t, c]) => t === c), 'each starter keeps its ch
   const drew2 = await until(() => { const st = ThreeLab.director.report().stats; return st && typeof st === 'object' && st.fps > 0; }, 15000);
   step(drew2, 'and it draws');
   // switching while a director edits its scene (slow turn with an edit) and the backstage is busy
-  const busyCalls = [['three_edit_code', { edits: [{ find: 'drift: { value:', replace: 'drift: { value: 0.9, was:' }] }], ['three_screenshot', { size: 'small' }]];
-  const bCode = S.layersOf(S.get(skB))[0].code;
+  const busyCalls = [['three_edit_code', { edits: [{ find: 'orb1_flow: { value:', replace: 'orb1_flow: { value: 0.9, was:' }], layer: 'Orb' }], ['three_screenshot', { size: 'small' }]];
+  const bCode = orbCode(skB);
   Native.open(agent.id, A);
   await until(() => S.currentId() === ChatScenes.linkOf(A), 8000);
   await Native.send(agent.id, `think slow mcp\nmcp: ${JSON.stringify(busyCalls)}`);
@@ -238,8 +240,8 @@ step(Object.values(tints).every(([t, c]) => t === c), 'each starter keeps its ch
   await bgEdit;
   await until(() => !Native.isBusy(A), 60000);
   await until(() => S.currentId() === skB && cover().classList.contains('out'), 8000);
-  step(S.currentId() === skB && S.layersOf(S.get(skB))[0].code === bCode, 'mid-edit switches: B on screen, B untouched');
-  step(S.layersOf(S.get(ChatScenes.linkOf(A)))[0].code.includes('was:'), 'A\'s edit landed in A\'s scene (backstage after the switch)');
+  step(S.currentId() === skB && orbCode(skB) === bCode, 'mid-edit switches: B on screen, B untouched');
+  step(orbCode(ChatScenes.linkOf(A)).includes('was:'), 'A\'s edit landed in A\'s scene (backstage after the switch)');
   // Claude's spark / Astra's star on the tag; in a jam the one at work glows
   ChatScenes.setWorkers(B, ['claude', 'codex'], 'codex');
   await wait(50);
