@@ -582,7 +582,8 @@ const Capture = (() => {
     let where = t;
     if (t === 'tool') { try { const sid = H.surfaceIdFor(H.activeId) || ''; where = sid.startsWith('tool:') ? (Tools.get(sid.slice(5))?.name || sid.slice(5)) : (H.agent(sid)?.name || 'chat'); } catch { /* a plain name */ } }
     if (String(t).startsWith('selector:')) where = 'element';
-    return `Hearth ${where}${frame ? ` ${frame.id.replace(':', 'x')}` : ''} ${stamp}`;
+    const mk = window.Makes?.fileHere?.(); // (round 11) in a make's room the file carries the make's name ("Neon Tunnel · Lab …")
+    return `${mk || `Hearth ${where}`}${frame ? ` ${frame.id.replace(':', 'x')}` : ''} ${stamp}`;
   }
 
   // ---------- the clipboard: the page's own clipboard API (as the Lab does), main's as a fallback ----------
@@ -830,7 +831,7 @@ const Capture = (() => {
       const recorder = new MediaRecorder(new MediaStream([videoTrack, ...audioTracks]), { mimeType: mime, videoBitsPerSecond: Math.round(mbps * 1e6), audioBitsPerSecond: 256000 });
       rec.recorder = recorder;
       recorder.onerror = (e) => { rec && (rec.recError = e.error?.message || 'encoder error'); console.warn('capture: recorder', e.error); };
-      const file = await api().recOpen({ ext: /mp4/.test(mime) ? 'mp4' : 'webm', name: o.name || `Hearth ${o.target === 'window' ? 'recording' : o.target} ${new Date().toISOString().slice(0, 19).replace('T', ' ').replace(/:/g, '-')}` });
+      const file = await api().recOpen({ ext: /mp4/.test(mime) ? 'mp4' : 'webm', name: o.name || `${window.Makes?.fileHere?.() || `Hearth ${o.target === 'window' ? 'recording' : o.target}`} ${new Date().toISOString().slice(0, 19).replace('T', ' ').replace(/:/g, '-')}` });
       rec.id = file.id; rec.path = file.path;
       const R0 = rec;
       recorder.ondataavailable = (e) => { if (e.data?.size) { R0.bytes = (R0.bytes || 0) + e.data.size; R0.chunks = R0.chunks.then(async () => api().recWrite(file.id, new Uint8Array(await e.data.arrayBuffer()))); } };

@@ -33,6 +33,8 @@ const ChatScenes = (() => {
   // differs from the colors and glyphs of that director's recent chats, so side by side they never look alike.
   function identity(chatId) {
     if (!chatId) return { color: NEUTRAL, colorName: 'gold', glyph: '◇' };
+    const mk = window.Makes?.identFor?.(chatId); // (round 11) a make's rooms share the make's color and mark (makes.js)
+    if (mk) return mk;
     const kept = data.idents[chatId];
     const h = hash(chatId);
     let ci = kept ? kept[0] : h % PALETTE.length;

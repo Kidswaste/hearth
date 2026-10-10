@@ -92,6 +92,7 @@ const Commands = (() => {
   const NOT_LAST = new Set(['repeat', 'help', 'cmd-history', 'every', 'at', 'timers', 'timer-cancel', 'macro', 'how', 'what']);
   let lastLine = readLS('commands.last', '');
   const listeners = new Set();
+  const befores = new Set(); // (round 11) onBefore(fn): just before a command runs (makes.js knows which command makes what)
   // Extra info other files add by name (examples, keywords, argument words, undo), kept apart from the defs so it
   // survives re-registering and load order (cmdbar-data.js).
   const info = new Map();
@@ -461,6 +462,7 @@ const Commands = (() => {
     const outer = active;
     active = { source: ctx.source, say: ctx.say, note: ctx.note, draft: opts.draft, error: opts.error };
     try {
+      for (const fn of befores) { try { fn({ def: hit.def, args: hit.args, source: ctx.source, place: ctx.place, agentId, nested: nested || opts.history === false }); } catch { /* a listener never breaks a command */ } }
       const out = await hit.def.run(hit.args, ctx);
       if (typeof out === 'string' && out) ctx.say(out);
       Usage.track(`Chat command › /${hit.def.name}`);
@@ -480,6 +482,7 @@ const Commands = (() => {
   }
   // onRun(({ line, def, args, ok, source, place, agentId }) => …) after every command; returns an unsubscribe.
   const onRun = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
+  const onBefore = (fn) => { befores.add(fn); return () => befores.delete(fn); };
 
   // Runs a command from code (agents' suggestion chips, other tools): Commands.exec('/astra hi', agentId)
   const exec = (text, agentId = H.claudeAgent()?.id, opts) => tryRun(text.startsWith('/') ? text : `/${text}`, agentId, null, opts);
@@ -550,5 +553,7 @@ const Commands = (() => {
     addInfo, info: (name) => info.get(String(name || '').toLowerCase()) || {}, examplesOf, keywordsOf, undoOf, helpList, words,
     // round 10: flows tuck most commands out of the "/" menu
     setTuck, isTucked,
+    // round 11: makes.js
+    onBefore,
   };
 })();

@@ -1,0 +1,59 @@
+/* Makes (round 11): one name, color and mark per make — its group in the chats list, the card at the top of each room,
+   and the Makes list on the Commands page. Colors come from the make (--mk); no animation runs per frame. */
+
+/* the chats list: a make's group, its rooms under it */
+.mk-group > .group-head .group-toggle { gap: 6px; }
+.mk-group .mk-mark { color: var(--mk); font-size: 0.95em; line-height: 1; text-shadow: 0 0 7px color-mix(in srgb, var(--mk) 50%, transparent); }
+.mk-group .group-name { font-weight: 650; }
+.mk-group .mk-st { color: color-mix(in srgb, var(--mk) 70%, var(--muted, #999)); font-variant-numeric: tabular-nums; }
+.mk-group.mk-stuck .mk-st { color: var(--danger, #ff5d5d); }
+.mk-group { box-shadow: inset 2px 0 0 color-mix(in srgb, var(--mk) 45%, transparent); border-radius: 8px; }
+.mk-group .mk-more { opacity: 0.55; }
+.mk-group:hover .mk-more { opacity: 1; }
+.item.mk-room .chat-ident.mk-ident { color: var(--mk); }
+.item.mk-room { --chat-ident: var(--mk); }
+.item .mk-tag { flex: none; margin-left: auto; font-size: 0.72em; padding: 0 5px; border-radius: 6px; color: color-mix(in srgb, var(--mk) 75%, var(--text)); border: 1px dashed color-mix(in srgb, var(--mk) 45%, transparent); line-height: 1.5; }
+.item .mk-tag.mk-t-working { border-style: solid; }
+.item .mk-tag.mk-t-done { border: 0; }
+.item .mk-tag.mk-t-stuck { color: var(--danger, #ff5d5d); border-color: color-mix(in srgb, var(--danger, #ff5d5d) 50%, transparent); }
+.show-more.mk-more-makes { color: var(--muted, #999); }
+
+/* the card at the top of a room: what it will hold before anything is in it; one slim line once it started */
+.mk-room-card { margin: 4px 2px 12px; padding: 10px 12px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--mk) 40%, transparent);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--mk) 12%, transparent), transparent 70%); }
+.mk-room-card.mk-slim { padding: 5px 10px; margin-bottom: 8px; background: color-mix(in srgb, var(--mk) 6%, transparent); }
+.mk-rc-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.mk-rc-head .mk-mark { color: var(--mk); font-size: 1.15em; text-shadow: 0 0 8px color-mix(in srgb, var(--mk) 60%, transparent); }
+.mk-room-name { color: var(--muted, #aaa); }
+.mk-pill { margin-left: auto; font-size: 0.78em; padding: 1px 8px; border-radius: 999px; border: 1px dashed color-mix(in srgb, var(--mk, var(--accent)) 50%, transparent); color: color-mix(in srgb, var(--mk, var(--accent)) 80%, var(--text)); white-space: nowrap; }
+.mk-pill.mk-c-working, .mk-pill.mk-c-going { border-style: solid; }
+.mk-pill.mk-c-done { border-style: solid; background: color-mix(in srgb, var(--mk, var(--accent)) 18%, transparent); }
+.mk-pill.mk-c-stuck { color: var(--danger, #ff5d5d); border-color: var(--danger, #ff5d5d); }
+.mk-holds { margin: 7px 0 4px; color: var(--muted, #aaa); font-size: 0.92em; }
+.mk-strip { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+.mk-slim .mk-strip { margin-top: 3px; }
+.mk-chip { font-size: 0.8em; padding: 1px 8px; border-radius: 7px; background: color-mix(in srgb, var(--text) 6%, transparent); border: 1px solid transparent; color: var(--text); cursor: pointer; }
+.mk-chip:hover:not(:disabled) { border-color: color-mix(in srgb, var(--mk) 60%, transparent); }
+.mk-chip.on { border-color: var(--mk); color: var(--mk); cursor: default; }
+.mk-chip.mk-c-done::after { content: ' ✓'; }
+.mk-chip.mk-c-planned, .mk-chip.mk-c-waiting { opacity: 0.75; border-style: dashed; border-color: color-mix(in srgb, var(--text) 18%, transparent); }
+.mk-arrow { color: var(--muted, #888); font-size: 0.8em; }
+.mk-acts { display: flex; gap: 6px; margin-top: 8px; }
+.mk-slim .mk-acts { margin-top: 4px; }
+.mk-slim .mk-acts:not(:has(button + button)) { display: none; }
+
+/* the Makes list on the Commands page */
+.cp-row.mk-row .mk-pv { display: grid; place-items: center; font-size: 20px; color: var(--mk); background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--mk) 28%, transparent), color-mix(in srgb, var(--mk) 6%, transparent) 70%); text-shadow: 0 0 10px color-mix(in srgb, var(--mk) 70%, transparent); }
+.cp-row.mk-row.mk-dismissed { opacity: 0.5; }
+.cp-row.mk-allrow { justify-content: center; color: var(--muted, #aaa); font-size: 0.9em; }
+.mk-detail .mk-big { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--mk) 30%, transparent), transparent 70%), color-mix(in srgb, var(--text) 4%, transparent); }
+.mk-bigmark { font-size: 64px; line-height: 1; color: var(--mk); text-shadow: 0 0 24px color-mix(in srgb, var(--mk) 80%, transparent); }
+.mk-bigname { font-weight: 700; letter-spacing: 0.02em; }
+.mk-parts, .mk-outs, .mk-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.mk-part, .mk-out { display: flex; align-items: center; gap: 9px; padding: 5px 8px; border-radius: 9px; background: color-mix(in srgb, var(--text) 4%, transparent); }
+.mk-part.mk-c-planned, .mk-part.mk-c-waiting { border: 1px dashed color-mix(in srgb, var(--mk) 35%, transparent); background: none; }
+.mk-part.mk-c-stuck { box-shadow: inset 2px 0 0 var(--danger, #ff5d5d); }
+.mk-part.mk-c-done .mk-picon::after { content: '✓'; margin-left: 2px; font-size: 0.8em; color: var(--mk); }
+.mk-picon { flex: none; width: 1.6em; text-align: center; color: var(--mk); }
+.mk-ptext { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mk-ptext .cp-desc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

@@ -100,6 +100,8 @@ Your scene is one part of a bigger video, made at the same time as the other par
     const tall = tallFrame(host.sketchId);
     const at = Date.now();
     const m = { role: 'comp', id: `c${at.toString(36)}`, at, layout, len: total, host: { chatId: host.chat.id, sketchId: host.sketchId }, parts: [], text: '' };
+    // (round 11) the comp is a make (makes.js): its parts' chats share one name, color and mark ("<Name> · Lab 1/2 · …")
+    const mk = window.Makes?.compMake?.({ id: m.id, hostChatId: host.chat.id, hostTitle: host.chat.title, parts: list }) || null;
     for (const [i, p] of list.entries()) {
       const engine = p.engine || agent.engine;
       let chat = existingChat(p.chatRef, agent);
@@ -110,7 +112,7 @@ Your scene is one part of a bigger video, made at the same time as the other par
         sk = S().get(ChatScenes.linkOf(chat.id)) || ChatScenes.fresh(chat.id);
       } else {
         const id = `${agent.id}-${(at + i).toString(36)}p${i + 1}`;
-        chat = { id, agentId: agent.id, title: `◫ ${i + 1}/${n} · ${p.name}`, createdAt: at, updatedAt: at, session: {}, messages: [], ...(engine !== agent.engine ? { engine } : {}) };
+        chat = { id, agentId: agent.id, title: mk?.titles[i] || `◫ ${i + 1}/${n} · ${p.name}`, createdAt: at, updatedAt: at, session: {}, messages: [], ...(engine !== agent.engine ? { engine } : {}) };
         Native.adopt(chat, { openIt: false });
         sk = ChatScenes.fresh(chat.id);
       }
@@ -123,6 +125,7 @@ Your scene is one part of a bigger video, made at the same time as the other par
       m.parts.push({ n: p.n, name: p.name, brief: p.brief, engine, chatId: chat.id, layerId: L.id, state: 'sent', sentAt: at, text: briefText(p, n, host.chat.title, layout === 'time' ? seg : total, frame) });
     }
     m.text = textOf(m);
+    if (mk) { m.make = mk.id; window.Makes.fromComp(m); }
     host.chat.messages.push(m);
     Native.save(host.chat);
     track(m, host.chat.id);
@@ -269,6 +272,7 @@ Your scene is one part of a bigger video, made at the same time as the other par
   const iconOf = (engine) => (typeof Icons !== 'undefined' && Icons.node(engine === 'codex' ? 'astra' : 'claude')) || document.createTextNode(engine === 'codex' ? 'A' : '✳');
   const paintT = new Map();
   function paint(m) {
+    window.Makes?.fromComp?.(m); // (round 11) the make follows its parts' states
     if (paintT.has(m.id)) return;
     paintT.set(m.id, setTimeout(() => {
       paintT.delete(m.id);
