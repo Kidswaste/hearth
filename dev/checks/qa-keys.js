@@ -274,7 +274,10 @@ if (AREAS.includes('Lab')) {
     sig: sigL,
     skip: /^(P|Shift\+F|Ctrl\+Shift\+Enter|Ctrl\+PgDn|Ctrl\+PgUp)$/, // fullscreen Present / Focus, a fresh page, sketch switching (journey-lab covers them)
     before: async () => { if (H.activeId !== 'tool:three') activate('tool:three'); const r = pic?.getBoundingClientRect(); if (r) { await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mousePressed', x: r.left + r.width / 2, y: r.top + r.height * 0.6, button: 'left', clickCount: 1 } }); await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseReleased', x: r.left + r.width / 2, y: r.top + r.height * 0.6, button: 'left', clickCount: 1 } }); } await wait(100); },
-    restore: async () => { if (lab.state.frozen) { await press(one('F')); await wait(200); } await press(one('Escape')); }, // keys, not calls (a size change can keep a call waiting for the next frame)
+    // keys, not calls (a size change can keep a call waiting for the next frame); and don't wait on the key's own
+    // acknowledgement for more than 3 s: a frame size change rebuilds the preview frame, and the test harness's
+    // input ack for a key routed there can be lost (the next keys work: the app isn't stuck)
+    restore: async () => { const k = (c) => Promise.race([press(one(c)), wait(3000)]); if (lab.state.frozen) { await k('F'); await wait(200); } await k('Escape'); },
   });
 }
 
