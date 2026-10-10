@@ -105,9 +105,9 @@ const Renders = (() => {
   }
   // a render made here (from the panel or /renders): built when it starts (the source is probed then, so a chain's
   // second step can use the first one's file)
-  function enqueue({ input, preset, opts = {}, after = null, title = null, open: openAfter = false, again = null }) {
+  function enqueue({ input, preset, opts = {}, after = null, title = null, open: openAfter = false, again = null, make, reuseOut = null }) {
     const p = R.get(preset);
-    const job = add({ kind: 'ffmpeg', owner: 'renders', title: title || `${p.name}${input ? ` · ${R.base(input)}` : ''}`, input, preset: p.id, opts, after, openAfter,
+    const job = add({ kind: 'ffmpeg', owner: 'renders', title: title || `${p.name}${input ? ` · ${R.base(input)}` : ''}`, input, preset: p.id, opts, after, openAfter, reuseOut, ...(make !== undefined ? { make } : {}),
       again: again || (input ? { type: 'build', input, preset: p.id, opts } : null) });
     pump();
     return job;
@@ -178,12 +178,13 @@ const Renders = (() => {
     if (!src) throw new Error(`File not found or unreadable: ${j.input}`);
     const r = R.buildArgs(VideoData, j.preset, src, { ...j.opts, encoders });
     const stem = j.make && !R.stemOf(j.input).includes(j.make.name) ? `${j.make.name} · ${R.stemOf(j.input)}` : null;
-    const output = await R.nextFree(R.outPath(j.input, r.preset, r.w, r.h, r.ext, stem), async (p) => Boolean(await window.hub.fs.stat(p).catch(() => null)));
+    // a re-render keeps the first one's name ("… (2).mp4" next to it)
+    const output = await R.nextFree(j.reuseOut || R.outPath(j.input, r.preset, r.w, r.h, r.ext, stem), async (p) => Boolean(await window.hub.fs.stat(p).catch(() => null)));
     j.spec = { input: j.input, output, args: r.args, duration: r.duration };
     j.output = output;
     j.note = r.preset.note || null;
     if (j.after) j.again = j.again || { type: 'build', input: j.input, preset: j.preset, opts: j.opts };
-    if (j.again?.type === 'build') j.again.input = j.input;
+    if (j.again?.type === 'build') { j.again.input = j.input; j.again.output = j.again.output || output; }
   }
   // a Lab sequence render started here: the sequence opens (if another is on), renders (renderEdit tracks itself
   // through track(), which adopts this job)
@@ -355,7 +356,7 @@ const Renders = (() => {
       const nj = add({ kind: 'ffmpeg', owner: 'renders', title: a.title || j.title, input: a.spec.input, output: out, spec: { ...a.spec, output: out }, again: { ...a, spec: { ...a.spec, output: out } }, make: j.make || null });
       pump(); return nj;
     }
-    if (a.type === 'build') return enqueue({ input: a.input, preset: a.preset, opts: a.opts || {}, title: j.title });
+    if (a.type === 'build') return enqueue({ input: a.input, preset: a.preset, opts: a.opts || {}, title: j.title, make: j.make || null, reuseOut: a.output || null });
     if (a.type === 'seq') return enqueueSeq({ key: a.key, preset: a.preset, opts: a.opts || {} });
     if (a.type === 'seq-direct') {
       // a render started from the sequence itself: the same sequence and options, through the queue

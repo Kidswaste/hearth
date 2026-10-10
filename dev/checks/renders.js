@@ -109,6 +109,20 @@ try {
   await until(() => doneNotes().length, 5000); await wait(500);
   ok(doneNotes().length === 1 && doneNotes()[0].classList.contains('rq-done'), `one done note for it, the queue's (${doneNotes().map((t) => `${t.className}: ${t.textContent}`).join(' // ')})`);
 
+  // ---- 6b. made in a make's room: it joins the make (its mark on the row, the file in its outputs, its name on the file) ----
+  const mk = await Makes.plan('a script called Rq Make', { kinds: ['chat'] });
+  await wait(600);
+  ok(Makes.here()?.make.id === mk.id, `in the make's room (${Makes.here()?.make.name})`);
+  const mj = Renders.enqueue({ input: `${VIDS}/square_loop.mp4`, preset: 'square', opts: { quality: 'draft' } });
+  ok(mj.make?.id === mk.id && mj.make.glyph && mj.make.color, `the job knows its make (${JSON.stringify(mj.make)})`);
+  await until(() => mj.status === 'done', 60000);
+  ok(mj.status === 'done' && Renders.core.base(mj.output).startsWith(mk.name), `the file carries the make's name (${mj.output})`);
+  ok(Makes.get(mk.id)?.outputs.some((o) => o.path === mj.output), 'the file is one of the make\'s outputs');
+  Renders.open(); await wait(200);
+  ok(document.querySelector(`.rq-pop .rq-row[data-rq="${mj.id}"] .rq-mk`)?.textContent === mk.ident.glyph, 'its row shows the make\'s mark');
+  Renders.close();
+  activate(C.id); await wait(200);
+
   // ---- 7. a failure in plain words, with its fix, in the error log ----
   const bad = Renders.enqueue({ input: `${VIDS}/gone.mp4`, preset: 'vertical' });
   await until(() => bad.status === 'failed', 15000);
@@ -120,7 +134,7 @@ try {
   ok(Renders._test.unseen() > 0 || badge()?.dataset.state === 'failed', 'the badge keeps it until seen');
 
   // ---- 8. re-render with the same settings, then Trash ----
-  const ag = await say('/renders again 2');
+  const ag = await say('/renders again drop_visual_16x9_square');
   out.again = ag;
   const nj = Renders.list().at(-1);
   ok(/same settings/.test(ag) && nj && nj.id !== jsq.id, `re-render queued (${ag})`);
