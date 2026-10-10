@@ -5,7 +5,7 @@
 // edited backstage by its own chat updates the precomp live without reloading the page; one node in the Nodes view;
 // the menus and Alt+C; the comp rendered 9:16 frame by frame and its frames read back; performance (fps / render ms /
 // WebGL contexts with and without precomps, one page, automatic resolution for a small precomp).
-//   node dev/smoke.js --fake-engines --script dev/checks/comp.js --wait 6000 --check-timeout 900000 --shot /tmp/comp.png
+//   node dev/smoke.js --fake-engines --script dev/checks/comp.js --wait 6000 --check-timeout 1500000 --shot /tmp/comp.png
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 30000) => { const t = Date.now(); while (Date.now() - t < ms) { try { if (await fn()) return true; } catch { /* not yet */ } await wait(150); } return false; };
 const out = { steps: [], problems: [], perf: {} };

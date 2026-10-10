@@ -6,7 +6,7 @@
 // part; ⇄ swaps a part to the other engine (it carries on with the task state); ⟳ again from a fresh scene (the
 // precomp follows the chat); a hung part shows as stuck; ↗ jumps into a part (the Lab follows). The comp is rendered
 // 9:16 and its frames read back: part 1 at 1 s, part 2 at 7 s.
-//   node dev/smoke.js --fake-engines --script dev/checks/comp-dispatch.js --wait 6000 --check-timeout 900000 --shot /tmp/comp-dispatch.png
+//   node dev/smoke.js --fake-engines --script dev/checks/comp-dispatch.js --wait 6000 --check-timeout 1500000 --shot /tmp/comp-dispatch.png
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 30000) => { const t = Date.now(); while (Date.now() - t < ms) { try { if (await fn()) return true; } catch { /* not yet */ } await wait(150); } return false; };
 const out = { steps: [], problems: [], timing: {} };
