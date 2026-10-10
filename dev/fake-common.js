@@ -185,8 +185,23 @@ function directorPlan(prompt, msg, engine) {
   return { mcpCalls: calls, text: lines.join(' ') };
 }
 
+// Flows (flows-ui.js): "make a flow for X" gets a small flow made of the first commands the prompt offers.
+function flowPlan(msg) {
+  if (!/^Flow · make/.test(msg.split('\n')[0])) return null;
+  const cmds = [...msg.matchAll(/^\/([\w-]+)/gm)].map((m) => m[1]);
+  const [a = 'help', b = 'freeze'] = cmds;
+  const flow = { id: 'fake-flow', name: `Fake flow: ${(msg.match(/flow for: (.+)/) || [])[1] || 'x'}`.slice(0, 60), desc: 'Made by the fake engine', nodes: [
+    { id: 'one', kind: 'action', title: `Run /${a}`, cmd: `/${a}`, next: 'ask' },
+    { id: 'ask', kind: 'choice', title: `Also /${b}?`, var: 'more', options: [{ label: 'Yes', value: 'yes', next: 'two' }, { label: 'No', value: 'no', next: 'end' }] },
+    { id: 'two', kind: 'action', title: `Run /${b}`, cmd: `/${b}`, next: 'end' },
+    { id: 'end', kind: 'result', title: 'Done', text: '{last}' }] };
+  return { text: `Here is the flow:\n\n\`\`\`json\n${JSON.stringify(flow, null, 1)}\n\`\`\`` };
+}
+
 function plan(prompt, engine = 'claude') {
   const msg = userPart(prompt);
+  const fl = flowPlan(msg);
+  if (fl) return { p: {}, text: fl.text, thinking: '' };
   const intro = introPlan(msg);
   if (intro) {
     const p = { mcp: Boolean(intro.mcpCalls), mcpCalls: intro.mcpCalls || null };

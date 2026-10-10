@@ -166,6 +166,12 @@ const Commands = (() => {
     index = null;
   }
 
+  // (round 10, flows) Tucked commands: everything but the principal ones (flows-ui.js decides). They still run typed by
+  // name and stay in /help and the plain-language search; the "/" menu lists them only after the principal ones.
+  let tuckFn = null;
+  const setTuck = (fn) => { tuckFn = typeof fn === 'function' ? fn : null; };
+  const isTucked = (def) => { try { return Boolean(tuckFn && def && tuckFn(def)); } catch { return false; } };
+
   // "/name rest of line" -> { def, args } when name is a registered command, else null.
   function parse(text) {
     const m = String(text || '').match(/^\/([\w-]+)(?:\s+([\s\S]*))?$/);
@@ -181,7 +187,7 @@ const Commands = (() => {
     if (!q) { // nothing typed yet: pinned commands, recent ones (here first, then anywhere), then everything by area
       const pins = favs().map(get).filter((d) => d && !d.hidden);
       const rec = [...recentAt(place().id), ...recentAll()].map(get).filter((d, i, a) => d && !d.hidden && !pins.includes(d) && a.indexOf(d) === i);
-      return [...pins, ...rec, ...shown.filter((d) => !rec.includes(d) && !pins.includes(d))];
+      return [...pins, ...rec, ...shown.filter((d) => !rec.includes(d) && !pins.includes(d) && !isTucked(d))];
     }
     const starts = shown.filter((d) => d.name.startsWith(q) || d.aliases.some((a) => a.toLowerCase().startsWith(q)));
     const has = shown.filter((d) => !starts.includes(d) && (d.name.includes(q) || d.desc.toLowerCase().includes(q) || d.area.toLowerCase() === q || keywordsOf(d).toLowerCase().split(/\s+/).includes(q)));
@@ -194,7 +200,12 @@ const Commands = (() => {
     const sorted = starts.sort((a, b) => rank(a) - rank(b));
     if (hereArea) has.sort((a, b) => (b.area === hereArea) - (a.area === hereArea));
     const exact = get(q);
-    return exact && !exact.hidden ? [exact, ...sorted.filter((d) => d !== exact), ...has.filter((d) => d !== exact)] : [...sorted, ...has];
+    const all = exact && !exact.hidden ? [exact, ...sorted.filter((d) => d !== exact), ...has.filter((d) => d !== exact)] : [...sorted, ...has];
+    // (round 10) principal commands (and pinned / recent ones) before the ones tucked into flows; a name typed exactly stays first
+    if (!tuckFn) return all;
+    const mineNow = new Set(rec);
+    const keep = (d) => d === exact || !isTucked(d) || mineNow.has(d.name);
+    return [...all.filter(keep), ...all.filter((d) => !keep(d))];
   }
 
   // opts (all optional): { source: 'bar' | 'timer' | …, say(text), note(text, opts), draft(text) } redirect output.
@@ -536,5 +547,7 @@ const Commands = (() => {
     // round 3: command bar, plain-language search, favorites, history, examples
     place, favs, isFav, toggleFav, history, addHistory, counts, last: () => lastLine, onRun, context, suggest, didYouMean, argHint, splitPipe,
     addInfo, info: (name) => info.get(String(name || '').toLowerCase()) || {}, examplesOf, keywordsOf, undoOf, helpList, words,
+    // round 10: flows tuck most commands out of the "/" menu
+    setTuck, isTucked,
   };
 })();

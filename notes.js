@@ -465,6 +465,7 @@ const Prompts = (() => {
       // an area row of the "/" view opens in place; ‹ back returns (the menu stays open)
       if (it.kind === 'area' || it.kind === 'back') { slashArea = it.kind === 'area' ? it.area : null; lastValue = null; textarea.focus(); update(); return; }
       close();
+      if (it.kind === 'run') { setText(''); it.run?.(); return; } // (round 10) a flow or a run from the "/" view
       if (it.kind === 'command') { setText(`/${it.def.name} `); return; }
       if (it.kind === 'arg') { setText(argText(it)); return; }
       if (it.kind === 'line') { setText(it.line); return; }
@@ -502,7 +503,8 @@ const Prompts = (() => {
         let group = '';
         for (const def of cmds) {
           // headers: "Pinned", "Recent in <tool>" and "Recent" first (only with nothing typed), then the areas
-          const g = q ? '' : pinned.has(def.name) ? '★ Pinned' : recentHere.has(def.name) ? `Recent in ${here.label}` : recent.has(def.name) ? 'Recent' : def.area;
+          // (round 10) typed: the commands tucked into flows come after the principal ones, under their own head
+          const g = q ? (Commands.isTucked?.(def) && !pinned.has(def.name) && !recent.has(def.name) && !recentHere.has(def.name) && def.name !== q ? 'In flows (run by name)' : '') : pinned.has(def.name) ? '★ Pinned' : recentHere.has(def.name) ? `Recent in ${here.label}` : recent.has(def.name) ? 'Recent' : def.area;
           if (g && g !== group) { next.push({ kind: 'head', label: g }); group = g; }
           const row = cmdRow(def);
           // in the command bar, Alt+1…9 run the pinned ones: show which key
