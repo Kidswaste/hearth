@@ -144,6 +144,16 @@ test('hung after a long silence, back to running on news; waiting for you is nev
   step(600000); assert.strictEqual(P.get('w').state, 'wait');
 });
 
+test('a state the caller knows (hung from its own watchdog, waiting for you) holds until it says run', () => {
+  reset();
+  P.set('fh', { pct: 40, state: 'hung' }); step(250);
+  assert.strictEqual(P.get('fh').state, 'hung');
+  P.set('fh', { pct: 45 }); step(250);
+  assert.strictEqual(P.get('fh').state, 'hung', 'news alone does not clear a hung the caller set');
+  P.set('fh', { pct: 50, state: 'run' }); step(250);
+  assert.strictEqual(P.get('fh').state, 'run');
+});
+
 test('the same key starts fresh after it finished', () => {
   reset();
   P.set('k', { pct: 80 }); P.done('k');

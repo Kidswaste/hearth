@@ -185,7 +185,7 @@ const ProgressHooks = (() => {
 
   // ---------- renders: ffmpeg's own progress ----------
   // Video Review / the cut name their jobs (tools/review.js); the Lab sequence's mux is part of its own bar
-  function job(id, o) { P.set(`job:${id}`, { title: o.label || 'Rendering a video', icon: '⇪', kind: 'render', where: ['rail:tool:ae'], jump: () => activate('tool:ae'), actions: [{ label: '■', title: 'Cancel', run: () => window.hub.video.cancel(id) }], hungMs: 90000, ...o, label: o.sub || '' }); }
+  function job(id, o) { P.set(`job:${id}`, { title: o.label || 'Rendering a video', icon: '⇪', kind: 'render', pct: 0, where: ['rail:tool:ae'], jump: () => activate('tool:ae'), actions: [{ label: '■', title: 'Cancel', run: () => window.hub.video.cancel(id) }], hungMs: 90000, ...o, label: o.sub || '' }); }
   function onJob(ev) {
     if (!ev?.id || /^seq/.test(ev.id)) return;
     const key = `job:${ev.id}`;

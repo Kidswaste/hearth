@@ -167,11 +167,11 @@ const Progress = (() => {
     for (const k of ['title', 'label', 'kind', 'expect', 'parent', 'jump', 'icon', 'weight', 'hungMs', 'actions', 'meta', 'quietMs']) if (o[k] !== undefined) it[k] = o[k];
     if (o.where !== undefined) it.where = [].concat(o.where || []);
     if (o.eta !== undefined) it.eta = num(o.eta);
-    if (o.state === 'wait' || o.state === 'run') it.state = o.state;
-    if (o.state === 'hung') it.state = 'hung';
+    // a state the caller knows ('wait': paused for you; 'hung': its own watchdog said so) holds until it says 'run'
+    if (o.state === 'wait' || o.state === 'hung') { it.forced = o.state; it.state = o.state; } else if (o.state === 'run') { it.forced = null; if (it.state === 'wait' || it.state === 'hung') it.state = 'run'; }
     it.updated = now;
     if (o.pct != null || o.signals || o.label !== undefined || o.state) it.signaled = now;
-    if (it.state === 'hung' && o.state !== 'hung' && (o.pct != null || o.signals)) it.state = 'run';
+    if (it.state === 'hung' && !it.forced && (o.pct != null || o.signals)) it.state = 'run';
     // a parent named before it exists is made empty (its number comes from its children at the next tick, so parts
     // dispatched together start the parent at their mean, not at the first one's)
     if (o.parent) { const pa = items.get(o.parent); if (!pa || pa.state === 'done' || pa.state === 'failed') items.set(o.parent, { key: o.parent, title: '', label: '', kind: '', started: now, updated: now, signaled: now, shown: 0, measured: false, state: 'run', signals: {}, samples: [], weight: 1, where: [], rate: 0 }); }
@@ -201,7 +201,8 @@ const Progress = (() => {
     it.estimated = estimated;
     it.shown = Math.max(it.shown || 0, clamp(target, 0, 100));
     // the state: almost there / waiting on the agent instead of a bar frozen near the end; hung after a long silence
-    if (it.state !== 'wait' && it.state !== 'failed') {
+    if (it.forced) it.state = it.forced;
+    else if (it.state !== 'failed') {
       const quiet = now - (it.signaled || it.started);
       const hungMs = Number(it.hungMs) || HUNG_MS;
       const est = it.estimated && it.raw == null && !kids.length;

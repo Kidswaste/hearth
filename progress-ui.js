@@ -61,7 +61,8 @@ const ProgressUI = (() => {
     }
     if (b.bar.parentElement !== host) host.append(b.bar);
     const indet = it.meta?.indeterminate && it.state !== 'done';
-    const f = indet ? 1 : Math.round(Math.max(0.02, it.shown / 100) * 1000) / 1000;
+    // half-percent steps: the CSS transition makes it glide, so finer writes would only cost style work
+    const f = indet ? 1 : Math.round(Math.max(0.02, it.shown / 100) * 200) / 200;
     const cls = `pg-bar${b.bar.classList.contains('pg-anim') ? ' pg-anim' : ''}${it.estimated && it.state !== 'done' ? ' pg-est' : ''}${indet ? ' pg-indet' : ''} pg-${it.state}`;
     if (cls !== b.cls) { b.bar.className = cls; b.cls = cls; }
     if (f !== b.f) { b.fill.style.transform = `scaleX(${f})`; b.f = f; }
@@ -69,8 +70,9 @@ const ProgressUI = (() => {
     if (String(loc).startsWith('reply:')) {
       if (!b.note) { b.note = el('div', { class: 'pg-note' }); host.append(b.note); }
       if (b.note.parentElement !== host) host.append(b.note);
-      const w = Progress.words(it);
-      if (w !== b.words) { b.note.textContent = w; b.words = w; }
+      // its words change at most once a second (and only when they differ)
+      const now = performance.now();
+      if (now - (b.wordsAt || 0) >= 1000 || it.state === 'done') { const w = Progress.words(it); if (w !== b.words) { b.note.textContent = w; b.words = w; b.wordsAt = now; } }
     }
   }
   function sync() {
@@ -163,9 +165,10 @@ const ProgressUI = (() => {
   const escKey = (e) => { if (e.key === 'Escape' && pop) { e.stopPropagation(); closePop(); } };
   function rowEl(it, child = false) {
     const fill = el('i');
-    const acts = (it.actions || []).map((a) => el('button', { type: 'button', class: 'ghost small', text: a.label, title: a.title || '', on: { click: (e) => { e.stopPropagation(); try { a.run(); } catch (err) { toast(err.message, { type: 'error' }); } setTimeout(sync, 50); } } }));
+    const fin = it.state === 'done' || it.state === 'failed';
+    const acts = (fin ? [] : it.actions || []).map((a) => el('button', { type: 'button', class: 'ghost small', text: a.label, title: a.title || '', on: { click: (e) => { e.stopPropagation(); try { a.run(); } catch (err) { toast(err.message, { type: 'error' }); } setTimeout(sync, 50); } } }));
     const row = el('div', { class: `pg-row${child ? ' pg-child' : ''}`, dataset: { pg: it.key }, title: it.jump ? 'Click: go there' : '' },
-      el('div', { class: 'pg-row-head' }, it.icon ? el('span', { class: 'pg-ic', text: it.icon }) : null, el('b', { class: 'pg-t', text: titleOf(it) }), el('span', { class: 'pg-w' }), ...acts),
+      el('div', { class: 'pg-row-head' }, it.icon && !titleOf(it).startsWith(it.icon) ? el('span', { class: 'pg-ic', text: it.icon }) : null, el('b', { class: 'pg-t', text: titleOf(it) }), el('span', { class: 'pg-w' }), ...acts),
       el('div', { class: 'pg-bar pg-anim' }, fill));
     row._fill = fill;
     if (it.jump) row.addEventListener('click', () => { closePop(); try { it.jump(); } catch (err) { toast(err.message, { type: 'error' }); } });
@@ -175,7 +178,7 @@ const ProgressUI = (() => {
     if (!pop) return;
     const top = Progress.list();
     const rows = top.flatMap((it) => [[it, false], ...Progress.children(it.key).map((c) => [c, true])]);
-    const keys = rows.map(([it]) => `${it.key}|${(it.actions || []).map((a) => a.label).join()}`).join(',');
+    const keys = rows.map(([it]) => `${it.key}|${it.state === 'done' || it.state === 'failed' ? 'end' : (it.actions || []).map((a) => a.label).join()}`).join(',');
     if (keys !== pop._keys) {
       pop._keys = keys;
       pop.replaceChildren(el('div', { class: 'pg-pop-head', text: rows.length ? 'In progress' : 'Nothing in progress' }), ...rows.map(([it, c]) => rowEl(it, c)));

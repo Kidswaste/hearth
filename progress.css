@@ -34,7 +34,7 @@
 #pg-dot[hidden] { display: none; }
 #pg-dot:hover { opacity: 1; }
 #pg-dot .pg-dot-bar { position: relative; height: 3px; border-radius: 2px; overflow: hidden; background: color-mix(in srgb, var(--fh-ai, #a98bff) 22%, transparent); margin-left: 4px; }
-#pg-dot .pg-dot-bar > i { position: absolute; inset: 0; transform-origin: 0 50%; transform: scaleX(0); background: linear-gradient(90deg, var(--fh-ai, #a98bff), var(--fh-gold, #f5c451)); transition: transform .45s cubic-bezier(.2, .7, .3, 1); }
+#pg-dot .pg-dot-bar > i { position: absolute; inset: 0; transform-origin: 0 50%; transform: scaleX(0); will-change: transform; background: linear-gradient(90deg, var(--fh-ai, #a98bff), var(--fh-gold, #f5c451)); transition: transform .45s cubic-bezier(.2, .7, .3, 1); }
 #pg-dot .pg-dot-n { font-size: 10px; font-weight: 600; line-height: 1; min-width: 9px; color: var(--muted, #8a8f98); font-variant-numeric: tabular-nums; }
 #pg-dot[data-state="est"] .pg-dot-bar > i { opacity: .65; }
 #pg-dot[data-state="hung"] .pg-dot-bar > i { background: var(--fh-ember, #ff8a3d); }
@@ -59,3 +59,4 @@
   .pg-bar.pg-almost > i, .pg-bar.pg-late > i { animation: none; }
   .pg-bar.pg-indet > i { animation: none; width: 100%; opacity: .4; }
 }
+.cp-run-head.pg-host + .cp-bar { display: none; } /* the run's own bar (questions and commands) replaces the questions-only one */
