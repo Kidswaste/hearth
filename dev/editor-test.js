@@ -216,5 +216,93 @@ const render = (edit, name, o) => { const g0 = FFX.args(edit, info, canvas, opts
   ok(`all ${FX.AUDIO_FX.length} sound effects render and keep the length`, !af.length, af.slice(0, 5));
 }
 
+// 9. round 11 (pack11): preview sound twins, WebM duration, LUTs, adjustment layers, ducking, pacing, multicam
+{
+  const VS = require('../tools/video-sound.js');
+  const VP = require('../tools/video-pack.js');
+  const WD = require('../webm-duration.js');
+  const uncovered = FX.AUDIO_FX.filter((a) => !VS.LIVE[a.id] && !VS.RENDER_ONLY.has(a.id)).map((a) => a.id);
+  ok('every sound effect has a live twin in the preview or is named render-only', !uncovered.length, uncovered);
+  ok('the live twins cover most sound effects', Object.keys(VS.LIVE).length >= FX.AUDIO_FX.length - 4, Object.keys(VS.LIVE).length);
+  ok('preview note names the render-only ones', /pitch-up/.test(VS.previewNote(['pitch-up', 'echo'])) && !VS.previewNote(['echo']));
+  ok('Backwards + a reversed clip play forward', VS.plan(['backwards']).reverse && !VS.plan(['backwards', 'backwards']).reverse);
+  // a browser-style live WebM (no seek index, no Duration) gets its length written
+  const live = path.join(OUT, 'live.webm');
+  execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=d=2:s=160x120', '-c:v', 'libvpx', '-b:v', '200k', '-live', '1', '-f', 'webm', live]);
+  const wb = new Uint8Array(fs.readFileSync(live));
+  const si = wb.findIndex((x, j) => x === 0x11 && wb[j + 1] === 0x4d && wb[j + 2] === 0x9b && wb[j + 3] === 0x74);
+  if (si >= 0) { const sz = WD._.readSize(wb, si + 4); const total = 4 + sz.len + sz.size; wb[si] = 0xec; wb.set(WD._.sizeBytes(total - 9, 8), si + 1); }
+  fs.writeFileSync(live, wb);
+  ok('the live WebM has no duration', WD.read(wb) == null && !(Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', live]).toString()) > 0));
+  const fixed = path.join(OUT, 'fixed.webm');
+  fs.writeFileSync(fixed, WD.fix(wb, 2000));
+  ok('WebmDuration writes 2.0 s ffprobe reads', near(Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', fixed]).toString()), 2, 0.01));
+  ok('WebmDuration: an already-right header is left alone', WD.fix(WD.fix(wb, 2000), 2000).length === wb.length + 11);
+  // LUTs: identity, a warm grade, an invert
+  const cube = (n, f, title) => { const L0 = [`TITLE "${title}"`, `LUT_3D_SIZE ${n}`]; for (let b0 = 0; b0 < n; b0 += 1) for (let g0 = 0; g0 < n; g0 += 1) for (let r0 = 0; r0 < n; r0 += 1) L0.push(f(r0 / (n - 1), g0 / (n - 1), b0 / (n - 1)).map((v) => v.toFixed(6)).join(' ')); return L0.join('\n'); };
+  const id = VP.parseCube(cube(17, (r0, g0, b0) => [r0, g0, b0], 'Identity'));
+  ok('parseCube reads a 17³ LUT', id.size === 17 && id.title === 'Identity' && id.data.length === 17 ** 3 * 3);
+  const fi = VP.fitLut(id);
+  ok('identity LUT → identity twin', fi.err < 0.002 && near(fi.m[0], 1, 0.01) && near(fi.m[4], 1, 0.01) && near(fi.o[0], 0, 0.01), fi.err);
+  const warm = VP.parseCube(cube(9, (r0, g0, b0) => [Math.min(1, r0 * 1.1 + 0.02), g0, b0 * 0.85], 'Warm'));
+  ok('a warm LUT samples warmer', VP.sample(warm, 0.5, 0.5, 0.5)[0] > 0.55 && VP.sample(warm, 0.5, 0.5, 0.5)[2] < 0.45);
+  ok('the preview twin of a grade is close (< 1 %)', VP.fitLut(warm).err < 0.01, VP.fitLut(warm).err);
+  const sat = VP.parseCube(cube(9, (r0, g0, b0) => { const y = 0.2126 * r0 + 0.7152 * g0 + 0.0722 * b0; return [r0, g0, b0].map((v) => Math.max(0, Math.min(1, y + (v - y) * 0.3))); }, 'Desat'));
+  ok('a desaturating LUT is fitted by the matrix (< 2 %)', VP.fitLut(sat).err < 0.02, VP.fitLut(sat).err);
+  let bad = null; try { VP.parseCube('LUT_3D_SIZE 4\n0 0 0'); } catch (err) { bad = err.message; }
+  ok('a broken .cube says why', /entries/.test(bad || ''), bad);
+  const invPath = path.join(OUT, 'invert lut.cube');
+  fs.writeFileSync(invPath, cube(9, (r0, g0, b0) => [1 - r0, 1 - g0, 1 - b0], 'Invert'));
+  const meanAt = (f, sec) => { const px = frameAt(f, sec, 54, 96); let m = 0; for (const v of px) m += v; return m / px.length; };
+  {
+    let x = C.empty(); x.clips = [C.videoClip(A, 0, 1, 6), C.videoClip(B, 0, 1, 6)];
+    x = C.patchAny(x, x.clips[1].id, (c) => { c.lut = { path: invPath, name: 'Invert', kind: '3d' }; });
+    ok('a clip with only a LUT plays and renders as rich', C.isRich(x));
+    const plain = render(C.patchAny(x, x.clips[1].id, (c) => { delete c.lut; }), 'nolut.mp4');
+    const lut = render(x, 'lut.mp4');
+    ok('LUT renders (a path with a space)', Boolean(lut.file));
+    if (lut.file && plain.file) ok('the LUT inverts the picture in the render', near(meanAt(lut.file, 1.5), 255 - meanAt(plain.file, 1.5), 12) && near(meanAt(lut.file, 0.5), meanAt(plain.file, 0.5), 6), [meanAt(lut.file, 1.5), meanAt(plain.file, 1.5)]);
+    // an adjustment layer 0.5–1.5 s with the invert LUT: everything under it inverts there, not elsewhere
+    let y = C.patchAny(x, x.clips[1].id, (c) => { delete c.lut; });
+    y = C.addItem(y, { kind: 'adjust', start: 0.5, dur: 1 });
+    y = C.patchAny(y, y.lastItem, (c) => { c.lut = { path: invPath, name: 'Invert', kind: '3d' }; });
+    ok('an adjustment layer describes itself', C.describeAll(y).some((l) => /adjustment layer/.test(l) && /LUT Invert/.test(l)));
+    const adj = render(y, 'adjust.mp4');
+    ok('adjustment layer renders', Boolean(adj.file));
+    if (adj.file && plain.file) ok('the adjustment layer applies over its range only', near(meanAt(adj.file, 1.0), 255 - meanAt(plain.file, 1.0), 12) && near(meanAt(adj.file, 0.2), meanAt(plain.file, 0.2), 6) && near(meanAt(adj.file, 1.8), meanAt(plain.file, 1.8), 6), [meanAt(adj.file, 0.2), meanAt(adj.file, 1.0), meanAt(plain.file, 1.0)]);
+    // with a look (no LUT) and at half strength
+    let z = C.patchAny(x, x.clips[1].id, (c) => { delete c.lut; });
+    z = C.addItem(z, { kind: 'adjust', start: 0, dur: 2, opacity: 0.5, fadeIn: 0.3, color: { look: 'noir-cine' }, fx: [{ id: FX.EFFECTS[0].id, amt: 0.5 }] });
+    ok('an adjustment layer with a look, an effect, opacity and a fade renders', Boolean(render(z, 'adjust-look.mp4').file));
+  }
+  // speech → ranges, ducking keys
+  const rate = 8000; const sig = new Float32Array(rate * 4);
+  for (let i = 0; i < sig.length; i += 1) { const t0 = i / rate; const on = (t0 >= 1 && t0 < 2) || (t0 >= 3 && t0 < 3.5); sig[i] = (on ? 0.4 * Math.sin(2 * Math.PI * 220 * t0) : 0) + (Math.random() - 0.5) * 0.004; }
+  const sr = VP.speechRanges(sig, rate);
+  ok('speech found where the voice talks', sr.length === 2 && near(sr[0][0], 1, 0.06) && near(sr[0][1], 2, 0.06) && near(sr[1][0], 3, 0.06), sr);
+  const music = { kind: 'audio', src: MUSIC, in: 0, out: 5, start: 0, volume: 1, speed: 1 };
+  const keys = VP.duckKeys(music, [[1, 2], [2.3, 3]]);
+  const mk = { ...music, keys: { volume: keys } };
+  ok('ducked: low under the voice, full between far parts, no bounce between close ones', near(C.propAt(mk, 'volume', 1.5), 0.25, 0.01) && near(C.propAt(mk, 'volume', 0.2), 1, 0.01) && near(C.propAt(mk, 'volume', 4), 1, 0.01) && C.propAt(mk, 'volume', 2.15) < 0.6, keys);
+  {
+    let x = C.empty(); x.clips = [C.videoClip(A, 0, 3, 6)];
+    x = C.addItem(x, { ...music, out: 3 }); x = C.patchAny(x, x.lastItem, (c) => { c.keys = { volume: VP.duckKeys(c, [[1, 2]]) }; });
+    ok('a ducked music bed renders', Boolean(render(x, 'ducked.mp4').file));
+  }
+  // pacing like the board, beats
+  ok('cuts every 1 s', JSON.stringify(VP.vibeCuts({ to: 5, intervals: [1] })) === '[1,2,3,4]', VP.vibeCuts({ to: 5, intervals: [1] }));
+  ok('cuts snap to a near beat', VP.vibeCuts({ to: 4, intervals: [1.5], beats: [0.5, 1.4, 2.9, 3.6] })[0] === 1.4, VP.vibeCuts({ to: 4, intervals: [1.5], beats: [0.5, 1.4, 2.9, 3.6] }));
+  ok('existing cuts are skipped', !VP.vibeCuts({ to: 5, intervals: [1], have: [2] }).includes(2));
+  ok('board clips give their shot lengths', JSON.stringify(VP.boardIntervals([{ vibe: { kind: 'clip', cuts: [1, 3], duration: 4 } }])) === '[1,2,1]');
+  ok('stills only: a pace from their motion', VP.boardIntervals([{ vibe: { motion: 0.7 } }])[0] < 1 && VP.boardIntervals([])[0] > 1);
+  // multicam
+  const angles = [{ src: A, offset: 0 }, { src: B, offset: 2 }];
+  const sw = VP.angleSwap({ id: 'c', kind: 'video', src: A, in: 3, out: 4 }, angles, 1, 6);
+  ok('an angle swap keeps the moment', sw.src === B && near(sw.in, 5) && near(sw.out, 6) && sw.cam === 1, sw);
+  const env = Array.from({ length: 1500 }, () => Math.random());
+  const shifted = [...Array(60).fill(0.5), ...env].slice(0, 1500);
+  ok('sync by sound finds the offset (1.2 s)', near(VP.offsetByCorrelation(env, shifted, 50, 5).lag, 1.2, 0.03), VP.offsetByCorrelation(env, shifted, 50, 5));
+}
+
 console.log(`${fail ? '✖' : '✓'} editor-test: ${pass} passed, ${fail} failed (renders in ${OUT})`);
 process.exit(fail ? 1 : 0);

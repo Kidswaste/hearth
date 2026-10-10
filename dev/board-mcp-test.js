@@ -14,7 +14,7 @@ const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (
 (async () => {
   const script = path.join(root, 'mcp', 'board-mcp.js');
   const def = require(script);
-  check(def.tools.length === 4 && def.tools.every((t) => t.name.startsWith('board_')), `4 lean tools (${def.tools.map((t) => t.name).join(', ')})`);
+  check(def.tools.length === 5 && def.tools.every((t) => t.name.startsWith('board_')), `5 lean tools (${def.tools.map((t) => t.name).join(', ')})`);
   const size = JSON.stringify(def.tools).length;
   check(size < 2600, `tool definitions ≈ ${Math.round(size / 4)} tokens`);
   check(/never place reference media/.test(def.tools.find((t) => t.name === 'board_vibe').description), 'board_vibe says: vibe, never the media');
@@ -34,7 +34,7 @@ const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (
   fs.writeFileSync(infoPath, JSON.stringify({ port: server.address().port, token: 'tok', pid: process.pid }));
   try {
     const c = await F.mcpClient({ command: process.execPath, args: [script], env: { HUB_CHAT_ID: 'chat-1' } });
-    check(c.tools.length === 4 && !c.instructions, 'served over stdio, no MCP instructions');
+    check(c.tools.length === 5 && !c.instructions, 'served over stdio, no MCP instructions');
     const r = await c.call('board_vibe', { focus: 'palette' });
     check(!r.isError && /palette #000000/.test(r.content[0].text), 'board_vibe round trip through the hub bridge');
     check(calls[0]?.token === 'tok' && calls[0]?.args.hubChatId === 'chat-1' && calls[0]?.args.focus === 'palette', 'the chat id and arguments reach the hub');

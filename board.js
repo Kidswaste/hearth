@@ -261,6 +261,14 @@ const Board = (() => {
   function addTextSmart(text, at) {
     const t = String(text || '').trim(); if (!t) return null;
     if (/^(https?|file):\/\/\S+$/i.test(t)) return addUrl(t, at);
+    // pack11: a bare address ("example.com/page", "www.site.io") is a website card, and a list of links (one per line)
+    // becomes one card each, side by side, instead of a note full of links
+    if (/^(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}(:\d+)?(\/\S*)?$/i.test(t) && !/\s/.test(t)) return addUrl(`https://${t}`, at);
+    const lines = t.split(/\s*\n\s*/).filter(Boolean);
+    if (lines.length > 1 && lines.length <= 24 && lines.every((l) => /^https?:\/\/\S+$/i.test(l))) {
+      const p0 = at || center();
+      return Promise.all(lines.map((l, i) => addUrl(l, { x: p0.x + (i % 4) * 440, y: p0.y + Math.floor(i / 4) * 340 })));
+    }
     const hexes = t.match(/#(?:[0-9a-f]{6}|[0-9a-f]{3})\b/gi);
     if (hexes && t.replace(/#(?:[0-9a-f]{6}|[0-9a-f]{3})\b|[\s,;]/gi, '').length === 0) return addSwatch(hexes, at);
     return addNote(t, at);
