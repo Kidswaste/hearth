@@ -162,8 +162,16 @@ const Apps = (() => {
       }
       case 'chat': { const ag = chatAgent(); if (!ag) throw new Error('No chat'); activate(ag.id); await Native.attachPaths(ag.id, [file]); return true; }
       case 'meshy': if (typeof AppsMeshy === 'undefined') throw new Error('Meshy isn\'t loaded'); return AppsMeshy.run('image', { image: file, name: name || file.split(/[\\/]/).pop() });
+      case 'make': {
+        const ag = chatAgent();
+        const mk = typeof Makes !== 'undefined' ? (Makes.ofChat?.(H.activeChat?.[ag?.id]) || Makes.live?.()[0]) : null;
+        if (!mk) throw new Error('No make in progress (/makes)');
+        Makes.addOutput(mk, file, null, C.kindOf(file));
+        toast(`Added to ${mk.name}`, { timeout: 2400 });
+        return mk;
+      }
       case 'reveal': return window.hub.fs.reveal(file);
-      default: throw new Error(`Unknown place "${target}" (lab-model, lab-hdri, lab-song, lab-ref, board, review, chat, meshy, reveal)`);
+      default: throw new Error(`Unknown place "${target}" (lab-model, lab-hdri, lab-song, lab-ref, board, review, chat, meshy, make, reveal)`);
     }
   }
   const tryRoute = (p, target, o) => route(p, target, o).catch((err) => toast(err.message, { type: 'error', timeout: 6000 }));
@@ -191,7 +199,7 @@ const Apps = (() => {
       items: done.map((d) => ({
         title: d.name, sub: `${d.appName} · ${timeAgo(d.at)}`, icon: { model: '🧊', hdri: '🌅', audio: '🎵', video: '🎞', image: null, font: '🔤' }[C.kindOf(d.name)] || '📄',
         thumb: C.kindOf(d.name) === 'image' ? d.path : null,
-        actions: C.routesFor(d.name, get(d.app)?.routes || {}).slice(0, 4).map((r) => ({ label: r.label, run: () => tryRoute(d.path, r.id, { name: d.name, app: d.app }) })),
+        actions: [...C.routesFor(d.name, get(d.app)?.routes || {}).slice(0, 4), ...(typeof Makes !== 'undefined' && Makes.live?.().length ? [{ id: 'make', label: C.TARGETS.make }] : [])].map((r) => ({ label: r.label, run: () => tryRoute(d.path, r.id, { name: d.name, app: d.app }) })),
       })),
     });
   }
@@ -260,7 +268,7 @@ const Apps = (() => {
   function commands() {
     if (typeof Commands === 'undefined' || Commands.get('apps')) return;
     Commands.register({
-      name: 'apps', area: 'Apps', args: '[app] [action] | list | downloads | folder | close [app|all]',
+      name: 'apps', area: 'Apps', args: '[app] [action|reload|back|send|hide] | list | downloads | folder | close [app|all]',
       desc: 'The services you use, each in its own window (Meshy, Suno, Figma, Poly Haven…): /apps alone shows them',
       keywords: 'app windows integrations meshy suno figma spline runway elevenlabs fonts coolors sketchfab poly haven unsplash youtube instagram tiktok pinterest mixamo',
       examples: ['/apps', '/apps figma', '/apps coolors palette', '/apps downloads', '/apps close all'],
@@ -287,6 +295,15 @@ const Apps = (() => {
         const app = get(sub) || find(args);
         if (!app) return `No app "${first}". ${describeAll().slice(0, 900)}`;
         const actId = rest.join(' ').toLowerCase();
+        // the window itself, by chat: /apps figma reload | back | forward | send (to the chat) | hide | home | download <url>
+        const OPS = { reload: 'reload', back: 'back', forward: 'forward', send: 'to-chat', 'to-chat': 'to-chat', hide: 'close', home: 'home', link: 'copy-link' };
+        const op = OPS[rest[0]?.toLowerCase()];
+        if ((op || rest[0]?.toLowerCase() === 'download') && !(app.actions || []).some((x) => x.id === rest[0].toLowerCase())) {
+          if (!app.web) return `${app.name} has no window.`;
+          if (!(await api()?.windows() || []).some((w) => w.id === app.id)) await openWindow(app.id);
+          const r = op ? await api().nav(app.id, op) : await api().nav(app.id, 'download', rest[1] || '');
+          return r?.ok ? null : r?.error || 'Not done';
+        }
         if (actId) {
           const a = (app.actions || []).find((x) => x.id === actId || x.label.toLowerCase().includes(actId));
           if (!a) return `${app.name} can: ${(app.actions || []).map((x) => `\`${x.id}\` (${x.label})`).join(', ') || 'open (no other actions)'}. /apps ${app.id} opens it.`;

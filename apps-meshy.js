@@ -70,7 +70,7 @@ const AppsMeshy = (() => {
   }
   async function modelRef(ref) {
     const L = await library();
-    const s = String(ref || 'last').trim().toLowerCase();
+    const s = String(ref || 'last').trim().toLowerCase().replace(/^#/, '');
     if (!L.length) throw new Error('No Meshy model yet: /meshy <what to make>');
     if (s === 'last' || s === '') return L[0];
     const n = Number(s);
@@ -150,6 +150,14 @@ const AppsMeshy = (() => {
     else if (j.status === 'failed' && !delivered.has(j.id)) { delivered.add(j.id); toast(`🧊 Meshy: ${j.name} failed: ${j.error}`, { type: 'error', timeout: 9000 }); }
   }
   Apps.on('meshy', onJob);
+  // a model downloaded from Meshy's own website joins the library too (no credits counted: Meshy's site spent them)
+  Apps.on('download', async (d) => {
+    if (d.app !== 'meshy' || d.state !== 'completed' || !/\.(glb|gltf)$/i.test(d.name)) return;
+    const L = await library();
+    if (L.some((m) => m.glb === d.path)) return;
+    L.unshift({ id: `w${d.id}`, name: d.name.replace(/\.[^.]+$/, ''), prompt: '', op: 'web', glb: d.path, thumb: null, task: null, credits: 0, at: Date.now() });
+    saveLib();
+  });
   async function boot() {
     const r = await api()?.meshy('jobs').catch(() => null);
     for (const j of r?.value || []) { if (j.status === 'running') track(j); else if (j.status === 'done' && !j.acked) arrive(j); }

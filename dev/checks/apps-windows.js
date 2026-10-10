@@ -55,7 +55,7 @@ try {
 
   // ---- 2. send to chat: address + a picture in the composer ----
   activate(C.id); await wait(200);
-  await hub.apps.nav('testpage', 'to-chat');
+  ok(await say('/apps testpage send') === '' , 'the window is sent to the chat by command');
   const draft = await until(() => { const ta = document.querySelector('.surface.active .composer textarea'); return ta && /From Test page/.test(ta.value) ? ta.value : null; }, 12000);
   ok(draft && draft.includes(`${B}/web/plain`), `the page's address is in the composer (${String(draft).slice(0, 100)})`);
   ok(await until(() => document.querySelector('.surface.active .composer')?.textContent.match(/testpage-page|\.jpg/) || document.querySelectorAll('.surface.active .composer .attach, .surface.active .composer .chip, .surface.active .attachments > *').length, 6000), 'a picture of the page is attached');
@@ -120,6 +120,16 @@ try {
   let routeErr = '';
   try { await Apps.route('/nope.txt', 'teleport'); } catch (err) { routeErr = err.message; }
   ok(/Unknown place/.test(routeErr), 'an unknown route is a clear error');
+
+  // ---- 6b. a model from Meshy's own website joins the library ----
+  Apps.register({ ...Apps.get('meshy'), url: `${B}/web/meshy` });
+  await Apps.open('meshy');
+  await until(async () => /Fake Meshy/.test((await win('meshy'))?.title || ''), 8000);
+  await say(`/apps meshy download ${B}/web/files/fake-robot.glb`);
+  ok(await until(async () => (await hub.kvGet('meshy-library', [])).some((m) => m.op === 'web' && /fake-robot/.test(m.glb)), 12000), 'a GLB from Meshy\'s website is in the Meshy library');
+  ok(await until(() => [...document.querySelectorAll('#toasts .toast')].some((t) => /fake-robot\.glb/.test(t.textContent) && /Load into the Lab/.test(t.textContent)), 4000), 'and offered to the Lab');
+  await say('/apps meshy reload');
+  await hub.apps.close('meshy', { destroy: true });
 
   // ---- 7. hide (kept), then parked ----
   await hub.apps.close('testpage');

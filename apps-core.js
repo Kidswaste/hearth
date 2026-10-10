@@ -29,6 +29,7 @@ const AppsCore = (() => {
     review: '🎬 Open in Video Review',
     chat: '💬 Attach to the chat',
     meshy: '🧊 Make a 3D model of it (Meshy)',
+    make: '✦ Add to the make in progress',
     reveal: '📂 Show in folder',
   };
   const BY_KIND = {
