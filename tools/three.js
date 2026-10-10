@@ -3080,7 +3080,7 @@ ${code}
       frame: stage.size,
       ...(selCtl()?.controls().length ? { sliders: selCtl().controls() } : { sliders: 'none: add named controls with tweak()' }),
       ...(selCtl()?.unsaved().length ? { unsavedSliders: selCtl().unsaved() } : {}),
-      music: player.loaded ? (({ file, bpm, duration, time, playing }) => ({ file, bpm, duration, time, playing }))(player.info()) : 'none loaded (demo 120 bpm beat)',
+      music: player.isClock ? `none: the scene's own timeline (${player.duration} s at ${player.clock.fps} fps; nothing reacts to music)` : player.loaded ? (({ file, bpm, duration, time, playing }) => ({ file, bpm, duration, time, playing }))(player.info()) : 'none loaded (demo 120 bpm beat)',
       ...(document.hidden || !document.hasFocus() ? { note: 'The hub window is in the background, so fps is throttled here; judge performance by renderMs.' } : {}),
     });
     // "top", "bottom", "selected", a number (1 = bottom), an id or a name.
