@@ -30,6 +30,11 @@ const ThreeSeq = (() => {
     render: null, probes: new Map(), drag: null, hover: null, waits: [], frames: new Map(),
     // seq2: songs' beat maps (each scene's own hits and cue looks), nested sequences' edits, clip pictures
     maps: {}, nested: new Map(), thumbs: new Map(),
+    // seqguard: the page generation (each new preview page), playing as you asked for it (a page being replaced
+    // reports "paused" for a moment), the plan's number the page should show, the watchdog's counts
+    page: 0, want: false, planId: 0, restoring: 0, lastState: 0, guard: { soft: 0, hard: 0, remount: 0, assets: 0, last: null, log: [] },
+    // seqguard: undo labels (the history list), clip color labels
+    undoLabels: [], redoLabels: [],
   };
   const A = typeof SeqArrange !== 'undefined' ? SeqArrange : null;
   const TR = () => (typeof SeqTrans !== 'undefined' ? SeqTrans : null);
@@ -111,11 +116,18 @@ const ThreeSeq = (() => {
     return key;
   }
   // every change: one undo step, saved, redrawn, the preview follows
-  function commit(next, label) {
+  // merge: a run of the same kind of change (frame swaps, nudges, key trims) within 2 s is one undo step
+  function commit(next, label, { merge = null } = {}) {
     if (!S.edit || !next || next === S.edit) return false;
-    S.undo.push(JSON.stringify(S.edit));
-    if (S.undo.length > 150) S.undo.shift();
-    S.redo = [];
+    const now = performance.now();
+    const same = merge && S.lastMerge?.kind === merge && now - S.lastMerge.at < 2000 && S.undo.length;
+    if (!same) {
+      S.undo.push(JSON.stringify(S.edit));
+      S.undoLabels.push({ label: String(label || 'Change').replace(/^[✂＋✦♪▤]\s*/u, ''), at: Date.now() });
+      if (S.undo.length > 150) { S.undo.shift(); S.undoLabels.shift(); }
+    } else S.undoLabels[S.undoLabels.length - 1] = { label: String(label || 'Change'), at: Date.now() };
+    S.lastMerge = merge ? { kind: merge, at: now } : null;
+    S.redo = []; S.redoLabels = [];
     setEdit(next);
     if (label) flash(label);
     return true;
@@ -130,15 +142,23 @@ const ThreeSeq = (() => {
     pushPlan();
     emit('change', { key: S.key });
   }
-  function undo() { if (!S.undo.length) return false; S.redo.push(JSON.stringify(S.edit)); setEdit(JSON.parse(S.undo.pop())); flash('Undo'); return true; }
-  function redo() { if (!S.redo.length) return false; S.undo.push(JSON.stringify(S.edit)); setEdit(JSON.parse(S.redo.pop())); flash('Redo'); return true; }
+  function undo() { if (!S.undo.length) return false; const lb = S.undoLabels.pop(); S.redo.push(JSON.stringify(S.edit)); S.redoLabels.push(lb || { label: 'Change' }); S.lastMerge = null; setEdit(JSON.parse(S.undo.pop())); flash(`Undo${lb ? `: ${lb.label}` : ''}`); return true; }
+  function redo() { if (!S.redo.length) return false; const lb = S.redoLabels.pop(); S.undo.push(JSON.stringify(S.edit)); S.undoLabels.push(lb || { label: 'Change' }); S.lastMerge = null; setEdit(JSON.parse(S.redo.pop())); flash(`Redo${lb ? `: ${lb.label}` : ''}`); return true; }
+  // the history list (⋯ → History, /sequence history): the latest steps first; going back n steps is n undos
+  function history() {
+    const now = Date.now();
+    const ago = (t) => { const s = Math.round((now - (t || now)) / 1000); return s < 60 ? `${s} s ago` : s < 3600 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`; };
+    return { back: S.undoLabels.map((x, i) => ({ steps: S.undoLabels.length - i, label: x?.label || 'Change', ago: ago(x?.at) })).reverse(), forward: S.redoLabels.map((x, i) => ({ steps: S.redoLabels.length - i, label: x?.label || 'Change' })).reverse() };
+  }
+  function goBack(n = 1) { let k = 0; for (; k < n && undo(); k += 1); if (k > 1) flash(`Back ${k} steps`); return k; }
+  function goForward(n = 1) { let k = 0; for (; k < n && redo(); k += 1); if (k > 1) flash(`Forward ${k} steps`); return k; }
 
   // ---------- opening ----------
   async function open(key, { show = true } = {}) {
     const e = await readEdit(key);
     if (!e) throw new Error(`No sequence "${String(key).replace(/^seq:/, '')}"`);
     if (!e.seq?.lab) e.seq = { ...(e.seq || {}), lab: true };
-    S.key = key; S.edit = e; S.undo = []; S.redo = []; S.sel.clear(); S.T = 0; S.vr = null; S.thumbs.clear();
+    S.key = key; S.edit = e; S.undo = []; S.redo = []; S.undoLabels = []; S.redoLabels = []; S.lastMerge = null; S.sel.clear(); S.T = 0; S.vr = null; S.thumbs.clear();
     S.loop = Boolean(e.seq?.loop);
     // the scene it belongs to (the one it was opened for, when it belongs to none: an "other" sequence)
     S.owner = e.seq?.scene || lab()?.sketchId() || null;
@@ -400,25 +420,30 @@ const ThreeSeq = (() => {
     const L = lab();
     if (!L || !S.view || !S.edit) return;
     const my = ++planSeq;
+    // seqguard: everything below goes to one page; a page replaced meanwhile (a frame swap, ↻) gets it all again
+    // from its own "ready" (restore), so a half-sent plan never lands on the new page without its titles code or files
+    const sent = S.sent; const page = S.page;
+    const gone = () => sent !== S.sent || page !== S.page;
     const { plan, assets } = compile();
     for (const p of assets) if (!S.probes.has(p)) await probe(p);
-    if (my !== planSeq) return;
+    if (my !== planSeq || gone()) return;
     const fresh = compile().plan; // fps from the probes
-    if (!S.sent.libs) {
-      S.sent.libs = true;
-      try { L.send({ type: 'seq-libs', code: await libs() }); } catch (err) { console.warn('Sequence: titles / transitions code', err); }
-      try { const f = await window.hub.fs.read(`${appDir()}/assets/oxanium.ttf`, { encoding: 'buffer' }); L.send({ type: 'seq-font', name: 'Oxanium', buffer: f }); } catch { /* the fallback fonts */ }
+    if (!sent.libs) {
+      sent.libs = true;
+      try { const code = await libs(); if (gone()) return; L.send({ type: 'seq-libs', code }); } catch (err) { console.warn('Sequence: titles / transitions code', err); }
+      try { const f = await window.hub.fs.read(`${appDir()}/assets/oxanium.ttf`, { encoding: 'buffer' }); if (gone()) return; L.send({ type: 'seq-font', name: 'Oxanium', buffer: f }); } catch { /* the fallback fonts */ }
     }
     for (const p of assets) {
-      if (S.sent.assets.has(p)) continue;
-      S.sent.assets.add(p);
-      try { const bytes = await window.hub.fs.read(p, { encoding: 'buffer' }); L.send({ type: 'seq-asset', id: p, buffer: bytes, mime: IMG.test(p) ? `image/${/png$/i.test(p) ? 'png' : 'jpeg'}` : AUD.test(p) ? `audio/${({ mp3: 'mpeg', m4a: 'mp4', aac: 'aac', wav: 'wav', ogg: 'ogg', flac: 'flac', opus: 'ogg' })[p.split('.').pop().toLowerCase()] || 'mpeg'}` : 'video/mp4' }); } catch (err) { S.sent.assets.delete(p); toast(`Couldn't read ${base(p)}: ${err.message}`, { type: 'error' }); }
+      if (sent.assets.has(p)) continue;
+      sent.assets.add(p);
+      try { const bytes = await window.hub.fs.read(p, { encoding: 'buffer' }); if (gone()) return; L.send({ type: 'seq-asset', id: p, buffer: bytes, mime: IMG.test(p) ? `image/${/png$/i.test(p) ? 'png' : 'jpeg'}` : AUD.test(p) ? `audio/${({ mp3: 'mpeg', m4a: 'mp4', aac: 'aac', wav: 'wav', ogg: 'ogg', flac: 'flac', opus: 'ogg' })[p.split('.').pop().toLowerCase()] || 'mpeg'}` : 'video/mp4' }); } catch (err) { sent.assets.delete(p); toast(`Couldn't read ${base(p)}: ${err.message}`, { type: 'error' }); }
     }
-    if (my !== planSeq) return;
+    if (my !== planSeq || gone()) return;
     const text = JSON.stringify(fresh);
-    if (!force && text === S.sent.plan) return;
-    S.sent.plan = text;
-    L.send({ type: 'seq-set', plan: fresh, fade });
+    if (!force && text === sent.plan) return;
+    sent.plan = text;
+    S.planId += 1;
+    L.send({ type: 'seq-set', plan: fresh, fade, id: S.planId });
     plan.dur = fresh.dur;
   }
   const pushPlan = debounce(() => { sendPlan().catch((err) => console.warn(err)); }, 40);
@@ -437,16 +462,17 @@ const ThreeSeq = (() => {
     refs.tab.classList.add('on');
     refs.view.hidden = false;
     await Promise.all([ensureSong(), loadMaps(), loadNested(S.edit)]);
-    S.playing = false;
+    S.playing = false; S.want = false;
     if (L.player.playing) L.player.toggle(false);
     // the preview takes the sequence's shape (one pretty reload when it was "fit"); the size you had comes back after
     S.sizeBefore = L.stage.size.id;
     const fmt = D.formatOf(S.edit);
     if (L.stage.size.id !== fmt) L.stage.setMode(fmt);
     await sendPlan({ force: true });
-    L.send({ type: 'seq-seek', T: S.T });
+    send({ type: 'seq-seek', T: S.T });
     L.send({ type: 'seq-loop', on: S.loop });
     requestAnimationFrame(() => { measure(); redraw(); placeHead(); paintTime(); });
+    S.lastState = performance.now(); guardOn();
     emit('mode', { on: true });
     return true;
   }
@@ -455,7 +481,7 @@ const ThreeSeq = (() => {
     const L = lab();
     if (!S.view || !L) return false;
     stopShuttle();
-    S.view = false; S.playing = false;
+    S.view = false; S.playing = false; S.want = false; guardOff();
     L.send({ type: 'seq-off' });
     L.bar.classList.remove('seq-on');
     refs.tab.classList.remove('on');
@@ -487,11 +513,21 @@ const ThreeSeq = (() => {
   function sketchChanged() { if (S.view) pushPlan(); }
   // the preview page was replaced (a new frame size, a restart): everything goes again
   function onMessage(msg) {
-    if (msg.type === 'ready') { S.sent = { libs: false, assets: new Set(), plan: '' }; if (S.view) { ensureSong().then(() => sendPlan({ force: true })).then(() => lab()?.send({ type: 'seq-seek', T: S.T })); } return false; }
+    if (msg.type === 'ready') { restore('ready').catch((err) => console.warn('Sequence restore', err)); return false; }
+    if (msg.type === 'seq-health') { onHealth(msg); return true; }
     if (msg.type === 'seq-state') {
+      // a page on its way out (a frame swap's reload) still answers the seeks it had: its clock isn't the sequence's
+      // any more (it used to pull the playhead back to where you were before the swap)
+      if (lab()?.pageReady && !lab().pageReady()) return true;
+      // …and a page being put back reports its first frame before it gets the seek (restore)
+      if (S.restoreBusy) { if (Math.abs(msg.T - S.restoreBusy.T) > 0.02 && performance.now() < S.restoreBusy.until) return true; S.restoreBusy = 0; }
+      if (S.seekN && (msg.ack || 0) < S.seekN) return true; // answers an older seek
       const was = S.playing;
+      S.lastState = performance.now();
       if (S.shuttle >= 0 || !S.shuttleTimer) S.T = msg.T;
-      S.playing = msg.playing;
+      // a page being restored says "paused" until it gets the play again: what you asked for stays on screen
+      S.playing = msg.playing || Boolean(S.want && S.restoring && performance.now() < S.restoring);
+      if (msg.ended) { S.want = false; S.playing = false; }
       if (msg.ended && was) emit('ended', {});
       paintTime(); follow(); placeHead(); paintPlay();
       if (!msg.playing) thumbSoon();
@@ -508,10 +544,15 @@ const ThreeSeq = (() => {
   }
 
   // ---------- transport ----------
-  const send = (m) => lab()?.send(m);
+  // every seek carries a number the page echoes back in its states: a state answering an older seek (or a page that
+  // hasn't had one yet) doesn't pull the playhead back (seqguard: scrubbing through a swap used to land on the
+  // frame before)
+  const send = (m) => { if (m?.type === 'seq-seek' && m.n == null) { S.seekN = (S.seekN || 0) + 1; m = { ...m, n: S.seekN }; } return lab()?.send(m); };
   function seek(T, { snapFrame = true } = {}) {
     const D0 = total();
     S.T = clamp(snapFrame ? frameStart(frameOf(T + 1e-6)) : T, 0, D0);
+    if (S.restoreBusy) S.restoreBusy = { ...S.restoreBusy, T: S.T };
+    S.moved = (S.moved || 0) + 1;
     if (S.view) send({ type: 'seq-seek', T: S.T });
     paintTime(); placeHead();
     return S.T;
@@ -519,7 +560,7 @@ const ThreeSeq = (() => {
   function play(on = !S.playing, rate = 1) {
     if (!S.view) { enter().then(() => play(on, rate)); return; }
     stopShuttle();
-    S.playing = on; S.rate = rate;
+    S.playing = on; S.rate = rate; S.want = Boolean(on); S.lastState = performance.now();
     send({ type: 'seq-play', on, rate });
     paintPlay(); placeHead();
   }
@@ -1554,9 +1595,111 @@ const ThreeSeq = (() => {
     if (S.render) { toast('A render is running: wait for it, or stop it from the bar at the bottom of the rail'); return false; }
     flash('↻ Reloading the preview…');
     S.sent = { libs: false, assets: new Set(), plan: '' };
+    S.restoring = performance.now() + 15000; // the watchdog waits for its "ready" (restore)
     L.reloadPage();
     return true;
   }
+  // ---------- seqguard: the preview puts itself back (round 13) ----------
+  // A new preview page (a frame swap through "fit", ↻, the browser restarting the frame, a crash) says "ready": the
+  // sequence goes back on it at the same frame, playing again if it was playing (it used to come back paused, which
+  // read as the sequence "bugging out" on every swap to or from Fit). Every load bumps S.page, so a plan still being
+  // sent to the page before never lands half-done on the new one.
+  async function restore(why = 'ready') {
+    S.page += 1; const page = S.page;
+    S.sent = { libs: false, assets: new Set(), plan: '' };
+    if (!S.view || !S.edit) return false;
+    // the frame it was on, now: the new page reports its own 0 when the plan lands, which isn't where you are
+    const T0 = S.T; const n0 = S.moved || 0;
+    S.restoring = performance.now() + 5000; S.restoreBusy = { T: T0, until: performance.now() + 6000 };
+    let ok = false;
+    try {
+      await Promise.all([ensureSong(), loadMaps()]);
+      if (page !== S.page || !S.view) return false;
+      await sendPlan({ force: true });
+      if (page !== S.page || !S.view) return false;
+      // (you moved the playhead meanwhile: there)
+      const T = (S.moved || 0) === n0 ? T0 : S.T;
+      S.T = T; S.restoreBusy = { T, until: performance.now() + 1500 };
+      send({ type: 'seq-loop', on: S.loop });
+      send({ type: 'seq-seek', T });
+      if (S.want && !S.render) send({ type: 'seq-play', on: true, rate: S.rate || 1 });
+      S.lastState = performance.now();
+      ok = true;
+      if (why !== 'ready') note(why);
+      else if (S.pendingNote) { note(S.pendingNote); S.pendingNote = null; }
+      return true;
+    } finally { if (page === S.page) { S.restoring = ok ? performance.now() + 800 : 0; if (!ok) S.restoreBusy = 0; } }
+  }
+  // a frame swap while the sequence shows (the size pills, Shift+1…5, /size, the preview menu): the sequence takes
+  // that shape (its render follows; one undo step for a run of swaps), Fit and the other sizes only change the
+  // preview. (tools/three.js no longer writes the sequence's shape into the scene's own frame size meanwhile.)
+  function sizeChanged(id) {
+    if (!S.view || S.render || !S.edit) return false;
+    if (D.FORMATS[id]) { if (D.formatOf(S.edit) !== id) return commit(D.setFormat(S.edit, id), `Format ${id}`, { merge: 'format' }); return false; }
+    flash(`Preview only · the sequence stays ${D.formatOf(S.edit)}`);
+    return false;
+  }
+  // The watchdog (only while the sequence shows, the Lab is on screen and nothing renders; a timer every second,
+  // a ping every few seconds when paused, no per-frame work):
+  //   playing, but the page's clock hasn't moved for 2.5 s → the plan again, seek, play (soft); still stuck 4 s
+  //   later → a fresh page (hard, like ↻), which comes back by itself
+  //   a ping unanswered twice → a fresh page
+  //   the page lost the sequence (it says it's off, or shows an older plan) → the plan again
+  //   a clip that should show but can't (its footage / picture file missing in the page, a decoder that failed, a
+  //   scene whose layers were swept away) → its file again, the clip remounted
+  // Each repair says "Preview restored" in the row's note (no dialog); ↻ stays the manual way.
+  const GUARD_MS = 1000;
+  let guardT = 0; let pingAt = 0; let pingId = 0; let unanswered = 0; let softAt = 0;
+  const labVisible = () => document.visibilityState === 'visible' && Boolean(refs.view && !refs.view.hidden && refs.view.offsetParent);
+  function note(why) {
+    const g = S.guard;
+    g.last = { why, at: Date.now() }; g.log.push(g.last); if (g.log.length > 30) g.log.shift();
+    flash('Preview restored');
+    emit('restored', { why });
+  }
+  function guardOn() { if (!guardT) guardT = setInterval(guardTick, GUARD_MS); }
+  function guardOff() { clearInterval(guardT); guardT = 0; unanswered = 0; softAt = 0; }
+  function guardTick() {
+    if (!S.view || !lab()) { guardOff(); return; }
+    const now = performance.now();
+    if (S.render || S.drag || !labVisible() || (S.restoring && now < S.restoring)) { S.lastState = now; pingAt = now; return; }
+    // the page restarting (a frame swap's reload): its own "ready" puts it back
+    if (lab().pageReady && !lab().pageReady()) { S.lastState = now; return; }
+    if (S.want && now - S.lastState > 2500) {
+      if (softAt && now - softAt < 6500) { if (now - softAt > 4000) hardRepair('the preview stopped'); return; }
+      softAt = now; S.guard.soft += 1;
+      restore('the clock stalled').catch(() => {});
+      return;
+    }
+    if (softAt && now - softAt > 6500) softAt = 0;
+    // paused (or playing fine): a ping now and then
+    if (now - pingAt > (S.want ? 4000 : 3000)) {
+      if (pingId && unanswered >= 2) { unanswered = 0; hardRepair('the preview stopped answering'); return; }
+      if (pingId) unanswered += 1;
+      pingAt = now; pingId = (pingId % 1e6) + 1;
+      send({ type: 'seq-health', id: pingId, plan: S.planId, T: S.T });
+    }
+  }
+  function hardRepair(why) {
+    if (S.render || !lab()?.reloadPage) return;
+    S.guard.hard += 1; softAt = 0; pingId = 0;
+    S.sent = { libs: false, assets: new Set(), plan: '' };
+    S.restoring = performance.now() + 15000; // until its "ready"
+    lab().reloadPage();
+    S.pendingNote = why;
+  }
+  function onHealth(m) {
+    if (m.id !== pingId) return;
+    pingId = 0; unanswered = 0;
+    if (!S.view || S.render) return;
+    S.health = { at: Date.now(), ...m };
+    if (!m.on || (m.plan || 0) < S.planId) { S.guard.soft += 1; restore('the preview lost the sequence').catch(() => {}); return; }
+    if (m.missing?.length) { S.guard.assets += 1; for (const a of m.missing) S.sent.assets.delete(a); sendPlan({ force: true }).then(() => note('a file was missing in the preview')).catch(() => {}); return; }
+    if (m.broken?.length) { S.guard.remount += 1; send({ type: 'seq-remount', ids: m.broken }); note('a clip couldn\'t show'); }
+  }
+  // what the watchdog did (/sequence health, status)
+  function health() { return { watching: Boolean(guardT), restores: { ...S.guard, log: undefined }, last: S.guard.last, page: S.page, plan: S.planId, lastPing: S.health }; }
+
   function renderMenu(anchor) {
     const r = anchor.getBoundingClientRect();
     const cur = D.formatOf(S.edit);
@@ -1899,7 +2042,7 @@ const ThreeSeq = (() => {
   addEventListener('hearth:sketch', () => { if (S.hold) { S.hold = false; return; } if (!S.view && !S.render) S.explicit = false; });
   addEventListener('hearth:lab-ready', () => { setTimeout(() => list().then(() => emit('index', {})).catch(() => {}), 1500); });
   const api = {
-    renderPanel, reloadPreview, attach, onMessage, takeRecording, keep, posterImage, owns: () => S.view, sketchChanged, previewItem,
+    renderPanel, reloadPreview, restore, sizeChanged, health, history, goBack, goForward, attach, onMessage, takeRecording, keep, posterImage, owns: () => S.view, sketchChanged, previewItem,
     enter, leave, toggle, open, create, current, list, add, addCurrent, applyVibe, select, split, del, dup, slipBy, trimToHead, marker, setTransition, setLength, setLook, fit, setFormat,
     play, seek, step, shuttle, jump, settle, undo, redo, render, renderEdit, renderScene, toEditor, fromEditor, needsBake, bake, compile, status, handle, timeOf, secsOf, zoomBy,
     arrange, again, retime, versions, fillGap, vary, varySections, copyLook, pasteLook, swapLooks, nest, unnest, copySel, paste, zoomTo, sectionMarkers, decideArrangement, recordForEditor,

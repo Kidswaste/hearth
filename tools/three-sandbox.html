@@ -2127,6 +2127,10 @@ function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, lo
   m.addEventListener('loadedmetadata', async () => {
     // a recorder's WebM doesn't say how long it is (Infinity): seek past the end once so the browser measures it
     if (m.duration === Infinity) await new Promise((res) => { const t = realSetTimeout(res, 6000); m.addEventListener('durationchange', () => { if (Number.isFinite(m.duration)) { clearTimeout(t); res(); } }); try { m.currentTime = 1e101; } catch { res(); } });
+    // (a Lab sequence on the page owns the song: it goes to the sequence's time, not the music timeline's — the
+    // sequence clock follows the song, so a page reloaded by a frame swap used to jump back to that spot: seqguard)
+    const sq = SQ.on && SQ.plan?.song ? SQ.plan.song : null;
+    if (sq) { playing = false; m.currentTime = Math.max(0, SQ.T - sq.offset); } else
     m.currentTime = Math.min(startAt, Math.max(0, (Number.isFinite(m.duration) ? m.duration : 0) - 0.05));
     if (playing) { actx.resume(); m.play().catch((err) => post({ type: 'console', level: 'warn', text: `Couldn't start playback: ${err.message}` })); }
   }, { once: true });
@@ -5673,7 +5677,8 @@ function sqPseudo(id, props) {
   return L;
 }
 // ---------- mounting groups ----------
-const sqKeyOf = (g) => JSON.stringify([g.kind, g.layers?.map((L) => [L.id, L.code, L.values, L.props?.precomp?.sig]), g.asset, g.card, g.mute]);
+// (whether its file has arrived is part of it: footage mounted before its bytes came is mounted again once they do)
+const sqKeyOf = (g) => JSON.stringify([g.kind, g.layers?.map((L) => [L.id, L.code, L.values, L.props?.precomp?.sig]), g.asset, g.asset ? Boolean(sqAsset(g.asset)) : null, g.card, g.mute]);
 function sqProps(g, L, j) {
   const p = L?.props || {};
   const lin = p.in != null ? Math.max(g.start - WARM, p.in) : g.start - WARM;
@@ -5684,7 +5689,7 @@ function sqProps(g, L, j) {
   return { ...p, z: g.z + j, in: lin, out: lout, fadeIn: fin, fadeOut: fout, seqT0: g.t0 ?? g.start, seqGroup: g.id, visible: p.visible !== false };
 }
 function sqMount(g) {
-  const st = { g, key: sqKeyOf(g), ids: [], ready: null, video: null, fresh: true };
+  const st = { g, key: sqKeyOf(g), ids: [], ready: null, video: null, fresh: true, at: realNow() };
   SQ.mounted.set(g.id, st);
   if (g.layers) {
     st.ids = g.layers.map((L) => L.id);
@@ -5787,7 +5792,9 @@ function sqDrawPseudo(st, T) {
   const W = c.width; const H = c.height;
   if (g.kind === 'footage') {
     const v = st.video;
-    if (!v || v.readyState < 2) return;
+    // (a decoder that is seeking has no frame to give: drawing it painted black over the last good frame, a black
+    // flash at each cut into footage and at each re-sync while playing: seqguard)
+    if (!v || v.readyState < 2 || v.seeking) return;
     g2.fillStyle = '#000'; g2.fillRect(0, 0, W, H);
     sqFit(g2, v, v.videoWidth, v.videoHeight, W, H, g.fit);
   } else if (g.kind === 'image') {
@@ -5928,7 +5935,9 @@ function sqClock() {
   const wall = SQ.T0 + ((realNow() - SQ.at0) / 1000) * SQ.rate;
   if (s && !mediaEl.paused && !mediaEl.seeking && sqInSong(wall)) {
     const t = mediaEl.currentTime + s.offset;
-    // the song leads while it plays (a few ms of jitter in its clock are smoothed by the wall clock)
+    // the song leads while it plays (a few ms of jitter in its clock are smoothed by the wall clock); a song that
+    // jumped away (something else moved it: a page restarting, the music timeline) is put back instead (seqguard)
+    if (Math.abs(t - wall) > 0.6) { mediaEl.currentTime = Math.max(0, wall - s.offset); return wall; }
     if (Math.abs(t - wall) > 0.03) { SQ.T0 = t; SQ.at0 = realNow(); return t; }
   }
   return wall;
@@ -5949,7 +5958,7 @@ function sqState(force = false) {
   const now = realNow();
   if (!force && now - SQ.lastPost < 200) return;
   SQ.lastPost = now;
-  post({ type: 'seq-state', T: SQ.T, playing: SQ.playing, ended: SQ.ended, mounted: SQ.mounted.size });
+  post({ type: 'seq-state', T: SQ.T, playing: SQ.playing, ended: SQ.ended, mounted: SQ.mounted.size, ack: SQ.ack || 0 });
 }
 function sqTick() {
   realRAF(sqTick);
@@ -6008,7 +6017,8 @@ function sqOff() {
   if (!liveKind) { remoteFreq = null; remoteWave = null; }
   SQ.plan = null;
 }
-function sqSeek(T) {
+function sqSeek(T, n = null) {
+  if (n != null) SQ.ack = n; // its states say which seek they answer (the hub drops older ones)
   SQ.T = Math.max(0, Math.min(Number(T) || 0, (SQ.plan?.dur || 0) - 1e-3));
   SQ.T0 = SQ.T; SQ.at0 = realNow(); SQ.ended = false;
   const s = sqSong();
@@ -6110,6 +6120,25 @@ async function sqFrame({ n, T, w, h, q = 0.92, kind = 'image/jpeg', ret = true }
   const buffer = await blob.arrayBuffer();
   post({ type: 'seq-frame', n, buffer, w, h }, [buffer]);
 }
+// seqguard: is the program what the plan says? (on, which plan, the clock; the clips that should show but can't:
+// a footage / picture file that never arrived, a decoder that failed or never loaded, a scene whose layers are gone)
+function sqHealth() {
+  if (!SQ.on) return { on: false };
+  const T = SQ.T; const now = realNow();
+  const missing = new Set(); const broken = [];
+  for (const g of SQ.plan?.groups || []) if (g.asset && T >= g.start - 0.05 && T < g.end && !sqAsset(g.asset)) missing.add(g.asset);
+  for (const st of SQ.mounted.values()) {
+    const g = st.g;
+    if (T < g.start - 1e-6 || T >= g.end - 1e-6 || now - st.at < 2500) continue;
+    if (g.kind === 'footage' && sqAsset(g.asset) && (!st.video || st.video.error || st.video.readyState < 2)) broken.push(g.id);
+    else if (g.kind === 'image' && sqAsset(g.asset) && !st.image?.naturalWidth) broken.push(g.id);
+    else if (g.layers && st.ids.some((lid) => !layers.has(lid))) broken.push(g.id);
+  }
+  return { on: true, plan: SQ.planId || 0, T, playing: SQ.playing, mounted: SQ.mounted.size, missing: [...missing], broken };
+}
+// checks (seqguard): a stalled clock, a lost file, a page that stops answering, without real breakage
+window.__seqTest = { stall: () => { SQ.playing = false; return 1; }, dropAsset: (id) => { SQ.assets.delete(id); for (const [gid, st] of [...SQ.mounted]) if (st.g.asset === id) sqUnmount(gid); return 1; }, mute: (ms) => { SQ.muteUntil = realNow() + ms; return 1; }, off: () => { sqOff(); return 1; },
+  info: () => ({ assets: [...SQ.assets.keys()], health: sqHealth(), mounted: [...SQ.mounted.values()].map((st) => ({ id: st.g.id, kind: st.g.kind, has: st.g.asset ? Boolean(sqAsset(st.g.asset)) : null, video: st.video ? { rs: st.video.readyState, err: st.video.error?.code || null, paused: st.video.paused, t: +st.video.currentTime.toFixed(3) } : null, hide: st.ids.map((lid) => Boolean(layers.get(lid)?.seqHide)) })) }) };
 // what the sequence shows right now (checks: sum-ups stay inside the page)
 // checks: the program as it shows now, small: the color in the middle and a 12-band code across the top
 window.__seqProbe = ({ size = 240, y = 0.04, x = 0.5, yc = 0.66 } = {}) => {
@@ -6134,9 +6163,12 @@ function sqMessage(msg) {
   if (msg.type === 'seq-libs') { try { SQ.libs = new Function(`${msg.code}\nreturn { EditFX, VideoTitles };`)(); } catch (err) { post({ type: 'console', level: 'warn', text: `Sequence titles / transitions: ${err.message}` }); } return; }
   if (msg.type === 'seq-asset') { const old = SQ.assets.get(msg.id); if (old) URL.revokeObjectURL(old.url); SQ.assets.set(msg.id, { url: URL.createObjectURL(new Blob([msg.buffer], { type: msg.mime || 'video/mp4' })), mime: msg.mime }); return; }
   if (msg.type === 'seq-font') { try { new FontFace(msg.name, msg.buffer).load().then((f) => document.fonts.add(f)).catch(() => {}); } catch { /* the fallback fonts */ } return; }
-  if (msg.type === 'seq-set') { if (msg.fade && SQ.on) sqFadeOut(); sqSet(msg.plan); return; }
+  if (msg.type === 'seq-set') { if (msg.fade && SQ.on) sqFadeOut(); if (msg.id) SQ.planId = msg.id; sqSet(msg.plan); return; }
+  // seqguard: the hub's watchdog asks now and then (never per frame) whether the program is really on screen
+  if (msg.type === 'seq-health') { if (!(SQ.muteUntil > realNow())) post({ type: 'seq-health', id: msg.id, ...sqHealth() }); return; }
+  if (msg.type === 'seq-remount') { for (const id of msg.ids || []) sqUnmount(id); if (SQ.on && !SQ.off) { sqManage(SQ.T); sqApply(SQ.T); } return; }
   if (msg.type === 'seq-off') { sqOff(); return; }
-  if (msg.type === 'seq-seek') { sqSeek(msg.T); return; }
+  if (msg.type === 'seq-seek') { sqSeek(msg.T, msg.n ?? null); return; }
   if (msg.type === 'seq-play') { sqPlay(msg.on, msg.rate); return; }
   if (msg.type === 'seq-loop') { SQ.loop = Boolean(msg.on); return; }
   if (msg.type === 'seq-offline') { sqOffline(msg.on).then((r) => post({ type: 'seq-offline', ...r, on: SQ.off })); return; }
