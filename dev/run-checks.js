@@ -10,7 +10,7 @@
 //   sh dev/run-checks.sh --list               # groups and checks
 //   options: --out <dir> (logs and pictures, default <tmp>/hearth-checks) · --shots (journeys keep a picture per step)
 //   · --fixtures-only · --stop (first failure)
-// Groups: qa, board, editor, capture, journeys, chat, lab, video, nodes, smooth, astra, sequence, robust, motion, orb, flows, sync, comp, unit, all.
+// Groups: qa, board, editor, capture, journeys, chat, lab, video, nodes, smooth, astra, sequence, robust, motion, orb, flows, commands, sync, comp, unit, all.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -26,7 +26,7 @@ const names = argv.filter((a, i) => !a.startsWith('--') && !['--out'].includes(a
 
 const LIBS = new Set(['journey-lib', 'smooth-lib', 'journey-olddata-make', 'sequence-lib']); // helpers / made to run in the old app
 const all = fs.readdirSync(CHECKS).filter((f) => f.endsWith('.js')).map((f) => f.slice(0, -3)).filter((n) => !LIBS.has(n)).sort();
-const UNIT = ['board-unit-test', 'board-mcp-test', 'capture-mcp-test', 'editor-mcp-test', 'director-mcp-test', 'cut-test', 'editor-test', 'capture-test', 'music-test', 'code-flow-test', 'importer-test', 'director-cost', 'astra-engine-test', 'robust-engine-test', 'test-aemain-mac', 'sequence-test', 'flows-test', 'sync-test'];
+const UNIT = ['board-unit-test', 'board-mcp-test', 'capture-mcp-test', 'editor-mcp-test', 'director-mcp-test', 'cut-test', 'editor-test', 'capture-test', 'music-test', 'code-flow-test', 'importer-test', 'director-cost', 'astra-engine-test', 'robust-engine-test', 'test-aemain-mac', 'sequence-test', 'flows-test', 'sync-test', 'cmdpage-test'];
 const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
   qa: ['qa-commands', 'qa-keys', 'qa-mac', 'polish'],
@@ -45,6 +45,7 @@ const GROUPS = {
   motion: by(/^motion/),
   orb: by(/^orb/),
   flows: [...by(/^flows/), 'unit:flows-test'],
+  commands: [...by(/^commands-page/), 'unit:cmdpage-test'],
   sync: [...by(/^sync/), 'unit:sync-test'],
   comp: by(/^comp/),
   unit: UNIT.map((u) => `unit:${u}`),
