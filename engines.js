@@ -131,6 +131,10 @@ const HUB_TOOLSETS = {
   // Screenshots / recordings of Hearth and the exact frame reader (capture.js): opt-in per chat (/capture-tools on,
   // options.captureTools) or per agent (agent.captureTools), never on by default (≈ 550 tokens per message, /director-cost).
   captureTools: { server: 'capture', script: 'capture-mcp.js' },
+  // The owner's Adobe apps (adobe.js) and publishing on the web (deploy.js): opt-in per agent (/adobe-tools on,
+  // /deploy-tools on), one tool each. Publishing and the agent's own scripts ask the owner first.
+  adobeTools: { server: 'adobe', script: 'adobe-mcp.js' },
+  deployTools: { server: 'deploy', script: 'deploy-mcp.js' },
 };
 // Claude agents get their tool sets (chat tools unless switched off). Codex agents (Astra) get the tool sets their
 // agent has (a director switched to Astra) and chat tools only as an opt-in (talk-back, or agent.hubTools).
@@ -173,7 +177,7 @@ function codexMcpArgs(agent) {
       '-c', `${p}.args=[${tomlStr(path.join(__dirname, 'mcp', script))}]`,
       '-c', `${p}.env={ ${Object.entries(hubToolEnv(agent)).map(([k, v]) => `${k}=${tomlStr(String(v))}`).join(', ')} }`,
       // a question to the user (chat_ask) or a render can take a long time
-      '-c', `${p}.tool_timeout_sec=${key === 'videoTools' || key === 'chatTools' || key === 'captureTools' ? 2700 : 300}`,
+      '-c', `${p}.tool_timeout_sec=${key === 'videoTools' || key === 'chatTools' || key === 'captureTools' || key === 'adobeTools' || key === 'deployTools' ? 2700 : 300}`,
       '-c', `${p}.startup_timeout_sec=30`,
       // Hearth's own tools are pre-approved: `codex exec` can't show an approval prompt, so newer Codex versions
       // cancelled every Lab / video / chat tool call ("Lab access was blocked"). Older versions ignore the key.
@@ -238,7 +242,7 @@ function buildPrompt(agent) {
   }
   if (sets.includes('chatTools')) {
     // directors get the chat tools' when-to-use guide; plain chats only the <suggest> convention
-    if (agent.dock || sets.filter((k) => k !== 'boardTools' && k !== 'captureTools').length > 1) parts.push(toolGuide('chatTools'));
+    if (agent.dock || sets.filter((k) => !['boardTools', 'captureTools', 'adobeTools', 'deployTools'].includes(k)).length > 1) parts.push(toolGuide('chatTools'));
     parts.push('At the end of a reply, when it helps, offer up to 3 short next steps the user might want, each as <suggest>…</suggest> (they become buttons; keep each under 8 words).');
   } else if (agent.suggestNext) {
     parts.push('At the end of a reply, when it helps, offer up to 3 short next steps the user might want, each as <suggest>…</suggest> (they become buttons; keep each under 8 words).');
@@ -631,7 +635,7 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
   // A per-run persona replaces the agent's own instructions; "lean" runs (collaborations, quick asks) drop
   // the hub tool sets and file tools so they cost no more than a plain chat turn.
   if (options.persona) agent = { ...agent, systemPrompt: String(options.persona).slice(0, 4000) };
-  if (options.lean) agent = { ...agent, chatTools: false, threeTools: false, videoTools: false, gameTools: false, boardTools: false, captureTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false };
+  if (options.lean) agent = { ...agent, chatTools: false, threeTools: false, videoTools: false, gameTools: false, boardTools: false, captureTools: false, adobeTools: false, deployTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false };
   // "hubOnly" runs (a jam's build turns, jam.js) keep the agent's tool sets (Lab, video…) and drop the rest.
   if (options.hubOnly) agent = { ...agent, chatTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false };
   // asDirector: 'three' (a jam's build turn on an agent that isn't a Lab director, e.g. your Astra): this one turn gets
