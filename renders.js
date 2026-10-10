@@ -114,7 +114,7 @@ const Renders = (() => {
   }
   // a Lab sequence render queued here: it starts when the preview is free; a conversion can follow (GIF, WebM…)
   function enqueueSeq({ key, preset, opts = {}, title = null, open: openAfter = false }) {
-    const own = (typeof ThreeSeq !== 'undefined' && ThreeSeq.edit?.seq) ? (Object.entries(ThreeSeqData?.FORMATS || {}).find(([, v]) => v[0] === ThreeSeq.edit.seq.w && v[1] === ThreeSeq.edit.seq.h)?.[0] || '9:16') : '9:16';
+    const own = typeof ThreeSeqData !== 'undefined' && typeof ThreeSeq !== 'undefined' && ThreeSeq.edit ? ThreeSeqData.formatOf(ThreeSeq.edit) : '9:16';
     const plan = R.seqPlan(preset, { quality: opts.quality, fps: opts.fps, own });
     const p = R.get(preset);
     const name = (key || '').replace(/^seq:/, '') || 'sequence';
@@ -255,7 +255,7 @@ const Renders = (() => {
     if (typeof Progress !== 'undefined' && !j.external && Progress.get(`job:${j.id}`)) Progress.done(`job:${j.id}`, { ok: false, label: e.reason.slice(0, 50) });
     // a chain's next step can't run without this one
     for (const x of jobs) if (x.after === j.id && live(x)) { x.error = { reason: 'The step before it failed.', fix: 'Retry the first step.' }; x.status = 'failed'; x.ended = now(); record(x); }
-    if (log) { try { window.Habits?.record?.(`Render failed: ${e.reason}`, 'renders', e.fix); } catch { /* the log is a bonus */ } }
+    if (log) { try { if (typeof Habits !== 'undefined') Habits.record(`Render failed: ${e.reason}`, 'renders', e.fix); } catch { /* the log is a bonus */ } }
     unseen += 1;
     record(j); changed(j, 'failed');
     if (show) notifyFail(j);
