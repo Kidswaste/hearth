@@ -71,7 +71,9 @@ const CutFF = (() => {
   }
   const fadeF = (c, d, alpha) => [c.fadeIn > 0 ? `fade=t=in:st=0:d=${num(c.fadeIn)}${alpha ? ':alpha=1' : ''}` : '', c.fadeOut > 0 ? `fade=t=out:st=${num(Math.max(0, d - c.fadeOut))}:d=${num(c.fadeOut)}${alpha ? ':alpha=1' : ''}` : ''].filter(Boolean);
   const afadeF = (c, d) => [c.fadeIn > 0 ? `afade=t=in:st=0:d=${num(c.fadeIn)}` : '', c.fadeOut > 0 ? `afade=t=out:st=${num(Math.max(0, d - c.fadeOut))}:d=${num(c.fadeOut)}` : ''].filter(Boolean);
-  const colorF = (c) => FX.colorFilters(FX.colorMath(FX.grade(c.color)));
+  // a clip's look, then its LUT (pack11: tools/video-pack.js writes c.lut = { path, kind })
+  const lutF = (c) => { if (!c.lut?.path) return []; const p = String(c.lut.path).replace(/\\/g, '/').replace(/'/g, '').replace(/:/g, '\\:'); return [`${c.lut.kind === '1d' ? 'lut1d' : 'lut3d'}=file='${p}'${c.lut.kind === '1d' ? '' : ':interp=tetrahedral'}`]; };
+  const colorF = (c) => [...FX.colorFilters(FX.colorMath(FX.grade(c.color))), ...lutF(c)];
   function volumeF(c) {
     const V = propExpr(c, 'volume', 't');
     if (V.anim) return [`volume=volume=${q(`max(0,${V.expr})`)}:eval=frame`];
@@ -191,6 +193,20 @@ const CutFF = (() => {
       for (const it of k.items) {
         if (it.off) continue;
         const d = C.itemDur(it); const S0 = it.start;
+        // an adjustment layer (pack11): everything under it, through its look / LUT / effects, mixed in over its range
+        if (it.kind === 'adjust') {
+          if (k.hide) continue;
+          const chain = [...colorF(it), ...FX.effectFilters((it.fx || []).filter((f) => !FX.EFFECT[f.id]?.alphaFF), `j${lab}`)];
+          if (!chain.length) continue;
+          const op = clamp(it.opacity ?? 1, 0, 1);
+          const fades = [it.fadeIn > 0 ? `fade=t=in:st=${num(S0)}:d=${num(it.fadeIn)}:alpha=1` : '', it.fadeOut > 0 ? `fade=t=out:st=${num(Math.max(S0, S0 + d - it.fadeOut))}:d=${num(it.fadeOut)}:alpha=1` : ''].filter(Boolean);
+          const a0 = L(); const b0 = L(); const fx0 = L(); const nb = L();
+          parts.push(`[${accV}]split[${a0}][${b0}]`);
+          parts.push(`[${b0}]${chain.join(',')},format=rgba${op < 0.999 ? `,colorchannelmixer=aa=${num(op)}` : ''}${fades.map((f) => `,${f}`).join('')}[${fx0}]`);
+          parts.push(`[${a0}][${fx0}]overlay=x=0:y=0:eof_action=pass:enable=${q(`between(t,${num(S0)},${num(S0 + d)})`)},${norm}[${nb}]`);
+          accV = nb;
+          continue;
+        }
         if (!k.hide) {
           const src = source(it, d);
           const color = [...colorF(it), ...FX.effectFilters(it.fx, `i${lab}`)];

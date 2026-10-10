@@ -87,17 +87,19 @@ const VideoComp = (() => {
 
   // ---------- decoders ----------
   const fpsOf = (src) => host?.fpsOf?.(src) || host?.S.meta[src]?.fps || 30;
+  const VP = () => (typeof VideoPack !== 'undefined' ? VideoPack : null);
   function deck(c) {
     let d = decks.get(c.id);
-    if (d && d.src === c.src) return d;
+    const url = host.fileUrl(VP()?.previewSrc(c.src) || c.src); // a proxy (a lighter copy) plays when there is one (pack11)
+    if (d && d.src === c.src && d.url === url) return d;
     if (!d) {
       const v = el('video', { class: 'vr-pdeck', playsInline: true, preload: 'auto', muted: false });
       refs.decks.append(v);
       d = { el: v, src: null, frame: null, ready: null, used: 0 };
       decks.set(c.id, d);
     }
-    d.src = c.src; d.frame = null;
-    d.el.src = host.fileUrl(c.src);
+    d.src = c.src; d.frame = null; d.url = url;
+    d.el.src = url;
     d.ready = new Promise((res) => {
       const done = (ok) => { d.el.removeEventListener('loadeddata', y); d.el.removeEventListener('error', n); res(ok); };
       const y = () => done(true); const n = () => done(false);
@@ -191,7 +193,12 @@ const VideoComp = (() => {
     if (c.kind === 'layer') return; // a Lab layer over a range: only in the render
     if (c.kind === 'color') { g.save(); g.globalAlpha = op; g.fillStyle = c.fill || '#000'; g.fillRect(0, 0, W, H); g.restore(); return; }
     if (c.kind === 'image') { const im = image(c.src); if (!im.complete || !im.naturalWidth) return; pic = im; pw = im.naturalWidth; ph = im.naturalHeight; }
-    if (isMedia(c)) { const dk = decks.get(c.id); if (!dk || dk.el.readyState < 2) return; pic = dk.el; pw = dk.el.videoWidth; ph = dk.el.videoHeight; dk.used = performance.now(); }
+    if (isMedia(c)) {
+      // a reversed clip playing: its reversed copy plays forward (pack11), else the decoder steps backwards
+      const rv = c.reverse && st.playing ? decks.get(`${c.id}~r`) : null;
+      const dk = rv && rv.el.readyState >= 2 && !rv.el.paused ? rv : decks.get(c.id);
+      if (!dk || dk.el.readyState < 2) return; pic = dk.el; pw = dk.el.videoWidth; ph = dk.el.videoHeight; dk.used = performance.now();
+    }
     if (!pic || !pw || !ph) return;
     const k = Math.min(W / pw, H / ph);
     const fw = pw * k; const fh = ph * k;
@@ -205,7 +212,7 @@ const VideoComp = (() => {
     g.scale(s, s);
     g.globalAlpha = clamp(op, 0, 1);
     g.globalCompositeOperation = blend;
-    const css = [look?.css, ...fx.map((f) => effectCss(f, local, T))].filter(Boolean).join(' ');
+    const css = [look?.css, VP()?.lutCss(c), ...fx.map((f) => effectCss(f, local, T))].filter(Boolean).join(' ');
     if (css) g.filter = css;
     if (fx.some((f) => f.round)) { const rr = Math.min(fw, fh) * 0.04 * (1 + 2 * (fx.find((f) => f.round).amt)); g.beginPath(); if (g.roundRect) g.roundRect(-fw / 2, -fh / 2, fw, fh, rr); else g.rect(-fw / 2, -fh / 2, fw, fh); g.clip(); }
     paintPicture(g, pic, fw, fh, fx, pw, ph);
@@ -349,7 +356,11 @@ const VideoComp = (() => {
       (tr.preview || FX.TRANS.dissolve.preview)(g, ca, cb, p, W, H);
       g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.filter = 'none';
     } else if (main.length) drawLayer(g, main[0], T, W, H);
-    for (const L of stack) if (L.where === 'item') drawLayer(g, L, T, W, H);
+    for (const L of stack) {
+      if (L.where !== 'item') continue;
+      if (L.clip.kind === 'adjust') { VP()?.drawAdjust(g, L, T, W, H, { filterOf }); continue; } // an adjustment layer (pack11)
+      drawLayer(g, L, T, W, H);
+    }
     g.restore();
   }
 
@@ -451,6 +462,22 @@ const VideoComp = (() => {
       const muted = c.mute || c.off || c.kind === 'freeze' || track?.mute || (typeof VideoSound !== 'undefined' && VideoSound.owns(c));
       const v = muted ? 0 : clamp(vol * C.propAt(c, 'volume', local) * envelope(c, local, L.end - L.start), 0, 1);
       if (Math.abs(d.el.volume - v) > 0.01) d.el.volume = v;
+      // a reversed clip while playing: its reversed copy plays forward in real time (made once by ffmpeg, pack11)
+      const rp = c.reverse && st.playing && c.kind === 'video' ? VP()?.reverseProxy(c) : null;
+      if (rp) {
+        const rid = `${c.id}~r`; live.add(rid);
+        const rd = deck({ id: rid, src: rp });
+        rd.el.muted = true;
+        if (!d.el.paused) d.el.pause();
+        if (rd.el.readyState >= 1) {
+          const pw = c.out - want; // seconds into the reversed copy
+          const rate = (c.speed || 1) * st.rate;
+          if (rd.el.playbackRate !== rate) rd.el.playbackRate = rate;
+          const drift = Math.abs(rd.el.currentTime - pw);
+          if (rd.el.paused) { if (drift > 1 / fps) rd.el.currentTime = pw; rd.el.play().catch(() => {}); } else if ((hard || drift > 3 / fps) && !rd.el.seeking) rd.el.currentTime = pw;
+        }
+        continue;
+      }
       if (c.kind === 'freeze' || c.reverse) {
         if (!d.el.paused) d.el.pause();
         if (!d.el.seeking && Math.abs(d.el.currentTime - want) > 1 / fps) d.el.currentTime = want;

@@ -712,6 +712,9 @@ const VideoCut = (() => {
           label(g, `♪ ${noExt(base(it.src))}${it.volume != null && it.volume !== 1 ? ` · ${Math.round(it.volume * 100)}%` : ''}`, x0, ly, Math.min(cw, 170));
         } else if (it.kind === 'color') {
           g.fillStyle = it.fill || '#444'; g.fillRect(x0, ly, cw, lane.h);
+        } else if (it.kind === 'adjust') {
+          g.fillStyle = 'hsl(200 30% 20%)'; g.fillRect(x0, ly, cw, lane.h);
+          label(g, `◐ ${it.name || 'Adjustment'}${it.color?.look ? ` · ${FX.LOOK[it.color.look]?.name || it.color.look}` : ''}${it.lut ? ` · ${it.lut.name}` : ''}${it.fx?.length ? ` · fx ${it.fx.length}` : ''}`, x0, ly, Math.min(cw, 220));
         } else if (it.kind === 'layer') {
           g.fillStyle = 'hsl(270 35% 22%)'; g.fillRect(x0, ly, cw, lane.h);
           label(g, `◭ ${it.name || 'Lab layer'} · Lab`, x0, ly, Math.min(cw, 170));
@@ -823,7 +826,7 @@ const VideoCut = (() => {
   }
 
   // ---------- pointer on the track ----------
-  const SUGGEST_LABEL = { bars: 'on every bar', '2bars': 'every 2 bars', '4bars': 'every 4 bars', beats: 'on every beat', drops: 'on the drops', sections: 'at the song\'s sections', markers: 'at the markers and notes' };
+  const SUGGEST_LABEL = { bars: 'on every bar', '2bars': 'every 2 bars', '4bars': 'every 4 bars', beats: 'on every beat', drops: 'on the drops', sections: 'at the song\'s sections', markers: 'at the markers and notes', vibe: 'at the mood board\'s pacing' };
   function hit(e) {
     const r = refs.canvas.getBoundingClientRect();
     const x = e.clientX - r.left; const y = e.clientY - r.top;
@@ -1089,6 +1092,7 @@ const VideoCut = (() => {
         { label: 'Copy look', action: () => { lookClip = c.color ? C.copy(c.color) : null; host.flash(lookClip ? 'Look copied' : 'No look to copy'); } },
         lookClip ? { label: 'Paste look', action: () => commit(C.patchAny(st.edit, ids, (k) => { k.color = C.copy(lookClip); }), 'Look pasted') } : null,
         c.color ? { label: 'No look', action: () => commit(C.patchAny(st.edit, ids, (k) => { delete k.color; }), 'Look removed') } : null,
+        typeof VideoPack !== 'undefined' ? VideoPack.lutMenu(c, ids) : null, // .cube LUTs (pack11)
       ].filter(Boolean) } : null,
       visual && c.kind !== 'title' ? { label: 'Motion', items: () => grouped(FX.MOTIONS, (id) => applyMotion(id, ids), null) } : null,
       visual && c.kind !== 'title' ? { label: `Effects${c.fx?.length ? ` (${c.fx.length})` : ''}`, items: () => [...grouped(FX.EFFECTS, (id) => setEffect(id, ids, (c.fx || []).some((f) => f.id === id) ? 0 : 1), null).map((gr) => ({ ...gr, items: () => gr.items().map((it) => ({ ...it, label: (c.fx || []).some((f) => FX.EFFECT[f.id]?.name === it.label.replace(/^✓ /, '')) ? `✓ ${it.label}` : it.label })) })), c.fx?.length ? { label: 'Remove every effect', action: () => setEffect('off', ids) } : null].filter(Boolean) } : null,
@@ -1123,6 +1127,7 @@ const VideoCut = (() => {
         !isItem && c.kind === 'video' ? { label: 'Hold the first frame (1 s before)', action: () => holdFrame('first', 1, c.id) } : null,
         !isItem && c.kind === 'video' ? { label: 'Hold the last frame (1 s after)', action: () => holdFrame('last', 1, c.id) } : null,
       ].filter(Boolean) },
+      ...(typeof VideoPack !== 'undefined' ? VideoPack.clipItems(c, ids, { isItem }) : []), // multicam angles, proxies (pack11)
       { label: 'Inspector', action: () => inspect(c.id) },
       c.src ? { more: true, label: 'Open the source in Review', action: () => { leave(); R().open(c.src); } } : null,
       c.src ? { more: true, label: 'Show the source file', action: () => window.hub.fs.reveal(c.src) } : null,
@@ -1140,6 +1145,7 @@ const VideoCut = (() => {
       k.type === 'text' && k.items.length ? { label: 'Every title on it: style', items: () => grouped(FX.TITLE_STYLES, (id) => restyleTrack(k.id, { style: id }), null) } : null,
       k.type === 'text' && k.items.length ? { label: 'Every title on it: animation', items: () => FX.TITLE_ANIMS.map((a) => ({ label: a.name, action: () => restyleTrack(k.id, { anim: a.id }) })) } : null,
       k.items.length ? { label: 'Shift it', items: [-10, -1, 1, 10].map((f) => ({ label: `${f > 0 ? '+' : ''}${f} frame${Math.abs(f) > 1 ? 's' : ''}`, action: () => shiftTrack(k.id, f) })) } : null,
+      ...(typeof VideoPack !== 'undefined' ? VideoPack.trackItems(k) : []), // the voice track, ducking (pack11)
       { label: 'Add here', items: addItems(T, k) },
       add,
       { label: `Delete ${k.name}${k.items.length ? ` and its ${k.items.length} item${k.items.length === 1 ? '' : 's'}` : ''}`, danger: true, action: () => commit(C.removeTrack(st.edit, k.id), `${k.name} deleted`) },
@@ -1254,11 +1260,11 @@ const VideoCut = (() => {
   const jumpBeat = (dir) => { const b = C.programBeats(st.edit, analysisMap()).beats; const t = dir > 0 ? b.find((x) => x > P.T + 0.01) : [...b].reverse().find((x) => x < P.T - 0.01); if (t != null) seek(t, { play: false }); return t; };
   function step(n) { pause(); const f = progFps(); seek((V.frameAt(P.T, f) + n + 0.5) / f, { play: false }); }
   // Auto-cut: a suggestion first (dashed lines + Apply), nothing changes until you accept it.
-  function suggest(mode = 'bars') {
+  function suggest(mode = 'bars', given = null) {
     if (mode === 'off') { st.suggest = null; draw(); paintHead(); return null; }
     if (mode === 'apply') return acceptSuggestion();
     const have = [0, total(), ...C.cuts(st.edit)];
-    const times = mode === 'markers'
+    const times = given ? given.filter((t) => have.every((h) => Math.abs(h - t) > 0.05)).sort((a, b) => a - b) : mode === 'markers'
       ? [...new Set([...st.edit.markers.map((m) => m.t), ...noteMarks().map((n) => n.t)])].filter((t) => have.every((h) => Math.abs(h - t) > 0.05)).sort((a, b) => a - b)
       : C.suggest(st.edit, analysisMap(), mode);
     st.suggest = { mode, times };
@@ -1345,7 +1351,7 @@ const VideoCut = (() => {
     if (!a) return null;
     const first = C.find(st.edit, list[0]).clip;
     const want = on ?? !(first.afx || []).includes(a.id);
-    commit(C.patchAny(st.edit, list, (c) => { const s0 = (c.afx || []).filter((x) => x !== a.id); if (want) s0.push(a.id); if (s0.length) c.afx = s0; else delete c.afx; }), want ? `Sound: ${a.name} (heard in the render)` : `${a.name} off`);
+    commit(C.patchAny(st.edit, list, (c) => { const s0 = (c.afx || []).filter((x) => x !== a.id); if (want) s0.push(a.id); if (s0.length) c.afx = s0; else delete c.afx; }), want ? `Sound: ${a.name}${typeof VideoSound !== 'undefined' && VideoSound.previewNote([a.id]) ? ' (heard in the render)' : ''}` : `${a.name} off`);
     return a;
   }
   // one adjustment (exposure, contrast… EditFX.ADJ) on the selection
@@ -1722,6 +1728,7 @@ const VideoCut = (() => {
       { label: 'Shape or graphic', items: () => grouped(FX.SHAPES, (id) => addShape(id, { at, track: tid }), null) },
       { label: 'Music or sound…', action: async () => { const [p] = await window.hub.openDialog({ filters: [{ name: 'Sound', extensions: ['wav', 'mp3', 'm4a', 'aac', 'ogg', 'flac', 'mp4', 'mov'] }] }) || []; if (p) addAudio(p, { at: track ? at : 0, track: tid }); } },
       { label: 'Color matte', items: [['Black', '#000000'], ['White', '#ffffff'], ['Gold', '#ffc93b'], ['Ember', '#ff5a1f'], ['Violet', '#7a4bff'], ['Night blue', '#0b1230']].map(([n0, col]) => ({ label: n0, action: () => addColor(col, { at, main: !track }) })) },
+      ...(typeof VideoPack !== 'undefined' ? VideoPack.addItems() : []), // adjustment layer (pack11)
       { label: 'Freeze frame here', action: () => freezeHere() },
       { label: 'Marker here', action: () => marker() },
       { label: 'Empty track', items: [['video', 'Video / overlay'], ['text', 'Text'], ['audio', 'Audio']].map(([t, l]) => ({ label: l, action: () => commit(C.addTrack(st.edit, t), `${l} track added`) })) },
@@ -1919,6 +1926,8 @@ const VideoCut = (() => {
         t: () => askTitle({ at: P.T }), '†': () => askTitle({ at: P.T }),
       }[k];
       if (alt) { alt(); return true; }
+      // Alt+1…9: cut to that multicam angle at the playhead (pack11)
+      if (/^Digit[1-9]$/.test(e.code || '') && typeof VideoPack !== 'undefined' && VideoPack.angleKey(Number(e.code.slice(5)))) return true;
       return false;
     }
     const act = {
@@ -1981,7 +1990,8 @@ const VideoCut = (() => {
     const r = anchor.getBoundingClientRect();
     snapshots().catch(() => {}); // refresh the cache; the submenu reads it when hovered
     showMenu(Math.max(8, r.right - 300), r.bottom + 4, [
-      { label: '✂ Auto-cut on the music', items: Object.entries(SUGGEST_LABEL).map(([k, l]) => ({ label: `Cut ${l}`, action: () => suggest(k) })) },
+      { label: '✂ Auto-cut on the music', items: Object.entries(SUGGEST_LABEL).map(([k, l]) => ({ label: `Cut ${l}`, action: () => (k === 'vibe' && typeof VideoPack !== 'undefined' ? VideoPack.cutToVibe().catch((err) => host.flash(err.message)) : suggest(k)) })) },
+      typeof VideoPack !== 'undefined' ? { label: 'Pro tools', items: () => VideoPack.moreItems() } : null, // ducking, multicam, LUTs, proxies, adjustment layers (pack11)
       { label: 'Transitions on every cut', items: () => [...grouped(FX.TRANSITIONS.filter((t) => t.id !== 'cut'), (id) => commit(C.transAll(st.edit, id, FX.TRANS[id].d), `${FX.TRANS[id].name} on every cut`), null), { label: 'Remove them all', action: () => commit(C.transAll(st.edit, null, 0), 'Straight cuts') }] },
       { label: 'Template', items: () => FX.TEMPLATES.map((t) => ({ label: t.name, items: [{ label: 'Start from it (replaces the edit, undoable)', action: () => applyTemplate(t.id) }, { label: 'Lay its titles and markers over my clips', action: () => applyTemplate(t.id, { keep: true }) }] })) },
       { label: 'Range (in–out)', items: () => [
@@ -2051,8 +2061,9 @@ const VideoCut = (() => {
       { label: 'Masters', items: [{ label: 'ProRes 422 HQ master', action: () => exportCut({ preset: 'master' }) }, ...FX.EXPORTS.filter((p) => p.id === 'hq-same' || p.id === 'hevc').map((p) => ({ label: p.name, action: () => exportCut({ preset: p.id }) }))] },
       { label: 'Stills and sound', items: [{ label: 'PNG stills (every frame)', action: () => exportCut({ stills: true }) }, { label: 'JPEG stills (every frame)', action: () => exportCut({ stills: true, stillsExt: 'jpg' }) }, { label: 'Poster frame (the playhead, PNG)', action: () => posterFrame() },
         ...FX.EXPORTS.filter((p) => /^audio-/.test(p.id)).map((p) => ({ label: p.name, action: () => exportCut({ preset: p.id }) }))] },
+      typeof VideoPack !== 'undefined' ? VideoPack.queueMenu([...V.EXPORT_PRESETS, ...FX.EXPORTS]) : null, // several renders, one after the other (pack11)
       { more: true, label: 'Record in real time (WebM, no ffmpeg needed)', action: () => exportCut({ record: true }) },
-    ]);
+    ].filter(Boolean));
   }
 
   // ---------- export ----------
@@ -2419,7 +2430,7 @@ const VideoCut = (() => {
   }
 
   return {
-    editFor, storeEdit,
+    editFor, storeEdit, analysisMap, renderEdit,
     mount, onKey, frame, enter, leave, toggle, statusOf, hasCut, receive, on: (ev, fn) => { (listeners[ev] ||= []).push(fn); },
     get active() { return st.on; }, get edit() { return st.edit; }, get path() { return st.path; }, get time() { return P.playing ? nowT() : P.T; }, get playing() { return P.playing; },
     get selection() { return selIds(); }, get suggestion() { return st.suggest ? { ...st.suggest } : null; }, get canUndo() { return st.undo.length > 0; },
