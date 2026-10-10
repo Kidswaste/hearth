@@ -208,7 +208,12 @@ const BoardEyesUI = (() => {
   }
   Native.hooks.message.push((node, m) => {
     if (m.role !== 'assistant' || !m.eyes?.length) return;
-    const strip = el('div', { class: 'eyes-strip' }, m.eyes.map(card));
+    // two looks show as cards; more fold into one line (Pinterest searches stay out: they are buttons to press)
+    const looks = m.eyes.filter((r) => !r.pins); const pins = m.eyes.filter((r) => r.pins);
+    const tokens = looks.reduce((t, r) => t + (r.tokens || 0), 0);
+    const strip = el('div', { class: 'eyes-strip' },
+      looks.length > 2 ? el('details', { class: 'eyes-fold' }, el('summary', { text: `👁 Looked at the board ${looks.length}× · ${looks.reduce((n, r) => n + (r.pictures || 0), 0)} pictures ≈ ${tokens.toLocaleString()} tokens` }), looks.map(card)) : looks.map(card),
+      pins.map(card));
     const body = node.querySelector(':scope > .body');
     if (body) body.before(strip); else node.append(strip);
     const rec = m.eyes.find((r) => r.board) || {};

@@ -98,14 +98,17 @@ const BoardPins = (() => {
   let patching = false;
   B.onChange((what) => {
     if (what !== 'items' || patching || !lastDrag || Date.now() - lastDrag.at > 90000) return;
-    const it = B.items().find((i) => !i.source && (i.url === lastDrag.image || (i.url && lastDrag.image && i.url.split('?')[0] === lastDrag.image.split('?')[0])));
+    const name = decodeURIComponent(String(lastDrag.image).split(/[?#]/)[0].split('/').pop() || '');
+    const fresh = (i) => Date.now() - (i.added || 0) < 90000;
+    const it = B.items().find((i) => !i.source && fresh(i) && (i.url === lastDrag.image || (i.url && lastDrag.image && i.url.split('?')[0] === lastDrag.image.split('?')[0]) || (name && i.file === name)));
     if (!it) return;
     patching = true;
     try { B.patch([it.id], (x) => { x.source = lastDrag.link || undefined; x.credit = 'Pinterest'; if (lastDrag.title && !x.title?.length) x.title = lastDrag.title; x.tags = [...new Set([...(x.tags || []), 'pinterest'])]; }, 'pin source'); } finally { patching = false; }
     lastDrag = null; added++; api()?.('status', { board: B.current().name, added });
   });
   window.hub?.board?.onPin?.((pin) => addPin(pin));
-  window.hub?.board?.onPinDrag?.((pin) => { lastDrag = { ...pin, at: Date.now() }; });
+  const noteDrag = (pin) => { lastDrag = { ...pin, at: Date.now() }; };
+  window.hub?.board?.onPinDrag?.(noteDrag);
 
   // the chat side: board_do pinterest (the searches become buttons in the chat, board-eyes-ui.js draws them)
   async function op(a = {}, ctx = {}) {
@@ -131,6 +134,6 @@ const BoardPins = (() => {
   }
   addEventListener('load', () => setTimeout(registerApp, 400));
 
-  return { suggest, forBoard, open, addPin, op, registerApp, AESTHETICS, clean, OPS: { pinterest: op }, _: { get added() { return added; }, get lastDrag() { return lastDrag; } } };
+  return { suggest, forBoard, open, addPin, op, registerApp, noteDrag, AESTHETICS, clean, OPS: { pinterest: op }, _: { get added() { return added; }, get lastDrag() { return lastDrag; } } };
 })();
 if (typeof module !== 'undefined') module.exports = BoardPins;

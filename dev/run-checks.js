@@ -10,7 +10,7 @@
 //   sh dev/run-checks.sh --list               # groups and checks
 //   options: --out <dir> (logs and pictures, default <tmp>/hearth-checks) · --shots (journeys keep a picture per step)
 //   · --fixtures-only · --stop (first failure)
-// Groups: qa, board, editor, capture, journeys, chat, lab, video, nodes, smooth, astra, sequence, robust, motion, orb, flows, commands, sync, comp, progress, speed, renders, unit, all.
+// Groups: qa, board, editor, capture, journeys, chat, lab, video, nodes, smooth, astra, sequence, robust, motion, orb, flows, commands, sync, comp, progress, speed, renders, eyes, unit, all.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -26,7 +26,7 @@ const names = argv.filter((a, i) => !a.startsWith('--') && !['--out'].includes(a
 
 const LIBS = new Set(['journey-lib', 'smooth-lib', 'journey-olddata-make', 'sequence-lib']); // helpers / made to run in the old app
 const all = fs.readdirSync(CHECKS).filter((f) => f.endsWith('.js')).map((f) => f.slice(0, -3)).filter((n) => !LIBS.has(n)).sort();
-const UNIT = ['board-unit-test', 'board-mcp-test', 'capture-mcp-test', 'editor-mcp-test', 'director-mcp-test', 'cut-test', 'editor-test', 'capture-test', 'music-test', 'code-flow-test', 'importer-test', 'director-cost', 'astra-engine-test', 'robust-engine-test', 'test-aemain-mac', 'sequence-test', 'flows-test', 'sync-test', 'cmdpage-test', 'progress-test', 'makes-test', 'renders-test'];
+const UNIT = ['board-unit-test', 'board-mcp-test', 'capture-mcp-test', 'editor-mcp-test', 'director-mcp-test', 'cut-test', 'editor-test', 'capture-test', 'music-test', 'code-flow-test', 'importer-test', 'director-cost', 'astra-engine-test', 'robust-engine-test', 'test-aemain-mac', 'sequence-test', 'flows-test', 'sync-test', 'cmdpage-test', 'progress-test', 'makes-test', 'renders-test', 'eyes-test'];
 const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
   qa: ['qa-commands', 'qa-keys', 'qa-mac', 'polish'],
@@ -52,6 +52,7 @@ const GROUPS = {
   progress: [...by(/^progress/), 'unit:progress-test'],
   speed: [...by(/^speed/), 'habits'],
   renders: [...by(/^renders/), 'unit:renders-test'],
+  eyes: [...by(/^eyes-/), 'unit:eyes-test'],
   unit: UNIT.map((u) => `unit:${u}`),
 };
 GROUPS.all = [...new Set([...all.filter((n) => !/^astra-/.test(n)), ...GROUPS.astra, ...GROUPS.unit])];
@@ -75,6 +76,8 @@ const FIX = [
   { re: /labframes-media|make-lab-footage|\bLF\./, path: `${T}/labframes-media`, make: () => sh('node', ['dev/make-lab-footage.js', `${T}/labframes-media`]) },
   { re: /hearth-intro-song/, path: `${T}/hearth-intro-song.wav`, make: () => sh('node', ['dev/make-test-song.js', `${T}/hearth-intro-song.wav`, '120', '30']) },
   { re: /hearth-capture-test/, path: `${T}/hearth-capture-test`, make: () => sh('node', ['dev/capture-test.js', '--make', `${T}/hearth-capture-test`]) },
+  // (round 14) a local Pinterest-like search page for the Pinterest window check (dev/checks/eyes-pins.js)
+  { re: /hearth-pins-fixture/, path: `${T}/hearth-pins-fixture/pinterest-like.html`, make: () => { fs.mkdirSync(`${T}/hearth-pins-fixture`, { recursive: true }); fs.copyFileSync(path.join(DEV, 'fixtures', 'pinterest-like.html'), `${T}/hearth-pins-fixture/pinterest-like.html`); } },
 ];
 const srcOf = (n) => (n.startsWith('unit:') ? fs.readFileSync(path.join(DEV, `${n.slice(5)}.js`), 'utf8') : fs.readFileSync(path.join(CHECKS, `${n}.js`), 'utf8'));
 const exists = (p) => { try { return fs.statSync(p).isFile() || fs.readdirSync(p).length > 0; } catch { return false; } };

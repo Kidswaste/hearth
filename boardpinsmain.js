@@ -6,7 +6,8 @@
 // only the pin the owner clicks is read, from the page they are looking at; no Pinterest API is called.
 // Required from boardmain.js (registerIpc), so main.js needs no change.
 const path = require('path');
-const { BrowserWindow, session, shell } = require('electron');
+// electron is required on first use, so tests can load the pure helpers (searchUrl, okBase, clean) in plain Node
+const electron = () => require('electron');
 
 const PARTITION = 'persist:pinterest';
 const DEFAULT = 'https://www.pinterest.com/search/pins/?q={q}';
@@ -33,7 +34,7 @@ function searchUrl(query, base) {
 const SIGN_IN = /^https:\/\/([a-z0-9-]+\.)*(pinterest\.[a-z.]+|google\.com|accounts\.google\.com|appleid\.apple\.com|facebook\.com)\//i;
 
 function prepareSession() {
-  const ses = session.fromPartition(PARTITION);
+  const ses = electron().session.fromPartition(PARTITION);
   if (ses.__hearthPins) return ses;
   ses.__hearthPins = true;
   ses.setPermissionRequestHandler((_wc, perm, cb) => cb(perm === 'clipboard-sanitized-write'));
@@ -53,7 +54,7 @@ function open({ query = '', base = null, board = '' } = {}) {
   prepareSession();
   const main = getMain();
   const b = main && !main.isDestroyed() ? main.getBounds() : null;
-  win = new BrowserWindow({
+  win = new (electron().BrowserWindow)({
     width: 1080, height: 820, title: 'Pinterest · Hearth', autoHideMenuBar: true, backgroundColor: '#ffffff',
     ...(b ? { x: Math.round(b.x + Math.max(0, b.width - 1100)), y: b.y + 40 } : {}),
     webPreferences: { partition: PARTITION, sandbox: true, contextIsolation: true, nodeIntegration: false, preload: path.join(__dirname, 'board-pin-preload.js'), spellcheck: false },
@@ -61,7 +62,7 @@ function open({ query = '', base = null, board = '' } = {}) {
   const wc = win.webContents;
   wc.setWindowOpenHandler(({ url: to }) => {
     if (SIGN_IN.test(to)) return { action: 'allow', overrideBrowserWindowOptions: { width: 520, height: 680, autoHideMenuBar: true, webPreferences: { partition: PARTITION, sandbox: true, contextIsolation: true, nodeIntegration: false } } };
-    if (/^https?:\/\//i.test(to)) shell.openExternal(to).catch(() => {});
+    if (/^https?:\/\//i.test(to)) electron().shell.openExternal(to).catch(() => {});
     return { action: 'deny' };
   });
   wc.on('did-finish-load', () => sendStatus());
@@ -86,7 +87,7 @@ async function testClick(n = 0) {
   if (!win || win.isDestroyed()) return { ok: false, error: 'no window' };
   const wc = win.webContents;
   const r = await wc.executeJavaScript(`(() => { const im = [...document.querySelectorAll('img')].filter((i) => i.getBoundingClientRect().width >= 60)[${Number(n) || 0}]; if (!im) return null; im.scrollIntoView({ block: 'center' }); const b = im.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
-  if (!r) return { ok: false, error: 'no picture' };
+  if (!r) return { ok: false, error: 'no picture', seen: await wc.executeJavaScript(`[...document.images].map((i) => Math.round(i.getBoundingClientRect().width) + ':' + i.complete + ':' + i.naturalWidth).join(' ') + ' ' + innerWidth + 'x' + innerHeight`).catch((e) => e.message) };
   wc.sendInputEvent({ type: 'mouseMove', x: Math.round(r.x), y: Math.round(r.y) });
   await new Promise((res) => setTimeout(res, 250));
   const btn = await wc.executeJavaScript(`(() => { const b = document.querySelector('#hearth-pin-add'); if (!b || b.hidden) return null; const q = b.getBoundingClientRect(); return { x: q.left + q.width / 2, y: q.top + q.height / 2 }; })()`);

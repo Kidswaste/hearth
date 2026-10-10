@@ -243,3 +243,8 @@
 .eyes-ref:hover { color: var(--text); }
 .eyes-pin { font: inherit; font-size: 11px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--text); cursor: pointer; }
 .eyes-pin:hover { border-color: #e60023; }
+.eyes-fold > summary { cursor: pointer; font-size: 12px; color: var(--muted); list-style: none; padding: 2px 0; }
+.eyes-fold > summary::-webkit-details-marker { display: none; }
+.eyes-fold[open] > summary { margin-bottom: 4px; }
+.eyes-fold > .eyes-card + .eyes-card { margin-top: 4px; }
+.msg .body a.eyes-ref { color: var(--bd-gold, #ffc233); text-decoration: none; }
