@@ -486,7 +486,7 @@ const VideoPack = (() => {
     cut().commit(n, `Angle ${to}: ${mc.angles[i].name}`);
     return mc.angles[i].name;
   }
-  function angleKey(digit) { const mc = cut().edit?.multicam; if (!mc?.angles?.[digit - 1]) return false; angleAt(digit).catch((err) => say(err.message)); return true; }
+  function angleKey(digit) { const mc = cut().edit?.multicam; if (!mc?.angles?.length) { say(`Alt+${digit} cuts to a multicam angle: make one first (⋯ › Pro tools › Multicam, /multicam)`); return true; } if (!mc.angles[digit - 1]) { say(`This multicam has ${mc.angles.length} angles`); return true; } angleAt(digit).catch((err) => say(err.message)); return true; }
 
   // ---------- render queue ----------
   let Q = []; let qRunning = false;
