@@ -293,6 +293,9 @@ const BoardVibe = (() => {
       if (note) bits.push(`note "${note.slice(0, 140)}${note.length > 140 ? '…' : ''}"`);
       if (item.tags?.length) bits.push(item.tags.map((t) => `#${t}`).join(' '));
       if (item.stamp) bits.push(`stamp ${item.stamp}`);
+      // (round 14) what a chat (or the owner) saw in it, written once; and whose it is
+      if (item.alt) bits.push(`seen "${String(item.alt).slice(0, 160)}"`);
+      if (item.credit) bits.push(`by ${String(item.credit).slice(0, 60)}`);
     }
     if (item.type === 'web' && item.url && k.has('type')) bits.push(`site ${(() => { try { return new URL(item.url).hostname; } catch { return item.url; } })()}`);
     return `${head}: ${bits.join(' · ') || 'no vibe yet'}`;

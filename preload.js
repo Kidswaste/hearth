@@ -119,7 +119,9 @@ contextBridge.exposeInMainWorld('hub', {
   openDialog: call('dialog:open'),
   saveFile: call('dialog:saveFile'),
   // mood board (boardmain.js): copies into data/board/media, page pictures, website snapshots
-  board: { dir: call('board:dir'), import: call('board:import'), save: call('board:save'), fetch: call('board:fetch'), snap: call('board:snap'), unused: call('board:unused') },
+  board: { dir: call('board:dir'), import: call('board:import'), save: call('board:save'), fetch: call('board:fetch'), snap: call('board:snap'), unused: call('board:unused'),
+    // (round 14) the Pinterest window (boardpinsmain.js): pins(op, args) + the pins the owner adds / drags out
+    pins: call('board:pins'), onPin: on('board:pin'), onPinDrag: on('board:pin-drag') },
   ae: {
     status: call('ae:status'),
     templates: call('ae:templates'),

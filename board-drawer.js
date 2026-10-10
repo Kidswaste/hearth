@@ -76,6 +76,8 @@ const BoardDrawer = (() => {
     if (!a) return;
     e.preventDefault(); e.stopPropagation();
     let ref = {}; try { ref = JSON.parse(e.dataTransfer.getData(REF_TYPE)); } catch { /* bad payload */ }
+    // (round 14) Alt held: the chat sees the picture itself (board-eyes-ui.js), not only the vibe
+    if (e.altKey && typeof BoardEyesUI !== 'undefined') { BoardEyesUI.altDrop(a.id, ref); return; }
     attach(a.id, { boardId: ref.boardId, itemIds: ref.itemIds || [], focus: ref.focus });
   }, true);
   addEventListener('dragend', () => { hinted?.classList.remove('bdd-drop-hint'); hinted = null; }, true);
@@ -126,6 +128,7 @@ const BoardDrawer = (() => {
       t.addEventListener('contextmenu', (e) => { e.preventDefault(); showMenu(e.clientX, e.clientY, [
         ...D.FOCUS.slice(0, 9).map((f) => ({ label: `${f.name} → ${agentName}`, action: () => attach(null, { boardId: b.id, itemIds: [it.id], focus: f.id }) })),
         { label: 'Show on the board', action: async () => { activate('tool:board'); await B.open(b.id); setTimeout(() => { B.select(it.id); B.zoomSel(); }, 120); } },
+        ...(typeof BoardEyesUI !== 'undefined' ? ['-', ...BoardEyesUI.tileItems(b, it)] : []),
       ]); });
       return t;
     };
