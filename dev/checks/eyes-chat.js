@@ -76,5 +76,19 @@ try {
   ok(user?.attachments?.some((a) => a.kind === 'image') && user.attachments.some((a) => /board ids/.test(a.name)), 'Ask about it: the picture + ids went with the question');
   ok(asked?.eyes?.[0]?.tool === 'shown' && asked.eyes[0].by === 'owner', 'the reply remembers what you showed');
   await Commands.tryRun('/board-tools off', C.id, null, { say: () => {}, note: () => {} });
+
+  // Astra (Codex) sees the board the same way
+  const A = H.agents().find((a) => a.engine === 'codex' && a.mode === 'native');
+  if (ok(A, 'an Astra chat exists')) {
+    activate(A.id); await until(() => Native.hasView(A.id)); Native.newChat(A.id); await wait(200);
+    Board.linkChat(H.activeChat[A.id], b.id);
+    await Commands.tryRun('/board-tools on', A.id, null, { say: () => {}, note: () => {} });
+    await Native.send(A.id, `mcp please\nmcp: ${JSON.stringify([['board_look', { item: pic.id }]])}`);
+    await wait(150); await until(() => !Native.isBusy(H.activeChat[A.id]), 90000); await wait(400);
+    const am = Native.current(A.id).messages.at(-1);
+    out.astra = { text: am?.text?.slice(-300), eyes: am?.eyes?.map((r) => r.size) };
+    ok(/board_look: \d+ chars/.test(am?.text || '') && /1 picture/.test(am?.eyes?.[0]?.size || ''), 'Astra gets the picture too (the same MCP server), with its card');
+    await Commands.tryRun('/board-tools off', A.id, null, { say: () => {}, note: () => {} });
+  }
 } catch (err) { fail.push(`threw: ${err.message}`); }
 return JSON.stringify({ ok: fail.length === 0, fail, ...out }, null, 1);
