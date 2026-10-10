@@ -64,7 +64,7 @@ const VideoPackCmds = (() => {
       Commands.register({ area: AREA, ...d, aliases: (d.aliases || []).filter((a) => !Commands.get(a)) });
     }
     try {
-      Keys.add({ area: 'Editor', keys: 'Alt+1…9', what: 'Cut to multicam angle 1…9 at the playhead (/angle, ⋯ › Pro tools › Multicam)', when: () => VideoCut.active });
+      Keys.add({ area: 'Editor', keys: 'Alt+1…9 (with a multicam)', what: 'Cut to that angle at the playhead (/angle, ⋯ › Pro tools › Multicam)', when: () => VideoCut.active });
     } catch { /* keys list is optional */ }
   }
   if (document.readyState === 'loading' || document.currentScript?.defer) addEventListener('DOMContentLoaded', registerAll, { once: true }); else registerAll();
