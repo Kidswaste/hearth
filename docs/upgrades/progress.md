@@ -19,7 +19,7 @@ The bars are honest:
   (estimated) is steady enough to trust.
 
 Token frugality: nothing reaches Claude or Astra. The estimator works alone. `/progress tags on` (directors only, off by
-default) adds one line to the directors' prompt (≈ 25 tokens a message) so they can say how far they are with a
+default) adds one line to the directors' prompt (≈ 30 tokens a message) so they can say how far they are with a
 hidden tag.
 
 Counted honestly: one line per thing you can see or use (a behaviour, a place a bar shows, a source, a command).
@@ -88,7 +88,7 @@ Counted honestly: one line per thing you can see or use (a behaviour, a place a 
 ## Commands
 52. **`/progress`** (also `/loading`): what is in progress, with how far along each seems, and the list opens.
 53. **`/progress learned`**: how long things usually take here (replies, renders, snapshots…), learned from finished runs.
-54. **`/progress tags on | off`**: directors say how far they are with the hidden tag (one line in their prompt, ≈ 25 tokens a message, from their next new chat); off by default.
+54. **`/progress tags on | off`**: directors say how far they are with the hidden tag (one line in their prompt, ≈ 30 tokens a message, from their next new chat); off by default.
 55. **`/progress forget`**: Hearth learns the typical times again from scratch.
 56. **The app map has a `progress` topic** (also `loading`, `bars`, `eta`), read on demand by both engines: no tokens unless asked.
 
@@ -131,10 +131,10 @@ Before the fix found while measuring, the indicator's fill had no layer of its o
   `agent.progressTag`), `tools/review.js` (names its ffmpeg job), `tools/three-seq.js` (renderEdit's frames),
   `board.js` (snapshots), `engine-health.js` (fix windows, ffmpeg install), `capture.js` (`max` in `status()`),
   `jam.js` (one line in `badge()`), `mcp/hearth-map.js`, `dev/fake-common.js` (keyword `progress`), `index.html`.
-- Tests: `node dev/progress-test.js` (13: monotonic, capped at 95 with almost / waiting on the agent, never 99 after an
+- Tests: `node dev/progress-test.js` (14: monotonic, capped at 95 with almost / waiting on the agent, never 99 after an
   hour, measured vs estimated, measured ETA, learning per kind with prefix fallback and saving, one run blended,
   failed runs teach nothing, tool / text / steps / agent signals, parents, done / failed / drop, hung and back, states
-  the caller knows, a key reused); `dev/checks/progress.js` (a slow fake reply with tags: bars on the reply / row /
+  the caller knows, a key reused, the directors' line opt-in and ≈ 30 tokens); `dev/checks/progress.js` (a slow fake reply with tags: bars on the reply / row /
   rail, the indicator and its list, jump, the tag hidden, forward only, done and faded, learned; `/progress`; a real
   ffmpeg export measured; a Commands-page chain `/wait 2s` → `/wait 2s` on the run's head; a hung run picked up from
   the list; `/progress tags`), `dev/checks/progress-comp.js` (a `/dispatch` of two parts, Claude and Astra: the comp

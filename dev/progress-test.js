@@ -161,6 +161,19 @@ test('the same key starts fresh after it finished', () => {
   assert.strictEqual(Math.round(P.get('k').shown), 5);
 });
 
+test('the directors\' progress line is opt-in, directors only, and short (token frugality)', () => {
+  const engines = require(path.join(__dirname, '..', 'engines.js'));
+  const dir = { id: 'd', name: 'Three Director', engine: 'claude', mode: 'native', dock: 'three', threeTools: true };
+  const chat = { id: 'c', name: 'Claude', engine: 'claude', mode: 'native' };
+  const off = engines.buildPrompt(dir); const on = engines.buildPrompt({ ...dir, progressTag: true });
+  assert(!/<progress/.test(off), 'off by default');
+  assert(/<progress pct=/.test(on), 'on for a director that opted in');
+  assert(!/<progress/.test(engines.buildPrompt({ ...chat, progressTag: true })), 'never for a plain chat');
+  const tokens = Math.round((on.length - off.length) / 4);
+  assert(tokens <= 35, `≈ ${tokens} tokens`);
+  console.log(`     (the line costs ≈ ${tokens} tokens a message)`);
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try { fn(); console.log(`ok   ${name}`); } catch (err) { failed += 1; console.log(`FAIL ${name}\n     ${err.message}`); }

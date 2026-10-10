@@ -139,7 +139,7 @@ const ProgressUI = (() => {
     const on = dirs.some((a) => a.progressTag);
     return [
       { label: 'What\'s in progress…', action: () => openPop() },
-      { label: 'Directors report their progress', hint: '≈ 25 tokens a message', checked: on, disabled: !dirs.length, action: () => Commands.exec?.(`/progress tags ${on ? 'off' : 'on'}`, H.claudeAgent?.()?.id) },
+      { label: 'Directors report their progress', hint: '≈ 30 tokens a message', checked: on, disabled: !dirs.length, action: () => Commands.exec?.(`/progress tags ${on ? 'off' : 'on'}`, H.claudeAgent?.()?.id) },
       { label: 'What Hearth learned (typical times)', action: () => Commands.exec?.('/progress learned', H.claudeAgent?.()?.id) },
       { label: 'Forget the typical times', more: true, action: () => { Progress.forget(); toast('Hearth starts learning how long things take again', { timeout: 2500 }); } },
       { label: 'Hide finished bars now', more: true, action: () => { for (const it of Progress.list({ all: true })) if (it.state === 'done' || it.state === 'failed') Progress.drop(it.key); sync(); } },
@@ -204,9 +204,9 @@ const ProgressUI = (() => {
     if (typeof Commands === 'undefined' || Commands.get('progress')) return;
     Commands.register({
       name: 'progress', aliases: ['loading'], area: 'App', args: '[list | tags on|off | learned | forget]',
-      desc: 'What is being made right now, with how far along it seems (the list at the bottom of the rail); tags on: directors report their own progress (≈ 25 tokens a message)',
+      desc: 'What is being made right now, with how far along it seems (the list at the bottom of the rail); tags on: directors report their own progress (≈ 30 tokens a message)',
       keywords: 'loading bar how far eta status running working',
-      complete: () => [{ value: 'list', hint: 'everything in progress' }, { value: 'tags on', hint: 'directors say how far they are (≈ 25 tokens a message)' }, { value: 'tags off' }, { value: 'learned', hint: 'how long things usually take here' }, { value: 'forget', hint: 'learn the typical times again' }],
+      complete: () => [{ value: 'list', hint: 'everything in progress' }, { value: 'tags on', hint: 'directors say how far they are (≈ 30 tokens a message)' }, { value: 'tags off' }, { value: 'learned', hint: 'how long things usually take here' }, { value: 'forget', hint: 'learn the typical times again' }],
       run: async (args) => {
         const [sub, val] = args.trim().split(/\s+/);
         if (sub === 'tags') {
@@ -215,7 +215,7 @@ const ProgressUI = (() => {
           const want = val ? val === 'on' : !dirs.some((a) => a.progressTag);
           for (const d of dirs) d.progressTag = want ? true : undefined;
           await saveConfig();
-          return want ? `Directors (${dirs.map((d) => d.name).join(', ')}) now say how far along they are with a hidden <progress> tag (one line in their prompt, ≈ 25 tokens a message; from their next new chat).` : 'Directors no longer get the progress line; Hearth estimates their progress on its own.';
+          return want ? `Directors (${dirs.map((d) => d.name).join(', ')}) now say how far along they are with a hidden <progress> tag (one line in their prompt, ≈ 30 tokens a message; from their next new chat).` : 'Directors no longer get the progress line; Hearth estimates their progress on its own.';
         }
         if (sub === 'forget') { Progress.forget(); return 'Hearth forgot how long things usually take and starts learning again.'; }
         if (sub === 'learned') {
