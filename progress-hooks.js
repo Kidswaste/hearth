@@ -250,8 +250,10 @@ const ProgressHooks = (() => {
     if (typeof HubBridge !== 'undefined') HubBridge.onResult(onHubResult);
     if (typeof Flows !== 'undefined') {
       Flows.onChange((run) => flowRun(run));
-      // runs left going (or hung) in the last hour show again after a restart
-      for (const r of Flows.runs?.() || []) if (['running', 'waiting-ai', 'hung'].includes(r.status) && Date.now() - (r.updated || 0) < 3600000) flowRun(r);
+      // runs left going (or hung) in the last hour show again after a restart (runs come back from disk a moment after
+      // the page loads: looked at again then)
+      const back = () => { for (const r of Flows.runs?.() || []) if (['running', 'waiting-ai', 'hung'].includes(r.status) && Date.now() - (r.updated || 0) < 3600000 && !P.get(`flow:${r.id}`)) flowRun(r); };
+      back(); setTimeout(back, 4000);
     }
     if (typeof Intro !== 'undefined') Intro.onChange((p) => introProject(p || Intro.current?.()));
     addEventListener('hearth:intro-end', (e) => { const p = typeof Intro !== 'undefined' && Intro.get?.(e.detail?.id); const key = `intro:${e.detail?.id}`; if (!P.get(key)) return; if (e.detail?.status === 'done') P.done(key); else if (e.detail?.status === 'error') P.done(key, { ok: false, label: cap(p?.error, 60) }); else P.drop(key); });
