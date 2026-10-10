@@ -315,7 +315,7 @@ const Renders = (() => {
     const j = find(id);
     if (!j || !live(j) || j.status === 'paused') return false;
     if (j.status === 'queued') { j.status = 'paused'; j.pausedAt = now(); bar(j); changed(j, 'pause'); return true; }
-    if (j.external) { if (!j.pauseFn) return false; j.pauseFn(true); j.status = 'paused'; j.pausedAt = now(); changed(j, 'pause'); return true; }
+    if (j.external) { if (!j.pauseFn) return false; j.pauseFn(true); j.status = 'paused'; j.held = true; j.pausedAt = now(); changed(j, 'pause'); return true; } // (it keeps its lane)
     const r = await api()?.pause?.(j.id).catch(() => null);
     if (!r?.ok) return false;
     j.pausedAt = now();
@@ -326,7 +326,7 @@ const Renders = (() => {
     const j = find(id);
     if (!j || j.status !== 'paused') return false;
     j.pausedMs = (j.pausedMs || 0) + (now() - (j.pausedAt || now())); j.pausedAt = 0;
-    if (j.external) { j.pauseFn?.(false); j.status = 'running'; changed(j, 'resume'); return true; }
+    if (j.external) { j.pauseFn?.(false); j.status = 'running'; j.held = false; changed(j, 'resume'); return true; }
     if (j.held) { const r = await api()?.resume?.(j.id).catch(() => null); if (r?.ok) { j.held = false; j.status = 'running'; bar(j, { label: 'ffmpeg' }); changed(j, 'resume'); return true; } j.held = false; }
     // waiting (never started) or stopped on Windows: back in line, first
     j.status = 'queued'; j.prio = now(); j.restart = false;
