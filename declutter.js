@@ -162,7 +162,10 @@ const Declutter = (() => {
     return [...root.querySelectorAll('button, select')].filter((b) => {
       if (!b.checkVisibility?.({ visibilityProperty: true }) || isMine(b)) return false;
       const it = Usage.data.items[Usage.keyOf?.(b)];
-      return it && it.n === 0 && Date.now() - it.first > 3 * 864e5 && selectorFor(b);
+      // never used (seen 3+ days), or (round 13) used once or twice long ago, nothing in the last 30 days
+      const unused = it && it.n === 0 && Date.now() - it.first > 3 * 864e5;
+      const stale = it && it.n > 0 && it.n <= 2 && it.last && Date.now() - it.last > 30 * 864e5;
+      return (unused || stale) && selectorFor(b);
     });
   }
   function pin(id, on = !pins.has(id)) {
@@ -197,6 +200,7 @@ const Declutter = (() => {
       (() => { const never = neverUsedIn(target?.closest?.('.surface, #rail, #panel, .notes-panel, dialog') || null); return never.length ? { label: 'Tuck what I never use here', hint: String(never.length), action: () => { never.forEach((b) => tuck(b, area)); toast(`${never.length} button${never.length === 1 ? '' : 's'} you never used wait behind Alt now`, { timeout: 3000, action: { label: 'Undo', fn: () => never.forEach((b) => tuck(b, area, false)) } }); } } : null; })(),
       mine.length ? { label: 'Your tucked buttons', hint: String(mine.length), items: () => mine.map((m) => ({ label: m.label, hint: m.area, action: () => { mine = mine.filter((x) => x !== m); store.set('declutter.mine', mine); paint(); toast(`“${m.label}” is back on screen`, { timeout: 1600 }); } })) } : null,
       key && !btn.closest('#menu') ? { label: `Hide “${(btn.dataset.feature || btn.textContent || btn.title).trim().slice(0, 24)}” everywhere`, action: () => { Usage.setHidden(key, true); toast('Hidden. Customise this… → Bring back hidden buttons shows it again.', { timeout: 3000, action: { label: 'Undo', fn: () => Usage.setHidden(key, false) } }); } } : null,
+      ...(typeof Habits !== 'undefined' && Habits.customiseItems ? Habits.customiseItems() : []), // (round 13) what the weekly tidy tucked
       hidden.length ? { label: 'Bring back hidden buttons', hint: String(hidden.length), items: () => hidden.map((k) => ({ label: k.split(' › ').pop(), hint: k.split(' › ')[0], action: () => Usage.setHidden(k, false) })) } : null,
       { label: 'Show the tucked buttons for now', key: 'Alt Alt', action: () => KeysUI.latch(true) },
       { label: off ? 'Tidy again (tuck them away)' : 'Show everything, always', hint: '/calm', action: () => { setOff(!off); toast(off ? 'Everything shows (/calm on tucks it away again)' : 'Tidy again', { timeout: 1800 }); } },

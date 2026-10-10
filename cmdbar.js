@@ -179,13 +179,18 @@ const CmdBar = (() => {
   }
 
   // An empty bar shows your pinned commands as one row of chips (Alt+1…9 run them too).
+  // (round 13, speed) then your usual commands here (speed-rank.js), dimmer, and ↻ Again when there is something to repeat
   function showPins() {
     const pins = Commands.favs().map(Commands.get).filter(Boolean).slice(0, 9);
-    if (!pins.length || !out || (!out.hidden && out.childElementCount)) return;
-    out.replaceChildren(el('div', { class: 'cmdbar-pins' }, pins.map((d, i) => el('button', {
-      type: 'button', class: 'ex-chip', text: `/${d.name}`, title: `${d.desc} (Alt+${i + 1})`,
+    const usual = typeof SpeedRank !== 'undefined' ? SpeedRank.top(Commands.place().id, Math.max(0, 6 - pins.length), { skip: pins.map((d) => d.name) }) : [];
+    const last = typeof Speed !== 'undefined' ? Speed.lastAction() : null;
+    if ((!pins.length && !usual.length && !last) || !out || (!out.hidden && out.childElementCount)) return;
+    const chip = (d, i, usualOne) => el('button', {
+      type: 'button', class: `ex-chip${usualOne ? ' usual' : ''}`, text: `/${d.name}`, title: usualOne ? `${d.desc} (your usual here)` : `${d.desc} (Alt+${i + 1})`,
       on: { mousedown: (e) => e.preventDefault(), click: () => { if (/^</.test(String(d.args || '').trim())) { input.value = `/${d.name} `; grow(); input.dispatchEvent(new Event('input')); input.focus(); } else runLine(`/${d.name}`); } },
-    }))));
+    });
+    const again = last ? el('button', { type: 'button', class: 'ex-chip again', text: `↻ ${String(last.label).slice(0, 28)}`, title: `Again (${Commands.keyText('Ctrl+.')})`, on: { mousedown: (e) => e.preventDefault(), click: () => Speed.redo(last) } }) : null;
+    out.replaceChildren(el('div', { class: 'cmdbar-pins' }, again, pins.map((d, i) => chip(d, i, false)), usual.map((d, i) => chip(d, i, true))));
     out.hidden = false;
   }
   function historySearch(q) {
@@ -698,11 +703,11 @@ const CmdBar = (() => {
     },
   });
   R({
-    name: 'macro', aliases: ['macros'], args: '[rec <name> | stop | cancel | <name> </cmd ; /cmd…> | show <name> | edit <name> | delete <name>]',
+    name: 'macro', aliases: ['macros'], args: '[rec <name> | stop | cancel | <name> </cmd ; /cmd…> | show <name> | edit <name> | delete <name> | learned | keys | key <name> <1-9>]',
     desc: 'Macros: record the commands you run (rec … stop) into your own command, or write one with ; between steps',
     keywords: 'record recording sequence steps automate playback',
     examples: ['/macro rec drop', '/macro stop', '/macro vertical-look /size 9:16 ; /freeze ; /still'],
-    complete: (a) => (a.includes(' ') ? [] : [{ value: 'rec ', hint: 'Start recording' }, { value: 'stop', hint: 'Save the recording' }, { value: 'cancel', hint: 'Drop the recording' }, { value: 'show ', hint: 'A macro\'s steps' }, { value: 'edit ', hint: 'Change the steps' }, { value: 'delete ', hint: 'Remove one' }]),
+    complete: (a) => (a.includes(' ') ? [] : [{ value: 'rec ', hint: 'Start recording' }, { value: 'stop', hint: 'Save the recording' }, { value: 'cancel', hint: 'Drop the recording' }, { value: 'show ', hint: 'A macro\'s steps' }, { value: 'edit ', hint: 'Change the steps' }, { value: 'delete ', hint: 'Remove one' }, { value: 'learned', hint: 'What you do often, as one-key macros' }, { value: 'keys', hint: 'Your Ctrl+Alt+1…9 macros' }, { value: 'key ', hint: 'Give a macro a key: key <name> <1-9>' }]),
     run: async (args, ctx) => {
       const a = String(args || '').trim();
       const all = store.get('chat.aliases', {});
@@ -742,6 +747,8 @@ const CmdBar = (() => {
       }
       if (/^cancel$/i.test(w)) { const had = Boolean(rec); rec = null; if (bar && !bar.hidden) place(); return had ? 'Recording dropped.' : 'Not recording.'; }
       if (/^show$/i.test(w)) { const t = all[rest.toLowerCase().replace(/^\//, '')]; return t ? `\`/${rest}\` →\n${t.replace(/^\/run\s+/, '').split(/\s*;\s*(?=\/)/).map((l, i) => `${i + 1}. \`${safe(l)}\``).join('\n')}` : `No macro /${rest}.`; }
+      // (round 13, speed) learned shortcuts and one-key macros: /macro learned · keys · key <name> <1-9> · unkey <1-9>
+      if (typeof SpeedLearn !== 'undefined' && /^(learned|suggest|keys|key|unkey|bind|forget-learned)$/i.test(w) && !rest.trim().startsWith('/')) return SpeedLearn.macroCmd(w.toLowerCase(), rest, ctx);
       if (/^(delete|remove|rm)$/i.test(w)) return (await Commands.tryRun(`/unalias ${rest}`, ctx.agentId, null, { source: ctx.source, say: ctx.say })) ? null : 'Could not remove it.';
       // "/macro name /a ; /b": write one directly (same as /alias with /run)
       const m = a.match(/^([a-z0-9][\w-]*)\s+(\/[\s\S]+)$/i);

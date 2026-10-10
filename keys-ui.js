@@ -266,6 +266,8 @@ const KeysUI = (() => {
               el('span', { class: 'ks-keys' }, kbds(x.keys)), el('span', { class: 'ks-what', text: whatText(x.what) }));
           })));
       }
+      // (round 13, speed) "Yours" first: your own most-used keys, keys for what you do by mouse, your one-key macros
+      if (!words.length && typeof SpeedLearn !== 'undefined') { try { out.unshift(...SpeedLearn.sheet(close, runLine)); } catch (err) { console.warn(err); } }
       body.replaceChildren(...(out.length ? out : [el('p', { class: 'hint ks-none', text: 'Nothing matches. Try a word like "freeze", "slider" or "copy".' })]));
       sel = -1;
     }
@@ -314,6 +316,8 @@ const KeysUI = (() => {
       e.preventDefault();
       showMenu(e.clientX + 6, e.clientY - 150, [
         { label: 'Keys & hidden buttons…', key: 'Ctrl+/', action: () => open() },
+        // (round 13, speed) Again and the recent actions, under the pointer
+        ...(typeof Speed !== 'undefined' ? [{ label: 'Recent actions', key: 'Ctrl+Shift+.', items: () => Speed.recentItems(10) }, { label: 'Pick up where you left off…', hint: '/resume', action: () => Commands.exec('/resume', H.claudeAgent()?.id) }] : []),
         { label: 'Show the tucked buttons', key: 'Alt Alt', checked: latched, action: () => latch() },
         { label: 'Key badges while Ctrl is held', checked: store.get('keys.ctrlHints', true), action: () => store.set('keys.ctrlHints', !store.get('keys.ctrlHints', true)) },
         { label: 'Customise', items: customiseMenu },

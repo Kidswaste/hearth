@@ -225,7 +225,7 @@ const AppUI = (() => {
       if (a) for (const h of list.slice(0, 50)) items.push({ kind: `${a.name} chat`, label: h.title, run: () => openWebChat(agentId, h.url) });
     }
     for (const act of actions) items.push({ kind: 'Action', label: act.label, keys: act.keys, run: act.run });
-    return items;
+    return typeof SpeedRank !== 'undefined' ? SpeedRank.palette(items) : items; // (round 13) what you pick most here, now, first; ↻ Again on top
   }
 
   function palette(initial = '') {

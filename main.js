@@ -118,6 +118,11 @@ function createWindow() {
       event.preventDefault();
       send('shortcut', { key: ';', shift: input.shift });
     }
+    // Ctrl/⌘+. Again, Ctrl/⌘+Shift+. recent actions (speed-core.js), from the Lab's frame too
+    if (input.type === 'keyDown' && (input.control || (process.platform === 'darwin' && input.meta)) && !input.alt && input.code === 'Period') {
+      event.preventDefault();
+      send('shortcut', { key: '.', shift: input.shift });
+    }
   });
   win.on('focus', () => { win.flashFrame(false); send('window:focus', true); });
   win.on('blur', () => send('window:focus', false));

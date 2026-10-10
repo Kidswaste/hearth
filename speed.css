@@ -1,0 +1,30 @@
+/* Round 13 (speed): the pick-up card, Again's flash on the button it pressed, the command bar's usual chips, the keys
+   sheet's "Yours" group. Compositor-only motion (opacity / transform), nothing over anything that animates. */
+.speed-card {
+  position: fixed; left: calc(var(--sidebar-w, 64px) + 10px); bottom: 12px; z-index: 8000; width: min(340px, calc(100vw - 100px));
+  display: flex; flex-direction: column; gap: 2px; padding: 8px 8px 6px; border-radius: var(--r-lg, 10px);
+  background: var(--sidebar); border: 1px solid var(--line); box-shadow: 0 14px 40px #000a; color: var(--text); font-size: 12.5px;
+}
+:root[data-look~=v2] .speed-card { background: var(--tx-noise), color-mix(in srgb, var(--fh-pop, var(--sidebar)) 96%, transparent); border-color: var(--line-hi, var(--line)); box-shadow: var(--m-glass-edge, none), 0 14px 40px #000a; }
+:root:not([data-motion=off]) .speed-card { animation: speed-in .22s cubic-bezier(.2, .9, .3, 1.1) both; transform-origin: bottom left; }
+:root:not([data-motion=off]) .speed-card.out { animation: speed-out .15s ease both; }
+@keyframes speed-in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes speed-out { to { opacity: 0; transform: translateY(6px); } }
+.speed-card .sr-head { display: flex; align-items: center; gap: 6px; padding: 0 2px 4px; }
+.speed-card .sr-head b { font-family: var(--font-head, inherit); letter-spacing: .02em; font-size: 12px; color: var(--fh-gold, var(--accent)); }
+.speed-card .sr-x { border: 0; background: none; color: var(--muted); font-size: 15px; cursor: pointer; padding: 0 4px; }
+.speed-card .sr-row { display: grid; grid-template-columns: 20px 1fr auto; align-items: center; gap: 6px; padding: 5px 6px; border: 0; border-radius: var(--r-md, 7px); background: none; color: inherit; text-align: left; cursor: pointer; }
+.speed-card .sr-row:hover, .speed-card .sr-row:focus-visible { background: var(--hover); }
+.speed-card .sr-row:first-of-type .sr-label { font-weight: 600; }
+.speed-card .sr-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.speed-card .sr-hint { color: var(--muted); font-size: 11px; white-space: nowrap; }
+/* the button Again (or a macro) pressed */
+@keyframes speed-flash { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 35% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--fh-gold, var(--accent)) 80%, transparent); } }
+:root:not([data-motion=off]) .speed-flash { animation: speed-flash .7s ease both; }
+/* the command bar's empty row: ↻ Again, pinned, then your usual ones (dimmer) */
+.cmdbar-pins .ex-chip.usual { opacity: .72; border-style: dashed; }
+.cmdbar-pins .ex-chip.usual:hover { opacity: 1; }
+.cmdbar-pins .ex-chip.again { border-color: color-mix(in srgb, var(--fh-gold, var(--accent)) 60%, var(--line)); }
+/* the keys sheet's "Yours" group */
+.keys-sheet .speed-yours h4 { color: var(--fh-gold, var(--accent)); }
+.keys-sheet .speed-give .ks-word { color: var(--fh-gold, var(--accent)); }

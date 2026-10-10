@@ -22,7 +22,9 @@ const ChatSlash = (() => {
     if (place.id !== 'chat') {
       // your habits there first (the Lab: Save, Shuffle, Tap, Freeze, frame sizes, Live sound, the sequence), then its most used
       const first = (HABITS[place.id] || []).map((x) => Commands.get(x)).filter(Boolean);
-      return { label: `In ${place.label}`, list: [...new Set([...first, ...areaCmds(place.area, { every: false })])].slice(0, HERE_MAX) };
+      // (round 13) what you really run here, at this time of day (speed-rank.js), before the guesses
+      const learned = typeof SpeedRank !== 'undefined' ? SpeedRank.top(place.id, HERE_MAX) : [];
+      return { label: learned.length ? `Your usual in ${place.label}` : `In ${place.label}`, list: [...new Set([...learned, ...first, ...areaCmds(place.area, { every: false })])].slice(0, HERE_MAX) };
     }
     const chat = ctx?.agentId ? Native.current?.(ctx.agentId) : null;
     const made = chat && typeof ChatThings !== 'undefined' ? ChatThings.ofChat(chat) : [];
@@ -35,7 +37,8 @@ const ChatSlash = (() => {
       made.some((t) => t.k === 'video') ? 'open-last' : null,
       Object.keys(c).some((k) => c[k] && k !== 'inherited' && (!Array.isArray(c[k]) || c[k].length)) ? 'chat-context' : null,
     ].filter(Boolean);
-    return { label: 'For this chat', list: names.map((x) => Commands.get(x)).filter((d) => d && !d.hidden).slice(0, HERE_MAX) };
+    const learned = typeof SpeedRank !== 'undefined' ? SpeedRank.top('chat', 3) : []; // (round 13) your usual in chats
+    return { label: 'For this chat', list: [...new Set([...names.map((x) => Commands.get(x)), ...learned])].filter((d) => d && !d.hidden).slice(0, HERE_MAX) };
   }
   // one row per area: the place's area first, then the ones you use most, then the menu order; past AREAS_SHOWN,
   // a "More areas ›" row (which opens the full list in place)

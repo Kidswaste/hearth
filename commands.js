@@ -170,6 +170,9 @@ const Commands = (() => {
   // (round 10, flows) Tucked commands: everything but the principal ones (flows-ui.js decides). They still run typed by
   // name and stay in /help and the plain-language search; the "/" menu lists them only after the principal ones.
   let tuckFn = null;
+  // (round 13, speed) setRanker(fn): fn(name) → a habit score (speed-rank.js); ties in the typed "/" matches go to it
+  let rankFn = null;
+  const setRanker = (fn) => { rankFn = typeof fn === 'function' ? fn : null; };
   const setTuck = (fn) => { tuckFn = typeof fn === 'function' ? fn : null; };
   const isTucked = (def) => { try { return Boolean(tuckFn && def && tuckFn(def)); } catch { return false; } };
 
@@ -197,9 +200,12 @@ const Commands = (() => {
     const rec = [...favs(), ...recentAt(place().id), ...recentAll()];
     // (round 9) then the commands of the place you're in (in the Lab: the Lab's first), then the rest
     const here = place(); const hereArea = here.id === 'chat' ? null : here.area;
-    const rank = (d) => (d.name === q ? -1 : (rec.indexOf(d.name) + 1 || (hereArea && d.area === hereArea ? 50 : 99)));
+    // (round 13, speed) your habits here and now (speed-rank.js) lift a command within its tier: used ones before never-used ones
+    const hab = (d) => { try { return rankFn ? Math.min(40, (rankFn(d.name) || 0) * 4) : 0; } catch { return 0; } };
+    const rank = (d) => (d.name === q ? -1 : (rec.indexOf(d.name) + 1 || ((hereArea && d.area === hereArea ? 50 : 99) - hab(d))));
     const sorted = starts.sort((a, b) => rank(a) - rank(b));
-    if (hereArea) has.sort((a, b) => (b.area === hereArea) - (a.area === hereArea));
+    if (hereArea) has.sort((a, b) => (b.area === hereArea) - (a.area === hereArea) || hab(b) - hab(a));
+    else if (rankFn) has.sort((a, b) => hab(b) - hab(a));
     const exact = get(q);
     const all = exact && !exact.hidden ? [exact, ...sorted.filter((d) => d !== exact), ...has.filter((d) => d !== exact)] : [...sorted, ...has];
     // (round 10) principal commands (and pinned / recent ones) before the ones tucked into flows; a name typed exactly stays first
@@ -553,6 +559,8 @@ const Commands = (() => {
     addInfo, info: (name) => info.get(String(name || '').toLowerCase()) || {}, examplesOf, keywordsOf, undoOf, helpList, words,
     // round 10: flows tuck most commands out of the "/" menu
     setTuck, isTucked,
+    // round 13: speed-rank.js
+    setRanker,
     // round 11: makes.js
     onBefore,
   };

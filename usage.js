@@ -216,8 +216,21 @@ const Usage = (() => {
     scheduleDecorate();
   }
 
+  // (round 13, speed) note every visible button of a screen as seen (n = 0), so the weekly tidy covers every screen
+  function see(root) {
+    if (!data || !root) return 0;
+    let n = 0;
+    for (const node of root.querySelectorAll('button, select')) {
+      if (n > 300) break;
+      if (node.closest('[data-no-usage], dialog, #menu') || !node.checkVisibility?.({ visibilityProperty: true })) continue;
+      const key = keyOf(node);
+      if (key && !data.items[key]) { seen(key, labelOf(node), areaOf(node)); n += 1; }
+    }
+    return n;
+  }
+
   return {
-    init, track, dialog, decorate, keyOf, // keyOf(button): its "Area › Label" name (declutter.js: Customise this… → Hide)
+    init, track, dialog, decorate, keyOf, see, // keyOf(button): its "Area › Label" name (declutter.js: Customise this… → Hide)
     // shortcuts, opened agents / tools, an agent's tool calls
     key: (combo, what) => track(`Shortcut › ${combo}${what ? ` (${what})` : ''}`, { area: 'Shortcuts' }),
     open: (id) => track(`Open › ${id}`, { area: 'Opened', label: id }),

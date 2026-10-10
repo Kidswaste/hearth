@@ -117,9 +117,12 @@ const CmdPage = (() => {
     const pick = (names) => names.map((n) => Commands.get(n)).filter((d) => d && !used.has(d.name) && used.add(d.name)).map((def) => ({ def }));
     const pins = pick(Commands.favs());
     if (pins.length) out.push({ head: '★ Pinned', items: pins });
+    // (round 13) what you use most where you came from, at this time of day (speed-rank.js)
+    const usual = typeof SpeedRank !== 'undefined' ? pick(SpeedRank.top((() => { const sid = String(before() ? H.surfaceIdFor(before()) : ''); return sid.startsWith('tool:') ? sid.slice(5) : 'chat'; })(), 6).map((d) => d.name)) : [];
+    if (usual.length) out.push({ head: 'Your usual', items: usual });
     const rec = pick(Commands.recent().slice(0, 6));
     if (rec.length) out.push({ head: 'Recent', items: rec });
-    const pr = [...principalSet()];
+    const pr = typeof SpeedRank !== 'undefined' ? SpeedRank.sort([...principalSet()]) : [...principalSet()];
     out.push({ head: 'Principal', items: pick(pr) });
     const fl = flowsOf();
     if (fl.length) out.push({ head: 'Step lists (flows)', items: fl.map((flow) => ({ flow })) });
