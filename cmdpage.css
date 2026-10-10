@@ -152,3 +152,7 @@ button.linkish { background: none; border: 0; color: var(--fh-gold, #ffd75e); cu
 .pv-dot { animation-name: pv-dot; animation-duration: .9s; }
 @keyframes pv-dot { 50% { transform: translateY(-3px); } }
 @media (prefers-reduced-motion: reduce) { .pv-host.on .pv .pv-a { animation-play-state: paused; } }
+/* × on a run in "Going now": shows on hover / focus */
+.cp-runrow .cp-rx { margin-left: auto; padding: 0 8px; font-size: 15px; line-height: 1; color: var(--muted); opacity: 0; border-radius: 6px; cursor: pointer; }
+.cp-runrow:hover .cp-rx, .cp-runrow:focus-visible .cp-rx { opacity: .8; }
+.cp-runrow .cp-rx:hover { opacity: 1; color: var(--text, #eee); background: rgba(255,255,255,.08); }

@@ -320,6 +320,23 @@ const Flows = (() => {
     touch(run);
     return run;
   }
+  // Remove a run for good (the Commands page's ×): a run still going is stopped first.
+  function forget(runId) {
+    const run = runs.get(runId?.id || runId);
+    if (!run) return false;
+    if (!['done', 'stopped'].includes(run.status)) stop(run.id);
+    runs.delete(run.id);
+    persistSoon();
+    emit(run, 'removed');
+    return true;
+  }
+  // every run that isn't going any more (done, stopped, hung, or untouched for `olderThan` ms)
+  function forgetEnded({ olderThan = 0 } = {}) {
+    const now = env.now();
+    const gone = allRuns().filter((r) => ['done', 'stopped', 'hung'].includes(r.status) || (olderThan && now - r.updated > olderThan));
+    for (const r of gone) forget(r.id);
+    return gone.length;
+  }
   // Pick up here: a hung or stopped run starts its current step again (the steps before it stay done).
   async function resume(runId) {
     const run = runs.get(runId?.id || runId);
@@ -480,7 +497,7 @@ const Flows = (() => {
 
   return {
     KINDS, STATUS, STATUS_LABEL, LIMIT, configure, onChange, define, get, list, remove, validate, normalize, fromText, fill, slug,
-    start, answer, advance, stop, resume, checkHung, rerun, branch, refine, restore, persist,
+    start, answer, advance, stop, forget, forgetEnded, resume, checkHung, rerun, branch, refine, restore, persist,
     run: getRun, runs: allRuns, active, ofChat, waiting, current, line, nodeOf,
   };
 })();

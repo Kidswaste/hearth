@@ -110,7 +110,8 @@ const CmdPage = (() => {
       if (fl.length) out.push({ head: 'Step lists (flows)', items: fl.map((flow) => ({ flow })) });
       return out;
     }
-    const runs = Flows.runs().filter((r) => ['waiting-you', 'hung', 'running', 'waiting-ai', 'stopped'].includes(r.status) && Date.now() - r.updated < 3 * 864e5).slice(0, 4);
+    // runs untouched for a while drop out of the list by themselves (still under their flow's "Last runs"); × removes one
+    const runs = Flows.runs().filter((r) => ['waiting-you', 'hung', 'running', 'waiting-ai', 'stopped'].includes(r.status) && Date.now() - r.updated < goingFor()).slice(0, 4);
     if (runs.length) out.push({ head: 'Going now', items: runs.map((run) => ({ run })) });
     out.push(...extSections(''));
     const used = new Set();
@@ -152,8 +153,9 @@ const CmdPage = (() => {
     if (it.node) return it.node;
     if (it.run) {
       const r = it.run;
-      return el('button', { class: `cp-row cp-runrow fl-${r.status}`, type: 'button', dataset: { run: r.id }, title: Flows.line(r) },
-        el('span', { class: 'cp-rdot' }), el('span', { class: 'cp-rtext' }, el('b', { text: r.flowName }), el('span', { class: 'cp-desc', text: Flows.STATUS_LABEL[r.status] || r.status })));
+      return el('button', { class: `cp-row cp-runrow fl-${r.status}`, type: 'button', dataset: { run: r.id }, title: `${Flows.line(r)}\n× or Delete: remove it · right-click: more` },
+        el('span', { class: 'cp-rdot' }), el('span', { class: 'cp-rtext' }, el('b', { text: r.flowName }), el('span', { class: 'cp-desc', text: Flows.STATUS_LABEL[r.status] || r.status })),
+        el('span', { class: 'cp-rx', role: 'button', title: ['done', 'stopped', 'hung'].includes(r.status) ? 'Remove it' : 'Stop it and remove it', text: '×', on: { click: (e) => { e.stopPropagation(); e.preventDefault(); forgetRun(r); } } }));
     }
     if (it.flow) {
       const f = it.flow;
@@ -365,8 +367,24 @@ const CmdPage = (() => {
     const r = Flows.run(P.runId);
     if (r?.flow?.guided && r.flow.commands?.[0]) showExample(r.flow.commands[0]); else if (r) showFlow(r.flowId); else P.search?.focus();
   }
+  // how long a run stays in "Going now" without moving (store cmdpage.goingHours; the run itself is kept)
+  const goingFor = () => Math.max(0.25, Number(store.get('cmdpage.goingHours', 6)) || 6) * 3600e3;
+  function forgetRun(r) {
+    if (!r) return;
+    Flows.forget(r.id);
+    if (P.view === 'run' && P.runId === r.id) { P.view = 'none'; P.runId = null; P.right?.replaceChildren(); }
+    if (visible()) { const keep = P.list.scrollTop; renderList(); P.list.scrollTop = keep; }
+    toast(`Removed: ${r.flowName}`, { timeout: 1800 });
+  }
+  function hideAfterItems() {
+    const cur = Number(store.get('cmdpage.goingHours', 6));
+    return [[1, '1 hour'], [6, '6 hours'], [24, '1 day'], [72, '3 days']].map(([h, label]) => ({ label: `${h === cur ? '● ' : ''}${label}`, action: () => { store.set('cmdpage.goingHours', h); renderList(); } }));
+  }
   function runMenu(r) {
     return [
+      { label: ['done', 'stopped', 'hung'].includes(r.status) ? '✕ Remove it' : '✕ Stop and remove it', key: 'Delete', action: () => forgetRun(r) },
+      { label: '✕ Clear every finished run', action: () => { const n = Flows.forgetEnded({ olderThan: goingFor() }); renderList(); toast(n ? `Cleared ${n} run${n === 1 ? '' : 's'}` : 'Nothing to clear', { timeout: 1600 }); } },
+      { label: 'Leave "Going now" after…', items: () => hideAfterItems() },
       r.status === 'done' ? { label: '↻ Again (same answers)', action: () => act(async () => openRun((await Flows.rerun(r.id)).id)) } : null,
       r.status === 'done' ? { label: '✎ Refine the result…', action: () => refine(r) } : null,
       ['hung', 'stopped'].includes(r.status) ? { label: '↻ Pick up here', action: () => act(() => Flows.resume(r.id)) } : null,
@@ -439,6 +457,7 @@ const CmdPage = (() => {
     const i = rows.indexOf(b);
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const n = rows[Math.max(0, Math.min(rows.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))]; n?.focus(); n?.scrollIntoView({ block: 'nearest' }); }
     else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); pickRow(b); } // the example; Enter again (on ▶ Use) starts it
+    else if ((e.key === 'Delete' || e.key === 'Backspace') && b.dataset.run) { e.preventDefault(); e.stopPropagation(); const n = rows[i + 1] || rows[i - 1]; forgetRun(Flows.run(b.dataset.run)); P.list.querySelector(`.cp-row[data-run="${n?.dataset.run}"], .cp-row[data-name="${n?.dataset.name}"]`)?.focus(); }
     else if (e.key === '/' || (e.key.length === 1 && /\w/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey)) { P.search.focus(); }
   }
 
@@ -457,8 +476,9 @@ const CmdPage = (() => {
 
   // runs moving: the page follows the one on screen, the list's "Going now"
   let listT = 0;
-  function onRunChange(run) {
+  function onRunChange(run, what) {
     if (!P.mounted) return;
+    if (what === 'removed') return; // forgetRun repaints
     if (P.view === 'run' && run.id === P.runId) requestAnimationFrame(() => renderRun());
     clearTimeout(listT); listT = setTimeout(() => { if (visible() && !P.query) { const keep = P.list.scrollTop; renderList(); P.list.scrollTop = keep; } }, 400);
   }
