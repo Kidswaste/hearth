@@ -530,7 +530,7 @@ const CaptureTour = (() => {
   function previewLine(r) {
     const tl = r.timeline || []; const s = tl.reduce((n, x) => n + x.ms, 0) / 1000;
     const slow = [...tl].sort((a, b) => b.ms - a.ms)[0];
-    return `Preview: ${r.steps} steps played in ${s.toFixed(1)} s${tl.some((x) => x.dry) ? ` (${tl.filter((x) => x.dry).length} recording steps skipped)` : ''}${slow?.ms > 400 ? ` · longest: line ${slow.line} ${slow.op} ${(slow.ms / 1000).toFixed(1)} s` : ''}${r.skipped.length ? ` · ⚠ ${r.skipped.length} failed: ${r.skipped[0]}` : ''}`;
+    return `Preview: ${r.steps} step${r.steps === 1 ? "" : "s"} played in ${s.toFixed(1)} s${tl.some((x) => x.dry) ? ` (${tl.filter((x) => x.dry).length} recording steps skipped)` : ''}${slow?.ms > 400 ? ` · longest: line ${slow.line} ${slow.op} ${(slow.ms / 1000).toFixed(1)} s` : ''}${r.skipped.length ? ` · ⚠ ${r.skipped.length} failed: ${r.skipped[0]}` : ''}`;
   }
   async function picker() {
     const all = await list();
