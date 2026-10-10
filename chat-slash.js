@@ -41,7 +41,8 @@ const ChatSlash = (() => {
   // a "More areas ›" row (which opens the full list in place)
   function areaRows(place, { every = false } = {}) {
     const counts = new Map();
-    for (const d of Commands.list()) if (!d.hidden && (every || !tucked(d))) counts.set(d.area, (counts.get(d.area) || 0) + 1);
+    // (the Flows area's own commands sit behind the "⇢ Flows ›" row)
+    for (const d of Commands.list()) if (!d.hidden && (every || (!tucked(d) && d.area !== 'Flows'))) counts.set(d.area, (counts.get(d.area) || 0) + 1);
     const n = Commands.counts?.() || {};
     const use = new Map();
     for (const d of Commands.list()) use.set(d.area, (use.get(d.area) || 0) + (n[d.name] || 0));
@@ -59,7 +60,7 @@ const ChatSlash = (() => {
     if (expanded === MORE) return [back, { kind: 'head', label: 'Every area' }, ...areaRows(place).filter((r) => r.area !== MORE), { kind: 'area', area: EVERY, label: 'Every command (in flows too) ›', hint: `${Commands.list().filter((d) => !d.hidden).length}` }];
     if (expanded === EVERY) return [back, { kind: 'head', label: 'Every command, by area (they run typed by name)' }, ...areaRows(place, { every: true })];
     if (expanded === FLOWS) return [back, ...flowRows()];
-    if (expanded.startsWith(ALL)) {
+    if (expanded && expanded.startsWith(ALL)) {
       const area = expanded.slice(ALL.length); const list = areaCmds(area);
       return [back, { kind: 'head', label: `${area} · ${list.length} (all)` }, ...list.map(cmdRow)];
     }

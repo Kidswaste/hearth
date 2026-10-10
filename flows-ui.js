@@ -181,7 +181,7 @@ const FlowsUI = (() => {
     const flow = Flows.get(run.flowId);
     const done = run.steps.filter((e) => e.status === 'done').length;
     const head = `**${flow?.icon || '⇢'} ${run.flowName}** · ${done} step${done === 1 ? '' : 's'} · ${Flows.STATUS_LABEL[run.status] || run.status}`;
-    const body = w ? `\n\n**${w.title}**${w.guess ? ` · Hearth thinks: ${w.guess}` : ''}${w.hint ? ` · \`${w.hint}\`` : ''}`
+    const body = w ? `\n\n**${w.title}**${w.guess != null ? ` · Hearth thinks: ${(w.options.find((o) => o.value === w.guess) || {}).label || w.guess}` : ''}${w.hint ? ` · \`${w.hint}\`` : ''}`
       : run.status === 'hung' || run.status === 'stopped' ? `\n\n${run.why || 'Stopped'}`
         : run.status === 'done' ? `\n\n${short(run.result, 220)}` : `\n\n${Flows.current(run)?.node?.title || ''}…`;
     const actions = [];
@@ -247,7 +247,7 @@ const FlowsUI = (() => {
         if (t.start) { ensure(); await startIn(t.start, { agentId: chat.agentId, chatId: chat.id }); continue; }
         if (!r) continue;
         if (t.resume) await Flows.resume(r.id);
-        else if (t.answer != null && Flows.waiting(r)) await Flows.answer(r.id, t.answer);
+        else if (t.answer != null && t.answer !== '…' && Flows.waiting(r)) await Flows.answer(r.id, t.answer);
       }
     }), 0);
   }
@@ -331,7 +331,7 @@ const FlowsUI = (() => {
   function frame(run) {
     if (!D?.view) return;
     D.view.fit(null);
-    if (D.view.view.z < 0.72) { D.view.zoom(0.85); const cur = run && Flows.current(run); D.view.center(cur ? cur.entry.node : (run?.flow || D.draft || Flows.get(D.flowId))?.start); }
+    if (D.view.view.z < 0.72) { D.view.zoom(0.85); const at = run && (Flows.current(run)?.entry.node || run.steps.at(-1)?.node); D.view.center(at || (run?.flow || D.draft || Flows.get(D.flowId))?.start); }
   }
   // the edited graph back into the flow (edit mode): positions, wires, removed and new steps
   function graphToFlow(g, flow) {
@@ -411,6 +411,7 @@ const FlowsUI = (() => {
     if (!flow) { toast('No such flow', { type: 'error' }); return; }
     if (D.mode === 'edit' && !D.draft) D.draft = JSON.parse(JSON.stringify(flow));
     D.view?.destroy();
+    if (store.get('nodes.flows.minimap', null) == null) store.set('nodes.flows.minimap', false); // the steps fill the view: no minimap at first
     D.reg = makeRegistry();
     const g = flowToGraph(D.mode === 'edit' ? D.draft : flow, D.reg);
     D.view = NodeView.create(D.host, {
@@ -493,11 +494,11 @@ const FlowsUI = (() => {
   }
 
   // the run on the nodes: status per node, decorations (what was chosen / typed / made, the options as buttons)
-  function paint() {
+  function paint(depth = 0) {
     if (!D?.view) return;
     renderHead();
     const run = currentRun();
-    if (!run) { for (const n of (D.draft || Flows.get(D.flowId))?.nodes || []) decorate(n, null, null); D.view.relayout(); return; }
+    if (!run) { for (const n of (D.draft || Flows.get(D.flowId))?.nodes || []) decorate(n, null, null); D.view.relayout(); if (D.mode !== 'edit' && depth < 3 && unOverlap()) paint(depth + 1); return; }
     // refine added steps: the graph grows
     const have = new Set(D.view.getGraph().nodes.map((n) => n.id));
     if (run.flow.nodes.some((n) => !have.has(n.id))) { D.view.setGraph(flowToGraph(run.flow, D.reg, false), { keepView: true, history: false }); }
@@ -512,11 +513,30 @@ const FlowsUI = (() => {
       decorate(n, hit?.e || null, run, hit?.i);
     }
     D.view.relayout();
+    if (depth < 3 && unOverlap()) return paint(depth + 1);
     renderSide();
     // keep the step that waits in sight
     const cur = Flows.current(run);
     if (cur && D.lastFocus !== `${run.id}:${run.steps.length}` && D.lastFocus) D.view.center(cur.entry.node);
     D.lastFocus = `${run.id}:${run.steps.length}`;
+  }
+  // steps grow with what they made: push the ones below down so nothing overlaps (only ever down, so it settles)
+  function unOverlap() {
+    const g = D.view.getGraph();
+    const cols = new Map();
+    for (const n of g.nodes) { const k = Math.round(n.x / 50); if (!cols.has(k)) cols.set(k, []); cols.get(k).push(n); }
+    let moved = false;
+    for (const list of cols.values()) {
+      list.sort((a, b) => a.y - b.y);
+      let bottom = -Infinity;
+      for (const n of list) {
+        const h = D.host.querySelector(`.nv-node[data-id="${CSS.escape(n.id)}"]`)?.offsetHeight || 80;
+        if (n.y < bottom + 26) { n.y = Math.ceil((bottom + 26) / 16) * 16; moved = true; }
+        bottom = n.y + h;
+      }
+    }
+    if (moved) D.view.setGraph(g, { keepView: true, history: false });
+    return moved;
   }
   function stepText(e) {
     if (e.status === 'skipped') return 'skipped';
@@ -579,7 +599,8 @@ const FlowsUI = (() => {
         if (w.hint) deco.append(el('code', { class: 'fl-arghint', text: w.hint }));
         const multi = !n.argsOf;
         const inp = el(multi ? 'textarea' : 'input', { class: 'fl-input', rows: multi ? 3 : undefined, placeholder: n.placeholder || (n.argsOf ? 'arguments (or leave empty)' : 'type here…'), value: w.last ?? '', spellcheck: multi });
-        inp.addEventListener('keydown', (k) => k.stopPropagation());
+        // Enter validates (Ctrl/⌘+Enter in the bigger box, where Enter makes a new line)
+        inp.addEventListener('keydown', (k) => { k.stopPropagation(); if (k.key === 'Enter' && (!multi || k.ctrlKey || k.metaKey)) { k.preventDefault(); validate(); } });
         deco.append(inp);
         if (n.argsOf) {
           const chips = el('div', { class: 'fl-chips' });
@@ -720,6 +741,7 @@ const FlowsUI = (() => {
     const before = D.draft.nodes.length;
     D.draft = graphToFlow(graph, D.draft);
     D.pill.textContent = 'not saved';
+    if (D.mode === 'edit') renderSide();
     // a new step from the picker becomes a real step (its own outputs): redraw once
     if (info?.kind === 'add' || graph.nodes.some((n) => n.type.startsWith('k:')) || D.draft.nodes.length !== before) { clearTimeout(editTimer); editTimer = setTimeout(refreshDraft, 0); }
   }

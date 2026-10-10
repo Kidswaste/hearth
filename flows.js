@@ -186,6 +186,7 @@ const Flows = (() => {
         const out = fill(node.text || '{last}', run.vars);
         entry.output = trim(out);
         run.result = entry.output;
+        if (out.trim()) run.vars.last = entry.output; // a refine starts from the result
         complete(run, entry, node, {});
         if (!node.next) { finish(run); return run; }
         continue;
@@ -462,7 +463,7 @@ const Flows = (() => {
       if (!r?.id || !r.flow) continue;
       if (r.status === 'running' || r.status === 'waiting-ai') {
         const e = r.steps?.at(-1);
-        if (e && e.status === 'running') e.status = 'hung';
+        if (e && e.status === 'running') { e.status = 'hung'; e.error = 'Hearth closed during this step'; }
         r.status = 'hung';
         r.why = 'Hearth closed during this step';
       }

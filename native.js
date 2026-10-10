@@ -23,7 +23,8 @@ const Native = (() => {
   // Follow-up suggestions the agent offers as buttons: <suggest>…</suggest>.
   const SUGGEST_TAG = /<suggest>([\s\S]*?)<\/suggest>/gi;
   // Hide memory / suggestion tags from what you see, including a tag that is still streaming in.
-  const visibleText = (text) => text.replace(REMEMBER_TAG, '').replace(SUGGEST_TAG, '').replace(/<(remember|suggest)>[\s\S]*$/i, '').replace(/<(rem|sug)[a-z]*$/i, '').trim();
+  // (round 10) <flow answer="…"/> moves the chat's flow (flows-ui.js reads it before this strips it)
+  const visibleText = (text) => text.replace(REMEMBER_TAG, '').replace(SUGGEST_TAG, '').replace(/<flow\b[^>]*?\/?>(?:<\/flow>)?/gi, '').replace(/<(remember|suggest)>[\s\S]*$/i, '').replace(/<(rem|sug)[a-z]*$/i, '').trim();
   const REVIEW_PROMPT = 'Review your last result critically against what I asked. For visual work, take a fresh screenshot and look closely. List the concrete problems you see, then fix the important ones.';
 
   // "mcp__claude_ai_Gmail__search_threads" -> "Gmail · search threads"
@@ -1698,6 +1699,8 @@ const Native = (() => {
     const v = views.get(agentId);
     if (!v) { toast(text, { timeout: 8000 }); return null; }
     if (id) v.list.querySelector(`.msg.note[data-note-id="${id}"]`)?.remove(); // a newer note of the same kind replaces the old one
+    // (round 10) …for good: a replaced note no longer comes back when the chat redraws
+    if (id) for (const n of v.notes || []) if (n.box.dataset.noteId === id) n.box.dataset.gone = '1';
     const body = el('div', { class: 'body', html: renderMarkdown(text) });
     const box = el('div', { class: 'msg note', dataset: id ? { noteId: id } : {} }, body,
       actions.length ? el('div', { class: 'note-acts' }, actions.map((a) => el('button', { type: 'button', class: 'ghost small', text: a.label, title: a.title || '', on: { click: () => a.run(box) } }))) : null,
