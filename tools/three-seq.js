@@ -345,7 +345,7 @@ const ThreeSeq = (() => {
       const look = c.look ? mine.find((l) => l.name === c.look)?.values : null;
       const cues = !c.look && map?.cues?.length ? map.cues.map((q) => ({ t: q.t, name: q.looks?.find((l) => l.layer === ly.id || l.layer === ly.name)?.name })).filter((q) => q.name).map((q) => ({ t: q.t, values: mine.find((l) => l.name === q.name)?.values })).filter((q) => q.values) : null;
       const p = prepLayer(ly, slot0 + j, { look, palette: c.vibe?.palette, t0, vary: c.vary ? { seed: (c.vary.seed || 1) + j * 101, amount: c.vary.amount ?? 0.4 } : null, cues });
-      return { id: `${c.id}~${ly.id}`, code: p.code, values: p.values, props: { name: `${c.name} · ${ly.name}`, share: shareKey(ly), opacity: ly.opacity ?? 1, blend: ly.blend || 'normal', x: ly.x || 0, y: ly.y || 0, scale: ly.scale ?? 1, rotate: ly.rotate || 0, in: ly.in != null ? r4(ly.in + t0) : null, out: ly.out != null ? r4(ly.out + t0) : null, keys: p.keys, sliderKeys: p.sliderKeys, ...(marks ? { seqMarks: marks } : {}) } };
+      return { id: `${c.id}~${ly.id}`, code: p.code, values: p.values, props: { name: `${c.name} · ${ly.name}`, share: shareKey(ly), opacity: ly.opacity ?? 1, blend: ly.blend || 'normal', x: ly.x || 0, y: ly.y || 0, scale: ly.scale ?? 1, rotate: ly.rotate || 0, in: ly.in != null ? r4(ly.in + t0) : null, out: ly.out != null ? r4(ly.out + t0) : null, keys: p.keys, sliderKeys: p.sliderKeys, ...(marks ? { seqMarks: marks } : {}), ...(ly.precomp && typeof ThreeComp !== 'undefined' ? { precomp: ThreeComp.specOf(ly, sk.id, { slotBase: 3000 + (slot0 + j) * 50 }) } : {}) } };
     });
   }
   // what makes two scenes' layers "the same layer" for a morph: its name, or its code when the name says nothing

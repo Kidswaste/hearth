@@ -622,6 +622,9 @@ function friendlyError(engine, message) {
 const LOST_SESSION = /no (saved |matching )?(conversation|session|thread|rollout)s? (was )?found|(thread|session|conversation|rollout) (not found|does not exist)|could not (find|resume) (the )?(session|thread|rollout|conversation)|failed to (resume|load) (the )?(session|thread|rollout|conversation)/i;
 
 function send({ agent, chatId, session, text, options = {} }, emit) {
+  // a chat with its own engine (a comp part on Astra while its director runs on Claude, or the reverse): the same
+  // agent on that engine, with its tools (Astra directors get the hub servers through -c), the twin's model / effort
+  if (options.engine && options.engine !== agent.engine && ENGINES[options.engine]) agent = { ...agent, engine: options.engine, model: undefined, effort: undefined, ...(options.engine === 'codex' ? { hubTools: true } : {}) };
   const engine = agent.engine;
   // A per-run persona replaces the agent's own instructions; "lean" runs (collaborations, quick asks) drop
   // the hub tool sets and file tools so they cost no more than a plain chat turn.

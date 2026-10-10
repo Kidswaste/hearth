@@ -1,0 +1,36 @@
+/* Comp (comp-dispatch.js): the card in the main chat that follows the parts dispatched to other chats. */
+.comp-card {
+  margin: 10px 0; padding: 7px 9px; border-radius: 12px; border: 1px solid var(--line);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--fh-ai, #bd8bff) 6%, var(--surface)), var(--surface));
+  position: relative; font-size: 12px;
+}
+.comp-card::before {
+  content: ''; position: absolute; inset: 0 0 auto 0; height: 2px; border-radius: 12px 12px 0 0;
+  background: linear-gradient(90deg, var(--fh-ai, #bd8bff), var(--fh-gold, #ffd75e), var(--fh-ai, #bd8bff));
+}
+.comp-card.running::before { background-size: 200% 100%; animation: comp-flow 2.4s linear infinite; }
+@keyframes comp-flow { to { background-position: -200% 0; } }
+.comp-head { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 4px; }
+.comp-head b { white-space: nowrap; letter-spacing: .02em; }
+.comp-sum { flex: 1; min-width: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.comp-row { display: flex; align-items: center; gap: 7px; padding: 3px 4px; border-radius: 8px; min-width: 0; border-left: 2px solid var(--pc, var(--line)); }
+.comp-row:hover { background: color-mix(in srgb, var(--text, #fff) 5%, transparent); }
+.comp-still { width: 30px; height: 30px; flex: none; border-radius: 6px; object-fit: cover; background: #0b0b12; }
+.comp-still.none { display: grid; place-items: center; color: var(--pc, var(--muted)); font-size: 14px; }
+.comp-main { flex: 1; min-width: 0; }
+.comp-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.comp-line b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.comp-mark { color: var(--pc, var(--fh-gold)); flex: none; }
+.comp-who { width: 14px; height: 14px; flex: none; display: inline-grid; place-items: center; }
+.comp-who svg { width: 13px; height: 13px; }
+.comp-st { flex: none; font-size: 11px; padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, var(--text, #fff) 7%, transparent); color: var(--muted); }
+.comp-row.st-working .comp-st, .comp-row.st-sent .comp-st { color: var(--fh-ai, #bd8bff); }
+.comp-row.st-waiting .comp-st { color: var(--fh-orange, #ff8c42); }
+.comp-row.st-done .comp-st { color: var(--ok, #7cd992); }
+.comp-row.st-stuck .comp-st { color: var(--danger, #ff6b6b); }
+.comp-q { flex: none; font-size: 11px; color: var(--muted); }
+.comp-said { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.comp-acts { display: flex; gap: 2px; flex: none; opacity: .55; }
+.comp-row:hover .comp-acts, .comp-acts:focus-within { opacity: 1; }
+.comp-acts button { padding: 0 6px; min-width: 0; }
+@media (prefers-reduced-motion: reduce) { .comp-card.running::before { animation: none; } }

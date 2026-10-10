@@ -61,6 +61,7 @@ const F = require('./fake-common');
     const lines = [];
     const clients = {};
     for (const [tool0, a0, fallback] of calls) {
+      if (tool0 === 'sleep') { await F.sleep(Number(a0) || 0); continue; } // ["sleep", ms]: a pause between calls (a part that takes a while)
       let [tool, a] = [tool0, a0];
       const spec = F.serverFor(servers, tool);
       if (!spec) { lines.push(`${tool}: no server`); continue; }

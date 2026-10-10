@@ -1515,19 +1515,21 @@ function instrument(renderFn) {
     if (EL?.props?.overrides) applyOverrides(EL, scene, camera);
     camera = editCamera(this, scene, camera);
     // adaptive resolution (see adaptQuality): the sketch's own pixel ratio × the current quality
-    const q = fullRes() ? 1 : quality;
+    // (a precomp's layers: × that precomp's own resolution, see "precomps")
+    const q = fullRes() ? 1 : SQ.off ? 1 : +(quality * (EL?.props.pcOf ? pcRes(EL) : 1)).toFixed(2);
     if (this.__q !== q && typeof this.setPixelRatio === 'function') {
       // the sketch's own ratio: read the first time, and again if the sketch set a new one since (it no longer matches ours)
       if (this.__basePR == null || Math.abs(this.getPixelRatio() - this.__basePR * this.__q) > 1e-3) this.__basePR = this.getPixelRatio();
       this.__q = q;
       this.setPixelRatio(this.__basePR * q);
     }
-    const t0 = performance.now();
+    const t0 = realNow(); // (performance.now inside a sequence scene / a precomp is that scene's clock)
     // a Lab sequence's camera fly-through moves this scene's own camera for the frame (put back right after)
     const camBack = EL && SQ.cam ? sqCamFx(EL, camera) : null;
     try { renderFn.call(this, scene, camera); } finally { camBack?.(); }
     if (EL && EL.drawnGen !== EL.gen) layerDrew(EL);
-    frameMs = performance.now() - t0;
+    frameMs = realNow() - t0;
+    if (EL?.props.pcOf) pcCost(EL, frameMs);
     lastRenderer = this;
     this.__lastScene = scene; this.__lastCamera = camera;
     renderers.add(this);
@@ -2684,8 +2686,9 @@ function layerOfStack(stack) {
   return null;
 }
 function currentLayer() { return layerOfStack(new Error().stack) || ctxLayer; }
-window.__layerOfStack = layerOfStack;
-window.__layerOfUrl = (u) => (u ? urlLayer.get(u) || null : null);
+// (console lines and errors from a precomp's layers are told as the precomp's, the layer the Lab knows)
+window.__layerOfStack = (s) => pcTop(layerOfStack(s));
+window.__layerOfUrl = (u) => (u ? pcTop(urlLayer.get(u) || null) : null);
 function layerState(id) {
   let L = layers.get(id);
   if (!L) {
@@ -2755,10 +2758,39 @@ function evalKeys(keys, t, base) {
   return a.v + (b.v - a.v) * u;
 }
 const songTime = () => (SQ.on ? SQ.T : mediaEl ? mediaEl.currentTime : null);
-const prop = (L, name, def) => evalKeys(L.props.keys?.[name], songTime(), L.props[name] ?? def);
+// ---------- precomps: the clocks (round 10 "comp"; the rest is in "precomps" after the sequence) ----------
+// A precomp is a layer made of another scene's layers. Those layers (props.pcOf = the precomp's id) live on their own
+// scene's clock: the precomp's time, i.e. the time of the scene the precomp sits in, through its start / speed /
+// offset / loop (or its time-remap keys). One clock per scene, all derived from the one on screen, so a paused frame
+// is the same frame in every precomp.
+const PC = { list: new Set(), importing: 0, fresh: false, tick: 0 };
+// the time a layer's keyframes, in / out and layer.scene are on
+function keyTime(L) {
+  const P = L?.props.pcOf ? layers.get(L.props.pcOf) : null;
+  return P ? pcTime(P) : songTime();
+}
+// the time of the scene a precomp sits in
+function hostTime(P) {
+  const G = P.props.pcOf ? layers.get(P.props.pcOf) : null;
+  if (G) return pcTime(G);
+  if (SQ.on) return P.props.seqT0 != null ? SQ.T - P.props.seqT0 : SQ.T;
+  return mediaEl ? mediaEl.currentTime : realNow() / 1000;
+}
+// the precomp's own scene time now: (host − start) × speed + offset, or its time-remap keys (After Effects' Time
+// Remap: host seconds → its seconds), looped over its length (or held on its last frame)
+function pcTime(P) {
+  const c = P.pc || {};
+  const h = hostTime(P);
+  let t = c.keys?.remap?.length ? evalKeys(c.keys.remap, h, 0) : (h - (c.start || 0)) * (c.speed ?? 1) + (c.offset || 0);
+  const len = c.len || 0;
+  if (len > 0 && c.loop !== false) t = ((t % len) + len) % len;
+  else if (len > 0) t = Math.min(t, len - 1 / (c.fps || 30));
+  return Math.max(0, Math.round(t * 1e6) / 1e6);
+}
+const prop = (L, name, def) => evalKeys(L.props.keys?.[name], keyTime(L), L.props[name] ?? def);
 function applySliderKeys(L) {
   const sk = L.props.sliderKeys;
-  const t = songTime();
+  const t = keyTime(L);
   if (!sk || t == null) return;
   for (const [idx, d] of Object.entries(sk)) {
     const v = evalKeys(d.keys, t, undefined);
@@ -2777,9 +2809,11 @@ function applySliderKeys(L) {
 function layerMix(L) {
   const p = L.props;
   if (p.visible === false) return 0;
+  // a precomp's layers draw only while it runs them (see "precomps"); their times are on its clock
+  if (p.pcOf && !layers.get(p.pcOf)?.pcMounted) return 0;
   const op = prop(L, 'opacity', 1);
-  if (!mediaEl && !SQ.on) return op;
-  const t = SQ.on ? SQ.T : mediaEl.currentTime;
+  if (!mediaEl && !SQ.on && !p.pcOf) return op;
+  const t = p.pcOf ? keyTime(L) : SQ.on ? SQ.T : mediaEl.currentTime;
   if (p.in != null && t < p.in) return 0;
   if (p.out != null && t >= p.out) return 0;
   let k = 1;
@@ -2807,12 +2841,15 @@ function styleLayer(L) {
   const z = String(p.z ?? 0);
   if (s.zIndex !== z) s.zIndex = z;
   L.box.classList.toggle('interactive', Boolean(p.selected));
+  if (L.pc) pcStyle(L);
 }
 const ordered = () => [...layers.values()].sort((a, b) => (a.props.z ?? 0) - (b.props.z ?? 0));
 // A layer's own canvases (not the picture of its previous version fading out over it, see "live edits")
-const layerCanvases = (L) => [...L.box.querySelectorAll('canvas')].filter((cv) => !cv.classList.contains('lab-xfade'));
+// (a precomp's box holds its layers' boxes: their canvases are theirs)
+const layerCanvases = (L) => [...L.box.querySelectorAll('canvas')].filter((cv) => !cv.classList.contains('lab-xfade') && (!PC.list.size || cv.closest('.lab-layer') === L.box));
 // Merging is needed for recordings / screenshots once more than one layer shows, or one is transformed.
 function needsComposite() {
+  if (PC.list.size) return true; // (precomps: their crop / mask / effects are drawn in the merge)
   const act = ordered().filter((L) => layerMix(L) > 0);
   if (act.length !== 1) return act.length > 1;
   const L = act[0]; const p = L.props; const t = xform(L);
@@ -2829,28 +2866,34 @@ function composite(target, k = 1, size = null, only = null) {
   g.fillStyle = '#000';
   g.fillRect(0, 0, W, H);
   for (const L of ordered()) {
+    if (L.props.pcOf) continue; // (a precomp's layers are drawn inside it)
     if (only ? !only.has(L.id) : L.seqHide) continue; // (a sequence transition merges its two sides itself)
-    const mix = layerMix(L);
-    if (mix <= 0) continue;
-    const p = L.props;
-    const { x, y, scale, rotate } = xform(L);
-    g.save();
-    g.globalAlpha = mix;
-    g.globalCompositeOperation = BLEND_2D[p.blend] || 'source-over';
-    g.translate(W / 2 + (x / 100) * W, H / 2 + (y / 100) * H);
-    g.rotate((rotate * Math.PI) / 180);
-    g.scale(scale, scale);
-    g.translate(-W / 2, -H / 2);
-    for (const cv of layerCanvases(L)) g.drawImage(cv, 0, 0, W, H);
-    g.restore();
+    drawLayer2D(g, L, W, H);
   }
   return c;
+}
+// one layer into a 2D merge: its mix, blend and transform; a precomp draws its own layers (crop, mask, effects)
+function drawLayer2D(g, L, W, H) {
+  const mix = layerMix(L);
+  if (mix <= 0) return;
+  const { x, y, scale, rotate } = xform(L);
+  g.save();
+  g.globalAlpha = mix;
+  g.globalCompositeOperation = BLEND_2D[L.props.blend] || 'source-over';
+  g.translate(W / 2 + (x / 100) * W, H / 2 + (y / 100) * H);
+  g.rotate((rotate * Math.PI) / 180);
+  g.scale(scale, scale);
+  g.translate(-W / 2, -H / 2);
+  if (L.pc) pcDraw(g, L, W, H);
+  else for (const cv of layerCanvases(L)) g.drawImage(cv, 0, 0, W, H);
+  g.restore();
 }
 let compRec = null; // the merged canvas being recorded
 // Runs first in every frame (it was registered before any layer), so animated sliders are set before layers draw.
 function compositorTick() {
   realRAF(compositorTick);
   for (const L of layers.values()) { applySliderKeys(L); styleLayer(L); }
+  if (PC.list.size) pcManage();
   if (compRec) composite(compRec);
 }
 realRAF(compositorTick);
@@ -2864,8 +2907,9 @@ Object.defineProperty(globalThis, 'layer', {
     const L = layers.get(currentLayer() || 'main');
     if (!L) return null;
     const p = L.props;
-    const t = SQ.on ? SQ.T : mediaEl ? mediaEl.currentTime : performance.now() / 1000;
-    return { id: L.id, name: p.name, in: p.in ?? null, out: p.out ?? null, clock: t, time: p.seqT0 != null ? t - p.seqT0 : p.in != null ? t - p.in : t, scene: p.seqT0 != null ? t - p.seqT0 : mediaEl ? t : null, progress: p.in != null && p.out != null ? (t - p.in) / (p.out - p.in) : null, mix: layerMix(L) };
+    // (a precomp's layer: its own scene's clock)
+    const t = p.pcOf ? keyTime(L) : SQ.on ? SQ.T : mediaEl ? mediaEl.currentTime : performance.now() / 1000;
+    return { id: L.id, name: p.name, in: p.in ?? null, out: p.out ?? null, clock: t, time: p.seqT0 != null ? t - p.seqT0 : p.in != null ? t - p.in : t, scene: p.pcOf ? t : p.seqT0 != null ? t - p.seqT0 : mediaEl ? t : null, progress: p.in != null && p.out != null ? (t - p.in) / (p.out - p.in) : null, mix: layerMix(L) };
   },
 });
 
@@ -4697,7 +4741,8 @@ function compositeBelow(L, c) {
   g.fillStyle = '#000';
   g.fillRect(0, 0, W, H);
   const z = L.props.z ?? 0;
-  const below = ordered().filter((B) => B !== L && (B.props.z ?? 0) < z);
+  // (inside a precomp: the layers below it in that precomp's scene)
+  const below = ordered().filter((B) => B !== L && (B.props.z ?? 0) < z && (B.props.pcOf || null) === (L.props.pcOf || null));
   let from = 0;
   for (let i = below.length - 1; i > 0; i -= 1) {
     const B = below[i];
@@ -4705,21 +4750,7 @@ function compositeBelow(L, c) {
     const t = xform(B);
     if (!t.x && !t.y && !t.rotate && t.scale === 1) { from = i; break; }
   }
-  for (let i = from; i < below.length; i += 1) {
-    const B = below[i];
-    const mix = layerMix(B);
-    if (mix <= 0) continue;
-    const { x, y, scale, rotate } = xform(B);
-    g.save();
-    g.globalAlpha = mix;
-    g.globalCompositeOperation = BLEND_2D[B.props.blend] || 'source-over';
-    g.translate(W / 2 + (x / 100) * W, H / 2 + (y / 100) * H);
-    g.rotate((rotate * Math.PI) / 180);
-    g.scale(scale, scale);
-    g.translate(-W / 2, -H / 2);
-    for (const cv of layerCanvases(B)) g.drawImage(cv, 0, 0, W, H);
-    g.restore();
-  }
+  for (let i = from; i < below.length; i += 1) drawLayer2D(g, below[i], W, H);
   return c;
 }
 function glyphAtlas(chars) {
@@ -5009,7 +5040,7 @@ function installRunGuards() {
       if (frozen && !stepping && !SQ.off && !(o.L && o.L.drawnGen !== o.L.gen)) { sched(run); return; }
       if (o.L && layerMix(o.L) <= 0) { sched(run); return; }
       if (!SQ.off && !capOk(t)) { sched(run); return; }
-      within(o, fn, [o.L?.props.seqT0 != null && SQ.on ? (SQ.T - o.L.props.seqT0) * 1000 : t]);
+      within(o, fn, [o.L?.props.seqT0 != null && SQ.on ? (SQ.T - o.L.props.seqT0) * 1000 : o.L?.props.pcOf ? keyTime(o.L) * 1000 : t]);
     };
     return sched(run);
   };
@@ -5026,6 +5057,7 @@ function installRunGuards() {
 const realClearInterval = clearInterval.bind(window);
 const sketchIntervals = new Set(); // sketch intervals still running (a dead layer's stop at their next tick)
 function teardownLayer(L) {
+  if (L.pc) pcUnmount(L);
   L.gen += 1;
   for (const r of L.renderers) {
     try { r.setAnimationLoop(null); } catch {}
@@ -5054,6 +5086,7 @@ function removeLayer(id, { fade = false } = {}) {
   teardownLayer(L);
   L.box.remove();
   layers.delete(id);
+  if (L.pc) { PC.list.delete(L); L.pc = null; }
   if (L.url) { urlLayer.delete(L.url); URL.revokeObjectURL(L.url); }
   stackDrew(id);
 }
@@ -5117,7 +5150,7 @@ function reveal(L) {
 function layerDrew(L) {
   if (L.drawnGen === L.gen) return;
   L.drawnGen = L.gen;
-  post({ type: 'drawn', layer: L.id });
+  if (!L.props.pcOf) post({ type: 'drawn', layer: L.id });
   const pics = L.pics; L.pics = null;
   for (const c of pics || []) fadeAway(c);
   if (L.reveal) { L.reveal = false; reveal(L); }
@@ -5170,6 +5203,15 @@ async function runLayer(spec, hot = false) {
   L.pics = pics?.length ? pics : null;
   L.reveal = spec.fx === 'reveal';
   setLayerProps(L, spec);
+  if (spec.pcOf) pcPlace(L);
+  // a precomp (another scene as one layer) runs that scene's layers inside it; a card (a missing / looping source)
+  // draws a line of text: neither has code of its own
+  if (spec.precomp || spec.card) {
+    if (L.url) { urlLayer.delete(L.url); URL.revokeObjectURL(L.url); L.url = null; }
+    if (spec.precomp) await pcRun(L, spec.precomp); else pcCard(L, spec.card);
+    if (!L.props.pcOf) post({ type: 'ran', hot, swap: Boolean(spec.swap), layer: L.id });
+    return;
+  }
   if (L.url) { urlLayer.delete(L.url); URL.revokeObjectURL(L.url); }
   const g = L.gen;
   // This run's code reads sliders through its own __tv: the live table while it's the layer's current run, the values
@@ -5184,15 +5226,17 @@ async function runLayer(spec, hot = false) {
   L.url = url;
   urlLayer.set(url, L.id);
   sketchRunning = true;
+  const inPc = Boolean(L.props.pcOf);
+  if (inPc) PC.importing += 1;
   try {
-    await import(url);
+    try { await import(url); } finally { if (inPc) PC.importing -= 1; }
     if (L.gen !== g) return;
-    post({ type: 'ran', hot, swap: Boolean(spec.swap), layer: L.id });
+    if (!inPc) post({ type: 'ran', hot, swap: Boolean(spec.swap), layer: L.id });
     realRAF(() => realRAF(() => { if (L.gen === g) slotPast[L.slot || 0] = true; }));
     // a layer that draws without a WebGLRenderer (2D canvas, DOM) or is hidden right now: done after a moment
     realSetTimeout(() => { if (L.gen === g && layers.get(L.id) === L) layerDrew(L); }, 700);
   } catch (err) {
-    post({ type: 'error', layer: L.id, message: `${err.name}: ${err.message}`, line: Number(/blob:[^\s)]*?:(\d+):\d+/.exec(err.stack || '')?.[1]) || null });
+    post({ type: 'error', layer: pcTop(L.id), message: `${L.props.pcOf ? `[◫ ${L.props.name || L.id}] ` : ''}${err.name}: ${err.message}`, line: Number(/blob:[^\s)]*?:(\d+):\d+/.exec(err.stack || '')?.[1]) || null });
     if (L.gen === g) layerDrew(L);
   }
 }
@@ -5557,11 +5601,20 @@ function sqLayerHere() {
 performance.now = function () {
   const h = sqLayerHere();
   if (h) return h.setup ? 0 : (SQ.T - h.L.props.seqT0) * 1000;
+  // a precomp's layer: its scene's own clock (0 while it sets up), like a sequence scene
+  const c = PC.list.size ? pcLayerHere() : null;
+  if (c) return c.setup ? 0 : keyTime(c.L) * 1000;
   return realNow();
 };
+function pcLayerHere() {
+  let id = ctxLayer; let setup = false;
+  if (!id && PC.importing) { id = layerOfStack(new Error().stack); setup = true; }
+  const L = id ? layers.get(id) : null;
+  return L?.props.pcOf ? { L, setup } : null;
+}
 if (THREE.Clock?.prototype?.start) {
   const clockStart = THREE.Clock.prototype.start;
-  THREE.Clock.prototype.start = function () { clockStart.call(this); if (sqLayerHere()) { this.startTime = 0; this.oldTime = 0; } };
+  THREE.Clock.prototype.start = function () { clockStart.call(this); if (sqLayerHere() || (PC.list.size && pcLayerHere())) { this.startTime = 0; this.oldTime = 0; } };
 }
 const sqAsset = (id) => SQ.assets.get(id) || null;
 // a sequence scene's own kick / snare / hit markers (from its own song's beat map), in its own time: they move with
@@ -5617,7 +5670,7 @@ function sqPseudo(id, props) {
   return L;
 }
 // ---------- mounting groups ----------
-const sqKeyOf = (g) => JSON.stringify([g.kind, g.layers?.map((L) => [L.id, L.code, L.values]), g.asset, g.card, g.mute]);
+const sqKeyOf = (g) => JSON.stringify([g.kind, g.layers?.map((L) => [L.id, L.code, L.values, L.props?.precomp?.sig]), g.asset, g.card, g.mute]);
 function sqProps(g, L, j) {
   const p = L?.props || {};
   const lin = p.in != null ? Math.max(g.start - WARM, p.in) : g.start - WARM;
@@ -6025,6 +6078,7 @@ async function sqFrame({ n, T, w, h, q = 0.92, kind = 'image/jpeg', ret = true }
   if (!SQ.off) await sqOffline(true);
   SQ.T = T;
   await Promise.all(sqManage(T, true));
+  await pcEnsure(); // precomps in its scenes: theirs too (only the ones that show at T)
   const s = sqSong();
   if (s && sqInSong(T)) {
     const want = T - s.offset;
@@ -6035,7 +6089,8 @@ async function sqFrame({ n, T, w, h, q = 0.92, kind = 'image/jpeg', ret = true }
   sqApply(T, { full: true });
   for (const L of layers.values()) applySliderKeys(L);
   // the layers draw this frame (a group that just started gets a second pass: its first callback may only set up)
-  const fresh = [...SQ.mounted.values()].some((st) => st.fresh);
+  const fresh = [...SQ.mounted.values()].some((st) => st.fresh) || PC.fresh;
+  PC.fresh = false;
   for (let pass = 0; pass < (fresh ? 2 : 1); pass += 1) {
     const qd = SQ.offQ; SQ.offQ = [];
     for (const fn of qd) { try { fn(T * 1000); } catch (err) { post({ type: 'error', message: String(err?.message || err) }); } }
@@ -6087,11 +6142,243 @@ function sqMessage(msg) {
   }
 }
 
+// ---------- precomps (round 10 "comp": tools/three-comp.js builds the specs) ----------
+// A precomp is a layer whose content is another scene (another chat's scene, a sketch, a sequence): its spec carries
+// precomp = { children: [layer specs of that scene], start, offset, speed, loop, len, fps, crop, mask, feather, fx,
+// res, keys }. Its box holds its layers' boxes, so the precomp's opacity, blend, transform, crop / mask (clip-path,
+// mask-image) and effects (CSS filters) apply to the whole scene on the compositor: nothing is copied per frame in
+// the preview, and it is one page (no frame per scene). Merges (recordings, stills, filter layers above it, sequence
+// transitions, offline renders) draw it the same way in 2D (pcDraw). Its layers run only around the time it shows
+// (they start a moment before and stop a moment after), each on the precomp's clock (pcTime: frame-exact with the
+// scene on screen). Their resolution follows how big the precomp shows and what it costs (pcAdapt): a small
+// picture-in-picture draws a fraction of the pixels. A precomp in a precomp works the same way, one level down.
+const PC_PRE = 1.2; // s before a precomp shows that its layers start
+const PC_GRACE = 1500; // ms after it stops showing that they stop
+// the top-level layer a precomp's layer belongs to (the one the Lab knows)
+function pcTop(id) {
+  let L = id ? layers.get(id) : null;
+  while (L?.props.pcOf && layers.get(L.props.pcOf)) L = layers.get(L.props.pcOf);
+  return L ? L.id : id;
+}
+// a precomp's layer box goes inside the precomp's box
+function pcPlace(L) {
+  const P = layers.get(L.props.pcOf);
+  if (P && L.box.parentElement !== P.box) P.box.appendChild(L.box);
+}
+const pcOrdered = (P) => [...(P.pcIds || [])].map((id) => layers.get(id)).filter(Boolean).sort((a, b) => (a.props.z ?? 0) - (b.props.z ?? 0));
+async function pcRun(P, pc) {
+  if (P.pc) pcUnmount(P);
+  P.pc = pc;
+  P.pcSpecs = new Map((pc.children || []).map((c) => [c.id, c]));
+  P.pcIds = new Set();
+  P.pcMounted = false;
+  P.pcAuto ??= 1; P.pcResNow ??= 1; P.pcMs = 0; P.pcAcc = 0; P.pcFrames = 0;
+  P.box.classList.add('lab-precomp');
+  PC.list.add(P);
+  styleLayer(P);
+  const g = P.gen;
+  if (pcWanted(P)) await pcMount(P);
+  realSetTimeout(() => { if (P.gen === g && layers.get(P.id) === P) layerDrew(P); }, P.pcMounted ? 250 : 0);
+}
+// does the precomp show now (or within a moment)? Its own visibility and time range, on its host's clock
+function pcWanted(P) {
+  const p = P.props;
+  if (p.visible === false || !P.pc) return false;
+  if (p.pcOf && !layers.get(p.pcOf)?.pcMounted) return false;
+  if (p.in == null && p.out == null) return true;
+  const t = keyTime(P);
+  if (t == null) return true;
+  return (p.in == null || t >= p.in - PC_PRE) && (p.out == null || t < p.out + 0.3);
+}
+function pcMount(P) {
+  if (P.pcMounted) return P.pcReady;
+  P.pcMounted = true; P.pcIdle = 0; PC.fresh = true;
+  P.pcReady = Promise.all([...P.pcSpecs.values()].map((c, j) => { P.pcIds.add(c.id); return runLayer({ z: j, ...c, pcOf: P.id }).catch(() => {}); }));
+  return P.pcReady;
+}
+function pcUnmount(P) {
+  for (const id of [...(P.pcIds || [])]) removeLayer(id);
+  P.pcIds?.clear();
+  P.pcMounted = false; P.pcReady = null;
+}
+// a new version of the precomp (its source scene changed, its settings did): only what changed runs again
+function pcSync(P, pc) {
+  const old = P.pcSpecs || new Map();
+  P.pc = pc;
+  P.pcSpecs = new Map((pc.children || []).map((c) => [c.id, c]));
+  styleLayer(P);
+  if (!P.pcMounted) return;
+  for (const id of [...P.pcIds]) if (!P.pcSpecs.has(id)) { removeLayer(id, { fade: true }); P.pcIds.delete(id); }
+  const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  (pc.children || []).forEach((c, j) => {
+    const spec = { z: j, ...c, pcOf: P.id };
+    const was = old.get(c.id); const L = layers.get(c.id);
+    if (!was || !L || !P.pcIds.has(c.id)) { P.pcIds.add(c.id); runLayer({ ...spec, fx: 'reveal' }).catch(() => {}); return; }
+    if (c.precomp && was.precomp && L.pc) { setLayerProps(L, spec); pcSync(L, c.precomp); return; }
+    if (was.code !== c.code || !same(was.values, c.values) || Boolean(was.precomp) !== Boolean(c.precomp) || !same(was.card, c.card)) { runLayer({ ...spec, fx: 'xfade' }, true).catch(() => {}); return; }
+    setLayerProps(L, spec);
+  });
+}
+// the slider values of the precomps' layers survive the Lab's own table being sent again (tweak-init)
+function pcValues() {
+  for (const P of PC.list) if (P.pcMounted) for (const c of P.pcSpecs.values()) if (c.values) Object.assign(TV, c.values);
+}
+// a line of text instead of a scene (a missing source, a precomp that would contain itself)
+function pcCard(L, card) {
+  L.card = card;
+  const c = sqCanvas(L);
+  const g = c.getContext('2d');
+  g.fillStyle = card.bg || '#160d1c'; g.fillRect(0, 0, c.width, c.height);
+  g.fillStyle = card.fg || '#ffd75e'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.font = `600 ${Math.round(Math.min(c.width, c.height) * 0.05)}px system-ui, sans-serif`;
+  String(card.text || '').split('\n').forEach((line, i, all) => g.fillText(line, c.width / 2, c.height / 2 + (i - (all.length - 1) / 2) * c.height * 0.07));
+  layerDrew(L);
+}
+// ---------- its look: crop / mask / soft edge / effects (keyframable: cropT/R/B/L, feather, blur, bright…) ----------
+const pcClamp = (v, a, b) => Math.max(a, Math.min(b, Number(v) || 0));
+function pcK(P, name, d) { const ks = P.pc?.keys?.[name]; return ks?.length ? evalKeys(ks, hostTime(P), d) : d; }
+function pcCrop(P) {
+  const c = P.pc.crop || [0, 0, 0, 0];
+  const t = pcClamp(pcK(P, 'cropT', c[0] || 0), 0, 49); const r = pcClamp(pcK(P, 'cropR', c[1] || 0), 0, 49);
+  const b = pcClamp(pcK(P, 'cropB', c[2] || 0), 0, 49); const l = pcClamp(pcK(P, 'cropL', c[3] || 0), 0, 49);
+  return { t, r, b, l, w: 100 - l - r, h: 100 - t - b };
+}
+// the shape in the box (W × H px): { kind: 'rect' | 'ellipse', x, y, w, h (px), round }
+function pcShape(P, W, H) {
+  const k = pcCrop(P); const m = P.pc.mask || 'none';
+  const x = (k.l / 100) * W; const y = (k.t / 100) * H; const w = (k.w / 100) * W; const h = (k.h / 100) * H;
+  if (m === 'circle') { const d = Math.min(w, h); return { kind: 'ellipse', x: x + (w - d) / 2, y: y + (h - d) / 2, w: d, h: d }; }
+  if (m === 'ellipse') return { kind: 'ellipse', x, y, w, h };
+  return { kind: 'rect', x, y, w, h, round: m === 'rounded' ? Math.min(w, h) * 0.08 : 0, cropped: k.t + k.r + k.b + k.l > 0 };
+}
+const PC_FX = [['blur', 0], ['bright', 1], ['contrast', 1], ['sat', 1], ['hue', 0], ['gray', 0], ['invert', 0], ['sepia', 0]];
+// CSS filters for its effects (px: how many pixels a CSS pixel is where it's drawn)
+function pcFilter(P, px = 1) {
+  const fx = P.pc.fx || {};
+  const v = Object.fromEntries(PC_FX.map(([k, d]) => [k, pcK(P, k, fx[k] ?? d)]));
+  const out = [];
+  if (v.blur > 0) out.push(`blur(${Math.round(v.blur * innerHeight * px) / 100}px)`); // blur: % of the frame's height
+  if (v.bright !== 1) out.push(`brightness(${v.bright})`);
+  if (v.contrast !== 1) out.push(`contrast(${v.contrast})`);
+  if (v.sat !== 1) out.push(`saturate(${v.sat})`);
+  if (v.hue) out.push(`hue-rotate(${v.hue}deg)`);
+  if (v.gray > 0) out.push(`grayscale(${v.gray})`);
+  if (v.invert > 0) out.push(`invert(${v.invert})`);
+  if (v.sepia > 0) out.push(`sepia(${v.sepia})`);
+  return out.join(' ');
+}
+function pcStyle(P) {
+  const s = P.box.style;
+  if (s.isolation !== 'isolate') s.isolation = 'isolate';
+  const W = innerWidth; const H = innerHeight;
+  const sh = pcShape(P, W, H);
+  const pct = (v, of) => `${Math.round((v / of) * 10000) / 100}%`;
+  const clip = sh.kind === 'ellipse' ? `ellipse(${Math.round(sh.w / 2)}px ${Math.round(sh.h / 2)}px at ${Math.round(sh.x + sh.w / 2)}px ${Math.round(sh.y + sh.h / 2)}px)`
+    : sh.cropped || sh.round ? `inset(${pct(sh.y, H)} ${pct(W - sh.x - sh.w, W)} ${pct(H - sh.y - sh.h, H)} ${pct(sh.x, W)}${sh.round ? ` round ${Math.round(sh.round)}px` : ''})` : '';
+  if (P.pcClip !== clip) { P.pcClip = clip; s.clipPath = clip; }
+  // a soft edge (feather, % of the shape's smaller side): a gradient mask inside the shape
+  const f = pcClamp(pcK(P, 'feather', P.pc.feather || 0), 0, 50);
+  let mask = '';
+  if (f > 0) {
+    const e = Math.round((Math.min(sh.w, sh.h) * f) / 100);
+    const r = (v) => Math.round(v);
+    if (sh.kind === 'ellipse') mask = `radial-gradient(${r(sh.w / 2)}px ${r(sh.h / 2)}px at ${r(sh.x + sh.w / 2)}px ${r(sh.y + sh.h / 2)}px, #000 ${Math.max(0, 100 - f * 2)}%, transparent 100%)`;
+    else mask = `linear-gradient(to right, transparent ${r(sh.x)}px, #000 ${r(sh.x + e)}px, #000 ${r(sh.x + sh.w - e)}px, transparent ${r(sh.x + sh.w)}px), linear-gradient(to bottom, transparent ${r(sh.y)}px, #000 ${r(sh.y + e)}px, #000 ${r(sh.y + sh.h - e)}px, transparent ${r(sh.y + sh.h)}px)`;
+  }
+  if (P.pcMask !== mask) { P.pcMask = mask; s.maskImage = mask; s.maskComposite = mask && sh.kind !== 'ellipse' ? 'intersect' : ''; }
+  const flt = pcFilter(P);
+  if (P.pcFlt !== flt) { P.pcFlt = flt; s.filter = flt; }
+}
+// the same in a 2D merge: the precomp's layers merged on transparent, cut to its shape, softened, its effects on
+function pcDraw(g, P, W, H) {
+  const c = P.pcC || (P.pcC = document.createElement('canvas'));
+  if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
+  const g2 = c.getContext('2d');
+  g2.setTransform(1, 0, 0, 1, 0, 0); g2.globalAlpha = 1; g2.globalCompositeOperation = 'source-over'; g2.filter = 'none';
+  g2.clearRect(0, 0, W, H);
+  for (const L of pcOrdered(P)) drawLayer2D(g2, L, W, H);
+  const sh = pcShape(P, W, H);
+  const f = pcClamp(pcK(P, 'feather', P.pc.feather || 0), 0, 50);
+  if (sh.kind === 'ellipse' || sh.cropped || sh.round || f > 0) {
+    g2.globalCompositeOperation = 'destination-in';
+    if (f > 0 && sh.kind === 'ellipse') {
+      g2.save(); g2.translate(sh.x + sh.w / 2, sh.y + sh.h / 2); g2.scale(1, sh.h / Math.max(1, sh.w));
+      const gr = g2.createRadialGradient(0, 0, 0, 0, 0, sh.w / 2);
+      gr.addColorStop(Math.max(0, 1 - f / 50), '#000'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g2.fillStyle = gr; g2.fillRect(-sh.w / 2, -sh.w / 2, sh.w, sh.w); g2.restore();
+    } else {
+      g2.beginPath();
+      if (sh.kind === 'ellipse') g2.ellipse(sh.x + sh.w / 2, sh.y + sh.h / 2, sh.w / 2, sh.h / 2, 0, 0, Math.PI * 2);
+      else if (sh.round) g2.roundRect(sh.x, sh.y, sh.w, sh.h, sh.round);
+      else g2.rect(sh.x, sh.y, sh.w, sh.h);
+      g2.fillStyle = '#000'; g2.fill();
+      if (f > 0) {
+        const e = (Math.min(sh.w, sh.h) * f) / 100;
+        for (const [x0, y0, x1, y1] of [[sh.x, 0, sh.x + sh.w, 0], [0, sh.y, 0, sh.y + sh.h]]) {
+          const len = Math.max(1, Math.hypot(x1 - x0, y1 - y0));
+          const gr = g2.createLinearGradient(x0, y0, x1, y1);
+          gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(Math.min(0.5, e / len), '#000'); gr.addColorStop(Math.max(0.5, 1 - e / len), '#000'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+          g2.fillStyle = gr; g2.fillRect(0, 0, W, H);
+        }
+      }
+    }
+    g2.globalCompositeOperation = 'source-over';
+  }
+  const flt = pcFilter(P, W / Math.max(1, innerWidth));
+  if (flt) g.filter = flt;
+  g.drawImage(c, 0, 0, W, H);
+  if (flt) g.filter = 'none';
+}
+// ---------- running them: around their time, at the resolution they need ----------
+function pcManage() {
+  if (SQ.off) return;
+  const now = realNow();
+  for (const P of PC.list) {
+    if (layers.get(P.id) !== P) { PC.list.delete(P); continue; }
+    if (pcWanted(P)) { P.pcIdle = 0; if (!P.pcMounted) pcMount(P); } else if (P.pcMounted) { if (!P.pcIdle) P.pcIdle = now; else if (now - P.pcIdle > PC_GRACE) pcUnmount(P); }
+    if (P.pcMounted) P.pcFrames += 1;
+  }
+  if (now - PC.tick > 1000) { PC.tick = now; for (const P of PC.list) pcAdapt(P); }
+}
+// offline (a sequence render's frame): the precomps that show at this frame run, ready, before the frame is drawn
+async function pcEnsure() {
+  for (let pass = 0; pass < 6; pass += 1) {
+    const fresh = [];
+    for (const P of [...PC.list]) {
+      if (layers.get(P.id) !== P) { PC.list.delete(P); continue; }
+      const want = pcWanted(P);
+      if (want && !P.pcMounted) fresh.push(pcMount(P)); else if (!want && P.pcMounted) pcUnmount(P);
+    }
+    if (!fresh.length) break;
+    await Promise.all(fresh);
+  }
+  await Promise.all([...PC.list].filter((P) => P.pcMounted && P.pcReady).map((P) => P.pcReady));
+}
+// a precomp's layers render at its resolution: fixed (pc.res), or automatic: how big it shows (its scale), lowered
+// step by step while its layers cost more than ~8 ms a frame or the preview drops frames, raised again with headroom
+function pcCost(L, ms) { const P = layers.get(L.props.pcOf); if (P) P.pcAcc += ms; }
+function pcAdapt(P) {
+  const ms = P.pcFrames ? P.pcAcc / P.pcFrames : 0;
+  P.pcMs = Math.round(ms * 100) / 100; P.pcAcc = 0; P.pcFrames = 0;
+  if (!P.pcMounted || !P.pc) return;
+  if (ms > 8 || quality < 0.9) P.pcAuto = Math.max(0.4, Math.round(P.pcAuto * 0.85 * 100) / 100);
+  else if (ms < 3 && quality >= 1 && P.pcAuto < 1) P.pcAuto = Math.min(1, Math.round((P.pcAuto / 0.85) * 100) / 100);
+  const fixed = Number(P.pc.res) > 0 ? Math.min(1, Number(P.pc.res)) : null;
+  const size = Math.min(1, Math.max(0.35, Math.abs(prop(P, 'scale', 1))));
+  P.pcResNow = fixed ?? Math.max(0.3, Math.round(size * P.pcAuto * 20) / 20);
+}
+function pcRes(L) {
+  let k = 1;
+  for (let P = layers.get(L.props.pcOf); P; P = P.props.pcOf ? layers.get(P.props.pcOf) : null) k *= P.pcResNow || 1;
+  return Math.max(0.25, k);
+}
+// checks / the Lab: the precomps running now
+window.__pcInfo = () => [...PC.list].map((P) => ({ id: P.id, name: P.props.name, mounted: Boolean(P.pcMounted), kids: [...(P.pcIds || [])], time: pcTime(P), host: hostTime(P), res: P.pcResNow || 1, auto: P.pcAuto, ms: P.pcMs, mix: layerMix(P), clip: P.box.style.clipPath, filter: P.box.style.filter, contexts: glAlive() }));
 addEventListener('message', async (e) => {
   const msg = e.data || {};
   if (msg.target !== 'three-sandbox') return;
   if (typeof msg.type === 'string' && msg.type.startsWith('seq-')) { sqMessage(msg); return; }
-  if (msg.type === 'tweak-init') { TV = { ...(msg.values || {}) }; tweakKeys = msg.keys || {}; mods = msg.mods || {}; }
+  if (msg.type === 'tweak-init') { TV = { ...(msg.values || {}) }; tweakKeys = msg.keys || {}; mods = msg.mods || {}; pcValues(); }
   if (msg.type === 'tweak') setTweak(msg);
   if (msg.type === 'tweak-mods') mods = msg.mods || {};
   if (msg.type === 'run') runLayers([{ id: 'main', code: msg.code, slot: 0, selected: true }]);
@@ -6101,6 +6388,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'swap-layers') swapLayers(msg.layers, msg.fx ?? 'xfade');
   if (msg.type === 'layer-props') { const L = layers.get(msg.id); if (L) setLayerProps(L, msg.props); }
   if (msg.type === 'remove-layer') removeLayer(msg.id, { fade: Boolean(msg.fade) });
+  if (msg.type === 'pc-sync') { const P = layers.get(msg.id); if (P?.pc) pcSync(P, msg.precomp); }
   if (msg.type === 'media-load') loadMedia(msg);
   if (msg.type === 'media-unload') unloadMedia();
   if (msg.type === 'freeze') frozen = Boolean(msg.on);

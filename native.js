@@ -554,6 +554,7 @@ const Native = (() => {
     if (m.role === 'collab' && typeof Astra !== 'undefined') return Astra.collabEl(m, agent, index, isLast);
     if (m.role === 'jam' && typeof Jam !== 'undefined') return Jam.cardEl(m, agent, index); // jam.js
     if (m.role === 'intro' && typeof IntroCard !== 'undefined') return IntroCard.cardEl(m, agent, index); // intro-card.js (video projects)
+    if (m.role === 'comp' && typeof CompDispatch !== 'undefined') return CompDispatch.cardEl(m, agent, index); // comp-dispatch.js (parts in other chats)
     const node = el('div', { class: `msg ${m.role}`, dataset: { raw: m.text, index }, title: m.at ? fmtDate(m.at) : '' });
     const body = el('div', { class: 'body' });
     if (m.role === 'assistant' || m.role === 'opinion') { body.innerHTML = renderMarkdown(m.text); decorateCode(body); } else body.textContent = m.text;
@@ -1036,12 +1037,15 @@ const Native = (() => {
     return { full, images, meta: atts.map((a) => ({ kind: a.kind, name: a.name })) };
   }
 
-  async function send(agentId, text, { fromHistory = false, compact = false } = {}) {
-    let chatId = H.activeChat[agentId];
+  // chatId: send into that chat of the agent even when it isn't the open one (a part dispatched by comp-dispatch.js
+  // runs in the background, its own scene backstage); the composer's attachments and style stay with the open chat
+  async function send(agentId, text, { fromHistory = false, compact = false, chatId: only = null } = {}) {
+    let chatId = only || H.activeChat[agentId];
     if (chatId && pending.has(chatId)) throw new Error(`${H.agent(agentId).name} is still answering`);
     let chat = chatId ? await loadChat(chatId) : null;
+    if (only && !chat) throw new Error('That chat is gone.');
     const now = Date.now();
-    const { full, images, meta } = fromHistory ? { full: text, images: [], meta: [] } : packAttachments(agentId, text);
+    const { full, images, meta } = fromHistory || only ? { full: text, images: [], meta: [] } : packAttachments(agentId, text);
     if (!chat) {
       const v = views.get(agentId);
       chat = { id: `${agentId}-${now.toString(36)}`, agentId, title: titleFrom(text || meta[0]?.name || 'Attachment'), createdAt: now, updatedAt: now, session: {}, messages: [], model: v?.pendingModel || undefined };
@@ -1063,7 +1067,7 @@ const Native = (() => {
     for (const fn of hooks.send) { try { fn(agentId, chat, text); } catch (err) { console.warn(err); } }
     render(agentId);
     // A style you set with /tone, /persona or /lang rides along once per engine session (never in the system prompt).
-    const v = views.get(agentId);
+    const v = only && only !== H.activeChat[agentId] ? null : views.get(agentId);
     let style = '';
     if (!compact && v?.styleNext) { style = v.styleNext; chat.style = v.styleClear ? undefined : v.styleNext; v.styleNext = ''; v.styleClear = false; renderStyle(agentId); remember(chat); }
     else if (!compact && chat.style && !chat.session?.id) style = chat.style;
