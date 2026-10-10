@@ -189,7 +189,7 @@ const FlowsUI = (() => {
     else if (w) actions.push({ label: w.kind === 'text' ? 'Answer…' : 'Choose…', run: () => open({ runId: run.id }) });
     if (run.status === 'hung' || run.status === 'stopped') actions.push({ label: '↻ Pick up here', run: () => act(() => Flows.resume(run.id)) });
     if (run.status === 'done') actions.push({ label: '↻ Again', title: 'Same answers, a new result', run: () => act(async () => open({ runId: (await Flows.rerun(run.id)).id })) }, { label: '✎ Refine', title: 'Keep it and say what to change', run: () => refineAsk(run) });
-    actions.push({ label: 'Open ›', run: () => open({ runId: run.id }) });
+    actions.push({ label: 'Open ›', run: () => openPage(run.id) });
     const text = `${head}${body}`;
     const key = `${text}|${actions.map((a) => a.label).join(',')}`;
     if (cardKeys.get(run.id) === key && v.list.querySelector(`.msg.note[data-note-id="flow-${run.id}"]`)) return; // nothing changed
@@ -206,7 +206,8 @@ const FlowsUI = (() => {
   function runMenu(run) {
     const w = Flows.waiting(run);
     return [
-      { label: 'Open the flow', action: () => open({ runId: run.id }) },
+      { label: 'Open the flow', action: () => openPage(run.id) },
+      { label: 'Node view (advanced)', action: () => open({ runId: run.id }) },
       w && w.options.length ? { label: w.title, items: w.options.map((o) => ({ label: o.label, hint: o.hint ? short(o.hint, 40) : '', action: () => act(() => Flows.answer(run.id, o.value)) })) } : null,
       ['hung', 'stopped'].includes(run.status) ? { label: '↻ Pick up here', action: () => act(() => Flows.resume(run.id)) } : null,
       run.status === 'done' ? { label: '↻ Run again (same answers)', action: () => act(() => Flows.rerun(run.id)) } : null,
@@ -260,9 +261,12 @@ const FlowsUI = (() => {
     let c = chatId || H.activeChat?.[a] || null;
     if (!c && a && Native.ensureChat) c = Native.ensureChat(a, `Flow: ${flow.name}`).id;
     const p = Flows.start(flow.id, { agentId: a, chatId: c });
-    if (show) { const r = await Promise.race([p, new Promise((res) => setTimeout(() => res(null), 60))]); open({ runId: (r || Flows.runs()[0]).id }); }
+    if (show) { const r = await Promise.race([p, new Promise((res) => setTimeout(() => res(null), 60))]); openPage((r || Flows.runs()[0]).id); }
     return p;
   }
+
+  // (round 11) runs open on the Commands page (cmdpage.js), one question at a time; the node view is the advanced one
+  const openPage = (runId) => (typeof CmdPage !== 'undefined' ? CmdPage.openRun(runId) : open({ runId }));
 
   // ---------- the view ----------
   let D = null; // { dlg, view, reg, mode, flowId, runId, draft, sel, pick, … }
@@ -823,10 +827,17 @@ const FlowsUI = (() => {
     const R = (def) => { if (Commands.get(def.name) && !def.override) { console.warn(`Flows: /${def.name} exists`); return; } Commands.register({ area: A, ...def }); };
     const flowOpts = (a) => { ensure(); const s = String(a || '').toLowerCase(); return [...journeys(), ...yours(), ...generated()].filter((f) => !s || f.id.includes(s) || f.name.toLowerCase().includes(s)).slice(0, 20).map((f) => ({ value: f.id, label: `${f.icon || ''} ${f.name}`, hint: short(f.desc, 50) })); };
     const runOf = (ctx, id) => (id ? Flows.run(id) : null) || (ctx.chatId && chatRun(ctx.chatId)) || Flows.active()[0] || null;
-    R({ name: 'flows', aliases: ['journeys'], args: '[flow | runs]', desc: 'Flows: every command as a few steps you click through (Doctor, Make a video, Record, Lab scene…), the runs going on, edit your own', keys: 'Ctrl+Shift+F',
-      examples: ['/flows', '/flows doctor', '/flows runs'], keywords: 'steps wizard guided nodes journey process',
+    R({ name: 'flows', aliases: ['journeys'], args: '[flow | runs | nodes [flow]]', desc: 'Flows: step lists you walk through (Doctor, Make a video, Record, Lab scene…) on the Commands page, the runs going on; nodes: the node view (advanced, edit your own)',
+      examples: ['/flows', '/flows doctor', '/flows runs', '/flows nodes'], keywords: 'steps wizard guided nodes journey process',
       complete: flowOpts,
-      run: (args) => { const a = String(args || '').trim(); if (/^runs?$/i.test(a)) { open({ runId: Flows.runs()[0]?.id }); return; } open(a ? { flowId: (Flows.get(a) || flowOpts(a)[0] && Flows.get(flowOpts(a)[0].value) || {}).id || 'doctor' } : {}); } });
+      run: (args) => {
+        let a = String(args || '').trim();
+        const nodes = /^nodes\b/i.test(a); if (nodes) a = a.replace(/^nodes\s*/i, '');
+        const page = typeof CmdPage !== 'undefined' && !nodes;
+        if (/^runs?$/i.test(a)) { const id = Flows.runs()[0]?.id; if (page && id) CmdPage.openRun(id); else open({ runId: id }); return; }
+        const id = a ? (Flows.get(a) || flowOpts(a)[0] && Flows.get(flowOpts(a)[0].value) || {}).id || 'doctor' : null;
+        if (page) CmdPage.open(id || 'flows'); else open(id ? { flowId: id } : {});
+      } });
     R({ name: 'flow', args: '<flow> [first answers…]', desc: 'Start a flow in this chat (its live card here, the steps as nodes): /flow doctor, /flow make-video', examples: ['/flow doctor', '/flow make-video', '/flow lab-scene'],
       keywords: 'start run journey steps', complete: flowOpts,
       run: async (args, ctx) => {
@@ -881,7 +892,7 @@ const FlowsUI = (() => {
 
   function registerKeys() {
     Keys.add([
-      { area: 'Everywhere', keys: 'Ctrl+Shift+F', what: 'Flows: every command as steps you click through, the runs going on', run: () => open({}) },
+      { area: 'Flows', keys: '/flows nodes', what: 'The node view of the flows (advanced): edit your own, the runs as nodes', run: () => open({}) },
       { area: 'Flows', keys: 'Enter', what: 'Validate the step that waits (the option you picked, or your words)' },
       { area: 'Flows', keys: '1…9', what: 'Pick option 1…9 of the step that waits' },
       { area: 'Flows', keys: 'Double-click an option', what: 'Pick it and validate' },
@@ -890,11 +901,11 @@ const FlowsUI = (() => {
       { area: 'Flows', keys: 'Right-click a flow card in a chat', what: 'Answer, pick up here, run again, refine, change an answer, stop' },
     ]);
     addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && (e.key === 'F' || e.key === 'f') && !/^(INPUT|TEXTAREA)$/.test(e.target.tagName) && !e.target.isContentEditable) { e.preventDefault(); if (D?.dlg.open) D.dlg.close(); else open({}); }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && (e.key === 'F' || e.key === 'f') && !/^(INPUT|TEXTAREA)$/.test(e.target.tagName) && !e.target.isContentEditable) { e.preventDefault(); if (D?.dlg.open) D.dlg.close(); else if (typeof CmdPage !== 'undefined') CmdPage.toggle(); else open({}); }
     }, true);
   }
   function registerPalette() {
-    AppUI.addAction?.('Flows: every command as steps you click through', () => open({}), 'Ctrl+Shift+F');
+    AppUI.addAction?.('Flows: the node view (advanced)', () => open({}));
   }
 
   window.addEventListener('DOMContentLoaded', () => {

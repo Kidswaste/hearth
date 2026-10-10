@@ -58,7 +58,7 @@ const ChatSlash = (() => {
     const place = Commands.place?.() || { id: 'chat', label: 'Chat', area: 'Chat' };
     const back = { kind: 'back', label: '‹ All areas', hint: '← back' };
     if (expanded === MORE) return [back, { kind: 'head', label: 'Every area' }, ...areaRows(place).filter((r) => r.area !== MORE), { kind: 'area', area: EVERY, label: 'Every command (in flows too) ›', hint: `${Commands.list().filter((d) => !d.hidden).length}` }];
-    if (expanded === EVERY) return [back, { kind: 'head', label: 'Every command, by area (they run typed by name)' }, ...areaRows(place, { every: true })];
+    if (expanded === EVERY) return [back, ...pageRow(), { kind: 'head', label: 'Every command, by area (they run typed by name)' }, ...areaRows(place, { every: true })];
     if (expanded === FLOWS) return [back, ...flowRows()];
     if (expanded && expanded.startsWith(ALL)) {
       const area = expanded.slice(ALL.length); const list = areaCmds(area);
@@ -88,7 +88,7 @@ const ChatSlash = (() => {
     for (const r of areaRows(place).slice(0, AREAS_SHOWN + 1)) out.push(r);
     // (round 10) then the flows: one row that opens them, and the runs that wait for you
     if (typeof FlowsUI !== 'undefined' && typeof Flows !== 'undefined') {
-      out.push({ kind: 'head', label: 'Flows' }, { kind: 'area', area: FLOWS, label: '⇢ Flows ›', hint: 'Doctor, Make a video, Record…' });
+      out.push({ kind: 'head', label: 'Flows' }, { kind: 'area', area: FLOWS, label: '⇢ Flows ›', hint: 'Doctor, Make a video, Record…' }, ...pageRow());
       for (const r of Flows.active().filter((x) => x.status === 'waiting-you' || x.status === 'hung').slice(0, 2)) out.push({ kind: 'run', run: () => FlowsUI.open({ runId: r.id }), label: `${r.status === 'hung' ? '↻' : '⏸'} ${r.flowName}`, hint: Flows.STATUS_LABEL[r.status] });
     }
     return out;
@@ -99,8 +99,12 @@ const ChatSlash = (() => {
     FlowsUI.ensure();
     const row = (f) => ({ kind: 'run', run: () => FlowsUI.startIn(f.id, { open: true }).catch((err) => toast(err.message, { type: 'error' })), label: `${f.icon || '⇢'} ${f.name}`, hint: f.commands ? `${f.commands.length}` : (f.desc || '').slice(0, 60) });
     const mine = FlowsUI.yours();
-    return [{ kind: 'head', label: 'Journeys' }, ...FlowsUI.journeys().map(row), ...(mine.length ? [{ kind: 'head', label: 'Yours' }, ...mine.map(row)] : []),
+    return [...pageRow(), { kind: 'head', label: 'Journeys' }, ...FlowsUI.journeys().map(row), ...(mine.length ? [{ kind: 'head', label: 'Yours' }, ...mine.map(row)] : []),
       { kind: 'head', label: 'Every command, as flows' }, ...FlowsUI.generated().map(row), { kind: 'run', run: () => FlowsUI.open({}), label: 'Open the flows view…', hint: 'Ctrl+Shift+F' }];
+  }
+  // (round 11) the Commands page: every command explained, with a preview, run one question at a time
+  function pageRow() {
+    return typeof CmdPage === 'undefined' ? [] : [{ kind: 'run', run: () => CmdPage.open(), label: '☰ Every command, step by step…', hint: 'the Commands page · Ctrl+Shift+F' }];
   }
   return { rows, areaCmds, hereRows, flowRows };
 })();

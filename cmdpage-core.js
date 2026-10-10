@@ -15,86 +15,149 @@
 const CmdPageCore = (() => {
   const MAX_STAGES = 4; // commands chained in one run
   const MAX_OPTIONAL = 3; // optional inputs asked one by one; more go into one "anything else?" box
-  // placeholder words (an input you type) vs literal values (a choice): `<name | none>` = a name, or "none"
-  const PLACEHOLDER = /^(#|n|x|n…|name|names|text|message|messages|words|word|what|question|task|command|cmd|time|times|seconds|secs|s|ms|minutes|days|filter|search|title|value|values|color|colors|colour|agent|model|board|tag|tags|note|fact|idea|prompt|expression|code|amount|percent|px|bpm|frames|frame|sequence|clip|slider|layer|node|nodes|preset|template|style|flow|answer|degrees|interval|delay|path|url|file|folder|chat|item name|item|query|topic|persona|language|level|lines|count|rounds|passes|seats|judge|kind|type|mode|side|background|ratio|focus|layout|lens|shape|stamp|starter|sticker|harmony|format|fps|from|to|at|range|scene|scene name|first message|instruction|instructions|fact to remember|label|key|field|action|tool|tab|area|category|playground|animation|transition|look|palette|move|part|max|start|end|in|out|adjustment|percent|factor|feature|bars|beats|size|group|video|picture|picture path|hex|hex codes|text color|any color|feedback|reply|subject|what you want to do|what it should do|goal|goal…|genre or behavior|layout or device|search or #tag|words or #tag|search or category|category or search|lfo|band|depth|v2\.1|script name|json args|backup zip path|path to export \.zip\/\.json|time math|zoom)$/i;
-  const NUMERIC = /^(#|n|n…|count|rounds|passes|seats|seconds|secs|s|ms|minutes|days|amount|percent|px|bpm|frames|degrees|lines|fps|factor|max|bars|beats|interval|delay|0[–-]1|0[–-]100|2[–-]9|-?\d+[–-]\d+|\d+(\.\d+)?)$/i;
-  const isPlaceholder = (w) => { const t = String(w).trim().replace(/[…]+$/, '').trim(); return !t || PLACEHOLDER.test(t) || /[<>=…]/.test(w) || /^#\w+/.test(t) && !/^#[0-9a-f]{3,8}$/i.test(t) || /\s/.test(t) && t.split(/\s+/).every((x) => PLACEHOLDER.test(x)); };
-  const isNumeric = (w) => NUMERIC.test(String(w).trim().replace(/[…]+$/, '').trim());
+  // Placeholder words (an input you type) vs literal values (a choice). Alone in brackets almost any word is a
+  // placeholder (`[board]` = a board's name) unless it reads as a flag (`[copy]`, `[hq]`, `[quiet]`); among several
+  // `a|b|c` only the strong ones are (`<name | none>` = a name, or "none"; `[look|effect|size]` = three choices).
+  const STRONG = /^(#|n|x|name|names|text|message|messages|words|word|what|question|task|command|cmd|time|seconds|secs|ms|minutes|days|filter|search|title|value|values|agent|model|tag|tags|note|fact|idea|prompt|expression|code|amount|percent|px|bpm|frames|frame|degrees|interval|delay|path|url|file|folder|query|topic|language|group|answer|step|round|beat|clip|slider|layer|node|preset|template|style|flow|sequence|board|chat|color|colors|goal|any color|hex codes|picture path|item name|scene name|first message|instruction|instructions|fact to remember|lines|count|rounds|passes|seats|factor|max)$/i;
+  const LOOSE = /^(level|kind|type|mode|side|background|ratio|focus|layout|lens|shape|stamp|starter|sticker|harmony|format|fps|from|to|at|range|scene|label|key|field|action|tool|tab|area|category|playground|animation|transition|look|palette|move|part|start|end|in|out|adjustment|feature|bars|beats|size|video|picture|hex|text color|feedback|reply|subject|what you want to do|what it should do|genre or behavior|layout or device|search or #tag|words or #tag|search or category|category or search|lfo|band|depth|script name|json args|backup zip path|path to export \.zip\/\.json|time math|zoom|persona|judge|item|v2\.1|seed|ease|loop|duration|speed|opacity|volume|angle|width|height|padding|gap|source|target|output|input|direction|position|corner|amount%|depth%)$/i;
+  const NUMERIC = /^(#|n|count|rounds|passes|seats|seconds|secs|ms|minutes|days|amount|percent|px|bpm|frames|degrees|lines|fps|factor|max|bars|beats|interval|delay|-?\d+(\.\d+)?[–-]\d+(\.\d+)?|n bullets)$/i;
+  // among several a|b|c values only these read as "you type it" (`[look|effect|size]` stays three choices)
+  const VSTRONG = /^(#|n|x|name|text|message|words|what|question|task|command|expression|code|filter|search|idea|prompt|fact|answer|model|agent|time|seconds|ms|tag|goal|query|topic|path|url|value|group|any color|hex codes)$/i;
+  const clean = (w) => String(w || '').trim().replace(/^[<[]|[>\]]$/g, '').replace(/[…]+$/, '').trim();
+  const strongPh = (w) => { const t = clean(w); return !t || STRONG.test(t) || /[<>=]/.test(w) || (/^#\w+/.test(t) && !/^#[0-9a-f]{3,8}$/i.test(t)) || (/\s/.test(t) && t.split(/\s+/).every((x) => STRONG.test(x) || LOOSE.test(x) || /^or$/i.test(x))); };
+  const anyPh = (w) => strongPh(w) || LOOSE.test(clean(w));
+  const isPlaceholder = anyPh;
+  const isNumeric = (w) => NUMERIC.test(clean(w)) || /^N$/.test(String(w).trim());
   const article = (w) => (/^[aeiou]/i.test(w) && !/^(one|use)/i.test(w) ? 'an' : 'a');
   // "name" → "a name", "words" → "some words", "#" → "a number"
   function nounOf(w) {
-    const t = String(w || '').replace(/[…]+$/, '').trim().toLowerCase();
+    const t = clean(w).toLowerCase();
     if (!t) return 'a value';
     if (t === '#' || t === 'n') return 'a number';
     if (/^(words|text|colors|frames|seconds|days|lines|rounds|passes|seats|tags|nodes|values|names|instructions|hex codes|bars|beats|messages)$/.test(t)) return `some ${t}`;
     if (/^(what you want to do|what it should do)$/.test(t)) return t;
     return `${article(t)} ${t}`;
   }
-  // tokens of an args string: <…> required, […] optional, | between forms, bare words are literals
+  // Tokens of an args string, brackets nested: <…> required, […] optional, | between forms, bare words literal.
   function tokens(args) {
-    return String(args || '').match(/<[^>]*>|\[[^\]]*\]|\||[^\s<[|]+/g) || [];
+    const s = String(args || '');
+    const out = [];
+    let i = 0;
+    while (i < s.length) {
+      const c = s[i];
+      if (/\s/.test(c)) { i++; continue; }
+      if (c === '|') { out.push('|'); i++; continue; }
+      if (c === '<' || c === '[') {
+        let depth = 0; let j = i;
+        for (; j < s.length; j++) { if (s[j] === '<' || s[j] === '[') depth++; else if (s[j] === '>' || s[j] === ']') { depth--; if (!depth) break; } }
+        out.push(s.slice(i, j + 1)); i = j + 1; continue;
+      }
+      let j = i;
+      while (j < s.length && !/[\s|<[]/.test(s[j])) j++;
+      out.push(s.slice(i, j)); i = j;
+    }
+    return out;
   }
-  const inner = (t) => t.replace(/^[<[]|[>\]]$/g, '').trim();
-  // one token → a question (or null for a lone literal that the form's own choice already covers)
+  const inner = (t) => String(t).replace(/^[<[]/, '').replace(/[>\]]$/, '').trim();
+  // splits on | outside nested brackets
+  function splitTop(body) {
+    const parts = ['']; let depth = 0;
+    for (const c of body) {
+      if (c === '<' || c === '[') depth++;
+      if (c === '>' || c === ']') depth--;
+      if (c === '|' && depth <= 0) parts.push(''); else parts[parts.length - 1] += c;
+    }
+    return parts.map((x) => x.trim()).filter(Boolean);
+  }
+  const NUM_OPTS = (w) => {
+    const range = clean(w).match(/^(-?\d+(?:\.\d+)?)[–-](\d+(?:\.\d+)?)$/);
+    if (range) return [range[1], String(Math.round(((Number(range[1]) + Number(range[2])) / 2) * 100) / 100), range[2]];
+    const t = clean(w).toLowerCase();
+    return t === 'interval' ? ['30s', '1m', '5m', '8 bars'] : t === 'delay' ? ['30s', '2m', '10m'] : /^(seconds|secs)$/.test(t) ? ['5', '10', '30'] : t === 'ms' ? ['50', '100', '250']
+      : t === 'percent' ? ['25', '50', '100'] : t === 'bpm' ? ['90', '120', '128', '140'] : t === 'degrees' ? ['15', '45', '90'] : t === 'days' ? ['1', '7', '30'] : t === 'fps' ? ['24', '30', '60'] : ['1', '2', '3', '5', '10'];
+  };
+  const ELLIPSIS = /^(…|\.\.\.)$/;
+  // "a number from 0.5 to 4", "how many rounds", "how often", "a tempo (BPM)"
+  function countLabel(w) {
+    const t = clean(w);
+    const r = t.match(/^(-?\d+(?:\.\d+)?)[–-](\d+(?:\.\d+)?)$/);
+    if (r) return `a number from ${r[1]} to ${r[2]}`;
+    return ({ '#': 'a number', n: 'a number', N: 'a number', ms: 'a time in milliseconds', seconds: 'how many seconds', secs: 'how many seconds', interval: 'how often', delay: 'how long to wait', bpm: 'a tempo (BPM)', percent: 'a percentage', px: 'a size in pixels', degrees: 'an angle in degrees', fps: 'frames per second', factor: 'a factor', amount: 'an amount', max: 'a maximum' })[t] || `how many ${t}`;
+  }
+  // one bracketed token → a question
   function questionOf(tok, { pos = 0, first = false } = {}) {
     const required = tok.startsWith('<');
-    const optional = tok.startsWith('[');
-    if (!required && !optional) return null;
+    if (!required && !tok.startsWith('[')) return null;
     const body = inner(tok);
     if (!body) return null;
-    if (/^\/|<\/|^\/?cmd\b|\/command|\/cmd/.test(body) || /^\//.test(body)) {
-      return { kind: 'command', label: 'a command', required, free: true, multi: /…|;/.test(body), token: tok, pos };
+    const base = { required, token: tok, pos, first };
+    if (/^\/|<\/|\/command|\/cmd/.test(body)) return { ...base, kind: 'command', label: 'a command', free: true, multi: /…|;/.test(body) };
+    const parts = splitTop(body);
+    // several forms inside ("[reset | status | save <name>]", "[last | code [n] | all]"): one choice, follow-ups per form
+    if (parts.length > 1 && parts.some((p) => /\s/.test(p) && /[<[]/.test(p))) { const f = formsOf(parts.map((p) => tokens(p)), required); return f && { ...base, ...f }; }
+    if (parts.length === 1) {
+      const t = tokens(body);
+      // "seed N", "rate <0.5-2>": a word, then the input
+      if (t.length === 2 && !/[<[]/.test(t[0]) && !STRONG.test(t[0]) && (/^[<[]/.test(t[1]) || /^(#|n|N)$/.test(t[1]) || /^-?\d+(\.\d+)?[–-]\d/.test(t[1]))) {
+        const q = questionOf(`<${inner(t[1])}>`, { pos, first });
+        return q && { ...q, required, token: tok, prefix: t[0], label: `${t[0]}: ${q.label}` };
+      }
+      if (isNumeric(body)) return { ...base, kind: 'count', label: countLabel(body), unit: clean(body), free: true, options: NUM_OPTS(body).map((v) => ({ label: v, value: v })) };
+      if (anyPh(body) || /\s/.test(body)) return { ...base, kind: 'text', label: nounOf(body), free: true, multi: /…/.test(body), options: [] };
+      // a flag: [copy], [hq], [quiet] → yes or no
+      return { ...base, kind: 'yesno', label: body, flag: true, free: false, options: [{ label: `Yes (${body})`, value: body }, { label: 'No', value: '' }] };
     }
-    const parts = body.split(/\s*\|\s*/).map((x) => x.trim()).filter(Boolean);
-    const lits = parts.filter((p) => !isPlaceholder(p) && !/\s/.test(p) || /^\d+\s?(bars?|beats?|s|m)$/i.test(p));
-    const holders = parts.filter((p) => !lits.includes(p));
-    // on | off (maybe with a few more words): yes or no
+    const dots = parts.some((p) => ELLIPSIS.test(p));
+    const multiPh = (p) => VSTRONG.test(clean(p)) || /[<>=]/.test(p) || (/\s/.test(clean(p)) && strongPh(p));
+    const multiNum = (p) => /^(#|n|N)$/.test(clean(p)) || /^-?\d+(\.\d+)?[–-]\d/.test(clean(p)) || /^(ms|bpm|seconds|px|percent)$/i.test(clean(p));
+    const lits = parts.filter((p) => !ELLIPSIS.test(p) && ((!multiPh(p) && !multiNum(p)) || /^\d+(\.\d+)?$|^\d+\s?(bars?|beats?|s|m)$/i.test(p)));
+    const holders = parts.filter((p) => !lits.includes(p) && !ELLIPSIS.test(p));
     const low = lits.map((x) => x.toLowerCase());
     if (low.includes('on') && low.includes('off') && lits.length <= 3 && !holders.length) {
       const extra = lits.filter((x) => !/^(on|off)$/i.test(x));
-      return { kind: 'yesno', label: 'on or off', required, free: false, token: tok, pos,
-        options: [{ label: 'Yes (on)', value: 'on' }, { label: 'No (off)', value: 'off' }, ...extra.map((x) => ({ label: x, value: x }))] };
+      return { ...base, kind: 'yesno', label: 'on or off', free: false, options: [{ label: 'Yes (on)', value: 'on' }, { label: 'No (off)', value: 'off' }, ...extra.map((x) => ({ label: x, value: x }))] };
     }
-    if (parts.length === 1 && holders.length === 1 && isNumeric(holders[0])) {
-      const w = holders[0].replace(/[…]+$/, '');
-      const range = w.match(/^(-?\d+(?:\.\d+)?)[–-](\d+(?:\.\d+)?)$/);
-      const nums = range ? [range[1], ((Number(range[1]) + Number(range[2])) / 2).toString(), range[2]] : /^(seconds|secs|s)$/i.test(w) ? ['5', '10', '30'] : /^ms$/i.test(w) ? ['50', '100', '250'] : /^(percent)$/i.test(w) ? ['25', '50', '100'] : /^bpm$/i.test(w) ? ['90', '120', '128', '140'] : /^degrees$/i.test(w) ? ['15', '45', '90'] : ['1', '2', '3', '5', '10'];
-      return { kind: 'count', label: /^(#|n)$/i.test(w) ? 'a number' : `how many ${w}`, unit: w, required, free: true, token: tok, pos, options: nums.map((v) => ({ label: v, value: v })) };
-    }
-    if (lits.length && !holders.length) return { kind: 'choice', label: parts.length > 4 ? 'one option' : parts.join(' or '), required, free: false, token: tok, pos, options: lits.map((x) => ({ label: x, value: x })) };
-    const noun = holders.length ? nounOf(holders[0]) : 'a value';
-    return { kind: 'text', label: lits.length ? `${noun} (or ${lits.slice(0, 3).join(', ')})` : noun, required, free: true, token: tok, pos, first,
-      options: lits.map((x) => ({ label: x, value: x })), multi: /…/.test(body) };
+    const opts = lits.map((x) => ({ label: x, value: x }));
+    if (!holders.length) return { ...base, kind: 'choice', label: parts.length > 4 ? 'one option' : lits.join(' or '), free: dots, options: opts };
+    if (holders.length === 1 && multiNum(holders[0])) return { ...base, kind: 'count', label: `${countLabel(holders[0])}${lits.length ? ` (or ${lits.slice(0, 3).join(', ')})` : ''}`, unit: clean(holders[0]), free: true, options: [...NUM_OPTS(holders[0]).map((v) => ({ label: v, value: v })), ...opts] };
+    const noun = nounOf(holders[0]);
+    return { ...base, kind: 'text', label: lits.length ? `${noun} (or ${lits.slice(0, 3).join(', ')})` : noun, free: true, options: opts, multi: /…/.test(body) };
   }
   // The questions in a sequence of tokens (one form of the command)
   function seqQuestions(toks) {
     const out = [];
-    let lead = []; // literal words before any input ("rate <0.5-2>", "gain <auto|…>"): part of the value
+    let lead = []; // literal words before an input ("rate <0.5-2>", "gain <auto|…>"): written before the value
     for (const t of toks) {
       if (t === '|') continue;
       if (!/^[<[]/.test(t)) { lead.push(t); continue; }
       const q = questionOf(t, { pos: out.length, first: !out.length });
-      if (q) { if (lead.length) q.prefix = lead.join(' '); out.push(q); }
+      if (q) {
+        if (lead.length) { q.prefix = [lead.join(' '), q.prefix].filter(Boolean).join(' '); q.label = `${lead.join(' ')}: ${q.label}`; }
+        out.push(q);
+      }
       lead = [];
     }
     return { qs: out, lead: lead.join(' ') };
   }
-  // Top-level forms: "<answer> | resume | again | refine <what> | stop" → one choice of the form, each with its own follow-ups
-  function forms(args) {
-    const toks = tokens(args);
-    if (!toks.includes('|')) return null;
-    const groups = [[]];
-    for (const t of toks) { if (t === '|') groups.push([]); else groups.at(-1).push(t); }
+  // Forms: [[tokens], …] → one question: a choice of the form, each option with its own follow-up questions
+  function formsOf(groups, required = true) {
     const opts = [];
-    let free = false; let freeLabel = '';
+    let free = false; let freeLabel = ''; let anyOptional = false;
     for (const g of groups.filter((x) => x.length)) {
       const head = g[0];
       if (/^[<[]/.test(head)) {
-        // a bracketed first token: its literals are options of their own, a placeholder means "type it"
+        // a bracketed first token: its literal values are forms of their own, a placeholder means "type it"
+        if (head.startsWith('[')) anyOptional = true;
         const q = questionOf(head, { first: true });
         const rest = seqQuestions(g.slice(1)).qs;
-        if (q && q.options?.length && q.kind !== 'text') for (const o of q.options) opts.push({ label: o.label, value: o.value, then: rest });
-        else if (q) { free = true; freeLabel = freeLabel || q.label; if (q.options) for (const o of q.options) opts.push({ label: o.label, value: o.value, then: rest }); }
+        if (!q) continue;
+        if (q.kind === 'choice' || q.kind === 'yesno') {
+          for (const o of q.options) if (o.value) opts.push({ label: o.label, value: o.value, then: rest });
+          if (q.free) { free = true; freeLabel = freeLabel || 'something else'; }
+        } else {
+          free = true; freeLabel = freeLabel || q.label.replace(/ \(or .*$/, '');
+          for (const o of q.options || []) if (!/^\d+$/.test(o.value)) opts.push({ label: o.label, value: o.value, then: rest });
+        }
         continue;
       }
       const words = []; let i = 0;
@@ -103,19 +166,31 @@ const CmdPageCore = (() => {
       opts.push({ label: words.join(' '), value: words.join(' '), then: sq.qs });
     }
     const seen = new Set();
-    return { kind: free ? 'text' : 'choice', label: free ? `${freeLabel}, or one of these` : 'what you want it to do', required: !free || !/^\[/.test(toks[0]), free, pos: 0, first: true, form: true,
-      options: opts.filter((o) => o.value && !seen.has(o.value) && seen.add(o.value)) };
+    const options = opts.filter((o) => o.value && !seen.has(o.value) && seen.add(o.value));
+    if (!options.length && !free) return null;
+    return { kind: free ? 'text' : 'choice', label: free ? `${freeLabel}, or one of these` : 'what you want it to do', required: required && !anyOptional, free, form: true, options };
+  }
+  // Top-level forms: "<answer> | resume | again | refine <what> | stop"
+  function forms(args) {
+    const toks = tokens(args);
+    if (!toks.includes('|')) return null;
+    const groups = [[]];
+    for (const t of toks) { if (t === '|') groups.push([]); else groups.at(-1).push(t); }
+    // "on | off", "game | clean": one plain choice (required: nothing is in brackets)
+    if (groups.every((g) => g.length === 1 && !/^[<[]/.test(g[0]))) return questionOf(`<${groups.map((g) => g[0]).join('|')}>`, { first: true });
+    const f = formsOf(groups, !/^\[/.test(toks[0]));
+    return f && { ...f, pos: 0, first: true };
   }
   // A short question title for the page: "This needs: a frame size", "Optional: a name", "Yes or no?", "How many?"
   function titleOf(q) {
     if (q.title) return q.title;
     if (q.kind === 'yesno') return `Yes or no?${q.label && q.label !== 'on or off' ? ` (${q.label})` : ''}`;
-    if (q.kind === 'count') return q.required ? `How many? (${q.label})` : `Optional: how many? (${q.label})`;
+    if (q.kind === 'count') return /^how many /.test(q.label) ? `${q.required ? '' : 'Optional: '}${q.required ? 'H' : 'h'}ow many ${q.label.slice(9)}?` : `${q.required ? 'This needs' : 'Optional'}: ${q.label}`;
     if (q.kind === 'command') return q.required ? 'This needs: a command to run' : 'Optional: a command to run';
     return `${q.required ? 'This needs' : 'Optional'}: ${q.label}`;
   }
   // Verbs that make a command worth repeating (once / n times / every…): it changes or makes something
-  const REPEAT_RE = /^(shuffle|reshuffle|surprise|still|shot|screenshot|grab|tap|kick|snare|hit|marker|cue|nudge|next|prev|step|frame-step|next-frame|board-random|random|tame|exaggerate|undo|redo|retry|backup|lab-state|status|save|save-one|recolor|morph|rotate|zoom|repeat-|beat|bar|freeze|unfreeze|look-apply|theme|accent|palette|fx|preset|camera-move|kinetic|motion|animate|split|razor|cut-here|add-|dup-|duplicate|copy|paste)/;
+  const REPEAT_RE = /^(shuffle|reshuffle|surprise|still|shot|screenshot|grab|tap|kick|snare|hit|marker|cue|nudge|next|prev|step|frame-step|next-frame|board-random|random|tame|exaggerate|undo|redo|retry|backup|lab-state|status|save|save-one|recolor|morph|rotate|zoom|repeat-|beat|bar|look-apply|theme|accent|palette|fx|preset|camera-move|kinetic|motion|animate|split|razor|cut-here|add-|dup-|duplicate|copy|paste)/;
   const EVERY_RE = /^(shuffle|reshuffle|surprise|still|shot|screenshot|backup|lab-state|status|theme|recolor|board-random|look-apply|save-one|grab|forge-shot|forge-snap|usage|tokens|meter)/;
   const NO_REPEAT_AREAS = /^(Flows)$/;
   function repeatOf(def, meta, qs) {
@@ -187,17 +262,19 @@ const CmdPageCore = (() => {
       const meta = { kind: q.kind, label: q.label, required: Boolean(q.required), free: Boolean(q.free), fromComplete: Boolean(q.fromComplete), examples: q.examples || undefined, cmd: S[i].name, pos: q.pos, prefix: q.prefix || undefined, unit: q.unit || undefined, more: q.more || undefined, form: q.form || undefined };
       const pure = (q.kind === 'choice' || q.kind === 'yesno') && !q.free;
       const opts = (q.options || []).map((o) => ({ label: o.label, value: String(o.value), hint: o.hint || undefined, then: o.then }));
-      const vars = [`${id}`];
+      const vars = [`${id}${q.prefix ? `|${q.prefix}` : ''}`]; // {id|prefix}: "seed 7" only when answered
       if (pure || (q.form && opts.some((o) => o.then?.length))) {
         const options = [];
         opts.forEach((o, k) => {
           const follow = (o.then || []);
           let next = after;
-          for (let m = follow.length - 1; m >= 0; m--) { const fid = `o${k + 1}q${m + 1}`; const made = qNodes(i, follow[m], `${idBase}${fid}`, next); next = made.first; vars.push(...made.vars); }
+          const fv = [];
+          for (let m = follow.length - 1; m >= 0; m--) { const made = qNodes(i, follow[m], `${idBase}o${k + 1}q${m + 1}`, next); next = made.first; fv.unshift(...made.vars); }
+          vars.push(...fv);
           options.push({ label: o.label, value: o.value, hint: o.hint, ...(next !== after ? { next } : {}) });
         });
         if (q.free) options.push({ label: 'Something else (type it)', value: '__type', next: `${id}t` });
-        if (!q.required) options.push({ label: 'Skip', value: '', skip: true });
+        if (!q.required && !options.some((x) => x.value === '')) options.push({ label: 'Skip', value: '', skip: true });
         nodes.push({ id, kind: 'choice', title: q.title, var: id, q: meta, options, next: after });
         if (q.free) nodes.push({ id: `${id}t`, kind: 'text', title: q.title, var: `${id}t`, q: { ...meta, typed: true }, optional: !q.required, next: after }); // its words stand for the choice (fillLine)
         return { first: id, vars };
@@ -251,12 +328,12 @@ const CmdPageCore = (() => {
   // A step's command line with the run's answers: "Something else (type it)" stands for the words typed after it,
   // {last} is the result of the step before (one line); display: true names it instead ("the result of step 1")
   function fillLine(cmd, vars, { display = false } = {}) {
-    return String(cmd || '').replace(/\{(\w+)\}/g, (_, k) => {
-      if (k === 'last' || vars[k] === '{last}') return display ? '‹the result before›' : String(vars.last ?? '').replace(/\s+/g, ' ').trim().slice(0, 2000);
-      const v = vars[k];
-      if (v == null) return '';
-      if (v === '__type') return String(vars[`${k}t`] ?? '');
-      return String(v);
+    return String(cmd || '').replace(/\{(\w+)(?:\|([^}]*))?\}/g, (_, k, pre) => {
+      let v = vars[k];
+      if (v === '__type') v = vars[`${k}t`];
+      if (k === 'last' || v === '{last}') v = display ? '‹the result before›' : String(vars.last ?? '').replace(/\s+/g, ' ').trim().slice(0, 2000);
+      if (v == null || v === '') return '';
+      return pre ? `${pre} ${v}` : String(v);
     }).replace(/\s{2,}/g, ' ').trim();
   }
   // The command lines a run will run (or ran), filled with its answers: for the summary

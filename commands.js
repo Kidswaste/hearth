@@ -498,7 +498,8 @@ const Commands = (() => {
     return lines.length ? `${f ? '' : `${list().length} commands · click one to run it (or fill it in) · \`/help\` alone opens the searchable view\n`}${lines.join('\n').trim()}` : `No command matches “${filter}”.`;
   }
   register({
-    name: 'help', aliases: ['commands', '?'], area: 'Chat', desc: 'Every chat command: alone, the searchable help view (areas, examples, keys); /help <word> lists matches here; /help list: everything as text', args: '[filter | list]',
+    // (round 11) /commands is no longer an alias: it opens the Commands page (cmdpage.js)
+    name: 'help', aliases: ['?'], area: 'Chat', desc: 'Every chat command: alone, the searchable help view (areas, examples, keys); /help <word> lists matches here; /help list: everything as text', args: '[filter | list]',
     examples: ['/help', '/help lab', '/help list'],
     run: (args, ctx) => {
       const a = String(args || '').trim();
