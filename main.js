@@ -261,6 +261,23 @@ ipcMain.handle('engine:login', (_e, engine) => { engines.setEnginePaths(settings
 // Every Claude Code / Codex copy, the one in use, too old? signed in? (engine-health.js at startup, /doctor), and the
 // update / install / sign-in run in a visible window; the check after it comes back as 'engine:installs'.
 ipcMain.handle('engine:installs', (_e, opts) => { engines.setEnginePaths(settings().enginePaths); return engines.checkInstalls(opts || {}); });
+// ffmpeg (sharp MP4 recordings, exact frames, renders): found or not, and a one-click install in a visible
+// Terminal / PowerShell window (Homebrew on a Mac, winget on Windows); a status call after it forgets the old miss.
+ipcMain.handle('tools:ffmpeg', (_e, o = {}) => {
+  if (o.fresh) { require('./framereader').forgetTools(); require('./aemain').forgetTools(); }
+  return require('./aemain').ffStatus({ ffmpeg: settings().ffmpegPath || undefined });
+});
+ipcMain.handle('tools:installFfmpeg', () => {
+  const I = require('./installs');
+  const marker = path.join(require('os').tmpdir(), `hearth-ffmpeg-${Date.now()}.done`);
+  const lines = I.IS_WIN
+    ? ['winget install --id Gyan.FFmpeg -e --accept-source-agreements --accept-package-agreements']
+    : I.IS_MAC
+      ? ['command -v brew >/dev/null 2>&1 || [ -x /opt/homebrew/bin/brew ] || [ -x /usr/local/bin/brew ] || /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"',
+        'eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || /usr/local/bin/brew shellenv 2>/dev/null)"', 'brew install ffmpeg']
+      : ['sudo apt-get install -y ffmpeg || sudo dnf install -y ffmpeg || sudo pacman -S --noconfirm ffmpeg'];
+  return { ...I.runInTerminal({ title: 'Install ffmpeg for Hearth', lines, marker }), marker, command: lines.join('\n') };
+});
 ipcMain.handle('engine:fix', (_e, engine, action) => { engines.setEnginePaths(settings().enginePaths); return engines.fix(String(engine), String(action || 'update')); });
 engines.onInstalls((report, info) => send('engine:installs', { ...report, fixed: info }));
 ipcMain.handle('engine:status', () => { engines.setEnginePaths(settings().enginePaths); return engines.status(); });

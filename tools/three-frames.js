@@ -764,7 +764,7 @@ const ThreeFrames = (() => {
     const path = F.path; if (!path || !F.clock || !store_('three.filmstrip', true)) return;
     try {
       const s = await sampler(path);
-      const dur = D() || s.v.duration || 0; if (!dur) return;
+      const dur = D() || finiteDur(s.v.duration); if (!dur) return;
       const count = Math.max(6, Math.min(36, Math.round(dur / 0.4)));
       const out = [];
       for (let i = 0; i < count; i += 1) {

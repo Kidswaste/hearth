@@ -680,7 +680,9 @@ const Capture = (() => {
       }
       const wantsApp = o.audio === 'app' || o.audio === 'app+mic' || o.audio === 'system';
       await api().prep({ audio: o.audio === 'system' && /Win/.test(navigator.platform) ? 'system' : wantsApp ? 'app' : 'none', source: o.source || 'frame' });
-      const display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: o.fps, max: o.fps } }, audio: wantsApp });
+      // at the screen's real pixels (Retina / HiDPI: twice the window's size), never scaled down by the capture
+      const dpr = Math.max(1, devicePixelRatio || 1);
+      const display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: o.fps, max: o.fps }, width: { ideal: Math.round(innerWidth * dpr), max: 7680 }, height: { ideal: Math.round(innerHeight * dpr), max: 4320 }, resizeMode: 'none' }, audio: wantsApp });
       rec.display = display;
       const { tracks: audioTracks, note } = await audioFor(o, display);
       rec.audioNote = note || null;
@@ -766,13 +768,21 @@ const Capture = (() => {
       // Mac / Windows: H.264 first (their hardware encoders keep up at 1080×1920 60 fps); elsewhere VP9 / VP8. A codec
       // that gave two empty takes this session is skipped until Hearth restarts.
       const bad = Object.entries(codecStrikes).filter(([, n]) => n >= 2).map(([c]) => c);
-      const order = /Mac|Win/.test(navigator.platform) ? ['h264', 'vp9', 'vp8'] : ['vp9', 'vp8', 'h264'];
-      const mime = [...(o.codec ? [o.codec] : []), ...order].filter((c) => c === o.codec || !bad.includes(c)).map((c) => `video/webm;codecs=${c},opus`).concat(['video/webm']).find((m) => MediaRecorder.isTypeSupported(m));
+      // Mac / Windows record straight to MP4 (H.264 on the hardware encoder): a file every player and editor takes, with
+      // its length in it. WebM is the fallback (and Linux's first choice).
+      const order = /Mac|Win/.test(navigator.platform) ? ['avc1', 'h264', 'vp9', 'vp8'] : ['vp9', 'vp8', 'h264'];
+      const mimeOf = (c) => (c === 'avc1' ? ['video/mp4;codecs=avc1.640034,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a.40.2'] : [`video/webm;codecs=${c},opus`]);
+      const mime = [...(o.codec ? [o.codec] : []), ...order].filter((c) => c === o.codec || !bad.includes(c)).flatMap(mimeOf).concat(['video/webm']).find((m) => MediaRecorder.isTypeSupported(m));
       rec.mime = mime;
-      const recorder = new MediaRecorder(new MediaStream([videoTrack, ...audioTracks]), { mimeType: mime, videoBitsPerSecond: Math.round(o.mbps * 1e6), audioBitsPerSecond: 192000 });
+      // the bitrate follows the picture (pixels × frame rate): text and UI edges stay sharp at Retina sizes; draft / GIF
+      // presets (under 8 Mbit/s) keep theirs
+      const px = rec.canvas ? rec.canvas.width * rec.canvas.height : innerWidth * innerHeight * dpr * dpr;
+      const mbps = o.mbps < 8 ? o.mbps : Math.min(100, Math.max(o.mbps, 20, (px * o.fps * 0.2) / 1e6));
+      rec.mbps = Math.round(mbps);
+      const recorder = new MediaRecorder(new MediaStream([videoTrack, ...audioTracks]), { mimeType: mime, videoBitsPerSecond: Math.round(mbps * 1e6), audioBitsPerSecond: 256000 });
       rec.recorder = recorder;
       recorder.onerror = (e) => { rec && (rec.recError = e.error?.message || 'encoder error'); console.warn('capture: recorder', e.error); };
-      const file = await api().recOpen({ name: o.name || `Hearth ${o.target === 'window' ? 'recording' : o.target} ${new Date().toISOString().slice(0, 19).replace('T', ' ').replace(/:/g, '-')}` });
+      const file = await api().recOpen({ ext: /mp4/.test(mime) ? 'mp4' : 'webm', name: o.name || `Hearth ${o.target === 'window' ? 'recording' : o.target} ${new Date().toISOString().slice(0, 19).replace('T', ' ').replace(/:/g, '-')}` });
       rec.id = file.id; rec.path = file.path;
       const R0 = rec;
       recorder.ondataavailable = (e) => { if (e.data?.size) { R0.bytes = (R0.bytes || 0) + e.data.size; R0.chunks = R0.chunks.then(async () => api().recWrite(file.id, new Uint8Array(await e.data.arrayBuffer()))); } };
@@ -914,9 +924,9 @@ const Capture = (() => {
         throw new Error(`Nothing was recorded${codec ? ` (the ${codec.toUpperCase()} encoder gave nothing${r.recError ? `: ${r.recError}` : ''})` : ''}`);
       }
       if (r.mime) delete codecStrikes[String(r.mime).match(/codecs=(\w+)/)?.[1]];
-      const busy = quiet ? null : toast(r.opts.mp4 ? 'Finishing the recording (MP4)…' : 'Finishing the recording…', { timeout: 0 });
+      const busy = quiet ? null : toast('Finishing the recording…', { timeout: 0 });
       let fin = { webm: p };
-      try { fin = await api().finish({ path: p, mp4: Boolean(r.opts.mp4 || r.final), fps: r.opts.fps, id: r.id, size: r.final }); } catch (err) { fin.error = err.message; } finally { busy?.remove(); }
+      try { fin = await api().finish({ path: p, mp4: r.opts.mp4 !== false, fps: r.opts.fps, id: r.id, size: r.final, crf: 14, keep: Boolean(r.opts.keepWebm) }); } catch (err) { fin.error = err.message; } finally { busy?.remove(); }
       const main = fin.mp4 || fin.webm || p;
       const marks = r.marks;
       // an encoder that fell behind (a busy machine, a software codec) keeps only the first frames: a 6 s take came
@@ -927,12 +937,12 @@ const Capture = (() => {
         fin.short = `Only ${fin.duration.toFixed(1)} s of ${duration.toFixed(1)} s were recorded: the computer was too busy for the ${codec ? codec.toUpperCase() : 'video'} encoder. Try a lower frame rate or size (/record 30fps 720p).`;
         toast(fin.short, { type: 'error', timeout: 12000 });
       }
-      if (r.opts.gif && typeof FrameRead !== 'undefined') { try { const g = await FrameRead.edit(fin.webm || main, 'gif', { fps: r.opts.fps || 15 }, { quiet: true }); fin.gif = g.path; } catch (err) { fin.gifError = err.message; } }
+      if (r.opts.gif && typeof FrameRead !== 'undefined') { try { const g = await FrameRead.edit(main, 'gif', { fps: r.opts.fps || 15 }, { quiet: true }); fin.gif = g.path; } catch (err) { fin.gifError = err.message; } }
       if (marks.length) { const all = await window.hub.kvGet('capture-marks', {}); all[main] = marks; if (fin.webm && fin.webm !== main) all[fin.webm] = marks; window.hub.kvSet('capture-marks', all); }
       if (typeof Review !== 'undefined') { try { Review.noteRecording(main); } catch { /* the library is a bonus */ } }
       const item = remember({ kind: 'video', path: main, webm: fin.webm, mp4: fin.mp4 || null, duration: fin.duration || duration, w: fin.w, h: fin.h, fps: r.opts.fps, marks });
       if (!quiet) {
-        const extra = fin.mp4Error ? ' (MP4 failed: kept the WebM)' : !fin.ffmpeg && r.opts.mp4 ? ' (WebM: install ffmpeg for MP4)' : '';
+        const extra = fin.mp4Error ? ' (MP4 failed: kept the WebM)' : !fin.ffmpeg && /webm$/i.test(main) ? ' (WebM: /doctor installs ffmpeg for sharp MP4s)' : '';
         toast(`🎬 ${base(main)} · ${fmtClock(item.duration || 0)}${r.audioNote ? ` · ${r.audioNote}` : ''}${extra}`, { timeout: 7000, action: { label: 'Open', fn: () => CaptureView.open(main) } });
       }
       document.dispatchEvent(new CustomEvent('hearth:recording', { detail: { recording: false, path: main } }));

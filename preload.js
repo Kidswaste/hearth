@@ -46,6 +46,8 @@ contextBridge.exposeInMainWorld('hub', {
   engineDoctor: call('engine:doctor'),
   engineInstalls: call('engine:installs'),
   engineFix: call('engine:fix'),
+  ffmpegStatus: call('tools:ffmpeg'),
+  ffmpegInstall: call('tools:installFfmpeg'),
   onEngineInstalls: on('engine:installs'),
   onEngineEvent: on('engine:event'),
 

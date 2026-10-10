@@ -365,4 +365,5 @@ function registerIpc(ipcMain, getWin, getOverride) {
   });
 }
 
-module.exports = { registerIpc, templates, status, running, ffStatus, probe, _test: { locate, macError, findTool } };
+function forgetTools() { for (const k of Object.keys(toolCache)) delete toolCache[k]; }
+module.exports = { forgetTools, registerIpc, templates, status, running, ffStatus, probe, _test: { locate, macError, findTool } };

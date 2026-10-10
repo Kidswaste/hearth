@@ -208,7 +208,7 @@ const CaptureView = (() => {
     let inf = { fps: 30, frames: 0, duration: 0, exact: false };
     let cur = 0; // the frame on screen
     const fps = () => inf.fps || 30;
-    const total = () => Math.max(1, inf.frames || Math.floor((v.duration || 0) * fps()));
+    const total = () => Math.max(1, inf.frames || Math.floor(finiteDur(v.duration) * fps()));
     const STYLES = ['smpte', 'ms', 's'];
     let tcStyle = store.get('capture.playerTc', 'smpte');
     tcEl.addEventListener('click', () => { tcStyle = STYLES[(STYLES.indexOf(tcStyle) + 1) % STYLES.length]; store.set('capture.playerTc', tcStyle); paint(); });

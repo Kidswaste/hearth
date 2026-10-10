@@ -193,14 +193,21 @@ function register(ipcMain, getWin, getSettings = () => ({})) {
     FR.setOverrides(ffOverrides());
     const src = String(o.path || '');
     if (!fs.existsSync(src)) throw new Error(`Recording not found: ${src}`);
-    const out = { webm: src, ffmpeg: Boolean(FR.tools().ffmpeg) };
+    const isMp4 = /\.mp4$/i.test(src);
+    const out = { webm: isMp4 ? null : src, ffmpeg: Boolean(FR.tools().ffmpeg) };
+    if (isMp4) out.mp4 = src;
     if (!out.ffmpeg) return out;
     const id = o.id || path.basename(src);
-    const fixed = src.replace(/\.webm$/i, '.fixed.webm');
-    try { await FR.convert(src, fixed); fs.renameSync(fixed, src); } catch (err) { try { fs.unlinkSync(fixed); } catch { /* none */ } out.remuxError = err.message; }
+    // a recorder's file is written as it goes, without its length or a seek index: repack it (lossless, quick)
+    const fixed = src.replace(/\.(\w+)$/, '.fixed.$1');
+    try { await FR.convert(src, fixed, { faststart: isMp4 }); fs.renameSync(fixed, src); } catch (err) { try { fs.unlinkSync(fixed); } catch { /* none */ } out.remuxError = err.message; }
     try { const p = await FR.probe(src); out.duration = p.duration; out.w = p.w; out.h = p.h; out.fps = p.fps; } catch { /* probe is a bonus */ }
     if (o.size && o.size.w) { out.w = o.size.w; out.h = o.size.h; }
-    if (o.mp4) {
+    // an MP4 straight from the recorder is final unless it needs scaling to a social size
+    if (o.mp4 && isMp4 && o.size && o.size.w) {
+      const hq = src.replace(/\.mp4$/i, '.hq.mp4');
+      try { await FR.convert(src, hq, { mp4: true, fps: o.fps || null, crf: o.crf || 14, duration: out.duration, size: o.size, onProgress: (pct) => send('capture:progress', { id, pct }) }); fs.renameSync(hq, src); } catch (err) { try { fs.unlinkSync(hq); } catch { /* none */ } out.mp4Error = err.message; }
+    } else if (o.mp4 && !isMp4) {
       const mp4 = src.replace(/\.webm$/i, '.mp4');
       try {
         await FR.convert(src, mp4, { mp4: true, fps: o.fps || null, crf: o.crf || 18, duration: out.duration, size: o.size || null, onProgress: (pct) => send('capture:progress', { id, pct }) });

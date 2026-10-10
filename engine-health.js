@@ -160,6 +160,8 @@ const EngineHealth = (() => {
     const list = problems(r);
     const parts = [`**Doctor** · ${list.length ? `${list.length} thing${list.length > 1 ? 's' : ''} to fix` : 'both engines can work'}`, enginesText(r)];
     if (list.length) parts.push(`**To fix** (buttons below run it in a ${winName()} window; Hearth never sees your password)\n${list.map((p) => `- ${p.text}`).join('\n')}`);
+    const ff = await window.hub.ffmpegStatus?.({ fresh: true }).catch(() => null);
+    if (ff) parts.push(ff.ffmpeg ? `**ffmpeg** ✓ ${ff.ffmpeg} (sharp MP4 recordings, exact frames, renders)` : '**ffmpeg** missing: recordings stay WebM and frame reading is approximate. `/ffmpeg install` installs it in one click.');
     if (astraDoctor) { try { const t = await astraDoctor(args, ctx); if (t) parts.push(astraPart(t)); } catch (err) { parts.push(`(Astra details failed: ${err.message})`); } }
     const text = parts.join('\n\n');
     if (ctx?.note) { ctx.note(text, { actions: actionsFor(r, ctx), id: 'doctor' }); doctorShown = { ctx, at: Date.now() }; return undefined; }
@@ -168,6 +170,14 @@ const EngineHealth = (() => {
 
   function registerCommands() {
     const R = (def) => Commands.register(def);
+    if (!Commands.get('ffmpeg')) {
+      R({ name: 'ffmpeg', area: 'Video', args: '[install]', desc: 'Is ffmpeg installed (sharp MP4 recordings, exact frames, renders)? /ffmpeg install opens a window that installs it', complete: () => [{ value: 'install' }],
+        run: async (args) => {
+          if (/install/.test(args)) { const r = await installFfmpeg(); return r?.ok ? `Installing ffmpeg in a ${r.window} window: Hearth switches to it when it's done.` : `Run this yourself: \`${r?.command || ''}\``; }
+          const st = await window.hub.ffmpegStatus({ fresh: true });
+          return st.ffmpeg ? `ffmpeg ✓ ${st.ffmpeg}${st.ffprobe ? ` · ffprobe ✓` : ''}` : 'ffmpeg isn\'t installed: `/ffmpeg install` installs it (Homebrew on a Mac, winget on Windows).';
+        } });
+    }
     const old = Commands.get('astra-doctor');
     if (old && !astraDoctor) astraDoctor = old.run;
     const doctor = { area: 'Agents', args: '[--run]', complete: () => [{ value: '--run', hint: 'also send Astra a tiny test message (a few tokens)' }], run: (args, ctx) => runDoctor(args, ctx) };
@@ -206,14 +216,39 @@ const EngineHealth = (() => {
     }
   }
 
+  // ---------- ffmpeg: the one other thing Hearth needs for sharp video (installed in a visible window) ----------
+  let ffWatch = 0;
+  async function installFfmpeg() {
+    const r = await window.hub.ffmpegInstall();
+    if (!r?.ok) { toast(`Couldn't open a window (${r?.error || 'unknown'}). Run this yourself: ${r?.command || ''}`, { type: 'error', timeout: 0, action: r?.command ? { label: 'Copy', fn: () => copyText(r.command, 'Command copied') } : undefined }); return r; }
+    toast(`Installing ffmpeg in the ${r.window} window… Hearth switches to it when it's done.`, { timeout: 7000 });
+    clearInterval(ffWatch);
+    const t0 = Date.now();
+    ffWatch = setInterval(async () => {
+      if (Date.now() - t0 > 40 * 60000) { clearInterval(ffWatch); return; }
+      if (!(await window.hub.fs.stat(r.marker).catch(() => null))) return;
+      clearInterval(ffWatch);
+      const st = await window.hub.ffmpegStatus({ fresh: true }).catch(() => null);
+      toast(st?.ffmpeg ? 'ffmpeg is ready ✓ recordings are sharp MP4s and frames are exact from now on.' : 'The install window finished but Hearth still can\'t find ffmpeg: /doctor shows where it looked.', { timeout: 9000, type: st?.ffmpeg ? undefined : 'error' });
+    }, 3000);
+    return r;
+  }
+  // once a week at most, a quiet note when ffmpeg is missing (never in a test copy)
+  async function ffmpegNotice(test) {
+    const st = await window.hub.ffmpegStatus?.().catch(() => null);
+    if (!st || st.ffmpeg || test || store.get('ffmpeg.snooze', 0) > Date.now()) return;
+    store.set('ffmpeg.snooze', Date.now() + 7 * 864e5);
+    toast('Install ffmpeg for sharp MP4 recordings, exact frames and fast renders (one click, a few minutes).', { timeout: 15000, action: { label: 'Install ffmpeg', fn: installFfmpeg } });
+  }
+
   // ---------- startup: one check once the window is idle ----------
   function start() {
     registerCommands();
     // (a test copy without engines set up isn't told to install them on every start)
-    const go = () => check().then((r) => { if (!(r.test && problems(r).every((p) => p.kind === 'missing'))) notice(r); }).catch((err) => console.warn('engine check', err));
+    const go = () => check().then((r) => { if (!(r.test && problems(r).every((p) => p.kind === 'missing'))) notice(r); setTimeout(() => ffmpegNotice(r.test), 20000); }).catch((err) => console.warn('engine check', err));
     setTimeout(() => (window.requestIdleCallback ? requestIdleCallback(go, { timeout: 4000 }) : go()), 2500);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 
-  return { check, problems, problemsOf, fix, notice, report: () => last, runDoctor, testBoth };
+  return { installFfmpeg, check, problems, problemsOf, fix, notice, report: () => last, runDoctor, testBoth };
 })();

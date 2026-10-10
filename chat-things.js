@@ -152,11 +152,11 @@ const ChatThings = (() => {
     const scrub = el('div', { class: 'thing-scrub' }, el('i'));
     card.querySelector('.thing-pic').append(scrub);
     let fps = fpsCache.get(t.path) || 30; let scrubbing = false;
-    const show = () => { read.textContent = clock(v.currentTime || 0, fps); scrub.style.setProperty('--at', `${((v.currentTime || 0) / (v.duration || 1)) * 100}%`); };
+    const show = () => { read.textContent = clock(v.currentTime || 0, fps); scrub.style.setProperty('--at', `${((v.currentTime || 0) / (finiteDur(v.duration) || 1)) * 100}%`); };
     const ready = () => (v.src ? Promise.resolve() : new Promise((r) => { v.preload = 'auto'; v.src = v.dataset.src; v.addEventListener('loadedmetadata', r, { once: true }); }));
     const seekFrame = async (n) => {
       await ready(); fps = await fpsOf(t.path);
-      const total = Math.max(1, Math.floor((v.duration || 0) * fps));
+      const total = Math.max(1, Math.floor(finiteDur(v.duration) * fps));
       const f = Math.max(0, Math.min(total - 1, n));
       v.pause(); v.currentTime = (f + 0.5) / fps; // the middle of the frame: never the one before after rounding
       v.requestVideoFrameCallback?.(() => show());
@@ -169,7 +169,7 @@ const ChatThings = (() => {
       scrubbing = true;
       const r = scrub.getBoundingClientRect();
       await ready(); fps = await fpsOf(t.path);
-      seekFrame(Math.floor(((e.clientX - r.left) / r.width) * (v.duration || 0) * fps));
+      seekFrame(Math.floor(((e.clientX - r.left) / r.width) * finiteDur(v.duration) * fps));
     });
     scrub.addEventListener('pointerleave', () => { scrubbing = false; });
     card.addEventListener('keydown', (e) => {

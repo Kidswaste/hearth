@@ -404,13 +404,13 @@ async function sheet(file, { cols = 4, rows, count, from, to, width = 1600 } = {
 
 // ---------- recordings: fix MediaRecorder WebM (no duration / cues) and make an MP4 ----------
 // copy: remux only (fast, keeps quality); mp4: H.264 + AAC, yuv420p, faststart (plays everywhere, social uploads).
-function convert(input, output, { mp4 = false, fps = null, crf = 18, onProgress, duration, size = null } = {}) {
+function convert(input, output, { mp4 = false, fps = null, crf = 18, onProgress, duration, size = null, faststart = false } = {}) {
   const { ffmpeg } = need();
   const args = ['-v', 'error', '-y', '-i', input];
   // the page capture sends frames only when something changed: a constant-rate MP4 repeats them, cut at the real length
   if (mp4 && duration) args.push('-t', String(duration));
   if (mp4) args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', String(crf), '-pix_fmt', 'yuv420p', '-vf', size && size.w ? `scale=${Math.round(size.w / 2) * 2}:${Math.round(size.h / 2) * 2}:flags=lanczos,setsar=1` : 'scale=trunc(iw/2)*2:trunc(ih/2)*2', ...(fps ? ['-r', String(fps), '-fps_mode', 'cfr'] : []), '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart');
-  else args.push('-c', 'copy');
+  else args.push('-c', 'copy', ...(faststart ? ['-movflags', '+faststart'] : []));
   args.push('-progress', 'pipe:1', '-nostats', output);
   return new Promise((resolve, reject) => {
     const child = spawn(ffmpeg, args, { windowsHide: true });
@@ -574,4 +574,6 @@ async function edit(op, file, a = {}, o = {}) {
   return { path: out, ...(op === 'sequence' ? { files: fs.readdirSync(out).length } : {}) };
 }
 
-module.exports = { tools, setOverrides, probe, frameTimes, locate, frameAt, frames, every, spread, analyze: curves, scenes, motion, sheet, convert, tc, parseTime, outDir, black, freeze, silence, loudness, keyframes, crop, barcode, waveform, loop, edit, _test: { grab, grabPass, rangeFrames, findTool } };
+// forget a miss now (ffmpeg was just installed)
+function forgetTools() { for (const k of Object.keys(toolCache)) delete toolCache[k]; }
+module.exports = { forgetTools, tools, setOverrides, probe, frameTimes, locate, frameAt, frames, every, spread, analyze: curves, scenes, motion, sheet, convert, tc, parseTime, outDir, black, freeze, silence, loudness, keyframes, crop, barcode, waveform, loop, edit, _test: { grab, grabPass, rangeFrames, findTool } };

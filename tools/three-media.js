@@ -645,7 +645,7 @@ const ThreeMedia = (() => {
       if (msg.type === 'media-state') {
         // the sandbox sends this a few times a second while it plays: only a real change (play / pause / end / a new
         // song length) repaints the control row; plain time updates just re-sync the clock
-        const same = st.playing === msg.playing && (msg.duration || st.duration) === st.duration && !msg.ended && !recording;
+        const same = st.playing === msg.playing && (finiteDur(msg.duration) || st.duration) === st.duration && !msg.ended && !recording;
         // While it plays, the playhead runs on its own smooth clock and is steered toward the reported time: snapping
         // to every report (late by however long the message took) made it jump back and forth. A real jump (seek,
         // loop, a stall over 0.3 s) still snaps.
@@ -653,7 +653,7 @@ const ThreeMedia = (() => {
           const predicted = now(); const err = msg.time - predicted;
           if (Math.abs(err) < 0.3) { st.time = predicted + err * 0.15; st.stampAt = performance.now(); if (!wish) return; }
         }
-        Object.assign(st, { time: hooks.stateTime ? hooks.stateTime(msg.time, msg.playing) : msg.time, duration: msg.duration || st.duration, playing: msg.playing, stampAt: performance.now() });
+        Object.assign(st, { time: hooks.stateTime ? hooks.stateTime(msg.time, msg.playing) : msg.time, duration: finiteDur(msg.duration) || st.duration, playing: msg.playing, stampAt: performance.now() });
         if (same && !wish) { if (!st.playing) livePaint(); return; }
         if (wish && wish.play === msg.playing) wish = null;
         if (recording && !recording.stopping && msg.ended && recording.kind === 'track') stopRecord();

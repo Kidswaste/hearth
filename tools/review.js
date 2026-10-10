@@ -47,7 +47,7 @@ const Review = (() => {
   const emit = (ev, data) => { for (const fn of listeners[ev] || []) { try { fn(data); } catch (err) { console.error(err); } } };
   const tc = (sec) => V.tc(sec, S.fps);
   const vid = () => refs.video;
-  const dur = () => vid()?.duration || 0;
+  const dur = () => finiteDur(vid()?.duration);
   const frameNow = () => V.frameAt(vid()?.currentTime || 0, S.fps);
   // While clips are being edited (tools/video-cut.js, E) the transport drives the edit instead of the source.
   const VC = () => (typeof VideoCut !== 'undefined' ? VideoCut : null);
@@ -134,13 +134,14 @@ const Review = (() => {
     const d = document.createElement('video');
     d.muted = true; d.preload = 'auto'; d.src = fileUrl(path);
     await new Promise((res, rej) => { d.onloadedmetadata = res; d.onerror = () => rej(new Error('This file can\'t be decoded here (ProRes / some .mov need a playable copy: ⋯ → Make a playable copy).')); setTimeout(() => rej(new Error('Timed out loading the video')), 15000); });
+    await realDuration(d);
     const at = (t) => new Promise((res, rej) => { d.onseeked = res; d.currentTime = clamp(t, 0, Math.max(0, d.duration - 0.01)); setTimeout(() => rej(new Error('Seek timed out')), 8000); });
     const close = () => { d.removeAttribute('src'); d.load(); };
     return { d, at, close };
   }
   const snap = (d, w) => { const c = document.createElement('canvas'); c.width = w; c.height = Math.round(w * (d.videoHeight / d.videoWidth || 0.5625)); c.getContext('2d').drawImage(d, 0, 0, c.width, c.height); return c; };
   function rememberMeta(v, d) {
-    S.meta[v.path] = { ...(S.meta[v.path] || {}), mtime: v.mtime, w: d.videoWidth, h: d.videoHeight, d: Number(d.duration.toFixed(3)) };
+    S.meta[v.path] = { ...(S.meta[v.path] || {}), mtime: v.mtime, w: d.videoWidth, h: d.videoHeight, d: Number(finiteDur(d.duration).toFixed(3)) };
     saveMeta();
   }
   async function pump() {
@@ -158,6 +159,7 @@ const Review = (() => {
         const d = document.createElement('video');
         d.preload = 'metadata'; d.muted = true; d.src = fileUrl(job.v.path);
         await new Promise((res, rej) => { d.onloadedmetadata = res; d.onerror = rej; setTimeout(rej, 6000); });
+        await realDuration(d);
         rememberMeta(job.v, d);
         d.removeAttribute('src'); d.load();
       } else if (job.kind === 'strip' && !hoverStrips.has(keyOf(job.v))) {
@@ -361,7 +363,9 @@ const Review = (() => {
     el0.playbackRate = Number(refs.speed?.value || 1);
     renderTop(); renderLibrary(); renderNotes();
     const ready = new Promise((res) => {
-      el0.onloadedmetadata = () => {
+      el0.onloadedmetadata = async () => {
+        await realDuration(el0); // a recorder's WebM doesn't say how long it is
+        if (S.cur !== v) { res(false); return; }
         rememberMeta(v, el0);
         refs.stage.style.setProperty('--ar', String(el0.videoWidth / el0.videoHeight || 16 / 9));
         refs.drawSvg.setAttribute('viewBox', `0 0 ${el0.videoWidth} ${el0.videoHeight}`);

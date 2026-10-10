@@ -36,7 +36,7 @@ const GROUPS = {
   journeys: by(/^journey-/),
   chat: by(/^chat-|^chatcore|^cmdbar$|^clutter$|^declutter/),
   lab: ['music', 'live', 'scenes', 'jam', 'assist', 'decide', 'brain', 'director-dock', 'director-tools', 'perf'],
-  video: ['cut', 'nodes-video', 'editor'],
+  video: ['cut', 'nodes-video', 'editor', 'video-live-webm'],
   nodes: by(/^nodes-/),
   smooth: by(/^smooth-/),
   astra: ['astra-collab', 'astra-ui', 'astra-manager'],

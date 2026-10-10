@@ -44,7 +44,7 @@ const VideoCut = (() => {
     return cuts;
   }
   const hasCut = (p) => Boolean(cuts?.[p]?.clips?.length);
-  const srcDur = (p) => (p === host?.S.cur?.path && host.refs.video.duration) || host?.S.meta[p]?.d || 0;
+  const srcDur = (p) => (p === host?.S.cur?.path && finiteDur(host.refs.video.duration)) || finiteDur(host?.S.meta[p]?.d);
   // The edit of a video: yours, or the whole video as one clip.
   function editOf(p) {
     if (cuts?.[p]) return C.normalize(cuts[p]);

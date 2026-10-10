@@ -2121,8 +2121,10 @@ function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, lo
   if (video) watchFrames(m);
   clearInterval(stateTimer);
   stateTimer = realSetInterval(() => { if (!m.paused) sendState(); }, 250);
-  m.addEventListener('loadedmetadata', () => {
-    m.currentTime = Math.min(startAt, Math.max(0, (m.duration || 0) - 0.05));
+  m.addEventListener('loadedmetadata', async () => {
+    // a recorder's WebM doesn't say how long it is (Infinity): seek past the end once so the browser measures it
+    if (m.duration === Infinity) await new Promise((res) => { const t = realSetTimeout(res, 6000); m.addEventListener('durationchange', () => { if (Number.isFinite(m.duration)) { clearTimeout(t); res(); } }); try { m.currentTime = 1e101; } catch { res(); } });
+    m.currentTime = Math.min(startAt, Math.max(0, (Number.isFinite(m.duration) ? m.duration : 0) - 0.05));
     if (playing) { actx.resume(); m.play().catch((err) => post({ type: 'console', level: 'warn', text: `Couldn't start playback: ${err.message}` })); }
   }, { once: true });
   m.addEventListener('error', () => post({ type: 'error', message: `Couldn't play ${name} (${m.error?.message || 'unsupported format'})` }));

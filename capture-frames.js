@@ -334,7 +334,7 @@ const FrameRead = (() => {
     const css = getComputedStyle(document.documentElement);
     const col = (v, d) => (css.getPropertyValue(v).trim() || d);
     g.fillStyle = '#0e0f12'; g.fillRect(0, 0, W, Hh);
-    const pts = m.curve || []; const dur = m.duration || pts[pts.length - 1]?.time || 1;
+    const pts = m.curve || []; const dur = finiteDur(m.duration) || pts[pts.length - 1]?.time || 1;
     const max = Math.max(1e-4, ...pts.map((p) => p.motion));
     const X = (t) => 30 + (t / dur) * (W - 40); const Y = (v) => Hh - 24 - v * (Hh - 44);
     g.strokeStyle = 'rgba(255,255,255,.08)'; for (let s = 0; s <= dur; s += Math.max(1, Math.round(dur / 10))) { g.beginPath(); g.moveTo(X(s), 10); g.lineTo(X(s), Hh - 24); g.stroke(); g.fillStyle = '#8a8780'; g.font = '11px system-ui, sans-serif'; g.fillText(`${s}s`, X(s) - 6, Hh - 8); }

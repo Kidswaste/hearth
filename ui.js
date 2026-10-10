@@ -2,6 +2,32 @@
 if (/Mac/.test(navigator.platform)) {
   addEventListener('keydown', (e) => { if (e.metaKey && !e.ctrlKey) Object.defineProperty(e, 'ctrlKey', { get: () => true }); }, true);
 }
+// A video whose file doesn't store its length (a WebM straight from a recorder) reports an endless duration, and every
+// loop that walks a timeline up to the end ran forever (opening one in Video Review froze the whole app).
+// realDuration(v) seeks far past the end once so the browser measures it, then goes back; videos on the page get it on
+// their own (the listener below); finiteDur(d) turns Infinity / NaN into 0 for code that only draws.
+function realDuration(v, ms = 6000) {
+  if (Number.isFinite(v.duration)) return Promise.resolve(v.duration);
+  if (!v.currentSrc && !v.src) return Promise.resolve(0);
+  if (v._durFix) return v._durFix;
+  v._durFix = new Promise((res) => {
+    const back = v.currentTime || 0;
+    let timer = 0;
+    const check = () => { if (Number.isFinite(v.duration)) done(); };
+    function done() {
+      clearTimeout(timer); v.removeEventListener('durationchange', check); v.removeEventListener('timeupdate', check); v.removeEventListener('seeked', check);
+      try { v.currentTime = back; } catch { /* unloaded */ }
+      v._durFix = null;
+      res(Number.isFinite(v.duration) ? v.duration : 0);
+    }
+    timer = setTimeout(done, ms);
+    v.addEventListener('durationchange', check); v.addEventListener('timeupdate', check); v.addEventListener('seeked', check);
+    try { v.currentTime = 1e101; } catch { done(); }
+  });
+  return v._durFix;
+}
+const finiteDur = (d) => (Number.isFinite(d) && d > 0 ? d : 0);
+document.addEventListener('loadedmetadata', (e) => { if (e.target instanceof HTMLMediaElement && e.target.duration === Infinity) realDuration(e.target); }, true);
 // Shared UI building blocks: element helper, toasts, modals, tabs, formatting, syntax highlighting
 // and a lightweight code editor. Loaded before every other renderer module.
 (() => {
