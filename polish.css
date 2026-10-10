@@ -820,3 +820,4 @@ html[data-skin~="forge"] #menu-fly { border-radius: 0; clip-path: var(--cut-sm);
 :root:not(.reveal-alt):not(.calm-off):not([data-pins~="tabs-more"]) .tool-surface[data-id="tool:forgeheart"] .tabbar::after {
   content: "⋯ more: hold Alt or right-click"; align-self: center; margin-left: 8px; font-size: 11px; color: var(--muted); opacity: .7; white-space: nowrap; pointer-events: none;
 }
+.group .item.draft .item-title { font-style: italic; opacity: .85; }

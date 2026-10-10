@@ -184,8 +184,19 @@ const Panel = (() => {
       head.append(toggle, add);
       group.append(head);
 
+      // a blank chat just made with ＋ (not saved until its first message) shows on top, highlighted
+      const draft = agent.mode === 'native' && !q && !view && Native.isDraft?.(agent.id);
+      if (draft) {
+        collapsed.delete(agent.id);
+        const d = el('div', 'item draft active');
+        d.dataset.key = '__draft';
+        d.title = 'A new chat: it is saved when you send the first message';
+        d.append(el('span', 'item-title', 'New chat'));
+        d.addEventListener('click', () => { if (!agent.dock) activate(agent.id); Native.focus?.(agent.id); });
+        group.append(d);
+      }
       if (!collapsed.has(agent.id) || q || view) {
-        if (!items.length) {
+        if (!items.length && !draft) {
           group.append(el('div', 'none', q ? 'No matches' : agent.mode === 'native' ? 'No chats yet' : 'Chats you open will show up here'));
         }
         const limit = expanded.get(agent.id) || PAGE;
@@ -234,7 +245,7 @@ const Panel = (() => {
       else {
         try { activeKey = H.surfaces.get(id)?.webview?.getURL(); } catch { /* webview not ready yet */ }
       }
-      for (const row of group.querySelectorAll('.item')) row.classList.toggle('active', row.dataset.key === activeKey);
+      for (const row of group.querySelectorAll('.item')) row.classList.toggle('active', row.dataset.key === activeKey || (row.dataset.key === '__draft' && !activeKey));
     }
   }
 

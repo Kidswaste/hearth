@@ -1053,6 +1053,7 @@ const Native = (() => {
       if (v) v.pendingModel = undefined;
       chats.set(chat.id, chat);
       H.activeChat[agentId] = chat.id;
+      drafts.delete(agentId);
     }
     if (!fromHistory) {
       const message = { role: 'user', text: text || '(see attachments)', at: now, ...(compact ? { compactReq: true } : {}) };
@@ -1637,6 +1638,7 @@ const Native = (() => {
   }
 
   function open(agentId, chatId) {
+    if (drafts.delete(agentId)) setTimeout(() => Panel.render(), 0);
     const changed = H.activeChat[agentId] !== chatId;
     H.activeChat[agentId] = chatId;
     activate(agentId);
@@ -1655,13 +1657,18 @@ const Native = (() => {
     list.addEventListener('animationend', () => list.classList.remove('chat-enter'), { once: true });
   }
 
+  // A blank chat (＋) isn't saved until its first message, but it shows in the chats list right away as "New chat"
+  // (Panel reads isDraft); opening another chat drops it, the first message turns it into the real one.
+  const drafts = new Set();
+  const isDraft = (agentId) => drafts.has(agentId) && !H.activeChat[agentId];
   function newChat(agentId) {
+    drafts.add(agentId);
     H.activeChat[agentId] = null;
     const v = views.get(agentId);
     if (v) v.input.value = '';
     render(agentId);
     enterAnim(agentId);
-    Panel.highlight();
+    Panel.render();
     focus(agentId);
     for (const fn of hooks.newChat) { try { fn(agentId); } catch (err) { console.warn(err); } }
   }
@@ -1762,7 +1769,7 @@ const Native = (() => {
     return chat;
   }
 
-  return {
+  return { isDraft,
     chatOf, ensureChat, adopt, save: remember, loadChat, partnerOf, rememberFacts, forgetFacts,
     takeAttachments: (agentId) => packAttachments(agentId, ''),
     secondOpinion,
