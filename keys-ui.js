@@ -255,9 +255,11 @@ const KeysUI = (() => {
       const rank = ([area]) => (here.includes(area) ? here.indexOf(area) / 100 : area === 'Hidden buttons' ? 1 : area === 'Right-click' ? 2 : area === 'Everywhere' ? 3 : area === 'Menus' ? 4 : area === 'Capture' ? 4.5 : 5); // capture keys work anywhere
       groups.sort((a, b) => rank(a) - rank(b));
       const out = [];
+      let nHere = 0;
       for (const [area, lines] of groups) {
         const hits = lines.filter((x) => !words.length || words.every((w) => `${x.keys} ${keyText(x.keys)} ${x.what} ${area}`.toLowerCase().includes(w)));
         if (!hits.length) continue;
+        if (here.includes(area)) nHere += 1;
         const away = !here.includes(area) && rank([area]) === 5;
         out.push(el('div', { class: `ks-group${away ? ' away' : ''}` }, el('h4', { text: here.includes(area) ? `${area} · ${hereLabel()}` : area }),
           ...hits.map((x) => {
@@ -266,8 +268,8 @@ const KeysUI = (() => {
               el('span', { class: 'ks-keys' }, kbds(x.keys)), el('span', { class: 'ks-what', text: whatText(x.what) }));
           })));
       }
-      // (round 13, speed) "Yours" first: your own most-used keys, keys for what you do by mouse, your one-key macros
-      if (!words.length && typeof SpeedLearn !== 'undefined') { try { out.unshift(...SpeedLearn.sheet(close, runLine)); } catch (err) { console.warn(err); } }
+      // (round 13, speed) "Yours" right after this screen's own keys: your most-used keys, keys for what you do by mouse, your macros
+      if (!words.length && typeof SpeedLearn !== 'undefined') { try { out.splice(nHere, 0, ...SpeedLearn.sheet(close, runLine)); } catch (err) { console.warn(err); } }
       body.replaceChildren(...(out.length ? out : [el('p', { class: 'hint ks-none', text: 'Nothing matches. Try a word like "freeze", "slider" or "copy".' })]));
       sel = -1;
     }

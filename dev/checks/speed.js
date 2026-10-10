@@ -103,7 +103,7 @@ const yours = document.querySelector('.keys-sheet .speed-yours');
 ok(yours && /Ctrl\+K|⌘K|K/.test(yours.textContent) && /3×/.test(yours.textContent), `the keys sheet starts with your own keys (${yours?.textContent.slice(0, 120)})`);
 ok(yours && /Freeze: you click it 16×/.test(yours.textContent), 'and the key for something you click a lot');
 ok(yours && /Zorblax: you click it 9× · give it a key/.test(yours.textContent), 'and "give it a key" for one without');
-ok(document.querySelector('.keys-sheet .ks-group') === yours, '"Yours" is the first group');
+{ const gs = [...document.querySelectorAll('.keys-sheet .ks-group')]; const before = gs.slice(0, gs.indexOf(yours)); ok(yours && before.every((g) => / · /.test(g.querySelector('h4')?.textContent || '')), `"Yours" comes right after this screen's own keys (${before.length} before it)`); }
 KeysUI.close(); await wait(200);
 
 // ---------- errors to fixes ----------
