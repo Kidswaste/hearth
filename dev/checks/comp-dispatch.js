@@ -154,7 +154,7 @@ if (full) {
   const a1 = await rd(`${tmp}/f_01.png`); const a2 = await rd(`${tmp}/f_02.png`); const a3 = await rd(`${tmp}/f_03.png`);
   step(hue(a1.at(0.75, 0.8)) === 'red' && hue(a3.at(0.75, 0.8)) === 'blue', 'rendered frame 30 is part 1 (red), frame 175 part 2 (blue)', { f30: a1.at(0.75, 0.8), f175: a3.at(0.75, 0.8) });
   const mix = a2.at(0.75, 0.8);
-  step(mix[0] > 40 && mix[2] > 40, 'frame 145 is the cross-fade between them (red and blue mixed)', mix);
+  step(mix[0] > 70 && mix[2] > 70, 'frame 145 is the cross-fade between them (red and blue mixed)', mix);
   window.hub.video.rmtemp?.(tmp).catch(() => {});
 }
 step(errs.length === 0, 'no page errors', errs.slice(0, 3));

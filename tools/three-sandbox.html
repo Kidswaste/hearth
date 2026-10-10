@@ -5678,7 +5678,10 @@ function sqProps(g, L, j) {
   const p = L?.props || {};
   const lin = p.in != null ? Math.max(g.start - WARM, p.in) : g.start - WARM;
   const lout = p.out != null ? Math.min(g.end, p.out) : g.end;
-  return { ...p, z: g.z + j, in: lin, out: lout, fadeIn: 0, fadeOut: 0, seqT0: g.t0 ?? g.start, seqGroup: g.id, visible: p.visible !== false };
+  // a layer's own fades stay when its own in / out fall inside the clip (a precomp's cross-fade, a layer fading in mid-scene)
+  const fin = p.in != null && p.in >= g.start - 1e-4 ? p.fadeIn || 0 : 0;
+  const fout = p.out != null && p.out <= g.end + 1e-4 ? p.fadeOut || 0 : 0;
+  return { ...p, z: g.z + j, in: lin, out: lout, fadeIn: fin, fadeOut: fout, seqT0: g.t0 ?? g.start, seqGroup: g.id, visible: p.visible !== false };
 }
 function sqMount(g) {
   const st = { g, key: sqKeyOf(g), ids: [], ready: null, video: null, fresh: true };
