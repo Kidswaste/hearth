@@ -226,7 +226,10 @@ const CaptureTour = (() => {
   // a real Esc stops the tour (synthetic keys from "key Escape" steps don't)
   addEventListener('keydown', (e) => { if (state && e.key === 'Escape' && e.isTrusted) { state.abort = true; } }, true);
 
-  async function run(idOrText, { name = null } = {}) {
+  // dry: a preview (pack11): every move, zoom, caption and screen plays, nothing is recorded or saved; the result
+  // gives each step's time, so a tour can be timed before it is filmed
+  const DRY_SKIP = new Set(['record', 'stop', 'shot', 'mark', 'pause', 'resume']);
+  async function run(idOrText, { name = null, dry = false } = {}) {
     if (state) throw new Error('A tour is already running (Esc stops it)');
     let text = idOrText; let label = name;
     const known = typeof idOrText === 'string' && !/\n/.test(idOrText) ? await get(idOrText) : null;
@@ -234,7 +237,7 @@ const CaptureTour = (() => {
     const steps = parse(text);
     if (!steps.length) throw new Error('This tour has no steps');
     state = { name: label || 'tour', i: 0, total: steps.length, abort: false, restore: [], bpm: 120, t0: performance.now() };
-    const out = { name: state.name, steps: 0, shots: [], recording: null, skipped: [], ms: 0 };
+    const out = { name: state.name, steps: 0, shots: [], recording: null, skipped: [], ms: 0, ...(dry ? { dry: true, timeline: [] } : {}) };
     const t0 = performance.now();
     const cur = Capture.cursorFx;
     const hadCursor = cur.style;
@@ -248,7 +251,10 @@ const CaptureTour = (() => {
         state.i = i + 1;
         Capture.tourLabel?.(`${i + 1}/${steps.length}`);
         if (keep.progress) keep.progress.firstChild.style.transform = `scaleX(${(i + 1) / steps.length})`;
+        if (dry && DRY_SKIP.has(s.op)) { out.timeline.push({ line: s.line, op: s.op, ms: 0, dry: true }); continue; }
+        const st0 = performance.now();
         try { await step(s, out, () => { startedRec = true; }); out.steps += 1; } catch (err) { out.skipped.push(`line ${s.line} (${s.raw}): ${err.message}`); }
+        if (dry) out.timeline.push({ line: s.line, op: s.op, ms: Math.round(performance.now() - st0) });
       }
     } finally {
       // put everything back: zoom, overlays, window size, cursor, clean mode, a recording the tour started
@@ -512,12 +518,19 @@ const CaptureTour = (() => {
         el('span', { class: 'spacer' }),
         el('button', { type: 'button', text: 'Cancel', on: { click: () => dlg.close() } }),
         el('button', { type: 'button', text: 'Save', on: { click: async () => { await save({ id: t?.own ? t.id : null, label: name.value.trim() || 'My tour', steps: area.value }); toast('Tour saved', { timeout: 1500 }); dlg.close(); } } }),
+        el('button', { type: 'button', text: '◌ Preview', title: 'Play it without recording anything, then come back here with each step\'s timing (pack11)', on: { click: async () => { const text = area.value; const label = name.value.trim() || 'My tour'; dlg.close(); const r = await run(text, { name: label, dry: true }).catch((e) => ({ error: e.message })); const d2 = await editText(text, label); d2.querySelector('.cap-tour-lint').textContent = r.error ? `Preview: ${r.error}` : previewLine(r); } } }),
         el('button', { type: 'button', class: 'primary', text: '▶ Run', title: 'Save and run it (Esc stops)', on: { click: async () => { const saved = await save({ id: t?.own ? t.id : null, label: name.value.trim() || 'My tour', steps: area.value }); dlg.close(); setTimeout(() => run(saved.id).catch((e) => toast(e.message, { type: 'error' })), 250); } } })));
     dlg.addEventListener('close', () => setTimeout(() => dlg.remove(), 0));
     document.body.append(dlg);
     dlg.showModal();
     lintNow();
     return dlg;
+  }
+  // "Preview: 9 steps in 12.4 s (a take ≈ 12 s) · slowest: line 4 zoom 1.6 s"
+  function previewLine(r) {
+    const tl = r.timeline || []; const s = tl.reduce((n, x) => n + x.ms, 0) / 1000;
+    const slow = [...tl].sort((a, b) => b.ms - a.ms)[0];
+    return `Preview: ${r.steps} step${r.steps === 1 ? "" : "s"} played in ${s.toFixed(1)} s${tl.some((x) => x.dry) ? ` (${tl.filter((x) => x.dry).length} recording steps skipped)` : ''}${slow?.ms > 400 ? ` · longest: line ${slow.line} ${slow.op} ${(slow.ms / 1000).toFixed(1)} s` : ''}${r.skipped.length ? ` · ⚠ ${r.skipped.length} failed: ${r.skipped[0]}` : ''}`;
   }
   async function picker() {
     const all = await list();
@@ -533,6 +546,7 @@ const CaptureTour = (() => {
       state ? { label: `■ Stop the tour (${state.i}/${state.total})  Esc`, action: stop } : null,
       ...cache.map((t) => ({ label: `▶ ${t.label}`, action: () => run(t.id).catch(fail) })),
       { label: '✎ Edit a tour…', items: () => cache.map((t) => ({ label: t.label, action: () => edit(t.id) })) },
+      { label: '◌ Preview a tour (nothing recorded)', items: () => cache.map((t) => ({ label: t.label, action: () => run(t.id, { dry: true }).then((r) => toast(previewLine(r), { timeout: 9000 }), fail) })) },
       { label: '+ New tour…', action: () => edit() },
       { label: tapeState ? '■ Stop taping (then edit and save)' : '● Tape a tour (do it once, replay it exactly)', action: () => { if (tapeState) { const t = tape(false); if (t) editText(t); } else tape(true); } },
     ];
@@ -597,5 +611,5 @@ const CaptureTour = (() => {
     return dlg;
   }
 
-  return { tape, taping: () => Boolean(tapeState), editText, viewState: () => ({ ...view }), run, stop, running, parse, lint, list, get, save, remove, edit, picker, menuItems: menuItemsSync, state: () => (state ? { name: state.name, i: state.i, total: state.total } : null), find, setView, OPS };
+  return { previewLine, tape, taping: () => Boolean(tapeState), editText, viewState: () => ({ ...view }), run, stop, running, parse, lint, list, get, save, remove, edit, picker, menuItems: menuItemsSync, state: () => (state ? { name: state.name, i: state.i, total: state.total } : null), find, setView, OPS };
 })();

@@ -148,8 +148,11 @@ const Capture = (() => {
 
   // a cursor drawn into the page (the page capture has no OS cursor): follows the mouse, or glides on tours
   const cursorFx = {
-    style: 'off', node: null, x: innerWidth / 2, y: innerHeight / 2, keys: false, clicks: 'off',
+    style: 'off', node: null, x: innerWidth / 2, y: innerHeight / 2, keys: false, clicks: 'off', sound: null, raf: 0, tx: 0, ty: 0,
+    // pack11: the drawn cursor follows the mouse through a light low-pass (no shaky hand in the take); 0 = raw
+    get smooth() { const v = rec?.opts?.smoothCursor ?? prefs.rec.smoothCursor; return v == null ? 0.5 : Number(v) || 0; },
     set(style, { clicks, keys } = {}) {
+      cancelAnimationFrame(this.raf); this.raf = 0;
       this.style = style || 'off';
       if (clicks) this.clicks = clicks;
       if (keys != null) this.keys = Boolean(keys);
@@ -159,11 +162,28 @@ const Capture = (() => {
         fx().append(this.node);
         this.place(this.x, this.y);
       }
-      this.listen(this.style !== 'off' || this.clicks !== 'off' || this.keys);
+      this.listen(this.style !== 'off' || this.clicks !== 'off' || this.keys || Boolean(this.sound));
     },
     place(x, y) { this.x = x; this.y = y; if (this.node) this.node.style.transform = `translate(${x}px, ${y}px)`; },
+    // the mouse moved: glide there through an exponential low-pass (a rAF loop only while it catches up)
+    follow(x, y) {
+      const k0 = this.smooth;
+      if (!k0 || !this.node) { this.place(x, y); return; }
+      this.tx = x; this.ty = y;
+      if (this.raf) return;
+      let last = performance.now();
+      const stepF = (now) => {
+        const dt = Math.min(0.05, (now - last) / 1000); last = now;
+        const a = 1 - Math.exp(-dt * (40 - 30 * Math.min(1, k0)));
+        const nx = this.x + (this.tx - this.x) * a; const ny = this.y + (this.ty - this.y) * a;
+        if (Math.hypot(this.tx - nx, this.ty - ny) < 0.4) { this.place(this.tx, this.ty); this.raf = 0; return; }
+        this.place(nx, ny); this.raf = requestAnimationFrame(stepF);
+      };
+      this.raf = requestAnimationFrame(stepF);
+    },
     // a smooth glide on the compositor (tours): one animation, the end position written once
     async glide(x, y, ms = 700, ease = D.EASES[0].css) {
+      cancelAnimationFrame(this.raf); this.raf = 0;
       if (!this.node) { this.place(x, y); return; }
       const from = `translate(${this.x}px, ${this.y}px)`; const to = `translate(${x}px, ${y}px)`;
       const a = anim(this.node, [{ transform: from }, { transform: to }], { duration: ms, easing: ease, fill: 'forwards' });
@@ -171,6 +191,7 @@ const Capture = (() => {
       this.place(x, y); a.cancel();
     },
     ripple(x, y) {
+      this.sound?.(); // a click heard in the take (pack11: Capture settings › Click sounds)
       if (this.clicks === 'off') return;
       const r = el('div', { class: `cap-ripple cap-ripple-${this.clicks}` });
       r.style.transform = `translate(${x}px, ${y}px)`;
@@ -195,7 +216,7 @@ const Capture = (() => {
       if (on === this.listening) return;
       this.listening = on;
       if (on) {
-        this.onMove = (e) => this.place(e.clientX, e.clientY);
+        this.onMove = (e) => this.follow(e.clientX, e.clientY);
         this.onDown = (e) => this.ripple(e.clientX, e.clientY);
         this.onKey = (e) => {
           if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return;
@@ -606,7 +627,7 @@ const Capture = (() => {
   function elapsed() { if (!rec) return 0; const now = rec.pausedAt || performance.now(); return Math.max(0, (now - rec.started - rec.pausedMs) / 1000); }
   function status() {
     if (!rec) return { recording: false, last: last ? { path: last.path, kind: last.kind } : null };
-    return { recording: true, paused: Boolean(rec.pausedAt), seconds: Math.round(elapsed() * 10) / 10, max: Number(rec.opts.max) || 0, framesIn: rec.framesIn || 0, framesOut: rec.framesOut || 0, target: rec.opts.target, fps: rec.opts.fps, size: rec.size, audio: rec.audioNote || rec.opts.audio, marks: rec.marks.length, path: rec.path, tour: rec.tour || null };
+    return { recording: true, paused: Boolean(rec.pausedAt), seconds: Math.round(elapsed() * 10) / 10, max: Number(rec.opts.max) || 0, framesIn: rec.framesIn || 0, framesOut: rec.framesOut || 0, ...(rec.slowed ? { slowedTo: rec.slowed } : {}), target: rec.opts.target, fps: rec.opts.fps, size: rec.size, audio: rec.audioNote || rec.opts.audio, marks: rec.marks.length, path: rec.path, tour: rec.tour || null };
   }
   function resolveRec(opts = {}) {
     const preset = D.RECORD.find((p) => p.id === (opts.preset || prefs.rec.preset)) || null;
@@ -662,6 +683,25 @@ const Capture = (() => {
     const s = Math.min(1, final.w / nw);
     return { w: even(nw * s), h: even(nh * s), frame, final };
   }
+  // A mixer for the take's sound with a click on demand: { tracks, click(), close() } (pack11)
+  function clickMixer(tracks, kind = 'soft') {
+    try {
+      const ctx = new AudioContext();
+      const dest = ctx.createMediaStreamDestination();
+      for (const t of tracks) ctx.createMediaStreamSource(new MediaStream([t])).connect(dest);
+      const len = Math.round(ctx.sampleRate * 0.045);
+      const buf = ctx.createBuffer(1, len, ctx.sampleRate); const d = buf.getChannelData(0);
+      const f = kind === 'mech' ? 3400 : kind === 'pop' ? 900 : 2200; // a soft tick, a mechanical clack, a pop
+      for (let i = 0; i < len; i += 1) { const t = i / ctx.sampleRate; const env = Math.exp(-t * (kind === 'pop' ? 90 : 160)); d[i] = env * (0.55 * Math.sin(2 * Math.PI * f * t) + (kind === 'mech' ? 0.5 : 0.25) * (Math.random() * 2 - 1)); }
+      let lastAt = 0;
+      const click = () => {
+        const now = ctx.currentTime; if (now - lastAt < 0.03) return; lastAt = now;
+        const src = ctx.createBufferSource(); src.buffer = buf; const g = ctx.createGain(); g.gain.value = 0.5;
+        src.connect(g); g.connect(dest); src.start();
+      };
+      return { tracks: dest.stream.getAudioTracks(), click, close: () => { try { ctx.close(); } catch { /* closed */ } } };
+    } catch { return null; }
+  }
   const codecStrikes = {};
   async function record(opts = {}) {
     if (rec) return status();
@@ -684,7 +724,11 @@ const Capture = (() => {
       const dpr = Math.max(1, devicePixelRatio || 1);
       const display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: o.fps, max: o.fps }, width: { ideal: Math.round(innerWidth * dpr), max: 7680 }, height: { ideal: Math.round(innerHeight * dpr), max: 4320 }, resizeMode: 'none' }, audio: wantsApp });
       rec.display = display;
-      const { tracks: audioTracks, note } = await audioFor(o, display);
+      const got = await audioFor(o, display);
+      const note = got.note;
+      let audioTracks = got.tracks;
+      // click sounds (pack11): a soft tick on every click, mixed into the take's sound (only the file hears it)
+      if (o.clickSound) { const m = clickMixer(audioTracks, o.clickSound); if (m) { audioTracks = m.tracks; rec.clickMix = m; } }
       rec.audioNote = note || null;
       const vTrack = display.getVideoTracks()[0];
       // whole window at its own size: the page capture goes straight to the recorder; anything else is drawn into a
@@ -752,12 +796,16 @@ const Capture = (() => {
         // a frame every 1/fps whether or not the picture changed (constant frame rate, the real length)
         videoTrack = c.captureStream(0).getVideoTracks()[0];
         // (an unchanged canvas sends nothing: it repaints itself first, a GPU copy)
-        const period = 1000 / o.fps;
-        R.ticker = setInterval(() => {
-          if (rec !== R || R.pausedAt) return;
-          g.drawImage(c, 0, 0); // an unchanged canvas sends nothing: repaint it (a GPU copy)
-          videoTrack.requestFrame(); R.framesOut = (R.framesOut || 0) + 1;
-        }, period);
+        // (pack11) the ticker can restart slower when the encoder falls behind (tick() watches the bytes coming out)
+        R.startTicker = (fps) => {
+          clearInterval(R.ticker); R.tickFps = fps;
+          R.ticker = setInterval(() => {
+            if (rec !== R || R.pausedAt) return;
+            g.drawImage(c, 0, 0); // an unchanged canvas sends nothing: repaint it (a GPU copy)
+            videoTrack.requestFrame(); R.framesOut = (R.framesOut || 0) + 1;
+          }, 1000 / fps);
+        };
+        R.startTicker(o.fps);
         R.canvas = c;
         R.size = `${size.w}×${size.h}`;
         R.final = size.final.w !== size.w || size.final.h !== size.h ? size.final : null;
@@ -788,13 +836,14 @@ const Capture = (() => {
       recorder.ondataavailable = (e) => { if (e.data?.size) { R0.bytes = (R0.bytes || 0) + e.data.size; R0.chunks = R0.chunks.then(async () => api().recWrite(file.id, new Uint8Array(await e.data.arrayBuffer()))); } };
       // effects drawn into the page while filming (they are part of the picture on purpose)
       if (o.clean) clean(true);
+      cursorFx.sound = rec.clickMix ? rec.clickMix.click : null;
       cursorFx.set(o.cursor, { clicks: o.clicks, keys: o.keys });
       if (o.autozoom) autoZoom(true);
       if (o.camera && o.camera !== 'off') await cameraBubble(o.camera);
       if (o.chapters !== false) chapters(true);
       await countdown(Number(o.countdown) || 0, 'recording');
       recorder.start(1000);
-      rec.started = performance.now();
+      rec.started = performance.now(); rec.wAt = rec.started;
       await api().indicator({ on: true, time: '0:00', label: rec.tour ? 'tour' : '' });
       rec.timer = setInterval(tick, 500);
       document.documentElement.classList.add('cap-recording');
@@ -806,8 +855,26 @@ const Capture = (() => {
       throw err;
     }
   }
+  // The encoder falling behind (a busy machine, a software codec): no bytes for 4 s while recording, or far fewer frames
+  // sent than the clock asks → ask for the data and halve the frame rate (down to 10 fps), once every 4 s at most. The
+  // take keeps its real length (frames carry their own times); the toast after the take says it happened. (pack11)
+  function watchThroughput() {
+    const r = rec; if (!r?.recorder || r.recorder.state !== 'recording' || r.pausedAt || !r.startTicker) return;
+    const now = performance.now();
+    if (r.bytes !== r.wBytes) { r.wBytes = r.bytes; r.wAt = now; }
+    const lateFrames = r.fAt && now - r.fAt > 3000 ? (r.framesOut - r.fOut) < 0.45 * ((now - r.fAt) / 1000) * (r.tickFps || r.opts.fps) : false;
+    if (!r.fAt || now - r.fAt > 3000) { r.fAt = now; r.fOut = r.framesOut || 0; }
+    const stalled = r.wAt && now - r.wAt > 4000;
+    if ((stalled || lateFrames) && (r.tickFps || r.opts.fps) > 10 && (!r.slowAt || now - r.slowAt > 4000)) {
+      try { r.recorder.requestData(); } catch { /* stopping */ }
+      r.slowAt = now; r.wAt = now;
+      r.startTicker(Math.max(10, Math.round((r.tickFps || r.opts.fps) / 2)));
+      r.slowed = r.tickFps;
+    }
+  }
   function tick() {
     if (!rec) return;
+    watchThroughput();
     const s = elapsed();
     api().indicator({ on: true, time: fmtClock(s), paused: Boolean(rec.pausedAt), label: rec.tour ? `tour ${rec.tour}` : rec.marks.length ? `◆${rec.marks.length}` : '' });
     // once: the ticks that come while the take is being finished used to stop it again (and show the same error 5 times)
@@ -817,18 +884,26 @@ const Capture = (() => {
   // Auto zoom: a click zooms the view toward it (1.6×); after 2.2 s without clicks it eases back out.
   let az = null;
   function autoZoom(on) {
-    if (az) { removeEventListener('pointerdown', az.down, true); clearTimeout(az.timer); az = null; if (typeof CaptureTour !== 'undefined') CaptureTour.setView(1, 0, 0, 500); }
+    if (az) { removeEventListener('pointerdown', az.down, true); removeEventListener('keydown', az.key, true); clearTimeout(az.timer); az = null; if (typeof CaptureTour !== 'undefined') CaptureTour.setView(1, 0, 0, 500); }
     if (!on || typeof CaptureTour === 'undefined') return;
     az = { timer: null };
+    // (pack11) a click near where the view already looks keeps it still (no bounce); a far one pans there on a
+    // longer, softer curve; typing while zoomed keeps the zoom; the way out is slower than the way in
+    const EASE_IN = 'cubic-bezier(.22,.61,.36,1)'; const EASE_OUT = 'cubic-bezier(.45,0,.2,1)';
+    const holdOut = (ms) => { clearTimeout(az.timer); az.timer = setTimeout(() => CaptureTour.setView(1, 0, 0, 900, EASE_OUT), ms); };
     az.down = (e) => {
       if (!rec || e.target.closest?.('.cap-pick, dialog')) return;
       const k = 1.6; const v = CaptureTour.viewState();
       const ux = (e.clientX - v.x) / v.k; const uy = (e.clientY - v.y) / v.k; // the click without the current zoom
-      CaptureTour.setView(k, innerWidth / 2 - ux * k, innerHeight / 2 - uy * k, 650);
-      clearTimeout(az.timer);
-      az.timer = setTimeout(() => CaptureTour.setView(1, 0, 0, 700), 2200);
+      const zoomed = v.k > 1.01;
+      const fx = (innerWidth / 2 - v.x) / v.k; const fy = (innerHeight / 2 - v.y) / v.k; // where the view looks now
+      const far = Math.hypot(ux - fx, uy - fy) / Math.hypot(innerWidth, innerHeight);
+      if (!zoomed || far > 0.12) CaptureTour.setView(k, innerWidth / 2 - ux * k, innerHeight / 2 - uy * k, zoomed ? 900 : 650, EASE_IN);
+      holdOut(zoomed ? 3000 : 2200);
     };
+    az.key = () => { if (rec && CaptureTour.viewState().k > 1.01) holdOut(2200); };
     addEventListener('pointerdown', az.down, true);
+    addEventListener('keydown', az.key, true);
   }
   // Camera bubble: your camera, round, in a corner of the picture (asks for the camera once)
   let cam = null;
@@ -872,6 +947,7 @@ const Capture = (() => {
     try { rec.display?.getTracks().forEach((t) => t.stop()); } catch { /* gone */ }
     try { rec.mic?.getTracks().forEach((t) => t.stop()); } catch { /* gone */ }
     try { rec.audioCtx?.close(); } catch { /* gone */ }
+    rec.clickMix?.close(); cursorFx.sound = null;
     try { rec.reader?.cancel(); } catch { /* done */ }
     if (rec.video) { rec.video.srcObject = null; rec.video.remove(); rec.video = null; }
     if (rec.opts?.clean) clean(false);
@@ -926,7 +1002,7 @@ const Capture = (() => {
       if (r.mime) delete codecStrikes[String(r.mime).match(/codecs=(\w+)/)?.[1]];
       const busy = quiet ? null : toast('Finishing the recording…', { timeout: 0 });
       let fin = { webm: p };
-      try { fin = await api().finish({ path: p, mp4: r.opts.mp4 !== false, fps: r.opts.fps, id: r.id, size: r.final, crf: 14, keep: Boolean(r.opts.keepWebm) }); } catch (err) { fin.error = err.message; } finally { busy?.remove(); }
+      try { fin = await api().finish({ path: p, mp4: r.opts.mp4 !== false, fps: r.opts.fps, id: r.id, size: r.final, crf: 14, keep: Boolean(r.opts.keepWebm), ms: Math.round(duration * 1000) }); } catch (err) { fin.error = err.message; } finally { busy?.remove(); }
       const main = fin.mp4 || fin.webm || p;
       const marks = r.marks;
       // an encoder that fell behind (a busy machine, a software codec) keeps only the first frames: a 6 s take came
@@ -942,12 +1018,12 @@ const Capture = (() => {
       if (typeof Review !== 'undefined') { try { Review.noteRecording(main); } catch { /* the library is a bonus */ } }
       const item = remember({ kind: 'video', path: main, webm: fin.webm, mp4: fin.mp4 || null, duration: fin.duration || duration, w: fin.w, h: fin.h, fps: r.opts.fps, marks });
       if (!quiet) {
-        const extra = fin.mp4Error ? ' (MP4 failed: kept the WebM)' : !fin.ffmpeg && /webm$/i.test(main) ? ' (WebM: /doctor installs ffmpeg for sharp MP4s)' : '';
+        const extra = `${fin.mp4Error ? ' (MP4 failed: kept the WebM)' : !fin.ffmpeg && /webm$/i.test(main) ? ' (WebM: /doctor installs ffmpeg for sharp MP4s)' : ''}${r.slowed ? ` · the computer was busy: recorded at ${r.slowed} fps` : ''}`;
         toast(`🎬 ${base(main)} · ${fmtClock(item.duration || 0)}${r.audioNote ? ` · ${r.audioNote}` : ''}${extra}`, { timeout: 7000, action: { label: 'Open', fn: () => CaptureView.open(main) } });
       }
       document.dispatchEvent(new CustomEvent('hearth:recording', { detail: { recording: false, path: main } }));
       if (open) CaptureView.open(main);
-      return { path: main, webm: fin.webm, mp4: fin.mp4 || null, ...(fin.gif ? { gif: fin.gif } : {}), duration: Math.round((fin.duration || duration) * 100) / 100, size: fin.w ? `${fin.w}×${fin.h}` : r.size, fps: r.opts.fps, marks, audio: r.audioNote || r.opts.audio, error: fin.mp4Error || fin.error || null };
+      return { ...(r.slowed ? { slowedTo: r.slowed } : {}), path: main, webm: fin.webm, mp4: fin.mp4 || null, ...(fin.gif ? { gif: fin.gif } : {}), duration: Math.round((fin.duration || duration) * 100) / 100, size: fin.w ? `${fin.w}×${fin.h}` : r.size, fps: r.opts.fps, marks, audio: r.audioNote || r.opts.audio, error: fin.mp4Error || fin.error || null };
     })();
     try { return await pending.stop; } finally { pending.stop = null; }
   }
@@ -1025,6 +1101,8 @@ const Capture = (() => {
         { label: 'Clicks…', items: () => D.CLICKS.map((c) => setR('clicks', c.id, c.label)) },
         { label: `${check(P.rec.keys)}Show the keys you press`, action: () => setPref('rec', 'keys', !P.rec.keys) },
         { label: `${check(P.rec.autozoom)}Zoom in on clicks`, action: () => setPref('rec', 'autozoom', !P.rec.autozoom) },
+        { label: 'Cursor smoothing…', items: () => [[0, 'Off (the raw mouse)'], [0.5, 'Light (default)'], [0.85, 'Silky']].map(([v, l]) => ({ label: `${check((P.rec.smoothCursor ?? 0.5) === v)}${l}`, action: () => setPref('rec', 'smoothCursor', v) })) },
+        { label: 'Click sounds…', items: () => [['', 'None'], ['soft', 'A soft tick'], ['mech', 'A mouse clack'], ['pop', 'A pop']].map(([v, l]) => ({ label: `${check((P.rec.clickSound || '') === v)}${l}`, action: () => setPref('rec', 'clickSound', v || undefined) })) },
         { label: 'Camera bubble…', items: () => D.CAMERA.map((c) => setR('camera', c.id, c.label)) },
         { label: `${check(P.rec.chapters !== false)}Markers when the screen changes`, action: () => setPref('rec', 'chapters', P.rec.chapters === false) },
         { label: 'Countdown…', items: () => D.COUNTDOWN.map((n) => setR('countdown', n, n ? `${n} seconds` : 'None')) },

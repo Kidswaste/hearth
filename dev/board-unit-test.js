@@ -63,5 +63,20 @@ check(!/palette/.test(V.text(item, ['motion'])) && /motion/.test(V.text(item, ['
 const bt = V.boardText('Test', [item, { type: 'swatch', color: '#e6b450' }]);
 check(bt.split('\n').length >= 4 && bt.length < 900, `board text (${bt.length} chars)`);
 check(V.distance(dark, dark) === 0 && V.distance(dark, bright) > 0.4, 'vibe distance');
+// pack11 (board-pack.js): vibe groups, their names, mood collections
+{
+  const P = require(path.join(__dirname, '..', 'board-pack.js'));
+  const mk = (id, light, warmth, motion, moods) => ({ id, vibe: { light, warmth, sat: 0.4, contrast: 0.4, motion, moods, palette: [{ hex: warmth > 0 ? '#e08040' : '#3060c0', share: 0.6 }] } });
+  const items = [mk('a', 0.1, -0.6, 0.1, ['nocturnal', 'cool']), mk('b', 0.12, -0.5, 0.15, ['nocturnal', 'moody']), mk('c', 0.08, -0.7, 0.05, ['nocturnal']),
+    mk('d', 0.9, 0.7, 0.8, ['sunny', 'energetic']), mk('e', 0.85, 0.6, 0.7, ['sunny']), mk('f', 0.95, 0.65, 0.9, ['sunny', 'warm'])];
+  const g = P.clusterVibes(items, 2);
+  check(g.length === 2 && g.every((x) => x.length === 3) && g.some((x) => x.every((i) => 'abc'.includes(i.id))), `two vibe groups: ${g.map((x) => x.map((i) => i.id).join('')).join(' / ')}`);
+  const names = g.map((x) => P.groupName(x));
+  check(names.some((n) => /nocturnal/.test(n)) && names.some((n) => /sunny/.test(n)), `groups named by their moods: ${names.join(' / ')}`);
+  check(P.clusterVibes(items).length >= 2 && P.clusterVibes([items[0]]).length === 1 && P.clusterVibes([]).length === 0, 'automatic group count, odd inputs');
+  check(/bright|dark|mid/.test(P.groupName([{ vibe: { light: 0.9, motion: 0.1 } }])), 'no moods: named by light and motion');
+  const mc = P.moodCollections(items);
+  check(mc[0].name === 'nocturnal' && mc[0].n === 3 && mc.some((m) => m.name === 'sunny') && !mc.some((m) => m.name === 'cool'), `mood collections: ${mc.map((m) => `${m.name} ${m.n}`).join(', ')}`);
+}
 console.log(fails.length ? `\n${fails.length} failed` : '\nall passed');
 process.exit(fails.length ? 1 : 0);

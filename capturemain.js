@@ -26,6 +26,7 @@ const { app, BrowserWindow, clipboard, desktopCapturer, nativeImage, screen, ses
 const fs = require('fs');
 const path = require('path');
 const FR = require('./framereader');
+const WebmDuration = require('./webm-duration');
 const { DATA_DIR } = require('./store');
 
 const SUBS = ['shots', 'recordings', 'frames', 'sheets', 'tours', 'made'];
@@ -196,7 +197,8 @@ function register(ipcMain, getWin, getSettings = () => ({})) {
     const isMp4 = /\.mp4$/i.test(src);
     const out = { webm: isMp4 ? null : src, ffmpeg: Boolean(FR.tools().ffmpeg) };
     if (isMp4) out.mp4 = src;
-    if (!out.ffmpeg) return out;
+    // without ffmpeg the WebM stays as recorded: at least its header says how long it is (pack11, webm-duration.js)
+    if (!out.ffmpeg) { if (!isMp4 && o.ms > 0) { try { out.durationFixed = await WebmDuration.fixFile(src, o.ms); if (out.durationFixed) out.duration = o.ms / 1000; } catch (err) { out.durationError = err.message; } } return out; }
     const id = o.id || path.basename(src);
     // a recorder's file is written as it goes, without its length or a seek index: repack it (lossless, quick)
     const fixed = src.replace(/\.(\w+)$/, '.fixed.$1');

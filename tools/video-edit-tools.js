@@ -91,6 +91,7 @@ split {at?, all?} · trim {clip?, edge: in|out, at?} · move {clip, at?|to (main
 transition {clip?|all, type|off, dur?} · look {clip?, look|off, amt?} · effect {clip?, effect|off, amt? (0 removes)} · sound {clip?, effect|off, on?} · match {clip?, path (a reference picture: vibe only)} · captions {path? (import SRT; none: export)} · adjust {clip?, prop, value} · keyframe {clip?, prop: opacity|x|y|scale|rotate|volume, value?, at?, ease?}
 motion {clip?, preset} · speed {clip?, value} · ramp {clip?, preset} · reverse {clip?, on?} · set {clip?, props: {opacity, scale, x, y, rotate, volume, blend, mute, fadeIn, fadeOut, text, style, anim, out}}
 marker {at?, label?, note?, color?} · range {in, out}|{off} · select {clip} · undo · redo · render {preset?, fit?} · command {line: "/chat-command …"}
+duck {db?: -12 | value:"off"} (music dips under the voice) · voice {track, on?} · lut {clip?, path: .cube|name|off} · adjustment {at?, dur?, look?} (an adjustment layer) · multicam {paths?} · angle {angle: n, at?} · proxy {value?: make|all|on|off|clear} · queue {action: add|run|list|clear, preset?} · vibecuts {board?} (cuts paced like the mood board) · chapters · preview-sound {on?}
 project {action: status|plan|task|beat|redo|run|cover|cuts|note, …}: the owner's video project (/intro): its plan, beats, captures, edit and renders ({op:"project", action:"help"})
 presets: video_edit_read {what:"presets", kind}`;
   async function op(a) {
@@ -197,7 +198,10 @@ presets: video_edit_read {what:"presets", kind}`;
         if (err) throw new Error(err);
         return out.trim().slice(0, 1500) || 'done';
       }
-      default: throw new Error(`Unknown op "${a.op}". video_edit { op: "help" }`);
+      default:
+        // the editor pack (tools/video-pack.js): ducking, LUTs, adjustment layers, multicam, proxies, render queue…
+        if (typeof VideoPack !== 'undefined' && VideoPack.OPS.includes(o)) return VideoPack.agentOp(o, { ...a, ids: a.clip != null ? ids(a.clip) : null });
+        throw new Error(`Unknown op "${a.op}". video_edit { op: "help" }`);
     }
   }
   async function handle(tool, args = {}) {

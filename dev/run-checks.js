@@ -31,7 +31,7 @@ const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
   qa: ['qa-commands', 'qa-keys', 'qa-mac', 'polish'],
   board: by(/^board/),
-  editor: ['editor', 'editor-more', 'editor-mcp', 'cut'],
+  editor: ['editor', 'editor-more', 'editor-mcp', 'editor-pack', 'cut'],
   capture: by(/^capture/),
   journeys: by(/^journey-/),
   chat: by(/^chat-|^chatcore|^cmdbar$|^clutter$|^declutter/),

@@ -252,11 +252,16 @@
   function copy() {
     const list = sel(); if (!list.length) return;
     clip = JSON.parse(JSON.stringify(list));
+    // kept for a paste after a restart or in the other window too (pack11): the clipboard only holds the marker + vibe text
+    try { store.set('board.clip', { at: Date.now(), items: clip }); } catch { /* too big for storage: this session only */ }
     copyText(`${CLIP_MARK}${list.length}\n${list.map((i) => V.text(i)).join('\n')}`);
     toast(`Copied ${list.length} item${list.length === 1 ? '' : 's'} (paste on any board; in a chat it pastes their vibe)`);
   }
   function pasteItems(text, atPt) {
-    if (!clip || !String(text || '').startsWith(CLIP_MARK)) return false;
+    if (!String(text || '').startsWith(CLIP_MARK)) return false;
+    if (!clip) { try { clip = store.get('board.clip', null)?.items || null; } catch { clip = null; } }
+    // the marker without the items (copied in another session long gone): never paste the marker as a note
+    if (!clip?.length) { toast('Those copied board items are gone: copy them again (Ctrl+C)', { timeout: 3200 }); return true; }
     const b = LY.bbox(clip); const p = atPt || B._.center();
     const made = [];
     B.edit('paste', (bb) => { for (const it of clip) { const c = JSON.parse(JSON.stringify(it)); c.id = B._.uid(bb); c.x = p.x + (it.x - b.x) - b.w / 2; c.y = p.y + (it.y - b.y) - b.h / 2; bb.items.push(c); made.push(c); } });

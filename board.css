@@ -212,3 +212,18 @@
 .bdd-drop-hint { outline: 2px dashed var(--fh-gold, #e6b450); outline-offset: -4px; }
 #rail .bd-rail-peek { font-size: 15px; }
 @media (prefers-reduced-motion: reduce) { .bdd { transition: none; } .bd-pending .bd-clip { animation: none; } }
+
+/* pack11: the board's clips on a timeline (board-pack.js) */
+.bdp-timeline { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 7; width: min(880px, calc(100% - 32px)); max-height: 60%; overflow: auto; background: var(--sidebar); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; box-shadow: 0 10px 30px #000a; outline: none; }
+.bdp-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.bdp-head b { font-size: 13px; }
+.bdp-head .bdp-sub { flex: 1; font-size: 12px; color: var(--muted); }
+.bdp-row { display: grid; grid-template-columns: 140px 1fr 150px; gap: 10px; align-items: center; padding: 4px 0; }
+.bdp-name { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bdp-meta { font-size: 11px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.bdp-lane { height: 34px; position: relative; }
+.bdp-bar { position: relative; height: 100%; border-radius: 6px; overflow: hidden; background: var(--surface) center / cover no-repeat; border: 1px solid var(--line); }
+.bdp-shot { position: absolute; top: 0; bottom: 0; border: 0; border-right: 2px solid var(--fh-gold, #ffd75e); background: #0003; cursor: pointer; padding: 0; }
+.bdp-shot:hover { background: #ffd75e33; }
+.bdp-shot:last-child { border-right: 0; }
+@media (max-width: 640px) { .bdp-row { grid-template-columns: 90px 1fr; } .bdp-meta { grid-column: 1 / -1; text-align: left; } }
