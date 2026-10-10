@@ -36,7 +36,7 @@ try {
   Native.newChat(C.id);
   await until(() => typeof FlowsUI !== 'undefined' && Flows.get('make-video'), 10000);
   // from the flows list: Ctrl+Shift+F, then double-click "Make a video"
-  document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'F', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }));
+  FlowsUI.open({}); // (round 11) the node view is the advanced one (Ctrl+Shift+F opens the Commands page)
   await until(() => dlg()?.open, 3000);
   const item = [...dlg().querySelectorAll('.fl-item')].find((x) => /Make a video/.test(x.textContent));
   item.click(); await wait(300);

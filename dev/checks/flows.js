@@ -80,7 +80,11 @@ try {
   const docRow = [...sm().querySelectorAll('.slash-item')].find((x) => /✚ Doctor/.test(x.textContent));
   ok(docRow, `Doctor in Flows › (${out.rows2})`);
   mouse(docRow);
-  await until(() => dlg()?.open && Flows.runs()[0]?.status === 'waiting-you', 20000);
+  // (round 11) Flows › starts it on the Commands page; the node view is the advanced one
+  await until(() => Flows.runs()[0]?.flowId === 'doctor' && Flows.runs()[0]?.status === 'waiting-you', 20000);
+  ok(typeof CmdPage === 'undefined' || CmdPage.isOpen(), 'Flows › opens the run on the Commands page');
+  FlowsUI.open({ runId: Flows.runs()[0].id });
+  await until(() => dlg()?.open, 3000);
   const run = Flows.runs()[0];
   out.doctor1 = Flows.line(run);
   ok(run.flowId === 'doctor' && run.chatId === H.activeChat[C.id], `Doctor started in this chat (${out.doctor1})`);
@@ -209,10 +213,12 @@ try {
   // keys sheet
   out.keys = Keys.all().filter((k) => k.area === 'Flows' || /Flows/.test(k.what)).length;
   ok(out.keys >= 6, `keys listed (${out.keys})`);
-  // Ctrl+Shift+F opens the view
+  // Ctrl+Shift+F opens the Commands page now (round 11); /flows nodes the node view
   document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'F', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }));
   await wait(300);
-  ok(dlg()?.open, 'Ctrl+Shift+F opens Flows');
+  ok(CmdPage.isOpen(), 'Ctrl+Shift+F opens the Commands page');
+  await Commands.tryRun('/flows nodes', C.id); await wait(300);
+  ok(dlg()?.open, '/flows nodes opens the node view');
   dlg()?.close();
 } catch (err) { fail.push(`threw: ${err.stack || err}`); }
 out.problems = fail;
