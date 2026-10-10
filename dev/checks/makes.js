@@ -102,7 +102,7 @@ step(vp?.pct === 40 && vp.label === 'cutting' && vp.eta === 12 && got[0]?.partId
 await wait(100);
 if (typeof Progress !== 'undefined') {
   await until(() => document.querySelector(`#chat-groups [data-make-part="${vid.id}"] .pg-bar, #chat-groups [data-make="${make.id}"] .pg-bar`), 5000);
-  step(Progress.get(`make:${make.id}:${vid.id}`)?.pct === 40 && Boolean(document.querySelector(`[data-make="${make.id}"] .pg-bar, [data-make="${make.id}"] [data-make-part="${vid.id}"] .pg-bar`)), 'it is a Progress item (make:<id>:<part>) with a bar on the make in the chats list');
+  step(Progress.get(`make:${make.id}:${vid.id}`)?.shown === 40 && Progress.get(`make:${make.id}`)?.title === make.name && Boolean(document.querySelector(`[data-make="${make.id}"] .pg-bar, [data-make="${make.id}"] [data-make-part="${vid.id}"] .pg-bar`)), 'it is a Progress item (make:<id>:<part>) with a bar on the make in the chats list');
 }
 step(/\d+ %/.test(group(make.id)?.querySelector('.mk-st')?.textContent || ''), 'the group shows the make\'s progress', group(make.id)?.querySelector('.mk-st')?.textContent);
 

@@ -245,6 +245,7 @@ const Makes = (() => {
     if (typeof Progress !== 'undefined') {
       const key = part ? `make:${make.id}:${part.id}` : `make:${make.id}`;
       try {
+        if (part && !Progress.get(`make:${make.id}`)?.title) Progress.set(`make:${make.id}`, { title: make.name, kind: 'make', jump: () => show(make.id) }); // the parent: the mean of its parts
         if (Number(p.pct) >= 100) Progress.done(key, { label: p.label });
         else Progress.set(key, { pct: p.pct, label: p.label, eta: p.eta, parent: part ? `make:${make.id}` : undefined, title: part ? C.roomTitle(make, part) : make.name, kind: 'make', jump: () => (part ? openRoom(make, part) : show(make.id)) });
       } catch (err) { console.warn(err); }
