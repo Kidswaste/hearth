@@ -229,6 +229,8 @@ const Access = (() => {
   const allowed = (updatedInput) => ({ ok: true, value: { behavior: 'allow', updatedInput } });
   const denied = (message) => ({ ok: true, value: { behavior: 'deny', message } });
   async function check({ tool, input = {}, id, agentId, chatId, cwd }) {
+    // the check itself is not a tool the model may use
+    if (/^mcp__access__/.test(String(tool))) return denied('That tool is Hearth\'s own permission check; don\'t call it.');
     const chat = chatId && typeof Native !== 'undefined' ? await Native.load(chatId) : null;
     const acc = effective(chat, agentOf(agentId || chat?.agentId));
     agentId ||= chat?.agentId;
@@ -354,7 +356,7 @@ const Access = (() => {
         on: { click: () => setLevel(agentId, l, chat).then(paint).catch((err) => toast(err.message, { type: 'error' })) } }, el('b', { text: R.LEVEL_LABEL[l] }), el('small', { text: R.LEVEL_HINT[l] }))));
       const folders = el('div', { class: 'access-folders' }, acc.folders.length ? acc.folders.map((f, i) => el('div', { class: 'access-folder' },
         el('span', { class: 'access-fname', text: `📁 ${R.baseName(f)}`, title: f }),
-        el('span', { class: 'access-fpath', text: f }),
+        el('span', { class: 'access-fpath', text: f.length > 52 ? `…${f.slice(-51)}` : f }),
         el('button', { type: 'button', class: 'ghost small', text: 'Open', on: { click: () => window.hub.fs.open(f) } }),
         el('button', { type: 'button', class: 'ghost small', text: '✕', title: 'Remove from this chat (the folder stays)', on: { click: () => { removeFolder(agentId, i + 1, chat); paint(); } } }))) : el('p', { class: 'hint', text: 'No folder yet: a level other than Off makes this chat its own project folder.' }),
       el('button', { type: 'button', class: 'ghost small access-add', text: '＋ Add a folder…', on: { click: () => addFolder(agentId, null, chat).then(paint).catch((err) => toast(err.message, { type: 'error' })) } }));
@@ -376,7 +378,7 @@ const Access = (() => {
       el('span', { class: 'access-etext', text: short(e.what, 110) }),
       el('span', { class: 'access-eres', text: e.undone ? '↶ undone' : RESULT[e.result] || e.result || '' }),
       canUndo ? el('button', { type: 'button', class: 'ghost small', text: 'Undo', on: { click: () => undo(chatId, e.id).then(() => { toast(`Undone: ${R.baseName(e.target)}`, { timeout: 1800 }); after?.(); }).catch((err) => toast(err.message, { type: 'error' })) } }) : null,
-      e.target && /^(write|read|delete)$/.test(e.action) && e.result !== 'trashed' ? el('button', { type: 'button', class: 'ghost small', text: 'Show', on: { click: () => window.hub.fs.reveal(e.target).catch(() => toast('Not there anymore')) } }) : null);
+      e.target && /^(write|read)$/.test(e.action) && !e.undone ? el('button', { type: 'button', class: 'ghost small', text: 'Show', on: { click: () => window.hub.fs.reveal(e.target).catch(() => toast('Not there anymore')) } }) : null);
   }
   async function logPanel(agentId) {
     const chat = chatFor(agentId);
@@ -434,7 +436,23 @@ const Access = (() => {
       });
     }
     window.hub.onEngineEvent((e) => { onEngineEvent(e).catch((err) => console.warn(err)); });
-    if (typeof Native !== 'undefined' && Native.hooks?.render) Native.hooks.render.push(paintBadge);
+    if (typeof Native !== 'undefined' && Native.hooks?.render) {
+      Native.hooks.render.push(paintBadge);
+      // the cards go when the reply ends; the reply keeps one small line of what it did with your files (→ the log)
+      Native.hooks.finish.push((event, chat, extras) => {
+        const since = [...(chat.messages || [])].reverse().find((m) => m.role === 'user')?.at || 0;
+        const list = (logs?.[chat.id] || []).filter((e) => e.at >= since && !/^(level|folder|undo)$/.test(e.action));
+        if (!list.length) return;
+        const n = (f) => list.filter(f).length;
+        extras.access = { n: list.length, written: n((e) => e.action === 'write' && /allowed|approved|done/.test(e.result)), trashed: n((e) => e.result === 'trashed'), denied: n((e) => /denied|timeout/.test(e.result)), refused: n((e) => e.result === 'refused') };
+      });
+      Native.hooks.message.push((node, m, index, agent) => {
+        const a = m?.access;
+        if (!a?.n || node.querySelector('.access-sum')) return;
+        const parts = [`${a.n} file action${a.n === 1 ? '' : 's'}`, a.written && `${a.written} written`, a.trashed && `${a.trashed} to the Trash`, a.denied && `${a.denied} denied`, a.refused && `${a.refused} refused`].filter(Boolean);
+        node.append(el('button', { type: 'button', class: 'access-sum', text: `🔐 ${parts.join(' · ')}`, title: 'What this reply read, wrote, deleted and ran (with Undo)', on: { click: (ev) => { ev.stopPropagation(); logPanel(agent?.id || H.activeId); } } }));
+      });
+    }
     if (typeof Commands !== 'undefined' && !Commands.get('access')) {
       const LEVEL_OPTS = R.LEVELS.map((l) => ({ value: l, label: `${l}`, hint: `${R.LEVEL_LABEL[l]}: ${R.LEVEL_HINT[l]}` }));
       Commands.register({

@@ -20,7 +20,7 @@
 .access-done { color: var(--muted); }
 .access-pw { border-color: var(--ui-red, #ff5d5d); }
 /* cards that aren't inside a streaming reply (Access.ask from an app window, a chat that isn't answering) */
-.access-tray { position: fixed; right: 16px; bottom: 16px; z-index: 900; width: min(420px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.access-tray { position: fixed; right: 16px; bottom: 110px; z-index: 900; width: min(420px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
 .access-tray > * { pointer-events: auto; margin: 0; box-shadow: 0 8px 28px rgba(0, 0, 0, .45); }
 .access-tray:empty { display: none; }
 /* the chip after the chat title */
@@ -37,7 +37,8 @@
 .access-folders.dropping { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .access-folder { display: flex; gap: 6px; align-items: center; min-width: 0; }
 .access-fname { white-space: nowrap; }
-.access-fpath { flex: 1; min-width: 0; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+.access-fpath { flex: 1; min-width: 0; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.access-recent h4 .link { margin-left: 6px; padding: 0; border: 0; background: none; color: var(--accent); font: inherit; text-transform: none; letter-spacing: 0; cursor: pointer; }
 .access-add { align-self: flex-start; }
 .access-grant { display: flex; justify-content: space-between; align-items: center; font-family: var(--mono, monospace); font-size: 11.5px; }
 .access-foot { margin-top: 10px; font-size: 11.5px; }
@@ -49,4 +50,7 @@
 .access-etext { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .access-eres { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .access-entry.r-denied .access-eres, .access-entry.r-refused .access-eres, .access-entry.r-timeout .access-eres { color: var(--ui-red, #ff5d5d); }
-.access-entry button { padding: 0 6px; }
+.access-entry button { padding: 0 6px; min-height: 0; line-height: 18px; font-size: 11.5px; }
+/* the line a reply keeps about what it did with your files */
+.access-sum { display: block; margin-top: 4px; padding: 0; border: 0; background: none; color: var(--muted); font-size: 11.5px; cursor: pointer; }
+.access-sum:hover { color: var(--text); text-decoration: underline; }

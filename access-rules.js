@@ -307,7 +307,7 @@ const AccessRules = (() => {
       const scope = (p) => (p ? fs0.find((f) => inside(p, f)) || dirName(p) : '');
       const grantKey = worst.password ? null : worst.action === 'delete' || worst.action === 'move' || worst.action === 'write' || worst.action === 'read' || worst.action === 'secrets'
         ? `${worst.action}:${scope(worst.targets?.[0]) || sh.base || ''}` : worst.action === 'run' || worst.action === 'system' || worst.action === 'apps' ? `${worst.action}:${cmdName(sh.segs.find((s) => s.words.length && cmdName(s.words[0]) !== 'cd')?.words[0] || '')}` : worst.action;
-      return r({ verdict: worst.verdict, risk: worst.risk || 'high', action: worst.action, what, targets, where: where(targets) || sh.base, why: worst.why, grant: grantKey, ...(trash ? { trash } : {}), ...(worst.password ? { password: true } : {}), findings: found.length });
+      return r({ verdict: worst.verdict, risk: worst.risk || 'high', action: worst.action, what, targets, where: where(targets) || (insideAny(sh.base, fs0) ? sh.base : ""), why: worst.why, grant: grantKey, ...(trash ? { trash } : {}), ...(worst.password ? { password: true } : {}), findings: found.length });
     }
     // anything else the engine had to ask about (a connector tool it wasn't given, web fetch…): the owner decides
     return r({ verdict: 'ask', risk: /mcp__/.test(tool) && !/(get|list|search|read|fetch|find|view)/i.test(tool) ? 'high' : 'low', action: /^Web/.test(tool) ? 'network' : 'run', what: `Use ${tool.replace(/^mcp__([^_]+(?:_[^_]+)*)__/, '$1 · ')}`, why: 'a tool this chat wasn\'t given', grant: `tool:${tool}` });
