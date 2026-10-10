@@ -57,6 +57,11 @@ const rapid = await settled({ playing: true }, 12000);
 step('rapid swaps while playing: the sequence comes back playing, picture = clock', ok(rapid, { playing: true }), rapid);
 Q.play(false); await wait(300);
 
+// 3b. a title clip after those reloads: the titles code and font came back with the page (the title draws)
+Q.seek(1.0); await Q.settle(); await wait(900);
+const ttl = await sbx("return __seqPixels({ size: 120, only: ['~sq-titles'] })");
+step('after the reloads, the title (HELLO at 0.5–1.5 s) still draws', ttl?.bright > 20, ttl);
+
 // 4. scrubbing while swapping
 const sc = [];
 for (let i = 0; i < 6; i++) { Q.seek(0.3 + i * 1.1); if (i % 2) size(i % 4 === 1 ? 'fit' : '1:1'); else size('9:16'); await wait(120); }
