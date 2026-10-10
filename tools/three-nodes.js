@@ -148,8 +148,16 @@ function keyAt(K, x, ease, loop) {
   }
   return K[K.length - 1][1];
 }`;
+  // The scene's own clock (round 10, orb): the Lab timeline (the song, the footage or the scene's own timeline with no
+  // song), or the scene's time from its clip inside a Lab sequence; the sketch's clock when nothing is loaded
+  const SCENET = `// the scene's timeline time in seconds (the song, the footage or the scene's own timeline; its clip's time in a sequence)
+function sceneTime() { return globalThis.layer?.scene ?? t; }`;
+  // a soft 3D value noise for the orb and backdrop shaders (GLSL, shared by both)
+  const ORBGLSL = `// soft 3D value noise for the shaders (GLSL)
+const ORB_NOISE = 'float oh(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }\\n'
+  + 'float on3(vec3 x) { vec3 i = floor(x); vec3 f = fract(x); f = f * f * (3.0 - 2.0 * f); return mix(mix(mix(oh(i), oh(i + vec3(1.0, 0.0, 0.0)), f.x), mix(oh(i + vec3(0.0, 1.0, 0.0)), oh(i + vec3(1.0, 1.0, 0.0)), f.x), f.y), mix(mix(oh(i + vec3(0.0, 0.0, 1.0)), oh(i + vec3(1.0, 0.0, 1.0)), f.x), mix(oh(i + vec3(0.0, 1.0, 1.0)), oh(i + vec3(1.0, 1.0, 1.0)), f.x), f.y), f.z); }\\n';`;
   const helper = (c, name) => {
-    const code = { mixColor: MIXCOLOR, shiftColor: HUESHIFT, paletteColor: PALCOLOR, dotTexture: DOT, spectrumAt: SPEC, beatCount: BEATS, keyAt: KEYS }[name];
+    const code = { mixColor: MIXCOLOR, shiftColor: HUESHIFT, paletteColor: PALCOLOR, dotTexture: DOT, spectrumAt: SPEC, beatCount: BEATS, keyAt: KEYS, sceneTime: SCENET, orbNoise: ORBGLSL }[name];
     if (name === 'paletteColor') c.helper('mixColor', MIXCOLOR);
     c.helper(name, code);
     return name;
@@ -551,6 +559,88 @@ const ${id}Base = ${id}.geometry.attributes.position.array.slice();`);
       return { obj: id };
     },
   });
+  // ---------- the orb (round 10): a new chat's scene, built from these three nodes on the scene's timeline ----------
+  // Glowing orb: a sphere whose surface flows with soft noise (in the vertex shader: nothing per vertex on the CPU),
+  // a dim veined core and a bright fresnel rim. Time comes in from the Timeline node, so a frame of the timeline is
+  // always the same picture (seeking, stepping, rendering a sequence).
+  define({
+    type: 'orb', title: 'Glowing orb', category: 'Objects', color: '#ffd75e', idBase: 'orb', desc: 'A glowing sphere with a bright rim (fresnel) and a surface that flows with soft noise; wire the Timeline to Time so it moves on the scene\'s timeline', keywords: 'sphere ball planet glow fresnel rim noise energy core breathe',
+    inputs: [N('time', 0, 0, 60, { label: 'Time', slider: false }), C('color', '#ffc23d', { label: 'Core' }), C('rim', '#fff1c4', { label: 'Rim' }), S('radius', 1.4, 0.2, 6), I('detail', 128, 16, 256),
+      N('scale', 1, 0.2, 3, { label: 'Size' }), N('glow', 1.2, 0, 4, { label: 'Glow' }), N('rimPower', 2.4, 0.5, 8, { label: 'Rim sharpness' }), N('ripple', 0.16, 0, 0.8, { label: 'Ripple' }),
+      N('lumps', 1.7, 0.2, 6, { label: 'Lumps' }), N('flow', 0.22, 0, 2, { label: 'Flow' }), N('spin', 0.08, -1, 1, { label: 'Turns / 10 s' })],
+    outputs: [O('obj', 'obj', 'Orb')],
+    compile: (c) => {
+      const id = c.id;
+      helper(c, 'orbNoise');
+      c.setup(`const ${id} = new THREE.Mesh(new THREE.SphereGeometry(${c.in('radius')}, Math.round(${c.in('detail')}), Math.round(${c.in('detail')} / 2)), new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color() }, uRim: { value: new THREE.Color() }, uGlow: { value: 1 }, uPower: { value: 2 }, uRipple: { value: 0 }, uLumps: { value: 1 }, uFlow: { value: 0 } },
+  vertexShader: ORB_NOISE + 'uniform float uTime; uniform float uRipple; uniform float uLumps; uniform float uFlow; varying vec3 vN; varying vec3 vV; varying float vD;\\nvoid main() {\\n  vec3 d = normalize(position);\\n  float n = on3(d * uLumps + vec3(0.0, uTime * uFlow, 0.0)) * 0.65 + on3(d * uLumps * 2.3 - vec3(uTime * uFlow * 0.7)) * 0.35;\\n  vD = n;\\n  vec4 mv = modelViewMatrix * vec4(position * (1.0 + (n - 0.5) * uRipple), 1.0);\\n  vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv;\\n}',
+  fragmentShader: 'uniform vec3 uColor; uniform vec3 uRim; uniform float uGlow; uniform float uPower; varying vec3 vN; varying vec3 vV; varying float vD;\\nvoid main() {\\n  float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), uPower);\\n  vec3 core = uColor * (0.18 + 0.62 * smoothstep(0.25, 0.85, vD));\\n  vec3 c = core + mix(uColor, uRim, f) * f * uGlow * 1.5 + uColor * pow(max(0.0, 1.0 - f), 4.0) * 0.12 * uGlow;\\n  gl_FragColor = vec4(c, 1.0);\\n}',
+}));`);
+      const tm = c.in('time');
+      c.frame(`{
+  const u = ${id}.material.uniforms;
+  u.uTime.value = ${tm}; u.uColor.value.set(${c.in('color')}); u.uRim.value.set(${c.in('rim')}); u.uGlow.value = ${c.in('glow')}; u.uPower.value = ${c.in('rimPower')};
+  u.uRipple.value = ${c.in('ripple')}; u.uLumps.value = ${c.in('lumps')}; u.uFlow.value = ${c.in('flow')};
+  ${id}.scale.setScalar(${c.in('scale')});
+  ${id}.rotation.set(Math.sin(${tm} * 0.21) * 0.25, ${tm} * ${c.in('spin')} * Math.PI * 0.2, 0);
+}`);
+      return { obj: id };
+    },
+  });
+  // Orb halo: a soft glow behind the orb (a sprite) and a tilted ring of motes turning around it, on the timeline.
+  define({
+    type: 'orbHalo', title: 'Orb halo', category: 'Particles', color: '#bd8bff', idBase: 'halo', desc: 'A soft glow around an orb and a tilted ring of glowing motes turning around it (wire the Timeline to Time)', keywords: 'glow aura ring dust motes orbit sprite',
+    inputs: [N('time', 0, 0, 60, { label: 'Time', slider: false }), C('color', '#ffc23d'), N('size', 5.5, 0.5, 20, { label: 'Glow size' }), N('strength', 0.55, 0, 2, { label: 'Glow' }),
+      I('count', 700, 0, 6000, { step: 50, label: 'Motes' }), S('radius', 2.6, 0.5, 10, { label: 'Ring size' }), N('moteSize', 0.06, 0.005, 0.4, { label: 'Mote size' }),
+      N('speed', 0.35, -2, 2, { label: 'Turns / 10 s' }), N('tilt', 22, -90, 90, { label: 'Tilt °' })],
+    outputs: [O('obj', 'obj', 'Halo')],
+    compile: (c) => {
+      const id = c.id;
+      helper(c, 'dotTexture');
+      c.setup(`const ${id} = new THREE.Group();
+const ${id}Glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotTexture(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+const ${id}Motes = (() => {
+  const n = Math.round(${c.in('count')}); const R = ${c.in('radius')}; const rnd = seeded(7);
+  const pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { const a = rnd() * Math.PI * 2; const r = R * (0.7 + 0.6 * Math.pow(rnd(), 1.5)); pos.set([Math.cos(a) * r, (rnd() - 0.5) * R * 0.3 * rnd(), Math.sin(a) * r], i * 3); }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  return new THREE.Points(geo, new THREE.PointsMaterial({ size: 0.06, map: dotTexture(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+})();
+${id}.add(${id}Glow, ${id}Motes);`);
+      const tm = c.in('time');
+      c.frame(`${id}Glow.scale.setScalar(${c.in('size')}); ${id}Glow.material.color.set(${c.in('color')}); ${id}Glow.material.opacity = ${c.in('strength')};`);
+      c.frame(`${id}Motes.material.color.set(${c.in('color')}); ${id}Motes.material.size = ${c.in('moteSize')}; ${id}Motes.rotation.set(THREE.MathUtils.degToRad(${c.in('tilt')}), ${tm} * ${c.in('speed')} * Math.PI * 0.2, 0);`);
+      return { obj: id };
+    },
+  });
+  // Backdrop: a full-screen gradient (bright behind the middle, dark at the edges) with slow clouds and a vignette;
+  // it fills the frame whatever the camera does (the bottom layer of the orb scene).
+  define({
+    type: 'backdrop', title: 'Backdrop', category: 'Colors', color: '#ff6b9d', idBase: 'backdrop', desc: 'A full-screen gradient behind everything: a glow in the middle, slow drifting clouds and a vignette (wire the Timeline to Time)', keywords: 'background gradient sky nebula clouds vignette',
+    inputs: [N('time', 0, 0, 60, { label: 'Time', slider: false }), C('inner', '#3a2a10', { label: 'Middle' }), C('outer', '#05060a', { label: 'Edges' }), N('glow', 1, 0, 3, { label: 'Middle glow' }),
+      N('clouds', 0.35, 0, 1.5, { label: 'Clouds' }), N('drift', 0.06, 0, 1, { label: 'Cloud drift' }), N('vignette', 0.55, 0, 1, { label: 'Vignette' })],
+    outputs: [O('obj', 'obj', 'Backdrop')],
+    compile: (c) => {
+      const id = c.id;
+      helper(c, 'orbNoise');
+      c.setup(`const ${id} = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 }, uIn: { value: new THREE.Color() }, uOut: { value: new THREE.Color() }, uGlow: { value: 1 }, uClouds: { value: 0 }, uDrift: { value: 0 }, uVig: { value: 0 }, uAspect: { value: 1 } },
+  vertexShader: 'varying vec2 vUv;\\nvoid main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+  fragmentShader: ORB_NOISE + 'uniform float uTime; uniform vec3 uIn; uniform vec3 uOut; uniform float uGlow; uniform float uClouds; uniform float uDrift; uniform float uVig; uniform float uAspect; varying vec2 vUv;\\nvoid main() {\\n  vec2 p = (vUv - 0.5) * vec2(uAspect, 1.0); float r = length(p);\\n  vec3 c = mix(uIn * uGlow, uOut, smoothstep(0.0, 0.8, r));\\n  float n = on3(vec3(p * 2.2, uTime * uDrift)) * 0.6 + on3(vec3(p * 5.1 + 3.0, uTime * uDrift * 1.7)) * 0.4;\\n  c += uIn * (n - 0.42) * uClouds * (1.0 - smoothstep(0.05, 0.9, r));\\n  c *= 1.0 - uVig * smoothstep(0.3, 1.0, r);\\n  gl_FragColor = vec4(max(c, 0.0), 1.0);\\n}',
+  depthWrite: false, depthTest: false,
+}));
+${id}.frustumCulled = false;
+${id}.renderOrder = -1;`);
+      c.frame(`{
+  const u = ${id}.material.uniforms;
+  u.uTime.value = ${c.in('time')}; u.uIn.value.set(${c.in('inner')}); u.uOut.value.set(${c.in('outer')}); u.uGlow.value = ${c.in('glow')};
+  u.uClouds.value = ${c.in('clouds')}; u.uDrift.value = ${c.in('drift')}; u.uVig.value = ${c.in('vignette')}; u.uAspect.value = innerWidth / Math.max(1, innerHeight);
+}`);
+      return { obj: id };
+    },
+  });
   define({
     type: 'wavePlane', title: 'Wave terrain', category: 'Objects', color: '#ffd75e', idBase: 'terrain', desc: 'A floor of rolling noise hills (wireframe by default) that rises with the music', keywords: 'landscape floor mountains synthwave retro grid',
     inputs: [SOCK('material', 'mat', { fallback: "new THREE.MeshBasicMaterial({ color: '#bd8bff', wireframe: true, transparent: true, opacity: 0.8 })" }), S('size', 30, 2, 120), I('segments', 80, 4, 256), N('height', 1.2, 0, 8), N('speed', 0.6, -4, 4), N('react', 1, 0, 4, { label: 'React' }), N('frequency', 0.18, 0.02, 1, { label: 'Hill size', hint: 'Smaller = wider hills' }), V('position', [0, -2, 0]), V('rotation', [0, 0, 0], { label: 'Rotation °', step: 1 }), N('scale', 1, 0.05, 5)],
@@ -739,11 +829,21 @@ let ${id}Travel = 0;`);
       const keys = String(c.value('keys') || '').split(/[,;\n]+/).map((x) => x.split(':').map(Number)).filter((k) => k.length === 2 && k.every(Number.isFinite)).sort((a, b) => a[0] - b[0]);
       c.setup(`const ${c.id}K = ${lit(keys.length ? keys : [[0, 0]])};`);
       const per = { beats: ' * (audio.bpm || 120) / 60', bars: ' * (audio.bpm || 120) / 60 / (audio.beatsPerBar || 4)' }[c.value('unit')] || '';
-      const kt = `((audio.duration ? audio.time : t)${per})`;
+      helper(c, 'sceneTime'); // the scene's timeline: its song or footage, its own timeline, its clip's time in a sequence
+      const kt = `(sceneTime()${per})`;
       const ease = { linear: 1, hold: 2 }[c.value('ease')] ?? 0;
       const v = `keyAt(${c.id}K, ${kt}, ${ease}, ${c.in('loop')})`;
       const amt = c.in('amount'); const off = c.in('offset');
       return { out: `${off === '0' ? '' : `${off} + `}${amt === '1' ? v : `${v} * ${amt}`}`, time: kt };
+    } });
+  // The scene's own timeline as a node (round 10, orb): what the orb moves on, with or without a song.
+  time({ type: 'timeline', title: 'Timeline', idBase: 'timeline', desc: 'The scene\'s timeline: its song or footage, else its own timeline (no song needed); in a sequence, the scene\'s time from its clip. Seconds, a 0..1 loop over Length and a smooth breath over Length', keywords: 'clock time scene seconds loop breathe timeline frame exact',
+    inputs: [N('length', 10, 0.5, 120, { label: 'Length (s)', slider: false }), N('speed', 1, -4, 4, { slider: false })], outputs: [O('time', 'num', 'Seconds'), O('loop', 'num', 'Loop 0..1'), O('breath', 'num', 'Breath 0..1')],
+    compile: (c) => {
+      helper(c, 'sceneTime');
+      const sp = c.in('speed'); const len = c.in('length');
+      const tt = sp === '1' ? 'sceneTime()' : `(sceneTime() * ${sp})`;
+      return { time: tt, loop: `fract(${tt} / ${len})`, breath: `(0.5 - 0.5 * Math.cos(${tt} / ${len} * Math.PI * 2))` };
     } });
   time({ type: 'ramp', title: 'Ramp', desc: 'Goes 0 → 1 over Seconds, then starts again', keywords: 'loop timer progress', inputs: [N('seconds', 4, 0.1, 60)], outputs: [O('out', 'num', 'Ramp')],
     compile: (c) => ({ out: `fract(t / ${c.in('seconds')})` }) });
@@ -1039,6 +1139,49 @@ let ${id}Travel = 0;`);
     g.link(`${mesh}.obj`, `${spin}.obj`); g.link(`${spin}.obj`, `${out}.objects`); g.link(`${bloom}.pass`, `${out}.post`);
     g.frame('Motion', [keys, spin]);
   }, 'timeline keyframes starter simple calm');
+  // The orb (round 10): a new chat's scene. Two layers built as node graphs on the scene's own timeline (no music):
+  // a backdrop at the bottom, the orb with its halo and camera on top; colors from the chat's color.
+  function orbColors(tint) {
+    const rgb = (h) => [1, 3, 5].map((i) => parseInt(String(h).slice(i, i + 2), 16) / 255 || 0);
+    const hex = (a) => `#${a.map((x) => Math.round(Math.max(0, Math.min(1, x)) * 255).toString(16).padStart(2, '0')).join('')}`;
+    const mixA = (a, b, k) => a.map((x, i) => x + (b[i] - x) * k);
+    const c = rgb(/^#[0-9a-f]{6}$/i.test(tint || '') ? tint : '#ffc23d');
+    return { core: hex(c), rim: hex(mixA(c, [1, 1, 1], 0.62)), halo: hex(mixA(c, [1, 1, 1], 0.15)), inner: hex(c.map((x) => x * 0.3)), outer: hex(mixA(c.map((x) => x * 0.05), [0.02, 0.024, 0.04], 0.5)) };
+  }
+  const orbBuild = (col) => (g) => {
+    const tl = g.add('timeline', { length: 10 }); const orb = g.add('orb', { color: col.core, rim: col.rim }); const halo = g.add('orbHalo', { color: col.halo });
+    const cam = g.add('camera', { mode: 'still', distance: 6, height: 0, fov: 45 }); const out = g.add('output');
+    g.link(`${tl}.time`, `${orb}.time`); g.link(`${tl}.time`, `${halo}.time`);
+    g.link(`${orb}.obj`, `${out}.objects`); g.link(`${halo}.obj`, `${out}.objects`); g.link(`${cam}.cam`, `${out}.camera`);
+    g.group('Orb', [orb]); g.group('Halo', [halo]); g.group('Camera', [cam]);
+  };
+  const backBuild = (col) => (g) => {
+    const tl = g.add('timeline', { length: 10 }); const bd = g.add('backdrop', { inner: col.inner, outer: col.outer }); const out = g.add('output');
+    g.link(`${tl}.time`, `${bd}.time`); g.link(`${bd}.obj`, `${out}.objects`);
+    g.group('Backdrop', [bd]);
+  };
+  preset('timed-orb', 'Glowing orb', 'A glowing orb with a soft flowing surface, a bright rim, a halo and a ring of motes, moving on the scene\'s timeline (a new chat\'s scene)', orbBuild(orbColors('#ffc23d')), 'timeline orb sphere glow starter calm new chat');
+  preset('timed-backdrop', 'Backdrop glow', 'A full-screen gradient with a glow in the middle and slow clouds, on the scene\'s timeline (put it under other layers)', backBuild(orbColors('#ffc23d')), 'timeline background gradient clouds');
+  // The whole orb scene for a chat color: { layers: [{ name, code, keys, lanes }], timeline: { len, fps } }. The
+  // keyframes are on the timeline from the start (the orb breathes, its glow swells twice, the camera drifts), on
+  // the sliders of the Orb layer, so they show on its track and can be moved like any other.
+  function orbScene(tint) {
+    const col = orbColors(tint);
+    const code = (build) => compile(buildPreset({ id: 'orb-scene', build })).code;
+    const K = (pts) => pts.map(([t, v]) => ({ t, v, ease: 'ease' }));
+    return {
+      timeline: { len: 10, fps: 30 },
+      layers: [
+        { name: 'Backdrop', code: code(backBuild(col)), keys: {} },
+        { name: 'Orb', code: code(orbBuild(col)), lanes: ['s:orb1_glow'], keys: {
+          's:orb1_scale': K([[0, 1], [5, 1.07], [10, 1]]),
+          's:orb1_glow': K([[0, 1], [2.5, 1.7], [5, 1.05], [7.5, 1.7], [10, 1]]),
+          's:camera1_distance': K([[0, 6.4], [5, 5.6], [10, 6.4]]),
+          's:camera1_height': K([[0, -0.35], [5, 0.35], [10, -0.35]]),
+        } },
+      ],
+    };
+  }
   preset('keyed-tunnel', 'Tunnel flight', 'Rings rushing past: slow intro, faster at 8 s, full speed at 16 s, easing out (keyframed speed)', (g) => {
     const tun = g.add('tunnel', { rings: 48, radius: 3.2, twist: 0.12 }); const keys = g.add('keys', { keys: '0:2, 8:6, 16:14, 24:3, 32:2', ease: 'smooth' }, 'Speed over time');
     const cam = g.add('camera', { mode: 'fly', distance: 8, speed: 0.4 }); const bloom = g.add('bloom', { strength: 0.8, radius: 0.6 }); const out = g.add('output');
@@ -1845,5 +1988,5 @@ let ${id}Travel = 0;`);
     },
   });
 
-  return { registry: reg, compile, fromCode, presets: () => PRESETS.map(({ id, name, desc }) => ({ id, name, desc })), buildPreset: (id) => buildPreset(PRESETS.find((p) => p.id === id)), attach, run, tool, summary, get lab() { return lab; } };
+  return { registry: reg, compile, fromCode, orbScene, orbColors, presets: () => PRESETS.map(({ id, name, desc }) => ({ id, name, desc })), buildPreset: (id) => buildPreset(PRESETS.find((p) => p.id === id)), attach, run, tool, summary, get lab() { return lab; } };
 })();

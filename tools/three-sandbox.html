@@ -2852,7 +2852,10 @@ function compositorTick() {
   if (compRec) composite(compRec);
 }
 realRAF(compositorTick);
-// `layer` inside a layer's code: { id, name, in, out, clock (the timeline's own time), time (seconds since its start), progress (0..1), mix }
+// `layer` inside a layer's code: { id, name, in, out, clock (the timeline's own time), time (seconds since its start), progress (0..1), mix,
+// scene (the scene's own timeline: the Lab timeline (its song, footage or the scene's own clock), or inside a Lab
+// sequence the scene's time from its clip, so node graphs move the same in the Lab and in the sequence; null with
+// nothing loaded: the layer's own clock then) }
 Object.defineProperty(globalThis, 'layer', {
   configurable: true,
   get() {
@@ -2860,7 +2863,7 @@ Object.defineProperty(globalThis, 'layer', {
     if (!L) return null;
     const p = L.props;
     const t = SQ.on ? SQ.T : mediaEl ? mediaEl.currentTime : performance.now() / 1000;
-    return { id: L.id, name: p.name, in: p.in ?? null, out: p.out ?? null, clock: t, time: p.seqT0 != null ? t - p.seqT0 : p.in != null ? t - p.in : t, progress: p.in != null && p.out != null ? (t - p.in) / (p.out - p.in) : null, mix: layerMix(L) };
+    return { id: L.id, name: p.name, in: p.in ?? null, out: p.out ?? null, clock: t, time: p.seqT0 != null ? t - p.seqT0 : p.in != null ? t - p.in : t, scene: p.seqT0 != null ? t - p.seqT0 : mediaEl ? t : null, progress: p.in != null && p.out != null ? (t - p.in) / (p.out - p.in) : null, mix: layerMix(L) };
   },
 });
 

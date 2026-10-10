@@ -232,6 +232,11 @@ body.tw-scrubbing, body.tw-scrubbing * { cursor: ew-resize !important; }
 .media-bar.mb-footage-silent:not(.mb-all) .tb-group[data-cat="Beat"],
 .media-bar.mb-footage-silent:not(.mb-all) .mb-g-sound,
 .media-bar.mb-footage-silent:not(.mb-all) .mb-grid { display: none; }
+/* the scene's own timeline (no song, round 10): the music controls tuck away the same way (⋯ shows them) */
+.media-bar.mb-clock:not(.mb-all) .tb-group[data-cat="Beat"],
+.media-bar.mb-clock:not(.mb-all) .mb-g-sound,
+.media-bar.mb-clock:not(.mb-all) .mb-grid { display: none; }
+.media-bar.mb-clock .mb-name { cursor: pointer; }
 /* the time box as a frame counter: a fixed width, so stepping never moves the row (no layout per step) */
 .media-bar.mb-footage .mb-time { display: inline-block; min-width: 22ch; cursor: pointer; color: var(--text); contain: layout paint; border-bottom: 1px solid transparent; }
 .media-bar.mb-footage .mb-time.mb-frame-ok { border-bottom-color: color-mix(in srgb, #7cd992 70%, transparent); }

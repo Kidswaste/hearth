@@ -248,7 +248,7 @@ const ThreeMedia = (() => {
   // frame: { get() → { id, width, height }, set(id) } so the record menu can switch between the social sizes.
   // onCueLookHere(cue) → { layer, name } saves the selected layer's current sliders as a look for that cue.
   function player({ send, sketchName, onLoaded, onPick, onCue, lookChoices, frame: frameHook, onCueLookHere }) {
-    const st = { path: null, name: null, bytes: null, mime: null, video: false, analysis: null, samples: null, time: 0, duration: 0, playing: false, loop: store.get('three.mediaLoop', true), volume: store.get('three.mediaVolume', 0.8), stampAt: 0, rate: 1 };
+    const st = { path: null, name: null, bytes: null, mime: null, video: false, clock: null, analysis: null, samples: null, time: 0, duration: 0, playing: false, loop: store.get('three.mediaLoop', true), volume: store.get('three.mediaVolume', 0.8), stampAt: 0, rate: 1 };
     let region = null; // { a, b } seconds
     let locked = false;
     let snapMode = store.get('three.snapMode', '1/4');
@@ -277,6 +277,14 @@ const ThreeMedia = (() => {
     const loadBtn = btn('🎵 Load audio / video…', 'Pick an mp3, wav, mp4… to drive the sketch (or drop one on the preview)', () => pick());
     loadBtn.dataset.feature = 'Load audio video…';
     const nameEl = el('span', { class: 'mb-name' });
+    // the scene's own timeline: a click on its name sets its length (the keyframes stay where they are)
+    nameEl.addEventListener('click', (e) => {
+      if (!st.clock) return;
+      const cur = Math.round(D());
+      menuAt(nameEl, [...[5, 10, 15, 20, 30, 60].map((n) => [`${n === cur ? '● ' : ''}${n} s`, n === 10 ? 'the default' : '', () => { if (setClockLength(n)) emit('clock-length', n); }]),
+        ['Load a song on it…', 'Its keyframes and cues keep their seconds', () => pick()]]);
+      e.stopPropagation();
+    });
     const unloadBtn = btn('×', 'Remove the music (sketches get a demo beat)', () => unload(), 'ghost small mb-x');
     const playBtn = btn('▶', 'Play / pause (Space)', () => toggle(), 'primary small mb-play');
     playBtn.dataset.feature = 'Play / pause';
@@ -563,7 +571,7 @@ const ThreeMedia = (() => {
         bytes = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
       } catch (err) { if (!quiet) toast(`Couldn't open ${base(path)}: ${err.message}`, { type: 'error' }); return { ok: false, error: err.message }; }
       if (seq !== loadSeq) return { ok: false, error: 'Another file was loaded meanwhile' };
-      Object.assign(st, { path, name: base(path), bytes, mime: MIME[extOf(path)], video: VIDEO_EXT.includes(extOf(path)), analysis: null, samples: null, wave: null, time: startAt, duration: 0, playing: false });
+      Object.assign(st, { path, name: base(path), bytes, mime: MIME[extOf(path)], video: VIDEO_EXT.includes(extOf(path)), clock: null, analysis: null, samples: null, wave: null, time: startAt, duration: 0, playing: false });
       emit('load', { path, video: st.video });
       const saved = store.get(loopKey(path), null);
       region = saved?.a != null ? { a: saved.a, b: saved.b } : null;
@@ -601,13 +609,92 @@ const ThreeMedia = (() => {
     function unload({ silent = false } = {}) {
       loadSeq += 1;
       analyzing = false;
-      Object.assign(st, { path: null, name: null, bytes: null, analysis: null, samples: null, wave: null, time: 0, duration: 0, playing: false });
+      const from = st.path; const wasClock = Boolean(st.clock);
+      Object.assign(st, { path: null, name: null, bytes: null, clock: null, analysis: null, samples: null, wave: null, time: 0, duration: 0, playing: false });
       region = null; locked = false; view = null; selected = null;
       emit('unload', {});
       map = { grid: null, marks: emptyMarks(), cues: [] };
       store.set('three.media', null);
       paint();
-      if (!silent) onLoaded?.({ reload: true, unloaded: true });
+      if (!silent) onLoaded?.({ reload: true, unloaded: true, from, clock: wasClock });
+    }
+    // ---------- the scene's own timeline (round 10, orb) ----------
+    // A scene with no song still has a timeline: a silent clip of its length (made here in memory, never written to
+    // disk) plays as its "song", so the timeline, layer and slider keyframes, cues, markers, the loop and Space all
+    // work on it, frame by frame at its frame rate. Its path is "scene:<sketch id>": its markers and cues are kept
+    // under that name (kv three-beatmaps) and move onto a song you load on the scene (carry()).
+    const CLOCK_RATE = 8000;
+    function silentWav(seconds) {
+      const n = Math.max(1, Math.round(seconds * CLOCK_RATE));
+      const buf = new ArrayBuffer(44 + n * 2); const v = new DataView(buf);
+      const w = (o, text) => { for (let i = 0; i < text.length; i += 1) v.setUint8(o + i, text.charCodeAt(i)); };
+      w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+      v.setUint32(24, CLOCK_RATE, true); v.setUint32(28, CLOCK_RATE * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
+      return buf;
+    }
+    const fmtLen = (s) => (s < 60 ? `${Math.round(s * 10) / 10} s` : fmtTime(s));
+    const clockFps = () => st.clock?.fps || 30;
+    // the clock's frames: every seek, snap and step lands on a frame start
+    const clockSnap = (t) => (st.clock ? Math.max(0, Math.round(t * clockFps() + 1e-6) / clockFps()) : t);
+    const clockFrame = (t) => Math.floor(t * clockFps() + 1e-3);
+    function clockText(t) {
+      if (!st.clock) return undefined;
+      const n = clockFrame(t); const nom = Math.round(clockFps()); const s = Math.floor(n / nom); const p2 = (x) => String(Math.floor(x)).padStart(2, '0');
+      return `${p2(s / 60)}:${p2(s % 60)}:${p2(n % nom)} · f${n}`;
+    }
+    function loadClock({ key, seconds = 10, fps = 30, startAt = 0, playing = true } = {}) {
+      if (!key) return { ok: false, error: 'No scene' };
+      const path = `scene:${key}`;
+      const seq = ++loadSeq;
+      const len = Math.max(1, Math.min(600, Number(seconds) || 10));
+      analyzing = false;
+      Object.assign(st, { path, name: `⏱ Scene timeline · ${fmtLen(len)}`, bytes: silentWav(len), mime: 'audio/wav', video: false, clock: { fps: fps > 0 ? fps : 30, len }, analysis: null, samples: null, wave: null, time: Math.min(Math.max(0, startAt), len), duration: len, playing: false });
+      emit('load', { path, video: false, clock: true });
+      const saved = store.get(loopKey(path), null);
+      region = saved?.a != null ? { a: saved.a, b: saved.b } : null;
+      locked = Boolean(saved?.locked && region);
+      view = null; selected = null; mapUndo = [];
+      const useMap = () => { const m = allMaps?.[path]; map = { grid: m?.grid || null, marks: emptyMarks(m?.marks), cues: m?.cues || [], trim: null }; };
+      useMap();
+      sizeCanvas();
+      paint();
+      attach({ playing });
+      if (!allMaps) window.hub.kvGet('three-beatmaps', {}).then((all) => { allMaps ||= all || {}; if (seq !== loadSeq) return; useMap(); sizeCanvas(); sendMap(); paint(); });
+      else sendMap();
+      onLoaded?.({ clock: true });
+      return { ok: true };
+    }
+    // the clock's length changed (/timeline length, its menu, keyframes past its end): the same place, a longer clip
+    function setClockLength(seconds) {
+      if (!st.clock) return false;
+      const key = st.path.slice(6);
+      return loadClock({ key, seconds, fps: st.clock.fps, startAt: now(), playing: st.playing }).ok;
+    }
+    // A song loaded on a scene that had only its own timeline: its cues and markers come along, at the same seconds
+    // (and back to the scene's timeline when the song is taken out). Keyframes live on the layers in seconds already.
+    async function carry(from, to) {
+      if (!from || !to || from === to) return 0;
+      allMaps ||= (await window.hub.kvGet('three-beatmaps', {})) || {};
+      const a = allMaps[from];
+      if (!a) return 0;
+      const b = allMaps[to] || { grid: null, marks: emptyMarks(), cues: [] };
+      let n = 0;
+      b.cues = [...(b.cues || [])];
+      for (const c of a.cues || []) if (!b.cues.some((x) => Math.abs(x.t - c.t) < 0.02)) { b.cues.push({ ...c }); n += 1; }
+      b.cues.sort((x, y) => x.t - y.t);
+      b.marks = emptyMarks(b.marks);
+      for (const ln of LANES) for (const t of a.marks?.[ln.id] || []) { const before = b.marks[ln.id].length; b.marks[ln.id] = addMark(b.marks[ln.id], t); n += b.marks[ln.id].length - before; }
+      allMaps[to] = b;
+      if (st.path === to) { map = { ...map, cues: b.cues, marks: b.marks }; mapChanged(); } else saveMaps();
+      return n;
+    }
+    // a scene copied (Duplicate, a chat's copy, a jam): its own timeline's cues and markers come along
+    async function copyMap(from, to) {
+      allMaps ||= (await window.hub.kvGet('three-beatmaps', {})) || {};
+      if (!allMaps[from] || allMaps[to]) return false;
+      allMaps[to] = JSON.parse(JSON.stringify(allMaps[from]));
+      saveMaps();
+      return true;
     }
     // (Re)sends the file to the sandbox; called after every full reload of the preview.
     // play / pause you asked for that the sandbox hasn't confirmed yet: a preview that reloads meanwhile (just after
@@ -635,7 +722,10 @@ const ThreeMedia = (() => {
         st.time = fx.time;
         if (fx.target == null && st.time === was && !st.playing) return; // the same frame (a scrub inside one frame): nothing to send or redraw
         if (fx.target != null) send({ type: 'media', cmd: 'seek', value: fx.target, ...(fx.msg || {}) });
-      } else send({ type: 'media', cmd: 'seek', value: st.time });
+      } else {
+        if (st.clock) st.time = Math.min(clockSnap(st.time), D()); // the scene's own timeline: on a frame start
+        send({ type: 'media', cmd: 'seek', value: st.time });
+      }
       // A jump outside the zoomed view brings the view along (unless it's locked).
       if (view && !locked && !dragging && (st.time < view.start || st.time > view.end)) setView({ start: st.time - span() / 2, end: st.time + span() / 2 });
       paint();
@@ -683,7 +773,7 @@ const ThreeMedia = (() => {
     const bpmNow = () => G()?.bpm || st.analysis?.bpm || 0;
     const bpbNow = () => G()?.bpb || 4;
     // "Hits": the nearest kick / snare / hit marker or cue within a beat, else the 1/16 grid.
-    const snapT = (t) => (hooks.snap ? hooks.snap(snapT0(t), t) : snapT0(t));
+    const snapT = (t) => (hooks.snap ? hooks.snap(snapT0(t), t) : clockSnap(snapT0(t)));
     const snapT0 = (t) => {
       if (snapMode !== 'hits') return snapTime(t, snapMode, G(), beats(), dIdx());
       const range = 60 / (bpmNow() || 120);
@@ -1299,6 +1389,7 @@ const ThreeMedia = (() => {
       if (ctrl) return false;
       if (e.key.toLowerCase() === 'a' && !e.altKey && !e.shiftKey) { trackHandlers.onLanesAll?.(); return true; }
       if (e.key.toLowerCase() === 't' && !e.altKey && !e.repeat) { if (e.shiftKey) tapOne(); else tap(); return true; }
+      if ((e.code === 'Comma' || e.code === 'Period') && st.clock && !G()) { seek(now() + (e.code === 'Comma' ? -1 : 1) * (e.shiftKey ? 10 : 1) / clockFps()); return true; }
       if (e.code === 'Comma' || e.code === 'Period') { nudgeByEar(e.code === 'Comma' ? -1 : 1, e); return true; }
       if (e.key.toLowerCase() === 'q' && !e.altKey && !e.shiftKey) { toast(setQuantize(!quantTaps) ? 'Quantize taps on: K / S / H land on the grid' : 'Quantize taps off: K / S / H land on the sound', { timeout: 1400 }); return true; }
       if ((e.key === '=' || e.key === '+') && !e.altKey) { zoomBy(1 / 1.6); return true; }
@@ -1324,7 +1415,7 @@ const ThreeMedia = (() => {
       if (e.key === 'Escape') { if (taps.length) { taps = []; tapSong = []; tapRaw = []; tapBtn.textContent = 'Tap'; tapBtn.classList.remove('on'); } if (autoSel) { autoSel = null; draw(); return true; } selected = null; draw(); return true; }
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         const dir = e.key === 'ArrowLeft' ? -1 : 1;
-        const d = hooks.arrowStep?.(dir, e) ?? dir * (e.shiftKey ? snapStep(snapMode, G(), bpmNow()) : e.altKey ? 0.001 : 0.01);
+        const d = hooks.arrowStep?.(dir, e) ?? (st.clock && !e.altKey ? dir * (e.shiftKey ? 10 : 1) / clockFps() : dir * (e.shiftKey ? snapStep(snapMode, G(), bpmNow()) : e.altKey ? 0.001 : 0.01));
         if (autoSel?.idx.size) nudgePoints(d, 0, e.repeat);
         else if (selected?.type === 'edge' && region && !locked) setRegionEdge(selected.edge, region[selected.edge] + d, { exact: true });
         else if (selected?.type === 'mark') { if (!e.repeat || !nudgeKey.pushed) { pushUndo(); nudgeKey.pushed = true; } moveSelectedMark(selected.t + d); mapChanged(); }
@@ -1583,11 +1674,13 @@ const ThreeMedia = (() => {
     // same-value write still counts as a DOM change and restyles the row)
     function paint() {
       bar.classList.toggle('mb-empty', !st.bytes);
+      bar.classList.toggle('mb-clock', Boolean(st.clock));
       bar.classList.toggle('locked', locked);
       setText(nameEl, st.name ? (analyzing ? `${st.name} · analyzing…` : st.name) : 'No music loaded: sketches get a demo beat');
       setText(loadBtn, st.bytes ? '🎵' : '🎵 Load audio / video…');
-      setProp(nameEl, 'title', st.path || '');
-      setProp(unloadBtn, 'hidden', !st.bytes);
+      setProp(loadBtn, 'title', st.clock ? 'Load a song or a video onto this scene\'s timeline (its keyframes and cues keep their seconds)' : 'Pick an mp3, wav, mp4… to drive the sketch (or drop one on the preview)');
+      setProp(nameEl, 'title', st.clock ? `This scene's own timeline: ${fmtLen(D())} at ${clockFps()} fps, no song (keyframes, cues and the loop work on it, frame by frame) · click: its length` : st.path || '');
+      setProp(unloadBtn, 'hidden', !st.bytes || Boolean(st.clock));
       setText(playBtn, st.playing ? '⏸' : '▶');
       loopBtn.classList.toggle('on', st.loop);
       setProp(zoomOut, 'disabled', locked || !D()); setProp(zoomIn, 'disabled', locked || !D());
@@ -1634,7 +1727,7 @@ const ThreeMedia = (() => {
     function draw(ov = null) {
       const t = now();
       if (!ov) {
-        setText(timeEl, hooks.timeText?.(t) ?? (D() ? `${span() < 20 ? fmtMs(t) : fmtTime(t)} / ${fmtTime(D())}` : fmtTime(t)));
+        setText(timeEl, hooks.timeText?.(t) ?? clockText(t) ?? (D() ? `${span() < 20 ? fmtMs(t) : fmtTime(t)} / ${fmtTime(D())}` : fmtTime(t)));
         setText(miniTime, D() ? `${fmtTime(t)} / ${fmtTime(D())}` : '');
         setText(miniPlay, st.playing ? '⏸' : '▶');
         drawMinimap(t);
@@ -2902,6 +2995,7 @@ const ThreeMedia = (() => {
       timeline({ from = 0, to = Infinity } = {}) {
         const pick = (arr) => arr.filter((t) => t >= from && t <= to).slice(0, 400);
         return {
+          ...(st.clock ? { sceneTimeline: `no song: the scene's own timeline (${fmtLen(D())} at ${clockFps()} fps); times in seconds, frame-exact` } : {}),
           duration: Math.round(D() * 1000) / 1000, playhead: Math.round(now() * 1000) / 1000,
           grid: map.grid ? { bpm: map.grid.bpm, downbeat: map.grid.anchor, beatsPerBar: map.grid.bpb, setBy: 'user' } : { bpm: bpmNow(), ...(autoGrid() ? { downbeat: autoGrid().anchor, beatsPerBar: 4 } : {}), setBy: 'auto-detected' },
           markers: Object.fromEntries(LANES.map((ln) => [ln.id, pick(map.marks[ln.id])])),
@@ -2915,6 +3009,10 @@ const ThreeMedia = (() => {
       get trim() { return map.trim ? { ...map.trim } : null; },
       setTrim: (r) => setTrim(r), setTrimEdge: (edge, t) => setTrimEdge(edge, t ?? now()), cutLoop: () => cutLoop(), sendClip: (as) => sendClip(as),
       get isVideo() { return st.video; },
+      // the scene's own timeline (round 10): a scene with no song still has one (see loadClock)
+      loadClock: (o) => loadClock(o), setClockLength: (s) => setClockLength(s), carry: (from, to) => carry(from, to), copyMap: (from, to) => copyMap(from, to),
+      get clock() { return st.clock ? { seconds: D(), fps: clockFps(), frame: clockFrame(now()), frames: Math.round(D() * clockFps()) } : null; },
+      get isClock() { return Boolean(st.clock); },
       get loop() { return region ? { ...region } : null; },
       setLoop(a, b) { if (locked) return false; setRegion(a == null ? null : { a, b }); return true; },
       get recording() { return Boolean(recording); },
@@ -2924,6 +3022,7 @@ const ThreeMedia = (() => {
       // For the Three Director: what's loaded, the user's grid and hit markers, and the song's shape.
       info() {
         if (!st.bytes) return { loaded: false, note: 'No music loaded. Sketches get a demo 120 bpm beat; the user can load a file with "🎵 Load audio / video…" or you can use three_load_media.' };
+        if (st.clock) return { loaded: false, file: null, sceneTimeline: { seconds: D(), fps: clockFps(), time: Math.round(now() * 1000) / 1000, frame: clockFrame(now()), playing: st.playing, cues: map.cues.length }, note: 'No song: the scene has its own timeline (keyframes, cues and the loop work on it, frame-exact; nothing reacts to music). The user can load a song with 🎵 (or three_load_media): the keyframes and cues keep their seconds.' };
         const a = st.analysis;
         const hits = Object.fromEntries(LANES.map((ln) => [ln.id, { count: map.marks[ln.id].length, first: map.marks[ln.id].slice(0, 12) }]));
         const out = {
