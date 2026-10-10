@@ -1783,5 +1783,7 @@ const Native = (() => {
     // (round 9) a card in a reply that is still streaming (chat-things.js); null when no reply runs in that chat
     liveCard(chatId, node) { const p = pending.get(chatId); if (!p) return null; p.cards.push(node); repaintPending(chatId); return node; },
     toolLabel, renderChips,
+    // (round 10, sync.js) a chat that arrived from another computer: read again from disk next time (not mid-reply)
+    forget: (chatId) => { if (pending.has(chatId)) return false; chats.delete(chatId); return true; },
   };
 })();

@@ -56,7 +56,10 @@ function readJson(file, fallback) {
 }
 
 // Write to a temp file first so a crash mid-write can't corrupt a chat.
+// Sync (syncmain.js) can merge a save with a version that just arrived from another computer (beforeWrite).
+let beforeWrite = null;
 function writeJson(file, value) {
+  if (beforeWrite) { try { value = beforeWrite(file, value) ?? value; } catch { /* save as given */ } }
   const tmp = `${file}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(value, null, 2));
   fs.renameSync(tmp, file);
@@ -245,4 +248,5 @@ module.exports = {
   getUsage: () => readJson(USAGE_PATH, {}),
   getTokenStats,
   rebuildTokenStats: buildTokenStats,
+  setBeforeWrite: (fn) => { beforeWrite = typeof fn === 'function' ? fn : null; },
 };
