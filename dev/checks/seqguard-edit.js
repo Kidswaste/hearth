@@ -133,6 +133,26 @@ const went = await until(() => Q.playing, 2000);
 const back = await until(() => !Q.playing && Math.abs(Q.time - 4) < 0.05, 6000);
 step('Shift+Space plays around the playhead and comes back to it', went && back, Q.time);
 
+// ---------- the In–Out range, close gaps ----------
+Q.play(false); Q.seek(1); focus(); await J.key('i'); Q.seek(2); await Q.settle(); focus(); await J.key('I', { shift: true }); await wait(150);
+const rg = Q.rangeOf();
+step('I / Shift+I set the In–Out range (the editor\'s own range)', rg && Math.abs(rg.a - 1) < 0.02 && Math.abs(rg.b - 2) < 0.02 && Q.edit.mark && !Q.edit.mark.lab, rg);
+Q._S.loop = true; Q._S.L.send({ type: 'seq-loop', on: true, range: rg });
+Q.seek(1.2); await Q.settle(); Q.play(true);
+let maxT = 0; let wrapped = false; const tEnd = Date.now() + 2600;
+while (Date.now() < tEnd) { const i = await sbx('return __seqInfo()'); if (i.T > maxT) maxT = i.T; if (maxT > 1.6 && i.T < 1.4) wrapped = true; await wait(60); }
+Q.play(false); Q._S.loop = false; Q._S.L.send({ type: 'seq-loop', on: false, range: null });
+step('⟲ Loop with a range loops just the range', wrapped && maxT < 2.2, { maxT, wrapped });
+const out = await Q.render({ range: Q.rangeOf(), crf: 30 }).catch((err) => ({ error: err.message }));
+const pr = out?.path ? await window.hub.video.probe(out.path).catch(() => null) : null;
+step('rendering just the range: 1 s, 30 frames', out?.frames === 30 && (!pr || Math.abs((pr.duration || 1) - 1) < 0.15), { out, dur: pr?.duration });
+await cmd('/sequence range clear');
+step('/sequence range clear', !Q.rangeOf());
+await cmd('/sequence delete 2');
+const gaps0 = Q.edit.clips.filter((c) => c.kind === 'gap').length; const len0 = Q.status().seconds;
+await cmd('/sequence close-gaps');
+step('/sequence close-gaps closes the gap a lift left (the rest moves up)', gaps0 >= 1 && !Q.edit.clips.some((c) => c.kind === 'gap') && Q.status().seconds < len0, { gaps0, len0, len1: Q.status().seconds });
+
 // ---------- chat surface ----------
 step('no duplicate commands', Commands.duplicates().length === 0, Commands.duplicates());
 const keys = Keys.all().filter((k) => k.area === 'Lab sequence').map((k) => k.keys);

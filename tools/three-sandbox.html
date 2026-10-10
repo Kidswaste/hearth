@@ -5967,7 +5967,10 @@ function sqTick() {
   if (!SQ.on || SQ.off) return;
   let T = sqClock();
   const D = SQ.plan?.dur || 0;
-  if (SQ.playing && T >= D) {
+  // (seqguard: ⟲ Loop with an In–Out range loops just that)
+  const LR = SQ.loop && SQ.loopRange ? { a: Math.max(0, SQ.loopRange.a), b: Math.min(D, SQ.loopRange.b) } : null;
+  if (LR && SQ.playing && T >= LR.b && LR.b > LR.a) { T = LR.a; SQ.T0 = T; SQ.at0 = realNow(); const s = sqSong(); if (s && sqInSong(T)) mediaEl.currentTime = T - s.offset; }
+  else if (SQ.playing && T >= D) {
     if (SQ.loop && D > 0) { T = 0; SQ.T0 = 0; SQ.at0 = realNow(); const s = sqSong(); if (s && sqInSong(0)) mediaEl.currentTime = -s.offset; } else { T = D - 1e-3; SQ.playing = false; SQ.ended = true; sqState(true); } // holds the last frame: at T = dur every clip has ended (black)
   }
   SQ.T = Math.max(0, T);
@@ -6172,7 +6175,7 @@ function sqMessage(msg) {
   if (msg.type === 'seq-off') { sqOff(); return; }
   if (msg.type === 'seq-seek') { sqSeek(msg.T, msg.n ?? null); return; }
   if (msg.type === 'seq-play') { sqPlay(msg.on, msg.rate); return; }
-  if (msg.type === 'seq-loop') { SQ.loop = Boolean(msg.on); return; }
+  if (msg.type === 'seq-loop') { SQ.loop = Boolean(msg.on); SQ.loopRange = msg.range && msg.range.b > msg.range.a ? msg.range : null; return; }
   if (msg.type === 'seq-offline') { sqOffline(msg.on).then((r) => post({ type: 'seq-offline', ...r, on: SQ.off })); return; }
   if (msg.type === 'seq-frame') sqFrame(msg).catch((err) => post({ type: 'seq-frame', n: msg.n, error: err.message }));
   // a small picture of what shows now, for the clip under the playhead (the sequence's clip thumbnails)

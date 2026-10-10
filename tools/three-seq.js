@@ -138,6 +138,7 @@ const ThreeSeq = (() => {
     for (const id of [...S.sel]) if (!C.find(S.edit, id)) S.sel.delete(id);
     if (S.T > total()) S.T = total();
     if (save) saveSoon();
+    if (S.view && S.loop) send({ type: 'seq-loop', on: true, range: rangeOf() }); // (an undone range: the loop follows)
     redraw();
     pushPlan();
     emit('change', { key: S.key });
@@ -241,7 +242,7 @@ const ThreeSeq = (() => {
     S.sent.plan = '';
     await sendPlan({ force: true, fade: true });
     send({ type: 'seq-seek', T: S.T });
-    send({ type: 'seq-loop', on: S.loop });
+    send({ type: 'seq-loop', on: S.loop, range: rangeOf() });
     redraw(); placeHead(); paintTime();
     emit('switch', { scene: sid, key: S.key });
   }
@@ -473,7 +474,7 @@ const ThreeSeq = (() => {
     if (L.stage.size.id !== fmt) L.stage.setMode(fmt);
     await sendPlan({ force: true });
     send({ type: 'seq-seek', T: S.T });
-    L.send({ type: 'seq-loop', on: S.loop });
+    L.send({ type: 'seq-loop', on: S.loop, range: rangeOf() });
     requestAnimationFrame(() => { measure(); redraw(); placeHead(); paintTime(); });
     S.lastState = performance.now(); guardOn();
     emit('mode', { on: true });
@@ -722,6 +723,22 @@ const ThreeSeq = (() => {
     aroundT = setTimeout(() => { if (S.playing) play(false); seek(at); }, ((Math.min(pre, at) + post) * 1000) / (S.rate || 1));
     return true;
   }
+  // the In–Out range (I / Shift+I; the editor's own range, so Video Review sees it too): render just that, loop it
+  const rangeOf = (e = S.edit) => (e?.mark && !e.mark.lab && e.mark.b > e.mark.a ? { a: e.mark.a, b: e.mark.b } : null);
+  function setRange(a, b) {
+    if (!S.edit) return null;
+    const lo = clamp(Math.min(a, b), 0, total()); const hi = clamp(Math.max(a, b), 0, total());
+    if (hi - lo < 1 / fps()) { flash('The range needs an In before its Out'); return null; }
+    commit({ ...S.edit, mark: { a: r4(lo), b: r4(hi) } }, `Range ${tc(lo)} – ${tc(hi)}`);
+    send({ type: 'seq-loop', on: S.loop, range: rangeOf() });
+    return rangeOf();
+  }
+  function markIn(t = S.T) { const r = rangeOf(); return setRange(t, r && r.b > t ? r.b : total()); }
+  function markOut(t = S.T) { const r = rangeOf(); return setRange(r && r.a < t ? r.a : 0, t); }
+  function clearRange() { if (!rangeOf()) return false; commit({ ...S.edit, mark: null }, 'No range'); send({ type: 'seq-loop', on: S.loop, range: null }); return true; }
+  function rangeToClip(id = targets()[0]) { const f = id && C.find(S.edit, id); if (!f) return null; const x = f.where === 'clip' ? D.timing(S.edit)[f.i] : { start: f.clip.start, end: C.itemEnd(f.clip) }; return setRange(x.start, x.end); }
+  // every gap closes (the clips after each one move up): one step, undoable
+  function closeGaps() { const gaps = (S.edit?.clips || []).filter((c) => c.kind === 'gap').map((c) => c.id); if (!gaps.length) { flash('No gaps'); return 0; } commit(D.remove(S.edit, gaps, { ripple: true }), `Closed ${gaps.length} gap${gaps.length > 1 ? 's' : ''}`); return gaps.length; }
   // go to a clip (by number, "Titles.2" or name): selected, the playhead at its start
   function goClip(ref) {
     const id = D.resolve(S.edit, ref); if (!id) return null;
@@ -836,7 +853,7 @@ const ThreeSeq = (() => {
     const T = A.find(template) || A.find(base.seq?.arranged?.template) || A.find('music-video');
     const r = A.arrange(base, { scenes: sc, song, template: T, secs, seed: seed ?? newSeed(), lines, name: base.seq?.name, keepOrder });
     commit(r.edit, `✦ ${r.info.name}: ${r.info.clips} clips${r.info.cutsOnBars ? ', cuts on bars' : ''}`);
-    S.loop = Boolean(r.edit.seq?.loop); send({ type: 'seq-loop', on: S.loop });
+    S.loop = Boolean(r.edit.seq?.loop); send({ type: 'seq-loop', on: S.loop, range: rangeOf() });
     S.vr = null; seek(0);
     return r.info;
   }
@@ -1021,12 +1038,14 @@ const ThreeSeq = (() => {
     return wrote;
   }
   // the sound: the song from its in-point at its start, audio clips, footage with its sound on
-  function audioPlan(e0, dur) {
+  function audioPlan(e0, dur, from = 0) {
     const e = flat(e0);
     const parts = [];
     for (const k of (e.tracks || []).filter((x) => x.type === 'audio' && !x.mute)) for (const it of k.items) if (it.src && !it.off) parts.push({ src: it.src, at: it.start, a: it.in, len: (it.out - it.in) / (it.speed || 1), volume: it.volume ?? 1 });
     for (const x of D.timing(e)) { const c = x.clip; if (c.kind === 'video' && !c.mute && !c.off) parts.push({ src: c.src, at: x.start, a: c.in, len: x.end - x.start, volume: c.volume ?? 1, speed: c.speed || 1 }); }
-    return parts.filter((p) => p.at < dur && p.len > 0.01);
+    // (from: a range render starts there: what began before it is cut to it, the rest moves up)
+    if (from > 0) for (const p of parts) { if (p.at < from) { const cut = from - p.at; p.a += cut * (p.speed || 1); p.len -= cut; p.at = 0; } else p.at -= from; }
+    return parts.filter((p) => p.at < dur - from && p.len > 0.01);
   }
   async function ffmpegOf() { try { const t = await window.hub.video.tools({ ffmpeg: H.settings().ffmpegPath || undefined }); return t?.ffmpeg ? t : null; } catch { return null; } }
   async function outDir() {
@@ -1059,7 +1078,7 @@ const ThreeSeq = (() => {
   }
   // an edit (the sequence, or one baked scene) → an mp4. Needs the Lab preview at the frame size (the page draws the
   // scenes at their real pixels), so it switches there first and comes back after.
-  async function renderEdit(e, { format = null, name = null, quiet = false, library = true, onProgress = null, realtime = false, fps = null, crf = 18, sound = true } = {}) {
+  async function renderEdit(e, { format = null, name = null, quiet = false, library = true, onProgress = null, realtime = false, fps = null, crf = 18, sound = true, range = null } = {}) {
     const L = lab();
     if (!L) throw new Error('Open the Three.js Lab first');
     if (S.render) throw new Error('A render is running');
@@ -1073,7 +1092,7 @@ const ThreeSeq = (() => {
     if (!(dur > 0)) throw new Error('The sequence is empty');
     const tools = realtime ? null : await ffmpegOf();
     const dir = await outDir();
-    const stem = `${(name || re.seq?.name || S.key?.slice(4) || 'sequence').replace(/[\\/:*?"<>|]+/g, '_')} ${fmt.replace(':', 'x')}`;
+    const stem = `${(name || re.seq?.name || S.key?.slice(4) || 'sequence').replace(/[\\/:*?"<>|]+/g, '_')} ${fmt.replace(':', 'x')}${range ? ' range' : ''}`;
     S.render = { cancel: false, t0: performance.now() };
     // (round 11) its progress bar: frames rendered (measured), then ffmpeg's mux
     const pgKey = `seq-render:${Date.now().toString(36)}`; const pgUser = onProgress;
@@ -1095,13 +1114,16 @@ const ThreeSeq = (() => {
       await sleep(300);
       if (!tools) { const rt = await recordRealtime(re, { w, h, dir, stem, dur, say, onProgress: (p) => { window.Progress?.set(pgKey, { pct: p * 100, label: 'recording in real time (no ffmpeg)' }); pgUser?.(p); } }); pgOk = true; return rt; }
       const tmp = `${dir}/.hearth-titles-seq${Date.now().toString(36)}`;
-      const N = Math.max(1, Math.round(dur * F));
+      // (seqguard) only the In–Out range: its frames, its sound from there
+      const R = range && range.b > range.a ? { a: Math.max(0, range.a), b: Math.min(dur, range.b) } : null;
+      const N0 = R ? Math.round(R.a * F) : 0;
+      const N = Math.max(1, (R ? Math.round(R.b * F) : Math.round(dur * F)) - N0);
       let output;
       try {
-        await renderFrames(re, { w, h, n0: 0, n1: N, dir: tmp, onProgress: (p) => { onProgress?.(p * 0.85); say(`Rendering the sequence… frame ${Math.round(p * N)} / ${N}`); } });
+        await renderFrames(re, { w, h, n0: N0, n1: N0 + N, dir: tmp, onProgress: (p) => { onProgress?.(p * 0.85); say(`Rendering the sequence… frame ${Math.round(p * N)} / ${N}`); } });
         send({ type: 'seq-offline', on: false });
         output = await uniqueOut(dir, stem, 'mp4');
-        const parts = sound ? audioPlan(re, N / F) : [];
+        const parts = sound ? audioPlan(re, (N0 + N) / F, N0 / F) : [];
         const args = ['-y', '-framerate', String(F), '-i', `${tmp}/frame_%05d.jpg`];
         parts.forEach((p) => args.push('-i', p.src));
         if (parts.length) {
@@ -1288,6 +1310,9 @@ const ThreeSeq = (() => {
       for (let t = Math.floor(v.t0 / stepS) * stepS; t <= v.t1; t += stepS) { const x = xOf(t); g.fillStyle = dim; g.fillRect(Math.round(x), 2, 1, RULER - 2); g.fillStyle = ink; g.fillText(stepS < 1 ? `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}` : `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`, x + 3, 1); }
     }
     for (const m of e?.markers || []) { const x = xOf(m.t); g.fillStyle = gold; g.beginPath(); g.moveTo(x - 4, 0); g.lineTo(x + 4, 0); g.lineTo(x, 6); g.fill(); if (m.label && x > -40 && x < w) { g.font = '9px system-ui, sans-serif'; g.textBaseline = 'top'; g.fillText(m.label, x + 5, 4, 70); g.font = '10px system-ui, sans-serif'; } }
+    // (seqguard) the In–Out range: a band on the ruler, faint over the tracks
+    const rg = rangeOf(e);
+    if (rg) { const a = xOf(rg.a); const b2 = xOf(rg.b); g.fillStyle = 'rgba(255,215,94,0.22)'; g.fillRect(a, 0, b2 - a, RULER); g.fillStyle = 'rgba(255,215,94,0.06)'; g.fillRect(a, RULER, b2 - a, hh - RULER); g.fillStyle = gold; g.fillRect(Math.round(a), 0, 1, RULER); g.fillRect(Math.round(b2), 0, 1, RULER); }
     const Ls = lanes();
     const lane = (id) => Ls.find((l) => l.id === id);
     for (const l of Ls) { g.fillStyle = 'rgba(255,255,255,0.025)'; g.fillRect(0, l.y, w, l.h); }
@@ -1547,6 +1572,14 @@ const ThreeSeq = (() => {
       { label: 'Delete', key: 'Delete', danger: true, action: () => del(false, [c.id]) }, { label: 'Ripple delete', key: 'Shift+Delete', danger: true, action: () => del(true, [c.id]) });
     showMenu(x, y, items);
   }
+  function rangeItems() {
+    const r = rangeOf();
+    return [{ label: 'In here', key: 'I', action: () => markIn() }, { label: 'Out here', key: 'Shift+I', action: () => markOut() },
+      { label: 'The selected clip', disabled: !targets().length, action: () => rangeToClip() },
+      { label: 'Go to the In', disabled: !r, action: () => { play(false); seek(r.a); } },
+      { label: '⇪ Render the range…', disabled: !r, action: () => renderPanel().catch((err) => toast(err.message, { type: 'error' })) },
+      { label: 'Clear the range', disabled: !r, action: () => clearRange() }];
+  }
   // (seqguard) the markers as a list to jump to, with a named one and the song's sections
   function markerItems() {
     const ms = markersSorted();
@@ -1668,7 +1701,9 @@ const ThreeSeq = (() => {
       { label: '▦ Every cut on a bar', hint: grid() ? '' : 'needs a song', disabled: !grid(), action: () => fit() },
       { label: 'Transitions everywhere', items: () => [...TRANS_TOP.map((t) => ({ label: EditFX.TRANS[t]?.name || 'Cut', action: () => setTransition(t) })), { label: '✦ Lab moves', items: () => (TR()?.LAB || []).map((t) => ({ label: t.name, hint: t.desc, action: () => setTransition(t.id) })) }] },
       { label: '✂ Finish in the video editor', hint: 'the same sequence', action: () => toEditor() },
-      { label: S.loop ? '⟲ Loop off' : '⟲ Loop', action: () => { S.loop = !S.loop; send({ type: 'seq-loop', on: S.loop }); } },
+      { label: S.loop ? '⟲ Loop off' : '⟲ Loop', hint: rangeOf() ? 'the In–Out range' : '', action: () => { S.loop = !S.loop; send({ type: 'seq-loop', on: S.loop, range: rangeOf() }); } },
+      { label: 'Range', hint: rangeOf() ? `${tc(rangeOf().a)} – ${tc(rangeOf().b)}` : 'I / Shift+I', items: rangeItems },
+      { label: 'Close every gap', more: true, disabled: !(S.edit?.clips || []).some((c) => c.kind === 'gap'), action: () => closeGaps() },
       { label: S.snap ? 'Snapping off' : 'Snapping on', key: 'Shift+S', hint: 'bars, beats, markers, edges', action: () => setSnap() },
       { label: 'Zoom', key: '\\ + −', items: () => [{ label: 'To the selection', key: 'Z', disabled: !selIds().length, action: () => zoomToSel() }, ...ZOOMS.map(([z, label, key]) => ({ label, key, action: () => zoomTo(z) }))] },
       { label: 'Markers', hint: String((S.edit?.markers || []).length || ''), items: markerItems },
@@ -1687,14 +1722,17 @@ const ThreeSeq = (() => {
     if (!S.edit) await current();
     const cur = D.formatOf(S.edit);
     const last = store.get('three.seq.renderOpts', {});
-    const st = { formats: new Set((last.formats || []).filter((f) => D.FORMATS[f])), fps: last.fps || S.edit?.seq?.fps || 30, quality: QUALITY[last.quality] ? last.quality : 'high', sound: last.sound !== false, open: last.open !== false };
+    const st = { formats: new Set((last.formats || []).filter((f) => D.FORMATS[f])), fps: last.fps || S.edit?.seq?.fps || 30, quality: QUALITY[last.quality] ? last.quality : 'high', sound: last.sound !== false, open: last.open !== false, range: Boolean(rangeOf()) };
     if (!st.formats.size) st.formats.add(cur);
     const dlg = el('dialog', { class: 'ui-modal sq-render-panel' });
     const chip = (on, text, title, click) => el('button', { type: 'button', class: `sq-chip${on ? ' on' : ''}`, text, title, on: { click } });
     const body = el('div', { class: 'sq-rp-body' });
     const go = el('button', { type: 'button', class: 'primary', text: '⇪ Render' });
-    const len = programEnd(S.edit);
+    const full = programEnd(S.edit);
+    const rg = rangeOf();
+    let len = rg && st.range ? rg.b - rg.a : full;
     function paint() {
+      len = rg && st.range ? Math.min(rg.b, full) - rg.a : full;
       const n = st.formats.size;
       body.replaceChildren(
         el('div', { class: 'sq-rp-row' }, el('b', { text: 'Format' }), el('div', { class: 'sq-chips' }, Object.keys(D.FORMATS).map((f) => chip(st.formats.has(f), f, `${D.FORMATS[f].join('×')}${f === cur ? ' (the sequence\'s own)' : ''}`, () => { if (st.formats.has(f) && st.formats.size > 1) st.formats.delete(f); else st.formats.add(f); paint(); })))),
@@ -1702,6 +1740,7 @@ const ThreeSeq = (() => {
         el('div', { class: 'sq-rp-row' }, el('b', { text: 'Quality' }), el('div', { class: 'sq-chips' }, Object.entries(QUALITY).map(([k, q]) => chip(st.quality === k, q.label, q.hint, () => { st.quality = k; paint(); })))),
         el('label', { class: 'sq-rp-check' }, el('input', { type: 'checkbox', checked: st.sound, on: { change: (e) => { st.sound = e.target.checked; } } }), ' With the sound'),
         el('label', { class: 'sq-rp-check' }, el('input', { type: 'checkbox', checked: st.open, on: { change: (e) => { st.open = e.target.checked; } } }), ' Open in Video Review when it\'s done'),
+        rg ? el('label', { class: 'sq-rp-check sq-rp-range' }, el('input', { type: 'checkbox', checked: st.range, on: { change: (e) => { st.range = e.target.checked; paint(); } } }), ` Only the In–Out range (${tc(rg.a)} – ${tc(rg.b)})`) : null,
         el('div', { class: 'sq-rp-sum', text: `${len > 0 ? `${len.toFixed(1)} s · ${Math.round(len * st.fps)} frames` : 'The sequence is empty'}${n > 1 ? ` · ${n} videos, one after the other` : ''}` }),
       );
       go.disabled = !(len > 0);
@@ -1718,7 +1757,7 @@ const ThreeSeq = (() => {
       dlg.close();
       let lastOut = null;
       for (const f of st.formats) {
-        try { lastOut = await render({ format: f, fps: st.fps, crf: QUALITY[st.quality].crf, sound: st.sound, ...opts }); } catch (err) { toast(err.message, { type: 'error' }); break; }
+        try { lastOut = await render({ format: f, fps: st.fps, crf: QUALITY[st.quality].crf, sound: st.sound, range: rg && st.range && !opts.realtime ? rg : null, ...opts }); } catch (err) { toast(err.message, { type: 'error' }); break; }
       }
       if (st.open && lastOut?.path) openOutput(lastOut.path);
     };
@@ -1759,7 +1798,7 @@ const ThreeSeq = (() => {
       // (you moved the playhead meanwhile: there)
       const T = (S.moved || 0) === n0 ? T0 : S.T;
       S.T = T; S.restoreBusy = { T, until: performance.now() + 1500 };
-      send({ type: 'seq-loop', on: S.loop });
+      send({ type: 'seq-loop', on: S.loop, range: rangeOf() });
       send({ type: 'seq-seek', T });
       if (S.want && !S.render) send({ type: 'seq-play', on: true, rate: S.rate || 1 });
       S.lastState = performance.now();
@@ -1931,7 +1970,7 @@ const ThreeSeq = (() => {
     ['[ / ]', 'The clip ends one frame earlier / later'], ['Shift+[ / Shift+]', 'The clip starts one frame earlier / later'],
     [`${MOD}+A`, 'Select every clip'], ['A', 'Select from the playhead to the end'], ['Z', 'Zoom to the selection (nothing selected: the whole sequence)'],
     ['Shift+S', 'Snapping on / off'], ['Shift+M', 'A marker with a name'], ['Shift+↑ / Shift+↓', 'Previous / next marker'],
-    ['Shift+Space', 'Play around the playhead (2 s before, 1 s after) and come back'],
+    ['Shift+Space', 'Play around the playhead (2 s before, 1 s after) and come back'], ['I / Shift+I', 'Range: In / Out at the playhead (⟲ Loop and ⇪ Render can use just that)'],
   ];
   function onKey(e) {
     if (!S.view || !S.edit) return;
@@ -1965,6 +2004,7 @@ const ThreeSeq = (() => {
     if (low === 's' && e.shiftKey) { setSnap(); done(); return; }
     if (low === 'm' && e.shiftKey) { namedMarker(); done(); return; }
     if (low === 'a' && !e.shiftKey) { selectAfter(); done(); return; }
+    if (low === 'i') { if (e.shiftKey) markOut(); else markIn(); done(); return; }
     if (low === 'z' && !e.shiftKey) { zoomToSel(); done(); return; }
     if (k === 'Delete' || k === 'Backspace') { del(e.shiftKey); done(); return; }
     if (low === 'd' && !e.shiftKey) { dup(); done(); return; }
@@ -2067,7 +2107,7 @@ const ThreeSeq = (() => {
     if (tool !== 'three_sequence') return null;
     const op = String(a.op || a.action || 'status');
     try {
-      if (op === 'help') return { ok: true, value: 'ops: status | list | new {name, format} | open {name} | show | hide | add {scene | footage (path) | title (text) | overlay (layer / filter name) | song (path), at (s | "bar 9" | "f120"), bars | secs, look} | transition {clip, type, dur} (clip omitted: every cut) | length {clip, secs | bars} | trim {clip, edge: in|out, to} | split {at} | delete {clip, ripple} | move {clip, to (position 1..n)} | duplicate {clip} | slip {clip, frames} | look {clip, name} | fit (cuts on bars) | format {format} | seek {at} | frame {at, see} | play | pause | render {format: 9:16|16:9|1:1|4:5} | editor | back | undo | redo · arrange {template, scenes: [names], secs, lines} (the scenes on the song sections, cuts on bars; again: another one) | templates | versions {secs: [15, 6], render} | fill {clip (a gap)} | vary {clip, amount, reset} | vary_sections | swap_looks {clip} | retime {song} | nest {name} | unnest {clip} | copy {clips: [..]} | paste {at, into (sequence name)} | roll {clip, to} | slide {clip, by} | marker {at, label} | section_markers | zoom {to: fit | "4 bars" | secs} | render {format: all} · nudge {clip(s), frames | beats} | trim_frames {clip, edge, frames} | speed {clip(s), rate} | color {clip(s), color | none} | markers_list | marker_go {name | n | next | prev} | marker_rename {n, label} | marker_delete {n} | snap {on} | select {what: all | none | after | range, from, until} | history {back | forward} | clip {clip} (go to it) | zoom_selection | health. Each scene owns its sequence: ops act on the current scene one; of (or scene, except for add): another scene. clip = number (1 = first on the main track), "Titles.2", or a scene / title name.' };
+      if (op === 'help') return { ok: true, value: 'ops: status | list | new {name, format} | open {name} | show | hide | add {scene | footage (path) | title (text) | overlay (layer / filter name) | song (path), at (s | "bar 9" | "f120"), bars | secs, look} | transition {clip, type, dur} (clip omitted: every cut) | length {clip, secs | bars} | trim {clip, edge: in|out, to} | split {at} | delete {clip, ripple} | move {clip, to (position 1..n)} | duplicate {clip} | slip {clip, frames} | look {clip, name} | fit (cuts on bars) | format {format} | seek {at} | frame {at, see} | play | pause | render {format: 9:16|16:9|1:1|4:5} | editor | back | undo | redo · arrange {template, scenes: [names], secs, lines} (the scenes on the song sections, cuts on bars; again: another one) | templates | versions {secs: [15, 6], render} | fill {clip (a gap)} | vary {clip, amount, reset} | vary_sections | swap_looks {clip} | retime {song} | nest {name} | unnest {clip} | copy {clips: [..]} | paste {at, into (sequence name)} | roll {clip, to} | slide {clip, by} | marker {at, label} | section_markers | zoom {to: fit | "4 bars" | secs} | render {format: all} · nudge {clip(s), frames | beats} | trim_frames {clip, edge, frames} | speed {clip(s), rate} | color {clip(s), color | none} | markers_list | marker_go {name | n | next | prev} | marker_rename {n, label} | marker_delete {n} | snap {on} | select {what: all | none | after | range, from, until} | history {back | forward} | clip {clip} (go to it) | zoom_selection | range {in, out | clip | clear} (render {range: true} renders just it; loop loops it) | close_gaps | health. Each scene owns its sequence: ops act on the current scene one; of (or scene, except for add): another scene. clip = number (1 = first on the main track), "Titles.2", or a scene / title name.' };
       if (op === 'list') return { ok: true, value: { sequences: await list(), open: S.key?.slice(4) || null } };
       await ThreeLab.cmd({ show: true });
       if (op === 'new') { await create(a.name || null, { format: a.format || null, empty: Boolean(a.empty) }); return { ok: true, value: status() }; }
@@ -2152,7 +2192,7 @@ const ThreeSeq = (() => {
       if (op === 'section_markers') { await sectionMarkers(); return { ok: true, value: { markers: (S.edit.markers || []).map((m) => `${m.t.toFixed(2)} ${m.label || ''}`.trim()) } }; }
       if (op === 'zoom') { zoomTo(a.to === 'fit' || a.to == null ? 'fit' : /bar/.test(String(a.to)) ? String(a.to) : Number(a.to)); return { ok: true, value: { view: S.vr ? [r4(S.vr.t0), r4(S.vr.t1)] : 'all' } }; }
       if (op === 'render' && /^all$/i.test(String(a.format || ''))) { const out = []; for (const f of Object.keys(D.FORMATS)) out.push((await render({ format: f })).path); return { ok: true, value: { files: out, note: 'In Video Review (library)' } }; }
-      if (op === 'render') { const r = await render({ format: a.format || null }); return { ok: true, value: { file: r.path, frames: r.frames, format: r.format, size: `${r.w}×${r.h}`, note: 'In Video Review (library)' } }; }
+      if (op === 'render') { const r = await render({ format: a.format || null, range: a.range ? rangeOf() : null }); return { ok: true, value: { file: r.path, frames: r.frames, format: r.format, size: `${r.w}×${r.h}`, note: 'In Video Review (library)' } }; }
       // ---- seqguard (round 13): nudge, key trims, speed, colors, markers, snapping, selection, history, health ----
       const many = (v) => [].concat(v ?? []).map((x) => clipId(x));
       if (op === 'nudge') { const ids = a.clips != null || a.clip != null ? many(a.clips ?? a.clip) : targets(); nudge(Number(a.frames) || 0, { beats: Number(a.beats) || 0, ids }); return { ok: true, value: status() }; }
@@ -2173,6 +2213,14 @@ const ThreeSeq = (() => {
       if (op === 'clip' || op === 'goto_clip') { const id = goClip(a.clip ?? a.n); if (!id) return { ok: false, error: `No clip "${a.clip}"` }; return { ok: true, value: status().playhead }; }
       if (op === 'health') return { ok: true, value: health() };
       if (op === 'zoom_selection') return { ok: true, value: { view: zoomToSel() || 'all' } };
+      if (op === 'range') {
+        if (a.clear || a.to === 'clear') clearRange();
+        else if (a.clip != null) rangeToClip(clipId(a.clip));
+        else if (a.in != null || a.out != null || a.from != null) { const r0 = rangeOf(); setRange(timeOf(a.in ?? a.from) ?? r0?.a ?? 0, timeOf(a.out ?? a.until) ?? r0?.b ?? total()); }
+        const r = rangeOf();
+        return { ok: true, value: { range: r ? { a: r4(r.a), b: r4(r.b), from: tc(r.a), to: tc(r.b) } : null } };
+      }
+      if (op === 'close_gaps') { closeGaps(); return { ok: true, value: status() }; }
       if (op === 'editor') { await toEditor(); return { ok: true, value: { opened: 'Video Review editor, the same sequence', key: S.key } }; }
       if (op === 'back') { await fromEditor(); return { ok: true, value: status() }; }
       return { ok: false, error: `Unknown op "${op}" (op: "help")` };
@@ -2217,7 +2265,7 @@ const ThreeSeq = (() => {
   addEventListener('hearth:sketch', () => { if (S.hold) { S.hold = false; return; } if (!S.view && !S.render) S.explicit = false; });
   addEventListener('hearth:lab-ready', () => { setTimeout(() => list().then(() => emit('index', {})).catch(() => {}), 1500); });
   const api = {
-    renderPanel, reloadPreview, restore, sizeChanged, health, history, goBack, goForward, nudge, trimBy, setSpeed, setColor, goMarker, renameMarker, deleteMarker, markerList, setSnap, selectAll, selectRange, selectAfter, zoomToSel, playAround, goClip, SWATCHES, attach, onMessage, takeRecording, keep, posterImage, owns: () => S.view, sketchChanged, previewItem,
+    renderPanel, reloadPreview, setRange, markIn, markOut, clearRange, rangeToClip, rangeOf: () => rangeOf(), closeGaps, restore, sizeChanged, health, history, goBack, goForward, nudge, trimBy, setSpeed, setColor, goMarker, renameMarker, deleteMarker, markerList, setSnap, selectAll, selectRange, selectAfter, zoomToSel, playAround, goClip, SWATCHES, attach, onMessage, takeRecording, keep, posterImage, owns: () => S.view, sketchChanged, previewItem,
     enter, leave, toggle, open, create, current, list, add, addCurrent, applyVibe, select, split, del, dup, slipBy, trimToHead, marker, setTransition, setLength, setLook, fit, setFormat,
     play, seek, step, shuttle, jump, settle, undo, redo, render, renderEdit, renderScene, toEditor, fromEditor, needsBake, bake, compile, status, handle, timeOf, secsOf, zoomBy,
     arrange, again, retime, versions, fillGap, vary, varySections, copyLook, pasteLook, swapLooks, nest, unnest, copySel, paste, zoomTo, sectionMarkers, decideArrangement, recordForEditor,

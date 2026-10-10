@@ -41,6 +41,7 @@
     ['ripple', 'ripple <clip n>: delete and close the gap'], ['markers', 'markers: at the song\'s sections · markers list | go <n | name | next | prev> | rename <n> <label> | delete <n>'],
     ['snap', 'snap [on | off]: snapping to bars, beats, markers, edges'], ['select', 'select <all | none | after | 2 3 | from 4 to 8>'], ['history', 'history [back n | forward n]: the undo list'],
     ['clip', 'clip <n | name>: go to a clip (selected)'], ['around', 'Play around the playhead and come back'], ['health', 'The preview watchdog: what it restored'],
+    ['range', 'range <in | out | clip n | 2.5 6 | clear>: the In–Out range (⟲ loop it, render it)'], ['close-gaps', 'Close every gap (the clips after move up)'],
   ];
   const call = async (args) => { const r = await Q().handle('three_sequence', args); if (!r.ok) throw new Error(r.error); return r.value; };
   const clipArg = (w) => (/^\d+$/.test(w || '') ? Number(w) : w);
@@ -62,6 +63,7 @@
       if (/^markers?$/i.test(w[0]) && w.length <= 2) return opts(['list', 'go next', 'go prev', 'sections', 'rename 1 ', 'delete 1'].map((r) => `markers ${r}`), a);
       if (/^select$/i.test(w[0])) return opts(['all', 'none', 'after', 'from 0 to 4'].map((r) => `select ${r}`), a);
       if (/^snap$/i.test(w[0])) return opts(['on', 'off'].map((r) => `snap ${r}`), a);
+      if (/^range$/i.test(w[0])) return opts(['in', 'out', 'clip 1', 'clear', 'render'].map((r) => `range ${r}`), a);
       if (/^history$/i.test(w[0])) return opts(['back 1', 'back 3', 'forward 1'].map((r) => `history ${r}`), a);
       if (/^(versions)$/i.test(w[0])) return opts(['15 6', '15', '6', '30', '15 6 render'].map((z) => `versions ${z}`), a);
       if (/^scene$/i.test(w[0])) return opts(names().map((n) => `scene ${n}`), a);
@@ -156,6 +158,14 @@
       if (sub === 'select') { const m = /from\s+(\S+)\s+to\s+(\S+)/i.exec(rest); const v = await call(m ? { op: 'select', what: 'range', from: m[1], until: m[2] } : /^\d/.test(rest) ? { op: 'select', what: 'clips', clips: w.slice(1).map(clipArg) } : { op: 'select', what: rest || 'all' }); return `${v.selected} selected${v.clips.length ? `:\n${v.clips.slice(0, 12).join('\n')}` : ''}`; }
       if (sub === 'history') { const back = /back\s+(\d+)/i.exec(rest); const fwd = /forward\s+(\d+)/i.exec(rest); const v = await call({ op: 'history', back: back ? Number(back[1]) : undefined, forward: fwd ? Number(fwd[1]) : undefined }); return v.back.length || v.forward.length ? [...v.forward.map((x) => `↷ ${x.label}`), ...v.back.slice(0, 15).map((x) => `${x.steps}. ${x.label} · ${x.ago}`)].join('\n') : 'No changes yet.'; }
       if (sub === 'clip' || sub === 'goto') { const v = await call({ op: 'clip', clip: clipArg(rest) }); return `${v.timecode} · f${v.frame} · ${v.showing}`; }
+      if (sub === 'range') {
+        const v0 = (w[1] || '').toLowerCase();
+        if (v0 === 'render') { const r = await Q().render({ range: Q().rangeOf() }); return `Rendered the range: **${r.path.split(/[\\/]/).pop()}** (${r.frames} frames)`; }
+        const args0 = v0 === 'in' ? { in: Q().time } : v0 === 'out' ? { out: Q().time } : v0 === 'clear' ? { clear: true } : v0 === 'clip' ? { clip: clipArg(w[2]) } : w[1] ? { in: w[1], out: w[2] } : {};
+        const v = await call({ op: 'range', ...args0 });
+        return v.range ? `Range ${v.range.from} – ${v.range.to} (⟲ Loop plays it, ⇪ Render can render just it)` : 'No range';
+      }
+      if (sub === 'close-gaps' || sub === 'gaps') return lines(await call({ op: 'close_gaps' }));
       if (sub === 'around') { Q().playAround(); return 'Playing around the playhead (2 s before, 1 s after).'; }
       if (sub === 'health' || sub === 'watchdog') { const v = await call({ op: 'health' }); const r = v.restores; return `Watchdog ${v.watching ? 'watching' : 'idle (the sequence isn\'t on screen)'} · restored ${r.soft + r.hard + r.remount + r.assets}× (clock / lost plan ${r.soft}, fresh page ${r.hard}, clips ${r.remount}, files ${r.assets})${v.last ? ` · last: ${v.last.why}` : ''}`; }
       if (sub === 'scene') { const v = await call({ op: 'show', of: rest || undefined }); return lines(v); }
