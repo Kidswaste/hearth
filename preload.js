@@ -170,6 +170,10 @@ contextBridge.exposeInMainWorld('hub', {
     rmtemp: call('video:rmtemp'),
     onJob: on('video:job-event'),
   },
+  // Adobe apps (adobemain.js): status, ExtendScript, open with, the Hearth bridge (Premiere / Media Encoder), web apps
+  adobe: { status: call('adobe:status'), run: call('adobe:run'), open: call('adobe:open'), running: call('adobe:running'), bridge: call('adobe:bridge'), presets: call('adobe:presets'), dir: call('adobe:dir'), web: call('adobe:web') },
+  // Publishing (deploymain.js): CLIs + sign-in, build, local preview + check, deploy, remove, roll back
+  deploy: { status: call('deploy:status'), login: call('deploy:login'), build: call('deploy:build'), preview: call('deploy:preview'), verify: call('deploy:verify'), run: call('deploy:run'), remove: call('deploy:remove'), rollback: call('deploy:rollback'), dir: call('deploy:dir'), onEvent: (cb) => { const fn = (_e, d) => cb(d); ipcRenderer.on('deploy:event', fn); return () => ipcRenderer.removeListener('deploy:event', fn); } },
   // The render queue (rendersmain.js): run / pause / resume / cancel a queued ffmpeg job, encoders of this ffmpeg
   renders: { run: call('renders:run'), pause: call('renders:pause'), resume: call('renders:resume'), cancel: call('renders:cancel'), relay: call('renders:relay'), encoders: call('renders:encoders') },
 });

@@ -2026,6 +2026,7 @@ const VideoCut = (() => {
         { label: 'Duplicate this edit as a new sequence', action: () => duplicateSequence() },
         isSeq() ? { label: 'Rename the sequence…', action: async () => { const v = await Modal.prompt('Sequence name', { value: st.path.slice(4) }); if (v?.trim()) renameSequence(v.trim()); } } : null,
         { label: 'Save as an EDL (for other editors)', action: () => exportEdl() },
+        typeof Adobe !== 'undefined' ? { label: 'Send to Premiere Pro (FCP XML)', action: () => Adobe.sendEdit().then((r) => toast(r.premiere.ok ? `In Premiere Pro: ${r.name}` : `${r.premiere.manual}${r.premiere.needsBridge ? ' · or /adobe bridge install' : ''}`, { timeout: 12000 })).catch((err) => toast(err.message, { type: 'error' })) } : null, // (round 14) adobe.js
       ].filter(Boolean) },
       { label: 'Undo', action: undo }, { label: 'Redo', action: redo },
       { more: true, label: 'Copy the edit list', action: () => copyText(C.describeAll(st.edit, { tc: fmtProg }).join('\n'), 'Edit list copied') },

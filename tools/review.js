@@ -1502,6 +1502,7 @@ const Review = (() => {
     showMenu(r.right - 280, r.bottom + 4, [
       { label: `💬 ${refs.segDirector?.textContent || 'Director'} chat`, action: () => refs.segDirector?.click() },
       { label: '🧰 After Effects toolkit', action: () => AEKit.openKit?.() },
+      typeof Adobe !== 'undefined' && S.cur ? { label: 'Send to', items: () => [...Adobe.videoItems(S.cur.path), ...(typeof Deploy !== 'undefined' ? Deploy.videoItems(S.cur.path) : [])] } : null, // (round 14) Premiere, Media Encoder, After Effects, the web
       segBtn(/Flow/) ? { label: '⧉ Flow: the pipeline as nodes', action: () => segBtn(/Flow/)?.click() } : null,
       { label: 'Export for social…', action: () => exportMenu(anchor) },
       VC() && S.cur ? { label: `✂ ${VideoCut.active ? 'Back to the review' : 'Cut clips'} (E)`, action: () => VideoCut.toggle() } : null,

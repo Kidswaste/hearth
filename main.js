@@ -391,6 +391,8 @@ aemain.registerIpc(ipcMain, () => win, () => settings().aePath);
 require('./boardmain').registerIpc(ipcMain, () => win); // mood board: file import, website snapshots
 require('./capturemain').register(ipcMain, () => win, settings); // screenshots / recordings of Hearth itself, frame reader
 require('./rendersmain').register(ipcMain, () => win, settings); // the render queue: pause / resume / cancel ffmpeg jobs
+require('./adobemain').register(ipcMain, () => win, settings); // Photoshop, Illustrator, Premiere, Media Encoder, InDesign scripting
+require('./deploymain').register(ipcMain, () => win, settings); // publish on Vercel / Netlify / Cloudflare Pages / GitHub Pages
 syncmain.register(ipcMain, () => win, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, themePath: THEME_PATH, store }); // sync through a cloud drive folder
 require('./chatmediamain').register(ipcMain, { workspace: path.join(store.DATA_DIR, 'workspace') }); // pictures / videos a chat made, shown in the reply
 require('./updatermain').register(ipcMain, { restart: () => appshell.restartApp(), getWin: () => win }); // ⬆ Update: pull main from the app's git checkout, reload / restart
