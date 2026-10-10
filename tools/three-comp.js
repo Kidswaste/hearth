@@ -445,7 +445,7 @@ const ThreeComp = (() => {
     try {
       Keys.add(
         { area: 'Lab', keys: 'Alt+C', what: '◫ Comp: another scene (another chat\'s) as a layer, dispatch parts to other chats, render the comp (/comp)', when: () => Boolean(document.querySelector('.layers')?.offsetParent), run: () => menuAtCenter() },
-        { area: 'Lab', keys: 'Right-click a layer', what: '◫ Precomp ›: its time, size, crop & mask, effects, resolution, open its scene', when: () => Boolean(document.querySelector('.layers')?.offsetParent) },
+        { area: 'Lab', keys: 'Right-click a precomp layer', what: '◫ Precomp ›: its time, size, crop & mask, effects, resolution, open its scene', when: () => Boolean(document.querySelector('.layers')?.offsetParent) },
       );
     } catch { /* keys list optional */ }
   });
@@ -533,7 +533,7 @@ Parts made by other chats at once: dispatch {parts: [{brief, engine: claude|astr
 
   // ---------- chat: /comp ----------
   const SUBS = [['add', 'add <chat | sketch | seq:name> [pip|left|right|top|bottom|q1…q4|circle]'], ['list', 'The precomps in this scene'], ['set', 'set <layer> start=2 speed=0.5 loop=off crop=10,0,10,0 mask=circle feather=10 blur=1 sat=0 res=0.5 scale=.5 x=20'],
-    ['key', 'key <layer> <remap|blur|scale|cropT…> 0:1 2:0.5 (time:value)'], ['open', 'open <layer>: jump into its scene / chat'], ['remove', 'remove <layer>'], ['render', 'render [9:16|16:9|1:1|4:5]: this comp, frame by frame'],
+    ['key', 'key <layer> <remap|blur|scale|cropT…> 0:1 2:0.5 (time:value)'], ['open', 'open <layer>: jump into its scene / chat'], ['remove', 'remove <layer>'], ['render', 'render [9:16|16:9|1:1|4:5] [4s]: this comp, frame by frame'],
     ['parts', 'The dispatched parts: chat, agent, status'], ['feedback', 'feedback <part n> <words>'], ['again', 'again <part n> [fresh]'], ['swap', 'swap <part n>: Claude ⇄ Astra']];
   function parseKV(s) {
     const out = {}; let rest = String(s || '');
@@ -586,7 +586,7 @@ Parts made by other chats at once: dispatch {parts: [{brief, engine: claude|astr
           return r.ok ? `◫ ${r.value.layer}: ${r.value.keys} key${r.value.keys === 1 ? '' : 's'} on ${r.value.property}` : `Error: ${r.error}`;
         }
         if (sub === 'open' || sub === 'remove') return say(await handle({ op: sub, layer: pcNum(rest) }, { sketchId: hostId }));
-        if (sub === 'render') { const r = await handle({ op: 'render', format: rest || '9:16' }, { sketchId: hostId }); return r.ok ? `⇪ Rendered ${String(r.value.rendered).split(/[\\/]/).pop()} (${r.value.frames} frames, ${r.value.format})` : `Error: ${r.error}`; }
+        if (sub === 'render') { const fmt = (/\b(9:16|16:9|1:1|4:5)\b/.exec(rest) || [])[1] || '9:16'; const secs = Number((/(\d+(?:\.\d+)?)\s*s\b/.exec(rest) || [])[1]) || null; const r = await handle({ op: 'render', format: fmt, secs }, { sketchId: hostId }); return r.ok ? `⇪ Rendered ${String(r.value.rendered).split(/[\\/]/).pop()} (${r.value.frames} frames, ${r.value.format})` : `Error: ${r.error}`; }
         return `Use ${SUBS.map(([v]) => v).join(', ')} (/help comp).`;
       },
     });

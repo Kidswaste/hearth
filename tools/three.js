@@ -1677,12 +1677,12 @@ const ThreeLab = (() => {
         at < Ls.length - 1 ? ['To the top', '', () => move(Ls.length)] : null,
         // (round 7) the layer's timing, whose two buttons wait behind Alt now
         player.loaded ? ['Plays', L.in != null || L.out != null ? 'part of the song' : 'the whole song', [['The whole song', '', () => editLayer(L.id, { in: null, out: null }), L.in == null && L.out == null], player.loop ? ['Only during the loop', '', () => editLayer(L.id, { in: player.loop.a, out: player.loop.b })] : null].filter(Boolean)] : null,
+        ...(typeof ThreeComp !== 'undefined' ? ThreeComp.layerMenu(L) : []), // ◫ Precomp › / ◫ Comp › (tools/three-comp.js)
         'Opacity',
         ...[1, 0.75, 0.5, 0.25].map((o) => [`${Math.round(o * 100)}%`, '', () => editLayer(L.id, { opacity: o }), Math.abs((L.opacity ?? 1) - o) < 0.01]),
         'Blend',
         ...ThreeLayers.BLENDS.slice(0, 6).map(([v, label]) => [label, '', () => editLayer(L.id, { blend: v }), (L.blend || 'normal') === v]),
         Ls.length > 1 ? ['Delete…', 'With Undo', () => removeLayer(L.id), false, 'Delete layer'] : null,
-        ...(typeof ThreeComp !== 'undefined' ? ThreeComp.layerMenu(L) : []),
         ...(typeof Declutter !== 'undefined' ? Declutter.popItems('Lab layers') : [])]);
     });
     function renderLayers() {

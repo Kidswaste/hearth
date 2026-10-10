@@ -37,6 +37,15 @@ async function screen() {
   return px(`data:image/png;base64,${cap.data}`);
 }
 const hue = ([r, g, b]) => (r > 150 && g < 110 && b < 110 ? 'red' : r > 60 && r < 130 && g < 40 && b < 40 ? 'dim red' : b > 150 && r < 110 && g < 150 ? 'blue' : b > 50 && b < 120 && r < 40 && g < 60 ? 'dim blue' : r > 200 && g > 200 && b > 200 ? 'white' : 'other');
+// the main scene at t with the precomp named `name` showing there (the page answers slowly on a software GPU): its
+// color in the middle of the frame, read twice (a picture still on its way reads as 'unsteady')
+async function look(t, name) {
+  await at(t);
+  await until(async () => (await pcInfo()).some((p) => p.name.includes(name) && p.mounted && p.mix > 0 && Math.abs(p.host - t) < 1e-3), 20000);
+  await wait(1500);
+  const a = hue((await screen()).at(0.75, 0.8)); await wait(800); const b = hue((await screen()).at(0.75, 0.8));
+  return a === b ? a : 'unsteady';
+}
 async function at(t) { if (P.playing) P.toggle(false); P.seek(t); await until(async () => Math.abs((await sb('return audio.time')) - t) < 1e-3, 8000); await wait(1200); }
 
 // ---------- 1. the main chat dispatches two parts (Claude and Astra) ----------
@@ -68,8 +77,8 @@ await smoke({ shot: `${SHOTS}/d1-dispatched.png` });
 const seen1 = new Set(); const seen2 = new Set();
 const t1 = performance.now();
 await until(async () => {
-  await at(1); const a = hue((await screen()).at(0.5, 0.5)); seen1.add(a);
-  await at(7); const b = hue((await screen()).at(0.5, 0.5)); seen2.add(b);
+  const a = await look(1, p1.name); seen1.add(a);
+  const b = await look(7, p2.name); seen2.add(b);
   return a === 'red' && b === 'blue' && parts().every((p) => p.state === 'done');
 }, 180000);
 out.timing.partsDoneMs = Math.round(performance.now() - t0);
@@ -99,14 +108,15 @@ const c1 = await Native.load(p1.chatId);
 step(c1.engine === 'codex' && p1.engine === 'codex', '⇄ part 1 now runs on Astra (same chat and scene)', sw);
 await CompDispatch.feedback(1, 'one more pass', { chatId: M });
 await until(() => !Native.isBusy(p1.chatId), 60000);
+await wait(1500);
 const by = await window.hub.kvGet('director-tasks', {}).then((d) => d?.[p1.chatId]?.by || {});
-step(Object.keys(by).includes('codex') && Object.keys(by).includes('claude'), 'its next turn ran on Astra (both engines worked on part 1)', by);
+step(Object.keys(by).includes('codex') && Object.keys(by).includes('claude'), 'its next turn ran on Astra (both engines worked on part 1)', { by, said: (await Native.load(p1.chatId)).messages.at(-1)?.text?.slice(0, 160) });
 const skOld = ChatScenes.linkOf(p2.chatId);
 const ag = await CompDispatch.again(2, { fresh: true }, { chatId: M });
 step(ChatScenes.linkOf(p2.chatId) !== skOld, '⟳ part 2 again from a fresh scene (its chat gets a new scene)', ag);
 await until(() => !Native.isBusy(p2.chatId) && p2.state === 'done', 90000);
-await at(7);
-step(hue((await screen()).at(0.5, 0.5)) === 'blue', 'the precomp follows the chat to its new scene (still blue at 7 s)');
+const after = await until(async () => (await look(7, p2.name)) === 'blue', 60000);
+step(after, 'the precomp follows the chat to its new scene (blue again at 7 s)', await look(7, p2.name));
 
 // ---------- 5. stuck, and jumping in ----------
 window.COMP_STUCK_MS = 4000;
@@ -124,11 +134,11 @@ Native.open(agent.id, M);
 await until(() => S.currentId() === skM, 20000);
 
 // ---------- 6. the comp rendered 9:16 ----------
-const rr = await say('/comp render 9:16', agent.id);
+const rr = await say('/comp render 9:16 6s', agent.id);
 const name = (rr.match(/Rendered (.+?) \(/) || [])[1];
 const full = name ? `${await ThreeSeq.outDir()}/${name}` : null;
 const pr = full ? await window.hub.video.probe(full).catch(() => null) : null;
-step(pr && pr.w === 1080 && pr.h === 1920 && Math.abs(pr.duration - 10) < 0.2, 'the comp renders 9:16 (1080×1920, 10 s)', { said: rr, pr: pr && { w: pr.w, h: pr.h, d: pr.duration } });
+step(pr && pr.w === 1080 && pr.h === 1920 && Math.abs(pr.duration - 6) < 0.2, 'the comp renders 9:16 (1080×1920, its first 6 s)', { said: rr, pr: pr && { w: pr.w, h: pr.h, d: pr.duration } });
 if (full) {
   const job = (args, output, input) => new Promise((resolve, reject) => {
     const id = `chk${Math.random().toString(36).slice(2)}`;
@@ -136,14 +146,14 @@ if (full) {
     window.hub.video.onJob((ev) => { if (ev.id !== id || ev.type !== 'done' || done) return; done = true; if (ev.code === 0) resolve(ev); else reject(new Error(ev.error || 'ffmpeg failed')); });
     window.hub.video.transcode({ id, input, output, args, duration: 10 }).catch(reject);
   });
-  const FR = [30, 145, 210];
+  const FR = [30, 145, 175];
   const tmp = `${SHOTS}/dframes-${Date.now().toString(36)}`;
   await job(['-y', '-i', 'INPUT', '-vf', `select='${FR.map((n) => `eq(n\\,${n})`).join('+')}'`, '-vsync', '0', 'OUTPUT'], `${tmp}/f_%02d.png`, full);
   await job(['-y', '-i', 'INPUT', '-vf', `select='${FR.map((n) => `eq(n\\,${n})`).join('+')}',scale=270:480,tile=3x1`, '-frames:v', '1', 'OUTPUT'], `${SHOTS}/comp-dispatch-sheet.png`, full);
   const rd = async (p) => px(`data:image/png;base64,${await window.hub.fs.read(p, { encoding: 'base64' })}`);
   const a1 = await rd(`${tmp}/f_01.png`); const a2 = await rd(`${tmp}/f_02.png`); const a3 = await rd(`${tmp}/f_03.png`);
-  step(hue(a1.at(0.3, 0.6)) === 'red' && hue(a3.at(0.3, 0.6)) === 'blue', 'rendered frame 30 is part 1 (red), frame 210 part 2 (blue)', { f30: a1.at(0.3, 0.6), f210: a3.at(0.3, 0.6) });
-  const mix = a2.at(0.3, 0.6);
+  step(hue(a1.at(0.75, 0.8)) === 'red' && hue(a3.at(0.75, 0.8)) === 'blue', 'rendered frame 30 is part 1 (red), frame 175 part 2 (blue)', { f30: a1.at(0.75, 0.8), f175: a3.at(0.75, 0.8) });
+  const mix = a2.at(0.75, 0.8);
   step(mix[0] > 40 && mix[2] > 40, 'frame 145 is the cross-fade between them (red and blue mixed)', mix);
   window.hub.video.rmtemp?.(tmp).catch(() => {});
 }

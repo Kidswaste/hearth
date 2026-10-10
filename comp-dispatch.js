@@ -135,6 +135,7 @@ Your scene is one part of a bigger video, made at the same time as the other par
   async function sendPart(p, text) {
     const a = director();
     try { await Native.send(a.id, text, { chatId: p.chatId }); p.state = 'working'; p.sentAt = Date.now(); } catch (err) { p.state = 'stuck'; p.last = err.message; }
+    watch();
   }
   function track(m, hostChatId) {
     cards.set(m.id, { m, hostChatId });
@@ -160,7 +161,7 @@ Your scene is one part of a bigger video, made at the same time as the other par
     paint(m); saveSoon(m);
     if (m.parts.every((x) => x.state === 'done')) toast(`◫ All ${m.parts.length} parts are done`, { timeout: 4000, action: { label: 'Show the comp', fn: () => reveal(m.host.sketchId) } });
   });
-  Native.hooks.send.push((agentId, chat) => { const e = chat && byChat.get(chat.id); if (e && e.p.state !== 'working') { e.p.state = 'working'; e.p.sentAt = Date.now(); paint(e.m); } });
+  Native.hooks.send.push((agentId, chat) => { const e = chat && byChat.get(chat.id); if (e && e.p.state !== 'working') { e.p.state = 'working'; e.p.sentAt = Date.now(); paint(e.m); watch(); } });
   let watchT = 0;
   function watch() {
     if (watchT) return;
@@ -303,7 +304,7 @@ Your scene is one part of a bigger video, made at the same time as the other par
       const c = (H.chats || []).find((x) => x.id === p.chatId);
       const id = ChatScenes.identity(p.chatId);
       const still = ChatScenes.thumbOf?.(p.chatId);
-      const row = el('div', { class: `comp-row st-${p.state}`, style: `--pc:${id.color}`, title: `${c?.title || 'gone'} · right-click for more` },
+      const row = el('div', { class: `comp-row st-${p.state}`, attrs: { style: `--pc:${id.color}` }, title: `${c?.title || 'gone'} · right-click for more` },
         still ? el('img', { class: 'comp-still', src: still, alt: '', dataset: { chat: p.chatId } }) : el('span', { class: 'comp-still none', dataset: { chat: p.chatId }, text: id.glyph }),
         el('div', { class: 'comp-main' },
           el('div', { class: 'comp-line' }, el('span', { class: 'comp-mark', text: id.glyph }), el('b', { text: `${p.n}. ${p.name}` }), el('span', { class: `comp-who by-${p.engine === 'codex' ? 'astra' : 'claude'}`, title: NAME[p.engine] }, iconOf(p.engine)), el('span', { class: 'comp-st', text: STATES[p.state] || p.state }), p.queue?.length ? el('span', { class: 'comp-q', text: `✎ ${p.queue.length}` }) : null),

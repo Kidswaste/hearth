@@ -1598,7 +1598,8 @@ const tickFrames = (t) => {
   realRAF(tickFrames);
 };
 realRAF(tickFrames);
-addEventListener('webglcontextlost', () => post({ type: 'gpu-lost' }), true);
+// (a context the page lets go of itself, a re-run or removed layer's, is not a GPU loss: teardownLayer marks it)
+addEventListener('webglcontextlost', (e) => { if (!e.target?.__letGo) post({ type: 'gpu-lost' }); }, true);
 // Right-click the picture: the Lab's menu. A still right-click opens it even over OrbitControls (which takes every
 // right-click for its pan); a right-drag stays the sketch's. (Round 7: menus where you point.) The menu opens when the
 // button comes up, so on a Mac / Linux, where contextmenu fires on the way down, a drag can still cancel it.
@@ -5061,6 +5062,7 @@ function teardownLayer(L) {
   L.gen += 1;
   for (const r of L.renderers) {
     try { r.setAnimationLoop(null); } catch {}
+    if (r.domElement) r.domElement.__letGo = true;
     try { r.dispose(); r.forceContextLoss(); } catch {}
     r.domElement?.remove();
     renderers.delete(r);
@@ -5265,6 +5267,7 @@ function swapLayers(specs, fx = 'xfade') {
   sketchListeners = [];
   for (const r of [...renderers]) {
     try { r.setAnimationLoop(null); } catch {}
+    if (r.domElement) r.domElement.__letGo = true;
     try { r.dispose(); r.forceContextLoss(); } catch {}
     r.domElement?.remove();
     renderers.delete(r);

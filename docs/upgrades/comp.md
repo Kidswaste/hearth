@@ -85,7 +85,7 @@ the preview, `/comp`, `/dispatch`, and the directors' `three_do comp`.
 67. **The task state counts each engine's work per chat** (a part on Astra while the director is on Claude is counted as Astra's).
 
 ## Directors (lean)
-68. **`three_do comp { op }`** for Claude and Astra: list · add · set · key · remove · open · render · dispatch · parts · feedback · again · swap (one line in three_do's description, ≈ 20 tokens).
+68. **`three_do comp { op }`** for Claude and Astra: list · add · set · key · remove · open · render · dispatch · parts · feedback · again · swap (one line in three_do's description: ≈ 26 tokens per director message, measured with `node dev/director-cost.js`).
 69. **`three_comp`** in full mode (`/director-mode full`).
 70. **App map topic `comp`** (also precomp, dispatch, parts), read on demand: what a precomp is, every op, when to split a video into parts.
 
