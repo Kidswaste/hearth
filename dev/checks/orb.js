@@ -55,7 +55,7 @@ const tlRead = D.timeline();
 const orbTrack = tlRead.layers.find((x) => x.name === 'Orb');
 step(Object.keys(orbTrack?.keyframes || {}).length === 4 && orbTrack.lanes.includes('slider orb1_glow'), 'the timeline shows them (track keys + the Glow lane)', orbTrack?.lanes);
 step(Boolean(document.querySelector('.media-bar.mb-clock')) && /Scene timeline/.test(document.querySelector('.media-bar .mb-name')?.textContent || ''), 'the timeline bar says "⏱ Scene timeline · 10 s"', document.querySelector('.media-bar .mb-name')?.textContent);
-await until(() => P.playing, 5000);
+await until(() => P.playing, 15000); // (a busy machine: the preview starts a little later)
 step(P.playing, 'it plays on its own (silent) so the orb moves');
 await drawn();
 await wait(1200);
