@@ -67,7 +67,7 @@ the bottom of the rail (only while sync is on) and one line in Settings. Everyth
 49. **Your cloud client's own conflict copies** (Dropbox "conflicted copy", iCloud "x 2", Google Drive "x (1)", OneDrive "x-PCNAME") are merged back into the store, then trashed.
 50. **A change journal per computer** with content hashes (and a computer id), so a file's version is known without reading it.
 51. **Atomic writes on both sides** (a temp file, then a rename checked at the last moment: a file written meanwhile is never overwritten).
-52. **A file the other computer is still bringing down waits** (size checked against its journal), and so does a half-written store.
+52. **A file the other computer is still bringing down waits** (size checked against its journal; a late journal can't hold a file more than a minute), and so does a half-written store.
 53. **Cloud clients' files are ignored**: .icloud stubs, ~$ lock files, .tmp / .part / .crdownload, desktop.ini, .DS_Store, Thumbs.db, Google Docs links (.gdoc…), office lock files.
 54. **Online-only files respected**: an iCloud "evicted" file is not a deletion; Mac "dataless" files are detected; small ones (stores, notes, pictures) are fetched, iCloud is asked to bring its stubs; big videos only when you ask.
 55. **Deletions go to a synced trash** (30 days), and the other computer moves its copy to its own trash (`data/sync/trash`), never a hard delete.
@@ -93,7 +93,7 @@ the bottom of the rail (only while sync is on) and one line in Settings. Everyth
 73. **A README in the cloud Hearth folder** says what it is and not to edit it by hand.
 
 ## Tested here
-`node dev/sync-test.js` (98 checks, no Electron): two computers with two data folders and one shared "cloud" folder in a
+`node dev/sync-test.js` (100 checks, no Electron): two computers with two data folders and one shared "cloud" folder in a
 temp dir — edits on both sides, concurrent edits and merges, conflicts and resolving them, deletes + restore, a delete
 against an edit, renames, a 9 MB and a 12 MB file in pieces, big videos off, cloud temp files, an iCloud stub, a
 half-arrived file and a half-written store, a Dropbox conflicted copy, offline then back, the cloud folder deleted,

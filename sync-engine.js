@@ -338,6 +338,7 @@ function createEngine(o) {
 
   // ---------- hashing (cached by size + modified time) ----------
   let texts = new Map(); // `${side}:${rel}` → canonical (cloud-form) JSON text, this pass only
+  const arriving = new Map(); // rel → { size, mtime, since }: a cloud file whose size doesn't match its journal yet
   async function localHash(rel, L) {
     const c = state.local[rel];
     if (c && c[0] === L.size && c[1] === L.mtime && c[2]) return c[2];
@@ -381,7 +382,13 @@ function createEngine(o) {
     }
     if (c && c[0] === C.size && c[1] === C.mtime && c[2]) return c[2];
     if (now() - C.mtime < (o.settleMs ?? 2000)) return INFLIGHT; // still being written
-    if (j && j.op !== 'del' && j.s !== C.size && now() - j.t < 30 * 60 * 1000) return INFLIGHT; // the cloud client is still bringing it
+    // not the size the other computer wrote: still arriving (a cloud client writing in place), unless it stays like
+    // this for a minute (then the journal is the one late, and the file is what it is)
+    if (j && j.op !== 'del' && j.s !== C.size && now() - j.t < 30 * 60 * 1000) {
+      const seen = arriving.get(rel);
+      if (!seen || seen.size !== C.size || seen.mtime !== C.mtime) { arriving.set(rel, { size: C.size, mtime: C.mtime, since: now() }); return INFLIGHT; }
+      if (now() - seen.since < (o.stableMs ?? 60000)) return INFLIGHT;
+    }
     let h;
     if (S.isJsonRel(rel) && C.size <= JSON_MAX) {
       let v;
@@ -482,6 +489,10 @@ function createEngine(o) {
       if (ok) { setBase(rel, h); await afterLocalWrite(rel, h); }
     }
     if (!ok) return false;
+    // what arrived isn't what the journals say (written by hand, or the journal is late): say so in ours, so the
+    // other computers don't wait for a version that never comes
+    const j = journalLatest.get(rel);
+    if (j && (j.h !== h || (C.size !== null && j.s !== C.size))) journalOut.push({ t: now(), op: 'put', rel, h, s: C.size ?? undefined });
     sum.pulled += 1;
     notePulled(rel, kindOf(rel));
     return true;

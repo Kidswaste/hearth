@@ -247,6 +247,20 @@ async function main() {
   fs.writeFileSync(cpng, full);
   await B.e.pass();
   ok(has(B.p('board/media/clip.png')) && fs.readFileSync(B.p('board/media/clip.png')).equals(full), 'then arrives whole');
+  // a late journal: the file is a newer version than the journal says, and stays so: taken after a minute
+  W(A.p('board/media/late.png'), crypto.randomBytes(300));
+  await A.e.pass();
+  const late = crypto.randomBytes(500);
+  fs.writeFileSync(cloudFile(w, 'board/media/late.png'), late);
+  let t = Date.now();
+  const B2 = B.make({ now: () => t });
+  await B2.pass();
+  ok(!has(B.p('board/media/late.png')), 'a file that doesn\'t match the journal waits a moment');
+  t += 61000;
+  await B2.pass();
+  ok(has(B.p('board/media/late.png')) && fs.readFileSync(B.p('board/media/late.png')).equals(late), '…then is taken as it is (the journal was the one late)');
+  B.e = B.make(); // (one engine per computer: the test's clock-shifted one is done)
+  await settle(A, B);
 
   // a JSON store half written in the cloud (a cloud client mid-download): waits, never merged
   const half = cloudFile(w, 'kv/three-sketches.json');
@@ -354,6 +368,7 @@ async function main() {
   await settle(C3, A, B);
   ok(J(A.p('chats/c1.json')).messages.some((x) => x.text === 'laptop only') && J(C3.p('chats/c1.json')).messages.some((x) => x.text === 'mac 4') && has(B.p('kv/laptop.json')), '"Use this Hearth" on a new computer merges both ways');
   ok(eqj(snapshot(A), snapshot(B)) && eqj(snapshot(A), snapshot(C3)), 'three computers match');
+  if (!eqj(snapshot(A), snapshot(C3)) || !eqj(snapshot(A), snapshot(B))) { const [a, b, c] = [snapshot(A), snapshot(B), snapshot(C3)]; for (const k of new Set([...Object.keys(a), ...Object.keys(b), ...Object.keys(c)])) if (a[k] !== b[k] || a[k] !== c[k]) console.log('  differs:', k, Boolean(a[k]), Boolean(b[k]), Boolean(c[k]), C3.e.status().state, C3.e.status().pending); }
 
   await fuzz();
 
