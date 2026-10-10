@@ -922,6 +922,11 @@ const ThreeSeq = (() => {
     const dir = await outDir();
     const stem = `${(name || re.seq?.name || S.key?.slice(4) || 'sequence').replace(/[\\/:*?"<>|]+/g, '_')} ${fmt.replace(':', 'x')}`;
     S.render = { cancel: false, t0: performance.now() };
+    // (round 11) its progress bar: frames rendered (measured), then ffmpeg's mux
+    const pgKey = `seq-render:${Date.now().toString(36)}`; const pgUser = onProgress;
+    window.Progress?.set(pgKey, { title: `▤ Render · ${stem}`, icon: '▤', kind: 'seq-render', pct: 0, label: 'getting the preview ready', where: ['rail:tool:three', '.sq-view > .sq-row'], jump: () => activate('tool:three'), actions: [{ label: '■', title: 'Cancel the render', run: () => { if (S.render) S.render.cancel = true; } }] });
+    onProgress = (p) => { window.Progress?.set(pgKey, { pct: p * 100, label: p < 0.85 ? `frame ${Math.round((p / 0.85) * Math.max(1, Math.round(dur * F)))} / ${Math.max(1, Math.round(dur * F))}` : 'muxing the sound' }); pgUser?.(p); };
+    let pgOk = false;
     const wasView = S.view; const wasKey = S.key; const wasEdit = S.edit; const wasT = S.T; const wasSize = L.stage.size.id;
     const t = quiet ? null : toast('Rendering the sequence…', { timeout: 0, action: { label: 'Cancel', fn: () => { if (S.render) S.render.cancel = true; } } });
     const say = (txt) => { const sp = t?.querySelector('span'); if (sp) sp.textContent = txt; };
@@ -935,7 +940,7 @@ const ThreeSeq = (() => {
       await ensureSongOf(re);
       await sendPlan({ force: true });
       await sleep(300);
-      if (!tools) return await recordRealtime(re, { w, h, dir, stem, dur, say, onProgress });
+      if (!tools) { const rt = await recordRealtime(re, { w, h, dir, stem, dur, say, onProgress: (p) => { window.Progress?.set(pgKey, { pct: p * 100, label: 'recording in real time (no ffmpeg)' }); pgUser?.(p); } }); pgOk = true; return rt; }
       const tmp = `${dir}/.hearth-titles-seq${Date.now().toString(36)}`;
       const N = Math.max(1, Math.round(dur * F));
       let output;
@@ -958,8 +963,10 @@ const ThreeSeq = (() => {
       const secs = Math.round((performance.now() - S.render.t0) / 100) / 10;
       if (!quiet) toast(`Rendered ${base(output)} (${N} frames, ${fmt}) in ${secs} s`, { timeout: 6000, action: { label: 'Open in Video Review', fn: () => openOutput(output) } });
       emit('render', { output, frames: N, format: fmt });
+      pgOk = true;
       return { path: output, frames: N, fps: F, w, h, format: fmt, seconds: secs };
     } finally {
+      if (pgOk) window.Progress?.done(pgKey); else window.Progress?.done(pgKey, { ok: false, label: S.render?.cancel ? 'cancelled' : 'failed' });
       t?.remove();
       send({ type: 'seq-offline', on: false });
       S.render = null;

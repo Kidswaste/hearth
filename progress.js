@@ -25,7 +25,8 @@
 //     where   [locators] where bars go: 'reply:<chatId>', 'row:<chatId>', 'rail:<surface id>', a CSS selector, or a
 //             function returning element(s) (progress-ui.js resolves them; keys 'make:<id>' also find [data-make="<id>"])
 //     jump    a function that shows the thing (a click in the rail list)
-//     icon, weight (among siblings, default 1), hungMs (no news this long → hung), actions [{ label, run }]
+//     icon, weight (among siblings, default 1), hungMs (no news this long → hung), actions [{ label, run }],
+//     quietMs (kept out of the rail list until it lasts that long: frequent short things like a sync pass)
 //   Progress.done(key, { ok = true, label })    finished (fills to 100 % and fades; ok: false = failed); teaches its kind
 //   Progress.drop(key)                           gone without finishing (stopped, removed): teaches nothing
 //   Progress.on(fn) → off                        fn(item, what): what = 'set' | 'tick' | 'done' | 'remove'
@@ -138,8 +139,9 @@ const Progress = (() => {
       const fs = clamp((done + 0.5 * doing) / total, 0, 1);
       pct = 0.35 * pct + 0.65 * Math.min(CAP_EST, fs * 100);
     }
-    // the agent said where it is (<progress pct="40"/> or a progress field in a hub call)
-    if (num(s.agentPct) != null) pct = 0.3 * pct + 0.7 * clamp(num(s.agentPct), 0, CAP_EST);
+    // the agent said where it is (<progress pct="40"/> or a progress field in a hub call): ahead of the estimate it pulls
+    // the bar up; behind it, it only slows the bar a little (the bar never goes back, and the text still moves it on)
+    if (num(s.agentPct) != null) { const ag = clamp(num(s.agentPct), 0, CAP_EST); pct = ag >= pct ? 0.3 * pct + 0.7 * ag : 0.85 * pct + 0.15 * ag; }
     return { pct: Math.min(CAP_EST, pct), f, E, el };
   }
 
@@ -162,7 +164,7 @@ const Progress = (() => {
     }
     if (o.estimate) { it.forceEst = true; it.measured = false; }
     if (o.signals) it.signals = { ...it.signals, ...o.signals };
-    for (const k of ['title', 'label', 'kind', 'expect', 'parent', 'jump', 'icon', 'weight', 'hungMs', 'actions', 'meta']) if (o[k] !== undefined) it[k] = o[k];
+    for (const k of ['title', 'label', 'kind', 'expect', 'parent', 'jump', 'icon', 'weight', 'hungMs', 'actions', 'meta', 'quietMs']) if (o[k] !== undefined) it[k] = o[k];
     if (o.where !== undefined) it.where = [].concat(o.where || []);
     if (o.eta !== undefined) it.eta = num(o.eta);
     if (o.state === 'wait' || o.state === 'run') it.state = o.state;
@@ -266,9 +268,11 @@ const Progress = (() => {
     }
   }
   const get = (key) => items.get(String(key)) || null;
-  // the top-level items (children are listed under their parent), running first, oldest first
+  // the top-level items (children are listed under their parent), running first, oldest first; `quietMs` items (a
+  // sync pass) join the list only once they last that long (their own bar shows at once)
   function list({ all = false } = {}) {
-    const out = [...items.values()].filter((it) => all || !it.parent || !items.has(it.parent));
+    const now = env.now();
+    const out = [...items.values()].filter((it) => all || ((!it.parent || !items.has(it.parent)) && !(it.quietMs && (it.ended || now) - it.started < it.quietMs)));
     const rank = (it) => (it.state === 'done' || it.state === 'failed' ? 2 : it.state === 'hung' ? 0 : 1);
     return out.sort((a, b) => rank(a) - rank(b) || a.started - b.started);
   }

@@ -591,6 +591,7 @@ const Jam = (() => {
   // ---------- the Lab badge ----------
   let badgeEl = null;
   function badge(text) {
+    window.ProgressHooks?.jam(J, text); // (round 11) the jam's progress bar: rounds
     if (!text) { badgeEl?.remove(); badgeEl = null; return; }
     const host = document.querySelector('.three-stats')?.parentElement;
     if (!host) return;

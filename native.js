@@ -24,7 +24,8 @@ const Native = (() => {
   const SUGGEST_TAG = /<suggest>([\s\S]*?)<\/suggest>/gi;
   // Hide memory / suggestion tags from what you see, including a tag that is still streaming in.
   // (round 10) <flow answer="…"/> moves the chat's flow (flows-ui.js reads it before this strips it)
-  const visibleText = (text) => text.replace(REMEMBER_TAG, '').replace(SUGGEST_TAG, '').replace(/<flow\b[^>]*?\/?>(?:<\/flow>)?/gi, '').replace(/<(remember|suggest)>[\s\S]*$/i, '').replace(/<(rem|sug)[a-z]*$/i, '').trim();
+  // (round 11) <progress pct="40" note="…"/>: how far the agent says it is (progress-hooks.js reads it while it streams)
+  const visibleText = (text) => text.replace(REMEMBER_TAG, '').replace(SUGGEST_TAG, '').replace(/<flow\b[^>]*?\/?>(?:<\/flow>)?/gi, '').replace(/<progress\b[^>]*?\/?>(?:<\/progress>)?/gi, '').replace(/<progress\b[^>]*$/i, '').replace(/<(remember|suggest)>[\s\S]*$/i, '').replace(/<(rem|sug|prog)[a-z]*$/i, '').trim();
   const REVIEW_PROMPT = 'Review your last result critically against what I asked. For visual work, take a fresh screenshot and look closely. List the concrete problems you see, then fix the important ones.';
 
   // "mcp__claude_ai_Gmail__search_threads" -> "Gmail · search threads"

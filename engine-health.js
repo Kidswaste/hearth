@@ -76,6 +76,7 @@ const EngineHealth = (() => {
     }
     const verb = action === 'login' ? `Signing in to ${L}` : action === 'install' ? `Installing ${L}` : `Updating ${L}`;
     toast(`${verb} in the ${r.window === 'test' ? 'test' : r.window} window… Hearth checks again when it's done.`, { timeout: 6000 });
+    window.Progress?.set(`engine:${engine}`, { title: `⚙ ${verb}`, icon: '⚙', kind: `engine:${action}`, label: `in the ${r.window} window`, hungMs: 20 * 60000 }); // (round 11) estimated from earlier updates
     return r;
   }
   // a check after a fix window finished (or gave up after 20 minutes)
@@ -84,6 +85,7 @@ const EngineHealth = (() => {
     const engine = r.fixed?.engine;
     if (!engine || !r[engine]) return;
     const left = problemsOf(r[engine]);
+    if (r.fixed.finished || !left.length) window.Progress?.done(`engine:${engine}`, { ok: !left.length });
     const e = r[engine];
     if (!left.length) toast(`${LABEL[engine]} ${e.semver || ''} is ready${e.signedIn ? ' and signed in' : ''} ✓`, { timeout: 6000 });
     else if (r.fixed.finished) toast(`${left[0].text}.`, { timeout: 12000, action: { label: left[0].label, fn: () => fix(engine, left[0].action) } });
@@ -224,11 +226,13 @@ const EngineHealth = (() => {
     toast(`Installing ffmpeg in the ${r.window} window… Hearth switches to it when it's done.`, { timeout: 7000 });
     clearInterval(ffWatch);
     const t0 = Date.now();
+    window.Progress?.set('ffmpeg-install', { title: '⇣ Installing ffmpeg', icon: '⇣', kind: 'ffmpeg', label: `in the ${r.window} window`, hungMs: 40 * 60000 }); // (round 11)
     ffWatch = setInterval(async () => {
-      if (Date.now() - t0 > 40 * 60000) { clearInterval(ffWatch); return; }
+      if (Date.now() - t0 > 40 * 60000) { clearInterval(ffWatch); window.Progress?.done('ffmpeg-install', { ok: false, label: 'gave up after 40 min' }); return; }
       if (!(await window.hub.fs.stat(r.marker).catch(() => null))) return;
       clearInterval(ffWatch);
       const st = await window.hub.ffmpegStatus({ fresh: true }).catch(() => null);
+      window.Progress?.done('ffmpeg-install', { ok: Boolean(st?.ffmpeg) });
       toast(st?.ffmpeg ? 'ffmpeg is ready ✓ recordings are sharp MP4s and frames are exact from now on.' : 'The install window finished but Hearth still can\'t find ffmpeg: /doctor shows where it looked.', { timeout: 9000, type: st?.ffmpeg ? undefined : 'error' });
     }, 3000);
     return r;

@@ -9,6 +9,7 @@
 //   slow      streams slowly (~6 s, to test Stop)       error    the engine fails (is_error / turn.failed)
 //   login     fails with "not logged in"                crash    exits with code 3 and a stderr line
 //   big       reports a huge input usage (auto-compact) echo     replies with the exact prompt it got
+//   progress  hidden <progress pct="35|75" note="…"/> tags inside the reply (round 11)
 //   mcp       really calls the hub MCP servers it was given (--mcp-config / -c mcp_servers.*): the tools in a line
 //             `mcp: [["three_console", {}], ["three_do", {"cmd": "layers"}]]` (default: tools/list + three_console)
 //   direct    a director turn with the owner's habits (round 6): "direct: add a tunnel" builds a NEW layer through
@@ -276,7 +277,7 @@ function plan(prompt, engine = 'claude') {
   const p = {
     think: has('think'), tool: has('tool'), tools3: has('tools3'), code: has('code'), table: has('table'), long: has('long'),
     remember: has('remember'), suggest: has('suggest'), slow: has('slow'), error: has('error'), login: has('login'),
-    crash: has('crash'), big: has('big'), echo: has('echo'), mcp: has('mcp'),
+    crash: has('crash'), big: has('big'), echo: has('echo'), mcp: has('mcp'), progress: has('progress'),
     mcpCalls: (() => { const m = msg.match(/^mcp:\s*(\[[\s\S]*\])\s*$/m); try { return m ? JSON.parse(m[1]) : null; } catch { return null; } })(),
     compact: /Compact our context|moving to a fresh chat/i.test(msg),
     summarize: /^Summari[sz]e\b/i.test(msg),
@@ -307,6 +308,8 @@ function plan(prompt, engine = 'claude') {
   if (p.long) for (let i = 1; i <= 60; i++) parts.push(`Paragraph ${i}: ${'lorem ipsum dolor sit amet '.repeat(6).trim()}.`);
   if (p.remember) parts.push('<remember>The user tests Hearth with fake engines</remember>');
   if (p.suggest) parts.push('<suggest>Make it bigger</suggest><suggest>/stats</suggest><suggest>Try another color</suggest>');
+  // progress: the reply says how far it is with hidden <progress> tags (round 11, progress-hooks.js)
+  if (p.progress) { const a = Math.max(1, Math.floor(parts.length / 3)); parts.splice(a, 0, '<progress pct="35" note="drafting"/>'); parts.splice(Math.max(a + 1, Math.floor((parts.length * 2) / 3)), 0, '<progress pct="75" note="polishing the end"/>'); }
   return { p, text: parts.join('\n\n'), thinking: p.think ? 'Let me think about this.\n\nFirst, consider the request. Then decide on a compact answer.' : '' };
 }
 

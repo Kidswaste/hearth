@@ -337,7 +337,10 @@ const Board = (() => {
     } else if (it.type === 'web') {
       it.snapping = true;
       if (b === S.cur && S.mounted) syncItem(it, true);
-      const r = await window.hub.board.snap(it.url, it.snapSize ? { width: it.snapSize[0], height: it.snapSize[1] } : undefined);
+      const pg = `snap:${it.id}`; // (round 11) a progress bar on the card while the page loads (estimated from earlier snapshots)
+      window.Progress?.set(pg, { title: `▦ Website · ${String(it.url).replace(/^https?:\/\/(www\.)?/, '').slice(0, 40)}`, icon: '▦', kind: 'snap', label: 'loading the page', where: [`.bd-item[data-id="${it.id}"]`, 'rail:tool:board'], jump: () => activate('tool:board') });
+      const r = await window.hub.board.snap(it.url, it.snapSize ? { width: it.snapSize[0], height: it.snapSize[1] } : undefined).catch((err) => ({ ok: false, error: err.message }));
+      window.Progress?.done(pg, { ok: Boolean(r?.ok) });
       it.snapping = false; it.snapped = true;
       if (r.ok) {
         Object.assign(it, { title: r.title || it.title, favicon: r.favicon, description: r.description, themeColor: r.themeColor, fonts: r.fonts, snapError: null });

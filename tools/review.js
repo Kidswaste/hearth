@@ -1299,6 +1299,7 @@ const Review = (() => {
   async function startJob({ label, input, output, args, duration, library = true }) {
     const id = `x${Date.now()}${Math.random().toString(36).slice(2, 5)}`;
     const done = new Promise((resolve) => exportJobs.set(id, { label, resolve, pct: 0, library, toast: toast(`${label}: starting…`, { timeout: 0, action: { label: 'Cancel', fn: () => window.hub.video.cancel(id) } }) }));
+    window.ProgressHooks?.job(id, { title: `⇪ ${label}`, sub: base(output) }); // (round 11) its bar (ffmpeg's own progress)
     try { await window.hub.video.transcode({ id, input, output, args, duration }, ffOverrides()); } catch (err) { exportJobs.get(id)?.toast.remove(); exportJobs.delete(id); toast(err.message.replace(/^Error invoking remote method[^:]*: (Error: )?/, ''), { type: 'error' }); return null; }
     return { id, output, done };
   }
