@@ -64,7 +64,7 @@ const SpeedResume = (() => {
     }
     const l = from.lab;
     if (l?.sceneId && now - (l.t || 0) < 14 * DAY && !(H.surfaceIdFor?.(H.activeId) === 'tool:three' && ThreeLab.scenes?.currentId?.() === l.sceneId)) {
-      out.push({ id: 'lab', icon: '◭', label: `${l.name || 'Lab scene'}${l.seqOn ? ` · ▤ sequence at ${fmtT(l.seqT)}` : ''}`, hint: `Three.js Lab · ${Speed.ago(l.t)}`, run: () => openLab(l) });
+      out.push({ id: 'lab', icon: '◭', label: `${l.name || 'Lab scene'}${l.seqOn ? ` · ▤ ${fmtT(l.seqT)}` : ''}`, hint: `Three.js Lab · ${Speed.ago(l.t)}`, run: () => openLab(l) });
     }
     const r = from.render;
     if (r?.path && now - r.t < 3 * DAY) out.push({ id: 'render', icon: '🎬', label: r.name || base(r.path), hint: `last render · ${Speed.ago(r.t)}`, run: () => { if (typeof CaptureView !== 'undefined') CaptureView.open(r.path); else window.hub.fs?.open?.(r.path); } });

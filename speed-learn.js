@@ -143,7 +143,9 @@ const SpeedLearn = (() => {
     const w = String(label || '').toLowerCase().trim();
     if (w.length < 3) return null;
     const re = new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
-    const hits = Keys.all().filter((e) => re.test(e.what) && !/click|drag|Hold|Point|Right/i.test(e.keys));
+    // the line that names it earliest ("Save the sliders…" before "…as a look: save"), the one for here first
+    const at = (e) => e.what.search(re) + (/\s(as|into|with|then)\s/i.test(e.what.slice(0, e.what.search(re) + w.length + 14)) ? 20 : 0);
+    const hits = Keys.all().filter((e) => re.test(e.what) && !/click|drag|Hold|Point|Right/i.test(e.keys)).sort((a, b) => at(a) - at(b));
     return hits.find((e) => { try { return !e.when || e.when(); } catch { return false; } }) || hits[0] || null;
   }
   function yours() {
