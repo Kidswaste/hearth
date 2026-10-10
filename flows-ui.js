@@ -244,7 +244,6 @@ const FlowsUI = (() => {
     setTimeout(() => act(async () => {
       for (const t of tags.slice(0, 3)) {
         const r = t.run ? Flows.run(t.run) : run;
-        if (t.start) { ensure(); await startIn(t.start, { agentId: chat.agentId, chatId: chat.id }); continue; }
         if (!r) continue;
         if (t.resume) await Flows.resume(r.id);
         else if (t.answer != null && t.answer !== '…' && Flows.waiting(r)) await Flows.answer(r.id, t.answer);
