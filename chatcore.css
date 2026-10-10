@@ -74,3 +74,15 @@
 .cm-hero .cm-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cm-hero.cm-missing .cm-media { display: none; }
 .cm-hero.cm-missing .cm-name::after { content: ' · file moved or deleted'; }
+
+/* ⬆ Update (updater.js): a small button at the bottom of the rail while main has something new */
+#up-btn { width: 32px; height: 20px; padding: 0; margin: 2px 0 0; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px; opacity: .9; font-size: 12px; }
+#up-btn[hidden] { display: none; }
+#up-btn:hover { opacity: 1; }
+#up-btn .up-ic { text-align: center; color: var(--fh-teal, #2de2e6); line-height: 1; }
+#up-btn .up-n { font-size: 10px; font-weight: 600; line-height: 1; min-width: 9px; color: var(--muted, #8a8f98); font-variant-numeric: tabular-nums; }
+.up-dlg { max-width: 560px; }
+.up-dlg .up-list { max-height: 46vh; overflow: auto; margin: 8px 0; padding-left: 22px; }
+.up-dlg .up-list li { display: flex; gap: 8px; justify-content: space-between; padding: 2px 0; }
+.up-dlg .up-subj { flex: 1; min-width: 0; }
+.up-dlg .up-when { color: var(--muted, #8a8f98); font-size: 12px; white-space: nowrap; }

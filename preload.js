@@ -116,6 +116,7 @@ contextBridge.exposeInMainWorld('hub', {
     onChanged: on('fs:changed'),
   },
   chatMedia: { find: call('chatmedia:find') },
+  update: { status: call('update:status'), apply: call('update:apply'), restart: call('update:restart'), reload: call('update:reload') },
   fetchText: call('net:text'),
   openDialog: call('dialog:open'),
   saveFile: call('dialog:saveFile'),
