@@ -263,7 +263,8 @@ const Board = (() => {
     if (/^(https?|file):\/\/\S+$/i.test(t)) return addUrl(t, at);
     // pack11: a bare address ("example.com/page", "www.site.io") is a website card, and a list of links (one per line)
     // becomes one card each, side by side, instead of a note full of links
-    if (/^(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}(:\d+)?(\/\S*)?$/i.test(t) && !/\s/.test(t)) return addUrl(`https://${t}`, at);
+    // (a file name like "notes.md" or "image.png" stays a note: www., or a usual web ending, is needed)
+    if (/^(www\.[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}|[a-z0-9-]+(\.[a-z0-9-]+)*\.(com|net|org|io|dev|app|co|ai|design|studio|art|me|tv|xyz|gg|so|ly|to|info|site|page|fr|uk|de|nl|es|it|ca|us|be|ch|jp|world|club|online|store|shop|blog|tech|cloud|link|live|fm|is|cc))(:\d+)?(\/\S*)?$/i.test(t)) return addUrl(`https://${t}`, at);
     const lines = t.split(/\s*\n\s*/).filter(Boolean);
     if (lines.length > 1 && lines.length <= 24 && lines.every((l) => /^https?:\/\/\S+$/i.test(l))) {
       const p0 = at || center();

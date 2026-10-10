@@ -32,7 +32,7 @@ await sleep(700);
 const r = await Capture.stop({ quiet: true });
 const p = (await window.hub.capture.frames('probe', r.mp4)).value;
 const rect = Capture.rectOf(Capture.elementFor('lab'));
-out.rec = { path: r.mp4, w: p.w, h: p.h, dur: p.duration, frames: (await window.hub.capture.frames('times', r.webm)).value.length, rect };
+out.rec = { path: r.mp4, w: p.w, h: p.h, dur: p.duration, frames: ((await window.hub.capture.frames('times', r.webm || r.mp4 || r.path)).value || []).length, rect };
 ok(Math.abs(p.w - Math.round(rect.width / 2) * 2) <= 2 && Math.abs(p.h - Math.round(rect.height / 2) * 2) <= 2, 'the recording is the Lab preview\'s size');
 ok(out.rec.frames >= 1 && p.duration > 0, 'a playable take (the steady rate is checked in capture-record.js; WebGL in software on a busy test machine starves the encoder)');
 ok(out.mid.framesIn > 3, 'the moving Lab sends frames');
