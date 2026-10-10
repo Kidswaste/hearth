@@ -147,7 +147,7 @@ const BoardPack = (() => {
   let tl = null;
   function clipsOf(list = null) { return (list || refs()).filter((i) => i.type === 'video'); }
   function timelineText(list = null) {
-    return clipsOf(list).map((it) => { const v = it.vibe || {}; return `${it.title || 'clip'}: ${fmt(v.duration || 0)}, ${v.cutCount ? `${v.cutCount} cuts, ≈${v.pace}s a shot, ${v.cutsPerMin}/min` : 'one shot'}, motion ${v.motion ?? '?'}`; }).join('\n');
+    return clipsOf(list).map((it) => { const v = it.vibe || {}; if (!v.duration) return `${it.title || 'clip'}: vibe not read yet`; return `${it.title || 'clip'}: ${fmt(v.duration || 0)}, ${v.cutCount ? `${v.cutCount} cuts, ≈${v.pace}s a shot, ${v.cutsPerMin}/min` : 'one shot'}, motion ${v.motion ?? '?'}`; }).join('\n');
   }
   function timeline(list = null) {
     const clips = clipsOf(list);
@@ -168,7 +168,7 @@ const BoardPack = (() => {
       return el('div', { class: 'bdp-row' },
         el('div', { class: 'bdp-name', text: it.title || 'clip', title: it.title || '' }),
         el('div', { class: 'bdp-lane' }, bar),
-        el('div', { class: 'bdp-meta', text: v.cutCount ? `${fmt(d)} · ≈${v.pace}s/shot · ${v.cutsPerMin}/min` : `${fmt(d)} · one shot` }));
+        el('div', { class: 'bdp-meta', text: !d ? 'reading its vibe…' : v.cutCount ? `${fmt(d)} · ≈${v.pace}s/shot · ${v.cutsPerMin}/min` : `${fmt(d)} · one shot` }));
     });
     const all = clips.flatMap((c) => { const v = c.vibe || {}; const cuts = [0, ...(v.cuts || []), v.duration || 0]; return cuts.slice(1).map((x, i) => x - cuts[i]); }).filter((x) => x > 0);
     const avg = all.length ? all.reduce((a, b) => a + b, 0) / all.length : 0;
