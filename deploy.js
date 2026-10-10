@@ -29,7 +29,8 @@ const Deploy = (() => {
   // ---------- what gets published ----------
   // the Lab scene: the open sketch (or one by name / id), its layers, references, palette and frame size
   async function sceneSpec(ref = '') {
-    const sketches = (await window.hub.kvGet('three-sketches', [])) || [];
+    // the Lab's own list when it is loaded (the newest edits), the saved one otherwise
+    const sketches = Lab()?.scenes?.all?.() || (await window.hub.kvGet('three-sketches', [])) || [];
     if (!sketches.length) throw new Error('No Lab scenes yet: make one in the Three.js Lab first.');
     const r = String(ref || '').trim().toLowerCase();
     const cur = Lab()?.scenes?.currentId?.();
@@ -135,7 +136,7 @@ const Deploy = (() => {
     const prev = C.previous(history, e);
     if (!prev) return { ok: false, error: `“${e.name}” has no earlier deploy on ${C.provider(e.provider).name}.` };
     const p = C.provider(e.provider);
-    const yes = await ask({ agentId, action: `Roll back “${e.name}” on ${p.name}`, target: `to the version of ${new Date(prev.at).toLocaleString()}`, risk: 'high', ok: 'Roll back', detail: `${e.url || ''}\n${p.canRollback ? `${p.name} switches back to the earlier deploy.` : 'Hearth publishes the earlier build again (kept on this computer).'}` });
+    const yes = await ask({ agentId, title: 'Roll back?', action: `Roll back “${e.name}” on ${p.name}`, target: `to the version of ${new Date(prev.at).toLocaleString()}`, risk: 'high', ok: 'Roll back', detail: `${e.url || ''}\n${p.canRollback ? `${p.name} switches back to the earlier deploy.` : 'Hearth publishes the earlier build again (kept on this computer).'}` });
     if (!yes) return { ok: false, error: 'Not rolled back (you said no).' };
     const r = await window.hub.deploy.rollback(e, prev, o());
     if (!r.ok) return r;
@@ -150,7 +151,7 @@ const Deploy = (() => {
     if (!e) return { ok: false, error: 'Which one? /deploy history lists them.' };
     const p = C.provider(e.provider);
     const site = whole || !p.canRemoveDeploy;
-    const yes = await ask({ agentId, action: site ? `Delete the whole site “${e.slug}” on ${p.name}` : `Remove this deploy of “${e.name}” on ${p.name}`, target: e.url || e.slug, risk: 'high', ok: 'Delete', detail: site ? `Every deploy of ${e.slug} goes${p.id === 'github' ? ' (the GitHub repository is deleted: gh needs the delete_repo permission, gh auth refresh -s delete_repo)' : ''}. The builds stay on this computer.` : 'Only this deploy goes; the site stays.' });
+    const yes = await ask({ agentId, title: site ? 'Delete the site?' : 'Remove this deploy?', action: site ? `Delete the whole site “${e.slug}” on ${p.name}` : `Remove this deploy of “${e.name}” on ${p.name}`, target: e.url || e.slug, risk: 'high', ok: 'Delete', detail: site ? `Every deploy of ${e.slug} goes${p.id === 'github' ? ' (the GitHub repository is deleted: gh needs the delete_repo permission, gh auth refresh -s delete_repo)' : ''}. The builds stay on this computer.` : 'Only this deploy goes; the site stays.' });
     if (!yes) return { ok: false, error: 'Nothing removed (you said no).' };
     const r = await window.hub.deploy.remove(e, site ? 'site' : 'deploy', o());
     if (!r.ok) return r;

@@ -89,7 +89,7 @@ async function providerStatus(id, { check = false, paths = {} } = {}) {
     const r = await runCli(cli, p.whoami, { timeout: 20000 });
     const text = `${r.out}\n${r.err}`;
     out.signedIn = r.code === 0 && !p.signedOut.test(text);
-    out.account = out.signedIn ? (text.match(/(?:Logged in (?:to [^\s]+ )?(?:account|as)\s+|Email:\s*|associated with the email\s+)([^\s(]+)/i)?.[1] || text.split('\n').map((l) => l.trim()).find((l) => /^[\w.@-]+$/.test(l)) || null) : null;
+    out.account = out.signedIn ? ((text.match(/(?:Logged in (?:to [^\s]+ )?(?:account|as)\s+|Email:\s*|associated with the email\s+)([^\s(]+)/i)?.[1] || text.split('\n').map((l) => l.trim()).find((l) => /^[\w.@-]+$/.test(l)) || '').replace(/[.,;]+$/, '') || null) : null;
   }
   return out;
 }
