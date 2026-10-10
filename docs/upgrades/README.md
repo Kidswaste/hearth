@@ -55,7 +55,8 @@ line count is lower than the number of upgrades).
 | Makes (round 11): everything Hearth creates has one name, color and mark; `/makes plan a three.js animation that cuts into a video` makes the Lab chat and the Video chat at once (same name and mark, grouped in the chats list, readable before anything is in them: "planned · waiting for Lab"); `/dispatch`, `/intro`, jams, renders and recordings join it; the Makes list on the Commands page (rename the whole make, hand off, dismiss / restore) | [makes.md](makes.md) | 62 |
 | Optimize (round 12): long chats load their last 40 messages (switching 4× fewer DOM changes, opening 263 → 99 ms), idle at 0 frames again, error log + `/habits errors`, weekly tidy of controls you never use, sequence ↻ Reload and a ⇪ Render panel (formats, fps, quality, sound), a finished sequence holds its last frame | [optimize.md](optimize.md) | 20 |
 | Speed (round 13): menus, palette, command bar and Commands page ranked by your habits; Ctrl/⌘+. Again and recent actions; a pick-up card when the app opens; repeated routines offered as one-key macros; your own keys first on the keys sheet; one-click fixes on known errors; a safer weekly tidy with Undo and `/habits restore` | [speed.md](speed.md) | 61 |
-| **Total** | | **9,790** |
+| Renders (round 13): one render queue for every render, recording and export (progress, time left, pause / cancel / retry, joins its make), presets in one panel (Reels / TikTok / Shorts, Story, Feed, Square, YouTube 1080p / 4K, GIF, WebM, ProRes master, audio, All socials), done note with Open / Reveal / Copy path / Video Review, history with re-render, `/renders` | [renders.md](renders.md) | 67 |
+| **Total** | | **9,857** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.
