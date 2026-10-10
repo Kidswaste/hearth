@@ -100,7 +100,9 @@ if (pv) {
   const t0 = pv.currentTime;
   await key('ArrowRight'); await wait(300); await key('ArrowRight'); await wait(400);
   step('→ ×2 in the player steps two frames', pv.currentTime > t0 && pv.currentTime - t0 < 0.2, { from: t0, to: pv.currentTime });
-  await key(' '); await wait(700); const playing = !pv.paused; await key(' '); await wait(200);
+  // from the start, and the play event itself: a short take (a starved encoder) can end within the wait and read as paused
+  pv.currentTime = 0; await wait(200); let sawPlay = false; pv.addEventListener('play', () => { sawPlay = true; }, { once: true });
+  await key(' '); await wait(300); const playing = sawPlay || !pv.paused; await key(' '); await wait(200);
   if (pv.duration > 0.5) step('Space plays and pauses the capture', playing && pv.paused); else J.out.steps.push(`… Space not checked: the take is ${pv.duration.toFixed(2)} s (the encoder was starved on this machine)`);
 }
 await shot('player');
