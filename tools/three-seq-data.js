@@ -137,7 +137,7 @@ const ThreeSeqData = (() => {
     if (!x) return e;
     const n = C.split(e, T);
     if (n === e) return e;
-    if (x.clip.kind === 'scene') { const b = n.clips[x.i + 1]; b.in = r4((x.clip.in || 0) + (T - x.start)); }
+    if (x.clip.kind === 'scene') { const b = n.clips[x.i + 1]; b.in = r4((x.clip.in || 0) + (T - x.start) * (x.clip.speed || 1)); } // (its own time runs at its speed)
     return n;
   }
   // Delete lifts (leaves a gap), Shift+Delete ripples (closes it); items are just removed.
@@ -158,7 +158,7 @@ const ThreeSeqData = (() => {
     if (!f) return e;
     if (f.where === 'item') return C.trimItem(e, id, edge, edge === 'in' ? f.clip.start + delta : C.itemEnd(f.clip) + delta);
     const n = f.clip.kind !== 'scene' ? C.trim(e, id, edge, delta) : C.patchAny(e, id, (c) => {
-      if (edge === 'in') { const d = clamp(delta, -(c.in || 0), c.dur - MIN); c.in = r4((c.in || 0) + d); c.dur = r4(c.dur - d); } else c.dur = r4(Math.max(MIN, c.dur + delta));
+      if (edge === 'in') { const k = c.speed || 1; const d = clamp(delta, -(c.in || 0) / k, c.dur - MIN); c.in = r4((c.in || 0) + d * k); c.dur = r4(c.dur - d); } else c.dur = r4(Math.max(MIN, c.dur + delta));
     });
     return gapsHold(e, n, id, edge);
   }
@@ -217,7 +217,7 @@ const ThreeSeqData = (() => {
     const n = C.roll(e, i, delta);
     if (n === e || b0?.kind !== 'scene') return n;
     const d = r4(b0.dur - n.clips[i].dur); // how far the cut really moved
-    return C.patchAny(n, [b0.id], (c) => { c.in = r4(Math.max(0, (c.in || 0) + d)); });
+    return C.patchAny(n, [b0.id], (c) => { c.in = r4(Math.max(0, (c.in || 0) + d * (c.speed || 1))); });
   }
   // Slide (Shift+drag a clip): the clip keeps its content and moves; its neighbours trim (a scene after it keeps
   // its content in place too)
@@ -227,7 +227,15 @@ const ThreeSeqData = (() => {
     const n = C.slide(e, id, delta);
     if (n === e || c0?.kind !== 'scene') return n;
     const d = r4(c0.dur - n.clips[i + 1].dur);
-    return C.patchAny(n, [c0.id], (c) => { c.in = r4(Math.max(0, (c.in || 0) + d)); });
+    return C.patchAny(n, [c0.id], (c) => { c.in = r4(Math.max(0, (c.in || 0) + d * (c.speed || 1))); });
+  }
+  // per-clip speed: footage plays faster / slower (its length follows, like the editor's), a scene's own clock runs
+  // at that speed (its length stays: a scene has no end of its own); items (overlays, sound) like footage
+  function setSpeed(e, id, rate) {
+    const f = find(e, id);
+    if (!f) return e;
+    const k = clamp(Number(rate) || 1, 0.1, 8);
+    return C.patchAny(e, [id], (c) => { c.speed = r4(k); const d = C.durOf(c); if (c.fadeIn) c.fadeIn = Math.min(c.fadeIn, d / 2); if (c.fadeOut) c.fadeOut = Math.min(c.fadeOut, d / 2); });
   }
   const setTrans = (e, id, type, dur = 0.5) => gapsHold(e, C.setTrans(e, [id], type, dur), id, 'trans');
   const setDur = (e, id, secs) => { const f = find(e, id); if (!f) return e; return f.clip.kind === 'video' ? C.trim(e, id, 'out', Math.max(MIN, secs) - C.durOf(f.clip)) : C.patchAny(e, id, (c) => { c.dur = r4(Math.max(MIN, secs)); }); };
@@ -294,7 +302,7 @@ const ThreeSeqData = (() => {
   }
   const fmt = (t) => `${Math.floor(Math.max(0, t) / 60)}:${(Math.max(0, t) % 60).toFixed(2).padStart(5, '0')}`;
   function clipLabel(c) {
-    if (c.kind === 'scene') return `scene “${c.name}”${c.look ? ` · look ${c.look}` : ''}${c.vary ? ` · variation ${c.vary.seed % 1000}` : ''}${c.vibe ? ' · board vibe' : ''}${c.in ? ` · from ${c.in.toFixed(2)} s` : ''}`;
+    if (c.kind === 'scene') return `scene “${c.name}”${c.look ? ` · look ${c.look}` : ''}${c.vary ? ` · variation ${c.vary.seed % 1000}` : ''}${c.vibe ? ' · board vibe' : ''}${c.in ? ` · from ${c.in.toFixed(2)} s` : ''}${c.speed && c.speed !== 1 ? ` · ${c.speed}×` : ''}${c.swatch ? ` · ${c.swatch}` : ''}`;
     if (c.kind === 'seq') return `sequence “${c.name}”${c.in ? ` from ${fmt(c.in)}` : ''}`;
     if (c.kind === 'video') return `footage ${base(c.src)} ${fmt(c.in)}–${fmt(c.out)}${c.speed !== 1 ? ` ${c.speed}×` : ''}${c.mute ? '' : ' (sound)'}`;
     if (c.kind === 'title') return `title card “${c.text}”`;
@@ -445,7 +453,7 @@ const ThreeSeqData = (() => {
     beatLen, barLen, gridTimes, barAt, defaultDur, defaultTransDur,
     ensureTrack, trackOf, sceneClip, insertIndex, place, addScene, addFootage, addTitle, addOverlay, setSong, songOf, addAudio,
     find, split, remove, trim, slip, move, duplicate, setTrans, setDur, fitBars, timing, showing, snapTargets, snap, fmt, clipLabel, describe, resolve, scenes, total,
-    roll, slide, varyValues, shiftHue, rangeOf, flatten, seqClip, copyClips, pasteClips,
+    roll, slide, setSpeed, varyValues, shiftHue, rangeOf, flatten, seqClip, copyClips, pasteClips,
   };
 })();
 if (typeof module !== 'undefined') module.exports = ThreeSeqData;

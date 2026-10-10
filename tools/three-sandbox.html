@@ -2778,7 +2778,7 @@ function keyTime(L) {
 function hostTime(P) {
   const G = P.props.pcOf ? layers.get(P.props.pcOf) : null;
   if (G) return pcTime(G);
-  if (SQ.on) return P.props.seqT0 != null ? SQ.T - P.props.seqT0 : SQ.T;
+  if (SQ.on) return P.props.seqT0 != null ? sqLocal(P) : SQ.T;
   return mediaEl ? mediaEl.currentTime : realNow() / 1000;
 }
 // the precomp's own scene time now: (host − start) × speed + offset, or its time-remap keys (After Effects' Time
@@ -2914,7 +2914,7 @@ Object.defineProperty(globalThis, 'layer', {
     const p = L.props;
     // (a precomp's layer: its own scene's clock)
     const t = p.pcOf ? keyTime(L) : SQ.on ? SQ.T : mediaEl ? mediaEl.currentTime : performance.now() / 1000;
-    return { id: L.id, name: p.name, in: p.in ?? null, out: p.out ?? null, clock: t, time: p.seqT0 != null ? t - p.seqT0 : p.in != null ? t - p.in : t, scene: p.pcOf ? t : p.seqT0 != null ? t - p.seqT0 : mediaEl ? t : null, progress: p.in != null && p.out != null ? (t - p.in) / (p.out - p.in) : null, mix: layerMix(L) };
+    return { id: L.id, name: p.name, in: p.in ?? null, out: p.out ?? null, clock: t, time: p.seqT0 != null ? (t - p.seqT0) * (p.seqRate || 1) : p.in != null ? t - p.in : t, scene: p.pcOf ? t : p.seqT0 != null ? (t - p.seqT0) * (p.seqRate || 1) : mediaEl ? t : null, progress: p.in != null && p.out != null ? (t - p.in) / (p.out - p.in) : null, mix: layerMix(L) };
   },
 });
 
@@ -5045,7 +5045,7 @@ function installRunGuards() {
       if (frozen && !stepping && !SQ.off && !(o.L && o.L.drawnGen !== o.L.gen)) { sched(run); return; }
       if (o.L && layerMix(o.L) <= 0) { sched(run); return; }
       if (!SQ.off && !capOk(t)) { sched(run); return; }
-      within(o, fn, [o.L?.props.seqT0 != null && SQ.on ? (SQ.T - o.L.props.seqT0) * 1000 : o.L?.props.pcOf ? keyTime(o.L) * 1000 : t]);
+      within(o, fn, [o.L?.props.seqT0 != null && SQ.on ? sqLocal(o.L) * 1000 : o.L?.props.pcOf ? keyTime(o.L) * 1000 : t]);
     };
     return sched(run);
   };
@@ -5607,7 +5607,7 @@ function sqLayerHere() {
 }
 performance.now = function () {
   const h = sqLayerHere();
-  if (h) return h.setup ? 0 : (SQ.T - h.L.props.seqT0) * 1000;
+  if (h) return h.setup ? 0 : sqLocal(h.L) * 1000;
   // a precomp's layer: its scene's own clock (0 while it sets up), like a sequence scene
   const c = PC.list.size ? pcLayerHere() : null;
   if (c) return c.setup ? 0 : keyTime(c.L) * 1000;
@@ -5624,6 +5624,8 @@ if (THREE.Clock?.prototype?.start) {
   THREE.Clock.prototype.start = function () { clockStart.call(this); if (sqLayerHere() || (PC.list.size && pcLayerHere())) { this.startTime = 0; this.oldTime = 0; } };
 }
 const sqAsset = (id) => SQ.assets.get(id) || null;
+// a sequence scene's own time (s): from its clip's start, at the clip's speed (seqguard: per-clip speed)
+const sqLocal = (L) => (SQ.T - L.props.seqT0) * (L.props.seqRate || 1);
 // a sequence scene's own kick / snare / hit markers (from its own song's beat map), in its own time: they move with
 // its clip like its keyframes do (null: the scene has none, the sequence's song's markers apply)
 function sqOwnMarks(name, all = false) {
@@ -5631,7 +5633,7 @@ function sqOwnMarks(name, all = false) {
   const h = sqLayerHere();
   const m = h?.L.props.seqMarks;
   if (!m) return null;
-  const t = SQ.T - h.L.props.seqT0;
+  const t = sqLocal(h.L);
   if (all) return { all: m, t };
   return m[name]?.length ? { marks: m[name], t } : null;
 }
@@ -5686,7 +5688,7 @@ function sqProps(g, L, j) {
   // a layer's own fades stay when its own in / out fall inside the clip (a precomp's cross-fade, a layer fading in mid-scene)
   const fin = p.in != null && p.in >= g.start - 1e-4 ? p.fadeIn || 0 : 0;
   const fout = p.out != null && p.out <= g.end + 1e-4 ? p.fadeOut || 0 : 0;
-  return { ...p, z: g.z + j, in: lin, out: lout, fadeIn: fin, fadeOut: fout, seqT0: g.t0 ?? g.start, seqGroup: g.id, visible: p.visible !== false };
+  return { ...p, z: g.z + j, in: lin, out: lout, fadeIn: fin, fadeOut: fout, seqT0: g.t0 ?? g.start, seqRate: g.rate || 1, seqGroup: g.id, visible: p.visible !== false };
 }
 function sqMount(g) {
   const st = { g, key: sqKeyOf(g), ids: [], ready: null, video: null, fresh: true, at: realNow() };
