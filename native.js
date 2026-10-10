@@ -391,6 +391,8 @@ const Native = (() => {
   async function addPath(agentId, path) {
     const v = views.get(agentId);
     const name = path.split(/[\\/]/).pop();
+    // (round 14) a folder dropped on a chat becomes one of the folders it may use (access.js)
+    if (typeof Access !== 'undefined' && await Access.maybeFolder(agentId, path).catch(() => false)) return;
     if (H.agent(agentId)?.threeTools && typeof ThreeLab !== 'undefined' && ThreeLab.isReference(name) && !/\.(png|jpe?g|gif|webp|bmp)$/i.test(name)) {
       if (await labReference(agentId, path)) { renderChips(agentId); toast(`${name} added to the sketch's references`, { timeout: 2200 }); return; }
     }
@@ -414,7 +416,7 @@ const Native = (() => {
       try { v.attachments.push({ kind: 'text', name, content: await window.hub.fs.read(path, { maxBytes: TEXT_ATTACH_LIMIT }) }); } catch (err) { toast(err.message, { type: 'error' }); }
     } else {
       const agent = H.agent(agentId);
-      if (agent.workspace) v.attachments.push({ kind: 'file', name, path }); // Claude reads it with Read, Astra with a sandboxed command
+      if (agent.workspace || (typeof Access !== 'undefined' && Access.isOn(agentId))) v.attachments.push({ kind: 'file', name, path }); // Claude reads it with Read, Astra with a sandboxed command
       else { toast(`${name} isn't a text file. Give this agent File access to let it open other file types.`, { type: 'error' }); return; }
     }
     renderChips(agentId);
@@ -1114,7 +1116,7 @@ const Native = (() => {
     window.hub.send({
       agentId, chatId: chat.id, session: chat.session,
       text: style ? `[${style}]\n\n${extra.text}` : extra.text,
-      options: { model: chat.model || undefined, images: last.images || images, ...extra.options, ...(chat.captureTools ? { captureTools: true } : {}) },
+      options: { model: chat.model || undefined, images: last.images || images, ...extra.options, ...(chat.captureTools ? { captureTools: true } : {}), ...(typeof Access !== 'undefined' ? Access.sendOptions(chat) : {}) },
     }).catch((err) => onEvent({ chatId: chat.id, type: 'error', message: err.message }));
   }
 
@@ -1515,6 +1517,8 @@ const Native = (() => {
       { label: '＋ New chat', key: 'Ctrl+N', action: () => newChat(agentId) },
       { label: '🗜 Compact context', action: () => compactChat(agentId) },
       { label: 'Model', hint: chat.model || H.agent(agentId).model || 'default', items: modelItems },
+      // (round 14) what this chat may do with your files (access.js)
+      ...(typeof Access !== 'undefined' ? [Access.menuItem(agentId, chat)] : []),
       { label: 'View', items: () => [
         { label: 'Find in this chat…', key: 'Alt+F', action: () => Commands.exec('/find', agentId) },
         { label: 'Open / close all thinking', key: 'Alt+T', action: () => toggleThinking(agentId) },
@@ -1543,6 +1547,7 @@ const Native = (() => {
       { label: 'Delete chat', danger: true, action: async () => { if (await Modal.confirm('Delete chat?', `"${chat.title}" moves to Recently deleted (Ctrl+K → Recently deleted chats) for 30 days.`, { ok: 'Delete', danger: true })) remove(chat.id); } },
     ] : [
       { label: 'Model', hint: H.agent(agentId).model || 'default', items: modelItems },
+      ...(typeof Access !== 'undefined' ? [Access.menuItem(agentId, null)] : []),
       { label: 'Import a chat from a file…', action: () => Commands.exec('/import', agentId) },
       { label: 'Chat commands…', key: '/help', action: () => Commands.exec('/help', agentId) },
     ];
