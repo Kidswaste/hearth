@@ -190,7 +190,7 @@ const Adobe = (() => {
   // files (FCP XML, videos) into the open Premiere project; without the bridge: the file and how to import it
   async function prImport(files, { sequence = null } = {}) {
     const a = await appOf('pr');
-    if (!a?.found) return { ok: false, error: a?.reason, files };
+    if (!a?.found) return { ok: false, error: a?.reason, files, manual: `Premiere Pro: File → Import… → ${files.map(base).join(', ')}` };
     const projDir = await outDir();
     const r = await run('pr', D.pr.importFiles({ files, project: join(projDir, `Hearth ${stampName()}.prproj`), sequence }), { label: 'import', timeout: 180000 });
     if (r.ok) return { ok: true, ...r.value };

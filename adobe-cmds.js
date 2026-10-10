@@ -71,7 +71,7 @@
   async function premiere(args) {
     const [verb, ...rest] = String(args || '').trim().split(/\s+/);
     const tail = rest.join(' ');
-    if (!verb || /^(timeline|edit|cut|xml)$/i.test(verb)) {
+    if (!verb || /^(timeline|edit|cut)$/i.test(verb)) {
       const r = await Adobe.sendEdit();
       return r.premiere.ok ? `In Premiere Pro: “${r.name}”, ${r.clips} clips${r.notes.length ? `\nStays in Hearth: ${r.notes.slice(0, 6).join('; ')}` : ''}` : `${r.premiere.error}\n${r.premiere.manual}\n(the XML: ${r.file})`;
     }
