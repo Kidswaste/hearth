@@ -188,13 +188,17 @@ const VideoPack = (() => {
     const mean = (x) => x.reduce((s, v) => s + v, 0) / (x.length || 1);
     const ma = mean(ea); const mb = mean(eb);
     const a = ea.map((v) => v - ma); const b = eb.map((v) => v - mb);
-    let best = 0; let bestS = -Infinity;
+    const scores = [];
     for (let lag = -L; lag <= L; lag += 1) {
       let s = 0; let n = 0;
       for (let i = 0; i < a.length; i += 1) { const j = i + lag; if (j < 0 || j >= b.length) continue; s += a[i] * b[j]; n += 1; }
-      if (n > rate * 2) { s /= n; if (s > bestS) { bestS = s; best = lag; } }
+      if (n > rate * 2) scores.push([lag, s / n]);
     }
-    return { lag: best / rate, score: bestS };
+    if (!scores.length) return { lag: 0, score: 0 };
+    // a steady beat matches at every bar: among the (near) best, the smallest shift wins
+    const top = Math.max(...scores.map((x) => x[1]));
+    const best = scores.filter((x) => x[1] >= top - Math.abs(top) * 0.02).sort((p, q) => Math.abs(p[0]) - Math.abs(q[0]))[0];
+    return { lag: best[0] / rate, score: best[1] };
   }
   const envelope = (samples, rate, hz = 50) => { const n = Math.max(1, Math.round(rate / hz)); const out = []; for (let i = 0; i + n <= samples.length; i += n) { let s = 0; for (let j = i; j < i + n; j += 1) s += Math.abs(samples[j]); out.push(s / n); } return out; };
 

@@ -277,8 +277,11 @@ const VideoSound = (() => {
   function setEnabled(on) { enabled = on ?? !enabled; try { store.set('video.previewSound', enabled); } catch { /* session only */ } if (!enabled) pause(); return enabled; }
   // decode ahead the sounds of an edit (opening it / adding a sound effect), so the first play is heard
   function warm(e) { if (!e || !C) return 0; let n = 0; for (const L of soundLayers(e)) if (wants(L.clip)) { bufferOf(L.clip.src); n += 1; } return n; }
-  function status() { return { enabled, voices: voices.size, items: [...els.values()].filter((d) => !d.el.paused).length, decoded: [...buffers.values()].filter((b) => b.buf).length, failed: [...buffers.entries()].filter(([, b]) => b.failed).map(([s]) => s) }; }
+  function status() { return { enabled, state: ctx?.state || "none", gains: [...voices.values()].map((v) => Number(v.gain.gain.value.toFixed(3))), voices: voices.size, items: [...els.values()].filter((d) => !d.el.paused).length, decoded: [...buffers.values()].filter((b) => b.buf).length, failed: [...buffers.entries()].filter(([, b]) => b.failed).map(([s]) => s) }; }
 
-  return { attach, sync, pause, forget, owns, wants, warm, plan, previewNote, recordTracks, setEnabled, status, bufferOf, LIVE, RENDER_ONLY, get enabled() { return enabled; } };
+  // the engine's output level right now (0…1 RMS): checks hear that something plays (an analyser made on first ask)
+  let meter = null;
+  function outputLevel() { if (!ctx) return 0; if (!meter) { meter = ctx.createAnalyser(); meter.fftSize = 2048; master.connect(meter); } const d = new Float32Array(meter.fftSize); meter.getFloatTimeDomainData(d); let s0 = 0; for (const v of d) s0 += v * v; return Math.sqrt(s0 / d.length); }
+  return { attach, sync, pause, forget, owns, wants, warm, plan, previewNote, recordTracks, setEnabled, status, bufferOf, level: outputLevel, LIVE, RENDER_ONLY, get enabled() { return enabled; } };
 })();
 if (typeof module !== 'undefined') module.exports = VideoSound;
