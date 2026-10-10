@@ -10,7 +10,11 @@ const Panel = (() => {
   const PAGE = 40; // chats shown per agent before "Show more"
   const expanded = new Map(); // agent id -> how many to show
   // row(rowEl, item, agent) after a chat row is built, render() after the list is drawn (chat-scenes.js)
-  const hooks = { row: [], render: [] };
+  // (round 11, makes.js) skip(chatSummary) → true keeps a chat out of its agent's group (it shows in its make's group);
+  // top(root, { row, itemOf, q }) draws groups above the agents' (each make with its rooms)
+  const hooks = { row: [], render: [], skip: [], top: [] };
+  const skipped = (c) => !view && hooks.skip.some((fn) => { try { return fn(c); } catch { return false; } });
+  const itemOf = (c) => ({ key: c.id, title: c.title, chatId: c.id, pinned: c.pinned, updatedAt: c.updatedAt, ...metaOf(c.id) });
 
   const el = (tag, cls, text) => {
     const node = document.createElement(tag);
@@ -42,9 +46,9 @@ const Panel = (() => {
 
   function itemsFor(agent) {
     if (agent.mode === 'native') {
-      return H.chats.filter((c) => c.agentId === agent.id && inView(c, agent))
+      return H.chats.filter((c) => c.agentId === agent.id && inView(c, agent) && !skipped(c))
         .sort((a, b) => (b.pinned - a.pinned) || SORTS[sortBy()](a, b))
-        .map((c) => ({ key: c.id, title: c.title, chatId: c.id, pinned: c.pinned, updatedAt: c.updatedAt, ...metaOf(c.id) }));
+        .map(itemOf);
     }
     if (view && view.toLowerCase() !== agent.name.toLowerCase()) return [];
     return (H.history[agent.id] || []).map((h) => ({ key: h.url, title: h.title, url: h.url }));
@@ -158,6 +162,7 @@ const Panel = (() => {
       chip.append(x);
       root.append(chip);
     }
+    if (!view) for (const fn of hooks.top) { try { fn(root, { row, itemOf, q, collapsed, toggleGroup }); } catch (err) { console.warn(err); } }
     for (const agent of H.agents()) {
       const items = itemsFor(agent).filter((i) => matches(i, q));
       if (view && !items.length) continue;
@@ -245,7 +250,8 @@ const Panel = (() => {
       else {
         try { activeKey = H.surfaces.get(id)?.webview?.getURL(); } catch { /* webview not ready yet */ }
       }
-      for (const row of group.querySelectorAll('.item')) row.classList.toggle('active', row.dataset.key === activeKey || (row.dataset.key === '__draft' && !activeKey));
+      // (round 11) a make's group holds rows of several agents: each row names its own (data-agent)
+      for (const row of group.querySelectorAll('.item')) { const k = row.dataset.agent ? H.activeChat[row.dataset.agent] : activeKey; row.classList.toggle('active', row.dataset.key === k || (row.dataset.key === '__draft' && !k)); }
     }
   }
 

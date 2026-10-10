@@ -84,7 +84,7 @@ const MORE_TOOLS = [
 const NODES_TOOL = { name: 'three_nodes', description: 'Layers as node graphs (the owner\'s Nodes view). command: "layer <preset>" (new layer), "presets", "types [word]", "list", "add <type> k=v [to=n.in]", "link a.out b.in", "unlink b.in", "set <n> k=v", "rm <n>", "preset <p>" (replace), "rebuild". help nodes.', inputSchema: obj({ command: { type: 'string' } }, ['command']) };
 
 // add_layer stays a command (older habits keep working) but is described as its own tool now
-const DO_CMDS = ['layers', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'footage', 'sequence', 'motion', 'comp', 'help'];
+const DO_CMDS = ['layers', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'footage', 'sequence', 'motion', 'comp', 'make', 'help'];
 const DO_TOOL = {
   name: 'three_do',
   description: `More Lab actions: { cmd, ...args }. layer = name, id, number (1 = bottom), "top", "bottom" or "selected".
@@ -99,6 +99,7 @@ run {command: "/make-it-react"} runs a chat command · task {todo} this chat's t
 footage {action, frame} frames + cut list (help footage) · sequence {op} scenes / footage / titles on a video timeline (help sequence)
 motion {op, preset, words} motion design: Hearth UI cards, kinetic type, camera moves, logos, end cards (help motion)
 comp {op} other chats' scenes as live layers; parts dispatched to other chats at once (help comp)
+make {op: plan|list, text} plan a make: its rooms made now (help make)
 help {topic} explains any of these (app: the whole app).`,
   inputSchema: { type: 'object', properties: { cmd: { type: 'string', enum: DO_CMDS } }, required: ['cmd'] },
 };

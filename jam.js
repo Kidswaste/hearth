@@ -461,7 +461,8 @@ const Jam = (() => {
     const S = sides();
     if (!S.astra.talk && !S.astra.build) noteOnce(m, 'No Astra agent here: Claude critiques its own builds with a screenshot.');
     try {
-      for (let n = m.list.length + 1; n <= m.total && !J.stopped; n += 1) await roundOf(n);
+      window.Makes?.fromJam?.(m, chat); // (round 11) a jam is a make (makes.js): its rounds are its progress
+      for (let n = m.list.length + 1; n <= m.total && !J.stopped; n += 1) { await roundOf(n); window.Makes?.fromJam?.(m, chat); }
       if (!J.stopped) await finale();
       m.status = J.stopped ? 'stopped' : 'done';
     } catch (err) {
@@ -487,6 +488,7 @@ const Jam = (() => {
     const host = J?.host;
     const chat = J?.chat;
     if (chat && typeof ChatScenes !== 'undefined') ChatScenes.setWorkers(chat.id, null);
+    if (chat) window.Makes?.fromJam?.(m, chat);
     J = null;
     badge(null);
     if (chat) { chat.updatedAt = Date.now(); Native.save(chat); }
@@ -537,7 +539,7 @@ const Jam = (() => {
     // the jam works on its own copy of the open sketch; the owner's stays as it was
     const before = d.capture();
     m.start = { snap: before, thumb: await thumbNow(d), from: before.sketch };
-    m.sketch = `Jam · ${cap(m.idea || before.sketch || 'visual', 40)}`;
+    m.sketch = window.Makes?.nameIn?.(chat.id, 'Jam') || `Jam · ${cap(m.idea || before.sketch || 'visual', 40)}`; // (round 11) in a make's room: "<Name> · Jam"
     // a copy with its song, frame size and looks (Lab scenes.duplicate), so the jam hears the song too
     const S = ThreeLab.scenes;
     const copy = S?.get(before.sketchId) ? S.duplicate(before.sketchId, m.sketch) : null;

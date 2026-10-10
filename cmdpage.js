@@ -19,6 +19,10 @@ const CmdPage = (() => {
   const short = (s, n = 120) => { const t = String(s ?? '').replace(/\s+/g, ' ').trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
   const P = { mounted: false, root: null, list: null, search: null, right: null, sel: null, runId: null, view: 'none', query: '', io: null, hovered: null, big: null, renderKey: '' };
   const SURFACE = 'tool:commands';
+  // (round 11) other modules' rows on the page (makes.js: the Makes list): sections(q) → [{ head, items: [{ node }] }],
+  // pick(id, right) when a row with data-ext is clicked, menu(id, event) on its right-click
+  const ext = { sections: [], pick: [], menu: [] };
+  const extSections = (q) => ext.sections.flatMap((fn) => { try { return fn(q) || []; } catch (err) { console.warn(err); return []; } });
   const visible = () => H.surfaceIdFor?.(H.activeId) === SURFACE;
   const descOf = (def) => D().DESC[def.name] || String(def.desc || '').split(' · ')[0] || '';
   const principalSet = () => { try { return FlowsUI.principal(); } catch { return new Set(FlowsData?.PRINCIPAL || []); } };
@@ -100,6 +104,7 @@ const CmdPage = (() => {
     const flowsOf = () => { try { FlowsUI.ensure(); return [...FlowsUI.journeys(), ...FlowsUI.yours()]; } catch { return []; } };
     if (q) {
       out.push({ head: 'Best matches', items: matches(q).map((def) => ({ def })) });
+      out.push(...extSections(q));
       const fq = q.toLowerCase();
       const fl = flowsOf().filter((f) => `${f.name} ${f.desc}`.toLowerCase().includes(fq));
       if (fl.length) out.push({ head: 'Step lists (flows)', items: fl.map((flow) => ({ flow })) });
@@ -107,6 +112,7 @@ const CmdPage = (() => {
     }
     const runs = Flows.runs().filter((r) => ['waiting-you', 'hung', 'running', 'waiting-ai', 'stopped'].includes(r.status) && Date.now() - r.updated < 3 * 864e5).slice(0, 4);
     if (runs.length) out.push({ head: 'Going now', items: runs.map((run) => ({ run })) });
+    out.push(...extSections(''));
     const used = new Set();
     const pick = (names) => names.map((n) => Commands.get(n)).filter((d) => d && !used.has(d.name) && used.add(d.name)).map((def) => ({ def }));
     const pins = pick(Commands.favs());
@@ -139,6 +145,7 @@ const CmdPage = (() => {
     markSel();
   }
   function row(it) {
+    if (it.node) return it.node;
     if (it.run) {
       const r = it.run;
       return el('button', { class: `cp-row cp-runrow fl-${r.status}`, type: 'button', dataset: { run: r.id }, title: Flows.line(r) },
@@ -157,7 +164,7 @@ const CmdPage = (() => {
       el('span', { class: 'cp-rtext' }, el('b', { text: `/${d.name}` }), el('span', { class: 'cp-desc', text: short(descOf(d), 110) })),
       el('span', { class: 'cp-area', text: d.area }));
   }
-  const markSel = () => { for (const b of P.list.querySelectorAll('.cp-row.on')) b.classList.remove('on'); const s = P.sel && P.list.querySelector(P.sel.flow ? `.cp-row[data-flow="${P.sel.flow}"]` : `.cp-row[data-name="${P.sel.name}"]`); s?.classList.add('on'); };
+  const markSel = () => { for (const b of P.list.querySelectorAll('.cp-row.on')) b.classList.remove('on'); const s = P.sel && P.list.querySelector(P.sel.ext ? `.cp-row[data-ext="${P.sel.ext}"]` : P.sel.flow ? `.cp-row[data-flow="${P.sel.flow}"]` : `.cp-row[data-name="${P.sel.name}"]`); s?.classList.add('on'); };
   // a row's preview: the still poster when it scrolls into view; it plays (the clip for principal ones) while pointed at
   function poster(box) { if (!box.dataset.drawn && box.dataset.name) { const d = Commands.get(box.dataset.name); if (d) box.innerHTML = CmdPreviews.svg(d); box.dataset.drawn = '1'; } }
   function hover(btn, on) {
@@ -402,6 +409,7 @@ const CmdPage = (() => {
       e.preventDefault(); e.stopPropagation();
       if (b.dataset.name) showMenu(e.clientX, e.clientY, cmdMenu(Commands.get(b.dataset.name)));
       else if (b.dataset.run) showMenu(e.clientX, e.clientY, runMenu(Flows.run(b.dataset.run)));
+      else if (b.dataset.ext) for (const fn of ext.menu) fn(b.dataset.ext, e);
       else if (b.dataset.flow) showMenu(e.clientX, e.clientY, [{ label: '▶ Start', action: () => startFlow(b.dataset.flow) }, { label: 'See its steps', action: () => showFlow(b.dataset.flow) }, { label: 'Node view (advanced)', action: () => FlowsUI.open({ flowId: b.dataset.flow }) }]);
     });
     right.addEventListener('keydown', (e) => {
@@ -418,6 +426,7 @@ const CmdPage = (() => {
     if (b.dataset.name) showExample(b.dataset.name);
     else if (b.dataset.flow) showFlow(b.dataset.flow);
     else if (b.dataset.run) openRun(b.dataset.run);
+    else if (b.dataset.ext) { stopBig(); P.view = 'ext'; P.runId = null; P.sel = { ext: b.dataset.ext }; for (const fn of ext.pick) fn(b.dataset.ext, P.right); markSel(); }
   }
   function onListKey(e) {
     const b = e.target.closest('.cp-row');
@@ -483,5 +492,7 @@ const CmdPage = (() => {
     try { AppUI.addAction?.('Commands: every command, step by step', () => open(), 'Ctrl+Shift+F'); } catch { /* the palette lists tools anyway */ }
   });
 
-  return { open, toggle, openRun, start, showExample, showFlow, questionsOf, isOpen: visible, get state() { return P; } };
+  // (round 11) makes.js: its rows, and the list drawn again when they change (scroll kept; not while searching)
+  function refreshList() { if (P.mounted && visible()) { const keep = P.list.scrollTop; renderList(); P.list.scrollTop = keep; } }
+  return { open, toggle, openRun, start, showExample, showFlow, questionsOf, isOpen: visible, get state() { return P; }, ext, refreshList };
 })();
