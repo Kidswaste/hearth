@@ -180,5 +180,11 @@ const SpeedLearn = (() => {
     return [el('div', { class: 'ks-group speed-yours' }, el('h4', { text: 'Yours · most used first' }), ...rows)];
   }
 
+  queueMicrotask(() => {
+    if (typeof AppUI === 'undefined' || !AppUI.addAction) return;
+    AppUI.addAction('Learned shortcuts: routines you repeat, as one key', () => Commands.exec('/macro learned', H.claudeAgent()?.id));
+    AppUI.addAction('Your one-key macros (Ctrl+Alt+1…9)', () => Commands.exec('/macro keys', H.claudeAgent()?.id));
+  });
+
   return { macroCmd, make, keyForButton, runDigit, learnedList, sheet, yours, keyLineFor, trail: () => trail.slice(), freeDigit };
 })();

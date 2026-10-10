@@ -128,7 +128,8 @@ const CmdPage = (() => {
     if (fl.length) out.push({ head: 'Step lists (flows)', items: fl.map((flow) => ({ flow })) });
     const byArea = new Map();
     for (const d of Commands.list()) { if (!byArea.has(d.area)) byArea.set(d.area, []); byArea.get(d.area).push(d); }
-    for (const [area, defs] of byArea) out.push({ head: `${area} · ${defs.length}`, area, items: defs.map((def) => ({ def })) });
+    // (round 13) in each area, what you use comes first; the never-used keep their order after them
+    for (const [area, defs] of byArea) out.push({ head: `${area} · ${defs.length}`, area, items: (typeof SpeedRank !== 'undefined' ? SpeedRank.sort(defs) : defs).map((def) => ({ def })) });
     return out;
   }
   function renderList() {

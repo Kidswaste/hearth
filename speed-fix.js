@@ -44,5 +44,10 @@ const SpeedFix = (() => {
       setTimeout(() => toast(`This keeps happening (${it.n}×): ${what}`, { timeout: 7000, action: f ? { label: f.label, fn: () => f.run(it.sample) } : { label: 'Your errors', fn: () => Commands.exec('/habits fix', H.claudeAgent()?.id) } }), 1200);
     });
   }
+  queueMicrotask(() => {
+    if (typeof AppUI === 'undefined' || !AppUI.addAction) return;
+    AppUI.addAction('Your errors and their one-click fixes', () => Commands.exec('/habits fix', H.claudeAgent()?.id));
+    AppUI.addAction('Bring back what the weekly tidy tucked', () => Commands.exec('/habits restore', H.claudeAgent()?.id));
+  });
   return { FIXES, fixFor: (t) => (typeof Habits !== 'undefined' ? Habits.fixFor(t) : null) };
 })();
