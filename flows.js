@@ -39,6 +39,10 @@ const Flows = (() => {
     runCommand: async () => '', // (line, { run, node }) → text output
     ask: async () => '', // ({ engine, prompt, run, node, inChat }) → reply text
     cmdInfo: () => null, // name → { name, args, desc } | null
+    // (round 11, commands page) optional hooks: lineOf(node, run) → the command line of an action (instead of filling
+    // node.cmd), grow(run, node, value) → may rebuild run.flow before an answer applies (the page's chained commands)
+    lineOf: null,
+    grow: null,
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
   };
   let seq = 0;
@@ -199,7 +203,7 @@ const Flows = (() => {
       let out; let failed = null;
       try {
         if (node.kind === 'action') {
-          const line = fill(node.cmd, run.vars);
+          const line = (env.lineOf && env.lineOf(node, run)) ?? fill(node.cmd, run.vars);
           entry.input = line;
           out = await env.runCommand(line, { run, node });
         } else if (node.kind === 'ai') {
@@ -265,6 +269,7 @@ const Flows = (() => {
   }
   // value: a choice's value (or its label / number), a text's words
   function applyAnswer(run, entry, node, value, extra = {}) {
+    if (env.grow && env.grow(run, node, value)) node = nodeOf(run, node.id) || node; // it may refuse the answer (throws)
     if (node.kind === 'choice') {
       const opts = entry.options || node.options || [];
       const v = String(value ?? '').trim();
