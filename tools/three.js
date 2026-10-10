@@ -388,7 +388,7 @@ const ThreeLab = (() => {
       presentHud.hidden = !on; store.set('three.presentHud', on);
       clearInterval(hudTimer);
       if (!on) return;
-      const paint = () => { const z = stage.size; const sec = player.loaded ? player.sectionAt() : null; presentHud.textContent = `${sec?.cue ? `${sec.cue} · ` : ''}${current?.name || ''} · ${z.id === 'fit' ? `${z.width}×${z.height}` : `${z.id} ${z.width}×${z.height}`}${typeof ThreeFrames !== 'undefined' && ThreeFrames.on ? ` · ${ThreeFrames._pure.tc(ThreeFrames.clock, ThreeFrames.frame)} · f${ThreeFrames.frame}` : player.loaded ? ` · ${fmtClock(player.time)} / ${fmtClock(player.duration)} · ${Math.round(player.bpm)} BPM` : ''}${liveKind ? ` · live ${liveBpm?.bpm ? `${Math.round(liveBpm.bpm)} BPM` : ''}` : ''}${lastStats ? ` · ${lastStats.fps} fps` : ''}${frozenNow ? ' · ❚❚' : ''}`; };
+      const paint = () => { const z = stage.size; const sec = player.loaded ? player.sectionAt() : null; presentHud.textContent = `${sec?.cue ? `${sec.cue} · ` : ''}${current?.name || ''} · ${z.id === 'fit' ? `${z.width}×${z.height}` : `${z.id} ${z.width}×${z.height}`}${typeof ThreeFrames !== 'undefined' && ThreeFrames.on ? ` · ${ThreeFrames._pure.tc(ThreeFrames.clock, ThreeFrames.frame)} · f${ThreeFrames.frame}` : player.loaded ? ` · ${fmtClock(player.time)} / ${fmtClock(player.duration)}${player.isClock ? ` · f${player.clock.frame}` : ` · ${Math.round(player.bpm)} BPM`}` : ''}${liveKind ? ` · live ${liveBpm?.bpm ? `${Math.round(liveBpm.bpm)} BPM` : ''}` : ''}${lastStats ? ` · ${lastStats.fps} fps` : ''}${frozenNow ? ' · ❚❚' : ''}`; };
       paint(); hudTimer = setInterval(paint, 250);
     }
     // PgUp / PgDn in Present: the previous / next sketch (most recent first, like the picker)
