@@ -232,13 +232,25 @@ const Makes = (() => {
   }
 
   // ---------- progress (the progress-bar stream attaches here) ----------
-  // Makes.progress(makeId, partId?, { pct, label, eta }) → the stored record; every listener hears it
+  // Makes.progress(makeId, partId?, { pct, label, eta }): a thin wrapper over the progress stream's model
+  // (progress.js): Progress.set('make:<id>[:<part>]', …) draws the bars on [data-make] / [data-make-part] (the group
+  // head, the room rows, the room card, the Makes page); the make keeps the last record (it outlives a restart, the
+  // statuses follow it) and Makes.onChange listeners hear it.
   function progress(makeId, partId = null, p = {}) {
     const make = typeof makeId === 'object' ? makeId : get(makeId);
     if (!make) return null;
     if (partId && typeof partId === 'object') { p = partId; partId = null; }
-    const rec = C.progress(make, partId, p);
-    if (rec) changed(make, 'progress', { partId, progress: rec });
+    if (partId && !C.part(make, partId)) return null;
+    const part = partId ? C.part(make, partId) : null;
+    if (typeof Progress !== 'undefined') {
+      const key = part ? `make:${make.id}:${part.id}` : `make:${make.id}`;
+      try {
+        if (Number(p.pct) >= 100) Progress.done(key, { label: p.label });
+        else Progress.set(key, { pct: p.pct, label: p.label, eta: p.eta, parent: part ? `make:${make.id}` : undefined, title: part ? C.roomTitle(make, part) : make.name, kind: 'make', jump: () => (part ? openRoom(make, part) : show(make.id)) });
+      } catch (err) { console.warn(err); }
+    }
+    const rec = C.progress(make, part?.id || null, p);
+    if (rec) changed(make, 'progress', { partId: part?.id || null, progress: rec });
     return rec;
   }
   function setPart(make, part, status, extra = {}) {
@@ -452,6 +464,7 @@ const Makes = (() => {
           const r = row(agent, itemOf(c));
           r.dataset.agent = agent.id;
           r.classList.add('mk-room');
+          r.dataset.makePart = p.id; // progress-ui.js draws a part's bar here (make:<id>:<part>)
           // under its make's name the row says only its room ("Lab 1/2 · red pulse"); the full title stays in the tooltip
           const t = r.querySelector('.item-title');
           if (t && t.textContent.startsWith(`${make.name} · `)) t.textContent = t.textContent.slice(make.name.length + 3);
@@ -516,7 +529,7 @@ const Makes = (() => {
     const wait = C.waitText(make, part);
     const strip = el('div', { class: 'mk-strip' }, ...make.parts.flatMap((p, i) => [
       i ? el('span', { class: 'mk-arrow', text: '→' }) : null,
-      el('button', { class: `mk-chip mk-c-${p.status}${p === part ? ' on' : ''}`, type: 'button', text: `${C.KINDS[p.kind]?.icon || '•'} ${C.label(p, make)}`, title: `${C.waitText(make, p)}${p.brief ? ` · ${p.brief}` : ''}`, disabled: p === part, on: { click: () => openRoom(make, p) } }),
+      el('button', { class: `mk-chip mk-c-${p.status}${p === part ? ' on' : ''}`, type: 'button', dataset: { makePart: p.id }, text: `${C.KINDS[p.kind]?.icon || '•'} ${C.label(p, make)}`, title: `${C.waitText(make, p)}${p.brief ? ` · ${p.brief}` : ''}`, disabled: p === part, on: { click: () => openRoom(make, p) } }),
     ]));
     const next = nextRoom(make, part);
     const acts = el('div', { class: 'mk-acts' },
@@ -596,7 +609,7 @@ const Makes = (() => {
   }
   function pageRow(m) {
     const st = C.statusOf(m);
-    return tint(el('button', { class: `cp-row mk-row mk-${st}`, type: 'button', dataset: { ext: `make:${m.id}` }, title: lineOf(m) },
+    return tint(el('button', { class: `cp-row mk-row mk-${st}`, type: 'button', dataset: { ext: `make:${m.id}`, make: m.id }, title: lineOf(m) },
       el('span', { class: 'cp-pv mk-pv', text: m.ident.glyph }),
       el('span', { class: 'cp-rtext' }, el('b', { text: m.name }), el('span', { class: 'cp-desc', text: `${C.chain(m) || C.CATS[m.cat]} · ${C.STATUS_LABEL[st]}${C.pctOf(m) && st !== 'done' ? ` · ${C.pctOf(m)} %` : ''}` })),
       el('span', { class: 'cp-area', text: (C.CATS[m.cat] || 'make').toLowerCase() })), m.ident.color);
@@ -625,7 +638,7 @@ const Makes = (() => {
     const pct = C.pctOf(make);
     const partRow = (p) => {
       const c = p.chatId && summary(p.chatId);
-      return el('div', { class: `mk-part mk-c-${p.status}` },
+      return el('div', { class: `mk-part mk-c-${p.status}`, dataset: { makePart: p.id } },
         el('span', { class: 'mk-picon', text: C.KINDS[p.kind]?.icon || '•' }),
         el('span', { class: 'mk-ptext' }, el('b', { text: c ? c.title : p.frameId ? C.roomTitle(make, p) : C.label(p, make) }), el('span', { class: 'cp-desc', text: `${C.waitText(make, p)}${p.progress?.pct != null && p.status !== 'done' ? ` · ${p.progress.pct} %${p.progress.label ? ` ${p.progress.label}` : ''}` : ''}${p.last ? ` · “${p.last}”` : ''}` })),
         c || p.frameId || C.KINDS[p.kind]?.room ? el('button', { class: 'ghost small', type: 'button', text: '↗ Open', on: { click: () => openRoom(make, p) } }) : null);

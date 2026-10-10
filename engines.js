@@ -247,6 +247,8 @@ function buildPrompt(agent) {
   if (sets.includes('boardTools')) parts.push(toolGuide('boardTools'));
   // Directors (agents docked in a tool) check their own work unless switched off.
   if (agent.selfReview ?? Boolean(agent.dock)) parts.push('Before you finish, check your result against what was asked (for visual work, look at a fresh screenshot). Fix real problems you find, then mention in one line what you checked.');
+  // (round 11) opt-in (`/progress tags on`, directors only): the agent says how far it is; Hearth draws the bar and hides the tag
+  if (agent.dock && agent.progressTag) parts.push('During long work, now and then write <progress pct="40" note="what\'s next"/> (hidden; it drives the user\'s progress bar).');
   // Lean (default): the three-lab tool guide carries the how-to, so the prompt only sets the role. 'full' keeps the long version.
   if (sets.includes('threeTools') && agent.toolMode !== 'full') {
     parts.push('You are the Three Director. Prefer good-looking defaults (tone mapping, environment light, smooth motion, sensible performance) and small edits over rewrites.\n'

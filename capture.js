@@ -607,7 +607,7 @@ const Capture = (() => {
   function elapsed() { if (!rec) return 0; const now = rec.pausedAt || performance.now(); return Math.max(0, (now - rec.started - rec.pausedMs) / 1000); }
   function status() {
     if (!rec) return { recording: false, last: last ? { path: last.path, kind: last.kind } : null };
-    return { recording: true, paused: Boolean(rec.pausedAt), seconds: Math.round(elapsed() * 10) / 10, framesIn: rec.framesIn || 0, framesOut: rec.framesOut || 0, target: rec.opts.target, fps: rec.opts.fps, size: rec.size, audio: rec.audioNote || rec.opts.audio, marks: rec.marks.length, path: rec.path, tour: rec.tour || null };
+    return { recording: true, paused: Boolean(rec.pausedAt), seconds: Math.round(elapsed() * 10) / 10, max: Number(rec.opts.max) || 0, framesIn: rec.framesIn || 0, framesOut: rec.framesOut || 0, target: rec.opts.target, fps: rec.opts.fps, size: rec.size, audio: rec.audioNote || rec.opts.audio, marks: rec.marks.length, path: rec.path, tour: rec.tour || null };
   }
   function resolveRec(opts = {}) {
     const preset = D.RECORD.find((p) => p.id === (opts.preset || prefs.rec.preset)) || null;

@@ -1,0 +1,62 @@
+/* Progress bars (round 11, progress-ui.js). The fill moves with transform: scaleX() only (compositor); nothing here
+   animates layout or paint. Measured: solid; estimated: lighter and hatched ("about"); almost there: breathes
+   (opacity); hung: ember; done: full, then fades. */
+:where(.pg-host) { position: relative; }
+.pg-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; overflow: hidden; pointer-events: none; z-index: 2;
+  background: color-mix(in srgb, var(--fh-ai, #a98bff) 14%, transparent); border-radius: 2px; contain: strict; transition: opacity .5s ease; }
+.pg-bar > i { position: absolute; inset: 0; transform-origin: 0 50%; transform: scaleX(0); will-change: transform;
+  background: linear-gradient(90deg, var(--fh-ai, #a98bff), var(--fh-gold, #f5c451)); border-radius: inherit; }
+.pg-bar.pg-anim > i { transition: transform .45s cubic-bezier(.2, .7, .3, 1); }
+/* an estimate: softer, hatched */
+.pg-bar.pg-est > i { opacity: .62; background: repeating-linear-gradient(115deg, var(--fh-ai, #a98bff) 0 5px, color-mix(in srgb, var(--fh-ai, #a98bff) 55%, transparent) 5px 9px); }
+.pg-bar.pg-almost > i, .pg-bar.pg-late > i { animation: pg-breathe 1.8s ease-in-out infinite; }
+.pg-bar.pg-wait > i { opacity: .45; }
+.pg-bar.pg-hung > i { background: var(--fh-ember, #ff8a3d); opacity: .85; }
+.pg-bar.pg-done > i { background: var(--fh-ok, #5fc98a); opacity: 1; animation: none; }
+.pg-bar.pg-done { opacity: 0; transition-delay: .6s; }
+.pg-bar.pg-failed > i { background: var(--fh-red, #ff5a5a); }
+/* no number yet (a recording with no set length): a short segment sweeping */
+.pg-bar.pg-indet > i { right: auto; width: 34%; transform: none !important; animation: pg-sweep 1.4s cubic-bezier(.4, 0, .2, 1) infinite; }
+@keyframes pg-breathe { 0%, 100% { opacity: .9; } 50% { opacity: .45; } }
+@keyframes pg-sweep { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+
+/* where they sit */
+.msg.streaming > .pg-bar { top: 0; bottom: auto; height: 2px; left: 0; right: 0; }
+.msg.streaming > .pg-note { position: absolute; top: 5px; right: 8px; font-size: 10.5px; line-height: 1.2; color: var(--muted, #8a8f98); opacity: .85; pointer-events: none; white-space: nowrap; max-width: 60%; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+#chat-groups .item > .pg-bar { left: 6px; right: 6px; bottom: 1px; }
+#agent-buttons .agent-btn > .pg-bar { left: 7px; right: 7px; bottom: 3px; height: 2px; }
+.comp-row > .pg-bar, .intro-card > .pg-bar, .flow-card > .pg-bar, .jam-card > .pg-bar, .bd-item > .pg-bar, .cp-run-head > .pg-bar { bottom: 0; }
+.cp-run-head > .pg-bar { height: 3px; }
+.bd-item > .pg-bar { height: 3px; left: 4px; right: 4px; bottom: 4px; }
+
+/* the indicator at the bottom of the rail */
+#pg-dot { width: 32px; height: 20px; padding: 0; margin: 2px 0 0; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 3px; opacity: .8; }
+#pg-dot[hidden] { display: none; }
+#pg-dot:hover { opacity: 1; }
+#pg-dot .pg-dot-bar { position: relative; height: 3px; border-radius: 2px; overflow: hidden; background: color-mix(in srgb, var(--fh-ai, #a98bff) 22%, transparent); margin-left: 4px; }
+#pg-dot .pg-dot-bar > i { position: absolute; inset: 0; transform-origin: 0 50%; transform: scaleX(0); will-change: transform; background: linear-gradient(90deg, var(--fh-ai, #a98bff), var(--fh-gold, #f5c451)); transition: transform .45s cubic-bezier(.2, .7, .3, 1); }
+#pg-dot .pg-dot-n { font-size: 10px; font-weight: 600; line-height: 1; min-width: 9px; color: var(--muted, #8a8f98); font-variant-numeric: tabular-nums; }
+#pg-dot[data-state="est"] .pg-dot-bar > i { opacity: .65; }
+#pg-dot[data-state="hung"] .pg-dot-bar > i { background: var(--fh-ember, #ff8a3d); }
+#pg-dot[data-state="done"] .pg-dot-bar > i { background: var(--fh-ok, #5fc98a); }
+
+/* the list */
+.pg-pop { position: fixed; z-index: 9000; width: 320px; max-height: min(60vh, 460px); overflow: auto; padding: 8px; border-radius: 10px;
+  background: var(--surface, #1b1d22); border: 1px solid var(--line, #2c2f36); box-shadow: 0 10px 32px rgba(0, 0, 0, .35); font-size: 12px; }
+.pg-pop-head { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted, #8a8f98); padding: 2px 4px 6px; }
+.pg-row { position: relative; padding: 6px 6px 8px; border-radius: 7px; cursor: default; }
+.pg-row[title^="Click"] { cursor: pointer; }
+.pg-row:hover { background: color-mix(in srgb, var(--fh-ai, #a98bff) 8%, transparent); }
+.pg-row.pg-child { margin-left: 14px; padding-top: 3px; }
+.pg-row-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.pg-row-head .pg-t { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.pg-row-head .pg-w { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted, #8a8f98); font-variant-numeric: tabular-nums; }
+.pg-row-head button { flex: none; padding: 0 6px; height: 20px; font-size: 11px; }
+.pg-row > .pg-bar { left: 6px; right: 6px; bottom: 3px; }
+.pg-ic { flex: none; width: 14px; text-align: center; opacity: .8; }
+@media (prefers-reduced-motion: reduce) {
+  .pg-bar.pg-anim > i, #pg-dot .pg-dot-bar > i { transition: none; }
+  .pg-bar.pg-almost > i, .pg-bar.pg-late > i { animation: none; }
+  .pg-bar.pg-indet > i { animation: none; width: 100%; opacity: .4; }
+}
+.cp-run-head.pg-host + .cp-bar { display: none; } /* the run's own bar (questions and commands) replaces the questions-only one */

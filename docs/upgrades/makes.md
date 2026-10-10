@@ -98,7 +98,7 @@ Counted honestly: one line per thing you can see or use.
 60. **The keys sheet** lists the make menu (right-click) and Alt+right-click on a room.
 
 ## For the progress bars (and anything else)
-61. **`Makes.progress(makeId, partId?, { pct, label, eta })`** stores a part's (or the whole make's) progress and tells `Makes.onChange` listeners and the window event `hearth:makes`; the make's group and its page show the %.
+61. **`Makes.progress(makeId, partId?, { pct, label, eta })`** is a thin wrapper over the progress bars (`Progress.set('make:<id>[:<part>]')`, round 11 progress stream): the bars draw on the make's group in the chats list, its room rows, the room card's chips and the Makes page (`data-make` / `data-make-part`); the make keeps the last record (statuses follow, it survives a restart) and `Makes.onChange` / `hearth:makes` hear it. `/dispatch`, `/intro`, jams and runs keep their own bars from progress-hooks.js (not drawn twice).
 62. **Makes sync** with your other computer like chats and scenes (`data/kv/makes.json`).
 
 ## For development (not counted)
