@@ -153,6 +153,8 @@ const DiscoverData = (() => {
   // ---------- daily tips: one a day at most, for what you have never used, where you are ----------
   // place: 'three' (the Lab) | 'board' | 'chat' | 'any'; used: commands that count as "tried it"
   const TIPS = [
+    { id: 'settings-find', place: 'chat', text: 'Every on / off in one place: Settings (Ctrl/⌘+,) has a search, and each switch says what it costs in tokens.', cmd: '/settings tokens', used: ['settings'] },
+    { id: 'rail-keys', place: 'chat', text: 'Ctrl/⌘+1…9 walk the rail top to bottom: your agents, then the Lab, the board, Commands.', cmd: '/shortcuts', used: [], usedKey: /Ctrl\+[3-9]$/ },
     { id: 'shuffle-pick', place: 'three', text: 'Hold 🎲 Shuffle: a row of thumbnails, you click one (or ✦ Astra picks).', cmd: '/shuffle-pick', used: ['shuffle-pick'] },
     { id: 'again', place: 'three', text: 'Ctrl/⌘+. repeats your last action — Save, Shuffle, a frame size — without moving the mouse.', cmd: '/again list', used: ['again'] },
     { id: 'jam', place: 'three', text: '/jam: Claude and Astra take turns making a music visual on your scene, one card, best round kept.', cmd: '/jam', used: ['jam'] },

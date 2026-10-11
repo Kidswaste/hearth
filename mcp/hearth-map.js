@@ -7,7 +7,8 @@ const TOPICS = {
   app: `HEARTH is the owner's desktop app: one window for their AI agents. Native chats run Claude (Claude Code) and Astra (Codex / ChatGPT) on the owner's own subscriptions. Directors are chats docked next to a tool: the Three Director beside the Three.js Lab, Forge Debug beside their game. Videos are made in the Lab sequence and rendered to files (Hearth has no video player of its own: files open in the system player).
   Each director chat owns its own Lab scene: your tool calls reach your chat's scene (on screen, or backstage while the owner looks at another chat).
   Claude and Astra are interchangeable directors: same tools, same guide, same chat, same scene. Hearth keeps the chat's task state for whoever runs next (topic handoff).
-  Everything is drivable by chat commands (/name args); suggest them to the owner, run Lab ones yourself (topic commands).
+  Everything is drivable by chat commands (/name args); suggest them to the owner, run Lab ones yourself (topic commands). Every on / off lives in Settings too, with its cost: /settings <words> opens it filtered (e.g. /settings tokens).
+  Words the app uses: a sketch is a Lab piece you save (Your sketches); a scene is the sketch a chat or a sequence clip shows; render = a video or picture file made from the Lab; export = data saved as a file (a chat, notes, usage).
   The owner doesn't write code; they describe, then shape results with sliders, looks, frame sizes and the timeline. They want few choices: decide small things yourself.
   Topics: lab, nodes, react, commands, handoff, habits, sequence, motion, comp, make, board, capture, adobe, publish, apps, then the Lab's own (layers, sliders, keyframes, timeline, filters, looks, audio, refs, notes, scene, live, games, frame, bigcode).`,
   lab: `THE LAB'S MODEL (After Effects with code), bottom up:
