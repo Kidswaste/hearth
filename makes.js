@@ -756,7 +756,7 @@ const Makes = (() => {
       CmdPage.ext.pick.push(pagePick);
       CmdPage.ext.menu.push(pageMenu);
     };
-    if (typeof Lazy !== 'undefined' && !Lazy.loaded('cmdpage')) addEventListener('hearth:lazy', pageHooks); else pageHooks();
+    if (window.Lazy) window.Lazy.when('cmdpage', pageHooks); else pageHooks();
     document.addEventListener('hearth:capture', (e) => onCapture(e.detail?.path, e.detail?.kind === 'shot' ? 'still' : undefined));
     document.addEventListener('hearth:recording', (e) => { if (e.detail && e.detail.recording === false) onCapture(e.detail.path, 'video'); });
     Keys.add([

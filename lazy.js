@@ -8,7 +8,7 @@
 // using one loads its group (in the original order, with its CSS) and hands over to the real thing.
 //   tier 'soon': loads right after the first screen, one group per idle moment (background hooks keep working)
 //   tier 'use':  loads only when one of its commands / actions / tools / globals is first used
-// Lazy.load(name) → Promise · Lazy.state() · Lazy.misses() (globals touched before their group loaded: a dev aid,
+// Lazy.load(name) → Promise · Lazy.when(name, fn) (fn once the group is in) · Lazy.state() · Lazy.misses() (globals touched before their group loaded: a dev aid,
 // each one also loads its group) · Lazy.report(name) (what a group registered while loading: the manifest's source).
 const Lazy = (() => {
   const D = typeof LazyData !== 'undefined' ? LazyData : { GROUPS: [], META: {} };
@@ -98,6 +98,7 @@ const Lazy = (() => {
   }
   function stubKey(g, k) {
     if (typeof Keys === 'undefined') return;
+    if (Keys.all().some((x) => x.area === k.area && x.keys === k.keys)) return; // an eager line has these keys
     Keys.add({ area: k.area, keys: k.keys, what: k.what, sel: k.sel || null, run: () => load(g.name).then(() => { const e = stubKeys.get(`${k.area}|${k.keys}`); if (e?.run && !e.run.__lazy) e.run(); }) });
     const e = Keys.all().find((x) => x.area === k.area && x.keys === k.keys);
     if (e) { e.run.__lazy = true; stubKeys.set(`${k.area}|${k.keys}`, e); }
@@ -133,15 +134,17 @@ const Lazy = (() => {
     Tools.define(stub);
     stubTools.set(t.id, stub);
   }
+  // (never throws: a stand-in that fails is only a missing menu line, and the rest of the app must start)
   function stubAll(g) {
     const m = groupMeta(g.name);
-    for (const c of m.commands || []) stubCommand(g, c);
-    for (const a of m.actions || []) stubAction(g, a.label || a, a.keys);
-    for (const k of m.keys || []) stubKey(g, k);
-    for (const p of m.bridge || []) stubBridge(g, p);
-    for (const a of m.apps || []) stubApp(g, a);
-    for (const t of m.tools || []) stubTool(g, t);
-    guardGlobals(g);
+    const each = (list, fn) => { for (const x of list || []) { try { fn(x); } catch (err) { say(`${g.name}: ${err.message}`); } } };
+    each(m.commands, (c) => stubCommand(g, c));
+    each(m.actions, (a) => stubAction(g, a.label || a, a.keys));
+    each(m.keys, (k) => stubKey(g, k));
+    each(m.bridge, (p) => stubBridge(g, p));
+    each(m.apps, (a) => stubApp(g, a));
+    each(m.tools, (t) => stubTool(g, t));
+    try { guardGlobals(g); } catch (err) { say(`${g.name}: ${err.message}`); }
   }
   // the group's own files register the real commands: its stand-ins step aside first
   function unstubCommands(g) {
@@ -150,7 +153,8 @@ const Lazy = (() => {
       const d = Commands.get(name);
       if (d?.variants?.some((v) => v.__lazy === g.name)) {
         // shared with an eager command: drop only the stand-in variant
-        const keep = d.variants.filter((v) => v.__lazy !== g.name);
+        // (a variant that shares the name through its alias is still registered under its own name)
+        const keep = d.variants.filter((v) => v.__lazy !== g.name && v.name === name);
         unregs.get(name)?.();
         for (const v of keep) Commands.register({ ...v });
       } else if (d?.__lazy === g.name) unregs.get(name)?.();
@@ -285,13 +289,18 @@ const Lazy = (() => {
   // a group asked for before the first screen is up waits for it (the first screen comes first), then goes first
   const wanted = new Set();
   function want(g) {
+    if (hold) return;
     if (readyAt) queueMicrotask(() => load(g.name).catch(() => {}));
     else wanted.add(g.name);
   }
+  // (tests: localStorage 'lazy.hold' = '1' keeps every group a stand-in until it's used, to prove first use works)
+  let hold = false;
+  try { hold = localStorage.getItem('lazy.hold') === '1'; } catch { /* no storage */ }
   function start() {
     if (readyAt) return;
     readyAt = performance.now();
     try { namesAtReady = Commands.list().map((d) => d.name); } catch { /* no commands */ }
+    if (hold) return;
     for (const n of wanted) load(n).catch(() => {});
     soon();
   }
@@ -306,6 +315,14 @@ const Lazy = (() => {
   return {
     load, state, start,
     loaded: (name) => groups.get(name)?.state === 'loaded',
+    // when(group, fn): fn() now if the group is in (or isn't lazy), else once it has loaded; for hooks an eager module
+    // puts into a lazy one (window.Lazy?.when('video', () => VideoCut.on(…)) ?? …)
+    when(name, fn) {
+      const g = groups.get(name);
+      if (!g || g.state === 'loaded') { fn(); return; }
+      const on = (e) => { if (e.detail?.group !== name) return; removeEventListener('hearth:lazy', on); try { fn(); } catch (err) { console.error(err); } };
+      addEventListener('hearth:lazy', on);
+    },
     groupOf: (cmd) => stubCmds.get(String(cmd || '').toLowerCase()) || null,
     misses: () => missLog.slice(),
     namesAtReady: () => namesAtReady && namesAtReady.slice(),
@@ -314,3 +331,4 @@ const Lazy = (() => {
     groups: () => [...groups.values()].map((g) => ({ name: g.name, files: g.files.slice(), css: (g.css || []).slice(), tier: g.tier })),
   };
 })();
+window.Lazy = Lazy; // window.Lazy?.… works from anywhere, even if this file never loaded
