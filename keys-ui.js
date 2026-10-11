@@ -177,7 +177,9 @@ const KeysUI = (() => {
   const hereLabel = () => { const id = H.surfaceIdFor?.(H.activeId) || H.activeId || ''; return id.startsWith('tool:') ? Tools.get?.(id.slice(5))?.name || 'this tool' : H.agent(H.activeId)?.name || 'here'; };
   const visibleOne = (sel) => [...document.querySelectorAll(sel)].find((n) => n.checkVisibility?.({ visibilityProperty: true }) && n.getBoundingClientRect().width);
   function flash(nodes) {
-    for (const n of nodes) { n.classList.remove('ks-flash'); void n.offsetWidth; n.classList.add('ks-flash'); setTimeout(() => n.classList.remove('ks-flash'), 1600); }
+    // (round 17, hz240) replayed two frames later instead of forcing a reflow per highlighted control
+    for (const n of nodes) n.classList.remove('ks-flash');
+    requestAnimationFrame(() => requestAnimationFrame(() => { for (const n of nodes) { n.classList.add('ks-flash'); setTimeout(() => n.classList.remove('ks-flash'), 1600); } }));
   }
   // a single key combination ("Ctrl+Shift+U", "F", "Shift+3") → a key event; anything else (ranges, drags) → null
   function comboOf(keys) {

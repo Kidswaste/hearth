@@ -917,7 +917,9 @@ const ThreeMedia = (() => {
       tapBtn.textContent = bpm ? `Tap · ${bpm}${tapInfo?.lock ? ' ✓' : ''}` : `Tap ${'•'.repeat(taps.length)}`;
       tapBtn.classList.toggle('locked', Boolean(tapInfo?.lock));
       tapBtn.classList.add('on');
-      tapBtn.classList.remove('flash'); void tapBtn.offsetWidth; tapBtn.classList.add('flash');
+      // (round 17, hz240) the flash replays on the compositor (::after opacity), no forced reflow to restart it
+      tapBtn.classList.add('flash');
+      try { tapBtn.animate({ opacity: [1, 0] }, { duration: 180, easing: 'ease-out', pseudoElement: '::after' }); } catch { /* no pseudo-element animations */ }
       if (tapInfo) tapBtn.style.setProperty('--conf', String(tapInfo.conf));
       paintBpmRead();
     }

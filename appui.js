@@ -228,49 +228,82 @@ const AppUI = (() => {
     return typeof SpeedRank !== 'undefined' ? SpeedRank.palette(items) : items; // (round 13) what you pick most here, now, first; ↻ Again on top
   }
 
-  function palette(initial = '') {
-    document.querySelector('.palette')?.remove();
-    const input = el('input', { class: 'palette-input', placeholder: 'Jump to an agent, chat, tool or action…  (? searches chat messages · / chat commands)', value: initial });
+  // (round 17, hz240) the palette is built once and reused: opening it fills the same rows (text written only where
+  // it changed), one listener each for clicks and pointing (they were one pair per row, rebuilt per keystroke), the
+  // items are gathered once per opening (twice before), and the arrow keys scroll the list in the next frame
+  let pal = null;
+  function paletteNode() {
+    if (pal) return pal;
+    const input = el('input', { class: 'palette-input', placeholder: 'Jump to an agent, chat, tool or action…  (? searches chat messages · / chat commands)' });
     const list = el('div', { class: 'palette-list' });
     const box = el('div', { class: 'palette' }, el('div', { class: 'palette-card' }, input, list));
-    let items = paletteItems();
-    let shown = [];
-    let sel = 0;
+    pal = { box, input, list, items: [], shown: [], sel: 0, selEl: null, rows: [], empty: el('div', { class: 'palette-empty' }), scrollFrame: 0 };
     const close = () => box.remove();
-    const render = async () => {
-      const q = input.value.trim();
-      if (q.startsWith('?')) {
-        const hits = await window.hub.searchChatText(q.slice(1));
-        shown = hits.map((h) => ({ kind: `${H.agent(h.agentId)?.name || h.agentId} · ${h.count} match${h.count === 1 ? '' : 'es'}`, label: h.title, detail: h.snippet, run: () => Native.open(h.agentId, h.id) }));
-      } else {
-        shown = items.map((it) => ({ ...it, score: fuzzy(q, `${it.label} ${it.kind}`) })).filter((it) => it.score > 0)
-          .sort((a, b) => b.score - a.score).slice(0, 60);
-      }
-      sel = Math.min(sel, Math.max(0, shown.length - 1));
-      list.replaceChildren(...(shown.length ? shown.map((it, i) => el('div', {
-        class: `palette-item${i === sel ? ' sel' : ''}`,
-        on: { click: () => { close(); it.run(); }, mousemove: () => { if (sel !== i) { sel = i; paint(); } } },
-      }, el('span', { class: 'p-label', text: it.label }), it.detail ? el('span', { class: 'p-detail', text: it.detail }) : null,
-      el('span', { class: 'p-kind', text: it.keys ? `${it.kind} · ${Commands.keyText(it.keys)}` : it.kind }))) : [el('div', { class: 'palette-empty', text: q.startsWith('?') ? 'No messages match' : 'Nothing matches' })]));
-    };
-    const paint = () => [...list.children].forEach((c, i) => c.classList.toggle('sel', i === sel));
-    const debounced = debounce(render, 120);
+    const run = (it) => { close(); it.run(); };
+    const debounced = debounce(() => paletteRender(), 120);
+    list.addEventListener('click', (e) => { const r = e.target.closest('.palette-item'); const it = r && pal.shown[r.__i]; if (it) run(it); });
+    list.addEventListener('mousemove', (e) => { const r = e.target.closest('.palette-item'); if (r && r.__i !== pal.sel) { pal.sel = r.__i; paletteMark(); } }, { passive: true });
     input.addEventListener('input', () => {
       // "/" hands over to the command bar (chat commands over any tool, cmdbar.js)
       if (input.value.startsWith('/') && typeof CmdBar !== 'undefined') { const t = input.value; close(); CmdBar.open(t); return; }
-      sel = 0; if (input.value.startsWith('?')) debounced(); else render();
+      pal.sel = 0; if (input.value.startsWith('?')) debounced(); else paletteRender();
     });
+    const step = (d) => { pal.sel = Math.max(0, Math.min(pal.sel + d, pal.shown.length - 1)); paletteMark(); pal.scrollFrame ||= requestAnimationFrame(() => { pal.scrollFrame = 0; pal.selEl?.scrollIntoView({ block: 'nearest' }); }); };
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') close();
-      else if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(sel + 1, shown.length - 1); paint(); list.children[sel]?.scrollIntoView({ block: 'nearest' }); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(sel - 1, 0); paint(); list.children[sel]?.scrollIntoView({ block: 'nearest' }); }
-      else if (e.key === 'Enter') { e.preventDefault(); const it = shown[sel]; if (it) { close(); Usage.track(`Command palette › ${it.label}`); it.run(); } }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); step(1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); step(-1); }
+      else if (e.key === 'Enter') { e.preventDefault(); const it = pal.shown[pal.sel]; if (it) { Usage.track(`Command palette › ${it.label}`); run(it); } }
     });
     box.addEventListener('mousedown', (e) => { if (e.target === box) close(); });
-    document.body.append(box);
-    input.focus();
-    items = paletteItems();
-    render();
+    return pal;
+  }
+  const setText = (n, t) => { if (n.textContent !== t) n.textContent = t; };
+  function paletteMark() {
+    const next = pal.shown.length ? pal.rows[pal.sel] : null;
+    if (pal.selEl === next) return;
+    pal.selEl?.classList.remove('sel'); next?.classList.add('sel'); pal.selEl = next;
+  }
+  async function paletteRender() {
+    const { input, list } = pal;
+    const q = input.value.trim();
+    if (q.startsWith('?')) {
+      const hits = await window.hub.searchChatText(q.slice(1));
+      pal.shown = hits.map((h) => ({ kind: `${H.agent(h.agentId)?.name || h.agentId} · ${h.count} match${h.count === 1 ? '' : 'es'}`, label: h.title, detail: h.snippet, run: () => Native.open(h.agentId, h.id) }));
+    } else {
+      pal.shown = pal.items.map((it) => ({ ...it, score: fuzzy(q, `${it.label} ${it.kind}`) })).filter((it) => it.score > 0)
+        .sort((a, b) => b.score - a.score).slice(0, 60);
+    }
+    pal.sel = Math.min(pal.sel, Math.max(0, pal.shown.length - 1));
+    if (!pal.shown.length) {
+      setText(pal.empty, q.startsWith('?') ? 'No messages match' : 'Nothing matches');
+      if (list.childElementCount !== 1 || list.firstChild !== pal.empty) list.replaceChildren(pal.empty);
+      pal.selEl = null;
+      return;
+    }
+    if (pal.empty.isConnected) pal.empty.remove();
+    pal.shown.forEach((it, i) => {
+      let r = pal.rows[i];
+      if (!r) {
+        r = el('div', { class: 'palette-item' }, el('span', { class: 'p-label' }), el('span', { class: 'p-detail' }), el('span', { class: 'p-kind' }));
+        r.__i = i; pal.rows[i] = r;
+      }
+      const [label, detail, kind] = r.children;
+      setText(label, it.label);
+      setText(detail, it.detail || ''); if (detail.hidden !== !it.detail) detail.hidden = !it.detail;
+      setText(kind, it.keys ? `${it.kind} · ${Commands.keyText(it.keys)}` : it.kind);
+      if (r.parentNode !== list || list.children[i] !== r) list.insertBefore(r, list.children[i] || null);
+    });
+    while (list.childElementCount > pal.shown.length) list.lastElementChild.remove();
+    pal.selEl?.classList.remove('sel'); pal.selEl = null; paletteMark();
+  }
+  function palette(initial = '') {
+    const p = paletteNode();
+    p.items = paletteItems();
+    p.input.value = initial; p.sel = 0;
+    if (!p.box.isConnected) document.body.append(p.box);
+    p.input.focus();
+    paletteRender();
   }
 
   // ---------- find in page ----------
@@ -663,14 +696,20 @@ const AppUI = (() => {
       const startX = e.clientX;
       const startW = panel.getBoundingClientRect().width;
       document.body.classList.add('resizing');
+      // (round 17, hz240) while dragging only the panel's own width changes, once a frame; the page-wide --panel-w
+      // (a restyle of every element when set on <html>) is written once, when you let go
+      let w = startW; let frame = 0;
       const move = (ev) => {
-        const w = Math.min(520, Math.max(170, startW + ev.clientX - startX));
-        document.documentElement.style.setProperty('--panel-w', `${w}px`);
+        w = Math.min(520, Math.max(170, startW + ev.clientX - startX));
+        frame ||= requestAnimationFrame(() => { frame = 0; panel.style.width = `${w}px`; });
       };
       const up = () => {
         handle.removeEventListener('pointermove', move);
+        cancelAnimationFrame(frame); frame = 0;
         document.body.classList.remove('resizing');
-        store.set('panelWidth', Math.round(panel.getBoundingClientRect().width));
+        document.documentElement.style.setProperty('--panel-w', `${Math.round(w)}px`);
+        panel.style.width = '';
+        store.set('panelWidth', Math.round(w));
       };
       handle.addEventListener('pointermove', move);
       handle.addEventListener('pointerup', up, { once: true });

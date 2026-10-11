@@ -8,7 +8,10 @@
   content: ''; position: absolute; inset: 0 0 auto 0; height: 2px; border-radius: 12px 12px 0 0;
   background: linear-gradient(90deg, var(--fh-ai, #bd8bff), var(--fh-gold, #ffd75e), var(--fh-ai, #bd8bff));
 }
-.comp-card.running::before { background-size: 200% 100%; animation: comp-flow 2.4s linear infinite; }
+/* (round 17, hz240) the flowing edge slides on the compositor: the same gradient, tiled twice as wide, on a strip
+   three cards wide that moves one tile (it moved its background-position: a repaint every frame) */
+.comp-card.running { overflow: clip; }
+.comp-card.running::before { left: -200%; right: auto; width: 300%; border-radius: 0; background-size: 66.6667% 100%; animation: hz-flow 2.4s linear infinite; }
 @keyframes comp-flow { to { background-position: -200% 0; } }
 .comp-head { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 4px; }
 .comp-head b { white-space: nowrap; letter-spacing: .02em; }

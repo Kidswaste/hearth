@@ -118,7 +118,9 @@
   }
 
   // ---------- Alt+wheel over the selection: opacity (Shift+Alt: rotate) ----------
-  addEventListener('wheel', (e) => {
+  // (round 17, hz240) on the board itself, not the whole page: a page-wide wheel listener that may cancel made every
+  // scroll in the app (chats, lists) wait for the main thread before it could move
+  const altWheel = (e) => {
     if (!e.altKey || !S.mounted || !S.sel.size) return;
     const node = e.target.closest?.('.bd-item'); if (!node || !S.sel.has(node.dataset.id)) return;
     e.preventDefault(); e.stopPropagation();
@@ -126,7 +128,9 @@
     if (e.shiftKey) { for (const it of sel()) { it.rot = Math.round(((it.rot || 0) - d * 3) * 10) / 10; B._.syncItem(it); } }
     else for (const it of sel()) { it.opacity = Math.max(0.05, Math.min(1, Math.round(((it.opacity ?? 1) - d * 0.05) * 100) / 100)); if (it.opacity === 1) delete it.opacity; B._.syncItem(it); }
     B._.updateOverlay(); saveSoon();
-  }, { passive: false, capture: true });
+  };
+  const hookWheel = () => { const r = S.mounted && S.ui?.root; if (r && !r.__altWheel) { r.__altWheel = true; r.addEventListener('wheel', altWheel, { passive: false, capture: true }); } };
+  addEventListener('hearth:view', hookWheel); hookWheel();
   const saveSoon = debounce(() => B.save(), 500);
   B._.KEYS('Alt+wheel on the selection', 'opacity up / down'); B._.KEYS('Shift+Alt+wheel on the selection', 'rotate');
   B._.KEYS('Alt+click a palette stripe', 'copy that color');

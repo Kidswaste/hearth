@@ -594,8 +594,11 @@ html[data-skin="forge"] .tweaks { border-radius: 0; background: linear-gradient(
 .media-bar .mb-overview { flex: 1; min-width: 80px; height: 36px; border-radius: 4px; background: #05070880; cursor: pointer; }
 .media-bar .mb-vol { width: 70px; accent-color: var(--ui-gold); }
 .media-bar .mb-bpm { font: 11px Consolas, monospace; color: var(--ui-gold); white-space: nowrap; }
-.media-bar .mb-rec.on { color: #fff; background: #c62828; border-color: var(--ui-red); animation: mb-blink 1.2s ease-in-out infinite; }
+/* (round 17, hz240) loops that ran for as long as something was on (recording, write armed, live sound) breathe with
+   opacity over a still ring now; they animated box-shadow, a repaint every frame next to the playing Lab */
+.media-bar .mb-rec.on { color: #fff; background: #c62828; border-color: var(--ui-red); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-red) 25%, transparent); animation: hz-breathe 1.2s ease-in-out infinite; }
 @keyframes mb-blink { 50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-red) 25%, transparent); } }
+@keyframes hz-breathe { 50% { opacity: .72; } }
 .media-bar .on:not(.mb-rec) { color: var(--ui-gold); }
 .mb-menu { position: fixed; z-index: 1000; transform: translateY(-100%); width: 260px; display: flex; flex-direction: column; padding: 4px; border: 1px solid var(--line-hi, #443e35); background: #0f1214; box-shadow: 0 10px 30px #000a; }
 .mb-menu .menu-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 10px; text-align: left; background: none; border: none; color: inherit; cursor: pointer; }
@@ -824,7 +827,7 @@ body.on-top #rail::after { content: "📌"; position: absolute; bottom: 4px; lef
 .refs-dialog, .sb-dialog { padding: 16px 18px; }
 
 /* ---------- Lab: write mode, MIDI, palette ---------- */
-.mb-write.armed { color: #fff; background: #d63b3b; border-color: var(--ui-red); animation: write-pulse 1.2s ease-in-out infinite; }
+.mb-write.armed { color: #fff; background: #d63b3b; border-color: var(--ui-red); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-red) 25%, transparent); animation: hz-breathe 1.2s ease-in-out infinite; }
 @keyframes write-pulse { 50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-red) 25%, transparent); } }
 .lab-palette { display: inline-flex; align-items: center; gap: 3px; }
 .lab-palette[hidden] { display: none; }
@@ -1058,7 +1061,7 @@ details.tw-asks[open] > summary::before { content: '▾ '; }
 .mb-tl-wrap, .mb-mm-wrap { width: 100%; }
 
 /* ---------- live sound + now playing ---------- */
-.media-bar button.live-on { color: var(--ui-red); border-color: color-mix(in srgb, var(--ui-red) 50%, transparent); animation: write-pulse 1.6s ease-in-out infinite; }
+.media-bar button.live-on { color: var(--ui-red); border-color: color-mix(in srgb, var(--ui-red) 50%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-red) 18%, transparent); animation: hz-breathe 1.6s ease-in-out infinite; }
 .np-box { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 460px; padding: 1px 4px 1px 2px; border-radius: 7px; background: color-mix(in srgb, #1db954 10%, transparent); border: 1px solid #1db95455; }
 .np-box[hidden] { display: none; }
 .np-cover { width: 22px; height: 22px; border-radius: 3px; object-fit: cover; flex: none; }
@@ -1244,7 +1247,7 @@ mark.find-hit.cur { background: var(--ui-hot); color: #000; }
 .sel-bar button:hover { background: #0002; }
 .msg .thinking summary .thinking-peek { margin-left: 8px; color: var(--muted); font-style: italic; opacity: .75; display: inline-block; max-width: min(52ch, 60%); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 .msg .thinking[open] summary .thinking-peek { display: none; }
-.msg.speaking > .body { box-shadow: -3px 0 0 var(--ui-cyan); padding-left: 10px; transition: box-shadow .2s; }
+.msg.speaking > .body { box-shadow: -3px 0 0 var(--ui-cyan); padding-left: 10px; }
 .body img.md-img { max-width: min(100%, 420px); max-height: 320px; border-radius: 8px; cursor: zoom-in; display: block; margin: 6px 0; }
 .empty .empty-cmds { justify-content: center; margin-top: 14px; opacity: .8; }
 .edited-mark { cursor: help; }

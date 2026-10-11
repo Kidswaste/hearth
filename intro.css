@@ -9,7 +9,10 @@
   content: ''; position: absolute; inset: 0 0 auto 0; height: 2px; border-radius: 12px 12px 0 0;
   background: linear-gradient(90deg, var(--claude, #d97757), var(--intro-accent), var(--astra, #19c39c));
 }
-.intro-card.live::before { background-size: 200% 100%; animation: intro-flow 2.6s linear infinite; }
+/* (round 17, hz240) the flowing edge slides on the compositor: the same gradient, tiled twice as wide, on a strip
+   three cards wide that moves one tile (it moved its background-position: a repaint every frame) */
+.intro-card.live { overflow: clip; }
+.intro-card.live::before { left: -200%; right: auto; width: 300%; border-radius: 0; background-size: 66.6667% 100%; animation: hz-flow 2.6s linear infinite; }
 @keyframes intro-flow { to { background-position: -200% 0; } }
 .intro-card.gone { opacity: .7; padding: 6px 10px; }
 .intro-card.gone::before { display: none; }
@@ -60,7 +63,7 @@
 .intro-beat-frame.has { border-color: color-mix(in srgb, var(--intro-accent) 35%, transparent); }
 .intro-beat-frame.on { box-shadow: 0 0 0 2px var(--intro-accent); border-color: transparent; }
 .intro-beat-frame.broken { border-color: var(--danger, #ff6b6b); }
-.intro-beat-frame.live { animation: intro-beat 1.2s ease-in-out infinite; }
+.intro-beat-frame.live { box-shadow: 0 0 0 2px var(--fh-ai, #9b8bff); animation: hz-breathe 1.2s ease-in-out infinite; } /* (round 17: opacity, not an animated box-shadow) */
 @keyframes intro-beat { 50% { box-shadow: 0 0 0 2px var(--fh-ai, #9b8bff); } }
 .intro-beat-n { position: absolute; left: 3px; top: 2px; font: 700 9px/1 system-ui, sans-serif; color: #fff; text-shadow: 0 1px 2px #000; }
 .intro-beat-ico { position: relative; }

@@ -32,7 +32,9 @@
 .bd-item[data-border="thick"] .bd-clip { outline: 8px solid #fff; }
 .bd-item[data-border="gold"] .bd-clip { outline: 4px solid var(--bd-gold); }
 .bd-locked { cursor: not-allowed; }
-.bd-pending .bd-clip { background: linear-gradient(110deg, color-mix(in srgb, var(--text) 6%, transparent) 30%, color-mix(in srgb, var(--text) 14%, transparent) 50%, color-mix(in srgb, var(--text) 6%, transparent) 70%) 0 0 / 300% 100%; animation: bd-shimmer 1.4s linear infinite; }
+.bd-pending .bd-clip { background: linear-gradient(110deg, color-mix(in srgb, var(--text) 6%, transparent) 30%, color-mix(in srgb, var(--text) 14%, transparent) 50%, color-mix(in srgb, var(--text) 6%, transparent) 70%) 0 0 / 300% 100%; animation: bd-wait 1.4s ease-in-out infinite; }
+/* (round 17, hz240) a waiting clip breathes (opacity, compositor); its shimmer moved background-position, a repaint per frame */
+@keyframes bd-wait { 50% { opacity: .55; } }
 @keyframes bd-shimmer { to { background-position: -150% 0; } }
 .bd-moving .bd-pending .bd-clip { animation: none; }
 .bd-stamp { position: absolute; top: -14px; right: -14px; min-width: 34px; height: 34px; padding: 0 6px; border-radius: 17px; display: grid; place-items: center;

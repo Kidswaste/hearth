@@ -963,7 +963,8 @@ const Board = (() => {
   function fitFrame(fr) { const c = contents(fr); if (!c.length) return; const b = LY.bbox(c); edit('fit frame', () => Object.assign(fr, { x: b.x - 40, y: b.y - 60, w: b.w + 80, h: b.h + 100 }), { undoable: false }); }
 
   // ---------- keyboard ----------
-  function visible() { return S.mounted && S.ui.root.checkVisibility?.({ visibilityProperty: true }) !== false && S.ui.root.isConnected && H.surfaceIdFor?.(H.activeId) === 'tool:board'; }
+  // (round 17, hz240) the cheap tests first: checkVisibility() needs fresh styles, and every click in the app asked
+  function visible() { return S.mounted && H.surfaceIdFor?.(H.activeId) === 'tool:board' && S.ui.root.isConnected && S.ui.root.checkVisibility?.({ visibilityProperty: true }) !== false; }
   const KEYMAP = []; // [{ test(e), run(e), keys, what }]
   function key(keys, what, test, run) { KEYMAP.push({ keys, what, test, run }); KEYS(keys, what); }
   function onKey(e) {

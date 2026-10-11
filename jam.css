@@ -8,7 +8,10 @@
   content: ''; position: absolute; inset: 0 0 auto 0; height: 2px; border-radius: 12px 12px 0 0;
   background: linear-gradient(90deg, var(--claude, #d97757), var(--fh-gold, #ffd75e), var(--astra, #19c39c));
 }
-.jam-card.running::before { background-size: 200% 100%; animation: jam-flow 2.4s linear infinite; }
+/* (round 17, hz240) the flowing edge slides on the compositor: the same gradient, tiled twice as wide, on a strip
+   three cards wide that moves one tile (it moved its background-position: a repaint every frame) */
+.jam-card.running { overflow: clip; }
+.jam-card.running::before { left: -200%; right: auto; width: 300%; border-radius: 0; background-size: 66.6667% 100%; animation: hz-flow 2.4s linear infinite; }
 @keyframes jam-flow { to { background-position: -200% 0; } }
 .jam-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .jam-head .spacer, .jam-foot .spacer { flex: 1; }
@@ -61,7 +64,7 @@
 .jam-film-wrap { position: relative; margin-top: 7px; }
 .jam-film { display: flex; gap: 4px; padding: 3px 2px; border-radius: 8px; overflow-x: auto; scrollbar-width: none; outline: none; }
 .jam-film:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--fh-gold, #ffd75e) 55%, transparent); }
-.jam-frame { position: relative; flex: 0 1 52px; min-width: 28px; height: 30px; padding: 0; border: 0; border-radius: 5px; overflow: hidden; cursor: pointer; background: #000; box-shadow: 0 0 0 1px var(--line); transition: transform .12s, box-shadow .12s; }
+.jam-frame { position: relative; flex: 0 1 52px; min-width: 28px; height: 30px; padding: 0; border: 0; border-radius: 5px; overflow: hidden; cursor: pointer; background: #000; box-shadow: 0 0 0 1px var(--line); transition: transform .12s; }
 .jam-frame img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
 .jam-frame .jam-who, .jam-frame .jam-frame-s { position: absolute; left: 2px; bottom: 2px; width: 12px; height: 12px; box-shadow: 0 0 0 1px #0009; pointer-events: none; }
 .jam-frame .jam-who svg { width: 8px; height: 8px; }

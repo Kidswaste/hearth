@@ -50,7 +50,8 @@ html[data-skin~="swirl"] { --r-sm: 6px; --r-md: 9px; --r-lg: 14px; --r-pill: 999
 :root[data-motion=calm] .nv-wire-flow { opacity: .25; }
 /* no idle loops in Forgeheart 2: the rail and ask-all rainbows only turn while something is live */
 :root[data-look~=v2] #rail::before, :root[data-look~=v2] #broadcast::before { animation-play-state: paused; }
-:root[data-look~=v2]:has(.msg.streaming, .meter-strip.is-live, .meter-pill.is-live) :is(#rail, #broadcast)::before { animation-play-state: running; }
+/* (round 17, hz240) the :root:has(.msg.streaming…) rule that resumed them is gone: in Forgeheart those lines never turn
+   (see "Rainbows that never turned" below) and the page-wide :has() was checked again on every node a reply added */
 /* the header glint: a quick sweep when you point at a header, instead of one every 14 s forever */
 @keyframes pl-glint { from { transform: translateX(-140px) skewX(-20deg); opacity: 1; } to { transform: translateX(calc(100vw)) skewX(-20deg); opacity: 0; } }
 :root[data-look~=v2] :is(.tool-head, .native-head)::after { animation: none; opacity: 0; }
@@ -189,7 +190,7 @@ html[data-skin~="forge"] #menu button { padding: 6px 12px; }
   color: var(--m-chrome-ink); border: 1px solid #00000080; text-shadow: 0 1px 0 #ffffff80;
   background: var(--m-sheen) 160% 0 / 250% 100% no-repeat, var(--m-chrome); box-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 #0000004d;
 }
-:root[data-look~=v2] .tweaks .tw-shuffle:not(:disabled):hover { animation: m-sweep .6s ease; filter: brightness(1.06); color: var(--m-chrome-ink); }
+:root[data-look~=v2] .tweaks .tw-shuffle:not(:disabled):hover { filter: brightness(1.06); color: var(--m-chrome-ink); }
 :root[data-look~=v2] .tweaks .tw-act > .tw-step:not(:disabled), :root[data-look~=v2] .tweaks .tw-act > .ghost.tw-split:not(:disabled) {
   color: var(--m-chrome-ink); background: linear-gradient(180deg, #e9ecef, #9aa1a8 52%, #c9ced3); border-color: #00000080; box-shadow: inset 0 1px 0 #fff;
 }
@@ -201,7 +202,7 @@ html[data-skin~="forge"] #menu button { padding: 6px 12px; }
   letter-spacing: .12em; text-transform: uppercase; min-height: 30px;
 }
 :root[data-look~=v2] .media-bar .ghost.mb-tap.on { color: var(--m-gold-ink); text-shadow: 0 1px 0 #fff6; background: var(--m-sheen) 160% 0 / 250% 100% no-repeat, var(--m-gold); border-color: var(--fh-gold-lo); }
-:root[data-look~=v2] .media-bar .ghost.mb-tap.flash { animation: mb-tapflash .18s ease-out, m-sweep .4s ease; }
+:root[data-look~=v2] .media-bar .ghost.mb-tap.flash { animation: none; } /* (round 17) the flash: .mb-tap::after (three-lab.css) */
 /* Freeze: frosted glass with an ice edge; frozen it turns to ice chrome */
 :root[data-look~=v2] .stage-pill .freeze-btn {
   color: var(--fh-info); border: 1px solid color-mix(in srgb, var(--fh-info) 45%, transparent);
@@ -260,7 +261,7 @@ html[data-skin~="forge"] #menu button { padding: 6px 12px; }
   border: 1px solid var(--line-hi); background: var(--m-sheen) 160% 0 / 250% 100% no-repeat, var(--tx-brushed), linear-gradient(180deg, color-mix(in srgb, var(--fh-strong) 5%, var(--fh-iron-1)), var(--fh-iron-2));
   box-shadow: var(--m-bevel); padding: 3px 12px;
 }
-:root[data-look~=v2] .lab-tabs :is(.lab-tools-btn, .lab-back):hover { color: var(--fh-gold-text); border-color: color-mix(in srgb, var(--fh-gold) 60%, var(--line-hi)); animation: m-sweep .6s ease; }
+:root[data-look~=v2] .lab-tabs :is(.lab-tools-btn, .lab-back):hover { color: var(--fh-gold-text); border-color: color-mix(in srgb, var(--fh-gold) 60%, var(--line-hi)); }
 :root[data-look~=v2] .lab-tabs :is(.lab-tools-btn, .lab-back)::before, :root[data-look~=v2] .lab-tabs :is(.lab-tools-btn, .lab-back)::after { display: none !important; }
 :root[data-look~=v2] .lab-tabs.on-tool > button[data-id].on:not([data-id="sketch"]) { border-radius: var(--r-md); clip-path: var(--cut-sm); background: linear-gradient(180deg, color-mix(in srgb, var(--fh-gold) 22%, var(--fh-iron-1)), color-mix(in srgb, var(--fh-gold) 8%, var(--fh-iron-2))); color: var(--fh-strong); }
 /* the preview's numbers move to the bottom-left, so they never hide under the frame-size pill */
@@ -372,7 +373,7 @@ html[data-skin~="forge"]:not([data-corners]) .tweaks .tw-act:last-child > button
     linear-gradient(90deg, color-mix(in srgb, var(--nc) 50%, var(--fh-iron-3)) 0%, color-mix(in srgb, var(--nc) 20%, var(--fh-iron-3)) 100%);
   border-bottom: 1px solid var(--fh-shade); font-family: var(--font-head);
 }
-:root[data-look~=v2] .nv-node:hover .nv-head { animation: m-sweep .6s ease; }
+:root[data-look~=v2] .nv-node:hover .nv-head { /* sheen: juice.js */ }
 :root[data-look~=v2] .nv-node.sel { box-shadow: 0 0 0 1.5px var(--nc), 0 10px 26px #000a, 0 0 calc(18px * var(--glow)) color-mix(in srgb, var(--nc) 30%, transparent); }
 :root[data-look~=v2] :is(.nv-hud-btn, .tn-switch) { border-color: var(--line-hi); background: var(--tx-noise), color-mix(in srgb, var(--fh-pop) 82%, transparent); backdrop-filter: var(--m-glass-filter); box-shadow: var(--m-glass-edge), 0 2px 8px #0006; }
 :root[data-look~=v2] .nv-hud-btn:hover { border-color: color-mix(in srgb, var(--fh-gold) 60%, var(--line-hi)); color: var(--fh-gold-text); }
@@ -418,7 +419,7 @@ html[data-skin~="forge"]:not([data-corners]) .tweaks .tw-act:last-child > button
 /* the play button is the same molten chrome as every other main action */
 .vr-play { min-height: 30px; }
 :root[data-look~=v2] .vr-play { color: var(--m-gold-ink); background: var(--m-sheen) 160% 0 / 250% 100% no-repeat, var(--m-gold); box-shadow: inset 0 1px 0 #ffffffa0, inset 0 -2px 0 #0004, 0 0 calc(10px * var(--glow)) var(--g-gold); border-radius: var(--r-md); clip-path: var(--cut-sm); text-shadow: 0 1px 0 #fff6; }
-:root[data-look~=v2] .vr-play:hover { filter: brightness(1.1) saturate(1.1); animation: m-sweep .6s ease; }
+:root[data-look~=v2] .vr-play:hover { filter: brightness(1.1) saturate(1.1); }
 /* Forgeheart 2: library and notes columns are brushed iron, the stage frame matches the Lab preview */
 :root[data-look~=v2] :is(.vr-lib, .vr-notes) { background: var(--tx-brushed-v), linear-gradient(180deg, var(--fh-iron-2), var(--fh-iron-3)); border-color: var(--line-hi); }
 :root[data-look~=v2] .vr-main { background: transparent; }
@@ -565,7 +566,9 @@ dialog .ghost:not(.small) { min-height: 32px; }
 #toasts { bottom: 132px; }
 /* with a docked chat open (Lab, Video Review) they also clear its composer, chips and Send button: "Feedback is
    ready in the Video Director's chat box" used to sit right on that chat box */
-body:has(.surface.active > .tool-dock:not([hidden])) #toasts, body:has(.surface.active .tool-dock:not([hidden])) #toasts { bottom: 280px; }
+/* (round 17, hz240) was body:has(.surface.active .tool-dock:not([hidden])): every [hidden] flip anywhere in the page
+   (menus, tips, the ↓ button…) made the browser search the whole page again; ui.js now marks the box when a toast shows */
+#toasts.over-dock { bottom: 280px; }
 /* toasts: one height for the action and the ×, long text stops after three lines */
 .toast { min-height: 40px; max-width: min(460px, calc(100vw - 32px)); }
 .toast > span:first-child { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
@@ -577,7 +580,7 @@ body:has(.surface.active > .tool-dock:not([hidden])) #toasts, body:has(.surface.
 :root[data-look~=v2] .palette-item:hover:not(.sel) { background: color-mix(in srgb, var(--fh-gold) 6%, transparent); }
 /* the Appearance picker: tiles hover with the active color and a light sweep */
 :root[data-look~=v2] .look-tile { background: var(--m-sheen) 160% 0 / 250% 100% no-repeat, linear-gradient(180deg, color-mix(in srgb, var(--fh-strong) 4%, var(--fh-iron-1)), var(--fh-iron-2)); border-color: var(--line-hi); box-shadow: var(--m-bevel); min-height: 34px; }
-:root[data-look~=v2] .look-tile:hover { animation: m-sweep .6s ease; border-color: color-mix(in srgb, var(--fh-gold) 60%, var(--line-hi)); color: var(--fh-gold-text); }
+:root[data-look~=v2] .look-tile:hover { border-color: color-mix(in srgb, var(--fh-gold) 60%, var(--line-hi)); color: var(--fh-gold-text); }
 :root[data-look~=v2] .look-tile.on { border-color: var(--fh-gold); box-shadow: var(--m-bevel), inset 0 0 0 1px var(--fh-gold), inset 0 0 calc(12px * var(--glow)) var(--g-gold); color: var(--fh-strong); }
 :root[data-look~=v2] .look-group { font-family: var(--mono); color: color-mix(in srgb, var(--fh-gold) 50%, var(--muted)); }
 .seg button { min-height: 24px; }
@@ -648,14 +651,15 @@ svg.hi { width: 1em; height: 1em; display: block; flex: none; overflow: visible;
 @keyframes hx-rise { from { opacity: 0; transform: translateY(8px) scale(.985); } }
 @keyframes hx-fade { from { opacity: 0; } }
 @keyframes hx-item { from { opacity: 0; transform: translateX(-6px); } }
-@keyframes hx-dialog { from { opacity: 0; transform: translateY(10px) scale(.97); filter: blur(2px); } }
+@keyframes hx-dialog { from { opacity: 0; transform: translateY(10px) scale(.97); } } /* (round 17: no blur, a full-dialog filter per frame) */
 @keyframes hx-scene { from { opacity: 0; transform: translateY(6px); } }
 @keyframes hx-chat { from { opacity: 0; transform: translateY(10px); } }
 @keyframes hx-reveal { from { opacity: 1; } to { opacity: 0; visibility: hidden; } }
 :root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .cb-out) { animation: hx-pop .17s cubic-bezier(.2, .9, .3, 1.15) both; transform-origin: top left; }
 :root:not([data-motion=off]) .slash-menu { animation: hx-rise .18s cubic-bezier(.2, .9, .3, 1.1) both; transform-origin: bottom left; }
-:root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu) > :is(.menu-item, button, .menu-head, .nv-menu-sec) { animation: hx-item .2s ease-out both; }
-:root:not([data-motion=off]) .slash-menu > .slash-item { animation: hx-item .18s ease-out both; }
+/* (round 17) only the first rows slide in: a long menu animated every row, one compositor layer each */
+:root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu) > :is(.menu-item, button, .menu-head, .nv-menu-sec):nth-child(-n+11) { animation: hx-item .2s ease-out both; }
+:root:not([data-motion=off]) .slash-menu > .slash-item:nth-child(-n+11) { animation: hx-item .18s ease-out both; }
 :root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(1) { animation-delay: 14ms; }
 :root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(2) { animation-delay: 28ms; }
 :root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(3) { animation-delay: 42ms; }

@@ -248,3 +248,12 @@ dialog { max-height: calc(100vh - 40px); }
 /* Perf: looping decorations (glints, dust, floats) rest on surfaces you can't see, so they stop costing a style
    pass every frame; they carry on where they were when the surface shows again. */
 #surfaces:not(.grid) > .surface:not(.active):not(.capturing) :is(.native-head, .tool-head, .empty, .empty-icon), #surfaces:not(.grid) > .surface:not(.active):not(.capturing) :is(.native-head, .tool-head, .empty, .empty-icon)::before, #surfaces:not(.grid) > .surface:not(.active):not(.capturing) :is(.native-head, .tool-head, .empty, .empty-icon)::after { animation-play-state: paused; }
+
+/* (round 17, hz240) shared by the running cards' flowing edges (astra, comp, intro, jam): one tile of a strip 3x wide */
+@keyframes hz-flow { from { transform: translateX(0); } to { transform: translateX(66.6667%); } }
+/* (round 17, hz240) chats and the Board / Commands pages you can't see skip style, layout and paint altogether
+   (content-visibility keeps what they drew, their scroll and their sizes for when they show again): a page-wide
+   change (the look, the glow slider, a resize) no longer restyles every hidden chat. The Lab, websites and other tools
+   keep running hidden as before (the Lab renders for its directors in the background). */
+#surfaces:not(.grid) > .surface.agent-surface.native:not(.active):not(.capturing),
+#surfaces:not(.grid) > .surface.tool-surface:is([data-id="tool:board"], [data-id="tool:commands"]):not(.active):not(.capturing) { content-visibility: hidden; }

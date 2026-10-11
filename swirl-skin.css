@@ -6,7 +6,7 @@
 @keyframes sw-rotate { to { transform: rotate(360deg); } }
 @keyframes sw-rotate-back { to { transform: rotate(-360deg); } }
 @keyframes sw-breathe { 0%, 100% { opacity: .75; transform: scale(1); } 50% { opacity: 1; transform: scale(1.06); } }
-@keyframes sw-in { from { opacity: 0; transform: translateY(8px) scale(.985); filter: blur(2px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes sw-in { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: none; } } /* (round 17: no blur) */
 @keyframes sw-orbit { to { transform: rotate(360deg) translateX(5px) rotate(-360deg); } }
 @keyframes sw-wave { to { background-position-x: 24px; } }
 
@@ -73,7 +73,7 @@ html[data-skin~="swirl"] ::-webkit-scrollbar-thumb { border-radius: var(--sw-pil
 /* ---------- the rail: round agents with a swirl ring on the active one ---------- */
 html[data-skin~="swirl"] #rail { background: linear-gradient(180deg, #13171bcc, #0c0f12cc); }
 html[data-skin~="swirl"] #rail::before { height: 3px; border-radius: 3px; background: var(--sw-swirl); animation: sw-turn 6s linear infinite; }
-html[data-skin~="swirl"] .agent-btn { border-radius: 50% !important; transition: transform .25s cubic-bezier(.3, 1.6, .5, 1), filter .2s; }
+html[data-skin~="swirl"] .agent-btn { border-radius: 50% !important; transition: transform .25s cubic-bezier(.3, 1.6, .5, 1); }
 html[data-skin~="swirl"] .agent-btn:hover { transform: scale(1.08) rotate(-4deg); }
 html[data-skin~="swirl"] .agent-btn.active { position: relative; overflow: visible; }
 html[data-skin~="swirl"] .agent-btn.active::before {

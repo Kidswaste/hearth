@@ -38,7 +38,9 @@ html[data-skin~="forge"] {
   content: ""; position: absolute; left: 0; right: 0; top: -1px; height: 2px; opacity: 0; transition: opacity .3s;
   background: conic-gradient(from var(--mt-spin) at 50% -400%, var(--ui-cyan), var(--ui-ai), #ff6b9d, var(--ui-hot), var(--ui-gold), var(--ui-cyan));
 }
-.meter-strip.is-live::before { opacity: 1; animation: mt-spin 2.4s linear infinite; }
+/* (round 17, hz240) while live the colors flow along a strip three times as wide that the compositor slides (the
+   turning conic gradient was a repaint of the whole strip every frame while a reply streamed) */
+.meter-strip.is-live::before { opacity: 1; left: -200%; width: 300%; background: linear-gradient(90deg, var(--ui-cyan), var(--ui-ai), #ff6b9d, var(--ui-hot), var(--ui-gold), var(--ui-cyan)) 0 0 / 66.6667% 100%; animation: hz-flow 2.4s linear infinite; }
 .ms-cell {
   display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; border: 0; background: none; cursor: pointer;
   font: inherit; color: inherit; white-space: nowrap; border-right: 1px solid color-mix(in srgb, var(--text) 6%, transparent);
@@ -50,7 +52,7 @@ html[data-skin~="forge"] {
 .ms-k { opacity: .7; text-transform: uppercase; letter-spacing: .06em; font-size: 9.5px; }
 .ms-v { color: var(--text); }
 .ms-live.is-live { color: var(--meter-ai); font-weight: 600; }
-.ms-live.is-live::first-letter { animation: mt-blink 1s infinite; }
+.ms-live.is-live::first-letter { animation: mt-blink 1s steps(2, jump-none) infinite; } /* (round 17) a letter can't go to the compositor: it blinks in two steps, 2 repaints a second instead of 60+ */
 .ms-live.is-snap { color: var(--meter-ok); animation: mt-snap .5s ease-out; }
 .ms-today { color: var(--text); }
 .ms-cell.b-warn { color: var(--meter-warn); }

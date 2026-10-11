@@ -164,14 +164,21 @@ const menuLabel = (it) => String(it.label ?? '').split(/\s{2,}(?=\S+$)/);
 // Menus go in the top layer (a manual popover), so they also open over a modal dialog (Settings, Memory, /help…).
 // A modal makes the rest of the page inert, so while one is open the menu moves inside it (still drawn on top, at the
 // same place); hideMenu puts #menu back in <body> so closing the dialog never takes it along.
-function topLayer(node, on) {
+// (round 17, hz240) showPopover() runs a style pass of the whole page right in the click that opens a menu, so #menu
+// and #menu-fly stay open in the top layer while [hidden] (display: none) between menus, and show again with no
+// popover call; they're shown afresh only when something else went into the top layer since (topLayer's count) or
+// they moved into a dialog. keep: false (other callers) closes the popover as before.
+let topLayerSeq = 0;
+function topLayer(node, on, { keep = node.id === 'menu' || node.id === 'menu-fly' } = {}) {
   if (!node.hasAttribute('popover')) node.setAttribute('popover', 'manual');
   try {
     if (on) {
       const host = [...document.querySelectorAll('dialog[open]')].filter((d) => d.matches(':modal')).at(-1) || document.body;
       if (node.parentElement !== host) { if (node.matches(':popover-open')) node.hidePopover(); host.append(node); }
-      if (!node.matches(':popover-open')) node.showPopover();
-    } else if (node.matches(':popover-open')) node.hidePopover();
+      const open = node.matches(':popover-open');
+      if (open && node.__topSeq !== topLayerSeq) node.hidePopover();
+      if (!open || node.__topSeq !== topLayerSeq) { node.showPopover(); node.__topSeq = ++topLayerSeq; }
+    } else if (!keep && node.matches(':popover-open')) node.hidePopover();
   } catch { /* not connected yet */ }
 }
 function menuNode() {
@@ -488,7 +495,9 @@ function createSurface(agent) {
       divider.setPointerCapture(e.pointerId);
       document.body.classList.add('resizing');
       const box = host.getBoundingClientRect();
-      const move = (ev) => host.style.setProperty('--companion-w', `${Math.min(80, Math.max(25, ((ev.clientX - box.left) / box.width) * 100))}%`);
+      // (round 17) once a frame, however fast the pointer reports
+      let frame = 0; let x = e.clientX;
+      const move = (ev) => { x = ev.clientX; frame ||= requestAnimationFrame(() => { frame = 0; host.style.setProperty('--companion-w', `${Math.min(80, Math.max(25, ((x - box.left) / box.width) * 100))}%`); }); };
       divider.addEventListener('pointermove', move);
       divider.addEventListener('pointerup', () => {
         divider.removeEventListener('pointermove', move);
