@@ -71,7 +71,8 @@ line count is lower than the number of upgrades).
 | Startup (round 16): the rail and chats come up first (ready ≈ 650 → 460 ms, interactive ≈ 1,080 → 480 ms, 175 → 109 scripts before the first screen), the Lab, board, Commands page, renders, Adobe, deploy, apps, tours and Studio load right after in idle moments; every command, menu entry and key is there from the first moment and loads its feature on first use | [boot.md](boot.md) | 20 |
 | No video player (round 17): Video Review, its cut editor, the Video Director and video projects removed (≈ 15,200 lines, 21 files); videos are made in the Lab sequence and open in your system player / Finder; 24 fewer scripts and 1.2 MB less JS before the first screen, ready ≈ 475 → 375 ms | [novideo.md](novideo.md) | 26 |
 | 240 Hz feel (round 17): forced layouts in handlers halved (−71 % of their time), a third fewer elements restyled and two thirds fewer laid out across rail, chats list, menus, palette, Commands page, slider, tools; effects that looped while something ran (Stop, unread, working glow, flowing card edges, live / rec pulses, Tap flash, hover sheen) moved to the compositor; scrolling no longer waits on a page-wide wheel listener; the Lab's Max fps follows a 240 Hz screen; `dev/checks/hz240.js` measures it all with real input | [hz240.md](hz240.md) | 52 |
-| **Total** | | **10,620** |
+| Trim (round 18): 466 KB less JS before the first screen (capture, the code flow view and Forge load after it), the After Effects drawer's main-process half and the video side's dead CSS / animations removed, capped caches, a listener leak fixed, swirl.svg halved; coverage and weight tools for the next streams | [trim.md](trim.md) | 11 |
+| **Total** | | **10,631** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.
