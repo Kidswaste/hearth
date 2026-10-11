@@ -293,15 +293,16 @@ const Lazy = (() => {
       document.head.append(s);
     });
   }
-  function css(href) {
+  function css(href, before) {
     if (document.querySelector(`link[rel=stylesheet][href="${href}"]`)) return Promise.resolve();
     return new Promise((res) => {
       const l = document.createElement('link');
       l.rel = 'stylesheet'; l.href = href;
       l.onload = l.onerror = () => { l.onload = l.onerror = null; res(); };
-      // after the eager sheets, before the user theme (<style id="user-theme"> keeps the last word)
-      const theme = document.getElementById('user-theme');
-      if (theme) theme.before(l); else document.head.append(l);
+      // after the eager sheets, before the user theme (<style id="user-theme"> keeps the last word); (round 19) a group's
+      // `cssBefore` puts it back where index.html had it, so later sheets keep overriding it as before
+      const at = (before && document.querySelector(`link[rel=stylesheet][href="${before}"]`)) || document.getElementById('user-theme');
+      if (at) at.before(l); else document.head.append(l);
     });
   }
 
@@ -318,7 +319,7 @@ const Lazy = (() => {
         reports.set(g.name, rep);
         const p = patch(g, rep);
         try {
-          await Promise.all([...(g.css || []).map(css), ...g.files.map(inject)]);
+          await Promise.all([...(g.css || []).map((h) => css(h, g.cssBefore)), ...g.files.map(inject)]);
           for (const fn of p.ready) { try { fn.call(window, new Event('DOMContentLoaded')); } catch (err) { console.error(err); } }
         } catch (err) {
           g.state = 'failed';

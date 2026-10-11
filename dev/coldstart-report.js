@@ -75,7 +75,7 @@ async function launch(dir, userData, port, { traceOut, shot, hold } = {}) {
       traceBuf = [];
       const prev = b.ws.onmessage;
       b.ws.onmessage = (m) => { const msg = JSON.parse(m.data); if (msg.method === 'Tracing.dataCollected') traceBuf.push(...msg.params.value); else if (msg.method === 'Tracing.tracingComplete') traceDone?.(); else prev(m); };
-      await b.send('Tracing.start', { categories: 'devtools.timeline,disabled-by-default-devtools.timeline,v8.execute,blink.user_timing,loading,toplevel,benchmark,cc,viz,gpu,__metadata', transferMode: 'ReportEvents' });
+      await b.send('Tracing.start', { categories: 'devtools.timeline,disabled-by-default-devtools.timeline,v8.execute,v8,blink.user_timing,loading,toplevel,benchmark,cc,viz,gpu,__metadata', transferMode: 'ReportEvents' });
     }
     let wsUrl;
     for (let i = 0; i < 400 && !wsUrl; i++) {
@@ -127,8 +127,9 @@ async function launch(dir, userData, port, { traceOut, shot, hold } = {}) {
     return {
       appReady: M.appReady, windowCreated: M.windowCreated, windowShown: M.windowShown, readyToShow: M.readyToShow,
       firstPaint, ready: toMain(page.ready), features: toMain(page.features),
-      // what you see first: the window on screen with its first frame drawn in it
-      firstPicture: Math.max(M.windowShown ?? NaN, firstPaint),
+      // what you see first: the window on screen with its first frame drawn in it ('ready-to-show' is that frame; the
+      // page's own first-paint entry is unreliable for a window that starts hidden)
+      firstPicture: Math.max(M.windowShown ?? NaN, M.readyToShow ?? NaN),
       mainReadyToShown: M.windowShown - M.appReady, mainReadyToRTS: M.readyToShow - M.appReady, mainReadyToWindow: M.windowCreated - M.appReady,
       mainjsToReady: M.appReady - (M.mainjs ?? M.probe),
       splash: Object.fromEntries(Object.entries(page.marks).filter(([k]) => k.startsWith('splash:')).map(([k, v]) => [k, r1(toMain(v))])),

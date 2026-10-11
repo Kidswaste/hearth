@@ -24,7 +24,7 @@ const Splash = (() => {
   const SLOW_MS = 2500; // "taking longer than usual" after this long on one step
   const GIVE_UP_MS = 15000; // the first screen never waits behind the splash longer than this
   const marks = {};
-  const pending = new Map(); // what → since
+  const pending = new Map(); // what → the promise
   let done = false; let err = null; let slowTimer = 0; let lastStep = 'paint';
   const reduced = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
   let hold = false;
@@ -50,7 +50,8 @@ const Splash = (() => {
     const s = $q('.sp-step');
     if (s && SAY[name]) s.textContent = SAY[name];
     armSlow();
-    if (name === 'ready') finish();
+    // the look's own stylesheet (Swirl) still loading: a moment more (≤ 0.6 s), so the first screen shows up styled
+    if (name === 'ready') Promise.race([pending.get('look'), new Promise((r) => setTimeout(r, 600))]).then(() => finish());
   }
 
   // ---------- taking longer than usual ----------
@@ -130,7 +131,7 @@ const Splash = (() => {
   // ---------- wiring ----------
   function track(what, promise) {
     const key = String(what);
-    pending.set(key, performance.now());
+    pending.set(key, promise);
     const end = () => pending.delete(key);
     Promise.resolve(promise).then(end, end);
     return promise;
