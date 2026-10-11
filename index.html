@@ -8,15 +8,11 @@
   <link rel="stylesheet" href="app.css">
   <link rel="stylesheet" href="features.css">
   <link rel="stylesheet" href="meter.css">
-  <link rel="stylesheet" href="tools/three-fx.css">
   <link rel="stylesheet" href="nodes.css">
   <link rel="stylesheet" href="addons.css">
   <link rel="stylesheet" href="astra.css">
   <link rel="stylesheet" href="forge-skin.css">
   <link rel="stylesheet" href="swirl-skin.css">
-  <link rel="stylesheet" href="tools/three-lab.css">
-  <link rel="stylesheet" href="tools/three-seq.css">
-  <link rel="stylesheet" href="tools/three-models.css">
   <link rel="stylesheet" href="director.css">
   <link rel="stylesheet" href="jam.css">
   <link rel="stylesheet" href="cmdbar.css">
@@ -196,6 +192,9 @@
   <script defer src="bridge.js"></script>
   <script defer src="director-dock.js"></script>
   <script defer src="commands.js"></script>
+  <!-- (round 16) feature modules load after the first screen or on first use: lazy-data.js lists them -->
+  <script defer src="lazy-data.js"></script>
+  <script defer src="lazy.js"></script>
   <script defer src="apps-core.js"></script>
   <script defer src="apps-meshy-api.js"></script>
   <script defer src="apps.js"></script>
@@ -215,46 +214,13 @@
   <script defer src="look.js"></script>
   <script defer src="kit.js"></script>
   <script defer src="nodes.js"></script>
-  <script defer src="tools/three-data.js"></script>
-  <script defer src="tools/three-tweaks.js"></script>
-  <script defer src="tools/three-music-core.js"></script>
-  <script defer src="tools/three-media.js"></script>
-  <script defer src="tools/three-triggers.js"></script>
-  <script defer src="tools/three-layers.js"></script>
-  <script defer src="tools/three-fx-filters.js"></script>
-  <script defer src="tools/three-fx-templates.js"></script>
-  <script defer src="tools/three-nodes.js"></script>
-  <script defer src="tools/three.js"></script>
-  <script defer src="tools/three-director.js"></script>
-  <script defer src="tools/three-backstage.js"></script>
-  <script defer src="tools/three-cmds.js"></script>
-  <script defer src="tools/three-music.js"></script>
-  <script defer src="tools/three-frames.js"></script>
-  <script defer src="tools/three-frames-cmds.js"></script>
-  <script defer src="tools/three-frames-templates.js"></script>
-  <script defer src="tools/three-fx-data.js"></script>
-  <script defer src="tools/three-fx.js"></script>
-  <script defer src="tools/three-fx-cmds.js"></script>
-  <script defer src="tools/three-motion.js"></script>
-  <script defer src="tools/three-motion-cmds.js"></script>
-  <script defer src="tools/three-models.js"></script>
-  <script defer src="tools/three-models-cmds.js"></script>
-  <script defer src="tools/cut-data.js"></script>
-  <script defer src="tools/cut-presets.js"></script>
+  <script defer src="lazy-at.js#lab,video"></script>
   <script defer src="webm-duration.js"></script>
-  <script defer src="tools/three-seq-trans.js"></script>
-  <script defer src="tools/three-seq-data.js"></script>
-  <script defer src="tools/three-seq-templates.js"></script>
-  <script defer src="tools/three-seq-arrange.js"></script>
-  <script defer src="tools/three-seq.js"></script>
-  <script defer src="tools/three-seq-cmds.js"></script>
-  <script defer src="nodes-shader.js"></script>
   <script defer src="nodes-code.js"></script>
   <script defer src="director-cmds.js"></script>
   <script defer src="jam.js"></script>
   <script defer src="chat-scenes.js"></script>
   <script defer src="director-task.js"></script>
-  <script defer src="tools/three-comp.js"></script>
   <script defer src="comp-dispatch.js"></script>
   <script defer src="tools/forge.js"></script>
   <script defer src="tools/forge-game.js"></script>
@@ -306,10 +272,12 @@
   <script defer src="flows.js"></script>
   <script defer src="flows-data.js"></script>
   <script defer src="flows-ui.js"></script>
+  <script defer src="lazy-at.js#cmdpage"></script>
   <script defer src="progress-ui.js"></script>
   <script defer src="progress-hooks.js"></script>
   <script defer src="makes-core.js"></script>
   <script defer src="makes.js"></script>
+  <script defer src="lazy-at.js#renders,adobe,deploy"></script>
   <script defer src="polish8.js"></script>
   <script defer src="speed-core.js"></script>
   <script defer src="speed-rank.js"></script>
@@ -317,9 +285,7 @@
   <script defer src="speed-resume.js"></script>
   <script defer src="speed-fix.js"></script>
   <script defer src="updater.js"></script>
-  <!-- (round 16) feature modules load after the first screen or on first use: lazy-data.js lists them -->
-  <script defer src="lazy-data.js"></script>
-  <script defer src="lazy.js"></script>
+  <script defer src="lazy-at.js#apps,discover,studio"></script>
   <script defer src="start.js"></script>
 </body>
 </html>

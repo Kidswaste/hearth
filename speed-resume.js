@@ -49,7 +49,8 @@ const SpeedResume = (() => {
   addEventListener('beforeunload', () => snapshot());
   // renders and recordings: the newest one
   const noteRender = (path, name = '') => { if (!path) return; cur.render = { path, name: name || base(path), t: Date.now() }; store.set(KEY, cur); };
-  try { if (typeof ThreeSeq !== 'undefined' && ThreeSeq.on) { ThreeSeq.on('render', (d) => noteRender(d?.output)); ThreeSeq.on('mode', () => soon()); } } catch { /* the sequence is optional */ }
+  const seqHooks = () => { try { if (typeof ThreeSeq !== 'undefined' && ThreeSeq.on) { ThreeSeq.on('render', (d) => noteRender(d?.output)); ThreeSeq.on('mode', () => soon()); } } catch { /* the sequence is optional */ } };
+  if (window.Lazy) window.Lazy.when('lab', seqHooks); else seqHooks(); // (round 16) the Lab loads after the first screen
   document.addEventListener('hearth:recording', (e) => { if (e.detail && e.detail.recording === false) noteRender(e.detail.path); });
   document.addEventListener('hearth:chat-thing', (e) => { const t = e.detail?.thing; if (t?.k === 'video' && t.path) noteRender(t.path, t.name); });
 

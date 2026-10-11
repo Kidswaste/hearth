@@ -44,7 +44,11 @@ let html = fs.readFileSync(path.join(copy, 'index.html'), 'utf8');
 const tag = (f) => `  <script defer src="${f}"></script>\n`;
 html = html.replace(tag('lazy.js'), '').replace(tag('lazy-data.js'), '');
 const after = (f, add) => { if (!html.includes(tag(f))) throw new Error(`index.html has no ${f} (LazyData.GROUPS at)`); html = html.replace(tag(f), tag(f) + add); };
-for (const g of LazyData.GROUPS) after(g.at, g.files.map(tag).join(''));
+for (const g of LazyData.GROUPS) {
+  const own = g.places || {};
+  after(g.at, g.files.filter((f) => !own[f]).map(tag).join(''));
+  for (const [f, at] of Object.entries(own)) after(at, tag(f));
+}
 after('commands.js', tag('lazy-data.js') + tag('dev/lazy-record.js'));
 after('apps.js', tag('dev/lazy-record.js'));
 after('appui.js', tag('dev/lazy-record.js'));

@@ -13,12 +13,12 @@
 const Lazy = (() => {
   const D = typeof LazyData !== 'undefined' ? LazyData : { GROUPS: [], META: {} };
   const groups = new Map(); // name → { name, files, css, tier, after, state: 'stub' | 'loading' | 'loaded' | 'failed', promise, at, ms }
-  const stubCmds = new Map(); // command name → group
+  const stubCmds = new Map(); // 'group|name' → command name (stand-ins not taken over yet)
   const realActions = new Map(); // palette label → the real run (the stand-in action calls it)
   const realBridge = new Map(); // tool prefix → the real handler
   const stubKeys = new Map(); // 'area|keys' → the stand-in keys-sheet line (the real one fills it in)
   const stubTools = new Map(); // tool id → stand-in tool
-  const unregs = new Map(); // command name → its stand-in's unregister (what Commands.register returns)
+  const unregs = new Map(); // 'group|name' → its stand-in's unregister (what Commands.register returns)
   const reports = new Map(); // group → { commands: [defs], actions: [labels], keys: [lines], bridge: [prefixes], apps: [defs], tools: [defs] }
   const missLog = []; // { name, group, at, where }
   let chain = Promise.resolve(); // loads run one at a time (the registry patches below are shared)
@@ -63,28 +63,47 @@ const Lazy = (() => {
 
   // ---------- stand-ins ----------
   const groupMeta = (name) => (D.META || {})[name] || {};
+  // A stand-in command is a def whose run / complete / when hand over to its own object once the real def has filled it
+  // in (takeOver): a module that copied it meanwhile ({ ...Commands.get('director'), run: … }) reaches the real one too.
+  // Its mark (__lazy) isn't enumerable, so copies and combined shared names don't carry it.
+  const stubSelf = new Map(); // 'group|name' → the stand-in's def object in the registry
   function stubCommand(g, c) {
     const name = String(c.name).toLowerCase();
     if (typeof Commands === 'undefined') return;
     // a name an eager command already has: only a `when` variant shares it (combined as before; it holds once loaded)
     if (Commands.get(name) && !c.when) return;
+    const key = `${g.name}|${name}`;
+    const self = () => stubSelf.get(key);
     const run = async (args, ctx) => {
       await load(g.name);
-      const d = Commands.get(name);
-      if (!d || d.__lazy) throw new Error(`/${name} isn't available (its module didn't load)`);
+      const d = self();
+      if (!d || d.run === run) throw new Error(`/${name} isn't available (its module didn't load)`);
       return d.run(args, ctx);
     };
     // argument suggestions arrive once the group is in (the "/" menu asks again as you type)
     const complete = (args, ctx) => {
-      if (g.state !== 'loaded') { load(g.name).catch(() => {}); return []; }
-      const d = Commands.get(name);
-      return d && !d.__lazy && d.complete ? d.complete(args, ctx) : [];
+      const d = self();
+      if (d && d.complete !== complete) return d.complete ? d.complete(args, ctx) : [];
+      if (g.state === 'stub') want(g);
+      return [];
     };
-    const { when, ...rest } = c;
-    const extra = when ? { when: () => { if (g.state === 'stub') want(g); return false; } } : {};
+    const when = (ctx, args) => {
+      const d = self();
+      if (d && d.when !== when) return d.when ? d.when(ctx, args) : true;
+      if (g.state === 'stub') want(g);
+      return false;
+    };
+    const { when: shared, dcl, ...rest } = c;
     try {
-      unregs.set(name, Commands.register({ ...rest, ...extra, aliases: (c.aliases || []).filter((a) => !Commands.get(a)), run, complete, __lazy: g.name }));
-      stubCmds.set(name, g.name);
+      // the aliases as the module gave them where it used to register (it filtered them itself if it does)
+      const un = Commands.register({ ...rest, ...(shared ? { when } : {}), aliases: c.aliases || [], run, complete });
+      const cur = Commands.get(name);
+      const obj = cur && (cur.run === run ? cur : cur.variants?.find((v) => v.run === run));
+      if (!obj) { un?.(); return; }
+      Object.defineProperty(obj, '__lazy', { value: g.name, configurable: true, enumerable: false, writable: true });
+      unregs.set(key, un);
+      stubSelf.set(key, obj);
+      stubCmds.set(key, name);
     } catch (err) { say(`stub /${name}: ${err.message}`); }
   }
   function stubAction(g, label, keys) {
@@ -123,10 +142,23 @@ const Lazy = (() => {
     const real = () => { const x = Tools.get(t.id); return x && x !== stub ? x : null; };
     const stub = {
       ...t, __lazy: g.name,
+      // the surface counts as unmounted until the real tool is in, so tools.js doesn't dock a chat beside a tool that
+      // isn't there yet (the director's dock hooks into the Lab when it attaches); then it mounts, docks, shows
       mount(body, head) {
+        const s = H.surfaces?.get(`tool:${t.id}`);
+        if (s) s.mounted = false;
+        if (body.querySelector('.lazy-wait')) return;
         const wait = el('p', { class: 'hint lazy-wait', text: `Loading ${t.name}…` });
         body.append(wait);
-        load(g.name).then(() => { wait.remove(); const r = real(); if (r) { r.mount(body, head); r.onShow?.(); } }).catch((err) => { wait.textContent = `${t.name} didn't load: ${err.message}`; });
+        load(g.name).then(() => {
+          wait.remove();
+          const r = real();
+          if (!r) return;
+          if (s) { s.tool = r; s.mounted = true; }
+          r.mount(body, head);
+          Tools.syncDocks?.();
+          if (!s || H.surfaceIdFor?.(H.activeId) === s.el.dataset.id || H.grid) r.onShow?.();
+        }).catch((err) => { wait.textContent = `${t.name} didn't load: ${err.message}`; });
       },
       onShow() { real()?.onShow?.(); },
       commands: (t.commands || []).map((c) => ({ label: c.label, run: () => load(g.name).then(() => real()?.commands?.find((x) => x.label === c.label)?.run()) })),
@@ -135,31 +167,47 @@ const Lazy = (() => {
     stubTools.set(t.id, stub);
   }
   // (never throws: a stand-in that fails is only a missing menu line, and the rest of the app must start)
-  function stubAll(g) {
+  // Two moments, both where the group's files used to be (lazy-at.js): its commands and agent tools right there, its
+  // rail tool, keys-sheet lines, palette actions and app windows at DOMContentLoaded, in the old order of handlers
+  const each = (g, list, fn) => { for (const x of list || []) { try { fn(x); } catch (err) { say(`${g.name}: ${err.message}`); } } };
+  function stubNow(g) {
     const m = groupMeta(g.name);
-    const each = (list, fn) => { for (const x of list || []) { try { fn(x); } catch (err) { say(`${g.name}: ${err.message}`); } } };
-    each(m.commands, (c) => stubCommand(g, c));
-    each(m.actions, (a) => stubAction(g, a.label || a, a.keys));
-    each(m.keys, (k) => stubKey(g, k));
-    each(m.bridge, (p) => stubBridge(g, p));
-    each(m.apps, (a) => stubApp(g, a));
-    each(m.tools, (t) => stubTool(g, t));
-    try { guardGlobals(g); } catch (err) { say(`${g.name}: ${err.message}`); }
+    each(g, (m.commands || []).filter((c) => !c.dcl), (c) => stubCommand(g, c));
+    each(g, m.bridge, (p) => stubBridge(g, p));
   }
-  // the group's own files register the real commands: its stand-ins step aside first
-  function unstubCommands(g) {
-    for (const [name, gn] of stubCmds) {
-      if (gn !== g.name) continue;
-      const d = Commands.get(name);
-      if (d?.variants?.some((v) => v.__lazy === g.name)) {
-        // shared with an eager command: drop only the stand-in variant
-        // (a variant that shares the name through its alias is still registered under its own name)
-        const keep = d.variants.filter((v) => v.__lazy !== g.name && v.name === name);
-        unregs.get(name)?.();
-        for (const v of keep) Commands.register({ ...v });
-      } else if (d?.__lazy === g.name) unregs.get(name)?.();
-      unregs.delete(name);
-      stubCmds.delete(name);
+  function stubLater(g) {
+    if (g.state !== 'stub') return;
+    const m = groupMeta(g.name);
+    each(g, (m.commands || []).filter((c) => c.dcl), (c) => stubCommand(g, c));
+    each(g, m.tools, (t) => stubTool(g, t));
+    each(g, m.keys, (k) => stubKey(g, k));
+    each(g, m.actions, (a) => stubAction(g, a.label || a, a.keys));
+    each(g, m.apps, (a) => stubApp(g, a));
+  }
+  // The group's own files register the real commands: each fills in its stand-in's object in the registry (takeOver),
+  // so names, aliases, shared `when` variants and their order stay exactly as the stand-ins laid them out. While they
+  // load, Commands.get doesn't see the group's own stand-ins ("is /studio taken?" checks, alias filters).
+  function takeOver(g, def) {
+    const name = String(def?.name || '').toLowerCase();
+    const key = `${g.name}|${name}`;
+    const target = stubCmds.has(key) && stubSelf.get(key);
+    if (!target) return null;
+    Object.assign(target, { area: 'Other', desc: '', args: '', ...def, name, aliases: target.aliases, complete: def.complete, when: def.when });
+    if (!def.when) delete target.when;
+    delete target.__lazy;
+    stubCmds.delete(key);
+    try { Commands.addInfo?.({}); } catch { /* the search index rebuilds on its own */ }
+    return () => unregs.get(key)?.();
+  }
+  // a stand-in the group didn't register this time (a condition at load): it goes (or, shared, never holds)
+  function dropLeftovers(g) {
+    for (const [key, name] of [...stubCmds]) {
+      if (!key.startsWith(`${g.name}|`)) continue;
+      stubCmds.delete(key);
+      const self = stubSelf.get(key);
+      if (Commands.get(name) === self) unregs.get(key)?.();
+      else if (self) self.when = () => false;
+      say(`/${name} (${g.name}) wasn't registered by its module`);
     }
   }
 
@@ -173,7 +221,16 @@ const Lazy = (() => {
     const onLoad = (orig) => (type, fn, opts) => ((type === 'DOMContentLoaded' || type === 'load') && typeof fn === 'function' ? ready.push(fn) : orig(type, fn, opts));
     swap(window, 'addEventListener', onLoad);
     swap(document, 'addEventListener', onLoad);
-    if (typeof Commands !== 'undefined') swap(Commands, 'register', (orig) => (def) => { if (def && !def.__lazy) rep.commands.push(cmdMeta(def)); return orig(def); });
+    if (typeof Commands !== 'undefined') {
+      // (the module registered these names where it used to load, before anything shared them: they read as free)
+      swap(Commands, 'get', (orig) => (n) => { const d = orig(n); return d && (d.__lazy === g.name || d.variants?.some((v) => v.__lazy === g.name)) ? undefined : d; });
+      swap(Commands, 'register', (orig) => (def) => {
+        if (!def) return orig(def);
+        rep.commands.push(cmdMeta(def));
+        if (!def.name || typeof def.run !== 'function') return orig(def); // its own error, as before
+        return takeOver(g, def) || orig(def);
+      });
+    }
     if (typeof AppUI !== 'undefined') swap(AppUI, 'addAction', (orig) => (label, run, keys) => {
       rep.actions.push(keys ? { label, keys } : label);
       if (AppUI.actions?.().some((a) => a.label === label)) { realActions.set(label, run); return undefined; }
@@ -250,7 +307,6 @@ const Lazy = (() => {
         const t0 = performance.now();
         const rep = { commands: [], actions: [], keys: [], bridge: [], apps: [], tools: [] };
         reports.set(g.name, rep);
-        unstubCommands(g);
         const p = patch(g, rep);
         try {
           await Promise.all([...(g.css || []).map(css), ...g.files.map(inject)]);
@@ -262,6 +318,7 @@ const Lazy = (() => {
           throw err;
         }
         p.restore();
+        dropLeftovers(g);
         unguardGlobals(g);
         // a tool already on screen with the stand-in: the rail keeps the stand-in object (it hands over to the real one)
         g.state = 'loaded';
@@ -305,15 +362,29 @@ const Lazy = (() => {
     soon();
   }
 
-  // ---------- stand-ins now (every registry exists: lazy.js loads after the eager modules, before start.js) ----------
-  for (const g of groups.values()) stubAll(g);
+  // ---------- stand-ins ----------
+  // index.html has a tiny <script src="lazy-at.js#lab"> where a group's files used to be: its stand-ins are registered
+  // there (and its DOMContentLoaded ones queue there), so names, aliases and orders come out as before
+  const placed = new Set();
+  function at(names) {
+    for (const n of String(names || '').split(',').map((x) => x.trim()).filter(Boolean)) {
+      const g = groups.get(n);
+      if (!g || placed.has(n)) continue;
+      placed.add(n);
+      stubNow(g);
+      document.addEventListener('DOMContentLoaded', () => stubLater(g), { once: true });
+    }
+  }
+  // a group without a lazy-at.js tag gets its stand-ins at the end
+  document.addEventListener('DOMContentLoaded', () => { for (const g of groups.values()) if (!placed.has(g.name)) { placed.add(g.name); stubNow(g); stubLater(g); } }, { once: true });
+  for (const g of groups.values()) { try { guardGlobals(g); } catch (err) { say(`${g.name}: ${err.message}`); } }
   // start.js fires 'hearth:ready' once the first screen is up: the cue for the 'soon' groups
   addEventListener('hearth:ready', start, { once: true });
   // start.js never got there (an error during startup): don't leave the features unloaded
   addEventListener('DOMContentLoaded', () => setTimeout(start, 6000), { once: true });
   const state = () => [...groups.values()].map((g) => ({ name: g.name, tier: g.tier, state: g.state, files: g.files.length, ms: g.ms ?? null, at: g.at ?? null }));
   return {
-    load, state, start,
+    load, state, start, at,
     loaded: (name) => groups.get(name)?.state === 'loaded',
     // when(group, fn): fn() now if the group is in (or isn't lazy), else once it has loaded; for hooks an eager module
     // puts into a lazy one (window.Lazy?.when('video', () => VideoCut.on(…)) ?? …)
@@ -323,7 +394,7 @@ const Lazy = (() => {
       const on = (e) => { if (e.detail?.group !== name) return; removeEventListener('hearth:lazy', on); try { fn(); } catch (err) { console.error(err); } };
       addEventListener('hearth:lazy', on);
     },
-    groupOf: (cmd) => stubCmds.get(String(cmd || '').toLowerCase()) || null,
+    groupOf: (cmd) => { const n = String(cmd || '').toLowerCase(); for (const [k, v] of stubCmds) if (v === n) return k.split('|')[0]; return null; },
     misses: () => missLog.slice(),
     namesAtReady: () => namesAtReady && namesAtReady.slice(),
     report: (name) => (name ? reports.get(name) : Object.fromEntries(reports)),

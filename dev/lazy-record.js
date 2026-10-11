@@ -37,7 +37,9 @@
   };
   const G = (n) => REG[n]();
   // commands: what ended up registered under the name (the record keeps the def as given)
-  wrap('Commands', G('Commands'), 'register', (r, [def]) => { const d = { ...pick(def, CMD_KEYS) }; if (def.when) d.when = true; r.commands.push(d); });
+  // registered from a DOMContentLoaded handler (dcl: the stand-in waits for that moment too, the order of names counts)
+  if (!R.dclHook) { R.dclHook = true; document.addEventListener('DOMContentLoaded', () => { R.dcl = true; }, { once: true }); }
+  wrap('Commands', G('Commands'), 'register', (r, [def]) => { const d = { ...pick(def, CMD_KEYS) }; if (def.when) d.when = true; if (R.dcl) d.dcl = true; r.commands.push(d); });
   wrap('Keys', G('Keys'), 'add', (r, entries) => { for (const e of entries.flat()) if (e?.keys) r.keys.push({ area: e.area || 'General', keys: e.keys, what: e.what, ...(e.sel ? { sel: e.sel } : {}) }); });
   wrap('HubBridge', G('HubBridge'), 'register', (r, [prefixes]) => r.bridge.push(...(prefixes || [])));
   wrap('Tools', G('Tools'), 'define', (r, [t]) => r.tools.push({ id: t.id, name: t.name, icon: t.icon, color: t.color, description: t.description || '', commands: (t.commands || []).map((c) => ({ label: c.label })) }));
