@@ -75,7 +75,8 @@ line count is lower than the number of upgrades).
 | Tidy (round 18): Commands page principal-first with Studio + Discover as one row; searchable Settings with every switch and its token / GPU cost (`/settings <words>`); deletes last and red in every menu, one wording for Open / Reveal / Copy path; Ctrl/⌘+1…9 over the whole rail; a short Ctrl/⌘+K; one-action empty screens; dead video-side references gone | [tidy.md](tidy.md) | 41 |
 | Reach (round 19): what chats make syncs between your computers (the workspace, minus caches and huge files), a Mac path on the PC (and back) finds the same file here, a file still on its way says so and opens when it arrives; pages a reply makes get ▶ Open / Preview / Reveal and chats can open things for you (`chat_open`, `/open-file`); a clear sync conflict screen (which computer, what it is, the real difference, Keep mine / theirs / both / Merge, undoable) | [reach.md](reach.md) | 42 |
 | Loading screen (round 19): a Hearth splash in the window's first frame (no white flash), progress that follows real steps, "taking longer than usual…" with the reason, gone as soon as the app is usable; the window appears ≈ 43 % sooner (first frame 815 → 467 ms), the sync pass, engines, tray and other main-process work no longer delay it; `/startup` shows the last starts | [splash.md](splash.md) | 26 |
-| **Total** | | **10,833** |
+| Jank watch (round 20): Hearth measures its own slow frames and input delay on your machines (by area and, through short profiles, by the exact code), keeps a week of it locally, holds background work while you type / drag / scroll, offers Light mode once when the Lab keeps dropping frames; `/smooth` report with Copy for Claude | [jankwatch.md](jankwatch.md) | 36 |
+| **Total** | | **10,869** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.
