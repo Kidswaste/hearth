@@ -181,7 +181,7 @@ async function snapSummary(client, sid) {
   return out;
 }
 function snapDiff(a, b, top = 10) {
-  return Object.keys(b).map((k) => [k, b[k][0] - (a[k]?.[0] || 0), b[k][1] - (a[k]?.[1] || 0)]).filter(([, n, sz]) => n > 0 && sz > 0).sort((x, y) => y[2] - x[2]).slice(0, top)
+  return Object.keys(b).map((k) => [k, b[k][0] - (a[k]?.[0] || 0), b[k][1] - (a[k]?.[1] || 0)]).filter(([k, n, sz]) => n > 0 && sz > 0 && k !== '(code)').sort((x, y) => y[2] - x[2]).slice(0, top)
     .map(([k, n, sz]) => `  +${n} ${k} (+${Math.round(sz / 1024)} KB)`).join('\n');
 }
 

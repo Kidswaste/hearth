@@ -529,12 +529,29 @@ const Native = (() => {
   }
 
   async function loadChat(id) {
+    chatUsed.set(id, Date.now());
     if (!chats.has(id)) {
       const chat = await window.hub.getChat(id);
       if (!chat) return null;
+      if (chats.has(id)) return chats.get(id); // (loaded meanwhile by another caller: keep that one)
       chats.set(id, chat);
-    }
+      trimChats();
+    } else if (chats.size > CHAT_KEEP) { const c = chats.get(id); chats.delete(id); chats.set(id, c); } // most recent last
     return chats.get(id);
+  }
+  // (round 20, soak) a long session opens many chats: only the last CHAT_KEEP stay in memory (whole histories can be
+  // big), never one on screen in an agent, streaming, or used in the last minute; the others load again from disk
+  const CHAT_KEEP = 12;
+  const chatUsed = new Map();
+  function trimChats() {
+    if (chats.size <= CHAT_KEEP) return;
+    const keep = new Set(Object.values(H.activeChat || {}));
+    const now = Date.now();
+    for (const id of chats.keys()) {
+      if (chats.size <= CHAT_KEEP) break;
+      if (keep.has(id) || pending.has(id) || now - (chatUsed.get(id) || 0) < 60000) continue;
+      chats.delete(id); chatUsed.delete(id);
+    }
   }
 
   // Adds Save / Run buttons to code blocks depending on their language and content. Long blocks start

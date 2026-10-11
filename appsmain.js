@@ -127,6 +127,7 @@ async function fetchTo({ url, appId, appName, name } = {}) {
   const target = uniquePath(dir, name || decodeURIComponent(new URL(url).pathname.split('/').pop() || 'download'));
   const d = { id: uid(), app: appId || 'apps', appName: appName || appId || 'Apps', name: path.basename(target), path: target, state: 'progressing', received: 0, total: 0, url, at: Date.now() };
   downloads.unshift(d);
+  downloads.length = Math.min(downloads.length, 200); // (round 20, soak) the same cap as the apps' own downloads
   toHub({ type: 'download', d: { ...d }, quiet: true });
   try {
     const res = await net.fetch(url);

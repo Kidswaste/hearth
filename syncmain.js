@@ -59,6 +59,7 @@ function start() {
       const real = path.join(path.dirname(file), path.basename(file).replace(/^\.(.+)\.icloud$/, '$1'));
       if (Date.now() - (downloadAsked.get(real) || 0) < 600000) return;
       downloadAsked.set(real, Date.now());
+      if (downloadAsked.size > 500) for (const [k, t] of downloadAsked) if (Date.now() - t >= 600000) downloadAsked.delete(k); // (round 20, soak) old asks go
       execFile('brctl', ['download', real], () => {});
     },
   });

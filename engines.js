@@ -46,8 +46,13 @@ const ENGINES = {
 const running = new Map(); // chatId -> child process
 const LOG_PATH = path.join(DATA_DIR, 'engine.log');
 
+// (round 20, soak) the log keeps the last ≈ 2 MB: past that it moves to engine.prev.log (checked every 200 lines)
+let logLines = 0;
 function log(line) {
-  try { fs.appendFileSync(LOG_PATH, `${new Date().toISOString()} ${line}\n`); } catch { /* logging is best-effort */ }
+  try {
+    if (logLines++ % 200 === 0 && fs.statSync(LOG_PATH, { throwIfNoEntry: false })?.size > 2 * 1048576) fs.renameSync(LOG_PATH, path.join(DATA_DIR, 'engine.prev.log'));
+    fs.appendFileSync(LOG_PATH, `${new Date().toISOString()} ${line}\n`);
+  } catch { /* logging is best-effort */ }
 }
 
 const IS_WIN = process.platform === 'win32';

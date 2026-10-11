@@ -226,7 +226,12 @@ const g = c.getContext('2d'); function loop(now) { g.fillStyle = 'hsl(' + (now /
   }
 
   // the harness samples between cycles: nothing of ours runs meanwhile
-  const pause = async () => { st.paused = true; activate(claude().id); await wait(200); };
+  // (the same state at every sample: the Lab on its first scene behind the chat, so samples compare like with like)
+  const pause = async () => {
+    st.paused = true;
+    try { if (st.scenes[0] && typeof ThreeLab !== 'undefined' && ThreeLab.scenes?.currentId?.() !== st.scenes[0]) { ThreeLab.scenes.open(st.scenes[0]); await wait(1500); } } catch { /* not loaded */ }
+    activate(claude().id); await wait(200);
+  };
   const resume = () => { st.paused = false; };
   // frame time while the chat scrolls (rAF intervals, ms): p50 / p95 / max
   async function frames() {
