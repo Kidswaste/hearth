@@ -21,6 +21,7 @@
 //   node dev/soak.js --minutes 4 --freshen      # also checks Freshen: a reload that keeps chats / drafts / Lab / scroll
 //   --diff: heap snapshots (renderer + main) after the warm-up and at the end, what grew by constructor
 //   --retainers [class,…]: the shortest path from a GC root to the biggest detached DOM trees (who keeps them)
+//   --override <dir>: files that replace the copy's (e.g. the old native.js, to measure a fix before → after)
 //   --no-fail: report only (exit 0 even when something grows)
 // Env: ELECTRON (default /opt/hearth-electron/electron). Uses 1–2 CPUs for the whole run.
 const fs = require('fs');
@@ -64,6 +65,9 @@ function copyApp() {
   const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
   cfg.settings = { ...(cfg.settings || {}), enginePaths: { claude: path.join(__dirname, 'fake-claude.js'), codex: path.join(__dirname, 'fake-codex.js') } };
   fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+  // --override <dir>: its files replace the copy's (an older version of a file, for a before → after)
+  const ov = opt('--override');
+  if (ov) fs.cpSync(ov, dir, { recursive: true });
   return dir;
 }
 function fixtures(tmp) {

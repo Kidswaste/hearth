@@ -10,6 +10,7 @@ window.Soak = (() => {
   const { wait, until, click, key, type, mouse, visible } = J;
   const st = { o: null, cycle: 0, acts: {}, errs: {}, scenes: [], seqKey: null, soakChats: [], boardItems: [], appsOpen: 0, paused: false, renders: 0 };
   const rnd = (n) => Math.floor(Math.random() * n);
+  const OLD = 40;
   const pick = (a) => a[rnd(a.length)];
   const claude = () => H.claudeAgent();
   const astra = () => Native.astraAgent?.() || H.agents().find((a) => a.mode === 'native' && a.engine === 'codex');
@@ -57,6 +58,14 @@ const g = c.getContext('2d'); function loop(now) { g.fillStyle = 'hsl(' + (now /
     if (!o.again) {
       try { st.seqKey = await ThreeSeq.create('Soak seq', { empty: true, format: '16:9', show: true }); for (const id of st.scenes) await ThreeSeq.add({ sketch: id }, { dur: 2 }); await wait(800); await ThreeSeq.leave(); } catch (err) { (st.errs.setup ||= []).push(`seq: ${err.message}`); }
       await hub.fs.write(`${o.glbDir}/soakbot.glb`, glb());
+      // the owner's history: 40 older chats of 80 messages (≈ 200 KB each), opened a few per cycle
+      const words = 'the scene glows warmer when the kick lands and the camera drifts slowly through the particles while the palette follows the cover'.split(' ');
+      const para = (k) => Array.from({ length: 420 }, (_, j) => words[(j * 7 + k) % words.length]).join(' ');
+      for (let i = 0; i < OLD; i++) {
+        const messages = Array.from({ length: 80 }, (_, k) => ({ role: k % 2 ? 'assistant' : 'user', at: Date.now() - (i * 864e5) + k * 1000, text: `${k}: ${para(i + k)}` }));
+        await hub.saveChat({ id: `soak-old-${i}`, agentId: claude().id, title: `Older chat ${i}`, updatedAt: Date.now() - (i + 1) * 864e5, messages });
+      }
+      H.chats = await hub.listChats(); Panel.render();
       // sync on the fake cloud folder
       try { await Commands.tryRun(`/sync on ${o.cloud}`, claude().id); await until(() => Sync.status().state === 'synced', 30000); } catch (err) { (st.errs.setup ||= []).push(`sync: ${err.message}`); }
     } else st.seqKey = (ThreeSeq.list?.() || []).find?.((k) => /Soak seq/.test(k)) || 'seq:Soak seq';
@@ -87,6 +96,9 @@ const g = c.getContext('2d'); function loop(now) { g.fillStyle = 'hsl(' + (now /
     // switch between chats in the chats list (real clicks)
     const rows = [...document.querySelectorAll('#chat-groups .item[data-key]')].filter((r) => visible(r) && r.dataset.key !== '__draft');
     for (let i = 0; i < Math.min(4, rows.length); i++) { const r = pick(rows); if (r.isConnected && visible(r)) { await click(r); await wait(350); } }
+    // older chats from the history, four per cycle (all forty come back in turn)
+    for (let k = 0; k < 4; k++) { const id = `soak-old-${(st.cycle * 4 + k) % OLD}`; if (H.chats.some((c) => c.id === id)) { await Native.open(C.id, id); await wait(400); const [ox, oy] = center(v.list); await wheel(ox, oy, -600); await wait(80); } }
+    if (id) { await Native.open(C.id, id); await wait(300); }
     // the chats list scrolled
     const g = document.getElementById('chat-groups');
     if (visible(g)) { const [gx, gy] = center(g); await wheel(gx, gy, 300); await wait(80); await wheel(gx, gy, -300); }

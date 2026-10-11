@@ -528,6 +528,16 @@ const Native = (() => {
     }
   }
 
+  // "↑ Show earlier" reached by scrolling up loads the rest. (round 20, soak) one observer per view, let go at the next
+  // draw: each one used to stay alive (and with it the render's closure: every message node of that draw) until
+  // scrolled into view, so switching between long chats kept their old nodes forever (≈ 110 per switch)
+  function watchEarlier(v, agentId, more) {
+    v.earlierT = setTimeout(() => {
+      if (!more.isConnected) return;
+      const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); if (v.earlierIO === io) v.earlierIO = null; showEarlier(agentId); } }, { root: v.list });
+      io.observe(more); v.earlierIO = io;
+    }, 600);
+  }
   async function loadChat(id) {
     chatUsed.set(id, Date.now());
     if (!chats.has(id)) {
@@ -867,11 +877,12 @@ const Native = (() => {
       // A long chat opens on its last 40 messages (switching to one rebuilt every message: ~36k laid-out objects);
       // "↑ Show earlier" or scrolling up to it brings the rest, and jumpTo() loads them when it needs an older one.
       const from = shownFrom(chat, firstNew);
+      v.earlierIO?.disconnect(); v.earlierIO = null; clearTimeout(v.earlierT); // (the last draw's "Show earlier" watch)
       if (from > 0) {
         const more = el('button', { type: 'button', class: 'ghost show-earlier', text: `↑ Show ${from} earlier message${from === 1 ? '' : 's'}`, on: { click: () => showEarlier(agentId) } });
         out.push(more);
         // reaching it by scrolling up loads them too (after the chat has settled at the bottom)
-        setTimeout(() => { if (!more.isConnected) return; const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); showEarlier(agentId); } }, { root: v.list }); io.observe(more); }, 600);
+        watchEarlier(v, agentId, more);
       }
       let day = '';
       const busy = pending.has(chat.id);
