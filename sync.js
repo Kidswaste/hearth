@@ -157,8 +157,8 @@ const Sync = (() => {
   const PLAT = { darwin: 'Mac', win32: 'Windows', linux: 'Linux' };
   const HERE_NAME = MAC ? 'this Mac' : /Win/.test(navigator.platform) ? 'this PC' : 'this computer';
   const hereLabel = () => `${HERE_NAME[0].toUpperCase()}${HERE_NAME.slice(1)}${MAC ? '' : /Win/.test(navigator.platform) ? ' (Windows)' : ''}`;
-  const thereName = (c) => c.from || 'your other computer';
-  const thereLabel = (c) => `${thereName(c)}${PLAT[c.fromPlatform] ? ` (${PLAT[c.fromPlatform]})` : ''}`;
+  const thereName = (c) => (!c.from || /^(another|your other) computer$/i.test(c.from) ? 'the other computer' : c.from);
+  const thereLabel = (c) => { const n = thereName(c); return `${n[0].toUpperCase()}${n.slice(1)}${PLAT[c.fromPlatform] ? ` (${PLAT[c.fromPlatform]})` : ''}`; };
   function edited(t) {
     if (!t) return 'edited: time not known';
     const d = new Date(t);

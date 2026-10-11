@@ -45,6 +45,7 @@ const GROUPS = {
   flows: [...by(/^flows/), 'unit:flows-test'],
   commands: [...by(/^commands-page/), 'unit:cmdpage-test'],
   sync: [...by(/^sync/), 'unit:sync-test'],
+  reach: by(/^reach/), // (round 19) paths from the other computer, page cards, chat_open
   comp: by(/^comp/),
   makes: [...by(/^makes/), 'unit:makes-test'],
   progress: [...by(/^progress/), 'unit:progress-test'],
