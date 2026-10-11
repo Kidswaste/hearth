@@ -5501,6 +5501,14 @@ globalThis.filter = (type, P = {}) => {
     } else renderer.render(scene, camera);
     if (overlay) drawRec(overlay, t);
   });
+  (L.cleanups ||= []).push(() => {
+    renderer.setAnimationLoop(null);
+    src.width = 0; src.height = 0;
+    srcTex.dispose(); mat.dispose(); uniforms.uGlyph.value?.dispose?.();
+    for (const rt of targets || []) rt.dispose();
+    copyMat?.dispose();
+    L.fxSkip = false;
+  });
   return { type, renderer };
 };
 // filter.types: every filter name · filter.check(): compiles every filter and returns the ones that fail ·
@@ -5694,6 +5702,9 @@ const sketchIntervals = new Set(); // sketch intervals still running (a dead lay
 function teardownLayer(L) {
   if (L.pc) pcUnmount(L);
   L.gen += 1;
+  // (round 16: what the sandbox made for the layer itself, e.g. a filter's merged picture: its canvas memory goes now,
+  // not whenever the garbage collector gets to it)
+  for (const fn of (L.cleanups || []).splice(0)) { try { fn(); } catch {} }
   for (const r of L.renderers) {
     try { r.setAnimationLoop(null); } catch {}
     if (r.domElement) r.domElement.__letGo = true;
