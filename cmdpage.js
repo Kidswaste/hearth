@@ -136,10 +136,13 @@ const CmdPage = (() => {
   // (round 17, hz240) the list (≈ 900 commands) is drawn in pieces: what fills the screen at once, the rest a few
   // milliseconds at a time between frames (a whole list in one go held the page for 100+ ms on every search). Rows are
   // kept and reused from one drawing to the next. Anything that needs a row further down (the selection, ↑ ↓, End)
-  // finishes the list first (flushList).
+  // finishes the list first (flushList). Each section (its heading + rows) is one box the browser skips while it's
+  // off screen, so only the headings near the screen are sticky (two or three instead of thirty compositor layers),
+  // and posters are drawn a section at a time as it comes near (one watcher per section, not one per row).
   const ROWS_NOW = 48;
   const rowCache = new Map(); // command name → its row (one per command; a second listing of it gets its own)
-  let fill = null; // { later: [...], used }
+  let fill = null; // { later: [{ sec, it }], used }
+  const section = (s) => el('div', { class: 'cp-sec', style: { containIntrinsicSize: `auto ${24 + s.items.length * 50}px` } }, el('div', { class: 'cp-head', text: s.head }));
   function renderList({ rows = ROWS_NOW } = {}) {
     if (!P.mounted) return;
     fill = null;
@@ -148,28 +151,33 @@ const CmdPage = (() => {
     let n = 0; const later = []; const used = new Set();
     for (const s of sections()) {
       if (!s.items.length) continue;
-      const head = { head: s.head };
-      if (n < rows) frag.append(el('div', { class: 'cp-head', text: s.head })); else later.push(head);
-      for (const it of s.items) { if (n < rows) frag.append(row(it, used)); else later.push(it); n += 1; }
+      const sec = section(s);
+      frag.append(sec);
+      for (const it of s.items) { if (n < rows) sec.append(row(it, used)); else later.push({ sec, it }); n += 1; }
     }
     if (!n) frag.append(el('div', { class: 'cp-empty', text: `Nothing matches “${P.query}”. Try other words: “vertical”, “record”, “colors”…` }));
     P.list.replaceChildren(frag);
     P.count.textContent = P.query ? `${n}` : `${Commands.list().length} commands`;
-    observePv(P.list);
+    for (const sec of P.list.children) if (sec.classList.contains('cp-sec')) P.io.observe(sec);
     if (later.length) { fill = { later, used }; setTimeout(fillMore, 0); }
     markSel();
   }
-  function observePv(root) { for (const b of root.querySelectorAll('.cp-pv:not([data-drawn])')) P.io.observe(b); }
+  // posters of a section that came near the screen, a few per frame
+  const drawQueue = new Set(); let drawing = 0;
+  function drawPosters(sec) { for (const b of sec.querySelectorAll('.cp-pv[data-name]:not([data-drawn])')) drawQueue.add(b); drawing ||= requestAnimationFrame(drawSome); }
+  function drawSome() {
+    drawing = 0; const t0 = performance.now();
+    for (const b of drawQueue) { drawQueue.delete(b); if (b.isConnected) poster(b); if (performance.now() - t0 > 3) break; }
+    if (drawQueue.size) drawing = requestAnimationFrame(drawSome);
+  }
   function appendRows(f, budgetMs) {
-    const t0 = performance.now(); const frag = document.createDocumentFragment();
-    let k = 0;
+    const t0 = performance.now();
+    let k = 0; const touched = new Set();
     while (f.later.length && (k++ & 15 || performance.now() - t0 < budgetMs)) {
-      const it = f.later.shift();
-      frag.append(it.head ? el('div', { class: 'cp-head', text: it.head }) : row(it, f.used));
+      const { sec, it } = f.later.shift();
+      sec.append(row(it, f.used)); touched.add(sec);
     }
-    const pvs = frag.querySelectorAll('.cp-pv:not([data-drawn])');
-    P.list.append(frag);
-    for (const b of pvs) P.io.observe(b);
+    for (const sec of touched) if (sec.__near) drawPosters(sec);
   }
   function fillMore() {
     const f = fill; if (!f || !P.mounted) return;
@@ -457,7 +465,7 @@ const CmdPage = (() => {
     const root = el('div', { class: 'cp-root', tabIndex: -1 }, el('div', { class: 'cp-left' }, el('div', { class: 'cp-searchrow' }, search, count), list), right);
     body.append(root);
     Object.assign(P, { mounted: true, root, list, search, right, count });
-    P.io = new IntersectionObserver((es) => { for (const e of es) if (e.isIntersecting) { poster(e.target); P.io.unobserve(e.target); } }, { root: list, rootMargin: '200px' });
+    P.io = new IntersectionObserver((es) => { for (const e of es) { e.target.__near = e.isIntersecting; if (e.isIntersecting) drawPosters(e.target); } }, { root: list, rootMargin: '200px' });
     let t = 0;
     search.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { P.query = search.value; if (list.scrollTop) list.scrollTop = 0; renderList(); }, 90); });
     search.addEventListener('keydown', (e) => { if (e.key === 'ArrowDown' || e.key === 'Enter') { e.preventDefault(); const f = list.querySelector('.cp-row'); if (f) { f.focus(); if (e.key === 'Enter') pickRow(f); } } else if (e.key === 'Escape' && search.value) { search.value = ''; P.query = ''; renderList(); } });

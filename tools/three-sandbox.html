@@ -2084,8 +2084,26 @@ HTMLCanvasElement.prototype.getContext = function (type, opts) {
 // resolution. No setting: it only kicks in when frames are actually lost.
 let quality = 1; let qFrames = 0; let qSlow = 0; let qSince = 0;
 const fullRes = () => shotPending || recorder != null || recUntil != null;
+// (round 17, hz240) "Max fps" follows the screen: the frame interval the display actually gives (the shortest gaps
+// seen, snapped to 60 / 75 / 90 / 120 / 144 / 165 / 240 / 360 Hz) is the target, so on a 240 Hz screen frames
+// slower than ~5.6 ms count as slow (it was always 60 Hz: a 240 Hz screen running at 60 never looked slow)
+const HZ = [360, 240, 165, 144, 120, 90, 75, 60];
+let vsyncMs = 1000 / 60; let vsGaps = []; let vsSeen = Infinity;
+function trackVsync(gap) {
+  if (gap <= 1 || gap > 100) return;
+  vsGaps.push(gap);
+  if (vsGaps.length < 120) return;
+  vsGaps.sort((a, b) => a - b);
+  const low = vsGaps[Math.floor(vsGaps.length * 0.1)]; vsGaps = [];
+  const hz = HZ.find((h) => Math.abs(1000 / h - low) < 1000 / h * 0.12) || null;
+  if (!hz) return;
+  // the fastest rate seen wins (a busy GPU only makes gaps longer); it eases back slowly in case the window moved
+  vsSeen = Math.min(vsSeen * 1.01, 1000 / hz);
+  vsyncMs = Math.max(1000 / 360, Math.min(1000 / 60, vsSeen));
+}
 function adaptQuality(gap) {
-  const target = 1000 / (fpsCap || 60);
+  trackVsync(gap);
+  const target = fpsCap ? 1000 / fpsCap : vsyncMs;
   if (gap > 250 || document.hidden) return; // a hitch from a reload / a hidden window says nothing
   qFrames += 1; if (gap > target * 1.35) qSlow += 1;
   if (qFrames < 45) return;
@@ -5691,7 +5709,7 @@ function resetPage() {
   if (document.body.className !== page0.cls) document.body.className = page0.cls;
 }
 // For the live check (dev/checks/live.js): what runs leave behind. Nothing here should grow with edits.
-window.__labHealth = () => ({ contexts: glAlive(), renderers: renderers.size, listeners: sketchListeners.length, intervals: sketchIntervals.size, layers: layers.size,
+window.__labHealth = () => ({ hz: Math.round(1000 / vsyncMs), contexts: glAlive(), renderers: renderers.size, listeners: sketchListeners.length, intervals: sketchIntervals.size, layers: layers.size,
   overlays: document.querySelectorAll('.lab-xfade, .lab-swap, .lab-ghost').length, heapMB: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : null });
 
 // ---------- sketch mode ----------

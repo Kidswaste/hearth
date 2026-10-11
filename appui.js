@@ -271,7 +271,9 @@ const AppUI = (() => {
       const hits = await window.hub.searchChatText(q.slice(1));
       pal.shown = hits.map((h) => ({ kind: `${H.agent(h.agentId)?.name || h.agentId} · ${h.count} match${h.count === 1 ? '' : 'es'}`, label: h.title, detail: h.snippet, run: () => Native.open(h.agentId, h.id) }));
     } else {
-      pal.shown = pal.items.map((it) => ({ ...it, score: fuzzy(q, `${it.label} ${it.kind}`) })).filter((it) => it.score > 0)
+      // (each item's text is lower-cased once per opening, not on every keystroke)
+      const ql = q.toLowerCase();
+      pal.shown = pal.items.map((it) => ({ ...it, score: fuzzy(ql, it.hay ||= `${it.label} ${it.kind}`.toLowerCase()) })).filter((it) => it.score > 0)
         .sort((a, b) => b.score - a.score).slice(0, 60);
     }
     pal.sel = Math.min(pal.sel, Math.max(0, pal.shown.length - 1));
@@ -297,13 +299,19 @@ const AppUI = (() => {
     while (list.childElementCount > pal.shown.length) list.lastElementChild.remove();
     pal.selEl?.classList.remove('sel'); pal.selEl = null; paletteMark();
   }
+  // opening is split in two: the card shows at once with the last opening's items (usually the same list), and the
+  // fresh, ranked items arrive in the next task (gathering and ranking them is the long part); what you've typed by
+  // then is kept and searched in them
+  let palFresh = 0;
   function palette(initial = '') {
     const p = paletteNode();
-    p.items = paletteItems();
     p.input.value = initial; p.sel = 0;
     if (!p.box.isConnected) document.body.append(p.box);
     p.input.focus();
+    const n = ++palFresh;
+    if (!p.items.length) { p.items = paletteItems(); paletteRender(); return; } // the first opening: all at once
     paletteRender();
+    setTimeout(() => { if (n !== palFresh || !p.box.isConnected) return; p.items = paletteItems(); paletteRender(); }, 0);
   }
 
   // ---------- find in page ----------
