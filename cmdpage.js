@@ -133,23 +133,71 @@ const CmdPage = (() => {
     for (const [area, defs] of byArea) out.push({ head: `${area} · ${defs.length}`, area, items: (typeof SpeedRank !== 'undefined' ? SpeedRank.sort(defs) : defs).map((def) => ({ def })) });
     return out;
   }
-  function renderList() {
+  // (round 17, hz240) the list (≈ 900 commands) is drawn in pieces: what fills the screen at once, the rest a few
+  // milliseconds at a time between frames (a whole list in one go held the page for 100+ ms on every search). Rows are
+  // kept and reused from one drawing to the next. Anything that needs a row further down (the selection, ↑ ↓, End)
+  // finishes the list first (flushList). Each section (its heading + rows) is one box the browser skips while it's
+  // off screen, so only the headings near the screen are sticky (two or three instead of thirty compositor layers),
+  // and posters are drawn a section at a time as it comes near (one watcher per section, not one per row).
+  const ROWS_NOW = 48;
+  const rowCache = new Map(); // command name → its row (one per command; a second listing of it gets its own)
+  let fill = null; // { later: [{ sec, it }], used }
+  const section = (s) => el('div', { class: 'cp-sec', style: { containIntrinsicSize: `auto ${24 + s.items.length * 50}px` } }, el('div', { class: 'cp-head', text: s.head }));
+  function renderList({ rows = ROWS_NOW } = {}) {
     if (!P.mounted) return;
+    fill = null;
     const frag = document.createDocumentFragment();
     P.io?.disconnect();
-    let n = 0;
+    let n = 0; const later = []; const used = new Set();
     for (const s of sections()) {
       if (!s.items.length) continue;
-      frag.append(el('div', { class: 'cp-head', text: s.head }));
-      for (const it of s.items) { frag.append(row(it)); n += 1; }
+      const sec = section(s);
+      frag.append(sec);
+      for (const it of s.items) { if (n < rows) sec.append(row(it, used)); else later.push({ sec, it }); n += 1; }
     }
     if (!n) frag.append(el('div', { class: 'cp-empty', text: `Nothing matches “${P.query}”. Try other words: “vertical”, “record”, “colors”…` }));
     P.list.replaceChildren(frag);
     P.count.textContent = P.query ? `${n}` : `${Commands.list().length} commands`;
-    for (const b of P.list.querySelectorAll('.cp-pv')) P.io.observe(b);
+    for (const sec of P.list.children) if (sec.classList.contains('cp-sec')) P.io.observe(sec);
+    if (later.length) { fill = { later, used }; setTimeout(fillMore, 0); }
     markSel();
   }
-  function row(it) {
+  // posters of a section that came near the screen, a few per frame
+  const drawQueue = new Set(); let drawing = 0;
+  function drawPosters(sec) { for (const b of sec.querySelectorAll('.cp-pv[data-name]:not([data-drawn])')) drawQueue.add(b); drawing ||= requestAnimationFrame(drawSome); }
+  function drawSome() {
+    drawing = 0; const t0 = performance.now();
+    for (const b of drawQueue) { drawQueue.delete(b); if (b.isConnected) poster(b); if (performance.now() - t0 > 3) break; }
+    if (drawQueue.size) drawing = requestAnimationFrame(drawSome);
+  }
+  function appendRows(f, budgetMs) {
+    const t0 = performance.now();
+    let k = 0; const touched = new Set();
+    while (f.later.length && (k++ & 15 || performance.now() - t0 < budgetMs)) {
+      const { sec, it } = f.later.shift();
+      sec.append(row(it, f.used)); touched.add(sec);
+    }
+    for (const sec of touched) if (sec.__near) drawPosters(sec);
+  }
+  function fillMore() {
+    const f = fill; if (!f || !P.mounted) return;
+    appendRows(f, 3);
+    if (f.later.length) setTimeout(fillMore, 0); else { fill = null; markSel(); }
+  }
+  // drawn again where you are: enough rows at once to reach the place you had scrolled to
+  function renderKeep() { const keep = P.list.scrollTop; renderList({ rows: Math.max(ROWS_NOW, Math.ceil((keep + P.list.clientHeight) / 30) + 8) }); if (keep) P.list.scrollTop = keep; }
+  function flushList() { const f = fill; if (f) { fill = null; appendRows(f, Infinity); } }
+  function row(it, used) {
+    if (it.def && used && !used.has(it.def.name)) {
+      used.add(it.def.name);
+      const key = `${it.def.name}|${principalSet().has(it.def.name) ? 1 : 0}|${it.def.area}`;
+      let r = rowCache.get(it.def.name);
+      if (!r || r.__key !== key) { r = makeRow(it); r.__key = key; rowCache.set(it.def.name, r); }
+      return r;
+    }
+    return makeRow(it);
+  }
+  function makeRow(it) {
     if (it.node) return it.node;
     if (it.run) {
       const r = it.run;
@@ -373,7 +421,7 @@ const CmdPage = (() => {
     if (!r) return;
     Flows.forget(r.id);
     if (P.view === 'run' && P.runId === r.id) { P.view = 'none'; P.runId = null; P.right?.replaceChildren(); }
-    if (visible()) { const keep = P.list.scrollTop; renderList(); P.list.scrollTop = keep; }
+    if (visible()) renderKeep();
     toast(`Removed: ${r.flowName}`, { timeout: 1800 });
   }
   function hideAfterItems() {
@@ -417,13 +465,15 @@ const CmdPage = (() => {
     const root = el('div', { class: 'cp-root', tabIndex: -1 }, el('div', { class: 'cp-left' }, el('div', { class: 'cp-searchrow' }, search, count), list), right);
     body.append(root);
     Object.assign(P, { mounted: true, root, list, search, right, count });
-    P.io = new IntersectionObserver((es) => { for (const e of es) if (e.isIntersecting) { poster(e.target); P.io.unobserve(e.target); } }, { root: list, rootMargin: '200px' });
+    P.io = new IntersectionObserver((es) => { for (const e of es) { e.target.__near = e.isIntersecting; if (e.isIntersecting) drawPosters(e.target); } }, { root: list, rootMargin: '200px' });
     let t = 0;
-    search.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { P.query = search.value; renderList(); list.scrollTop = 0; }, 90); });
+    search.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { P.query = search.value; if (list.scrollTop) list.scrollTop = 0; renderList(); }, 90); });
     search.addEventListener('keydown', (e) => { if (e.key === 'ArrowDown' || e.key === 'Enter') { e.preventDefault(); const f = list.querySelector('.cp-row'); if (f) { f.focus(); if (e.key === 'Enter') pickRow(f); } } else if (e.key === 'Escape' && search.value) { search.value = ''; P.query = ''; renderList(); } });
     list.addEventListener('click', (e) => { const b = e.target.closest('.cp-row'); if (b) pickRow(b); });
-    list.addEventListener('pointerover', (e) => { const b = e.target.closest('.cp-row'); if (b && b !== P.hovered?.btn) hover(b, true); });
-    list.addEventListener('pointerleave', () => { if (P.hovered) hover(P.hovered.btn, false); });
+    // (round 17, hz240) the preview starts once the pointer rests on a row (70 ms), not on every row it crosses
+    let hoverT = 0;
+    list.addEventListener('pointerover', (e) => { const b = e.target.closest('.cp-row'); clearTimeout(hoverT); if (b && b !== P.hovered?.btn) hoverT = setTimeout(() => { if (b.isConnected) hover(b, true); }, 70); });
+    list.addEventListener('pointerleave', () => { clearTimeout(hoverT); if (P.hovered) hover(P.hovered.btn, false); });
     list.addEventListener('focusin', (e) => { const b = e.target.closest('.cp-row'); if (b) hover(b, true); });
     list.addEventListener('keydown', onListKey);
     list.addEventListener('contextmenu', (e) => {
@@ -453,6 +503,7 @@ const CmdPage = (() => {
   function onListKey(e) {
     const b = e.target.closest('.cp-row');
     if (!b) return;
+    flushList();
     const rows = [...P.list.querySelectorAll('.cp-row')];
     const i = rows.indexOf(b);
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const n = rows[Math.max(0, Math.min(rows.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))]; n?.focus(); n?.scrollIntoView({ block: 'nearest' }); }
@@ -471,7 +522,7 @@ const CmdPage = (() => {
       else requestAnimationFrame(() => { P.search.value = n; P.query = n; renderList(); });
     }
   }
-  function revealRow() { const s = P.list?.querySelector('.cp-row.on'); s?.scrollIntoView({ block: 'center' }); }
+  function revealRow() { flushList(); markSel(); const s = P.list?.querySelector('.cp-row.on'); s?.scrollIntoView({ block: 'center' }); }
   function toggle() { if (visible()) { const b = before(); if (b) activate(b); } else open(); }
 
   // runs moving: the page follows the one on screen, the list's "Going now"
@@ -480,7 +531,7 @@ const CmdPage = (() => {
     if (!P.mounted) return;
     if (what === 'removed') return; // forgetRun repaints
     if (P.view === 'run' && run.id === P.runId) requestAnimationFrame(() => renderRun());
-    clearTimeout(listT); listT = setTimeout(() => { if (visible() && !P.query) { const keep = P.list.scrollTop; renderList(); P.list.scrollTop = keep; } }, 400);
+    clearTimeout(listT); listT = setTimeout(() => { if (visible() && !P.query) renderKeep(); }, 400);
   }
 
   Tools.define({
@@ -517,6 +568,6 @@ const CmdPage = (() => {
   });
 
   // (round 11) makes.js: its rows, and the list drawn again when they change (scroll kept; not while searching)
-  function refreshList() { if (P.mounted && visible()) { const keep = P.list.scrollTop; renderList(); P.list.scrollTop = keep; } }
+  function refreshList() { if (P.mounted && visible()) renderKeep(); }
   return { open, toggle, openRun, start, showExample, showFlow, questionsOf, isOpen: visible, get state() { return P; }, ext, refreshList };
 })();

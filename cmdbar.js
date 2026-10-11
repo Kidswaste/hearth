@@ -465,7 +465,10 @@ const CmdBar = (() => {
     }
   }
   let decoTimer = 0;
-  new MutationObserver(() => { clearTimeout(decoTimer); decoTimer = setTimeout(() => decorate(), 250); })
+  // (round 17, hz240) only changes in replies and notes can bring new commands to mark: tooltips, sparks, menus and
+  // lists coming and going no longer re-scan the page 250 ms later
+  const inReplies = (r) => { const t = r.target.nodeType === 1 ? r.target : r.target.parentElement; return Boolean(t?.closest?.('.messages, .notes-panel') || (t === document.body && [...r.addedNodes].some((n) => n.nodeType === 1 && (n.matches('.notes-panel') || n.querySelector?.('.msg'))))); };
+  new MutationObserver((records) => { if (!records.some(inReplies)) return; clearTimeout(decoTimer); decoTimer = setTimeout(() => decorate(), 250); })
     .observe(document.body, { childList: true, subtree: true });
   function agentOfNode(node) {
     for (const [sid, s] of H.surfaces) {

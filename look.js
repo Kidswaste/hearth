@@ -206,7 +206,11 @@ const Look = (() => {
     });
     const bool = (v) => v === 'true';
     const tex = seg('texture', [['true', 'On'], ['false', 'Off']], 'Brushed metal, grain and glass (/texture)', bool);
-    const glow = el('input', { type: 'range', min: 0, max: 100, step: 5, title: 'Glow intensity (/glow 0-100)', on: { input: () => setFx({ glow: Number(glow.value) }) } });
+    // (round 17, hz240) dragging shows the glow live once per frame (one CSS variable); it's saved (and every other
+    // part of the look re-applied) when you let go: saving on every step made the app reload its config 30× a drag
+    let glowFrame = 0;
+    const glowLive = () => { glowFrame = 0; root.style.setProperty('--glow', String(Math.max(0, Math.min(100, Number(glow.value) || 0)) / 50)); };
+    const glow = el('input', { type: 'range', min: 0, max: 100, step: 5, title: 'Glow intensity (/glow 0-100)', on: { input: () => { glowFrame ||= requestAnimationFrame(glowLive); }, change: () => { cancelAnimationFrame(glowFrame); glowFrame = 0; setFx({ glow: Number(glow.value) }); } } });
     const motion = seg('motion', CHOICES.motion, 'Ambient animation (/motion)');
     const density = seg('density', CHOICES.density, 'Spacing (/density)');
     const corners = seg('corners', CHOICES.corners, 'Corner style (/corners)');

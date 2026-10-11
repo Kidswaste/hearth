@@ -5828,7 +5828,7 @@ function resetPage() {
   if (document.body.className !== page0.cls) document.body.className = page0.cls;
 }
 // For the live check (dev/checks/live.js): what runs leave behind. Nothing here should grow with edits.
-window.__labHealth = () => ({ contexts: glAlive(), renderers: renderers.size, listeners: sketchListeners.length, intervals: sketchIntervals.size, layers: layers.size,
+window.__labHealth = () => ({ hz: Math.round(1000 / dispMs), contexts: glAlive(), renderers: renderers.size, listeners: sketchListeners.length, intervals: sketchIntervals.size, layers: layers.size,
   parked, stale: perfNote.stale, overlays: document.querySelectorAll('.lab-xfade, .lab-swap, .lab-ghost').length, heapMB: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : null });
 
 // ---------- sketch mode ----------

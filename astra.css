@@ -68,7 +68,10 @@
   content: ''; position: absolute; inset: 0 0 auto 0; height: 2px; border-radius: 12px 12px 0 0;
   background: linear-gradient(90deg, var(--claude), var(--astra), var(--astra-2));
 }
-.collab-card.running::before { background-size: 200% 100%; animation: collab-flow 2.2s linear infinite; }
+/* (round 17, hz240) the flowing edge slides on the compositor: the same gradient, tiled twice as wide, on a strip
+   three cards wide that moves one tile (it moved its background-position: a repaint every frame) */
+.collab-card.running { overflow: clip; }
+.collab-card.running::before { left: -200%; right: auto; width: 300%; border-radius: 0; background-size: 66.6667% 100%; animation: hz-flow 2.2s linear infinite; }
 @keyframes collab-flow { from { background-position: 0 0; } to { background-position: 200% 0; } }
 .collab-card .msg-act { opacity: .85; }
 .collab-card .msg-act:hover { opacity: 1; }

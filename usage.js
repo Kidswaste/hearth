@@ -207,10 +207,18 @@ const Usage = (() => {
     document.addEventListener('click', onClick, true);
     document.addEventListener('change', onChange, true);
     // Re-check buttons when the layout changes, not for every clock tick or streamed word.
-    const NOISY = '.mb-time, .mb-minitime, .three-stats, .messages, .three-console, .tw-kval, .ed-panel, #toasts, .msg, .meter-strip, .meter-pill'; // the meter ticks while replies stream
+    const NOISY = '.mb-time, .mb-minitime, .three-stats, .messages, .three-console, .tw-kval, .ed-panel, #toasts, .msg, .meter-strip, .meter-pill, .cp-list, .cp-right, .juice-layer, #menu, #menu-fly, .palette, .slash-menu'; // the meter ticks while replies stream
+    // (round 17, hz240) what comes and goes right under <body> without new buttons to note: tips, sparks, menus, the
+    // palette (a tooltip or a press re-ran the whole decorate pass 0.8 s later)
+    const QUIET = '.juice-tip, .juice-layer, .juice-glint, #menu, #menu-fly, .palette, #toasts, .quote-sel, .sel-bar';
+    const noisy = (r) => {
+      const t = r.target.nodeType === 1 ? r.target : r.target.parentElement;
+      if (t?.closest?.(NOISY)) return true;
+      return t === document.body && [...r.addedNodes, ...r.removedNodes].every((n) => n.nodeType !== 1 || n.matches(QUIET));
+    };
     new MutationObserver((records) => {
       if (decorateTimer) return;
-      if (records.every((r) => (r.target.nodeType === 1 ? r.target : r.target.parentElement)?.closest?.(NOISY))) return;
+      if (records.every(noisy)) return;
       decorateTimer = setTimeout(() => { decorateTimer = 0; decorate(); }, 800);
     }).observe(document.body, { childList: true, subtree: true });
     scheduleDecorate();

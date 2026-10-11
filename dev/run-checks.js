@@ -36,7 +36,7 @@ const GROUPS = {
   chat: by(/^chat-|^chatcore|^cmdbar$|^clutter$|^declutter/),
   lab: ['music', 'live', 'scenes', 'jam', 'assist', 'decide', 'brain', 'director-dock', 'director-tools', 'perf'],
   nodes: by(/^nodes-/),
-  smooth: by(/^smooth-/),
+  smooth: [...by(/^smooth-/), 'hz240'], // (round 17) hz240: the 240 Hz interaction check
   astra: ['astra-collab', 'astra-ui', 'astra-manager'],
   sequence: by(/^sequence/),
   robust: by(/^robust/),

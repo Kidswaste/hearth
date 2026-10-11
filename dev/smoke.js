@@ -173,7 +173,8 @@ async function cdpConnect() {
       let result;
       // { trace: 'start' } / { trace: 'stop' }: a timeline trace; stop returns what was painted (count, area per layer)
       if (req.trace === 'start') {
-        traceEvents = []; result = (await send('Tracing.start', { categories: 'devtools.timeline,disabled-by-default-devtools.timeline', transferMode: 'ReportEvents' })).result || {};
+        // (detail: also the top-level tasks and frame events, for dev/trace-stats.js: long tasks, forced layouts, input → paint)
+        traceEvents = []; result = (await send('Tracing.start', { categories: `devtools.timeline,disabled-by-default-devtools.timeline${req.detail ? ',toplevel,disabled-by-default-devtools.timeline.frame,disabled-by-default-devtools.timeline.stack,blink.user_timing' : ''}`, transferMode: 'ReportEvents' })).result || {};
       } else if (req.trace === 'stop') {
         const done = new Promise((r) => { traceDone = r; });
         await send('Tracing.end'); await done;
@@ -185,6 +186,8 @@ async function cdpConnect() {
         const sum = (name) => traceEvents.filter((e) => e.name === name).reduce((a, e) => a + (e.dur || 0) / 1000, 0);
         result = { paints: paints.length, paintedPx: Math.round(paints.reduce((a, e) => a + area(e.args.data.clip), 0)), paintMs: Math.round(sum('Paint')), rasterMs: Math.round(sum('RasterTask')), layerizeMs: Math.round(sum('Layerize')), styleMs: Math.round(sum('UpdateLayoutTree')), layoutMs: Math.round(sum('Layout')), layouts: traceEvents.filter((e) => e.name === 'Layout').length, layoutObjects: traceEvents.filter((e) => e.name === 'Layout').reduce((a, e) => a + (e.args?.beginData?.dirtyObjects || 0), 0), styles: traceEvents.filter((e) => e.name === 'UpdateLayoutTree').length,
           top: Object.entries(byLayer).sort((a, b) => b[1].px - a[1].px).slice(0, 8).map(([k, v]) => `${k}: ${v.n}× ${Math.round(v.px / 1000)}k px ${Math.round(v.ms)} ms`) };
+        if (req.detail) result.detail = require('./trace-stats.js').stats(traceEvents, req.detail);
+        if (req.dump) fs.writeFileSync(req.dump, JSON.stringify(traceEvents));
       } else if (req.shot) {
         const img = await send('Page.captureScreenshot', { format: 'png' });
         if (img.result?.data) { fs.mkdirSync(path.dirname(req.shot), { recursive: true }); fs.writeFileSync(req.shot, Buffer.from(img.result.data, 'base64')); }

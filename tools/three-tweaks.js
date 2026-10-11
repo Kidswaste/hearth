@@ -301,7 +301,8 @@ const ThreeTweaks = (() => {
   // Seeded randomness so a shuffle can be repeated from its number.
   function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
   const hashSeed = (s) => [...String(s)].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) >>> 0, 7);
-  const flash = (node) => { if (!node) return; node.classList.remove('tw-flash'); void node.offsetWidth; node.classList.add('tw-flash'); };
+  // (round 17, hz240) replayed without a forced reflow: off now, on again two frames later (after a style pass)
+  const flash = (node) => { if (!node) return; node.classList.remove('tw-flash'); requestAnimationFrame(() => requestAnimationFrame(() => node.classList.add('tw-flash'))); };
   // A small menu with headings and hints, used across the Lab: items are 'Heading' | [label, hint, fn, on?, feature?] | null.
   // (round 7: the shared popMenu in renderer.js: submenus, long sections folded, filter, arrow keys)
   function menu(x, y, items) { return popMenu(x, y, items, { width: 300 }); }

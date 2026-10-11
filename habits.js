@@ -106,7 +106,7 @@ const Habits = (() => {
   // the first visit to a screen each week, once it has settled
   if (typeof Usage !== 'undefined' && Usage.onTrack) {
     let t = 0;
-    Usage.onTrack((key) => { if (!String(key).startsWith('Open › ')) return; clearTimeout(t); t = setTimeout(() => tidyHere(), 2500); });
+    Usage.onTrack((key) => { if (!String(key).startsWith('Open › ')) return; clearTimeout(t); t = setTimeout(() => (window.requestIdleCallback || setTimeout)(() => tidyHere(), { timeout: 8000 }), 2500); }); // (round 17: when the app is idle, not mid-interaction)
   }
 
   // ---------- /habits ----------

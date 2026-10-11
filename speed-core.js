@@ -132,7 +132,7 @@ const Speed = (() => {
     }
     if (!b) return false;
     b.click();
-    b.classList.remove('speed-flash'); void b.offsetWidth; b.classList.add('speed-flash');
+    b.classList.remove('speed-flash'); requestAnimationFrame(() => requestAnimationFrame(() => b.classList.add('speed-flash'))); // (round 17: no forced reflow)
     setTimeout(() => b.classList.remove('speed-flash'), 700);
     return true;
   }

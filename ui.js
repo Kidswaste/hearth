@@ -90,6 +90,8 @@ document.addEventListener('loadedmetadata', (e) => { const v = e.target; if (v i
     if (action) node.append(el('button', { text: action.label, on: { click: () => { action.fn(); node.remove(); } } }));
     node.append(el('button', { class: 'toast-x', text: '×', title: 'Dismiss', on: { click: () => node.remove() } }));
     toastBox.append(node);
+    // (round 17, hz240) above a docked chat's composer (was a page-wide :has() in polish.css): checked when one shows
+    toastBox.classList.toggle('over-dock', Boolean(document.querySelector('.surface.active .tool-dock:not([hidden])')));
     if (timeout) {
       // hovering a notification keeps it until you leave it
       let timer = setTimeout(() => node.remove(), timeout);

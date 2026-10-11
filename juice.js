@@ -8,7 +8,11 @@ const Juice = (() => {
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const on = () => /\bforge\b/.test(root.dataset.skin || '') && !reduced.matches && !store.get('juice.off', false) && root.dataset.motion !== 'off';
   const v2 = () => on() && /\bv2\b/.test(root.dataset.look || '');
-  const css = (name, fallback) => getComputedStyle(root).getPropertyValue(name).trim() || fallback;
+  // (round 17, hz240) theme colors are read once and kept until the look changes: reading a computed style in a
+  // pointerdown / toast handler forced a style pass of the whole page right in the middle of the interaction
+  const cssCache = new Map();
+  const css = (name, fallback) => { let v = cssCache.get(name); if (v === undefined) { v = getComputedStyle(root).getPropertyValue(name).trim(); cssCache.set(name, v); } return v || fallback; };
+  new MutationObserver(() => cssCache.clear()).observe(root, { attributes: true, attributeFilter: ['style', 'class', 'data-skin', 'data-look', 'data-scheme', 'data-tex'] });
   let layer = null;
   let lastAt = 0;
   const layerEl = () => { if (!layer || !layer.isConnected) { layer = document.createElement('div'); layer.className = 'juice-layer'; document.body.append(layer); } return layer; };
@@ -28,15 +32,20 @@ const Juice = (() => {
       setTimeout(() => p.remove(), 520);
     }
   }
-  // a chrome streak crossing the button you press (Forgeheart 2)
-  function glint(b) {
+  // a chrome streak crossing the button you press (Forgeheart 2); soft: the quieter sheen of pointing at a button
+  // (round 17, hz240: that sheen was a background-position animation, repainted every frame; this one is moved by the
+  // compositor). Callers measure in an animation frame (glintSoon), where the layout is worked out anyway.
+  let glints = 0;
+  function glint(b, soft = false) {
+    if (!b.isConnected || glints >= 4) return;
     const r = b.getBoundingClientRect();
     if (!r.width || r.width > 480 || r.height > 120) return;
     const g = document.createElement('div');
-    g.className = 'juice-glint';
+    g.className = soft ? 'juice-glint soft' : 'juice-glint';
+    glints += 1; setTimeout(() => { glints -= 1; }, 460);
     g.style.cssText = `left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px`;
     layerEl().append(g);
-    setTimeout(() => g.remove(), 460);
+    setTimeout(() => g.remove(), soft ? 640 : 460);
   }
   // a molten ring rolling out of a point (sending)
   function ring(x, y, color) {
@@ -57,20 +66,24 @@ const Juice = (() => {
       setTimeout(() => p.remove(), 1100);
     }
   }
+  // measuring happens in the next animation frame (with the frame's own style and layout), never in the handler
+  const soon = (fn) => requestAnimationFrame(fn);
+  const centerOf = (b, fn) => soon(() => { const r = b.getBoundingClientRect(); if (r.width) fn(r.left + r.width / 2, r.top + r.height / 2, r); });
   addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || !on()) return;
     const b = e.target.closest?.('button, .agent-btn, .tool-btn, .item');
     if (!b || b.disabled) return;
     // Lab favorites get their own little moments: Freeze frosts, Tap pulses a ring, Shuffle rolls the die
-    if (v2() && b.matches('.freeze-btn')) { const r = b.getBoundingClientRect(); ring(r.left + r.width / 2, r.top + r.height / 2, css('--fh-info', '#56c6ff')); glint(b); return; }
+    if (v2() && b.matches('.freeze-btn')) { centerOf(b, (x, y) => { ring(x, y, css('--fh-info', '#56c6ff')); glint(b); }); return; }
     if (b.closest('.three-preview, .mb-tl-wrap, canvas')) return;
     const primary = b.matches('.primary, #broadcast button');
-    const agent = b.matches('.agent-btn') ? getComputedStyle(b).getPropertyValue('--agent').trim() : '';
+    // (the rail sets each button's --agent inline: no computed style needed)
+    const agent = b.matches('.agent-btn') ? (b.style.getPropertyValue('--agent').trim() || css('--accent', '#ffc23d')) : '';
     if (v2()) {
-      if (b.matches('.primary, .ghost, .agent-btn, .tool-btn, #broadcast button, .tw-chip, .stage-btn, .suggest-chip, .look-tile, .seg button, .dialog-actions button')) glint(b);
+      if (b.matches('.primary, .ghost, .agent-btn, .tool-btn, #broadcast button, .tw-chip, .stage-btn, .suggest-chip, .look-tile, .seg button, .dialog-actions button')) soon(() => glint(b));
       const gold = css('--fh-gold', '#ffc23d');
       burst(e.clientX, e.clientY, primary ? { color: gold, count: 8, spread: 30 } : agent ? { color: agent, count: 6, spread: 24 } : { color: css('--fh-info', '#56c6ff'), count: 4, spread: 16 });
-      if (b.dataset.feature === 'Tap tempo') { const r = b.getBoundingClientRect(); ring(r.left + r.width / 2, r.top + r.height / 2, gold); }
+      if (b.dataset.feature === 'Tap tempo') centerOf(b, (x, y) => ring(x, y, gold));
       if (/^🎲/.test((b.textContent || '').trim())) {
         // "🎲 Shuffle": only the die rolls (its glyph gets a span the first time), a bare 🎲 rolls whole
         let die = b;
@@ -81,10 +94,11 @@ const Juice = (() => {
           die = el('span', { class: 'j-die', text: '🎲' });
           first.replaceWith(die, document.createTextNode(rest));
         }
-        die.classList.remove('j-roll'); void die.offsetWidth; die.classList.add('j-roll');
+        // restart the roll on the next frame (no forced layout to replay it)
+        die.classList.remove('j-roll'); soon(() => die.classList.add('j-roll'));
         for (const c of ['--fh-ai', '--fh-hot', '--fh-info']) burst(e.clientX, e.clientY, { color: css(c, '#a970ff'), count: 3, spread: 26, force: true });
       }
-      if (/^save\b/i.test((b.textContent || '').trim()) || /^Save\b/.test(b.title || '')) { const r = b.getBoundingClientRect(); embers(r.left + r.width / 2, r.top + 4, { color: gold, count: 12 }); }
+      if (/^save\b/i.test((b.textContent || '').trim()) || /^Save\b/.test(b.title || '')) centerOf(b, (x, y, r) => embers(x, r.top + 4, { color: gold, count: 12 }));
       return;
     }
     burst(e.clientX, e.clientY, primary ? { color: '#ffd75e', count: 8, spread: 30 } : agent ? { color: agent, count: 6, spread: 24 } : { color: '#48ddff', count: 4, spread: 16 });
@@ -95,9 +109,9 @@ const Juice = (() => {
     const f = e.target;
     if (!(f instanceof HTMLFormElement) || !f.matches('.composer, #broadcast')) return;
     const b = f.querySelector('button[type=submit], button:not([type])');
-    const r = (b || f).getBoundingClientRect();
-    const x = r.left + r.width / 2; const y = r.top + r.height / 2;
     requestAnimationFrame(() => {
+      const r = (b || f).getBoundingClientRect();
+      const x = r.left + r.width / 2; const y = r.top + r.height / 2;
       ring(x, y, css('--fh-gold', '#ffc23d'));
       burst(x, y, { color: css('--fh-hot', '#ff3d7f'), count: 10, spread: 40, force: true });
     });
@@ -151,7 +165,9 @@ const Juice = (() => {
 
   // ---------- forged tooltips (Forgeheart 2; /tips off for the system ones) ----------
   // The title moves to data-tip while ours shows (so the system one stays away) and always comes back.
-  let tip = null; let tipFor = null; let tipTimer = 0;
+  // (round 17, hz240) one tip node, made once and reused; nothing is measured while the pointer moves: the "is this
+  // text cut short?" test and the placement run once, when the tip is due, in an animation frame
+  let tip = null; let tipFor = null; let tipTimer = 0; let tipShown = false;
   const tipsOn = () => /\bv2\b/.test(root.dataset.look || '') && (typeof Look === 'undefined' || Look.fx().tips !== false);
   function hideTip() {
     clearTimeout(tipTimer);
@@ -160,17 +176,19 @@ const Juice = (() => {
       delete tipFor.dataset.tip;
     }
     tipFor = null;
-    tip?.remove(); tip = null;
+    if (tipShown) { tip.remove(); tipShown = false; }
   }
   // rows of a list or menu: the tip goes beside the list, so it never covers the next rows
   const LISTS = '.fx-list, .palette-list, .slash-menu, #menu, .mb-menu, .nv-menu, .nv-picker-list, .look-grid, .prompt-list, #chat-groups';
+  // (tipFor is what the pointer is over: pointerout clears it, so no :hover test, which needed a fresh style pass)
   function showTip(t, full) {
-    if (!t.isConnected || tipFor !== t || !t.matches(':hover')) return;
+    if (!t.isConnected || tipFor !== t) return;
     const text = full || t.getAttribute('title');
     if (!text) return;
     if (!full) { t.dataset.tip = text; t.removeAttribute('title'); }
-    tip = el('div', { class: `juice-tip${full ? ' full' : ''}`, text });
-    document.body.append(tip);
+    if (!tip) tip = el('div', { class: 'juice-tip' });
+    tip.className = `juice-tip${full ? ' full' : ''}`; tip.textContent = text; tip.style.left = '-9999px'; tip.style.top = '0px';
+    document.body.append(tip); tipShown = true;
     const r = t.getBoundingClientRect(); const w = tip.offsetWidth; const h = tip.offsetHeight;
     const list = full ? null : t.closest(LISTS);
     const lr = list?.getBoundingClientRect();
@@ -195,21 +213,40 @@ const Juice = (() => {
     if (!tipsOn()) return;
     const t = e.target.closest?.('[title]');
     if (!t || !t.getAttribute('title')) {
-      const c = !t && e.target instanceof HTMLElement && clipped(e.target);
-      if (!c || c === tipFor) return;
-      const text = c.textContent.trim();
-      if (!text || text.length > 400) return;
+      // cut-short text: measured once the pointer rests on it (520 ms), not on every element it crosses
+      const n = !t && e.target instanceof HTMLElement ? e.target : null;
+      if (!n || n === tipFor || n === tip) return;
       hideTip();
-      tipFor = c;
-      tipTimer = setTimeout(() => showTip(c, text), 520);
+      tipFor = n;
+      tipTimer = setTimeout(() => requestAnimationFrame(() => {
+        if (tipFor !== n) return;
+        const c = clipped(n);
+        const text = c?.textContent.trim();
+        if (!c || !text || text.length > 400) return;
+        tipFor = c; showTip(c, text);
+      }), 520);
       return;
     }
     if (t === tipFor) return;
     hideTip();
     tipFor = t;
-    tipTimer = setTimeout(() => showTip(t), 420);
+    tipTimer = setTimeout(() => requestAnimationFrame(() => showTip(t)), 420);
   }, true);
   addEventListener('pointerout', (e) => { if (tipFor && !tipFor.contains(e.relatedTarget)) hideTip(); }, true);
+
+  // ---------- the chrome sheen crossing a button you point at (Forgeheart 2) ----------
+  // (round 17, hz240) was `animation: m-sweep` (background-position: the button repainted every frame for 0.6 s, a
+  // dozen at once when the pointer crossed the rail); now the soft glint, a streak the compositor moves. Same buttons.
+  const SWEEP = '.m-chrome, .m-gold, .m-sheen, .agent-btn, .suggest-chip, .look-tile, .tweaks .tw-shuffle:not(:disabled), .lab-tabs .lab-tools-btn, .lab-tabs .lab-back, .vr-play, .ghost, .dialog-actions button:not(.primary), .code-act, .find-bar button';
+  let swept = null; let sweptAt = 0;
+  addEventListener('pointerover', (e) => {
+    if (e.pointerType === 'touch' || !on() || root.dataset.motion === 'calm') return;
+    const b = e.target.closest?.(SWEEP) || e.target.closest?.('.nv-node')?.querySelector(':scope > .nv-head');
+    if (!b || (b === swept && performance.now() - sweptAt < 700) || b.disabled || (!v2() && !b.matches('.m-chrome, .m-gold, .m-sheen'))) return;
+    if (b !== e.target && b.contains(e.relatedTarget)) return; // moving inside the same button
+    swept = b; sweptAt = performance.now();
+    requestAnimationFrame(() => glint(b, true));
+  }, { passive: true });
   for (const ev of ['pointerdown', 'wheel', 'keydown', 'blur']) addEventListener(ev, () => { if (tipFor) hideTip(); }, true);
 
   return { burst, embers, ring, glint, hideTip };
