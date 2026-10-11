@@ -244,3 +244,6 @@ body.tw-scrubbing, body.tw-scrubbing * { cursor: ew-resize !important; }
 .media-bar .mb-framechip { font: 11px Consolas, monospace; padding-inline: 6px; }
 .media-bar .mb-framechip.on { color: #8fe6ff; border-color: color-mix(in srgb, #8fe6ff 40%, transparent); }
 .media-bar .mb-framechip[hidden] { display: none; }
+/* Lab perf HUD (/lab perf, round 16 "labperf"): quiet, in the preview's bottom-right corner, no effects on it */
+.three-preview .lab-perf-hud { position: absolute; right: 8px; bottom: 8px; z-index: 2; padding: 2px 7px; border-radius: 6px; background: #0008; color: #cfd3dc; font: 10.5px Consolas, monospace; opacity: 0.72; pointer-events: none; white-space: nowrap; contain: content; }
+.three-preview .lab-perf-hud[hidden] { display: none; }
