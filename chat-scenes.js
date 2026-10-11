@@ -80,6 +80,47 @@ const ChatScenes = (() => {
     if (S && !S.get(L.sketch)) return null; // the sketch was deleted: the chat links again on its next use
     return L.sketch;
   }
+  // its scene is linked but not here: not deleted here, so it's on its way from the other computer (cloud sync)
+  function arriving(chatId) {
+    const L = chatId && data.links[chatId];
+    const S = lab();
+    return Boolean(L && S && !S.get(L.sketch) && !S.wasDeleted?.(L.sketch));
+  }
+  // ---------- scenes and links from the other computer (cloud sync) ----------
+  // kv/chat-scenes.json arrived: links made there join the ones here (the newer link of a chat wins)
+  async function refreshLinks() {
+    let d; try { d = await window.hub.kvGet('chat-scenes', null); } catch { return; }
+    if (!d?.links) return;
+    let changed = false;
+    for (const [id, L] of Object.entries(d.links)) {
+      const mine = data.links[id];
+      if (!mine || (L.at || 0) > (mine.at || 0)) { data.links[id] = L; changed = true; }
+    }
+    for (const k of ['videos', 'idents']) for (const [id, v] of Object.entries(d[k] || {})) if (!(id in data[k])) { data[k][id] = v; changed = true; }
+    if (changed) { save(); resync(); }
+  }
+  // a chat whose scene had to be replaced while it was on its way gets it back when it arrives (a starter nobody
+  // touched is swapped silently; otherwise one click)
+  function recoverLost() {
+    const S = lab();
+    if (!S) return;
+    for (const [chatId, L] of Object.entries(data.links)) {
+      if (!L.lost || !S.get(L.lost)) continue;
+      const lost = L.lost;
+      const now = S.get(L.sketch);
+      const untouched = !now || pristine(now, identity(chatId).color) || pristine(now, NEUTRAL);
+      if (untouched) { delete L.lost; link(chatId, lost, { rename: false }); toast(`"${S.get(lost).name}" is back in its chat (it arrived from your other computer)`, { timeout: 4000 }); }
+      else {
+        toast(`"${S.get(lost).name}" arrived from your other computer: this chat has been using a new scene since.`, { timeout: 12000, action: { label: 'Use the original', fn: () => { delete data.links[chatId]?.lost; link(chatId, lost, { rename: false }); resync(); } } });
+        delete L.lost; save();
+      }
+    }
+    resync();
+  }
+  function resync() { const a = threeAgent(); const c = a && H.activeChat[a.id]; if (c && linkOf(c) && lab()?.currentId() !== linkOf(c)) { shown.three = null; sync(); } else paintAll(); }
+  addEventListener('hearth:synced', (e) => { if ((e.detail?.files || []).some((f) => f.rel === 'kv/chat-scenes.json')) refreshLinks().catch((err) => console.warn('chat scenes from sync', err)); });
+  addEventListener('hearth:lab-scenes-arrived', () => { recoverLost(); });
+
   // The chat that owns a sketch (only chats that still exist count; a chat back from the trash gets it again).
   function ownerOf(sketchId) {
     if (!sketchId) return null;
@@ -93,7 +134,10 @@ const ChatScenes = (() => {
     for (const [id, L] of Object.entries(data.links)) if (L.sketch === sketchId && id !== chatId) delete data.links[id];
     const S = lab();
     const sk = S?.get(sketchId);
-    data.links[chatId] = { sketch: sketchId, auto: '', at: Date.now() }; // auto: the name we gave it (follows the chat's title)
+    // a scene that hasn't arrived from the other computer yet (cloud sync) is remembered, to be given back when it does
+    const before = data.links[chatId];
+    const lost = before && before.sketch !== sketchId && S && !S.get(before.sketch) && !S.wasDeleted?.(before.sketch) ? before.sketch : before?.lost && before.lost !== sketchId ? before.lost : null;
+    data.links[chatId] = { sketch: sketchId, auto: '', at: Date.now(), ...(lost ? { lost } : {}) }; // auto: the name we gave it (follows the chat's title)
     if (rename && sk && isDraft(sketchId)) {
       clearDraft(sketchId);
       recolorStarter(sk, identity(chatId).color);
@@ -285,6 +329,12 @@ renderer.setAnimationLoop((now) => {
     const S = lab();
     if (!S) return; // the Lab isn't loaded: its first call links (routeThree)
     shown.three = chat.id;
+    if (arriving(chat.id) && !onSend.waited?.has(chat.id)) {
+      // its scene was made on the other computer and hasn't been read here yet: read it, then carry on
+      (onSend.waited ||= new Set()).add(chat.id);
+      S.refresh?.().then(() => { if (linkOf(chat.id)) openScene(linkOf(chat.id)); else onSend(agentId, chat); }).finally(() => onSend.waited.delete(chat.id));
+      return;
+    }
     const cur = S.currentId();
     const mine = linkOf(chat.id);
     const owner = ownerOf(cur);
@@ -707,6 +757,7 @@ renderer.setAnimationLoop((now) => {
 
   return {
     identity, linkOf, ownerOf, link, unlink, relink, routeThree, glyphFor, sync, paintAll, starter,
+    refreshLinks, recoverLost, get _data() { return data; },
     // comp-dispatch.js: a chat (made in the background) gets a fresh scene of its own, in its color, not opened
     fresh(chatId) { const sk = freshScene(chatId); link(chatId, sk.id, { rename: false }); data.links[chatId].auto = sk.name; save(); return sk; },
     // scene stills: the row picture of a chat (jam rounds and backstage edits refresh it), and the switch's fade

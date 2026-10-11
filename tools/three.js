@@ -2774,7 +2774,7 @@ const ThreeLab = (() => {
           { label: 'Delete…', danger: true, action: async () => {
             if (sketches.length === 1) { toast('Keep at least one sketch', { type: 'error' }); return; }
             if (!(await Modal.confirm('Delete sketch?', `"${sk.name}" will be deleted. You can bring it back from History.`, { ok: 'Delete', danger: true }))) return;
-            trash.unshift({ name: sk.name, code: sk.code, layers: sk.layers, deletedAt: Date.now() });
+            trash.unshift({ id: sk.id, name: sk.name, code: sk.code, layers: sk.layers, deletedAt: Date.now() });
             trash.length = Math.min(trash.length, 30);
             saveHistory();
             sketches = sketches.filter((s) => s.id !== sk.id);
@@ -2895,7 +2895,7 @@ const ThreeLab = (() => {
       if (sketches.length === 1) { toast('Keep at least one sketch', { type: 'error' }); return; }
       if (!(await Modal.confirm('Delete sketch?', `"${current.name}" will be deleted. You can bring it back from History.`, { ok: 'Delete', danger: true }))) return;
       persist();
-      trash.unshift({ name: current.name, code: current.code, layers: current.layers, deletedAt: Date.now() });
+      trash.unshift({ id: current.id, name: current.name, code: current.code, layers: current.layers, deletedAt: Date.now() });
       trash.length = Math.min(trash.length, 30);
       saveHistory();
       sketches = sketches.filter((s) => s.id !== current.id);
@@ -3003,9 +3003,47 @@ ${code}
 
     // ---------- per-chat scenes (chat-scenes.js, tools/three-backstage.js) ----------
     // The sketches as data: each director chat owns one; the backstage runs the ones that aren't on screen.
+    // Scenes that arrived from the other computer (cloud sync, kv/three-sketches.json) join the ones in memory: new
+    // ones are added, newer versions of the others replace them (the one on screen too, when it wasn't changed here
+    // since). Without this the Lab kept its old list, and a chat whose scene was made on the other computer fell back
+    // to a new starter (the orb) on its next message.
+    async function refreshFromDisk() {
+      let disk;
+      try { disk = await window.hub.kvGet('three-sketches', null); } catch { return { added: 0, updated: 0 }; }
+      if (!Array.isArray(disk)) return { added: 0, updated: 0 };
+      let added = 0; let updated = 0; let reopen = false;
+      const deleted = new Set(trash.map((t) => t.id).filter(Boolean));
+      let diskExtras = null;
+      for (const d of disk) {
+        if (!d?.id) continue;
+        const mine = sketches.find((x) => x.id === d.id);
+        if (!mine) {
+          if (deleted.has(d.id)) continue;
+          sketches.push(JSON.parse(JSON.stringify(d))); added += 1;
+          diskExtras ||= await window.hub.kvGet('three-lab-extras', {}).catch(() => ({}));
+          if (diskExtras?.[d.id] && !extras[d.id]) extras[d.id] = diskExtras[d.id];
+        } else if ((d.updatedAt || 0) > (mine.updatedAt || 0)) {
+          if (mine === current) { if (dirtyHere()) continue; reopen = true; }
+          for (const k of Object.keys(mine)) delete mine[k];
+          Object.assign(mine, JSON.parse(JSON.stringify(d))); updated += 1;
+        }
+      }
+      if (added || updated) {
+        renderPicker();
+        if (reopen && current) openSketch(current.id, { by: 'scene' });
+        dispatchEvent(new CustomEvent('hearth:lab-scenes-arrived', { detail: { added, updated } }));
+      }
+      return { added, updated };
+    }
+    // the sketch on screen has edits that aren't saved into it yet (sliders moved, code typed)
+    const dirtyHere = () => { try { return Boolean(current && editor.value !== ((sel() || layersOf()[0])?.code ?? current.code)); } catch { return false; } };
+    addEventListener('hearth:synced', (e) => { if ((e.detail?.files || []).some((f) => f.rel === 'kv/three-sketches.json')) refreshFromDisk().catch((err) => console.warn('scenes from sync', err)); });
     api.scenes = {
       all: () => sketches,
       get: (id) => sketches.find((x) => x.id === id) || null,
+      // deleted here (it's in History's trash), as opposed to not arrived yet from the other computer
+      wasDeleted: (id) => trash.some((t) => t.id === id),
+      refresh: () => refreshFromDisk(),
       currentId: () => current?.id || null,
       // switch to a chat's sketch (the one you leave is saved first; unsaved sliders get the usual toast)
       open(id) {
