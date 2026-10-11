@@ -6866,6 +6866,7 @@ window.__seqPixels = ({ size = 120, x = 0.5, y = 0.5, only = null } = {}) => {
   const i = (Math.min(size - 1, Math.round(y * size)) * size + Math.min(size - 1, Math.round(x * size))) * 4;
   return { bright, at: [d[i], d[i + 1], d[i + 2]] };
 };
+window.__seqPlan = () => SQ.plan; // (labcut checks: framing, looks, ducking as the page got them)
 window.__seqLayers = () => [...layers.values()].map((L) => ({ id: L.id, share: L.props.share || null, hide: Boolean(L.seqHide), blend: L.props.blend, group: L.props.seqGroup || null, mix: layerMix(L) }));
 window.__seqInfo = () => ({ on: SQ.on, T: SQ.T, playing: SQ.playing, off: SQ.off, mounted: [...SQ.mounted.keys()], layers: [...layers.keys()].length, libs: Boolean(SQ.libs), showing: SQ.on ? (() => { const s = sqShowing(SQ.T); return s.a ? { trans: s.type, p: s.p, from: s.a.id, to: s.b.id } : { clip: s.show?.id || null }; })() : null });
 function sqMessage(msg) {

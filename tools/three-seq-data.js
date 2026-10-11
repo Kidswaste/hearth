@@ -468,7 +468,7 @@ const ThreeSeqData = (() => {
   return {
     FORMATS, TRACKS, DEFAULT_SECS, DEFAULT_BARS, DEFAULT_TRANS, isLab, create, setFormat, formatOf,
     beatLen, barLen, gridTimes, barAt, defaultDur, defaultTransDur,
-    ensureTrack, trackOf, sceneClip, insertIndex, place, addScene, addFootage, addTitle, addOverlay, setSong, songOf, addAudio,
+    ensureTrack, trackOf, addTo, sceneClip, insertIndex, place, addScene, addFootage, addTitle, addOverlay, setSong, songOf, addAudio,
     find, split, remove, trim, slip, move, duplicate, setTrans, setDur, fitBars, timing, showing, snapTargets, snap, fmt, clipLabel, describe, resolve, scenes, total,
     roll, slide, setSpeed, varyValues, shiftHue, rangeOf, flatten, seqClip, copyClips, pasteClips,
   };
