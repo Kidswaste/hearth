@@ -35,6 +35,7 @@ const F = require('./fake-common');
   const wait = F.delayMs(p);
   if (resume < 0) F.out({ type: 'thread.started', thread_id: threadId });
   F.out({ type: 'turn.started' });
+  if (await require('./fake-liveness').codex(prompt, threadId)) return; // (round 21) long-task scenarios
   if (p.login || sw.codexLoggedOut) { F.out({ type: 'turn.failed', error: { message: 'Not logged in. Please run codex login' } }); return; }
   if (sw.codexNeeds && F.older(version, sw.codexNeeds)) { F.out({ type: 'error', message: 'This model requires a newer version of Codex. Please upgrade to the latest version.' }); F.out({ type: 'turn.failed', error: { message: 'This model requires a newer version of Codex. Please upgrade to the latest version.' } }); return; }
   if (F.trip('codex-network', sw.codexNetwork)) { F.out({ type: 'turn.failed', error: { message: 'stream disconnected before completion: error sending request for url (https://chatgpt.com/backend-api/codex/responses)' } }); return; }

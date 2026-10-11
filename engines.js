@@ -465,11 +465,22 @@ try {
   for (const f of fs.readdirSync(dirRuns)) { const p = path.join(dirRuns, f); if (Date.now() - fs.statSync(p).mtimeMs > 864e5) fs.rmSync(p, { force: true }); }
 } catch { /* no runs yet */ }
 
+// (round 21) /agents on (a chat's own opt-in): Claude may deploy subagents with its Task tool (Agent in newer versions;
+// Task is still accepted). Off by default: the tool's definition rides along with every message of that chat.
+function withSubagents(args, options) {
+  if (!options.subagents) return args;
+  const out = [...args];
+  const t = out.indexOf('--tools');
+  if (t >= 0) out[t + 1] = [...String(out[t + 1] || '').split(',').filter(Boolean), 'Task'].join(',');
+  const a = out.indexOf('--allowedTools');
+  if (a >= 0) out[a + 1] = `${out[a + 1]},Task`; else out.push('--allowedTools', 'Task');
+  return out;
+}
 function claudeArgs(agent, session, options = {}) {
   const args = [
     '-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
     '--setting-sources', 'project', '--disable-slash-commands',
-    ...claudeToolArgs(agent, options),
+    ...withSubagents(claudeToolArgs(agent, options), options),
     '--system-prompt', buildPrompt(agent),
   ];
   const model = options.model || agent.model;
@@ -518,6 +529,8 @@ function codexArgs(agent, session, options = {}) {
   if (folder || acc) disabled = disabled.filter((f) => f !== 'shell_tool');
   // Features switched back on for this agent (/astra-feature): each adds its tool definitions to every message.
   if (Array.isArray(agent.codexFeatures)) disabled = disabled.filter((f) => !agent.codexFeatures.includes(f));
+  // (round 21) /agents on: this chat may spawn agents (multi-agent Codex)
+  if (options.subagents) disabled = disabled.filter((f) => f !== 'multi_agent');
   for (const feature of disabled) args.push('--disable', feature);
   const web = pick(options.webSearch, WEB_SEARCH) || pick(agent.webSearch, WEB_SEARCH) || 'disabled';
   args.push(
@@ -554,10 +567,71 @@ function codexArgs(agent, session, options = {}) {
   return args;
 }
 
-// Each parser turns one JSON line into events: { delta }, { done }, { error }.
+// Each parser turns one JSON line into events: { delta }, { done }, { error } (or a list of them).
+// (round 21, liveness) plus what a long task is doing, for the live status line and activity panel (native.js):
+//   tool   { name, id, args, parent }  a tool call starts (parent: the subagent it belongs to, if any)
+//   step   { id, ok, summary, parent } its result came back
+//   agent  { id, status: running | done | failed, description, kind, summary, parent }: a subagent (Claude's Task /
+//          Agent tool, Codex's spawned agents)
+//   status { text }                    the engine's own notes (API retries…)
+// Nothing here is sent to the engines: it is read from what they already print.
+const SUBAGENT_TOOL = /^(Task|Agent)$/;
+const oneLine = (s, n = 80) => { const t = String(s ?? '').replace(/\s+/g, ' ').trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
+// The short "what" of a tool call: a file name, a pattern, a command, a layer…
+function toolArgs(input = {}) {
+  if (!input || typeof input !== 'object') return '';
+  const file = input.file_path || input.notebook_path || input.path;
+  if (typeof file === 'string' && file) return path.basename(file);
+  for (const k of ['description', 'command', 'pattern', 'query', 'url', 'layer', 'name', 'op', 'cmd', 'what', 'code', 'prompt']) if (input[k] != null && typeof input[k] !== 'object') return oneLine(input[k], 60);
+  const first = Object.entries(input).find(([, v]) => v != null && typeof v !== 'object');
+  return first ? oneLine(`${first[0]}: ${first[1]}`, 60) : '';
+}
+// The text of a tool result (a string, or a list of text / image blocks)
+function resultText(content) {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) return content.map((c) => (c?.type === 'text' ? c.text : c?.type === 'image' ? '[image]' : '')).filter(Boolean).join(' ');
+  return '';
+}
 function claudeParser(session) {
+  const agents = new Set(); // tool_use ids of the subagents still running
   return (msg) => {
     if (msg.type === 'system' && msg.subtype === 'init') session.id = msg.session_id;
+    // a subagent's own streamed text / thinking belongs to it, never to the reply (its stream_event lines carry a parent)
+    const parent = msg.parent_tool_use_id || null;
+    if (msg.type === 'stream_event' && parent) return null;
+    if (msg.type === 'system' && msg.subtype === 'api_retry') return { type: 'status', text: `API retry${msg.attempt ? ` ${msg.attempt}${msg.max_retries ? `/${msg.max_retries}` : ''}` : ''}${msg.error_status ? ` (${msg.error_status})` : ''}` };
+    // newer versions also report subagent / background tasks as system lines (task_started, task_notification…)
+    if (msg.type === 'system' && /^task_/.test(msg.subtype || '') && msg.tool_use_id) {
+      const st = `${msg.status || ''} ${msg.subtype}`;
+      const status = /fail|error|kill|stop/i.test(st) ? 'failed' : /complet|done|success/i.test(st) ? 'done' : 'running';
+      if (status !== 'running') agents.delete(msg.tool_use_id);
+      return { type: 'agent', id: msg.tool_use_id, status, ...(msg.description ? { description: oneLine(msg.description, 80) } : {}), ...(msg.summary ? { summary: oneLine(msg.summary, 160) } : {}) };
+    }
+    const out = [];
+    if (msg.type === 'assistant' && Array.isArray(msg.message?.content)) {
+      for (const toolUse of msg.message.content) { // every tool call of the message (parallel calls come together)
+        if (toolUse?.type !== 'tool_use') continue;
+        const input = toolUse.input || {};
+        if (SUBAGENT_TOOL.test(toolUse.name) && (input.prompt || input.description)) {
+          agents.add(toolUse.id);
+          out.push({ type: 'agent', id: toolUse.id, status: 'running', description: oneLine(input.description || input.prompt, 80), kind: String(input.subagent_type || ''), ...(parent ? { parent } : {}) });
+          continue;
+        }
+        const target = input.file_path || input.pattern;
+        // (round 14) what it touches, for the chat's activity log (access.js)
+        const access = toolAccess(toolUse.name, input);
+        out.push({ type: 'tool', name: target ? `${toolUse.name} · ${path.basename(String(target))}` : toolUse.name, id: toolUse.id, args: toolArgs(input), ...(parent ? { parent } : {}), ...(access ? { access: { ...access, id: toolUse.id } } : {}) });
+      }
+    }
+    if (msg.type === 'user' && Array.isArray(msg.message?.content)) {
+      for (const r of msg.message.content) {
+        if (r?.type !== 'tool_result' || !r.tool_use_id) continue;
+        const text = r.big || oneLine(resultText(r.content), 160);
+        if (agents.has(r.tool_use_id)) { agents.delete(r.tool_use_id); out.push({ type: 'agent', id: r.tool_use_id, status: r.is_error ? 'failed' : 'done', summary: text }); continue; }
+        out.push({ type: 'step', id: r.tool_use_id, ok: !r.is_error, summary: text, ...(parent ? { parent } : {}) });
+      }
+    }
+    if (out.length) return out.length === 1 ? out[0] : out;
     if (msg.type === 'stream_event' && msg.event?.delta?.type === 'text_delta') {
       return { type: 'delta', text: msg.event.delta.text };
     }
@@ -566,13 +640,6 @@ function claudeParser(session) {
     }
     if (msg.type === 'stream_event' && msg.event?.type === 'content_block_start' && msg.event.content_block?.type === 'thinking') {
       return { type: 'thinking', text: '\n\n' };
-    }
-    const toolUse = msg.type === 'assistant' && msg.message?.content?.find((c) => c.type === 'tool_use');
-    if (toolUse) {
-      const target = toolUse.input?.file_path || toolUse.input?.pattern;
-      // (round 14) what it touches, for the chat's activity log (access.js)
-      const access = toolAccess(toolUse.name, toolUse.input || {});
-      return { type: 'tool', name: target ? `${toolUse.name} · ${path.basename(target)}` : toolUse.name, ...(access ? { access: { ...access, id: toolUse.id } } : {}) };
     }
     if (msg.type === 'result') {
       if (msg.is_error) return { type: 'error', message: msg.result || 'Claude returned an error' };
@@ -594,6 +661,29 @@ function claudeParser(session) {
   };
 }
 
+// (round 21) A huge line (a tool result of megabytes: a whole file, a long log) isn't parsed whole: the few fields
+// that matter are read from its two ends. Lines that carry reply text (assistant, result, agent_message) parse as usual.
+const BIG_LINE = 512 * 1024;
+function lightParse(line) {
+  const head = line.slice(0, 4096); const tail = line.slice(-4096);
+  const get = (re) => (head.match(re) || tail.match(re) || [])[1];
+  const type = (head.match(/^\{\s*"type"\s*:\s*"([\w.]+)"/) || [])[1];
+  const big = `(${(line.length / 1048576).toFixed(1)} MB of output)`;
+  if (type === 'user') {
+    const id = get(/"tool_use_id"\s*:\s*"([^"]+)"/);
+    if (!id) return {};
+    const parent = (tail.match(/"parent_tool_use_id"\s*:\s*"([^"]+)"/) || [])[1] || null;
+    return { type: 'user', parent_tool_use_id: parent, message: { content: [{ type: 'tool_result', tool_use_id: id, is_error: /"is_error"\s*:\s*true/.test(head + tail), big }] } };
+  }
+  if (/^item\.(started|updated|completed)$/.test(type || '')) {
+    const itemType = (head.match(/"type"\s*:\s*"(command_execution|mcp_tool_call|web_search|agent_message|reasoning|todo_list|file_change|collab_tool_call)"/) || [])[1];
+    if (!/^(command_execution|mcp_tool_call|web_search)$/.test(itemType || '')) return null; // text-carrying items: parse whole
+    const status = (tail.match(/"status"\s*:\s*"(\w+)"(?![\s\S]*"status")/) || head.match(/"status"\s*:\s*"(\w+)"/) || [])[1];
+    return { type, item: { id: get(/"id"\s*:\s*"([^"]+)"/), type: itemType, server: get(/"server"\s*:\s*"([^"]+)"/), tool: get(/"tool"\s*:\s*"([^"]+)"/), command: get(/"command"\s*:\s*"((?:[^"\\]|\\.){0,300})/), status, big } };
+  }
+  return null;
+}
+
 const CANCELLED = /cancel|approval|not approved|declined|denied by (the )?user|rejected by (the )?user/i;
 // Codex `exec --json` events: thread.started, turn.started, item.started / item.updated / item.completed
 // (agent_message, reasoning, command_execution, file_change, mcp_tool_call, web_search, todo_list, error),
@@ -613,6 +703,25 @@ function codexParser(session, agent = {}) {
     text += lead + add;
     return { type: 'delta', text: lead + add };
   };
+  const kids = new Map(); // spawned agent thread id -> { description, status }
+  const STATE = { pending_init: 'running', running: 'running', completed: 'done', shutdown: 'done', errored: 'failed', not_found: 'failed' };
+  const collab = (msg, item) => {
+    const out = [];
+    const ids = [...new Set([...(item.receiver_thread_ids || []), ...Object.keys(item.agents_states || {})])];
+    for (const id of ids) {
+      const st = item.agents_states?.[id];
+      const was = kids.get(id);
+      const status = st ? STATE[st.status] || 'running' : item.tool === 'spawn_agent' ? (item.status === 'failed' ? 'failed' : 'running') : was?.status;
+      if (!status) continue;
+      const description = was?.description || oneLine(item.prompt || '', 80) || 'Agent';
+      const summary = st?.message ? oneLine(st.message, 160) : undefined;
+      if (was && was.status === status && !summary) continue; // nothing new
+      kids.set(id, { description, status });
+      out.push({ type: 'agent', id, status, description, ...(summary ? { summary } : {}) });
+    }
+    if (!out.length) return null;
+    return out.length === 1 ? out[0] : out;
+  };
   return (msg) => {
     const item = msg.item || {};
     if (msg.type === 'thread.started') session.id = msg.thread_id;
@@ -627,15 +736,22 @@ function codexParser(session, agent = {}) {
     if (msg.type === 'item.completed' && item.type === 'reasoning' && item.text) {
       return agent.showThinking === false ? null : { type: 'thinking', text: `${item.text}\n\n` };
     }
+    // (round 21) spawned agents (multi-agent Codex): spawn_agent / wait / close_agent with each agent's state
+    if (item.type === 'collab_tool_call') return collab(msg, item);
     if (msg.type === 'item.started' && /tool_call/.test(item.type || '')) {
-      return { type: 'tool', name: [item.server, item.tool].filter(Boolean).join(' · ') || item.type };
+      return { type: 'tool', name: [item.server, item.tool].filter(Boolean).join(' · ') || item.type, id: item.id, args: toolArgs(item.arguments) };
     }
     // a tool call Codex cancelled itself (an approval `codex exec` can't ask for): send() retries / explains (no reply text yet)
     if (msg.type === 'item.completed' && /tool_call/.test(item.type || '') && (item.status === 'failed' || item.error) && CANCELLED.test(JSON.stringify(item.error || item.result || ''))) {
       return { type: 'blocked', name: [item.server, item.tool].filter(Boolean).join(' · ') || item.type, message: String(item.error?.message || 'cancelled').slice(0, 200) };
     }
-    if (msg.type === 'item.started' && item.type === 'command_execution') return { type: 'tool', name: `Shell · ${short(item.command)}`, access: { action: 'run', target: String(item.command || '').slice(0, 400), tool: 'Shell', id: item.id } };
-    if (msg.type === 'item.started' && item.type === 'web_search') return { type: 'tool', name: `Web search · ${short(item.query, 50)}` };
+    // (round 21) what a tool call returned, for the activity panel
+    if (msg.type === 'item.completed' && /tool_call/.test(item.type || '') && item.id) {
+      return { type: 'step', id: item.id, ok: item.status !== 'failed' && !item.error, summary: item.big || oneLine(item.error?.message || resultText(item.result?.content) || item.status, 160) };
+    }
+    if (msg.type === 'item.started' && item.type === 'command_execution') return { type: 'tool', name: `Shell · ${short(item.command)}`, id: item.id, args: short(item.command), access: { action: 'run', target: String(item.command || '').slice(0, 400), tool: 'Shell', id: item.id } };
+    if (msg.type === 'item.completed' && item.type === 'command_execution' && item.id) return { type: 'step', id: item.id, ok: item.status !== 'failed' && !item.exit_code, summary: item.big || oneLine(`${item.exit_code ? `exit ${item.exit_code} · ` : ''}${String(item.aggregated_output || '').slice(-400)}`, 160) };
+    if (msg.type === 'item.started' && item.type === 'web_search') return { type: 'tool', name: `Web search · ${short(item.query, 50)}`, id: item.id, args: short(item.query, 50) };
     if (msg.type === 'item.completed' && item.type === 'file_change') {
       const files = (item.changes || []).map((c) => path.basename(c.path || '')).filter(Boolean);
       const changes = (item.changes || []).filter((c) => c.path).slice(0, 20).map((c) => ({ path: c.path, kind: c.kind || 'update' }));
@@ -719,7 +835,69 @@ function friendlyError(engine, message) {
 // The engine has no saved session under that id anymore (cleared, other machine, other version).
 const LOST_SESSION = /no (saved |matching )?(conversation|session|thread|rollout)s? (was )?found|(thread|session|conversation|rollout) (not found|does not exist)|could not (find|resume) (the )?(session|thread|rollout|conversation)|failed to (resume|load) (the )?(session|thread|rollout|conversation)/i;
 
-function send({ agent, chatId, session, text, options = {} }, emit) {
+// (round 21) Streamed pieces are sent on in batches: Claude prints one line per few characters, and each piece was one
+// IPC message + one renderer handler call (≈ 3,500 for a long task); the chat paints every 60 ms anyway.
+const BATCH_MS = 40;
+function batched(emit) {
+  if (emit.batched) return emit;
+  let held = null;
+  let timer = null;
+  const flush = () => { clearTimeout(timer); timer = null; if (held) { const h = held; held = null; emit(h); } };
+  const fn = (e) => {
+    if (e.type === 'delta' || e.type === 'thinking') {
+      if (held && held.type === e.type) { held.text += e.text; return; }
+      flush();
+      held = { type: e.type, text: e.text };
+      timer = setTimeout(flush, BATCH_MS);
+      return;
+    }
+    flush();
+    emit(e);
+  };
+  fn.batched = true;
+  return fn;
+}
+// What a run is doing when it is quiet (round 21): after QUIET_MS without a line, a pulse every PULSE_MS says whether the
+// process is still there, how busy it and what it started are (CPU %, Mac / Linux), and which tool it is in.
+const QUIET_MS = Number(process.env.HEARTH_QUIET_MS) || 15000;
+const PULSE_MS = Number(process.env.HEARTH_PULSE_MS) || 10000;
+// An engine that exited while a program it started still holds its output open: ended after this long anyway.
+const EXIT_GRACE_MS = 2000;
+// CPU milliseconds used so far by a process and everything under it (null where it can't be read cheaply: Windows).
+async function treeCpuMs(pid) {
+  if (IS_WIN || !pid) return null;
+  try {
+    let rows;
+    if (process.platform === 'linux') {
+      const ids = (await fs.promises.readdir('/proc')).filter((d) => /^\d+$/.test(d));
+      rows = (await Promise.all(ids.map((id) => fs.promises.readFile(`/proc/${id}/stat`, 'utf8').catch(() => null)))).filter(Boolean).map((s) => {
+        const f = s.slice(s.lastIndexOf(')') + 2).split(' '); // fields after the command name: state ppid … utime(12) stime(13)
+        return { pid: Number(s.slice(0, s.indexOf(' '))), ppid: Number(f[1]), ms: (Number(f[11]) + Number(f[12])) * 10 };
+      });
+    } else {
+      const outp = await new Promise((resolve) => require('child_process').execFile('ps', ['-A', '-o', 'pid=,ppid=,time='], { timeout: 3000 }, (err, so) => resolve(err ? '' : so)));
+      rows = outp.trim().split('\n').map((l) => {
+        const [p, pp, t] = l.trim().split(/\s+/);
+        const parts = String(t || '').replace(/^(\d+)-/, (m, d) => `${d * 24}:`).split(':').map(Number);
+        const secs = parts.reduce((a, v) => a * 60 + v, 0);
+        return { pid: Number(p), ppid: Number(pp), ms: secs * 1000 };
+      });
+    }
+    const kids = new Map();
+    for (const r of rows) { if (!kids.has(r.ppid)) kids.set(r.ppid, []); kids.get(r.ppid).push(r); }
+    let ms = 0; let found = false;
+    const walk = (id, depth) => { for (const r of kids.get(id) || []) { ms += r.ms || 0; if (depth < 6) walk(r.pid, depth + 1); } };
+    const self = rows.find((r) => r.pid === pid);
+    if (self) { found = true; ms += self.ms || 0; walk(pid, 0); }
+    return found ? ms : null;
+  } catch { return null; }
+}
+const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
+
+// live(event): what a run is doing (step / agent / pulse / status), on its own channel so the turns that only want
+// the reply (jams, collaborations, once()) never see it.
+function send({ agent, chatId, session, text, options = {} }, emit, live = null) {
+  emit = batched(emit);
   // a chat with its own engine (a comp part on Astra while its director runs on Claude, or the reverse): the same
   // agent on that engine, with its tools (Astra directors get the hub servers through -c), the twin's model / effort
   if (options.engine && options.engine !== agent.engine && ENGINES[options.engine]) agent = { ...agent, engine: options.engine, model: undefined, effort: undefined, ...(options.engine === 'codex' ? { hubTools: true } : {}) };
@@ -767,12 +945,32 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
 
   let finished = false;
   let streamed = false;
-  let buffer = '';
+  let parts = []; // (round 21) the line still arriving, in pieces (joined once, when its newline comes)
+  let partLen = 0;
+  let skipping = false; // inside an oversized line: dropped up to its newline
   const startedAt = Date.now();
   let toolCount = 0; // tool calls in this reply (token meter)
   let stderr = '';
   let idle = null;
+  let lastAt = Date.now(); // the last line / output from the engine
+  const open = new Map(); // tool calls without a result yet: id -> { name, args, at }
+  let cpu0 = null; // { ms, at }: the last CPU sample while quiet
+  const pulse = async () => {
+    if (finished) return;
+    const quiet = Date.now() - lastAt;
+    if (quiet < QUIET_MS) { cpu0 = null; return; }
+    const alive = child.exitCode === null && child.signalCode === null && pidAlive(child.pid);
+    const ms = alive ? await treeCpuMs(child.pid) : null;
+    const now = Date.now();
+    const cpu = ms != null && cpu0 ? Math.max(0, Math.round(((ms - cpu0.ms) / Math.max(1, now - cpu0.at)) * 100)) : null;
+    cpu0 = ms != null ? { ms, at: now } : null;
+    if (finished) return;
+    const t = [...open.values()].at(-1);
+    live?.({ type: 'pulse', quietMs: now - lastAt, alive, cpu, ...(t ? { tool: t.name, args: t.args, toolMs: now - t.at } : {}) });
+  };
+  const pulses = setInterval(() => { pulse().catch(() => {}); }, PULSE_MS);
   const touch = () => {
+    lastAt = Date.now();
     clearTimeout(idle);
     idle = setTimeout(() => { child.hubIdle = true; log(`${engine} ${chatId} idle for ${IDLE_MS / 60000} min, stopping`); kill(child); }, IDLE_MS);
   };
@@ -781,13 +979,14 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
     if (finished) return;
     finished = true;
     clearTimeout(idle);
+    clearInterval(pulses);
     // A chat whose engine session is gone continues in a fresh one, with the conversation sent as context.
     if (event.type === 'error' && session.id && !streamed && options.fallbackText && LOST_SESSION.test(`${event.message}\n${stderr}`)) {
       log(`${engine} ${chatId} session ${session.id} lost, starting fresh with context`);
       if (running.get(chatId) === child) running.delete(chatId);
       try { child.kill(); } catch { /* already gone */ }
       emit({ type: 'thinking', text: `⚠ The earlier ${ENGINES[engine].label} session couldn't be resumed, so this continues in a new one with the conversation as context.\n\n` });
-      send({ agent, chatId, session: {}, text: options.fallbackText, options: { ...options, fallbackText: undefined, persona: undefined, lean: undefined } }, emit);
+      send({ agent, chatId, session: {}, text: options.fallbackText, options: { ...options, fallbackText: undefined, persona: undefined, lean: undefined } }, emit, live);
       return;
     }
     // An older / newer Claude Code that doesn't know an optional flag: run again without it.
@@ -796,7 +995,7 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
       log(`claude doesn't know ${flag}, retrying without it`);
       rememberDropped(flag);
       if (running.get(chatId) === child) running.delete(chatId);
-      send({ agent, chatId, session, text: original, options }, emit);
+      send({ agent, chatId, session, text: original, options }, emit, live);
       return;
     }
     if (heal(event)) return;
@@ -809,7 +1008,7 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
     if (running.get(chatId) === child) running.delete(chatId);
     if (child.exitCode === null && child.signalCode === null) { child.hubStopped = true; try { kill(child); } catch { /* gone */ } }
     if (note) emit({ type: 'thinking', text: `⚠ ${note}\n\n` });
-    send({ agent, chatId, session, text: original, options: { ...options, ...extra } }, emit);
+    send({ agent, chatId, session, text: original, options: { ...options, ...extra } }, emit, live);
   };
   const heal = (event) => {
     const why = `${event.message || ''}\n${stderr}`;
@@ -828,7 +1027,7 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
       log(`${engine} ${chatId} network problem, retrying in 3 s`);
       if (running.get(chatId) === child) running.delete(chatId);
       emit({ type: 'thinking', text: '⚠ The connection dropped; trying again in 3 s…\n\n' });
-      const wait = { retryTimer: setTimeout(() => { if (running.get(chatId) !== wait) return; running.delete(chatId); send({ agent, chatId, session, text: original, options: { ...options, _netRetry: true } }, emit); }, 3000), onStop: () => emit({ type: 'stopped', session: state }) };
+      const wait = { retryTimer: setTimeout(() => { if (running.get(chatId) !== wait) return; running.delete(chatId); send({ agent, chatId, session, text: original, options: { ...options, _netRetry: true } }, emit, live); }, 3000), onStop: () => emit({ type: 'stopped', session: state }) };
       running.set(chatId, wait);
       return true;
     }
@@ -840,7 +1039,7 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
         if (r.chosen && r.chosen !== bin && Installs.meetsMin(engine, r.semver) !== false) {
           log(`${engine} ${chatId} ${bin} too old, continuing with ${r.chosen} (${r.version})`);
           emit({ type: 'thinking', text: `⚠ This ${ENGINES[engine].label} is too old for the model; continuing with the newer copy Hearth found (${r.version}).\n\n` });
-          send({ agent, chatId, session, text: original, options: { ...options, _newerRetry: true, _bin: r.chosen } }, emit);
+          send({ agent, chatId, session, text: original, options: { ...options, _newerRetry: true, _bin: r.chosen } }, emit, live);
         } else {
           Object.assign(event, friendlyError(engine, event.message));
           emit({ ...event, session: state });
@@ -850,42 +1049,80 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
     }
     return false;
   };
+  const handleOne = (event) => {
+    if (!event) return;
+    if (event.type === 'tool' || (event.type === 'agent' && event.status === 'running')) toolCount += 1;
+    if (event.type === 'tool' && event.id) open.set(event.id, { name: event.name, args: event.args || '', at: Date.now() });
+    if (event.type === 'agent' && event.status === 'running' && !open.has(event.id)) open.set(event.id, { name: `agent · ${event.description || 'subagent'}`, args: '', at: Date.now() });
+    if ((event.type === 'step' || event.type === 'agent') && event.status !== 'running') open.delete(event.id);
+    if (LIVE_EVENTS.has(event.type)) { if (!finished) live?.(event); return; }
+    if (STREAM_EVENTS.has(event.type)) { if (event.type === 'delta') streamed = true; if (!finished) emit(event); } else finish(event);
+  };
   const handleLine = (raw) => {
     const line = raw.trim();
     if (!line.startsWith('{')) return;
     let event;
-    try { event = parse(JSON.parse(line)); } catch { return; }
-    if (!event) return;
-    if (event.type === 'tool') toolCount += 1;
-    if (STREAM_EVENTS.has(event.type)) { if (event.type === 'delta') streamed = true; if (!finished) emit(event); } else finish(event);
+    try { event = parse(line.length > BIG_LINE ? (lightParse(line) || JSON.parse(line)) : JSON.parse(line)); } catch { return; }
+    if (Array.isArray(event)) event.forEach(handleOne); else handleOne(event);
   };
 
+  // (round 21) lines are found by looking for the newline in each new piece only (a 24 MB line arriving in 64 KB pieces
+  // was searched from its start every time, and copied: ≈ 0.7 s of blocked main process), and bytes are decoded as
+  // UTF-8 across pieces (a character split between two pieces came out garbled)
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
   child.stdout.on('data', (chunk) => {
     touch();
-    buffer += chunk;
+    let from = 0;
     let nl;
-    while ((nl = buffer.indexOf('\n')) >= 0) {
-      const line = buffer.slice(0, nl);
-      buffer = buffer.slice(nl + 1);
+    while ((nl = chunk.indexOf('\n', from)) >= 0) {
+      const piece = chunk.slice(from, nl);
+      from = nl + 1;
+      if (skipping) { skipping = false; continue; }
+      const line = parts.length ? parts.join('') + piece : piece;
+      parts = []; partLen = 0;
       handleLine(line);
     }
-    if (buffer.length > MAX_LINE) { log(`${engine} ${chatId} dropped an oversized line (${buffer.length} bytes)`); buffer = ''; }
+    if (from < chunk.length && !skipping) {
+      parts.push(from ? chunk.slice(from) : chunk);
+      partLen += chunk.length - from;
+      if (partLen > MAX_LINE) { log(`${engine} ${chatId} dropped an oversized line (${partLen} bytes)`); parts = []; partLen = 0; skipping = true; }
+    }
   });
   child.stderr.on('data', (chunk) => { touch(); stderr = (stderr + chunk).slice(-4000); });
   child.on('error', (err) => finish({ type: 'error', message: err.message }));
-  child.on('close', (code, signal) => {
+  let ended = false;
+  const end = (code, signal) => {
+    if (ended) return;
+    ended = true;
+    clearInterval(pulses);
     if (running.get(chatId) === child) running.delete(chatId);
     const mcpFile = engine === 'claude' && args[args.indexOf('--mcp-config') + 1];
     if (args.includes('--mcp-config') && mcpFile) fs.rm(mcpFile, { force: true }, () => {});
-    if (buffer.trim()) { handleLine(buffer); buffer = ''; } // the last line may come without a newline
+    if (parts.length && !skipping) { const last = parts.join(''); parts = []; handleLine(last); } // the last line may come without a newline
     log(`${engine} ${chatId} exit=${code} signal=${signal} finished=${finished} stderr=${JSON.stringify(stderr.slice(-400))}`);
     if (child.hubIdle) finish({ type: 'error', message: `${ENGINES[engine].label} printed nothing for ${IDLE_MS / 60000} minutes, so Hearth stopped it. Press Retry.` });
-    else if (code === null || child.hubStopped) finish({ type: 'stopped' });
+    else if (child.hubStopped) finish({ type: 'stopped' });
+    // (round 21) killed from outside (out of memory, a force quit…): it was shown as "stopped", as if you had pressed Stop
+    else if (code === null) finish({ type: 'error', message: `${ENGINES[engine].label} stopped unexpectedly (${signal || 'killed'}): out of memory, or something closed it. What it wrote so far is kept. Press Retry, or ask it to continue.` });
     else finish({ type: 'error', message: lastErrorLine(stderr) || `${ENGINES[engine].label} exited (${code})` });
+  };
+  child.on('close', end);
+  // (round 21) a program the engine started (a tool, a server) can keep its output open after the engine itself exited:
+  // 'close' then never came and the reply waited forever. The exit ends it after a short grace for the last lines.
+  child.on('exit', (code, signal) => {
+    setTimeout(() => {
+      if (ended) return;
+      log(`${engine} ${chatId} exited but its output stayed open (a child process holds it): ending the reply`);
+      try { child.stdout.destroy(); child.stderr.destroy(); } catch { /* gone */ }
+      end(code, signal);
+    }, EXIT_GRACE_MS).unref?.();
   });
 }
 // Events that stream into the live reply (everything else ends it).
 const STREAM_EVENTS = new Set(['delta', 'tool', 'thinking', 'progress']);
+// (round 21) What a run is doing, sent to live() (main.js: the engine:live channel), never to the reply's emit.
+const LIVE_EVENTS = new Set(['step', 'agent', 'pulse', 'status']);
 // The most telling stderr line: an "Error:" line when there is one, else the last line.
 // A line ending in ":" ("Error: Invalid MCP configuration:") keeps the lines after it, where the reason is.
 function lastErrorLine(stderr) {
@@ -1124,7 +1361,7 @@ module.exports = {
   send, stop, stopAll, login, status, checkInstalls, checkEngine, fix, onInstalls, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
   doctor, EFFORTS, CODEX_DISABLED_FEATURES,
   // for tests (dev/astra-engine-test.js)
-  _test: { lastErrorLine, codexArgs, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION },
+  _test: { lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION },
   buildPrompt, HUB_TOOLSETS, // the director cost report (mcp/cost.js)
   busy: () => running.size, // (round 16) replies running now: background work (sync) waits a little longer meanwhile
 };

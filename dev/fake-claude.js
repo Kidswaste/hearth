@@ -34,6 +34,8 @@ const F = require('./fake-common');
   if (F.trip('claude-network', sw.claudeNetwork)) { process.stderr.write('Error: getaddrinfo ENOTFOUND api.anthropic.com\n'); process.exit(1); }
   const tools = (arg('--allowedTools') || '').split(',').filter(Boolean);
   F.out({ type: 'system', subtype: 'init', session_id: sessionId, model, tools: ['Read', ...tools], mcp_servers: [], cwd: process.cwd() });
+  // (round 21) long-task scenarios: subagents, marathons, huge results, silences, a dead process (dev/fake-liveness.js)
+  if (await require('./fake-liveness').claude(prompt, sessionId)) return;
   const { p, thinking } = F.plan(prompt, 'claude');
   let { text } = F.plan(prompt, 'claude');
   const state = F.loadState(`claude-${sessionId}`);

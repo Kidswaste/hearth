@@ -52,6 +52,7 @@ contextBridge.exposeInMainWorld('hub', {
   ffmpegInstall: call('tools:installFfmpeg'),
   onEngineInstalls: on('engine:installs'),
   onEngineEvent: on('engine:event'),
+  onEngineLive: on('engine:live'), // (round 21) what a running reply is doing (steps, subagents, pulses)
 
   // window & desktop
   showWindow: call('window:show'),
