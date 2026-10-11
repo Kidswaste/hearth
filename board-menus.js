@@ -163,6 +163,8 @@
       { label: 'Contact sheet (6 frames)', action: () => B._.clipSheet(it) },
       { label: 'Open in the system player', action: () => MediaFile.open(it.src) },
       { label: MediaFile.revealLabel, action: () => MediaFile.reveal(it.src) },
+      // (labcut) the clip as footage on the Lab sequence, with its in / out points
+      { label: '▤ Add to the Lab sequence', action: () => (typeof Capture !== 'undefined' ? Capture.addToSequence(it.src, { a: it.vin, b: it.vout }) : Promise.reject(new Error('Capture isn\'t loaded'))).catch((err) => toast(err.message, { type: 'error' })) },
     ];
   }
   // a frame of a clip as a picture (the clip's current time, or its in point)

@@ -37,6 +37,7 @@ const ThreeSeq = (() => {
   };
   const A = typeof SeqArrange !== 'undefined' ? SeqArrange : null;
   const TR = () => (typeof SeqTrans !== 'undefined' ? SeqTrans : null);
+  const X = () => (typeof SeqCut !== 'undefined' ? SeqCut : null); // labcut: framing, sound, captions, looks, outputs
   const listeners = {};
   const emit = (ev, d) => { for (const fn of listeners[ev] || []) { try { fn(d); } catch (err) { console.error(err); } } };
   const lab = () => S.L;
@@ -375,13 +376,18 @@ const ThreeSeq = (() => {
   const shareKey = (ly) => { const nm = String(ly.name || '').trim(); return !nm || /^(main|layer\s*\d*|new layer.*)$/i.test(nm) ? `code:${hashStr(ly.code || '')}` : nm.toLowerCase(); };
   const TITLE_KEYS = ['text', 'style', 'anim', 'out', 'animDur', 'lower', 'x', 'y', 'size', 'color', 'align', 'font', 'weight', 'stroke', 'strokeW', 'shadow', 'glow', 'box', 'upper', 'tracking', 'shape', 'bg', 'fg', 'italic', 'rotate'];
   const titleOf = (x) => Object.fromEntries(TITLE_KEYS.filter((k) => x[k] != null).map((k) => [k, x[k]]));
+  // (labcut) a clip's color look (its own, else the sequence's), as one color matrix for the preview page
+  const lookOfClip = (c, e) => { const gr = c.grade || e.seq?.grade; return gr?.look && typeof EditFX !== 'undefined' ? X()?.lookSpec(EditFX, gr) || null : null; };
   function compile(e0 = S.edit) {
     const e = flat(e0); // nested sequences play what they hold
     const groups = []; const titles = []; const assets = new Set(); const sounds = [];
+    const fmt = D.formatOf(e); const x0 = X();
+    const frameOf = (c, fit) => (x0 ? x0.frameSpec(fit && !c.fit ? { ...c, fit } : c, fmt) : null);
     let slot = 100;
     for (const x of D.timing(e)) {
       const c = x.clip;
       const g = { id: c.id, main: true, start: r4(x.start), end: r4(x.end), td: r4(x.td || 0), trans: c.trans?.type || null, z: 100 + x.i * 20 };
+      const lk = lookOfClip(c, e); if (lk) g.look = lk;
       if (c.off) continue;
       if (c.kind === 'scene') {
         const layers = sceneLayers(c, x, slot);
@@ -389,24 +395,28 @@ const ThreeSeq = (() => {
         const rate = c.speed > 0 ? c.speed : 1;
         if (layers) groups.push({ ...g, kind: 'scene', t0: r4(x.start - (c.in || 0) / rate), ...(rate !== 1 ? { rate } : {}), layers });
         else groups.push({ ...g, kind: 'card', card: { text: `Missing scene “${c.name}”`, style: 'bold', bg: '#200810' } });
-      } else if (c.kind === 'video') { groups.push({ ...g, kind: 'footage', asset: c.src, a: c.reverse ? c.out : c.in, speed: c.speed || 1, mute: c.mute !== false, volume: c.volume ?? 1, fps: S.probes.get(c.src)?.fps || 30, fit: c.fit || 'cover' }); assets.add(c.src); }
+      } else if (c.kind === 'video') { groups.push({ ...g, kind: 'footage', asset: c.src, a: c.reverse ? c.out : c.in, speed: c.speed || 1, mute: c.mute !== false, volume: c.volume ?? 1, fadeIn: c.fadeIn || 0, fadeOut: c.fadeOut || 0, fps: S.probes.get(c.src)?.fps || 30, fit: c.fit || 'cover', frame: frameOf(c) }); assets.add(c.src); }
       else if (c.kind === 'title') groups.push({ ...g, kind: 'card', card: { ...titleOf(c), bg: c.bg || '#000000' } });
       else if (c.kind === 'color') groups.push({ ...g, kind: 'color', card: { fill: c.fill || '#000000' } });
-      else if (c.kind === 'image') { groups.push({ ...g, kind: 'image', asset: c.src, fit: c.fit || 'cover' }); assets.add(c.src); }
+      else if (c.kind === 'image') { groups.push({ ...g, kind: 'image', asset: c.src, fit: c.fit || 'cover', frame: frameOf(c) }); assets.add(c.src); }
     }
     (e.tracks || []).filter((k) => k.type === 'video' && !k.hide).forEach((k, ti) => k.items.forEach((it, j) => {
       if (it.off) return;
       const g = { id: it.id, main: false, start: r4(it.start), end: r4(C.itemEnd(it)), td: 0, z: 10000 + ti * 1000 + j * 20 };
       if (it.kind === 'layer') { const p = prepLayer({ code: it.code, keys: it.keys }, slot, { t0: it.start }); slot += 1; groups.push({ ...g, kind: 'scene', t0: g.start, layers: [{ id: `${it.id}~o`, code: p.code, values: p.values, props: { name: it.name || 'Overlay', opacity: it.opacity ?? 1, blend: it.blend || 'normal', keys: p.keys, sliderKeys: p.sliderKeys } }] }); }
-      else if (it.kind === 'video') { groups.push({ ...g, kind: 'footage', asset: it.src, a: it.in, speed: it.speed || 1, mute: it.mute !== false, fps: S.probes.get(it.src)?.fps || 30, fit: 'contain' }); assets.add(it.src); }
-      else if (it.kind === 'image') { groups.push({ ...g, kind: 'image', asset: it.src, fit: 'contain' }); assets.add(it.src); }
+      else if (it.kind === 'video') { groups.push({ ...g, kind: 'footage', asset: it.src, a: it.in, speed: it.speed || 1, mute: it.mute !== false, volume: it.volume ?? 1, fadeIn: it.fadeIn || 0, fadeOut: it.fadeOut || 0, fps: S.probes.get(it.src)?.fps || 30, fit: it.fit || 'contain', frame: frameOf(it, 'contain') }); assets.add(it.src); }
+      else if (it.kind === 'image') { groups.push({ ...g, kind: 'image', asset: it.src, fit: it.fit || 'contain', frame: frameOf({ motion: 'none', ...it }, 'contain') }); assets.add(it.src); }
+      const lk = it.kind === 'layer' ? null : lookOfClip(it, { seq: {} }); if (lk) groups[groups.length - 1].look = lk;
     }));
     for (const k of (e.tracks || []).filter((x) => x.type === 'text' && !x.hide)) for (const it of k.items) if (!it.off) titles.push({ id: it.id, start: r4(it.start), end: r4(C.itemEnd(it)), item: titleOf(it) });
     const s = D.songOf(e);
-    const song = s ? { offset: r4(s.start - s.in), start: r4(s.start), end: r4(s.start + (s.out - s.in) / (s.speed || 1)), src: s.src } : null;
-    // the other sound clips play in the preview too (and in the real-time recording)
-    for (const k of (e.tracks || []).filter((x) => x.type === 'audio' && !x.mute)) for (const it of k.items) if (!it.song && !it.off && it.src) { sounds.push({ id: it.id, asset: it.src, start: r4(it.start), end: r4(C.itemEnd(it)), a: r4(it.in || 0), volume: it.volume ?? 1, speed: it.speed || 1 }); assets.add(it.src); }
-    return { plan: { fps: e.seq?.fps || 30, w: e.seq?.w || 1080, h: e.seq?.h || 1920, dur: r4(programEnd(e)), song, groups, titles, sounds }, assets: [...assets] };
+    const song = s ? { offset: r4(s.start - s.in), start: r4(s.start), end: r4(s.start + (s.out - s.in) / (s.speed || 1)), src: s.src, volume: s.volume ?? 1, fadeIn: s.fadeIn || 0, fadeOut: s.fadeOut || 0 } : null;
+    // the other sound clips play in the preview too (and in the real-time recording); a voice track's clips aren't ducked
+    for (const k of (e.tracks || []).filter((x) => x.type === 'audio' && !x.mute)) for (const it of k.items) if (!it.song && !it.off && it.src) { sounds.push({ id: it.id, asset: it.src, start: r4(it.start), end: r4(C.itemEnd(it)), a: r4(it.in || 0), volume: it.volume ?? 1, speed: it.speed || 1, fadeIn: it.fadeIn || 0, fadeOut: it.fadeOut || 0, ...(x0?.isVoice(k) ? { voice: true } : {}) }); assets.add(it.src); }
+    // (labcut) the music ducks under the voice (the song, sounds, footage sound; ⋯ → Sound › Ducking)
+    const ranges = x0 && e.seq?.duck !== false ? x0.voiceRanges(e, C.itemEnd) : [];
+    const duck = ranges.length ? { ranges, amount: e.seq?.duckAmt ?? x0.DEFAULT_DUCK } : null;
+    return { plan: { fps: e.seq?.fps || 30, w: e.seq?.w || 1080, h: e.seq?.h || 1920, dur: r4(programEnd(e)), song, groups, titles, sounds, ...(duck ? { duck } : {}) }, assets: [...assets] };
   }
   // the drawing code for titles and transitions, the footage files: sent once per preview page
   const appDir = () => { let p = decodeURIComponent(new URL('.', location.href).pathname); if (/^\/[A-Za-z]:/.test(p)) p = p.slice(1); return p.replace(/[\\/]$/, ''); };
@@ -414,8 +424,8 @@ const ThreeSeq = (() => {
   async function libs() {
     if (libText) return libText;
     const dir = appDir();
-    const [a, b, c] = await Promise.all(['tools/cut-presets.js', 'tools/cut-titles.js', 'tools/three-seq-trans.js'].map((f) => window.hub.fs.read(`${dir}/${f}`)));
-    libText = `${a}\n${b}\n${c}`; // (the Lab transitions add themselves to EditFX in there too)
+    const [a, b, c, d] = await Promise.all(['tools/cut-presets.js', 'tools/cut-titles.js', 'tools/three-seq-trans.js', 'tools/three-seq-cut.js'].map((f) => window.hub.fs.read(`${dir}/${f}`)));
+    libText = `${a}\n${b}\n${c}\n${d}`; // (the Lab transitions add themselves to EditFX in there too; labcut: framing, gains)
     return libText;
   }
   let planSeq = 0;
@@ -738,6 +748,154 @@ const ThreeSeq = (() => {
   function rangeToClip(id = targets()[0]) { const f = id && C.find(S.edit, id); if (!f) return null; const x = f.where === 'clip' ? D.timing(S.edit)[f.i] : { start: f.clip.start, end: C.itemEnd(f.clip) }; return setRange(x.start, x.end); }
   // every gap closes (the clips after each one move up): one step, undoable
   function closeGaps() { const gaps = (S.edit?.clips || []).filter((c) => c.kind === 'gap').map((c) => c.id); if (!gaps.length) { flash('No gaps'); return 0; } commit(D.remove(S.edit, gaps, { ripple: true }), `Closed ${gaps.length} gap${gaps.length > 1 ? 's' : ''}`); return gaps.length; }
+
+  // ---------- labcut (round 18): footage framing, sound, captions, looks, chops, outputs ----------
+  const fmtNow = () => D.formatOf(S.edit);
+  const kindsOf = (ids, ok) => ids.filter((id) => ok(C.find(S.edit, id)?.clip));
+  const framable = (c) => c && (c.kind === 'video' || c.kind === 'image');
+  const hasSound = (c) => c && (c.kind === 'audio' || c.kind === 'video');
+  const gradable = (c) => c && ['scene', 'video', 'image', 'seq', 'title', 'color'].includes(c.kind);
+  function needs(ids, what) { if (!ids.length) { flash(`Select ${what} first`); return false; } return true; }
+  // framing: per output format (frames[fmt]); "every format" keeps one framing (frame / fit) for all
+  function setFrame(spec, ids = targets(), { all = false } = {}) {
+    ids = kindsOf(ids, framable);
+    if (!needs(ids, 'footage or a picture') || !spec) return false;
+    const f0 = fmtNow();
+    return commit(C.patchAny(S.edit, ids, (c) => {
+      if (spec.reset) { if (all) { delete c.frame; delete c.fit; delete c.frames; } else if (c.frames) { delete c.frames[f0]; if (!Object.keys(c.frames).length) delete c.frames; } return; }
+      const { fit, ...pos } = spec;
+      if (all) { if (Object.keys(pos).length) c.frame = { ...(c.frame || {}), ...pos }; if (fit) c.fit = fit; return; }
+      c.frames = { ...(c.frames || {}) };
+      const had = c.frames[f0] || c.frame || {};
+      c.frames[f0] = { ...had, ...pos, ...(fit ? { fit } : {}) };
+      if (!pos.to && (pos.x != null || pos.y != null) && c.frames[f0].to) delete c.frames[f0].to; // a new spot: a still framing
+    }), all ? 'Framing (every format)' : `Framing ${f0}`);
+  }
+  const setFit = (fit, ids = targets()) => setFrame({ fit }, ids);
+  function frameEverywhere(ids = targets()) {
+    const f0 = fmtNow();
+    ids = kindsOf(ids, framable);
+    if (!needs(ids, 'footage or a picture')) return false;
+    return commit(C.patchAny(S.edit, ids, (c) => { const own = c.frames?.[f0]; if (own) { const { fit, ...pos } = own; c.frame = pos; if (fit) c.fit = fit; } delete c.frames; }), 'Same framing in every format');
+  }
+  function setMotion(id, ids = targets()) {
+    ids = kindsOf(ids, framable);
+    if (!needs(ids, 'footage or a picture')) return false;
+    if (id !== 'auto' && !X().MOTION[id]) throw new Error(`Moves: ${X().MOTIONS.map((m) => m.id).join(', ')}, auto`);
+    return commit(C.patchAny(S.edit, ids, (c) => { c.motion = id; }), id === 'none' ? 'No move' : `Move: ${id === 'auto' ? '✦ auto' : X().MOTION[id].name}`);
+  }
+  // sound: volume (a gain: 0.5 = −6 dB), fades in / out (seconds), on footage, sound clips and the song
+  const soundIds = (ids) => kindsOf(ids, hasSound);
+  function setVolume(v, ids = targets()) {
+    const g = typeof v === 'number' ? v : X().parseVolume(v);
+    if (g == null) throw new Error('A volume: 50%, 0.5, -6 dB, mute');
+    ids = soundIds(ids);
+    if (!needs(ids, 'footage or a sound clip')) return false;
+    return commit(C.patchAny(S.edit, ids, (c) => { c.volume = r4(clamp(g, 0, 4)); if (c.kind === 'video' && g > 0) c.mute = false; }), `Volume ${Math.round(g * 100)} % (${X().dbOf(g)})`);
+  }
+  function setFade(edge, secs, ids = targets()) {
+    ids = soundIds(ids);
+    if (!needs(ids, 'footage or a sound clip')) return false;
+    const key = edge === 'in' ? 'fadeIn' : 'fadeOut';
+    const d0 = Number(secs) || 0;
+    return commit(C.patchAny(S.edit, ids, (c) => { c[key] = r4(clamp(d0, 0, C.durOf(c) / 2)); }), d0 > 0 ? `Sound fade ${edge} ${d0} s` : `No fade ${edge}`);
+  }
+  function setDuck(on = S.edit?.seq?.duck === false, amount = null) {
+    const seq = { ...S.edit.seq, duck: Boolean(on) };
+    if (amount != null) seq.duckAmt = clamp(Number(amount), 0.02, 1);
+    commit({ ...S.edit, seq }, on ? `The music ducks under the voice (${X().dbOf(seq.duckAmt ?? X().DEFAULT_DUCK)})` : 'No ducking');
+    return seq.duck;
+  }
+  function muteTrack(trackId, on = null) {
+    const k = (S.edit.tracks || []).find((x) => x.id === trackId);
+    if (!k) return false;
+    const key = k.type === 'audio' ? 'mute' : 'hide';
+    const v = on == null ? !k[key] : Boolean(on);
+    commit({ ...S.edit, tracks: S.edit.tracks.map((x) => (x === k ? { ...x, [key]: v } : x)) }, `${k.name} ${v ? (k.type === 'audio' ? 'muted' : 'hidden') : 'back on'}`);
+    return v;
+  }
+  // color looks (the EditFX looks) on a clip, or on the whole sequence (clips without their own)
+  function setGrade(look, { amt = null, ids = targets(), all = false } = {}) {
+    if (look && !EditFX.LOOK[look]) { const f = EditFX.find(EditFX.LOOKS, look); if (!f) throw new Error(`No look "${look}" (e.g. ${X().LOOK_PICKS.join(', ')})`); look = f.id; }
+    const gr = look ? { look, amt: amt ?? 1 } : null;
+    const name = look ? EditFX.LOOK[look].name : 'No look';
+    if (all) { const seq = { ...S.edit.seq }; if (gr) seq.grade = gr; else delete seq.grade; commit({ ...S.edit, seq }, `Sequence look: ${name}`); return look; }
+    ids = kindsOf(ids, gradable);
+    if (!needs(ids, 'a clip')) return null;
+    commit(C.patchAny(S.edit, ids, (c) => { if (gr) c.grade = gr; else delete c.grade; }), `Look: ${name}`);
+    return look;
+  }
+  function setGradeAmt(amt, ids = targets()) { ids = kindsOf(ids, (c) => c?.grade); if (!needs(ids, 'a clip with a look')) return false; return commit(C.patchAny(S.edit, ids, (c) => { c.grade = { ...c.grade, amt: clamp(Number(amt), 0, 1.5) }; }), `Look strength ${Math.round(amt * 100)} %`); }
+  // ✂ on the music: the clip cut at every bar (2 bars, a beat) of the song
+  function chop(every = 'bar', ids = targets()) {
+    const g = grid();
+    if (!g) { flash('Chopping on the music needs a song with a beat grid'); return 0; }
+    const T0 = D.timing(S.edit);
+    const mains = ids.map((id) => T0.find((x) => x.clip.id === id)).filter((x) => x && x.clip.kind !== 'gap');
+    const times = mains.flatMap((x) => X().chopTimes(g, x.start + x.td, x.end - (T0[x.i + 1]?.td || 0), { every, songStart: songStart() }));
+    if (!times.length) { flash('No bar line inside that clip'); return 0; }
+    let n = S.edit;
+    for (const t of times) n = D.split(n, t);
+    commit(n, `✂ Chopped on every ${every === 'beat' ? 'beat' : typeof every === 'number' ? `${every} bars` : 'bar'} (${times.length} cuts)`);
+    return times.length;
+  }
+  // captions: a Captions track from an .srt / .vtt, or typed lines; a look for all of them; back out as .srt
+  function captionsFromCues(cues, { look = S.edit?.seq?.captionLook || 'clean', offset = 0, replace = true } = {}) {
+    if (!cues.length) throw new Error('No captions in there');
+    let n = S.edit;
+    if (replace) n = { ...n, tracks: (n.tracks || []).map((k) => (k.type === 'text' && /^captions/i.test(k.name) ? { ...k, items: [] } : k)) };
+    for (const q of cues) n = D.addTo(n, 'captions', X().captionItem({ a: q.a + offset, b: q.b + offset, text: q.text }, look));
+    commit(n, `${cues.length} caption${cues.length > 1 ? 's' : ''}`);
+    return cues.length;
+  }
+  async function captionsFile(p, opts = {}) {
+    if (!p) { [p] = (await window.hub.openDialog({ title: 'Captions (.srt or .vtt)', filters: [{ name: 'Captions', extensions: ['srt', 'vtt'] }] })) || []; if (!p) return 0; }
+    const text = await window.hub.fs.read(p);
+    return captionsFromCues(X().parseSubs(text), opts);
+  }
+  function captionsTyped(text, { each = null, look } = {}) {
+    const rg = rangeOf(); const g = grid();
+    const start = rg ? rg.a : S.T >= total() - 1e-3 ? 0 : S.T;
+    const cues = X().typedCues(text, rg ? { start: rg.a, end: rg.b } : { start, each: each || (g ? D.barLen(g) : 2) });
+    return captionsFromCues(cues, { ...(look ? { look } : {}), replace: false });
+  }
+  function captionLook(look) {
+    if (!X().CAPTION_LOOK[look]) throw new Error(`Caption looks: ${X().CAPTION_LOOKS.map((l) => l.id).join(', ')}`);
+    const L = X().CAPTION_LOOK[look];
+    const n = { ...S.edit, seq: { ...S.edit.seq, captionLook: look }, tracks: (S.edit.tracks || []).map((k) => (k.type === 'text' && /^captions/i.test(k.name) ? { ...k, items: k.items.map((x) => ({ ...x, style: L.style, anim: L.anim, caption: L.id })) } : k)) };
+    commit(n, `Captions: ${L.name}`);
+    return look;
+  }
+  async function exportCaptions() {
+    const cues = captionCues(S.edit);
+    if (!cues.length) throw new Error('No captions yet (⋯ → Text & captions)');
+    const p = await uniqueOut(await outDir(), `${(S.edit.seq?.name || S.key.slice(4)).replace(/[\\/:*?"<>|]+/g, '_')} captions`, 'srt');
+    await window.hub.fs.write(p, X().toSRT(cues));
+    toast(`Captions saved: ${base(p)}`, { timeout: 4000, action: { label: 'Show', fn: () => window.hub.fs.reveal(p) } });
+    return p;
+  }
+  function addLower(text, { preset = 'forge', at = S.T, dur = null } = {}) {
+    if (!EditFX.LTHIRD[preset]) { const f = EditFX.find(EditFX.LOWER_THIRDS, preset); if (!f) throw new Error(`Lower thirds: ${EditFX.LOWER_THIRDS.slice(0, 8).map((l) => l.id).join(', ')}…`); preset = f.id; }
+    const g = grid();
+    const n = D.addTo(S.edit, 'titles', X().lowerThird(text, { preset, at, dur: dur || (g ? 2 * D.barLen(g) : 4) }));
+    commit(n, `＋ Lower third (${EditFX.LTHIRD[preset].name})`);
+    select(n.lastItem);
+    return n.lastItem;
+  }
+  // outputs: one sequence, several formats; ⇪ renders them one after the other (the render queue shows each)
+  const outputsOf = (e = S.edit) => (e?.seq?.outputs?.length ? e.seq.outputs.filter((f) => D.FORMATS[f]) : [D.formatOf(e)]);
+  function setOutputs(list) {
+    const fs = [...new Set([].concat(list || []).filter((f) => D.FORMATS[f]))];
+    if (!fs.length) throw new Error('Formats: 9:16, 1:1, 16:9, 4:5 (or socials, all)');
+    commit({ ...S.edit, seq: { ...S.edit.seq, outputs: fs } }, `Outputs: ${fs.join(' · ')}`);
+    return fs;
+  }
+  async function renderOutputs(opts = {}) {
+    const last = store.get('three.seq.renderOpts', {});
+    const out = [];
+    for (const f of outputsOf()) out.push(await render({ format: f, fps: last.fps || null, crf: QUALITY[last.quality]?.crf || 18, sound: last.sound !== false, ...opts }));
+    return out;
+  }
   // go to a clip (by number, "Titles.2" or name): selected, the playhead at its start
   function goClip(ref) {
     const id = D.resolve(S.edit, ref); if (!id) return null;
@@ -765,14 +923,16 @@ const ThreeSeq = (() => {
     }
     if (what.path) {
       const p = what.path;
-      if (VID.test(p)) { const d = await durationOf(p); await probe(p); n = D.addFootage(n, p, { duration: d, at, index, grid: g, trans, gap, mute: Boolean(songItem()) }); if (len) n = D.setDur(n, n.lastClip, len); commit(n, `＋ ${base(p)}`); select(n.lastClip); return n.lastClip; }
+      // (labcut) footage keeps an in / out it came with (a board clip's), captions files make the Captions track
+      if (VID.test(p)) { const d = await durationOf(p); await probe(p); const a0 = Number(what.a) > 0 ? Math.min(Number(what.a), Math.max(0, d - 0.1)) : 0; const b0 = Number(what.b) > a0 ? Math.min(Number(what.b), d) : null; n = D.addFootage(n, p, { duration: d, a: a0, ...(b0 ? { b: b0 } : {}), at, index, grid: g, trans, gap, mute: Boolean(songItem()) }); if (len) n = D.setDur(n, n.lastClip, len); commit(n, `＋ ${base(p)}`); select(n.lastClip); return n.lastClip; }
       if (AUD.test(p)) {
         const d = await durationOf(p);
-        if (!songItem() || what.song) { n = D.setSong(n, p, d); commit(n, `♪ ${base(p)}`); await ensureSong(); return 'song'; }
-        n = D.addAudio(n, p, d, { at: at ?? S.T }); commit(n, `＋ ${base(p)}`); return n.lastItem;
+        if (!what.role && (!songItem() || what.song)) { n = D.setSong(n, p, d); commit(n, `♪ ${base(p)}`); await ensureSong(); return 'song'; }
+        n = D.addAudio(n, p, d, { at: at ?? S.T, role: what.role || 'sound' }); commit(n, `＋ ${what.role === 'voice' ? '🎙 ' : what.role === 'sfx' ? '✸ ' : ''}${base(p)}`); select(n.lastItem); return n.lastItem;
       }
-      if (IMG.test(p)) { const it = { kind: 'image', src: p, dur: len || 2, mute: true }; n = D.place(n, { ...it, id: C.uid(), speed: 1, fadeIn: 0, fadeOut: 0 }, { at, index, grid: g, trans }); commit(n, `＋ ${base(p)}`); return null; }
-      throw new Error(`${base(p)}: a video, a picture or a sound file`);
+      if (/\.(srt|vtt)$/i.test(p)) { await captionsFile(p); return 'captions'; }
+      if (IMG.test(p)) { const id = C.uid(); const it = { kind: 'image', src: p, dur: len || 2, mute: true }; n = D.place(n, { ...it, id, speed: 1, fadeIn: 0, fadeOut: 0 }, { at, index, grid: g, trans }); commit(n, `＋ ${base(p)}`); select(id); return id; }
+      throw new Error(`${base(p)}: a video, a picture, a sound or a captions file`);
     }
     if (what.text != null) { n = D.addTitle(n, what.text, { at: at ?? S.T, dur: len || 2.5, style: what.style || 'bold', anim: what.anim || 'fade-up' }); commit(n, '＋ Title'); select(n.lastItem); return n.lastItem; }
     if (what.overlay) { n = D.addOverlay(n, what.overlay, { at: at ?? S.T, dur: len || Math.max(1, (total() || 4) - (at ?? S.T)) }); commit(n, `＋ ${what.overlay.name}`); select(n.lastItem); return n.lastItem; }
@@ -1010,12 +1170,17 @@ const ThreeSeq = (() => {
   function audioPlan(e0, dur, from = 0) {
     const e = flat(e0);
     const parts = [];
-    for (const k of (e.tracks || []).filter((x) => x.type === 'audio' && !x.mute)) for (const it of k.items) if (it.src && !it.off) parts.push({ src: it.src, at: it.start, a: it.in, len: (it.out - it.in) / (it.speed || 1), volume: it.volume ?? 1 });
-    for (const x of D.timing(e)) { const c = x.clip; if (c.kind === 'video' && !c.mute && !c.off) parts.push({ src: c.src, at: x.start, a: c.in, len: x.end - x.start, volume: c.volume ?? 1, speed: c.speed || 1 }); }
-    // (from: a range render starts there: what began before it is cut to it, the rest moves up)
-    if (from > 0) for (const p of parts) { if (p.at < from) { const cut = from - p.at; p.a += cut * (p.speed || 1); p.len -= cut; p.at = 0; } else p.at -= from; }
+    // (labcut) each part's fades, and whether it's the voice (the rest ducks under it)
+    const voice = (k) => Boolean(X()?.isVoice(k));
+    for (const k of (e.tracks || []).filter((x) => x.type === 'audio' && !x.mute)) for (const it of k.items) if (it.src && !it.off) parts.push({ src: it.src, at: it.start, a: it.in, len: (it.out - it.in) / (it.speed || 1), volume: it.volume ?? 1, speed: it.speed || 1, fadeIn: it.fadeIn || 0, fadeOut: it.fadeOut || 0, voice: voice(k) });
+    for (const x of D.timing(e)) { const c = x.clip; if (c.kind === 'video' && !c.mute && !c.off) parts.push({ src: c.src, at: x.start, a: c.in, len: x.end - x.start, volume: c.volume ?? 1, speed: c.speed || 1, fadeIn: c.fadeIn || 0, fadeOut: c.fadeOut || 0 }); }
+    for (const k of (e.tracks || []).filter((x) => x.type === 'video' && !x.hide)) for (const it of k.items) if (it.kind === 'video' && it.mute === false && !it.off) parts.push({ src: it.src, at: it.start, a: it.in, len: C.itemEnd(it) - it.start, volume: it.volume ?? 1, speed: it.speed || 1, fadeIn: it.fadeIn || 0, fadeOut: it.fadeOut || 0 });
+    // (from: a range render starts there: what began before it is cut to it, the rest moves up; a fade in that was
+    // cut off goes)
+    if (from > 0) for (const p of parts) { if (p.at < from) { const cut = from - p.at; p.a += cut * (p.speed || 1); p.len -= cut; p.at = 0; p.fadeIn = 0; } else p.at -= from; }
     return parts.filter((p) => p.at < dur - from && p.len > 0.01);
   }
+  const duckOf = (e0) => { const e = flat(e0); const x0 = X(); if (!x0 || e.seq?.duck === false) return null; const ranges = x0.voiceRanges(e, C.itemEnd); return ranges.length ? { ranges, amount: e.seq?.duckAmt ?? x0.DEFAULT_DUCK } : null; };
   async function ffmpegOf() { try { const t = await window.hub.video.tools({ ffmpeg: H.settings().ffmpegPath || undefined }); return t?.ffmpeg ? t : null; } catch { return null; } }
   async function outDir() {
     try { const d = await window.hub.capture.dir(); if (d?.dir) return `${d.dir}${d.dir.includes('\\') ? '\\' : '/'}made`; } catch { /* below */ }
@@ -1099,13 +1264,18 @@ const ThreeSeq = (() => {
         const args = ['-y', '-framerate', String(F), '-i', `${tmp}/frame_%05d.jpg`];
         parts.forEach((p) => args.push('-i', p.src));
         if (parts.length) {
-          const chains = parts.map((p, i) => `[${i + 1}:a]atrim=start=${p.a.toFixed(4)}:duration=${(p.len * (p.speed || 1)).toFixed(4)},asetpts=PTS-STARTPTS${p.speed && p.speed !== 1 ? `,atempo=${clamp(p.speed, 0.5, 2)}` : ''},volume=${p.volume.toFixed(3)},adelay=${Math.round(p.at * 1000)}|${Math.round(p.at * 1000)}[a${i}]`);
+          // (labcut) fades per part, and the music ducking under the voice (the same envelope as the preview's)
+          const dk = sound ? duckOf(re) : null;
+          const duckF = dk ? X().ffDuck(dk.ranges, dk.amount, N0 / F) : null;
+          const chains = parts.map((p, i) => `[${i + 1}:a]atrim=start=${p.a.toFixed(4)}:duration=${(p.len * (p.speed || 1)).toFixed(4)},asetpts=PTS-STARTPTS${p.speed && p.speed !== 1 ? `,atempo=${clamp(p.speed, 0.5, 2)}` : ''},volume=${p.volume.toFixed(3)}${(X()?.ffFades(p) || []).map((f) => `,${f}`).join('')},adelay=${Math.round(p.at * 1000)}|${Math.round(p.at * 1000)}${duckF && !p.voice ? `,${duckF}` : ''}[a${i}]`);
           args.push('-filter_complex', `${chains.join(';')};${parts.map((_, i) => `[a${i}]`).join('')}amix=inputs=${parts.length}:normalize=0:duration=longest[aout]`, '-map', '0:v', '-map', '[aout]', '-c:a', 'aac', '-b:a', '192k');
         } else args.push('-map', '0:v');
         args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', String(Math.max(10, Math.min(30, Number(crf) || 18))), '-pix_fmt', 'yuv420p', '-r', String(F), '-t', (N / F).toFixed(4), '-movflags', '+faststart', 'OUTPUT');
         say('Rendering the sequence… muxing the sound');
         await runJob({ id: `seq${Date.now().toString(36)}`, input: `${tmp}/frame_00000.jpg`, output, args, duration: N / F, onProgress: (p) => onProgress?.(0.85 + p * 0.15) });
       } finally { window.hub.video.rmtemp?.(tmp).catch(() => {}); }
+      // (labcut) the Captions track also as an .srt next to the video (the platforms take it as real captions)
+      await writeCaptions(re, output, R).catch(() => null);
       const secs = Math.round((performance.now() - S.render.t0) / 100) / 10;
       if (!quiet && !rq?.notifies) toast(`Rendered ${base(output)} (${N} frames, ${fmt}) in ${secs} s`, { timeout: 6000, action: { label: 'Open', fn: () => openOutput(output) } });
       emit('render', { output, frames: N, format: fmt });
@@ -1122,6 +1292,14 @@ const ThreeSeq = (() => {
       if (wasView) { await ensureSong(); await sendPlan({ force: true }); send({ type: 'seq-seek', T: S.T }); } else { S.view = false; L.bar.classList.remove('seq-on'); refs.view.hidden = true; L.send({ type: 'seq-off' }); const sid = L.sketchId(); const song = sid ? L.scenes.songOf(sid) : null; if (song) await L.player.load(song, { quiet: true }); L.rerun(); }
       redraw();
     }
+  }
+  const captionCues = (e) => (e?.tracks || []).filter((k) => k.type === 'text' && /^captions/i.test(k.name) && !k.hide).flatMap((k) => k.items.filter((x) => !x.off && x.text).map((x) => ({ a: x.start, b: C.itemEnd(x), text: x.text }))).sort((p, q) => p.a - q.a);
+  async function writeCaptions(e, output, range = null) {
+    const cues = captionCues(e);
+    if (!cues.length || !X() || !output) return null;
+    const p = output.replace(/\.[^./\\]+$/, '.srt');
+    await window.hub.fs.write(p, X().toSRT(cues, range ? { from: range.a, to: range.b } : {}));
+    return p;
   }
   async function ensureSongOf(e) { const s = D.songOf(e); const P = lab().player; if (s && P.path !== s.src) await P.load(s.src, { quiet: true }); }
   // the preview page at w × h (an exact frame size reloads the page once)
@@ -1181,9 +1359,24 @@ const ThreeSeq = (() => {
   const refs = {};
   const head = () => refs.head;
   const RULER = 14;
-  const LANES = [{ id: 'titles', h: 15 }, { id: 'overlays', h: 15 }, { id: 'main', h: 42 }, { id: 'sound', h: 15 }];
-  function lanes() { let y = RULER + 2; return LANES.map((l) => { const o = { ...l, y }; y += l.h + 2; return o; }); }
+  const LANES = [{ id: 'titles', h: 15, type: 'text' }, { id: 'overlays', h: 15, type: 'video' }, { id: 'main', h: 42 }, { id: 'sound', h: 15, type: 'audio' }];
+  // (labcut) a lane holds one row per track of its kind (song · voice · sfx; titles · captions), 12 px each once
+  // there are several; the timeline grows to fit them (one height write when the track count changes)
+  const ROW = 12;
+  function lanes() {
+    let y = RULER + 2;
+    return LANES.map((l) => {
+      const ks = l.type ? (S.edit?.tracks || []).filter((k) => k.type === l.type) : [];
+      const rows = ks.length ? ks : [null];
+      const h = rows.length > 1 ? rows.length * ROW : l.h;
+      const o = { ...l, y, h, rows, rowH: rows.length > 1 ? ROW : h };
+      y += h + 2;
+      return o;
+    });
+  }
   const laneAt = (y) => lanes().find((l) => y >= l.y - 1 && y < l.y + l.h + 1) || null;
+  const rowAt = (l, y) => (l?.rows ? l.rows[clamp(Math.floor((y - l.y) / l.rowH), 0, l.rows.length - 1)] : null);
+  const rowLane = (l, k) => { const i = Math.max(0, l.rows.indexOf(k)); return { ...l, y: l.y + i * l.rowH, h: l.rows.length > 1 ? l.rowH - 1 : l.h }; };
   function measure() { if (!refs.cv) return; const r = refs.tl.getBoundingClientRect(); S.size = { w: Math.max(1, r.width), h: Math.max(1, r.height) }; }
   const W = () => S.size?.w || refs.tl?.clientWidth || 600;
   function span() { const D0 = Math.max(4, total() * 1.04 + 0.5); const v = S.vr || { t0: 0, t1: D0 }; return { t0: v.t0, t1: Math.max(v.t0 + 0.5, v.t1) }; }
@@ -1286,12 +1479,22 @@ const ThreeSeq = (() => {
     if (rg) { const a = xOf(rg.a); const b2 = xOf(rg.b); g.fillStyle = 'rgba(255,215,94,0.22)'; g.fillRect(a, 0, b2 - a, RULER); g.fillStyle = 'rgba(255,215,94,0.06)'; g.fillRect(a, RULER, b2 - a, hh - RULER); g.fillStyle = gold; g.fillRect(Math.round(a), 0, 1, RULER); g.fillRect(Math.round(b2), 0, 1, RULER); }
     const Ls = lanes();
     const lane = (id) => Ls.find((l) => l.id === id);
-    for (const l of Ls) { g.fillStyle = 'rgba(255,255,255,0.025)'; g.fillRect(0, l.y, w, l.h); }
+    // (labcut) more tracks than fit: the timeline grows (written only when it changes)
+    const need = Ls[Ls.length - 1].y + Ls[Ls.length - 1].h + 3; const hwant = need > 112 ? `${need}px` : '';
+    if (refs.tl.style.height !== hwant) refs.tl.style.height = hwant;
+    for (const l of Ls) { g.fillStyle = 'rgba(255,255,255,0.025)'; g.fillRect(0, l.y, w, l.h); if (l.rows.length > 1) { g.fillStyle = 'rgba(255,255,255,0.03)'; for (let i = 1; i < l.rows.length; i += 2) g.fillRect(0, l.y + i * l.rowH, w, l.rowH - 1); } }
     if (!e) return;
-    // what each lane takes, faint, where it is still empty
+    // what each lane (each track row) takes, faint, where it is still empty; a muted / hidden track says so
     g.font = '9px system-ui, sans-serif'; g.textBaseline = 'middle'; g.fillStyle = dim;
-    const busy = { titles: (e.tracks || []).some((k) => k.type === 'text' && k.items.length), overlays: (e.tracks || []).some((k) => k.type === 'video' && k.items.length), main: e.clips.length > 0, sound: (e.tracks || []).some((k) => k.type === 'audio' && k.items.length) };
-    for (const l of Ls) if (!busy[l.id] && l.id !== 'main') g.fillText({ titles: 'Titles', overlays: 'Overlays', sound: 'Sound' }[l.id], 6, l.y + l.h / 2 + 0.5);
+    for (const l of Ls) {
+      if (l.id === 'main') continue;
+      l.rows.forEach((k, i) => {
+        const off = k && (k.mute || k.hide);
+        if (k?.items.length && !off) return;
+        const nm = k ? k.name : { titles: 'Titles', overlays: 'Overlays', sound: 'Sound' }[l.id];
+        g.fillText(`${nm}${off ? (k.type === 'audio' ? ' · muted' : ' · hidden') : ''}`, k?.items.length ? Math.max(6, w - 90) : 6, l.y + i * l.rowH + l.rowH / 2 + 0.5);
+      });
+    }
     const drawClip = (c, x0, x1, l, sel, label, color, img) => {
       const x = Math.max(-4, x0); const ww = Math.min(w + 4, x1) - x;
       if (ww < 1) return;
@@ -1310,30 +1513,49 @@ const ThreeSeq = (() => {
     const main = lane('main');
     for (const x of D.timing(e)) {
       const c = x.clip; const x0 = xOf(x.start); const x1 = xOf(x.end);
+      if (x1 < -4 || x0 > w + 4) continue; // (only what's in view)
       if (c.kind === 'gap') { g.strokeStyle = dim; g.setLineDash([3, 3]); g.strokeRect(x0 + 0.5, main.y + 0.5, x1 - x0 - 1, main.h - 1); g.setLineDash([]); continue; }
       const color = c.kind === 'scene' ? `hsl(${hue(c.sketch)} 45% 30%)` : c.kind === 'video' ? 'hsl(205 40% 28%)' : c.kind === 'title' ? 'hsl(40 45% 26%)' : c.kind === 'seq' ? 'hsl(280 30% 26%)' : 'hsl(0 0% 22%)';
       const sp = c.speed && c.speed !== 1 ? ` ${c.speed}×` : '';
-      const label = c.kind === 'scene' ? `${c.name}${c.look ? ` · ${c.look}` : ''}${c.vary ? ' ✦' : ''}${c.vibe ? ' ◐' : ''}${sp}` : c.kind === 'video' ? `🎞 ${base(c.src)}${c.mute ? '' : ' 🔊'}${sp}` : c.kind === 'title' ? `T ${c.text}` : c.kind === 'seq' ? `▤ ${c.name}` : c.kind;
+      const gl = c.grade ? ` ◑ ${EditFX.LOOK[c.grade.look]?.name || c.grade.look}` : ''; // (labcut) its color look, framing, move
+      const fr = (c.frames?.[D.formatOf(e)] || c.frame || c.motion) && (c.kind === 'video' || c.kind === 'image') ? ' ⛶' : '';
+      const label = c.kind === 'scene' ? `${c.name}${c.look ? ` · ${c.look}` : ''}${c.vary ? ' ✦' : ''}${c.vibe ? ' ◐' : ''}${sp}${gl}` : c.kind === 'video' ? `🎞 ${base(c.src)}${c.mute ? '' : ` 🔊${c.volume != null && c.volume !== 1 ? `${Math.round(c.volume * 100)}%` : ''}`}${sp}${fr}${gl}` : c.kind === 'image' ? `▣ ${base(c.src)}${fr}${gl}` : c.kind === 'title' ? `T ${c.text}` : c.kind === 'seq' ? `▤ ${c.name}${gl}` : c.kind;
       drawClip(c, x0, x1, main, S.sel.has(c.id), label, color, poster(c));
       // the transition into it: a bow tie over the overlap
       if (x.td > 0) { const a = xOf(x.start); const b = xOf(x.start + x.td); g.fillStyle = 'rgba(255,215,94,0.28)'; g.beginPath(); g.moveTo(a, main.y); g.lineTo(b, main.y + main.h); g.lineTo(b, main.y); g.lineTo(a, main.y + main.h); g.closePath(); g.fill(); }
     }
     for (const k of e.tracks || []) {
-      const l = k.type === 'text' ? lane('titles') : k.type === 'audio' ? lane('sound') : lane('overlays');
+      const l = rowLane(k.type === 'text' ? lane('titles') : k.type === 'audio' ? lane('sound') : lane('overlays'), k);
+      const voice = X()?.isVoice(k); const caps = k.type === 'text' && /^captions/i.test(k.name); const sfx = k.type === 'audio' && /^sfx/i.test(k.name);
+      if (k.mute || k.hide) g.globalAlpha = 0.4;
       for (const it of k.items) {
         const x0 = xOf(it.start); const x1 = xOf(C.itemEnd(it));
-        const color = it.kind === 'title' ? 'hsl(40 55% 34%)' : it.kind === 'audio' ? (it.song ? 'hsl(150 35% 24%)' : 'hsl(150 30% 20%)') : 'hsl(270 35% 30%)';
-        const label = it.kind === 'title' ? it.text : it.kind === 'audio' ? `${it.song ? '♪ ' : ''}${base(it.src)}` : it.kind === 'layer' ? `◭ ${it.name}` : base(it.src);
+        if (x1 < -4 || x0 > w + 4) continue; // (only what's in view)
+        const color = it.kind === 'title' ? (caps ? 'hsl(200 30% 30%)' : it.lower ? 'hsl(25 55% 32%)' : 'hsl(40 55% 34%)') : it.kind === 'audio' ? (it.song ? 'hsl(150 35% 24%)' : voice ? 'hsl(190 40% 24%)' : sfx ? 'hsl(320 30% 24%)' : 'hsl(150 30% 20%)') : 'hsl(270 35% 30%)';
+        const vol = it.volume != null && it.volume !== 1 ? ` ${Math.round(it.volume * 100)}%` : '';
+        const label = it.kind === 'title' ? `${caps ? '💬 ' : it.lower ? '▁ ' : ''}${String(it.text).replace(/\n/g, ' · ')}` : it.kind === 'audio' ? `${it.song ? '♪ ' : voice ? '🎙 ' : sfx ? '✸ ' : ''}${base(it.src)}${vol}` : it.kind === 'layer' ? `◭ ${it.name}` : base(it.src);
         drawClip(it, x0, x1, l, S.sel.has(it.id), label, color, null);
+        if (it.kind === 'audio' && (it.fadeIn || it.fadeOut)) fadeMarks(g, it, x0, x1, l);
       }
+      g.globalAlpha = 1;
     }
-    // the song's waveform on the sound lane (from the Lab's analysis: peaks per column, drawn only on redraws)
-    drawWave(g, lane('sound'), v, w);
-    // beats on the sound lane
-    if (gr) { const l = lane('sound'); g.fillStyle = 'rgba(255,255,255,0.18)'; for (const t of D.gridTimes(gr, v.t1, { every: 'beat', offset: off })) { if (t < v.t0) continue; const x = xOf(t); if (x - xOf(t - D.beatLen(gr)) < 4) break; g.fillRect(Math.round(x), l.y + l.h - 4, 1, 4); } }
+    // the song's waveform on its row (from the Lab's analysis: peaks per column, drawn only on redraws)
+    const soundL = lane('sound'); const songK = (e.tracks || []).find((k) => k.type === 'audio' && k.items.some((x) => x.song));
+    const songL = songK ? rowLane(soundL, songK) : soundL;
+    drawWave(g, songL, v, w);
+    // beats on the song's row
+    if (gr) { const l = songL; g.fillStyle = 'rgba(255,255,255,0.18)'; for (const t of D.gridTimes(gr, v.t1, { every: 'beat', offset: off })) { if (t < v.t0) continue; const x = xOf(t); if (x - xOf(t - D.beatLen(gr)) < 4) break; g.fillRect(Math.round(x), l.y + l.h - 4, 1, 4); } }
     if (S.drop != null) { g.fillStyle = gold; g.fillRect(Math.round(xOf(S.drop)) - 1, main.y - 2, 2, main.h + 4); }
     if (S.snapAt != null) { g.fillStyle = 'rgba(255,215,94,0.6)'; g.fillRect(Math.round(xOf(S.snapAt)), RULER, 1, hh - RULER); }
     refs.hint.hidden = Boolean(e.clips.length || (e.tracks || []).some((k) => k.items.length));
+  }
+  // (labcut) a sound clip's fades: a ramp drawn over each end
+  function fadeMarks(g, it, x0, x1, l) {
+    const pps = xOf(1) - xOf(0);
+    g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = 1; g.beginPath();
+    if (it.fadeIn) { g.moveTo(x0, l.y + l.h); g.lineTo(x0 + it.fadeIn * pps, l.y + 1); }
+    if (it.fadeOut) { g.moveTo(x1 - it.fadeOut * pps, l.y + 1); g.lineTo(x1, l.y + l.h); }
+    g.stroke();
   }
   function drawWave(g, l, v, w) {
     const s = songItem(); const P = lab()?.player;
@@ -1393,13 +1615,14 @@ const ThreeSeq = (() => {
       }
       return { zone: 'lane', lane: l, t, x };
     }
-    const type = l.id === 'titles' ? 'text' : l.id === 'sound' ? 'audio' : 'video';
-    for (const k of (S.edit.tracks || []).filter((kk) => kk.type === type)) for (const it of k.items) {
+    // (labcut) the row under the pointer is one track (song · voice · sfx…)
+    const k = rowAt(l, y);
+    for (const it of k?.items || []) {
       const a = it.start; const b = C.itemEnd(it);
       if (t < a - 0.01 || t > b + 0.01) continue;
       return { zone: 'clip', where: 'item', clip: it, track: k, start: a, end: b, edge: near(b) ? 'out' : near(a) ? 'in' : null, t, x, lane: l };
     }
-    return { zone: 'lane', lane: l, t, x };
+    return { zone: 'lane', lane: l, track: k, t, x };
   }
   function snapT(t, exclude = null) {
     S.snapAt = null;
@@ -1492,9 +1715,87 @@ const ThreeSeq = (() => {
     const c = C.find(S.edit, id)?.clip;
     const cur = c?.trans?.type || 'cut';
     const it = (t) => ({ label: EditFX.TRANS[t]?.name || 'Cut', checked: cur === t, action: () => setTransition(t, id) });
-    const groups = [...new Set(EditFX.TRANSITIONS.map((t) => t.group))].filter((gname) => gname !== 'Basic');
-    return [...TRANS_TOP.map(it), { label: '✦ Lab moves', hint: '3D, only here', items: () => (TR()?.LAB || []).map((t) => ({ ...it(t.id), hint: t.desc })) }, { label: 'More transitions', items: () => groups.map((gname) => ({ label: gname, items: () => EditFX.TRANSITIONS.filter((t) => t.group === gname).map((t) => it(t.id)) })) },
-      '-', ...[0.25, 0.5, 1].map((d) => ({ label: `${d} s`, checked: Math.abs((c?.trans?.dur || 0) - d) < 1e-3, action: () => setTransition(c?.trans?.type || D.DEFAULT_TRANS, id, d) }))];
+    // (labcut) one searchable library: the most used first, then the Lab moves and every group as a submenu (the
+    // menu's filter field finds any of them by name: "glitch", "dip gold", "iris")
+    const lib = X() ? X().transLibrary(EditFX, TR()?.LAB || []) : TRANS_TOP.map((t) => ({ id: t, name: EditFX.TRANS[t]?.name, group: '★ Most used' }));
+    const groups = [...new Set(lib.map((t) => t.group))].filter((gname) => gname !== '★ Most used');
+    return [...lib.filter((t) => t.group === '★ Most used').map((t) => it(t.id)),
+      ...groups.map((gname) => ({ label: gname, hint: gname === '✦ Lab moves' ? '3D, only here' : String(lib.filter((t) => t.group === gname).length), items: () => lib.filter((t) => t.group === gname).map((t) => ({ ...it(t.id), ...(t.desc ? { hint: t.desc } : {}) })) })),
+      '-', ...[0.25, 0.5, 1, 2].map((d) => ({ label: `${d} s`, checked: Math.abs((c?.trans?.dur || 0) - d) < 1e-3, action: () => setTransition(c?.trans?.type || D.DEFAULT_TRANS, id, d) })),
+      ...(grid() ? [{ label: 'One beat', hint: `${D.beatLen(grid()).toFixed(2)} s`, action: () => setTransition(c?.trans?.type || D.DEFAULT_TRANS, id, r4(D.beatLen(grid()))) }] : [])];
+  }
+  // (labcut) the clip menus' new parts: framing, sound, color looks, captions / lower thirds
+  function frameItems(c, ids, where) {
+    const f0 = D.formatOf(S.edit); const own = c.frames?.[f0] || c.frame || {};
+    const fit = c.frames?.[f0]?.fit || c.fit || (where === 'item' ? 'contain' : 'cover');
+    const mo = c.motion ?? (c.kind === 'image' ? X().DEFAULT_STILL_MOTION : 'none');
+    return [
+      { label: `Framing for ${f0}`, disabled: true },
+      { label: 'Fit', hint: X().FITS[fit], items: () => Object.entries(X().FITS).map(([k, n]) => ({ label: n, checked: fit === k, action: () => setFit(k, ids) })) },
+      { label: 'Position', items: () => Object.entries(X().SPOTS).map(([, [n, q]]) => ({ label: n, checked: (own.x || 0) === q.x && (own.y || 0) === q.y && !own.to, action: () => setFrame({ ...q }, ids) })) },
+      { label: 'Zoom', hint: `${Math.round((own.z || 1) * 100)} %`, items: () => X().ZOOMS.map((z) => ({ label: `${Math.round(z * 100)} %`, checked: Math.abs((own.z || 1) - z) < 1e-3, action: () => setFrame({ z }, ids) })) },
+      { label: 'Move', hint: mo === 'auto' ? '✦ auto' : X().MOTION[mo]?.name || '', items: () => [...X().MOTIONS.map((m) => ({ label: m.name, checked: mo === m.id, action: () => setMotion(m.id, ids) })), { label: '✦ Auto (one that suits it)', checked: mo === 'auto', action: () => setMotion('auto', ids) }] },
+      { label: 'Pan across…', hint: 'from → to (keyframed)', action: async () => { const v = await Modal.prompt('Framing: "from left to right", "from top to bottom zoom 130%", "right third", "x 0.3 y -0.2 1.2x"', { value: own.to ? '' : 'from left to right' }); if (v == null) return; const spec = X().parseFrame(v); if (spec) setFrame(spec, ids); else flash('Try "from left to right"'); } },
+      '-', { label: 'Same framing in every format', hint: 'this one everywhere', action: () => frameEverywhere(ids) },
+      { label: 'Back to auto (centered)', action: () => setFrame({ reset: true }, ids) },
+    ];
+  }
+  function soundItems(c, ids) {
+    const v = c.volume ?? 1;
+    const fades = (edge) => X().FADES.map((d) => ({ label: d ? `${d} s` : 'None', checked: Math.abs((c[edge === 'in' ? 'fadeIn' : 'fadeOut'] || 0) - d) < 1e-3, action: () => setFade(edge, d, ids) }));
+    return [
+      { label: 'Volume', hint: `${Math.round(v * 100)} %`, items: () => [...X().VOLUMES.map((g) => ({ label: g ? `${Math.round(g * 100)} %` : 'Mute', hint: X().dbOf(g), checked: Math.abs(v - g) < 1e-3, action: () => setVolume(g, ids) })), { label: 'Type a volume…', action: async () => { const t = await Modal.prompt('Volume (50%, 0.5, -6 dB)', { value: `${Math.round(v * 100)}%` }); if (t != null) { try { setVolume(t, ids); } catch (err) { toast(err.message, { type: 'error' }); } } } }] },
+      { label: 'Fade in', hint: c.fadeIn ? `${c.fadeIn} s` : '', items: () => fades('in') },
+      { label: 'Fade out', hint: c.fadeOut ? `${c.fadeOut} s` : '', items: () => fades('out') },
+    ];
+  }
+  function gradeItems(cur, { ids = null, all = false } = {}) {
+    const go = (look, amt) => () => { try { setGrade(look, { all, ...(ids ? { ids } : {}), ...(amt != null ? { amt } : {}) }); } catch (err) { toast(err.message, { type: 'error' }); } };
+    const groups = [...new Set(EditFX.LOOKS.map((l) => l.group))];
+    const row = (l) => ({ label: l.name, checked: cur?.look === l.id, action: go(l.id, cur?.amt) });
+    return [{ label: all ? 'None (each clip its own)' : 'None', checked: !cur, action: go(null) },
+      ...(cur && !all ? [{ label: 'Strength', hint: `${Math.round((cur.amt ?? 1) * 100)} %`, items: () => [0.25, 0.5, 0.75, 1].map((a) => ({ label: `${a * 100} %`, checked: Math.abs((cur.amt ?? 1) - a) < 1e-3, action: () => setGradeAmt(a, ids || targets()) })) }] : []),
+      '-', ...X().LOOK_PICKS.filter((id) => EditFX.LOOK[id]).map((id) => row(EditFX.LOOK[id])),
+      '-', ...groups.map((gname) => ({ label: gname, items: () => EditFX.LOOKS.filter((l) => l.group === gname).map(row) }))];
+  }
+  function textItems() {
+    return [
+      { label: '＋ Lower third…', hint: 'a name — a role', action: async () => { const v = await Modal.prompt('Lower third ("Name — Role")', { value: '' }); if (v?.trim()) addLower(v.trim(), { preset: S.edit.seq?.lowerLook || 'forge' }); } },
+      { label: 'Lower third look', hint: EditFX.LTHIRD[S.edit?.seq?.lowerLook || 'forge']?.name, items: () => EditFX.LOWER_THIRDS.map((l) => ({ label: l.name, checked: (S.edit.seq?.lowerLook || 'forge') === l.id, action: () => lowerLook(l.id) })) },
+      '-', { label: 'Captions from a file…', hint: '.srt · .vtt', action: () => captionsFile().catch((err) => toast(err.message, { type: 'error' })) },
+      { label: 'Type captions…', hint: rangeOf() ? 'over the In–Out range' : grid() ? 'one line a bar' : 'one line every 2 s', action: async () => { const v = await Modal.prompt('Captions: one line each', { multiline: true, value: '' }); if (v?.trim()) { try { captionsTyped(v); } catch (err) { toast(err.message, { type: 'error' }); } } } },
+      { label: 'Caption look', hint: X().CAPTION_LOOK[S.edit?.seq?.captionLook || 'clean']?.name, items: () => X().CAPTION_LOOKS.map((l) => ({ label: l.name, checked: (S.edit.seq?.captionLook || 'clean') === l.id, action: () => captionLook(l.id) })) },
+      { label: 'Save the captions as .srt', disabled: !captionCues(S.edit).length, action: () => exportCaptions().catch((err) => toast(err.message, { type: 'error' })) },
+    ];
+  }
+  // a lower-third look for the sequence (the new ones, and the selected lower thirds, or all of them)
+  function lowerLook(id) {
+    const sel = new Set(selIds());
+    const n = { ...S.edit, seq: { ...S.edit.seq, lowerLook: id }, tracks: (S.edit.tracks || []).map((k) => ({ ...k, items: k.items.map((x) => (x.lower && (sel.has(x.id) || !sel.size) ? { ...x, lower: id } : x)) })) };
+    commit(n, `Lower thirds: ${EditFX.LTHIRD[id]?.name}`);
+    return id;
+  }
+  function soundMenuItems() {
+    const sq = S.edit?.seq || {};
+    const on = sq.duck !== false; const amt = sq.duckAmt ?? X().DEFAULT_DUCK;
+    const song = songItem();
+    const pick = (role) => async () => { const ps = await window.hub.openDialog({ title: role === 'voice' ? 'A voice-over' : role === 'sfx' ? 'A sound effect' : 'A sound', properties: ['openFile', 'multiSelections'], filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'opus'] }] }); for (const p of ps || []) await add({ path: p, role }, { at: S.T }).catch((err) => toast(err.message, { type: 'error' })); };
+    return [
+      { label: '＋ Voice-over…', hint: 'the music ducks under it', action: pick('voice') },
+      { label: '＋ Sound effect…', hint: 'at the playhead', action: pick('sfx') },
+      { label: '＋ Another sound…', action: pick('sound') },
+      '-', { label: on ? 'Ducking under the voice: on' : 'Ducking under the voice: off', checked: on, action: () => setDuck(!on) },
+      { label: 'How much the music ducks', hint: X().dbOf(amt), items: () => X().DUCKS.map((d) => ({ label: d.name, checked: Math.abs(amt - d.id) < 1e-3, action: () => setDuck(true, d.id) })) },
+      ...(song ? [{ label: 'The song', items: () => soundItems(song, [song.id]) }] : []),
+      ...((S.edit?.tracks || []).filter((k) => k.type === 'audio').length > 1 ? [{ label: 'Mute a track', items: () => S.edit.tracks.filter((k) => k.type === 'audio').map((k) => ({ label: k.name, checked: Boolean(k.mute), action: () => muteTrack(k.id) })) }] : []),
+    ];
+  }
+  function outputItems() {
+    const outs = new Set(outputsOf());
+    const flip = (f) => { const n = new Set(outs); if (n.has(f) && n.size > 1) n.delete(f); else n.add(f); setOutputs(Object.keys(D.FORMATS).filter((x) => n.has(x))); };
+    return [...Object.keys(D.FORMATS).map((f) => ({ label: f, hint: f === D.formatOf(S.edit) ? 'editing now' : D.FORMATS[f].join('×'), checked: outs.has(f), action: () => flip(f) })),
+      '-', { label: 'Socials: 9:16 · 1:1 · 16:9', action: () => setOutputs(X().OUTPUT_SETS.socials) }, { label: 'All four', action: () => setOutputs(X().OUTPUT_SETS.all) },
+      { label: `⇪ Render ${outs.size > 1 ? `the ${outs.size} outputs` : 'it'}`, hint: 'each with its own framing', action: () => renderOutputs().catch((err) => toast(err.message, { type: 'error' })) }];
   }
   function lengthItems(id) {
     const g = grid();
@@ -1523,11 +1824,18 @@ const ThreeSeq = (() => {
     }
     if (c.kind === 'gap') items.push({ label: '✦ Fill this gap', key: 'G', hint: 'a scene that fits, in a look of its own', action: () => fillGap(c.id).catch((err) => toast(err.message, { type: 'error' })) }, { label: 'Fill with', items: () => sketchItems((sid) => commit(C.fillGap(S.edit, c.id, { ...D.sceneClip({ sketch: sid, name: lab().scenes.get(sid).name }, c.dur) }), 'Filled')) });
     if (c.kind === 'seq') items.push({ label: `▤ Open “${c.name}”`, action: () => open(c.ref) }, { label: 'Unnest (its clips here)', action: () => unnest(c.id) });
-    if (c.kind === 'video') items.push({ label: c.mute ? '🔊 Its sound on' : '🔇 Its sound off', action: () => commit(C.patchAny(S.edit, [c.id], (cc) => { cc.mute = !cc.mute; }), c.mute ? 'Sound on' : 'Muted') });
-    if (h.where === 'clip' && h.i > 0) items.push({ label: 'Transition in', hint: c.trans ? EditFX.TRANS[c.trans.type]?.name : 'Cut', items: () => transItems(c.id) });
-    items.push({ label: 'Length', hint: `${(h.end - h.start).toFixed(2)} s`, items: () => lengthItems(c.id) });
     // (seqguard) speed, a color label, nudges, selecting the rest
     const ids = S.sel.has(c.id) && selIds().length > 1 ? selIds() : [c.id];
+    if (c.kind === 'video') items.push({ label: c.mute ? '🔊 Its sound on' : '🔇 Its sound off', action: () => commit(C.patchAny(S.edit, [c.id], (cc) => { cc.mute = !cc.mute; }), c.mute ? 'Sound on' : 'Muted') });
+    // (labcut) framing for this format (fit, crop, zoom, Ken Burns), sound (volume, fades), a color look, text looks
+    if (X() && (c.kind === 'video' || c.kind === 'image')) items.push({ label: 'Frame', hint: D.formatOf(S.edit), items: () => frameItems(c, ids, h.where) });
+    if (X() && (c.kind === 'audio' || (c.kind === 'video' && !c.mute))) items.push(...soundItems(c, ids));
+    if (X() && gradable(c)) items.push({ label: 'Color look', hint: c.grade ? EditFX.LOOK[c.grade.look]?.name : '', items: () => gradeItems(c.grade, { ids }) });
+    if (X() && c.kind === 'title' && c.caption) items.push({ label: 'Caption look', hint: X().CAPTION_LOOK[c.caption]?.name, items: () => X().CAPTION_LOOKS.map((l) => ({ label: l.name, checked: c.caption === l.id, action: () => captionLook(l.id) })) });
+    if (X() && c.kind === 'title' && c.lower) items.push({ label: 'Lower third look', hint: EditFX.LTHIRD[c.lower]?.name, items: () => EditFX.LOWER_THIRDS.map((l) => ({ label: l.name, checked: c.lower === l.id, action: () => { S.sel = new Set([c.id]); lowerLook(l.id); } })) });
+    if (h.where === 'clip' && h.i > 0) items.push({ label: 'Transition in', hint: c.trans ? EditFX.TRANS[c.trans.type]?.name : 'Cut', items: () => transItems(c.id) });
+    items.push({ label: 'Length', hint: `${(h.end - h.start).toFixed(2)} s`, items: () => lengthItems(c.id) });
+    if (X() && h.where === 'clip' && c.kind !== 'gap' && grid()) items.push({ label: '✂ Chop on the music', key: 'B', hint: 'a cut on every bar', items: () => [{ label: 'Every bar', key: 'B', action: () => chop('bar', ids) }, { label: 'Every 2 bars', action: () => chop(2, ids) }, { label: 'Every beat', key: 'Shift+B', action: () => chop('beat', ids) }] });
     if (speedable(c)) items.push({ label: 'Speed', hint: `${c.speed || 1}×`, items: () => [...SPEEDS.map((r) => ({ label: `${r}×`, checked: Math.abs((c.speed || 1) - r) < 1e-3, action: () => setSpeed(r, ids) })), { label: 'Type a speed…', action: async () => { const v = await Modal.prompt('Speed (0.5, 2, 150%…)', { value: String(c.speed || 1) }); if (v != null) { try { setSpeed(v, ids); } catch (err) { toast(err.message, { type: 'error' }); } } } }] });
     items.push({ label: 'Color', hint: c.swatch || '', items: () => [...Object.keys(SWATCHES).map((k) => ({ label: `● ${k}`, checked: c.swatch === k, action: () => setColor(k, ids) })), { label: 'No color', checked: !c.swatch, action: () => setColor(null, ids) }] });
     items.push({ label: 'Nudge', more: true, hint: ', . (Shift: a beat)', items: () => [{ label: '− 1 frame', key: ',', action: () => nudge(-1, { ids }) }, { label: '+ 1 frame', key: '.', action: () => nudge(1, { ids }) }, { label: '− 1 beat', key: 'Shift+,', action: () => nudge(0, { beats: -1, ids }) }, { label: '+ 1 beat', key: 'Shift+.', action: () => nudge(0, { beats: 1, ids }) }] });
@@ -1604,6 +1912,10 @@ const ThreeSeq = (() => {
       { label: '＋ Title here', action: async () => { const v = await Modal.prompt('Title', { value: 'Title' }); if (v != null) add({ text: v }, { at }); } },
       { label: '＋ Overlay here', items: () => overlayItems(at) },
       { label: '＋ Marker here', key: 'M', action: () => { seek(at); marker(); } },
+      // (labcut) the lane's own adds: sounds on the Sound rows, text on the Titles rows; its track muted / hidden
+      ...(X() && h.lane?.id === 'sound' ? ['-', ...soundMenuItems().slice(0, 3).map((it) => ({ ...it, action: () => { seek(at); it.action(); } }))] : []),
+      ...(X() && h.lane?.id === 'titles' ? ['-', ...textItems().filter((it) => typeof it === 'object' && /^(＋|Captions|Type)/.test(it.label)).map((it) => ({ ...it, action: () => { seek(at); it.action(); } }))] : []),
+      ...(h.track ? [{ label: h.track.type === 'audio' ? (h.track.mute ? `Unmute “${h.track.name}”` : `Mute “${h.track.name}”`) : (h.track.hide ? `Show “${h.track.name}”` : `Hide “${h.track.name}”`), more: true, action: () => muteTrack(h.track.id) }] : []),
       '-', { label: 'Paste', disabled: !clip, action: () => paste(at) },
     ]);
   }
@@ -1670,7 +1982,12 @@ const ThreeSeq = (() => {
       { label: 'Re-time to a song…', more: true, action: async () => { const [p] = await window.hub.openDialog({ title: 'Re-time the sequence to a song', filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac'] }] }); if (p) retime(p).catch((err) => toast(err.message, { type: 'error' })); } },
       '-',
       { label: '▦ Every cut on a bar', hint: grid() ? '' : 'needs a song', disabled: !grid(), action: () => fit() },
-      { label: 'Transitions everywhere', items: () => [...TRANS_TOP.map((t) => ({ label: EditFX.TRANS[t]?.name || 'Cut', action: () => setTransition(t) })), { label: '✦ Lab moves', items: () => (TR()?.LAB || []).map((t) => ({ label: t.name, hint: t.desc, action: () => setTransition(t.id) })) }] },
+      { label: 'Transitions everywhere', hint: 'every cut (or the selection)', items: () => transItems(null) },
+      // (labcut) sound (voice-over, sfx, ducking), text (lower thirds, captions), a color look, the outputs
+      ...(X() ? [{ label: 'Sound', hint: (S.edit?.tracks || []).some((k) => X().isVoice(k)) ? 'voice · ducking' : '', items: soundMenuItems },
+        { label: 'Text & captions', items: textItems },
+        { label: 'Color look', hint: S.edit?.seq?.grade ? EditFX.LOOK[S.edit.seq.grade.look]?.name : 'the whole sequence', items: () => gradeItems(S.edit?.seq?.grade, { all: true }) },
+        { label: 'Outputs', hint: outputsOf().join(' · '), items: outputItems }] : []),
       { label: S.loop ? '⟲ Loop off' : '⟲ Loop', hint: rangeOf() ? 'the In–Out range' : '', action: () => { S.loop = !S.loop; send({ type: 'seq-loop', on: S.loop, range: rangeOf() }); } },
       { label: 'Range', hint: rangeOf() ? `${tc(rangeOf().a)} – ${tc(rangeOf().b)}` : 'I / Shift+I', items: rangeItems },
       { label: 'Close every gap', more: true, disabled: !(S.edit?.clips || []).some((c) => c.kind === 'gap'), action: () => closeGaps() },
@@ -1693,6 +2010,7 @@ const ThreeSeq = (() => {
     const cur = D.formatOf(S.edit);
     const last = store.get('three.seq.renderOpts', {});
     const st = { formats: new Set((last.formats || []).filter((f) => D.FORMATS[f])), fps: last.fps || S.edit?.seq?.fps || 30, quality: QUALITY[last.quality] ? last.quality : 'high', sound: last.sound !== false, open: last.open !== false, range: Boolean(rangeOf()) };
+    if (S.edit?.seq?.outputs?.length) st.formats = new Set(outputsOf()); // (labcut) the sequence's outputs, when it has them
     if (!st.formats.size) st.formats.add(cur);
     const dlg = el('dialog', { class: 'ui-modal sq-render-panel' });
     const chip = (on, text, title, click) => el('button', { type: 'button', class: `sq-chip${on ? ' on' : ''}`, text, title, on: { click } });
@@ -1866,7 +2184,7 @@ const ThreeSeq = (() => {
     const grid0 = el('div', { class: 'sq-pick-grid' });
     const pop = el('div', { class: 'sq-pick', attrs: { role: 'dialog', 'aria-label': 'Add to the sequence' } }, q, grid0,
       el('div', { class: 'sq-pick-row' },
-        el('button', { class: 'ghost small', text: '🎞 Footage / file…', on: { click: async () => { close(); const ps = await window.hub.openDialog({ title: 'Add to the sequence', properties: ['openFile', 'multiSelections'], filters: [{ name: 'Video, picture, sound', extensions: ['mp4', 'mov', 'webm', 'm4v', 'mkv', 'png', 'jpg', 'jpeg', 'webp', 'mp3', 'wav', 'ogg', 'm4a', 'flac'] }] }); for (const p of ps || []) await add({ path: p }, { at: S.T < total() - 1e-3 ? S.T : null }).catch((err) => toast(err.message, { type: 'error' })); } } }),
+        el('button', { class: 'ghost small', text: '🎞 Footage / file…', on: { click: async () => { close(); const ps = await window.hub.openDialog({ title: 'Add to the sequence', properties: ['openFile', 'multiSelections'], filters: [{ name: 'Video, picture, sound, captions', extensions: ['mp4', 'mov', 'webm', 'm4v', 'mkv', 'png', 'jpg', 'jpeg', 'webp', 'mp3', 'wav', 'ogg', 'm4a', 'flac', 'srt', 'vtt'] }] }); for (const p of ps || []) await add({ path: p }, { at: S.T < total() - 1e-3 ? S.T : null }).catch((err) => toast(err.message, { type: 'error' })); } } }),
         el('button', { class: 'ghost small', text: 'T Title', on: { click: async () => { close(); const v = await Modal.prompt('Title', { value: 'Title' }); if (v != null) add({ text: v }); } } }),
         el('button', { class: 'ghost small', text: '◭ Overlay ›', on: { click: (e) => { const rr = e.currentTarget.getBoundingClientRect(); close(); showMenu(rr.left, rr.bottom + 4, overlayItems(S.T)); } } })));
     const close = () => { pop.remove(); removeEventListener('pointerdown', outside, true); };
@@ -1884,6 +2202,9 @@ const ThreeSeq = (() => {
       const out = [];
       if (!s && A) out.push(tile('✦ Arrange my scenes', 'on the song, no questions', null, { arrange: true }));
       for (const x of (S.index ? [...listCache] : []).filter((y) => y.key !== S.key && ok(y.name)).slice(0, 6)) out.push(tile(`▤ ${x.name}`, 'a sequence, as a clip', null, { seq: x.key }));
+      // (labcut) your latest renders and recordings, as footage
+      const made = (window.Renders?.history?.() || []).filter((j) => j.status === 'done' && !j.trashed && (VID.test(j.output || '') || IMG.test(j.output || '')) && ok(`${base(j.output)} ${j.title || ''} render recording`));
+      for (const j of made.slice(0, s ? 9 : 3)) out.push(tile(base(j.output), j.kind === 'record' || /record/i.test(j.kind || '') ? 'recording' : 'render', IMG.test(j.output) ? `file://${j.output}` : null, { path: j.output }));
       const chats = typeof ChatScenes !== 'undefined' ? H.chats.filter((c) => ChatScenes.linkOf?.(c.id)).slice(0, 12) : [];
       for (const c of chats) { const sid = ChatScenes.linkOf(c.id); const sk = L.scenes.get(sid); if (sk && ok(c.title) ) out.push(tile(c.title || sk.name, `chat scene ${ChatScenes.glyphFor(sid)}`, L.scenes.thumbOf(sid), { chat: c.id })); }
       const pins = new Set(store.get('three.sketchPins', []));
@@ -1924,7 +2245,10 @@ const ThreeSeq = (() => {
       if (dt.types.includes(REF_TYPE)) { await applyVibe(JSON.parse(dt.getData(REF_TYPE) || '{}'), { at }); return; }
       const vid = dt.getData('text/x-hearth-video');
       if (vid) { await add({ path: vid }, { at }); return; }
-      for (const f of [...(dt.files || [])]) { const p = window.hub.pathForFile(f); if (p) await add({ path: p, song: lane?.id === 'sound' }, { at }); }
+      // (labcut) a sound dropped on the voice / sfx row goes there; on the song's row it becomes the song
+      const row = lane?.id === 'sound' ? rowAt(lane, e.clientY - r.top) : null;
+      const role = row && X()?.isVoice(row) ? 'voice' : row && /^sfx/i.test(row.name) ? 'sfx' : null;
+      for (const f of [...(dt.files || [])]) { const p = window.hub.pathForFile(f); if (p) await add({ path: p, song: lane?.id === 'sound' && !role && (!row || row.items.some((x) => x.song) || !songItem()), ...(role ? { role } : {}) }, { at }); }
     } catch (err) { toast(err.message, { type: 'error' }); }
   }
 
@@ -1942,6 +2266,8 @@ const ThreeSeq = (() => {
     [`${MOD}+A`, 'Select every clip'], ['A', 'Select from the playhead to the end'], ['Z', 'Zoom to the selection (nothing selected: the whole sequence)'],
     ['Shift+S', 'Snapping on / off'], ['Shift+M', 'A marker with a name'], ['Shift+↑ / Shift+↓', 'Previous / next marker'],
     ['Shift+Space', 'Play around the playhead (2 s before, 1 s after) and come back'], ['I / Shift+I', 'Range: In / Out at the playhead (⟲ Loop and ⇪ Render can use just that)'],
+    // labcut (round 18)
+    ['B / Shift+B', 'Chop the clip on every bar / every beat of the song'],
   ];
   function onKey(e) {
     if (!S.view || !S.edit) return;
@@ -1984,6 +2310,7 @@ const ThreeSeq = (() => {
     if (low === 'm' && !e.shiftKey) { marker(); done(); return; }
     if (k === '\\') { S.vr = null; redraw(); placeHead(); done(); return; }
     if (low === 'v') { vary(undefined, { reset: e.shiftKey }); done(); return; }
+    if (low === 'b' && X()) { chop(e.shiftKey ? 'beat' : 'bar'); done(); return; }
     if (low === 'g' && !e.shiftKey) { const x = C.at(S.edit, S.T); if (x?.clip.kind === 'gap') fillGap(x.clip.id).catch((err) => toast(err.message, { type: 'error' })); else flash('No gap under the playhead'); done(); return; }
     if (k === '+' || k === '=') { zoomBy(1.5); done(); return; }
     if (k === '-' || k === '_') { zoomBy(1 / 1.5); done(); return; }
@@ -2077,7 +2404,7 @@ const ThreeSeq = (() => {
     if (tool !== 'three_sequence') return null;
     const op = String(a.op || a.action || 'status');
     try {
-      if (op === 'help') return { ok: true, value: 'ops: status | list | new {name, format} | open {name} | show | hide | add {scene | footage (path) | title (text) | overlay (layer / filter name) | song (path), at (s | "bar 9" | "f120"), bars | secs, look} | transition {clip, type, dur} (clip omitted: every cut) | length {clip, secs | bars} | trim {clip, edge: in|out, to} | split {at} | delete {clip, ripple} | move {clip, to (position 1..n)} | duplicate {clip} | slip {clip, frames} | look {clip, name} | fit (cuts on bars) | format {format} | seek {at} | frame {at, see} | play | pause | render {format: 9:16|16:9|1:1|4:5} | undo | redo · arrange {template, scenes: [names], secs, lines} (the scenes on the song sections, cuts on bars; again: another one) | templates | versions {secs: [15, 6], render} | fill {clip (a gap)} | vary {clip, amount, reset} | vary_sections | swap_looks {clip} | retime {song} | nest {name} | unnest {clip} | copy {clips: [..]} | paste {at, into (sequence name)} | roll {clip, to} | slide {clip, by} | marker {at, label} | section_markers | zoom {to: fit | "4 bars" | secs} | render {format: all} · nudge {clip(s), frames | beats} | trim_frames {clip, edge, frames} | speed {clip(s), rate} | color {clip(s), color | none} | markers_list | marker_go {name | n | next | prev} | marker_rename {n, label} | marker_delete {n} | snap {on} | select {what: all | none | after | range, from, until} | history {back | forward} | clip {clip} (go to it) | zoom_selection | range {in, out | clip | clear} (render {range: true} renders just it; loop loops it) | close_gaps | health. Each scene owns its sequence: ops act on the current scene one; of (or scene, except for add): another scene. clip = number (1 = first on the main track), "Titles.2", or a scene / title name.' };
+      if (op === 'help') return { ok: true, value: 'ops: status | list | new {name, format} | open {name} | show | hide | add {scene | footage (path) | title (text) | overlay (layer / filter name) | song (path), at (s | "bar 9" | "f120"), bars | secs, look} | transition {clip, type, dur} (clip omitted: every cut) | length {clip, secs | bars} | trim {clip, edge: in|out, to} | split {at} | delete {clip, ripple} | move {clip, to (position 1..n)} | duplicate {clip} | slip {clip, frames} | look {clip, name} | fit (cuts on bars) | format {format} | seek {at} | frame {at, see} | play | pause | render {format: 9:16|16:9|1:1|4:5} | undo | redo · arrange {template, scenes: [names], secs, lines} (the scenes on the song sections, cuts on bars; again: another one) | templates | versions {secs: [15, 6], render} | fill {clip (a gap)} | vary {clip, amount, reset} | vary_sections | swap_looks {clip} | retime {song} | nest {name} | unnest {clip} | copy {clips: [..]} | paste {at, into (sequence name)} | roll {clip, to} | slide {clip, by} | marker {at, label} | section_markers | zoom {to: fit | "4 bars" | secs} | render {format: all} · nudge {clip(s), frames | beats} | trim_frames {clip, edge, frames} | speed {clip(s), rate} | color {clip(s), color | none} | markers_list | marker_go {name | n | next | prev} | marker_rename {n, label} | marker_delete {n} | snap {on} | select {what: all | none | after | range, from, until} | history {back | forward} | clip {clip} (go to it) | zoom_selection | range {in, out | clip | clear} (render {range: true} renders just it; loop loops it) | close_gaps | health · labcut: add {voice | sfx (path)} | volume {clip(s), volume: "50%" | 0.5 | "-6 dB"} | fade {clip(s), edge: in | out, secs} | reframe {clip(s), frame: "from left to right zoom 120%" | "right third" | "fit" | "blur" | "reset", all (every format)} | motion {clip(s), move: push-in | pull-out | pan-left | pan-right | pan-up | pan-down | punch | auto | none} | grade {clip(s) | all: true, look (EditFX look name | none), amt} | chop {clip(s), every: bar | beat | 2} | duck {on, amount 0..1} | mute_track {track} | captions {path (.srt / .vtt) | lines: [..], look} | caption_look {look: clean | box | social | gold | subtitle} | lower {text "Name — Role", preset, at} | outputs {formats: ["9:16","1:1","16:9"] | "socials"} | render_outputs. Each scene owns its sequence: ops act on the current scene one; of (or scene, except for add): another scene. clip = number (1 = first on the main track), "Titles.2", or a scene / title name.' };
       if (op === 'list') return { ok: true, value: { sequences: await list(), open: S.key?.slice(4) || null } };
       await ThreeLab.cmd({ show: true });
       if (op === 'new') { await create(a.name || null, { format: a.format || null, empty: Boolean(a.empty) }); return { ok: true, value: status() }; }
@@ -2096,7 +2423,9 @@ const ThreeSeq = (() => {
       if (op === 'add') {
         const at = timeOf(a.at ?? (a.bar != null ? `bar ${a.bar}` : null));
         const L0 = len();
-        if (a.footage || a.path) await add({ path: a.footage || a.path }, { at, dur: L0, gap: at != null });
+        if (a.voice || a.sfx) await add({ path: a.voice || a.sfx, role: a.voice ? 'voice' : 'sfx' }, { at: at ?? S.T });
+        else if (a.captions) await captionsFile(a.captions);
+        else if (a.footage || a.path) await add({ path: a.footage || a.path, ...(a.in != null ? { a: Number(a.in) } : {}), ...(a.out != null ? { b: Number(a.out) } : {}) }, { at, dur: L0, gap: at != null });
         else if (a.song) await add({ path: a.song, song: true });
         else if (a.title != null || a.text != null) await add({ text: a.title ?? a.text, style: a.style, anim: a.anim }, { at, dur: L0 });
         else if (a.overlay) {
@@ -2191,6 +2520,26 @@ const ThreeSeq = (() => {
         return { ok: true, value: { range: r ? { a: r4(r.a), b: r4(r.b), from: tc(r.a), to: tc(r.b) } : null } };
       }
       if (op === 'close_gaps') { closeGaps(); return { ok: true, value: status() }; }
+      // ---- labcut (round 18): footage framing, sound, looks, captions, lower thirds, outputs ----
+      const sel = () => (a.clips != null || a.clip != null ? many(a.clips ?? a.clip) : targets());
+      if (op === 'volume') { setVolume(a.volume ?? a.to ?? '100%', sel()); return { ok: true, value: status() }; }
+      if (op === 'fade') { setFade(a.edge === 'out' ? 'out' : 'in', Number(a.secs ?? a.dur ?? 1), sel()); if (a.edge === 'both') setFade('out', Number(a.secs ?? a.dur ?? 1), sel()); return { ok: true, value: status() }; }
+      if (op === 'reframe' || op === 'fit_frame') { // (op "frame" is the seek that looks at a frame)
+        const spec = typeof a.frame === 'object' && a.frame ? a.frame : X().parseFrame(a.frame ?? a.to ?? a.fit ?? '');
+        if (!spec) return { ok: false, error: 'frame: "from left to right", "right third", "zoom 120%", "fit", "blur", "fill" or "reset"' };
+        setFrame(spec, sel(), { all: Boolean(a.all) });
+        return { ok: true, value: { format: D.formatOf(S.edit), clips: D.describe(S.edit) } };
+      }
+      if (op === 'motion' || op === 'kenburns') { setMotion(String(a.move ?? a.motion ?? 'push-in'), sel()); return { ok: true, value: status() }; }
+      if (op === 'grade' || op === 'look_clip') { const lk = /^(none|off)$/i.test(String(a.look ?? '')) ? null : a.look; const got = setGrade(lk || null, { amt: a.amt != null ? Number(a.amt) : null, ids: a.all ? [] : sel(), all: Boolean(a.all) }); return { ok: true, value: { look: got, name: got ? EditFX.LOOK[got].name : null } }; }
+      if (op === 'chop') { const n = chop(a.every === 'beat' ? 'beat' : Number(a.every) > 0 ? Number(a.every) : 'bar', sel()); return { ok: true, value: { cuts: n, clips: D.describe(S.edit) } }; }
+      if (op === 'duck') { setDuck(a.on == null ? true : Boolean(a.on) && a.on !== 'off', a.amount != null ? Number(a.amount) : null); return { ok: true, value: { duck: S.edit.seq.duck !== false, amount: S.edit.seq.duckAmt ?? X().DEFAULT_DUCK } }; }
+      if (op === 'mute_track') { const k = (S.edit.tracks || []).find((x) => x.name.toLowerCase() === String(a.track || '').toLowerCase()); if (!k) return { ok: false, error: `No track "${a.track}" (tracks: ${(S.edit.tracks || []).map((x) => x.name).join(', ')})` }; return { ok: true, value: { [k.name]: muteTrack(k.id, a.on) ? 'off' : 'on' } }; }
+      if (op === 'captions') { const n = a.path ? await captionsFile(a.path, a.look ? { look: a.look } : {}) : captionsTyped([].concat(a.lines ?? a.text ?? []).join('\n'), { each: a.each != null ? Number(a.each) : null, look: a.look }); return { ok: true, value: { captions: n, clips: D.describe(S.edit) } }; }
+      if (op === 'caption_look') { captionLook(a.look); return { ok: true, value: { look: a.look } }; }
+      if (op === 'lower') { if (a.at != null) seek(timeOf(a.at) ?? S.T); addLower(a.text || 'Name — Role', { preset: a.preset || S.edit.seq?.lowerLook || 'forge', dur: a.secs != null ? Number(a.secs) : null }); return { ok: true, value: status() }; }
+      if (op === 'outputs') { const fs = Array.isArray(a.formats) ? a.formats : X().parseOutputs(a.formats ?? a.to ?? '', D.FORMATS); return { ok: true, value: { outputs: setOutputs(fs) } }; }
+      if (op === 'render_outputs') { const rs = await renderOutputs(); return { ok: true, value: { files: rs.map((r) => r.path), note: 'One video per output, each with its own framing' } }; }
       return { ok: false, error: `Unknown op "${op}" (op: "help")` };
     } catch (err) { return { ok: false, error: err.message }; }
   }
@@ -2222,6 +2571,7 @@ const ThreeSeq = (() => {
     enter, leave, toggle, open, create, current, list, add, addCurrent, applyVibe, select, split, del, dup, slipBy, trimToHead, marker, setTransition, setLength, setLook, fit, setFormat,
     play, seek, step, shuttle, jump, settle, undo, redo, render, renderEdit, renderScene, needsBake, bake, compile, status, handle, timeOf, secsOf, zoomBy,
     arrange, again, retime, versions, fillGap, vary, varySections, copyLook, pasteLook, swapLooks, nest, unnest, copySel, paste, zoomTo, sectionMarkers, decideArrangement,
+    setFrame, setFit, frameEverywhere, setMotion, setVolume, setFade, setDuck, muteTrack, setGrade, setGradeAmt, chop, captionsFile, captionsTyped, captionsFromCues, captionLook, exportCaptions, addLower, lowerLook, setOutputs, outputsOf: () => outputsOf(), renderOutputs, writeCaptions,
     outDir, keyForScene, switchTo, summaryFor, sceneCopied, songInfo, pickScenes, bakeRuns, get owner() { return S.owner; },
     on: (ev, fn) => { (listeners[ev] ||= []).push(fn); },
     get active() { return S.view; }, get key() { return S.key; }, get edit() { return S.edit ? C.copy(S.edit) : null; }, get time() { return S.T; }, get playing() { return S.playing; }, get fps() { return fps(); },

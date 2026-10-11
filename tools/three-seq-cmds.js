@@ -42,6 +42,15 @@
     ['snap', 'snap [on | off]: snapping to bars, beats, markers, edges'], ['select', 'select <all | none | after | 2 3 | from 4 to 8>'], ['history', 'history [back n | forward n]: the undo list'],
     ['clip', 'clip <n | name>: go to a clip (selected)'], ['around', 'Play around the playhead and come back'], ['health', 'The preview watchdog: what it restored'],
     ['range', 'range <in | out | clip n | 2.5 6 | clear>: the In–Out range (⟲ loop it, render it)'], ['close-gaps', 'Close every gap (the clips after move up)'],
+    // labcut (round 18)
+    ['volume', 'volume [clip n…] <50% | 0.5 | -6 dB | mute>: footage or a sound clip'], ['fade', 'fade [clip n…] <in | out | both> <1 s>: a sound fade'],
+    ['frame', 'frame [clip n…] <from left to right | right third | zoom 120% | fit | blur | fill | reset> [all formats]: framing for this format'],
+    ['move-cam', 'move-cam [clip n…] <push-in | pull-out | pan-left | pan-right | pan-up | pan-down | punch | auto | none>: Ken Burns'],
+    ['grade', 'grade [clip n… | all] <look | none> [50%]: a color look (teal-orange, moody, bw…)'], ['chop', 'chop [clip n] [bar | beat | 2 bars]: a cut on every bar of the song'],
+    ['voice', 'voice <path> [at …]: a voice-over (the music ducks under it)'], ['sfx', 'sfx <path> [at …]: a sound effect'], ['duck', 'duck [on | off | 6 | 12 | 18 dB]: the music under the voice'],
+    ['captions', 'captions <file.srt | line one | line two…> [look clean|box|social|gold|subtitle]: the Captions track'], ['caption-look', 'caption-look <clean | box | social | gold | subtitle>'],
+    ['lower', 'lower <Name — Role> [look <preset>] [at …]: a lower third'], ['outputs', 'outputs <9:16 1:1 16:9 | socials | all>: one sequence, several formats'],
+    ['mute', 'mute <track name>: mute / unmute a sound track (hide a text track)'], ['srt', 'Save the captions as an .srt file'],
   ];
   const call = async (args) => { const r = await Q().handle('three_sequence', args); if (!r.ok) throw new Error(r.error); return r.value; };
   const clipArg = (w) => (/^\d+$/.test(w || '') ? Number(w) : w);
@@ -67,6 +76,16 @@
       if (/^history$/i.test(w[0])) return opts(['back 1', 'back 3', 'forward 1'].map((r) => `history ${r}`), a);
       if (/^(versions)$/i.test(w[0])) return opts(['15 6', '15', '6', '30', '15 6 render'].map((z) => `versions ${z}`), a);
       if (/^scene$/i.test(w[0])) return opts(names().map((n) => `scene ${n}`), a);
+      if (/^grade$/i.test(w[0])) return opts(['all ', 'none', 'teal-orange', 'moody', 'golden-hour', 'bw', 'portra', 'super8', 'bleach', ...(typeof EditFX !== 'undefined' ? EditFX.LOOKS.map((l) => l.id) : [])].map((r) => `grade ${r}`), a);
+      if (/^frame$/i.test(w[0])) return opts(['from left to right', 'from right to left', 'from top to bottom', 'left third', 'right third', 'zoom 125%', 'fit', 'blur', 'fill', 'reset', 'from left to right all formats'].map((r) => `frame ${r}`), a);
+      if (/^(move-cam|kenburns)$/i.test(w[0])) return opts(['push-in', 'pull-out', 'pan-left', 'pan-right', 'pan-up', 'pan-down', 'push-left', 'push-right', 'punch', 'auto', 'none'].map((r) => `${w[0]} ${r}`), a);
+      if (/^volume$/i.test(w[0])) return opts(['50%', '75%', '150%', '-6 dB', 'mute', '100%'].map((r) => `volume ${r}`), a);
+      if (/^fade$/i.test(w[0])) return opts(['in 1', 'out 2', 'both 0.5', 'out 0'].map((r) => `fade ${r}`), a);
+      if (/^chop$/i.test(w[0])) return opts(['bar', 'beat', '2 bars'].map((r) => `chop ${r}`), a);
+      if (/^duck$/i.test(w[0])) return opts(['on', 'off', '6 dB', '12 dB', '18 dB'].map((r) => `duck ${r}`), a);
+      if (/^(caption-look|captions)$/i.test(w[0])) return opts(['clean', 'box', 'social', 'gold', 'subtitle'].map((r) => `${w[0]}${w[0] === 'captions' ? ' look' : ''} ${r}`), a);
+      if (/^outputs$/i.test(w[0])) return opts(['socials', 'all', '9:16 1:1 16:9', '9:16 4:5', 'render'].map((r) => `outputs ${r}`), a);
+      if (/^lower$/i.test(w[0])) return opts((typeof EditFX !== 'undefined' ? EditFX.LOWER_THIRDS : []).slice(0, 14).map((l) => ({ value: `lower Name — Role look ${l.id}`, hint: l.name })), a);
       if (/^(render|format|new)$/i.test(w[0])) return opts(['9:16', '16:9', '1:1', '4:5', ...(/^render$/i.test(w[0]) ? ['all', 'realtime'] : [])].map((f) => `${w[0]} ${f}`), a);
       return [];
     },
@@ -164,6 +183,21 @@
         return v.range ? `Range ${v.range.from} – ${v.range.to} (⟲ Loop plays it, ⇪ Render can render just it)` : 'No range';
       }
       if (sub === 'close-gaps' || sub === 'gaps') return lines(await call({ op: 'close_gaps' }));
+      // ---- labcut (round 18): framing, sound, looks, captions, lower thirds, outputs ----
+      if (sub === 'volume' || sub === 'vol') { const { clips, tail } = clipsThen(); return lines(await call({ op: 'volume', clips, volume: tail || '100%' })); }
+      if (sub === 'fade') { const { clips, tail } = clipsThen(); const edge = /out/i.test(tail) ? 'out' : /both/i.test(tail) ? 'both' : 'in'; const secs = parseFloat((tail.match(/\d+(?:\.\d+)?/) || ['1'])[0]); return lines(await call({ op: 'fade', clips, edge, secs })); }
+      if (sub === 'frame' || sub === 'reframe') { const { clips, tail } = clipsThen(); const all = /\b(all|every)\s*formats?\b/i.test(tail); const v = await call({ op: 'reframe', clips, frame: tail.replace(/\b(all|every)\s*formats?\b/i, '').trim(), all }); return `Framing (${all ? 'every format' : v.format}):\n${v.clips.join('\n')}`; }
+      if (sub === 'move-cam' || sub === 'kenburns' || sub === 'motion') { const { clips, tail } = clipsThen(); return lines(await call({ op: 'motion', clips, move: tail || 'push-in' })); }
+      if (sub === 'grade') { const all = /^all$/i.test(w[1] || ''); const ws = all ? w.slice(2) : w.slice(1); const clips = []; while (ws.length > 1 && /^\d+$/.test(ws[0])) clips.push(Number(ws.shift())); const pct = ws.find((x) => /^\d+%$/.test(x)); const look = ws.filter((x) => x !== pct).join(' ') || 'none'; const v = await call({ op: 'grade', all, clips: clips.length ? clips : undefined, look, amt: pct ? parseFloat(pct) / 100 : undefined }); return v.look ? `◑ ${v.name}${all ? ' on the whole sequence' : ''}` : 'No color look.'; }
+      if (sub === 'chop') { const n = /^\d+$/.test(w[1] || '') && w[2] ? Number(w[1]) : undefined; const tail = w.slice(n ? 2 : 1).join(' '); const every = /beat/i.test(tail) ? 'beat' : /(\d+)\s*bars/i.test(tail) ? Number(/(\d+)\s*bars/i.exec(tail)[1]) : 'bar'; const v = await call({ op: 'chop', clip: n, every }); return `✂ ${v.cuts} cut${v.cuts === 1 ? '' : 's'}\n${v.clips.join('\n')}`; }
+      if (sub === 'voice' || sub === 'sfx') { const p = parseAdd(rest); return lines(await call({ op: 'add', [sub]: p.scene, at: p.at || undefined })); }
+      if (sub === 'duck') { const off = /^off$/i.test(w[1] || ''); const db = parseFloat(w[1] || ''); const v = await call({ op: 'duck', on: !off, amount: db > 0 ? 10 ** (-db / 20) : undefined }); return v.duck ? `The music ducks under the voice (${(20 * Math.log10(v.amount)).toFixed(0)} dB).` : 'No ducking.'; }
+      if (sub === 'captions' || sub === 'subs') { const lm = /\blook\s+(\w+)\s*$/i.exec(rest); const body = rest.replace(/\blook\s+\w+\s*$/i, '').trim(); const isFile = /\.(srt|vtt)$/i.test(body); if (!body) { await Q().enter(); return 'Captions: ⋯ → Text & captions (a file, or type them), or /sequence captions <file.srt | line one | line two>.'; } const v = await call({ op: 'captions', ...(isFile ? { path: body } : { lines: body.split(/\s+\|\s+|\n/) }), look: lm ? lm[1] : undefined }); return `💬 ${v.captions} caption${v.captions === 1 ? '' : 's'} on the Captions track`; }
+      if (sub === 'caption-look') { await call({ op: 'caption_look', look: w[1] || 'clean' }); return `Captions: ${w[1] || 'clean'}`; }
+      if (sub === 'lower' || sub === 'lower-third') { const lm = /\blook\s+([\w-]+)/i.exec(rest); const am = /\bat\s+((?:bar\s*)?[\w:.;]+)\s*$/i.exec(rest); const text = rest.replace(/\blook\s+[\w-]+/i, '').replace(/\bat\s+(?:bar\s*)?[\w:.;]+\s*$/i, '').trim(); return lines(await call({ op: 'lower', text: text || 'Name — Role', preset: lm ? lm[1] : undefined, at: am ? am[1] : undefined })); }
+      if (sub === 'outputs') { if (/^render$/i.test(w[1] || '')) { const v = await call({ op: 'render_outputs' }); return `Rendered ${v.files.length} output${v.files.length === 1 ? '' : 's'}:\n${v.files.map((f) => `• ${f}`).join('\n')}`; } if (!w[1]) return `Outputs: ${Q().outputsOf().join(' · ')} (/sequence outputs socials · /sequence outputs render)`; const v = await call({ op: 'outputs', formats: rest }); return `Outputs: ${v.outputs.join(' · ')} (each keeps its own framing: swap the frame size to frame it, /sequence outputs render)`; }
+      if (sub === 'mute' || sub === 'unmute') { const v = await call({ op: 'mute_track', track: rest, on: sub === 'mute' }); return Object.entries(v).map(([k, x]) => `${k}: ${x}`).join(''); }
+      if (sub === 'srt') { const p = await Q().exportCaptions(); return `Captions saved: \`${p}\``; }
       if (sub === 'around') { Q().playAround(); return 'Playing around the playhead (2 s before, 1 s after).'; }
       if (sub === 'health' || sub === 'watchdog') { const v = await call({ op: 'health' }); const r = v.restores; return `Watchdog ${v.watching ? 'watching' : 'idle (the sequence isn\'t on screen)'} · restored ${r.soft + r.hard + r.remount + r.assets}× (clock / lost plan ${r.soft}, fresh page ${r.hard}, clips ${r.remount}, files ${r.assets})${v.last ? ` · last: ${v.last.why}` : ''}`; }
       if (sub === 'scene') { const v = await call({ op: 'show', of: rest || undefined }); return lines(v); }
@@ -203,5 +237,9 @@
     AppUI.addAction('Lab: Arrange my scenes on the song (sequence)', () => ThreeLab.cmd({ show: true }).then(() => Q().arrange()).then(() => Q().enter()));
     AppUI.addAction('Lab: The 15 s and 6 s versions of the sequence', () => ThreeLab.cmd({ show: true }).then(() => Q().versions([15, 6])));
     AppUI.addAction('Lab: Let Astra pick the sequence arrangement', () => ThreeLab.cmd({ show: true }).then(() => Q().decideArrangement()));
+    // labcut (round 18)
+    AppUI.addAction('Lab: Render every output of the sequence (9:16 · 1:1 · 16:9…)', () => ThreeLab.cmd({ show: true }).then(() => Q().renderOutputs()));
+    AppUI.addAction('Lab: Captions for the sequence from a file (.srt)', () => ThreeLab.cmd({ show: true }).then(() => Q().captionsFile()));
+    AppUI.addAction('Lab: Add a voice-over to the sequence', () => ThreeLab.cmd({ show: true }).then(async () => { const [p] = (await window.hub.openDialog({ title: 'A voice-over', filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'] }] })) || []; if (p) await Q().add({ path: p, role: 'voice' }); }));
   }
 })();
