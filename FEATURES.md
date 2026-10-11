@@ -655,3 +655,9 @@ One searchable **FX picker** in the Three.js Lab (**X**, the Layers **＋ Layer*
 - ✓ Every menu ends with its delete in red; files read Open · Reveal in Finder / Show in Explorer · Copy path · Send to… everywhere.
 - ✓ Commands page: Principal first, Studio + Discover one row of chips; Ctrl/⌘+K with nothing typed is a short list; Ctrl/⌘+1…9 walk the whole rail.
 - ○ Tested headless (`dev/checks/tidy.js`); the Mac's ⌘ labels are converted by the same code as before.
+
+## Loading screen + lighter start (round 19, splash, 26 upgrades: docs/upgrades/splash.md)
+- ✓ Hearth opens on a loading screen in its own look (mark, bar, status), drawn in the first frame; no white flash; the bar follows real steps and fades as soon as the first screen is usable; a hairline shows features still arriving.
+- ✓ A slow start says what it waits for (sync pass, engine check, a read…), offers Open anyway; reduce motion respected; `/startup` shows every step of the last start.
+- ✓ Cloud sync no longer holds the window back; tray / hotkey / rarely used modules after the window; no git fetch or engine doctor while the first screen builds; 2 stylesheets off the start.
+- ○ Measured headless (`dev/coldstart-report.js`: first frame on screen 815 → 467 ms); the Mac's ready-to-show timing is not run here.
