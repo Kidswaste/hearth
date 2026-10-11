@@ -362,7 +362,7 @@ const AppUI = (() => {
 
   // ---------- shortcuts help ----------
   const SHORTCUTS = [
-    ['Ctrl+K', 'Command palette (type ? to search messages, / for chat commands)'], ['Ctrl+;', 'Command bar: run a /command over any tool (↑ history, ? help)'], ['Ctrl+1…9', 'Switch agent'], ['Ctrl+Tab', 'Previous agent/tool (press again to go further back)'],
+    ['Ctrl+K', 'Command palette (type ? to search messages, / for chat commands)'], ['Ctrl+;', 'Command bar: run a /command over any tool (↑ history, ? help)'], ['Ctrl+1…9', 'The rail, top to bottom: agents, then tools'], ['Ctrl+Tab', 'Previous agent/tool (press again to go further back)'],
     ['Ctrl+N', 'New native chat'], ['Ctrl+F', 'Find in the current view'], ['Ctrl+J', 'Notes'], ['Ctrl+\\', 'Show/hide chats panel'],
     ['Ctrl+G', 'All agents side by side'], ['Ctrl+Shift+Space', 'Ask all agents'], ['Ctrl+B', 'Show/hide ask-all bar'],
     ['Ctrl + / − / 0', 'Text size'], ['Ctrl+R', 'Reload website'], ['Ctrl+Shift+R', 'Reload the hub itself'], ['Ctrl+,', 'Settings'], ['Ctrl+/', 'This list'],

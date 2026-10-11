@@ -20,9 +20,19 @@ const Simplify = (() => {
     const more = el('button', { class: 'tool-btn', id: 'rail-more', text: '⋯', title: 'More: notes, memory, side by side, ask-all bar, import', dataset: { feature: 'Rail more' } });
     more.addEventListener('click', () => {
       const r = more.getBoundingClientRect();
-      showMenu(r.right + 6, r.top - 4, TUCKED.filter(([id]) => $(id)).map(([id, label]) => ({ label: `${$(id).classList.contains('on') ? '✓ ' : ''}${label}`, action: () => $(id).click() })));
+      showMenu(r.right + 6, r.top - 4, moreItems());
     });
     anchor.before(more);
+  }
+  // (round 18, tidy) the ⋯ flyout reads like every other menu: one icon set (icons.js) instead of mixed emoji, the key
+  // on the right, and the tools hidden from the rail one click away (Settings → Tools in the rail brings them back)
+  const ICON = { 'palette-btn': 'command', 'add-btn': 'plus', 'notes-btn': 'notes', 'memory-btn': 'memory', 'grid-btn': 'grid', 'bar-btn': 'broadcast', 'import-btn': 'export', 'capture-btn': 'capture', 'apps-btn': 'web' };
+  function moreItems() {
+    const rows = TUCKED.filter(([id]) => $(id)).map(([id, label]) => ({
+      label: String(label).replace(/^[^\p{L}\d]+/u, '').replace(/⌘\+/g, 'Ctrl+'), icon: ICON[id], checked: $(id).classList.contains('on'), action: () => $(id).click() }));
+    const hidden = typeof Tools !== 'undefined' ? Tools.all().filter((t) => !Tools.enabled().includes(t)) : [];
+    if (hidden.length) rows.push('-', 'Not in the rail', ...hidden.map((t) => ({ label: t.name, icon: typeof Icons !== 'undefined' ? Icons.keyFor(t) : null, action: () => activate(`tool:${t.id}`) })), { label: 'Put tools back in the rail…', action: () => AppUI.openSettings('rail') });
+    return rows;
   }
   // Once: the ask-all bar (a whole row, never used) starts hidden like it does for new installs; Ctrl+B or
   // Ctrl+Shift+Space shows it, layout.askAllBar: true in config.json keeps it.
@@ -34,5 +44,5 @@ const Simplify = (() => {
   }
   rail();
   calmDefaults();
-  return { TUCKED };
+  return { TUCKED, moreItems };
 })();

@@ -79,8 +79,7 @@ const KeysUI = (() => {
   function keyFor(b) {
     if (b.dataset.key) return b.dataset.key;
     for (const [sel, k] of HINTS) if (b.matches(sel)) return k;
-    const agent = b.closest('#agent-buttons') && [...document.querySelectorAll('#agent-buttons .agent-btn:not(.tool-btn-rail)')].indexOf(b);
-    if (agent != null && agent >= 0 && agent < 9) return `Ctrl+${agent + 1}`;
+    if (b.closest('#agent-buttons') && b.dataset.id && H.railKey?.(b.dataset.id)) return H.railKey(b.dataset.id); // agents, then tools (round 18)
     const m = (b.title || '').match(TITLE_KEY);
     return m ? (m[1] || m[2]) : null;
   }
@@ -353,7 +352,7 @@ const KeysUI = (() => {
       { area: G, keys: 'Ctrl+;', what: 'Command bar over any tool: plain words work ("make it 9 by 16")', run: () => CmdBar.toggle() },
       { area: G, keys: 'F1', what: 'Every chat command, searchable', run: () => CmdBar.help() },
       { area: G, keys: 'Ctrl+/', what: 'This sheet (the keys button, bottom left)' },
-      { area: G, keys: 'Ctrl+1…9', what: 'Switch to agent 1…9 in the rail' },
+      { area: G, keys: 'Ctrl+1…9', what: 'The rail, top to bottom: your agents, then the tools (Lab, Board, Commands…)' },
       { area: G, keys: 'Ctrl+Tab', what: 'The agent or tool before (again: further back)', run: () => AppUI.switchRecent(false) },
       { area: G, keys: 'Ctrl+N', what: 'New chat', run: sc('n') },
       { area: G, keys: 'Ctrl+F', what: 'Find in the current view', run: () => AppUI.find() },

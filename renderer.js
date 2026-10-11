@@ -21,6 +21,9 @@ H.agents = () => (H.config?.agents || []).filter((a) => a.enabled !== false && !
 H.agent = (id) => H.config?.agents.find((a) => a.id === id);
 // Agents docked inside a tool (Three Director, Forge Debug) live in that tool, not in the rail.
 H.railAgents = () => H.agents().filter((a) => !a.dock);
+// (round 18, tidy) Ctrl/⌘+1…9 walk the rail top to bottom: the agents, then the tools (each tooltip names its key)
+H.railOrder = () => [...H.railAgents().map((a) => a.id), ...(typeof Tools !== 'undefined' ? Tools.enabled().map((t) => `tool:${t.id}`) : [])];
+H.railKey = (id) => { const i = H.railOrder().indexOf(id); return i >= 0 && i < 9 ? `Ctrl+${i + 1}` : ''; };
 H.surfaceIdFor = (id) => { const a = H.agent(id); return a?.dock ? `tool:${a.dock}` : id; };
 H.settings = () => H.config?.settings || {};
 H.isTool = (id) => typeof id === 'string' && id.startsWith('tool:');
@@ -92,7 +95,7 @@ function renderRail() {
   const rail = $('agent-buttons');
   rail.replaceChildren();
   H.railAgents().forEach((agent, i) => {
-    const btn = railButton(agent.id, agent, `${agent.name}${agent.mode === 'native' ? ' (native)' : ''}  ·  Ctrl+${i + 1}  ·  right-click for options`);
+    const btn = railButton(agent.id, agent, `${agent.name}${H.railKey(agent.id) ? `  ·  ${H.railKey(agent.id)}` : ''}  ·  right-click: more`);
     if (agent.mode === 'native') btn.classList.add('native');
     if (H.unread.has(agent.id)) btn.classList.add('unread');
     btn.addEventListener('contextmenu', (e) => { e.preventDefault(); showAgentMenu(agent.id, e.clientX, e.clientY); });
@@ -102,7 +105,7 @@ function renderRail() {
   if (tools.length) {
     rail.append(el('div', { class: 'rail-sep' }));
     for (const tool of tools) {
-      const btn = railButton(`tool:${tool.id}`, tool, `${tool.name}  ·  right-click for options`);
+      const btn = railButton(`tool:${tool.id}`, tool, `${tool.name}${H.railKey(`tool:${tool.id}`) ? `  ·  ${H.railKey(`tool:${tool.id}`)}` : ''}  ·  right-click: more`);
       btn.classList.add('tool-btn-rail');
       if (H.agents().some((a) => a.dock === tool.id && H.unread.has(a.id))) btn.classList.add('unread');
       btn.addEventListener('contextmenu', (e) => { e.preventDefault(); showToolMenu(tool.id, e.clientX, e.clientY); });
@@ -116,10 +119,9 @@ function renderRail() {
 function showAgentMenu(id, x, y) {
   const agent = H.agent(id);
   if (!agent) return;
-  const i = H.railAgents().findIndex((a) => a.id === id);
   const recent = agent.mode === 'native' ? H.chats.filter((c) => c.agentId === id).slice(0, 10) : (H.history[id] || []).slice(-10).reverse();
   showMenu(x, y, [
-    { label: `Open ${agent.name}`, key: i >= 0 && i < 9 ? `Ctrl+${i + 1}` : '', action: () => activate(id) },
+    { label: `Open ${agent.name}`, key: H.railKey(id), action: () => activate(id) },
     agent.mode === 'native' ? { label: 'New chat', key: 'Ctrl+N', action: () => { activate(id); Native.newChat(id); } } : null,
     recent.length ? { label: 'Recent chats', items: () => recent.map((c) => (agent.mode === 'native'
       ? { label: (c.title || 'Untitled').slice(0, 48), hint: timeAgo(c.updatedAt || c.at || Date.now()), action: () => { activate(id); Native.open(id, c.id); } }
@@ -141,7 +143,7 @@ function showAgentMenu(id, x, y) {
 function showToolMenu(id, x, y) {
   const docked = Tools.dockedAgent?.(id);
   showMenu(x, y, [
-    { label: `Open ${Tools.get?.(id)?.name || 'the tool'}`, action: () => activate(`tool:${id}`) },
+    { label: `Open ${Tools.get?.(id)?.name || 'the tool'}`, key: H.railKey(`tool:${id}`), action: () => activate(`tool:${id}`) },
     docked ? { label: `${docked.name} chat`, hint: 'Docked beside it', action: () => { activate(`tool:${id}`); Tools.openDock(id); } } : null,
     '-',
     { label: 'Move', items: [{ label: 'Up', action: () => Tools.move(id, -1) }, { label: 'Down', action: () => Tools.move(id, 1) }] },
@@ -694,7 +696,7 @@ async function askAll(text) {
 
 function handleShortcut({ key, shift }) {
   Usage.key(`Ctrl+${shift ? 'Shift+' : ''}${key.length === 1 ? key.toUpperCase() : key}`);
-  if (/^[1-9]$/.test(key)) { const a = H.railAgents()[Number(key) - 1]; if (a) activate(a.id); }
+  if (/^[1-9]$/.test(key)) { const id = H.railOrder()[Number(key) - 1]; if (id) activate(id); }
   else if (key === 'g') { H.grid = !H.grid; applyLayout(); }
   else if (key === '\\') { H.panelOpen = !H.panelOpen; applyLayout(); }
   else if (key === 'b') { $('broadcast').classList.toggle('hidden'); applyLayout(); }

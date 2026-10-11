@@ -98,12 +98,12 @@ const Panel = (() => {
           { label: 'Tag…', action: async () => { const t = await Modal.prompt('Tags', { value: (item.tags || []).join(', '), label: 'Comma-separated; filter with /filter tag:<name>' }); if (t != null) ChatUX.setMeta(item.chatId, { tags: [...new Set(t.split(/[,\s]+/).map((x) => x.replace(/^#/, '').trim().toLowerCase()).filter(Boolean))] }); } },
           { label: 'Move to folder…', hint: item.folder || '', action: async () => { const f = await Modal.prompt('Folder', { value: item.folder || '', label: `Existing: ${ChatUX.allFolders().join(', ') || 'none yet'} (empty = no folder)` }); if (f != null) ChatUX.setMeta(item.chatId, { folder: f.trim().slice(0, 40) }); } },
           { label: item.archived ? 'Unarchive' : 'Archive (hide from the list)', action: () => ChatUX.setMeta(item.chatId, { archived: !item.archived }) },
+          { label: 'Duplicate this chat', action: () => onChat(agent.id, item.chatId, '/duplicate') }, // (round 18) where and how the chat's ⋯ menu says it
           { label: H.unreadChats?.has(item.chatId) ? 'Mark as read' : 'Mark as unread', action: () => { if (H.unreadChats.has(item.chatId)) H.unreadChats.delete(item.chatId); else H.unreadChats.add(item.chatId); render(); } },
         ] },
         { label: 'Copy & export', items: () => [
           { label: 'Copy as Markdown', action: async () => copyText(await Native.markdownOf(item.chatId), 'Chat copied') },
-          { label: 'Duplicate', action: () => onChat(agent.id, item.chatId, '/duplicate') },
-          { label: 'Export…', action: () => onChat(agent.id, item.chatId, '/export md file') },
+          { label: 'Export as Markdown file…', action: () => onChat(agent.id, item.chatId, '/export md file') },
         ] },
         others.length ? { label: 'Continue with', items: () => others.map((a) => ({ label: a.name, action: () => Native.continueWith(item.chatId, a.id) })) } : null,
         { label: 'Delete chat', key: 'Del', danger: true, action: () => { if (confirm(`Delete "${item.title}"? You can restore it for 30 days (Ctrl+K → Recently deleted chats).`)) Native.remove(item.chatId); } },
@@ -215,7 +215,10 @@ const Panel = (() => {
       }
       if (!collapsed.has(agent.id) || q || view) {
         if (!items.length && !draft) {
-          group.append(el('div', 'none', q ? 'No matches' : agent.mode === 'native' ? 'No chats yet' : 'Chats you open will show up here'));
+          const none = el('div', 'none', q ? 'No matches' : agent.mode === 'native' ? 'No chats yet · ' : 'Chats you open will show up here');
+          // (round 18, tidy) an empty agent offers its one action: start a chat
+          if (!q && agent.mode === 'native') { const b = el('button', 'none-new', 'New chat'); b.type = 'button'; b.title = 'Ctrl+N'; b.addEventListener('click', () => { activate(agent.id); Native.newChat(agent.id); }); none.append(b); }
+          group.append(none);
         }
         const limit = expanded.get(agent.id) || PAGE;
         // chats without a folder first, then each folder under its own small header
