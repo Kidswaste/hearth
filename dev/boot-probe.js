@@ -14,7 +14,19 @@ if (OUT && process.versions.electron && process.type === 'browser') {
 
   // 'electron' can't be required yet from here: the hooks go in when main.js asks for it
   const hook = (electron) => {
-    const { app } = electron;
+    const { app, ipcMain } = electron;
+    // every IPC call the window makes in its first 5 s: how many per channel and the main process's time in them
+    t.ipc = {};
+    const handle = ipcMain.handle.bind(ipcMain);
+    ipcMain.handle = (ch, fn) => handle(ch, (...a) => {
+      if (performance.now() > (t.marks.windowCreated ?? 1e9) + 5000) return fn(...a);
+      const t0 = performance.now();
+      const done = () => { const s = (t.ipc[ch] ||= [0, 0, 0]); s[0] += 1; s[1] += performance.now() - t0; save(); };
+      let r;
+      try { r = fn(...a); } finally { const s = (t.ipc[ch] ||= [0, 0, 0]); s[2] += performance.now() - t0; } // [calls, ms to answer, ms of main-thread work]
+      if (r && typeof r.then === 'function') r.then(done, done); else done();
+      return r;
+    });
     app.once('will-finish-launching', () => mark('willFinishLaunching'));
     app.once('ready', () => mark('appReady'));
     app.on('browser-window-created', (_e, win) => {

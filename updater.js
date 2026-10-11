@@ -121,7 +121,9 @@ const Updater = (() => {
     afterUpdate();
     setTimeout(() => { if (auto()) check(); }, 25000);
     setInterval(() => { if (auto() && !document.hidden) check(); }, EVERY);
-    window.addEventListener('focus', () => { if (auto() && Date.now() - checkedAt > 10 * 60000) check(); });
+    // (round 19, splash) not on the window's first focus at launch (a git fetch while the first screen builds): the
+    // check 25 s in covers that; later, coming back after 10 minutes away checks again
+    window.addEventListener('focus', () => { if (auto() && performance.now() > 20000 && Date.now() - checkedAt > 10 * 60000) check(); });
     if (typeof Commands !== 'undefined' && !Commands.get('update')) {
       Commands.register({
         name: 'update', area: 'App', args: '[now | check | auto on|off]', aliases: ['upgrade-hearth'],
