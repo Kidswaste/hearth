@@ -78,7 +78,8 @@ async function thumbs(o, tools, probe) {
   const file = String(o.file || '');
   const n = Math.max(1, Math.min(60, Math.round(o.n || 24)));
   const w = Math.max(32, Math.min(480, Math.round(o.w || 160) & ~1));
-  const at = o.at != null ? Math.max(0, Number(o.at) || 0) : null;
+  // at 'lead': the library's card picture (1.5 s in, or 15 % of a short clip), the same key whatever the length
+  const at = o.at === 'lead' ? 'lead' : o.at != null ? Math.max(0, Number(o.at) || 0) : null;
   const key = keyOf(file, `thumbs:${n}:${w}:${at ?? ''}`);
   const sprite = path.join(DIR, `${key}.jpg`);
   const metaP = path.join(DIR, `${key}.json`);
@@ -95,7 +96,7 @@ async function thumbs(o, tools, probe) {
     const tmp = `${sprite}.${process.pid}.tmp.jpg`;
     let args; let times;
     if (at != null || n === 1) {
-      const t = Math.min(at ?? D / 2, Math.max(0, D - 0.05));
+      const t = Math.min(at === 'lead' ? Math.min(1.5, D * 0.15) : at ?? D / 2, Math.max(0, D - 0.05));
       times = [t];
       args = ['-hide_banner', '-v', 'error', '-y', '-ss', t.toFixed(3), '-i', file, '-an', '-sn', '-frames:v', '1', '-vf', `scale=${w}:${th}`, '-q:v', '5', tmp];
     } else {
@@ -164,8 +165,9 @@ function register(ipcMain, ffStatus, probe) {
   ipcMain.handle('video:media', async (_e, op, o = {}, overrides = {}) => {
     const tools = ffStatus(overrides || {});
     const pr = (f) => probe(f, overrides);
-    if (op === 'thumbs') return thumbs(o, tools, pr);
-    if (op === 'audio') return audio(o, tools, pr);
+    // a file ffmpeg can't read is an answer, not an error (the window falls back to its own decoder)
+    if (op === 'thumbs') return thumbs(o, tools, pr).catch((err) => ({ error: err.message }));
+    if (op === 'audio') return audio(o, tools, pr).catch((err) => ({ error: err.message }));
     if (op === 'get') return getJson(o);
     if (op === 'set') return setJson(o);
     if (op === 'stats') return summary();

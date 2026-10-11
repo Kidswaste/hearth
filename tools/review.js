@@ -167,6 +167,7 @@ const Review = (() => {
       const p = (async () => {
         if (!await ready()) return null;
         const r = await api()('thumbs', { file: path, n, w, at }, ffOverrides());
+        if (!r?.sprite) return null; // ffmpeg can't read it: the decoder here tries
         const img = new Image(); img.decoding = 'async'; img.src = fileUrl(r.sprite);
         await img.decode();
         counts.sprites += 1;
