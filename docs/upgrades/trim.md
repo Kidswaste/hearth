@@ -16,12 +16,15 @@ there.
 | Main-process code required at launch | 33 files, 587 KB | 33 files, 582 KB | −5 KB |
 | assets/swirl.svg (the Swirl look's galaxies) | 58 KB | 27 KB | −31 KB (−54 %) |
 | App on disk without dev/docs (292 files) | 8,211 KB | 8,190 KB | −21 KB |
-| Startup: ready / interactive | PERF_READY | | |
-| JS heap after GC, first screen | PERF_HEAP | | |
+| Startup: script evaluation (two runs each) | 190 / 167 ms | 158 / 114 ms | ≈ −25 % |
+| Startup: main-thread busy | 1,677 / 1,553 ms | 1,626 / 1,208 ms | ≈ −12 % |
+| Startup: ready (first screen up) | 661 / 701 ms | 762 / 551 ms | within the noise |
+| Once everything has loaded: JS heap / DOM nodes / listeners | 6.7 MB / 1,652 / 280 | 6.7 MB / 1,644 / 278 | same (the code still loads, later) |
 
 (KB: `node dev/weight-report.js`; startup:
 `node dev/perf-report.js --startup-only --no-stream`, two interleaved rounds of 5 reloads per build, medians, on a
-machine shared with other agents: compare the ratios.) The lazy-group manifest (lazy-data.js) grew by 24 KB to list
+machine busy with other agents' runs: single runs swung by ±30 %, so only the script and main-thread totals show a
+clear trend.) The lazy-group manifest (lazy-data.js) grew by 24 KB to list
 what the three new groups register; that is inside the 2,145 KB.
 
 ## What loads later now (it all still works from the first moment)
