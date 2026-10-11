@@ -13,7 +13,7 @@ const meta = async (k, { shift = false } = {}) => { // ⌘+key the way macOS sen
 ok(/Mac/.test(navigator.platform), 'the page runs as on a Mac');
 // labels
 ok(KeysUI.keyText('Ctrl+K').includes('⌘'), 'keys sheet shows ⌘', KeysUI.keyText('Ctrl+K'));
-const capLine = Keys.all().find((k) => k.area === 'Capture' && /menu/i.test(k.what));
+const capLine = Keys.all().find((k) => k.area === 'Capture' && /^Capture menu/i.test(k.what)); // (round 18: capture's own lines arrive with its lazy group, after polish8's)
 ok(capLine && /^Ctrl\+Alt\+S$/.test(capLine.keys), 'the capture key is stored as Ctrl+Alt+S (shown as ⌘⌥S)', capLine?.keys);
 KeysUI.open(); await wait(400);
 const sheetText = document.querySelector('.keys-sheet')?.textContent || '';

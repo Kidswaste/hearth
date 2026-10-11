@@ -509,7 +509,9 @@ function createSurface(agent) {
       }, { once: true });
     });
     host.append(gamePane, divider, chatPane);
-    ForgeGame.mount(gamePane);
+    // (round 18) Forge loads after the first screen (lazy group 'addons'): a Forge Debug chat opened first waits for it
+    const mountGame = () => ForgeGame.mount(gamePane);
+    if (window.Lazy && !Lazy.loaded('addons')) Lazy.load('addons').then(mountGame, (err) => console.warn('Forge game', err)); else mountGame();
     surface.native = Native.mount(agent.id, chatPane);
   } else if (agent.mode === 'native') surface.native = Native.mount(agent.id, host);
   else surface.webview = createWebSurface(agent, host);
