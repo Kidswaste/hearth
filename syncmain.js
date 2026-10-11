@@ -85,6 +85,7 @@ function setPace(st = {}) {
   if (was.asleep !== pace.asleep || was.battery !== pace.battery || was.hidden !== pace.hidden) armTick();
 }
 let busy = () => 0;
+let hold = () => false;
 function stop() {
   clearTimeout(timer); clearTimeout(tick); timer = null; tick = null;
   for (const w of watchers) { try { w.close(); } catch { /* closed */ } }
@@ -103,7 +104,9 @@ function schedule(ms, why) {
   if (slow && why === 'watch') ms *= 2;
   const wait = Math.max(0, Math.min(ms, (slow ? 60000 : 20000) - (Date.now() - firstAt)));
   clearTimeout(timer);
-  timer = setTimeout(() => { firstAt = 0; run({ why }); }, wait);
+  // (round 20, jankwatch) a pass due while the owner types / drags / scrolls waits for the gesture to end (≤ 30 s)
+  let tries = 0;
+  timer = setTimeout(function go() { if (tries < 20 && hold()) { tries += 1; timer = setTimeout(go, 1500); return; } firstAt = 0; run({ why }); }, wait);
 }
 async function run(o = {}) {
   if (!engine) return publicStatus();
@@ -205,4 +208,4 @@ function quit() { stop(); }
 // (round 19, reach) paths from the other computer: its folders (machine records), and whether a file is on its way
 function pathCtx() { try { return engine ? engine.ctx() : null; } catch { return null; } }
 function incoming(rel) { try { return engine ? engine.incoming(rel) : null; } catch { return null; } }
-module.exports = { register, ready, guardConfig, quit, status: publicStatus, pathCtx, incoming, peers: () => (engine ? engine.peers() : Promise.resolve([])), pace: setPace, setBusy: (fn) => { busy = typeof fn === 'function' ? fn : () => 0; }, _pace: () => ({ quiet, every: tickEvery(), ...pace }) };
+module.exports = { register, ready, guardConfig, quit, status: publicStatus, pathCtx, incoming, peers: () => (engine ? engine.peers() : Promise.resolve([])), pace: setPace, setBusy: (fn) => { busy = typeof fn === 'function' ? fn : () => 0; }, setHold: (fn) => { hold = typeof fn === 'function' ? fn : () => false; }, _pace: () => ({ quiet, every: tickEvery(), ...pace }) };

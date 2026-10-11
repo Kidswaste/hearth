@@ -23,7 +23,8 @@ const ignoredName = (name) => IGNORE_NAME.some((re) => re.test(name));
 const LOCAL_DIRS = new Set(['sync', 'mcp-runs', 'ae', 'node_modules', 'electron', 'captures/frames']);
 const HEAVY_DIRS = new Set(['node_modules', '__pycache__', 'venv', 'bower_components', '.venv', '.git', '.cache', '.next', '.parcel-cache', '.turbo']);
 const LOCAL_FILES = new Set(['window.json', 'game-bridge.json', 'hearth-origin.json', 'hearth-icon.png', 'hearth-icon.ico', 'engine-installs.json',
-  'connectors.json', 'claude-flags.json', 'now-playing.ps1', 'now-playing-control.ps1', 'now-playing-cover.jpg', 'kv/fake-switches.json', 'kv/downloads-log.json']);
+  'connectors.json', 'claude-flags.json', 'now-playing.ps1', 'now-playing-control.ps1', 'now-playing-cover.jpg', 'kv/fake-switches.json', 'kv/downloads-log.json',
+  'kv/jank-log.json']); // (round 20) this computer's smoothness log: about this machine, never synced
 function localOnly(rel) {
   const r = rel.replace(/\\/g, '/');
   if (LOCAL_FILES.has(r)) return true;

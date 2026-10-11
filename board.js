@@ -312,7 +312,7 @@ const Board = (() => {
       }
     } finally { S.working = false; }
   }
-  const idle = () => new Promise((r) => (window.requestIdleCallback ? requestIdleCallback(() => r(), { timeout: 400 }) : setTimeout(r, 30)));
+  const idle = () => new Promise((r) => (window.requestIdleCallback ? requestIdleCallback(() => r(), { timeout: 400 }) : setTimeout(r, 30))).then(() => window.Jank?.calm?.(6000, 'board pictures')); // (round 20) not mid-drag
   async function imgToJpeg(img, max, q = 0.84) {
     const w = img.naturalWidth || img.videoWidth; const h = img.naturalHeight || img.videoHeight;
     const k = Math.min(1, max / Math.max(w, h));

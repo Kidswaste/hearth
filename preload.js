@@ -182,5 +182,7 @@ contextBridge.exposeInMainWorld('hub', {
     key: call('apps:key'), fetchTo: call('apps:fetchTo'), fetchJson: call('apps:fetchJson'), meshy: call('apps:meshy'), status: call('apps:status'),
     onEvent: on('apps:event'),
   },
+  // (round 20) jank watch (jankmain.js): main loop lag + GPU events since the last take, culprits' line numbers, display / GPU
+  jank: { take: call('jank:take'), info: call('jank:info'), lines: call('jank:lines'), profile: call('jank:profile'), busy: (b) => ipcRenderer.send('jank:busy', b), off: (o) => ipcRenderer.send('jank:off', o) },
   renders: { run: call('renders:run'), pause: call('renders:pause'), resume: call('renders:resume'), cancel: call('renders:cancel'), relay: call('renders:relay'), encoders: call('renders:encoders') },
 });

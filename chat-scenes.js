@@ -511,6 +511,7 @@ renderer.setAnimationLoop((now) => {
   }
   async function setThumb(chatId, url) {
     if (!chatId || !url || !summaryOf(chatId)) return false;
+    await window.Jank?.calm?.(5000, 'chat thumbnails'); // (round 20) not mid-gesture
     const small = await shrink(url);
     if (!small) return false;
     thumbs[chatId] = { url: small, at: Date.now() };

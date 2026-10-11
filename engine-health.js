@@ -250,7 +250,8 @@ const EngineHealth = (() => {
     registerCommands();
     // (a test copy without engines set up isn't told to install them on every start)
     const go = () => check().then((r) => { if (!(r.test && problems(r).every((p) => p.kind === 'missing'))) notice(r); setTimeout(() => ffmpegNotice(r.test), 20000); }).catch((err) => console.warn('engine check', err));
-    setTimeout(() => (window.requestIdleCallback ? requestIdleCallback(go, { timeout: 4000 }) : go()), 2500);
+    const calm = () => (window.Jank?.calm?.(10000, 'engine check') ?? Promise.resolve()).then(go); // (round 20) not mid-gesture
+    setTimeout(() => (window.requestIdleCallback ? requestIdleCallback(calm, { timeout: 4000 }) : calm()), 2500);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 

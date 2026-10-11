@@ -350,7 +350,8 @@ const Lazy = (() => {
     const next = () => {
       const g = queue.shift();
       if (!g) return;
-      idle(() => load(g.name).catch(() => {}).finally(next));
+      // (round 20) not mid-gesture: a load waits for typing / a drag / a scroll to end (≤ 4 s; jank.js)
+      idle(() => (window.Jank?.calm?.(4000, 'feature load') ?? Promise.resolve()).then(() => load(g.name)).catch(() => {}).finally(next));
     };
     next();
   }

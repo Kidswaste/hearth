@@ -497,6 +497,8 @@ for (const file of [CONFIG_PATH, THEME_PATH]) {
 bgmain.register(() => win);
 bgmain.subscribe((st) => { syncmain.pace?.(st); if (nowplaying.loaded) nowplaying.pace(st); appsmain.pace?.(st); });
 syncmain.setBusy?.(() => (engines.loaded ? engines.busy?.() || 0 : 0)); // (no replies can run before the engines module is in)
+require('./jankmain').register(ipcMain, bgmain, () => win); // (round 20) jank watch: main loop lag, GPU crashes, the owner's busy moments
+syncmain.setHold?.(() => require('./jankmain').hold()); // a sync pass waits out a drag / typing burst
 // /background (sync.js): what Hearth is doing in the background right now, and what each of its processes costs
 ipcMain.handle('bg:state', () => {
   const procs = app.getAppMetrics().map((m) => ({ type: m.type, name: m.name || m.serviceName || '', cpu: Math.round((m.cpu?.percentCPUUsage || 0) * 10) / 10, mb: Math.round((m.memory?.workingSetSize || 0) / 1024) }));

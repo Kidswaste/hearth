@@ -2331,13 +2331,14 @@ const ThreeLab = (() => {
         showMenu(r.left + msg.x * k, r.top + msg.y * k, previewMenuItems());
         return;
       }
-      if (msg.type === 'gpu-lost') { showStall('The preview lost its GPU context.'); return; }
+      if (msg.type === 'gpu-lost') { showStall('The preview lost its GPU context.'); window.Jank?.gpu('The Lab preview'); return; }
       if (msg.type === 'trig-viz') { trigPanel?.feed(msg); return; }
       if (msg.type === 'stats') {
         lastStatsAt = Date.now();
         if (stall.querySelector('.three-stall-text').textContent.includes('responding')) hideStall();
         lastStats = { fps: Math.round(msg.fps), worstFrameMs: Math.round(msg.worst || 0), renderMs: Number(msg.ms.toFixed(2)), drawCalls: msg.calls, triangles: msg.triangles, points: msg.points, geometries: msg.geometries, textures: msg.textures, shaders: msg.programs };
         lastStatsMsg = msg;
+        window.Jank?.lab(msg); // (round 20) the jank watch: real frame times on this computer (/smooth)
         paintPerfHud(msg);
         if (stats.hidden) stats.hidden = false;
         // (round 16: the line shows on hover; while it can't be seen it isn't rewritten, and never with the same text)
