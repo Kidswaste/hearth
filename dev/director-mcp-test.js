@@ -32,7 +32,7 @@ const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (
   n.close();
   const engines = require(path.join(root, 'engines.js'))._test;
   const dir = { id: 'td', name: 'Three Director', engine: 'claude', dock: 'three', threeTools: true };
-  check(engines.hubToolEnv(dir).HUB_NODES_TOOL === '1' && !engines.hubToolEnv({ ...dir, nodesTool: false }).HUB_NODES_TOOL && !engines.hubToolEnv({ id: 'v', engine: 'claude', videoTools: true }).HUB_NODES_TOOL, 'nodes tool on by default for Three directors only; /nodes-director off drops it');
+  check(engines.hubToolEnv(dir).HUB_NODES_TOOL === '1' && !engines.hubToolEnv({ ...dir, nodesTool: false }).HUB_NODES_TOOL && !engines.hubToolEnv({ id: 'v', engine: 'claude', gameTools: true }).HUB_NODES_TOOL, 'nodes tool on by default for Three directors only; /nodes-director off drops it');
   const pc = engines.buildPrompt(dir); const px = engines.buildPrompt({ ...dir, engine: 'codex', hubTools: true });
   check(/ONE LAYER PER EFFECT/.test(pc) && /TIME FIRST/.test(pc) && /NODES \(the owner/.test(pc) && /HEARTH \(the owner's app/.test(pc), 'Three Director prompt: layers, time first, nodes, app map line');
   check(px.includes('ONE LAYER PER EFFECT') && px.includes('NODES (the owner') && px.includes('three_do help app'), 'Astra as director gets the same guide');
@@ -42,13 +42,9 @@ const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (
   const f = await F.mcpClient({ command: process.execPath, args: [path.join(root, 'mcp', 'forge-game-mcp.js')] });
   check(f.tools.some((t) => t.name === 'forge_patch') && !f.tools.some((t) => /saved game state/.test(t.description)), `forge: ${f.tools.length} tools, guide not repeated in descriptions`);
   f.close();
-  for (const s of ['video-mcp.js', 'chat-mcp.js']) {
+  for (const s of ['chat-mcp.js']) {
     const c = await F.mcpClient({ command: process.execPath, args: [path.join(root, 'mcp', s)] });
     check(c.tools.length > 0 && !c.instructions, `${s}: ${c.tools.length} tools, no instructions`);
-    if (s === 'video-mcp.js') {
-      const h = await c.call('hearth_help', { topic: 'video' });
-      check(/VIDEO REVIEW/.test(h.content[0].text) && !h.isError, 'video: hearth_help answered locally');
-    }
     c.close();
   }
   const { fmtValue } = require(path.join(root, 'mcp', 'common.js'));

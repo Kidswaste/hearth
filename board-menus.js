@@ -161,7 +161,8 @@
       { label: 'Step one frame back  ,', action: () => stepFrame(-1, it) },
       { label: 'One still per shot', action: () => B._.shotsToStills(it) },
       { label: 'Contact sheet (6 frames)', action: () => B._.clipSheet(it) },
-      { label: 'Open in Video Review', action: async () => { activate('tool:ae'); await Review.ensureMounted?.(); Review.open(it.src); } },
+      { label: 'Open in the system player', action: () => MediaFile.open(it.src) },
+      { label: MediaFile.revealLabel, action: () => MediaFile.reveal(it.src) },
     ];
   }
   // a frame of a clip as a picture (the clip's current time, or its in point)

@@ -5,12 +5,12 @@
 // --eval …) plus the shared helpers it uses (journey-lib / smooth-lib / editor-frames are added by smoke.js
 // itself when a check uses J, M or decodeFrameCode). Prints one line per check and keeps every log.
 //   sh dev/run-checks.sh                      # the quick group (qa)
-//   sh dev/run-checks.sh board editor         # groups, or check names (editor-more, journey-board…)
+//   sh dev/run-checks.sh board capture        # groups, or check names (journey-board…)
 //   sh dev/run-checks.sh unit                 # the Node-only tests (no Electron)
 //   sh dev/run-checks.sh --list               # groups and checks
 //   options: --out <dir> (logs and pictures, default <tmp>/hearth-checks) · --shots (journeys keep a picture per step)
 //   · --fixtures-only · --stop (first failure)
-// Groups: qa, board, editor, capture, journeys, chat, lab, video, nodes, smooth, astra, sequence, robust, motion, orb, flows, commands, sync, comp, progress, speed, renders, access, adobe, deploy, apps, eyes, unit, all.
+// Groups: qa, board, capture, journeys, chat, lab, nodes, smooth, astra, sequence, robust, motion, orb, flows, commands, sync, comp, progress, speed, renders, access, adobe, deploy, apps, eyes, unit, all.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -26,17 +26,15 @@ const names = argv.filter((a, i) => !a.startsWith('--') && !['--out'].includes(a
 
 const LIBS = new Set(['journey-lib', 'smooth-lib', 'journey-olddata-make', 'sequence-lib']); // helpers / made to run in the old app
 const all = fs.readdirSync(CHECKS).filter((f) => f.endsWith('.js')).map((f) => f.slice(0, -3)).filter((n) => !LIBS.has(n)).sort();
-const UNIT = ['board-unit-test', 'board-mcp-test', 'capture-mcp-test', 'editor-mcp-test', 'director-mcp-test', 'cut-test', 'editor-test', 'capture-test', 'music-test', 'code-flow-test', 'importer-test', 'director-cost', 'astra-engine-test', 'robust-engine-test', 'test-aemain-mac', 'sequence-test', 'flows-test', 'sync-test', 'cmdpage-test', 'progress-test', 'makes-test', 'renders-test', 'updater-test', 'access-test', 'adobe-test', 'adobe-mcp-test', 'deploy-test', 'apps-unit-test', 'eyes-test', 'boot-test'];
+const UNIT = ['board-unit-test', 'board-mcp-test', 'capture-mcp-test', 'director-mcp-test', 'cut-test', 'capture-test', 'music-test', 'code-flow-test', 'importer-test', 'director-cost', 'astra-engine-test', 'robust-engine-test', 'test-aemain-mac', 'sequence-test', 'flows-test', 'sync-test', 'cmdpage-test', 'progress-test', 'makes-test', 'renders-test', 'updater-test', 'access-test', 'adobe-test', 'adobe-mcp-test', 'deploy-test', 'apps-unit-test', 'eyes-test', 'boot-test'];
 const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
   qa: ['qa-commands', 'qa-keys', 'qa-mac', 'polish', 'lazy'],
   board: by(/^board/),
-  editor: ['editor', 'editor-more', 'editor-mcp', 'editor-pack', 'cut'],
   capture: by(/^capture/),
   journeys: by(/^journey-/),
   chat: by(/^chat-|^chatcore|^cmdbar$|^clutter$|^declutter/),
   lab: ['music', 'live', 'scenes', 'jam', 'assist', 'decide', 'brain', 'director-dock', 'director-tools', 'perf'],
-  video: ['cut', 'nodes-video', 'editor', 'video-live-webm'],
   nodes: by(/^nodes-/),
   smooth: by(/^smooth-/),
   astra: ['astra-collab', 'astra-ui', 'astra-manager'],
@@ -85,7 +83,7 @@ const FIX = [
 ];
 const srcOf = (n) => (n.startsWith('unit:') ? fs.readFileSync(path.join(DEV, `${n.slice(5)}.js`), 'utf8') : fs.readFileSync(path.join(CHECKS, `${n}.js`), 'utf8'));
 const exists = (p) => { try { return fs.statSync(p).isFile() || fs.readdirSync(p).length > 0; } catch { return false; } };
-const needed = FIX.filter((f) => wanted.some((n) => f.re.test(srcOf(n)) || /^journey-|^cut$|^editor/.test(n.replace('unit:', ''))));
+const needed = FIX.filter((f) => wanted.some((n) => f.re.test(srcOf(n)) || /^journey-/.test(n.replace('unit:', ''))));
 for (const f of needed) {
   if (exists(f.path)) continue;
   process.stdout.write(`fixtures: ${f.path} … `);
@@ -117,7 +115,7 @@ for (const n of wanted) {
   let r;
   if (n.startsWith('unit:')) {
     const u = n.slice(5);
-    const extra = u === 'cut-test' ? [`${T}/hearth-test-videos`] : u === 'editor-test' ? [`${T}/hearth-editor-videos`] : [];
+    const extra = u === 'cut-test' ? [`${T}/hearth-test-videos`] : [];
     r = spawnSync('node', [path.join(DEV, `${u}.js`), ...extra], { cwd: ROOT, encoding: 'utf8', timeout: 1800000, maxBuffer: 64 << 20 });
   } else if (n.startsWith('astra-')) {
     r = spawnSync('node', [path.join(DEV, 'astra-smoke.js'), n.slice(6), '--shot', path.join(OUT, `${n}.png`)], { cwd: ROOT, encoding: 'utf8', timeout: 1800000, maxBuffer: 64 << 20 });

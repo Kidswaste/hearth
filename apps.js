@@ -159,14 +159,7 @@ const Apps = (() => {
         activate('tool:board');
         return items[0] || null;
       }
-      case 'review': {
-        if (typeof Review === 'undefined') throw new Error('Video Review isn\'t available');
-        try { await Review.noteRecording(file); } catch { /* the library is a bonus */ }
-        activate('tool:ae');
-        await Review.ensureMounted?.();
-        await Review.open(file);
-        return true;
-      }
+      case 'open': case 'review': return MediaFile.open(file); // (review: the old place, Video Review is gone)
       case 'chat': { const ag = chatAgent(); if (!ag) throw new Error('No chat'); activate(ag.id); await Native.attachPaths(ag.id, [file]); return true; }
       case 'meshy': if (typeof AppsMeshy === 'undefined') throw new Error('Meshy isn\'t loaded'); return AppsMeshy.run('image', { image: file, name: name || file.split(/[\\/]/).pop() });
       case 'make': {
@@ -178,7 +171,7 @@ const Apps = (() => {
         return mk;
       }
       case 'reveal': return window.hub.fs.reveal(file);
-      default: throw new Error(`Unknown place "${target}" (lab-model, lab-hdri, lab-song, lab-ref, board, review, chat, meshy, make, reveal)`);
+      default: throw new Error(`Unknown place "${target}" (lab-model, lab-hdri, lab-song, lab-ref, board, open, chat, meshy, make, reveal)`);
     }
   }
   const tryRoute = (p, target, o) => route(p, target, o).catch((err) => toast(err.message, { type: 'error', timeout: 6000 }));

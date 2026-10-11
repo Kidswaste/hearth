@@ -1,5 +1,5 @@
 // Suno (round 14, apps stream): its web app in its own window (sign in there; Suno has no public API, so Hearth
-// never pretends to call one), songs downloaded there go straight to the Lab's song loader (or Video Review / the
+// never pretends to call one), songs downloaded there go straight to the Lab's song loader (or the system player / the
 // board), and a chat helper writes the prompt: /suno prompt reads the scene's vibe (the Lab sketch's name, layers and
 // palette, the board's moods, your words) and writes Suno's style tags + a lyrics / structure sheet, locally (no
 // tokens). One click pastes it into Suno's boxes; "✍ Lyrics by …" asks this chat's agent for real lyrics, and
@@ -97,11 +97,11 @@ const AppsSuno = (() => {
   function commands() {
     if (typeof Commands === 'undefined' || Commands.get('suno')) return;
     Commands.register({
-      name: 'suno', area: 'Apps', args: '[prompt [words]] | paste [reply|style|lyrics] | use [review|board] | open',
+      name: 'suno', area: 'Apps', args: '[prompt [words]] | paste [reply|style|lyrics] | use [board] | open',
       desc: 'Suno in its own window; /suno prompt writes style tags and lyrics from the scene\'s vibe and pastes them in; /suno use loads your newest Suno song in the Lab',
       keywords: 'music song ai lyrics style tags soundtrack',
       examples: ['/suno', '/suno prompt dreamy night drive', '/suno paste', '/suno use'],
-      complete: (a) => ['prompt', 'paste', 'paste reply', 'use', 'use review', 'use board', 'open'].filter((v) => v.startsWith(String(a || '').toLowerCase())).map((value) => ({ value })),
+      complete: (a) => ['prompt', 'paste', 'paste reply', 'use', 'use board', 'open'].filter((v) => v.startsWith(String(a || '').toLowerCase())).map((value) => ({ value })),
       run: async (args, ctx) => {
         const [w0 = '', ...rest] = String(args || '').trim().split(/\s+/);
         const sub = w0.toLowerCase();
@@ -124,7 +124,7 @@ const AppsSuno = (() => {
           }
           return paste(last(), { only: /^(style|lyrics)$/i.test(tail) ? tail.toLowerCase() : null });
         }
-        if (sub === 'use') { const target = /review|video/i.test(tail) ? 'review' : /board/i.test(tail) ? 'board' : 'lab-song'; const p = await use(target); return `Using ${p.split(/[\\/]/).pop()}${target === 'lab-song' ? ' as the Lab\'s song' : ''}.`; }
+        if (sub === 'use') { const target = /open|play|review|video/i.test(tail) ? 'open' : /board/i.test(tail) ? 'board' : 'lab-song'; const p = await use(target); return `Using ${p.split(/[\\/]/).pop()}${target === 'lab-song' ? ' as the Lab\'s song' : ''}.`; }
         // anything else: words for a prompt
         const p = await prompt(String(args));
         if (ctx.note) { ctx.note(noteText(p), { actions: actions(p, ctx), id: 'suno-prompt' }); return null; }
@@ -136,7 +136,7 @@ const AppsSuno = (() => {
   Apps.register({
     id: 'suno', name: 'Suno', icon: '🎵', group: 'Sound', url: 'https://suno.com/create', hosts: ['suno.com', 'suno.ai'],
     desc: 'AI songs: /suno prompt writes the prompt from your scene, downloads become the Lab\'s song', keywords: 'music song lyrics',
-    routes: { audio: 'lab-song', video: 'review' },
+    routes: { audio: 'lab-song', video: 'board' },
     actions: [
       { id: 'use', label: '♪ Use my newest Suno song in the Lab', run: async () => { const p = await use('lab-song'); return `Using ${p.split(/[\\/]/).pop()} in the Lab.`; } },
       { id: 'prompt', label: '✍ Write a prompt from the scene and paste it', run: async () => paste(await prompt('')) },

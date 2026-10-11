@@ -265,10 +265,9 @@ const BoardCmds = (() => {
     for (const w of ['play', 'pause']) Commands.register({ name: w, area: AREA, when: (ctx) => ctx?.place === 'board' && H.activeId === 'tool:board', whenLabel: 'on the board', desc: w === 'play' ? 'Play the clips in view (four at most)' : 'Pause the clips on the board', run: (_a, ctx) => Commands.get('board-play')?.run(w, ctx) });
     Commands.register({ name: 'undo', area: AREA, when: (ctx) => ctx?.place === 'board', whenLabel: 'on the board', desc: 'Undo on the board (Ctrl+Z)', run: async () => { await B.ready(); B.undo(); return null; } });
     if (!Commands.get('redo')) {
-      Commands.register({ name: 'redo', area: 'App', desc: 'Redo where you are: the board, the video editor (Ctrl+Shift+Z)', run: async (_a, ctx) => {
+      Commands.register({ name: 'redo', area: 'App', desc: 'Redo on the board (Ctrl+Shift+Z)', run: async (_a, ctx) => {
         if (ctx?.place === 'board') { await B.ready(); B.redo(); return null; }
-        if (ctx?.place === 'ae' && typeof VideoCut !== 'undefined' && VideoCut.active) return VideoCut.redo() ? 'Redone.' : 'Nothing to redo.';
-        return 'Nothing to redo here (on the board or in the video editor, /redo redoes their last change).';
+        return 'Nothing to redo here (on the board, /redo redoes its last change).';
       } });
     }
   }

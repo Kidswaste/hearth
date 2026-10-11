@@ -1,5 +1,5 @@
 // An app window's chrome (round 14, apps stream): the slim bar above an app's website. Back, reload, the app's name
-// (a click lists the other apps), where you are, downloads from this app (each with "→ Lab / board / Video Review"),
+// (a click lists the other apps), where you are, downloads from this app (each with "→ Lab / board / Open"),
 // send this page to the chat, open it in your browser, ⋯ for the rest. The website itself runs in a <webview> in
 // its own persistent session; nothing on the page can reach Hearth. Keys: Ctrl/⌘+R reload, Alt+← / ⌘[ back,
 // Alt+→ / ⌘] forward, Ctrl/⌘+L copy the address, Ctrl/⌘+Shift+Enter send to the chat, Ctrl/⌘+W hide.

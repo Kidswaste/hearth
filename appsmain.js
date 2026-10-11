@@ -4,7 +4,7 @@
 // page and Hearth never sees a password. Closing a window only hides it (sign-in and page kept); a window hidden for
 // a few minutes is parked (destroyed, its last address remembered) so it costs nothing.
 // Downloads from an app window land in Downloads/Hearth/<App> and are offered to the right place in the hub
-// (apps.js routes them: Lab, board, Video Review, the chat).
+// (apps.js routes them: Lab, board, the system player, the chat).
 // API keys the owner pastes (Meshy) are encrypted with Electron's safeStorage in the profile folder (never in data/,
 // never synced, never in a backup), used only here: no page and no engine ever receives one. Meshy jobs run here
 // (apps-meshy-api.js is the only file that knows Meshy's API) and survive a reload of the hub page.

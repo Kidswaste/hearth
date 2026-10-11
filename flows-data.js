@@ -1,6 +1,6 @@
 // Flows data (round 10): the principal commands that stay in the "/" menu, the journeys written by hand (Doctor,
 // Make a video, Record, Lab scene, Sequence, Board, Export, Astra & Claude, Look, Memory) and the rules that turn
-// every other command into a flow by area ("Lab: music & timing", "Video editor", "Mood board"…), so none of the
+// every other command into a flow by area ("Lab: music & timing", "Lab: footage & frames", "Mood board"…), so none of the
 // ≈ 920 commands is lost: each one is still typed by name, run by chats, and one click away inside its flow.
 // Plain data + pure functions (Node-testable: dev/flows-test.js).
 const FlowsData = (() => {
@@ -16,7 +16,7 @@ const FlowsData = (() => {
     // the Lab (the owner's day)
     'save-sliders', 'shuffle', 'tap', 'freeze', 'size', 'live', 'present', 'sketches', 'scene', 'look', 'still', 'sequence',
     // board, capture, video
-    'board', 'board-use', 'capture', 'rec', 'editor', 'intro',
+    'board', 'board-use', 'capture', 'rec', 'renders', 'studio',
     // the app
     'settings', 'theme', 'usage', 'flows', 'flow',
   ];
@@ -49,7 +49,7 @@ const FlowsData = (() => {
       ],
     },
     {
-      id: 'make-video', name: 'Make a video', icon: '🎬', area: 'Video project', desc: 'Your idea → Astra drafts the beats → you keep or change them → the video project (/intro) → the chats build it',
+      id: 'make-video', name: 'Make a video', icon: '🎬', area: 'Three.js Lab', desc: 'Your idea → Astra drafts the beats → you keep or change them → a Lab sequence → the Three Director builds it',
       nodes: [
         { id: 'idea', kind: 'text', title: 'What is the video about?', var: 'idea', placeholder: 'a motion-design intro for Hearth: two AIs, one window', next: 'fmt' },
         { id: 'fmt', kind: 'choice', title: 'Format', var: 'fmt', options: [{ label: '9:16 vertical', value: '9:16' }, { label: '16:9 wide', value: '16:9' }, { label: '1:1 square', value: '1:1' }, { label: '4:5 feed', value: '4:5' }], next: 'len' },
@@ -58,14 +58,11 @@ const FlowsData = (() => {
         { id: 'keep', kind: 'choice', title: 'Use these beats?', var: 'keep', options: [{ label: 'Yes', value: 'yes', next: 'plan' }, { label: 'Change them', value: 'change', next: 'change' }, { label: 'New ones', value: 'again', next: 'beats' }] },
         { id: 'change', kind: 'text', title: 'What should change in the beats?', var: 'change', placeholder: 'shorter hook, end on the logo…', next: 'redo' },
         { id: 'redo', kind: 'ai', title: 'Astra changes the beats', engine: 'astra', var: 'beats', prompt: 'Here are beats for a {len} s {fmt} video:\n{beats}\nChange only this: {change}. Reply with the full new list.', next: 'keep' },
-        { id: 'plan', kind: 'action', title: 'Start the video project', cmd: '/intro {idea}', next: 'length' },
-        { id: 'length', kind: 'action', title: 'Its length', cmd: '/intro length {len}', next: 'formats' },
-        { id: 'formats', kind: 'action', title: 'Its format', cmd: '/intro formats {fmt}', next: 'go' },
-        { id: 'go', kind: 'choice', title: 'Let the chats build it now? (board vibe → Lab scenes → captures → editor → renders)', var: 'go', options: [{ label: 'Yes, build it', value: 'yes', next: 'build' }, { label: 'Not now', value: 'no', next: 'planned' }] },
-        { id: 'build', kind: 'action', title: 'Build it', cmd: '/intro go', next: 'built' },
-        { id: 'built', kind: 'check', title: 'Wait until it is rendered', cmd: '/intro status', match: 'render(ed)? ✓|done|finished|every format', every: 8000, timeout: 3600000, next: 'video' },
-        { id: 'video', kind: 'result', title: 'Your video', text: '{last}' },
-        { id: 'planned', kind: 'result', title: 'Planned', text: 'The project is planned with these beats:\n{beats}\n/intro go builds it, /intro status shows where it is.' },
+        { id: 'plan', kind: 'action', title: 'A new Lab sequence for it', cmd: '/sequence new {idea} {fmt}', next: 'go' },
+        { id: 'go', kind: 'choice', title: 'Let the Three Director build it now? (one Lab scene per beat, arranged on the sequence)', var: 'go', options: [{ label: 'Yes, build it', value: 'yes', next: 'build' }, { label: 'Not now', value: 'no', next: 'planned' }] },
+        { id: 'build', kind: 'action', title: 'Build it', cmd: '/director-ask Build this {len} s {fmt} video in the Lab: one scene per beat, each its own layer set, then put them on the open Lab sequence in order (three_do sequence: add, transition, fit) with the words as titles. Beats:\n{beats}', next: 'video' },
+        { id: 'video', kind: 'result', title: 'Your video', text: 'The Three Director is building it on the Lab sequence. ⇪ Render (or /sequence-render) makes the file.' },
+        { id: 'planned', kind: 'result', title: 'Planned', text: 'The sequence is ready with these beats:\n{beats}\nAsk the Three Director to build it, or /arrange your scenes on it.' },
       ],
     },
     {
@@ -79,7 +76,7 @@ const FlowsData = (() => {
         { id: 'end', kind: 'action', title: 'Stop the recording', cmd: '/rec stop', next: 'last' },
         { id: 'tour', kind: 'action', title: 'Pick a tour', cmd: '/tour', next: 'stop' },
         { id: 'last', kind: 'action', title: 'Open it', cmd: '/capture-last', next: 'then' },
-        { id: 'then', kind: 'choice', title: 'Then?', var: 'then', options: [{ label: 'Open it in the video editor', value: '/editor on' }, { label: 'A GIF of it', value: '/make gif last' }, { label: 'A contact sheet', value: '/contact last' }, { label: 'Nothing', value: '', next: 'done' }], next: 'do' },
+        { id: 'then', kind: 'choice', title: 'Then?', var: 'then', options: [{ label: 'A GIF of it', value: '/make gif last' }, { label: 'A contact sheet', value: '/contact last' }, { label: 'Nothing', value: '', next: 'done' }], next: 'do' },
         { id: 'do', kind: 'action', title: 'Do it', cmd: '{then}', next: 'done' },
         { id: 'done', kind: 'result', title: 'Recorded', text: '{last}' },
       ],
@@ -104,7 +101,7 @@ const FlowsData = (() => {
       ],
     },
     {
-      id: 'sequence', name: 'Sequence', icon: '▤', area: 'Three.js Lab', desc: 'Your scenes on the song as a video: arrange, look at it, render it in a social format, finish it in the editor',
+      id: 'sequence', name: 'Sequence', icon: '▤', area: 'Three.js Lab', desc: 'Your scenes on the song as a video: arrange, look at it, render it in a social format',
       nodes: [
         { id: 'how', kind: 'choice', title: 'How do you start?', var: 'how', options: [{ label: '✦ Arrange my scenes on the song', value: 'arrange', next: 'tpl' }, { label: 'Add this scene to it', value: 'add', next: 'add' }, { label: 'Just open it', value: 'open', next: 'open' }] },
         { id: 'tpl', kind: 'choice', title: 'Which arrangement?', var: 'tpl', optionsFrom: '/arrange', options: [{ label: 'Let Hearth pick', value: '' }], next: 'arrange' },
@@ -112,9 +109,7 @@ const FlowsData = (() => {
         { id: 'add', kind: 'action', title: 'Add this scene', cmd: '/add-scene', next: 'open' },
         { id: 'open', kind: 'action', title: 'Open the sequence', cmd: '/sequence', next: 'ok' },
         { id: 'ok', kind: 'choice', title: 'Render it?', var: 'fmt', options: [{ label: '9:16', value: '9:16' }, { label: '16:9', value: '16:9' }, { label: '1:1', value: '1:1' }, { label: 'Every format', value: 'all' }, { label: 'Not yet', value: '', next: 'done' }], next: 'render' },
-        { id: 'render', kind: 'action', title: 'Render', cmd: '/sequence-render {fmt}', next: 'editor' },
-        { id: 'editor', kind: 'choice', title: 'Finish it in the video editor?', var: 'ed', options: [{ label: 'Yes', value: 'yes', next: 'toed' }, { label: 'No', value: 'no', next: 'done' }] },
-        { id: 'toed', kind: 'action', title: 'To the editor', cmd: '/sequence editor', next: 'done' },
+        { id: 'render', kind: 'action', title: 'Render', cmd: '/sequence-render {fmt}', next: 'done' },
         { id: 'done', kind: 'result', title: 'Sequence', text: '{last}' },
       ],
     },
@@ -188,15 +183,12 @@ const FlowsData = (() => {
   const AREA_FLOWS = [
     { id: 'all-lab-music', name: 'Lab: music & timing', icon: '♪', area: 'Three.js Lab', re: /tap|bpm|beat|downbeat|kick|snare|^hit|grid|click|^cue|marker|section|drop|analy|^song|^live|music|react|auto-preset|autobars|trigger|quantize|nudge|follow|midi|^loop|^snap|mark-|fill-markers|clear-markers/ },
     { id: 'all-lab-motion', name: 'Lab: motion kit', icon: '✦', area: 'Three.js Lab', re: /motion|kinetic|camera|logo|end-card|hearth-|brand|cursor-path|shot-list|^ease|animate|type-3d/ },
-    { id: 'all-lab-frames', name: 'Lab: footage & frames', icon: '▭', area: 'Three.js Lab', re: /frame|footage|step|shuttle|^hold|^ref|match-pacing|pace|^cut-|edit-points|lab-cuts|send-clip|song-trim|clip-speed|onion/ },
-    { id: 'all-lab-sequence', name: 'Lab: sequence & scenes', icon: '▤', area: 'Three.js Lab', re: /sequence|arrange|add-scene|^scene|lab-to-editor|morph/ },
+    { id: 'all-lab-frames', name: 'Lab: footage & frames', icon: '▭', area: 'Three.js Lab', re: /frame|footage|step|shuttle|^hold|^ref|match-pacing|pace|^cut-|edit-points|lab-cuts|song-trim|clip-speed|onion/ },
+    { id: 'all-lab-sequence', name: 'Lab: sequence & scenes', icon: '▤', area: 'Three.js Lab', re: /sequence|arrange|add-scene|^scene|render-again|morph/ },
     { id: 'all-lab-sliders', name: 'Lab: sliders & looks', icon: '⧉', area: 'Three.js Lab', re: /slider|shuffle|save|look|knob|fav|lock|preset|recolor|palette|tame|exaggerate|surprise|tweak|reset|copy-|paste-|^slot|^ease/ },
     { id: 'all-lab-layers', name: 'Lab: layers & effects', icon: '◫', area: 'Three.js Lab', re: /layer|^fx|blend|filter|overlay|guides|blackout|^safe/ },
     { id: 'all-lab', name: 'Lab: everything else', icon: '◭', area: 'Three.js Lab' },
-    { id: 'all-video-flows', name: 'Video flows & After Effects', icon: '⇢', area: 'Video', re: /^video-flow|^video-nodes|^pipeline|^ae-|^render$|^toolkit|^director$|^resolve/ },
-    { id: 'all-video-editor', name: 'Video editor', icon: '✂', area: 'Video', re: /^(clip|edit-|cut|track|trim|razor|ripple|roll|slip|slide|lift|insert|overwrite|nest|unnest|keyframe|copy-|paste-|dup-|move-clip|swap|split|select|range|extend|fit-to|speed|reverse|freeze-frame|title|lower|add-|transition|effect|grade|adjust|blend|overlay|to-main|to-overlay|sequence|lane|sound|solo|volume|mirror|reset-transform|captions|match|scopes|inspector|proxy|fill-slot|pingpong|normalize|shuffle-clips|editor|draw)/ },
-    { id: 'all-video', name: 'Video Review', icon: '🎞', area: 'Video' },
-    { id: 'all-video-project', name: 'Video projects', icon: '🎬', area: 'Video project' },
+    { id: 'all-video', name: 'Video & ffmpeg', icon: '🎞', area: 'Video' },
     { id: 'all-board', name: 'Mood board: every command', icon: '▦', area: 'Board' },
     { id: 'all-capture', name: 'Capture & frames', icon: '◉', area: 'Capture' },
     { id: 'all-director', name: 'Directors', icon: '◈', area: 'Director' },

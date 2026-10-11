@@ -50,11 +50,9 @@ const CLIPS = {
   handoff: `${CHAT}\n${warm}\nrecord tool\nwait 1.5s\ntype "/handoff"\nsend\nwait 3s\nstop`,
   opinion: `${CHAT}\n${warm}\nrecord tool\nwait 1.5s\ntype "/opinion"\nsend\nwait 3s\nstop`,
   doctor: said('/doctor', 2.6),
-  intro: said('/intro a 15 s teaser: two AIs, one window', 3),
   'board-use': `open board\nwait 1.5s\n${CHAT}\nrecord tool\nwait 1.5s\ntype "/board-use"\nsend\nwait 1.6s\nstop`,
   // tools and the app
   board: `${CHAT}\nrecord window\nwait 1.5s\ncmd /board\nwait 2s\nstop`,
-  editor: `open ae\nwait 1.5s\nrecord window\nwait 1.5s\ncmd /editor on\nwait 2.2s\nstop`,
   settings: `${CHAT}\nrecord window\nwait 1.5s\ncmd /settings\nwait 1.8s\nkey Escape\nstop`,
   theme: `${CHAT}\nrecord window\nwait 1.5s\ncmd /theme next\nwait 1.1s\ncmd /theme next\nwait 1.1s\ncmd /theme prev\nwait 0.3s\ncmd /theme prev\nstop`,
   usage: `${CHAT}\nrecord window\nwait 1.5s\ncmd /usage\nwait 2.2s\nkey Escape\nstop`,

@@ -3,7 +3,7 @@
 // Free assets flow straight in instead of being one more window: Poly Haven's free HDRIs and textures through its
 // public API (/polyhaven, no account, CC0), Coolors palettes into the Lab or onto the board, Unsplash / Pinterest
 // pages onto the board, Sketchfab / Spline / Mixamo models into the Lab, Suno / ElevenLabs sounds as the Lab's song,
-// Runway clips into Video Review. Social pages (YouTube Studio, Instagram, TikTok) get "show my newest render" to
+// Runway clips onto the board. Social pages (YouTube Studio, Instagram, TikTok) get "show my newest render" to
 // upload it. Meshy and Suno have their own files (apps-meshy.js, apps-suno.js); Pinterest here is a stand-in the
 // board stream's own registration replaces.
 (() => {
@@ -61,7 +61,7 @@
     { id: 'coolors', name: 'Coolors', icon: '🎨', group: 'Design', url: 'https://coolors.co/generate', desc: 'Palettes: one click into the Lab or onto the board', keywords: 'palette colors colours',
       actions: [{ id: 'palette', label: '🎨 Use this palette in the Lab', run: paletteToLab }, { id: 'board', label: '▦ Put this palette on the board', run: paletteToBoard }] },
     { id: 'fonts', name: 'Google Fonts', icon: '🔤', group: 'Design', url: 'https://fonts.google.com', desc: 'Fonts: send one to the chat, downloads go to the Lab\'s references', routes: { font: 'lab-ref' }, keywords: 'type typography font', actions: [{ id: 'font', label: '🔤 Use this font (tell the chat)', run: fontToChat }] },
-    { id: 'runway', name: 'Runway', icon: '🎞', group: 'Make', url: 'https://app.runwayml.com', desc: 'AI video: clips you download open in Video Review', routes: { video: 'review', image: 'board' }, keywords: 'ai video gen' },
+    { id: 'runway', name: 'Runway', icon: '🎞', group: 'Make', url: 'https://app.runwayml.com', desc: 'AI video: clips you download go on the board', routes: { video: 'board', image: 'board' }, keywords: 'ai video gen' },
     { id: 'elevenlabs', name: 'ElevenLabs', icon: '🗣', group: 'Sound', url: 'https://elevenlabs.io/app', desc: 'Voices and sound effects: downloads become the Lab\'s sound', routes: { audio: 'lab-song' }, keywords: 'voice over tts sfx sound effects' },
     { id: 'youtube', name: 'YouTube Studio', icon: '▶', group: 'Social', url: 'https://studio.youtube.com', desc: 'Upload and check your videos', actions: SOCIAL, keywords: 'upload shorts' },
     { id: 'instagram', name: 'Instagram', icon: '◎', group: 'Social', url: 'https://www.instagram.com', desc: 'Post reels and check your profile', actions: SOCIAL, keywords: 'reels upload' },

@@ -1,7 +1,7 @@
 // Mood board, third layer: versions you can go back to, an overview of all boards, a list view (sortable table of the
 // references and their vibes), the eyedropper, palette card styles, a default vibe focus per board, frames by number
 // (1–9), single-key toggles (L lens, M minimap, G grid, S star), Alt+arrows rotate, Ctrl+Alt+arrows scale, the
-// Lab's / Video Review's current frame or this chat's pictures onto the board, HTML and board-file exports, and the
+// Lab's current frame or this chat's pictures onto the board, HTML and board-file exports, and the
 // drawer's width / side.
 (() => {
   const B = Board; const { S, D, V, LY } = B._;
@@ -100,10 +100,9 @@
   async function addBridgeImage(tool, args, title) {
     const r = await HubBridge.call(tool, args);
     const img = r?.image || r?.images?.[0]?.data;
-    // the bridge answers in the agents' words ("Use video_list and video_open first", "check three_console"): say it
+    // the bridge answers in the agents' words ("check three_console"): say it
     // the owner's way
     const said = String(r?.error || 'Nothing to grab')
-      .replace(/No video is open\.? Use video_list and video_open first\.?/i, 'Open a video in Video Review first.')
       .replace(/\s*\(check three_console for errors\)/i, ': open the Lab and let it draw first');
     if (!r?.ok || !img) { toast(said, { type: 'error' }); return null; }
     const mime = r.mime || r.images?.[0]?.mime || 'image/png';
@@ -113,7 +112,6 @@
     return it;
   }
   const fromLab = () => addBridgeImage('three_screenshot', { size: 'large' }, `Lab ${new Date().toLocaleTimeString()}`);
-  const fromReview = () => addBridgeImage('video_frame', {}, `Video Review ${new Date().toLocaleTimeString()}`);
   // the pictures you attached in a chat
   async function fromChat(agentId = BoardDrawer.currentAgentId()) {
     const chat = Native.current?.(agentId);
@@ -179,7 +177,6 @@
   B._.addItems = (p) => [...baseAddItems(p),
     { label: 'Color from the screen (eyedropper)  E', action: () => eyedropper(p), more: true },
     { label: 'The Lab\'s current picture', action: fromLab, more: true },
-    { label: 'Video Review\'s current frame', action: fromReview, more: true },
     { label: 'Pictures from the current chat', action: () => fromChat(), more: true }];
   const commands = [
     { name: 'board-version', desc: 'Save a version of the board, list them, or go back to one', args: '[save [name] | list | <number>]', run: async (args) => {
@@ -194,12 +191,11 @@
     { name: 'board-eyedropper', desc: 'Pick a color anywhere on screen as a swatch (E on the board)', keys: 'E', run: async () => { await B.ready(); const it = await eyedropper(); return it ? `Added ${it.color}.` : null; } },
     { name: 'board-focus', desc: 'What this board gives chats by default: full, palette, light, motion, texture, composition, type, mood…', args: '<focus>', complete: () => D.FOCUS.map((f) => ({ value: f.id, hint: f.name })), run: async (args) => { await B.ready(); const f = D.find(D.FOCUS, args.trim() || 'full'); if (!f) return 'Unknown focus.'; setFocus(f.id); return `Default: ${f.name}.`; } },
     { name: 'board-from-lab', desc: 'Put the Lab\'s current picture on the board', run: async () => { await B.ready(); const it = await fromLab(); return it ? 'Lab frame added.' : null; } },
-    { name: 'board-from-review', desc: 'Put Video Review\'s current frame on the board', run: async () => { await B.ready(); const it = await fromReview(); return it ? 'Frame added.' : null; } },
     { name: 'board-from-chat', desc: 'Put the pictures attached in this chat on the board', run: async (_a, ctx) => { await B.ready(); const m = await fromChat(ctx?.agentId); return m.length ? `${m.length} picture${m.length > 1 ? 's' : ''} added.` : null; } },
     { name: 'board-palette-style', desc: 'How the selected palette cards look: stripes, gradient, dots, blocks', args: '<style>', complete: () => PALETTE_STYLES.map(([id, n]) => ({ value: id, hint: n })), run: async (args) => { await B.ready(); const st = PALETTE_STYLES.find(([id]) => id === args.trim()); if (!st) return 'stripes, gradient, dots or blocks.'; B.patch(sel().filter((i) => i.type === 'palette').map((i) => i.id), { pstyle: st[0] === 'stripes' ? undefined : st[0] }, 'palette style'); return `Palette style: ${st[1]}.`; } },
   ];
   function registerAll() { for (const d of commands) if (!Commands.get(d.name)) Commands.register({ area: 'Board', ...d }); }
   if (document.readyState === 'loading' || document.currentScript?.defer) addEventListener('DOMContentLoaded', registerAll, { once: true }); else registerAll();
 
-  Object.assign(B._, { saveVersion, versions, restoreVersion, overview, listView, eyedropper, setFocus, fromLab, fromReview, fromChat, drawerLayout, PALETTE_STYLES, paintPaletteStyles, plusDefs: commands });
+  Object.assign(B._, { saveVersion, versions, restoreVersion, overview, listView, eyedropper, setFocus, fromLab, fromChat, drawerLayout, PALETTE_STYLES, paintPaletteStyles, plusDefs: commands });
 })();

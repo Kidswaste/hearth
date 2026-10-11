@@ -43,7 +43,7 @@ const DiscoverData = (() => {
 
   // ---------- matching your habits ----------
   // what the owner does most (the brief's tracking: music-driven Three.js visuals with the Three Director, Save /
-  // Shuffle / Tap / Freeze / frame sizes, Video Review lightly); habits.js / speed data add to it at run time
+  // Shuffle / Tap / Freeze / frame sizes); habits.js / speed data add to it at run time
   const PROFILE = {
     lab: 2, 'three.js': 2, slider: 2, sliders: 2, shuffle: 2.4, save: 1.2, tap: 2.2, beat: 2, beats: 2, music: 2, song: 2, sound: 1.4,
     kick: 1.4, freeze: 2.2, '9:16': 1.6, 'frame size': 1.6, sizes: 1, director: 2.2, scene: 1.6, scenes: 1.6, sequence: 1.6, layer: 1.2,
@@ -88,7 +88,7 @@ const DiscoverData = (() => {
   // commands that only open or show something; anything else is put in the chat box for you to send
   const SAFE = new Set(['renders', 'board', 'boards', 'board-peek', 'commands', 'apps', 'habits', 'keys', 'resume', 'help', 'usage', 'meter',
     'makes', 'progress', 'flows', 'whats-new', 'feature-map', 'ideas', 'spotlight', 'sequence', 'access', 'again', 'macro', 'tucked', 'look', 'appearance',
-    'scene', 'scenes', 'footage', 'motion-kit', 'intro', 'doctor', 'update', 'sync', 'vibe', 'cmdbar', 'tip']);
+    'scene', 'scenes', 'footage', 'motion-kit', 'doctor', 'update', 'sync', 'vibe', 'cmdbar', 'tip']);
   const SAFE_ARGS = /^(|list|status|show|help|log|health|learned|keys|presets|history|queue|now|discover|downloads|windows)$/i;
   function safeLine(line, has = () => true) {
     const m = String(line || '').trim().match(/^\/([\w-]+)\s*(.*)$/);
@@ -103,14 +103,14 @@ const DiscoverData = (() => {
   const TOURS = [
     { id: 'renders', name: 'Render queue', icon: '⇪', why: 'every render, recording and export in one list', steps: [
       { title: 'One queue for everything', text: 'Every render, recording and export lands in one queue. While something renders, ⇪ shows at the bottom of the rail with how many.', target: ['#rq-badge:not([hidden])', '#pg-dot:not([hidden])', '#keys-btn'] },
-      { title: 'The queue', text: 'Progress and time left on each job; pause, cancel or retry it. A done one has Open, Reveal, Copy path and Video Review.', open: '/renders', target: ['.rq-pop'] },
+      { title: 'The queue', text: 'Progress and time left on each job; pause, cancel or retry it. A done one has Open, Reveal and Copy path (right-click: Adobe).', open: '/renders', target: ['.rq-pop'] },
       { title: 'Presets in one panel', text: 'Reels / TikTok / Shorts, Story, Feed, Square, YouTube 1080p / 4K, GIF, WebM, ProRes master, or All socials at once.', target: ['.rq-pop'], cmd: '/renders presets' },
       { title: 'From a chat', text: '“render it again” or /renders works in any chat; a render joins its make, so it shows with its rooms.', target: ['.surface.active .composer textarea'] },
     ] },
     { id: 'studio', name: 'Chaining things', icon: '⛓', why: 'one command feeding the next', steps: [
       { title: 'Chain commands', text: 'In a chat or the command bar (Ctrl/⌘+;): “/a ; /b” runs one after the other, “/shot lab | draft” feeds the result on.', target: ['.surface.active .composer textarea'], cmd: '/cmdbar' },
       { title: 'Then another command', text: 'On ☰ Commands, after a command\'s questions, “then another command” takes its result. A run can be picked up, run Again or Refined.', open: 'tool:commands', target: ['.cp-list', RAIL('commands')] },
-      { title: 'Studio pipelines', text: 'Studio chains the Lab, renders, the editor and apps into one pipeline you can rerun.', when: 'studio', cmd: '/studio' },
+      { title: 'Studio pipelines', text: 'Studio chains the board, the Lab, its sequence, renders and apps into one pipeline you can rerun.', when: 'studio', cmd: '/studio' },
       { title: 'Several chats at once', text: '/dispatch splits a video into parts made by several chats (Claude or Astra each), shown live in your scene, followed on one card.', cmd: '/dispatch' },
     ] },
     { id: 'eyes', name: 'Board eyes + Pinterest', icon: '◉', why: 'chats look at your references', steps: [
@@ -123,7 +123,7 @@ const DiscoverData = (() => {
       { title: 'Apps', text: 'Every app in its own window and sign-in, from one picker in the rail\'s ⋯ menu (search, ★ favorites, recents).', target: ['#apps-btn:not([hidden])', '#rail-more', '#config-btn'], cmd: '/apps' },
       { title: '✨ Discover', text: 'Discover suggests apps that fit what you are doing (the Lab → 3D / video, the board → image AI).', cmd: '/apps discover' },
       { title: 'Meshy from a chat', text: '/meshy a prompt: the cost shows and it asks first; models land in the Lab or on the board.', cmd: '/meshy' },
-      { title: 'Downloads go where they fit', text: 'GLB → the Lab, HDRI → the sky, songs → the Lab, clips → Video Review, pictures → the board.', cmd: '/apps downloads' },
+      { title: 'Downloads go where they fit', text: 'GLB → the Lab, HDRI → the sky, songs → the Lab, clips → the board (or your video player), pictures → the board.', cmd: '/apps downloads' },
     ] },
     { id: 'access', name: 'Chat access cards', icon: '🔐', why: 'what a chat may read, write and run', steps: [
       { title: 'Each chat\'s access', text: 'Chat ⋯ → Access: Off · Read · Read & write · Full, in the chat\'s own folders.', target: ['.surface.active .native-head button[title="Chat options"]', '.surface.active .native-head'] },
@@ -151,7 +151,7 @@ const DiscoverData = (() => {
   ];
 
   // ---------- daily tips: one a day at most, for what you have never used, where you are ----------
-  // place: 'three' (the Lab) | 'ae' (Video Review) | 'board' | 'chat' | 'any'; used: commands that count as "tried it"
+  // place: 'three' (the Lab) | 'board' | 'chat' | 'any'; used: commands that count as "tried it"
   const TIPS = [
     { id: 'shuffle-pick', place: 'three', text: 'Hold 🎲 Shuffle: a row of thumbnails, you click one (or ✦ Astra picks).', cmd: '/shuffle-pick', used: ['shuffle-pick'] },
     { id: 'again', place: 'three', text: 'Ctrl/⌘+. repeats your last action — Save, Shuffle, a frame size — without moving the mouse.', cmd: '/again list', used: ['again'] },
@@ -174,8 +174,6 @@ const DiscoverData = (() => {
     { id: 'makes', place: 'chat', text: '/makes plan … makes the Lab chat and the Video chat at once, same name and mark.', cmd: '/makes', used: ['makes'] },
     { id: 'pinterest', place: 'board', text: '/board pinterest finds pins that match this board\'s vibe; ＋ Board adds them with their link.', cmd: '/board pinterest', used: [], usedKey: /pinterest/i, tour: 'eyes' },
     { id: 'vibe', place: 'board', text: '/vibe reads the board\'s palette, light and mood words — what a chat gets when you say “use my board”.', cmd: '/vibe', used: ['vibe'] },
-    { id: 'transition', place: 'ae', text: '/transition: 131 transitions on the cut, from the chat.', cmd: '/transition', used: ['transition'] },
-    { id: 'add-title', place: 'ae', text: '/add-title puts a title or lower third at the playhead.', cmd: '/add-title', used: ['add-title'] },
   ];
 
   // ---------- Surprise me: fun things you have never tried (safe ones run, the rest go in the chat box) ----------
@@ -193,7 +191,7 @@ const DiscoverData = (() => {
     { cmd: '/apps discover', place: 'any', why: 'an app that fits what you do' },
     { cmd: '/meshy', place: 'any', why: 'a 3D model from words' },
     { cmd: '/suno', place: 'any', why: 'a Suno song prompt from your scene' },
-    { cmd: '/intro', place: 'any', why: 'plan your social intro video' },
+    { cmd: '/studio', place: 'any', why: 'one-click pipelines: board → video, song → visualizer' },
     { cmd: '/dispatch', place: 'chat', why: 'several chats make one video' },
     { cmd: '/renders', place: 'any', why: 'the render queue and its presets' },
     { cmd: '/habits', place: 'any', why: 'what you use most and never touch' },
@@ -217,7 +215,7 @@ const DiscoverData = (() => {
     if (ctx.apps?.includes('suno') && (sc[0] || b)) out.push({ id: `suno:${sc[0] || b}`, icon: '♪', text: `A Suno song from the vibe of ${q(sc[0] || b)}`, why: 'the prompt is typed into Suno for you', lines: [], draft: '/suno', to: 'chat' });
     if (b) out.push({ id: `pins:${b}`, icon: '📌', text: `Six more references for ${q(b2 || b)} from Pinterest`, why: 'matched to the board\'s vibe', lines: [], draft: '/board pinterest', to: 'chat' });
     if (sc[0]) out.push({ id: `kinetic:${sc[0]}`, icon: 'T', text: `Kinetic type over ${q(sc[0])}`, why: 'fitted to the 9:16 safe zone', lines: [], draft: '/kinetic', to: 'three' });
-    out.push({ id: 'intro', icon: '◉', text: 'Plan a 15 s social intro for Hearth', why: 'board vibe → Lab scenes → capture → editor', lines: [], draft: '/intro', to: 'chat' });
+    out.push({ id: 'intro', icon: '◉', text: 'Make a 15 s social intro for Hearth', why: 'board vibe → Lab scene → sequence → render (Studio)', lines: [], draft: '/studio board-video', to: 'chat' });
     if (!b) out.push({ id: 'board-new', icon: '▦', text: 'Start a mood board for tonight\'s piece', why: 'drop pictures, clips and links', lines: ['/board'], draft: '', to: 'chat' });
     return out;
   }

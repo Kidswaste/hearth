@@ -50,7 +50,7 @@ ok('plan: "a three.js animation that cuts into a video" → a Lab room, then a V
   assert.ok(p.auto);
   const m = C.create({ name: p.name, parts: p.parts });
   assert.deepStrictEqual(m.parts.map((x) => C.KINDS[x.kind].room), ['chat', 'chat']);
-  assert.strictEqual(C.KINDS.lab.agent, 'three'); assert.strictEqual(C.KINDS.video.agent, 'ae');
+  assert.strictEqual(C.KINDS.lab.agent, 'three'); assert.strictEqual(C.KINDS.video.agent, 'three'); // (round 17) the video is the Lab sequence
   assert.strictEqual(C.chain(m), 'Lab → Video');
 });
 ok('plan: more shapes of words', () => {
@@ -125,7 +125,7 @@ ok('context line: short, names the room, the chain and the file name', () => {
   assert.match(C.contextLine(m, m.parts[1]), /before it: Lab \(planned\)/);
 });
 ok('creators: the registry audit — big ones make a make, small ones join the room you are in', () => {
-  assert.ok(C.creatorOf('dispatch').standalone && C.creatorOf('/intro').adapter === 'intro');
+  assert.ok(C.creatorOf('dispatch').standalone && C.creatorOf('/intro') === null);
   assert.strictEqual(C.creatorOf('shot').standalone, false);
   assert.strictEqual(C.creatorOf('scene', ''), null);
   assert.ok(C.creatorOf('scene', 'new'));

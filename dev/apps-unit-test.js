@@ -28,7 +28,7 @@ async function t(name, fn) {
     assert.strictEqual(C.routesFor('a.fbx')[0].id, 'lab-ref', 'an fbx is a reference, not a layer');
     assert.ok(!C.routesFor('a.fbx').some((r) => r.id === 'lab-model'));
     assert.strictEqual(C.routesFor('a.mp3')[0].id, 'lab-song');
-    assert.strictEqual(C.routesFor('a.mp4')[0].id, 'review');
+    assert.strictEqual(C.routesFor('a.mp4')[0].id, 'board');
     assert.strictEqual(C.routesFor('a.mp4', { video: 'board' })[0].id, 'board');
     assert.strictEqual(C.routesFor('a.png')[0].id, 'board');
     assert.ok(C.routesFor('a.png').some((r) => r.id === 'meshy'), 'a picture can become a Meshy model');

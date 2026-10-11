@@ -1,7 +1,7 @@
 // Apps (round 14), the pure part: no DOM, no Electron. It loads in the hub page, in each app window's chrome
 // (apps-window.html) and in Node for dev/apps-unit-test.js. What lives here is what every side must agree on:
 //   kindOf(name)            → 'model' | 'hdri' | 'audio' | 'video' | 'image' | 'font' | 'archive' | 'file'
-//   routesFor(name, prefer) → [{ id, label }] where a downloaded file can go (Lab, board, Video Review…), best first
+//   routesFor(name, prefer) → [{ id, label }] where a downloaded file can go (Lab, board, the system player…), best first
 //   palette(url)            → hex colors read from a Coolors-style address ("coolors.co/264653-2a9d8f-…")
 //   sunoPrompt(vibe)        → { title, style, lyrics, exclude }: a Suno prompt written from a scene's vibe, locally
 //   splitSuno(text)         → { style, lyrics, title } from a chat reply (the "Style:" line and the [Verse] blocks)
@@ -26,7 +26,7 @@ const AppsCore = (() => {
     'lab-song': '◭ Use as the Lab\'s song',
     'lab-ref': '◭ Add to the Lab\'s references',
     board: '▦ Put on the board',
-    review: '🎬 Open in Video Review',
+    open: '▶ Open (the system player)',
     chat: '💬 Attach to the chat',
     meshy: '🧊 Make a 3D model of it (Meshy)',
     make: '✦ Add to the make in progress',
@@ -35,8 +35,8 @@ const AppsCore = (() => {
   const BY_KIND = {
     model: ['lab-model', 'board', 'reveal'],
     hdri: ['lab-hdri', 'lab-ref', 'reveal'],
-    audio: ['lab-song', 'review', 'board', 'chat', 'reveal'],
-    video: ['review', 'lab-song', 'board', 'lab-ref', 'chat', 'reveal'],
+    audio: ['lab-song', 'open', 'board', 'chat', 'reveal'],
+    video: ['board', 'open', 'lab-song', 'lab-ref', 'chat', 'reveal'],
     image: ['board', 'lab-ref', 'chat', 'meshy', 'reveal'],
     font: ['lab-ref', 'reveal'],
     archive: ['reveal'],
@@ -45,7 +45,7 @@ const AppsCore = (() => {
   function routesFor(name, prefer = {}) {
     const kind = kindOf(name);
     let ids = (BY_KIND[kind] || BY_KIND.file).slice();
-    const fav = prefer[kind];
+    const fav = prefer[kind] === 'review' ? 'open' : prefer[kind]; // (an app's old "Video Review" favourite opens the file)
     if (fav && ids.includes(fav)) ids = [fav, ...ids.filter((x) => x !== fav)];
     // a .glb can load as a layer; .fbx / .obj / .stl only as a reference (the Lab's model viewer reads them)
     if (kind === 'model' && !/\.(glb|gltf)$/i.test(name)) ids = ['lab-ref', ...ids.filter((x) => x !== 'lab-model' && x !== 'lab-ref')];

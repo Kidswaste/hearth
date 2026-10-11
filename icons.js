@@ -97,7 +97,6 @@ const Icons = (() => {
     const id = String(item.id || '').replace(/\d+$/, '');
     if (BY_ID[id]) return BY_ID[id];
     if (item.dock === 'three' || item.threeTools) return 'director';
-    if (item.dock === 'ae' || item.videoTools) return 'clapper';
     if (item.gameTools) return 'forge';
     if (item.mode === 'native' && BY_ENGINE[item.engine]) return BY_ENGINE[item.engine];
     return null;

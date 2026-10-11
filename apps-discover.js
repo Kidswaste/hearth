@@ -36,7 +36,6 @@ const AppsDiscover = (() => {
       if (songAt || !noSong) out.push('song');
       out.push('lab');
     } else if (sid === 'tool:board') out.push('board');
-    else if (sid === 'tool:ae') out.push('edit');
     else out.push('chat');
     return out;
   }

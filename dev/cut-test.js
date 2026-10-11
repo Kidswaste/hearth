@@ -7,7 +7,7 @@ const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const C = require('../tools/cut-data.js');
-const V = require('../tools/video-data.js');
+const V = require('../tools/export-data.js');
 
 let fails = 0; let passes = 0;
 const ok = (name, cond, info) => { if (cond) passes += 1; else { fails += 1; console.log('✖', name, info === undefined ? '' : JSON.stringify(info)); } };

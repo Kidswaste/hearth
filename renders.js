@@ -1,17 +1,17 @@
-// The render queue (round 13): one queue for everything Hearth renders, records or exports. Video Review / editor
-// exports, video projects (/intro), the Lab sequence's renders (and comps through it), recordings and the presets
+// The render queue (round 13): one queue for everything Hearth renders, records or exports. The Lab sequence's
+// renders (and comps through it), the Lab's footage cuts and saved loops, recordings and the presets
 // rendered from here all show in one list: a progress bar with time left, pause / resume, cancel, retry, the make it
 // belongs to (name and mark). ffmpeg jobs run one at a time (the app stays smooth; /renders parallel 2 for more), the
 // Lab's renders one at a time in the preview, recordings live. When one is done: a quiet note with Open, Reveal in
-// Finder (Show in Explorer on Windows), Copy path and Open in Video Review; a failure says why in plain words, with
+// Finder (Show in Explorer on Windows), Copy path (and Adobe › on right-click); a failure says why in plain words, with
 // its fix (and goes in /habits errors). A history of past renders: re-render with the same settings, Trash.
 // Entry points (no new row of buttons): a small ⇪ badge at the bottom of the rail while something renders, /renders,
-// Ctrl/⌘+K, Video Review's Export menu, the Lab sequence's render panel ("More formats…").
+// Ctrl/⌘+K, the Lab sequence's render panel ("More formats…").
 // Smooth (round 5 / 12 rules): no DOM writes per frame or per ffmpeg event (events only update the model); the badge
 // and the open list repaint at most twice a second, compare before writing, and nothing ticks while the window is
 // hidden or nothing runs.
-// Hooks elsewhere call: Renders.transcode(spec, overrides, meta) (tools/review.js startJob), Renders.track(o)
-// (tools/three-seq.js renderEdit), Renders.owns(id) / Renders.cancel(id) (review.js), Renders.panel(o) (menus).
+// Hooks elsewhere call: Renders.transcode(spec, overrides, meta) + Renders.whenDone(id) (the Lab's cut-loop and
+// footage cut), Renders.track(o) (tools/three-seq.js renderEdit), Renders.panel(o) (menus).
 const Renders = (() => {
   const R = RendersCore;
   const KV = 'renders';
@@ -99,7 +99,7 @@ const Renders = (() => {
     changed(job, 'add');
     return job;
   }
-  // The hook in Review.startJob (and anything else that runs ffmpeg for the owner): the job waits its turn, then runs
+  // The hook for anything that runs ffmpeg for the owner (the Lab's cut-loop and footage cut): the job waits its turn, then runs
   // with the same id (its caller's listeners hear the same events). Starting now, a failure to start throws like
   // hub.video.transcode did; later, it arrives as a 'done' event with the error.
   async function transcode(spec, overrides = ffOver(), meta = {}) {
@@ -252,7 +252,6 @@ const Renders = (() => {
     j.status = 'done'; j.ended = now();
     try { j.size = (await window.hub.fs.stat(j.output))?.size || null; } catch { /* no size */ }
     joinMake(j);
-    if (j.owner === 'renders' && j.kind === 'ffmpeg' && typeof Review !== 'undefined') { try { await Review.noteRecording(j.output); } catch { /* the library is a bonus */ } }
     record(j); changed(j, 'done');
     if (!j.quiet && !jobs.some((x) => x.after === j.id && live(x))) notifyDone(j);
     if (j.openAfter && j.output) openIn(j.output);
@@ -291,7 +290,7 @@ const Renders = (() => {
 
   // ---------- what you can do with a job ----------
   const revealLabel = R.revealLabel(PLAT);
-  async function openIn(p) { activate('tool:ae'); await Review.ensureMounted?.(); return Review.open(p); }
+  const openIn = (p) => MediaFile.open(p); // the system's own player (round 17: no player inside Hearth)
   function actionsFor(j) {
     const out = j.output;
     const A = [];
@@ -299,7 +298,6 @@ const Renders = (() => {
       A.push({ label: 'Open', short: 'Open', action: () => window.hub.fs.open(out) });
       A.push({ label: revealLabel, short: IS_MAC ? 'Finder' : PLAT === 'win32' ? 'Explorer' : 'Folder', action: () => window.hub.fs.reveal(out) });
       A.push({ label: 'Copy path', short: 'Copy path', action: () => copyText(out, 'Path copied') });
-      if (!/\.(m4a|wav|gif)$/i.test(out)) A.push({ label: 'Open in Video Review', short: 'Review', action: () => openIn(out) });
     }
     return A;
   }
@@ -310,6 +308,8 @@ const Renders = (() => {
     if (j.status === 'queued') it.push({ label: '⤒ Next in line', action: () => { j.prio = now(); changed(j, 'move'); pump(); } });
     if (live(j)) it.push({ label: '■ Cancel', action: () => cancel(j.id) });
     for (const a of actionsFor(j)) it.push({ label: a.label, action: a.action });
+    // a finished video into the Adobe apps (Premiere, Media Encoder, After Effects)
+    if (j.status === 'done' && j.output && !j.trashed && /\.(mp4|mov|m4v|webm)$/i.test(j.output)) it.push({ label: 'Adobe', items: () => { if (typeof Adobe !== 'undefined') return Adobe.videoItems(j.output); window.Lazy?.load?.('adobe'); return [{ label: 'Adobe is loading… (try again)', disabled: true }]; } });
     if ((j.status === 'failed' || j.status === 'cancelled') && j.again) it.push({ label: '↻ Retry', action: () => retry(j.id) });
     if (j.status === 'done' && j.again) it.push({ label: '↻ Re-render (same settings)', action: () => retry(j.id) });
     if (j.status === 'failed' && j.error) it.push({ label: 'Why it failed…', action: () => Modal.alert(j.title, `${j.error.reason}\n\nFix: ${j.error.fix}${j.error.raw ? `\n\nffmpeg said: ${j.error.raw}` : ''}`) });
@@ -571,11 +571,9 @@ const Renders = (() => {
   }
 
   // ---------- the one place to pick presets ----------
-  // o = { source: 'video' | 'seq' | <path>, presets: [ids], go: true (start at once with remembered choices) }
+  // o = { source: 'seq' | <path>, presets: [ids], go: true (start at once with remembered choices) }
   function sources() {
     const S = [];
-    const cur = typeof Review !== 'undefined' ? Review.current : null;
-    if (cur?.path) S.push({ id: 'video', label: `🎬 ${R.base(cur.path)}`, hint: 'the video open in Video Review', path: cur.path });
     if (typeof ThreeSeq !== 'undefined' && (ThreeSeq.key || ThreeSeq.edit)) S.push({ id: 'seq', label: `▤ ${(ThreeSeq.key || 'seq:sequence').slice(4)}`, hint: 'the Lab sequence (rendered frame by frame)', key: ThreeSeq.key });
     return S;
   }
@@ -612,7 +610,7 @@ const Renders = (() => {
         ...presetRows,
         el('button', { type: 'button', class: 'ghost small rq-d-more', text: details ? 'Fewer details ‹' : 'Frame rate, quality, size ›', on: { click: () => { details = !details; paintD(); } } }),
         det,
-        el('label', { class: 'sq-rp-check' }, el('input', { type: 'checkbox', checked: st.open, on: { change: (e) => { st.open = e.target.checked; } } }), ' Open in Video Review when it\'s done'),
+        el('label', { class: 'sq-rp-check' }, el('input', { type: 'checkbox', checked: st.open, on: { change: (e) => { st.open = e.target.checked; } } }), ' Open it when it\'s done'),
         el('div', { class: 'rq-d-sum', text: `${n > 1 ? `${n} files, one after the other` : R.get([...st.presets][0]).tip} · they render in the background (⇪ at the bottom of the rail)` }));
       goBtn.disabled = !st.source || (st.source === 'file' && !st.file);
       goBtn.textContent = n > 1 ? `⇪ Render ${n}` : `⇪ Render ${R.get([...st.presets][0]).name}`;
@@ -636,7 +634,7 @@ const Renders = (() => {
       for (const id of ids) made.push(enqueueSeq({ key: s.key, preset: id, opts, open: st.open && id === ids[ids.length - 1] }));
     } else {
       const path = st.source === 'file' ? st.file : (st.path || src.find((x) => x.id === st.source)?.path);
-      if (!path) throw new Error('Open a video first (Video Review), or pick a file.');
+      if (!path) throw new Error('Pick a file (or render the Lab sequence).');
       for (const id of ids) made.push(enqueue({ input: path, preset: id, opts, open: st.open && id === ids[ids.length - 1] }));
     }
     toast(`⇪ ${made.length === 1 ? made[0].title : `${made.length} renders`} in the queue`, { timeout: 2600, action: { label: 'Show', fn: () => open() } });
@@ -662,7 +660,7 @@ const Renders = (() => {
       AppUI.addAction('Render with a preset (Reels, YouTube, GIF, ProRes…)', () => panel());
       AppUI.addAction('Render for all socials', () => panel({ presets: R.SOCIALS.slice() }));
     }
-    if (typeof Keys !== 'undefined') Keys.add({ area: 'Renders', keys: 'Right-click ⇪ (bottom of the rail)', what: 'render with a preset, all socials, pause / resume / cancel all' }, { area: 'Renders', keys: 'Right-click a render', what: 'open, reveal, copy path, Video Review, re-render, Trash' });
+    if (typeof Keys !== 'undefined') Keys.add({ area: 'Renders', keys: 'Right-click ⇪ (bottom of the rail)', what: 'render with a preset, all socials, pause / resume / cancel all' }, { area: 'Renders', keys: 'Right-click a render', what: 'open, reveal, copy path, Adobe, re-render, Trash' });
     setTimeout(offerPending, 4000);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();

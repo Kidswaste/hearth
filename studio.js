@@ -195,11 +195,11 @@ const Studio = (() => {
       watch(run);
       return cap(text.replace(/^⇪ In the queue: /, '').split('. They render')[0], 200);
     },
-    // Video Review opens with the first finished render (the video room gets it too)
+    // the first finished render opens in the system player (the video room gets it too)
     async review({ run }) {
       if (run.vars.watch) run.vars.watch.review = true;
       watch(run);
-      return 'Video Review opens with it when it\'s rendered.';
+      return 'It opens in your video player when it\'s rendered.';
     },
     // Meshy: the adapter shows the cost (and the balance) and asks; nothing starts without a yes
     async meshy({ run }) {
@@ -289,7 +289,7 @@ const Studio = (() => {
     return fn({ run, r, step });
   }
 
-  // ---------- renders → the make's outputs, Video Review at the end (a quiet poll while something renders) ----------
+  // ---------- renders → the make's outputs, opened at the end (a quiet poll while something renders) ----------
   const watched = new Map(); // run id → run
   let watchT = 0;
   function watch(run) {
@@ -315,8 +315,8 @@ const Studio = (() => {
       if (w.k !== k) { w.k = k; if (make && rp) { if (rp.status !== 'working' && live.length) Makes.setPart(make, rp, 'working'); Makes.progress(make.id, rp.id, { pct: live.length ? Math.max(3, Math.min(99, pct)) : 100, label: live.length ? `${live.length} rendering` : `${ok.length} rendered` }); } }
       if (w.review && ok.length && !w.opened) {
         w.opened = true;
-        Apps.route(ok[0].output, 'review').catch((err) => toast(err.message, { type: 'error' }));
-        if (make && vp) Makes.progress(make.id, vp.id, { pct: 100, label: 'in Video Review' });
+        MediaFile.open(ok[0].output);
+        if (make && vp) Makes.progress(make.id, vp.id, { pct: 100, label: 'opened' });
       }
       if (!live.length) {
         w.ended = true; watched.delete(id);

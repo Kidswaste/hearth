@@ -306,7 +306,7 @@ ok('every command lands in exactly one area flow; big areas are split by what th
   assert.strictEqual(seen.size, defs.length);
   assert.strictEqual(seen.get('tap'), 'all-lab-music');
   assert.strictEqual(seen.get('kinetic'), 'all-lab-motion');
-  assert.strictEqual(seen.get('clip-fade'), 'all-video-editor');
+  assert.strictEqual(seen.get('clip-fade'), 'all-video');
   assert.strictEqual(seen.get('mystery-add-0'), 'all-other');
   assert.strictEqual(seen.get('shadernodes-set-1'), 'all-nodes');
   for (const f of flows) {

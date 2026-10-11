@@ -1,6 +1,6 @@
 // /renders: the render queue from chat (round 13, renders.js). Everything the list and its menus do:
 //   /renders                       what renders now and the last ones (the list opens)
-//   /renders render reels square   render presets of the open video (or: seq, a file path); no preset: the panel
+//   /renders render reels square   render presets of the Lab sequence (or a file path); no preset: the panel
 //   /renders socials               Reels / TikTok / Shorts 9:16 · Feed 4:5 · Square · YouTube 16:9, one after the other
 //   /renders presets               the presets with their sizes, frame rates and tips
 //   /renders pause | resume | cancel [n | all | last]   /renders retry [n] · again [n] (re-render, same settings)
@@ -10,9 +10,9 @@
   const R = () => Renders;
   const C = () => RendersCore;
   const SUBS = [
-    ['list', 'what renders now'], ['render', 'render <presets…> [seq | <file>]'], ['socials', 'all socials of the open video / sequence'], ['presets', 'sizes, frame rates, tips'],
+    ['list', 'what renders now'], ['render', 'render <presets…> [seq | <file>]'], ['socials', 'all socials of the Lab sequence (or a file)'], ['presets', 'sizes, frame rates, tips'],
     ['pause', 'pause [n|all]'], ['resume', 'resume [n|all]'], ['cancel', 'cancel [n|all]'], ['retry', 'retry [n]: a failed one again'], ['again', 'again [n]: re-render, same settings'],
-    ['open', 'open [n]'], ['reveal', 'reveal [n]: in Finder / Explorer'], ['copy', 'copy [n]: its path'], ['review', 'review [n]: in Video Review'], ['trash', 'trash [n]: to the Trash'],
+    ['open', 'open [n]'], ['reveal', 'reveal [n]: in Finder / Explorer'], ['copy', 'copy [n]: its path'], ['trash', 'trash [n]: to the Trash'],
     ['history', 'past renders'], ['clear', 'clear [all]: finished ones off the list'], ['parallel', 'parallel 1-3: renders at once'], ['rush', 'rush on|off: full-speed renders (default: below normal priority, the app stays smooth)'],
   ];
   // the numbered list: live jobs, this session's ended ones (newest first), then the history
@@ -34,7 +34,7 @@
   function listText(hist = false) {
     const all = items();
     const shown = hist ? all : all.slice(0, 12);
-    if (!shown.length) return 'Nothing rendered yet. `/renders render reels` renders the open video for Reels / TikTok / Shorts; `/renders presets` lists the presets.';
+    if (!shown.length) return 'Nothing rendered yet. `/renders render reels` renders the Lab sequence for Reels / TikTok / Shorts; `/renders presets` lists the presets.';
     return `${hist ? 'Past renders' : 'Renders'}:\n${shown.map(line).join('\n')}${!hist && all.length > shown.length ? `\n… ${all.length - shown.length} more: /renders history` : ''}`;
   }
   function presetsText() {
@@ -51,7 +51,6 @@
       if (/^(\d\d)fps$/i.test(t)) { opts.fps = Number(t.slice(0, 2)); continue; }
       if (/^(draft|high|best)$/i.test(t)) { opts.quality = t.toLowerCase(); continue; }
       if (/^(seq|sequence|lab)$/i.test(t)) { source = 'seq'; continue; }
-      if (/^(video|this)$/i.test(t)) { source = 'video'; continue; }
       if (/^([A-Za-z]:\\|\/|~)/.test(t)) { source = 'file'; file = t; continue; }
       words.push(t);
     }
@@ -78,7 +77,7 @@
       const st = { presets: new Set(p.presets), fps: p.opts.fps ?? 0, quality: p.opts.quality || 'high', size: p.opts.size || 'full', fit: p.opts.fit || 'crop', sound: true, open: false, source: p.source, file: p.file };
       const src = R().sources();
       if (!st.source) st.source = src[0]?.id || null;
-      if (!st.source) return 'Nothing to render: open a video in Video Review, a sequence in the Lab (▤ Sequence), or give a file path (/renders render reels /path/to/video.mp4).';
+      if (!st.source) return 'Nothing to render: open a sequence in the Lab (▤ Sequence), or give a file path (/renders render reels /path/to/video.mp4).';
       const made = await R().go(st, src);
       return `⇪ In the queue: ${made.map((j) => j.title).join(' · ')}. They render in the background (⇪ at the bottom of the rail; /renders to follow).`;
     }
@@ -94,12 +93,11 @@
     if (['open', 'reveal', 'copy', 'review', 'trash'].includes(sub)) {
       const j = pickOne(rest, (x) => x.status === 'done' && x.output && !x.trashed);
       if (!j) return 'No finished render with a file (yet).';
-      if (sub === 'open') await window.hub.fs.open(j.output);
+      if (sub === 'open' || sub === 'review') await window.hub.fs.open(j.output); // (review: the old name, Video Review is gone)
       if (sub === 'reveal') await window.hub.fs.reveal(j.output);
       if (sub === 'copy') await copyText(j.output, 'Path copied');
-      if (sub === 'review') { activate('tool:ae'); await Review.ensureMounted?.(); await Review.open(j.output); }
       if (sub === 'trash') { await R().trash(j.id); return `${C().base(j.output)} moved to the ${R().platform === 'win32' ? 'Recycle Bin' : 'Trash'}.`; }
-      return sub === 'copy' ? `Copied: \`${j.output}\`` : `${sub === 'reveal' ? C().revealLabel(R().platform) : sub === 'review' ? 'Opened in Video Review' : 'Opened'}: ${C().base(j.output)}`;
+      return sub === 'copy' ? `Copied: \`${j.output}\`` : `${sub === 'reveal' ? C().revealLabel(R().platform) : 'Opened'}: ${C().base(j.output)}`;
     }
     if (sub === 'clear') { const n = R().clear({ all: /^all$/i.test(rest) }); return /^all$/i.test(rest) ? 'The list and the history are empty (the files stay where they are).' : `${n} finished render${n === 1 ? '' : 's'} off the list (the history keeps them).`; }
     // (round 16) renders run below normal priority so Hearth stays smooth; rush gives them full priority

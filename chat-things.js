@@ -24,7 +24,7 @@ const ChatThings = (() => {
     return out;
   }
   // tools that only read or list (their paths are inputs or listings, not something made)
-  const READS = /^(capture_list|video_list|video_status|board_list|board_vibe|three_(read_code|search_code|console|help|state|task|layers|list|status|contact_sheet)|chat_)/;
+  const READS = /^(capture_list|board_list|board_vibe|three_(read_code|search_code|console|help|state|task|layers|list|status|contact_sheet)|chat_)/;
   const LAB_READS = /^three_(read_code|search_code|console|screenshot|help|state|task|layers|list|status|contact_sheet|media_control|input|sequence)/;
   function fromCall({ tool, args = {}, result = {}, chatId }) {
     const found = [];

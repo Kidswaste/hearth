@@ -65,7 +65,6 @@ const ChatContext = (() => {
       if (sk) out.scene = { id: sk.id, name: sk.name, own: Boolean(ChatScenes?.linkOf?.(chatId)) };
     } catch { /* the Lab isn't loaded */ }
     if (e.sequence) out.sequence = e.sequence;
-    try { const p = typeof Intro !== 'undefined' && (Intro.ofChat?.(chatId) || (from && Intro.ofChat?.(from))); if (p) out.project = { id: p.id, name: p.name }; else if (e.project) out.project = e.project; } catch { /* intro not loaded */ }
     out.captures = (e.captures || []).slice(0, 8);
     out.renders = (e.renders || []).slice(0, 6);
     for (const k of forget) { if (k === 'captures' || k === 'renders') out[k] = []; else delete out[k]; }
@@ -137,13 +136,6 @@ const ChatContext = (() => {
     if (k === 'sequence') return [
       { label: '⇪ Render it again', hint: '/render-again', action: () => renderAgain(agentId, chatId) },
       { label: 'Open the sequence', action: tryRun(async () => { await ThreeLab.cmd(); await ThreeSeq.open(v.id); await ThreeSeq.enter(); }) },
-      { label: 'Finish in the video editor', action: tryRun(async () => { await ThreeLab.cmd(); await ThreeSeq.open(v.id); await ThreeSeq.toEditor(); }) },
-      forgetIt,
-    ];
-    if (k === 'project') return [
-      { label: 'Show its card here', action: run(`/intro open ${v.name}`, agentId) },
-      { label: '⇪ Render it again', hint: '/render-again', action: () => renderAgain(agentId, chatId) },
-      { label: 'Status', action: run(`/intro status`, agentId) },
       forgetIt,
     ];
     // captures / renders: newest first
@@ -190,8 +182,7 @@ const ChatContext = (() => {
         if (r?.path) { note(chatId, { k: 'video', path: r.path, src: 'render' }); toast(`Rendered ${base(r.path)}`, { action: { label: 'Open', fn: () => CaptureView.open(r.path) } }); }
         return r;
       }
-      if (c.project) return Commands.exec(`/intro render`, agentId);
-      toast('This chat has no sequence or video project yet', { timeout: 2000 });
+      toast('This chat has no sequence yet', { timeout: 2000 });
     } catch (err) { toast(err.message, { type: 'error' }); }
     return null;
   }
@@ -252,7 +243,6 @@ const ChatContext = (() => {
     load().then(paintAll);
     const boardHook = () => { try { Board.onChange((what) => { if (what === 'links' || what === 'boards') paintAll(); }); } catch { /* no board */ } };
     if (window.Lazy) window.Lazy.when('board', () => { boardHook(); paintAll(); }); else boardHook(); // (round 16) the board loads after the first screen
-    try { Intro.onChange(() => paintAll()); } catch { /* no projects */ }
     register();
   });
 
@@ -261,7 +251,7 @@ const ChatContext = (() => {
     const reg = (def) => { if (!Commands.get(def.name)) Commands.register({ area: 'Chat', ...def }); else console.warn(`chat-context: /${def.name} exists`); };
     reg({
       name: 'chat-context', args: '[show | auto on|off | strip on|off | forget <what> | clear]', aliases: ['works-with'],
-      desc: 'What this chat works with (board, scene, sequence, video project, captures, renders) and how your words use it',
+      desc: 'What this chat works with (board, scene, sequence, captures, renders) and how your words use it',
       complete: () => ['show', 'auto on', 'auto off', 'strip on', 'strip off', 'forget board', 'forget scene', 'forget sequence', 'forget project', 'forget captures', 'forget renders', 'clear'].map((value) => ({ value })),
       examples: ['/chat-context', '/chat-context auto off'],
       run: async (args, ctx) => {
@@ -285,8 +275,8 @@ const ChatContext = (() => {
       },
     });
     reg({
-      name: 'render-again', args: '', aliases: ['rerender'], area: 'Video project',
-      desc: 'Render this chat\'s Lab sequence (or its video project) again, locally',
+      name: 'render-again', args: '', aliases: ['rerender'], area: 'Three.js Lab',
+      desc: 'Render this chat\'s Lab sequence again, locally',
       keywords: 'render it again export again',
       run: async (args, ctx) => { if (!ctx.chatId) return 'Open a chat first.'; await load(); await renderAgain(ctx.agentId, ctx.chatId); return undefined; },
     });

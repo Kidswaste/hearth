@@ -1,7 +1,7 @@
 // Attach from anywhere (round 9, chatcore): the ＋ in the chat box is one open menu that branches into the sources —
 // files, the board, captures, the Lab (its frame, its scene), the screen (the window, this tool, a region) and recent
 // renders — and the same sources are chat commands (/attach-board, /attach-capture, /attach-frame, /attach-region,
-// /attach-render, /attach-scene). Drops from the Video Review library, the Lab sequence's scene tiles and chat cards
+// /attach-render, /attach-scene). Drops from the board, the Lab sequence's scene tiles and chat cards
 // land in the chat box too. Pictures attach as pictures, videos as their contact sheet (engines read pictures, not
 // video files), the board as its vibe (never its media), a scene as a short text. Nothing is sent until you send.
 const ChatAttach = (() => {
@@ -15,10 +15,11 @@ const ChatAttach = (() => {
   async function recentCaptures(kind = 'all', limit = 10) {
     try { return (await window.hub.capture.list({ kind, limit })) || []; } catch { return []; }
   }
-  // finished renders: Video Review's exports and Lab recordings (kv video-library), then video captures, newest first
+  // finished renders: the render queue's history (Lab sequences, cuts, presets), then video captures, newest first
   async function recentRenders(limit = 10) {
-    const lib = await window.hub.kvGet('video-library', {}).catch(() => ({}));
-    const paths = [...new Set([...(lib.exports || []), ...((lib.recordings || []).map((r) => r.path || r))])].filter((p) => typeof p === 'string' && VIDEO.test(p));
+    if (typeof Renders === 'undefined') await window.Lazy?.load?.('renders')?.catch?.(() => {});
+    const hist = typeof Renders !== 'undefined' ? Renders.history() : [];
+    const paths = [...new Set(hist.filter((j) => j.status === 'done' && j.output).map((j) => j.output))].filter((p) => typeof p === 'string' && VIDEO.test(p));
     const stats = await Promise.all(paths.slice(0, 40).map(async (p) => { try { const s = await window.hub.fs.stat(p); return s ? { path: p, mtime: s.mtimeMs || s.mtime || 0 } : null; } catch { return null; } }));
     const caps = (await recentCaptures('video', limit)).map((c) => ({ path: c.path, mtime: c.mtime }));
     return [...stats.filter(Boolean), ...caps].filter((x, i, a) => a.findIndex((y) => y.path === x.path) === i).sort((a, b) => (b.mtime || 0) - (a.mtime || 0)).slice(0, limit);
@@ -64,7 +65,7 @@ const ChatAttach = (() => {
     if (t.path) return attachPath(agentId, t.path);
     if (t.k === 'scene') return labScene(agentId, t.id);
     if (t.k === 'board' && typeof BoardDrawer !== 'undefined') { const b = Board.boards().find((x) => x.name === t.board); return BoardDrawer.attach(agentId, { boardId: b?.id, itemIds: [t.id] }); }
-    const line = t.k === 'sequence' ? `Lab sequence "${t.name}" (in the Three.js Lab's ▤ Sequence).` : t.k === 'project' ? `Video project "${t.name}" (/intro open ${t.name}).` : `${t.k}: ${t.name}`;
+    const line = t.k === 'sequence' ? `Lab sequence "${t.name}" (in the Three.js Lab's ▤ Sequence).` : `${t.k}: ${t.name}`;
     Native.insertDraft(agentId, `${line} `);
     return null;
   }
@@ -247,7 +248,7 @@ const ChatAttach = (() => {
       { area: 'Chat', keys: 'Alt+A', what: 'the ＋ menu of the chat box (attach from anywhere)', sel: '.composer .attach-btn' },
       { area: 'Chat', keys: '＋ in the chat box', what: 'attach: files, the board, captures, the Lab frame / scene, a screen region, recent renders' },
       { area: 'Chat', keys: 'Shift+click ＋', what: 'the file picker straight away' },
-      { area: 'Chat', keys: 'Drop a video from Video Review / a capture', what: 'attaches its contact sheet (engines read pictures)' },
+      { area: 'Chat', keys: 'Drop a video (a capture, a render, a board clip)', what: 'attaches its contact sheet (engines read pictures)' },
       { area: 'Chat', keys: 'Paste a picture / video path', what: 'attaches the file (toast: paste as text instead)' },
     );
   } catch { /* keys.js not loaded */ }

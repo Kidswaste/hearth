@@ -564,7 +564,7 @@ const Native = (() => {
     // Claude × Astra collaborations (duo, relay, debate…) draw their own card (astra.js)
     if (m.role === 'collab' && typeof Astra !== 'undefined') return Astra.collabEl(m, agent, index, isLast);
     if (m.role === 'jam' && typeof Jam !== 'undefined') return Jam.cardEl(m, agent, index); // jam.js
-    if (m.role === 'intro' && typeof IntroCard !== 'undefined') return IntroCard.cardEl(m, agent, index); // intro-card.js (video projects)
+    if (m.role === 'intro') return el('div', { class: 'msg note', dataset: { index }, text: `🎬 Video project${m.name ? ` “${m.name}”` : ''} (video projects left with Video Review in round 17; the Lab sequence makes videos now)` });
     if (m.role === 'comp' && typeof CompDispatch !== 'undefined') return CompDispatch.cardEl(m, agent, index); // comp-dispatch.js (parts in other chats)
     const node = el('div', { class: `msg ${m.role}`, dataset: { raw: m.text, index }, title: m.at ? fmtDate(m.at) : '' });
     const body = el('div', { class: 'body' });

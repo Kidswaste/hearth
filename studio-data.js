@@ -29,7 +29,7 @@ const StudioData = (() => {
   const RECIPES = [
     {
       id: 'board-video', name: 'Board → video', icon: '▦', words: 'board vibe moodboard references pinterest video reel socials youtube',
-      pitch: 'Your board\'s vibe becomes a Lab scene, cut into a sequence, rendered for socials, then opened in Video Review.',
+      pitch: 'Your board\'s vibe becomes a Lab scene, cut into a sequence, rendered for socials, then opened in your video player.',
       rooms: [{ key: 'board', kind: 'board' }, { key: 'lab', kind: 'lab' }, { key: 'seq', kind: 'step', label: 'Sequence' }, { key: 'render', kind: 'step', label: 'Render' }, { key: 'video', kind: 'video' }],
       needs: ['claude', 'ffmpeg'], soft: ['board'], tokens: 'one Three Director reply (≈ 4–8k tokens)',
       steps: [
@@ -41,8 +41,8 @@ const StudioData = (() => {
         { id: 'scene', director: true, title: 'The Three Director makes the scene', part: 'lab', prompt: DIRECTOR('a loopable scene with this vibe: {vibe}{vibewords}.') },
         { id: 'seq', do: 'sequence', title: 'Cut it into a sequence', part: 'seq', var: 'seqout', template: 'teaser', secs: 15 },
         { id: 'render', do: 'render', title: 'Render ({fmt})', part: 'render', var: 'renderout' },
-        { id: 'review', do: 'review', title: 'Video Review when it\'s rendered', part: 'video' },
-        { id: 'done', result: '{name}: the scene is made, cut ({seqout}) and in the render queue ({renderout}). Video Review opens with it when it\'s rendered.' },
+        { id: 'review', do: 'review', title: 'Open it when it\'s rendered', part: 'video' },
+        { id: 'done', result: '{name}: the scene is made, cut ({seqout}) and in the render queue ({renderout}). It opens in your video player when it\'s rendered.' },
       ],
     },
     {
