@@ -68,7 +68,8 @@ line count is lower than the number of upgrades).
 | Lab framerate (round 16): no more stray renderers after scene switches (3 GL contexts → 1), the preview stops drawing when not on screen, Auto fps (follows the screen, 30 in the background), adaptive resolution that reacts to slow frames, filters that redraw only when needed and skip at 0, Light mode (`/lab light`), `/lab perf` HUD | [labperf.md](labperf.md) | 27 |
 | Background (round 16): idle CPU of the whole app 240 → 17 ms/s (the chat box's blinking cursor repainted the window forever: it stops blinking after 12 s idle), hidden app windows freed sooner and muted, board pan p50 216 → 117 ms with 200 items, OS file events instead of polling, sync paced by activity / battery, `/background`, `/apps free` | [bgperf.md](bgperf.md) | 24 |
 | Video speed (round 16): filmstrips, thumbnails and waveforms made once by ffmpeg at low priority and cached on disk (opening a video 3–4× faster, reopening 10 s → 0.1 s, 7.4 s → 0.1 s of blocking), scrub without piled-up seeks, only the visible editor track drawn, automatic light previews for 4K / HEVC / ProRes, hidden players release their files, recording frames drawn in a worker (9.8 s → 0 of UI blocking), renders at low priority (`/renders rush` for full speed), `/video-cache` | [videoperf.md](videoperf.md) | 27 |
-| **Total** | | **10,522** |
+| Startup (round 16): the rail and chats come up first (ready ≈ 650 → 460 ms, interactive ≈ 1,080 → 480 ms, 175 → 109 scripts before the first screen), the Lab, board, Commands page, renders, Adobe, deploy, apps, tours and Studio load right after in idle moments; every command, menu entry and key is there from the first moment and loads its feature on first use | [boot.md](boot.md) | 20 |
+| **Total** | | **10,542** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.

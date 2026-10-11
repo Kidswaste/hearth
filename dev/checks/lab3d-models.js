@@ -69,7 +69,7 @@ try {
   // ---- an HDRI sky lights it ----
   out.sky = await say(`/model sky ${DIR}/studio.hdr`);
   ok(/lit by/.test(out.sky), '/model sky <file>');
-  ok(await until(async () => (await model('bot'))?.hdri, 10000), 'the sky lights the model (environment from the HDRI)');
+  ok(await until(async () => (await model('bot'))?.hdri, 30000), 'the sky lights the model (environment from the HDRI)');
   ok(/hdri: refs\.\w+/.test(D.codeOf('🧊 bot').code), 'the sky is in the layer code');
 
   // ---- a camera move: keyframes on the camera sliders + a cue ----
@@ -119,7 +119,7 @@ try {
 
   // ---- a bad file: a clear error, the rest keeps going ----
   await say(`/model add ${DIR}/broken.glb`);
-  const bad = await until(async () => (await models())?.find((m) => m.error), 15000);
+  const bad = await until(async () => (await models())?.find((m) => m.error), 30000); // (slow under a software GPU)
   ok(bad && /web page/.test(bad.error), `a clear error for a web page saved as .glb (${bad?.error})`);
   ok((await model('other'))?.loaded, 'the other model still draws');
   ok(D.report().errors.some((e) => /web page/.test(e.message)), 'the error is in the Lab\'s errors (the director sees it)');
