@@ -275,14 +275,14 @@ const Apps = (() => {
   function commands() {
     if (typeof Commands === 'undefined' || Commands.get('apps')) return;
     Commands.register({
-      name: 'apps', area: 'Apps', args: '[app] [action|reload|back|send|hide] | list | search [words] | discover [off|on] | fav <app> | send-to <app> [board|lab|render|file] | suggest <app> | downloads | folder | close [app|all]',
+      name: 'apps', area: 'Apps', args: '[app] [action|reload|back|send|hide] | list | search [words] | discover [off|on] | fav <app> | send-to <app> [board|lab|render|file] | suggest <app> | downloads | folder | close [app|all] | free',
       desc: 'The services you use, each in its own window (Meshy, Suno, Figma, Poly Haven…): /apps alone shows them',
       keywords: 'app windows integrations meshy suno figma spline runway elevenlabs fonts coolors sketchfab poly haven unsplash youtube instagram tiktok pinterest mixamo',
-      examples: ['/apps', '/apps figma', '/apps discover', '/apps search video', '/apps send-to midjourney board', '/apps coolors palette', '/apps close all'],
+      examples: ['/apps', '/apps figma', '/apps discover', '/apps search video', '/apps send-to midjourney board', '/apps coolors palette', '/apps close all', '/apps free'],
       complete: (a) => {
         const [first, ...rest] = String(a || '').split(/\s+/);
         if (rest.length) { const app = get(first); return (app?.actions || []).map((x) => ({ value: `${app.id} ${x.id}`, label: x.label })); }
-        return [...['list', 'search', 'discover', 'discover off', 'fav', 'send-to', 'suggest', 'downloads', 'folder', 'close', 'windows'].map((v) => ({ value: v })), ...list().map((x) => ({ value: x.id, label: `${x.icon} ${x.name}`, hint: x.desc || '' }))].filter((x) => x.value.startsWith((first || '').toLowerCase()));
+        return [...['list', 'search', 'discover', 'discover off', 'fav', 'send-to', 'suggest', 'downloads', 'folder', 'close', 'windows', 'free'].map((v) => ({ value: v })), ...list().map((x) => ({ value: x.id, label: `${x.icon} ${x.name}`, hint: x.desc || '' }))].filter((x) => x.value.startsWith((first || '').toLowerCase()));
       },
       run: async (args, ctx) => {
         const [first = '', ...rest] = String(args || '').trim().split(/\s+/);
@@ -304,6 +304,13 @@ const Apps = (() => {
         if (sub === 'downloads') { await downloadsDialog(); return null; }
         if (sub === 'folder') { const d = await api()?.dirs(); if (d) window.hub.fs.reveal(d.downloads); return d ? `Downloads from apps go to ${d.downloads}` : 'App windows need the desktop app.'; }
         if (sub === 'windows') { const w = await api()?.windows() || []; return w.length ? w.map((x) => `- ${x.name}: ${x.visible ? 'on screen' : 'hidden (parked soon)'}${x.audible ? ' · playing sound' : ''}${x.title ? ` · ${x.title}` : ''}`).join('\n') : 'No app window is open.'; }
+        // (round 16) the hidden windows go now instead of in a few minutes (their pages leave memory; sign-ins stay)
+        if (sub === 'free') {
+          const w = (await api()?.windows()) || [];
+          const gone = w.filter((x) => !x.visible && !x.audible);
+          for (const x of gone) await api()?.close(x.id, { destroy: true });
+          return gone.length ? `Freed ${gone.length} hidden app window${gone.length > 1 ? 's' : ''} (${gone.map((x) => x.name).join(', ')}); they open again where they were.` : 'No hidden app window to free.';
+        }
         if (sub === 'close') {
           const what = rest.join(' ');
           if (!what || what === 'all') { await api()?.closeAll(); return 'Closed every app window (sign-ins are kept).'; }

@@ -64,11 +64,29 @@ function start() {
   });
   opts.store?.setBeforeWrite?.((file, value) => (engine ? engine.guardWrite(file, value) : value));
   watch();
-  tick = setInterval(() => schedule(0, 'tick'), EVERY);
+  quiet = 0;
+  armTick();
   schedule(300, 'start');
 }
+// (round 16) the calm check paces itself: every minute while things change, up to every 5 minutes after quiet passes
+// (the watchers still bring changes within seconds), ×3 on battery, ×2 while Hearth is minimized, and none while the
+// computer sleeps (one pass when it wakes up). Passes that start while a reply streams wait for a quieter moment.
+let quiet = 0; let pace = { hidden: false, battery: false, asleep: false };
+function tickEvery() { return Math.min(5, 1 + Math.floor(quiet / 3)) * EVERY * (pace.battery ? 3 : 1) * (pace.hidden ? 2 : 1); }
+function armTick() {
+  clearTimeout(tick); tick = null;
+  if (!engine || pace.asleep) return;
+  tick = setTimeout(() => { tick = null; schedule(0, 'tick'); armTick(); }, tickEvery());
+}
+function setPace(st = {}) {
+  const was = pace;
+  pace = { hidden: Boolean(st.hidden), battery: Boolean(st.battery), asleep: Boolean(st.asleep) };
+  if (was.asleep && !pace.asleep) { quiet = 0; schedule(3000, 'wake'); }
+  if (was.asleep !== pace.asleep || was.battery !== pace.battery || was.hidden !== pace.hidden) armTick();
+}
+let busy = () => 0;
 function stop() {
-  clearTimeout(timer); clearInterval(tick); timer = null; tick = null;
+  clearTimeout(timer); clearTimeout(tick); timer = null; tick = null;
   for (const w of watchers) { try { w.close(); } catch { /* closed */ } }
   watchers = [];
   if (engine) engine.stop();
@@ -80,14 +98,22 @@ let firstAt = 0;
 function schedule(ms, why) {
   if (!engine || settings.paused) return;
   if (!firstAt) firstAt = Date.now();
-  const wait = Math.max(0, Math.min(ms, 20000 - (Date.now() - firstAt)));
+  // while a reply streams (its chat file is saved again and again) or on battery: wait for a longer quiet moment
+  const slow = busy() > 0 || pace.battery;
+  if (slow && why === 'watch') ms *= 2;
+  const wait = Math.max(0, Math.min(ms, (slow ? 60000 : 20000) - (Date.now() - firstAt)));
   clearTimeout(timer);
   timer = setTimeout(() => { firstAt = 0; run({ why }); }, wait);
 }
 async function run(o = {}) {
   if (!engine) return publicStatus();
   if (settings.paused && !o.force) return publicStatus();
-  try { await engine.pass(o); } catch (err) { lastStatus = { ...(lastStatus || {}), state: 'error', error: err.message }; send('sync:status', publicStatus()); }
+  try {
+    const r = await engine.pass(o);
+    const moved = r?.last ? r.last.pulled + r.last.pushed + r.last.merged + r.last.deletedHere + r.last.deletedThere + r.last.renamed : 1;
+    const was = quiet; quiet = moved || r?.pending ? 0 : quiet + 1;
+    if ((was > 2) !== (quiet > 2) || (quiet && quiet % 3 === 0)) armTick(); // the calm check slows down (or speeds up again)
+  } catch (err) { lastStatus = { ...(lastStatus || {}), state: 'error', error: err.message }; send('sync:status', publicStatus()); }
   if (!watchers.length) watch(); // the drive came back: watch it again
   return publicStatus();
 }
@@ -174,4 +200,4 @@ function ready(ms = 1500) {
 function guardConfig(config) { try { return engine ? engine.guardWrite(opts.configPath, config) : config; } catch { return config; } }
 function quit() { stop(); }
 
-module.exports = { register, ready, guardConfig, quit, status: publicStatus };
+module.exports = { register, ready, guardConfig, quit, status: publicStatus, pace: setPace, setBusy: (fn) => { busy = typeof fn === 'function' ? fn : () => 0; }, _pace: () => ({ quiet, every: tickEvery(), ...pace }) };

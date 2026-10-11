@@ -160,8 +160,13 @@ const FlowsUI = (() => {
     Native.hooks.compose.push(composeHook);
     Native.hooks.finish.push(finishHook);
     Native.hooks.render.push((agentId, v, chat) => { if (chat) for (const r of Flows.ofChat(chat.id).slice(0, 3)) if (live(r)) cardSoon(r); });
-    // hung steps: a quiet look every 5 s (no DOM), only while something runs
-    setInterval(() => { if (Flows.active().some((r) => r.status === 'running' || r.status === 'waiting-ai')) Flows.checkHung(); }, 5000);
+    // hung steps: a quiet look every 5 s (no DOM), only while something runs (round 16: the timer itself stops when
+    // nothing runs and starts again on the next run change, so an idle Hearth has no 5 s wake-up)
+    let hungT = 0;
+    const busy = () => Flows.active().some((r) => r.status === 'running' || r.status === 'waiting-ai');
+    const hungTick = () => { if (busy()) Flows.checkHung(); else { clearInterval(hungT); hungT = 0; } };
+    const hungOn = () => { if (!hungT && busy()) hungT = setInterval(hungTick, 5000); };
+    Flows.onChange(hungOn); hungOn();
     const hung = Flows.runs().filter((r) => r.status === 'hung' && Date.now() - r.updated < 864e5);
     if (hung.length) toast(`${hung.length} flow${hung.length > 1 ? 's' : ''} stopped halfway when Hearth closed`, { timeout: 7000, action: { label: 'Pick up here', fn: () => open({ runId: hung[0].id }) } });
   }

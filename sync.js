@@ -290,6 +290,37 @@ const Sync = (() => {
     });
   }
 
+  // ---------- /background (round 16, bgperf): what runs while nobody looks, and what each part of Hearth costs ----------
+  async function background(sub = '') {
+    const b = await window.hub.bgState?.().catch(() => null);
+    if (!b) return 'The background report needs the desktop app.';
+    if (sub === 'free') { const r = await Commands.exec?.('/apps free', H.claudeAgent?.()?.id); return typeof r === 'string' ? r : 'Hidden app windows freed.'; }
+    const wins = (await window.hub.apps?.windows?.().catch(() => [])) || [];
+    const mb = b.procs.reduce((a, p) => a + p.mb, 0); const cpu = b.procs.reduce((a, p) => a + p.cpu, 0);
+    const by = {}; for (const p of b.procs) { const k = p.type === 'Tab' ? 'pages' : p.type === 'GPU' ? 'graphics' : p.type === 'Browser' ? 'main' : 'helpers'; (by[k] ||= { mb: 0, n: 0 }).mb += p.mb; by[k].n += 1; }
+    const min = (ms) => (ms >= 60000 ? `${Math.round(ms / 60000)} min` : `${Math.round(ms / 1000)} s`);
+    const lines = [
+      `**Hearth now:** ${Math.round(mb)} MB in ${b.procs.length} processes (${Object.entries(by).map(([k, v]) => `${k} ${Math.round(v.mb)} MB`).join(' · ')}), ${Math.round(cpu * 10) / 10} % CPU`,
+      `- ${b.hidden ? 'Minimized: background checks run at half pace' : 'On screen'} · ${b.battery ? 'on battery: sync checks 3× calmer' : 'plugged in'}${b.asleep ? ' · the computer is asleep / locked: no checks' : ''}`,
+      `- Sync: ${st.on ? (b.sync ? `a calm check every ${min(b.sync.every)} (changes still sync within seconds)` : 'on') : 'off'}`,
+      `- App windows: ${wins.filter((w) => w.visible).length} on screen, ${wins.filter((w) => !w.visible).length} hidden (a hidden one goes away after 3 min, at most 2 wait; /background free now)`,
+      `- Replies running: ${b.replies}`,
+      `- The chat box's cursor stops blinking after ${Math.round(b.calmMs / 1000)} s without a key (it redraws the whole window twice a second otherwise)`,
+    ];
+    return lines.join('\n');
+  }
+  function registerBackground() {
+    if (typeof Commands === 'undefined' || Commands.get?.('background')) return;
+    Commands.register({
+      name: 'background', area: 'App', args: '[free]',
+      desc: 'What Hearth does in the background now (sync pace, app windows, replies) and the memory / CPU of each part',
+      keywords: 'background idle cpu memory ram battery slow lightweight processes heavy performance free app windows',
+      examples: ['/background', '/background free'],
+      complete: () => [{ value: 'free', label: 'free the hidden app windows now' }],
+      run: async (args, ctx) => { const t = await background(String(args || '').trim().toLowerCase()); if (ctx?.say) { ctx.say(t); return null; } return t; },
+    });
+  }
+
   // ---------- start ----------
   async function init() {
     if (!api()) return;
@@ -297,6 +328,8 @@ const Sync = (() => {
     api().onPulled((list) => onPulled(list).catch(() => {}));
     api().ack(); // this window just read everything fresh
     registerCommands();
+    registerBackground();
+    AppUI.addAction?.('Background: what runs now, memory per part', () => Commands.exec?.('/background', H.claudeAgent?.()?.id));
     AppUI.addAction?.('Sync now (cloud drive)', () => (st.on ? now() : setup()));
     AppUI.addAction?.('Sync: turn on / choose a drive…', () => setup({ change: st.on }));
     AppUI.addAction?.('Sync: conflicts…', () => conflicts());
@@ -323,5 +356,5 @@ const Sync = (() => {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(init, 0));
   else setTimeout(init, 0);
 
-  return { status: () => st, refresh, now, setup, conflicts, trash, menu, items, line, settingsSection, pause, off, big };
+  return { status: () => st, refresh, now, setup, conflicts, trash, menu, items, line, settingsSection, pause, off, big, background };
 })();

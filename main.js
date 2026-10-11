@@ -12,6 +12,7 @@ const aemain = require('./aemain');
 const gamebridge = require('./gamebridge');
 const syncmain = require('./syncmain');
 const appsmain = require('./appsmain');
+const bgmain = require('./bgmain'); // (round 16) is anybody looking / on battery / asleep, and the steady idle cursor
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const THEME_PATH = path.join(__dirname, 'theme.css');
@@ -46,8 +47,14 @@ if (!app.requestSingleInstanceLock()) {
   });
 }
 
+// (round 16) config.json is read on every message (engine:send / once, settings()): read from disk once per version of
+// the file (size + modified time: one stat instead of a read), parsed fresh each call so callers can't edit the cache
+let cfgCache = null;
 function readConfig() {
-  return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+  const st = fs.statSync(CONFIG_PATH);
+  const key = `${st.size}:${st.mtimeMs}`;
+  if (cfgCache?.key !== key) cfgCache = { key, text: fs.readFileSync(CONFIG_PATH, 'utf8') };
+  return JSON.parse(cfgCache.text);
 }
 function settings() {
   try { return readConfig().settings || {}; } catch { return {}; }
@@ -132,6 +139,7 @@ function createWindow() {
   appshell.setupCloseToTray(win, settings);
   appshell.setupDownloads(send);
   appshell.applySettings(win, settings());
+  bgmain.attach(win);
 }
 
 app.on('web-contents-created', (_event, contents) => {
@@ -166,6 +174,7 @@ ipcMain.handle('config:get', () => loadAll());
 ipcMain.handle('config:save', (_e, config) => {
   config = syncmain.guardConfig(config); // a config that just arrived from another computer is merged, not undone
   fs.writeFileSync(CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`);
+  cfgCache = null;
   return appshell.applySettings(win, config.settings || {});
 });
 ipcMain.handle('open-file', (_e, which) => shell.openPath(which === 'theme' ? THEME_PATH : CONFIG_PATH));
@@ -400,9 +409,27 @@ syncmain.register(ipcMain, () => win, { dataDir: store.DATA_DIR, configPath: CON
 require('./chatmediamain').register(ipcMain, { workspace: path.join(store.DATA_DIR, 'workspace') }); // pictures / videos a chat made, shown in the reply
 require('./updatermain').register(ipcMain, { restart: () => appshell.restartApp(), getWin: () => win }); // ⬆ Update: pull main from the app's git checkout, reload / restart
 
+// config.json / theme.css edited outside Hearth (an editor, sync): told to the window. (round 16) the OS tells us
+// (fs.watch, re-armed when an editor replaces the file); a calm stat every 5 s is the safety net (was a stat every
+// 400 ms per file); either way a change is sent once (size + modified time).
 for (const file of [CONFIG_PATH, THEME_PATH]) {
-  fs.watchFile(file, { interval: 400 }, () => send('config:changed', loadAll()));
+  let seen = ''; let t = null; let w = null;
+  const stamp = () => { try { const st = fs.statSync(file); return `${st.size}:${st.mtimeMs}`; } catch { return ''; } };
+  seen = stamp();
+  const check = () => { const now = stamp(); if (now === seen) return; seen = now; send('config:changed', loadAll()); };
+  const soon = () => { clearTimeout(t); t = setTimeout(check, 60); };
+  const arm = () => { try { w?.close(); w = fs.watch(file, (ev) => { soon(); if (ev === 'rename') setTimeout(arm, 100); }); w.on('error', () => { w = null; }); } catch { w = null; } };
+  arm();
+  fs.watchFile(file, { interval: 5000 }, () => { if (!w) arm(); soon(); });
 }
+bgmain.register(() => win);
+bgmain.subscribe((st) => { syncmain.pace?.(st); nowplaying.pace?.(st); appsmain.pace?.(st); });
+syncmain.setBusy?.(() => engines.busy?.() || 0);
+// /background (sync.js): what Hearth is doing in the background right now, and what each of its processes costs
+ipcMain.handle('bg:state', () => {
+  const procs = app.getAppMetrics().map((m) => ({ type: m.type, name: m.name || m.serviceName || '', cpu: Math.round((m.cpu?.percentCPUUsage || 0) * 10) / 10, mb: Math.round((m.memory?.workingSetSize || 0) / 1024) }));
+  return { ...bgmain.state(), calmMs: bgmain.CALM_MS, sync: syncmain._pace?.() || null, replies: engines.busy?.() || 0, procs };
+});
 
 app.whenReady().then(async () => {
   // data moved here from another computer (or folder): point saved file locations at the new data folder

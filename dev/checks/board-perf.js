@@ -1,4 +1,4 @@
-// Mood board smoothness: 150 items (pictures, a clip, notes, colors), then 2 s of trackpad panning and wheel zooming
+// Mood board smoothness: 150 items (window.BOARD_PERF_N: another count) (pictures, a clip, notes, colors), then 2 s of trackpad panning and wheel zooming
 // under a trace. Pan / zoom should be one transform on one layer: few paints, no layouts from the items, and DOM
 // writes only for culling (a class when an item enters / leaves the screen) — not per frame.
 //   sh dev/board-fixtures.sh && node dev/smoke.js --script dev/checks/board-perf.js
@@ -13,7 +13,7 @@ await until(() => Board.items().every((i) => !['image', 'video'].includes(i.type
 // many references: copies of the same media + notes + colors
 const base = [Board.item(img.id), Board.item(gold.id), Board.item(clip.id)];
 Board.edit('perf fill', (b) => {
-  for (let i = 0; i < 147; i++) {
+  for (let i = 0; i < (window.BOARD_PERF_N || 150) - 3; i++) {
     const src = base[i % 3];
     const kind = i % 7 === 0 ? 'note' : i % 11 === 0 ? 'swatch' : src.type;
     const it = Board._.newItem(kind, kind === 'note' ? { text: `Note ${i}: **warm** grain`, style: 'lemon' } : kind === 'swatch' ? { color: '#e6b450' } : { ...JSON.parse(JSON.stringify(src)), id: undefined }, b);

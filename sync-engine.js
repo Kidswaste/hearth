@@ -94,7 +94,17 @@ function createEngine(o) {
     state = { v: 1, cloudRoot, base: {}, local: {}, cloud: {}, ext: {}, lastPass: 0, lastOk: 0, purgedAt: 0 };
     try { fs.rmSync(path.join(stateDir, 'base'), { recursive: true, force: true }); } catch { /* fine */ }
   }
-  const saveState = () => writeJsonSync(stateFile, state);
+  // (round 16) a pass where nothing moved left state.json as it was, but wrote it anyway (every file's hashes, each
+  // minute): now it's written when something in it changed, or every 10 minutes for the clocks (lastPass / lastOk)
+  let savedKey = ''; let savedAt = 0;
+  const saveState = () => {
+    const text = JSON.stringify(state);
+    const key = JSON.stringify({ ...state, lastPass: 0, lastOk: 0 });
+    if (key === savedKey && now() - savedAt < 10 * 60000) return;
+    fs.mkdirSync(path.dirname(stateFile), { recursive: true });
+    const t = `${stateFile}.${rand()}.tmp`; fs.writeFileSync(t, text); fs.renameSync(t, stateFile);
+    savedKey = key; savedAt = now();
+  };
   const basePath = (rel) => path.join(stateDir, 'base', ...rel.split('/'));
   function readBase(rel) { try { return JSON.parse(fs.readFileSync(basePath(rel), 'utf8')); } catch { return null; } }
   function writeBase(rel, text) { try { const f = basePath(rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(`${f}.tmp`, text); fs.renameSync(`${f}.tmp`, f); } catch (err) { log('base', rel, err.message); } }
