@@ -355,7 +355,7 @@ lab3d.model(refs.${refKey}, P, { ${o} });
       { label: '🌅 Free skies (Poly Haven)…', action: () => (window.AppsPoly ? AppsPoly.dialog('', 'hdris') : toast('Poly Haven isn\'t available', { type: 'error' })) },
       window.AppsMeshy ? { label: '✦ Make a model with Meshy…', action: () => Commands.tryRun('/meshy', H.claudeAgent?.()?.id) } : null,
       typeof Apps !== 'undefined' ? { label: '⬡ Sketchfab (free models)', action: () => Apps.open('sketchfab') } : null,
-      typeof Apps !== 'undefined' ? { label: '🕺 Mixamo (animations)', hint: 'download FBX "without skin", then ＋', action: () => Apps.open?.('mixamo') || window.open('https://www.mixamo.com') } : null,
+      typeof Apps !== 'undefined' ? { label: '🕺 Mixamo (animations)', hint: 'its FBX downloads join the model\'s clips', action: () => Apps.open('mixamo').catch(() => window.hub.openExternal('https://www.mixamo.com')) } : null,
       typeof Apps !== 'undefined' ? { label: '◍ Spline', hint: 'export GLB, then ＋', action: () => Apps.open('spline') } : null,
     ].filter(Boolean);
   }
