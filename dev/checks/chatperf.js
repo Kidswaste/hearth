@@ -13,6 +13,16 @@ const metrics = async () => { const r = await smoke({ cdp: 'Performance.getMetri
 const gc = async () => { await smoke({ cdp: 'HeapProfiler.collectGarbage', params: {} }).catch(() => {}); await wait(100); await smoke({ cdp: 'HeapProfiler.collectGarbage', params: {} }).catch(() => {}); };
 const busy = (a, b) => ({ scriptMs: Math.round((b.ScriptDuration - a.ScriptDuration) * 1000), styleMs: Math.round((b.RecalcStyleDuration - a.RecalcStyleDuration) * 1000), layoutMs: Math.round((b.LayoutDuration - a.LayoutDuration) * 1000), layouts: b.LayoutCount - a.LayoutCount, taskMs: Math.round((b.TaskDuration - a.TaskDuration) * 1000) });
 
+// 0. the frozen-prefix streaming paint draws exactly what a full render draws (fences with blank lines, lists that
+// keep counting, tables, quotes, callouts, $$ formulas, a fence still open at the end of a piece)
+{
+  const sample = ['# Title', 'Intro with **bold** and `code`.', '```js\nconst a = 1;\n\nconst b = 2;\n```', '1. one\n2. two', '3. three after a gap', '| a | b |\n|---|--:|\n| 1 | 2 |',
+    '> [!NOTE] Heads up\n> inside', '$$\nx^2\n\ny_1\n$$', '- [ ] task\n- [x] done', 'Last paragraph\nwith a second line.', '```\nunclosed fence\n\nstill code'].join('\n\n');
+  const ref = document.createElement('div'); ref.innerHTML = window.renderMarkdownLive(sample); const want = ref.innerHTML;
+  const bad = [5, 12, 37].filter((step) => Native._streamHTML(sample, step) !== want);
+  out.streamSameAsFull = bad.length ? `DIFFERENT at steps ${bad.join(', ')}` : 'same';
+  if (bad.length) throw new Error(`streamed Markdown differs from the full render (steps ${bad.join(', ')})`);
+}
 // 1. one whole streamed reply (thinking, a table, a code block, 60 paragraphs), start to finish
 Native.newChat(claude.id); await wait(300);
 let muts = 0;
@@ -103,5 +113,26 @@ out.sendInLongChat = { messagesAdded: rebuilt, ...busy(m0, m1) };
   m1 = await metrics(); mo3.disconnect();
   out.typing80 = { mutations: tm, ...busy(m0, m1) };
   ta.value = ''; ta.dispatchEvent(new Event('input', { bubbles: true }));
+}
+// folded tool steps fill in when opened (they have no list until then)
+{
+  const fold = v().list.querySelector('.tool-fold');
+  const before = fold?.querySelectorAll('li').length;
+  if (fold) { fold.open = true; await wait(150); }
+  out.toolFold = { listBefore: before, itemsWhenOpen: fold?.querySelectorAll('.tool-list li').length };
+  if (!fold || before !== 0 || !out.toolFold.itemsWhenOpen) throw new Error(`tool fold: ${JSON.stringify(out.toolFold)}`);
+}
+// 6. the chats list (one set of listeners for every row) and repeated toasts
+{
+  const row = document.querySelector(`#chat-groups .item[data-key="${CSS.escape(small.id)}"]`);
+  row.click(); await wait(300);
+  const opened = H.activeChat[claude.id] === small.id;
+  row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 100, clientY: 200 })); await wait(200);
+  const menu = Boolean(document.getElementById('menu') && !document.getElementById('menu').hidden && /Rename/.test(document.getElementById('menu').textContent));
+  hideMenu(); await wait(100);
+  for (let i = 0; i < 3; i++) toast('Same thing again', { timeout: 3000 });
+  const same = [...document.querySelectorAll('#toasts .toast')].filter((t) => /Same thing again/.test(t.textContent));
+  out.listAndToasts = { rowOpensChat: opened, rowRightClickMenu: menu, repeatedToasts: same.length, counter: same[0]?.querySelector('.toast-n')?.textContent.trim() };
+  if (!opened || !menu || same.length !== 1) throw new Error(`chats list / toasts: ${JSON.stringify(out.listAndToasts)}`);
 }
 return JSON.stringify(out, null, 1);

@@ -1963,5 +1963,7 @@ const Native = (() => {
     toolLabel, renderChips,
     // (round 10, sync.js) a chat that arrived from another computer: read again from disk next time (not mid-reply)
     forget: (chatId) => { if (pending.has(chatId)) return false; chats.delete(chatId); return true; },
+    // (round 16, dev/checks/chatperf.js) a text streamed in pieces of `step` characters, painted like a live reply: its HTML
+    _streamHTML(text, step = 12) { const p = {}; const body = document.createElement('div'); for (let i = step; i < text.length + step; i += step) paintBody(p, body, text.slice(0, i).trim()); return body.innerHTML; },
   };
 })();
