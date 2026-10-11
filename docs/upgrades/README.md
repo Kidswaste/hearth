@@ -67,7 +67,8 @@ line count is lower than the number of upgrades).
 | Chat speed (round 16): a streamed reply costs half the script time and a fifth of the layout, the end of a reply in a 300-message chat 5.8 s → 0.35 s of main-thread work, switching chats 988 → 290 ms, opening a long chat 632 → 230 ms, half the memory, typing 320 → 7 DOM changes; off-screen messages skip layout, media loads near the screen, repeated toasts merge | [chatperf.md](chatperf.md) | 25 |
 | Lab framerate (round 16): no more stray renderers after scene switches (3 GL contexts → 1), the preview stops drawing when not on screen, Auto fps (follows the screen, 30 in the background), adaptive resolution that reacts to slow frames, filters that redraw only when needed and skip at 0, Light mode (`/lab light`), `/lab perf` HUD | [labperf.md](labperf.md) | 27 |
 | Background (round 16): idle CPU of the whole app 240 → 17 ms/s (the chat box's blinking cursor repainted the window forever: it stops blinking after 12 s idle), hidden app windows freed sooner and muted, board pan p50 216 → 117 ms with 200 items, OS file events instead of polling, sync paced by activity / battery, `/background`, `/apps free` | [bgperf.md](bgperf.md) | 24 |
-| **Total** | | **10,495** |
+| Video speed (round 16): filmstrips, thumbnails and waveforms made once by ffmpeg at low priority and cached on disk (opening a video 3–4× faster, reopening 10 s → 0.1 s, 7.4 s → 0.1 s of blocking), scrub without piled-up seeks, only the visible editor track drawn, automatic light previews for 4K / HEVC / ProRes, hidden players release their files, recording frames drawn in a worker (9.8 s → 0 of UI blocking), renders at low priority (`/renders rush` for full speed), `/video-cache` | [videoperf.md](videoperf.md) | 27 |
+| **Total** | | **10,522** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.
