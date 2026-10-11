@@ -1,5 +1,5 @@
 // Routes tool calls from the agents (MCP servers → gamebridge.js → here) to the screen that owns them, by
-// tool-name prefix: forge_ → live game, video_/ae_ → Video Review, three_ → Three.js Lab, chat_ → the chat.
+// tool-name prefix: forge_ → live game, three_ → Three.js Lab, chat_ → the chat.
 // It also keeps a short log of every call (tool, a one-line summary of the arguments, time, outcome, the latest
 // picture) that the docked director's activity strip and /director commands show. Nothing here reaches the model.
 const HubBridge = (() => {

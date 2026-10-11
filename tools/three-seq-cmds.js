@@ -1,5 +1,5 @@
 // Chat commands for the Lab's Sequence (tools/three-seq.js): build a video timeline of scenes, footage, titles and
-// the song right in the Three.js Lab, play it in the preview, finish it in the video editor, render it. One command
+// the song right in the Three.js Lab, play it in the preview, render it to a video file. One command
 // with plain sub-commands (/sequence add Rings at bar 9), two shortcuts for what you'd do most (/add-scene,
 // /sequence-render). Area "Three.js Lab" (/help sequence). Ctrl+K actions at the bottom.
 (() => {
@@ -28,7 +28,7 @@
     ['length', 'length <clip n> <4 bars | 3 s>'], ['look', 'look <clip n> <look name | none>'], ['split', 'split [at …]: at the playhead'], ['delete', 'delete <clip n> [ripple]'],
     ['move', 'move <clip n> <position>'], ['duplicate', 'duplicate <clip n>'], ['fit', 'Every cut on a bar of the song'], ['format', 'format <9:16|16:9|1:1|4:5>'],
     ['play', 'Play it in the preview'], ['pause', 'Pause'], ['go', 'go <time | f120 | 00:00:04:12 | bar 9>'], ['render', 'render [9:16|16:9|1:1|4:5|all|realtime]'],
-    ['editor', 'Finish it in the video editor (the same sequence)'], ['back', 'Back from the editor'], ['undo', 'Undo'], ['redo', 'Redo'], ['keys', 'The sequence keys'],
+    ['undo', 'Undo'], ['redo', 'Redo'], ['keys', 'The sequence keys'],
     ['make', 'make [template] [for 15 s]: your scenes arranged on the song (no questions)'], ['again', 'Another arrangement, same template (like Shuffle)'], ['templates', 'The arrangement templates'],
     ['decide', 'decide [goal]: Astra picks the arrangement'], ['versions', 'versions [15 6] [render]: shorter cuts around the drop'], ['fill', 'fill [clip n]: a scene in the gap'],
     ['vary', 'vary [clip n] [30%|reset]: a variation of a scene clip'], ['sections', 'A variation per section (scenes that come back look different)'], ['swap', 'swap <clip n>: swap looks with the next scene'],
@@ -46,7 +46,7 @@
   const call = async (args) => { const r = await Q().handle('three_sequence', args); if (!r.ok) throw new Error(r.error); return r.value; };
   const clipArg = (w) => (/^\d+$/.test(w || '') ? Number(w) : w);
   Commands.register({
-    name: 'sequence', aliases: ['seq'], area: AREA, args: '[add|title|transition|render [options]|reload|editor|…]',
+    name: 'sequence', aliases: ['seq'], area: AREA, args: '[add|title|transition|render [options]|reload|…]',
     desc: 'The Lab sequence: a video timeline of your scenes, footage, titles and the song, played in the preview (no args: show / hide it)',
     keywords: 'timeline video edit scenes clips montage storyboard cut transitions render reel',
     examples: ['/sequence', '/sequence add Rings at bar 9', '/sequence transition dip-black 2', '/sequence render 9:16'],
@@ -104,12 +104,10 @@
       if (sub === 'reload') { if (!Q().reloadPreview()) return 'Open the Lab first (or wait for the render to end).'; return 'Reloading the preview: the sequence comes back where it was.'; }
       if (sub === 'render' && /^(options|…|\.\.\.)$/i.test(w[1] || '')) { await Q().renderPanel(); return undefined; }
       if (sub === 'render') {
-        if (/^all$/i.test(w[1] || '')) { const out = []; for (const f of ['9:16', '16:9', '1:1', '4:5']) out.push((await Q().render({ format: f })).path); return `Rendered ${out.length} formats into Video Review:\n${out.map((p) => `• ${p}`).join('\n')}`; }
+        if (/^all$/i.test(w[1] || '')) { const out = []; for (const f of ['9:16', '16:9', '1:1', '4:5']) out.push((await Q().render({ format: f })).path); return `Rendered ${out.length} formats:\n${out.map((p) => `• ${p}`).join('\n')}`; }
         const r = await Q().render({ format: /^\d+:\d+$/.test(w[1] || '') ? w[1] : null, realtime: /^realtime$/i.test(w[1] || '') });
-        return `Rendered **${r.path.split(/[\\/]/).pop()}**${r.frames ? ` (${r.frames} frames, ${r.w}×${r.h})` : ''}: it's in Video Review.`;
+        return `Rendered **${r.path.split(/[\\/]/).pop()}**${r.frames ? ` (${r.frames} frames, ${r.w}×${r.h})` : ''}: \`${r.path}\`.`;
       }
-      if (sub === 'editor') { await call({ op: 'editor' }); return 'The sequence is open in the video editor (the same edit): finish it there, /sequence back brings it to the Lab.'; }
-      if (sub === 'back') return lines(await call({ op: 'back' }));
       if ((sub === 'undo' || sub === 'redo') && /^\d+$/.test(w[1] || '')) { await call({ op: 'history', [sub === 'undo' ? 'back' : 'forward']: Number(w[1]) }); return lines(await call({ op: 'status' })); }
       if (sub === 'undo' || sub === 'redo') return lines(await call({ op: sub }));
       if (sub === 'keys') return Q().KEYS.map(([k, d]) => `\`${k}\` ${d}`).join('\n');
@@ -193,7 +191,7 @@
   });
   Commands.register({
     name: 'sequence-render', area: AREA, args: '[9:16|16:9|1:1|4:5|all]',
-    desc: 'Render the Lab sequence frame by frame (with its sound) into Video Review',
+    desc: 'Render the Lab sequence frame by frame (with its sound) into a video file',
     keywords: 'export video mp4 reel tiktok shorts render sequence', examples: ['/sequence-render 9:16'],
     complete: (a) => opts(['9:16', '16:9', '1:1', '4:5', 'all'], a),
     run: (args, ctx) => runSeq(`render ${String(args || '').trim()}`, ctx),
@@ -202,7 +200,6 @@
     AppUI.addAction('Lab: Sequence (show / hide)', () => ThreeLab.cmd({ show: true }).then(() => Q().toggle()));
     AppUI.addAction('Lab: Add this scene to the sequence', () => ThreeLab.cmd({ show: true }).then(() => Q().addCurrent()));
     AppUI.addAction('Lab: Render the sequence 9:16', () => ThreeLab.cmd({ show: true }).then(() => Q().render({ format: '9:16' })));
-    AppUI.addAction('Lab: Finish the sequence in the video editor', () => ThreeLab.cmd({ show: true }).then(() => Q().toEditor()));
     AppUI.addAction('Lab: Arrange my scenes on the song (sequence)', () => ThreeLab.cmd({ show: true }).then(() => Q().arrange()).then(() => Q().enter()));
     AppUI.addAction('Lab: The 15 s and 6 s versions of the sequence', () => ThreeLab.cmd({ show: true }).then(() => Q().versions([15, 6])));
     AppUI.addAction('Lab: Let Astra pick the sequence arrangement', () => ThreeLab.cmd({ show: true }).then(() => Q().decideArrangement()));

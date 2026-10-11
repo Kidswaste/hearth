@@ -1,8 +1,7 @@
-// The editor's preset families (Video Review ✂ editor): easing curves, transitions, looks (color grades), title
-// styles and animations, lower thirds, clip motion presets, speed ramps, blend modes, sequence formats, export
-// presets and sequence templates. Each family is plain data plus the small functions that make it work in both
-// places a preset runs: the canvas preview (tools/video-comp.js) and the ffmpeg render (tools/cut-ffmpeg.js), so
-// what you see is what renders. No DOM here: loads in Node for tests (module.exports at the bottom).
+// The Lab sequence's preset families (built for Video Review's editor, removed in round 17): easing curves,
+// transitions, looks (color grades), title styles and animations, lower thirds, clip motion presets, speed ramps,
+// blend modes, sequence formats, export presets and sequence templates: plain data plus the small functions that
+// draw them (the Lab preview page reads this file as text, tools/three-seq.js libs()). No DOM here: loads in Node for tests (module.exports at the bottom).
 const EditFX = (() => {
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   const lerp = (a, b, p) => a + (b - a) * p;

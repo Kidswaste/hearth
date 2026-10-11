@@ -1,6 +1,6 @@
 // After Effects bridge: finds AE (Windows and Mac), runs ExtendScript in it, installs scripts into its Scripts
 // menu, reads output-module templates and drives aerender with live progress. Also finds ffmpeg / ffprobe
-// (optional) for exact frame rates, social export presets, crops and playable proxies in Video Review.
+// (optional) for exact frame rates, probes and the ffmpeg jobs of the render queue, captures and the Lab sequence.
 const { spawn, execFile, execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
@@ -24,7 +24,11 @@ const exists = (p) => { try { return Boolean(p) && fs.existsSync(p); } catch { r
 
 const IS_MAC = process.platform === 'darwin';
 const IS_WIN = process.platform === 'win32';
-const { lowPriority } = require('./videocachemain');
+// a background ffmpeg / aerender run gets a lower CPU priority, so the window keeps its frames
+function lowPriority(child) {
+  if (!child?.pid) return false;
+  try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); return true; } catch { return false; }
+}
 
 // ---------- locating After Effects ----------
 // Mac: /Applications/Adobe After Effects 2026/ holds "Adobe After Effects 2026.app" and aerender.
@@ -362,9 +366,7 @@ function registerIpc(ipcMain, getWin, getOverride) {
   ipcMain.handle('video:probe', (_e, file, overrides) => probe(file, overrides));
   ipcMain.handle('video:transcode', (_e, job, overrides) => transcode(job, sendJob, overrides));
   ipcMain.handle('video:cancel', (_e, id) => { jobs.get(id)?.kill(); return true; });
-  // (round 16) thumbnails, strips and sound for the timelines, made once by ffmpeg off the window's thread, kept on disk
-  require('./videocachemain').register(ipcMain, ffStatus, probe);
-  // the editor's temporary title frames (a folder it made itself, named .hearth-titles-…) go away after a render
+  // the Lab sequence's temporary title frames (a folder it made itself, named .hearth-titles-…) go away after a render
   ipcMain.handle('video:rmtemp', (_e, dir) => {
     if (typeof dir !== 'string' || !path.isAbsolute(dir) || !/^\.hearth-titles-[a-z0-9]+$/.test(path.basename(dir))) return false;
     fs.rmSync(dir, { recursive: true, force: true });

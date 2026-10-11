@@ -1,13 +1,12 @@
 // The Lab's Sequence: a video timeline built right in the Three.js Lab. "▤ Sequence" on the timeline's top strip (or
-// /sequence) turns the Lab timeline into tracks: Scenes (your sketches / chat scenes / looks as clips, with the
-// editor's transitions between them) and footage on the main track, Titles (the editor's styles and animations),
+// /sequence) turns the Lab timeline into tracks: Scenes (your sketches / chat scenes / looks as clips, with
+// transitions between them) and footage on the main track, Titles (styles and animations, tools/cut-presets.js),
 // Overlays (Lab layers or filters over a range) and Sound (the song: its analysis still drives what reacts to it).
 // The preview plays the sequence live, in the same page (scenes switch and cross-fade without reloads, each scene
 // on its own clock, so any frame can be reached exactly), and ⇪ renders it frame by frame (the sandbox steps its
-// clock, every frame is captured at the frame size, ffmpeg muxes the sound) into Video Review.
-// One model with the editor: the sequence is a CutData edit stored with the editor's sequences (kv video-cuts,
-// "seq:<name>", seq.lab = true; tools/three-seq-data.js), so Video Review's editor opens it for finishing (scene clips
-// render through the Lab there) and the Lab takes it back. Chat: tools/three-seq-cmds.js; directors: three_do sequence.
+// clock, every frame is captured at the frame size, ffmpeg muxes the sound) into a video file (Open / Show in Finder).
+// The sequence is a CutData edit stored in kv video-cuts ("seq:<name>", seq.lab = true; tools/cut-store.js,
+// tools/three-seq-data.js). Chat: tools/three-seq-cmds.js; directors: three_do sequence.
 const ThreeSeq = (() => {
   const D = ThreeSeqData;
   const C = CutData;
@@ -59,16 +58,16 @@ const ThreeSeq = (() => {
     return `${p2(s / 3600)}:${p2((s / 60) % 60)}:${p2(s % 60)}:${p2(n % nom)}`;
   };
 
-  // ---------- storage (the editor's sequences: kv video-cuts) ----------
-  const VC = () => (typeof VideoCut !== 'undefined' ? VideoCut : null);
+  // ---------- storage (kv video-cuts, tools/cut-store.js) ----------
+  const VC = () => (typeof CutStore !== 'undefined' ? CutStore : null);
   async function readEdit(key) { const e = await VC()?.editFor(key); return e ? C.normalize(e) : null; }
   async function writeEdit(label) {
     if (!S.key || !S.edit) return;
     S.storing = true;
     try { await VC()?.storeEdit(S.key, withEnd(C.copy(S.edit)), label || 'From the Lab sequence'); } finally { S.storing = false; }
   }
-  // a song longer than the pictures: the editor gets the same end as an in–out range (its renders stop there too),
-  // unless you set your own range in the editor
+  // a song longer than the pictures: the stored edit gets the same end as an in–out range (renders stop there too),
+  // unless you set your own range
   function withEnd(e) {
     const vis = programEnd(e); const all = C.total(e);
     if (all > vis + 0.05 && vis > 0) { if (!e.mark || e.mark.lab) e.mark = { a: 0, b: r4(vis), lab: true }; } else if (e.mark?.lab) e.mark = null;
@@ -409,13 +408,13 @@ const ThreeSeq = (() => {
     for (const k of (e.tracks || []).filter((x) => x.type === 'audio' && !x.mute)) for (const it of k.items) if (!it.song && !it.off && it.src) { sounds.push({ id: it.id, asset: it.src, start: r4(it.start), end: r4(C.itemEnd(it)), a: r4(it.in || 0), volume: it.volume ?? 1, speed: it.speed || 1 }); assets.add(it.src); }
     return { plan: { fps: e.seq?.fps || 30, w: e.seq?.w || 1080, h: e.seq?.h || 1920, dur: r4(programEnd(e)), song, groups, titles, sounds }, assets: [...assets] };
   }
-  // the editor's drawing code for titles and transitions, the footage files: sent once per preview page
+  // the drawing code for titles and transitions, the footage files: sent once per preview page
   const appDir = () => { let p = decodeURIComponent(new URL('.', location.href).pathname); if (/^\/[A-Za-z]:/.test(p)) p = p.slice(1); return p.replace(/[\\/]$/, ''); };
   let libText = null;
   async function libs() {
     if (libText) return libText;
     const dir = appDir();
-    const [a, b, c] = await Promise.all(['tools/cut-presets.js', 'tools/video-titles.js', 'tools/three-seq-trans.js'].map((f) => window.hub.fs.read(`${dir}/${f}`)));
+    const [a, b, c] = await Promise.all(['tools/cut-presets.js', 'tools/cut-titles.js', 'tools/three-seq-trans.js'].map((f) => window.hub.fs.read(`${dir}/${f}`)));
     libText = `${a}\n${b}\n${c}`; // (the Lab transitions add themselves to EditFX in there too)
     return libText;
   }
@@ -594,7 +593,7 @@ const ThreeSeq = (() => {
   // waits for the preview to report it is at T (checks / directors)
   function settle(ms = 1500) { return new Promise((r) => { const t = setTimeout(() => r(null), ms); S.waits.push((m) => { clearTimeout(t); r(m); }); send({ type: 'seq-seek', T: S.T }); }); }
 
-  // ---------- edits (the editor's keys) ----------
+  // ---------- edits (the classic editing keys) ----------
   const selIds = () => [...S.sel].filter((id) => S.edit && C.find(S.edit, id));
   const underHead = () => { const x = S.edit && C.at(S.edit, Math.min(S.T, Math.max(0, C.mainTotal(S.edit) - 1e-4))); return S.T < C.mainTotal(S.edit || C.empty()) ? x?.clip || null : null; };
   const targets = () => (selIds().length ? selIds() : underHead() ? [underHead().id] : []);
@@ -723,7 +722,7 @@ const ThreeSeq = (() => {
     aroundT = setTimeout(() => { if (S.playing) play(false); seek(at); }, ((Math.min(pre, at) + post) * 1000) / (S.rate || 1));
     return true;
   }
-  // the In–Out range (I / Shift+I; the editor's own range, so Video Review sees it too): render just that, loop it
+  // the In–Out range (I / Shift+I): render just that, loop it
   const rangeOf = (e = S.edit) => (e?.mark && !e.mark.lab && e.mark.b > e.mark.a ? { a: e.mark.a, b: e.mark.b } : null);
   function setRange(a, b) {
     if (!S.edit) return null;
@@ -947,32 +946,11 @@ const ThreeSeq = (() => {
     return commit(n, 'Unnested');
   }
 
-  // ---------- the editor (Video Review): the same edit ----------
-  async function toEditor() {
-    if (!S.key) await current();
-    await writeEdit('From the Lab sequence');
-    if (S.view) await leave();
-    activate('tool:ae');
-    await Review.ensureMounted();
-    if (VideoCut.active && VideoCut.path !== S.key) VideoCut.leave();
-    await VideoCut.enter({ path: S.key });
-    return S.key;
-  }
-  // back from the editor: whatever was changed there is the sequence now
-  async function fromEditor(key = S.key) {
-    if (!key) throw new Error('No sequence');
-    if (typeof VideoCut !== 'undefined' && VideoCut.active && VideoCut.path === key) VideoCut.leave();
-    activate('tool:three');
-    await ThreeLab.cmd({ show: true });
-    await open(key, { show: true });
-    return key;
-  }
-  // the editor renders scene clips through the Lab: each one becomes a video of exactly its length (offline, at the
-  // sequence's frame size), the rest of the edit renders as usual
+  // scene clips rendered through the Lab (for Premiere's FCP XML, adobe.js): each one becomes a video of exactly its
+  // length (offline, at the sequence's frame size), the rest of the edit stays as it is
   const needsBake = (e) => Boolean(e?.clips?.some((c) => c.kind === 'scene' || c.kind === 'seq') || (e?.tracks || []).some((k) => k.items.some((x) => x.kind === 'layer')));
   // Scenes joined by a transition only the Lab can draw (a morph through shared layers, a camera fly-through) are
-  // baked together, transition included, so the editor's export shows exactly what the Lab shows; the others one
-  // by one (the editor draws their transitions itself, Lab ones through their ffmpeg version).
+  // baked together, transition included, so the export shows exactly what the Lab shows; the others one by one.
   function bakeRuns(e) {
     const runs = [];
     e.clips.forEach((c, i) => {
@@ -1011,16 +989,6 @@ const ThreeSeq = (() => {
     }
     return n;
   }
-  // the editor's export without ffmpeg (or "record"): its own recorder can only show a scene's picture, so the Lab
-  // plays the sequence in real time into its recorder instead (scenes, transitions, footage and their sound)
-  async function recordForEditor(key) {
-    const e = await readEdit(key);
-    if (!e) throw new Error('No such sequence');
-    await loadNested(e);
-    const r = await renderEdit(e, { realtime: true, name: `${key.slice(4)} (from the editor)` });
-    return { output: r.path, done: Promise.resolve({ code: 0, output: r.path, seconds: 0 }) };
-  }
-
   // ---------- render: frame by frame, at the frame size, muxed with the sound ----------
   async function renderFrames(e, { w, h, n0 = 0, n1, onFrame, onProgress, dir }) {
     const L = lab();
@@ -1138,9 +1106,8 @@ const ThreeSeq = (() => {
         say('Rendering the sequence… muxing the sound');
         await runJob({ id: `seq${Date.now().toString(36)}`, input: `${tmp}/frame_00000.jpg`, output, args, duration: N / F, onProgress: (p) => onProgress?.(0.85 + p * 0.15) });
       } finally { window.hub.video.rmtemp?.(tmp).catch(() => {}); }
-      if (library && typeof Review !== 'undefined') { try { await Review.noteRecording(output); } catch { /* the library is a bonus */ } }
       const secs = Math.round((performance.now() - S.render.t0) / 100) / 10;
-      if (!quiet && !rq?.notifies) toast(`Rendered ${base(output)} (${N} frames, ${fmt}) in ${secs} s`, { timeout: 6000, action: { label: 'Open in Video Review', fn: () => openOutput(output) } });
+      if (!quiet && !rq?.notifies) toast(`Rendered ${base(output)} (${N} frames, ${fmt}) in ${secs} s`, { timeout: 6000, action: { label: 'Open', fn: () => openOutput(output) } });
       emit('render', { output, frames: N, format: fmt });
       pgOk = true; rqEnd.out = output;
       return { path: output, frames: N, fps: F, w, h, format: fmt, seconds: secs };
@@ -1185,8 +1152,7 @@ const ThreeSeq = (() => {
     const ext = msg.mime?.includes('mp4') ? 'mp4' : 'webm';
     const output = await uniqueOut(dir, `${stem} realtime`, ext);
     await window.hub.fs.write(output, new Uint8Array(msg.buffer));
-    if (typeof Review !== 'undefined') { try { await Review.noteRecording(output); } catch { /* bonus */ } }
-    toast(`Recorded ${base(output)} in real time (${msg.width}×${msg.height})`, { timeout: 6000, action: { label: 'Open in Video Review', fn: () => openOutput(output) } });
+    toast(`Recorded ${base(output)} in real time (${msg.width}×${msg.height})`, { timeout: 6000, action: { label: 'Open', fn: () => openOutput(output) } });
     return { path: output, realtime: true, w: msg.width, h: msg.height };
   }
   // the page's recording for a realtime render goes to the render, not the Lab's save dialog
@@ -1196,7 +1162,7 @@ const ThreeSeq = (() => {
     if (msg.type === 'recording') { S.recWait.resolve(msg); S.recWait = null; return true; }
     return msg.type === 'record-started';
   }
-  async function openOutput(p) { activate('tool:ae'); await Review.ensureMounted(); return Review.open(p); }
+  const openOutput = (p) => MediaFile.open(p); // the system's own player
   async function render(opts = {}) {
     if (!S.edit) await current();
     await writeEdit();
@@ -1680,14 +1646,14 @@ const ThreeSeq = (() => {
       { label: 'Give this one to the scene on screen', more: true, disabled: !lab()?.sketchId() || S.edit?.seq?.scene === lab()?.sketchId(), action: () => { commit({ ...S.edit, seq: { ...S.edit.seq, scene: lab().sketchId() } }, 'Belongs to this scene'); S.owner = lab().sketchId(); list(); } },
       { label: 'Rename…', action: async () => { const v = await Modal.prompt('Sequence name', { value: S.key.slice(4) }); if (v?.trim()) rename(v.trim()); } },
       { label: 'Format', hint: D.formatOf(S.edit), items: () => Object.keys(D.FORMATS).map((f) => ({ label: f, checked: D.formatOf(S.edit) === f, action: () => setFormat(f) })) },
-      { label: 'Delete this sequence…', danger: true, more: true, action: async () => { if (await Modal.confirm('Delete the sequence?', `"${S.key.slice(4)}" goes (the scenes and files stay).`, { ok: 'Delete', danger: true })) { VideoCut.deleteSequence(S.key); S.key = null; S.edit = null; await current(); redraw(); pushPlan(); } } },
+      { label: 'Delete this sequence…', danger: true, more: true, action: async () => { if (await Modal.confirm('Delete the sequence?', `"${S.key.slice(4)}" goes (the scenes and files stay).`, { ok: 'Delete', danger: true })) { VC().deleteSequence(S.key); S.key = null; S.edit = null; await current(); redraw(); pushPlan(); } } },
     ]); });
   }
   async function rename(name) {
     const key = await uniqueKey(name);
     const e = C.copy(S.edit); e.seq = { ...e.seq, name }; // (its scene stays)
     await VC().storeEdit(key, e, 'Renamed');
-    VideoCut.deleteSequence(S.key);
+    VC().deleteSequence(S.key);
     S.key = key; S.edit = e; store.set('three.seq.current', key);
     emit('change', { key });
     flash(`“${name}”`);
@@ -1705,7 +1671,6 @@ const ThreeSeq = (() => {
       '-',
       { label: '▦ Every cut on a bar', hint: grid() ? '' : 'needs a song', disabled: !grid(), action: () => fit() },
       { label: 'Transitions everywhere', items: () => [...TRANS_TOP.map((t) => ({ label: EditFX.TRANS[t]?.name || 'Cut', action: () => setTransition(t) })), { label: '✦ Lab moves', items: () => (TR()?.LAB || []).map((t) => ({ label: t.name, hint: t.desc, action: () => setTransition(t.id) })) }] },
-      { label: '✂ Finish in the video editor', hint: 'the same sequence', action: () => toEditor() },
       { label: S.loop ? '⟲ Loop off' : '⟲ Loop', hint: rangeOf() ? 'the In–Out range' : '', action: () => { S.loop = !S.loop; send({ type: 'seq-loop', on: S.loop, range: rangeOf() }); } },
       { label: 'Range', hint: rangeOf() ? `${tc(rangeOf().a)} – ${tc(rangeOf().b)}` : 'I / Shift+I', items: rangeItems },
       { label: 'Close every gap', more: true, disabled: !(S.edit?.clips || []).some((c) => c.kind === 'gap'), action: () => closeGaps() },
@@ -1744,7 +1709,7 @@ const ThreeSeq = (() => {
         el('div', { class: 'sq-rp-row' }, el('b', { text: 'Frame rate' }), el('div', { class: 'sq-chips' }, [24, 30, 60].map((f) => chip(st.fps === f, `${f} fps`, '', () => { st.fps = f; paint(); })))),
         el('div', { class: 'sq-rp-row' }, el('b', { text: 'Quality' }), el('div', { class: 'sq-chips' }, Object.entries(QUALITY).map(([k, q]) => chip(st.quality === k, q.label, q.hint, () => { st.quality = k; paint(); })))),
         el('label', { class: 'sq-rp-check' }, el('input', { type: 'checkbox', checked: st.sound, on: { change: (e) => { st.sound = e.target.checked; } } }), ' With the sound'),
-        el('label', { class: 'sq-rp-check' }, el('input', { type: 'checkbox', checked: st.open, on: { change: (e) => { st.open = e.target.checked; } } }), ' Open in Video Review when it\'s done'),
+        el('label', { class: 'sq-rp-check' }, el('input', { type: 'checkbox', checked: st.open, on: { change: (e) => { st.open = e.target.checked; } } }), ' Open it when it\'s done'),
         rg ? el('label', { class: 'sq-rp-check sq-rp-range' }, el('input', { type: 'checkbox', checked: st.range, on: { change: (e) => { st.range = e.target.checked; paint(); } } }), ` Only the In–Out range (${tc(rg.a)} – ${tc(rg.b)})`) : null,
         el('div', { class: 'sq-rp-sum', text: `${len > 0 ? `${len.toFixed(1)} s · ${Math.round(len * st.fps)} frames` : 'The sequence is empty'}${n > 1 ? ` · ${n} videos, one after the other` : ''}` }),
       );
@@ -1940,7 +1905,7 @@ const ThreeSeq = (() => {
     setTimeout(() => addEventListener('pointerdown', outside, true), 0);
     q.focus();
   }
-  // drops: a tile, a board reference (its vibe), files from the computer, Video Review's library cards
+  // drops: a tile, a board reference (its vibe), files from the computer
   function onDragOver(e) {
     const types = [...(e.dataTransfer?.types || [])];
     if (!types.some((t) => t === SCENE_TYPE || t === REF_TYPE || t === 'Files' || t === 'text/x-hearth-video')) return;
@@ -1963,7 +1928,7 @@ const ThreeSeq = (() => {
     } catch (err) { toast(err.message, { type: 'error' }); }
   }
 
-  // ---------- keys (the editor's: S, Delete, Shift+Delete, ←/→, J/K/L, Alt for slip…) ----------
+  // ---------- keys (S, Delete, Shift+Delete, ←/→, J/K/L, Alt for slip…) ----------
   const KEYS = [
     ['Space', 'Play / pause the sequence'], ['J / K / L', 'Backward · stop · forward (again: faster)'], ['← / →', 'One frame (Shift: ten)'], ['Home / End', 'Start / end'],
     ['↑ / ↓', 'Previous / next edit point'], ['S', 'Split at the playhead'], ['Delete', 'Delete (keeps a gap)'], ['Shift+Delete', 'Ripple delete (closes the gap)'],
@@ -2037,7 +2002,7 @@ const ThreeSeq = (() => {
     refs.add = el('button', { class: 'ghost small sq-add', text: '＋', title: 'Add a scene, a chat scene, a look, footage, a title or an overlay (or drag one onto the tracks)', dataset: { feature: 'Sequence add' }, on: { click: (e) => picker(e.currentTarget) } });
     refs.render = el('button', { class: 'primary small sq-render', text: '⇪ Render', title: 'Render the sequence: format, frame rate, quality, sound (right-click: quick menu)', dataset: { feature: 'Sequence render' }, on: { click: () => renderPanel().catch((err) => toast(err.message, { type: 'error' })), contextmenu: (e) => { e.preventDefault(); renderMenu(e.currentTarget); } } });
     refs.reload = el('button', { class: 'ghost small sq-reload', text: '↻', title: 'Reload the preview (when the sequence gets stuck): it comes back where it was', dataset: { feature: 'Sequence reload' }, on: { click: () => reloadPreview() } });
-    refs.more = el('button', { class: 'ghost small sq-more', text: '⋯', title: 'Fit to bars, transitions, the video editor, loop, snapping, keys', on: { click: (e) => moreMenu(e.currentTarget) } });
+    refs.more = el('button', { class: 'ghost small sq-more', text: '⋯', title: 'Fit to bars, transitions, loop, snapping, keys', on: { click: (e) => moreMenu(e.currentTarget) } });
     refs.flash = el('span', { class: 'sq-flash', attrs: { 'aria-live': 'polite' } });
     refs.cv = el('canvas', { class: 'sq-canvas' });
     refs.head = el('div', { class: 'sq-playhead' });
@@ -2065,7 +2030,6 @@ const ThreeSeq = (() => {
     L.pane.addEventListener('keydown', onKey, true);
     // the play button of the timeline's strip plays the sequence while it's on
     L.bar.querySelector('.mb-miniplay')?.addEventListener('click', (e) => { if (!S.view) return; e.stopImmediatePropagation(); play(); }, true);
-    if (typeof VideoCut !== 'undefined') VideoCut.on('change', ({ path, from } = {}) => { if (S.storing || from === 'lab' || path !== S.key) return; readEdit(path).then((e) => { if (e) setEdit(e, { save: false }); }); });
     if (typeof Keys !== 'undefined') Keys.add(KEYS.map(([k, what]) => ({ area: AREA, keys: k, what, when: () => S.view })));
     return api;
   }
@@ -2113,7 +2077,7 @@ const ThreeSeq = (() => {
     if (tool !== 'three_sequence') return null;
     const op = String(a.op || a.action || 'status');
     try {
-      if (op === 'help') return { ok: true, value: 'ops: status | list | new {name, format} | open {name} | show | hide | add {scene | footage (path) | title (text) | overlay (layer / filter name) | song (path), at (s | "bar 9" | "f120"), bars | secs, look} | transition {clip, type, dur} (clip omitted: every cut) | length {clip, secs | bars} | trim {clip, edge: in|out, to} | split {at} | delete {clip, ripple} | move {clip, to (position 1..n)} | duplicate {clip} | slip {clip, frames} | look {clip, name} | fit (cuts on bars) | format {format} | seek {at} | frame {at, see} | play | pause | render {format: 9:16|16:9|1:1|4:5} | editor | back | undo | redo · arrange {template, scenes: [names], secs, lines} (the scenes on the song sections, cuts on bars; again: another one) | templates | versions {secs: [15, 6], render} | fill {clip (a gap)} | vary {clip, amount, reset} | vary_sections | swap_looks {clip} | retime {song} | nest {name} | unnest {clip} | copy {clips: [..]} | paste {at, into (sequence name)} | roll {clip, to} | slide {clip, by} | marker {at, label} | section_markers | zoom {to: fit | "4 bars" | secs} | render {format: all} · nudge {clip(s), frames | beats} | trim_frames {clip, edge, frames} | speed {clip(s), rate} | color {clip(s), color | none} | markers_list | marker_go {name | n | next | prev} | marker_rename {n, label} | marker_delete {n} | snap {on} | select {what: all | none | after | range, from, until} | history {back | forward} | clip {clip} (go to it) | zoom_selection | range {in, out | clip | clear} (render {range: true} renders just it; loop loops it) | close_gaps | health. Each scene owns its sequence: ops act on the current scene one; of (or scene, except for add): another scene. clip = number (1 = first on the main track), "Titles.2", or a scene / title name.' };
+      if (op === 'help') return { ok: true, value: 'ops: status | list | new {name, format} | open {name} | show | hide | add {scene | footage (path) | title (text) | overlay (layer / filter name) | song (path), at (s | "bar 9" | "f120"), bars | secs, look} | transition {clip, type, dur} (clip omitted: every cut) | length {clip, secs | bars} | trim {clip, edge: in|out, to} | split {at} | delete {clip, ripple} | move {clip, to (position 1..n)} | duplicate {clip} | slip {clip, frames} | look {clip, name} | fit (cuts on bars) | format {format} | seek {at} | frame {at, see} | play | pause | render {format: 9:16|16:9|1:1|4:5} | undo | redo · arrange {template, scenes: [names], secs, lines} (the scenes on the song sections, cuts on bars; again: another one) | templates | versions {secs: [15, 6], render} | fill {clip (a gap)} | vary {clip, amount, reset} | vary_sections | swap_looks {clip} | retime {song} | nest {name} | unnest {clip} | copy {clips: [..]} | paste {at, into (sequence name)} | roll {clip, to} | slide {clip, by} | marker {at, label} | section_markers | zoom {to: fit | "4 bars" | secs} | render {format: all} · nudge {clip(s), frames | beats} | trim_frames {clip, edge, frames} | speed {clip(s), rate} | color {clip(s), color | none} | markers_list | marker_go {name | n | next | prev} | marker_rename {n, label} | marker_delete {n} | snap {on} | select {what: all | none | after | range, from, until} | history {back | forward} | clip {clip} (go to it) | zoom_selection | range {in, out | clip | clear} (render {range: true} renders just it; loop loops it) | close_gaps | health. Each scene owns its sequence: ops act on the current scene one; of (or scene, except for add): another scene. clip = number (1 = first on the main track), "Titles.2", or a scene / title name.' };
       if (op === 'list') return { ok: true, value: { sequences: await list(), open: S.key?.slice(4) || null } };
       await ThreeLab.cmd({ show: true });
       if (op === 'new') { await create(a.name || null, { format: a.format || null, empty: Boolean(a.empty) }); return { ok: true, value: status() }; }
@@ -2197,8 +2161,8 @@ const ThreeSeq = (() => {
       if (op === 'marker') { if (a.at != null) seek(timeOf(a.at) ?? S.T); marker(a.label || ''); return { ok: true, value: { markers: (S.edit.markers || []).map((m) => `${m.t.toFixed(2)} ${m.label || ''}`.trim()) } }; }
       if (op === 'section_markers') { await sectionMarkers(); return { ok: true, value: { markers: (S.edit.markers || []).map((m) => `${m.t.toFixed(2)} ${m.label || ''}`.trim()) } }; }
       if (op === 'zoom') { zoomTo(a.to === 'fit' || a.to == null ? 'fit' : /bar/.test(String(a.to)) ? String(a.to) : Number(a.to)); return { ok: true, value: { view: S.vr ? [r4(S.vr.t0), r4(S.vr.t1)] : 'all' } }; }
-      if (op === 'render' && /^all$/i.test(String(a.format || ''))) { const out = []; for (const f of Object.keys(D.FORMATS)) out.push((await render({ format: f })).path); return { ok: true, value: { files: out, note: 'In Video Review (library)' } }; }
-      if (op === 'render') { const r = await render({ format: a.format || null, range: a.range ? rangeOf() : null }); return { ok: true, value: { file: r.path, frames: r.frames, format: r.format, size: `${r.w}×${r.h}`, note: 'In Video Review (library)' } }; }
+      if (op === 'render' && /^all$/i.test(String(a.format || ''))) { const out = []; for (const f of Object.keys(D.FORMATS)) out.push((await render({ format: f })).path); return { ok: true, value: { files: out, note: 'A video file (the owner opens it with Open / Show in Finder)' } }; }
+      if (op === 'render') { const r = await render({ format: a.format || null, range: a.range ? rangeOf() : null }); return { ok: true, value: { file: r.path, frames: r.frames, format: r.format, size: `${r.w}×${r.h}`, note: 'A video file (the owner opens it with Open / Show in Finder)' } }; }
       // ---- seqguard (round 13): nudge, key trims, speed, colors, markers, snapping, selection, history, health ----
       const many = (v) => [].concat(v ?? []).map((x) => clipId(x));
       if (op === 'nudge') { const ids = a.clips != null || a.clip != null ? many(a.clips ?? a.clip) : targets(); nudge(Number(a.frames) || 0, { beats: Number(a.beats) || 0, ids }); return { ok: true, value: status() }; }
@@ -2227,25 +2191,8 @@ const ThreeSeq = (() => {
         return { ok: true, value: { range: r ? { a: r4(r.a), b: r4(r.b), from: tc(r.a), to: tc(r.b) } : null } };
       }
       if (op === 'close_gaps') { closeGaps(); return { ok: true, value: status() }; }
-      if (op === 'editor') { await toEditor(); return { ok: true, value: { opened: 'Video Review editor, the same sequence', key: S.key } }; }
-      if (op === 'back') { await fromEditor(); return { ok: true, value: status() }; }
       return { ok: false, error: `Unknown op "${op}" (op: "help")` };
     } catch (err) { return { ok: false, error: err.message }; }
-  }
-
-  // a scene clip's picture for the video editor (the Lab's automatic thumbnail; read from kv when the Lab isn't open)
-  let kvThumbs = null;
-  const editorPics = new Map();
-  function posterImage(c, onload = null) {
-    let url = c.poster || (typeof ThreeLab !== 'undefined' ? ThreeLab.scenes?.thumbOf(c.sketch) : null);
-    if (!url) {
-      if (!kvThumbs) { kvThumbs = {}; window.hub.kvGet('three-thumbs', {}).then((t) => { kvThumbs = t || {}; onload?.(); }).catch(() => {}); }
-      url = kvThumbs[c.sketch]?.url || null;
-    }
-    if (!url) return null;
-    let im = editorPics.get(url);
-    if (!im) { im = new Image(); im.onload = () => onload?.(); im.src = url; editorPics.set(url, im); if (editorPics.size > 60) editorPics.delete(editorPics.keys().next().value); }
-    return im.complete && im.naturalWidth ? im : null;
   }
 
   // the preview's right-click: add the scene on screen to the sequence
@@ -2271,10 +2218,10 @@ const ThreeSeq = (() => {
   addEventListener('hearth:sketch', () => { if (S.hold) { S.hold = false; return; } if (!S.view && !S.render) S.explicit = false; });
   addEventListener('hearth:lab-ready', () => { setTimeout(() => list().then(() => emit('index', {})).catch(() => {}), 1500); });
   const api = {
-    renderPanel, reloadPreview, setRange, markIn, markOut, clearRange, rangeToClip, rangeOf: () => rangeOf(), closeGaps, restore, sizeChanged, health, history, goBack, goForward, nudge, trimBy, setSpeed, setColor, goMarker, renameMarker, deleteMarker, markerList, setSnap, selectAll, selectRange, selectAfter, zoomToSel, playAround, goClip, SWATCHES, attach, onMessage, takeRecording, keep, posterImage, owns: () => S.view, sketchChanged, previewItem,
+    renderPanel, reloadPreview, setRange, markIn, markOut, clearRange, rangeToClip, rangeOf: () => rangeOf(), closeGaps, restore, sizeChanged, health, history, goBack, goForward, nudge, trimBy, setSpeed, setColor, goMarker, renameMarker, deleteMarker, markerList, setSnap, selectAll, selectRange, selectAfter, zoomToSel, playAround, goClip, SWATCHES, attach, onMessage, takeRecording, keep, owns: () => S.view, sketchChanged, previewItem,
     enter, leave, toggle, open, create, current, list, add, addCurrent, applyVibe, select, split, del, dup, slipBy, trimToHead, marker, setTransition, setLength, setLook, fit, setFormat,
-    play, seek, step, shuttle, jump, settle, undo, redo, render, renderEdit, renderScene, toEditor, fromEditor, needsBake, bake, compile, status, handle, timeOf, secsOf, zoomBy,
-    arrange, again, retime, versions, fillGap, vary, varySections, copyLook, pasteLook, swapLooks, nest, unnest, copySel, paste, zoomTo, sectionMarkers, decideArrangement, recordForEditor,
+    play, seek, step, shuttle, jump, settle, undo, redo, render, renderEdit, renderScene, needsBake, bake, compile, status, handle, timeOf, secsOf, zoomBy,
+    arrange, again, retime, versions, fillGap, vary, varySections, copyLook, pasteLook, swapLooks, nest, unnest, copySel, paste, zoomTo, sectionMarkers, decideArrangement,
     outDir, keyForScene, switchTo, summaryFor, sceneCopied, songInfo, pickScenes, bakeRuns, get owner() { return S.owner; },
     on: (ev, fn) => { (listeners[ev] ||= []).push(fn); },
     get active() { return S.view; }, get key() { return S.key; }, get edit() { return S.edit ? C.copy(S.edit) : null; }, get time() { return S.T; }, get playing() { return S.playing; }, get fps() { return fps(); },

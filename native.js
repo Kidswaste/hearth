@@ -465,7 +465,7 @@ const Native = (() => {
         if (saved) toast(`Saved ${saved.split(/[\\/]/).pop()}`, { action: { label: 'Show', fn: () => window.hub.fs.reveal(saved) } });
       }
       if (codeAction.dataset.act === 'three') ThreeLab.openCode(code);
-      if (codeAction.dataset.act === 'ae') AEKit.runCode(code, 'From chat');
+      if (codeAction.dataset.act === 'ae') (async () => { await window.Lazy?.load?.('adobe'); const r = await Adobe.run('aftereffects', code, { label: 'From chat' }); toast(r.ok ? 'Sent to After Effects (one undo in AE takes it back)' : r.error, { type: r.ok ? undefined : 'error', timeout: r.ok ? 3500 : 9000 }); })().catch((err) => toast(err.message, { type: 'error' }));
       if (codeAction.dataset.act === 'shader') ThreeLab.openShader(code);
       return;
     }

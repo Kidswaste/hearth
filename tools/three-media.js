@@ -1322,7 +1322,7 @@ const ThreeMedia = (() => {
     const padded = (r) => { const pad = Math.max(0.05, (r.b - r.a) * 0.06); return { start: Math.max(0, r.a - pad), end: Math.min(D() || r.b + pad, r.b + pad) }; };
 
     // ---------- trim + cut (round 6): the song starts at trim.a and stops at trim.b; the loop or trim can be saved as
-    // a file (ffmpeg) or sent to Video Review as a clip of its cut (tools/video-cut.js) ----------
+    // a file (ffmpeg, through the render queue) ----------
     function setTrim(r) {
       if (!D()) return null;
       pushUndo();
@@ -1352,27 +1352,13 @@ const ThreeMedia = (() => {
       const output = st.path.replace(/\.[^.\\/]+$/, '') + `_cut ${stamp(r.a)}_${stamp(r.b)}.${ext}`;
       const codec = st.video ? ['-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '256k', '-movflags', '+faststart'] : ext === 'wav' ? ['-vn', '-c:a', 'pcm_s16le'] : ['-vn', '-c:a', 'aac', '-b:a', '256k'];
       const args = ['-hide_banner', '-y', '-ss', String(r.a), '-i', 'INPUT', '-t', String(Math.max(0.05, r.b - r.a)), ...codec, 'OUTPUT'];
-      const job = await Review.startJob({ label: `Save ${r.what}`, input: st.path, output, args, duration: r.b - r.a, library: st.video });
-      if (!job) return null;
-      const ev = await job.done;
+      await window.Lazy?.load?.('renders');
+      if (typeof Renders === 'undefined') { toast('The render queue isn\'t available', { type: 'error' }); return null; }
+      const id = `cutloop${Date.now().toString(36)}`;
+      try { await Renders.transcode({ id, input: st.path, output, args, duration: r.b - r.a }, undefined, { title: `Save ${r.what}` }); } catch (err) { toast(err.message.replace(/^Error invoking remote method[^:]*: (Error: )?/, ''), { type: 'error' }); return null; }
+      const ev = await Renders.whenDone(id);
       return ev.code === 0 ? output : null;
     }
-    // as: 'clip' (the open edit's main track), 'edit' (opens it in the video editor as its own edit), 'overlay'
-    // (a layer above the open edit at its playhead) or 'music' (the song on the edit's audio track)
-    async function sendClip(as = 'clip') {
-      if (!st.path || !D()) return false;
-      if (typeof VideoCut === 'undefined') return false;
-      const r = cutRange();
-      if (st.playing) toggle(false);
-      if (as === 'music') {
-        await Review.ensureMounted(); activate('tool:ae');
-        if (!VideoCut.active && !(await VideoCut.enter())) return false;
-        return Boolean(await VideoCut.addAudio(st.path, { at: 0, a: r.a, b: r.b }));
-      }
-      if (!st.video) { toast('The video editor takes videos here: "Use as the edit\'s music" puts a song under it, /cut-loop saves this part as a file', { timeout: 4000 }); return false; }
-      return VideoCut.receive(st.path, { a: r.a, b: r.b, as });
-    }
-
     // ---------- keys (the Lab forwards them when you're not typing) ----------
     function onKey(e) {
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return false;
@@ -1537,7 +1523,6 @@ const ThreeMedia = (() => {
       const name = `${(sketchName?.() || 'sketch').replace(/[\\/:*?"<>|]/g, '_')} ${msg.width}x${msg.height}.${ext}`;
       const p = await window.hub.saveFile({ defaultPath: name, filters: [{ name: 'Video', extensions: [ext] }], content: new Uint8Array(msg.buffer) });
       if (p) toast(`Saved ${base(p)}`, { action: { label: 'Show', fn: () => window.hub.fs.reveal(p) } });
-      if (p && typeof Review !== 'undefined') Review.noteRecording(p); // recordings show up in Video Review wherever they're saved
     }
 
     // ---------- drawing ----------
@@ -2807,10 +2792,6 @@ const ThreeMedia = (() => {
         ['Song ends here', '}', () => setTrimEdge('b', t)],
         map.trim ? ['Untrim the song', `${fmtMs(map.trim.a)} → ${fmtMs(map.trim.b)}`, () => setTrim(null)] : false,
         [`Save ${cutRange().what} as a file`, '/cut-loop · ffmpeg, next to the original', () => cutLoop()],
-        st.video ? [`Send ${cutRange().what} to Video Review`, '/send-clip · a clip on its ✂ track', () => sendClip()] : false,
-        st.video ? ['Edit it in the video editor', '/lab-to-editor · its own edit, frame by frame', () => sendClip('edit')] : false,
-        st.video ? [`Overlay ${cutRange().what} on the open edit`, '/lab-overlay · a layer at the edit\'s playhead', () => sendClip('overlay')] : false,
-        ['Use as the edit\'s music', '/lab-music · on the editor\'s audio track', () => sendClip('music')],
         null,
         ['Cue here', 'C at the playhead', () => addCue(t)],
         ['Section here…', 'Intro, Build, Drop…', () => menuAt(anchor, SECTION_NAMES.map((n) => [n, '', () => addCue(t, n)]))],
@@ -3014,7 +2995,7 @@ const ThreeMedia = (() => {
       },
       get duration() { return D(); },
       get trim() { return map.trim ? { ...map.trim } : null; },
-      setTrim: (r) => setTrim(r), setTrimEdge: (edge, t) => setTrimEdge(edge, t ?? now()), cutLoop: () => cutLoop(), sendClip: (as) => sendClip(as),
+      setTrim: (r) => setTrim(r), setTrimEdge: (edge, t) => setTrimEdge(edge, t ?? now()), cutLoop: () => cutLoop(),
       get isVideo() { return st.video; },
       // the scene's own timeline (round 10): a scene with no song still has one (see loadClock)
       loadClock: (o) => loadClock(o), setClockLength: (s) => setClockLength(s), carry: (from, to) => carry(from, to), copyMap: (from, to) => copyMap(from, to),

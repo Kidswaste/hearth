@@ -1,12 +1,11 @@
-// Lab transitions (seq2): moves between scenes that only a live 3D Lab can do well, added to the editor's own
-// transitions (EditFX, tools/cut-presets.js) in a "Lab" group, so the Lab sequence, the video editor and its
-// ffmpeg render all know them. Each one has three halves:
-//   preview(g, A, B, p, W, H)   a 2D canvas version (the editor's preview, and the Lab's when it has nothing better)
-//   ff / expr                   the ffmpeg xfade version (the editor's render; scenes are baked first)
+// Lab transitions (seq2): moves between scenes that only a live 3D Lab can do well, added to the transitions of
+// tools/cut-presets.js (EditFX) in a "Lab" group. Each one has three halves:
+//   preview(g, A, B, p, W, H)   a 2D canvas version (the Lab's when it has nothing better)
+//   ff / expr                   the ffmpeg xfade version (scenes are baked first)
 //   lab                         what the Lab does on top: 'cam' moves each scene's own 3D camera (fly-through),
-//                               'shared' keeps the layers both scenes share on screen (morph), 'only' = the editor
-//                               bakes the two scenes and the transition together through the Lab (exact).
-// This file is also sent into the Lab preview with the editor's drawing code (tools/three-seq.js libs()).
+//                               'shared' keeps the layers both scenes share on screen (morph), 'only' = baked
+//                               together through the Lab (exact).
+// This file is also sent into the Lab preview with the titles' drawing code (tools/three-seq.js libs()).
 // No dependencies but EditFX; loads in Node for tests (module.exports at the bottom).
 const SeqTrans = (() => {
   const FX = typeof EditFX !== 'undefined' ? EditFX : (typeof require !== 'undefined' ? require('./cut-presets.js') : null);
@@ -186,7 +185,7 @@ const SeqTrans = (() => {
     T('lab-flash-beat', 'Light flash on the beat', 0.35, flash, { expr: exprs.flash, beat: true, desc: 'a white flash right on the beat of the cut' }),
     T('lab-bloom', 'Bloom through', 0.6, bloom, { expr: exprs.bloom, desc: 'everything glows up, swaps inside the glow' }),
   ];
-  // into the editor's catalog (once): before "Cut", in their own group
+  // into EditFX's catalog (once): before "Cut", in their own group
   function install(fx = FX) {
     if (!fx?.TRANSITIONS || fx.TRANS['lab-fly']) return fx;
     const cut = fx.TRANSITIONS.findIndex((t) => t.id === 'cut');
@@ -195,7 +194,7 @@ const SeqTrans = (() => {
     return fx;
   }
   install();
-  // the ones the editor must bake through the Lab with both scenes (its own render can't do them)
+  // the ones a bake renders through the Lab with both scenes together
   const bakeTogether = (type) => (FX?.TRANS?.[type] || LAB.find((t) => t.id === type))?.lab === 'shared' || /^lab-fly/.test(type || '');
   return { LAB, install, bakeTogether, exprs, _test: { shapeOf, luma, hash } };
 })();

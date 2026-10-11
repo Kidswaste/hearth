@@ -287,7 +287,19 @@
     if (sub === 'zoom') { if (!w[1] || /^all$/i.test(w[1])) c.zoom(null); else c.zoom(time(w[1]), time(w[2])); return null; }
     return 'Use /song play, pause, seek 1:20, speed 0.5, mute, load or zoom';
   }, (a) => pick(['play', 'pause', 'seek 0:30', 'speed 0.5', 'mute', 'load', 'zoom all'], a));
-  // /play and /pause belong to Video Review elsewhere; typed in the Lab (or its docked director) they drive the song
+  // the song's trim and saving a part of it (were in Video Review's cut commands until round 17)
+  const player = async () => { const p = (await lab()).player; if (!p?.loaded) throw new Error('Load a song or video in the Lab first (🎵 Load audio / video…).'); return p; };
+  reg('song-trim', 'Trim the Lab\'s song: it starts at in and stops at out (the sketch only hears that part); { and } at the playhead', '<in> <out> | in | out | off', async (args) => {
+    const p = await player(); const w = words(args);
+    if (w[0] === 'off') { p.setTrim(null); return 'Song untrimmed.'; }
+    if (w[0] === 'in' || w[0] === 'out') { const t = p.setTrimEdge(w[0] === 'in' ? 'a' : 'b', p.time); return t ? `Song trimmed ${fmtMs(t.a)} → ${fmtMs(t.b)}.` : null; }
+    const [a, b] = w.map((x) => parseTime(x));
+    if (!Number.isFinite(a)) return 'Usage: /song-trim 0:04.2 1:32 (or in / out at the playhead, off)';
+    const t = p.setTrim({ a, b: Number.isFinite(b) ? b : p.duration });
+    return t ? `Song trimmed ${fmtMs(t.a)} → ${fmtMs(t.b)}.` : 'That range is empty.';
+  }, (a) => pick(['in', 'out', 'off'], a), { aliases: ['trim-song'], keys: '{ / }' });
+  reg('cut-loop', 'Save the Lab\'s loop (or trim) of the song / video as a new file next to it (ffmpeg)', '', async () => { const r = await (await player()).cutLoop(); return r ? `Saved **${r.split(/[\\/]/).pop()}**.` : null; }, null, { aliases: ['save-loop'] });
+  // /play and /pause: typed in the Lab (or its docked director) they drive the song; the board has its own
   reg('play', 'Play the song', '', async () => { (await lab()).play(true); return null; }, null, { when: (ctx) => inLab(ctx), whenLabel: 'in the Lab' });
   reg('pause', 'Pause the song', '', async () => { (await lab()).play(false); return null; }, null, { when: (ctx) => inLab(ctx), whenLabel: 'in the Lab' });
   reg('record', 'Record a video: loop, song, here (until /record stop), N bars or N s from here, or stop; add 30 / 60 (fps) and hq', '[loop|song|here|8 bars|15s|stop] [30|60] [hq]', async (args) => {

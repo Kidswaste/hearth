@@ -1,7 +1,8 @@
-// Clip editing for Video Review (the "cut"): the edit list and its pure operations, the mapping between program
+// Clip editing for the Lab sequence and the Lab footage timeline (written for Video Review's editor, removed in
+// round 17; stored by tools/cut-store.js): the edit list and its pure operations, the mapping between program
 // time (the edit as it plays) and source time, snapping, beat-cut suggestions and the ffmpeg filter graph that
 // renders an edit (trim · speed with pitch kept · fades · freeze frames · title cards · gaps → concat → preset).
-// No DOM here, so it loads in Node for tests (module.exports at the bottom); the UI is tools/video-cut.js.
+// No DOM here, so it loads in Node for tests (module.exports at the bottom); the UI is tools/three-seq.js.
 //
 // An edit: { v: 1, clips: [clip], markers: [{ id, t, label }], mark: { a, b } | null }
 // clip:   { id, kind: 'video' | 'freeze' | 'title' | 'gap', src, in, out, max, speed, mute, fadeIn, fadeOut,

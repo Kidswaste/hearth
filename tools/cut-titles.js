@@ -1,7 +1,7 @@
-// Titles and lower thirds for the video editor: one canvas renderer used by the preview (tools/video-comp.js),
-// the exported frames (each title becomes a PNG sequence that ffmpeg lays over the edit, so the render matches
-// the preview) and the MediaRecorder fallback. Styles and animations are EditFX.TITLE_STYLES / TITLE_ANIMS /
-// LOWER_THIRDS (tools/cut-presets.js). Sizes are fractions of the frame height, so any canvas size works.
+// Titles, lower thirds and shapes of the Lab sequence: one canvas renderer, read as text by the Lab preview page
+// (tools/three-seq.js libs() → three-sandbox.html), so the preview and the rendered frames draw the same words.
+// It was Video Review's title renderer (tools/video-titles.js) until round 17. Styles and animations are
+// EditFX.TITLE_STYLES / TITLE_ANIMS / LOWER_THIRDS (tools/cut-presets.js). Sizes are fractions of the frame height.
 //   VideoTitles.draw(g, item, local, W, H)   item = { text, style, lower, anim, out, animDur, dur, x, y, size,
 //                                                      color, align, bg (main-track title cards) … }
 const VideoTitles = (() => {

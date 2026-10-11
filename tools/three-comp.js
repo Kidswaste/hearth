@@ -70,7 +70,7 @@ const ThreeComp = (() => {
     if (seqs.get(key)?.loading) return;
     seqs.set(key, { ...(seqs.get(key) || {}), loading: true });
     let e = null;
-    try { e = await VideoCut.editFor(key); if (e) e = CutData.normalize(e); } catch { e = null; }
+    try { e = await CutStore.editFor(key); if (e) e = CutData.normalize(e); } catch { e = null; }
     seqs.set(key, { edit: e, loading: false, missing: !e });
     syncSoon();
   }

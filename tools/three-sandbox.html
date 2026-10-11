@@ -6225,7 +6225,7 @@ async function setupViewer() {
 // The hub sends a plan of the program: groups (a main-track clip or an overlay over a range): scene clips run their
 // sketch's layers (own code, slider values / look, keyframes moved to the clip), footage clips draw a <video> into a
 // layer box, title cards / colors draw on a canvas; titles and transitions use the editor's own drawing code
-// (cut-presets.js + video-titles.js, sent once as text: what the editor shows is what the Lab shows); the song is the
+// (cut-presets.js + cut-titles.js, sent once as text: what the editor shows is what the Lab shows); the song is the
 // regular media element (so the music analysis still drives whatever reacts to it).
 // One program clock T: the song while it plays, else the page's clock. Only the groups around T run (a group starts
 // a moment before its clip, drawing hidden, and stops after it). A scene's own time (performance.now inside its

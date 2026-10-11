@@ -5,12 +5,11 @@ const path = require('path');
 
 const tok = (s) => Math.round(String(s || '').length / 4);
 const SETS = {
-  threeTools: 'three-mcp.js', videoTools: 'video-mcp.js', gameTools: 'forge-game-mcp.js', chatTools: 'chat-mcp.js', boardTools: 'board-mcp.js', captureTools: 'capture-mcp.js', adobeTools: 'adobe-mcp.js', deployTools: 'deploy-mcp.js', appsTools: 'apps-mcp.js',
+  threeTools: 'three-mcp.js', gameTools: 'forge-game-mcp.js', chatTools: 'chat-mcp.js', boardTools: 'board-mcp.js', captureTools: 'capture-mcp.js', adobeTools: 'adobe-mcp.js', deployTools: 'deploy-mcp.js', appsTools: 'apps-mcp.js',
 };
 // The directors as they're usually set up (a real agent's flags are passed in by the hub).
 const DIRECTORS = [
   { id: 'threedirector', name: 'Three Director', engine: 'claude', dock: 'three', threeTools: true },
-  { id: 'videodirector', name: 'Video Director', engine: 'claude', dock: 'ae', videoTools: true },
   { id: 'forge', name: 'Forge Debug', engine: 'claude', gameTools: true },
 ];
 
@@ -37,7 +36,7 @@ function promptPart(agent) {
   let engines;
   try { engines = require(path.join(__dirname, '..', 'engines.js')); } catch { return 0; }
   if (!engines.buildPrompt) return 0;
-  const bare = { ...agent, threeTools: false, videoTools: false, gameTools: false, chatTools: false, dock: undefined, selfReview: false };
+  const bare = { ...agent, threeTools: false, gameTools: false, chatTools: false, dock: undefined, selfReview: false };
   return tok(engines.buildPrompt(agent)) - tok(engines.buildPrompt(bare));
 }
 

@@ -405,5 +405,15 @@ document.addEventListener('loadedmetadata', (e) => { const v = e.target; if (v i
     return { setRows(r) { data = r; render(); }, render };
   }
 
-  Object.assign(window, { el, toast, Modal, Tabs, store, fmtBytes, fmtDate, timeAgo, debounce, copyText, escapeHtml, highlight, CodeEditor, dropZone, DataTable });
+  // A video, recording or render opens in the system's own player, or shows in Finder / Explorer (round 17: Hearth has
+  // no video player of its own any more). open / reveal → Promise<boolean>; revealLabel: the menu line for this system.
+  const MediaFile = {
+    revealLabel: /Mac/.test(navigator.platform) ? 'Show in Finder' : /Win/.test(navigator.platform) ? 'Show in Explorer' : 'Show in folder',
+    async open(p) { if (!p) return false; try { const err = await window.hub.fs.open(p); if (err) throw new Error(err); return true; } catch (e) { toast(`Can't open ${String(p).split(/[\\/]/).pop()}: ${String(e.message || e).replace(/^Error invoking remote method[^:]*: (Error: )?/, '')}`, { type: 'error' }); return false; } },
+    async reveal(p) { if (!p) return false; try { await window.hub.fs.reveal(p); return true; } catch (e) { toast(String(e.message || e), { type: 'error' }); return false; } },
+    // the two menu rows every file gets
+    items: (p) => [{ label: 'Open', action: () => MediaFile.open(p) }, { label: MediaFile.revealLabel, action: () => MediaFile.reveal(p) }],
+  };
+
+  Object.assign(window, { el, toast, Modal, Tabs, store, fmtBytes, fmtDate, timeAgo, debounce, copyText, escapeHtml, highlight, CodeEditor, dropZone, DataTable, MediaFile });
 })();

@@ -2,8 +2,8 @@
 // a song. A loaded video gets its true frame rate (ffprobe through framereader.js, or measured from the decoder's
 // presented frames), a frame counter with timecode, exact stepping (← → , . J K L), scrubbing that lands on whole
 // frames, loops / cues / markers / keyframes on frames, and a cut list that the sketch's footage plays (the parts
-// that stay, their speed, held frames). The cut list IS the video's edit in Video Review's editor (kv video-cuts,
-// tools/cut-data.js), so the Lab and the editor change the same thing. Reference footage (the Lab's references, board
+// that stay, their speed, held frames). The cut list is stored per video (kv video-cuts through tools/cut-store.js,
+// CutData edits) and goes onto a Lab sequence in one step. Reference footage (the Lab's references, board
 // clips) reads exactly too: contact sheets, scene lists, motion and pacing, and "match this pacing" (the vibe, never
 // the footage). Chats drive all of it (/footage …) and the directors through three_media_control / three_do footage.
 // Pure frame math at the top (module.exports for node tests); the Lab side attaches to the player's hooks
@@ -37,7 +37,7 @@ const ThreeFrames = (() => {
   const midOf = (c, n) => r6(timeOf(c, n) + durOf(c, n) / 2);
   const snapT = (c, t) => timeOf(c, nearest(c, t));
   const pad = (n, w = 2) => String(Math.max(0, Math.floor(n))).padStart(w, '0');
-  // HH:MM:SS:FF counted at the nominal rate (29.97 counts 30 a second, like the editor and the frame reader)
+  // HH:MM:SS:FF counted at the nominal rate (29.97 counts 30 a second, like the frame reader)
   function tc(c, n) {
     const nom = Math.round(c?.fps || 30); const s = Math.floor(n / nom);
     return `${pad(s / 3600)}:${pad((s / 60) % 60)}:${pad(s % 60)}:${pad(n % nom)}`;
@@ -71,7 +71,7 @@ const ThreeFrames = (() => {
   // ---------- the cut list: a video's edit (tools/cut-data.js) seen from the footage's own time ----------
   // parts(edit, src, clock) → the parts of `src` that play, in edit order: { a, b (source seconds, on frame starts),
   // speed, hold (seconds a held frame shows), id, i (clip index) }. Clips of other files, titles and gaps aren't part
-  // of the footage the sketch reads (they stay in the editor). null = the whole file plays.
+  // of the footage the sketch reads (they stay in the stored cut). null = the whole file plays.
   function parts(edit, src, c) {
     if (!edit?.clips?.length) return null;
     const out = [];
@@ -204,14 +204,14 @@ const ThreeFrames = (() => {
   // the duration once the player knows it (a silent video: from the decoder)
   function fixFrames() { const c = F.clock; if (c && !c.times && D() && (!c.frames || c.frames <= 1 || c.source !== 'ffprobe')) c.frames = Math.max(1, Math.round(D() * c.fps)); }
 
-  // ---------- the cut list (shared with the editor) ----------
+  // ---------- the cut list (kv video-cuts, tools/cut-store.js; the Lab sequences live there too) ----------
   async function editOf(path) {
-    if (typeof VideoCut !== 'undefined' && VideoCut.editFor) return VideoCut.editFor(path);
+    if (typeof CutStore !== 'undefined') return CutStore.editFor(path);
     const all = (await window.hub.kvGet('video-cuts', {})) || {};
     return all[path] ? C()?.normalize(all[path]) || all[path] : null;
   }
   async function storeEdit(path, e, label) {
-    if (typeof VideoCut !== 'undefined' && VideoCut.storeEdit) return VideoCut.storeEdit(path, e, label);
+    if (typeof CutStore !== 'undefined') return CutStore.storeEdit(path, e, label);
     const all = (await window.hub.kvGet('video-cuts', {})) || {};
     if (e) all[path] = e; else delete all[path];
     await window.hub.kvSet('video-cuts', all);
@@ -222,12 +222,12 @@ const ThreeFrames = (() => {
     const e = await editOf(F.path).catch(() => null);
     setEdit(e, { store: false });
   }
-  // the edit changed (here, in the editor, or by undo): parts → the sandbox, the timeline redraws
+  // the edit changed (here or by undo): parts → the sandbox, the timeline redraws
   function setEdit(e, { store: save = true, label = '' } = {}) {
     fixFrames();
     F.edit = e && !identity(e, F.path, srcEnd()) ? e : null;
     F.ps = F.edit ? parts(F.edit, F.path, F.clock) : null;
-    if (F.ps && !F.ps.length) F.ps = []; // everything removed: nothing plays (the editor still has it)
+    if (F.ps && !F.ps.length) F.ps = []; // everything removed: nothing plays (the stored cut still has it)
     sendCuts();
     if (save && F.path) storeEdit(F.path, F.edit || C()?.fromSource(F.path, srcEnd()), label).catch((err) => toast(err.message, { type: 'error' }));
     paintChrome();
@@ -380,12 +380,21 @@ const ThreeFrames = (() => {
     toast(`f${r.frame} pinned to the board`, { timeout: 1800 });
     return it || null;
   }
-  // the cut rendered as a new video by the editor (ffmpeg, frame-exact), next to the footage
+  // the cut rendered as a new video (ffmpeg, frame-exact, CutData's filter graph) next to the footage, in the render queue
   async function renderCut() {
-    if (!F.path || typeof VideoCut === 'undefined') throw new Error('Load a video first');
-    await toEditor();
-    for (let i = 0; i < 60 && !(VideoCut.active && VideoCut.path === F.path); i += 1) await wait(100);
-    return VideoCut.exportCut({});
+    if (!F.path) throw new Error('Load a video first');
+    const e = F.edit || CutData.fromSource(F.path, srcEnd());
+    const pr = await window.hub.video.probe(F.path, { ffmpeg: H.settings().ffmpegPath || undefined }).catch(() => null);
+    const v = F.sampler?.v;
+    const src = { w: pr?.w || v?.videoWidth || 1920, h: pr?.h || v?.videoHeight || 1080, fps: pr?.fps || F.clock?.fps || 30, audio: pr ? Boolean(pr.audio) : true };
+    const g = CutData.ffmpegArgs(e, { [F.path]: src }, src, {});
+    const stem = `${F.path.replace(/\.[^.\\/]+$/, '')} lab cut`;
+    let out = `${stem}.${g.ext || 'mp4'}`;
+    for (let i = 2; i < 100 && await window.hub.fs.stat(out).catch(() => null); i += 1) out = `${stem} (${i}).${g.ext || 'mp4'}`;
+    await window.Lazy?.load?.('renders');
+    if (typeof Renders === 'undefined') throw new Error('The render queue isn\'t available');
+    await Renders.transcode({ id: `labcut${Date.now().toString(36)}`, input: F.path, output: out, args: [...g.args, 'OUTPUT'], duration: g.duration }, undefined, { title: `Lab cut → ${base(out)}` });
+    return { output: out };
   }
   // ---------- motion design on the cut ----------
   // keyframes on every part's first frame: a setting of a layer alternating between values (A, B, A…) or one value
@@ -662,7 +671,7 @@ const ThreeFrames = (() => {
     ['[ / ]', 'Loop start / end on this frame'],
     ['Space', 'Play / pause (pauses on a whole frame)'],
     ['Ctrl+Z', 'Undo a cut too (with the grid and marker changes)'],
-    ['Right-click the time', 'The frames menu: go to, step, cuts, reading, editor'],
+    ['Right-click the time', 'The frames menu: go to, step, cuts, reading, sequence'],
   ];
 
   // ---------- drawing on the timeline ----------
@@ -874,10 +883,9 @@ const ThreeFrames = (() => {
         { label: 'Check the frame on screen', hint: 'requestVideoFrameCallback', action: () => checkFrame().then((r) => toast(r.text, { timeout: 4000 })) },
       ] },
       { label: 'Record the sketch over the cut', hint: 'plays every part once, from the top', action: () => { go(0); P().record('track'); } },
-      F.ps ? { label: 'Render the cut as a video', hint: 'the editor\'s ffmpeg render, next to the footage', action: () => renderCut().catch((e) => toast(e.message, { type: 'error' })), more: true } : null,
-      { label: 'Editor', items: [
-        { label: 'Edit it in the video editor', hint: 'the same cut, frame by frame', action: () => toEditor() },
-        { label: 'As a new sequence…', action: () => toSequence() },
+      F.ps ? { label: 'Render the cut as a video', hint: 'ffmpeg, next to the footage', action: () => renderCut().catch((e) => toast(e.message, { type: 'error' })), more: true } : null,
+      { label: 'Sequence', items: [
+        { label: 'As a new Lab sequence…', action: () => toSequence() },
         { label: 'Take a sequence\'s cut back…', action: () => fromSequencePick() },
       ] },
       { label: 'Time shows', items: [['tc', 'Timecode · frame'], ['frames', 'Frames'], ['seconds', 'Seconds · frame']].map(([id, l]) => ({ label: l, checked: display() === id, action: () => { F.display = id; store.set('three.frameDisplay', id); P().redraw?.(); } })) },
@@ -970,35 +978,30 @@ const ThreeFrames = (() => {
     return sheet;
   }
 
-  // ---------- the editor: the same cut, open there; sequences in and out ----------
-  async function toEditor() {
-    if (!F.path || typeof VideoCut === 'undefined') return false;
-    if (P().playing) P().toggle(false);
-    return VideoCut.receive(F.path, { as: 'edit' });
-  }
+  // ---------- sequences in and out: the cut onto a new Lab sequence, a sequence's cut back here ----------
   async function toSequence(name) {
-    if (!F.path || typeof VideoCut === 'undefined') return null;
+    if (!F.path || typeof CutStore === 'undefined') return null;
     name ||= await Modal.prompt('Sequence name', { value: `Lab · ${base(F.path).replace(/\.\w+$/, '')}` });
     if (!name) return null;
     const e = JSON.parse(JSON.stringify(F.edit || CutData.fromSource(F.path, srcEnd())));
-    await Review.ensureMounted?.(); activate('tool:ae');
-    const key = await VideoCut.newSequence(name);
+    if (P().playing) P().toggle(false);
+    const key = await CutStore.newSequence(name);
     const v = F.sampler?.v;
-    const seq = CutData.setSeq ? CutData.setSeq({ ...e, markers: (P().cues || []).map((c) => ({ id: `m${Math.random().toString(36).slice(2, 8)}`, t: CutData.programTimes(e, F.path, c.time)[0] ?? c.time, label: c.name })).filter((m) => Number.isFinite(m.t)) }, { w: v?.videoWidth || 1080, h: v?.videoHeight || 1920, fps: Math.round(F.clock.fps * 1000) / 1000 }) : e;
-    VideoCut.commit(seq, 'From the Lab');
+    const seq = CutData.setSeq ? CutData.setSeq({ ...e, markers: (P().cues || []).map((c) => ({ id: `m${Math.random().toString(36).slice(2, 8)}`, t: CutData.programTimes(e, F.path, c.time)[0] ?? c.time, label: c.name })).filter((m) => Number.isFinite(m.t)) }, { w: v?.videoWidth || 1080, h: v?.videoHeight || 1920, fps: Math.round(F.clock.fps * 1000) / 1000, lab: true, name: key.slice(4) }) : e;
+    await CutStore.storeEdit(key, seq, 'From the Lab');
+    if (typeof ThreeSeq !== 'undefined') await ThreeSeq.open(key).catch(() => {});
     return key;
   }
-  async function sequenceNames() { return typeof VideoCut !== 'undefined' && VideoCut.sequences ? VideoCut.sequences().map((s) => s.name) : []; }
+  async function sequenceNames() { if (typeof CutStore === 'undefined') return []; await CutStore.load(); return CutStore.sequences().map((s) => s.name); }
   async function fromSequencePick() {
     const names = await sequenceNames();
-    if (!names.length) { toast('No sequences yet (⋯ › Editor › As a new sequence)', { timeout: 2200 }); return; }
+    if (!names.length) { toast('No sequences yet (⋯ › Sequence › As a new Lab sequence)', { timeout: 2200 }); return; }
     const r = el('div');
     showMenu(innerWidth / 2 - 120, innerHeight / 3, ['Take the cut back from', ...names.map((n) => ({ label: n, action: () => fromSequence(n) }))]);
     return r;
   }
   // A sequence's clips of this footage become the Lab's cut (other clips stay in the sequence)
   async function fromSequence(name) {
-    if (typeof VideoCut === 'undefined') throw new Error('The editor isn\'t loaded');
     const key = String(name).startsWith('seq:') ? name : `seq:${name}`;
     const e = await editOf(key);
     if (!e) throw new Error(`No sequence "${name}"`);
@@ -1194,7 +1197,7 @@ const ThreeFrames = (() => {
       else if (act === 'keep') ops.keepOnly(frameTime(a.from ?? a.frame), frameTime(a.to));
       else if (act === 'cut_scenes') await cutAtScenes(a.value || 'normal');
       else if (act === 'cue') P().editCues({ add: [{ time: t, name: a.value || undefined }] });
-      else if (act === 'editor') { await toEditor(); return { ok: true, value: { opened: 'Video Review editor, the same cut' } }; }
+      else if (act === 'sequence' || act === 'editor') { const key = await toSequence(a.value || `Lab · ${base(F.path).replace(/\.\w+$/, '')}`); return { ok: true, value: { sequence: key ? key.slice(4) : null } }; }
       else if (act === 'in' || act === 'out') ops.edge(act, t);
       else if (act === 'roll') ops.roll(Math.round(Number(a.value) || 1), t);
       else if (act === 'repeat') ops.repeat(t);
@@ -1207,7 +1210,7 @@ const ThreeFrames = (() => {
       else if (act === 'palette') { if (a.frame != null || a.time != null) go(frameAt(F.clock, t)); await settle(); return { ok: true, value: { palette: await paletteHere(), frame: frameNow() } }; }
       else if (act === 'zoom') return { ok: true, value: { zoom: zoom(a.value || 'second') } };
       else if (act === 'storyboard') { const r = await storyboard(); return { ok: true, value: { frames: r.frames }, ...(r.path ? { images: [{ data: await window.hub.fs.read(r.path, { encoding: 'base64' }), mime: 'image/jpeg' }] } : {}) }; }
-      else return { ok: false, error: 'action: info, cuts, split, delete, restore, speed, hold, keep, clear, in, out, roll, repeat, first, last, mute, cut_scenes, cut_markers, cue, looks, key_cuts, layer_part, palette, zoom, sheet, scenes, motion, pacing, match, compare, storyboard, editor' };
+      else return { ok: false, error: 'action: info, cuts, split, delete, restore, speed, hold, keep, clear, in, out, roll, repeat, first, last, mute, cut_scenes, cut_markers, cue, looks, key_cuts, layer_part, palette, zoom, sheet, scenes, motion, pacing, match, compare, storyboard, sequence' };
       return { ok: true, value: { frame: frameAt(F.clock, t), parts: describe() } };
     } catch (err) { return { ok: false, error: err.message }; }
   }
@@ -1216,13 +1219,12 @@ const ThreeFrames = (() => {
   function attach({ player, send, sketchId }) {
     F.player = player; F.send = send; F.ctx = { sketchId };
     hookPlayer(player);
-    if (typeof VideoCut !== 'undefined') VideoCut.on?.('change', ({ path, from } = {}) => { if (from !== 'lab' && path === F.path) loadEdit(); });
     if (typeof Keys !== 'undefined') Keys.add(KEY_LIST.map(([k, what]) => ({ area: 'Lab timeline', keys: k, what, when: () => on() })));
     if (player.loaded && player.isVideo) onLoad({ path: player.path, video: true });
     return api;
   }
   const api = {
-    attach, handle, status, refMenu, refVideos, findRef, pacingOf, matchPacing, motionToSlider, readFootage, readFrame, checkFrame, fromSequence, toSequence, toEditor, sequenceNames,
+    attach, handle, status, refMenu, refVideos, findRef, pacingOf, matchPacing, motionToSlider, readFootage, readFrame, checkFrame, fromSequence, toSequence, sequenceNames,
     step, go, shuttle, jumpPoint, ops, describe, setMode, cutLength, saveEdl, stillHere, storyboard, copyText, zoom, paletteHere, frameToBoard, renderCut, moveEdge,
     keyAtCuts, layerToPart, cutAtMarkers, looksPerPart, cutPacing, comparePacing, cuesAtCuts, cuesAtScenes, cutAtScenes, cutOnBeats, loopFrames, loopPart, menuItems, askGoto,
     get on() { return on(); }, get clock() { return F.clock; }, get parts() { return F.ps ? F.ps.map((p) => ({ ...p })) : null; }, get frame() { return frameNow(); }, get presented() { return F.pres; },

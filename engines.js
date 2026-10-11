@@ -137,7 +137,6 @@ const FILE_TOOLS = ['Read', 'Edit', 'Write', 'Glob', 'Grep'];
 // with --mcp-config, Codex (Astra) through "-c mcp_servers.<name>…", so a director can run on either engine.
 const HUB_TOOLSETS = {
   gameTools: { server: 'forgeheart', script: 'forge-game-mcp.js' },
-  videoTools: { server: 'video', script: 'video-mcp.js' },
   threeTools: { server: 'three', script: 'three-mcp.js' },
   // Ask the user questions in the chat, get a second opinion from the other engine. On for every Claude agent
   // unless switched off; opt-in for Astra (it adds tool definitions to every Codex request).
@@ -197,10 +196,10 @@ function codexMcpArgs(agent) {
       '-c', `${p}.args=[${tomlStr(path.join(__dirname, 'mcp', script))}]`,
       '-c', `${p}.env={ ${Object.entries(hubToolEnv(agent)).map(([k, v]) => `${k}=${tomlStr(String(v))}`).join(', ')} }`,
       // a question to the user (chat_ask) or a render can take a long time
-      '-c', `${p}.tool_timeout_sec=${key === 'videoTools' || key === 'chatTools' || key === 'captureTools' || key === 'adobeTools' || key === 'deployTools' || key === 'appsTools' ? 2700 : 300}`,
+      '-c', `${p}.tool_timeout_sec=${key === 'chatTools' || key === 'captureTools' || key === 'adobeTools' || key === 'deployTools' || key === 'appsTools' ? 2700 : 300}`,
       '-c', `${p}.startup_timeout_sec=30`,
       // Hearth's own tools are pre-approved: `codex exec` can't show an approval prompt, so newer Codex versions
-      // cancelled every Lab / video / chat tool call ("Lab access was blocked"). Older versions ignore the key.
+      // cancelled every Lab / chat tool call ("Lab access was blocked"). Older versions ignore the key.
       '-c', `${p}.default_tools_approval_mode="approve"`,
     );
   }
@@ -297,15 +296,6 @@ function buildPrompt(agent) {
     parts.push(toolGuide('gameTools'));
   }
   const sets = hubToolsets(agent);
-  if (sets.includes('videoTools')) {
-    parts.push('You are the user\'s video director. The user does not edit in After Effects themselves: scripts build and render the videos, and the user steers the look. '
-      + 'Video Review is open right next to this chat. Look at renders yourself with video_contact_sheet (overview) and video_frame (exact moments) before giving opinions, and speak visually '
-      + '(timing, composition, color, motion, readability) with timecodes. Turn the user\'s feedback and their timeline notes (video_status) into concrete changes. '
-      + (folder ? 'You can read and edit files: find the script or project that produced a render (look in and around the render\'s folder for .jsx, .py, .js, .aep, render logs), change it, then re-render with ae_render or run AE scripts with ae_run_script, and check the new render. '
-        : 'You can re-render with ae_render and run AE scripts with ae_run_script; to edit script files the user can give you File access in your settings. ')
-      + 'Keep replies short and concrete.');
-    // the app map: its hearth_help tool says what it is (the Three Director gets the map line with its guide below)
-  }
   if (sets.includes('chatTools')) {
     // directors get the chat tools' when-to-use guide; plain chats only the <suggest> convention
     if (agent.dock || sets.filter((k) => !['boardTools', 'captureTools', 'adobeTools', 'deployTools', 'appsTools'].includes(k)).length > 1) parts.push(toolGuide('chatTools'));
@@ -721,17 +711,14 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
   // A per-run persona replaces the agent's own instructions; "lean" runs (collaborations, quick asks) drop
   // the hub tool sets and file tools so they cost no more than a plain chat turn.
   if (options.persona) agent = { ...agent, systemPrompt: String(options.persona).slice(0, 4000) };
-  if (options.lean) agent = { ...agent, chatTools: false, threeTools: false, videoTools: false, gameTools: false, boardTools: false, captureTools: false, adobeTools: false, deployTools: false, appsTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false };
+  if (options.lean) agent = { ...agent, chatTools: false, threeTools: false, gameTools: false, boardTools: false, captureTools: false, adobeTools: false, deployTools: false, appsTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false };
   // (round 14) the chat's own file access (access.js); lean / hub-only runs never get it
   else if (options.access && typeof options.access === 'object' && !options.hubOnly) agent = { ...agent, access: { level: String(options.access.level || 'off'), folders: options.access.folders }, accessChatId: chatId };
-  // "hubOnly" runs (a jam's build turns, jam.js) keep the agent's tool sets (Lab, video…) and drop the rest.
+  // "hubOnly" runs (a jam's build turns, jam.js) keep the agent's tool sets (Lab, board…) and drop the rest.
   if (options.hubOnly) agent = { ...agent, chatTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false };
   // asDirector: 'three' (a jam's build turn on an agent that isn't a Lab director, e.g. your Astra): this one turn gets
   // the Lab's tools, Codex through its MCP overrides
   if (options.asDirector === 'three') agent = { ...agent, threeTools: true, hubTools: agent.engine === 'codex' ? true : agent.hubTools, dock: agent.dock || 'three' };
-  // asDirector: 'video' (a video project's director pass, intro.js, on an agent that isn't the Video Director, e.g. Astra):
-  // this one run gets the editor and the capture tools
-  if (options.asDirector === 'video') agent = { ...agent, videoTools: true, captureTools: true, hubTools: agent.engine === 'codex' ? true : agent.hubTools };
   // a chat that turned on /capture-tools gets the capture tool set for its runs (not lean ones)
   if (options.captureTools && !options.lean) agent = { ...agent, captureTools: true };
   if (chatId && !String(chatId).startsWith('once-') && hubToolsets(agent).some((k) => k !== 'chatTools')) agent = { ...agent, hubChatId: chatId };

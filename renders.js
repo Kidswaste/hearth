@@ -67,6 +67,14 @@ const Renders = (() => {
     if (!paintT) paintT = setTimeout(() => { paintT = 0; paint(); }, what === 'progress' ? 500 : 60);
   }
   const onChange = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
+  // a job's end (round 17: what Video Review's startJob gave its callers): { code: 0, output } when it's done,
+  // { code: 1, error } when it failed or was cancelled
+  function whenDone(id) {
+    const end = (j) => (j.status === 'done' ? { code: 0, output: j.output } : { code: 1, error: j.error?.reason || j.status || 'cancelled' });
+    const j0 = find(id) || history.find((x) => x.id === id);
+    if (j0 && !live(j0)) return Promise.resolve(end(j0));
+    return new Promise((resolve) => { const off = onChange((j) => { if (j.id === id && !live(j)) { off(); resolve(end(j)); } }); });
+  }
 
   // the progress bar of a job (progress.js): ffmpeg jobs use the bar their caller made (job:<id>), or one of their own
   function bar(j, o = {}) {
@@ -662,7 +670,7 @@ const Renders = (() => {
   return {
     transcode, track, enqueue, enqueueSeq, start: pump, pause, resume, cancel, retry, trash, forget, clear, open, close, panel, go, sources,
     owns: (id) => Boolean(find(id) && !find(id).external), list: () => jobs.slice(), history: () => history.slice(), get: (id) => find(id) || history.find((x) => x.id === id) || null,
-    words, actionsFor, menuFor, onChange, limits, ready, core: R, get platform() { return PLAT; }, _test: { onJob, paint, unseen: () => unseen },
+    words, actionsFor, menuFor, onChange, whenDone, limits, ready, core: R, get platform() { return PLAT; }, _test: { onJob, paint, unseen: () => unseen },
   };
 })();
 window.Renders = Renders;

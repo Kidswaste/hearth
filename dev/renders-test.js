@@ -9,7 +9,7 @@ const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const R = require(path.join(__dirname, '..', 'renders-core.js'));
-const V = require(path.join(__dirname, '..', 'tools', 'video-data.js'));
+const V = require(path.join(__dirname, '..', 'tools', 'export-data.js'));
 let n = 0; let failed = 0;
 const ok = async (name, fn) => { n += 1; try { await fn(); console.log(`ok ${n} ${name}`); } catch (err) { failed += 1; console.log(`FAIL ${n} ${name}\n  ${err.stack.split('\n').slice(0, 3).join('\n  ')}`); } };
 const has = (bin) => { try { execFileSync(bin, ['-version'], { stdio: 'ignore' }); return true; } catch { return false; } };

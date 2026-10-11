@@ -1,12 +1,11 @@
-// The Lab's Sequence (tools/three-seq.js): a video timeline built right in the Three.js Lab. The sequence IS an
-// editor edit (CutData, tools/cut-data.js), stored with the editor's own sequences (kv video-cuts, key "seq:<name>",
-// seq.lab = true), so Video Review's editor opens it for finishing and the Lab takes it back: one model, no copy.
+// The Lab's Sequence (tools/three-seq.js): a video timeline built right in the Three.js Lab. The sequence is a
+// CutData edit (tools/cut-data.js), stored in kv video-cuts (key "seq:<name>", seq.lab = true; tools/cut-store.js).
 //   main track (clips)  scenes { kind: 'scene', sketch, name, dur, in (the scene's own time at the clip's start),
 //                       look (a saved slider look), vibe { palette } (a mood-board vibe), poster } · footage (CutData
 //                       video clips, the labframes cut model) · title cards · gaps; transitions = clip.trans (the
-//                       editor's presets, overlapping the cut like xfade)
-//   tracks              "Titles" (text: the editor's title items, styles + animations) · "Overlays" (video: Lab
-//                       layers / filters spanning a range { kind: 'layer', code, name }, or the editor's overlays) ·
+//                       EditFX presets, overlapping the cut like xfade)
+//   tracks              "Titles" (text: title items, styles + animations) · "Overlays" (video: Lab
+//                       layers / filters spanning a range { kind: 'layer', code, name }, or video overlays) ·
 //                       "Sound" (audio: the song { song: true } and audio clips)
 // No DOM here: loads in Node for tests (module.exports at the bottom). Every operation returns a new edit.
 const ThreeSeqData = (() => {
