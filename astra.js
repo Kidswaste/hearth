@@ -691,6 +691,11 @@ function toggleFold(hostId, m) {
   // First time an Astra chat is empty: is Codex there and signed in? (cached for 10 minutes)
   async function checkOnboarding(node) {
     try {
+      // (round 19, splash) not while the first screen builds: the doctor runs Codex / Claude to read their versions
+      if (!doctorCache && !performance.getEntriesByName('hearth:ready').length) {
+        await Promise.race([new Promise((r) => addEventListener('hearth:ready', r, { once: true })), new Promise((r) => setTimeout(r, 6000))]);
+        await new Promise((r) => (window.requestIdleCallback ? requestIdleCallback(r, { timeout: 2000 }) : setTimeout(r, 300)));
+      }
       if (!doctorCache || Date.now() - doctorCache.at > 600000) doctorCache = { at: Date.now(), r: await window.hub.engineDoctor() };
       const c = doctorCache.r.codex;
       // keep the app's engine status in step (it is read once at start; Settings → Engines can change it)

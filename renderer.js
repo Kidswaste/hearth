@@ -65,7 +65,19 @@ function applyTheme(themeCss) {
   }
   document.documentElement.dataset.scheme = H.config.theme?.scheme || 'dark';
   document.documentElement.dataset.skin = H.config.theme?.skin || '';
+  skinSheet(H.config.theme?.skin || '');
   $('user-theme').textContent = themeCss;
+}
+// (round 19, splash) the Swirl look's stylesheet loads when that look is on, instead of being parsed at every start;
+// it goes back to its old place (after forge-skin.css), and the loading screen waits for it (no unstyled flash)
+function skinSheet(skin) {
+  if (!/\bswirl\b/.test(skin) || document.querySelector('link[href="swirl-skin.css"]')) return;
+  const l = document.createElement('link');
+  l.rel = 'stylesheet'; l.href = 'swirl-skin.css';
+  const loaded = new Promise((res) => { l.onload = l.onerror = () => { l.onload = l.onerror = null; res(); }; });
+  window.Splash?.track('look', loaded);
+  const forge = document.querySelector('link[href="forge-skin.css"]');
+  if (forge) forge.after(l); else $('user-theme').before(l);
 }
 
 function iconFor(item) {

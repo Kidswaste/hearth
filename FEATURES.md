@@ -658,3 +658,8 @@ One searchable **FX picker** in the Three.js Lab (**X**, the Layers **＋ Layer*
 
 ## Reach (round 19): open what a chat made, on either computer
 The chats' workspace syncs (no dependencies, caches or huge files); a Mac path on Windows (and the reverse) resolves to this computer's data folder in replies, links, access folders and tool calls; a page a reply makes shows as a card (▶ Open · Preview in a sandboxed window · Reveal), a file still on its way says so and opens up when it arrives; both engines have `chat_open` (Astra: that tool alone); `/open-file`, `/open-tool`. Sync conflicts name both computers, when each changed, what it is and the difference, with Keep theirs / Keep this one / Keep both / Merge, a summary before Apply, and undo from Deleted files; the big-change guard lists files by name (`/sync review`). See docs/upgrades/reach.md.
+## Loading screen + lighter start (round 19, splash, 26 upgrades: docs/upgrades/splash.md)
+- ✓ Hearth opens on a loading screen in its own look (mark, bar, status), drawn in the first frame; no white flash; the bar follows real steps and fades as soon as the first screen is usable; a hairline shows features still arriving.
+- ✓ A slow start says what it waits for (sync pass, engine check, a read…), offers Open anyway; reduce motion respected; `/startup` shows every step of the last start.
+- ✓ Cloud sync no longer holds the window back; tray / hotkey / rarely used modules after the window; no git fetch or engine doctor while the first screen builds; 2 stylesheets off the start.
+- ○ Measured headless (`dev/coldstart-report.js`: first frame on screen 815 → 467 ms); the Mac's ready-to-show timing is not run here.

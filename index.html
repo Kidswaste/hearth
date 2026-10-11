@@ -5,6 +5,31 @@
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob: file:; media-src 'self' file: blob:; frame-src 'self' file:">
   <title>Hearth</title>
+  <!-- (round 19) the loading screen: inline so it paints in the first frame, before any file loads (splash.js runs it) -->
+  <style id="splash-css">
+    html { background: #08090c; }
+    #splash { position: fixed; inset: 0; z-index: 2147483000; display: grid; place-items: center; background: radial-gradient(ellipse 70% 60% at 50% 44%, #18120f 0%, #0c0d0f 58%, #08090c 100%); color: #ece3d8; font: 13px/1.45 system-ui, -apple-system, 'Segoe UI', sans-serif; transition: opacity .18s ease-out; user-select: none; cursor: default; }
+    #splash.out { opacity: 0; pointer-events: none; }
+    #splash .sp-box { display: grid; justify-items: center; gap: 12px; margin-top: -4vh; }
+    #splash .sp-mark { position: relative; width: 84px; height: 84px; }
+    #splash .sp-mark svg { position: relative; width: 100%; height: 100%; }
+    #splash .sp-glow { position: absolute; inset: -38px; border-radius: 50%; background: radial-gradient(circle, #ff8c4230 0%, #ff5c5c10 45%, transparent 70%); }
+    #splash.slow .sp-glow { animation: sp-breathe 2.4s ease-in-out infinite; }
+    @keyframes sp-breathe { 0%, 100% { opacity: .55; transform: scale(.94); } 50% { opacity: 1; transform: scale(1.04); } }
+    #splash .sp-name { margin-top: 4px; font-size: 12px; font-weight: 600; letter-spacing: .34em; text-indent: .34em; text-transform: uppercase; color: #c9b79c; }
+    #splash .sp-bar { width: 188px; height: 3px; background: #1c1d20; overflow: hidden; clip-path: polygon(3px 0, 100% 0, 100% 100%, 0 100%, 0 3px); }
+    #splash .sp-fill, #boot-line { height: 100%; background: linear-gradient(90deg, #ff5c5c, #ff8c42 45%, #ffc23d); transform-origin: 0 50%; transform: scaleX(.1); }
+    #splash .sp-fill { transition: transform .25s cubic-bezier(.2, .7, .2, 1); }
+    #splash .sp-step { min-height: 1.45em; font-size: 12px; color: #9a9187; }
+    #splash .sp-slow { max-width: 360px; min-height: 2.9em; text-align: center; font-size: 12px; color: #ffc23d; opacity: 0; transition: opacity .3s; }
+    #splash.slow .sp-slow { opacity: 1; }
+    #splash.failed .sp-slow { color: #ff8a80; }
+    #splash .sp-go { font: inherit; font-size: 12px; color: #ece3d8; background: #ffffff0f; border: 1px solid #443e35; border-radius: 4px; padding: 4px 14px; cursor: pointer; }
+    #splash .sp-go:hover { border-color: #ffc23d; }
+    #boot-line { position: fixed; top: 0; left: 0; right: 0; height: 2px; z-index: 2147483000; pointer-events: none; transform: scaleX(.05); opacity: .85; }
+    #boot-line.out { opacity: 0; transition: opacity .3s; }
+    @media (prefers-reduced-motion: reduce) { #splash, #splash .sp-fill, #splash .sp-slow, #boot-line.out { transition: none; } #splash.slow .sp-glow { animation: none; } }
+  </style>
   <link rel="stylesheet" href="app.css">
   <link rel="stylesheet" href="features.css">
   <link rel="stylesheet" href="meter.css">
@@ -12,7 +37,6 @@
   <link rel="stylesheet" href="addons.css">
   <link rel="stylesheet" href="astra.css">
   <link rel="stylesheet" href="forge-skin.css">
-  <link rel="stylesheet" href="swirl-skin.css">
   <link rel="stylesheet" href="director.css">
   <link rel="stylesheet" href="jam.css">
   <link rel="stylesheet" href="cmdbar.css">
@@ -22,7 +46,6 @@
   <link rel="stylesheet" href="comp.css">
   <link rel="stylesheet" href="simplify.css">
   <link rel="stylesheet" href="assist.css">
-  <link rel="stylesheet" href="capture.css">
   <link rel="stylesheet" href="polish8.css">
   <link rel="stylesheet" href="chatcore.css">
   <link rel="stylesheet" href="flows.css">
@@ -35,6 +58,30 @@
   <style id="user-theme"></style>
 </head>
 <body>
+  <div id="splash" role="progressbar" aria-label="Hearth is starting" aria-valuemin="0" aria-valuemax="100" aria-valuenow="10">
+    <div class="sp-box">
+      <div class="sp-mark"><div class="sp-glow"></div>
+        <!-- the app icon (appshell.js draws the same one), in solid layers: SVG gradients cost a slow first frame on software GL -->
+        <svg viewBox="0 0 256 256" aria-hidden="true">
+          <rect width="256" height="256" rx="58" fill="#14181b"/>
+          <circle cx="128" cy="150" r="96" fill="#2a1a12"/><circle cx="128" cy="156" r="66" fill="#3a2215"/>
+          <g fill="none" stroke-width="5" opacity=".9"><rect x="4.5" y="4.5" width="247" height="247" rx="54" pathLength="100" stroke="#48ddff" stroke-dasharray="20 80" stroke-dashoffset="0"/><rect x="4.5" y="4.5" width="247" height="247" rx="54" pathLength="100" stroke="#bd8bff" stroke-dasharray="20 80" stroke-dashoffset="-20"/><rect x="4.5" y="4.5" width="247" height="247" rx="54" pathLength="100" stroke="#ff6b9d" stroke-dasharray="20 80" stroke-dashoffset="-40"/><rect x="4.5" y="4.5" width="247" height="247" rx="54" pathLength="100" stroke="#ff8c42" stroke-dasharray="20 80" stroke-dashoffset="-60"/><rect x="4.5" y="4.5" width="247" height="247" rx="54" pathLength="100" stroke="#ffd75e" stroke-dasharray="20 80" stroke-dashoffset="-80"/></g>
+          <g transform="translate(26 18) scale(8.5)">
+            <path d="M12 21c-3.9 0-6.5-2.7-6.5-6.1 0-3.4 2.6-5.3 3.6-8.4.6 1.8 1.7 2.7 2.7 3.2-.1-2.6.8-4.7 2.7-6.7.2 3.3 4 5.9 4 10 0 4.6-2.7 8-6.5 8z" fill="#ff5c5c"/>
+            <path d="M12 21c-3.9 0-6.5-2.7-6.5-6.1 0-3.4 2.6-5.3 3.6-8.4.6 1.8 1.7 2.7 2.7 3.2-.1-2.6.8-4.7 2.7-6.7.2 3.3 4 5.9 4 10 0 4.6-2.7 8-6.5 8z" fill="#ff8c42" transform="translate(12 21) scale(.8) translate(-12 -21)"/>
+            <path d="M12 21c-3.9 0-6.5-2.7-6.5-6.1 0-3.4 2.6-5.3 3.6-8.4.6 1.8 1.7 2.7 2.7 3.2-.1-2.6.8-4.7 2.7-6.7.2 3.3 4 5.9 4 10 0 4.6-2.7 8-6.5 8z" fill="#ffc23d" transform="translate(12 21) scale(.58) translate(-12 -21)"/>
+            <path d="M12 21c-1.7 0-2.9-1.2-2.9-2.8 0-1.8 1.6-2.6 2.2-4.3 1.6 1.2 3.6 2.2 3.6 4.4 0 1.5-1.2 2.7-2.9 2.7z" fill="#fff1c9"/>
+          </g>
+          <circle cx="94" cy="222" r="8" fill="#48ddff"/><circle cx="128" cy="228" r="8" fill="#bd8bff"/><circle cx="162" cy="222" r="8" fill="#7cd992"/>
+        </svg>
+      </div>
+      <div class="sp-name">Hearth</div>
+      <div class="sp-bar"><div class="sp-fill"></div></div>
+      <div class="sp-step">Starting…</div>
+      <div class="sp-slow" role="status"></div>
+      <button type="button" class="sp-go" hidden>Open anyway</button>
+    </div>
+  </div>
   <div id="app">
     <nav id="rail">
       <div id="agent-buttons"></div>
@@ -179,6 +226,7 @@
     </form>
   </dialog>
 
+  <script defer src="splash.js"></script>
   <script defer src="ui.js"></script>
   <script defer src="icons.js"></script>
   <script defer src="keys.js"></script>

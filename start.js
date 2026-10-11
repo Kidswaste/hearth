@@ -48,13 +48,22 @@ window.hub.onShortcut(handleShortcut);
 window.hub.onConfigChanged(apply);
 
 (async () => {
+  // (round 19) the splash names what a slow start waits for (splash.js); the settings are asked for at the same time
+  const track = window.Splash ? Splash.track : (_what, p) => p;
+  const config = track('settings', window.hub.getConfig());
+  // where Claude Code / Codex are installed only shapes a new chat's hint: the first screen doesn't wait more than
+  // 0.4 s for it (unknown counts as found, as before the check); a late answer still lands in H.engineStatus
+  const engines = track('engines', window.hub.engineStatus().catch(() => ({})));
+  engines.then((st) => { H.engineStatus = st; });
   [H.chats, H.history, H.engineStatus] = await Promise.all([
-    window.hub.listChats(), window.hub.getHistory(), window.hub.engineStatus(),
+    track('chats', window.hub.listChats()), track('history', window.hub.getHistory()),
+    Promise.race([engines, new Promise((r) => setTimeout(() => r({}), 400))]),
   ]);
+  window.Splash?.step('chats');
   AppUI.init();
   Usage.init();
   Meter.init();
-  apply(await window.hub.getConfig());
+  apply(await config);
   performance.mark('hearth:ready'); // the first screen is up (dev/perf-report.js measures startup to here)
   dispatchEvent(new Event('hearth:ready')); // (round 16) lazy.js loads the deferred feature modules from here
 })();
