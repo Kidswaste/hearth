@@ -21,11 +21,12 @@ just doesn't read the first three any more. Your Lab sequences live in `video-cu
 | Chat commands / aliases | 988 / 340 | 805 / 255 | −183 / −85 |
 | Ctrl/⌘+K actions / keys-sheet lines | 1,272 / 509 | 1,079 / 425 | −193 / −84 |
 | Agent tools | video_* (13) + ae_* (2) | 0 | the `videoTools` MCP server is gone |
-| Startup: ready (first screen) | PERF_READY_BEFORE | PERF_READY_AFTER | PERF_READY_DELTA |
-| Startup: interactive | PERF_INT_BEFORE | PERF_INT_AFTER | PERF_INT_DELTA |
-| Startup: main-thread busy | PERF_BUSY_BEFORE | PERF_BUSY_AFTER | PERF_BUSY_DELTA |
+| Startup: ready (first screen) | 479 / 471 ms | 363 / 385 ms | **≈ −20 %** |
+| Startup: interactive | 483 / 482 ms | 363 / 385 ms | **≈ −22 %** |
+| Startup: main-thread busy | 825 / 915 ms | 783 / 771 ms | ≈ −11 % |
+| JS heap after GC / DOM nodes / listeners (once loaded) | 7.4 MB / 1,722 / 289 | 6.6 MB / 1,652 / 279 | −0.8 MB |
 
-(`node dev/perf-report.js --startup-only`, PERF_RUNS. The same machine also ran other agents' checks, so compare the
+(`node dev/perf-report.js --startup-only --no-stream`, two interleaved rounds of 5 reloads each, medians. The same machine also ran other agents' checks, so compare the
 ratios.)
 
 ## What was removed
@@ -105,7 +106,13 @@ ratios.)
   makes, scenes, clutter, declutter, declutter-count, polish8 (+ tour, tour2, smooth), speed, qa-stream, qa-sweep,
   qa-ui, perf, apps-discover, journey-upgrade, flows-video; unit tests cut-test, director-mcp-test, makes-test,
   flows-test, renders-test and apps-unit-test.
-- CHECKS_RESULT
+- Ran: lazy ✓, qa-commands ✓ (no duplicate commands), qa-mac ✓, renders ✓ (+ renders-seq, renders-test), the capture
+  group ✓ (capture-pack's "stalled encoder" timing step failed once on a busy machine, then passed), studio-recipes ✓,
+  apps-windows ✓, adobe-ui ✓, sequence-render ✓, chatcore ✓, chat-media ✓, and smoke runs with no page errors.
+  qa-keys: 118 keys pressed, 111 worked. "Ctrl+1 dead" fails the same way on the old build. "Lab · Shift+3 still
+  running after 15 s" is the harness's lost input ack the check already describes: Shift+3 by hand takes 8 ms, as
+  before. Unit: cut-test, director-mcp-test, makes-test, flows-test, sequence-test, adobe-test, apps-unit-test,
+  boot-test, cmdpage-test all pass.
 
 ## Risks
 - Video projects (`/intro`) were removed along with the editor they were built on. A chat's old project card shows as
