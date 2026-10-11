@@ -140,7 +140,7 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .body pre code { padding: 0; background: none; font-size: 13px; }
 .body pre .copy-code { position: absolute; top: 6px; right: 8px; }
 .body pre[data-lang]:not([data-lang=""])::before { content: attr(data-lang); position: absolute; top: 6px; right: 52px; font-size: 11px; color: var(--muted); }
-.body blockquote { margin: 0 0 10px; padding-left: 12px; border-left: 3px solid var(--line); color: var(--muted); }
+.body blockquote { margin: 0 0 10px; padding-left: 15px; color: var(--muted); font-style: italic; } /* (nobars) indented italic text, no side bar */
 .body table { border-collapse: collapse; margin: 0 0 12px; }
 .body th, .body td { border: 1px solid var(--line); padding: 5px 10px; text-align: left; }
 .body hr { border: 0; border-top: 1px solid var(--line); }

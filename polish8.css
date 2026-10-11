@@ -183,7 +183,7 @@ dialog.cap-view, dialog.cap-view::backdrop { backdrop-filter: none !important; -
 .cap-pick-tip { font-family: var(--font-head, system-ui); letter-spacing: .04em; border: 1px solid color-mix(in srgb, var(--fh-gold, #ffc233) 45%, transparent); }
 :root:not([data-motion=off]) .cap-pick-tip { animation: hx-pop .18s var(--ease-out, ease-out) both; }
 .cap-picker-row { border-radius: var(--r-sm, 6px); }
-.cap-picker-row:focus-visible { outline: none; box-shadow: inset 2px 0 0 var(--fh-gold, #ffc233); }
+.cap-picker-row:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--fh-gold, #ffc233); background: color-mix(in srgb, var(--fh-gold, #ffc233) 10%, transparent); }
 
 /* ====================================================================================================== */
 /* ---------- Forgeheart Classic keeps its colors; the shapes above apply to it too ---------- */

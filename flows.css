@@ -75,8 +75,10 @@
 .nv-row.out.fl-chosen .nv-lbl::before { content: '✓ '; }
 
 /* the live card in a chat */
-.msg.note.flow-card { border-left: 3px solid #ffd75e; }
-.msg.note.flow-card.flow-done { border-left-color: #7cd992; }
-.msg.note.flow-card.flow-hung, .msg.note.flow-card.flow-stopped { border-left-color: #ff8c42; }
-.msg.note.flow-card.flow-running, .msg.note.flow-card.flow-waiting-ai { border-left-color: var(--fh-ai, #bd8bff); }
+/* (nobars) its status is a small dot before the title, no side bar */
+.msg.note.flow-card { --flow-c: #ffd75e; }
+.msg.note.flow-card.flow-done { --flow-c: #7cd992; }
+.msg.note.flow-card.flow-hung, .msg.note.flow-card.flow-stopped { --flow-c: #ff8c42; }
+.msg.note.flow-card.flow-running, .msg.note.flow-card.flow-waiting-ai { --flow-c: var(--fh-ai, #bd8bff); }
+.msg.note.flow-card > .body > :first-child::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: var(--flow-c); box-shadow: 0 0 6px color-mix(in srgb, var(--flow-c) 60%, transparent); vertical-align: 1px; }
 @media (prefers-reduced-motion: reduce) { .fl-dialog * { transition: none !important; } }

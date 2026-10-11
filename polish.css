@@ -171,7 +171,7 @@ html[data-skin~="forge"] #menu button { padding: 6px 12px; }
 .style-chip, .queue-chip, .attach-chip { min-height: 24px; }
 :root[data-look~=v2] .style-chip { border-radius: var(--r-md); clip-path: var(--cut-sm); background: color-mix(in srgb, var(--fh-ai) 14%, var(--fh-iron-1)); border-color: color-mix(in srgb, var(--fh-ai) 40%, transparent); }
 /* pinned strip, callouts and marks follow the look */
-:root[data-look~=v2] .pinned-strip { border-radius: var(--r-md); background: var(--tx-noise), color-mix(in srgb, var(--fh-pop) 90%, transparent); backdrop-filter: var(--m-glass-filter); border-color: var(--line-hi); box-shadow: inset 2px 0 0 var(--fh-gold); }
+:root[data-look~=v2] .pinned-strip { border-radius: var(--r-md); background: var(--tx-noise), color-mix(in srgb, var(--fh-pop) 90%, transparent); backdrop-filter: var(--m-glass-filter); border-color: var(--line-hi); }
 :root[data-look~=v2] .body .callout { border-radius: var(--r-md); }
 :root[data-look~=v2] .body mark { background: color-mix(in srgb, var(--fh-gold) 30%, transparent); }
 :root[data-look~=v2] .code-unfold { border-radius: var(--r-md); clip-path: var(--cut-sm); background: var(--fh-iron-1); border-color: var(--line-hi); color: var(--fh-gold-text); }
@@ -342,7 +342,7 @@ html[data-skin~="forge"]:not([data-corners]) .tweaks .tw-act:last-child > button
 .three-preview.presenting .present-hint { white-space: nowrap; max-width: calc(100% - 32px); overflow: hidden; text-overflow: ellipsis; font-size: 12px; padding: 5px 14px; }
 :root[data-look~=v2] .three-preview.presenting :is(.present-hint, .present-hud) {
   border-radius: var(--r-md); clip-path: var(--cut-sm); color: var(--text); backdrop-filter: blur(10px) saturate(1.3);
-  background: var(--tx-noise), color-mix(in srgb, var(--fh-pop) 70%, transparent); box-shadow: var(--m-glass-edge), inset 2px 0 0 var(--fh-gold);
+  background: var(--tx-noise), color-mix(in srgb, var(--fh-pop) 70%, transparent); box-shadow: var(--m-glass-edge);
 }
 /* key-hint badges, compare wipe label and hover time read in the look's colors */
 .lab-keyhint { border-radius: var(--r-sm); color: var(--ui-gold); border-color: color-mix(in srgb, var(--ui-gold) 35%, transparent); }
@@ -388,7 +388,7 @@ html[data-skin~="forge"]:not([data-corners]) .tweaks .tw-act:last-child > button
 }
 :root[data-look~=v2] .nv-picker { border-top: 1px solid transparent; background: var(--hairline) top / 100% 1px no-repeat, var(--tx-noise), color-mix(in srgb, var(--fh-pop) 88%, transparent); }
 :root[data-look~=v2] .nv-picker-q { font-family: var(--font-head); }
-:root[data-look~=v2] .nv-menu-item:hover:not(:disabled) { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 16%, transparent), transparent); color: var(--fh-gold-text); box-shadow: inset 2px 0 0 var(--fh-gold); }
+:root[data-look~=v2] .nv-menu-item:hover:not(:disabled) { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 16%, transparent), transparent); color: var(--fh-gold-text); }
 :root[data-look~=v2] :is(.nv-picker-cat, .nv-menu-sec) { font-family: var(--mono); color: color-mix(in srgb, var(--fh-gold) 50%, var(--muted)); }
 :root[data-look~=v2] .nv-port { border-color: var(--fh-iron-3); }
 :root[data-look~=v2] .nv-toggle.on { color: var(--m-gold-ink); }
@@ -414,7 +414,7 @@ html[data-skin~="forge"]:not([data-corners]) .tweaks .tw-act:last-child > button
 /* the library's filter chips stay on one row and scroll sideways, instead of taking three rows */
 /* the After Effects lists: one item per line (short names used to pair up), the chosen one lit like every list */
 .lib-item { min-height: 28px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background var(--t-fast); }
-:root[data-look~=v2] .lib-item.on { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 18%, transparent), transparent); box-shadow: inset 2px 0 0 var(--fh-gold); color: var(--fh-strong); border-radius: var(--r-md); }
+:root[data-look~=v2] .lib-item.on { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 18%, transparent), transparent); color: var(--fh-strong); border-radius: var(--r-md); }
 :root[data-look~=v2] .lib-item:hover:not(.on) { color: var(--fh-gold-text); }
 :root[data-look~=v2] .lib-group { font-family: var(--mono); color: color-mix(in srgb, var(--fh-gold) 50%, var(--muted)); }
 /* the Toolkit drawer: a real header, glass edge, tabs that scroll without a scrollbar track */
@@ -462,7 +462,7 @@ html[data-skin~="forge"]:not([data-corners]) .tweaks .tw-act:last-child > button
 /* prompt library: the selected prompt is lit, category heads match the side list */
 .prompt-item { min-height: 28px; align-items: center; }
 :root[data-look~=v2] .prompt-item:hover { background: var(--hover); color: var(--fh-gold-text); }
-:root[data-look~=v2] .prompt-item.on { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 18%, transparent), transparent); box-shadow: inset 2px 0 0 var(--fh-gold); color: var(--fh-strong); }
+:root[data-look~=v2] .prompt-item.on { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 18%, transparent), transparent); color: var(--fh-strong); }
 :root[data-look~=v2] .prompts-dialog .lib-group { background: color-mix(in srgb, var(--fh-iron-2) 96%, transparent); color: color-mix(in srgb, var(--fh-gold) 55%, var(--muted)); }
 /* notes: chips and tags are plates, the pinned one gold */
 :root[data-look~=v2] :is(.notes-tag, .notes-link-chip) { border-radius: var(--r-md); clip-path: var(--cut-sm); }
@@ -473,7 +473,7 @@ html[data-skin~="forge"]:not([data-corners]) .tweaks .tw-act:last-child > button
 .notes-head :is(.ghost, input) { min-height: 28px; }
 /* memory: the cost pills are plates, the pinned fact has a gold edge */
 :root[data-look~=v2] .memory-cost-pill { border-radius: var(--r-md); clip-path: var(--cut-sm); background: linear-gradient(180deg, var(--fh-iron-1), var(--fh-iron-2)); box-shadow: var(--m-bevel), inset 0 0 0 1px var(--line); }
-:root[data-look~=v2] .memory-row.pinned .memory-text { box-shadow: inset 2px 0 0 var(--fh-gold); }
+:root[data-look~=v2] .memory-row.pinned .memory-text { border-color: color-mix(in srgb, var(--fh-gold) 50%, var(--line)); }
 .memory-row :is(.ghost, select) { min-height: 28px; }
 /* agent presets: icons are chrome-framed like the rail */
 :root[data-look~=v2] .preset-icon { border-radius: var(--r-md); clip-path: var(--cut-sm); box-shadow: inset 0 1px 0 #ffffff60, inset 0 -1px 0 #0005; }
@@ -569,7 +569,7 @@ dialog .ghost:not(.small) { min-height: 32px; }
 
 /* ---------- tooltips ---------- */
 /* the full text of something cut short sits right over it, in the same place */
-.juice-tip.full { border-left-width: 1px; max-width: min(560px, calc(100vw - 16px)); }
+.juice-tip.full { max-width: min(560px, calc(100vw - 16px)); }
 .j-die { display: inline-block; }
 
 /* ---------- lightweight rendering ----------
@@ -679,7 +679,7 @@ html[data-skin~="swirl"] :is(#rail, .agent-btn.active, .item.active, .primary, #
 #menu-fly button { border: 0; background: none; text-align: left; padding: 6px 10px; border-radius: 5px; cursor: pointer; display: flex; align-items: baseline; gap: 18px; white-space: nowrap; color: inherit; font: inherit; }
 #menu-fly button:hover { background: var(--hover); }
 :root[data-look~=v2] #menu-fly { background: var(--tx-noise), color-mix(in srgb, var(--fh-pop) 92%, transparent); border: 1px solid var(--line-hi); box-shadow: var(--m-glass-edge), 0 14px 40px #000a; }
-:root[data-look~=v2] #menu-fly button:hover { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 18%, transparent), transparent); color: var(--fh-gold-text); box-shadow: inset 2px 0 0 var(--fh-gold); }
+:root[data-look~=v2] #menu-fly button:hover { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 18%, transparent), transparent); color: var(--fh-gold-text); }
 html[data-skin~="forge"] #menu-fly { border-radius: 0; clip-path: var(--cut-sm); }
 :is(#menu, #menu-fly) .menu-key { margin-left: auto; font: 10.5px var(--mono, ui-monospace, monospace); letter-spacing: .04em; color: var(--muted); opacity: .85; }
 :is(#menu, #menu-fly) .menu-key.menu-sub { font-size: 13px; opacity: .7; letter-spacing: 0; }
@@ -695,7 +695,7 @@ html[data-skin~="forge"] #menu-fly { border-radius: 0; clip-path: var(--cut-sm);
   margin: 2px 2px 4px; padding: 5px 8px; font-size: 12px; border-radius: var(--r-sm, 4px); border: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 70%, transparent); color: inherit; flex: none; outline: none;
 }
 :is(#menu, .mb-menu.lab-pop) .menu-filter:focus { border-color: color-mix(in srgb, var(--ui-gold, var(--accent)) 60%, var(--line)); }
-:is(#menu, #menu-fly) button.kb-on, .mb-menu.lab-pop .menu-item.kb-on { background: color-mix(in srgb, var(--ui-gold, var(--accent)) 16%, transparent); box-shadow: inset 2px 0 0 var(--ui-gold, var(--accent)); }
+:is(#menu, #menu-fly) button.kb-on, .mb-menu.lab-pop .menu-item.kb-on { background: color-mix(in srgb, var(--ui-gold, var(--accent)) 18%, transparent); }
 .mb-menu.lab-pop .menu-item.has-sub .hint { opacity: 1; color: color-mix(in srgb, var(--ui-gold, var(--accent)) 60%, var(--muted)); }
 .mb-menu.lab-pop .menu-item.menu-back b { font-weight: 400; color: var(--muted); }
 /* submenus slide in place: forward from the right, back from the left */
@@ -752,7 +752,7 @@ html[data-skin~="forge"] #menu-fly { border-radius: 0; clip-path: var(--cut-sm);
 .keys-sheet .ks-group:first-child h4 { margin-top: 2px; }
 .keys-sheet .ks-group.away h4 { color: var(--muted); opacity: .75; }
 .keys-sheet .ks-line { display: grid; grid-template-columns: minmax(104px, max-content) 1fr; align-items: baseline; gap: 10px; width: 100%; padding: 4px 6px; border: 0; border-radius: var(--r-sm, 4px); background: none; color: inherit; text-align: left; font-size: 12.5px; cursor: pointer; }
-.keys-sheet .ks-line:hover, .keys-sheet .ks-line.kb-on { background: color-mix(in srgb, var(--ui-gold, var(--accent)) 11%, transparent); box-shadow: inset 2px 0 0 var(--ui-gold, var(--accent)); }
+.keys-sheet .ks-line:hover, .keys-sheet .ks-line.kb-on { background: color-mix(in srgb, var(--ui-gold, var(--accent)) 13%, transparent); }
 .keys-sheet .ks-line.elsewhere { opacity: .55; }
 .keys-sheet .ks-line.elsewhere:hover { opacity: 1; }
 .keys-sheet .ks-what { color: color-mix(in srgb, var(--text) 86%, var(--muted)); line-height: 1.35; }

@@ -364,8 +364,9 @@ select option { background: var(--sidebar); }
 .kanban-head { display: flex; justify-content: space-between; align-items: baseline; padding: 0 4px; }
 .kanban-add { font-size: 12.5px; }
 .kanban-cards { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
-.kanban-card { padding: 8px 10px; border-radius: 9px; background: var(--sidebar); border: 1px solid var(--line); border-left: 3px solid var(--line); cursor: grab; }
-.kanban-card.p1 { border-left-color: var(--ui-red); } .kanban-card.p3 { opacity: .8; }
+.kanban-card { padding: 8px 10px; border-radius: 9px; background: var(--sidebar); border: 1px solid var(--line); cursor: grab; }
+/* (nobars) priority 1: a small red dot before the title instead of a red side bar */
+.kanban-card.p1 .kanban-title::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--prio, var(--ui-red)); vertical-align: 1px; } .kanban-card.p3 { opacity: .8; }
 .kanban-card.dragging { opacity: .4; }
 .kanban-title { font-size: 13.5px; }
 .kanban-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; font-size: 11px; }
@@ -443,12 +444,13 @@ html[data-skin="forge"] .dock-toggle { font-family: var(--mono); text-transform:
 .tw-count { font-size: 11px; color: var(--muted); }
 .tw-tools { display: flex; align-items: center; gap: 8px; padding: 0 10px 8px; border-bottom: 1px solid var(--line); }
 .tw-search { flex: 1; min-width: 0; padding: 4px 8px; font-size: 12px; }
-.tw-notice { margin: 8px 10px 0; padding: 6px 8px; font-size: 12px; border-left: 2px solid var(--ui-red); background: color-mix(in srgb, var(--ui-red) 10%, transparent); }
+.tw-notice { margin: 8px 10px 0; padding: 6px 10px; font-size: 12px; border-radius: 6px; background: color-mix(in srgb, var(--ui-red) 10%, transparent); }
 .tw-body { flex: 1; overflow-y: auto; padding: 4px 10px 10px; }
 .tw-group { margin: 10px 0 4px; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
-.tw-row { padding: 6px 6px 7px; margin: 0 -6px; border-left: 2px solid transparent; }
+.tw-row { padding: 6px 6px 7px 8px; margin: 0 -6px; }
 .tw-row:hover { background: color-mix(in srgb, var(--fg, #eae0d5) 5%, transparent); }
-.tw-row.changed { border-left-color: var(--ui-gold); background: color-mix(in srgb, var(--ui-gold) 7%, transparent); }
+.tw-row.changed { background: color-mix(in srgb, var(--ui-gold) 7%, transparent); }
+.tw-row.changed .tw-name { color: var(--ui-gold); } /* (nobars) a changed slider: gold name + tint, no side bar */
 .tw-row.unused { opacity: .5; }
 .tw-top { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 12px; margin-bottom: 3px; }
 .tw-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -526,7 +528,7 @@ html[data-skin="forge"] .tweaks { border-radius: 0; background: linear-gradient(
 .tw-music-btn:hover { color: var(--ui-cyan); border-color: var(--line); }
 .tw-music-btn.on { color: var(--ui-cyan); border-color: color-mix(in srgb, var(--ui-cyan) 50%, transparent); }
 .tw-music { color: var(--ui-cyan); }
-.tw-bind { margin-top: 6px; padding: 6px; border-left: 2px solid var(--ui-cyan); background: color-mix(in srgb, var(--ui-cyan) 5%, transparent); }
+.tw-bind { margin-top: 6px; padding: 6px 6px 6px 8px; border-radius: 6px; background: color-mix(in srgb, var(--ui-cyan) 7%, transparent); }
 .tw-bind-bands { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 4px; }
 .tw-bind .tw-chip.on { background: var(--ui-cyan); border-color: var(--ui-cyan); }
 .tw-bind-pct { width: 40px; text-align: right; font: 11px Consolas, monospace; }
@@ -588,9 +590,9 @@ html[data-skin="forge"] .tweaks { border-radius: 0; background: linear-gradient(
 .tw-column .tw-slot > .tweaks { flex: 1; min-width: 0; }
 .layers { flex: none; max-height: 46%; display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--line); border-radius: 8px; background: color-mix(in srgb, #000 22%, var(--bg)); overflow: hidden; }
 .layers .ly-list { overflow-y: auto; min-height: 34px; max-height: 190px; border-top: 1px solid var(--line); }
-.ly-row { display: flex; align-items: center; gap: 6px; padding: 4px 8px; font-size: 12px; cursor: pointer; border-left: 2px solid transparent; user-select: none; }
+.ly-row { display: flex; align-items: center; gap: 6px; padding: 4px 8px 4px 10px; font-size: 12px; cursor: pointer; user-select: none; }
 .ly-row:hover { background: #ffffff08; }
-.ly-row.on { background: color-mix(in srgb, var(--ui-gold) 8%, transparent); border-left-color: var(--ui-gold); }
+.ly-row.on { background: color-mix(in srgb, var(--ui-gold) 10%, transparent); }
 .ly-row.hidden-layer .ly-name { opacity: .45; text-decoration: line-through; }
 .ly-row.dragging { opacity: .4; }
 .ly-row.drop-target { box-shadow: inset 0 2px 0 var(--ui-gold); }
@@ -733,7 +735,7 @@ body.on-top #rail::after { content: "📌"; position: absolute; bottom: 4px; lef
 .lab-palette button:not(.lab-swatch) { font-size: 11px; padding: 1px 6px; }
 
 /* ---------- chats that talk back ---------- */
-.msg .thinking { margin: 0 0 6px; border-left: 2px solid color-mix(in srgb, var(--ui-ai) 60%, transparent); padding: 2px 0 2px 10px; }
+.msg .thinking { margin: 0 0 6px; padding: 2px 0 2px 12px; } /* (nobars) indented, muted italic text; the violet summary names it */
 .msg .thinking summary { cursor: pointer; font-size: 12px; color: var(--ui-ai); user-select: none; }
 .msg.streaming .thinking:not([open]) summary::after { content: ' (click to watch)'; color: var(--muted); }
 .msg .thinking-text { white-space: pre-wrap; font-size: 12.5px; line-height: 1.5; color: var(--muted); max-height: 260px; overflow-y: auto; margin-top: 4px; font-style: italic; }
@@ -746,12 +748,12 @@ body.on-top #rail::after { content: "📌"; position: absolute; bottom: 4px; lef
 .ask-row { display: flex; gap: 6px; align-items: flex-end; }
 .ask-text { flex: 1; resize: vertical; min-height: 34px; font: inherit; }
 .ask-card.answered, .qa-done { border-color: color-mix(in srgb, var(--text) 15%, transparent); background: transparent; flex-direction: row; flex-wrap: wrap; gap: 6px; font-size: 12.5px; padding: 4px 10px; }
-.qa-done { display: flex; margin: 4px 0; border-left: 2px solid #ff9f43; }
+.qa-done { display: flex; margin: 4px 0; }
 .qa-q { color: var(--muted); }
 .qa-a { font-weight: 600; }
 .opinion-card { margin: 8px 0; padding: 8px 12px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--ui-cyan) 50%, transparent); background: color-mix(in srgb, var(--ui-cyan) 7%, transparent); }
 .opinion-head { font-size: 12px; font-weight: 600; color: var(--ui-cyan); margin-bottom: 4px; }
-.msg.opinion { border-left: 3px solid var(--ui-cyan); padding-left: 10px; }
+.msg.opinion { padding-left: 13px; } /* (nobars) the cyan "Second opinion from…" head names it */
 .msg-act.primary-act { color: var(--ui-cyan); }
 .suggest-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .suggest-chip { padding: 4px 11px; border-radius: 99px; border: 1px solid color-mix(in srgb, var(--agent, var(--ui-gold)) 55%, transparent); background: color-mix(in srgb, var(--agent, var(--ui-gold)) 10%, transparent); color: var(--text); cursor: pointer; font-size: 12.5px; }
@@ -1039,7 +1041,7 @@ body.chat-zen .msg:hover .msg-foot, body.chat-zen .native-head:hover .chat-meta,
 .msg { position: relative; }
 .msg-marks { position: absolute; top: -6px; right: -4px; font-size: 12px; cursor: default; filter: drop-shadow(0 1px 2px #0008); }
 .msg.user .msg-marks { right: auto; left: -4px; }
-.msg.pinned-msg > .body { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 70%, transparent); padding-left: 10px; }
+.msg.pinned-msg > .body { background: color-mix(in srgb, var(--accent) 6%, transparent); border-radius: 8px; padding-left: 10px; } /* (nobars) a soft tint + the 📌 mark */
 .msg.user.pinned-msg > .body { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent); padding-left: 14px; }
 .pinned-strip { position: sticky; top: -20px; z-index: 3; display: block; width: 100%; margin: -8px 0 12px; padding: 5px 10px; text-align: left; font-size: 12px; color: var(--text); background: color-mix(in srgb, var(--sidebar) 92%, var(--accent)); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; backdrop-filter: blur(6px); }
 .tool-dock .pinned-strip { top: -14px; }
@@ -1077,8 +1079,8 @@ body.chat-zen .msg:hover .msg-foot, body.chat-zen .native-head:hover .chat-meta,
 .body .table-wrap { overflow-x: auto; margin: 0 0 12px; }
 .body .table-wrap table { margin: 0; }
 .body tbody tr:nth-child(even) { background: color-mix(in srgb, var(--text) 4%, transparent); }
-.body .callout { margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; border-left: 3px solid var(--c, #48a0ff); background: color-mix(in srgb, var(--c, #48a0ff) 10%, transparent); }
-.body .callout > summary, .body .callout-title { font-weight: 600; margin-bottom: 4px; }
+.body .callout { margin: 0 0 12px; padding: 8px 12px 8px 15px; border-radius: 8px; background: color-mix(in srgb, var(--c, #48a0ff) 10%, transparent); }
+.body .callout > summary, .body .callout-title { font-weight: 600; margin-bottom: 4px; color: color-mix(in srgb, var(--c, #48a0ff) 70%, var(--text)); }
 .body details.callout > summary { cursor: pointer; }
 .body .callout-tip, .body .callout-success { --c: var(--ui-ok); }
 .body .callout-important, .body .callout-question { --c: var(--ui-ai); }

@@ -7,7 +7,7 @@
 .mk-group .group-name { font-weight: 650; }
 .mk-group .mk-st { color: color-mix(in srgb, var(--mk) 70%, var(--muted, #999)); font-variant-numeric: tabular-nums; }
 .mk-group.mk-stuck .mk-st { color: var(--danger, #ff5d5d); }
-.mk-group { box-shadow: inset 2px 0 0 color-mix(in srgb, var(--mk) 45%, transparent); border-radius: 8px; }
+.mk-group { border-radius: 8px; } /* (nobars) the make's colored mark names its group */
 .mk-group .mk-more { opacity: 0.55; }
 .mk-group:hover .mk-more { opacity: 1; }
 .item.mk-room .chat-ident.mk-ident { color: var(--mk); }
@@ -52,7 +52,8 @@
 .mk-parts, .mk-outs, .mk-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
 .mk-part, .mk-out { display: flex; align-items: center; gap: 9px; padding: 5px 8px; border-radius: 9px; background: color-mix(in srgb, var(--text) 4%, transparent); }
 .mk-part.mk-c-planned, .mk-part.mk-c-waiting { border: 1px dashed color-mix(in srgb, var(--mk) 35%, transparent); background: none; }
-.mk-part.mk-c-stuck { box-shadow: inset 2px 0 0 var(--danger, #ff5d5d); }
+.mk-part.mk-c-stuck { background: color-mix(in srgb, var(--danger, #ff5d5d) 9%, transparent); }
+.mk-part.mk-c-stuck .mk-picon { color: var(--danger, #ff5d5d); }
 .mk-part.mk-c-done .mk-picon::after { content: '✓'; margin-left: 2px; font-size: 0.8em; color: var(--mk); }
 .mk-picon { flex: none; width: 1.6em; text-align: center; color: var(--mk); }
 .mk-ptext { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

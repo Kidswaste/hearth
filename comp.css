@@ -15,7 +15,7 @@
 .comp-head { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 4px; }
 .comp-head b { white-space: nowrap; letter-spacing: .02em; }
 .comp-sum { flex: 1; min-width: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.comp-row { display: flex; align-items: center; gap: 7px; padding: 3px 4px; border-radius: 8px; min-width: 0; border-left: 2px solid var(--pc, var(--line)); }
+.comp-row { display: flex; align-items: center; gap: 7px; padding: 3px 4px; border-radius: 8px; min-width: 0; } /* (nobars) the glyph in .comp-mark carries the part's color */
 .comp-row:hover { background: color-mix(in srgb, var(--text, #fff) 5%, transparent); }
 .comp-still { width: 30px; height: 30px; flex: none; border-radius: 6px; object-fit: cover; background: #0b0b12; }
 .comp-still.none { display: grid; place-items: center; color: var(--pc, var(--muted)); font-size: 14px; }

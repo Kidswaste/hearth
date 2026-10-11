@@ -166,7 +166,7 @@
 .nv-picker-cat { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 6px 6px 2px; }
 .nv-picker-item { display: flex; align-items: center; gap: 7px; width: 100%; border: 0; background: none; color: var(--text); text-align: left; padding: 4px 8px; border-radius: 6px; cursor: pointer; font: inherit; }
 .nv-picker-item small { margin-left: auto; color: var(--muted); font-size: 10px; }
-.nv-picker-item.on { background: color-mix(in srgb, var(--nc) 22%, transparent); box-shadow: inset 2px 0 0 var(--nc); }
+.nv-picker-item.on { background: color-mix(in srgb, var(--nc) 24%, transparent); }
 .nv-picker-info { border-top: 1px solid var(--line); padding: 6px 10px; min-height: 30px; font-size: 11px; color: var(--muted); }
 .nv-menu { position: fixed; z-index: 10000; min-width: 190px; max-height: 80vh; overflow: auto; padding: 4px; border-radius: 10px;
   background: color-mix(in srgb, var(--bg) 95%, transparent); border: 1px solid var(--line); box-shadow: 0 12px 34px #000c; backdrop-filter: blur(10px); font: 12px var(--font); color: var(--text); }

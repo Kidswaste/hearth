@@ -18,7 +18,6 @@
   content: '✦'; position: absolute; right: -6px; top: -6px; font-size: 14px; color: var(--astra);
   text-shadow: 0 0 6px var(--astra-glow);
 }
-.engine-codex .msg.assistant { border-left: 2px solid color-mix(in srgb, var(--astra) 45%, transparent); padding-left: 10px; }
 .engine-codex .composer textarea:focus { border-color: color-mix(in srgb, var(--astra) 60%, transparent); }
 .engine-codex .native-head .chat-title::before { content: '✦ '; color: var(--astra); }
 

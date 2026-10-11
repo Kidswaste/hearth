@@ -169,7 +169,7 @@
 }
 :root[data-look~=v2] .tool-btn { transition: background .15s ease, color .15s ease; }
 :root[data-look~=v2] .tool-btn:hover { background: linear-gradient(180deg, color-mix(in srgb, var(--fh-gold) 14%, transparent), color-mix(in srgb, var(--fh-gold) 5%, transparent)); color: var(--fh-gold-text); box-shadow: var(--m-bevel); }
-:root[data-look~=v2] .tool-btn.on { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 22%, transparent), color-mix(in srgb, var(--fh-gold) 6%, transparent)); color: var(--fh-gold); box-shadow: inset 2px 0 0 var(--fh-gold), var(--m-bevel); }
+:root[data-look~=v2] .tool-btn.on { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 22%, transparent), color-mix(in srgb, var(--fh-gold) 6%, transparent)); color: var(--fh-gold); box-shadow: var(--m-bevel); }
 :root[data-look~=v2] .rail-sep { height: 1px; background: var(--hairline); }
 
 /* ---------- chats panel: dark iron, molten marker on the open chat ---------- */
@@ -302,7 +302,7 @@
   box-shadow: var(--m-bevel);
 }
 :root[data-look~=v2] .suggest-chip:hover { color: var(--fh-strong); border-color: var(--agent, var(--fh-gold)); }
-:root[data-look~=v2] .queue-chip { border-radius: 0; clip-path: var(--cut-sm); background: color-mix(in srgb, var(--fh-ai) 14%, var(--fh-iron-1)); border-left: 2px solid var(--fh-ai); }
+:root[data-look~=v2] .queue-chip { border-radius: 0; clip-path: var(--cut-sm); background: color-mix(in srgb, var(--fh-ai) 16%, var(--fh-iron-1)); }
 :root[data-look~=v2] .media-bar button.on { color: var(--fh-gold); text-shadow: 0 0 calc(8px * var(--glow)) var(--g-gold); }
 :root[data-look~=v2] .tb-group { border-radius: 0; clip-path: var(--cut-sm); background: linear-gradient(180deg, color-mix(in srgb, var(--fh-strong) 3%, var(--fh-iron-2)), var(--fh-iron-3)); border-color: var(--line); box-shadow: var(--m-bevel); }
 :root[data-look~=v2] .tb-group::before { font-family: var(--mono); color: color-mix(in srgb, var(--fh-gold) 55%, var(--muted)); }
@@ -347,7 +347,7 @@
 :root[data-look~=v2] .tw-head { background: linear-gradient(180deg, var(--fh-iron-1), transparent); }
 :root[data-look~=v2] .tweaks.dirty .tw-head { box-shadow: inset 0 -1px 0 var(--fh-ember); }
 :root[data-look~=v2] :is(.tw-row, .ly-row):hover { background: var(--hover); }
-:root[data-look~=v2] .ly-row.on { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 16%, transparent), transparent); box-shadow: inset 2px 0 0 var(--fh-gold); }
+:root[data-look~=v2] .ly-row.on { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 18%, transparent), transparent); }
 :root[data-look~=v2] .tw-row.changed .tw-name { color: var(--fh-gold); }
 :root[data-look~=v2] .media-bar { background: var(--tx-brushed), linear-gradient(180deg, var(--fh-iron-2), var(--fh-iron-3)); border-color: var(--line-hi); border-radius: 0; box-shadow: var(--m-bevel); }
 :root[data-look~=v2] .mb-menu { background: color-mix(in srgb, var(--fh-pop) 84%, transparent); backdrop-filter: var(--m-glass-filter); box-shadow: var(--m-glass-edge), 0 14px 40px #000a; }
@@ -357,9 +357,8 @@
 /* ---------- chat ---------- */
 :root[data-look~=v2] .msg.user .body {
   background: var(--tx-noise), linear-gradient(160deg, color-mix(in srgb, var(--agent) 22%, var(--fh-iron-1)), var(--fh-iron-2));
-  border-left: 2px solid var(--agent); box-shadow: var(--m-bevel);
+  box-shadow: var(--m-bevel);
 }
-:root[data-look~=v2] .msg.assistant.streaming::before { width: 2px; box-shadow: 0 0 calc(12px * var(--glow)) var(--g-ai); }
 /* the AI is working: a violet shimmer runs through the reply being written */
 :root[data-look~=v2] .msg.assistant.streaming { overflow: clip; }
 :root[data-look~=v2] .msg.assistant.streaming::after {
@@ -368,21 +367,21 @@
   animation: m-shimmer 2.2s linear infinite;
 }
 :root[data-look~=v2] .typing i { background: var(--fh-ai); box-shadow: 0 0 calc(8px * var(--glow)) var(--g-ai); }
-:root[data-look~=v2] .tool-chips { color: var(--fh-ai-hi); background: linear-gradient(90deg, color-mix(in srgb, var(--fh-ai) 16%, transparent), transparent); border-left: 2px solid var(--fh-ai); }
+:root[data-look~=v2] .tool-chips { color: var(--fh-ai-hi); background: linear-gradient(90deg, color-mix(in srgb, var(--fh-ai) 16%, transparent), transparent); }
 :root[data-look~=v2] .msg.streaming .tool-chips { position: relative; overflow: clip; }
 :root[data-look~=v2] .msg.streaming .tool-chips::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--fh-ai) 30%, transparent) 50%, transparent 70%); animation: m-shimmer 1.4s linear infinite; pointer-events: none; }
 :root[data-look~=v2] .msg .thinking summary { color: color-mix(in srgb, var(--fh-ai) 60%, var(--text)); }
 :root[data-look~=v2] .progress-card { border-radius: 0; border-color: color-mix(in srgb, var(--fh-ai) 35%, var(--line)); background: linear-gradient(180deg, color-mix(in srgb, var(--fh-ai) 7%, var(--fh-iron-1)), var(--fh-iron-2)); }
 :root[data-look~=v2] .ask-card { border-radius: 0; border-color: var(--fh-ember); background: linear-gradient(180deg, color-mix(in srgb, var(--fh-ember) 12%, var(--fh-iron-1)), var(--fh-iron-2)); box-shadow: inset 0 0 calc(16px * var(--glow)) color-mix(in srgb, var(--fh-ember) calc(12% * var(--glow)), transparent); }
 :root[data-look~=v2] .opinion-card { border-radius: 0; }
-:root[data-look~=v2] .msg.note { border-radius: 0; border: 1px solid color-mix(in srgb, var(--fh-info) 30%, var(--line)); border-left: 2px solid var(--fh-info); background: linear-gradient(90deg, color-mix(in srgb, var(--fh-info) 9%, transparent), transparent); }
+:root[data-look~=v2] .msg.note { border-radius: 0; border: 1px solid color-mix(in srgb, var(--fh-info) 30%, var(--line)); background: linear-gradient(90deg, color-mix(in srgb, var(--fh-info) 9%, transparent), transparent); }
 @keyframes v2-shake { 0%, 100% { transform: none; } 20% { transform: translateX(-5px); } 40% { transform: translateX(4px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
-:root[data-look~=v2] .msg.error { border-color: color-mix(in srgb, var(--fh-stop) 50%, transparent); background: linear-gradient(90deg, color-mix(in srgb, var(--fh-stop) 14%, transparent), color-mix(in srgb, var(--fh-stop) 4%, transparent)); border-left: 3px solid var(--fh-stop); animation: v2-shake .42s ease both; }
+:root[data-look~=v2] .msg.error { border-color: color-mix(in srgb, var(--fh-stop) 50%, transparent); background: linear-gradient(90deg, color-mix(in srgb, var(--fh-stop) 14%, transparent), color-mix(in srgb, var(--fh-stop) 4%, transparent)); animation: v2-shake .42s ease both; }
 :root[data-look~=v2] .body pre { background: var(--fh-ink); border: 1px solid var(--line); border-top: 2px solid color-mix(in srgb, var(--fh-info) 45%, transparent); box-shadow: inset 0 1px 6px var(--fh-shade); }
 :root[data-look~=v2] .body code { background: color-mix(in srgb, var(--fh-gold) 9%, transparent); color: var(--fh-code); }
 :root[data-look~=v2] .body pre code { color: var(--text); background: none; }
 :root[data-look~=v2] .body a { color: var(--fh-info); text-decoration-color: color-mix(in srgb, var(--fh-info) 40%, transparent); text-underline-offset: 2px; }
-:root[data-look~=v2] .body blockquote { border-left: 2px solid var(--fh-gold); background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 6%, transparent), transparent); padding: 4px 12px; }
+:root[data-look~=v2] .body blockquote { padding: 2px 12px 2px 15px; color: color-mix(in srgb, var(--fh-gold-text, var(--fh-gold)) 45%, var(--muted)); }
 :root[data-look~=v2] .body hr { border-top: 0; height: 1px; background: var(--hairline); }
 :root[data-look~=v2] .body th { background: var(--fh-iron-1); color: var(--fh-gold); }
 :root[data-look~=v2] .empty-icon {
@@ -425,14 +424,14 @@
   background: var(--tx-noise), color-mix(in srgb, var(--fh-pop) 84%, transparent); backdrop-filter: var(--m-glass-filter);
   border: 1px solid var(--line-hi); box-shadow: var(--m-glass-edge), 0 14px 40px #000a;
 }
-:root[data-look~=v2] #menu button:hover, :root[data-look~=v2] .mb-menu .menu-item:hover { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 18%, transparent), transparent); color: var(--fh-gold-text); box-shadow: inset 2px 0 0 var(--fh-gold); }
-:root[data-look~=v2] :is(.slash-item.sel, .slash-item:hover) { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 18%, transparent), transparent); box-shadow: inset 2px 0 0 var(--fh-gold); }
+:root[data-look~=v2] #menu button:hover, :root[data-look~=v2] .mb-menu .menu-item:hover { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 18%, transparent), transparent); color: var(--fh-gold-text); }
+:root[data-look~=v2] :is(.slash-item.sel, .slash-item:hover) { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 20%, transparent), transparent); }
 :root[data-look~=v2] .toast {
   background: var(--tx-noise), color-mix(in srgb, var(--fh-pop) 86%, transparent); backdrop-filter: var(--m-glass-filter);
-  border: 1px solid var(--line-hi); border-left: 3px solid var(--fh-info);
-  box-shadow: var(--m-glass-edge), -8px 0 22px -10px color-mix(in srgb, var(--fh-info) calc(60% * var(--glow)), transparent), 0 10px 30px #0009;
+  border: 1px solid var(--line-hi); padding-left: 14px;
+  box-shadow: var(--m-glass-edge), 0 10px 30px #0009;
 }
-:root[data-look~=v2] .toast.error { border-left-color: var(--fh-stop); box-shadow: var(--m-glass-edge), -8px 0 22px -10px color-mix(in srgb, var(--fh-stop) calc(70% * var(--glow)), transparent), 0 10px 30px #0009; }
+:root[data-look~=v2] .toast.error { border-color: color-mix(in srgb, var(--fh-stop) 55%, transparent); background: var(--tx-noise), color-mix(in srgb, var(--fh-stop) 10%, color-mix(in srgb, var(--fh-pop) 86%, transparent)); }
 :root[data-look~=v2] .toast button { color: var(--fh-gold); }
 
 /* ---------- code views ---------- */
@@ -448,7 +447,7 @@
   position: fixed; z-index: 10001; max-width: 320px; padding: 5px 9px; pointer-events: none;
   font: 12px/1.4 var(--font); color: var(--text); white-space: pre-line;
   background: var(--tx-noise), color-mix(in srgb, var(--fh-pop, var(--sidebar)) 92%, transparent); backdrop-filter: blur(10px);
-  border: 1px solid var(--line-hi, var(--line)); border-left: 2px solid var(--fh-gold); clip-path: var(--cut-sm, none);
+  border: 1px solid var(--line-hi, var(--line)); clip-path: var(--cut-sm, none);
   box-shadow: var(--m-glass-edge); animation: j-tip-in .14s ease-out both;
 }
 @keyframes j-tip-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
@@ -480,7 +479,7 @@
 .j-shake { animation: v2-shake .42s ease !important; }
 @keyframes j-roll { from { transform: rotate(-220deg) scale(.6); } to { transform: none; } }
 .j-roll { animation: j-roll .45s cubic-bezier(.3, 1.4, .5, 1); display: inline-block; }
-:root[data-look~=v2] .toast.j-pop { border-left-color: var(--fh-gold); }
+:root[data-look~=v2] .toast.j-pop { border-color: color-mix(in srgb, var(--fh-gold) 45%, var(--line-hi)); }
 
 /* ====================================================================================================== */
 /* ---------- corners: cut (the forge default), rounded, square ---------- */

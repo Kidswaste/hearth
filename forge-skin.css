@@ -109,7 +109,6 @@ html[data-skin~="forge"] .item { border-radius: 0; position: relative; transitio
 html[data-skin~="forge"] .item > :is(.pin-mark, .item-title) { transition: translate .15s ease; }
 html[data-skin~="forge"] .item:hover > :is(.pin-mark, .item-title) { translate: 4px 0; }
 html[data-skin~="forge"] .item.active { background: linear-gradient(90deg, #ffd75e1f, transparent); color: #fff; }
-html[data-skin~="forge"] .item.active::before { content: ""; position: absolute; left: 22px; top: 6px; bottom: 6px; width: 2px; background: var(--r-rare); box-shadow: 0 0 8px var(--r-rare); }
 html[data-skin~="forge"] .busy { background: var(--r-mythic); border-radius: 0; transform: rotate(45deg); }
 html[data-skin~="forge"] .panel-resize:hover, html[data-skin~="forge"] body.resizing .panel-resize { background: var(--r-rare); }
 
@@ -185,9 +184,9 @@ html[data-skin~="forge"] .dash-card h3 { color: var(--r-rare); }
 html[data-skin~="forge"] .dash-counts b, html[data-skin~="forge"] .devlog-clock { font-family: var(--mono); color: var(--r-rare); text-shadow: 0 0 12px #ffd75e40; }
 html[data-skin~="forge"] .bar { border-radius: 0; background: #1d2023; }
 html[data-skin~="forge"] .bar span { background: linear-gradient(90deg, var(--r-magic), var(--r-rare)); box-shadow: 0 0 8px #ffd75e60; }
-html[data-skin~="forge"] .kanban-card { border-radius: 0; clip-path: var(--cut-sm); background: #12161a; border-left-width: 2px; transition: transform .15s ease; }
+html[data-skin~="forge"] .kanban-card { border-radius: 0; clip-path: var(--cut-sm); background: #12161a; transition: transform .15s ease; }
 html[data-skin~="forge"] .kanban-card:hover { transform: translateX(2px); }
-html[data-skin~="forge"] .kanban-card.p1 { border-left-color: var(--r-ultima); }
+html[data-skin~="forge"] .kanban-card.p1 { --prio: var(--r-ultima); }
 html[data-skin~="forge"] .tag { border-radius: 0; font-family: var(--mono); letter-spacing: .08em; text-transform: uppercase; font-size: 10px; }
 
 /* ---------- importance ladder for status text ---------- */
@@ -202,17 +201,13 @@ html[data-skin~="forge"] .issues li.bad { color: var(--r-ultima); }
 html[data-skin~="forge"] .msg.user .body {
   border-radius: 0; clip-path: var(--cut);
   background: linear-gradient(160deg, color-mix(in srgb, var(--agent) 20%, #14181b), #14181b);
-  border-left: 2px solid var(--agent);
 }
 html[data-skin~="forge"] .messages > .msg:last-child:not(.streaming) { animation: fh-in .22s ease both; }
-html[data-skin~="forge"] .msg.assistant.streaming { position: relative; padding-left: 14px; }
-/* A reply being written gets the living rainbow edge (the highest-importance marker). */
-html[data-skin~="forge"] .msg.assistant.streaming::before {
-  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--rainbow);
-  box-shadow: 0 0 10px #bd8bff80;
-}
+/* (nobars) a reply being written: the typing dots and the look's shimmer show it; no rainbow side edge, and no
+   14px indent that made the reply jump left when it finished */
+html[data-skin~="forge"] .msg.assistant.streaming { position: relative; }
 html[data-skin~="forge"] .typing i { border-radius: 0; width: 10px; height: 3px; background: var(--r-mythic); animation: fh-blink .9s infinite; }
-html[data-skin~="forge"] .tool-chips { border-radius: 0; font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--r-mythic); background: #bd8bff12; border-left: 2px solid var(--r-mythic); }
+html[data-skin~="forge"] .tool-chips { border-radius: 0; font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--r-mythic); background: #bd8bff12; }
 html[data-skin~="forge"] .memory-chip { border-radius: 0; border-color: #ffd75e55; color: var(--r-rare); }
 html[data-skin~="forge"] .msg.error { border-radius: 0; border-color: #ff6a6a66; background: #ff6a6a12; }
 html[data-skin~="forge"] .body pre { border-radius: 0; background: #07090b; border: 1px solid var(--line); border-top: 2px solid #48ddff55; }
@@ -246,10 +241,10 @@ html[data-skin~="forge"] .palette-card { border-radius: 0; clip-path: var(--cut)
 html[data-skin~="forge"] .palette-card::before { content: ""; display: block; height: 2px; background: var(--rainbow); }
 html[data-skin~="forge"] .palette-item { border-radius: 0; }
 html[data-skin~="forge"] .palette-item > * { transition: translate .12s ease; }
-html[data-skin~="forge"] .palette-item.sel { background: linear-gradient(90deg, #ffd75e22, transparent); box-shadow: inset 2px 0 0 var(--r-rare); }
+html[data-skin~="forge"] .palette-item.sel { background: linear-gradient(90deg, #ffd75e2a, transparent); }
 html[data-skin~="forge"] .palette-item.sel > :first-child { translate: 4px 0; }
-html[data-skin~="forge"] .toast { border-radius: 0; clip-path: var(--cut-sm); background: #121619; border: 1px solid var(--line-hi); border-left: 3px solid var(--r-magic); animation: fh-in .22s cubic-bezier(.2, .9, .1, 1); }
-html[data-skin~="forge"] .toast.error { border-left-color: var(--r-ultima); }
+html[data-skin~="forge"] .toast { border-radius: 0; clip-path: var(--cut-sm); background: #121619; border: 1px solid var(--line-hi); padding-left: 14px; animation: fh-in .22s cubic-bezier(.2, .9, .1, 1); }
+html[data-skin~="forge"] .toast.error { border-color: color-mix(in srgb, var(--r-ultima) 55%, transparent); background: color-mix(in srgb, var(--r-ultima) 8%, #121619); }
 html[data-skin~="forge"] .toast button { color: var(--r-rare); }
 html[data-skin~="forge"] #menu { border-radius: 0; clip-path: var(--cut-sm); background: #121619; border: 1px solid var(--line-hi); animation: fh-scan .16s ease; }
 html[data-skin~="forge"] #menu button { border-radius: 0; }

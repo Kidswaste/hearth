@@ -33,8 +33,8 @@
 .jam-row:hover .jam-back, .jam-back:focus-visible { opacity: 1; }
 .jam-more { margin: 0 0 3px 44px; }
 .jam-more.folded { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.jam-dir { white-space: pre-wrap; padding: 3px 7px; border-left: 2px solid var(--astra, #19c39c); border-radius: 0 6px 6px 0; background: color-mix(in srgb, var(--astra, #19c39c) 7%, transparent); }
-.jam-dir.by-claude { border-left-color: var(--claude, #d97757); background: color-mix(in srgb, var(--claude, #d97757) 7%, transparent); }
+.jam-dir { white-space: pre-wrap; padding: 3px 7px 3px 9px; border-radius: 6px; background: color-mix(in srgb, var(--astra, #19c39c) 9%, transparent); } /* (nobars) the tint says who */
+.jam-dir.by-claude { background: color-mix(in srgb, var(--claude, #d97757) 9%, transparent); }
 .jam-err { color: var(--danger, #ff6b6b); margin-bottom: 2px; }
 .jam-note { margin-top: 4px; }
 .jam-foot { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--line); flex-wrap: wrap; }

@@ -3,8 +3,7 @@
 
 /* chat rows and the dock header */
 .chat-ident { flex: none; display: inline-grid; place-items: center; width: 1.15em; margin-right: 5px; color: var(--chat-ident, var(--accent)); font-size: 0.86em; line-height: 1; text-shadow: 0 0 6px color-mix(in srgb, var(--chat-ident, var(--accent)) 45%, transparent); }
-.item.has-ident { box-shadow: inset 2px 0 0 color-mix(in srgb, var(--chat-ident) 55%, transparent); }
-.item.has-ident.active { box-shadow: inset 3px 0 0 var(--chat-ident); }
+/* (nobars) the row's colored glyph carries the chat's identity: no side bar */
 /* a director chat working while you look at another one: a small dot in its own color */
 .item .busy.bg-busy, :root[data-look~=v2] .item .busy.bg-busy { width: 6px; height: 6px; background: var(--chat-ident); box-shadow: 0 0 6px var(--chat-ident); opacity: 0.85; }
 .native-head .chat-ident { font-size: 1em; margin-right: 6px; }
@@ -58,7 +57,7 @@
 .scene-tag.duo .scene-av { opacity: 0.6; }
 .scene-tag.duo .scene-av.on { opacity: 1; }
 /* "Your sketches": the color of the chat that owns the open sketch */
-.three-sketch-select.has-scene { box-shadow: inset 3px 0 0 var(--scene-color); }
-/* a notification about a director chat: its glyph and a thin edge in its color */
-.toast.scene-toast { box-shadow: inset 3px 0 0 var(--chat-ident), 0 6px 20px #0006; }
+.three-sketch-select.has-scene { border-color: color-mix(in srgb, var(--scene-color) 60%, var(--line)); }
+/* a notification about a director chat: its glyph in its color and a frame tinted with it */
+.toast.scene-toast { border-color: color-mix(in srgb, var(--chat-ident) 45%, var(--line)); }
 .toast.scene-toast > .chat-ident { margin-right: 2px; }

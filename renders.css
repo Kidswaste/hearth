@@ -53,6 +53,7 @@
 
 .toast.rq-fail > span { white-space: pre-line; }
 .toast.rq-done button, .toast.rq-fail button { margin-left: 4px; white-space: nowrap; }
-.toast.rq-fail { border-left: 3px solid var(--fh-red, #ff5a5a); }
-.toast.rq-done { border-left: 3px solid var(--fh-ok, #5fc98a); }
+/* (nobars) done / failed: a frame tinted green or red, no side bar */
+.toast.rq-fail { border-color: color-mix(in srgb, var(--fh-red, #ff5a5a) 55%, transparent); }
+.toast.rq-done { border-color: color-mix(in srgb, var(--fh-ok, #5fc98a) 55%, transparent); }
 @media (prefers-reduced-motion: reduce) { .rq-row > .rq-bar > i { transition: none; } }
