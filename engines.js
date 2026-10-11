@@ -101,6 +101,22 @@ const LOCATE = {
     || null,
 };
 
+// (round 16) where each engine was found, remembered: a message no longer walks PATH (and, on a Mac without the CLI on
+// PATH, the desktop app's versioned folders) before it spawns. One stat proves the copy is still there; a change in
+// Settings → Engines or in the install check's choice, or 5 minutes, looks again. A miss is never remembered.
+const located = {};
+for (const name of Object.keys(LOCATE)) {
+  const find = LOCATE[name];
+  LOCATE[name] = () => {
+    const key = `${enginePaths[name] || ''}|${Installs.data().chosen?.[name] || ''}`;
+    const c = located[name];
+    if (c && c.key === key && Date.now() - c.at < 5 * 60000 && fs.existsSync(c.bin)) return c.bin;
+    const bin = find();
+    if (bin) located[name] = { key, bin, at: Date.now() }; else delete located[name];
+    return bin;
+  };
+}
+
 // Tool names that only look things up. In "read-only" mode everything else is blocked.
 const READ_ONLY_TOOL = /(^|[_-])(get|list|search|read|fetch|query|find|view|preview|download|export|who_am_i|guide)([_-]|$)/i;
 const CONNECTORS_CACHE = path.join(DATA_DIR, 'connectors.json');
@@ -1107,4 +1123,5 @@ module.exports = {
   // for tests (dev/astra-engine-test.js)
   _test: { lastErrorLine, codexArgs, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION },
   buildPrompt, HUB_TOOLSETS, // the director cost report (mcp/cost.js)
+  busy: () => running.size, // (round 16) replies running now: background work (sync) waits a little longer meanwhile
 };

@@ -1151,6 +1151,8 @@ const Board = (() => {
   function setLens(id, opts) { return Board._.setLens?.(id, opts); }
 
   bindKeys(); // listed in the keys button from the start (they act once the board is open)
+  // (round 16) another view in front: the clip previews stop (a selected clip kept decoding behind the chat)
+  document.addEventListener('hearth:activate', () => requestAnimationFrame(() => { if (S.mounted && playing.size && !S.ui.root.checkVisibility()) stopAllPreviews(); }));
 
   Tools.define({
     id: 'board', name: 'Board', icon: '▦', color: '#e6b450',

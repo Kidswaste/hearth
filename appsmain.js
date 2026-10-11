@@ -16,7 +16,12 @@ const crypto = require('crypto');
 const AppsCore = require('./apps-core');
 const MeshyAPI = require('./apps-meshy-api');
 
-const PARK_MS = Number(process.env.HEARTH_APPS_PARK_MS) || 5 * 60000;
+// (round 16) hidden windows are freed sooner: after 3 minutes (was 5); a third hidden window sends the oldest hidden one
+// away after 20 s (at most MAX_HIDDEN wait in the background, each one a whole web page in memory); with Hearth itself
+// minimized or the computer asleep, after a minute. A page that's still playing sound always waits.
+const PARK_MS = Number(process.env.HEARTH_APPS_PARK_MS) || 3 * 60000;
+const MAX_HIDDEN = 2;
+let hubAway = false;
 const MESHY_BASE = process.env.HEARTH_MESHY_BASE || MeshyAPI.BASE;
 const POLY_BASE = process.env.HEARTH_POLYHAVEN_BASE || 'https://api.polyhaven.com';
 const POLL_MS = process.env.HEARTH_MESHY_BASE ? 250 : 4000;
@@ -149,8 +154,9 @@ function saveBounds(id, win) {
   writeJson(boundsFile(), all);
 }
 function guestOf(entry) { try { return entry.guestId ? webContents.fromId(entry.guestId) : null; } catch { return null; } }
-function park(entry) {
+function park(entry, ms = hubAway ? Math.min(PARK_MS, 60000) : PARK_MS) {
   clearTimeout(entry.park);
+  entry.parkAt = Date.now() + ms;
   entry.park = setTimeout(() => {
     const w = entry.win;
     if (!w || w.isDestroyed() || w.isVisible()) return;
@@ -158,7 +164,18 @@ function park(entry) {
     entry.parked = true; entry.closing = true;
     saveBounds(entry.spec.id, w);
     w.destroy();
-  }, PARK_MS);
+  }, ms);
+}
+// the hidden windows beyond MAX_HIDDEN (oldest hidden first) go away soon
+function capHidden() {
+  const hidden = [...wins.values()].filter((e) => e.win && !e.win.isDestroyed() && !e.win.isVisible()).sort((a, b) => (a.hiddenAt || 0) - (b.hiddenAt || 0));
+  for (const e of hidden.slice(0, Math.max(0, hidden.length - MAX_HIDDEN))) if ((e.parkAt || Infinity) > Date.now() + 20000) park(e, 20000);
+}
+// a hidden window's page is quiet: muted (pages that ignore the pause, autoplay), unmuted when shown again
+function quiet(entry, on) { const g = guestOf(entry); try { if (g && !g.isDestroyed()) g.setAudioMuted(Boolean(on)); } catch { /* gone */ } }
+function pace(st = {}) {
+  hubAway = Boolean(st.hidden || st.asleep);
+  if (hubAway) for (const e of wins.values()) if (e.win && !e.win.isDestroyed() && !e.win.isVisible() && (e.parkAt || 0) > Date.now() + 60000) park(e, 60000);
 }
 function openWindow(spec = {}) {
   const id = String(spec.id || '').replace(/[^\w-]/g, '');
@@ -198,10 +215,13 @@ function openWindow(spec = {}) {
     // hidden windows don't keep playing: the media on the page pauses (it resumes with a click when shown again)
     g?.executeJavaScript?.('document.querySelectorAll("video,audio").forEach((m) => { try { m.pause(); } catch {} })', true).catch(() => {});
     win.hide();
+    entry.hiddenAt = Date.now();
+    if (!g?.isCurrentlyAudible?.()) quiet(entry, true);
     park(entry);
+    capHidden();
     toHub({ type: 'window', id, state: 'hidden' });
   });
-  win.on('show', () => clearTimeout(entry.park));
+  win.on('show', () => { clearTimeout(entry.park); entry.parkAt = 0; quiet(entry, false); });
   win.on('closed', () => { hostIds.delete(hostId); if (wins.get(id) === entry) wins.delete(id); toHub({ type: 'window', id, state: 'closed' }); });
   if (hub && !hub.__appsHooked) { hub.__appsHooked = true; hub.once('closed', closeAll); }
   toHub({ type: 'window', id, state: 'opened' });
@@ -398,7 +418,7 @@ function register(ipcMain, gw, deps = {}) {
   h('apps:fetchTo', (o) => fetchTo(o || {}));
   h('apps:fetchJson', (url) => fetchJson(String(url || '')));
   h('apps:meshy', (op, args) => meshy(String(op || ''), args || {}));
-  h('apps:status', () => ({ meshyBase: MESHY_BASE, polyBase: POLY_BASE, meshyKey: keyInfo('meshy'), windows: listWindows(), downloadsDir: downloadsRoot(), parkMs: PARK_MS, testBase: process.env.HEARTH_MESHY_BASE || null }));
+  h('apps:status', () => ({ meshyBase: MESHY_BASE, polyBase: POLY_BASE, meshyKey: keyInfo('meshy'), windows: listWindows(), downloadsDir: downloadsRoot(), parkMs: PARK_MS, maxHidden: MAX_HIDDEN, testBase: process.env.HEARTH_MESHY_BASE || null }));
 
   // from an app window's chrome (apps-window.html via apps-preload.js); the sender names its app
   const appOf = (e) => { for (const [id, x] of wins) if (x.win && !x.win.isDestroyed() && x.win.webContents.id === e.sender.id) return [id, x]; return [null, null]; };
@@ -416,4 +436,4 @@ function register(ipcMain, gw, deps = {}) {
   c('appwin:hide', (id) => closeWindow(id));
 }
 
-module.exports = { register, isAppGuest: (contents) => Boolean(contents?.hostWebContents && hostIds.has(contents.hostWebContents.id)), _test: { isAuth, imageUri } };
+module.exports = { register, pace, isAppGuest: (contents) => Boolean(contents?.hostWebContents && hostIds.has(contents.hostWebContents.id)), _test: { isAuth, imageUri } };

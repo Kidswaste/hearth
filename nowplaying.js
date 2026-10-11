@@ -97,9 +97,20 @@ function start(onUpdate) {
     return true;
   }
   if (process.platform === 'darwin') {
-    const poll = () => execFile('osascript', ['-e', OSA], (err, out) => { if (!err) { try { emit(JSON.parse(out.trim() || '{}')); } catch { /* Spotify closed */ } } });
+    // (round 16) one osascript every 1.5 s only while something plays and Hearth is on screen; Spotify closed or
+    // paused, or Hearth minimized: every 5 s (a track change still shows up within a few seconds)
+    const g = ++gen;
+    const poll = () => {
+      if (g !== gen) return;
+      timer = 'busy';
+      execFile('osascript', ['-e', OSA], (err, out) => {
+        let info = null;
+        if (!err) { try { info = JSON.parse(out.trim() || '{}'); emit(info); } catch { /* Spotify closed */ } }
+        if (g !== gen || !listener) return; // stopped (or restarted) meanwhile
+        timer = setTimeout(poll, info?.playing && !hidden ? 1500 : 5000);
+      });
+    };
     poll();
-    timer = setInterval(poll, 1500);
     return true;
   }
   return false;
@@ -107,8 +118,11 @@ function start(onUpdate) {
 function stop() {
   listener = null; last = '';
   if (proc) { proc.kill(); proc = null; }
-  if (timer) { clearInterval(timer); timer = null; }
+  gen += 1;
+  if (timer) { if (timer !== 'busy') clearTimeout(timer); timer = null; }
 }
+let hidden = false; let gen = 0;
+function pace(st = {}) { hidden = Boolean(st.hidden || st.asleep); }
 // cmd: 'toggle' | 'next' | 'prev'
 function control(cmd) {
   if (process.platform === 'win32') {
@@ -123,4 +137,4 @@ function control(cmd) {
   }
 }
 
-module.exports = { start, stop, control, COVER };
+module.exports = { start, stop, control, pace, COVER };

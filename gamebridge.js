@@ -9,12 +9,14 @@ const { DATA_DIR } = require('./store');
 
 const INFO_PATH = path.join(DATA_DIR, 'game-bridge.json');
 const pending = new Map(); // request id -> resolve
+const timers = new Map(); // request id -> its time limit
 
 function start(getWin) {
   const token = crypto.randomBytes(24).toString('hex');
   ipcMain.handle('game:result', (_e, id, result) => {
     pending.get(id)?.(result);
     pending.delete(id);
+    clearTimeout(timers.get(id)); timers.delete(id); // (round 16) the time limit goes with the answer, not up to 45 min later
   });
   // /director-cost: what each director's tool sets and prompt cost per message (mcp/cost.js).
   ipcMain.handle('director:cost', (_e, agents) => {
@@ -39,9 +41,10 @@ function start(getWin) {
     // capture: a recording for N seconds or a scripted tour can run for minutes
     // access_check (round 14): an approval card waits for the owner (it denies by itself after its own timeout)
     const limit = slow ? 45 * 60000 : tool === 'access_check' ? 10 * 60000 : tool === 'capture_record' || tool === 'capture_frames' || /^(meshy_|apps_)/.test(tool) ? 15 * 60000 : tool === 'chat_second_opinion' ? 6 * 60000 : tool === 'three_load_media' || (tool === 'three_do' && args?.cmd === 'load_media') ? 3 * 60000 : 60000;
-    setTimeout(() => {
+    timers.set(id, setTimeout(() => {
+      timers.delete(id);
       if (pending.has(id)) { pending.delete(id); resolve({ ok: false, error: `The hub did not answer within ${Math.round(limit / 1000)} s.` }); }
-    }, limit);
+    }, limit));
   });
 
   const server = http.createServer((req, res) => {
