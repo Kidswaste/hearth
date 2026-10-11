@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('hub', {
   stopAll: call('engine:stopAll'),
   login: call('engine:login'),
   engineStatus: call('engine:status'),
+  perfLag: call('perf:lag'), // (round 20, offmain) main-process event-loop delay since the last ask (dev checks)
   bootStatus: call('boot:status'), // (round 19) what a slow start waits for in the main process (splash.js)
   engineDoctor: call('engine:doctor'),
   engineInstalls: call('engine:installs'),
