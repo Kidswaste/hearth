@@ -1666,7 +1666,7 @@ const lab3d = (() => {
     renderer.setSize(innerWidth, innerHeight);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
     document.body.append(renderer.domElement);
     const box = renderer.domElement.parentElement; // the layer's own box (overlays go there, not on the page)
     const scene = new THREE.Scene();
@@ -1697,7 +1697,7 @@ const lab3d = (() => {
       bar.querySelector('.t').textContent = `🧊 ${S.name} didn't load: ${S.error}`;
       bar.lastElementChild.remove();
       bar.style.color = '#ffb0a0';
-      console.error(`The model "${S.name}" didn't load: ${S.error}`);
+      post({ type: 'error', layer: id, message: `The model "${S.name}" didn't load: ${S.error}` }); // the Lab's errors (the director sees it)
       post({ type: 'lab3d', ev: 'error', layer: id, name: S.name, error: S.error });
     }
 

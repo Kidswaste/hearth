@@ -150,8 +150,10 @@ lab3d.model(refs.${refKey}, P, { ${o} });
     return ms.find((L) => L.selected) || ms[ms.length - 1];
   }
   async function codeOf(L, ctx) {
-    const v = await call('three_read_code', { layer: L.id, from: 1, to: 4000 }, ctx);
-    return String(v.code || '').split('\n').map((ln) => ln.replace(/^\s*\d+\| /, '')).join('\n');
+    if (onScreen(ctx) && ThreeLab.director) return ThreeLab.director.codeOf(L.id).code;
+    const v = await call('three_read_code', { layer: L.id, from: 1, to: 4000, force: true }, ctx); // backstage: plain numbered text
+    const txt = typeof v === 'string' ? v : String(v.code || '');
+    return txt.split('\n').filter((ln) => !/^── /.test(ln)).map((ln) => ln.replace(/^\s*\d+\| /, '')).join('\n');
   }
   async function values(L, ctx) { const v = await call('three_sliders', { layer: L.id }, ctx); return Object.fromEntries((v.sliders || []).map((x) => [x.key, x.value])); }
   async function setValues(L, set, ctx) { const v = await call('three_sliders', { layer: L.id, set }, ctx); return v.changed; }
