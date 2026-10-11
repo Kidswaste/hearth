@@ -509,9 +509,10 @@ function createSurface(agent) {
       }, { once: true });
     });
     host.append(gamePane, divider, chatPane);
-    // (round 18) Forge loads after the first screen (lazy group 'addons'): a Forge Debug chat opened first waits for it
+    // (round 18) Forge loads after the first screen (lazy group 'addons'): the game mounts when it's in (opening this
+    // chat loads it at once, see activate)
     const mountGame = () => ForgeGame.mount(gamePane);
-    if (window.Lazy && !Lazy.loaded('addons')) Lazy.load('addons').then(mountGame, (err) => console.warn('Forge game', err)); else mountGame();
+    if (window.Lazy) Lazy.when('addons', mountGame); else mountGame();
     surface.native = Native.mount(agent.id, chatPane);
   } else if (agent.mode === 'native') surface.native = Native.mount(agent.id, host);
   else surface.webview = createWebSurface(agent, host);
@@ -579,6 +580,7 @@ function activate(id, { focus = true } = {}) {
   if (focus && typeof Usage !== 'undefined') Usage.open(id);
   lastSeen.set(surfaceId, Date.now());
   if (s.webview?.dataset.sleeping) wakeWebsite(s);
+  if (s.companion === 'forge-game' && window.Lazy && !Lazy.loaded('addons')) Lazy.load('addons').catch(() => {}); // (round 18) its game, now
   H.activeId = id;
   H.mru = [id, ...H.mru.filter((m) => m !== id)].slice(0, 12);
   // tools that park their loops while hidden wake on this (the Lab, the board)
