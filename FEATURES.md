@@ -663,3 +663,9 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ A slow start says what it waits for (sync pass, engine check, a read…), offers Open anyway; reduce motion respected; `/startup` shows every step of the last start.
 - ✓ Cloud sync no longer holds the window back; tray / hotkey / rarely used modules after the window; no git fetch or engine doctor while the first screen builds; 2 stylesheets off the start.
 - ○ Measured headless (`dev/coldstart-report.js`: first frame on screen 815 → 467 ms); the Mac's ready-to-show timing is not run here.
+
+## Off the main threads (round 20, offmain, 21 upgrades: docs/upgrades/offmain.md)
+- ✓ Long chats: ↑ Show earlier on a 300-message chat no longer freezes (a 131 ms task → none; cached date formatters); code-heavy chats are rendered on a Markdown worker first.
+- ✓ A store thread in the main process saves chats / scenes / kv stores (identical saves skipped), keeps the chats index (list 23 → 5 ms) and searches every chat (the app answers in 1.7 ms instead of 28 ms while you search); quitting waits for the last saves.
+- ✓ Folder search and cloud sync's big-store hashing run on a files thread; Lab and director screenshots encode in pieces (no long task).
+- ○ Measured headless (`dev/checks/offmain.js`, `dev/store-thread-test.js`); the owner's own data sizes and a real cloud drive aren't run here.
