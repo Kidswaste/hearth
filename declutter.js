@@ -631,7 +631,7 @@ const Declutter = (() => {
   if (typeof Simplify !== 'undefined' && Array.isArray(Simplify.TUCKED)) Simplify.TUCKED.unshift(['palette-btn', '⌘ Command palette  Ctrl+K'], ['add-btn', '＋ Add an agent or website']);
 
   // the keys sheet lists what each area tucks away (hold Alt / point at it)
-  const WHERE = { Rail: 'the rail', 'Chats panel': 'the chats list', Chat: 'a chat', 'Director dock': 'the dock', Lab: 'the Lab', 'Lab preview': 'the picture', 'Lab timeline': 'the timeline', 'Lab layers': 'a layer', 'Lab sliders': 'the sliders', 'Lab console': 'the console', Notes: 'Notes', Memory: 'Memory', Tabs: 'a tool’s header', 'Video Review': 'Video Review' };
+  const WHERE = { Rail: 'the rail', 'Chats panel': 'the chats list', Chat: 'a chat', 'Director dock': 'the dock', Lab: 'the Lab', 'Lab preview': 'the picture', 'Lab timeline': 'the timeline', 'Lab layers': 'a layer', 'Lab sliders': 'the sliders', 'Lab console': 'the console', Notes: 'Notes', Memory: 'Memory', Tabs: 'a tool’s header' };
   for (const area of areas()) {
     const alt = REVEAL.filter((r) => r.area === area && r.mode === 'alt');
     const hov = REVEAL.filter((r) => r.area === area && r.mode === 'hover');

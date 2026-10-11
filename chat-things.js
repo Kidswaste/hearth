@@ -1,7 +1,7 @@
 // Things a reply made, inside the reply (round 9, chatcore): when a reply or one of its tool calls produces a capture,
 // a frame, a render, a board item, a Lab scene or a sequence, it shows under the reply as a small card
 // (a picture, or a video poster that plays while you point at it and scrubs frame by frame along its bottom edge).
-// Click opens it in its tool; drag it to the board, the editor, another chat or another app; right-click for the rest.
+// Click opens it in its tool; drag it to the board, the Lab, another chat or another app; right-click for the rest.
 // Nothing here reaches the engines: cards are drawn from the hub's own record of the calls (HubBridge.onResult) and
 // stored on the message as `things`, which no prompt, context or export reads.
 const ChatThings = (() => {
@@ -130,7 +130,7 @@ const ChatThings = (() => {
     const card = el('div', {
       class: `thing thing-${t.k}${t.pending ? ' thing-pending' : ''}`, tabindex: 0, draggable: true,
       dataset: { key: t.pending ? `frame:pending:${ctx.chatId}` : keyOf(t), kind: t.k },
-      title: `${KIND[t.k] || t.k}: ${t.name || ''}${t.path ? `\n${t.path}` : t.board ? `\non “${t.board}”` : ''}\nClick: open · drag: to the board, the editor, a chat · right-click: more${isVid ? '\nPoint at it: plays · along its bottom edge: frame by frame (← → step)' : ''}`,
+      title: `${KIND[t.k] || t.k}: ${t.name || ''}${t.path ? `\n${t.path}` : t.board ? `\non “${t.board}”` : ''}\nClick: open · drag: to the board, the Lab, a chat · right-click: more${isVid ? '\nPoint at it: plays · along its bottom edge: frame by frame (← → step)' : ''}`,
     }, thumb, el('div', { class: 'thing-foot' }, el('span', { class: 'thing-k', text: GLYPH[t.k] || '◇' }), label, read),
     el('button', { type: 'button', class: 'thing-more', text: '⋯', title: 'More', on: { click: (e) => { e.stopPropagation(); menu(t, ctx, e.currentTarget.getBoundingClientRect()); } } }));
     card.addEventListener('click', (e) => { if (e.target.closest('.thing-more, .thing-scrub')) return; openThing(t, ctx); });
@@ -221,6 +221,8 @@ const ChatThings = (() => {
     const isVid = t.k === 'video';
     const items = [
       { label: `Open${{ image: '', frame: '', video: ' in the player', board: ' on the board', scene: ' in the Lab', sequence: ' in the Lab sequence' }[t.k] || ''}`, key: 'Enter', action: () => openThing(t, ctx) },
+      p ? { label: MediaFile.revealLabel, action: () => MediaFile.reveal(p) } : null,
+      p ? { label: MediaFile.copyLabel, action: () => copyText(p, 'Path copied') } : null,
       { label: 'Send to', icon: 'export', items: () => [
         here ? { label: 'This chat (attach)', action: tryRun(() => sendTo(t, here)) } : null,
         { label: 'Another chat', items: () => chatAgents().filter((a) => a.id !== here).map((a) => ({ label: a.name, action: tryRun(() => sendTo(t, a.id)) })) },
@@ -229,9 +231,7 @@ const ChatThings = (() => {
         p && (isVid || t.k === 'image') ? { label: 'The Lab (as media)', action: tryRun(() => Capture.addToLab(p)) } : null,
         t.k === 'scene' && typeof ThreeSeq !== 'undefined' ? { label: 'The Lab sequence (add this scene)', action: tryRun(async () => { await ThreeLab.cmd(); await ThreeSeq.add({ sketch: t.id }); toast('Added to the sequence', { timeout: 1400 }); }) } : null,
       ].filter(Boolean) },
-      p && typeof CaptureView !== 'undefined' ? { label: isVid ? 'Frames, make, read…' : 'Picture tools…', items: () => CaptureView.itemsFor(p).filter((x) => x && !/^(▶ Play|🖼 Open|→ Send)/.test(x.label || '')) } : null,
-      p ? { label: 'Copy the path', action: () => copyText(p, 'Path copied') } : null,
-      p ? { label: 'Show in folder', more: true, action: () => window.hub.fs.reveal(p) } : null,
+      p && typeof CaptureView !== 'undefined' ? { label: isVid ? 'Frames, make, read…' : 'Picture tools…', items: () => CaptureView.itemsFor(p).filter((x) => x && !/^(▶ Play|🖼 Open|→ Send|Open in the system)/.test(x.label || '') && ![MediaFile.revealLabel, MediaFile.copyLabel].includes(x.label)) } : null,
       { label: 'Hide this card', more: true, action: () => hide(t, ctx) },
       ...(typeof Declutter !== 'undefined' ? Declutter.customiseItems('Chat') : []),
     ].filter(Boolean);
@@ -306,7 +306,7 @@ const ChatThings = (() => {
     Keys.add(
       { area: 'Chat', keys: 'Point at a video card', what: 'plays it (muted); along its bottom edge: frame by frame' },
       { area: 'Chat', keys: '← / → on a video card', what: 'one frame back / forward (Shift: 10), Space plays' },
-      { area: 'Chat', keys: 'Drag a card', what: 'to the board, the editor, another chat or another app (a real file)' },
+      { area: 'Chat', keys: 'Drag a card', what: 'to the board, the Lab, another chat or another app (a real file)' },
       { area: 'Chat', keys: 'Right-click a card', what: 'open, send to the board / editor / Lab / a chat, frame tools' },
     );
   } catch { /* keys.js not loaded */ }

@@ -666,7 +666,7 @@ const CmdBar = (() => {
     },
   });
   R({
-    name: 'after', aliases: ['later-cmd'], args: '<delay> </command>', desc: 'Run a command once after a delay: /after 2m /unfreeze', keywords: 'timer delay later',
+    name: 'after', aliases: ['later-cmd'], args: '<delay> </command>', desc: 'Run a command once after a delay: /after 2m /freeze off', keywords: 'timer delay later',
     examples: ['/after 30s /freeze off', '/after 2m /echo check the render'],
     run: (args) => { const s = splitCmd(args); if (!s) return 'Use `/after <delay> /command`'; const t = addTimer({ at: Date.now() + parseDur(s.when), cmd: s.cmd }); return `⏱ \`${safe(t.cmd)}\` in ${fmtDur(t.next - Date.now())}`; },
   });

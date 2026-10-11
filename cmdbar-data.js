@@ -127,7 +127,6 @@
     focus: { examples: ['/focus'], keywords: 'distraction free only chat hide panels' },
     spacing: { examples: ['/spacing compact', '/spacing cozy'], keywords: 'messages gap tight roomy', args: { tight: 'compact', dense: 'compact', roomy: 'cozy', airy: 'cozy' } },
     timestamps: { examples: ['/timestamps hover', '/timestamps always'], keywords: 'time dates messages clock', args: { show: 'always', hide: 'never', hidden: 'never' } },
-    guide: { examples: ['/guide thirds', '/guide safe', '/guide off'], keywords: 'composition overlay grid', args: { third: 'thirds', diagonal: 'diag', centre: 'center', middle: 'center' } },
     // ---------- look, meter, app ----------
     theme: { examples: ['/theme molten', '/theme next', '/theme random', '/theme midnight'], keywords: 'look skin appearance colors style dark light mode', args: { dark: 'midnight', night: 'midnight', black: 'obsidian', bright: 'light', white: 'light', day: 'light', default: 'forgeheart', original: 'classic', old: 'classic', chrome: 'chrome-forge', glass: 'glass-ember', neon: 'neon-anvil', gold: 'gold-leaf', purple: 'midnight-violet', violet: 'midnight-violet', green: 'jade-furnace', red: 'bloodmoon', pink: 'rose-gold' }, undo: '/theme prev' },
     appearance: { examples: ['/appearance', '/appearance save mine'], keywords: 'look theme textures glow motion settings', undo: '/appearance reset' },

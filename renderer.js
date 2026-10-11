@@ -214,16 +214,32 @@ function menuButton(it, onPick) {
   return b;
 }
 
+// (round 18, tidy) every menu reads the same: what deletes or trashes something is red and comes last, after a line
+// (a "Delete…" / "Move to the Trash" row is marked danger even when its menu forgot), and no line is left dangling.
+const MENU_DANGER = /^(🗑\s*)?(Delete|Move (it )?to (the )?Trash|Erase)\b/;
+function menuTidy(list) {
+  const isItem = (it) => it && typeof it === 'object' && !it.sep;
+  for (const it of list) if (isItem(it) && !it.danger && !it.items && !it.back && MENU_DANGER.test(menuLabel(it)[0])) it.danger = true;
+  const bad = list.filter((it) => isItem(it) && it.danger && !it.more);
+  if (bad.length && list.length > bad.length) {
+    list = list.filter((it) => !bad.includes(it));
+    while (list.length && (list.at(-1) === '-' || list.at(-1)?.sep)) list.pop();
+    list.push('-', ...bad);
+  }
+  return list.filter((it, i, a) => !((it === '-' || it?.sep) && (i === 0 || a[i - 1] === '-' || a[i - 1]?.sep)));
+}
+
 function showMenu(x, y, items, parent = null, dir = 0) {
   const menu = menuNode();
   hideMenuFly();
   const given = items;
-  let list = (typeof items === 'function' ? items() : items || []).filter(Boolean);
+  let list = menuTidy((typeof items === 'function' ? items() : items || []).filter(Boolean));
   // rare items behind one "More…" (a submenu, so ‹ back returns here)
   const rest = list.filter((it) => typeof it === 'object' && it.more);
   if (rest.length > 1) {
     const main = list.filter((it) => !(typeof it === 'object' && it.more));
-    const at = main.findIndex((it) => it.danger); // "More…" goes above a closing Delete
+    let at = main.findIndex((it) => it.danger); // "More…" goes above a closing Delete (and its line)
+    if (at > 0 && (main[at - 1] === '-' || main[at - 1]?.sep)) at -= 1;
     main.splice(at < 0 ? main.length : at, 0, { label: 'More…', hint: String(rest.length), items: rest.map((it) => ({ ...it, more: false })) });
     list = main;
   } else if (rest.length) list = list.map((it) => (it === rest[0] ? { ...it, more: false } : it));

@@ -7,7 +7,7 @@
 //   · moodboard → palette → Lab look in one click: the board's (or the selection's) colors become the Lab sketch's
 //     palette, recolor its color sliders and are saved as a look named after the board
 //   · a timeline of the board's clips: each clip as a strip with its cuts, pace and length, side by side (click a
-//     shot to watch it), and its pacing sent to the video editor (/cut-to-vibe)
+//     shot to watch it), and its pacing sent to the Lab as cues (/match-pacing; round 18: the video editor is gone)
 // Pure helpers (clusterVibes, groupName) are exported for Node tests (dev/board-unit-test.js).
 const BoardPack = (() => {
   const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
@@ -176,7 +176,7 @@ const BoardPack = (() => {
       el('div', { class: 'bdp-head' },
         el('b', { text: `Clips on a timeline · ${clips.length}` }),
         el('span', { class: 'bdp-sub', text: avg ? `the board cuts every ≈${avg.toFixed(1)} s` : '' }),
-        el('button', { class: 'small', text: '✂ Pace my edit like this', title: 'The video editor suggests cuts at this pacing (/cut-to-vibe)', on: { click: () => { tl?.remove(); Commands.tryRun?.('/cut-to-vibe', H.claudeAgent()?.id); } } }),
+        el('button', { class: 'small', text: '✂ Pace the Lab like this', title: 'Cues in the Lab at a reference clip\'s rhythm (/match-pacing)', on: { click: () => { tl?.remove(); Commands.tryRun?.('/match-pacing', H.claudeAgent()?.id); } } }),
         el('button', { class: 'small', text: '✕', title: 'Close (Esc)', on: { click: () => tl?.remove() } })),
       ...rows);
     tl.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); tl.remove(); } });
@@ -216,7 +216,7 @@ const BoardPack = (() => {
       run: async (args) => { await showBoard(); const g = vibeGroups({ k: Number(String(args || '').trim()) || 0 }); return `${g.length} vibe groups: ${g.map((x) => `**${x.name}** (${x.n})`).join(', ')}. Ctrl+Z undoes.`; } },
     { name: 'board-lab-look', aliases: ['board-to-look'], desc: 'The board\'s palette (or the selection\'s) → the Lab sketch\'s palette, its color sliders recolored, saved as a look', args: '[look name]',
       run: async (args) => { await B.ready(); const r = await labLook({ name: String(args || '').trim() || null }); return `🎨 Lab palette ${r.palette.join(' ')}${r.recolored ? ', color sliders recolored' : ''}${r.look ? `, saved as the look “${r.look}”` : ''}.`; } },
-    { name: 'board-timeline', aliases: ['board-clips'], desc: 'The board\'s clips side by side on a timeline: their shots, pace and length (click a shot to watch it)', run: async () => { await showBoard(); const r = timeline(); return `${r.clips} clip${r.clips === 1 ? '' : 's'} on a timeline${r.avg ? `, cutting every ≈${r.avg} s` : ''}. ✂ sends that pacing to the video editor.`; } },
+    { name: 'board-timeline', aliases: ['board-clips'], desc: 'The board\'s clips side by side on a timeline: their shots, pace and length (click a shot to watch it)', run: async () => { await showBoard(); const r = timeline(); return `${r.clips} clip${r.clips === 1 ? '' : 's'} on a timeline${r.avg ? `, cutting every ≈${r.avg} s` : ''}. ✂ sends that pacing to the Lab as cues.`; } },
   ];
   function registerAll() { for (const d of defs) { if (Commands.get(d.name)) continue; Commands.register({ area: 'Board', ...d, aliases: (d.aliases || []).filter((a) => !Commands.get(a)) }); } }
   if (document.readyState === 'loading' || document.currentScript?.defer) addEventListener('DOMContentLoaded', registerAll, { once: true }); else registerAll();

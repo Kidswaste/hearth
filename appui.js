@@ -69,7 +69,15 @@ const AppUI = (() => {
   const SPELL_LANGS = [['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['fr-FR', 'French'], ['es-ES', 'Spanish'], ['de-DE', 'German']];
 
   // ---------- settings dialog ----------
-  async function openSettings() {
+  // (round 18, tidy) settings-find.js (search + every switch with its cost) loads the first time Settings opens
+  let findLoad = null;
+  const loadFind = () => (typeof SettingsFind !== 'undefined' ? Promise.resolve() : (findLoad ||= new Promise((res, rej) => {
+    document.head.append(el('script', { src: 'settings-find.js', on: { load: res, error: () => { findLoad = null; rej(new Error('settings-find.js did not load')); } } }));
+  })));
+  async function openSettings(query = '') {
+    try { await loadFind(); } catch (err) { console.warn(err); }
+    if (typeof query !== 'string') query = '';
+    document.querySelector('dialog.settings-dialog[open]')?.close();
     const s = { ...H.settings() };
     const hidden = new Set(H.config.tools?.hidden || []);
     const field = (label, input, hint) => el('label', {}, label, input, hint ? el('span', { class: 'hint', text: hint }) : null);
@@ -162,6 +170,7 @@ const AppUI = (() => {
       else toast('Settings saved', { timeout: 1500 });
     });
     dialog.append(form);
+    if (typeof SettingsFind !== 'undefined') try { SettingsFind.mount(form, section, { query }); } catch (err) { console.warn(err); }
     dialog.addEventListener('close', () => dialog.remove());
     document.body.append(dialog);
     dialog.showModal();

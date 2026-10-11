@@ -1181,13 +1181,13 @@ const ChatCmds = (() => {
   const OPENERS = [
     ['notes', 'Open Notes', 'Ctrl+J', () => Notes.toggle()],
     ['palette', 'Open the command palette', 'Ctrl+K', () => AppUI.palette()],
-    ['settings', 'Open Settings', 'Ctrl+,', () => AppUI.openSettings()],
+    ['settings', 'Open Settings (with words: only what matches, e.g. /settings tokens)', 'Ctrl+,', (args) => AppUI.openSettings(args || '')],
     ['shortcuts', 'Keyboard shortcuts', 'Ctrl+/', () => AppUI.shortcutsHelp()],
     ['prompts', 'Manage saved prompts', '', () => Prompts.manage()],
     ['usage-table', 'Token usage table', '', () => AppUI.usageDialog()],
     ['deleted', 'Recently deleted chats', '', () => AppUI.trashDialog()],
   ];
-  for (const [name, desc, keys, fn] of OPENERS) R({ name, area: 'App', desc, keys, run: () => { fn(); } });
+  for (const [name, desc, keys, fn] of OPENERS) R({ name, area: 'App', desc, keys, ...(name === 'settings' ? { args: '[words]' } : {}), run: (args) => { fn(String(args || '').trim()); } });
   R({
     name: 'notify', aliases: ['notifications'], area: 'App', args: '[on | off]', desc: 'Notifications when a reply arrives while you look elsewhere',
     complete: () => ONOFF,
