@@ -1,0 +1,24 @@
+/* Studio (round 15): the pipeline picker and its Commands-page rows. Compact: one card per recipe, details in text. */
+dialog.studio-pick { width: min(760px, 94vw); max-height: 86vh; display: flex; flex-direction: column; }
+dialog.studio-pick:not([open]) { display: none; }
+.studio-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.studio-head h2 { margin: 0; font-size: 16px; }
+.studio-sub { color: var(--muted); font-size: 12px; }
+.studio-search { width: 180px; }
+.studio-list { overflow: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
+.studio-card { display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: start; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--text) 3%, transparent); }
+.studio-card:hover, .studio-card:focus-visible { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); outline: none; }
+.studio-icon, .cp-row.studio-row .studio-pv { display: grid; place-items: center; font-size: 22px; border-radius: 8px; background: radial-gradient(circle, color-mix(in srgb, var(--accent) 22%, transparent), transparent 72%); }
+.studio-icon { width: 44px; height: 44px; }
+.studio-body b { font-size: 14px; }
+.studio-pitch { margin: 2px 0 4px; font-size: 12.5px; color: var(--text); opacity: .85; }
+.studio-chain { font-size: 11.5px; color: var(--accent); letter-spacing: .01em; }
+.studio-cost { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.studio-miss { margin-top: 4px; display: flex; flex-direction: column; gap: 2px; }
+.studio-need { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: #ffb35c; }
+.studio-need.soft { color: var(--muted); }
+.studio-need button { padding: 0 6px; font-size: 11px; }
+.studio-acts { display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
+.studio-detail .studio-acts { flex-direction: row; align-items: center; gap: 10px; margin-top: 10px; }
+.studio-steps { margin: 8px 0; padding-left: 20px; font-size: 12.5px; line-height: 1.6; }
+.studio-last { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; align-items: flex-start; }
