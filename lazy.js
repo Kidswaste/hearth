@@ -382,7 +382,7 @@ const Lazy = (() => {
       if (!g || placed.has(n)) continue;
       placed.add(n);
       stubNow(g);
-      document.addEventListener('DOMContentLoaded', () => stubLater(g), { once: true });
+      addEventListener('DOMContentLoaded', () => stubLater(g), { once: true }); // (on window, like most modules' handlers: in their order)
     }
   }
   // a group without a lazy-at.js tag gets its stand-ins at the end
@@ -397,7 +397,7 @@ const Lazy = (() => {
     load, state, start, at,
     loaded: (name) => groups.get(name)?.state === 'loaded',
     // when(group, fn): fn() now if the group is in (or isn't lazy), else once it has loaded; for hooks an eager module
-    // puts into a lazy one (window.Lazy?.when('video', () => VideoCut.on(…)) ?? …)
+    // puts into a lazy one (window.Lazy?.when('lab', () => ThreeSeq.on(…)) ?? …)
     when(name, fn) {
       const g = groups.get(name);
       if (!g || g.state === 'loaded') { fn(); return; }

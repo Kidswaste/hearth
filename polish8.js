@@ -270,9 +270,7 @@ const Polish8 = (() => {
     try { Declutter.addRules(RULES); } catch (err) { console.warn('polish8 rules', err); }
     wrapMenu(); wrapCapture(); registerKeys(); styleSheet(); watchSheet(); commands(); rightClicks();
     addEventListener('hearth:view', () => { setTimeout(chipKeys, 300); editingClass(); }); // the board / editor chips exist once their tool has mounted
-    // (round 16) Video Review's files load after the first screen (lazy.js)
-    const cutHook = () => { if (typeof VideoCut !== 'undefined') VideoCut.on('mode', () => { editingClass(); setTimeout(chipKeys, 100); }); };
-    if (window.Lazy) window.Lazy.when('video', cutHook); else cutHook();
+    if (typeof VideoCut !== 'undefined') VideoCut.on('mode', () => { editingClass(); setTimeout(chipKeys, 100); });
     // the hidden rail button capture-cmds.js adds (pinned back on screen with Customise this…, it shows): the SVG icon
     const cb = document.getElementById('capture-btn');
     if (cb && typeof Icons !== 'undefined' && !cb.querySelector('svg')) cb.replaceChildren(Icons.node('capture'));

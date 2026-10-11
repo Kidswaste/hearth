@@ -48,7 +48,7 @@ await until(() => Lazy.loaded('cmdpage') && document.querySelector('[data-id="to
 check('Commands page opens from its tab', Boolean(document.querySelector('[data-id="tool:commands"] .cp-head')), JSON.stringify(st()));
 // 5. Video Review tab
 activate('tool:ae');
-await until(() => Lazy.loaded('video') && document.querySelector('[data-id="tool:ae"] .vr-main'));
+await until(() => document.querySelector('[data-id="tool:ae"] .vr-main'));
 check('Video Review opens from its tab', Boolean(document.querySelector('[data-id="tool:ae"] .vr-main')));
 check('no "Loading…" left', !document.querySelector('.lazy-wait'));
 // 5b. the board tab
@@ -80,6 +80,7 @@ localStorage.removeItem('lazy.hold');
 H.config.settings = { ...(H.config.settings || {}), startOn: 'threedirector' };
 await saveConfig();
 await sleep(600);
+if (out.bad.length) throw new Error(`lazy: ${out.bad.join(' | ')}`);
 return JSON.stringify(out, null, 1);
 //@@ reload
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -99,4 +100,5 @@ check('every group loaded after the first screen', Lazy.state().every((s) => s.s
 check('ready before the groups', Lazy.state().every((s) => s.name === 'lab' || s.at > (performance.getEntriesByName('hearth:ready')[0]?.startTime || 0)), `ready @${Math.round(performance.getEntriesByName('hearth:ready')[0]?.startTime)}`);
 H.config.settings = { ...(H.config.settings || {}), startOn: '' };
 await saveConfig();
+if (out.bad.length) throw new Error(`lazy: ${out.bad.join(' | ')}`);
 return JSON.stringify(out, null, 1);
