@@ -72,7 +72,7 @@ await window.hub.saveChat(codeChat);
 await wait(300);
 await probe('openCodeChat', async () => {
   Native.open(claude.id, codeChat.id);
-  await until(() => v().list.querySelectorAll('.msg').length >= 40, 10000);
+  await until(() => H.activeChat[claude.id] === codeChat.id && v().list.querySelector('.msg.assistant[data-index="59"] pre'), 10000);
   await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
 });
 {
@@ -162,6 +162,42 @@ await probe('syncPass', async () => { await window.hub.sync.now({}); });
 out.syncState = (await window.hub.sync.status()).state;
 out.store = (await window.hub.perfLag?.())?.store;
 await window.hub.sync.off();
+
+// ---------- 7. a folder search (Forge workspace search) and a recursive listing ----------
+{
+  const DIR = `/tmp/hearth-offmain-ws-${Date.now()}`;
+  for (let i = 0; i < 300; i++) await window.hub.fs.write(`${DIR}/d${i % 12}/note-${i}.md`, `# Note ${i}\n\n${say(i, 1)}\n${i === 123 ? 'the anvil line' : ''}\n${say(i, 2).repeat(20)}`);
+  const found = await probe('folderSearch', async () => { let r; for (const q of ['anvil', 'orb rose', 'ember']) r = await window.hub.fs.search(DIR, q, { match: '\\.md$' }); return r; });
+  const anvil = await window.hub.fs.search(DIR, 'anvil', { match: '\\.md$' });
+  const listed2 = await window.hub.fs.list(DIR, { recursive: true });
+  out.folder = { anvil: anvil.length, anvilFile: anvil[0]?.name, line: anvil[0]?.snippets?.[0]?.line, ember: found?.length, listed: listed2.length };
+  if (anvil.length !== 1 || anvil[0].name !== 'note-123.md' || listed2.length !== 312) fail.push(`folder search: ${JSON.stringify(out.folder)}`);
+}
+
+// ---------- 8. the director's screenshot of the Lab (encoded off the window's thread) ----------
+{
+  activate('tool:three');
+  await ThreeLab.cmd();
+  await until(() => ThreeLab.director, 15000);
+  const knot = `import * as THREE from 'three';
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+document.body.append(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100);
+camera.position.z = 4;
+const mesh = new THREE.Mesh(new THREE.TorusKnotGeometry(1, 0.3, 128, 16), new THREE.MeshNormalMaterial());
+scene.add(mesh);
+renderer.setAnimationLoop((now) => { mesh.rotation.y = now / 1000; renderer.render(scene, camera); });`;
+  await HubBridge.call('three_set_code', { code: knot, wait: 2 });
+  await wait(500);
+  const shot = await probe('directorScreenshot', async () => { let r; for (let i = 0; i < 3; i++) r = await HubBridge.call('three_screenshot', { force: true }); return r; });
+  let dims = null;
+  if (shot?.ok) { const img = new Image(); img.src = `data:image/jpeg;base64,${shot.images[0].data}`; await img.decode(); dims = `${img.width}×${img.height}`; }
+  out.screenshot = { ok: shot?.ok, dims, value: String(shot?.value || shot?.error || '').slice(0, 60) };
+  if (!shot?.ok || !dims) fail.push(`screenshot: ${JSON.stringify(out.screenshot)}`);
+  activate(claude.id);
+}
 
 out.fail = fail;
 return JSON.stringify(out, null, 1);

@@ -1986,6 +1986,21 @@ globalThis.lab3d = lab3d;
 import * as THREE from 'three';
 
 const post = (msg, transfer) => (window.__stageHost ? window.__stageHost.post({ source: 'three-sandbox', ...msg }) : parent.postMessage({ source: 'three-sandbox', ...msg }, '*', transfer || []));
+// (round 20, offmain) pictures for the Lab / the director (three_screenshot) are encoded by the browser off this thread
+// (toBlob + FileReader) instead of toDataURL, which held the page for the whole PNG encode of a full-size frame
+// (≈ 50–150 ms at 1080×1920); the pixels are taken at the call, the message is the same data URL as before
+function postShot(canvas, tag) {
+  const fall = () => post({ type: 'shot', tag, dataUrl: canvas.toDataURL('image/png') });
+  try {
+    canvas.toBlob((b) => {
+      if (!b) { fall(); return; }
+      const r = new FileReader();
+      r.onload = () => post({ type: 'shot', tag, dataUrl: r.result });
+      r.onerror = fall;
+      r.readAsDataURL(b);
+    }, 'image/png');
+  } catch { fall(); }
+}
 const mode = new URLSearchParams(location.search).get('mode') || 'sketch';
 // Real timer functions for the sandbox's own work; sketches get wrapped ones (see "run generations").
 const realSetTimeout = setTimeout.bind(window);
@@ -2065,7 +2080,7 @@ function instrument(renderFn) {
     this.__lastScene = scene; this.__lastCamera = camera;
     renderers.add(this);
     if (frameSeen !== frameTick) { frameSeen = frameTick; frames += 1; } // one per displayed frame, however many layers render
-    if (shotPending) { shotPending = false; post({ type: 'shot', tag: shotTag, dataUrl: this.domElement.toDataURL('image/png') }); }
+    if (shotPending) { shotPending = false; postShot(this.domElement, shotTag); }
   };
 }
 // WebGLRenderer assigns `this.render = function…` in its constructor (no prototype method), so a
@@ -2214,10 +2229,10 @@ function gpuEstimate() {
 }
 
 function requestShot() {
-  if (mode === 'sketch' && needsComposite()) { realRAF(() => post({ type: 'shot', tag: shotTag, dataUrl: composite().toDataURL('image/png') })); return; }
+  if (mode === 'sketch' && needsComposite()) { realRAF(() => postShot(composite(), shotTag)); return; }
   shotPending = true;
   // Static scenes may not render again; fall back to the current canvas.
-  realSetTimeout(() => { if (shotPending && lastRenderer) { shotPending = false; post({ type: 'shot', tag: shotTag, dataUrl: lastRenderer.domElement.toDataURL('image/png') }); } }, 600);
+  realSetTimeout(() => { if (shotPending && lastRenderer) { shotPending = false; postShot(lastRenderer.domElement, shotTag); } }, 600);
 }
 
 // ---------- audio / video ----------

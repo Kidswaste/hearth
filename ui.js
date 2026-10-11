@@ -209,6 +209,21 @@ document.addEventListener('loadedmetadata', (e) => { const v = e.target; if (v i
     return f.format(ms);
   }
   const fmtDate = (ms) => fmtLocal(ms, { dateStyle: 'medium', timeStyle: 'short' });
+  // (round 20, offmain) a canvas as a data URL, encoded by the browser off this thread (toBlob + FileReader; toDataURL
+  // encodes on it: a 1280-px JPEG ≈ 15–40 ms). Same result as canvas.toDataURL(type, quality), as a Promise.
+  function canvasDataUrl(canvas, type = 'image/png', quality) {
+    return new Promise((resolve) => {
+      const here = () => resolve(canvas.toDataURL(type, quality));
+      try {
+        canvas.toBlob((b) => {
+          if (!b) { here(); return; }
+          const r = new FileReader();
+          r.onload = () => resolve(r.result); r.onerror = here;
+          r.readAsDataURL(b);
+        }, type, quality);
+      } catch { here(); }
+    });
+  }
   function timeAgo(ms) {
     const s = Math.round((Date.now() - ms) / 1000);
     if (s < 60) return 'just now';
@@ -408,5 +423,5 @@ document.addEventListener('loadedmetadata', (e) => { const v = e.target; if (v i
     items: (p) => [{ label: 'Open', action: () => MediaFile.open(p) }, { label: MediaFile.revealLabel, action: () => MediaFile.reveal(p) }, { label: MediaFile.copyLabel, action: () => copyText(p, 'Path copied') }],
   };
 
-  Object.assign(window, { el, toast, Modal, Tabs, store, fmtBytes, fmtDate, fmtLocal, timeAgo, debounce, copyText, escapeHtml, highlight, CodeEditor, dropZone, DataTable, MediaFile });
+  Object.assign(window, { el, toast, Modal, Tabs, store, fmtBytes, fmtDate, fmtLocal, canvasDataUrl, timeAgo, debounce, copyText, escapeHtml, highlight, CodeEditor, dropZone, DataTable, MediaFile });
 })();

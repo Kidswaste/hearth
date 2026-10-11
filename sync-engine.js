@@ -361,6 +361,7 @@ function createEngine(o) {
 
   // ---------- hashing (cached by size + modified time) ----------
   let texts = new Map(); // `${side}:${rel}` → canonical (cloud-form) JSON text, this pass only
+  let hashed = new Map(); // (round 20) text → its hash, for the big stores hashed on the store thread (this pass only)
   const arriving = new Map(); // rel → { size, mtime, since }: a cloud file whose size doesn't match its journal yet
   // (round 20, offmain) a big JSON store (≥ 256 KB: Lab scenes, boards, long chats) is read, put in its cloud form and
   // hashed on another thread when the app gives one (o.hashJson: the store thread in Hearth), so a pass never holds
@@ -376,7 +377,7 @@ function createEngine(o) {
     let h;
     const off = S.isJsonRel(rel) && L.size <= JSON_MAX ? await hashOff(L.file, L.size, rel, false) : null;
     if (off?.bad) return now() - L.mtime < 5000 ? INFLIGHT : BAD;
-    if (off?.h) { h = off.h; if (off.t) texts.set(`l:${rel}`, off.t); } else if (S.isJsonRel(rel) && L.size <= JSON_MAX) {
+    if (off?.h) { h = off.h; if (off.t) { texts.set(`l:${rel}`, off.t); hashed.set(off.t, h); } } else if (S.isJsonRel(rel) && L.size <= JSON_MAX) {
       const text = await fsp.readFile(L.file, 'utf8');
       let v;
       try { v = JSON.parse(text); } catch { return now() - L.mtime < 5000 ? INFLIGHT : BAD; }
@@ -479,7 +480,7 @@ function createEngine(o) {
     let ok;
     if (S.isJsonRel(rel)) {
       const text = await localText(rel, L);
-      if (sha(text) !== h) return false;
+      if ((hashed.get(text) ?? sha(text)) !== h) return false; // (round 20) a text hashed on the store thread isn't hashed again
       ok = await casWrite(dst, target, text, 'push');
       if (ok) setBase(rel, h, text);
     } else if (L.size <= SMALL) {
@@ -693,7 +694,7 @@ function createEngine(o) {
     try { return await running; } finally { running = null; }
   }
   async function passOnce(opts) {
-    sum = counts(); pulledNow = []; texts = new Map(); status.resumed = 0; status.bytes = 0;
+    sum = counts(); pulledNow = []; texts = new Map(); hashed = new Map(); status.resumed = 0; status.bytes = 0;
     const t0 = now();
     if (!(await exists(cloudRoot))) return finish({ state: 'offline', error: '' }, t0);
     if (!(await exists(FILES))) {

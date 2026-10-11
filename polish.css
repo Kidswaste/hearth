@@ -521,6 +521,8 @@ dialog .ghost:not(.small) { min-height: 32px; }
 :root[data-look~=v2] .toast { border-radius: var(--r-md); }
 /* the command palette: rows a little shorter so more fit, kind labels line up */
 .palette-item { padding: 7px 10px; align-items: center; }
+/* (round 20, offmain) rows past the first screenful skip layout and paint until scrolled to (typing re-laid out 60 rows a key) */
+.palette-list > .palette-item:nth-child(n+14) { content-visibility: auto; contain-intrinsic-size: auto 34px; }
 .p-kind { font-variant-numeric: tabular-nums; }
 :root[data-look~=v2] .palette-item:hover:not(.sel) { background: color-mix(in srgb, var(--fh-gold) 6%, transparent); }
 /* the Appearance picker: tiles hover with the active color and a light sweep */

@@ -1130,7 +1130,7 @@ const ThreeLab = (() => {
         if (imgs[i]) g.drawImage(imgs[i], x, y, tw, th);
         g.fillStyle = '#ffd75e'; g.fillText(`${i + 1}  ${f.label?.startsWith('+') ? f.label : `${fmtMs(f.t).replace(/^0:/, '')}${f.label ? `  ${f.label}` : ''}`}`, x + 2, y + th + 16);
       });
-      return { dataUrl: cv.toDataURL('image/jpeg', 0.86), frames: frames.map((f, i) => ({ n: i + 1, time: Math.round(f.t * 100) / 100, cue: f.label || undefined })) };
+      return { dataUrl: await canvasDataUrl(cv, 'image/jpeg', 0.86), frames: frames.map((f, i) => ({ n: i + 1, time: Math.round(f.t * 100) / 100, cue: f.label || undefined })) }; // (round 20) encoded off this thread
     }
     const sheetBtn = btn('🎞 Sheet', 'Contact sheet: a frame at every cue (or across the loop / song) in one picture, to check the whole piece or send to the director / Astra', () => showSheet(), 'ghost small imp-capture');
     sheetBtn.dataset.feature = 'Contact sheet';
@@ -3949,7 +3949,7 @@ ${frag}\`,
             const c = document.createElement('canvas'); const sc = Math.min(1, 640 / Math.max(img.width, img.height));
             c.width = Math.max(1, Math.round(img.width * sc)); c.height = Math.max(1, Math.round(img.height * sc));
             c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-            images.push({ data: c.toDataURL('image/jpeg', 0.85).split(',')[1], mime: 'image/jpeg' });
+            images.push({ data: (await canvasDataUrl(c, 'image/jpeg', 0.85)).split(',')[1], mime: 'image/jpeg' });
           } catch { /* unreadable */ }
         }
         return { ok: true, images, value: { palette: R.palette(), references: list.map((r) => ({ name: r.key, kind: r.kind, file: r.name, size: R.size(r.size), use: R.use(r) })), pictures: images.length ? `The ${images.length} images are, in order: ${imgs.map((r) => r.key).join(', ')}` : 'none' } };
@@ -3991,7 +3991,8 @@ ${frag}\`,
       const scale = Math.min(1, 1280 / Math.max(img.width, img.height));
       c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      return { ok: true, images: [{ data: c.toDataURL('image/jpeg', 0.85).split(',')[1], mime: 'image/jpeg' }], value: `Screenshot of "${d.getCode().sketch}" (${c.width}×${c.height}).` };
+      const jpeg = await canvasDataUrl(c, 'image/jpeg', 0.85); // (round 20) encoded off the window's thread
+      return { ok: true, images: [{ data: jpeg.split(',')[1], mime: 'image/jpeg' }], value: `Screenshot of "${d.getCode().sketch}" (${c.width}×${c.height}).` };
     }
     return { ok: false, error: `Unknown tool ${tool}` };
   }
