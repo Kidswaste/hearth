@@ -402,17 +402,33 @@ const Board = (() => {
     moved();
   }
   let settleT = 0; let cullAt = 0;
+  // (round 16) the world stays its own compositor layer between pans (.bd-layer): a pan right after a pan repaints
+  // nothing. Only a zoom drops the layer at the settle, so the pictures re-raster sharp at the new scale.
+  let layerZ = 0;
   function moved() {
-    if (!S.moving) { S.moving = true; S.ui.root.classList.add('bd-moving'); emit('moving'); }
+    if (!S.moving) {
+      S.moving = true; S.ui.root.classList.add('bd-moving');
+      if (!layerZ) { layerZ = S.view.z; S.ui.root.classList.add('bd-layer'); }
+      emit('moving');
+    }
     const t = performance.now();
     if (t - cullAt > 250) { cullAt = t; cull(false); }
     clearTimeout(settleT);
-    settleT = setTimeout(settle, 140);
+    const seq = ++moveSeq;
+    // settled = 140 ms and two painted frames with no move: on a slow frame (a big board, a busy GPU) the next wheel
+    // event used to land after the timer, so every slow frame settled and re-started the move (restyle + repaint)
+    settleT = setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => { if (seq === moveSeq && S.moving) settle(); })), 140);
   }
+  let moveSeq = 0;
+  // frame titles keep their size on screen: --inv lives on the frames only (on the root it restyled every item)
+  let invNow = '1';
+  const setInv = (n) => { if (n.__inv !== invNow) { n.__inv = invNow; n.style.setProperty('--inv', invNow); } };
   function settle() {
     S.moving = false;
     S.ui.root.classList.remove('bd-moving');
-    S.ui.root.style.setProperty('--inv', String(1 / S.view.z));
+    if (layerZ && Math.abs(S.view.z / layerZ - 1) > 1e-4) { layerZ = 0; S.ui.root.classList.remove('bd-layer'); }
+    const inv = String(1 / S.view.z);
+    if (inv !== invNow) { invNow = inv; for (const it of S.cur?.items || []) if (it.type === 'frame') { const n = S.nodes.get(it.id); if (n) setInv(n); } }
     cull(true);
     updateOverlay();
     if (S.cur) { S.cur.view = { ...S.view }; saveViewSoon(); }
@@ -610,7 +626,7 @@ const Board = (() => {
       if (s.__k !== k) { s.__k = k; s.replaceChildren(...(it.colors || []).map((c) => el('span', { style: { background: c }, title: `${c} · ${D.colorName(c)}`, dataset: { hex: c } }))); }
       n.querySelector('.bd-hex').textContent = it.title || 'Palette';
     },
-    frame: (n, it) => { n.querySelector('.bd-ftitle').textContent = it.title || 'Frame'; n.style.setProperty('--frame', it.color || 'var(--bd-frame)'); },
+    frame: (n, it) => { n.querySelector('.bd-ftitle').textContent = it.title || 'Frame'; n.style.setProperty('--frame', it.color || 'var(--bd-frame)'); setInv(n); },
     file: (n, it) => { n.querySelector('.bd-filename').textContent = it.title || it.file || 'File'; },
     shape: (n, it) => {
       const sh = n.querySelector('.bd-shape'); const def = D.SHAPES.find(([id]) => id === it.shape) || D.SHAPES[0];
