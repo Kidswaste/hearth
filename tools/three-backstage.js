@@ -11,7 +11,7 @@ const ThreeBackstage = (() => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const clip = (s, n) => { const t = String(s ?? ''); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
   const PROP_KEYS = ['name', 'visible', 'opacity', 'blend', 'in', 'out', 'fadeIn', 'fadeOut', 'x', 'y', 'scale', 'rotate'];
-  const OK_TOOLS = new Set(['three_get_code', 'three_read_code', 'three_search_code', 'three_edit_code', 'three_set_code', 'three_update_layer', 'three_console', 'three_screenshot', 'three_eval', 'three_layers', 'three_add_layer', 'three_remove_layer', 'three_set_frame', 'three_new_sketch', 'three_select_layer', 'three_media_info']);
+  const OK_TOOLS = new Set(['three_undo', 'three_get_code', 'three_read_code', 'three_search_code', 'three_edit_code', 'three_set_code', 'three_update_layer', 'three_console', 'three_screenshot', 'three_eval', 'three_layers', 'three_add_layer', 'three_remove_layer', 'three_set_frame', 'three_new_sketch', 'three_select_layer', 'three_media_info']);
 
   let host = null; let box = null;
   let loaded = null; // { id, sig } of what the sandbox runs
@@ -218,7 +218,9 @@ const ThreeBackstage = (() => {
       ThreeLab.scenes.setFrame(route.sketchId, args.size);
       await load(x, { force: true });
       await settle(1.2);
-      return { ok: true, value: d.report() };
+      // one line, like on screen (round 21): not the whole report
+      const r = d.report(); const f = r.frame;
+      return { ok: true, value: { frame: f?.width ? `${f.id || args.size} ${f.width}×${f.height}` : args.size, ...(r.errors?.length ? { errors: r.errors.slice(0, 4).map((e) => `${e.layer ? `[${e.layer}] ` : ''}${e.line ? `line ${e.line}: ` : ''}${clip(e.message, 200)}`) } : {}) } };
     }
     if (tool === 'three_media_info') return { ok: true, value: { loaded: false, note: 'No music backstage: the song plays when the owner opens this chat.', song: ThreeLab.scenes.songOf(route.sketchId)?.split(/[\\/]/).pop() || 'none linked' } };
     if (await load(x)) await settle(1.2); // a fresh page: let it start before reading it

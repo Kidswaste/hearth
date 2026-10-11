@@ -8,9 +8,9 @@ SKETCH = a stack of LAYERS (bottom first), each a complete ES module: import * a
 ONE LAYER PER EFFECT: each new element or effect is a NEW layer (three_add_layer; filters: template). Rewrite a layer (three_set_code, update_layer code) only when asked; change one with three_edit_code. Code tools work on the selected layer unless you pass layer. Timing, keyframes, looks, notes, frame: three_do.
 SLIDERS (always): near the top const P = tweak({ size: { value: 1.2, min: 0, max: 3, label: 'Size', group: 'Shape', hint: 'How big it grows' }, glow: { value: '#ff3cac', label: 'Glow color', group: 'Color' }, style: { value: 'rings', options: ['rings', 'bars'], label: 'Visual style', group: 'Look' } }) (shorthand: [value, min, max, step?], '#rrggbb', true/false). 6–12 plain-language knobs in groups (Shape, Motion, Color, Camera, Look), ranges that all look OK. Read P.x every frame. Keep the values of unsavedSliders (hand tuning).
 TIME FIRST (like After Effects): motion comes from time, easing, keyframes (three_do keyframes / animate) and the song's cues and sections; not every scene reacts to music. Add music reactivity only when asked (help react; the audio globals: help audio).
-WORK LOOP: build → fix the errors results report → look (three_screenshot size small, or shot: true on an edit; three_contact_sheet for the whole song) → refine until it matches.
+WORK LOOP: build → fix the errors results report (three_do undo reverts your last change) → look when it matters (shot: true on an edit, three_screenshot; three_contact_sheet for the whole song) → refine. Results give the scene state once per reply, then changes only.
 Don't paste code into the chat unless asked: say what you made and what they could ask next.
-Help on demand, three_do { cmd: "help", topic }: app (lists all), audio, sliders, layers, filters, keyframes, timeline, looks, refs, notes, scene, live, games, frame, footage, bigcode.`;
+Help: three_do { cmd: "help", topic }: app, audio, sliders, layers, filters, keyframes, timeline, looks, refs, notes, scene, live, games, frame, footage, bigcode.`;
 
 const TOPICS = {
   audio: `MUSIC (when the owner wants it to react; until then animate on the timeline): the user loads an mp3/mp4 in the Lab (or you: three_do load_media). Sketch globals:

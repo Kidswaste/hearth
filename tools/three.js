@@ -2298,6 +2298,7 @@ const ThreeLab = (() => {
       editor.syncScroll();
     }
     function onMessage(msg) {
+      if (typeof ThreeDirector !== 'undefined') ThreeDirector.onBox?.(msg); // (round 21) a director call answers at the first new frame
       // the sequence's own messages (and a realtime render's recording) go to tools/three-seq.js
       if (typeof ThreeSeq !== 'undefined' && (ThreeSeq.onMessage(msg) || ThreeSeq.takeRecording(msg))) return;
       // a key pressed while the picture had focus: the Lab's shortcuts handle it as if pressed here
@@ -2797,7 +2798,7 @@ const ThreeLab = (() => {
       if (!id || (thumbs[id] && Date.now() - thumbs[id].at < 3 * 60000)) return;
       thumbTimer = setTimeout(() => {
         // (the Lab sequence's program on screen isn't this sketch's picture)
-        if (current?.id !== id || pendingShot || errors.length || (typeof ThreeSeq !== 'undefined' && ThreeSeq.active)) return;
+        if (current?.id !== id || pendingShot || thumbShot || errors.length || (typeof ThreeSeq !== 'undefined' && ThreeSeq.active)) return;
         thumbShot = async (url, small) => {
           if (!url || (typeof ThreeSeq !== 'undefined' && ThreeSeq.active)) return;
           if (small) { thumbs[id] = { url, at: Date.now() }; saveThumbs(); return; } // (already a small JPEG)
@@ -3177,7 +3178,8 @@ ${code}
     api.openCode = (code) => create(`From chat ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, code);
 
     // What the Three Director (Claude) uses to build scenes from the user's prompts.
-    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    // (round 21, labdirector) its waits after a run end at the preview's first new frame (tools/three-director.js settle)
+    const sleep = (ms) => (typeof ThreeDirector !== 'undefined' && ThreeDirector.settle ? ThreeDirector.settle(ms) : new Promise((r) => setTimeout(r, ms)));
     const layersSummary = () => layersOf().map((L, i) => ({
       id: L.id, name: L.name, ...(ThreeLayers.isFilter(L.code) ? { kind: 'filter (changes the layers below it)' } : {}), ...(L.precomp && typeof ThreeComp !== 'undefined' && ThreeComp.isComp(L) ? { kind: `precomp of ${ThreeComp.describe(L)} (three_do comp)` } : {}), order: `${i + 1} of ${layersOf().length} (1 = bottom)`, selected: L.id === selId,
       visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal',
@@ -3448,6 +3450,19 @@ ${code}
       // Shots asked for at the same time (a still while the director takes one) share the next picture: each
       // waiter used to replace the one before, which then never resolved. Tagged 'get' so a second reply never
       // falls through to the user's "save screenshot" dialog.
+      // (round 21, labdirector) a small JPEG made by the preview itself (no full-size PNG): the director's pictures.
+      // Shares the thumbnail channel (after a Lab thumbnail on its way); null when it can't (the caller uses shot()).
+      shotSmall: async (max) => {
+        for (let i = 0; i < 40 && thumbShot; i += 1) await new Promise((r) => setTimeout(r, 100)); // a Lab thumbnail on its way: after it
+        if (thumbShot) return null;
+        return new Promise((resolve) => {
+          let done = false;
+          const mine = (url) => { if (done) return; done = true; if (thumbShot === mine) thumbShot = null; resolve(url || null); };
+          thumbShot = mine;
+          box.send({ type: 'screenshot', tag: 'thumb', max: Math.max(64, Math.round(max)) });
+          setTimeout(() => mine(null), 10000); // a heavy scene can take a while to draw its next frame
+        });
+      },
       shot: () => new Promise((resolve) => {
         const prev = pendingShot;
         const mine = (url) => { prev?.(url); resolve(url); };

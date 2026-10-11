@@ -67,6 +67,11 @@ const HubBridge = (() => {
     } catch { return 0; }
   }
 
+  // (round 21) The director's everyday calls never stay "working": past 55 s (the bridge gives up at 60) the call ends
+  // with an error the director can act on, and the activity strip / dock stop pulsing.
+  const QUICK = /^three_(edit_code|set_code|add_layer|update_layer|screenshot|eval|console|read_code|search_code|sliders|get_code|set_frame|undo|layers|select_layer|keyframes|animate|nodes)$/;
+  const capped = (tool, p) => (!QUICK.test(tool) ? p : Promise.race([p, new Promise((res) => setTimeout(() => res({ ok: false, error: `${tool.replace(/^three_/, '')} took over 55 s and was stopped waiting (the preview may be stuck: three_console, or ask the owner to look).` }), 55000))]));
+
   const emit = (entry) => { for (const fn of listeners) { try { fn(entry, log); } catch (err) { console.warn(err); } } };
 
   window.hub.onGameCall(async ({ id, tool: asked, args: given }) => {
@@ -82,7 +87,7 @@ const HubBridge = (() => {
     const h = handlerFor(tool);
     let result;
     try {
-      result = r0.error ? { ok: false, error: r0.error } : h ? await h.fn(tool, args || {}, { chatId: hubChatId }) : { ok: false, error: `Nothing in the hub handles ${tool}.` };
+      result = r0.error ? { ok: false, error: r0.error } : h ? await capped(tool, h.fn(tool, args || {}, { chatId: hubChatId })) : { ok: false, error: `Nothing in the hub handles ${tool}.` };
     } catch (err) { result = { ok: false, error: err.message }; }
     result ||= { ok: false, error: `${tool} returned nothing.` };
     Object.assign(entry, { running: false, ms: Date.now() - entry.at, ok: result.ok !== false, error: result.ok === false ? String(result.error || '').slice(0, 300) : null });
