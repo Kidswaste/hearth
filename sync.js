@@ -73,6 +73,7 @@ const Sync = (() => {
     const out = [line().length > 70 ? `${STATE_WORD[st.paused ? 'paused' : st.state] || 'Sync'} · ${where()}` : line()];
     if (fresh) out.push({ label: `Reload to see changes from ${fresh.from}`, action: () => reload() });
     if (st.held) {
+      out.push({ label: `Review the ${st.held.deletes} deleted files by name…`, action: () => held() });
       out.push({ label: `Delete those ${st.held.deletes} files (to the trash)`, action: () => now({ mass: 'apply' }) });
       out.push({ label: 'Keep them (bring them back)', action: () => now({ mass: 'keep' }) });
     }
@@ -152,32 +153,189 @@ const Sync = (() => {
     return dialog;
   }
 
-  // conflicts: what didn't merge by itself; keep the version in place, or use the other one
+  // ---------- conflicts (round 19): what it is, both sides by computer and time, the difference, plain choices ----------
+  const PLAT = { darwin: 'Mac', win32: 'Windows', linux: 'Linux' };
+  const HERE_NAME = MAC ? 'this Mac' : /Win/.test(navigator.platform) ? 'this PC' : 'this computer';
+  const hereLabel = () => `${HERE_NAME[0].toUpperCase()}${HERE_NAME.slice(1)}${MAC ? '' : /Win/.test(navigator.platform) ? ' (Windows)' : ''}`;
+  const thereName = (c) => c.from || 'your other computer';
+  const thereLabel = (c) => `${thereName(c)}${PLAT[c.fromPlatform] ? ` (${PLAT[c.fromPlatform]})` : ''}`;
+  function edited(t) {
+    if (!t) return 'edited: time not known';
+    const d = new Date(t);
+    const today = d.toDateString() === new Date().toDateString();
+    const clock = today ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return `edited ${clock}, ${timeAgo(t)}`;
+  }
+  // the items a conflict's fields point at ("Neon Rose", "Refs"), from the version in place
+  function itemNames(value, fields) {
+    const out = [];
+    for (const f of fields || []) {
+      let cur = value;
+      for (const seg of String(f.path || '').split('.')) {
+        if (Array.isArray(cur)) cur = cur.find((x) => x && typeof x === 'object' && String(x.id) === seg);
+        else if (cur && typeof cur === 'object') cur = cur[seg];
+        else break;
+        const n = cur && typeof cur === 'object' && !Array.isArray(cur) ? cur.name || cur.title : null;
+        if (typeof n === 'string' && n && !out.includes(n)) { out.push(n); break; }
+      }
+    }
+    return out.slice(0, 4);
+  }
+  // what it IS, in plain words (the path stays under Details)
+  function whatIs(c) {
+    const kv = /^kv\/(.+)\.json$/.exec(c.rel)?.[1];
+    const names = itemNames(c.ours, c.fields);
+    const q = (list) => list.map((n) => `“${n}”`).join(', ');
+    if (/^chats\//.test(c.rel)) return `The chat “${c.ours?.title || c.theirs?.title || nameOf(c.rel).replace(/^Chat “|”$/g, '')}”`;
+    if (kv === 'three-sketches') return names.length ? `The Lab scene${names.length > 1 ? 's' : ''} ${q(names)}` : 'Lab scenes';
+    if (kv === 'boards') return names.length ? `The board ${q(names)}` : 'Mood boards';
+    if (c.rel === 'app/config.json') return 'Settings (agents, look)';
+    const m = /^(workspace|projects)\/([^/]+)\/(.+)$/.exec(c.rel);
+    if (m) return `“${m[3].split('/').pop()}” in the project ${m[2]}`;
+    return `${nameOf(c.rel)}${names.length ? `: ${q(names)}` : ''}`;
+  }
+  const clip = (s, n = 90) => { const t = String(s ?? '').replace(/\s+/g, ' ').trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
+  const IMG = /\.(png|jpe?g|webp|gif|bmp|avif)$/i; const VID = /\.(mp4|webm|mov|m4v|mkv)$/i;
+  const fileUrl = (p) => `file:///${String(p).replace(/\\/g, '/').replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/').replace(/^([A-Za-z])%3A/, '$1:')}`;
+  // the difference, in a few human lines (and pictures where there are some)
+  function diffOf(c) {
+    const box = el('div', { class: 'sync-diff' });
+    const line = (text, cls = '') => box.append(el('div', { class: `sync-dl ${cls}`, text }));
+    if (c.kind === 'file') {
+      const pic = (p, label, size, at) => el('figure', { class: 'sync-pic' },
+        IMG.test(c.rel) ? el('img', { src: fileUrl(p), alt: '', loading: 'lazy' }) : VID.test(c.rel) ? el('video', { src: `${fileUrl(p)}#t=0.1`, muted: true, preload: 'metadata' }) : el('span', { class: 'sync-pic-glyph', text: '📄' }),
+        el('figcaption', { text: `${label}${size != null ? ` · ${fmtBytes(size)}` : ''}${at ? ` · ${timeAgo(at)}` : ''}` }));
+      box.append(el('div', { class: 'sync-pics' }, pic(c.here, hereLabel(), c.size, c.oursAt), pic(c.there, thereLabel(c), c.theirsSize, c.theirsAt)));
+      return box;
+    }
+    if (/^chats\//.test(c.rel) && c.ours && c.theirs) {
+      const key = (m) => (m.id != null ? `id:${m.id}` : `${m.role}@${m.at}`);
+      const mine = new Map((c.ours.messages || []).map((m) => [key(m), m]));
+      const theirs = new Map((c.theirs.messages || []).map((m) => [key(m), m]));
+      const onlyHere = [...mine.keys()].filter((k) => !theirs.has(k)).map((k) => mine.get(k));
+      const onlyThere = [...theirs.keys()].filter((k) => !mine.has(k)).map((k) => theirs.get(k));
+      if (c.ours.title !== c.theirs.title) line(`Title: “${c.ours.title}” here · “${c.theirs.title}” on ${thereName(c)}`);
+      for (const [list, where] of [[onlyHere, `only on ${HERE_NAME}`], [onlyThere, `only on ${thereName(c)}`]]) {
+        if (!list.length) continue;
+        line(`${list.length} message${list.length === 1 ? '' : 's'} ${where}:`, 'sync-dh');
+        for (const m of list.slice(-3)) line(`${m.role === 'user' ? 'You' : 'Reply'}: “${clip(m.text, 110)}”`, 'sync-dq');
+      }
+    }
+    if (c.rel === 'kv/three-sketches.json') {
+      const ids = new Set((c.fields || []).map((f) => String(f.path).split('.')[0]));
+      for (const id of [...ids].slice(0, 2)) {
+        const a = (Array.isArray(c.ours) ? c.ours : []).find((x) => String(x.id) === id); const b = (Array.isArray(c.theirs) ? c.theirs : []).find((x) => String(x.id) === id);
+        if (!a && !b) continue;
+        const thumb = (() => { try { return ThreeLab.scenes?.thumbOf?.(id); } catch { return null; } })();
+        const layers = (s) => new Set((s?.layers || []).map((l) => l.name || l.id));
+        const la = layers(a); const lb = layers(b);
+        const diffL = [...new Set([...la, ...lb])].filter((n) => la.has(n) !== lb.has(n));
+        const codeDiff = a?.code !== b?.code ? `the code differs (${(a?.code || '').split('\n').length} lines here, ${(b?.code || '').split('\n').length} there)` : '';
+        box.append(el('div', { class: 'sync-pics' },
+          el('figure', { class: 'sync-pic' }, thumb ? el('img', { src: thumb, alt: '' }) : el('span', { class: 'sync-pic-glyph', text: '◭' }), el('figcaption', { text: `${hereLabel()} · “${a?.name || '(gone)'}”` })),
+          el('figure', { class: 'sync-pic' }, el('span', { class: 'sync-pic-glyph', text: '◭' }), el('figcaption', { text: `${thereLabel(c)} · “${b?.name || '(gone)'}” (its picture is on that computer)` }))));
+        if (diffL.length) line(`Layers only on one side: ${diffL.slice(0, 6).join(', ')}`);
+        if (codeDiff) line(`In “${a?.name || b?.name}”, ${codeDiff}`);
+      }
+    }
+    // settings and other data: the changed options / fields with both values, ids turned into names
+    if (!box.childElementCount || c.rel === 'app/config.json') {
+      for (const f of (c.fields || []).slice(0, 5)) {
+        const label = String(f.path).split('.').map((seg) => itemNames(c.ours, [{ path: seg }])[0] || seg).filter((s) => !/^(settings|value)$/.test(s)).join(' › ') || 'the whole thing';
+        line(`${label}: ${clip(f.ours, 50)} here · ${clip(f.theirs, 50)} on ${thereName(c)}`);
+      }
+    }
+    if (!box.childElementCount) line('Changed on both computers (not shown in detail).');
+    return box;
+  }
   async function conflicts() {
     const list = await api().conflicts();
-    const dialog = el('dialog', { class: 'ui-modal sync-list' });
+    const full = (await Promise.all(list.slice(0, 30).map((c) => api().preview?.(c.id).catch(() => null)))).map((p, i) => p || list[i]);
+    const dialog = el('dialog', { class: 'ui-modal sync-list sync-conflicts' });
     const rows = el('div', { class: 'sync-rows' });
-    const draw = (l) => {
-      rows.replaceChildren(...(l.length ? l.map((c) => el('div', { class: 'sync-row' },
-        el('div', { class: 'sync-row-main' },
-          el('b', { text: nameOf(c.rel) }),
-          el('span', { class: 'hint', text: `${timeAgo(c.at)} · ${c.kind === 'file' ? `both computers changed it; the other version (from ${c.from || 'another computer'}) is kept as a copy` : `changed here and on ${c.from || 'your other computer'}; this version stayed in place`}` }),
-          c.fields?.length ? el('div', { class: 'sync-fields' }, c.fields.slice(0, 4).map((f) => el('div', { text: `${f.path}: “${f.ours}” here, “${f.theirs}” there` }))) : null),
-        el('div', { class: 'sync-row-acts' },
-          el('button', { type: 'button', class: 'ghost small', text: 'Keep this one', title: 'The version in place stays (the other copy goes to the synced trash)', on: { click: async () => { await api().resolve(c.id, 'mine'); draw(await api().conflicts()); refresh(); } } }),
-          el('button', { type: 'button', class: 'ghost small', text: 'Use the other one', on: { click: async () => { const r = await api().resolve(c.id, 'theirs'); if (!r.ok) toast(r.error, { type: 'error' }); draw(await api().conflicts()); refresh(); } } }))))
-        : [el('p', { class: 'modal-text', text: 'No conflicts. Changes made on both computers merged by themselves.' })]));
+    const picks = new Map(); // conflict id → 'mine' | 'theirs' | 'both' | 'merge'
+    const summary = el('p', { class: 'sync-sum' });
+    const apply = el('button', { type: 'button', class: 'primary', text: 'Apply', disabled: true });
+    const paint = () => {
+      const by = { theirs: 0, mine: 0, both: 0, merge: 0 }; const from = new Set();
+      for (const [id, k] of picks) { by[k] += 1; if (k === 'theirs') from.add(thereName(full.find((c) => c.id === id) || {})); }
+      const bits = [by.theirs && `${by.theirs} from ${[...from].join(' / ')}`, by.mine && `${by.mine} from ${HERE_NAME}`, by.both && `${by.both} kept both`, by.merge && `${by.merge} merged`].filter(Boolean);
+      summary.textContent = picks.size ? `${bits.join(', ')}. Every choice can be undone: the version that loses waits in Deleted files for 30 days.` : 'Pick a version for each one, then Apply. Nothing changes until then.';
+      apply.disabled = !picks.size; apply.textContent = picks.size > 1 ? `Apply ${picks.size} choices` : 'Apply';
     };
-    draw(list);
-    dialog.append(el('form', { method: 'dialog' }, el('h2', { text: 'Sync conflicts' }),
-      el('p', { class: 'hint', text: 'A conflict is one thing changed two different ways on two computers. Both versions are kept until you choose.' }),
-      rows, el('div', { class: 'dialog-actions' }, el('span', { class: 'spacer' }), el('button', { type: 'button', class: 'primary', text: 'Done', on: { click: () => dialog.close() } }))));
+    const rowOf = (c) => {
+      const newer = c.oursAt && c.theirsAt ? (c.oursAt > c.theirsAt ? 'here' : 'there') : null;
+      const side = (label, t, isNewer) => el('div', { class: 'sync-side' }, el('b', { text: label }), el('span', { class: 'hint', text: `${edited(t)}${isNewer ? ' · newer' : ''}` }));
+      const choice = (keep, text, title) => el('button', { type: 'button', class: 'ghost small sync-pick', text, title, dataset: { keep }, on: { click: (e) => {
+        if (picks.get(c.id) === keep) picks.delete(c.id); else picks.set(c.id, keep);
+        for (const b of e.currentTarget.parentElement.children) b.classList.toggle('on', picks.get(c.id) === b.dataset.keep);
+        paint();
+      } } });
+      const there = thereName(c);
+      return el('div', { class: 'sync-row sync-conflict', dataset: { id: c.id } },
+        el('div', { class: 'sync-row-main' },
+          el('b', { class: 'sync-what', text: whatIs(c) }),
+          el('div', { class: 'sync-sides' }, side(hereLabel(), c.oursAt, newer === 'here'), side(thereLabel(c), c.theirsAt, newer === 'there')),
+          diffOf(c),
+          el('details', { class: 'sync-details' }, el('summary', { text: 'Details' }), el('div', { class: 'hint', text: `${c.rel} · noticed ${timeAgo(c.at)}${c.fields?.length ? ` · ${c.fields.length} field${c.fields.length === 1 ? '' : 's'} changed two ways` : ''}` }))),
+        el('div', { class: 'sync-row-acts sync-choices' },
+          choice('theirs', `Keep ${there}'s version`, `${there}'s version replaces the one on ${HERE_NAME} (${HERE_NAME}'s goes to Deleted files)`),
+          choice('mine', `Keep ${HERE_NAME}'s version`, `${HERE_NAME}'s version stays everywhere (${there}'s goes to Deleted files)`),
+          c.canBoth ? choice('both', 'Keep both', `${there}'s version is saved next to it as “… (from ${there})”`) : null,
+          c.canMerge ? choice('merge', 'Merge', 'Everything from both; where they differ, the newer one wins (the current one goes to Deleted files first)') : null));
+    };
+    const draw = (l) => rows.replaceChildren(...(l.length ? l.map(rowOf) : [el('p', { class: 'modal-text', text: 'No conflicts. Changes made on both computers merged by themselves.' })]));
+    apply.addEventListener('click', async () => {
+      apply.disabled = true;
+      const fails = [];
+      for (const [id, keep] of picks) { const r = await api().resolve(id, keep).catch((err) => ({ ok: false, error: err.message })); if (!r?.ok) fails.push(r?.error || 'failed'); }
+      const done = picks.size - fails.length;
+      const said = summary.textContent.split('.')[0];
+      picks.clear();
+      const left = await api().conflicts();
+      full.splice(0, full.length, ...(await Promise.all(left.slice(0, 30).map((c) => api().preview?.(c.id).catch(() => null)))).map((p, i) => p || left[i]));
+      draw(full); paint(); refresh();
+      if (fails.length) toast(fails[0], { type: 'error' });
+      if (done) toast(`Done: ${said}. Undo any of it from Deleted files.`, { timeout: 5000, action: { label: 'Deleted files', fn: () => trash() } });
+    });
+    draw(full); paint();
+    dialog.append(el('form', { method: 'dialog' }, el('h2', { text: list.length ? `${list.length} thing${list.length === 1 ? ' was' : 's were'} changed on both computers` : 'Sync conflicts' }),
+      list.length ? el('p', { class: 'hint', text: `Both versions are kept until you choose which one wins, on ${HERE_NAME} and on ${[...new Set(full.map(thereName))].join(', ')}.` }) : null,
+      rows, list.length ? summary : null,
+      el('div', { class: 'dialog-actions' }, el('span', { class: 'spacer' }), el('button', { type: 'button', text: list.length ? 'Later' : 'Done', on: { click: () => dialog.close() } }), list.length ? apply : null)));
     dialog.addEventListener('close', () => setTimeout(() => dialog.remove(), 0));
     document.body.append(dialog);
     dialog.showModal();
     return dialog;
   }
 
+  // the big-change guard: what would be removed, by name, before the yes
+  function held() {
+    const h = st.held;
+    if (!h) { toast('Nothing is waiting for you.', { timeout: 2000 }); return null; }
+    const list = h.list || (h.sample || []).map((rel) => ({ rel, where: 'here' }));
+    const dialog = el('dialog', { class: 'ui-modal sync-list' });
+    const group = (where, title) => {
+      const l = list.filter((x) => x.where === where);
+      if (!l.length) return null;
+      return el('div', { class: 'sync-held-group' }, el('b', { text: `${title} (${l.length})` }),
+        el('div', { class: 'sync-rows' }, l.slice(0, 120).map((x) => el('div', { class: 'sync-row' }, el('div', { class: 'sync-row-main' }, el('span', { text: whatIs({ rel: x.rel }) }), el('span', { class: 'hint', text: `${x.rel}${x.size != null ? ` · ${fmtBytes(x.size)}` : ''}` }))))),
+        l.length > 120 ? el('p', { class: 'hint', text: `…and ${l.length - 120} more` }) : null);
+    };
+    const go = (mass) => { dialog.close(); now({ mass }); };
+    const by = list.find((x) => x.where === 'here')?.by || 'your other computer';
+    dialog.append(el('form', { method: 'dialog' }, el('h2', { text: `${h.deletes} files deleted at once: delete them everywhere?` }),
+      el('p', { class: 'hint', text: 'A folder emptied or the wrong drive can look like this, so sync waits for you. Deleted files go to the trash (30 days) either way.' }),
+      group('here', `Would be removed from ${HERE_NAME} (deleted on ${by})`),
+      group('cloud', `Would be removed from the cloud copy and your other computer (deleted on ${HERE_NAME})`),
+      el('div', { class: 'dialog-actions' }, el('span', { class: 'spacer' }),
+        el('button', { type: 'button', text: 'Keep them (bring them back)', on: { click: () => go('keep') } }),
+        el('button', { type: 'button', class: 'primary danger', text: `Delete those ${h.deletes} (to the trash)`, on: { click: () => go('apply') } }))));
+    dialog.addEventListener('close', () => setTimeout(() => dialog.remove(), 0));
+    document.body.append(dialog);
+    dialog.showModal();
+    return dialog;
+  }
   // deleted files (from any computer): restorable for 30 days
   async function trash() {
     const list = await api().trash();
@@ -190,8 +348,10 @@ const Sync = (() => {
       rows.replaceChildren(...(l.length ? l.map((t) => el('div', { class: 'sync-row' },
         el('div', { class: 'sync-row-main' }, el('b', { text: nameOf(t.rel) }), el('span', { class: 'hint', text: `${t.rel} · deleted ${t.day}${t.where === 'here' ? ' (removed here because the other computer deleted it)' : ''}` })),
         el('div', { class: 'sync-row-acts' }, el('button', { type: 'button', class: 'ghost small', text: 'Restore', on: { click: async (e) => {
-          const r = await api().restore(t.id);
-          if (!r.ok) { toast(r.error, { type: 'error' }); return; }
+          let r = await api().restore(t.id);
+          // (round 19) undoing a conflict choice: the version in place goes to the trash, this one comes back
+          if (!r.ok && r.exists && await Modal.confirm('Put this version back?', `${nameOf(t.rel)} is there now. Put this version back? The one in place goes to Deleted files (it can come back too).`, { ok: 'Put it back' })) r = await api().restore(t.id, { replace: true });
+          if (!r.ok) { if (!r.exists) toast(r.error, { type: 'error' }); return; }
           e.target.disabled = true; e.target.textContent = 'Restored';
           toast(`Restored ${nameOf(r.rel)}`, { timeout: 2500 });
         } } }))))
@@ -250,9 +410,9 @@ const Sync = (() => {
   // ---------- /sync ----------
   function registerCommands() {
     if (typeof Commands === 'undefined' || Commands.get?.('sync')) return;
-    const SUBS = ['status', 'now', 'on', 'off', 'pause', 'resume', 'conflicts', 'trash', 'restore', 'open', 'big', 'download', 'menu'];
+    const SUBS = ['status', 'now', 'on', 'off', 'pause', 'resume', 'conflicts', 'review', 'trash', 'restore', 'open', 'big', 'download', 'menu'];
     Commands.register({
-      name: 'sync', args: '[status|now|on|pause|resume|conflicts|trash|restore <name>|open|big on/off|off]', area: 'App',
+      name: 'sync', args: '[status|now|on|pause|resume|conflicts|review|trash|restore <name>|open|big on/off|off]', area: 'App',
       desc: 'Sync with your cloud drive (Mac ⇄ PC): is everything synced?, sync now, conflicts, deleted files',
       keywords: 'cloud icloud dropbox google drive onedrive backup other computer mac pc offline synced is everything synced up to date',
       examples: ['/sync status', '/sync now', '/sync conflicts'],
@@ -270,6 +430,7 @@ const Sync = (() => {
         if (sub === 'off') { await off(); return null; }
         if (sub === 'pause' || sub === 'resume') { await pause(sub === 'pause'); return null; }
         if (sub === 'conflicts') { await conflicts(); return null; }
+        if (sub === 'review') { if (!held()) say('Nothing is waiting for your yes.'); return null; }
         if (sub === 'trash') { await trash(); return null; }
         if (sub === 'open') { await api().open(); return null; }
         if (sub === 'download') { await download(); return null; }
@@ -356,5 +517,5 @@ const Sync = (() => {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(init, 0));
   else setTimeout(init, 0);
 
-  return { status: () => st, refresh, now, setup, conflicts, trash, menu, items, line, settingsSection, pause, off, big, background };
+  return { status: () => st, refresh, now, setup, conflicts, held, whatIs, trash, menu, items, line, settingsSection, pause, off, big, background };
 })();

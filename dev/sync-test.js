@@ -108,7 +108,7 @@ async function main() {
     ok(back.agents[0].folder === '/Users/q/work' && back.agents[0].name === 'A2' && back.agents[1].id === 'b' && back.settings.enginePaths.claude === '/opt/claude' && back.settings.notify === true && back.layout.gridColumns === 1 && back.theme.accent === '#0f0', 'config: portable part applied, this computer\'s parts kept');
 
     for (const n of ['.icloud', 'x.icloud', '~$doc.docx', 'a.tmp', 'desktop.ini', '.DS_Store', 'Doc.gdoc', 'Thumbs.db', '.hearth-tmp-1-a.json', 'x.json.hubtmp', '.hearth-part-x.mp4', 'kv.prev.json']) ok(S.ignoredName(n), `ignored: ${n}`);
-    for (const r of ['sync/state.json', 'workspace/x', 'window.json', 'engine.log', 'captures/frames/1.png', 'mcp-forgeheart.json', 'kv/a.prev.json']) ok(S.localOnly(r), `local only: ${r}`);
+    for (const r of ['sync/state.json', 'workspace/p/node_modules/x.js', 'window.json', 'engine.log', 'captures/frames/1.png', 'mcp-forgeheart.json', 'kv/a.prev.json']) ok(S.localOnly(r), `local only: ${r}`);
     for (const r of ['chats/a.json', 'kv/three-sketches.json', 'captures/recordings/x.mp4', 'board/media/a.png', 'memory.json', 'prompts/x.md', 'trash/c.json']) ok(!S.localOnly(r), `syncs: ${r}`);
 
     // finding drives (a fake file system, no real folders)
@@ -130,10 +130,10 @@ async function main() {
   W(A.p('kv/three-sketches.json'), JSON.stringify({ s1: { name: 'Orb', code: 'a' }, s2: { name: 'Waves', code: 'b' } }));
   W(A.p('attachments/pic.png'), crypto.randomBytes(5000));
   W(A.p('chats/c2.json'), JSON.stringify(chat('c2', [msg('user', 1, 'see'), msg('user', 2, A.p('attachments/pic.png'))])));
-  W(A.p('workspace/session.json'), '{}'); W(A.p('window.json'), '{"x":1}');
+  W(A.p('workspace/node_modules/a.js'), '{}'); W(A.p('window.json'), '{"x":1}');
   let r = await A.e.pass();
   ok(r.state === 'synced' && r.last.pushed >= 5, `first computer pushes (${r.state}, ${r.last.pushed})`);
-  ok(has(cloudFile(w, 'chats/c1.json')) && !has(cloudFile(w, 'workspace/session.json')) && !has(cloudFile(w, 'window.json')), 'machine-only files stay local');
+  ok(has(cloudFile(w, 'chats/c1.json')) && !has(cloudFile(w, 'workspace/node_modules/a.js')) && !has(cloudFile(w, 'window.json')), 'machine-only files stay local');
   ok(R(cloudFile(w, 'chats/c2.json')).includes('hearth-data:/attachments/pic.png'), 'cloud copy stores data paths relative to the data folder');
   ok(hearthIn(w.cloud)?.machines?.length === 1, 'the second computer can see the existing Hearth');
   r = await B.e.pass();
@@ -382,6 +382,109 @@ async function main() {
   W(P1.p('kv/pc.json'), '{"x":1}');
   await settle(M1, P1);
   ok(M1.e.machine().id !== P1.e.machine().id && J(P1.p('chats/k1.json')).messages.length === 2 && has(M1.p('kv/pc.json')), 'a copied computer id is noticed: new id, both sides merged');
+
+  // ---------- (round 19, reach) the chats' workspace syncs; paths from the other computer; conflict choices ----------
+  {
+    const w = world('reach');
+    const RM = computer(w, 'MacBook', { bigCap: 50000 }); const RP = computer(w, 'GamingPC', { bigCap: 50000 });
+    const pkg = '{\n    "name": "stoop-ronin",\n    "path": "/Users/x/proj"\n}\n';
+    W(RM.p('workspace/stoop-ronin/index.html'), '<h1>Stoop Ronin</h1>');
+    W(RM.p('workspace/stoop-ronin/package.json'), pkg);
+    W(RM.p('workspace/stoop-ronin/node_modules/three/index.js'), 'x');
+    W(RM.p('workspace/stoop-ronin/.git/HEAD'), 'ref');
+    W(RM.p('workspace/stoop-ronin/__pycache__/a.cpython.pyc'), 'x');
+    W(RM.p('workspace/stoop-ronin/tool.pyc'), 'x');
+    W(RM.p('workspace/stoop-ronin/model.bin'), Buffer.alloc(60000, 1));
+    W(RM.p('workspace/stoop-ronin/page.tmp'), 'temp');
+    W(RM.p('projects/stoop-ronin-12345/notes.md'), 'access folder');
+    await settle(RM, RP);
+    ok(R(RP.p('workspace/stoop-ronin/index.html')) === '<h1>Stoop Ronin</h1>' && R(RP.p('workspace/stoop-ronin/package.json')) === pkg, 'workspace: what a chat made arrives on the other computer, byte for byte (its JSON is a file, not a store)');
+    ok(!has(RP.p('workspace/stoop-ronin/node_modules/three/index.js')) && !has(RP.p('workspace/stoop-ronin/.git/HEAD')) && !has(RP.p('workspace/stoop-ronin/__pycache__/a.cpython.pyc')) && !has(RP.p('workspace/stoop-ronin/tool.pyc')) && !has(RP.p('workspace/stoop-ronin/page.tmp')), 'workspace: dependencies, .git, caches and temp files stay on each computer');
+    const st = await RM.e.pass();
+    ok(!has(RP.p('workspace/stoop-ronin/model.bin')) && st.skippedBig.includes('workspace/stoop-ronin/model.bin'), 'workspace: a file over the cap stays where it is (listed)');
+    ok(R(RP.p('projects/stoop-ronin-12345/notes.md')) === 'access folder', 'a chat\'s access folder inside the data folder syncs');
+    // edited back on the PC → the Mac
+    W(RP.p('workspace/stoop-ronin/index.html'), '<h1>Stoop Ronin v2</h1>'); bump(RP.p('workspace/stoop-ronin/index.html'));
+    await settle(RP, RM);
+    ok(R(RM.p('workspace/stoop-ronin/index.html')) === '<h1>Stoop Ronin v2</h1>', 'workspace: both ways');
+
+    // on its way: in the cloud copy but not pulled yet
+    W(RM.p('workspace/stoop-ronin/next.html'), 'next');
+    await RM.e.pass(); await RP.e.peers();
+    const inc = RP.e.incoming('workspace/stoop-ronin/next.html');
+    ok(inc && inc.inCloud && inc.from === 'MacBook' && !RP.e.incoming('workspace/stoop-ronin/node_modules/x.js'), 'a file still on its way is known (and from which computer)');
+
+    // paths from the other computer → this one's
+    const L = require('../reachmain');
+    W(RP.p('workspace/stoop-ronin/pc-only.html'), 'pc'); // (both computers share one disk here: a file only the PC has)
+    const macPath = path.join(RM.data, 'workspace', 'stoop-ronin', 'pc-only.html');
+    const l1 = L.localize(macPath, { dataDir: RP.data, ctx: RP.e.ctx(), home: RP.home });
+    ok(l1 && l1.foreign && l1.path === RP.p('workspace/stoop-ronin/pc-only.html') && l1.rel === 'workspace/stoop-ronin/pc-only.html', `reach: the other computer's data path (its machine record) → this one's (${l1?.path})`);
+    const l2 = L.localize('/Users/someone/Library/Application Support/Hearth/data/workspace/stoop-ronin/index.html', { dataDir: RP.data, ctx: null, home: RP.home });
+    ok(l2 && l2.path === RP.p('workspace/stoop-ronin/index.html'), 'reach: a Mac path (…/Hearth/data/…) with no machine record');
+    const l3 = L.localize('C:\\Users\\me\\AppData\\Roaming\\Hearth\\data\\workspace\\stoop-ronin\\index.html', { dataDir: RP.data, ctx: null, home: RP.home });
+    ok(l3 && l3.path === RP.p('workspace/stoop-ronin/index.html'), 'reach: a Windows path');
+    const l4 = L.localize('file:///Users/x/Library/Application%20Support/Hearth/data/workspace/stoop-ronin/index.html', { dataDir: RP.data, ctx: null, home: RP.home });
+    ok(l4 && l4.path === RP.p('workspace/stoop-ronin/index.html'), 'reach: a file:// URL');
+    const l5 = L.localize('/Users/someone/Desktop/x.png', { dataDir: RP.data, ctx: null, home: RP.home });
+    ok(l5 && l5.path === path.join(RP.home, 'Desktop', 'x.png'), 'reach: the other computer\'s home folder → this one\'s');
+    ok(L.localize(RP.p('workspace/stoop-ronin/index.html'), { dataDir: RP.data, ctx: null })?.foreign === false, 'reach: this computer\'s own path stays');
+
+    // conflict choices: the sides are named, each choice is undoable
+    await settle(RM, RP);
+    W(RM.p('chats/r1.json'), JSON.stringify(chat('r1', [msg('user', 1, 'a')]), null, 2));
+    await settle(RM, RP);
+    const a = J(RM.p('chats/r1.json')); a.title = 'Mac title'; a.messages.push(msg('user', 5, 'only mac')); W(RM.p('chats/r1.json'), JSON.stringify(a, null, 2));
+    const b = J(RP.p('chats/r1.json')); b.title = 'PC title'; b.messages.push(msg('user', 6, 'only pc')); W(RP.p('chats/r1.json'), JSON.stringify(b, null, 2)); bump(RP.p('chats/r1.json'));
+    await RM.e.pass(); await RP.e.pass();
+    let cf = (await RP.e.conflicts()).find((c) => c.rel === 'chats/r1.json');
+    const pv = cf && await RP.e.preview(cf.id);
+    ok(pv && pv.from === 'MacBook' && pv.fromPlatform === process.platform && pv.oursAt && pv.theirsAt && pv.ours?.title && pv.theirs?.title === 'Mac title' && pv.canMerge && pv.canBoth, 'conflict preview: which computer, its platform, both times and both versions');
+    const r1 = await RP.e.resolve(cf.id, 'both');
+    const copyRel = r1.made;
+    ok(r1.ok && /^chats\/r1-/.test(copyRel) && J(RP.p(copyRel)).title === 'Mac title (from MacBook)' && J(RP.p(copyRel)).id !== 'r1', '"Keep both": the other version becomes its own chat "… (from MacBook)"');
+    // merge: everything from both, the newer side wins where they differ; this one waits in Deleted files
+    const c2 = J(RP.p('chats/r1.json')); c2.title = 'PC again'; W(RP.p('chats/r1.json'), JSON.stringify(c2, null, 2));
+    const c3 = J(RM.p('chats/r1.json')); c3.title = 'Mac again'; c3.messages.push(msg('user', 9, 'mac 9')); W(RM.p('chats/r1.json'), JSON.stringify(c3, null, 2)); bump(RM.p('chats/r1.json'));
+    await RP.e.pass(); await RM.e.pass();
+    cf = (await RM.e.conflicts()).find((c) => c.rel === 'chats/r1.json');
+    const before = R(RM.p('chats/r1.json'));
+    const r2 = cf ? await RM.e.resolve(cf.id, 'merge') : { ok: false };
+    const merged = J(RM.p('chats/r1.json'));
+    ok(r2.ok && merged.messages.some((m) => m.text === 'mac 9') && merged.messages.some((m) => m.text === 'only pc'), '"Merge": messages from both stay');
+    const tr = (await RM.e.trash()).find((t) => t.rel === 'chats/r1.json' && t.where === 'here');
+    ok(tr, 'the version in place before a choice waits in Deleted files');
+    const rr = await RM.e.restore(tr.id);
+    ok(!rr.ok && rr.exists, 'restoring over a file asks first');
+    const rr2 = await RM.e.restore(tr.id, { replace: true });
+    ok(rr2.ok && eqj(J(RM.p('chats/r1.json')), JSON.parse(before)), 'undo: "put this version back" restores it (the current one to the trash)');
+    // keep mine: the other one goes to the synced trash under its real name
+    await settle(RM, RP);
+    W(RM.p('workspace/stoop-ronin/notes.md'), 'mac notes'); W(RP.p('workspace/stoop-ronin/notes.md'), 'pc notes!');
+    await settle(RM, RP);
+    W(RM.p('workspace/stoop-ronin/notes.md'), 'mac notes 2'); W(RP.p('workspace/stoop-ronin/notes.md'), 'pc notes 2!'); bump(RP.p('workspace/stoop-ronin/notes.md'));
+    await RM.e.pass(); await RP.e.pass();
+    const fc = (await RP.e.conflicts()).find((c) => c.rel === 'workspace/stoop-ronin/notes.md');
+    const fp = fc && await RP.e.preview(fc.id);
+    ok(fp && fp.kind === 'file' && fp.size != null && has(fp.there) && !fp.canMerge && fp.canBoth, 'a file conflict: both files (paths and sizes) for the preview, no merge');
+    const r3 = fc ? await RP.e.resolve(fc.id, 'both') : { ok: false };
+    ok(r3.ok && r3.made === 'workspace/stoop-ronin/notes (from MacBook).md' && has(RP.p(r3.made)), '"Keep both" for a file: "notes (from MacBook).md" next to it');
+    W(RM.p('chats/r9.json'), JSON.stringify(chat('r9', [])));
+    await settle(RM, RP);
+    const x1 = J(RM.p('chats/r9.json')); x1.title = 'X'; W(RM.p('chats/r9.json'), JSON.stringify(x1));
+    const x2 = J(RP.p('chats/r9.json')); x2.title = 'Y'; W(RP.p('chats/r9.json'), JSON.stringify(x2)); bump(RP.p('chats/r9.json'));
+    await RM.e.pass(); await RP.e.pass();
+    const kc = (await RP.e.conflicts()).find((c) => c.rel === 'chats/r9.json');
+    if (kc) await RP.e.resolve(kc.id, 'mine');
+    ok(kc && (await RP.e.trash()).some((t) => t.rel === 'chats/r9.json' && t.where === 'cloud'), '"Keep this one": the other version waits in Deleted files under its real name');
+    // the big-change guard lists every file by name
+    for (let i = 0; i < 30; i++) W(RM.p(`workspace/bulk/f${i}.txt`), `f${i}`);
+    await settle(RM, RP);
+    fs.rmSync(RM.p('workspace'), { recursive: true, force: true });
+    const hs = await RM.e.pass();
+    ok(hs.state === 'held' && hs.held.list.length === hs.held.deletes && hs.held.list.every((x) => x.rel && x.where === 'cloud'), `the big-change guard names each file (${hs.held?.list?.length})`);
+    await RM.e.pass({ mass: 'keep' });
+  }
 
   await fuzz();
 
