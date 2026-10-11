@@ -22,7 +22,7 @@ const want = ['studio', 'renders', 'adobe', 'deploy', 'video', 'cut', 'commands'
 check('stand-in commands listed', want.every((n) => names.has(n) || Commands.get(n)), want.filter((n) => !Commands.get(n)).join(' '));
 check('Commands.list() size', Commands.list().length > 900, String(Commands.list().length));
 check('no duplicates', Commands.duplicates().length === 0, Commands.duplicates().map((d) => d.name).join(' '));
-check('rail tools', ['three', 'ae', 'commands'].every((id) => Tools.get(id)), Tools.all().map((t) => t.id).join(' '));
+check('rail tools', ['three', 'ae', 'board', 'commands'].every((id) => Tools.get(id)), Tools.all().map((t) => t.id).join(' '));
 // 1. a command
 const say = [];
 await Commands.tryRun('/studio list', H.claudeAgent().id, null, { say: (t) => say.push(t), note: (t) => say.push(t) }).catch((err) => say.push(`ERR ${err.message}`));
@@ -47,6 +47,10 @@ activate('tool:ae');
 await until(() => Lazy.loaded('video') && document.querySelector('[data-id="tool:ae"] .vr-main'));
 check('Video Review opens from its tab', Boolean(document.querySelector('[data-id="tool:ae"] .vr-main')));
 check('no "Loading…" left', !document.querySelector('.lazy-wait'));
+// 5b. the board tab
+activate('tool:board');
+await until(() => Lazy.loaded('board') && document.querySelector('[data-id="tool:board"] .bd-root'));
+check('the board opens from its tab', Boolean(document.querySelector('[data-id="tool:board"] .bd-root')));
 // 6. the Lab (docked director)
 activate('tool:three');
 await until(() => Lazy.loaded('lab') && typeof ThreeLab !== 'undefined' && ThreeLab.director, 30000);

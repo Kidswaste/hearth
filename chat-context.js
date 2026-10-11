@@ -210,6 +210,7 @@ const ChatContext = (() => {
     const words = String(msg.text || '');
     if (words.startsWith('/') || !Object.values(POINTS).some((re) => re.test(words))) return undefined;
     await load();
+    if (POINTS.board.test(words)) await window.Lazy?.load('board').catch(() => {}); // (round 16) the board loads after the first screen
     if (typeof Board !== 'undefined') await Board.ready?.().catch(() => {});
     const c = gather(chat.id, chat);
     const agent = H.agent(agentId);
@@ -249,7 +250,8 @@ const ChatContext = (() => {
   addEventListener('hearth:view', paintAll);
   addEventListener('DOMContentLoaded', () => {
     load().then(paintAll);
-    try { Board.onChange((what) => { if (what === 'links' || what === 'boards') paintAll(); }); } catch { /* no board */ }
+    const boardHook = () => { try { Board.onChange((what) => { if (what === 'links' || what === 'boards') paintAll(); }); } catch { /* no board */ } };
+    if (window.Lazy) window.Lazy.when('board', () => { boardHook(); paintAll(); }); else boardHook(); // (round 16) the board loads after the first screen
     try { Intro.onChange(() => paintAll()); } catch { /* no projects */ }
     register();
   });
