@@ -2,8 +2,11 @@
    Uses the shared tokens (--surface, --line, --fh-gold, --fh-ai…) so every look applies. */
 
 /* ---------- clean UI while a picture is taken (and /clean-ui) ---------- */
-html.cap-clean #toasts, html.cap-clean #menu, html.cap-clean .tooltip, html.cap-clean .meter-pill-pop,
-html.cap-clean .cmdbar, html.cap-clean .jump-bottom { visibility: hidden !important; }
+html.cap-clean #toasts,
+html.cap-clean #menu,
+html.cap-clean .tooltip,
+html.cap-clean .cmdbar,
+html.cap-clean .jump-bottom { visibility: hidden !important; }
 html.cap-clean *::-webkit-scrollbar { width: 0 !important; height: 0 !important; background: transparent !important; }
 html.cap-clean * { caret-color: transparent !important; }
 html.cap-clean *:focus-visible { outline: none !important; }

@@ -198,4 +198,4 @@ html[data-skin~="forge"]:not([data-look~=v2]) .bdd { background: var(--sidebar);
 /* keyboard rings on the remaining new controls */
 .bd-quick button:focus-visible, .cap-seg button:focus-visible, .bd-search button:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--fh-gold, var(--accent)); color: var(--fh-gold-text, var(--text)); }
 /* the system's "more contrast" setting: chips, the drawer and the format chip keep a full-strength edge */
-@media (prefers-contrast: more) { :is(.bd-chip, .bdd, .vr-cut-fmt, .cap-seg) { border-color: var(--text) !important; } }
+@media (prefers-contrast: more) { :is(.bd-chip, .bdd, .cap-seg) { border-color: var(--text) !important; } }

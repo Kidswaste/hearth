@@ -11,6 +11,8 @@
 //   node dev/smoke.js --lib dev/checks/journey-lib.js --script dev/checks/journey-lab.js   # helpers before the script
 //   node dev/smoke.js --data dev/old-data --script dev/checks/journey-upgrade.js     # start from a copy of a data/ folder
 //   node dev/smoke.js --fake-meshy --script dev/checks/apps-meshy.js   # app windows against dev/fake-meshy.js (no network)
+//   node dev/smoke.js --coverage /tmp/cov.json --script dev/checks/trim-drive.js   # JS function + CSS rule coverage of the
+//       page from the first byte (CDP Profiler precise coverage, CSS rule usage), written as JSON (dev/coverage-report.js reads it)
 //
 // Check scripts can drive real input and take pictures mid-run through the `__smoke` page binding the harness adds:
 //   await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mousePressed', x, y, button: 'left', clickCount: 1 } })
@@ -139,6 +141,7 @@ async function cdpConnect() {
         send('Runtime.runIfWaitingForDebugger', {}, sid);
         return;
       }
+      if (msg.method === 'CSS.styleSheetAdded' && !msg.sessionId) { sheets.set(msg.params.header.styleSheetId, msg.params.header); return; }
       if (msg.method === 'Runtime.bindingCalled' && msg.params.name === '__smoke') { smokeCall(msg.params.payload); return; }
       if (msg.method === 'Tracing.dataCollected') { traceEvents.push(...msg.params.value); return; }
       if (msg.method === 'Tracing.tracingComplete') { traceDone?.(); return; }
@@ -168,6 +171,8 @@ async function cdpConnect() {
     };
     // The `smoke()` bridge for check scripts: real input events (Input.*), screenshots and other CDP calls.
     let traceEvents = []; let traceDone = null;
+    const sheets = new Map(); // styleSheetId → header (--coverage)
+    const coverage = opt('--coverage');
     const smokeCall = async (payload) => {
       let req; try { req = JSON.parse(payload); } catch { return; }
       let result;
@@ -203,7 +208,12 @@ async function cdpConnect() {
     await send('Runtime.enable'); await send('Log.enable'); await send('Page.enable');
     await send('Fetch.enable', { patterns: CDN_PATTERNS });
     await send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true });
+    if (coverage) {
+      await send('Profiler.enable'); await send('Profiler.startPreciseCoverage', { callCount: true, detailed: false });
+      await send('DOM.enable'); await send('CSS.enable'); await send('CSS.startRuleUsageTracking');
+    }
     await send('Page.reload', { ignoreCache: true });
+    if (coverage) { await new Promise((r) => setTimeout(r, 300)); await send('CSS.enable'); await send('CSS.startRuleUsageTracking'); }
     await new Promise((r) => setTimeout(r, waitMs));
     const CHECK_MS = Number(opt('--check-timeout', 90000));
     const run = async (expr) => {
@@ -245,6 +255,18 @@ async function cdpConnect() {
       if (r.error) problems.push(`check failed: ${r.error}`);
     }
     await new Promise((r) => setTimeout(r, 500));
+    if (coverage) {
+      const js = (await send('Profiler.takePreciseCoverage')).result?.result || [];
+      const rules = (await send('CSS.stopRuleUsageTracking')).result?.ruleUsage || [];
+      const css = [];
+      for (const [sid, h] of sheets) {
+        if (!h.sourceURL || !/^file:/.test(h.sourceURL)) continue;
+        const text = (await send('CSS.getStyleSheetText', { styleSheetId: sid })).result?.text || '';
+        css.push({ url: h.sourceURL, text, rules: rules.filter((r) => r.styleSheetId === sid).map((r) => [r.startOffset, r.endOffset, r.used ? 1 : 0]) });
+      }
+      fs.writeFileSync(coverage, JSON.stringify({ js: js.filter((s) => /^file:/.test(s.url)), css }));
+      console.log(`\ncoverage: ${coverage} (${js.length} scripts, ${css.length} stylesheets)`);
+    }
     const img = await send('Page.captureScreenshot', { format: 'png' });
     if (img.result?.data) { fs.writeFileSync(shot, Buffer.from(img.result.data, 'base64')); console.log(`\nscreenshot: ${shot}`); }
     ws.close();

@@ -12,7 +12,6 @@
    three cards wide that moves one tile (it moved its background-position: a repaint every frame) */
 .comp-card.running { overflow: clip; }
 .comp-card.running::before { left: -200%; right: auto; width: 300%; border-radius: 0; background-size: 66.6667% 100%; animation: hz-flow 2.4s linear infinite; }
-@keyframes comp-flow { to { background-position: -200% 0; } }
 .comp-head { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 4px; }
 .comp-head b { white-space: nowrap; letter-spacing: .02em; }
 .comp-sum { flex: 1; min-width: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

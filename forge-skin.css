@@ -36,10 +36,8 @@ html[data-skin~="forge"] {
    unfold from the top, both on the compositor */
 @keyframes fh-scan { from { opacity: 0; transform: scaleY(.94); transform-origin: 50% 0; } to { opacity: 1; transform: none; transform-origin: 50% 0; } }
 @keyframes fh-sheen { from { transform: translateX(-120%) skewX(-20deg); } to { transform: translateX(220%) skewX(-20deg); } }
-@keyframes fh-pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--pulse, var(--r-unique)) 55%, transparent); } 50% { box-shadow: 0 0 0 5px transparent; } } /* (other streams) */
 /* (round 17) the unread diamond breathes with transform / opacity (its box-shadow ring repainted every frame) */
 @keyframes fh-pulse-dot { 0%, 100% { transform: rotate(45deg) scale(1); opacity: 1; } 50% { transform: rotate(45deg) scale(1.3); opacity: .65; } }
-@keyframes fh-drift { from { background-position: 0 0, 0 0, 0 0; } to { background-position: 0 0, 0 64px, 64px 0; } }
 @keyframes fh-blink { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 
 /* ---------- ground: console glass, faint grid, slow drift ---------- */
@@ -79,7 +77,6 @@ html[data-skin~="forge"] #rail {
 html[data-skin~="forge"] #rail::before {
   content: ""; width: 26px; height: 2px; margin: 0 0 6px; background: var(--rainbow); /* (no fh-spin: --rainbow is fixed on the root, turning it only restyled this every frame) */
 }
-@keyframes fh-btn-sheen { from { background-position: 160% 0, 0 0; } to { background-position: -60% 0, 0 0; } }
 html[data-skin~="forge"] .agent-btn {
   border-radius: 0; clip-path: var(--cut); border: 1px solid transparent;
   /* layer 1: a light sweep that runs on hover; layer 2: the agent tint */
@@ -173,7 +170,7 @@ html[data-skin~="forge"] .tabbar button:hover:not(.on)::after { opacity: .4; }
 html[data-skin~="forge"] .web-bar, html[data-skin~="forge"] .game-bar { background: #0e1113; border-bottom: 1px solid var(--line-hi); }
 
 /* ---------- HUD cards: corner brackets ---------- */
-html[data-skin~="forge"] :is(.dash-card, .calc-card, .preset-card, .tex-card, .model-section, .lib-ask, .connectors, .kanban-col, .ae-banner, .render-row, .stat, .kit-format, .patch-row, .gallery-item, .devlog-day) {
+html[data-skin~="forge"] :is(.dash-card, .calc-card, .preset-card, .tex-card, .model-section, .connectors, .kanban-col, .render-row, .stat, .kit-format, .patch-row, .gallery-item, .devlog-day) {
   border-radius: 0; border-color: var(--line);
   background:
     linear-gradient(var(--hud, var(--line-hi)), var(--hud, var(--line-hi))) top left / 10px 1px no-repeat,
@@ -262,7 +259,7 @@ html[data-skin~="forge"] .notes-panel { animation: fh-in .22s ease; }
 html[data-skin~="forge"] kbd { border-radius: 0; background: #07090b; border-color: var(--line-hi); color: var(--r-rare); }
 
 /* ---------- code, tables, editors ---------- */
-html[data-skin~="forge"] .code-editor, html[data-skin~="forge"] .code-view, html[data-skin~="forge"] .three-console, html[data-skin~="forge"] .render-log, html[data-skin~="forge"] .game-log { border-radius: 0; background: #07090b; }
+html[data-skin~="forge"] .code-editor, html[data-skin~="forge"] .code-view, html[data-skin~="forge"] .three-console, html[data-skin~="forge"] .game-log { border-radius: 0; background: #07090b; }
 html[data-skin~="forge"] .data-table th { background: #121619; color: var(--muted); }
 html[data-skin~="forge"] .data-table tr:hover td { background: #ffd75e0a; }
 html[data-skin~="forge"] .three-stats { border-radius: 0; clip-path: var(--cut-sm); font-family: var(--mono); }

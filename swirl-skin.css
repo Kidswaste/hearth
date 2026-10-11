@@ -58,9 +58,7 @@ html[data-skin~="swirl"] .empty::before {
 }
 
 /* ---------- curves instead of cut corners ---------- */
-html[data-skin~="swirl"] :is(.agent-btn, .tool-btn, .tool-icon, .kanban-card, .empty-icon, .jump-bottom, .palette-card, .palette, .palette-item, .toast, .find-bar, .notes-panel, .slash-menu,
-  .three-stats, .code-editor, .code-view, .render-log, .game-log, .three-console, .dash-card, .calc-card, .preset-card, .tex-card, .model-section, .lib-ask, .connectors, .kanban-col,
-  .attach-chip, .memory-chip, .tool-chips, .msg.error, .body pre, .group-toggle, .item, dialog, .mb-menu, .lab-pop, .media-bar, .trg-panel, .trg-canvas, .three-preview, .tw-looks, .np-box) {
+html[data-skin~="swirl"] :is(.agent-btn, .tool-btn, .tool-icon, .kanban-card, .empty-icon, .jump-bottom, .palette-card, .palette, .palette-item, .toast, .find-bar, .notes-panel, .slash-menu, .three-stats, .code-editor, .code-view, .game-log, .three-console, .dash-card, .calc-card, .preset-card, .tex-card, .model-section, .connectors, .kanban-col, .attach-chip, .memory-chip, .tool-chips, .msg.error, .body pre, .group-toggle, .item, dialog, .mb-menu, .lab-pop, .media-bar, .trg-panel, .trg-canvas, .three-preview, .tw-looks, .np-box) {
   border-radius: var(--sw-r) !important;
 }
 html[data-skin~="swirl"] #menu, html[data-skin~="swirl"] #menu button { border-radius: var(--sw-r-sm) !important; }

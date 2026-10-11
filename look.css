@@ -40,7 +40,6 @@
 
 @keyframes m-sweep { from { background-position: 160% 0; } to { background-position: -60% 0; } } /* (kept for other streams; the app's own sweeps are juice.js glints since round 17) */
 @keyframes m-shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
-@keyframes m-breathe { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
 
 /* utility classes: add one to any element (other streams' new UI can use these directly) */
 .m-chrome {
@@ -55,27 +54,8 @@
   box-shadow: inset 0 1px 0 #ffffffa0, inset 0 -1px 0 #0000004d; text-shadow: 0 1px 0 #ffffff60;
 }
 /* .m-gold:hover: the same sheen (juice.js) */
-.m-glass {
-  background: var(--tx-noise), var(--m-glass-bg); backdrop-filter: var(--m-glass-filter);
-  box-shadow: var(--m-glass-edge), 0 12px 40px #0008; border: 1px solid #ffffff14;
-}
-.m-forged {
-  background: var(--tx-brushed), linear-gradient(180deg, color-mix(in srgb, var(--text) 8%, var(--sidebar)), var(--sidebar));
-  box-shadow: var(--m-bevel); border: 1px solid var(--line);
-}
-.m-molten {
-  color: #1a0700; background: var(--m-molten);
-  box-shadow: inset 0 1px 0 #ffffff80, 0 0 calc(18px * var(--glow)) color-mix(in srgb, var(--fh-ember) calc(45% * var(--glow)), transparent);
-}
-.m-bevel { box-shadow: var(--m-bevel); }
 .m-sheen { background-image: var(--m-sheen); background-size: 250% 100%; background-position: 160% 0; background-repeat: no-repeat; }
 /* .m-sheen:hover: the same sheen (juice.js) */
-.m-working { position: relative; overflow: clip; }
-.m-working::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--fh-ai) 22%, transparent) 50%, transparent 70%);
-  animation: m-shimmer 1.6s linear infinite;
-}
 
 /* ====================================================================================================== */
 /* ---------- Forgeheart 2: palette ---------- */
@@ -153,7 +133,7 @@
 :root[data-look~=v2] ::-webkit-scrollbar-corner { background: transparent; }
 
 /* ---------- typography: Oxanium for headers and labels, a calm reading face for long text ---------- */
-:root[data-look~=v2] :is(h1, h2, h3, h4, .tool-title, .chat-title, .group-name, .settings-section h3, .tw-head b, .empty h3, .rv-title, .p-label) { font-family: var(--font-head); }
+:root[data-look~=v2] :is(h1, h2, h3, h4, .tool-title, .chat-title, .group-name, .settings-section h3, .tw-head b, .empty h3, .p-label) { font-family: var(--font-head); }
 :root[data-look~=v2] .messages .body, :root[data-look~=v2] .composer-box textarea, :root[data-look~=v2] .notes-text { font-family: var(--font-read); }
 :root[data-look~=v2] .messages .body :is(h1, h2, h3, h4) { font-family: var(--font-head); letter-spacing: .03em; }
 :root[data-look~=v2] .messages .body :is(h1, h2) { color: var(--fh-gold-text); }
@@ -265,7 +245,6 @@
 :root[data-look~=v2] :is(.primary, #broadcast button):active:not(:disabled) { box-shadow: inset 0 2px 3px #0000005a, inset 0 0 0 1px color-mix(in srgb, var(--fh-gold-lo) 60%, transparent); }
 :root[data-look~=v2] .primary:disabled { filter: grayscale(.75); opacity: .5; cursor: default; }
 /* Stop: hot red metal, breathing from the inside (outer glows get cut by the corner clip) */
-@keyframes v2-stop { 0%, 100% { box-shadow: inset 0 1px 0 #ffffff80, inset 0 0 0 1px #5a0a0a, inset 0 0 0 0 #fff0; } 50% { box-shadow: inset 0 1px 0 #ffffff80, inset 0 0 0 1px #5a0a0a, inset 0 0 12px 2px #ffffff55; } }
 :root[data-look~=v2] :is(.primary.stop, #broadcast button.stop) { color: #1c0303; background: linear-gradient(180deg, #ffb3a6 0%, var(--fh-stop) 36%, color-mix(in srgb, var(--fh-stop) 60%, #3a0000) 52%, var(--fh-stop) 70%, #ff9e90 100%); box-shadow: inset 0 1px 0 #ffffff80, inset 0 0 0 1px #5a0a0a; animation: none; }
 /* (round 17, hz240) the breathing light is the button's own ::after (its sheen streak, unused while it reads Stop):
    a still inner glow whose opacity breathes, on the compositor; it was an animated box-shadow, a repaint every frame
@@ -309,13 +288,13 @@
 :root[data-look~=v2] .stage-btn { border-radius: 0; color: color-mix(in srgb, var(--text) 80%, transparent); }
 :root[data-look~=v2] .stage-btn:hover { color: var(--fh-gold-text); background: var(--hover); }
 :root[data-look~=v2] .stage-btn.on { color: var(--m-gold-ink); background: var(--m-gold); box-shadow: inset 0 1px 0 #ffffffa0, inset 0 -1px 0 #0004; }
-:root[data-look~=v2] :is(.tw-chip, .ver-chip, .trg-chip, .ask-opt) {
+:root[data-look~=v2] :is(.tw-chip, .trg-chip, .ask-opt) {
   border: 1px solid var(--line-hi); border-radius: 0;
   background: linear-gradient(180deg, color-mix(in srgb, var(--fh-strong) 4%, var(--fh-iron-1)), var(--fh-iron-2)); box-shadow: var(--m-bevel);
   transition: border-color .15s ease, color .15s ease, background .15s ease;
 }
-:root[data-look~=v2] :is(.tw-chip, .ver-chip, .ask-opt):hover { border-color: var(--fh-gold); color: var(--fh-gold-text); }
-:root[data-look~=v2] :is(.tw-chip.on, .ver-chip.on, .ask-opt.on, .mb-size.on) { color: var(--m-gold-ink); background: var(--m-gold); border-color: var(--fh-gold-lo); box-shadow: inset 0 1px 0 #ffffffa0, inset 0 -1px 0 #0004; text-shadow: 0 1px 0 #fff6; }
+:root[data-look~=v2] :is(.tw-chip, .ask-opt):hover { border-color: var(--fh-gold); color: var(--fh-gold-text); }
+:root[data-look~=v2] :is(.tw-chip.on, .ask-opt.on, .mb-size.on) { color: var(--m-gold-ink); background: var(--m-gold); border-color: var(--fh-gold-lo); box-shadow: inset 0 1px 0 #ffffffa0, inset 0 -1px 0 #0004; text-shadow: 0 1px 0 #fff6; }
 :root[data-look~=v2] .tw-chip.add { background: transparent; box-shadow: none; border-style: dashed; }
 :root[data-look~=v2] .suggest-chip {
   border-radius: 0; clip-path: var(--cut-sm); border: 1px solid color-mix(in srgb, var(--agent, var(--fh-gold)) 50%, var(--line-hi));
@@ -342,7 +321,7 @@
 :root[data-look~=v2] :is(.web-bar, .game-bar) { background: var(--tx-brushed), linear-gradient(180deg, var(--fh-iron-1), var(--fh-iron-2)); border-bottom: 1px solid var(--line-hi); }
 
 /* ---------- cards: forged plates with gold brackets on hover ---------- */
-:root[data-look~=v2] :is(.dash-card, .calc-card, .preset-card, .tex-card, .model-section, .lib-ask, .connectors, .kanban-col, .ae-banner, .render-row, .stat, .kit-format, .patch-row, .gallery-item, .devlog-day, .settings-section) {
+:root[data-look~=v2] :is(.dash-card, .calc-card, .preset-card, .tex-card, .model-section, .connectors, .kanban-col, .render-row, .stat, .kit-format, .patch-row, .gallery-item, .devlog-day, .settings-section) {
   --hud: var(--line-hi);
   background:
     linear-gradient(var(--hud), var(--hud)) top left / 12px 1px no-repeat,
@@ -373,9 +352,6 @@
 :root[data-look~=v2] .media-bar { background: var(--tx-brushed), linear-gradient(180deg, var(--fh-iron-2), var(--fh-iron-3)); border-color: var(--line-hi); border-radius: 0; box-shadow: var(--m-bevel); }
 :root[data-look~=v2] .mb-menu { background: color-mix(in srgb, var(--fh-pop) 84%, transparent); backdrop-filter: var(--m-glass-filter); box-shadow: var(--m-glass-edge), 0 14px 40px #000a; }
 :root[data-look~=v2] .three-preview { box-shadow: inset 0 0 0 1px var(--line), 0 0 0 1px var(--fh-shade); }
-:root[data-look~=v2] .vid-card.on { border-color: var(--fh-gold); background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 14%, transparent), transparent); }
-:root[data-look~=v2] .rv-stage { box-shadow: 0 0 0 1px var(--line-hi), 0 0 0 3px var(--fh-iron-3), 0 0 0 4px color-mix(in srgb, var(--fh-gold) calc(18% * var(--glow)), transparent), 0 20px 60px #000a; }
-:root[data-look~=v2] .note-marker { background: var(--fh-gold); box-shadow: 0 0 6px var(--g-gold); }
 :root[data-look~=v2] .progress-bar i { background: var(--m-molten); }
 
 /* ---------- chat ---------- */
@@ -460,7 +436,7 @@
 :root[data-look~=v2] .toast button { color: var(--fh-gold); }
 
 /* ---------- code views ---------- */
-:root[data-look~=v2] :is(.code-editor, .code-view, .three-console, .render-log, .game-log) { background: var(--fh-ink); }
+:root[data-look~=v2] :is(.code-editor, .code-view, .three-console, .game-log) { background: var(--fh-ink); }
 :root[data-look~=v2] .three-stats { background: color-mix(in srgb, var(--fh-pop) 80%, transparent); backdrop-filter: blur(6px); }
 :root[data-look~=v2] .hl-k { color: var(--fh-ai); }
 :root[data-look~=v2] .hl-f { color: var(--fh-info); }
@@ -509,11 +485,8 @@
 /* ====================================================================================================== */
 /* ---------- corners: cut (the forge default), rounded, square ---------- */
 :root[data-corners=round] { --cut: none; --cut-sm: none; --radius: 10px; }
-:root[data-corners=round] :is(.agent-btn, .tool-btn, .tool-icon, .kanban-card, .empty-icon, .jump-bottom, .palette-card, .palette-item, .toast, .find-bar, .notes-panel, .slash-menu,
-  .three-stats, .code-editor, .code-view, .render-log, .game-log, .three-console, .dash-card, .calc-card, .preset-card, .tex-card, .model-section, .lib-ask, .connectors, .kanban-col,
-  .attach-chip, .memory-chip, .tool-chips, .msg.error, .msg.note, .body pre, .group-toggle, .item, dialog, #menu, .mb-menu, .lab-pop, .media-bar, .tweaks, .layers, .stage-pill, .settings-section,
-  .msg.user .body, .progress-card, .ask-card, .tb-group, .juice-tip, .look-tile) { border-radius: 10px !important; }
-:root[data-corners=round] :is(.ghost, .primary, .dialog-actions button, .web-btn, .code-act, .notes-item, .kanban-add, .tag, .tw-chip, .ver-chip, .stage-btn, .suggest-chip, .queue-chip, .ask-opt, #broadcast button, .seg button) { border-radius: 8px !important; }
+:root[data-corners=round] :is(.agent-btn, .tool-btn, .tool-icon, .kanban-card, .empty-icon, .jump-bottom, .palette-card, .palette-item, .toast, .find-bar, .notes-panel, .slash-menu, .three-stats, .code-editor, .code-view, .game-log, .three-console, .dash-card, .calc-card, .preset-card, .tex-card, .model-section, .connectors, .kanban-col, .attach-chip, .memory-chip, .tool-chips, .msg.error, .msg.note, .body pre, .group-toggle, .item, dialog, #menu, .mb-menu, .lab-pop, .media-bar, .tweaks, .layers, .stage-pill, .settings-section, .msg.user .body, .progress-card, .ask-card, .tb-group, .juice-tip, .look-tile) { border-radius: 10px !important; }
+:root[data-corners=round] :is(.ghost, .primary, .dialog-actions button, .web-btn, .code-act, .notes-item, .kanban-add, .tag, .tw-chip, .stage-btn, .suggest-chip, .queue-chip, .ask-opt, #broadcast button, .seg button) { border-radius: 8px !important; }
 :root[data-corners=round] :is(input:not([type=checkbox]):not([type=color]):not([type=range]):not([type=radio]), select, textarea) { border-radius: 8px !important; }
 :root[data-corners=round] input[type=checkbox] { border-radius: 4px; }
 :root[data-corners=round] ::-webkit-scrollbar-thumb { border-radius: 10px; }

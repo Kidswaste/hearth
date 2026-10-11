@@ -1,5 +1,6 @@
-// After Effects bridge: finds AE (Windows and Mac), runs ExtendScript in it, installs scripts into its Scripts
-// menu, reads output-module templates and drives aerender with live progress. Also finds ffmpeg / ffprobe
+// After Effects bridge: finds AE (Windows and Mac) and runs ExtendScript in it (the Adobe bridge, chat code blocks).
+// (round 18, trim: the script installer, the output-module template reader, the .aep finder and the aerender queue
+// went with the After Effects toolkit drawer of Video Review.) Also finds ffmpeg / ffprobe
 // (optional) for exact frame rates, probes and the ffmpeg jobs of the render queue, captures and the Lab sequence.
 const { spawn, execFile, execFileSync } = require('child_process');
 const fs = require('fs');
@@ -123,19 +124,6 @@ function running() {
   });
 }
 
-// Output-module template names from AE's own preferences (hidden internal ones skipped).
-function templates() {
-  const dir = prefsDir();
-  if (!dir) return [];
-  try {
-    const file = fs.readdirSync(dir).find((f) => /Prefs-indep-output\.txt$/.test(f));
-    if (!file) return [];
-    const text = fs.readFileSync(path.join(dir, file), 'utf8');
-    const names = [...text.matchAll(/"Output Module Spec Strings Name \d+"\s*=\s*"([^"]+)"/g)].map((m) => m[1]);
-    return [...new Set(names.filter((n) => !n.startsWith('_HIDDEN')))];
-  } catch { return []; }
-}
-
 // Explains an osascript failure in plain words (the first run asks for Automation permission).
 function macError(stderr) {
   const s = String(stderr || '');
@@ -178,96 +166,6 @@ function runScript(code, label = 'script', override) {
     setTimeout(() => { if (!done) { done = true; resolve({ file, ok: true, pending: true }); } }, 8000);
     child.on('error', (err) => { if (!done) { done = true; resolve({ file, ok: false, error: err.message }); } });
   });
-}
-
-function installScript(name, code, override) {
-  const st = status(override);
-  if (!st.userScripts) throw new Error(st.found ? 'Couldn\'t find After Effects\' user Scripts folder (open AE once so it creates its preferences).' : st.reason);
-  fs.mkdirSync(st.userScripts, { recursive: true });
-  const file = path.join(st.userScripts, `${name.replace(/[^\w\- ]+/g, '_')}.jsx`);
-  fs.writeFileSync(file, code);
-  return { file };
-}
-
-function findProjects(dirs, depth = 6) {
-  const out = [];
-  const walk = (d, level) => {
-    let entries;
-    try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
-    for (const e of entries) {
-      const full = path.join(d, e.name);
-      if (e.isDirectory()) {
-        if (level < depth && !/^(node_modules|\.git|AppData|Library|Adobe After Effects Auto-Save)$/i.test(e.name) && !e.name.endsWith(' Logs') && !e.name.endsWith('.app')) walk(full, level + 1);
-      } else if (/\.aep$/i.test(e.name)) {
-        try { const s = fs.statSync(full); out.push({ name: e.name, path: full, size: s.size, mtime: s.mtimeMs }); } catch { /* skip */ }
-      }
-    }
-  };
-  for (const d of dirs) if (d && exists(d)) walk(d, 0);
-  return out.sort((a, b) => b.mtime - a.mtime).slice(0, 300);
-}
-
-// ---------- aerender ----------
-const renders = new Map(); // job id -> child
-const tc = (s) => {
-  const parts = s.split(/[:;]/).map(Number);
-  return parts.length === 4 ? parts : null;
-};
-function render(job, emit, override) {
-  const st = status(override);
-  if (!st.found) throw new Error(st.reason);
-  if (!st.aerender) throw new Error(`aerender was not found next to After Effects (${st.dir}).`);
-  if (!job.project || !exists(job.project)) throw new Error(`Project not found: ${job.project}`);
-  const args = ['-project', job.project];
-  if (job.comp) args.push('-comp', job.comp);
-  if (job.rqindex) args.push('-rqindex', String(job.rqindex));
-  if (job.omTemplate) args.push('-OMtemplate', job.omTemplate);
-  if (job.rsTemplate) args.push('-RStemplate', job.rsTemplate);
-  if (job.output) { fs.mkdirSync(path.dirname(job.output), { recursive: true }); args.push('-output', job.output); }
-  if (job.start !== '' && job.start != null) args.push('-s', String(job.start));
-  if (job.end !== '' && job.end != null) args.push('-e', String(job.end));
-  if (job.multiFrames) args.push('-mfr', 'ON', '100');
-  args.push('-v', 'ERRORS_AND_PROGRESS');
-  const child = spawn(st.aerender, args, { windowsHide: true });
-  if (job.priority !== 'normal') lowPriority(child); // (round 16) the window keeps its CPU while AE renders
-  renders.set(job.id, child);
-  const started = Date.now();
-  let fps = 0;
-  let durationFrames = 0;
-  let buffer = '';
-  let errorLine = null; // aerender can exit with code 0 after an error, so watch the log too
-  const onLine = (line) => {
-    emit({ id: job.id, type: 'log', line });
-    if (!errorLine && /aerender error|after effects error/i.test(line)) errorLine = line.replace(/^.*?error:\s*/i, '');
-    const rate = line.match(/Frame Rate:\s*([\d.]+)/);
-    if (rate) fps = Number(rate[1]);
-    const dur = line.match(/Duration:\s*([\d:;]+)/);
-    if (dur && tc(dur[1])) { const [h, m, s, f] = tc(dur[1]); durationFrames = Math.round((h * 3600 + m * 60 + s) * (fps || 30) + f); }
-    const frame = line.match(/PROGRESS:\s+[\d:;]+\s+\((\d+)\)/);
-    if (frame && durationFrames) {
-      const done = Number(frame[1]);
-      const pct = Math.min(1, done / durationFrames);
-      const elapsed = (Date.now() - started) / 1000;
-      emit({ id: job.id, type: 'progress', pct, frame: done, total: durationFrames, eta: pct > 0.01 ? Math.round(elapsed / pct - elapsed) : null });
-    }
-  };
-  const feed = (chunk) => {
-    buffer += chunk;
-    let nl;
-    while ((nl = buffer.search(/\r?\n/)) >= 0) {
-      const line = buffer.slice(0, nl).trim();
-      buffer = buffer.slice(nl + 1).replace(/^\n/, '');
-      if (line) onLine(line);
-    }
-  };
-  child.stdout.on('data', feed);
-  child.stderr.on('data', feed);
-  child.on('close', (code) => {
-    renders.delete(job.id);
-    emit({ id: job.id, type: 'done', code: code === 0 && errorLine ? 1 : code, error: errorLine, cancelled: code === null, seconds: Math.round((Date.now() - started) / 1000), output: job.output || null });
-  });
-  child.on('error', (err) => emit({ id: job.id, type: 'done', code: -1, error: err.message }));
-  return { started: true };
 }
 
 // ---------- ffmpeg / ffprobe (optional) ----------
@@ -352,16 +250,10 @@ function transcode(job, emit, overrides) {
 }
 
 function registerIpc(ipcMain, getWin, getOverride) {
-  const send = (ev) => getWin()?.webContents.send('ae:render-event', ev);
   const sendJob = (ev) => getWin()?.webContents.send('video:job-event', ev);
   ipcMain.handle('ae:status', () => status(getOverride()));
   ipcMain.handle('ae:running', () => running());
-  ipcMain.handle('ae:templates', () => templates());
   ipcMain.handle('ae:run', (_e, code, label) => runScript(code, label, getOverride()));
-  ipcMain.handle('ae:install', (_e, name, code) => installScript(name, code, getOverride()));
-  ipcMain.handle('ae:projects', (_e, dirs) => findProjects(dirs));
-  ipcMain.handle('ae:render', (_e, job) => render(job, send, getOverride()));
-  ipcMain.handle('ae:cancel', (_e, id) => { renders.get(id)?.kill(); return true; });
   ipcMain.handle('video:tools', (_e, overrides) => ffStatus(overrides));
   ipcMain.handle('video:probe', (_e, file, overrides) => probe(file, overrides));
   ipcMain.handle('video:transcode', (_e, job, overrides) => transcode(job, sendJob, overrides));
@@ -375,4 +267,4 @@ function registerIpc(ipcMain, getWin, getOverride) {
 }
 
 function forgetTools() { for (const k of Object.keys(toolCache)) delete toolCache[k]; }
-module.exports = { forgetTools, registerIpc, templates, status, running, ffStatus, probe, transcode, _jobs: jobs, _test: { locate, macError, findTool } }; // transcode / _jobs: the render queue (rendersmain.js)
+module.exports = { forgetTools, registerIpc, status, running, ffStatus, probe, transcode, _jobs: jobs, _test: { locate, macError, findTool } }; // transcode / _jobs: the render queue (rendersmain.js)

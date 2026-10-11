@@ -12,7 +12,6 @@
    three cards wide that moves one tile (it moved its background-position: a repaint every frame) */
 .jam-card.running { overflow: clip; }
 .jam-card.running::before { left: -200%; right: auto; width: 300%; border-radius: 0; background-size: 66.6667% 100%; animation: hz-flow 2.4s linear infinite; }
-@keyframes jam-flow { to { background-position: -200% 0; } }
 .jam-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .jam-head .spacer, .jam-foot .spacer { flex: 1; }
 .jam-title { font-weight: 700; letter-spacing: .02em; white-space: nowrap; }

@@ -237,7 +237,7 @@ const Juice = (() => {
   // ---------- the chrome sheen crossing a button you point at (Forgeheart 2) ----------
   // (round 17, hz240) was `animation: m-sweep` (background-position: the button repainted every frame for 0.6 s, a
   // dozen at once when the pointer crossed the rail); now the soft glint, a streak the compositor moves. Same buttons.
-  const SWEEP = '.m-chrome, .m-gold, .m-sheen, .agent-btn, .suggest-chip, .look-tile, .tweaks .tw-shuffle:not(:disabled), .lab-tabs .lab-tools-btn, .lab-tabs .lab-back, .vr-play, .ghost, .dialog-actions button:not(.primary), .code-act, .find-bar button';
+  const SWEEP = '.m-chrome, .m-gold, .m-sheen, .agent-btn, .suggest-chip, .look-tile, .tweaks .tw-shuffle:not(:disabled), .lab-tabs .lab-tools-btn, .lab-tabs .lab-back, .ghost, .dialog-actions button:not(.primary), .code-act, .find-bar button';
   let swept = null; let sweptAt = 0;
   addEventListener('pointerover', (e) => {
     if (e.pointerType === 'touch' || !on() || root.dataset.motion === 'calm') return;

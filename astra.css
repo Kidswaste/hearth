@@ -30,12 +30,6 @@
 
 /* ---- empty-state hints ---- */
 .astra-hints { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 10px; max-width: 560px; }
-.astra-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
-.astra-chip {
-  font-size: 11.5px; padding: 3px 9px; border-radius: 99px; cursor: pointer; color: var(--text);
-  border: 1px solid color-mix(in srgb, var(--astra) 35%, transparent); background: color-mix(in srgb, var(--astra) 8%, transparent);
-}
-.astra-chip:hover { background: color-mix(in srgb, var(--astra) 18%, transparent); }
 .astra-try { font-size: 12px; color: var(--muted); }
 .astra-try a { color: var(--astra); text-decoration: none; }
 .astra-try a:hover { text-decoration: underline; }
@@ -54,7 +48,6 @@
   content: ''; position: absolute; right: 2px; bottom: 2px; width: 5px; height: 5px; border-radius: 50%;
   background: var(--mate, transparent);
 }
-.astra-chip.on { background: color-mix(in srgb, var(--astra) 30%, transparent); border-color: var(--astra); }
 .astra-personas { align-items: center; }
 .collab-armed .composer textarea { border-image: linear-gradient(90deg, var(--claude), var(--astra)) 1; }
 
@@ -72,7 +65,6 @@
    three cards wide that moves one tile (it moved its background-position: a repaint every frame) */
 .collab-card.running { overflow: clip; }
 .collab-card.running::before { left: -200%; right: auto; width: 300%; border-radius: 0; background-size: 66.6667% 100%; animation: hz-flow 2.2s linear infinite; }
-@keyframes collab-flow { from { background-position: 0 0; } to { background-position: 200% 0; } }
 .collab-card .msg-act { opacity: .85; }
 .collab-card .msg-act:hover { opacity: 1; }
 .collab-head { display: flex; align-items: center; gap: 8px; font-size: 12px; flex-wrap: wrap; }

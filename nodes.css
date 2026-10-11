@@ -296,7 +296,6 @@
 .sg-code { flex: 1; min-height: 120px; margin: 0; overflow: auto; font: 10.5px/1.4 var(--mono, monospace); white-space: pre; padding: 8px; border-radius: 8px; background: color-mix(in srgb, var(--text) 4%, transparent); border: 1px solid var(--line); user-select: text; }
 .sg-code[hidden] { display: none; }
 
-
 /* ---------- Code flow (nodes-code.js): read-only flow + the selected node's code ---------- */
 .cf-dialog { width: min(1400px, 96vw); height: min(880px, 90vh); }
 .cf-side { display: flex; flex-direction: column; gap: 8px; padding: 10px; min-width: 0; }

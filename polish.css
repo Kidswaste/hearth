@@ -44,9 +44,14 @@ html[data-skin~="swirl"] { --r-sm: 6px; --r-md: 9px; --r-lg: 14px; --r-pill: 999
   *, *::before, *::after { animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
 }
 /* calm motion: the new UI's ambient loops rest too (wires, meter, recording blinks keep a still "on" state) */
-:root[data-motion=calm] .nv-wire-flow, :root[data-motion=calm] .meter-strip.is-live::before, :root[data-motion=calm] .meter-pill.is-live .mp-dot, :root[data-motion=calm] .meter-pill.is-live .mp-dot::before,
-:root[data-motion=calm] .ms-live.is-live::first-letter, :root[data-motion=calm] .stream-status::before, :root[data-motion=calm] .m-working::after,
-:root[data-motion=calm] .msg.assistant.streaming::after, :root[data-motion=calm] .msg.streaming .tool-chips::after { animation: none !important; }
+:root[data-motion=calm] .nv-wire-flow,
+:root[data-motion=calm] .meter-strip.is-live::before,
+:root[data-motion=calm] .meter-pill.is-live .mp-dot,
+:root[data-motion=calm] .meter-pill.is-live .mp-dot::before,
+:root[data-motion=calm] .ms-live.is-live::first-letter,
+:root[data-motion=calm] .stream-status::before,
+:root[data-motion=calm] .msg.assistant.streaming::after,
+:root[data-motion=calm] .msg.streaming .tool-chips::after { animation: none !important; }
 :root[data-motion=calm] .nv-wire-flow { opacity: .25; }
 /* no idle loops in Forgeheart 2: the rail and ask-all rainbows only turn while something is live */
 :root[data-look~=v2] #rail::before, :root[data-look~=v2] #broadcast::before { animation-play-state: paused; }
@@ -62,7 +67,7 @@ html[data-skin~="swirl"] { --r-sm: 6px; --r-md: 9px; --r-lg: 14px; --r-pill: 999
 /* the empty-chat star dust and floating icon settle after a few breaths */
 :root[data-look~=v2] .empty-icon, :root[data-look~=v2] .empty::before, :root[data-look~=v2] .empty::after { animation-iteration-count: 3; }
 /* hover / press feedback shares one tempo */
-:root[data-look~=v2] :is(.ghost, .primary, .tool-btn, .stage-btn, .tw-chip, .tw-gchip, .vr-ico, .vr-chip, .nv-hud-btn, .fx-tab, .mt-seg button, .seg button, .look-tile) {
+:root[data-look~=v2] :is(.ghost, .primary, .tool-btn, .stage-btn, .tw-chip, .tw-gchip, .nv-hud-btn, .fx-tab, .mt-seg button, .seg button, .look-tile) {
   transition-duration: var(--t-fast); transition-timing-function: var(--ease-out);
 }
 
@@ -77,7 +82,7 @@ input[type=range]:focus-visible::-webkit-slider-thumb { outline: 2px solid var(-
 /* Classic: cut-corner buttons clip outlines, so their keyboard ring is drawn inside */
 html[data-skin~="forge"]:not([data-look~=v2]) :is(.primary, .tool-btn, .agent-btn, #broadcast button, .stage-btn, .tw-chip):focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--r-rare); }
 /* new UI's own controls get the forged ring too */
-:root[data-look~=v2] :is(.fx-tab, .fx-row, .vr-ico, .vr-chip, .vr-card, .vr-seg button, .nv-hud-btn, .nv-picker-item, .nv-menu-item, .mt-seg button, .mt-tabs button, .tw-gchip, .tn-switch button, .tn-preset, .look-tile, .preset-card, .seg button, .ms-cell):focus-visible {
+:root[data-look~=v2] :is(.fx-tab, .fx-row, .nv-hud-btn, .nv-picker-item, .nv-menu-item, .mt-seg button, .mt-tabs button, .tw-gchip, .tn-switch button, .tn-preset, .look-tile, .preset-card, .seg button, .ms-cell):focus-visible {
   outline: none; box-shadow: inset 0 0 0 1px var(--fh-gold), inset 0 0 0 3px color-mix(in srgb, var(--fh-ember) 30%, transparent);
 }
 .ms-cell:focus-visible { outline: 1px solid var(--focus-c); outline-offset: -2px; }
@@ -85,7 +90,7 @@ html[data-skin~="forge"]:not([data-look~=v2]) :is(.primary, .tool-btn, .agent-bt
 /* ====================================================================================================== */
 /* ---------- scrolling: long menus fade at the edge while there is more, and never drag the page behind ---------- */
 @keyframes pl-scrollfade { from { --pl-fade: 22px; } to { --pl-fade: 0px; } }
-:is(#menu, .slash-menu, .mb-menu, .nv-menu, .nv-picker-list, .look-grid, .palette-list, .fx-list, .tw-body, .vr-list, .vr-notelist, .prompt-list, .memory-list, .preset-grid) {
+:is(#menu, .slash-menu, .mb-menu, .nv-menu, .nv-picker-list, .look-grid, .palette-list, .fx-list, .tw-body, .prompt-list, .memory-list, .preset-grid) {
   overscroll-behavior: contain;
 }
 @supports (animation-timeline: scroll()) {
@@ -101,7 +106,7 @@ html[data-skin~="forge"]:not([data-look~=v2]) :is(.primary, .tool-btn, .agent-bt
 /* tab bars: no stray vertical scrollbar from the underline, a slim one when tabs overflow */
 .tabbar { overflow-y: hidden; scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--text) 18%, transparent) transparent; }
 /* thin scrollbars inside small panes */
-:is(.tw-body, .fx-list, .vr-list, .vr-notelist, .nv-picker-list, .prompt-list, .memory-list, .slash-menu, .mb-menu) { scrollbar-gutter: stable; }
+:is(.tw-body, .fx-list, .nv-picker-list, .prompt-list, .memory-list, .slash-menu, .mb-menu) { scrollbar-gutter: stable; }
 
 /* ====================================================================================================== */
 /* ---------- menus ---------- */
@@ -221,13 +226,13 @@ html[data-skin~="forge"] #menu button { padding: 6px 12px; }
 :root[data-look~=v2] :is(.mb-rec, [data-feature^="Export"], [data-feature^="Render"]):not(.on):not(:disabled):hover { box-shadow: var(--m-bevel), inset 0 -2px 0 var(--fh-ember); }
 
 /* ---------- segmented controls: one look everywhere (frame sizes, dashboard ranges, Code ⇄ Nodes, Review · Director · Toolkit) ---------- */
-:root[data-look~=v2] :is(.mt-seg, .tn-switch, .vr-seg, .stage-pill .stage-seg) {
+:root[data-look~=v2] :is(.mt-seg, .tn-switch, .stage-pill .stage-seg) {
   border: 1px solid var(--line-hi); border-radius: var(--r-md); padding: 1px; gap: 1px;
   background: linear-gradient(180deg, var(--fh-iron-2), var(--fh-iron-3)); box-shadow: inset 0 1px 2px var(--fh-shade), 0 1px 0 color-mix(in srgb, var(--fh-shine) 50%, transparent);
 }
-:root[data-look~=v2] :is(.mt-seg, .tn-switch, .vr-seg) button { border: 0 !important; border-radius: var(--r-sm); color: var(--muted); background: none; transition: color var(--t-fast), background var(--t-fast); }
-:root[data-look~=v2] :is(.mt-seg, .tn-switch, .vr-seg) button:hover:not(.on) { color: var(--fh-gold-text); background: var(--hover); }
-:root[data-look~=v2] :is(.mt-seg, .tn-switch, .vr-seg, .stage-seg) button.on {
+:root[data-look~=v2] :is(.mt-seg, .tn-switch) button { border: 0 !important; border-radius: var(--r-sm); color: var(--muted); background: none; transition: color var(--t-fast), background var(--t-fast); }
+:root[data-look~=v2] :is(.mt-seg, .tn-switch) button:hover:not(.on) { color: var(--fh-gold-text); background: var(--hover); }
+:root[data-look~=v2] :is(.mt-seg, .tn-switch, .stage-seg) button.on {
   color: var(--m-gold-ink); text-shadow: 0 1px 0 #fff6; font-weight: 700;
   background: var(--m-sheen) 160% 0 / 250% 100% no-repeat, var(--m-gold); box-shadow: inset 0 1px 0 #ffffffa0, inset 0 -1px 0 #0004;
 }
@@ -392,15 +397,12 @@ html[data-skin~="forge"]:not([data-corners]) .tweaks .tw-act:last-child > button
 .tn-switch button { min-height: 22px; }
 /* the empty-graph card fits a narrow Lab */
 .tn-empty-card { max-width: min(380px, calc(100% - 24px)); }
-
-:root[data-look~=v2] :is(.vr-hover span, .vr-zoom, .vr-pickchip, .vr-label) { background: color-mix(in srgb, var(--fh-pop) 90%, transparent); }
 /* references and sketch browser: dialog titles match every other dialog, thumbnails are wells, the open sketch is lit */
 :root[data-look~=v2] :is(.refs-head h3, .sb-dialog h3, .sb-dialog .refs-head b) { font-family: var(--font-head); text-transform: uppercase; letter-spacing: .18em; font-size: 14px; color: var(--fh-gold); text-shadow: 0 0 calc(14px * var(--glow)) var(--g-gold); }
 :root[data-look~=v2] :is(.refs-thumb, .sb-thumb) { border-radius: var(--r-md); box-shadow: inset 0 0 0 1px var(--line), inset 0 2px 6px var(--fh-shade); background: var(--fh-ink); }
 :root[data-look~=v2] .sb-card.on { border-color: var(--fh-gold); box-shadow: var(--m-bevel), inset 0 0 0 1px var(--fh-gold), inset 0 0 calc(12px * var(--glow)) var(--g-gold); }
 .refs-actions button { min-height: 24px; }
 /* After Effects calculators: cards fit the drawer (no fields hanging off the right edge) */
-.calc-grid { grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 10px; }
 .calc-card { padding: 12px; min-width: 0; }
 .calc-card .row { flex-wrap: wrap; min-width: 0; }
 .calc-card :is(input, select) { min-width: 0; max-width: 100%; }
@@ -411,7 +413,6 @@ html[data-skin~="forge"]:not([data-corners]) .tweaks .tw-act:last-child > button
 :root[data-look~=v2] .calc-card h3 { font-family: var(--font-head); color: var(--fh-gold-text); letter-spacing: .04em; }
 /* the library's filter chips stay on one row and scroll sideways, instead of taking three rows */
 /* the After Effects lists: one item per line (short names used to pair up), the chosen one lit like every list */
-.lib-list > div { display: flex; flex-direction: column; gap: 1px; }
 .lib-item { min-height: 28px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background var(--t-fast); }
 :root[data-look~=v2] .lib-item.on { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 18%, transparent), transparent); box-shadow: inset 2px 0 0 var(--fh-gold); color: var(--fh-strong); border-radius: var(--r-md); }
 :root[data-look~=v2] .lib-item:hover:not(.on) { color: var(--fh-gold-text); }
@@ -484,8 +485,8 @@ html[data-skin~="forge"]:not([data-corners]) .tweaks .tw-act:last-child > button
 .kit-chip { border-radius: var(--r-sm); }
 /* Kit: the swatch, easing canvas and palette strip use the look's corners; small chips share one radius */
 .kit-swatch { border-radius: var(--r-lg); }
-.kit-ease-canvas, .palette-swatches { border-radius: var(--r-lg); }
-.kit-format, .kit-chip, .lab-swatch, .palette-swatch span { border-radius: var(--r-sm); }
+.kit-ease-canvas { border-radius: var(--r-lg); }
+.kit-format, .kit-chip, .lab-swatch { border-radius: var(--r-sm); }
 .kit-ease-track { border-radius: var(--r-pill); }
 :root[data-look~=v2] .kit-swatch { box-shadow: var(--m-bevel), 0 0 0 1px var(--line-hi), 0 0 calc(18px * var(--glow)) color-mix(in srgb, var(--fh-gold) calc(10% * var(--glow)), transparent); }
 :root[data-look~=v2] .kit-ease-canvas { background: var(--fh-ink); box-shadow: inset 0 0 0 1px var(--line-hi), inset 0 2px 8px var(--fh-shade); }
@@ -531,11 +532,11 @@ dialog .ghost:not(.small) { min-height: 32px; }
 
 /* ====================================================================================================== */
 /* ---------- light looks: surfaces that were drawn dark by default follow the light iron ---------- */
-:root[data-look~=v2][data-scheme=light] :is(.three-preview, .vr-stage) { background: #15171c; }
+:root[data-look~=v2][data-scheme=light] :is(.three-preview) { background: #15171c; }
 /* the song timeline is drawn for a dark ground (lane labels, waveform): it stays a dark well */
-:root[data-look~=v2][data-scheme=light] :is(.media-bar .mb-timeline, .media-bar .mb-overview, .media-bar .mb-minimap) { background: #15171c; }
+:root[data-look~=v2][data-scheme=light] :is(.media-bar .mb-timeline, .media-bar .mb-minimap) { background: #15171c; }
 /* overlays that sit on the (always dark) picture stay a dark glass island in light looks, so their labels keep contrast */
-:root[data-look~=v2][data-scheme=light] :is(.three-preview, .vr-stage, .vr-thumb-wrap, .vr-scopes, .media-bar .mb-tl-wrap, .fx-thumb) {
+:root[data-look~=v2][data-scheme=light] :is(.three-preview, .media-bar .mb-tl-wrap, .fx-thumb) {
   --fh-iron-1: #23262d; --fh-iron-2: #191b20; --fh-iron-3: #111317; --fh-pop: #15171c; --fh-ink: #050608; --text: #ece6dc; --muted: #a49d92;
   --line: #2c2e33; --line-hi: #3d4047; --fh-strong: #fff; --fh-shine: #ffffff1c; --fh-shade: #00000066; --hover: #ffffff14; --fh-gold-text: var(--fh-gold-hi);
   --m-glass-edge: inset 0 1px 0 #ffffff24, inset 0 0 0 1px #ffffff0f; --fh-info: #56c6ff; --fh-ai: #b48cff; --fh-stop: #ff6a6a;
@@ -547,7 +548,7 @@ dialog .ghost:not(.small) { min-height: 32px; }
 :root[data-look~=v2][data-scheme=light] .fx-thumb b { color: #fff; }
 :root[data-look~=v2][data-scheme=light] .nv { --nv-bg: color-mix(in srgb, var(--fh-iron-2) 80%, var(--bg)); }
 :root[data-look~=v2][data-scheme=light] .nv-head { color: #fff; }
-:root[data-look~=v2][data-scheme=light] :is(.vr-kit, .fx-picker, .nv-picker, .nv-menu, .nv-minimap, .tn-empty-card, .mb-menu, #menu, .slash-menu, .toast) { box-shadow: var(--m-glass-edge), 0 12px 32px #0002; }
+:root[data-look~=v2][data-scheme=light] :is(.fx-picker, .nv-picker, .nv-menu, .nv-minimap, .tn-empty-card, .mb-menu, #menu, .slash-menu, .toast) { box-shadow: var(--m-glass-edge), 0 12px 32px #0002; }
 :root[data-look~=v2][data-scheme=light] .nv-node { box-shadow: var(--m-bevel), 0 4px 12px #0002; }
 
 /* ====================================================================================================== */
@@ -573,8 +574,11 @@ dialog .ghost:not(.small) { min-height: 32px; }
    A backdrop blur is recomputed every frame when what's behind it moves. Over the Lab preview, the video player
    and the node canvas (all animate constantly) the glass becomes a plain tint; toasts too, since they often float
    over a playing picture. Menus and dialogs keep their glass: they're short-lived. */
-:is(.three-preview, .vr-stage, .media-bar, .nv) :is(*, *::before, *::after),
-.toast, .jam-badge, .three-stats, .stage-pill { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+:is(.three-preview, .media-bar, .nv) :is(*, *::before, *::after),
+.toast,
+.jam-badge,
+.three-stats,
+.stage-pill { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
 
 /* ---------- Hearth icons (icons.js) ---------- */
 svg.hi { width: 1em; height: 1em; display: block; flex: none; overflow: visible; }
@@ -597,7 +601,7 @@ svg.hi { width: 1em; height: 1em; display: block; flex: none; overflow: visible;
 @keyframes hx-scene { from { opacity: 0; transform: translateY(6px); } }
 @keyframes hx-chat { from { opacity: 0; transform: translateY(10px); } }
 @keyframes hx-reveal { from { opacity: 1; } to { opacity: 0; visibility: hidden; } }
-:root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .cb-out) { animation: hx-pop .17s cubic-bezier(.2, .9, .3, 1.15) both; transform-origin: top left; }
+:root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu) { animation: hx-pop .17s cubic-bezier(.2, .9, .3, 1.15) both; transform-origin: top left; }
 :root:not([data-motion=off]) .slash-menu { animation: hx-rise .18s cubic-bezier(.2, .9, .3, 1.1) both; transform-origin: bottom left; }
 /* (round 17) only the first rows slide in: a long menu animated every row, one compositor layer each */
 :root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu) > :is(.menu-item, button, .menu-head, .nv-menu-sec):nth-child(-n+11) { animation: hx-item .2s ease-out both; }
@@ -647,7 +651,7 @@ svg.hi { width: 1em; height: 1em; display: block; flex: none; overflow: visible;
    A backdrop-filter re-blurs whatever is behind it on every frame that content changes: over a playing video, the
    live Lab picture, flowing node wires or a chat that scrolls / streams, that was a full-size blur per frame for a
    small panel. These stay on their own (already dark, translucent) backgrounds; menus and dialogs keep their glass. */
-:is(.nv-hud-btn, .tn-switch, .nv-minimap, .vf-wait, .vr-scopes, .scene-tag, .ed-panel, .fg-watch, .jump-bottom, .pinned-strip, .chat-find),
+:is(.nv-hud-btn, .tn-switch, .nv-minimap, .scene-tag, .ed-panel, .fg-watch, .jump-bottom, .pinned-strip, .chat-find),
 .three-preview :is(.present-hint, .present-hud) { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
 /* Rainbows that never turned: --rainbow / --sw-swirl are worked out once on the root, where their var(--fh-spin) /
    var(--sw-turn) is 0deg, so animating the angle on these elements changed nothing on screen and only restyled them

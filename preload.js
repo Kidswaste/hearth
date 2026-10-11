@@ -127,13 +127,7 @@ contextBridge.exposeInMainWorld('hub', {
     pins: call('board:pins'), onPin: on('board:pin'), onPinDrag: on('board:pin-drag') },
   ae: {
     status: call('ae:status'),
-    templates: call('ae:templates'),
     run: call('ae:run'),
-    install: call('ae:install'),
-    projects: call('ae:projects'),
-    render: call('ae:render'),
-    cancel: call('ae:cancel'),
-    onRender: on('ae:render-event'),
     running: call('ae:running'),
   },
   // Capture (capturemain.js): screenshots / recordings of Hearth itself, the exact frame reader
