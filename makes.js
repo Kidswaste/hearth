@@ -749,11 +749,14 @@ const Makes = (() => {
     Commands.onRun?.(afterCommand);
     register();
     if (typeof HubBridge !== 'undefined') HubBridge.register(['three_make'], (name, args, ctx) => makeTool(args || {}, ctx || {}));
-    if (typeof CmdPage !== 'undefined' && CmdPage.ext) {
+    // (round 16) the Commands page loads after the first screen (lazy.js): hook in when it arrives
+    const pageHooks = () => {
+      if (typeof CmdPage === 'undefined' || !CmdPage.ext || CmdPage.ext.sections.includes(pageSections)) return;
       CmdPage.ext.sections.push(pageSections);
       CmdPage.ext.pick.push(pagePick);
       CmdPage.ext.menu.push(pageMenu);
-    }
+    };
+    if (typeof Lazy !== 'undefined' && !Lazy.loaded('cmdpage')) addEventListener('hearth:lazy', pageHooks); else pageHooks();
     document.addEventListener('hearth:capture', (e) => onCapture(e.detail?.path, e.detail?.kind === 'shot' ? 'still' : undefined));
     document.addEventListener('hearth:recording', (e) => { if (e.detail && e.detail.recording === false) onCapture(e.detail.path, 'video'); });
     Keys.add([

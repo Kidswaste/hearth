@@ -1,0 +1,316 @@
+// Lazy loading (round 16, boot): feature modules the first screen (chats + rail) doesn't need load after it, or the
+// first time they're used, so Hearth starts faster and keeps less in memory.
+//
+// Each group of files (lazy-data.js: LazyData.GROUPS) is listed with what it registers at load (LazyData.META, written
+// by `node dev/lazy-manifest.js`): its chat commands, Ctrl/⌘+K actions, keys-sheet lines, agent tool prefixes
+// (HubBridge), app windows (Apps) and rail tools. Stand-ins for all of them are registered at once, so
+// Commands.list(), the "/" menu, /help, the palette, the keys sheet and the Apps list show everything from the start;
+// using one loads its group (in the original order, with its CSS) and hands over to the real thing.
+//   tier 'soon': loads right after the first screen, one group per idle moment (background hooks keep working)
+//   tier 'use':  loads only when one of its commands / actions / tools / globals is first used
+// Lazy.load(name) → Promise · Lazy.state() · Lazy.misses() (globals touched before their group loaded: a dev aid,
+// each one also loads its group) · Lazy.report(name) (what a group registered while loading: the manifest's source).
+const Lazy = (() => {
+  const D = typeof LazyData !== 'undefined' ? LazyData : { GROUPS: [], META: {} };
+  const groups = new Map(); // name → { name, files, css, tier, after, state: 'stub' | 'loading' | 'loaded' | 'failed', promise, at, ms }
+  const stubCmds = new Map(); // command name → group
+  const realActions = new Map(); // palette label → the real run (the stand-in action calls it)
+  const realBridge = new Map(); // tool prefix → the real handler
+  const stubKeys = new Map(); // 'area|keys' → the stand-in keys-sheet line (the real one fills it in)
+  const stubTools = new Map(); // tool id → stand-in tool
+  const unregs = new Map(); // command name → its stand-in's unregister (what Commands.register returns)
+  const reports = new Map(); // group → { commands: [defs], actions: [labels], keys: [lines], bridge: [prefixes], apps: [defs], tools: [defs] }
+  const missLog = []; // { name, group, at, where }
+  let chain = Promise.resolve(); // loads run one at a time (the registry patches below are shared)
+  let readyAt = 0;
+  let namesAtReady = null; // the command names when the first screen was up (dev/checks/lazy.js: all of them are there)
+
+  const say = (msg) => { try { console.warn(`Lazy: ${msg}`); } catch { /* no console */ } };
+  const ofGlobal = new Map(); // global name → group
+  for (const g of D.GROUPS || []) {
+    groups.set(g.name, { tier: 'soon', after: [], css: [], ...g, state: 'stub', promise: null });
+    for (const n of g.globals || []) ofGlobal.set(n, g.name);
+  }
+
+  // ---------- globals: touching one before its group loaded loads it (and is noted for the developer) ----------
+  // A configurable accessor on window: `typeof Studio` reads it (undefined, as before the group loads) and asks for the
+  // group; the group's own `const Studio = …` then shadows it, and the accessor is removed once the group is in.
+  function guardGlobals(g) {
+    for (const name of g.globals || []) {
+      if (Object.prototype.hasOwnProperty.call(window, name)) continue;
+      try {
+        Object.defineProperty(window, name, {
+          configurable: true, enumerable: false,
+          get() {
+            if (g.state === 'stub') {
+              missLog.push({ name, group: g.name, at: Math.round(performance.now()), where: (new Error().stack || '').split('\n').slice(2, 4).map((l) => l.trim().replace(/^at /, '').replace(/\(?file:\/\/\S*\/([^/]+:\d+):\d+\)?/, '$1')).join(' < ') });
+              if (missLog.length > 200) missLog.shift();
+              want(g);
+            }
+            return undefined;
+          },
+          set(v) { Object.defineProperty(window, name, { value: v, writable: true, configurable: true, enumerable: true }); },
+        });
+      } catch { /* a name the page already owns */ }
+    }
+  }
+  function unguardGlobals(g) {
+    for (const name of g.globals || []) {
+      const d = Object.getOwnPropertyDescriptor(window, name);
+      if (d && d.get && !('value' in d)) { try { delete window[name]; } catch { /* kept */ } }
+    }
+  }
+
+  // ---------- stand-ins ----------
+  const groupMeta = (name) => (D.META || {})[name] || {};
+  function stubCommand(g, c) {
+    const name = String(c.name).toLowerCase();
+    if (typeof Commands === 'undefined') return;
+    // a name an eager command already has: only a `when` variant shares it (combined as before; it holds once loaded)
+    if (Commands.get(name) && !c.when) return;
+    const run = async (args, ctx) => {
+      await load(g.name);
+      const d = Commands.get(name);
+      if (!d || d.__lazy) throw new Error(`/${name} isn't available (its module didn't load)`);
+      return d.run(args, ctx);
+    };
+    // argument suggestions arrive once the group is in (the "/" menu asks again as you type)
+    const complete = (args, ctx) => {
+      if (g.state !== 'loaded') { load(g.name).catch(() => {}); return []; }
+      const d = Commands.get(name);
+      return d && !d.__lazy && d.complete ? d.complete(args, ctx) : [];
+    };
+    const { when, ...rest } = c;
+    const extra = when ? { when: () => { if (g.state === 'stub') want(g); return false; } } : {};
+    try {
+      unregs.set(name, Commands.register({ ...rest, ...extra, aliases: (c.aliases || []).filter((a) => !Commands.get(a)), run, complete, __lazy: g.name }));
+      stubCmds.set(name, g.name);
+    } catch (err) { say(`stub /${name}: ${err.message}`); }
+  }
+  function stubAction(g, label, keys) {
+    if (typeof AppUI === 'undefined' || !AppUI.addAction) return;
+    if (AppUI.actions?.().some((a) => a.label === label)) return;
+    AppUI.addAction(label, async () => {
+      try { await load(g.name); } catch (err) { toast(err.message, { type: 'error' }); return; }
+      const fn = realActions.get(label);
+      if (fn) fn(); else say(`no action "${label}" after loading ${g.name}`);
+    }, keys || '');
+  }
+  function stubKey(g, k) {
+    if (typeof Keys === 'undefined') return;
+    Keys.add({ area: k.area, keys: k.keys, what: k.what, sel: k.sel || null, run: () => load(g.name).then(() => { const e = stubKeys.get(`${k.area}|${k.keys}`); if (e?.run && !e.run.__lazy) e.run(); }) });
+    const e = Keys.all().find((x) => x.area === k.area && x.keys === k.keys);
+    if (e) { e.run.__lazy = true; stubKeys.set(`${k.area}|${k.keys}`, e); }
+  }
+  function stubBridge(g, prefix) {
+    if (typeof HubBridge === 'undefined') return;
+    HubBridge.register([prefix], async (tool, args, ctx) => {
+      await load(g.name);
+      const fn = realBridge.get(prefix);
+      return fn ? fn(tool, args, ctx) : { ok: false, error: `Nothing in the hub handles ${tool}.` };
+    });
+  }
+  function stubApp(g, a) {
+    if (typeof Apps === 'undefined' || Apps.get(a.id)?.id === a.id) return;
+    const real = () => { const x = Apps.get(a.id); return x && !x.__lazy ? x : null; };
+    Apps.register({ ...a, __lazy: g.name,
+      open: async (o) => { await load(g.name); const x = real(); if (!x) throw new Error(`${a.name} isn't available`); return x.open(o); },
+      describe: () => `${a.name}${a.desc ? `: ${a.desc}` : ''}` });
+  }
+  function stubTool(g, t) {
+    if (typeof Tools === 'undefined' || Tools.get(t.id)) return;
+    const real = () => { const x = Tools.get(t.id); return x && x !== stub ? x : null; };
+    const stub = {
+      ...t, __lazy: g.name,
+      mount(body, head) {
+        const wait = el('p', { class: 'hint lazy-wait', text: `Loading ${t.name}…` });
+        body.append(wait);
+        load(g.name).then(() => { wait.remove(); const r = real(); if (r) { r.mount(body, head); r.onShow?.(); } }).catch((err) => { wait.textContent = `${t.name} didn't load: ${err.message}`; });
+      },
+      onShow() { real()?.onShow?.(); },
+      commands: (t.commands || []).map((c) => ({ label: c.label, run: () => load(g.name).then(() => real()?.commands?.find((x) => x.label === c.label)?.run()) })),
+    };
+    Tools.define(stub);
+    stubTools.set(t.id, stub);
+  }
+  function stubAll(g) {
+    const m = groupMeta(g.name);
+    for (const c of m.commands || []) stubCommand(g, c);
+    for (const a of m.actions || []) stubAction(g, a.label || a, a.keys);
+    for (const k of m.keys || []) stubKey(g, k);
+    for (const p of m.bridge || []) stubBridge(g, p);
+    for (const a of m.apps || []) stubApp(g, a);
+    for (const t of m.tools || []) stubTool(g, t);
+    guardGlobals(g);
+  }
+  // the group's own files register the real commands: its stand-ins step aside first
+  function unstubCommands(g) {
+    for (const [name, gn] of stubCmds) {
+      if (gn !== g.name) continue;
+      const d = Commands.get(name);
+      if (d?.variants?.some((v) => v.__lazy === g.name)) {
+        // shared with an eager command: drop only the stand-in variant
+        const keep = d.variants.filter((v) => v.__lazy !== g.name);
+        unregs.get(name)?.();
+        for (const v of keep) Commands.register({ ...v });
+      } else if (d?.__lazy === g.name) unregs.get(name)?.();
+      unregs.delete(name);
+      stubCmds.delete(name);
+    }
+  }
+
+  // ---------- loading ----------
+  // While a group's files run, the registries are patched so its registrations replace the stand-ins instead of adding
+  // duplicates, and its DOMContentLoaded handlers (the page fired that long ago) run once its files are in.
+  function patch(g, rep) {
+    const undo = [];
+    const swap = (obj, key, fn) => { if (!obj || typeof obj[key] !== 'function') return; const orig = obj[key]; const own = Object.prototype.hasOwnProperty.call(obj, key); obj[key] = fn(orig.bind(obj)); undo.push(() => { if (own) obj[key] = orig; else delete obj[key]; }); };
+    const ready = [];
+    const onLoad = (orig) => (type, fn, opts) => ((type === 'DOMContentLoaded' || type === 'load') && typeof fn === 'function' ? ready.push(fn) : orig(type, fn, opts));
+    swap(window, 'addEventListener', onLoad);
+    swap(document, 'addEventListener', onLoad);
+    if (typeof Commands !== 'undefined') swap(Commands, 'register', (orig) => (def) => { if (def && !def.__lazy) rep.commands.push(cmdMeta(def)); return orig(def); });
+    if (typeof AppUI !== 'undefined') swap(AppUI, 'addAction', (orig) => (label, run, keys) => {
+      rep.actions.push(keys ? { label, keys } : label);
+      if (AppUI.actions?.().some((a) => a.label === label)) { realActions.set(label, run); return undefined; }
+      realActions.set(label, run);
+      return orig(label, run, keys);
+    });
+    if (typeof Keys !== 'undefined') swap(Keys, 'add', (orig) => (...entries) => {
+      const pass = [];
+      for (const e of entries.flat()) {
+        if (!e?.keys) continue;
+        rep.keys.push({ area: e.area || 'General', keys: e.keys, what: e.what, ...(e.sel ? { sel: e.sel } : {}) });
+        const s = stubKeys.get(`${e.area || 'General'}|${e.keys}`);
+        if (s) Object.assign(s, { what: e.what, when: e.when || null, run: e.run || null, sel: e.sel || null }); else pass.push(e);
+      }
+      return pass.length ? orig(...pass) : undefined;
+    });
+    if (typeof HubBridge !== 'undefined') swap(HubBridge, 'register', (orig) => (prefixes, fn) => {
+      const rest = [];
+      for (const p of prefixes || []) { rep.bridge.push(p); if ((groupMeta(g.name).bridge || []).includes(p)) realBridge.set(p, fn); else rest.push(p); }
+      return rest.length ? orig(rest, fn) : undefined;
+    });
+    // a stand-in (fallback or not) always gives way to the group's own registration; a fallback stays marked as one
+    if (typeof Apps !== 'undefined') swap(Apps, 'register', (orig) => (def) => {
+      if (!def || def.__lazy) return orig(def);
+      rep.apps.push(appMeta(def));
+      const prev = Apps.get(def.id);
+      if (!(prev?.__lazy && prev.id === String(def.id).toLowerCase() && def.fallback)) return orig(def);
+      const app = orig({ ...def, fallback: false });
+      if (app) app.fallback = true;
+      return app;
+    });
+    if (typeof Tools !== 'undefined') swap(Tools, 'define', (orig) => (tool) => { if (tool && !tool.__lazy) rep.tools.push({ id: tool.id, name: tool.name, icon: tool.icon, color: tool.color, description: tool.description || '', commands: (tool.commands || []).map((c) => ({ label: c.label })) }); return orig(tool); });
+    return { ready, restore: () => { for (const u of undo.reverse()) u(); } };
+  }
+  const CMD_KEYS = ['name', 'aliases', 'args', 'desc', 'area', 'hidden', 'keys', 'examples', 'keywords', 'undo', 'whenLabel', 'fallback'];
+  function cmdMeta(def) {
+    const o = {};
+    for (const k of CMD_KEYS) if (def[k] != null && def[k] !== '' && !(Array.isArray(def[k]) && !def[k].length)) o[k] = def[k];
+    if (def.when) o.when = true;
+    return o;
+  }
+  const APP_KEYS = ['id', 'name', 'icon', 'group', 'desc', 'url', 'partition', 'keywords', 'hosts', 'price', 'fits', 'hidden', 'fallback'];
+  function appMeta(def) { const o = {}; for (const k of APP_KEYS) if (def[k] != null) o[k] = def[k]; return o; }
+
+  function inject(src) {
+    return new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = src; s.async = false;
+      s.onload = () => res();
+      s.onerror = () => rej(new Error(`couldn't load ${src}`));
+      document.head.append(s);
+    });
+  }
+  function css(href) {
+    if (document.querySelector(`link[rel=stylesheet][href="${href}"]`)) return Promise.resolve();
+    return new Promise((res) => {
+      const l = document.createElement('link');
+      l.rel = 'stylesheet'; l.href = href;
+      l.onload = l.onerror = () => res();
+      // after the eager sheets, before the user theme (<style id="user-theme"> keeps the last word)
+      const theme = document.getElementById('user-theme');
+      if (theme) theme.before(l); else document.head.append(l);
+    });
+  }
+
+  function load(name) {
+    const g = groups.get(name);
+    if (!g) return Promise.reject(new Error(`No lazy group "${name}"`));
+    if (g.promise) return g.promise;
+    g.promise = (async () => {
+      for (const dep of g.after || []) await load(dep);
+      const go = chain.then(async () => {
+        g.state = 'loading';
+        const t0 = performance.now();
+        const rep = { commands: [], actions: [], keys: [], bridge: [], apps: [], tools: [] };
+        reports.set(g.name, rep);
+        unstubCommands(g);
+        const p = patch(g, rep);
+        try {
+          await Promise.all([...(g.css || []).map(css), ...g.files.map(inject)]);
+          for (const fn of p.ready) { try { fn.call(window, new Event('DOMContentLoaded')); } catch (err) { console.error(err); } }
+        } catch (err) {
+          g.state = 'failed';
+          p.restore();
+          console.error(`Lazy: ${g.name}: ${err.message}`);
+          throw err;
+        }
+        p.restore();
+        unguardGlobals(g);
+        // a tool already on screen with the stand-in: the rail keeps the stand-in object (it hands over to the real one)
+        g.state = 'loaded';
+        g.ms = Math.round(performance.now() - t0);
+        g.at = Math.round(performance.now());
+        dispatchEvent(new CustomEvent('hearth:lazy', { detail: { group: g.name } }));
+      });
+      chain = go.catch(() => {});
+      return go;
+    })();
+    return g.promise;
+  }
+
+  // ---------- after the first screen: the 'soon' groups, one per idle moment ----------
+  const idle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 600 }) : setTimeout(fn, 30));
+  function soon() {
+    const queue = [...groups.values()].filter((g) => g.tier === 'soon');
+    const next = () => {
+      const g = queue.shift();
+      if (!g) return;
+      idle(() => load(g.name).catch(() => {}).finally(next));
+    };
+    next();
+  }
+  // a group asked for before the first screen is up waits for it (the first screen comes first), then goes first
+  const wanted = new Set();
+  function want(g) {
+    if (readyAt) queueMicrotask(() => load(g.name).catch(() => {}));
+    else wanted.add(g.name);
+  }
+  function start() {
+    if (readyAt) return;
+    readyAt = performance.now();
+    try { namesAtReady = Commands.list().map((d) => d.name); } catch { /* no commands */ }
+    for (const n of wanted) load(n).catch(() => {});
+    soon();
+  }
+
+  // ---------- stand-ins now (every registry exists: lazy.js loads after the eager modules, before start.js) ----------
+  for (const g of groups.values()) stubAll(g);
+  // start.js fires 'hearth:ready' once the first screen is up: the cue for the 'soon' groups
+  addEventListener('hearth:ready', start, { once: true });
+  // start.js never got there (an error during startup): don't leave the features unloaded
+  addEventListener('DOMContentLoaded', () => setTimeout(start, 6000), { once: true });
+  const state = () => [...groups.values()].map((g) => ({ name: g.name, tier: g.tier, state: g.state, files: g.files.length, ms: g.ms ?? null, at: g.at ?? null }));
+  return {
+    load, state, start,
+    loaded: (name) => groups.get(name)?.state === 'loaded',
+    groupOf: (cmd) => stubCmds.get(String(cmd || '').toLowerCase()) || null,
+    misses: () => missLog.slice(),
+    namesAtReady: () => namesAtReady && namesAtReady.slice(),
+    report: (name) => (name ? reports.get(name) : Object.fromEntries(reports)),
+    loadAll: () => Promise.all([...groups.keys()].map((n) => load(n).catch((err) => ({ name: n, error: err.message })))),
+    groups: () => [...groups.values()].map((g) => ({ name: g.name, files: g.files.slice(), css: (g.css || []).slice(), tier: g.tier })),
+  };
+})();

@@ -56,4 +56,5 @@ window.hub.onConfigChanged(apply);
   Meter.init();
   apply(await window.hub.getConfig());
   performance.mark('hearth:ready'); // the first screen is up (dev/perf-report.js measures startup to here)
+  dispatchEvent(new Event('hearth:ready')); // (round 16) lazy.js loads the deferred feature modules from here
 })();
