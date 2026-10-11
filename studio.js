@@ -77,8 +77,9 @@ const Studio = (() => {
     try { Flows.define(flow, { source: 'studio' }); } catch { /* a run carries its own copy anyway */ }
     const sid = `st${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
     Object.assign(vars, { sid, make: make.id, name: make.name, parts, lab: labPart?.chatId || '' });
-    if (vars.song) vars.songset = '1';
-    if (vars.idea) vars.ideaset = '1';
+    // answers given up front skip their question (a skipped question clears its own var, so they live beside it)
+    if (vars.song) { vars.song0 = vars.song; vars.songset = '1'; delete vars.song; }
+    if (vars.idea) { vars.idea0 = vars.idea; vars.ideaset = '1'; delete vars.idea; }
     if (labPart && o.open !== false) await Makes.openRoom(make, labPart);
     const done = Flows.start(flow, { agentId, chatId, vars, title: `${r.icon} ${make.name}` });
     const run = Flows.runs().find((x) => x.vars?.sid === sid) || null;
@@ -165,7 +166,7 @@ const Studio = (() => {
     },
     // a song (a path, "suno", or the Lab's own) loaded in the room's scene and analysed: tempo and sections
     async song({ run }) {
-      let p = String(run.vars.song || '').trim().replace(/^["']|["']$/g, '');
+      let p = String(run.vars.song || run.vars.song0 || '').trim().replace(/^["']|["']$/g, '');
       if (/^suno$/i.test(p)) { p = await AppsSuno.newestSong(); if (!p) throw new Error('No Suno song downloaded yet: download one in the Suno window (/suno), then pick up here.'); }
       await labScene(run);
       let info;
@@ -202,7 +203,7 @@ const Studio = (() => {
     },
     // Meshy: the adapter shows the cost (and the balance) and asks; nothing starts without a yes
     async meshy({ run }) {
-      const idea = String(run.vars.idea || '').trim();
+      const idea = String(run.vars.idea || run.vars.idea0 || '').trim();
       const img = /^board$/i.test(idea) || (!idea && (await needsNow()).board);
       if (!idea && !img) throw new Error('Nothing to make: say what the hero should be.');
       const r = await AppsMeshy.run(img ? 'image' : 'text', img ? { image: 'board' } : { prompt: idea, name: run.vars.name }, { chatId: run.vars.lab || null, to: 'lab' });
@@ -226,7 +227,7 @@ const Studio = (() => {
     // a free Poly Haven sky that fits the words (studio light when nothing fits)
     async sky({ run }) {
       if (!window.AppsPoly) throw new Error('Poly Haven isn\'t loaded.');
-      const words = String(run.vars.idea || '').toLowerCase();
+      const words = String(run.vars.idea || run.vars.idea0 || '').toLowerCase();
       const want = ['night', 'sunset', 'sunrise', 'forest', 'city', 'beach', 'snow', 'desert', 'indoor', 'studio'].find((w) => words.includes(w)) || (/space|neon|cyber|dark/.test(words) ? 'night' : 'studio');
       let list = await AppsPoly.search(want, 'hdris');
       if (!list.length) list = await AppsPoly.search('', 'hdris');
@@ -395,7 +396,11 @@ const Studio = (() => {
     // /studio <recipe words…> [: words for it]  ·  the recipe takes the longest prefix that names one
     let r = null; let tail = '';
     const ws = s.split(/\s+/);
-    for (let k = ws.length; k >= 1 && !r; k -= 1) { const head = ws.slice(0, k).join(' ').replace(/[:→]$/, ''); const hit = D.RECIPES.find((x) => x.id === head.toLowerCase() || D.norm(x.name) === D.norm(head)) || (k <= 3 ? D.find(head) : null); if (hit) { r = hit; tail = ws.slice(k).join(' ').replace(/^[:—-]\s*/, ''); } }
+    const hay = (x) => new Set(`${x.id.replace(/-/g, ' ')} ${D.norm(x.name)} ${x.words}`.split(' '));
+    for (let k = Math.min(ws.length, 4); k >= 1 && !r; k -= 1) { const head = ws.slice(0, k).join(' ').replace(/[:→]$/, ''); const hit = D.RECIPES.find((x) => x.id === head.toLowerCase() || D.norm(x.name) === D.norm(head)); if (hit) { r = hit; tail = ws.slice(k).join(' '); } }
+    // forgiving: the first one or two words, each a word of the recipe ("song", "3d", "song viz", "photoshop")
+    for (let k = Math.min(ws.length, 2); k >= 1 && !r; k -= 1) { const head = D.norm(ws.slice(0, k).join(' ')).split(' ').filter(Boolean); const hit = head.length && D.RECIPES.find((x) => head.every((w) => hay(x).has(w))); if (hit) { r = hit; tail = ws.slice(k).join(' '); } }
+    tail = tail.replace(/^[:—-]\s*/, '');
     if (!r) { await pick(s); return null; }
     const vars = {};
     if (tail) { if (r.id === 'song-viz') vars.song = tail; else if (r.id === 'idea-3d') vars.idea = tail; else if (r.id === 'board-video') vars.vibewords = tail; else vars.words = tail; }

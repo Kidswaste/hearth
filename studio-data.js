@@ -151,7 +151,7 @@ const StudioData = (() => {
     return { id: `studio-${r.id}`, name: `Studio · ${r.name}`, desc: r.pitch, icon: r.icon, area: 'Studio', studio: r.id, start: nodes[0].id, nodes };
   }
   // what the make's rooms / parts are: Makes.plan kinds ([{ kind, brief }]) and their labels
-  const partsOf = (r) => r.rooms.map((x) => ({ kind: x.kind, brief: x.kind === 'step' ? '' : r.pitch.slice(0, 120), label: x.label || null, key: x.key }));
+  const partsOf = (r) => r.rooms.map((x) => ({ kind: x.kind, brief: x.kind === 'step' ? '' : `Studio · ${r.name}`, label: x.label || null, key: x.key }));
   // one line per recipe (/studio list, the chats' map)
   const line = (r) => `${r.icon} **${r.name}** · ${r.pitch}`;
 

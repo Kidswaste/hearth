@@ -1,5 +1,5 @@
 /* Studio (round 15): the pipeline picker and its Commands-page rows. Compact: one card per recipe, details in text. */
-dialog.studio-pick { width: min(760px, 94vw); max-height: 86vh; display: flex; flex-direction: column; }
+dialog.studio-pick { width: min(760px, 94vw); max-height: 86vh; display: flex; flex-direction: column; padding: 14px 16px; }
 dialog.studio-pick:not([open]) { display: none; }
 .studio-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .studio-head h2 { margin: 0; font-size: 16px; }
