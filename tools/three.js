@@ -2165,6 +2165,8 @@ const ThreeLab = (() => {
     if (typeof ThreeSeq !== 'undefined') ThreeSeq.attach({ player, bar: player.el, pane, send: (msg) => box.send(msg), sketchId: () => current?.id, rerun: () => run(), reloadPage: () => box.reload(true), pageReady: () => box.ready, director: () => api.director, get stage() { return stage; }, get scenes() { return api.scenes; } });
     // precomps (tools/three-comp.js): other scenes as layers of this one, kept live in the preview
     if (typeof ThreeComp !== 'undefined') ThreeComp.attach({ send: (msg) => box.send(msg), sketchId: () => current?.id, persist: () => persist(), select: (id) => selectLayer(id), player });
+    // 3D models (tools/three-models.js): drops on the preview, the gizmo on a model
+    if (typeof ThreeModels !== 'undefined') ThreeModels.attach({ send: (msg) => box.send(msg), previewHost, sketchId: () => current?.id });
     pane.addEventListener('keydown', (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
       const plain = !typing && !e.ctrlKey && !e.altKey && !e.metaKey;
@@ -2396,6 +2398,7 @@ const ThreeLab = (() => {
         { label: frozenNow ? '▶ Unfreeze' : '❚❚ Freeze', key: 'F', action: () => setFreeze(!frozenNow) },
         ...(typeof ThreeSeq !== 'undefined' ? [ThreeSeq.previewItem()] : []),
         ...(typeof ThreeComp !== 'undefined' ? [ThreeComp.previewItem()] : []),
+        ...(typeof ThreeModels !== 'undefined' ? [ThreeModels.previewItem()] : []), // 3D models (tools/three-models.js)
         { label: 'Frame size', hint: stage.size.id === 'fit' ? 'Fit' : stage.size.id, items: () => [
           ...stage.pillOrder.map((id, k) => ({ label: id === 'fit' ? 'Fit' : id, hint: ThreeMedia.SIZES.find((z) => z.id === id)?.title || '', key: `Shift+${k + 1}`, checked: stage.size.id === id, action: () => stage.setMode(id) })),
           '-', { label: 'Safe zones', checked: Boolean(stage.safe), action: () => stage.setSafe() },

@@ -1,0 +1,22 @@
+/* 3D models in the Lab (round 15, tools/three-models.js): the model library, a small floating panel you drag cards from */
+.lab3d-panel {
+  position: fixed; right: 16px; top: 72px; z-index: 900; width: min(360px, 92vw); max-height: min(70vh, 640px);
+  display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 12px;
+  background: var(--surface, #16181e); border: 1px solid var(--line, #2a2e38); box-shadow: 0 14px 40px #0009;
+}
+.lab3d-panel[hidden] { display: none; }
+.lab3d-head { display: flex; align-items: center; gap: 6px; }
+.lab3d-head b { white-space: nowrap; }
+.lab3d-head input { flex: 1; min-width: 0; }
+.lab3d-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; overflow: auto; padding: 2px; }
+.lab3d-card {
+  display: flex; flex-direction: column; gap: 2px; padding: 5px; border-radius: 9px; cursor: grab; min-width: 0;
+  background: var(--bg-2, #1d2028); border: 1px solid var(--line, #2a2e38); transition: border-color .12s, transform .12s;
+}
+.lab3d-card:hover { border-color: var(--accent, #ff8a3d); transform: translateY(-1px); }
+.lab3d-card:active { cursor: grabbing; }
+.lab3d-pic { aspect-ratio: 1; border-radius: 6px; overflow: hidden; display: grid; place-items: center; background: #101116; font-size: 28px; }
+.lab3d-pic img { width: 100%; height: 100%; object-fit: cover; }
+.lab3d-card small { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lab3d-card i { font-style: normal; font-size: 11px; opacity: .6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lab3d-foot { font-size: 11px; opacity: .55; }
