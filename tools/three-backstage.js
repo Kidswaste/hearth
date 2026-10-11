@@ -27,7 +27,7 @@ const ThreeBackstage = (() => {
     if (onStart && (m.type === 'drawn' || m.type === 'error' || (m.type === 'stats' && !waitDrawn))) { const fn = onStart; onStart = null; fn(); }
     if (m.type === 'error') errors.push({ layer: m.layer || null, message: String(m.message || ''), line: m.line || null });
     else if (m.type === 'console') { consoleLines.push({ level: m.level, text: clip(m.text, 500), layer: m.layer || null }); if (consoleLines.length > 60) consoleLines.splice(0, consoleLines.length - 60); }
-    else if (m.type === 'stats') lastStats = { fps: m.fps, worstFrameMs: m.worst, renderMs: m.ms, drawCalls: m.calls, triangles: m.triangles, points: m.points, lines: m.lines, textures: m.textures };
+    else if (m.type === 'stats') lastStats = { fps: m.fps, worstFrameMs: m.worst, renderMs: m.ms, drawCalls: m.calls, triangles: m.triangles, points: m.points, lines: m.lines, textures: m.textures, fpsCap: 15 };
     else if (m.type === 'shot' && pendingShot) { const fn = pendingShot; pendingShot = null; fn(m.dataUrl); }
     else if ((m.type === 'eval-result' || m.type === 'input-result') && evals.has(m.id)) { evals.get(m.id)(m); evals.delete(m.id); }
   }
@@ -41,7 +41,9 @@ const ThreeBackstage = (() => {
     // behind the app (not off screen: a cross-origin frame outside the viewport stops drawing)
     host = el('div', { class: 'lab-backstage', attrs: { 'aria-hidden': 'true' } });
     document.body.append(host);
-    box = ThreeLab._sandbox(host, onMessage, () => '&dpr=1');
+    // (round 16 "labperf": 15 frames a second is plenty for a scene nobody watches: the director's screenshots and
+    // fps reads still work, the GPU does a quarter of the work)
+    box = ThreeLab._sandbox(host, onMessage, () => '&dpr=1&cap=15');
   }
   // Nothing backstage for a minute: the page goes blank (no GPU or CPU while nothing works in the background).
   function sleepSoon() {

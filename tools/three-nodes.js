@@ -1682,11 +1682,16 @@ let ${id}Travel = 0;`);
     let probeTimer = 0;
     function startProbe() {
       stopProbe();
+      // (round 16 "labperf": one read at a time: a busy preview answering late no longer stacks up reads every 300 ms)
+      let asking = false;
       probeTimer = setInterval(async () => {
-        if (mode !== 'nodes' || state !== 'ok' || document.hidden || !pane.offsetParent) return;
+        if (asking || mode !== 'nodes' || state !== 'ok' || document.hidden || !pane.offsetParent) return;
         const id = layerOf()?.id || 'main';
-        const r = await hook.evalInSketch(`globalThis.__nodeValues?.[${JSON.stringify(id)}] ?? globalThis.__nodeValues?.main ?? null`);
-        if (r?.ok && r.value && typeof r.value === 'object') view.setLive(r.value);
+        asking = true;
+        try {
+          const r = await hook.evalInSketch(`globalThis.__nodeValues?.[${JSON.stringify(id)}] ?? globalThis.__nodeValues?.main ?? null`);
+          if (r?.ok && r.value && typeof r.value === 'object') view.setLive(r.value);
+        } finally { asking = false; }
       }, 300);
     }
     function stopProbe() { clearInterval(probeTimer); probeTimer = 0; }

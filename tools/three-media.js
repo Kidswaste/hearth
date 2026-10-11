@@ -1564,7 +1564,13 @@ const ThreeMedia = (() => {
     }
     let lastMiniKey = '';
     let lastFull = 0;
+    let tickHidden = false;
     function tick() {
+      // (round 16 "labperf": with the Lab behind another tool the timeline isn't drawn, its time isn't written and the
+      // playheads aren't placed, 10 times a second for nothing; the beat still ticks for the click track. Back on
+      // screen: one full paint.)
+      if (!shown() && !recording && !dragging) { tickHidden = true; if (gridView.click) beatTick(); raf = requestAnimationFrame(tick); return; }
+      if (tickHidden) { tickHidden = false; paint(); return; }
       beatTick();
       if (dragging) { paint(); return; }
       // While it plays only the picture, the time and the playhead move: the control row is repainted by paint()

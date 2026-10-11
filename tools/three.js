@@ -645,9 +645,34 @@ const ThreeLab = (() => {
 
     // ---------- Stage window: the sketch in its own window (own process, own GPU context) for smooth frames ----------
     // Preview frame rate: Max follows the screen (240 Hz screens render 240 frames a second); 60 or 30 is lighter.
-    const fpsSel = el('select', { class: 'fps-sel', title: 'Preview frame rate: lower = lighter on the GPU and steadier recordings', dataset: { feature: 'Preview fps' } },
-      [['0', 'Max fps'], ['60', '60 fps'], ['30', '30 fps']].map(([v, l]) => el('option', { value: v, text: l, selected: v === String(store.get('three.fpsCap', 0)) })));
-    fpsSel.addEventListener('change', () => { store.set('three.fpsCap', Number(fpsSel.value)); box.send({ type: 'fps-cap', value: Number(fpsSel.value) }); });
+    // Auto (round 16 "labperf", the default): the screen's rate while it keeps up (a fast screen steps down to a steady
+    // 60 when even the lowest resolution can't), 30 while Hearth's window is in the background, nothing while the
+    // Lab isn't on screen (the preview parks: see syncPark).
+    const FPS_OPTS = [['-1', 'Auto fps'], ['0', 'Max fps'], ['60', '60 fps'], ['30', '30 fps']];
+    const fpsPref = () => Number(store.get('three.fpsCap', -1));
+    const fpsSel = el('select', { class: 'fps-sel', title: 'Preview frame rate: Auto follows the screen and the window; lower = lighter on the GPU and steadier recordings', dataset: { feature: 'Preview fps' } },
+      FPS_OPTS.map(([v, l]) => el('option', { value: v, text: l, selected: v === String(fpsPref()) })));
+    let winFocused = document.hasFocus();
+    const capMsg = () => { const v = fpsPref(); return { type: 'fps-cap', value: Math.max(0, v), auto: v < 0, focused: winFocused || box.onStage }; };
+    fpsSel.addEventListener('change', () => { store.set('three.fpsCap', Number(fpsSel.value)); box.send(capMsg()); });
+    // the window in front or not (an iframe taking the focus is still this window: document.hasFocus() says so)
+    let focusT = 0;
+    const onFocusChange = () => { clearTimeout(focusT); focusT = setTimeout(() => { const f = document.hasFocus(); if (f === winFocused) return; winFocused = f; if (fpsPref() < 0 && box.ready) box.send(capMsg()); }, 250); };
+    addEventListener('blur', onFocusChange); addEventListener('focus', onFocusChange);
+    // Parked: the preview draws nothing while the Lab isn't on screen (another tool or chat in front, the window
+    // hidden or minimised, another Lab tab). Recordings, the Stage window and offline renders go on.
+    let parkedNow = false;
+    function syncPark(force = false) {
+      const on = !box.onStage && !player.recording && (document.visibilityState !== 'visible' || !previewHost.checkVisibility?.({ visibilityProperty: true }));
+      if (on === parkedNow && !force) return;
+      parkedNow = on;
+      if (box.ready || !on) box.send({ type: 'park', on });
+    }
+    for (const ev of ['hearth:view', 'hearth:activate']) addEventListener(ev, () => setTimeout(() => syncPark(), 0));
+    document.addEventListener('visibilitychange', () => syncPark());
+    // Light mode (for slower machines): 30 fps, at most 1× pixels in the preview, filters at half resolution
+    let lightOn = Boolean(store.get('three.light', false));
+    function setLight(on) { lightOn = Boolean(on); store.set('three.light', lightOn); box.send({ type: 'light', on: lightOn }); toast(lightOn ? '🪶 Light mode: 30 fps, 1× pixels, filters at half size (recordings and stills stay full size)' : 'Light mode off', { timeout: 2200 }); return lightOn; }
     const stageBtn = btn('🖥', 'Stage window: run the sketch in its own window, steady, smooth frames for recording or a second monitor (F11 there for fullscreen). The preview here sleeps meanwhile.', () => setStage(!box.onStage));
     stageBtn.dataset.feature = 'Stage window';
     const stageNote = el('div', { class: 'stage-note', hidden: true },
@@ -2112,6 +2137,10 @@ const ThreeLab = (() => {
       still: (o) => still(o || {}), safe: (on, plat) => stage.setSafe(on, plat), guides: () => { cycleGuides(); return guides || 'off'; },
       present: () => togglePresent(), focus: () => setFocus(!focusOn), stage: () => setStage(!box.onStage),
       fps: (v) => { fpsSel.value = String(v); fpsSel.dispatchEvent(new Event('change')); return v; },
+      // round 16 "labperf": the numbers (/lab perf), the HUD, Light mode
+      // (kept out of lastStats: the director's reports stay as short as they were)
+      perf: () => ({ ...(lastStats || {}), ...(lastStatsMsg?.p50 != null ? { frameMsP50: lastStatsMsg.p50, frameMsP95: lastStatsMsg.p95, drawCallsAll: lastStatsMsg.callsAll, gpuMB: lastStatsMsg.gpuMB, quality: lastStatsMsg.quality, fpsCap: lastStatsMsg.cap || 'screen', saved: lastStatsMsg.note } : {}), parked: parkedNow, focused: winFocused, fpsSetting: (FPS_OPTS.find(([v]) => v === String(fpsPref())) || FPS_OPTS[0])[1], light: lightOn, hud: perfHudOn, line: perfLine(lastStatsMsg) }),
+      perfHud: (on) => setPerfHud(on ?? !perfHudOn), light: (on) => (on == null || on !== lightOn ? setLight(on ?? !lightOn) : lightOn),
       // view
       code: (on) => setCodeVisible(on ?? split.classList.contains('no-code')), panel: (on) => setSlidersVisible(on ?? column.hidden),
       console: (what) => { if (what === 'clear') { consoleBox.replaceChildren(); consoleLines = []; return 'cleared'; } if (what === 'copy') { const t = consoleLines.map((l) => `${l.layer ? `[${l.layer}] ` : ''}${l.line ? `line ${l.line}: ` : ''}${l.text}`).join('\n'); navigator.clipboard.writeText(t); return t; } consolePeek = what === 'show' ? true : what === 'hide' ? false : !consoleShown(); syncConsole(); return consoleLines.slice(-12); },
@@ -2204,6 +2233,33 @@ const ThreeLab = (() => {
     const saveExtras = debounce(() => { if (extrasLoaded) window.hub.kvSet('three-lab-extras', extras); }, 500);
     let consoleLines = [];
     let lastStats = null;
+    // the fps / draw-call line (on hover): rebuilt only when its text changes, and painted when it shows again
+    let lastStatsMsg = null; let statsSig = '';
+    function paintStats(msg) {
+      const sig = `${Math.round(msg.fps)}|${msg.quality}|${Math.round(msg.worst || 0)}|${msg.ms.toFixed(1)}|${msg.calls}|${msg.triangles}|${msg.points}|${msg.geometries}|${msg.textures}|${msg.programs}`;
+      if (sig === statsSig) return;
+      statsSig = sig;
+      stats.replaceChildren(
+        el('b', { class: msg.fps < 30 ? 'bad' : msg.fps < 55 ? 'warn' : 'ok', text: `${Math.round(msg.fps)} fps` }),
+        msg.quality < 1 ? el('span', { class: 'warn', text: `preview ${Math.round(msg.quality * 100)}%`, title: 'Frames were dropping, so the preview draws at a lower resolution while you watch. Stills, screenshots and recordings stay at full resolution.' }) : null,
+        msg.worst ? el('span', { class: msg.worst > 40 ? 'bad' : msg.worst > 24 ? 'warn' : 'ok', text: `worst ${Math.round(msg.worst)} ms`, title: 'The longest gap between two frames in the last half second: over ~25 ms shows as a stutter (60 Hz = 16.7 ms per frame)' }) : null,
+        el('span', { text: `${msg.ms.toFixed(1)} ms render` }), el('span', { text: `${msg.calls} draw calls` }),
+        el('span', { text: `${msg.triangles.toLocaleString()} tris` }), msg.points ? el('span', { text: `${msg.points.toLocaleString()} points` }) : null,
+        el('span', { text: `${msg.geometries} geo · ${msg.textures} tex · ${msg.programs} shaders` }));
+    }
+    previewHost.addEventListener('mouseenter', () => { if (lastStatsMsg) requestAnimationFrame(() => paintStats(lastStatsMsg)); });
+    // Perf HUD (/lab perf, round 16 "labperf"): a quiet line in the preview's corner, fps · frame ms (median / worst
+    // 5 %) · draw calls · GPU memory estimate, 2 updates a second at most, written only when the text changes
+    let perfHudOn = Boolean(store.get('three.perfHud', false));
+    const perfHud = el('div', { class: 'lab-perf-hud', hidden: !perfHudOn, title: 'Lab perf: fps · frame ms (median / slowest 5 %) · draw calls · GPU memory estimate (/lab perf hides it)' });
+    previewHost.append(perfHud);
+    function perfLine(m) {
+      if (!m) return 'no frames yet';
+      const q = m.quality < 1 ? ` · ${Math.round(m.quality * 100)}%` : '';
+      return `${Math.round(m.fps)} fps${m.cap ? `/${m.cap}` : ''} · ${m.p50 ?? m.ms.toFixed(1)}/${m.p95 ?? '–'} ms · ${m.callsAll ?? m.calls} calls · ≈${m.gpuMB ?? '?'} MB${q}${m.light ? ' · 🪶' : ''}`;
+    }
+    function paintPerfHud(m) { if (!perfHudOn) return; const t = perfLine(m); if (perfHud.textContent !== t) perfHud.textContent = t; }
+    function setPerfHud(on) { perfHudOn = Boolean(on); store.set('three.perfHud', perfHudOn); perfHud.hidden = !perfHudOn; paintPerfHud(lastStatsMsg); return perfHudOn; }
     let pendingShot = null;
     // Requests to the sandbox that answer later (eval / input), by id.
     const sandboxCalls = new Map();
@@ -2278,19 +2334,18 @@ const ThreeLab = (() => {
         lastStatsAt = Date.now();
         if (stall.querySelector('.three-stall-text').textContent.includes('responding')) hideStall();
         lastStats = { fps: Math.round(msg.fps), worstFrameMs: Math.round(msg.worst || 0), renderMs: Number(msg.ms.toFixed(2)), drawCalls: msg.calls, triangles: msg.triangles, points: msg.points, geometries: msg.geometries, textures: msg.textures, shaders: msg.programs };
-        stats.hidden = false;
-        stats.replaceChildren(
-          el('b', { class: msg.fps < 30 ? 'bad' : msg.fps < 55 ? 'warn' : 'ok', text: `${Math.round(msg.fps)} fps` }),
-          msg.quality < 1 ? el('span', { class: 'warn', text: `preview ${Math.round(msg.quality * 100)}%`, title: 'Frames were dropping, so the preview draws at a lower resolution while you watch. Stills, screenshots and recordings stay at full resolution.' }) : null,
-          msg.worst ? el('span', { class: msg.worst > 40 ? 'bad' : msg.worst > 24 ? 'warn' : 'ok', text: `worst ${Math.round(msg.worst)} ms`, title: 'The longest gap between two frames in the last half second: over ~25 ms shows as a stutter (60 Hz = 16.7 ms per frame)' }) : null,
-          el('span', { text: `${msg.ms.toFixed(1)} ms render` }), el('span', { text: `${msg.calls} draw calls` }),
-          el('span', { text: `${msg.triangles.toLocaleString()} tris` }), msg.points ? el('span', { text: `${msg.points.toLocaleString()} points` }) : null,
-          el('span', { text: `${msg.geometries} geo · ${msg.textures} tex · ${msg.programs} shaders` }));
+        lastStatsMsg = msg;
+        paintPerfHud(msg);
+        if (stats.hidden) stats.hidden = false;
+        // (round 16: the line shows on hover; while it can't be seen it isn't rewritten, and never with the same text)
+        if (!stats.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return;
+        paintStats(msg);
       }
       if (/^edit-/.test(msg.type)) { onEditMessage(msg); return; }
       if (msg.type === 'live-tempo') { if (liveKind) { liveBpm = msg; paintLive(); if (typeof ThreeMusic !== 'undefined') ThreeMusic.liveTempo(msg); } return; }
       if (msg.type === 'live-state') { if (msg.error) toast(`Live sound: ${msg.error}`, { type: 'error', timeout: 5000 }); if (!msg.on && msg.error) { liveKind = null; paintLive(); } return; }
       if (msg.type === 'ready' && msg.again && ranOnce) { console.warn('Lab preview restarted by itself: running the sketch again'); run({ again: true }); }
+      if (msg.type === 'ready') { box.send(capMsg()); if (lightOn) box.send({ type: 'light', on: true }); parkedNow = false; syncPark(); }
       if (msg.type === 'ready') { if (frozenNow) box.send({ type: 'freeze', on: true }); if (guides) box.send({ type: 'guides', kind: guides }); if (previewHost.classList.contains('presenting')) box.send({ type: 'present', on: true }); sendTriggers(); if (trigPanel) box.send({ type: 'trig-watch', on: true }); }
       if (msg.type === 'ready' && liveKind) {
         // a reloaded preview: the hub page keeps capturing, the Stage captures again by itself
@@ -2299,7 +2354,7 @@ const ThreeLab = (() => {
       }
       if (msg.type === 'eval-result' || msg.type === 'input-result') { sandboxCalls.get(msg.id)?.(msg); sandboxCalls.delete(msg.id); return; }
       if (msg.type === 'shot') {
-        if (msg.tag === 'thumb') { const fn = thumbShot; thumbShot = null; fn?.(msg.dataUrl); return; }
+        if (msg.tag === 'thumb') { const fn = thumbShot; thumbShot = null; fn?.(msg.dataUrl, msg.small); return; }
         if (msg.tag === 'get') { const fn = pendingShot; pendingShot = null; fn?.(msg.dataUrl); return; }
         if (pendingShot) { pendingShot(msg.dataUrl); pendingShot = null; } else if (copyNextShot) {
           copyNextShot = false;
@@ -2605,7 +2660,9 @@ const ThreeLab = (() => {
         ['◐ Pin this frame to compare', '|', () => pinFrame()],
         typeof Decide !== 'undefined' ? ['✦ Let Astra pick the frame size', 'For this picture · Undo puts yours back', () => Decide.run('size')] : null,
         [box.onStage ? '🖥 Back from the Stage window' : '🖥 Stage window', 'Its own window, steady frames', () => setStage(!box.onStage), box.onStage, 'Stage window'],
-        ['Frame rate', ({ 0: 'Max fps', 60: '60 fps', 30: '30 fps' })[store.get('three.fpsCap', 0)] || '', [['0', 'Max fps'], ['60', '60 fps'], ['30', '30 fps']].map(([v, l]) => [l, '', () => { fpsSel.value = v; fpsSel.dispatchEvent(new Event('change')); }, String(store.get('three.fpsCap', 0)) === v, 'Preview fps'])]];
+        ['Frame rate', `${(FPS_OPTS.find(([v]) => v === String(fpsPref())) || FPS_OPTS[0])[1]}${lightOn ? ' · light' : ''}`, [...FPS_OPTS.map(([v, l]) => [l, v === '-1' ? 'Follows the screen; 30 in the background; nothing when hidden' : '', () => { fpsSel.value = v; fpsSel.dispatchEvent(new Event('change')); }, String(fpsPref()) === v, 'Preview fps']),
+          ['🪶 Light mode', 'Slower machine: 30 fps, 1× pixels, filters at half size (/lab light)', () => setLight(!lightOn), lightOn, 'Light mode'],
+          ['Perf HUD', 'fps, frame ms, draw calls, GPU memory, in a corner (/lab perf)', () => setPerfHud(!perfHudOn), perfHudOn, 'Perf HUD']]]];
     }
     let restartNext = false;
     function restartSim() {
@@ -2644,7 +2701,7 @@ const ThreeLab = (() => {
       // the Sequence view owns the preview: the sketch's changes reach the clips that use it; a page that has to be
       // replaced (a new frame size, a restart) is, and the sequence goes back on it ('ready')
       if (typeof ThreeSeq !== 'undefined' && ThreeSeq.keep(current.id)) {
-        if (!up) { if (!again && (!box.loading || box.stale || restartNext || reload)) box.reload(restartNext); restartNext = false; ranOnce = true; player.attach({ playing: false }); box.send({ type: 'fps-cap', value: store.get('three.fpsCap', 0) }); }
+        if (!up) { if (!again && (!box.loading || box.stale || restartNext || reload)) box.reload(restartNext); restartNext = false; ranOnce = true; player.attach({ playing: false }); box.send(capMsg()); }
         ThreeSeq.sketchChanged(current.id);
         return true;
       }
@@ -2708,7 +2765,7 @@ const ThreeLab = (() => {
       for (const L of rerun) ranCode.set(L.id, codeOf(L));
       ranSketch = current.id;
       if (editOn && !partial && sel()) box.send({ type: 'edit', cmd: 'on', layer: sel().id });
-      if (fresh) box.send({ type: 'fps-cap', value: store.get('three.fpsCap', 0) });
+      if (fresh) box.send(capMsg());
       ranOnce = true;
       if (!partial) scheduleThumb();
       return true;
@@ -2736,8 +2793,9 @@ const ThreeLab = (() => {
       thumbTimer = setTimeout(() => {
         // (the Lab sequence's program on screen isn't this sketch's picture)
         if (current?.id !== id || pendingShot || errors.length || (typeof ThreeSeq !== 'undefined' && ThreeSeq.active)) return;
-        thumbShot = async (url) => {
+        thumbShot = async (url, small) => {
           if (!url || (typeof ThreeSeq !== 'undefined' && ThreeSeq.active)) return;
+          if (small) { thumbs[id] = { url, at: Date.now() }; saveThumbs(); return; } // (already a small JPEG)
           const img = new Image(); img.src = url;
           try { await img.decode(); } catch { return; }
           const c = document.createElement('canvas'); const sc = Math.min(1, 360 / Math.max(img.width, img.height));
@@ -2746,7 +2804,9 @@ const ThreeLab = (() => {
           thumbs[id] = { url: c.toDataURL('image/jpeg', 0.75), at: Date.now() };
           saveThumbs();
         };
-        box.send({ type: 'screenshot', tag: 'thumb' });
+        // (round 16: when the page is idle, and the preview makes it small and encodes it off its frames)
+        const ask = () => box.send({ type: 'screenshot', tag: 'thumb', max: 360 });
+        if (typeof requestIdleCallback === 'function') requestIdleCallback(ask, { timeout: 2000 }); else ask();
       }, 3500);
     }
     const browseBtn = btn('▦', 'All your sketches as pictures', () => browseSketches());

@@ -27,12 +27,22 @@
   }
 
   // ---------- the Lab, its tools, running ----------
-  reg('lab', 'Open the Three.js Lab (or one of its tools: model, shader, textures, docs, color, easing)', '[tool]', async (args) => {
+  reg('lab', 'Open the Three.js Lab (or one of its tools: model, shader, textures, docs, color, easing); perf: the preview\'s numbers and a quiet HUD; light: Light mode for slower machines', '[tool] | perf [on|off] | light [on|off]', async (args) => {
+    // round 16 "labperf": /lab perf (numbers + the HUD on / off) · /lab light (30 fps, 1× pixels, filters at half size)
+    const [w0, w1] = words(args).map((x) => x.toLowerCase());
+    if (w0 === 'perf') {
+      const c = await lab();
+      const on = c.perfHud(w1 ? onOff(w1) : undefined);
+      const p = c.perf();
+      const f = (x) => (x == null ? '–' : x);
+      return `**Lab perf** (HUD ${on ? 'on' : 'off'}: \`/lab perf ${on ? 'off' : 'on'}\`)\n- ${f(p.fps)} fps · frame ${f(p.frameMsP50)} ms median, ${f(p.frameMsP95)} ms slowest 5 % · worst gap ${f(p.worstFrameMs)} ms\n- ${f(p.drawCallsAll ?? p.drawCalls)} draw calls · ${f(p.triangles)?.toLocaleString?.() ?? '–'} tris · ≈${f(p.gpuMB)} MB GPU (estimate) · ${f(p.textures)} textures\n- resolution ${p.quality != null ? `${Math.round(p.quality * 100)}%` : '–'} · ${p.fpsSetting}${p.light ? ' · 🪶 Light mode' : ''}${p.parked ? ' · parked (not on screen)' : ''}${p.saved ? `\n- saved so far: ${p.saved.reused} filter merges reused, ${p.saved.passSkipped} filter passes skipped at 0, ${p.saved.stale} stray renderers dropped` : ''}`;
+    }
+    if (w0 === 'light') { const on = (await lab()).light(w1 ? onOff(w1) : undefined); return on ? '🪶 Light mode on: 30 fps, 1× pixels, filters at half size (recordings and stills stay full size) · `/lab light off`' : 'Light mode off'; }
     const id = args ? ThreeLab.toolTabs().find((t) => t.id.startsWith(args.toLowerCase()) || t.label.toLowerCase().includes(args.toLowerCase()))?.id : 'sketch';
     if (args && !id) return `No tool "${args}". Tools: ${ThreeLab.toolTabs().map((t) => t.id).join(', ')}`;
     await lab(); ThreeLab.showTab(id || 'sketch');
     return null;
-  }, (a) => pick(ThreeLab.toolTabs().map((t) => ({ value: t.id, hint: t.label })), a));
+  }, (a) => pick([...ThreeLab.toolTabs().map((t) => ({ value: t.id, hint: t.label })), { value: 'perf', hint: 'fps, frame ms, draw calls, GPU memory + a quiet HUD' }, { value: 'light', hint: 'Light mode for slower machines' }], a));
   reg('lab-tools', 'The Lab\'s secondary tools (model viewer, shaders, textures, docs, color, easing)', '', () => ThreeLab.toolTabs().map((t) => `- \`/lab ${t.id}\` ${t.label}: ${t.hint}`).join('\n'));
   reg('lab-state', 'What the Lab shows now: sketch, layer, frame size, song, BPM, live sound', '', async () => {
     const s = (await lab(false)).state;
