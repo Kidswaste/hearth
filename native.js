@@ -590,7 +590,7 @@ const Native = (() => {
       node.append(el('div', { class: 'memory-chip' }, `Saved to memory: ${m.remembered.join(' · ')} `,
         el('button', { class: 'undo-memory', text: 'Undo', dataset: { agent: agent.id, facts: JSON.stringify(m.remembered) } })));
     }
-    const time = m.at ? new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    const time = m.at ? fmtLocal(m.at, { hour: '2-digit', minute: '2-digit' }, 'time') : ''; // (round 20) one cached formatter
     const act = (name, label, title) => el('button', { class: 'msg-act', text: label, title, dataset: { msgAct: name } });
     // Marks you put on a message (/pin-msg, /bookmark, /react): small badges in its corner.
     const marks = [m.pinnedMsg ? '📌' : null, m.bookmark ? '🔖' : null, m.reaction ? m.reaction.emoji : null].filter(Boolean);
@@ -802,6 +802,22 @@ const Native = (() => {
     v.foldIO.observe(node);
   }
 
+  // (round 20, offmain) the replies about to be drawn whose Markdown isn't ready are rendered on the Markdown worker
+  // first (md.js Md.warm), so this thread only inserts them: worth it from ~24k characters (a few ms here); a short
+  // chat, or one already drawn, renders at once as before. The earlier messages of a long chat (behind ↑ Show earlier)
+  // are warmed at the next idle moment, so showing them only builds their nodes.
+  const WARM_CHARS = 24000;
+  async function warmReplies(v, chat) {
+    const from = shownFrom(chat, unreadFrom.get(chat.id));
+    const kept = v.nodes?.get(chat.id);
+    const texts = [];
+    for (let i = from; i < chat.messages.length; i++) { const m = chat.messages[i]; if ((m.role === 'assistant' || m.role === 'opinion') && kept?.get(m)?.text !== m.text) texts.push(m.text); }
+    if (Md.uncached(texts) >= WARM_CHARS) await Md.warm(texts, 400);
+    if (from > 0) {
+      const earlier = chat.messages.slice(0, from).filter((m) => m.role === 'assistant' || m.role === 'opinion').map((m) => m.text);
+      if (Md.uncached(earlier)) (window.requestIdleCallback || setTimeout)(() => Md.warm(earlier, 0), { timeout: 1500 });
+    }
+  }
   async function render(agentId, { keepScroll = false, rebuild = false } = {}) {
     const v = views.get(agentId);
     const agent = H.agent(agentId);
@@ -809,6 +825,7 @@ const Native = (() => {
     const chatId = H.activeChat[agentId];
     const chat = chatId ? await loadChat(chatId) : null;
     if (chatId && !chat) H.activeChat[agentId] = null;
+    if (chat && window.Md) await warmReplies(v, chat);
     const wasNearBottom = nearBottom(v.list);
     const prevScroll = v.list.scrollTop;
 
@@ -924,7 +941,7 @@ const Native = (() => {
     const diff = Math.round((start(today) - start(d)) / 864e5);
     if (diff === 0) return 'Today';
     if (diff === 1) return 'Yesterday';
-    return d.toLocaleDateString(undefined, { weekday: diff < 7 ? 'long' : undefined, day: 'numeric', month: 'short', year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric' });
+    return fmtLocal(ms, { weekday: diff < 7 ? 'long' : undefined, day: 'numeric', month: 'short', year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric' }, 'date');
   }
   // Replies that arrived while you looked elsewhere: chat id -> index of the first one you haven't seen.
   const unreadFrom = new Map();
@@ -974,8 +991,9 @@ const Native = (() => {
     if (!v || !id || fullChats.has(id)) return;
     fullChats.add(id);
     const h0 = v.list.scrollHeight; const t0 = v.list.scrollTop;
-    render(agentId);
-    v.list.scrollTop = t0 + (v.list.scrollHeight - h0);
+    const keep = () => { v.list.scrollTop = t0 + (v.list.scrollHeight - h0); };
+    keep();
+    render(agentId).then(keep); // (round 20) render waits for its chat (and the Markdown worker): keep the place after it drew
   }
   // Scrolls to message #index (0-based) and flashes it; unfolds it when folded.
   function jumpTo(agentId, index) {

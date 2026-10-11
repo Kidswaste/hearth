@@ -3,6 +3,9 @@
 // task lists), quotes and callouts (> [!NOTE]), tables with column alignment, fenced code, ==highlights==,
 // [[keys]], and light math ($x^2$, $$…$$ shown as formulas with superscripts / subscripts / Greek letters).
 (() => {
+  // (round 20, offmain) this file also runs as the Markdown worker (new Worker('md.js')): long chats are rendered there
+  // and the window's thread only inserts the result (Md.warm below). No DOM is used while rendering.
+  const G = typeof window !== 'undefined' ? window : self;
   const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }; // (round 16) one table, not one per character
   const ESC_RE = /[&<>"']/;
   const escape = (s) => (ESC_RE.test(s) ? s.replace(/[&<>"']/g, (c) => ESC[c]) : s);
@@ -40,6 +43,44 @@
       .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank">$2</a>');
     return s.replace(/\u0003(\d+)\u0003/g, (_, i) => `<span class="math">${math(maths[i])}</span>`)
       .replace(/\u0000(\d+)\u0000/g, (_, i) => `<code>${escape(codes[i])}</code>`);
+  }
+
+  // ---------- syntax highlighting (moved here from ui.js in round 20 so the Markdown worker shares it) ----------
+  const escapeHtml = escape;
+  const HL = new Map(); // language → { kw, re }: built once, not on every code block
+  const KEYWORDS = {
+    js: 'await break case catch class const continue debugger default delete do else export extends false finally for from function if import in instanceof let new null of return static super switch this throw true try typeof undefined var void while with yield async get set',
+    glsl: 'attribute const uniform varying in out inout layout break continue do for while if else discard return true false struct precision highp mediump lowp void bool int uint float vec2 vec3 vec4 bvec2 bvec3 bvec4 ivec2 ivec3 ivec4 mat2 mat3 mat4 sampler2D samplerCube',
+    py: 'and as assert async await break class continue def del elif else except False finally for from global if import in is lambda None nonlocal not or pass raise return True try while with yield',
+    css: '',
+  };
+  const LANG_ALIAS = { javascript: 'js', jsx: 'js', ts: 'js', typescript: 'js', mjs: 'js', json: 'js', jsxinc: 'js', extendscript: 'js', frag: 'glsl', vert: 'glsl', shader: 'glsl', python: 'py' };
+  function highlight(code, lang = 'js') {
+    const l = LANG_ALIAS[lang] || lang;
+    if (!['js', 'glsl', 'py', 'css', 'html'].includes(l)) return escapeHtml(code);
+    let h = HL.get(l);
+    if (!h) {
+      const comment = l === 'py' ? '#[^\\n]*' : l === 'html' ? '<!--[\\s\\S]*?-->' : '\\/\\/[^\\n]*|\\/\\*[\\s\\S]*?\\*\\/';
+      h = { kw: new Set((KEYWORDS[l] || '').split(' ')), re: new RegExp(`(${comment})|(\`(?:\\\\[\\s\\S]|[^\`\\\\])*\`|"(?:\\\\.|[^"\\\\\\n])*"|'(?:\\\\.|[^'\\\\\\n])*')|(\\b\\d[\\d_]*\\.?\\d*(?:e[+-]?\\d+)?\\b|\\b0x[\\da-f]+\\b)|(</?[A-Za-z][\\w-]*|[A-Za-z_$][\\w$]*)`, 'gi') };
+      HL.set(l, h);
+    }
+    const { kw, re } = h;
+    let out = '';
+    let last = 0;
+    for (const m of code.matchAll(re)) {
+      out += escapeHtml(code.slice(last, m.index));
+      const [tok, c, s, n, w] = m;
+      if (c) out += `<span class="hl-c">${escapeHtml(tok)}</span>`;
+      else if (s) out += `<span class="hl-s">${escapeHtml(tok)}</span>`;
+      else if (n) out += `<span class="hl-n">${escapeHtml(tok)}</span>`;
+      else if (w && l === 'html' && w.startsWith('<')) out += `<span class="hl-k">${escapeHtml(tok)}</span>`;
+      else if (w && kw.has(w)) out += `<span class="hl-k">${tok}</span>`;
+      else if (w && code[m.index + tok.length] === '(') out += `<span class="hl-f">${tok}</span>`;
+      else if (w && /^[A-Z]/.test(w)) out += `<span class="hl-t">${tok}</span>`;
+      else out += escapeHtml(tok);
+      last = m.index + tok.length;
+    }
+    return out + escapeHtml(code.slice(last));
   }
 
   const CALLOUTS = { NOTE: 'ℹ️', TIP: '💡', IMPORTANT: '❗', WARNING: '⚠️', CAUTION: '🛑', INFO: 'ℹ️', SUCCESS: '✅', QUESTION: '❓', EXAMPLE: '📎' };
@@ -90,7 +131,7 @@
         while (i < lines.length && !/^\s*```/.test(lines[i])) body.push(lines[i++]);
         i += 1;
         const codeText = body.join('\n');
-        const highlighted = window.highlight ? window.highlight(codeText, fence[1].toLowerCase() || 'text') : escape(codeText);
+        const highlighted = highlight(codeText, fence[1].toLowerCase() || 'text');
         out.push(`<pre data-lang="${escape(fence[1])}"><button class="copy-code" title="Copy">Copy</button><code>${highlighted}</code></pre>`);
         continue;
       }
@@ -164,8 +205,66 @@
     if (mdCache.size > 600) mdCache.delete(mdCache.keys().next().value);
     return html;
   }
-  window.renderMarkdown = renderMarkdownCached;
+  // (round 20, offmain) running as the worker: render what the window sends, in order, and send the HTML back
+  if (typeof window === 'undefined') {
+    self.onmessage = (e) => {
+      const { id, texts } = e.data || {};
+      const html = (texts || []).map((t) => { try { return renderMarkdown(String(t)); } catch { return null; } });
+      self.postMessage({ id, html });
+    };
+    return;
+  }
+  G.mdHighlight = highlight;
+  G.highlight = highlight;
+  G.renderMarkdown = renderMarkdownCached;
   // (round 16) the streaming reply's parts: never the same text twice, so they skip the cache (it used to fill with
   // every intermediate state of a growing reply, ~16 a second, pushing out the finished messages it is for)
-  window.renderMarkdownLive = renderMarkdown;
+  G.renderMarkdownLive = renderMarkdown;
+
+  // ---------- (round 20, offmain) the Markdown worker ----------
+  // Md.warm(texts, ms) renders the texts that aren't in the cache on the worker's thread and puts the HTML in the
+  // cache, so the renderMarkdown() calls that follow (a long chat opening, ↑ Show earlier, a chat switch) only look it
+  // up. It resolves when they're in, or after `ms` (never later: whatever isn't back by then is rendered here as
+  // before, and arrives in the cache when the worker is done). One worker, made at the first idle moment after the
+  // start (or on first use); if it can't run, everything renders here exactly as before.
+  const WARM_MIN = 200; // shorter texts aren't cached (and take microseconds)
+  let worker = null; let broken = false; let seq = 0;
+  const waiting = new Map(); // batch id → resolve
+  const inFlight = new Set(); // texts the worker is rendering now
+  const stats = { batches: 0, texts: 0, chars: 0, workerMs: 0, timeouts: 0 };
+  function spawn() {
+    if (worker || broken) return worker;
+    try {
+      worker = new Worker('md.js');
+      worker.onmessage = (e) => {
+        const { id, html } = e.data || {};
+        const job = waiting.get(id); if (!job) return;
+        waiting.delete(id);
+        job.texts.forEach((t, i) => { inFlight.delete(t); if (typeof html?.[i] === 'string') put(t, html[i]); });
+        stats.workerMs += performance.now() - job.t0;
+        job.done();
+      };
+      worker.onerror = () => { broken = true; worker = null; for (const j of waiting.values()) { for (const t of j.texts) inFlight.delete(t); j.done(); } waiting.clear(); };
+    } catch { broken = true; worker = null; }
+    return worker;
+  }
+  function put(src, html) {
+    mdCache.delete(src); mdCache.set(src, html);
+    if (mdCache.size > 600) mdCache.delete(mdCache.keys().next().value);
+  }
+  function warm(texts, ms = 400) {
+    const todo = [...new Set((texts || []).filter((t) => typeof t === 'string' && t.length >= WARM_MIN && !mdCache.has(t) && !inFlight.has(t)))];
+    if (!todo.length || !spawn()) return Promise.resolve(0);
+    const id = ++seq;
+    for (const t of todo) inFlight.add(t);
+    stats.batches += 1; stats.texts += todo.length; stats.chars += todo.reduce((a, t) => a + t.length, 0);
+    const done = new Promise((resolve) => { waiting.set(id, { texts: todo, t0: performance.now(), done: () => resolve(todo.length) }); });
+    worker.postMessage({ id, texts: todo });
+    return ms === Infinity || ms <= 0 ? done : Promise.race([done, new Promise((r) => setTimeout(() => { stats.timeouts += 1; r(-1); }, ms))]);
+  }
+  // how many characters of these texts still need rendering (what's worth handing to the worker)
+  const uncached = (texts) => (texts || []).reduce((a, t) => a + (typeof t === 'string' && t.length >= WARM_MIN && !mdCache.has(t) ? t.length : 0), 0);
+  G.Md = { warm, uncached, has: (t) => mdCache.has(t), html: (t) => warm([t], Infinity).then(() => renderMarkdownCached(t)), stats: () => ({ ...stats, cached: mdCache.size, worker: Boolean(worker), broken }) };
+  // the worker is started at the first idle moment after the start, so the first long chat doesn't wait for it
+  addEventListener('hearth:ready', () => (G.requestIdleCallback || setTimeout)(() => spawn(), { timeout: 4000 }), { once: true });
 })();

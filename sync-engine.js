@@ -361,12 +361,23 @@ function createEngine(o) {
 
   // ---------- hashing (cached by size + modified time) ----------
   let texts = new Map(); // `${side}:${rel}` → canonical (cloud-form) JSON text, this pass only
+  let hashed = new Map(); // (round 20) text → its hash, for the big stores hashed on the store thread (this pass only)
   const arriving = new Map(); // rel → { size, mtime, since }: a cloud file whose size doesn't match its journal yet
+  // (round 20, offmain) a big JSON store (≥ 256 KB: Lab scenes, boards, long chats) is read, put in its cloud form and
+  // hashed on another thread when the app gives one (o.hashJson: the store thread in Hearth), so a pass never holds
+  // the main process for the whole parse + stringify; big plain files are hashed in 1 MB steps (hashFile)
+  const OFF_MIN = 256 * 1024; const WHOLE_MAX = 1024 * 1024;
+  async function hashOff(file, size, rel, cloud) {
+    if (!o.hashJson || size < OFF_MIN) return null;
+    try { return await o.hashJson(file, { rel, cloud, ctx: cloud ? null : ctx }); } catch { return null; }
+  }
   async function localHash(rel, L) {
     const c = state.local[rel];
     if (c && c[0] === L.size && c[1] === L.mtime && c[2]) return c[2];
     let h;
-    if (S.isJsonRel(rel) && L.size <= JSON_MAX) {
+    const off = S.isJsonRel(rel) && L.size <= JSON_MAX ? await hashOff(L.file, L.size, rel, false) : null;
+    if (off?.bad) return now() - L.mtime < 5000 ? INFLIGHT : BAD;
+    if (off?.h) { h = off.h; if (off.t) { texts.set(`l:${rel}`, off.t); hashed.set(off.t, h); } } else if (S.isJsonRel(rel) && L.size <= JSON_MAX) {
       const text = await fsp.readFile(L.file, 'utf8');
       let v;
       try { v = JSON.parse(text); } catch { return now() - L.mtime < 5000 ? INFLIGHT : BAD; }
@@ -374,7 +385,7 @@ function createEngine(o) {
       const t = canon(S.toCloud(v, ctx));
       if (t.length < 2e6) texts.set(`l:${rel}`, t);
       h = sha(t);
-    } else if (L.size <= SMALL) h = sha(await fsp.readFile(L.file));
+    } else if (L.size <= WHOLE_MAX) h = sha(await fsp.readFile(L.file));
     else h = await hashFile(L.file, () => stopping);
     state.local[rel] = [L.size, L.mtime, h];
     return h;
@@ -413,14 +424,16 @@ function createEngine(o) {
       if (now() - seen.since < (o.stableMs ?? 60000)) return INFLIGHT;
     }
     let h;
-    if (S.isJsonRel(rel) && C.size <= JSON_MAX) {
+    const off = S.isJsonRel(rel) && C.size <= JSON_MAX ? await hashOff(C.file, C.size, rel, true) : null;
+    if (off?.bad) return now() - C.mtime < 30 * 60 * 1000 ? INFLIGHT : BAD;
+    if (off?.h) { h = off.h; if (off.t) texts.set(`c:${rel}`, off.t); } else if (S.isJsonRel(rel) && C.size <= JSON_MAX) {
       let v;
       try { v = JSON.parse(await fsp.readFile(C.file, 'utf8')); } catch { return now() - C.mtime < 30 * 60 * 1000 ? INFLIGHT : BAD; }
       const t = canon(v);
       if (t.length < 2e6) texts.set(`c:${rel}`, t);
       h = sha(t);
     } else if (C.size > SMALL && j && j.s === C.size && j.h) h = j.h;
-    else if (C.size <= SMALL) h = sha(await fsp.readFile(C.file));
+    else if (C.size <= WHOLE_MAX) h = sha(await fsp.readFile(C.file));
     else h = await hashFile(C.file, () => stopping);
     state.cloud[rel] = [C.size, C.mtime, h];
     return h;
@@ -467,7 +480,7 @@ function createEngine(o) {
     let ok;
     if (S.isJsonRel(rel)) {
       const text = await localText(rel, L);
-      if (sha(text) !== h) return false;
+      if ((hashed.get(text) ?? sha(text)) !== h) return false; // (round 20) a text hashed on the store thread isn't hashed again
       ok = await casWrite(dst, target, text, 'push');
       if (ok) setBase(rel, h, text);
     } else if (L.size <= SMALL) {
@@ -681,7 +694,7 @@ function createEngine(o) {
     try { return await running; } finally { running = null; }
   }
   async function passOnce(opts) {
-    sum = counts(); pulledNow = []; texts = new Map(); status.resumed = 0; status.bytes = 0;
+    sum = counts(); pulledNow = []; texts = new Map(); hashed = new Map(); status.resumed = 0; status.bytes = 0;
     const t0 = now();
     if (!(await exists(cloudRoot))) return finish({ state: 'offline', error: '' }, t0);
     if (!(await exists(FILES))) {

@@ -670,3 +670,8 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ While you type, drag or scroll, background work (feature loads, tidy, board pictures, thumbnails, engine check, sync passes) waits; the Lab suggests Light mode once if it keeps dropping frames.
 - ✓ `/smooth` (day / week): p50 / p95 input delay and long frames per area, the 5 worst culprits, what was adapted, 📋 Copy for Claude; `/smooth profile`, `/smooth reset`, `/smooth off`.
 - ○ Tested headless (`dev/checks/jankwatch.js`); the real numbers come from the owner's Mac and PC.
+## Off the main threads (round 20, offmain, 21 upgrades: docs/upgrades/offmain.md)
+- ✓ Long chats: ↑ Show earlier on a 300-message chat no longer freezes (a 131 ms task → none; cached date formatters); code-heavy chats are rendered on a Markdown worker first.
+- ✓ A store thread in the main process saves chats / scenes / kv stores (identical saves skipped), keeps the chats index (list 23 → 5 ms) and searches every chat (the app answers in 1.7 ms instead of 28 ms while you search); quitting waits for the last saves.
+- ✓ Folder search and cloud sync's big-store hashing run on a files thread; Lab and director screenshots encode in pieces (no long task).
+- ○ Measured headless (`dev/checks/offmain.js`, `dev/store-thread-test.js`); the owner's own data sizes and a real cloud drive aren't run here.

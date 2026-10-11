@@ -192,14 +192,45 @@ document.addEventListener('loadedmetadata', (e) => { const v = e.target; if (v i
     set(key, value) { try { localStorage.setItem(`hub.${key}`, JSON.stringify(value)); } catch { /* storage is a convenience */ } },
   };
   const fmtBytes = (n) => (n >= 1 << 30 ? `${(n / (1 << 30)).toFixed(2)} GB` : n >= 1 << 20 ? `${(n / (1 << 20)).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`);
-  const fmtDate = (ms) => new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  // (round 20, offmain) dates are formatted by one cached Intl formatter per style: toLocaleString(…, options) builds
+  // a new formatter on every call (~0.2 ms each), and a long chat formats three dates per message (showing every
+  // message of a 300-message chat spent ~100 ms there). fmtLocal(ms, options) gives the same text as toLocaleString.
+  const DTF = new Map();
+  function fmtLocal(ms, opts = {}, kind = 'string') {
+    const key = `${kind}|${JSON.stringify(opts)}`;
+    let f = DTF.get(key);
+    if (!f) {
+      const o = { ...opts };
+      if (kind === 'date' && !o.dateStyle && !o.weekday && !o.year && !o.month && !o.day) Object.assign(o, { year: 'numeric', month: 'numeric', day: 'numeric' });
+      if (kind === 'time' && !o.timeStyle && !o.hour && !o.minute && !o.second) Object.assign(o, { hour: 'numeric', minute: 'numeric', second: 'numeric' });
+      if (kind === 'string' && !Object.keys(o).length) Object.assign(o, { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' });
+      f = new Intl.DateTimeFormat(undefined, o); DTF.set(key, f);
+    }
+    return f.format(ms);
+  }
+  const fmtDate = (ms) => fmtLocal(ms, { dateStyle: 'medium', timeStyle: 'short' });
+  // (round 20, offmain) a canvas as a data URL, encoded by the browser off this thread (toBlob + FileReader; toDataURL
+  // encodes on it: a 1280-px JPEG ≈ 15–40 ms). Same result as canvas.toDataURL(type, quality), as a Promise.
+  function canvasDataUrl(canvas, type = 'image/png', quality) {
+    return new Promise((resolve) => {
+      const here = () => resolve(canvas.toDataURL(type, quality));
+      try {
+        canvas.toBlob((b) => {
+          if (!b) { here(); return; }
+          const r = new FileReader();
+          r.onload = () => resolve(r.result); r.onerror = here;
+          r.readAsDataURL(b);
+        }, type, quality);
+      } catch { here(); }
+    });
+  }
   function timeAgo(ms) {
     const s = Math.round((Date.now() - ms) / 1000);
     if (s < 60) return 'just now';
     if (s < 3600) return `${Math.round(s / 60)} min ago`;
     if (s < 86400) return `${Math.round(s / 3600)} h ago`;
     if (s < 86400 * 30) return `${Math.round(s / 86400)} d ago`;
-    return new Date(ms).toLocaleDateString();
+    return fmtLocal(ms, {}, 'date');
   }
   const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
   async function copyText(text, what = 'Copied') {
@@ -209,36 +240,8 @@ document.addEventListener('loadedmetadata', (e) => { const v = e.target; if (v i
   const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   // ---------- syntax highlighting ----------
-  const KEYWORDS = {
-    js: 'await break case catch class const continue debugger default delete do else export extends false finally for from function if import in instanceof let new null of return static super switch this throw true try typeof undefined var void while with yield async get set',
-    glsl: 'attribute const uniform varying in out inout layout break continue do for while if else discard return true false struct precision highp mediump lowp void bool int uint float vec2 vec3 vec4 bvec2 bvec3 bvec4 ivec2 ivec3 ivec4 mat2 mat3 mat4 sampler2D samplerCube',
-    py: 'and as assert async await break class continue def del elif else except False finally for from global if import in is lambda None nonlocal not or pass raise return True try while with yield',
-    css: '',
-  };
-  const LANG_ALIAS = { javascript: 'js', jsx: 'js', ts: 'js', typescript: 'js', mjs: 'js', json: 'js', jsxinc: 'js', extendscript: 'js', frag: 'glsl', vert: 'glsl', shader: 'glsl', python: 'py' };
-  function highlight(code, lang = 'js') {
-    const l = LANG_ALIAS[lang] || lang;
-    if (!['js', 'glsl', 'py', 'css', 'html'].includes(l)) return escapeHtml(code);
-    const kw = new Set((KEYWORDS[l] || '').split(' '));
-    const comment = l === 'py' ? '#[^\\n]*' : l === 'html' ? '<!--[\\s\\S]*?-->' : '\\/\\/[^\\n]*|\\/\\*[\\s\\S]*?\\*\\/';
-    const re = new RegExp(`(${comment})|(\`(?:\\\\[\\s\\S]|[^\`\\\\])*\`|"(?:\\\\.|[^"\\\\\\n])*"|'(?:\\\\.|[^'\\\\\\n])*')|(\\b\\d[\\d_]*\\.?\\d*(?:e[+-]?\\d+)?\\b|\\b0x[\\da-f]+\\b)|(</?[A-Za-z][\\w-]*|[A-Za-z_$][\\w$]*)`, 'gi');
-    let out = '';
-    let last = 0;
-    for (const m of code.matchAll(re)) {
-      out += escapeHtml(code.slice(last, m.index));
-      const [tok, c, s, n, w] = m;
-      if (c) out += `<span class="hl-c">${escapeHtml(tok)}</span>`;
-      else if (s) out += `<span class="hl-s">${escapeHtml(tok)}</span>`;
-      else if (n) out += `<span class="hl-n">${escapeHtml(tok)}</span>`;
-      else if (w && l === 'html' && w.startsWith('<')) out += `<span class="hl-k">${escapeHtml(tok)}</span>`;
-      else if (w && kw.has(w)) out += `<span class="hl-k">${tok}</span>`;
-      else if (w && code[m.index + tok.length] === '(') out += `<span class="hl-f">${tok}</span>`;
-      else if (w && /^[A-Z]/.test(w)) out += `<span class="hl-t">${tok}</span>`;
-      else out += escapeHtml(tok);
-      last = m.index + tok.length;
-    }
-    return out + escapeHtml(code.slice(last));
-  }
+  // (round 20, offmain) the highlighter lives in md.js (loaded right after), so the Markdown worker uses the same one
+  function highlight(code, lang = 'js') { return window.mdHighlight ? window.mdHighlight(code, lang) : escapeHtml(code); }
 
   // ---------- code editor ----------
   // A textarea over a highlighted <pre>, with line numbers, smart indent, comment toggling,
@@ -420,5 +423,5 @@ document.addEventListener('loadedmetadata', (e) => { const v = e.target; if (v i
     items: (p) => [{ label: 'Open', action: () => MediaFile.open(p) }, { label: MediaFile.revealLabel, action: () => MediaFile.reveal(p) }, { label: MediaFile.copyLabel, action: () => copyText(p, 'Path copied') }],
   };
 
-  Object.assign(window, { el, toast, Modal, Tabs, store, fmtBytes, fmtDate, timeAgo, debounce, copyText, escapeHtml, highlight, CodeEditor, dropZone, DataTable, MediaFile });
+  Object.assign(window, { el, toast, Modal, Tabs, store, fmtBytes, fmtDate, fmtLocal, canvasDataUrl, timeAgo, debounce, copyText, escapeHtml, highlight, CodeEditor, dropZone, DataTable, MediaFile });
 })();

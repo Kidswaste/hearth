@@ -233,12 +233,21 @@ ipcMain.handle('chats:restore', afterSync((_e, id) => store.restoreChat(id)));
 ipcMain.handle('history:get', afterSync(() => store.getHistory()));
 ipcMain.handle('history:save', afterSync((_e, history) => store.saveHistory(history)));
 ipcMain.handle('kv:get', (_e, name, fallback) => {
-  if (!syncGate) return store.getKV(name, fallback);
+  if (!syncGate) return store.getKVOff(name, fallback);
   const k = String(name);
   waiting.set(k, Date.now());
-  return syncGate.then(() => { waiting.delete(k); return store.getKV(name, fallback); });
+  return syncGate.then(() => { waiting.delete(k); return store.getKVOff(name, fallback); });
 });
 ipcMain.handle('kv:set', afterSync((_e, name, value) => store.setKV(name, value)));
+// (round 20, offmain) how long the main process's thread was blocked since the last ask (event-loop delay: max / p99 in
+// ms, and the store thread's writes): dev/checks/offmain.js measures flows with it; started on the first ask
+let lagH = null;
+ipcMain.handle('perf:lag', () => {
+  if (!lagH) { lagH = require('perf_hooks').monitorEventLoopDelay({ resolution: 5 }); lagH.enable(); return null; }
+  const r = { maxMs: Math.round(lagH.max / 1e5) / 10, p99Ms: Math.round(lagH.percentile(99) / 1e5) / 10, meanMs: Math.round(lagH.mean / 1e5) / 10, store: store.writerStats() };
+  lagH.reset();
+  return r;
+});
 
 // The renderer names the agent; engine, model and prompt are always read from config.json here.
 // A one-off question to an agent (second opinions): returns { ok, text } or { ok: false, error }.
@@ -439,7 +448,17 @@ ipcMain.handle('live:start', async (_e, kind) => {
 ipcMain.handle('np:start', () => nowplaying.start((info) => { if (win && !win.isDestroyed()) win.webContents.send('np:update', info); }));
 ipcMain.handle('np:stop', () => nowplaying.stop());
 ipcMain.handle('np:control', (_e, cmd) => nowplaying.control(String(cmd)));
-app.on('before-quit', () => { if (nowplaying.loaded) nowplaying.stop(); syncmain.quit(); });
+app.on('before-quit', (e) => {
+  // (round 20, offmain) saves still on the store thread land first (at most 2 s), then the rest is written here
+  if (store.pendingCount() && !quitFlushed) {
+    e.preventDefault(); quitFlushed = true;
+    Promise.race([store.idle(), new Promise((r) => setTimeout(r, 2000))]).then(() => { store.flushSync(); app.quit(); });
+    return;
+  }
+  store.flushSync();
+  if (nowplaying.loaded) nowplaying.stop(); syncmain.quit();
+});
+let quitFlushed = false;
 ipcMain.on('stage:fullscreen', () => { if (stageWin && !stageWin.isDestroyed()) stageWin.setFullScreen(!stageWin.isFullScreen()); });
 
 // (round 16) A main-process module only some features use loads on its first IPC call: its channels are read from its

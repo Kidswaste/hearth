@@ -50,6 +50,8 @@ function start() {
   engine = createEngine({
     dataDir: opts.dataDir, configPath: opts.configPath, themePath: opts.themePath, cloudRoot: settings.root,
     big: settings.big !== false,
+    // (round 20, offmain) big JSON stores are parsed and hashed on the store's files thread
+    hashJson: opts.store?.runOff ? (file, a) => opts.store.runOff('syncHash', { file, ...a }) : undefined,
     log: (...a) => { if (process.env.HEARTH_SYNC_LOG) console.log('sync:', ...a); },
     onStatus: (st) => { lastStatus = st; send('sync:status', publicStatus()); },
     onPulled: (list) => send('sync:pulled', list),
@@ -112,6 +114,8 @@ async function run(o = {}) {
   if (!engine) return publicStatus();
   if (settings.paused && !o.force) return publicStatus();
   try {
+    await opts.store?.idle?.(); // (round 20) saves still on the store thread land before the pass reads the folder
+    if (!engine) return publicStatus();
     const r = await engine.pass(o);
     const moved = r?.last ? r.last.pulled + r.last.pushed + r.last.merged + r.last.deletedHere + r.last.deletedThere + r.last.renamed : 1;
     const was = quiet; quiet = moved || r?.pending ? 0 : quiet + 1;

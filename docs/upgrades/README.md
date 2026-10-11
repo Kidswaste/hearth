@@ -76,7 +76,8 @@ line count is lower than the number of upgrades).
 | Reach (round 19): what chats make syncs between your computers (the workspace, minus caches and huge files), a Mac path on the PC (and back) finds the same file here, a file still on its way says so and opens when it arrives; pages a reply makes get ▶ Open / Preview / Reveal and chats can open things for you (`chat_open`, `/open-file`); a clear sync conflict screen (which computer, what it is, the real difference, Keep mine / theirs / both / Merge, undoable) | [reach.md](reach.md) | 42 |
 | Loading screen (round 19): a Hearth splash in the window's first frame (no white flash), progress that follows real steps, "taking longer than usual…" with the reason, gone as soon as the app is usable; the window appears ≈ 43 % sooner (first frame 815 → 467 ms), the sync pass, engines, tray and other main-process work no longer delay it; `/startup` shows the last starts | [splash.md](splash.md) | 26 |
 | Jank watch (round 20): Hearth measures its own slow frames and input delay on your machines (by area and, through short profiles, by the exact code), keeps a week of it locally, holds background work while you type / drag / scroll, offers Light mode once when the Lab keeps dropping frames; `/smooth` report with Copy for Claude | [jankwatch.md](jankwatch.md) | 36 |
-| **Total** | | **10,869** |
+| Off the main thread (round 20): saves, the chats list and chat search on a store thread (search 217 → ~50 ms, the main process blocked 37 → 7 ms, unchanged saves skipped), folder search and sync hashing on a files thread, Markdown of long chats on a worker, a cached date formatter (a long chat showed 131 ms long task → none), Lab pictures encoded without long tasks | [offmain.md](offmain.md) | 21 |
+| **Total** | | **10,890** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.
