@@ -670,6 +670,9 @@ const ThreeLab = (() => {
     }
     for (const ev of ['hearth:view', 'hearth:activate']) addEventListener(ev, () => setTimeout(() => syncPark(), 0));
     document.addEventListener('visibilitychange', () => syncPark());
+    // (the preview showing or going away without one of those events, e.g. another Lab tab, a panel, the first layout:
+    // the observer sees it; the stall timer below checks too, so a park can never stick)
+    try { new IntersectionObserver(() => syncPark()).observe(previewHost); } catch { /* old engine: events + timer */ }
     // Light mode (for slower machines): 30 fps, at most 1× pixels in the preview, filters at half resolution
     let lightOn = Boolean(store.get('three.light', false));
     function setLight(on) { lightOn = Boolean(on); store.set('three.light', lightOn); box.send({ type: 'light', on: lightOn }); toast(lightOn ? '🪶 Light mode: 30 fps, 1× pixels, filters at half size (recordings and stills stay full size)' : 'Light mode off', { timeout: 2200 }); return lightOn; }
@@ -2680,6 +2683,7 @@ const ThreeLab = (() => {
     function hideStall() { stall.hidden = true; }
     previewHost.append(stall);
     setInterval(() => {
+      syncPark();
       if (!lastStatsAt || !stall.hidden) return;
       const visible = document.visibilityState === 'visible' && (box.onStage || previewHost.offsetParent);
       if (!visible) { lastStatsAt = Math.max(lastStatsAt, Date.now() - 2000); return; } // hidden views draw nothing
