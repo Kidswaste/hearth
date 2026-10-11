@@ -46,7 +46,8 @@ const Review = (() => {
   const on = (ev, fn) => { (listeners[ev] ||= []).push(fn); return () => { listeners[ev] = listeners[ev].filter((f) => f !== fn); }; };
   const emit = (ev, data) => { for (const fn of listeners[ev] || []) { try { fn(data); } catch (err) { console.error(err); } } };
   const tc = (sec) => V.tc(sec, S.fps);
-  const vid = () => refs.video;
+  let slept = null; // (round 16) the player's file while it is let go of (hidden): see sleepMedia
+  const vid = () => { if (slept) wakeMedia(); return refs.video; };
   const dur = () => finiteDur(vid()?.duration);
   const frameNow = () => V.frameAt(vid()?.currentTime || 0, S.fps);
   // While clips are being edited (tools/video-cut.js, E) the transport drives the edit instead of the source.
@@ -144,10 +145,108 @@ const Review = (() => {
     S.meta[v.path] = { ...(S.meta[v.path] || {}), mtime: v.mtime, w: d.videoWidth, h: d.videoHeight, d: Number(finiteDur(d.duration).toFixed(3)) };
     saveMeta();
   }
+  // (round 16) the media cache: ffmpeg makes thumbnails, strips and the sound in its own process (below normal
+  // priority) and keeps them on disk, so this thread never decodes, scales or JPEG-encodes a frame for a picture, and
+  // the next start reads them back at once. Without ffmpeg everything falls back to the hidden decoder as before.
+  // Shared with the editor (VideoCut): sprite(path, { n, w, at }) → { img, url, n, tw, th, times, frames[] }, analysis(path).
+  const capMap = (m, n) => { while (m.size > n) m.delete(m.keys().next().value); };
+  const media = (() => {
+    const api = () => window.hub.video?.media || null;
+    let ffOk = null;
+    async function ready() {
+      if (!api()) return false;
+      if (ffOk === null || (ffOk === false && S.tools?.ffmpeg)) { S.tools ||= await window.hub.video.tools(ffOverrides()).catch(() => null); ffOk = Boolean(S.tools?.ffmpeg); }
+      return ffOk;
+    }
+    const sprites = new Map(); // path|n|w|at → Promise<sprite | null> (the newest 80; a forgotten one is read back from disk)
+    const analyses = new Map(); // path|mtime → Promise<analysis | null>
+    const counts = { sprites: 0, decoded: 0, analyses: 0, analysisFromDisk: 0 };
+    function sprite(path, { n = 24, w = 160, at } = {}) {
+      const k = `${path}|${n}|${w}|${at ?? ''}`;
+      if (sprites.has(k)) { const p = sprites.get(k); sprites.delete(k); sprites.set(k, p); return p; }
+      const p = (async () => {
+        if (!await ready()) return null;
+        const r = await api()('thumbs', { file: path, n, w, at }, ffOverrides());
+        const img = new Image(); img.decoding = 'async'; img.src = fileUrl(r.sprite);
+        await img.decode();
+        counts.sprites += 1;
+        return { ...r, img, url: img.src, frames: r.times.map((t, i) => ({ t, img, sx: i * r.tw, sw: r.tw, sh: r.th })) };
+      })().catch(() => null);
+      sprites.set(k, p); capMap(sprites, 80);
+      return p;
+    }
+    // the beat / waveform analysis: the cached JSON (a few KB), else the sound alone from ffmpeg (a few MB), else
+    // (no ffmpeg) the whole file as before; kept on disk next to the pictures
+    function analysis(path, { size = 0, mtime = 0 } = {}) {
+      const k = `${path}|${mtime}`;
+      if (analyses.has(k)) return analyses.get(k);
+      const p = (async () => {
+        if (typeof ThreeMedia === 'undefined' || !ThreeMedia.analyze) return null;
+        const disk = api() ? await api()('get', { file: path, kind: 'beats' }).catch(() => null) : null;
+        if (disk) { counts.analysisFromDisk += 1; return disk.none ? null : disk; }
+        const remember = (data) => api()?.('set', { file: path, kind: 'beats', data }).catch(() => {});
+        let u8 = null;
+        if (await ready()) {
+          const r = await api()('audio', { file: path }, ffOverrides()).catch(() => null);
+          if (r?.none) { remember({ none: true }); return null; }
+          if (r?.wav) u8 = await window.hub.fs.read(r.wav, { encoding: 'buffer' }).catch(() => null);
+        }
+        if (!u8) {
+          if ((size || (await window.hub.fs.stat(path).catch(() => null))?.size || 0) > 300 * 1048576) return null;
+          u8 = await window.hub.fs.read(path, { encoding: 'buffer', maxBytes: 300 * 1048576 });
+        }
+        let a;
+        try { a = await ThreeMedia.analyze(u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength)); } catch { remember({ none: true }); return null; }
+        const slim = { bpm: a.bpm, beats: a.beats, drops: a.drops, peaks: a.peaks, duration: a.duration, sections: a.sections };
+        counts.analyses += 1;
+        remember(slim);
+        return slim;
+      })().catch(() => null);
+      analyses.set(k, p); capMap(analyses, 40);
+      return p;
+    }
+    // a strip frame is a canvas (decoded here) or a cell of a sprite (one picture per clip)
+    const draw = (g, f, x, y, w, h) => (f.sx != null ? g.drawImage(f.img, f.sx, 0, f.sw, f.sh, x, y, w, h) : g.drawImage(f.img, x, y, w, h));
+    function urlOf(f) {
+      if (f.url || f.sx == null) return f.url || '';
+      const c = document.createElement('canvas'); c.width = f.sw; c.height = f.sh;
+      c.getContext('2d').drawImage(f.img, f.sx, 0, f.sw, f.sh, 0, 0, f.sw, f.sh);
+      f.url = c.toDataURL('image/jpeg', 0.7); // made on the first hover over that frame only
+      return f.url;
+    }
+    const stats = async () => ({ ...counts, ffmpeg: Boolean(await ready()), memory: { sprites: sprites.size, analyses: analyses.size, thumbs: thumbs.size, hoverStrips: hoverStrips.size }, disk: api() ? await api()('stats').catch(() => null) : null });
+    async function clear() { sprites.clear(); analyses.clear(); return api() ? api()('clear') : 0; }
+    return { ready, sprite, analysis, draw, urlOf, stats, clear, counts };
+  })();
+  // library pictures through the cache (false: do it with the decoder)
+  async function viaCache(job) {
+    const k = keyOf(job.v);
+    if (job.kind === 'thumb') {
+      if (!job.img.isConnected || thumbs.has(k)) { job.done?.(); return true; }
+      const r = await media.sprite(job.v.path, { n: 1, w: 240, at: 'lead' });
+      if (!r) return false;
+      thumbs.set(k, r.url); capMap(thumbs, 900);
+      if (!metaOf(job.v) && r.w) { S.meta[job.v.path] = { ...(S.meta[job.v.path] || {}), mtime: job.v.mtime, w: r.w, h: r.h, d: Number(r.d.toFixed(3)) }; saveMeta(); }
+      job.done?.();
+      return true;
+    }
+    if (hoverStrips.has(k)) return true;
+    const r = await media.sprite(job.v.path, { n: 8, w: 200 });
+    if (!r) return false;
+    hoverStrips.set(k, { url: r.url, n: r.n }); capMap(hoverStrips, 60);
+    return true;
+  }
   async function pump() {
     if (busy || !jobs.length) return;
     busy = true;
     const job = jobs.shift();
+    if ((job.kind === 'thumb' || job.kind === 'strip') && !job.noCache && await media.ready()) {
+      busy = false;
+      viaCache(job).then((ok) => { if (!ok) enqueue({ ...job, noCache: true }); }, () => enqueue({ ...job, noCache: true }));
+      pump();
+      return;
+    }
+    if (job.kind !== 'meta') media.counts.decoded += 1;
     try {
       if (job.kind === 'thumb' && job.img.isConnected && !thumbs.has(keyOf(job.v))) {
         const { d, at, close } = await openDecoder(job.v.path);
@@ -166,7 +265,7 @@ const Review = (() => {
         const { d, at, close } = await openDecoder(job.v.path);
         const frames = [];
         for (let i = 0; i < 8; i += 1) { await at((d.duration * (i + 0.5)) / 8); frames.push(snap(d, 200).toDataURL('image/jpeg', 0.62)); }
-        hoverStrips.set(keyOf(job.v), frames);
+        hoverStrips.set(keyOf(job.v), frames); capMap(hoverStrips, 60);
         close();
       }
     } catch { job.img?.classList.add('nothumb'); }
@@ -272,10 +371,15 @@ const Review = (() => {
           const r = img.getBoundingClientRect();
           const x = clamp((e.clientX - r.left) / r.width, 0, 0.999);
           scrubBar.style.transform = `scaleX(${x.toFixed(3)})`; // a transform: no layout per pointer move
-          if (frames) { const src = frames[Math.floor(x * frames.length)]; if (img.getAttribute('src') !== src) img.src = src; }
+          if (frames?.url) {
+            // (round 16) one picture holds the 8 frames: the hover shows one cell of it (no picture swap, no decode)
+            if (img.getAttribute('src') !== frames.url) img.src = frames.url;
+            const k = Math.floor(x * frames.n); const vb = `inset(0 ${(((frames.n - 1 - k) / frames.n) * 100).toFixed(3)}% 0 ${((k / frames.n) * 100).toFixed(3)}%)`;
+            if (img.style.objectViewBox !== vb) img.style.objectViewBox = vb;
+          } else if (frames) { const src = frames[Math.floor(x * frames.length)]; if (img.getAttribute('src') !== src) img.src = src; }
           else if (!node.dataset.asked) { node.dataset.asked = '1'; enqueue({ kind: 'strip', v }, true); }
         },
-        pointerleave: () => { scrubBar.style.transform = ''; if (thumbs.has(keyOf(v)) && img.getAttribute('src') !== thumbs.get(keyOf(v))) img.src = thumbs.get(keyOf(v)); },
+        pointerleave: () => { scrubBar.style.transform = ''; if (img.style.objectViewBox) img.style.objectViewBox = ''; if (thumbs.has(keyOf(v)) && img.getAttribute('src') !== thumbs.get(keyOf(v))) img.src = thumbs.get(keyOf(v)); },
       },
     },
     el('span', { class: 'vr-thumb-wrap' }, img, scrubBar,
@@ -453,7 +557,9 @@ const Review = (() => {
     pause();
     seek(V.timeOfFrame(frameNow() + n, S.fps));
   }
-  const play = () => { if (Cut()) { Cut().play(); return; } if (!vid()?.src) return; S.shuttle = 0; vid().playbackRate = Number(refs.speed.value); vid().play(); if (S.cmp.path) refs.cmp.play(); };
+  const play = () => { if (Cut()) { Cut().play(); return; } if (!vid()?.src) return; S.shuttle = 0; vid().playbackRate = Number(refs.speed.value); quiet(vid().play()); if (S.cmp.path) quiet(refs.cmp.play()); };
+  // a play() cut short by a new file / a compare stopped is expected, not an error (round 16: it was an unhandled rejection)
+  function quiet(p) { p?.catch?.(() => {}); }
   function pause() { if (Cut()) { Cut().pause(); return; } S.shuttle = 0; vid()?.pause(); refs.cmp?.pause(); }
   const togglePlay = () => (Cut() ? Cut().togglePlay() : vid().paused && !S.shuttle ? play() : pause());
   // J / K / L: each L press speeds forward 1×→2×→4×→8×, J the same backwards, K stops.
@@ -463,7 +569,7 @@ const Review = (() => {
     if (dir === 0) { pause(); return; }
     const idx = Math.sign(cur) === dir ? Math.min(SHUTTLE.length - 1, SHUTTLE.indexOf(Math.abs(cur)) + 1) : 0;
     S.shuttle = dir * SHUTTLE[idx];
-    if (S.shuttle > 0) { vid().playbackRate = S.shuttle; vid().play(); if (S.cmp.path) { refs.cmp.playbackRate = S.shuttle; refs.cmp.play(); } } else { vid().pause(); refs.cmp.pause(); }
+    if (S.shuttle > 0) { vid().playbackRate = S.shuttle; quiet(vid().play()); if (S.cmp.path) { refs.cmp.playbackRate = S.shuttle; quiet(refs.cmp.play()); } } else { vid().pause(); refs.cmp.pause(); }
     flash(`${S.shuttle > 0 ? '▶' : '◀'} ${Math.abs(S.shuttle)}×`);
   }
   function setSpeed(x) {
@@ -637,7 +743,7 @@ const Review = (() => {
     refs.stage.dataset.cmp = S.cmp.mode;
     await new Promise((res) => { refs.cmp.onloadedmetadata = res; refs.cmp.onerror = res; setTimeout(res, 6000); });
     refs.cmp.currentTime = vid().currentTime + S.cmp.offset / S.fps;
-    if (!vid().paused) refs.cmp.play();
+    if (!vid().paused) quiet(refs.cmp.play());
     renderTop(); renderLibrary(); applyZoom();
     emit('compare', { a: S.cur.path, b: path, mode: S.cmp.mode });
     return true;
@@ -901,6 +1007,10 @@ const Review = (() => {
   // ---------- timeline: filmstrip, waveform, beats, loop, notes ----------
   async function buildStrip(v) {
     const n = 24;
+    // (round 16) one sprite from ffmpeg (made once, on disk) instead of 24 seeks + JPEG encodes on this thread
+    const sp = await media.sprite(v.path, { n, w: 160 });
+    if (S.cur !== v) return;
+    if (sp) { S.strip = sp.frames; drawTimeline(); return; }
     let dec;
     try { dec = await openDecoder(v.path); } catch { return; }
     for (let i = 0; i < n; i += 1) {
@@ -917,13 +1027,12 @@ const Review = (() => {
   async function analyzeAudio(v) {
     const key = keyOf(v);
     if (audioCache.has(key)) { S.audio = audioCache.get(key); drawTimeline(); return; }
-    if (typeof ThreeMedia === 'undefined' || !ThreeMedia.analyze || (v.size || 0) > 300 * 1048576) return;
+    if (typeof ThreeMedia === 'undefined' || !ThreeMedia.analyze) return;
     try {
-      const u8 = await window.hub.fs.read(v.path, { encoding: 'buffer', maxBytes: 300 * 1048576 });
-      const buf = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
-      const a = await ThreeMedia.analyze(buf);
-      const slim = { bpm: a.bpm, beats: a.beats, drops: a.drops, peaks: a.peaks, duration: a.duration, sections: a.sections };
-      audioCache.set(key, slim);
+      // (round 16) through the media cache: the analysis from disk, or the sound alone from ffmpeg (any file size now)
+      const slim = await media.analysis(v.path, { size: v.size, mtime: v.mtime });
+      audioCache.set(key, slim); capMap(audioCache, 30);
+      if (!slim) return;
       if (S.cur === v) { S.audio = slim; drawTimeline(); renderTop(); emit('audio', slim); }
     } catch { audioCache.set(key, null); /* no audio track */ }
   }
@@ -947,7 +1056,7 @@ const Review = (() => {
     if (S.strip.length && vid().videoWidth) {
       const fw = (Hh - RULER) * (vid().videoWidth / vid().videoHeight);
       g.globalAlpha = 0.32;
-      for (let x = 0; x < W; x += fw) { const f = S.strip[Math.min(S.strip.length - 1, Math.floor((x / W) * S.strip.length))]; g.drawImage(f.img, x, RULER, fw, Hh - RULER); }
+      for (let x = 0; x < W; x += fw) { const f = S.strip[Math.min(S.strip.length - 1, Math.floor((x / W) * S.strip.length))]; media.draw(g, f, x, RULER, fw, Hh - RULER); }
       g.globalAlpha = 1;
     }
     // ruler
@@ -1033,7 +1142,7 @@ const Review = (() => {
       if (refs.hover.hidden) refs.hover.hidden = false;
       refs.hover.style.transform = `translate3d(${clamp(e.clientX - r.left, 50, r.width - 50)}px, 0, 0) translate(-50%, -100%)`;
       if (refs.hoverImg.hidden !== !f) refs.hoverImg.hidden = !f;
-      if (f && refs.hoverImg.getAttribute('src') !== f.url) refs.hoverImg.src = f.url;
+      if (f && refs.hoverImg.getAttribute('src') !== media.urlOf(f)) refs.hoverImg.src = media.urlOf(f);
       const beat = S.audio?.beats ? S.audio.beats.findIndex((b) => b > t) : -1;
       const label = `${tc(t)}${beat > 0 ? ` · beat ${beat}` : ''}`;
       if (refs.hoverTc.textContent !== label) refs.hoverTc.textContent = label;
@@ -1769,6 +1878,39 @@ const Review = (() => {
     if (ev.type === 'progress') p.pct = ev.pct;
     if (ev.type === 'done') { pendingRenders.delete(ev.id); p.resolve(ev); }
   });
+  // ---------- (round 16) letting go of the decoders while hidden ----------
+  // Video Review out of sight for 45 s with nothing playing: the player, the B side and the editor's two decoders let
+  // go of their files (decoded frames and GPU surfaces: hundreds of MB with 4K footage). Showing it again, or any
+  // command that reads the player, loads the same file back at the same frame.
+  const SLEEP_MS = 45000;
+  let sleepT = 0;
+  const shownNow = () => { try { return H.surfaceIdFor(H.activeId) === 'tool:ae'; } catch { return true; } };
+  function sleepMedia() {
+    sleepT = 0;
+    const v = refs.video;
+    if (slept || !v || !S.cur || shownNow() || !v.paused || S.shuttle || !v.getAttribute('src') || Cut()?.playing) return false;
+    slept = { t: v.currentTime, cmpT: refs.cmp.currentTime, cmp: S.cmp.path, src: v.getAttribute('src'), h: v.onloadedmetadata };
+    v.onloadedmetadata = null;
+    v.removeAttribute('src'); v.load();
+    if (S.cmp.path) { refs.cmp.removeAttribute('src'); refs.cmp.load(); }
+    VC()?.releaseDecoders?.();
+    media.counts.released = (media.counts.released || 0) + 1;
+    return true;
+  }
+  function wakeMedia() {
+    const s = slept; if (!s) return false;
+    slept = null;
+    const v = refs.video;
+    v.onloadedmetadata = () => { v.onloadedmetadata = s.h; try { v.currentTime = s.t; } catch { /* a new file */ } };
+    v.src = s.src;
+    if (s.cmp && S.cmp.path === s.cmp) { refs.cmp.src = fileUrl(s.cmp); refs.cmp.addEventListener('loadedmetadata', () => { refs.cmp.currentTime = s.cmpT; }, { once: true }); }
+    if (Cut()) setTimeout(() => { try { Cut().goto(Cut().time); } catch { /* left the editor */ } }, 0);
+    return true;
+  }
+  addEventListener('hearth:view', () => {
+    clearTimeout(sleepT); sleepT = 0;
+    if (shownNow()) wakeMedia(); else if (refs.video && S.cur) sleepT = setTimeout(sleepMedia, SLEEP_MS);
+  });
   async function ensureMounted() {
     if (!refs.video) Tools.shown(Tools.get('ae')); // load the screen in the background if needed
     if (!refs.video) return false;
@@ -1899,7 +2041,8 @@ const Review = (() => {
 
   // ---------- public API (chat commands, other tools, a future node view) ----------
   return {
-    mount, reload: () => load(true), load, on, noteRecording, ensureMounted, waitReady, waitSeek,
+    media, mount, reload: () => load(true), load, on, noteRecording, ensureMounted, waitReady, waitSeek,
+    sleepMedia, wakeMedia, get asleep() { return Boolean(slept); },
     get state() { return S; }, get current() { return S.cur; }, get videos() { return S.videos; }, filtered, videoDirs, setFolders,
     open: openVideo, play, pause, togglePlay, step, seek: (t, o) => (Cut() ? Cut().goto(t) : seek(t, o)), goto, refreshCard: () => renderLibrary(), shuttle, setSpeed, setLoop, toggleLoop, setFpsUser,
     compare: compareWith, setCompareMode, stopCompare, swapAB, CMP_MODES, setWipe,

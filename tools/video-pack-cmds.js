@@ -34,10 +34,12 @@ const VideoPackCmds = (() => {
     { name: 'angle', desc: 'Cut to a multicam angle at the playhead (Alt+1…9 in the editor)', args: '<n> [at <time>]', examples: ['/angle 2'],
       complete: (a) => opts((VideoCut.edit?.multicam?.angles || []).map((x, i) => ({ value: String(i + 1), hint: x.name })), a),
       run: async (args) => { await editing(); const w = words(args); const i = w.indexOf('at'); const at = i >= 0 ? VideoData.parseTime(w[i + 1], VideoCut.fps, VideoCut.time, CutData.total(VideoCut.edit)) : null; const n = await P().angleAt(Number(w[0]) || 1, { at }); return `🎥 Angle ${w[0] || 1}: ${n}.`; } },
-    { name: 'edit-proxy', aliases: ['proxies'], desc: 'Proxies: light copies of heavy files for a smooth preview (renders use the originals): make, all, on, off, clear', args: '[make|all|on|off|clear]', examples: ['/edit-proxy make', '/edit-proxy off'],
-      complete: (a) => opts(['make', 'all', 'on', 'off', 'clear'], a),
+    { name: 'edit-proxy', aliases: ['proxies'], desc: 'Proxies: light copies of heavy files for a smooth preview (renders use the originals), made by themselves for 4K / HEVC / ProRes: make, all, on, off, auto on|off, clear', args: '[make|all|on|off|auto on|off|clear]', examples: ['/edit-proxy make', '/edit-proxy off', '/edit-proxy auto off'],
+      complete: (a) => opts(['make', 'all', 'on', 'off', 'auto on', 'auto off', 'clear'], a),
       run: async (args) => {
         const v = words(args)[0] || 'make';
+        // (round 16) automatic proxies for heavy clips (on by default)
+        if (v === 'auto') { const w1 = words(args)[1]; const on = P().setAutoProxies(w1 === 'on' ? true : w1 === 'off' ? false : null); return on ? 'Automatic proxies on: heavy clips (over 1080p, HEVC, ProRes) get a light copy for the preview by themselves.' : 'Automatic proxies off: /edit-proxy make makes them by hand.'; }
         if (v === 'on' || v === 'off') return `Proxies ${P().setProxies(v === 'on') ? 'on: the preview plays the light copies' : 'off: the preview plays the originals'}.`;
         if (v === 'clear') return `${await P().clearProxies()} proxies moved to the Trash.`;
         await editing(); const r = await P().proxyAll({ all: v === 'all' });
