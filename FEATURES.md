@@ -663,3 +663,10 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ A slow start says what it waits for (sync pass, engine check, a read…), offers Open anyway; reduce motion respected; `/startup` shows every step of the last start.
 - ✓ Cloud sync no longer holds the window back; tray / hotkey / rarely used modules after the window; no git fetch or engine doctor while the first screen builds; 2 stylesheets off the start.
 - ○ Measured headless (`dev/coldstart-report.js`: first frame on screen 815 → 467 ms); the Mac's ready-to-show timing is not run here.
+
+## Jank watch (round 20, jankwatch, 36 upgrades: docs/upgrades/jankwatch.md)
+- ✓ Always on, nearly free (≈ 2 µs a key, nothing at idle): long frames, input → paint, frames dropped while something moves, the Lab preview's real fps, main-process lag, GPU crashes / context losses, per area (chat, Lab, board, menus…) and cause; a week of hourly numbers on this computer only.
+- ✓ When long frames keep coming, a short profile names the code (file:line, function, what started it): Chromium can't name Hearth's file:// scripts by itself.
+- ✓ While you type, drag or scroll, background work (feature loads, tidy, board pictures, thumbnails, engine check, sync passes) waits; the Lab suggests Light mode once if it keeps dropping frames.
+- ✓ `/smooth` (day / week): p50 / p95 input delay and long frames per area, the 5 worst culprits, what was adapted, 📋 Copy for Claude; `/smooth profile`, `/smooth reset`, `/smooth off`.
+- ○ Tested headless (`dev/checks/jankwatch.js`); the real numbers come from the owner's Mac and PC.
