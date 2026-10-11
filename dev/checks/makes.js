@@ -43,7 +43,8 @@ await smoke({ shot: `${SHOTS}/1-planned.png` });
 
 // ---- 2. navigate ahead of time: the Video room, then the Lab room ----
 g.querySelector(`.item[data-key="${vid.chatId}"]`).click();
-await until(() => H.activeChat[va.id] === vid.chatId && Native.view(va.id)?.list.querySelector('.mk-room-card'), 15000);
+// (both rooms are chats of the same Three Director since round 17: wait for this room's own card, not the Lab room's)
+await until(() => H.activeChat[va.id] === vid.chatId && /· Video/.test(Native.view(va.id)?.list.querySelector('.mk-room-card')?.textContent || ''), 15000);
 const vcard = Native.view(va.id)?.list.querySelector('.mk-room-card');
 step(vcard && /waiting for Lab/.test(vcard.textContent) && /will hold/.test(vcard.textContent), 'the Video room opens before anything is made: "planned · waiting for Lab", what it will hold', vcard?.textContent.slice(0, 160));
 await wait(600);
@@ -138,7 +139,8 @@ step(Makes.get(make.id).by?.cmd === '/makes', 'a make knows the command that mad
 // ---- 11. dismiss and restore ----
 const pm = Makes.get(make.id);
 await Makes.dismiss(pm, { quiet: true });
-step(!summary(lab.chatId) && !summary(vid.chatId) && !group(make.id), 'dismissing the make sends its rooms to the trash, the group goes');
+await until(() => !summary(lab.chatId) && !summary(vid.chatId) && !group(make.id), 5000);
+step(!summary(lab.chatId) && !summary(vid.chatId) && !group(make.id), 'dismissing the make sends its rooms to the trash, the group goes', { lab: Boolean(summary(lab.chatId)), vid: Boolean(summary(vid.chatId)), group: Boolean(group(make.id)) });
 await Makes.restore(pm);
 await until(() => summary(lab.chatId) && summary(vid.chatId), 5000);
 await until(() => group(make.id), 3000);
