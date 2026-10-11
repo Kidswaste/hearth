@@ -183,7 +183,7 @@ const Discover = (() => {
   function itemRow(it, { onGone } = {}) {
     const row = el('div', { class: 'dc-row', dataset: { item: it.id }, title: it.plain },
       el('span', { class: 'sr-ic', text: icon(it.file) }),
-      el('span', { class: 'dc-text' }, el('b', { text: short(it.bold || it.plain, 46) }), el('span', { class: 'dc-sub', text: `${nameOf(it.file)}${it.bold ? ` · ${short(it.plain.replace(it.bold, '').replace(/^[\s:.—-]+/, ''), 60)}` : ''}` })),
+      el('span', { class: 'dc-text' }, el('b', { text: short((it.bold.replace(/\s*[[<].*$/, '') || it.plain), 46) }), el('span', { class: 'dc-sub', text: `${nameOf(it.file)}${it.bold ? ` · ${short(it.plain.replace(it.bold, '').replace(/^[\s:.—-]+/, ''), 60)}` : ''}` })),
       el('button', { type: 'button', class: 'dc-show', text: '▶', title: 'Show me', on: { click: async (e) => { e.stopPropagation(); const t = await showMe(it); if (t && !/^Here|chat box|Ran|Guided/.test(t)) toast(t, { timeout: 2500 }); } } }),
       el('button', { type: 'button', class: 'dc-no', text: '×', title: 'Not for me (this kind sinks next time)', on: { click: (e) => { e.stopPropagation(); notForMe(it); row.remove(); onGone?.(); } } }));
     return row;
