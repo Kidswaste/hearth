@@ -41,8 +41,11 @@ function turn(agent, text, session = {}, options = {}, onStart) {
   const a1 = T.codexArgs(astra, {}, {});
   assert(a1.includes('--ignore-user-config') && a1.includes('--ignore-rules') && a1.includes('--skip-git-repo-check'));
   assert(a1.includes('shell_tool') && a1.includes('web_search="disabled"') && a1.join(' ').includes('-s read-only'));
-  assert(!a1.some((x) => /mcp_servers/.test(x)), 'no MCP for a plain Astra');
-  ok('Astra keeps the frugal flags (no user config, features off, no web, no MCP, read-only)');
+  // (round 19, reach) a plain Astra gets one MCP server with chat_open alone (it opens what it makes); /open-tool off drops it
+  const servers = [...new Set(a1.filter((x) => /^mcp_servers\./.test(x)).map((x) => x.split('.')[1]))];
+  assert(servers.length === 1 && servers[0] === 'chat' && a1.some((x) => /HUB_CHAT_ONLY="chat_open"/.test(x)), 'a plain Astra: chat_open only');
+  assert(!T.codexArgs({ ...astra, openTool: false }, {}, {}).some((x) => /mcp_servers/.test(x)), 'no MCP for a plain Astra with /open-tool off');
+  ok('Astra keeps the frugal flags (no user config, features off, no web, read-only; MCP: chat_open alone)');
   const a2 = T.codexArgs(astra, { id: 'abc' }, { effort: 'xhigh', webSearch: 'live', model: 'gpt-6-luna', images: ['/x.png'] });
   assert.deepStrictEqual(a2.slice(0, 3), ['exec', 'resume', 'abc']);
   assert(a2.includes('model_reasoning_effort="xhigh"') && a2.includes('web_search="live"') && a2.includes('gpt-6-luna') && a2.includes('/x.png'));

@@ -655,3 +655,6 @@ One searchable **FX picker** in the Three.js Lab (**X**, the Layers **＋ Layer*
 - ✓ Every menu ends with its delete in red; files read Open · Reveal in Finder / Show in Explorer · Copy path · Send to… everywhere.
 - ✓ Commands page: Principal first, Studio + Discover one row of chips; Ctrl/⌘+K with nothing typed is a short list; Ctrl/⌘+1…9 walk the whole rail.
 - ○ Tested headless (`dev/checks/tidy.js`); the Mac's ⌘ labels are converted by the same code as before.
+
+## Reach (round 19): open what a chat made, on either computer
+The chats' workspace syncs (no dependencies, caches or huge files); a Mac path on Windows (and the reverse) resolves to this computer's data folder in replies, links, access folders and tool calls; a page a reply makes shows as a card (▶ Open · Preview in a sandboxed window · Reveal), a file still on its way says so and opens up when it arrives; both engines have `chat_open` (Astra: that tool alone); `/open-file`, `/open-tool`. Sync conflicts name both computers, when each changed, what it is and the difference, with Keep theirs / Keep this one / Keep both / Merge, a summary before Apply, and undo from Deleted files; the big-change guard lists files by name (`/sync review`). See docs/upgrades/reach.md.
