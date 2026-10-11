@@ -1076,16 +1076,36 @@ const Native = (() => {
     const tail = text.slice(st.src.length);
     patchHTML(body, tail.trim() ? mdLive(tail) : '', st.count);
   }
+  // (round 21) thinking text as paragraph blocks (a long one cut at 4,000 characters): a new piece only touches the
+  // last block, and blocks out of view skip layout (content-visibility in features.css)
+  function appendThinking(tt, add, p) {
+    let last = p.thinkBreak ? null : tt.lastElementChild;
+    const segs = add.split(/\n{2,}/);
+    segs.forEach((seg0, i) => {
+      if (i > 0) last = null;
+      let seg = i === 0 && !last ? seg0.replace(/^\n+/, '') : seg0;
+      while (seg) {
+        if (!last || last.textContent.length >= 4000) { last = document.createElement('p'); tt.append(last); seg = seg.replace(/^\n+/, ''); if (!seg) break; }
+        const room = 4000 - last.textContent.length;
+        const piece = seg.slice(0, room);
+        seg = seg.slice(room);
+        if (last.firstChild) last.firstChild.appendData(piece); else last.append(piece);
+      }
+    });
+    p.thinkBreak = /\n{2,}$/.test(add);
+  }
   function paintStreaming(p) {
     const body = p.el.querySelector('.body');
     const text = visibleText(p.text);
     if (p.thinking) {
       let th = p.el.querySelector('.thinking');
-      if (!th) { th = thinkingEl('', true); p.el.prepend(th); }
+      if (!th) { th = thinkingEl('', true); p.el.prepend(th); p.thinkShown = 0; th.addEventListener('toggle', () => schedulePaint(p.chatId)); }
       // (only what changed is written: this runs ~16× a second while a reply streams)
-      const tt = th.querySelector('.thinking-text'); const thinking = p.thinking.trim();
-      const grew = tt.textContent !== thinking;
-      if (grew) tt.textContent = thinking;
+      // (round 21, liveness) appended in paragraph blocks, and only while it is open: the whole text was written again
+      // on each paint (a long think: hundreds of KB laid out 16× a second, ≈ 1.6 s of layout in a 4 s task)
+      const tt = th.querySelector('.thinking-text');
+      const grew = th.open && p.thinking.length > (p.thinkShown || 0);
+      if (grew) { appendThinking(tt, p.thinking.slice(p.thinkShown || 0), p); p.thinkShown = p.thinking.length; }
       const sum = th.querySelector('summary'); const label = text ? 'Thought process' : 'Thinking…';
       if (sum.textContent !== label) sum.textContent = label;
       // it folds itself once the answer starts, unless you asked for thinking to stay open (/thinking always)
@@ -1098,6 +1118,7 @@ const Native = (() => {
       const using = `${p.tools.length > 1 ? `Step ${p.tools.length} · ` : ''}Using ${toolLabel(p.tools.at(-1))}…`;
       if (chips.textContent !== using) { chips.textContent = using; chips.title = p.tools.map(toolLabel).join('\n'); }
     }
+    window.ChatLive?.paint(p.chatId, p.el, body); // (round 21) agents deployed + the activity panel
     paintBody(p, body, text);
     const dots = !text && !p.cards.some((c) => c.classList.contains('ask-card') && !c.classList.contains('answered'));
     if (dots && !body.lastChild?.classList?.contains('typing')) body.insertAdjacentHTML('beforeend', '<span class="typing"><i></i><i></i><i></i></span>');
@@ -1115,8 +1136,13 @@ const Native = (() => {
     const now = Date.now(); const phase = p.text ? 1 : p.tools.length ? 2 : p.thinking ? 3 : 0;
     if (st.textContent && now - (p.statusAt || 0) < 500 && p.statusPhase === phase) return;
     p.statusAt = now; p.statusPhase = phase;
+    // words counted at most every 2 s (the whole reply was scanned twice a second)
+    if (p.text.length !== p.wordsLen && now - (p.wordsAt || 0) > 2000) { p.words = (visibleText(p.text).match(/\S+/g) || []).length; p.wordsLen = p.text.length; p.wordsAt = now; }
+    // (round 21, liveness) the phase, the time, the steps, the agents, how long since the last news, and when the
+    // engine has been quiet for 2 min, what it may be doing with Wait / Stop / Stop & retry (chat-live.js)
+    if (window.ChatLive) { ChatLive.paintStatus(p.chatId, st, p); return; }
     const secs = Math.round((now - p.started) / 1000);
-    const words = (visibleText(p.text).match(/\S+/g) || []).length;
+    const words = p.words || 0;
     const doing = p.text ? 'Writing' : p.tools.length ? 'Working' : p.thinking ? 'Thinking' : 'Starting';
     const line = `${doing} · ${secs} s${words ? ` · ${words.toLocaleString()} words` : ''}${p.tools.length ? ` · ${p.tools.length} step${p.tools.length > 1 ? 's' : ''}` : ''} · Esc stops`;
     if (st.textContent !== line) st.textContent = line;
@@ -1269,7 +1295,7 @@ const Native = (() => {
     const last = chat.messages.at(-1);
     chat.updatedAt = now;
     remember(chat);
-    const p = { text: '', tools: [], started: now, thinking: '', cards: [], qa: [], opinions: [], progress: null, shows: [] };
+    const p = { chatId: chat.id, text: '', tools: [], started: now, thinking: '', cards: [], qa: [], opinions: [], progress: null, shows: [] };
     p.tick = setInterval(() => { if (p.el?.isConnected) paintStatus(p); }, 1000);
     pending.set(chat.id, p);
     for (const fn of hooks.send) { try { fn(agentId, chat, text); } catch (err) { console.warn(err); } }
@@ -1287,7 +1313,7 @@ const Native = (() => {
     window.hub.send({
       agentId, chatId: chat.id, session: chat.session,
       text: style ? `[${style}]\n\n${extra.text}` : extra.text,
-      options: { model: chat.model || undefined, images: last.images || images, ...extra.options, ...(chat.captureTools ? { captureTools: true } : {}), ...(typeof Access !== 'undefined' ? Access.sendOptions(chat) : {}) },
+      options: { model: chat.model || undefined, images: last.images || images, ...extra.options, ...(chat.captureTools ? { captureTools: true } : {}), ...(chat.subagents ? { subagents: true } : {}), ...(typeof Access !== 'undefined' ? Access.sendOptions(chat) : {}) },
     }).catch((err) => onEvent({ chatId: chat.id, type: 'error', message: err.message }));
   }
 
@@ -1312,6 +1338,7 @@ const Native = (() => {
     }
     if (event.type === 'delta' || event.type === 'tool') {
       if (event.type === 'tool') {
+        if (event.parent) { schedulePaint(event.chatId); return; } // a subagent's step: under its agent (chat-live.js), not in the reply
         p.tools.push(event.name);
         if (p.text && !p.text.endsWith('\n\n')) p.text += '\n\n';
       } else {
@@ -2006,6 +2033,7 @@ const Native = (() => {
     },
     unreadFrom, rememberFacts, forgetFacts, fmt, clearNotes,
     // (round 9) a card in a reply that is still streaming (chat-things.js); null when no reply runs in that chat
+    repaint: (chatId) => schedulePaint(chatId), // (round 21) chat-live.js: its panel opened / changed
     liveCard(chatId, node) { const p = pending.get(chatId); if (!p) return null; p.cards.push(node); repaintPending(chatId); return node; },
     toolLabel, renderChips,
     // (round 10, sync.js) a chat that arrived from another computer: read again from disk next time (not mid-reply)
