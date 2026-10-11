@@ -26,10 +26,10 @@ const names = argv.filter((a, i) => !a.startsWith('--') && !['--out'].includes(a
 
 const LIBS = new Set(['journey-lib', 'smooth-lib', 'journey-olddata-make', 'sequence-lib']); // helpers / made to run in the old app
 const all = fs.readdirSync(CHECKS).filter((f) => f.endsWith('.js')).map((f) => f.slice(0, -3)).filter((n) => !LIBS.has(n)).sort();
-const UNIT = ['board-unit-test', 'board-mcp-test', 'capture-mcp-test', 'editor-mcp-test', 'director-mcp-test', 'cut-test', 'editor-test', 'capture-test', 'music-test', 'code-flow-test', 'importer-test', 'director-cost', 'astra-engine-test', 'robust-engine-test', 'test-aemain-mac', 'sequence-test', 'flows-test', 'sync-test', 'cmdpage-test', 'progress-test', 'makes-test', 'renders-test', 'updater-test', 'access-test', 'adobe-test', 'adobe-mcp-test', 'deploy-test', 'apps-unit-test', 'eyes-test'];
+const UNIT = ['board-unit-test', 'board-mcp-test', 'capture-mcp-test', 'editor-mcp-test', 'director-mcp-test', 'cut-test', 'editor-test', 'capture-test', 'music-test', 'code-flow-test', 'importer-test', 'director-cost', 'astra-engine-test', 'robust-engine-test', 'test-aemain-mac', 'sequence-test', 'flows-test', 'sync-test', 'cmdpage-test', 'progress-test', 'makes-test', 'renders-test', 'updater-test', 'access-test', 'adobe-test', 'adobe-mcp-test', 'deploy-test', 'apps-unit-test', 'eyes-test', 'boot-test'];
 const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
-  qa: ['qa-commands', 'qa-keys', 'qa-mac', 'polish'],
+  qa: ['qa-commands', 'qa-keys', 'qa-mac', 'polish', 'lazy'],
   board: by(/^board/),
   editor: ['editor', 'editor-more', 'editor-mcp', 'editor-pack', 'cut'],
   capture: by(/^capture/),

@@ -31,6 +31,10 @@ check('/studio list loads Studio and answers', Lazy.loaded('studio') && say.join
 // 2. an agent tool (HubBridge prefix) of a group not loaded yet
 const r = await HubBridge.call('adobe_status', {}).catch((err) => ({ ok: false, error: err.message }));
 check('agent tool through a stand-in prefix loads its group', Lazy.loaded('adobe') && !/Nothing in the hub/.test(r?.error || ''), JSON.stringify(r).slice(0, 120));
+// 2b. the main process loads adobemain.js / deploymain.js on their first call (main.js lazyIpc)
+const ad = await window.hub.adobe.status().catch((err) => ({ error: err.message }));
+const dp = await window.hub.deploy.status({}).catch((err) => ({ error: err.message }));
+check('Adobe / deploy IPC answer from lazily loaded main modules', ad && !ad.error && dp && !dp.error, `${JSON.stringify(ad).slice(0, 60)} ${JSON.stringify(dp).slice(0, 60)}`);
 // 3. a palette action
 const act = AppUI.actions().find((a) => a.label === 'Adobe apps…');
 check('palette stand-in listed', Boolean(act));

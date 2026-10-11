@@ -279,8 +279,9 @@ const Lazy = (() => {
     return new Promise((res, rej) => {
       const s = document.createElement('script');
       s.src = src; s.async = false;
-      s.onload = () => res();
-      s.onerror = () => rej(new Error(`couldn't load ${src}`));
+      // (handlers dropped once fired: nothing stays attached to the ~100 tags)
+      s.onload = () => { s.onload = s.onerror = null; res(); };
+      s.onerror = () => { s.onload = s.onerror = null; rej(new Error(`couldn't load ${src}`)); };
       document.head.append(s);
     });
   }
@@ -289,7 +290,7 @@ const Lazy = (() => {
     return new Promise((res) => {
       const l = document.createElement('link');
       l.rel = 'stylesheet'; l.href = href;
-      l.onload = l.onerror = () => res();
+      l.onload = l.onerror = () => { l.onload = l.onerror = null; res(); };
       // after the eager sheets, before the user theme (<style id="user-theme"> keeps the last word)
       const theme = document.getElementById('user-theme');
       if (theme) theme.before(l); else document.head.append(l);
@@ -319,6 +320,7 @@ const Lazy = (() => {
         }
         p.restore();
         dropLeftovers(g);
+        if (D.META) delete D.META[g.name]; // its manifest isn't needed any more
         unguardGlobals(g);
         // a tool already on screen with the stand-in: the rail keeps the stand-in object (it hands over to the real one)
         g.state = 'loaded';

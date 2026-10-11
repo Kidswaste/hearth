@@ -387,14 +387,39 @@ ipcMain.handle('np:control', (_e, cmd) => nowplaying.control(String(cmd)));
 app.on('before-quit', () => { nowplaying.stop(); syncmain.quit(); });
 ipcMain.on('stage:fullscreen', () => { if (stageWin && !stageWin.isDestroyed()) stageWin.setFullScreen(!stageWin.isFullScreen()); });
 
+// (round 16) A main-process module only some features use loads on its first IPC call: its channels are read from its
+// source (ipcMain.handle('x:y', …) / ipcMain.on('x:y', …)), stand-in handlers require it and hand the call over.
+// dev/boot-test.js checks the channels read match what register() really adds.
+function lazyIpc(file, register) {
+  const src = fs.readFileSync(path.join(__dirname, file), 'utf8');
+  const chans = [...src.matchAll(/ipcMain\.(handle|on)\(\s*'([^']+)'/g)].map((m) => ({ kind: m[1], ch: m[2] }));
+  const real = new Map(); // channel → handler / listeners
+  let loaded = false;
+  const load = () => {
+    if (loaded) return;
+    loaded = true;
+    for (const { kind, ch } of chans) { if (kind === 'handle') ipcMain.removeHandler(ch); else ipcMain.removeAllListeners(ch); }
+    const ipc = {
+      handle: (ch, fn) => { real.set(ch, fn); ipcMain.handle(ch, fn); },
+      on: (ch, fn) => { real.set(ch, [...(real.get(ch) || []), fn]); ipcMain.on(ch, fn); },
+      removeHandler: (ch) => ipcMain.removeHandler(ch),
+    };
+    register(require(path.join(__dirname, file)), ipc);
+  };
+  for (const { kind, ch } of chans) {
+    if (kind === 'handle') ipcMain.handle(ch, (e, ...a) => { load(); const fn = real.get(ch); if (!fn) throw new Error(`${file}: no handler for ${ch}`); return fn(e, ...a); });
+    else ipcMain.on(ch, (e, ...a) => { load(); for (const fn of real.get(ch) || []) fn(e, ...a); });
+  }
+  return { load, channels: chans.map((c) => c.ch) };
+}
 fsapi.registerIpc(ipcMain, () => win);
 gamebridge.start(() => win);
 aemain.registerIpc(ipcMain, () => win, () => settings().aePath);
 require('./boardmain').registerIpc(ipcMain, () => win); // mood board: file import, website snapshots
 require('./capturemain').register(ipcMain, () => win, settings); // screenshots / recordings of Hearth itself, frame reader
 require('./rendersmain').register(ipcMain, () => win, settings); // the render queue: pause / resume / cancel ffmpeg jobs
-require('./adobemain').register(ipcMain, () => win, settings); // Photoshop, Illustrator, Premiere, Media Encoder, InDesign scripting
-require('./deploymain').register(ipcMain, () => win, settings); // publish on Vercel / Netlify / Cloudflare Pages / GitHub Pages
+lazyIpc('adobemain.js', (m, ipc) => m.register(ipc, () => win, settings)); // Photoshop, Illustrator, Premiere, Media Encoder, InDesign scripting
+lazyIpc('deploymain.js', (m, ipc) => m.register(ipc, () => win, settings)); // publish on Vercel / Netlify / Cloudflare Pages / GitHub Pages
 appsmain.register(ipcMain, () => win, { store, appshell }); // app windows (Meshy, Suno, Figma…), their downloads, the Meshy API
 syncmain.register(ipcMain, () => win, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, themePath: THEME_PATH, store }); // sync through a cloud drive folder
 require('./chatmediamain').register(ipcMain, { workspace: path.join(store.DATA_DIR, 'workspace') }); // pictures / videos a chat made, shown in the reply
