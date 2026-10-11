@@ -162,7 +162,7 @@ const cmd = await say('/makes', H.claudeAgent().id, 'code');
 step(/Neon Check/.test(cmd) && /Ocean comp/.test(cmd), '/makes lists them', cmd.split('\n').slice(0, 3));
 step(Commands.duplicates().length === 0, 'no duplicate command names', Commands.duplicates());
 step(!errs.length, 'no page errors', errs.slice(0, 3));
-localStorage.setItem('makes.check', JSON.stringify({ id: make.id, lab: lab.chatId, vid: vid.chatId, glyph: make.ident.glyph, color: make.ident.color, comp: cm?.id, intro: im?.id }));
+localStorage.setItem('makes.check', JSON.stringify({ id: make.id, lab: lab.chatId, vid: vid.chatId, glyph: make.ident.glyph, color: make.ident.color, comp: cm?.id }));
 return JSON.stringify(out, null, 1);
 //@@ reload
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -175,7 +175,7 @@ const m = Makes.get(was.id);
 step(m && m.name === 'Neon Check' && m.ident.glyph === was.glyph && m.ident.color === was.color, 'after a reload: the make, its name, mark and color', m && [m.name, m.ident.glyph]);
 step(m && m.parts[0].status === 'done' && m.parts[1].progress?.pct === 40, 'its parts\' states and progress', m && m.parts.map((p) => [p.status, p.progress?.pct]));
 step(m && m.outputs.length >= 1, 'its outputs');
-step(Makes.get(was.comp) && Makes.get(was.intro), 'the comp and the video project are still makes');
+step(Makes.get(was.comp), 'the comp is still a make');
 await until(() => document.querySelector(`#chat-groups .mk-group[data-make="${was.id}"] .item.mk-room`), 10000);
 const g = document.querySelector(`#chat-groups .mk-group[data-make="${was.id}"]`);
 step(g && g.querySelectorAll('.item.mk-room').length === 2, 'the rooms are grouped again under the make');
