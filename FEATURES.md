@@ -675,3 +675,8 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ A store thread in the main process saves chats / scenes / kv stores (identical saves skipped), keeps the chats index (list 23 → 5 ms) and searches every chat (the app answers in 1.7 ms instead of 28 ms while you search); quitting waits for the last saves.
 - ✓ Folder search and cloud sync's big-store hashing run on a files thread; Lab and director screenshots encode in pieces (no long task).
 - ○ Measured headless (`dev/checks/offmain.js`, `dev/store-thread-test.js`); the owner's own data sizes and a real cloud drive aren't run here.
+## Long sessions stay light (round 20, soak, 21 upgrades: docs/upgrades/soak.md)
+- ✓ Switching between long chats no longer leaks (a hidden "Show earlier" watcher kept each drawing's messages alive): after 20 minutes 23k page nodes instead of 37k, detached nodes +500/h instead of +31,000/h; only the last 12 opened chats stay in memory; the engine log rotates at 2 MB.
+- ✓ Freshen: after hours, if the window grew a lot, a quiet toast offers a reload that keeps everything (screen, open chats, drafts, scroll, Lab scene + sequence); never while you're busy; `/freshen`, `/freshen status`, Ctrl/⌘+K.
+- ✓ `node dev/soak.js`: a 20-minute realistic session with real input, sampled every minute (heaps, DOM, listeners, observers, GPU, main-process handles), trends + where things grow, retainer paths.
+- ○ Measured headless with software GL; hours-long runs on the owner's Mac / PC are not run here.

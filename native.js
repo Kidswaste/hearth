@@ -528,13 +528,40 @@ const Native = (() => {
     }
   }
 
+  // "↑ Show earlier" reached by scrolling up loads the rest. (round 20, soak) one observer per view, let go at the next
+  // draw: each one used to stay alive (and with it the render's closure: every message node of that draw) until
+  // scrolled into view, so switching between long chats kept their old nodes forever (≈ 110 per switch)
+  function watchEarlier(v, agentId, more) {
+    v.earlierT = setTimeout(() => {
+      if (!more.isConnected) return;
+      const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); if (v.earlierIO === io) v.earlierIO = null; showEarlier(agentId); } }, { root: v.list });
+      io.observe(more); v.earlierIO = io;
+    }, 600);
+  }
   async function loadChat(id) {
+    chatUsed.set(id, Date.now());
     if (!chats.has(id)) {
       const chat = await window.hub.getChat(id);
       if (!chat) return null;
+      if (chats.has(id)) return chats.get(id); // (loaded meanwhile by another caller: keep that one)
       chats.set(id, chat);
-    }
+      trimChats();
+    } else if (chats.size > CHAT_KEEP) { const c = chats.get(id); chats.delete(id); chats.set(id, c); } // most recent last
     return chats.get(id);
+  }
+  // (round 20, soak) a long session opens many chats: only the last CHAT_KEEP stay in memory (whole histories can be
+  // big), never one on screen in an agent, streaming, or used in the last minute; the others load again from disk
+  const CHAT_KEEP = 12;
+  const chatUsed = new Map();
+  function trimChats() {
+    if (chats.size <= CHAT_KEEP) return;
+    const keep = new Set(Object.values(H.activeChat || {}));
+    const now = Date.now();
+    for (const id of chats.keys()) {
+      if (chats.size <= CHAT_KEEP) break;
+      if (keep.has(id) || pending.has(id) || now - (chatUsed.get(id) || 0) < 60000) continue;
+      chats.delete(id); chatUsed.delete(id);
+    }
   }
 
   // Adds Save / Run buttons to code blocks depending on their language and content. Long blocks start
@@ -867,11 +894,12 @@ const Native = (() => {
       // A long chat opens on its last 40 messages (switching to one rebuilt every message: ~36k laid-out objects);
       // "↑ Show earlier" or scrolling up to it brings the rest, and jumpTo() loads them when it needs an older one.
       const from = shownFrom(chat, firstNew);
+      v.earlierIO?.disconnect(); v.earlierIO = null; clearTimeout(v.earlierT); // (the last draw's "Show earlier" watch)
       if (from > 0) {
         const more = el('button', { type: 'button', class: 'ghost show-earlier', text: `↑ Show ${from} earlier message${from === 1 ? '' : 's'}`, on: { click: () => showEarlier(agentId) } });
         out.push(more);
         // reaching it by scrolling up loads them too (after the chat has settled at the bottom)
-        setTimeout(() => { if (!more.isConnected) return; const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); showEarlier(agentId); } }, { root: v.list }); io.observe(more); }, 600);
+        watchEarlier(v, agentId, more);
       }
       let day = '';
       const busy = pending.has(chat.id);
