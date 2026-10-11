@@ -4,7 +4,8 @@
 // with a definition of what they do and a little preview video animation." Then: "show the videos as hover when I pass
 // my mouse over the command, and if I click it first open the example in a bigger window before committing".
 // - A rail page (☰ Commands; Ctrl/⌘+Shift+F; `/commands [name]`; "/" → Flows / Every command). Left: every command
-//   (principal ones first, then by area), searchable in plain words, pinned / recent / going now; each row: name, one
+//   (principal ones first, then pinned / your usual / recent / going now, Studio + Discover as one row of chips, then
+//   the flows and every area), searchable in plain words; each row: name, one
 //   clear sentence, area, a preview that plays while you point at it (a still poster otherwise).
 // - Click (or Enter) a command: its example, big: the preview (a real clip for the principal ones), what it does, when
 //   to use it, what it will ask you. Nothing runs until "▶ Use this command" (Enter again).
@@ -23,6 +24,8 @@ const CmdPage = (() => {
   // pick(id, right) when a row with data-ext is clicked, menu(id, event) on its right-click
   const ext = { sections: [], pick: [], menu: [] };
   const extSections = (q) => ext.sections.flatMap((fn) => { try { return fn(q) || []; } catch (err) { console.warn(err); return []; } });
+  // (round 18) Studio's recipes and Discover share one compact row of chips on the page (a section may also say compact: true)
+  const isCompact = (s) => Boolean(s.compact) || /^(✦\s*)?(Studio|Discover)\b/.test(s.head || '');
   const visible = () => H.surfaceIdFor?.(H.activeId) === SURFACE;
   const descOf = (def) => D().DESC[def.name] || String(def.desc || '').split(' · ')[0] || '';
   const principalSet = () => { try { return FlowsUI.principal(); } catch { return new Set(FlowsData?.PRINCIPAL || []); } };
@@ -110,12 +113,12 @@ const CmdPage = (() => {
       if (fl.length) out.push({ head: 'Step lists (flows)', items: fl.map((flow) => ({ flow })) });
       return out;
     }
-    // runs untouched for a while drop out of the list by themselves (still under their flow's "Last runs"); × removes one
-    const runs = Flows.runs().filter((r) => ['waiting-you', 'hung', 'running', 'waiting-ai', 'stopped'].includes(r.status) && Date.now() - r.updated < goingFor()).slice(0, 4);
-    if (runs.length) out.push({ head: 'Going now', items: runs.map((run) => ({ run })) });
-    out.push(...extSections(''));
+    // (round 18, tidy) the owner's order: the principal commands first, then pinned, your usual, recent and what's
+    // going now; other modules' rows after (Makes), Studio and Discover as one compact row of chips; then the rest
     const used = new Set();
     const pick = (names) => names.map((n) => Commands.get(n)).filter((d) => d && !used.has(d.name) && used.add(d.name)).map((def) => ({ def }));
+    const pr = typeof SpeedRank !== 'undefined' ? SpeedRank.sort([...principalSet()]) : [...principalSet()];
+    out.push({ head: 'Principal', items: pick(pr) });
     const pins = pick(Commands.favs());
     if (pins.length) out.push({ head: '★ Pinned', items: pins });
     // (round 13) what you use most where you came from, at this time of day (speed-rank.js)
@@ -123,8 +126,13 @@ const CmdPage = (() => {
     if (usual.length) out.push({ head: 'Your usual', items: usual });
     const rec = pick(Commands.recent().slice(0, 6));
     if (rec.length) out.push({ head: 'Recent', items: rec });
-    const pr = typeof SpeedRank !== 'undefined' ? SpeedRank.sort([...principalSet()]) : [...principalSet()];
-    out.push({ head: 'Principal', items: pick(pr) });
+    // runs untouched for a while drop out of the list by themselves (still under their flow's "Last runs"); × removes one
+    const runs = Flows.runs().filter((r) => ['waiting-you', 'hung', 'running', 'waiting-ai', 'stopped'].includes(r.status) && Date.now() - r.updated < goingFor()).slice(0, 4);
+    if (runs.length) out.push({ head: 'Going now', items: runs.map((run) => ({ run })) });
+    const extra = extSections('');
+    const chips = extra.filter(isCompact).sort((a, b) => /Studio/.test(b.head) - /Studio/.test(a.head));
+    out.push(...extra.filter((s) => !isCompact(s)));
+    if (chips.length) out.push({ head: chips.map((s) => s.head.replace(/^✦\s*/, '').replace(/\s*·\s*\d+$/, '')).join(' · '), compact: true, items: chips.flatMap((s) => s.items) });
     const fl = flowsOf();
     if (fl.length) out.push({ head: 'Step lists (flows)', items: fl.map((flow) => ({ flow })) });
     const byArea = new Map();
@@ -142,7 +150,7 @@ const CmdPage = (() => {
   const ROWS_NOW = 48;
   const rowCache = new Map(); // command name → its row (one per command; a second listing of it gets its own)
   let fill = null; // { later: [{ sec, it }], used }
-  const section = (s) => el('div', { class: 'cp-sec', style: { containIntrinsicSize: `auto ${24 + s.items.length * 50}px` } }, el('div', { class: 'cp-head', text: s.head }));
+  const section = (s) => el('div', { class: `cp-sec${s.compact ? ' cp-compact' : ''}`, style: { containIntrinsicSize: `auto ${s.compact ? 64 : 24 + s.items.length * 50}px` } }, el('div', { class: 'cp-head', text: s.head }));
   function renderList({ rows = ROWS_NOW } = {}) {
     if (!P.mounted) return;
     fill = null;
@@ -490,9 +498,10 @@ const CmdPage = (() => {
       if (P.view === 'run' && /^[1-9]$/.test(e.key)) { const b = right.querySelectorAll('.cp-q .cp-opt')[Number(e.key) - 1]; if (b) { e.preventDefault(); b.click(); } }
     });
     renderList();
-    right.replaceChildren(el('div', { class: 'cp-hello' }, el('h2', { text: 'Every command, one question at a time' }),
-      el('p', { text: 'Point at a command to see it move. Click it to see its example; ▶ Use this command asks what it needs, one thing at a time, and shows what will happen before it runs.' }),
-      el('p', { class: 'cp-small', text: 'Chats still run every command typed by name. Ctrl/⌘+Shift+F opens this page from anywhere.' })));
+    // (round 18, tidy) the empty side: one line and one action
+    right.replaceChildren(el('div', { class: 'cp-hello' }, el('h2', { text: 'Pick a command' }),
+      el('p', { text: 'Point at one to see it move, click it for its example. Nothing runs until the last step.' }),
+      el('button', { type: 'button', class: 'primary', text: 'Search in plain words', title: 'Ctrl/⌘+Shift+F opens this page from anywhere', on: { click: () => search.focus() } })));
   }
   function pickRow(b) {
     if (b.dataset.name) showExample(b.dataset.name);
