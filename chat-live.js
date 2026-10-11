@@ -287,7 +287,7 @@ const ChatLive = (() => {
         const m = [...(Native.current(ctx.agentId)?.messages || [])].reverse().find((x) => x.role === 'assistant');
         if (!m) return 'Nothing running, and no reply yet.';
         const act = m.activity;
-        return `Nothing running. The last reply took ${secs(m.ms || 0)}${m.tools?.length ? ` with ${m.tools.length} tool calls` : ''}${act?.failed ? ` (${act.failed} failed)` : ''}${act?.agents?.length ? `, and deployed ${act.agents.length} agent${act.agents.length > 1 ? 's' : ''}:\n${act.agents.map((a) => `- ${ICON[a.status] || '•'} ${a.description} — ${a.summary || a.status}`).join('\n')}` : '.'}`;
+        return `Nothing running. The last reply${m.ms ? ` took ${secs(m.ms)}` : m.stopped ? ' was stopped' : ''}${m.tools?.length ? ` with ${m.tools.length} tool calls` : ''}${act?.failed ? ` (${act.failed} failed)` : ''}${act?.agents?.length ? `, and deployed ${act.agents.length} agent${act.agents.length > 1 ? 's' : ''}:\n${act.agents.map((a) => `- ${ICON[a.status] || '•'} ${a.description} — ${a.summary || a.status}`).join('\n')}` : '.'}`;
       },
     });
     reg({
