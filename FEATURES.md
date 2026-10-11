@@ -663,3 +663,9 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ A slow start says what it waits for (sync pass, engine check, a read…), offers Open anyway; reduce motion respected; `/startup` shows every step of the last start.
 - ✓ Cloud sync no longer holds the window back; tray / hotkey / rarely used modules after the window; no git fetch or engine doctor while the first screen builds; 2 stylesheets off the start.
 - ○ Measured headless (`dev/coldstart-report.js`: first frame on screen 815 → 467 ms); the Mac's ready-to-show timing is not run here.
+
+## Long sessions stay light (round 20, soak, 21 upgrades: docs/upgrades/soak.md)
+- ✓ Switching between long chats no longer leaks (a hidden "Show earlier" watcher kept each drawing's messages alive): after 20 minutes 23k page nodes instead of 37k, detached nodes +500/h instead of +31,000/h; only the last 12 opened chats stay in memory; the engine log rotates at 2 MB.
+- ✓ Freshen: after hours, if the window grew a lot, a quiet toast offers a reload that keeps everything (screen, open chats, drafts, scroll, Lab scene + sequence); never while you're busy; `/freshen`, `/freshen status`, Ctrl/⌘+K.
+- ✓ `node dev/soak.js`: a 20-minute realistic session with real input, sampled every minute (heaps, DOM, listeners, observers, GPU, main-process handles), trends + where things grow, retainer paths.
+- ○ Measured headless with software GL; hours-long runs on the owner's Mac / PC are not run here.

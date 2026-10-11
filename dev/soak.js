@@ -448,7 +448,7 @@ function retainers(snap) {
       ['data folders', (s) => s.disk?.data?.dirs, '', 1, 10],
       ['data files', (s) => s.disk?.data?.files, '', 1, 40],
       ['cloud files', (s) => s.disk?.cloud?.files, '', 1, 40],
-      ['frame p95', (s) => s.frames?.p95, 'ms', 1, 6],
+      ['frame p95', (s) => s.frames?.p95, 'ms', 1, 30],
       ['Lab frames/s while hidden', (s) => s.labIdleFps, '', 1, 10],
     ];
     const after = samples.filter((s) => s.t >= WARMUP);
@@ -462,7 +462,8 @@ function retainers(snap) {
       const slope = sxx ? sxy / sxx : 0; const r2 = sxx && syy ? (sxy * sxy) / (sxx * syy) : 0;
       const span = xy.at(-1)[0] - xy[0][0];
       const grew = slope * span;
-      const flag = r2 >= 0.6 && grew >= minGrowth && slope > 0;
+      // (a trend needs 5 samples; frame times under software GL jump by whole frames, so they need +30 ms)
+      const flag = xy.length >= 5 && r2 >= 0.6 && grew >= minGrowth && slope > 0;
       trends.push({ name, first: xy[0][1] / div, last: xy.at(-1)[1] / div, perHour: slope / div, r2: Math.round(r2 * 100) / 100, flag, unit });
     }
     const f = (x) => (Math.abs(x) >= 100 ? Math.round(x) : Math.round(x * 10) / 10);
