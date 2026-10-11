@@ -134,22 +134,35 @@ const Panel = (() => {
     if (item.tags?.length) r.append(el('span', 'item-tags', item.tags.map((t) => `#${t}`).join(' ')));
     if (item.chatId && Native.isBusy(item.chatId)) r.append(el('span', 'busy'));
     else if (item.chatId && H.unreadChats?.has(item.chatId)) { r.classList.add('unread'); r.append(el('span', 'unread-dot')); }
-    const openIt = () => (item.chatId ? Native.open(agent.id, item.chatId) : openWebChat(agent.id, item.url));
-    r.addEventListener('click', openIt);
-    r.addEventListener('contextmenu', (e) => itemMenu(agent, item, r, e));
-    r.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); openIt(); }
-      else if (e.key === 'F2' && item.chatId) { e.preventDefault(); startRename(r, item.chatId, item.title); }
-      else if (e.key === 'Delete' && item.chatId) { e.preventDefault(); if (confirm(`Delete "${item.title}"? You can restore it for 30 days.`)) Native.remove(item.chatId); }
-      else if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) { e.preventDefault(); const b = r.getBoundingClientRect(); itemMenu(agent, item, r, { preventDefault() {}, clientX: b.left + 20, clientY: b.bottom }); }
-    });
+    rows.set(r, { agent, item }); // (round 16) its click / right-click / keys are handled once for the whole list (onRow)
     for (const fn of hooks.row) { try { fn(r, item, agent); } catch (err) { console.warn(err); } }
     return r;
   }
+  // (round 16, chatperf) one set of listeners on the list instead of three per row (a long list made hundreds)
+  const rows = new WeakMap(); // row -> { agent, item }
+  function onRow(e) {
+    const r = e.target.closest?.('.item');
+    const d = r && rows.get(r);
+    if (!d) return;
+    const { agent, item } = d;
+    const openIt = () => (item.chatId ? Native.open(agent.id, item.chatId) : openWebChat(agent.id, item.url));
+    if (e.type === 'click') { openIt(); return; }
+    if (e.type === 'contextmenu') { itemMenu(agent, item, r, e); return; }
+    if (e.target !== r) return; // keys typed in the rename box are its own
+    if (e.key === 'Enter') { e.preventDefault(); openIt(); }
+    else if (e.key === 'F2' && item.chatId) { e.preventDefault(); startRename(r, item.chatId, item.title); }
+    else if (e.key === 'Delete' && item.chatId) { e.preventDefault(); if (confirm(`Delete "${item.title}"? You can restore it for 30 days.`)) Native.remove(item.chatId); }
+    else if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) { e.preventDefault(); const b = r.getBoundingClientRect(); itemMenu(agent, item, r, { preventDefault() {}, clientX: b.left + 20, clientY: b.bottom }); }
+  }
+  // Many calls in a row (a reply saved, unread marks, titles) draw the list once (render() itself stays immediate)
+  let soonTimer = 0;
+  function soon() { if (!soonTimer) soonTimer = setTimeout(() => { soonTimer = 0; render(); }, 40); }
 
   function render() {
     const root = $('chat-groups');
     if (!H.config) return;
+    if (soonTimer) { clearTimeout(soonTimer); soonTimer = 0; }
+    if (!root.dataset.rowEvents) { root.dataset.rowEvents = '1'; for (const t of ['click', 'contextmenu', 'keydown']) root.addEventListener(t, onRow); }
     const hadFocus = root.contains(document.activeElement) ? document.activeElement.dataset.key : null;
     root.replaceChildren();
     const q = filter.toLowerCase();
@@ -309,5 +322,5 @@ const Panel = (() => {
   }
   setTimeout(wireKeys, 0);
 
-  return { render, highlight, setFilter, setView, view: () => view, SORTS, hooks };
+  return { render, soon, highlight, setFilter, setView, view: () => view, SORTS, hooks };
 })();

@@ -73,6 +73,7 @@ const Native = (() => {
 
     const list = el('div', { class: 'messages' });
     list.addEventListener('click', (e) => onListClick(e, agentId));
+    list.addEventListener('toggle', fillFold, true); // (round 16) folded tool steps fill in when opened (toggle doesn't bubble: capture)
     // Selected text in the chat gets a small bar: quote it, copy it, find it in the chat, or save it to notes.
     const selAct = (label, title, fn) => el('button', { type: 'button', text: label, title, on: { click: () => { const t = String(getSelection()).trim(); quoteSel.hidden = true; if (t) fn(t); } } });
     const quoteSel = el('div', { class: 'quote-sel sel-bar', hidden: true },
@@ -587,7 +588,7 @@ const Native = (() => {
     const act = (name, label, title) => el('button', { class: 'msg-act', text: label, title, dataset: { msgAct: name } });
     // Marks you put on a message (/pin-msg, /bookmark, /react): small badges in its corner.
     const marks = [m.pinnedMsg ? '📌' : null, m.bookmark ? '🔖' : null, m.reaction ? m.reaction.emoji : null].filter(Boolean);
-    if (marks.length) node.append(el('span', { class: 'msg-marks', text: marks.join(' '), title: m.reaction?.note ? `Your note: ${m.reaction.note}` : 'Your marks on this message (/unmark to clear)' }));
+    if (marks.length) { node.classList.add('marked'); node.append(el('span', { class: 'msg-marks', text: marks.join(' '), title: m.reaction?.note ? `Your note: ${m.reaction.note}` : 'Your marks on this message (/unmark to clear)' })); }
     if (m.pinnedMsg) node.classList.add('pinned-msg');
     const timeEl = el('span', { class: 'msg-time', text: time, title: m.at ? `${fmtDate(m.at)} · ${timeAgo(m.at)} · message #${index + 1}` : '' });
     const num = el('span', { class: 'msg-num', text: `#${index + 1}` });
@@ -619,9 +620,18 @@ const Native = (() => {
     const labels = tools.map(toolLabel);
     const counts = new Map(); for (const l of labels) counts.set(l, (counts.get(l) || 0) + 1);
     const where = [...new Set(tools.map((t) => (String(t).match(/^mcp__(?:claude_ai_)?([^_]+(?:_[^_]+)?)__/) || String(t).match(/^(\w+?)_/) || String(t).match(/^([\w ]+?) ·/) || [])[1]).filter(Boolean).map((x) => x.replace(/^hearth[-_]?/, '').replace(/_/g, ' ')))].slice(0, 3);
-    return el('details', { class: 'tool-chips tool-fold' },
-      el('summary', { text: `⚙ ${tools.length === 1 ? labels[0] : `${tools.length} steps`}${tools.length > 1 && where.length ? ` · ${where.join(' · ')}` : ''}`, title: [...counts].map(([l, n]) => `${l}${n > 1 ? ` ×${n}` : ''}`).join('\n') }),
-      el('ol', { class: 'tool-list' }, [...counts].map(([l, n]) => el('li', { text: `${l}${n > 1 ? `  ×${n}` : ''}` }))));
+    const d = el('details', { class: 'tool-chips tool-fold' },
+      el('summary', { text: `⚙ ${tools.length === 1 ? labels[0] : `${tools.length} steps`}${tools.length > 1 && where.length ? ` · ${where.join(' · ')}` : ''}`, title: [...counts].map(([l, n]) => `${l}${n > 1 ? ` ×${n}` : ''}`).join('\n') }));
+    // (round 16) the list is built the first time it opens (most folds are never opened: no nodes for them);
+    // one 'toggle' listener on the message list does it for every fold (fillFold)
+    d.steps = counts;
+    return d;
+  }
+
+  function fillFold(e) {
+    const d = e.target;
+    if (!d.open || !d.steps || d.querySelector(':scope > .tool-list')) return;
+    d.append(el('ol', { class: 'tool-list' }, [...d.steps].map(([l, n]) => el('li', { text: `${l}${n > 1 ? `  ×${n}` : ''}` }))));
   }
 
   // The ⋯ menu of a message: the usual actions first, the rest behind More… (each item has a chat command too).
@@ -727,7 +737,65 @@ const Native = (() => {
       ...choices.filter((c) => c !== agent.model).map((c) => el('option', { value: c, text: c, selected: c === current })));
   }
 
-  async function render(agentId, { keepScroll = false } = {}) {
+  // ---------- (round 16, chatperf) message nodes kept between redraws ----------
+  // A message's node is reused while the message is the same object with the same text and fields (its marks, things,
+  // usage…), at the same place (index, last or not). Native.refresh() from other files rebuilds everything (gen), since
+  // they call it after changing something a message draws from (a setting, the board, an engine fix).
+  const NODE_CHATS = 3; // chats whose nodes stay ready for switching back
+  const measured = new WeakSet(); // replies already measured for auto-fold
+  let gen = 0;
+  const SIG_SKIP = new Set(['text', 'thinking', 'sent', 'edits', 'images', 'lastReply']);
+  function msgSig(m, index, isLast) {
+    let rest;
+    try { rest = JSON.stringify(m, function skip(k, val) { return this === m && SIG_SKIP.has(k) ? undefined : val; }); } catch { return null; }
+    return `${gen}|${index}|${isLast ? 1 : 0}|${m.lastReply ? 1 : 0}|${m.thinking?.length || 0}|${m.edits?.length || 0}|${m.images?.length || 0}|${rest}`;
+  }
+  const REUSABLE = new Set(['user', 'assistant', 'opinion']); // cards of collaborations / jams / dispatches draw live state: always fresh
+  function nodeFor(cache, next, m, agent, index, isLast) {
+    if (!REUSABLE.has(m.role)) return messageEl(m, agent, index, isLast);
+    const sig = msgSig(m, index, isLast);
+    const hit = cache.get(m);
+    const node = sig && hit && hit.sig === sig && hit.text === m.text ? hit.node : messageEl(m, agent, index, isLast);
+    if (sig) next.set(m, { node, sig, text: m.text });
+    return node;
+  }
+  // Makes list's children exactly `nodes`, moving only what is out of place (nodes already there stay untouched).
+  function placeChildren(list, nodes) {
+    // what goes away goes first, so the nodes that stay are already in order and the new ones slot in between
+    const keep = new Set(nodes);
+    for (const c of [...list.childNodes]) if (!keep.has(c)) c.remove();
+    let cur = list.firstChild;
+    for (const n of nodes) {
+      if (n === cur) { cur = cur.nextSibling; continue; }
+      list.insertBefore(n, cur);
+    }
+    while (cur) { const nx = cur.nextSibling; cur.remove(); cur = nx; }
+  }
+
+  // Auto-fold of long replies: heights read first, then the folds written (one layout for the batch)
+  const FOLD_NOW = 6;
+  function foldIfLong(nodes, heights) {
+    nodes.forEach((node, i) => {
+      if (heights[i] <= COLLAPSE_PX || node.classList.contains('collapsed') || node.querySelector('.show-more-msg')) return;
+      node.classList.add('collapsed');
+      const words = (node.dataset.raw.match(/\S+/g) || []).length;
+      node.append(el('button', { class: 'show-more-msg msg-act', text: `Show full reply · ${words.toLocaleString()} words`, dataset: { msgAct: 'more' } }));
+    });
+  }
+  function foldWhenNear(v, node) {
+    v.foldWatch ||= new Set();
+    v.foldIO ||= new IntersectionObserver((entries) => {
+      const near = entries.filter((e) => e.isIntersecting).map((e) => e.target);
+      for (const n of near) { v.foldIO.unobserve(n); v.foldWatch.delete(n); }
+      const chatId = H.activeChat[[...views].find(([, x]) => x === v)?.[0]];
+      const todo = near.filter((n) => n.isConnected && !unfolded.has(`${chatId}:${n.dataset.index}`));
+      foldIfLong(todo, todo.map((n) => n.querySelector('.body').scrollHeight));
+    }, { root: v.list, rootMargin: '1200px 0px' });
+    v.foldWatch.add(node);
+    v.foldIO.observe(node);
+  }
+
+  async function render(agentId, { keepScroll = false, rebuild = false } = {}) {
     const v = views.get(agentId);
     const agent = H.agent(agentId);
     if (!v || !agent) return;
@@ -750,11 +818,15 @@ const Native = (() => {
     renderStyle(agentId);
     if (!v.input.value) { v.input.value = store.get(draftKey(agentId), '') || ''; autosize(v.input); updateCounter(v); }
 
-    v.list.replaceChildren();
-    if (!chat) v.list.append(emptyState(agent));
+    // (round 16, chatperf) the list is gathered as nodes, then put in place with the fewest moves (placeChildren):
+    // messages that didn't change keep their DOM (nodeFor), so a reply ending in a 300-message chat adds one message
+    // instead of rebuilding them all, and switching back to a chat reuses what it showed
+    const out = [];
+    const cache = (!rebuild && v.nodes?.get(chatId)) || new Map(); const nextCache = new Map();
+    if (!chat) out.push(emptyState(agent));
     else {
       if (chat.imported || chat.continuedFrom) {
-        v.list.append(el('div', { class: 'import-banner', text: chat.continuedFrom
+        out.push(el('div', { class: 'import-banner', text: chat.continuedFrom
           ? `Continued from a ${chat.continuedFrom} chat. ${chat.session?.id ? '' : 'Your next message sends the earlier conversation along as context.'}`
           : chat.session?.id ? `Imported from ${chat.imported}, continued here.` : `Imported from ${chat.imported}. Send a message to continue it here; the earlier conversation goes along as context.` }));
       }
@@ -762,44 +834,50 @@ const Native = (() => {
       // suggestions stay on the latest reply even after a second opinion is added below it
       const lastReplyIdx = chat.messages.map((m) => m.role).lastIndexOf('assistant');
       const pins = chat.messages.map((m, i) => (m.pinnedMsg ? i : -1)).filter((i) => i >= 0);
-      if (pins.length) v.list.append(pinnedStrip(agentId, chat, pins));
+      if (pins.length) out.push(pinnedStrip(agentId, chat, pins));
       const firstNew = unreadFrom.get(chat.id);
       // A long chat opens on its last 40 messages (switching to one rebuilt every message: ~36k laid-out objects);
       // "↑ Show earlier" or scrolling up to it brings the rest, and jumpTo() loads them when it needs an older one.
       const from = shownFrom(chat, firstNew);
       if (from > 0) {
         const more = el('button', { type: 'button', class: 'ghost show-earlier', text: `↑ Show ${from} earlier message${from === 1 ? '' : 's'}`, on: { click: () => showEarlier(agentId) } });
-        v.list.append(more);
+        out.push(more);
         // reaching it by scrolling up loads them too (after the chat has settled at the bottom)
         setTimeout(() => { if (!more.isConnected) return; const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); showEarlier(agentId); } }, { root: v.list }); io.observe(more); }, 600);
       }
       let day = '';
+      const busy = pending.has(chat.id);
+      const onlyOpinionsAfter = chat.messages.slice(lastReplyIdx + 1).every((x) => x.role === 'opinion');
       chat.messages.forEach((m, i) => {
         if (i < from) return;
         if (m.compactReq) return; // the "please compact" request is shown as part of the divider
         // a quiet date line where the day changes (Today / Yesterday / the date)
         const d = m.at ? dayLabel(m.at) : '';
-        if (d && d !== day) { if (day || chat.messages.length > 1) v.list.append(el('div', { class: 'day-sep', text: d })); day = d; }
-        if (firstNew === i) v.list.append(el('div', { class: 'new-sep', text: 'New' }));
-        if (m.compactSummary) { v.list.append(compactDivider(m)); return; }
-        m.lastReply = i === lastReplyIdx && chat.messages.slice(i + 1).every((x) => x.role === 'opinion') && !pending.has(chat.id) ? true : undefined;
-        const node = messageEl(m, agent, i, i === lastIdx && !pending.has(chat.id));
-        v.list.append(node);
+        if (d && d !== day) { if (day || chat.messages.length > 1) out.push(el('div', { class: 'day-sep', text: d })); day = d; }
+        if (firstNew === i) out.push(el('div', { class: 'new-sep', text: 'New' }));
+        if (m.compactSummary) { out.push(compactDivider(m)); return; }
+        m.lastReply = i === lastReplyIdx && onlyOpinionsAfter && !busy ? true : undefined;
+        out.push(nodeFor(cache, nextCache, m, agent, i, i === lastIdx && !busy));
       });
+      // the nodes of the last few chats shown stay ready for switching back (older ones are let go)
+      v.nodes ||= new Map(); v.nodes.delete(chatId); v.nodes.set(chatId, nextCache);
+      while (v.nodes.size > NODE_CHATS) v.nodes.delete(v.nodes.keys().next().value);
     }
     if (chat) markSeen(chat.id);
 
     // hub notes shown in this chat (command output) come back after the redraw; dismissed ones stay gone
     v.notes = (v.notes || []).filter((n) => !n.box.dataset.gone);
-    for (const n of v.notes) if (n.chatId === (chat?.id || null)) v.list.append(n.box);
+    for (const n of v.notes) if (n.chatId === (chat?.id || null)) out.push(n.box);
     const banner = chat && longChatBanner(agent, chat);
-    if (banner) v.list.append(banner);
+    if (banner) out.push(banner);
     const p = chat && pending.get(chat.id);
     if (p) {
-      p.el = el('div', { class: 'msg assistant streaming' }, el('div', { class: 'body' }));
+      // the live reply keeps its node (and its frozen Markdown, see paintBody) across redraws of its chat
+      if (!p.el || p.el.parentElement !== v.list) { p.el = el('div', { class: 'msg assistant streaming' }, el('div', { class: 'body' })); p.md = null; }
       paintStreaming(p);
-      v.list.append(p.el);
+      out.push(p.el);
     }
+    placeChildren(v.list, out);
     syncSendBtn(agentId);
     renderQueue(agentId);
     // Long replies start folded so the conversation stays scannable.
@@ -808,13 +886,16 @@ const Native = (() => {
       // whole chat again (one full layout per folded reply)
       const autoFold = store.get('chat.autoFold', true) !== false;
       const lastReply = v.list.querySelector('.msg.assistant:last-of-type');
-      const toFold = !autoFold ? [] : [...v.list.querySelectorAll('.msg.assistant:not(.streaming)')]
-        .filter((node) => node !== lastReply && !unfolded.has(`${chat?.id}:${node.dataset.index}`) && node.querySelector('.body').scrollHeight > COLLAPSE_PX);
-      for (const node of toFold) {
-        node.classList.add('collapsed');
-        const words = (node.dataset.raw.match(/\S+/g) || []).length;
-        node.append(el('button', { class: 'show-more-msg msg-act', text: `Show full reply · ${words.toLocaleString()} words`, dataset: { msgAct: 'more' } }));
-      }
+      // (round 16) a reply kept from the last redraw was measured then: only new ones are. The last few are measured
+      // now (they're on screen, the chat opens at its end); older ones when they come near the screen (foldWhenNear):
+      // measuring them all forced a layout of every reply, even the ones content-visibility lets the browser skip.
+      const fresh = !autoFold ? [] : [...v.list.querySelectorAll('.msg.assistant:not(.streaming)')]
+        .filter((node) => !measured.has(node) && (measured.add(node), node !== lastReply && !unfolded.has(`${chat?.id}:${node.dataset.index}`)));
+      const now = fresh.splice(-FOLD_NOW);
+      foldIfLong(now, now.map((node) => node.querySelector('.body').scrollHeight));
+      for (const node of fresh) foldWhenNear(v, node);
+      // nodes that left the list stop being watched (measured again if they come back)
+      for (const node of v.foldWatch || []) if (!node.isConnected) { v.foldIO.unobserve(node); v.foldWatch.delete(node); measured.delete(node); }
       const newSep = v.list.querySelector('.new-sep');
       if (keepScroll && !(wasNearBottom && v.follow !== false)) v.list.scrollTop = prevScroll;
       else if (newSep && !keepScroll) v.list.scrollTop = Math.max(0, newSep.offsetTop - 40);
@@ -843,7 +924,7 @@ const Native = (() => {
     if (!chat || !visibleNow(chat.agentId) || !H.unreadChats.has(chatId)) return;
     H.unreadChats.delete(chatId);
     setTimeout(() => unreadFrom.delete(chatId), 1500); // the "New" line stays for this render
-    Panel.render();
+    (Panel.soon || Panel.render)(); // (round 16) coalesced with the save that usually follows
   }
   // A docked chat's tool opened later (or the window came back): replies now on screen count as seen.
   // (on 'hearth:view' from start.js, focus and visibility instead of a check every 1.5 s)
@@ -901,15 +982,42 @@ const Native = (() => {
   // question / second-opinion cards (kept as the same DOM nodes so typed answers survive re-renders).
   // The growing reply is re-rendered as Markdown on each paint, but only the blocks that changed are swapped in:
   // finished paragraphs above keep their DOM, so a long reply isn't re-laid out from the top 16× a second.
-  function patchHTML(body, html) {
+  // (round 16, chatperf) nodes from `start` on become `html`; the ones that are already equal stay
+  const mdLive = (s) => (window.renderMarkdownLive || window.renderMarkdown)(s); // not cached: the growing text never repeats
+  function patchHTML(body, html, start = 0) {
     const tpl = document.createElement('template');
     tpl.innerHTML = html;
     const next = [...tpl.content.childNodes];
     const cur = body.childNodes;
     let i = 0;
-    while (i < cur.length && i < next.length && cur[i].isEqualNode(next[i])) i += 1;
-    while (cur.length > i) body.lastChild.remove();
+    while (start + i < cur.length && i < next.length && cur[start + i].isEqualNode(next[i])) i += 1;
+    while (cur.length > start + i) body.lastChild.remove();
     body.append(...next.slice(i));
+    return next.length;
+  }
+  // The finished part of a streaming reply is frozen: everything up to its last blank line outside a code fence or
+  // a $$ formula renders once and its DOM is never compared again; only the paragraph still being written is parsed
+  // and patched on each paint (it was the whole reply, 16× a second: a long answer cost more and more per piece).
+  // Markdown blocks never span a blank line here (md.js), so the parts render exactly like the whole.
+  const FENCE = /^\s*```/gm;
+  function paintBody(p, body, text) {
+    if (!text && body.childNodes.length === 1 && body.firstChild.classList?.contains('typing')) return; // still waiting: the dots stay
+    let st = p.md;
+    if (!st || st.body !== body || !text.startsWith(st.src)) { st = p.md = { body, src: '', count: 0 }; body.replaceChildren(); }
+    // inside an open code block: the blank line before it (the block itself stays live until it closes)
+    let cut = text.lastIndexOf('\n\n');
+    for (let tries = 0; tries < 2 && cut > st.src.length; tries += 1) {
+      const seg = text.slice(st.src.length, cut);
+      const fences = [...seg.matchAll(FENCE)];
+      if (fences.length % 2 === 0 && (seg.split('$$').length - 1) % 2 === 0) {
+        st.count += patchHTML(body, mdLive(seg), st.count);
+        st.src = text.slice(0, cut);
+        break;
+      }
+      cut = fences.length % 2 ? text.lastIndexOf('\n\n', st.src.length + fences.at(-1).index) : -1;
+    }
+    const tail = text.slice(st.src.length);
+    patchHTML(body, tail.trim() ? mdLive(tail) : '', st.count);
   }
   function paintStreaming(p) {
     const body = p.el.querySelector('.body');
@@ -933,8 +1041,9 @@ const Native = (() => {
       const using = `${p.tools.length > 1 ? `Step ${p.tools.length} · ` : ''}Using ${toolLabel(p.tools.at(-1))}…`;
       if (chips.textContent !== using) { chips.textContent = using; chips.title = p.tools.map(toolLabel).join('\n'); }
     }
-    patchHTML(body, text ? renderMarkdown(text) : '');
-    if (!text && !p.cards.some((c) => c.classList.contains('ask-card') && !c.classList.contains('answered'))) body.insertAdjacentHTML('beforeend', '<span class="typing"><i></i><i></i><i></i></span>');
+    paintBody(p, body, text);
+    const dots = !text && !p.cards.some((c) => c.classList.contains('ask-card') && !c.classList.contains('answered'));
+    if (dots && !body.lastChild?.classList?.contains('typing')) body.insertAdjacentHTML('beforeend', '<span class="typing"><i></i><i></i><i></i></span>');
     let host = p.el.querySelector('.live-cards');
     if (!host) { host = el('div', { class: 'live-cards' }); p.el.append(host); }
     for (const c of p.cards) if (c.parentElement !== host) host.append(c);
@@ -977,7 +1086,7 @@ const Native = (() => {
   }
   function showCard(sh) {
     const url = `file:///${String(sh.path).replace(/\\/g, '/')}`;
-    return el('figure', { class: 'show-card' }, el('img', { src: url, alt: sh.caption, title: 'Click to open full size', on: { click: () => window.hub.fs.open(sh.path) } }), el('figcaption', { text: sh.caption }));
+    return el('figure', { class: 'show-card' }, el('img', { src: url, alt: sh.caption, loading: 'lazy', decoding: 'async', title: 'Click to open full size', on: { click: () => window.hub.fs.open(sh.path) } }), el('figcaption', { text: sh.caption }));
   }
   function opinionCard(op) {
     return el('div', { class: 'opinion-card' }, el('div', { class: 'opinion-head', text: `🔎 ${op.from}'s second opinion${op.q ? `: ${op.q.slice(0, 80)}${op.q.length > 80 ? '…' : ''}` : ''}` }),
@@ -1052,7 +1161,7 @@ const Native = (() => {
     window.hub.saveChat(chat);
     const summary = { id: chat.id, agentId: chat.agentId, title: chat.title, updatedAt: chat.updatedAt, pinned: Boolean(chat.pinned), model: chat.model, ...(chat.engine ? { engine: chat.engine } : {}) };
     H.chats = [summary, ...H.chats.filter((c) => c.id !== chat.id)];
-    Panel.render();
+    (Panel.soon || Panel.render)(); // (round 16) one list redraw for a burst of saves (send, reply, things found…)
   }
 
   function titleFrom(text) {
@@ -1813,7 +1922,8 @@ const Native = (() => {
     secondOpinion,
     isAgentBusy: (agentId) => Boolean(pendingFor(agentId)),
     hasView: (agentId) => views.has(agentId),
-    mount, refresh: render, focus, send, open, newChat, rename, remove, togglePin, setDraft, continueWith, copyLastReply, foldAll,
+    // other files refresh after changing something messages draw from: every message is drawn again (see nodeFor)
+    mount, refresh: (agentId, opts = {}) => { gen += 1; return render(agentId, opts); }, focus, send, open, newChat, rename, remove, togglePin, setDraft, continueWith, copyLastReply, foldAll,
     attachPaths: async (agentId, paths) => { for (const p of paths) await addPath(agentId, p); },
     isBusy: (chatId) => pending.has(chatId),
     note,

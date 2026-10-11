@@ -3,7 +3,9 @@
 // task lists), quotes and callouts (> [!NOTE]), tables with column alignment, fenced code, ==highlights==,
 // [[keys]], and light math ($x^2$, $$…$$ shown as formulas with superscripts / subscripts / Greek letters).
 (() => {
-  const escape = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }; // (round 16) one table, not one per character
+  const ESC_RE = /[&<>"']/;
+  const escape = (s) => (ESC_RE.test(s) ? s.replace(/[&<>"']/g, (c) => ESC[c]) : s);
 
   // Math-light: no TeX engine, just readable formulas.
   const GREEK = { alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', theta: 'θ', lambda: 'λ', mu: 'μ', pi: 'π', sigma: 'σ', tau: 'τ', phi: 'φ', omega: 'ω', Delta: 'Δ', Sigma: 'Σ', Omega: 'Ω', infty: '∞', cdot: '·', times: '×', pm: '±', leq: '≤', geq: '≥', neq: '≠', approx: '≈', to: '→', sqrt: '√', sum: '∑', int: '∫', deg: '°' };
@@ -33,7 +35,7 @@
       .replace(/==([^=\s][^=]*?)==/g, '<mark>$1</mark>')
       .replace(/\[\[([^\]]{1,24})\]\]/g, '<kbd>$1</kbd>')
       // pictures from the web (https only), shown small; click opens them in the browser
-      .replace(/!\[([^\]]*)\]\((https:\/\/[^)\s]+)\)/g, '<img class="md-img" src="$2" alt="$1" title="$1" loading="lazy">')
+      .replace(/!\[([^\]]*)\]\((https:\/\/[^)\s]+)\)/g, '<img class="md-img" src="$2" alt="$1" title="$1" loading="lazy" decoding="async">')
       .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank">$1</a>')
       .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank">$2</a>');
     return s.replace(/\u0003(\d+)\u0003/g, (_, i) => `<span class="math">${math(maths[i])}</span>`)
@@ -163,4 +165,7 @@
     return html;
   }
   window.renderMarkdown = renderMarkdownCached;
+  // (round 16) the streaming reply's parts: never the same text twice, so they skip the cache (it used to fill with
+  // every intermediate state of a growing reply, ~16 a second, pushing out the finished messages it is for)
+  window.renderMarkdownLive = renderMarkdown;
 })();

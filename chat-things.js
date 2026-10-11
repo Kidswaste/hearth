@@ -112,7 +112,7 @@ const ChatThings = (() => {
   }
   const clock = (t, fps) => `f ${Math.floor(t * fps + 1e-4)} · ${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}`;
   function thumbOf(t) {
-    if (t.path && (t.k === 'image' || t.k === 'frame')) return el('img', { src: fileUrl(t.path), alt: '', loading: 'lazy', draggable: false, on: { error: (e) => e.target.closest('.thing')?.classList.add('thing-missing') } });
+    if (t.path && (t.k === 'image' || t.k === 'frame')) return el('img', { src: fileUrl(t.path), alt: '', loading: 'lazy', decoding: 'async', draggable: false, on: { error: (e) => e.target.closest('.thing')?.classList.add('thing-missing') } });
     if (t.path && t.k === 'video') {
       const v = el('video', { muted: true, loop: true, playsInline: true, preload: 'none', dataset: { src: fileUrl(t.path) }, draggable: false });
       v.addEventListener('error', () => v.closest('.thing')?.classList.add('thing-missing'));

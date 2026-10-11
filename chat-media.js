@@ -67,12 +67,34 @@ const ChatMedia = (() => {
   }
   // the reply cards' own menu: send to the board / editor / Lab / another chat, picture tools, copy the path…
   function more(t, r) { if (typeof ChatThings !== 'undefined' && ChatThings.menu) ChatThings.menu(t, { agentId: H.activeId, chatId: H.activeChat?.[H.activeId] }, r); else window.hub.fs.reveal(t.path); }
+  // (round 16, chatperf) a video in a reply loads only when it comes near the screen (it used to read every video's
+  // header as soon as the chat opened, even 200 messages up) and pauses when you scroll it out of view; pictures
+  // decode off the main thread, and once their size is known their box is reserved (no jump as you scroll back)
+  const ratios = new Map(); // path -> width / height, this session
+  let io = null;
+  function watch(media) {
+    io ||= new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        const m = e.target;
+        if (!m.isConnected) { io.unobserve(m); continue; }
+        if (e.isIntersecting && m.dataset.src) { m.src = m.dataset.src; delete m.dataset.src; m.preload = 'metadata'; }
+        else if (!e.isIntersecting && !m.paused) m.pause();
+      }
+    }, { rootMargin: '600px 0px' });
+    io.observe(media);
+  }
   function heroEl(t) {
     const p = t.path;
     const vid = t.k === 'video';
     const media = vid
-      ? el('video', { src: fileUrl(p), controls: true, preload: 'metadata', playsInline: true, loop: true, class: 'cm-media' })
-      : el('img', { src: fileUrl(p), alt: t.name || '', loading: 'lazy', class: 'cm-media', title: 'Click: full size', on: { click: () => open(p) } });
+      ? el('video', { controls: true, preload: 'none', playsInline: true, loop: true, class: 'cm-media', dataset: { src: fileUrl(p) } })
+      : el('img', { src: fileUrl(p), alt: t.name || '', loading: 'lazy', decoding: 'async', class: 'cm-media', title: 'Click: full size', on: { click: () => open(p) } });
+    if (ratios.has(p)) media.style.aspectRatio = String(ratios.get(p));
+    media.addEventListener(vid ? 'loadedmetadata' : 'load', () => {
+      const w = vid ? media.videoWidth : media.naturalWidth; const h = vid ? media.videoHeight : media.naturalHeight;
+      if (w && h && !ratios.has(p)) { ratios.set(p, Math.round((w / h) * 1000) / 1000); if (ratios.size > 300) ratios.delete(ratios.keys().next().value); }
+    }, { once: true });
+    if (vid) watch(media);
     const fig = el('figure', { class: `cm-hero${vid ? ' vid' : ''}`, dataset: { key: `${t.k}:${p}` } }, media,
       el('figcaption', {},
         el('span', { class: 'cm-name', text: t.name || base(p), title: p }),

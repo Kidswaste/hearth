@@ -86,3 +86,12 @@
 .up-dlg .up-list li { display: flex; gap: 8px; justify-content: space-between; padding: 2px 0; }
 .up-dlg .up-subj { flex: 1; min-width: 0; }
 .up-dlg .up-when { color: var(--muted, #8a8f98); font-size: 12px; white-space: nowrap; }
+
+/* ---------- (round 16, chatperf) long chats stay light ---------- */
+/* Messages out of view skip style, layout and paint until you scroll to them (the browser keeps their last size, so
+   the scrollbar doesn't jump). The last 8 children are never skipped: a chat opens exactly at its bottom, and the
+   live reply plus what's just above it are always real. Messages with corner marks keep painting outside their box. */
+.messages > .msg:not(.streaming):not(.marked):nth-last-child(n+9) { content-visibility: auto; contain-intrinsic-size: auto 180px; }
+.messages > .day-sep:nth-last-child(n+9) { content-visibility: auto; contain-intrinsic-size: auto 24px; }
+/* the chats list: in a long group, rows past the first dozen skip layout and paint while scrolled out of view */
+#chat-groups .group > .item:not(.active):nth-child(n+14) { content-visibility: auto; contain-intrinsic-size: auto 28px; }
