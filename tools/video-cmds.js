@@ -449,6 +449,23 @@ const VideoCmds = (() => {
       return ok ? `Comp **${preset.name}** (${preset.w}×${preset.h}) sent to After Effects.` : null;
     },
   });
+  // (round 16) the media cache (thumbnails, strips, sound made once by ffmpeg, kept on disk) and how smoothly the player runs
+  cmd({ name: 'video-cache', aliases: ['video-perf'], desc: 'Video Review speed: the picture / sound cache ffmpeg made (size, hits), dropped frames of the player; clear empties the cache', args: '[stats|clear]', examples: ['/video-cache', '/video-cache clear'],
+    complete: (a) => opts([{ value: 'stats', hint: 'cache size, dropped frames' }, { value: 'clear', hint: 'empty the cache (made again when needed)' }], a),
+    run: async (args) => {
+      await R().ensureMounted();
+      const m = R().media;
+      if (words(args)[0] === 'clear') { const n = await m.clear(); return `Video cache emptied (${n} file${n === 1 ? '' : 's'}); pictures and waveforms are made again as you open videos.`; }
+      const st = await m.stats();
+      const d = st.disk;
+      const q = document.querySelector('.vr-video.vr-a')?.getVideoPlaybackQuality?.();
+      const mb = (b) => `${(b / 1048576).toFixed(1)} MB`;
+      return [
+        st.ffmpeg ? `**Cache** ${d ? `${d.files} files · ${mb(d.bytes)} of ${mb(d.cap)} · made ${d.made} · read back ${d.hits}${d.failed ? ` · failed ${d.failed}` : ''}${d.running ? ` · ${d.running} making now` : ''}` : 'unavailable'}` : '**Cache** off: ffmpeg isn\'t installed, so pictures are decoded here (/ffmpeg install)',
+        `**This session** ${st.sprites} picture strips from ffmpeg · ${st.decoded} decoded here · ${st.analyses} sound analyses (${st.analysisFromDisk} read back)${st.released ? ` · decoders let go while hidden ${st.released}×` : ''}`,
+        q ? `**Player** ${q.totalVideoFrames} frames shown · ${q.droppedVideoFrames} dropped (${q.totalVideoFrames ? ((q.droppedVideoFrames / q.totalVideoFrames) * 100).toFixed(1) : 0} %)` : null,
+      ].filter(Boolean).join('\n');
+    } });
   cmd({ name: 'video-keys', desc: 'Video Review keyboard shortcuts', run: async () => { await R().ensureMounted(); R().shortcutsHelp(); } });
   cmd({ name: 'video-status', desc: 'What\'s open in Video Review: file, time, frame, fps, loop, compare, notes', run: async () => { const r = await ready(); const s = r.status(); return `**${base(s.open)}** · ${s.resolution} ${s.format} · \`${s.timecode}\` (frame ${s.frame}) · ${s.fps} fps (${s.fpsSource})${s.bpm ? ` · ${s.bpm} bpm` : ''}${s.loop ? ` · loop ${s.loop.in}–${s.loop.out}s${s.loop.on ? '' : ' (off)'}` : ''}${s.comparingWith ? ` · B ${base(s.comparingWith)} (${s.compareMode})` : ''} · ${s.notes.filter((n) => !n.resolved).length} open notes`; } });
 

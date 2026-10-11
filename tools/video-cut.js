@@ -198,6 +198,23 @@ const VideoCut = (() => {
     if (play) startPlay(); else { P.playing = false; placeHead(); paintPlay(); emit('frame', { T: P.T }); }
   }
   function refreshPicture() { if (st.on) seek(P.T, { play: P.playing }); }
+  // (round 16) scrubbing the track: at most one seek per frame, and none while the decoder still works on the last
+  // one (it then goes straight to the newest position); the playhead and the time follow the pointer meanwhile
+  function scrubber() {
+    let want = null; let busy = false; let raf = 0;
+    const go = async () => {
+      raf = 0;
+      if (want == null || busy) return;
+      busy = true; const t = want; want = null;
+      try { await Promise.race([seek(t, { play: false }), new Promise((r) => setTimeout(r, 250))]); } finally { busy = false; }
+      if (want != null && !raf) raf = requestAnimationFrame(go);
+    };
+    return (t) => {
+      want = t;
+      if (busy && !richOn) { P.T = clamp(t, 0, total()); placeHead(); paintTime(); }
+      if (!raf && !busy) raf = requestAnimationFrame(go);
+    };
+  }
   // ----- rich edits: the compositor plays and draws (tools/video-comp.js) -----
   let lastCheck = null; // what the decoders showed at the last exact render (frame checks)
   async function seekRich(T, { play = false } = {}) {
@@ -947,7 +964,8 @@ const VideoCut = (() => {
     if (h.zone === 'ruler' || h.zone === 'empty' || h.zone === 'lane') {
       pause(); seek(scrubT(h.T, e), { play: false });
       if (h.zone !== 'ruler') { st.sel.clear(); paintHead(); draw(); }
-      const mv = (ev) => seek(scrubT(hit(ev).T, ev), { play: false });
+      const scrub = scrubber();
+      const mv = (ev) => scrub(scrubT(hit(ev).T, ev));
       refs.canvas.addEventListener('pointermove', mv);
       refs.canvas.addEventListener('pointerup', () => { refs.canvas.removeEventListener('pointermove', mv); st.snapAt = null; draw(); }, { once: true });
       return;

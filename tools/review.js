@@ -1123,9 +1123,19 @@ const Review = (() => {
         if (mode === 'new') { S.loop = { a: t0, b: t0, on: true }; }
       } else {
         pause(); seek(t0);
-        // one seek per frame however fast the pointer events come (each seek starts a decode)
-        let want = null; let raf = 0;
-        mv = (ev) => { want = timeAt(ev); if (!raf) raf = requestAnimationFrame(() => { raf = 0; if (want != null) seek(want); want = null; }); };
+        // one seek per frame however fast the pointer events come (each seek starts a decode), and (round 16) never a
+        // new seek while the last one is still decoding: the decoder works on the newest position only, instead of a
+        // pile of stale ones (the hover picture above shows where the pointer is meanwhile)
+        let want = null; let raf = 0; let busy = false;
+        const d0 = vid();
+        const go = () => {
+          if (want == null || busy) return;
+          busy = true; seek(want); want = null;
+          const done = () => { d0.removeEventListener('seeked', done); clearTimeout(tm); busy = false; if (want != null && !raf) raf = requestAnimationFrame(() => { raf = 0; go(); }); };
+          const tm = setTimeout(done, 250);
+          d0.addEventListener('seeked', done);
+        };
+        mv = (ev) => { want = timeAt(ev); if (!raf) raf = requestAnimationFrame(() => { raf = 0; go(); }); };
       }
       box.addEventListener('pointermove', mv);
       box.addEventListener('pointerup', () => {

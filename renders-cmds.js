@@ -4,7 +4,7 @@
 //   /renders socials               Reels / TikTok / Shorts 9:16 · Feed 4:5 · Square · YouTube 16:9, one after the other
 //   /renders presets               the presets with their sizes, frame rates and tips
 //   /renders pause | resume | cancel [n | all | last]   /renders retry [n] · again [n] (re-render, same settings)
-//   /renders open | reveal | copy | review | trash [n]  /renders history · clear [all] · parallel 1-3
+//   /renders open | reveal | copy | review | trash [n]  /renders history · clear [all] · parallel 1-3 · rush on|off
 // n is the number /renders shows (1 = the first in the list), "last" the newest finished one, or words of its name.
 (() => {
   const R = () => Renders;
@@ -13,7 +13,7 @@
     ['list', 'what renders now'], ['render', 'render <presets…> [seq | <file>]'], ['socials', 'all socials of the open video / sequence'], ['presets', 'sizes, frame rates, tips'],
     ['pause', 'pause [n|all]'], ['resume', 'resume [n|all]'], ['cancel', 'cancel [n|all]'], ['retry', 'retry [n]: a failed one again'], ['again', 'again [n]: re-render, same settings'],
     ['open', 'open [n]'], ['reveal', 'reveal [n]: in Finder / Explorer'], ['copy', 'copy [n]: its path'], ['review', 'review [n]: in Video Review'], ['trash', 'trash [n]: to the Trash'],
-    ['history', 'past renders'], ['clear', 'clear [all]: finished ones off the list'], ['parallel', 'parallel 1-3: renders at once'],
+    ['history', 'past renders'], ['clear', 'clear [all]: finished ones off the list'], ['parallel', 'parallel 1-3: renders at once'], ['rush', 'rush on|off: full-speed renders (default: below normal priority, the app stays smooth)'],
   ];
   // the numbered list: live jobs, this session's ended ones (newest first), then the history
   function items() {
@@ -102,13 +102,15 @@
       return sub === 'copy' ? `Copied: \`${j.output}\`` : `${sub === 'reveal' ? C().revealLabel(R().platform) : sub === 'review' ? 'Opened in Video Review' : 'Opened'}: ${C().base(j.output)}`;
     }
     if (sub === 'clear') { const n = R().clear({ all: /^all$/i.test(rest) }); return /^all$/i.test(rest) ? 'The list and the history are empty (the files stay where they are).' : `${n} finished render${n === 1 ? '' : 's'} off the list (the history keeps them).`; }
+    // (round 16) renders run below normal priority so Hearth stays smooth; rush gives them full priority
+    if (sub === 'rush') { const on = rest === 'off' ? false : rest === 'on' ? true : !store.get('renders.rush', false); store.set('renders.rush', on); return on ? 'Renders at full speed: ffmpeg gets normal priority (Hearth may feel heavier while one runs; it applies to the next render).' : 'Renders below normal priority: Hearth stays smooth while they run, idle cores still render.'; }
     if (sub === 'parallel') { const n = Math.max(1, Math.min(3, Number(rest) || 1)); store.set('renders.parallel', n); R().start(); return `${n} render${n === 1 ? '' : 's'} at once${n === 1 ? ' (the smoothest)' : ' (the app may feel heavier while they run)'}.`; }
     return `Unknown: ${sub}. ${SUBS.map(([s]) => s).join(' · ')}`;
   }
   function register() {
     if (typeof Commands === 'undefined' || Commands.get('renders')) return;
     Commands.register({
-      name: 'renders', aliases: ['rq', 'render-list'], area: 'Video', args: '[render <presets…> | socials | presets | pause|resume|cancel [n|all] | retry|again [n] | open|reveal|copy|review|trash [n] | history | clear | parallel n]',
+      name: 'renders', aliases: ['rq', 'render-list'], area: 'Video', args: '[render <presets…> | socials | presets | pause|resume|cancel [n|all] | retry|again [n] | open|reveal|copy|review|trash [n] | history | clear | parallel n | rush on|off]',
       desc: 'The render queue: everything Hearth renders, records or exports (progress, time left, pause / cancel / retry), output presets (Reels / TikTok / Shorts, YouTube, Square, Story, GIF, WebM, ProRes, audio) and the history',
       keywords: 'render queue export presets reels tiktok shorts youtube 4k square story gif webm prores master audio socials history reveal finder explorer',
       examples: ['/renders', '/renders render reels square', '/renders socials', '/renders render gif seq', '/renders pause all', '/renders reveal last'],
