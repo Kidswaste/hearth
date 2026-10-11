@@ -2,12 +2,20 @@ const { app, BrowserWindow, Menu, dialog, ipcMain, shell, session, desktopCaptur
 const fs = require('fs');
 const path = require('path');
 const store = require('./store');
-const engines = require('./engines');
-const importer = require('./importer');
+// (round 19, splash) modules the first screen doesn't need are required on their first use instead of before the window
+// opens (Electron's 'ready' waits for everything main.js does at load): the same object to every caller, made on demand
+function later(file, onLoad) {
+  let mod = null;
+  const get = () => { if (!mod) { mod = require(file); onLoad?.(mod); } return mod; };
+  return new Proxy({}, { get: (_t, k) => (k === 'loaded' ? Boolean(mod) : get()[k]), has: (_t, k) => k in get() }); // (.loaded: in yet? without loading it)
+}
+// the install check's results go to the window once the engines module is in (its first use registers this)
+const engines = later('./engines', (m) => { m.onInstalls((report, info) => send('engine:installs', { ...report, fixed: info })); });
+const importer = later('./importer');
 const appshell = require('./appshell');
 const fsapi = require('./fsapi');
 const portable = require('./portable');
-const nowplaying = require('./nowplaying');
+const nowplaying = later('./nowplaying', (m) => m.pace?.(bgmain.state())); // (Lab → live sound: "what's playing")
 const aemain = require('./aemain');
 const gamebridge = require('./gamebridge');
 const syncmain = require('./syncmain');
@@ -84,11 +92,16 @@ function openExternal(url) {
 
 const send = (channel, data) => win?.webContents.send(channel, data);
 
+// (round 19, splash) the window's own color before its first frame: the loading screen's (index.html #splash-css), so
+// no white or off-color frame ever shows; the window stays hidden until that first frame is drawn ('ready-to-show'),
+// or 0.25 s at most (a slow graphics start, software GL: the window still opens at once, in that same color)
+const SPLASH_BG = '#08090c';
+const SHOW_AT_MOST_MS = 250;
 function createWindow() {
-  const { config } = loadAll();
   const icon = appshell.ensureIcon();
   const state = appshell.loadWindowState();
   win = new BrowserWindow({
+    show: false,
     x: state.x,
     y: state.y,
     width: state.width || 1480,
@@ -98,7 +111,7 @@ function createWindow() {
     title: appshell.APP_NAME,
     icon,
     autoHideMenuBar: true,
-    backgroundColor: config?.theme?.background || '#0f1115',
+    backgroundColor: SPLASH_BG,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -107,9 +120,26 @@ function createWindow() {
       autoplayPolicy: 'no-user-gesture-required', // Three.js Lab plays audio inside its sandbox frame
     },
   });
-  if (state.maximized) win.maximize();
-  appshell.trackWindowState(win);
   win.loadFile(path.join(__dirname, 'index.html'));
+  // on screen with its first frame (maximize() shows a hidden window, so it waits for this moment too); what the first
+  // screen doesn't need (tray, downloads, the global hotkey, login item, spellcheck languages) is set up right after
+  let shown = false;
+  const showNow = () => {
+    if (shown || win.isDestroyed()) return;
+    shown = true;
+    clearTimeout(showTimer);
+    if (state.maximized) win.maximize(); else win.show();
+    setImmediate(afterShown);
+  };
+  const showTimer = setTimeout(showNow, SHOW_AT_MOST_MS);
+  win.once('ready-to-show', showNow);
+  const afterShown = () => {
+    if (win.isDestroyed()) return;
+    appshell.setupTray(win, icon, { send });
+    appshell.setupDownloads(send);
+    appshell.applySettings(win, settings());
+  };
+  appshell.trackWindowState(win);
   // Links clicked in native chats open in your normal browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
     openExternal(url);
@@ -135,10 +165,7 @@ function createWindow() {
   win.on('focus', () => { win.flashFrame(false); send('window:focus', true); });
   win.on('blur', () => send('window:focus', false));
 
-  appshell.setupTray(win, icon, { send });
   appshell.setupCloseToTray(win, settings);
-  appshell.setupDownloads(send);
-  appshell.applySettings(win, settings());
   bgmain.attach(win);
 }
 
@@ -170,28 +197,42 @@ app.on('web-contents-created', (_event, contents) => {
   });
 });
 
-ipcMain.handle('config:get', () => loadAll());
-ipcMain.handle('config:save', (_e, config) => {
+// (round 19, splash) the startup sync pass (≤ 1.5 s, only with sync on) used to keep the window from opening; now the
+// window opens at once and only reads / writes of your data wait for the pass, which runs while the page loads
+let syncGate = null; // the startup pass, until it's done
+const waiting = new Map(); // kv name → since (shown by the splash when the start is slow)
+const afterSync = (fn) => (...a) => (syncGate ? syncGate.then(() => fn(...a)) : fn(...a));
+ipcMain.handle('boot:status', () => ({
+  syncing: syncGate ? syncmain.status()?.label || 'your cloud folder' : null,
+  reads: [...waiting].filter(([, t]) => Date.now() - t > 300).map(([k]) => k),
+}));
+ipcMain.handle('config:get', afterSync(() => loadAll()));
+ipcMain.handle('config:save', afterSync((_e, config) => {
   config = syncmain.guardConfig(config); // a config that just arrived from another computer is merged, not undone
   fs.writeFileSync(CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`);
   cfgCache = null;
   return appshell.applySettings(win, config.settings || {});
-});
+}));
 ipcMain.handle('open-file', (_e, which) => shell.openPath(which === 'theme' ? THEME_PATH : CONFIG_PATH));
 ipcMain.handle('open-external', (_e, url) => openExternal(url));
 ipcMain.handle('open-data-folder', () => shell.openPath(store.DATA_DIR));
 
-ipcMain.handle('chats:list', () => store.listChats());
-ipcMain.handle('chats:get', (_e, id) => store.getChat(id));
-ipcMain.handle('chats:save', (_e, chat) => store.saveChat(chat));
-ipcMain.handle('chats:delete', (_e, id) => store.deleteChat(id));
+ipcMain.handle('chats:list', afterSync(() => store.listChats()));
+ipcMain.handle('chats:get', afterSync((_e, id) => store.getChat(id)));
+ipcMain.handle('chats:save', afterSync((_e, chat) => store.saveChat(chat)));
+ipcMain.handle('chats:delete', afterSync((_e, id) => store.deleteChat(id)));
 ipcMain.handle('chats:searchText', (_e, query) => store.searchChats(query));
 ipcMain.handle('chats:trash', () => store.listTrash());
-ipcMain.handle('chats:restore', (_e, id) => store.restoreChat(id));
-ipcMain.handle('history:get', () => store.getHistory());
-ipcMain.handle('history:save', (_e, history) => store.saveHistory(history));
-ipcMain.handle('kv:get', (_e, name, fallback) => store.getKV(name, fallback));
-ipcMain.handle('kv:set', (_e, name, value) => store.setKV(name, value));
+ipcMain.handle('chats:restore', afterSync((_e, id) => store.restoreChat(id)));
+ipcMain.handle('history:get', afterSync(() => store.getHistory()));
+ipcMain.handle('history:save', afterSync((_e, history) => store.saveHistory(history)));
+ipcMain.handle('kv:get', (_e, name, fallback) => {
+  if (!syncGate) return store.getKV(name, fallback);
+  const k = String(name);
+  waiting.set(k, Date.now());
+  return syncGate.then(() => { waiting.delete(k); return store.getKV(name, fallback); });
+});
+ipcMain.handle('kv:set', afterSync((_e, name, value) => store.setKV(name, value)));
 
 // The renderer names the agent; engine, model and prompt are always read from config.json here.
 // A one-off question to an agent (second opinions): returns { ok, text } or { ok: false, error }.
@@ -219,8 +260,8 @@ ipcMain.handle('usage:get', () => store.getUsage());
 const configAgents = () => { try { return readConfig().agents || []; } catch { return []; } };
 ipcMain.handle('usage:stats', () => store.getTokenStats(configAgents()));
 ipcMain.handle('usage:rebuild', () => store.rebuildTokenStats(configAgents()));
-ipcMain.handle('memory:get', () => store.getMemory());
-ipcMain.handle('memory:save', (_e, memory) => store.saveMemory(memory));
+ipcMain.handle('memory:get', afterSync(() => store.getMemory()));
+ipcMain.handle('memory:save', afterSync((_e, memory) => store.saveMemory(memory)));
 // Claude's connected apps with tool counts, for the agent editor.
 function describeConnectors(cache) {
   const claude = cache.claude;
@@ -297,7 +338,6 @@ ipcMain.handle('tools:installFfmpeg', () => {
   return { ...I.runInTerminal({ title: 'Install ffmpeg for Hearth', lines, marker }), marker, command: lines.join('\n') };
 });
 ipcMain.handle('engine:fix', (_e, engine, action) => { engines.setEnginePaths(settings().enginePaths); return engines.fix(String(engine), String(action || 'update')); });
-engines.onInstalls((report, info) => send('engine:installs', { ...report, fixed: info }));
 ipcMain.handle('engine:status', () => { engines.setEnginePaths(settings().enginePaths); return engines.status(); });
 
 // ---------- window & desktop ----------
@@ -393,7 +433,7 @@ ipcMain.handle('live:start', async (_e, kind) => {
 ipcMain.handle('np:start', () => nowplaying.start((info) => { if (win && !win.isDestroyed()) win.webContents.send('np:update', info); }));
 ipcMain.handle('np:stop', () => nowplaying.stop());
 ipcMain.handle('np:control', (_e, cmd) => nowplaying.control(String(cmd)));
-app.on('before-quit', () => { nowplaying.stop(); syncmain.quit(); });
+app.on('before-quit', () => { if (nowplaying.loaded) nowplaying.stop(); syncmain.quit(); });
 ipcMain.on('stage:fullscreen', () => { if (stageWin && !stageWin.isDestroyed()) stageWin.setFullScreen(!stageWin.isFullScreen()); });
 
 // (round 16) A main-process module only some features use loads on its first IPC call: its channels are read from its
@@ -448,12 +488,12 @@ for (const file of [CONFIG_PATH, THEME_PATH]) {
   fs.watchFile(file, { interval: 5000 }, () => { if (!w) arm(); soon(); });
 }
 bgmain.register(() => win);
-bgmain.subscribe((st) => { syncmain.pace?.(st); nowplaying.pace?.(st); appsmain.pace?.(st); });
-syncmain.setBusy?.(() => engines.busy?.() || 0);
+bgmain.subscribe((st) => { syncmain.pace?.(st); if (nowplaying.loaded) nowplaying.pace(st); appsmain.pace?.(st); });
+syncmain.setBusy?.(() => (engines.loaded ? engines.busy?.() || 0 : 0)); // (no replies can run before the engines module is in)
 // /background (sync.js): what Hearth is doing in the background right now, and what each of its processes costs
 ipcMain.handle('bg:state', () => {
   const procs = app.getAppMetrics().map((m) => ({ type: m.type, name: m.name || m.serviceName || '', cpu: Math.round((m.cpu?.percentCPUUsage || 0) * 10) / 10, mb: Math.round((m.memory?.workingSetSize || 0) / 1024) }));
-  return { ...bgmain.state(), calmMs: bgmain.CALM_MS, sync: syncmain._pace?.() || null, replies: engines.busy?.() || 0, procs };
+  return { ...bgmain.state(), calmMs: bgmain.CALM_MS, sync: syncmain._pace?.() || null, replies: engines.loaded ? engines.busy?.() || 0 : 0, procs };
 });
 
 app.whenReady().then(async () => {
@@ -473,7 +513,8 @@ app.whenReady().then(async () => {
     ]));
     try { app.dock?.setIcon(appshell.ensureIcon()); } catch { /* the icon is optional */ }
   }
-  await syncmain.ready().catch(() => {}); // sync on: what the other computer did arrives before the window reads it (≤ 1.5 s)
   createWindow();
+  // sync on: what the other computer did arrives before the window reads your data (≤ 1.5 s; see afterSync above)
+  syncGate = syncmain.ready().catch(() => {}).then(() => { syncGate = null; });
 });
 app.on('window-all-closed', () => app.quit());
