@@ -152,10 +152,63 @@ const Splash = (() => {
     };
     addEventListener('error', onErr);
     addEventListener('unhandledrejection', onErr);
+    addEventListener('hearth:ready', () => { removeEventListener('error', onErr); removeEventListener('unhandledrejection', onErr); }, { once: true });
     setTimeout(() => finish(), GIVE_UP_MS);
   } else {
     addEventListener('hearth:ready', featuresLine, { once: true });
   }
+
+  // ---------- /startup: how long this start took, step by step (and the last few starts) ----------
+  const HIST = 'splash.starts';
+  const fmt = (ms) => (ms == null || !Number.isFinite(ms) ? '–' : ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${Math.round(ms)} ms`);
+  async function timings() {
+    let main = null;
+    try { main = await window.hub?.bootStatus?.(); } catch { /* old main.js */ }
+    const t = main?.times || {};
+    const off = t.wall0 ? performance.timeOrigin - t.wall0 : null; // this page's clock → ms since the app launched
+    const at = (k) => (marks[k] == null || off == null ? null : marks[k] + off);
+    const reloaded = off != null && t.shown != null && off > t.shown + 1500; // the window was reloaded since the launch
+    return { t, at, reloaded, syncOn: Boolean(main?.syncOn) };
+  }
+  function remember({ t, at, reloaded }) {
+    if (reloaded || !t.wall0) return;
+    try {
+      const h = JSON.parse(localStorage.getItem(HIST) || '[]').filter((x) => x && x.launch !== t.wall0);
+      h.push({ launch: Math.round(t.wall0), shown: t.shown ?? null, ready: Math.round(at('ready') ?? 0) || null, features: Math.round(at('features') ?? 0) || null, sync: t.syncMs ?? null });
+      localStorage.setItem(HIST, JSON.stringify(h.slice(-12)));
+    } catch { /* no storage: /startup still shows this start */ }
+  }
+  addEventListener('hearth:ready', () => {
+    const save = () => timings().then(remember).catch(() => {});
+    if (marks.features != null) save(); else addEventListener('hearth:lazy', function on() { if (marks.features == null) return; removeEventListener('hearth:lazy', on); save(); });
+  }, { once: true });
+  async function report() {
+    const r = await timings();
+    const { t, at } = r;
+    const steps = [['app ready', t.appReady], ['window made', t.window], ['first frame (the loading screen)', t.firstFrame], ['on screen', t.shown],
+      ['scripts in', at('shell')], ['chats read', at('chats')], ['first screen ready', at('ready')], ['every feature loaded', at('features')]];
+    const lines = [`**This start** (from launch${r.reloaded ? '; the window was reloaded since, so the page steps are from the reload' : ''}):`,
+      steps.filter(([, v]) => v != null).sort((a, b) => a[1] - b[1]).map(([k, v]) => `${k} ${fmt(v)}`).join(' → ')];
+    lines.push(r.syncOn ? `Sync pass at launch: ${fmt(t.syncMs)} (your data waited for it; the window didn't)` : 'Sync at launch: off');
+    if (err) lines.push(`A start error was shown: ${err}`);
+    let h = [];
+    try { h = JSON.parse(localStorage.getItem(HIST) || '[]'); } catch { /* none */ }
+    if (h.length > 1) {
+      const med = (k) => { const xs = h.map((x) => x[k]).filter(Number.isFinite).sort((a, b) => a - b); return xs.length ? xs[Math.floor((xs.length - 1) / 2)] : null; };
+      lines.push(`**Last ${h.length} starts**, typical: on screen ${fmt(med('shown'))} · first screen ${fmt(med('ready'))} · every feature ${fmt(med('features'))}`);
+    }
+    return lines.join('\n');
+  }
+  addEventListener('DOMContentLoaded', () => {
+    if (typeof Commands !== 'undefined' && !Commands.get('startup')) {
+      Commands.register({
+        name: 'startup', aliases: ['boot-time'], area: 'App', keywords: 'loading screen splash launch slow start open time',
+        desc: 'How long Hearth took to open, step by step (window, loading screen, chats, first screen, features)',
+        run: () => report(),
+      });
+    }
+    if (typeof AppUI !== 'undefined') AppUI.addAction?.('Startup: how long Hearth took to open', () => Commands.exec('/startup'));
+  }, { once: true });
 
   return {
     step, track, finish: () => finish(true),

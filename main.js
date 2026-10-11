@@ -40,6 +40,9 @@ const ALLOWED_PERMISSIONS = new Set(['clipboard-sanitized-write', 'clipboard-rea
 const HUB_KEYS = new Set(['1', '2', '3', '4', '5', '6', '7', '8', '9', 'g', 'r', ',', 'b', 'n', '\\', 'k', 'f', '/', '=', '+', '-', '0', 'tab', 'j', ';']);
 
 let win;
+// (round 19, splash) when this start reached each step, in ms since launch (/startup shows them; boot:status)
+const bootTimes = { wall0: Date.now() - performance.now() };
+const bootMark = (k) => { if (bootTimes[k] == null) bootTimes[k] = Math.round(performance.now()); };
 
 // A second launch just brings the existing window forward.
 if (!app.requestSingleInstanceLock()) {
@@ -120,6 +123,7 @@ function createWindow() {
       autoplayPolicy: 'no-user-gesture-required', // Three.js Lab plays audio inside its sandbox frame
     },
   });
+  bootMark('window');
   win.loadFile(path.join(__dirname, 'index.html'));
   // on screen with its first frame (maximize() shows a hidden window, so it waits for this moment too); what the first
   // screen doesn't need (tray, downloads, the global hotkey, login item, spellcheck languages) is set up right after
@@ -129,10 +133,11 @@ function createWindow() {
     shown = true;
     clearTimeout(showTimer);
     if (state.maximized) win.maximize(); else win.show();
+    bootMark('shown');
     setImmediate(afterShown);
   };
   const showTimer = setTimeout(showNow, SHOW_AT_MOST_MS);
-  win.once('ready-to-show', showNow);
+  win.once('ready-to-show', () => { bootMark('firstFrame'); showNow(); });
   const afterShown = () => {
     if (win.isDestroyed()) return;
     appshell.setupTray(win, icon, { send });
@@ -203,6 +208,7 @@ let syncGate = null; // the startup pass, until it's done
 const waiting = new Map(); // kv name → since (shown by the splash when the start is slow)
 const afterSync = (fn) => (...a) => (syncGate ? syncGate.then(() => fn(...a)) : fn(...a));
 ipcMain.handle('boot:status', () => ({
+  times: bootTimes, syncOn: Boolean(syncmain.status()?.on),
   syncing: syncGate ? syncmain.status()?.label || 'your cloud folder' : null,
   reads: [...waiting].filter(([, t]) => Date.now() - t > 300).map(([k]) => k),
 }));
@@ -497,6 +503,7 @@ ipcMain.handle('bg:state', () => {
 });
 
 app.whenReady().then(async () => {
+  bootMark('appReady');
   // data moved here from another computer (or folder): point saved file locations at the new data folder
   try { const r = portable.fixMovedPaths(); if (r.moved) console.log(`Hearth: data moved from ${r.from}, fixed ${r.changed} paths in ${r.files} files`); } catch (err) { console.error('fixMovedPaths', err); }
   // "System sound" in the Lab: the sound of the whole computer (Windows), without a picker
@@ -515,6 +522,7 @@ app.whenReady().then(async () => {
   }
   createWindow();
   // sync on: what the other computer did arrives before the window reads your data (≤ 1.5 s; see afterSync above)
-  syncGate = syncmain.ready().catch(() => {}).then(() => { syncGate = null; });
+  const syncFrom = performance.now();
+  syncGate = syncmain.ready().catch(() => {}).then(() => { syncGate = null; bootTimes.syncMs = Math.round(performance.now() - syncFrom); });
 });
 app.on('window-all-closed', () => app.quit());

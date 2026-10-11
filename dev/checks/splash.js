@@ -18,7 +18,12 @@ await until(() => Lazy.state().filter((g) => g.tier === 'soon').every((g) => g.s
 await sleep(600);
 check('features milestone + line gone', Splash.state().marks.features >= m.ready && !document.getElementById('boot-line'), JSON.stringify(Splash.state().marks));
 const bs = await window.hub.bootStatus();
-check('boot:status answers', bs && bs.syncing === null && Array.isArray(bs.reads), JSON.stringify(bs));
+check('boot:status answers', bs && bs.syncing === null && Array.isArray(bs.reads) && bs.times?.appReady > 0 && bs.times.window >= bs.times.appReady && bs.times.shown > 0, JSON.stringify(bs));
+// /startup (and its palette line): the steps of this start
+let said = '';
+await Commands.tryRun('/startup', H.claudeAgent().id, null, { say: (t) => { said += t; } });
+check('/startup lists the steps', /This start/.test(said) && /first screen ready/.test(said) && /on screen/.test(said), said);
+check('/startup palette line', AppUI.actions().some((a) => /^Startup: how long/.test(a.label)));
 check('engine status arrived', Object.keys(H.engineStatus || {}).length > 0, JSON.stringify(H.engineStatus));
 const links = () => [...document.querySelectorAll('link[rel=stylesheet]')].map((l) => l.getAttribute('href'));
 const L = links();
