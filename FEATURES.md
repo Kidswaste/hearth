@@ -637,3 +637,9 @@ One searchable **FX picker** in the Three.js Lab (**X**, the Layers **＋ Layer*
 - ✓ One entry: ⌘/Ctrl+K "Studio…", a ✦ Studio section on the Commands page, `/studio [pipeline] [words] | list | status | needs`; each pipeline shows its pitch, cost (tokens / Meshy credits) and what's missing on this computer with a Fix.
 - ✓ Never spends or publishes without asking (Meshy's cost dialog, Deploy's publish question); a declined run ends with nothing spent.
 - ○ Tested headless with the fake engines and fake Meshy / Poly Haven (Song → visualizer and Idea → 3D hero end to end); Board → video, Scene → website, Still → Photoshop and Vibe → song reuse tested parts but weren't run end to end here (no Photoshop, no real deploy / Suno).
+## 3D models in the Lab: library, materials, clips, lights, skies, camera moves (lab3d stream, round 15, 72 upgrades: docs/upgrades/lab3d.md)
+- ✓ A model (Meshy, Sketchfab, Mixamo, Spline / Blender exports, .glb .gltf .fbx .obj .stl .ply) is a 🧊 layer drawn by `lab3d.model(…)`: loading bar, clear errors for bad files, fitted and standing on a shadow; every knob is a slider (Save, Shuffle, looks, keyframes).
+- ✓ A floating model library with pictures of each model (drag onto the preview, Shift = replace in place), right-click the preview → 🧊 3D model, `/model <verb>` / `/3d`, `three_do model` for Claude and Astra.
+- ✓ 12 materials, 8 light presets, 8 studio looks, Poly Haven HDRI skies, shadow / mirror / gloss grounds, fog, bloom, depth of field, clips with speed / loop / blend (+ Mixamo files), turntable, explode, gizmo (W / E / R), kick reactions at 0 until asked.
+- ✓ 15 camera moves (orbit, dolly, crane, hero reveal…) as keyframes on the scene's clock with a 🎥 cue: they play in renders and the Lab sequence.
+- ○ Tested headless with a generated animated GLB (`sh dev/run-checks.sh lab3d-models`); real Meshy / Sketchfab downloads and huge models aren't run here.

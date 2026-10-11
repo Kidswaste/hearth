@@ -120,6 +120,8 @@ renderer.setAnimationLoop(() => {
   }
   const base = (file) => String(file).split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
   async function addModel(file, { name } = {}) {
+    // (round 15) the Lab's own model layers (tools/three-models.js: library, materials, clips, camera moves) when loaded
+    if (window.ThreeModels) { const r = await ThreeModels.add(file, { name, source: 'Apps' }); toast(`🧊 ${(name || base(file)).slice(0, 40)} is a layer in the Lab`, { timeout: 2600 }); return { ref: r.ref, layer: r.layer }; }
     if (!/\.(glb|gltf)$/i.test(file)) {
       const r = await addRef(file);
       toast(`${base(file)} is in the Lab's references (${r.key}); a .glb loads straight as a layer.`, { timeout: 4500 });
@@ -131,7 +133,9 @@ renderer.setAnimationLoop(() => {
     toast(`🧊 ${label} is a layer in the Lab`, { timeout: 2600 });
     return { ref: r.key, layer: out?.added || label };
   }
-  async function addHdri(file, { name } = {}) {
+  async function addHdri(file, { name, legacy = false } = {}) {
+    // (round 15) with a model in the scene, the sky lights it (and shows behind it) instead of being a layer of its own
+    if (window.ThreeModels && !legacy) return ThreeModels.sky(file, { name });
     const r = await addRef(file);
     const label = (name || base(file)).slice(0, 40);
     const out = await ThreeLab.director.addLayer({ name: `🌅 ${label}`, code: hdriCode(r.key, label, /\.exr$/i.test(file)), position: 'bottom' }, 1.5);
