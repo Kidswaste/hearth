@@ -554,7 +554,7 @@ function createEngine(o) {
         await afterCloudWrite(rel, hm);
       }
       setBase(rel, hm, text);
-      if (r.conflicts.length) await saveConflict(rel, { kind: 'json', text: theirsText, fields: r.conflicts, from: journalLatest.get(rel)?.m });
+      if (r.conflicts.length) await saveConflict(rel, { kind: 'json', text: theirsText, fields: r.conflicts, from: journalLatest.get(rel)?.m, oursAt: L.mtime, theirsAt: journalLatest.get(rel)?.t || C.mtime });
       sum.merged += 1;
       return true;
     }
@@ -565,14 +565,17 @@ function createEngine(o) {
     if (!same(C.file, C.placeholder ? { size: C.size ?? undefined, mtime: C.mtime } : cent)) return false;
     await renameRetry(C.file, copy);
     delete state.cloud[rel];
-    await writeConflictRecord({ id: cid, rel, kind: 'file', copy: path.basename(copy), at: now(), by: machine.name, from: nameOf(journalLatest.get(rel)?.m), fields: [] });
+    await writeConflictRecord({ id: cid, rel, kind: 'file', copy: path.basename(copy), at: now(), by: machine.name, from: nameOf(journalLatest.get(rel)?.m), ...sides(journalLatest.get(rel)?.m, L.mtime, journalLatest.get(rel)?.t || C.mtime), size: L.size, theirsSize: C.size ?? null, fields: [] });
     sum.conflicts += 1;
     return push(rel, L, null, lh);
   }
-  async function saveConflict(rel, { text, fields, from }) {
+  // (round 19) each side's computer, platform and time of its last change, so the choice says what it saves over
+  const platOf = (mid) => peers.find((p) => p.id === mid)?.platform || (peers.length === 1 ? peers[0].platform : null);
+  const sides = (mid, oursAt, theirsAt) => ({ byPlatform: platform, fromId: mid || null, fromPlatform: platOf(mid), oursAt: oursAt || now(), theirsAt: theirsAt || null });
+  async function saveConflict(rel, { text, fields, from, oursAt, theirsAt }) {
     const cid = `${day(now())}-${rand()}`;
     await atomicWrite(path.join(CONFL, `${cid}.copy.json`), text);
-    await writeConflictRecord({ id: cid, rel, kind: 'json', copy: `${cid}.copy.json`, at: now(), by: machine.name, from: nameOf(from), fields: fields.slice(0, 20) });
+    await writeConflictRecord({ id: cid, rel, kind: 'json', copy: `${cid}.copy.json`, at: now(), by: machine.name, from: nameOf(from), ...sides(from, oursAt, theirsAt), fields: fields.slice(0, 20) });
     sum.conflicts += 1;
   }
   async function writeConflictRecord(rec) { await atomicWrite(path.join(CONFL, `${rec.id}.json`), JSON.stringify(rec, null, 2)); }
@@ -653,7 +656,7 @@ function createEngine(o) {
           await afterLocalWrite(cp.orig, sha(text));
           notePulled(cp.orig, kindOf(cp.orig));
         }
-        if (r.conflicts.length) await saveConflict(cp.orig, { text: canon(theirs), fields: r.conflicts, from: null });
+        if (r.conflicts.length) await saveConflict(cp.orig, { text: canon(theirs), fields: r.conflicts, from: null, oursAt: L.mtime, theirsAt: cp.mtime });
         await moveToCloudTrash(cp.rel, cp);
         sum.merged += 1;
       } else {
@@ -699,7 +702,9 @@ function createEngine(o) {
       const L = local.get(rel); const C = cloud.get(rel); const bh = state.base[rel];
       if (L?.unavailable) { pending += 0; continue; } // a render on a drive that isn't plugged in: left alone
       if (!L && !C) { dropBase(rel); delete state.local[rel]; delete state.cloud[rel]; continue; }
-      if ((L && L.size > cap) || (C && (C.size ?? 0) > cap)) { skippedBig.push(rel); continue; }
+      // (round 19) the chats' workspace syncs what they make, never a huge file (a model checkpoint, a build archive)
+      const capHere = S.isWorkspaceRel(rel) ? Math.min(cap, o.bigCap || BIG_CAP) : cap;
+      if ((L && L.size > capHere) || (C && (C.size ?? 0) > capHere)) { skippedBig.push(rel); continue; }
       let lh = null; let ch = null;
       try { lh = L ? await localHash(rel, L) : null; } catch (err) { unreadable.push(rel); log('hash', rel, err.message); continue; }
       try { ch = C ? await cloudHash(rel, C) : null; } catch (err) { pending += 1; log('cloud hash', rel, err.message); continue; }
@@ -739,7 +744,9 @@ function createEngine(o) {
       if (opts.mass === 'keep') {
         for (const p of dels) { if (p.op === 'deleteHere') { p.op = 'push'; p.C = null; } else { p.op = 'pull'; p.L = null; } dropBase(p.rel); }
       } else {
-        status.held = { deletes: dels.length, here: dels.filter((p) => p.op === 'deleteHere').length, sample: dels.slice(0, 6).map((p) => p.rel) };
+        status.held = { deletes: dels.length, here: dels.filter((p) => p.op === 'deleteHere').length, sample: dels.slice(0, 6).map((p) => p.rel),
+          // (round 19) every one by name for the review: where it would be removed, and who deleted it
+          list: dels.slice(0, 300).map((p) => ({ rel: p.rel, where: p.op === 'deleteHere' ? 'here' : 'cloud', size: (p.L || p.C)?.size ?? null, by: p.op === 'deleteHere' ? nameOf(journalLatest.get(p.rel)?.m) : machine.name })) };
         for (const p of dels) p.op = 'held';
       }
     } else status.held = null;
@@ -799,7 +806,7 @@ function createEngine(o) {
       let ents = []; try { ents = await fsp.readdir(dir, { withFileTypes: true }); } catch { return; }
       for (const e of ents) {
         const f = path.join(dir, e.name);
-        if (e.isDirectory()) { if (depth < 8 && !['sync', 'workspace', 'node_modules', '.git'].includes(e.name)) await sweep(f, depth + 1); continue; }
+        if (e.isDirectory()) { if (depth < 8 && !['sync', 'node_modules', '.git'].includes(e.name)) await sweep(f, depth + 1); continue; }
         const tmp = /^\.hearth-tmp-/.test(e.name); const part = /^\.hearth-part-/.test(e.name);
         if (!tmp && !part) continue;
         try { const st = await fsp.stat(f); if (now() - st.mtimeMs > (tmp ? 864e5 : 7 * 864e5)) await fsp.rm(f, { force: true }); } catch { /* gone */ }
@@ -816,16 +823,31 @@ function createEngine(o) {
     }
     return out.sort((a, b) => b.at - a.at);
   }
-  // keep = 'mine' (dismiss: the version in place stays) | 'theirs' (the kept copy replaces the version in place)
+  // keep = 'mine'   this computer's version stays; the other one goes to the synced trash under its own name
+  //        'theirs' the other computer's version replaces this one; this one goes to this computer's trash first
+  //        'both'   both stay: the other one is saved next to it as "… (from MacBook)" (whole files and chats)
+  //        'merge'  data (JSON): everything from both, the newer side winning where they differ (this one to the trash first)
+  // (round 19) every choice can be undone from Deleted files: the version that lost is there under its real name.
   async function resolve(id, keep) {
     const rec = (await listConflicts()).find((c) => c.id === id);
     if (!rec) return { ok: false, error: 'No such conflict' };
     const copy = path.join(CONFL, rec.copy);
-    if (keep === 'theirs') {
-      const file = localPathOf(rec.rel);
-      if (S.isJsonRel(rec.rel)) { try { const v = JSON.parse(fs.readFileSync(file, 'utf8')); remember(rec.rel, S.toCloud(rec.rel === 'app/config.json' ? S.portableConfig(v) : v, ctx)); } catch { /* none */ } }
-      if (rec.kind === 'json') {
-        const v = JSON.parse(await fsp.readFile(copy, 'utf8'));
+    const file = localPathOf(rec.rel);
+    const isJson = rec.kind === 'json';
+    const theirsValue = async () => JSON.parse(await fsp.readFile(copy, 'utf8')); // cloud form
+    const oursValue = () => { const v = JSON.parse(fs.readFileSync(file, 'utf8')); return S.toCloud(rec.rel === 'app/config.json' ? S.portableConfig(v) : v, ctx); };
+    let made = null;
+    if (keep === 'theirs' || keep === 'merge') {
+      if (keep === 'merge' && !isJson) return { ok: false, error: 'Only data (chats, scenes, settings…) can be merged; pictures and files are one version or the other.' };
+      let ours = null;
+      if (isJson) { try { ours = oursValue(); remember(rec.rel, ours); } catch { /* none here */ } }
+      await keepHere(rec.rel, file);
+      if (isJson) {
+        let v = await theirsValue();
+        if (keep === 'merge' && ours) {
+          const theirsNewer = (rec.theirsAt || 0) > (rec.oursAt || 0);
+          v = S.merge3(null, theirsNewer ? v : ours, theirsNewer ? ours : v, { counters: S.isCounterRel(rec.rel) }).value;
+        }
         await atomicWrite(file, localJsonText(rec.rel, S.fromCloud(v, ctx), statSync(file) ? { file } : null));
       } else {
         // (a copy whose content is still only in the cloud downloads now: this choice asks for it)
@@ -835,13 +857,69 @@ function createEngine(o) {
         await renameRetry(tmp, file);
       }
       notePulled(rec.rel, kindOf(rec.rel));
+    } else if (keep === 'both') {
+      const from = String(rec.from || 'the other computer').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 40);
+      if (isJson) {
+        const m = /^chats\/(.+)\.json$/.exec(rec.rel);
+        if (!m) return { ok: false, error: 'Keep both works for chats, pictures and files; for this one pick a version, or Merge.' };
+        const v = S.fromCloud(await theirsValue(), ctx);
+        const nid = `${m[1].slice(0, 40)}-${rand().slice(0, 5)}`;
+        made = `chats/${nid}.json`;
+        await atomicWrite(localPathOf(made), localForm({ ...v, ...(v && 'id' in v ? { id: nid } : {}), title: `${v?.title || 'Chat'} (from ${from})` }, true));
+      } else {
+        const ext = path.extname(rec.rel); const stem = rec.rel.slice(0, rec.rel.length - ext.length);
+        made = `${stem} (from ${from})${ext}`;
+        for (let i = 2; await exists(localPathOf(made)); i++) made = `${stem} (from ${from} ${i})${ext}`;
+        const dst = localPathOf(made);
+        const tmp = path.join(path.dirname(dst), `.hearth-tmp-${rand()}-${path.basename(dst)}`);
+        await fsp.mkdir(path.dirname(dst), { recursive: true });
+        await fsp.copyFile(copy, tmp);
+        await renameRetry(tmp, dst);
+      }
+      notePulled(made, kindOf(made));
     }
-    // the record and the copy go to the trash (still recoverable)
+    // keep 'mine': the other version goes to the synced trash under its real name (restorable); the record is put away
+    if (keep !== 'theirs' && keep !== 'merge' && keep !== 'both') {
+      const tdir = path.join(TRASH, day(now()), ...rec.rel.split('/').slice(0, -1));
+      await fsp.mkdir(tdir, { recursive: true });
+      let dst = path.join(tdir, path.basename(rec.rel));
+      if (await exists(dst)) dst = path.join(tdir, `${rand()}-${path.basename(rec.rel)}`);
+      try { await renameRetry(copy, dst); } catch { /* gone */ }
+    }
     const dir = path.join(TRASH, day(now()), 'conflicts');
     await fsp.mkdir(dir, { recursive: true });
     for (const f of [rec.copy, `${rec.id}.json`]) { try { await renameRetry(path.join(CONFL, f), path.join(dir, f)); } catch { /* gone */ } }
     if (pulledNow.length) { o.onPulled?.(pulledNow.slice()); pulledNow = []; }
-    return { ok: true, rel: rec.rel };
+    return { ok: true, rel: rec.rel, made };
+  }
+  // this computer's version, before a choice replaces it: a copy in data/sync/trash under its real name (Deleted files)
+  async function keepHere(rel, file) {
+    if (!statSync(file)) return;
+    const dir = path.join(stateDir, 'trash', day(now()), ...rel.split('/').slice(0, -1));
+    await fsp.mkdir(dir, { recursive: true });
+    let dst = path.join(dir, path.basename(file));
+    if (await exists(dst)) dst = path.join(dir, `${rand()}-${path.basename(file)}`);
+    await fsp.copyFile(file, dst);
+  }
+  // (round 19) what a conflict is about, for the choice: both versions (JSON values, or the files' paths), sizes, times
+  async function preview(id) {
+    const rec = (await listConflicts()).find((c) => c.id === id);
+    if (!rec) return null;
+    const file = localPathOf(rec.rel); const copy = path.join(CONFL, rec.copy);
+    const out = { ...rec, here: file, there: copy, oursAt: rec.oursAt || statSync(file)?.mtimeMs || null, theirsAt: rec.theirsAt || null, canMerge: rec.kind === 'json', canBoth: rec.kind !== 'json' || /^chats\//.test(rec.rel) };
+    const read = (f, cloudForm) => { try { const st = statSync(f); if (!st || st.size > 6e6) return null; const v = JSON.parse(fs.readFileSync(f, 'utf8')); return cloudForm ? S.fromCloud(v, ctx) : v; } catch { return null; } };
+    if (rec.kind === 'json') { out.ours = read(file, false); out.theirs = read(copy, true); } else { out.size = statSync(file)?.size ?? rec.size ?? null; out.theirsSize = statSync(copy)?.size ?? rec.theirsSize ?? null; }
+    return out;
+  }
+  // (round 19) is this data-folder file on its way from the other computer? (in the cloud copy, or in its journal)
+  function incoming(rel) {
+    if (!rel || S.localOnly(rel)) return null;
+    const C = cloudPathOf(rel);
+    const stub = path.join(path.dirname(C), `.${path.basename(C)}.icloud`);
+    const j = journalLatest.get(rel);
+    if (statSync(C) || statSync(stub)) return { from: nameOf(j?.m), inCloud: true };
+    if (j && j.op !== 'del') return { from: nameOf(j.m), inCloud: false };
+    return null;
   }
   async function listTrash() {
     const out = [];
@@ -855,14 +933,17 @@ function createEngine(o) {
     await add(path.join(stateDir, 'trash'), 'here');
     return out;
   }
-  async function restore(id) {
+  async function restore(id, ro = {}) {
     const m = /^(cloud|here):(\d{4}-\d\d-\d\d)\/(.+)$/.exec(String(id));
     if (!m) return { ok: false, error: 'Not a trash item' };
     const [, where, d, r] = m;
     const src = path.join(where === 'cloud' ? TRASH : path.join(stateDir, 'trash'), d, ...r.split('/'));
     const rel = r.replace(/(^|\/)\.([^/]+)\.icloud$/, '$1$2').replace(/(^|\/)[0-9a-f]{8}-([^/]+)$/, '$1$2');
     const dst = localPathOf(rel);
-    if (await exists(dst)) return { ok: false, error: `${rel} is already there` };
+    if (await exists(dst)) {
+      if (!ro.replace) return { ok: false, error: `${rel} is already there`, exists: true };
+      await keepHere(rel, dst); // (round 19) undoing a choice: the version in place goes to the trash first
+    }
     await fsp.mkdir(path.dirname(dst), { recursive: true });
     const tmp = path.join(path.dirname(dst), `.hearth-tmp-${rand()}-${path.basename(dst)}`);
     if (S.isJsonRel(rel)) { const v = JSON.parse(await fsp.readFile(src, 'utf8')); await fsp.writeFile(tmp, localForm(S.fromCloud(v, ctx), true)); } else await fsp.copyFile(src, tmp);
@@ -892,7 +973,7 @@ function createEngine(o) {
 
   return {
     pass, stop: () => { stopping = true; }, status: publicStatus, set: (patch) => Object.assign(o, patch), option: (k) => o[k], machine: () => ({ ...machine }),
-    conflicts: listConflicts, resolve, trash: listTrash, restore, guardWrite, relOfLocal,
+    conflicts: listConflicts, resolve, preview, incoming, trash: listTrash, restore, guardWrite, relOfLocal,
     ackPulled: (rels) => { if (!rels) pulledPrev.clear(); else for (const r of rels) pulledPrev.delete(r); },
     hasPulled: (rel) => pulledPrev.has(rel),
     peers: async () => { await readPeers(); return peers; },

@@ -50,6 +50,7 @@ function find({ since = 0, dirs = [], names = [] } = {}, defaults = []) {
     const rel = String(raw).replace(/^sandbox:/i, '').replace(/^file:\/\//i, '').replace(/^\.\//, '');
     let hit = null;
     if (path.isAbsolute(rel) && statOf(rel)) hit = rel;
+    if (!hit && /^(?:[A-Za-z]:[\\/]|\/)/.test(rel)) { const l = require('./reachmain').localize(rel); if (l && statOf(l.path)) hit = l.path; } // (round 19) a path from the other computer
     for (const root of roots) { if (hit) break; const p = path.join(root, rel); if (statOf(p)) hit = p; }
     if (!hit) hit = byBase.get(path.basename(rel).toLowerCase())?.path || null; // "sandbox:/mnt/data/x.png": the newest x.png
     if (hit) resolved[raw] = hit;

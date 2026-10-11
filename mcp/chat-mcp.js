@@ -14,7 +14,13 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: { caption: { type: 'string' }, screenshot: { type: 'boolean' } }, required: ['caption'] } },
   { name: 'chat_second_opinion', description: `Ask ${process.env.HUB_PARTNER || 'Astra'} (another AI, good with visuals) for a critique of what you are making; screenshot: true attaches what the user sees now.`,
     inputSchema: { type: 'object', properties: { question: { type: 'string' }, screenshot: { type: 'boolean' } }, required: ['question'] } },
+  // (round 19, reach) you can open things for the user: no more "double-click it yourself"
+  { name: 'chat_open', description: 'Open a file, page, folder or URL for the user on this computer: how default (its app / browser), browser, reveal (in Finder / Explorer) or preview (in Hearth). Paths from their other computer work.',
+    inputSchema: { type: 'object', properties: { path: { type: 'string' }, url: { type: 'string' }, how: { type: 'string', enum: ['default', 'browser', 'reveal', 'preview'] } } } },
 ];
+// Astra without the chat tools gets chat_open alone (engines.js openTool → HUB_CHAT_ONLY)
+const ONLY = (process.env.HUB_CHAT_ONLY || '').split(',').filter(Boolean);
+const LIST = ONLY.length ? TOOLS.filter((t) => ONLY.includes(t.name)) : TOOLS;
 
 // Every call carries the agent id, so the hub knows which chat is asking.
-module.exports = serve({ name: 'chat', instructions: '', guide: GUIDE, tools: TOOLS, extraArgs: { agentId: process.env.HUB_AGENT_ID || '' } }, module);
+module.exports = serve({ name: 'chat', instructions: '', guide: GUIDE, tools: LIST, extraArgs: { agentId: process.env.HUB_AGENT_ID || '' } }, module);

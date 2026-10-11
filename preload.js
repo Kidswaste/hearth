@@ -117,6 +117,8 @@ contextBridge.exposeInMainWorld('hub', {
     onChanged: on('fs:changed'),
   },
   chatMedia: { find: call('chatmedia:find') },
+  // (round 19, reach) paths from the other computer → this one's; open / reveal / preview what a chat made (reachmain.js)
+  reach: { resolve: call('reach:resolve'), open: call('reach:open'), info: call('reach:info') },
   update: { status: call('update:status'), apply: call('update:apply'), restart: call('update:restart'), reload: call('update:reload') },
   fetchText: call('net:text'),
   openDialog: call('dialog:open'),
@@ -156,7 +158,7 @@ contextBridge.exposeInMainWorld('hub', {
   sync: {
     status: call('sync:status'), detect: call('sync:detect'), on: call('sync:on'), off: call('sync:off'), now: call('sync:now'),
     pause: call('sync:pause'), big: call('sync:big'), conflicts: call('sync:conflicts'), resolve: call('sync:resolve'),
-    trash: call('sync:trash'), restore: call('sync:restore'), open: call('sync:open'), download: call('sync:download'), ack: call('sync:ack'),
+    trash: call('sync:trash'), restore: call('sync:restore'), open: call('sync:open'), download: call('sync:download'), ack: call('sync:ack'), preview: call('sync:preview'),
     onStatus: on('sync:status'), onPulled: on('sync:pulled'),
   },
   video: {

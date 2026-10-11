@@ -18,7 +18,10 @@ const IGNORE_NAME = [
 ];
 const ignoredName = (name) => IGNORE_NAME.some((re) => re.test(name));
 // Folders and files of the data folder that belong to this computer only.
-const LOCAL_DIRS = new Set(['sync', 'workspace', 'mcp-runs', 'ae', 'node_modules', 'electron', 'captures/frames']);
+// (round 19, reach) the chats' workspace (data/workspace: what Claude / Astra make) syncs too, without what can be
+// rebuilt: dependency folders, Python caches and virtualenvs anywhere (hidden folders like .git never sync).
+const LOCAL_DIRS = new Set(['sync', 'mcp-runs', 'ae', 'node_modules', 'electron', 'captures/frames']);
+const HEAVY_DIRS = new Set(['node_modules', '__pycache__', 'venv', 'bower_components', '.venv', '.git', '.cache', '.next', '.parcel-cache', '.turbo']);
 const LOCAL_FILES = new Set(['window.json', 'game-bridge.json', 'hearth-origin.json', 'hearth-icon.png', 'hearth-icon.ico', 'engine-installs.json',
   'connectors.json', 'claude-flags.json', 'now-playing.ps1', 'now-playing-control.ps1', 'now-playing-cover.jpg', 'kv/fake-switches.json', 'kv/downloads-log.json']);
 function localOnly(rel) {
@@ -27,12 +30,14 @@ function localOnly(rel) {
   if (/(^|\/)\./.test(r)) return true; // hidden files / folders
   if (/\.log(\.\d+)?$/i.test(r) || /^mcp-[^/]*\.json$/i.test(r)) return true;
   const parts = r.split('/');
-  for (let i = 1; i < parts.length; i++) if (LOCAL_DIRS.has(parts.slice(0, i).join('/'))) return true;
-  return parts.some(ignoredName);
+  for (let i = 1; i < parts.length; i++) if (LOCAL_DIRS.has(parts.slice(0, i).join('/')) || HEAVY_DIRS.has(parts[i - 1])) return true;
+  return parts.some(ignoredName) || /\.py[co]$/i.test(r);
 }
-const dirLocalOnly = (relDir) => LOCAL_DIRS.has(relDir.replace(/\\/g, '/')) || /(^|\/)\./.test(relDir);
-// JSON stores merge field by field; everything else (media, Markdown, CSS) is a whole file.
-const isJsonRel = (rel) => /\.json$/i.test(rel);
+const dirLocalOnly = (relDir) => { const r = relDir.replace(/\\/g, '/'); return LOCAL_DIRS.has(r) || /(^|\/)\./.test(r) || HEAVY_DIRS.has(r.split('/').pop()); };
+// JSON stores merge field by field; everything else (media, Markdown, CSS) is a whole file. A project's own JSON in
+// the workspace (package.json, a scene file a chat wrote) is a whole file too: kept byte for byte, never reformatted.
+const isWorkspaceRel = (rel) => /^workspace\//.test(String(rel).replace(/\\/g, '/'));
+const isJsonRel = (rel) => /\.json$/i.test(rel) && !isWorkspaceRel(rel);
 // Stores of counts (token usage, button usage): when both computers added to a number, both additions count.
 const COUNTER_RELS = [/^usage\.json$/, /^kv\/token-stats\.json$/, /^kv\/ui-usage\.json$/, /^kv\/astra-scoreboard\.json$/];
 const isCounterRel = (rel) => COUNTER_RELS.some((re) => re.test(rel));
@@ -335,7 +340,7 @@ function proposeCloud(list) {
 }
 
 module.exports = {
-  ignoredName, localOnly, dirLocalOnly, isJsonRel, isCounterRel, MEDIA,
+  ignoredName, localOnly, dirLocalOnly, isJsonRel, isWorkspaceRel, HEAVY_DIRS, isCounterRel, MEDIA,
   eq, clone, merge3, keyOf,
   toCloud, fromCloud, strToCloud, strFromCloud, withExt, isWinPath,
   portableConfig, applyPortable, stripMachine,

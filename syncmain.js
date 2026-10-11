@@ -4,7 +4,7 @@
 // the drive's folder isn't the same on the Mac and the PC). Required from main.js with one line.
 //   IPC: sync:status · sync:detect · sync:on { root? } · sync:off · sync:now { mass?, fresh? } · sync:pause (bool)
 //        sync:big (bool) · sync:conflicts · sync:resolve (id, keep) · sync:trash · sync:restore (id) · sync:open
-//        sync:download · sync:ack (rels?)        events → 'sync:status', 'sync:pulled'
+//        sync:download · sync:ack (rels?) · sync:preview (id)        events → 'sync:status', 'sync:pulled'
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -131,7 +131,8 @@ function watch() {
       watchers.push(w);
     } catch { /* no recursive watch here, or the folder is gone: the minute check covers it */ }
   };
-  const own = (n) => /^(sync|workspace|mcp-runs|ae)([\\/]|$)/.test(n) || /^(window|game-bridge|engine-installs|connectors|claude-flags)\.json$/.test(n) || /\.log$/.test(n);
+  // (round 19) the workspace is watched too (what chats make syncs), but not its dependency folders and caches
+  const own = (n) => /^(sync|mcp-runs|ae)([\\/]|$)/.test(n) || /(^|[\\/])(node_modules|__pycache__|venv|\.venv|\.git|\.cache|\.next)([\\/]|$)/.test(n) || /^(window|game-bridge|engine-installs|connectors|claude-flags)\.json$/.test(n) || /\.log$/.test(n);
   add(opts.dataDir, DEBOUNCE_LOCAL, own);
   if (engine && fs.existsSync(engine.cloudDir)) add(engine.cloudDir, DEBOUNCE_CLOUD, () => false);
   for (const f of [opts.configPath, opts.themePath]) {
@@ -181,9 +182,10 @@ function register(ipcMain, win, o) {
   h('sync:pause', (on) => { settings = { ...settings, paused: Boolean(on) }; saveSettings(); if (!on) schedule(0, 'resume'); send('sync:status', publicStatus()); return publicStatus(); });
   h('sync:big', (on) => { settings = { ...settings, big: Boolean(on) }; saveSettings(); engine?.set({ big: Boolean(on) }); schedule(0, 'big'); return publicStatus(); });
   h('sync:conflicts', async () => (engine ? engine.conflicts() : []));
-  h('sync:resolve', async (id, keep) => { if (!engine) return { ok: false, error: 'Sync is off' }; const r = await engine.resolve(String(id), keep === 'theirs' ? 'theirs' : 'mine'); schedule(500, 'resolve'); return r; });
+  h('sync:resolve', async (id, keep) => { if (!engine) return { ok: false, error: 'Sync is off' }; const r = await engine.resolve(String(id), ['theirs', 'both', 'merge'].includes(keep) ? keep : 'mine'); schedule(500, 'resolve'); return r; });
+  h('sync:preview', async (id) => (engine ? engine.preview(String(id)) : null)); // (round 19) both sides of a conflict
   h('sync:trash', async () => (engine ? engine.trash() : []));
-  h('sync:restore', async (id) => { if (!engine) return { ok: false, error: 'Sync is off' }; const r = await engine.restore(String(id)); schedule(500, 'restore'); return r; });
+  h('sync:restore', async (id, ro) => { if (!engine) return { ok: false, error: 'Sync is off' }; const r = await engine.restore(String(id), { replace: Boolean(ro?.replace) }); schedule(500, 'restore'); return r; });
   h('sync:open', () => { if (!engine) return false; require('electron').shell.openPath(fs.existsSync(engine.cloudDir) ? engine.cloudDir : settings.root); return true; });
   // the big files that are still only in the cloud: downloaded now (you asked)
   h('sync:download', async () => { if (!engine) return publicStatus(); engine.set({ allowDownload: new Set(publicStatus().cloudOnly) }); await run({ force: true }); engine?.set({ allowDownload: null }); return publicStatus(); });
@@ -200,4 +202,7 @@ function ready(ms = 1500) {
 function guardConfig(config) { try { return engine ? engine.guardWrite(opts.configPath, config) : config; } catch { return config; } }
 function quit() { stop(); }
 
-module.exports = { register, ready, guardConfig, quit, status: publicStatus, pace: setPace, setBusy: (fn) => { busy = typeof fn === 'function' ? fn : () => 0; }, _pace: () => ({ quiet, every: tickEvery(), ...pace }) };
+// (round 19, reach) paths from the other computer: its folders (machine records), and whether a file is on its way
+function pathCtx() { try { return engine ? engine.ctx() : null; } catch { return null; } }
+function incoming(rel) { try { return engine ? engine.incoming(rel) : null; } catch { return null; } }
+module.exports = { register, ready, guardConfig, quit, status: publicStatus, pathCtx, incoming, peers: () => (engine ? engine.peers() : Promise.resolve([])), pace: setPace, setBusy: (fn) => { busy = typeof fn === 'function' ? fn : () => 0; }, _pace: () => ({ quiet, every: tickEvery(), ...pace }) };

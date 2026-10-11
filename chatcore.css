@@ -96,3 +96,16 @@
 /* the chats list: in a long group, rows past the first dozen skip layout and paint while scrolled out of view */
 #chat-groups .group > .item:not(.active):nth-child(n+14) { content-visibility: auto; contain-intrinsic-size: auto 28px; }
 .toast .toast-n { font-weight: 650; opacity: .75; margin-left: 2px; font-variant-numeric: tabular-nums; }
+
+/* (round 19, reach) pages / files a reply made: ▶ Open · Preview · Reveal; clickable paths in replies */
+.reach-cards { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 2px; }
+.reach-card { display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 10px; border-radius: 10px; border: 1px solid var(--border, rgba(255,255,255,.08)); background: var(--panel-2, rgba(255,255,255,.04)); cursor: pointer; max-width: 560px; }
+.reach-card:hover { border-color: var(--accent, #e0337a); }
+.reach-card.waiting { cursor: default; opacity: .8; border-style: dashed; }
+.reach-ico { font-size: 18px; width: 22px; text-align: center; flex-shrink: 0; }
+.reach-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.reach-main b, .reach-main .hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reach-main .hint { font-size: 12px; }
+.reach-acts { display: flex; gap: 4px; flex-shrink: 0; }
+code.reach-path { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+code.reach-path:hover { text-decoration-style: solid; }

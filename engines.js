@@ -152,12 +152,17 @@ const HUB_TOOLSETS = {
   deployTools: { server: 'deploy', script: 'deploy-mcp.js' },
   // The owner's app windows and Meshy 3D models (apps.js): opt-in per agent (/apps-tools on | directors).
   appsTools: { server: 'apps', script: 'apps-mcp.js' },
+  // (round 19, reach) Astra without the chat tools still gets chat_open (one tool, ~60 tokens): it opens a page / file /
+  // folder for the owner instead of saying "I can't launch a browser". `/astra-open off` (agent.openTool = false) drops it.
+  openTool: { server: 'chat', script: 'chat-mcp.js' },
 };
 // Claude agents get their tool sets (chat tools unless switched off). Codex agents (Astra) get the tool sets their
 // agent has (a director switched to Astra) and chat tools only as an opt-in (talk-back, or agent.hubTools).
 // One-off calls (second opinions) never get hub tools (agent.noHubTools).
+const chatToolsOn = (agent) => (agent.engine === 'claude' ? agent.chatTools !== false : agent.chatTools === true || (agent.hubTools === true && agent.chatTools !== false));
 const hubToolsets = (agent) => (agent.noHubTools ? [] : Object.keys(HUB_TOOLSETS).filter((k) => {
-  if (k === 'chatTools') return agent.engine === 'claude' ? agent.chatTools !== false : agent.chatTools === true || (agent.hubTools === true && agent.chatTools !== false);
+  if (k === 'chatTools') return chatToolsOn(agent);
+  if (k === 'openTool') return agent.engine === 'codex' && !chatToolsOn(agent) && agent.openTool !== false;
   return Boolean(agent[k]);
 }));
 const gameTools = (agent) => hubToolsets(agent).includes('gameTools');
@@ -166,7 +171,7 @@ const gameTools = (agent) => hubToolsets(agent).includes('gameTools');
 const nodesOn = (agent) => Boolean(agent.threeTools) && agent.nodesTool !== false;
 // What every hub MCP server gets: Node mode, the agent (for chat_ tools), opt-ins that change the tool list.
 // HUB_CHAT_ID: the chat this run answers, so a director's tool calls reach that chat's own scene (chat-scenes.js).
-const hubToolEnv = (agent) => ({ ELECTRON_RUN_AS_NODE: '1', HUB_AGENT_ID: agent.id, ...(agent.hubChatId ? { HUB_CHAT_ID: agent.hubChatId } : {}), ...(agent.engine === 'codex' ? { HUB_PARTNER: 'Claude' } : {}), ...(nodesOn(agent) ? { HUB_NODES_TOOL: '1' } : {}), ...(agent.toolMode === 'full' ? { HUB_TOOL_MODE: 'full' } : {}) });
+const hubToolEnv = (agent, key) => ({ ...(key === 'openTool' ? { HUB_CHAT_ONLY: 'chat_open' } : {}), ELECTRON_RUN_AS_NODE: '1', HUB_AGENT_ID: agent.id, ...(agent.hubChatId ? { HUB_CHAT_ID: agent.hubChatId } : {}), ...(agent.engine === 'codex' ? { HUB_PARTNER: 'Claude' } : {}), ...(nodesOn(agent) ? { HUB_NODES_TOOL: '1' } : {}), ...(agent.toolMode === 'full' ? { HUB_TOOL_MODE: 'full' } : {}) });
 // One file per run, removed when that run ends: a retry of the same chat (a lost session, an option the CLI doesn't
 // know) starts while the previous run is still closing, and a shared file was deleted under the new run
 // ("Invalid MCP configuration: … not found").
@@ -175,7 +180,7 @@ function hubMcpConfig(agent) {
   const mcpServers = {};
   for (const key of hubToolsets(agent)) {
     const { server, script } = HUB_TOOLSETS[key];
-    mcpServers[server] = { command: process.execPath, args: [path.join(__dirname, 'mcp', script)], env: hubToolEnv(agent) };
+    mcpServers[server] = { command: process.execPath, args: [path.join(__dirname, 'mcp', script)], env: hubToolEnv(agent, key) };
   }
   // (round 14) the permission check behind --permission-prompt-tool, for a chat with file access
   if (accessAsks(agent)) mcpServers.access = { command: process.execPath, args: [path.join(__dirname, 'mcp', 'access-mcp.js')], env: accessEnv(agent) };
@@ -194,7 +199,7 @@ function codexMcpArgs(agent) {
     args.push(
       '-c', `${p}.command=${tomlStr(process.execPath)}`,
       '-c', `${p}.args=[${tomlStr(path.join(__dirname, 'mcp', script))}]`,
-      '-c', `${p}.env={ ${Object.entries(hubToolEnv(agent)).map(([k, v]) => `${k}=${tomlStr(String(v))}`).join(', ')} }`,
+      '-c', `${p}.env={ ${Object.entries(hubToolEnv(agent, key)).map(([k, v]) => `${k}=${tomlStr(String(v))}`).join(', ')} }`,
       // a question to the user (chat_ask) or a render can take a long time
       '-c', `${p}.tool_timeout_sec=${key === 'chatTools' || key === 'captureTools' || key === 'adobeTools' || key === 'deployTools' || key === 'appsTools' ? 2700 : 300}`,
       '-c', `${p}.startup_timeout_sec=30`,
@@ -228,12 +233,19 @@ const PERMISSION_TOOL = 'mcp__access__access_permission';
 function accessOf(agent) {
   const a = agent.access;
   if (!a || !ACCESS_LEVELS.includes(a.level) || a.level === 'off') return null;
-  const folders = [...new Set((Array.isArray(a.folders) ? a.folders : []).filter((f) => typeof f === 'string' && path.isAbsolute(f) && fs.existsSync(f)))].slice(0, 12);
+  // (round 19) a folder stored on the other computer (a Mac path on Windows…) is this computer's same folder
+  const here = (f) => { if (typeof f !== 'string' || (path.isAbsolute(f) && fs.existsSync(f))) return f; try { return require('./reachmain').localize(f)?.path || f; } catch { return f; } };
+  const folders = [...new Set((Array.isArray(a.folders) ? a.folders : []).map(here).filter((f) => typeof f === 'string' && path.isAbsolute(f) && fs.existsSync(f)))].slice(0, 12);
   return { level: a.level, folders };
 }
 // Claude asks Hearth (the permission tool) unless this Claude Code rejected the flag before.
 const accessAsks = (agent) => agent.engine !== 'codex' && Boolean(accessOf(agent)) && !claudeDropped.has('--permission-prompt-tool');
 function accessLine(agent, acc) {
+  return `${accessLine0(agent, acc)} ${OTHER_PC}`;
+}
+// (round 19, reach) one short clause while access is on: paths from the owner's other computer mean this one's files
+const OTHER_PC = `Paths from the user's other computer (…/Hearth/data/…) are the same files in ${DATA_DIR} here.`;
+function accessLine0(agent, acc) {
   const where = acc.folders.length ? acc.folders.join(', ') : 'no folder yet (ask the user to add one with /access add)';
   const label = { read: 'read only', write: 'read & write', full: 'full: files and commands' }[acc.level];
   if (agent.engine === 'codex') {
@@ -710,7 +722,7 @@ function send({ agent, chatId, session, text, options = {} }, emit) {
   // A per-run persona replaces the agent's own instructions; "lean" runs (collaborations, quick asks) drop
   // the hub tool sets and file tools so they cost no more than a plain chat turn.
   if (options.persona) agent = { ...agent, systemPrompt: String(options.persona).slice(0, 4000) };
-  if (options.lean) agent = { ...agent, chatTools: false, threeTools: false, gameTools: false, boardTools: false, captureTools: false, adobeTools: false, deployTools: false, appsTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false };
+  if (options.lean) agent = { ...agent, openTool: false, chatTools: false, threeTools: false, gameTools: false, boardTools: false, captureTools: false, adobeTools: false, deployTools: false, appsTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false };
   // (round 14) the chat's own file access (access.js); lean / hub-only runs never get it
   else if (options.access && typeof options.access === 'object' && !options.hubOnly) agent = { ...agent, access: { level: String(options.access.level || 'off'), folders: options.access.folders }, accessChatId: chatId };
   // "hubOnly" runs (a jam's build turns, jam.js) keep the agent's tool sets (Lab, board…) and drop the rest.
