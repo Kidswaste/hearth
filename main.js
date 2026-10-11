@@ -425,6 +425,11 @@ for (const file of [CONFIG_PATH, THEME_PATH]) {
 bgmain.register(() => win);
 bgmain.subscribe((st) => { syncmain.pace?.(st); nowplaying.pace?.(st); appsmain.pace?.(st); });
 syncmain.setBusy?.(() => engines.busy?.() || 0);
+// /background (sync.js): what Hearth is doing in the background right now, and what each of its processes costs
+ipcMain.handle('bg:state', () => {
+  const procs = app.getAppMetrics().map((m) => ({ type: m.type, name: m.name || m.serviceName || '', cpu: Math.round((m.cpu?.percentCPUUsage || 0) * 10) / 10, mb: Math.round((m.memory?.workingSetSize || 0) / 1024) }));
+  return { ...bgmain.state(), calmMs: bgmain.CALM_MS, sync: syncmain._pace?.() || null, replies: engines.busy?.() || 0, procs };
+});
 
 app.whenReady().then(async () => {
   // data moved here from another computer (or folder): point saved file locations at the new data folder

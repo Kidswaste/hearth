@@ -69,6 +69,7 @@ contextBridge.exposeInMainWorld('hub', {
   packForMac: call('data:packForMac'),
   platform: call('app:platform'),
   liveStart: call('live:start'),
+  bgState: call('bg:state'), // (round 16) /background: pace of the background work, memory / CPU per process
   npStart: call('np:start'),
   npStop: call('np:stop'),
   npControl: call('np:control'),

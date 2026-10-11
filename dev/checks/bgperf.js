@@ -43,4 +43,13 @@ out.zoom = S.view.z;
 const st = await hub.apps.status();
 ok(st.maxHidden === 2, `apps status reports the hidden cap (${st.maxHidden})`);
 out.parkMs = st.parkMs;
+// /background: the report by chat command (processes, sync pace, app windows); /apps free with nothing hidden
+let said = '';
+await Commands.tryRun('/background', C.id, null, { say: (t) => { said = String(t); }, note: (t) => { said = String(t); } });
+ok(/MB in \d+ processes/.test(said) && /App windows/.test(said) && /cursor/.test(said), `/background reports (${said.slice(0, 160)})`);
+out.background = said.split('\n')[0];
+said = '';
+await Commands.tryRun('/apps free', C.id, null, { say: (t) => { said = String(t); }, note: (t) => { said = String(t); } });
+ok(/No hidden app window|Freed/.test(said), `/apps free answers (${said})`);
+ok(!(Commands.duplicates?.() || []).length, 'no duplicate commands');
 return JSON.stringify({ ok: !fail.length, fail, ...out }, null, 1);
