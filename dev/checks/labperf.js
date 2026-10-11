@@ -81,7 +81,10 @@ await gc();
 const before = { hubHeapMB: heap(), sandbox: await sbx('return window.__labHealth()') };
 const t0 = performance.now();
 for (let i = 0; i < 20; i++) { c.openSketch(names[i % names.length]); await wait(1100); }
-await wait(2500); await gc();
+await wait(2500);
+// (a loaded machine: the last scene may still be building; wait until it has drawn and its cross-fade is gone)
+await until(async () => { const h = await sbx1('return window.__labHealth()'); return h && !h.error && h.overlays === 0 && h.contexts >= 1; }, 15000);
+await gc();
 out.switches = { ms: Math.round(performance.now() - t0), before, after: { hubHeapMB: heap(), sandbox: await sbx('return window.__labHealth()') } };
 const a = out.switches.after.sandbox; const b = out.switches.before.sandbox;
 out.ok = { hiddenDrawsNothing: out.hidden.drawsPerS === 0, noContextLeak: Boolean(a && b && a.contexts <= Math.max(b.contexts, a.layers + 1)) };
