@@ -21,6 +21,9 @@ H.agents = () => (H.config?.agents || []).filter((a) => a.enabled !== false && !
 H.agent = (id) => H.config?.agents.find((a) => a.id === id);
 // Agents docked inside a tool (Three Director, Forge Debug) live in that tool, not in the rail.
 H.railAgents = () => H.agents().filter((a) => !a.dock);
+// (round 18, tidy) Ctrl/⌘+1…9 walk the rail top to bottom: the agents, then the tools (each tooltip names its key)
+H.railOrder = () => [...H.railAgents().map((a) => a.id), ...(typeof Tools !== 'undefined' ? Tools.enabled().map((t) => `tool:${t.id}`) : [])];
+H.railKey = (id) => { const i = H.railOrder().indexOf(id); return i >= 0 && i < 9 ? `Ctrl+${i + 1}` : ''; };
 H.surfaceIdFor = (id) => { const a = H.agent(id); return a?.dock ? `tool:${a.dock}` : id; };
 H.settings = () => H.config?.settings || {};
 H.isTool = (id) => typeof id === 'string' && id.startsWith('tool:');
@@ -92,7 +95,7 @@ function renderRail() {
   const rail = $('agent-buttons');
   rail.replaceChildren();
   H.railAgents().forEach((agent, i) => {
-    const btn = railButton(agent.id, agent, `${agent.name}${agent.mode === 'native' ? ' (native)' : ''}  ·  Ctrl+${i + 1}  ·  right-click for options`);
+    const btn = railButton(agent.id, agent, `${agent.name}${H.railKey(agent.id) ? `  ·  ${H.railKey(agent.id)}` : ''}  ·  right-click: more`);
     if (agent.mode === 'native') btn.classList.add('native');
     if (H.unread.has(agent.id)) btn.classList.add('unread');
     btn.addEventListener('contextmenu', (e) => { e.preventDefault(); showAgentMenu(agent.id, e.clientX, e.clientY); });
@@ -102,7 +105,7 @@ function renderRail() {
   if (tools.length) {
     rail.append(el('div', { class: 'rail-sep' }));
     for (const tool of tools) {
-      const btn = railButton(`tool:${tool.id}`, tool, `${tool.name}  ·  right-click for options`);
+      const btn = railButton(`tool:${tool.id}`, tool, `${tool.name}${H.railKey(`tool:${tool.id}`) ? `  ·  ${H.railKey(`tool:${tool.id}`)}` : ''}  ·  right-click: more`);
       btn.classList.add('tool-btn-rail');
       if (H.agents().some((a) => a.dock === tool.id && H.unread.has(a.id))) btn.classList.add('unread');
       btn.addEventListener('contextmenu', (e) => { e.preventDefault(); showToolMenu(tool.id, e.clientX, e.clientY); });
@@ -116,10 +119,9 @@ function renderRail() {
 function showAgentMenu(id, x, y) {
   const agent = H.agent(id);
   if (!agent) return;
-  const i = H.railAgents().findIndex((a) => a.id === id);
   const recent = agent.mode === 'native' ? H.chats.filter((c) => c.agentId === id).slice(0, 10) : (H.history[id] || []).slice(-10).reverse();
   showMenu(x, y, [
-    { label: `Open ${agent.name}`, key: i >= 0 && i < 9 ? `Ctrl+${i + 1}` : '', action: () => activate(id) },
+    { label: `Open ${agent.name}`, key: H.railKey(id), action: () => activate(id) },
     agent.mode === 'native' ? { label: 'New chat', key: 'Ctrl+N', action: () => { activate(id); Native.newChat(id); } } : null,
     recent.length ? { label: 'Recent chats', items: () => recent.map((c) => (agent.mode === 'native'
       ? { label: (c.title || 'Untitled').slice(0, 48), hint: timeAgo(c.updatedAt || c.at || Date.now()), action: () => { activate(id); Native.open(id, c.id); } }
@@ -141,7 +143,7 @@ function showAgentMenu(id, x, y) {
 function showToolMenu(id, x, y) {
   const docked = Tools.dockedAgent?.(id);
   showMenu(x, y, [
-    { label: `Open ${Tools.get?.(id)?.name || 'the tool'}`, action: () => activate(`tool:${id}`) },
+    { label: `Open ${Tools.get?.(id)?.name || 'the tool'}`, key: H.railKey(`tool:${id}`), action: () => activate(`tool:${id}`) },
     docked ? { label: `${docked.name} chat`, hint: 'Docked beside it', action: () => { activate(`tool:${id}`); Tools.openDock(id); } } : null,
     '-',
     { label: 'Move', items: [{ label: 'Up', action: () => Tools.move(id, -1) }, { label: 'Down', action: () => Tools.move(id, 1) }] },
@@ -214,16 +216,32 @@ function menuButton(it, onPick) {
   return b;
 }
 
+// (round 18, tidy) every menu reads the same: what deletes or trashes something is red and comes last, after a line
+// (a "Delete…" / "Move to the Trash" row is marked danger even when its menu forgot), and no line is left dangling.
+const MENU_DANGER = /^(🗑\s*)?(Delete|Move (it )?to (the )?Trash|Erase)\b/;
+function menuTidy(list) {
+  const isItem = (it) => it && typeof it === 'object' && !it.sep;
+  for (const it of list) if (isItem(it) && !it.danger && !it.items && !it.back && MENU_DANGER.test(menuLabel(it)[0])) it.danger = true;
+  const bad = list.filter((it) => isItem(it) && it.danger && !it.more);
+  if (bad.length && list.length > bad.length) {
+    list = list.filter((it) => !bad.includes(it));
+    while (list.length && (list.at(-1) === '-' || list.at(-1)?.sep)) list.pop();
+    list.push('-', ...bad);
+  }
+  return list.filter((it, i, a) => !((it === '-' || it?.sep) && (i === 0 || a[i - 1] === '-' || a[i - 1]?.sep)));
+}
+
 function showMenu(x, y, items, parent = null, dir = 0) {
   const menu = menuNode();
   hideMenuFly();
   const given = items;
-  let list = (typeof items === 'function' ? items() : items || []).filter(Boolean);
+  let list = menuTidy((typeof items === 'function' ? items() : items || []).filter(Boolean));
   // rare items behind one "More…" (a submenu, so ‹ back returns here)
   const rest = list.filter((it) => typeof it === 'object' && it.more);
   if (rest.length > 1) {
     const main = list.filter((it) => !(typeof it === 'object' && it.more));
-    const at = main.findIndex((it) => it.danger); // "More…" goes above a closing Delete
+    let at = main.findIndex((it) => it.danger); // "More…" goes above a closing Delete (and its line)
+    if (at > 0 && (main[at - 1] === '-' || main[at - 1]?.sep)) at -= 1;
     main.splice(at < 0 ? main.length : at, 0, { label: 'More…', hint: String(rest.length), items: rest.map((it) => ({ ...it, more: false })) });
     list = main;
   } else if (rest.length) list = list.map((it) => (it === rest[0] ? { ...it, more: false } : it));
@@ -682,7 +700,7 @@ async function askAll(text) {
 
 function handleShortcut({ key, shift }) {
   Usage.key(`Ctrl+${shift ? 'Shift+' : ''}${key.length === 1 ? key.toUpperCase() : key}`);
-  if (/^[1-9]$/.test(key)) { const a = H.railAgents()[Number(key) - 1]; if (a) activate(a.id); }
+  if (/^[1-9]$/.test(key)) { const id = H.railOrder()[Number(key) - 1]; if (id) activate(id); }
   else if (key === 'g') { H.grid = !H.grid; applyLayout(); }
   else if (key === '\\') { H.panelOpen = !H.panelOpen; applyLayout(); }
   else if (key === 'b') { $('broadcast').classList.toggle('hidden'); applyLayout(); }

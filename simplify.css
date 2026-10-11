@@ -25,3 +25,7 @@
 .fx-browse { display: block; margin: 8px auto 4px; }
 .fx-head .decide-btn { font-weight: 600; }
 
+/* (round 18, tidy) an empty agent in the chats list: its one action, as a quiet link */
+.none .none-new { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); cursor: pointer; }
+.none .none-new:hover { text-decoration: underline; }
+

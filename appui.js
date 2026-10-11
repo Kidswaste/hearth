@@ -69,7 +69,15 @@ const AppUI = (() => {
   const SPELL_LANGS = [['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['fr-FR', 'French'], ['es-ES', 'Spanish'], ['de-DE', 'German']];
 
   // ---------- settings dialog ----------
-  async function openSettings() {
+  // (round 18, tidy) settings-find.js (search + every switch with its cost) loads the first time Settings opens
+  let findLoad = null;
+  const loadFind = () => (typeof SettingsFind !== 'undefined' ? Promise.resolve() : (findLoad ||= new Promise((res, rej) => {
+    document.head.append(el('script', { src: 'settings-find.js', on: { load: res, error: () => { findLoad = null; rej(new Error('settings-find.js did not load')); } } }));
+  })));
+  async function openSettings(query = '') {
+    try { await loadFind(); } catch (err) { console.warn(err); }
+    if (typeof query !== 'string') query = '';
+    document.querySelector('dialog.settings-dialog[open]')?.close();
     const s = { ...H.settings() };
     const hidden = new Set(H.config.tools?.hidden || []);
     const field = (label, input, hint) => el('label', {}, label, input, hint ? el('span', { class: 'hint', text: hint }) : null);
@@ -162,6 +170,7 @@ const AppUI = (() => {
       else toast('Settings saved', { timeout: 1500 });
     });
     dialog.append(form);
+    if (typeof SettingsFind !== 'undefined') try { SettingsFind.mount(form, section, { query }); } catch (err) { console.warn(err); }
     dialog.addEventListener('close', () => dialog.remove());
     document.body.append(dialog);
     dialog.showModal();
@@ -211,14 +220,14 @@ const AppUI = (() => {
 
   function paletteItems() {
     const items = [];
-    for (const a of H.agents()) items.push({ kind: 'Agent', label: a.name, run: () => activate(a.id) });
+    for (const a of H.agents()) items.push({ kind: 'Agent', label: a.name, keys: H.railKey?.(a.id) || '', run: () => activate(a.id) });
     for (const t of Tools.enabled()) {
-      items.push({ kind: 'Tool', label: t.name, run: () => activate(`tool:${t.id}`) });
+      items.push({ kind: 'Tool', label: t.name, keys: H.railKey?.(`tool:${t.id}`) || '', run: () => activate(`tool:${t.id}`) });
       for (const c of t.commands || []) items.push({ kind: t.name, label: c.label, run: () => { activate(`tool:${t.id}`); setTimeout(c.run, 50); } });
     }
     for (const c of H.chats) {
       const a = H.agent(c.agentId);
-      if (a) items.push({ kind: `${a.name} chat`, label: c.title, run: () => Native.open(a.id, c.id) });
+      if (a) items.push({ kind: `${a.name} chat`, label: c.title, chat: true, run: () => Native.open(a.id, c.id) });
     }
     for (const [agentId, list] of Object.entries(H.history)) {
       const a = H.agent(agentId);
@@ -234,7 +243,7 @@ const AppUI = (() => {
   let pal = null;
   function paletteNode() {
     if (pal) return pal;
-    const input = el('input', { class: 'palette-input', placeholder: 'Jump to an agent, chat, tool or action…  (? searches chat messages · / chat commands)' });
+    const input = el('input', { class: 'palette-input', placeholder: 'Search agents, chats, tools, actions…  (? messages · / commands)' });
     const list = el('div', { class: 'palette-list' });
     const box = el('div', { class: 'palette' }, el('div', { class: 'palette-card' }, input, list));
     pal = { box, input, list, items: [], shown: [], sel: 0, selEl: null, rows: [], empty: el('div', { class: 'palette-empty' }), scrollFrame: 0 };
@@ -273,7 +282,10 @@ const AppUI = (() => {
     } else {
       // (each item's text is lower-cased once per opening, not on every keystroke)
       const ql = q.toLowerCase();
-      pal.shown = pal.items.map((it) => ({ ...it, score: fuzzy(ql, it.hay ||= `${it.label} ${it.kind}`.toLowerCase()) })).filter((it) => it.score > 0)
+      // (round 18, tidy) nothing typed: a short list, not a thousand rows: ↻ Again, your agents and tools (with their
+      // keys), what you pick most here, your latest chats; typing searches everything
+      if (!ql) { let chats = 0; pal.shown = pal.items.filter((it) => ['Again', 'Agent', 'Tool'].includes(it.kind) || it.used || (it.chat && chats++ < 5)).slice(0, 30); }
+      else pal.shown = pal.items.map((it) => ({ ...it, score: fuzzy(ql, it.hay ||= `${it.label} ${it.kind}`.toLowerCase()) })).filter((it) => it.score > 0)
         .sort((a, b) => b.score - a.score).slice(0, 60);
     }
     pal.sel = Math.min(pal.sel, Math.max(0, pal.shown.length - 1));
@@ -353,7 +365,7 @@ const AppUI = (() => {
 
   // ---------- shortcuts help ----------
   const SHORTCUTS = [
-    ['Ctrl+K', 'Command palette (type ? to search messages, / for chat commands)'], ['Ctrl+;', 'Command bar: run a /command over any tool (↑ history, ? help)'], ['Ctrl+1…9', 'Switch agent'], ['Ctrl+Tab', 'Previous agent/tool (press again to go further back)'],
+    ['Ctrl+K', 'Command palette (type ? to search messages, / for chat commands)'], ['Ctrl+;', 'Command bar: run a /command over any tool (↑ history, ? help)'], ['Ctrl+1…9', 'The rail, top to bottom: agents, then tools'], ['Ctrl+Tab', 'Previous agent/tool (press again to go further back)'],
     ['Ctrl+N', 'New native chat'], ['Ctrl+F', 'Find in the current view'], ['Ctrl+J', 'Notes'], ['Ctrl+\\', 'Show/hide chats panel'],
     ['Ctrl+G', 'All agents side by side'], ['Ctrl+Shift+Space', 'Ask all agents'], ['Ctrl+B', 'Show/hide ask-all bar'],
     ['Ctrl + / − / 0', 'Text size'], ['Ctrl+R', 'Reload website'], ['Ctrl+Shift+R', 'Reload the hub itself'], ['Ctrl+,', 'Settings'], ['Ctrl+/', 'This list'],

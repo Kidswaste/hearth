@@ -141,9 +141,10 @@ const ChatContext = (() => {
     // captures / renders: newest first
     return [
       ...v.map((x) => ({ label: `${VIDEO.test(x.path) ? '🎬' : '📷'} ${base(x.path).slice(0, 40)}`, items: () => [
-        { label: 'Attach it', action: tryRun(() => Native.attachPaths(agentId, [x.path])) },
         { label: 'Open', action: tryRun(() => CaptureView.open(x.path)) },
-        { label: 'Show in folder', action: () => window.hub.fs.reveal(x.path) },
+        { label: MediaFile.revealLabel, action: () => MediaFile.reveal(x.path) },
+        { label: MediaFile.copyLabel, action: () => copyText(x.path, 'Path copied') },
+        { label: 'Attach it', action: tryRun(() => Native.attachPaths(agentId, [x.path])) },
       ] })),
       '-',
       { label: 'Forget these here', action: () => forget(chatId, k) },

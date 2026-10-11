@@ -45,12 +45,13 @@ const CaptureView = (() => {
     const read = (mode, args = {}) => tryRun(async () => { const busy = toast(`Reading ${base(p)}…`, { timeout: 0 }); try { FrameRead.show(await FrameRead.read(p, mode, args), p); } finally { busy.remove(); } });
     return [
       { label: isVid ? '▶ Play' : '🖼 Open', action: () => open(p) },
+      { label: isVid ? 'Open in the system player' : 'Open in the system viewer', action: tryRun(() => Capture.openFile(p)) },
+      { label: MediaFile.revealLabel, action: tryRun(() => Capture.reveal(p)) },
+      { label: MediaFile.copyLabel, action: () => copyText(p, 'Path copied') },
       isVid ? null : { label: 'Copy the picture', action: tryRun(async () => { await Capture.copyImage(p); toast('Copied', { timeout: 1200 }); }) },
       isVid && frameOf ? { label: 'Copy this frame', action: tryRun(async () => { const f = await frameOf(); await Capture.copyImage(f.path); toast(`Frame ${f.frame} copied`, { timeout: 1400 }); }) } : null,
       { label: isVid ? '→ Send to this chat (its contact sheet)' : '→ Send to this chat', action: tryRun(() => Capture.attachToChat(p)) },
       { label: '→ Send to a chat', items: () => agents().map((a) => ({ label: a.name, action: tryRun(() => Capture.attachToChat(p, a.id)) })) },
-      { label: isVid ? 'Open in the system player' : 'Open in the system viewer', action: tryRun(() => Capture.openFile(p)) },
-      { label: MediaFile.revealLabel, action: tryRun(() => Capture.reveal(p)) },
       isVid ? { label: 'Add to the Lab sequence', action: tryRun(() => Capture.addToSequence(p)) } : null,
       isVid ? { label: 'Add to the Lab as media', action: tryRun(() => Capture.addToLab(p)) } : null,
       isVid ? { label: 'Read frames…', items: () => [
@@ -72,8 +73,7 @@ const CaptureView = (() => {
         { label: 'All sizes…', action: () => Capture.pickFrame((f) => derive(p, (img) => Capture.socialCrop(img, f), f.id.replace(':', 'x')).catch(fail)) },
       ] } : null,
       isVid && /\.webm$/i.test(p) ? { label: 'Make an MP4', more: true, action: tryRun(async () => { const busy = toast('Making the MP4…', { timeout: 0 }); try { const r = await api().finish({ path: p, mp4: true }); if (!r.ffmpeg) throw new Error('ffmpeg isn\'t installed'); if (r.mp4Error) throw new Error(r.mp4Error); toast(`MP4: ${base(r.mp4)}`, { action: { label: 'Open', fn: () => open(r.mp4) } }); } finally { busy.remove(); } }) } : null,
-      { label: 'Copy the path', more: true, action: () => copyText(p, 'Path copied') },
-      { label: 'Move to the Trash', more: true, danger: true, action: tryRun(async () => { if (!await Modal.confirm('Move to the Trash?', base(p), { ok: 'Move to Trash', danger: true })) return; await api().trash(p); toast('Moved to the Trash', { timeout: 1500 }); document.dispatchEvent(new CustomEvent('hearth:capture', { detail: { removed: p } })); }) },
+      { label: 'Move to the Trash', danger: true, action: tryRun(async () => { if (!await Modal.confirm('Move to the Trash?', base(p), { ok: 'Move to Trash', danger: true })) return; await api().trash(p); toast('Moved to the Trash', { timeout: 1500 }); document.dispatchEvent(new CustomEvent('hearth:capture', { detail: { removed: p } })); }) },
     ];
   }
   // a new picture made from a capture (beautified, cropped): saved next to it, opened

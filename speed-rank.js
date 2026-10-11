@@ -33,7 +33,7 @@ const SpeedRank = (() => {
       if (it.kind === 'Tool') { const t = Tools.enabled().find((x) => x.name === it.label); if (t) keys.push(`Open › tool:${t.id}`); }
       return keys;
     };
-    const ranked = items.map((it, i) => ({ it, i, s: keyOf(it).reduce((m, k) => Math.max(m, S.score(k, where)), 0) })).sort((a, b) => b.s - a.s || a.i - b.i).map((o) => o.it);
+    const ranked = items.map((it, i) => ({ it, i, s: keyOf(it).reduce((m, k) => Math.max(m, S.score(k, where)), 0) })).sort((a, b) => b.s - a.s || a.i - b.i).map((o) => { if (o.s > 0) o.it.used = true; return o.it; }); // (round 18) used: the palette's short list
     const a = S.lastAction();
     if (!a) return ranked;
     return [{ kind: 'Again', label: '↻ Again', detail: a.label, keys: 'Ctrl+.', run: () => S.redo(a) }, ...ranked.filter((it) => it.label !== 'Again: repeat your last action')];

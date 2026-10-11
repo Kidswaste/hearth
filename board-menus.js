@@ -332,7 +332,7 @@
       { label: 'Move to board', items: () => B.boards().filter((b) => b.id !== S.cur.id).map((b) => ({ label: b.name, action: () => B._.toBoard(b.id, { move: true }) })), more: true },
       { label: 'Copy to board', items: () => B.boards().filter((b) => b.id !== S.cur.id).map((b) => ({ label: b.name, action: () => B._.toBoard(b.id) })), more: true },
       { label: 'Copy as a picture  Ctrl+Shift+C', action: () => B._.copyImage(), more: true },
-      ...(it?.src ? [{ label: 'Show the file', action: () => window.hub.fs.reveal(it.src), more: true }, { label: 'Open with the system', action: () => window.hub.fs.open(it.src), more: true }, { label: 'Copy the file path', action: () => { copyText(it.src); toast('Path copied'); }, more: true }] : []),
+      ...(it?.src ? MediaFile.items(it.src).map((x) => ({ ...x, more: true })) : []), // (round 18) Open · Reveal · Copy path, the app's one wording
       ...(it?.from ? [{ label: 'Go to the clip it came from', action: () => { B.select(it.from); B.zoomSel(); }, more: true }] : []),
       ...(Board._.itemExtras?.(list) || []), // later layers (board-ask.js) add entries here
       { label: `Delete${list.length > 1 ? ` ${list.length}` : ''}  Del`, danger: true, action: () => B.removeItems() },

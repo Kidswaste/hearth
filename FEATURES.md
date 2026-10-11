@@ -649,3 +649,9 @@ One searchable **FX picker** in the Three.js Lab (**X**, the Layers **＋ Layer*
 - ✓ Smoother scrubbing (one seek at a time), clip tracks draw only what's on screen, automatic proxies for 4K / HEVC / ProRes clips in the editor (`/edit-proxy auto`), decoders let go while Video Review is hidden.
 - ✓ Recording draws its frames in a worker; renders, exports and proxies run below normal priority (`/renders rush` for full speed).
 - ○ Measured headless (`dev/checks/videoperf.js`, docs/upgrades/videoperf.md); real 4K footage and the Windows priority class aren't run here.
+
+## Tidy: one app, fewer visible choices (round 18, tidy, 41 upgrades: docs/upgrades/tidy.md)
+- ✓ Settings has a search (`/settings <words>`) and every on / off from commands and menus, each with its cost (tokens a message, GPU, free); rare ones under More settings.
+- ✓ Every menu ends with its delete in red; files read Open · Reveal in Finder / Show in Explorer · Copy path · Send to… everywhere.
+- ✓ Commands page: Principal first, Studio + Discover one row of chips; Ctrl/⌘+K with nothing typed is a short list; Ctrl/⌘+1…9 walk the whole rail.
+- ○ Tested headless (`dev/checks/tidy.js`); the Mac's ⌘ labels are converted by the same code as before.

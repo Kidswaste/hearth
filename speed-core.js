@@ -26,7 +26,7 @@ const Speed = (() => {
   }).catch(() => { loaded = true; });
   const whenLoaded = (fn) => { if (loaded) fn(); else pending.push(fn); };
 
-  // where you are: 'chat' or the visible tool's id ('three', 'ae', 'board', 'commands'…)
+  // where you are: 'chat' or the visible tool's id ('three', 'board', 'commands'…)
   function place() { try { return Commands.place().id; } catch { return 'chat'; } }
   const placeLabel = (id) => { if (!id || id === 'chat') return 'Chat'; try { return Tools.get?.(id)?.name || id; } catch { return id; } };
 

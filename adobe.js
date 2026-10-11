@@ -92,7 +92,7 @@ const Adobe = (() => {
       agent?.mode === 'native' ? { label: `Attach to ${agent.name}'s message`, action: () => toChat(p, agentId) } : null,
       typeof Board !== 'undefined' ? { label: 'Add to the board', action: () => toBoard(p) } : null,
       typeof ThreeLab !== 'undefined' ? { label: 'Lab reference (the open sketch)', action: () => toLab(p) } : null,
-      { label: IS_MAC ? 'Show in Finder' : 'Show in folder', action: () => window.hub.fs.reveal(p) },
+      { label: MediaFile.revealLabel, action: () => window.hub.fs.reveal(p) },
     ].filter(Boolean);
   }
   function backMenu(p) { showMenu(innerWidth / 2 - 140, innerHeight / 2 - 80, [`${base(p)}`, ...backItems(p)]); }

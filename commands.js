@@ -28,7 +28,7 @@
 //   send(text)  sends text to this chat's agent as your message
 //   note(text, { actions: [{ label, run }], id })  a note with buttons (id: replaces an older note with that id)
 //   source      'chat' (a composer), 'bar' (the Ctrl+; command bar), 'timer' (/every, /at) or 'code'
-//   place       where you are: 'chat' or the visible tool's id ('three', 'ae', 'forgeheart'…)
+//   place       where you are: 'chat' or the visible tool's id ('three', 'board', 'forgeheart'…)
 //
 // Additive helpers: Commands.recent() (names, newest first), Commands.areas() (menu order),
 // Commands.run(name, args, agentId), Commands.AREA_ORDER, Commands.closest(word) (typo → nearest command).
@@ -53,7 +53,7 @@ const Commands = (() => {
   const noteRecent = (name) => writeLS(RECENT_KEY, [name, ...recentAll().filter((n) => n !== name)].slice(0, 8));
   // Where you are: the visible tool (Lab, board, Forge…) or 'chat'. Recent commands are also kept per
   // place, so the "/" menu in the Lab offers what you ran in the Lab first.
-  const PLACE_AREA = { three: 'Three.js Lab', ae: 'Video', forgeheart: 'Forge', 'forge-game': 'Forge', kit: 'Kit' };
+  const PLACE_AREA = { three: 'Three.js Lab', forgeheart: 'Forge', 'forge-game': 'Forge', kit: 'Kit' };
   function place() {
     let sid = '';
     try { sid = H.surfaceIdFor(H.activeId) || ''; } catch { /* before the app is up */ }

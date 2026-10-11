@@ -478,7 +478,7 @@ const Makes = (() => {
       nextOf ? { label: `⇢ Hand off to ${C.label(nextRoom(make, nextOf), make)}`, hint: `from ${C.label(nextOf, make)}`, action: () => handoff(make, nextOf) } : null,
       { label: 'Rename the make…', hint: 'every room follows', action: () => renamePrompt(make) },
       { label: 'Plan another room', items: () => ['lab', 'video', 'board', 'chat', 'astra'].map((k) => ({ label: `${C.KINDS[k].icon} ${C.KINDS[k].label}`, hint: C.KINDS[k].who, action: () => addRoom(make, k).then((p) => openRoom(make, p)).catch((e) => toast(e.message, { type: 'error' })) })) },
-      make.outputs.length ? { label: `Outputs (${make.outputs.length})`, items: () => make.outputs.slice(0, 12).map((o) => ({ label: base(o.path), items: [{ label: 'Open', action: () => openOutput(o.path) }, { label: 'Show in folder', action: () => window.hub.fs.reveal(o.path) }, { label: 'Attach to the chat', action: () => attachHere(o.path) }] })) } : null,
+      make.outputs.length ? { label: `Outputs (${make.outputs.length})`, items: () => make.outputs.slice(0, 12).map((o) => ({ label: base(o.path), items: [{ label: 'Open', action: () => openOutput(o.path) }, { label: MediaFile.revealLabel, action: () => MediaFile.reveal(o.path) }, { label: MediaFile.copyLabel, action: () => copyText(o.path, 'Path copied') }, { label: 'Attach to the chat', action: () => attachHere(o.path) }] })) } : null,
       { label: 'Show in Makes', hint: 'the Commands page', action: () => show(make.id) },
       { label: 'More', items: () => [
         { label: 'Copy the name', action: () => copyText(make.name, 'Name copied') },
@@ -621,7 +621,7 @@ const Makes = (() => {
         c || p.frameId || C.KINDS[p.kind]?.room ? el('button', { class: 'ghost small', type: 'button', text: '↗ Open', on: { click: () => openRoom(make, p) } }) : null);
     };
     const outs = make.outputs.slice(0, 8).map((o) => el('div', { class: 'mk-out' }, el('span', { class: 'mk-picon', text: o.kind === 'video' ? '▶' : o.kind === 'still' ? '▣' : '•' }), el('span', { class: 'mk-ptext', text: base(o.path), title: o.path }),
-      el('button', { class: 'ghost small', type: 'button', text: 'Open', on: { click: () => openOutput(o.path) } }), el('button', { class: 'ghost small', type: 'button', text: '⧉', title: 'Show in folder', on: { click: () => window.hub.fs.reveal(o.path) } })));
+      el('button', { class: 'ghost small', type: 'button', text: 'Open', on: { click: () => openOutput(o.path) } }), el('button', { class: 'ghost small', type: 'button', text: '⧉', title: MediaFile.revealLabel, on: { click: () => window.hub.fs.reveal(o.path) } })));
     const first = make.parts.find((p) => p.chatId || p.frameId);
     const box = tint(el('div', { class: 'cp-example mk-detail', dataset: { make: make.id } },
       el('div', { class: 'cp-big mk-big' }, el('span', { class: 'mk-bigmark', text: make.ident.glyph }), el('span', { class: 'mk-bigname', text: make.name })),
