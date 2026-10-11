@@ -616,6 +616,7 @@ renderer.setAnimationLoop((now) => {
   // a scene's sequence changed (tools/three-seq.js): the rows' marks follow (written only when they differ)
   addEventListener('hearth:sequences', () => { for (const r of document.querySelectorAll('#chat-groups .item.has-ident')) { const n = r.querySelector('.chat-ident'); if (n && r.dataset.key) paintIdent(n, r.dataset.key); } });
   addEventListener('hearth:view', () => { sync(); if (typeof DirectorDock !== 'undefined') for (const t of ['three', 'ae']) DirectorDock.entry(t)?.paint(); });
+  window.Lazy?.when('lab', () => sync()); // (round 16) the Lab loads after the first screen: the chat's scene follows once it's in
 
   // "New chat" (also when the dock already shows an empty one): a fresh starter
   async function onNewChat(agentId) {

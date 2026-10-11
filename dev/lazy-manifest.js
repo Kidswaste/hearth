@@ -1,0 +1,105 @@
+#!/usr/bin/env node
+// Writes the generated part of lazy-data.js (LazyData.META): what each lazy group registers by the time the first
+// screen is up (chat commands, palette actions, keys-sheet lines, agent tool prefixes, app windows, rail tools).
+// It's recorded the way it was before lazy loading: a throwaway copy of the app gets the groups' files back at their
+// old places in index.html (LazyData.GROUPS[].at) with dev/lazy-record.js noting who registers what. Then the lazy
+// build runs too and both are compared (commands, aliases, actions, keys, apps, tools must match).
+//   node dev/lazy-manifest.js            # rewrite lazy-data.js, then compare
+//   node dev/lazy-manifest.js --check    # exit 1 when lazy-data.js is out of date or the lazy build differs
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { execFileSync } = require('child_process');
+
+const ROOT = path.join(__dirname, '..');
+const FILE = path.join(ROOT, 'lazy-data.js');
+const check = process.argv.includes('--check');
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-lazy-'));
+const LazyData = new Function(`${fs.readFileSync(FILE, 'utf8')}; return LazyData;`)(); // eslint-disable-line no-new-func
+
+function smoke(root, body) {
+  const script = path.join(tmp, `check-${Math.random().toString(36).slice(2)}.js`);
+  fs.writeFileSync(script, body);
+  let text = '';
+  try {
+    text = execFileSync(process.execPath, [path.join(root, 'dev', 'smoke.js'), '--script', script, '--wait', '4000'], { encoding: 'utf8', maxBuffer: 64 << 20, stdio: ['ignore', 'pipe', 'inherit'] });
+  } catch (err) { text = String(err.stdout || ''); }
+  const m = text.match(/\[LAZY\](\{[\s\S]*\})/);
+  if (!m) { console.error(text.slice(-3000)); throw new Error('no result in the smoke output'); }
+  if (/problem\(s\):/.test(text)) console.log(text.slice(text.lastIndexOf('problem(s):') - 4).slice(0, 2000));
+  return JSON.parse(m[1]);
+}
+const SNAP = `
+const names = Commands.list().map((d) => d.name).sort();
+const snap = { names, aliases: Commands.list().flatMap((d) => d.aliases.map((a) => a.toLowerCase() + '>' + d.name)).sort(), actions: AppUI.actions().map((a) => a.label).sort(),
+  keys: Keys.all().map((k) => k.area + '|' + k.keys).sort(), apps: Apps.list().map((a) => a.id).sort(), tools: Tools.all().map((t) => t.id).sort(),
+  bridge: [], dups: Commands.duplicates().map((d) => d.name) };`;
+
+// ---------- 1. the old order, recorded ----------
+const copy = path.join(tmp, 'app');
+fs.mkdirSync(copy);
+const skip = new Set(['.git', 'data', 'electron', 'electron-mac', 'node_modules']);
+for (const n of fs.readdirSync(ROOT)) if (!skip.has(n)) fs.cpSync(path.join(ROOT, n), path.join(copy, n), { recursive: true });
+let html = fs.readFileSync(path.join(copy, 'index.html'), 'utf8');
+const tag = (f) => `  <script defer src="${f}"></script>\n`;
+html = html.replace(tag('lazy.js'), '').replace(tag('lazy-data.js'), '');
+const after = (f, add) => { if (!html.includes(tag(f))) throw new Error(`index.html has no ${f} (LazyData.GROUPS at)`); html = html.replace(tag(f), tag(f) + add); };
+for (const g of LazyData.GROUPS) {
+  const own = g.places || {};
+  after(g.at, g.files.filter((f) => !own[f]).map(tag).join(''));
+  for (const [f, at] of Object.entries(own)) after(at, tag(f));
+}
+after('commands.js', tag('lazy-data.js') + tag('dev/lazy-record.js'));
+after('apps.js', tag('dev/lazy-record.js'));
+after('appui.js', tag('dev/lazy-record.js'));
+for (const g of LazyData.GROUPS) for (const c of g.css || []) html = html.replace('  <style id="user-theme">', `  <link rel="stylesheet" href="${c}">\n  <style id="user-theme">`);
+fs.writeFileSync(path.join(copy, 'index.html'), html);
+// smoke.js leaves dev/ out of its copy: the recorder goes next to the app
+fs.mkdirSync(path.join(copy, 'devrec'), { recursive: true });
+fs.copyFileSync(path.join(__dirname, 'lazy-record.js'), path.join(copy, 'devrec', 'lazy-record.js'));
+fs.writeFileSync(path.join(copy, 'index.html'), html.replaceAll('src="dev/lazy-record.js"', 'src="devrec/lazy-record.js"'));
+console.log('recording the old order…');
+const old = smoke(copy, `${SNAP} return '[LAZY]' + JSON.stringify({ rec: window.__lazyRec?.out || {}, snap });`);
+
+const meta = {};
+const uniq = (xs, key) => { const seen = new Set(); return xs.filter((x) => { const k = key(x); if (seen.has(k)) return false; seen.add(k); return true; }); };
+for (const g of LazyData.GROUPS) {
+  const r = old.rec[g.name] || {};
+  const o = {};
+  if (r.commands?.length) o.commands = uniq(r.commands, (c) => c.name.toLowerCase());
+  if (r.actions?.length) o.actions = uniq(r.actions, (a) => a.label || a);
+  if (r.keys?.length) o.keys = uniq(r.keys, (k) => `${k.area}|${k.keys}`);
+  if (r.bridge?.length) o.bridge = [...new Set(r.bridge)];
+  if (r.apps?.length) o.apps = uniq(r.apps, (a) => a.id);
+  if (r.tools?.length) o.tools = uniq(r.tools, (t) => t.id);
+  meta[g.name] = o;
+}
+const src = fs.readFileSync(FILE, 'utf8');
+const A = '  // ---- generated by dev/lazy-manifest.js below this line ----\n';
+const B = '  // ---- end of generated part ----';
+const a = src.indexOf(A), b = src.indexOf(B);
+if (a < 0 || b < 0) { console.error('markers missing in lazy-data.js'); process.exit(1); }
+const next = `${src.slice(0, a)}${A}  const META = ${JSON.stringify(meta)};\n${src.slice(b)}`;
+console.log(Object.entries(meta).map(([n, o]) => `${n}: ${o.commands?.length || 0} cmds, ${o.actions?.length || 0} actions, ${o.keys?.length || 0} keys, ${o.bridge?.length || 0} tool prefixes, ${o.apps?.length || 0} apps, ${o.tools?.length || 0} tools`).join('\n'));
+let bad = 0;
+if (next !== src) {
+  if (check) { console.log('✖ lazy-data.js is out of date: run node dev/lazy-manifest.js'); bad++; } else { fs.writeFileSync(FILE, next); console.log('wrote lazy-data.js'); }
+}
+
+// ---------- 2. the lazy build: at the first screen and once everything loaded, the same as the old order ----------
+if (!check || !bad) {
+  console.log('checking the lazy build…');
+  const now = smoke(ROOT, `await Lazy.loadAll(); await new Promise((r) => setTimeout(r, 300)); ${SNAP} return '[LAZY]' + JSON.stringify({ snap, atReady: Lazy.namesAtReady(), misses: Lazy.misses(), state: Lazy.state() });`);
+  const diff = (k) => { const X = new Set(old.snap[k]), Y = new Set(now.snap[k]); return { lost: [...X].filter((x) => !Y.has(x)), added: [...Y].filter((x) => !X.has(x)) }; };
+  for (const k of ['names', 'aliases', 'actions', 'keys', 'apps', 'tools', 'dups']) {
+    const d = diff(k);
+    if (d.lost.length || d.added.length) { console.log(`✖ ${k}: lost ${JSON.stringify(d.lost)} added ${JSON.stringify(d.added)}`); bad++; } else console.log(`✓ ${k} (${now.snap[k].length})`);
+  }
+  const R = new Set(now.atReady || []);
+  const late = now.snap.names.filter((n) => !R.has(n));
+  if (late.length) console.log(`(registered after the first screen, as before? ${late.join(' ')})`);
+  for (const s of now.state) if (s.state !== 'loaded') { console.log(`✖ group ${s.name} is ${s.state}`); bad++; }
+  if (now.misses.length) console.log(`globals touched before their group loaded:\n${now.misses.map((x) => `  ${x.name} (${x.group}) @${x.at} ms: ${x.where}`).join('\n')}`);
+}
+fs.rmSync(tmp, { recursive: true, force: true });
+process.exit(bad ? 1 : 0);

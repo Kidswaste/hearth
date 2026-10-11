@@ -1,0 +1,47 @@
+#!/usr/bin/env node
+// Boot (round 16): the main-process modules main.js loads on their first IPC call (lazyIpc) must have every channel
+// their register() adds readable from their source, else a call would find no handler. Also: every lazy group's files
+// exist, none is still in index.html, and each lazy-at.js tag names known groups.
+//   node dev/boot-test.js
+const fs = require('fs');
+const path = require('path');
+const assert = require('assert');
+const ROOT = path.join(__dirname, '..');
+let n = 0;
+const ok = (cond, msg) => { assert.ok(cond, msg); n++; };
+
+// 1. lazy main-process modules: channels from the source = channels register() adds
+const main = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8');
+const lazyFiles = [...main.matchAll(/lazyIpc\('([^']+)'/g)].map((m) => m[1]).filter((f) => f !== 'file');
+ok(lazyFiles.length >= 2, 'main.js loads some modules lazily');
+for (const file of lazyFiles) {
+  const src = fs.readFileSync(path.join(ROOT, file), 'utf8');
+  const read = new Set([...src.matchAll(/ipcMain\.(handle|on)\(\s*'([^']+)'/g)].map((m) => m[2]));
+  const added = new Set();
+  const fake = { handle: (ch) => added.add(ch), on: (ch) => added.add(ch), removeHandler() {} };
+  const m = require(path.join(ROOT, file));
+  m.register(fake, () => null, () => ({}));
+  for (const ch of added) ok(read.has(ch), `${file}: ${ch} is added by register() but not readable from the source`);
+  for (const ch of read) ok(added.has(ch), `${file}: ${ch} is in the source but register() doesn't add it`);
+  console.log(`✓ ${file}: ${added.size} channels`);
+}
+
+// 2. lazy groups vs index.html
+const LazyData = new Function(`${fs.readFileSync(path.join(ROOT, 'lazy-data.js'), 'utf8')}; return LazyData;`)(); // eslint-disable-line no-new-func
+const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+const names = new Set(LazyData.GROUPS.map((g) => g.name));
+for (const g of LazyData.GROUPS) {
+  for (const f of g.files) {
+    ok(fs.existsSync(path.join(ROOT, f)), `${g.name}: ${f} is missing`);
+    ok(!html.includes(`src="${f}"`), `${g.name}: ${f} is still a <script> in index.html (it would load twice)`);
+  }
+  for (const c of g.css || []) { ok(fs.existsSync(path.join(ROOT, c)), `${g.name}: ${c} is missing`); ok(!html.includes(`href="${c}"`), `${g.name}: ${c} is still linked in index.html`); }
+  for (const d of g.after || []) ok(names.has(d), `${g.name}: after "${d}" isn't a group`);
+  ok(LazyData.META[g.name], `${g.name}: no manifest (node dev/lazy-manifest.js)`);
+}
+const at = [...html.matchAll(/lazy-at\.js#([\w,-]+)/g)].flatMap((m) => m[1].split(','));
+for (const a of at) ok(names.has(a), `lazy-at.js#${a}: no such group`);
+for (const g of names) ok(at.includes(g), `${g}: no lazy-at.js tag (its stand-ins would come last)`);
+ok(html.indexOf('src="lazy.js"') > html.indexOf('src="commands.js"') && html.indexOf('src="lazy.js"') < html.indexOf('lazy-at.js'), 'lazy.js loads after commands.js, before the first lazy-at.js');
+console.log(`✓ ${LazyData.GROUPS.length} lazy groups, ${LazyData.GROUPS.reduce((a, g) => a + g.files.length, 0)} files`);
+console.log(`boot-test: ${n} checks passed`);

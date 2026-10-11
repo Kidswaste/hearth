@@ -156,6 +156,7 @@ const Assist = (() => {
   const FRAMES_KEY = 'assist.frames';
   let lastFrame = null;
   function noteFrame() {
+    if (window.Lazy && !window.Lazy.loaded('lab')) return; // (round 16) the Lab loads after the first screen
     const c = ThreeLab.peek?.();
     if (!c) return;
     let st; try { st = c.state; } catch { return; }

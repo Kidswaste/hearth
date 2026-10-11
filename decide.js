@@ -57,7 +57,7 @@ const Decide = (() => {
   }
   const fxKind = (kind, label, goal, extra) => ({
     label, goal, visual: true,
-    candidates: () => fxCandidates(kind, extra),
+    candidates: () => fxCandidates(kind, typeof extra === 'function' ? extra() : extra), // (round 16) the Lab loads after the first screen: read its suggestions when asked
     async apply(c) { const snap = await labSnapshot(); await ThreeFX.apply(c.it); return () => labRestore(snap); },
     local: (cands) => cands[0], // a favorite, else a suggestion
   });
@@ -65,9 +65,9 @@ const Decide = (() => {
   // ---------- what can be decided ----------
   const KINDS = {
     look: fxKind('look', 'a Lab look (colors + filters)', 'a look that suits this music visual', []),
-    effect: fxKind('filter', 'an effect for the Lab picture', 'one effect that makes this picture more striking', (ThreeFX.SUGGESTED || []).filter((k) => k.startsWith('filter:'))),
+    effect: fxKind('filter', 'an effect for the Lab picture', 'one effect that makes this picture more striking', () => (ThreeFX.SUGGESTED || []).filter((k) => k.startsWith('filter:'))),
     palette: fxKind('palette', 'a palette for the Lab picture', 'colors that suit this picture', []),
-    template: fxKind('layer', 'a layer to add to the Lab picture', 'one layer that adds to this picture', (ThreeFX.SUGGESTED || []).filter((k) => k.startsWith('layer:'))),
+    template: fxKind('layer', 'a layer to add to the Lab picture', 'one layer that adds to this picture', () => (ThreeFX.SUGGESTED || []).filter((k) => k.startsWith('layer:'))),
     size: {
       label: 'a frame size', goal: 'the social frame that suits this picture best', visual: true,
       candidates: () => [['9:16', 'vertical 9:16'], ['16:9', 'wide 16:9'], ['4:5', 'portrait 4:5'], ['1:1', 'square 1:1']].map(([id, name]) => ({ id, name })),
