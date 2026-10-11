@@ -137,4 +137,7 @@ for (const n of segs) { const s = d.segments?.[n]; if (!s) continue; out.segment
 // totals across the interactive stretches (idle left out): inputs over budget, frames over budget
 const S = segs.filter((n) => n !== 'idle').map((n) => d.segments?.[n]).filter(Boolean);
 out.total = { inputs: S.reduce((a, s) => a + s.inputs, 0), inputsOver4: S.reduce((a, s) => a + s.work.over4, 0), frames: S.reduce((a, s) => a + s.frames.n, 0), framesOver4: S.reduce((a, s) => a + s.frames.over4, 0), framesOver8: S.reduce((a, s) => a + s.frames.over8, 0), forced: S.reduce((a, s) => a + s.forced.n, 0), styleElements: S.reduce((a, s) => a + s.style.elements, 0), layoutObjects: S.reduce((a, s) => a + s.layout.objects, 0) };
+// a stretch that couldn't drive its UI (a menu that didn't open, a missing control) fails the check
+const broken = Object.keys(out).filter((k) => k.endsWith('Error'));
+if (broken.length) throw new Error(`hz240: ${broken.map((k) => `${k}: ${out[k]}`).join(' · ')}`);
 return JSON.stringify(out, null, 1);
