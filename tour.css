@@ -1,0 +1,64 @@
+/* Round 15 (tour): guided spotlights (the pulse ring + one small card), the What's new / tip cards (they reuse the
+   pick-up card's .speed-card look), and the Discover pane on the Commands page. Compositor-only motion. */
+.tour-ring {
+  position: fixed; z-index: 8990; pointer-events: none; border-radius: 9px;
+  box-shadow: 0 0 0 2px var(--fh-gold, var(--accent)), 0 0 18px color-mix(in srgb, var(--fh-gold, var(--accent)) 55%, transparent);
+}
+.tour-ring::after {
+  content: ''; position: absolute; inset: -2px; border-radius: inherit; border: 2px solid var(--fh-gold, var(--accent)); opacity: 0;
+}
+:root:not([data-motion=off]) .tour-ring::after { animation: tour-pulse 1.4s ease-out infinite; }
+@keyframes tour-pulse { 0% { opacity: .85; transform: scale(1); } 100% { opacity: 0; transform: scale(1.35); } }
+.tour-ring.out { opacity: 0; transition: opacity .2s; }
+.tour-ring-label {
+  position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); white-space: nowrap; padding: 1px 7px;
+  border-radius: 99px; font-size: 11px; background: var(--fh-gold, var(--accent)); color: #1b1206; font-weight: 600;
+}
+.tour-card.speed-card { bottom: auto; width: min(320px, calc(100vw - 24px)); z-index: 8995; }
+.tour-card .tour-head { display: flex; align-items: center; gap: 6px; cursor: grab; padding: 0 2px 2px; }
+.tour-card .tour-head b { font-family: var(--font-head, inherit); font-size: 12.5px; color: var(--fh-gold, var(--accent)); }
+.tour-card .tour-ic { width: 18px; text-align: center; }
+.tour-card .tour-n { color: var(--muted); font-size: 11px; }
+.tour-card .tour-x { border: 0; background: none; color: var(--muted); font-size: 15px; cursor: pointer; padding: 0 4px; }
+.tour-card .tour-text { margin: 2px 2px 6px; line-height: 1.4; }
+.tour-card .tour-hint { margin: 0 2px 6px; color: var(--muted); font-size: 11px; }
+.tour-card .tour-btns { display: flex; align-items: center; gap: 6px; }
+.tour-card .spacer, .dc-card .spacer, .dc-foot .spacer { flex: 1; }
+
+/* What's new / tip cards */
+.dc-card .dc-row { display: grid; grid-template-columns: 20px 1fr auto auto; align-items: center; gap: 4px; padding: 4px 4px 4px 6px; border-radius: var(--r-md, 7px); }
+.dc-card .dc-row:hover { background: var(--hover); }
+.dc-text { display: flex; flex-direction: column; min-width: 0; }
+.dc-text b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dc-sub { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dc-show, .dc-no { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 2px 5px; border-radius: 5px; font-size: 12px; }
+.dc-row:not(:hover) .dc-no { visibility: hidden; }
+.dc-show:hover { color: var(--fh-gold, var(--accent)); background: var(--hover); }
+.dc-no:hover { color: var(--text); background: var(--hover); }
+.dc-foot { display: flex; align-items: center; gap: 6px; padding-top: 4px; }
+.dc-tiptext { margin: 0 2px 6px; line-height: 1.4; }
+.dc-stop { opacity: .7; }
+
+/* ☰ Commands › Discover */
+.dc-pane { padding: 4px 2px; display: flex; flex-direction: column; gap: 8px; }
+.dc-pane .dc-h { margin: 0; font-family: var(--font-head, inherit); color: var(--fh-gold, var(--accent)); }
+.dc-pane .hint { margin: 0; }
+.dc-pane .dc-row { display: grid; grid-template-columns: 22px 1fr auto auto; align-items: center; gap: 6px; padding: 5px 6px; border-radius: var(--r-md, 7px); }
+.dc-pane .dc-row:hover { background: var(--hover); }
+.dc-pane .dc-text b, .dc-pane .dc-sub { white-space: normal; }
+.dc-group { display: flex; flex-direction: column; }
+.dc-ghead { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 6px 6px 2px; }
+.dc-round { font-size: 12px; }
+.dc-map { display: flex; flex-direction: column; gap: 2px; }
+.dc-area { display: grid; grid-template-columns: minmax(90px, 1fr) 2fr auto; align-items: center; gap: 8px; padding: 4px 6px; border: 0; background: none; color: inherit; text-align: left; border-radius: 6px; cursor: pointer; }
+.dc-area:hover { background: var(--hover); }
+.dc-aname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dc-bar { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--muted) 25%, transparent); overflow: hidden; }
+.dc-bar i { display: block; height: 100%; background: var(--fh-gold, var(--accent)); border-radius: inherit; }
+.dc-anum { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.dc-idea { display: grid; grid-template-columns: 22px 1fr; gap: 6px; align-items: center; padding: 6px; border: 0; background: none; color: inherit; text-align: left; border-radius: var(--r-md, 7px); cursor: pointer; }
+.dc-idea:hover { background: var(--hover); }
+.dc-sout { min-height: 1em; }
+.dc-wrap { display: flex; flex-direction: column; gap: 8px; }
+.dc-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+.dc-tabs .on { background: var(--hover); color: var(--fh-gold, var(--accent)); }

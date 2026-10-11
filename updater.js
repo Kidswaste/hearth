@@ -70,13 +70,15 @@ const Updater = (() => {
       const what = [busy.length ? `${busy.join(', ')} ${busy.length === 1 ? 'is' : 'are'} still answering` : '', renders ? `${renders} render${renders === 1 ? '' : 's'} running` : ''].filter(Boolean).join(' and ');
       if (!await Modal.confirm('Update now?', `${what}. Updating reloads Hearth, which stops ${busy.length && renders ? 'them' : 'it'}.`, { ok: 'Update anyway' })) return null;
     }
+    // (round 15, tour) What's new: what each upgrade doc has now, to tell the new lines after the update (≤ 2.5 s)
+    try { await Promise.race([window.Discover?.beforeUpdate?.(), new Promise((res) => setTimeout(res, 2500))]); } catch { /* a bonus */ }
     const t = toast('Updating Hearth…', { timeout: 60000 });
     let r;
     try { r = await api().apply(); } catch (err) { r = { ok: false, message: err.message }; }
     t?.remove?.();
     if (!r.ok) { toast(r.message, { type: 'error', timeout: 12000 }); return r; }
     if (!r.changed) { toast(r.message || 'Already up to date.', { timeout: 2400 }); last = { ...(last || {}), behind: 0 }; paint(); return r; }
-    store.set('update.just', { from: r.from, to: r.to, n: r.changed, at: Date.now(), restart: r.restart, note: r.note || '' });
+    store.set('update.just', { from: r.from, to: r.to, n: r.changed, at: Date.now(), restart: r.restart, note: r.note || '', files: (r.files || []).filter((f) => /^docs\//.test(f)).slice(0, 80) });
     toast(r.restart ? 'Updated: restarting Hearth…' : 'Updated: reloading…', { timeout: 3000 });
     setTimeout(() => (r.restart ? api().restart() : api().reload()), 700);
     return r;
@@ -110,6 +112,8 @@ const Updater = (() => {
     const j = store.get('update.just', null);
     if (!j) return;
     store.set('update.just', null);
+    store.set('update.last', j); // (round 15) discover.js: What's new from the docs this update changed
+    document.dispatchEvent(new CustomEvent('hearth:updated', { detail: j }));
     if (Date.now() - j.at < 5 * 60000) toast(`Hearth updated (${j.from} → ${j.to}, ${j.n} file${j.n === 1 ? '' : 's'}).${j.note ? ` ${j.note}` : ''}`, { timeout: j.note ? 12000 : 4000 });
   }
 
