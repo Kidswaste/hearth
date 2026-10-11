@@ -4,7 +4,7 @@
 // CPU time is less noisy than fps on a shared machine: compare before / after runs from the same machine.
 //   node dev/smoke.js --fake-engines --check-timeout 300000 --lib dev/checks/smooth-lib.js --script dev/checks/chatperf.js
 const { wait, until, measure, brief } = M;
-const out = {};
+const out = { hidden: document.hidden };
 const claude = H.claudeAgent();
 activate(claude.id); await wait(300);
 const v = () => Native.view(claude.id);
@@ -94,4 +94,14 @@ await wait(400);
 m1 = await metrics();
 mo2.disconnect();
 out.sendInLongChat = { messagesAdded: rebuilt, ...busy(m0, m1) };
+// 5. typing 80 characters in the composer of the long chat (each keystroke: counter, Send button, box height, "/" menu)
+{
+  const ta = v().input; ta.focus(); ta.value = '';
+  let tm = 0; const mo3 = new MutationObserver((r) => { tm += r.length; }); mo3.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+  m0 = await metrics();
+  for (let i = 0; i < 80; i++) { ta.value += i % 9 === 8 ? ' ' : 'a'; ta.dispatchEvent(new Event('input', { bubbles: true })); await wait(16); }
+  m1 = await metrics(); mo3.disconnect();
+  out.typing80 = { mutations: tm, ...busy(m0, m1) };
+  ta.value = ''; ta.dispatchEvent(new Event('input', { bubbles: true }));
+}
 return JSON.stringify(out, null, 1);

@@ -73,13 +73,27 @@ document.addEventListener('loadedmetadata', (e) => { const v = e.target; if (v i
   function toast(message, { type = 'info', action, timeout = 4500 } = {}) {
     if (!toastBox) { toastBox = el('div', { id: 'toasts' }); document.body.append(toastBox); }
     toastLog.unshift({ message, type, at: Date.now() }); toastLog.length = Math.min(toastLog.length, 40);
+    // (round 16, chatperf) the same notification again while it shows counts up ("×3") instead of stacking copies,
+    // and at most 5 show at once (the oldest goes)
+    const prev = toastBox.lastElementChild;
+    if (!action && prev?.toastKey === `${type}\n${message}` && prev.restart) {
+      prev.repeats = (prev.repeats || 1) + 1;
+      let n = prev.querySelector('.toast-n');
+      if (!n) { n = el('b', { class: 'toast-n' }); prev.firstChild.after(n); }
+      n.textContent = ` ×${prev.repeats}`;
+      prev.restart(timeout);
+      return prev;
+    }
+    while (toastBox.childElementCount >= 5) ([...toastBox.children].find((t) => !t.hasAction) || toastBox.firstElementChild).remove(); // an Undo stays longest
     const node = el('div', { class: `toast ${type}` }, el('span', { text: message }));
+    node.toastKey = `${type}\n${message}`; node.hasAction = Boolean(action);
     if (action) node.append(el('button', { text: action.label, on: { click: () => { action.fn(); node.remove(); } } }));
     node.append(el('button', { class: 'toast-x', text: '×', title: 'Dismiss', on: { click: () => node.remove() } }));
     toastBox.append(node);
     if (timeout) {
       // hovering a notification keeps it until you leave it
       let timer = setTimeout(() => node.remove(), timeout);
+      node.restart = (ms) => { clearTimeout(timer); if (ms) timer = setTimeout(() => node.remove(), ms); };
       node.addEventListener('mouseenter', () => clearTimeout(timer));
       node.addEventListener('mouseleave', () => { clearTimeout(timer); timer = setTimeout(() => node.remove(), 1500); });
     }

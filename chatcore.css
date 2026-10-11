@@ -95,3 +95,4 @@
 .messages > .day-sep:nth-last-child(n+9) { content-visibility: auto; contain-intrinsic-size: auto 24px; }
 /* the chats list: in a long group, rows past the first dozen skip layout and paint while scrolled out of view */
 #chat-groups .group > .item:not(.active):nth-child(n+14) { content-visibility: auto; contain-intrinsic-size: auto 28px; }
+.toast .toast-n { font-weight: 650; opacity: .75; margin-left: 2px; font-variant-numeric: tabular-nums; }

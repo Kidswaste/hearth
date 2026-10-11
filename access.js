@@ -325,9 +325,13 @@ const Access = (() => {
   function paintBadge(agentId, v, chat) {
     if (!v?.meta) return;
     const acc = effective(chat, agentOf(agentId));
-    v.meta.querySelector('.access-badge')?.remove();
-    if (acc.level === 'off' || !acc.own) return;
-    v.meta.append(el('button', { type: 'button', class: 'access-badge', text: badgeText(acc), title: `File access: ${R.LEVEL_LABEL[acc.level]} (${R.LEVEL_HINT[acc.level]})\n${acc.folders.join('\n') || 'no folder'}\nClick to change`, on: { click: (ev) => { ev.stopPropagation(); panel(agentId); } } }));
+    const old = v.meta.querySelector('.access-badge');
+    if (acc.level === 'off' || !acc.own) { old?.remove(); return; }
+    // (round 16) the same badge stays as it is (every redraw of the chat used to replace it)
+    const text = badgeText(acc); const title = `File access: ${R.LEVEL_LABEL[acc.level]} (${R.LEVEL_HINT[acc.level]})\n${acc.folders.join('\n') || 'no folder'}\nClick to change`;
+    if (old && old.textContent === text && old.title === title) return;
+    old?.remove();
+    v.meta.append(el('button', { type: 'button', class: 'access-badge', text, title, on: { click: (ev) => { ev.stopPropagation(); panel(agentId); } } }));
   }
   // The chat ⋯ menu entry: the four levels in a submenu, then folders, the log and the rest in the panel.
   function menuItem(agentId, chat) {

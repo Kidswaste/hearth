@@ -78,6 +78,8 @@ const ProgressUI = (() => {
   function sync() {
     Progress.tick();
     const all = Progress.list({ all: true });
+    // (round 16, chatperf) the window is hidden / minimised: the model keeps counting, nothing is drawn until it's back
+    if (document.hidden) { if (!all.length) stop(); return; }
     const want = new Map();
     for (const it of all) for (const loc of locators(it)) for (const h of resolve(loc)) if (!want.has(h)) want.set(h, [it, loc]);
     for (const [host, b] of bars) {

@@ -540,22 +540,32 @@ const Prompts = (() => {
       items = next;
       const pickable = items.filter((it) => it.kind !== 'head');
       if (!pickable.length && !hint?.parts?.length) { close(); return; }
-      if (!menu) { menu = el('div', { class: `slash-menu${below ? ' below' : ''}` }); textarea.parentElement.append(menu); }
+      if (!menu) {
+        menu = el('div', { class: `slash-menu${below ? ' below' : ''}` });
+        // (round 16, chatperf) one listener for the menu, not one per row and star (rebuilt on every keystroke)
+        menu.addEventListener('mousedown', (e) => {
+          const row = e.target.closest('.slash-item'); const it = row && items[Number(row.dataset.i)];
+          if (!it) return;
+          e.preventDefault();
+          if (e.target.closest('.slash-star')) { e.stopPropagation(); Commands.toggleFav(it.def.name); lastValue = null; update(); return; }
+          pick(it);
+        });
+        textarea.parentElement.append(menu);
+      }
       sel = Math.min(sel, Math.max(0, pickable.length - 1));
       let n = -1;
       const star = (def) => el('span', {
         class: `slash-star${Commands.isFav?.(def.name) ? ' on' : ''}`, text: Commands.isFav?.(def.name) ? '★' : '☆', title: 'Pin to the top of the / menu',
-        on: { mousedown: (e) => { e.preventDefault(); e.stopPropagation(); Commands.toggleFav(def.name); lastValue = null; update(); } },
       });
       // the argument hint: "/size <9:16|16:9…>" with the one you're typing now lit up (and an example)
       const hintRow = hint?.parts?.length ? el('div', { class: 'slash-arghint' }, el('b', { text: `/${hint.def.name}` }), ...hint.parts.map((p) => el('span', { class: `arg-${p.state}`, text: ` ${p.text}` })),
         hint.variant ? el('span', { class: 'arg-eg', text: `  · ${hint.variant}` }) : null, hint.example ? el('span', { class: 'arg-eg', text: `  e.g. ${hint.example}` }) : null) : null;
-      menu.replaceChildren(hintRow, ...items.map((it) => {
+      menu.replaceChildren(hintRow, ...items.map((it, i) => {
         if (it.kind === 'head') return el('div', { class: 'slash-head', text: it.label });
         n += 1;
         const mine = n;
         return el('div', {
-          class: `slash-item${mine === sel ? ' sel' : ''}${it.kind === 'command' || it.kind === 'line' ? ' cmd' : ''}${it.kind === 'area' ? ' slash-area' : it.kind === 'back' ? ' slash-back' : ''}`, on: { mousedown: (e) => { e.preventDefault(); pick(it); } },
+          class: `slash-item${mine === sel ? ' sel' : ''}${it.kind === 'command' || it.kind === 'line' ? ' cmd' : ''}${it.kind === 'area' ? ' slash-area' : it.kind === 'back' ? ' slash-back' : ''}`, dataset: { i: String(i) },
           // hover: the full description and a few examples
           title: it.kind === 'command' && it.def ? [it.def.desc, ...(Commands.examplesOf?.(it.def) || []).slice(0, 3).map((x) => `e.g. ${x}`)].join('\n') : (it.hint || ''),
         }, el('b', { text: it.label }), el('span', { class: 'hint', text: it.hint }), it.keys ? el('kbd', { text: Commands.keyText(it.keys) }) : null, it.kind === 'command' && Commands.toggleFav ? star(it.def) : null);

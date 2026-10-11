@@ -237,14 +237,19 @@ const Native = (() => {
 
   // Grows with the text up to ~45% of the window, then scrolls.
   function autosize(input) {
-    input.style.height = 'auto';
     const max = Math.max(160, Math.round(window.innerHeight * 0.45));
+    // (round 16) typing more text that still fits (or a box already at its tallest) changes nothing: one cheap read
+    // instead of resetting the height, which laid out the whole chat above it on every keystroke
+    const len = input.value.length; const grew = len >= (input.lenSeen ?? Infinity); input.lenSeen = len;
+    if (grew && input.style.height && (input.style.height === `${max}px` || input.scrollHeight <= input.clientHeight)) return;
+    input.style.height = 'auto';
     input.style.height = `${Math.min(Math.max(input.scrollHeight + 2, 84), max)}px`;
     input.style.overflowY = input.scrollHeight + 2 > max ? 'auto' : 'hidden';
   }
   function updateCounter(v) {
     const n = v.input.value.length;
-    v.counter.textContent = n > 200 ? `${n.toLocaleString()} chars · ~${fmt(Math.ceil(n / 4))} tokens` : '';
+    const t = n > 200 ? `${n.toLocaleString()} chars · ~${fmt(Math.ceil(n / 4))} tokens` : '';
+    if (v.counter.textContent !== t) v.counter.textContent = t; // (round 16) per keystroke: only when it changes
   }
 
   // ---------- composer helpers: draft history, smart paste, style chips ----------
@@ -314,6 +319,7 @@ const Native = (() => {
     const next = v.styleNext;
     const active = !next && chat?.style;
     v.styleBox.hidden = !next && !active;
+    if (!next && !active && !v.styleBox.firstChild) return; // (round 16) nothing shown, nothing to clear
     v.styleBox.replaceChildren(next || active ? el('span', { class: 'style-chip', title: next ? 'Sent once with your next message (then the agent keeps it in mind)' : 'This chat\'s style (already given to the agent)' },
       el('span', { text: `${next ? '✎ next message: ' : '🎭 '}${(next || active).slice(0, 80)}` }),
       el('button', { type: 'button', text: '×', title: next ? 'Don\'t send it' : 'Drop this style', on: { click: () => { if (next) { v.styleNext = ''; v.styleClear = false; } else setStyle(agentId, null); renderStyle(agentId); } } })) : null);
@@ -805,16 +811,20 @@ const Native = (() => {
     const wasNearBottom = nearBottom(v.list);
     const prevScroll = v.list.scrollTop;
 
-    v.title.textContent = `${chat?.pinned ? '📌 ' : ''}${chat?.title || 'New chat'}`;
-    v.title.title = chat ? `${chat.title}\n${chat.messages.length} messages · started ${fmtDate(chat.createdAt || chat.updatedAt)}\nDouble-click to rename` : 'Double-click to rename';
+    // (round 16) the header is written only where it changed (a redraw of the same chat left it as it was)
+    const put = (node, key, value) => { if (node[key] !== value) node[key] = value; };
+    put(v.title, 'textContent', `${chat?.pinned ? '📌 ' : ''}${chat?.title || 'New chat'}`);
+    put(v.title, 'title', chat ? `${chat.title}\n${chat.messages.length} messages · started ${fmtDate(chat.createdAt || chat.updatedAt)}\nDouble-click to rename` : 'Double-click to rename');
     const total = (chat?.messages || []).reduce((sum, m) => sum + (m.usage ? m.usage.input + m.usage.output : 0), 0);
     const folder = agent.workspace ? `edits ${agent.workspace.split(/[\\/]/).filter(Boolean).pop() || agent.workspace}` : null;
-    v.meta.textContent = [folder, total ? `${fmt(total)} tokens this chat` : null].filter(Boolean).join(' · ');
-    v.meta.title = agent.workspace ? `Can read and edit files in ${agent.workspace}` : '';
+    const metaText = [folder, total ? `${fmt(total)} tokens this chat` : null].filter(Boolean).join(' · ');
+    if (v.metaText !== metaText) { v.metaText = metaText; const badge = v.meta.querySelector('.access-badge'); v.meta.textContent = metaText; if (badge) v.meta.append(badge); }
+    put(v.meta, 'title', agent.workspace ? `Can read and edit files in ${agent.workspace}` : '');
     paintContext(v, chat);
-    v.input.placeholder = v.root.classList.contains('dock-chat') ? `Message ${agent.name}…  (/ for commands)`
-      : `Message ${agent.name}…${store.get('chat.enterSends', true) === false ? '  (Ctrl+Enter sends)' : ''}`;
-    fillModelSelect(v, agent, chat);
+    put(v.input, 'placeholder', v.root.classList.contains('dock-chat') ? `Message ${agent.name}…  (/ for commands)`
+      : `Message ${agent.name}…${store.get('chat.enterSends', true) === false ? '  (Ctrl+Enter sends)' : ''}`);
+    const modelKey = `${agent.model}|${agent.engine}|${chat?.model || ''}`;
+    if (v.modelKey !== modelKey) { v.modelKey = modelKey; fillModelSelect(v, agent, chat); }
     renderStyle(agentId);
     if (!v.input.value) { v.input.value = store.get(draftKey(agentId), '') || ''; autosize(v.input); updateCounter(v); }
 
@@ -1112,14 +1122,19 @@ const Native = (() => {
     const v = views.get(agentId);
     const busy = pending.has(H.activeChat[agentId]);
     if (!v) return;
-    v.sendBtn.textContent = busy ? (v.input.value.trim() ? 'Queue' : 'Stop') : 'Send';
-    v.sendBtn.title = busy ? (v.input.value.trim() ? 'Send this when the reply ends' : 'Stop (Esc)') : 'Send (Enter)';
-    v.sendBtn.classList.toggle('stop', busy && !v.input.value.trim());
+    // (round 16) runs on every keystroke: written only when it changes
+    const typed = Boolean(v.input.value.trim());
+    const label = busy ? (typed ? 'Queue' : 'Stop') : 'Send';
+    if (v.sendBtn.textContent === label) return;
+    v.sendBtn.textContent = label;
+    v.sendBtn.title = busy ? (typed ? 'Send this when the reply ends' : 'Stop (Esc)') : 'Send (Enter)';
+    v.sendBtn.classList.toggle('stop', busy && !typed);
   }
   function renderQueue(agentId) {
     const v = views.get(agentId);
     if (!v) return;
-    v.queueBox.hidden = !v.queue.length;
+    if (v.queueBox.hidden !== !v.queue.length) v.queueBox.hidden = !v.queue.length;
+    if (!v.queue.length && !v.queueBox.firstChild) { syncSendBtn(agentId); return; } // (round 16) empty stays empty: no write
     v.queueBox.replaceChildren(...v.queue.map((q, i) => el('span', { class: 'queue-chip', title: `${q}\n\n(click to edit it again)` },
       el('span', { text: `⏳ ${q.length > 60 ? `${q.slice(0, 59)}…` : q}`, on: { click: () => { v.queue.splice(i, 1); renderQueue(agentId); insertDraft(agentId, q); } } }),
       el('button', { type: 'button', text: '×', title: 'Remove from the queue', on: { click: () => { v.queue.splice(i, 1); renderQueue(agentId); } } }))));
@@ -1349,8 +1364,9 @@ const Native = (() => {
   function paintContext(v, chat) {
     const last = [...(chat?.messages || [])].reverse().find((m) => m.usage);
     const n = last?.usage.input || 0;
-    v.ctx.hidden = !n;
-    if (!n) return;
+    if (v.ctx.hidden !== !n) v.ctx.hidden = !n;
+    if (!n || v.ctxSeen === n) return; // (round 16) unchanged: nothing written
+    v.ctxSeen = n;
     const pct = Math.min(100, Math.round((n / 200000) * 100));
     v.ctx.style.setProperty('--pct', `${pct}%`);
     v.ctx.classList.toggle('warn', n >= 60000);

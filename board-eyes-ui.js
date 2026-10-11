@@ -163,12 +163,13 @@ const BoardEyesUI = (() => {
   function card(rec) {
     const items = (rec.items || []).slice(0, 8);
     const node = el('div', { class: `eyes-card${rec.pins ? ' eyes-pins' : ''}`, title: rec.size ? `Sent to the chat: ${rec.size}` : '' },
-      rec.thumb ? el('img', { class: 'eyes-thumb', src: rec.thumb, alt: '', draggable: false, title: 'Open on the board', on: { click: () => jump(rec.board, items[0]?.id) } }) : null,
+      // (round 16) decoded off the main thread, loaded when near the screen; its click is the list-wide one below
+      rec.thumb ? el('img', { class: 'eyes-thumb', src: rec.thumb, alt: '', draggable: false, loading: 'lazy', decoding: 'async', title: 'Open on the board', dataset: { board: rec.board || '', item: items[0]?.id || '' } }) : null,
       el('div', { class: 'eyes-main' },
         el('div', { class: 'eyes-head' }, el('span', { class: 'eyes-eye', text: rec.pins ? '📌' : '👁' }), ` ${VERB[rec.tool] || 'Looked at'} `, el('b', { text: rec.boardName || 'the board' }),
           rec.pictures ? el('span', { class: 'eyes-size', text: ` · ${rec.size}` }) : null),
         items.length ? el('div', { class: 'eyes-items' }, items.map((i) => ref(rec.board, i.id, `${i.id} ${String(i.title || '').slice(0, 26)}`)), (rec.items || []).length > 8 ? el('span', { class: 'eyes-more', text: `+${rec.items.length - 8}` }) : null) : null,
-        rec.pins?.length ? el('div', { class: 'eyes-items' }, rec.pins.map((p) => el('button', { type: 'button', class: 'eyes-pin', text: p, title: 'Open this Pinterest search in a Hearth window: ＋ Board on a pin adds it', on: { click: () => BoardPins.open(p) } }))) : null));
+        rec.pins?.length ? el('div', { class: 'eyes-items' }, rec.pins.map((p) => el('button', { type: 'button', class: 'eyes-pin', text: p, title: 'Open this Pinterest search in a Hearth window: ＋ Board on a pin adds it', dataset: { pin: p } }))) : null));
     return node;
   }
   const ref = (board, id, text) => el('a', { class: 'eyes-ref', href: '#', text, dataset: { board: board || '', item: id }, title: 'Show it on the board' });
@@ -184,7 +185,10 @@ const BoardEyesUI = (() => {
     return true;
   }
   addEventListener('click', (e) => {
-    const a = e.target.closest?.('.eyes-ref');
+    // (round 16) one listener for every card: thumbnails and Pinterest buttons too
+    const pin = e.target.closest?.('.eyes-pin[data-pin]');
+    if (pin) { e.preventDefault(); e.stopPropagation(); BoardPins.open(pin.dataset.pin); return; }
+    const a = e.target.closest?.('.eyes-ref, .eyes-thumb[data-board]');
     if (!a) return;
     e.preventDefault(); e.stopPropagation();
     jump(a.dataset.board || null, a.dataset.item);
