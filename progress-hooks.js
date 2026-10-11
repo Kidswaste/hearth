@@ -6,9 +6,8 @@
 //   chats      'chat:<chatId>'     Native.hooks.send + the engine's events (reply, chat row, rail icon)
 //   comps      'comp:<card id>'    the parent of its parts' replies (the comp card's head and rows)
 //   flows      'flow:<runId>'      Flows.onChange: steps done / total, weighted (chat card, Commands page run)
-//   projects   'intro:<pid>'       Intro.onChange: the seven steps with their n / m (the project card)
 //   jams       'jam:<id>'          jam.js badge(): rounds (the jam card, the Lab badge, the Lab's rail icon)
-//   renders    'job:<id>'          ffmpeg's -progress (Video Review exports, cuts, captures' MP4s: 'capconv:<id>')
+//   renders    'job:<id>'          ffmpeg's -progress (the render queue's jobs, captures' MP4s: 'capconv:<id>')
 //   Lab        'seq-render:<t>'    tools/three-seq.js renderEdit: frames
 //   recordings 'rec'               hearth:recording: seconds against the take's length, a tour's steps
 //   board      'snap:<item id>'    board.js website snapshots
@@ -142,30 +141,6 @@ const ProgressHooks = (() => {
     });
   }
 
-  // ---------- video projects (/intro) ----------
-  const STEP_W = { plan: 0.04, vibe: 0.04, scenes: 0.36, captures: 0.16, edit: 0.14, review: 0.06, render: 0.2 };
-  function introProject(p) {
-    if (!p || typeof IntroData === 'undefined') return;
-    const key = `intro:${p.id}`;
-    const running = typeof Intro !== 'undefined' && Intro.current?.()?.id === p.id && Intro.running?.();
-    if (!running) { if (P.get(key)) { if (p.status === 'done') P.done(key); else if (p.status === 'error') P.done(key, { ok: false, label: cap(p.error, 60) }); else P.drop(key); } return; }
-    let s = 0; let tot = 0; let cur = null;
-    for (const st of IntroData.STEPS) {
-      const x = p.steps?.[st.id] || {};
-      const w = STEP_W[st.id] ?? 0.1;
-      tot += w;
-      if (x.status === 'done') s += w;
-      else if (x.status === 'running') { cur = { st, x }; s += w * (x.total ? Math.min(1, (x.done || 0) / x.total) : 0.3); }
-    }
-    P.set(key, {
-      title: `🎬 ${p.name}`, icon: '🎬', kind: 'intro', pct: (100 * s) / tot, estimate: !cur?.x?.total,
-      label: cur ? `${cur.st.icon} ${cur.st.name}${cur.x.total ? ` ${cur.x.done || 0}/${cur.x.total}` : ''}${cur.x.sub ? ` · ${cap(cur.x.sub, 30)}` : ''}` : 'working',
-      where: [`.intro-card[data-pid="${p.id}"]`, ...(p.chatId ? [`row:${p.chatId}`] : []), ...(p.agentId ? [railOf(p.agentId)] : [])],
-      jump: () => { if (p.agentId && p.chatId) go(p.agentId, p.chatId)(); },
-      actions: [{ label: '■', title: 'Stop the video project', run: () => Intro.stop?.() }],
-    });
-  }
-
   // ---------- jams (jam.js calls this from its Lab badge) ----------
   let jamKey = null;
   function jam(J, text) {
@@ -184,8 +159,8 @@ const ProgressHooks = (() => {
   }
 
   // ---------- renders: ffmpeg's own progress ----------
-  // Video Review / the cut name their jobs (tools/review.js); the Lab sequence's mux is part of its own bar
-  function job(id, o) { P.set(`job:${id}`, { title: o.label || 'Rendering a video', icon: '⇪', kind: 'render', pct: 0, where: ['rail:tool:ae'], jump: () => activate('tool:ae'), actions: [{ label: '■', title: 'Cancel', run: () => window.hub.video.cancel(id) }], hungMs: 90000, ...o, label: o.sub || '' }); }
+  // jobs started outside the render queue get a bar here; the Lab sequence's mux is part of its own bar
+  function job(id, o) { P.set(`job:${id}`, { title: o.label || 'Rendering a video', icon: '⇪', kind: 'render', pct: 0, where: [], jump: () => window.Lazy?.load?.('renders').then(() => window.Renders?.open?.()), actions: [{ label: '■', title: 'Cancel', run: () => window.hub.video.cancel(id) }], hungMs: 90000, ...o, label: o.sub || '' }); }
   function onJob(ev) {
     if (!ev?.id || /^seq/.test(ev.id)) return;
     const key = `job:${ev.id}`;
@@ -255,8 +230,6 @@ const ProgressHooks = (() => {
       const back = () => { for (const r of Flows.runs?.() || []) if (['running', 'waiting-ai', 'hung'].includes(r.status) && Date.now() - (r.updated || 0) < 3600000 && !P.get(`flow:${r.id}`)) flowRun(r); };
       back(); setTimeout(back, 4000);
     }
-    if (typeof Intro !== 'undefined') Intro.onChange((p) => introProject(p || Intro.current?.()));
-    addEventListener('hearth:intro-end', (e) => { const p = typeof Intro !== 'undefined' && Intro.get?.(e.detail?.id); const key = `intro:${e.detail?.id}`; if (!P.get(key)) return; if (e.detail?.status === 'done') P.done(key); else if (e.detail?.status === 'error') P.done(key, { ok: false, label: cap(p?.error, 60) }); else P.drop(key); });
     addEventListener('hearth:jam-end', (e) => { if (!jamKey || !P.get(jamKey)) return; const st = e.detail?.status; if (st === 'done') P.done(jamKey); else if (st === 'error') P.done(jamKey, { ok: false }); else P.drop(jamKey); jamKey = null; });
     window.hub.video?.onJob?.(onJob);
     window.hub.capture?.onProgress?.(onCapture);
@@ -265,6 +238,6 @@ const ProgressHooks = (() => {
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 
-  return { jam, job, flowRun, introProject, replies: () => [...R.keys()], TAG };
+  return { jam, job, flowRun, replies: () => [...R.keys()], TAG };
 })();
 window.ProgressHooks = ProgressHooks;

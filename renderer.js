@@ -14,9 +14,12 @@ const H = {
   unread: new Set(), // agent ids with a reply you haven't seen
   mru: [], // recently used surface ids, newest first
 };
-H.agents = () => (H.config?.agents || []).filter((a) => a.enabled !== false);
+// (round 17) the Video Director lived in Video Review (dock 'ae'), which is gone: its entry stays in config.json and its
+// chats stay on disk, but it shows nowhere any more
+const GONE_DOCKS = new Set(['ae']);
+H.agents = () => (H.config?.agents || []).filter((a) => a.enabled !== false && !GONE_DOCKS.has(a.dock));
 H.agent = (id) => H.config?.agents.find((a) => a.id === id);
-// Agents docked inside a tool (Three Director, Video Director) live in that tool, not in the rail.
+// Agents docked inside a tool (Three Director, Forge Debug) live in that tool, not in the rail.
 H.railAgents = () => H.agents().filter((a) => !a.dock);
 H.surfaceIdFor = (id) => { const a = H.agent(id); return a?.dock ? `tool:${a.dock}` : id; };
 H.settings = () => H.config?.settings || {};

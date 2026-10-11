@@ -25,5 +25,3 @@
 .fx-browse { display: block; margin: 8px auto 4px; }
 .fx-head .decide-btn { font-weight: 600; }
 
-/* Video Review: the Review · Director · Toolkit · Flow tabs show only while one of the others is open (⋯ opens them) */
-.vr-seg:has(> button:first-child.on):not(:has(> button.on:not(:first-child))) { display: none; }

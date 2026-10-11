@@ -12,7 +12,6 @@
 //   - Routing: a director's tool calls carry their chat (engines.js HUB_CHAT_ID → mcp/common.js → bridge.js), and
 //     tools/three.js sends them to that chat's sketch: the one on screen as before, another chat's backstage
 //     (tools/three-backstage.js). A chat's director never edits another chat's scene.
-//   - Video Director: each chat remembers its video and opens it again when you come back to the chat.
 // No settings. Commands for power use: /scene, /scene link, /scene new, /scene unlink.
 // Data: data/kv/chat-scenes.json { links: { chatId: { sketch, auto, at } }, videos: { chatId: path }, idents: { chatId: [color, glyph] } }.
 const ChatScenes = (() => {
@@ -273,7 +272,7 @@ renderer.setAnimationLoop((now) => {
   // ---------- following the chat on screen ----------
   const shown = {}; // toolId -> chat id (or 'new') the tool shows the scene / video of
   let syncing = Promise.resolve();
-  function sync() { syncing = syncing.then(() => Promise.all([syncThree(), syncVideo()])).catch((err) => console.warn(err)); return syncing; }
+  function sync() { syncing = syncing.then(() => Promise.all([syncThree()])).catch((err) => console.warn(err)); return syncing; }
   async function syncThree() {
     const S = lab();
     const agent = threeAgent();
@@ -304,27 +303,9 @@ renderer.setAnimationLoop((now) => {
     followTitles();
     paintAll();
   }
-  // Video Director: each chat comes back to its video.
-  async function syncVideo() {
-    if (typeof Review === 'undefined' || typeof Tools === 'undefined') return;
-    const agent = Tools.dockedAgent('ae');
-    if (!agent) return;
-    const chatId = H.activeChat[agent.id] || null;
-    const key = chatId || 'new';
-    if (shown.ae === key) return;
-    const prev = shown.ae;
-    shown.ae = key;
-    let cur = null;
-    try { cur = Review.current?.path || null; } catch { return; }
-    if (prev && prev !== 'new' && cur && summaryOf(prev)) { data.videos[prev] = cur; save(); }
-    const want = chatId && data.videos[chatId];
-    if (want && want !== cur && H.surfaces.get('tool:ae')?.mounted) { try { await Review.open(want); } catch { /* moved or deleted */ } }
-  }
-
   // A message in a director chat: that chat's scene is the one it talks about.
   function onSend(agentId, chat) {
     const agent = H.agent(agentId);
-    if (agent?.dock === 'ae' && typeof Review !== 'undefined') { try { const p = Review.current?.path; if (p) { data.videos[chat.id] = p; save(); } } catch { /* not mounted */ } return; }
     if (agent?.dock !== 'three' || H.activeChat[agentId] !== chat.id) return;
     const S = lab();
     if (!S) return; // the Lab isn't loaded: its first call links (routeThree)
@@ -615,7 +596,7 @@ renderer.setAnimationLoop((now) => {
   addEventListener('hearth:lab-ready', () => sync());
   // a scene's sequence changed (tools/three-seq.js): the rows' marks follow (written only when they differ)
   addEventListener('hearth:sequences', () => { for (const r of document.querySelectorAll('#chat-groups .item.has-ident')) { const n = r.querySelector('.chat-ident'); if (n && r.dataset.key) paintIdent(n, r.dataset.key); } });
-  addEventListener('hearth:view', () => { sync(); if (typeof DirectorDock !== 'undefined') for (const t of ['three', 'ae']) DirectorDock.entry(t)?.paint(); });
+  addEventListener('hearth:view', () => { sync(); if (typeof DirectorDock !== 'undefined') for (const t of ['three']) DirectorDock.entry(t)?.paint(); });
   window.Lazy?.when('lab', () => sync()); // (round 16) the Lab loads after the first screen: the chat's scene follows once it's in
 
   // "New chat" (also when the dock already shows an empty one): a fresh starter

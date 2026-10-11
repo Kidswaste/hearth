@@ -8,7 +8,7 @@
 //     the new engine gets "[Task state…]" + the last few messages (Astra.beforeSend → DirectorTask.handover).
 //   - Read on demand by the director (three_do { cmd: "task" }) and by the owner (/task).
 // Data: data/kv/director-tasks.json { chatId: { goal, asks, done, todos, steps, shot, by, engine, at } }.
-// Also here: three_do { cmd: "run", command } — a director runs a Lab / music / nodes / video chat command itself.
+// Also here: three_do { cmd: "run", command } — a director runs a Lab / music / nodes / sequence chat command itself.
 const DirectorTask = (() => {
   const KEY = 'director-tasks';
   const MAX_CHATS = 150;
@@ -31,7 +31,7 @@ const DirectorTask = (() => {
       window.hub.kvSet(KEY, data).catch?.(() => {});
     }, 800);
   }
-  const isDirector = (agent) => Boolean(agent && agent.mode === 'native' && (agent.dock || agent.threeTools || agent.videoTools));
+  const isDirector = (agent) => Boolean(agent && agent.mode === 'native' && (agent.dock || agent.threeTools));
   const agentOfChat = (chatId) => { const c = H.chats?.find((x) => x.id === chatId); return H.agent(c?.agentId) || H.agents().find((a) => String(chatId).startsWith(`${a.id}-`)) || null; };
   function stateOf(chatId, create = true) {
     if (!chatId) return null;
@@ -78,15 +78,10 @@ const DirectorTask = (() => {
       case 'three_run': return `ran ${cap(a.command, 40)}`;
       case 'three_references': return ['add', 'palette', 'rename', 'remove'].includes(a.action) ? `references: ${a.action} ${cap(a.name || a.from || '', 24)}` : null;
       case 'three_notes': return a.action === 'done' ? `resolved note ${a.id}` : a.action === 'add' ? `added a note at ${a.time}s` : null;
-      case 'video_open': return `opened ${base(a.path)}`;
-      case 'video_add_note': return `note at ${a.time}s: ${cap(a.text, 40)}`;
-      case 'video_export': return `exported ${a.preset}`;
-      case 'ae_render': return `rendered ${base(a.project)}${a.comp ? ` / ${a.comp}` : ''}`;
-      case 'ae_run_script': return `ran an AE script${a.label ? `: ${cap(a.label, 30)}` : ''}`;
       default: return null;
     }
   }
-  const LOOKS = new Set(['three_screenshot', 'three_contact_sheet', 'video_frame', 'video_contact_sheet', 'chat_show']);
+  const LOOKS = new Set(['three_screenshot', 'three_contact_sheet', 'chat_show']);
   function noteCall({ tool, args, result, chatId }) {
     if (!chatId) return;
     const s = stateOf(chatId);
@@ -186,9 +181,9 @@ const DirectorTask = (() => {
     }
     return { ok: true, value: text(chatId) || 'Nothing recorded for this chat yet.' };
   }
-  // Commands a director may run itself: the Lab, music, nodes, looks, timeline and video ones; nothing that deletes,
+  // Commands a director may run itself: the Lab, music, nodes, looks, timeline and sequence ones; nothing that deletes,
   // resets, signs in, changes settings or starts other agents.
-  const RUN_AREAS = /lab|three|music|node|layer|look|fx|effect|timeline|scene|video|review|slider|frame|media|filter|shader|sketch|director/i;
+  const RUN_AREAS = /lab|three|music|node|layer|look|fx|effect|timeline|scene|sequence|video|slider|frame|media|filter|shader|sketch|director/i;
   const RUN_DENY = /delete|remove|trash|clear|reset|wipe|purge|forget|restart|quit|login|logout|import|backup|settings|config|memory|engine|handoff|jam|collab|opinion|^do$|^run$|^every$|^at$|^ask|astra|claude/i;
   async function runTool(args, ctx) {
     const line = String(args.command || '').trim();

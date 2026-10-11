@@ -5,7 +5,6 @@
 //   - Your usual: the frame size you use (per song too) is learned from your clicks; /usual applies it.
 //   - Next steps: after a director reply or a jam, a few chips computed here from the Lab's state (no model
 //     call), plus one optional "✦ What would Astra do?".
-//   - Review with Astra (Video Review): the frame (or a contact sheet) → at most 3 notes on the timeline.
 //   - /decide saved: Astra picks one of your saved looks (✦ in the looks row).
 // Rules: no model call ever runs without your click or command; local heuristics first; every automatic choice
 // shows a toast with Undo (and /assist undo); no new settings. Each question's tokens go to the meter and /assist log.
@@ -357,21 +356,12 @@ const Assist = (() => {
     if (Array.isArray(rep?.sliders) && rep.sliders.length) out.push({ label: '🎲 Shuffle & pick', run: '/shuffle-pick 4', title: '4 variations as thumbnails: click one, or let Astra pick (/shuffle-pick)' });
     return out.slice(0, 3);
   }
-  function reviewSteps() {
-    if (typeof Review === 'undefined' || !Review.current) return [];
-    const open = (Review.notes() || []).filter((n) => !n.done).length;
-    return [
-      { label: '✦ Review with Astra', run: '/review-astra', title: 'Astra looks at this frame and adds at most 3 notes to the timeline (one small question)' },
-      open ? null : { label: '⇪ Export 4 socials', run: '/export-all', title: 'The open video in every other social format (/export-all)' },
-    ].filter(Boolean);
-  }
-  const stepsFor = (toolId, o) => (toolId === 'three' ? labSteps(o) : toolId === 'ae' ? reviewSteps() : []);
+  const stepsFor = (toolId, o) => (toolId === 'three' ? labSteps(o) : []);
 
   async function whatWouldAstraDo(toolId) {
     const cx = toolId === 'three' ? labContext() || {} : {};
     let url = null;
     if (toolId === 'three') url = await ThreeLab.shot();
-    else if (typeof Review !== 'undefined' && Review.current) { const r = await Review.tool('video_frame', {}).catch(() => null); url = r?.images?.[0] ? `data:image/jpeg;base64,${r.images[0].data}` : null; }
     const img = await saveJpeg(await shrink(url, 320), 'assist-next');
     const what = toolId === 'three' ? `this music visual${cx.song ? ` for "${cap(cx.song, 40)}"` : ''}${cx.frame && cx.frame !== 'fit' ? ` (${cx.frame})` : ''}` : 'this video frame';
     return ask('next', `You art-direct ${what}. The image is the picture now. Give one next step to make it better.\nReply with one next step: one imperative sentence, at most 14 words.`, { images: img ? [img] : [] });
@@ -402,11 +392,11 @@ const Assist = (() => {
     e.chips.prepend(group);
     return group;
   }
-  const clearSteps = (agentId) => { for (const id of ['three', 'ae']) { const e = typeof DirectorDock !== 'undefined' && DirectorDock.entry(id); if (e && (!agentId || e.agentId === agentId)) e.chips.querySelector('.as-next')?.remove(); } };
+  const clearSteps = (agentId) => { for (const id of ['three']) { const e = typeof DirectorDock !== 'undefined' && DirectorDock.entry(id); if (e && (!agentId || e.agentId === agentId)) e.chips.querySelector('.as-next')?.remove(); } };
   function onReplyDone(ev, chat) {
     if (ev?.type !== 'done' || !chat || typeof DirectorDock === 'undefined') return;
     if (window.Jam?.running?.()) return;
-    for (const id of ['three', 'ae']) {
+    for (const id of ['three']) {
       const e = DirectorDock.entry(id);
       if (e && e.agentId === chat.agentId) setTimeout(() => showSteps(id, chat.agentId, stepsFor(id)), 60);
     }
@@ -416,40 +406,6 @@ const Assist = (() => {
     Native.hooks.send.push((agentId) => clearSteps(agentId));
   });
   addEventListener('hearth:jam-end', (e) => { if (e.detail?.status === 'done') setTimeout(() => showSteps('three', null, labSteps({ jam: true })), 200); });
-
-  // ---------- review with Astra (Video Review) ----------
-  async function reviewAstra({ sheet = false } = {}) {
-    if (typeof Review === 'undefined' || !Review.current) throw new Error('Open a video in Video Review first');
-    const stat = Review.status() || {};
-    const t0 = stat.time || 0;
-    const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-    const tt = toast(`✦ Astra is looking at ${sheet ? 'the whole video' : `the frame at ${fmt(t0)}`}…`, { timeout: 60000 });
-    let img = null; let times = null;
-    try {
-      if (sheet) { const s = await Review.contactSheet({ count: 6 }); times = s.times; img = await saveJpeg(await shrink(`data:image/jpeg;base64,${s.image.data}`, 720, 0.75), 'assist-review'); } else {
-        const r = await Review.tool('video_frame', {});
-        img = await saveJpeg(await shrink(`data:image/jpeg;base64,${r.images[0].data}`, 480, 0.75), 'assist-review');
-      }
-    } catch (err) { tt.remove(); throw err; }
-    const prior = (Review.notes() || []).filter((n) => !n.done).slice(0, 3).map((n) => `${fmt(n.t)} ${cap(n.text, 50)}`);
-    const prompt = `Art-direct ${sheet ? `this music video (frames at ${times.map((x) => `${fmt(x)}`).join(', ')}, left to right)` : `this frame of a music video at ${fmt(t0)}`}.${prior.length ? ` Notes already there: ${prior.join('; ')}.` : ''}\nGive at most 3 new notes, specific and short, no praise. Reply one per line as "m:ss | note".`;
-    const r = await ask('review', prompt, { images: img ? [img] : [] }).finally(() => tt.remove());
-    if (!r) throw new Error('Neither Astra nor Claude answered (no tokens spent)');
-    const lines = r.text.split('\n').map((l) => l.trim().replace(/^[-*•\d.)\s]+(?=\d+:\d)/, '')).filter(Boolean);
-    const added = [];
-    for (const l of lines.slice(0, 3)) {
-      const m = /^(\d+):(\d{1,2}(?:\.\d+)?)\s*[|:–—-]\s*(.+)$/.exec(l);
-      const t = m ? Number(m[1]) * 60 + Number(m[2]) : t0;
-      const text = cap(m ? m[3] : l.replace(/^\d+:\d+\s*/, ''), 200);
-      if (!text) continue;
-      const n = await Review.addNote(text, { t: sheet ? clamp(t, 0, stat.duration || t) : t0, by: 'Astra', frame: true });
-      if (n) added.push(n);
-    }
-    if (sheet) Review.seek?.(t0);
-    if (!added.length) throw new Error(`${r.by} answered without notes`);
-    offerUndo(`✦ ${r.by} added ${added.length} note${added.length === 1 ? '' : 's'} · ${costText(r)}`, `${added.length} note${added.length === 1 ? '' : 's'} from ${r.by}`, () => added.forEach((n) => Review.deleteNote(n.id)), 8000);
-    return { notes: added.map((n) => `${fmt(n.t)} ${n.text}`), by: r.by, usage: r.usage };
-  }
 
   // ---------- /decide saved: Astra picks one of your saved looks ----------
   if (typeof Decide !== 'undefined' && Decide.KINDS && !Decide.KINDS.saved) {
@@ -517,22 +473,16 @@ const Assist = (() => {
     run: async () => useUsual(),
   });
   reg({
-    name: 'next-steps', aliases: ['whats-next'], args: '', desc: 'What to do next, from the Lab (or Video Review) as it is now: a few one-click steps, no tokens',
+    name: 'next-steps', aliases: ['whats-next'], args: '', desc: 'What to do next, from the Lab as it is now: a few one-click steps, no tokens',
     keywords: 'suggest what now next step ideas',
     run: async (args, ctx) => {
-      const toolId = ctx.place === 'ae' ? 'ae' : 'three';
+      const toolId = 'three';
       if (toolId === 'three' && !ThreeLab.peek?.()) await ThreeLab.cmd({ show: false });
       const steps = stepsFor(toolId);
       if (!steps.length) return 'Nothing obvious: it all looks saved and tidy.';
       if (ctx.note) { ctx.note('Next:', { actions: [...steps.map((s) => ({ label: s.label, run: () => Commands.exec(s.run, ctx.agentId) })), { label: '✦ What would Astra do?', run: async () => { const r = await whatWouldAstraDo(toolId); ctx.say?.(r ? `✦ ${r.by}: ${r.text} (${costText(r)})` : 'No answer'); } }] }); return ''; }
       return steps.map((s) => `- \`${s.run}\` ${s.label}`).join('\n');
     },
-  });
-  reg({
-    name: 'review-astra', aliases: ['astra-review'], args: '[sheet]', desc: 'Video Review: Astra art-directs this frame (or the whole video with "sheet") and adds at most 3 timeline notes',
-    examples: ['/review-astra', '/review-astra sheet'], keywords: 'critique art direction notes feedback', undo: '/assist undo',
-    complete: () => [{ value: 'sheet', hint: 'the whole video as 6 frames' }],
-    run: async (args) => { const r = await reviewAstra({ sheet: /sheet|all|whole/i.test(args) }); return `✦ ${r.by}'s notes:\n${r.notes.map((n) => `- ${n}`).join('\n')}`; },
   });
   reg({
     name: 'assist', args: '[log|undo]', desc: 'What Hearth decided for you lately and what Astra\'s small questions cost; undo the last automatic choice',
@@ -550,21 +500,16 @@ const Assist = (() => {
   queueMicrotask(() => {
     // every click in the app: is the Lab on a new frame size? (one property read, no timers)
     Usage.onTrack?.(() => noteFrame());
-    // Video Review's docked director gets the Astra review as a chip
-    if (typeof DirectorDock !== 'undefined' && DirectorDock.CHIPS?.ae && !DirectorDock.CHIPS.ae.some((c) => c.run === '/review-astra')) {
-      DirectorDock.CHIPS.ae.unshift({ label: '✦ Review with Astra', run: '/review-astra', title: 'Astra looks at this frame and adds at most 3 timeline notes (one small question) · /review-astra sheet for the whole video' });
-    }
     AppUI.addAction?.('Shuffle & pick: 4 variations as thumbnails', () => shufflePick(4).catch((err) => toast(err.message, { type: 'error' })));
     AppUI.addAction?.('Shuffle & let Astra pick the best', () => shufflePick(4, { astraPicks: true }).catch((err) => toast(err.message, { type: 'error' })));
     AppUI.addAction?.('Name this sketch (from its colors and song)', () => nameSketch().catch((err) => toast(err.message, { type: 'error' })));
     AppUI.addAction?.('Lab: my usual frame size', () => useUsual().catch((err) => toast(err.message, { type: 'error' })));
-    AppUI.addAction?.('Video Review: review this frame with Astra', () => reviewAstra().catch((err) => toast(err.message, { type: 'error' })));
     AppUI.addAction?.('Let Astra decide: one of my saved looks', () => Decide.run('saved').catch((err) => toast(err.message, { type: 'error' })));
   });
 
   return {
     shufflePick, astraPick, picker: () => pick, nameSketch, lookName, sketchName, colorWord, mainWords, usualFrame, useUsual,
-    labSteps, reviewSteps, showSteps, whatWouldAstraDo, reviewAstra, ask, undo, labContext,
+    labSteps, showSteps, whatWouldAstraDo, ask, undo, labContext,
     decide: (what) => Decide.run(what).catch((err) => toast(err.message, { type: 'error' })),
   };
 })();

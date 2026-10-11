@@ -7,7 +7,7 @@ const TOOLS = [
   { name: 'adobe_do', description: 'The owner\'s Adobe apps (Mac/Windows; a missing app answers why). app + action:\n'
     + 'photoshop: open {path|"lab" = Lab still} · board {selected} (layered PSD) · actions · action {set, name, path?} · sizes {sizes: "9:16 4:5" | "socials" | "1080x1920"} · place {path} · back {to: chat|board|lab} (front doc → PNG, you see it)\n'
     + 'illustrator: svg {path?} (→ SVG, added to the open Lab sketch) · png · open · place\n'
-    + 'premiere: timeline (the editor\'s cut as FCP XML) · import {path|"last", name?} · xml · info\n'
+    + 'premiere: timeline (the Lab sequence as FCP XML; its scenes render first) · import {path|"last", name?} · xml · info\n'
     + 'mediaencoder: queue {path|"last", preset?} · presets\n'
     + 'indesign: pdf {path?} · place · open · aftereffects: import {path}\n'
     + 'any app: script {code} (ExtendScript function body returning a value; asks the owner) · status (app omitted).',

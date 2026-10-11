@@ -71,7 +71,7 @@
   async function premiere(args) {
     const [verb, ...rest] = String(args || '').trim().split(/\s+/);
     const tail = rest.join(' ');
-    if (!verb || /^(timeline|edit|cut)$/i.test(verb)) {
+    if (!verb || /^(timeline|edit|cut|sequence|seq)$/i.test(verb)) {
       const r = await Adobe.sendEdit();
       return r.premiere.ok ? `In Premiere Pro: “${r.name}”, ${r.clips} clips${r.notes.length ? `\nStays in Hearth: ${r.notes.slice(0, 6).join('; ')}` : ''}` : `${r.premiere.error}\n${r.premiere.manual}\n(the XML: ${r.file})`;
     }
@@ -80,7 +80,7 @@
     if (/^info$/i.test(verb)) { const r = await Adobe.must('pr', D.pr.info(), { label: 'info', activate: false }); return fmt(r); }
     if (/^(render|encode|queue)$/i.test(verb)) { const out = tail || `${(await window.hub.adobe.dir())}/out/Premiere ${Date.now()}.mp4`; const r = await Adobe.must('pr', D.pr.queue({ out }), { label: 'encode sequence' }); return `“${r.sequence}” is in Media Encoder's queue → ${base(r.out)}`; }
     if (/^bridge$/i.test(verb)) return Adobe.bridge(tail || 'status');
-    return 'Premiere Pro: timeline (the editor\'s cut as FCP XML) · import <path|last> · xml (just the file) · info · render (active sequence → Media Encoder) · bridge [install]';
+    return 'Premiere Pro: timeline (the Lab sequence as FCP XML) · import <path|last> · xml (just the file) · info · render (active sequence → Media Encoder) · bridge [install]';
   }
   async function mediaEncoder(args) {
     const [verb, ...rest] = String(args || '').trim().split(/\s+/);
@@ -128,16 +128,16 @@
       if (a.id === 'premiere') return premiere(tail);
       if (a.id === 'mediaencoder') return mediaEncoder(tail);
       if (a.id === 'indesign') return indesign(tail);
-      if (a.id === 'aftereffects') { const f = await fileArg(tail); if (!f) { activate('tool:ae'); return 'The After Effects toolkit is in Video Review → ⋯ → After Effects toolkit.'; } await Adobe.aeImport(f); return `${base(f)} sent to After Effects (a comp of its own).`; }
+      if (a.id === 'aftereffects') { const f = await fileArg(tail); if (!f) return 'Give a file: /adobe ae <path|last> (it becomes a comp of its own).'; await Adobe.aeImport(f); return `${base(f)} sent to After Effects (a comp of its own).`; }
     }
     return 'Adobe: status · menu · photoshop … · illustrator … · premiere … · media-encoder … · indesign … · ae <file> · bridge [install|remove] · where <app> <path> · express · firefly · watched';
   }
-  const ADOBE_WORDS = [{ value: 'status', hint: 'which apps are installed' }, { value: 'photoshop', hint: 'lab, board, open, actions, sizes, back' }, { value: 'illustrator', hint: 'svg for the Lab' }, { value: 'premiere', hint: 'the editor\'s timeline' }, { value: 'media-encoder', hint: 'queue a render' }, { value: 'indesign', hint: 'pdf, place' }, { value: 'ae', hint: '<file> as a comp' }, { value: 'bridge', hint: 'install · remove (Premiere, Media Encoder)' }, { value: 'where', hint: '<app> <path>' }, { value: 'express', hint: 'Adobe Express window' }, { value: 'firefly', hint: 'Adobe Firefly window' }, { value: 'watched', hint: 'files that come back when saved' }];
+  const ADOBE_WORDS = [{ value: 'status', hint: 'which apps are installed' }, { value: 'photoshop', hint: 'lab, board, open, actions, sizes, back' }, { value: 'illustrator', hint: 'svg for the Lab' }, { value: 'premiere', hint: 'the Lab sequence' }, { value: 'media-encoder', hint: 'queue a render' }, { value: 'indesign', hint: 'pdf, place' }, { value: 'ae', hint: '<file> as a comp' }, { value: 'bridge', hint: 'install · remove (Premiere, Media Encoder)' }, { value: 'where', hint: '<app> <path>' }, { value: 'express', hint: 'Adobe Express window' }, { value: 'firefly', hint: 'Adobe Firefly window' }, { value: 'watched', hint: 'files that come back when saved' }];
 
   reg({ name: 'adobe', args: '[status | photoshop … | premiere … | bridge install | express | firefly]', desc: 'Your Adobe apps from Hearth: which are installed, send pictures / boards / edits to them, bring results back', run: adobe, complete: opts(ADOBE_WORDS), examples: ['/adobe status', '/adobe photoshop lab', '/adobe express'], keywords: 'photoshop illustrator premiere media encoder indesign after effects creative cloud suite express firefly' });
   reg({ name: 'photoshop', aliases: ['ps'], args: '[lab | board | open <path> | actions | action <set> / <name> | sizes … | back [chat|board|lab]]', desc: 'Photoshop: the Lab preview or the board as layers, your actions, social sizes, the front document back into Hearth', run: photoshop, complete: opts(PS_WORDS), examples: ['/photoshop lab', '/photoshop board', '/photoshop sizes 9:16 4:5', '/photoshop back board'], keywords: 'psd layered edit retouch' });
   reg({ name: 'illustrator', args: '[svg [path] | png [path] | open <path>]', desc: 'Illustrator: the front document (or a file) as SVG for the Lab, PNG back into Hearth', run: illustrator, complete: opts([{ value: 'svg' }, { value: 'png' }, { value: 'open' }, { value: 'place' }]), examples: ['/illustrator svg'], keywords: 'vector svg logo artwork' });
-  reg({ name: 'premiere', aliases: ['pr'], args: '[timeline | import <path|last> | xml | render | bridge]', desc: 'Premiere Pro: the editor\'s timeline as FCP XML, a render into a new sequence, the active sequence to Media Encoder', run: premiere, complete: opts([{ value: 'timeline', hint: 'the editor\'s cut' }, { value: 'import', hint: '<path|last>' }, { value: 'xml', hint: 'just the file' }, { value: 'info' }, { value: 'render', hint: 'active sequence → Media Encoder' }, { value: 'bridge' }]), examples: ['/premiere timeline', '/premiere import last'], keywords: 'fcp xml edl edit sequence' });
+  reg({ name: 'premiere', aliases: ['pr'], args: '[timeline | import <path|last> | xml | render | bridge]', desc: 'Premiere Pro: the Lab sequence as FCP XML, a render into a new sequence, the active sequence to Media Encoder', run: premiere, complete: opts([{ value: 'timeline', hint: 'the Lab sequence' }, { value: 'import', hint: '<path|last>' }, { value: 'xml', hint: 'just the file' }, { value: 'info' }, { value: 'render', hint: 'active sequence → Media Encoder' }, { value: 'bridge' }]), examples: ['/premiere timeline', '/premiere import last'], keywords: 'fcp xml edl edit sequence' });
   reg({ name: 'media-encoder', aliases: ['ame'], args: '[queue] <path|last> [preset <name>] | presets', desc: 'Media Encoder: queue a render (your saved presets or its default) and start encoding', run: mediaEncoder, complete: opts([{ value: 'queue' }, { value: 'last', hint: 'the newest render' }, { value: 'presets' }]), examples: ['/media-encoder last', '/media-encoder presets'], keywords: 'encode transcode export queue' });
   reg({ name: 'indesign', args: '[pdf [path] | place <path|lab> | open <path>]', desc: 'InDesign: the front document as PDF, a picture placed in it', run: indesign, complete: opts([{ value: 'pdf' }, { value: 'place' }, { value: 'open' }]), examples: ['/indesign pdf'], keywords: 'layout print pdf' });
   reg({ name: 'adobe-tools', args: '[on | off]', desc: 'Let this agent use your Adobe apps (adobe_do tool: open, export, send, bring back; it asks before running its own scripts)', complete: opts([{ value: 'on' }, { value: 'off' }]),

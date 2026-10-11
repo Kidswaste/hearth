@@ -1070,7 +1070,6 @@ const Capture = (() => {
       }
       if (r.opts.gif && typeof FrameRead !== 'undefined') { try { const g = await FrameRead.edit(main, 'gif', { fps: r.opts.fps || 15 }, { quiet: true }); fin.gif = g.path; } catch (err) { fin.gifError = err.message; } }
       if (marks.length) { const all = await window.hub.kvGet('capture-marks', {}); all[main] = marks; if (fin.webm && fin.webm !== main) all[fin.webm] = marks; window.hub.kvSet('capture-marks', all); }
-      if (typeof Review !== 'undefined') { try { Review.noteRecording(main); } catch { /* the library is a bonus */ } }
       const item = remember({ kind: 'video', path: main, webm: fin.webm, mp4: fin.mp4 || null, duration: fin.duration || duration, w: fin.w, h: fin.h, fps: r.opts.fps, marks });
       if (!quiet) {
         const extra = `${fin.mp4Error ? ' (MP4 failed: kept the WebM)' : !fin.ffmpeg && /webm$/i.test(main) ? ' (WebM: /doctor installs ffmpeg for sharp MP4s)' : ''}${r.slowed ? ` · the computer was busy: recorded at ${r.slowed} fps` : ''}`;
@@ -1202,24 +1201,18 @@ const Capture = (() => {
   async function info() { infoCache ||= await api().dir(); return infoCache; }
 
   // ---------- sending a capture to the other tools ----------
-  async function openInReview(p, { cut = false } = {}) {
-    if (typeof Review === 'undefined') throw new Error('Video Review isn\'t available');
-    activate('tool:ae');
-    await Review.ensureMounted?.();
-    await Review.open(p);
-    if (cut && typeof VideoCut !== 'undefined') { await Review.waitReady?.(); await VideoCut.enter?.(); }
-    const marks = (await window.hub.kvGet('capture-marks', {}))[p] || [];
-    // recording markers become timeline notes once
-    if (marks.length && Review.addNote && !(Review.notes?.(p) || Review.notes?.() || []).some((n) => /^◆/.test(n.text || ''))) {
-      await Review.waitReady?.();
-      for (const m of marks) { try { await Review.addNote(`◆ ${m.label}`, { t: m.time, cat: 'general', frame: false }); } catch { /* notes are a bonus */ } }
-    }
+  // a recording opens in the system's own player (round 17: no player inside Hearth), or shows in Finder / Explorer
+  const openFile = (p) => MediaFile.open(p);
+  const reveal = (p) => MediaFile.reveal(p);
+  // a recording as a footage clip on the Lab sequence (at its end)
+  async function addToSequence(p) {
+    await window.Lazy?.load?.('lab');
+    if (typeof ThreeLab === 'undefined' || typeof ThreeSeq === 'undefined') throw new Error('The Lab isn\'t available');
+    await ThreeLab.cmd({ show: true });
+    const r = await ThreeSeq.handle('three_sequence', { op: 'add', footage: p });
+    if (!r?.ok) throw new Error(r?.error || 'The sequence couldn\'t take it');
+    activate('tool:three');
     return true;
-  }
-  async function addToEdit(p) {
-    if (typeof VideoCut === 'undefined') throw new Error('The editor isn\'t available');
-    if (!VideoCut.active) throw new Error('Open the editor timeline first (E in Video Review)');
-    return VideoCut.addClip(p);
   }
   async function addToLab(p) {
     const r = await HubBridge.call('three_load_media', { path: p });
@@ -1232,7 +1225,7 @@ const Capture = (() => {
   return {
     shot, record, stop, pause, resume, mark, status, toggleRecord, pickRegion, beautify, socialCrop, loadImage, canvasData, paintBackground,
     autoZoom, cameraBubble, beautyArgs, beautyMix, setBeautyMix, anim, menu, mainItems, settingsItems, picker, pickFrame, chooseFolder, info, clean, fx, cursorFx, keyAdd, keys: () => keyList.slice(),
-    tourLabel, copyImage, attachToChat, openInReview, addToEdit, addToLab, elementFor, rectOf, targetId, TARGETS, surfaceEl, transcript, labPicture, countdown,
+    tourLabel, copyImage, attachToChat, openFile, reveal, addToSequence, addToLab, elementFor, rectOf, targetId, TARGETS, surfaceEl, transcript, labPicture, countdown,
     last: () => last, recent: () => recent.slice(), remember, prefs, setPref, fileUrl, base, fmtClock, get recording() { return Boolean(rec); },
   };
 })();

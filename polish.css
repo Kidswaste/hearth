@@ -230,9 +230,8 @@ html[data-skin~="forge"] #menu button { padding: 6px 12px; }
   color: var(--m-gold-ink); text-shadow: 0 1px 0 #fff6; font-weight: 700;
   background: var(--m-sheen) 160% 0 / 250% 100% no-repeat, var(--m-gold); box-shadow: inset 0 1px 0 #ffffffa0, inset 0 -1px 0 #0004;
 }
-:root[data-look~=v2] .vr-seg button.on { box-shadow: inset 0 1px 0 #ffffffa0, inset 0 -1px 0 #0004, 0 0 calc(8px * var(--glow)) var(--g-gold); }
 :root[data-look~=v2] .stage-pill .stage-seg .stage-btn + .stage-btn { border-left: 1px solid var(--fh-shade); }
-.mt-seg button, .tn-switch button, .vr-seg button { min-height: 24px; }
+.mt-seg button, .tn-switch button { min-height: 24px; }
 
 /* ====================================================================================================== */
 /* ---------- Three.js Lab ---------- */
@@ -393,52 +392,7 @@ html[data-skin~="forge"]:not([data-corners]) .tweaks .tw-act:last-child > button
 /* the empty-graph card fits a narrow Lab */
 .tn-empty-card { max-width: min(380px, calc(100% - 24px)); }
 
-/* ====================================================================================================== */
-/* ---------- Video Review ---------- */
-.vr { --vr-gold: var(--ui-gold); --vr-hot: var(--ui-hot); }
-.vr-ico { min-width: 28px; height: 28px; border-radius: var(--r-sm); }
-.vr-chip, .vr-cat, .vr-catchip { border-radius: var(--r-pill); }
-.vr-card, .vr-note, .vr-composer, .vr-stage, .vr-timeline, .vr-scopes { border-radius: var(--r-md); }
-.vr-thumb-wrap, .vr-ver, .vr-fmt, .vr-badge, .vr-new, .vr-lab, .vr-flash, .vr-pickchip, .vr-label, .vr-zoom { border-radius: var(--r-sm); }
-.vr-seg { border-radius: var(--r-md); }
-.vr-seg button { border-radius: var(--r-sm); }
-.vr-card { transition: background var(--t-fast), border-color var(--t-fast); }
-.vr-card-name { color: var(--text); }
-.vr-card.on .vr-card-name { color: var(--fh-strong, var(--text)); }
-.vr-chip { min-height: 22px; transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast); }
-.vr-time:focus { outline: none; border-color: var(--ui-gold); }
-.vr-mark.sel { outline-color: var(--text); }
-.vr-tags { color: var(--ui-cyan); }
-.vr-card.is-b { box-shadow: inset 3px 0 0 var(--ui-cyan); }
-.vr-ver.is-b { border-color: var(--ui-cyan); color: var(--ui-cyan); }
-.vr-label.b { color: color-mix(in srgb, var(--ui-cyan) 60%, #fff); }
-.vr-lab { background: var(--ui-ai); }
-.vr-by { color: var(--ui-ai); }
-.vr-ver { min-height: 22px; }
-/* the play button is the same molten chrome as every other main action */
-.vr-play { min-height: 30px; }
-:root[data-look~=v2] .vr-play { color: var(--m-gold-ink); background: var(--m-sheen) 160% 0 / 250% 100% no-repeat, var(--m-gold); box-shadow: inset 0 1px 0 #ffffffa0, inset 0 -2px 0 #0004, 0 0 calc(10px * var(--glow)) var(--g-gold); border-radius: var(--r-md); clip-path: var(--cut-sm); text-shadow: 0 1px 0 #fff6; }
-:root[data-look~=v2] .vr-play:hover { filter: brightness(1.1) saturate(1.1); animation: m-sweep .6s ease; }
-/* Forgeheart 2: library and notes columns are brushed iron, the stage frame matches the Lab preview */
-:root[data-look~=v2] :is(.vr-lib, .vr-notes) { background: var(--tx-brushed-v), linear-gradient(180deg, var(--fh-iron-2), var(--fh-iron-3)); border-color: var(--line-hi); }
-:root[data-look~=v2] .vr-main { background: transparent; }
-:root[data-look~=v2] .vr-card.on { border-color: var(--fh-gold); background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 16%, transparent), transparent); box-shadow: inset 2px 0 0 var(--fh-gold); }
-:root[data-look~=v2] .vr-card:hover:not(.on) { background: var(--hover); }
-:root[data-look~=v2] .vr-thumb-wrap { box-shadow: inset 0 0 0 1px var(--line); }
-:root[data-look~=v2] .vr-chip { border-radius: var(--r-md); border-color: var(--line-hi); background: linear-gradient(180deg, color-mix(in srgb, var(--fh-strong) 4%, var(--fh-iron-1)), var(--fh-iron-2)); box-shadow: var(--m-bevel); }
-:root[data-look~=v2] .vr-chip:hover { color: var(--fh-gold-text); border-color: color-mix(in srgb, var(--fh-gold) 60%, var(--line-hi)); }
-:root[data-look~=v2] .vr-chip.on { color: var(--m-gold-ink); background: var(--m-gold); border-color: var(--fh-gold-lo); text-shadow: 0 1px 0 #fff6; }
-:root[data-look~=v2] .vr-stage { box-shadow: 0 0 0 1px var(--line-hi), 0 0 0 3px var(--fh-iron-3), 0 0 0 4px color-mix(in srgb, var(--fh-gold) calc(16% * var(--glow)), transparent), 0 18px 50px #000a; border-radius: var(--r-md); }
-:root[data-look~=v2] .vr-title { font-family: var(--font-head); color: var(--fh-strong); }
-:root[data-look~=v2] .vr-time { color: var(--fh-gold-text); }
-:root[data-look~=v2] .vr-ico.on { color: var(--fh-gold-text); border-color: color-mix(in srgb, var(--fh-gold) 50%, transparent); background: linear-gradient(180deg, color-mix(in srgb, var(--fh-gold) 18%, var(--fh-iron-1)), color-mix(in srgb, var(--fh-gold) 6%, var(--fh-iron-2))); }
-:root[data-look~=v2] .vr-ico:hover { color: var(--fh-gold-text); }
-:root[data-look~=v2] .vr-note { border-radius: var(--r-md); background: linear-gradient(90deg, color-mix(in srgb, var(--c) 7%, var(--fh-iron-1)), var(--fh-iron-2)); box-shadow: var(--m-bevel); }
-:root[data-look~=v2] .vr-composer { border-radius: var(--r-md); background: var(--tx-noise), linear-gradient(180deg, color-mix(in srgb, var(--fh-gold) 8%, var(--fh-iron-1)), var(--fh-iron-2)); border-color: color-mix(in srgb, var(--fh-gold) 50%, var(--line-hi)); }
-:root[data-look~=v2] .vr-scopes { background: var(--tx-noise), color-mix(in srgb, var(--fh-pop) 82%, transparent); backdrop-filter: var(--m-glass-filter); border-color: var(--line-hi); box-shadow: var(--m-glass-edge); }
 :root[data-look~=v2] :is(.vr-hover span, .vr-zoom, .vr-pickchip, .vr-label) { background: color-mix(in srgb, var(--fh-pop) 90%, transparent); }
-:root[data-look~=v2] .vr-timeline { box-shadow: inset 0 0 0 1px var(--line-hi), inset 0 1px 4px var(--fh-shade); }
-:root[data-look~=v2] .vr-send-more { border-color: var(--fh-gold-lo); }
 /* references and sketch browser: dialog titles match every other dialog, thumbnails are wells, the open sketch is lit */
 :root[data-look~=v2] :is(.refs-head h3, .sb-dialog h3, .sb-dialog .refs-head b) { font-family: var(--font-head); text-transform: uppercase; letter-spacing: .18em; font-size: 14px; color: var(--fh-gold); text-shadow: 0 0 calc(14px * var(--glow)) var(--g-gold); }
 :root[data-look~=v2] :is(.refs-thumb, .sb-thumb) { border-radius: var(--r-md); box-shadow: inset 0 0 0 1px var(--line), inset 0 2px 6px var(--fh-shade); background: var(--fh-ink); }
@@ -455,9 +409,6 @@ html[data-skin~="forge"]:not([data-corners]) .tweaks .tw-act:last-child > button
 .calc-card.wide { grid-column: 1 / -1; }
 :root[data-look~=v2] .calc-card h3 { font-family: var(--font-head); color: var(--fh-gold-text); letter-spacing: .04em; }
 /* the library's filter chips stay on one row and scroll sideways, instead of taking three rows */
-.vr-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent); padding-right: 14px; }
-.vr-chips::-webkit-scrollbar { display: none; }
-.vr-chip { flex: none; }
 /* the After Effects lists: one item per line (short names used to pair up), the chosen one lit like every list */
 .lib-list > div { display: flex; flex-direction: column; gap: 1px; }
 .lib-item { min-height: 28px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background var(--t-fast); }
@@ -465,13 +416,6 @@ html[data-skin~="forge"]:not([data-corners]) .tweaks .tw-act:last-child > button
 :root[data-look~=v2] .lib-item:hover:not(.on) { color: var(--fh-gold-text); }
 :root[data-look~=v2] .lib-group { font-family: var(--mono); color: color-mix(in srgb, var(--fh-gold) 50%, var(--muted)); }
 /* the Toolkit drawer: a real header, glass edge, tabs that scroll without a scrollbar track */
-.vr-kit-head { min-height: 44px; }
-.vr-kit-head > :first-child { font-weight: 700; }
-:root[data-look~=v2] .vr-kit { background: var(--tx-brushed-v), linear-gradient(180deg, var(--fh-iron-1), var(--fh-iron-3)); border-left: 1px solid var(--line-hi); box-shadow: -24px 0 60px #000b, inset 1px 0 0 var(--fh-shine); }
-:root[data-look~=v2] .vr-kit-head { background: var(--hairline) bottom / 100% 1px no-repeat, var(--tx-brushed), linear-gradient(180deg, var(--fh-iron-1), var(--fh-iron-2)); border-bottom-color: var(--fh-shade); }
-:root[data-look~=v2] .vr-kit-head > :first-child { font-family: var(--font-head); text-transform: uppercase; letter-spacing: .18em; font-size: 13px; color: var(--fh-strong); text-shadow: 0 0 calc(14px * var(--glow)) var(--g-gold); }
-.vr-kit-body .tabbar { scrollbar-width: none; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 30px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 30px), transparent); padding-right: 24px; }
-.vr-kit-body .tabbar::-webkit-scrollbar { display: none; }
 
 /* ====================================================================================================== */
 /* ---------- token meter ---------- */
@@ -607,8 +551,6 @@ body:has(.surface.active > .tool-dock:not([hidden])) #toasts, body:has(.surface.
 /* ---------- density reaches the new UI too (/density compact | comfortable) ---------- */
 :root[data-density=compact] .fx-row { padding-top: 2px; padding-bottom: 2px; }
 :root[data-density=compact] .fx-thumb { width: 54px; height: 34px; }
-:root[data-density=compact] .vr-card { padding: 3px; }
-:root[data-density=compact] .vr-thumb-wrap { height: 48px; }
 :root[data-density=compact] .tw-row { padding-top: 4px; padding-bottom: 5px; }
 :root[data-density=compact] .mt-kpi { padding: 6px 8px; }
 :root[data-density=compact] :is(.palette-item, .prompt-item, .lib-item, .mb-menu .menu-item, .nv-menu-item, .slash-item) { padding-top: 4px; padding-bottom: 4px; min-height: 24px; }

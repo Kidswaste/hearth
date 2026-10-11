@@ -1,4 +1,4 @@
-/* Round 8 (polish8): the mood board, the video editor and capture in the same Forgeheart language as the rest —
+/* Round 8 (polish8): the mood board and capture in the same Forgeheart language as the rest —
    the same corners (/corners), control heights, rings, menus, motion (/motion off stills it) and light looks.
    Loaded after board.css / capture.css / tools/video.css; presentation only. Rules of the house kept here:
    no backdrop-filter over moving media (board clips, the program monitor, a playing capture), no idle loops,
@@ -129,51 +129,9 @@ html[data-skin~="forge"] :is(.bdd-head button, .bdd-foot button, .bdd-tile, .bdd
 :root[data-motion=off] .bdd, :root[data-motion=off] .bdd.open { transition: visibility 0s; }
 
 /* ====================================================================================================== */
-/* ---------- the video editor (Video Review › ✂) ---------- */
-.vr-cut-headrow { min-height: 28px; gap: 4px; }
-.vr-cut-title { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-head, inherit); letter-spacing: .1em; text-transform: uppercase; font-size: 11.5px; padding-right: 4px; }
-.vr-cut-title .p8-ico { width: 15px; height: 15px; filter: drop-shadow(0 0 calc(6px * var(--glow, 1)) var(--g-gold, transparent)); }
-.vr-cut-headrow > :is(button, .vr-ico) { min-height: 26px; }
-.vr-cut-sum { font-size: 10.5px; letter-spacing: .02em; }
-.vr-cut-fmt { border: 1px solid var(--line-hi, var(--line)); border-radius: var(--r-sm, 6px); height: 24px; }
-html[data-skin~="forge"] .vr-cut-fmt { border-radius: 0; clip-path: var(--cut-sm, none); }
-.vr-cut-export { font-family: var(--font-head, inherit); letter-spacing: .06em; text-transform: uppercase; font-size: 11px; }
-.vr-cut-sug { border-color: color-mix(in srgb, var(--fh-info, #7fd8ff) 80%, transparent); color: color-mix(in srgb, var(--fh-info, #7fd8ff) 60%, var(--text)); border-radius: var(--r-pill, 999px); }
-html[data-skin~="forge"] .vr-cut-sug { border-radius: 0; }
-/* the clip track: the look's line, a forged inset, a gold edge when it has the keyboard */
-.vr-cut-track { box-shadow: inset 0 0 0 1px var(--line-hi, var(--line)), inset 0 1px 6px #0007; }
-:root[data-scheme=light] .vr-cut-track { box-shadow: inset 0 0 0 1px var(--line-hi, var(--line)), inset 0 1px 4px #0002; }
-.vr-cut-track:focus-within, .vr-cut-track:focus-visible { box-shadow: inset 0 0 0 1px var(--fh-gold, var(--accent)), inset 0 1px 6px #0007; }
-.vr-cut-ph { background: var(--fh-gold-hi, #fff); box-shadow: 0 0 calc(8px * var(--glow, 1)) var(--fh-gold, #fff); }
-/* entering the editor: the bar and track rise in; the inspector slides in from the right */
-:root:not([data-motion=off]) .vr-cut:not([hidden]) { animation: hx-rise .2s var(--ease-out, ease-out) both; }
-:root:not([data-motion=off]) .ed-insp:not([hidden]) { animation: vr-slide .18s var(--ease-out, ease-out) both; }
-.ed-insp { border-left: 1px solid var(--line-hi, var(--line)); scrollbar-width: thin; }
-.ed-head .ed-name b { font-family: var(--font-head, inherit); letter-spacing: .04em; }
-.ed-sec > summary, .ed-sub > summary { list-style: none; display: flex; align-items: center; gap: 6px; color: var(--text); }
-.ed-sec > summary::before, .ed-sub > summary::before { content: '›'; display: inline-block; width: 10px; color: var(--fh-gold, var(--accent)); transition: transform var(--t-fast, .12s); }
-.ed-sec[open] > summary::before, .ed-sub[open] > summary::before { transform: rotate(90deg); }
-.ed-sec > summary::-webkit-details-marker, .ed-sub > summary::-webkit-details-marker { display: none; }
-.ed-sec > summary:focus-visible, .ed-sub > summary:focus-visible { outline: none; color: var(--fh-gold-text, var(--text)); }
-.ed-key:focus-visible, .ed-nav:focus-visible { outline: 1px solid var(--fh-gold, var(--accent)); outline-offset: 1px; opacity: 1; }
-/* the transport's ✂ when the editor is open: the molten gold of an active control in every look */
-.vr-cut-btn.on { background: var(--m-gold, linear-gradient(180deg, #fff3c4, var(--vr-gold) 55%, #c9a23c)); color: var(--m-gold-ink, var(--vr-ink)); box-shadow: var(--m-bevel, none); }
-/* the program frame: a cut-corner hairline frame in Forgeheart (the picture itself is untouched) */
-html[data-skin~="forge"] .vr-stage.cutting { box-shadow: 0 0 0 1px var(--line-hi), 0 0 0 4px color-mix(in srgb, var(--fh-gold, #e6b450) calc(10% * var(--glow, 1)), transparent), 0 20px 60px #000a; }
-/* the inspector keeps the clip's name on top while you scroll its sections */
-.ed-head { position: sticky; top: -8px; z-index: 1; margin: -8px -8px 0; padding: 8px 8px 6px; background: var(--bg); border-bottom: 1px solid var(--line); }
-:root[data-look~=v2] .ed-head { background: linear-gradient(180deg, var(--fh-iron-1), var(--fh-iron-2)); }
+/* ---------- the Lab scene editor's rows ---------- */
 .ed-row select, .ed-row input:not([type=range]):not([type=color]):not([type=checkbox]) { min-height: 24px; font-size: 11.5px; }
 .ed-row input[type="color"] { border-color: var(--line-hi, var(--line)); border-radius: var(--r-sm, 4px); }
-/* light looks: the editor's gold labels on pale metal read in the darker gold text tone */
-:root[data-scheme=light] :is(.vr-cut-title, .vr-cut-export, .vr-cut-add, .ed-name b) { color: var(--fh-gold-text, #8a5a00); }
-/* Video Review's empty library: the film icon over its one line */
-.vr-list > .vr-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding-top: 24px; }
-.vr-list > .vr-empty::before { content: ''; width: 34px; height: 34px; background: var(--fh-gold, var(--accent)); opacity: .45; -webkit-mask: var(--p8-i-film) center / contain no-repeat; mask: var(--p8-i-film) center / contain no-repeat; }
-/* toasts rise above the editor's bar and track while you edit (they covered ⇪ Export, ⋯ and ✕) */
-html.p8-editing #toasts { bottom: 200px; }
-/* notes column: its one-line empty state */
-.vr-notes .vr-empty { font-size: 12px; line-height: 1.45; }
 
 /* ====================================================================================================== */
 /* ---------- capture ---------- */
@@ -234,7 +192,7 @@ html[data-skin~="forge"]:not([data-look~=v2]) .bdd { background: var(--sidebar);
 
 /* ---------- reduced motion (the system setting, like /motion off): the entrances above don't move ---------- */
 @media (prefers-reduced-motion: reduce) {
-  .bd-empty, .bd-ctrl .bd-quick:not(:empty), .bd-search, .bd-compare, .vr-cut:not([hidden]), .ed-insp:not([hidden]), .cap-pick-tip { animation: none !important; }
+  .bd-empty, .bd-ctrl .bd-quick:not(:empty), .bd-search, .bd-compare, .cap-pick-tip { animation: none !important; }
   .bd-chip, .bdd-tile, .cap-card, .cap-read-cell { transition: none; }
 }
 /* keyboard rings on the remaining new controls */

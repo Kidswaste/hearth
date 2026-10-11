@@ -1,6 +1,6 @@
 // Makes (round 11), the pure part (no DOM; loads in Node for dev/makes-test.js). A "make" is one thing Hearth creates
 // for the owner, however it started: a planned make with rooms (a Lab chat, a Video chat, a board frame… made ahead
-// of time), a /dispatch comp and its parts, an /intro video project, a jam, a Commands-page or Flows run that makes
+// of time), a /dispatch comp and its parts, a jam, a Commands-page or Flows run that makes
 // something, a render or a recording. Every make has ONE identity (a name, a color and a mark from the same palette
 // as the chats' scenes) that everything it owns shows: its rooms' titles ("<Name> · Lab", "<Name> · Video"…), their
 // marks and colors, their Lab scenes (named after the room), file names of what is recorded in it, its board frame,
@@ -20,10 +20,10 @@ const MakesCore = (() => {
   const THINGS = ['Comet', 'Orbit', 'Tide', 'Spark', 'Drift', 'Pulse', 'Bloom', 'Signal', 'Halo', 'Echo', 'Prism', 'Flare', 'Wave', 'Vector', 'Nova', 'Ridge'];
 
   // Room kinds: a chat of one agent (a director docked in its tool, or a plain chat), or a frame on the board. "step"
-  // is a part with no room of its own (a video project's steps, a run's commands, a render).
+  // is a part with no room of its own (a run's commands, a render).
   const KINDS = {
     lab: { label: 'Lab', icon: '◭', room: 'chat', agent: 'three', who: 'Three Director', holds: 'the three.js scene (its own Lab sketch, in this make\'s color)' },
-    video: { label: 'Video', icon: '🎬', room: 'chat', agent: 'ae', who: 'Video Director', holds: 'the edit: cuts, titles, the song and the renders' },
+    video: { label: 'Video', icon: '🎬', room: 'chat', agent: 'three', who: 'Three Director (Lab sequence)', holds: 'the video: the Lab sequence (scenes, footage, titles, the song) and its renders' },
     board: { label: 'Board', icon: '▦', room: 'board', who: 'the mood board', holds: 'references for the vibe (never the footage)' },
     chat: { label: 'Chat', icon: '✳', room: 'chat', agent: 'claude', who: 'Claude', holds: 'the words: script, captions, the plan' },
     astra: { label: 'Astra', icon: 'A', room: 'chat', agent: 'astra', who: 'Astra', holds: 'Astra\'s side: art direction and decisions' },
@@ -202,11 +202,8 @@ const MakesCore = (() => {
   const CREATORS = {
     makes: { what: 'a planned make with its rooms', standalone: true, adapter: 'makes' },
     dispatch: { what: 'a comp: parts made by several chats', standalone: true, adapter: 'comp', cat: 'comp' },
-    intro: { what: 'a video project', standalone: true, adapter: 'intro', cat: 'intro' },
-    film: { what: 'a video project (one beat filmed)', standalone: true, adapter: 'intro', cat: 'intro' },
     jam: { what: 'a jam (Claude ⇄ Astra rounds on a scene)', standalone: true, adapter: 'jam', cat: 'jam' },
     'sequence-render': { what: 'a Lab sequence render', standalone: true, cat: 'render' },
-    'edit-render': { what: 'an editor render', standalone: true, cat: 'render' },
     render: { what: 'a render', standalone: true, cat: 'render' },
     'render-again': { what: 'a render, again', standalone: false, cat: 'render' },
     'export-all': { what: 'every social format', standalone: true, cat: 'render' },

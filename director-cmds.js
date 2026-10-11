@@ -4,8 +4,8 @@
 // Registered once every script has loaded, and only under names nobody else uses (Commands.register replaces).
 (() => {
   const AREA = 'Director';
-  const SETS = ['threeTools', 'videoTools', 'gameTools'];
-  const TOOL_OF = { threeTools: 'three', videoTools: 'ae', gameTools: 'forgeheart' };
+  const SETS = ['threeTools', 'gameTools'];
+  const TOOL_OF = { threeTools: 'three', gameTools: 'forgeheart' };
   const isDirector = (a) => a && a.mode === 'native' && (a.dock || SETS.some((k) => a[k]));
   const directors = () => H.agents().filter(isDirector);
   const words = (s) => String(s || '').trim().split(/\s+/).filter(Boolean);
@@ -39,7 +39,7 @@
 
   // ---------- cost ----------
   // What a director sends with every message (tool list + its part of the system prompt), from the main process.
-  const costAgent = (a) => ({ id: a.id, name: a.name, engine: a.engine, dock: a.dock, threeTools: a.threeTools, videoTools: a.videoTools, gameTools: a.gameTools, chatTools: a.chatTools, nodesTool: a.nodesTool, toolMode: a.toolMode, selfReview: a.selfReview, hubTools: a.hubTools });
+  const costAgent = (a) => ({ id: a.id, name: a.name, engine: a.engine, dock: a.dock, threeTools: a.threeTools, gameTools: a.gameTools, chatTools: a.chatTools, nodesTool: a.nodesTool, toolMode: a.toolMode, selfReview: a.selfReview, hubTools: a.hubTools });
   cmd({
     name: 'director-cost', args: '[all]', desc: 'What each director costs on every message (its tools + its part of the system prompt), lean vs full',
     complete: pick(['all']),
@@ -66,15 +66,15 @@
     },
   });
   cmd({
-    name: 'director-tools', args: '[three | video | forge | chat]', desc: 'Each tool a director gets and what it costs per message (biggest first)',
-    complete: pick(['three', 'video', 'forge', 'chat']),
+    name: 'director-tools', args: '[three | forge | chat]', desc: 'Each tool a director gets and what it costs per message (biggest first)',
+    complete: pick(['three', 'forge', 'chat']),
     run: async (args, ctx) => {
       const r = await window.hub.directorCost(null);
       if (r?.error) return r.error;
       const a = directorFor(ctx);
-      const want = args ? ({ three: 'threeTools', video: 'videoTools', forge: 'gameTools', chat: 'chatTools' })[args.toLowerCase()] : (a?.threeTools ? 'threeTools' : a?.videoTools ? 'videoTools' : a?.gameTools ? 'gameTools' : 'threeTools');
+      const want = args ? ({ three: 'threeTools', forge: 'gameTools', chat: 'chatTools' })[args.toLowerCase()] : (a?.threeTools ? 'threeTools' : a?.gameTools ? 'gameTools' : 'threeTools');
       const s = r.sets.find((x) => x.key === want);
-      if (!s) return 'three, video, forge or chat';
+      if (!s) return 'three, forge or chat';
       return `**${s.server}**: ${s.tools} tools, ≈ ${s.total.toLocaleString()} tokens per message\n${[...s.each].sort((x, y) => y.tokens - x.tokens).map((t) => `- ${DirectorDock.iconOf(t.name)} \`${t.name}\` ${t.tokens}`).join('\n')}`;
     },
   });
@@ -230,7 +230,7 @@
     },
   });
   cmd({
-    name: 'astra-tools', args: '[on | off]', desc: 'Give an Astra (Codex) director the hub tools of its toolsets (Three.js / Video / Forge) through MCP',
+    name: 'astra-tools', args: '[on | off]', desc: 'Give an Astra (Codex) director the hub tools of its toolsets (Three.js / Forge) through MCP',
     complete: pick(['on', 'off']),
     run: async (args, ctx) => {
       const a = H.agent(ctx.agentId)?.engine === 'codex' ? H.agent(ctx.agentId) : directors().find((x) => x.engine === 'codex');
@@ -242,10 +242,9 @@
     },
   });
   cmd({
-    name: 'director-setup', args: '[three | video]', desc: 'Make the Three Director (or Video Director) if it\'s missing, docked in its tool',
-    complete: pick(['three', 'video']),
+    name: 'director-setup', args: '[three]', desc: 'Make the Three Director if it\'s missing, docked in the Lab',
+    complete: pick(['three']),
     run: async (args) => {
-      if (/^video$/i.test(args)) { activate('tool:ae'); await Review.ensureMounted?.(); if (!Tools.dockedAgent('ae')) await Review.directorSegment(); return null; }
       const have = H.agents().find((a) => a.dock === 'three' && a.threeTools);
       if (have) { activate('tool:three'); Tools.openDock('three'); return `${have.name} is already docked in the Lab.`; }
       H.config.agents.push({ id: `threedirector${H.agent('threedirector') ? Date.now() : ''}`, name: 'Three Director', icon: '◆', color: '#7c5cff', mode: 'native', engine: 'claude', dock: 'three', threeTools: true, selfReview: true, enabled: true });
@@ -265,7 +264,7 @@
     run: (args) => { if (!/^(small|medium|large)$/i.test(args)) return `Director screenshots: **${store.get('director.shotSize', 'medium')}**.`; store.set('director.shotSize', args.toLowerCase()); return `Director screenshots: **${args.toLowerCase()}** by default (it can still ask for another size).`; },
   });
 
-  // "/director <sub> …" reaches all of the above; anything else does what /director did before (Video Review).
+  // "/director <sub> …" reaches all of the above; nothing opens the Three Director next to the Lab.
   const SUBS = { guide: 'director-guide', tools: 'director-tools', ask: 'director-ask', cost: 'director-cost', undo: 'undo-edit', redo: 'redo-edit', edits: 'director-edits', activity: 'director-activity', stats: 'director-stats', clear: 'director-clear', peek: 'director-peek', try: 'director-try', width: 'dock-width', collapse: 'dock-collapse', chips: 'director-chips', mode: 'director-mode', engine: 'director-engine', setup: 'director-setup', autoshot: 'director-autoshot', 'shot-size': 'director-shot-size' };
   function registerAll() {
     for (const def of defs) {
@@ -276,12 +275,12 @@
     const sub = (args) => { const [w, ...rest] = words(args); const name = SUBS[String(w || '').toLowerCase()]; return name ? { def: Commands.get(name), rest: rest.join(' ') } : null; };
     Commands.register({
       ...(prev || {}), name: 'director', area: prev?.area || AREA, aliases: prev?.aliases || [],
-      args: `[${Object.keys(SUBS).join(' | ')}]${prev ? ' · nothing: show / hide the Video Director' : ''}`,
+      args: `[${Object.keys(SUBS).join(' | ')}]${prev ? '' : ' · nothing: the Three Director'}`,
       desc: `${prev ? `${prev.desc} · ` : ''}/director cost, undo, activity, mode, engine, width, chips…`,
-      run: (args, ctx) => { const s = sub(args); if (s?.def) return s.def.run(s.rest, ctx); if (prev) return prev.run(args, ctx); return `Subcommands: ${Object.keys(SUBS).join(', ')}.`; },
+      run: (args, ctx) => { const s = sub(args); if (s?.def) return s.def.run(s.rest, ctx); if (prev) return prev.run(args, ctx); if (!String(args || '').trim()) { activate('tool:three'); Tools.openDock?.('three'); return null; } return `Subcommands: ${Object.keys(SUBS).join(', ')}.`; },
       complete: (args, ctx) => { const s = sub(args); if (s?.def?.complete && /\s/.test(args)) return (s.def.complete(s.rest, ctx) || []).map((x) => ({ ...x, value: `${words(args)[0]} ${x.value}` })); return pick(Object.keys(SUBS))(args).concat(prev?.complete?.(args, ctx) || []); },
     });
   }
-  // after every other script (video-cmds registers /director on DOMContentLoaded)
+  // after every other script (another module may have a /director of its own: it stays reachable)
   if (document.readyState === 'complete') setTimeout(registerAll, 0); else addEventListener('load', () => setTimeout(registerAll, 0), { once: true });
 })();

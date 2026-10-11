@@ -66,14 +66,6 @@ const Declutter = (() => {
     // notes: the head keeps New, Preview, ⋯ and ×; the foot keeps Send to Claude (right-click the panel for the rest)
     { id: 'notes-pin', area: 'Notes', label: '📌 Pin the note', sel: '.notes-head .notes-pin' },
     { id: 'notes-foot', area: 'Notes', label: 'Copy / Save as file / Delete under a note', sel: '.notes-foot > button:is(:nth-of-type(1), :nth-of-type(3), :nth-of-type(4))' },
-    // Video Review (used lightly): rarer library filters and player tools wait behind Alt; each has a key too.
-    // (CSS only, matched by their titles: nothing in tools/review.js changes)
-    { id: 'vr-chips', area: 'Video Review', label: '4:5 / 1:1 / open notes / Lab filters', sel: '.vr-chips .vr-chip:is([title^="Portrait"], [title^="Square"], [title="Has open notes"], [title^="Recorded in the Three.js Lab"])' },
-    { id: 'vr-rescan', area: 'Video Review', label: '⟳ Rescan', sel: '.vr-lib-head .vr-ico[title="Rescan now"]' },
-    { id: 'vr-folders', area: 'Video Review', label: 'Folders… (also in ⋯)', sel: '.vr-lib-foot .vr-link' },
-    { id: 'vr-skip', area: 'Video Review', label: '⏮ ⏭ start / end (Home / End)', sel: '.vr-tgroup .vr-skip' },
-    { id: 'vr-fps', area: 'Video Review', label: 'fps readout', sel: '.vr-tgroup .vr-fps' },
-    { id: 'vr-tools', area: 'Video Review', label: '◐ view (V) · ◉ color picker (P) · ▤ scopes (Y) · ⧉ copy frame (Ctrl+C)', sel: '.vr-tgroup .vr-ico:is([title^="View:"], [title^="Color picker"], [title^="Scopes"], [title^="Copy frame"])' },
     // long tab bars (Forgeheart's eleven): the first five and the open one stay, the rest wait behind Alt and in the
     // bar's right-click menu
     { id: 'tool-desc', area: 'Tabs', label: 'A tool’s one-line description in its header', sel: '.tool-desc', mode: 'hover', host: '.tool-head' },

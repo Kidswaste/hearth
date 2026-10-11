@@ -3,7 +3,7 @@
 // (adobe-cmds.js: /adobe, /photoshop, /premiere…, and the adobe_do tool for Claude / Astra).
 // What it does with them: a Lab still / board picture / render opened in Photoshop, a whole board as a layered PSD,
 // the owner's Photoshop actions, social sizes, the front document back into Hearth (a chat, the board, the Lab), an
-// Illustrator file as SVG for the Lab, the editor's timeline as FCP XML into Premiere, a render queued in Media
+// Illustrator file as SVG for the Lab, the Lab sequence as FCP XML into Premiere, a render queued in Media
 // Encoder, a PDF from InDesign. Files that went out to an app are watched: saving them there brings them back.
 // Missing apps degrade with one plain sentence (what's missing and how to fix it). Adobe Express / Firefly open as
 // app windows (the Apps registry, or a window of their own).
@@ -170,14 +170,22 @@ const Adobe = (() => {
   const aiPng = async (file) => { const out = join(await outDir(), `${file ? stem(file) : 'Illustrator'} ${stampName()}.png`); return must('ai', D.ai.png({ file, out }), { label: 'export PNG', activate: false }); };
 
   // ---------- Premiere Pro / Media Encoder ----------
-  // the editor's timeline (Video Review → Cut) as FCP XML; into Premiere through the bridge, or a file to import
+  // the Lab sequence (▤ Sequence) as FCP XML: its scene clips are rendered to videos first (ThreeSeq.bake), footage
+  // goes as it is; into Premiere through the bridge, or a file to import
   async function editXml() {
-    if (typeof VideoCut === 'undefined' || !VideoCut.edit) throw new Error('Open a video in Video Review and cut it first (E).');
-    const e = VideoCut.edit;
-    const f = VideoCut.frameSize?.() || { W: 1920, H: 1080, F: VideoCut.fps || 30 };
-    const name = String(VideoCut.path || 'Hearth edit').startsWith('seq:') ? VideoCut.path.slice(4) : stem(VideoCut.path || 'Hearth edit');
-    const x = D.toFcpXml(e, { fps: f.F || VideoCut.fps || 30, w: f.W, h: f.H, name, layout: typeof CutData !== 'undefined' ? CutData.layout : null });
-    if (!x.clips) throw new Error('This edit has no video clips to send.');
+    await window.Lazy?.load?.('lab');
+    if (typeof ThreeSeq === 'undefined' || typeof ThreeLab === 'undefined') throw new Error('The Lab isn\'t available.');
+    if (!ThreeSeq.edit) { await ThreeLab.cmd({ show: false }); await ThreeSeq.current({ make: false }).catch(() => null); }
+    let e = ThreeSeq.edit;
+    if (!e?.clips?.length) throw new Error('The Lab sequence is empty: make one in the Lab first (▤ Sequence, /sequence).');
+    const name = String(ThreeSeq.key || 'seq:Hearth sequence').replace(/^seq:/, '');
+    if (ThreeSeq.needsBake(e)) {
+      const t = toast('Rendering the sequence\'s scenes for Premiere…', { timeout: 0 });
+      const say = (p) => { const sp = t.querySelector('span'); if (sp) sp.textContent = `Rendering the sequence's scenes for Premiere… ${Math.round(p * 100)}%`; };
+      try { await ThreeLab.cmd({ show: true }); e = await ThreeSeq.bake(e, { onProgress: say }); } finally { t.remove(); }
+    }
+    const x = D.toFcpXml(e, { fps: e.seq?.fps || 30, w: e.seq?.w || 1080, h: e.seq?.h || 1920, name, layout: typeof CutData !== 'undefined' ? CutData.layout : null });
+    if (!x.clips) throw new Error('This sequence has no video clips to send.');
     const file = join(await outDir(), `${D.slug(name)} ${stampName()}.xml`);
     await window.hub.fs.write(file, x.xml);
     return { file, name, clips: x.clips, notes: x.notes };
@@ -272,7 +280,7 @@ const Adobe = (() => {
         { label: 'Front document → PNG back into Hearth', action: () => note(aiPng(null)).then((r) => r && backMenu(r.path)) },
       ]),
       row(A.premiere, [
-        { label: 'Send the editor\'s timeline (FCP XML)', action: () => note(sendEdit()).then((r) => r && toast(r.premiere.ok ? `In Premiere: ${r.name} (${r.clips} clips)` : `${r.premiere.manual}${r.premiere.needsBridge ? ' · or /adobe bridge install' : ''}`, { timeout: 12000 })) },
+        { label: 'Send the Lab sequence (FCP XML)', action: () => note(sendEdit()).then((r) => r && toast(r.premiere.ok ? `In Premiere: ${r.name} (${r.clips} clips)` : `${r.premiere.manual}${r.premiere.needsBridge ? ' · or /adobe bridge install' : ''}`, { timeout: 12000 })) },
         { label: 'Import a file…', action: async () => { const f = await pick('Into Premiere Pro'); if (f) note(prImport([f])); } },
       ]),
       row(A.mediaencoder, [
@@ -283,7 +291,6 @@ const Adobe = (() => {
         { label: 'Place a picture…', action: async () => { const f = await pick('Place in InDesign'); if (f) note(idPlace(f)); } },
       ]),
       row(A.aftereffects, [
-        { label: 'The After Effects toolkit', action: () => { activate('tool:ae'); setTimeout(() => window.AEKit?.openKit?.(), 300); } },
         { label: 'Import a file as a comp…', action: async () => { const f = await pick('Into After Effects'); if (f) note(aeImport(f)).then(done('Sent to After Effects')); } },
       ]),
       '-',
@@ -314,14 +321,12 @@ const Adobe = (() => {
     const seen = Object.entries(b.seen).filter(([, t]) => t).map(([h, t]) => `${h === 'PPRO' ? 'Premiere Pro' : 'Media Encoder'} ${Date.now() - t < 5000 ? 'connected now' : `last seen ${new Date(t).toLocaleString()}`}`);
     return b.installed ? `Hearth bridge installed${seen.length ? `: ${seen.join(' · ')}` : ' (open Premiere Pro or Media Encoder once to connect it)'}.` : 'The Hearth bridge isn\'t installed: /adobe bridge install.';
   }
-  // Video Review ⋯ → Adobe ›
+  // a video file's Adobe › menu (renders, captures)
   function videoItems(file) {
     return [
       { label: 'Premiere Pro: import (new sequence)', action: () => note(prImport([file], { sequence: stem(file) })).then((r) => r && toast(r.ok ? 'In Premiere Pro' : `${r.error}${r.manual ? `\n${r.manual}` : ''}`, { timeout: 9000 })) },
-      typeof VideoCut !== 'undefined' && VideoCut.active ? { label: 'Premiere Pro: this edit (FCP XML)', action: () => note(sendEdit()).then((r) => r && toast(r.premiere.ok ? 'Edit sent to Premiere Pro' : r.premiere.manual, { timeout: 9000 })) } : null,
       { label: 'Media Encoder: queue it', action: () => note(meQueue(file)).then(done('Queued in Media Encoder')) },
       { label: 'After Effects: import as a comp', action: () => note(aeImport(file)).then(done('Sent to After Effects')) },
-      typeof Review !== 'undefined' && Review.grabToAttachment ? { label: 'Photoshop: this frame', action: () => note((async () => psOpen(await Review.grabToAttachment()))()) } : null,
     ].filter(Boolean);
   }
   // the board's right-click menu (Board._.itemExtras, the hook board-ask.js / board-pack.js extend too)

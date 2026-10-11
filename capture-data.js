@@ -371,7 +371,7 @@ const CaptureData = (() => {
     ['highlight <selector | "text"> [2s]', 'Spotlight one thing'],
     ['scroll <selector> <pixels>', 'Scroll something smoothly'],
     ['shot [target] [9:16]', 'Take a screenshot'],
-    ['mark "<label>"', 'A marker in the recording (shown in the viewer and Video Review)'],
+    ['mark "<label>"', 'A marker in the recording (shown in the viewer)'],
     ['pause / resume', 'Pause / resume the recording'],
     ['cursor <dot|ring|halo|spotlight|arrow|off>', 'Cursor style while filming'],
     ['clean on|off', 'Hide toasts, menus and scrollbars'],
@@ -432,8 +432,8 @@ cmd /size 9:16
 caption "Social frame sizes in one command" 2s lower
 wait 1.2s
 cmd /size 16:9
-open ae
-caption "Video Review: frame-accurate notes" 2.2s lower
+open board
+caption "The mood board: references for the vibe" 2.2s lower
 wait 1.5s
 title "Hearth" "made with Claude and Astra" 2s forge
 fade out 0.8s
@@ -492,14 +492,6 @@ wait 1.4s
 theme forgeheart
 wait 1s
 stop` },
-    { id: 'review', label: 'Video Review tour (≈12 s)', steps: `record promo
-open ae
-caption "Video Review" 1.6s lower
-wait 1s
-highlight ".tool-body" 1.6s
-caption "Notes on exact frames, safe zones, exports" 2.2s lower
-wait 1.5s
-stop` },
     { id: 'shots', label: 'Screenshots of every tool (no recording)', steps: `open claude
 wait 0.6s
 shot tool
@@ -507,7 +499,7 @@ open three
 wait 1.2s
 shot tool
 shot lab
-open ae
+open board
 wait 1s
 shot tool` },
     { id: 'reel', label: 'Vertical reel of the Lab (9:16)', steps: `record reel lab
@@ -546,7 +538,7 @@ flash white 0.15s
 open three
 beat 2
 flash white 0.15s
-open ae
+open board
 beat 2
 flash white 0.15s
 open claude
@@ -592,7 +584,7 @@ shot window
 open three
 wait 1.2s
 shot window
-open ae
+open board
 wait 0.8s
 shot window
 show #rail
@@ -618,7 +610,7 @@ open three
 blur in 0.4s
 shake 0.4 0.25s
 flash #22e0ff 0.12s
-open ae
+open board
 wait 0.8s
 stop` },
     { id: 'watermarked', label: 'Watermarked walkthrough with a clock', steps: `record quick
@@ -629,7 +621,7 @@ open claude
 wait 1s
 open three
 wait 1.5s
-open ae
+open board
 wait 1s
 stop` },
     { id: 'celebrate', label: 'Celebration ending', steps: `record promo

@@ -351,7 +351,7 @@ const FrameRead = (() => {
   const MODE_ALIAS = { feel: 'vibe', mood: 'vibe', card: 'vibe', blacks: 'black', fades: 'black', still: 'freeze', holds: 'freeze', frozen: 'freeze', quiet: 'silence', silent: 'silence', lufs: 'loudness', loud: 'loudness', volume: 'loudness', iframes: 'keyframes', bars: 'letterbox', crop: 'letterbox', colorbar: 'barcode', story: 'barcode', wave: 'waveform', sound: 'waveform', loops: 'loop', seamless: 'loop', frame: 'at', time: 'at', exact: 'at', n: 'every', step: 'every', even: 'spread', evenly: 'spread', cuts: 'scenes', shots: 'scenes', scene: 'scenes', contact: 'sheet', grid: 'sheet', energy: 'motion', rhythm: 'pacing', pace: 'pacing', colors: 'palette', colours: 'palette', brightness: 'light', luma: 'light', probe: 'info', fps: 'info', check: 'verify', compare: 'diff' };
   const modeOf = (m) => { const k = String(m || '').toLowerCase(); return D.READ_MODES.some((x) => x.id === k) ? k : MODE_ALIAS[k] || null; };
   async function read(file, mode = 'sheet', a = {}) {
-    if (!file) throw new Error('Which video? (a path, "last" for the newest recording, or open one in Video Review)');
+    if (!file) throw new Error('Which video? (a path, or "last" for the newest recording)');
     const m = modeOf(mode);
     if (!m) throw new Error(`Modes: ${D.READ_MODES.map((x) => x.id).join(', ')}`);
     const fps0 = async () => (await info(file)).fps;
@@ -388,7 +388,7 @@ const FrameRead = (() => {
     if (m === 'verify') { const v = await verify(file, a.frame ?? a.n ?? 0); return { value: v, text: v.ok ? `✓ The player shows frame ${v.presented} (media time ${v.mediaTime}s at ${v.fps} fps).` : `✖ Asked for frame ${v.asked}, the player showed ${v.presented} (media time ${v.mediaTime}s).`, images: [] }; }
     if (m === 'diff') { const d = await diff(file, a.a ?? a.frames?.[0] ?? 0, a.b ?? a.frames?.[1] ?? 1); return { value: { score: d.score, path: d.path }, text: `Difference f${d.a.frame} → f${d.b.frame}: ${Math.round(d.score * 1000) / 10} % (${d.path})`, images: [{ path: d.path, label: 'difference' }] }; }
     // ffmpeg's own detectors (they need ffmpeg: the player can't hear silence or measure loudness)
-    const needFf = async () => { if (!await ff()) throw new Error('This reading needs ffmpeg (Video Review → ⋯ → ffmpeg, or brew / winget install ffmpeg)'); };
+    const needFf = async () => { if (!await ff()) throw new Error('This reading needs ffmpeg (/ffmpeg install, or brew / winget install ffmpeg)'); };
     const stretches = (list, what) => (list.length ? list.map((x) => `${tc(x.start, 30, 'ms')} → ${tc(x.end, 30, 'ms')} (${x.length.toFixed(2)}s)`).join('\n') : `No ${what}.`);
     if (m === 'black' || m === 'freeze' || m === 'silence') {
       await needFf();
@@ -448,7 +448,6 @@ const FrameRead = (() => {
     try { r = await api().edit(op, file, a); } finally { busy?.remove(); }
     if (!r.ok) throw new Error(r.error);
     const out = r.value.path;
-    if (/\.(mp4|webm|gif)$/i.test(out) && typeof Review !== 'undefined') { try { Review.noteRecording(out); } catch { /* the library is a bonus */ } }
     Capture.remember({ kind: /\.(mp4|webm|mov)$/i.test(out) ? 'video' : 'shot', path: out });
     if (!quiet) toast(`${EDIT_LABEL[op] || op}: ${base(out)}${r.value.files ? ` (${r.value.files} files)` : ''}`, { timeout: 6000, action: op === 'sequence' ? { label: 'Show', fn: () => window.hub.fs.open(out) } : { label: 'Open', fn: () => CaptureView.open(out) } });
     return r.value;
@@ -481,22 +480,18 @@ const FrameRead = (() => {
     for (const im of imgs) id = await Capture.attachToChat(im.path, agentId);
     return id;
   }
-  // which video: the argument, "last" (the newest recording), what Video Review shows, or a file dialog
+  // which video: the argument, "last" (the newest recording), a clip selected on the board
   async function resolveFile(arg) {
     const a = String(arg || '').trim().replace(/^["']|["']$/g, '');
     if (a && !/^(last|latest|recording|open|review|current)$/i.test(a)) return a;
-    if (/^(open|review|current)$/i.test(a) && typeof Review !== 'undefined' && Review.current?.path) return Review.current.path;
-    // nothing named: the video on screen first (Video Review's, or a clip selected on the board), then your newest
-    // recording (/pacing in Video Review read your last screen recording instead of the reference you were watching)
+    // nothing named: a clip selected on the board first, then your newest recording
     if (!a) {
       let here = '';
       try { here = H.surfaceIdFor(H.activeId); } catch { /* early */ }
-      if (here === 'tool:ae' && typeof Review !== 'undefined' && Review.current?.path) return Review.current.path;
       if (here === 'tool:board' && typeof Board !== 'undefined') { const clip = Board.selected?.().find((i) => i.type === 'video' && i.src); if (clip) return clip.src; }
     }
     const lastVid = Capture.recent().find((x) => x.kind === 'video');
     if (lastVid) return lastVid.path;
-    if (!a && typeof Review !== 'undefined' && Review.current?.path) return Review.current.path;
     const list = await api().list({ kind: 'video', limit: 1 });
     if (list[0]) return list[0].path;
     return null;

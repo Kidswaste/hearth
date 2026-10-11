@@ -8,7 +8,7 @@
 //                                SVG export, FCP XML import, Media Encoder queue…)
 //   applescript(app, file)       the osascript program that runs a script file in a Mac app
 //   vbscript(app, file)          the cscript program that runs it on Windows (COM)
-//   toFcpXml(edit, opts)         the editor's timeline as Final Cut Pro 7 XML (xmeml 4), which Premiere imports
+//   toFcpXml(edit, opts)         a CutData edit (the Lab sequence) as Final Cut Pro 7 XML (xmeml 4), which Premiere imports
 //   cepManifest() / cepPanel()   the small invisible "Hearth bridge" panel for Premiere Pro and Media Encoder (they
 //                                have no AppleScript / COM door: the panel runs the scripts Hearth drops in a folder)
 const AdobeData = (() => {
@@ -154,7 +154,7 @@ return { path: ${lit(out)}, name: d.name };`,
 
   // ---------- Premiere Pro (through the Hearth bridge panel) ----------
   const pr = {
-    // the editor's timeline (FCP XML) or media files into the open project (a new project when none is open)
+    // the Lab sequence (FCP XML) or media files into the open project (a new project when none is open)
     importFiles: ({ files, project, sequence }) => `var files = ${lit(files)};
 if (!app.project || !app.project.path) { if (${lit(project || '')}) app.newProject(${lit(project || '')}); }
 if (!app.project) throw new Error('Open or create a project in Premiere Pro first');

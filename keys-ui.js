@@ -73,7 +73,7 @@ const KeysUI = (() => {
     ['[data-feature="Shuffle back"]', 'Shift+R'], ['[data-feature="Save"]', 'Ctrl+S'], ['.layers .tw-head .primary', 'X'], ['.three-sketch-select', 'O'],
     ['.mb-g-capture button', 'N'], ['.dd-undo', 'Alt+Shift+Z'], ['.dd-fold', 'Alt+Shift+D'], ['.dd-rail', 'Alt+Shift+D'], ['.tool-dock .native-head > button:last-of-type', 'Ctrl+N'],
     ['[data-feature="Console"]', '`'], ['[data-feature="Present"]', 'P'], ['.ly-eye', 'Alt+1…9'], ['.notes-panel button[title^="Close"]', 'Ctrl+J'],
-    ['.tw-search', '/'], ['[data-feature="Freeze"]', 'F'], ['.vr-play', 'Space'], ['.vr-libtoggle', 'B'],
+    ['.tw-search', '/'], ['[data-feature="Freeze"]', 'F'],
   ];
   const TITLE_KEY = /(?:^|[\s(·,])((?:(?:Ctrl|Alt|Shift|⌘|⌥|⇧)\+)+(?:F\d{1,2}|Enter|Space|Tab|Home|End|PgUp|PgDn|Delete|Esc|[A-Z0-9]|[,.;/\\[\]`=+\-|?]|←|→|↑|↓))|\((F\d{1,2}|Space|Esc|Home|End|[A-Z0-9?`|\\/.,[\]←→↑↓])(?:\s+or\s+[^)]*)?\)/;
   function keyFor(b) {
@@ -165,10 +165,9 @@ const KeysUI = (() => {
   // what applies where you are: areas for the tool or chat on screen
   function hereAreas() {
     const id = H.surfaceIdFor?.(H.activeId) || H.activeId || '';
-    // round 7's surfaces count too: a capture player / picture open, the board drawer, the editor in Video Review
+    // round 7's surfaces count too: a capture player / picture open, the board drawer
     const extra = [...(document.querySelector('dialog[open].cap-view, dialog[open].cap-lib, dialog[open].cap-ann') ? ['Capture'] : []), ...(typeof BoardDrawer !== 'undefined' && BoardDrawer.isOpen?.() ? ['Board'] : [])];
     if (id === 'tool:three') return [...extra, 'Lab', 'Lab timeline', 'Lab sliders & layers', 'Effects picker', 'Present', 'Director dock', 'Chat box', 'Nodes'];
-    if (id === 'tool:ae') return [...extra, ...(typeof VideoCut !== 'undefined' && VideoCut.active ? ['Editor'] : []), 'Video Review', 'Director dock', 'Chat box'];
     if (id === 'tool:board') return [...extra, 'Board', 'Capture'];
     if (id === 'tool:forgeheart') return [...extra, 'Forge'];
     if (H.agent(H.activeId)?.mode === 'native') return [...extra, 'Chat box', 'Chats panel'];
@@ -197,9 +196,7 @@ const KeysUI = (() => {
     const s = document.querySelector('.surface.active');
     if (area === 'Chat box') { const id = H.activeId; const v = Native.view?.(H.agent(id)?.mode === 'native' ? id : Tools.dockedAgent?.(String(H.surfaceIdFor?.(id)).replace('tool:', ''))?.id); return v?.input || null; }
     if (/^Lab|^Present/.test(area)) return s?.querySelector('.three-toolbar, .tb-group') || s;
-    if (area === 'Video Review') return s?.querySelector('.vr-top, .tool-body') || s;
     // round 7's surfaces listen on their own roots: a line clicked in the sheet pressed its key into the page body
-    if (area === 'Editor') return s?.querySelector('.vr')?.parentElement || s;
     if (area === 'Board') return s?.querySelector('.bd-root') || s;
     if (area === 'Capture') return document.querySelector('dialog[open].cap-ann, dialog[open].cap-view') || document.activeElement || document.body;
     return document.activeElement && document.activeElement !== document.body ? document.activeElement : document.body;
@@ -251,7 +248,7 @@ const KeysUI = (() => {
       const words = q.value.toLowerCase().split(/\s+/).filter(Boolean);
       const here = hereAreas();
       const groups = [...Keys.groups(true)];
-      // the areas that apply here keep their order (the open capture / the editor before the tool's own lines)
+      // the areas that apply here keep their order (the open capture before the tool's own lines)
       const rank = ([area]) => (here.includes(area) ? here.indexOf(area) / 100 : area === 'Hidden buttons' ? 1 : area === 'Right-click' ? 2 : area === 'Everywhere' ? 3 : area === 'Menus' ? 4 : area === 'Capture' ? 4.5 : 5); // capture keys work anywhere
       groups.sort((a, b) => rank(a) - rank(b));
       const out = [];
@@ -337,7 +334,6 @@ const KeysUI = (() => {
 
   // ---------- the registry: every key, reveal and right-click menu in the app ----------
   const inLab = () => H.surfaceIdFor?.(H.activeId) === 'tool:three';
-  const inVideo = () => H.surfaceIdFor?.(H.activeId) === 'tool:ae';
   const inChat = () => H.agent(H.activeId)?.mode === 'native' || Boolean(Tools.dockedAgent?.(String(H.surfaceIdFor?.(H.activeId) || '').replace('tool:', '')));
   const act = (name) => () => ThreeLab.act(name);
   const sc = (key, shift = false) => () => handleShortcut({ key, shift });
@@ -494,30 +490,6 @@ const KeysUI = (() => {
       { area: 'Nodes', keys: 'Delete', what: 'Delete the selection (or the selected wire)' },
       { area: 'Nodes', keys: 'F / Home', what: 'Fit the graph (read-only views)' },
       { area: 'Nodes', keys: '?', what: 'The node editor’s help' },
-      // Video Review
-      { area: 'Video Review', keys: 'Space', what: 'Play / pause', when: inVideo },
-      { area: 'Video Review', keys: 'J / K / L', what: 'Back / stop / forward (Shift+L: loop)', when: inVideo },
-      { area: 'Video Review', keys: '← / →', what: 'One frame (Shift: 10)', when: inVideo },
-      { area: 'Video Review', keys: '↑ / ↓', what: 'Previous / next note', when: inVideo },
-      { area: 'Video Review', keys: ', / .', what: 'Previous / next beat', when: inVideo },
-      { area: 'Video Review', keys: '< / >', what: 'Previous / next section or drop', when: inVideo },
-      { area: 'Video Review', keys: 'I / O / X', what: 'Loop in / out / clear', when: inVideo },
-      { area: 'Video Review', keys: 'N', what: 'New note at the playhead', when: inVideo },
-      { area: 'Video Review', keys: 'D', what: 'Draw on the frame', when: inVideo },
-      { area: 'Video Review', keys: 'P', what: 'Color picker', when: inVideo },
-      { area: 'Video Review', keys: 'Y', what: 'Scopes', when: inVideo },
-      { area: 'Video Review', keys: 'C / \\', what: 'Compare / swap A and B', when: inVideo },
-      { area: 'Video Review', keys: 'G / S', what: 'Guides / safe zones', when: inVideo },
-      { area: 'Video Review', keys: 'V / H', what: 'View (channels, luma…) / mirror', when: inVideo },
-      { area: 'Video Review', keys: 'Z', what: 'Zoom 100 % / fit', when: inVideo },
-      { area: 'Video Review', keys: 'F', what: 'Fullscreen review', when: inVideo },
-      { area: 'Video Review', keys: 'B', what: 'Show / hide the library', when: inVideo },
-      { area: 'Video Review', keys: 'E', what: 'Cut clips', when: inVideo },
-      { area: 'Video Review', keys: '[ / ]', what: 'Slower / faster', when: inVideo },
-      { area: 'Video Review', keys: '- / =', what: 'Volume down / up · M: mute', when: inVideo },
-      { area: 'Video Review', keys: 'T', what: 'Time as timecode / seconds / frames', when: inVideo },
-      { area: 'Video Review', keys: 'Ctrl+C / Ctrl+S', what: 'Copy the frame / save it as a PNG', when: inVideo },
-      { area: 'Video Review', keys: '?', what: 'Every Video Review key', when: inVideo },
       // the command bar (Ctrl+;) and the palette (Ctrl+K)
       { area: 'Command bar', keys: 'Enter', what: 'Run the line and keep the bar for the next one', run: () => CmdBar.open() },
       { area: 'Command bar', keys: 'Ctrl+Enter', what: 'Run it and close the bar' },
@@ -590,7 +562,6 @@ const KeysUI = (() => {
       { area: 'Right-click', keys: 'Right-click a notification', what: 'A notification: copy, dismiss, dismiss all', sel: '#toasts .toast' },
       { area: 'Right-click', keys: 'Right-click Notes', what: 'Notes: a note’s options · empty space: new, today, export', sel: '.notes-panel' },
       { area: 'Right-click', keys: 'Right-click a memory fact', what: 'A memory fact: pin, edit, copy, expires, forget', sel: '.memory-row' },
-      { area: 'Right-click', keys: 'Right-click in Video Review', what: 'Video Review: a render card, a note, the picture', sel: '.surface.active .vr-card, .surface.active .vr-note' },
       { area: 'Right-click', keys: 'Right-click in the nodes', what: 'Nodes: add a node here, a node’s options', sel: '.surface.active .nv-root, .surface.active .tn-pane' },
       { area: 'Right-click', keys: 'Right-click a link', what: 'In a reply: open, copy the link, copy its text', sel: '.msg .body a[href]' },
       { area: 'Right-click', keys: 'Right-click a picture', what: 'In a reply: open, copy the picture, copy its address', sel: '.msg img' },

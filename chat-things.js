@@ -1,5 +1,5 @@
 // Things a reply made, inside the reply (round 9, chatcore): when a reply or one of its tool calls produces a capture,
-// a frame, a render, a board item, a Lab scene, a sequence or a video project, it shows under the reply as a small card
+// a frame, a render, a board item, a Lab scene or a sequence, it shows under the reply as a small card
 // (a picture, or a video poster that plays while you point at it and scrubs frame by frame along its bottom edge).
 // Click opens it in its tool; drag it to the board, the editor, another chat or another app; right-click for the rest.
 // Nothing here reaches the engines: cards are drawn from the hub's own record of the calls (HubBridge.onResult) and
@@ -42,10 +42,6 @@ const ChatThings = (() => {
       const sid = (typeof ChatScenes !== 'undefined' && chatId && ChatScenes.linkOf?.(chatId)) || ThreeLab.scenes?.currentId?.();
       const sk = sid && ThreeLab.scenes?.get(sid);
       if (sk) found.push({ k: 'scene', id: sk.id, name: sk.name, src: tool });
-    }
-    if (tool === 'video_edit' && args.op === 'project' && typeof Intro !== 'undefined') {
-      const p = Intro.ofChat?.(chatId);
-      if (p) found.push({ k: 'project', id: p.id, name: p.name, src: tool });
     }
     // a picture with no file (the Lab's screenshot, a sequence frame): the latest one becomes a "frame" card at the end
     const imgs = [].concat(result.images || (result.image ? [{ data: result.image, mime: result.mime }] : [])).filter((x) => x?.data);
@@ -198,13 +194,11 @@ const ChatThings = (() => {
         if (typeof ChatScenes !== 'undefined' && ChatScenes.openScene) { activate('tool:three'); await ChatScenes.openScene(t.id); } else { await ThreeLab.cmd(); ThreeLab.scenes?.open(t.id); }
       } else if (t.k === 'sequence') {
         await ThreeLab.cmd(); await ThreeSeq.open(t.id); await ThreeSeq.enter();
-      } else if (t.k === 'project') {
-        Commands.exec(`/intro open ${t.name}`, ctx.agentId || H.claudeAgent()?.id);
       }
     } catch (err) { toast(err.message, { type: 'error' }); }
   }
   function dragThing(e, t) {
-    if (t.path && !t.pending) { e.preventDefault(); window.hub.capture?.startDrag?.(t.path); return; } // a real file: the board, the editor, Finder, another chat
+    if (t.path && !t.pending) { e.preventDefault(); window.hub.capture?.startDrag?.(t.path); return; } // a real file: the board, the Lab, Finder, another chat
     e.dataTransfer.setData('application/x-hearth-thing', JSON.stringify(t));
     e.dataTransfer.setData('text/plain', `${KIND[t.k]}: ${t.name}`);
     if (t.k === 'scene') e.dataTransfer.setData('application/x-hearth-scene', JSON.stringify({ what: { sketch: t.id } })); // onto the Lab sequence
@@ -226,14 +220,12 @@ const ChatThings = (() => {
     const p = t.path;
     const isVid = t.k === 'video';
     const items = [
-      { label: `Open${{ image: '', frame: '', video: ' in the player', board: ' on the board', scene: ' in the Lab', sequence: ' in the Lab sequence', project: ' (its card)' }[t.k] || ''}`, key: 'Enter', action: () => openThing(t, ctx) },
+      { label: `Open${{ image: '', frame: '', video: ' in the player', board: ' on the board', scene: ' in the Lab', sequence: ' in the Lab sequence' }[t.k] || ''}`, key: 'Enter', action: () => openThing(t, ctx) },
       { label: 'Send to', icon: 'export', items: () => [
         here ? { label: 'This chat (attach)', action: tryRun(() => sendTo(t, here)) } : null,
         { label: 'Another chat', items: () => chatAgents().filter((a) => a.id !== here).map((a) => ({ label: a.name, action: tryRun(() => sendTo(t, a.id)) })) },
         p ? { label: 'The board', action: tryRun(async () => { await Board.ready?.(); await Board.addFiles([p]); toast('On the board', { timeout: 1400, action: { label: 'Show', fn: () => activate('tool:board') } }); }) } : null,
-        p && isVid ? { label: 'The editor (add to the edit)', action: tryRun(() => Capture.addToEdit(p)) } : null,
-        p && isVid ? { label: 'Video Review', action: tryRun(() => Capture.openInReview(p)) } : null,
-        p && isVid ? { label: 'The editor timeline', action: tryRun(() => Capture.openInReview(p, { cut: true })) } : null,
+        p && isVid ? { label: 'The Lab sequence (a clip)', action: tryRun(() => Capture.addToSequence(p)) } : null,
         p && (isVid || t.k === 'image') ? { label: 'The Lab (as media)', action: tryRun(() => Capture.addToLab(p)) } : null,
         t.k === 'scene' && typeof ThreeSeq !== 'undefined' ? { label: 'The Lab sequence (add this scene)', action: tryRun(async () => { await ThreeLab.cmd(); await ThreeSeq.add({ sketch: t.id }); toast('Added to the sequence', { timeout: 1400 }); }) } : null,
       ].filter(Boolean) },

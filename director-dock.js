@@ -14,15 +14,13 @@ const DirectorDock = (() => {
     three_layers: '☰', three_add_layer: '＋', three_update_layer: '◫', three_remove_layer: '✕', three_keyframes: '◆', three_animate: '◆',
     three_timeline: '⏱', three_timeline_edit: '⏱', three_looks: '✦', three_notes: '📝', three_references: '🖼', three_triggers: 'ϟ',
     three_media_info: '♪', three_load_media: '♪', three_set_frame: '▭', three_new_sketch: '✚', three_nodes: '⬡',
-    video_frame: '📷', video_contact_sheet: '🎞', video_status: '▤', video_list: '☰', video_open: '▶', video_add_note: '📝',
-    video_compare: '◧', video_control: '▶', video_export: '⇪', ae_render: '⏺', ae_run_script: '⚙',
     forge_eval: '⚡', forge_screenshot: '📷', forge_status: '▤', forge_spawn: '👾', forge_debug: '🛠', forge_reload: '⟳',
     forge_patch_save: '🩹', forge_patch_list: '🩹', forge_patch_remove: '🩹',
     chat_progress: '☑', chat_ask: '?', chat_show: '🖼', chat_second_opinion: '👁',
   };
-  const PREFIXES = { three: ['three_'], ae: ['video_', 'ae_'], forgeheart: ['forge_'] };
+  const PREFIXES = { three: ['three_'], forgeheart: ['forge_'] };
   const iconOf = (tool) => ICONS[tool] || '◇';
-  const nameOf = (tool) => tool.replace(/^(three|video|forge|chat|ae)_/, '').replace(/_/g, ' ');
+  const nameOf = (tool) => tool.replace(/^(three|forge|chat)_/, '').replace(/_/g, ' ');
 
   // Quick asks per tool. run: a chat command that runs here (no tokens); send: a message to the director.
   const CHIPS = {
@@ -33,10 +31,6 @@ const DirectorDock = (() => {
       // /shuffle colors, /save-look, /fix-errors still work)
       { label: '✨ 3 variations', send: 'Make 3 clearly different variations with the sliders, save each as a look, show them to me and ask which one I want.' },
       { label: '🌊 Change on the drop', send: 'Make it change on the drop: a clear switch in look or motion when the drop hits, timed to my cues / markers.' },
-    ],
-    ae: [
-      { label: '🎞 Review the open render', send: 'Review the render that is open: look at the whole thing and a few key frames, then tell me the 3 things that would help most.' },
-      { label: '📝 Do my notes', send: 'Go through my open timeline notes and turn each into a concrete change.' },
     ],
     forgeheart: [
       { label: '👾 Spawn 20', send: 'Spawn 20 random enemies.' },

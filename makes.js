@@ -6,11 +6,11 @@
 // - A make (makes-core.js holds the data model and every naming / identity rule) has a name, a color and a mark, a
 //   category, who made it (the command or run), its parts and their rooms, its outputs, a status and a progress.
 // - Rooms ahead of time: /makes plan <words> (the Commands page, three_do make for the directors) makes every room at
-//   once — a Three Director chat "<Name> · Lab" with its own scene in the make's color, a Video Director chat
+//   once — a Three Director chat "<Name> · Lab" with its own scene in the make's color, a second Three Director chat for the video (the Lab sequence)
 //   "<Name> · Video", a frame on the board… — grouped under the make in the chats list, each readable before anything
 //   is in it ("planned · waiting for Lab"). Empty rooms are real chats; a make is dismissed as a whole (to the trash,
 //   Undo / restore brings every room back).
-// - Every creation joins it: /dispatch comps (comp-dispatch.js), /intro video projects (Intro.onChange), jams
+// - Every creation joins it: /dispatch comps (comp-dispatch.js), jams
 //   (jam.js), runs on the Commands page / Flows that make something, renders and recordings (their file names carry
 //   the make's name when made in its room), and every creator command of the registry (MakesCore.CREATORS, onBefore).
 // - One place: "Makes" on the Commands page (rooms, parts, outputs, status; right-click submenus; open any room;
@@ -95,8 +95,8 @@ const Makes = (() => {
   // ---------- agents for the rooms ----------
   const natives = () => H.agents().filter((a) => a.mode === 'native' && a.enabled !== false);
   function agentFor(kind) {
-    if (kind === 'lab') return natives().find((a) => a.dock === 'three' && a.threeTools) || natives().find((a) => a.dock === 'three') || null;
-    if (kind === 'video') return natives().find((a) => a.dock === 'ae' && a.videoTools) || natives().find((a) => a.dock === 'ae') || null;
+    // a video is made in the Lab sequence: the Three Director's chat holds it too (round 17: no Video Director)
+    if (kind === 'lab' || kind === 'video') return natives().find((a) => a.dock === 'three' && a.threeTools) || natives().find((a) => a.dock === 'three') || null;
     if (kind === 'astra') return natives().find((a) => a.engine === 'codex' && !a.dock) || null;
     if (kind === 'chat') return H.claudeAgent?.() || natives().find((a) => a.engine === 'claude' && !a.dock) || null;
     return null;
@@ -105,7 +105,7 @@ const Makes = (() => {
   async function ensureAgent(kind) {
     let a = agentFor(kind);
     if (a) return a;
-    const mk = { lab: { id: 'threedirector', name: 'Three Director', icon: '◆', color: '#7c5cff', dock: 'three', threeTools: true }, video: { id: 'videodirector', name: 'Video Director', icon: '🎬', color: '#bd8bff', dock: 'ae', videoTools: true } }[kind];
+    const mk = { lab: { id: 'threedirector', name: 'Three Director', icon: '◆', color: '#7c5cff', dock: 'three', threeTools: true } }[kind === 'video' ? 'lab' : kind];
     if (!mk) throw new Error(kind === 'astra' ? 'No Astra agent here (Settings → Agents).' : 'No Claude chat agent here.');
     H.config.agents.push({ ...mk, id: `${mk.id}${H.agent(mk.id) ? Date.now() : ''}`, mode: 'native', engine: 'claude', selfReview: true, enabled: true });
     await saveConfig();
@@ -202,7 +202,6 @@ const Makes = (() => {
       if (part.chatId && summary(part.chatId)) Native.rename(part.chatId, title);
       if (part.frameId && typeof Board !== 'undefined') { try { Board.patch([part.frameId], { title }, 'rename'); } catch { /* another board is open */ } }
     }
-    if (make.src?.kind === 'intro' && typeof Intro !== 'undefined') { const p = Intro.get(make.src.id); if (p) { p.name = make.name; Intro.changed(p); } }
     changed(make, 'rename');
     return list.length;
   }
@@ -319,29 +318,6 @@ const Makes = (() => {
       if (last && part.last !== last) { part.last = last; dirty = true; }
     }
     if (dirty) changed(make, 'comp');
-  }
-  // /intro video projects (intro.js): one make per project, its steps are the parts
-  const INTRO_ST = { done: 'done', ok: 'done', running: 'working', working: 'working', error: 'stuck', failed: 'stuck', stale: 'ready', proposed: 'planned', todo: 'planned' };
-  function fromIntro(p) {
-    if (!p || !loaded) return;
-    let make = ofSrc('intro', p.id);
-    const steps = (typeof IntroData !== 'undefined' && IntroData.STEPS) || [];
-    if (!make) {
-      make = C.create({ id: `mk-${p.id}`, name: p.name, idea: p.idea, cat: 'intro', by: byNow(), from: p.chatId, src: { kind: 'intro', id: p.id }, at: p.at, avoid: avoid(), parts: steps.map((s) => ({ kind: 'step', id: s.id, label: s.name })) });
-      data.list.unshift(make);
-    }
-    let dirty = make.name !== p.name;
-    make.name = p.name;
-    for (const s of steps) {
-      const part = make.parts.find((x) => x.id === s.id);
-      const st = p.steps?.[s.id] || {};
-      const want = INTRO_ST[st.status] || 'planned';
-      if (part && part.status !== want) { part.status = want; dirty = true; }
-      if (part && st.total) { const pct = Math.round((100 * (st.done || 0)) / st.total); if (part.progress?.pct !== pct) { part.progress = { pct, label: st.sub || '', eta: null, at: Date.now() }; dirty = true; } }
-    }
-    for (const o of p.outputs || []) if (o.path && C.addOutput(make, { path: o.path, kind: 'video' }, 'render')) dirty = true;
-    if (p.status === 'done' && !make.done) { make.done = true; dirty = true; }
-    if (dirty) changed(make, 'intro');
   }
   // jams (jam.js): rounds are the progress; in a make's room the jam joins that make
   const JAM_ST = { running: 'working', done: 'done', stopped: 'ready', error: 'stuck' };
@@ -521,7 +497,7 @@ const Makes = (() => {
     if (n && !(await Modal.confirm(`Dismiss “${make.name}”?`, `Its ${n} room${n === 1 ? '' : 's'} go${n === 1 ? 'es' : ''} to the trash (30 days); Restore brings the whole make back. Scenes, files and frames stay.`, { ok: 'Dismiss', danger: true }))) return;
     await dismiss(make);
   }
-  async function openOutput(path) { if (typeof CaptureView !== 'undefined') return CaptureView.open(path); activate('tool:ae'); await Review.ensureMounted?.(); return Review.open(path); }
+  async function openOutput(path) { if (typeof CaptureView !== 'undefined') return CaptureView.open(path); return MediaFile.open(path); }
   async function attachHere(path) { const a = H.agent(H.activeId); const id = a?.mode === 'native' ? a.id : H.claudeAgent()?.id; if (id) await Native.attachPaths(id, [path]); }
 
   // ---------- the room itself: what it will hold, before anything is in it ----------
@@ -765,7 +741,6 @@ const Makes = (() => {
     ]);
     try { AppUI.addAction?.('Makes: everything Hearth makes, with its rooms', () => show()); AppUI.addAction?.('Makes: plan a make (its rooms now)…', async () => { const t = await Modal.prompt('Plan a make', { placeholder: 'a three.js animation that cuts into a video', label: 'What will be made? Its rooms are made now, with one name and mark.' }); if (t) plan(t).catch((e) => toast(e.message, { type: 'error' })); }); } catch { /* the palette is optional */ }
     ready.then(() => {
-      if (typeof Intro !== 'undefined') { Intro.onChange((p) => fromIntro(p)); Intro.load?.().then(() => { for (const p of Intro.list()) fromIntro(p); }).catch(() => {}); }
       if (typeof Flows !== 'undefined') Flows.onChange((run) => { try { fromRun(run); } catch (err) { console.warn(err); } });
       Panel.render();
     });
@@ -774,7 +749,7 @@ const Makes = (() => {
   return {
     ready: () => ready, list: () => data.list.slice(), live, get, find, roomOf, ofChat: (chatId) => roomOf(chatId)?.make || null, here, identFor, fileHere, nameIn,
     plan, addRoom, openRoom, rename, dismiss, restore, handoff, progress, setPart, addOutput, onChange, show, makeMenu,
-    compMake, fromComp, fromIntro, fromJam, fromRun, makeTool,
+    compMake, fromComp, fromJam, fromRun, makeTool,
     core: C,
   };
 })();

@@ -163,7 +163,7 @@ const Juice = (() => {
     tip?.remove(); tip = null;
   }
   // rows of a list or menu: the tip goes beside the list, so it never covers the next rows
-  const LISTS = '.fx-list, .palette-list, .slash-menu, #menu, .mb-menu, .nv-menu, .nv-picker-list, .look-grid, .vr-list, .prompt-list, #chat-groups';
+  const LISTS = '.fx-list, .palette-list, .slash-menu, #menu, .mb-menu, .nv-menu, .nv-picker-list, .look-grid, .prompt-list, #chat-groups';
   function showTip(t, full) {
     if (!t.isConnected || tipFor !== t || !t.matches(':hover')) return;
     const text = full || t.getAttribute('title');

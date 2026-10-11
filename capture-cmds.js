@@ -221,7 +221,7 @@
     const w = words(args);
     let file = null; let i = 0;
     if (w[0] && (/[\\/]/.test(w[0]) || /\.(mp4|mov|webm|m4v|mkv)$/i.test(w[0]) || /^(last|latest|open|review|current)$/i.test(w[0]))) { file = await FrameRead.resolveFile(w[0]); i = 1; } else file = await FrameRead.resolveFile('');
-    if (!file) return 'Which video? Give a path, `last` (your newest recording) or open one in Video Review.';
+    if (!file) return 'Which video? Give a path or `last` (your newest recording).';
     const mode = forced || FrameRead.modeOf(w[i]) || 'sheet';
     if (!forced && FrameRead.modeOf(w[i])) i += 1;
     const rest = w.slice(i);
@@ -248,7 +248,7 @@
     name: 'frames', aliases: ['read-frames'], args: '[video | last | open] [at|every|spread|scenes|sheet|motion|pacing|palette|light|info|verify|diff] [values…] [chat]',
     desc: 'Read frames of any video exactly: a frame at a time / frame / timecode, every N, scene changes, a contact sheet, motion, pacing, palette',
     examples: ['/frames last sheet', '/frames last at 1.5 f120 00:00:02:12', '/frames open scenes sensitive', '/frames last motion', '/frames last every 12 chat'], keywords: 'frame accurate reference footage analyze contact sheet scene detection',
-    complete: opts([{ value: 'last', hint: 'your newest recording' }, { value: 'open', hint: 'the video in Video Review' }, ...modeOpts, ...D.SHEETS.map((s) => ({ value: s.id, hint: s.label })), ...D.SENSITIVITY.map((s) => ({ value: s.id, hint: s.label })), { value: 'chat', hint: 'attach the pictures to this chat' }]),
+    complete: opts([{ value: 'last', hint: 'your newest recording' }, ...modeOpts, ...D.SHEETS.map((s) => ({ value: s.id, hint: s.label })), ...D.SENSITIVITY.map((s) => ({ value: s.id, hint: s.label })), { value: 'chat', hint: 'attach the pictures to this chat' }]),
     run: (args, ctx) => framesCommand(args, ctx),
   });
   reg({ name: 'frame-at', args: '<1.5 | 0:02.250 | 00:00:01:12 | f36> [video]', desc: 'The exact frame of a video at a time, timecode or frame number (opens it; add chat to attach it)', examples: ['/frame-at 2.5', '/frame-at f120 last chat'],
@@ -440,7 +440,7 @@
   K('Double-click text (annotate)', 'Edit the text');
   K('Double-click (captures)', 'Open');
   K('Alt+click (captures)', 'Attach to the chat');
-  K('Right-click (captures, frames, player)', 'Everything for that capture: copy, chat, Video Review, editor, Lab, read frames, beautify, social frame…');
+  K('Right-click (captures, frames, player)', 'Everything for that capture: copy, chat, open, Finder, Lab, read frames, beautify, social frame…');
   K('Drag (captures, frames)', 'Into a chat, the board, Finder / Explorer or another app as a real file');
 
   // ---------- palette (Ctrl+K) ----------
@@ -522,7 +522,7 @@
     }
     if (tool === 'capture_frames') {
       const file = await FrameRead.resolveFile(a.path || 'last');
-      if (!file) return { ok: false, error: 'No video: give a path ("last" = the newest recording, "open" = Video Review\'s).' };
+      if (!file) return { ok: false, error: 'No video: give a path ("last" = the newest recording).' };
       if (String(a.mode) === 'make') {
         const e = D.EDITS.find((x) => x.id === a.op || x.op === a.op);
         if (!e) return { ok: false, error: `op: ${[...new Set(D.EDITS.map((x) => x.op || x.id))].join(', ')}` };
