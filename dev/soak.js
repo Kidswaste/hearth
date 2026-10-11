@@ -19,6 +19,9 @@
 //   node dev/soak.js                      # 20 minutes, a sample a minute
 //   node dev/soak.js --minutes 3 --every 30 --json /tmp/soak.json
 //   node dev/soak.js --minutes 4 --freshen      # also checks Freshen: a reload that keeps chats / drafts / Lab / scroll
+//   --diff: heap snapshots (renderer + main) after the warm-up and at the end, what grew by constructor
+//   --retainers [class,…]: the shortest path from a GC root to the biggest detached DOM trees (who keeps them)
+//   --no-fail: report only (exit 0 even when something grows)
 // Env: ELECTRON (default /opt/hearth-electron/electron). Uses 1–2 CPUs for the whole run.
 const fs = require('fs');
 const os = require('os');
@@ -158,6 +161,29 @@ const MAIN_EXPR = `(() => { const r = process.mainModule.require; const { app, i
   const mu = process.memoryUsage();
   return JSON.stringify({ rss: mu.rss, heap: mu.heapUsed, external: mu.external, handles, res, ipc, invoke, windows: BrowserWindow.getAllWindows().length, contents: webContents.getAllWebContents().length,
     procKB: by, sites: Object.fromEntries([...(global.__soakWatch || [])].filter(([, n]) => n > 0)), appListeners: app.eventNames().reduce((a, n) => a + app.listenerCount(n), 0) }); })()`;
+
+// a heap snapshot summed by constructor / kind: { name: [count, selfBytes] } (for --diff: what the heap gained)
+async function snapSummary(client, sid) {
+  const chunks = []; let done = false;
+  client.on((m) => { if (!done && m.method === 'HeapProfiler.addHeapSnapshotChunk' && m.sessionId === sid) chunks.push(m.params.chunk); });
+  await client.send('HeapProfiler.collectGarbage', {}, sid);
+  await client.send('HeapProfiler.takeHeapSnapshot', { reportProgress: false }, sid, 300000);
+  done = true;
+  const snap = JSON.parse(chunks.join('')); chunks.length = 0;
+  const m = snap.snapshot.meta; const NF = m.node_fields.length; const nT = m.node_types[0]; const N = snap.nodes; const S = snap.strings;
+  const fT = m.node_fields.indexOf('type'); const fN = m.node_fields.indexOf('name'); const fS = m.node_fields.indexOf('self_size');
+  const out = {};
+  for (let i = 0; i < N.length; i += NF) {
+    const t = nT[N[i + fT]]; if (t === 'hidden' || t === 'synthetic') continue;
+    const k = t === 'object' || t === 'native' ? String(S[N[i + fN]]).slice(0, 60) : `(${t})`;
+    const o = out[k] ||= [0, 0]; o[0]++; o[1] += N[i + fS];
+  }
+  return out;
+}
+function snapDiff(a, b, top = 10) {
+  return Object.keys(b).map((k) => [k, b[k][0] - (a[k]?.[0] || 0), b[k][1] - (a[k]?.[1] || 0)]).filter(([, n, sz]) => n > 0 && sz > 0).sort((x, y) => y[2] - x[2]).slice(0, top)
+    .map(([k, n, sz]) => `  +${n} ${k} (+${Math.round(sz / 1024)} KB)`).join('\n');
+}
 
 // shortest strong retaining path from a GC root to each object holding a SoakLeak_* marker (heap snapshot JSON)
 function retainers(snap) {
@@ -351,11 +377,12 @@ function retainers(snap) {
     };
     console.log('\n min  heapMB labMB appMB  nodes detach listen win/doc  ivl  obs  url  gpuMB rssMB mHeap watch/stat/cp/tmr  ipc  p95 labfps');
     // ---------- the session ----------
-    let cycle = 0; let nextSample = Date.now(); let freshened = false;
+    let cycle = 0; let nextSample = Date.now(); let freshened = false; let diffA = null;
     const END = t0 + MINUTES * 60000;
     while (Date.now() < END) {
       if (Date.now() >= nextSample) {
         const s = await sample(Math.round((Date.now() - t0) / 6000) / 10);
+        if (args.includes('--diff') && !diffA && s.t >= WARMUP) { await run('await Soak.pause()', 20000); diffA = { r: await snapSummary(R), m: M ? await snapSummary(M) : null, t: s.t }; await run('Soak.resume()', 5000); }
         samples.push(s); console.log(fmt(s));
         nextSample += EVERY;
         continue;
@@ -447,6 +474,12 @@ function retainers(snap) {
     const where = {};
     for (const [name, get, min] of WHERE) { const g = growth(get, min); if (g.length) { where[name] = g; console.log(`\n${name} growing:\n${g.map(([k, d]) => `  +${d}  ${k}`).join('\n')}`); } }
     console.log(`\nlast: main handles ${JSON.stringify(last.main?.handles)} · Lab ${JSON.stringify({ heap: last.lab?.heap, nodes: last.lab?.nodes, gl: last.lab?.gl, ivl: last.lab?.probe?.intervals })} · targets ${JSON.stringify([...iframes.values()].map((u) => u.type))}`);
+    if (diffA) {
+      await run('await Soak.pause()', 20000);
+      const r = await snapSummary(R); const mm = M ? await snapSummary(M) : null;
+      console.log(`\nrenderer heap gained (${Math.round((Date.now() - t0 - diffA.t) / 60000)} min, by constructor):\n${snapDiff(diffA.r, r)}`);
+      if (mm) console.log(`\nmain heap gained:\n${snapDiff(diffA.m, mm)}`);
+    }
     // --retainers: who keeps the detached DOM alive (the biggest detached roots, each marked, then a heap snapshot:
     // the shortest strong path from a GC root to each)
     if (args.includes('--retainers')) {
