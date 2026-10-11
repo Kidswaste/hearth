@@ -265,7 +265,7 @@ ipcMain.handle('engine:send', (_e, { agentId, chatId, session, text, options }) 
   if (!agent || agent.mode !== 'native') throw new Error(`${agentId} is not a native agent`);
   engines.send({ agent, chatId, session: session || {}, text, options: options || {} }, (event) => {
     send('engine:event', { chatId, ...event });
-  });
+  }, (event) => send('engine:live', { chatId, ...event })); // (round 21) steps, subagents, pulses: native.js / chat-live.js
 });
 ipcMain.handle('attachments:save', (_e, name, base64) => store.saveAttachment(name, base64));
 ipcMain.handle('refs:import', (_e, src) => store.importRef(String(src)));

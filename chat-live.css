@@ -1,0 +1,34 @@
+/* What a running reply is doing (round 21, liveness: chat-live.js): the agents it deployed, the folded activity list,
+   the status line when the engine has been quiet a while, long thinking in light blocks. Quiet colors, no bars. */
+
+/* long thinking: paragraph blocks; the ones out of view skip layout */
+.msg .thinking-text > p { margin: 0 0 .55em; content-visibility: auto; contain-intrinsic-size: auto 3em; }
+.msg .thinking-text > p:last-child { margin-bottom: 0; }
+
+/* agents deployed by the reply: one line each, open for its steps */
+.live-agents { display: grid; gap: 1px; margin: 2px 0 6px; font-size: 12px; line-height: 1.45; }
+.live-agent > summary { cursor: pointer; list-style: none; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: none; }
+.live-agent > summary::-webkit-details-marker { display: none; }
+.live-agent.running > summary { color: var(--text); }
+.live-agent.failed > summary { color: #e5534b; }
+.live-agent-steps, .live-steps { margin: 2px 0 4px; padding-left: 22px; font-size: 11.5px; line-height: 1.5; color: var(--muted); max-height: 220px; overflow-y: auto; }
+.live-steps li, .live-agent-steps li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.live-steps li.running, .live-agent-steps li.running { color: var(--text); }
+.live-steps li.failed, .live-agent-steps li.failed { color: #e5534b; }
+.live-steps li.think { font-style: italic; }
+
+/* the activity list (folded by default; it stays open once you open it) */
+.live-activity { margin: 0 0 6px; font-size: 12px; }
+.live-activity > summary { cursor: pointer; color: var(--muted); user-select: none; width: fit-content; }
+.live-activity > summary:hover { color: var(--text); }
+
+/* quiet for 2 min: the line says so, with what to do */
+.stream-status.stalled { color: #e0a33a; opacity: 1; }
+.stream-status.stalled::before { animation: none; background: #e0a33a; }
+.stream-status .live-acts { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: 8px; vertical-align: 1px; }
+.stream-status .live-acts button { font: inherit; font-size: 11px; padding: 1px 8px; border-radius: 6px; cursor: pointer; color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); border: 1px solid color-mix(in srgb, var(--text) 18%, transparent); }
+.stream-status .live-acts button:hover { background: color-mix(in srgb, var(--text) 14%, transparent); }
+
+/* a finished reply that deployed agents */
+.agent-fold .tool-list li.failed { color: #e5534b; }
+:root[data-motion=calm] .live-agent.running > summary { animation: none; }

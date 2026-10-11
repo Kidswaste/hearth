@@ -418,4 +418,4 @@ function trip(name, mode) {
 }
 const older = (a, b) => { const pa = String(a).match(/\d+/g) || []; const pb = String(b).match(/\d+/g) || []; for (let i = 0; i < 3; i++) { const d = (+pa[i] || 0) - (+pb[i] || 0); if (d) return d < 0; } return false; };
 
-module.exports = { readStdin, sleep, out, uuid, loadState, saveState, plan, pieces, delayMs, mcpClient, serverFor, switches, setSwitch, trip, older, runTool, within };
+module.exports = { userPartOf: userPart, readStdin, sleep, out, uuid, loadState, saveState, plan, pieces, delayMs, mcpClient, serverFor, switches, setSwitch, trip, older, runTool, within };
