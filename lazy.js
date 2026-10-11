@@ -108,7 +108,9 @@ const Lazy = (() => {
   }
   function stubAction(g, label, keys) {
     if (typeof AppUI === 'undefined' || !AppUI.addAction) return;
-    if (AppUI.actions?.().some((a) => a.label === label)) return;
+    const have = (seen.actions ||= new Set((AppUI.actions?.() || []).map((a) => a.label)));
+    if (have.has(label)) return;
+    have.add(label);
     AppUI.addAction(label, async () => {
       try { await load(g.name); } catch (err) { toast(err.message, { type: 'error' }); return; }
       const fn = realActions.get(label);
@@ -117,10 +119,13 @@ const Lazy = (() => {
   }
   function stubKey(g, k) {
     if (typeof Keys === 'undefined') return;
-    if (Keys.all().some((x) => x.area === k.area && x.keys === k.keys)) return; // an eager line has these keys
-    Keys.add({ area: k.area, keys: k.keys, what: k.what, sel: k.sel || null, run: () => load(g.name).then(() => { const e = stubKeys.get(`${k.area}|${k.keys}`); if (e?.run && !e.run.__lazy) e.run(); }) });
-    const e = Keys.all().find((x) => x.area === k.area && x.keys === k.keys);
-    if (e) { e.run.__lazy = true; stubKeys.set(`${k.area}|${k.keys}`, e); }
+    const id = `${k.area}|${k.keys}`;
+    const have = (seen.keys ||= new Set(Keys.all().map((x) => `${x.area}|${x.keys}`)));
+    if (have.has(id)) return; // an eager line has these keys
+    have.add(id);
+    Keys.add({ area: k.area, keys: k.keys, what: k.what, sel: k.sel || null, run: () => load(g.name).then(() => { const e = stubKeys.get(id); if (e?.run && !e.run.__lazy) e.run(); }) });
+    const e = Keys.all().at(-1);
+    if (e && `${e.area}|${e.keys}` === id) { e.run.__lazy = true; stubKeys.set(id, e); }
   }
   function stubBridge(g, prefix) {
     if (typeof HubBridge === 'undefined') return;
@@ -175,8 +180,11 @@ const Lazy = (() => {
     each(g, (m.commands || []).filter((c) => !c.dcl), (c) => stubCommand(g, c));
     each(g, m.bridge, (p) => stubBridge(g, p));
   }
+  // (what the palette / keys sheet already list, read once per moment: their lists are copied on every read)
+  let seen = {};
   function stubLater(g) {
     if (g.state !== 'stub') return;
+    seen = {};
     const m = groupMeta(g.name);
     each(g, (m.commands || []).filter((c) => c.dcl), (c) => stubCommand(g, c));
     each(g, m.tools, (t) => stubTool(g, t));

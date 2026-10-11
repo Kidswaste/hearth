@@ -67,9 +67,9 @@ const FlowsUI = (() => {
     for (const j of FlowsData.JOURNEYS) if (!Flows.get(j.id) || Flows.get(j.id).source === 'journey') Flows.define(j, { source: 'journey' });
     for (const f of mine) Flows.define(f, { source: 'mine' });
   }
-  const journeys = () => FlowsData.JOURNEYS.map((j) => Flows.get(j.id)).filter(Boolean);
-  const generated = () => Flows.list().filter((f) => f.source === 'commands');
-  const yours = () => Flows.list().filter((f) => f.source === 'mine');
+  const journeys = () => { ensure(); return FlowsData.JOURNEYS.map((j) => Flows.get(j.id)).filter(Boolean); };
+  const generated = () => { ensure(); return Flows.list().filter((f) => f.source === 'commands'); };
+  const yours = () => { ensure(); return Flows.list().filter((f) => f.source === 'mine'); };
   // where a command went: { principal, flow, journeys }
   function whereIs(name) {
     ensure();
@@ -146,7 +146,9 @@ const FlowsUI = (() => {
     });
     Commands.setTuck?.(isTucked);
     try { mine = (await window.hub.kvGet('flows-mine', [])) || []; } catch { mine = []; }
-    ensure();
+    // (round 16) ~1000 flows made from the commands: in the first idle moment, not before the first screen (anything
+    // that needs them first calls ensure(), and the runs restore without them)
+    (window.requestIdleCallback || setTimeout)(() => ensure(), { timeout: 1500 });
     await Flows.restore();
     Flows.onChange(onRunChange);
     // replies of chats an AI step waits for
