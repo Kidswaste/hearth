@@ -14,7 +14,9 @@ const ThreeSeqData = (() => {
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   const base = (p) => String(p || '').split(/[\\/]/).pop();
   const FORMATS = { '9:16': [1080, 1920], '16:9': [1920, 1080], '1:1': [1080, 1080], '4:5': [1080, 1350] };
-  const TRACKS = { titles: ['text', 'Titles'], overlays: ['video', 'Overlays'], sound: ['audio', 'Sound'] };
+  // (labcut) several sound tracks (the song and sounds · a voice-over the music ducks under · sound effects) and a
+  // Captions text track
+  const TRACKS = { titles: ['text', 'Titles'], overlays: ['video', 'Overlays'], sound: ['audio', 'Sound'], voice: ['audio', 'Voice'], sfx: ['audio', 'SFX'], captions: ['text', 'Captions'] };
   const DEFAULT_SECS = 4; // a scene's length without a song
   const DEFAULT_BARS = 4; // …and with one
   const DEFAULT_TRANS = 'dissolve'; // the editor's cross dissolve
@@ -60,10 +62,19 @@ const ThreeSeqData = (() => {
   const trackOf = (e, role) => (e.tracks || []).find((x) => x.type === TRACKS[role][0] && x.name === TRACKS[role][1]) || null;
   function addTo(e, role, item) {
     const { e: e2, id } = ensureTrack(e, role);
-    // the role's own track when it has room, else another of the same type (CutData picks)
+    const [type, name] = TRACKS[role];
+    // the role's own track when it has room, else another of the same role
     const k = e2.tracks.find((x) => x.id === id);
-    const fits = k.items.every((x) => C.itemEnd(x) <= item.start + 1e-4 || x.start >= item.start + C.itemDur(item) - 1e-4);
-    return C.addItem(e2, item, fits ? { track: id } : {});
+    const room = (kk) => kk.items.every((x) => C.itemEnd(x) <= item.start + 1e-4 || x.start >= item.start + C.itemDur(item) - 1e-4);
+    if (room(k)) return C.addItem(e2, item, { track: id });
+    // (labcut) no room: another track of the same role ("Voice 2"), never another role's (a sound on the voice track
+    // would duck the music; a title among the captions would export as one)
+    const named = Object.values(TRACKS).map((x) => x[1]);
+    const own = (kk) => kk.type === type && kk !== k && (kk.name.startsWith(`${name} `) || !named.some((nm) => kk.name === nm || kk.name.startsWith(`${nm} `)));
+    const other = e2.tracks.find((kk) => own(kk) && room(kk));
+    if (other) return C.addItem(e2, item, { track: other.id });
+    const n2 = C.addTrack(e2, type, `${name} ${e2.tracks.filter((kk) => kk.type === type && kk.name.startsWith(name)).length + 1}`);
+    return C.addItem(n2, item, { track: n2.tracks[n2.tracks.length - 1].id });
   }
 
   // ---------- clips ----------
@@ -123,8 +134,8 @@ const ThreeSeqData = (() => {
     return n;
   }
   const songOf = (e) => (e?.tracks || []).filter((k) => k.type === 'audio' && !k.mute).flatMap((k) => k.items).find((x) => x.song) || null;
-  function addAudio(e, src, duration, { at = 0, a = 0, b = null, volume = 1 } = {}) {
-    return addTo(e, 'sound', { kind: 'audio', src, in: r4(a), out: r4(b ?? duration), max: r4(duration), start: r4(Math.max(0, at)), volume, speed: 1 });
+  function addAudio(e, src, duration, { at = 0, a = 0, b = null, volume = 1, role = 'sound' } = {}) {
+    return addTo(e, TRACKS[role]?.[0] === 'audio' ? role : 'sound', { kind: 'audio', src, in: r4(a), out: r4(b ?? duration), max: r4(duration), start: r4(Math.max(0, at)), volume, speed: 1 });
   }
 
   // ---------- editing (the editor's keys: S, Delete, Shift+Delete, trims, slip, move, duplicate) ----------
@@ -301,13 +312,20 @@ const ThreeSeqData = (() => {
   }
   const fmt = (t) => `${Math.floor(Math.max(0, t) / 60)}:${(Math.max(0, t) % 60).toFixed(2).padStart(5, '0')}`;
   function clipLabel(c) {
-    if (c.kind === 'scene') return `scene “${c.name}”${c.look ? ` · look ${c.look}` : ''}${c.vary ? ` · variation ${c.vary.seed % 1000}` : ''}${c.vibe ? ' · board vibe' : ''}${c.in ? ` · from ${c.in.toFixed(2)} s` : ''}${c.speed && c.speed !== 1 ? ` · ${c.speed}×` : ''}${c.swatch ? ` · ${c.swatch}` : ''}`;
+    if (c.kind === 'scene') return `scene “${c.name}”${c.grade ? ` · color ${c.grade.look}` : ''}${c.look ? ` · look ${c.look}` : ''}${c.vary ? ` · variation ${c.vary.seed % 1000}` : ''}${c.vibe ? ' · board vibe' : ''}${c.in ? ` · from ${c.in.toFixed(2)} s` : ''}${c.speed && c.speed !== 1 ? ` · ${c.speed}×` : ''}${c.swatch ? ` · ${c.swatch}` : ''}`;
     if (c.kind === 'seq') return `sequence “${c.name}”${c.in ? ` from ${fmt(c.in)}` : ''}`;
-    if (c.kind === 'video') return `footage ${base(c.src)} ${fmt(c.in)}–${fmt(c.out)}${c.speed !== 1 ? ` ${c.speed}×` : ''}${c.mute ? '' : ' (sound)'}`;
+    // (labcut) volume, fades, framing, move, color look
+    const vol = c.volume != null && c.volume !== 1 ? ` vol ${Math.round(c.volume * 100)}%` : '';
+    const fd = c.fadeIn || c.fadeOut ? ` fades ${c.fadeIn || 0}/${c.fadeOut || 0} s` : '';
+    const fr = c.frames ? ` framed ${Object.keys(c.frames).join(' ')}` : c.frame || c.fit ? ' framed' : '';
+    const mv = c.motion && c.motion !== 'none' ? ` move ${c.motion}` : '';
+    const gr = c.grade ? ` look ${c.grade.look}${c.grade.amt != null && c.grade.amt !== 1 ? ` ${Math.round(c.grade.amt * 100)}%` : ''}` : '';
+    if (c.kind === 'video') return `footage ${base(c.src)} ${fmt(c.in)}–${fmt(c.out)}${c.speed !== 1 ? ` ${c.speed}×` : ''}${c.mute ? '' : ` (sound${vol}${fd})`}${fr}${mv}${gr}`;
+    if (c.kind === 'image') return `picture ${base(c.src)}${fr}${mv}${gr}`;
     if (c.kind === 'title') return `title card “${c.text}”`;
     if (c.kind === 'gap') return 'gap';
     if (c.kind === 'layer') return `overlay layer “${c.name}”`;
-    if (c.kind === 'audio') return `${c.song ? 'song' : 'sound'} ${base(c.src)}`;
+    if (c.kind === 'audio') return `${c.song ? 'song' : 'sound'} ${base(c.src)}${vol}${fd}`;
     return c.kind;
   }
   // A compact text version for the chats / directors (numbers are what the tools take: clip 2 = the 2nd main clip).

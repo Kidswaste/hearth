@@ -1205,11 +1205,11 @@ const Capture = (() => {
   const openFile = (p) => MediaFile.open(p);
   const reveal = (p) => MediaFile.reveal(p);
   // a recording as a footage clip on the Lab sequence (at its end)
-  async function addToSequence(p) {
+  async function addToSequence(p, { a = null, b = null } = {}) {
     await window.Lazy?.load?.('lab');
     if (typeof ThreeLab === 'undefined' || typeof ThreeSeq === 'undefined') throw new Error('The Lab isn\'t available');
     await ThreeLab.cmd({ show: true });
-    const r = await ThreeSeq.handle('three_sequence', { op: 'add', footage: p });
+    const r = await ThreeSeq.handle('three_sequence', { op: 'add', footage: p, ...(a != null ? { in: a } : {}), ...(b != null ? { out: b } : {}) }); // (labcut: a board clip's in / out)
     if (!r?.ok) throw new Error(r?.error || 'The sequence couldn\'t take it');
     activate('tool:three');
     return true;

@@ -309,6 +309,8 @@ const Renders = (() => {
     if (live(j)) it.push({ label: '■ Cancel', action: () => cancel(j.id) });
     for (const a of actionsFor(j)) it.push({ label: a.label, action: a.action });
     // a finished video into the Adobe apps (Premiere, Media Encoder, After Effects)
+    // (labcut) a finished video or picture as footage on the Lab sequence (at the end)
+    if (j.status === 'done' && j.output && !j.trashed && /\.(mp4|mov|m4v|webm|png|jpe?g|webp)$/i.test(j.output)) it.push({ label: '▤ Add to the Lab sequence', action: () => (typeof Capture !== 'undefined' ? Capture.addToSequence(j.output) : Promise.reject(new Error('Capture isn\'t loaded'))).catch((err) => toast(err.message, { type: 'error' })) });
     if (j.status === 'done' && j.output && !j.trashed && /\.(mp4|mov|m4v|webm)$/i.test(j.output)) it.push({ label: 'Adobe', items: () => { if (typeof Adobe !== 'undefined') return Adobe.videoItems(j.output); window.Lazy?.load?.('adobe'); return [{ label: 'Adobe is loading… (try again)', disabled: true }]; } });
     if ((j.status === 'failed' || j.status === 'cancelled') && j.again) it.push({ label: '↻ Retry', action: () => retry(j.id) });
     if (j.status === 'done' && j.again) it.push({ label: '↻ Re-render (same settings)', action: () => retry(j.id) });
