@@ -89,6 +89,14 @@ const VideoCut = (() => {
   // P.T = program time. While a video clip plays, the time comes from its decoder; stills and gaps run on a clock.
   const P = { T: 0, playing: false, rate: 1, idx: -1, act: 0, seq: 0, clockT: 0, clockAt: 0, raf: 0, timer: 0, fadeAnim: null, vol: -1, revAt: 0 };
   const els = () => [refs.pa, refs.pb];
+  // (round 16) Video Review hidden for a while, paused: the two stage decoders let go of their files (memory, GPU
+  // surfaces); the next seek / play loads them again (loadEl checks readyState) and Review repaints the frame on return
+  function releaseDecoders() {
+    if (P.playing || !refs.pa) return false;
+    let n = 0;
+    for (const e0 of els()) { if (!e0?.getAttribute('src')) continue; e0.removeAttribute('src'); e0.load(); e0.dataset.src = ''; e0.dataset.key = ''; n += 1; }
+    return n;
+  }
   const active = () => els()[P.act];
   const standby = () => els()[1 - P.act];
   const fpsOf = (src) => host?.S.meta[src]?.fps || (src === host?.S.cur?.path ? host.S.fps : 30) || 30;
@@ -125,7 +133,8 @@ const VideoCut = (() => {
   function loadEl(el, src) {
     if (el.dataset.src === src && el.readyState >= 1) return Promise.resolve(true);
     el.dataset.src = src; el.dataset.key = '';
-    el.src = host.fileUrl(src);
+    // (round 16) a heavy file's light copy plays here when there is one (made by itself: VideoPack.autoProxy)
+    el.src = host.fileUrl((typeof VideoPack !== 'undefined' && VideoPack.previewSrc?.(src)) || src);
     return new Promise((res) => { const done = (ok) => { el.removeEventListener('loadedmetadata', y); el.removeEventListener('error', n); res(ok); }; const y = () => done(true); const n = () => done(false); el.addEventListener('loadedmetadata', y); el.addEventListener('error', n); setTimeout(() => done(false), 8000); });
   }
   function seekEl(el, t) {
@@ -189,6 +198,23 @@ const VideoCut = (() => {
     if (play) startPlay(); else { P.playing = false; placeHead(); paintPlay(); emit('frame', { T: P.T }); }
   }
   function refreshPicture() { if (st.on) seek(P.T, { play: P.playing }); }
+  // (round 16) scrubbing the track: at most one seek per frame, and none while the decoder still works on the last
+  // one (it then goes straight to the newest position); the playhead and the time follow the pointer meanwhile
+  function scrubber() {
+    let want = null; let busy = false; let raf = 0;
+    const go = async () => {
+      raf = 0;
+      if (want == null || busy) return;
+      busy = true; const t = want; want = null;
+      try { await Promise.race([seek(t, { play: false }), new Promise((r) => setTimeout(r, 250))]); } finally { busy = false; }
+      if (want != null && !raf) raf = requestAnimationFrame(go);
+    };
+    return (t) => {
+      want = t;
+      if (busy && !richOn) { P.T = clamp(t, 0, total()); placeHead(); paintTime(); }
+      if (!raf && !busy) raf = requestAnimationFrame(go);
+    };
+  }
   // ----- rich edits: the compositor plays and draws (tools/video-comp.js) -----
   let lastCheck = null; // what the decoders showed at the last exact render (frame checks)
   async function seekRich(T, { play = false } = {}) {
@@ -465,6 +491,14 @@ const VideoCut = (() => {
     if (pumping || !queue.length) return;
     pumping = true;
     const src = queue.shift();
+    // (round 16) one sprite from ffmpeg, made off this thread and kept on disk (Review.media); the decoder is the fallback
+    const sp = await R().media?.sprite(src, { n: 12, w: 96 }).catch(() => null);
+    if (sp) {
+      thumbs.set(src, sp.frames); capThumbs();
+      if (!host.S.meta[src]?.d && sp.w) host.S.meta[src] = { ...(host.S.meta[src] || {}), w: sp.w, h: sp.h, d: sp.d };
+      pumping = false; draw(); pump();
+      return;
+    }
     const d = document.createElement('video');
     d.muted = true; d.preload = 'auto'; d.src = host.fileUrl(src);
     try {
@@ -482,14 +516,24 @@ const VideoCut = (() => {
     } catch { /* not decodable here */ }
     d.removeAttribute('src'); d.load();
     pumping = false;
+    capThumbs();
     draw();
     pump();
+  }
+  // the thumbnails of the newest 40 sources stay in memory (a 10-clip edit keeps all of its own)
+  function capThumbs() {
+    if (thumbs.size <= 40) return;
+    const used = new Set(st.edit ? C.sources(st.edit) : []);
+    for (const k of thumbs.keys()) { if (thumbs.size <= 40) break; if (!used.has(k)) thumbs.delete(k); }
   }
   function analysisOf(src) {
     if (src === host?.S.cur?.path && host.S.audio) return host.S.audio;
     if (analyses.has(src)) return analyses.get(src);
     analyses.set(src, null);
-    if (typeof ThreeMedia !== 'undefined' && ThreeMedia.analyze) {
+    // (round 16) the shared media cache: the analysis from disk, or the sound alone from ffmpeg (no 300 MB read here)
+    if (R().media) {
+      R().media.analysis(src).then((a) => { if (a) { analyses.set(src, { bpm: a.bpm, beats: a.beats, drops: a.drops, sections: a.sections, peaks: a.peaks, duration: a.duration }); draw(); } }, () => {});
+    } else if (typeof ThreeMedia !== 'undefined' && ThreeMedia.analyze) {
       (async () => {
         try {
           const st0 = await window.hub.fs.stat(src);
@@ -552,12 +596,14 @@ const VideoCut = (() => {
     const ar = im ? im.naturalWidth / im.naturalHeight : sv?.w ? sv.w / sv.h : 9 / 16;
     const tw = Math.max(8, lh * ar);
     g.globalAlpha = 0.85;
-    if (im) { for (let px = x0; px < x0 + cw; px += tw) g.drawImage(im, px, y0, tw, lh); } else if (th?.length) {
-      for (let px = x0; px < x0 + cw; px += tw) {
+    // (round 16) only the tiles on screen: a long clip zoomed in to frames drew every tile of its whole length
+    const p0 = x0 + Math.max(0, Math.floor(-x0 / tw)) * tw; const p1 = Math.min(x0 + cw, W() + tw);
+    if (im) { for (let px = p0; px < p1; px += tw) g.drawImage(im, px, y0, tw, lh); } else if (th?.length) {
+      for (let px = p0; px < p1; px += tw) {
         const T = start + ((px + tw / 2 - X0) / Math.max(1, X1 - X0)) * (end - start);
         const st0 = cl.kind === 'freeze' ? cl.at : C.srcAt(cl, T - start);
         const f = th.reduce((a, b) => (Math.abs(b.t - st0) < Math.abs(a.t - st0) ? b : a));
-        g.drawImage(f.img, px, y0, tw, lh);
+        if (f.sx != null) g.drawImage(f.img, f.sx, 0, f.sw, f.sh, px, y0, tw, lh); else g.drawImage(f.img, px, y0, tw, lh);
       }
     }
     g.globalAlpha = 1;
@@ -568,7 +614,8 @@ const VideoCut = (() => {
     g.fillStyle = color;
     const per = a.peaks.length / (a.duration || 1);
     const span0 = X1 - X0;
-    for (let px = Math.max(0, -X0 + x0) - (x0 - X0); px < cw; px += 1) {
+    // (round 16) only the pixels on screen (a clip wider than the view used to be drawn whole)
+    for (let px = Math.max(Math.max(0, -X0 + x0) - (x0 - X0), Math.floor(-x0)), pxEnd = Math.min(cw, W() - x0 + 1); px < pxEnd; px += 1) {
       const s0 = C.srcAt(cl, ((px + (x0 - X0)) / Math.max(1, span0)) * (C.durOf(cl)));
       const s1 = C.srcAt(cl, ((px + 1 + (x0 - X0)) / Math.max(1, span0)) * (C.durOf(cl)));
       const lo = Math.min(s0, s1); const hi = Math.max(s0, s1);
@@ -917,7 +964,8 @@ const VideoCut = (() => {
     if (h.zone === 'ruler' || h.zone === 'empty' || h.zone === 'lane') {
       pause(); seek(scrubT(h.T, e), { play: false });
       if (h.zone !== 'ruler') { st.sel.clear(); paintHead(); draw(); }
-      const mv = (ev) => seek(scrubT(hit(ev).T, ev), { play: false });
+      const scrub = scrubber();
+      const mv = (ev) => scrub(scrubT(hit(ev).T, ev));
       refs.canvas.addEventListener('pointermove', mv);
       refs.canvas.addEventListener('pointerup', () => { refs.canvas.removeEventListener('pointermove', mv); st.snapAt = null; draw(); }, { once: true });
       return;
@@ -2431,7 +2479,7 @@ const VideoCut = (() => {
   }
 
   return {
-    editFor, storeEdit, analysisMap, renderEdit,
+    editFor, storeEdit, analysisMap, renderEdit, releaseDecoders,
     mount, onKey, frame, enter, leave, toggle, statusOf, hasCut, receive, on: (ev, fn) => { (listeners[ev] ||= []).push(fn); },
     get active() { return st.on; }, get edit() { return st.edit; }, get path() { return st.path; }, get time() { return P.playing ? nowT() : P.T; }, get playing() { return P.playing; },
     get selection() { return selIds(); }, get suggestion() { return st.suggest ? { ...st.suggest } : null; }, get canUndo() { return st.undo.length > 0; },

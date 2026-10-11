@@ -156,7 +156,8 @@ const Renders = (() => {
       if (!j.spec) await build(j);
       bar(j, { label: 'starting', pct: 0 });
       const run = api()?.run || window.hub.video.transcode;
-      await run({ id: j.id, input: j.spec.input, output: j.spec.output, args: j.spec.args, duration: j.spec.duration }, j.overrides || ffOver());
+      // (round 16) ffmpeg runs below normal priority (the app stays responsive); 'Full speed' (/renders rush) lifts it
+      await run({ id: j.id, input: j.spec.input, output: j.spec.output, args: j.spec.args, duration: j.spec.duration, priority: store.get('renders.rush', false) ? 'normal' : 'low' }, j.overrides || ffOver());
       if (j.status === 'starting') j.status = 'running';
       changed(j, 'run');
     } catch (err) {
@@ -556,6 +557,7 @@ const Renders = (() => {
       act.some((j) => j.status === 'paused') ? { label: '▶ Resume all', action: () => act.forEach((j) => resume(j.id)) } : null,
       act.length ? { label: '■ Cancel all', action: () => act.forEach((j) => cancel(j.id)) } : null,
       { label: `Renders at once: ${limits().ffmpeg}`, more: true, items: [1, 2, 3].map((n) => ({ label: `${n}${n === 1 ? ' (smoothest)' : ''}`, checked: limits().ffmpeg === n, action: () => { store.set('renders.parallel', n); pump(); } })) },
+      { label: `${store.get('renders.rush', false) ? '✓ ' : ''}Full speed (Hearth may feel heavier)`, more: true, action: () => store.set('renders.rush', !store.get('renders.rush', false)) },
       { label: 'Clear finished', more: true, action: () => clear() },
     ];
   }

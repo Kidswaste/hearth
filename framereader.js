@@ -414,6 +414,8 @@ function convert(input, output, { mp4 = false, fps = null, crf = 18, onProgress,
   args.push('-progress', 'pipe:1', '-nostats', output);
   return new Promise((resolve, reject) => {
     const child = spawn(ffmpeg, args, { windowsHide: true });
+    // (round 16) a take's MP4 encode runs below normal priority: Hearth stays smooth while it finishes in the background
+    if (mp4 && child.pid) { try { require('os').setPriority(child.pid, require('os').constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* priority is a bonus */ } }
     let err = '';
     child.stdout.on('data', (d) => { const m = String(d).match(/out_time_us=(\d+)/g); if (m && duration && onProgress) onProgress(Math.min(1, Number(m[m.length - 1].split('=')[1]) / 1e6 / duration)); });
     child.stderr.on('data', (d) => { err = (err + d).slice(-3000); });

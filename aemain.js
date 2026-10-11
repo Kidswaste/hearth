@@ -24,6 +24,7 @@ const exists = (p) => { try { return Boolean(p) && fs.existsSync(p); } catch { r
 
 const IS_MAC = process.platform === 'darwin';
 const IS_WIN = process.platform === 'win32';
+const { lowPriority } = require('./videocachemain');
 
 // ---------- locating After Effects ----------
 // Mac: /Applications/Adobe After Effects 2026/ holds "Adobe After Effects 2026.app" and aerender.
@@ -224,6 +225,7 @@ function render(job, emit, override) {
   if (job.multiFrames) args.push('-mfr', 'ON', '100');
   args.push('-v', 'ERRORS_AND_PROGRESS');
   const child = spawn(st.aerender, args, { windowsHide: true });
+  if (job.priority !== 'normal') lowPriority(child); // (round 16) the window keeps its CPU while AE renders
   renders.set(job.id, child);
   const started = Date.now();
   let fps = 0;
@@ -322,6 +324,9 @@ function transcode(job, emit, overrides) {
   const args = job.args.map((a) => (a === 'INPUT' ? job.input : a === 'OUTPUT' ? job.output : a));
   args.splice(args.length - 1, 0, '-progress', 'pipe:1', '-nostats');
   const child = spawn(ffmpeg, args, { windowsHide: true });
+  // (round 16) renders, exports and proxies run below normal priority (nice 10 / BELOW_NORMAL): they still use every
+  // idle core, but the window, the preview and the chats come first. job.priority 'normal' (/renders rush) skips it.
+  child.lowPriority = job.priority !== 'normal' && lowPriority(child);
   jobs.set(job.id, child);
   const started = Date.now();
   let err = '';
@@ -357,6 +362,8 @@ function registerIpc(ipcMain, getWin, getOverride) {
   ipcMain.handle('video:probe', (_e, file, overrides) => probe(file, overrides));
   ipcMain.handle('video:transcode', (_e, job, overrides) => transcode(job, sendJob, overrides));
   ipcMain.handle('video:cancel', (_e, id) => { jobs.get(id)?.kill(); return true; });
+  // (round 16) thumbnails, strips and sound for the timelines, made once by ffmpeg off the window's thread, kept on disk
+  require('./videocachemain').register(ipcMain, ffStatus, probe);
   // the editor's temporary title frames (a folder it made itself, named .hearth-titles-…) go away after a render
   ipcMain.handle('video:rmtemp', (_e, dir) => {
     if (typeof dir !== 'string' || !path.isAbsolute(dir) || !/^\.hearth-titles-[a-z0-9]+$/.test(path.basename(dir))) return false;

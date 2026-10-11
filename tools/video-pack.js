@@ -285,6 +285,31 @@ const VideoPack = (() => {
     return paths.length;
   }
   function setProxies(on) { PX.on = on ?? !PX.on; savePX(); refresh(); return PX.on; }
+  // (round 16) automatic proxies: a heavy file (over 1080p, over 40 Mb/s, HEVC / ProRes / DNx) in the edit gets its light
+  // copy by itself, in the background (ffmpeg below normal priority, one at a time); the preview switches to it when it
+  // is ready, renders keep the originals. /edit-proxy auto off stops it (the files already made stay).
+  const autoSeen = new Set();
+  let autoBusy = null;
+  async function autoProxy() {
+    await pxReady;
+    if (!PX.on || PX.auto === false || autoBusy) return autoBusy;
+    const e = cut().edit; if (!e) return null;
+    const srcs = [...new Set([...C.sources(e), ...(e.tracks || []).flatMap((k) => k.items.filter((x) => x.src && x.kind === 'video').map((x) => x.src))])].filter((s) => !autoSeen.has(s) && !PX.files[s]);
+    if (!srcs.length || !await hasFF()) return null;
+    autoBusy = (async () => {
+      const made = [];
+      for (const s of srcs) {
+        autoSeen.add(s);
+        if (!heavy(await srcInfo(s))) continue;
+        if (!made.length) say('Making a light copy of the heavy clips for a smooth preview (in the background)…');
+        try { await makeProxy(s); made.push(base(s)); } catch { /* the original still plays */ }
+      }
+      if (made.length) say(`Smooth preview ready: ${made.join(', ')} play${made.length === 1 ? 's' : ''} from a light copy (renders use the originals).`);
+      return made;
+    })().finally(() => { autoBusy = null; });
+    return autoBusy;
+  }
+  function setAutoProxies(on) { PX.auto = on ?? PX.auto === false; savePX(); if (PX.auto) autoProxy(); return PX.auto; }
 
   // ---------- LUTs ----------
   const luts = new Map(); // path → { lut, fit } | Promise
@@ -554,8 +579,10 @@ const VideoPack = (() => {
     chaptersToMarkers(p).then((n) => { if (n) say(`${n} chapter${n === 1 ? '' : 's'} from the recording are markers (PgUp / PgDn jump)`); }).catch(() => {});
     if (typeof VideoSound !== 'undefined') VideoSound.warm(cut().edit);
   }
+  const autoSoon = debounce(() => { if (cut().active) autoProxy().catch(() => {}); }, 1500);
   // (VideoPack loads after the editor: its 'mode' event says when it opens)
-  if (typeof VideoCut !== 'undefined') VideoCut.on('mode', (d) => { if (d?.on) setTimeout(onEnter, 0); });
+  if (typeof VideoCut !== 'undefined') VideoCut.on('mode', (d) => { if (d?.on) { setTimeout(onEnter, 0); autoSoon(); } });
+  if (typeof VideoCut !== 'undefined') VideoCut.on('change', () => autoSoon()); // a heavy clip dropped on the track
 
   // ---------- menus (hooked into the editor's own) ----------
   function lutMenu(c, ids) {
@@ -632,7 +659,7 @@ const VideoPack = (() => {
     }
   }
 
-  return { ...PURE, previewSrc, reverseProxy, makeProxy, proxyAll, clearProxies, setProxies, get proxies() { return { on: PX.on, files: { ...PX.files }, rev: { ...PX.rev } }; },
+  return { ...PURE, previewSrc, reverseProxy, makeProxy, proxyAll, clearProxies, setProxies, autoProxy, setAutoProxies, get proxies() { return { on: PX.on, auto: PX.auto !== false, files: { ...PX.files }, rev: { ...PX.rev } }; },
     loadLut, setLut, pickLut, lutCss, findLut, get lutLibrary() { return lutLib.slice(); }, addAdjustment, drawAdjust, duck, voiceRanges, setVoiceTrack, isVoiceTrack, cutToVibe, boardItems,
     makeMulticam, angleAt, angleKey, syncOffset, queueAdd, queueRun, queueClear, queueList, chaptersToMarkers, lutMenu, clipItems, trackItems, addItems, moreItems, queueMenu, OPS, agentOp };
 })();

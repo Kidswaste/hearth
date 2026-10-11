@@ -628,7 +628,7 @@ const Capture = (() => {
   function elapsed() { if (!rec) return 0; const now = rec.pausedAt || performance.now(); return Math.max(0, (now - rec.started - rec.pausedMs) / 1000); }
   function status() {
     if (!rec) return { recording: false, last: last ? { path: last.path, kind: last.kind } : null };
-    return { recording: true, paused: Boolean(rec.pausedAt), seconds: Math.round(elapsed() * 10) / 10, max: Number(rec.opts.max) || 0, framesIn: rec.framesIn || 0, framesOut: rec.framesOut || 0, ...(rec.slowed ? { slowedTo: rec.slowed } : {}), target: rec.opts.target, fps: rec.opts.fps, size: rec.size, audio: rec.audioNote || rec.opts.audio, marks: rec.marks.length, path: rec.path, tour: rec.tour || null };
+    return { recording: true, paused: Boolean(rec.pausedAt), seconds: Math.round(elapsed() * 10) / 10, max: Number(rec.opts.max) || 0, framesIn: rec.framesIn || 0, framesOut: rec.framesOut || 0, pump: rec.worker ? 'worker' : 'window', ...(rec.slowed ? { slowedTo: rec.slowed } : {}), target: rec.opts.target, fps: rec.opts.fps, size: rec.size, audio: rec.audioNote || rec.opts.audio, marks: rec.marks.length, path: rec.path, tour: rec.tour || null };
   }
   function resolveRec(opts = {}) {
     const preset = D.RECORD.find((p) => p.id === (opts.preset || prefs.rec.preset)) || null;
@@ -703,6 +703,47 @@ const Capture = (() => {
       return { tracks: dest.stream.getAudioTracks(), click, close: () => { try { ctx.close(); } catch { /* closed */ } } };
     } catch { return null; }
   }
+  // (round 16) The recording's frame pump in a worker (capture-worker.js): it reads the page capture, crops / scales
+  // each frame into the recording canvas (handed over with transferControlToOffscreen) and repaints it at a constant
+  // rate; the canvas's capture stream goes to the recorder. The window's thread does nothing per frame while filming (it used to draw every captured frame and run
+  // the frame clock here), so the UI being recorded stays smooth. Throws when the engine can't (the canvas path runs).
+  async function workerPump(vTrack, o, { fixedRect, node, R }) {
+    if (typeof MediaStreamTrackProcessor === 'undefined' || !HTMLCanvasElement.prototype.transferControlToOffscreen) throw new Error('no track processor / offscreen canvas here');
+    const w = new Worker('capture-worker.js');
+    w.onerror = (e) => { e.preventDefault?.(); console.warn('capture worker', e.message); };
+    const next = (type, ms) => new Promise((res, rej) => {
+      const t = setTimeout(() => { w.removeEventListener('message', f); rej(new Error(`the capture worker sent no ${type}`)); }, ms);
+      const f = (e) => { if (e.data?.type === type) { clearTimeout(t); w.removeEventListener('message', f); res(e.data); } };
+      w.addEventListener('message', f);
+    });
+    const close = () => { try { w.postMessage({ cmd: 'stop' }); } catch { /* gone */ } setTimeout(() => w.terminate(), 1500); };
+    try {
+      const readable = new MediaStreamTrackProcessor({ track: vTrack }).readable;
+      const first = next('first', 9000);
+      w.postMessage({ cmd: 'open', readable }, [readable]);
+      // a still page may not send its first picture until it repaints: poke it while waiting
+      heartbeat(true);
+      const pokes = setInterval(poke, 300);
+      const f0 = await first.finally(() => { clearInterval(pokes); heartbeat(false); });
+      if (!f0.ok) throw new Error(f0.message || 'The page capture sent no picture');
+      const rectNow = () => fixedRect || (node ? rectOf(node) : null);
+      const view = () => ({ w: innerWidth, h: innerHeight });
+      const r0 = rectNow() || { x: 0, y: 0, width: innerWidth, height: innerHeight };
+      const k = f0.w / innerWidth;
+      const size = outSize(o, r0.width * k, r0.height * k);
+      // the recording canvas: drawn by the worker, its capture stream (made here) goes to the recorder
+      const c = el('canvas', { width: size.w, height: size.h });
+      const track = c.captureStream(o.fps).getVideoTracks()[0];
+      const off = c.transferControlToOffscreen();
+      w.postMessage({ cmd: 'start', canvas: off, rect: rectNow(), view: view(), frame: Boolean(size.frame), fps: o.fps }, [off]);
+      // the target can move or resize (a panel opening, the window resized): its rectangle follows 10× a second, sent
+      // only when it changed (one layout read, no per-frame work)
+      let last = '';
+      const follow = setInterval(() => { if (rec !== R) return; const r = rectNow(); const v = view(); const key = r ? `${r.x},${r.y},${r.width},${r.height},${v.w},${v.h}` : `-,${v.w},${v.h}`; if (key !== last) { last = key; w.postMessage({ cmd: 'rect', rect: r, view: v }); } }, 100);
+      w.addEventListener('message', (e) => { const d = e.data || {}; if (d.type === 'stats' && rec === R) { R.framesIn = d.framesIn; R.framesOut = d.framesOut; R.lastIn = performance.now() - (d.age || 0); } });
+      return { track, size, post: (m) => w.postMessage(m), close: () => { clearInterval(follow); close(); } };
+    } catch (err) { close(); throw err; }
+  }
   const codecStrikes = {};
   async function record(opts = {}) {
     if (rec) return status();
@@ -742,6 +783,17 @@ const Capture = (() => {
         // frames straight from the capture track (WebCodecs): no <video> to keep on screen; the page capture only sends a
         // frame when something changed, so a still UI costs nothing
         const R = rec;
+        // (round 16) the frame pump off the window's thread (capture-worker.js); this thread's own canvas is the fallback
+        const W0 = o.reader !== 'video' && o.worker !== false ? await workerPump(vTrack, o, { fixedRect, node, R }).catch((err) => { console.warn('capture: worker pump unavailable, drawing here', err?.message || err); return null; }) : null;
+        if (W0) {
+          videoTrack = W0.track;
+          R.worker = W0;
+          R.startTicker = (fps) => { R.tickFps = fps; W0.post({ cmd: 'fps', fps }); };
+          R.tickFps = o.fps;
+          R.canvas = { width: W0.size.w, height: W0.size.h };
+          R.size = `${W0.size.w}×${W0.size.h}`;
+          R.final = W0.size.final.w !== W0.size.w || W0.size.final.h !== W0.size.h ? W0.size.final : null;
+        } else {
         let source = null; let sw = 0; let shh = 0;
         let next = null;
         if (o.reader !== 'video' && typeof MediaStreamTrackProcessor !== 'undefined') {
@@ -810,6 +862,7 @@ const Capture = (() => {
         R.canvas = c;
         R.size = `${size.w}×${size.h}`;
         R.final = size.final.w !== size.w || size.final.h !== size.h ? size.final : null;
+        }
       } else {
         const s = vTrack.getSettings();
         rec.size = `${s.width || '?'}×${s.height || '?'}`;
@@ -945,6 +998,7 @@ const Capture = (() => {
     autoZoom(false); cameraBubble(null); chapters(false);
     clearInterval(rec.timer);
     clearInterval(rec.ticker);
+    rec.worker?.close(); rec.worker = null;
     try { rec.display?.getTracks().forEach((t) => t.stop()); } catch { /* gone */ }
     try { rec.mic?.getTracks().forEach((t) => t.stop()); } catch { /* gone */ }
     try { rec.audioCtx?.close(); } catch { /* gone */ }
@@ -959,12 +1013,12 @@ const Capture = (() => {
   }
   function pause() {
     if (!rec?.recorder || rec.pausedAt) return status();
-    rec.recorder.pause(); rec.pausedAt = performance.now(); tick();
+    rec.recorder.pause(); rec.pausedAt = performance.now(); rec.worker?.post({ cmd: 'pause', on: true }); tick();
     return status();
   }
   function resume() {
     if (!rec?.recorder || !rec.pausedAt) return status();
-    rec.pausedMs += performance.now() - rec.pausedAt; rec.pausedAt = 0; rec.recorder.resume(); tick();
+    rec.pausedMs += performance.now() - rec.pausedAt; rec.pausedAt = 0; rec.worker?.post({ cmd: 'pause', on: false }); rec.recorder.resume(); tick();
     return status();
   }
   function mark(label = '') {
@@ -985,7 +1039,7 @@ const Capture = (() => {
         try { r.recorder.requestData(); } catch { /* stopping anyway */ }
         for (let i = 0; i < 40 && !r.bytes; i += 1) await sleep(100);
       }
-      clearInterval(r.ticker); r.ticker = null;
+      clearInterval(r.ticker); r.ticker = null; r.worker?.post({ cmd: 'pause', on: true }); // no new frames
       try { if (r.recorder.state === 'recording') r.recorder.pause(); } catch { /* stopping anyway */ }
       await sleep(Math.min(1200, 250 + (r.canvas ? (r.canvas.width * r.canvas.height) / 4000 : 0)));
       await new Promise((res) => { r.recorder.onstop = res; try { if (r.recorder.state !== 'inactive') r.recorder.stop(); else res(); } catch { res(); } });

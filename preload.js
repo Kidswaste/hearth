@@ -171,6 +171,7 @@ contextBridge.exposeInMainWorld('hub', {
     transcode: call('video:transcode'),
     cancel: call('video:cancel'),
     rmtemp: call('video:rmtemp'),
+    media: call('video:media'), // (round 16) thumbnails / strips / sound made by ffmpeg once, cached on disk
     onJob: on('video:job-event'),
   },
   // Adobe apps (adobemain.js): status, ExtendScript, open with, the Hearth bridge (Premiere / Media Encoder), web apps

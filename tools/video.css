@@ -285,3 +285,7 @@ html[data-skin="forge"] .vr-kit { border-left-color: var(--line-hi); }
 .ed-insp textarea { width: 100%; resize: vertical; min-height: 40px; font: inherit; }
 html[data-skin="forge"] .ed-insp { border-radius: 0; }
 .ed-fxend { display: inline-flex; align-items: center; gap: 2px; }
+
+/* (round 16, videoperf) moved on the compositor: the hover-scrub bar and the timeline's hover frame are their own layers,
+   so a pointer sweep no longer repaints the library list / the transport under them */
+.vr-card:hover .vr-scrubbar, .vr-hover { will-change: transform; } /* (only the hovered card: 800 cards would be 800 layers) */
