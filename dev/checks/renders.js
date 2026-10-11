@@ -1,8 +1,8 @@
-// The render queue (round 13, renders*.js), driven like a user: /renders render of the open video in three presets
+// The render queue (round 13, renders*.js), driven like a user: /renders render of a video file in three presets
 // (one runs, the others wait their turn, the ⇪ badge counts them, their bars wait), pause (the ffmpeg process is
 // suspended: the number holds) and resume, cancel a waiting one (its caller hears the end), the files checked with
-// ffprobe (sizes, GIF), the done note (Open, Show in folder, Copy path, Video Review), a Video Review export through
-// the same queue (its library and its bar as before), a failure in plain words with its fix (and in /habits errors),
+// ffprobe (sizes, GIF), the done note (Open, Show in folder, Copy path), an ffmpeg job from elsewhere (the Lab's
+// cut-loop: Renders.transcode + whenDone, round 17) through the same queue, a failure in plain words with its fix (and in /habits errors),
 // re-render with the same settings (a new file), the list and its history tab, right-click menus, Trash, a
 // recording shown live, the Render panel (presets as chips, all socials, details, remembered choices), /renders
 // subcommands, no duplicate commands, and the smoothness rules (few DOM writes while it runs, nothing when idle).
@@ -27,20 +27,16 @@ try {
   ok(['vertical', 'story', 'feed45', 'square', 'yt1080', 'yt4k', 'gif', 'webm', 'master', 'audio'].every((id) => pre.includes(`**${id}**`)), 'the presets are listed');
   ok(!badge() || badge().hidden, 'no badge while nothing renders');
 
-  // ---- 1. a video in Video Review ----
+  // ---- 1. a video file ----
   const VIDS = `${window.SMOKE_SAVES}/rq`;
   await window.hub.fs.write(`${VIDS}/.keep`, '');
   for (const f of (await window.hub.fs.list('/tmp/hearth-test-videos')).filter((x) => !x.isDir && /drop_visual_16x9\.mp4|square_loop/.test(x.name))) await window.hub.fs.copy(f.path, `${VIDS}/${f.name}`);
-  activate('tool:ae'); await Review.ensureMounted();
-  H.config.settings = { ...H.config.settings, videoDirs: [VIDS] };
-  await Review.load(true);
-  await until(() => Review.videos.length >= 2, 10000);
   const A = `${VIDS}/drop_visual_16x9.mp4`;
-  await Review.open(A); await Review.waitReady?.().catch(() => null);
   activate(C.id); await wait(200);
+  ok(!Renders.sources().some((s) => s.id === 'video'), 'no "video in Video Review" source any more (round 17)');
 
   // ---- 2. three presets: one runs, two wait ----
-  const said = await say('/renders render yt4k square gif quality=draft');
+  const said = await say(`/renders render yt4k square gif quality=draft ${A}`);
   out.said = said;
   ok(/In the queue/.test(said), `the command queues them (${said.slice(0, 120)})`);
   const j4k = job(/YouTube 4K/); const jsq = job(/Square/); const jgif = job(/GIF/);
@@ -90,24 +86,22 @@ try {
   ok(jsq.size > 0 && jsq.seconds != null, 'size and time known');
   const note = toasts().find((t) => t.classList.contains('rq-done') && t.textContent.includes(Renders.core.base(jsq.output)));
   out.note = note?.textContent;
-  ok(note && ['Open', 'Folder', 'Copy path', 'Review'].every((b) => [...note.querySelectorAll('button')].some((x) => x.textContent === b)), `the done note has Open / Show in folder / Copy path / Review (${out.note})`);
+  ok(note && ['Open', 'Folder', 'Copy path'].every((b) => [...note.querySelectorAll('button')].some((x) => x.textContent === b)) && ![...note.querySelectorAll('button')].some((x) => /Review/.test(x.textContent)), `the done note has Open / Show in folder / Copy path, no Video Review (${out.note})`);
   ok(Renders.actionsFor(jsq).some((a) => a.label === 'Show in folder') && Renders.core.revealLabel('darwin') === 'Reveal in Finder' && Renders.core.revealLabel('win32') === 'Show in Explorer', 'reveal named per system');
-  const lib = await window.hub.kvGet('video-library', {});
-  ok((lib.recordings || []).includes(jsq.output), 'renders from the queue join Video Review\'s library');
   await shot('done');
 
-  // ---- 6. a Video Review export goes through the same queue ----
-  const x = await Review.runExport('square', { path: `${VIDS}/square_loop.mp4` });
-  ok(x?.id && Renders.owns(x.id), 'Review.runExport is a queue job');
-  const ev = await x.done;
-  ok(ev.code === 0, `the export finished (${ev.code} ${ev.error || ''})`);
-  ok(Renders.get(x.id)?.status === 'done', 'and is done in the queue');
-  ok(Progress.get(`job:${x.id}`)?.state === 'done' || !Progress.get(`job:${x.id}`), 'its bar finished');
-  ok(Review.state.lib.exports.includes(ev.output), 'it is in Video Review\'s exports');
-  // (Video Review's folder watcher also says "New render: …" for a file landing in a watched folder: not a done note)
-  const doneNotes = () => toasts().filter((t) => /square_loop_square/.test(t.textContent) && !/^New render/.test(t.textContent));
+  // ---- 6. an ffmpeg job from elsewhere (the Lab's cut-loop, a footage cut) goes through the same queue ----
+  const xid = `cutloop${Date.now().toString(36)}`;
+  const xout = `${VIDS}/square_loop_cut.mp4`;
+  await Renders.transcode({ id: xid, input: `${VIDS}/square_loop.mp4`, output: xout, args: ['-hide_banner', '-y', '-ss', '0', '-i', 'INPUT', '-t', '1', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-an', 'OUTPUT'], duration: 1 }, undefined, { title: 'Save the loop' });
+  ok(Renders.owns(xid), 'Renders.transcode is a queue job');
+  const ev = await Renders.whenDone(xid);
+  ok(ev.code === 0 && ev.output === xout, `whenDone says it finished (${JSON.stringify(ev)})`);
+  ok(Renders.get(xid)?.status === 'done', 'and is done in the queue');
+  ok((await Renders.whenDone(xid)).code === 0, 'whenDone of a finished job answers at once');
+  const doneNotes = () => toasts().filter((t) => /square_loop_cut/.test(t.textContent));
   await until(() => doneNotes().length, 5000); await wait(500);
-  ok(doneNotes().length === 1 && doneNotes()[0].classList.contains('rq-done'), `one done note for it, the queue's (${doneNotes().map((t) => `${t.className}: ${t.textContent}`).join(' // ')})`);
+  ok(doneNotes().length <= 1, `at most one done note for it (${doneNotes().map((t) => `${t.className}: ${t.textContent}`).join(' // ')})`);
 
   // ---- 6b. made in a make's room: it joins the make (its mark on the row, the file in its outputs, its name on the file) ----
   const mk = await Makes.plan('a script called Rq Make', { kinds: ['chat'] });
@@ -152,7 +146,7 @@ try {
   await wait(200);
   const menuText = document.getElementById('menu')?.textContent || '';
   out.menu = menuText.slice(0, 200);
-  ok(/Show in folder/.test(menuText) && /Copy path/.test(menuText) && /Open in Video Review/.test(menuText) && /Re-render/.test(menuText), `right-click: reveal, copy path, Video Review, re-render (${out.menu})`);
+  ok(/Show in folder/.test(menuText) && /Copy path/.test(menuText) && /Adobe/.test(menuText) && !/Video Review/.test(menuText) && /Re-render/.test(menuText), `right-click: reveal, copy path, Adobe, re-render, no Video Review (${out.menu})`);
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   Renders.close();
   const hist = await window.hub.kvGet('renders', {});
@@ -167,10 +161,10 @@ try {
   ok(await until(() => rec?.status === 'done' && rec.output, 15000), `the recording is done with its file (${rec?.status} ${rec?.output})`);
 
   // ---- 11. the Render panel ----
-  activate('tool:ae'); await wait(200);
+  activate(C.id); await wait(200);
   ok(store.get('renders.last', {}).presets?.includes('yt4k'), '/renders render remembers its presets too');
   store.set('renders.last', { presets: ['vertical'] });
-  const dlg = await Renders.panel({ source: 'video' });
+  const dlg = await Renders.panel({ source: 'file', file: A });
   await wait(200);
   const chips = [...dlg.querySelectorAll('.rq-chip')].map((c) => c.textContent);
   out.chips = chips.join(' | ');
@@ -192,8 +186,6 @@ try {
   ok(/Cancelled [45]/.test(ca), `/renders cancel all (${ca})`);
   await until(() => !Renders.list().some((j) => ['queued', 'running', 'starting', 'paused'].includes(j.status)), 10000);
   ok(!Renders.list().some((j) => ['queued', 'running', 'starting', 'paused'].includes(j.status)), 'nothing left running');
-  // the export menu has the entry
-  ok(typeof Review.exportMenu === 'function', 'Video Review export menu');
 
   // ---- 12. idle: nothing ticks ----
   await say('/renders clear');

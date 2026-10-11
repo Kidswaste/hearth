@@ -1,5 +1,5 @@
 // Lazy loading (round 16, boot): with every group held back (localStorage lazy.hold), the stand-ins list everything and
-// the first use of each kind loads its group and works: a command (/studio list), the Commands page and Video Review
+// the first use of each kind loads its group and works: a command (/studio list), the Commands page and board
 // tabs, a palette action, an agent tool call, the Lab; then the Lab as the first screen with the Three Director docked
 // (the dock attaches once the Lab is in), and the normal start (every group loaded soon after the first screen).
 //   node dev/smoke.js --script dev/checks/lazy.js
@@ -18,11 +18,13 @@ const check = (what, ok, detail = '') => (ok ? out.ok : out.bad).push(`${what}${
 const st = () => Object.fromEntries(Lazy.state().map((s) => [s.name, s.state]));
 check('all held at start', Object.values(st()).every((s) => s === 'stub'), JSON.stringify(st()));
 const names = new Set(Commands.list().map((d) => d.name));
-const want = ['studio', 'renders', 'adobe', 'deploy', 'video', 'cut', 'commands', 'whats-new', 'meshy', 'fps', 'seq', 'fx-picker'];
+const want = ['studio', 'renders', 'adobe', 'deploy', 'sequence', 'footage', 'commands', 'whats-new', 'meshy', 'fps', 'seq', 'fx-picker'];
 check('stand-in commands listed', want.every((n) => names.has(n) || Commands.get(n)), want.filter((n) => !Commands.get(n)).join(' '));
-check('Commands.list() size', Commands.list().length > 900, String(Commands.list().length));
+check('Commands.list() size', Commands.list().length > 750, String(Commands.list().length));
+// (round 17) Video Review, its editor and the Video Director are gone: no tab, no command, no agent tools
+check('no Video Review', !Tools.get('ae') && !['video', 'cut', 'editor', 'review', 'intro', 'video-edit'].some((n) => Commands.get(n)) && typeof Review === 'undefined' && typeof VideoCut === 'undefined', ['video', 'cut', 'editor', 'review', 'intro'].filter((n) => Commands.get(n)).join(' '));
 check('no duplicates', Commands.duplicates().length === 0, Commands.duplicates().map((d) => d.name).join(' '));
-check('rail tools', ['three', 'ae', 'board', 'commands'].every((id) => Tools.get(id)), Tools.all().map((t) => t.id).join(' '));
+check('rail tools', ['three', 'board', 'commands'].every((id) => Tools.get(id)), Tools.all().map((t) => t.id).join(' '));
 // 1. a command
 const say = [];
 await Commands.tryRun('/studio list', H.claudeAgent().id, null, { say: (t) => say.push(t), note: (t) => say.push(t) }).catch((err) => say.push(`ERR ${err.message}`));
@@ -46,10 +48,6 @@ hideMenu?.();
 activate('tool:commands');
 await until(() => Lazy.loaded('cmdpage') && document.querySelector('[data-id="tool:commands"] .cp-head'));
 check('Commands page opens from its tab', Boolean(document.querySelector('[data-id="tool:commands"] .cp-head')), JSON.stringify(st()));
-// 5. Video Review tab
-activate('tool:ae');
-await until(() => document.querySelector('[data-id="tool:ae"] .vr-main'));
-check('Video Review opens from its tab', Boolean(document.querySelector('[data-id="tool:ae"] .vr-main')));
 check('no "Loading…" left', !document.querySelector('.lazy-wait'));
 // 5b. the board tab
 activate('tool:board');
@@ -66,7 +64,7 @@ const left = Commands.list().filter((d) => d.__lazy || d.variants?.some((v) => v
 const leftLoaded = left.filter((d) => Lazy.loaded(d.__lazy || d.variants.find((v) => v.__lazy).__lazy));
 check('loaded groups took their stand-ins over', !leftLoaded.length, leftLoaded.map((d) => `${d.name}(${d.__lazy || d.variants.find((v) => v.__lazy).__lazy})`).slice(0, 8).join(' '));
 check('still no duplicates', Commands.duplicates().length === 0, Commands.duplicates().map((d) => d.name).join(' '));
-// a command another module wrapped while it was a stand-in (/director: director-cmds.js around Video Review's)
+// /director (director-cmds.js; it wrapped Video Review's own /director until round 17)
 const errs = [];
 const onErr = (e) => errs.push(String(e.reason?.message || e.message || e.reason));
 addEventListener('unhandledrejection', onErr);
@@ -74,7 +72,7 @@ const ran = await Commands.tryRun('/director cost', H.claudeAgent().id, null, { 
 await sleep(300);
 removeEventListener('unhandledrejection', onErr);
 const dir = Commands.get('director');
-check('/director cost (wrapped stand-in) runs', ran === true && !errs.length && dir.variants?.length === 2 && !dir.variants.some((v) => v.__lazy), `${ran} ${errs.join(' ')} ${dir.variants?.length}`);
+check('/director cost runs', ran === true && !errs.length && dir && !dir.__lazy, `${ran} ${errs.join(' ')}`);
 out.misses = Lazy.misses().map((m) => `${m.name}: ${m.where}`).slice(0, 12);
 localStorage.removeItem('lazy.hold');
 H.config.settings = { ...(H.config.settings || {}), startOn: 'threedirector' };

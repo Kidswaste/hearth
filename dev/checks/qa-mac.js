@@ -1,6 +1,6 @@
 // QA (round 8): ⌘ instead of Ctrl, as on the owner's Mac (the page believes it runs on a Mac; the main process is
-// whatever runs the check). ⌘ / ⌥ in the labels (keys sheet, capture menu, commands), ⌘ shortcuts on the board,
-// in the editor and the drawer, ⌥+key on the editor (a Mac types ˚ for ⌥K: the editor reads it).
+// whatever runs the check). ⌘ / ⌥ in the labels (keys sheet, capture menu, commands), ⌘ shortcuts on the board
+// and the drawer (the video editor's ⌘ / ⌥ keys left with Video Review in round 17).
 //   node dev/smoke.js --mac --check-timeout 300000 --script dev/checks/qa-mac.js
 const { wait, until, key } = J;
 const out = { fail: [] };
@@ -48,25 +48,6 @@ await meta('m', { shift: true });
 ok(BoardDrawer.isOpen(), '⌘⇧M opens the drawer');
 await meta('m', { shift: true });
 
-// the editor: ⌘Z after a split; ⌥K (types ˚ on a Mac) keys the transform
-const EV = window.EDITOR_VIDS || '/tmp/hearth-editor-videos';
-const VIDS = `${window.SMOKE_SAVES}/mac`;
-await window.hub.fs.write(`${VIDS}/.keep`, '');
-await window.hub.fs.copy(`${EV}/frames_a_30.mp4`, `${VIDS}/frames_a_30.mp4`);
-activate('tool:ae'); await Review.ensureMounted();
-await Review.open(`${VIDS}/frames_a_30.mp4`); await Review.waitReady(); await wait(300);
-await VideoCut.enter(); await until(() => VideoCut.active);
-const root = H.surfaces.get('tool:ae').el.querySelector('.vr').parentElement;
-VideoCut.goto(1); root.focus(); await key('s'); await wait(200);
-ok(VideoCut.edit.clips.length === 2, 'S splits');
-root.focus(); await meta('z');
-ok(VideoCut.edit.clips.length === 1, '⌘Z undoes in the editor', VideoCut.edit.clips.length);
-root.focus(); await meta('z', { shift: true });
-ok(VideoCut.edit.clips.length === 2, '⌘⇧Z redoes in the editor', VideoCut.edit.clips.length);
-VideoCut.select(0); VideoCut.goto(0.5); root.focus();
-for (const type of ['keyDown', 'keyUp']) await smoke({ cdp: 'Input.dispatchKeyEvent', params: { type, key: '˚', code: 'KeyK', windowsVirtualKeyCode: 75, modifiers: 1, ...(type === 'keyDown' ? { text: '˚' } : {}) } });
-await wait(300);
-ok(Object.keys(VideoCut.edit.clips[0].keys || {}).length > 0, '⌥K (˚ on a Mac) keys the transform', VideoCut.edit.clips[0].keys);
 // / menu and command help say ⌘
 ok(/⌘/.test(Commands.list().map((d) => d.keys || '').join(' ').replace(/Ctrl/g, '') + KeysUI.keyText('Ctrl+;')), 'command keys read ⌘');
 out.ok = !out.fail.length;

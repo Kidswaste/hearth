@@ -1,5 +1,5 @@
 // Chats at the core (round 9): cards for what a reply made (a real capture_shot through the MCP server, a video card
-// that plays and scrubs frame by frame), the ＋ menu, attach from anywhere (a Video Review drop, a pasted path, the
+// that plays and scrubs frame by frame), the ＋ menu, attach from anywhere (a dragged video, a pasted path, the
 // Lab frame), the "/" menu's short view with area rows, the context strip and "use the board" (one line, only when
 // your words point at it), inheritance on "continue with", right-click on every message part, and token frugality
 // (a plain message reaches the engine exactly as typed).
@@ -98,7 +98,7 @@ try {
   window.__plusShot && await smoke({ shot: window.__plusShot });
   closeMenu();
 
-  // attach from anywhere: a Video Review drag (its contact sheet), a pasted picture path
+  // attach from anywhere: a dragged video (its contact sheet), a pasted picture path
   const dt = new DataTransfer(); dt.setData('text/x-hearth-video', VID); dt.setData('text/plain', VID);
   v().input.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
   await until(() => v().attachments.some((a) => /contact sheet/.test(a.name)), 30000);

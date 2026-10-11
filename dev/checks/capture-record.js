@@ -28,7 +28,7 @@ ok(w1 && w1.duration > 2.2 && w1.duration < 2.9, `the take's length is right (~2
 ok(!r1.webm || /\.mp4$/.test(r1.path), 'one file per take: the MP4 (no WebM left beside it)');
 ok(p1?.audio && w1?.audio, 'Hearth\'s own sound track recorded');
 ok(r1.marks.length === 1 && Math.abs(r1.marks[0].time - 1.2) < 0.4, 'marker kept with its time');
-ok((await window.hub.kvGet('capture-marks', {}))[r1.path]?.length === 1, 'markers saved for the player / Video Review');
+ok((await window.hub.kvGet('capture-marks', {}))[r1.path]?.length === 1, 'markers saved for the player');
 
 // 2) the tool region in 9:16 (canvas pipeline), 30 fps, max length 1.5 s stops by itself
 const autoStopped = new Promise((res) => { const on = (e) => { if (e.detail?.recording === false && e.detail.path) { document.removeEventListener('hearth:recording', on); res(e.detail.path); } }; document.addEventListener('hearth:recording', on); });

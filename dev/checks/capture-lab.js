@@ -1,5 +1,5 @@
 // Capture × the Lab: the Lab preview at its exact frame size (9:16 → 1080×1920), a Lab-only recording, a recording
-// added to the Lab as media and opened in Video Review, and the agents' capture_shot on the Lab.
+// put on the Lab sequence and added to the Lab as media, and the agents' capture_shot on the Lab.
 //   node dev/smoke.js --script dev/checks/capture-lab.js --check-timeout 240000
 const out = { errors: [] };
 const ok = (cond, what) => { if (!cond) out.errors.push(what); return cond; };
@@ -39,12 +39,16 @@ ok(out.mid.framesIn > 3, 'the moving Lab sends frames');
 const f = await FrameRead.at(r.mp4, { time: 1 });
 out.labFrame = f.path;
 await sleep(200);
-// open it in Video Review (one click in the menu does this)
-await Capture.openInReview(r.mp4);
-await sleep(1500);
-out.review = Review.current?.path;
-ok(Review.current?.path === r.mp4, 'opened in Video Review');
-await smoke({ shot: '/tmp/capture-lab-review.png' });
+// (round 17) its menu opens it in the system player / Finder or puts it on the Lab sequence (no Video Review)
+const labels = CaptureView.itemsFor(r.mp4).filter(Boolean).map((x) => x.label || '');
+out.menu = labels.join(' | ').slice(0, 300);
+ok(labels.includes('Open in the system player') && labels.includes(MediaFile.revealLabel) && labels.includes('Add to the Lab sequence') && !labels.some((l) => /Video Review|editor/.test(l)), 'its menu: system player, Finder / Explorer, the Lab sequence');
+ok(typeof Capture.openInReview === 'undefined' && typeof Capture.addToEdit === 'undefined', 'no Video Review / editor hand-offs left');
+const onSeq = await Capture.addToSequence(r.mp4).catch((e) => e.message);
+await sleep(800);
+out.onSeq = onSeq;
+ok(onSeq === true && (ThreeSeq.edit?.clips || []).some((c) => c.src === r.mp4), `on the Lab sequence as a footage clip (${onSeq})`);
+await smoke({ shot: '/tmp/capture-lab-sequence.png' });
 // and as Lab media
 const added = await Capture.addToLab(r.mp4).catch((e) => e.message);
 out.addedToLab = added;

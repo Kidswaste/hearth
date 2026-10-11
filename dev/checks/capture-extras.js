@@ -13,7 +13,7 @@ const clickAt = async (n) => { const r = n.getBoundingClientRect(); const x = r.
 // 1) tape: switch screens with real clicks, type in the chat box, then stop → a tour with those steps
 activate(agentId); await sleep(300);
 ok(/Taping/.test(await run('/tour tape')), '/tour tape starts');
-const toolBtn = [...document.querySelectorAll('#agent-buttons .agent-btn')].find((b) => b.dataset.id === 'tool:ae') || document.querySelector('[data-id="tool:ae"]');
+const toolBtn = [...document.querySelectorAll('#agent-buttons .agent-btn')].find((b) => b.dataset.id === 'tool:board') || document.querySelector('[data-id="tool:board"]');
 if (toolBtn) await clickAt(toolBtn);
 await sleep(600);
 activate(agentId); await sleep(500);
@@ -23,7 +23,7 @@ for (const ch of '/help') { ta.value += ch; ta.dispatchEvent(new Event('input', 
 const text = CaptureTour.tape(false);
 document.querySelector('dialog.cap-tour-edit')?.close();
 out.taped = text;
-ok(/(open ae|tool:ae)/.test(text) && !/click \[data-id="tool:ae"\]\nopen ae/.test(text) && /type "\/help"/.test(text) && /open Claude/i.test(text), 'the tape has the screens and the typing');
+ok(/(open board|tool:board)/.test(text) && !/click \[data-id="tool:board"\]\nopen board/.test(text) && /type "\/help"/.test(text) && /open Claude/i.test(text), 'the tape has the screens and the typing');
 ok(!CaptureTour.lint(text).length, 'the taped tour lints clean');
 ta.value = ''; ta.dispatchEvent(new Event('input', { bubbles: true }));
 
@@ -46,7 +46,7 @@ await clickAt(document.getElementById('config-btn') ? document.querySelector('#r
 await sleep(900);
 out.zoomed = document.getElementById('app').style.transform;
 ok(/scale\(1\.6\)/.test(out.zoomed), 'a click zoomed the view in (1.6×)');
-activate('tool:ae'); await sleep(500);
+activate('tool:board'); await sleep(500);
 activate(agentId); await sleep(500);
 ok(Capture.status().marks >= 2, `chapters: a marker per screen change (${Capture.status().marks})`);
 const r = await Capture.stop({ quiet: true });

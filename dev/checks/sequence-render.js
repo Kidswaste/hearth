@@ -3,7 +3,7 @@
 // with /sequence-render, then read back with ffprobe (1080×1920, 30 fps, 210 frames, the song's sound) and frame by
 // frame with ffmpeg: every checked frame shows the right scene at its own exact frame (decoded from the picture), the
 // footage its exact source frame, the dissolve a mix. A contact sheet of the render is saved to look at. Then the
-// realtime fallback (what runs without ffmpeg) records a playable file; both land in Video Review's library.
+// realtime fallback (what runs without ffmpeg) records a playable file; the done toast offers Open (the system player).
 //   node dev/make-lab-footage.js /tmp/labframes-media
 //   node dev/smoke.js --check-timeout 900000 --script dev/checks/sequence-render.js --shot /tmp/sequence-render.png
 const { step } = J;
@@ -24,8 +24,9 @@ step('the command says what it made', Boolean(path) && String(full).endsWith(pat
 step('/sequence-render 9:16 renders the sequence into the captures folder', Boolean(full), { said: said.slice(0, 160), secs });
 const pr = full ? await window.hub.video.probe(full) : null;
 step('ffprobe: 1080×1920, 30 fps, 210 frames, 7.0 s, with the song\'s sound', pr && pr.w === 1080 && pr.h === 1920 && Math.abs(pr.fps - 30) < 0.01 && Math.abs(pr.duration - 7) < 0.12 && Boolean(pr.audio) && (pr.frames == null || Math.abs(pr.frames - 210) <= 1), pr);
-const lib = await window.hub.kvGet('video-library', {});
-step('it is in Video Review\'s library', (lib.recordings || []).includes(full), (lib.recordings || []).slice(0, 2));
+// (round 17) no Video Review library: the toast's action opens the file in the system player
+const tbtn = [...document.querySelectorAll('#toasts .toast button')].map((b) => b.textContent);
+step('the done note offers Open, not Video Review', !tbtn.some((t) => /Video Review/.test(t)), tbtn);
 
 // ---------- 2. the frames ----------
 const FR = [15, 40, 52, 75, 110, 168, 200];
@@ -62,7 +63,5 @@ step('a contact sheet of the render was saved to look at', Boolean(await window.
 const rt = await ThreeSeq.render({ realtime: true });
 const prr = rt?.path ? await window.hub.video.probe(rt.path) : null;
 step('without ffmpeg: the sequence plays once into the page\'s recorder (a playable file, about the length)', Boolean(prr) && prr.duration > 5 && prr.duration < 9.5, { file: rt?.path, prr });
-const lib2 = await window.hub.kvGet('video-library', {});
-step('…also in Video Review\'s library', (lib2.recordings || []).includes(rt?.path));
 step('the Lab is back to the sequence view after rendering', ThreeSeq.active && !ThreeSeq.rendering);
 return J.done();

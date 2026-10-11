@@ -1,5 +1,5 @@
 // QA (round 8): every key line in the keys sheet (Keys.add) pressed for real on its own surface, where a key can be
-// pressed: the mood board, the video editor, Video Review, the Lab, the capture player / annotator / global keys, and
+// pressed: the mood board, the Lab, the capture player / annotator / global keys, and
 // the app-wide keys. For each press it records whether something happened (the surface's own state, the DOM, a
 // dialog / menu / toast, the focus) and whether an app-wide action fired too (text size, side-by-side, palette,
 // find, notes, a snapshot into the chat…): that is a shortcut conflict. Also lists the same key bound in two areas
@@ -10,7 +10,7 @@
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 8000) => { const t = Date.now(); while (Date.now() - t < ms) { try { if (await fn()) return true; } catch { /* not yet */ } await wait(80); } return false; };
 const out = { pressed: 0, worked: 0, dead: [], globalToo: [], skipped: [], errors: [], conflicts: [], dups: Commands.duplicates().map((d) => d.name) };
-const AREAS = window.QA_KEYS_AREAS || ['Board', 'Editor', 'Video Review', 'Capture', 'Lab', 'Everywhere'];
+const AREAS = window.QA_KEYS_AREAS || ['Board', 'Capture', 'Lab', 'Everywhere'];
 const errs = []; const origErr = console.error; console.error = (...a) => { errs.push(a.map(String).join(' ').slice(0, 200)); origErr(...a); };
 addEventListener('error', (e) => errs.push(`uncaught ${e.message}`));
 
@@ -87,8 +87,7 @@ async function tryKey(area, line, c, { sig, before, after }) {
 // keys that rightly do nothing in this test's setup (no music: no beats or sections)
 const NOOP = {
   'Lab|Space': 'no song loaded here (journey-lab plays one)', 'Lab|T': 'taps count while a song plays (journey-lab)', 'Lab|Ctrl+Enter': 're-runs the layers: nothing to see change', 'Lab|Ctrl+Z': 'nothing to undo yet', 'Lab|Esc': 'only from a Lab tool tab', 'Lab|.': 'only while frozen',
-  'Capture|Esc': 'no tour running', 'Capture|Ctrl+Z': 'nothing drawn to undo (capture-shots.js draws and undoes)', 'Capture|Ctrl+Shift+Z': 'nothing undone to redo', 'Editor|Alt+.': 'the clip already ends on its source\'s last frame (Alt+, slipped it)', 'Video Review|\\': 'swaps A and B only while comparing', 'Editor|Alt+↑': 'one overlay track: nowhere to move', 'Editor|Alt+↓': 'one overlay track: nowhere to move',
-  'Editor|Ctrl+C': 'copies to the editor\'s own clipboard (checked by Ctrl+V)',  'Editor|,': 'no music, no beats (by design)', 'Editor|.': 'no music, no beats (by design)', 'Video Review|,': 'no music, no beats', 'Video Review|.': 'no music, no beats', 'Video Review|<': 'no music, no sections', 'Video Review|>': 'no music, no sections' };
+  'Capture|Esc': 'no tour running', 'Capture|Ctrl+Z': 'nothing drawn to undo (capture-shots.js draws and undoes)', 'Capture|Ctrl+Shift+Z': 'nothing undone to redo' };
 const closeAll = async () => {
   for (const d of [...document.querySelectorAll('dialog[open]')]) { try { d.close(); } catch { /* gone */ } }
   try { hideMenu(); } catch { /* none */ }
@@ -128,9 +127,6 @@ async function runArea(area, opts) {
 // ---------- fixtures ----------
 const FIX = window.BOARD_FIXTURES || '/tmp/hearth-board-fixtures';
 const EV = window.EDITOR_VIDS || '/tmp/hearth-editor-videos';
-const VIDS = `${window.SMOKE_SAVES}/renders`;
-await window.hub.fs.write(`${VIDS}/.keep`, '');
-for (const f of ['frames_a_30.mp4', 'frames_b_30.mp4']) await window.hub.fs.copy(`${EV}/${f}`, `${VIDS}/${f}`);
 
 // ---------- Board ----------
 if (AREAS.includes('Board')) {
@@ -178,62 +174,6 @@ if (AREAS.includes('Board')) {
       await wait(60);
     },
   });
-}
-
-// ---------- Video Review (editor off) and the Editor ----------
-if (AREAS.includes('Video Review') || AREAS.includes('Editor')) {
-  activate('tool:ae'); await Review.ensureMounted();
-  H.config.settings = { ...H.config.settings, videoDirs: [VIDS] };
-  await Review.load(true); await until(() => Review.videos.length >= 2);
-  await Review.open(`${VIDS}/frames_a_30.mp4`); await Review.waitReady(); await wait(400);
-  const root = H.surfaces.get('tool:ae').el;
-  // Video Review listens on its own mount (the parent of .vr, tabindex -1), not on the surface around it
-  const focusRoot = () => { const r = root.querySelector('.vr')?.parentElement || root; r.focus({ preventScroll: true }); };
-  if (AREAS.includes('Video Review')) {
-    if (VideoCut.active) VideoCut.leave();
-    await Review.addNote('first', { t: 0.5, frame: false }); await Review.addNote('second', { t: 2.5, frame: false });
-    const small = (o) => Object.fromEntries(Object.entries(o || {}).filter(([, v]) => { try { return !(v instanceof Node) && typeof v !== 'function' && JSON.stringify(v).length < 400; } catch { return false; } }));
-    const sigR = () => JSON.stringify({ st: small(Review.state), t: Review.state?.t ?? root.querySelector('video')?.currentTime, paused: root.querySelector('video')?.paused, cmp: Review.state?.cmp, view: Review.state?.view, rate: root.querySelector('video')?.playbackRate, vol: root.querySelector('video')?.volume, muted: root.querySelector('video')?.muted, cls: root.className, lib: root.querySelector('.vr-lib, .vr-library')?.className, notes: Review.notes?.().length, editor: VideoCut.active, loop: Review.state?.loop, mirror: Review.state?.mirror, guides: Review.state?.guides, safe: Review.state?.safe, tc: root.querySelector('.vr-time')?.value });
-    await runArea('Video Review', {
-      sig: sigR,
-      skip: /^(F)$/, // F goes fullscreen (the window itself)
-      before: async () => { if (VideoCut.active) VideoCut.leave(); const v = root.querySelector('video'); if (v && !v.paused) v.pause(); if (v) v.currentTime = 1; await wait(150); focusRoot(); },
-      restore: async () => { const v = root.querySelector('video'); if (v && !v.paused) v.pause(); if (H.activeId !== 'tool:ae') activate('tool:ae'); },
-    });
-  }
-  if (AREAS.includes('Editor')) {
-    await VideoCut.enter(); await until(() => VideoCut.active, 8000);
-    await VideoCut.addClip(`${VIDS}/frames_b_30.mp4`); await wait(500);
-    VideoCut.goto(0.5); VideoCut.addColor('#ff2e88', { at: 0.5, dur: 1.5, main: false }); VideoCut.marker('a'); VideoCut.goto(3); VideoCut.marker('b'); await wait(200);
-    const base = JSON.stringify(VideoCut.edit);
-    const sigE = () => JSON.stringify({ edit: VideoCut.edit, t: VideoCut.time, sel: VideoCut.selection, razor: VideoCut.razor, snap: VideoCut.snap, view: VideoCut.view, active: VideoCut.active, playing: VideoCut.playing, sug: Boolean(VideoCut.suggestion) });
-    await runArea('Editor', {
-      sig: sigE,
-      before: async (c) => {
-        if (!VideoCut.active) { await VideoCut.enter(); await until(() => VideoCut.active, 5000); }
-        if (VideoCut.playing) VideoCut.pause();
-        // select first (select(i) also moves the playhead to that clip's start), then the playhead mid-clip
-        if (!/^(Ctrl\+A|E|Esc)$/.test(c.label)) VideoCut.select(0);
-        if (/^Ctrl\+V$/.test(c.label)) { focusRoot(); await press(one('Ctrl+C')); await wait(150); }
-        VideoCut.goto(1.5); await wait(150);
-        if (c.label === 'K') { VideoCut.play(); await wait(300); } // K stops: playing first
-        if (c.label === 'X') VideoCut.setMark(0.5, 2.5); // clears a range: one first
-        if (/^Alt\+[,.]$/.test(c.label)) { VideoCut.goto(2); VideoCut.split(); VideoCut.select(1); } // slip needs media on both sides
-        if (c.label === 'Shift+E') { VideoCut.goto(2); VideoCut.split(); VideoCut.goto(1.5); await wait(150); } // a cut with media on both sides
-        if (c.label === '\\') { VideoCut.centerView?.(); focusRoot(); await press(one('=')); await press(one('=')); await wait(200); } // fit: zoomed in first
-        if (/^Alt\+[←→↑↓]$/.test(c.label)) { const lay = (VideoCut.edit.tracks || []).flatMap((t) => t.items)[0]; if (lay) VideoCut.selectIds([lay.id]); }
-        focusRoot();
-      },
-      restore: async () => {
-        if (VideoCut.playing) VideoCut.pause();
-        if (H.activeId !== 'tool:ae') activate('tool:ae');
-        if (!VideoCut.active) { await VideoCut.enter(); await until(() => VideoCut.active, 5000); }
-        for (let i = 0; i < 4 && JSON.stringify(VideoCut.edit) !== base; i += 1) { VideoCut.undo(); await wait(80); }
-        if (VideoCut.razor) VideoCut.toggleRazor(false);
-      },
-    });
-    VideoCut.leave?.();
-  }
 }
 
 // ---------- Capture: the global keys, the player, the annotator ----------
@@ -297,7 +237,7 @@ if (AREAS.includes('Everywhere')) {
 
 // ---------- the same key in two areas on screen together ----------
 const norm = (c) => `${c.ctrl ? 'Ctrl+' : ''}${c.alt ? 'Alt+' : ''}${c.shift ? 'Shift+' : ''}${c.code}`;
-const together = { Board: ['Everywhere', 'Capture'], Editor: ['Everywhere', 'Capture', 'Video Review', 'Chat box'], 'Video Review': ['Everywhere', 'Capture', 'Chat box'], Lab: ['Everywhere', 'Capture', 'Chat box', 'Lab timeline', 'Lab sliders & layers'], 'Chat box': ['Everywhere', 'Capture'], Capture: ['Everywhere'] };
+const together = { Board: ['Everywhere', 'Capture'], Lab: ['Everywhere', 'Capture', 'Chat box', 'Lab timeline', 'Lab sliders & layers'], 'Chat box': ['Everywhere', 'Capture'], Capture: ['Everywhere'] };
 const byArea = {};
 for (const k of Keys.all()) for (const c of combos(k.keys)) (byArea[k.area] ||= []).push({ id: norm(c), label: c.label, what: k.what, cap: /\((player|annotate|picture|captures|region|drag)/.test(k.keys) });
 for (const [a, others] of Object.entries(together)) {

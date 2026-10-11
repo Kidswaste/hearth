@@ -1,8 +1,8 @@
 // The Adobe bridges in the app (round 14, adobe*.js) on a machine with no Adobe app (this Linux box): every way in
 // degrades with a plain sentence, nothing throws. /adobe status, /photoshop lab (a real Lab still is saved first),
-// the adobe_do tool (status, open, and its own script asks the owner first), the editor's cut as FCP XML for
-// Premiere (/premiere xml, /premiere timeline says how to import it by hand), the menus (Adobe apps, Video Review
-// ⋯ → Send to, the board's right-click → Adobe), files watched for the trip back (saving one shows a note),
+// the adobe_do tool (status, open, and its own script asks the owner first), the Lab sequence as FCP XML for
+// Premiere (/premiere xml, /premiere timeline says how to import it by hand; round 17: it was Video Review's cut), the
+// menus (Adobe apps, a video file's Adobe › items, the board's right-click → Adobe), files watched for the trip back (saving one shows a note),
 // /adobe-tools, the palette and the Apps registry when it is there.
 //   sh dev/make-test-videos.sh /tmp/hearth-test-videos
 //   node dev/smoke.js --check-timeout 300000 --script dev/checks/adobe-ui.js --shot /tmp/adobe-ui.png
@@ -57,23 +57,20 @@ try {
   ok(!sr.ok && /said no/.test(sr.error), 'and a no is a no');
   ok(!(await AdobeCmds.handle('adobe_do', { app: 'photoshop', action: 'dance' })).ok, 'an unknown action is an error, not a crash');
 
-  // ---- 4. the editor's cut → FCP XML for Premiere ----
+  // ---- 4. the Lab sequence → FCP XML for Premiere ----
   const VIDS = `${window.SMOKE_SAVES}/adobe-vids`;
   await window.hub.fs.write(`${VIDS}/.keep`, '');
   for (const f of (await window.hub.fs.list('/tmp/hearth-test-videos')).filter((x) => !x.isDir && /drop_visual_16x9\.mp4|square_loop/.test(x.name))) await window.hub.fs.copy(f.path, `${VIDS}/${f.name}`);
-  activate('tool:ae'); await Review.ensureMounted();
-  H.config.settings = { ...H.config.settings, videoDirs: [VIDS] };
-  await Review.load(true);
-  await until(() => Review.videos.length >= 2, 10000);
-  await Review.open(`${VIDS}/drop_visual_16x9.mp4`); await Review.waitReady?.().catch(() => null); await wait(400);
-  await VideoCut.enter(); await wait(400);
-  VideoCut.goto(1.0); await wait(200); VideoCut.split(); await wait(200);
+  await ThreeLab.cmd({ show: true }); await wait(400);
+  await ThreeSeq.create('Adobe check', { empty: true, format: '16:9', show: false });
+  for (const at of [0, 2]) { const r = await ThreeSeq.handle('three_sequence', { op: 'add', footage: `${VIDS}/drop_visual_16x9.mp4`, at, secs: 1.5 }); ok(r.ok, `footage on the Lab sequence (${r.error || 'ok'})`); }
+  await wait(300);
   const xmlText = await say('/premiere xml');
   const xmlPath = (xmlText.match(/FCP XML: (\S.*\.xml)/) || [])[1];
   out.xml = xmlText;
   ok(xmlPath, `/premiere xml writes the timeline (${xmlText.slice(0, 120)})`);
   const xml = xmlPath ? await window.hub.fs.read(xmlPath) : '';
-  ok(/<xmeml version="4">/.test(xml) && (xml.match(/<clipitem id="video-clip-/g) || []).length >= 2 && /drop_visual_16x9\.mp4<\/pathurl>/.test(xml), 'the XML holds the cut (two clips of the video, its path)');
+  ok(/<xmeml version="4">/.test(xml) && (xml.match(/<clipitem id="video-clip-/g) || []).length >= 2 && /drop_visual_16x9\.mp4<\/pathurl>/.test(xml) && /Adobe check/.test(xml), 'the XML holds the Lab sequence (two clips of the video, its path, its name)');
   const tl = await say('/premiere timeline');
   ok(/only runs on macOS and Windows/.test(tl) && /File → Import/.test(tl) && /\.xml/.test(tl), `/premiere timeline: why, and how to import it by hand (${tl.slice(0, 140)})`);
 
@@ -86,12 +83,9 @@ try {
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await wait(200);
   if (typeof hideMenu === 'function') hideMenu();
   const vi = Adobe.videoItems(`${VIDS}/drop_visual_16x9.mp4`).map((x) => x.label);
-  ok(vi.some((l) => /Premiere Pro: import/.test(l)) && vi.some((l) => /Media Encoder/.test(l)) && vi.some((l) => /this edit/.test(l)), `Video Review ⋯ → Send to (${vi.join(' | ')})`);
-  VideoCut.leave?.(); await wait(200);
-  const moreBtn = [...document.querySelectorAll('button')].find((b) => /^More: export/.test(b.title || ''));
-  moreBtn?.click(); await wait(300);
-  ok(/Send to/.test(document.getElementById('menu')?.innerText || document.body.innerText), 'Video Review ⋯ shows "Send to"');
-  if (typeof hideMenu === 'function') hideMenu();
+  ok(vi.some((l) => /Premiere Pro: import/.test(l)) && vi.some((l) => /Media Encoder/.test(l)) && vi.some((l) => /After Effects/.test(l)) && !vi.some((l) => /this edit|this frame/.test(l)), `a video file's Adobe › items (${vi.join(' | ')})`);
+  const tk = (await Adobe.items()).filter((x) => typeof x === 'object' && x.label).flatMap((x) => (typeof x.items === 'function' ? x.items() : x.items || []).filter(Boolean).map((y) => y.label || ''));
+  ok(!tk.some((l) => /toolkit|editor's timeline/i.test(l)), `no After Effects toolkit / editor timeline left (${tk.join(' | ').slice(0, 200)})`);
   if (typeof Board !== 'undefined' && Board._?.itemExtras) {
     const ex = Board._.itemExtras([{ id: 'x', type: 'image', src: still, title: 'Still' }]);
     const adobeRow = ex.find((x) => x.label === 'Adobe');
