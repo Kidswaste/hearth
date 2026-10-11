@@ -63,7 +63,7 @@ step('Astra: add "Seq Blue" for 1 bar', ThreeSeq.edit.clips.some((c) => c.sketch
 const rendered = lines2.find((l) => /file: /.test(l)) || '';
 const file = (rendered.match(/file: ([^,·]+?\.mp4)/) || [])[1];
 const pr = file ? await window.hub.video.probe(file.trim()) : null;
-step('Astra: render 1:1 → a 1080×1080 video in Video Review', pr?.w === 1080 && pr?.h === 1080, { rendered, pr });
+step('Astra: render 1:1 → a 1080×1080 video file', pr?.w === 1080 && pr?.h === 1080, { rendered, pr });
 Commands.tryRun('/director-engine claude', dir.id);
 await wait(300);
 return J.done();

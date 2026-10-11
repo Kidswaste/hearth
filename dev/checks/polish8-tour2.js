@@ -1,6 +1,6 @@
 // Polish 8, second picture tour: the deeper layers of the round 7 surfaces (board vibe card, search, quick bar, Alt
-// handles, presentation; the capture tour picker, annotation, frame reader, a recording; the editor's format and
-// export menus, the inspector on a title) in one look.
+// handles, presentation; the capture tour picker, annotation, frame reader, a recording) in one look (the editor's
+// menus left with Video Review in round 17).
 //   sh dev/board-fixtures.sh && node dev/make-editor-videos.js /tmp/hearth-editor-videos
 //   node dev/smoke.js --check-timeout 400000 --script dev/checks/polish8-tour2.js
 // window.P8_LOOK = a look id (default forgeheart), window.P8_SHOTS = folder for the pictures (default /tmp/p8/t2-<look>).
@@ -42,19 +42,4 @@ try { const r = await Capture.record({ target: 'window', countdown: 0 }); out.re
 } catch (err) { out.notes.push(`record: ${err.message}`); }
 try { const vid = '/tmp/hearth-editor-videos/frames_a_30.mp4'; const r = await FrameRead.read(vid, 'sheet', {}); FrameRead.show(r, vid); await wait(900); await shot('capture-frames'); closeDialogs(); } catch (err) { out.notes.push(`frames: ${err.message}`); }
 
-// ---------- editor ----------
-const VIDS = `${window.SMOKE_SAVES || '/tmp'}/p8t2-renders`;
-await window.hub.fs.write(`${VIDS}/.keep`, '');
-for (const f of (await window.hub.fs.list('/tmp/hearth-editor-videos')).filter((x) => /frames_[ab]_30\.mp4$/.test(x.name))) await window.hub.fs.copy(f.path, `${VIDS}/${f.name}`);
-activate('tool:ae'); await Review.ensureMounted();
-H.config.settings = { ...H.config.settings, videoDirs: [VIDS] };
-await Review.load(true); await until(() => Review.videos.length >= 2, 10000);
-await Review.open(Review.videos.find((v) => /frames_a/.test(v.path)).path); await Review.waitReady(); await VideoCut.enter(); await wait(400);
-await VideoCut.addTitle?.('HEARTH'); await wait(400);
-const ae = H.surfaces.get('tool:ae').el;
-ae.querySelector('.vr-cut-fmt')?.click(); await wait(300); await shot('editor-format'); hideMenu();
-ae.querySelector('.vr-cut-export')?.click(); await wait(300); await shot('editor-export'); hideMenu();
-ae.querySelector('.vr-cut-add')?.click(); await wait(300); await shot('editor-add'); hideMenu();
-const t = VideoCut.edit.clips.find((c) => c.kind === 'title'); if (t) { VideoCut.inspect(t.id); await wait(500); await shot('editor-title-inspector'); VideoCut.closeInspector?.(); }
-await key('keyDown', 'Alt', 'AltLeft', 1); await wait(350); await shot('editor-alt'); await key('keyUp', 'Alt', 'AltLeft'); await wait(200);
 return JSON.stringify(out, null, 1);

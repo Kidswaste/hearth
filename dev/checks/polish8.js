@@ -1,4 +1,4 @@
-// Polish 8 (round 8): the board, the editor and capture follow the same rules as the rest of the app — every menu
+// Polish 8 (round 8): the board and capture (the editor until round 17) follow the same rules as the rest of the app — every menu
 // ends with Customise this… (More… and Delete just above it), shared verbs carry the same icon, the keys sheet lists
 // every area with an icon, the closed drawer is out of the page, the editor's monitor never shows over another tool,
 // the new right-clicks open the chip / bar menus.
@@ -75,33 +75,7 @@ await CaptureView.open(shot.path); await wait(600);
 ok([...document.querySelectorAll('dialog.cap-view[open] button')].some((b) => b.dataset.key === 'C'), 'viewer buttons carry their keys (Ctrl badges)');
 document.querySelector('dialog.cap-view[open]')?.close(); await wait(200);
 
-// ---------- the editor ----------
-const VIDS = `${window.SMOKE_SAVES || '/tmp'}/p8c-renders`;
-await window.hub.fs.write(`${VIDS}/.keep`, '');
-for (const f of (await window.hub.fs.list('/tmp/hearth-editor-videos')).filter((x) => /frames_[ab]_30\.mp4$/.test(x.name))) await window.hub.fs.copy(f.path, `${VIDS}/${f.name}`);
-activate('tool:ae'); await Review.ensureMounted();
-H.config.settings = { ...H.config.settings, videoDirs: [VIDS] };
-await Review.load(true); await until(() => Review.videos.length >= 2, 10000);
-await Review.open(Review.videos.find((v) => /frames_a/.test(v.path)).path); await Review.waitReady(); await VideoCut.enter(); await wait(500);
-const ae = H.surfaces.get('tool:ae').el;
-ok(ae.querySelector('.vr-cut-title svg.hi-editor'), 'editor bar title carries the editor icon');
-ok(!vis(ae.querySelector('.vr-cut-headrow > button[title^="Undo"]')), 'editor bar: ↶ behind Alt');
-const cv = ae.querySelector('.vr-cut-cv'); const vr2 = cv.getBoundingClientRect();
-let hitY = null;
-for (let y = vr2.top + 10; y < vr2.bottom - 4 && hitY == null; y += 6) { try { if (VideoCut._test.hit({ clientX: vr2.left + 40, clientY: y })?.zone === 'clip') hitY = y; } catch { /* lane gap */ } }
-if (ok(hitY != null, 'a clip on the track')) { await rclick(cv, vr2.left + 40, hitY); shape('editor clip'); }
-await rclick(ae.querySelector('.vr-cut-headrow'), ae.querySelector('.vr-cut-sum').getBoundingClientRect().left + 5, ae.querySelector('.vr-cut-headrow').getBoundingClientRect().top + 8);
-ok(rows().some((b) => /Auto-cut/.test(label(b))), 'right-click on the editor bar opens its ⋯ menu');
-shape('editor bar (right-click)');
-await wait(300);
-// Video Review's own right-click menus end the same way
-const vcard = ae.querySelector('.vr-card'); const vcr = vcard.getBoundingClientRect();
-await rclick(vcard, vcr.left + 20, vcr.top + 10); shape('video review card');
-// toasts clear the editor bar while editing
-ok(document.documentElement.classList.contains('p8-editing'), 'editing: toasts lifted above the editor bar');
-// the program monitor never shows over another tool
 activate('tool:three'); await wait(2500);
-ok(![...ae.querySelectorAll('.vr-p.on, .vr-pcomp.on')].some(vis), 'editor monitor hidden while the Lab is on screen');
 // the Lab ⋯ ends with Customise this… too
 const L = H.surfaces.get('tool:three').el;
 [...L.querySelectorAll('[data-feature="Lab more"]')].find(vis)?.click(); await wait(300);
@@ -112,10 +86,10 @@ document.querySelectorAll('.mb-menu.lab-pop').forEach((m) => m.remove()); hideMe
 
 // ---------- keys, the sheet, commands ----------
 const areas = [...Keys.groups(true).keys()];
-for (const a of ['Board', 'Editor', 'Capture']) ok(areas.includes(a), `keys sheet has ${a}`);
-out.keyCounts = Object.fromEntries(['Board', 'Editor', 'Capture'].map((a) => [a, (Keys.groups(true).get(a) || []).length]));
+for (const a of ['Board', 'Capture']) ok(areas.includes(a), `keys sheet has ${a}`);
+out.keyCounts = Object.fromEntries(['Board', 'Capture'].map((a) => [a, (Keys.groups(true).get(a) || []).length]));
 ok(out.keyCounts.Capture > 40, 'capture keys reach the sheet');
-ok(Keys.all().filter((k) => ['Board', 'Editor', 'Capture'].includes(k.area) && k.run).length >= 10, 'the new keys-sheet lines run when clicked');
+ok(Keys.all().filter((k) => ['Board', 'Capture'].includes(k.area) && k.run).length >= 3, 'the new keys-sheet lines run when clicked');
 activate('tool:board'); await wait(300);
 KeysUI.open(); await wait(400);
 ok(document.querySelector('.keys-sheet .ks-group > h4')?.textContent.startsWith('Board'), 'on the board, the sheet starts with Board');

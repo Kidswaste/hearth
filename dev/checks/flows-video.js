@@ -1,6 +1,6 @@
 // Flows (round 10): "Make a video" driven like a user in the flow view: the idea typed on the node, format and length
-// picked on the nodes, Astra (fake Codex) drafts the beats, "Change them" → words → Astra again, Yes, the video project
-// is planned through /intro (its length and format set), "Not now" → the result; then ↻ Again (the same answers,
+// picked on the nodes, Astra (fake Codex) drafts the beats, "Change them" → words → Astra again, Yes, a new Lab
+// sequence in that format (round 17: it was an /intro video project), "Not now" → the result; then ↻ Again (the same answers,
 // the AI asked again: a new run that branches off this one), ✎ Refine (the result kept, one change asked), the list
 // of runs, the card in the chat and the flow started from the flows list (double-click).
 //   node dev/smoke.js --fake-engines --check-timeout 300000 --script dev/checks/flows-video.js --shot /tmp/flows-video.png
@@ -61,17 +61,17 @@ try {
   ok(await waitingAt(run, 'keep', 30000), 'Astra changed the beats, the choice is back');
   ok(/Change only this: shorter hook/.test(run.steps.filter((e) => e.node === 'redo').at(-1)?.input || ''), 'the change went to Astra with the old beats');
   await choose(run, 'keep', 'Yes');
-  // /intro plans the project with the idea, its length and format
-  ok(await waitingAt(run, 'go', 60000), `the project is planned (${Flows.line(run)})`);
+  // a new Lab sequence in that format, named from the idea
+  ok(await waitingAt(run, 'go', 60000), `the sequence is made (${Flows.line(run)})`);
   out.cmds = run.steps.filter((e) => e.kind === 'action').map((e) => e.input);
-  ok(out.cmds.join('|') === '/intro a 15 s teaser: two AIs, one window|/intro length 15|/intro formats 9:16', `the /intro steps (${out.cmds})`);
-  out.project = typeof Intro !== 'undefined' ? Intro.list().map((p) => `${p.name}: ${p.status}`).slice(0, 2) : null;
-  ok(!out.project || out.project.length >= 1, `a video project exists (${out.project})`);
+  ok(out.cmds.join('|') === '/sequence new a 15 s teaser: two AIs, one window 9:16', `the /sequence step (${out.cmds})`);
+  out.sequence = typeof ThreeSeq !== 'undefined' ? ThreeSeq.key : null;
+  ok(out.sequence && /teaser/.test(out.sequence) && ThreeSeqData.formatOf(ThreeSeq.edit) === '9:16', `a 9:16 Lab sequence exists (${out.sequence})`);
   await shot('go');
   await choose(run, 'go', 'Not now');
   ok(await until(() => run.status === 'done', 8000), `done (${Flows.line(run)})`);
   await until(() => nodeEl('planned')?.querySelector('.fl-result'), 3000);
-  ok(/planned with these beats/.test(run.result) && nodeEl('planned')?.querySelector('.fl-result'), `the result on its node (${String(run.result).slice(0, 80)})`);
+  ok(/ready with these beats/.test(run.result) && nodeEl('planned')?.querySelector('.fl-result'), `the result on its node (${String(run.result).slice(0, 80)})`);
   await shot('done');
   // ↻ Again: the same answers, Astra asked again (a new run, branched from this one)
   const asks = run.steps.filter((e) => e.kind === 'ai').length;
@@ -104,11 +104,11 @@ try {
   ok(nodeEl('refined-result1'), 'the refine steps show as nodes');
   await shot('refined');
   dlg().close();
-  // the card in the chat says it's done, with Again / Refine (/intro opened the project's chat: back to the run's)
+  // the card in the chat says it's done, with Again / Refine (back to the run's chat)
   out.chatMoved = H.activeChat[C.id] !== run.chatId;
   if (out.chatMoved) { Native.open(C.id, run.chatId); }
   await until(() => /done/.test(Native.view(C.id).list.querySelector(`.msg.note[data-note-id="flow-${run.id}"]`)?.innerText || ''), 5000);
-  ok(/add a call to action/.test(run.steps.find((e) => e.node === 'refine1').input) && /planned with these beats/.test(run.steps.find((e) => e.node === 'refine1').input), 'the refine starts from the result');
+  ok(/add a call to action/.test(run.steps.find((e) => e.node === 'refine1').input) && /ready with these beats/.test(run.steps.find((e) => e.node === 'refine1').input), 'the refine starts from the result');
   const card = Native.view(C.id).list.querySelector(`.msg.note[data-note-id="flow-${run.id}"]`);
   out.card = card?.innerText.replace(/\s+/g, ' ').slice(0, 200);
   ok(card && /done/.test(out.card) && /Again/.test(out.card) && /Refine/.test(out.card), `the chat card (${out.card})`);

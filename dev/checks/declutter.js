@@ -244,17 +244,6 @@ if (frame) {
   close();
 }
 
-// ---------- Video Review: rarer tools wait behind Alt ----------
-activate('tool:ae'); await wait(2000);
-const VR = H.surfaces.get('tool:ae').el;
-const scopes = VR.querySelector('.vr-tgroup .vr-ico[title^="Scopes"]');
-check('Video Review scopes tucked', scopes && !vis(scopes));
-key('keydown', 'Alt', { altKey: true }); await wait(260);
-check('Alt shows them in Video Review', vis(scopes));
-await shot('video-alt');
-key('keyup', 'Alt'); await wait(60);
-await shot('video-calm');
-
 // ---------- a long tab bar (Forgeheart) and tucking any button yourself ----------
 activate('tool:forgeheart'); await wait(1500);
 const FH = H.surfaces.get('tool:forgeheart')?.el;

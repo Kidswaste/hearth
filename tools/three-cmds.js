@@ -300,8 +300,8 @@
   }, (a) => pick(['in', 'out', 'off'], a), { aliases: ['trim-song'], keys: '{ / }' });
   reg('cut-loop', 'Save the Lab\'s loop (or trim) of the song / video as a new file next to it (ffmpeg)', '', async () => { const r = await (await player()).cutLoop(); return r ? `Saved **${r.split(/[\\/]/).pop()}**.` : null; }, null, { aliases: ['save-loop'] });
   // /play and /pause: typed in the Lab (or its docked director) they drive the song; the board has its own
-  reg('play', 'Play the song', '', async () => { (await lab()).play(true); return null; }, null, { when: (ctx) => inLab(ctx), whenLabel: 'in the Lab' });
-  reg('pause', 'Pause the song', '', async () => { (await lab()).play(false); return null; }, null, { when: (ctx) => inLab(ctx), whenLabel: 'in the Lab' });
+  reg('play', 'Play the song', '', async () => { (await lab()).play(true); return null; }, null, { when: (ctx) => inLab(ctx), whenLabel: 'in the Lab', fallback: true });
+  reg('pause', 'Pause the song', '', async () => { (await lab()).play(false); return null; }, null, { when: (ctx) => inLab(ctx), whenLabel: 'in the Lab', fallback: true });
   reg('record', 'Record a video: loop, song, here (until /record stop), N bars or N s from here, or stop; add 30 / 60 (fps) and hq', '[loop|song|here|8 bars|15s|stop] [30|60] [hq]', async (args) => {
     const c = await lab(); const w = words(args).map((x) => x.toLowerCase());
     const o = {}; if (w.includes('30')) o.fps = 30; if (w.includes('60')) o.fps = 60; if (w.includes('hq')) o.mbps = 32;

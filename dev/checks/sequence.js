@@ -3,8 +3,8 @@
 // transitions; then the preview checked at exact frames (the scene's color and its own clock decoded from the
 // picture: each scene counts from its clip's start, the footage shows its exact source frame), the editor's keys
 // (S, Delete, Shift+Delete, Alt+→ slip, ⌘/Ctrl+Z), playback switching scenes in the same page (no reload, the
-// playhead on the compositor), the song (/tmp/hearth-test-song.wav) fitting new scenes to its bars, the editor round
-// trip (the same CutData edit opens in Video Review's editor, a change there comes back), commands, keys, menus.
+// playhead on the compositor), the song (/tmp/hearth-test-song.wav) fitting new scenes to its bars, the store
+// (kv video-cuts through tools/cut-store.js), commands, keys, menus.
 //   node dev/make-lab-footage.js /tmp/labframes-media
 //   node dev/smoke.js --check-timeout 600000 --script dev/checks/sequence.js --shot /tmp/sequence.png
 const { step } = J;
@@ -32,7 +32,7 @@ step('the sequence row stays calm: ≤ 7 controls on screen', ctl.length <= 7, c
 step('the music timeline is tucked away while the sequence shows', !J.visible(bar.querySelector('.mb-main')) && !J.visible(bar.querySelector('.mb-tl-wrap')) && J.visible(bar.querySelector('.sq-tl')));
 const reloads0 = ThreeLab.live.counts().reloads.preview || 0;
 step('the preview takes the sequence\'s shape (9:16): at most one pretty reload', Math.abs((await SQL.sbx('return innerWidth / innerHeight')) - 9 / 16) < 0.01 && reloads0 - reloadsStart <= 1, { reloads: reloads0 - reloadsStart });
-step('stored as an editor sequence (one model: kv video-cuts, seq:<name>)', ThreeSeq.key.startsWith('seq:') && Boolean((await VideoCut.editFor(ThreeSeq.key))?.seq?.lab));
+step('stored in kv video-cuts (seq:<name>, tools/cut-store.js)', ThreeSeq.key.startsWith('seq:') && Boolean((await CutStore.editFor(ThreeSeq.key))?.seq?.lab));
 
 // ---------- 2. building it ----------
 await say('/sequence length 1 2 s');
@@ -174,23 +174,9 @@ const bar9 = await say('/sequence add Seq Blue at bar 3');
 step('/sequence add … at bar 3 puts it on that bar\'s cut', ThreeSeq.edit.clips.some((c) => c.sketch === ids.blue), bar9.slice(0, 160));
 await say('/sequence undo'); await say('/sequence undo');
 
-// ---------- 9. the editor round trip (one model) ----------
-const key = ThreeSeq.key;
+// ---------- 9. no Video Review editor any more (round 17): /sequence editor is not a sub-command ----------
 const ed = await say('/sequence editor');
-await until(() => VideoCut.active && VideoCut.path === key, 15000);
-const inEditor = VideoCut.edit;
-step('/sequence editor opens the same sequence in Video Review\'s editor (scene clips, footage, title)', VideoCut.path === key && inEditor.clips.filter((c) => c.kind === 'scene').length >= 3 && inEditor.clips.some((c) => c.kind === 'video') && (inEditor.tracks || []).some((k) => k.items.some((x) => x.text === 'HELLO')), ed.slice(0, 120));
-await J.shot('sequence-in-editor');
-VideoCut.addTitleItem('FROM THE EDITOR', { at: 3, dur: 1 });
-const blueId = VideoCut.edit.clips.find((c) => c.sketch === ids.blue)?.id;
-VideoCut.setTransition('dip-black', 0.4, [blueId]);
-await wait(700);
-const back = await say('/sequence back');
-await until(() => ThreeSeq.active, 10000); await wait(600);
-e = ThreeSeq.edit;
-step('/sequence back: the editor\'s changes are the Lab sequence now', (e.tracks || []).some((k) => k.items.some((x) => x.text === 'FROM THE EDITOR')) && e.clips.find((c) => c.sketch === ids.blue)?.trans?.type === 'dip-black', back.slice(0, 160));
-const t3 = await SQL.at(95);
-step('the title added in the editor shows in the Lab preview (frame 95)', Boolean(t3.center), t3);
+step('/sequence editor is gone (the Lab sequence is the video timeline)', !/video editor/i.test(ed) && typeof VideoCut === 'undefined', ed.slice(0, 120));
 
 // ---------- 10. commands, keys, palette, map ----------
 step('/sequence, /seq, /add-scene, /sequence-render are registered; no duplicate names', ['sequence', 'seq', 'add-scene', 'sequence-render'].every((n) => Commands.get(n)) && !Commands.duplicates().length, Commands.duplicates());

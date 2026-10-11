@@ -13,7 +13,7 @@
 //     hidden: false,                 // optional: works when typed but stays out of the menu
 //     keys: 'Alt+T',                 // optional: the keyboard shortcut doing the same, shown in the menu
 //     when: (ctx, args) => bool,     // optional: share the name with another stream's command; this one runs
-//     whenLabel: 'in Video Review',  //   when `when` holds (e.g. in its tool), the other one otherwise
+//     whenLabel: 'in the Lab',       //   when `when` holds (e.g. in its tool), the other one otherwise
 //     override: true,                // optional: deliberately replace an existing command (no warning)
 //     examples: ['/size 9:16'],      // optional: ready-to-run lines shown in /help (with try-it buttons)
 //     keywords: 'vertical portrait', // optional: more words the plain-language search knows it by
@@ -51,7 +51,7 @@ const Commands = (() => {
   const RECENT_KEY = 'commands.recent';
   const recentAll = () => readLS(RECENT_KEY, []);
   const noteRecent = (name) => writeLS(RECENT_KEY, [name, ...recentAll().filter((n) => n !== name)].slice(0, 8));
-  // Where you are: the visible tool (Lab, Video Review, Forge…) or 'chat'. Recent commands are also kept per
+  // Where you are: the visible tool (Lab, board, Forge…) or 'chat'. Recent commands are also kept per
   // place, so the "/" menu in the Lab offers what you ran in the Lab first.
   const PLACE_AREA = { three: 'Three.js Lab', ae: 'Video', forgeheart: 'Forge', 'forge-game': 'Forge', kit: 'Kit' };
   function place() {
@@ -104,14 +104,13 @@ const Commands = (() => {
     dups.push({ name, was: `/${prev.name} (${prev.area})`, by: `/${def.name} (${def.area || 'Other'})`, at: (new Error().stack || '').split('\n').slice(3, 6).map((l) => l.trim().replace(/^at /, '').replace(/\(?file:\/\/\S*\/([^/]+:\d+):\d+\)?/, '$1')).join(' < ') });
     console.warn(`Commands: /${name} registered again by /${def.name} (${def.area || 'Other'}), replacing /${prev.name} (${prev.area})`);
   }
-  // Shared names: a def with `when: (ctx, args) => bool` (and `whenLabel`, e.g. 'in Video Review') shares its name
+  // Shared names: a def with `when: (ctx, args) => bool` (and `whenLabel`, e.g. 'in the Lab') shares its name
   // with whatever else registers that name (or has it as an alias), in any load order: the variant whose `when`
-  // holds runs, otherwise the plain one. E.g. /compare is the Video A/B compare in Video Review, the token
-  // comparison anywhere else.
+  // holds runs, otherwise the plain one. E.g. /play plays the Lab's song in the Lab and the board's clips on the
+  // board.
   function combine(name, variants) {
-    // every variant conditional (/play, /pause: the Lab's, Video Review's, the board's) and none holds: the one marked
-    // `fallback: true`, else the first (the Lab's /play played the hidden Lab's song from a chat; QA round 3 #16 says
-    // "elsewhere they drive Video Review", whose variants are now the fallback)
+    // every variant conditional (/play, /pause: the Lab's and the board's) and none holds: the one marked
+    // `fallback: true`, else the first (since round 17 the Lab's are the fallback: from a chat they play its song)
     const base = variants.find((v) => !v.when) || variants.find((v) => v.fallback) || variants[0];
     const pick = (ctx, args) => variants.find((v) => v.when && v !== base && v.when(ctx, String(args || ''))) || base;
     const extra = variants.filter((v) => v !== base && v.whenLabel).map((v) => ` · ${v.whenLabel}: ${v.desc}`).join('');

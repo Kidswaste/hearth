@@ -1,9 +1,9 @@
-// Tool workspaces that live in the rail next to agents (Forgeheart, Three.js Lab, Video Review).
+// Tool workspaces that live in the rail next to agents (Forgeheart, Three.js Lab, the mood board, Commands).
 // Each tool registers { id, name, icon, color, description, mount(el, head), onShow?() }.
 // An agent with `dock: '<tool id>'` gets its chat docked on the right side of that tool.
 const Tools = (() => {
   const registry = new Map();
-  const DEFAULT_ORDER = ['forgeheart', 'three', 'ae'];
+  const DEFAULT_ORDER = ['forgeheart', 'three'];
 
   function define(tool) { registry.set(tool.id, tool); }
 

@@ -2,7 +2,7 @@
 // frame rate, timecodes, markers), plus the one right-click menu every capture shares (itemsFor).
 //   CaptureView.library({ kind })    the grid of shots and recordings (newest first)
 //   CaptureView.open(path, { frame }) the player (videos) or the viewer (pictures)
-//   CaptureView.itemsFor(path)       menu items for a capture (open, copy, → chat, Video Review, editor, Lab, read frames…)
+//   CaptureView.itemsFor(path)       menu items for a capture (open, copy, → chat, system player, Finder, Lab, read frames…)
 const CaptureView = (() => {
   const api = () => window.hub.capture;
   const D = CaptureData;

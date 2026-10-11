@@ -1,6 +1,6 @@
 // The render queue with the Lab sequence (round 13): a short test sequence (red 1.5 s · green 1.5 s, the song
 // /tmp/hearth-test-song.wav) rendered from the sequence itself shows in the queue (paused from there: the frames stop,
-// then go on), its done note replaces the sequence's own (one note, with Reveal / Copy path / Video Review); presets
+// then go on), its done note replaces the sequence's own (one note, with Open / Reveal / Copy path); presets
 // rendered from the queue (/renders render square gif seq): the Lab lane runs one at a time, Square renders at its
 // own pixels, the GIF is the sequence's render converted after it (a chain); cancelling a sequence render from the
 // queue frees the Lab; a comp render (ThreeSeq.renderScene) is shown too; re-render a sequence render from history.

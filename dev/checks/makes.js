@@ -28,7 +28,7 @@ const [lab, vid] = make.parts;
 step(lab.chatId && vid.chatId && H.chats.length === before + 2, 'both rooms are real chats right away', [summary(lab.chatId)?.title, summary(vid.chatId)?.title]);
 step(summary(lab.chatId)?.title === `${make.name} · Lab` && summary(vid.chatId)?.title === `${make.name} · Video`, 'named "<Name> · Lab" / "<Name> · Video"', msg.slice(0, 160));
 const la = H.agent(summary(lab.chatId).agentId); const va = H.agent(summary(vid.chatId).agentId);
-step(la?.dock === 'three' && va?.dock === 'ae', 'the Lab room is a Three Director chat, the Video room a Video Director chat', [la?.name, va?.name]);
+step(la?.dock === 'three' && va?.dock === 'three', 'both rooms are Three Director chats (the video is the Lab sequence since round 17)', [la?.name, va?.name]);
 const idL = ChatScenes.identity(lab.chatId); const idV = ChatScenes.identity(vid.chatId);
 step(idL.color === make.ident.color && idV.color === make.ident.color && idL.glyph === make.ident.glyph && idV.glyph === make.ident.glyph, 'same mark and color on both rooms (the make\'s)', [make.ident.glyph, make.ident.color]);
 const lc = await Native.load(lab.chatId); const vc = await Native.load(vid.chatId);
@@ -120,15 +120,6 @@ await until(() => group(cm.id), 5000);
 step(Boolean(group(cm.id)), 'grouped in the chats list too');
 await until(() => Makes.get(cm.id).parts.every((p) => ['done', 'ready'].includes(p.status)), 240000);
 step(Makes.get(cm.id).parts.every((p) => ['done', 'ready'].includes(p.status)), 'its parts\' states follow the comp card', Makes.get(cm.id).parts.map((p) => p.status));
-
-// ---- 9. /intro becomes a make; renaming the make renames the project ----
-await say('/intro a 15 s teaser for the board', H.claudeAgent().id);
-await until(() => Makes.live().some((m) => m.cat === 'intro'), 15000);
-const im = Makes.live().find((m) => m.cat === 'intro');
-const proj = im && Intro.get(im.src.id);
-step(im && proj && im.name === proj.name && im.parts.length >= 6 && im.by?.cmd === '/intro', 'an /intro video project is a make (its steps are the parts, made by /intro)', im && [im.name, im.parts.map((p) => p.label).join(' → '), im.by]);
-Makes.rename(im, 'Board Teaser');
-step(Intro.get(im.src.id)?.name === 'Board Teaser', 'renaming that make renames the project');
 
 // ---- 9b. a director plans a make through its tool (three_do make, the real MCP server) ----
 const nBefore = Makes.live().length;

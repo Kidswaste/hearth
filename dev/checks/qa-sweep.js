@@ -42,8 +42,6 @@ addEventListener('error', onErr); addEventListener('unhandledrejection', onErr);
 const results = { ran: 0, skipped: [], errors: [], slow: [] };
 // window.QA_AREAS = ['Board', 'Video', 'Capture'] runs only those areas; window.QA_TOOL = 'tool:board' runs each from that tool
 const areasOnly = window.QA_AREAS ? new Set(window.QA_AREAS) : null;
-// window.QA_VIDEO = '/path.mp4': opened in Video Review with the editor on first (the editor's commands act on it)
-if (window.QA_VIDEO) { activate('tool:ae'); await Review.ensureMounted(); await Review.open(window.QA_VIDEO); await Review.waitReady?.(); await VideoCut.enter?.(); await wait(500); }
 for (const d of Commands.list().filter((x) => !areasOnly || areasOnly.has(x.area)).slice(window.QA_FROM || 0, window.QA_TO || 9999)) { // chunks: --eval "return (window.QA_FROM=0, window.QA_TO=150)"
   if (SKIP.test(d.name) || SKIP_DESC.test(d.desc)) { results.skipped.push(d.name); continue; }
   activate(window.QA_TOOL || claude.id);

@@ -1,4 +1,4 @@
-// Polish 8: a picture tour of the round 7 surfaces (mood board, the video editor, capture, the keys sheet, menus) in
+// Polish 8: a picture tour of the round 7 surfaces (mood board, capture, the keys sheet, menus; the video editor until round 17) in
 // one look, plus the visible-control counts of those surfaces (counted like dev/checks/clutter.js).
 //   sh dev/board-fixtures.sh && node dev/make-editor-videos.js /tmp/hearth-editor-videos
 //   node dev/smoke.js --check-timeout 300000 --script dev/checks/polish8-tour.js --shot /tmp/p8.png
@@ -92,53 +92,6 @@ await CaptureView.open(cap.path); await wait(900);
 rec('capture viewer', document.querySelector('dialog[open]'));
 await shot('capture-viewer');
 document.querySelector('dialog[open]')?.close(); await wait(300);
-
-// ---------- the video editor ----------
-const SRC = '/tmp/hearth-editor-videos';
-const VIDS = `${window.SMOKE_SAVES || '/tmp'}/p8-renders`;
-await window.hub.fs.write(`${VIDS}/.keep`, '');
-for (const f of (await window.hub.fs.list(SRC)).filter((x) => !x.isDir && /\.mp4$/.test(x.name))) await window.hub.fs.copy(f.path, `${VIDS}/${f.name}`);
-activate('tool:ae');
-await Review.ensureMounted();
-H.config.settings = { ...H.config.settings, videoDirs: [VIDS] };
-await Review.load(true);
-await until(() => Review.videos.length >= 3, 10000);
-const A = Review.videos.find((v) => /frames_a_30/.test(v.path)).path;
-const B = Review.videos.find((v) => /frames_b_30/.test(v.path)).path;
-await Review.open(A); await Review.waitReady(); await wait(500);
-const aeRoot = H.surfaces.get('tool:ae').el;
-rec('video review', aeRoot, '.vr-item, .vr-lib-item, .vr-card, .vr-note');
-await shot('review');
-await VideoCut.enter(); await wait(500);
-await VideoCut.addClip(B); await wait(400);
-await VideoCut.addTitle?.('HEARTH'); await wait(400);
-VideoCut.goFrame(20); await wait(700);
-rec('editor (whole tool)', aeRoot, '.vr-item, .vr-lib-item, .vr-card, .vr-note');
-rec('editor head row', aeRoot.querySelector('.vr-cut-headrow'));
-await shot('editor');
-const cv = aeRoot.querySelector('.vr-cut-cv'); const cr = cv.getBoundingClientRect();
-const lay = VideoCut._test.lanes?.() || null;
-// right-click the first clip on the main lane: find it by scanning the canvas rows
-let menuOk = false;
-for (let y = cr.top + 14; y < cr.bottom - 4 && !menuOk; y += 8) {
-  let h = null; try { h = VideoCut._test.hit({ clientX: cr.left + 30, clientY: y }); } catch { /* lane gap */ }
-  if (h?.zone === 'clip') { await rclick(cv, cr.left + 30, y); menuOk = true; }
-}
-out.menus['editor clip'] = menuRows();
-await shot('editor-clip-menu');
-hideMenu();
-[...aeRoot.querySelectorAll('.vr-cut-headrow .vr-ico')].find((b) => b.textContent === '⋯')?.click(); await wait(250);
-out.menus['editor ⋯'] = menuRows();
-await shot('editor-more-menu');
-hideMenu();
-VideoCut.inspect(VideoCut.edit.clips.find((c) => c.kind === 'video')?.id); await wait(500);
-await shot('editor-inspector');
-VideoCut.closeInspector?.(); await wait(200);
-aeRoot.querySelector('.vr-cut-export')?.click(); await wait(250);
-out.menus['editor export'] = menuRows();
-hideMenu();
-
-KeysUI.open('editor'); await wait(400); await shot('keys-editor'); KeysUI.close(); await wait(200);
 
 // ---------- Lab ⋯ for comparison ----------
 activate('tool:three'); await wait(3000);

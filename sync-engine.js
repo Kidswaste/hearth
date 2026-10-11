@@ -155,7 +155,7 @@ function createEngine(o) {
       if (!file) continue;
       try { const st = await fsp.stat(file); out.set(rel, { file, size: st.size, mtime: st.mtimeMs }); } catch { /* none */ }
     }
-    // renders saved outside the data folder (Video Review exports, Lab recordings), listed in kv/video-library
+    // renders saved outside the data folder (Lab recordings and exports from before round 17), listed in kv/video-library
     refreshExt();
     for (const [rel, abs] of Object.entries(state.ext)) {
       if (out.has(rel)) continue;

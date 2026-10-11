@@ -82,11 +82,6 @@ add('nodes', [...L.querySelectorAll('.tn-pane')].find(vis), { items: () => [...L
 await shot('nodes');
 await Commands.tryRun('/nodes code', claude.id); await wait(800);
 
-// ---------- Video Review ----------
-activate('tool:ae'); await wait(2500);
-add('video review', H.surfaces.get('tool:ae')?.el, { skip: '.vr-item, .vr-lib-item, .vr-card', items: () => [...(H.surfaces.get('tool:ae')?.el.querySelectorAll('.vr-item, .vr-lib-item, .vr-card') || [])].filter(vis).length });
-await shot('video');
-
 // ---------- director dock (adds the Three Director like a new user would) ----------
 activate(claude.id); await wait(300);
 await Commands.tryRun('/director-setup', claude.id);
@@ -114,22 +109,6 @@ BoardDrawer.toggle(true); await wait(700);
 add('board drawer', document.querySelector('.bdd'), { skip: '.bdd-tile', items: () => document.querySelectorAll('.bdd-tile').length });
 await shot('board-drawer');
 BoardDrawer.toggle(false); await wait(300);
-if (await hasDir('/tmp/hearth-editor-videos')) {
-  const VIDS = `${window.SMOKE_SAVES || '/tmp'}/clutter-renders`;
-  await window.hub.fs.write(`${VIDS}/.keep`, '');
-  for (const f of (await window.hub.fs.list('/tmp/hearth-editor-videos')).filter((x) => /frames_[ab]_30\.mp4$/.test(x.name))) await window.hub.fs.copy(f.path, `${VIDS}/${f.name}`);
-  activate('tool:ae'); await Review.ensureMounted();
-  H.config.settings = { ...H.config.settings, videoDirs: [VIDS] };
-  await Review.load(true); await until(() => Review.videos.length >= 2, 8000);
-  await Review.open(Review.videos[0].path); await Review.waitReady(); await VideoCut.enter(); await wait(600);
-  const ae = H.surfaces.get('tool:ae').el;
-  add('editor bar', ae.querySelector('.vr-cut-headrow'));
-  add('editor (whole Video Review)', ae, { skip: '.vr-item, .vr-lib-item, .vr-card, .vr-note' });
-  await shot('editor');
-  [...ae.querySelectorAll('.vr-cut-headrow .vr-ico')].find((b) => b.textContent === '⋯')?.click(); await wait(250);
-  rows['editor ⋯ menu'] = { controls: menuCount() }; closeMenus();
-  await VideoCut.leave?.(); await wait(300);
-}
 activate(claude.id); await wait(300);
 Capture.menu(80, 120, Capture.mainItems()); await wait(250);
 rows['capture menu'] = { controls: menuCount() }; await shot('capture-menu'); closeMenus();

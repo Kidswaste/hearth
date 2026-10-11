@@ -65,7 +65,7 @@ const copy = S.duplicate(A.sk, 'Scene A copy');
 await until(async () => (await Q.list()).some((x) => x.scene === copy.id), 8000);
 const all = await Q.list();
 const cs = all.find((x) => x.scene === copy.id);
-const ce = cs ? await VideoCut.editFor(cs.key) : null;
+const ce = cs ? await CutStore.editFor(cs.key) : null;
 step('a duplicated scene brings a copy of its sequence (its own clips now point at the copy)', Boolean(cs) && cs.clips === nA && ce.clips.some((c) => c.sketch === copy.id) && ce.clips.some((c) => c.sketch === B.sk), cs);
 S.rename(A.sk, 'Scene A renamed');
 await wait(300);
@@ -81,10 +81,10 @@ step('the chat row\'s still tells about its sequence', Boolean(row) && /▤ its 
 
 // an old sequence (made before scenes owned them) starting with B's scene: B takes it over when it has none
 const legacy = { v: 1, clips: [{ id: 'legacy1', kind: 'scene', sketch: B.sk, name: 'B', dur: 2, in: 0, speed: 1, mute: true, fadeIn: 0, fadeOut: 0 }], markers: [], mark: null, seq: { w: 1080, h: 1920, fps: 30, lab: true, format: '9:16', name: 'Old one' } };
-await VideoCut.storeEdit('seq:Old one', legacy, 'check');
-VideoCut.deleteSequence(keyB);
+await CutStore.storeEdit('seq:Old one', legacy, 'check');
+CutStore.deleteSequence(keyB);
 const claimed = await Q.keyForScene(B.sk);
-step('an old sequence that belonged to no scene goes to the scene it starts with', claimed === 'seq:Old one' && (await VideoCut.editFor('seq:Old one')).seq.scene === B.sk, claimed);
+step('an old sequence that belonged to no scene goes to the scene it starts with', claimed === 'seq:Old one' && (await CutStore.editFor('seq:Old one')).seq.scene === B.sk, claimed);
 localStorage.setItem('seq2.check', JSON.stringify({ A, B, keyA, nA, copy: copy.id }));
 await wait(1500); // (saves land)
 return J.done();

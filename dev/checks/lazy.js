@@ -22,7 +22,7 @@ const want = ['studio', 'renders', 'adobe', 'deploy', 'sequence', 'footage', 'co
 check('stand-in commands listed', want.every((n) => names.has(n) || Commands.get(n)), want.filter((n) => !Commands.get(n)).join(' '));
 check('Commands.list() size', Commands.list().length > 750, String(Commands.list().length));
 // (round 17) Video Review, its editor and the Video Director are gone: no tab, no command, no agent tools
-check('no Video Review', !Tools.get('ae') && !['video', 'cut', 'editor', 'review', 'intro', 'video-edit'].some((n) => Commands.get(n)) && typeof Review === 'undefined' && typeof VideoCut === 'undefined', ['video', 'cut', 'editor', 'review', 'intro'].filter((n) => Commands.get(n)).join(' '));
+check('no Video Review', !Tools.get('ae') && !['video', 'cut', 'editor', 'intro', 'video-edit', 'review-astra'].some((n) => Commands.get(n)) && typeof Review === 'undefined' && typeof VideoCut === 'undefined', ['video', 'cut', 'editor', 'intro', 'review-astra'].filter((n) => Commands.get(n)).join(' '));
 check('no duplicates', Commands.duplicates().length === 0, Commands.duplicates().map((d) => d.name).join(' '));
 check('rail tools', ['three', 'board', 'commands'].every((id) => Tools.get(id)), Tools.all().map((t) => t.id).join(' '));
 // 1. a command

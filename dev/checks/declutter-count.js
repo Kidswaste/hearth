@@ -64,19 +64,6 @@ activate(claude.id); await wait(300);
 BoardDrawer.toggle(true); await wait(700);
 await measure('board drawer', () => count(document.querySelector('.bdd')));
 BoardDrawer.toggle(false); await wait(300);
-if (await has('/tmp/hearth-editor-videos')) {
-  const VIDS = `${window.SMOKE_SAVES || '/tmp'}/dc-renders`;
-  await window.hub.fs.write(`${VIDS}/.keep`, '');
-  for (const f of (await window.hub.fs.list('/tmp/hearth-editor-videos')).filter((x) => /frames_a_30\.mp4$/.test(x.name))) await window.hub.fs.copy(f.path, `${VIDS}/${f.name}`);
-  activate('tool:ae'); await Review.ensureMounted();
-  H.config.settings = { ...H.config.settings, videoDirs: [VIDS] };
-  await Review.load(true); await until(() => Review.videos.length >= 1, 8000);
-  await Review.open(Review.videos[0].path); await Review.waitReady(); await VideoCut.enter(); await wait(500);
-  const ae = H.surfaces.get('tool:ae').el;
-  await measure('editor bar', () => count(ae.querySelector('.vr-cut-headrow')));
-  await measure('editor (whole tool)', () => count(ae, '.vr-item, .vr-lib-item, .vr-card, .vr-note'));
-  await VideoCut.leave?.(); await wait(200);
-}
 activate(claude.id); await wait(200);
 const cap = await Capture.shot({ target: 'window', quiet: true });
 await CaptureView.library(); await wait(600);

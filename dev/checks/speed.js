@@ -124,19 +124,19 @@ toasts().forEach((t) => t.remove());
 
 // ---------- the weekly tidy: safer, logged, reversible ----------
 Usage.data.since = Date.now() - 10 * 864e5;
-activate('tool:ae'); await wait(1500);
-const root = H.surfaces.get('tool:ae').el;
+activate('tool:board'); await wait(1500);
+const root = H.surfaces.get('tool:board').el;
 const vis = [...root.querySelectorAll('button')].filter((x) => x.checkVisibility?.({ visibilityProperty: true }) && Usage.keyOf(x) && Declutter.selectorFor(x) && !x.matches('.primary, .on') && !x.closest('dialog'));
 const cand = vis.slice(0, 3);
 const usedRecently = vis[3];
-for (const x of cand) Usage.data.items[Usage.keyOf(x)] = { n: 0, first: Date.now() - 9 * 864e5, label: 'x', area: 'Video' };
-if (usedRecently) Usage.data.items[Usage.keyOf(usedRecently)] = { n: 1, first: Date.now() - 60 * 864e5, last: Date.now() - 10 * 864e5, label: 'y', area: 'Video' };
+for (const x of cand) Usage.data.items[Usage.keyOf(x)] = { n: 0, first: Date.now() - 9 * 864e5, label: 'x', area: 'Board' };
+if (usedRecently) Usage.data.items[Usage.keyOf(usedRecently)] = { n: 1, first: Date.now() - 60 * 864e5, last: Date.now() - 10 * 864e5, label: 'y', area: 'Board' };
 store.set('habits.tidied', {});
 const n = Habits.tidyHere();
 ok(n >= cand.length && Habits.tidyLog().length >= cand.length, `the tidy tucks never-used controls and keeps a list (${n})`);
 ok(!usedRecently || !Habits.tidyLog().some((x) => x.sel === Declutter.selectorFor(usedRecently)), 'never what you used in the last 30 days');
 ok(toasts().some((t) => /Tidied: tucked \d+ control/.test(t.textContent) && /Undo/.test(t.textContent)), 'one line: "Tidied: tucked N controls" with Undo');
-const cust = Declutter.customiseItems('Video Review')[1].items.find((it) => it.label === 'Tucked by the weekly tidy');
+const cust = Declutter.customiseItems('Board')[1].items.find((it) => it.label === 'Tucked by the weekly tidy');
 ok(cust, 'Customise… → Tucked by the weekly tidy');
 const restored = await run('/habits restore');
 ok(/back on screen/.test(restored) && Habits.tidyLog().length === 0 && !cand.some((x) => Declutter.mine().some((m) => m.sel === Declutter.selectorFor(x))), '/habits restore brings them all back');

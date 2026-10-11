@@ -1,9 +1,9 @@
 // Journey 7 (round 8): Hearth records itself for its own intro video, with real mouse and keyboard events: a Lab
 // scene at 9:16 → ⌘/Ctrl+Alt+S (the capture menu) → a picture of the Lab preview → a short recording of the Lab
-// (/rec) → ⌘/Ctrl+Alt+V (captures) → the player (frame keys) → right-click › Open in the editor timeline → a title
-// card and a dissolve onto a second clip → render → ffprobe the file. Also: Ctrl+Alt+A then Esc (region picker
-// cancelled), the keys sheet over a capture, every file inside Hearth's data folder, and after a reload the
-// captures, the recording's markers and the edit are still there.
+// (/rec) → ⌘/Ctrl+Alt+V (captures) → the player (frame keys) → right-click › Add to the Lab sequence (round 17: it
+// was the editor timeline). Also: Ctrl+Alt+A then Esc (region picker cancelled), the keys sheet over a capture,
+// every file inside Hearth's data folder, and after a reload the captures, the recording's markers and the Lab
+// sequence are still there.
 //   sh dev/run-checks.sh journey-capture
 //   (or: node dev/smoke.js --check-timeout 900000 --script dev/checks/journey-capture.js)
 const { wait, until, step, click, key, type, shot, visible } = J;
@@ -106,53 +106,19 @@ if (pv) {
   if (pv.duration > 0.5) step('Space plays and pauses the capture', playing && pv.paused); else J.out.steps.push(`… Space not checked: the take is ${pv.duration.toFixed(2)} s (the encoder was starved on this machine)`);
 }
 await shot('player');
-// right-click in the player: "Open in the editor timeline"
+// right-click in the player: "Add to the Lab sequence" (round 17: the editor timeline left with Video Review)
 const stage = viewer?.querySelector('.cap-view-stage') || viewer;
 if (stage) await click(stage, { right: true });
 await wait(400);
-const ed = row(/Open in the editor timeline/);
-step('right-click a capture: › Open in the editor timeline', Boolean(ed), menuRows().map((b) => b.textContent.trim()).slice(0, 8));
+const ed = row(/Add to the Lab sequence/);
+step('right-click a capture: › Add to the Lab sequence (and Open in the system player)', Boolean(ed) && Boolean(row(/Open in the system player/)), menuRows().map((b) => b.textContent.trim()).slice(0, 8));
 if (ed) await click(ed);
-await until(() => typeof VideoCut !== 'undefined' && VideoCut.active, 15000);
+await until(() => typeof ThreeSeq !== 'undefined' && (ThreeSeq.edit?.clips || []).some((c) => /recordings/.test(c.src || '')), 20000);
 document.querySelectorAll('dialog[open].cap-view, dialog[open].cap-lib').forEach((d) => d.close());
-step('the recording opens in the editor', H.activeId === 'tool:ae' && VideoCut.active && /recordings/.test(VideoCut.path || Review.current?.path || ''), VideoCut.path || Review.current?.path);
-await shot('editor');
-
-// 5. in the editor: a title card at the start, a second clip, a dissolve, then render and ffprobe
-const R = H.surfaces.get('tool:ae').el;
-R.focus?.({ preventScroll: true });
-await key('Home'); await wait(200);
-const clips0 = VideoCut.edit.clips.length;
-const vids2 = window.EDITOR_VIDS || '/tmp/hearth-editor-videos';
-const second = `${window.SMOKE_SAVES}/clip b.mp4`; // a path with a space (Windows / Mac folders often have one)
-await window.hub.fs.copy(`${vids2}/frames_b_30.mp4`, second);
-await VideoCut.addClip(second); await wait(800);
-step('a second clip added (its path has a space)', VideoCut.edit.clips.length === clips0 + 1, VideoCut.edit.clips.map((x) => (x.src || x.path || '').split('/').pop()));
-// the title card at the end (an end card), so the dissolve goes on a cut with long clips on both sides
-const focusEd = () => (R.querySelector('.vr')?.parentElement || R).focus({ preventScroll: true });
-VideoCut.goto(CutData.total(VideoCut.edit)); await wait(200); focusEd();
-await key('t', { shift: true }); await wait(600);
-step('Shift+T: a title card', VideoCut.edit.clips.some((x) => x.title || x.kind === 'title' || x.type === 'title'), VideoCut.describe?.().slice?.(0, 160));
-document.querySelectorAll('dialog[open]').forEach((d) => d.close());
-const lay = CutData.layout(VideoCut.edit);
-VideoCut.goto(lay.at(-1).start); await wait(300); focusEd();
-await key('d', { shift: true }); await wait(500);
-step('Shift+D: a dissolve on the nearest cut', VideoCut.edit.clips.some((x) => x.trans), VideoCut.edit.clips.map((x) => x.trans?.type || '-'));
-const fps = VideoCut.fps;
-focusEd(); await key('Home'); await wait(150);
-for (let i = 0; i < 12; i += 1) await key('ArrowRight');
-await wait(300);
-const fi = await VideoCut.frameInfo();
-step('→ ×12 lands on program frame 12', fi.frame === 12, { frame: fi.frame, fps });
-const total = CutData.total ? CutData.total(VideoCut.edit) : lay.at(-1).start + lay.at(-1).dur;
-const job = await VideoCut.exportCut({}).catch((e) => ({ error: e.message }));
-const ev = job?.done ? await Promise.race([job.done, wait(180000).then(() => ({ code: 'timeout' }))]) : null;
-const rendered = job?.output;
-const rp = rendered && ev?.code === 0 ? (await window.hub.capture.frames('probe', rendered)).value : null;
-step('render finished', ev?.code === 0, { job: job?.error || rendered, ev });
-step('render: an MP4 next to the recording (inside the data folder)', Boolean(rp) && rendered.startsWith(DIR), { rendered });
-step('ffprobe: the render is as long as the edit and has its frame rate', rp && Math.abs(rp.duration - total) < 0.25 && Math.abs(rp.fps - fps) < 0.5, { dur: rp?.duration, total, fps: rp?.fps, want: fps, w: rp?.w, h: rp?.h });
-await shot('rendered');
+const seqClip = (ThreeSeq.edit?.clips || []).find((c) => /recordings/.test(c.src || ''));
+step('the recording is a footage clip on the Lab sequence', H.activeId === 'tool:three' && Boolean(seqClip), seqClip?.src);
+await shot('sequence');
+const rendered = null;
 
 // 6. Ctrl+Alt+A: the region picker; Esc cancels it (nothing saved)
 const s0 = (await window.hub.capture.list({ kind: 'shot' })).length;
@@ -165,7 +131,7 @@ step('Esc cancels it: nothing saved, the picker gone', !visible(document.querySe
 // 7. nothing outside the data folder: every capture and its made files are in captures/
 const every = await window.hub.capture.list({ kind: 'all', limit: 2000 });
 step('every capture is inside Hearth\'s data folder', every.length >= 2 && every.every((x) => x.path.startsWith(DIR)), every.length);
-localStorage.setItem('journey.capture', JSON.stringify({ shot: labShot?.path, mp4: mp4?.path, rendered, edit: VideoCut.path, clips: VideoCut.edit.clips.length }));
+localStorage.setItem('journey.capture', JSON.stringify({ shot: labShot?.path, mp4: mp4?.path, rendered, seq: ThreeSeq.key, clip: seqClip?.src || null }));
 await window.hub.kvSet?.('journey-probe', { at: Date.now() });
 await wait(1500); // edits save on a short debounce
 } catch (e) { step(`stopped: ${e.message}`, false); }
@@ -176,10 +142,9 @@ J.shotDir = localStorage.getItem('journey.shots') || '/tmp';
 const was = JSON.parse(localStorage.getItem('journey.capture') || '{}');
 const list = await window.hub.capture.list({ kind: 'all', limit: 2000 });
 step('after a reload: the shot and the recording are in your captures', list.some((x) => x.path === was.shot) && list.some((x) => x.path === was.mp4), list.length);
-activate('tool:ae'); await Review.ensureMounted(); await wait(500);
-await Review.open(was.edit); await Review.waitReady?.(); await wait(600);
-await VideoCut.enter?.(); await until(() => VideoCut.active, 8000); await wait(500);
-step('the edit of the recording is kept (title, second clip, dissolve)', VideoCut.edit?.clips.length === was.clips && VideoCut.edit.clips.some((x) => x.trans), { clips: VideoCut.edit?.clips.length, was: was.clips });
+await Lazy.load('lab');
+const kept = was.seq ? await CutStore.editFor(was.seq) : null;
+step('the Lab sequence still holds the recording', Boolean(kept?.clips?.some((c) => c.src === was.clip)), { seq: was.seq, clips: kept?.clips?.length });
 await shot('after-reload');
 localStorage.removeItem('journey.capture');
 return J.done();

@@ -1,6 +1,6 @@
 // QA: chats streaming (fake engines) while the Lab, the look effects and the meter are all busy: a docked Three
 // Director chat inside the Lab, a main Claude chat replying in the background (unread mark), token badges,
-// <suggest> command chips, Video Review open with a reply streaming.
+// <suggest> command chips, the board open with a reply streaming.
 //   node dev/smoke.js --fake-engines --check-timeout 300000 --script dev/checks/qa-stream.js --shot x.png
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { if (await fn()) return true; await wait(100); } return false; };
@@ -44,8 +44,8 @@ out.dirNotes = [...dv.list.querySelectorAll('.msg.note .body')].map((n) => n.tex
 // a shared command from the docked chat runs the Lab's version
 await Commands.tryRun('/look', dir.id); await wait(300);
 out.lookInLab = [...dv.list.querySelectorAll('.msg.note .body')].at(-1)?.textContent.slice(0, 80);
-// 3. Video Review open while Claude replies
-activate('tool:ae'); await wait(2500);
+// 3. the board open while Claude replies (Video Review until round 17)
+activate('tool:board'); await wait(2500);
 out.claudeBusyBefore = Native.isBusy(H.activeChat[claude.id]);
 await until(() => !Native.isBusy(H.activeChat[claude.id]), 60000);
 await Native.send(claude.id, 'code table');

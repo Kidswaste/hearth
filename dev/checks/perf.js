@@ -67,7 +67,7 @@ out.ui.slashMenu2Ms = await slash();
 ta.value = ''; ta.dispatchEvent(new Event('input')); ta.blur(); await wait(200);
 // ---------- first open of each tool ----------
 out.tools = {};
-for (const id of ['three', 'ae', 'forgeheart']) {
+for (const id of ['three', 'board', 'forgeheart']) {
   if (!Tools.get(id)) continue;
   const s = H.surfaces.get(`tool:${id}`);
   out.tools[id] = await timeIt(() => activate(`tool:${id}`), () => s?.mounted && s.el.querySelector('.tool-body')?.childElementCount);

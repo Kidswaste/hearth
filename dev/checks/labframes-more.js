@@ -61,7 +61,7 @@ const bar = document.querySelector('.media-bar');
 const chip = bar.querySelector('.mb-framechip');
 chip.click(); await wait(400);
 const rows = [...document.querySelectorAll('#menu button')].map((b) => b.firstChild?.textContent || b.textContent);
-step('▦ opens the frames menu: go to, step, cut here, cues, read, editor, time…', ['Go to a frame…', 'Step', 'Cut here', 'Cues', 'Read the footage', 'Editor', 'Time shows'].every((x) => rows.includes(x)), rows);
+step('▦ opens the frames menu: go to, step, cut here, cues, read, sequence, time…', ['Go to a frame…', 'Step', 'Cut here', 'Cues', 'Read the footage', 'Sequence', 'Time shows'].every((x) => rows.includes(x)), rows);
 document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); hideMenu?.(); await wait(200);
 const tEl = bar.querySelector('.mb-time');
 tEl.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 400, clientY: 700 })); await wait(300);

@@ -1,7 +1,7 @@
 // Studio (round 15): one-click creative pipelines that chain what Hearth already has, so the owner discovers what's
 // possible ("feel free to make me discover things"). A recipe (studio-data.js) becomes:
 //   - a make (makes.js): one name, one mark, its rooms made now (a board frame, a Three Director chat "<Name> · Lab",
-//     a Video Director chat…) and its other parts as steps, each with a progress bar;
+//     a second Three Director chat for the video…) and its other parts as steps, each with a progress bar;
 //   - a Flows run (flows.js): its questions asked first (only the ones it needs), then every step moves by itself; the
 //     run shows on the Commands page under "Going now", as a live card in the Lab room's chat, hung → pick up here,
 //     ↻ Again. Each step is /studio-do <recipe> <step> <run> (a quiet action), the scene itself is the room's Three

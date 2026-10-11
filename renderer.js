@@ -570,7 +570,7 @@ function activate(id, { focus = true } = {}) {
   if (s.webview?.dataset.sleeping) wakeWebsite(s);
   H.activeId = id;
   H.mru = [id, ...H.mru.filter((m) => m !== id)].slice(0, 12);
-  // tools that park their loops while hidden wake on this (Video Review)
+  // tools that park their loops while hidden wake on this (the Lab, the board)
   queueMicrotask(() => document.dispatchEvent(new CustomEvent('hearth:activate', { detail: { id, surfaceId } })));
   let changed = H.unread.delete(id);
   // Opening a tool also counts as seeing the chat docked in it.

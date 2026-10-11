@@ -1,7 +1,7 @@
 // QA: how the round-1 UIs render together under a theme (Lab sliders, timeline, FX picker, meter strip,
-// add-on dialogs, Video Review). Set the theme and the view first, then screenshot:
+// add-on dialogs). Set the theme and the view first, then screenshot:
 //   node dev/smoke.js --eval "window.QA_THEME='forge-light'; window.QA_VIEW='lab'" --script dev/checks/qa-ui.js --shot x.png
-// QA_VIEW: lab (sliders + timeline) | fx (the FX picker over the Lab) | video | nodes | kit | usage
+// QA_VIEW: lab (sliders + timeline) | fx (the FX picker over the Lab) | nodes | kit | usage
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const theme = window.QA_THEME || 'forgeheart';
 const view = window.QA_VIEW || 'lab';
@@ -18,7 +18,6 @@ if (['lab', 'fx', 'nodes'].includes(view)) {
   if (view === 'fx') { ThreeFX.openPicker('add'); await wait(1200); }
   if (view === 'nodes') { await Commands.tryRun('/nodes', H.claudeAgent().id); await wait(1500); }
 }
-if (view === 'video') { activate('tool:ae'); await wait(3000); }
 if (view === 'kit') { await Commands.tryRun('/kit', H.claudeAgent().id); await wait(1000); }
 if (view === 'usage') { await Commands.tryRun('/usage', H.claudeAgent().id); await wait(1500); }
 // inputs that came out unreadable: text color equal to background, or zero-size controls that should show

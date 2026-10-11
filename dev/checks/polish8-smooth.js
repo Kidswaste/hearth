@@ -1,5 +1,5 @@
 // Polish 8: smoothness of the round 7 surfaces — a trackpad pan over the mood board (and a menu open over a playing
-// clip), the editor playing its program, the capture viewer playing a video — before → after on the same machine.
+// clip), the capture viewer playing a video — before → after on the same machine.
 //   sh dev/board-fixtures.sh && node dev/make-editor-videos.js /tmp/hearth-editor-videos
 //   node dev/smoke.js --check-timeout 400000 --lib dev/checks/smooth-lib.js --script dev/checks/polish8-smooth.js
 const { wait, until, measure, brief, mouse } = M;
@@ -39,19 +39,7 @@ if (clip) {
   hideMenu(); await wait(300);
 }
 
-// ---------- the editor: 2 s of the program playing ----------
-const SRC = '/tmp/hearth-editor-videos';
-const VIDS = `${window.SMOKE_SAVES || '/tmp'}/p8s-renders`;
-await window.hub.fs.write(`${VIDS}/.keep`, '');
-for (const f of (await window.hub.fs.list(SRC)).filter((x) => /frames_[ab]_30\.mp4$/.test(x.name))) await window.hub.fs.copy(f.path, `${VIDS}/${f.name}`);
-activate('tool:ae'); await Review.ensureMounted();
-H.config.settings = { ...H.config.settings, videoDirs: [VIDS] };
-await Review.load(true); await until(() => Review.videos.length >= 2, 10000);
-const A = Review.videos.find((v) => /frames_a/.test(v.path)).path; const B = Review.videos.find((v) => /frames_b/.test(v.path)).path;
-await Review.open(A); await Review.waitReady(); await VideoCut.enter(); await VideoCut.addClip(B); await wait(600);
-VideoCut.goto(0); await wait(400);
-out.editorPlay = brief(await measure(2000, async () => { VideoCut.play(); }));
-VideoCut.pause(); await wait(300);
+const A = '/tmp/hearth-editor-videos/frames_a_30.mp4';
 
 // ---------- the capture viewer: 2 s of a video playing in the dialog ----------
 activate(H.claudeAgent().id); await wait(400);

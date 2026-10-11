@@ -39,8 +39,6 @@ try {
   activate('tool:board'); await wait(300);
   const board = D.suggest(3);
   ok(board.every((s) => s.app.fits.includes('board')), `the board → picture AI (${board.map((s) => s.app.id)})`);
-  activate('tool:ae'); await wait(300);
-  ok(D.suggest(2).every((s) => s.app.fits.includes('edit')), `the editor → video editing (${D.suggest(2).map((s) => s.app.id)})`);
   activate(C.id); await wait(300);
   const chat = D.suggest(3);
   ok(chat.every((s) => s.app.fits.includes('chat')), `a chat → research / sites (${chat.map((s) => s.app.id)})`);

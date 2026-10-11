@@ -2,8 +2,8 @@
 // thinks and says how far it is with hidden <progress> tags → a bar on the reply (with "about N %"), on its chat row
 // and on the rail icon, the indicator at the bottom of the rail (its list, a click jumps to the chat), the bar only
 // moves forward, the tags never show in the reply, it finishes and fades, the kind is learned (a second reply has an
-// expectation); /progress and /progress learned; a Video Review export with ffmpeg (measured: its own -progress, on
-// the Video Review rail icon, done); a Commands-page chain (/wait 2s, then /wait 2s: steps done / total on the run's
+// expectation); /progress and /progress learned; a render-queue export with ffmpeg (measured: its own -progress,
+// done); a Commands-page chain (/wait 2s, then /wait 2s: steps done / total on the run's
 // head, forward only, done); a flow waiting for you (waiting, not hung) and a hung step offering ↻ Pick up here;
 // /progress tags on|off for directors; nothing left on screen at the end.
 //   node dev/smoke.js --fake-engines --check-timeout 400000 --script dev/checks/progress.js --shot /tmp/progress.png
@@ -86,24 +86,19 @@ try {
   ok(document.querySelector('.pg-pop'), '/progress opens the list');
   document.querySelector('.pg-pop') && ProgressUI.close();
 
-  // ---- 3. an ffmpeg export in Video Review (measured) ----
+  // ---- 3. an ffmpeg export through the render queue (measured; Video Review's own export until round 17) ----
   const VIDS = `${window.SMOKE_SAVES}/renders`;
   await window.hub.fs.write(`${VIDS}/.keep`, '');
   for (const f of (await window.hub.fs.list('/tmp/hearth-test-videos')).filter((x) => !x.isDir && /neon_tunnel_v2/.test(x.name))) await window.hub.fs.copy(f.path, `${VIDS}/${f.name}`);
-  activate('tool:ae'); await Review.ensureMounted();
-  H.config.settings = { ...H.config.settings, videoDirs: [VIDS] };
-  await Review.load(true);
-  await until(() => Review.videos.length >= 1, 10000);
-  const A = Review.videos[0].path;
-  await Review.open(A); await Review.waitReady?.().catch(() => null);
-  activate(C.id); await wait(300); // the export runs while you are elsewhere: the rail icon of Video Review shows it
-  const job = await Review.runExport('reels', { path: A });
+  const A = `${VIDS}/neon_tunnel_v2.mp4`;
+  activate(C.id); await wait(300);
+  await window.Lazy?.load?.('renders');
+  const job = Renders.enqueue({ input: A, preset: 'vertical', opts: { quality: 'draft' } });
   ok(job?.id, `the export started (${job?.id})`);
   const jk = `job:${job?.id}`;
   ok(await until(() => Progress.get(jk) || seen[jk], 8000), 'the export has a progress item');
   out.renderTitle = Progress.get(jk)?.title;
-  out.renderRail = Boolean(await until(() => document.querySelector('#agent-buttons .agent-btn[data-id="tool:ae"] > .pg-bar') || Progress.get(jk)?.state === 'done', 8000));
-  await job?.done;
+  await Renders.whenDone(job.id);
   await wait(300);
   const js = seen[jk] || [];
   out.render = js.map((x) => `${x.v}${x.est ? '~' : ''}${x.st === 'done' ? '✓' : ''}`).join(' ');

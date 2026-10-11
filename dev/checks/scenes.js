@@ -266,35 +266,8 @@ step(Object.values(tints).every(([t, c]) => t === c), 'each starter keeps its ch
   out.backstageRunning = ThreeBackstage.running;
 }
 
-// 8. Video Director: each chat comes back to its video (needs the test videos: sh dev/make-test-videos.sh /tmp/hearth-test-videos)
-const V1 = '/tmp/hearth-test-videos/neon_tunnel_v1.mp4'; const V2 = '/tmp/hearth-test-videos/square_loop.mp4';
-if (await window.hub.fs.stat(V1).then(() => true, () => false)) {
-  H.config.agents.push({ id: 'videodirector', name: 'Video Director', icon: '🎬', color: '#bd8bff', mode: 'native', engine: 'claude', dock: 'ae', videoTools: true, enabled: true });
-  await saveConfig();
-  await until(() => Tools.dockedAgent('ae'), 5000);
-  activate('tool:ae'); await Review.ensureMounted(); await Review.waitReady?.().catch(() => null);
-  const vd = Tools.dockedAgent('ae');
-  await until(() => Native.hasView(vd.id), 5000);
-  await Review.open(V1);
-  await Native.send(vd.id, 'Video one');
-  await until(() => !Native.isBusy(H.activeChat[vd.id]), 30000);
-  const V = H.activeChat[vd.id];
-  Native.newChat(vd.id);
-  await wait(200);
-  await Review.open(V2);
-  await Native.send(vd.id, 'Video two');
-  await until(() => !Native.isBusy(H.activeChat[vd.id]), 30000);
-  const W = H.activeChat[vd.id];
-  Native.open(vd.id, V);
-  await until(() => Review.current?.path === V1, 6000);
-  step(Review.current?.path === V1, 'video chat 1 → its video', Review.current?.path);
-  Native.open(vd.id, W);
-  await until(() => Review.current?.path === V2, 6000);
-  step(Review.current?.path === V2, 'video chat 2 → its video', Review.current?.path);
-  step(Boolean(document.querySelector(`#chat-groups .item[data-key="${CSS.escape(W)}"] .chat-ident`)), 'video chats carry their glyph too');
-  await wait(800);
-  await shot('6-video-director');
-} else step(true, 'video part skipped (no test videos)');
+// 8. (round 17) the Video Director and its per-chat videos left with Video Review
+step(!Tools.get('ae') && !H.agents().some((a) => a.dock === 'ae'), 'no Video Director any more');
 out.dups = Commands.duplicates().length;
 out.links = Object.keys(ChatScenes.data().links).length;
 return JSON.stringify(out, null, 1);

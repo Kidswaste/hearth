@@ -8,8 +8,8 @@ J.shotDir = window.JOURNEY_SHOTS || '/tmp';
 await wait(1500);
 // 1. config: agents, directors docked, the theme
 const ids = H.agents().map((a) => a.id);
-step('all four agents kept', ['claude', 'astra', 'threedirector', 'videodirector'].every((id) => ids.includes(id)), ids);
-step('directors still docked (not in the rail)', H.agent('threedirector')?.dock === 'three' && H.agent('videodirector')?.dock === 'ae' && !document.querySelector('#agent-buttons [data-id="threedirector"]'));
+step('the agents kept (the Video Director stays in config.json but shows nowhere since round 17)', ['claude', 'astra', 'threedirector'].every((id) => ids.includes(id)) && !ids.includes('videodirector') && H.config.agents.some((a) => a.id === 'videodirector'), ids);
+step('directors still docked (not in the rail)', H.agent('threedirector')?.dock === 'three' && !document.querySelector('#agent-buttons [data-id="threedirector"]'));
 const html = document.documentElement;
 step('old Forgeheart preset → Forgeheart look', H.config.theme.preset && /forge/i.test(H.config.theme.preset) && html.dataset.skin === 'forge', { preset: H.config.theme.preset, skin: html.dataset.skin, look: html.dataset.look });
 await shot('first-launch');
@@ -50,10 +50,9 @@ step('beat map kept', JSON.stringify(bm).includes('"bpm":120'), Object.keys(bm |
 step('Three Director docked with its old chat', visible(Native.view('threedirector')?.input) && (await window.hub.listChats()).some((c) => c.agentId === 'threedirector'));
 await shot('lab');
 
-// 6. Video Review: old notes
-activate('tool:ae'); await Review.ensureMounted(); await wait(1500);
+// 6. Video Review's old notes: left on disk, untouched (Video Review was removed in round 17)
 const vn = await window.hub.kvGet('video-notes');
-step('video notes kept', JSON.stringify(vn).includes('Flash too strong'), vn && Object.keys(vn));
+step('video notes kept on disk', JSON.stringify(vn).includes('Flash too strong'), vn && Object.keys(vn));
 
 // 7. nothing in data/kv was overwritten with an empty value
 const kv = ['three-sketches', 'three-beatmaps', 'video-notes', 'ui-usage'];

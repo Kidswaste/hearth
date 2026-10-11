@@ -1,6 +1,6 @@
 // Assist (assist.js) with the fake engines: shuffle & pick (picker, click, ✦ Astra picks, keep + undo, hold Shuffle,
 // save as a named look), names from content (/name, /name astra, quick looks), /usual, next-step chips after a
-// director reply (+ "What would Astra do?"), /decide saved, Review with Astra (frame + sheet, undo), the token log.
+// director reply (+ "What would Astra do?"), /decide saved, the token log (Review with Astra left with Video Review in round 17).
 //   sh dev/make-test-videos.sh /tmp/hearth-test-videos
 //   node dev/smoke.js --fake-engines --check-timeout 400000 --script dev/checks/assist.js --shot /tmp/assist.png
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -133,33 +133,11 @@ ok('nextStepsNote', [...document.querySelectorAll('button')].some((b) => b.textC
 dispatchEvent(new CustomEvent('hearth:jam-end', { detail: { status: 'done' } })); await wait(500);
 ok('jamSteps', [...document.querySelectorAll('.as-next .dd-chip')].some((b) => /Jam 2 more/.test(b.textContent)));
 
-// ---------- Video Review ----------
-const SRC = window.VIDS || '/tmp/hearth-test-videos';
-const VIDS = `${window.SMOKE_SAVES}/renders`;
-await window.hub.fs.write(`${VIDS}/.keep`, '');
-for (const f of (await window.hub.fs.list(SRC)).filter((x) => !x.isDir && /\.mp4$/.test(x.name))) await window.hub.fs.copy(f.path, `${VIDS}/${f.name}`);
-activate(C.id); await wait(300);
-await run(`/video-folders add ${VIDS}`); await wait(1500);
-activate('tool:ae'); await Review.ensureMounted(); await until(() => Review.videos.length >= 3, 10000);
-await Review.open(Review.videos.find((v) => /neon_tunnel_v2/.test(v.path)) || Review.videos[0]); await Review.waitReady?.().catch(() => null); await wait(800);
-Review.seek(1.2); await wait(500);
-const n0 = Review.notes().length;
-await run('/review-astra'); await wait(600);
-const added = Review.notes().filter((n) => n.by === 'Astra');
-ok('reviewNotes', added.length === 2 && added.every((n) => n.frame), added.map((n) => `${n.t.toFixed(2)} ${n.text}`));
-await smoke({ shot: `${shots}/assist-review.png` });
-await run('/assist undo'); await wait(300);
-ok('reviewUndo', Review.notes().length === n0);
-await run('/review-astra sheet'); await wait(600);
-const sheetNotes = Review.notes().filter((n) => n.by === 'Astra');
-ok('reviewSheet', sheetNotes.length === 2 && Math.abs(sheetNotes[0].t - 1) < 0.1 && Math.abs(sheetNotes[1].t - 2) < 0.1, sheetNotes.map((n) => n.t));
-ok('reviewChip', DirectorDock.CHIPS.ae.some((x) => x.run === '/review-astra'));
-
 // ---------- costs, commands ----------
 const log = store.get('assist.log', []);
 out.log = log.map((e) => `${e.kind} by ${e.by}: ${e.input}+${e.output} tokens, ${e.promptChars} ch, ${e.images} img`);
 ok('duplicates', Commands.duplicates().length === 0, Commands.duplicates());
-ok('commands', ['shuffle-pick', 'astra-pick', 'name', 'usual', 'next-steps', 'review-astra', 'assist'].every((n) => Commands.get(n)?.area === 'Assist'));
+ok('commands', ['shuffle-pick', 'astra-pick', 'name', 'usual', 'next-steps', 'assist'].every((n) => Commands.get(n)?.area === 'Assist'));
 out.fails = fails;
 out.ok = !fails.length;
 return JSON.stringify(out, null, 1);
