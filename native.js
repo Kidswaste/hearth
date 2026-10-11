@@ -620,7 +620,6 @@ const Native = (() => {
     for (const fn of hooks.message) { try { fn(node, m, index, agent); } catch (err) { console.warn(err); } }
     return node;
   }
-  const isRetryable = (m) => Boolean(m.stopped);
   // The tool calls of a reply, folded: "⚙ 3 steps · three · capture", open for the list (repeats counted)
   function toolFold(tools) {
     const labels = tools.map(toolLabel);

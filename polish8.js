@@ -224,11 +224,16 @@ const Polish8 = (() => {
   // ---------- start ----------
   function start() {
     try { Declutter.addRules(RULES); } catch (err) { console.warn('polish8 rules', err); }
-    wrapMenu(); wrapCapture(); registerKeys(); styleSheet(); watchSheet(); commands(); rightClicks();
+    wrapMenu(); registerKeys(); styleSheet(); watchSheet(); commands(); rightClicks();
     addEventListener('hearth:view', () => { setTimeout(chipKeys, 300); }); // the board chips exist once their tool has mounted
     // the hidden rail button capture-cmds.js adds (pinned back on screen with Customise this…, it shows): the SVG icon
-    const cb = document.getElementById('capture-btn');
-    if (cb && typeof Icons !== 'undefined' && !cb.querySelector('svg')) cb.replaceChildren(Icons.node('capture'));
+    // (round 18) capture loads right after the first screen (lazy group 'capture')
+    const capHooks = () => {
+      wrapCapture();
+      const cb = document.getElementById('capture-btn');
+      if (cb && typeof Icons !== 'undefined' && !cb.querySelector('svg')) cb.replaceChildren(Icons.node('capture'));
+    };
+    if (window.Lazy) window.Lazy.when('capture', capHooks); else capHooks();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 

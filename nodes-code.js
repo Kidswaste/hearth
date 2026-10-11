@@ -196,7 +196,6 @@ const CodeFlow = (() => {
 
     // ---- JS / TS ----
     // 1) classes, interfaces / types / enums, functions of every shape (with their body ranges)
-    const containerOf = []; // stack of { kind, unit, open, close } while scanning, to know parents
     const isObjOpen = (k) => { // does T[k] = '{' open an object literal (not a block)?
       const p = T[k - 1];
       if (!p) return false;

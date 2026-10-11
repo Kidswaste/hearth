@@ -18,8 +18,6 @@ const ThreeMedia = (() => {
     { id: '4k', w: 3840, h: 2160, label: '4K', title: '3840×2160: 4K video', extra: true },
     { id: '4k-v', w: 2160, h: 3840, label: '4K 9:16', title: '2160×3840: vertical 4K', extra: true },
   ];
-  const BASE_SIZES = SIZES.filter((s) => !s.extra);
-  const EXTRA_SIZES = SIZES.filter((s) => s.extra);
   const extOf = (p) => (p.split('.').pop() || '').toLowerCase();
   const isMedia = (p) => [...AUDIO_EXT, ...VIDEO_EXT].includes(extOf(p));
   const fmtTime = (s) => { s = Math.max(0, s || 0); const m = Math.floor(s / 60); return `${m}:${String(Math.floor(s % 60)).padStart(2, '0')}`; };

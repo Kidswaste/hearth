@@ -16,10 +16,8 @@ const Icons = (() => {
     three: S('<path d="M12 2.8l8.2 14.6H3.8z" fill="currentColor" fill-opacity=".12"/><path d="M12 2.8l-2.6 14.6M12 2.8l3.6 14.6M3.8 17.4l5.6-4.1 6.2 4.1M9.4 13.3l10.8 4.1" stroke-width="1.2" opacity=".75"/>'),
     // a director: the prism in a viewfinder
     director: S('<path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4"/><path d="M12 7.2l4.6 8.2H7.4z" fill="currentColor" fill-opacity=".18"/>'),
-    // Video Review: a frame with a play mark
+    // a video: a frame with a play mark
     video: S('<rect x="3" y="5" width="18" height="14" rx="2.2"/><path d="M10 9.2v5.6l4.8-2.8z" fill="currentColor" stroke-width="1.2"/><path d="M3 9h2M3 15h2M19 9h2M19 15h2" stroke-width="1.3"/>'),
-    // Video Director: a clapperboard
-    clapper: S('<path d="M4 10h16v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19z"/><path d="M4 10l-.6-3.2 15.3-2.9.6 3.3zM8.2 6.5l2.2 2.6M12.6 5.7l2.2 2.6"/>'),
     // a jam: two voices interleaving
     jam: S('<path d="M3 13c2.2-5.5 4.4-5.5 6.6 0s4.4 5.5 6.6 0 3.7-4.2 4.8-2"/><path d="M3 11c2.2 5.5 4.4 5.5 6.6 0s4.4-5.5 6.6 0 3.7 4.2 4.8 2" opacity=".55"/>'),
     // Board: a mood board of pinned references
@@ -78,7 +76,7 @@ const Icons = (() => {
     recent: S('<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4.5v3.2h3.2M12 8v4.3l2.8 1.7"/>'),
   };
   // agent / tool id (or engine) -> icon
-  const BY_ID = { claude: 'claude', astra: 'astra', hearth: 'hearth', forgeheart: 'forge', forgedebug: 'forge', three: 'three', threedirector: 'director', ae: 'video', videodirector: 'clapper', jam: 'jam', board: 'board', capture: 'capture', editor: 'editor' };
+  const BY_ID = { claude: 'claude', astra: 'astra', hearth: 'hearth', forgeheart: 'forge', forgedebug: 'forge', three: 'three', threedirector: 'director', jam: 'jam', board: 'board', capture: 'capture' }; // (round 18: Video Review's / the Video Director's / the editor's ids left)
   const BY_ENGINE = { claude: 'claude', codex: 'astra' };
   const BY_BUTTON = { 'add-btn': 'plus', 'palette-btn': 'command', 'notes-btn': 'notes', 'memory-btn': 'memory', 'panel-btn': 'panel', 'grid-btn': 'grid', 'bar-btn': 'broadcast', 'config-btn': 'gear' };
 

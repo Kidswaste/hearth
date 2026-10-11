@@ -39,16 +39,37 @@ for (const s of cov.js) {
   if (!r.dead.length) r.dead = outer.map((f) => ({ name: f.name || '(anon)', line: line(f.start), bytes: f.end - f.start }));
 }
 // ---------- CSS: rules never matched ----------
+// (CDP lists the rules that matched; every style rule of the sheet that isn't one of them never did)
+function styleRules(text) { // [start, end] of each style rule (inside @media / @supports too)
+  const out = []; const stack = []; let start = 0; let q = null;
+  const top = () => !stack.length || stack[stack.length - 1].group;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === q) q = null; continue; }
+    if (c === '"' || c === "'") { q = c; continue; }
+    if (c === '/' && text[i + 1] === '*') { const e = text.indexOf('*/', i + 2); i = e < 0 ? text.length : e + 1; if (top()) start = i + 1; continue; }
+    if (c === '{') {
+      const raw = text.slice(start, i); const pre = raw.trim();
+      stack.push({ at: start + raw.length - raw.trimStart().length, group: /^@(media|supports|layer|container)/.test(pre), atRule: pre.startsWith('@') });
+      start = i + 1;
+    } else if (c === '}') {
+      const r = stack.pop();
+      if (r && !r.atRule && stack.every((x) => x.group)) out.push([r.at, i + 1]);
+      start = i + 1;
+    } else if (c === ';' && top()) start = i + 1;
+  }
+  return out;
+}
 for (const sh of cov.css) {
   const file = rel(sh.url);
-  const unused = sh.rules.filter((r) => !r[2]);
-  const r = report.css[file] = { size: sh.text.length, rules: sh.rules.length, unusedRules: unused.length, unusedBytes: unused.reduce((a, x) => a + x[1] - x[0], 0), unused: [] };
-  // the selector text of each unused rule (the text before its '{')
-  for (const [s] of unused) {
-    const before = sh.text.lastIndexOf('}', s - 1);
-    const sel = sh.text.slice(before + 1, s).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ').trim();
-    r.unused.push(sel.slice(0, 160));
-  }
+  const all = styleRules(sh.text);
+  const hit = new Set();
+  for (const u of sh.rules.filter((r) => r[2])) { const r = all.find(([a, b]) => u[0] >= a && u[0] < b); if (r) hit.add(r[0]); }
+  const unused = all.filter(([a]) => !hit.has(a));
+  const prev = report.css[file];
+  if (!all.length || (prev && prev.unusedRules <= unused.length)) continue; // the same sheet twice (one from before the reload, empty): keep the one that matched more
+  report.css[file] = { size: sh.text.length, rules: all.length, unusedRules: unused.length, unusedBytes: unused.reduce((a, [x, y]) => a + y - x, 0),
+    unused: unused.map(([a]) => sh.text.slice(a, sh.text.indexOf('{', a)).replace(/\s+/g, ' ').trim().slice(0, 160)) };
 }
 // ---------- app files never loaded ----------
 const loaded = new Set([...Object.keys(report.js), ...Object.keys(report.css)]);

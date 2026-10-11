@@ -21,7 +21,6 @@ const ThreeTweaks = (() => {
   };
   const VECTOR_OWNERS = /(^|\.)(position|rotation|scale|offset|repeat|center|up|target|velocity|direction)$/;
   const UNIT_RANGE = /(^|\W)(opacity|roughness|metalness|penumbra|threshold|clearcoat|clearcoatRoughness|transmission|sheen|iridescence|reflectivity|alpha|damping|dampingFactor)$/i;
-  const SEGMENTS = /segments|detail|divisions/i;
   const HEX6 = /^0x[0-9a-f]{6}$/i;
   const CSS_HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
   const NUMBER = /^(?:0[xX][0-9a-fA-F_]+|0[bB][01_]+|0[oO][0-7_]+|(?:\d[\d_]*\.?[\d_]*|\.\d[\d_]*)(?:[eE][+-]?\d+)?)n?/;

@@ -185,8 +185,17 @@
   B.onChange((what) => { if (what === 'mount') minimap(); if (['settle', 'items', 'render', 'open', 'vibe'].includes(what)) miniSoon(); });
 
   // ---------- drawing the board into a picture (export, pages, contact sheets) ----------
+  // (round 18, trim) the decoded pictures are kept for the next export, the newest 48 only (a whole board's full-size
+  // images stayed in memory for the session after one export)
   const imgCache = new Map();
-  const loadImg = (p) => { if (!p) return Promise.resolve(null); if (!imgCache.has(p)) imgCache.set(p, V.loadImage(B.fileUrl(p)).catch(() => null)); return imgCache.get(p); };
+  const loadImg = (p) => {
+    if (!p) return Promise.resolve(null);
+    let hit = imgCache.get(p);
+    if (hit) imgCache.delete(p); else hit = V.loadImage(B.fileUrl(p)).catch(() => null);
+    imgCache.set(p, hit);
+    if (imgCache.size > 48) imgCache.delete(imgCache.keys().next().value);
+    return hit;
+  };
   const stripMd = (t) => String(t || '').replace(/[#*_`>]+/g, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1');
   function wrap(ctx, text, x, y, maxW, lh, maxLines = 99) {
     let line = 0;

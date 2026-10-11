@@ -255,7 +255,6 @@ function toolAccess(name, input = {}) {
   if (name === 'Bash') return { action: 'run', target: String(input.command || '').slice(0, 400), tool: name };
   return null;
 }
-const partnerName = (agent) => (agent.engine === 'codex' ? 'Claude' : 'Astra');
 // Tool guides go into the system prompt, which the hub controls (the CLI may drop MCP server instructions when
 // --system-prompt replaces its own), once, instead of being repeated in tool descriptions.
 const threeGuide = () => require('./mcp/three-guide');

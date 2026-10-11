@@ -104,6 +104,7 @@ const ChatThings = (() => {
     let fps = 30;
     try { if (typeof FrameRead !== 'undefined') { const i = await FrameRead.info(path); if (i?.fps > 1) fps = i.fps; } } catch { /* 30 */ }
     fpsCache.set(path, fps);
+    if (fpsCache.size > 200) fpsCache.delete(fpsCache.keys().next().value);
     return fps;
   }
   const clock = (t, fps) => `f ${Math.floor(t * fps + 1e-4)} · ${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}`;

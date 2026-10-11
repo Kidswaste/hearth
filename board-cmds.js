@@ -7,7 +7,6 @@ const BoardCmds = (() => {
   const AREA = 'Board';
   const words = (s) => String(s || '').trim().split(/\s+/).filter(Boolean);
   const opts = (list, args) => { const q = String(args || '').toLowerCase().split(/\s+/).pop(); return list.map((x) => (typeof x === 'string' ? { value: x } : x)).filter((x) => !q || String(x.value).toLowerCase().includes(q)).slice(0, 16); };
-  const idOpts = (list) => list.map((x) => ({ value: x.id, hint: x.name }));
   const showBoard = async () => { activate('tool:board'); await B.ready(); await new Promise((r) => setTimeout(r, B.isMounted() ? 30 : 250)); };
   const needSel = () => { const s = B.selected(); if (!s.length) throw new Error('Select something on the board first (or name it: /board-search <words>).'); return s; };
   // the chat's linked board, else the current one

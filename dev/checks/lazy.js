@@ -93,9 +93,13 @@ const dock = document.querySelector('[data-id="tool:three"] .tool-dock');
 check('dock with the director chat', Boolean(dock && !dock.hidden && dock.querySelector('form.composer')));
 check('director strip', Boolean(document.querySelector('[data-id="tool:three"] .dd-strip, [data-id="tool:three"] .director-strip, [data-id="tool:three"] [class*="dd-"]')));
 // every group comes in soon after the first screen, in idle time
-await until(() => Lazy.state().every((s) => s.state === 'loaded'));
-check('every group loaded after the first screen', Lazy.state().every((s) => s.state === 'loaded'), Lazy.state().map((s) => `${s.name}:${s.state}@${s.at}`).join(' '));
-check('ready before the groups', Lazy.state().every((s) => s.name === 'lab' || s.at > (performance.getEntriesByName('hearth:ready')[0]?.startTime || 0)), `ready @${Math.round(performance.getEntriesByName('hearth:ready')[0]?.startTime)}`);
+await until(() => Lazy.state().every((s) => s.state === 'loaded' || s.tier === 'use'));
+check('every group loaded after the first screen', Lazy.state().every((s) => s.state === 'loaded' || s.tier === 'use'), Lazy.state().map((s) => `${s.name}:${s.state}@${s.at}`).join(' ')); // (a 'use' group, like codeflow, waits for its first use)
+check('ready before the groups', Lazy.state().every((s) => s.name === 'lab' || s.tier === 'use' || s.at > (performance.getEntriesByName('hearth:ready')[0]?.startTime || 0)), `ready @${Math.round(performance.getEntriesByName('hearth:ready')[0]?.startTime)}`);
+// (round 18) a 'use' group (the code flow view) loads on its first command
+check('code flow waits for its first use', Lazy.state().find((s) => s.name === 'codeflow')?.state === 'stub');
+const outline = await Commands.tryRun('/code-outline', H.claudeAgent().id, null, { say: () => {}, note: () => {} }).catch((err) => `ERR ${err.message}`);
+check('/code-outline loads the code flow group', Lazy.loaded('codeflow') && typeof CodeFlow !== 'undefined', String(outline).slice(0, 80));
 H.config.settings = { ...(H.config.settings || {}), startOn: '' };
 await saveConfig();
 if (out.bad.length) throw new Error(`lazy: ${out.bad.join(' | ')}`);

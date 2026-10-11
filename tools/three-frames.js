@@ -140,7 +140,6 @@ const ThreeFrames = (() => {
   const modeOf = () => store_('three.frameModes', {});
   // Frame mode: on for a loaded video unless you turned it off for that file (/footage off)
   const on = () => Boolean(F.player?.loaded && F.player.isVideo && F.clock && modeOf()[F.path] !== false);
-  const clockNow = () => F.clock;
   const D = () => F.player?.duration || 0;
   // the footage's real end: the end of its last frame (a browser can report the last frame's start as the duration)
   const srcEnd = () => { const c = F.clock; const d = D(); if (!c || c.source === 'guess' || !c.frames) return d; const n = c.frames - 1; return Math.max(d, r6(timeOf(c, n) + durOf(c, n))); };

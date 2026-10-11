@@ -269,7 +269,7 @@ const Capture = (() => {
       };
       const finish = (val) => {
         if (done) return; done = true;
-        ov.remove(); removeEventListener('keydown', onKey, true);
+        ov.remove(); removeEventListener('keydown', onKey, true); removeEventListener('keyup', onKeyUp, true); // (round 18: the keyup one stayed, holding the overlay)
         resolve(val);
       };
       const onKey = (e) => {
@@ -286,7 +286,8 @@ const Capture = (() => {
       };
       let lastX = 0; let lastY = 0;
       addEventListener('keydown', onKey, true);
-      addEventListener('keyup', (e) => { if (e.key === ' ') moving = null; }, true);
+      const onKeyUp = (e) => { if (e.key === ' ') moving = null; };
+      addEventListener('keyup', onKeyUp, true);
       ov.addEventListener('pointermove', (e) => {
         lastX = e.clientX; lastY = e.clientY;
         if (!start) {
