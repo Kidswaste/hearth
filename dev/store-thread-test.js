@@ -13,7 +13,7 @@ const { spawnSync } = require('child_process');
 
 if (process.argv[2] !== '--inside') {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-store-thread-'));
-  for (const f of ['store.js', 'storework.js', 'fswalk.js']) fs.copyFileSync(path.join(__dirname, '..', f), path.join(dir, f));
+  for (const f of ['store.js', 'storework.js', 'fswalk.js', 'sync-merge.js']) fs.copyFileSync(path.join(__dirname, '..', f), path.join(dir, f));
   fs.copyFileSync(__filename, path.join(dir, 't.js'));
   const r = spawnSync(process.execPath, [path.join(dir, 't.js'), '--inside'], { cwd: dir, env: { ...process.env, HEARTH_STORE_THREAD: '1' }, stdio: 'inherit', timeout: 60000 });
   fs.rmSync(dir, { recursive: true, force: true });
@@ -71,6 +71,18 @@ const J = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
   ok(JSON.stringify(off) === JSON.stringify(fsw.search(ws, 'anvil')) && off.length === 2 && off[0].count === 2, `folder search: ${JSON.stringify(off).slice(0, 120)}`);
   const offList = await store.runOff('flist', { dir: ws, opts: { recursive: true } });
   ok(offList.length === 3, `folder listing: ${offList.length}`);
+  // cloud sync's big-store hash on the thread = the engine's own (cloud form of the value, then sha1)
+  {
+    const S = require(path.join(process.cwd(), 'sync-merge.js'));
+    const ctx = S.withExt({ dataDir: store.DATA_DIR, cloudRoot: '/cloud', home: os.homedir(), win: false, aliases: { data: [], cloud: [], home: [] } }, {});
+    const file = path.join(kv, 'paths.json');
+    fs.writeFileSync(file, JSON.stringify({ a: path.join(store.DATA_DIR, 'captures', 'x.mp4'), b: [1, 2], c: 'plain' }, null, 2));
+    const r = await store.runOff('syncHash', { file, rel: 'kv/paths.json', cloud: false, ctx });
+    const t = JSON.stringify(S.toCloud(J(file), ctx));
+    ok(r.h === require('crypto').createHash('sha1').update(t).digest('hex') && r.t === t && /captures/.test(t), `sync hash on the thread: ${r.t}`);
+    fs.writeFileSync(file, '{ broken');
+    ok((await store.runOff('syncHash', { file, rel: 'kv/paths.json', cloud: true, ctx: null })).bad === true, 'a half-written store is reported, not hashed');
+  }
   // quitting writes what is still pending
   store.saveChat({ id: 'last', agentId: 'a', title: 'last', updatedAt: 1, messages: [] });
   store.flushSync();

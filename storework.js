@@ -11,6 +11,7 @@
 //   search { dir, query }         full-text search through every chat's messages (same hits, counts and snippets)
 //   read { file, fallback }       a big store read and parsed here
 //   flist / fsearch               fsapi.js's recursive folder listing and folder search (on a second copy: "files")
+//   syncHash { file, rel, cloud, ctx }  cloud sync: a big JSON store's cloud form + hash (sync-engine.js hashJson)
 // Chat files are parsed once and kept (by size + mtime): a list or a search only re-reads the files that changed, and
 // a chat saved through here is indexed from the value itself (no re-read). Texts are kept up to TEXT_CAP characters
 // in all; past that, a search reads the files again (still on this thread).
@@ -127,6 +128,15 @@ const OPS = {
   // and its full-text search of a folder
   flist({ dir, opts }) { return flist(dir, opts || {}); },
   fsearch({ dir, q, opts }) { return fsearch(dir, q, opts || {}); },
+  // cloud sync (sync-engine.js hashJson): a big JSON store read, put in its cloud form and hashed, as the engine does
+  syncHash({ file, rel, cloud, ctx }) {
+    const S = require('./sync-merge');
+    let v;
+    try { v = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return { bad: true }; }
+    if (!cloud && rel === 'app/config.json') v = S.portableConfig(v);
+    const t = JSON.stringify(cloud ? v : S.toCloud(v, ctx));
+    return { h: sha(t), t: t.length < 2e6 ? t : null };
+  },
   forget({ file }) { written.delete(file); drop(file); return true; },
   ping() { return { chats: index.size, textChars }; },
 };

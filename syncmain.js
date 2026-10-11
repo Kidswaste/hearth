@@ -50,6 +50,8 @@ function start() {
   engine = createEngine({
     dataDir: opts.dataDir, configPath: opts.configPath, themePath: opts.themePath, cloudRoot: settings.root,
     big: settings.big !== false,
+    // (round 20, offmain) big JSON stores are parsed and hashed on the store's files thread
+    hashJson: opts.store?.runOff ? (file, a) => opts.store.runOff('syncHash', { file, ...a }) : undefined,
     log: (...a) => { if (process.env.HEARTH_SYNC_LOG) console.log('sync:', ...a); },
     onStatus: (st) => { lastStatus = st; send('sync:status', publicStatus()); },
     onPulled: (list) => send('sync:pulled', list),

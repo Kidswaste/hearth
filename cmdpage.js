@@ -85,6 +85,15 @@ const CmdPage = (() => {
   }
 
   // ---------- the list ----------
+  // (round 20, offmain) each command's searchable words, lower-cased once (they were rebuilt for ~1,000 commands on
+  // every search); made again when commands are added or replaced
+  let hay = new WeakMap(); let hayN = 0;
+  function hayOf(d, all) {
+    if (all.length !== hayN) { hay = new WeakMap(); hayN = all.length; }
+    let t = hay.get(d);
+    if (t === undefined) { t = `${descOf(d)} ${d.desc} ${d.area} ${Commands.keywordsOf(d)}`.toLowerCase(); hay.set(d, t); }
+    return t;
+  }
   function matches(q) {
     const s = q.trim().toLowerCase().replace(/^\//, '');
     const all = Commands.list();
@@ -98,7 +107,7 @@ const CmdPage = (() => {
     }
     try { (Commands.suggest(q, { limit: 24 }) || []).forEach((x, i) => add(x.def, 35 - i)); } catch { /* plain words are a bonus */ }
     const words = s.split(/\s+/).filter((w) => w.length > 2);
-    if (words.length) for (const d of all) { const t = `${descOf(d)} ${d.desc} ${d.area} ${Commands.keywordsOf(d)}`.toLowerCase(); const n = words.filter((w) => t.includes(w)).length; if (n) add(d, 10 + n * 4); }
+    if (words.length) for (const d of all) { const t = hayOf(d, all); const n = words.filter((w) => t.includes(w)).length; if (n) add(d, 10 + n * 4); }
     return [...score].sort((a, b) => b[1] - a[1]).slice(0, 80).map(([n]) => Commands.get(n)).filter(Boolean);
   }
   function sections() {

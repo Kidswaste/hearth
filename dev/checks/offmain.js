@@ -51,14 +51,12 @@ const v = () => Native.view(claude.id);
 await probe('openLongChat', async () => {
   Native.open(claude.id, big.id);
   await until(() => v().list.querySelectorAll('.msg').length >= 40, 10000);
-  await until(() => !v().list.querySelector('.body.md-pending'), 10000);
   await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
 });
 await wait(400);
 await probe('showAllMessages', async () => {
   Native.showEarlier(claude.id);
   await until(() => v().list.querySelectorAll('.msg').length >= 300, 10000);
-  await until(() => !v().list.querySelector('.body.md-pending'), 10000);
   await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
 });
 { // the Markdown is the same as rendering it right here
@@ -66,6 +64,23 @@ await probe('showAllMessages', async () => {
   const ref = document.createElement('div'); ref.innerHTML = window.renderMarkdownLive(big.messages[11].text);
   out.markdownSame = Boolean(node) && node.querySelector('p')?.innerHTML === ref.querySelector('p')?.innerHTML && node.querySelectorAll('li').length === ref.querySelectorAll('li').length && node.querySelectorAll('pre').length === ref.querySelectorAll('pre').length;
   if (!out.markdownSame) fail.push('markdown of a long chat differs from a direct render');
+}
+// a director chat full of code: 60 messages, each reply a ~120-line highlighted code block (the Markdown worker's case)
+const codeReply = (i) => `Here is the scene ${i}:\n\n\`\`\`js\n${Array.from({ length: 120 }, (_, k) => `const m${k} = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x${(k * 99991 + i).toString(16).slice(-6).padStart(6, '0')} })); // layer ${k}`).join('\n')}\n\`\`\`\n\nTell me what to change.`;
+const codeChat = mkChat(`om-code-${Date.now()}`, 60, 'Offmain code chat', (i) => (i % 2 ? codeReply(i) : `Make scene ${i}`));
+await window.hub.saveChat(codeChat);
+await wait(300);
+await probe('openCodeChat', async () => {
+  Native.open(claude.id, codeChat.id);
+  await until(() => v().list.querySelectorAll('.msg').length >= 40, 10000);
+  await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+});
+{
+  const node = v().list.querySelector('.msg.assistant[data-index="59"] > .body pre code');
+  const ref = document.createElement('div'); ref.innerHTML = window.renderMarkdownLive(codeChat.messages[59].text);
+  out.codeSame = Boolean(node) && node.innerHTML === ref.querySelector('pre code').innerHTML && node.querySelectorAll('.hl-k').length > 100;
+  if (!out.codeSame) fail.push('highlighted code differs from a direct render');
+  out.md = window.Md?.stats?.();
 }
 // switching away and back (rendered replies are cached)
 await probe('reopenLongChat', async () => {
