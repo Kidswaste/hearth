@@ -643,3 +643,9 @@ One searchable **FX picker** in the Three.js Lab (**X**, the Layers **＋ Layer*
 - ✓ 12 materials, 8 light presets, 8 studio looks, Poly Haven HDRI skies, shadow / mirror / gloss grounds, fog, bloom, depth of field, clips with speed / loop / blend (+ Mixamo files), turntable, explode, gizmo (W / E / R), kick reactions at 0 until asked.
 - ✓ 15 camera moves (orbit, dolly, crane, hero reveal…) as keyframes on the scene's clock with a 🎥 cue: they play in renders and the Lab sequence.
 - ○ Tested headless with a generated animated GLB (`sh dev/run-checks.sh lab3d-models`); real Meshy / Sketchfab downloads and huge models aren't run here.
+
+## Video, lighter (round 16, videoperf)
+- ✓ Filmstrips, card thumbnails, hover strips, clip thumbnails and waveforms / beats are made by ffmpeg in the background (low priority) and kept on disk: opening a video went from ≈10 s to ≈2 s here, reopening is instant, and the window's thread does no picture work (`/video-cache`).
+- ✓ Smoother scrubbing (one seek at a time), clip tracks draw only what's on screen, automatic proxies for 4K / HEVC / ProRes clips in the editor (`/edit-proxy auto`), decoders let go while Video Review is hidden.
+- ✓ Recording draws its frames in a worker; renders, exports and proxies run below normal priority (`/renders rush` for full speed).
+- ○ Measured headless (`dev/checks/videoperf.js`, docs/upgrades/videoperf.md); real 4K footage and the Windows priority class aren't run here.
