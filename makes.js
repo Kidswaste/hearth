@@ -413,7 +413,9 @@ const Makes = (() => {
   function roomsOf(make) { return make.parts.filter((p) => p.own && p.chatId && summary(p.chatId)); }
   function panelTop(root, { row, itemOf, q, collapsed, toggleGroup }) {
     if (!loaded) return;
-    const list = live().filter((m) => roomsOf(m).length);
+    // (round 23) a make whose project shows its rooms (projects.js) has no group of its own
+    const pj = window.Lazy && !window.Lazy.loaded('projects') ? null : window.Projects;
+    const list = live().filter((m) => roomsOf(m).length && !pj?.hidesMake?.(m.id));
     let shown = 0;
     for (const make of list) {
       if (shown >= MAX_GROUPS && !q) break;

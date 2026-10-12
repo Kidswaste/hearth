@@ -719,3 +719,10 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ Voice commands, no tokens: "freeze", "save", "next scene", "shuffle", "play", "stop"…, "director, make it pinker" → the Three Director, your own phrases (`/voice word`), `/voice words`.
 - ✓ Replies to what you said are read aloud without code; any key stops; `/voice speak system` uses macOS `say` / Windows voices.
 - ○ Tested with a fake whisper-cli and an oscillator as the microphone (`sh dev/run-checks.sh voice`); not with a real whisper or mic.
+## Projects and Home (round 23, projects, 66 upgrades: docs/upgrades/projects.md)
+- ✓ A project groups chats (any agent), Lab scenes / sequences, boards, renders, captures, workspace files, downloads and deploys, with a name, mark and color (the makes' palette), a cover, notes and a status; synced and merged item by item between your computers.
+- ✓ Made by hand (`/project new`, Home ＋, right-click a chat or a sketch › Project), from a make automatically, or suggested without tokens from names, links and timing ("3 chats and 2 scenes are about “Stoop Ronin”"); a project's chat brings its scene, and captures / renders made in front of it join.
+- ✓ Home (⌂, `/home`): cards with covers and "continue where you left off" (last chat, scene, render), a project's page (notes, status, everything by kind); drawn in chunks, lazy pictures.
+- ✓ Search everything (Ctrl/⌘+Shift+K, `/everything`): projects, chats and their messages, scenes (code, sliders), board items, renders, files, commands; kinds as chips, keys, results open where they live.
+- ✓ The chats list groups chats by project (collapsible, ⏷ only one project, on / off); the Lab's sketch picker groups scenes by project.
+- ○ Tested headless with fake engines (`sh dev/run-checks.sh projects`); not on the owner's real data or two real computers.

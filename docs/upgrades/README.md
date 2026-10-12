@@ -88,7 +88,8 @@ line count is lower than the number of upgrades).
 | Live / VJ (round 22): MIDI learn with soft takeover, pads and keys for GO / cut / next scene / shuffle / freeze / tap / black-out, a set list with a live cue monitor and crossfades / cuts / dips landing on the beat or bar, fullscreen output on the second screen, beat LFOs on any slider, show mode (locked frame rate, holds the last good frame); `/stage`, `/vj` | [labstage.md](labstage.md) | 65 |
 | Lab exports (round 22): every render in its own hidden page (the Lab keeps playing, no long tasks on the app), frame-exact and repeatable, up to 8K with 2–4× supersampling and real motion blur; MP4 / HEVC 10-bit / ProRes 4444 + alpha / WebM + alpha / PNG sequence, perfect GIF / MP4 loops, 16-bit stills; the scene as GLB, one-file HTML, slider preset, contact sheet; `/lab-export` | [labexport.md](labexport.md) | 63 |
 | Voice (round 23): hold Ctrl+Space (or your key / mouse button) to talk to a chat, transcribed on your computer by whisper.cpp / faster-whisper (`/voice install` for Mac and Windows), words land in the chat box or send on release; token-free voice commands ("freeze", "save", "next scene", "director, make it pinker"), replies to what you said read aloud | [voice.md](voice.md) | 53 |
-| **Total** | | **11,303** |
+| Projects and Home (round 23): projects group chats, Lab scenes, boards, renders, captures, files and deploys (by hand, from a make, or suggested token-free); Home (⌂) with covers and "continue where you left off"; one search across everything (Ctrl/⌘+Shift+K, `/everything`); the chats list and the Lab's sketch picker group by project | [projects.md](projects.md) | 66 |
+| **Total** | | **11,369** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.

@@ -12,7 +12,12 @@ const Panel = (() => {
   // row(rowEl, item, agent) after a chat row is built, render() after the list is drawn (chat-scenes.js)
   // (round 11, makes.js) skip(chatSummary) → true keeps a chat out of its agent's group (it shows in its make's group);
   // top(root, { row, itemOf, q }) draws groups above the agents' (each make with its rooms)
-  const hooks = { row: [], render: [], skip: [], top: [] };
+  // (round 23, projects.js) view(chatSummary, view) → true / false for a view it knows (undefined: not its own; its
+  // label(view) names it on the chip), menu(view, setView) → rows for the ⏷ menu, itemMenu(item, agent) → rows for a
+  // chat's right-click menu
+  const hooks = { row: [], render: [], skip: [], top: [], view: [], menu: [], itemMenu: [] };
+  const fromHooks = (list, ...a) => list.flatMap((fn) => { try { return fn(...a) || []; } catch (err) { console.warn(err); return []; } });
+  const viewName = (v) => { for (const fn of hooks.view) { try { const l = fn.label?.(v); if (l) return l; } catch { /* its own trouble */ } } return v; };
   const skipped = (c) => !view && hooks.skip.some((fn) => { try { return fn(c); } catch { return false; } });
   const itemOf = (c) => ({ key: c.id, title: c.title, chatId: c.id, pinned: c.pinned, updatedAt: c.updatedAt, ...metaOf(c.id) });
 
@@ -41,6 +46,7 @@ const Panel = (() => {
     if (v === 'busy') return Native.isBusy(c.id);
     if (v.startsWith('tag:')) return (metaOf(c.id).tags || []).includes(v.slice(4).replace(/^#/, ''));
     if (v.startsWith('folder:')) return (metaOf(c.id).folder || '').toLowerCase() === v.slice(7);
+    for (const fn of hooks.view) { try { const r = fn(c, v); if (r !== undefined) return r; } catch { /* its own trouble */ } }
     return agent.name.toLowerCase() === v || agent.id === v; // an agent's name: only its chats
   }
 
@@ -105,6 +111,7 @@ const Panel = (() => {
           { label: 'Copy as Markdown', action: async () => copyText(await Native.markdownOf(item.chatId), 'Chat copied') },
           { label: 'Export as Markdown file…', action: () => onChat(agent.id, item.chatId, '/export md file') },
         ] },
+        ...fromHooks(hooks.itemMenu, item, agent),
         others.length ? { label: 'Continue with', items: () => others.map((a) => ({ label: a.name, action: () => Native.continueWith(item.chatId, a.id) })) } : null,
         { label: 'Delete chat', key: 'Del', danger: true, action: () => { if (confirm(`Delete "${item.title}"? You can restore it for 30 days (Ctrl+K → Recently deleted chats).`)) Native.remove(item.chatId); } },
       ]
@@ -168,7 +175,7 @@ const Panel = (() => {
     const q = filter.toLowerCase();
     if (view) {
       const chip = el('div', 'panel-view');
-      chip.append(el('span', null, `Showing: ${view}`));
+      chip.append(el('span', null, `Showing: ${viewName(view)}`));
       const x = el('button', null, '×');
       x.title = 'Show every chat';
       x.addEventListener('click', () => setView(null));
@@ -318,6 +325,7 @@ const Panel = (() => {
         ...Object.keys(SORTS).map((k) => ({ label: `${sortBy() === k ? '✓ ' : ''}Sort: ${{ recent: 'latest first', oldest: 'oldest first', title: 'by title' }[k]}`, action: () => { store.set('panel.sort', k); render(); } })),
         ...folders.map((f) => ({ label: `${view === `folder:${f.toLowerCase()}` ? '✓ ' : ''}📁 ${f}`, action: () => setView(`folder:${f.toLowerCase()}`) })),
         ...tags.map((t) => ({ label: `${view === `tag:${t}` ? '✓ ' : ''}#${t}`, action: () => setView(`tag:${t}`) })),
+        ...fromHooks(hooks.menu, view, setView),
       ]);
     });
     search.after(btn);

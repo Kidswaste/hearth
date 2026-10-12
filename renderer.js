@@ -719,6 +719,7 @@ function handleShortcut({ key, shift }) {
   else if (key === 'n') { if (H.agent(H.activeId)?.mode === 'native') Native.newChat(H.activeId); }
   else if (key === 'r') { if (shift) window.hub.reloadWindow(); else if (!ThreeLab.restartVisible()) H.surfaces.get(H.activeId)?.webview?.reload(); }
   else if (key === ',') AppUI.openSettings();
+  else if (key === 'k' && shift) (window.Lazy ? Lazy.load('projects') : Promise.resolve()).then(() => ProjectsSearch.open()).catch(() => AppUI.palette()); // (round 23) search everything (projects-search.js)
   else if (key === 'k') AppUI.palette();
   else if (key === 'f') AppUI.find();
   else if (key === '/') { if (typeof KeysUI !== 'undefined') KeysUI.open(); else AppUI.shortcutsHelp(); } // the keys sheet (keys-ui.js)
