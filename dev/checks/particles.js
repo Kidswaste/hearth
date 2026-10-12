@@ -56,7 +56,7 @@ await safe('moves', async () => {
   let dp = 0; for (let i = 0; i < pa.length; i++) dp += Math.abs(pa[i] - pb[i]); dp /= pa.length || 1;
   step('particles move with the scene\'s clock (state and picture)', a?.alive > 100 && Math.abs(a.sig - b.sig) > 0.05 && b.simT > a.simT && dp > 0.05 && mean(pb) > 1, { a, b, picMoved: Math.round(dp * 100) / 100, bright: Math.round(mean(pb)), count: s?.count, ms: s?.ms });
   const sl = d.sliders(L.id).sliders.map((x) => x.key);
-  step('its sliders are the preset\'s (count, curl, kickEmit, bassForce, hueBright…)', ['count', 'curl', 'kickEmit', 'bassForce', 'hueBright', 'swirl', 'vortex'].every((k) => sl.includes(k)), sl);
+  step('its sliders are the preset\'s (count, curl, kickEmit, bassForce, hueBright…)', ['count', 'curl', 'kickEmit', 'bassForce', 'hueBright', 'swirl', 'vortexPull'].every((k) => sl.includes(k)), sl);
   await smoke({ shot: '/tmp/hearth-particles-galaxy.png' });
 });
 

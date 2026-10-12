@@ -742,3 +742,9 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ Same analysis for songs and live: 8 bands + per-band hits, kick / snare / hat / vocal hits, LUFS-ish loudness, centroid / flux / flatness, beat + bar phase with a confidence, chroma, key (+ a hue); songs: builds and drops over the whole song in a Worker, cached. Sketches: `audio.feat.<name>`, `audio.env()`, `onHit('kickOn')` (`/audio`, `/song-features`).
 - ✓ Any slider follows any sound through a curve (amount, threshold, punch, attack / release, invert) with a live meter on the slider; 16 presets (pump on kick, glow on hats, zoom on drops…): right-click a slider, its ♪ panel, `/react-to`, `/react-preset`, `/react-curve`.
 - ○ Nothing is computed until a sketch or a slider reads a feature. Tested on generated songs and a stubbed getUserMedia (`node dev/audio-test.js`, `sh dev/run-checks.sh labaudio`), not on a real BlackHole install.
+## GPU particles (round 24, particles, 119 upgrades: docs/upgrades/particles.md)
+- ✓ ✦ particle layers: `particles(P, opts)` simulated on the GPU (float textures, 60 steps a second of the scene's clock: pause holds, renders are the same every time), 100k–2M on a real GPU, fewer in the preview when frames drop.
+- ✓ Emitters (point… spiral, text, a reference picture, a 🧊 model layer's surface, another layer's bright pixels), forces (curl flow, attractors, vortex, gravity, drag, turbulence, boids-lite, hold the shape / dissolve), points / streaks / instanced meshes, trails, add / alpha.
+- ✓ Music sliders: burst on kick, explode on kick, forces × bass, hue on brightness; `/particles react` adds the preset's react-to links.
+- ✓ 30 presets in one picker (`/particles`, right-click › ✦ Particles, Ctrl/⌘+K, FX picker); directors: `three_do particles` (help on demand).
+- ○ Tested on SwiftShader at 16k particles only (`sh dev/run-checks.sh particles`).
