@@ -82,11 +82,16 @@ Count: **24** upgrades.
 - `dev/checks/labdirector.js` (lab group): the three turns through the fake Claude's real MCP calls (classic and batched), edit apply time vs the first new frame, pictures by size, a broken edit with `safe: true`, `three_do undo`.
 - `dev/director-speed.js`: the tool server's start (runtime alone, → initialize, → tools/list) and call round trips against a stand-in hub.
 - `dev/director-mcp-test.js`: boot loads no guide / map / http, three_do lists batch and undo with no repeated enum, the lean list ≤ 1,700 tokens, no hub → one clean error, a restarted hub is found again.
-- Ran: director-mcp-test, director-cost, labdirector, journey-lab, assist, brain, scenes, qa-commands, director-tools.
+- Ran: director-mcp-test, director-cost, labdirector, journey-lab, assist, brain, qa-commands, director-tools (all pass); scenes (one timing step fails, same on the base commit).
 
 ## Notes
 - Times on this machine come from software rendering under load from other agents (9:16 draws at 1–2 fps here); on a
   real GPU every phase is shorter, and the waits removed (1.6 s per edit, 1.5 s per frame size) are the same.
+- Whole-turn wall times in the fake runs swing 4–12 s from run to run on this loaded machine (the edit with a small
+  picture: 3.7 s before vs 1.6–3.8 s after), so they aren't claimed as a gain; the removed fixed waits, the fewer steps
+  and the tokens are the measured gains.
+- `scenes` fails its "switching cross-fades from a picture" step on this machine before and after this round (the
+  old scene's picture must arrive within 700 ms; base commit checked: same failure under load).
 - Outside this lane (small hooks): `tools/three.js` (one line passes the preview's messages to the director, the
   director's waits use `ThreeDirector.settle`, `director.shotSmall`, a scheduled thumbnail doesn't overwrite one on its
   way), `director-cmds.js` (/director-stats footer), `engines.js` (one self-review sentence), `dev/run-checks.js` (lab group).
