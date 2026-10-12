@@ -6596,6 +6596,674 @@ globalThis.shader.check = (spec) => withThumbRenderer(16, 16, (renderer) => {
 });
 window.__labShader = { info: () => [...SH.stats.values()].map((x) => ({ ...x, ms: Math.round(x.ms * 100) / 100 })), checked: () => SH.checked.size };
 
+// ---------- GPU particles (round 24 "particles": the hub side is tools/three-particles*.js) ----------
+// particles(P, opts) inside a layer's code makes it a ✦ particle layer: the particles live in float textures on the
+// GPU (position + age, velocity), stepped by two full-screen passes ping-ponged at a fixed 60 steps a second of the
+// scene's clock, and drawn as points, streaks or small instanced meshes. P is the layer's tweak() (live sliders:
+// keyframes, Shuffle and ♪ react-to all work on them); a key missing from P comes from opts, then from PT_DEF.
+// opts (read once): emitter 'point' | 'sphere' | 'ball' | 'disc' | 'ring' | 'box' | 'plane' | 'spiral' | 'torus' |
+// 'line' | 'text' (opts.text, opts.font) | 'image' (opts.image: a reference key) | 'model' (opts.source: a 🧊 model
+// layer's name, or 'auto') | 'layer' (opts.source: another layer's bright pixels), look 'points' | 'streak' | 'mesh'
+// (opts.mesh 'tetra' | 'octa' | 'box' | 'shard'), sprite, blend 'add' | 'alpha', colorBy 'life' | 'speed' | 'source' |
+// 'height' | 'random', attractors [[x, y, z, strength]…], camera 'own' | 'source', seed, bg.
+// Time: the sim steps to the scene's clock (its song, its own timeline, a sequence clip's or a precomp's time): a
+// paused song holds the particles, a seek (or a fresh export page) restarts them a few seconds before the frame and
+// steps up to it, so a render is the same every time. In the preview the count follows the adaptive quality (and Light
+// mode); renders and exports draw all of them. Nothing is allocated per frame (uniforms written in place).
+const PT = { stats: new Map(), live: new Map(), drive: { kick: null, bass: null, centroid: null }, soft: null, xp: new URLSearchParams(location.search).get('xp') === '1' };
+const PT_RATE = 60;
+const PT_DEF = {
+  count: 100, emit: 1, life: 4, lifeVar: 0.5, speed: 0.6, spread: 1, outward: 0, swirl: 0, dirX: 0, dirY: 1, dirZ: 0, jitter: 0.02, homeJitter: 0.01,
+  size: 0.035, sizeEnd: 0.4, sizeVar: 0.5, opacity: 0.85, fadeIn: 0.08, fadeOut: 0.5, color1: '#ffd27a', color2: '#ff6a3d', color3: '#5a2bff', hue: 0, sat: 1,
+  gravity: 0, wind: 0, drag: 0.5, curl: 0.6, curlScale: 0.6, curlSpeed: 0.15, turb: 0, vortex: 0, vortexPull: 0, attract: 0, boids: 0,
+  form: 0, dissolve: 0, sweep: 0, maxSpeed: 12, floor: -99, bounce: 0.35, bounds: 40, sink: 0, trail: 0, streak: 0.15, spinMesh: 1,
+  kickEmit: 0, kickPush: 0, bassForce: 0, hueBright: 0, emitSize: 1, emitX: 0, emitY: 0, emitZ: 0, emitSpin: 0, orbit: 0, distance: 6, tilt: 0.12,
+  emitter: 'sphere', look: 'points', sprite: 'soft', blend: 'add', colorBy: 'life', mesh: 'tetra', bg: 'none', threshold: 0.35,
+};
+const PT_SPRITES = ['soft', 'dot', 'ring', 'star', 'square'];
+const PT_COLORBY = ['life', 'speed', 'source', 'height', 'random'];
+// software GPUs (SwiftShader, llvmpipe: the tests, a VM) keep the count small by themselves
+function ptSoftware(gl) {
+  if (PT.soft != null) return PT.soft;
+  try { const x = gl.getExtension('WEBGL_debug_renderer_info'); const s = x ? String(gl.getParameter(x.UNMASKED_RENDERER_WEBGL)) : ''; PT.soft = /swiftshader|llvmpipe|software|basic render/i.test(s); } catch { PT.soft = false; }
+  return PT.soft;
+}
+const PT_HASH = `
+uniform float uSeed;
+uint pcg(uint v) { uint s = v * 747796405u + 2891336453u; uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u; return (w >> 22u) ^ w; }
+float rnd(uint a, uint b) { return float(pcg(a * 1664525u + pcg(b + uint(uSeed) * 7919u))) * (1.0 / 4294967296.0); }
+vec3 rdir(uint a, uint b) { float z = rnd(a, b) * 2.0 - 1.0; float t = rnd(a, b + 7919u) * 6.2831853; float r = sqrt(max(0.0, 1.0 - z * z)); return vec3(r * cos(t), z, r * sin(t)); }
+uniform int uS, uHS, uHN;
+ivec2 homeAt(uint id) { uint n = uint(max(uHN, 1)); uint h = id % n; return ivec2(int(h % uint(uHS)), int(h / uint(uHS))); }
+`;
+const PT_SIM = `precision highp float;
+precision highp int;
+precision highp sampler2D;
+${PT_HASH}
+uniform sampler2D uPos, uVel, uVelNew, uHome;
+uniform float uStep, uDt, uT, uInit, uPrewarm, uSpawnP, uBurst, uLife, uLifeVar, uJitter, uHomeJit, uSpeed, uSpread, uOutward, uSwirl;
+uniform float uDrag, uCurl, uCurlScale, uCurlSpeed, uTurb, uVortex, uVortexPull, uBoids, uForm, uDissolve, uSweep, uPush, uForceMul, uMaxSpeed, uFloor, uBounce, uBounds, uSink;
+uniform vec3 uDir, uGravity, uCenter;
+uniform vec4 uAttr[4];
+uniform int uAttrN;
+uniform mat4 uEmitMat;
+layout(location = 0) out highp vec4 outC;
+uint ID; uint STEP; vec3 HL;
+float lifeOf(uint id) { return uLife * (1.0 - uLifeVar * rnd(id, 3u)); }
+vec3 homeOf(uint id) {
+  HL = texelFetch(uHome, homeAt(id), 0).xyz + rdir(id, 5u) * uHomeJit * rnd(id, 6u);
+  return (uEmitMat * vec4(HL, 1.0)).xyz;
+}
+bool spawning(float w) { return w < 0.0 && (rnd(ID, STEP * 2u + 11u) < uSpawnP || rnd(ID, STEP * 2u + 12u) < uBurst); }
+vec3 spawnVel(vec3 H) {
+  vec3 r = rdir(ID, STEP * 3u + 21u);
+  vec3 o = H - uCenter; float lo = length(o); vec3 on = lo > 1e-4 ? o / lo : r;
+  vec3 d = uDir * (1.0 - uSpread) + r * uSpread + on * uOutward;
+  return d * uSpeed * (0.55 + 0.45 * rnd(ID, STEP * 3u + 22u)) + cross(vec3(0.0, 1.0, 0.0), o) * uSwirl;
+}
+float h13(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
+// value noise with its gradient (Inigo Quilez); two of them crossed give a divergence-free flow (curl-like)
+vec4 noised(vec3 x) {
+  vec3 i = floor(x); vec3 w = fract(x);
+  vec3 u = w * w * w * (w * (w * 6.0 - 15.0) + 10.0); vec3 du = 30.0 * w * w * (w * (w - 2.0) + 1.0);
+  float a = h13(i); float b = h13(i + vec3(1, 0, 0)); float c = h13(i + vec3(0, 1, 0)); float d = h13(i + vec3(1, 1, 0));
+  float e = h13(i + vec3(0, 0, 1)); float f = h13(i + vec3(1, 0, 1)); float g = h13(i + vec3(0, 1, 1)); float h = h13(i + vec3(1, 1, 1));
+  float k1 = b - a; float k2 = c - a; float k3 = e - a; float k4 = a - b - c + d; float k5 = a - c - e + g; float k6 = a - b - e + f; float k7 = -a + b + c - d + e - f - g + h;
+  return vec4(a + k1 * u.x + k2 * u.y + k3 * u.z + k4 * u.x * u.y + k5 * u.y * u.z + k6 * u.z * u.x + k7 * u.x * u.y * u.z,
+    du * vec3(k1 + k4 * u.y + k6 * u.z + k7 * u.y * u.z, k2 + k5 * u.z + k4 * u.x + k7 * u.z * u.x, k3 + k6 * u.x + k5 * u.y + k7 * u.x * u.y));
+}
+vec3 flow(vec3 p) {
+  vec4 a = noised(p); vec4 b = noised(p + vec3(31.416, -47.853, 12.679));
+  vec4 c = noised(p * 2.03 + 17.1); vec4 d = noised(p * 2.03 - 23.7);
+  return cross(a.yzw, b.yzw) + 0.5 * cross(c.yzw, d.yzw);
+}
+float released() { return step(mix(rnd(ID, 9u), clamp(HL.x * 0.5 + 0.5, 0.0, 1.0), uSweep), uDissolve - 1e-4); }
+#ifdef PASS_VEL
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy); ID = uint(c.y * uS + c.x); STEP = uint(uStep);
+  vec3 H = homeOf(ID);
+  if (uInit > 0.5) { outC = vec4(spawnVel(H), 0.0); return; }
+  vec4 P = texelFetch(uPos, c, 0);
+  if (P.w < 0.0) { outC = spawning(P.w) ? vec4(spawnVel(H), 0.0) : vec4(0.0); return; }
+  vec3 p = P.xyz; vec3 v = texelFetch(uVel, c, 0).xyz; float k = uForceMul;
+  vec3 f = uGravity;
+  if (uCurl > 0.0) f += flow(p * uCurlScale + vec3(0.0, 0.0, uT * uCurlSpeed)) * uCurl * k * 3.0;
+  if (uTurb > 0.0) f += rdir(ID, STEP + 97u) * uTurb * k * 6.0;
+  vec3 r = p - uCenter;
+  if (uVortex != 0.0 || uVortexPull != 0.0) { vec3 rr = vec3(r.x, 0.0, r.z); float l2 = dot(rr, rr) + 0.25; f += cross(vec3(0.0, 1.0, 0.0), rr) * (uVortex * k * 2.0 / l2) - rr * uVortexPull * k; }
+  for (int i = 0; i < 4; i++) { if (i >= uAttrN) break; vec3 d = uAttr[i].xyz - p; float l2 = dot(d, d) + 0.08; f += d * (uAttr[i].w * k / (l2 * sqrt(l2))); }
+  if (uBoids > 0.0) {
+    vec3 av = vec3(0.0); vec3 ap = vec3(0.0); vec3 sep = vec3(0.0); float n = 0.0;
+    for (int j = 0; j < 4; j++) {
+      ivec2 o = clamp(c + (j == 0 ? ivec2(1, 0) : j == 1 ? ivec2(-1, 0) : j == 2 ? ivec2(0, 1) : ivec2(0, -1)), ivec2(0), ivec2(uS - 1));
+      vec4 q = texelFetch(uPos, o, 0); if (q.w < 0.0) continue;
+      vec3 dq = q.xyz - p; float l = length(dq);
+      av += texelFetch(uVel, o, 0).xyz; ap += q.xyz; n += 1.0;
+      if (l < 0.15) sep -= dq / max(l * l, 0.002) * 0.01;
+    }
+    if (n > 0.0) f += uBoids * ((av / n - v) * 2.0 + (ap / n - p) * 0.6 + sep - r * 0.05);
+  }
+  float hold = uForm * (1.0 - released());
+  if (hold > 0.0) f += (H - p) * hold * 40.0 - v * hold * 7.0;
+  if (uPush != 0.0) { float lr = length(r); v += (lr > 1e-4 ? r / lr : rdir(ID, 61u)) * uPush * (0.5 + rnd(ID, 62u)); }
+  v += f * uDt;
+  v *= exp(-uDrag * uDt);
+  float sp = length(v); if (sp > uMaxSpeed) v *= uMaxSpeed / sp;
+  if (p.y + v.y * uDt < uFloor && v.y < 0.0) { v.y = -v.y * uBounce; v.xz *= 0.8; }
+  outC = vec4(v, 0.0);
+}
+#else
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy); ID = uint(c.y * uS + c.x); STEP = uint(uStep);
+  if (uInit > 0.5) {
+    vec3 H = homeOf(ID);
+    float age = uPrewarm > 0.5 ? (uLife > 0.0 ? rnd(ID, 4u) * lifeOf(ID) : 0.0) : -1.0;
+    outC = vec4(H + rdir(ID, 31u) * uJitter * rnd(ID, 32u), age); return;
+  }
+  vec4 P = texelFetch(uPos, c, 0);
+  if (P.w < 0.0) {
+    if (spawning(P.w)) { vec3 H = homeOf(ID); outC = vec4(H + rdir(ID, STEP * 3u + 23u) * uJitter * rnd(ID, STEP * 3u + 24u), 0.0); }
+    else outC = vec4(P.xyz, -1.0);
+    return;
+  }
+  vec3 v = texelFetch(uVelNew, c, 0).xyz;
+  vec3 p = P.xyz + v * uDt; float age = P.w + uDt;
+  float dc = length(p - uCenter);
+  if ((uLife > 0.0 && age > lifeOf(ID)) || dc > uBounds || dc < uSink) age = -1.0;
+  outC = vec4(p, age);
+}
+#endif
+`;
+const PT_VERT = `${PT_HASH}
+uniform sampler2D uPos, uVel, uHomeCol;
+uniform float uLife, uLifeVar, uSize, uSizeEnd, uSizeVar, uOpacity, uFadeIn, uFadeOut, uViewH, uHue, uSat, uSpeedRef, uStreak, uSpinT;
+uniform int uColorBy;
+uniform vec3 uC0, uC1, uC2;
+#ifndef LOOK_POINTS
+in vec2 ref;
+#endif
+out vec4 vCol; out vec3 vN; out vec2 vQ;
+vec3 hueShift(vec3 c, float h) { const vec3 k = vec3(0.57735); float ca = cos(h * 6.2831853); float sa = sin(h * 6.2831853); return c * ca + cross(k, c) * sa + k * dot(k, c) * (1.0 - ca); }
+vec3 grad(float t) { return t < 0.5 ? mix(uC0, uC1, t * 2.0) : mix(uC1, uC2, t * 2.0 - 1.0); }
+void main() {
+#ifdef LOOK_POINTS
+  ivec2 c = ivec2(position.xy);
+#else
+  ivec2 c = ivec2(ref);
+#endif
+  uint id = uint(c.y * uS + c.x);
+  vec4 P = texelFetch(uPos, c, 0);
+  vN = vec3(0.0, 0.0, 1.0); vQ = vec2(0.0);
+  if (P.w < 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); vCol = vec4(0.0);
+#ifdef LOOK_POINTS
+    gl_PointSize = 0.0;
+#endif
+    return; }
+  vec3 V = texelFetch(uVel, c, 0).xyz;
+  float L = uLife * (1.0 - uLifeVar * rnd(id, 3u));
+  float t = uLife > 0.0 ? clamp(P.w / max(L, 1e-3), 0.0, 1.0) : 0.5;
+  vec3 col = uColorBy == 1 ? grad(clamp(length(V) / max(uSpeedRef, 1e-3), 0.0, 1.0))
+    : uColorBy == 2 ? texelFetch(uHomeCol, homeAt(id), 0).rgb
+    : uColorBy == 3 ? grad(clamp(P.y * 0.25 + 0.5, 0.0, 1.0))
+    : uColorBy == 4 ? grad(floor(rnd(id, 43u) * 3.0) * 0.5)
+    : grad(t);
+  if (uHue != 0.0) col = max(hueShift(col, uHue), 0.0);
+  if (uSat != 1.0) col = max(mix(vec3(dot(col, vec3(0.299, 0.587, 0.114))), col, uSat), 0.0);
+  float a = uOpacity * smoothstep(0.0, max(uFadeIn, 1e-4), t) * (1.0 - smoothstep(1.0 - max(uFadeOut, 1e-4), 1.0, t));
+  if (uLife <= 0.0) a = uOpacity * smoothstep(0.0, 0.6, P.w);
+  float sz = uSize * mix(1.0, uSizeEnd, t) * (1.0 - uSizeVar * rnd(id, 41u));
+#ifdef LOOK_POINTS
+  vec4 mv = modelViewMatrix * vec4(P.xyz, 1.0);
+  gl_Position = projectionMatrix * mv;
+  float ps = sz * uViewH * projectionMatrix[1][1] * 0.5 / max(0.02, -mv.z);
+  if (ps < 1.0) { a *= max(ps, 0.0); ps = 1.0; }
+  gl_PointSize = ps;
+#elif defined(LOOK_STREAK)
+  vec4 mv = modelViewMatrix * vec4(P.xyz, 1.0);
+  vec3 vv = (modelViewMatrix * vec4(V, 0.0)).xyz;
+  float l = length(vv.xy); vec2 dir = l > 1e-5 ? vv.xy / l : vec2(0.0, 1.0);
+  vec2 side = vec2(-dir.y, dir.x);
+  mv.xy += side * position.x * sz + dir * (position.y - 0.5) * (sz + l * uStreak);
+  vQ = vec2(position.x * 2.0, position.y + 0.5);
+  gl_Position = projectionMatrix * mv;
+#else
+  vec3 fw = length(V) > 1e-4 ? normalize(V) : vec3(0.0, 1.0, 0.0);
+  vec3 up = abs(fw.y) > 0.99 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
+  vec3 sx = normalize(cross(up, fw)); vec3 sy = cross(fw, sx);
+  float an = uSpinT * (rnd(id, 51u) - 0.5) * 8.0 + rnd(id, 52u) * 6.2831853; float ca = cos(an); float sa = sin(an);
+  mat3 B = mat3(sx, sy, fw);
+  vec3 lp = position * sz; lp = vec3(lp.x * ca - lp.y * sa, lp.x * sa + lp.y * ca, lp.z);
+  vec3 ln = vec3(normal.x * ca - normal.y * sa, normal.x * sa + normal.y * ca, normal.z);
+  vN = normalize(normalMatrix * (B * ln));
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(P.xyz + B * lp, 1.0);
+#endif
+  vCol = vec4(col, a);
+}
+`;
+const PT_FRAG = `uniform int uSprite;
+in vec4 vCol; in vec3 vN; in vec2 vQ;
+layout(location = 0) out highp vec4 fragOut;
+#define gl_FragColor fragOut
+void main() {
+  float m = 1.0;
+#ifdef LOOK_POINTS
+  vec2 q = gl_PointCoord * 2.0 - 1.0; float d2 = dot(q, q);
+  if (uSprite != 4 && d2 > 1.0) discard;
+  if (uSprite == 0) m = exp(-d2 * 4.0);
+  else if (uSprite == 1) m = 1.0 - smoothstep(0.6, 1.0, d2);
+  else if (uSprite == 2) m = smoothstep(0.3, 0.55, d2) * (1.0 - smoothstep(0.75, 1.0, d2));
+  else if (uSprite == 3) { vec2 aq = abs(q); m = min(1.0, max(exp(-aq.x * 14.0) * (1.0 - aq.y), exp(-aq.y * 14.0) * (1.0 - aq.x)) + exp(-d2 * 10.0)); }
+#elif defined(LOOK_STREAK)
+  m = (1.0 - abs(vQ.x)) * vQ.y * vQ.y;
+#else
+  m = 0.4 + 0.6 * max(dot(vN, normalize(vec3(0.4, 0.8, 0.6))), 0.0);
+  gl_FragColor = vec4(vCol.rgb * m * vCol.a, vCol.a);
+  return;
+#endif
+  float a = vCol.a * m;
+  gl_FragColor = vec4(vCol.rgb * a, a);
+}
+`;
+const PT_QUAD_V = 'in vec3 position;\nout vec2 vUv;\nvoid main() { vUv = position.xy * 0.5 + 0.5; gl_Position = vec4(position.xy, 0.0, 1.0); }';
+const PT_COPY_F = 'precision highp float;\nuniform sampler2D t;\nuniform float k;\nin vec2 vUv;\nlayout(location = 0) out highp vec4 o;\nvoid main() { o = texture(t, vUv) * k; }';
+// ---- emitter shapes: unit-ish points (+ colors) the particles are born on (and pulled back to by "form") ----
+function ptShape(kind, HS, pos, col, rand, o) {
+  const n = HS * HS;
+  const put = (i, x, y, z) => { pos[i * 4] = x; pos[i * 4 + 1] = y; pos[i * 4 + 2] = z; pos[i * 4 + 3] = 1; col[i * 4] = col[i * 4 + 1] = col[i * 4 + 2] = col[i * 4 + 3] = 255; };
+  const g = () => { let s = 0; for (let k = 0; k < 4; k += 1) s += rand(); return (s - 2) / 2; };
+  for (let i = 0; i < n; i += 1) {
+    if (kind === 'point') put(i, 0, 0, 0);
+    else if (kind === 'sphere' || kind === 'ball') { const z = rand() * 2 - 1; const t = rand() * Math.PI * 2; const r = Math.sqrt(1 - z * z); const k = kind === 'ball' ? Math.cbrt(rand()) : 1; put(i, r * Math.cos(t) * k, z * k, r * Math.sin(t) * k); }
+    else if (kind === 'disc') { const r = Math.sqrt(rand()); const t = rand() * Math.PI * 2; put(i, r * Math.cos(t), g() * 0.03, r * Math.sin(t)); }
+    else if (kind === 'ring') { const t = rand() * Math.PI * 2; const r = 1 + g() * 0.04; put(i, r * Math.cos(t), g() * 0.02, r * Math.sin(t)); }
+    else if (kind === 'box') put(i, rand() * 2 - 1, rand() * 2 - 1, rand() * 2 - 1);
+    else if (kind === 'plane') put(i, rand() * 2 - 1, 0, rand() * 2 - 1);
+    else if (kind === 'line') put(i, rand() * 2 - 1, 0, 0);
+    else if (kind === 'torus') { const a = rand() * Math.PI * 2; const b = rand() * Math.PI * 2; const r = 0.3; put(i, (1 + r * Math.cos(b)) * Math.cos(a), r * Math.sin(b), (1 + r * Math.cos(b)) * Math.sin(a)); }
+    else if (kind === 'spiral') {
+      // a spiral galaxy: arms wound with the radius, a bright core, a thin disc
+      const arms = Math.max(1, Math.round(o.arms || 3)); const arm = Math.floor(rand() * arms);
+      const r = Math.pow(rand(), 1.6); const a = (arm / arms) * Math.PI * 2 + r * (o.twist ?? 5) + g() * 0.35 * (1 - r * 0.5);
+      put(i, r * Math.cos(a) + g() * 0.04, g() * 0.05 * (1 - r) + g() * 0.01, r * Math.sin(a) + g() * 0.04);
+      const hot = 1 - r; col[i * 4] = 255; col[i * 4 + 1] = Math.round(150 + 105 * hot); col[i * 4 + 2] = Math.round(120 + 135 * hot);
+    } else put(i, 0, 0, 0);
+  }
+  return n;
+}
+// samples of a picture (text, an image, a layer's frame): bright / opaque pixels → x, y (width 2, centred) + colors
+function ptPixels(cv, w, h, HS, pos, col, rand, { thr = 0.35, alphaOnly = false, world = null } = {}) {
+  const d = cv.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+  const hits = PT.hits && PT.hits.length >= w * h ? PT.hits : (PT.hits = new Int32Array(Math.max(w * h, 65536)));
+  let m = 0;
+  for (let i = 0, p = 0; p < w * h; i += 4, p += 1) {
+    const a = d[i + 3] / 255; const l = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) / 255;
+    if (alphaOnly ? a > 0.5 : l * a > thr) hits[m++] = p;
+  }
+  if (!m) return 0;
+  const n = HS * HS; const sx = world ? world.w / w : 2 / w; const sy = world ? world.h / h : sx;
+  for (let k = 0; k < n; k += 1) {
+    const p = hits[Math.floor(rand() * m)]; const x = p % w; const y = (p - x) / w;
+    const jx = rand() - 0.5; const jy = rand() - 0.5;
+    pos[k * 4] = (x + 0.5 + jx - w / 2) * sx; pos[k * 4 + 1] = (h / 2 - y - 0.5 - jy) * sy; pos[k * 4 + 2] = (rand() - 0.5) * 0.02; pos[k * 4 + 3] = 1;
+    const i = p * 4; col[k * 4] = d[i]; col[k * 4 + 1] = d[i + 1]; col[k * 4 + 2] = d[i + 2]; col[k * 4 + 3] = 255;
+  }
+  return n;
+}
+function ptText(text, font, HS, pos, col, rand) {
+  const lines = String(text || 'HEARTH').split('\n').slice(0, 6);
+  const c = document.createElement('canvas'); const g = c.getContext('2d', { willReadFrequently: true });
+  const px = 160; const f = `${/\d+px/.test(font || '') ? font : `800 ${px}px ${font || 'system-ui, -apple-system, Segoe UI, sans-serif'}`}`;
+  g.font = f;
+  const w = Math.min(4096, Math.ceil(Math.max(...lines.map((l) => g.measureText(l).width), 10)) + 40); const h = Math.ceil(px * 1.2 * lines.length) + 20;
+  c.width = w; c.height = h;
+  g.font = f; g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  lines.forEach((l, i) => g.fillText(l, w / 2, 10 + px * 0.6 + i * px * 1.2));
+  // (width 2.6 world units: a word fills the middle of the frame at the default distance)
+  return ptPixels(c, w, h, HS, pos, col, rand, { alphaOnly: true, world: { w: 2.6, h: 2.6 } });
+}
+// a 🧊 model layer's surface: triangles picked by their area, in the model's own space (its root group), + colors
+function ptModel(root, HS, pos, col, rand) {
+  root.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert(); const m = new THREE.Matrix4();
+  const tris = []; let total = 0;
+  const a = new THREE.Vector3(); const b = new THREE.Vector3(); const c = new THREE.Vector3(); const e1 = new THREE.Vector3(); const e2 = new THREE.Vector3();
+  root.traverse((o) => {
+    if (!o.isMesh || !o.visible || !o.geometry?.attributes?.position) return;
+    const g = o.geometry; const P = g.attributes.position; const idx = g.index;
+    m.multiplyMatrices(inv, o.matrixWorld);
+    const nt = idx ? idx.count / 3 : P.count / 3;
+    const step = Math.max(1, Math.floor(nt / 200000)); // (huge meshes: every k-th triangle, still spread over the surface)
+    const color = o.material?.color ? o.material.color : null;
+    for (let t = 0; t < nt; t += step) {
+      const i0 = idx ? idx.getX(t * 3) : t * 3; const i1 = idx ? idx.getX(t * 3 + 1) : t * 3 + 1; const i2 = idx ? idx.getX(t * 3 + 2) : t * 3 + 2;
+      a.fromBufferAttribute(P, i0).applyMatrix4(m); b.fromBufferAttribute(P, i1).applyMatrix4(m); c.fromBufferAttribute(P, i2).applyMatrix4(m);
+      const ar = e1.subVectors(b, a).cross(e2.subVectors(c, a)).length() * 0.5 * step;
+      if (!(ar > 0)) continue;
+      total += ar; tris.push(total, a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z, color ? color.r : 1, color ? color.g : 1, color ? color.b : 1);
+    }
+  });
+  if (!total) return 0;
+  const T = tris.length / 13; const n = HS * HS;
+  for (let k = 0; k < n; k += 1) {
+    const x = rand() * total; let lo = 0; let hi = T - 1;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (tris[mid * 13] < x) lo = mid + 1; else hi = mid; }
+    const o = lo * 13; let u = rand(); let v = rand(); if (u + v > 1) { u = 1 - u; v = 1 - v; } const w = 1 - u - v;
+    pos[k * 4] = tris[o + 1] * w + tris[o + 4] * u + tris[o + 7] * v; pos[k * 4 + 1] = tris[o + 2] * w + tris[o + 5] * u + tris[o + 8] * v; pos[k * 4 + 2] = tris[o + 3] * w + tris[o + 6] * u + tris[o + 9] * v; pos[k * 4 + 3] = 1;
+    col[k * 4] = Math.round(Math.min(1, tris[o + 10]) * 255); col[k * 4 + 1] = Math.round(Math.min(1, tris[o + 11]) * 255); col[k * 4 + 2] = Math.round(Math.min(1, tris[o + 12]) * 255); col[k * 4 + 3] = 255;
+  }
+  return n;
+}
+// another layer by name or id (not this one); 'auto' = the first one with a 3D model in it
+function ptLayerOf(self, name, wantModel) {
+  const w = String(name || 'auto').trim().toLowerCase();
+  for (const x of layers.values()) {
+    if (x === self || x.props.pcOf) continue;
+    if (w !== 'auto' && x.id.toLowerCase() !== w && String(x.props.name || '').toLowerCase() !== w && String(x.props.name || '').toLowerCase().replace(/^\W+\s*/, '') !== w) continue;
+    if (!wantModel) return x;
+    for (const r of x.renderers) { const sc = r.__lastScene; if (!sc) continue; const root = sc.getObjectByName?.('Model'); if (root) return x; let mesh = false; sc.traverse((o) => { if (o.isMesh && !mesh) mesh = true; }); if (mesh && w !== 'auto') return x; }
+  }
+  return null;
+}
+globalThis.particles = (P = {}, opts = {}) => {
+  const L = layerState(currentLayer() || 'main');
+  P = P || {}; opts = opts || {};
+  const pv = (k) => { const v = P[k]; return v === undefined || v === null || v === '' ? (opts[k] ?? PT_DEF[k]) : v; };
+  const num = (k) => { const v = Number(pv(k)); return Number.isFinite(v) ? v : PT_DEF[k]; };
+  const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
+  renderer.__keepClear = true; renderer.__warm = true; // (no background compile: the state must start from the first frame)
+  renderer.setPixelRatio(devicePixelRatio);
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+  renderer.setClearColor(0x000000, 0);
+  document.body.append(renderer.domElement);
+  const gl = renderer.getContext();
+  const floatOk = renderer.extensions.has('EXT_color_buffer_float');
+  const halfOk = floatOk || renderer.extensions.has('EXT_color_buffer_half_float');
+  if (!halfOk) { post({ type: 'error', layer: pcTop(L.id), message: 'particles: this GPU can\'t draw into float textures (no EXT_color_buffer_float)' }); return { renderer, ok: false }; }
+  const soft = ptSoftware(gl);
+  const maxTex = Math.min(gl.getParameter(gl.MAX_TEXTURE_SIZE) || 4096, 2048);
+  const want = Math.round(Math.max(0.256, Math.min(2097, num('count'))) * 1000);
+  const N = Math.min(want, soft ? 16384 : maxTex * maxTex);
+  const S = Math.ceil(Math.sqrt(N));
+  const emitter = String(pv('emitter')); const look = ['streak', 'mesh'].includes(pv('look')) ? pv('look') : 'points';
+  const dyn = emitter === 'layer';
+  const HS = Math.min(S, dyn ? 128 : 512);
+  const seed = (Number(opts.seed) >>> 0) || 1;
+  const rand = seeded(seed * 9973 + 17);
+  const homeD = new Float32Array(HS * HS * 4); const colD = new Uint8Array(HS * HS * 4);
+  let HN = 0; let source = null;
+  const shapeKind = ['point', 'sphere', 'ball', 'disc', 'ring', 'box', 'plane', 'line', 'torus', 'spiral'].includes(emitter) ? emitter : 'sphere';
+  if (emitter === 'text') HN = ptText(opts.text ?? 'HEARTH', opts.font, HS, homeD, colD, rand);
+  else if (['image', 'model', 'layer'].includes(emitter)) HN = 0; // (filled when the picture / model / layer is there)
+  else HN = ptShape(shapeKind, HS, homeD, colD, rand, opts);
+  const homeTex = new THREE.DataTexture(homeD, HS, HS, THREE.RGBAFormat, THREE.FloatType); homeTex.needsUpdate = true;
+  const colTex = new THREE.DataTexture(colD, HS, HS, THREE.RGBAFormat, THREE.UnsignedByteType); colTex.needsUpdate = true;
+  const rtOpts = { type: floatOk ? THREE.FloatType : THREE.HalfFloatType, format: THREE.RGBAFormat, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: false, generateMipmaps: false };
+  const posRT = [new THREE.WebGLRenderTarget(S, S, rtOpts), new THREE.WebGLRenderTarget(S, S, rtOpts)];
+  const velRT = [new THREE.WebGLRenderTarget(S, S, rtOpts), new THREE.WebGLRenderTarget(S, S, rtOpts)];
+  let cur = 0;
+  // ---- the sim's uniforms (one object, both passes; values written in place) ----
+  const U = {
+    uPos: { value: null }, uVel: { value: null }, uVelNew: { value: null }, uHome: { value: homeTex }, uSeed: { value: seed % 65536 },
+    uS: { value: S }, uHS: { value: HS }, uHN: { value: HN }, uStep: { value: 0 }, uDt: { value: 1 / PT_RATE }, uT: { value: 0 }, uInit: { value: 0 }, uPrewarm: { value: 1 },
+    uSpawnP: { value: 0 }, uBurst: { value: 0 }, uLife: { value: 4 }, uLifeVar: { value: 0.5 }, uJitter: { value: 0 }, uHomeJit: { value: 0 }, uSpeed: { value: 0 }, uSpread: { value: 1 }, uOutward: { value: 0 }, uSwirl: { value: 0 },
+    uDrag: { value: 0 }, uCurl: { value: 0 }, uCurlScale: { value: 1 }, uCurlSpeed: { value: 0 }, uTurb: { value: 0 }, uVortex: { value: 0 }, uVortexPull: { value: 0 }, uBoids: { value: 0 }, uForm: { value: 0 }, uDissolve: { value: 0 }, uSweep: { value: 0 },
+    uPush: { value: 0 }, uForceMul: { value: 1 }, uMaxSpeed: { value: 12 }, uFloor: { value: -99 }, uBounce: { value: 0.35 }, uBounds: { value: 40 }, uSink: { value: 0 },
+    uDir: { value: new THREE.Vector3(0, 1, 0) }, uGravity: { value: new THREE.Vector3() }, uCenter: { value: new THREE.Vector3() },
+    uAttr: { value: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()] }, uAttrN: { value: 0 }, uEmitMat: { value: new THREE.Matrix4() },
+  };
+  const simMat = (pass) => new THREE.RawShaderMaterial({ glslVersion: THREE.GLSL3, vertexShader: PT_QUAD_V, fragmentShader: `#define ${pass}\n${PT_SIM}`, uniforms: U, depthTest: false, depthWrite: false, blending: THREE.NoBlending });
+  const velMat = simMat('PASS_VEL'); const posMat = simMat('PASS_POS');
+  const quadGeo = new THREE.PlaneGeometry(2, 2);
+  const quad = new THREE.Mesh(quadGeo, velMat); quad.frustumCulled = false;
+  const simScene = new THREE.Scene(); simScene.add(quad);
+  const simCam = new THREE.Camera();
+  // ---- what draws them ----
+  const R = {
+    uPos: { value: null }, uVel: { value: null }, uHomeCol: { value: colTex }, uSeed: U.uSeed, uS: U.uS, uHS: U.uHS, uHN: U.uHN, uLife: U.uLife, uLifeVar: U.uLifeVar,
+    uSize: { value: 0.03 }, uSizeEnd: { value: 1 }, uSizeVar: { value: 0 }, uOpacity: { value: 1 }, uFadeIn: { value: 0.1 }, uFadeOut: { value: 0.4 }, uViewH: { value: 1 }, uHue: { value: 0 }, uSat: { value: 1 },
+    uSpeedRef: { value: 2 }, uStreak: { value: 0.15 }, uSpinT: { value: 0 }, uColorBy: { value: 0 }, uSprite: { value: 0 },
+    uC0: { value: new THREE.Vector3(1, 1, 1) }, uC1: { value: new THREE.Vector3(1, 1, 1) }, uC2: { value: new THREE.Vector3(1, 1, 1) },
+  };
+  const defines = look === 'points' ? { LOOK_POINTS: '' } : look === 'streak' ? { LOOK_STREAK: '' } : { LOOK_MESH: '' };
+  const drawMat = new THREE.ShaderMaterial({ glslVersion: THREE.GLSL3, vertexShader: PT_VERT, fragmentShader: PT_FRAG, uniforms: R, defines, transparent: true, depthTest: look === 'mesh', depthWrite: look === 'mesh', blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor, blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneFactor });
+  let geo; let obj;
+  if (look === 'points') {
+    const a = new Float32Array(N * 3);
+    for (let i = 0; i < N; i += 1) { a[i * 3] = i % S; a[i * 3 + 1] = Math.floor(i / S); }
+    geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(a, 3));
+    obj = new THREE.Points(geo, drawMat);
+  } else {
+    const base = look === 'streak' ? new THREE.PlaneGeometry(1, 1) : opts.mesh === 'box' ? new THREE.BoxGeometry(1.2, 1.2, 1.2) : opts.mesh === 'octa' ? new THREE.OctahedronGeometry(0.9) : opts.mesh === 'shard' ? new THREE.ConeGeometry(0.35, 1.6, 3) : new THREE.TetrahedronGeometry(0.9);
+    geo = new THREE.InstancedBufferGeometry(); geo.index = base.index; geo.setAttribute('position', base.attributes.position); if (base.attributes.normal) geo.setAttribute('normal', base.attributes.normal);
+    const a = new Float32Array(N * 2);
+    for (let i = 0; i < N; i += 1) { a[i * 2] = i % S; a[i * 2 + 1] = Math.floor(i / S); }
+    geo.setAttribute('ref', new THREE.InstancedBufferAttribute(a, 2)); geo.instanceCount = N;
+    obj = new THREE.Mesh(geo, drawMat);
+    base.dispose = () => {}; // (its buffers live on in geo)
+  }
+  obj.frustumCulled = false;
+  const scene = new THREE.Scene(); scene.add(obj);
+  const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.05, 400);
+  const onResize = () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); };
+  addEventListener('resize', onResize);
+  // ---- trails: the last frame faded under this one (feedback), half-float so long trails don't band ----
+  let trails = null; const copyU = { t: { value: null }, k: { value: 1 } };
+  const copyMat = new THREE.RawShaderMaterial({ glslVersion: THREE.GLSL3, vertexShader: PT_QUAD_V, fragmentShader: PT_COPY_F, uniforms: copyU, depthTest: false, depthWrite: false, blending: THREE.NoBlending });
+  const size = new THREE.Vector2();
+  // ---- the emitter: a matrix (place, size, turn; a model's root), sources that arrive later ----
+  const emitM = U.uEmitMat.value; const tmpQ = new THREE.Quaternion(); const rotM = new THREE.Matrix4(); const tmpP = new THREE.Vector3(); const tmpS = new THREE.Vector3();
+  const src = { L: null, root: null, rootId: null, at: -999, img: null, cv: null, layerCam: null };
+  // new homes (a model / picture arrived: the particles start again on it; a layer's pixels: just the new places)
+  const reupload = (n, again = !dyn) => { HN = n; U.uHN.value = Math.max(0, n); homeTex.needsUpdate = true; colTex.needsUpdate = true; stat.homes = n; if (again) simStep = null; };
+  if (emitter === 'image') {
+    const key = String(opts.image || opts.source || '');
+    const url = refs[key];
+    if (!url) post({ type: 'error', layer: pcTop(L.id), message: `particles: no reference "${key}" (this sketch's references: ${Object.keys(refs).join(', ') || 'none'})` });
+    else {
+      const im = new Image(); im.crossOrigin = 'anonymous';
+      im.onload = () => {
+        if (stat.gone) return;
+        const k = Math.min(1, 384 / Math.max(im.width, im.height)); const w = Math.max(2, Math.round(im.width * k)); const h = Math.max(2, Math.round(im.height * k));
+        const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d', { willReadFrequently: true }).drawImage(im, 0, 0, w, h);
+        reupload(ptPixels(c, w, h, HS, homeD, colD, rand, { thr: num('threshold'), world: { w: 2.6, h: 2.6 * (h / w) } }));
+        source = key; stat.source = key; post({ type: 'particles-info', layer: pcTop(L.id), ...stat });
+      };
+      im.src = url;
+    }
+  }
+  function findSource(frame) {
+    if (emitter !== 'model' && emitter !== 'layer') return;
+    if (frame - src.at < (src.root || (emitter === 'layer' && src.L) ? 60 : 20)) return;
+    src.at = frame;
+    const x = src.L && layers.get(src.L.id) === src.L ? src.L : ptLayerOf(L, opts.source || opts.model || 'auto', emitter === 'model');
+    src.L = x;
+    if (!x) { if (stat.source) { stat.source = null; reupload(0); } return; }
+    if (emitter === 'model') {
+      let sc = null; let cam = null;
+      for (const r of x.renderers) if (r.__lastScene) { sc = r.__lastScene; cam = r.__lastCamera; break; }
+      const root = sc ? sc.getObjectByName?.('Model') || sc : null;
+      src.layerCam = cam;
+      if (!root) return;
+      // (a new model in that layer, a replaced one: sampled again; meshes still loading: tried again in a second)
+      let meshes = 0; root.traverse((o) => { if (o.isMesh) meshes += 1; });
+      const sig = `${root.uuid}:${meshes}`;
+      if (sig === src.rootId) return;
+      const n = meshes ? ptModel(root, HS, homeD, colD, rand) : 0;
+      if (!n) return;
+      src.root = root; src.rootId = sig; source = x.props.name || x.id; stat.source = source;
+      reupload(n);
+      post({ type: 'particles-info', layer: pcTop(L.id), ...stat });
+    } else {
+      stat.source = x.props.name || x.id; source = stat.source;
+    }
+  }
+  // the bright pixels of another layer's last frame, as the place particles are born (a small picture, refreshed)
+  function sampleLayer() {
+    const x = src.L; if (!x) return;
+    let cv = null;
+    for (const c of x.box.getElementsByTagName('canvas')) { if (c.classList.contains('lab-xfade') || c.__skip || c.width < 2) continue; cv = c; break; }
+    if (!cv) return;
+    const w = 160; const h = Math.max(2, Math.round((160 * innerHeight) / Math.max(1, innerWidth)));
+    const c = (src.cv ||= document.createElement('canvas')); if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    const g = c.getContext('2d', { willReadFrequently: true }); g.clearRect(0, 0, w, h); g.drawImage(cv, 0, 0, w, h);
+    const halfH = num('distance') * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)); const halfW = halfH * camera.aspect;
+    reupload(ptPixels(c, w, h, HS, homeD, colD, rand, { thr: num('threshold'), world: { w: 2 * halfW, h: 2 * halfH } }));
+  }
+  // ---- stats (the hub's ✦ info, the checks: window.__labParticles) ----
+  const stat = { id: L.id, count: N, asked: want, capped: N < want, S, active: N, emitter, look, homes: HN, source: emitter === 'text' ? 'text' : null, steps: 0, simT: 0, resets: 0, frames: 0, ms: 0, bursts: 0, float: floatOk ? 32 : 16, ok: null, gone: false };
+  PT.stats.set(L.id, stat);
+  post({ type: 'particles-info', layer: pcTop(L.id), ...stat });
+  const hex = { c1: null, c2: null, c3: null, bg: null };
+  let simStep = null; let kPrev = 0; let frame = 0;
+  const exactNow = () => SQ.off || fullRes() || PT.xp;
+  function pass(mat, rt) { quad.material = mat; renderer.setRenderTarget(rt); renderer.render(simScene, simCam); }
+  // one step: velocities (old state → the other velocity target), then positions (old positions + the new velocities)
+  function stepOnce(st, init) {
+    U.uStep.value = st; U.uT.value = st / PT_RATE; U.uInit.value = init ? 1 : 0;
+    const nx = cur ^ 1;
+    U.uPos.value = posRT[cur].texture; U.uVel.value = velRT[cur].texture; U.uVelNew.value = velRT[cur].texture;
+    pass(velMat, velRT[nx]);
+    U.uVelNew.value = velRT[nx].texture;
+    pass(posMat, posRT[nx]);
+    cur = nx;
+    if (!init) stat.steps += 1;
+  }
+  function setRows(active) {
+    const rows = Math.max(1, Math.ceil(active / S));
+    for (const rt of [...posRT, ...velRT]) { rt.scissor.set(0, 0, S, rows); rt.scissorTest = rows < S; }
+    if (look === 'points') geo.setDrawRange(0, active); else geo.instanceCount = active;
+    stat.active = active;
+  }
+  // per frame: the sliders into the uniforms (colors converted only when their text changes)
+  function readP(t) {
+    const life = num('life'); const emit = num('emit');
+    U.uLife.value = life >= 60 ? 0 : Math.max(0.05, life); U.uLifeVar.value = Math.max(0, Math.min(0.95, num('lifeVar')));
+    U.uSpawnP.value = HN ? Math.min(1, Math.max(0, emit) * (4 / PT_RATE) / Math.max(0.2, U.uLife.value || 4)) : 0; // (no source yet: nothing is born)
+    U.uJitter.value = num('jitter'); U.uHomeJit.value = num('homeJitter'); U.uSpeed.value = num('speed'); U.uSpread.value = Math.max(0, Math.min(1, num('spread')));
+    U.uOutward.value = num('outward'); U.uSwirl.value = num('swirl'); U.uDir.value.set(num('dirX'), num('dirY'), num('dirZ'));
+    const dl = U.uDir.value.length(); if (dl > 1e-6) U.uDir.value.multiplyScalar(1 / dl);
+    U.uGravity.value.set(num('wind'), -num('gravity'), 0);
+    U.uDrag.value = Math.max(0, num('drag')); U.uCurl.value = Math.max(0, num('curl')); U.uCurlScale.value = Math.max(0.01, num('curlScale')); U.uCurlSpeed.value = num('curlSpeed');
+    U.uTurb.value = Math.max(0, num('turb')); U.uVortex.value = num('vortex'); U.uVortexPull.value = num('vortexPull'); U.uBoids.value = Math.max(0, num('boids'));
+    U.uForm.value = Math.max(0, num('form')); U.uDissolve.value = Math.max(0, Math.min(1.001, num('dissolve'))); U.uSweep.value = Math.max(0, Math.min(1, num('sweep')));
+    U.uMaxSpeed.value = Math.max(0.01, num('maxSpeed')); U.uFloor.value = num('floor'); U.uBounce.value = num('bounce'); U.uBounds.value = Math.max(0.5, num('bounds')); U.uSink.value = Math.max(0, num('sink'));
+    // the emitter's place: a model's root (it turns and floats with it), else its own position / size / turn
+    // (emitSpin turns it around the middle: in place, or circling when it's placed off the middle)
+    const es = num('emitSize'); tmpP.set(num('emitX'), num('emitY'), num('emitZ')); tmpS.set(es, es, es);
+    emitM.compose(tmpP, tmpQ, tmpS); rotM.makeRotationY(num('emitSpin') * t * Math.PI * 0.4); emitM.premultiply(rotM);
+    if (src.root) { src.root.updateWorldMatrix?.(true, false); emitM.premultiply(src.root.matrixWorld); }
+    U.uCenter.value.set(emitM.elements[12], emitM.elements[13], emitM.elements[14]);
+    // attractors: the code's own [[x, y, z, strength]], else two that circle the middle
+    const att = num('attract');
+    const own = Array.isArray(opts.attractors) ? opts.attractors : null;
+    let na = 0;
+    if (own) for (let i = 0; i < Math.min(4, own.length); i += 1) { const a = own[i] || []; U.uAttr.value[na++].set(+a[0] || 0, +a[1] || 0, +a[2] || 0, (+(a[3] ?? 1) || 0) * (att || 1)); }
+    else if (att) { const a = t * 0.6; U.uAttr.value[na++].set(Math.cos(a) * 1.6, Math.sin(a * 0.7) * 0.6, Math.sin(a) * 1.6, att); U.uAttr.value[na++].set(-Math.cos(a) * 1.6, -Math.sin(a * 0.7) * 0.6, -Math.sin(a) * 1.6, att); }
+    U.uAttrN.value = na;
+    // look
+    R.uSize.value = num('size'); R.uSizeEnd.value = num('sizeEnd'); R.uSizeVar.value = Math.max(0, Math.min(1, num('sizeVar'))); R.uOpacity.value = num('opacity');
+    R.uFadeIn.value = num('fadeIn'); R.uFadeOut.value = num('fadeOut'); R.uSat.value = num('sat'); R.uStreak.value = num('streak'); R.uSpinT.value = t * num('spinMesh');
+    R.uSpeedRef.value = Math.max(0.1, num('speed') * 2 + 0.5);
+    R.uSprite.value = Math.max(0, PT_SPRITES.indexOf(String(pv('sprite')))); R.uColorBy.value = Math.max(0, PT_COLORBY.indexOf(String(pv('colorBy'))));
+    const c1 = String(pv('color1')); const c2 = String(pv('color2')); const c3 = String(pv('color3'));
+    if (c1 !== hex.c1 && c1[0] === '#') { hex.c1 = c1; hexVec(c1, R.uC0.value); }
+    if (c2 !== hex.c2 && c2[0] === '#') { hex.c2 = c2; hexVec(c2, R.uC1.value); }
+    if (c3 !== hex.c3 && c3[0] === '#') { hex.c3 = c3; hexVec(c3, R.uC2.value); }
+    const bg = String(pv('bg'));
+    if (bg !== hex.bg) { hex.bg = bg; if (/^#[0-9a-f]{6}$/i.test(bg)) renderer.setClearColor(bg, 1); else renderer.setClearColor(0x000000, 0); }
+    const blend = String(pv('blend')) === 'alpha' ? THREE.OneMinusSrcAlphaFactor : THREE.OneFactor;
+    if (drawMat.blendDst !== blend) { drawMat.blendDst = blend; drawMat.blendDstAlpha = THREE.OneMinusSrcAlphaFactor; }
+  }
+  const camBase = () => {
+    const lc = src.layerCam;
+    if (lc && (opts.camera ?? (emitter === 'model' ? 'source' : 'own')) === 'source') {
+      camera.matrixAutoUpdate = false; camera.matrixWorldAutoUpdate = false;
+      camera.matrixWorld.copy(lc.matrixWorld); camera.matrixWorldInverse.copy(lc.matrixWorldInverse);
+      camera.projectionMatrix.copy(lc.projectionMatrix); camera.projectionMatrixInverse.copy(lc.projectionMatrixInverse);
+      return;
+    }
+    if (!camera.matrixAutoUpdate) { camera.matrixAutoUpdate = true; camera.matrixWorldAutoUpdate = true; camera.updateProjectionMatrix(); }
+    const t = U.uT.value; const a = num('orbit') * t * Math.PI * 0.2; const tl = num('tilt'); const d = num('distance');
+    camera.position.set(Math.sin(a) * d * Math.cos(tl), Math.sin(tl) * d, Math.cos(a) * d * Math.cos(tl));
+    camera.lookAt(0, 0, 0);
+  };
+  let lastT = -1;
+  renderer.setAnimationLoop(() => {
+    const c0 = realNow();
+    frame += 1;
+    const tc = globalThis.__layerClock?.(L.id) ?? c0 / 1000;
+    const t = Math.max(0, Number.isFinite(tc) ? tc : 0);
+    const exact = exactNow();
+    findSource(frame);
+    if (dyn && src.L && (exact || frame % 4 === 1)) sampleLayer();
+    readP(t);
+    // how many draw: all of them for a render; the adaptive quality's share in the preview (and half in Light mode)
+    const frac = exact ? 1 : Math.max(0.25, Math.min(1, quality * (lightMode ? 0.5 : 1)));
+    const active = Math.max(Math.min(N, 256), Math.min(N, Math.round(N * frac)));
+    // the clock → whole sim steps; a seek / a fresh page: start again a few seconds earlier and step up to it
+    const target = Math.floor(t * PT_RATE + 1e-6);
+    const life = U.uLife.value;
+    const warm = Math.round(Math.min(exact ? 8 : 2.5, life > 0 ? life * 1.1 : 3) * PT_RATE);
+    renderer.autoClear = false;
+    let fresh = false;
+    if (simStep === null || target < simStep || target - simStep > (exact ? warm : 30)) {
+      const s0 = Math.max(0, target - warm);
+      U.uPrewarm.value = HN && (num('emit') > 0 || life <= 0) ? 1 : 0; U.uBurst.value = 0; U.uPush.value = 0; U.uForceMul.value = 1;
+      // (both targets start from the same state: rows the adaptive count skips come back clean later)
+      setRows(N); stepOnce(s0, true); stepOnce(s0, true); simStep = s0; stat.resets += 1; fresh = true;
+    }
+    if (active !== stat.active) setRows(active);
+    let n = target - simStep;
+    // a slow frame in the preview: no catch-up storm: at most 8 steps, each up to 2 steps long (time beyond is skipped)
+    let k = 1;
+    if (!exact && !fresh && n > 4) { const m = Math.min(n, 8); k = Math.min(2, n / m); simStep = target - Math.round(m * k); n = m; }
+    U.uDt.value = k / PT_RATE;
+    // music: a kick (its rising edge) bursts and pushes; the bass scales every force; brightness turns the hue
+    const dr = PT.drive;
+    const kick = dr.kick ?? Math.max(audio.hits.kick.length ? audio.kick : audio.beat, (mediaEl || liveKind) ? featVal('kickOn') : 0);
+    const bass = dr.bass ?? audio.bass;
+    const kickOn = n > 0 && kick > 0.5 && kPrev <= 0.5;
+    if (n > 0) kPrev = kick;
+    const ke = num('kickEmit'); const kp = num('kickPush'); const bf = num('bassForce'); const hb = num('hueBright');
+    U.uForceMul.value = 1 + Math.max(0, bf) * bass * 2;
+    R.uHue.value = num('hue') + (hb ? hb * ((dr.centroid ?? featVal('centroid')) - 0.5) : 0);
+    for (let i = 1; i <= n; i += 1) {
+      const last = i === n;
+      U.uBurst.value = last && kickOn && HN ? Math.max(0, Math.min(1, ke)) : 0;
+      U.uPush.value = last && kickOn ? kp : 0;
+      stepOnce(simStep + Math.round(i * k), false);
+    }
+    if (kickOn && (ke > 0 || kp)) stat.bursts += 1;
+    simStep += Math.round(Math.max(0, n) * k);
+    U.uDt.value = 1 / PT_RATE;
+    stat.simT = simStep / PT_RATE;
+    // draw
+    camBase();
+    renderer.getDrawingBufferSize(size);
+    R.uViewH.value = size.y;
+    R.uPos.value = posRT[cur].texture; R.uVel.value = velRT[cur].texture;
+    const tr = Math.max(0, Math.min(0.985, num('trail')));
+    if (tr > 0.001) {
+      if (!trails) trails = [0, 1].map(() => new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: look === 'mesh' }));
+      for (const rt of trails) if (rt.width !== size.x || rt.height !== size.y) rt.setSize(size.x, size.y);
+      quad.material = copyMat; copyU.t.value = trails[1].texture; copyU.k.value = lastT === t ? 1 : tr; // (a held frame keeps its trails as they are)
+      renderer.setRenderTarget(trails[0]); renderer.render(simScene, simCam);
+      if (look === 'mesh') renderer.clearDepth();
+      renderer.render(scene, camera);
+      renderer.setRenderTarget(null); renderer.clear();
+      copyU.t.value = trails[0].texture; copyU.k.value = 1;
+      renderer.render(simScene, simCam);
+      trails.reverse();
+    } else {
+      if (trails) { for (const rt of trails) rt.dispose(); trails = null; }
+      renderer.setRenderTarget(null); renderer.clear();
+      renderer.render(scene, camera);
+    }
+    renderer.autoClear = true;
+    renderer.__lastScene = scene; renderer.__lastCamera = camera; // (what __scenes and the scene editor see)
+    lastT = t;
+    stat.frames += 1;
+    stat.ms += ((realNow() - c0) - stat.ms) * 0.1;
+    if (stat.frames === 2) { // (did every program link? a GPU that rejects one says so in the Lab's errors)
+      const okOf = (m) => renderer.properties.get(m)?.currentProgram?.diagnostics?.runnable !== false;
+      stat.ok = okOf(drawMat) && okOf(velMat) && okOf(posMat);
+      if (!stat.ok) post({ type: 'error', layer: pcTop(L.id), message: 'particles: a shader did not compile on this GPU (see the console)' });
+    }
+  });
+  // checks / three_eval: read the state back (alive count, mean position, spread) over the first rows
+  const readBuf = { f: null, h: null };
+  PT.live.set(L.id, {
+    probe(rows = 32) {
+      const r = Math.max(1, Math.min(S, rows)); const n = S * r * 4;
+      const half = rtOpts.type === THREE.HalfFloatType;
+      const buf = half ? (readBuf.h && readBuf.h.length === n ? readBuf.h : (readBuf.h = new Uint16Array(n))) : (readBuf.f && readBuf.f.length === n ? readBuf.f : (readBuf.f = new Float32Array(n)));
+      renderer.readRenderTargetPixels(posRT[cur], 0, 0, S, r, buf);
+      const f = half ? (i) => THREE.DataUtils.fromHalfFloat(buf[i]) : (i) => buf[i];
+      let alive = 0; let sx = 0; let sy = 0; let sz = 0; let s2 = 0; let sig = 0;
+      for (let i = 0; i < S * r; i += 1) { if (i >= N) break; const w = f(i * 4 + 3); if (!(w >= 0)) continue; alive += 1; const x = f(i * 4); const y = f(i * 4 + 1); const z = f(i * 4 + 2); sx += x; sy += y; sz += z; s2 += x * x + y * y + z * z; if (alive <= 256) sig += x * 1.3 + y * 0.7 + z; }
+      const k = alive || 1; const mx = sx / k; const my = sy / k; const mz = sz / k;
+      const r3 = (x) => Math.round(x * 1000) / 1000;
+      return { alive, of: Math.min(N, S * r), sig: r3(sig), mean: [r3(mx), r3(my), r3(mz)], spread: r3(Math.sqrt(Math.max(0, s2 / k - (mx * mx + my * my + mz * mz)))), simT: stat.simT };
+    },
+  });
+  (L.cleanups ||= []).push(() => {
+    renderer.setAnimationLoop(null);
+    removeEventListener('resize', onResize);
+    stat.gone = true;
+    for (const rt of [...posRT, ...velRT, ...(trails || [])]) rt.dispose();
+    velMat.dispose(); posMat.dispose(); drawMat.dispose(); copyMat.dispose(); quadGeo.dispose(); geo.dispose(); homeTex.dispose(); colTex.dispose();
+    if (PT.stats.get(L.id) === stat) { PT.stats.delete(L.id); PT.live.delete(L.id); }
+  });
+  return { renderer, scene, camera, count: N, ok: true };
+};
+// checks and three_eval: each particle layer's numbers, a read-back of its state, the music held at a value
+window.__labParticles = {
+  info: () => [...PT.stats.values()].map((x) => ({ ...x, ms: Math.round(x.ms * 100) / 100 })),
+  probe: (id, rows) => { const e = id ? PT.live.get(id) : [...PT.live.values()].pop(); return e ? e.probe(rows) : null; },
+  drive: (o = {}) => { for (const k of ['kick', 'bass', 'centroid']) if (k in o) PT.drive[k] = o[k] == null ? null : Number(o[k]); return { ...PT.drive }; },
+};
+
 // ---------- run generations ----------
 // Re-running a layer (a slider that rebuilds the scene, a code edit) tears down only that layer: its
 // renderers, window listeners, timers and DOM, then runs its code again — three.js stays loaded and the
