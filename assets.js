@@ -34,6 +34,20 @@ const Assets = (() => {
     return loading;
   }
   const all = () => (db ? C.list(db) : []);
+  // files this computer doesn't have (the index syncs with your other computer, whose paths differ; a drive that's
+  // unplugged): faded and not used, never deleted from the shared index (assets come back when the file does)
+  const missing = new Set();
+  const away = (it) => Boolean(it?.g || missing.has(it?.h));
+  async function checkHere() {
+    await ready();
+    const items = all();
+    const ex = await api().exists(items.map((x) => x.p)).catch(() => null);
+    if (!ex) return 0;
+    missing.clear();
+    items.forEach((it, i) => { if (!ex[i]) missing.add(it.h); });
+    if (missing.size) emit('edit');
+    return missing.size;
+  }
   const get = (h) => db?.items[h] || null;
   // an item from what a chat / a director / a command names: a hash (or its start), "#3" in the last list, a path, a name
   let lastList = [];
@@ -180,7 +194,7 @@ const Assets = (() => {
     if (!it) return null;
     if (it.tp) return fileUrl(it.tp);
     if (it.t === 1 && thumbPath(it.h)) return fileUrl(thumbPath(it.h));
-    if (ask && !it.t && !it.g) want(it);
+    if (ask && !it.t && !away(it)) want(it);
     return null;
   }
   function want(it) {
@@ -431,7 +445,7 @@ requestAnimationFrame(frame);
   }
   async function use(it, target = null, o = {}) {
     if (!it) throw new Error('Which asset? (/assets find <words>, then /assets use #n)');
-    if (it.g) throw new Error(`${it.n} isn't on this computer anymore (${it.p}).`);
+    if (away(it)) throw new Error(`${it.n} isn't on this computer (${it.p}).`);
     const t = target || labDefault(it);
     const p = it.p; const ctx = o.ctx || {};
     let what = '';
@@ -600,7 +614,7 @@ find → [{id, name, kind, tags}] (q: words, kind:x, tag:y, fav); use {id, as}: 
   });
 
   return {
-    ready, all, get, find, search, remember, add, watch, unwatch, scan, folders, armIdle, thumb, want, unwant, use, targets, labDefault, LABEL, savePreset, importCopy, toProject, projectTest,
+    ready, all, get, find, away, checkHere, missing, search, remember, add, watch, unwatch, scan, folders, armIdle, thumb, want, unwant, use, targets, labDefault, LABEL, savePreset, importCopy, toProject, projectTest,
     op, HELP, OPS, fileUrl, changed, onChange: (fn) => { listeners.add(fn); return () => listeners.delete(fn); }, get db() { return db; }, get dirs() { return dirs; }, pictureCode, textCode,
     _: { make, rpc, queue: () => queue.slice(), running: () => running },
   };

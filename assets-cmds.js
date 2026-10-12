@@ -76,6 +76,9 @@ const AssetsHooks = (() => {
     window.Lazy?.when?.('renders', () => { try { Renders.onChange((j) => { if (j?.status === 'done' && j.output && kindOk(j.output)) A.add([j.output], { src: 'render', o: j.title || 'Render' }).catch(() => {}); }); } catch { /* no render queue */ } });
     document.addEventListener('hearth:capture', (e) => { const p = e.detail?.path; if (p && kindOk(p)) A.add([p], { src: 'capture', o: 'Capture' }).catch(() => {}); });
     document.addEventListener('hearth:recording', (e) => { const d = e.detail; if (d && d.recording === false && d.path && kindOk(d.path)) A.add([d.path], { src: 'capture', o: 'Recording' }).catch(() => {}); });
+    // watched folders from an earlier session: their idle rescans start a minute after the first screen (the index is
+    // read then, not at startup; the first scan itself waits for an idle moment past the hour mark)
+    setTimeout(() => (window.requestIdleCallback || setTimeout)(() => A.ready().then(() => { if (A.folders().length) A.armIdle(); }).catch(() => {}), { timeout: 20000 }), 60000);
     window.hub.assets?.onEvent?.((ev) => {
       if (ev?.type === 'changed' && ev.root) A.scan({ only: [ev.root], force: true }).catch(() => {});
       if (ev?.type === 'scan' && AssetsUI.isOpen()) { const s = AssetsUI.el?.querySelector('.as-status'); if (s) s.textContent = `Scanning… ${ev.found} files`; }
@@ -86,7 +89,7 @@ const AssetsHooks = (() => {
   // the Lab preview's right-click
   function previewItem() {
     return { label: '🗂 Assets', items: () => {
-      const recent = A.db ? C.search(A.db, '', { sort: 'recent' }).filter((x) => !x.g).slice(0, 6) : [];
+      const recent = A.db ? C.search(A.db, '', { sort: 'recent' }).filter((x) => !A.away(x)).slice(0, 6) : [];
       return [
         { label: 'Open the asset library', key: 'Ctrl+Shift+A', action: () => AssetsUI.open() },
         { label: 'Free skies, textures and models…', action: () => AssetsUI.open({ tab: 'free' }) },
@@ -100,7 +103,7 @@ const AssetsHooks = (() => {
   // the chat's ＋ menu: attach an asset
   function attachItems(agentId) {
     return [{ label: 'From your assets', icon: 'folder', items: () => {
-      const list = A.db ? C.search(A.db, '', { sort: 'recent' }).filter((x) => !x.g).sort((a, b) => (b.f || 0) - (a.f || 0)).slice(0, 10) : [];
+      const list = A.db ? C.search(A.db, '', { sort: 'recent' }).filter((x) => !A.away(x)).sort((a, b) => (b.f || 0) - (a.f || 0)).slice(0, 10) : [];
       return [
         ...list.map((it) => ({ label: `${C.KINDS[it.k]?.icon || '▫'} ${it.n.slice(0, 40)}`, hint: C.KINDS[it.k]?.one, action: () => A.use(it, 'chat', { agentId, activate: false }).then((w) => toast(w, { timeout: 2000 })).catch(fail) })),
         list.length ? '-' : null,

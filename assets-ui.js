@@ -52,7 +52,7 @@ const AssetsUI = (() => {
     S.tab = id;
     for (const b of panel.querySelectorAll('.as-tab')) b.classList.toggle('on', b.dataset.tab === id);
     panel.classList.toggle('free', id === 'free');
-    if (id === 'free') { searchEl.placeholder = 'Search free assets… (brick, sunset)'; AssetsFree.view(body, { q: S.q }); infoEl.hidden = true; }
+    if (id === 'free') { searchEl.placeholder = `Search ${AssetsFree.SRC[AssetsFree.state.source]?.name || 'free assets'}… (brick, sunset, wood)`; AssetsFree.view(body, { q: S.q }); infoEl.hidden = true; }
     else { searchEl.placeholder = 'Search assets… (kind:hdri, #wall, fav)'; body.replaceChildren(gridEl); infoEl.hidden = false; refilter(); }
   }
   async function open(o = {}) {
@@ -74,6 +74,7 @@ const AssetsUI = (() => {
   async function firstLook() {
     setStatus('Looking in your folders…');
     try { await window.AssetsHooks?.catchUp?.(); } catch { /* the app downloads are a bonus */ }
+    await A.checkHere().catch(() => 0);
     const r = await A.scan().catch((err) => ({ error: err.message }));
     A.armIdle();
     setStatus(r?.error ? `Scan: ${r.error}` : null);
@@ -180,7 +181,7 @@ const AssetsUI = (() => {
     return it.tg?.slice(0, 2).map((t) => `#${t}`).join(' ') || `${it.x.toUpperCase()} · ${C.size(it.s)}`;
   }
   function card(it) {
-    const n = el('div', { class: `as-card${it.f ? ' fav' : ''}${it.g ? ' gone' : ''}${S.sel === it.h ? ' sel' : ''}`, draggable: !it.g, tabIndex: -1, dataset: { h: it.h },
+    const n = el('div', { class: `as-card${it.f ? ' fav' : ''}${A.away(it) ? ' gone' : ''}${S.sel === it.h ? ' sel' : ''}`, draggable: !A.away(it), tabIndex: -1, dataset: { h: it.h },
       title: `${it.n}\n${C.KINDS[it.k]?.one || it.k} · ${C.size(it.s)} · ${C.SOURCES[it.src] || it.src}${it.o ? ` (${it.o})` : ''}${it.tg?.length ? `\n#${it.tg.join(' #')}` : ''}${it.alt?.length ? `\nAlso at ${it.alt.length} other place${it.alt.length > 1 ? 's' : ''}` : ''}\n${it.p}`,
       on: {
         click: () => select(it.h),
@@ -320,7 +321,7 @@ const AssetsUI = (() => {
       { label: S.big ? 'Smaller cards' : 'Bigger cards', action: () => { S.big = !S.big; store.set('assets.big', S.big); measure(); refilter(); } },
       { label: 'Sort', items: () => filterMenu().find((x) => x.label === 'Sort').items() },
       { label: `Duplicates (${c.dupes})`, hint: 'the same file in two places', action: () => { S.q = ''; searchEl.value = ''; S.list = A.all().filter((x) => x.alt?.length); refilterRaw(); } },
-      { label: `Files gone (${c.gone})`, action: () => { S.list = A.all().filter((x) => x.g); refilterRaw(); } },
+      { label: `Not on this computer (${A.all().filter(A.away).length})`, action: () => { S.list = A.all().filter(A.away); refilterRaw(); } },
       '-',
       { label: 'Thumbnail cache…', action: async () => { const i = await window.hub.assets.cacheInfo(); if (await Modal.confirm('Thumbnail cache', `${i.files} pictures, ${C.size(i.bytes)}. They are remade when you scroll past them. Clear it?`, { ok: 'Clear' })) { await window.hub.assets.clearThumbs(); for (const it of A.all()) if (it.t === 1) it.t = 0; A.changed('edit'); } } },
       { label: 'Help', action: () => Commands.exec('/help assets', H.claudeAgent()?.id).catch(() => {}) },

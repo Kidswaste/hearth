@@ -88,13 +88,10 @@ const AssetsFree = (() => {
     if (!state.type || !SRC[state.source].types[state.type]) state.type = SRC[state.source].def;
     const grid = el('div', { class: 'as-free-grid' });
     const note = el('div', { class: 'as-free-note' });
-    const input = el('input', { type: 'search', class: 'as-free-q', placeholder: `Search ${SRC[state.source].name}… (brick, sunset, wood)`, value: state.q,
-      on: { input: debounceInput((e) => { state.q = e.target.value; paint(); }), keydown: (e) => { if (e.key === 'Enter') paint(); } } });
     const chip = (label, on, fn, tip = '') => el('button', { class: `as-chip${on ? ' on' : ''}`, text: label, title: tip, on: { click: fn } });
     const head = el('div', { class: 'as-free-head' },
-      el('div', { class: 'as-chips' }, Object.entries(SRC).map(([k, v]) => chip(v.name, k === state.source, () => { state.source = k; state.type = null; store.set('assets.free.source', k); view(host); }, k === 'polyhaven' ? 'polyhaven.com: free CC0 HDRIs, textures, models' : 'ambientcg.com: free CC0 PBR materials and HDRIs'))),
-      el('div', { class: 'as-chips' }, Object.entries(SRC[state.source].types).map(([k, v]) => chip(v, k === state.type, () => { state.type = k; view(host); }))),
-      input);
+      el('div', { class: 'as-chips' }, Object.entries(SRC).map(([k, v]) => chip(v.name, k === state.source, () => { state.source = k; state.type = null; store.set('assets.free.source', k); const q = document.querySelector('.as-panel .as-q'); if (q) q.placeholder = `Search ${v.name}… (brick, sunset, wood)`; view(host); }, k === 'polyhaven' ? 'polyhaven.com: free CC0 HDRIs, textures, models' : 'ambientcg.com: free CC0 PBR materials and HDRIs'))),
+      el('div', { class: 'as-chips' }, Object.entries(SRC[state.source].types).map(([k, v]) => chip(v, k === state.type, () => { state.type = k; view(host); }))));
     host.replaceChildren(head, note, grid);
     const paint = async () => {
       const my = ++seq;
@@ -105,10 +102,8 @@ const AssetsFree = (() => {
       note.textContent = list.length ? `${list.length} free ${SRC[state.source].types[state.type].toLowerCase()} · CC0 · click: download (${(store.get(`assets.size.${state.type}`, DEF_SIZE[state.type]) || '1k').toUpperCase()}) into your library · right-click: size, page` : `Nothing for “${state.q}”. Try brick, wood, sunset, studio, metal…`;
       grid.replaceChildren(...list.map(card));
     };
-    paint();
-    setTimeout(() => input.focus(), 0);
+    paint(); // (the library's one search box drives it: assets-ui.js)
   }
-  function debounceInput(fn) { let t = 0; return (e) => { clearTimeout(t); t = setTimeout(() => fn(e), 280); }; }
   function card(r) {
     const pic = el('div', { class: 'as-pic' }, el('span', { class: 'as-ico', text: C.KINDS[r.kind]?.icon || '▣' }));
     const bar = el('i', { class: 'as-bar', hidden: true });
