@@ -2050,7 +2050,7 @@ const webcam = (() => {
     if (!NAME.test(name)) return undefined;
     want(S.core?.TASK[name] || 'light');
     const i = S.core?.IDX[name];
-    if (i == null || !S.feat || !S.live || now() - S.featAt > 1500) return def(name);
+    if (i == null || !S.feat || !S.live) return def(name); // (a slow frame or a paused camera: the last values hold)
     return S.feat[i];
   }
   // ---- the tracking Worker ----

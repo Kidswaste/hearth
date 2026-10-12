@@ -299,9 +299,10 @@ const LabMotionIn = (() => {
   async function slider(q, { re = null, layer = null } = {}) {
     const l = await labApi();
     const all = l.layers();
-    const order = [l.selCtl?.(), ...all.filter((L) => !layer || L.name === layer || L.id === layer).map((L) => L.ctl)].filter(Boolean);
+    const named = all.filter((L) => !layer || L.name === layer || L.id === layer).map((L) => L.ctl);
+    const order = (layer ? named : [l.selCtl?.(), ...named]).filter(Boolean);
     const nameOf = (ctl) => all.find((L) => L.ctl === ctl)?.name;
-    for (const ctl of layer ? order.slice(1) : order) {
+    for (const ctl of order) {
       if (q) { const h = ctl.resolve?.(q); if (h?.kind === 'number') return { ctl, key: h.key, label: h.label, layer: nameOf(ctl) }; continue; }
       const c = (ctl.controls?.() || []).find((x) => x.min != null && re.test(`${x.key} ${x.label}`));
       if (c) return { ctl, key: c.key, label: c.label, layer: nameOf(ctl), min: c.min, max: c.max };
@@ -342,8 +343,11 @@ const LabMotionIn = (() => {
     { id: 'hands-particles', name: 'Particles follow my hands', hint: 'a particle cloud on your hand (both: where you move)', tasks: ['hands'], run: async () => {
       if (typeof LabParticles === 'undefined') throw new Error('GPU particles aren\'t loaded');
       const r = await LabParticles.add('embers', { name: '✦ Hand sparks', sliders: { emitSize: 0.25, emitX: -3, emitY: -2, gravity: -0.2, speed: 0.4, life: 1.6 }, opts: { emitter: 'ball' } });
-      const s = await slider('emitX', { layer: r.layer }); const s2 = await slider('emitY', { layer: r.layer });
-      s?.ctl.bind(s.key, 'handX', 0.5, { att: 30, rel: 90 }); s2?.ctl.bind(s2.key, 'handY', 1 / 3, { att: 30, rel: 90 });
+      // (the new layer's sliders show up in the hub a moment after it's added)
+      let s = null; let s2 = null;
+      for (let i = 0; i < 30 && !(s && s2); i += 1) { s = await slider('emitX', { layer: r.layer }); s2 = await slider('emitY', { layer: r.layer }); if (!(s && s2)) await new Promise((res) => setTimeout(res, 150)); }
+      if (!s || !s2) throw new Error(`"${r.layer}" has no emitter sliders yet: /webcam follow emitX handX`);
+      s.ctl.bind(s.key, 'handX', 0.5, { att: 30, rel: 90 }); s2.ctl.bind(s2.key, 'handY', 1 / 3, { att: 30, rel: 90 });
       return `✦ "${r.layer}": its emitter follows your hand (Emitter left / right ← hand x, down / up ← hand y)`;
     } },
     { id: 'body-sparks', name: 'Sparks off my silhouette', hint: 'particles rise from your body\'s shape', tasks: ['mask'], run: async () => {
@@ -517,6 +521,6 @@ const LabMotionIn = (() => {
     AppUI.addAction('Lab: 📷 Camera source (webcam, capture card, video file)…', () => labApi().then(() => { const r = S()?.host?.getBoundingClientRect?.() || { left: 200, top: 120 }; showMenu(r.left + 40, r.top + 40, menuItems()); }).catch((e) => toast(e.message, { type: 'error' })));
   }
 
-  return { attach, onReady, onBox, previewItem, menuItems, owns, op, start, stop, pause, devices, findDevice, look, follow, resolve, probe, nowText, download, stub, picker, LOOKS, HELP, get state() { return { on: st.on, paused: st.paused, kind: st.kind, label: st.label, mirror: st.mirror, frames: st.frames, mp: st.mp, tasks: st.tasks.slice(), want: st.want.slice(), error: st.error, offered: st.offered }; } };
+  return { attach, onReady, onBox, previewItem, menuItems, owns, op, start, stop, pause, devices, findDevice, look, follow, resolve, probe, nowText, download, stub, picker, LOOKS, HELP, get state() { return { on: st.on, paused: st.paused, kind: st.kind, label: st.label, mirror: st.mirror, frames: st.frames, mp: st.mp, tasks: st.tasks.slice(), want: st.want.slice(), error: st.error, offered: st.offered, busy: st.busy, video: st.video ? { w: st.video.videoWidth, paused: st.video.paused, ready: st.video.readyState } : null }; } };
 })();
 window.LabMotionIn = LabMotionIn;
