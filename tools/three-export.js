@@ -245,6 +245,9 @@ const LabExport = (() => {
       let drawMs = 0;
       for (let n = 0; n < N; n += 1) {
         while (ctl.paused && !ctl.cancel) await sleep(200);
+        // (a drag, a scroll or typing in the app: the next frame waits for the gesture to end, ≤ 1.5 s, so the GPU and
+        // the CPU go to what you're doing first)
+        if (window.Jank?.busy?.()) { ctl.yields = (ctl.yields || 0) + 1; await window.Jank.calm?.(1500); }
         if (ctl.cancel) throw new Error('Render cancelled');
         const T = r4(T0 + n / F);
         const got = page.wait((m) => m.type === 'xp-frame' && m.n === n, 120000, `frame ${n + 1}`);
@@ -431,17 +434,17 @@ const LabExport = (() => {
     const reBase = /const base = new URL\('three', location\.href\)\.href;[^\n]*/;
     const reMap = 'document.currentScript.after(im);';
     if (!reBase.test(lab) || !lab.includes(reMap)) throw new Error('The Lab player changed: the one-file page can\'t be packed (update tools/three-export.js packHtml)');
-    const boot = `<script>\n// (packed by Hearth: three.js lives in this file; each module becomes a blob: URL named in the import map)\nwindow.__hxMap = (() => { const F = ${JSON.stringify(mods).replace(/<\//g, '<\\/')}; const map = {}; for (const [rel, text] of Object.entries(F)) { const u = URL.createObjectURL(new Blob([text], { type: 'text/javascript' })); map['hx:/' + rel] = u; if (rel.startsWith('examples/jsm/')) { map['three/addons/' + rel.slice(13)] = u; map['three/examples/jsm/' + rel.slice(13)] = u; } } return map; })();\n</script>\n`;
+    const boot = `<script>\n// (packed by Hearth: three.js lives in this file; each module becomes a blob: URL named in the import map)\nwindow.__hxMap = (() => { const F = ${JSON.stringify(mods).replace(/</g, '\\u003c')}; const map = {}; for (const [rel, text] of Object.entries(F)) { const u = URL.createObjectURL(new Blob([text], { type: 'text/javascript' })); map['hx:/' + rel] = u; if (rel.startsWith('examples/jsm/')) { map['three/addons/' + rel.slice(13)] = u; map['three/examples/jsm/' + rel.slice(13)] = u; } } return map; })();\n</script>\n`;
     let page = lab.replace(reBase, "const base = 'hx:'; // packed by Hearth (see __hxMap)")
       .replace(reMap, '{ const j = JSON.parse(im.textContent); Object.assign(j.imports, window.__hxMap || {}); im.textContent = JSON.stringify(j); } document.currentScript.after(im);')
       .replace(/for \(const u of \[real, `\$\{base\}\/build\/three\.core\.js`\]\) \{/, 'for (const u of []) {');
-    page = page.replace(/<script>/, `${boot}<script>`);
+    page = page.replace(/<script>/, () => `${boot}<script>`); // (functions: the texts hold $& and the like)
     // references as data URLs
     const refs = [];
     for (const r of b.spec.refs || []) { try { const u8 = await window.hub.fs.read(r.path, { encoding: 'buffer', maxBytes: 200e6 }); const ext = (r.path.split('.').pop() || '').toLowerCase(); const mime = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', mp4: 'video/mp4', webm: 'video/webm', mp3: 'audio/mpeg', wav: 'audio/wav', glb: 'model/gltf-binary', hdr: 'application/octet-stream' }[ext] || 'application/octet-stream'; refs.push({ key: r.key, kind: r.kind, mime, file: `data:${mime};base64,${b64(u8)}` }); } catch { /* a missing reference: the deploy notes say it */ } }
     const host = DeployCore.hostPage({ title: b.spec.name || 'Hearth scene', version: b.spec.version, layers: b.spec.layers, palette: b.spec.palette, refs, frame: b.spec.frame });
     const esc = (s) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-    const out = host.replace(/ src="lab\.html\?[^"]*"/, ` srcdoc="${esc(page)}"`);
+    const out = host.replace(/ src="lab\.html\?[^"]*"/, () => ` srcdoc="${esc(page)}"`);
     if (out === host) throw new Error('The deploy page changed: the one-file page can\'t be packed');
     return out;
   }
