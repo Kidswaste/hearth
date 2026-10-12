@@ -297,6 +297,7 @@ function register(ipcMain, getWin, { dataDir } = {}) {
     if (o.eval) return wins.get(id)?.webContents.executeJavaScript(o.eval, true);
     if (o.close) { for (const w of wins.values()) w.destroy(); wins.clear(); return true; }
     if (o.file) return fs.readFileSync(file, 'utf8');
+    if (o.shot) { const img = await wins.get(id)?.webContents.capturePage(); const f = path.join(os.tmpdir(), `hearth-remote-${String(o.shot).replace(/\W/g, '')}.png`); if (img) fs.writeFileSync(f, img.toPNG()); return f; }
     if (o.get) return new Promise((res) => { http.get({ host, port, path: o.get, headers: { Host: o.host || `${host}:${port}` } }, (rs) => { rs.resume(); res({ status: rs.statusCode, csp: rs.headers['content-security-policy'] || '' }); }).on('error', (err) => res({ err: err.message })); });
     if (o.raw) { // a socket from somewhere else (no Origin / another Origin): must be refused
       return new Promise((res) => {

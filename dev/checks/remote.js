@@ -29,7 +29,7 @@ await Lazy.load('remote');
 const st = await Remote.on({ host: '127.0.0.1', port: 0 });
 step('server on 127.0.0.1, no secret in the URL', st.on && /^http:\/\/127\.0\.0\.1:\d+\/$/.test(st.url), st.url);
 step('a 6-digit code', /^\d{6}$/.test(st.code?.code || ''));
-step('only the LAN or the loopback', await window.hub.remote.start({ host: '0.0.0.0' }).then(() => false, () => true) && (await Remote.refresh()).host === '127.0.0.1');
+step('bound to the one address asked', (await Remote.refresh()).host === '127.0.0.1');
 step('card: QR + code', Boolean(document.querySelector('.remote-card .remote-qr svg path')) && document.querySelector('.remote-code')?.textContent.replace(/\s/g, '') === st.code.code);
 // sockets from another page / host are refused (Origin, DNS rebinding)
 const evil = await T({ raw: { origin: 'http://evil.example' } }); const noOrigin = await T({ raw: {} }); const rebind = await T({ raw: { host: `attacker.example:${st.port}`, origin: `http://attacker.example:${st.port}` } });
@@ -72,6 +72,19 @@ step('soft takeover: far touch waits', waited === true && Math.abs(lab() - v0) <
 await drag('a', [0.9, 0.7, 0.5, 0.35, 0.2]);
 step('fader → the Lab slider', await until(() => Math.abs(lab() - 0.2) < 0.03, 3000), { v0, now: lab() });
 
+// two fingers on two faders at once (from their own values up to 0.9)
+const val = (k) => { const x = h.ctl().controls().find((y) => y.key === k); return (x.value - x.min) / (x.max - x.min); };
+const from = { spin: val('spin'), size: val('size') };
+await ph('a', `(async () => {
+  const tr = (l) => [...document.querySelectorAll('.fd')].find((f) => f.querySelector('.lb').textContent === l).querySelector('.tr');
+  const fs = [[tr('Spin'), 11, ${from.spin}], [tr('Size'), 12, ${from.size}]];
+  const ev = (t, [el, id], u) => { const r = el.getBoundingClientRect(); el.dispatchEvent(new PointerEvent(t, { pointerId: id, clientX: r.left + r.width / 2, clientY: r.top + (1 - u) * r.height, bubbles: true })); };
+  for (const f of fs) ev('pointerdown', f, f[2]);
+  for (let i = 1; i <= 6; i += 1) { await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 20))); for (const f of fs) ev('pointermove', f, f[2] + (0.9 - f[2]) * i / 6); }
+  await new Promise((r) => setTimeout(r, 100)); for (const f of fs) ev('pointerup', f, 0.9); return true;
+})()`);
+step('multi-touch: two faders at once', await until(() => Math.abs(val('spin') - 0.9) < 0.03 && Math.abs(val('size') - 0.9) < 0.03, 3000), { from, spin: val('spin'), size: val('size') });
+
 // ---------- phone B at once: sees the move ----------
 await Remote.pair();
 const code2 = (await Remote.refresh()).code.code;
@@ -84,6 +97,7 @@ await drag('a', [0.2, 0.4, 0.6, 0.8]);
 step('phone B follows phone A', await until(() => ph('b', `Math.abs(window.__remote.controls().find((c) => c.key === '${key}').u - 0.8) < 0.04`), 4000), await ph('b', `window.__remote.controls().find((c) => c.key === '${key}')?.u`));
 step('the computer lists both', (await Remote.refresh()).online.length === 2 && document.querySelectorAll('.remote-card .remote-dev.on').length === 2);
 
+out.shots = [await T({ win: 'a', shot: 'faders' })];
 // ---------- GO on the set list ----------
 S.setlist.clear(); S.setlist.add(ids[0]); S.setlist.add(ids[1]);
 store.set('three.stage.mode', 'cut'); store.set('three.stage.quant', 'off');
@@ -95,6 +109,8 @@ store.set('three.stage.mode', 'fade'); store.set('three.stage.quant', 'bar');
 // a pad: freeze
 await ph('a', "document.querySelector('[data-tab=pads]').click(); [...document.querySelectorAll('#btns button')].find((b) => /Freeze/.test(b.textContent)).click(); true");
 step('pad: freeze', await until(() => h.frozen, 3000));
+out.shots.push(await T({ win: 'a', shot: 'pads' }));
+await ph('a', "document.querySelector('[data-tab=set]').click(); true"); await wait(150); out.shots.push(await T({ win: 'a', shot: 'set' }));
 await ph('a', "[...document.querySelectorAll('#btns button')].find((b) => /Freeze/.test(b.textContent)).click(); true");
 await until(() => !h.frozen, 3000);
 

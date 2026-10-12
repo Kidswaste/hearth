@@ -93,8 +93,10 @@ const Remote = (() => {
       const x = now.get(m.key); const p = peers.get(m.peer); if (!x || !p) continue;
       const cur = uOf(x); if (cur == null) continue;
       const pk = `${h.sketchId()}|${L.id}|${m.key}`;
-      const s = p.pick.get(pk) || { picked: false, last: null, sent: null };
-      // soft takeover (like the MIDI path): moved by something else since → pick it up again
+      // soft takeover (like the MIDI path): the phone picks the value up under the finger before it sends; here, a
+      // slider moved by something else since this finger's last value (the other phone, a shuffle, your hand) has
+      // to be passed through again before this finger moves it
+      const s = p.pick.get(pk) || { picked: true, last: null, sent: null };
       if (s.picked && s.sent != null && Math.abs(cur - s.sent) > 0.03) s.picked = false;
       if (!s.picked && !m.jump && x.min != null) {
         const crossed = s.last != null && (s.last - cur) * (m.u - cur) <= 0;

@@ -82,7 +82,7 @@
       return;
     }
     if (m.t === 'state') { state(m); return; }
-    if (m.t === 'vals') { for (const [k, u] of Object.entries(m.v)) { const c = byKey.get(k); if (c) { c.u = u; paintFader(c); } } paintXY(); return; }
+    if (m.t === 'vals') { for (const [k, u] of Object.entries(m.v)) { const c = byKey.get(k); if (c && !c.held) { c.u = u; paintFader(c); } } paintXY(); return; } // (under a finger: the finger wins)
     if (m.t === 'meters') { for (const [k, v] of Object.entries(m.v)) { const c = byKey.get(k); if (c?.mt) { const s = `scaleY(${v})`; if (c.mts !== s) { c.mts = s; c.mt.style.transform = s; } } } return; }
     if (m.t === 'info') { infoOf(m); return; }
     if (m.t === 'toast') toast(m.text, m.err);
@@ -152,7 +152,7 @@
     tr.addEventListener('pointermove', (e) => { if (c.held?.id === e.pointerId) move(at(e)); });
     const up = (e) => {
       if (c.held?.id !== e.pointerId) return;
-      if (c.held.picked) { pend.delete(c.key); send({ t: 'set', v: [[c.key, c.u]], rel: 1 }); }
+      if (c.held.picked) { pend.delete(c.key); c.u = c.held.last; send({ t: 'set', v: [[c.key, c.u]], rel: 1 }); }
       c.held = null; box.classList.remove('held', 'wait');
     };
     tr.addEventListener('pointerup', up); tr.addEventListener('pointercancel', up); tr.addEventListener('lostpointercapture', up);
