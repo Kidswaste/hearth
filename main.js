@@ -460,6 +460,24 @@ app.on('before-quit', (e) => {
 });
 let quitFlushed = false;
 ipcMain.on('stage:fullscreen', () => { if (stageWin && !stageWin.isDestroyed()) stageWin.setFullScreen(!stageWin.isFullScreen()); });
+// (round 22, labstage) the Stage window as a live output: which screens there are, and putting it fullscreen on one
+// (the other screen than Hearth's by default), so the hub stays on the main screen
+ipcMain.handle('stage:displays', () => {
+  const { screen } = require('electron');
+  const mine = screen.getDisplayMatching(win.getBounds()).id;
+  return screen.getAllDisplays().map((d, i) => ({ id: d.id, label: d.label || `Screen ${i + 1}`, width: Math.round(d.size.width * d.scaleFactor), height: Math.round(d.size.height * d.scaleFactor), hz: d.displayFrequency || 0, primary: d.id === screen.getPrimaryDisplay().id, hub: d.id === mine }));
+});
+ipcMain.handle('stage:place', (_e, { display = 'other', fullscreen = true } = {}) => {
+  if (!stageWin || stageWin.isDestroyed()) return null;
+  const { screen } = require('electron');
+  const all = screen.getAllDisplays(); const mine = screen.getDisplayMatching(win.getBounds());
+  const d = all.find((x) => x.id === display) || (display === 'other' ? all.find((x) => x.id !== mine.id) : null) || mine;
+  if (stageWin.isFullScreen()) stageWin.setFullScreen(false);
+  stageWin.setBounds({ ...d.workArea });
+  if (fullscreen) stageWin.setFullScreen(true);
+  stageWin.showInactive(); // the hub keeps the keyboard
+  return { id: d.id, other: d.id !== mine.id, fullscreen: Boolean(fullscreen) };
+});
 
 // (round 16) A main-process module only some features use loads on its first IPC call: its channels are read from its
 // source (ipcMain.handle('x:y', …) / ipcMain.on('x:y', …)), stand-in handlers require it and hand the call over.

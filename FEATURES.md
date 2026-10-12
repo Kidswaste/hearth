@@ -698,3 +698,11 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ Sent as a `hearth-report` issue in kidswaste/hearth with gh when signed in, else a prefilled github.com link (full text on the clipboard when cut); deduped per day; "Your report #N is fixed in this update" after ⬆ Update; `/report auto on` sends crashes by themselves (≤ 3 a day).
 - ✓ Chats can draft one with `chat_report_problem` (a card you send; `/report tool off` drops it, ≈ 45 tokens).
 - ○ Tested with a fake gh and a stubbed browser (`sh dev/run-checks.sh devreport`); not against github.com.
+
+## Lab live stage (round 22, labstage, 65 upgrades: docs/upgrades/labstage.md)
+- ✓ MIDI controllers: learn (touch or point at a slider, turn a knob), knobs per scene or for every scene by name, soft takeover, pads / buttons / keys for GO, cut, scenes, shuffle, freeze, tap, black-out…, a MIDI crossfader, MIDI clock in; applied once a frame (500 messages → 1 update).
+- ✓ Set list + cue monitor: the cued scene runs live in a corner; GO crossfades (both live), cuts or dips to black over 1 beat–4 bars, landing on the next beat or bar; the next scene cues itself.
+- ✓ Output: the Stage window fullscreen on the other screen at its own resolution / frame rate; black-out, freeze and crossfades reach it.
+- ✓ Show mode: editing chrome hidden, a one-row show bar, frame rate locked, reloads blocked, a scene error holds the last good frame and the set moves on at the bar, Light mode when frames keep dropping; beat LFOs on any slider ride the song, MIDI clock or taps.
+- ✓ Right-click the preview → 🎚 Live (VJ), `/stage` (`/vj`), Ctrl/⌘+K "Lab: Live …".
+- ○ The cued scene hears the demo beat until it takes over; tested with a fake MIDI controller (`dev/checks/labstage.js`).

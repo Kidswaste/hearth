@@ -6351,6 +6351,18 @@ function runLayers(specs) {
 }
 // A whole new stack in this same page (another sketch, ▶ Run, a jam round): a picture of the old stack lies on top
 // and fades once every new layer has drawn. three.js, the music and the live sound keep going.
+// (round 22, labstage) the live stage (tools/three-stage.js) on this page: a black-out veil that fades (the output's
+// black-out) and how long a scene switch cross-fades from the old picture (a crossfade on the output window)
+let stageSwapMs = null; let stageVeil = null;
+function stageMask(msg) {
+  if (msg.swapMs !== undefined) stageSwapMs = msg.swapMs == null ? null : Math.max(0, Number(msg.swapMs) || 0);
+  if (msg.black === undefined) return;
+  if (!stageVeil) { stageVeil = document.createElement('div'); stageVeil.style.cssText = 'position:fixed;inset:-2px;background:#000;z-index:99995;pointer-events:none;opacity:0'; document.body.appendChild(stageVeil); }
+  const to = msg.black ? 1 : 0; const from = Number(getComputedStyle(stageVeil).opacity) || 0;
+  stageVeil.getAnimations().forEach((a) => a.cancel());
+  stageVeil.style.opacity = String(to);
+  if (msg.ms > 0 && from !== to) stageVeil.animate([{ opacity: from }, { opacity: to }], { duration: msg.ms, easing: 'linear' });
+}
 function swapLayers(specs, fx = 'xfade') {
   let cover = null;
   if (fx && ordered().some((L) => layerMix(L) > 0)) {
@@ -6372,7 +6384,7 @@ function swapLayers(specs, fx = 'xfade') {
   }
   lastRenderer = null;
   resetPage();
-  waitStack(specs.map((s) => s.id), () => { if (cover) fadeAway(cover, 420); post({ type: 'stack-drawn' }); });
+  waitStack(specs.map((s) => s.id), () => { if (cover) fadeAway(cover, stageSwapMs ?? 420); post({ type: 'stack-drawn' }); });
   specs.forEach((s, z) => runLayer({ z, ...s, swap: true }));
 }
 
@@ -7602,6 +7614,7 @@ addEventListener('message', async (e) => {
   const msg = e.data || {};
   if (msg.target !== 'three-sandbox') return;
   if (typeof msg.type === 'string' && msg.type.startsWith('seq-')) { sqMessage(msg); return; }
+  if (msg.type === 'stage-mask') { stageMask(msg); return; }
   if (msg.type === 'tweak-init') { TV = { ...(msg.values || {}) }; tweakKeys = msg.keys || {}; mods = msg.mods || {}; pcValues(); }
   if (msg.type === 'tweak') setTweak(msg);
   if (msg.type === 'tweak-mods') mods = msg.mods || {};

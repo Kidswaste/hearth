@@ -81,6 +81,7 @@ contextBridge.exposeInMainWorld('hub', {
   stageOnTop: call('stage:onTop'),
   stageClose: call('stage:close'),
   stageFocus: call('stage:focus'),
+  stageDisplays: call('stage:displays'), stagePlace: call('stage:place'), // (round 22) live output on a second screen
   stageSend: (msg) => ipcRenderer.send('stage:to', msg),
   onStageMessage: on('stage:from'),
   onStageClosed: on('stage:closed'),

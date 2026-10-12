@@ -1135,7 +1135,7 @@ const ThreeTweaks = (() => {
         const span = it.range.max - it.range.min; const depth = mo.depth ?? 0.25; const rate = mo.rate || 1;
         const ph = ((beatPos / rate) % 1 + 1) % 1;
         let u = 0;
-        if (mo.kind === 'lfo') u = mo.shape === 'tri' ? 1 - 4 * Math.abs(ph - 0.5) : mo.shape === 'saw' ? ph * 2 - 1 : mo.shape === 'square' ? (ph < 0.5 ? 1 : -1) : Math.sin(ph * Math.PI * 2);
+        if (mo.kind === 'lfo') u = mo.shape === 'tri' ? 1 - 4 * Math.abs(ph - 0.5) : mo.shape === 'saw' ? ph * 2 - 1 : mo.shape === 'square' ? (ph < 0.5 ? 1 : -1) : mo.shape === 'ramp' ? 1 - ph * 2 : mo.shape === 'steps' ? Math.floor(ph * 4) / 1.5 - 1 : mo.shape === 'bounce' ? Math.abs(Math.sin(ph * Math.PI)) * 2 - 1 : Math.sin(ph * Math.PI * 2); // (round 22: ramp, steps, bounce for the live stage)
         else if (mo.kind === 'walk') { const s = (walkState[i] ||= { x: 0, v: 0 }); s.v = (s.v + (Math.random() - 0.5) * 0.06 / rate) * 0.94; s.x = Math.max(-1, Math.min(1, s.x + s.v)); if (Math.abs(s.x) >= 1) s.v *= -0.5; u = s.x; }
         else if (mo.kind === 'beat') u = hash01(Math.floor(beatPos / rate) * 13 + i) * 2 - 1;
         else if (mo.kind === 'pulse') u = Math.exp(-ph * 6);
@@ -1369,6 +1369,7 @@ const ThreeTweaks = (() => {
       r.panelEl = panel;
       r.updateMusic();
       r.paintLock();
+      if (it.key != null) r.el.dataset.twKey = it.key; // (round 22) MIDI learn: the knob under the pointer
       rows.push(r);
       return r;
     }
@@ -1416,6 +1417,7 @@ const ThreeTweaks = (() => {
       r.el = el('div', { class: `tw-row kind-${it.kind}${named ? ' named' : ''}` }, top, it.hint ? el('div', { class: 'tw-hint', text: it.hint }) : null, ctl.node, r.musicPanel || null);
       r.el.addEventListener('contextmenu', (e) => { if (!e.target.closest('input[type=text], input[type=number]')) rowMenu(e, it, i, r); });
       r.paintLock();
+      if (it.key != null) r.el.dataset.twKey = it.key; // (round 22) MIDI learn: the slider under the pointer (three-stage-midi.js)
       rows.push(r);
       return r.el;
     }

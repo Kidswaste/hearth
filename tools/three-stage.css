@@ -1,0 +1,38 @@
+/* The Lab's live stage (round 22, labstage; tools/three-stage.js): the cue deck over the preview, the show HUD, the
+   learn pill, show mode. Opacity / transform only on things that move; no backdrop-filter over the picture. */
+
+/* the cued scene: a small cue monitor in the corner until GO, then over the picture (its opacity is the crossfade) */
+.stage-deck { position: absolute; z-index: 6; overflow: hidden; pointer-events: none; background: #000; contain: strict; will-change: opacity, transform; }
+.stage-deck .three-frame { width: 100%; height: 100%; border: 0; display: block; }
+.stage-deck.monitor { transform-origin: 100% 0; transform: scale(0.26); border-radius: 0; outline: 6px solid var(--ui-cyan, #4fd6ff); outline-offset: -6px; opacity: 0.96; }
+.stage-deck.full { transform: none; outline: 0; }
+.stage-deck-label { position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 22px; font: 600 44px/1.1 system-ui, sans-serif; color: #fff; background: linear-gradient(transparent, rgba(0, 0, 0, 0.75)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stage-deck-label:empty { display: none; }
+.stage-veil { position: absolute; inset: 0; z-index: 7; background: #000; pointer-events: none; opacity: 0; }
+
+/* show mode: the picture, the sliders and the HUD; the code, the console and the toolbar step away */
+.lab-show .three-toolbar, .lab-show .three-editor, .lab-show .three-console-wrap, .lab-show .three-stats { display: none !important; }
+.lab-show .three-split { grid-template-columns: minmax(0, 1fr) !important; }
+.lab-show .three-split.with-tweaks { grid-template-columns: minmax(0, 1fr) clamp(240px, 24%, 320px) !important; }
+.lab-show .three-preview { outline: 1px solid color-mix(in srgb, var(--ui-red, #ff4d4d) 55%, transparent); outline-offset: -1px; }
+
+.stage-hud { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 9; display: flex; align-items: center; gap: 6px; padding: 5px 6px; border-radius: 8px; background: rgba(8, 9, 12, 0.82); color: #f2f2f2; font-size: 12px; overflow: hidden; }
+.stage-hud[hidden] { display: none; }
+.stage-hud-btn { border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.06); color: inherit; border-radius: 6px; padding: 3px 8px; font: inherit; cursor: pointer; white-space: nowrap; }
+.stage-hud-btn:hover { background: rgba(255, 255, 255, 0.14); }
+.stage-hud-btn.on { border-color: var(--ui-gold, #ffc45c); color: var(--ui-gold, #ffc45c); }
+.stage-hud-btn.ghost { border-color: transparent; background: none; opacity: 0.7; }
+.stage-tempo { display: inline-flex; align-items: center; gap: 6px; padding: 0 6px; cursor: pointer; font-variant-numeric: tabular-nums; min-width: 84px; }
+.stage-beat-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ui-red, #ff4d4d); will-change: opacity, transform; }
+.stage-list { display: flex; gap: 4px; flex: 1; min-width: 0; overflow: hidden; }
+.stage-chip { border: 1px solid rgba(255, 255, 255, 0.12); background: none; color: rgba(255, 255, 255, 0.75); border-radius: 999px; padding: 2px 9px; font: inherit; cursor: pointer; white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+.stage-chip.on { border-color: var(--ui-gold, #ffc45c); color: #fff; background: color-mix(in srgb, var(--ui-gold, #ffc45c) 22%, transparent); }
+.stage-chip.cued { border-color: var(--ui-cyan, #4fd6ff); color: var(--ui-cyan, #4fd6ff); border-style: dashed; }
+.stage-empty { opacity: 0.6; white-space: nowrap; }
+.stage-note { color: var(--ui-gold, #ffc45c); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+.stage-note:empty { display: none; }
+
+/* learning: one pill, only while it listens */
+.stage-learn { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 9; padding: 5px 12px; border-radius: 999px; background: rgba(8, 9, 12, 0.86); color: var(--ui-cyan, #4fd6ff); border: 1px solid var(--ui-cyan, #4fd6ff); font-size: 12px; cursor: pointer; white-space: nowrap; }
+.stage-learn[hidden] { display: none; }
+body:has(.stage-learn:not([hidden])) .tw-column [data-tw-key]:hover { outline: 1px dashed var(--ui-cyan, #4fd6ff); outline-offset: 2px; }

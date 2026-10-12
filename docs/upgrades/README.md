@@ -85,7 +85,8 @@ line count is lower than the number of upgrades).
 | Report to the developer (round 21): ⚑ on error notifications, Report on failed replies, stalls, crashes, page errors and `/smooth`; the whole masked report shown for review, then a GitHub issue in kidswaste/hearth (gh, or a prefilled browser link); deduped, listed with state, "Your report #N is fixed in this update"; chats can draft one (`chat_report_problem`); `/report` | [devreport.md](devreport.md) | 33 |
 | Lab preview GPU (round 21): WebGL contexts reused instead of rebuilt (scene switch → first frame ≈ 765 → 400–495 ms, no new context per switch), shader programs cached across re-runs, stacked filters drawn in one pass (718 2D merges → 1), 5× fewer allocations per frame, video and footage only updated on new frames, fps up in every mode | [labgpu.md](labgpu.md) | 28 |
 | Lab crew (round 22): `/crew 3 <brief>` (or the director, with `/crew on`) runs 2–6 lean helpers in parallel on hidden copies of the chat's scene; cost shown first (≈ 32k tokens / ≈ 1 min for 3), live thumbnails, stop anytime, pick → the scene (undo), director picks, keep, merge by layer; a helper step costs 924 tokens vs 3,216 for the director | [labcrew.md](labcrew.md) | 26 |
-| **Total** | | **11,096** |
+| Live / VJ (round 22): MIDI learn with soft takeover, pads and keys for GO / cut / next scene / shuffle / freeze / tap / black-out, a set list with a live cue monitor and crossfades / cuts / dips landing on the beat or bar, fullscreen output on the second screen, beat LFOs on any slider, show mode (locked frame rate, holds the last good frame); `/stage`, `/vj` | [labstage.md](labstage.md) | 65 |
+| **Total** | | **11,187** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.
