@@ -19,6 +19,8 @@
   const params = new URLSearchParams(location.search);
   // Exact output sizes (1080×1920…) render at 1 device pixel per pixel, so the canvas matches the export.
   if (params.get('dpr')) { const dpr = Number(params.get('dpr')); Object.defineProperty(window, 'devicePixelRatio', { get: () => dpr }); }
+  // (round 22 "labexport") an export page's randomness is seeded (?seed=): the same render gives the same pixels every time
+  if (params.get('seed')) { let a = Number(params.get('seed')) >>> 0; Math.random = () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
   const V = params.get('v') || '0.186.1';
   const base = `https://cdn.jsdelivr.net/npm/three@${V}`;
   // (round 21 "labgpu") 'three' is a tiny module in front of three.js: everything is three.js itself, except that a
@@ -28,7 +30,12 @@
   const real = `${base}/build/three.module.js`;
   let threeUrl = real;
   try {
-    const shim = `export * from '${real}';\nimport { WebGLRenderer as R } from '${real}';\nexport class WebGLRenderer extends R { constructor(p = {}) { const c = p && !p.canvas && !p.context && globalThis.__labPoolTake ? globalThis.__labPoolTake(p) : null; super(c ? { ...p, canvas: c } : p); } }\n`;
+    // (round 22 "labexport") an export page (?xp=1): renderers draw at the page's full pixel ratio whatever the sketch
+    // asks (a `Math.min(devicePixelRatio, 2)` would cap a 4K or supersampled frame), and with ?alpha=1 they keep an
+    // alpha channel and clear to transparent, so a scene with no background exports with alpha
+    const XPX = params.get('xp') === '1' ? `setPixelRatio() { super.setPixelRatio(globalThis.devicePixelRatio); }${params.get('alpha') === '1' ? ' setClearColor(c, a) { super.setClearColor(c, 0); }' : ''}` : '';
+    const XPP = params.get('xp') === '1' && params.get('alpha') === '1' ? '{ ...(p0 || {}), alpha: true, premultipliedAlpha: true }' : 'p0';
+    const shim = `export * from '${real}';\nimport { WebGLRenderer as R } from '${real}';\nexport class WebGLRenderer extends R { constructor(p0 = {}) { const p = ${XPP}; const c = p && !p.canvas && !p.context && globalThis.__labPoolTake ? globalThis.__labPoolTake(p) : null; super(c ? { ...p, canvas: c } : p); } ${XPX} }\n`;
     if (params.get('pool') !== '0') threeUrl = URL.createObjectURL(new Blob([shim], { type: 'text/javascript' }));
   } catch { threeUrl = real; }
   const im = document.createElement('script');
@@ -7366,6 +7373,156 @@ function sqMessage(msg) {
   }
 }
 
+// ---------- export frames (round 22 "labexport": tools/three-export.js) ----------
+// A hidden export page (?xp=1) runs the scene or the sequence as a sequence plan and steps it frame by frame, like a
+// sequence render, with the best-quality options on top: supersampling (the page draws at k× the pixels: the merge is
+// box-filtered down, exactly), motion blur (sub-frames across the shutter, averaged with their alpha), a transparent
+// background, a 16-bit still, a 16 × 16 signature per frame (loop detection), a GLB of the 3D content, a contact sheet.
+const XP = { acc: null, stripe: null, out: null, sig: null };
+// the merge of every layer at W × H (rows y0 … y0 + sh only: a stripe), transparent or black behind
+function xpMerge(c, W, H, y0 = 0, sh = H, alpha = false) {
+  if (c.width !== W || c.height !== sh) { c.width = W; c.height = sh; }
+  const g = c.getContext('2d', { willReadFrequently: c === XP.stripe });
+  g.setTransform(1, 0, 0, 1, 0, -y0);
+  g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.filter = 'none';
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+  if (alpha) g.clearRect(0, y0, W, sh); else { g.fillStyle = '#000'; g.fillRect(0, y0, W, sh); }
+  for (const L of ordered()) { if (L.props.pcOf || L.seqHide) continue; drawLayer2D(g, L, W, H); }
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  return c;
+}
+// the program at T, drawn (the layers' frames run once; nothing is sent back)
+async function xpStep(T) {
+  if (!SQ.on) throw new Error('nothing to export (no plan)');
+  await sqFrame({ n: -1, T: Math.max(0, T), w: 2, h: 2, ret: false });
+}
+const XP_ACC_MAX = 16.8e6; // pixels: above it (8K…) the exact accumulation would take > 1 GB; sub-frames blend on a canvas instead
+async function xpFrame(m) {
+  const { n, T, w, h, ss = 1, sub = 1, shutter = 0.5, F = 30, kind = 'image/png', q = 0.95, alpha = false, sig = false } = m;
+  const t0 = realNow();
+  const times = [];
+  const k = Math.max(1, Math.min(64, Math.round(sub) || 1));
+  for (let j = 0; j < k; j += 1) times.push(k === 1 ? T : T + (j / k) * (Math.max(0.05, Math.min(1, shutter)) / F));
+  const S2 = Math.max(1, Math.round(ss) || 1);
+  const out = (XP.out ||= document.createElement('canvas'));
+  let raw = null;
+  if (S2 === 1 && k === 1 && kind !== 'raw16') {
+    await xpStep(T);
+    xpMerge(out, w, h, 0, h, alpha);
+  } else if (w * h > XP_ACC_MAX && kind !== 'raw16') {
+    // very large frames: the merge scales down by itself (high-quality smoothing), sub-frames are a running average
+    const tmp = (XP.stripe ||= document.createElement('canvas'));
+    if (out.width !== w || out.height !== h) { out.width = w; out.height = h; }
+    const g = out.getContext('2d');
+    for (let j = 0; j < k; j += 1) {
+      await xpStep(times[j]);
+      xpMerge(tmp, w, h, 0, h, alpha);
+      g.globalCompositeOperation = j ? 'source-over' : 'copy';
+      g.globalAlpha = 1 / (j + 1);
+      g.drawImage(tmp, 0, 0);
+    }
+    g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+  } else {
+    // exact: every sample (ss × ss pixels × sub-frames) summed with its alpha (premultiplied), then divided
+    const N = w * h * 4;
+    if (!XP.acc || XP.acc.length !== N) XP.acc = new Uint32Array(N); else XP.acc.fill(0);
+    const acc = XP.acc;
+    const st = (XP.stripe ||= document.createElement('canvas'));
+    const FW = w * S2;
+    const rows = Math.max(1, Math.min(h, Math.floor(4e6 / (FW * S2)))); // output rows per stripe (≈ 4 MP read at a time)
+    for (let j = 0; j < k; j += 1) {
+      await xpStep(times[j]);
+      for (let y = 0; y < h; y += rows) {
+        const rh = Math.min(rows, h - y);
+        xpMerge(st, FW, h * S2, y * S2, rh * S2, alpha);
+        const d = st.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, FW, rh * S2).data;
+        for (let yy = 0; yy < rh; yy += 1) {
+          const o0 = (y + yy) * w * 4;
+          for (let sy = 0; sy < S2; sy += 1) {
+            let i = ((yy * S2 + sy) * FW) * 4;
+            for (let x = 0; x < w; x += 1) {
+              const o = o0 + x * 4;
+              for (let sx = 0; sx < S2; sx += 1, i += 4) { const a = d[i + 3]; acc[o] += d[i] * a; acc[o + 1] += d[i + 1] * a; acc[o + 2] += d[i + 2] * a; acc[o + 3] += a; }
+            }
+          }
+        }
+      }
+    }
+    const div = S2 * S2 * k;
+    if (kind === 'raw16') {
+      // 16 bits a channel, little-endian RGBA (the hub has ffmpeg write the PNG)
+      raw = new Uint16Array(N);
+      for (let i = 0; i < N; i += 4) { const A = acc[i + 3]; if (!A) continue; raw[i] = Math.round((acc[i] / A) * 257); raw[i + 1] = Math.round((acc[i + 1] / A) * 257); raw[i + 2] = Math.round((acc[i + 2] / A) * 257); raw[i + 3] = Math.round((A / div) * 257); }
+    } else {
+      if (out.width !== w || out.height !== h) { out.width = w; out.height = h; }
+      const g = out.getContext('2d');
+      const img = g.createImageData(w, h); const p = img.data;
+      for (let i = 0; i < N; i += 4) { const A = acc[i + 3]; if (!A) continue; p[i] = Math.round(acc[i] / A); p[i + 1] = Math.round(acc[i + 1] / A); p[i + 2] = Math.round(acc[i + 2] / A); p[i + 3] = Math.round(A / div); }
+      g.putImageData(img, 0, 0);
+    }
+  }
+  let sg = null;
+  if (sig && !raw) {
+    const c = (XP.sig ||= document.createElement('canvas')); c.width = 16; c.height = 16;
+    const g = c.getContext('2d', { willReadFrequently: true }); g.imageSmoothingQuality = 'high'; g.clearRect(0, 0, 16, 16); g.drawImage(out, 0, 0, 16, 16);
+    const d = g.getImageData(0, 0, 16, 16).data; sg = [];
+    for (let i = 0; i < d.length; i += 4) sg.push(Math.round((0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) * (d[i + 3] / 255)));
+  }
+  const drawMs = realNow() - t0;
+  if (raw) { post({ type: 'xp-frame', n, buffer: raw.buffer, w, h, raw16: true, ms: drawMs, drawMs }, [raw.buffer]); return; }
+  const blob = await new Promise((r) => out.toBlob(r, kind, q));
+  if (!blob) throw new Error(`the ${w}×${h} frame could not be encoded (too big for this GPU?)`);
+  const buffer = await blob.arrayBuffer();
+  post({ type: 'xp-frame', n, buffer, w, h, sig: sg, ms: realNow() - t0, drawMs }, [buffer]);
+}
+// the 3D content at T as a GLB (every layer's last-rendered scene; one scene as it is, several side by side in one file)
+async function xpGlb({ T = 0, binary = true }) {
+  await xpStep(T);
+  const sc = scenesByLayer();
+  const list = [...new Set(Object.values(sc).map((x) => x.scene).filter((s) => s?.isObject3D))];
+  if (!list.length) throw new Error('no 3D scene here (2D or shader-only layers have nothing to export as a model)');
+  const { GLTFExporter } = await import('three/addons/exporters/GLTFExporter.js');
+  const animations = [];
+  let meshes = 0; let tris = 0;
+  for (const s of list) {
+    s.traverse((o) => {
+      if (o.animations?.length) animations.push(...o.animations);
+      if (o.isMesh && o.visible) { meshes += 1; const g = o.geometry; tris += g?.index ? g.index.count / 3 : (g?.attributes?.position?.count || 0) / 3; }
+    });
+  }
+  const res = await new GLTFExporter().parseAsync(list.length === 1 ? list[0] : list, { binary, onlyVisible: true, maxTextureSize: 4096, animations: [...new Set(animations)] });
+  const buffer = binary ? res : new TextEncoder().encode(JSON.stringify(res)).buffer;
+  post({ type: 'xp-glb', buffer, scenes: list.length, meshes, triangles: Math.round(tris), animations: animations.length }, [buffer]);
+}
+// a contact sheet: frames at the given times in a grid, each with its time under it
+async function xpSheet({ times, cols, tw, th, pad = 28, labels = [], bg = '#111318', title = '' }) {
+  const rows = Math.ceil(times.length / cols);
+  const top = title ? 44 : 0;
+  const c = document.createElement('canvas'); c.width = cols * tw; c.height = rows * (th + pad) + top;
+  const g = c.getContext('2d');
+  g.fillStyle = bg; g.fillRect(0, 0, c.width, c.height);
+  const tile = document.createElement('canvas');
+  for (let i = 0; i < times.length; i += 1) {
+    await xpStep(times[i]);
+    xpMerge(tile, tw, th, 0, th, false);
+    const x = (i % cols) * tw; const y = top + Math.floor(i / cols) * (th + pad);
+    g.drawImage(tile, x, y);
+    g.fillStyle = '#c9ccd4'; g.font = '600 15px system-ui, sans-serif'; g.textBaseline = 'middle';
+    g.fillText(labels[i] || `${times[i].toFixed(2)} s`, x + 10, y + th + pad / 2);
+  }
+  if (title) { g.fillStyle = '#f2c14e'; g.font = '700 20px system-ui, sans-serif'; g.textBaseline = 'middle'; g.fillText(title, 12, 22); }
+  const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+  const buffer = await blob.arrayBuffer();
+  post({ type: 'xp-sheet', buffer, w: c.width, h: c.height }, [buffer]);
+}
+function xpMessage(msg) {
+  const fail = (err) => post({ type: msg.type, n: msg.n, error: String(err?.message || err) });
+  if (msg.type === 'xp-frame') xpFrame(msg).catch(fail);
+  else if (msg.type === 'xp-glb') xpGlb(msg).catch(fail);
+  else if (msg.type === 'xp-sheet') xpSheet(msg).catch(fail);
+  else if (msg.type === 'xp-info') post({ type: 'xp-info', w: innerWidth, h: innerHeight, dpr: devicePixelRatio, on: SQ.on, mounted: SQ.mounted.size, layers: layers.size });
+}
+
 // ---------- precomps (round 10 "comp": tools/three-comp.js builds the specs) ----------
 // A precomp is a layer whose content is another scene (another chat's scene, a sketch, a sequence): its spec carries
 // precomp = { children: [layer specs of that scene], start, offset, speed, loop, len, fps, crop, mask, feather, fx,
@@ -7602,6 +7759,7 @@ addEventListener('message', async (e) => {
   const msg = e.data || {};
   if (msg.target !== 'three-sandbox') return;
   if (typeof msg.type === 'string' && msg.type.startsWith('seq-')) { sqMessage(msg); return; }
+  if (typeof msg.type === 'string' && msg.type.startsWith('xp-')) { xpMessage(msg); return; } // (round 22 "labexport")
   if (msg.type === 'tweak-init') { TV = { ...(msg.values || {}) }; tweakKeys = msg.keys || {}; mods = msg.mods || {}; pcValues(); }
   if (msg.type === 'tweak') setTweak(msg);
   if (msg.type === 'tweak-mods') mods = msg.mods || {};

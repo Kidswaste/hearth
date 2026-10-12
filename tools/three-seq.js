@@ -1224,6 +1224,16 @@ const ThreeSeq = (() => {
     const F = re.seq?.fps || 30;
     const dur = programEnd(re);
     if (!(dur > 0)) throw new Error('The sequence is empty');
+    // (round 22 "labexport") the frames come from a hidden export page at the exact frame size (tools/three-export.js):
+    // the preview keeps its size and the Lab stays usable while it renders; the way below stays for real-time takes
+    if (!realtime && typeof LabExport !== 'undefined' && store.get('three.export.backstage', true) && await ffmpegOf()) {
+      const R = range && range.b > range.a ? { a: Math.max(0, range.a), b: Math.min(dur, range.b) } : null;
+      const nm = (name || re.seq?.name || S.key?.slice(4) || 'sequence').replace(/[\\/:*?"<>|]+/g, '_');
+      const out = await LabExport.renderEdit(re, { format: fmt, name: `${nm}${R ? ' range' : ''}`, quiet, onProgress, fps: F, crf, sound, range: R, title: `▤ ${nm} ${fmt.replace(':', 'x')}`, again: !quiet && S.key ? { type: 'seq-direct', key: S.key, opts: { format: fmt, fps: F, crf, sound } } : null });
+      await writeCaptions(re, out.path, R).catch(() => null);
+      emit('render', { output: out.path, frames: out.frames, format: fmt });
+      return out;
+    }
     const tools = realtime ? null : await ffmpegOf();
     const dir = await outDir();
     const stem = `${(name || re.seq?.name || S.key?.slice(4) || 'sequence').replace(/[\\/:*?"<>|]+/g, '_')} ${fmt.replace(':', 'x')}${range ? ' range' : ''}`;
@@ -2035,8 +2045,9 @@ const ThreeSeq = (() => {
       go.textContent = n > 1 ? `⇪ Render ${n} formats` : `⇪ Render ${[...st.formats][0]}`;
     }
     const realtime = el('button', { type: 'button', class: 'ghost small', text: 'Record in real time instead', title: 'Without ffmpeg: the sequence plays once into a recording' });
+    const best = typeof LabExport !== 'undefined' ? el('button', { type: 'button', class: 'ghost small', text: 'Export…', title: '4K / 8K, supersampling, motion blur, ProRes 4444 + alpha, PNG sequence, perfect loops (the Lab export)', on: { click: () => { dlg.close(); LabExport.panel({ source: 'seq' }); } } }) : null; // (round 22 "labexport")
     const more = window.Renders ? el('button', { type: 'button', class: 'ghost small', text: 'More formats…', title: 'GIF, WebM, ProRes master, audio only, YouTube 4K, Story, all socials (the render queue\'s presets)', on: { click: () => { dlg.close(); Renders.panel({ source: 'seq' }); } } }) : null; // (round 13)
-    dlg.append(el('h3', { text: 'Render the sequence' }), body, el('div', { class: 'modal-actions' }, realtime, more, el('span', { class: 'spacer' }), el('button', { type: 'button', class: 'ghost', text: 'Cancel', on: { click: () => dlg.close() } }), go));
+    dlg.append(el('h3', { text: 'Render the sequence' }), body, el('div', { class: 'modal-actions' }, realtime, more, best, el('span', { class: 'spacer' }), el('button', { type: 'button', class: 'ghost', text: 'Cancel', on: { click: () => dlg.close() } }), go));
     document.body.append(dlg);
     dlg.addEventListener('close', () => dlg.remove());
     paint();
@@ -2572,6 +2583,7 @@ const ThreeSeq = (() => {
     play, seek, step, shuttle, jump, settle, undo, redo, render, renderEdit, renderScene, needsBake, bake, compile, status, handle, timeOf, secsOf, zoomBy,
     arrange, again, retime, versions, fillGap, vary, varySections, copyLook, pasteLook, swapLooks, nest, unnest, copySel, paste, zoomTo, sectionMarkers, decideArrangement,
     setFrame, setFit, frameEverywhere, setMotion, setVolume, setFade, setDuck, muteTrack, setGrade, setGradeAmt, chop, captionsFile, captionsTyped, captionsFromCues, captionLook, exportCaptions, addLower, lowerLook, setOutputs, outputsOf: () => outputsOf(), renderOutputs, writeCaptions,
+    audioPlan, duckOf, // (labexport: the sound of an export page's render)
     outDir, keyForScene, switchTo, summaryFor, sceneCopied, songInfo, pickScenes, bakeRuns, get owner() { return S.owner; },
     on: (ev, fn) => { (listeners[ev] ||= []).push(fn); },
     get active() { return S.view; }, get key() { return S.key; }, get edit() { return S.edit ? C.copy(S.edit) : null; }, get time() { return S.T; }, get playing() { return S.playing; }, get fps() { return fps(); },
