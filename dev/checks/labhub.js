@@ -81,7 +81,7 @@ async function drag(range) {
 }
 {
   const L = lab();
-  await until(() => L.querySelector('.tw-badge.tw-live, .tw-badge.tw-rerun'), 5000);
+  await until(() => L.querySelector('.tw-badge.tw-live') && L.querySelector('.tw-badge.tw-rerun'), 8000);
   const rangeOf = (cls) => [...L.querySelectorAll(`.tw-badge.${cls}`)].map((b) => b.closest('.tw-row')?.querySelector('.tw-range input[type=range]')).find((r) => r && r.getBoundingClientRect().width > 20);
   const live = rangeOf('tw-live'); const rb = rangeOf('tw-rerun');
   if (!live && !rb) problems.push('no slider to drag');
@@ -185,7 +185,7 @@ async function drag(range) {
 
 // ---------- 5. pickers ----------
 {
-  const closeAll = async () => { document.querySelector('.fx-picker')?.remove(); for (const dl of document.querySelectorAll('dialog[open]')) dl.close(); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await wait(250); };
+  const closeAll = async () => { document.querySelector('.fx-picker')?.remove(); if (typeof ThreeModels !== 'undefined') ThreeModels.closeLibrary?.(); for (const dl of document.querySelectorAll('dialog[open]')) dl.close(); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await wait(250); };
   const pick = async (name, fn, sel) => { const r = await median(3, async () => { const x = await timed(fn); x.nodes = document.querySelector(sel)?.getElementsByTagName('*').length ?? null; await closeAll(); return x; }); out.pickers[name] = r; };
   out.pickers = {};
   await pick('effects', () => ThreeFX.openPicker('add'), '.fx-picker');
@@ -195,7 +195,7 @@ async function drag(range) {
   if (typeof ThreeMotion !== 'undefined') await pick('motion', () => ThreeMotion.openPicker(), '.fx-picker');
   await pick('sketches', () => c.browse(), '.sb-dialog');
   await pick('templates', () => c.newSketch(), '.gallery-dialog');
-  if (typeof ThreeModels !== 'undefined') await pick('models', () => ThreeModels.openLibrary(), '.ml-lib, .models-lib, dialog[open]');
+  if (typeof ThreeModels !== 'undefined') await pick('models', () => ThreeModels.openLibrary(), '.lab3d-panel:not([hidden])');
   // typing in the effects search
   ThreeFX.openPicker('all'); await wait(300);
   const q = document.querySelector('.fx-search');

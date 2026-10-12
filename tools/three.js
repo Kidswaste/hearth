@@ -91,7 +91,10 @@ const ThreeLab = (() => {
     // only the latest value per slider is sent, once per frame, so the sandbox doesn't run a slider's onChange for
     // values nobody sees. Any other message sends the waiting moves first, so the order stays the same. (The timer is
     // for a hidden window, where frames don't run: the Stage window still shows the picture.)
-    const tweaks = new Map(); let tweakRaf = 0; let tweakTimer = 0;
+    // (round 21, labhub) …except the first move after a frame: it goes out at the end of its own task (with whatever
+    // else moved in that task: a shuffle, a look, a morph step), so the preview can show it in the frame that's coming
+    // instead of the one after (a rAF-time send lands after that frame's rendering: one frame late, 4–16 ms).
+    const tweaks = new Map(); let tweakRaf = 0; let tweakTimer = 0; let tweakMicro = false; let tweakFrame = -1;
     const flushTweaks = () => {
       cancelAnimationFrame(tweakRaf); clearTimeout(tweakTimer); tweakRaf = 0; tweakTimer = 0;
       const list = [...tweaks.values()]; tweaks.clear();
@@ -102,7 +105,10 @@ const ThreeLab = (() => {
       if (m.type === 'tweak') {
         const k = `${m.layer ?? ''}|${m.index}`;
         tweaks.delete(k); tweaks.set(k, m); // re-inserted: a slider moved again goes after the others
-        if (!tweakRaf) { tweakRaf = requestAnimationFrame(flushTweaks); tweakTimer = setTimeout(flushTweaks, 50); }
+        if (tweakMicro || tweakRaf) return;
+        const frameNow = document.timeline?.currentTime ?? -2;
+        if (frameNow !== tweakFrame) { tweakMicro = true; queueMicrotask(() => { tweakMicro = false; tweakFrame = document.timeline?.currentTime ?? -2; if (tweaks.size) flushTweaks(); }); return; }
+        tweakRaf = requestAnimationFrame(flushTweaks); tweakTimer = setTimeout(flushTweaks, 50);
         return;
       }
       if (tweaks.size) flushTweaks();
@@ -1894,7 +1900,8 @@ const ThreeLab = (() => {
       const L = layerById(id);
       if (!L) return;
       patch = { ...patch };
-      if (!direct && writing()) for (const k of Object.keys(patch)) if (ANIM.includes(k) && typeof patch[k] === 'number') { writeKey(L, k, patch[k], !live); delete patch[k]; }
+      let wrote = false;
+      if (!direct && writing()) for (const k of Object.keys(patch)) if (ANIM.includes(k) && typeof patch[k] === 'number') { writeKey(L, k, patch[k], !live); delete patch[k]; wrote = true; }
       // Animated properties: the move becomes a keyframe at the playhead (like After Effects).
       const animated = direct ? [] : Object.keys(patch).filter((k) => ANIM.includes(k) && keysOf(L, k).length);
       if (animated.length) {
@@ -1903,12 +1910,25 @@ const ThreeLab = (() => {
         if (!live) dragKeyT = null;
       }
       Object.assign(L, patch);
-      box.send({ type: 'layer-props', id, props: layerProps(L) });
-      if (live) { renderTracksOnly(); return; }
+      // (round 21) a drag (live) sends only what it moves, not every prop with every keyframe ~60 times a second (the
+      // preview merges them); the timeline's tracks follow once a frame
+      const part = live ? livePart(L, patch, wrote || animated.length > 0) : null;
+      box.send({ type: 'layer-props', id, props: part || layerProps(L) });
+      if (live) { renderTracksSoon(); return; }
       touch();
       renderLayers();
     }
-    function renderTracksOnly() { player.setTracks(trackList(), trackHandlers); }
+    function renderTracksOnly() { cancelAnimationFrame(tracksRaf); tracksRaf = 0; player.setTracks(trackList(), trackHandlers); }
+    let tracksRaf = 0;
+    const renderTracksSoon = () => { if (!tracksRaf) tracksRaf = requestAnimationFrame(() => { tracksRaf = 0; renderTracksOnly(); }); };
+    // the props a live drag changed, as layerProps() would give them; null: something else, send everything
+    const LIVE_PROPS = { opacity: (L) => L.opacity ?? 1, x: (L) => L.x || 0, y: (L) => L.y || 0, scale: (L) => L.scale ?? 1, rotate: (L) => L.rotate || 0, in: (L) => L.in ?? null, out: (L) => L.out ?? null, fadeIn: (L) => L.fadeIn || 0, fadeOut: (L) => L.fadeOut || 0, blend: (L) => L.blend || 'normal' };
+    function livePart(L, patch, keyed) {
+      const part = {};
+      for (const k of Object.keys(patch)) { if (!LIVE_PROPS[k]) return null; part[k] = LIVE_PROPS[k](L); }
+      if (keyed) part.keys = animKeys(L);
+      return part;
+    }
     const uniqueName = (name) => { const names = new Set(layersOf().map((L) => L.name)); if (!names.has(name)) return name; let i = 2; while (names.has(`${name} ${i}`)) i += 1; return `${name} ${i}`; };
     function newLayer(o) {
       const Ls = layersOf();
@@ -3041,13 +3061,18 @@ const ThreeLab = (() => {
       openLight(dlg);
       q.focus();
     }
+    let pickerSig = '';
     function renderPicker() {
       // ★ pinned ones (pin them in the sketch browser) first, then the most recent
       const pins = new Set(store.get('three.sketchPins', []));
       const list = [...sketches].sort((a, b) => (pins.has(b.id) - pins.has(a.id)) || b.updatedAt - a.updatedAt);
       const mark = (id) => (typeof ChatScenes !== 'undefined' ? ChatScenes.glyphFor(id) : ''); // the chat that owns it (chat-scenes.js)
-      picker.replaceChildren(...list.map((s) => el('option', { value: s.id, text: `${pins.has(s.id) ? '★ ' : ''}${mark(s.id) ? `${mark(s.id)} ` : ''}${s.name}`, selected: s.id === current?.id })));
-      picker.title = `Your sketches (${sketches.length}) · O opens them as pictures · ★ pinned ones first`;
+      const texts = list.map((s) => `${pins.has(s.id) ? '★ ' : ''}${mark(s.id) ? `${mark(s.id)} ` : ''}${s.name}`);
+      // (round 21) the same list as last time (a scene switch): only the selection moves, no new options
+      const sig = list.map((s, i) => `${s.id}\u0001${texts[i]}`).join('\u0002');
+      if (sig !== pickerSig) { pickerSig = sig; picker.replaceChildren(...list.map((s, i) => el('option', { value: s.id, text: texts[i], selected: s.id === current?.id }))); } else if (current && picker.value !== current.id) picker.value = current.id;
+      const title = `Your sketches (${sketches.length}) · O opens them as pictures · ★ pinned ones first`;
+      if (picker.title !== title) picker.title = title;
     }
     // opts.by: who switched ('scene' = chat-scenes.js following the chat on screen); fires 'hearth:sketch'
     function openSketch(id, opts = {}) {
