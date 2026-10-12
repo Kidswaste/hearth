@@ -167,7 +167,7 @@ const AssetsUI = (() => {
     return placeholder(it);
   }
   function placeholder(it) {
-    const extra = it.k === 'shader' || it.k === 'preset' ? it.i?.first || '' : it.k === 'model' && it.i?.tris ? `${Math.round(it.i.tris / 1000)}k triangles` : it.k === 'hdri' && it.x === 'exr' ? 'EXR' : '';
+    const extra = it.k === 'shader' || it.k === 'preset' ? it.i?.first || '' : it.k === 'model' && it.i?.tris ? (it.i.tris < 1000 ? `${it.i.tris} triangle${it.i.tris > 1 ? 's' : ''}` : `${Math.round(it.i.tris / 1000)}k triangles`) : it.k === 'hdri' && it.x === 'exr' ? 'EXR' : '';
     return el('div', { class: `as-ph as-ph-${it.k}` }, el('span', { class: 'as-ico', text: C.KINDS[it.k]?.icon || '▫' }), extra ? el('small', { text: extra }) : null);
   }
   function sub(it) {
@@ -195,7 +195,7 @@ const AssetsUI = (() => {
     if (!isOpen()) return;
     if (why === 'thumb') {
       const it = A.get(data?.h); const n = it && cards.get(it.h);
-      if (n) { const pic = n.querySelector('.as-pic'); const src = A.thumb(it, { ask: false }); const img = pic.querySelector('img'); if (src && img?.getAttribute('src') !== src) pic.replaceChildren(picOf(it)); else if (!src && !img) pic.replaceChildren(placeholder(it)); const s = n.querySelector('small'); const t = sub(it); if (s && s.textContent !== t) s.textContent = t; }
+      if (n) { const pic = n.querySelector('.as-pic'); const src = A.thumb(it, { ask: false }); const img = pic.querySelector('img'); if (src && img?.getAttribute('src') !== src) pic.replaceChildren(picOf(it)); else if (!src && !img) pic.replaceChildren(placeholder(it)); const s = n.querySelector(':scope > small'); const t = sub(it); if (s && s.textContent !== t) s.textContent = t; }
       return;
     }
     if (why === 'use') return;
@@ -348,6 +348,6 @@ const AssetsUI = (() => {
   }
   function reveal(it) { open({ q: it.n }).then(() => select(it.h)); }
 
-  return { open, close, toggle, isOpen, reveal, selected, setTab, refilter, get el() { return panel; }, get state() { return S; }, cardMenu, useIt };
+  return { open, close, toggle, isOpen, reveal, selected, setTab, refilter, get el() { return panel; }, get state() { return S; }, cardMenu, useIt, _render: render };
 })();
 window.AssetsUI = AssetsUI;

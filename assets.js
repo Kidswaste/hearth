@@ -267,7 +267,12 @@ const Assets = (() => {
     }
     if (it.k === 'video') return storeWebp(it, await videoFrame(fileUrl(it.p)));
     // shaders and presets: their card shows their first line, no picture
-    if (it.k === 'shader' || it.k === 'preset') { const t = await api().readText(it.p, 200000).catch(() => ''); it.i = { ...(it.i || {}), first: firstLine(t) }; it.t = -1; return null; }
+    if (it.k === 'shader' || it.k === 'preset') {
+      const t = await api().readText(it.p, 200000).catch(() => '');
+      let first = firstLine(t);
+      if (it.k === 'preset') { try { const j = JSON.parse(t); const n = Object.keys(j.values || j.sliders || j.set || {}).length; first = j.code ? 'a whole layer' : `${n} slider${n === 1 ? '' : 's'}${j.layer ? ` · from ${String(j.layer).replace(/^\W+\s*/, '')}` : ''}`; } catch { /* not JSON: its first line */ } }
+      it.i = { ...(it.i || {}), first }; it.t = -1; return null;
+    }
     it.t = -1;
     return null;
   }
@@ -518,7 +523,15 @@ requestAnimationFrame(frame);
         const ag = o.agentId ? H.agent(o.agentId) : (window.Apps?.chatAgent?.() || H.claudeAgent());
         if (!ag) throw new Error('No chat');
         if (o.activate !== false) activate(ag.id);
-        await Native.attachPaths(ag.id, [p]);
+        // what the chat can open goes as it is (pictures, text-like files, any file when the agent has file access);
+        // the rest (a font, a model, a sound) as its picture plus a line naming it and where it is
+        const readable = it.k === 'image' && !/^(tga|tiff?|ktx2|svg)$/.test(it.x) || /^(glsl|frag|vert|json|svg)$/.test(it.x) || ag.workspace || (typeof Access !== 'undefined' && Access.isOn?.(ag.id));
+        if (readable) await Native.attachPaths(ag.id, [p]);
+        else {
+          if (it.t === 1 && thumbPath(it.h)) Native.view(ag.id)?.attachments.push({ kind: 'image', name: `${it.n} · ${C.KINDS[it.k]?.one || it.k}`, path: thumbPath(it.h), preview: fileUrl(thumbPath(it.h)) });
+          Native.insertDraft(ag.id, `${C.KINDS[it.k]?.icon || ''} ${it.n} (${C.KINDS[it.k]?.one || it.k}${it.tg?.length ? `, #${it.tg.slice(0, 4).join(' #')}` : ''}): ${p}\n`);
+          Native.renderChips?.(ag.id);
+        }
         what = `💬 ${it.n} is attached in ${ag.name}`;
         break;
       }
