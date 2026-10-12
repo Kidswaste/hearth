@@ -11,7 +11,7 @@
 .stage-veil { position: absolute; inset: 0; z-index: 7; background: #000; pointer-events: none; opacity: 0; }
 
 /* show mode: the picture, the sliders and the HUD; the code, the console and the toolbar step away */
-.lab-show .three-toolbar, .lab-show .three-editor, .lab-show .three-console-wrap { display: none !important; }
+.lab-show .three-toolbar, .lab-show .three-editor, .lab-show .three-console-wrap, .lab-show .three-stats { display: none !important; }
 .lab-show .three-split { grid-template-columns: minmax(0, 1fr) !important; }
 .lab-show .three-split.with-tweaks { grid-template-columns: minmax(0, 1fr) clamp(240px, 24%, 320px) !important; }
 .lab-show .three-preview { outline: 1px solid color-mix(in srgb, var(--ui-red, #ff4d4d) 55%, transparent); outline-offset: -1px; }

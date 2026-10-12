@@ -293,7 +293,7 @@ const ThreeStage = (() => {
     if (!on) { if (h.onStage) h.setStage(false); paintHud(); return false; }
     if (display != null) setOut({ display });
     if (!h.onStage) h.setStage(true);
-    for (let i = 0; i < 60 && !(h.onStage && h.box.ready); i += 1) await sleep(100);
+    for (let i = 0; i < 150 && !(h.onStage && h.box.ready); i += 1) await sleep(100);
     const placed = await window.hub.stagePlace?.({ display: S.out.display, fullscreen: true }).catch(() => null);
     h.box.send({ type: 'present', on: true }); // no cursor on the output
     if (S.out.fps) h.setFps(S.out.fps);
