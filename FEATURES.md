@@ -806,3 +806,6 @@ Right-click ⋯ in a chat for the old quick menu (rename, export, delete…).
 
 ### ◎ Missions
 The ◎ button by the chat box (and the top of ⋯) picks what your next message becomes: Just answer · Split it up (it deploys helper agents) · Swarm (several AIs answer, a chair merges; in the Lab, a crew of 4 explores variations) · Answer, then review (the other AI checks it) · Debate · Side by side (Claude and Astra) · Jam (a music visual in the Lab, taking turns) · Pair on code · Ask everyone. A click is for the next message only; 📌 keeps it from now on; right-click ◎ goes back to a normal reply. Your words go out as written.
+
+### ⚡ Hooks (round 26, hooks: docs/upgrades/hooks.md)
+In ⋯ AI setup, **⚡ Hooks: when… then…** gives each AI a short list of rules: *when* a render or export finishes, the Lab scene shows an error, a file appears in a folder you pick, a time of day / every few hours, Hearth updates, another AI finishes a reply, or the mood board gets new things → *then* it gets your message (or runs a mission with it). Your words go out as written, under one visible line from Hearth saying what happened (the render's path, the error…), marked ⚡ hook. Once a minute at most, never while it answers (it waits its turn), the same news told once, a looping hook pauses itself, no ping-pong between AIs, ❚❚ Pause all; risky actions still ask as usual.

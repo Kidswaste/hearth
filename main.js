@@ -523,6 +523,7 @@ require('./reachmain').register(ipcMain, { dataDir: store.DATA_DIR, syncmain });
 require('./updatermain').register(ipcMain, { restart: () => appshell.restartApp(), getWin: () => win }); // ⬆ Update: pull main from the app's git checkout, reload / restart
 require('./devreportmain').register(ipcMain, { dataDir: store.DATA_DIR }); // (round 21) Report to the developer: gh issue / versions / crashes
 require('./assetsmain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win }); // (round 24) the asset library: folder scans + hashes off-thread, thumbnails cache, Poly Haven / ambientCG downloads
+require('./hooksmain').register(ipcMain, () => win); // (round 26) hooks: "when a file appears in a folder" (fs.watch, only while a hook asks)
 
 // config.json / theme.css edited outside Hearth (an editor, sync): told to the window. (round 16) the OS tells us
 // (fs.watch, re-armed when an editor replaces the file); a calm stat every 5 s is the safety net (was a stat every

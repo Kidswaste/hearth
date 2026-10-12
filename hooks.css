@@ -1,0 +1,11 @@
+/* ⚡ Hooks (round 26, hooks.js): the section in ⋯ AI setup, and the mark on a message a hook sent */
+.hk-head { min-height: 26px; }
+.hk-row .ghost.small { padding: 1px 6px; }
+.hk-form { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.hk-line { display: flex; align-items: center; gap: 8px; }
+.hk-w { flex: none; width: 38px; color: var(--muted); font-size: 12px; }
+.hk-extra:empty { display: none; }
+.hk-extra { padding-left: 46px; }
+.hk-acts { display: flex; justify-content: flex-end; gap: 6px; }
+.hook-chip { font-size: 11px; color: var(--accent); opacity: .85; margin-right: 4px; }
+.hk-extra input[type=time] { background: var(--bg, var(--surface)); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; font: inherit; }

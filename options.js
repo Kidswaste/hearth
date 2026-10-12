@@ -144,7 +144,9 @@ const Options = (() => {
     const scroll = sheet.body.scrollTop;
     const who = el('div', { class: 'opt-who' }, natives().map((x) => el('button', { type: 'button', class: `opt-chip${x.id === a.id ? ' on' : ''}`, text: `${x.icon || ''} ${x.name}`.trim(), title: `Set up ${x.name}`, on: { click: () => { sheet.agentId = x.id; paint(); } } })));
     const mission = typeof Missions !== 'undefined' ? sec('Your next message', 'Click: the next message only · 📌 from now on. Right-click ◎ in the chat box: back to a normal reply.', Missions.cards(a.id, { onPick: paint })) : null;
-    sheet.body.replaceChildren(who, mission, personality(a), instructions(a), access(a), memory(a), habits(a), thinking(a));
+    // (round 26, hooks.js) "Hooks: when… then…" (its group loads by itself shortly after the start; asked for here if not yet)
+    const hooks = window.Lazy?.loaded?.('hooks') === false ? (window.Lazy.load('hooks').then(() => paint()).catch(() => {}), null) : typeof Hooks !== 'undefined' ? Hooks.section(a, { save, repaint: paint }) : null;
+    sheet.body.replaceChildren(who, mission, personality(a), instructions(a), hooks, access(a), memory(a), habits(a), thinking(a));
     sheet.body.scrollTop = scroll;
   }
   function build(host, agentId, page = false) {
