@@ -74,12 +74,17 @@ const LabGrade = (() => {
   // ---------- where the grade lives: the scene's ◐ layers, or a sequence clip / the whole sequence ----------
   // target: 'lab' (default) | { clip: id } | { seq: true }
   const isClip = (t) => Boolean(t && (t.clip || t.seq));
+  const RE = { grade: /filter\(\s*'cgrade'/, lens: /filter\(\s*'clens'/ };
+  const codeOfL = (d, L) => { try { return d.codeOf(L.id).code || ''; } catch { return ''; } };
   async function findLayers(d = D()) {
+    // (by its name first, then by its code; never the bottom layer: a filter there has nothing to change)
     const out = { grade: null, lens: null };
-    for (const L of d.layers().layers) {
-      let code = '';
-      try { code = d.codeOf(L.id).code || ''; } catch { continue; }
-      if (/filter\(\s*'cgrade'/.test(code)) out.grade = L; else if (/filter\(\s*'clens'/.test(code)) out.lens = L;
+    const list = d.layers().layers;
+    for (const [kind, name] of [['grade', NAME.grade], ['lens', NAME.lens]]) out[kind] = list.find((L, i) => i > 0 && L.name === name && RE[kind].test(codeOfL(d, L))) || null;
+    for (const [i, L] of list.entries()) {
+      if (!i || L === out.grade || L === out.lens) continue;
+      const code = codeOfL(d, L);
+      if (!out.grade && RE.grade.test(code)) out.grade = L; else if (!out.lens && RE.lens.test(code)) out.lens = L;
     }
     return out;
   }
@@ -146,8 +151,10 @@ const LabGrade = (() => {
     const have = await findLayers(d); let n = 0;
     for (const k of kind ? [kind] : ['grade', 'lens']) {
       const L = have[k]; if (!L) continue;
+      const now = codeOfL(d, L);
+      if (!RE[k].test(now)) continue; // (only ever into a grade layer's own code)
       const code = G.code(k, valuesOf(d, L, k), { luts: lutNames() });
-      if (code !== d.codeOf(L.id).code) { await d.updateLayer(L.id, { code }, 0.6); n += 1; }
+      if (code !== now) { await d.updateLayer(L.id, { code }, 0.6); n += 1; }
     }
     return n;
   }

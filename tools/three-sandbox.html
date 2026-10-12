@@ -2109,9 +2109,9 @@ function instrument(renderFn) {
     camera = editCamera(this, scene, camera);
     // adaptive resolution (see adaptQuality): the sketch's own pixel ratio × the current quality
     // (a precomp's layers: × that precomp's own resolution, see "precomps")
-    let q = fullRes() ? 1 : SQ.off ? 1 : +(quality * (EL?.props.pcOf ? pcRes(EL) : 1) * (this.__lowRes || 1)).toFixed(2);
+    let q = fullRes() || this.__helper ? 1 : SQ.off ? 1 : +(quality * (EL?.props.pcOf ? pcRes(EL) : 1) * (this.__lowRes || 1)).toFixed(2);
     // Light mode: at most 1 device pixel per CSS pixel in the preview (a Retina screen draws a quarter of the pixels)
-    if (lightMode && !fullRes() && !SQ.off && typeof this.getPixelRatio === 'function') q = Math.min(q, +(1 / Math.max(1, this.__basePR ?? this.getPixelRatio())).toFixed(2));
+    if (lightMode && !fullRes() && !this.__helper && !SQ.off && typeof this.getPixelRatio === 'function') q = Math.min(q, +(1 / Math.max(1, this.__basePR ?? this.getPixelRatio())).toFixed(2));
     if (this.__q !== q && typeof this.setPixelRatio === 'function') {
       // the sketch's own ratio: read the first time, and again if the sketch set a new one since (it no longer matches ours)
       if (this.__basePR == null || Math.abs(this.getPixelRatio() - this.__basePR * this.__q) > 1e-3) this.__basePR = this.getPixelRatio();
@@ -3686,7 +3686,9 @@ function layerState(id) {
   }
   return L;
 }
+let untracked = 0; // (round 24) > 0 while the page makes a helper renderer of its own (thumbnails, grade bakes): not a layer's
 function trackRenderer(r) {
+  if (untracked) return;
   const st = new Error().stack;
   if (staleStack(st)) { dropStale(r); return; }
   renderers.add(r);
@@ -6344,11 +6346,12 @@ function gradeRun(type, P, src, w, h, { float = false } = {}) {
 const gradeLayer = (id) => (id ? layers.get(id) : [...ordered()].reverse().find((L) => L.fx?.type === 'cgrade')) || null;
 const gradeB64 = (u8) => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
 // window.__grade (the hub's ◐ Grade panel and checks, through eval):
-//   pack() → the starter LUT names · luts() → every LUT this page knows
+//   pack() → the starter LUT names · luts() → every LUT this page knows · info() → the grade layers here (settings, merged into)
 //   bake({ layer, N, P }) → the grade (its color part: no vignette / grain / bars) as a .cube's numbers (base64 Float32, red fastest)
 //   run(P, colors [[r,g,b] 0..255], type) → those colors through a cgrade with P (0..255) · scope(w, h) → the picture, small (base64 RGBA)
 window.__grade = {
   pack: () => Object.keys(GRADE.PACK),
+  info: () => [...layers.values()].filter((L) => L.fx?.type === 'cgrade' || L.fx?.type === 'clens').map((L) => ({ id: L.id, type: L.fx.type, P: { ...L.fx.P }, skip: Boolean(L.fxSkip), into: L.fxInto?.id || null, group: L.props.seqGroup || null })),
   luts: () => [...new Set([...Object.keys(GRADE.PACK), ...GRADE.luts.keys()])],
   bake({ layer = null, N = 33, P = null } = {}) {
     const L = gradeLayer(layer);
@@ -6398,7 +6401,10 @@ function withThumbRenderer(w, h, fn) {
   if (!thumbR || thumbR.w !== w || thumbR.h !== h) {
     dropThumbR();
     const canvas = document.createElement('canvas');
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: true });
+    untracked += 1; // (made from an eval or a message, its stack has no layer's module: it isn't a stale module's renderer)
+    let renderer;
+    try { renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: true }); } finally { untracked -= 1; }
+    renderer.__helper = true; // (round 24: at its own size, never the preview's adaptive resolution: a smaller viewport halved a grade bake)
     renderer.__keepClear = true;
     renderer.setPixelRatio(1); renderer.setSize(w, h, false);
     renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
