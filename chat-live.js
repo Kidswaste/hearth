@@ -339,7 +339,10 @@ const ChatLive = (() => {
   }
   boot(); // native.js and commands.js load before this file
 
-  return { paint, paintStatus, statusOf, describe, unstick, wait, state: (chatId) => S.get(chatId) || null, _S: S,
+  // (round 22, labcrew) helpers Hearth runs for a reply (tools/three-crew.js) join its agents tree: { chatId, type:
+  // 'agent' | 'tool' | 'step', … } shaped like the engine's own events
+  const feed = (ev) => (ev?.type === 'tool' ? onEvent(ev) : onLive(ev));
+  return { paint, paintStatus, statusOf, describe, unstick, wait, feed, state: (chatId) => S.get(chatId) || null, _S: S,
     _tune: (o = {}) => { if (o.stallMs) STALL_MS = o.stallMs; if (o.quietMs) QUIET_MS = o.quietMs; } }; // (dev checks: shorter waits)
 })();
 window.ChatLive = ChatLive;

@@ -1313,7 +1313,7 @@ const Native = (() => {
     window.hub.send({
       agentId, chatId: chat.id, session: chat.session,
       text: style ? `[${style}]\n\n${extra.text}` : extra.text,
-      options: { model: chat.model || undefined, images: last.images || images, ...extra.options, ...(chat.captureTools ? { captureTools: true } : {}), ...(chat.subagents ? { subagents: true } : {}), ...(typeof Access !== 'undefined' ? Access.sendOptions(chat) : {}) },
+      options: { model: chat.model || undefined, images: last.images || images, ...extra.options, ...(chat.captureTools ? { captureTools: true } : {}), ...(chat.subagents ? { subagents: true } : {}), ...(chat.crew ? { crewOn: true } : {}), ...(typeof Access !== 'undefined' ? Access.sendOptions(chat) : {}) },
     }).catch((err) => onEvent({ chatId: chat.id, type: 'error', message: err.message }));
   }
 

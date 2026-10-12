@@ -89,7 +89,7 @@ const MORE_TOOLS = [
 const NODES_TOOL = { name: 'three_nodes', description: 'Layers as node graphs (the owner\'s Nodes view). command: "layer <preset>" (new layer), "presets", "types [word]", "list", "add <type> k=v [to=n.in]", "link a.out b.in", "unlink b.in", "set <n> k=v", "rm <n>", "preset <p>" (replace), "rebuild". help nodes.', inputSchema: obj({ command: { type: 'string' } }, ['command']) };
 
 // add_layer stays a command (older habits keep working) but is described as its own tool now
-const DO_CMDS = ['layers', 'batch', 'undo', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'footage', 'sequence', 'motion', 'model', 'comp', 'make', 'help'];
+const DO_CMDS = ['layers', 'batch', 'undo', 'crew', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'footage', 'sequence', 'motion', 'model', 'comp', 'make', 'help'];
 const DO_TOOL = {
   name: 'three_do',
   description: `More Lab actions: { cmd, ...args }; help {topic} explains any (app: the whole app). layer = name, id, n (1 = bottom), "top", "bottom", "selected".
@@ -107,9 +107,14 @@ motion {op, preset, words} motion design · model {op} 3D models · comp {op} ot
   inputSchema: { type: 'object', properties: { cmd: { type: 'string' } }, required: ['cmd'] },
 };
 
-const tools = [...CORE_TOOLS, ...(FULL ? MORE_TOOLS : [DO_TOOL]), ...(process.env.HUB_NODES_TOOL === '1' ? [NODES_TOOL] : [])];
+// (round 22, labcrew) HUB_TOOL_MODE=crew: a crew helper (tools/three-crew.js) works on its own copy of a scene,
+// backstage, for a few calls: only the tools that work there and that a variation needs (≈ 830 tokens, not ≈ 1,780).
+const CREW = process.env.HUB_TOOL_MODE === 'crew';
+const CREW_TOOLS = ['three_edit_code', 'three_add_layer', 'three_set_code', 'three_read_code', 'three_screenshot', 'three_console'];
+const tools = CREW ? CORE_TOOLS.filter((t) => CREW_TOOLS.includes(t.name))
+  : [...CORE_TOOLS, ...(FULL ? MORE_TOOLS : [DO_TOOL]), ...(process.env.HUB_NODES_TOOL === '1' ? [NODES_TOOL] : [])];
 // three_do help is answered here, without a trip to the hub.
 const local = { three_do: (args) => (args.cmd === 'help' ? { ok: true, value: G().help(args.topic) } : null), three_help: (args) => ({ ok: true, value: G().help(args.topic || 'app') }) };
 
 // three_nodes (≈ 75 tokens per message) is on for Three directors unless agent.nodesTool === false (engines.js sets HUB_NODES_TOOL).
-module.exports = serve({ name: 'three-lab', instructions: '', get guide() { return FULL ? G().FULL : G().CORE; }, tools, local, all: [...CORE_TOOLS, ...MORE_TOOLS, DO_TOOL, NODES_TOOL], doCommands: DO_CMDS }, module);
+module.exports = serve({ name: 'three-lab', instructions: '', get guide() { return CREW ? '' : FULL ? G().FULL : G().CORE; }, tools, local, all: [...CORE_TOOLS, ...MORE_TOOLS, DO_TOOL, NODES_TOOL], doCommands: DO_CMDS }, module);

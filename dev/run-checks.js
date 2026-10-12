@@ -34,7 +34,7 @@ const GROUPS = {
   capture: by(/^capture/),
   journeys: by(/^journey-/),
   chat: by(/^chat-|^chatcore|^cmdbar$|^clutter$|^declutter/),
-  lab: ['music', 'live', 'scenes', 'jam', 'assist', 'decide', 'brain', 'director-dock', 'director-tools', 'labdirector', 'perf'],
+  lab: ['music', 'live', 'scenes', 'jam', 'assist', 'decide', 'brain', 'director-dock', 'director-tools', 'labdirector', 'crew', 'perf'],
   nodes: by(/^nodes-/),
   smooth: [...by(/^smooth-/), 'hz240'], // (round 17) hz240: the 240 Hz interaction check
   astra: ['astra-collab', 'astra-ui', 'astra-manager'],

@@ -121,6 +121,22 @@ function jamPlan(msg, engine) {
   return null;
 }
 
+// (round 22) Crew helpers (tools/three-crew.js): a real variation through the crew's MCP tools (set_code on its copy, a
+// small picture), then one line. crew-slow in the brief: a long pause between (to test Stop); crew-break: helper 2 breaks.
+function crewPlan(msg) {
+  const m = msg.split('\n')[0].match(/^Crew · helper (\d+)\/(\d+)/);
+  if (!m) return null;
+  const i = Number(m[1]);
+  const seed = i * 5 + 1;
+  const broken = /crew-break/.test(msg) && i === 2;
+  // an upper layer, as the guide asks: transparent (alpha: true, no background)
+  const code = jamSketch(seed, broken).replace('{ antialias: true }', '{ antialias: true, alpha: true }').replace(/^scene\.background = .*\n/m, '');
+  const calls = [['three_set_code', { code, wait: 0.6 }]];
+  if (/crew-slow/.test(msg)) calls.push(['sleep', 30000]);
+  calls.push(['three_screenshot', { size: 'small' }]);
+  return { mcpCalls: calls, text: `#${i}: a ${JAM_COLORS[seed % JAM_COLORS.length]} ${JAM_SHAPES[seed % JAM_SHAPES.length].split('Geometry')[0].toLowerCase()} that punches on the bass.` };
+}
+
 // Video projects (intro.js): Astra decides the plan, rewrites the words, a director polishes the edit with real tools.
 function introPlan(msg) {
   const head = msg.split('\n')[0];
@@ -272,6 +288,8 @@ function plan(prompt, engine = 'claude') {
     const p = { mcp: Boolean(intro.mcpCalls), mcpCalls: intro.mcpCalls || null };
     return { p, text: intro.text, thinking: '' };
   }
+  const crew = crewPlan(msg);
+  if (crew) return { p: { mcp: true, mcpCalls: crew.mcpCalls }, text: crew.text, thinking: '' };
   const comp = compPlan(msg);
   if (comp) return { p: { mcp: true, mcpCalls: comp.mcpCalls }, text: comp.text, thinking: '' };
   const jam = jamPlan(msg, engine);

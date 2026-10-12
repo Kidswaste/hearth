@@ -5,8 +5,13 @@
 // like any edit) and show the next time you open the chat. No music backstage (the demo beat plays) and no
 // references; tools that need the scene on screen (sliders, looks, music, timeline, notes, input…) answer with a
 // short note. One call at a time; the sandbox only runs while a background director works.
-const ThreeBackstage = (() => {
-  const LONG = 640; // the backstage frame's long side in px (pictures for the model are ≤ 1280 anyway)
+// (round 22, labcrew) ThreeBackstage.make(opts) makes another, independent stage: a crew (tools/three-crew.js) runs
+// one per variation, in parallel, smaller and slower ({ long, cap }), on its own scene data ({ scenes }: the shape of
+// ThreeLab.scenes), with its pictures sent to opts.onStill instead of a chat row. A call whose route names a stage
+// (route.stage) goes to that stage.
+function makeBackstage(opts = {}) {
+  const LONG = opts.long || 640; // the backstage frame's long side in px (pictures for the model are ≤ 1280 anyway)
+  const SC = () => opts.scenes || ThreeLab.scenes;
   const WAIT_MAX = 15;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const clip = (s, n) => { const t = String(s ?? ''); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
@@ -32,7 +37,7 @@ const ThreeBackstage = (() => {
     else if ((m.type === 'eval-result' || m.type === 'input-result') && evals.has(m.id)) { evals.get(m.id)(m); evals.delete(m.id); }
   }
   function frameOf(id) {
-    const f = ThreeLab.scenes?.frameOf(id) || 'fit';
+    const f = SC()?.frameOf(id) || 'fit';
     const z = ThreeMedia.SIZES.find((x) => x.id === f && x.w);
     return z ? { id: z.id, width: z.w, height: z.h } : { id: 'fit', width: 1280, height: 720 };
   }
@@ -43,16 +48,16 @@ const ThreeBackstage = (() => {
     document.body.append(host);
     // (round 16 "labperf": 15 frames a second is plenty for a scene nobody watches: the director's screenshots and
     // fps reads still work, the GPU does a quarter of the work)
-    box = ThreeLab._sandbox(host, onMessage, () => '&dpr=1&cap=15');
+    box = ThreeLab._sandbox(host, onMessage, () => `&dpr=1&cap=${opts.cap || 15}`);
   }
   // Nothing backstage for a minute: the page goes blank (no GPU or CPU while nothing works in the background).
   function sleepSoon() {
     clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => { if (box) { box.frame.src = 'about:blank'; loaded = null; } }, 60000);
+    idleTimer = setTimeout(() => { if (box) { box.frame.src = 'about:blank'; loaded = null; } }, opts.idleMs || 60000);
   }
 
-  const sketchOf = (id) => { const s = ThreeLab.scenes?.get(id); if (!s) throw new Error('This chat\'s sketch is gone (deleted?). Ask the owner, or make one with three_new_sketch.'); return s; };
-  const layersOf = (s) => ThreeLab.scenes.layersOf(s);
+  const sketchOf = (id) => { const s = SC()?.get(id); if (!s) throw new Error('This chat\'s sketch is gone (deleted?). Ask the owner, or make one with three_new_sketch.'); return s; };
+  const layersOf = (s) => SC().layersOf(s);
   // (a precomp layer, tools/three-comp.js: what it shows counts as its code)
   const pcSpec = (L, s) => (L.precomp && typeof ThreeComp !== 'undefined' ? ThreeComp.specOf(L, s.id, { slotBase: 2000 + layersOf(s).indexOf(L) * 64 }) : null);
   const codeKey = (L, s) => (L.precomp ? `${L.code}|${pcSpec(L, s)?.sig || ''}` : L.code);
@@ -102,7 +107,7 @@ const ThreeBackstage = (() => {
   // quiet: data only, nothing runs (an undo of a background chat's edit)
   function director(sketchId, route, { quiet = false } = {}) {
     const s = () => sketchOf(sketchId);
-    const selId = () => { const Ls = layersOf(s()); const want = ThreeLab.scenes.selectedOf(sketchId); return (Ls.find((L) => L.id === want) || Ls.at(-1)).id; };
+    const selId = () => { const Ls = layersOf(s()); const want = SC().selectedOf(sketchId); return (Ls.find((L) => L.id === want) || Ls.at(-1)).id; };
     function findLayer(ref) {
       const Ls = layersOf(s());
       if (ref == null || ref === '' || ref === 'selected') return Ls.find((L) => L.id === selId());
@@ -128,7 +133,7 @@ const ThreeBackstage = (() => {
       music: 'none backstage (demo 120 bpm beat)',
       note: NOTE,
     });
-    const changed = () => ThreeLab.scenes.changed(sketchId);
+    const changed = () => SC().changed(sketchId);
     const d = {
       backstage: true,
       codeOf(ref = null) { const L = must(ref); const x = s(); return { id: L.id, name: L.name, sketchId: x.id, sketch: x.name, code: L.code }; },
@@ -207,7 +212,7 @@ const ThreeBackstage = (() => {
       return { ok: false, error: `${tool.replace(/^three_/, '')} needs this chat's scene on screen, and the owner is looking at another chat right now. Your scene "${x.name}" runs backstage: three_edit_code / set_code / update_layer / add_layer, three_screenshot, three_eval and three_console work here. Tell the owner what's left, or carry on with those.` };
     }
     if (tool === 'three_new_sketch') {
-      const s = ThreeLab.scenes.create({ name: String(args.name || 'Untitled'), code: String(args.code || ''), frame: ThreeLab.scenes.frameOf(route.sketchId) });
+      const s = SC().create({ name: String(args.name || 'Untitled'), code: String(args.code || ''), frame: SC().frameOf(route.sketchId) });
       route.sketchId = s.id;
       await load(s, { force: true });
       await settle(args.wait);
@@ -215,14 +220,14 @@ const ThreeBackstage = (() => {
     }
     if (tool === 'three_set_frame') {
       if (!ThreeMedia.SIZES.some((z) => z.id === args.size)) return { ok: false, error: `size must be one of ${ThreeMedia.SIZES.map((z) => z.id).join(', ')}` };
-      ThreeLab.scenes.setFrame(route.sketchId, args.size);
+      SC().setFrame(route.sketchId, args.size);
       await load(x, { force: true });
       await settle(1.2);
       // one line, like on screen (round 21): not the whole report
       const r = d.report(); const f = r.frame;
       return { ok: true, value: { frame: f?.width ? `${f.id || args.size} ${f.width}×${f.height}` : args.size, ...(r.errors?.length ? { errors: r.errors.slice(0, 4).map((e) => `${e.layer ? `[${e.layer}] ` : ''}${e.line ? `line ${e.line}: ` : ''}${clip(e.message, 200)}`) } : {}) } };
     }
-    if (tool === 'three_media_info') return { ok: true, value: { loaded: false, note: 'No music backstage: the song plays when the owner opens this chat.', song: ThreeLab.scenes.songOf(route.sketchId)?.split(/[\\/]/).pop() || 'none linked' } };
+    if (tool === 'three_media_info') return { ok: true, value: { loaded: false, note: 'No music backstage: the song plays when the owner opens this chat.', song: SC().songOf(route.sketchId)?.split(/[\\/]/).pop() || 'none linked' } };
     if (await load(x)) await settle(1.2); // a fresh page: let it start before reading it
     if (typeof ThreeDirector !== 'undefined') { const r = await ThreeDirector.handle(tool, args, d); if (r) return r; }
     if (tool === 'three_layers') return { ok: true, value: d.layers() };
@@ -243,15 +248,16 @@ const ThreeBackstage = (() => {
   const EDITS = new Set(['three_edit_code', 'three_set_code', 'three_update_layer', 'three_add_layer', 'three_remove_layer', 'three_new_sketch', 'three_set_frame']);
   const stillAt = new Map();
   async function rowStill(tool, route, r) {
-    if (typeof ChatScenes === 'undefined' || !route.chatId || r?.ok === false || !box) return;
+    if ((!opts.onStill && typeof ChatScenes === 'undefined') || !route.chatId || r?.ok === false || !box) return;
     const img = tool === 'three_screenshot' && r?.images?.[0];
     if (!img && (!EDITS.has(tool) || Date.now() - (stillAt.get(route.chatId) || 0) < 4000)) return;
     stillAt.set(route.chatId, Date.now());
     const url = img ? `data:${img.mime || 'image/png'};base64,${img.data}` : await director(route.sketchId, route).shot();
-    if (url) ChatScenes.setThumb(route.chatId, url);
+    if (url && opts.onStill) opts.onStill(url, route); else if (url) ChatScenes.setThumb(route.chatId, url);
   }
   // One at a time: two background chats take turns with the sandbox.
   function handle(tool, args, route) {
+    if (route?.stage && route.stage !== self) return route.stage.handle(tool, args, route); // a crew's own stage
     const p = chain.then(async () => {
       log.push({ at: Date.now(), chatId: route.chatId, sketch: route.sketchId, tool });
       if (log.length > 30) log.shift();
@@ -265,5 +271,21 @@ const ThreeBackstage = (() => {
     return p;
   }
 
-  return { handle, dataDirector: (sketchId) => director(sketchId, null, { quiet: true }), log: () => log.slice(), get running() { return loaded?.id || null; }, OK_TOOLS };
-})();
+  // (round 22) a small picture of what this stage runs now (the crew's live thumbnails): merged and encoded off the
+  // page's frames by the preview (its 'thumb' channel), null when nothing runs
+  const thumb = (max = 240) => new Promise((resolve) => {
+    if (!box || !loaded) { resolve(null); return; }
+    const prev = pendingShot;
+    const mine = (url) => { prev?.(url); resolve(url); };
+    pendingShot = mine;
+    box.send({ type: 'screenshot', tag: 'thumb', max });
+    setTimeout(() => { if (pendingShot === mine) { pendingShot = null; mine(null); } }, 4000);
+  });
+  // (round 22) a crew stage is thrown away when its crew ends: its page and GPU go with it
+  function dispose() { clearTimeout(idleTimer); if (box) box.frame.src = 'about:blank'; host?.remove(); host = null; box = null; loaded = null; }
+  const self = { handle, dataDirector: (sketchId) => director(sketchId, null, { quiet: true }), log: () => log.slice(), get running() { return loaded?.id || null; }, OK_TOOLS, thumb, dispose,
+    director: (sketchId, route) => director(sketchId, route) };
+  return self;
+}
+const ThreeBackstage = makeBackstage();
+ThreeBackstage.make = makeBackstage;

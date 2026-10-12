@@ -143,6 +143,7 @@ const ThreeDirector = (() => {
   const changed = () => { for (const fn of listeners) { try { fn(); } catch (err) { console.warn(err); } } };
   function record(entry) {
     if (entry.before === entry.after) return;
+    if (window.ThreeCrew?.isCrewSketch?.(entry.sketchId)) return; // (round 22) a crew variation: thrown away or kept whole
     history.push({ ...entry, at: Date.now() });
     if (history.length > HISTORY_MAX) history.shift();
     redoStack.length = 0;
@@ -190,12 +191,22 @@ const ThreeDirector = (() => {
   const savedNotes = { reads: 0, shots: 0, state: 0, waitMs: 0, pics: {} };
   let said = {}; // scene state already told this reply: { sketch, frame, music, layers, layer } → its text
   function newTurn() { readCache.clear(); lastSig = null; said = {}; }
+  // (round 22, labcrew) crew helpers run in parallel, each in its own engine run: each keeps its own "already said"
+  // state, so one helper's results never hide the scene state from another (or from the director)
+  const crewSaid = new Map();
+  const saidOf = (d) => {
+    const k = d?.route?.crew ? d.route.chatId : null;
+    if (!k) return said;
+    if (!crewSaid.has(k)) { crewSaid.set(k, {}); if (crewSaid.size > 12) crewSaid.delete(crewSaid.keys().next().value); }
+    return crewSaid.get(k);
+  };
   // The scene state is said once per reply, then only when it changed (the director has it from the first result).
-  function onlyNew(v) {
+  function onlyNew(v, d = null) {
+    const S = saidOf(d);
     for (const k of ['sketch', 'layer', 'frame', 'music', 'layers']) {
       if (v[k] === undefined) continue;
       const t = JSON.stringify(v[k]);
-      if (said[k] === t) { delete v[k]; savedNotes.state += 1; } else said[k] = t;
+      if (S[k] === t) { delete v[k]; savedNotes.state += 1; } else S[k] = t;
     }
     return v;
   }
@@ -329,7 +340,7 @@ const ThreeDirector = (() => {
     const img = await loadImg(url);
     const c = frameCanvas(img, { max, region: args.region });
     // the same view again in this reply, and nothing visibly changed: say so instead of sending the picture again
-    const key = JSON.stringify([max, args.region || null]);
+    const key = JSON.stringify([max, args.region || null, d.route?.crew ? d.route.chatId : 0]);
     const sig = signature(c);
     if (!args.force && !args.compare && lastSig?.key === key && sigDiff(sig, lastSig.sig) < 0.004) {
       savedNotes.shots += 1;
@@ -342,7 +353,7 @@ const ThreeDirector = (() => {
     // the preview's own small JPEG at the right size goes out as it is (no second encode)
     const asIs = out === c && !args.region && /^data:image\/jpeg/.test(url) && img.width === c.width && img.height === c.height;
     const data = asIs ? url.split(',')[1] : await jpeg(out);
-    const f = onlyNew({ frame: frameLine(d.report().frame) }).frame;
+    const f = onlyNew({ frame: frameLine(d.report().frame) }, d).frame;
     return { ok: true, images: [{ data, mime: 'image/jpeg' }], value: `Screenshot (${out.width}×${out.height}${f ? `, frame ${f}` : ''}${args.region ? ', cropped' : ''}).${note}` };
   }
 
@@ -491,7 +502,7 @@ const ThreeDirector = (() => {
       if (delta.length) value.slidersChanged = delta.join(' ');
       delete value.sliders;
       withErrorLines(d, value, final);
-      onlyNew(value);
+      onlyNew(value, d);
       const img = (args.shot ?? store.get('director.autoShot', false)) ? await thumb(d) : null; // /director-autoshot
       return { ok: true, value, ...(img ? { images: [{ data: img, mime: 'image/jpeg' }] } : {}) };
     }
@@ -501,7 +512,7 @@ const ThreeDirector = (() => {
       if (!d.backstage) toast('Three Director updated the sketch', { timeout: 1500 });
       const r = await d.setCode(String(args.code), Number(args.wait) || 2.5);
       record({ sketchId: before.sketchId, sketch: before.sketch, layerId: before.id, layer: before.name, before: before.code, after: String(args.code), tool });
-      const value = args.report === 'full' ? r : onlyNew(withErrorLines(d, compact(r), r));
+      const value = args.report === 'full' ? r : onlyNew(withErrorLines(d, compact(r), r), d);
       // the owner's rule: a new effect is a new layer. Rewriting a real layer (one with sliders, not a starter) gets a
       // one-line reminder, so the habit holds for the rest of the chat (≈ 30 tokens, only then).
       if (args.report !== 'full' && rewroteReal(before.code, String(args.code))) value.note = `Rewrote "${before.name}" (/undo-edit restores it). New elements or effects go in a new layer: three_add_layer.`;
@@ -515,7 +526,7 @@ const ThreeDirector = (() => {
       const value = withErrorLines(d, compact(r), r);
       // its sliders as lines (keys, values, ranges): the next call is usually a slider move, not a read
       try { const sl = d.sliders(r.added || null, null); if (sl?.sliders?.length) value.sliders = sliderLines(sl.sliders); } catch { /* backstage: names only */ }
-      return { ok: true, value: onlyNew(value) };
+      return { ok: true, value: onlyNew(value, d) };
     }
     if (tool === 'three_update_layer') {
       const patch = { ...(args.settings || {}) };
@@ -524,7 +535,7 @@ const ThreeDirector = (() => {
       if (args.order != null) patch.order = args.order;
       const r = await d.updateLayer(args.layer, patch, Number(args.wait) || (args.code != null ? 2.5 : 0.5));
       if (before) record({ sketchId: before.sketchId, sketch: before.sketch, layerId: before.id, layer: before.name, before: before.code, after: String(args.code), tool });
-      return { ok: true, value: args.report === 'full' ? r : onlyNew(withErrorLines(d, compact(r), r)) };
+      return { ok: true, value: args.report === 'full' ? r : onlyNew(withErrorLines(d, compact(r), r), d) };
     }
     // the frame size: one line (it was the whole Lab report after a fixed 1.5 s). fit ⇄ an exact size reloads the
     // preview (answer at its first frame); between exact sizes it only resizes.

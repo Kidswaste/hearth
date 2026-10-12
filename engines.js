@@ -176,7 +176,7 @@ const gameTools = (agent) => hubToolsets(agent).includes('gameTools');
 const nodesOn = (agent) => Boolean(agent.threeTools) && agent.nodesTool !== false;
 // What every hub MCP server gets: Node mode, the agent (for chat_ tools), opt-ins that change the tool list.
 // HUB_CHAT_ID: the chat this run answers, so a director's tool calls reach that chat's own scene (chat-scenes.js).
-const hubToolEnv = (agent, key) => ({ ...(key === 'openTool' ? { HUB_CHAT_ONLY: 'chat_open' } : {}), ELECTRON_RUN_AS_NODE: '1', HUB_AGENT_ID: agent.id, ...(agent.hubChatId ? { HUB_CHAT_ID: agent.hubChatId } : {}), ...(agent.engine === 'codex' ? { HUB_PARTNER: 'Claude' } : {}), ...(nodesOn(agent) ? { HUB_NODES_TOOL: '1' } : {}), ...(agent.toolMode === 'full' ? { HUB_TOOL_MODE: 'full' } : {}), ...(agent.reportTool === false ? { HUB_NO_REPORT: '1' } : {}) });
+const hubToolEnv = (agent, key) => ({ ...(key === 'openTool' ? { HUB_CHAT_ONLY: 'chat_open' } : {}), ELECTRON_RUN_AS_NODE: '1', HUB_AGENT_ID: agent.id, ...(agent.hubChatId ? { HUB_CHAT_ID: agent.hubChatId } : {}), ...(agent.engine === 'codex' ? { HUB_PARTNER: 'Claude' } : {}), ...(nodesOn(agent) ? { HUB_NODES_TOOL: '1' } : {}), ...(agent.toolMode === 'full' || agent.toolMode === 'crew' ? { HUB_TOOL_MODE: agent.toolMode } : {}), ...(agent.reportTool === false ? { HUB_NO_REPORT: '1' } : {}) });
 // One file per run, removed when that run ends: a retry of the same chat (a lost session, an option the CLI doesn't
 // know) starts while the previous run is still closing, and a shared file was deleted under the new run
 // ("Invalid MCP configuration: … not found").
@@ -326,6 +326,12 @@ function buildPrompt(agent) {
   if (agent.selfReview ?? Boolean(agent.dock)) parts.push('Before you finish, check your result against what was asked (for visual work, a fresh small picture is enough). Fix real problems you find, then mention in one line what you checked.');
   // (round 11) opt-in (`/progress tags on`, directors only): the agent says how far it is; Hearth draws the bar and hides the tag
   if (agent.dock && agent.progressTag) parts.push('During long work, now and then write <progress pct="40" note="what\'s next"/> (hidden; it drives the user\'s progress bar).');
+  // (round 22, labcrew) a crew helper: the sketch rules in five lines, no app map (its brief says what to explore)
+  if (sets.includes('threeTools') && agent.toolMode === 'crew') {
+    parts.push('SKETCH = layers (bottom first), each a complete ES module: import * as THREE from \'three\'; its own WebGLRenderer (alpha: true above the bottom layer) appended to document.body, sized to innerWidth/innerHeight, renderer.setAnimationLoop((now) => …).\n'
+      + 'Sliders: const P = tweak({ key: { value, min, max, label, group } | \'#rrggbb\' }) near the top, read every frame. Music globals: audio.bass, audio.kick, audio.level (0..1).\n'
+      + 'Change code with three_edit_code (small finds), a new element with three_add_layer, rewrite with three_set_code only when your angle needs it. Fix errors the results report. Stay within your call budget; end with one small three_screenshot, then one line: what you changed.');
+  } else
   // Lean (default): the three-lab tool guide carries the how-to, so the prompt only sets the role. 'full' keeps the long version.
   if (sets.includes('threeTools') && agent.toolMode !== 'full') {
     parts.push('You are the Three Director. Prefer good-looking defaults (tone mapping, environment light, smooth motion, sensible performance) and small edits over rewrites.\n'
@@ -346,6 +352,7 @@ function buildPrompt(agent) {
     parts.push(threeGuide().FULL);
     parts.push(hearthMap().LINE('three_help'));
   }
+  if (agent.crewOn && sets.includes('threeTools') && agent.toolMode !== 'crew') parts.push('Crew (on for this chat): for an open look question, three_do crew {op: "start", n: 2–6, brief, angles: [one per helper]} explores variations in parallel on copies of this scene (the owner approves the cost first; it answers when they finish). Then crew {op: "pick", n, reason} when asked to choose, or {op: "copy", from: n, layer} / {op: "code", n, layer} to merge parts.');
   if (web) parts.push('You can search the web when the answer depends on recent or specific facts; say briefly where facts come from.');
   if (!folder && !acc && !usesApps && !sets.length) parts.push(web ? 'Apart from web search you have no tools: never try to run commands or read files.' : 'You have no tools: never try to run commands, read files or browse the web.');
   const memory = getMemory();
@@ -910,6 +917,12 @@ function send({ agent, chatId, session, text, options = {} }, emit, live = null)
   else if (options.access && typeof options.access === 'object' && !options.hubOnly) agent = { ...agent, access: { level: String(options.access.level || 'off'), folders: options.access.folders }, accessChatId: chatId };
   // "hubOnly" runs (a jam's build turns, jam.js) keep the agent's tool sets (Lab, board…) and drop the rest.
   if (options.hubOnly) agent = { ...agent, chatTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false };
+  // (round 22, labcrew) a crew helper (tools/three-crew.js): one variation of a scene, on its own backstage stage. Only
+  // the Lab's crew tools (HUB_TOOL_MODE=crew: six of them), a short role line instead of the agent's own prompt, no
+  // chat tools / nodes / memory / self-review: the brief it gets is all it needs.
+  if (options.crew) agent = { ...agent, systemPrompt: 'You are one helper in a crew that explores variations of a three.js scene in Hearth\'s Lab, in parallel. You work alone on your own copy; nobody reads your text but the director, so keep the final answer to one line.', toolMode: 'crew', nodesTool: false, threeTools: true, openTool: false, chatTools: false, gameTools: false, boardTools: false, captureTools: false, adobeTools: false, deployTools: false, appsTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false, autoMemory: false, progressTag: false };
+  // (round 22) /crew on (a chat's own opt-in): the director may deploy a crew itself (one prompt line, only then)
+  if (options.crewOn && !options.crew && !options.lean) agent = { ...agent, crewOn: true };
   // asDirector: 'three' (a jam's build turn on an agent that isn't a Lab director, e.g. your Astra): this one turn gets
   // the Lab's tools, Codex through its MCP overrides
   if (options.asDirector === 'three') agent = { ...agent, threeTools: true, hubTools: agent.engine === 'codex' ? true : agent.hubTools, dock: agent.dock || 'three' };

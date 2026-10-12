@@ -346,6 +346,9 @@ renderer.setAnimationLoop((now) => {
     // a jam's turns (jam.js) run under their own ids: they work on the jam's sketch, on screen or backstage
     const jr = chatId && window.Jam?.routeFor?.(chatId);
     if (jr?.sketchId && S.get(jr.sketchId)) { setTimeout(paintAll, 0); return jr; }
+    // (round 22) a crew helper's turns (tools/three-crew.js) work on its own variation, on that variation's stage
+    const cr = chatId && window.ThreeCrew?.routeFor?.(chatId);
+    if (cr) return cr;
     if (!chatId || !isThreeChat(chatId)) {
       // no chat given (tests, /director try, an older run): the one director chat that's answering, if only one is
       const working = H.chats.filter((c) => isThreeChat(c.id) && Native.isBusy(c.id));
