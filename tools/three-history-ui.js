@@ -252,3 +252,4 @@ const ThreeHistoryUI = (() => {
 
   return { open, close, toggle, compare, select, step, keep, isOpen, get index() { return idx; }, get versions() { return list; } };
 })();
+window.ThreeHistoryUI = ThreeHistoryUI; // the Sketch ▾ menu (tools/three.js) opens it as window.ThreeHistoryUI?.open()

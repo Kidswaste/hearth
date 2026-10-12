@@ -84,7 +84,7 @@ const ThreeHistory = (() => {
     const h = hints.get(id);
     if (h && h.until > Date.now()) return h;
     const a = active.get(id);
-    if (a && (a.running > 0 || a.until > Date.now())) return a;
+    if (a && a.running > 0) return a;
     return { by: 'you' };
   }
   // the Lab's HubBridge handler goes through here (tools/three.js): the owner's own changes so far are recorded as
@@ -93,13 +93,15 @@ const ThreeHistory = (() => {
     const id = READ.test(tool) ? null : sceneFor(ctx.chatId);
     if (!id || !T()) return fn(tool, args, ctx);
     if (timers.has(id)) await capture(id).catch(() => null);
-    const a = active.get(id) || { tools: new Set(), running: 0, until: 0 };
+    const a = active.get(id) || { tools: new Set(), running: 0 };
     a.by = engineOf(ctx.chatId); a.chat = ctx.chatId || null; a.running += 1;
     a.tools.add(String(args?.cmd ? `${args.cmd}` : tool).replace(/^three_/, ''));
     active.set(id, a);
     try { return await fn(tool, args, ctx); } finally {
-      a.running = Math.max(0, a.running - 1); a.until = Date.now() + 2500;
-      schedule(id, 'director', 500);
+      // what the call changed is recorded as it ends (the Lab answers once the change is on screen), so the owner's
+      // next move is never counted as the director's
+      a.running = Math.max(0, a.running - 1);
+      if (!a.running) capture(id, { kind: 'director', by: a.by, actor: a }).catch(() => null);
     }
   }
   const as = (id, by, ms = 4000) => { if (id) hints.set(id, { by, until: Date.now() + ms }); };
@@ -107,9 +109,9 @@ const ThreeHistory = (() => {
   // ---------- recording ----------
   // kind: run (code ran) · layers (a layer added / removed / moved / its props) · sliders (saved into the code) ·
   // shuffle (kept for 5 s) · scene (changed backstage) · director · restore · pick · branch · turn · start
-  const RANK = { scene: 1, run: 2, layers: 3, director: 4, shuffle: 5, sliders: 6 };
+  const RANK = { scene: 1, run: 2, layers: 3, shuffle: 5, sliders: 6 };
   const timers = new Map(); // scene id → { t, kind }
-  const DELAY = { shuffle: 5000, run: 1200, layers: 900, sliders: 600, scene: 900, director: 500 };
+  const DELAY = { shuffle: 5000, run: 1200, layers: 900, sliders: 600, scene: 900 };
   function schedule(id, kind, ms = DELAY[kind] ?? 900) {
     const p = timers.get(id);
     clearTimeout(p?.t);
@@ -150,7 +152,7 @@ const ThreeHistory = (() => {
       return null;
     } else {
       const c = C.changes(e.last, st);
-      const who = extra.by ? { by: extra.by } : actorFor(id);
+      const who = extra.actor || (extra.by ? { by: extra.by } : actorFor(id));
       // slider moves you didn't save or keep (a drag that rebuilt the scene) aren't a version on their own
       const valsOnly = !c.added.length && !c.removed.length && !c.code.length && !c.props.length && !c.order && !c.palette;
       if (valsOnly && who.by === 'you' && !['shuffle', 'sliders', 'restore', 'pick', 'turn', 'branch'].includes(kind) && !extra.force) { stats.skipped += 1; return null; }
@@ -202,7 +204,8 @@ const ThreeHistory = (() => {
       const v = list[i];
       if (!v.mark || (by && v.mark.by !== by)) continue;
       let edits = 0;
-      for (let j = i + 1; j < list.length && !list[j].mark; j += 1) if (list[j].by === v.mark.by) edits += 1;
+      // (the next bookmark can sit on this turn's last edit: the state the next turn started from)
+      for (let j = i + 1; j < list.length; j += 1) { if (list[j].by === v.mark.by) edits += 1; if (list[j].mark) break; }
       if (edits) out.push({ version: v, by: v.mark.by, text: v.mark.text || '', at: v.mark.at || v.at, edits });
     }
     return out;
@@ -400,3 +403,4 @@ const ThreeHistory = (() => {
     _doc: (id) => docs.get(id)?.doc || null,
   };
 })();
+window.ThreeHistory = ThreeHistory; // the Lab's hooks call it as window.ThreeHistory?.… (it loads after them)
