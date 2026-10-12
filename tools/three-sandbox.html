@@ -7554,6 +7554,1374 @@ window.__labParticles = {
   drive: (o = {}) => { for (const k of ['kick', 'bass', 'centroid']) if (k in o) PT.drive[k] = o[k] == null ? null : Number(o[k]); return { ...PT.drive }; },
 };
 
+// ---------- light physics (round 25 "physics": the hub side is tools/three-physics*.js) ----------
+// <physics-core> (round 25 "physics": plain JS, no three.js; dev/physics-test.js runs this part in Node)
+// One small position-based solver (XPBD with substeps) for everything: rigid bodies are clusters of particles held by
+// shape matching (boxes, letters, dominoes, model hulls: oriented boxes for contacts), balls are single particles,
+// soft blobs are shape matching with a give, cloth / ropes / ragdolls are distance constraints, water is position-
+// based fluids (density constraints). Float64 everywhere, a fixed order and hashed randomness: the same steps give
+// the same numbers, so a render lands on the same frame every time and a snapshot restores exactly.
+function physicsCore() {
+  const G = 9.81;
+  const HASHED = 1; const PIN = 2; const RELEASE = 4;
+  const rnd = (a, b) => { let h = Math.imul((a | 0) ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul((b | 0) + 0x632be5ab, 0xc2b2ae35); h ^= h >>> 16; h = Math.imul(h, 0x7feb352d); h ^= h >>> 15; h = Math.imul(h, 0x846ca68b); h ^= h >>> 16; return (h >>> 0) / 4294967296; };
+  // quaternions as [x, y, z, w] in a Float64Array at offset o
+  const qmul = (a, ao, b, bo, out, oo) => {
+    const ax = a[ao], ay = a[ao + 1], az = a[ao + 2], aw = a[ao + 3], bx = b[bo], by = b[bo + 1], bz = b[bo + 2], bw = b[bo + 3];
+    out[oo] = aw * bx + ax * bw + ay * bz - az * by; out[oo + 1] = aw * by - ax * bz + ay * bw + az * bx;
+    out[oo + 2] = aw * bz + ax * by - ay * bx + az * bw; out[oo + 3] = aw * bw - ax * bx - ay * by - az * bz;
+  };
+  const qnorm = (q, o) => { const l = Math.hypot(q[o], q[o + 1], q[o + 2], q[o + 3]) || 1; q[o] /= l; q[o + 1] /= l; q[o + 2] /= l; q[o + 3] /= l; };
+  // rotation matrix (row-major 9) of the quaternion at q[o]
+  const qmat = (q, o, m) => {
+    const x = q[o], y = q[o + 1], z = q[o + 2], w = q[o + 3];
+    m[0] = 1 - 2 * (y * y + z * z); m[1] = 2 * (x * y - z * w); m[2] = 2 * (x * z + y * w);
+    m[3] = 2 * (x * y + z * w); m[4] = 1 - 2 * (x * x + z * z); m[5] = 2 * (y * z - x * w);
+    m[6] = 2 * (x * z - y * w); m[7] = 2 * (y * z + x * w); m[8] = 1 - 2 * (x * x + y * y);
+  };
+  const quatOf = (ax, ay, az, ang) => { const l = Math.hypot(ax, ay, az) || 1; const s = Math.sin(ang / 2) / l; return [ax * s, ay * s, az * s, Math.cos(ang / 2)]; };
+  // an icosphere (unit): vertices and faces, for blobs
+  function icosphere(detail) {
+    const t = (1 + Math.sqrt(5)) / 2;
+    let V = [[-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0], [0, -1, t], [0, 1, t], [0, -1, -t], [0, 1, -t], [t, 0, -1], [t, 0, 1], [-t, 0, -1], [-t, 0, 1]];
+    let F = [[0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8], [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9], [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]];
+    for (let d = 0; d < detail; d += 1) {
+      const mid = new Map(); const F2 = [];
+      const m = (a, b) => { const k = a < b ? `${a},${b}` : `${b},${a}`; if (!mid.has(k)) { V.push([(V[a][0] + V[b][0]) / 2, (V[a][1] + V[b][1]) / 2, (V[a][2] + V[b][2]) / 2]); mid.set(k, V.length - 1); } return mid.get(k); };
+      for (const [a, b, c] of F) { const ab = m(a, b); const bc = m(b, c); const ca = m(c, a); F2.push([a, ab, ca], [b, bc, ab], [c, ca, bc], [ab, bc, ca]); }
+      F = F2;
+    }
+    V = V.map(([x, y, z]) => { const l = Math.hypot(x, y, z); return [x / l, y / l, z / l]; });
+    return { V, F };
+  }
+
+  class World {
+    // o: floorY (or floor: false), walls { x, z } (an arena: walls at ±x, ±z), ceiling (y)
+    constructor(o = {}) {
+      this.floorY = o.floor === false ? null : Number(o.floorY) || 0;
+      this.walls = o.walls && (o.walls.x || o.walls.z) ? { x: Number(o.walls.x) || 0, z: Number(o.walls.z) || 0 } : null;
+      this.ceil = Number.isFinite(o.ceiling) ? o.ceiling : null;
+      this.bodies = []; this.clusters = []; this._p = []; this._d = [];
+      this.fluidR = 0; this.ready = false;
+    }
+    // ---------- building ----------
+    _part(x, y, z, w, r, b, fl = 0, v = null) { this._p.push({ x, y, z, w, r, b, fl, vx: v?.[0] || 0, vy: v?.[1] || 0, vz: v?.[2] || 0 }); return this._p.length - 1; }
+    _body(type, o = {}) {
+      const b = { type, i0: this._p.length, n: 0, fixed: Boolean(o.fixed), kind: o.kind || type, color: o.color ?? 0, spawnStep: o.spawnStep ?? -1, spawnKick: o.spawnKick ?? -1,
+        g: o.g ?? 1, air: o.air ?? 0, damp: o.damp ?? 0, R: o.R || 0, h: o.h || null, cluster: -1, shape: null, bouncy: o.bouncy ?? true, q0: o.q || [0, 0, 0, 1], data: o.data || null, kickable: o.kickable ?? !o.fixed };
+      this.bodies.push(b);
+      return b;
+    }
+    _end(b) { b.n = this._p.length - b.i0; return this.bodies.length - 1; }
+    // a fixed point (a pendulum's pivot, a string's top): a particle that never moves
+    pin(x, y, z) { const b = this._body('pin', { fixed: true, kickable: false }); const i = this._part(x, y, z, 0, 0.001, this.bodies.length - 1, PIN); this._end(b); return i; }
+    // a string drawn between two particles (the constraint is dist(): this only draws it)
+    link(i, j, r) { (this.links ||= []).push([i, j, r]); }
+    dist(i, j, kind = 0, rest = null) { const a = this._p[i]; const c = this._p[j]; this._d.push([i, j, rest ?? Math.hypot(a.x - c.x, a.y - c.y, a.z - c.z), kind]); }
+    // a ball: one particle (a shape collider), mass by volume
+    sphere(x, y, z, R, o = {}) {
+      const b = this._body('sphere', { ...o, R }); b.shape = 'sphere';
+      const m = (o.mass ?? (4.19 * R * R * R * (o.density ?? 1))) || 1;
+      this._part(x, y, z, b.fixed ? 0 : 1 / Math.max(1e-4, m), R, this.bodies.length - 1, 0, o.v);
+      return this._end(b);
+    }
+    // a rigid box: its 8 corners (+ anchors: local points ropes can hang from) held by shape matching; contacts as an
+    // oriented box. o.q: its turn [x, y, z, w]; o.spin: corners' start velocities as a turn (rad/s around y…)
+    box(x, y, z, hx, hy, hz, o = {}) {
+      const b = this._body('rigid', { ...o, h: [hx, hy, hz] }); b.shape = 'obb';
+      const id = this.bodies.length - 1;
+      const q = Float64Array.from(o.q || [0, 0, 0, 1]); qnorm(q, 0); b.q0 = [...q];
+      const M = new Float64Array(9); qmat(q, 0, M);
+      const loc = [];
+      // (contact corners a little inside, as small balls that reach the box's surface: an aligned stack's corners never
+      // sit exactly on another box's edge)
+      const ins = 0.03 * Math.min(hx, hy, hz);
+      for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) loc.push([sx * (hx - ins), sy * (hy - ins), sz * (hz - ins)]);
+      for (const a of o.anchors || []) loc.push(a);
+      const m = (o.mass ?? (8 * hx * hy * hz * (o.density ?? 1))) || 1;
+      const w = b.fixed ? 0 : loc.length / Math.max(1e-4, m);
+      const idx = [];
+      for (const [lx, ly, lz] of loc) {
+        const wx = x + M[0] * lx + M[1] * ly + M[2] * lz; const wy = y + M[3] * lx + M[4] * ly + M[5] * lz; const wz = z + M[6] * lx + M[7] * ly + M[8] * lz;
+        let v = o.v || null;
+        if (o.spin) { const [ax, ay, az] = o.spin; const rx = wx - x; const ry = wy - y; const rz = wz - z; v = [(v?.[0] || 0) + ay * rz - az * ry, (v?.[1] || 0) + az * rx - ax * rz, (v?.[2] || 0) + ax * ry - ay * rx]; }
+        idx.push(this._part(wx, wy, wz, w, ins * 0.9, id, 0, v));
+      }
+      this._cluster(b, idx, 1, true);
+      return this._end(b);
+    }
+    // shape matching: rest offsets from the cluster's centre of mass; obb: the box's centre in the cluster's frame
+    _cluster(b, idx, k, obb) {
+      let cx = 0, cy = 0, cz = 0;
+      for (const i of idx) { const p = this._p[i]; cx += p.x; cy += p.y; cz += p.z; }
+      cx /= idx.length; cy /= idx.length; cz /= idx.length;
+      const q = Float64Array.from(b.q0); const M = new Float64Array(9); qmat(q, 0, M);
+      // rest offsets in the body's own frame (the inverse turn of the start pose)
+      const rest = new Float64Array(idx.length * 3);
+      idx.forEach((i, n) => { const p = this._p[i]; const dx = p.x - cx, dy = p.y - cy, dz = p.z - cz; rest[n * 3] = M[0] * dx + M[3] * dy + M[6] * dz; rest[n * 3 + 1] = M[1] * dx + M[4] * dy + M[7] * dz; rest[n * 3 + 2] = M[2] * dx + M[5] * dy + M[8] * dz; });
+      const oc = [0, 0, 0];
+      if (obb) { // the box's centre is the mean of its first 8 points (the corners)
+        let ox = 0, oy = 0, oz = 0; for (let n = 0; n < 8; n += 1) { ox += rest[n * 3]; oy += rest[n * 3 + 1]; oz += rest[n * 3 + 2]; }
+        oc[0] = ox / 8; oc[1] = oy / 8; oc[2] = oz / 8;
+      }
+      this.clusters.push({ body: this.bodies.indexOf(b), idx: Int32Array.from(idx), rest, k, obb, oc });
+      b.cluster = this.clusters.length - 1;
+    }
+    // a soft blob: an icosphere of particles (they collide), held loosely by shape matching (soft 0 … 1 = rigid)
+    blob(x, y, z, R, o = {}) {
+      const b = this._body('soft', { damp: 0.06, ...o, R }); const id = this.bodies.length - 1;
+      const { V, F } = icosphere(o.detail ?? 1);
+      const m = (o.mass ?? 4.19 * R * R * R * (o.density ?? 1)) || 1; const w = V.length / m;
+      const pr = R * (o.detail === 2 ? 0.16 : 0.28);
+      const sy = o.squash ?? 1;
+      const idx = V.map(([vx, vy, vz]) => this._part(x + vx * R, y + vy * R * sy, z + vz * R, w, pr, id, HASHED, o.v));
+      b.data = { faces: F, verts: V.length };
+      this._cluster(b, idx, o.soft ?? 0.3, false);
+      return this._end(b);
+    }
+    // cloth: nx × ny particles, spacing s, in the plane 'xy' (hanging: a flag, a curtain) or 'xz' (lying); pins: [[i, j]…]
+    cloth(x, y, z, nx, ny, s, o = {}) {
+      const b = this._body('cloth', { ...o, bouncy: false }); const id = this.bodies.length - 1;
+      const m = (o.mass ?? nx * ny * s * s * 0.4) || 1; const w = (nx * ny) / m;
+      const pins = new Set((o.pins || []).map(([i, j]) => j * nx + i));
+      const rel = Boolean(o.release);
+      const idx = [];
+      for (let j = 0; j < ny; j += 1) for (let i = 0; i < nx; i += 1) {
+        const px = x + i * s; const py = o.plane === 'xz' ? y : y - j * s; const pz = o.plane === 'xz' ? z + j * s : z + (rnd(i, j) - 0.5) * s * 0.02;
+        const pin = pins.has(j * nx + i);
+        idx.push(this._part(px, py, pz, pin ? 0 : w, s * 0.45, id, HASHED | (pin ? PIN : 0) | (pin && rel ? RELEASE : 0)));
+      }
+      const at = (i, j) => idx[j * nx + i];
+      for (let j = 0; j < ny; j += 1) for (let i = 0; i < nx; i += 1) {
+        if (i + 1 < nx) this.dist(at(i, j), at(i + 1, j), 0);
+        if (j + 1 < ny) this.dist(at(i, j), at(i, j + 1), 0);
+        if (i + 1 < nx && j + 1 < ny) { this.dist(at(i, j), at(i + 1, j + 1), 1); this.dist(at(i + 1, j), at(i, j + 1), 1); }
+        if (i + 2 < nx) this.dist(at(i, j), at(i + 2, j), 2);
+        if (j + 2 < ny) this.dist(at(i, j), at(i, j + 2), 2);
+      }
+      b.data = { nx, ny, freeW: w };
+      for (const i of idx) this._p[i].wf = w;
+      return this._end(b);
+    }
+    // a rope from a to b (or hanging down `length` from a) in `seg` pieces; pinA / pinB hold its ends; r: thickness
+    rope(a, bEnd, seg, o = {}) {
+      const b = this._body('rope', { ...o, bouncy: false, air: o.air ?? 0.4 }); const id = this.bodies.length - 1;
+      const r = o.r ?? 0.02; const len = Math.hypot(bEnd[0] - a[0], bEnd[1] - a[1], bEnd[2] - a[2]);
+      const m = (o.mass ?? len * 0.05) || 0.05; const w = (seg + 1) / m;
+      const idx = [];
+      for (let k = 0; k <= seg; k += 1) {
+        const t = k / seg; const pin = (k === 0 && o.pinA) || (k === seg && o.pinB);
+        idx.push(this._part(a[0] + (bEnd[0] - a[0]) * t, a[1] + (bEnd[1] - a[1]) * t, a[2] + (bEnd[2] - a[2]) * t, pin ? 0 : w, r, id, HASHED | (pin ? PIN : 0) | (pin && o.release ? RELEASE : 0)));
+        if (pin) this._p[idx[k]].wf = w;
+      }
+      for (let k = 0; k < seg; k += 1) this.dist(idx[k], idx[k + 1], 0);
+      for (let k = 0; k + 2 <= seg; k += 1) this.dist(idx[k], idx[k + 2], 2);
+      b.data = { first: idx[0], last: idx[seg], beads: Boolean(o.beads) };
+      return this._end(b);
+    }
+    // a ragdoll-lite: 15 particles (head, torso box, arms, legs) joined by sticks, knees / elbows can't fold flat
+    ragdoll(x, y, z, s = 1, o = {}) {
+      const b = this._body('rag', { ...o, air: 0.02 }); const id = this.bodies.length - 1;
+      const J = { head: [0, 1.62, 0, 0.11], chest: [0, 1.32, 0, 0.12], pelvis: [0, 0.95, 0, 0.12], lSh: [-0.2, 1.4, 0, 0.07], rSh: [0.2, 1.4, 0, 0.07], lHip: [-0.11, 0.9, 0, 0.08], rHip: [0.11, 0.9, 0, 0.08],
+        lEl: [-0.45, 1.38, 0, 0.06], rEl: [0.45, 1.38, 0, 0.06], lHa: [-0.7, 1.36, 0, 0.06], rHa: [0.7, 1.36, 0, 0.06], lKn: [-0.12, 0.5, 0, 0.07], rKn: [0.12, 0.5, 0, 0.07], lFo: [-0.12, 0.08, 0, 0.07], rFo: [0.12, 0.08, 0, 0.07] };
+      const q = Float64Array.from(o.q || [0, 0, 0, 1]); const M = new Float64Array(9); qmat(q, 0, M);
+      const m = (o.mass ?? 1) / 15; const P = {};
+      for (const [k, [jx, jy, jz, jr]] of Object.entries(J)) {
+        const lx = jx * s, ly = (jy - 0.9) * s, lz = jz * s;
+        P[k] = this._part(x + M[0] * lx + M[1] * ly + M[2] * lz, y + M[3] * lx + M[4] * ly + M[5] * lz, z + M[6] * lx + M[7] * ly + M[8] * lz, 1 / m, jr * s, id, HASHED, o.v);
+      }
+      const bones = [['head', 'chest'], ['lSh', 'lEl'], ['lEl', 'lHa'], ['rSh', 'rEl'], ['rEl', 'rHa'], ['lHip', 'lKn'], ['lKn', 'lFo'], ['rHip', 'rKn'], ['rKn', 'rFo']];
+      for (const [a, c] of bones) this.dist(P[a], P[c], 0);
+      this.dist(P.head, P.lSh, 0); this.dist(P.head, P.rSh, 0);
+      // knees / elbows / neck can bend but not fold flat (unilateral: a minimum distance)
+      for (const [a, c, k] of [['lHip', 'lFo', 0.8], ['rHip', 'rFo', 0.8], ['lSh', 'lHa', 0.55], ['rSh', 'rHa', 0.55], ['head', 'pelvis', 0.9]]) this.dist(P[a], P[c], 3, Math.hypot(this._p[P[a]].x - this._p[P[c]].x, this._p[P[a]].y - this._p[P[c]].y, this._p[P[a]].z - this._p[P[c]].z) * k);
+      b.q0 = [...q];
+      this._cluster(b, [P.chest, P.pelvis, P.lSh, P.rSh, P.lHip, P.rHip], 1, false);
+      b.data = { joints: Object.values(P), bones: [...bones, ['chest', 'pelvis'], ['lSh', 'rSh'], ['lHip', 'rHip']].map(([a, c]) => [P[a], P[c]]) };
+      return this._end(b);
+    }
+    // water: a block of fluid particles (radius r) filling [x0, x1] × [y0, y1] × [z0, z1]
+    water(x0, y0, z0, x1, y1, z1, r, o = {}) {
+      const b = this._body('fluid', { ...o, bouncy: false }); const id = this.bodies.length - 1;
+      const d = r * 2; let n = 0;
+      for (let y = y0 + r; y <= y1 - r + 1e-9; y += d) for (let z = z0 + r; z <= z1 - r + 1e-9; z += d) for (let x = x0 + r; x <= x1 - r + 1e-9; x += d) {
+        const j = (rnd(n, 77) - 0.5) * r * 0.1; n += 1;
+        this._part(x + j, y, z - j, 1, r, id, HASHED, o.v);
+      }
+      this.fluidR = this.fluidR ? Math.min(this.fluidR, r) : r;
+      return this._end(b);
+    }
+    // ---------- typed arrays: the whole state lives in a few of them (snapshots copy them) ----------
+    finish() {
+      const N = this._p.length; const B = this.bodies.length;
+      this.N = N; this.B = B;
+      const f = (n) => new Float64Array(n);
+      Object.assign(this, { x: f(N * 3), p: f(N * 3), xs: f(N * 3), v: f(N * 3), vp: f(N * 3), x0: f(N * 3), v0: f(N * 3), w: f(N), w0: f(N), wf: f(N), we: f(N), r: f(N), pb: new Int32Array(N), fl: new Uint8Array(N), on: new Uint8Array(N) });
+      this._p.forEach((P, i) => {
+        this.x[i * 3] = P.x; this.x[i * 3 + 1] = P.y; this.x[i * 3 + 2] = P.z; this.v[i * 3] = P.vx; this.v[i * 3 + 1] = P.vy; this.v[i * 3 + 2] = P.vz;
+        this.w[i] = P.w; this.wf[i] = P.wf ?? P.w; this.r[i] = P.r; this.pb[i] = P.b; this.fl[i] = P.fl;
+      });
+      this.x0.set(this.x); this.v0.set(this.v); this.xs.set(this.x); this.w0.set(this.w);
+      Object.assign(this, { bc: f(B * 3), bq: f(B * 4), bcs: f(B * 3), bqs: f(B * 4), bq0: f(B * 4), sleepN: new Int32Array(B), asleep: new Uint8Array(B), active: new Uint8Array(B) });
+      this.bodies.forEach((b, k) => { this.bq.set(b.q0, k * 4); this.bq0.set(b.q0, k * 4); this.active[k] = b.spawnStep < 0 && b.spawnKick < 0 ? 1 : 0; });
+      for (let k = 0; k < B; k += 1) this._center(k);
+      this.bcs.set(this.bc); this.bqs.set(this.bq);
+      const D = this._d.length;
+      this.dI = new Int32Array(D * 2); this.dR = f(D); this.dK = new Uint8Array(D);
+      this._d.forEach(([i, j, rest, k], n) => { this.dI[n * 2] = i; this.dI[n * 2 + 1] = j; this.dR[n] = rest; this.dK[n] = k; });
+      this.hashed = Int32Array.from(this._p.map((P, i) => (P.fl & HASHED ? i : -1)).filter((i) => i >= 0));
+      this.shapes = Int32Array.from(this.bodies.map((b, k) => (b.shape ? k : -1)).filter((k) => k >= 0));
+      this.fluid = Int32Array.from(this._p.map((P, i) => (this.bodies[P.b].type === 'fluid' ? i : -1)).filter((i) => i >= 0));
+      this.misc = f(8); // step, kicks, gust, released, drops
+      // spatial hash: cells of the biggest hashed particle (or the fluid's kernel)
+      let rmax = 0; for (const i of this.hashed) rmax = Math.max(rmax, this.r[i]);
+      let nb = -1; this.multi = false; for (const i of this.hashed) { const k = this.pb[i]; if (this.bodies[k].type === 'fluid') continue; if (nb >= 0 && k !== nb) { this.multi = true; break; } nb = k; }
+      if (this.fluid.length && nb >= 0) this.multi = true;
+      this.fh = this.fluidR * 3;
+      this.rmax = rmax; this.cell = Math.max(rmax * 3, this.fh * 1.3, 0.02); this.pl = new Int32Array(1024); this.npl = 0;
+      this.oC = f(B * 3); this.oM = f(B * 9);
+      let T = 64; while (T < this.hashed.length * 2) T *= 2;
+      this.T = T; this.hk = new Int32Array(N); this.cnt = new Int32Array(T + 1); this.srt = new Int32Array(Math.max(1, this.hashed.length));
+      this.order = Int32Array.from(this.shapes); this.sMin = f(B); this.sMax = f(B); this.sRad = f(B);
+      for (const k of this.shapes) { const b = this.bodies[k]; this.sRad[k] = b.shape === 'sphere' ? b.R : Math.hypot(...b.h); }
+      this.cap = 256; this.cI = new Int32Array(this.cap); this.cJ = new Int32Array(this.cap); this.cN = f(this.cap * 3); this.nc = 0;
+      this.M9 = f(9); this.tq = f(4); this.tq2 = f(4); this.vb = new Int32Array(27);
+      if (this.fluid.length) this._fluidSetup();
+      this.comp = [0, 1e-5, 1e-3]; // compliance of stretch, shear, bend (set by the stiffness each step)
+      this._p = null; this._d = null; this.ready = true;
+      this.stats = { steps: 0, contacts: 0, ms: 0 };
+      return this;
+    }
+    // a body's centre (mean of its particles) — clusters keep theirs in shape matching
+    _center(k) {
+      const b = this.bodies[k]; let cx = 0, cy = 0, cz = 0;
+      for (let i = b.i0; i < b.i0 + b.n; i += 1) { cx += this.x[i * 3]; cy += this.x[i * 3 + 1]; cz += this.x[i * 3 + 2]; }
+      const n = b.n || 1; this.bc[k * 3] = cx / n; this.bc[k * 3 + 1] = cy / n; this.bc[k * 3 + 2] = cz / n;
+    }
+    // ---------- snapshots: everything a step reads, copied (restores land on exactly the same numbers) ----------
+    snapshot() { return [this.x.slice(), this.xs.slice(), this.v.slice(), this.w.slice(), this.bc.slice(), this.bq.slice(), this.bcs.slice(), this.bqs.slice(), this.sleepN.slice(), this.asleep.slice(), this.active.slice(), this.misc.slice()]; }
+    restore(s) { const t = [this.x, this.xs, this.v, this.w, this.bc, this.bq, this.bcs, this.bqs, this.sleepN, this.asleep, this.active, this.misc]; for (let k = 0; k < t.length; k += 1) t[k].set(s[k]); }
+    bytes() { return this.N * 8 * 10 + this.B * 8 * 15 + 64; }
+    get stepN() { return this.misc[0]; }
+    wake(k) {
+      if (!this.asleep[k]) return;
+      this.asleep[k] = 0; this.sleepN[k] = 0;
+      const b = this.bodies[k]; if (this.active[k]) for (let i = b.i0; i < b.i0 + b.n; i += 1) this.we[i] = this.w[i]; // (it moves from this substep on)
+    }
+    // ---------- one fixed step (env: the sliders and the music for this step) ----------
+    step(env) {
+      const st = (this.misc[0] += 1);
+      const B = this.B;
+      this.xs.set(this.x); this.bcs.set(this.bc); this.bqs.set(this.bq);
+      if (env.kick) this.misc[1] += 1;
+      // bodies that appear (at a time, or on the n-th kick): back to their start state
+      for (let k = 0; k < B; k += 1) {
+        if (this.active[k]) continue;
+        const b = this.bodies[k];
+        if ((b.spawnStep >= 0 && st >= b.spawnStep) || (b.spawnKick >= 0 && this.misc[1] > b.spawnKick)) {
+          this.active[k] = 1; this.asleep[k] = 0; this.sleepN[k] = 0;
+          for (let i = b.i0 * 3; i < (b.i0 + b.n) * 3; i += 1) { this.x[i] = this.x0[i]; this.xs[i] = this.x0[i]; this.v[i] = this.v0[i]; }
+          this.bq.set(this.bodies[k].q0, k * 4); this.bqs.set(this.bodies[k].q0, k * 4); this._center(k); this.bcs[k * 3] = this.bc[k * 3]; this.bcs[k * 3 + 1] = this.bc[k * 3 + 1]; this.bcs[k * 3 + 2] = this.bc[k * 3 + 2];
+        }
+      }
+      if (env.kick && env.kickImp) this._impulse(st, env.kickMode || 'jump', env.kickImp, env.kickOnly || 'all');
+      if (env.drop) {
+        if (env.dropImp) this._impulse(st + 7777, 'blast', env.dropImp, 'all');
+        if (!this.misc[3]) { this.misc[3] = 1; for (let i = 0; i < this.N; i += 1) if (this.fl[i] & RELEASE) { this.w[i] = this.wf[i]; this.wake(this.pb[i]); } }
+      }
+      this.misc[2] = env.kick && env.kickMode === 'gust' ? env.kickImp : this.misc[2] * Math.exp(-3 / 60);
+      const sub = Math.max(1, Math.min(32, Math.round(env.sub || 6)));
+      const h = (1 / 60) * Math.max(0, env.timeScale ?? 1) / sub;
+      if (h > 0) {
+        const s = Math.max(0, Math.min(1, env.stiffness ?? 0.5));
+        this.comp[1] = 1e-6 + (1 - s) * 2e-4; this.comp[2] = 1e-5 + (1 - s) ** 2 * 0.05;
+        for (let n = 0; n < sub; n += 1) this._substep(h, env, st, n);
+      }
+      // soft bodies lose a little of their wobble each step (their own motion is kept)
+      for (let k = 0; k < this.B; k += 1) {
+        const b = this.bodies[k]; if (!b.damp || !this.active[k] || this.asleep[k]) continue;
+        let mx = 0, my = 0, mz = 0; const n = b.n;
+        for (let i = b.i0 * 3; i < (b.i0 + n) * 3; i += 3) { mx += this.v[i]; my += this.v[i + 1]; mz += this.v[i + 2]; }
+        mx /= n; my /= n; mz /= n; const kd = 1 - b.damp;
+        for (let i = b.i0 * 3; i < (b.i0 + n) * 3; i += 3) { this.v[i] = mx + (this.v[i] - mx) * kd; this.v[i + 1] = my + (this.v[i + 1] - my) * kd; this.v[i + 2] = mz + (this.v[i + 2] - mz) * kd; }
+      }
+      this._sleep(env);
+      this.stats.steps += 1;
+    }
+    _impulse(seed, mode, imp, only) {
+      const B = this.B; const fy = this.floorY ?? 0;
+      let first = -1; let last = -1;
+      for (let k = 0; k < B; k += 1) if (this.active[k] && this.bodies[k].kickable) { if (first < 0) first = k; last = k; }
+      for (let k = 0; k < B; k += 1) {
+        const b = this.bodies[k];
+        if (!this.active[k] || !b.kickable || (only === 'first' && k !== first) || (only === 'last' && k !== last)) continue;
+        this.wake(k);
+        const r1 = rnd(seed, k * 3) - 0.5; const r2 = rnd(seed, k * 3 + 1) - 0.5; const r3 = rnd(seed, k * 3 + 2);
+        const cx = this.bc[k * 3], cy = this.bc[k * 3 + 1], cz = this.bc[k * 3 + 2];
+        let dx = 0, dy = 0, dz = 0;
+        if (mode === 'jump') { dx = r1 * 0.5; dy = 0.75 + r3 * 0.5; dz = r2 * 0.5; }
+        else if (mode === 'push') { dx = 1; dy = 0.1; dz = r2 * 0.2; }
+        else if (mode === 'blast') { const ex = cx, ey = cy - fy + 0.6, ez = cz; const l = Math.hypot(ex, ey, ez) || 1; const f = 1 / (0.6 + l * 0.35); dx = (ex / l) * f; dy = (ey / l) * f + 0.2; dz = (ez / l) * f; }
+        else if (mode === 'gust') { dx = 0.3; dz = r2 * 0.2; }
+        const spin = mode === 'spin' ? imp * (0.6 + r3) : mode === 'jump' ? imp * r1 * 0.6 : 0;
+        if (mode === 'spin') dy = 0.35;
+        for (let i = b.i0; i < b.i0 + b.n; i += 1) {
+          if (!this.w[i]) continue;
+          const o = i * 3;
+          this.v[o] += dx * imp; this.v[o + 1] += dy * imp; this.v[o + 2] += dz * imp;
+          if (spin) { const rx = this.x[o] - cx, rz = this.x[o + 2] - cz; this.v[o] += spin * rz; this.v[o + 2] -= spin * rx; }
+        }
+      }
+    }
+    _sleep(env) {
+      const thr = (env.sleepV ?? 0.06) ** 2;
+      for (let k = 0; k < this.B; k += 1) {
+        if (!this.active[k] || this.asleep[k] || this.bodies[k].fixed) continue;
+        const b = this.bodies[k]; let mx = 0;
+        for (let i = b.i0 * 3; i < (b.i0 + b.n) * 3; i += 3) { const s = this.v[i] * this.v[i] + this.v[i + 1] * this.v[i + 1] + this.v[i + 2] * this.v[i + 2]; if (s > mx) mx = s; }
+        if (mx < thr && env.sleep !== false) { if ((this.sleepN[k] += 1) > 45) { this.asleep[k] = 1; for (let i = b.i0 * 3; i < (b.i0 + b.n) * 3; i += 1) this.v[i] = 0; } } else this.sleepN[k] = 0;
+      }
+    }
+    _substep(h, env, st, sn) {
+      const { x, p, v, vp, w, we, on, pb, N } = this;
+      const g = -G * (env.gravity ?? 1); const gx = env.gx || 0; const damp = 1 / (1 + Math.max(0, env.damping || 0) * h);
+      // wind: a steady part + gusts (smooth noise of the step) + a kick's gust
+      const tt = (st + sn / 8) / 60;
+      const gust = (env.turb || 0) * (Math.sin(tt * 1.7) * 0.6 + Math.sin(tt * 4.3 + 1) * 0.3 + Math.sin(tt * 9.1 + 2) * 0.1);
+      const wx = (env.wind || 0) * (1 + gust) + this.misc[2] * 4; const wz = (env.turb || 0) * Math.sin(tt * 2.3) * Math.abs(env.wind || 1) * 0.3;
+      for (let i = 0; i < N; i += 1) { const k = pb[i]; on[i] = this.active[k]; we[i] = on[i] && !this.asleep[k] ? w[i] : 0; }
+      this._cloth(h, wx, wz);
+      for (let k = 0; k < this.B; k += 1) {
+        const b = this.bodies[k];
+        const free = this.active[k] && !this.asleep[k] && !b.fixed;
+        const gy = g * b.g; const air = b.air * h;
+        for (let i = b.i0; i < b.i0 + b.n; i += 1) {
+          const o = i * 3;
+          p[o] = x[o]; p[o + 1] = x[o + 1]; p[o + 2] = x[o + 2];
+          if (!free || !w[i]) { vp[o] = 0; vp[o + 1] = 0; vp[o + 2] = 0; continue; }
+          v[o] += gx * h; v[o + 1] += gy * h;
+          if (air) { v[o] += (wx - v[o]) * air; v[o + 2] += (wz - v[o + 2]) * air; }
+          v[o] *= damp; v[o + 1] *= damp; v[o + 2] *= damp;
+          vp[o] = v[o]; vp[o + 1] = v[o + 1]; vp[o + 2] = v[o + 2];
+          x[o] += v[o] * h; x[o + 1] += v[o + 1] * h; x[o + 2] += v[o + 2] * h;
+        }
+      }
+      this.nc = 0;
+      // (the hash and the lists of near pairs / water neighbours are made once a step, with room for a step's moves)
+      if (!sn) { this._hash(); this._pairList(); if (this.fluid.length) this._fluidList(); }
+      const iters = Math.max(1, Math.min(4, env.iters || 1));
+      for (let it = 0; it < iters; it += 1) {
+        this._frames();
+        this._dists(h);
+        if (this.fluid.length && !it) this._fluid();
+        this._pairs(env);
+        this._shapes(env);
+        this._shapesVsHashed(env);
+        this._planes(env);
+        this._match();
+      }
+      // velocities from the moves, then bounces (restitution) on the contacts that were approaching
+      for (let i = 0; i < N; i += 1) {
+        if (!we[i]) continue;
+        const o = i * 3;
+        v[o] = (x[o] - p[o]) / h; v[o + 1] = (x[o + 1] - p[o + 1]) / h; v[o + 2] = (x[o + 2] - p[o + 2]) / h;
+      }
+      if (this.fluid.length) this._xsph();
+      this._bounce(env.bounce ?? 0.3);
+      this._roll(h);
+    }
+    // cloth in the wind: per triangle, the wind's push along its normal (flags flap, curtains billow)
+    _cloth(h, wx, wz) {
+      if (!wx && !wz) return;
+      const { x, v, we } = this;
+      for (const b of this.bodies) {
+        if (b.type !== 'cloth') continue;
+        const { nx, ny } = b.data; const i0 = b.i0; const k = (1.2 * h) / 3;
+        for (let j = 0; j + 1 < ny; j += 1) for (let i = 0; i + 1 < nx; i += 1) {
+          const a = i0 + j * nx + i; const c = a + 1; const d = a + nx; const e = d + 1;
+          for (let t = 0; t < 2; t += 1) {
+            const A = t ? c : a; const Bv = t ? e : c; const C = d;
+            const ux = x[Bv * 3] - x[A * 3], uy = x[Bv * 3 + 1] - x[A * 3 + 1], uz = x[Bv * 3 + 2] - x[A * 3 + 2];
+            const qx = x[C * 3] - x[A * 3], qy = x[C * 3 + 1] - x[A * 3 + 1], qz = x[C * 3 + 2] - x[A * 3 + 2];
+            const nx3 = uy * qz - uz * qy, ny3 = uz * qx - ux * qz, nz3 = ux * qy - uy * qx; // |n| = 2 × area
+            const rvx = wx - (v[A * 3] + v[Bv * 3] + v[C * 3]) / 3; const rvy = -(v[A * 3 + 1] + v[Bv * 3 + 1] + v[C * 3 + 1]) / 3; const rvz = wz - (v[A * 3 + 2] + v[Bv * 3 + 2] + v[C * 3 + 2]) / 3;
+            const l = Math.hypot(nx3, ny3, nz3) || 1;
+            const f = ((nx3 * rvx + ny3 * rvy + nz3 * rvz) / (2 * l)) * k;
+            if (we[A]) { v[A * 3] += nx3 * f * we[A]; v[A * 3 + 1] += ny3 * f * we[A]; v[A * 3 + 2] += nz3 * f * we[A]; }
+            if (we[Bv]) { v[Bv * 3] += nx3 * f * we[Bv]; v[Bv * 3 + 1] += ny3 * f * we[Bv]; v[Bv * 3 + 2] += nz3 * f * we[Bv]; }
+            if (we[C]) { v[C * 3] += nx3 * f * we[C]; v[C * 3 + 1] += ny3 * f * we[C]; v[C * 3 + 2] += nz3 * f * we[C]; }
+          }
+        }
+      }
+    }
+    // ---------- spatial hash of the small particles (cloth, ropes, blobs, ragdolls, water) ----------
+    _cellKey(ix, iy, iz) { return ((Math.imul(ix, 73856093) ^ Math.imul(iy, 19349663) ^ Math.imul(iz, 83492791)) >>> 0) & (this.T - 1); }
+    _hash() {
+      const { hashed, x, cnt, srt, hk, cell, T, on } = this;
+      cnt.fill(0);
+      for (let n = 0; n < hashed.length; n += 1) { const i = hashed[n]; if (!on[i]) { hk[i] = -1; continue; } const k = this._cellKey(Math.floor(x[i * 3] / cell), Math.floor(x[i * 3 + 1] / cell), Math.floor(x[i * 3 + 2] / cell)); hk[i] = k; cnt[k + 1] += 1; }
+      for (let k = 0; k < T; k += 1) cnt[k + 1] += cnt[k];
+      // (cnt[k] = start of cell k; filled in order, then cnt is shifted back)
+      for (let n = 0; n < hashed.length; n += 1) { const i = hashed[n]; const k = hk[i]; if (k < 0) continue; srt[cnt[k]] = i; cnt[k] += 1; }
+      for (let k = T; k > 0; k -= 1) cnt[k] = cnt[k - 1];
+      cnt[0] = 0;
+    }
+    _contact(i, j, nx, ny, nz) {
+      if (this.nc >= this.cap) { const c = this.cap * 2; const a = new Int32Array(c); a.set(this.cI); this.cI = a; const b = new Int32Array(c); b.set(this.cJ); this.cJ = b; const n = new Float64Array(c * 3); n.set(this.cN); this.cN = n; this.cap = c; }
+      const k = this.nc++; this.cI[k] = i; this.cJ[k] = j; this.cN[k * 3] = nx; this.cN[k * 3 + 1] = ny; this.cN[k * 3 + 2] = nz;
+    }
+    _dists(h) {
+      const { dI, dR, dK, x, we, comp } = this; const D = dR.length;
+      const h2 = 1 / (h * h);
+      for (let n = 0; n < D; n += 1) {
+        const i = dI[n * 2]; const j = dI[n * 2 + 1]; const wi = we[i]; const wj = we[j];
+        if (!wi && !wj) continue;
+        const dx = x[i * 3] - x[j * 3], dy = x[i * 3 + 1] - x[j * 3 + 1], dz = x[i * 3 + 2] - x[j * 3 + 2];
+        const l = Math.sqrt(dx * dx + dy * dy + dz * dz); if (l < 1e-9) continue;
+        const kind = dK[n]; const C = l - dR[n];
+        if (kind === 3 && C >= 0) continue;
+        const a = kind === 3 ? 0 : comp[kind] * h2;
+        const s = -C / (wi + wj + a) / l;
+        x[i * 3] += dx * s * wi; x[i * 3 + 1] += dy * s * wi; x[i * 3 + 2] += dz * s * wi;
+        x[j * 3] -= dx * s * wj; x[j * 3 + 1] -= dy * s * wj; x[j * 3 + 2] -= dz * s * wj;
+      }
+    }
+    // small particles against each other (different bodies; water against itself is the density's job)
+    // near pairs of small particles from different bodies (water against itself is the density's job)
+    _pairList() {
+      this.npl = 0;
+      if (!this.multi) return;
+      const { hashed, x, r, pb, cnt, srt, cell, vb, on, bodies } = this; const pad = cell - 2 * this.rmax;
+      for (let n = 0; n < hashed.length; n += 1) {
+        const i = hashed[n]; if (!on[i]) continue;
+        const ix = Math.floor(x[i * 3] / cell), iy = Math.floor(x[i * 3 + 1] / cell), iz = Math.floor(x[i * 3 + 2] / cell);
+        let nv = 0;
+        for (let a = -1; a <= 1; a += 1) for (let b = -1; b <= 1; b += 1) for (let c = -1; c <= 1; c += 1) {
+          const k = this._cellKey(ix + a, iy + b, iz + c);
+          let seen = false; for (let q = 0; q < nv; q += 1) if (vb[q] === k) { seen = true; break; }
+          if (seen) continue; vb[nv++] = k;
+          for (let m = cnt[k]; m < cnt[k + 1]; m += 1) {
+            const j = srt[m]; if (j <= i || pb[j] === pb[i] || (bodies[pb[i]].fixed && bodies[pb[j]].fixed)) continue;
+            const rr = r[i] + r[j] + pad; const d2 = (x[i * 3] - x[j * 3]) ** 2 + (x[i * 3 + 1] - x[j * 3 + 1]) ** 2 + (x[i * 3 + 2] - x[j * 3 + 2]) ** 2;
+            if (d2 >= rr * rr) continue;
+            if (this.npl * 2 + 2 > this.pl.length) { const g = new Int32Array(this.pl.length * 2); g.set(this.pl); this.pl = g; }
+            this.pl[this.npl * 2] = i; this.pl[this.npl * 2 + 1] = j; this.npl += 1;
+          }
+        }
+      }
+    }
+    _pairs(env) {
+      const { pl, npl, x, we, r, pb, bodies } = this;
+      const mu = env.friction ?? 0.5;
+      for (let n = 0; n < npl; n += 1) {
+        const i = pl[n * 2]; const j = pl[n * 2 + 1];
+        if (!we[i] && !we[j]) continue;
+        const dx = x[i * 3] - x[j * 3], dy = x[i * 3 + 1] - x[j * 3 + 1], dz = x[i * 3 + 2] - x[j * 3 + 2];
+        const rr = r[i] + r[j]; const d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 >= rr * rr || d2 < 1e-12) continue;
+        this._wakePair(pb[i], pb[j], i);
+        const wi = we[i], wj = we[j];
+        const d = Math.sqrt(d2); const pen = rr - d; const nx = dx / d, ny = dy / d, nz = dz / d;
+        const s = pen / (wi + wj);
+        x[i * 3] += nx * s * wi; x[i * 3 + 1] += ny * s * wi; x[i * 3 + 2] += nz * s * wi;
+        x[j * 3] -= nx * s * wj; x[j * 3 + 1] -= ny * s * wj; x[j * 3 + 2] -= nz * s * wj;
+        this._fric(i, j, nx, ny, nz, pen, mu, wi, wj);
+        if (bodies[pb[i]].bouncy && bodies[pb[j]].bouncy) this._contact(i, j, nx, ny, nz);
+      }
+    }
+    // position-based friction between two particles (j = -1: a static surface)
+    _fric(i, j, nx, ny, nz, pen, mu, wi, wj) {
+      const { x, p } = this;
+      let dx = x[i * 3] - p[i * 3], dy = x[i * 3 + 1] - p[i * 3 + 1], dz = x[i * 3 + 2] - p[i * 3 + 2];
+      if (j >= 0) { dx -= x[j * 3] - p[j * 3]; dy -= x[j * 3 + 1] - p[j * 3 + 1]; dz -= x[j * 3 + 2] - p[j * 3 + 2]; }
+      const dn = dx * nx + dy * ny + dz * nz; const tx = dx - dn * nx, ty = dy - dn * ny, tz = dz - dn * nz;
+      const tl = Math.sqrt(tx * tx + ty * ty + tz * tz); if (tl < 1e-12) return;
+      const k = tl < mu * 1.2 * pen ? 1 : Math.min(1, (mu * pen) / tl);
+      const ws = wi + wj; if (!ws) return;
+      x[i * 3] -= tx * k * (wi / ws); x[i * 3 + 1] -= ty * k * (wi / ws); x[i * 3 + 2] -= tz * k * (wi / ws);
+      if (j >= 0) { x[j * 3] += tx * k * (wj / ws); x[j * 3 + 1] += ty * k * (wj / ws); x[j * 3 + 2] += tz * k * (wj / ws); }
+    }
+    // a moving body touching a sleeping one wakes it (i: the particle that touched, if it's the mover's)
+    _wakePair(a, b, i = -1) {
+      if (a === b) return;
+      const sa = this.asleep[a]; const sb = this.asleep[b];
+      if (sa === sb) return;
+      const mover = sa ? b : a; const bd = this.bodies[mover]; if (bd.fixed) return;
+      let s = 0;
+      if (i >= 0 && this.pb[i] === mover) { const o = i * 3; s = this.vp[o] ** 2 + this.vp[o + 1] ** 2 + this.vp[o + 2] ** 2; }
+      for (let j = bd.i0; j < bd.i0 + Math.min(bd.n, 8); j += 1) { const o = j * 3; s = Math.max(s, this.vp[o] ** 2 + this.vp[o + 1] ** 2 + this.vp[o + 2] ** 2); }
+      if (s > 0.01) this.wake(sa ? a : b);
+    }
+    // ---------- shapes: balls and oriented boxes against each other (sweep and prune along x) ----------
+    // each box's centre and turn, once an iteration (they change only in shape matching)
+    _frames() {
+      const { shapes, bodies, bq, bc, oC, oM, M9: M, clusters } = this;
+      for (let n = 0; n < shapes.length; n += 1) {
+        const k = shapes[n]; const b = bodies[k];
+        if (b.shape === 'sphere') { const o = b.i0 * 3; oC[k * 3] = this.x[o]; oC[k * 3 + 1] = this.x[o + 1]; oC[k * 3 + 2] = this.x[o + 2]; continue; }
+        qmat(bq, k * 4, M); for (let c = 0; c < 9; c += 1) oM[k * 9 + c] = M[c];
+        const o = clusters[b.cluster].oc;
+        oC[k * 3] = bc[k * 3] + M[0] * o[0] + M[1] * o[1] + M[2] * o[2]; oC[k * 3 + 1] = bc[k * 3 + 1] + M[3] * o[0] + M[4] * o[1] + M[5] * o[2]; oC[k * 3 + 2] = bc[k * 3 + 2] + M[6] * o[0] + M[7] * o[1] + M[8] * o[2];
+      }
+    }
+    _shapes(env) {
+      const { order, sMin, sMax, sRad, active, bodies, asleep, oC } = this;
+      for (const k of order) { const R = sRad[k]; const c = bodies[k].shape === 'sphere' ? this.x[bodies[k].i0 * 3] : oC[k * 3]; sMin[k] = c - R; sMax[k] = c + R; }
+      // (insertion sort: nearly sorted from the last substep, and the same order for the same state)
+      for (let a = 1; a < order.length; a += 1) { const k = order[a]; let b = a - 1; while (b >= 0 && sMin[order[b]] > sMin[k]) { order[b + 1] = order[b]; b -= 1; } order[b + 1] = k; }
+      for (let a = 0; a < order.length; a += 1) {
+        const A = order[a]; if (!active[A]) continue;
+        const BA = bodies[A]; const stillA = BA.fixed || asleep[A];
+        for (let b = a + 1; b < order.length; b += 1) {
+          const Bk = order[b]; if (sMin[Bk] > sMax[A]) break;
+          if (!active[Bk]) continue;
+          const BB = bodies[Bk]; if (stillA && (BB.fixed || asleep[Bk])) continue;
+          // bounding spheres first
+          const ca = this._centerOf(A); const ax = ca[0], ay = ca[1], az = ca[2]; const cb = this._centerOf(Bk);
+          const rr = sRad[A] + sRad[Bk]; if ((ax - cb[0]) ** 2 + (ay - cb[1]) ** 2 + (az - cb[2]) ** 2 > rr * rr) continue;
+          if (BA.shape !== 'sphere' && BB.shape !== 'sphere') { // two boxes: each one's corners against the other
+            for (let i = BA.i0; i < BA.i0 + BA.n; i += 1) this._vsObb(i, this.r[i], Bk, env, false);
+            for (let i = BB.i0; i < BB.i0 + BB.n; i += 1) this._vsObb(i, this.r[i], A, env, false);
+            continue;
+          }
+          if (BA.shape === 'sphere' && BB.shape === 'sphere') this._sphSph(BA.i0, BB.i0, env);
+          else if (BA.shape === 'sphere') this._vsObb(BA.i0, BA.R, Bk, env, true);
+          else if (BB.shape === 'sphere') this._vsObb(BB.i0, BB.R, A, env, true);
+          else { for (let i = BA.i0; i < BA.i0 + BA.n; i += 1) this._vsObb(i, this.r[i], Bk, env, false); for (let i = BB.i0; i < BB.i0 + BB.n; i += 1) this._vsObb(i, this.r[i], A, env, false); }
+        }
+      }
+    }
+    // a shape's centre (a ball's particle, a box's cached centre), in a shared 3-array
+    _centerOf(k) { const c = (this._oc ||= new Float64Array(3)); const b = this.bodies[k]; if (b.shape === 'sphere') { const o = b.i0 * 3; c[0] = this.x[o]; c[1] = this.x[o + 1]; c[2] = this.x[o + 2]; } else { c[0] = this.oC[k * 3]; c[1] = this.oC[k * 3 + 1]; c[2] = this.oC[k * 3 + 2]; } return c; }
+    _sphSph(i, j, env) {
+      const { x, we } = this; if (!we[i] && !we[j]) return;
+      const dx = x[i * 3] - x[j * 3], dy = x[i * 3 + 1] - x[j * 3 + 1], dz = x[i * 3 + 2] - x[j * 3 + 2];
+      const rr = this.r[i] + this.r[j]; const d2 = dx * dx + dy * dy + dz * dz; if (d2 >= rr * rr || d2 < 1e-12) return;
+      this._wakePair(this.pb[i], this.pb[j], i); const wi = we[i], wj = we[j];
+      const d = Math.sqrt(d2); const pen = rr - d; const nx = dx / d, ny = dy / d, nz = dz / d; const s = pen / (wi + wj);
+      x[i * 3] += nx * s * wi; x[i * 3 + 1] += ny * s * wi; x[i * 3 + 2] += nz * s * wi;
+      x[j * 3] -= nx * s * wj; x[j * 3 + 1] -= ny * s * wj; x[j * 3 + 2] -= nz * s * wj;
+      this._fric(i, j, nx, ny, nz, pen, (env.friction ?? 0.5) * 0.3, wi, wj);
+      this._contact(i, j, nx, ny, nz);
+    }
+    // particle i (radius ri) against box body k: pushed out; the box takes the other share at the corners nearest
+    // the contact (so it turns as well as moves). ball: a ball's bounce is kept when the box doesn't move
+    _vsObb(i, ri, k, env, ball) {
+      const { x, we, bodies } = this; const kb = this.pb[i]; if (kb === k) return;
+      const b = bodies[k]; const cl = this.clusters[b.cluster]; const hh = b.h;
+      const co = k * 3; const c0 = this.oC[co], c1 = this.oC[co + 1], c2 = this.oC[co + 2];
+      const dx = x[i * 3] - c0, dy = x[i * 3 + 1] - c1, dz = x[i * 3 + 2] - c2;
+      const rb = this.sRad[k] + ri; if (dx * dx + dy * dy + dz * dz > rb * rb) return;
+      const M = this.M9; const mo = k * 9; for (let q = 0; q < 9; q += 1) M[q] = this.oM[mo + q]; // (this box's turn)
+      const lx = M[0] * dx + M[3] * dy + M[6] * dz, ly = M[1] * dx + M[4] * dy + M[7] * dz, lz = M[2] * dx + M[5] * dy + M[8] * dz;
+      if (Math.abs(lx) > hh[0] + ri || Math.abs(ly) > hh[1] + ri || Math.abs(lz) > hh[2] + ri) return;
+      const px = Math.max(-hh[0], Math.min(hh[0], lx)), py = Math.max(-hh[1], Math.min(hh[1], ly)), pz = Math.max(-hh[2], Math.min(hh[2], lz));
+      let nlx, nly, nlz, pen;
+      const ex = lx - px, ey = ly - py, ez = lz - pz; const e2 = ex * ex + ey * ey + ez * ez;
+      if (e2 > 1e-14) { const e = Math.sqrt(e2); if (e >= ri) return; nlx = ex / e; nly = ey / e; nlz = ez / e; pen = ri - e; }
+      else { // inside: out through the face it came in by (where it was before this substep), else the nearest one
+        const fx = hh[0] - Math.abs(lx), fy = hh[1] - Math.abs(ly), fz = hh[2] - Math.abs(lz);
+        const { p } = this; const qx = p[i * 3] - c0, qy = p[i * 3 + 1] - c1, qz = p[i * 3 + 2] - c2;
+        const ox = Math.abs(M[0] * qx + M[3] * qy + M[6] * qz) - hh[0], oy = Math.abs(M[1] * qx + M[4] * qy + M[7] * qz) - hh[1], oz = Math.abs(M[2] * qx + M[5] * qy + M[8] * qz) - hh[2];
+        const om = Math.max(ox, oy, oz);
+        if (om > -1e-9) { if (om === oy) { nlx = 0; nly = Math.sign(ly) || 1; nlz = 0; pen = fy + ri; } else if (om === ox) { nlx = Math.sign(lx) || 1; nly = 0; nlz = 0; pen = fx + ri; } else { nlx = 0; nly = 0; nlz = Math.sign(lz) || 1; pen = fz + ri; } }
+        else if (fx <= fy && fx <= fz) { nlx = Math.sign(lx) || 1; nly = 0; nlz = 0; pen = fx + ri; } else if (fy <= fz) { nlx = 0; nly = Math.sign(ly) || 1; nlz = 0; pen = fy + ri; } else { nlx = 0; nly = 0; nlz = Math.sign(lz) || 1; pen = fz + ri; }
+      }
+      const nx = M[0] * nlx + M[1] * nly + M[2] * nlz, ny = M[3] * nlx + M[4] * nly + M[5] * nlz, nz = M[6] * nlx + M[7] * nly + M[8] * nlz;
+      const idx = cl.idx; if (!we[i] && !we[idx[0]]) return;
+      this._wakePair(kb, k, i); const wi = we[i]; const wb = we[idx[0]];
+      const s = pen / (wi + wb);
+      x[i * 3] += nx * s * wi; x[i * 3 + 1] += ny * s * wi; x[i * 3 + 2] += nz * s * wi;
+      // the contact point on the box, and its corners weighted by nearness
+      let fric = 0;
+      if (wb) {
+        const cpx = c0 + (M[0] * px + M[1] * py + M[2] * pz), cpy = c1 + (M[3] * px + M[4] * py + M[5] * pz), cpz = c2 + (M[6] * px + M[7] * py + M[8] * pz);
+        const sc = (hh[0] + hh[1] + hh[2]) * 0.1; let sum = 0;
+        const wts = (this._wts ||= new Float64Array(64));
+        for (let m = 0; m < idx.length && m < 64; m += 1) { const j = idx[m]; const d2 = (x[j * 3] - cpx) ** 2 + (x[j * 3 + 1] - cpy) ** 2 + (x[j * 3 + 2] - cpz) ** 2; wts[m] = 1 / (d2 + sc * sc); sum += wts[m]; }
+        for (let m = 0; m < idx.length && m < 64; m += 1) { const j = idx[m]; const f = (s * wb * wts[m]) / sum; x[j * 3] -= nx * f; x[j * 3 + 1] -= ny * f; x[j * 3 + 2] -= nz * f; }
+        fric = 1;
+      }
+      // friction: the particle's slide against the box's own move there (≈ its centre's)
+      const mu = env.friction ?? 0.5;
+      const { p } = this;
+      let tx = x[i * 3] - p[i * 3], ty = x[i * 3 + 1] - p[i * 3 + 1], tz = x[i * 3 + 2] - p[i * 3 + 2];
+      if (fric) { let mx = 0, my = 0, mz = 0; for (let m = 0; m < 8; m += 1) { const j = idx[m]; mx += x[j * 3] - p[j * 3]; my += x[j * 3 + 1] - p[j * 3 + 1]; mz += x[j * 3 + 2] - p[j * 3 + 2]; } tx -= mx / 8; ty -= my / 8; tz -= mz / 8; }
+      const dn = tx * nx + ty * ny + tz * nz; tx -= dn * nx; ty -= dn * ny; tz -= dn * nz;
+      const tl = Math.sqrt(tx * tx + ty * ty + tz * tz);
+      if (tl > 1e-12) {
+        const k2 = tl < mu * 1.2 * pen ? 1 : Math.min(1, (mu * pen) / tl); const ws = wi + wb;
+        x[i * 3] -= tx * k2 * (wi / ws); x[i * 3 + 1] -= ty * k2 * (wi / ws); x[i * 3 + 2] -= tz * k2 * (wi / ws);
+        if (wb) { const f = k2 * (wb / ws) / 8; for (let m = 0; m < 8; m += 1) { const j = idx[m]; x[j * 3] += tx * f; x[j * 3 + 1] += ty * f; x[j * 3 + 2] += tz * f; } }
+      }
+      if (ball && !wb && bodies[kb].bouncy) this._contact(i, -1, nx, ny, nz);
+    }
+    // small particles against balls and boxes (the hash cells under each shape)
+    _shapesVsHashed(env) {
+      const { shapes, bodies, active, cnt, srt, cell, hashed, on } = this;
+      if (!hashed.length) return;
+      for (const k of shapes) {
+        if (!active[k]) continue;
+        const R = this.sRad[k];
+        const c = this._centerOf(k); const cx = c[0], cy = c[1], cz = c[2];
+        const rpad = R + cell;
+        const x0 = Math.floor((cx - rpad) / cell), x1 = Math.floor((cx + rpad) / cell), y0 = Math.floor((cy - rpad) / cell), y1 = Math.floor((cy + rpad) / cell), z0 = Math.floor((cz - rpad) / cell), z1 = Math.floor((cz + rpad) / cell);
+        const cells = (x1 - x0 + 1) * (y1 - y0 + 1) * (z1 - z0 + 1);
+        const ball = bodies[k].shape === 'sphere';
+        if (cells > hashed.length) { for (let n = 0; n < hashed.length; n += 1) if (on[hashed[n]]) { if (ball) this._vsBall(hashed[n], k, env); else this._vsObb(hashed[n], this.r[hashed[n]], k, env, false); } continue; }
+        for (let ix = x0; ix <= x1; ix += 1) for (let iy = y0; iy <= y1; iy += 1) for (let iz = z0; iz <= z1; iz += 1) {
+          const key = this._cellKey(ix, iy, iz);
+          for (let m = cnt[key]; m < cnt[key + 1]; m += 1) { const i = srt[m]; if (ball) this._vsBall(i, k, env); else this._vsObb(i, this.r[i], k, env, false); }
+        }
+      }
+    }
+    // a small particle against a ball (body k)
+    _vsBall(i, k, env) {
+      const { x, we, bodies } = this; const b = bodies[k]; const j = b.i0; if (!we[i] && !we[j]) return;
+      const dx = x[i * 3] - x[j * 3], dy = x[i * 3 + 1] - x[j * 3 + 1], dz = x[i * 3 + 2] - x[j * 3 + 2];
+      const rr = this.r[i] + b.R; const d2 = dx * dx + dy * dy + dz * dz; if (d2 >= rr * rr || d2 < 1e-12) return;
+      this._wakePair(this.pb[i], k, i); const wi = we[i], wj = we[j];
+      const d = Math.sqrt(d2); const pen = rr - d; const nx = dx / d, ny = dy / d, nz = dz / d; const s = pen / (wi + wj);
+      x[i * 3] += nx * s * wi; x[i * 3 + 1] += ny * s * wi; x[i * 3 + 2] += nz * s * wi;
+      x[j * 3] -= nx * s * wj; x[j * 3 + 1] -= ny * s * wj; x[j * 3 + 2] -= nz * s * wj;
+      this._fric(i, j, nx, ny, nz, pen, env.friction ?? 0.5, wi, wj);
+      if (bodies[this.pb[i]].bouncy) this._contact(i, j, nx, ny, nz);
+    }
+    // the floor, the arena's walls and the ceiling, with friction (balls, blobs and ragdolls bounce)
+    _planes(env) {
+      const { x, we, r, N, floorY, walls, ceil, bodies, pb } = this; const mu = env.friction ?? 0.5;
+      for (let i = 0; i < N; i += 1) {
+        if (!we[i]) continue;
+        const ri = r[i]; const o = i * 3; const bouncy = bodies[pb[i]].bouncy;
+        if (floorY !== null && x[o + 1] - ri < floorY) { const pen = floorY - (x[o + 1] - ri); x[o + 1] += pen; this._fric(i, -1, 0, 1, 0, pen, mu, 1, 0); if (bouncy) this._contact(i, -1, 0, 1, 0); }
+        if (ceil !== null && x[o + 1] + ri > ceil) { const pen = x[o + 1] + ri - ceil; x[o + 1] -= pen; this._fric(i, -1, 0, -1, 0, pen, mu, 1, 0); if (bouncy) this._contact(i, -1, 0, -1, 0); }
+        if (walls) {
+          if (walls.x) {
+            if (x[o] - ri < -walls.x) { const pen = -walls.x - (x[o] - ri); x[o] += pen; this._fric(i, -1, 1, 0, 0, pen, mu, 1, 0); if (bouncy) this._contact(i, -1, 1, 0, 0); }
+            else if (x[o] + ri > walls.x) { const pen = x[o] + ri - walls.x; x[o] -= pen; this._fric(i, -1, -1, 0, 0, pen, mu, 1, 0); if (bouncy) this._contact(i, -1, -1, 0, 0); }
+          }
+          if (walls.z) {
+            if (x[o + 2] - ri < -walls.z) { const pen = -walls.z - (x[o + 2] - ri); x[o + 2] += pen; this._fric(i, -1, 0, 0, 1, pen, mu, 1, 0); if (bouncy) this._contact(i, -1, 0, 0, 1); }
+            else if (x[o + 2] + ri > walls.z) { const pen = x[o + 2] + ri - walls.z; x[o + 2] -= pen; this._fric(i, -1, 0, 0, -1, pen, mu, 1, 0); if (bouncy) this._contact(i, -1, 0, 0, -1); }
+          }
+        }
+      }
+    }
+    // shape matching (Müller et al.; the turn found by "A Robust Method to Extract the Rotational Part of
+    // Deformations", warm-started from last step's turn): rigid bodies (k = 1), blobs (k < 1), the ragdoll's torso
+    _match() {
+      const { x, bc, bq, we, clusters, M9: M } = this;
+      for (const cl of clusters) {
+        const k = cl.body; const idx = cl.idx; const n = idx.length;
+        if (!we[idx[0]] && !we[idx[n - 1]]) continue; // (static / asleep / not yet there)
+        let cx = 0, cy = 0, cz = 0;
+        for (let m = 0; m < n; m += 1) { const i = idx[m]; cx += x[i * 3]; cy += x[i * 3 + 1]; cz += x[i * 3 + 2]; }
+        cx /= n; cy /= n; cz /= n;
+        // A = Σ (x - c) restᵀ (columns a0, a1, a2)
+        let a00 = 0, a01 = 0, a02 = 0, a10 = 0, a11 = 0, a12 = 0, a20 = 0, a21 = 0, a22 = 0; const R = cl.rest;
+        for (let m = 0; m < n; m += 1) {
+          const i = idx[m]; const dx = x[i * 3] - cx, dy = x[i * 3 + 1] - cy, dz = x[i * 3 + 2] - cz; const rx = R[m * 3], ry = R[m * 3 + 1], rz = R[m * 3 + 2];
+          a00 += dx * rx; a01 += dx * ry; a02 += dx * rz; a10 += dy * rx; a11 += dy * ry; a12 += dy * rz; a20 += dz * rx; a21 += dz * ry; a22 += dz * rz;
+        }
+        const q = this.bq; const qo = k * 4;
+        for (let it = 0; it < 6; it += 1) {
+          qmat(q, qo, M);
+          // ω = Σ r_i × a_i / |Σ r_i · a_i|  (r_i: the turn's columns, a_i: A's columns)
+          const ox = (M[3] * a20 - M[6] * a10) + (M[4] * a21 - M[7] * a11) + (M[5] * a22 - M[8] * a12);
+          const oy = (M[6] * a00 - M[0] * a20) + (M[7] * a01 - M[1] * a21) + (M[8] * a02 - M[2] * a22);
+          const oz = (M[0] * a10 - M[3] * a00) + (M[1] * a11 - M[4] * a01) + (M[2] * a12 - M[5] * a02);
+          const dd = Math.abs(M[0] * a00 + M[3] * a10 + M[6] * a20 + M[1] * a01 + M[4] * a11 + M[7] * a21 + M[2] * a02 + M[5] * a12 + M[8] * a22) + 1e-9;
+          const wx = ox / dd, wy = oy / dd, wz = oz / dd; const wl = Math.sqrt(wx * wx + wy * wy + wz * wz);
+          if (wl < 1e-9) break;
+          const s = Math.sin(wl / 2) / wl; const tq = this.tq; tq[0] = wx * s; tq[1] = wy * s; tq[2] = wz * s; tq[3] = Math.cos(wl / 2);
+          qmul(tq, 0, q, qo, this.tq2, 0); q[qo] = this.tq2[0]; q[qo + 1] = this.tq2[1]; q[qo + 2] = this.tq2[2]; q[qo + 3] = this.tq2[3]; qnorm(q, qo);
+        }
+        qmat(q, qo, M);
+        const kk = cl.k;
+        for (let m = 0; m < n; m += 1) {
+          const i = idx[m]; if (!we[i]) continue;
+          const rx = R[m * 3], ry = R[m * 3 + 1], rz = R[m * 3 + 2];
+          const gx = cx + M[0] * rx + M[1] * ry + M[2] * rz, gy = cy + M[3] * rx + M[4] * ry + M[5] * rz, gz = cz + M[6] * rx + M[7] * ry + M[8] * rz;
+          x[i * 3] += (gx - x[i * 3]) * kk; x[i * 3 + 1] += (gy - x[i * 3 + 1]) * kk; x[i * 3 + 2] += (gz - x[i * 3 + 2]) * kk;
+        }
+        bc[k * 3] = cx; bc[k * 3 + 1] = cy; bc[k * 3 + 2] = cz;
+      }
+      // bodies without a cluster: their centre is the mean of their particles
+      for (let k = 0; k < this.B; k += 1) if (this.bodies[k].cluster < 0 && this.active[k] && !this.asleep[k]) this._center(k);
+    }
+    // ---------- water: position-based fluids (density constraints, one-sided so it never clumps) ----------
+    _fluidSetup() {
+      const r = this.fluidR; const h = this.fh; this.h2c = h * h;
+      this.kPoly = 315 / (64 * Math.PI * h ** 9); this.kSpiky = -45 / (Math.PI * h ** 6);
+      // rest density: a particle in the middle of the start lattice
+      let rho = 0; let g2 = 0; const d = 2 * r; const m = Math.ceil(h / d);
+      for (let a = -m; a <= m; a += 1) for (let b = -m; b <= m; b += 1) for (let c = -m; c <= m; c += 1) {
+        const q2 = (a * a + b * b + c * c) * d * d; if (q2 >= h * h) continue;
+        rho += this.kPoly * (h * h - q2) ** 3;
+        if (q2 > 0) { const q = Math.sqrt(q2); const gg = this.kSpiky * (h - q) ** 2; g2 += gg * gg; }
+      }
+      this.rho0 = rho; this.fEps = (g2 / (rho * rho)) * 0.3 + 1e-9;
+      const F = this.fluid.length;
+      this.lam = new Float64Array(this.N); this.nbS = new Int32Array(F + 1); this.nbCap = F * 48; this.nb = new Int32Array(this.nbCap);
+    }
+    _fluidList() {
+      const { fluid, x, cnt, srt, cell, pb } = this; const cut2 = cell * cell;
+      const fb = pb[fluid[0]]; let nn = 0;
+      for (let f = 0; f < fluid.length; f += 1) {
+        const i = fluid[f]; this.nbS[f] = nn;
+        const ix = Math.floor(x[i * 3] / cell), iy = Math.floor(x[i * 3 + 1] / cell), iz = Math.floor(x[i * 3 + 2] / cell);
+        let nv = 0; const vb = this.vb;
+        for (let a = -1; a <= 1; a += 1) for (let b = -1; b <= 1; b += 1) for (let c = -1; c <= 1; c += 1) {
+          const k = this._cellKey(ix + a, iy + b, iz + c);
+          let seen = false; for (let q = 0; q < nv; q += 1) if (vb[q] === k) { seen = true; break; }
+          if (seen) continue; vb[nv++] = k;
+          for (let m = cnt[k]; m < cnt[k + 1]; m += 1) {
+            const j = srt[m]; if (j === i || pb[j] !== fb) continue;
+            const d2 = (x[i * 3] - x[j * 3]) ** 2 + (x[i * 3 + 1] - x[j * 3 + 1]) ** 2 + (x[i * 3 + 2] - x[j * 3 + 2]) ** 2;
+            if (d2 >= cut2) continue;
+            if (nn >= this.nbCap) { this.nbCap *= 2; const a2 = new Int32Array(this.nbCap); a2.set(this.nb); this.nb = a2; }
+            this.nb[nn++] = j;
+          }
+        }
+      }
+      this.nbS[fluid.length] = nn;
+    }
+    _fluid() {
+      const { fluid, x, pb, kPoly, kSpiky, rho0, lam, we } = this; const h = this.fh; const h2 = h * h;
+      if (!this.active[pb[fluid[0]]]) return;
+      const nb = this.nb; const nbS = this.nbS;
+      for (let f = 0; f < fluid.length; f += 1) {
+        const i = fluid[f]; let rho = kPoly * h2 * h2 * h2; let gx = 0, gy = 0, gz = 0, g2 = 0;
+        for (let m = nbS[f]; m < nbS[f + 1]; m += 1) {
+          const j = nb[m]; const dx = x[i * 3] - x[j * 3], dy = x[i * 3 + 1] - x[j * 3 + 1], dz = x[i * 3 + 2] - x[j * 3 + 2];
+          const q2 = dx * dx + dy * dy + dz * dz; if (q2 >= h2) continue; rho += kPoly * (h2 - q2) ** 3;
+          const q = Math.sqrt(q2); if (q < 1e-9) continue;
+          const gg = (kSpiky * (h - q) ** 2) / q / rho0; const ax = dx * gg, ay = dy * gg, az = dz * gg;
+          gx += ax; gy += ay; gz += az; g2 += ax * ax + ay * ay + az * az;
+        }
+        const C = Math.max(0, rho / rho0 - 1);
+        lam[i] = -C / (g2 + gx * gx + gy * gy + gz * gz + this.fEps);
+      }
+      for (let f = 0; f < fluid.length; f += 1) {
+        const i = fluid[f]; if (!we[i]) continue; let px = 0, py = 0, pz = 0;
+        for (let m = nbS[f]; m < nbS[f + 1]; m += 1) {
+          const j = nb[m]; const dx = x[i * 3] - x[j * 3], dy = x[i * 3 + 1] - x[j * 3 + 1], dz = x[i * 3 + 2] - x[j * 3 + 2];
+          const q = Math.sqrt(dx * dx + dy * dy + dz * dz); if (q < 1e-9 || q >= h) continue;
+          const gg = ((lam[i] + lam[j]) * kSpiky * (h - q) ** 2) / q / rho0;
+          px += dx * gg; py += dy * gg; pz += dz * gg;
+        }
+        // (the move this substep: capped, so a squeezed spot doesn't explode)
+        const l = Math.sqrt(px * px + py * py + pz * pz); const cap = this.fluidR * 0.5; const s = l > cap ? cap / l : 1;
+        x[i * 3] += px * s; x[i * 3 + 1] += py * s; x[i * 3 + 2] += pz * s;
+      }
+    }
+    // a little viscosity (XSPH): neighbours' speeds blend
+    _xsph() {
+      const { fluid, v, nb, nbS, x, kPoly } = this; const h2 = this.fh * this.fh; const c = 0.02 / (kPoly * h2 * h2 * h2);
+      for (let f = 0; f < fluid.length; f += 1) {
+        const i = fluid[f]; if (!this.we[i]) continue; let ax = 0, ay = 0, az = 0;
+        for (let m = nbS[f]; m < nbS[f + 1]; m += 1) {
+          const j = nb[m]; const q2 = (x[i * 3] - x[j * 3]) ** 2 + (x[i * 3 + 1] - x[j * 3 + 1]) ** 2 + (x[i * 3 + 2] - x[j * 3 + 2]) ** 2; const W = kPoly * Math.max(0, h2 - q2) ** 3 * c;
+          ax += (v[j * 3] - v[i * 3]) * W; ay += (v[j * 3 + 1] - v[i * 3 + 1]) * W; az += (v[j * 3 + 2] - v[i * 3 + 2]) * W;
+        }
+        v[i * 3] += ax; v[i * 3 + 1] += ay; v[i * 3 + 2] += az;
+      }
+    }
+    // bounces: an approaching contact leaves at `e` × its speed along the normal
+    _bounce(e) {
+      const { cI, cJ, cN, v, vp, we, nc } = this;
+      for (let k = 0; k < nc; k += 1) {
+        const i = cI[k]; const j = cJ[k]; const nx = cN[k * 3], ny = cN[k * 3 + 1], nz = cN[k * 3 + 2];
+        const wi = we[i]; const wj = j >= 0 ? we[j] : 0; const ws = wi + wj; if (!ws) continue;
+        let pre = vp[i * 3] * nx + vp[i * 3 + 1] * ny + vp[i * 3 + 2] * nz; let now = v[i * 3] * nx + v[i * 3 + 1] * ny + v[i * 3 + 2] * nz;
+        if (j >= 0) { pre -= vp[j * 3] * nx + vp[j * 3 + 1] * ny + vp[j * 3 + 2] * nz; now -= v[j * 3] * nx + v[j * 3 + 1] * ny + v[j * 3 + 2] * nz; }
+        if (pre > -0.25) continue;
+        const dv = -e * pre - now; if (dv <= 0) continue;
+        v[i * 3] += nx * dv * (wi / ws); v[i * 3 + 1] += ny * dv * (wi / ws); v[i * 3 + 2] += nz * dv * (wi / ws);
+        if (j >= 0) { v[j * 3] -= nx * dv * (wj / ws); v[j * 3 + 1] -= ny * dv * (wj / ws); v[j * 3 + 2] -= nz * dv * (wj / ws); }
+      }
+      this.stats.contacts = nc;
+    }
+    // balls turn as they roll (for the picture: a ball is one particle)
+    _roll(h) {
+      const { bodies, v, bq, we } = this;
+      for (let k = 0; k < this.B; k += 1) {
+        const b = bodies[k]; if (b.shape !== 'sphere' || !we[b.i0]) continue;
+        const o = b.i0 * 3; const vx = v[o], vz = v[o + 2]; const sp = Math.sqrt(vx * vx + vz * vz); if (sp < 1e-4) continue;
+        const ang = (sp * h) / b.R; const s = Math.sin(ang / 2) / sp; const tq = this.tq; tq[0] = vz * s; tq[1] = 0; tq[2] = -vx * s; tq[3] = Math.cos(ang / 2);
+        qmul(tq, 0, bq, k * 4, this.tq2, 0); bq.set(this.tq2, k * 4); qnorm(bq, k * 4);
+      }
+    }
+    // ---------- reading the state (the picture, the checks) ----------
+    // a body's place and turn, between the last two steps (a = 0 … 1): out = [x, y, z, qx, qy, qz, qw]
+    pose(k, a, out) {
+      const b = this.bodies[k]; const o = k * 3; const qo = k * 4;
+      const C = b.shape === 'sphere' ? this.x : this.bc; const Cs = b.shape === 'sphere' ? this.xs : this.bcs; const co = b.shape === 'sphere' ? b.i0 * 3 : o;
+      out[0] = Cs[co] + (C[co] - Cs[co]) * a; out[1] = Cs[co + 1] + (C[co + 1] - Cs[co + 1]) * a; out[2] = Cs[co + 2] + (C[co + 2] - Cs[co + 2]) * a;
+      // nlerp of the turn (the short way round)
+      const q = this.bq; const qs = this.bqs; const dot = q[qo] * qs[qo] + q[qo + 1] * qs[qo + 1] + q[qo + 2] * qs[qo + 2] + q[qo + 3] * qs[qo + 3]; const sg = dot < 0 ? -1 : 1;
+      for (let c = 0; c < 4; c += 1) out[3 + c] = qs[qo + c] + (q[qo + c] * sg - qs[qo + c]) * a;
+      const l = Math.hypot(out[3], out[4], out[5], out[6]) || 1; out[3] /= l; out[4] /= l; out[5] /= l; out[6] /= l;
+      if (b.cluster >= 0 && this.clusters[b.cluster].obb) { // the box's centre (offset from the cluster's centre)
+        const oc = this.clusters[b.cluster].oc; if (oc[0] || oc[1] || oc[2]) { const M = this.M9; qmat(out, 3, M); out[0] += M[0] * oc[0] + M[1] * oc[1] + M[2] * oc[2]; out[1] += M[3] * oc[0] + M[4] * oc[1] + M[5] * oc[2]; out[2] += M[6] * oc[0] + M[7] * oc[1] + M[8] * oc[2]; }
+      }
+      return out;
+    }
+    // a particle between the last two steps
+    at(i, a, out, o = 0) { const s = i * 3; out[o] = this.xs[s] + (this.x[s] - this.xs[s]) * a; out[o + 1] = this.xs[s + 1] + (this.x[s + 1] - this.xs[s + 1]) * a; out[o + 2] = this.xs[s + 2] + (this.x[s + 2] - this.xs[s + 2]) * a; return out; }
+    probe() {
+      let ke = 0; let my = 0; let n = 0; let maxV = 0; let sig = 0; let awake = 0; let asleep = 0; let alive = 0;
+      for (let k = 0; k < this.B; k += 1) { if (!this.active[k] || this.bodies[k].fixed) continue; alive += 1; if (this.asleep[k]) asleep += 1; else awake += 1; }
+      for (let i = 0; i < this.N; i += 1) {
+        if (!this.active[this.pb[i]] || !this.w0[i] && !this.w[i]) continue;
+        const o = i * 3; const s2 = this.v[o] ** 2 + this.v[o + 1] ** 2 + this.v[o + 2] ** 2; ke += 0.5 * s2; maxV = Math.max(maxV, Math.sqrt(s2)); my += this.x[o + 1]; n += 1;
+        sig += this.x[o] * 1.3 + this.x[o + 1] * 0.7 + this.x[o + 2];
+      }
+      const r3 = (x) => Math.round(x * 1000) / 1000;
+      return { step: this.misc[0], kicks: this.misc[1], bodies: alive, awake, asleep, ke: r3(ke), maxV: r3(maxV), meanY: r3(n ? my / n : 0), sig: r3(sig), contacts: this.stats.contacts };
+    }
+  }
+  return { World, icosphere, rnd, quatOf, HASHED, PIN, RELEASE };
+}
+// </physics-core>
+// physics(P, opts) inside a layer's code makes it a ⚛ physics layer: a scene of bodies (opts.build: one of PH_BUILDS,
+// plus opts.bodies: your own) simulated by the core above at 60 fixed steps a second of the scene's clock and drawn
+// with instancing (boxes, balls, joints, rope pieces, water: one draw each). P is the layer's tweak(): gravity, wind,
+// bounce, friction… are live; count and size rebuild. Music: kicks (your kick markers, the song's beats, the live
+// input's kick, or a 120 BPM grid with nothing loaded) give an impulse (kickMode jump | push | blast | spin | gust),
+// the bass lightens gravity / blows wind, a drop (the song's drops, or opts.dropAt seconds) explodes the scene.
+// Time: on a timeline (a song, the sequence, a precomp, an export page) the sim is exact: a frame is the state after
+// floor(t × 60) steps from the start, so a render is the same every time; scrubbing back restores the nearest cached
+// state (every half second) and steps forward; a far jump catches up a few ms a frame in the preview (all at once in
+// a render). With nothing loaded (the free clock) it starts when the layer runs and drops time it can't keep up with.
+const PH = { core: null, stats: new Map(), live: new Map(), hold: new Map(), drive: { kick: null, bass: null }, xp: new URLSearchParams(location.search).get('xp') === '1' };
+const PH_DEF = {
+  count: 12, size: 1, gravity: 1, timeScale: 1, bounce: 0.3, friction: 0.5, damping: 0.05, stiffness: 0.5, quality: 8, wind: 0, turb: 0,
+  kick: 0, kickMode: 'jump', bassGravity: 0, bassWind: 0, drop: 0, color1: '#ff7a45', color2: '#ffd166', color3: '#4cc9f0', metal: 0.1, rough: 0.45,
+  floor: 'shadow', floorColor: '#20232b', camDist: 8, camHeight: 2.5, camAngle: 0, orbit: 0, lookY: 0.9,
+};
+const PH_KICK = ['jump', 'push', 'blast', 'spin', 'gust'];
+// ---- scene builders: (W, c) with c = { n, s, rnd, opts, model } ----
+const PH_BUILDS = {
+  // letters (alphabet blocks) falling one after another and piling up
+  letters(W, c) { phLetters(W, c, false); },
+  // letters standing in a row (they jump on the kicks)
+  jumpletters(W, c) { phLetters(W, c, true); },
+  balls(W, c) {
+    const { n, s, rnd } = c; W.walls = { x: 2.6 * s, z: 1.4 * s };
+    for (let k = 0; k < n; k += 1) { const R = 0.16 * s * (0.75 + rnd() * 0.6); W.sphere((rnd() * 2 - 1) * 2.2 * s, R + (k % 4) * 0.5 * s + rnd() * 0.2, (rnd() * 2 - 1) * 1.1 * s, R, { color: k % 3 }); }
+  },
+  rain(W, c) {
+    const { n, s, rnd } = c; W.walls = { x: 1.8 * s, z: 1.1 * s };
+    for (let k = 0; k < n; k += 1) { const R = 0.11 * s * (0.7 + rnd() * 0.6); W.sphere((rnd() * 2 - 1) * 1.5 * s, 4 * s, (rnd() * 2 - 1) * 0.8 * s, R, { color: k % 3, spawnStep: 2 + k * 6, v: [(rnd() - 0.5) * 0.6, -1, (rnd() - 0.5) * 0.6] }); }
+  },
+  cuberain(W, c) {
+    const { n, s, rnd } = c; W.walls = { x: 1.8 * s, z: 1.1 * s };
+    for (let k = 0; k < n; k += 1) { const h = 0.16 * s * (0.7 + rnd() * 0.6); W.box((rnd() * 2 - 1) * 1.4 * s, 4 * s, (rnd() * 2 - 1) * 0.7 * s, h, h, h, { color: k % 3, spawnStep: 2 + k * 12, q: phRandQ(rnd), spin: [rnd() * 4 - 2, rnd() * 4 - 2, rnd() * 4 - 2] }); }
+  },
+  // a pendulum wave: periods 60 / (20 + k) s, so they fall in and out of step
+  pendulums(W, c) {
+    const { n, s } = c; const top = 3.4 * s; const span = 3.6 * s;
+    for (let k = 0; k < n; k += 1) {
+      const T = 60 / (20 + k); const len = Math.min(top - 0.2, 9.81 * (T / (2 * Math.PI)) ** 2 * s); const z = -span / 2 + (span * k) / Math.max(1, n - 1); const a = 0.45;
+      const pin = W.pin(0, top, z); const b = W.sphere(Math.sin(a) * len, top - Math.cos(a) * len, z, 0.11 * s, { color: k % 3, density: 8 });
+      W.dist(pin, W.bodies[b].i0, 0); W.link(pin, W.bodies[b].i0, 0.008 * s);
+    }
+    W.box(0, top + 0.04 * s, 0, 0.06 * s, 0.04 * s, span / 2 + 0.15 * s, { fixed: true, color: 2 });
+  },
+  // Newton's cradle: balls on two strings each, the first one raised
+  cradle(W, c) {
+    const { s } = c; const n = Math.max(2, Math.min(9, c.n)); const R = 0.22 * s; const H = 2.6 * s; const Lv = 1.6 * s; const d = 0.6 * s;
+    for (let k = 0; k < n; k += 1) {
+      const x = (k - (n - 1) / 2) * (2 * R + 0.002); const a = k === 0 ? 0.75 : 0; const bx = x - Math.sin(a) * Lv; const by = H - Math.cos(a) * Lv;
+      const b = W.sphere(bx, by, 0, R, { color: k === 0 ? 0 : 1, density: 30, bouncy: true });
+      const i = W.bodies[b].i0;
+      for (const z of [-d, d]) { const pn = W.pin(x, H, z); W.dist(pn, i, 0); W.link(pn, i, 0.006 * s); }
+    }
+    W.box(0, H + 0.05 * s, -d, ((n + 1) * R) + 0.2 * s, 0.03 * s, 0.03 * s, { fixed: true, color: 2 }); W.box(0, H + 0.05 * s, d, ((n + 1) * R) + 0.2 * s, 0.03 * s, 0.03 * s, { fixed: true, color: 2 });
+  },
+  dominoes(W, c) {
+    const { n, s } = c; const hx = 0.035 * s, hy = 0.32 * s, hz = 0.13 * s; const gap = 0.27 * s;
+    let x = -(n * gap) / 2; let z = 0; let ang = 0;
+    for (let k = 0; k < n; k += 1) {
+      const turn = Math.sin(k / 7) * 0.18; ang += turn * 0.5;
+      const q = [0, Math.sin(-ang / 2), 0, Math.cos(-ang / 2)];
+      W.box(x, hy, z, hx, hy, hz, { q, color: k % 3, ...(k === 0 && !c.opts.kickStart ? { spin: [Math.sin(ang) * 3, 0, -Math.cos(ang) * 3] } : {}) });
+      x += Math.cos(ang) * gap; z += Math.sin(ang) * gap;
+    }
+  },
+  ragdolls(W, c) {
+    const { n, s, rnd } = c;
+    for (let k = 0; k < 5; k += 1) W.box(-0.5 * s + k * 0.55 * s, (0.22 * (5 - k)) * s / 2, 0, 0.275 * s, (0.22 * (5 - k)) * s / 2, 1.2 * s, { fixed: true, color: 2 });
+    for (let k = 0; k < n; k += 1) W.ragdoll(-0.8 * s + (rnd() - 0.5) * 0.4, (2.2 + k * 1.6) * s, (rnd() - 0.5) * 1.2 * s, 0.7 * s, { color: k % 2, q: phRandQ(rnd), spawnStep: k * 25, v: [(rnd() - 0.2) * 1.5, 0, 0] });
+  },
+  // a tower of planks (three a level, crossed) that topples on the drop
+  tower(W, c) {
+    const { n, s } = c; const L = 0.7 * s, T = 0.11 * s, D = 0.22 * s;
+    for (let lv = 0; lv < n; lv += 1) for (let k = -1; k <= 1; k += 1) {
+      const y = T + lv * 2 * T * 1.0;
+      if (lv % 2) W.box(k * 2 * D * 1.02, y, 0, D, T, L, { color: lv % 3 }); else W.box(0, y, k * 2 * D * 1.02, L, T, D, { color: lv % 3 });
+    }
+  },
+  pyramid(W, c) {
+    const { s } = c; const n = Math.max(2, Math.min(14, c.n)); const h = 0.2 * s;
+    for (let row = 0; row < n; row += 1) for (let k = 0; k < n - row; k += 1) W.box((k - (n - row - 1) / 2) * 2 * h * 1.04, h + row * 2 * h, 0, h, h, h, { color: row % 3 });
+  },
+  wrecking(W, c) {
+    const { s } = c; const n = Math.max(2, Math.min(10, c.n)); const h = 0.18 * s; const top = 4.2 * s; const len = 3.4 * s; const a = 1.15;
+    const b = W.sphere(-0.6 * s - Math.sin(a) * len, top - Math.cos(a) * len, 0, 0.42 * s, { color: 2, density: 18 });
+    const pin = W.pin(-0.6 * s, top, 0); W.dist(pin, W.bodies[b].i0, 0); W.link(pin, W.bodies[b].i0, 0.02 * s);
+    for (let row = 0; row < n; row += 1) for (let k = 0; k < 4; k += 1) W.box(0.3 * s + (row % 2) * h * 0.5, h + row * 2 * h, (k - 1.5) * 2 * h * 1.03, h * 0.9, h, h, { color: row % 2 });
+  },
+  chains(W, c) {
+    const { n, s, rnd } = c; const top = 3.6 * s; const span = 3.2 * s;
+    W.box(0, top + 0.04 * s, 0, span / 2 + 0.2 * s, 0.04 * s, 0.06 * s, { fixed: true, color: 2 });
+    for (let k = 0; k < n; k += 1) {
+      const x = -span / 2 + (span * k) / Math.max(1, n - 1); const len = (1.6 + rnd() * 1.2) * s;
+      const r = W.rope([x, top, 0], [x, top - len, 0], 12, { pinA: true, r: 0.025 * s, color: 2, mass: 0.3 });
+      const b = W.sphere(x, top - len - 0.16 * s, 0, 0.15 * s, { color: k % 2, mass: 0.5 });
+      W.dist(W.bodies[r].data.last, W.bodies[b].i0, 0);
+    }
+  },
+  flag(W, c) {
+    const { s } = c; const nx = Math.round(26 * Math.min(1.6, Math.max(0.6, c.n / 12))); const ny = Math.round(nx * 0.62); const sp = 0.1 * s * (26 / nx);
+    const x0 = -1.3 * s; const top = 3.4 * s;
+    W.box(x0 - 0.06 * s, top / 2 + 0.1, 0, 0.04 * s, top / 2 + 0.1, 0.04 * s, { fixed: true, color: 2 });
+    const pins = []; for (let j = 0; j < ny; j += 1) pins.push([0, j]);
+    W.cloth(x0, top, 0, nx, ny, sp, { pins, color: 0, release: c.opts.release });
+  },
+  curtain(W, c) {
+    const { s } = c; const nx = 32; const ny = 26; const sp = 0.1 * s; const top = 3.2 * s;
+    W.box(0, top + 0.04 * s, 0, (nx * sp) / 2 + 0.2 * s, 0.03 * s, 0.03 * s, { fixed: true, color: 2 });
+    const pins = []; for (let i = 0; i < nx; i += 1) pins.push([i, 0]);
+    W.cloth(-(nx - 1) * sp / 2, top, 0, nx, ny, sp, { pins, color: 0, release: c.opts.release ?? true });
+  },
+  drape(W, c) {
+    const { s } = c; const n = 26; const sp = 0.1 * s;
+    W.sphere(0, 0.75 * s, 0, 0.75 * s, { fixed: true, color: 2 });
+    W.cloth(-(n - 1) * sp / 2, 2.4 * s, -(n - 1) * sp / 2, n, n, sp, { plane: 'xz', color: 0 });
+  },
+  trampoline(W, c) {
+    const { n, s, rnd } = c; const m = 22; const sp = 0.13 * s; const y = 0.9 * s; const x0 = -(m - 1) * sp / 2;
+    const pins = []; for (let k = 0; k < m; k += 1) pins.push([k, 0], [k, m - 1], [0, k], [m - 1, k]);
+    W.cloth(x0, y, x0, m, m, sp, { plane: 'xz', pins, color: 2 });
+    for (let k = 0; k < Math.min(n, 30); k += 1) W.sphere((rnd() - 0.5) * 1.6 * s, y + 1 + k * 0.6 * s, (rnd() - 0.5) * 1.6 * s, 0.17 * s, { color: k % 2, density: 2 });
+  },
+  beads(W, c) {
+    const { n, s } = c; const top = 3.4 * s; const span = 3.2 * s;
+    W.box(0, top + 0.04 * s, 0, span / 2 + 0.2 * s, 0.03 * s, 0.03 * s, { fixed: true, color: 2 });
+    for (let k = 0; k < n; k += 1) { const x = -span / 2 + (span * k) / Math.max(1, n - 1); W.rope([x, top, 0], [x, top - 2.6 * s, 0], 16, { pinA: true, r: 0.045 * s, color: k % 3, beads: true, mass: 0.2 }); }
+  },
+  blobs(W, c) {
+    const { n, s, rnd } = c; W.walls = { x: 2.2 * s, z: 1.3 * s };
+    for (let k = 0; k < n; k += 1) { const R = 0.32 * s * (0.8 + rnd() * 0.4); W.blob((rnd() * 2 - 1) * 1.6 * s, 0.6 + k * 0.75 * s, (rnd() * 2 - 1) * 0.8 * s, R, { color: k % 3 }); }
+  },
+  jellystack(W, c) {
+    const { s } = c; const n = Math.max(2, Math.min(6, Math.round(c.n / 3))); const R = 0.3 * s;
+    for (let row = 0; row < n; row += 1) for (let k = 0; k < n - row; k += 1) W.blob((k - (n - row - 1) / 2) * 2.05 * R, R + row * 1.8 * R + 0.02, 0, R, { color: (row + k) % 3, soft: 0.5 });
+  },
+  balloons(W, c) {
+    const { n, s, rnd } = c; W.ceil = 4.4 * s;
+    for (let k = 0; k < n; k += 1) {
+      const x = (k - (n - 1) / 2) * 0.7 * s; const z = (rnd() - 0.5) * 0.8 * s; const R = 0.3 * s; const top = 2.4 * s + rnd() * 0.6 * s;
+      const b = W.blob(x, top, z, R, { color: k % 3, g: -0.6, soft: 0.6, air: 0.08, squash: 1.15 });
+      const r = W.rope([x, 0.02, z], [x, top - R * 1.15, z], 10, { pinA: true, r: 0.01 * s, color: 2, mass: 0.02, air: 0.6 });
+      W.dist(W.bodies[r].data.last, W.bodies[b].i0 + phLowest(W, b), 0);
+    }
+  },
+  plinko(W, c) {
+    const { n, s, rnd } = c; const zw = 0.12 * s; W.walls = { x: 1.7 * s, z: zw }; const R = 0.07 * s;
+    for (let row = 0; row < 9; row += 1) for (let k = -6; k <= 6; k += 1) { const x = (k + (row % 2) * 0.5) * 0.26 * s; if (Math.abs(x) > 1.6 * s) continue; W.sphere(x, 1.2 * s + row * 0.27 * s, 0, 0.04 * s, { fixed: true, color: 2 }); }
+    for (let k = -6; k <= 6; k += 1) W.box(k * 0.26 * s, 0.4 * s, 0, 0.012 * s, 0.4 * s, zw, { fixed: true, color: 2 });
+    for (let k = 0; k < n; k += 1) W.sphere((rnd() - 0.5) * 0.1 * s, 4.1 * s, 0, R, { color: k % 2, spawnStep: 2 + k * 12, density: 2 });
+  },
+  dambreak(W, c) {
+    const { s } = c; W.walls = { x: 1.6 * s, z: 0.45 * s }; const r = 0.068 * s * Math.max(0.8, Math.min(1.4, Math.cbrt(12 / Math.max(4, c.n)))); // (≈ 450 drops at 12)
+    W.water(-1.6 * s, 0, -0.45 * s, -0.5 * s, 1.3 * s, 0.45 * s, r, { color: 0 });
+  },
+  slosh(W, c) {
+    const { s } = c; W.walls = { x: 1.5 * s, z: 0.5 * s }; const r = 0.07 * s;
+    W.water(-1.5 * s, 0, -0.5 * s, 1.5 * s, 0.45 * s, 0.5 * s, r, { color: 0, air: 0.05 });
+  },
+  zerog(W, c) {
+    const { n, s, rnd } = c; W.walls = { x: 2.6 * s, z: 1.6 * s }; W.ceil = 3.6 * s;
+    for (let k = 0; k < n; k += 1) {
+      const p = [(rnd() * 2 - 1) * 2 * s, 0.6 + rnd() * 2.4 * s, (rnd() * 2 - 1) * 1.2 * s]; const v = [(rnd() - 0.5) * 0.6, (rnd() - 0.5) * 0.6, (rnd() - 0.5) * 0.6];
+      if (k % 2) W.sphere(...p, 0.18 * s * (0.7 + rnd() * 0.6), { color: k % 3, v }); else { const h = 0.17 * s * (0.7 + rnd() * 0.6); W.box(...p, h, h * (0.6 + rnd() * 0.8), h, { color: k % 3, v, q: phRandQ(rnd), spin: [rnd() - 0.5, rnd() - 0.5, rnd() - 0.5] }); }
+    }
+  },
+  // copies of a 🧊 model layer's model (its box as the hull) dropping in, one after another
+  models(W, c) {
+    const { n, s, rnd, model } = c;
+    for (let k = 0; k < n; k += 1) {
+      const hh = model ? model.half.map((x) => x * s) : [0.3 * s, 0.3 * s, 0.3 * s];
+      W.box((rnd() * 2 - 1) * 1.2 * s, 2.5 * s + k * 0.2, (rnd() * 2 - 1) * 0.6 * s, hh[0], hh[1], hh[2], { color: k % 3, spawnStep: k * 20, q: phRandQ(rnd), kind: model ? 'model' : 'box', spin: [rnd() - 0.5, rnd() * 2 - 1, rnd() - 0.5] });
+    }
+  },
+  empty() {},
+};
+const PH_BUILD_NAMES = Object.keys(PH_BUILDS);
+function phRandQ(rnd) { const a = rnd() * Math.PI * 2; const b = rnd() * 0.6; return [Math.sin(b / 2) * Math.cos(a), Math.sin(a / 2) * Math.cos(b / 2) * 0.3, Math.sin(b / 2) * Math.sin(a), Math.cos(b / 2)]; }
+function phLowest(W, b) { const B = W.bodies[b]; let lo = 0; let y = Infinity; for (let k = 0; k < (B.data?.verts || 1); k += 1) { const P = W._p[B.i0 + k]; if (P.y < y) { y = P.y; lo = k; } } return lo; }
+// letters: one rigid block per letter, the glyph on its faces (measured in the layer's font)
+function phLetters(W, c, standing) {
+  const { s, rnd, opts } = c;
+  const text = String(opts.text ?? 'HEARTH').slice(0, 40) || 'HEARTH';
+  const font = String(opts.font || 'system-ui, sans-serif');
+  const g = (PH.mcv ||= document.createElement('canvas')).getContext('2d'); g.font = `800 100px ${font}`;
+  const H = 0.62 * s; const D = 0.2 * s;
+  const lines = text.split(/\\n|\n/);
+  const rows = lines.map((ln) => [...ln].map((ch) => ({ ch, w: ch === ' ' ? H * 0.45 : Math.max(0.42, g.measureText(ch).width / 100) * H * 0.92 + 0.04 * s })));
+  let k = 0;
+  rows.forEach((row, ri) => {
+    const total = row.reduce((a, x) => a + x.w + 0.04 * s, 0); let x = -total / 2;
+    for (const L of row) {
+      const cx = x + L.w / 2; x += L.w + 0.04 * s;
+      if (L.ch === ' ') continue;
+      const y = standing ? H / 2 + (lines.length - 1 - ri) * (H + 0.02) : 2.6 * s + k * 0.45 * s + ri * 0.3;
+      W.box(cx, y, 0, L.w / 2, H / 2, D / 2, { color: k % 3, kind: 'letter', data: { ch: L.ch, font }, ...(standing ? {} : { q: [0, 0, (rnd() - 0.5) * 0.3, 1], spin: [0, 0, (rnd() - 0.5) * 2] }) });
+      k += 1;
+    }
+  });
+}
+// extra bodies from opts.bodies: [{ type: 'box' | 'ball' | 'blob' | 'cloth' | 'rope' | 'ragdoll' | 'water', at: [x, y, z],
+// size: [w, h, d] (box) | r (ball, blob) | [w, h] (cloth) | length (rope), color: 0–2 or '#hex', fixed, mass, soft, pin }]
+function phExtra(W, list, s) {
+  for (const b of Array.isArray(list) ? list.slice(0, 200) : []) {
+    const at = Array.isArray(b.at) ? b.at.map(Number) : [0, 2, 0]; const [x, y, z] = [at[0] || 0, at[1] ?? 2, at[2] || 0];
+    const col = b.color ?? 0; const base = { color: col, fixed: Boolean(b.fixed), mass: b.mass, v: b.v };
+    const t = String(b.type || 'box');
+    if (t === 'ball' || t === 'sphere') W.sphere(x, y, z, Number(b.r || b.size || 0.2) * s, base);
+    else if (t === 'blob') W.blob(x, y, z, Number(b.r || b.size || 0.3) * s, { ...base, soft: b.soft ?? 0.3 });
+    else if (t === 'cloth') { const [w, h] = Array.isArray(b.size) ? b.size : [2, 1.5]; const sp = 0.1 * s; const nx = Math.max(2, Math.min(48, Math.round(w / sp))); const ny = Math.max(2, Math.min(48, Math.round(h / sp))); const pin = String(b.pin ?? 'top'); const pins = []; for (let i = 0; i < nx; i += 1) for (let j = 0; j < ny; j += 1) if ((pin === 'top' && j === 0) || (pin === 'left' && i === 0) || (pin === 'corners' && j === 0 && (i === 0 || i === nx - 1)) || (pin === 'edges' && (i === 0 || j === 0 || i === nx - 1 || j === ny - 1))) pins.push([i, j]); W.cloth(x - (nx * sp) / 2, y, z, nx, ny, sp, { ...base, pins, plane: b.plane === 'xz' ? 'xz' : 'xy' }); }
+    else if (t === 'rope') { const len = Number(b.length || 2) * s; const r = W.rope([x, y, z], [x, y - len, z], 14, { ...base, pinA: b.pin !== false, r: 0.025 * s }); if (b.ball) { const k = W.sphere(x, y - len - 0.15 * s, z, 0.15 * s, { color: col }); W.dist(W.bodies[r].data.last, W.bodies[k].i0, 0); } }
+    else if (t === 'ragdoll') W.ragdoll(x, y, z, Number(b.size || 0.7) * s, base);
+    else if (t === 'water') { const [w, h, d] = Array.isArray(b.size) ? b.size.map(Number) : [1, 1, 0.6]; W.water(x - w / 2, y, z - d / 2, x + w / 2, y + h, z + d / 2, 0.055 * s, base); }
+    else { const [w, h, d] = Array.isArray(b.size) ? b.size.map(Number) : [Number(b.size || 0.4), Number(b.size || 0.4), Number(b.size || 0.4)]; W.box(x, y, z, (w / 2) * s, (h / 2) * s, (d / 2) * s, base); }
+  }
+}
+// a 🧊 model layer's model: a copy of its root, its box (the hull) and the offset to its centre
+function phModel(L, name) {
+  const x = ptLayerOf(L, name || 'auto', true); if (!x) return null;
+  let root = null;
+  for (const r of x.renderers) { const sc = r.__lastScene; if (!sc) continue; root = sc.getObjectByName?.('Model') || null; if (root) break; }
+  if (!root) return null;
+  let meshes = 0; root.traverse((o) => { if (o.isMesh) meshes += 1; }); if (!meshes) return null;
+  const copy = root.clone(true); copy.position.set(0, 0, 0); copy.quaternion.identity(); copy.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(copy); const size = box.getSize(new THREE.Vector3()); const mid = box.getCenter(new THREE.Vector3());
+  const k = 0.7 / Math.max(1e-3, size.x, size.y, size.z); // (the biggest side 0.7 m before the size slider)
+  copy.scale.multiplyScalar(k); mid.multiplyScalar(k); size.multiplyScalar(k);
+  return { root: copy, half: [size.x / 2, size.y / 2, size.z / 2], mid: [mid.x, mid.y, mid.z], name: x.props.name || x.id, sig: `${root.uuid}:${meshes}` };
+}
+globalThis.physics = (P = {}, opts = {}) => {
+  const L = layerState(currentLayer() || 'main');
+  P = P || {}; opts = opts || {};
+  const pv = (k) => { const v = P[k]; return v === undefined || v === null || v === '' ? (opts[k] ?? PH_DEF[k]) : v; };
+  const num = (k) => { const v = Number(pv(k)); return Number.isFinite(v) ? v : PH_DEF[k]; };
+  PH.core ||= physicsCore();
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.__keepClear = true;
+  renderer.setPixelRatio(devicePixelRatio); renderer.setSize(innerWidth, innerHeight);
+  renderer.setClearColor(0x000000, 0);
+  renderer.shadowMap.enabled = opts.shadows !== false; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  document.body.append(renderer.domElement);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.05, 200);
+  const onResize = () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); };
+  addEventListener('resize', onResize);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x3a3f4f, 1.1));
+  const sun = new THREE.DirectionalLight(0xffffff, 2.2); sun.position.set(3.5, 7, 4.5); sun.castShadow = true;
+  const sm = PH.xp ? 2048 : 1024; sun.shadow.mapSize.set(sm, sm); Object.assign(sun.shadow.camera, { left: -7, right: 7, top: 7, bottom: -7, near: 0.5, far: 30 }); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.02;
+  scene.add(sun, sun.target);
+  const floorShadow = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.ShadowMaterial({ opacity: 0.32 }));
+  const floorSolid = new THREE.Mesh(floorShadow.geometry, new THREE.MeshStandardMaterial({ color: '#20232b', roughness: 0.9 }));
+  for (const f of [floorShadow, floorSolid]) { f.rotation.x = -Math.PI / 2; f.receiveShadow = true; scene.add(f); }
+  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45, metalness: 0.1 });
+  const ropeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7, metalness: 0 });
+  const waterMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.15, metalness: 0.05 });
+  const pal = [new THREE.Color(), new THREE.Color(), new THREE.Color()]; const hex = ['', '', '', ''];
+  // ---- the world (built again when count / size / a model change) ----
+  const seed = (Number(opts.seed) >>> 0) || 1;
+  const stat = { id: L.id, build: String(opts.build || 'balls'), bodies: 0, particles: 0, kinds: {}, step: 0, simT: 0, behind: 0, snaps: 0, resims: 0, resets: 0, kicks: 0, drops: 0, ms: 0, stepMs: 0, awake: 0, asleep: 0, waiting: null, model: null, frames: 0, ok: true, gone: false };
+  PH.stats.set(L.id, stat);
+  let W = null; let view = null; let model = null; let modelTry = -999;
+  const snaps = new Map(); let snapBytes = 0;
+  function build() {
+    const n = Math.max(1, Math.min(400, Math.round(num('count')))); const s = Math.max(0.2, Math.min(4, num('size')));
+    const w = new PH.core.World({ floor: opts.floor === false ? false : true, floorY: 0, walls: opts.walls, ceiling: opts.ceiling });
+    const fn = PH_BUILDS[stat.build] || PH_BUILDS.balls;
+    try { fn(w, { n, s, rnd: seeded(seed * 7919 + 13), opts, model }); phExtra(w, opts.bodies, s); }
+    catch (err) { post({ type: 'error', layer: pcTop(L.id), message: `physics: ${err.message}` }); }
+    if (!w._p.length) w.sphere(0, 1, 0, 0.2, {});
+    w.finish();
+    W = w; snaps.clear(); snapBytes = 0; stat.resets += 1; hex.fill('');
+    if (view) view.dispose();
+    view = phView(W, { scene, mat, ropeMat, waterMat, model, s });
+    stat.bodies = W.B; stat.particles = W.N; stat.kinds = view.kinds; stat.step = 0;
+    snapshot(0);
+    post({ type: 'physics-info', layer: pcTop(L.id), ...stat });
+  }
+  function snapshot(st) {
+    if (free || snaps.has(st)) return;
+    const b = W.bytes();
+    // (at most ~48 MB of states: past it, every other one goes)
+    if (snapBytes + b > 48e6) { let i = 0; for (const k of [...snaps.keys()].sort((a, c) => a - c)) { if (k && i++ % 2) { snaps.delete(k); snapBytes -= b; } } }
+    snaps.set(st, W.snapshot()); snapBytes += b; stat.snaps = snaps.size;
+  }
+  // ---- the clock: a timeline (exact) or the free clock (from when the layer ran) ----
+  let free = false; let t0 = null; let kPrev = 0; let dPrev = 0; let pend = { kick: false, drop: false }; let sig = NaN; let a01 = 1;
+  const bassNow = { v: 0 };
+  function kickSource() {
+    const own = sqOwnMarks('kick'); if (own) return own.marks;
+    if (mediaEl && !liveKind) { const m = beatMap?.marks?.kick; if (m?.length) return m; const b = beatMap?.beats?.length ? beatMap.beats : analysis?.beats; return b?.length ? b : null; }
+    return liveKind ? 'live' : 'grid';
+  }
+  const between = (arr, a, b) => (a < b ? lastIdx(arr, b) > lastIdx(arr, a) : false);
+  function dropsBetween(a, b) {
+    const d = mediaEl && !liveKind && analysis?.drops?.length ? analysis.drops : [].concat(opts.dropAt ?? []).map(Number).filter(Number.isFinite);
+    for (const x of d) if (x > a && x <= b) return true;
+    return false;
+  }
+  // the sliders that change the motion: when one changes, the cached states after now are dropped
+  const motionSig = () => { let h = 0; let i = 1; for (const k of ['gravity', 'timeScale', 'bounce', 'friction', 'damping', 'stiffness', 'quality', 'wind', 'turb', 'kick', 'bassGravity', 'bassWind', 'drop']) h += num(k) * (i += 7.13); return h + PH_KICK.indexOf(String(pv('kickMode'))) * 1e3; };
+  const env = { gravity: 1, timeScale: 1, bounce: 0.3, friction: 0.5, damping: 0.05, stiffness: 0.5, sub: 8, iters: 1, wind: 0, turb: 0, kick: false, kickImp: 0, kickMode: 'jump', kickOnly: 'all', drop: false, dropImp: 0, sleep: true };
+  function readEnv() {
+    const bass = PH.drive.bass ?? ((num('bassGravity') || num('bassWind')) ? audio.bass : 0); bassNow.v = bass;
+    env.gravity = num('gravity') * (1 - Math.max(0, Math.min(1, num('bassGravity'))) * bass);
+    env.timeScale = Math.max(0, Math.min(4, num('timeScale'))); env.bounce = Math.max(0, Math.min(1, num('bounce'))); env.friction = Math.max(0, num('friction'));
+    env.damping = Math.max(0, num('damping')); env.stiffness = Math.max(0, Math.min(1, num('stiffness'))); env.sub = Math.max(2, Math.min(24, Math.round(num('quality'))));
+    env.iters = opts.iters ?? (W.clusters.length > 4 ? 2 : 1);
+    env.wind = num('wind') + num('bassWind') * bass; env.turb = Math.max(0, num('turb'));
+    env.kickImp = Math.max(0, num('kick')); env.kickMode = PH_KICK.includes(String(pv('kickMode'))) ? String(pv('kickMode')) : 'jump'; env.kickOnly = opts.kickOnly || 'all'; env.dropImp = Math.max(0, num('drop'));
+    for (const cl of W.clusters) if (W.bodies[cl.body].type === 'soft') cl.k = 0.04 + 0.6 * env.stiffness * env.stiffness;
+  }
+  // one step, its music from the step's own time (a kick marker between the last step and this one)
+  let ksrc = null;
+  function stepOnce() {
+    const st = W.misc[0] + 1; const ta = (st - 1) / 60; const tb = st / 60;
+    let kick = false; let drop = false;
+    if (PH.drive.kick != null) { kick = PH.drive.kick > 0.5 && kPrev <= 0.5; kPrev = PH.drive.kick; }
+    else if (ksrc === 'live') { const k = featVal('kickOn') || audio.kick; kick = k > 0.5 && kPrev <= 0.5; kPrev = k; }
+    else if (ksrc === 'grid') kick = Math.floor(tb / 0.5) > Math.floor(ta / 0.5) && ta >= 0;
+    else if (ksrc) kick = between(ksrc, ta, tb);
+    if (st === 1 && opts.kickStart) kick = true;
+    drop = dropsBetween(ta, tb);
+    if (pend.kick) { kick = true; pend.kick = false; } if (pend.drop) { drop = true; pend.drop = false; }
+    env.kick = kick; env.drop = drop;
+    const imp = env.kickImp; if (st === 1 && opts.kickStart) env.kickImp = imp || 2; // (a scene that starts with a push: dominoes)
+    W.step(env);
+    env.kickImp = imp;
+    if (kick) stat.kicks += 1; if (drop) stat.drops += 1;
+    if (W.misc[0] % 30 === 0) snapshot(W.misc[0]);
+  }
+  // ---- per frame ----
+  let frame = 0;
+  build();
+  renderer.setAnimationLoop(() => {
+    const c0 = realNow();
+    frame += 1;
+    // a model that arrived (or changed): built again around it
+    if (stat.build === 'models' && frame - modelTry > (model ? 120 : 30)) {
+      modelTry = frame; const m = phModel(L, opts.source);
+      if (m && m.sig !== model?.sig) { model = m; stat.model = m.name; stat.waiting = null; build(); } else if (!m && !model) stat.waiting = 'a 🧊 model layer';
+    }
+    const p = L.props;
+    const held = PH.hold.get(L.id); // (checks / three_eval: the clock held at a time, as a timeline)
+    free = held == null && !mediaEl && !SQ.on && !p.pcOf && p.in == null && !PH.xp;
+    const tc = held ?? globalThis.__layerClock?.(L.id) ?? c0 / 1000;
+    let t = Number.isFinite(tc) ? tc : 0;
+    if (free) { if (t0 === null) t0 = t; t -= t0; }
+    t = Math.max(0, t);
+    const exact = SQ.off || fullRes() || PH.xp;
+    readEnv();
+    ksrc = kickSource();
+    const ms = motionSig();
+    if (ms !== sig) { if (!Number.isNaN(sig)) for (const k of snaps.keys()) if (k > W.misc[0]) { snaps.delete(k); snapBytes -= W.bytes(); } sig = ms; }
+    let target = Math.floor(t * 60 + 1e-6);
+    // back in time: the nearest cached state at or before the frame, then forward from it
+    if (target < W.misc[0]) {
+      let best = -1; for (const k of snaps.keys()) if (k <= target && k > best) best = k;
+      if (best >= 0) W.restore(snaps.get(best)); else build();
+      stat.resims += 1; kPrev = 0;
+    }
+    if (free && target - W.misc[0] > 6) { t0 += (target - W.misc[0] - 1) / 60; target = W.misc[0] + 1; } // (the free clock: time it can't keep up with is dropped)
+    const budget = exact ? Infinity : 7;
+    const s0 = realNow(); let n = 0;
+    while (W.misc[0] < target && (n < 2 || realNow() - s0 < budget)) { stepOnce(); n += 1; }
+    if (n) stat.stepMs += ((realNow() - s0) / n - stat.stepMs) * 0.1;
+    stat.behind = target - W.misc[0];
+    a01 = stat.behind > 0 ? 1 : Math.max(0, Math.min(1, t * 60 - target));
+    // the picture
+    const cs = [String(pv('color1')), String(pv('color2')), String(pv('color3')), String(pv('floorColor'))];
+    for (let k = 0; k < 3; k += 1) if (cs[k] !== hex[k] && /^#[0-9a-f]{6}$/i.test(cs[k])) { hex[k] = cs[k]; pal[k].set(cs[k]); view.recolor(pal); }
+    if (cs[3] !== hex[3] && /^#[0-9a-f]{6}$/i.test(cs[3])) { hex[3] = cs[3]; floorSolid.material.color.set(cs[3]); }
+    mat.metalness = Math.max(0, Math.min(1, num('metal'))); mat.roughness = Math.max(0.02, Math.min(1, num('rough')));
+    const fl = String(pv('floor')); floorShadow.visible = fl === 'shadow' && W.floorY !== null; floorSolid.visible = fl === 'solid' && W.floorY !== null;
+    view.update(W, a01, pal);
+    const ang = THREE.MathUtils.degToRad(num('camAngle')) + num('orbit') * t * 0.3; const d = num('camDist');
+    camera.position.set(Math.sin(ang) * d, num('camHeight'), Math.cos(ang) * d); camera.lookAt(0, num('lookY'), 0);
+    renderer.render(scene, camera);
+    renderer.__lastScene = scene; renderer.__lastCamera = camera;
+    stat.step = W.misc[0]; stat.simT = W.misc[0] / 60; stat.frames += 1;
+    stat.ms += ((realNow() - c0) - stat.ms) * 0.1;
+    if (frame % 90 === 0) { let aw = 0; let as = 0; for (let k = 0; k < W.B; k += 1) if (W.active[k] && !W.bodies[k].fixed) { if (W.asleep[k]) as += 1; else aw += 1; } stat.awake = aw; stat.asleep = as; }
+  });
+  PH.live.set(L.id, {
+    probe: () => ({ ...W.probe(), simT: W.misc[0] / 60, behind: stat.behind, snaps: snaps.size, resims: stat.resims, bass: bassNow.v }),
+    bodies: (max = 60) => { const o = new Float64Array(7); const out = []; for (let k = 0; k < W.B && out.length < max; k += 1) { if (W.bodies[k].fixed) continue; W.pose(k, 1, o); out.push({ k, kind: W.bodies[k].kind, on: W.active[k], asleep: W.asleep[k], p: [o[0], o[1], o[2]].map((x) => Math.round(x * 1000) / 1000), v: Math.round(Math.hypot(W.v[W.bodies[k].i0 * 3], W.v[W.bodies[k].i0 * 3 + 1], W.v[W.bodies[k].i0 * 3 + 2]) * 1000) / 1000 }); } return out; },
+    poke: (what) => { if (what === 'reset') { t0 = null; build(); return true; } if (what === 'kick') pend.kick = true; else if (what === 'drop') pend.drop = true; else return false; for (const k of snaps.keys()) if (k > W.misc[0]) snaps.delete(k); return true; },
+  });
+  (L.cleanups ||= []).push(() => {
+    renderer.setAnimationLoop(null);
+    removeEventListener('resize', onResize);
+    stat.gone = true;
+    view?.dispose(); floorShadow.geometry.dispose(); floorShadow.material.dispose(); floorSolid.material.dispose(); mat.dispose(); ropeMat.dispose(); waterMat.dispose();
+    snaps.clear();
+    if (PH.stats.get(L.id) === stat) { PH.stats.delete(L.id); PH.live.delete(L.id); }
+  });
+  return { renderer, scene, camera, world: () => W, ok: true };
+};
+// the drawing: instanced boxes, balls, rope pieces, ragdoll joints / bones and water drops (one draw each), a mesh
+// per cloth / blob / letter / model copy; updated from the bodies' poses every frame (nothing allocated per frame)
+function phView(W, { scene, mat, ropeMat, waterMat, model, s }) {
+  const root = new THREE.Group(); scene.add(root);
+  const disposers = []; const kinds = {};
+  const m4 = new THREE.Matrix4(); const pos = new THREE.Vector3(); const qt = new THREE.Quaternion(); const sc = new THREE.Vector3(); const o7 = new Float64Array(7); const tmp = new Float64Array(3);
+  const Z = new THREE.Matrix4().makeScale(0, 0, 0); const UP = new THREE.Vector3(0, 1, 0); const dir = new THREE.Vector3(); const pa = new THREE.Vector3(); const pb = new THREE.Vector3();
+  const colorOf = (b, pal) => (typeof b.color === 'string' && /^#/.test(b.color) ? (b.__c ||= new THREE.Color(b.color)) : pal[(Number(b.color) || 0) % 3]);
+  const groups = [];
+  const inst = (geo, material, list, scaleOf) => {
+    if (!list.length) return null;
+    const m = new THREE.InstancedMesh(geo, material, list.length); m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false;
+    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); root.add(m); disposers.push(() => geo.dispose());
+    const g = { m, list, scaleOf }; groups.push(g); return g;
+  };
+  const by = (f) => W.bodies.map((b, k) => (f(b) ? k : -1)).filter((k) => k >= 0);
+  const boxes = by((b) => b.type === 'rigid' && b.kind !== 'letter' && b.kind !== 'model');
+  const balls = by((b) => b.type === 'sphere');
+  inst(new THREE.BoxGeometry(1, 1, 1), mat, boxes, (b, v) => v.set(b.h[0] * 2, b.h[1] * 2, b.h[2] * 2));
+  inst(new THREE.SphereGeometry(1, 28, 18), mat, balls, (b, v) => v.set(b.R, b.R, b.R));
+  kinds.boxes = boxes.length; kinds.balls = balls.length;
+  // letters: a block each, the glyph drawn on its front and back
+  const letters = [];
+  for (const k of by((b) => b.kind === 'letter')) {
+    const b = W.bodies[k]; const cv = document.createElement('canvas'); const px = 256; const ar = b.h[0] / b.h[1]; cv.width = Math.max(32, Math.round(px * ar)); cv.height = px;
+    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+    const face = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.4 }); const side = new THREE.MeshStandardMaterial({ roughness: 0.45 });
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(b.h[0] * 2, b.h[1] * 2, b.h[2] * 2), [side, side, side, side, face, face]); mesh.castShadow = true; mesh.receiveShadow = true;
+    root.add(mesh); letters.push({ k, b, mesh, cv, tex, face, side, drawn: '' });
+    disposers.push(() => { mesh.geometry.dispose(); tex.dispose(); face.dispose(); side.dispose(); });
+  }
+  kinds.letters = letters.length;
+  const drawLetter = (Lt, pal) => {
+    const c = colorOf(Lt.b, pal); const key = c.getHexString(); if (Lt.drawn === key) return; Lt.drawn = key;
+    const g = Lt.cv.getContext('2d'); const w = Lt.cv.width; const h = Lt.cv.height;
+    g.fillStyle = `#${key}`; g.fillRect(0, 0, w, h);
+    g.fillStyle = (c.r * 0.3 + c.g * 0.59 + c.b * 0.11) > 0.55 ? '#14161c' : '#fbf7ee';
+    g.font = `800 ${Math.round(h * 0.86)}px ${Lt.b.data.font}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(Lt.b.data.ch, w / 2, h * 0.54);
+    Lt.tex.needsUpdate = true; Lt.side.color.copy(c).multiplyScalar(0.8);
+  };
+  // model copies (the hull's box centre ↔ the model's own centre)
+  const models = [];
+  for (const k of by((b) => b.kind === 'model')) { const o = model.root.clone(true); o.traverse((x) => { if (x.isMesh) { x.castShadow = true; x.receiveShadow = true; } }); o.matrixAutoUpdate = false; root.add(o); models.push({ k, o, b: W.bodies[k] }); }
+  kinds.models = models.length;
+  const off = new THREE.Matrix4(); const sM = new THREE.Matrix4();
+  // cloth and blobs: meshes whose vertices are the particles (indexed, smooth normals)
+  const soft = [];
+  for (const k of by((b) => b.type === 'cloth' || b.type === 'soft')) {
+    const b = W.bodies[k]; const geo = new THREE.BufferGeometry(); const n = b.n; const p = new Float32Array(n * 3); geo.setAttribute('position', new THREE.BufferAttribute(p, 3).setUsage(THREE.DynamicDrawUsage));
+    const idx = [];
+    if (b.type === 'cloth') { const { nx, ny } = b.data; const uv = new Float32Array(n * 2); for (let j = 0; j < ny; j += 1) for (let i = 0; i < nx; i += 1) { uv[(j * nx + i) * 2] = i / (nx - 1); uv[(j * nx + i) * 2 + 1] = 1 - j / (ny - 1); if (i + 1 < nx && j + 1 < ny) { const a = j * nx + i; idx.push(a, a + nx, a + 1, a + 1, a + nx, a + nx + 1); } } geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); }
+    else for (const [a, c, d] of b.data.faces) idx.push(a, c, d);
+    geo.setIndex(idx);
+    const m = new THREE.MeshStandardMaterial({ roughness: b.type === 'cloth' ? 0.8 : 0.25, metalness: 0, side: b.type === 'cloth' ? THREE.DoubleSide : THREE.FrontSide, ...(b.type === 'soft' ? { transparent: false } : {}) });
+    const mesh = new THREE.Mesh(geo, m); mesh.castShadow = true; mesh.receiveShadow = true; mesh.frustumCulled = false; root.add(mesh);
+    soft.push({ k, b, geo, p, mesh, m }); disposers.push(() => { geo.dispose(); m.dispose(); });
+  }
+  kinds.cloth = soft.filter((x) => x.b.type === 'cloth').length; kinds.blobs = soft.length - kinds.cloth;
+  // rope pieces and links (pendulum strings): instanced cylinders between two particles; beads: instanced balls
+  const segs = []; const beads = [];
+  for (const k of by((b) => b.type === 'rope')) { const b = W.bodies[k]; if (b.data?.beads) for (let i = b.i0; i < b.i0 + b.n; i += 1) beads.push([i, k]); else for (let i = b.i0; i + 1 < b.i0 + b.n; i += 1) segs.push([i, i + 1, W.r[i], k]); }
+  for (const [i, j, r] of W.links || []) segs.push([i, j, r, -1]);
+  const rag = by((b) => b.type === 'rag');
+  for (const k of rag) for (const [i, j] of W.bodies[k].data.bones) segs.push([i, j, W.r[i] * 0.75, k]);
+  const segM = segs.length ? new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1, 1, 10, 1), ropeMat, segs.length) : null;
+  if (segM) { segM.castShadow = true; segM.frustumCulled = false; segM.instanceMatrix.setUsage(THREE.DynamicDrawUsage); root.add(segM); disposers.push(() => segM.geometry.dispose()); }
+  const joints = []; for (const k of rag) for (const i of W.bodies[k].data.joints) joints.push([i, k]);
+  const dots = [...joints, ...beads];
+  const dotM = dots.length ? new THREE.InstancedMesh(new THREE.SphereGeometry(1, 16, 12), mat, dots.length) : null;
+  if (dotM) { dotM.castShadow = true; dotM.receiveShadow = true; dotM.frustumCulled = false; dotM.instanceMatrix.setUsage(THREE.DynamicDrawUsage); root.add(dotM); disposers.push(() => dotM.geometry.dispose()); }
+  kinds.ropes = by((b) => b.type === 'rope').length; kinds.ragdolls = rag.length;
+  // water: one instanced drop per particle, lighter where it moves fast
+  const fl = W.fluid; const waterM = fl.length ? new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), waterMat, fl.length) : null;
+  if (waterM) { waterM.castShadow = true; waterM.receiveShadow = true; waterM.frustumCulled = false; waterM.instanceMatrix.setUsage(THREE.DynamicDrawUsage); root.add(waterM); disposers.push(() => waterM.geometry.dispose()); }
+  kinds.water = fl.length;
+  const wc = new THREE.Color(); const white = new THREE.Color(1, 1, 1);
+  function recolor(pal) {
+    for (const g of groups) { for (let n = 0; n < g.list.length; n += 1) g.m.setColorAt(n, colorOf(W.bodies[g.list[n]], pal)); if (g.m.instanceColor) g.m.instanceColor.needsUpdate = true; }
+    for (const Lt of letters) drawLetter(Lt, pal);
+    for (const x of soft) x.m.color.copy(colorOf(x.b, pal));
+    if (dotM) { for (let n = 0; n < dots.length; n += 1) dotM.setColorAt(n, colorOf(W.bodies[dots[n][1]], pal)); dotM.instanceColor.needsUpdate = true; }
+    ropeMat.color.copy(pal[2]).lerp(white, 0.35);
+  }
+  const segAt = (n, a, b, r) => {
+    pa.set(a[0], a[1], a[2]); pb.set(b[0], b[1], b[2]); dir.subVectors(pb, pa); const l = dir.length();
+    if (l < 1e-6) { segM.setMatrixAt(n, Z); return; }
+    qt.setFromUnitVectors(UP, dir.multiplyScalar(1 / l)); pos.addVectors(pa, pb).multiplyScalar(0.5); sc.set(r, l, r); m4.compose(pos, qt, sc); segM.setMatrixAt(n, m4);
+  };
+  const A3 = new Float64Array(3); const B3 = new Float64Array(3);
+  function update(W2, a, pal) {
+    for (const g of groups) {
+      for (let n = 0; n < g.list.length; n += 1) {
+        const k = g.list[n]; const b = W2.bodies[k];
+        if (!W2.active[k]) { g.m.setMatrixAt(n, Z); continue; }
+        W2.pose(k, a, o7); pos.set(o7[0], o7[1], o7[2]); qt.set(o7[3], o7[4], o7[5], o7[6]); g.scaleOf(b, sc); m4.compose(pos, qt, sc); g.m.setMatrixAt(n, m4);
+      }
+      g.m.instanceMatrix.needsUpdate = true;
+    }
+    for (const Lt of letters) { const on = Boolean(W2.active[Lt.k]); Lt.mesh.visible = on; if (!on) continue; W2.pose(Lt.k, a, o7); Lt.mesh.position.set(o7[0], o7[1], o7[2]); Lt.mesh.quaternion.set(o7[3], o7[4], o7[5], o7[6]); }
+    for (const M of models) {
+      const on = Boolean(W2.active[M.k]); M.o.visible = on; if (!on) continue;
+      W2.pose(M.k, a, o7); pos.set(o7[0], o7[1], o7[2]); qt.set(o7[3], o7[4], o7[5], o7[6]); sc.set(1, 1, 1); m4.compose(pos, qt, sc);
+      sM.makeScale(s, s, s); off.makeTranslation(-model.mid[0], -model.mid[1], -model.mid[2]);
+      M.o.matrix.copy(m4).multiply(sM).multiply(off).multiply(M.o.__base ||= M.o.matrix.clone().compose(M.o.position, M.o.quaternion, M.o.scale)); M.o.matrixWorldNeedsUpdate = true;
+    }
+    for (const x of soft) {
+      const b = x.b; const on = Boolean(W2.active[x.k]); x.mesh.visible = on; if (!on) continue;
+      // (a blob's surface sits on its particles' outer edge: pushed out from its centre by their radius)
+      const cx = W2.bc[x.k * 3], cy = W2.bc[x.k * 3 + 1], cz = W2.bc[x.k * 3 + 2]; const pr = b.type === 'soft' ? W2.r[b.i0] : 0;
+      for (let i = 0; i < b.n; i += 1) {
+        W2.at(b.i0 + i, a, tmp);
+        if (pr) { const dx = tmp[0] - cx, dy = tmp[1] - cy, dz = tmp[2] - cz; const l = Math.hypot(dx, dy, dz) || 1; tmp[0] += (dx / l) * pr; tmp[1] += (dy / l) * pr; tmp[2] += (dz / l) * pr; }
+        x.p[i * 3] = tmp[0]; x.p[i * 3 + 1] = tmp[1]; x.p[i * 3 + 2] = tmp[2];
+      }
+      x.geo.attributes.position.needsUpdate = true; x.geo.computeVertexNormals();
+    }
+    if (segM) { for (let n = 0; n < segs.length; n += 1) { const [i, j, r, k] = segs[n]; if (k >= 0 && !W2.active[k]) { segM.setMatrixAt(n, Z); continue; } W2.at(i, a, A3); W2.at(j, a, B3); segAt(n, A3, B3, r); } segM.instanceMatrix.needsUpdate = true; }
+    if (dotM) { for (let n = 0; n < dots.length; n += 1) { const [i, k] = dots[n]; if (!W2.active[k]) { dotM.setMatrixAt(n, Z); continue; } W2.at(i, a, A3); pos.set(A3[0], A3[1], A3[2]); const r = W2.r[i]; sc.set(r, r, r); qt.identity(); m4.compose(pos, qt, sc); dotM.setMatrixAt(n, m4); } dotM.instanceMatrix.needsUpdate = true; }
+    if (waterM) {
+      const r = W2.fluidR * 1.35; const v = W2.v;
+      for (let n = 0; n < fl.length; n += 1) {
+        const i = fl[n]; if (!W2.active[W2.pb[i]]) { waterM.setMatrixAt(n, Z); continue; }
+        W2.at(i, a, A3); pos.set(A3[0], A3[1], A3[2]); sc.set(r, r, r); qt.identity(); m4.compose(pos, qt, sc); waterM.setMatrixAt(n, m4);
+        const sp = Math.min(1, Math.hypot(v[i * 3], v[i * 3 + 1], v[i * 3 + 2]) / 3); wc.copy(pal[0]).lerp(white, sp * 0.7); waterM.setColorAt(n, wc);
+      }
+      waterM.instanceMatrix.needsUpdate = true; if (waterM.instanceColor) waterM.instanceColor.needsUpdate = true;
+    }
+  }
+  return { kinds, update, recolor, dispose() { scene.remove(root); for (const d of disposers) d(); for (const g of groups) g.m.dispose?.(); segM?.dispose?.(); dotM?.dispose?.(); waterM?.dispose?.(); } };
+}
+// checks and three_eval: each physics layer's numbers, its state, the music held at a value, a kick / drop now
+window.__labPhysics = {
+  info: () => [...PH.stats.values()].map((x) => ({ ...x, ms: Math.round(x.ms * 100) / 100, stepMs: Math.round(x.stepMs * 1000) / 1000 })),
+  probe: (id) => { const e = id ? PH.live.get(id) : [...PH.live.values()].pop(); return e ? e.probe() : null; },
+  bodies: (id, max) => { const e = id ? PH.live.get(id) : [...PH.live.values()].pop(); return e ? e.bodies(max) : null; },
+  poke: (id, what) => { const e = id ? PH.live.get(id) : [...PH.live.values()].pop(); return e ? e.poke(what) : false; },
+  drive: (o = {}) => { for (const k of ['kick', 'bass']) if (k in o) PH.drive[k] = o[k] == null ? null : Number(o[k]); return { ...PH.drive }; },
+  hold: (id, t) => { if (t == null) PH.hold.delete(id); else PH.hold.set(id, Number(t)); return t ?? null; },
+  builds: () => PH_BUILD_NAMES,
+};
+
 // ---------- run generations ----------
 // Re-running a layer (a slider that rebuilds the scene, a code edit) tears down only that layer: its
 // renderers, window listeners, timers and DOM, then runs its code again — three.js stays loaded and the
