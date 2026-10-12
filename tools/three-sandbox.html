@@ -2394,6 +2394,13 @@ let recDest = null;
 let videoTex = null;
 const freq = new Uint8Array(1024);
 const wave = new Float32Array(2048);
+const waveB = new Uint8Array(2048); let waveLazy = false; let waveGain = 1; // (round 21: the float waveform, filled when read)
+function waveFill() {
+  if (!waveLazy || !analyser) return;
+  waveLazy = false;
+  analyser.getFloatTimeDomainData(wave);
+  if (waveGain !== 1) for (let i = 0; i < wave.length; i += 1) wave[i] *= waveGain;
+}
 const bands = { level: 0, bass: 0, mid: 0, treble: 0, beat: 0, energy: 0 };
 let lastUpdate = 0;
 let bassAvg = 0;
@@ -2577,16 +2584,23 @@ function update() {
     return;
   }
   simulated = false; demoT = null;
-  if (remoteFreq) { freq.set(remoteFreq.subarray(0, freq.length)); wave.set(remoteWave.subarray(0, wave.length)); } else { analyser.getByteFrequencyData(freq); analyser.getFloatTimeDomainData(wave); }
-  const hz = (remoteFreq ? remoteRate : actx.sampleRate) / 2048;
-  const avg = (lo, hi) => {
-    let s = 0; let n = 0;
-    for (let i = Math.max(1, Math.floor(lo / hz)); i <= Math.min(freq.length - 1, Math.ceil(hi / hz)); i += 1) { s += freq[i]; n += 1; }
-    return n ? s / n / 255 : 0;
-  };
+  // (round 21 "labgpu": from the analyser, the level comes from the 8-bit waveform with whole-number math, and the
+  // float waveform (audio.waveform, 2 048 numbers) is copied only when a sketch reads it: the per-sample float sum was
+  // most of the preview runtime's own allocations per frame wherever the code isn't optimized yet)
   let rms = 0;
-  for (let i = 0; i < wave.length; i += 1) rms += wave[i] * wave[i];
-  bands.level = clamp01(Math.sqrt(rms / wave.length) * 3);
+  if (remoteFreq) {
+    freq.set(remoteFreq.subarray(0, freq.length)); wave.set(remoteWave.subarray(0, wave.length)); waveLazy = false;
+    for (let i = 0; i < wave.length; i += 1) rms += wave[i] * wave[i];
+    rms /= wave.length;
+  } else {
+    analyser.getByteFrequencyData(freq); analyser.getByteTimeDomainData(waveB); waveLazy = true; waveGain = 1;
+    let sq = 0;
+    for (let i = 0; i < waveB.length; i += 1) { const d = waveB[i] - 128; sq += d * d; }
+    rms = sq / waveB.length / 16384;
+  }
+  const hz = (remoteFreq ? remoteRate : actx.sampleRate) / 2048;
+  const avg = (lo, hi) => bandOf(lo, hi, hz);
+  bands.level = clamp01(Math.sqrt(rms) * 3);
   bands.energy += (bands.level - bands.energy) * Math.min(1, dt);
   bands.peak = Math.max(bands.level, (bands.peak || 0) - dt / 3);
   bands.bass = avg(20, 150);
@@ -2614,7 +2628,7 @@ function update() {
     const g = (liveAuto ? Math.min(6, 0.6 / livePeak) : 1) * liveSense;
     if (g !== 1) {
       bands.level = clamp01(bands.level * g); bands.bass = clamp01(bands.bass * (0.5 + 0.5 * g)); bands.mid = clamp01(bands.mid * (0.5 + 0.5 * g)); bands.treble = clamp01(bands.treble * (0.5 + 0.5 * g));
-      for (let i = 0; i < wave.length; i += 1) wave[i] *= g;
+      if (waveLazy) waveGain = g; else for (let i = 0; i < wave.length; i += 1) wave[i] *= g;
     }
     return;
   }
@@ -2636,7 +2650,7 @@ const audio = {
   get treble() { update(); return bands.treble; },
   get beat() { update(); return bands.beat; },
   get spectrum() { update(); demoFill(); return freq; },
-  get waveform() { update(); demoFill(); return wave; },
+  get waveform() { update(); demoFill(); waveFill(); return wave; },
   // Average of a frequency range, 0..1 (e.g. audio.band(40, 90) for the kick).
   band(lo, hi) {
     update(); demoFill();
