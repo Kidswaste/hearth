@@ -7378,7 +7378,7 @@ function sqMessage(msg) {
 // sequence render, with the best-quality options on top: supersampling (the page draws at k× the pixels: the merge is
 // box-filtered down, exactly), motion blur (sub-frames across the shutter, averaged with their alpha), a transparent
 // background, a 16-bit still, a 16 × 16 signature per frame (loop detection), a GLB of the 3D content, a contact sheet.
-const XP = { acc: null, stripe: null, out: null, sig: null };
+const XP = { acc: null, stripe: null, out: null, sig: null, chain: Promise.resolve() };
 // the merge of every layer at W × H (rows y0 … y0 + sh only: a stripe), transparent or black behind
 function xpMerge(c, W, H, y0 = 0, sh = H, alpha = false) {
   if (c.width !== W || c.height !== sh) { c.width = W; c.height = sh; }
@@ -7470,10 +7470,12 @@ async function xpFrame(m) {
   }
   const drawMs = realNow() - t0;
   if (raw) { post({ type: 'xp-frame', n, buffer: raw.buffer, w, h, raw16: true, ms: drawMs, drawMs }, [raw.buffer]); return; }
-  const blob = await new Promise((r) => out.toBlob(r, kind, q));
-  if (!blob) throw new Error(`the ${w}×${h} frame could not be encoded (too big for this GPU?)`);
-  const buffer = await blob.arrayBuffer();
-  post({ type: 'xp-frame', n, buffer, w, h, sig: sg, ms: realNow() - t0, drawMs }, [buffer]);
+  // (the encode runs while the next frame draws: toBlob takes a copy of the canvas when it's called)
+  new Promise((r) => out.toBlob(r, kind, q)).then(async (blob) => {
+    if (!blob) throw new Error(`the ${w}×${h} frame could not be encoded (too big for this GPU?)`);
+    const buffer = await blob.arrayBuffer();
+    post({ type: 'xp-frame', n, buffer, w, h, sig: sg, ms: realNow() - t0, drawMs }, [buffer]);
+  }).catch((err) => post({ type: 'xp-frame', n, error: String(err?.message || err) }));
 }
 // the 3D content at T as a GLB (every layer's last-rendered scene; one scene as it is, several side by side in one file)
 async function xpGlb({ T = 0, binary = true }) {
@@ -7517,7 +7519,7 @@ async function xpSheet({ times, cols, tw, th, pad = 28, labels = [], bg = '#1113
 }
 function xpMessage(msg) {
   const fail = (err) => post({ type: msg.type, n: msg.n, error: String(err?.message || err) });
-  if (msg.type === 'xp-frame') xpFrame(msg).catch(fail);
+  if (msg.type === 'xp-frame') XP.chain = XP.chain.then(() => xpFrame(msg)).catch(fail); // (one at a time: a frame asked ahead waits its turn)
   else if (msg.type === 'xp-glb') xpGlb(msg).catch(fail);
   else if (msg.type === 'xp-sheet') xpSheet(msg).catch(fail);
   else if (msg.type === 'xp-info') post({ type: 'xp-info', w: innerWidth, h: innerHeight, dpr: devicePixelRatio, on: SQ.on, mounted: SQ.mounted.size, layers: layers.size });

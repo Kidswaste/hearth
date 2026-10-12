@@ -243,16 +243,21 @@ const LabExport = (() => {
       let writes = Promise.resolve(); let pending = 0;
       const tFrames = performance.now();
       let drawMs = 0;
+      const ahead = new Map(); const LOOKAHEAD = 2;
+      const ask = (n) => {
+        const got = page.wait((m) => m.type === 'xp-frame' && m.n === n, 120000, `frame ${n + 1}`);
+        page.send({ type: 'xp-frame', n, T: r4(T0 + n / F), w: o.w, h: o.h, ss: o.ss, sub: o.blur, shutter: o.shutter, F, kind, q: 0.97, alpha: o.alpha, sig: Boolean(o.detect) });
+        return got;
+      };
       for (let n = 0; n < N; n += 1) {
         while (ctl.paused && !ctl.cancel) await sleep(200);
         // (a drag, a scroll or typing in the app: the next frame waits for the gesture to end, ≤ 1.5 s, so the GPU and
         // the CPU go to what you're doing first)
         if (window.Jank?.busy?.()) { ctl.yields = (ctl.yields || 0) + 1; await window.Jank.calm?.(1500); }
         if (ctl.cancel) throw new Error('Render cancelled');
-        const T = r4(T0 + n / F);
-        const got = page.wait((m) => m.type === 'xp-frame' && m.n === n, 120000, `frame ${n + 1}`);
-        page.send({ type: 'xp-frame', n, T, w: o.w, h: o.h, ss: o.ss, sub: o.blur, shutter: o.shutter, F, kind, q: 0.97, alpha: o.alpha, sig: Boolean(o.detect) });
-        const m = await got;
+        // the next frame is asked for before this one arrives: the page draws it while this one is encoded and written
+        for (let k = n; k < Math.min(N, n + LOOKAHEAD); k += 1) if (!ahead.has(k)) ahead.set(k, ask(k));
+        const m = await ahead.get(n); ahead.delete(n);
         if (m.error) throw new Error(`Frame ${n + 1}: ${m.error}`);
         drawMs += m.drawMs || 0;
         if (o.detect) sigs.push(m.sig);
