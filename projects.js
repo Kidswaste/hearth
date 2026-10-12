@@ -92,12 +92,14 @@ const Projects = (() => {
     return value;
   }
   const forget = (...names) => { for (const n of names) cache.delete(n); };
+  const liveBoard = () => (loadedLazy('board') && typeof Board !== 'undefined' && Board.boards?.().length ? Board : null);
   const Src = {
     sketches: () => cached('sketches', 20000, async () => labScenes()?.all?.() || (await window.hub.kvGet('three-sketches', [])) || []),
     // the Lab's own small stills (kv 'three-thumbs', taken a few seconds after a scene runs)
     sceneThumbs: () => cached('sceneThumbs', 120000, async () => (await window.hub.kvGet('three-thumbs', {})) || {}),
-    boards: () => cached('boards', 20000, async () => ((await window.hub.kvGet('boards', null))?.list || [])),
-    board: (id, stamp) => cached(`board:${id}:${stamp || 0}`, 600000, async () => (await window.hub.kvGet(`board-${id}`, null))),
+    // (the board's own index and the board on screen when the board is loaded: they're ahead of their saves)
+    boards: () => cached('boards', 20000, async () => (liveBoard() ? Board.boards() : null) || ((await window.hub.kvGet('boards', null))?.list || [])),
+    board: (id, stamp) => (liveBoard()?.current()?.id === id ? Promise.resolve(Board.current()) : cached(`board:${id}:${stamp || 0}`, 600000, async () => (await window.hub.kvGet(`board-${id}`, null)))),
     renders: () => cached('renders', 15000, async () => (loadedLazy('renders') && typeof Renders !== 'undefined' ? Renders.history() : ((await window.hub.kvGet('renders', null))?.history || []))),
     captures: () => cached('captures', 30000, async () => (await window.hub.capture?.list?.({ limit: 400 })) || []),
     downloads: () => cached('downloads', 30000, async () => (await window.hub.kvGet('downloads-log', [])) || []),
