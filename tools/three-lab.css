@@ -249,3 +249,10 @@ body.tw-scrubbing, body.tw-scrubbing * { cursor: ew-resize !important; }
 /* Lab perf HUD (/lab perf, round 16 "labperf"): quiet, in the preview's bottom-right corner, no effects on it */
 .three-preview .lab-perf-hud { position: absolute; right: 8px; bottom: 8px; z-index: 2; padding: 2px 7px; border-radius: 6px; background: #0008; color: #cfd3dc; font: 10.5px Consolas, monospace; opacity: 0.72; pointer-events: none; white-space: nowrap; contain: content; }
 .three-preview .lab-perf-hud[hidden] { display: none; }
+/* (round 21, labhub) the code editor: the highlighted copy and the line numbers lay out on their own. Without this a
+   new highlight (each key, each scroll in a long sketch) laid out the textarea under it again: ~70 ms at 2,000 lines */
+.three-editor .ce-pre, .three-editor .ce-gutter { contain: size layout style; }
+/* (round 21, labhub) the Lab's dialogs open without showModal() (tools/three.js openLight): placed and dimmed like modal ones */
+:where(dialog.lab-light-dlg[open]) { max-width: calc(100% - 2em - 6px); max-height: calc(100% - 2em - 6px); overflow: auto; }
+dialog.lab-light-dlg[open] { position: fixed; inset: 0; margin: auto; z-index: 9001; }
+.lab-light-shade { position: fixed; inset: 0; z-index: 9000; background: #0009; }

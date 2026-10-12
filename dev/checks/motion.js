@@ -64,7 +64,7 @@ await J.key('x', { alt: true });
 await wait(400);
 const pick = document.querySelector('.fx-picker');
 const tabOn = pick?.querySelector('.fx-tab.on')?.textContent;
-const rows = pick ? pick.querySelectorAll('.fx-row').length : 0;
+const rows = pick ? Number(pick.querySelector('.fx-list')?.dataset.total || pick.querySelectorAll('.fx-row').length) : 0; // (round 21: rows are built as they scroll into view)
 step('Alt+X opens the effects picker on its Motion tab, every motion preset listed', Boolean(pick) && tabOn === 'Motion' && rows >= T.length, { tabOn, rows });
 const input = pick?.querySelector('.fx-search');
 if (input) { input.value = 'zoom punch'; input.dispatchEvent(new Event('input')); await wait(200); }

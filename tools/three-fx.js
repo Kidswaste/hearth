@@ -179,7 +179,8 @@ const ThreeFX = (() => {
   }
 
   // ---------- thumbnails ----------
-  const thumbCache = new Map(); // filter id → data URL (per Lab picture; cleared when the picker opens)
+  const thumbCache = new Map(); // filter id → data URL (per Lab picture; cleared when the picker opens on another one)
+  const thumbFor = { pic: null, at: 0 }; // the scene the cached thumbnails were made on, and when the cache started
   let thumbQueue = []; let thumbBusy = false;
   function queueThumb(it, img) {
     if (thumbCache.has(it.id)) { if (thumbCache.get(it.id)) img.src = thumbCache.get(it.id); return; }
@@ -258,7 +259,11 @@ const ThreeFX = (() => {
   function close() { root?.remove(); root = null; thumbQueue = []; }
   function openPicker(kind = 'add', { query = '', anchor = null } = {}) {
     close();
-    thumbCache.clear();
+    // (round 21, labhub) the thumbnails stay for the same scene opened again within 2 minutes: shown at once, and the
+    // preview isn't made to render every one of them again (each is a filter compiled and drawn in its page)
+    const pic = (() => { try { return ThreeLab.peek?.()?.state?.sketch || ''; } catch { return ''; } })();
+    if (pic !== thumbFor.pic || Date.now() - thumbFor.at > 120000) { thumbCache.clear(); thumbFor.at = Date.now(); }
+    thumbFor.pic = pic;
     let tab = TABS.some((t) => t[0] === kind) ? kind : 'all';
     let rows = []; let cur = 0; let favOnly = false;
     // Round 4: the Add tab opens on a short Suggested list; the whole catalog is a search (or "Browse all") away.
@@ -279,7 +284,8 @@ const ThreeFX = (() => {
     }
     document.body.append(root);
     let scrollT = 0;
-    list.addEventListener('scroll', () => { clearTimeout(scrollT); scrollT = setTimeout(() => loadVisible(list), 120); });
+    let moreRaf = 0;
+    list.addEventListener('scroll', () => { clearTimeout(scrollT); scrollT = setTimeout(() => loadVisible(list), 120); if (pending.length && !moreRaf) moreRaf = requestAnimationFrame(() => { moreRaf = 0; moreInView(); }); });
     const paintTabs = () => { tabsEl.hidden = !browse; tabsEl.replaceChildren(...TABS.map(([id, label, title]) => el('button', { class: `fx-tab${id === tab ? ' on' : ''}`, text: label, title, on: { click: () => { tab = id; paintTabs(); render(); input.focus(); } } }))); };
 
     function render() {
@@ -312,27 +318,51 @@ const ThreeFX = (() => {
         const order = (c) => { const k = CAT_ORDER.findIndex((x) => c.endsWith(x)); return k < 0 ? 99 : k; };
         for (const [c, l] of [...cats].sort((x, y) => (tab === 'all' || tab === 'add' ? 0 : order(x[0]) - order(y[0])))) sections.push([c, l]);
       } else sections.push([q ? `${shown.length} match${shown.length === 1 ? '' : 'es'}` : '★ Favorites', shown]);
-      rows = [];
-      const frag = [];
-      for (const [title, l] of sections) {
-        frag.push(el('div', { class: 'fx-sec', text: `${title} (${l.length})` }));
-        for (const it of l) {
-          const i = rows.length;
-          const star = el('button', { class: `fx-star${f.has(keyOf(it)) ? ' on' : ''}`, text: '★', title: 'Favorite (Ctrl+D)', on: { click: (e) => { e.stopPropagation(); star.classList.toggle('on', toggleFav(it)); } } });
-          const row = el('div', { class: 'fx-row', title: `${it.desc || ''}\n${hint(it)}`, on: { click: (e) => run(it, e.shiftKey), mousemove: () => { if (cur !== i) setCur(i, false); } } },
-            thumb(it), el('span', { class: 'fx-name' }, el('b', { text: it.name }), el('small', { text: it.desc || '' })), el('span', { class: 'fx-kind', text: tab === 'all' || tab === 'add' ? KIND_LABEL[it.kind] : it.cat }), star);
-          rows.push({ it, row, star });
-          frag.push(row);
-        }
-      }
-      if (browseRow) frag.push(browseRow);
-      if (!rows.length) frag.push(el('div', { class: 'fx-empty', text: favOnly ? 'No favorites here yet: ★ an item (or Ctrl+D) to keep it at the top.' : 'Nothing matches. Try another word or the All tab.' }));
-      list.replaceChildren(...frag);
+      // (round 21, labhub) the rows are built as they come into view: "Browse all" is ~900 rows (6,500 elements, a
+      // tenth of a second to open and again on every key of a search). The first screenful is built now, the rest when
+      // you scroll near it (a spacer as tall as the rows still to come keeps the scrollbar honest) or move to it.
+      rows = []; pending = []; total = 0;
+      for (const [title, l] of sections) { pending.push({ sec: `${title} (${l.length})` }); for (const it of l) { pending.push({ it }); total += 1; } }
+      tail = browseRow || (!total ? el('div', { class: 'fx-empty', text: favOnly ? 'No favorites here yet: ★ an item (or Ctrl+D) to keep it at the top.' : 'Nothing matches. Try another word or the All tab.' }) : null);
+      spacer.style.height = '0px';
+      list.dataset.total = String(total); // every row it lists (built or still to come)
+      list.replaceChildren(spacer, ...(tail ? [tail] : []));
+      more(FIRST_ROWS);
       setCur(0, true);
       setTimeout(() => loadVisible(list), 60);
     }
+    const FIRST_ROWS = 40; const ROW_H = 38;
+    let pending = []; let total = 0; let tail = null;
+    const spacer = el('div', { class: 'fx-pending', attrs: { 'aria-hidden': 'true' } });
+    function buildRow(e) {
+      if (e.sec) return el('div', { class: 'fx-sec', text: e.sec });
+      const { it } = e; const i = rows.length; const f = favSet || (favSet = favs());
+      const star = el('button', { class: `fx-star${f.has(keyOf(it)) ? ' on' : ''}`, text: '★', title: 'Favorite (Ctrl+D)', on: { click: (ev) => { ev.stopPropagation(); star.classList.toggle('on', toggleFav(it)); } } });
+      const row = el('div', { class: 'fx-row', title: `${it.desc || ''}\n${hint(it)}`, on: { click: (ev) => run(it, ev.shiftKey), mousemove: () => { if (cur !== i) setCur(i, false); } } },
+        thumb(it), el('span', { class: 'fx-name' }, el('b', { text: it.name }), el('small', { text: it.desc || '' })), el('span', { class: 'fx-kind', text: tab === 'all' || tab === 'add' ? KIND_LABEL[it.kind] : it.cat }), star);
+      rows.push({ it, row, star });
+      return row;
+    }
+    let favSet = null;
+    // build n more entries (sections and rows) in front of the spacer
+    function more(n) {
+      if (!pending.length) return;
+      favSet = null;
+      const frag = document.createDocumentFragment();
+      for (let k = 0; k < n && pending.length; k += 1) frag.append(buildRow(pending.shift()));
+      list.insertBefore(frag, spacer);
+      const left = pending.filter((e) => !e.sec).length;
+      spacer.style.height = `${left * ROW_H}px`;
+    }
+    // the spacer came into view (or close): build enough rows to fill past it
+    function moreInView() {
+      if (!pending.length || !root?.isConnected) return;
+      const need = list.scrollTop + list.clientHeight + 300 - spacer.offsetTop;
+      if (need > 0) { more(Math.ceil(need / ROW_H) + 10); requestAnimationFrame(moreInView); }
+    }
     function setCur(i, scroll = true) {
       rows[cur]?.row.classList.remove('on');
+      while (i >= rows.length && pending.length) more(Math.max(20, i - rows.length + 20));
       cur = Math.max(0, Math.min(rows.length - 1, i));
       const r = rows[cur];
       if (!r) { foot.textContent = '↑↓ move · Enter apply · Tab next tab · Ctrl+D ★ · Alt+R 🎲 · Esc close'; return; }

@@ -195,6 +195,142 @@ const ThreeLab = (() => {
     };
   })();
 
+  // ---------- the code editor ----------
+  // (round 21, labhub) ui.js's CodeEditor writes the whole code again as highlighted HTML on each key, and every line
+  // number as an element of its own: each of those elements is matched against all of the app's stylesheets, so a key
+  // cost ~0.3 s in a 2,000-line sketch. This one keeps ui.js's editing (its keys, Tab, comment, auto-close, undo) and
+  // draws differently:
+  //   · the highlighted copy lives in a shadow root, where only its six color rules apply (not the app's CSS),
+  //   · only the lines on screen and a margin around them are highlighted; scrolling past the margin draws the next
+  //     window (a multi-line comment or template string, GLSL in backticks, is never cut in half),
+  //   · the line numbers are one block of text (error lines are the only elements),
+  //   · a key reads no layout: the scroll position comes from the scroll events.
+  const EDIT_MARGIN = 60;
+  // the comments and strings, as md.js's highlighter sees them (words and numbers can't hold a quote or a slash, so
+  // scanning only these finds the same ones)
+  const SPAN_RE = /\/\/[^\n]*|\/\*[\s\S]*?\*\/|`(?:\\[\s\S]|[^`\\])*`|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'/g;
+  const HL_KINDS = ['c', 's', 'n', 'k', 'f', 't'];
+  const hlEditors = new Set();
+  let hlVars = null; let hlSheet = null; let hlWatch = null;
+  // the colors the app's theme gives .hl-* (features.css, forge-skin.css, look.css), read from probes, again when the
+  // theme changes (an attribute on <html>: data-scheme, data-skin, data-look…)
+  function hlTheme() {
+    const box = el('div', { attrs: { 'aria-hidden': 'true' }, style: { position: 'fixed', left: '-9999px', top: '0', visibility: 'hidden' } }, HL_KINDS.map((k) => el('span', { class: `hl-${k}`, text: 'x' })));
+    document.body.append(box);
+    const vars = {};
+    [...box.children].forEach((sp, i) => { const cs = getComputedStyle(sp); vars[`--lab-hl-${HL_KINDS[i]}`] = cs.color; vars[`--lab-hl-${HL_KINDS[i]}-i`] = cs.fontStyle; });
+    box.remove();
+    const same = hlVars && Object.keys(vars).every((k) => hlVars[k] === vars[k]);
+    hlVars = vars;
+    if (!same) for (const ed of hlEditors) ed.paintTheme();
+  }
+  function hlSetup() {
+    if (hlSheet) return;
+    hlSheet = new CSSStyleSheet();
+    hlSheet.replaceSync(HL_KINDS.map((k) => `.hl-${k} { color: var(--lab-hl-${k}); font-style: var(--lab-hl-${k}-i); }`).join('\n'));
+    let q = 0;
+    hlWatch = new MutationObserver(() => { if (!q) q = requestAnimationFrame(() => { q = 0; hlTheme(); }); });
+    hlWatch.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-scheme', 'data-skin', 'data-look', 'data-theme'] });
+    hlTheme();
+  }
+  class LabEditor extends CodeEditor {
+    constructor(parent, opts) {
+      super(parent, opts); // (ui.js's constructor sets the first value; it's drawn below, once this is set up)
+      hlSetup();
+      this.host = el('div', { class: 'lab-hl' });
+      this.pre.replaceChildren(this.host);
+      this.shadow = this.host.attachShadow({ mode: 'open' });
+      this.shadow.adoptedStyleSheets = [hlSheet];
+      this.vw = { a: -1, b: -1, v: null, starts: [0], spans: [], lh: 0, pad: 0, top: null, left: 0, h: 0 };
+      this.gutterTop = null;
+      hlEditors.add(this);
+      this.paintTheme();
+      new ResizeObserver(() => this.draw(false)).observe(this.area);
+      this.refresh(false);
+    }
+    paintTheme() { for (const [k, v] of Object.entries(hlVars || {})) this.host.style.setProperty(k, v); }
+    refresh(changed) {
+      if (!this.shadow) return;
+      this.draw(true, changed); // (a key: the scroll position from the last scroll event, no layout read in the key)
+      if (changed) this.onChange?.(this.area.value);
+    }
+    // the same error lines as before (every run sets them): nothing to redraw
+    setErrorLines(lines) {
+      const next = new Set(lines);
+      if (next.size === this.errors.size && [...next].every((x) => this.errors.has(x))) return;
+      this.errors = next;
+      if (this.shadow) this.paintGutter();
+    }
+    renderGutter() { if (this.shadow) this.paintGutter(); }
+    syncScroll() { if (this.shadow) this.draw(false); }
+    // the window's line numbers: one block of text, an element only for each line with an error
+    paintGutter() {
+      const w = this.vw; if (w.a < 0) return;
+      let g = `<div style="height:${w.a * w.lh}px"></div>`; let run = [];
+      const flush = () => { if (run.length) g += `<div style="white-space:pre">${run.join('\n')}</div>`; run = []; };
+      for (let i = w.a + 1; i <= w.b; i += 1) { if (this.errors.has(i)) { flush(); g += `<div class="err">${i}</div>`; } else run.push(i); }
+      flush();
+      this.gutter.innerHTML = g;
+      this.gutterTop = null; // (new content can move its scroll)
+    }
+    // where each line starts, and the comments / strings that run over several lines (once per text)
+    index(v) {
+      const w = this.vw;
+      if (w.v === v) return;
+      const starts = [0]; let i = -1;
+      while ((i = v.indexOf('\n', i + 1)) >= 0) starts.push(i + 1);
+      const spans = [];
+      SPAN_RE.lastIndex = 0;
+      for (let m = SPAN_RE.exec(v); m; m = SPAN_RE.exec(v)) if (m[0].indexOf('\n') >= 0) spans.push(m.index, m.index + m[0].length);
+      Object.assign(w, { v, starts, spans });
+    }
+    lineAt(off) { const s = this.vw.starts; let lo = 0; let hi = s.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (s[mid] <= off) lo = mid; else hi = mid - 1; } return lo; }
+    // the multi-line span that holds offset `off` inside it → [start, end], else null
+    spanOver(off) {
+      const sp = this.vw.spans; let lo = 0; let hi = sp.length / 2 - 1; let k = -1;
+      while (lo <= hi) { const mid = (lo + hi) >> 1; if (sp[mid * 2] < off) { k = mid; lo = mid + 1; } else hi = mid - 1; }
+      return k >= 0 && sp[k * 2 + 1] > off ? [sp[k * 2], sp[k * 2 + 1]] : null;
+    }
+    draw(force, cached = false) {
+      const w = this.vw; const ar = this.area;
+      if (!w.lh) { w.lh = parseFloat(getComputedStyle(ar).lineHeight) || 19; w.pad = parseFloat(getComputedStyle(this.pre).paddingTop) || 10; cached = false; }
+      if (!cached || w.top == null) { w.top = ar.scrollTop; w.left = ar.scrollLeft; w.h = ar.clientHeight || 600; }
+      const top = w.top; const h = w.h;
+      const first = Math.max(0, Math.floor((top - w.pad) / w.lh)); const last = first + Math.ceil(h / w.lh) + 1;
+      const v = ar.value;
+      if (force || w.v !== v || first < w.a || last > w.b) {
+        this.index(v);
+        const n = w.starts.length;
+        let a = Math.max(0, first - EDIT_MARGIN); let b = Math.min(n, last + EDIT_MARGIN);
+        const over = this.spanOver(w.starts[a]); if (over) a = this.lineAt(over[0]);
+        if (b < n) { const o2 = this.spanOver(w.starts[b] - 1); if (o2) b = Math.min(n, this.lineAt(o2[1]) + 1); }
+        const text = v.slice(w.starts[a], b < n ? w.starts[b] - 1 : v.length);
+        this.shadow.innerHTML = `${highlight(text, this.lang)}\n`;
+        const moved = a !== w.a || b !== w.b; w.a = a; w.b = b;
+        if (moved) this.paintGutter(); // (the line numbers only change with the window)
+      }
+      const tf = `translate(${-w.left}px, ${w.a * w.lh - top}px)`;
+      if (this.pre.style.transform !== tf) this.pre.style.transform = tf;
+      if (this.gutterTop !== top) { this.gutter.scrollTop = top; this.gutterTop = top; }
+    }
+  }
+
+  // (round 21, labhub) the Lab's own dialogs (your sketches, templates, references, history, keys, contact sheet) open
+  // without showModal(): a modal dialog makes the rest of the app inert, which restyles every element of it (~30 ms in
+  // an empty app, hundreds with long chats open) before the dialog shows. They look and close the same: centered over
+  // a dim backdrop, Esc, their buttons, or a click on the backdrop.
+  function openLight(dlg) {
+    dlg.classList.add('lab-light-dlg');
+    const shade = el('div', { class: 'lab-light-shade', on: { pointerdown: (e) => { e.preventDefault(); dlg.close(); } } });
+    const esc = (e) => { if (e.key === 'Escape' && dlg.open) { e.preventDefault(); e.stopPropagation(); dlg.close(); } };
+    dlg.addEventListener('keydown', esc);
+    dlg.addEventListener('close', () => shade.remove(), { once: true });
+    dlg.before(shade);
+    dlg.show();
+    const first = dlg.querySelector('[autofocus], input, button.primary, button');
+    if (!dlg.contains(document.activeElement)) first?.focus({ preventScroll: true });
+  }
+
   // ---------- Sketch tab ----------
   // A sketch is a stack of layers (tools/three-layers.js); a sketch without `layers` is one layer whose
   // code is sketch.code. The editor, sliders and history always show the selected layer.
@@ -233,11 +369,11 @@ const ThreeLab = (() => {
         el('div', { class: 'dialog-actions' }, el('button', { class: 'primary', text: 'Got it', on: { click: () => d.close() } })));
       d.addEventListener('close', () => d.remove());
       d.addEventListener('click', (e) => { if (e.target === d) d.close(); });
-      document.body.append(d); d.showModal();
+      document.body.append(d); openLight(d);
     }
     let split = null;
     const btn = (text, title, fn, cls = 'ghost small') => el('button', { class: cls, text, title, on: { click: fn } });
-    const runBtn = btn('▶ Run', 'Run every layer again from the start (Ctrl+Enter) · Shift+click: restart from scratch', (e) => (e.shiftKey ? restartSim() : run()), 'primary small');
+    const runBtn = btn('▶ Run', 'Run every layer again from the start · Ctrl+Enter in the code: only the layers you changed, in place (nothing changed: every layer) · Shift+click: restart from scratch', (e) => (e.shiftKey ? restartSim() : run()), 'primary small');
     runBtn.dataset.key = 'Ctrl+Enter';
     const restartBtn = btn('⟲', 'Restart from scratch: a fresh page, GPU and sound, for when something bugs out (Ctrl+Shift+Enter)', () => restartSim(), 'ghost small');
     restartBtn.dataset.feature = 'Restart simulation';
@@ -362,15 +498,20 @@ const ThreeLab = (() => {
       consolePeek = null;
       syncConsole();
     }
+    let consoleScroll = 0;
     function syncConsole() {
       const shown = consoleShown();
-      consoleWrap.hidden = !shown;
+      // (round 21) every run calls this: only what changed is written, and the scroll to the newest line waits for the
+      // frame (reading its height here forced a layout of the whole Lab in the middle of each run)
+      if (consoleWrap.hidden !== !shown) consoleWrap.hidden = !shown;
       if (shown) unseen = { errors: 0, other: 0 };
-      consoleBtn.classList.toggle('on', shown);
-      consoleBtn.classList.toggle('has-errors', !shown && unseen.errors > 0);
+      if (consoleBtn.classList.contains('on') !== shown) consoleBtn.classList.toggle('on', shown);
+      const errs = !shown && unseen.errors > 0;
+      if (consoleBtn.classList.contains('has-errors') !== errs) consoleBtn.classList.toggle('has-errors', errs);
       const n = unseen.errors + unseen.other;
-      consoleBtn.textContent = !shown && n ? `Console ${unseen.errors ? '●' : '·'} ${n}` : 'Console';
-      if (shown) consoleBox.scrollTop = consoleBox.scrollHeight;
+      const t = !shown && n ? `Console ${unseen.errors ? '●' : '·'} ${n}` : 'Console';
+      if (consoleBtn.textContent !== t) consoleBtn.textContent = t;
+      if (shown && !consoleScroll) consoleScroll = requestAnimationFrame(() => { consoleScroll = 0; consoleBox.scrollTop = consoleBox.scrollHeight; });
     }
     // Present: just the picture, fullscreen (P · Esc). Space, arrows and cue keys still work.
     const presentBtn = btn('▣ Present', 'Fullscreen preview with nothing else on screen, for showing it off or a second monitor (P · Esc to leave)', () => togglePresent());
@@ -819,7 +960,7 @@ const ThreeLab = (() => {
       if (player.onKey(e)) e.preventDefault();
     });
     toolbar.prepend(codeBtn, slidersBtn, consoleBtn, focusBtn, presentBtn);
-    const editor = new CodeEditor(editorHost, { lang: 'js', onRun: () => run(), onChange: () => { persist(); if (autoRun) autoRunSoon(); } });
+    const editor = new LabEditor(editorHost, { lang: 'js', onRun: () => runChanged(), onChange: () => { persist(); if (autoRun) autoRunSoon(); } });
 
     // ---------- layers ----------
     const layersOf = () => current?.layers || [];
@@ -953,9 +1094,14 @@ const ThreeLab = (() => {
     // keyframed values follow the playhead while the Lab is on screen; the timer stops when it isn't (and
     // 'hearth:view' from start.js starts it again), so a hidden Lab doesn't wake up 10× a second
     let keyTimer = 0;
+    // (round 21) nothing keyframed on the selected layer: nothing to do, not even the visibility check (a style
+    // recalculation of the Lab ten times a second while you drag a slider or type)
     const keyTick = () => {
+      if (parkedNow && !box.onStage) { clearInterval(keyTimer); keyTimer = 0; return; } // the preview isn't on screen (no layout read)
+      const keys = current ? sel()?.keys : null;
+      if (!keys || !Object.values(keys).some((k) => k?.length)) return;
       if (!(split || previewHost).checkVisibility({ visibilityProperty: true }) && !box.onStage) { clearInterval(keyTimer); keyTimer = 0; return; }
-      if (current && sel()?.keys && Object.keys(sel().keys).length) syncKeyUI();
+      syncKeyUI();
     };
     const keyLoop = () => { if (!keyTimer) keyTimer = setInterval(keyTick, 100); };
     keyLoop();
@@ -1153,7 +1299,7 @@ const ThreeLab = (() => {
         el('img', { class: 'sheet-img', src: sheet.dataUrl, alt: 'Contact sheet' }));
       dlg.addEventListener('close', () => dlg.remove());
       document.body.append(dlg);
-      dlg.showModal();
+      openLight(dlg);
     }
 
     // ---------- write button ----------
@@ -1457,7 +1603,7 @@ const ThreeLab = (() => {
       refsDlg.addEventListener('close', () => { refsDlg.remove(); refsDlg = null; });
       document.body.append(refsDlg);
       renderRefsDlg();
-      refsDlg.showModal();
+      openLight(refsDlg);
     }
     function renderRefsDlg() {
       if (!refsGrid) return;
@@ -1607,7 +1753,8 @@ const ThreeLab = (() => {
             box.send({ type: 'tweak-mods', mods: mergedMods() });
           } else box.send(msg);
         },
-        rerun: () => run({ hot: true, layer: id }), // in place (a page that isn't up yet gets a full run anyway)
+        // in place (a page that isn't up yet gets a full run anyway); resolves once that layer has drawn (≤ 1.5 s)
+        rerun: () => (run({ hot: true, layer: id }) ? whenDrawn(id) : null),
         persist: (kind, data) => { const Lx = layerById(id); if (!Lx || !current) return; extrasOf(Lx)[kind] = data; saveExtras(); },
         quickAsk: (text) => askDirector(text === '3 variations to pick from'
           ? `Make 3 clearly different variations of the layer "${layerById(id)?.name}" using only its sliders (three_sliders), no code changes. For each: set the values, save it as a look named "Variation A", "B" or "C" (three_looks), and show it to me with chat_show. Then ask me with chat_ask which one I like (A, B, C or none) and apply that look.`
@@ -1645,7 +1792,11 @@ const ThreeLab = (() => {
     let works = 0; // director tool calls in flight on the scene on screen
     const onThisScene = (chatId) => typeof ChatScenes === 'undefined' || !ChatScenes.linkOf?.(chatId) || ChatScenes.linkOf(chatId) === current?.id;
     const directorWorking = () => works > 0 || [...turns].some(onThisScene);
+    // (round 21) rebuilds wait on these: the layer drew its first new frame, failed, or 1.5 s went by
+    const drawnWaiters = new Map(); // layer id → [resolve]
+    const whenDrawn = (id, ms = 1500) => new Promise((r) => { const l = drawnWaiters.get(id) || []; l.push(r); drawnWaiters.set(id, l); setTimeout(r, ms); });
     function building(id, on) {
+      if (!on && drawnWaiters.has(id)) { const l = drawnWaiters.get(id); drawnWaiters.delete(id); for (const f of l) f(); }
       const was = builds.get(id);
       clearTimeout(was?.t);
       if (on) builds.set(id, { t: setTimeout(() => building(id, false), 6000), loud: Boolean(was?.loud) || directorWorking() });
@@ -2104,7 +2255,9 @@ const ThreeLab = (() => {
     const needSong = () => { if (!player.loaded) ensureTimeline(); if (!player.loaded) throw new Error('Load a song first (🎵 in the timeline, or drop one on the preview)'); };
     api.cmd = {
       get player() { return player; }, // the song / video timeline (tools/three-cmds.js: /song-trim, /cut-loop)
-      get state() { return { sketch: current?.name, layer: sel()?.name, frame: stage.size, frozen: frozenNow, live: liveKind, song: player.loaded ? player.info().file : null, bpm: player.loaded ? player.bpm : liveBpm?.bpm ?? null, playing: player.playing, presenting: document.fullscreenElement === previewHost }; },
+      // (round 21: frame is read when asked for: in 'fit' it measures the preview, a layout right after a scene switch
+      // for readers that only want the name, e.g. speed-resume.js on every switch)
+      get state() { return { sketch: current?.name, layer: sel()?.name, get frame() { return stage.size; }, frozen: frozenNow, live: liveKind, song: player.loaded ? player.info().file : null, bpm: player.loaded ? player.bpm : liveBpm?.bpm ?? null, playing: player.playing, presenting: document.fullscreenElement === previewHost }; },
       run: () => run(), restart: () => restartSim(),
       // a sketch that has a song is still loading it (just opened): wait for it a moment
       waitSong: async () => { for (let i = 0; i < 40 && current && extras[current.id]?.media?.path && !player.loaded; i += 1) await sleep(100); },
@@ -2229,6 +2382,16 @@ const ThreeLab = (() => {
     let ranOnce = false;
     // what the preview runs now (see run()): each layer's code as sent (instrumented for sliders or not), and the sketch
     const ranCode = new Map(); let ranSketch = null;
+    const ranRaw = new Map(); // (round 21) each layer's code as you wrote it, when it last ran (Ctrl+Enter compares)
+    // Ctrl+Enter in the editor: only the layers whose code changed since they last ran run again, in place (the others
+    // keep playing); nothing changed → every layer again, like ▶ Run. A page that isn't up gets a whole run anyway.
+    function runChanged() {
+      if (!current) return false;
+      if (ranSketch !== current.id || !box.ready || box.stale || restartNext) return run();
+      const Ls = layersOf();
+      const changed = Ls.some((L) => ranRaw.get(L.id) !== L.code) || [...ranRaw.keys()].some((id) => !layerById(id));
+      return changed ? run({ sync: true }) : run();
+    }
     let rebuildWaiting = false;
     // Per-sketch looks and music links for the sliders, song, frame size and selected layer.
     let extras = {};
@@ -2416,7 +2579,7 @@ const ThreeLab = (() => {
         el('div', { class: 'dialog-actions' }, el('span', { class: 'spacer' }), el('button', { type: 'submit', text: 'Close' }), restoreBtn)));
       dlg.addEventListener('close', () => dlg.remove());
       document.body.append(dlg);
-      dlg.showModal();
+      openLight(dlg);
     }
 
     // Full runs reload the preview with every layer; hot runs (slider rebuilds, live code, a new layer)
@@ -2766,8 +2929,9 @@ const ThreeLab = (() => {
         for (const id of [...builds.keys()]) if (!layerById(id)) building(id, false);
         for (const L of layersOf()) building(L.id, true);
       }
-      if (!partial) ranCode.clear();
-      for (const L of rerun) ranCode.set(L.id, codeOf(L));
+      if (!partial) { ranCode.clear(); ranRaw.clear(); }
+      for (const L of rerun) { ranCode.set(L.id, codeOf(L)); ranRaw.set(L.id, L.code); }
+      for (const id of gone) ranRaw.delete(id);
       ranSketch = current.id;
       if (editOn && !partial && sel()) box.send({ type: 'edit', cmd: 'on', layer: sel().id });
       if (fresh) box.send(capMsg());
@@ -2874,7 +3038,7 @@ const ThreeLab = (() => {
       dlg.addEventListener('close', () => dlg.remove());
       document.body.append(dlg);
       fill();
-      dlg.showModal();
+      openLight(dlg);
       q.focus();
     }
     function renderPicker() {
@@ -2979,7 +3143,7 @@ const ThreeLab = (() => {
         el('div', { class: 'dialog-actions' }, el('span', { class: 'spacer' }), el('button', { type: 'submit', text: 'Cancel' }))));
       dlg.addEventListener('close', () => dlg.remove());
       document.body.append(dlg);
-      dlg.showModal();
+      openLight(dlg);
     }
     function exportHtml() {
       if (layersOf().length > 1) { toast('Export HTML works for one-layer sketches. For layered ones, use ⏺ Record (it records every layer with the music).', { type: 'error', timeout: 6000 }); return; }

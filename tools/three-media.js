@@ -1530,7 +1530,10 @@ const ThreeMedia = (() => {
     const sizes = { cw: 0, ch: 0, mw: 0, mh: 0, cOk: false, mOk: false };
     const cW = () => (sizes.cOk ? sizes.cw : canvas.clientWidth); const cH = () => (sizes.cOk ? sizes.ch : canvas.clientHeight);
     const mW = () => (sizes.mOk ? sizes.mw : minimap.clientWidth); const mH = () => (sizes.mOk ? sizes.mh : minimap.clientHeight);
-    const shown = () => (sizes.cOk ? sizes.cw > 0 && sizes.ch > 0 : Boolean(canvas.offsetParent)); // the timeline is on screen (display: none → 0 × 0)
+    // (round 21, labhub) …and not in a tool behind another one: a hidden tool keeps its size (visibility: hidden), so
+    // the size alone kept the timeline drawing, writing its time and flashing the beat ~15 times a second for nobody
+    let onScreen = true;
+    const shown = () => onScreen && (sizes.cOk ? sizes.cw > 0 && sizes.ch > 0 : Boolean(canvas.offsetParent)); // the timeline is on screen (display: none → 0 × 0)
     const ghostHint = {}; // lane → right edge (px) of its "✦ N found · keep them" note, for clicks
     const laneTop = (h) => h - shownLanes().length * LANE_H - tracksH();
     let raf = 0;
@@ -1550,11 +1553,24 @@ const ThreeMedia = (() => {
     let lastMiniKey = '';
     let lastFull = 0;
     let tickHidden = false;
+    const checkOnScreen = () => {
+      const v = canvas.checkVisibility ? canvas.checkVisibility({ visibilityProperty: true }) : true;
+      if (v === onScreen) return;
+      onScreen = v;
+      if (v && tickHidden && (st.playing || recording)) { cancelAnimationFrame(raf); raf = requestAnimationFrame(tick); } // one full paint, then on
+    };
+    // (a way back on screen that sends none of these events can't leave it stopped: a look once a second while parked)
+    let parkT = 0;
+    const parkWatch = () => { if (parkT) return; parkT = setInterval(() => { checkOnScreen(); if (raf || !tickHidden || !(st.playing || recording)) { clearInterval(parkT); parkT = 0; } }, 1000); };
+    addEventListener('hearth:view', () => setTimeout(checkOnScreen, 0));
+    document.addEventListener('hearth:activate', () => setTimeout(checkOnScreen, 0));
+    document.addEventListener('visibilitychange', () => checkOnScreen());
     function tick() {
       // (round 16 "labperf": with the Lab behind another tool the timeline isn't drawn, its time isn't written and the
       // playheads aren't placed, 10 times a second for nothing; the beat still ticks for the click track. Back on
       // screen: one full paint.)
-      if (!shown() && !recording && !dragging) { tickHidden = true; if (gridView.click) beatTick(); raf = requestAnimationFrame(tick); return; }
+      // (round 21: without the click track nothing ticks at all while hidden; showing the Lab again starts it)
+      if (!shown() && !recording && !dragging) { tickHidden = true; if (gridView.click) { beatTick(); raf = requestAnimationFrame(tick); } else { raf = 0; parkWatch(); } return; }
       if (tickHidden) { tickHidden = false; paint(); return; }
       beatTick();
       if (dragging) { paint(); return; }
