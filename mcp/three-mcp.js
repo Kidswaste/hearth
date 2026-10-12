@@ -103,7 +103,7 @@ references {action: list|add|rename|remove|palette, path, name, to, from, colors
 triggers {set} · media_info · load_media {path} · set_frame {size: fit|9:16|16:9|1:1|4:5} · new_sketch {name, code}
 run {command: "/make-it-react"} a chat command · task {todo} this chat's task state
 footage {action, frame} frames + cuts · sequence {op} scenes / footage / titles on a video timeline
-motion {op, preset, words} motion design, webcam in · model {op} 3D models · comp {op} other chats' scenes as layers, parts to other chats · make {op: plan|list, text} · asset {op} asset library · type {op} text, lyrics`,
+motion {op, preset, words} motion design, webcam in · model {op} 3D models · comp {op} other chats' scenes as layers, parts to other chats · make {op: plan|list, text} · asset {op} asset library · type {op} text, lyrics · physics {op}`,
   inputSchema: { type: 'object', properties: { cmd: { type: 'string' } }, required: ['cmd'] },
 };
 
