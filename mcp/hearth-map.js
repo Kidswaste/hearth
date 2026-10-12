@@ -36,7 +36,7 @@ const TOPICS = {
   Footage: /footage [go f120|step n|cut|delete|scenes], /match-pacing <clip>, /ref-frames <clip>.
   Nodes: /nodes, /nodes-layer <preset>, /nodes-presets.
   Director: /undo-edit, /redo-edit (you: three_do undo; three_edit_code safe: true), /director-engine claude|astra, /handoff, /task, /director-cost, /director-mode lean|full, /nodes-director on|off.
-  Together: /jam (Claude ⇄ Astra build a visual in turns), /opinion (second opinion).
+  Together: /jam (Claude ⇄ Astra build a visual in turns), /opinion (second opinion), /crew 3 <brief> (2–6 helpers explore variations of a scene in parallel; cost shown first; pick, undo, keep; three_do crew when /crew on).
   Sequence: /sequence, /sequence-render. Everything else: /help <area>.
   Flows (help flows): most commands sit in the owner's flows; /flow-status says where they are, /flow-step <answer> moves one.
   Speed: /again [n|list] repeats the owner's last command or button; /resume [chat|lab|render|flow] picks up where he left off; /habits now|fix|restore; /macro learned|keys (his one-key macros).

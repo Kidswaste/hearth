@@ -20,12 +20,12 @@
 const ThreeCrew = (() => {
   const MIN = 2; const MAX = 6; const DEF = 3;
   const CALLS = 4; // tool calls per helper (said in its brief; Hearth stops it at CALLS + 2)
-  const BUDGET = 20000; // tokens per helper (input + output): estimated live, the helper is stopped past it
+  const BUDGET = 24000; // tokens per helper (input + output): estimated live, the helper is stopped past it
   const STEP_S = 9; // ≈ seconds per model step on a real engine (one inference + its tool call)
   const AVG_CTX = 450; // ≈ tokens each step adds to the context (a code edit + its short result)
   const OUT_EACH = 900; // ≈ output tokens per helper (the code it writes + one line)
   const ROLE_TOK = 60; // the helper's role line (engines.js options.crew)
-  const CODE_MAX = 12000; // the scene's code goes into the brief up to this many characters (saves a read step)
+  const CODE_MAX = 6000; // the scene's code goes into the brief up to this many characters (saves a read step)
   const TIMEOUT = 6 * 60000;
   const THUMB = 240;
   const ANGLES = [
@@ -223,9 +223,12 @@ ${codeBlock(c.base)}`;
     const c = h.crew;
     if (c.status === 'running' && c.helpers.every((x) => x.status !== 'running' && x.status !== 'waiting')) settle(c);
   }
-  function settle(c) {
-    c.status = c.helpers.some((h) => h.stopWhy === 'stopped') ? 'stopped' : 'done';
+  async function settle(c) {
+    if (c.settling) return;
+    c.settling = true;
     c.ms = Date.now() - c.startedAt;
+    await Promise.all(c.helpers.map((h) => refreshThumb(h).catch(() => {}))); // the last picture of each, as it ended
+    c.status = c.helpers.some((h) => h.stopWhy === 'stopped') ? 'stopped' : 'done';
     for (const h of c.helpers) { byHelper.delete(h.id); h.stage?.dispose(); h.stage = null; } // GPU back
     Panel.paint();
     toast(`Crew ${c.status === 'stopped' ? 'stopped' : 'done'}: ${c.helpers.filter(usable).length} variation${c.helpers.filter(usable).length === 1 ? '' : 's'} · ${fmtK(total(c))} tokens · pick one in the grid`, { timeout: 5000 });

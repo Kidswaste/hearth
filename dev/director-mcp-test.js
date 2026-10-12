@@ -39,6 +39,15 @@ const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (
   const cx = engines.codexArgs({ ...dir, engine: 'codex', hubTools: true, hubChatId: 'td-abc' }, {}, {}).join(' ');
   check(/mcp_servers\.three\.env=\{[^}]*HUB_CHAT_ID="td-abc"[^}]*HUB_NODES_TOOL="1"/.test(cx) && /mcp_servers\.chat\./.test(cx), 'Astra director: -c mcp_servers with the chat id, the node tool and the chat tools');
   check(!/react to the loaded music through the audio globals/.test(engines.buildPrompt({ ...dir, toolMode: 'full' })), 'full mode: no "always react to the music" rule');
+  // (round 22, labcrew) a crew helper: six tools, no guide, a short prompt; the chat's /crew on adds one line, only then
+  const cr = await F.mcpClient({ command: process.execPath, args: [path.join(root, 'mcp', 'three-mcp.js')], env: { HUB_TOOL_MODE: 'crew' } });
+  const crTok = Math.round(JSON.stringify(cr.tools).length / 4);
+  check(cr.tools.length === 6 && !cr.tools.some((t) => t.name === 'three_do') && !cr.instructions && crTok < 800, `crew helper: ${cr.tools.length} tools, ${crTok} tokens, no guide`);
+  cr.close();
+  const crewAgent = { ...dir, toolMode: 'crew', nodesTool: false };
+  const cp = engines.buildPrompt(crewAgent);
+  check(engines.hubToolEnv(crewAgent).HUB_TOOL_MODE === 'crew' && !engines.hubToolEnv(crewAgent).HUB_NODES_TOOL && /SKETCH = layers/.test(cp) && !/HEARTH \(the owner's app/.test(cp), 'crew helper prompt: the sketch rules, no app map, HUB_TOOL_MODE=crew');
+  check(!/three_do crew/.test(pc) && /three_do crew/.test(engines.buildPrompt({ ...dir, crewOn: true })), 'the crew line only with /crew on');
   const f = await F.mcpClient({ command: process.execPath, args: [path.join(root, 'mcp', 'forge-game-mcp.js')] });
   check(f.tools.some((t) => t.name === 'forge_patch') && !f.tools.some((t) => /saved game state/.test(t.description)), `forge: ${f.tools.length} tools, guide not repeated in descriptions`);
   f.close();

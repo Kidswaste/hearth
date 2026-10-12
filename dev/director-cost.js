@@ -18,8 +18,8 @@ for (const s of r.sets) console.log(`${pad(s.key, 14)}${pad(s.server, 18)}${num(
 console.log('\nDirectors (tool sets + their system-prompt part):');
 for (const d of r.directors) console.log(`  ${pad(d.name, 18)} ${num(d.total)} tokens  (${d.parts.map((p) => `${p.what} ${p.tokens}`).join(', ')})`);
 // the opt-in modes, for comparison
-const extra = cost.report([{ ...cost.DIRECTORS[0], name: 'Three (full)', toolMode: 'full' }, { ...cost.DIRECTORS[0], name: 'Three (no nodes)', nodesTool: false }]);
-for (const d of extra.directors) console.log(`  ${pad(d.name, 18)} ${num(d.total)} tokens  (${/full/.test(d.name) ? 'opt-in' : '/nodes-director off'})`);
+const extra = cost.report([{ ...cost.DIRECTORS[0], name: 'Three (full)', toolMode: 'full' }, { ...cost.DIRECTORS[0], name: 'Three (no nodes)', nodesTool: false }, { ...cost.DIRECTORS[0], name: 'Three (/crew on)', crewOn: true }, { ...cost.DIRECTORS[0], name: 'Crew helper', toolMode: 'crew', nodesTool: false, chatTools: false }]);
+for (const d of extra.directors) console.log(`  ${pad(d.name, 18)} ${num(d.total)} tokens  (${/full/.test(d.name) ? 'opt-in' : /crew on/.test(d.name) ? 'opt-in: the director may deploy a crew' : /Crew/.test(d.name) ? 'per step of each crew helper (+ ≈ 60 role line)' : '/nodes-director off'})`);
 if (args.includes('--tools')) {
   for (const s of r.sets) {
     console.log(`\n${s.server}:`);
