@@ -141,7 +141,8 @@ const ChatLive = (() => {
       acts = el('span', { class: 'live-acts' },
         el('button', { type: 'button', text: 'Wait', title: 'Keep waiting (asks again in 2 min)', on: { click: () => wait(chatId) } }),
         el('button', { type: 'button', text: 'Stop', title: 'Stop this reply (what it wrote stays)', on: { click: () => agentId && Native.stop(agentId) } }),
-        el('button', { type: 'button', text: 'Stop & retry from here', title: 'Stop, then ask it to continue from where it was', on: { click: () => agentId && unstick(agentId) } }));
+        el('button', { type: 'button', text: 'Stop & retry from here', title: 'Stop, then ask it to continue from where it was', on: { click: () => agentId && unstick(agentId) } }),
+        window.DevReportHooks ? el('button', { type: 'button', class: 'live-report', text: '⚑', title: 'Report this stall to the developer (you review it first)', on: { click: () => DevReportHooks.report({ kind: 'stall', agentId, chatId, status: describe(chatId) || stall }) } }) : null); // (round 21, devreport)
       st.append(acts);
     } else if (!stall && acts) acts.remove();
   }

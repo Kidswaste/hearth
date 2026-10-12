@@ -1,0 +1,7 @@
+/* Report to the developer (round 21, devreport): the review dialog (loaded with devreport.js) */
+.devreport-dlg { width: min(720px, calc(100vw - 32px)); max-width: 720px; }
+.devreport-dlg form { max-height: calc(100vh - 60px); overflow-y: auto; gap: 10px; }
+.devreport-dlg .dr-title { font-size: 14px; }
+.devreport-dlg .dr-body { min-height: 240px; max-height: 48vh; font: 12px/1.45 var(--mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); white-space: pre-wrap; overflow-wrap: anywhere; }
+.devreport-dlg .dr-how { margin: 0; }
+.devreport-dlg .dialog-actions .spacer { flex: 1; }

@@ -176,7 +176,7 @@ const gameTools = (agent) => hubToolsets(agent).includes('gameTools');
 const nodesOn = (agent) => Boolean(agent.threeTools) && agent.nodesTool !== false;
 // What every hub MCP server gets: Node mode, the agent (for chat_ tools), opt-ins that change the tool list.
 // HUB_CHAT_ID: the chat this run answers, so a director's tool calls reach that chat's own scene (chat-scenes.js).
-const hubToolEnv = (agent, key) => ({ ...(key === 'openTool' ? { HUB_CHAT_ONLY: 'chat_open' } : {}), ELECTRON_RUN_AS_NODE: '1', HUB_AGENT_ID: agent.id, ...(agent.hubChatId ? { HUB_CHAT_ID: agent.hubChatId } : {}), ...(agent.engine === 'codex' ? { HUB_PARTNER: 'Claude' } : {}), ...(nodesOn(agent) ? { HUB_NODES_TOOL: '1' } : {}), ...(agent.toolMode === 'full' ? { HUB_TOOL_MODE: 'full' } : {}) });
+const hubToolEnv = (agent, key) => ({ ...(key === 'openTool' ? { HUB_CHAT_ONLY: 'chat_open' } : {}), ELECTRON_RUN_AS_NODE: '1', HUB_AGENT_ID: agent.id, ...(agent.hubChatId ? { HUB_CHAT_ID: agent.hubChatId } : {}), ...(agent.engine === 'codex' ? { HUB_PARTNER: 'Claude' } : {}), ...(nodesOn(agent) ? { HUB_NODES_TOOL: '1' } : {}), ...(agent.toolMode === 'full' ? { HUB_TOOL_MODE: 'full' } : {}), ...(agent.reportTool === false ? { HUB_NO_REPORT: '1' } : {}) });
 // One file per run, removed when that run ends: a retry of the same chat (a lost session, an option the CLI doesn't
 // know) starts while the previous run is still closing, and a shared file was deleted under the new run
 // ("Invalid MCP configuration: … not found").
