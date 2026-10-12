@@ -130,7 +130,7 @@ function crewPlan(msg) {
   const seed = i * 5 + 1;
   const broken = /crew-break/.test(msg) && i === 2;
   // an upper layer, as the guide asks: transparent (alpha: true, no background)
-  const code = jamSketch(seed, broken).replace('{ antialias: true }', '{ antialias: true, alpha: true }').replace(/^scene\.background = .*\n/m, '').replace(/\bglow\b/g, 'crewTint'); // (its own slider key: the orb starter's "glow" is a number)
+  const code = jamSketch(seed, broken).replace('{ antialias: true }', '{ antialias: true, alpha: true }').replace(/^scene\.background = .*\n/m, '').replace(/\bglow\b/g, 'crewTint').replace(/\bpunch\b/g, 'crewPunch').replace(/\bspin\b/g, 'crewSpin'); // (its own slider keys: the orb starter's sliders keep their values on the layer)
   const calls = [['three_set_code', { code, wait: 0.6 }]];
   if (/crew-slow/.test(msg)) calls.push(['sleep', 30000]);
   calls.push(['three_screenshot', { size: 'small' }]);
