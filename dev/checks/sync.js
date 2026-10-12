@@ -39,6 +39,7 @@ const mine = { id: 'synctest-mine', agentId: claude.id, title: 'Mine before sync
 await window.hub.saveChat(mine);
 await window.hub.fs.write(`${CLOUD}/.keep`, '');
 await run(`/sync on ${CLOUD}`);
+await window.hub.sync.autoResolve(false); // (round 26) conflicts stay for the choices below; settled by themselves is tested at the end of section 4
 await until(() => Sync.status().state === 'synced', 20000);
 step('turned on: synced, the dot shows', Sync.status().state === 'synced' && dot()?.dataset.state === 'synced', Sync.status());
 const pushed = await window.hub.fs.stat(F('chats/synctest-mine.json')).catch(() => null);
@@ -97,6 +98,29 @@ await wait(200);
 await Sync.now();
 await until(() => Sync.status().state === 'synced', 8000);
 step('resolved: synced again', Sync.status().state === 'synced' && dot()?.dataset.state === 'synced');
+
+// 4b. (round 26) "Settle all for me" + ↻ Refresh in the conflicts view, then settled by themselves after a sync
+await api.ack();
+const sa2 = await window.hub.getChat('synctest-mine');
+await window.hub.saveChat({ ...sa2, title: 'Second here' });
+const sc2 = JSON.parse(await window.hub.fs.read(F('chats/synctest-mine.json')));
+await window.hub.fs.write(F('chats/synctest-mine.json'), JSON.stringify({ ...sc2, title: 'Second on the Mac' }));
+await settle(); await Sync.now();
+await until(() => Sync.status().state === 'conflict', 8000);
+const scd = await Sync.conflicts();
+const settleBtn = [...scd.querySelectorAll('.sync-bulk button')].find((b) => /Settle all/.test(b.textContent));
+step('conflicts view: Settle all, Newest, this computer\'s, ↻ Refresh, settle by themselves', Boolean(settleBtn) && [...scd.querySelectorAll('button')].some((b) => /Refresh/.test(b.textContent)) && Boolean(scd.querySelector('.sync-auto input')));
+await click(settleBtn); await wait(900);
+step('Settle all: none left, the list says so', !(await window.hub.sync.conflicts()).length && /No conflicts/.test(scd.textContent), scd.querySelector('h2')?.textContent);
+scd.close(); await wait(200);
+await window.hub.sync.autoResolve(true);
+const sa3 = await window.hub.getChat('synctest-mine');
+await window.hub.saveChat({ ...sa3, title: 'Third here' });
+const sc3 = JSON.parse(await window.hub.fs.read(F('chats/synctest-mine.json')));
+await window.hub.fs.write(F('chats/synctest-mine.json'), JSON.stringify({ ...sc3, title: 'Third on the Mac' }));
+await settle(); await Sync.now(); await wait(600);
+step('settled by themselves after a sync (a calm toast, no conflict left)', Sync.status().conflicts === 0 && recentToasts().some((t) => /settled .* by itself/.test(t.message)), Sync.status());
+
 
 // 5. pause / resume from the dot's menu
 await click('#sync-dot', { right: true });

@@ -806,3 +806,6 @@ Right-click ⋯ in a chat for the old quick menu (rename, export, delete…).
 
 ### ◎ Missions
 The ◎ button by the chat box (and the top of ⋯) picks what your next message becomes: Just answer · Split it up (it deploys helper agents) · Swarm (several AIs answer, a chair merges; in the Lab, a crew of 4 explores variations) · Answer, then review (the other AI checks it) · Debate · Side by side (Claude and Astra) · Jam (a music visual in the Lab, taking turns) · Pair on code · Ask everyone. A click is for the next message only; 📌 keeps it from now on; right-click ◎ goes back to a normal reply. Your words go out as written.
+
+## Sync conflicts settle themselves (round 26)
+After each sync, conflicts settle by themselves: chats, scenes and settings merge (everything from both computers, the newer one winning where a field differs); pictures and files keep the newer version. A calm toast says how many, with Deleted files one click away (every other version waits there 30 days). The conflicts view has **✓ Settle all for me**, **Newest wins, all**, **This computer's, all**, **↻ Refresh**, and the switch "Settle new conflicts by themselves". Right-click the sync dot: **Settle all conflicts for me**.

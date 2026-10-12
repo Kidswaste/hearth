@@ -477,6 +477,30 @@ async function main() {
     const kc = (await RP.e.conflicts()).find((c) => c.rel === 'chats/r9.json');
     if (kc) await RP.e.resolve(kc.id, 'mine');
     ok(kc && (await RP.e.trash()).some((t) => t.rel === 'chats/r9.json' && t.where === 'cloud'), '"Keep this one": the other version waits in Deleted files under its real name');
+    // (round 26) settle them all: data merged (both sides' messages stay), files: the newer one wins; nothing lost
+    await settle(RM, RP);
+    W(RM.p('chats/r7.json'), JSON.stringify(chat('r7', [msg('user', 1, 'a')]), null, 2)); W(RM.p('workspace/stoop-ronin/todo.md'), 'v0');
+    await settle(RM, RP);
+    const s1 = J(RM.p('chats/r7.json')); s1.title = 'Mac 7'; s1.messages.push(msg('user', 5, 'mac 7')); W(RM.p('chats/r7.json'), JSON.stringify(s1, null, 2));
+    const s2 = J(RP.p('chats/r7.json')); s2.title = 'PC 7'; s2.messages.push(msg('user', 6, 'pc 7')); W(RP.p('chats/r7.json'), JSON.stringify(s2, null, 2)); bump(RP.p('chats/r7.json'));
+    W(RM.p('workspace/stoop-ronin/todo.md'), 'mac todo'); W(RP.p('workspace/stoop-ronin/todo.md'), 'pc todo, newer'); bump(RP.p('workspace/stoop-ronin/todo.md'));
+    await RP.e.pass(); await RM.e.pass();
+    const many = await RM.e.conflicts();
+    const ra = await RM.e.resolveAll('auto');
+    const m7 = J(RM.p('chats/r7.json'));
+    ok(many.length >= 2 && ra.done === many.length && !(await RM.e.conflicts()).length, `"Settle all": ${ra.done} of ${many.length} settled, none left`);
+    ok(m7.messages.some((x) => x.text === 'mac 7') && m7.messages.some((x) => x.text === 'pc 7'), '"Settle all": a chat merges (messages from both stay)');
+    ok(R(RM.p('workspace/stoop-ronin/todo.md')) === 'pc todo, newer', '"Settle all": a file: the newer one wins');
+    ok((await RM.e.trash()).some((t) => t.rel === 'workspace/stoop-ronin/todo.md'), '"Settle all": the other version waits in Deleted files');
+    // settled by themselves after a pass (autoResolve on)
+    await settle(RM, RP);
+    let told = null;
+    const RA = RM.make({ autoResolve: () => true, onAutoResolved: (r) => { told = r; } });
+    W(RM.p('workspace/stoop-ronin/todo.md'), 'mac again'); W(RP.p('workspace/stoop-ronin/todo.md'), 'pc again, newer'); bump(RP.p('workspace/stoop-ronin/todo.md'));
+    await RP.e.pass(); const ap = await RA.pass();
+    ok(told?.done >= 1 && ap.conflicts === 0 && ap.state !== 'conflict', `conflicts settle by themselves after a sync (${told?.done}, state ${ap.state})`);
+    await settle(RM, RP);
+
     // the big-change guard lists every file by name
     for (let i = 0; i < 30; i++) W(RM.p(`workspace/bulk/f${i}.txt`), `f${i}`);
     await settle(RM, RP);

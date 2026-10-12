@@ -80,6 +80,7 @@ const Sync = (() => {
     if (st.state === 'offline' && st.error === 'missing') out.push({ label: 'Start the cloud copy again from this computer', action: () => now({ fresh: true }) });
     out.push({ label: 'Sync now', action: () => now() });
     if (st.conflicts) out.push({ label: `Conflicts…`, hint: String(st.conflicts), action: () => conflicts() });
+    if (st.conflicts) out.push({ label: 'Settle all conflicts for me', action: async () => { const r = await api().resolveAll('auto'); if (r?.ok) toast(`Settled ${r.done} conflict${r.done === 1 ? '' : 's'}${r.failed ? ` (${r.failed} need you)` : ''}. Undo from Deleted files.`, { timeout: 5000, action: { label: 'Deleted files', fn: () => trash() } }); refresh(); } });
     if (st.cloudOnly?.length) out.push({ label: `Download ${st.cloudOnly.length} file${st.cloudOnly.length === 1 ? '' : 's'} only in the cloud`, action: () => download() });
     out.push({ label: st.paused ? 'Resume sync' : 'Pause sync', action: () => pause(!st.paused) });
     out.push({ label: MAC ? 'Show the cloud folder in Finder' : 'Open the cloud folder', action: () => api().open() });
@@ -294,14 +295,39 @@ const Sync = (() => {
       picks.clear();
       const left = await api().conflicts();
       full.splice(0, full.length, ...(await Promise.all(left.slice(0, 30).map((c) => api().preview?.(c.id).catch(() => null)))).map((p, i) => p || left[i]));
-      draw(full); paint(); refresh();
+      draw(full); paint(); setTitle(); bulk.hidden = !full.length; refresh();
       if (fails.length) toast(fails[0], { type: 'error' });
       if (done) toast(`Done: ${said}. Undo any of it from Deleted files.`, { timeout: 5000, action: { label: 'Deleted files', fn: () => trash() } });
     });
-    draw(full); paint();
-    dialog.append(el('form', { method: 'dialog' }, el('h2', { text: list.length ? `${list.length} thing${list.length === 1 ? ' was' : 's were'} changed on both computers` : 'Sync conflicts' }),
-      list.length ? el('p', { class: 'hint', text: `Both versions are kept until you choose which one wins, on ${HERE_NAME} and on ${[...new Set(full.map(thereName))].join(', ')}.` }) : null,
-      rows, list.length ? summary : null,
+    // (round 26) all at once: settle them for me (data merged, files newest wins) / newest / this computer's; ↻ refresh
+    const title = el('h2');
+    const setTitle = () => { title.textContent = full.length ? `${full.length} thing${full.length === 1 ? ' was' : 's were'} changed on both computers` : 'Sync conflicts'; };
+    const reload = async () => {
+      const left = await api().conflicts();
+      full.splice(0, full.length, ...(await Promise.all(left.slice(0, 30).map((c) => api().preview?.(c.id).catch(() => null)))).map((p, i) => p || left[i]));
+      picks.clear(); draw(full); paint(); setTitle(); bulk.hidden = !full.length; refresh();
+    };
+    const all = async (mode, label) => {
+      for (const b of bulk.querySelectorAll('button')) b.disabled = true;
+      const r = await api().resolveAll(mode).catch((err) => ({ ok: false, error: err.message }));
+      for (const b of bulk.querySelectorAll('button')) b.disabled = false;
+      if (!r?.ok) { toast(r?.error || 'Could not settle them', { type: 'error' }); return; }
+      await reload();
+      toast(`${label}: ${r.done} settled${r.failed ? `, ${r.failed} left (pick those by hand)` : ''}. Undo any of it from Deleted files.`, { timeout: 6000, action: { label: 'Deleted files', fn: () => trash() } });
+    };
+    const autoBox = el('input', { type: 'checkbox' });
+    api().autoResolve?.().then((on) => { autoBox.checked = on !== false; }).catch(() => {});
+    autoBox.addEventListener('change', () => api().autoResolve?.(autoBox.checked));
+    const bulk = el('div', { class: 'sync-bulk', hidden: !full.length },
+      el('button', { type: 'button', class: 'primary', text: '✓ Settle all for me', title: 'Chats, scenes and settings: merged (everything from both, the newer one wins where they differ). Pictures and files: the newer one wins. The other versions wait in Deleted files for 30 days.', on: { click: () => all('auto', 'Settled') } }),
+      el('button', { type: 'button', class: 'ghost small', text: 'Newest wins, all', title: 'For every conflict, keep the version edited last', on: { click: () => all('newest', 'Newest kept') } }),
+      el('button', { type: 'button', class: 'ghost small', text: `${HERE_NAME}'s, all`, title: `For every conflict, keep the version on ${HERE_NAME}`, on: { click: () => all('mine', `${HERE_NAME}'s kept`) } }));
+    const refreshBtn = el('button', { type: 'button', class: 'ghost small', text: '↻ Refresh', title: 'Sync now and list the conflicts again', on: { click: async () => { refreshBtn.disabled = true; try { await api().now?.({}); } catch { /* listed anyway */ } await reload(); refreshBtn.disabled = false; } } });
+    draw(full); paint(); setTitle();
+    dialog.append(el('form', { method: 'dialog' }, el('div', { class: 'sync-conf-head' }, title, refreshBtn),
+      list.length ? el('p', { class: 'hint', text: `Both versions are kept until one wins, on ${HERE_NAME} and on ${[...new Set(full.map(thereName))].join(', ')}.` }) : null,
+      bulk, rows, list.length ? summary : null,
+      el('label', { class: 'hint sync-auto' }, autoBox, ' Settle new conflicts by themselves (data merged, files newest wins; undo from Deleted files)'),
       el('div', { class: 'dialog-actions' }, el('span', { class: 'spacer' }), el('button', { type: 'button', text: list.length ? 'Later' : 'Done', on: { click: () => dialog.close() } }), list.length ? apply : null)));
     dialog.addEventListener('close', () => setTimeout(() => dialog.remove(), 0));
     document.body.append(dialog);
@@ -487,6 +513,8 @@ const Sync = (() => {
     if (!api()) return;
     api().onStatus((s) => { st = s; mountDot(); for (const f of listeners) { try { f(); } catch { listeners.delete(f); } } });
     api().onPulled((list) => onPulled(list).catch(() => {}));
+    // (round 26) conflicts settled by themselves after a sync: one quiet line, undo one click away
+    api().onAutoResolved?.((r) => { if (r?.done) toast(`Sync settled ${r.done} conflict${r.done === 1 ? '' : 's'} by itself (data merged, files: the newer one). Undo from Deleted files.`, { timeout: 5000, action: { label: 'Deleted files', fn: () => trash() } }); refresh(); });
     api().ack(); // this window just read everything fresh
     registerCommands();
     registerBackground();

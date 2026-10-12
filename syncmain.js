@@ -55,6 +55,8 @@ function start() {
     log: (...a) => { if (process.env.HEARTH_SYNC_LOG) console.log('sync:', ...a); },
     onStatus: (st) => { lastStatus = st; send('sync:status', publicStatus()); },
     onPulled: (list) => send('sync:pulled', list),
+    autoResolve: () => settings.autoResolve !== false, // (round 26) conflicts settle by themselves unless turned off
+    onAutoResolved: (r) => send('sync:auto-resolved', r),
     // iCloud ".icloud" stubs can't be read: ask iCloud for them (Mac), at most once in ten minutes per file
     requestDownload: (file) => {
       if (process.platform !== 'darwin') return;
@@ -191,6 +193,8 @@ function register(ipcMain, win, o) {
   h('sync:big', (on) => { settings = { ...settings, big: Boolean(on) }; saveSettings(); engine?.set({ big: Boolean(on) }); schedule(0, 'big'); return publicStatus(); });
   h('sync:conflicts', async () => (engine ? engine.conflicts() : []));
   h('sync:resolve', async (id, keep) => { if (!engine) return { ok: false, error: 'Sync is off' }; const r = await engine.resolve(String(id), ['theirs', 'both', 'merge'].includes(keep) ? keep : 'mine'); schedule(500, 'resolve'); return r; });
+  h('sync:resolveAll', async (mode) => { if (!engine) return { ok: false, error: 'Sync is off' }; const r = await engine.resolveAll(['auto', 'newest', 'mine', 'theirs'].includes(mode) ? mode : 'auto'); schedule(500, 'resolve-all'); return { ok: true, ...r }; });
+  h('sync:autoResolve', (on) => { if (on !== undefined) { settings = { ...settings, autoResolve: Boolean(on) }; saveSettings(); } return settings.autoResolve !== false; });
   h('sync:preview', async (id) => (engine ? engine.preview(String(id)) : null)); // (round 19) both sides of a conflict
   h('sync:trash', async () => (engine ? engine.trash() : []));
   h('sync:restore', async (id, ro) => { if (!engine) return { ok: false, error: 'Sync is off' }; const r = await engine.restore(String(id), { replace: Boolean(ro?.replace) }); schedule(500, 'restore'); return r; });

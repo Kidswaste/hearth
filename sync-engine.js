@@ -789,7 +789,12 @@ function createEngine(o) {
     await flushJournal().catch((err) => log('journal', err.message));
     await writeMachine(false).catch(() => {});
     if (now() - (state.purgedAt || 0) > 864e5) await purge().catch(() => {});
-    const conflicts = await listConflicts();
+    let conflicts = await listConflicts();
+    // (round 26) settled by themselves (o.autoResolve, on by default): data merged, files newest wins, losers in the trash
+    if (conflicts.length && o.autoResolve?.()) {
+      const r = await resolveAll('auto').catch((err) => { log('auto-resolve', err.message); return null; });
+      if (r?.done) { o.onAutoResolved?.(r); conflicts = await listConflicts(); }
+    }
     const offline = !(await exists(cloudRoot));
     if (!offline && !pending && !status.held) state.lastOk = now();
     return finish({ state: offline ? 'offline' : status.held ? 'held' : conflicts.length ? 'conflict' : pending ? 'pending' : 'synced', pending, conflicts: conflicts.length, cloudOnly: cloudOnly.slice(0, 200), skippedBig, unreadable, error: '' }, t0);
@@ -905,6 +910,22 @@ function createEngine(o) {
     if (pulledNow.length) { o.onPulled?.(pulledNow.slice()); pulledNow = []; }
     return { ok: true, rel: rec.rel, made };
   }
+  // (round 26) the owner: "try and resolve conflicts by yourself, or give me the option to clear them all".
+  // auto: data (chats, scenes, settings) merges: everything from both, the newer side winning where a field differs;
+  // whole files (pictures, videos): the newer one wins. 'newest' / 'mine' / 'theirs' apply that to every conflict.
+  // Every loser waits in Deleted files (30 days), as with a choice made by hand.
+  const newerSide = (rec) => ((rec.theirsAt || 0) > (rec.oursAt || 0) ? 'theirs' : 'mine');
+  const autoPick = (rec) => (rec.kind === 'json' ? 'merge' : newerSide(rec));
+  async function resolveAll(mode = 'auto') {
+    const out = { done: 0, failed: 0, by: {}, rels: [] };
+    for (const rec of await listConflicts()) {
+      let keep = mode === 'auto' ? autoPick(rec) : mode === 'newest' ? newerSide(rec) : mode === 'theirs' ? 'theirs' : 'mine';
+      let r = await resolve(rec.id, keep).catch((err) => ({ ok: false, error: err.message }));
+      if (!r?.ok && keep === 'merge') { keep = newerSide(rec); r = await resolve(rec.id, keep).catch((err) => ({ ok: false, error: err.message })); }
+      if (r?.ok) { out.done += 1; out.by[keep] = (out.by[keep] || 0) + 1; out.rels.push(rec.rel); } else { out.failed += 1; log('resolve-all', rec.rel, r?.error); }
+    }
+    return out;
+  }
   // this computer's version, before a choice replaces it: a copy in data/sync/trash under its real name (Deleted files)
   async function keepHere(rel, file) {
     if (!statSync(file)) return;
@@ -986,7 +1007,7 @@ function createEngine(o) {
 
   return {
     pass, stop: () => { stopping = true; }, status: publicStatus, set: (patch) => Object.assign(o, patch), option: (k) => o[k], machine: () => ({ ...machine }),
-    conflicts: listConflicts, resolve, preview, incoming, trash: listTrash, restore, guardWrite, relOfLocal,
+    conflicts: listConflicts, resolve, resolveAll, preview, incoming, trash: listTrash, restore, guardWrite, relOfLocal,
     ackPulled: (rels) => { if (!rels) pulledPrev.clear(); else for (const r of rels) pulledPrev.delete(r); },
     hasPulled: (rel) => pulledPrev.has(rel),
     peers: async () => { await readPeers(); return peers; },

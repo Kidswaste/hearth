@@ -43,3 +43,9 @@
 .sync-sum { margin: 8px 0 0; font-weight: 600; }
 .sync-held-group { margin: 8px 0; display: flex; flex-direction: column; gap: 4px; }
 .sync-held-group .sync-rows { max-height: 220px; overflow: auto; }
+/* (round 26) settle all at once, refresh, settle by themselves */
+.sync-conf-head { display: flex; align-items: center; gap: 10px; }
+.sync-conf-head h2 { flex: 1; }
+.sync-bulk { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 10px; }
+.sync-bulk[hidden] { display: none; }
+.sync-auto { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
