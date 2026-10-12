@@ -21,10 +21,26 @@
   if (params.get('dpr')) { const dpr = Number(params.get('dpr')); Object.defineProperty(window, 'devicePixelRatio', { get: () => dpr }); }
   const V = params.get('v') || '0.186.1';
   const base = `https://cdn.jsdelivr.net/npm/three@${V}`;
+  // (round 21 "labgpu") 'three' is a tiny module in front of three.js: everything is three.js itself, except that a
+  // WebGLRenderer made by a layer may get a WebGL context the page already has (one a re-run or a switched-away
+  // scene let go: see "context pool"), so a re-run or a scene switch doesn't wait for a new GPU context (≈ 250 ms
+  // here per context with a software GPU, tens of ms on a real one). Layer code doesn't change: same classes, same API.
+  const real = `${base}/build/three.module.js`;
+  let threeUrl = real;
+  try {
+    const shim = `export * from '${real}';\nimport { WebGLRenderer as R } from '${real}';\nexport class WebGLRenderer extends R { constructor(p = {}) { const c = p && !p.canvas && !p.context && globalThis.__labPoolTake ? globalThis.__labPoolTake(p) : null; super(c ? { ...p, canvas: c } : p); } }\n`;
+    if (params.get('pool') !== '0') threeUrl = URL.createObjectURL(new Blob([shim], { type: 'text/javascript' }));
+  } catch { threeUrl = real; }
   const im = document.createElement('script');
   im.type = 'importmap';
-  im.textContent = JSON.stringify({ imports: { three: `${base}/build/three.module.js`, 'three/addons/': `${base}/examples/jsm/`, 'three/examples/jsm/': `${base}/examples/jsm/` } });
+  im.textContent = JSON.stringify({ imports: { three: threeUrl, 'three/addons/': `${base}/examples/jsm/`, 'three/examples/jsm/': `${base}/examples/jsm/` } });
   document.currentScript.after(im);
+  // three.js starts downloading while the page is still parsed (the module graph is fetched once per page; re-runs and
+  // scene switches in this page reuse it)
+  for (const u of [real, `${base}/build/three.core.js`]) {
+    if (u.endsWith('core.js') && !(Number(/^0\.(\d+)\./.exec(V)?.[1]) >= 176)) continue; // (three.core.js exists from r176)
+    const l = document.createElement('link'); l.rel = 'modulepreload'; l.href = u; l.crossOrigin = 'anonymous'; document.head.append(l);
+  }
 
   const post = (msg) => (window.__stageHost ? window.__stageHost.post({ source: 'three-sandbox', ...msg }) : parent.postMessage({ source: 'three-sandbox', ...msg }, '*'));
   // In the Stage window an exact frame size (fw × fh) is rendered at full size and scaled to fit the window.
@@ -1869,11 +1885,14 @@ const lab3d = (() => {
     });
 
     const v = new THREE.Vector3(); const look = new THREE.Vector3();
+    // (round 21 "labgpu": colors reused, the layer's clock read without building the whole `layer` object every frame)
+    const skyCol = new THREE.Color(); const fogCol = new THREE.Color();
     function frame() {
       if (S.gone) return;
       requestAnimationFrame(frame); // (the sandbox's frames: hidden / frozen / off-time layers wait)
-      const L = globalThis.layer;
-      const t = L ? (L.scene ?? L.time) : performance.now() / 1000;
+      const lt = globalThis.__layerClock ? globalThis.__layerClock(id) : null;
+      const L = lt == null ? globalThis.layer : null;
+      const t = lt != null ? lt : L ? (L.scene ?? L.time) : performance.now() / 1000;
       const dt = S.t == null ? 0 : t - S.t; S.t = t;
       // look: lights, sky, ground, fog, effects
       const lk = String(val(P, 'light', 'studio'));
@@ -1892,11 +1911,11 @@ const lab3d = (() => {
       const gk = String(val(P, 'ground', 'shadow'));
       if (gk !== S.groundKey) buildGround(gk);
       const sky = String(val(P, 'sky', 'clear'));
-      scene.background = sky === 'hdri' && S.hdriBg ? S.hdriBg : sky === 'color' ? new THREE.Color(val(P, 'skyColor', '#101014')) : null;
+      scene.background = sky === 'hdri' && S.hdriBg ? S.hdriBg : sky === 'color' ? skyCol.set(val(P, 'skyColor', '#101014')) : null;
       scene.backgroundBlurriness = num(P, 'skyBlur', 0.2);
       if ('environmentIntensity' in scene) scene.environmentIntensity = (Lp.env ?? 1) * num(P, 'env', 1);
       const fog = num(P, 'fog', 0);
-      if (fog > 0) { const fc = new THREE.Color(val(P, 'fogColor', Lp.fogTint || '#101014')); if (!scene.fog) scene.fog = new THREE.FogExp2(fc, 0); scene.fog.color.copy(fc); scene.fog.density = fog * 0.25 / sz; } else scene.fog = null;
+      if (fog > 0) { const fc = fogCol.set(val(P, 'fogColor', Lp.fogTint || '#101014')); if (!scene.fog) scene.fog = new THREE.FogExp2(fc, 0); scene.fog.color.copy(fc); scene.fog.density = fog * 0.25 / sz; } else scene.fog = null;
       const bloom = num(P, 'bloom', 0); const dof = num(P, 'dof', 0);
       buildFx(bloom, dof);
       if (!S.loaded) { renderer.render(scene, camera); return; }
@@ -1936,7 +1955,8 @@ const lab3d = (() => {
       camera.position.copy(v);
       if (on(P, 'aim', true)) camera.lookAt(look.set(num(P, 'x', 0), cy + num(P, 'aimY', 0) * S.size * sc, num(P, 'z', 0)));
       else { camera.rotation.set(0, orb, 0); }
-      camera.near = Math.max(0.005, d / 200); camera.far = d * 60 + 50; camera.updateProjectionMatrix();
+      const near = Math.max(0.005, d / 200); const far = d * 60 + 50;
+      if (camera.near !== near || camera.far !== far) { camera.near = near; camera.far = far; camera.updateProjectionMatrix(); }
       if (on(P, 'faceCamera', false)) rig.lookAt(camera.position.x, rig.position.y, camera.position.z);
       if (S.bokeh) { S.bokeh.uniforms.focus.value = d; S.bokeh.uniforms.aperture.value = dof * 0.00015 / Math.max(0.2, sc); }
       if (S.bloom) S.bloom.strength = bloom;
@@ -2034,7 +2054,7 @@ function setParked(on) {
   if (!on) { const q = parkQ.splice(0); for (const fn of q) realRAF(fn); }
 }
 // what the preview saved (shown by /lab perf): renderers of gone modules dropped, filter merges skipped / done, passes skipped
-const perfNote = { stale: 0, composed: 0, reused: 0, passSkipped: 0 };
+const perfNote = { stale: 0, composed: 0, reused: 0, passSkipped: 0, pooled: 0, poolHit: 0, poolMiss: 0, fused: 0, direct: 0, warm: 0 };
 // frame work: every render() of one displayed frame (and the filters' merges) adds up here; the last 120 frames
 let frameWork = 0; let frameCalls = 0; let lastCalls = 0; const workRing = [];
 function capOk(t) {
@@ -2052,8 +2072,31 @@ let shotTag = null; // echoed with the picture (the Lab's automatic thumbnails u
 const renderers = new Set(); // every renderer the current sketch made, so a re-run can dispose them
 function instrument(renderFn) {
   return function render(scene, camera) {
+    if (this.__stale) return; // (round 21: a gone module's renderer draws nothing, and isn't counted back in)
     // the user's placements from the scene editor, then (while editing this layer) the editor camera
     const EL = this.__layer && layers.get(this.__layer);
+    // (round 21 "labgpu") a new renderer whose layer is still covered by its old picture (a re-run's cross-fade, a scene
+    // switch's cover): its shaders compile in the background first (KHR_parallel_shader_compile, compileAsync) while
+    // the old picture stays, instead of the page stopping on its first frame until every shader is linked
+    this.__renders = (this.__renders || 0) + 1;
+    if (this.__warm !== true) {
+      if (this.__warm === 'pending') { this.__lastSkip = [scene, camera]; return; }
+      this.__warm = true;
+      if (EL && !fullRes() && !SQ.off && (EL.pics?.length || stackWait) && typeof this.compileAsync === 'function' && this.extensions?.has?.('KHR_parallel_shader_compile')) {
+        this.__warm = 'pending'; this.__lastSkip = [scene, camera];
+        // (a sketch that draws once, with no frame loop, gets its one frame drawn when the shaders are ready)
+        const done = () => {
+          if (this.__warm !== 'pending') return;
+          this.__warm = true;
+          const n = this.__renders;
+          realRAF(() => realRAF(() => { const sk = this.__lastSkip; this.__lastSkip = null; if (sk && this.__renders === n && !this.__stale) { try { this.render(sk[0], sk[1]); } catch { /* gone */ } } }));
+        };
+        try { this.compileAsync(scene, camera).then(done, done); } catch { done(); }
+        realSetTimeout(done, 1500);
+        perfNote.warm += 1;
+        if (this.__warm === 'pending') return;
+      }
+    }
     if (EL?.props?.overrides) applyOverrides(EL, scene, camera);
     camera = editCamera(this, scene, camera);
     // adaptive resolution (see adaptQuality): the sketch's own pixel ratio × the current quality
@@ -2112,14 +2155,112 @@ for (const m of ['setClearColor', 'setClearAlpha']) {
 // layers can be merged into one picture for recordings and screenshots).
 const realGetContext = HTMLCanvasElement.prototype.getContext;
 let glRefs = []; // WeakRefs to the WebGL contexts made here (__labHealth counts the ones still alive)
-const glAlive = () => { glRefs = glRefs.filter((w) => { const c = w.deref(); return c && !c.isContextLost(); }); return glRefs.length; };
+const glAlive = () => { glRefs = glRefs.filter((w) => { const c = w.deref(); return c && !c.isContextLost(); }); let n = 0; for (const w of glRefs) if (!w.deref().__pooled) n += 1; return n; };
 HTMLCanvasElement.prototype.getContext = function (type, opts) {
   const gl3d = /^(webgl2?|experimental-webgl)$/.test(type);
   if (mode === 'sketch' && gl3d) opts = { ...(opts || {}), alpha: true, preserveDrawingBuffer: true };
   const ctx = realGetContext.call(this, type, opts);
-  if (gl3d && ctx && !ctx.__counted) { ctx.__counted = true; glRefs.push(new WeakRef(ctx)); if (glRefs.length > 64) glAlive(); }
+  if (gl3d && ctx && !ctx.__counted) {
+    ctx.__counted = true; glRefs.push(new WeakRef(ctx)); if (glRefs.length > 64) glAlive();
+    if (mode === 'sketch' && typeof WebGL2RenderingContext !== 'undefined' && ctx instanceof WebGL2RenderingContext) { trackGL(ctx); this.__gl = ctx; }
+  }
   return ctx;
 };
+// ---------- context pool (round 21 "labgpu") ----------
+// A layer that re-ran, or a scene switched away, used to lose its WebGL context (forceContextLoss) and the new code
+// made a new one: ≈ 250 ms on the test machine's software GPU (measured by dev/checks/labperf.js), a GPU-process
+// round trip and a fresh drawing buffer on a real one, while the old picture waited. Now the context goes to a small
+// pool instead: everything the old code made on it (buffers, textures, programs, framebuffers…) is deleted, its state
+// put back to the defaults, its listeners taken off, its drawing buffer shrunk to 1 × 1, and the next layer renderer
+// asking for the same kind of context (antialias, depth, stencil…) gets it (the 'three' module in front of three.js,
+// see the import map). At most 3 wait (1 in Light mode), none longer than 20 s; then they're let go for real.
+const GL_KINDS = ['Buffer', 'Framebuffer', 'Program', 'Renderbuffer', 'Shader', 'Texture', 'VertexArray', 'Query', 'Sampler', 'TransformFeedback'];
+function trackGL(ctx) {
+  const objs = new Map(); ctx.__objs = objs; ctx.__del = {};
+  for (const k of GL_KINDS) {
+    const mk = ctx[`create${k}`]; const del = ctx[`delete${k}`];
+    if (typeof mk !== 'function' || typeof del !== 'function') continue;
+    ctx.__del[k] = del;
+    ctx[`create${k}`] = function (...a) { const o = mk.apply(ctx, a); if (o) objs.set(o, k); return o; };
+    ctx[`delete${k}`] = function (o) { objs.delete(o); return del.call(ctx, o); };
+  }
+}
+const POOL = []; // { key, cv, gl, timer }
+const POOL_MAX = () => (lightMode ? 1 : 3);
+const POOL_IDLE = 20000;
+// the context attributes a renderer will ask for (three.js' own defaults: stencil was on before r163)
+function poolWant(p = {}) {
+  const st = p.stencil ?? (Number(THREE.REVISION) < 163);
+  return `${p.antialias ? 1 : 0}${p.depth === false ? 0 : 1}${st ? 1 : 0}${p.premultipliedAlpha === false ? 0 : 1}${p.failIfMajorPerformanceCaveat ? 1 : 0}`;
+}
+function poolKeyOf(gl) {
+  const a = gl.getContextAttributes?.() || {};
+  return `${a.antialias ? 1 : 0}${a.depth ? 1 : 0}${a.stencil ? 1 : 0}${a.premultipliedAlpha ? 1 : 0}${a.failIfMajorPerformanceCaveat ? 1 : 0}`; // (the browser reports its own powerPreference)
+}
+function poolEvict(e) {
+  const i = POOL.indexOf(e); if (i >= 0) POOL.splice(i, 1);
+  realClearTimeout(e.timer);
+  e.cv.__letGo = true; e.gl.__pooled = false;
+  try { e.gl.getExtension('WEBGL_lose_context')?.loseContext(); } catch { /* gone */ }
+}
+// a layer's `new THREE.WebGLRenderer(p)` (through the 'three' module): a pooled canvas of the same kind, or null
+globalThis.__labPoolTake = (p) => {
+  if (mode !== 'sketch' || !POOL.length) return null;
+  const st = new Error().stack;
+  if (staleStack(st) || !(layerOfStack(st) || ctxLayer)) return null; // (only the layers' own renderers)
+  const want = poolWant(p);
+  const e = POOL.find((x) => x.key === want);
+  if (!e) { perfNote.poolMiss += 1; return null; }
+  POOL.splice(POOL.indexOf(e), 1);
+  realClearTimeout(e.timer);
+  if (e.gl.isContextLost()) return null;
+  e.gl.__pooled = false;
+  e.cv.width = 300; e.cv.height = 150; // (what a new canvas starts at)
+  perfNote.poolHit += 1;
+  return e.cv;
+};
+// what a re-run / removed layer's renderer does with its context: back to the pool when it can, lost otherwise
+function letGoRenderer(r) {
+  try { r.setAnimationLoop(null); } catch { /* gone */ }
+  const cv = r.domElement; const gl = cv?.__gl;
+  const ok = mode === 'sketch' && gl && gl.__objs && !r.__stale && !r.__noPool && POOL_MAX() > 0 && !gl.isContextLost() && r.getContext?.() === gl;
+  if (!ok) {
+    if (cv) cv.__letGo = true;
+    try { r.dispose(); r.forceContextLoss(); } catch { /* gone */ }
+    cv?.remove();
+    return;
+  }
+  try { r.setRenderTarget(null); r.resetState(); } catch { /* an old three.js */ }
+  try { r.dispose(); } catch { /* gone */ }
+  // the old code may still hold the renderer: it draws nothing from now on
+  const noop = () => {};
+  for (const m of ['render', 'setSize', 'setPixelRatio', 'setViewport', 'clear', 'setAnimationLoop', 'setRenderTarget']) { try { r[m] = noop; } catch { /* read-only */ } }
+  try {
+    for (const [o, k] of [...gl.__objs]) { try { gl.__del[k].call(gl, o); } catch { /* gone */ } }
+    gl.__objs.clear();
+    gl.bindVertexArray(null);
+    const n = gl.getParameter(gl.MAX_VERTEX_ATTRIBS);
+    for (let i = 0; i < n; i += 1) { gl.disableVertexAttribArray(i); gl.vertexAttribDivisor(i, 0); }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+    gl.useProgram(null); gl.activeTexture(gl.TEXTURE0);
+    gl.colorMask(true, true, true, true); gl.depthMask(true); gl.stencilMask(0xffffffff);
+    gl.disable(gl.SCISSOR_TEST); gl.clearColor(0, 0, 0, 0); gl.clearDepth(1); gl.clearStencil(0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+  } catch { if (cv) cv.__letGo = true; try { r.forceContextLoss?.(); } catch {} cv?.remove(); return; }
+  // its listeners (OrbitControls and the like) and attributes go: the canvas comes back like a new one
+  for (const [type, fn, o] of cv.__lis || []) cv.removeEventListener(type, fn, o);
+  cv.__lis = null;
+  cv.remove();
+  for (const a of [...cv.attributes]) cv.removeAttribute(a.name);
+  cv.width = 1; cv.height = 1; cv.__skip = false; cv.__letGo = false;
+  gl.__pooled = true;
+  const e = { key: poolKeyOf(gl), cv, gl, timer: 0 };
+  e.timer = realSetTimeout(() => poolEvict(e), POOL_IDLE);
+  POOL.push(e);
+  perfNote.pooled += 1;
+  while (POOL.length > POOL_MAX()) poolEvict(POOL[0]);
+}
 // Adaptive resolution: when the preview can't keep up (frames dropping: the GPU is busy drawing a big frame size),
 // it draws at a lower internal resolution, step by step down to half, and climbs back when there's headroom. The
 // picture on screen keeps its size (the canvas is scaled). Stills, screenshots and recordings always draw at full
@@ -2410,6 +2551,13 @@ function graph() {
   gainNode.connect(actx.destination);
 }
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
+let demoT = null;
+function demoFill() {
+  if (demoT == null) return;
+  const t = demoT; demoT = null;
+  for (let i = 0; i < freq.length; i += 1) freq[i] = 255 * clamp01((i < 40 ? bands.bass : i < 300 ? bands.mid : bands.treble) * (1 - i / 1400));
+  for (let i = 0; i < wave.length; i += 1) wave[i] = Math.sin(i / 18 + t * 8) * bands.level * 0.6;
+}
 function update() {
   const now = realNow();
   if (now - lastUpdate < 8) return;
@@ -2425,11 +2573,10 @@ function update() {
     bands.mid = 0.3 + 0.15 * Math.sin(t * 1.3);
     bands.treble = 0.2 + 0.1 * Math.sin(t * 3.1);
     bands.level = 0.3 + 0.35 * bands.beat;
-    for (let i = 0; i < freq.length; i += 1) freq[i] = 255 * clamp01((i < 40 ? bands.bass : i < 300 ? bands.mid : bands.treble) * (1 - i / 1400));
-    for (let i = 0; i < wave.length; i += 1) wave[i] = Math.sin(i / 18 + t * 8) * bands.level * 0.6;
+    demoT = t; // (round 21: the demo spectrum / waveform, 3 000 numbers, are filled only when a sketch reads them)
     return;
   }
-  simulated = false;
+  simulated = false; demoT = null;
   if (remoteFreq) { freq.set(remoteFreq.subarray(0, freq.length)); wave.set(remoteWave.subarray(0, wave.length)); } else { analyser.getByteFrequencyData(freq); analyser.getFloatTimeDomainData(wave); }
   const hz = (remoteFreq ? remoteRate : actx.sampleRate) / 2048;
   const avg = (lo, hi) => {
@@ -2488,11 +2635,11 @@ const audio = {
   get mid() { update(); return bands.mid; },
   get treble() { update(); return bands.treble; },
   get beat() { update(); return bands.beat; },
-  get spectrum() { update(); return freq; },
-  get waveform() { update(); return wave; },
+  get spectrum() { update(); demoFill(); return freq; },
+  get waveform() { update(); demoFill(); return wave; },
   // Average of a frequency range, 0..1 (e.g. audio.band(40, 90) for the kick).
   band(lo, hi) {
-    update();
+    update(); demoFill();
     const hz = (actx?.sampleRate || 48000) / 2048;
     let s = 0; let n = 0;
     for (let i = Math.max(1, Math.floor(lo / hz)); i <= Math.min(freq.length - 1, Math.ceil(hi / hz)); i += 1) { s += freq[i]; n += 1; }
@@ -3292,6 +3439,7 @@ function layerState(id) {
     document.body.appendChild(box);
     L = { id, gen: 0, box, renderers: new Set(), tweakSets: [], props: { visible: true, opacity: 1, blend: 'normal', z: layers.size }, slot: 0, url: null };
     layers.set(id, L);
+    layerVer += 1;
   }
   return L;
 }
@@ -3424,7 +3572,9 @@ function layerMix(L) {
   if (p.out != null && p.fadeOut > 0) k = Math.min(k, (p.out - t) / p.fadeOut);
   return Math.max(0, Math.min(1, k)) * Math.max(0, Math.min(1, op));
 }
-const xform = (L) => ({ x: prop(L, 'x', 0), y: prop(L, 'y', 0), scale: prop(L, 'scale', 1), rotate: prop(L, 'rotate', 0) });
+// (round 21 "labgpu": one scratch object, read at once by every caller: no object per layer per frame)
+const XF = { x: 0, y: 0, scale: 1, rotate: 0 };
+const xform = (L) => { XF.x = prop(L, 'x', 0); XF.y = prop(L, 'y', 0); XF.scale = prop(L, 'scale', 1); XF.rotate = prop(L, 'rotate', 0); return XF; };
 function styleLayer(L) {
   const p = L.props;
   // while editing one layer's scene, the others fade back
@@ -3434,21 +3584,30 @@ function styleLayer(L) {
   if (s.display !== disp) s.display = disp;
   const vis = L.seqHide ? 'hidden' : '';
   if (s.visibility !== vis) s.visibility = vis;
-  const op = String(Math.round(mix * 1000) / 1000);
-  if (s.opacity !== op) s.opacity = op;
+  const opn = Math.round(mix * 1000) / 1000;
+  if (L.opSet !== opn) { L.opSet = opn; const op = String(opn); if (s.opacity !== op) s.opacity = op; }
   const bl = BLEND_CSS[p.blend] || 'normal';
   if (s.mixBlendMode !== bl) s.mixBlendMode = bl;
   const { x, y, scale, rotate } = xform(L);
-  const tf = x || y || scale !== 1 || rotate ? `translate(${x}%, ${y}%) rotate(${rotate}deg) scale(${scale})` : '';
-  if (s.transform !== tf) s.transform = tf;
-  const z = String(p.z ?? 0);
-  if (s.zIndex !== z) s.zIndex = z;
+  // (round 21: the transform text is built only when one of its numbers moved; z-index likewise)
+  if (L.tfX !== x || L.tfY !== y || L.tfS !== scale || L.tfR !== rotate) {
+    L.tfX = x; L.tfY = y; L.tfS = scale; L.tfR = rotate;
+    const tf = x || y || scale !== 1 || rotate ? `translate(${x}%, ${y}%) rotate(${rotate}deg) scale(${scale})` : '';
+    if (s.transform !== tf) s.transform = tf;
+  }
+  if (L.zSet !== p.z) { L.zSet = p.z; const z = String(p.z ?? 0); if (s.zIndex !== z) s.zIndex = z; }
   // (labcut) a sequence clip's color look: one SVG color matrix (a precomp sets its own filter)
   if (!L.pc) { const fl = p.seqFilter || ''; if (s.filter !== fl) s.filter = fl; }
   L.box.classList.toggle('interactive', Boolean(p.selected));
   if (L.pc) pcStyle(L);
 }
-const ordered = () => [...layers.values()].sort((a, b) => (a.props.z ?? 0) - (b.props.z ?? 0));
+// (round 21: the sorted list is kept until a layer comes, goes or gets new props: it was sorted afresh several times a
+// frame, by every filter and every merge)
+let layerVer = 0; let ordVer = -1; let ordC = [];
+function ordered() {
+  if (ordVer !== layerVer || ordC.length !== layers.size) { ordC = [...layers.values()].sort((a, b) => (a.props.z ?? 0) - (b.props.z ?? 0)); ordVer = layerVer; }
+  return ordC;
+}
 // A layer's own canvases (not the picture of its previous version fading out over it, see "live edits")
 // (a precomp's box holds its layers' boxes: their canvases are theirs)
 const layerCanvases = (L) => [...L.box.querySelectorAll('canvas')].filter((cv) => !cv.classList.contains('lab-xfade') && (!PC.list.size || cv.closest('.lab-layer') === L.box));
@@ -3498,6 +3657,7 @@ let compRec = null; // the merged canvas being recorded
 // Runs first in every frame (it was registered before any layer), so animated sliders are set before layers draw.
 function compositorTick() {
   realRAF(compositorTick);
+  fxPlanGen += 1; // (a new frame: which filters draw inside which is worked out again, see "merged filter passes")
   if (parked && !compRec) return; // (nothing draws: the layers' looks wait too)
   for (const L of layers.values()) { applySliderKeys(L); styleLayer(L); }
   if (PC.list.size) pcManage();
@@ -3508,6 +3668,18 @@ realRAF(compositorTick);
 // scene (the scene's own timeline: the Lab timeline (its song, footage or the scene's own clock), or inside a Lab
 // sequence the scene's time from its clip, so node graphs move the same in the Lab and in the sequence; null with
 // nothing loaded: the layer's own clock then) }
+// (round 21) the time `layer.scene ?? layer.time` gives, for a layer by id: per-frame readers (model layers) skip
+// building the whole object and reading the call stack
+globalThis.__layerClock = (id) => {
+  const L = layers.get(id);
+  if (!L) return null;
+  const p = L.props;
+  const t = p.pcOf ? keyTime(L) : SQ.on ? SQ.T : mediaEl ? mediaEl.currentTime : performance.now() / 1000;
+  if (p.pcOf) return t;
+  if (p.seqT0 != null) return (t - p.seqT0) * (p.seqRate || 1);
+  if (mediaEl) return t;
+  return p.in != null ? t - p.in : t;
+};
 Object.defineProperty(globalThis, 'layer', {
   configurable: true,
   get() {
@@ -5345,10 +5517,14 @@ const FILTER_VERT = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec
 // opaque, untransformed filter below L are skipped: that filter's output already covers them.
 // (round 16: at the filter's own drawing size, W × H, which follows the preview's adaptive resolution; and only when
 // something under it changed: `key` is what it merged last time, the new key comes back, null = merged nothing new)
+// (round 21 "labgpu": into the layer's own reused list, no new arrays per frame)
 function belowOf(L) {
   const z = L.props.z ?? 0;
+  const pc = L.props.pcOf || null;
+  const below = L.belowList || (L.belowList = []);
+  below.length = 0;
   // (inside a precomp: the layers below it in that precomp's scene)
-  const below = ordered().filter((B) => B !== L && (B.props.z ?? 0) < z && (B.props.pcOf || null) === (L.props.pcOf || null));
+  for (const B of ordered()) if (B !== L && (B.props.z ?? 0) < z && (B.props.pcOf || null) === pc) below.push(B);
   let from = 0;
   for (let i = below.length - 1; i > 0; i -= 1) {
     const B = below[i];
@@ -5356,23 +5532,48 @@ function belowOf(L) {
     const t = xform(B);
     if (!t.x && !t.y && !t.rotate && t.scale === 1) { from = i; break; }
   }
-  return from ? below.slice(from) : below;
+  if (from) below.splice(0, from);
+  return below;
 }
 // what the merge of these layers depends on: when each last drew (WebGL layers; anything else, a 2D canvas, the DOM,
-// a precomp, counts as changed every frame), its mix, place and blend
-function belowKey(list, W, H) {
-  let k = `${W}x${H}`;
+// a precomp, counts as changed every frame), its mix, place and blend. (round 21: kept as numbers in the filter's own
+// array and compared in place, instead of a new text key per filter per frame) → true: nothing changed since last time
+function belowSame(L, list, W, H) {
+  const a = L.belowKey || (L.belowKey = []);
+  let i = 0; let same = true;
+  const put = (v) => { if (a[i] !== v) { a[i] = v; same = false; } i += 1; };
+  put(W); put(H); put(list.length);
   for (const B of list) {
-    if (!B.renderers.size || B.pc) return null;
+    if (!B.renderers.size || B.pc) { a.length = 0; return false; }
     const t = xform(B);
-    k += `|${B.id}:${B.drewTick ?? -1}:${layerMix(B).toFixed(3)}:${t.x},${t.y},${t.scale},${t.rotate}:${B.props.blend || ''}:${B.fxSkip ? 1 : 0}`;
+    put(B); put(B.gen); put(B.drewTick ?? -1); put(Math.round(layerMix(B) * 1000)); put(t.x); put(t.y); put(t.scale); put(t.rotate); put(B.props.blend || ''); put(B.fxSkip ? 1 : 0); put(B.props.seqFilter || '');
   }
-  return k;
+  if (a.length !== i) { a.length = i; same = false; }
+  return same;
 }
-function compositeBelow(L, c, W = Math.round(innerWidth * devicePixelRatio), H = Math.round(innerHeight * devicePixelRatio), key = undefined) {
+// The picture under a filter, as its texture's source: the one WebGL canvas under it as it is, when it shows plainly
+// (fully, not moved, normal blend: a scene under a filter, a filter under another), no merge at all (round 21); else
+// the merge of everything under it on a 2D canvas (c). → { image, premul } or null when nothing under it changed.
+const FX_SRC = { image: null, premul: false };
+// checks (dev/checks/labgpu.js) turn the round-21 shortcuts off to compare pictures: window.__labGpu.set({ fuse, direct })
+const GPU_OPT = { fuse: true, direct: true };
+window.__labGpu = { set: (o) => { Object.assign(GPU_OPT, o); fxPlanGen += 1; for (const L of layers.values()) if (L.belowKey) L.belowKey.length = 0; return { ...GPU_OPT }; },
+  probe: (n = 32) => { const c = composite(null, 1, { w: n, h: n }); return [...c.getContext('2d').getImageData(0, 0, n, n).data].filter((_, i) => i % 4 !== 3).join(); }, // (text: checks get arrays cut short)
+  info: () => ({ ...GPU_OPT, pool: POOL.length, note: { ...perfNote }, fused: [...layers.values()].filter((L) => L.fxInto).map((L) => [L.id, L.fxInto.id]), contexts: glAlive(), gpuMB: gpuEstimate() }) };
+function filterSource(L, c, W, H, force) {
   const list = belowOf(L);
-  const k = key === undefined ? null : belowKey(list, W, H);
-  if (k && k === key) { perfNote.reused += 1; return null; }
+  if (!force && belowSame(L, list, W, H)) { perfNote.reused += 1; return null; }
+  if (GPU_OPT.direct && list.length === 1 && !list[0].pc && list[0].renderers.size && fxPlain(list[0])) {
+    const B = list[0];
+    let only = null; let n = 0;
+    for (const cv of B.box.getElementsByTagName('canvas')) { if (cv.classList.contains('lab-xfade') || cv.__skip) continue; n += 1; only = cv; }
+    if (n === 1 && only.__gl && only.width > 1 && only.height > 1) { perfNote.direct += 1; FX_SRC.image = only; FX_SRC.premul = true; return FX_SRC; }
+  }
+  compositeBelow(L, c, W, H, list);
+  FX_SRC.image = c; FX_SRC.premul = false;
+  return FX_SRC;
+}
+function compositeBelow(L, c, W = Math.round(innerWidth * devicePixelRatio), H = Math.round(innerHeight * devicePixelRatio), list = belowOf(L)) {
   perfNote.composed += 1;
   if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
   const g = c.getContext('2d');
@@ -5382,7 +5583,7 @@ function compositeBelow(L, c, W = Math.round(innerWidth * devicePixelRatio), H =
   g.fillStyle = '#000';
   g.fillRect(0, 0, W, H);
   for (const B of list) drawLayer2D(g, B, W, H);
-  return k || '';
+  return c;
 }
 function glyphAtlas(chars) {
   const list = [...chars];
@@ -5444,6 +5645,84 @@ function setFilterMusic(uniforms, t) {
   uniforms.uDrop.value = Number.isFinite(sd) ? Math.exp(-sd / 0.6) : 0;
   uniforms.uBeatPhase.value = audio.beatPhase || 0;
 }
+// (round 21 "labgpu") the uniform each P key feeds, found once (the per-frame update built a `u_<key>` name per key per
+// frame); a color is converted again only when its text changed
+function fxRefs(P, uniforms, pre = 'u_') {
+  return Object.keys(P).map((k) => ({ k, u: uniforms[`${pre}${k}`], hex: null }));
+}
+function setFxParams(def, P, refs) {
+  for (let i = 0; i < refs.length; i += 1) {
+    const r = refs[i]; const v = P[r.k]; const u = r.u;
+    if (!u) continue;
+    if (typeof v === 'number') u.value = v;
+    else if (typeof v === 'boolean') u.value = v ? 1 : 0;
+    else if (typeof v === 'string' && v.startsWith('#')) { if (!u.value?.isVector3) { u.value = new THREE.Vector3(); r.hex = null; } if (r.hex !== v) { r.hex = v; hexVec(v, u.value); } }
+    else if (typeof v === 'string') u.value = Math.max(0, (def.choices?.[r.k] || COMMON_CHOICES[r.k] || []).indexOf(v));
+  }
+}
+// ---------- merged filter passes (round 21 "labgpu") ----------
+// Filters stacked right on a filter below them that only change each pixel by itself (grain, vignette, film, color,
+// duotone, thermal…: their shader reads the picture at its own pixel only) are drawn inside that lower filter's pass:
+// one shader, one picture to take in, one full-screen draw for the whole run instead of one per filter. They step
+// aside the way a filter at 0 does (their canvas hides and shrinks to 1 × 1, its GPU memory goes); the picture is the
+// same. Only when they show plainly (fully, normal blend, not moved, no clip look), at the same resolution.
+const fxPointCache = new Map();
+function fxPointwise(def) {
+  let ok = fxPointCache.get(def);
+  if (ok != null) return ok;
+  const f = def.frag.replace(/texture2D\(\s*uSrc\s*,\s*vUv\s*\)/g, '').replace(/\btex\(\s*vUv\s*\)/g, '');
+  const fns = (def.frag.match(/\b(?:void|float|vec[234]|mat[234]|int|bool)\s+\w+\s*\([^)]*\)\s*\{/g) || []).length;
+  ok = !def.feedback && !def.overlay && !def.glyphs && fns === 1 && /\bvoid\s+main\s*\(\s*\)/.test(def.frag) && !/\buSrc\b|\btex\s*\(|\bblur9\s*\(|\buPrev\b|\buGlyph|\bdiscard\b|\bfx(In|Out)\b/.test(f);
+  fxPointCache.set(def, ok);
+  return ok;
+}
+// a layer that shows as a plain full-frame picture: fully, normal blend, not moved, no clip look, not faded by the editor
+function fxPlain(L) {
+  const p = L.props;
+  if (p.visible === false || L.seqHide || p.seqFilter || (edit.on && L.id !== edit.layerId)) return false;
+  if (layerMix(L) < 0.999 || (p.blend && p.blend !== 'normal')) return false;
+  const t = xform(L);
+  return !t.x && !t.y && !t.rotate && t.scale === 1;
+}
+const fxHalf = (L) => !fullRes() && (lightMode || Boolean(L.fx.soft && Number(L.fx.P[L.fx.soft[0]]) >= L.fx.soft[1]));
+const fxOffNow = (L) => L.fx.idKey != null && L.fx.P[L.fx.idKey] === 0;
+// which filters draw inside which: worked out once per frame (and per offline render step), before any filter draws
+let fxPlanGen = 0; let fxPlanAt = -1;
+function fxPlan() {
+  if (fxPlanAt === fxPlanGen) return;
+  fxPlanAt = fxPlanGen;
+  let n = 0;
+  for (const L of layers.values()) { if (L.fx) n += 1; L.fxInto = null; if (L.fxChain) L.fxChain.length = 0; }
+  if (n < 2 || !GPU_OPT.fuse) return;
+  let base = null;
+  for (const L of ordered()) {
+    if (!L.fx) { if (layerMix(L) > 0) base = null; continue; } // (a hidden layer in between changes nothing)
+    if (L.fx.gen !== L.gen || L.drawnGen !== L.gen) { base = null; continue; } // (a filter still starting)
+    if (fxOffNow(L)) continue; // (a filter at 0 shows nothing: the run goes on over it)
+    if (base && (base.props.pcOf || null) === (L.props.pcOf || null) && (base.props.seqGroup || null) === (L.props.seqGroup || null)
+      && fxPointwise(L.fx.def) && fxPlain(L) && fxHalf(L) === fxHalf(base) && base.fxChain.length < 6) {
+      L.fxInto = base; base.fxChain.push(L);
+      continue;
+    }
+    base = !L.fx.def.feedback && !L.fx.overlay && fxPlain(L) ? L : null;
+    if (base) (base.fxChain ||= []).length = 0;
+  }
+}
+// one shader for a filter and the run above it: each filter's main() becomes fxN(), its settings u<N>_…, what it reads
+// at its own pixel is the color the one below made (fxIn); the last one's color is the pass's
+function fxFuseFrag(base, chain) {
+  const own = (frag) => frag.replace(/\bgl_FragColor\b/g, 'fxOut');
+  let out = `${FILTER_HEAD}vec4 fxOut;\nvec4 fxIn;\n${own(filterFrag(base.fx.def, base.fx.P).slice(FILTER_HEAD.length)).replace(/\bvoid\s+main\s*\(\s*\)/, 'void fx0()')}`;
+  chain.forEach((B, i) => {
+    const f = own(filterFrag(B.fx.def, B.fx.P).slice(FILTER_HEAD.length))
+      .replace(/\bu_(\w+)/g, `u${i + 1}_$1`)
+      .replace(/texture2D\(\s*uSrc\s*,\s*vUv\s*\)/g, 'fxIn')
+      .replace(/\btex\(\s*vUv\s*\)/g, 'fxIn.rgb')
+      .replace(/\bvoid\s+main\s*\(\s*\)/, `void fx${i + 1}()`);
+    out += `\n${f}`;
+  });
+  return `${out}\nvoid main() { fx0();${chain.map((_, i) => ` fxIn = fxOut; fx${i + 1}();`).join('')} gl_FragColor = fxOut; }\n`;
+}
 globalThis.filter = (type, P = {}) => {
   const def = FILTER_DEFS[type];
   if (!def) throw new Error(`Unknown filter "${type}". Filters: ${Object.keys(FILTER_DEFS).join(', ')}`);
@@ -5459,10 +5738,11 @@ globalThis.filter = (type, P = {}) => {
   const srcTex = new THREE.CanvasTexture(src);
   srcTex.minFilter = THREE.LinearFilter; srcTex.generateMipmaps = false;
   const uniforms = filterUniforms(def, P, srcTex);
-  const keys = Object.keys(P);
+  const refs = fxRefs(P, uniforms);
   const mat = new THREE.ShaderMaterial({ uniforms, vertexShader: FILTER_VERT, fragmentShader: filterFrag(def, P), depthTest: false, depthWrite: false });
   const scene = new THREE.Scene();
-  scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat));
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat);
+  scene.add(quad);
   const camera = new THREE.Camera();
   // feedback filters (datamosh, trails…) keep their last output
   let targets = null; let copyScene = null; let copyMat = null;
@@ -5480,8 +5760,6 @@ globalThis.filter = (type, P = {}) => {
     overlay.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none';
     document.body.append(overlay);
   }
-  const resize = () => renderer.setSize(innerWidth, innerHeight);
-  addEventListener('resize', resize);
   const t0 = performance.now();
   const size = new THREE.Vector2();
   // Round 16 "labperf": the picture under the filter is merged again only when something under it changed; a filter
@@ -5489,24 +5767,64 @@ globalThis.filter = (type, P = {}) => {
   // hides, the layers under it show as they are) instead of copying the picture through a shader; soft filters
   // (FX_SOFT: blur, zoom / motion blur at a big radius) and every filter in Light mode draw at half resolution. uRes
   // stays the full-resolution size, so a filter looks the same at any internal resolution.
-  let lastKey = null;
+  // Round 21 "labgpu": a filter stepping aside (at 0, or drawn inside the filter below: see "merged filter passes")
+  // also shrinks its canvas to 1 × 1; a lone WebGL picture under it is taken as it is (no merge on a 2D canvas: see
+  // filterSource); the texture is made again when the picture's size changes (it kept its first size before).
   const idKey = !def.feedback && !overlay ? FX_IDENTITY[type] : null;
   const soft = FX_SOFT[type];
+  L.fx = { def, type, P, idKey, soft, overlay: Boolean(overlay), gen: L.gen };
+  let srcW = 0; let srcH = 0; let srcImg = null; let force = true;
+  const fused = { chain: [], gens: [], mat: null, refs: null };
+  const fullSize = () => renderer.setSize(innerWidth, innerHeight);
+  addEventListener('resize', () => { if (!L.fxSkip) fullSize(); });
   renderer.setAnimationLoop(() => {
-    const off = idKey != null && P[idKey] === 0;
-    if (off !== Boolean(L.fxSkip)) { L.fxSkip = off; renderer.domElement.__skip = off; renderer.domElement.style.visibility = off ? 'hidden' : ''; lastKey = null; }
-    if (off) { perfNote.passSkipped += 1; if (L.drawnGen !== L.gen) layerDrew(L); return; }
+    fxPlan();
+    const off = (idKey != null && P[idKey] === 0) || Boolean(L.fxInto);
+    if (off !== Boolean(L.fxSkip)) {
+      L.fxSkip = off; renderer.domElement.__skip = off; renderer.domElement.style.visibility = off ? 'hidden' : ''; force = true;
+      if (off) renderer.setSize(1, 1, false); else fullSize();
+    }
+    if (off) { if (L.fxInto) perfNote.fused += 1; else perfNote.passSkipped += 1; if (L.drawnGen !== L.gen) layerDrew(L); return; }
     renderer.__lowRes = !fullRes() && (lightMode || (soft && Number(P[soft[0]]) >= soft[1])) ? 0.5 : 1;
     const c0 = realNow();
     renderer.getDrawingBufferSize(size);
-    const k = compositeBelow(L, src, size.x, size.y, lastKey);
-    if (k !== null) { lastKey = k || null; srcTex.needsUpdate = true; }
+    const got = filterSource(L, src, size.x, size.y, force);
+    force = false;
+    if (got) {
+      const img = got.image;
+      // (a new picture or a new size: a fresh texture; the same one: its pixels again)
+      if (img !== srcImg || img.width !== srcW || img.height !== srcH || srcTex.premultiplyAlpha !== got.premul) {
+        srcTex.dispose(); srcTex.image = img; srcTex.premultiplyAlpha = got.premul;
+        srcImg = img; srcW = img.width; srcH = img.height;
+      }
+      srcTex.needsUpdate = true;
+    }
     frameWork += realNow() - c0;
     renderer.__fxBytes = size.x * size.y * 4 + (targets ? size.x * size.y * 16 : 0);
     uniforms.uRes.value.set(Math.round(innerWidth * devicePixelRatio), Math.round(innerHeight * devicePixelRatio));
     const t = mediaEl ? mediaEl.currentTime : (performance.now() - t0) / 1000;
     setFilterMusic(uniforms, t);
-    setFilterParams(def, P, keys, uniforms);
+    setFxParams(def, P, refs);
+    // the filters drawn inside this pass: their shader (made again only when the run changes), their settings
+    const chain = L.fxChain;
+    let want = mat;
+    if (chain?.length) {
+      let same = Boolean(fused.mat) && fused.chain.length === chain.length;
+      for (let i = 0; same && i < chain.length; i += 1) same = fused.chain[i] === chain[i] && fused.gens[i] === chain[i].gen;
+      if (!same) {
+        fused.mat?.dispose();
+        const u = { ...uniforms }; const rs = [];
+        chain.forEach((B, i) => {
+          for (const k of Object.keys(B.fx.P)) u[`u${i + 1}_${k}`] = { value: typeof B.fx.P[k] === 'string' && B.fx.P[k].startsWith('#') ? new THREE.Vector3() : 0 };
+          rs.push({ def: B.fx.def, P: B.fx.P, refs: fxRefs(B.fx.P, u, `u${i + 1}_`) });
+        });
+        fused.mat = new THREE.ShaderMaterial({ uniforms: u, vertexShader: FILTER_VERT, fragmentShader: fxFuseFrag(L, chain), depthTest: false, depthWrite: false });
+        fused.refs = rs; fused.chain = chain.slice(); fused.gens = chain.map((B) => B.gen);
+      }
+      for (const r of fused.refs) setFxParams(r.def, r.P, r.refs);
+      want = fused.mat;
+    }
+    if (quad.material !== want) quad.material = want;
     if (targets) {
       for (const rt of targets) if (rt.width !== size.x || rt.height !== size.y) rt.setSize(size.x, size.y);
       uniforms.uPrev.value = targets[1].texture;
@@ -5522,10 +5840,10 @@ globalThis.filter = (type, P = {}) => {
   (L.cleanups ||= []).push(() => {
     renderer.setAnimationLoop(null);
     src.width = 0; src.height = 0;
-    srcTex.dispose(); mat.dispose(); uniforms.uGlyph.value?.dispose?.();
+    srcTex.dispose(); mat.dispose(); fused.mat?.dispose(); uniforms.uGlyph.value?.dispose?.();
     for (const rt of targets || []) rt.dispose();
     copyMat?.dispose();
-    L.fxSkip = false;
+    L.fxSkip = false; L.fx = null; L.fxInto = null; if (L.fxChain) L.fxChain.length = 0;
   });
   return { type, renderer };
 };
@@ -5666,6 +5984,8 @@ function installRunGuards() {
   EventTarget.prototype.addEventListener = function (type, fn, opts) {
     const self = this ?? window;
     if (sketchRunning && (self === window || self === document)) { const id = currentLayer(); if (id) sketchListeners.push([self, type, fn, opts, id]); }
+    // (round 21) a pooled-context canvas: its listeners (OrbitControls…) go with the code that added them
+    else if (self.__gl && self instanceof HTMLCanvasElement) (self.__lis ||= []).push([type, fn, opts]);
     return add.call(self, type, fn, opts);
   };
   // Things a layer appends to <body> go into its own box.
@@ -5691,19 +6011,29 @@ function installRunGuards() {
   const owner = () => { const st = new Error().stack; const id = layerOfStack(st) || ctxLayer; const L = id ? layers.get(id) : null; return { id, L, g: L ? L.gen : gen, stale: !id && staleStack(st) }; };
   const alive = (o) => !o.stale && (o.L ? o.L.gen === o.g && layers.get(o.id) === o.L : o.g === gen);
   const within = (o, fn, args) => { const prev = ctxLayer; ctxLayer = o.id; try { return fn(...args); } finally { ctxLayer = prev; } };
+  // (round 21 "labgpu": a layer's frame loop asks for the same function every frame; who owns it is read from the call
+  // stack the first time and kept with the function, with its frame callback, until the layer re-runs or goes. Telling
+  // the owner from a fresh stack trace every frame was most of the runtime's own allocations per frame.)
+  const rafOf = new WeakMap(); // fn → { o, run }
+  const within1 = (o, fn, a) => { const prev = ctxLayer; ctxLayer = o.id; try { return fn(a); } finally { ctxLayer = prev; } };
   window.requestAnimationFrame = (fn) => {
-    const o = owner();
-    const run = (t) => {
-      if (!alive(o)) return;
-      // ❚❚ freeze: the picture holds (the music goes on); a layer re-run meanwhile still draws its first frame
-      if (frozen && !stepping && !SQ.off && !(o.L && o.L.drawnGen !== o.L.gen)) { sched(run); return; }
-      if (o.L && layerMix(o.L) <= 0) { sched(run); return; }
-      // parked (the Lab isn't on screen): nothing draws until it is again (a recording / an offline render goes on)
-      if (parked && !SQ.off && !fullRes()) { parkQ.push(run); return; }
-      if (!SQ.off && !capOk(t)) { sched(run); return; }
-      within(o, fn, [o.L?.props.seqT0 != null && SQ.on ? sqLocal(o.L) * 1000 : o.L?.props.pcOf ? keyTime(o.L) * 1000 : t]);
-    };
-    return sched(run);
+    let e = typeof fn === 'function' ? rafOf.get(fn) : null;
+    if (!e || !e.o.L || !alive(e.o)) {
+      const o = owner();
+      const run = (t) => {
+        if (!alive(o)) return;
+        // ❚❚ freeze: the picture holds (the music goes on); a layer re-run meanwhile still draws its first frame
+        if (frozen && !stepping && !SQ.off && !(o.L && o.L.drawnGen !== o.L.gen)) { sched(run); return; }
+        if (o.L && layerMix(o.L) <= 0) { sched(run); return; }
+        // parked (the Lab isn't on screen): nothing draws until it is again (a recording / an offline render goes on)
+        if (parked && !SQ.off && !fullRes()) { parkQ.push(run); return; }
+        if (!SQ.off && !capOk(t)) { sched(run); return; }
+        within1(o, fn, o.L?.props.seqT0 != null && SQ.on ? sqLocal(o.L) * 1000 : o.L?.props.pcOf ? keyTime(o.L) * 1000 : t);
+      };
+      e = { o, run };
+      if (o.L && !o.stale && typeof fn === 'function') rafOf.set(fn, e);
+    }
+    return sched(e.run);
   };
   window.setTimeout = (fn, ms, ...a) => { if (typeof fn !== 'function') return realSetTimeout(fn, ms, ...a); const o = owner(); return realSetTimeout((...b) => { if (alive(o)) within(o, fn, b); }, ms, ...a); };
   window.setInterval = (fn, ms, ...a) => {
@@ -5724,10 +6054,7 @@ function teardownLayer(L) {
   // not whenever the garbage collector gets to it)
   for (const fn of (L.cleanups || []).splice(0)) { try { fn(); } catch {} }
   for (const r of L.renderers) {
-    try { r.setAnimationLoop(null); } catch {}
-    if (r.domElement) r.domElement.__letGo = true;
-    try { r.dispose(); r.forceContextLoss(); } catch {}
-    r.domElement?.remove();
+    letGoRenderer(r); // (round 21: its context waits in the pool for the next run)
     renderers.delete(r);
     if (lastRenderer === r) lastRenderer = null;
   }
@@ -5751,6 +6078,7 @@ function removeLayer(id, { fade = false } = {}) {
   teardownLayer(L);
   L.box.remove();
   layers.delete(id);
+  layerVer += 1;
   if (L.pc) { PC.list.delete(L); L.pc = null; }
   if (L.url) { urlLayer.delete(L.url); URL.revokeObjectURL(L.url); }
   stackDrew(id);
@@ -5758,6 +6086,7 @@ function removeLayer(id, { fade = false } = {}) {
 function setLayerProps(L, props) {
   const { code, id, ...rest } = props;
   Object.assign(L.props, rest);
+  layerVer += 1;
   if (rest.slot != null) L.slot = rest.slot;
   styleLayer(L);
 }
@@ -5847,7 +6176,7 @@ function resetPage() {
 }
 // For the live check (dev/checks/live.js): what runs leave behind. Nothing here should grow with edits.
 window.__labHealth = () => ({ hz: Math.round(1000 / dispMs), contexts: glAlive(), renderers: renderers.size, listeners: sketchListeners.length, intervals: sketchIntervals.size, layers: layers.size,
-  parked, stale: perfNote.stale, overlays: document.querySelectorAll('.lab-xfade, .lab-swap, .lab-ghost').length, heapMB: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : null });
+  parked, stale: perfNote.stale, pooled: POOL.length, poolHit: perfNote.poolHit, gpuMB: gpuEstimate(), overlays: document.querySelectorAll('.lab-xfade, .lab-swap, .lab-ghost').length, heapMB: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : null });
 
 // ---------- sketch mode ----------
 // spec.fx: 'xfade' (new code for this layer: cross-fade from its old picture) | 'reveal' (a new layer: wipe in)
@@ -5929,10 +6258,7 @@ function swapLayers(specs, fx = 'xfade') {
   for (const [t, type, fn, opts] of sketchListeners) t.removeEventListener(type, fn, opts);
   sketchListeners = [];
   for (const r of [...renderers]) {
-    try { r.setAnimationLoop(null); } catch {}
-    if (r.domElement) r.domElement.__letGo = true;
-    try { r.dispose(); r.forceContextLoss(); } catch {}
-    r.domElement?.remove();
+    letGoRenderer(r);
     renderers.delete(r);
   }
   lastRenderer = null;
@@ -6335,11 +6661,18 @@ function sqPseudo(id, props) {
   const L = layerState(id);
   L.pseudo = true;
   Object.assign(L.props, { visible: true, opacity: 1, blend: 'normal', ...props });
+  layerVer += 1;
   return L;
 }
 // ---------- mounting groups ----------
 // (whether its file has arrived is part of it: footage mounted before its bytes came is mounted again once they do)
-const sqKeyOf = (g) => JSON.stringify([g.kind, g.layers?.map((L) => [L.id, L.code, L.values, L.props?.precomp?.sig]), g.asset, g.asset ? Boolean(sqAsset(g.asset)) : null, g.card, g.mute, g.look?.id || null]);
+// (round 21 "labgpu": the text of a group is made once per plan, not every frame: it holds the scenes' whole code)
+const sqKeys = new WeakMap();
+function sqKeyOf(g) {
+  let k = sqKeys.get(g);
+  if (k == null) { k = JSON.stringify([g.kind, g.layers?.map((L) => [L.id, L.code, L.values, L.props?.precomp?.sig]), g.asset, g.card, g.mute, g.look?.id || null]); sqKeys.set(g, k); }
+  return g.asset ? (sqAsset(g.asset) ? `${k}|1` : `${k}|0`) : k;
+}
 function sqProps(g, L, j) {
   const p = L?.props || {};
   const lin = p.in != null ? Math.max(g.start - WARM, p.in) : g.start - WARM;
@@ -6388,6 +6721,9 @@ function sqMount(g) {
       v.muted = true; v.playsInline = true; v.preload = 'auto';
       v.src = sqAsset(g.asset).url;
       st.video = v;
+      // (round 21: a count of the frames the decoder presented: the clip is drawn again only when it shows a new one)
+      st.vf = 0;
+      if (v.requestVideoFrameCallback) { const cb = () => { if (SQ.mounted.get(g.id) !== st) return; st.vf += 1; v.requestVideoFrameCallback(cb); }; v.requestVideoFrameCallback(cb); } else st.vf = -1;
       if (!g.mute) sqSound(st, v);
       st.ready = new Promise((r) => { v.addEventListener('loadeddata', r, { once: true }); v.addEventListener('error', r, { once: true }); realSetTimeout(r, 4000); });
     } else if (g.kind === 'image' && sqAsset(g.asset)) {
@@ -6503,6 +6839,18 @@ function sqPlace(g2, src, sw, sh, W, H, g, T) {
 }
 const sqSrcTime = (g, T) => g.a + Math.max(0, T - g.start) * (g.speed || 1);
 const sqFrameMid = (g, t) => { const f = g.fps || 30; return (Math.floor(t * f + 1e-4) + 0.5) / f; };
+// (round 21 "labgpu": footage is drawn again only when its decoder presented a new frame, a picture or a color only
+// once, unless the clip's framing moves with the time; the same picture isn't drawn again at every screen frame)
+function sqSame(st, W, H, T, src) {
+  const moving = Boolean(st.g.frame);
+  // footage: the frames its decoder presented and the frame its clock is on (either moving means a new picture)
+  const k1 = st.g.kind === 'footage' ? st.vf : 0;
+  const k2 = st.g.kind === 'footage' ? Math.floor(st.video.currentTime * (st.g.fps || 30) + 1e-4) : 0;
+  if (st.vf === -1 && st.g.kind === 'footage') return false; // (no frame callbacks here: every frame, as before)
+  if (st.dk1 === k1 && st.dk2 === k2 && st.dW === W && st.dH === H && st.dSrc === src && st.dG === st.g && (!moving || st.dT === T)) return true;
+  st.dk1 = k1; st.dk2 = k2; st.dW = W; st.dH = H; st.dSrc = src; st.dG = st.g; st.dT = T;
+  return false;
+}
 function sqDrawPseudo(st, T) {
   const g = st.g; const L = layers.get(st.ids[0]);
   if (!L || layerMix(L) <= 0) return;
@@ -6514,13 +6862,16 @@ function sqDrawPseudo(st, T) {
     // (a decoder that is seeking has no frame to give: drawing it painted black over the last good frame, a black
     // flash at each cut into footage and at each re-sync while playing: seqguard)
     if (!v || v.readyState < 2 || v.seeking) return;
+    if (!SQ.off && sqSame(st, W, H, T, c)) return;
     g2.fillStyle = '#000'; g2.fillRect(0, 0, W, H);
     sqPlace(g2, v, v.videoWidth, v.videoHeight, W, H, g, T);
   } else if (g.kind === 'image') {
     if (!st.image?.naturalWidth) return;
+    if (!SQ.off && sqSame(st, W, H, T, c)) return;
     g2.fillStyle = '#000'; g2.fillRect(0, 0, W, H);
     sqPlace(g2, st.image, st.image.naturalWidth, st.image.naturalHeight, W, H, g, T);
   } else if (g.kind === 'card' || g.kind === 'color') {
+    if (g.kind === 'color' && !SQ.off && sqSame(st, W, H, T, c)) return;
     g2.setTransform(1, 0, 0, 1, 0, 0); g2.globalAlpha = 1;
     g2.fillStyle = g.card?.bg || g.card?.fill || '#000'; g2.fillRect(0, 0, W, H);
     if (g.kind === 'card') { g2.save(); sqTitle(g2, { ...g.card, dur: g.end - g.start, where: 'main' }, T - g.start, W, H); g2.restore(); }
@@ -6832,6 +7183,7 @@ async function sqFrame({ n, T, w, h, q = 0.92, kind = 'image/jpeg', ret = true }
   const fresh = [...SQ.mounted.values()].some((st) => st.fresh) || PC.fresh;
   PC.fresh = false;
   for (let pass = 0; pass < (fresh ? 2 : 1); pass += 1) {
+    fxPlanGen += 1;
     const qd = SQ.offQ; SQ.offQ = [];
     for (const fn of qd) { try { fn(T * 1000); } catch (err) { post({ type: 'error', message: String(err?.message || err) }); } }
   }
