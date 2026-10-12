@@ -42,6 +42,9 @@ function promptPart(agent) {
 
 // (round 24, context) one chat's agent exactly as engines.js sends it: its whole system prompt (with the memory part
 // counted on its own) and each tool set it really gets (engines.js hubToolsets). chat-cost.js splits a message with it.
+// (measured once per tool-set variant: the servers' definitions don't change while the app runs, and chats ask often)
+const memo = new Map();
+const measured = (k, opts = {}) => { const key = `${k}|${opts.nodesTool ? 1 : 0}|${opts.toolMode || ''}`; if (!memo.has(key)) memo.set(key, measure(k, opts)); return memo.get(key); };
 function exactOf(a, sets) {
   let engines = null;
   try { engines = require(path.join(__dirname, '..', 'engines.js')); } catch { /* no engines here */ }
@@ -49,12 +52,12 @@ function exactOf(a, sets) {
   const tools = [];
   for (const k of on) {
     if (k === 'openTool') { // one tool of the chat server (chat_open)
-      try { const t = defOf('chatTools').tools.find((x) => x.name === 'chat_open'); if (t) tools.push([k, tok(JSON.stringify(t))]); } catch { /* none */ }
+      try { const t = measured('chatTools').each.find((x) => x.name === 'chat_open'); if (t) tools.push([k, t.tokens]); } catch { /* none */ }
       continue;
     }
     if (!SETS[k]) continue;
     const nodes = k === 'threeTools' && a.nodesTool !== false;
-    const m = k === 'threeTools' && (nodes || a.toolMode) ? measure(k, { nodesTool: nodes, toolMode: a.toolMode }) : sets.find((s) => s.key === k);
+    const m = k === 'threeTools' && (nodes || a.toolMode) ? measured(k, { nodesTool: nodes, toolMode: a.toolMode }) : (sets?.find((s) => s.key === k) || measured(k));
     tools.push([k, m.total]);
   }
   const prompt = engines?.buildPrompt ? tok(engines.buildPrompt(a)) : 0;
@@ -65,7 +68,7 @@ function exactOf(a, sets) {
 function report(agents = DIRECTORS) {
   const sets = Object.keys(SETS).map((k) => measure(k));
   const directors = agents.map((a) => {
-    if (a.exact) return exactOf(a, sets);
+    if (a.exact) return exactOf(a, null);
     const parts = [];
     for (const k of Object.keys(SETS)) {
       const on = k === 'chatTools' ? a.chatTools !== false : a[k];
@@ -81,4 +84,4 @@ function report(agents = DIRECTORS) {
   return { sets, directors, note: 'tokens ≈ characters / 4; sent with every message (mostly read from the prompt cache after the first)' };
 }
 
-module.exports = { report, measure, tok, DIRECTORS, exactOf: (a) => exactOf(a, Object.keys(SETS).map((k) => measure(k))) };
+module.exports = { report, measure, tok, DIRECTORS, exactOf: (a) => exactOf(a, null) };
