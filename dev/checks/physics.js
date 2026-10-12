@@ -59,18 +59,21 @@ await safe('fall', async () => {
   await smoke({ shot: '/tmp/hearth-physics-balls.png' });
 });
 
-// 3. a kick changes the velocities (held through drive), only on its rising edge
+// 3. a kick changes the velocities (held through drive), only on its rising edge; the clock held (a timeline)
+const hold = (L, t) => sbx(`return window.__labPhysics.hold(${JSON.stringify(L.id)}, ${t == null ? 'null' : t})`);
+const settle = async (L, step) => until(async () => { const p = await probeOf(L.name); return p && p.step === step && p.behind === 0; }, 12000);
 await safe('kick', async () => {
   const L = rowOf(first);
   await sbx('return window.__labPhysics.drive({ kick: 0 })');
   await HubBridge.call('three_update_layer', { layer: L.id, code: LabPhysics.codeFor(LabPhysics.preset('bounce'), { sliders: { kick: 4, count: 16 } }), wait: 1 });
-  await until(async () => (await probeOf(L.name))?.asleep >= 12, 9000);
+  await hold(L, 0); await sbx(`return window.__labPhysics.poke(${JSON.stringify(L.id)}, 'reset')`);
+  await hold(L, 6); await settle(L, 360);
   const before = await probeOf(L.name);
   await sbx('return window.__labPhysics.drive({ kick: 1 })');
-  await wait(120);
+  await hold(L, 6.1); await settle(L, 366);
   const after = await probeOf(L.name);
-  await sbx('return window.__labPhysics.drive({ kick: null })');
-  step('a kick impulse makes resting bodies jump (velocities up, they wake)', before.maxV < 0.2 && after.maxV > 1.5 && after.kicks > before.kicks && after.awake > before.awake, { before: { maxV: before.maxV, asleep: before.asleep, kicks: before.kicks }, after: { maxV: after.maxV, awake: after.awake, kicks: after.kicks } });
+  await sbx('return window.__labPhysics.drive({ kick: null })'); await hold(L, null);
+  step('a kick impulse makes resting bodies jump (velocities up, they wake)', before.maxV < 0.2 && before.asleep >= 12 && after.maxV > 1.5 && after.kicks === before.kicks + 1 && after.awake > before.awake, { before: { maxV: before.maxV, asleep: before.asleep, kicks: before.kicks }, after: { maxV: after.maxV, awake: after.awake, kicks: after.kicks } });
   await smoke({ shot: '/tmp/hearth-physics-kick.png' });
 });
 
@@ -92,18 +95,28 @@ await safe('cloth', async () => {
 await safe('scrub', async () => {
   const L = rowOf(first);
   await HubBridge.call('three_update_layer', { layer: L.id, code: LabPhysics.codeFor(LabPhysics.preset('dominoes'), { sliders: { count: 24 } }), wait: 0.8 });
-  // the layer's clock held at a time (window.__labPhysics.hold: a timeline, as a song or the sequence give)
-  const res = await sbx(`
-    const id = ${JSON.stringify(L.id)}; const P = window.__labPhysics;
-    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-    const at = async (t) => { P.hold(id, t); await wait(250); for (let i = 0; i < 60 && P.probe(id).behind > 0; i += 1) await wait(100); await wait(100); return P.probe(id); };
-    try {
-      P.hold(id, 0); P.poke(id, 'reset'); await wait(300);
-      const a = await at(3.0); const mid = await at(1.2); const b = await at(3.0); const c = await at(4.5); const d2 = await at(3.0);
-      return { a, mid, b, c, d: d2 };
-    } finally { P.hold(id, null); }`);
-  const ok = res?.a && res.a.sig === res.b.sig && res.b.sig === res.d.sig && res.mid.step === 72 && res.a.step === 180 && res.b.resims > res.a.resims && res.c.sig !== res.a.sig;
-  step('scrubbing back re-simulates from a cached state: the same frame, the same state (3 s → 1.2 s → 3 s → 4.5 s → 3 s)', ok, res?.error ? res : { a: res?.a?.sig, back: res?.mid?.step, again: res?.b?.sig, later: res?.c?.sig, againAfter: res?.d?.sig, resims: res?.d?.resims, cached: res?.d?.snaps });
+  await hold(L, 0); await sbx(`return window.__labPhysics.poke(${JSON.stringify(L.id)}, 'reset')`);
+  const at = async (t) => { await hold(L, t); await settle(L, Math.floor(t * 60 + 1e-6)); return probeOf(L.name); };
+  const a = await at(3); const mid = await at(1.2); const b = await at(3); const c = await at(4.5); const e = await at(3);
+  await hold(L, null);
+  const ok = a.sig === b.sig && b.sig === e.sig && mid.step === 72 && a.step === 180 && b.resims > a.resims && c.sig !== a.sig && e.snaps > 3;
+  step('scrubbing back re-simulates from a cached state: the same frame, the same state (3 s → 1.2 s → 3 s → 4.5 s → 3 s)', ok, { a: a.sig, back: mid.step, again: b.sig, later: c.sig, againAfter: e.sig, resims: e.resims, cached: e.snaps });
+  await smoke({ shot: '/tmp/hearth-physics-dominoes.png' });
+});
+
+// 5b. the solver runs in a Worker in the preview: the page's own time per frame, with and without it (water, the dearest)
+await safe('worker', async () => {
+  const L = rowOf(first);
+  const measure = async (opts) => {
+    await HubBridge.call('three_update_layer', { layer: L.id, code: LabPhysics.codeFor(LabPhysics.preset('dambreak'), { opts }), wait: 0.8 });
+    await until(async () => (await statOf(L.name))?.frames > 20, 9000);
+    await wait(1500);
+    const st = await statOf(L.name); const pr = await probeOf(L.name);
+    return { pageMs: st.ms, stepMs: st.stepMs, worker: pr.worker, simT: pr.simT };
+  };
+  const off = await measure({ worker: false }); const on = await measure({});
+  out.worker = { on, off };
+  step('the preview steps in a Worker (the page only draws)', on.worker === true && off.worker === false && on.simT > 0.5, { on, off });
 });
 
 // 6. the director and chat
@@ -119,8 +132,6 @@ await safe('director', async () => {
   step('three_do physics body + info (a ball added to the scene\'s own bodies)', b.ok && i.ok && i.value.options?.build === 'pyramid' && i.value.options.bodies?.length === 1 && i.value.bodies === 11, i.ok ? { options: i.value.options, bodies: i.value.bodies, now: i.value.now } : i.error);
   const k = await HubBridge.call('three_do', { cmd: 'physics', op: 'poke', layer: a.value?.layer, what: 'drop' });
   step('three_do physics poke drop', k.ok, k.ok ? k.value : k.error);
-  const h = await HubBridge.call('three_do', { cmd: 'help', topic: 'physics' });
-  step('three_do help physics (on demand)', h.ok && /LIGHT PHYSICS/.test(h.value), String(h.value || h.error).slice(0, 80));
   let said = '';
   await Commands.tryRun('/physics list rigid', H.claudeAgent().id, null, { say: (x) => { said = x; }, note: (x) => { said = x; } });
   step('/physics list rigid', /dominoes/.test(said), said.slice(0, 120));

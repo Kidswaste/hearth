@@ -109,5 +109,26 @@ const angleOf = (W, k) => (2 * Math.acos(Math.min(1, Math.abs(W.bq[k * 4 + 3])))
   check(!bad.length, `all ${Object.keys(BUILDS).length} scene builders run 2 s without blowing up`, bad.length ? bad : undefined);
   console.log('  ms per step:', JSON.stringify(cost));
 }
+// 13. the runner: each step's music from its own time (markers, a grid, drops), going back from cached states
+{
+  const mk = () => { const W = new World({}); for (let k = 0; k < 8; k += 1) W.sphere(k * 0.5 - 2, 0.2, 0, 0.2, {}); return W.finish(); };
+  const E = { ...ENV, kickImp: 2 };
+  const A = new core.Runner(mk()); A.m.ksrc = [0.5, 1.0, 1.25]; A.m.drops = [1.1]; A.run(90, E, Infinity, Date.now);
+  const B = new core.Runner(mk()); B.m.ksrc = 'grid'; B.run(150, E, Infinity, Date.now);
+  check(A.kicks === 3 && A.drops === 1 && B.kicks === 5, 'kicks land on their markers (3 of 3), a drop on its time, a 120 BPM grid without a song (5 in 2.5 s)', { markers: A.kicks, drops: A.drops, grid: B.kicks });
+  const C = new core.Runner(mk()); C.m.ksrc = [0.5, 1.0, 1.25]; C.m.drops = [1.1]; C.run(90, E, Infinity, Date.now);
+  C.seek(40); const back = C.W.misc[0]; C.run(90, E, Infinity, Date.now);
+  check(back === 30 && C.resims === 1 && C.W.x.every((v, i) => v === A.W.x[i]), 'going back restores the cached state before (step 30 for 40) and steps to the same numbers', { restoredAt: back, snaps: C.snaps.size });
+  // the worker's path: the world sent as data (structured clone of its own fields), stepped there, the same numbers
+  const W1 = mk(); const data = {}; for (const [k, v] of Object.entries(W1)) if (typeof v !== 'function' && k[0] !== '_') data[k] = v;
+  const W2 = Object.assign(Object.create(World.prototype), structuredClone(data));
+  const R1 = new core.Runner(W1); const R2 = new core.Runner(W2); R1.m.ksrc = R2.m.ksrc = 'grid'; R1.run(120, { ...E }, Infinity, Date.now); R2.run(120, { ...E }, Infinity, Date.now);
+  check(W1.x.every((v, i) => v === W2.x[i]), 'a world handed to the worker as data steps to exactly the same numbers as the page\'s');
+}
+// 12. the directors' help topic (on demand: three_do help physics, and its aliases)
+{
+  const G = require(path.join(__dirname, '..', 'mcp', 'three-guide.js'));
+  check(/LIGHT PHYSICS/.test(G.help('physics')) && /three_do \{ cmd: "physics"/.test(G.help('cloth')) && /LIGHT PHYSICS/.test(G.help('ragdoll')), 'three_do help physics (and cloth, ragdoll…) explains the layer and the tool');
+}
 console.log(fails ? `\n${fails} failed` : '\nall passed');
 process.exit(fails ? 1 : 0);

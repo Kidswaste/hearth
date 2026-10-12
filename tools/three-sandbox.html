@@ -7830,6 +7830,7 @@ function physicsCore() {
         if (!this.misc[3]) { this.misc[3] = 1; for (let i = 0; i < this.N; i += 1) if (this.fl[i] & RELEASE) { this.w[i] = this.wf[i]; this.wake(this.pb[i]); } }
       }
       this.misc[2] = env.kick && env.kickMode === 'gust' ? env.kickImp : this.misc[2] * Math.exp(-3 / 60);
+      if (env.stiffness != null) { const k = 0.04 + 0.6 * env.stiffness * env.stiffness; for (const cl of this.clusters) if (this.bodies[cl.body].type === 'soft') cl.k = k; }
       const sub = Math.max(1, Math.min(32, Math.round(env.sub || 6)));
       const h = (1 / 60) * Math.max(0, env.timeScale ?? 1) / sub;
       if (h > 0) {
@@ -8381,7 +8382,59 @@ function physicsCore() {
       return { step: this.misc[0], kicks: this.misc[1], bodies: alive, awake, asleep, ke: r3(ke), maxV: r3(maxV), meanY: r3(n ? my / n : 0), sig: r3(sig), contacts: this.stats.contacts };
     }
   }
-  return { World, icosphere, rnd, quatOf, HASHED, PIN, RELEASE };
+  // a runner: steps a world up to a step of the clock with each step's own music (a kick marker / beat between the
+  // last step's time and this one, a 120 BPM grid, a held value's rising edge, a poke), keeps a cached state every
+  // half second (and the first) for going back, and drops the ones after now when the motion's sliders change.
+  // The page (exactly, for renders) and its Worker (the preview) run the same one, so both land on the same numbers.
+  const lastIdx = (arr, t) => { let lo = 0; let hi = arr.length - 1; let k = -1; while (lo <= hi) { const m = (lo + hi) >> 1; if (arr[m] <= t) { k = m; lo = m + 1; } else hi = m - 1; } return k; };
+  class Runner {
+    constructor(W, keep = true) {
+      this.W = W; this.keep = keep; this.snaps = new Map(); this.bytes = 0; this.init = W.snapshot();
+      this.resims = 0; this.kicks = 0; this.drops = 0; this.stepMs = 0; this.sig = NaN;
+      this.m = { ksrc: null, drops: [], held: null, kPrev: 0, kickStart: false, pendKick: false, pendDrop: false };
+    }
+    save() {
+      const W = this.W; const st = W.misc[0];
+      if (!this.keep || this.snaps.has(st)) return;
+      const b = W.bytes();
+      // (at most ~48 MB of states: past it, every other one goes)
+      if (this.bytes + b > 48e6) { let i = 0; for (const k of [...this.snaps.keys()].sort((x, y) => x - y)) if (i++ % 2) { this.snaps.delete(k); this.bytes -= b; } }
+      this.snaps.set(st, W.snapshot()); this.bytes += b;
+    }
+    dropAfter() { const st = this.W.misc[0]; for (const k of [...this.snaps.keys()]) if (k > st) { this.snaps.delete(k); this.bytes -= this.W.bytes(); } }
+    motion(sig) { if (sig === this.sig) return; if (!Number.isNaN(this.sig)) this.dropAfter(); this.sig = sig; }
+    // back in time: the nearest cached state at or before the step (the first one at worst)
+    seek(target) {
+      const W = this.W; if (target >= W.misc[0]) return;
+      let best = -1; for (const k of this.snaps.keys()) if (k <= target && k > best) best = k;
+      W.restore(best >= 0 ? this.snaps.get(best) : this.init); this.resims += 1; this.m.kPrev = 0;
+    }
+    one(env) {
+      const W = this.W; const m = this.m; const st = W.misc[0] + 1; const ta = (st - 1) / 60; const tb = st / 60;
+      let kick = false; let drop = false;
+      if (m.held != null) { kick = m.held > 0.5 && m.kPrev <= 0.5; m.kPrev = m.held; }
+      else if (m.ksrc === 'grid') kick = Math.floor(tb / 0.5) > Math.floor(ta / 0.5);
+      else if (Array.isArray(m.ksrc) || ArrayBuffer.isView(m.ksrc)) kick = lastIdx(m.ksrc, tb) > lastIdx(m.ksrc, ta);
+      if (st === 1 && m.kickStart) kick = true;
+      for (const x of m.drops || []) if (x > ta && x <= tb) { drop = true; break; }
+      if (m.pendKick) { kick = true; m.pendKick = false; }
+      if (m.pendDrop) { drop = true; m.pendDrop = false; }
+      env.kick = kick; env.drop = drop;
+      const imp = env.kickImp; if (st === 1 && m.kickStart) env.kickImp = imp || 2; // (a scene that starts with a push: dominoes)
+      W.step(env);
+      env.kickImp = imp;
+      if (kick) this.kicks += 1; if (drop) this.drops += 1;
+      if (W.misc[0] % 30 === 0) this.save();
+    }
+    // steps up to the target within a budget (ms; at least one step when behind); returns how many
+    run(target, env, budget, now) {
+      const t0 = now(); let n = 0;
+      while (this.W.misc[0] < target && (n < 1 || now() - t0 < budget)) { this.one(env); n += 1; }
+      if (n) this.stepMs += ((now() - t0) / n - this.stepMs) * 0.15;
+      return n;
+    }
+  }
+  return { World, Runner, icosphere, rnd, quatOf, HASHED, PIN, RELEASE };
 }
 // </physics-core>
 // physics(P, opts) inside a layer's code makes it a ⚛ physics layer: a scene of bodies (opts.build: one of PH_BUILDS,
@@ -8442,13 +8495,14 @@ const PH_BUILDS = {
   },
   dominoes(W, c) {
     const { n, s } = c; const hx = 0.035 * s, hy = 0.32 * s, hz = 0.13 * s; const gap = 0.27 * s;
-    let x = -(n * gap) / 2; let z = 0; let ang = 0;
-    for (let k = 0; k < n; k += 1) {
-      const turn = Math.sin(k / 7) * 0.18; ang += turn * 0.5;
-      const q = [0, Math.sin(-ang / 2), 0, Math.cos(-ang / 2)];
-      W.box(x, hy, z, hx, hy, hz, { q, color: k % 3, ...(k === 0 && !c.opts.kickStart ? { spin: [Math.sin(ang) * 3, 0, -Math.cos(ang) * 3] } : {}) });
-      x += Math.cos(ang) * gap; z += Math.sin(ang) * gap;
-    }
+    // (a snaking line, centred on the floor)
+    const line = []; let x = 0; let z = 0; let ang = 0;
+    for (let k = 0; k < n; k += 1) { ang += Math.sin(k / 7) * 0.09; line.push([x, z, ang]); x += Math.cos(ang) * gap; z += Math.sin(ang) * gap; }
+    const mx = line.reduce((a, l) => a + l[0], 0) / n; const mz = line.reduce((a, l) => a + l[1], 0) / n;
+    line.forEach(([lx, lz, a], k) => {
+      const q = [0, Math.sin(-a / 2), 0, Math.cos(-a / 2)];
+      W.box(lx - mx, hy, lz - mz, hx, hy, hz, { q, color: k % 3, ...(k === 0 && !c.opts.kickStart ? { spin: [Math.sin(a) * 3, 0, -Math.cos(a) * 3] } : {}) });
+    });
   },
   ragdolls(W, c) {
     const { n, s, rnd } = c;
@@ -8644,44 +8698,58 @@ globalThis.physics = (P = {}, opts = {}) => {
   const seed = (Number(opts.seed) >>> 0) || 1;
   const stat = { id: L.id, build: String(opts.build || 'balls'), bodies: 0, particles: 0, kinds: {}, step: 0, simT: 0, behind: 0, snaps: 0, resims: 0, resets: 0, kicks: 0, drops: 0, ms: 0, stepMs: 0, awake: 0, asleep: 0, waiting: null, model: null, frames: 0, ok: true, gone: false };
   PH.stats.set(L.id, stat);
-  let W = null; let view = null; let model = null; let modelTry = -999;
-  const snaps = new Map(); let snapBytes = 0;
+  let W = null; let R = null; let view = null; let model = null; let modelTry = -999;
+  // ---- the solver's thread: a Worker steps the preview (the page stays free); renders step here, exactly ----
+  let wk = null; let wkBusy = false; let wkGen = 0; let mainAhead = false; let wkSent = { ksrc: undefined, drops: undefined }; let wkInfo = null;
+  function wkStart() {
+    if (wk || PH.noWorker || opts.worker === false) return;
+    try {
+      PH.wkUrl ||= URL.createObjectURL(new Blob([`${physicsCore}\n(${phWorkerMain})();`], { type: 'text/javascript' }));
+      wk = new Worker(PH.wkUrl);
+      wk.onmessage = ({ data: m }) => {
+        if (m.gen !== wkGen || stat.gone) return;
+        wkBusy = false;
+        if (!mainAhead) W.restore(m.s);
+        wkInfo = m;
+      };
+      wk.onerror = (e) => { post({ type: 'console', level: 'warn', text: `physics: the solver's worker stopped (${e.message || 'error'}); stepping on the page`, layer: pcTop(L.id) }); try { wk.terminate(); } catch { /* gone */ } wk = null; PH.noWorker = true; };
+      wkWorld();
+    } catch { wk = null; PH.noWorker = true; }
+  }
+  // the world as data (typed arrays, bodies, clusters): the worker rebuilds it from that, nothing is built twice
+  function wkWorld() {
+    if (!wk) return;
+    wkGen += 1; wkBusy = false; mainAhead = false; wkSent = { ksrc: undefined, drops: undefined }; wkInfo = null;
+    const data = {}; for (const [k, v] of Object.entries(W)) if (typeof v !== 'function' && k[0] !== '_') data[k] = v;
+    wk.postMessage({ type: 'world', gen: wkGen, world: data });
+  }
   function build() {
     const n = Math.max(1, Math.min(400, Math.round(num('count')))); const s = Math.max(0.2, Math.min(4, num('size')));
-    const w = new PH.core.World({ floor: opts.floor === false ? false : true, floorY: 0, walls: opts.walls, ceiling: opts.ceiling });
+    const w = new PH.core.World({ floor: opts.ground !== false, floorY: 0, walls: opts.walls, ceiling: opts.ceiling });
     const fn = PH_BUILDS[stat.build] || PH_BUILDS.balls;
     try { fn(w, { n, s, rnd: seeded(seed * 7919 + 13), opts, model }); phExtra(w, opts.bodies, s); }
     catch (err) { post({ type: 'error', layer: pcTop(L.id), message: `physics: ${err.message}` }); }
     if (!w._p.length) w.sphere(0, 1, 0, 0.2, {});
     w.finish();
-    W = w; snaps.clear(); snapBytes = 0; stat.resets += 1; hex.fill('');
+    W = w; R = new PH.core.Runner(W, true); stat.resets += 1; hex.fill('');
+    R.m.kickStart = Boolean(opts.kickStart);
     if (view) view.dispose();
     view = phView(W, { scene, mat, ropeMat, waterMat, model, s });
     stat.bodies = W.B; stat.particles = W.N; stat.kinds = view.kinds; stat.step = 0;
-    snapshot(0);
+    wkWorld();
     post({ type: 'physics-info', layer: pcTop(L.id), ...stat });
   }
-  function snapshot(st) {
-    if (free || snaps.has(st)) return;
-    const b = W.bytes();
-    // (at most ~48 MB of states: past it, every other one goes)
-    if (snapBytes + b > 48e6) { let i = 0; for (const k of [...snaps.keys()].sort((a, c) => a - c)) { if (k && i++ % 2) { snaps.delete(k); snapBytes -= b; } } }
-    snaps.set(st, W.snapshot()); snapBytes += b; stat.snaps = snaps.size;
-  }
   // ---- the clock: a timeline (exact) or the free clock (from when the layer ran) ----
-  let free = false; let t0 = null; let kPrev = 0; let dPrev = 0; let pend = { kick: false, drop: false }; let sig = NaN; let a01 = 1;
+  let free = false; let t0 = null; let a01 = 1; let liveK = 0;
+  const pend = { kick: false, drop: false };
   const bassNow = { v: 0 };
+  const dropAt = [].concat(opts.dropAt ?? []).map(Number).filter(Number.isFinite);
   function kickSource() {
     const own = sqOwnMarks('kick'); if (own) return own.marks;
     if (mediaEl && !liveKind) { const m = beatMap?.marks?.kick; if (m?.length) return m; const b = beatMap?.beats?.length ? beatMap.beats : analysis?.beats; return b?.length ? b : null; }
     return liveKind ? 'live' : 'grid';
   }
-  const between = (arr, a, b) => (a < b ? lastIdx(arr, b) > lastIdx(arr, a) : false);
-  function dropsBetween(a, b) {
-    const d = mediaEl && !liveKind && analysis?.drops?.length ? analysis.drops : [].concat(opts.dropAt ?? []).map(Number).filter(Number.isFinite);
-    for (const x of d) if (x > a && x <= b) return true;
-    return false;
-  }
+  const dropSource = () => (mediaEl && !liveKind && analysis?.drops?.length ? analysis.drops : dropAt);
   // the sliders that change the motion: when one changes, the cached states after now are dropped
   const motionSig = () => { let h = 0; let i = 1; for (const k of ['gravity', 'timeScale', 'bounce', 'friction', 'damping', 'stiffness', 'quality', 'wind', 'turb', 'kick', 'bassGravity', 'bassWind', 'drop']) h += num(k) * (i += 7.13); return h + PH_KICK.indexOf(String(pv('kickMode'))) * 1e3; };
   const env = { gravity: 1, timeScale: 1, bounce: 0.3, friction: 0.5, damping: 0.05, stiffness: 0.5, sub: 8, iters: 1, wind: 0, turb: 0, kick: false, kickImp: 0, kickMode: 'jump', kickOnly: 'all', drop: false, dropImp: 0, sleep: true };
@@ -8693,26 +8761,6 @@ globalThis.physics = (P = {}, opts = {}) => {
     env.iters = opts.iters ?? (W.clusters.length > 4 ? 2 : 1);
     env.wind = num('wind') + num('bassWind') * bass; env.turb = Math.max(0, num('turb'));
     env.kickImp = Math.max(0, num('kick')); env.kickMode = PH_KICK.includes(String(pv('kickMode'))) ? String(pv('kickMode')) : 'jump'; env.kickOnly = opts.kickOnly || 'all'; env.dropImp = Math.max(0, num('drop'));
-    for (const cl of W.clusters) if (W.bodies[cl.body].type === 'soft') cl.k = 0.04 + 0.6 * env.stiffness * env.stiffness;
-  }
-  // one step, its music from the step's own time (a kick marker between the last step and this one)
-  let ksrc = null;
-  function stepOnce() {
-    const st = W.misc[0] + 1; const ta = (st - 1) / 60; const tb = st / 60;
-    let kick = false; let drop = false;
-    if (PH.drive.kick != null) { kick = PH.drive.kick > 0.5 && kPrev <= 0.5; kPrev = PH.drive.kick; }
-    else if (ksrc === 'live') { const k = featVal('kickOn') || audio.kick; kick = k > 0.5 && kPrev <= 0.5; kPrev = k; }
-    else if (ksrc === 'grid') kick = Math.floor(tb / 0.5) > Math.floor(ta / 0.5) && ta >= 0;
-    else if (ksrc) kick = between(ksrc, ta, tb);
-    if (st === 1 && opts.kickStart) kick = true;
-    drop = dropsBetween(ta, tb);
-    if (pend.kick) { kick = true; pend.kick = false; } if (pend.drop) { drop = true; pend.drop = false; }
-    env.kick = kick; env.drop = drop;
-    const imp = env.kickImp; if (st === 1 && opts.kickStart) env.kickImp = imp || 2; // (a scene that starts with a push: dominoes)
-    W.step(env);
-    env.kickImp = imp;
-    if (kick) stat.kicks += 1; if (drop) stat.drops += 1;
-    if (W.misc[0] % 30 === 0) snapshot(W.misc[0]);
   }
   // ---- per frame ----
   let frame = 0;
@@ -8734,22 +8782,35 @@ globalThis.physics = (P = {}, opts = {}) => {
     t = Math.max(0, t);
     const exact = SQ.off || fullRes() || PH.xp;
     readEnv();
-    ksrc = kickSource();
+    // the music: kick markers / beats (or a grid) and drops for each step; live input and pokes as a kick now
+    let ks = kickSource();
+    if (ks === 'live') { const k = featVal('kickOn') || audio.kick; if (k > 0.5 && liveK <= 0.5) pend.kick = true; liveK = k; ks = null; }
     const ms = motionSig();
-    if (ms !== sig) { if (!Number.isNaN(sig)) for (const k of snaps.keys()) if (k > W.misc[0]) { snaps.delete(k); snapBytes -= W.bytes(); } sig = ms; }
     let target = Math.floor(t * 60 + 1e-6);
-    // back in time: the nearest cached state at or before the frame, then forward from it
-    if (target < W.misc[0]) {
-      let best = -1; for (const k of snaps.keys()) if (k <= target && k > best) best = k;
-      if (best >= 0) W.restore(snaps.get(best)); else build();
-      stat.resims += 1; kPrev = 0;
-    }
     if (free && target - W.misc[0] > 6) { t0 += (target - W.misc[0] - 1) / 60; target = W.misc[0] + 1; } // (the free clock: time it can't keep up with is dropped)
-    const budget = exact ? Infinity : 7;
-    const s0 = realNow(); let n = 0;
-    while (W.misc[0] < target && (n < 2 || realNow() - s0 < budget)) { stepOnce(); n += 1; }
-    if (n) stat.stepMs += ((realNow() - s0) / n - stat.stepMs) * 0.1;
-    stat.behind = target - W.misc[0];
+    if (!exact && !PH.xp) wkStart();
+    if (wk && !exact) {
+      // the preview: the worker steps; the page draws its last answer (one request at a time)
+      if (mainAhead) { wkGen += 1; wkBusy = false; wk.postMessage({ type: 'state', gen: wkGen, s: W.snapshot() }); mainAhead = false; }
+      if (!wkBusy) {
+        const music = { held: PH.drive.kick, kickStart: Boolean(opts.kickStart), pendKick: pend.kick, pendDrop: pend.drop };
+        const ds = dropSource();
+        if (ks !== wkSent.ksrc) { music.ksrc = ks; wkSent.ksrc = ks; }
+        if (ds !== wkSent.drops) { music.drops = ds; wkSent.drops = ds; }
+        pend.kick = false; pend.drop = false; wkBusy = true;
+        wk.postMessage({ type: 'run', gen: wkGen, target, env, music, sig: ms, keep: !free });
+      }
+      if (wkInfo) { stat.stepMs = wkInfo.stepMs; stat.snaps = wkInfo.snaps; stat.resims = wkInfo.resims; stat.kicks = wkInfo.kicks; stat.drops = wkInfo.drops; }
+    } else {
+      // here (renders, screenshots, no worker): exactly, all the steps the frame needs
+      const m = R.m; m.held = PH.drive.kick; m.ksrc = ks; m.drops = dropSource();
+      if (pend.kick) { m.pendKick = true; pend.kick = false; } if (pend.drop) { m.pendDrop = true; pend.drop = false; }
+      R.keep = !free; R.motion(ms); R.seek(target);
+      R.run(target, env, exact ? Infinity : 4, realNow);
+      if (wk) mainAhead = true;
+      stat.stepMs = R.stepMs; stat.snaps = R.snaps.size; stat.resims = R.resims; stat.kicks = R.kicks; stat.drops = R.drops;
+    }
+    stat.behind = Math.max(0, target - W.misc[0]);
     a01 = stat.behind > 0 ? 1 : Math.max(0, Math.min(1, t * 60 - target));
     // the picture
     const cs = [String(pv('color1')), String(pv('color2')), String(pv('color3')), String(pv('floorColor'))];
@@ -8762,25 +8823,44 @@ globalThis.physics = (P = {}, opts = {}) => {
     camera.position.set(Math.sin(ang) * d, num('camHeight'), Math.cos(ang) * d); camera.lookAt(0, num('lookY'), 0);
     renderer.render(scene, camera);
     renderer.__lastScene = scene; renderer.__lastCamera = camera;
-    stat.step = W.misc[0]; stat.simT = W.misc[0] / 60; stat.frames += 1;
+    stat.step = W.misc[0]; stat.simT = W.misc[0] / 60; stat.frames += 1; stat.worker = Boolean(wk && !exact);
     stat.ms += ((realNow() - c0) - stat.ms) * 0.1;
     if (frame % 90 === 0) { let aw = 0; let as = 0; for (let k = 0; k < W.B; k += 1) if (W.active[k] && !W.bodies[k].fixed) { if (W.asleep[k]) as += 1; else aw += 1; } stat.awake = aw; stat.asleep = as; }
   });
   PH.live.set(L.id, {
-    probe: () => ({ ...W.probe(), simT: W.misc[0] / 60, behind: stat.behind, snaps: snaps.size, resims: stat.resims, bass: bassNow.v }),
+    probe: () => ({ ...W.probe(), simT: W.misc[0] / 60, behind: stat.behind, snaps: stat.snaps, resims: stat.resims, worker: stat.worker, stepMs: Math.round(stat.stepMs * 1000) / 1000, bass: bassNow.v }),
     bodies: (max = 60) => { const o = new Float64Array(7); const out = []; for (let k = 0; k < W.B && out.length < max; k += 1) { if (W.bodies[k].fixed) continue; W.pose(k, 1, o); out.push({ k, kind: W.bodies[k].kind, on: W.active[k], asleep: W.asleep[k], p: [o[0], o[1], o[2]].map((x) => Math.round(x * 1000) / 1000), v: Math.round(Math.hypot(W.v[W.bodies[k].i0 * 3], W.v[W.bodies[k].i0 * 3 + 1], W.v[W.bodies[k].i0 * 3 + 2]) * 1000) / 1000 }); } return out; },
-    poke: (what) => { if (what === 'reset') { t0 = null; build(); return true; } if (what === 'kick') pend.kick = true; else if (what === 'drop') pend.drop = true; else return false; for (const k of snaps.keys()) if (k > W.misc[0]) snaps.delete(k); return true; },
+    // a kick / drop now (live: the states cached after now go), or the scene from its start
+    poke: (what) => { if (what === 'reset') { t0 = null; build(); return true; } if (what === 'kick') pend.kick = true; else if (what === 'drop') pend.drop = true; else return false; R.dropAfter(); return true; },
   });
   (L.cleanups ||= []).push(() => {
     renderer.setAnimationLoop(null);
     removeEventListener('resize', onResize);
     stat.gone = true;
+    try { wk?.terminate(); } catch { /* gone */ }
     view?.dispose(); floorShadow.geometry.dispose(); floorShadow.material.dispose(); floorSolid.material.dispose(); mat.dispose(); ropeMat.dispose(); waterMat.dispose();
-    snaps.clear();
     if (PH.stats.get(L.id) === stat) { PH.stats.delete(L.id); PH.live.delete(L.id); }
   });
   return { renderer, scene, camera, world: () => W, ok: true };
 };
+// the solver's Worker (its source is physicsCore + this, from a blob): a world arrives as data, then each 'run' steps it
+// toward the frame's step (≤ 24 ms a turn, the page asks again) and answers with the state; 'state': the page stepped
+// it itself (a render, a screenshot) and hands it back
+function phWorkerMain() {
+  const C = physicsCore(); let R = null; let gen = -1; const env = {};
+  const now = () => performance.now();
+  self.onmessage = ({ data: m }) => {
+    if (m.type === 'world') { const W = Object.assign(Object.create(C.World.prototype), m.world); R = new C.Runner(W, true); gen = m.gen; return; }
+    if (!R) return;
+    if (m.type === 'state') { R.W.restore(m.s); R.dropAfter(); gen = m.gen; return; }
+    if (m.gen !== gen) return;
+    if (m.type === 'run') {
+      Object.assign(env, m.env); Object.assign(R.m, m.music); R.keep = m.keep;
+      R.motion(m.sig); R.seek(m.target); R.run(m.target, env, 24, now);
+      self.postMessage({ type: 'state', gen, s: R.W.snapshot(), snaps: R.snaps.size, resims: R.resims, kicks: R.kicks, drops: R.drops, stepMs: R.stepMs });
+    }
+  };
+}
 // the drawing: instanced boxes, balls, rope pieces, ragdoll joints / bones and water drops (one draw each), a mesh
 // per cloth / blob / letter / model copy; updated from the bodies' poses every frame (nothing allocated per frame)
 function phView(W, { scene, mat, ropeMat, waterMat, model, s }) {
