@@ -70,7 +70,7 @@ const InteropObs = (() => {
   I.onObs((st) => {
     const was = obs; obs = st;
     if (was?.state !== 'on' && st.state === 'on') toast(`🎥 OBS connected${st.version ? ` · ${st.version}` : ''}`, { timeout: 1800 });
-    if (was?.state === 'on' && st.state !== 'on') toast(`🎥 OBS: ${st.why || 'disconnected'}`, { type: st.state === 'auth' ? 'error' : undefined, timeout: 3000 });
+    if (was?.state === 'on' && st.state !== 'on' && st.why) toast(`🎥 OBS: ${st.why || 'disconnected'}`, { type: st.state === 'auth' ? 'error' : undefined, timeout: 3000 });
     if (st.state === 'auth' && was?.state !== 'auth') toast(`🎥 ${st.why}`, { type: 'error', timeout: 5000 });
     if (was && Boolean(was.rec?.active) !== Boolean(st.rec?.active)) toast(st.rec?.active ? '🎥 OBS is recording' : '🎥 OBS stopped recording', { timeout: 1800 });
     if (was && Boolean(was.stream?.active) !== Boolean(st.stream?.active)) toast(st.stream?.active ? '🔴 OBS is live (streaming)' : '🎥 OBS stopped streaming', { timeout: 2400 });

@@ -86,14 +86,16 @@ const Interop = (() => {
       const { ub, ubar, bpm } = next();
       if (Math.abs(bpm - lastBpm) > 0.05) { lastBpm = bpm; for (const fn of tempoSubs) { try { fn(bpm); } catch (err) { console.warn('interop tempo', err); } } }
       const at = performance.now() + ub * 1000;
-      const down = ubar != null && Math.abs(ubar - ub) < 0.04;
-      t = setTimeout(() => fire(at, down, bpm), Math.max(0, ub * 1000 - 25));
+      // where this beat sits in the bar: the beats from it to the next bar line (0 → it is beat 1)
+      const k = ubar != null ? ((Math.round((ubar - ub) / (60 / bpm)) % 4) + 4) % 4 : null;
+      const pos = k == null ? (beat % 4) + 1 : k === 0 ? 1 : 5 - k;
+      t = setTimeout(() => fire(at, pos, bpm), Math.max(0, ub * 1000 - 25));
     }
-    function fire(at, down, bpm) {
+    function fire(at, pos, bpm) {
       // (the same beat twice, e.g. a song's grid answering just after it: skip)
       if (at - lastAt < (60000 / bpm) * 0.5) { t = setTimeout(arm, 30); return; }
       lastAt = at;
-      beat = down ? 1 : (beat % 4) + 1;
+      beat = pos;
       if (beat === 1) bar += 1;
       stats.beats += 1;
       const e = { at, beat, bar, down: beat === 1, bpm };

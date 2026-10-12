@@ -65,12 +65,13 @@
   // (the check reads the picture: the alpha at a grid of points)
   S.sample = () => {
     draw();
-    const W = cv.width; const H = cv.height; const pts = [];
-    for (let j = 1; j < 8; j += 1) for (let i = 1; i < 8; i += 1) pts.push([Math.floor((W * i) / 8), Math.floor((H * j) / 8)]);
-    pts.push([1, 1], [W - 2, H - 2]);
-    const px = new Uint8Array(4);
-    const alphas = pts.map(([x, y]) => { if (gl) { gl.readPixels(x, H - 1 - y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); return px[3]; } return g2.getImageData(x, y, 1, 1).data[3]; });
-    return { min: Math.min(...alphas), max: Math.max(...alphas), clear: alphas.filter((a) => a === 0).length, solid: alphas.filter((a) => a > 200).length, n: alphas.length, gl: Boolean(gl), size: S.size, canvas: [W, H] };
+    const W = cv.width; const H = cv.height; const px = new Uint8Array(4);
+    const [bx, by, bw, bh] = box(S.size[0], S.size[1]);
+    const alpha = (x, y) => { if (gl) { gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); return px[3]; } return g2.getImageData(x, H - 1 - y, 1, 1).data[3]; };
+    // a grid inside the picture (GL coordinates: from the bottom), and the canvas outside it
+    const inside = []; for (let j = 1; j < 8; j += 1) for (let i = 1; i < 8; i += 1) inside.push(alpha(Math.floor(bx + (bw * i) / 8), Math.floor(by + (bh * j) / 8)));
+    const st = (a) => ({ min: Math.min(...a), max: Math.max(...a), clear: a.filter((x) => x === 0).length, solid: a.filter((x) => x > 200).length, n: a.length });
+    return { inside: st(inside), outside: bx > 2 ? st([alpha(1, 1), alpha(1, H - 2)]) : null, gl: Boolean(gl), size: S.size, canvas: [W, H] };
   };
 
   let pending = null; let raf = 0; let decoding = false;
