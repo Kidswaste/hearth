@@ -83,7 +83,8 @@ line count is lower than the number of upgrades).
 | Three Director loop (round 21): edits answer when the change is on screen (1.6 s fixed wait → 0.22 s), small pictures from the preview itself (≈786 → 442 image tokens, a 9:16 picture 9.2 → 1.8 s), `three_do batch`, results that only say what's new, errors in one line, `three_do undo` / safe edits, nothing stays "working"; typical turns: "add a pink glow" ≈20k → 10k tokens, "make it 9:16 and save" ≈14k → 6.7k | [labdirector.md](labdirector.md) | 24 |
 | Lab controls (round 21): instant sliders reach the preview in 6 ms (was 51), typing in a 2,000-line sketch 345 → 6 ms per key, opening it 379 → 6 ms, Ctrl+Enter re-sends only the changed layer, the FX picker / sketches / templates dialogs open in 10–60 ms (were 200–500), nothing ticks while the Lab is hidden | [labhub.md](labhub.md) | 28 |
 | Report to the developer (round 21): ⚑ on error notifications, Report on failed replies, stalls, crashes, page errors and `/smooth`; the whole masked report shown for review, then a GitHub issue in kidswaste/hearth (gh, or a prefilled browser link); deduped, listed with state, "Your report #N is fixed in this update"; chats can draft one (`chat_report_problem`); `/report` | [devreport.md](devreport.md) | 33 |
-| **Total** | | **11,068** |
+| Lab preview GPU (round 21): WebGL contexts reused instead of rebuilt (scene switch → first frame ≈ 765 → 400–495 ms, no new context per switch), shader programs cached across re-runs, stacked filters drawn in one pass (718 2D merges → 1), 5× fewer allocations per frame, video and footage only updated on new frames, fps up in every mode | [labgpu.md](labgpu.md) | 28 |
+| **Total** | | **11,096** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.
