@@ -2550,7 +2550,8 @@ const ThreeLab = (() => {
         } else saveDataUrl(msg.dataUrl, `${current?.name || 'sketch'}.png`);
       }
     }
-    const autoRunSoon = debounce(() => run({ hot: true, layer: selId }), 700);
+    // (round 21) …unless that code already ran meanwhile (Ctrl+Enter, ▶ Run): it isn't run a second time
+    const autoRunSoon = debounce(() => { const L = sel(); if (L && current && ranSketch === current.id && ranRaw.get(L.id) === L.code) return; run({ hot: true, layer: selId }); }, 700);
 
     // Version history: a snapshot of a layer each time it runs (40 per layer), plus deleted sketches.
     let history = {};

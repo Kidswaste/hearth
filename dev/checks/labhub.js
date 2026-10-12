@@ -174,12 +174,20 @@ async function drag(range) {
     // the text on screen is the code (the highlight lines up with the textarea): the first and the line at the top
     out.typingIntact = area.value.length === big.length + 60;
   }
-  // Ctrl+Enter: what goes to the preview (only the layers that changed)
-  const sentBefore = ThreeLab.live.counts().sent;
-  area?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true }));
-  await wait(600);
-  const sentAfter = ThreeLab.live.counts().sent;
-  out.ctrlEnterSent = Object.fromEntries(Object.entries(sentAfter).map(([k, v]) => [k, v - (sentBefore[k] || 0)]).filter(([, v]) => v));
+  // Ctrl+Enter: what goes to the preview, after an edit (only the layers that changed) and with nothing changed
+  const ctrlEnter = async () => {
+    const before = ThreeLab.live.counts().sent;
+    area?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true }));
+    await wait(1200); // (and the auto-run's 700 ms: it shouldn't run the same code again)
+    const after = ThreeLab.live.counts().sent;
+    return Object.fromEntries(Object.entries(after).map(([k, v]) => [k, v - (before[k] || 0)]).filter(([, v]) => v));
+  };
+  if (area) {
+    await wait(1500); area.focus(); area.setSelectionRange(area.value.length, area.value.length);
+    document.execCommand('insertText', false, '// edited');
+    out.ctrlEnterAfterEdit = await ctrlEnter();
+    out.ctrlEnterNoChange = await ctrlEnter();
+  }
   c.code(false); await wait(300);
 }
 
