@@ -172,12 +172,20 @@ async function vendorThree(version, codes, dest, opts = {}) {
   return { files: [...done].filter((f) => !missing.includes(f)), missing };
 }
 // the Lab's player with three.js read from ./three/ instead of the CDN
+function sandboxLibs() {
+  const w = {};
+  for (const f of ['sandbox-motion.js', 'sandbox-lab3d.js']) new Function('window', fs.readFileSync(path.join(__dirname, 'tools', f), 'utf8'))(w); // eslint-disable-line no-new-func
+  return Object.values(w.__sbxLibFn).map((fn) => `<script type="module">\nimport * as THREE from 'three';\n(${fn})();\n</script>\n`).join('');
+}
 function labPage() {
   const html = fs.readFileSync(path.join(__dirname, 'tools', 'three-sandbox.html'), 'utf8');
   const re = /const base = `https:\/\/cdn\.jsdelivr\.net\/npm\/three@\$\{V\}`;/;
   if (!re.test(html)) throw new Error('The Lab player changed (three.js import line not found): update deploymain.js labPage().');
   return html.replace(re, "const base = new URL('three', location.href).href; // published by Hearth: three.js next to this page")
-    .replace('<!-- Runs untrusted sketch code: it may load three.js and addons from CDNs, nothing from the hub. -->', '<!-- The Lab\'s player, published by Hearth: three.js comes from ./three/ -->');
+    .replace('<!-- Runs untrusted sketch code: it may load three.js and addons from CDNs, nothing from the hub. -->', '<!-- The Lab\'s player, published by Hearth: three.js comes from ./three/ -->')
+    // (round 25, diet) the motion kit and the 3D-model runtime live in their own files the Lab sends on demand; a
+    // published page has no hub to ask, so they go back in as modules before the page's own
+    .replace('<script type="module">', () => `${sandboxLibs()}<script type="module">`);
 }
 
 // ---------- builds ----------
