@@ -462,12 +462,18 @@ const ThreeTweaks = (() => {
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && !/^(INPUT|TEXTAREA)$/.test(e.target.tagName) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && e.target.type === 'range')) { e.preventDefault(); e.stopPropagation(); undo(); }
     });
     // Values used only while the scene is built re-run it in place, at most every 180 ms while dragging.
+    // (round 21, labhub) …and never before the last rebuild has drawn (rerun answers a promise for that, up to 1.5 s):
+    // a heavy scene got a rebuild every 180 ms whatever it took, so they queued up and the picture fell seconds behind
+    // the slider. Now it skips to the latest value as soon as the preview is ready for it.
     let rebuildTimer = null;
     let rebuildAgain = false;
     function rebuild() {
       if (rebuildTimer) { rebuildAgain = true; return; }
-      rerun({ hot: true });
-      rebuildTimer = setTimeout(() => { rebuildTimer = null; if (rebuildAgain) { rebuildAgain = false; rebuild(); } }, 180);
+      let gates = 2;
+      const done = () => { gates -= 1; if (gates) return; rebuildTimer = null; if (rebuildAgain) { rebuildAgain = false; rebuild(); } };
+      rebuildTimer = setTimeout(done, 180);
+      const drawn = rerun({ hot: true });
+      if (drawn && typeof drawn.then === 'function') drawn.then(done, done); else done();
     }
     const needsRebuild = (i) => !reads || (!reads.live.has(i) && reads.used.has(i));
 
@@ -1044,8 +1050,14 @@ const ThreeTweaks = (() => {
       const r = rows.find((x) => x.i === i);
       if (r) r.updateMusic();
     }
+    // (round 21, labhub) a slider's ♪ / ∿ panel is built the first time it shows: its ~30 chips and fields per slider
+    // were most of the sliders panel, built again on every scene switch for panels almost nobody opens
     function musicPanel(it, i, row) {
       const panel = el('div', { class: 'tw-bind', hidden: true });
+      let paintIt = null;
+      return { panel, paint: () => { if (!paintIt) { if (panel.hidden) return; paintIt = buildMusicPanel(it, i, row, panel); } paintIt(); } };
+    }
+    function buildMusicPanel(it, i, row, panel) {
       const b = () => bindings[ids[i]];
       const amount = el('input', { type: 'range', min: -1, max: 1, step: 0.01, value: b()?.amount ?? 0.5, title: 'How far the music pushes this slider (negative = the other way)' });
       const pct = el('span', { class: 'tw-bind-pct' });
@@ -1082,8 +1094,7 @@ const ThreeTweaks = (() => {
       }
       panel.append(el('div', { class: 'tw-bind-k', text: '♪ Follow the music' }), el('div', { class: 'tw-bind-bands' }, ...bandBtns), el('div', { class: 'tw-num-row' }, el('span', { class: 'tw-hint', text: 'Amount' }), amount, pct), note,
         el('div', { class: 'tw-bind-k', text: '∿ Move by itself' }), el('div', { class: 'tw-bind-bands' }, ...kindBtns), mRow, mNote);
-      paint(); paintMotion();
-      return { panel, paint: () => { paint(); paintMotion(); } };
+      return () => { paint(); paintMotion(); };
     }
 
     // ---------- motion: a control that moves by itself (runs here, ~30 times a second, on top of your value) ----------
@@ -1581,7 +1592,22 @@ const ThreeTweaks = (() => {
       if (!scanned || scanned.code !== code) {
         // Carry unsaved slider values over to the new code where the same control still exists.
         const carry = scanned ? Object.fromEntries(scanned.items.flatMap((it, i) => (same(it, values[i]) ? [] : [[ids[i], values[i]]]))) : {};
-        try { scanned = scan(code); } catch (err) { console.warn('three-tweaks scan failed', err); scanned = { code, items: [] }; }
+        let fresh;
+        try { fresh = scan(code); } catch (err) { console.warn('three-tweaks scan failed', err); fresh = { code, items: [] }; }
+        // (round 21, labhub) the same controls as before, only the code around them changed (typing in the editor,
+        // which re-runs the layer as you pause): the panel stays as it is, with its values, undo and open sections;
+        // only where each control sits in the code moves. Rebuilding every row on each edit was most of the cost
+        // of a pause in typing.
+        if (scanned?.items.length && sameControls(scanned.items, fresh.items)) {
+          let moved = false;
+          scanned.items.forEach((it, i) => { const f = fresh.items[i]; it.start = f.start; it.end = f.end; if (it.line !== f.line) { it.line = f.line; moved = true; } });
+          scanned = { code, items: scanned.items };
+          reads = null;
+          for (const k of Object.keys(motionSent)) delete motionSent[k];
+          if (moved) paintLines();
+          return finishPrepare(code, base);
+        }
+        scanned = fresh;
         ids = idsFor(scanned.items);
         values = scanned.items.map((it, i) => (ids[i] in carry && typeof carry[ids[i]] === typeof it.orig ? carry[ids[i]] : it.orig));
         committed = values.slice();
@@ -1592,6 +1618,21 @@ const ThreeTweaks = (() => {
         for (const k of Object.keys(walkState)) delete walkState[k];
         render();
       }
+      return finishPrepare(code, base);
+    }
+    const NOT_SHAPE = new Set(['start', 'end', 'line']);
+    const controlSig = (it) => JSON.stringify(it, (k, v) => (NOT_SHAPE.has(k) ? undefined : v));
+    function sameControls(a, b) { return a.length === b.length && a.every((it, i) => controlSig(it) === controlSig(b[i])); }
+    // the line numbers on the rows (L12 · "line 12"), after lines were added or removed above them
+    function paintLines() {
+      for (const r of rows) {
+        const lb = r.el.querySelector('.tw-line');
+        if (lb && lb.textContent !== `L${r.it.line}`) { lb.textContent = `L${r.it.line}`; lb.title = `Show line ${r.it.line} in the code`; }
+        const kn = r.knob ? r.el.querySelector('.tw-kname') : null;
+        if (kn) kn.title = [labelOf(r.it), r.it.hint, `line ${r.it.line}`, 'Drag sideways to scrub (Shift fine, Alt finer)'].filter(Boolean).join('\n');
+      }
+    }
+    function finishPrepare(code, base) {
       notice.hidden = broken !== code;
       notice.textContent = 'Sliders are off for this version: the code has a syntax error (or doesn\'t run with sliders attached).';
       if (broken === code || !scanned.items.length) return null;

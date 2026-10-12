@@ -1685,7 +1685,8 @@ let ${id}Travel = 0;`);
       // (round 16 "labperf": one read at a time: a busy preview answering late no longer stacks up reads every 300 ms)
       let asking = false;
       probeTimer = setInterval(async () => {
-        if (asking || mode !== 'nodes' || state !== 'ok' || document.hidden || !pane.offsetParent) return;
+        // (round 21: and not with the Lab behind a chat or another tool: it keeps its layout there, visibility: hidden)
+        if (asking || mode !== 'nodes' || state !== 'ok' || document.hidden || !pane.offsetParent || pane.checkVisibility?.({ visibilityProperty: true }) === false) return;
         const id = layerOf()?.id || 'main';
         asking = true;
         try {

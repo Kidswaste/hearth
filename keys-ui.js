@@ -437,7 +437,7 @@ const KeysUI = (() => {
       { area: 'Lab', keys: 'Shift+F', what: 'Focus: almost fullscreen (Esc leaves)', when: inLab },
       { area: 'Lab', keys: 'Alt+N', what: 'Code ⇄ nodes (in the code view)', when: inLab },
       { area: 'Lab', keys: '?', what: 'Every Lab key in one dialog', when: inLab, run: act('keys') },
-      { area: 'Lab', keys: 'Ctrl+Enter', what: 'Run every layer again', when: inLab },
+      { area: 'Lab', keys: 'Ctrl+Enter', what: 'Run the layers you changed, in place (nothing changed: every layer again)', when: inLab },
       { area: 'Lab', keys: 'Ctrl+Shift+Enter', what: 'Restart from scratch (fresh page, GPU and sound)', when: inLab, run: act('restart') },
       { area: 'Lab', keys: 'Ctrl+PgDn / Ctrl+PgUp', what: 'Next / previous sketch', when: inLab, run: act('nextSketch') },
       { area: 'Lab', keys: 'Ctrl+Z', what: 'Undo a grid, marker, cue or curve change', when: inLab },
