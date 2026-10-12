@@ -89,7 +89,7 @@ const MORE_TOOLS = [
 const NODES_TOOL = { name: 'three_nodes', description: 'Layers as node graphs (the owner\'s Nodes view). command: "layer <preset>" (new layer), "presets", "types [word]", "list", "add <type> k=v [to=n.in]", "link a.out b.in", "unlink b.in", "set <n> k=v", "rm <n>", "preset <p>" (replace), "rebuild". help nodes.', inputSchema: obj({ command: { type: 'string' } }, ['command']) };
 
 // add_layer stays a command (older habits keep working) but is described as its own tool now
-const DO_CMDS = ['layers', 'batch', 'undo', 'crew', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'footage', 'sequence', 'motion', 'model', 'comp', 'make', 'asset', 'help'];
+const DO_CMDS = ['layers', 'batch', 'undo', 'crew', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'footage', 'sequence', 'motion', 'model', 'comp', 'make', 'asset', 'type', 'help'];
 const DO_TOOL = {
   name: 'three_do',
   description: `More Lab actions: { cmd, ...args }; help {topic} explains any (app: the whole app). layer = name, id, n (1 = bottom), "top", "bottom", "selected".
@@ -103,7 +103,7 @@ references {action: list|add|rename|remove|palette, path, name, to, from, colors
 triggers {set} · media_info · load_media {path} · set_frame {size: fit|9:16|16:9|1:1|4:5} · new_sketch {name, code}
 run {command: "/make-it-react"} a chat command · task {todo} this chat's task state
 footage {action, frame} frames + cuts · sequence {op} scenes / footage / titles on a video timeline
-motion {op, preset, words} motion design · model {op} 3D models · comp {op} other chats' scenes as layers, parts to other chats · make {op: plan|list, text} · asset {op} asset library`,
+motion {op, preset, words} motion design · model {op} 3D models · comp {op} other chats' scenes as layers, parts to other chats · make {op: plan|list, text} · asset {op} asset library · type {op} text, lyrics`,
   inputSchema: { type: 'object', properties: { cmd: { type: 'string' } }, required: ['cmd'] },
 };
 
