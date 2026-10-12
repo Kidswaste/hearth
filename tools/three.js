@@ -37,6 +37,20 @@ const ThreeLab = (() => {
   // too meant a reload ~0.3 s later, while the first page was still starting, which could leave the preview black)
   // pretty: a reload of a page that shows something (the Lab preview) keeps a picture of it on screen and cross-fades
   // into the new page once its layers have drawn their first frame (never a black flash; see "live" below).
+  // (round 25, diet) the preview page's motion-design kit / 3D-model runtime (tools/sandbox-*.js): loaded here when a page
+  // asks (a sandboxed page can't read files) and sent as source; nothing of them runs in the hub
+  const LIB_FILES = { motion: 'tools/sandbox-motion.js', lab3d: 'tools/sandbox-lab3d.js' };
+  const libFiles = {};
+  function sandboxLib(name, deliver) {
+    if (!LIB_FILES[name]) return;
+    const have = () => window.__sbxLibFn?.[name];
+    libFiles[name] ||= have() ? Promise.resolve() : new Promise((res, rej) => {
+      const s = document.createElement('script'); s.src = LIB_FILES[name];
+      s.onload = res; s.onerror = () => { delete libFiles[name]; s.remove(); rej(new Error(`${LIB_FILES[name]} didn't load`)); };
+      document.head.append(s);
+    });
+    libFiles[name].then(() => deliver({ target: 'three-sandbox', type: 'lib', name, code: String(have()) }), (err) => deliver({ target: 'three-sandbox', type: 'lib', name, error: err.message }));
+  }
   function sandboxFrame(parent, mode, onMessage, extraParams = () => '', { lazy = false, pretty = false, name = mode } = {}) {
     // No allow-same-origin: sketch code (which may come from a chat) can't reach the hub's APIs.
     const frame = el('iframe', { class: 'three-frame', attrs: { sandbox: 'allow-scripts allow-pointer-lock allow-downloads', allow: 'display-capture; microphone; autoplay' } });
@@ -60,6 +74,7 @@ const ThreeLab = (() => {
     let coverShot = null; // resolves with the picture the page answered for the cover
     const handle = (data) => {
       if (data?.source !== 'three-sandbox') return;
+      if (data.type === 'lib-need') { sandboxLib(data.name, deliver); return; } // (round 25, diet) motion / lab3d for the page
       if (data.type === 'shot' && data.tag === 'cover') { const fn = coverShot; coverShot = null; fn?.(data.dataUrl); return; }
       if (data.type === 'ready') {
         // A page being replaced by a newer load can still say "ready"; only the current load counts.

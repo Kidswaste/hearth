@@ -86,35 +86,73 @@ const MORE_TOOLS = [
     inputSchema: obj({ action: { type: 'string' }, frame: {}, value: {}, ref: { type: 'string' }, from: {}, to: {}, mode: { type: 'string' }, cut: { type: 'boolean' } }) },
 ];
 // On by default for Three directors (the owner wants a node view of visual work; `/nodes-director off` drops it).
-const NODES_TOOL = { name: 'three_nodes', description: 'Layers as node graphs (the owner\'s Nodes view). command: "layer <preset>" (new layer), "presets", "types [word]", "list", "add <type> k=v [to=n.in]", "link a.out b.in", "unlink b.in", "set <n> k=v", "rm <n>", "preset <p>" (replace), "rebuild". help nodes.', inputSchema: obj({ command: { type: 'string' } }, ['command']) };
+const NODES_TOOL = { name: 'three_nodes', description: 'Layers as node graphs (the Nodes view). command: layer <preset> (new layer) · presets · types [word] · list · add <type> k=v [to=n.in] · link a.out b.in · unlink b.in · set <n> k=v · rm <n> · preset <p> (replace) · rebuild. help nodes.', inputSchema: obj({ command: { type: 'string' } }, ['command']) };
 
 // add_layer stays a command (older habits keep working) but is described as its own tool now
-const DO_CMDS = ['layers', 'batch', 'undo', 'crew', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'footage', 'sequence', 'motion', 'model', 'comp', 'make', 'asset', 'type', 'help'];
+const DO_CMDS = ['layers', 'batch', 'undo', 'crew', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'footage', 'sequence', 'motion', 'model', 'comp', 'make', 'asset', 'particles', 'shader', 'type', 'physics', 'help'];
+// (round 25, diet) three_do names its commands, grouped; each one's details come from three_do help <cmd> (DO_HELP,
+// MORE_TOOLS, the guide topics), answered here without a hub call. Was ≈ 370 tokens per message.
 const DO_TOOL = {
   name: 'three_do',
-  description: `More Lab actions: { cmd, ...args }; help {topic} explains any (app: the whole app). layer = name, id, n (1 = bottom), "top", "bottom", "selected".
-batch {ops: [{cmd, ...args}, …]} several in one call, in order (also screenshot, sliders, edit_code…)
-layers · select_layer {layer} · remove_layer {layer} · undo {force} (your last code change, no code re-sent)
-update_layer {layer, settings: {in, out, fadeIn, fadeOut, opacity, blend, x, y, scale, rotate, visible, name}, order, code}
-keyframes {layer, property, keys: [{time, value, ease}] | clear} · animate {layer, preset}
-timeline {from, to} · timeline_edit {grid, markers, loop, zoom, cues, speed, lane}
-looks {action: list|save|apply|delete, name} · notes {action: list|done|reopen|edit|delete|add, id, time, text}
-references {action: list|add|rename|remove|palette, path, name, to, from, colors}
-triggers {set} · media_info · load_media {path} · set_frame {size: fit|9:16|16:9|1:1|4:5} · new_sketch {name, code}
-run {command: "/make-it-react"} a chat command · task {todo} this chat's task state
-footage {action, frame} frames + cuts · sequence {op} scenes / footage / titles on a video timeline
-motion {op, preset, words} motion design, webcam in · model {op} 3D models · comp {op} other chats' scenes as layers, parts to other chats · make {op: plan|list, text} · asset {op} asset library · type {op} text, lyrics · physics {op}`,
+  description: `More Lab actions: {cmd, ...args}. help {topic}: any cmd's args (topic = cmd), a guide topic, or app. layer = name|id|n (1 = bottom)|top|bottom|selected.
+batch {ops: [{cmd, ...}]} several calls in one, in order · undo {force} your last code change
+Layers: layers select_layer remove_layer update_layer keyframes animate looks references
+Time: timeline timeline_edit triggers media_info load_media footage sequence
+Make: new_sketch set_frame model motion particles shader type physics asset comp crew make task notes
+run {command: "/grade noir"} any chat command`,
   inputSchema: { type: 'object', properties: { cmd: { type: 'string' } }, required: ['cmd'] },
 };
+// the commands that have no own tool in full mode: their help line (round 25)
+const DO_HELP = {
+  batch: 'batch {ops: [{cmd, ...args}, …]}: several Lab actions in one call, in order; an op is any three_do cmd or everyday tool by its short name (screenshot, sliders, edit_code…).',
+  undo: 'undo {force}: your last code change back, no code re-sent (force: even if the layer changed since).',
+  crew: 'crew {op: start {n: 2–6, brief, angles: [one per helper]} | status | pick {n, reason} | undo | keep {n} | stop | code {n, layer} | copy {from, layer}}: variation helpers on backstage copies of this scene (the owner approves the cost first; only with /crew on).',
+  make: 'make {op: plan|list, text}: name and plan what you are about to create (rooms ahead of time, progress).',
+  asset: 'asset {op: find {q, kind, limit} | use {id|q, as} | free {q, source: polyhaven|ambientcg, type} | get {source, id, type, size, use} | help}: the owner\'s asset library (textures, HDRIs, fonts, models, sounds).',
+  particles: 'particles {op: list {filter} | add {preset, sliders} | set {layer, values} | emitter | look | react | info {layer} | help}: GPU particle layers.',
+  shader: 'shader {op: list | add | glsl | channel | scale | info | check | help}: fragment-shader layers (GLSL, Shadertoy, ISF).',
+};
+
+// (round 25, diet) the everyday tools as the lean list sends them: short words, the details in help <tool>
+// (full mode keeps the long descriptions above). layer: {} = the reference three_do explains.
+const S = { type: 'string' }; const B = { type: 'boolean' }; const N = { type: 'number' }; const A = { type: 'array' };
+const LEAN = {
+  three_add_layer: ['NEW layer per new element or effect (top; position: bottom|n), selected + run. code: complete module (alpha: true, no background) or template (help filters). settings as update_layer. Returns sliders.', { name: S, code: S, template: S, position: {}, settings: {} }],
+  three_eval: ['Run JS in the live preview (expression, or statements with return; await ok). __scenes[layer] = {scene, camera, renderer}. max chars (3000); samples n every ms.', { code: S, max: N, samples: N, every: N }],
+  three_edit_code: ['Change code, re-run that layer: edits [{find, replace, all?} | {lines: [from, to], replace}] (an edit may name its layer). Answers once on screen: errors, console, fps. shot: small picture; safe: undo if it breaks; diff.', { layer: {}, edits: A, shot: B, safe: B, diff: B }],
+  three_screenshot: ['Picture of the preview. size small|medium|large; region [x, y, w, h] 0..1; at: s|drop|kick|cue (seeks); compare: beside the last; frames 2–8 every gap s; force: even unchanged.', { size: S, region: A, at: {}, compare: B, frames: N, gap: N, force: B }],
+  three_read_code: ['A layer\'s code with line numbers (1–250); from / to, or around: line.', { layer: {}, from: N, to: N, around: N }],
+  three_search_code: ['Find text (regex) in all layers or one: line numbers, context (1), max (40).', { pattern: S, layer: {}, regex: B, context: N, max: N }],
+  three_sliders: ['Read or move a layer\'s tweak() sliders, no code change: set {key|label: value}, unsaved for the owner. Returns sliders + looks.', { layer: {}, set: {} }],
+  three_set_code: ['Rewrite the selected layer (complete module), run it, undoable: an empty sketch or when asked; new elements go in a new layer. report: full.', { code: S, report: S }],
+  three_get_code: ['The selected layer\'s code (outline past 350 lines), layers, frame, sliders, unsaved slider values.', {}],
+  three_console: ['Errors, console lines, fps / draw calls; full: + sliders, layers, music.', { full: B }],
+  three_media_control: ['Music: play|pause|seek {time}|loop {time, end; none clears}. Footage: frame {frame: n|"f120"|timecode}|step {n}|read (see: picture).', { action: S, time: N, end: N, frame: {}, n: N, see: B }],
+  three_input: ['Play-test, in order: {key, ms} held, {keys: [], ms}, {click: [x, y]} 0..1, {move: [x, y]}, {wait: ms}; screenshot after.', { actions: A, screenshot: B }],
+  three_contact_sheet: ['One image of numbered frames at the owner\'s cues (or count over loop / song, or times s).', { times: A, count: N }],
+};
+const lean = (t) => (LEAN[t.name] ? { name: t.name, description: LEAN[t.name][0], inputSchema: obj(LEAN[t.name][1], t.inputSchema.required) } : t);
 
 // (round 22, labcrew) HUB_TOOL_MODE=crew: a crew helper (tools/three-crew.js) works on its own copy of a scene,
-// backstage, for a few calls: only the tools that work there and that a variation needs (≈ 830 tokens, not ≈ 1,780).
+// backstage, for a few calls: only the tools that work there and that a variation needs (lean words, round 25).
 const CREW = process.env.HUB_TOOL_MODE === 'crew';
 const CREW_TOOLS = ['three_edit_code', 'three_add_layer', 'three_set_code', 'three_read_code', 'three_screenshot', 'three_console'];
-const tools = CREW ? CORE_TOOLS.filter((t) => CREW_TOOLS.includes(t.name))
-  : [...CORE_TOOLS, ...(FULL ? MORE_TOOLS : [DO_TOOL]), ...(process.env.HUB_NODES_TOOL === '1' ? [NODES_TOOL] : [])];
+const tools = CREW ? CORE_TOOLS.filter((t) => CREW_TOOLS.includes(t.name)).map(lean)
+  : [...(FULL ? CORE_TOOLS : CORE_TOOLS.map(lean)), ...(FULL ? MORE_TOOLS : [DO_TOOL]), ...(process.env.HUB_NODES_TOOL === '1' ? [NODES_TOOL] : [])];
+
+// help <topic>: a tool or command by name gives its whole description + args (then the guide topic of the same name,
+// if any); anything else goes to the guide / app map. (round 25)
+const BY = Object.fromEntries([...CORE_TOOLS, ...MORE_TOOLS, NODES_TOOL].map((t) => [t.name.slice(6), t]));
+function help(topic) {
+  const k = String(topic || '').toLowerCase().trim().replace(/^three_/, '').replace(/[\s-]+/g, '_');
+  const t = BY[k];
+  const line = DO_HELP[k] || (t && `${t.name}${MORE_TOOLS.includes(t) ? ` (lean: three_do ${k})` : ''}: ${t.description}\nargs: ${Object.keys(t.inputSchema.properties).join(', ') || 'none'}`);
+  const guide = G().help(topic || 'app');
+  if (!line) return guide;
+  return /^Topics:/.test(guide) ? line : `${line}\n\n${guide}`;
+}
 // three_do help is answered here, without a trip to the hub.
-const local = { three_do: (args) => (args.cmd === 'help' ? { ok: true, value: G().help(args.topic) } : null), three_help: (args) => ({ ok: true, value: G().help(args.topic || 'app') }) };
+const local = { three_do: (args) => (args.cmd === 'help' ? { ok: true, value: help(args.topic) } : null), three_help: (args) => ({ ok: true, value: help(args.topic || 'app') }) };
 
 // three_nodes (≈ 75 tokens per message) is on for Three directors unless agent.nodesTool === false (engines.js sets HUB_NODES_TOOL).
 module.exports = serve({ name: 'three-lab', instructions: '', get guide() { return CREW ? '' : FULL ? G().FULL : G().CORE; }, tools, local, all: [...CORE_TOOLS, ...MORE_TOOLS, DO_TOOL, NODES_TOOL], doCommands: DO_CMDS }, module);
