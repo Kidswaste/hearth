@@ -12,7 +12,7 @@ const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (
   for (const mode of ['lean', 'full']) {
     const c = await F.mcpClient({ command: process.execPath, args: [path.join(root, 'mcp', 'three-mcp.js')], env: mode === 'full' ? { HUB_TOOL_MODE: 'full' } : { HUB_TOOL_MODE: '' } });
     const names = c.tools.map((t) => t.name);
-    check(mode === 'lean' ? names.includes('three_do') && names.length === 14 : !names.includes('three_do') && names.length === 37, `${mode}: ${names.length} tools`);
+    check(mode === 'lean' ? names.includes('three_do') && names.length === 14 : !names.includes('three_do') && names.length === 38, `${mode}: ${names.length} tools`);
     check(names.includes('three_add_layer') && names.filter((n) => n === 'three_add_layer').length === 1, `${mode}: three_add_layer is an everyday tool (layers always)`);
     check(!c.instructions, `${mode}: no MCP instructions`);
     const h = await c.call('three_do', { cmd: 'help', topic: 'cues' });
@@ -49,6 +49,29 @@ const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (
   }
   const { fmtValue } = require(path.join(root, 'mcp', 'common.js'));
   check(fmtValue({ a: 1, b: 'x\ny', c: ['p', 'q'] }) === 'a: 1\nb:\nx\ny\nc:\n  p\n  q', 'result text format');
+  // (round 21, labdirector) a light boot, the new three_do commands, the lean list's size, hub errors and a restarted hub
+  const boot = require('child_process').execFileSync(process.execPath, ['-e', `require(${JSON.stringify(path.join(root, 'mcp', 'three-mcp.js'))}); console.log(JSON.stringify(Object.keys(require.cache).map((k) => require('path').basename(k)).concat(process.moduleLoadList.filter((m) => /NativeModule http$/.test(m)))))`], { encoding: 'utf8' });
+  check(!/three-guide|hearth-map|NativeModule http/.test(boot), `three-mcp boots without the guide, the app map or http (${boot.trim()})`);
+  const lean = await F.mcpClient({ command: process.execPath, args: [path.join(root, 'mcp', 'three-mcp.js')], env: { HUB_TOOL_MODE: '', HUB_BRIDGE_INFO: path.join(require('os').tmpdir(), 'no-such-hub.json') } });
+  const doT = lean.tools.find((t) => t.name === 'three_do');
+  check(/batch \{ops/.test(doT.description) && /undo \{force\}/.test(doT.description) && !doT.inputSchema.properties.cmd.enum, 'three_do: batch and undo listed, no repeated enum of commands');
+  const listTok = Math.round(JSON.stringify(lean.tools).length / 4);
+  check(listTok <= 1700, `lean tool list ≤ 1700 tokens (${listTok}; 1878 before round 21)`);
+  const off = await lean.call('three_console', {});
+  check(off.isError && /not running/.test(off.content[0].text), `no hub: a clean one-line error (${off.content[0].text})`);
+  lean.close();
+  // a hub that restarted (new port + token) between two calls: the server reads its address again by itself
+  const http = require('http'); const os = require('os'); const fs = require('fs');
+  const info = path.join(os.tmpdir(), `hearth-mcp-test-${process.pid}.json`);
+  const hub = (token) => new Promise((res) => { const sv = http.createServer((q, r) => { let b = ''; q.on('data', (c) => { b += c; }); q.on('end', () => { const ok = q.headers['x-hub-token'] === token; r.writeHead(ok ? 200 : 403); r.end(JSON.stringify(ok ? { ok: true, value: `hub ${token}` } : { ok: false, error: 'forbidden' })); }); }); sv.listen(0, '127.0.0.1', () => { fs.writeFileSync(info, JSON.stringify({ port: sv.address().port, token })); res(sv); }); });
+  const h1 = await hub('one');
+  const rc = await F.mcpClient({ command: process.execPath, args: [path.join(root, 'mcp', 'three-mcp.js')], env: { HUB_TOOL_MODE: '', HUB_BRIDGE_INFO: info } });
+  const a1 = await rc.call('three_console', {});
+  h1.close(); await new Promise((r) => setTimeout(r, 50));
+  const h2 = await hub('two');
+  const a2 = await rc.call('three_console', {});
+  check(a1.content[0].text === 'hub one' && a2.content[0].text === 'hub two', `a restarted hub is found again (${a1.content[0].text} → ${a2.content[0].text})`);
+  rc.close(); h2.close(); fs.rmSync(info, { force: true });
   console.log(fails.length ? `\n${fails.length} failed` : '\nall passed');
   process.exit(fails.length ? 1 : 0);
 })();

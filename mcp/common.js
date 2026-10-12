@@ -1,26 +1,41 @@
 // Shared plumbing for the hub's MCP servers (stdio JSON-RPC 2.0). Each server declares its tools;
 // calls are forwarded to the running hub through gamebridge.js (127.0.0.1 + token).
+// (round 21) Each engine run starts its own servers, so boot is kept light: http loads after the tool list is
+// answered (it alone was ≈ 14 ms of a ≈ 66 ms start), the hub's address is read once (again only when the hub
+// restarted), and calls reuse one kept-alive connection. Node's compile cache keeps the parsed files between runs.
+try { require('module').enableCompileCache?.(require('path').join(require('os').tmpdir(), 'hearth-mcp-cache')); } catch { /* older Node */ }
 const fs = require('fs');
-const http = require('http');
 const path = require('path');
+let http = null;
+let agent = null;
+const net = () => { if (!http) { http = require('http'); agent = new http.Agent({ keepAlive: true, maxSockets: 4 }); } return http; };
 
-const INFO_PATH = path.join(__dirname, '..', 'data', 'game-bridge.json');
+// HUB_BRIDGE_INFO: a stand-in hub's bridge file (dev/director-speed.js); never set by the app
+const INFO_PATH = process.env.HUB_BRIDGE_INFO || path.join(__dirname, '..', 'data', 'game-bridge.json');
 
-function callHub(tool, args) {
+let info = null; // { port, token } of the running hub, read once
+function readInfo() { try { info = JSON.parse(fs.readFileSync(INFO_PATH, 'utf8')); } catch { info = null; } return info; }
+function post(tool, args) {
   return new Promise((resolve) => {
-    let info;
-    try { info = JSON.parse(fs.readFileSync(INFO_PATH, 'utf8')); } catch { resolve({ ok: false, error: 'Hearth (the hub) is not running.' }); return; }
     const body = JSON.stringify({ tool, args });
-    const req = http.request({ host: '127.0.0.1', port: info.port, path: '/call', method: 'POST', headers: { 'Content-Type': 'application/json', 'x-hub-token': info.token, 'Content-Length': Buffer.byteLength(body) } }, (res) => {
+    const req = net().request({ host: '127.0.0.1', port: info.port, path: '/call', method: 'POST', agent, headers: { 'Content-Type': 'application/json', 'x-hub-token': info.token, 'Content-Length': Buffer.byteLength(body) } }, (res) => {
       let data = '';
       res.on('data', (c) => { data += c; });
-      res.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve({ ok: false, error: `Bad reply from the hub (${res.statusCode})` }); } });
+      res.on('end', () => { if (res.statusCode === 403) { resolve({ stale: true }); return; } try { resolve(JSON.parse(data)); } catch { resolve({ ok: false, error: `Bad reply from the hub (${res.statusCode})` }); } });
     });
-    req.on('error', (err) => resolve({ ok: false, error: `Couldn't reach Hearth (the hub): ${err.message}` }));
+    req.on('error', (err) => resolve({ stale: true, ok: false, error: `Couldn't reach Hearth (the hub): ${err.message}` }));
     // Renders can take a while; the bridge itself enforces per-tool limits.
     req.setTimeout(30 * 60 * 1000, () => { req.destroy(); resolve({ ok: false, error: 'Timed out waiting for the hub.' }); });
     req.end(body);
   });
+}
+async function callHub(tool, args) {
+  if (!info && !readInfo()) return { ok: false, error: 'Hearth (the hub) is not running.' };
+  let r = await post(tool, args);
+  // the hub restarted (new port / token) since the address was read: read it again, once
+  if (r.stale) { const was = JSON.stringify(info); if (readInfo() && JSON.stringify(info) !== was) r = await post(tool, args); }
+  if (r.stale) { const { stale, ...rest } = r; return rest.ok === false ? rest : { ok: false, error: 'Hearth (the hub) refused the call (it restarted?): try again.' }; }
+  return r;
 }
 
 // Tool results as the model reads them, kept cheap: an object becomes "key: value" lines (values as compact JSON,
@@ -49,6 +64,7 @@ function serve(def, mod) {
       send({ jsonrpc: '2.0', id, result: { protocolVersion: params?.protocolVersion || '2025-06-18', capabilities: { tools: {} }, serverInfo: { name, version: '1.0.0' }, ...(instructions ? { instructions } : {}) } });
     } else if (method === 'tools/list') {
       send({ jsonrpc: '2.0', id, result: { tools } });
+      setTimeout(net, 0); // warm the network module while the model thinks, off the start path
     } else if (method === 'tools/call') {
       // local[name](args) can answer without the hub (help text); null means "ask the hub".
       // hubChatId: which chat's run made the call (engines.js HUB_CHAT_ID); the hub routes by it and strips it

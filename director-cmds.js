@@ -137,7 +137,7 @@
       }
       if (!by.size) return 'No director tool calls yet this session.';
       const saved = typeof ThreeDirector !== 'undefined' ? ThreeDirector.saved() : null;
-      return `| Tool | Calls | Avg | ≈ Tokens read | Failed | Pictures |\n| --- | ---: | ---: | ---: | ---: | ---: |\n${[...by.entries()].sort((a, b) => b[1].n - a[1].n).map(([t, s]) => `| ${DirectorDock.iconOf(t)} ${t} | ${s.n} | ${Math.round(s.ms / s.n)} ms | ${s.tok.toLocaleString()} | ${s.fail || ''} | ${s.img || ''} |`).join('\n')}${saved && (saved.reads || saved.shots) ? `\n\nNot sent again (unchanged): ${saved.reads} code reads, ${saved.shots} screenshots.` : ''}`;
+      return `| Tool | Calls | Avg | ≈ Tokens read | Failed | Pictures |\n| --- | ---: | ---: | ---: | ---: | ---: |\n${[...by.entries()].sort((a, b) => b[1].n - a[1].n).map(([t, s]) => `| ${DirectorDock.iconOf(t)} ${t} | ${s.n} | ${Math.round(s.ms / s.n)} ms | ${s.tok.toLocaleString()} | ${s.fail || ''} | ${s.img || ''} |`).join('\n')}${saved && (saved.reads || saved.shots) ? `\n\nNot sent again (unchanged): ${saved.reads} code reads, ${saved.shots} screenshots.` : ''}${saved && (saved.state || saved.waitMs) ? `\nScene state lines not repeated: ${saved.state || 0} · waiting saved by answering when the change is on screen: ${((saved.waitMs || 0) / 1000).toFixed(1)} s.` : ''}${saved?.pics?.small ? `\nPictures made small by the preview: ${saved.pics.small.n} (avg ${Math.round(saved.pics.small.ms / saved.pics.small.n)} ms)${saved.pics.full ? `, full-size: ${saved.pics.full.n} (avg ${Math.round(saved.pics.full.ms / saved.pics.full.n)} ms)` : ''}.` : ''}`;
     },
   });
   cmd({ name: 'director-clear', desc: 'Clear the director activity strip', run: () => { HubBridge.clearLog(); return 'Activity cleared.'; } });

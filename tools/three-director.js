@@ -8,6 +8,14 @@
 //   - three_eval: results cut at `max` chars with a hint; console only when the eval printed something
 //   - three_sliders / three_get_code: sliders as one line each instead of JSON objects
 // It also keeps the director's code history (every code change it made, per layer) for one-click undo.
+// (round 21, labdirector) The loop got faster and cheaper:
+//   - code changes answer when the change is on screen (the preview's first new frame, or its error) instead of
+//     after a fixed 2.5 s; the frame size answers in one line
+//   - pictures are made small by the preview itself (no full-size PNG), 768 px by default, encoded off the thread
+//   - the scene state (sketch, frame, music, layers) is said once per reply, then only when it changed
+//   - an edit says where it landed (line, −/+), not the code the director just sent (diff: true for the diff)
+//   - errors are one line each: [layer] line N: message → the code on that line
+//   - safe: true undoes an edit that breaks its layer; three_do undo reverts the last change without resending code
 const ThreeDirector = (() => {
   const clip = (s, n = 160) => { const t = String(s ?? ''); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -33,7 +41,7 @@ const ThreeDirector = (() => {
     for (const k of ['added', 'updated', 'removed']) if (r[k]) out[k] = r[k];
     out.sketch = r.sketch;
     out.layer = r.layer;
-    if (r.errors?.length) out.errors = r.errors.map((e) => `${e.layer ? `[${e.layer}] ` : ''}${e.line ? `line ${e.line}: ` : ''}${clip(e.message, 400)}`);
+    if (r.errors?.length) out.errors = r.errors.map((e) => `${e.layer ? `[${e.layer}] ` : ''}${e.line ? `line ${e.line}: ` : ''}${clip(e.message, 240)}`);
     const con = (r.console || []).slice(-lines).map((l) => clip(l, 220));
     if (con.length) out.console = con;
     out.stats = statLine(r.stats);
@@ -47,8 +55,8 @@ const ThreeDirector = (() => {
   }
 
   // ---------- diffs ----------
-  // Line diff of the changed middle (common head / tail trimmed, LCS inside when small): hunks with new line numbers.
-  function diff(a, b, { max = 40 } = {}) {
+  // Line diff of the changed middle (common head / tail trimmed, LCS inside when small): ops with new line numbers.
+  function diffOps(a, b) {
     const A = a.split('\n'); const B = b.split('\n');
     let s = 0; while (s < A.length && s < B.length && A[s] === B[s]) s += 1;
     let e = 0; while (e < A.length - s && e < B.length - s && A[A.length - 1 - e] === B[B.length - 1 - e]) e += 1;
@@ -67,9 +75,12 @@ const ThreeDirector = (() => {
       for (const t of a2) ops.push(['-', t, s + 1]);
       b2.forEach((t, k) => ops.push(['+', t, s + k + 1]));
     }
-    // hunks: changed lines only, "@@ 42" headers where a new run starts
+    return ops;
+  }
+  // hunks: changed lines only, "@@ 42" headers where a new run starts
+  function diff(a, b, { max = 40 } = {}) {
     const out = []; let lastLine = -2; let shown = 0; let hidden = 0;
-    for (const [t, text, ln] of ops) {
+    for (const [t, text, ln] of diffOps(a, b)) {
       if (t === ' ') { lastLine = -2; continue; }
       if (shown >= max) { hidden += 1; continue; }
       if (lastLine === -2) out.push(`@@ ${ln}`);
@@ -78,6 +89,18 @@ const ThreeDirector = (() => {
     }
     if (hidden) out.push(`… ${hidden} more changed lines`);
     return out.length ? out.join('\n') : '(no change)';
+  }
+  // Where an edit landed, without echoing the code the director just sent: "line 14 −1 +1, line 30 +2".
+  function landed(a, b) {
+    const runs = []; let cur = null;
+    for (const [t, , ln] of diffOps(a, b)) {
+      if (t === ' ') { cur = null; continue; }
+      if (!cur) runs.push(cur = { at: ln, minus: 0, plus: 0 });
+      if (t === '-') cur.minus += 1; else cur.plus += 1;
+    }
+    if (!runs.length) return 'no change';
+    const shown = runs.slice(0, 6).map((r) => `line ${r.at}${r.minus ? ` −${r.minus}` : ''}${r.plus ? ` +${r.plus}` : ''}`).join(', ');
+    return runs.length > 6 ? `${shown}, … ${runs.length - 6} more` : shown;
   }
 
   // ---------- edits ----------
@@ -141,13 +164,15 @@ const ThreeDirector = (() => {
     const r = await d.updateLayer(h.layerId, { code }, 0.8);
     return { layer: cur.name, report: r };
   }
-  async function undo(d, { force = false } = {}) {
-    const h = history.at(-1);
-    if (!h) throw new Error('The director hasn\'t changed any code yet.');
+  // sketchId: the last change in that scene (three_do undo from a chat undoes that chat's own change)
+  async function undo(d, { force = false, sketchId = null } = {}) {
+    const i = sketchId ? history.findLastIndex((x) => x.sketchId === sketchId) : history.length - 1;
+    const h = history[i];
+    if (!h) throw new Error(sketchId ? 'No code change of yours to undo in this scene.' : 'The director hasn\'t changed any code yet.');
     const cur = (() => { try { return forEntry(d, h).codeOf(h.layerId).code; } catch { return null; } })();
     if (cur != null && cur !== h.after && !force) throw new Error(`"${h.layer}" changed after the director's edit (you or a slider save?). /undo-edit force puts the director's "before" back anyway.`);
     const r = await restore(d, h, h.before);
-    history.pop(); redoStack.push(h); changed();
+    history.splice(history.indexOf(h), 1); redoStack.push(h); changed();
     return { ...h, restored: 'before', errors: r.report?.errors?.length || 0 };
   }
   async function redo(d) {
@@ -162,8 +187,36 @@ const ThreeDirector = (() => {
   // Reset whenever the user sends a director a message (a compacted / new chat starts a new reply anyway).
   const readCache = new Map(); // "layerId:a-b" -> text it was given
   let lastSig = null; // { key, sig } of the last screenshot this reply
-  const savedNotes = { reads: 0, shots: 0 };
-  function newTurn() { readCache.clear(); lastSig = null; }
+  const savedNotes = { reads: 0, shots: 0, state: 0, waitMs: 0, pics: {} };
+  let said = {}; // scene state already told this reply: { sketch, frame, music, layers, layer } → its text
+  function newTurn() { readCache.clear(); lastSig = null; said = {}; }
+  // The scene state is said once per reply, then only when it changed (the director has it from the first result).
+  function onlyNew(v) {
+    for (const k of ['sketch', 'layer', 'frame', 'music', 'layers']) {
+      if (v[k] === undefined) continue;
+      const t = JSON.stringify(v[k]);
+      if (said[k] === t) { delete v[k]; savedNotes.state += 1; } else said[k] = t;
+    }
+    return v;
+  }
+
+  // ---------- settling: answer when the change is on screen ----------
+  // The Lab tells us every message of its preview (tools/three.js → onBox): a layer's first new frame ('drawn') or
+  // its error. The Lab's director waits (after a run) end at the first of them + a short grace for console lines,
+  // so a change answers in ≈ its build time instead of a fixed 2.5 s. Nothing drawn: the full wait, as before.
+  const GRACE = 220;
+  const waiters = new Set();
+  function onBox(m) { if (m && (m.type === 'drawn' || m.type === 'error' || m.type === 'ran')) for (const w of [...waiters]) w(m); }
+  function settle(ms) {
+    return new Promise((resolve) => {
+      let grace = 0; let drew = false;
+      const done = () => { waiters.delete(w); clearTimeout(cap); clearTimeout(grace); resolve(); };
+      // 'ran' (the code loaded) without a first frame soon after: answer anyway (a layer that draws nothing new)
+      const w = (m) => { if (m.type === 'ran') { if (!drew) { clearTimeout(grace); grace = setTimeout(done, 900); } return; } drew = true; clearTimeout(grace); grace = setTimeout(done, GRACE); };
+      const cap = setTimeout(done, Math.max(0, ms));
+      waiters.add(w);
+    });
+  }
   if (typeof Native !== 'undefined') Native.hooks.send.push((agentId) => { if (H.agent(agentId)?.threeTools) newTurn(); });
   // 24x24 grey thumbnail of a canvas, to tell "nothing visibly changed" without sending the picture again
   function signature(c) {
@@ -189,7 +242,8 @@ const ThreeDirector = (() => {
   }
 
   // ---------- pictures ----------
-  const SIZES = { small: 512, medium: 1024, large: 1280 };
+  // medium (the default) was 1024 px (≈ 790 image tokens for 16:9); 768 px reads the same for judging a look (≈ 440)
+  const SIZES = { small: 512, medium: 768, large: 1280 };
   let prevShot = null; // the last picture the director got (canvas), for compare
   const loadImg = async (url) => { const img = new Image(); img.src = url; await img.decode(); return img; };
   // region [x, y, w, h] in 0..1 of the frame, then scaled to fit `max` px; returns a canvas.
@@ -222,10 +276,31 @@ const ThreeDirector = (() => {
     });
     return out;
   }
-  const jpeg = (c, q = 0.82) => c.toDataURL('image/jpeg', q).split(',')[1];
+  // encoded by the browser off the window's thread (ui.js canvasDataUrl) when it can
+  const jpeg = async (c, q = 0.8) => (typeof canvasDataUrl === 'function' ? await canvasDataUrl(c, 'image/jpeg', q) : c.toDataURL('image/jpeg', q)).split(',')[1];
+  // The preview's picture at most `max` px on its long side: made small by the preview itself (a JPEG, no full-size
+  // PNG to encode, pass over and shrink here) when the Lab offers it; region crops need the full picture.
+  async function grab(d, max, region) {
+    const t = performance.now();
+    if (!region && d.shotSmall) {
+      // the first picture back can be a Lab thumbnail's (360 px) that was already on its way: ask again if it's short
+      for (let i = 0; i < 2; i += 1) {
+        const url = await d.shotSmall(max);
+        if (!url) break;
+        const im = await loadImg(url).catch(() => null);
+        if (im && i === 0 && max > 400 && Math.max(im.width, im.height) <= 362) continue;
+        shotStat('small', t); return url;
+      }
+    }
+    const url = await d.shot();
+    shotStat('full', t);
+    return url;
+  }
+  // how pictures were made (saved().shots: small = by the preview, full = the full-size PNG), with their time
+  const shotStat = (k, t) => { const x = (savedNotes.pics[k] ||= { n: 0, ms: 0 }); x.n += 1; x.ms += Math.round(performance.now() - t); };
   // A small picture for edit results (≈ 100–200 image tokens).
   async function thumb(d, max = 384) {
-    const url = await d.shot();
+    const url = await grab(d, max);
     if (!url) return null;
     return jpeg(frameCanvas(await loadImg(url), { max }), 0.75);
   }
@@ -240,18 +315,19 @@ const ThreeDirector = (() => {
       const shots = []; const labels = [];
       const t0 = d.media.loaded ? d.media.info().time : null;
       for (let i = 0; i < n; i += 1) {
-        const url = await d.shot();
+        const url = await grab(d, max, args.region);
         if (url) { shots.push(frameCanvas(await loadImg(url), { max, region: args.region })); labels.push(t0 != null ? `${i + 1} · ${(d.media.info().time || 0).toFixed(2)} s` : `${i + 1} · +${(i * gap).toFixed(1)} s`); }
         if (i < n - 1) await sleep(gap * 1000);
       }
       if (!shots.length) return { ok: false, error: 'No image: the sketch is not rendering (check three_console).' };
       const sheet = tile(shots, labels, Math.min(1600, Math.round(max * 1.5)));
       prevShot = shots.at(-1);
-      return { ok: true, images: [{ data: jpeg(sheet), mime: 'image/jpeg' }], value: `${shots.length} frames of "${d.codeOf().sketch}" ${gap} s apart, left to right${shots.length > 4 ? ', then the next row' : ''} (${sheet.width}×${sheet.height}).` };
+      return { ok: true, images: [{ data: await jpeg(sheet), mime: 'image/jpeg' }], value: `${shots.length} frames of "${d.codeOf().sketch}" ${gap} s apart, left to right${shots.length > 4 ? ', then the next row' : ''} (${sheet.width}×${sheet.height}).` };
     }
-    const url = await d.shot();
+    const url = await grab(d, max, args.region);
     if (!url) return { ok: false, error: 'No image: the sketch is not rendering (check three_console for errors).' };
-    const c = frameCanvas(await loadImg(url), { max, region: args.region });
+    const img = await loadImg(url);
+    const c = frameCanvas(img, { max, region: args.region });
     // the same view again in this reply, and nothing visibly changed: say so instead of sending the picture again
     const key = JSON.stringify([max, args.region || null]);
     const sig = signature(c);
@@ -263,8 +339,11 @@ const ThreeDirector = (() => {
     let out = c; let note = '';
     if (args.compare && prevShot) { out = tile([prevShot, c], ['before', 'now'], Math.min(1600, max * 2)); note = ' Left: the previous screenshot, right: now.'; } else if (args.compare) note = ' (No earlier screenshot to compare with yet.)';
     prevShot = c;
-    const f = d.report().frame;
-    return { ok: true, images: [{ data: jpeg(out), mime: 'image/jpeg' }], value: `Screenshot of "${d.codeOf().sketch}" (${out.width}×${out.height}${f ? `, frame ${frameLine(f)}` : ''}${args.region ? ', cropped' : ''}).${note}` };
+    // the preview's own small JPEG at the right size goes out as it is (no second encode)
+    const asIs = out === c && !args.region && /^data:image\/jpeg/.test(url) && img.width === c.width && img.height === c.height;
+    const data = asIs ? url.split(',')[1] : await jpeg(out);
+    const f = onlyNew({ frame: frameLine(d.report().frame) }).frame;
+    return { ok: true, images: [{ data, mime: 'image/jpeg' }], value: `Screenshot (${out.width}×${out.height}${f ? `, frame ${f}` : ''}${args.region ? ', cropped' : ''}).${note}` };
   }
 
   // ---------- reading / searching code ----------
@@ -336,14 +415,20 @@ const ThreeDirector = (() => {
   // ---------- the handler ----------
   const consoleTail = (d) => d.report().console || [];
   // Errors with a line number get that line of code next to them, which saves a read_code call to look.
+  // One line per error: "[Rings] line 14: nope is not defined → mesh.rotation.y = nope.x;" (layer, line, message
+  // and the code there), at most 4.
   function withErrorLines(d, value, r) {
-    const errs = (r?.errors || []).filter((e) => e.line);
+    // the same error every frame is one line (×n)
+    const seen = new Map();
+    for (const e of r?.errors || []) { const k = `${e.layer}|${e.line}|${e.message}`; if (seen.has(k)) seen.get(k).n += 1; else seen.set(k, { e, n: 1 }); }
+    const errs = [...seen.values()];
     if (!errs.length) return value;
-    const lines = [];
-    for (const e of errs.slice(0, 4)) {
-      try { const code = d.codeOf(e.layer || null).code.split('\n'); const t = code[e.line - 1]; if (t != null) lines.push(`${e.layer ? `[${e.layer}] ` : ''}${e.line}| ${clip(t.trim(), 160)}`); } catch { /* layer gone */ }
-    }
-    if (lines.length) value.errorLines = lines;
+    value.errors = errs.slice(0, 4).map(({ e, n }) => {
+      let code = '';
+      if (e.line) { try { const t = d.codeOf(e.layer || null).code.split('\n')[e.line - 1]; if (t != null) code = ` → ${clip(t.trim(), 120)}`; } catch { /* layer gone */ } }
+      return `${e.layer ? `[${e.layer}] ` : ''}${e.line ? `line ${e.line}: ` : ''}${clip(String(e.message || '').split('\n')[0].replace(/^Uncaught /, ''), 200)}${n > 1 ? ` (×${n})` : ''}${code}`;
+    });
+    if (errs.length > 4) value.errors.push(`… ${errs.length - 4} more (three_console)`);
     return value;
   }
   // Lines added since `before` (the console keeps the last 30; a layer's re-run drops its old lines).
@@ -371,24 +456,42 @@ const ThreeDirector = (() => {
       const keysOf = (id) => { try { return d.sliders(id, null).sliders.map((c) => c.key); } catch { return []; } };
       const sliderKeysBefore = new Map(plans.map((p) => [p.L.id, keysOf(p.L.id)]));
       const results = [];
+      const t0 = performance.now();
       for (const [i, p] of plans.entries()) {
         const last = i === plans.length - 1;
         // sketchId: a batch never continues into another scene if the one on screen changes mid-way (chat-scenes.js)
+        // (the wait is a cap now: the Lab answers at the layer's first new frame, see settle)
         const r = await d.updateLayer(p.L.id, { code: p.code, sketchId: p.L.sketchId }, last ? Math.min(15, Math.max(0.5, Number(args.wait) || 2.5)) : 0.4);
         record({ sketchId: p.L.sketchId, sketch: p.L.sketch, layerId: p.L.id, layer: p.L.name, before: p.L.code, after: p.code, tool });
         results.push({ p, r });
       }
       const final = results.at(-1).r;
+      savedNotes.waitMs += Math.max(0, 2500 - Math.round(performance.now() - t0));
+      // safe: true — an edit that broke one of its layers is put back at once (the director reads why, nothing stays broken)
+      const names = new Set(plans.map((p) => p.L.name));
+      const broke = (final.errors || []).filter((e) => !e.layer || names.has(e.layer));
+      if (args.safe && broke.length) {
+        const why = withErrorLines(d, {}, { errors: broke }).errors;
+        for (const p of [...plans].reverse()) {
+          await d.updateLayer(p.L.id, { code: p.L.code, sketchId: p.L.sketchId }, 0.6);
+          const k = history.findLastIndex((h) => h.layerId === p.L.id && h.after === p.code);
+          if (k >= 0) history.splice(k, 1);
+        }
+        changed();
+        return { ok: true, value: { reverted: `The edit broke ${[...names].map((n) => `"${n}"`).join(', ')}, so it was undone (the code is as before).`, errors: why } };
+      }
       if (args.report === 'full') return { ok: true, value: { edits: results.map(({ p }) => ({ layer: p.L.name, edits: p.done, lines: p.code.split('\n').length })), ...final } };
       const value = { ...compact(final, { lines: 8 }) };
       delete value.updated;
-      value.changed = results.map(({ p }) => `${p.L.name}: ${p.done.join(', ')} → ${p.code.split('\n').length} lines`).join('; ');
-      value.diff = results.map(({ p }) => `${plans.length > 1 ? `── ${p.L.name}\n` : ''}${diff(p.L.code, p.code)}`).join('\n');
+      // where each edit landed (the director knows what it wrote); diff: true for the lines themselves
+      value.changed = results.map(({ p }) => `${p.L.name}: ${landed(p.L.code, p.code)} → ${p.code.split('\n').length} lines`).join('; ');
+      if (args.diff) value.diff = results.map(({ p }) => `${plans.length > 1 ? `── ${p.L.name}\n` : ''}${diff(p.L.code, p.code)}`).join('\n');
       // sliders the edit added or removed, so there's no need to re-read them
       const delta = plans.flatMap((p) => { const was = sliderKeysBefore.get(p.L.id) || []; const now = keysOf(p.L.id); return [...now.filter((k) => !was.includes(k)).map((k) => `+${k}`), ...was.filter((k) => !now.includes(k)).map((k) => `-${k}`)]; });
       if (delta.length) value.slidersChanged = delta.join(' ');
       delete value.sliders;
       withErrorLines(d, value, final);
+      onlyNew(value);
       const img = (args.shot ?? store.get('director.autoShot', false)) ? await thumb(d) : null; // /director-autoshot
       return { ok: true, value, ...(img ? { images: [{ data: img, mime: 'image/jpeg' }] } : {}) };
     }
@@ -398,7 +501,7 @@ const ThreeDirector = (() => {
       if (!d.backstage) toast('Three Director updated the sketch', { timeout: 1500 });
       const r = await d.setCode(String(args.code), Number(args.wait) || 2.5);
       record({ sketchId: before.sketchId, sketch: before.sketch, layerId: before.id, layer: before.name, before: before.code, after: String(args.code), tool });
-      const value = args.report === 'full' ? r : withErrorLines(d, compact(r), r);
+      const value = args.report === 'full' ? r : onlyNew(withErrorLines(d, compact(r), r));
       // the owner's rule: a new effect is a new layer. Rewriting a real layer (one with sliders, not a starter) gets a
       // one-line reminder, so the habit holds for the rest of the chat (≈ 30 tokens, only then).
       if (args.report !== 'full' && rewroteReal(before.code, String(args.code))) value.note = `Rewrote "${before.name}" (/undo-edit restores it). New elements or effects go in a new layer: three_add_layer.`;
@@ -408,7 +511,11 @@ const ThreeDirector = (() => {
       if (!args.code && !args.template) return { ok: false, error: 'Give complete code (alpha: true, no background) or a template.' };
       if (!d.backstage) toast(`Three Director added a layer${args.name ? ` "${args.name}"` : ''}`, { timeout: 1500 });
       const r = await d.addLayer({ name: args.name, code: args.code, template: args.template, position: args.position, props: args.settings || {} }, Number(args.wait) || 2.5);
-      return { ok: true, value: args.report === 'full' ? r : withErrorLines(d, compact(r), r) };
+      if (args.report === 'full') return { ok: true, value: r };
+      const value = withErrorLines(d, compact(r), r);
+      // its sliders as lines (keys, values, ranges): the next call is usually a slider move, not a read
+      try { const sl = d.sliders(r.added || null, null); if (sl?.sliders?.length) value.sliders = sliderLines(sl.sliders); } catch { /* backstage: names only */ }
+      return { ok: true, value: onlyNew(value) };
     }
     if (tool === 'three_update_layer') {
       const patch = { ...(args.settings || {}) };
@@ -417,7 +524,26 @@ const ThreeDirector = (() => {
       if (args.order != null) patch.order = args.order;
       const r = await d.updateLayer(args.layer, patch, Number(args.wait) || (args.code != null ? 2.5 : 0.5));
       if (before) record({ sketchId: before.sketchId, sketch: before.sketch, layerId: before.id, layer: before.name, before: before.code, after: String(args.code), tool });
-      return { ok: true, value: args.report === 'full' ? r : compact(r) };
+      return { ok: true, value: args.report === 'full' ? r : onlyNew(withErrorLines(d, compact(r), r)) };
+    }
+    // the frame size: one line (it was the whole Lab report after a fixed 1.5 s). fit ⇄ an exact size reloads the
+    // preview (answer at its first frame); between exact sizes it only resizes.
+    if (tool === 'three_set_frame' && d.setFrame && !d.backstage) {
+      const ids = typeof ThreeMedia !== 'undefined' ? ThreeMedia.SIZES.map((x) => x.id) : null;
+      if (ids && !ids.includes(args.size)) return { ok: false, error: `size must be one of ${ids.join(', ')}` };
+      const was = d.report().frame;
+      const reload = (was?.id === 'fit') !== (args.size === 'fit');
+      d.setFrame(args.size);
+      await settle(reload ? 3000 : 350);
+      const r = d.report();
+      const value = withErrorLines(d, { frame: frameLine(r.frame) }, r);
+      said.frame = JSON.stringify(value.frame);
+      return { ok: true, value };
+    }
+    // three_do undo: the director's last code change in this scene, back (no code re-sent)
+    if (tool === 'three_undo') {
+      const h = await undo(d, { force: Boolean(args.force), sketchId: (() => { try { return d.codeOf().sketchId; } catch { return null; } })() });
+      return { ok: true, value: `Undid your ${h.tool.replace(/^three_/, '')} of "${h.layer}"${h.errors ? ` (${h.errors} error${h.errors === 1 ? '' : 's'} now: three_console)` : ''}.` };
     }
     // keyframes / animation presets are the everyday way to move things (time first): a one-line result, not the
     // whole Lab report (≈ 2.8k characters before)
@@ -478,7 +604,9 @@ const ThreeDirector = (() => {
     history: () => history.slice(),
     canRedo: () => redoStack.length > 0,
     onHistory(fn) { listeners.add(fn); return () => listeners.delete(fn); },
-    newTurn, saved: () => ({ ...savedNotes }),
-    _test: { diff, applyEdits, compact, sliderLine, newLines, statLine, signature, sigDiff },
+    newTurn, saved: () => JSON.parse(JSON.stringify(savedNotes)),
+    // tools/three.js: every preview message (onBox), and its director's waits after a run (settle)
+    onBox, settle,
+    _test: { diff, landed, applyEdits, compact, sliderLine, newLines, statLine, signature, sigDiff, onlyNew },
   };
 })();

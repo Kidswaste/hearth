@@ -35,7 +35,7 @@ const TOPICS = {
   Music: /make-it-react [undo], /analyze, /drops next, /downbeat, /auto-preset.
   Footage: /footage [go f120|step n|cut|delete|scenes], /match-pacing <clip>, /ref-frames <clip>.
   Nodes: /nodes, /nodes-layer <preset>, /nodes-presets.
-  Director: /undo-edit, /redo-edit, /director-engine claude|astra, /handoff, /task, /director-cost, /director-mode lean|full, /nodes-director on|off.
+  Director: /undo-edit, /redo-edit (you: three_do undo; three_edit_code safe: true), /director-engine claude|astra, /handoff, /task, /director-cost, /director-mode lean|full, /nodes-director on|off.
   Together: /jam (Claude ⇄ Astra build a visual in turns), /opinion (second opinion).
   Sequence: /sequence, /sequence-render. Everything else: /help <area>.
   Flows (help flows): most commands sit in the owner's flows; /flow-status says where they are, /flow-step <answer> moves one.

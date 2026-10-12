@@ -32,6 +32,7 @@ const HubBridge = (() => {
   function summarize(tool, a = {}) {
     const clip = (s, n = 60) => { const t = String(s ?? '').replace(/\s+/g, ' ').trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
     if (a.code && /_(eval|run_script)$/.test(tool)) return clip(a.code);
+    if (Array.isArray(a.ops)) return clip(a.ops.map((o) => String(o?.cmd || o?.tool || '?').replace(/^three_/, '')).join(' · '), 70);
     if (Array.isArray(a.edits)) return `${a.edits.length} edit${a.edits.length === 1 ? '' : 's'}${a.layer ? ` · ${clip(a.layer, 24)}` : ''}${a.shot ? ' · 📷' : ''}`;
     if (a.pattern) return `“${clip(a.pattern, 40)}”`;
     if (a.set && typeof a.set === 'object') return Object.entries(a.set).map(([k, v]) => `${k}=${clip(v, 12)}`).join(' ').slice(0, 70);
@@ -67,6 +68,11 @@ const HubBridge = (() => {
     } catch { return 0; }
   }
 
+  // (round 21) The director's everyday calls never stay "working": past 55 s (the bridge gives up at 60) the call ends
+  // with an error the director can act on, and the activity strip / dock stop pulsing.
+  const QUICK = /^three_(edit_code|set_code|add_layer|update_layer|screenshot|eval|console|read_code|search_code|sliders|get_code|set_frame|undo|layers|select_layer|keyframes|animate|nodes)$/;
+  const capped = (tool, p) => (!QUICK.test(tool) ? p : Promise.race([p, new Promise((res) => setTimeout(() => res({ ok: false, error: `${tool.replace(/^three_/, '')} took over 55 s and was stopped waiting (the preview may be stuck: three_console, or ask the owner to look).` }), 55000))]));
+
   const emit = (entry) => { for (const fn of listeners) { try { fn(entry, log); } catch (err) { console.warn(err); } } };
 
   window.hub.onGameCall(async ({ id, tool: asked, args: given }) => {
@@ -82,7 +88,7 @@ const HubBridge = (() => {
     const h = handlerFor(tool);
     let result;
     try {
-      result = r0.error ? { ok: false, error: r0.error } : h ? await h.fn(tool, args || {}, { chatId: hubChatId }) : { ok: false, error: `Nothing in the hub handles ${tool}.` };
+      result = r0.error ? { ok: false, error: r0.error } : h ? await capped(tool, h.fn(tool, args || {}, { chatId: hubChatId })) : { ok: false, error: `Nothing in the hub handles ${tool}.` };
     } catch (err) { result = { ok: false, error: err.message }; }
     result ||= { ok: false, error: `${tool} returned nothing.` };
     Object.assign(entry, { running: false, ms: Date.now() - entry.at, ok: result.ok !== false, error: result.ok === false ? String(result.error || '').slice(0, 300) : null });
@@ -95,6 +101,37 @@ const HubBridge = (() => {
     for (const im of imgs) entry.tokens += await imageTokens(im);
     emit(entry);
   });
+
+  // (round 21) three_do { cmd: "batch", ops: [{ cmd, ...args }, …] }: several Lab actions in ONE tool call (each one
+  // is a model round trip otherwise: seconds). An op is any three_do command or everyday tool by its short name
+  // ("set_frame", "looks", "screenshot", "sliders", "edit_code"…). In order; stops at the first failure. Pictures come
+  // back together, the text one numbered line block per op. Each op counts and is recorded like its own call.
+  const BATCH_MAX = 8;
+  const NOT_IN_BATCH = /^three_(batch|do|sequence|load_media|comp|make|motion)$/;
+  async function batch(args, ctx) {
+    const ops = Array.isArray(args.ops) ? args.ops : [];
+    if (!ops.length) return { ok: false, error: 'batch needs ops: [{ cmd, ...args }, …]' };
+    if (ops.length > BATCH_MAX) return { ok: false, error: `At most ${BATCH_MAX} ops in a batch.` };
+    const lines = []; const images = [];
+    for (const [i, op] of ops.entries()) {
+      const { cmd, tool: t0, ...a } = op || {};
+      const name = `three_${String(cmd || t0 || '').replace(/^three_/, '')}`;
+      const label = `${i + 1}. ${name.replace(/^three_/, '')}`;
+      if (name === 'three_' || NOT_IN_BATCH.test(name)) { lines.push(`${label}: Error: ${name === 'three_' ? 'give cmd' : 'not in a batch (call it on its own)'}`); break; }
+      const h = handlerFor(name);
+      let r;
+      try { r = h ? await capped(name, h.fn(name, a, ctx)) : { ok: false, error: `Nothing handles ${name}.` }; } catch (err) { r = { ok: false, error: err.message }; }
+      r ||= { ok: false, error: 'no answer' };
+      Usage.agentTool(name);
+      for (const fn of results) { try { fn({ tool: name, via: 'three_batch', args: a, result: r, chatId: ctx.chatId || null, agentId: null }); } catch (err) { console.warn(err); } }
+      images.push(...[].concat(r.images || (r.image ? [{ data: r.image, mime: r.mime }] : [])).filter((x) => x?.data));
+      const text = r.ok === false ? `Error: ${r.error}` : fmtText(r.value);
+      lines.push(text.includes('\n') ? `${label}:\n${text.replace(/^/gm, '  ')}` : `${label}: ${text}`);
+      if (r.ok === false) { if (i < ops.length - 1) lines.push(`(stopped: ${ops.length - i - 1} op${ops.length - i - 1 === 1 ? '' : 's'} not run)`); break; }
+    }
+    return { ok: true, value: lines.join('\n'), ...(images.length ? { images } : {}) };
+  }
+  handlers.push({ prefix: 'three_batch', fn: (tool, args, ctx) => batch(args || {}, ctx || {}) });
 
   return {
     register(prefixes, fn) { for (const prefix of prefixes) handlers.push({ prefix, fn }); },
