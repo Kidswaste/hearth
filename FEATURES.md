@@ -691,3 +691,10 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ ▦ Your sketches and New sketch open in ~20 ms (were ~500: no modal restyle of the whole app); the effects picker builds rows as they scroll in (Browse all 195 → 16–60 ms) and keeps its thumbnails for the same scene.
 - ✓ The Lab behind a chat costs nothing: the timeline, key timer and node probes stop (12 frames + 10 DOM writes a second → 0).
 - ○ Measured headless (`dev/checks/labhub.js`); the preview's own frame time is labgpu's side.
+
+## Report to the developer (round 21, devreport, 33 upgrades: docs/upgrades/devreport.md)
+- ✓ ⚑ on error notifications, Report on failed replies, ⚑ on stalled replies and in `/smooth`, an offer after page errors and crashes; `/report <what went wrong>`, `/report last`, `/report list`.
+- ✓ The whole report is shown for review and editing first: title, what you were doing, the error with app file:line stack, ~50 log lines, version (git HEAD), OS / Electron / engine versions, the chat's tool names; keys / tokens / passwords masked, home as ~, no chat text unless ticked.
+- ✓ Sent as a `hearth-report` issue in kidswaste/hearth with gh when signed in, else a prefilled github.com link (full text on the clipboard when cut); deduped per day; "Your report #N is fixed in this update" after ⬆ Update; `/report auto on` sends crashes by themselves (≤ 3 a day).
+- ✓ Chats can draft one with `chat_report_problem` (a card you send; `/report tool off` drops it, ≈ 45 tokens).
+- ○ Tested with a fake gh and a stubbed browser (`sh dev/run-checks.sh devreport`); not against github.com.

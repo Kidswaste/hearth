@@ -123,6 +123,7 @@ contextBridge.exposeInMainWorld('hub', {
   // (round 19, reach) paths from the other computer → this one's; open / reveal / preview what a chat made (reachmain.js)
   reach: { resolve: call('reach:resolve'), open: call('reach:open'), info: call('reach:info') },
   update: { status: call('update:status'), apply: call('update:apply'), restart: call('update:restart'), reload: call('update:reload') },
+  devreport: { info: call('devreport:info'), gh: call('devreport:gh'), send: call('devreport:send'), states: call('devreport:states'), log: call('devreport:log'), crashes: call('devreport:crashes') }, // (round 21) Report to the developer
   fetchText: call('net:text'),
   openDialog: call('dialog:open'),
   saveFile: call('dialog:saveFile'),

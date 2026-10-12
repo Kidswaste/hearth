@@ -82,7 +82,8 @@ line count is lower than the number of upgrades).
 | Live activity (round 21): long tasks no longer freeze chats (thinking appended instead of rewritten: layout 1.6–1.9 s → 0.14–0.39 s; huge tool results read without blocking: 722 → 47 ms; a reply can't hang after the engine exits; a killed engine ends with a clear error), a truthful status line (phase, tool, time, last news), deployed agents as a live tree, "no news for 2 min" with Wait / Stop / Stop & retry; `/activity`, `/subagents on`, `/unstick` | [liveness.md](liveness.md) | 30 |
 | Three Director loop (round 21): edits answer when the change is on screen (1.6 s fixed wait → 0.22 s), small pictures from the preview itself (≈786 → 442 image tokens, a 9:16 picture 9.2 → 1.8 s), `three_do batch`, results that only say what's new, errors in one line, `three_do undo` / safe edits, nothing stays "working"; typical turns: "add a pink glow" ≈20k → 10k tokens, "make it 9:16 and save" ≈14k → 6.7k | [labdirector.md](labdirector.md) | 24 |
 | Lab controls (round 21): instant sliders reach the preview in 6 ms (was 51), typing in a 2,000-line sketch 345 → 6 ms per key, opening it 379 → 6 ms, Ctrl+Enter re-sends only the changed layer, the FX picker / sketches / templates dialogs open in 10–60 ms (were 200–500), nothing ticks while the Lab is hidden | [labhub.md](labhub.md) | 28 |
-| **Total** | | **11,035** |
+| Report to the developer (round 21): ⚑ on error notifications, Report on failed replies, stalls, crashes, page errors and `/smooth`; the whole masked report shown for review, then a GitHub issue in kidswaste/hearth (gh, or a prefilled browser link); deduped, listed with state, "Your report #N is fixed in this update"; chats can draft one (`chat_report_problem`); `/report` | [devreport.md](devreport.md) | 33 |
+| **Total** | | **11,068** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.

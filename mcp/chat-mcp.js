@@ -17,6 +17,9 @@ const TOOLS = [
   // (round 19, reach) you can open things for the user: no more "double-click it yourself"
   { name: 'chat_open', description: 'Open a file, page, folder or URL for the user on this computer: how default (its app / browser), browser, reveal (in Finder / Explorer) or preview (in Hearth). Paths from their other computer work.',
     inputSchema: { type: 'object', properties: { path: { type: 'string' }, url: { type: 'string' }, how: { type: 'string', enum: ['default', 'browser', 'reveal', 'preview'] } } } },
+  // (round 21, devreport) Hearth itself broke: a report the user reviews and sends (≈ 45 tokens; /report tool off drops it)
+  ...(process.env.HUB_NO_REPORT === '1' ? [] : [{ name: 'chat_report_problem', description: 'Hearth itself misbehaved (an app bug, crash, broken hub tool; not your own code): draft a report to Hearth\'s developer. The user reviews it before anything is sent.',
+    inputSchema: { type: 'object', properties: { title: { type: 'string' }, details: { type: 'string', description: 'what failed, the error, what you tried' } }, required: ['title', 'details'] } }]),
 ];
 // Astra without the chat tools gets chat_open alone (engines.js openTool → HUB_CHAT_ONLY)
 const ONLY = (process.env.HUB_CHAT_ONLY || '').split(',').filter(Boolean);

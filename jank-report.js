@@ -149,6 +149,7 @@ const JankReport = (() => {
     const actions = [
       { label: '📋 Copy for Claude', run: () => copyText(forClaude(g), 'Copied for Claude: paste it into a dev session') },
       { label: span === 'week' ? 'Last day' : 'Last week', run: () => Commands.exec(`/smooth ${span === 'week' ? 'day' : 'week'}`, ctx?.agentId) },
+      ...(g.top.length && window.DevReportHooks ? [{ label: '⚑ Report to the developer', title: 'Send these culprits to the developer (you review it first)', run: () => DevReportHooks.report({ kind: 'smooth', agentId: ctx?.agentId, title: `Not smooth: ${g.top[0].where} (${g.top[0].plain})` }) }] : []), // (round 21, devreport)
     ];
     if (ctx?.note) { ctx.note(body, { actions, id: 'smooth' }); return undefined; }
     return body;
