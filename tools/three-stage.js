@@ -537,6 +537,7 @@ const ThreeStage = (() => {
       M ? { label: '🎛 MIDI & keys', hint: M.summary(), items: () => M.menuItems() } : null,
       { label: 'Output', hint: h?.onStage ? 'on' : 'off', items: outputItems },
       { label: '📱 Phone remote…', hint: 'Faders, GO and the set list on your phone', action: () => window.Lazy?.load('remote').then(() => (Remote.status?.on ? Remote.open() : Remote.on())).catch((err) => toast(err.message, { type: 'error' })) }, // (round 24, remote.js)
+      { label: '🔌 Connect', hint: 'OSC · MIDI out · OBS · Link', items: async () => { await window.Lazy?.load('interop'); await Interop.prepare(); return Interop.menuItems(); } }, // (round 25, interop.js)
     ];
   }
   const previewItem = () => ({ label: '🎚 Live (VJ)', hint: S.show ? 'show mode' : S.cued ? `cued: ${nameOf(S.cued)}` : 'MIDI, set list, crossfade', items: menuItems });
@@ -553,6 +554,9 @@ const ThreeStage = (() => {
     ['Lab: Live show mode on / off', () => setShow()], ['Lab: Live: GO (next scene, on the bar)', () => go()], ['Lab: Live (VJ) menu', () => menu(innerWidth / 2 - 140, 120)],
     ['Lab: Live: output on the other screen', () => output(true)], ['Lab: Live: add this scene to the set list', () => setlist.add()],
   ]) AppUI.addAction(label, async () => { await ThreeLab.cmd(); try { await fn(); } catch (err) { toast(err.message, { type: 'error' }); } });
+
+  // (round 25, interop) OSC / MIDI out / OBS / Link that were on come back on at the next start
+  try { const a = store.get('interop.auto', {}); const m = store.get('interop.midi', {}); if (Object.values(a).some(Boolean) || (m.out && (m.clock || m.rules?.length || m.pc || Object.keys(m.cc || {}).length))) setTimeout(() => window.Lazy?.load('interop').catch(() => {}), 2500); } catch { /* storage */ }
 
   return {
     AREA, ACTIONS, ACTION_NAME, MODES, LENGTHS, QUANT, RES, SHAPES, RATES,

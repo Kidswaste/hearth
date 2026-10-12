@@ -3864,7 +3864,7 @@ function needsComposite() {
   const L = act[0]; const p = L.props; const t = xform(L);
   return layerMix(L) < 1 || Boolean(t.x || t.y || t.rotate) || t.scale !== 1 || (p.blend && p.blend !== 'normal') || layerCanvases(L).length > 1;
 }
-function composite(target, k = 1, size = null, only = null) {
+function composite(target, k = 1, size = null, only = null, clear = false) {
   const W = size ? size.w : Math.max(1, Math.round(innerWidth * devicePixelRatio * k)); const H = size ? size.h : Math.max(1, Math.round(innerHeight * devicePixelRatio * k));
   const c = target || document.createElement('canvas');
   if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
@@ -3873,7 +3873,7 @@ function composite(target, k = 1, size = null, only = null) {
   g.globalAlpha = 1;
   g.globalCompositeOperation = 'source-over';
   g.fillStyle = '#000';
-  g.fillRect(0, 0, W, H);
+  if (clear) g.clearRect(0, 0, W, H); else g.fillRect(0, 0, W, H); // (round 25, interop: clear keeps the layers' alpha for OBS)
   for (const L of ordered()) {
     if (L.props.pcOf) continue; // (a precomp's layers are drawn inside it)
     if (only ? !only.has(L.id) : L.seqHide) continue; // (a sequence transition merges its two sides itself)
@@ -9303,8 +9303,22 @@ addEventListener('message', async (e) => {
   // a sketch's thumbnail: small, merged and encoded off the page's frames (toBlob encodes on another thread), so
   // making one doesn't stall the preview the way a full-size PNG did
   if (msg.type === 'screenshot' && msg.tag === 'thumb' && msg.max && mode === 'sketch') { smallShot(msg.max, msg.tag); return; }
+  if (msg.type === 'obs-shot' && mode === 'sketch') { obsShot(msg); return; } // (round 25, interop) a frame for OBS's Browser Source
   if (msg.type === 'screenshot') { shotTag = msg.tag || null; requestShot(); }
 });
+// (round 25, interop) the merged layers on a clear background (alpha kept) as WebP, encoded off this thread, sent as
+// bytes (transferred, no copy); one canvas reused (toBlob takes its copy when called)
+let obsC = null;
+function obsShot(msg) {
+  realRAF(() => {
+    let c;
+    try { c = composite(obsC ||= document.createElement('canvas'), Math.min(1, (msg.max || 1280) / (Math.max(innerWidth, innerHeight) * devicePixelRatio)), null, null, msg.alpha !== false); } catch { post({ type: 'obs-frame', id: msg.id, buf: null }); return; }
+    c.toBlob((b) => {
+      if (!b) { post({ type: 'obs-frame', id: msg.id, buf: null }); return; }
+      b.arrayBuffer().then((buf) => post({ type: 'obs-frame', id: msg.id, buf, w: c.width, h: c.height }, [buf]), () => post({ type: 'obs-frame', id: msg.id, buf: null }));
+    }, 'image/webp', Math.max(0.3, Math.min(1, msg.q ?? 0.85)));
+  });
+}
 function smallShot(max, tag) {
   realRAF(() => {
     let c;

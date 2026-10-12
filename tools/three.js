@@ -2508,6 +2508,7 @@ const ThreeLab = (() => {
     }
     function onMessage(msg) {
       window.ThreeStage?.preview?.(msg); // (round 22, labstage) show-mode safety, tempo, crossfade hand-over
+      if (msg.type === 'obs-frame') { window.InteropObs?.frame(msg); return; } // (round 25, interop) a frame for OBS's Browser Source
       if (msg.type === 'shader-info') { window.LabShader?.onBox?.(msg); return; } // (round 23) ◇ shader layers' compile state
       if (msg.type === 'particles-info') { window.LabParticles?.onBox?.(msg); return; } // (round 24) ✦ particle layers' counts / sources
       if (typeof ThreeDirector !== 'undefined') ThreeDirector.onBox?.(msg); // (round 21) a director call answers at the first new frame
