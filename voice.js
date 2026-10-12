@@ -151,6 +151,8 @@ const Voice = (() => {
   async function deliver(text, agentId = targetAgent(), { send = false } = {}) {
     const r = get('commands', true) !== false ? C.route(text, { own: get('words', {}), has: (n) => Boolean(Commands.get(n)) }) : null;
     if (r?.kind === 'cmd') {
+      // /look is shared: outside the Lab it switches Hearth's colour look, not the scene's
+      if (/^\/look\b/.test(r.line) && Commands.place?.().id !== 'three' && !get('words', {})[C.clean(text)]) { toast('🎙 "Next scene" switches the Lab\'s saved looks: open the Lab first.'); return { kind: 'cmd', line: r.line, skipped: true }; }
       toast(`🎙 ${r.line}`, { timeout: 2200 });
       await Commands.tryRun(r.line, agentId, null, { source: 'chat', say: (t) => { if (t) toast(String(t).slice(0, 200), { timeout: 3500 }); }, note: (t) => { if (t) toast(String(t).slice(0, 200), { timeout: 3500 }); } });
       return { kind: 'cmd', line: r.line };

@@ -48,7 +48,7 @@ Say these on their own. Hearth runs the existing command, and nothing reaches th
 30. "**freeze**" / "**unfreeze**" (also "resume") / "**freeze on the next bar**" (or beat) runs `/freeze`.
 31. "**next frame**" runs `/next-frame`.
 32. "**save**" (also "save the sliders") runs `/save-sliders`.
-33. "**next scene**" / "**previous scene**" / "**random scene**" switch between your saved looks (`/look next|prev|random`).
+33. "**next scene**" / "**previous scene**" / "**random scene**" switch between your saved looks (`/look next|prev|random`) when the Lab is open. Anywhere else you get a hint, so Hearth's colour look never changes by accident.
 34. "**shuffle**", "**shuffle the colours**" or "**unshuffle**".
 35. "**play**" or "**pause**" (also "play the song").
 36. "**present**".
