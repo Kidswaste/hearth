@@ -70,7 +70,8 @@ const Native = (() => {
     else newBtn.hidden = true;
     modelSel.hidden = true;
     title.addEventListener('dblclick', () => renameCurrent(agentId));
-    menuBtn.addEventListener('click', (e) => chatMenu(agentId, e));
+    menuBtn.addEventListener('click', (e) => { if (typeof Lazy !== 'undefined' && Lazy.load) Lazy.load('options').then(() => Options.open({ agentId, place: 'chat' })).catch(() => chatMenu(agentId, e)); else chatMenu(agentId, e); });
+    menuBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); chatMenu(agentId, e); });
     modelSel.addEventListener('change', () => setChatModel(agentId, modelSel.value));
 
     const list = el('div', { class: 'messages' });
@@ -1706,7 +1707,14 @@ const Native = (() => {
       .map((m) => `**${m.role === 'user' ? 'You' : m.role === 'opinion' ? `${m.from} (second opinion)` : agent?.name || 'Assistant'}:**\n\n${m.text}`).join('\n\n---\n\n')}\n`;
   }
 
+  // (round 26) the ⋯ button opens Options (options.js: this chat's actions + every option in tabs); right-click ⋯ (or
+  // the header) keeps this menu. chatMenuItems is what both show.
   async function chatMenu(agentId, e) {
+    const items = chatMenuItems(agentId);
+    const r = e.currentTarget?.getBoundingClientRect?.() || { left: e.clientX, bottom: e.clientY - 4 };
+    showMenu(r.left, r.bottom + 4, items);
+  }
+  function chatMenuItems(agentId) {
     const chat = chats.get(H.activeChat[agentId]);
     const others = H.agents().filter((a) => a.mode === 'native' && a.id !== agentId);
     // (round 7) a few open entries that branch: Model ›, View ›, Organise ›, Copy & export › (right-click the header
@@ -1754,8 +1762,7 @@ const Native = (() => {
       { label: 'Chat commands…', key: '/help', action: () => Commands.exec('/help', agentId) },
     ];
     if (typeof Declutter !== 'undefined') items.push(...Declutter.customiseItems('Chat'));
-    const r = e.currentTarget?.getBoundingClientRect?.() || { left: e.clientX, bottom: e.clientY - 4 };
-    showMenu(r.left, r.bottom + 4, items);
+    return items;
   }
 
   // The model list as a menu (docked chats hide the dropdown).
@@ -2030,7 +2037,7 @@ const Native = (() => {
     compact: compactChat, summarizeAndContinue, branch: branchFrom, edit: editMessage, retry: regenerate, quote,
     secondOpinion, review: (agentId) => send(agentId, REVIEW_PROMPT), chatMarkdown, stats: chatStats, speak, speakMessage, stopSpeaking, isSpeaking: () => Boolean(speaking), plainText, modelMenu, toggleRaw,
     setModel: setChatModel, renameCurrent, stop: stopReply, pendingFor, renderQueue, insertDraft, setStyle, renderStyle,
-    toggleThinking, jumpTo, react, toggleMark, REACTIONS, messageMenu, chatMenu, lastReplyText, dayLabel,
+    toggleThinking, jumpTo, react, toggleMark, REACTIONS, messageMenu, chatMenu, chatMenuItems, lastReplyText, dayLabel,
     MODEL_CHOICES, astraAgent, screenshotFor, addFiles, addPath, pickFiles: async (agentId) => {
       const paths = await window.hub.openDialog({ properties: ['openFile', 'multiSelections'], title: 'Attach files' });
       for (const p of paths || []) await addPath(agentId, p);

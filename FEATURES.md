@@ -793,3 +793,10 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ Deterministic: 60 fixed steps a second of the scene's clock, seeded; renders land on the same pixels, scrubbing back re-simulates from cached states to the same state; bodies at rest sleep; the preview's solver runs in a Worker; instanced drawing.
 - ✓ Music: an impulse on each kick (jump / push / blast / spin / gust), bass lightens gravity or blows wind, a blast at the drop; only the Music presets react at first (`/physics react` for the rest).
 - ○ Tested headless (`node dev/physics-test.js`, `sh dev/run-checks.sh physics`); not measured on a real Mac GPU / CPU; box contacts are corner-against-box, model hulls are their boxes.
+
+## ⋯ Options (round 26)
+Every chat command is also an option, so nothing has to be typed. **⋯** in a chat's header opens the Options drawer; **⋯** in a window's header (Lab, board, Forge…) opens it on that window's tab; **⚙ Options** in the rail shows it as a page (the Commands page left the rail; `/commands` still opens it). Right-click ⋯ in a chat for the old quick menu.
+- Tabs: This chat · Modes & presets · Lab · Agents · Board · Capture · Forge · App. Each tab lists Switches (on / off), Pick one (A, B or C), Amounts (sliders with min / max, or a number), Pick or tell it, Tell it (your words, with the command's own suggestions) and Do it (one click). Hover any row for what it does. The search on top looks in every tab.
+- Modes for a chat: Quick, Smart, Detailed, Director (each sets a few options at once). Presets: "＋ Save as preset" at the bottom of a tab keeps what you set there; one click sets it all again (right-click a preset to delete it).
+- 📌 keeps the drawer open in that window: it opens by itself when you come back.
+- A switch shows its real state when the app knows it (Settings' switches), else the last value you set here.

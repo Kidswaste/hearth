@@ -74,6 +74,7 @@ const AppUI = (() => {
   const loadFind = () => (typeof SettingsFind !== 'undefined' ? Promise.resolve() : (findLoad ||= new Promise((res, rej) => {
     document.head.append(el('script', { src: 'settings-find.js', on: { load: res, error: () => { findLoad = null; rej(new Error('settings-find.js did not load')); } } }));
   })));
+  window.loadSettingsFind = loadFind; // (round 26) options.js reads the switches' state from it
   async function openSettings(query = '') {
     try { await loadFind(); } catch (err) { console.warn(err); }
     if (typeof query !== 'string') query = '';

@@ -38,7 +38,7 @@ add('message actions (reply)', surf().querySelector('.msg.assistant .msg-foot'),
 add('message actions (yours)', surf().querySelector('.msg.user .msg-foot'));
 surf().querySelector('.msg.assistant .msg-more')?.click(); await wait(200);
 rows['message ⋯ menu'] = { controls: menuCount() }; await shot('msg-menu'); closeMenus();
-surf().querySelector('.native-head button[title="Chat options"], .native-head .chat-menu-btn')?.click(); await wait(200);
+surf().querySelector('.native-head button[title="Chat options"], .native-head .chat-menu-btn')?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 300, clientY: 60 })); await wait(200);
 rows['chat options menu'] = { controls: menuCount() }; closeMenus();
 surf().querySelector('.collab-chip')?.click(); await wait(200);
 rows['collab chip menu'] = { controls: menuCount() }; await shot('collab'); closeMenus();

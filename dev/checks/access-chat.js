@@ -17,7 +17,8 @@ Native.newChat(claude.id);
 await wait(300);
 
 // 1. the level: ⋯ → Access → Full (a real click through the menu), then /access add <folder>
-await click(Native.view(claude.id).root.querySelector('.native-head button[title="Chat options"]'));
+// (round 26) ⋯ opens Options; right-click ⋯ is the quick menu
+Native.view(claude.id).root.querySelector('.native-head button[title="Chat options"]')?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 300, clientY: 60 })); await wait(200);
 const accessRow = [...document.querySelectorAll('#menu button, #menu .menu-item')].find((b) => /^Access/.test(b.textContent.trim()));
 step('the chat ⋯ menu has one Access entry', Boolean(accessRow), accessRow?.textContent);
 if (accessRow) await click(accessRow);

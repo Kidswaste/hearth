@@ -22,7 +22,9 @@ H.agent = (id) => H.config?.agents.find((a) => a.id === id);
 // Agents docked inside a tool (Three Director, Forge Debug) live in that tool, not in the rail.
 H.railAgents = () => H.agents().filter((a) => !a.dock);
 // (round 18, tidy) Ctrl/⌘+1…9 walk the rail top to bottom: the agents, then the tools (each tooltip names its key)
-H.railOrder = () => [...H.railAgents().map((a) => a.id), ...(typeof Tools !== 'undefined' ? Tools.enabled().map((t) => `tool:${t.id}`) : [])];
+// (round 26) the Commands page has no rail button any more (⚙ Options replaced it; /commands still opens it)
+const RAIL_SKIP = new Set(['commands']);
+H.railOrder = () => [...H.railAgents().map((a) => a.id), ...(typeof Tools !== 'undefined' ? Tools.enabled().filter((t) => !RAIL_SKIP.has(t.id)).map((t) => `tool:${t.id}`) : [])];
 H.railKey = (id) => { const i = H.railOrder().indexOf(id); return i >= 0 && i < 9 ? `Ctrl+${i + 1}` : ''; };
 H.surfaceIdFor = (id) => { const a = H.agent(id); return a?.dock ? `tool:${a.dock}` : id; };
 H.settings = () => H.config?.settings || {};
@@ -113,7 +115,7 @@ function renderRail() {
     btn.addEventListener('contextmenu', (e) => { e.preventDefault(); showAgentMenu(agent.id, e.clientX, e.clientY); });
     rail.append(btn);
   });
-  const tools = Tools.enabled();
+  const tools = Tools.enabled().filter((t) => !RAIL_SKIP.has(t.id));
   if (tools.length) {
     rail.append(el('div', { class: 'rail-sep' }));
     for (const tool of tools) {
