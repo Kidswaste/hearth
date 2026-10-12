@@ -190,6 +190,8 @@ const LabExport = (() => {
   async function job(o) {
     const f = o.f;
     if (f.kind === 'scene') return exportScene(o);
+    // (a 16-bit still keeps every sample: about 40 bytes a pixel while it's made)
+    if (f.id === 'still16' && o.w * o.h > 24e6) throw new Error(`A 16-bit still goes up to 24 megapixels (A3 at 300 dpi is 17); ${o.w}×${o.h} is ${Math.round(o.w * o.h / 1e6)}: export a Still · PNG at that size instead`);
     const id = uid();
     const ctl = { cancel: false, paused: false, t0: performance.now(), frames: 0, total: 0 };
     S.cur = ctl;

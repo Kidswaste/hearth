@@ -698,3 +698,10 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ Sent as a `hearth-report` issue in kidswaste/hearth with gh when signed in, else a prefilled github.com link (full text on the clipboard when cut); deduped per day; "Your report #N is fixed in this update" after ⬆ Update; `/report auto on` sends crashes by themselves (≤ 3 a day).
 - ✓ Chats can draft one with `chat_report_problem` (a card you send; `/report tool off` drops it, ≈ 45 tokens).
 - ○ Tested with a fake gh and a stubbed browser (`sh dev/run-checks.sh devreport`); not against github.com.
+
+## Lab export (round 22, labexport, 63 upgrades: docs/upgrades/labexport.md)
+- ✓ Every Lab render runs in a hidden export page (own process + GPU context): the preview keeps its size and plays, the sequence stays editable, 0 long tasks on the app's thread; the sequence's own ⇪ Render uses it too.
+- ✓ Frame-exact on the scene's clock, seeded randomness (same render = same pixels); any size up to 8K (16K stills), any fps, 2–4× supersampling, 4–64 sub-frame motion blur, GPU memory cap.
+- ✓ MP4, HEVC 10-bit, ProRes 4444 + alpha, WebM VP9 + alpha, PNG sequence + alpha, perfect-loop GIF / MP4 (on the bars with a cross-fade, or found in the frames), stills (PNG, 16-bit); GLB, one-file web page, slider preset (+ load), contact sheet.
+- ✓ Right-click the preview › ⇪ Export, the Render panel › Export…, Ctrl/⌘+K, `/lab-export` (`/lx`); directors via `three_do run`; render queue rows with time left, pause / resume / cancel.
+- ○ Measured headless on SwiftShader (1080p 6.4 frames/s, 4K 2.2); not on a real GPU.
