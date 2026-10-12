@@ -131,7 +131,9 @@ const Addons = (() => {
     const m = String(text).match(/^(all|everyone|shared|me)\s*:\s*/i);
     return m ? { scope: 'shared', text: text.slice(m[0].length) } : { scope: nativeAgent(ctx) || 'shared', text };
   };
-  M({ name: 'memory', args: '[search]', desc: 'Open memory: facts, categories, pins, expiry and what it costs per message', run: (args) => { MemoryEditor.open({ query: args }); } });
+  M({ name: 'memory', args: '[search | here | pin | project | forget | edit | relevant | approve]', desc: 'Open memory: facts, categories, pins, expiry and what it costs per message (here: this chat\'s and its project\'s facts)',
+    complete: (a) => (/\s/.test(a) ? [] : ['here', 'pin', 'project', 'forget', 'edit', 'relevant on', 'relevant off', 'approve on', 'approve off'].filter((x) => x.startsWith(a)).map((value) => ({ value }))),
+    run: (args, ctx) => (window.ChatMemory?.handles?.(args) ? ChatMemory.run(args, ctx) : MemoryEditor.open({ query: args })) }); // (round 24) chat-memory.js
   M({ name: 'remember', args: '[all:] <fact> [--pin] [--days N]', desc: 'Remember a fact (this agent; "all:" for every agent)',
     run: async (args, ctx) => {
       if (!args) return 'Usage: /remember I post 9:16 visuals on Shorts (add "all:" for every agent, --pin, --days 7)';

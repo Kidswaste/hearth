@@ -362,6 +362,7 @@ const Native = (() => {
     v.chips.replaceChildren(...v.attachments.map((a, i) => el('span', { class: `attach-chip ${a.kind}` },
       a.kind === 'image' && a.preview ? el('img', { src: a.preview, alt: '' }) : el('span', { text: a.kind === 'text' ? '📄' : '📎' }),
       el('span', { text: a.name }),
+      a.tokens ? el('span', { class: 'attach-tok', text: ` · ${fmt(a.tokens)} tok`, title: `≈ ${a.tokens} tokens go with your next message (exactly this text; chat-refs.js)` }) : null, // (round 24) an @ reference's cost
       el('button', { type: 'button', text: '×', title: 'Remove', on: { click: () => { v.attachments.splice(i, 1); renderChips(agentId); } } }))));
   }
   const isTextName = (name) => /\.(txt|md|markdown|js|mjs|ts|tsx|jsx|json|csv|tsv|html?|css|glsl|frag|vert|py|xml|ya?ml|ini|log|jsx|sh|bat|ps1|c|cpp|h|cs|java|rs|go|lua|toml|svg)$/i.test(name);
@@ -1269,7 +1270,7 @@ const Native = (() => {
     const files = atts.filter((x) => x.kind === 'file');
     if (files.length) full += `\n\n[Attached files, open them with your ${H.agent(agentId)?.engine === 'codex' ? 'read-only commands' : 'Read tool'}]\n${files.map((f) => f.path).join('\n')}`;
     const images = atts.filter((x) => x.kind === 'image').map((x) => x.path);
-    return { full, images, meta: atts.map((a) => ({ kind: a.kind, name: a.name })) };
+    return { full, images, meta: atts.map((a) => ({ kind: a.kind, name: a.name, ...(a.tokens ? { tokens: a.tokens, ref: a.ref } : {}) })) };
   }
 
   // chatId: send into that chat of the agent even when it isn't the open one (a part dispatched by comp-dispatch.js
@@ -1375,7 +1376,7 @@ const Native = (() => {
       if (p.tools.length) message.tools = p.tools;
       if (facts.length) {
         message.remembered = facts;
-        rememberFacts(chat.agentId, facts);
+        if (!window.ChatMemory?.intercept?.(chat, facts, message)) rememberFacts(chat.agentId, facts); // (round 24) /memory approve on: it waits for your OK
       }
       chat.messages.push(message);
       chat.session = event.session;
@@ -1505,7 +1506,7 @@ const Native = (() => {
     return el('div', { class: 'long-chat' },
       el('span', { text: `This chat now sends about ${fmt(last.usage.input)} tokens with every message.` }),
       el('button', { class: 'primary small', text: '🗜 Compact context', title: 'It summarizes the conversation; this chat continues from the summary (every message stays visible)', on: { click: () => compactChat(agent.id) } }),
-      el('button', { class: 'ghost small', text: 'New chat from a summary', title: 'It writes a short summary, then a new chat continues from it', on: { click: () => summarizeAndContinue(agent.id) } }),
+      el('button', { class: 'ghost small', text: 'New chat from a summary', title: 'A short summary (goal, decisions, open tasks, key files), shown and editable; a new chat continues from it', on: { click: () => (window.ChatFresh ? ChatFresh.start(agent.id).catch((err) => toast(err.message, { type: 'error' })) : summarizeAndContinue(agent.id)) } }), // (round 24) a free summary, editable first
       el('button', { class: 'ghost small', text: 'Keep going', on: { click: () => { chat.longDismissed = true; remember(chat); render(agent.id, { keepScroll: true }); } } }));
   }
 

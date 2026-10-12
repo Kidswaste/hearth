@@ -40,9 +40,32 @@ function promptPart(agent) {
   return tok(engines.buildPrompt(agent)) - tok(engines.buildPrompt(bare));
 }
 
+// (round 24, context) one chat's agent exactly as engines.js sends it: its whole system prompt (with the memory part
+// counted on its own) and each tool set it really gets (engines.js hubToolsets). chat-cost.js splits a message with it.
+function exactOf(a, sets) {
+  let engines = null;
+  try { engines = require(path.join(__dirname, '..', 'engines.js')); } catch { /* no engines here */ }
+  const on = engines?._test?.hubToolsets ? engines._test.hubToolsets(a) : Object.keys(SETS).filter((k) => a[k]);
+  const tools = [];
+  for (const k of on) {
+    if (k === 'openTool') { // one tool of the chat server (chat_open)
+      try { const t = defOf('chatTools').tools.find((x) => x.name === 'chat_open'); if (t) tools.push([k, tok(JSON.stringify(t))]); } catch { /* none */ }
+      continue;
+    }
+    if (!SETS[k]) continue;
+    const nodes = k === 'threeTools' && a.nodesTool !== false;
+    const m = k === 'threeTools' && (nodes || a.toolMode) ? measure(k, { nodesTool: nodes, toolMode: a.toolMode }) : sets.find((s) => s.key === k);
+    tools.push([k, m.total]);
+  }
+  const prompt = engines?.buildPrompt ? tok(engines.buildPrompt(a)) : 0;
+  const memory = engines?.buildPrompt && !a.memoryWhenRelevant ? Math.max(0, prompt - tok(engines.buildPrompt({ ...a, memoryWhenRelevant: true }))) : 0;
+  return { id: a.id, name: a.name, engine: a.engine, exact: true, system: prompt, memory, tools, total: prompt + tools.reduce((n, t) => n + t[1], 0) };
+}
+
 function report(agents = DIRECTORS) {
   const sets = Object.keys(SETS).map((k) => measure(k));
   const directors = agents.map((a) => {
+    if (a.exact) return exactOf(a, sets);
     const parts = [];
     for (const k of Object.keys(SETS)) {
       const on = k === 'chatTools' ? a.chatTools !== false : a[k];
@@ -58,4 +81,4 @@ function report(agents = DIRECTORS) {
   return { sets, directors, note: 'tokens ≈ characters / 4; sent with every message (mostly read from the prompt cache after the first)' };
 }
 
-module.exports = { report, measure, tok, DIRECTORS };
+module.exports = { report, measure, tok, DIRECTORS, exactOf: (a) => exactOf(a, Object.keys(SETS).map((k) => measure(k))) };
