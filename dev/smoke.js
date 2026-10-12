@@ -122,6 +122,12 @@ async function cdpConnect() {
     if (!fs.existsSync('/tmp/hearth-asset-fixtures/kick_hit.wav')) FA.fixtures('/tmp/hearth-asset-fixtures');
     Object.assign(env, { HEARTH_POLYHAVEN_BASE: `${fake.base}/ph`, HEARTH_AMBIENTCG_BASE: `${fake.base}/acg` });
   }
+  // --fake-obs: (round 25) a fake OBS Studio (obs-websocket v5 with a password: dev/fake-obs.js) for dev/checks/interop.js;
+  // the check reads its address, password and state through hub.interop.test (main side, tests only)
+  if (args.includes('--fake-obs')) {
+    const f = await require('./fake-obs').start({ password: 'hearth-test-pw' });
+    env.HEARTH_FAKE_OBS = JSON.stringify({ url: f.url, state: f.state, password: f.password });
+  }
   const child = spawn('xvfb-run', ['-a', '-s', '-screen 0 1600x1000x24', ELECTRON, dir, '--no-sandbox', `--remote-debugging-port=${PORT}`, `--user-data-dir=${userData}`, ...(process.env.SMOKE_GPU_FLAGS || '--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist').split(' ').filter(Boolean)], { stdio: ['ignore', 'pipe', 'pipe'], detached: true, env });
   // Kill Xvfb + Electron (their own process group) however the harness ends, so no stray instances pile up.
   const killAll = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* gone */ } try { execFileSync('pkill', ['-9', '-f', dir]); } catch { /* gone */ } };

@@ -771,3 +771,9 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ One compact panel (right-click the preview › ◐ Grade, `/grade`): tabs, wheels, curves, hue strip, LUT grid, scopes (waveform, vectorscope, histogram from a small read, only while open).
 - ✓ Per-clip and whole-sequence grades in the Lab sequence (right-click a clip › ◐ Grade, `/grade clip 2 noir`): the same shader in the preview and the render.
 - ○ Tested headless on SwiftShader (`sh dev/run-checks.sh grade`); imported LUTs aren't packed into a one-file web page export.
+## Interop (round 25, interop, 88 upgrades: docs/upgrades/interop.md)
+- ✓ `/osc`: OSC in / out over UDP (off by default, this computer only unless `/osc lan`): TouchDesigner, Ableton (Max for Live, AbletonOSC tempo + beat bridge), Resolume, TouchOSC and phone-sensor presets move sliders, fire pads, cue / GO scenes and the set list; learn like MIDI; Hearth sends beat / bar / tempo, kick · snare · hat, audio features, slider values and the scene name.
+- ✓ `/midi-out`: clock at the stage's tempo (scheduled ahead, phase-locked), notes on beats / bars / hits / scene changes (lights, drum machine, click presets), sliders as CC with a learn wiggle, program change per scene, panic.
+- ✓ `/obs`: the Lab as a transparent OBS Browser Source (a 127.0.0.1 page, WebP frames with alpha only while OBS shows it); obs-websocket 5: OBS scenes follow the Lab and the set list, record, stream (asks first every time), add the Lab as a source; the password typed once in a masked field and kept encrypted.
+- ✓ `/link`: follows Ableton Link's session tempo (listen only); everything is in 🎚 Live (VJ) → 🔌 Connect.
+- ○ Tested with stubs and fakes (`node dev/interop-test.js`, `sh dev/run-checks.sh interop`: fake obs-websocket, stubbed Web MIDI, UDP on 127.0.0.1), not with the real apps; Link is tempo only.
