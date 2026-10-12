@@ -143,11 +143,12 @@ const Options = (() => {
     sheet.agentId = a.id;
     const scroll = sheet.body.scrollTop;
     const who = el('div', { class: 'opt-who' }, natives().map((x) => el('button', { type: 'button', class: `opt-chip${x.id === a.id ? ' on' : ''}`, text: `${x.icon || ''} ${x.name}`.trim(), title: `Set up ${x.name}`, on: { click: () => { sheet.agentId = x.id; paint(); } } })));
-    sheet.body.replaceChildren(who, personality(a), instructions(a), access(a), memory(a), habits(a), thinking(a));
+    const mission = typeof Missions !== 'undefined' ? sec('Your next message', 'Click: the next message only · 📌 from now on. Right-click ◎ in the chat box: back to a normal reply.', Missions.cards(a.id, { onPick: paint })) : null;
+    sheet.body.replaceChildren(who, mission, personality(a), instructions(a), access(a), memory(a), habits(a), thinking(a));
     sheet.body.scrollTop = scroll;
   }
   function build(host, agentId, page = false) {
-    const head = el('header', { class: 'opt-head' }, el('b', { text: 'What this AI can use' }), el('span', { class: 'spacer' }), page ? null : btn('✕', 'Close (Esc)', () => hide()));
+    const head = el('header', { class: 'opt-head' }, el('b', { text: 'This AI: missions and what it can use' }), el('span', { class: 'spacer' }), page ? null : btn('✕', 'Close (Esc)', () => hide()));
     const body = el('div', { class: 'opt-body' });
     const root = el(page ? 'div' : 'aside', { class: `opt-sheet${page ? ' opt-page' : ''}`, attrs: { 'aria-label': 'AI setup' } }, head, body);
     root.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !page && !e.target.closest('textarea')) { e.stopPropagation(); hide(); } });

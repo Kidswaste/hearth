@@ -119,7 +119,9 @@ const Native = (() => {
     const counter = el('span', { class: 'composer-count' });
     const queueBox = el('div', { class: 'queue-chips', hidden: true });
     const styleBox = el('div', { class: 'style-chips', hidden: true });
-    const form = el('form', { class: 'composer' }, el('div', { class: 'composer-box' }, styleBox, queueBox, chips, input, counter), attachBtn, sendBtn);
+    // (round 26) ◎ Missions (missions.js): what your next message becomes (split it up, swarm, review, jam…)
+    const missionBtn = typeof Missions !== 'undefined' ? Missions.button(agentId) : null;
+    const form = el('form', { class: 'composer' }, el('div', { class: 'composer-box' }, styleBox, queueBox, chips, input, counter), missionBtn, attachBtn, sendBtn);
     const v = { root, title, meta, ctx, modelSel, list, input, sendBtn, chips, counter, jump, attachments: [], queue: [], queueBox, styleBox, form, follow: true };
 
     const saveDraft = debounce(() => store.set(draftKey(agentId), input.value || null), 400);
@@ -215,6 +217,11 @@ const Native = (() => {
         const opts = means.length ? means.map((m) => `\`${m.line.trim()}\``).join(' · ') : `\`/${typo.name}\``;
         note(agentId, `\`/${text.slice(1).split(/\s/)[0]}\` isn't a command. Did you mean ${opts}? Click one to run it, or press Enter again to send it to ${H.agent(agentId).name} as a message.`, { id: 'typo' });
         return;
+      }
+      // (round 26) a mission picked for this message (missions.js) sends it its own way
+      if (text && !text.startsWith('/') && !v.attachments.length && typeof Missions !== 'undefined' && Missions.current(agentId).id !== 'normal') {
+        input.value = ''; store.set(draftKey(agentId), null); autosize(input); updateCounter(v);
+        if (Missions.submit(agentId, text)) return;
       }
       // "/command args" runs a chat command instead of sending (see commands.js); unknown "/words" are sent.
       if (text.startsWith('/') && Commands.parse(text)) {

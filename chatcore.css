@@ -109,3 +109,16 @@
 .reach-acts { display: flex; gap: 4px; flex-shrink: 0; }
 code.reach-path { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
 code.reach-path:hover { text-decoration-style: solid; }
+/* (round 26) ◎ Missions (missions.js): what the next message becomes */
+.ms-btn { flex: none; align-self: flex-end; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ms-btn.on { color: var(--text); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.ms-pop { position: fixed; z-index: 70; width: min(520px, calc(100vw - 24px)); padding: 10px; background: var(--sidebar); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 18px 50px #0008; }
+.ms-head { display: flex; align-items: baseline; gap: 10px; margin: 0 2px 8px; }
+.ms-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.ms-card { position: relative; display: flex; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
+.ms-card:hover { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.ms-card.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--surface)); }
+.ms-pick { flex: 1; display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 8px 26px 8px 9px; background: none; border: 0; color: var(--text); font: inherit; cursor: pointer; }
+.ms-pick span { color: var(--muted); font-size: 11.5px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.ms-keep { position: absolute; top: 4px; right: 4px; background: none; border: 0; cursor: pointer; opacity: .35; font-size: 12px; padding: 2px; }
+.ms-keep:hover, .ms-keep.on { opacity: 1; }

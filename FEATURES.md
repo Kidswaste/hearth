@@ -803,3 +803,6 @@ Commands are hidden: typing "/" in a chat opens no menu any more (a full command
 - **Habits**: checks its own work, suggests next steps, shows its thinking, shrinks long chats.
 - **How hard it thinks**: Quick, Smart, Deep.
 Right-click ⋯ in a chat for the old quick menu (rename, export, delete…).
+
+### ◎ Missions
+The ◎ button by the chat box (and the top of ⋯) picks what your next message becomes: Just answer · Split it up (it deploys helper agents) · Swarm (several AIs answer, a chair merges; in the Lab, a crew of 4 explores variations) · Answer, then review (the other AI checks it) · Debate · Side by side (Claude and Astra) · Jam (a music visual in the Lab, taking turns) · Pair on code · Ask everyone. A click is for the next message only; 📌 keeps it from now on; right-click ◎ goes back to a normal reply. Your words go out as written.
