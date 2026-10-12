@@ -291,6 +291,8 @@ const ThreeTweaks = (() => {
   const applyValues_ = (code, items, vals) => applyValues(code, items, vals);
   const BANDS = [['kick', 'Kick'], ['snare', 'Snare'], ['hats', 'Hats'], ['bassHit', 'Bass hit'], ['hit', 'Hit'], ['beat', 'Beat'], ['bass', 'Bass'], ['mid', 'Mids'], ['treble', 'Highs'], ['level', 'Loudness']];
   const BAND_NAME = Object.fromEntries(BANDS);
+  // (round 23) the audio features a slider can also follow (tools/three-audio.js names them)
+  const bandName = (b) => BAND_NAME[b] || (typeof ThreeAudio !== 'undefined' ? ThreeAudio.label(b) : b);
   // Ways a control can move by itself (on top of your value): [kind, name, hint]
   const MOTIONS = [['', 'Still', 'Stays where you put it'], ['lfo', 'Wave (LFO)', 'Smooth up and down in time with the beat'], ['walk', 'Random walk', 'Drifts around on its own'],
     ['beat', 'Steps on beats', 'A new random value every beat (or every few)'], ['pulse', 'Pulse on beats', 'Jumps up on each beat and falls back'], ['section', 'Song sections', 'Lower in quiet parts, higher in loud ones']];
@@ -926,7 +928,8 @@ const ThreeTweaks = (() => {
         hist.length ? 'History (click to go back)' : null,
         ...hist.map((v) => [fmtVal(it, v), '', () => set(v)]),
         it.kind === 'number' ? 'Moves' : null,
-        ...(r.musicPanel ? [['♪ Follow the music / move by itself…', bindings[ids[i]] ? `follows ${BAND_NAME[bindings[ids[i]].band]}` : motions[ids[i]] ? MOTION_NAME[motions[ids[i]].kind] : 'bass, kick, LFO, random walk…', () => { r.musicPanel.hidden = false; r.paintMusic?.(); }]] : []),
+        it.kind === 'number' && audioMap() ? ['♪ React to a sound (curve)…', bindings[ids[i]] ? `follows ${bandName(bindings[ids[i]].band)}` : 'kick, hats, drops, bands… with a curve', () => audioMap().edit(mapAdapter(it, i, r))] : null,
+        ...(r.musicPanel ? [['♪ Follow the music / move by itself…', bindings[ids[i]] ? `follows ${bandName(bindings[ids[i]].band)}` : motions[ids[i]] ? MOTION_NAME[motions[ids[i]].kind] : 'bass, kick, LFO, random walk…', () => { r.musicPanel.hidden = false; r.paintMusic?.(); }]] : []),
         ...(it.kind === 'number' ? MOTIONS.filter(([k]) => k).map(([k, name, hint]) => [`${motions[ids[i]]?.kind === k ? '● ' : ''}${name}`, hint, () => setMotion(i, motions[ids[i]]?.kind === k ? null : { kind: k })]) : []),
         ...(keyframes && it.key != null && (it.kind === 'number' || it.kind === 'color') ? [['◆ Keyframe at the playhead', '', () => { keyframes.toggle(it.key, values[i]); r.paintKey?.(); }]] : []),
         learn && it.key != null ? ['🎛 Map to a MIDI knob…', 'Then turn the knob or fader', () => learn(it.key, labelOf(it))] : null,
@@ -1041,16 +1044,26 @@ const ThreeTweaks = (() => {
       if (!scanned) return mods;
       scanned.items.forEach((it, i) => {
         const b = bindings[ids[i]];
-        if (b?.band && it.kind === 'number') mods[i] = { band: b.band, amount: b.amount, span: it.range.max - it.range.min, int: it.int };
+        if (b?.band && it.kind === 'number') mods[i] = { band: b.band, amount: b.amount, span: it.range.max - it.range.min, int: it.int, mid: ids[i], ...(b.c ? { c: b.c } : {}) };
       });
       return mods;
     }
-    function setBinding(i, band, amount) {
-      if (band) bindings[ids[i]] = { band, amount }; else delete bindings[ids[i]];
+    // c: the curve (round 23: { thr, gam, inv, att, rel }, tools/three-audio-map.js); left out, the slider keeps its curve
+    function setBinding(i, band, amount, c) {
+      const keep = c === undefined ? bindings[ids[i]]?.c : c;
+      if (band) bindings[ids[i]] = { band, amount, ...(keep ? { c: keep } : {}) }; else delete bindings[ids[i]];
       persist?.('bindings', bindings);
       send({ type: 'tweak-mods', mods: modsNow() });
       const r = rows.find((x) => x.i === i);
       if (r) r.updateMusic();
+      rows.filter((x) => x.i === i).forEach(meterOn);
+    }
+    // (round 23, labaudio) a slider that follows the music shows what the music does to it (a thin live meter that
+    // tools/three-audio-map.js fills) and opens the curve editor (any audio feature, amount, smoothing, threshold, invert)
+    function audioMap() { return typeof ThreeAudioMap !== 'undefined' ? ThreeAudioMap : null; }
+    function meterOn(r) { if (r?.el) audioMap()?.meterHost(r.el, ids[r.i], Boolean(bindings[ids[r.i]])); }
+    function mapAdapter(it, i, r) {
+      return { key: it.key, label: labelOf(it), mid: ids[i], anchor: r?.el || rows.find((x) => x.i === i)?.el, live: reads ? reads.live.has(i) : true, get: () => bindings[ids[i]] || null, set: (band, amount, c) => setBinding(i, band, amount, c) };
     }
     // (round 21, labhub) a slider's ♪ / ∿ panel is built the first time it shows: its ~30 chips and fields per slider
     // were most of the sliders panel, built again on every scene switch for panels almost nobody opens
@@ -1094,7 +1107,8 @@ const ThreeTweaks = (() => {
         if (cur) { shapeSel.value = cur.shape || 'sine'; shapeSel.hidden = cur.kind !== 'lfo'; rateSel.value = String(cur.rate ?? motionDefaults(cur.kind).rate); rateSel.hidden = cur.kind === 'section'; depth.value = cur.depth ?? 0.25; depthPct.textContent = `${Math.round((cur.depth ?? 0.25) * 100)}%`; }
         mNote.textContent = cur && reads && !reads.live.has(i) ? 'Only used when the scene is built, so it can\'t move by itself.' : '';
       }
-      panel.append(el('div', { class: 'tw-bind-k', text: '♪ Follow the music' }), el('div', { class: 'tw-bind-bands' }, ...bandBtns), el('div', { class: 'tw-num-row' }, el('span', { class: 'tw-hint', text: 'Amount' }), amount, pct), note,
+      const more = audioMap() ? el('button', { class: 'tw-chip tw-chip-more', text: '⚙ Curve & more sounds…', title: 'Any sound feature (kick / snare / hat hits, 8 bands, builds, drops, the key…) with a curve: amount, smoothing, threshold, invert', on: { click: () => audioMap()?.edit(mapAdapter(it, i, row)) } }) : null;
+      panel.append(el('div', { class: 'tw-bind-k', text: '♪ Follow the music' }), el('div', { class: 'tw-bind-bands' }, ...bandBtns, more), el('div', { class: 'tw-num-row' }, el('span', { class: 'tw-hint', text: 'Amount' }), amount, pct), note,
         el('div', { class: 'tw-bind-k', text: '∿ Move by itself' }), el('div', { class: 'tw-bind-bands' }, ...kindBtns), mRow, mNote);
       return () => { paint(); paintMotion(); };
     }
@@ -1351,7 +1365,7 @@ const ThreeTweaks = (() => {
       const { panel, paint } = musicPanel(it, i, r);
       panel.classList.add('tw-kpanel');
       music.addEventListener('click', () => { panel.hidden = !panel.hidden; paint(); });
-      r.updateMusic = () => { const b = bindings[ids[i]]; const mo = motions[ids[i]]; music.textContent = mo && !b ? '∿' : '♪'; music.title = [b ? `Follows ${BAND_NAME[b.band]}` : '', mo ? `Moves by itself: ${MOTION_NAME[mo.kind]}` : ''].filter(Boolean).join(' · ') || 'Follow the music or move by itself'; music.classList.toggle('on', Boolean(b || mo)); k.cell.classList.toggle('music', Boolean(b || mo)); };
+      r.updateMusic = () => { const b = bindings[ids[i]]; const mo = motions[ids[i]]; music.textContent = mo && !b ? '∿' : '♪'; music.title = [b ? `Follows ${bandName(b.band)}` : '', mo ? `Moves by itself: ${MOTION_NAME[mo.kind]}` : ''].filter(Boolean).join(' · ') || 'Follow the music or move by itself'; music.classList.toggle('on', Boolean(b || mo)); k.cell.classList.toggle('music', Boolean(b || mo)); };
       r.paintMusic = paint;
       r.musicPanel = panel;
       icons.append(music);
@@ -1373,6 +1387,7 @@ const ThreeTweaks = (() => {
       r.paintLock();
       if (it.key != null) r.el.dataset.twKey = it.key; // (round 22) MIDI learn: the knob under the pointer
       rows.push(r);
+      meterOn(r);
       return r;
     }
 
@@ -1392,7 +1407,7 @@ const ThreeTweaks = (() => {
         music.addEventListener('click', () => { panel.hidden = !panel.hidden; paint(); });
         r.updateMusic = () => {
           const b = bindings[ids[i]]; const mo = motions[ids[i]];
-          music.textContent = [b ? `♪ ${BAND_NAME[b.band]}` : '', mo ? `∿ ${MOTION_NAME[mo.kind].split(' ')[0]}` : ''].filter(Boolean).join(' ') || '♪';
+          music.textContent = [b ? `♪ ${bandName(b.band)}` : '', mo ? `∿ ${MOTION_NAME[mo.kind].split(' ')[0]}` : ''].filter(Boolean).join(' ') || '♪';
           music.classList.toggle('on', Boolean(b || mo));
         };
         r.updateMusic();
@@ -1421,6 +1436,7 @@ const ThreeTweaks = (() => {
       r.paintLock();
       if (it.key != null) r.el.dataset.twKey = it.key; // (round 22) MIDI learn: the slider under the pointer (three-stage-midi.js)
       rows.push(r);
+      meterOn(r);
       return r.el;
     }
 
@@ -1749,7 +1765,10 @@ const ThreeTweaks = (() => {
       lock(key, on = true) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0) return false; if (locks.has(ids[i]) !== on) toggleLock(i); return true; },
       fav(key, on = true) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0) return false; if (favs.has(ids[i]) !== on) toggleFav(i); return true; },
       setMotion(key, mo) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0 || scanned.items[i].kind !== 'number') return false; setMotion(i, mo); return true; },
-      bind(key, band, amount = 0.5) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0 || scanned.items[i].kind !== 'number') return false; setBinding(i, band || null, amount); return true; },
+      bind(key, band, amount = 0.5, c) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0 || scanned.items[i].kind !== 'number') return false; setBinding(i, band || null, amount, c); return true; },
+      // (round 23) what a named slider follows ({ band, amount, c } or null) and the curve editor's handle on it
+      binding(key) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; return i < 0 ? null : bindings[ids[i]] || null; },
+      mapping(key) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0 || scanned.items[i].kind !== 'number') return null; return mapAdapter(scanned.items[i], i, null); },
       // MIDI-ready: a 0..1 position (a knob, a fader, an OSC value…) → the control's range, like moving it by hand
       setNormalized(key, u, { release = false } = {}) {
         const i = scanned?.items.findIndex((x) => x.key === key) ?? -1;

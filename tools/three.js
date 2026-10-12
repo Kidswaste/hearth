@@ -669,9 +669,13 @@ const ThreeLab = (() => {
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 2048; analyser.smoothingTimeConstant = 0.6;
         const gain = ctx.createGain(); gain.gain.value = typeof io.gain === 'number' ? io.gain : 1;
-        ctx.createMediaStreamSource(stream).connect(gain).connect(analyser);
+        const src = ctx.createMediaStreamSource(stream);
+        src.connect(gain).connect(analyser);
         Object.assign(hubLive, { stream, ctx, analyser, gain, queue: [], lvl: 0, agcAt: 0, auto: 1 });
         box.send({ type: 'live-remote', on: true, kind });
+        // (round 23, labaudio) the analysis in an AudioWorklet, off the main thread: one compact buffer per ~10 ms
+        // (features + spectrum + waveform) instead of the timer below (tools/three-audio.js)
+        if (typeof ThreeAudio !== 'undefined' && await ThreeAudio.attachLive({ ctx, source: src, input: gain, hubLive, io: liveIo })) return true;
         const f = new Uint8Array(1024); const w = new Float32Array(2048);
         hubLive.timer = setInterval(() => {
           analyser.getByteFrequencyData(f); analyser.getFloatTimeDomainData(w);
@@ -696,6 +700,7 @@ const ThreeLab = (() => {
       } catch (err) { toast(`Live sound: ${err.message}`, { type: 'error', timeout: 5000 }); return false; }
     };
     function hubLiveStop() {
+      if (typeof ThreeAudio !== 'undefined') ThreeAudio.detachLive();
       clearInterval(hubLive.timer);
       for (const tr of hubLive.stream?.getTracks() || []) tr.stop();
       hubLive.ctx?.close();
@@ -717,7 +722,7 @@ const ThreeLab = (() => {
         liveKind ? ['Off: back to the loaded song', '', () => setLive(null)] : null,
         ['⚡ Triggers & sensitivity…', 'What fires kick / bass / snare / hats / hit, and how strongly the sketch reacts', () => toggleTriggers(true)],
         'Input',
-        ['Microphone / line-in…', liveIo().device ? 'A chosen input' : 'The default input', () => inputMenu(anchor)],
+        ['Microphone / line-in…', liveIo().device ? 'A chosen input' : 'The default input · interfaces, loopback', () => (typeof ThreeAudio !== 'undefined' ? ThreeAudio.inputMenu(anchor) : inputMenu(anchor))],
         ['Gain', `${liveIo().gain === 'auto' ? `Auto${hubLive.gain ? ` (×${Math.round((hubLive.auto || 1) * 10) / 10} now)` : ''}` : `×${liveIo().gain}`} · how loud the sketch hears it (in the Lab preview)`, () => popup(r.left, r.bottom + 4, ['Gain', ['Auto', 'Keeps the level steady, quiet or loud', () => setLiveIo({ gain: 'auto' }), liveIo().gain === 'auto'], ...[0.5, 1, 1.5, 2, 3, 4].map((g) => [`×${g}`, g === 1 ? 'as it comes' : g < 1 ? 'quieter' : 'louder', () => setLiveIo({ gain: g }), liveIo().gain === g])])],
         ['Latency offset', `${liveIo().latency} ms · the sketch reacts later, to line up with what you hear`, () => popup(r.left, r.bottom + 4, ['Latency offset', ...[0, 20, 40, 60, 80, 120, 160, 200, 300].map((ms) => [`${ms} ms`, ms ? `for a speaker / Bluetooth delay` : 'none', () => setLiveIo({ latency: ms }), liveIo().latency === ms])])],
         liveKind ? ['Restart live sound', 'Capture again (after changing devices)', () => setLive(liveKind)] : null,
@@ -2381,6 +2386,8 @@ const ThreeLab = (() => {
         live: { kind: () => liveKind, bpm: () => liveBpm, io: () => liveIo(), setIo: (p) => setLiveIo(p), button: liveBtn, autoGain: () => (hubLive.gain ? hubLive.auto : null) },
       });
     }
+    // (round 23, labaudio) audio features: the live worklet, whole-song features, the preview's requests (tools/three-audio.js)
+    if (typeof ThreeAudio !== 'undefined') ThreeAudio.attach({ player, send: (m) => box.send(m), selCtl, layers: () => layersOf().map((L) => ({ id: L.id, name: L.name, ctl: ctlFor(L) })), live: { kind: () => liveKind, io: () => liveIo(), setIo: (p) => setLiveIo(p), start: (k) => setLive(k) } });
     // video footage on the timeline: exact frames, the cut list the sketch plays (tools/three-frames.js)
     if (typeof ThreeFrames !== 'undefined') ThreeFrames.attach({ player, send: (msg) => box.send(msg), sketchId: () => current?.id });
     // the Lab's Sequence: the timeline as a video timeline of scenes, footage, titles and the song (tools/three-seq.js)
@@ -2549,9 +2556,11 @@ const ThreeLab = (() => {
         paintStats(msg);
       }
       if (/^edit-/.test(msg.type)) { onEditMessage(msg); return; }
+      if (/^audio-/.test(msg.type) && typeof ThreeAudio !== 'undefined' && ThreeAudio.onMessage(msg)) return; // (round 23, labaudio)
       if (msg.type === 'live-tempo') { if (liveKind) { liveBpm = msg; paintLive(); if (typeof ThreeMusic !== 'undefined') ThreeMusic.liveTempo(msg); } return; }
       if (msg.type === 'live-state') { if (msg.error) toast(`Live sound: ${msg.error}`, { type: 'error', timeout: 5000 }); if (!msg.on && msg.error) { liveKind = null; paintLive(); } return; }
       if (msg.type === 'ready' && msg.again && ranOnce) { console.warn('Lab preview restarted by itself: running the sketch again'); run({ again: true }); }
+      if (msg.type === 'ready' && typeof ThreeAudio !== 'undefined') ThreeAudio.onReady();
       if (msg.type === 'ready') { box.send(capMsg()); if (lightOn) box.send({ type: 'light', on: true }); parkedNow = false; syncPark(); }
       if (msg.type === 'ready') { if (frozenNow) box.send({ type: 'freeze', on: true }); if (guides) box.send({ type: 'guides', kind: guides }); if (previewHost.classList.contains('presenting')) box.send({ type: 'present', on: true }); sendTriggers(); if (trigPanel) box.send({ type: 'trig-watch', on: true }); }
       if (msg.type === 'ready' && liveKind) {

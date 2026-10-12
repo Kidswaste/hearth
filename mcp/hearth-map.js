@@ -40,6 +40,7 @@ const TOPICS = {
   Sequence: /sequence, /sequence-render. Everything else: /help <area>.
   Live (VJ): /stage [show|go|cue|set add|output|midi learn|lfo] (set list, crossfade on the bar, MIDI, the output on a second screen).
   History (time machine, Alt+H): /history [list|compare n|restore n|pick colors|sliders|layer <name> n] (every version of the scene with who made it; the owner scrubs it on the preview), /back n [claude|astra] (before the director's last n turns), /branch [name].
+  Audio: /audio (what the Lab hears), /audio-in [list|loopback|<device>|monitor on], /react-to <slider> <sound> [amount attack= release=], /react-preset <pump on kick…>, /react-curve <slider>, /song-features (key, builds, drops).
   Flows (help flows): most commands sit in the owner's flows; /flow-status says where they are, /flow-step <answer> moves one.
   Speed: /again [n|list] repeats the owner's last command or button; /resume [chat|lab|render|flow] picks up where he left off; /habits now|fix|restore; /macro learned|keys (his one-key macros).
   Commands page: /commands <name> opens the owner's page on a command (what it does, a preview, its questions one at a time; the run gets the same chat card as a flow).`,

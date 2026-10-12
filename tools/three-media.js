@@ -2961,6 +2961,7 @@ const ThreeMedia = (() => {
       on(ev, fn) { (listeners[ev] ||= []).push(fn); return () => { listeners[ev] = listeners[ev].filter((x) => x !== fn); }; },
       get analysis() { return st.analysis; },
       get wave() { return st.wave; },
+      get bytes() { return st.bytes || null; }, // (round 23, labaudio) the song file, for its whole-song audio features (tools/three-audio.js)
       markFound: (kind) => markFound(kind),
       found: (kind) => found(kind),
       nudgeByEar: (dir, e) => nudgeByEar(dir, e),

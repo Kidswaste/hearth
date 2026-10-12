@@ -2841,11 +2841,133 @@ Object.defineProperties(audio, {
   untilDrop: { get() { const d = analysis?.drops || []; const t = this.time; const n = d.find((x) => x > t); return n == null ? Infinity : n - t; } },
   sinceDrop: { get() { const d = analysis?.drops || []; const t = this.time; let l = null; for (const x of d) if (x <= t) l = x; return l == null ? Infinity : t - l; } },
 });
+// ---------- audio features (round 23, labaudio: tools/three-audio-core.js) ----------
+// audio.feat.<name>, 0..1 unless said: sub low lowMid mids highMid presence brilliance air (8 bands) · subHit … airHit
+// (a pulse on each band's hits) · kickOn snareOn hatOn vocalOn (hits heard in the sound itself) · vocal level loudness
+// lufs (dB) centroid flux flatness onset · beat beatPhase barPhase beatInBar bar bpm beatConf barConf · note key (0–23)
+// keyHue keyConf · build drop intensity (songs: found over the whole song) · chroma0…11. audio.chroma (12 values),
+// audio.keyName, audio.env(name, attackMs, releaseMs): a follower of any of them.
+// Live input: computed in the hub's AudioWorklet, one compact buffer a frame ('af'). A song: computed once for the
+// whole song in a Worker (cached), read at the playhead; its beat / bar come from the timeline's grid. Otherwise (the
+// Stage window's own capture, a song whose features aren't ready yet) from this page's analyser. Nothing is computed
+// until a sketch or a slider reads one: the first read asks the hub ('audio-want').
+const FX = { core: null, idx: null, F: 0, asked: null, askedAt: 0, live: null, liveAt: 0, track: null, trackEl: null, fb: null, fbRate: 0, fbIn: null, fbOut: null, fbAt: 0, envs: new Map(), reads: 0 };
+const FX_RHYTHM = new Set(['beat', 'beatPhase', 'barPhase', 'beatInBar', 'bar', 'bpm', 'beatConf', 'barConf']);
+const fxSong = () => Boolean(mediaEl && !liveKind);
+function fxWant() {
+  const key = fxSong() ? mediaEl : liveKind || 'demo';
+  const done = FX.core && (!fxSong() || FX.trackEl === mediaEl);
+  if (FX.asked === key && (done || realNow() - FX.askedAt < 4000)) return;
+  FX.asked = key; FX.askedAt = realNow();
+  post({ type: 'audio-want', song: fxSong() && FX.trackEl !== mediaEl, core: !FX.core });
+}
+function fxDemo(name, t = realNow() / 1000) {
+  update();
+  const b = bands; const ph = (t * 2) % 1;
+  switch (name) {
+    case 'sub': case 'low': return b.bass; case 'lowMid': case 'mids': return b.mid; case 'highMid': case 'presence': case 'brilliance': case 'air': return b.treble;
+    case 'subHit': case 'lowHit': case 'kickOn': case 'onset': return demoHits('kick', t); case 'lowMidHit': case 'midsHit': case 'snareOn': return demoHits('snare', t);
+    case 'highMidHit': case 'presenceHit': case 'brillianceHit': case 'airHit': case 'hatOn': return 0.7 * Math.exp(-((t * 4) % 1) / 0.1);
+    case 'level': return b.level; case 'loudness': return 0.45 + 0.3 * b.beat; case 'lufs': return -18 + 6 * b.beat; case 'flux': return b.beat; case 'centroid': return 0.45 + 0.1 * Math.sin(t);
+    case 'beat': return b.beat; case 'beatPhase': return ph; case 'barPhase': return ((t * 2) % 4) / 4; case 'beatInBar': return Math.floor((t * 2) % 4) + 1; case 'bar': return Math.floor(t / 2) + 1; case 'bpm': return 120;
+    case 'beatConf': case 'barConf': return 1; case 'build': return (t / 8) % 1; case 'drop': return Math.exp(-(t % 16) / 2); case 'intensity': return 0.5 + 0.5 * Math.sin(t / 4);
+    case 'vocal': return 0.3 + 0.2 * Math.sin(t * 0.7); default: return 0;
+  }
+}
+// the analyser here, through the same extractor (each read frame once)
+function fxFallback() {
+  update();
+  if (FX.fbAt === lastUpdate && FX.fbOut) return FX.fbOut;
+  const rate = remoteFreq ? remoteRate : actx?.sampleRate || 48000;
+  if (!FX.fb || FX.fbRate !== rate) { FX.fb = FX.core.extractor({ rate, size: 2048 }); FX.fbRate = rate; FX.fbIn = new Float32Array(1024); }
+  const dt = FX.fbAt ? Math.min(0.1, (lastUpdate - FX.fbAt) / 1000) : 1 / 60; FX.fbAt = lastUpdate;
+  if (analyser && !remoteFreq) analyser.getFloatFrequencyData(FX.fbIn); else for (let i = 0; i < 1024; i += 1) FX.fbIn[i] = freq[i] ? -100 + (freq[i] / 255) * 70 : -200;
+  const ms = (bands.level / 3) ** 2;
+  FX.fbOut = FX.fb.frame(FX.fbIn, dt, ms, ms);
+  return FX.fbOut;
+}
+function featVal(name) {
+  FX.reads += 1;
+  fxWant();
+  const k = FX.idx?.[name];
+  if (k == null || (!mediaEl && !liveKind)) return fxDemo(name);
+  if (fxSong() && FX_RHYTHM.has(name)) {
+    if (name === 'beat') return audio.beat; if (name === 'bpm') return audio.bpm;
+    if (name === 'beatConf') return beatMap?.manual ? 1 : analysis?.grid?.tempoConf ?? 0.5;
+    if (name === 'barConf') return beatMap?.manual ? 1 : analysis?.grid?.downbeatConf ?? 0.5;
+    const bi = barInfo(mediaEl.currentTime); return name === 'beatInBar' ? bi.beatInBar : name === 'bar' ? bi.bar : name === 'beatPhase' ? bi.beatPhase : bi.barPhase;
+  }
+  if (liveKind && FX.live && realNow() - FX.liveAt < 500) return FX.live[k];
+  if (fxSong() && FX.track && FX.trackEl === mediaEl) {
+    const T = FX.track; const fr = Math.max(0, Math.min(T.n - 1, Math.floor(mediaEl.currentTime * T.fps)));
+    return FX.core.dec(k, T.data[fr * T.F + k]);
+  }
+  return FX.core ? fxFallback()[k] : fxDemo(name);
+}
+const featProxy = new Proxy({}, {
+  get: (_, name) => (typeof name === 'string' ? featVal(name) : undefined),
+  has: (_, name) => Boolean(FX.idx && name in FX.idx),
+  ownKeys: () => (FX.core ? [...FX.core.NAMES] : []),
+  getOwnPropertyDescriptor: (_, name) => (FX.idx && name in FX.idx ? { enumerable: true, configurable: true, value: featVal(name) } : undefined),
+});
+// the slider mapping curve (the same math as AudioFeat.shape): threshold, punch, invert, attack / release
+function fxShape(x, c, st) {
+  x = Number(x) || 0; x = x < 0 ? 0 : x > 1 ? 1 : x;
+  if (c.thr > 0) x = Math.max(0, (x - c.thr) / (1 - c.thr));
+  if (c.gam && c.gam !== 1) x **= c.gam;
+  if (c.inv) x = 1 - x;
+  const now = realNow();
+  if (st.t == null) { st.t = now; st.y = x; return x; }
+  const dt = now - st.t;
+  if (dt > 0) { const tau = x > st.y ? c.att || 0 : c.rel || 0; st.y += (x - st.y) * (tau > 0 ? 1 - Math.exp(-dt / tau) : 1); st.t = now; }
+  return st.y;
+}
+Object.defineProperties(audio, {
+  feat: { get() { return featProxy; } },
+  feature: { value: (name) => featVal(String(name)) },
+  chroma: { get() { return Array.from({ length: 12 }, (_, i) => featVal(`chroma${i}`)); } },
+  keyName: { get() { const k = featVal('key'); return FX.core && featVal('keyConf') > 0 ? FX.core.keyName(Math.round(k)) : ''; } },
+  // env('kickOn', 5, 300): the feature through an attack / release follower (ms), smooth whatever the frame rate
+  env: { value: (name, att = 10, rel = 250) => { const id = `${name}|${att}|${rel}`; let s = FX.envs.get(id); if (!s) { s = {}; FX.envs.set(id, s); } return fxShape(featVal(name), { att, rel }, s); } },
+});
+// live meters on the hub's sliders: what the music does to each following slider, ~12 times a second while it moves
+const FX_METER = { vals: new Map(), sent: new Map(), timer: 0, idle: 0 };
+function meterNote(mid, raw, out) {
+  FX_METER.vals.set(mid, [out, raw]);
+  if (FX_METER.timer) return;
+  FX_METER.timer = realSetInterval(() => {
+    const m = [];
+    for (const [id, [o, r]] of FX_METER.vals) { const p = FX_METER.sent.get(id); if (!p || Math.abs(p[0] - o) > 0.01 || Math.abs(p[1] - r) > 0.02) { m.push(id, Math.round(o * 1000) / 1000, Math.round(r * 1000) / 1000); FX_METER.sent.set(id, [o, r]); } }
+    FX_METER.vals.clear();
+    if (m.length) { FX_METER.idle = 0; post({ type: 'audio-meter', m }); } else if ((FX_METER.idle += 1) > 25) { clearInterval(FX_METER.timer); FX_METER.timer = 0; FX_METER.sent.clear(); }
+  }, 80);
+}
+function fxMessage(msg) {
+  if (msg.type === 'audio-core') {
+    try { FX.core = new Function(`return (${msg.src})()`)(); FX.idx = FX.core.IDX; FX.F = FX.core.F; FX.fb = null; } catch (err) { post({ type: 'console', level: 'warn', text: `Audio features: ${err.message}` }); }
+  } else if (msg.type === 'audio-track') {
+    FX.track = msg.track; FX.trackEl = mediaEl;
+  } else if (msg.type === 'af') {
+    // one buffer a frame from the hub's worklet: [ms, has features, …features] · spectrum bytes · waveform bytes
+    const F = msg.F; const b = msg.b; const head = new Float32Array(b, 0, 2 + F);
+    if (head[1]) { FX.live = head.subarray(2); FX.liveAt = realNow(); }
+    remoteFreq = new Uint8Array(b, (2 + F) * 4, 1024);
+    const wb = new Uint8Array(b, (2 + F) * 4 + 1024, 2048);
+    remoteWave = FX.wave ||= new Float32Array(2048);
+    for (let i = 0; i < 2048; i += 1) remoteWave[i] = (wb[i] - 128) / 128;
+    remoteRate = msg.rate || 48000;
+  } else if (msg.type === 'audio-probe') {
+    // for the checks and /audio: the values now (names → numbers)
+    const out = {}; for (const n of msg.names || []) out[n] = Math.round(featVal(n) * 1000) / 1000;
+    post({ type: 'audio-probe-result', id: msg.id, values: out, from: liveKind ? (FX.live && realNow() - FX.liveAt < 500 ? 'live (worklet)' : 'live (this page)') : fxSong() ? (FX.track && FX.trackEl === mediaEl ? 'song (whole-song features)' : 'song (analyser, features coming)') : 'demo beat', reads: FX.reads });
+  }
+}
 // onHit('kick' | 'snare' | 'hit' | 'hats' | 'bass' | 'beat', (strength) => …): runs once per hit (markers or triggers)
+// (round 23: or any audio.feat name, e.g. onHit('kickOn') or onHit('drop'))
 globalThis.onHit = (kind, cb) => {
   let prev = 0;
   const loop = () => {
-    const v = kind === 'beat' ? audio.beat : audio.trigger(kind);
+    const v = kind === 'beat' ? audio.beat : TRIG_NAMES.includes(kind) ? audio.trigger(kind) : featVal(kind);
     if (v > 0.9 && prev <= 0.9) { try { cb(v); } catch (err) { console.error(err); } }
     prev = v;
     requestAnimationFrame(loop);
@@ -3165,10 +3287,18 @@ const markRead = (i) => {
   reportQueued = true;
   queueMicrotask(() => { reportQueued = false; post({ type: 'tweak-reads', used: [...usedAtSetup], live: [...usedLive] }); });
 };
+// (round 23, labaudio) a slider can follow any audio feature (audio.feat names) through a curve: m.c = { thr, gam,
+// inv, att, rel } (tools/three-audio.js edits it); m.mid sends a live meter back to the slider
+const LEGACY_BANDS = new Set(['level', 'bass', 'mid', 'treble', 'beat', 'kick', 'snare', 'hats', 'hit', 'bassHit', 'energy', 'peak']);
+let modState = {};
 const valueOf = (i, base) => {
   const m = mods[i];
   if (!m || typeof base !== 'number') return base;
-  const v = base + m.amount * m.span * (audio[m.band] || 0);
+  let x = LEGACY_BANDS.has(m.band) ? audio[m.band] || 0 : featVal(m.band);
+  const raw = x;
+  if (m.c) x = fxShape(x, m.c, modState[i] ||= {});
+  if (m.mid != null) meterNote(m.mid, raw, x);
+  const v = base + m.amount * m.span * x;
   return m.int ? Math.round(v) : v;
 };
 // d: the literal from the code, used when the live value isn't there yet or a music binding gives NaN
@@ -8164,7 +8294,7 @@ addEventListener('message', async (e) => {
   if (typeof msg.type === 'string' && msg.type.startsWith('xp-')) { xpMessage(msg); return; } // (round 22 "labexport")
   if (msg.type === 'tweak-init') { TV = { ...(msg.values || {}) }; tweakKeys = msg.keys || {}; mods = msg.mods || {}; pcValues(); }
   if (msg.type === 'tweak') setTweak(msg);
-  if (msg.type === 'tweak-mods') mods = msg.mods || {};
+  if (msg.type === 'tweak-mods') { mods = msg.mods || {}; modState = {}; }
   if (msg.type === 'run') runLayers([{ id: 'main', code: msg.code, slot: 0, selected: true }]);
   if (msg.type === 'hot-run') runLayer({ id: 'main', code: msg.code, slot: 0, selected: true }, true);
   if (msg.type === 'run-layers') runLayers(msg.layers);
@@ -8185,6 +8315,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'live-stop') { liveReset(); window.__stopLive(); remoteFreq = null; remoteWave = null; if (!liveSrc) liveKind = null; }
   if (msg.type === 'live-remote') { if (!msg.on || liveKind !== msg.kind) liveReset(); liveKind = msg.on ? msg.kind : null; if (!msg.on) { remoteFreq = null; remoteWave = null; } if (msg.on) graph(); }
   if (msg.type === 'live-frame') { remoteFreq = msg.freq; remoteWave = msg.wave; remoteRate = msg.rate || 48000; }
+  if (msg.type === 'af' || /^audio-(core|track|probe)$/.test(msg.type)) { fxMessage(msg); return; } // (round 23, labaudio)
   // (auto: follow the screen and the window, see applyCap; focused: the Lab's window is the one in front)
   if (msg.type === 'fps-cap') { capWant.value = Number(msg.value) || 0; capWant.auto = Boolean(msg.auto); capWant.focused = msg.focused !== false; applyCap(); }
   if (msg.type === 'park') setParked(msg.on);
