@@ -280,6 +280,7 @@ ${codeBlock(c.base)}`;
   async function apply(sketchId, layers, selId) {
     const S = await lab();
     if (!S.get(sketchId)) throw new Error('The chat\'s scene is gone.');
+    window.ThreeHistory?.as?.(sketchId, 'crew'); // (round 23) the time machine marks it as the crew's
     if (S.currentId() === sketchId) await ThreeLab.director.restore({ sketchId, layers: deep(layers), selId }, { wait: 0.4 });
     else { const x = S.get(sketchId); x.layers = deep(layers); S.changed(sketchId); }
   }

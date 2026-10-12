@@ -644,6 +644,7 @@ const ThreeTweaks = (() => {
       applyValues(next);
       shuffleBtn.title = `Shuffle (R) · last: seed ${seed}, ${shufHist[shufPos].label} · ‹ › step through ${shufHist.length - 1} shuffle${shufHist.length === 2 ? '' : 's'}`;
       flash(shuffleBtn);
+      window.ThreeHistory?.changed?.('shuffle'); // (round 23) kept a few seconds: a version (tools/three-history.js)
       return seed;
     }
     function shuffleStep(d) {
@@ -652,6 +653,7 @@ const ThreeTweaks = (() => {
       if (to < 0 || to >= shufHist.length) { toast(d < 0 ? 'No earlier shuffle' : 'No later shuffle', { timeout: 1000 }); return; }
       shufPos = to;
       applyValues(shufHist[to].values);
+      window.ThreeHistory?.changed?.('shuffle');
       toast(shufHist[to].seed == null ? 'Back to before the shuffles' : `Shuffle ${to} of ${shufHist.length - 1} · seed ${shufHist[to].seed}`, { timeout: 1100 });
       refreshState();
     }

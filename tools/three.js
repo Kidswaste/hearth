@@ -397,6 +397,7 @@ const ThreeLab = (() => {
         ['Rename…', current?.name || '', () => renameSketch()],
         ['Duplicate', 'A copy you can change freely', () => duplicate()],
         ['History…', 'Earlier versions of the selected layer, and deleted sketches', () => historyDialog()],
+        ['⏱ Time machine…', 'Every version of the scene as pictures: scrub, compare, restore, branch · Alt+H · /history', () => window.ThreeHistoryUI?.open()],
         ['Copy all the code', 'Every layer, one after the other, to the clipboard', () => { navigator.clipboard.writeText(layersOf().map((L) => `// ===== ${L.name} =====\n${L.code}`).join('\n\n')); toast('Code copied', { timeout: 1200 }); }],
         ['Cycle looks…', lookCycle ? `Now: every ${lookCycle} bar${lookCycle === 1 ? '' : 's'}` : 'Switch between your saved looks every few bars while it plays', () => lookCycleMenu(sketchMenuBtn)],
         ['⟲ Restart from scratch', 'A fresh page, GPU and sound, when something bugs out (Ctrl+Shift+Enter)', () => restartSim()],
@@ -1771,6 +1772,7 @@ const ThreeLab = (() => {
           const Lx = layerById(id);
           if (!Lx) return;
           if (selId === id) { snapshot(); editor.setValue(code); persist(); } else { Lx.code = code; touch(); }
+          window.ThreeHistory?.changed?.('sliders');
         },
         keyframes: {
           state: (key) => keyStateFor(layerById(id), `s:${key}`),
@@ -1895,7 +1897,7 @@ const ThreeLab = (() => {
       renderLayers();
     }
     const saveSoon = debounce(() => save(), 300);
-    function touch() { current.updatedAt = Date.now(); current.code = layersOf()[0]?.code ?? current.code; saveSoon(); }
+    function touch() { current.updatedAt = Date.now(); current.code = layersOf()[0]?.code ?? current.code; saveSoon(); window.ThreeHistory?.changed?.('layers'); }
     // direct: set the base value even when the property is animated (the director does this; keyframes still win).
     function editLayer(id, patch, { live = false, direct = false } = {}) {
       const L = layerById(id);
@@ -2576,7 +2578,7 @@ const ThreeLab = (() => {
     const saveHistory = debounce(() => window.hub.kvSet('three-history', { versions: history, trash }), 1500);
     const histKey = (L) => (!L || L.id === 'main' ? current.id : `${current.id}:${L.id}`);
     function snapshot() {
-      if (!current || !editor.value.trim()) return;
+      if (!current || !editor.value.trim() || api.tm?.quiet) return; // (round 23: not while the time machine shows a version)
       const list = (history[histKey(sel())] ||= []);
       if (list[0]?.code === editor.value) return;
       list.unshift({ at: Date.now(), code: editor.value });
@@ -2921,6 +2923,7 @@ const ThreeLab = (() => {
         return false;
       }
       snapshot();
+      window.ThreeHistory?.changed?.('run'); // (round 23) a version for the time machine (tools/three-history.js)
       const target = hot ? layerById(layer || selId) : null;
       if (hot && !target) hot = false;
       // every layer's sliders go into one table, each layer at its own offset
@@ -3369,6 +3372,7 @@ ${code}
         x.updatedAt = Date.now();
         save();
         if (x === current) refreshInPlace();
+        window.ThreeHistory?.changed?.('scene', id);
         dispatchEvent(new CustomEvent('hearth:scene-changed', { detail: { id } })); // (precomps showing it follow: tools/three-comp.js)
       },
       layersOf: (x) => materialize(x),
@@ -3385,6 +3389,33 @@ ${code}
       previewHost: () => previewHost,
     };
 
+    // (round 23, timemachine) the scene's state for its versions (tools/three-history*.js), and showing one: scrubbing
+    // puts a version on screen without saving it (only the layers whose code differs re-run, in place); keep saves it
+    const tmVals = (L) => { const c = controllers.get(L.id); if (!c?.dirty?.()) return null; const o = {}; for (const x of c.controls()) if (x.key != null) o[x.key] = x.value; return Object.keys(o).length ? o : null; };
+    api.tm = {
+      quiet: false,
+      state(id = current?.id) {
+        const s = sketches.find((x) => x.id === id);
+        if (!s) return null;
+        const layers = JSON.parse(JSON.stringify(materialize(s)));
+        const vals = {};
+        if (s === current) { const L = layers.find((x) => x.id === sel()?.id); if (L) L.code = editor.value; for (const x of layersOf()) { const v = tmVals(x); if (v) vals[x.id] = v; } }
+        return { layers, vals, sel: s === current ? selId : extras[id]?.selectedLayer || null, palette: s.palette ? [...s.palette] : null };
+      },
+      show(st, { keep = false } = {}) {
+        if (!current || !st?.layers?.length) return false;
+        api.tm.quiet = !keep;
+        try {
+          current.layers = JSON.parse(JSON.stringify(st.layers));
+          if (keep) { current.code = current.layers[0]?.code ?? current.code; current.updatedAt = Date.now(); if (JSON.stringify(st.palette || null) !== JSON.stringify(current.palette || null)) setPalette(st.palette || []); save(); }
+          refreshInPlace(st.sel);
+          for (const L of layersOf()) { const c = ctlFor(L); const v = st.vals?.[L.id]; if (v) c.setMany(v); else if (c.dirty?.()) c.reset(); }
+        } finally { if (keep) api.tm.quiet = false; }
+        return true;
+      },
+      unquiet() { api.tm.quiet = false; },
+      persist: () => persist(),
+    };
     api.openCode = (code) => create(`From chat ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, code);
 
     // What the Three Director (Claude) uses to build scenes from the user's prompts.
@@ -4220,13 +4251,15 @@ ${frag}\`,
     }
     return { ok: false, error: `Unknown tool ${tool}` };
   }
-  HubBridge.register(['three_'], handleTool);
+  // (round 23) the time machine notes who changed the scene (tools/three-history.js: Claude / Astra, and their turns)
+  HubBridge.register(['three_'], (tool, args, ctx) => (window.ThreeHistory?.director ? ThreeHistory.director(tool, args, ctx, handleTool) : handleTool(tool, args, ctx)));
   return {
     openCode(code) { ensureOpen('sketch'); setTimeout(() => api.openCode?.(code), 60); },
     get lab() { return api.lab; }, // Lab actions (palette commands, MIDI simulation for tests)
     get director() { return api.director; }, // the Lab's layer / slider / palette API (the FX picker and its chat commands use it)
     get scenes() { return api.scenes || null; }, // the sketches as data, for per-chat scenes (chat-scenes.js)
     get stageHooks() { return api.stageHooks || null; }, // (round 22) tools/three-stage*.js
+    get tm() { return api.tm || null; }, // (round 23) tools/three-history*.js
     // resolves when no director call is changing the sketch on screen (a chat switch waits for it)
     idle: () => (inflight ? new Promise((r) => idleWaiters.push(r)) : Promise.resolve()),
     _sandbox: (parent, onMessage, params) => sandboxFrame(parent, 'sketch', onMessage, params, { lazy: true, name: 'backstage' }), // tools/three-backstage.js
