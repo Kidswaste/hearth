@@ -7554,6 +7554,667 @@ window.__labParticles = {
   drive: (o = {}) => { for (const k of ['kick', 'bass', 'centroid']) if (k in o) PT.drive[k] = o[k] == null ? null : Number(o[k]); return { ...PT.drive }; },
 };
 
+// ---------- kinetic type layers (round 25 "type": the hub side is tools/three-type*.js) ----------
+// textLayer(P, opts) inside a layer's code makes it a 🅰 type layer: crisp SDF text at any size (one atlas of signed
+// distance fields per font, drawn as instanced quads: outline, glow and softness come from the same field) or, with
+// opts.mode '3d', extruded letters with a bevel (outlines traced from the font's own letters, any font the page can
+// draw) in the lab3d material presets. Glyphs animate in and out by glyph / word / line (26 presets, stagger, order,
+// easing), sit on a line or a path (circle, arc, wave, spiral, your points), react to the kick / bass, and show timed
+// lyrics (opts.lyrics: [[start, end, "line", [word starts]]…]) in five looks. Time is the scene's clock (its song,
+// its own timeline, a sequence clip's time), so an export draws the same frame every time. Nothing is allocated per
+// frame (instance arrays written in place; layouts, atlases and 3D letters cached).
+const TY = { stats: new Map(), live: new Map(), drive: { kick: null, bass: null }, atlases: new Map(), geos: new Map(), pending: new Set(), fontsV: 0, google: new Set(), refFonts: new Set() };
+const TY_PX = 64; const TY_BUF = 12; const TY_RAD = 12; const TY_SPREAD = TY_RAD / TY_PX; // (em either side of the edge the field spans)
+const TY_DEF = {
+  size: 0.12, tracking: 0, leading: 1.1, x: 0, y: 0, align: 'center', case: 'as typed', opacity: 1, color: '#ffffff', color2: '#ffd75e', outline: 0, outlineColor: '#000000',
+  glow: 0, glowColor: '#ff8c42', softness: 0, fill: 1, inAnim: 'wave', outAnim: 'fade', unit: 'glyph', order: 'forward', ease: 'out', start: 0.2, stagger: 0.05, dur: 0.6, hold: 2.5,
+  amount: 1, wobble: 0, path: 'line', pathSize: 0.6, pathOffset: 0, pathSpin: 0, depth: 0.25, bevel: 0.03, material: 'plain', spin: 0, tilt: 0, kickScale: 0, kickGlow: 0, kickJitter: 0,
+  bassColor: 0, beatBounce: 0, letterReact: 0, look: 'fades', lead: 0, mode: '2d', weight: 800, font: '',
+};
+const TY_SCRAMBLE = 'ABCDEFGHJKLMNPQRSTUVWXYZ0123456789#$%&*+=<>?/';
+const tyRaw = (h, out) => { const n = parseInt(String(h).replace('#', '').slice(0, 6), 16) || 0; out.r = ((n >> 16) & 255) / 255; out.g = ((n >> 8) & 255) / 255; out.b = (n & 255) / 255; return out; }; // (raw sRGB numbers: the 2D layer draws them as they are)
+const tyC01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+const tyHash = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+const tyBounce = (t) => { const n = 7.5625; const d = 2.75; if (t < 1 / d) return n * t * t; if (t < 2 / d) return n * (t -= 1.5 / d) * t + 0.75; if (t < 2.5 / d) return n * (t -= 2.25 / d) * t + 0.9375; return n * (t -= 2.625 / d) * t + 0.984375; };
+const tyElastic = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : 2 ** (-10 * t) * Math.sin((t * 10 - 0.75) * ((2 * Math.PI) / 3)) + 1);
+const tyBack = (t) => 1 + 2.70158 * (t - 1) ** 3 + 1.70158 * (t - 1) ** 2;
+const TY_EASE = {
+  linear: (t) => t, smooth: (t) => t * t * (3 - 2 * t), in: (t) => t * t * t, out: (t) => 1 - (1 - t) ** 3, inOut: (t) => (t < 0.5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 / 2),
+  expo: (t) => (t >= 1 ? 1 : 1 - 2 ** (-10 * t)), expoInOut: (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t < 0.5 ? 2 ** (20 * t - 10) / 2 : (2 - 2 ** (-20 * t + 10)) / 2),
+  back: tyBack, elastic: tyElastic, bounce: tyBounce, sine: (t) => -(Math.cos(Math.PI * t) - 1) / 2,
+};
+// the in / out animations: fx(e, o, c) sets o (offsets in em, scales, turns, alpha, softness, glow, a stand-in
+// letter) from e (the eased progress, 0 → 1 coming in; an out runs it backwards) and c { p (raw progress), h1–h3
+// (the glyph's own random), rel (its place from the middle), side, k (amount), gi }
+const TY_ANIM = {
+  fade: (e, o) => { o.a = e; },
+  typewriter: (e, o, c) => { o.a = c.p > 0 ? 1 : 0; },
+  wave: (e, o, c) => { o.a = tyC01(e * 2); o.y = -(1 - e) * 0.8 * c.k + Math.sin(e * Math.PI) * 0.18 * c.k; },
+  scatter: (e, o, c) => { const r = 1 - e; o.x = (c.h1 - 0.5) * 7 * r * c.k; o.y = (c.h2 - 0.5) * 5 * r * c.k; o.r = (c.h3 - 0.5) * 4 * r * c.k; o.z = (c.h2 - 0.5) * 6 * r * c.k; o.a = tyC01(e * 1.4); },
+  glitch: (e, o, c) => { if (c.p <= 0) { o.a = 0; return; } if (c.p < 1) { const f = Math.floor(c.p * 22); const h = tyHash(f * 13 + c.gi * 7); o.x = (h - 0.5) * 0.5 * c.k; o.a = h > 0.28 ? 1 : 0.2; if (h > 0.7) o.ch = TY_SCRAMBLE[Math.floor(tyHash(f + c.gi * 3) * TY_SCRAMBLE.length)]; o.glow += 0.4; } },
+  'slide-up': (e, o, c) => { o.y = -(1 - e) * 1.2 * c.k; o.a = e; },
+  'slide-down': (e, o, c) => { o.y = (1 - e) * 1.2 * c.k; o.a = e; },
+  'slide-left': (e, o, c) => { o.x = (1 - e) * 2.2 * c.k; o.a = e; },
+  'slide-right': (e, o, c) => { o.x = -(1 - e) * 2.2 * c.k; o.a = e; },
+  'scale-pop': (e, o, c) => { o.s = Math.max(0, tyBack(tyC01(c.p))); o.a = tyC01(c.p * 3); },
+  'blur-in': (e, o, c) => { o.soft = (1 - e) * c.k; o.a = e; o.s = 1 + (1 - e) * 0.25 * c.k; },
+  'split-flap': (e, o, c) => { if (c.p <= 0) { o.a = 0; return; } if (c.p < 1) { const f = Math.floor(c.p * 14); o.ch = TY_SCRAMBLE[Math.floor(tyHash(f * 5 + c.gi * 11) * TY_SCRAMBLE.length)]; o.sy = Math.max(0.05, Math.abs(Math.cos((c.p * 14 - f) * Math.PI))); } },
+  drop: (e, o, c) => { o.y = (1 - tyBounce(tyC01(c.p))) * 2.2 * c.k; o.a = tyC01(c.p * 4); },
+  spin: (e, o, c) => { o.r = (1 - e) * Math.PI * c.k; o.s = e; o.a = e; },
+  flip: (e, o, c) => { o.rx = (1 - e) * Math.PI * 0.5 * c.k; o.a = tyC01(e * 1.5); },
+  zoom: (e, o, c) => { o.s = 1 + (1 - e) * 2 * c.k; o.a = e; o.soft = (1 - e) * 0.5; },
+  elastic: (e, o, c) => { o.x = -(1 - tyElastic(tyC01(c.p))) * 1.5 * c.k; o.a = tyC01(c.p * 3); },
+  bounce: (e, o, c) => { o.y = (1 - tyBounce(tyC01(c.p))) * 1.6 * c.k; o.a = tyC01(c.p * 4); },
+  scramble: (e, o, c) => { if (c.p <= 0) { o.a = 0; return; } if (c.p < 1) { o.ch = TY_SCRAMBLE[Math.floor(tyHash(Math.floor(c.p * 20) * 3 + c.gi * 13) * TY_SCRAMBLE.length)]; o.a = 0.85; } },
+  tracking: (e, o, c) => { o.x = c.rel * (1 - e) * 0.9 * c.k; o.a = e; o.soft = (1 - e) * 0.3; },
+  swing: (e, o, c) => { o.r = (1 - tyElastic(tyC01(c.p))) * 0.9 * c.k; o.y = (1 - e) * 0.3; o.a = tyC01(c.p * 3); },
+  stretch: (e, o, c) => { o.sy = 1 + (1 - tyElastic(tyC01(c.p))) * 1.4 * c.k; o.sx = 0.35 + 0.65 * e; o.a = tyC01(c.p * 3); },
+  'fly-in': (e, o, c) => { o.z = (1 - e) * 9 * c.k; o.s = 1 + (1 - e) * 2.5 * c.k; o.a = e; },
+  rise: (e, o, c) => { o.y = -(1 - e) * 0.9 * c.k; o.sy = 0.3 + 0.7 * e; o.a = e; },
+  neon: (e, o, c) => { o.a = c.p <= 0 ? 0 : c.p >= 1 ? 1 : tyHash(Math.floor(c.p * 24) + c.gi * 5) > 0.45 ? 1 : 0.1; o.glow += 0.6 * (c.p < 1 ? 1 : 0); },
+  shatter: (e, o, c) => { const r = 1 - e; o.x = (c.h1 - 0.5) * 3 * r * c.k; o.y = -r * r * 4 * c.k + (c.h2 - 0.2) * r * c.k; o.r = (c.h3 - 0.5) * 6 * r; o.z = (c.h1 - 0.5) * 4 * r; o.a = e; },
+};
+// ---- fonts: a family, "google:Family" (a Google Fonts download), "ref:<key>" (a reference / asset-library file) ----
+const TY_FALL = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+function tyPend(p, ms = 5000) { const q = Promise.race([p, new Promise((r) => realSetTimeout(r, ms))]).catch(() => {}).finally(() => { TY.pending.delete(q); TY.fontsV += 1; }); TY.pending.add(q); return q; }
+function tyFamily(f) {
+  f = String(f || '').trim();
+  if (!f) return TY_FALL;
+  const r = /^ref:(.+)$/i.exec(f);
+  if (r) {
+    const key = r[1].trim(); const fam = `TypeRef_${key.replace(/[^\w-]/g, '_')}`;
+    if (!TY.refFonts.has(key) && refs[key]) { TY.refFonts.add(key); try { const face = new FontFace(fam, `url("${refs[key]}")`); document.fonts.add(face); tyPend(face.load()); } catch { /* the fallback */ } }
+    return `"${fam}", ${TY_FALL}`;
+  }
+  const g = /^google:(.+)$/i.exec(f);
+  if (g) {
+    const name = g[1].trim();
+    if (!TY.google.has(name)) {
+      TY.google.add(name);
+      const fam = encodeURIComponent(name).replace(/%20/g, '+');
+      tyPend(new Promise((res) => {
+        const add = (q) => { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = `https://fonts.googleapis.com/css2?family=${q}&display=block`; l.onload = () => document.fonts.load(`400 ${TY_PX}px "${name}"`).then(() => document.fonts.load(`700 ${TY_PX}px "${name}"`)).finally(res); l.onerror = () => (q.includes(':') ? add(fam) : res()); document.head.appendChild(l); };
+        add(`${fam}:wght@400;700;900`);
+      }), 6000);
+    }
+    return `"${name}", ${TY_FALL}`;
+  }
+  return /[,"']/.test(f) ? f : `"${f}", ${TY_FALL}`;
+}
+// ---- the SDF atlas of a font (Felzenszwalb's distance transform on each glyph, as in Mapbox's TinySDF) ----
+function tyEdt1(grid, off, stride, len, f, v, z) {
+  v[0] = 0; z[0] = -1e20; z[1] = 1e20; f[0] = grid[off];
+  for (let q = 1, k = 0, s = 0; q < len; q += 1) {
+    f[q] = grid[off + q * stride];
+    const q2 = q * q;
+    do { const r = v[k]; s = (f[q] - f[r] + q2 - r * r) / (q - r) / 2; } while (s <= z[k] && --k > -1);
+    k += 1; v[k] = q; z[k] = s; z[k + 1] = 1e20;
+  }
+  for (let q = 0, k = 0; q < len; q += 1) { while (z[k + 1] < q) k += 1; const r = v[k]; const qr = q - r; grid[off + q * stride] = f[r] + qr * qr; }
+}
+function tyEdt(grid, w, h, f, v, z) { for (let x = 0; x < w; x += 1) tyEdt1(grid, x, w, h, f, v, z); for (let y = 0; y < h; y += 1) tyEdt1(grid, y * w, 1, w, f, v, z); }
+function tyAtlas(fam, weight) {
+  const key = `${weight}|${fam}|${TY.fontsV}`;
+  let A = TY.atlases.get(key);
+  if (A) return A;
+  if (TY.atlases.size >= 8) { const [k0, a0] = TY.atlases.entries().next().value; a0.tex?.dispose(); TY.atlases.delete(k0); }
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 256;
+  const g = cv.getContext('2d', { willReadFrequently: true });
+  A = { key, fam, weight, font: `${weight} ${TY_PX}px ${fam}`, glyphs: new Map(), W: 1024, H: 256, x: 1, y: 1, rowH: 0, data: new Uint8Array(1024 * 256), tex: null, cv, g, ver: 0, buf: null };
+  A.tex = new THREE.DataTexture(A.data, A.W, A.H, THREE.RedFormat, THREE.UnsignedByteType);
+  A.tex.minFilter = THREE.LinearFilter; A.tex.magFilter = THREE.LinearFilter; A.tex.generateMipmaps = false; A.tex.needsUpdate = true;
+  TY.atlases.set(key, A);
+  return A;
+}
+function tyGlyph(A, ch) {
+  let G = A.glyphs.get(ch);
+  if (G) return G;
+  const g = A.g; g.font = A.font;
+  const m = g.measureText(ch);
+  const adv = m.width / TY_PX;
+  const l = Math.ceil(m.actualBoundingBoxLeft || 0); const r = Math.ceil(m.actualBoundingBoxRight || 0);
+  const asc = Math.ceil(m.actualBoundingBoxAscent || 0); const desc = Math.ceil(m.actualBoundingBoxDescent || 0);
+  if (!/\S/.test(ch) || l + r <= 0 || asc + desc <= 0) { G = { adv, empty: true }; A.glyphs.set(ch, G); return G; }
+  const cw = l + r + TY_BUF * 2; const chh = asc + desc + TY_BUF * 2;
+  if (A.cv.width < cw || A.cv.height < chh) { A.cv.width = Math.max(A.cv.width, cw); A.cv.height = Math.max(A.cv.height, chh); }
+  g.font = A.font; g.textBaseline = 'alphabetic'; g.textAlign = 'left'; g.fillStyle = '#fff';
+  g.clearRect(0, 0, cw, chh);
+  g.fillText(ch, TY_BUF + l, TY_BUF + asc);
+  const img = g.getImageData(0, 0, cw, chh).data;
+  const n = cw * chh;
+  const B = A.buf && A.buf.n >= n ? A.buf : (A.buf = { n: Math.max(n, 16384), o: new Float64Array(Math.max(n, 16384)), i: new Float64Array(Math.max(n, 16384)), f: new Float64Array(Math.max(cw, chh, 1024)), v: new Uint16Array(Math.max(cw, chh, 1024)), z: new Float64Array(Math.max(cw, chh, 1024) + 1) });
+  if (B.f.length < Math.max(cw, chh)) { const L = Math.max(cw, chh) * 2; B.f = new Float64Array(L); B.v = new Uint16Array(L); B.z = new Float64Array(L + 1); }
+  const go = B.o; const gi = B.i;
+  for (let i = 0; i < n; i += 1) {
+    const a = img[i * 4 + 3] / 255;
+    if (a <= 0) { go[i] = 1e20; gi[i] = 0; } else if (a >= 1) { go[i] = 0; gi[i] = 1e20; } else { const d = 0.5 - a; go[i] = d > 0 ? d * d : 0; gi[i] = d < 0 ? d * d : 0; }
+  }
+  tyEdt(go, cw, chh, B.f, B.v, B.z); tyEdt(gi, cw, chh, B.f, B.v, B.z);
+  // shelf packing; the atlas doubles its height when full (the texture is made again)
+  if (A.x + cw + 1 > A.W) { A.x = 1; A.y += A.rowH + 1; A.rowH = 0; }
+  if (A.y + chh + 1 > A.H) {
+    const H2 = Math.max(A.H * 2, A.y + chh + 2); const d2 = new Uint8Array(A.W * H2); d2.set(A.data);
+    A.data = d2; A.H = H2; A.tex.dispose();
+    A.tex = new THREE.DataTexture(A.data, A.W, A.H, THREE.RedFormat, THREE.UnsignedByteType);
+    A.tex.minFilter = THREE.LinearFilter; A.tex.magFilter = THREE.LinearFilter; A.tex.generateMipmaps = false;
+    for (const x of A.glyphs.values()) if (!x.empty) { x.vt = x.ay / A.H; x.vb = (x.ay + x.chh) / A.H; }
+  }
+  for (let y = 0; y < chh; y += 1) for (let x = 0; x < cw; x += 1) {
+    const i = y * cw + x; const d = Math.sqrt(go[i]) - Math.sqrt(gi[i]);
+    A.data[(A.y + y) * A.W + A.x + x] = Math.max(0, Math.min(255, Math.round(255 * (0.5 - d / (2 * TY_RAD)))));
+  }
+  G = { adv, empty: false, u0: A.x / A.W, u1: (A.x + cw) / A.W, vt: A.y / A.H, vb: (A.y + chh) / A.H, ax: A.x, ay: A.y, qx: (-l - TY_BUF) / TY_PX, qt: (asc + TY_BUF) / TY_PX, w: cw / TY_PX, h: chh / TY_PX, l, asc, cw, chh };
+  G.cx = G.qx + G.w / 2; G.cy = G.qt - G.h / 2;
+  A.x += cw + 1; A.rowH = Math.max(A.rowH, chh);
+  A.tex.needsUpdate = true; A.ver += 1;
+  A.glyphs.set(ch, G);
+  return G;
+}
+// ---- 3D letters: the glyph's outline traced from the font (marching squares), holes found, extruded with a bevel ----
+function tyContours(alpha, w, h, thr = 0.5) {
+  const at = (x, y) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : alpha[y * w + x]);
+  const pts = new Map(); // point id → [x, y]
+  const adj = new Map(); // point id → linked point ids
+  const W1 = w + 2;
+  const hid = (x, y) => ((y + 1) * W1 + (x + 1)) * 2; const vid = (x, y) => ((y + 1) * W1 + (x + 1)) * 2 + 1;
+  const pt = (id, x, y) => { if (!pts.has(id)) pts.set(id, [x, y]); return id; };
+  const link = (a, b) => { (adj.get(a) || adj.set(a, []).get(a)).push(b); (adj.get(b) || adj.set(b, []).get(b)).push(a); };
+  const ix = (a, b) => (a === b ? 0.5 : (thr - a) / (b - a));
+  for (let y = -1; y < h; y += 1) for (let x = -1; x < w; x += 1) {
+    const tl = at(x, y); const tr = at(x + 1, y); const br = at(x + 1, y + 1); const bl = at(x, y + 1);
+    const k = (tl >= thr ? 8 : 0) | (tr >= thr ? 4 : 0) | (br >= thr ? 2 : 0) | (bl >= thr ? 1 : 0);
+    if (k === 0 || k === 15) continue;
+    const T = () => pt(hid(x, y), x + ix(tl, tr), y); const R = () => pt(vid(x + 1, y), x + 1, y + ix(tr, br));
+    const Bm = () => pt(hid(x, y + 1), x + ix(bl, br), y + 1); const Lf = () => pt(vid(x, y), x, y + ix(tl, bl));
+    const mid = (tl + tr + br + bl) / 4 >= thr;
+    switch (k) {
+      case 1: case 14: link(Lf(), Bm()); break;
+      case 2: case 13: link(Bm(), R()); break;
+      case 3: case 12: link(Lf(), R()); break;
+      case 4: case 11: link(T(), R()); break;
+      case 6: case 9: link(T(), Bm()); break;
+      case 7: case 8: link(Lf(), T()); break;
+      case 5: if (mid) { link(Lf(), T()); link(Bm(), R()); } else { link(Lf(), Bm()); link(T(), R()); } break;
+      case 10: if (mid) { link(T(), R()); link(Lf(), Bm()); } else { link(Lf(), T()); link(Bm(), R()); } break;
+      default: break;
+    }
+  }
+  const seen = new Set(); const loops = [];
+  for (const start of adj.keys()) {
+    if (seen.has(start)) continue;
+    const loop = []; let prev = -1; let cur = start;
+    while (cur != null && !seen.has(cur)) { seen.add(cur); loop.push(pts.get(cur)); const nb = adj.get(cur) || []; const nx = nb[0] !== prev && !seen.has(nb[0]) ? nb[0] : nb[1] !== prev && !seen.has(nb[1]) ? nb[1] : null; prev = cur; cur = nx; }
+    if (loop.length >= 3) loops.push(loop);
+  }
+  return loops;
+}
+function tySimplify(pts, eps) { // Ramer–Douglas–Peucker on a closed loop
+  if (pts.length < 8) return pts;
+  const rdp = (a, b, out) => {
+    let md = 0; let mi = -1; const [x1, y1] = pts[a]; const [x2, y2] = pts[b]; const dx = x2 - x1; const dy = y2 - y1; const L = Math.hypot(dx, dy) || 1;
+    for (let i = a + 1; i < b; i += 1) { const d = Math.abs(dy * pts[i][0] - dx * pts[i][1] + x2 * y1 - y2 * x1) / L; if (d > md) { md = d; mi = i; } }
+    if (md > eps && mi > 0) { rdp(a, mi, out); rdp(mi, b, out); } else out.push(pts[b]);
+  };
+  const half = Math.floor(pts.length / 2); const out = [pts[0]];
+  rdp(0, half, out); rdp(half, pts.length - 1, out);
+  return out.length >= 3 ? out : pts;
+}
+const tyArea = (p) => { let s = 0; for (let i = 0, j = p.length - 1; i < p.length; j = i++) s += (p[j][0] - p[i][0]) * (p[j][1] + p[i][1]); return s / 2; };
+const tyInside = (p, x, y) => { let c = false; for (let i = 0, j = p.length - 1; i < p.length; j = i++) if ((p[i][1] > y) !== (p[j][1] > y) && x < ((p[j][0] - p[i][0]) * (y - p[i][1])) / (p[j][1] - p[i][1]) + p[i][0]) c = !c; return c; };
+function tyGeo(A, ch, depth, bevel) {
+  const key = `${A.key}|${ch}|${depth.toFixed(3)}|${bevel.toFixed(3)}`;
+  let geo = TY.geos.get(key);
+  if (geo !== undefined) return geo;
+  if (TY.geos.size > 400) { for (const [k, g0] of TY.geos) { g0?.dispose(); TY.geos.delete(k); if (TY.geos.size < 300) break; } }
+  const G = tyGlyph(A, ch);
+  if (G.empty) { TY.geos.set(key, null); return null; }
+  // the letter again at 2× (sharper outlines), its alpha → loops in em (y up, from the glyph's pivot)
+  const S = 2; const c = document.createElement('canvas'); c.width = G.cw * S; c.height = G.chh * S;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.font = `${A.weight} ${TY_PX * S}px ${A.fam}`; g.fillStyle = '#fff'; g.textBaseline = 'alphabetic';
+  g.fillText(ch, (TY_BUF + G.l) * S, (TY_BUF + G.asc) * S);
+  const d = g.getImageData(0, 0, c.width, c.height).data;
+  const al = new Float32Array(c.width * c.height); for (let i = 0; i < al.length; i += 1) al[i] = d[i * 4 + 3] / 255;
+  const em = TY_PX * S;
+  const loops = tyContours(al, c.width, c.height).map((lp) => tySimplify(lp, 0.45)).map((lp) => lp.map(([x, y]) => [x / em - G.w / 2, -(y / em) + G.h / 2])).filter((lp) => Math.abs(tyArea(lp)) > 1e-5);
+  // outer loops and holes by how many loops hold them
+  const depthOf = loops.map((lp, i) => loops.reduce((n, o, j) => (j !== i && tyInside(o, lp[0][0], lp[0][1]) ? n + 1 : n), 0));
+  const outers = loops.map((lp, i) => ({ lp, i, area: Math.abs(tyArea(lp)) })).filter((x) => depthOf[x.i] % 2 === 0);
+  const shapes = outers.map((o) => { const s = new THREE.Shape(o.lp.map(([x, y]) => new THREE.Vector2(x, y))); s.__o = o; return s; });
+  loops.forEach((lp, i) => {
+    if (depthOf[i] % 2 === 0) return;
+    let best = null;
+    for (const s of shapes) if (tyInside(s.__o.lp, lp[0][0], lp[0][1]) && (!best || s.__o.area < best.__o.area)) best = s;
+    if (best) best.holes.push(new THREE.Path(lp.map(([x, y]) => new THREE.Vector2(x, y))));
+  });
+  if (!shapes.length) { TY.geos.set(key, null); return null; }
+  const bv = Math.min(bevel, 0.06);
+  geo = new THREE.ExtrudeGeometry(shapes, { depth: Math.max(0.001, depth), bevelEnabled: bv > 0.0005, bevelThickness: bv, bevelSize: bv * 0.6, bevelSegments: 3, curveSegments: 1 });
+  geo.translate(0, 0, -depth / 2);
+  geo.computeVertexNormals();
+  TY.geos.set(key, geo);
+  return geo;
+}
+// the lab3d material presets (tools/three-models.js) for letters
+function tyMaterial(kind, color, i = 0) {
+  const col = new THREE.Color(color);
+  const pal = ['#48ddff', '#bd8bff', '#ff6b9d', '#ffd75e'];
+  switch (kind) {
+    case 'chrome': return new THREE.MeshStandardMaterial({ color: col.clone().lerp(new THREE.Color('#ffffff'), 0.6), metalness: 1, roughness: 0.06 });
+    case 'gold': return new THREE.MeshStandardMaterial({ color: '#ffc45c', metalness: 1, roughness: 0.18 });
+    case 'glass': return new THREE.MeshPhysicalMaterial({ color: col, metalness: 0, roughness: 0.04, transmission: 1, thickness: 0.3, ior: 1.45, envMapIntensity: 1.4 });
+    case 'toon': { const d = new Uint8Array([60, 60, 60, 255, 150, 150, 150, 255, 255, 255, 255, 255]); const rt = new THREE.DataTexture(d, 3, 1); rt.minFilter = rt.magFilter = THREE.NearestFilter; rt.needsUpdate = true; return new THREE.MeshToonMaterial({ color: col, gradientMap: rt }); }
+    case 'clay': return new THREE.MeshStandardMaterial({ color: '#d9c8b4', roughness: 0.92, metalness: 0 });
+    case 'matte': return new THREE.MeshStandardMaterial({ color: col.clone().multiplyScalar(0.25), roughness: 0.75, metalness: 0.1 });
+    case 'wireframe': return new THREE.MeshBasicMaterial({ color: col, wireframe: true });
+    case 'holographic': return new THREE.MeshPhysicalMaterial({ color: col, emissive: col, emissiveIntensity: 0.35, metalness: 0.4, roughness: 0.15, iridescence: 1, iridescenceIOR: 1.6, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending });
+    case 'xray': return new THREE.MeshBasicMaterial({ color: col, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    case 'normals': return new THREE.MeshNormalMaterial();
+    case 'palette': return new THREE.MeshStandardMaterial({ color: pal[i % 4], roughness: 0.45, metalness: 0.15 });
+    default: return new THREE.MeshStandardMaterial({ color: col, roughness: 0.4, metalness: 0.1 });
+  }
+}
+// ---- text → glyphs in em (lines, words; pivots at each glyph's middle) ----
+function tyLayout(A, text, tracking, leading, align) {
+  const lines = String(text ?? '').split('\n');
+  const glyphs = []; const lineW = []; let gi = 0; let wi = 0;
+  lines.forEach((ln, li) => {
+    let pen = 0; let iw = 0; let inWord = false; const chars = Array.from(ln);
+    chars.forEach((ch, k) => {
+      const G = tyGlyph(A, ch);
+      if (/\s/.test(ch)) { if (inWord) { wi += 1; inWord = false; iw = 0; } pen += G.adv + tracking; return; }
+      inWord = true;
+      if (!G.empty) glyphs.push({ ch, G, li, wi, iw, gi: gi++, px: pen, bx: 0, by: 0, wl: 0, k });
+      iw += 1;
+      pen += G.adv + (k < chars.length - 1 ? tracking : 0);
+    });
+    if (inWord) wi += 1;
+    lineW.push(pen);
+  });
+  const maxW = Math.max(0.001, ...lineW); const nL = lines.length;
+  const wordLen = new Map(); for (const g of glyphs) wordLen.set(g.wi, (wordLen.get(g.wi) || 0) + 1);
+  for (const g of glyphs) {
+    const x0 = align === 'left' ? -maxW / 2 : align === 'right' ? maxW / 2 - lineW[g.li] : -lineW[g.li] / 2;
+    g.bx = x0 + g.px + g.G.cx; g.by = ((nL - 1) / 2 - g.li) * leading - 0.36 + g.G.cy;
+    g.u = g.px + g.G.cx; // (along its line, from the line's start: the path parameter)
+    g.wl = wordLen.get(g.wi);
+  }
+  // unit centres (word / line), for turning and scaling a unit around its own middle
+  const nW = Math.max(1, wi); const wc = new Float32Array(nW * 3); const lc = new Float32Array(nL * 3);
+  for (const g of glyphs) { wc[g.wi * 3] += g.bx; wc[g.wi * 3 + 1] += g.by; wc[g.wi * 3 + 2] += 1; lc[g.li * 3] += g.bx; lc[g.li * 3 + 1] += g.by; lc[g.li * 3 + 2] += 1; }
+  for (const a of [wc, lc]) for (let i = 0; i < a.length; i += 3) if (a[i + 2]) { a[i] /= a[i + 2]; a[i + 1] /= a[i + 2]; }
+  return { glyphs, lineW, maxW, nLines: nL, nWords: nW, nGlyphs: glyphs.length, wc, lc, height: nL * leading };
+}
+// a point on the path at u (px along the text, 0 = its start) of a text `total` px long; out = [x, y, angle]
+function tyPathAt(kind, u, total, line, P, W, H, t, out, pts) {
+  const R0 = P.pathSize * Math.min(W, H) * 0.45; const lead = P.leading * P.em;
+  const spin = P.pathSpin * t * Math.PI * 0.2;
+  if (kind === 'circle' || kind === 'arc') {
+    const R = kind === 'arc' ? R0 * 2.2 : Math.max(R0 - line * lead, P.em * 0.5);
+    const cy = kind === 'arc' ? -R + R0 * 0.25 : 0;
+    const th = Math.PI / 2 + total / R / 2 - P.pathOffset * Math.PI * 2 - spin - u / R;
+    out[0] = Math.cos(th) * R; out[1] = cy + Math.sin(th) * R; out[2] = th - Math.PI / 2;
+    if (kind === 'arc') out[1] -= line * lead;
+    return out;
+  }
+  if (kind === 'wave') {
+    const x = u - total / 2 + P.pathOffset * total; const lam = Math.max(P.em * 4, total / 1.5); const A = P.pathSize * P.em * 1.4;
+    const ph = (x / lam) * Math.PI * 2 + spin * 5;
+    out[0] = x; out[1] = Math.sin(ph) * A - line * lead; out[2] = Math.atan(Math.cos(ph) * A * (Math.PI * 2 / lam));
+    return out;
+  }
+  if (kind === 'spiral') {
+    const s = u / Math.max(1, total) + P.pathOffset; const R = R0 * (1 - 0.72 * Math.min(1, s)) - line * lead * 0.5; const th = Math.PI / 2 - s * Math.PI * 4 - spin;
+    out[0] = Math.cos(th) * R; out[1] = Math.sin(th) * R; out[2] = th - Math.PI / 2;
+    return out;
+  }
+  if (kind === 'custom' && pts?.length > 1) {
+    // your points (-1..1 of the frame), by length
+    let len = 0; for (let i = 1; i < pts.length; i += 1) len += Math.hypot((pts[i][0] - pts[i - 1][0]) * W / 2, (pts[i][1] - pts[i - 1][1]) * H / 2);
+    let d = ((u + P.pathOffset * len + spin * len * 0.1) % len + len) % len;
+    for (let i = 1; i < pts.length; i += 1) {
+      const ax = pts[i - 1][0] * W / 2; const ay = pts[i - 1][1] * H / 2; const bx = pts[i][0] * W / 2; const by = pts[i][1] * H / 2;
+      const sl = Math.hypot(bx - ax, by - ay);
+      if (d <= sl || i === pts.length - 1) { const k = sl ? Math.min(1, d / sl) : 0; out[0] = ax + (bx - ax) * k; out[1] = ay + (by - ay) * k - line * lead; out[2] = Math.atan2(by - ay, bx - ax); return out; }
+      d -= sl;
+    }
+  }
+  out[0] = u - total / 2; out[1] = -line * lead; out[2] = 0;
+  return out;
+}
+// ---- the shader of 2D glyphs ----
+const TY_VERT = `in vec4 iA; in vec4 iB; in vec4 iUv; in vec4 iC;
+out vec2 vUv; out vec4 vC; out vec2 vFx;
+void main() {
+  vec2 q = position.xy * iA.zw; float c = cos(iB.x); float s = sin(iB.x);
+  vec2 p = iA.xy + vec2(c * q.x - s * q.y, s * q.x + c * q.y);
+  vUv = vec2(mix(iUv.x, iUv.z, position.x + 0.5), mix(iUv.w, iUv.y, position.y + 0.5));
+  vC = iC; vFx = iB.zw;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, iB.y, 1.0);
+}`;
+const TY_FRAG = `uniform sampler2D uAtlas; uniform vec3 uOutC; uniform vec3 uGlowC; uniform float uOutline; uniform float uGlow; uniform float uFill;
+in vec2 vUv; in vec4 vC; in vec2 vFx;
+layout(location = 0) out highp vec4 fragOut;
+#define gl_FragColor fragOut
+void main() {
+  float v = texture(uAtlas, vUv).r;
+  float w = max(fwidth(v) * 0.7, 1e-4) + vFx.x * 0.22;
+  float fs = smoothstep(0.5 - w, 0.5 + w, v);
+  float e = 0.5 - uOutline;
+  float os = uOutline > 0.0 ? smoothstep(e - w, e + w, v) : fs;
+  float hollow = uOutline > 0.0 ? smoothstep(0.5 + uOutline - w, 0.5 + uOutline + w, v) : 0.0;
+  float fa = fs * uFill;
+  float ra = max(os - fa - (1.0 - uFill) * hollow, 0.0);
+  float a = clamp(fa + ra, 0.0, 1.0);
+  float g = (uGlow + vFx.y) * pow(smoothstep(0.02, 0.5, v), 2.2) * 0.85;
+  vec3 rgb = vC.rgb * fa + uOutC * ra + uGlowC * g * (1.0 - a);
+  float al = clamp(a + g * (1.0 - a), 0.0, 1.0);
+  gl_FragColor = vec4(rgb, al) * vC.a;
+}`;
+globalThis.textLayer = (P = {}, opts = {}) => {
+  const L = layerState(currentLayer() || 'main');
+  P = P || {}; opts = opts || {};
+  const pv = (k) => { const v = P[k]; return v === undefined || v === null || v === '' ? (opts[k] ?? TY_DEF[k]) : v; };
+  const num = (k) => { const v = Number(pv(k)); return Number.isFinite(v) ? v : TY_DEF[k]; };
+  const mode3d = String(opts.mode || '2d') === '3d';
+  const renderer = new THREE.WebGLRenderer({ antialias: mode3d, alpha: true });
+  renderer.__keepClear = true; renderer.__warm = true;
+  renderer.setPixelRatio(devicePixelRatio);
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setClearColor(0x000000, 0);
+  if (mode3d) { renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.outputColorSpace = THREE.SRGBColorSpace; } else renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+  document.body.append(renderer.domElement);
+  const scene = new THREE.Scene();
+  const size = new THREE.Vector2();
+  const lyr = Array.isArray(opts.lyrics) ? opts.lyrics.filter((x) => Array.isArray(x) && x.length >= 3).map((x) => ({ a: +x[0], b: +x[1], text: String(x[2]), w: Array.isArray(x[3]) ? x[3].map(Number) : null })).sort((p, q) => p.a - q.a) : null;
+  const pts = Array.isArray(opts.points) ? opts.points.filter((p) => Array.isArray(p) && p.length >= 2).map((p) => [+p[0] || 0, +p[1] || 0]) : null;
+  const each = opts.glyphs && typeof opts.glyphs === 'object' ? opts.glyphs : null; // glyph-level: { "3": { color, scale, x, y, turn } }
+  const eachCol = new Map();
+  const seed = (Number(opts.seed) >>> 0) || 1;
+  // ---- 2D: instanced quads ----
+  let cam; let geo = null; let mat = null; let mesh = null; let cap = 0; let attrs = null;
+  const U = { uAtlas: { value: null }, uOutC: { value: new THREE.Vector3() }, uGlowC: { value: new THREE.Vector3(1, 0.5, 0.2) }, uOutline: { value: 0 }, uGlow: { value: 0 }, uFill: { value: 1 } };
+  const grow = (n) => {
+    if (n <= cap) return;
+    cap = Math.max(64, 2 ** Math.ceil(Math.log2(n)));
+    const base = new THREE.PlaneGeometry(1, 1);
+    if (geo) geo.dispose();
+    geo = new THREE.InstancedBufferGeometry(); geo.index = base.index; geo.setAttribute('position', base.attributes.position);
+    attrs = {};
+    for (const k of ['iA', 'iB', 'iUv', 'iC']) { const a = new THREE.InstancedBufferAttribute(new Float32Array(cap * 4), 4); a.setUsage(THREE.DynamicDrawUsage); geo.setAttribute(k, a); attrs[k] = a; }
+    geo.instanceCount = 0;
+    if (mesh) mesh.geometry = geo; else { mesh = new THREE.Mesh(geo, mat); mesh.frustumCulled = false; scene.add(mesh); }
+  };
+  // ---- 3D: one mesh a letter (pooled), lights and the room's reflections ----
+  const pool = []; let matKind = null; let matCol = null; let pmrem = null; let envTex = null;
+  const group = new THREE.Group(); const hex = { c: null, o: null, g: null };
+  if (mode3d) {
+    cam = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.05, 200); cam.position.set(0, 0, 10);
+    scene.add(group);
+    scene.add(new THREE.AmbientLight('#ffffff', 0.35));
+    const key = new THREE.DirectionalLight('#fff4e8', 2.2); key.position.set(3, 4, 6); scene.add(key);
+    const rim = new THREE.DirectionalLight('#9fb8ff', 1.2); rim.position.set(-4, 1, -3); scene.add(rim);
+    pmrem = new THREE.PMREMGenerator(renderer);
+    // (the room's reflections: an export frame waits for them, like for a font)
+    const envP = import('three/addons/environments/RoomEnvironment.js').then(({ RoomEnvironment }) => { if (stat.gone) return; envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture; scene.environment = envTex; }).catch(() => {}).finally(() => TY.pending.delete(envP));
+    TY.pending.add(envP);
+  } else {
+    cam = new THREE.OrthographicCamera(-1, 1, 1, -1, -1000, 1000);
+    mat = new THREE.ShaderMaterial({ glslVersion: THREE.GLSL3, vertexShader: TY_VERT, fragmentShader: TY_FRAG, uniforms: U, transparent: true, depthTest: false, depthWrite: false, blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneMinusSrcAlphaFactor });
+    grow(64);
+  }
+  const onResize = () => { renderer.setSize(innerWidth, innerHeight); if (mode3d) { cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); } };
+  addEventListener('resize', onResize);
+  const stat = { id: L.id, mode: mode3d ? '3d' : '2d', glyphs: 0, chars: 0, lines: lyr ? lyr.length : 0, font: null, line: -1, sig: 0, alpha: 0, frames: 0, ms: 0, atlas: 0, gone: false, ok: null, fontsV: -1 };
+  TY.stats.set(L.id, stat);
+  // per-frame state (written in place)
+  const o = { a: 1, x: 0, y: 0, z: 0, s: 1, sx: 1, sy: 1, r: 0, rx: 0, ry: 0, soft: 0, glow: 0, ch: null };
+  const cc = { p: 0, h1: 0, h2: 0, h3: 0, rel: 0, side: 0, k: 1, gi: 0 };
+  const pa = [0, 0, 0]; const col = new THREE.Color(); const colA = new THREE.Color(); const colB = new THREE.Color();
+  const cache = new Map();
+  const layoutOf = (A, text, tr, ld, al) => {
+    const k = `${A.key}|${text}|${tr}|${ld}|${al}`;
+    let lay = cache.get(k);
+    if (!lay) { if (cache.size > 48) cache.delete(cache.keys().next().value); lay = tyLayout(A, text, tr, ld, al); cache.set(k, lay); }
+    return lay;
+  };
+  const caseOf = (s) => { const c = String(pv('case')); return c === 'UPPER' ? s.toUpperCase() : c === 'lower' ? s.toLowerCase() : s; };
+  const rankOf = (u, n, order) => (order === 'reverse' ? n - 1 - u : order === 'center' ? Math.abs(u - (n - 1) / 2) : order === 'edges' ? (n - 1) / 2 - Math.abs(u - (n - 1) / 2) : order === 'random' ? Math.floor(tyHash(u * 7.13 + seed) * n) : u);
+  let n2 = 0; let used3 = 0; let sig = 0; let asum = 0;
+  // one glyph on screen: frame px (x right, y up, from the middle), a turn, scales, alpha, its color, softness, glow
+  function put(A, G, X, Y, Z, rot, sx, sy, a, r, g, b, soft, glow, rx, ry) {
+    if (a <= 0.003 || Math.abs(sx) < 1e-4 || Math.abs(sy) < 1e-4) return;
+    sig += (X * 1.3 + Y * 0.7 + sx * 17 + sy * 23 + rot * 31 + (G.u0 || 0) * 97) * a * 0.001; asum += a; // (a signature of what's drawn: the checks see letters move, turn, change)
+    if (!mode3d) {
+      grow(n2 + 1);
+      const i = n2 * 4; const em = curEm;
+      const cx = Math.cos(ry || 0); const cy = Math.cos(rx || 0); // (2D: a turn around x / y is a squash)
+      const A1 = attrs.iA.array; A1[i] = X; A1[i + 1] = Y; A1[i + 2] = G.w * em * sx * Math.max(0.02, Math.abs(cx)); A1[i + 3] = G.h * em * sy * Math.max(0.02, Math.abs(cy));
+      const B1 = attrs.iB.array; B1[i] = rot; B1[i + 1] = 0; B1[i + 2] = Math.min(1, soft); B1[i + 3] = glow;
+      const V = attrs.iUv.array; V[i] = G.u0; V[i + 1] = G.vt; V[i + 2] = G.u1; V[i + 3] = G.vb;
+      const C1 = attrs.iC.array; C1[i] = r; C1[i + 1] = g; C1[i + 2] = b; C1[i + 3] = a;
+      n2 += 1;
+      return;
+    }
+    const geo3 = tyGeo(A, G.__ch, num('depth'), num('bevel'));
+    if (!geo3) return;
+    let m = pool[used3];
+    if (!m) { m = new THREE.Mesh(geo3, tyMaterial(matKind, matCol, used3)); m.material.transparent = true; m.frustumCulled = false; group.add(m); pool.push(m); }
+    m.geometry = geo3; m.visible = true;
+    const k = k3; const em = curEm * k;
+    m.position.set(X * k, Y * k, Z * k); m.rotation.set(rx || 0, ry || 0, rot); m.scale.set(em * sx, em * sy, em * (sx + sy) / 2);
+    const mt = m.material; mt.opacity = Math.min(1, a); if (mt.color && matKind !== 'gold' && matKind !== 'clay' && matKind !== 'palette') { if (matKind === 'chrome') mt.color.setRGB(r, g, b, THREE.SRGBColorSpace).lerp(colB.setRGB(1, 1, 1), 0.6); else if (matKind === 'matte') mt.color.setRGB(r * 0.25, g * 0.25, b * 0.25, THREE.SRGBColorSpace); else mt.color.setRGB(r, g, b, THREE.SRGBColorSpace); }
+    if (mt.emissive && matKind !== 'holographic') { mt.emissive.setRGB(r, g, b, THREE.SRGBColorSpace).multiplyScalar(Math.min(1.5, glow * 0.5)); }
+    used3 += 1;
+  }
+  let curEm = 1; let k3 = 1;
+  // one block of text (a title, a lyric line) with its own timing: tIn (its start), tOut (when it goes out, or Infinity)
+  const tmp = { a: 0, r: 0, g: 0, b: 0 };
+  function block(A, lay, t, tIn, tOut, o0) {
+    const { W, H, em, inA, outA, unit, order, ease, stag, dur, amt, wob, path, react } = o0;
+    const nU = unit === 'word' ? lay.nWords : unit === 'line' ? lay.nLines : lay.nGlyphs;
+    const fIn = TY_ANIM[inA] || TY_ANIM.fade; const fOut = outA === 'none' ? null : TY_ANIM[outA] || TY_ANIM.fade;
+    const ef = TY_EASE[ease] || TY_EASE.out;
+    const X0 = num('x') * W / 2; const Y0 = num('y') * H / 2;
+    for (const gl of lay.glyphs) {
+      const u = unit === 'word' ? gl.wi : unit === 'line' ? gl.li : gl.gi;
+      const rk = rankOf(u, nU, order);
+      const t0 = tIn + rk * stag;
+      let p = (t - t0) / dur;
+      let fn = fIn; let pp = tyC01(p);
+      if (fOut && t >= tOut) { const q = (t - (tOut + rk * stag)) / dur; if (q > 0) { fn = fOut; pp = 1 - tyC01(q); p = pp; if (q >= 1) continue; } }
+      o.a = 1; o.x = 0; o.y = 0; o.z = 0; o.s = 1; o.sx = 1; o.sy = 1; o.r = 0; o.rx = 0; o.ry = 0; o.soft = 0; o.glow = 0; o.ch = null;
+      cc.p = p; cc.h1 = tyHash(gl.gi * 3.1 + seed); cc.h2 = tyHash(gl.gi * 5.7 + seed * 2); cc.h3 = tyHash(gl.gi * 9.3 + seed * 3); cc.k = amt; cc.gi = gl.gi;
+      cc.rel = gl.bx - (lay.lc[gl.li * 3] || 0); cc.side = Math.sign(cc.rel);
+      fn(ef(tyC01(pp)), o, cc);
+      if (o.a <= 0.003) continue;
+      // idle float, then the music
+      if (wob > 0) { o.y += Math.sin(t * 2.1 + gl.gi * 0.7) * 0.06 * wob; o.r += Math.sin(t * 1.3 + gl.gi * 1.9) * 0.04 * wob; }
+      let rr = o0.r; let rg = o0.g; let rb = o0.b;
+      if (react) {
+        const f = 1 - react.spread + react.spread * (0.5 + 0.5 * Math.sin(gl.gi * 1.9 + t * 7));
+        const kk = react.kick * f;
+        o.s *= 1 + react.kScale * kk * 0.5; o.glow += react.kGlow * kk;
+        if (react.kJit) { const fr = Math.floor(t * 30); o.x += (tyHash(gl.gi * 3 + fr) - 0.5) * react.kJit * kk * 0.35; o.y += (tyHash(gl.gi * 5 + fr * 7) - 0.5) * react.kJit * kk * 0.35; }
+        o.y += react.bounce * kk * 0.3;
+        const bm = react.bCol * react.bass * f; if (bm > 0) { rr += (o0.r2 - rr) * bm; rg += (o0.g2 - rg) * bm; rb += (o0.b2 - rb) * bm; }
+      }
+      // karaoke: the sung part of the line in the accent, glyph by glyph through each word
+      if (o0.fill) { const m = o0.fill(gl); if (m > 0) { rr += (o0.r2 - rr) * m; rg += (o0.g2 - rg) * m; rb += (o0.b2 - rb) * m; } }
+      let ga = o.a * o0.alpha * (o0.dim ? o0.dim(gl) : 1);
+      // glyph-level settings (opts.glyphs: { index: { color, scale, x, y, turn, alpha } })
+      const own = each ? each[gl.gi] : null;
+      if (own) { if (own.color) { let cv = eachCol.get(own.color); if (!cv) { cv = tyRaw(own.color, {}); eachCol.set(own.color, cv); } rr = cv.r; rg = cv.g; rb = cv.b; } if (own.scale != null) o.s *= +own.scale || 1; if (own.x != null) o.x += +own.x || 0; if (own.y != null) o.y += +own.y || 0; if (own.turn != null) o.r += +own.turn || 0; if (own.alpha != null) ga *= +own.alpha; }
+      // where it sits: on its line (unit pivots for words and lines) or on the path
+      let X; let Y; let rot = o.r;
+      const s = o.s;
+      if (path === 'line') {
+        let px = gl.bx; let py = gl.by;
+        if (unit !== 'glyph' && (s !== 1 || o.r)) { const cA = unit === 'word' ? lay.wc : lay.lc; const ui = (unit === 'word' ? gl.wi : gl.li) * 3; const dx = px - cA[ui]; const dy = py - cA[ui + 1]; const cs = Math.cos(o.r); const sn = Math.sin(o.r); px = cA[ui] + (dx * cs - dy * sn) * s; py = cA[ui + 1] + (dx * sn + dy * cs) * s; }
+        X = X0 + (px + o.x) * em; Y = Y0 + o0.dy + (py + o.y) * em;
+      } else {
+        tyPathAt(path, gl.u * em, lay.lineW[gl.li] * em, gl.li, o0.pathP, W, H, t, pa, pts);
+        const cs = Math.cos(pa[2]); const sn = Math.sin(pa[2]); const ox = o.x * em; const oy = (o.y + gl.G.cy) * em;
+        X = X0 + pa[0] + ox * cs - oy * sn; Y = Y0 + o0.dy + pa[1] + ox * sn + oy * cs; rot += pa[2];
+      }
+      const G = o.ch ? tyGlyph(A, o.ch) : gl.G;
+      if (G.empty) continue;
+      if (mode3d) G.__ch = o.ch || gl.ch;
+      put(A, G, X, Y, o.z * em, rot, s * o.sx, s * o.sy, ga, rr, rg, rb, o.soft + o0.soft, o.glow, o.rx, o.ry);
+    }
+  }
+  let frame = 0;
+  renderer.setAnimationLoop(() => {
+    const c0 = realNow(); frame += 1;
+    const tc = globalThis.__layerClock?.(L.id) ?? c0 / 1000;
+    let t = Number.isFinite(tc) ? tc : 0;
+    renderer.getDrawingBufferSize(size);
+    const W = size.x; const H = size.y;
+    const fam = tyFamily(pv('font')); const weight = String(pv('weight'));
+    const A = tyAtlas(fam, weight);
+    stat.font = fam.split(',')[0].replace(/"/g, ''); stat.fontsV = TY.fontsV;
+    // colors (converted only when their text changes)
+    const cHex = String(pv('color')); const c2Hex = String(pv('color2'));
+    if (hex.c !== cHex) { hex.c = cHex; tyRaw(cHex, colA); }
+    if (hex.c2 !== c2Hex) { hex.c2 = c2Hex; tyRaw(c2Hex, col); }
+    const oc = String(pv('outlineColor')); const gc = String(pv('glowColor'));
+    if (!mode3d) {
+      if (hex.o !== oc) { hex.o = oc; hexVec(oc, U.uOutC.value); }
+      if (hex.g !== gc) { hex.g = gc; hexVec(gc, U.uGlowC.value); }
+      U.uOutline.value = Math.min(0.45, Math.max(0, num('outline')) / (2 * TY_SPREAD)); U.uFill.value = tyC01(num('fill'));
+      if (cam.right !== W / 2 || cam.top !== H / 2) { cam.left = -W / 2; cam.right = W / 2; cam.top = H / 2; cam.bottom = -H / 2; cam.updateProjectionMatrix(); }
+    } else {
+      const mk = String(pv('material')); if (mk !== matKind || cHex !== matCol) { matKind = mk; matCol = cHex; pool.forEach((m, i) => { m.material.dispose(); m.material = tyMaterial(mk, cHex, i); m.material.transparent = true; }); }
+      k3 = (2 * cam.position.z * Math.tan(THREE.MathUtils.degToRad(cam.fov / 2))) / Math.max(1, H);
+      group.rotation.y = num('spin') * t * 0.6; group.rotation.x = num('tilt') * 0.6;
+    }
+    const opct = tyC01(num('opacity'));
+    const o0 = { W, H, em: 0, inA: String(pv('inAnim')), outA: String(pv('outAnim')), unit: String(pv('unit')), order: String(pv('order')), ease: String(pv('ease')), stag: Math.max(0, num('stagger')), dur: Math.max(0.02, num('dur')), amt: num('amount'), wob: num('wobble'), path: String(pv('path')), react: null, r: colA.r, g: colA.g, b: colA.b, r2: col.r, g2: col.g, b2: col.b, alpha: opct, soft: tyC01(num('softness')), dy: 0, fill: null, dim: null, pathP: null };
+    // the music (read only when something follows it)
+    const ks = num('kickScale'); const kg = num('kickGlow'); const kj = num('kickJitter'); const bc = num('bassColor'); const bb = num('beatBounce');
+    if (ks || kg || kj || bc || bb) {
+      const dr = TY.drive;
+      const kick = dr.kick ?? Math.max(audio.hits.kick.length ? audio.kick : audio.beat, (mediaEl || liveKind) ? featVal('kickOn') : 0);
+      o0.react = { kick, bass: dr.bass ?? audio.bass, kScale: ks, kGlow: kg, kJit: kj, bCol: bc, bounce: bb, spread: tyC01(num('letterReact')) };
+    }
+    U.uGlow.value = Math.max(0, num('glow'));
+    const tr = num('tracking'); const ld = num('leading'); const al = String(pv('align'));
+    const base = num('size') * Math.min(W, H) * (W < H ? 1.25 : 1);
+    n2 = 0; used3 = 0; sig = 0; asum = 0;
+    const Lr = layers.get(L.id); const pp = Lr?.props || {};
+    const follows = Boolean(pp.in != null || pp.seqT0 != null || pp.pcOf || (mediaEl && !liveKind));
+    if (!lyr) {
+      // a title: in from `start`, out after `hold` (0 = stays); with nothing to follow it loops so the preview plays
+      const text = caseOf(String(opts.text ?? 'HEARTH').replace(/\s*\/\s*/g, '\n'));
+      const lay = layoutOf(A, text, tr, ld, al);
+      const fit = o0.path === 'line' ? Math.min(base, (W * 0.94) / Math.max(0.01, lay.maxW), (H * 0.9) / Math.max(0.01, lay.height)) : base;
+      o0.em = curEm = fit;
+      o0.pathP = { pathSize: num('pathSize'), pathOffset: num('pathOffset'), pathSpin: num('pathSpin'), leading: ld, em: fit };
+      const nU = o0.unit === 'word' ? lay.nWords : o0.unit === 'line' ? lay.nLines : lay.nGlyphs;
+      const start = num('start'); const hold = num('hold');
+      const inEnd = start + Math.max(0, nU - 1) * o0.stag + o0.dur;
+      const tOut = hold > 0 && o0.outA !== 'none' ? inEnd + hold : Infinity;
+      if (!follows && Number.isFinite(tOut)) { const loop = tOut + Math.max(0, nU - 1) * o0.stag + o0.dur + 0.8; t = ((t % loop) + loop) % loop; }
+      block(A, lay, t, start, tOut, o0);
+      stat.chars = lay.nGlyphs;
+    } else {
+      const tt = t - num('lead');
+      const look = String(pv('look'));
+      let cur = -1; for (let i = 0; i < lyr.length; i += 1) if (lyr[i].a <= tt) cur = i; else break;
+      stat.line = cur;
+      const fitTo = (lay) => Math.min(base, (W * 0.92) / Math.max(0.01, lay.maxW));
+      const P0 = (em) => ({ pathSize: num('pathSize'), pathOffset: num('pathOffset'), pathSpin: num('pathSpin'), leading: ld, em });
+      if (look === 'scroll') {
+        // every line stacked; the sung one in the middle, lit; the list glides from line to line
+        const k = cur < 0 ? 0 : tyC01((tt - lyr[cur].a) / 0.35);
+        const pos = cur < 0 ? -1 + tyC01((tt - (lyr[0]?.a ?? 0) + 1) / 1) : cur - 1 + TY_EASE.smooth(k);
+        for (let i = Math.max(0, Math.floor(pos) - 4); i < Math.min(lyr.length, Math.ceil(pos) + 6); i += 1) {
+          const lay = layoutOf(A, caseOf(lyr[i].text), tr, 1, al);
+          const em = fitTo(lay) ; o0.em = curEm = em; o0.pathP = P0(em);
+          o0.dy = (pos - i) * ld * em * 1.15;
+          const d = Math.abs(i - pos); const lit = i === cur ? 1 - Math.min(1, Math.abs(pos - i)) : 0;
+          o0.dim = () => Math.max(0.12, 1 - d * 0.45); o0.fill = lit > 0 ? () => lit : null;
+          block(A, lay, tt, -1e9, Infinity, { ...o0, inA: 'fade', outA: 'none' });
+        }
+      } else if (look === 'oneword') {
+        // one word at a time, big in the middle, from its start to the next word's
+        const words = [];
+        for (const ln of lyr) { const ws = ln.text.split(/\s+/).filter(Boolean); ws.forEach((w, j) => words.push({ w, a: ln.w?.[j] ?? ln.a + ((ln.b - ln.a) * j) / ws.length, end: ln.b })); }
+        for (let j = 0; j < words.length; j += 1) {
+          const x = words[j]; const nx = words[j + 1];
+          const b = nx && nx.a < x.end + 0.01 ? nx.a : x.end;
+          if (tt < x.a - 0.01 || tt >= b) continue;
+          const lay = layoutOf(A, caseOf(x.w), tr, ld, al);
+          const em = Math.min(base, (W * 0.9) / Math.max(0.01, lay.maxW)); o0.em = curEm = em; o0.pathP = P0(em);
+          block(A, lay, tt, x.a, nx && nx.a < x.end + 0.01 ? Infinity : x.end, { ...o0, stag: Math.min(o0.stag, 0.02), outA: 'fade', dur: Math.min(o0.dur, Math.max(0.05, (b - x.a) * 0.6)) });
+          break;
+        }
+      } else {
+        // fades / lines / type / karaoke: the line being sung (and the one going out, and for karaoke the next one)
+        for (let i = Math.max(0, cur - 1); i < Math.min(lyr.length, cur + 2); i += 1) {
+          const ln = lyr[i];
+          const lay = layoutOf(A, caseOf(ln.text), tr, ld, al);
+          const em = fitTo(lay); o0.em = curEm = em; o0.pathP = P0(em);
+          const nU = o0.unit === 'word' ? lay.nWords : o0.unit === 'line' ? 1 : lay.nGlyphs;
+          if (look === 'karaoke') {
+            if (i === cur + 1 && cur >= 0) { o0.dy = -ld * em * 1.25; o0.fill = null; o0.dim = () => 0.45; if (tt < ln.a - 0.05 && tt > lyr[cur].a) block(A, lay, tt, lyr[cur].a, Infinity, { ...o0, inA: 'fade', outA: 'none', dur: 0.3, stag: 0 }); continue; }
+            if (i !== cur || tt > ln.b + 0.25) continue;
+            o0.dy = 0; o0.dim = null;
+            const ws = ln.w?.length ? ln.w : null; const ends = ln.b;
+            o0.fill = (gl) => {
+              const wi = gl.wi - (lay.glyphs[0]?.wi || 0);
+              const a0 = ws ? ws[wi] ?? ln.a : ln.a + ((ends - ln.a) * wi) / Math.max(1, lay.nWords);
+              const a1 = ws ? (ws[wi + 1] ?? ends) : ln.a + ((ends - ln.a) * (wi + 1)) / Math.max(1, lay.nWords);
+              return tyC01(((tt - a0) / Math.max(0.05, a1 - a0)) * gl.wl - gl.iw);
+            };
+            block(A, lay, tt, ln.a - 0.25, ln.b + 0.05, { ...o0, inA: 'fade', outA: 'fade', unit: 'line', dur: 0.2, stag: 0 });
+            continue;
+          }
+          o0.dy = 0; o0.fill = null; o0.dim = null;
+          if (i > cur || tt > ln.b + nU * o0.stag + o0.dur + 0.05) continue;
+          if (look === 'type') { const st = Math.min(0.08, ((ln.b - ln.a) * 0.6) / Math.max(1, lay.nGlyphs)); block(A, lay, tt, ln.a, ln.b, { ...o0, inA: 'typewriter', outA: 'fade', unit: 'glyph', order: 'forward', stag: st, dur: 0.02 }); }
+          else block(A, lay, tt, ln.a, i < cur ? Math.min(ln.b, lyr[cur].a) : ln.b, o0);
+        }
+      }
+      stat.chars = lyr.reduce((s, x) => s + x.text.length, 0);
+    }
+    if (!mode3d) {
+      geo.instanceCount = n2;
+      for (const k of ['iA', 'iB', 'iUv', 'iC']) { attrs[k].clearUpdateRanges?.(); attrs[k].addUpdateRange?.(0, n2 * 4); attrs[k].needsUpdate = true; }
+      if (U.uAtlas.value !== A.tex) U.uAtlas.value = A.tex;
+      mesh.visible = n2 > 0;
+    } else for (let i = used3; i < pool.length; i += 1) pool[i].visible = false;
+    renderer.render(scene, cam);
+    renderer.__lastScene = scene; renderer.__lastCamera = cam;
+    stat.glyphs = mode3d ? used3 : n2; stat.sig = Math.round(sig * 1000) / 1000; stat.alpha = Math.round(asum * 100) / 100; stat.atlas = A.glyphs.size; stat.t = Math.round(t * 1000) / 1000;
+    stat.frames += 1; stat.ms += ((realNow() - c0) - stat.ms) * 0.1;
+    if (stat.frames === 2) {
+      stat.ok = mode3d || renderer.properties.get(mat)?.currentProgram?.diagnostics?.runnable !== false;
+      if (!stat.ok) post({ type: 'error', layer: pcTop(L.id), message: 'textLayer: the text shader did not compile on this GPU (see the console)' });
+    }
+    if (stat.frames === 2 || frame % 120 === 0) post({ type: 'type-info', layer: pcTop(L.id), ...stat });
+  });
+  TY.live.set(L.id, { stat });
+  (L.cleanups ||= []).push(() => {
+    renderer.setAnimationLoop(null);
+    removeEventListener('resize', onResize);
+    stat.gone = true;
+    geo?.dispose(); mat?.dispose();
+    for (const m of pool) m.material.dispose();
+    envTex?.dispose(); pmrem?.dispose();
+    if (TY.stats.get(L.id) === stat) { TY.stats.delete(L.id); TY.live.delete(L.id); }
+  });
+  return { renderer, scene, camera: cam, ok: true };
+};
+// an export frame waits for the fonts a type layer asked for (a Google font, an asset font): at most a few seconds
+globalThis.__labTypeReady = () => (TY.pending.size ? Promise.race([Promise.all([...TY.pending]), new Promise((r) => realSetTimeout(r, 6000))]) : null);
+// checks and three_eval: each type layer's numbers, the music held at a value
+window.__labType = {
+  info: () => [...TY.stats.values()].map((x) => ({ ...x, ms: Math.round(x.ms * 100) / 100 })),
+  drive: (o = {}) => { for (const k of ['kick', 'bass']) if (k in o) TY.drive[k] = o[k] == null ? null : Number(o[k]); return { ...TY.drive }; },
+  anims: () => Object.keys(TY_ANIM),
+};
+
 // ---------- run generations ----------
 // Re-running a layer (a slider that rebuilds the scene, a code edit) tears down only that layer: its
 // renderers, window listeners, timers and DOM, then runs its code again — three.js stays loaded and the
@@ -8779,6 +9440,7 @@ async function sqFrame({ n, T, w, h, q = 0.92, kind = 'image/jpeg', ret = true }
   SQ.T = T;
   await Promise.all(sqManage(T, true));
   await pcEnsure(); // precomps in its scenes: theirs too (only the ones that show at T)
+  await globalThis.__labTypeReady?.(); // (round 25) a type layer's font that is still loading (a Google / asset font)
   const s = sqSong();
   if (s && sqInSong(T)) {
     const want = T - s.offset;
