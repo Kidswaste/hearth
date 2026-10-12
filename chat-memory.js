@@ -178,6 +178,16 @@ const ChatMemory = (() => {
       `\n\`/memory pin|project|forget|edit\` · \`/memory approve on\`: OK a fact before an agent keeps it.`].filter((x) => x != null).join('\n');
   }
 
+  // /memory shares its name (commands.js `when`): these words run here, anything else opens the memory as before
+  function register() {
+    if (typeof Commands === 'undefined') return;
+    Commands.register({ name: 'memory', area: 'Memory', args: '[here | pin | project | forget | edit | relevant on|off | approve on|off]', when: (ctx, args) => handles(args), whenLabel: 'here, pin, project…',
+      desc: 'This chat\'s and its project\'s facts, sent only with the messages they are about', examples: ['/memory here', '/memory pin I want 9:16', '/memory relevant on'],
+      complete: (a) => (/\s/.test(a) ? [] : ['here', 'pin', 'project', 'forget', 'edit', 'relevant on', 'relevant off', 'approve on', 'approve off'].filter((x) => x.startsWith(a)).map((value) => ({ value }))),
+      run });
+  }
+  if (document.readyState === 'loading') addEventListener('DOMContentLoaded', register); else register();
+
   // ---------- hooks ----------
   Native.hooks.compose.push(compose);
   Native.hooks.message.push(chipHook);

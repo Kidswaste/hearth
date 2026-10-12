@@ -66,11 +66,11 @@ const ContextCore = (() => {
   }
 
   // ---------- a chat in a few lines: @chat and the fresh start ----------
-  const STOP = new Set('about above after again also always another anything around because been before being below between both cannot could does doing done down each even every from have having here into itself just keep know like made make many maybe more most much must need never next only other over please really same should since some still such sure than that their them then there these they thing things this those though through very want were what when where which while will with within without would your yours just okay yeah thanks thank right left lets also look looks good great nice cool'.split(' '));
-  // content words of a text (lower case, ≥ 4 letters, not common words), each cut to a 5-letter stem
+  const STOP = new Set('about above after again also always another anything around because been before being below between both cannot could does doing done down each even every from have having here into itself just keep know like made make many maybe more most much must need never next only other over please really same should since some still such sure than that their them then there these they thing things this those though through very want were what when where which while will with within without would your yours just okay yeah thanks thank right left lets also look looks good great nice cool the and for you are but not can was all any has had how its our out use way who why yes get got put let one two new now see did too off own may add set try bit lot via per far few big run end yet ask say she him her his'.split(' '));
+  // content words of a text (lower case, ≥ 3 letters, not common words), each cut to a 5-letter stem
   function words(text) {
     const out = new Set();
-    for (const w of String(text || '').toLowerCase().match(/[a-z0-9][a-z0-9_-]{3,}/g) || []) if (!STOP.has(w)) out.add(w.slice(0, 5));
+    for (const w of String(text || '').toLowerCase().match(/[a-z0-9][a-z0-9_-]{2,}/g) || []) if (!STOP.has(w)) out.add(w.slice(0, 5));
     return out;
   }
   const DECIDE = /\b(?:let'?s|go with|use|keep|make it|make the|i (?:want|prefer|like|need|'d like)|always|never|don'?t|no more|switch to|change (?:it|the)\b|instead|from now on|should be|set (?:it|the))\b/i;
@@ -78,7 +78,8 @@ const ContextCore = (() => {
   const OPEN = /(?:^\s*[-*] \[ \]|\b(?:next(?: step)?|todo|to do|left to do|still (?:need|to)|later|not yet|remaining|then we|after that|we could|you could (?:also|then)|shall i|want me to|should i)\b)/i;
   const PATH = /(?:[A-Za-z]:\\|\/|~\/)?(?:[\w.-]+[\\/])*[\w.-]+\.(?:js|mjs|ts|tsx|jsx|json|html?|css|glsl|frag|vert|md|txt|py|png|jpe?g|webp|gif|mp4|webm|mov|wav|mp3|glb|gltf|obj|hdr|exr|cube|ttf|otf|woff2?)\b/g;
   const NAMED = /`([^`\n]{2,40})`|"([^"\n]{2,40})"(?=\s*(?:layer|scene|sketch|slider|board|sequence|preset|project|file)\b)|\b(?:layer|scene|sketch|slider|board|sequence|preset|project)\s+"([^"\n]{2,40})"/gi;
-  const sentences = (t) => String(t || '').replace(/```[\s\S]*?```/g, ' ').split(/(?<=[.!?])\s+|\n+/).map((s) => s.trim()).filter((s) => s.length > 6);
+  // (attached files, references and carried-over conversations are not the conversation itself)
+  const sentences = (t) => String(t || '').replace(/```[\s\S]*?```/g, ' ').replace(/<(file|earlier_conversation|summary|since_then)\b[^>]*>[\s\S]*?<\/\1>/g, ' ').replace(/\[(?:Memory|Hearth context)[^\]]*\]/g, ' ').split(/(?<=[.!?])\s+|\n+/).map((s) => s.trim().replace(/^(?:[-*•]|\d+\.)\s+/, '')).filter((s) => s.length > 6);
   // A summary made here, for free (no engine call): the goal, what was decided, what exists now, what is open, the key
   // files and names, and where the conversation stopped. The agent's own compact summary is used when the chat has one.
   function localSummary(chat, { maxWords = 260 } = {}) {

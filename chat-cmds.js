@@ -664,10 +664,9 @@ const ChatCmds = (() => {
     },
   });
   R({
-    name: 'context', aliases: ['ctx'], area: 'Messages', args: '[fix]', desc: 'How much context each message sends now, what it is made of, and the cheapest fix',
+    name: 'context', aliases: ['ctx'], area: 'Messages', desc: 'How much context each message sends now, and how to shrink it',
     run: (_a, ctx) => {
       const chat = need(ctx);
-      if (window.ChatCost) return ChatCost.contextText(chat, _a || ''); // (round 24) chat-cost.js: the breakdown and fixes
       const last = [...chat.messages].reverse().find((m) => m.usage);
       if (!last) return 'No replies yet.';
       const n = last.usage.input;

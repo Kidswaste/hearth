@@ -91,7 +91,9 @@ const ChatFresh = (() => {
   Native.hooks.event.push((event, chat) => {
     const agent = H.agent(chat.agentId);
     const limit = agent?.freshAuto;
-    if (!limit || event.type !== 'done' || (event.usage?.input || 0) < limit) return;
+    const input = event.usage?.input || 0;
+    if (!limit || event.type !== 'done' || input < limit) return;
+    if (input >= 110000 && agent.autoCompact !== false) return; // the auto-compact (native.js) takes that one
     if (H.activeChat[chat.agentId] !== chat.id || Native.view(chat.agentId)?.queue?.length) return;
     setTimeout(() => start(chat.agentId, { auto: true }).catch(() => {}), 500);
   });

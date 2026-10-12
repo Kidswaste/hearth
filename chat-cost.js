@@ -109,7 +109,7 @@ const ChatCost = (() => {
     const ps = parts(m.ctx);
     const bar = el('button', { type: 'button', class: 'ctx-bd', title: `What this message sent (≈ ${C.fmt(total)} tokens):\n${textOf(m.ctx, total)}\nClick: the list and how to make it cheaper`,
       on: { click: (e) => { e.stopPropagation(); menu(agent.id, m, e.clientX, e.clientY); } } },
-    ...ps.map(([k, , n]) => el('i', { style: `flex:${Math.max(1, Math.round((n / total) * 100))};background:${COLORS[k]}` })));
+    ...ps.map(([k, , n]) => el('i', { style: { flex: String(Math.max(1, Math.round((n / total) * 100))), background: COLORS[k] } })));
     const badge = foot.querySelector('.meter-badge, .tok-badge');
     if (badge) badge.after(bar); else foot.prepend(bar);
   });
@@ -147,6 +147,26 @@ const ChatCost = (() => {
     lines.push('Type @ in the chat box to attach only what a message needs (cost shown first).');
     return lines.join('\n');
   }
+
+  // /context shares its name (commands.js `when`): the meter's line first, then what the last message was made of
+  function register() {
+    if (typeof Commands === 'undefined') return;
+    const mine = async (args, ctx) => {
+      const chat = ctx.chatId ? Native.current(ctx.agentId) : null;
+      if (!chat) return 'Open a chat first.';
+      const other = Commands.get('context')?.variants?.find((x) => x.run !== mine);
+      const head = !args.trim() && other ? await Promise.resolve(other.run('', ctx)).catch(() => '') : '';
+      const body = contextText(chat, args);
+      return typeof head === 'string' && head ? `${head}\n\n${body.split('\n').slice(1).join('\n').trim()}` : body;
+    };
+    const def = { name: 'context', area: 'Messages', args: '[fix]', when: (ctx, args) => /^(fix|why)?$/i.test(String(args || '').trim()), whenLabel: 'what it is made of',
+      desc: 'What the last message sent (system prompt, tools, history, attachments, memory) and the cheapest fix (/context fix runs it)', examples: ['/context', '/context fix'], run: mine };
+    // the meter registers its /context with override when it starts, which may come after this: join it again then
+    const join = () => { const d = Commands.get('context'); if (!d?.variants?.some((x) => x.run === mine)) Commands.register(def); };
+    join();
+    for (const ms of [1500, 5000, 15000]) setTimeout(join, ms);
+  }
+  if (document.readyState === 'loading') addEventListener('DOMContentLoaded', register); else register();
 
   return { fixed, parts, textOf, fixesFor, contextText, baseOf, menu };
 })();

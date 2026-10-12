@@ -218,7 +218,7 @@ const ChatRefs = (() => {
     if (typeof Commands === 'undefined') return;
     const reg = (def) => { if (!Commands.get(def.name)) Commands.register({ area: 'Chat', ...def }); else console.warn(`chat-refs: /${def.name} exists`); };
     reg({
-      name: 'ref', aliases: ['refs'], args: '[chat | scene | board | file | render | project] [name]',
+      name: 'ref', aliases: ['at-ref'], args: '[chat | scene | board | file | render | project] [name]',
       desc: 'Attach exactly what a message needs (@ in the chat box): a chat\'s summary, a scene\'s state, a board\'s vibe, a file, a render, a project; cost shown first',
       complete: (a) => { const w = a.trim().split(/\s+/); return w.length <= 1 ? KINDS.filter((x) => x.k.startsWith(w[0] || '')).map((x) => ({ value: x.k, hint: x.what })) : []; },
       examples: ['/ref scene', '/ref chat intro video', '/ref project'],
