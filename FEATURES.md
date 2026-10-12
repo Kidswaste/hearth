@@ -685,3 +685,10 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ Deployed agents (Claude Task / Agent subagents, Codex spawned agents) as a live tree with status, current tool, time and result, kept out of the reply; "🤖 Deployed 3 agents · 2 done · 1 failed" after; folded Activity list of every step; `/activity`, `/subagents on|off` (opt-in: adds a tool per message).
 - ✓ Freeze causes fixed: long thinking re-laid out on every paint (1.6–1.9 s → 0.14–0.39 s of layout on a long task), huge tool results blocking the main process (722 → 47 ms), an engine that exited with its output held open hung the reply forever (→ 2 s), a killed engine looked "stopped" (→ clear error, partial kept), 19× fewer IPC messages.
 - ○ Tested with fake engines emitting real-shaped stream-json / exec-json (`sh dev/run-checks.sh liveness`); the real CLIs' subagent lines may differ slightly by version.
+
+## Report to the developer (round 21, devreport, 33 upgrades: docs/upgrades/devreport.md)
+- ✓ ⚑ on error notifications, Report on failed replies, ⚑ on stalled replies and in `/smooth`, an offer after page errors and crashes; `/report <what went wrong>`, `/report last`, `/report list`.
+- ✓ The whole report is shown for review and editing first: title, what you were doing, the error with app file:line stack, ~50 log lines, version (git HEAD), OS / Electron / engine versions, the chat's tool names; keys / tokens / passwords masked, home as ~, no chat text unless ticked.
+- ✓ Sent as a `hearth-report` issue in kidswaste/hearth with gh when signed in, else a prefilled github.com link (full text on the clipboard when cut); deduped per day; "Your report #N is fixed in this update" after ⬆ Update; `/report auto on` sends crashes by themselves (≤ 3 a day).
+- ✓ Chats can draft one with `chat_report_problem` (a card you send; `/report tool off` drops it, ≈ 45 tokens).
+- ○ Tested with a fake gh and a stubbed browser (`sh dev/run-checks.sh devreport`); not against github.com.
