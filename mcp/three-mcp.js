@@ -78,7 +78,7 @@ const MORE_TOOLS = [
     inputSchema: obj({ op: { type: 'string' }, clip: {}, at: {}, scene: { type: 'string' }, type: { type: 'string' }, format: { type: 'string' }, template: { type: 'string' } }, ['op']) },
   { name: 'three_comp', description: 'Precomps: other scenes (other chats\', sketches, sequences) as live layers of this scene, and parts dispatched to other chats at once (help comp). op: list | add {source, layout} | set {layer, start, speed, loop, crop, mask, blur…} | key {layer, property, keys} | remove | render | dispatch {parts: [{brief, engine}], layout} | parts | feedback {part, text} | again | swap.',
     inputSchema: obj({ op: { type: 'string' }, source: { type: 'string' }, layer: {}, layout: { type: 'string' }, parts: { type: 'array', items: { type: 'object' } }, part: {}, text: { type: 'string' }, property: { type: 'string' }, keys: { type: 'array', items: { type: 'object' } } }, ['op']) },
-  { name: 'three_motion', description: 'Motion-design kit (help motion): op list {family} | add {preset, words, pics, values, in, out} | hearth {layout, frame, words} (Put Hearth on screen) | words {layer, text} | set {layer, values} | seq {preset, at, secs} | intro.',
+  { name: 'three_motion', description: 'Motion-design kit (help motion): op list {family} | add {preset, words, pics, values, in, out} | hearth {layout, frame, words} (Put Hearth on screen) | words {layer, text} | set {layer, values} | seq {preset, at, secs} | intro; the owner\'s camera as an input: camera | track | follow | look (help webcam).',
     inputSchema: obj({ op: { type: 'string' }, preset: { type: 'string' }, words: { type: 'string' }, layer: { type: 'string' }, values: { type: 'object' }, family: { type: 'string' } }, ['op']) },
   { name: 'three_model', description: '3D model layers (help model): op list | add {file|item} | replace | set {values} | material {preset} | look | light | sky {query|file} | ground | clip {name, speed} | clipfile | move {preset, at, secs} | turntable | explode | fx | react | fit | lite | info.',
     inputSchema: obj({ op: { type: 'string' }, file: { type: 'string' }, item: { type: 'string' }, preset: { type: 'string' }, layer: { type: 'string' }, values: { type: 'object' }, query: { type: 'string' }, name: {}, at: { type: 'number' }, secs: { type: 'number' } }, ['op']) },
@@ -103,7 +103,7 @@ references {action: list|add|rename|remove|palette, path, name, to, from, colors
 triggers {set} · media_info · load_media {path} · set_frame {size: fit|9:16|16:9|1:1|4:5} · new_sketch {name, code}
 run {command: "/make-it-react"} a chat command · task {todo} this chat's task state
 footage {action, frame} frames + cuts · sequence {op} scenes / footage / titles on a video timeline
-motion {op, preset, words} motion design · model {op} 3D models · comp {op} other chats' scenes as layers, parts to other chats · make {op: plan|list, text} · asset {op} asset library · type {op} text, lyrics`,
+motion {op, preset, words} motion design, webcam in · model {op} 3D models · comp {op} other chats' scenes as layers, parts to other chats · make {op: plan|list, text} · asset {op} asset library · type {op} text, lyrics`,
   inputSchema: { type: 'object', properties: { cmd: { type: 'string' } }, required: ['cmd'] },
 };
 

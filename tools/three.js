@@ -2391,6 +2391,8 @@ const ThreeLab = (() => {
     }
     // (round 23, labaudio) audio features: the live worklet, whole-song features, the preview's requests (tools/three-audio.js)
     if (typeof ThreeAudio !== 'undefined') ThreeAudio.attach({ player, send: (m) => box.send(m), selCtl, layers: () => layersOf().map((L) => ({ id: L.id, name: L.name, ctl: ctlFor(L) })), live: { kind: () => liveKind, io: () => liveIo(), setIo: (p) => setLiveIo(p), start: (k) => setLive(k) } });
+    // (round 25, motion) the camera as a live input: frames to the preview, its tracking, the ● Camera pill (tools/three-motion-in.js)
+    if (typeof LabMotionIn !== 'undefined') LabMotionIn.attach({ send: (m) => box.send(m), frame: () => box.frame, onStage: () => box.onStage, ready: () => box.ready, host: previewHost });
     // video footage on the timeline: exact frames, the cut list the sketch plays (tools/three-frames.js)
     if (typeof ThreeFrames !== 'undefined') ThreeFrames.attach({ player, send: (msg) => box.send(msg), sketchId: () => current?.id });
     // the Lab's Sequence: the timeline as a video timeline of scenes, footage, titles and the song (tools/three-seq.js)
@@ -2513,6 +2515,7 @@ const ThreeLab = (() => {
       if (msg.type === 'shader-info') { window.LabShader?.onBox?.(msg); return; } // (round 23) ◇ shader layers' compile state
       if (msg.type === 'particles-info') { window.LabParticles?.onBox?.(msg); return; } // (round 24) ✦ particle layers' counts / sources
       if (msg.type === 'type-info') { window.LabType?.onBox?.(msg); return; } // (round 25) 🅰 type layers' glyphs / fonts
+      if (/^motionin-/.test(msg.type)) { window.LabMotionIn?.onBox?.(msg); return; } // (round 25) 📷 camera input: what the scene reads, tracking state
       if (typeof ThreeDirector !== 'undefined') ThreeDirector.onBox?.(msg); // (round 21) a director call answers at the first new frame
       // the sequence's own messages (and a realtime render's recording) go to tools/three-seq.js
       if (typeof ThreeSeq !== 'undefined' && (ThreeSeq.onMessage(msg) || ThreeSeq.takeRecording(msg))) return;
@@ -2567,6 +2570,7 @@ const ThreeLab = (() => {
       if (msg.type === 'live-state') { if (msg.error) toast(`Live sound: ${msg.error}`, { type: 'error', timeout: 5000 }); if (!msg.on && msg.error) { liveKind = null; paintLive(); } return; }
       if (msg.type === 'ready' && msg.again && ranOnce) { console.warn('Lab preview restarted by itself: running the sketch again'); run({ again: true }); }
       if (msg.type === 'ready' && typeof ThreeAudio !== 'undefined') ThreeAudio.onReady();
+      if (msg.type === 'ready') window.LabMotionIn?.onReady?.(); // (round 25) 📷 a fresh page gets the tracker again
       if (msg.type === 'ready') { box.send(capMsg()); if (lightOn) box.send({ type: 'light', on: true }); parkedNow = false; syncPark(); }
       if (msg.type === 'ready') { if (frozenNow) box.send({ type: 'freeze', on: true }); if (guides) box.send({ type: 'guides', kind: guides }); if (previewHost.classList.contains('presenting')) box.send({ type: 'present', on: true }); sendTriggers(); if (trigPanel) box.send({ type: 'trig-watch', on: true }); }
       if (msg.type === 'ready' && liveKind) {
@@ -2683,6 +2687,7 @@ const ThreeLab = (() => {
         ...(typeof LabShader !== 'undefined' ? [LabShader.previewItem()] : []), // (round 23) ◇ shader layers (tools/three-shader.js)
         ...(typeof LabParticles !== 'undefined' ? [LabParticles.previewItem()] : []), // (round 24) ✦ GPU particles (tools/three-particles.js)
         ...(typeof LabType !== 'undefined' ? [LabType.previewItem()] : []), // (round 25) 🅰 kinetic type, lyrics (tools/three-type.js)
+        ...(typeof LabMotionIn !== 'undefined' ? [LabMotionIn.previewItem()] : []), // (round 25) 📷 the camera as a live input (tools/three-motion-in.js)
         ...(typeof ThreeStage !== 'undefined' ? [ThreeStage.previewItem()] : []), // (round 22) live / VJ: MIDI, set list, crossfade, output, show mode
         ...(typeof LabGrade !== 'undefined' ? [LabGrade.previewItem()] : []), // (round 24) ◐ Grade: color, LUTs, film & lens, scopes (tools/three-grade.js)
         ...(typeof LabExport !== 'undefined' ? [LabExport.previewItem()] : []), // ⇪ Export: renders and the scene itself (tools/three-export.js)
@@ -4104,6 +4109,7 @@ ${frag}\`,
     // the Lab sequence is one for every chat (its scenes are anyone's): never backstage
     if (tool === 'three_sequence' && typeof ThreeSeq !== 'undefined') return ThreeSeq.handle(tool, args, { sketchId: route?.sketchId || null });
     // the motion-design kit (tools/three-motion.js): its layers go through three_add_layer, so they reach this chat's scene
+    if (tool === 'three_motion' && window.LabMotionIn?.owns(args.op)) { try { return { ok: true, value: await LabMotionIn.op(args, ctx) }; } catch (err) { return { ok: false, error: err.message }; } } // (round 25) 📷 camera in
     if (tool === 'three_motion' && typeof ThreeMotion !== 'undefined') return ThreeMotion.handle(args, { chatId: ctx.chatId, call: (t, a) => handleTool(t, a, ctx) });
     // comp (tools/three-comp.js): precomps in this chat's scene (on screen or not), parts dispatched to other chats
     if (tool === 'three_comp' && typeof ThreeComp !== 'undefined') return ThreeComp.handle(args, { chatId: ctx.chatId, sketchId: route?.sketchId || null });

@@ -122,6 +122,8 @@ contextBridge.exposeInMainWorld('hub', {
   },
   chatMedia: { find: call('chatmedia:find') },
   // (round 23) voice (voicemain.js): local speech-to-text in a child process, the model download, the system's voices
+  // (round 25) camera / body tracking's files (motionmain.js): status, the one download after a yes, bytes for the preview's Worker
+  motion: { status: call('motion:status'), download: call('motion:download'), cancel: call('motion:cancel'), read: call('motion:read'), remove: call('motion:remove'), camera: call('motion:camera'), onProgress: on('motion:progress') },
   voice: { status: call('voice:status'), transcribe: call('voice:transcribe'), cancel: call('voice:cancel'), download: call('voice:download'), say: call('voice:say'), hush: call('voice:hush'), voices: call('voice:voices'), mic: call('voice:mic'), onPartial: on('voice:partial'), onProgress: on('voice:progress') },
   // (round 24) phone remote (remotemain.js): the local network server, pairing, devices; messages both ways
   remote: { start: call('remote:start'), stop: call('remote:stop'), status: call('remote:status'), pair: call('remote:pair'), kick: call('remote:kick'), forget: call('remote:forget'), idle: call('remote:idle'), test: call('remote:test'), send: (o) => ipcRenderer.send('remote:send', o), frame: (d) => ipcRenderer.send('remote:frame', d), onMsg: on('remote:msg'), onJoin: on('remote:join'), onLeave: on('remote:leave'), onCode: on('remote:code'), onDevices: on('remote:devices'), onAlert: on('remote:alert'), onStopped: on('remote:stopped') },

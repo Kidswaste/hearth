@@ -2010,6 +2010,240 @@ const lab3d = (() => {
 globalThis.lab3d = lab3d;
 </script>
 <script type="module">
+// ---------- camera input (round 25, "motion": the hub side is tools/three-motion-in*.js) ----------
+// The hub captures the camera (a webcam, a capture card, a video file) only when the owner turns it on, and sends
+// each new frame here twice, as ImageBitmaps (transferred, nothing copied): one to show, one small for tracking.
+// Tracking runs in a Worker made here from tools/three-motion-in-core.js (the hub sends its text once): the light
+// tracker always, MediaPipe (hands, pose, face, the person's mask) once its files are here and something reads one
+// of their features. In a layer's code:
+//   webcam.feat.<name>  0..1: camMotion camLeft… camX camY camFlowX/Y camBlob… · handX handY handOpen pinch hands
+//                       hand2X/Y handSpread handSpeed · headX/Y headTurn headTilt wristLX… bodyX/Y bodySize armsUp
+//                       person · mouthOpen smile blink browUp faceX/Y · maskArea · camZ0…camZ8 (3 × 3 grid)
+//                       (also audio.feat.<name>, onHit('pinch'), and any slider's ♪ react-to: the same names)
+//   webcam.layer(P, { mode })  this layer shows the camera: 'video' (as a background) | 'cutout' (the person only)
+//                       | 'silhouette' (a glowing shape) | 'trails' (motion trails) | 'mask' (white on black: for
+//                       other layers / particles) | 'debug' (what the tracker sees); P = tweak() sliders, read per frame
+//   webcam.texture() / webcam.maskTexture()   THREE textures that follow the camera (shader uniforms, materials)
+//   webcam.points       hands' palm points [{ x, y }] (0..1, y up) · webcam.on · webcam.engine ('light' | 'mediapipe')
+// Privacy: nothing here keeps a frame; the pictures the director gets (and saved thumbnails) are pixelated while the
+// camera shows, unless the owner shares it (/webcam share on). Off: the features rest (0, or 0.5 for places).
+import * as THREE from 'three';
+const webcam = (() => {
+  const post = (msg, tr) => (window.__stageHost ? window.__stageHost.post({ source: 'three-sandbox', ...msg }) : parent.postMessage({ source: 'three-sandbox', ...msg }, '*', tr || []));
+  const now = performance.now.bind(performance);
+  const NAME = /^(cam[A-Z]|hand|pinch$|head[A-Z]|wrist|body[A-Z]|armsUp$|person$|mouthOpen$|smile$|blink$|browUp$|face[XY]$|maskArea$|tracked$)/;
+  const S = { core: null, w: null, busy: false, bmp: null, old: null, gen: 0, at: 0, mirror: true, feat: null, featAt: 0, mask: null, maskGen: 0, motionMask: true, pts: [], engine: 'light', tasks: [], mp: 'none', error: null, share: false, live: false, cfg: {}, want: {}, wantSent: '', askedAt: 0, frames: 0, ms: 0, fps: 0, fpsN: 0, fpsAt: 0, cv: null, cvGen: -1, mcv: null, mGen: -1, texs: new Set(), mtexs: new Set(), };
+  const def = (n) => (/(X|Y|Turn|Tilt)$/.test(n) && !/^camFlow/.test(n) ? 0.5 : /^camFlow/.test(n) ? 0.5 : 0);
+  // ---- reading a feature (sliders, audio.feat, webcam.feat): tells the tracker which tasks to run ----
+  function want(task) {
+    if (!task) return;
+    const t = now(); const fresh = !S.want[task] || t - S.want[task] > 2500; S.want[task] = t;
+    if (fresh) sendWant();
+  }
+  function sendWant() {
+    const t = now(); const k = Object.keys(S.want).filter((x) => t - S.want[x] < 3000).sort().join(',');
+    if (k === S.wantSent && (S.live || t - S.askedAt < 5000)) return;
+    S.wantSent = k; S.askedAt = t;
+    post({ type: 'motionin-want', tasks: k ? k.split(',') : [], live: S.live });
+  }
+  function val(name) {
+    if (!NAME.test(name)) return undefined;
+    want(S.core?.TASK[name] || 'light');
+    const i = S.core?.IDX[name];
+    if (i == null || !S.feat || !S.live) return def(name); // (a slow frame or a paused camera: the last values hold)
+    return S.feat[i];
+  }
+  // ---- the tracking Worker ----
+  function start(src) {
+    try {
+      S.core = new Function(`return (${src})()`)();
+      S.w?.terminate();
+      const url = URL.createObjectURL(new Blob([`${src}\nhearthMotionCore().worker(self);`], { type: 'text/javascript' }));
+      S.w = new Worker(url); URL.revokeObjectURL(url); S.busy = false;
+      S.w.onmessage = (e) => onWorker(e.data);
+      S.w.onerror = (e) => { S.error = e.message || 'worker error'; S.busy = false; post({ type: 'motionin-state', mp: 'error', error: S.error }); };
+    } catch (err) { S.error = err.message; post({ type: 'console', level: 'warn', text: `Camera input: ${err.message}` }); }
+  }
+  function onWorker(m) {
+    if (m.t === 'state') { S.mp = m.mp; S.tasks = m.tasks || []; S.error = m.error || null; post({ type: 'motionin-state', mp: m.mp, tasks: S.tasks, error: S.error }); return; }
+    if (m.t !== 'feat') return;
+    S.busy = false; S.feat = new Float32Array(m.b); S.featAt = now(); S.engine = m.engine; S.tasks = m.tasks || S.tasks; S.ms = m.ms; S.frames += 1;
+    if (m.mask) { S.mask = { w: m.mask.w, h: m.mask.h, data: new Uint8Array(m.mask.b) }; S.motionMask = Boolean(m.mask.motion); S.maskGen += 1; }
+    if (m.pts) { S.pts.length = 0; for (let i = 0; i < m.pts.length; i += 2) S.pts.push({ x: m.pts[i], y: m.pts[i + 1] }); } else if (S.engine === 'light' || !S.tasks.includes('hands')) S.pts.length = 0;
+    for (const t of S.mtexs) t.needsUpdate = Boolean(maskCanvas());
+  }
+  // ---- frames from the hub ----
+  function onFrame(msg) {
+    S.live = true; S.mirror = msg.mirror !== false; S.cfg = msg.cfg || S.cfg;
+    S.old?.close?.(); S.old = S.bmp; S.bmp = msg.bmp; S.gen += 1; S.at = now();
+    S.fpsN += 1; if (S.at - S.fpsAt > 1000) { S.fps = Math.round((S.fpsN * 1000) / (S.at - S.fpsAt)); S.fpsN = 0; S.fpsAt = S.at; }
+    if (S.texs.size) { frameCanvas(); for (const t of S.texs) t.needsUpdate = true; }
+    const small = msg.small;
+    if (!small) return;
+    if (!S.w || S.busy) { small.close?.(); return; }
+    S.busy = true;
+    const t = now(); const w = {}; for (const k of ['hands', 'pose', 'face', 'mask']) w[k] = Boolean(S.want[k] && t - S.want[k] < 3000);
+    S.w.postMessage({ t: 'frame', bmp: small, at: msg.at || t, mirror: S.mirror, want: w, hue: S.cfg.hue ?? null, trail: S.cfg.trail, engine: S.cfg.engine || 'auto' }, [small]);
+    if (now() - S.askedAt > 2500) sendWant();
+  }
+  function off() {
+    S.live = false; S.feat = null; S.mask = null; S.maskGen += 1; S.pts.length = 0;
+    S.old?.close?.(); S.bmp?.close?.(); S.old = null; S.bmp = null; S.gen += 1;
+    if (S.cv) { S.cv.getContext('2d').clearRect(0, 0, S.cv.width, S.cv.height); S.cvGen = S.gen; }
+    for (const t of S.texs) t.needsUpdate = true;
+  }
+  addEventListener('message', (e) => {
+    const m = e.data || {};
+    if (m.target !== 'three-sandbox' || typeof m.type !== 'string' || !m.type.startsWith('motionin-')) return;
+    if (m.type === 'motionin-core') start(m.src);
+    else if (m.type === 'motionin-frame') onFrame(m);
+    else if (m.type === 'motionin-off') off();
+    else if (m.type === 'motionin-share') S.share = Boolean(m.on);
+    else if (m.type === 'motionin-mp') S.w?.postMessage({ t: 'mp', files: m.files }, Object.values(m.files).filter((b) => b instanceof ArrayBuffer));
+    else if (m.type === 'motionin-stub') S.w?.postMessage({ t: 'mp-stub', src: m.src });
+    else if (m.type === 'motionin-probe') {
+      const values = {}; for (const n of m.names || S.core?.NAMES || []) { const i = S.core?.IDX[n]; values[n] = i != null && S.feat && S.live ? Math.round(S.feat[i] * 1000) / 1000 : def(n); }
+      post({ type: 'motionin-probe-result', id: m.id, values, live: S.live, engine: S.engine, tasks: S.tasks, mp: S.mp, error: S.error, fps: S.fps, ms: Math.round(S.ms * 10) / 10, frames: S.frames, want: Object.keys(S.want).filter((k) => now() - S.want[k] < 3000), shown: shown(), pts: S.pts.map((p) => [Math.round(p.x * 1000) / 1000, Math.round(p.y * 1000) / 1000]), mask: S.mask ? { w: S.mask.w, h: S.mask.h, motion: S.motionMask } : null });
+    }
+  });
+  // ---- the picture and the mask as canvases (made again only when a new frame came) ----
+  function frameCanvas() {
+    if (S.cvGen === S.gen && S.cv) return S.cv;
+    const b = S.bmp; if (!b) return S.cv;
+    const c = (S.cv ||= document.createElement('canvas'));
+    if (c.width !== b.width || c.height !== b.height) { c.width = b.width; c.height = b.height; }
+    const g = c.getContext('2d');
+    g.setTransform(S.mirror ? -1 : 1, 0, 0, 1, S.mirror ? c.width : 0, 0); g.drawImage(b, 0, 0); g.setTransform(1, 0, 0, 1, 0, 0);
+    S.cvGen = S.gen;
+    return c;
+  }
+  // the mask: alpha = the person (MediaPipe's segmenter) or what moves (the light tracker), already mirrored like the picture
+  let mImg = null;
+  function maskCanvas() {
+    if (S.mGen === S.maskGen && S.mcv) return S.mcv;
+    const m = S.mask; S.mGen = S.maskGen;
+    const c = (S.mcv ||= document.createElement('canvas'));
+    if (!m) { c.getContext('2d').clearRect(0, 0, c.width, c.height); return c; }
+    if (c.width !== m.w || c.height !== m.h) { c.width = m.w; c.height = m.h; mImg = null; }
+    const g = c.getContext('2d');
+    if (!mImg) mImg = g.createImageData(m.w, m.h);
+    const d = mImg.data;
+    for (let y = 0; y < m.h; y += 1) for (let x = 0; x < m.w; x += 1) { const o = (y * m.w + x) * 4; d[o] = 255; d[o + 1] = 255; d[o + 2] = 255; d[o + 3] = m.data[y * m.w + (S.mirror ? m.w - 1 - x : x)]; }
+    g.putImageData(mImg, 0, 0);
+    return c;
+  }
+  // ---- a layer that shows the camera ----
+  const MODES = ['video', 'cutout', 'silhouette', 'trails', 'mask', 'debug'];
+  function layer(P = {}, opts = {}) {
+    const mode = MODES.includes(opts.mode) ? opts.mode : 'video';
+    const v = (k, d) => { const x = P[k]; return x === undefined || x === null || (typeof x === 'number' && !Number.isFinite(x)) ? d : x; };
+    const cv = document.createElement('canvas');
+    cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%';
+    cv.__cam = true;
+    document.body.append(cv);
+    const g = cv.getContext('2d');
+    const tmp = document.createElement('canvas'); const tg = tmp.getContext('2d');
+    let sig = ''; let filt = 'none'; let filtKey = '';
+    const fit = () => { const W = Math.max(1, Math.round(innerWidth * devicePixelRatio)); const H = Math.max(1, Math.round(innerHeight * devicePixelRatio)); if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; tmp.width = W; tmp.height = H; sig = ''; } };
+    // where the camera's picture lands: cover (fills, crops) or contain, zoomed, moved
+    const place = (iw, ih) => {
+      const W = cv.width; const H = cv.height; const z = Math.max(0.1, v('zoom', 1));
+      const k = (v('fit', 'cover') === 'contain' ? Math.min(W / iw, H / ih) : Math.max(W / iw, H / ih)) * z;
+      return [W / 2 - (iw * k) / 2 + v('x', 0) * W, H / 2 - (ih * k) / 2 - v('y', 0) * H, iw * k, ih * k];
+    };
+    const tick = () => {
+      requestAnimationFrame(tick);
+      fit();
+      if (mode !== 'video' && mode !== 'debug') want('mask');
+      const pic = mode === 'mask' || mode === 'silhouette' ? null : frameCanvas();
+      const mk = mode === 'video' ? null : maskCanvas();
+      const s = `${S.gen}|${S.mGen}|${S.live}|${cv.width}|${['zoom', 'x', 'y', 'fit', 'bright', 'contrast', 'sat', 'hue', 'blur', 'color', 'glow', 'soft', 'fade', 'opacity'].map((k) => v(k, '')).join(',')}`;
+      if (s === sig) return; // (nothing new: the canvas keeps its picture)
+      sig = s;
+      const W = cv.width; const H = cv.height;
+      if (mode !== 'trails') g.clearRect(0, 0, W, H);
+      if (!S.live) { if (mode === 'trails') g.clearRect(0, 0, W, H); return; }
+      const fk = `${v('bright', 1)}|${v('contrast', 1)}|${v('sat', 1)}|${v('hue', 0)}|${v('blur', 0)}`;
+      if (fk !== filtKey) { filtKey = fk; const f = []; if (v('bright', 1) !== 1) f.push(`brightness(${v('bright', 1)})`); if (v('contrast', 1) !== 1) f.push(`contrast(${v('contrast', 1)})`); if (v('sat', 1) !== 1) f.push(`saturate(${v('sat', 1)})`); if (v('hue', 0)) f.push(`hue-rotate(${v('hue', 0)}deg)`); if (v('blur', 0) > 0) f.push(`blur(${v('blur', 0) * devicePixelRatio}px)`); filt = f.join(' ') || 'none'; }
+      const ref = S.bmp ? [S.bmp.width, S.bmp.height] : [16, 9];
+      const [px, py, pw, ph] = place(ref[0], ref[1]);
+      g.globalAlpha = Math.max(0, Math.min(1, v('opacity', 1)));
+      if (mode === 'video' || mode === 'debug') {
+        g.filter = filt; if (pic) g.drawImage(pic, px, py, pw, ph); g.filter = 'none';
+        if (mode === 'debug') debug(g, mk || maskCanvas(), px, py, pw, ph);
+      } else if (mode === 'cutout') {
+        tg.clearRect(0, 0, W, H); tg.globalCompositeOperation = 'source-over'; tg.filter = filt; if (pic) tg.drawImage(pic, px, py, pw, ph);
+        tg.globalCompositeOperation = 'destination-in'; tg.filter = v('soft', 4) > 0 ? `blur(${v('soft', 4) * devicePixelRatio}px)` : 'none'; tg.drawImage(mk, px, py, pw, ph);
+        tg.filter = 'none'; tg.globalCompositeOperation = 'source-over';
+        g.drawImage(tmp, 0, 0);
+      } else if (mode === 'silhouette' || mode === 'mask') {
+        tg.clearRect(0, 0, W, H); tg.globalCompositeOperation = 'source-over'; tg.filter = v('soft', 3) > 0 ? `blur(${v('soft', 3) * devicePixelRatio}px)` : 'none'; tg.drawImage(mk, px, py, pw, ph); tg.filter = 'none';
+        tg.globalCompositeOperation = 'source-in'; tg.fillStyle = mode === 'mask' ? '#ffffff' : String(v('color', '#ff8a3d')); tg.fillRect(0, 0, W, H); tg.globalCompositeOperation = 'source-over';
+        if (mode === 'mask') { g.fillStyle = '#000'; g.fillRect(0, 0, W, H); }
+        const glow = mode === 'mask' ? 0 : v('glow', 24);
+        if (glow > 0) { g.shadowColor = String(v('color', '#ff8a3d')); g.shadowBlur = glow * devicePixelRatio; }
+        g.drawImage(tmp, 0, 0); if (glow > 0) g.drawImage(tmp, 0, 0);
+        g.shadowBlur = 0;
+      } else if (mode === 'trails') {
+        // the frame before fades a little (fade 0..1: how fast), then what moves now is drawn over it in its colours
+        g.globalCompositeOperation = 'destination-out'; g.globalAlpha = Math.max(0.02, Math.min(1, v('fade', 0.12))); g.fillRect(0, 0, W, H);
+        g.globalCompositeOperation = 'source-over'; g.globalAlpha = Math.max(0, Math.min(1, v('opacity', 1)));
+        tg.clearRect(0, 0, W, H); tg.globalCompositeOperation = 'source-over'; tg.filter = filt; if (pic) tg.drawImage(pic, px, py, pw, ph); tg.filter = 'none';
+        tg.globalCompositeOperation = 'destination-in'; tg.drawImage(mk, px, py, pw, ph); tg.globalCompositeOperation = 'source-over';
+        const col = v('color', ''); if (col) { tg.globalCompositeOperation = 'source-atop'; tg.globalAlpha = 0.6; tg.fillStyle = String(col); tg.fillRect(0, 0, W, H); tg.globalAlpha = 1; tg.globalCompositeOperation = 'source-over'; }
+        g.drawImage(tmp, 0, 0);
+      }
+      g.globalAlpha = 1;
+    };
+    // what the tracker sees: the mask tinted, the 3 × 3 motion grid, where it moves, the hands
+    function debug(gx, mk, px, py, pw, ph) {
+      gx.globalAlpha = 0.45; gx.drawImage(mk, px, py, pw, ph); gx.globalAlpha = 1;
+      const W = cv.width; const H = cv.height; const f = (n) => val(n);
+      gx.strokeStyle = 'rgba(255,255,255,0.35)'; gx.lineWidth = devicePixelRatio;
+      for (let i = 0; i < 9; i += 1) { const x = (i % 3) * W / 3; const y = Math.floor(i / 3) * H / 3; gx.fillStyle = `rgba(255,138,61,${f(`camZ${i}`) * 0.5})`; gx.fillRect(x, y, W / 3, H / 3); gx.strokeRect(x, y, W / 3, H / 3); }
+      const dot = (x, y, r, c) => { gx.fillStyle = c; gx.beginPath(); gx.arc(x * W, (1 - y) * H, r * devicePixelRatio, 0, Math.PI * 2); gx.fill(); };
+      dot(f('camX'), f('camY'), 10, '#ffd75e');
+      for (const p of S.pts) dot(p.x, p.y, 14, '#48ddff');
+      if (S.engine === 'mediapipe') { dot(f('headX'), f('headY'), 9, '#bd8bff'); dot(f('wristLX'), f('wristLY'), 7, '#ff6b9d'); dot(f('wristRX'), f('wristRY'), 7, '#ff6b9d'); }
+    }
+    requestAnimationFrame(tick);
+    return { canvas: cv, mode };
+  }
+  // ---- textures for shaders and materials: they follow the camera by themselves ----
+  function texture() {
+    const t = new THREE.CanvasTexture(frameCanvas() || (S.cv ||= Object.assign(document.createElement('canvas'), { width: 16, height: 9 })));
+    t.colorSpace = THREE.SRGBColorSpace; t.minFilter = THREE.LinearFilter; t.generateMipmaps = false;
+    S.texs.add(t);
+    const d = t.dispose.bind(t); t.dispose = () => { S.texs.delete(t); d(); };
+    return t;
+  }
+  function maskTexture() {
+    want('mask');
+    const t = new THREE.CanvasTexture(maskCanvas()); t.minFilter = THREE.LinearFilter; t.generateMipmaps = false;
+    S.mtexs.add(t);
+    const d = t.dispose.bind(t); t.dispose = () => { S.mtexs.delete(t); d(); };
+    return t;
+  }
+  const feat = new Proxy({}, { get: (_, n) => (typeof n === 'string' ? val(n) ?? 0 : undefined), has: (_, n) => typeof n === 'string' && NAME.test(n), ownKeys: () => (S.core ? [...S.core.NAMES] : []), getOwnPropertyDescriptor: (_, n) => (typeof n === 'string' && NAME.test(n) ? { enumerable: true, configurable: true, value: val(n) ?? 0 } : undefined) });
+  // the director's pictures and saved thumbnails: pixelated while the camera shows (the owner's own screenshots and
+  // recordings are untouched); /webcam share on lets the director see it
+  const shown = () => S.texs.size > 0 || [...document.getElementsByTagName('canvas')].some((c) => c.__cam && c.isConnected);
+  function veil(canvas, tag) {
+    if (!S.live || S.share || !shown() || !(tag === 'thumb' || tag === 'get')) return null;
+    const w = 40; const h = Math.max(2, Math.round((canvas.height / Math.max(1, canvas.width)) * w));
+    const s = document.createElement('canvas'); s.width = w; s.height = h; s.getContext('2d').drawImage(canvas, 0, 0, w, h);
+    const o = document.createElement('canvas'); o.width = canvas.width; o.height = canvas.height;
+    const g = o.getContext('2d'); g.imageSmoothingEnabled = false; g.drawImage(s, 0, 0, o.width, o.height);
+    g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(0, o.height - 34, o.width, 34); g.fillStyle = '#fff'; g.font = '600 15px system-ui, sans-serif'; g.fillText('📷 camera on: pixelated for privacy (/webcam share on to show it)', 10, o.height - 12);
+    return o;
+  }
+  globalThis.__camFeat = val;
+  globalThis.__camVeil = veil;
+  return { layer, texture, maskTexture, feat, feature: (n) => val(String(n)) ?? 0, get points() { return S.pts; }, get on() { return S.live; }, get engine() { return S.engine; }, get mirror() { return S.mirror; }, get canvas() { return frameCanvas(); }, get maskCanvas() { return maskCanvas(); }, env: (n, a, r) => globalThis.audio?.env(n, a, r) ?? val(n), MODES };
+})();
+globalThis.webcam = webcam;
+</script>
+<script type="module">
 import * as THREE from 'three';
 
 const post = (msg, transfer) => (window.__stageHost ? window.__stageHost.post({ source: 'three-sandbox', ...msg }) : parent.postMessage({ source: 'three-sandbox', ...msg }, '*', transfer || []));
@@ -2017,6 +2251,7 @@ const post = (msg, transfer) => (window.__stageHost ? window.__stageHost.post({ 
 // (toBlob + FileReader) instead of toDataURL, which held the page for the whole PNG encode of a full-size frame
 // (≈ 50–150 ms at 1080×1920); the pixels are taken at the call, the message is the same data URL as before
 function postShot(canvas, tag) {
+  canvas = globalThis.__camVeil?.(canvas, tag) || canvas; // (round 25, motion) the director's pictures: pixelated while the camera shows
   const fall = () => post({ type: 'shot', tag, dataUrl: canvas.toDataURL('image/png') });
   try {
     canvas.toBlob((b) => {
@@ -2887,6 +3122,7 @@ function fxFallback() {
   return FX.fbOut;
 }
 function featVal(name) {
+  const cam = globalThis.__camFeat?.(name); if (cam !== undefined) return cam; // (round 25, motion) camera / body features: the "camera input" block
   FX.reads += 1;
   fxWant();
   const k = FX.idx?.[name];
@@ -9985,6 +10221,7 @@ function smallShot(max, tag) {
   realRAF(() => {
     let c;
     try { c = composite(null, Math.min(1, max / (Math.max(innerWidth, innerHeight) * devicePixelRatio))); } catch { post({ type: 'shot', tag, dataUrl: null }); return; }
+    c = globalThis.__camVeil?.(c, tag) || c; // (round 25, motion) thumbnails / the director's small pictures: pixelated while the camera shows
     c.toBlob((b) => {
       if (!b) { post({ type: 'shot', tag, dataUrl: null }); return; }
       const fr = new FileReader();
