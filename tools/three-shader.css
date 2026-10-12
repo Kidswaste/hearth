@@ -1,0 +1,31 @@
+/* ◇ Shader workbench (tools/three-shader.js): the card over the preview, the library / import dialogs, inline errors. */
+.sh-bench {
+  position: fixed; top: 80px; right: 16px; z-index: 60; width: 300px; max-height: 70vh; overflow: auto;
+  display: flex; flex-direction: column; gap: 6px; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--panel, #15181b); color: var(--text, #eae0d5);
+  box-shadow: 0 14px 40px #0009, 0 0 0 1px color-mix(in srgb, var(--fh-gold, #ffd75e) 14%, transparent); font-size: 12px;
+}
+.sh-head, .sh-foot, .sh-row, .sh-pass { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sh-head .spacer { flex: 1; }
+.sh-status { min-height: 1.2em; color: var(--fh-gold, #ffd75e); font-variant-numeric: tabular-nums; line-height: 1.35; }
+.sh-status.bad { color: var(--danger, #ff6b6b); }
+.sh-pname { min-width: 64px; color: var(--muted, #9a948c); }
+.sh-chan, .sh-scale { max-width: 130px; font-size: 11.5px; }
+.sh-check { display: inline-flex; align-items: center; gap: 3px; }
+.sh-pad { position: relative; width: 120px; height: 80px; border-radius: 8px; background: #0b0e10; border: 1px solid var(--line); cursor: crosshair; touch-action: none; }
+.sh-dot { position: absolute; left: 0; top: 0; width: 8px; height: 8px; margin: 0 0 0 0; border-radius: 50%; background: var(--fh-gold, #ffd75e); pointer-events: none; }
+.sh-shade { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; background: #0008; }
+.sh-dlg { display: flex; flex-direction: column; gap: 8px; width: min(640px, 92vw); max-height: 80vh; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel, #15181b); color: var(--text, #eae0d5); box-shadow: 0 18px 50px #000a; }
+.sh-search, .sh-name { width: 100%; box-sizing: border-box; }
+.sh-list { overflow: auto; display: flex; flex-direction: column; gap: 2px; min-height: 200px; }
+.sh-item { display: grid; grid-template-columns: 150px 80px 1fr; gap: 8px; align-items: baseline; padding: 5px 8px; border: 0; border-radius: 7px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.sh-item:hover, .sh-item.on { background: color-mix(in srgb, var(--fh-gold, #ffd75e) 12%, transparent); }
+.sh-cat { color: var(--fh-ember, #ff7a3c); font-size: 11px; }
+.sh-paste { min-height: 260px; font: 12px/1.4 Consolas, "Courier New", monospace; resize: vertical; }
+.sh-notes { min-height: 1.2em; }
+/* inline errors in the Lab's code editor: a wavy line under the line, the message after it */
+.sh-lens { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 2; }
+.sh-lens-in { position: absolute; left: 0; top: 0; }
+.sh-lens-row { position: absolute; white-space: pre; }
+.sh-squig { position: absolute; bottom: 0; left: 0; height: 4px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='4'%3E%3Cpath d='M0 3 L1.5 1 L3 3 L4.5 1 L6 3' fill='none' stroke='%23ff5a5a' stroke-width='1'/%3E%3C/svg%3E") repeat-x; }
+.sh-lens-msg { position: absolute; top: 0; padding: 0 6px; border-radius: 4px; background: color-mix(in srgb, #ff5a5a 18%, transparent); color: #ff9a9a; font-size: 0.86em; white-space: nowrap; }

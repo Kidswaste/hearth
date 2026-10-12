@@ -731,3 +731,9 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ Sketch ▾ → ⏱ Time machine, Alt+H, `/history`: scrub on the preview (← →, live, nothing saved), compare (split wipe + what changed), restore (undoable), branch, pick the colors / sliders / one layer.
 - ✓ Each director turn's start is bookmarked: ⋯ → Back before the director, `/back n [claude|astra]`, `/back undo`; `/branch` in the Lab.
 - ○ Tested headless with the fake engines (`sh dev/run-checks.sh timemachine timemachine-test`).
+## Shader workbench (round 23, labshader, 103 upgrades: docs/upgrades/labshader.md)
+- ✓ ◇ shader layers: Shadertoy-style GLSL (or main() / ISF) as a Lab layer on the scene's clock, with music uniforms (uKick, uBass, uBeat…), the audio texture, feedback (self), Buffers A–D, the layers below / other layers / references as textures, a resolution scale.
+- ✓ `uniform float uGlow; // [Look] 0..2, 1 Glow` lines become sliders (colors, toggles, choices, XY pads) and follow the code on each run; errors show inline on their line while the last good shader keeps drawing.
+- ✓ 38 starters (noise, patterns, raymarch, music, feedback, filters), Shadertoy import (tab, tabs, JSON) and ISF import, copy back to Shadertoy; workbench card with channels per pass, resolution, alpha, + Buffer.
+- ✓ `/shader`, `/shadertoy`, right-click a layer › ◇ Shader, the preview › ◇ Shaders, the FX picker's Shaders, Ctrl/⌘+K; directors: `three_do shader` (help on demand, no prompt growth).
+- ○ No TSL / node-material layers; ISF vertex shaders aren't run; tested on SwiftShader only.

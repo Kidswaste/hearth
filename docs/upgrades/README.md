@@ -90,7 +90,8 @@ line count is lower than the number of upgrades).
 | Voice (round 23): hold Ctrl+Space (or your key / mouse button) to talk to a chat, transcribed on your computer by whisper.cpp / faster-whisper (`/voice install` for Mac and Windows), words land in the chat box or send on release; token-free voice commands ("freeze", "save", "next scene", "director, make it pinker"), replies to what you said read aloud | [voice.md](voice.md) | 53 |
 | Projects and Home (round 23): projects group chats, Lab scenes, boards, renders, captures, files and deploys (by hand, from a make, or suggested token-free); Home (⌂) with covers and "continue where you left off"; one search across everything (Ctrl/⌘+Shift+K, `/everything`); the chats list and the Lab's sketch picker group by project | [projects.md](projects.md) | 66 |
 | Lab time machine (round 23): every meaningful change becomes a version with who made it and a tiny picture (105 versions ≈ 67 KB, thinned over time), scrub with ←/→ live on the preview, compare as a split wipe, restore / branch / pick colors, sliders or one layer, "back before the director's last n turns"; Alt+H, `/history`, `/back`, `/branch` | [timemachine.md](timemachine.md) | 52 |
-| **Total** | | **11,421** |
+| Shader workbench (round 23): GLSL shader layers (Shadertoy `mainImage`, plain or ISF) with the scene's clock, music values and audio texture, feedback and Buffers A–D, inputs from other layers; errors underlined on the right line while the last good shader keeps drawing; uniforms become sliders, colors, toggles and XY pads; paste Shadertoy (multi-tab / JSON) or ISF; 38 starter shaders; `/shader`, `/shadertoy`, and the director can write them | [labshader.md](labshader.md) | 103 |
+| **Total** | | **11,524** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.

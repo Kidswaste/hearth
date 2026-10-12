@@ -6080,6 +6080,392 @@ function drawRec(c, t) {
   g.textAlign = 'left';
 }
 
+// ---------- shader layers (round 23 "labshader": the workbench is tools/three-shader*.js) ----------
+// shader(glsl, P, opts) inside a layer's code makes it a fragment-shader layer, like filter(type, P) does for filters.
+// The GLSL is Shadertoy's form (mainImage(out vec4, in vec2) with iTime, iResolution, iMouse, iFrame, iDate,
+// iChannel0–3, iChannelResolution) or a plain main() (gl_FragColor, texture2D, varying vUv work), or ISF (opts.isf).
+// `uniform float uGlow; // 0..2` lines are its sliders: the hub writes them into the layer's tweak() (P.uGlow; a vec2
+// reads P.uX_x / P.uX_y, a vec3 / vec4 color '#rrggbb', an int with `// options: a, b` its choice). Music: uKick
+// uSnare uHats uHit uBeat uBass uMid uTreble uLevel uDrop uEnergy uBeatPhase uBarPhase, uBands (bass, mid, treble,
+// level); uPrev = this pass's previous frame, uBelow = the layers under it, uAudio = the sound as a 512 × 2 texture.
+// opts: { buffers: { A: { code, iChannel0: 'A', scale } } (passes drawn in order before the image), common (GLSL
+// shared by every pass), iChannel0..3 or any sampler's name: 'audio' | 'self' (this pass's previous frame) |
+// 'A'…'D' (a buffer: its newest frame) | 'below' | 'layer:<name>' | 'ref:<key>' | 'noise' | 'none', scale (0.25–1 of
+// the preview's pixels, the preview only), alpha (keep the shader's own alpha), isf, pass (ISF PASSINDEX) }.
+// Time is the scene's clock (its song or own timeline, the sequence, a precomp's). A shader that doesn't compile is
+// reported on its lines in the code (type 'error') while the last version that did keeps drawing. Each new GLSL text
+// is compile-checked once (then three.js' programs come from the context's cache); nothing is allocated per frame.
+const SH = { good: new Map(), checked: new Map(), stats: new Map(), mouse: { x: 0, y: 0, down: false, cx: 0, cy: 0 }, noise: null, black: null, audio: null, audioTick: -1, day: null };
+addEventListener('pointermove', (e) => { SH.mouse.x = e.clientX; SH.mouse.y = e.clientY; }, { passive: true });
+addEventListener('pointerdown', (e) => { Object.assign(SH.mouse, { x: e.clientX, y: e.clientY, cx: e.clientX, cy: e.clientY, down: true }); }, { passive: true });
+addEventListener('pointerup', () => { SH.mouse.down = false; }, { passive: true });
+const SH_MUSIC = ['uKick', 'uSnare', 'uHats', 'uHit', 'uBeat', 'uBass', 'uMid', 'uTreble', 'uLevel', 'uDrop', 'uEnergy', 'uBeatPhase', 'uBarPhase'];
+const SH_BUILTIN = new Set(['iResolution', 'iTime', 'iTimeDelta', 'iFrameRate', 'iFrame', 'iMouse', 'iDate', 'iSampleRate', 'iChannel0', 'iChannel1', 'iChannel2', 'iChannel3', 'iChannelResolution', 'iChannelTime', ...SH_MUSIC, 'uBands', 'uPrev', 'uBelow', 'uAudio', 'vUv']);
+const SH_VERT = 'in vec3 position;\nout vec2 vUv;\nvoid main() { vUv = position.xy * 0.5 + 0.5; gl_Position = vec4(position.xy, 0.0, 1.0); }';
+const SH_HEAD = `precision highp float;
+precision highp int;
+precision highp sampler2D;
+uniform vec3 iResolution;
+uniform float iTime, iTimeDelta, iFrameRate, iSampleRate;
+uniform int iFrame;
+uniform vec4 iMouse, iDate;
+uniform sampler2D iChannel0, iChannel1, iChannel2, iChannel3, uPrev, uBelow, uAudio;
+uniform vec3 iChannelResolution[4];
+uniform float iChannelTime[4];
+uniform float ${SH_MUSIC.join(', ')};
+uniform vec4 uBands;
+in vec2 vUv;
+#define texture2D texture
+#define varying in
+`;
+const SH_ISF = `#define RENDERSIZE iResolution.xy
+#define TIME iTime
+#define TIMEDELTA iTimeDelta
+#define FRAMEINDEX iFrame
+#define DATE iDate
+#define isf_FragNormCoord (gl_FragCoord.xy / iResolution.xy)
+#define vv_FragNormCoord isf_FragNormCoord
+#define IMG_NORM_PIXEL(i, c) texture(i, c)
+#define IMG_PIXEL(i, c) texture(i, (c) / vec2(textureSize(i, 0)))
+#define IMG_THIS_PIXEL(i) texture(i, isf_FragNormCoord)
+#define IMG_THIS_NORM_PIXEL(i) texture(i, isf_FragNormCoord)
+#define IMG_SIZE(i) vec2(textureSize(i, 0))
+`;
+const SH_UNI = /^[ \t]*uniform\s+(?:(?:highp|mediump|lowp)\s+)?(float|int|bool|vec2|vec3|vec4|sampler2D)\s+(\w+)\s*;([^\n]*)/gm;
+const SH_DECL = /^([ \t]*)(?:uniform|in|varying)\s+(?:(?:highp|mediump|lowp)\s+)?\w+\s+(\w+)\s*(?:\[\s*\d+\s*\])?\s*;/gm;
+// a pass's GLSL as it compiles: built-ins the paste declares again, #version / #extension lines go (the line count
+// stays, so errors keep their lines); main() becomes labMain() so the page's own main can settle the alpha
+function shPrep(src) {
+  let s = String(src || '').replace(/^[ \t]*#(?:version|extension)\b[^\n]*/gm, '').replace(SH_DECL, (m, ind, name) => (SH_BUILTIN.has(name) ? `${ind}// ${name}: built in` : m));
+  const image = /\bmainImage\s*\(/.test(s);
+  let out = null;
+  if (!image) {
+    const own = /^[ \t]*(?:layout\s*\([^)]*\)\s*)?out\s+(?:(?:highp|mediump|lowp)\s+)?vec4\s+(\w+)\s*;/m.exec(s);
+    out = own ? own[1] : null;
+    s = s.replace(/\bvoid\s+main\s*\(\s*(?:void)?\s*\)/, 'void labMain()');
+  }
+  return { s, image, out };
+}
+const shLines = (t) => { let n = 1; for (let i = t.indexOf('\n'); i >= 0; i = t.indexOf('\n', i + 1)) n += 1; return n; };
+// → { text (what compiles, after three.js' #version line), chunks: [{ orig, start, lines }] to map error lines back }
+function shBuild(src, common, { final, alpha, isf, pass }) {
+  const p = shPrep(src);
+  let head = SH_HEAD + (isf ? `${SH_ISF}#define PASSINDEX ${Number(pass) || 0}\n` : '');
+  const outName = p.image ? 'labOut' : p.out || 'pc_fragColor';
+  if (p.image) head += 'layout(location = 0) out highp vec4 labOut;\n';
+  else if (!p.out) head += 'layout(location = 0) out highp vec4 pc_fragColor;\n#define gl_FragColor pc_fragColor\n';
+  const chunks = [];
+  let text = head; let line = shLines(head);
+  if (common) { const c = shPrep(common).s; chunks.push({ orig: common, start: line, lines: shLines(c) }); text += `${c}\n`; line += shLines(c); }
+  chunks.push({ orig: src, start: line, lines: shLines(p.s) });
+  const fix = !final ? '' : alpha ? ` ${outName} = vec4(${outName}.rgb * clamp(${outName}.a, 0.0, 1.0), clamp(${outName}.a, 0.0, 1.0));` : ` ${outName}.a = 1.0;`;
+  text += `${p.s}\nvoid main() {${p.image ? ' vec4 c = vec4(0.0, 0.0, 0.0, 1.0); mainImage(c, gl_FragCoord.xy); labOut = c;' : ' labMain();'}${fix} }\n`;
+  return { text, chunks };
+}
+// one compile per new text (the page's own check: exact error lines, before three.js links anything)
+function shCheck(gl, text) {
+  let r = SH.checked.get(text);
+  if (r !== undefined) return r;
+  const s = gl.createShader(gl.FRAGMENT_SHADER);
+  gl.shaderSource(s, `#version 300 es\n${text}`); gl.compileShader(s);
+  r = gl.getShaderParameter(s, gl.COMPILE_STATUS) || gl.isContextLost() ? null : (gl.getShaderInfoLog(s) || 'did not compile');
+  gl.deleteShader(s);
+  if (SH.checked.size > 96) SH.checked.delete(SH.checked.keys().next().value);
+  SH.checked.set(text, r);
+  return r;
+}
+// the line in the layer's code: where that GLSL text sits in it, + its own line (+1: the #version line)
+function shCodeLine(code, orig, local) {
+  if (!code) return null;
+  let at = code.indexOf(orig);
+  if (at < 0) { const first = String(orig).split('\n').find((x) => x.trim().length > 8); const k = first ? code.indexOf(first) : -1; if (k < 0) return null; at = k - String(orig).indexOf(first); }
+  let n = 0; for (let i = code.indexOf('\n'); i >= 0 && i < at; i = code.indexOf('\n', i + 1)) n += 1;
+  return n + local;
+}
+function shErrors(log, b, code) {
+  const out = [];
+  for (const m of String(log).matchAll(/ERROR:\s*\d+:(\d+):\s*([^\n]*)/g)) {
+    const E = Number(m[1]) - 1; // (the #version line)
+    const ch = b.chunks.find((c) => E >= c.start && E < c.start + c.lines);
+    out.push({ line: ch ? shCodeLine(code, ch.orig, E - ch.start + 1) : null, message: m[2].trim() });
+    if (out.length >= 4) break;
+  }
+  if (!out.length) out.push({ line: null, message: String(log).trim().slice(0, 300) });
+  return out;
+}
+// sliders → uniforms: what each uniform the GLSL declares reads from P, found once
+function shHint(kind, hint) {
+  const num = (x) => (x == null ? null : Number(x));
+  const r = /(-?\d*\.?\d+)\s*\.\.\s*(-?\d*\.?\d+)(?:\s*[,=]\s*(-?\d*\.?\d+))?/.exec(hint);
+  const eq = /=\s*(-?\d*\.?\d+)/.exec(hint);
+  const opts = /options?\s*:\s*([^\[\]\n]+)/i.exec(hint);
+  const d = num(r?.[3] ?? eq?.[1]);
+  return { min: num(r?.[1]), max: num(r?.[2]), def: d ?? (r ? (Number(r[1]) + Number(r[2])) / 2 : null), options: opts ? opts[1].split(/[,|]/).map((x) => x.trim()).filter(Boolean) : [], on: /\b(on|true)\b/i.test(hint), hex: /#([0-9a-f]{6})\b/i.exec(hint)?.[0] || null };
+}
+function shUniforms(texts) {
+  const seen = new Map();
+  for (const t of texts) {
+    if (!t) continue;
+    for (const m of String(t).matchAll(SH_UNI)) if (!SH_BUILTIN.has(m[2]) && !seen.has(m[2])) seen.set(m[2], { kind: m[1], name: m[2], hint: shHint(m[1], m[3] || '') });
+  }
+  return [...seen.values()];
+}
+function shSetters(list, shared) {
+  const out = [];
+  for (const it of list) {
+    if (it.kind === 'sampler2D') continue;
+    const h = it.hint;
+    const init = it.kind === 'vec2' ? new THREE.Vector2(h.def ?? 0.5, h.def ?? 0.5) : it.kind === 'vec3' ? (h.hex ? hexVec(h.hex) : new THREE.Vector3(1, 1, 1)) : it.kind === 'vec4' ? new THREE.Vector4(1, 1, 1, 1) : it.kind === 'bool' ? h.on : it.kind === 'int' ? Math.round(h.def ?? 0) : (h.def ?? 0);
+    if (it.kind === 'vec4' && h.hex) { const v = hexVec(h.hex); init.set(v.x, v.y, v.z, 1); }
+    const u = shared[it.name] = { value: init };
+    out.push({ name: it.name, kind: it.kind, u, opts: h.options, hex: null, kx: `${it.name}_x`, ky: `${it.name}_y`, tmp: new THREE.Vector3() });
+  }
+  return out;
+}
+function shSetP(setters, P) {
+  for (let i = 0; i < setters.length; i += 1) {
+    const s = setters[i];
+    if (s.kind === 'vec2') { const x = P[s.kx]; const y = P[s.ky]; if (typeof x === 'number') s.u.value.x = x; if (typeof y === 'number') s.u.value.y = y; continue; }
+    const v = P[s.name];
+    if (v === undefined || v === null) continue;
+    if (s.kind === 'vec3' || s.kind === 'vec4') { if (typeof v === 'string' && v[0] === '#' && s.hex !== v) { s.hex = v; hexVec(v, s.tmp); s.u.value.x = s.tmp.x; s.u.value.y = s.tmp.y; s.u.value.z = s.tmp.z; } continue; }
+    if (typeof v === 'number') s.u.value = s.kind === 'int' ? Math.round(v) : s.kind === 'bool' ? v > 0 : v;
+    else if (typeof v === 'boolean') s.u.value = s.kind === 'bool' ? v : v ? 1 : 0;
+    else if (typeof v === 'string') s.u.value = Math.max(0, s.opts.indexOf(v));
+  }
+}
+function shBlack() {
+  if (!SH.black) { SH.black = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1); SH.black.needsUpdate = true; }
+  return SH.black;
+}
+function shNoise() {
+  if (SH.noise) return SH.noise;
+  const N = 256; const d = new Uint8Array(N * N * 4); let a = 0x9e3779b9;
+  for (let i = 0; i < d.length; i += 1) { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; d[i] = ((t ^ (t >>> 14)) >>> 0) & 255; }
+  const t = new THREE.DataTexture(d, N, N); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.minFilter = t.magFilter = THREE.LinearFilter; t.needsUpdate = true;
+  SH.noise = t;
+  return t;
+}
+// the sound as Shadertoy's audio texture: row 0 the spectrum (512 bins), row 1 the waveform; filled once a frame
+function shAudio() {
+  if (!SH.audio) {
+    const t = new THREE.DataTexture(new Uint8Array(512 * 2), 512, 2, THREE.RedFormat, THREE.UnsignedByteType);
+    t.minFilter = t.magFilter = THREE.LinearFilter; t.needsUpdate = true;
+    SH.audio = t;
+  }
+  if (SH.audioTick !== frameTick) {
+    SH.audioTick = frameTick;
+    const d = SH.audio.image.data; const f = audio.spectrum; const w = audio.waveform;
+    for (let i = 0; i < 512; i += 1) { d[i] = f[i] || 0; const v = w[i * 4] || 0; d[512 + i] = v <= -1 ? 0 : v >= 1 ? 255 : Math.round((v * 0.5 + 0.5) * 255); }
+    SH.audio.needsUpdate = true;
+  }
+  return SH.audio;
+}
+const shPassOf = (name) => (name === 'image' ? 'Image' : `Buffer ${name}`);
+globalThis.shader = (image, P = {}, opts = {}) => {
+  const L = layerState(currentLayer() || 'main');
+  const code = L.code || '';
+  const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
+  renderer.__keepClear = true;
+  renderer.setPixelRatio(devicePixelRatio);
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+  renderer.setClearColor(0x000000, 0);
+  document.body.append(renderer.domElement);
+  const gl = renderer.getContext();
+  // the passes as written; when one doesn't compile, the last ones that did (this layer's) draw instead
+  const want = { image: String(image ?? ''), opts: opts || {} };
+  const buildAll = (w) => {
+    const o = w.opts; const bufs = Object.entries(o.buffers || {});
+    const list = [...bufs.map(([name, b]) => ({ name, src: typeof b === 'string' ? b : b?.code || '', conf: typeof b === 'string' ? {} : b || {} })), { name: 'image', src: w.image, conf: o }];
+    const errs = [];
+    for (const p of list) {
+      p.built = shBuild(p.src, o.common || '', { final: p.name === 'image', alpha: Boolean(o.alpha), isf: Boolean(o.isf), pass: p.conf.pass ?? 0 });
+      const log = shCheck(gl, p.built.text);
+      if (log) for (const e of shErrors(log, p.built, code)) errs.push({ ...e, pass: p.name });
+    }
+    return { list, errs };
+  };
+  let built = buildAll(want);
+  const errors = built.errs;
+  let fallback = false;
+  if (errors.length) {
+    for (const e of errors) post({ type: 'error', layer: pcTop(L.id), line: e.line, message: `GLSL (${shPassOf(e.pass)}): ${e.message}` });
+    const good = SH.good.get(L.id);
+    if (good) { built = buildAll(good); fallback = !built.errs.length; if (!fallback) built = null; } else built = null;
+  } else { SH.good.delete(L.id); SH.good.set(L.id, want); if (SH.good.size > 32) SH.good.delete(SH.good.keys().next().value); }
+  const used = built ? built.list : [];
+  const o = fallback ? SH.good.get(L.id).opts : want.opts;
+  // uniforms: shared by every pass (time, music, sliders) or each pass's own (resolution, its channels)
+  const shared = {
+    iTime: { value: 0 }, iTimeDelta: { value: 0 }, iFrameRate: { value: 60 }, iFrame: { value: 0 }, iSampleRate: { value: 44100 },
+    iMouse: { value: new THREE.Vector4() }, iDate: { value: new THREE.Vector4() }, uBands: { value: new THREE.Vector4() },
+    iChannelTime: { value: [0, 0, 0, 0] },
+  };
+  for (const k of SH_MUSIC) shared[k] = { value: 0 };
+  const declared = shUniforms([o.common, ...used.map((p) => p.src)]);
+  const setters = shSetters(declared, shared);
+  const userSamplers = declared.filter((u) => u.kind === 'sampler2D').map((u) => u.name);
+  const rtOpts = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, type: THREE.HalfFloatType };
+  const scene = new THREE.Scene();
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
+  quad.frustumCulled = false;
+  scene.add(quad);
+  const camera = new THREE.Camera();
+  const texs = []; // made here, let go with the layer
+  let below = null; const layerTex = new Map(); const refTex = new Map();
+  const passes = used.map((p) => {
+    const conf = p.conf || {};
+    const res = new THREE.Vector3();
+    const uniforms = { ...shared, iResolution: { value: res }, uPrev: { value: null }, iChannelResolution: { value: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] } };
+    const chans = [];
+    const bind = (uname, slot) => {
+      if (!new RegExp(`\\b${uname}\\b`).test(p.src) && !(o.common && new RegExp(`\\b${uname}\\b`).test(o.common))) return;
+      let src = conf[uname] ?? o.textures?.[uname];
+      if (src == null) src = uname === 'uPrev' ? 'self' : uname === 'uBelow' ? 'below' : uname === 'uAudio' ? 'audio' : /^iChannel/.test(uname) ? (p.name !== 'image' && uname === 'iChannel0' ? 'self' : 'none') : /audio|fft|sound|wave/i.test(uname) ? 'audio' : /image|input|src|tex/i.test(uname) ? 'below' : (o.buffers && uname in o.buffers ? uname : 'none');
+      uniforms[uname] = { value: null };
+      chans.push({ u: uniforms[uname], src: String(src), slot });
+    };
+    ['iChannel0', 'iChannel1', 'iChannel2', 'iChannel3'].forEach((n, i) => bind(n, i));
+    bind('uPrev', -1); bind('uBelow', -1); bind('uAudio', -1);
+    for (const n of userSamplers) bind(n, -1);
+    const mat = new THREE.RawShaderMaterial({ glslVersion: THREE.GLSL3, vertexShader: SH_VERT, fragmentShader: p.built.text, uniforms, depthTest: false, depthWrite: false });
+    const self = p.name !== 'image' || chans.some((c) => c.src === 'self' || c.src === 'feedback');
+    return { name: p.name, mat, res, chans, uniforms, scale: p.name === 'image' ? 1 : Math.max(0.05, Math.min(1, Number(conf.scale ?? o.bufferScale ?? 1) || 1)), targets: self ? [new THREE.WebGLRenderTarget(1, 1, rtOpts), new THREE.WebGLRenderTarget(1, 1, rtOpts)] : null, cres: uniforms.iChannelResolution.value };
+  });
+  const byName = new Map(passes.map((p) => [p.name, p]));
+  let blit = null;
+  const img = byName.get('image');
+  if (img?.targets) blit = new THREE.RawShaderMaterial({ glslVersion: THREE.GLSL3, vertexShader: SH_VERT, fragmentShader: 'precision highp float;\nuniform sampler2D t;\nin vec2 vUv;\nlayout(location = 0) out highp vec4 o;\nvoid main() { o = texture(t, vUv); }', uniforms: { t: { value: null } }, depthTest: false, depthWrite: false });
+  const scale = Math.max(0.25, Math.min(1, Number(o.scale) || 1));
+  renderer.__lowRes = scale < 1 ? scale : 1;
+  const size = new THREE.Vector2();
+  const srcC = document.createElement('canvas');
+  let srcImg = null; let srcW = 0; let srcH = 0; let force = true;
+  // a channel's texture now (and its size into iChannelResolution)
+  const texOf = (c, pass, W, H) => {
+    const s = c.src;
+    if (s === 'audio') return shAudio();
+    if (s === 'self' || s === 'feedback') return pass.targets ? pass.targets[1].texture : shBlack();
+    if (byName.has(s) && s !== 'image') { const b = byName.get(s); return b.targets ? b.targets[1].texture : shBlack(); }
+    if (s === 'below') {
+      if (!below) { below = new THREE.CanvasTexture(srcC); below.minFilter = THREE.LinearFilter; below.generateMipmaps = false; texs.push(below); }
+      if (below.__tick !== frameTick) {
+        below.__tick = frameTick;
+        const got = filterSource(L, srcC, W, H, force); force = false;
+        if (got) {
+          const im = got.image;
+          if (im !== srcImg || im.width !== srcW || im.height !== srcH || below.premultiplyAlpha !== got.premul) { below.dispose(); below.image = im; below.premultiplyAlpha = got.premul; srcImg = im; srcW = im.width; srcH = im.height; }
+          below.needsUpdate = true;
+        }
+      }
+      return below;
+    }
+    if (s.startsWith('layer:')) {
+      const want2 = s.slice(6).trim().toLowerCase();
+      let e = layerTex.get(s);
+      if (!e) { e = { tex: new THREE.CanvasTexture(document.createElement('canvas')), L: null, tick: -1 }; e.tex.minFilter = THREE.LinearFilter; e.tex.generateMipmaps = false; layerTex.set(s, e); texs.push(e.tex); }
+      if (e.tick !== frameTick) {
+        e.tick = frameTick;
+        if ((!e.L || layers.get(e.L.id) !== e.L) && !(frameTick < e.miss)) { e.L = null; for (const x of layers.values()) if (x !== L && (x.id.toLowerCase() === want2 || String(x.props.name || '').toLowerCase() === want2)) { e.L = x; break; } if (!e.L) e.miss = frameTick + 60; } // (a name not found: looked up again a second later)
+        let cv = null;
+        if (e.L) for (const x of e.L.box.getElementsByTagName('canvas')) { if (x.classList.contains('lab-xfade') || x.__skip || x.width < 2) continue; cv = x; break; }
+        if (cv) { if (e.tex.image !== cv) { e.tex.dispose(); e.tex.image = cv; } e.tex.needsUpdate = true; }
+      }
+      return e.tex;
+    }
+    if (s.startsWith('ref:')) {
+      let t = refTex.get(s);
+      if (t === undefined) { try { t = refTexture(s.slice(4).trim()); t.colorSpace = THREE.NoColorSpace; texs.push(t); } catch (err) { t = null; post({ type: 'console', level: 'warn', layer: pcTop(L.id), text: `shader: ${err.message}` }); } refTex.set(s, t); }
+      return t || shBlack();
+    }
+    if (s === 'noise') return shNoise();
+    return shBlack();
+  };
+  // one stat line per layer for the workbench and the checks (window.__labShader)
+  const stat = { id: L.id, passes: passes.map((p) => p.name), ok: !errors.length, fallback, errors: errors.length, frames: 0, ms: 0, scale, channels: Object.fromEntries(passes.map((p) => [p.name, Object.fromEntries(p.chans.filter((c) => c.slot >= 0).map((c) => [`iChannel${c.slot}`, c.src]))])), uniforms: setters.map((s) => s.name) };
+  SH.stats.set(L.id, stat);
+  post({ type: 'shader-info', layer: pcTop(L.id), ...stat });
+  let lastT = null; let lastReal = realNow();
+  const m = SH.mouse;
+  renderer.setAnimationLoop(() => {
+    if (!passes.length) return;
+    const c0 = realNow();
+    renderer.getDrawingBufferSize(size);
+    const W = size.x; const H = size.y;
+    // time: the scene's clock; its step for iTimeDelta (a seek or a loop: the real time that went by)
+    const t = globalThis.__layerClock?.(L.id) ?? c0 / 1000;
+    let dt = lastT == null ? 0 : t - lastT;
+    if (dt < 0 || dt > 0.25) dt = Math.min(0.1, (c0 - lastReal) / 1000);
+    lastT = t; lastReal = c0;
+    shared.iTime.value = t; shared.iTimeDelta.value = dt; if (dt > 0) shared.iFrameRate.value += (1 / dt - shared.iFrameRate.value) * 0.1;
+    shared.iFrame.value = stat.frames;
+    const k = W / Math.max(1, innerWidth);
+    shared.iMouse.value.set(m.x * k, (innerHeight - m.y) * k, (m.down ? 1 : -1) * m.cx * k, (m.down ? 1 : -1) * (innerHeight - m.cy) * k);
+    const now = Date.now();
+    if (!SH.day || now - SH.day.at > 60000) { const d = new Date(now); const d0 = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); SH.day = { at: now, y: d.getFullYear(), m: d.getMonth(), d: d.getDate(), d0 }; }
+    shared.iDate.value.set(SH.day.y, SH.day.m, SH.day.d, (now - SH.day.d0) / 1000);
+    // music (the filters' own sources: markers when the song has them, else the beat)
+    shared.uKick.value = audio.hits.kick.length ? audio.kick : audio.beat;
+    shared.uSnare.value = audio.hits.snare.length ? audio.snare : audio.beat * 0.6;
+    shared.uHats.value = audio.hats; shared.uHit.value = audio.hit; shared.uBeat.value = audio.beat;
+    shared.uBass.value = audio.bass; shared.uMid.value = audio.mid; shared.uTreble.value = audio.treble; shared.uLevel.value = audio.level;
+    const sd = audio.sinceDrop; shared.uDrop.value = Number.isFinite(sd) ? Math.exp(-sd / 0.6) : 0;
+    shared.uEnergy.value = audio.energy || 0; shared.uBeatPhase.value = audio.beatPhase || 0; shared.uBarPhase.value = audio.barPhase || 0;
+    shared.uBands.value.set(shared.uBass.value, shared.uMid.value, shared.uTreble.value, shared.uLevel.value);
+    shSetP(setters, P);
+    for (let i = 0; i < passes.length; i += 1) {
+      const p = passes[i];
+      const w = Math.max(1, Math.round(W * p.scale)); const h = Math.max(1, Math.round(H * p.scale));
+      if (p.targets) for (const rt of p.targets) if (rt.width !== w || rt.height !== h) rt.setSize(w, h);
+      p.res.set(w, h, 1);
+      for (let j = 0; j < p.chans.length; j += 1) {
+        const c = p.chans[j];
+        const tx = texOf(c, p, W, H);
+        c.u.value = tx;
+        if (c.slot >= 0) { const im = tx.image; p.cres[c.slot].set(im ? im.videoWidth || im.width || 1 : 1, im ? im.videoHeight || im.height || 1 : 1, 1); }
+      }
+      quad.material = p.mat;
+      if (p.targets) {
+        renderer.setRenderTarget(p.targets[0]);
+        renderer.render(scene, camera);
+        p.targets.reverse();
+      }
+      if (p.name === 'image') {
+        renderer.setRenderTarget(null);
+        if (p.targets) { blit.uniforms.t.value = p.targets[1].texture; quad.material = blit; }
+        renderer.render(scene, camera);
+      }
+    }
+    stat.frames += 1;
+    stat.ms += ((realNow() - c0) - stat.ms) * 0.1;
+  });
+  (L.cleanups ||= []).push(() => {
+    renderer.setAnimationLoop(null);
+    for (const p of passes) { p.mat.dispose(); for (const rt of p.targets || []) rt.dispose(); }
+    blit?.dispose(); quad.geometry.dispose();
+    for (const t of texs) t?.dispose?.();
+    srcC.width = 0; srcC.height = 0;
+    if (SH.stats.get(L.id) === stat) SH.stats.delete(L.id);
+  });
+  return { renderer, passes: passes.map((p) => p.name), ok: !errors.length, fallback };
+};
+// shader.check(glsl | { image, buffers, common, isf }) → { ok, errors: [{ pass, line (in that GLSL), message }] }:
+// compiles without making a layer (the workbench, the director, the checks)
+globalThis.shader.check = (spec) => withThumbRenderer(16, 16, (renderer) => {
+  const gl = renderer.getContext();
+  const s = typeof spec === 'string' ? { image: spec } : spec || {};
+  const list = [...Object.entries(s.buffers || {}).map(([name, b]) => [name, typeof b === 'string' ? b : b?.code || '', typeof b === 'string' ? {} : b || {}]), ['image', s.image || '', s]];
+  const errors = [];
+  for (const [name, src, conf] of list) {
+    const b = shBuild(src, s.common || '', { final: name === 'image', alpha: Boolean(s.alpha), isf: Boolean(s.isf), pass: conf.pass ?? 0 });
+    const log = shCheck(gl, b.text);
+    if (log) for (const e of shErrors(log, b, src)) errors.push({ pass: name, ...e });
+  }
+  return { ok: !errors.length, errors };
+});
+window.__labShader = { info: () => [...SH.stats.values()].map((x) => ({ ...x, ms: Math.round(x.ms * 100) / 100 })), checked: () => SH.checked.size };
+
 // ---------- run generations ----------
 // Re-running a layer (a slider that rebuilds the scene, a code edit) tears down only that layer: its
 // renderers, window listeners, timers and DOM, then runs its code again — three.js stays loaded and the
@@ -6302,6 +6688,7 @@ async function runLayer(spec, hot = false) {
   installRunGuards();
   const L = layerState(spec.id);
   L.runAt = realNow(); // (round 21: how long from here to its first frame, for /lab perf)
+  L.code = spec.code; // (round 23: shader() finds its GLSL in it, for errors on the right line)
   // the picture on screen stays on top until the new code draws (rapid edits keep the first picture)
   let pics = null;
   if (hot && spec.fx === 'xfade') {
