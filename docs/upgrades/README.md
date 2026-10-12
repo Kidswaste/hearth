@@ -80,7 +80,8 @@ line count is lower than the number of upgrades).
 | Long sessions (round 20): a 20-minute soak test found and fixed a leak when switching long chats (page nodes +31k/h → +1.2k/h, detached nodes +31k/h → +0.5k/h, observers +61/h → 0), the last 12 chats kept in memory, logs rotate; Freshen (`/freshen`) reloads in place keeping chats, drafts, scroll and the Lab, offered only after hours of real growth and never while you're busy | [soak.md](soak.md) | 21 |
 | No more colored left bars (round 21): 56 decorative bar rules removed in every look (36 bars on the main screens → 0); status now a small dot, selection a soft tint, quotes and thinking indented italic, toasts a tinted frame; only functional lines kept (resize handle, playhead, wipe line, drag insertion) | [nobars.md](nobars.md) | 42 |
 | Live activity (round 21): long tasks no longer freeze chats (thinking appended instead of rewritten: layout 1.6–1.9 s → 0.14–0.39 s; huge tool results read without blocking: 722 → 47 ms; a reply can't hang after the engine exits; a killed engine ends with a clear error), a truthful status line (phase, tool, time, last news), deployed agents as a live tree, "no news for 2 min" with Wait / Stop / Stop & retry; `/activity`, `/subagents on`, `/unstick` | [liveness.md](liveness.md) | 30 |
-| **Total** | | **10,983** |
+| Three Director loop (round 21): edits answer when the change is on screen (1.6 s fixed wait → 0.22 s), small pictures from the preview itself (≈786 → 442 image tokens, a 9:16 picture 9.2 → 1.8 s), `three_do batch`, results that only say what's new, errors in one line, `three_do undo` / safe edits, nothing stays "working"; typical turns: "add a pink glow" ≈20k → 10k tokens, "make it 9:16 and save" ≈14k → 6.7k | [labdirector.md](labdirector.md) | 24 |
+| **Total** | | **11,007** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.
