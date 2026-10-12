@@ -170,8 +170,9 @@ const Apps = (() => {
         toast(`Added to ${mk.name}`, { timeout: 2400 });
         return mk;
       }
+      case 'assets': { await window.Lazy?.load?.('assets'); const [it] = await Assets.add([file], { src: 'download', o: get(app)?.name || app || 'Apps' }); if (it) AssetsUI.reveal(it); return it || null; } // (round 24) the asset library
       case 'reveal': return window.hub.fs.reveal(file);
-      default: throw new Error(`Unknown place "${target}" (lab-model, lab-hdri, lab-song, lab-ref, board, open, chat, meshy, make, reveal)`);
+      default: throw new Error(`Unknown place "${target}" (lab-model, lab-hdri, lab-song, lab-ref, board, open, chat, meshy, make, assets, reveal)`);
     }
   }
   const tryRoute = (p, target, o) => route(p, target, o).catch((err) => toast(err.message, { type: 'error', timeout: 6000 }));

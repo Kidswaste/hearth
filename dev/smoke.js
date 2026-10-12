@@ -11,6 +11,7 @@
 //   node dev/smoke.js --lib dev/checks/journey-lib.js --script dev/checks/journey-lab.js   # helpers before the script
 //   node dev/smoke.js --data dev/old-data --script dev/checks/journey-upgrade.js     # start from a copy of a data/ folder
 //   node dev/smoke.js --fake-meshy --script dev/checks/apps-meshy.js   # app windows against dev/fake-meshy.js (no network)
+//   node dev/smoke.js --fake-assets --script dev/checks/assets.js    # the asset library against dev/fake-assets.js
 //   node dev/smoke.js --coverage /tmp/cov.json --script dev/checks/trim-drive.js   # JS function + CSS rule coverage of the
 //       page from the first byte (CDP Profiler precise coverage, CSS rule usage), written as JSON (dev/coverage-report.js reads it)
 //
@@ -112,6 +113,14 @@ async function cdpConnect() {
   if (args.includes('--fake-meshy')) {
     const fake = await require('./fake-meshy').start();
     Object.assign(env, { HEARTH_MESHY_BASE: fake.base, HEARTH_POLYHAVEN_BASE: `${fake.base}/ph`, HEARTH_APPS_PARK_MS: '4000' });
+  }
+  // --fake-assets: (round 24) fake Poly Haven + ambientCG APIs for the asset library (dev/fake-assets.js), and a folder of
+  // real asset files at /tmp/hearth-asset-fixtures (made here when missing)
+  if (args.includes('--fake-assets')) {
+    const FA = require('./fake-assets');
+    const fake = await FA.start();
+    if (!fs.existsSync('/tmp/hearth-asset-fixtures/kick_hit.wav')) FA.fixtures('/tmp/hearth-asset-fixtures');
+    Object.assign(env, { HEARTH_POLYHAVEN_BASE: `${fake.base}/ph`, HEARTH_AMBIENTCG_BASE: `${fake.base}/acg` });
   }
   const child = spawn('xvfb-run', ['-a', '-s', '-screen 0 1600x1000x24', ELECTRON, dir, '--no-sandbox', `--remote-debugging-port=${PORT}`, `--user-data-dir=${userData}`, ...(process.env.SMOKE_GPU_FLAGS || '--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist').split(' ').filter(Boolean)], { stdio: ['ignore', 'pipe', 'pipe'], detached: true, env });
   // Kill Xvfb + Electron (their own process group) however the harness ends, so no stray instances pile up.
