@@ -62,7 +62,18 @@ const Lazy = (() => {
   }
 
   // ---------- stand-ins ----------
-  const groupMeta = (name) => (D.META || {})[name] || {};
+  // (round 25, diet) the manifest names a group's usual command / keys area once (area, karea): put it back on each entry
+  const groupMeta = (name) => {
+    const m = (D.META || {})[name];
+    if (!m) return {};
+    if (m.area || m.karea) {
+      const put = (x, area) => { if (x.area === undefined) return { ...x, area }; if (x.area !== null) return x; const { area: _, ...r } = x; return r; }; // null: had none
+      if (m.area) m.commands = (m.commands || []).map((c) => put(c, m.area));
+      if (m.karea) m.keys = (m.keys || []).map((k) => put(k, m.karea));
+      delete m.area; delete m.karea;
+    }
+    return m;
+  };
   // A stand-in command is a def whose run / complete / when hand over to its own object once the real def has filled it
   // in (takeOver): a module that copied it meanwhile ({ ...Commands.get('director'), run: … }) reaches the real one too.
   // Its mark (__lazy) isn't enumerable, so copies and combined shared names don't carry it.

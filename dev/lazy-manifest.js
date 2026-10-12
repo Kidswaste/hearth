@@ -72,6 +72,10 @@ for (const g of LazyData.GROUPS) {
   if (r.bridge?.length) o.bridge = [...new Set(r.bridge)];
   if (r.apps?.length) o.apps = uniq(r.apps, (a) => a.id);
   if (r.tools?.length) o.tools = uniq(r.tools, (t) => t.id);
+  // (round 25, diet) a group's most common area is written once (lazy.js groupMeta puts it back): ≈ 10 KB less to parse
+  const common = (xs) => { const n = {}; for (const x of xs || []) if (x.area) n[x.area] = (n[x.area] || 0) + 1; const [k, c] = Object.entries(n).sort((p, q) => q[1] - p[1])[0] || []; return c > 1 ? k : null; };
+  const ca = common(o.commands); if (ca) { o.area = ca; o.commands = o.commands.map(({ area, ...c }) => (area === ca ? c : { ...c, area: area ?? null })); }
+  const ka = common(o.keys); if (ka) { o.karea = ka; o.keys = o.keys.map(({ area, ...k }) => (area === ka ? k : { ...k, area: area ?? null })); }
   meta[g.name] = o;
 }
 const src = fs.readFileSync(FILE, 'utf8');

@@ -18,6 +18,7 @@ const T = ThreeMotion.TEMPLATES;
 const fams = {}; for (const t of T) fams[t.motion.kind] = (fams[t.motion.kind] || 0) + 1;
 step('the motion kit is loaded: templates in eight families, in ThreeLayers.TEMPLATES', T.length >= 100 && Object.keys(fams).length === 8 && T.every((t) => ThreeLayers.TEMPLATES.includes(t)), fams);
 step('one Motion design node type per family in the Lab\'s node registry', ThreeMotion.KINDS.every((k) => ThreeNodes.registry.has(`motion-${k}`)));
+await until(async () => (await sbx('return typeof motion')) === 'object', 12000); // (round 25, diet) the kit arrives once the page is idle (or with the first motion layer)
 const has = await sbx('return typeof motion === "object" && ["type","type3d","ui","cursor","camera","logo","brand","endcard"].every((k) => typeof motion[k] === "function")');
 step('the sandbox has motion.<kind>()', has === true, has);
 
