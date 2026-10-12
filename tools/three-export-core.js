@@ -126,7 +126,7 @@ const LabExportCore = (() => {
       chain.push(o.audio.filter);
     }
     if (chain.length) a.push('-filter_complex', chain.join(';'));
-    a.push('-map', chain.length ? v : '0:v');
+    a.push('-map', v === '[0:v]' ? '0:v' : v); // (a filter graph for the sound alone leaves the pictures as they are)
     if (ain.length) a.push('-map', '[aout]');
     if (f.id === 'mp4' || f.id === 'loop') {
       if (!has(enc, 'libx264')) throw new Error('This ffmpeg has no H.264 encoder (libx264): install a full ffmpeg (/ffmpeg install).');

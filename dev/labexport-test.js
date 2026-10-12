@@ -61,6 +61,7 @@ t('sound: the plan becomes inputs and one [aout] mix', () => {
   assert.ok(a.filter.endsWith('[aout]') && a.filter.includes('amix=inputs=2'));
   const args = C.args({ format: 'mp4', F: 30, n: 30, input: 'i', w: 2, h: 2, audio: a }).args;
   assert.ok(args.includes('[aout]') && args.includes('aac'));
+  assert.strictEqual(args[args.indexOf('-map') + 1], '0:v'); // (no video filter: the pictures map straight)
   assert.ok(!C.args({ format: 'gif', F: 30, n: 30, input: 'i', w: 2, h: 2, audio: a, loop: { L: 30, X: 0 } }).args.includes('[aout]'));
 });
 t('loops on bars', () => {

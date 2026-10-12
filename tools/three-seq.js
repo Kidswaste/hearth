@@ -1229,7 +1229,8 @@ const ThreeSeq = (() => {
     if (!realtime && typeof LabExport !== 'undefined' && store.get('three.export.backstage', true) && await ffmpegOf()) {
       const R = range && range.b > range.a ? { a: Math.max(0, range.a), b: Math.min(dur, range.b) } : null;
       const nm = (name || re.seq?.name || S.key?.slice(4) || 'sequence').replace(/[\\/:*?"<>|]+/g, '_');
-      const out = await LabExport.renderEdit(re, { format: fmt, name: `${nm}${R ? ' range' : ''}`, quiet, onProgress, fps: F, crf, sound, range: R, title: `▤ ${nm} ${fmt.replace(':', 'x')}`, again: !quiet && S.key ? { type: 'seq-direct', key: S.key, opts: { format: fmt, fps: F, crf, sound } } : null });
+      S.xpRender = (S.xpRender || 0) + 1; // (rendering: true while it runs; the sequence itself stays editable)
+      const out = await LabExport.renderEdit(re, { format: fmt, name: `${nm}${R ? ' range' : ''}`, quiet, onProgress, fps: F, crf, sound, range: R, title: `▤ ${nm} ${fmt.replace(':', 'x')}`, again: !quiet && S.key ? { type: 'seq-direct', key: S.key, opts: { format: fmt, fps: F, crf, sound } } : null  }).finally(() => { S.xpRender -= 1; });
       await writeCaptions(re, out.path, R).catch(() => null);
       emit('render', { output: out.path, frames: out.frames, format: fmt });
       return out;
@@ -2587,7 +2588,7 @@ const ThreeSeq = (() => {
     outDir, keyForScene, switchTo, summaryFor, sceneCopied, songInfo, pickScenes, bakeRuns, get owner() { return S.owner; },
     on: (ev, fn) => { (listeners[ev] ||= []).push(fn); },
     get active() { return S.view; }, get key() { return S.key; }, get edit() { return S.edit ? C.copy(S.edit) : null; }, get time() { return S.T; }, get playing() { return S.playing; }, get fps() { return fps(); },
-    get selection() { return selIds(); }, get rendering() { return Boolean(S.render); }, KEYS, _S: S, _draw: () => draw(), _hit: hit, _xOf: (t) => xOf(t), _lanes: () => lanes(),
+    get selection() { return selIds(); }, get rendering() { return Boolean(S.render) || S.xpRender > 0; }, KEYS, _S: S, _draw: () => draw(), _hit: hit, _xOf: (t) => xOf(t), _lanes: () => lanes(),
   };
   return api;
 })();
