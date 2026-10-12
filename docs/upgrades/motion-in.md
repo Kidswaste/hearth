@@ -144,7 +144,7 @@ Count: 84 upgrades.
 - `dev/checks/motion-in.js` (lab group, 38 steps, in the app) uses a fake camera: `getUserMedia` is stubbed with a canvas stream of a white square, and `enumerateDevices` lists a webcam and a capture card.
   - It's off by default. `/webcam on` gives frames and the pill.
   - Movement on the left and on the right, where it moves follows the square (correlation 0.98), still reads as still, and mirrored is flipped.
-  - `/webcam follow size camMotion` grows the slider in the preview (1 → 3.3).
+  - `/webcam follow size camMotion` grows the slider in the preview (1 → 3.4).
   - "Particles follow my hands" puts the particles' centre at x −2.1, then +2.05, as the square moves.
   - A camera layer shows the picture. The director's pictures are pixelated, and not once shared.
   - MediaPipe's path, using a stub bundle through the real Worker code: hands / pinch move a slider, then face (mouth) and the mask load when read.
