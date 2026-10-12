@@ -830,7 +830,7 @@ const ThreeLab = (() => {
       el('span', { text: 'Music, sliders, timeline, recording and the director all keep working from here.' }),
       el('div', { class: 'button-row' }, btn('Show it', 'Bring the Stage window to the front', () => window.hub.stageFocus()), btn('↩ Bring it back here', 'Close the Stage window and run the preview here again', () => setStage(false))));
     function setStage(on) {
-      box.useStage(on, () => { const z = stage.size; return z.id !== 'fit' ? { width: z.width, height: z.height } : null; });
+      box.useStage(on, () => { const o = window.ThreeStage?.outputSize?.(); if (o !== undefined) return o; const z = stage.size; return z.id !== 'fit' ? { width: z.width, height: z.height } : null; });
       stageBtn.classList.toggle('on', on);
       stageNote.hidden = !on;
       previewHost.classList.toggle('on-stage', on);
@@ -1423,6 +1423,7 @@ const ThreeLab = (() => {
         maps.length || pads.length ? 'Your mappings (click to remove)' : null,
         ...maps.map(([k, m]) => [`${m.label}`, `CC ${k.split(':cc')[1]} · ch ${k.split(':')[0]}`, () => { delete midiMap()[k]; saveExtras(); }]),
         ...pads.map(([k, a]) => [`Pad → ${PAD_ACTIONS.find((x) => x[0] === a)?.[1] || a}`, `note ${k.split(':n')[1]}`, () => { const p = midiPads(); delete p[k]; store.set('three.midiPads', p); }]),
+        typeof ThreeStage !== 'undefined' ? ['🎚 Live performance (VJ)…', 'Learn with soft takeover, pads, set list, crossfader, output, show mode', () => ThreeStage.menu(r.left, r.bottom + 4)] : null,
         midiSeen ? 'Last control moved' : null,
         midiSeen ? [midiSeen, 'Learn mode maps the next one you move', () => {}] : null,
       ]);
@@ -1777,10 +1778,10 @@ const ThreeLab = (() => {
           changed: (key, value, o) => autoKey(id, `s:${key}`, value, o),
           writing: () => writing(),
         },
-        touched: (key, label) => midiTouched(id, key, label),
+        touched: (key, label) => { midiTouched(id, key, label); window.ThreeStage?.touched?.(id, key, label); },
         learn: async (key, label) => { if (!(await midiInit())) return; midiLearn = { stage: 'control', layer: id, key, label }; toast(`Turn the knob or fader for "${label}"`, { timeout: 4000 }); },
         palette: () => current?.palette || [],
-        clock: () => ({ t: player.loaded ? player.time : performance.now() / 1000, bpm: player.loaded ? player.bpm : (liveBpm?.bpm || 120), playing: player.playing, section: player.loaded ? player.sectionAt().energy : null }),
+        clock: () => (!(player.loaded && player.playing) && window.ThreeStage?.clock?.()) || ({ t: player.loaded ? player.time : performance.now() / 1000, bpm: player.loaded ? player.bpm : (liveBpm?.bpm || 120), playing: player.playing, section: player.loaded ? player.sectionAt().energy : null }),
         askForSliders: () => askDirector(`Add clearly named sliders to the layer "${layerById(id)?.name}" of "${current?.name}" with tweak(): the 4–8 settings I'd most want to play with (motion, colors, lighting, glow, how much it reacts to the music…), with labels, groups and hints, read every frame so they change live. Keep everything else the same.`, { send: false }),
       });
       c.setVisible(!column.hidden);
@@ -2268,7 +2269,19 @@ const ThreeLab = (() => {
       nextSketch: () => stepSketch(1), prevSketch: () => stepSketch(-1), tools: () => toolsDrawer(document.querySelector('.lab-tools-btn')),
       stageTop: async () => { const on = await window.hub.stageOnTop?.(); toast(on == null ? 'Open the Stage window first' : on ? 'Stage window stays on top' : 'Stage window: normal', { timeout: 1500 }); },
     };
-    api.restartVisible = () => { if (!box.onStage && !previewHost.offsetParent) return false; restartSim(); return true; };
+    api.restartVisible = () => { if (window.ThreeStage?.guard?.('restart')) return true; if (!box.onStage && !previewHost.offsetParent) return false; restartSim(); return true; };
+    // (round 22, labstage) what the live / VJ stage (tools/three-stage*.js) drives: the preview, freeze, output window,
+    // Light mode, frame rate, the sliders of the scene on screen
+    api.stageHooks = {
+      get box() { return box; }, get host() { return previewHost; }, get pane() { return pane; }, get player() { return player; },
+      get params() { return stage?.params || ''; }, get frameRect() { return box.frame.getBoundingClientRect(); }, get size() { return stage?.size || null; },
+      get onStage() { return box.onStage; }, setStage: (on) => { if (on !== box.onStage) setStage(on); else if (on) setStage(true); },
+      get frozen() { return frozenNow; }, setFreeze: (on) => setFreeze(on),
+      get light() { return lightOn; }, setLight: (on) => (on !== lightOn ? setLight(on) : lightOn),
+      get fps() { return fpsPref(); }, setFps: (v) => { fpsSel.value = String(v); fpsSel.dispatchEvent(new Event('change')); },
+      ctl: () => selCtl(), layer: () => sel() || null, layerById: (id) => layerById(id), ctlOf: (id) => { const L = layerById(id); return L ? ctlFor(L) : null; },
+      sketchId: () => current?.id || null, sketchName: () => current?.name || '', blackout: (on) => setBlackout(on),
+    };
     // ---------- everything the chat commands drive (tools/three-cmds.js); each returns a short result ----------
     const ctl = () => { const c = selCtl(); if (!c) throw new Error('No sketch is open'); if (!c.visible) setSlidersVisible(true); return c; };
     // the scene's timeline: its song, else its own (made there and then when it has none yet: no "load a song first")
@@ -2481,6 +2494,7 @@ const ThreeLab = (() => {
       editor.syncScroll();
     }
     function onMessage(msg) {
+      window.ThreeStage?.preview?.(msg); // (round 22, labstage) show-mode safety, tempo, crossfade hand-over
       if (typeof ThreeDirector !== 'undefined') ThreeDirector.onBox?.(msg); // (round 21) a director call answers at the first new frame
       // the sequence's own messages (and a realtime render's recording) go to tools/three-seq.js
       if (typeof ThreeSeq !== 'undefined' && (ThreeSeq.onMessage(msg) || ThreeSeq.takeRecording(msg))) return;
@@ -2645,6 +2659,7 @@ const ThreeLab = (() => {
         ...(typeof ThreeSeq !== 'undefined' ? [ThreeSeq.previewItem()] : []),
         ...(typeof ThreeComp !== 'undefined' ? [ThreeComp.previewItem()] : []),
         ...(typeof ThreeModels !== 'undefined' ? [ThreeModels.previewItem()] : []), // 3D models (tools/three-models.js)
+        ...(typeof ThreeStage !== 'undefined' ? [ThreeStage.previewItem()] : []), // (round 22) live / VJ: MIDI, set list, crossfade, output, show mode
         { label: 'Frame size', hint: stage.size.id === 'fit' ? 'Fit' : stage.size.id, items: () => [
           ...stage.pillOrder.map((id, k) => ({ label: id === 'fit' ? 'Fit' : id, hint: ThreeMedia.SIZES.find((z) => z.id === id)?.title || '', key: `Shift+${k + 1}`, checked: stage.size.id === id, action: () => stage.setMode(id) })),
           '-', { label: 'Safe zones', checked: Boolean(stage.safe), action: () => stage.setSafe() },
@@ -4210,6 +4225,7 @@ ${frag}\`,
     get lab() { return api.lab; }, // Lab actions (palette commands, MIDI simulation for tests)
     get director() { return api.director; }, // the Lab's layer / slider / palette API (the FX picker and its chat commands use it)
     get scenes() { return api.scenes || null; }, // the sketches as data, for per-chat scenes (chat-scenes.js)
+    get stageHooks() { return api.stageHooks || null; }, // (round 22) tools/three-stage*.js
     // resolves when no director call is changing the sketch on screen (a chat switch waits for it)
     idle: () => (inflight ? new Promise((r) => idleWaiters.push(r)) : Promise.resolve()),
     _sandbox: (parent, onMessage, params) => sandboxFrame(parent, 'sketch', onMessage, params, { lazy: true, name: 'backstage' }), // tools/three-backstage.js
