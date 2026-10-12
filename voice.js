@@ -78,6 +78,7 @@ const Voice = (() => {
   async function open() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, ...(get('device', '') ? { deviceId: { exact: get('device', '') } } : {}) } });
     const ctx = new AudioContext();
+    if (ctx.state === 'suspended') await ctx.resume().catch(() => {});
     const src = ctx.createMediaStreamSource(stream);
     const analyser = ctx.createAnalyser(); analyser.fftSize = 1024;
     src.connect(analyser);

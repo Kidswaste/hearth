@@ -712,3 +712,10 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ MP4, HEVC 10-bit, ProRes 4444 + alpha, WebM VP9 + alpha, PNG sequence + alpha, perfect-loop GIF / MP4 (on the bars with a cross-fade, or found in the frames), stills (PNG, 16-bit); GLB, one-file web page, slider preset (+ load), contact sheet.
 - ✓ Right-click the preview › ⇪ Export, the Render panel › Export…, Ctrl/⌘+K, `/lab-export` (`/lx`); directors via `three_do run`; render queue rows with time left, pause / resume / cancel.
 - ○ Measured headless on SwiftShader (1080p 6.4 frames/s, 4K 2.2); not on a real GPU.
+
+## Voice (round 23, voice, 53 upgrades: docs/upgrades/voice.md)
+- ✓ Hold Ctrl+Space (or ＋ › 🎙 Talk, `/talk`) and speak: a live waveform pill, then your words in the chat box (or sent when you let go); a short tap listens hands-free until you stop talking (voice activity detection); in the Lab the words go to the docked director.
+- ✓ Local speech-to-text: whisper.cpp (`whisper-cli`) or faster-whisper in a child process, partial text as it decodes; `/voice install` gives the Mac (Homebrew) / Windows steps and asks before downloading the model into the data folder; without it, the system's dictation (Fn Fn / Win+H) is pointed at.
+- ✓ Voice commands, no tokens: "freeze", "save", "next scene", "shuffle", "play", "stop"…, "director, make it pinker" → the Three Director, your own phrases (`/voice word`), `/voice words`.
+- ✓ Replies to what you said are read aloud without code; any key stops; `/voice speak system` uses macOS `say` / Windows voices.
+- ○ Tested with a fake whisper-cli and an oscillator as the microphone (`sh dev/run-checks.sh voice`); not with a real whisper or mic.

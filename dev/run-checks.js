@@ -26,7 +26,7 @@ const names = argv.filter((a, i) => !a.startsWith('--') && !['--out'].includes(a
 
 const LIBS = new Set(['journey-lib', 'smooth-lib', 'journey-olddata-make', 'sequence-lib']); // helpers / made to run in the old app
 const all = fs.readdirSync(CHECKS).filter((f) => f.endsWith('.js')).map((f) => f.slice(0, -3)).filter((n) => !LIBS.has(n)).sort();
-const UNIT = ['board-unit-test', 'store-thread-test', 'board-mcp-test', 'capture-mcp-test', 'director-mcp-test', 'cut-test', 'capture-test', 'music-test', 'code-flow-test', 'importer-test', 'director-cost', 'astra-engine-test', 'robust-engine-test', 'test-aemain-mac', 'sequence-test', 'flows-test', 'sync-test', 'cmdpage-test', 'progress-test', 'makes-test', 'renders-test', 'updater-test', 'access-test', 'adobe-test', 'adobe-mcp-test', 'deploy-test', 'apps-unit-test', 'eyes-test', 'boot-test', 'liveness-test', 'devreport-test', 'labexport-test'];
+const UNIT = ['board-unit-test', 'store-thread-test', 'board-mcp-test', 'capture-mcp-test', 'director-mcp-test', 'cut-test', 'capture-test', 'music-test', 'code-flow-test', 'importer-test', 'director-cost', 'astra-engine-test', 'robust-engine-test', 'test-aemain-mac', 'sequence-test', 'flows-test', 'sync-test', 'cmdpage-test', 'progress-test', 'makes-test', 'renders-test', 'updater-test', 'access-test', 'adobe-test', 'adobe-mcp-test', 'deploy-test', 'apps-unit-test', 'eyes-test', 'boot-test', 'liveness-test', 'devreport-test', 'labexport-test', 'voice-test'];
 const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
   qa: ['qa-commands', 'qa-keys', 'qa-mac', 'polish', 'lazy'],
@@ -58,6 +58,7 @@ const GROUPS = {
   eyes: [...by(/^eyes-/), 'unit:eyes-test'],
   liveness: [...by(/^liveness-/), 'unit:liveness-test'], // (round 21) long tasks: subagents, steps, stalls, dead engines
   devreport: ['devreport', 'unit:devreport-test'],
+  voice: ['voice', 'unit:voice-test'], // (round 23) talk to chats: push to talk, local whisper (dev/fake-whisper.js), voice commands, read aloud
   labexport: ['labexport', 'unit:labexport-test'], // (round 22) best-quality Lab exports in a hidden page // (round 21) Report to the developer: masking, gh (fake), the browser link, fixed in an update
   unit: UNIT.map((u) => `unit:${u}`),
 };
@@ -127,7 +128,9 @@ for (const n of wanted) {
     const shots = path.join(OUT, n);
     // step pictures only when asked (--shots): a 1080×1080 screenshot mid-journey can starve a recording on a busy machine
     const a = [path.join(DEV, 'smoke.js'), ...flagsOf(srcOf(n)), ...(argv.includes('--shots') ? ['--eval', `window.JOURNEY_SHOTS=${JSON.stringify(shots)}`] : []), '--script', path.join(CHECKS, `${n}.js`), '--shot', path.join(OUT, `${n}.png`)];
-    r = spawnSync('node', a, { cwd: ROOT, encoding: 'utf8', timeout: 1800000, maxBuffer: 64 << 20 });
+    // (round 23) voice checks hear through dev/fake-whisper.js (whisper-cli's stand-in: canned text by the tone it hears)
+    const env = /^voice/.test(n) ? { ...process.env, HEARTH_WHISPER: path.join(DEV, 'fake-whisper.js'), HEARTH_WHISPER_MODEL: path.join(DEV, 'fake-whisper.js') } : process.env;
+    r = spawnSync('node', a, { cwd: ROOT, encoding: 'utf8', timeout: 1800000, maxBuffer: 64 << 20, env });
   }
   const text = `${r.stdout || ''}${r.stderr || ''}`;
   fs.writeFileSync(log, text);
