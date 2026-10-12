@@ -26,7 +26,7 @@ const ThreeAudio = (() => {
   ];
   const OLD = [['kick', 'Kick (markers / triggers)'], ['snare', 'Snare (markers / triggers)'], ['hats', 'Hats (triggers)'], ['bassHit', 'Bass hit (triggers)'], ['hit', 'Hit (markers)'], ['bass', 'Bass (classic)'], ['mid', 'Mids (classic)'], ['treble', 'Highs (classic)'], ['level', 'Loudness (classic)']];
   const LABEL = Object.fromEntries([...OLD, ...GROUPS.flatMap((g) => g[1])]);
-  const label = (name) => LABEL[name] || name;
+  const label = (name) => LABEL[name] || GROUPS.find((g) => g[1].some((x) => x[0] === name))?.[1].find((x) => x[0] === name)[1] || name; // (round 25: groups added later, e.g. the camera's)
   // every name a slider can follow: the classic bands and the features (chat completion, /react)
   const mappable = () => [...new Set([...OLD.map((x) => x[0]), ...GROUPS.flatMap((g) => g[1].map((x) => x[0]))])];
   // typed words → a feature name ("kick" → kickOn, "hats" → hatOn, "drops" → drop…)
