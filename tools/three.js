@@ -3030,6 +3030,8 @@ const ThreeLab = (() => {
       const sortSel = el('select', { class: 'sb-sort', title: 'Sort' }, [['recent', 'Recent'], ['name', 'Name'], ['layers', 'Most layers']].map(([v, l]) => el('option', { value: v, text: l, selected: v === store.get('three.sbSort', 'recent') })));
       sortSel.addEventListener('change', () => { store.set('three.sbSort', sortSel.value); fill(); });
       q.after(sortSel);
+      const pj = window.Lazy && !window.Lazy.loaded('projects') ? null : window.Projects;
+      const pf = pj?.sketchBrowse?.({ after: sortSel, refill: () => fill() }) || null; // (round 23) one project's scenes, its mark on cards (projects.js)
       const pins = () => new Set(store.get('three.sketchPins', []));
       const togglePin = (id) => { const p = pins(); if (p.has(id)) p.delete(id); else p.add(id); store.set('three.sketchPins', [...p]); fill(); };
       const cardMenu = (e, sk) => {
@@ -3041,6 +3043,7 @@ const ThreeLab = (() => {
           ...(typeof ThreeSeq !== 'undefined' ? [{ label: '▤ Add to the sequence', action: () => { dlg.close(); ThreeSeq.add({ sketch: sk.id }).then(() => ThreeSeq.enter()).catch((err) => toast(err.message, { type: 'error' })); } },
             { label: '▤ Its own sequence', hint: (() => { const x = ThreeSeq.summaryFor(sk.id); return x ? `${x.clips} clip${x.clips === 1 ? '' : 's'} · ${x.seconds.toFixed(1)} s` : 'made when you open it'; })(), action: () => { dlg.close(); if (sk.id !== current?.id) openSketch(sk.id); setTimeout(() => ThreeSeq.enter().catch((err) => toast(err.message, { type: 'error' })), 300); } }] : []),
           { label: p.has(sk.id) ? '☆ Unpin' : '★ Pin to the top', action: () => togglePin(sk.id) },
+          ...(pj?.sketchMenu?.(sk.id, sk.name) || []),
           { label: 'Rename…', action: async () => { const n = await Modal.prompt('Rename sketch', { value: sk.name }); if (n?.trim()) { sk.name = n.trim(); save(); renderPicker(); fill(); } } },
           { label: 'Duplicate', action: () => { if (sk.id === current?.id) persist(); const copy = { ...JSON.parse(JSON.stringify(sk)), id: `s${Date.now()}`, name: `${sk.name} copy`, updatedAt: Date.now() }; sketches.push(copy); if (extras[sk.id]?.media) (extras[copy.id] ||= {}).media = { ...extras[sk.id].media }; if (extras[sk.id]?.timeline) { (extras[copy.id] ||= {}).timeline = { ...extras[sk.id].timeline }; player.copyMap(clockPath(sk.id), clockPath(copy.id)).catch(() => {}); } saveExtras(); save(); renderPicker(); fill(); if (typeof ThreeSeq !== 'undefined') ThreeSeq.sceneCopied(sk.id, copy.id).catch(() => {}); toast(`Duplicated "${sk.name}"`, { timeout: 1500 }); } },
           { label: 'Delete…', danger: true, action: async () => {
@@ -3061,14 +3064,14 @@ const ThreeLab = (() => {
         const p = pins();
         const by = sortSel.value;
         const cmp = by === 'name' ? (a, b) => a.name.localeCompare(b.name) : by === 'layers' ? (a, b) => (b.layers?.length || 1) - (a.layers?.length || 1) : (a, b) => b.updatedAt - a.updatedAt;
-        const list = [...sketches].sort((a, b) => (p.has(b.id) - p.has(a.id)) || cmp(a, b)).filter((sk) => !needle || sk.name.toLowerCase().includes(needle));
+        const list = [...sketches].sort((a, b) => (p.has(b.id) - p.has(a.id)) || cmp(a, b)).filter((sk) => (!needle || sk.name.toLowerCase().includes(needle)) && (!pf || pf.keep(sk.id)));
         grid.replaceChildren(...list.map((sk) => {
           const t = thumbs[sk.id]?.url;
           const layers = sk.layers?.length || 1;
           const song = extras[sk.id]?.media?.path?.split(/[\\/]/).pop();
           const card = el('button', { class: `sb-card${sk.id === current?.id ? ' on' : ''}${p.has(sk.id) ? ' pinned' : ''}`, title: `Open "${sk.name}" (right-click for more)`, on: { click: () => { dlg.close(); if (sk.id !== current?.id) openSketch(sk.id); } } },
             el('div', { class: 'sb-thumb' }, t ? el('img', { src: t, alt: '' }) : el('span', { text: '◭' }), p.has(sk.id) ? el('span', { class: 'sb-pin', text: '★' }) : null, song ? el('span', { class: 'sb-song', text: '♪', title: song }) : null),
-            el('b', { text: sk.name }, typeof ChatScenes !== 'undefined' && ChatScenes.ownerOf(sk.id) ? el('span', { class: 'sb-chat', text: ` ${ChatScenes.glyphFor(sk.id)}`, title: 'The scene of a director chat', style: { color: ChatScenes.identity(ChatScenes.ownerOf(sk.id)).color } }) : null),
+            el('b', { text: sk.name }, pf?.tag(sk.id), typeof ChatScenes !== 'undefined' && ChatScenes.ownerOf(sk.id) ? el('span', { class: 'sb-chat', text: ` ${ChatScenes.glyphFor(sk.id)}`, title: 'The scene of a director chat', style: { color: ChatScenes.identity(ChatScenes.ownerOf(sk.id)).color } }) : null),
             el('span', { class: 'sb-meta', text: `${layers} layer${layers === 1 ? '' : 's'} · ${new Date(sk.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}${song ? ` · ${song}` : ''}` }));
           card.addEventListener('contextmenu', (e) => cardMenu(e, sk));
           return card;
@@ -3089,8 +3092,13 @@ const ThreeLab = (() => {
       const mark = (id) => (typeof ChatScenes !== 'undefined' ? ChatScenes.glyphFor(id) : ''); // the chat that owns it (chat-scenes.js)
       const texts = list.map((s) => `${pins.has(s.id) ? '★ ' : ''}${mark(s.id) ? `${mark(s.id)} ` : ''}${s.name}`);
       // (round 21) the same list as last time (a scene switch): only the selection moves, no new options
-      const sig = list.map((s, i) => `${s.id}\u0001${texts[i]}`).join('\u0002');
-      if (sig !== pickerSig) { pickerSig = sig; picker.replaceChildren(...list.map((s, i) => el('option', { value: s.id, text: texts[i], selected: s.id === current?.id }))); } else if (current && picker.value !== current.id) picker.value = current.id;
+      // (round 23) scenes of a project under its name (projects.js), the others after
+      const pj = window.Lazy && !window.Lazy.loaded('projects') ? null : window.Projects;
+      const groups = pj?.sketchGroups?.(list.map((s) => s.id)) || null;
+      const sig = list.map((s, i) => `${s.id}\u0001${texts[i]}`).join('\u0002') + (groups ? JSON.stringify(groups) : '');
+      const opt = (i) => el('option', { value: list[i].id, text: texts[i], selected: list[i].id === current?.id });
+      const at = groups && new Map(list.map((s, i) => [s.id, i]));
+      if (sig !== pickerSig) { pickerSig = sig; picker.replaceChildren(...(groups ? groups.map((g) => el('optgroup', { label: g.label }, ...g.ids.map((id) => opt(at.get(id))))) : list.map((s, i) => opt(i)))); } else if (current && picker.value !== current.id) picker.value = current.id;
       const title = `Your sketches (${sketches.length}) · O opens them as pictures · ★ pinned ones first`;
       if (picker.title !== title) picker.title = title;
     }

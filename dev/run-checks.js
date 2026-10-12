@@ -26,7 +26,7 @@ const names = argv.filter((a, i) => !a.startsWith('--') && !['--out'].includes(a
 
 const LIBS = new Set(['journey-lib', 'smooth-lib', 'journey-olddata-make', 'sequence-lib']); // helpers / made to run in the old app
 const all = fs.readdirSync(CHECKS).filter((f) => f.endsWith('.js')).map((f) => f.slice(0, -3)).filter((n) => !LIBS.has(n)).sort();
-const UNIT = ['board-unit-test', 'store-thread-test', 'board-mcp-test', 'capture-mcp-test', 'director-mcp-test', 'cut-test', 'capture-test', 'music-test', 'code-flow-test', 'importer-test', 'director-cost', 'astra-engine-test', 'robust-engine-test', 'test-aemain-mac', 'sequence-test', 'flows-test', 'sync-test', 'cmdpage-test', 'progress-test', 'makes-test', 'renders-test', 'updater-test', 'access-test', 'adobe-test', 'adobe-mcp-test', 'deploy-test', 'apps-unit-test', 'eyes-test', 'boot-test', 'liveness-test', 'devreport-test', 'labexport-test'];
+const UNIT = ['board-unit-test', 'store-thread-test', 'board-mcp-test', 'capture-mcp-test', 'director-mcp-test', 'cut-test', 'capture-test', 'music-test', 'code-flow-test', 'importer-test', 'director-cost', 'astra-engine-test', 'robust-engine-test', 'test-aemain-mac', 'sequence-test', 'flows-test', 'sync-test', 'cmdpage-test', 'progress-test', 'makes-test', 'projects-test', 'renders-test', 'updater-test', 'access-test', 'adobe-test', 'adobe-mcp-test', 'deploy-test', 'apps-unit-test', 'eyes-test', 'boot-test', 'liveness-test', 'devreport-test', 'labexport-test'];
 const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
   qa: ['qa-commands', 'qa-keys', 'qa-mac', 'polish', 'lazy'],
@@ -48,6 +48,7 @@ const GROUPS = {
   reach: by(/^reach/), // (round 19) paths from the other computer, page cards, chat_open
   comp: by(/^comp/),
   makes: [...by(/^makes/), 'unit:makes-test'],
+  projects: [...by(/^projects/), 'unit:projects-test'],
   progress: [...by(/^progress/), 'unit:progress-test'],
   speed: [...by(/^speed/), 'habits'],
   renders: [...by(/^renders/), 'unit:renders-test'],

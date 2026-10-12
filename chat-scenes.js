@@ -145,6 +145,7 @@ const ChatScenes = (() => {
     }
     save();
     paintAll();
+    dispatchEvent(new CustomEvent('hearth:scene-link', { detail: { chatId, sketchId } })); // (round 23) a project's chat brings its scene along (projects.js)
   }
   function unlink(chatId) { delete data.links[chatId]; save(); paintAll(); }
   // Chat titles change (first message, auto-title, rename): sketches that still carry the name we gave follow.
