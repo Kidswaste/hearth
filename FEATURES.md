@@ -747,3 +747,9 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ `/remote on` (or 🎚 Live (VJ) › 📱 Phone remote…): a LAN-only server shows a QR code + address + 6-digit pairing code; paired phones are remembered (own key, HMAC challenge each time, revocable: `/remote devices · kick · forget`), off by default and off again after 10 min alone
 - ✓ The phone page (no framework, one WebSocket): grouped multi-touch faders with music meters and soft takeover, an XY pad, shuffle / back / freeze / tap / save / black-out / next look / play, the set list with GO / cut / next / cue, scenes, BPM tap, a ≈ 4 fps preview; two phones at once, the computer's 📱 card shows who's connected and kicks them
 - ○ Plain HTTP on the LAN (no certificate): pair on a trusted Wi-Fi. Tested with the page in a hidden window on 127.0.0.1 (`sh dev/run-checks.sh remote`), not on a real phone
+## Context (round 24, context, 50 upgrades: docs/upgrades/context.md)
+- ✓ Type @ in a chat box to attach exactly what a message needs, cost shown first: @chat (a summary, not the history), @scene (layers + sliders, no code: ≈ 108 vs 2,001 tokens), @board, @file, @render, @project (`/ref`).
+- ✓ Memory only when it matters: a chat's pinned facts and a project's key facts go along only with messages about them (🧠, running count); `/memory here|pin|project|forget|edit`, `/memory relevant on` (20 facts: 222 → ≈ 21 tokens a message), `/memory approve on`.
+- ✓ A bar under each reply splits what the message sent (system prompt, tools, history, attachments, memory); expensive chats get one cheapest-fix tip; `/context`, `/context fix`.
+- ✓ `/fresh`: a new chat from a free, editable summary (goal, decisions, open tasks, key files): a 60-message chat's next message 9.8k → 4.4k tokens, measured after the first reply; `/fresh auto on` opt-in.
+- ○ Tested with the fake engines (`sh dev/run-checks.sh context`, `node dev/context-cost.js`); not on real Claude / Codex sessions.

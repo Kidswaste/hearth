@@ -357,7 +357,8 @@ function buildPrompt(agent) {
   if (!folder && !acc && !usesApps && !sets.length) parts.push(web ? 'Apart from web search you have no tools: never try to run commands or read files.' : 'You have no tools: never try to run commands, read files or browse the web.');
   const memory = getMemory();
   const notes = [memory.shared, memory.agents?.[agent.id]].map((m) => (m || '').trim()).filter(Boolean);
-  if (notes.length) {
+  // (round 24, context) /memory relevant on: the notes leave the system prompt; chat-memory.js sends only the facts a message is about
+  if (notes.length && !agent.memoryWhenRelevant) {
     parts.push(`What you remember about the user (saved notes, keep them in mind):\n${notes.join('\n')}`);
   }
   if (agent.autoMemory !== false) {

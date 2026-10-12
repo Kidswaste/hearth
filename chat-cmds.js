@@ -612,8 +612,9 @@ const ChatCmds = (() => {
     run: async (_a, ctx) => { const chat = need(ctx); if (busy(chat)) throw new Error('Still answering'); await Native.compact(ctx.agentId); },
   });
   R({
-    name: 'fresh', aliases: ['continue-fresh'], area: 'Messages', desc: 'Continue in a fresh chat that starts from a short summary of this one',
-    run: async (_a, ctx) => { const chat = need(ctx); if (busy(chat)) throw new Error('Still answering'); await Native.summarizeAndContinue(ctx.agentId); },
+    name: 'fresh', aliases: ['continue-fresh'], area: 'Messages', args: '[ask | edit | auto on|off [60k]]', desc: 'Fresh start: a new chat that carries only a summary (goal, decisions, open tasks, key files); free, shown and editable first',
+    complete: pick([{ value: 'ask', hint: 'the agent writes the summary' }, { value: 'edit', hint: 'the summary this chat carries' }, { value: 'auto on', hint: 'by itself past 60k' }, { value: 'auto off' }]),
+    run: async (_a, ctx) => { const chat = need(ctx); if (busy(chat)) throw new Error('Still answering'); if (window.ChatFresh) return ChatFresh.run(_a, ctx); await Native.summarizeAndContinue(ctx.agentId); return undefined; }, // (round 24) chat-fresh.js
   });
   R({
     name: 'stats', area: 'Messages', desc: 'Messages, words, tokens and time in this chat',
