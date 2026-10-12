@@ -2660,6 +2660,7 @@ const ThreeLab = (() => {
         ...(typeof ThreeComp !== 'undefined' ? [ThreeComp.previewItem()] : []),
         ...(typeof ThreeModels !== 'undefined' ? [ThreeModels.previewItem()] : []), // 3D models (tools/three-models.js)
         ...(typeof ThreeStage !== 'undefined' ? [ThreeStage.previewItem()] : []), // (round 22) live / VJ: MIDI, set list, crossfade, output, show mode
+        ...(typeof LabExport !== 'undefined' ? [LabExport.previewItem()] : []), // ⇪ Export: renders and the scene itself (tools/three-export.js)
         { label: 'Frame size', hint: stage.size.id === 'fit' ? 'Fit' : stage.size.id, items: () => [
           ...stage.pillOrder.map((id, k) => ({ label: id === 'fit' ? 'Fit' : id, hint: ThreeMedia.SIZES.find((z) => z.id === id)?.title || '', key: `Shift+${k + 1}`, checked: stage.size.id === id, action: () => stage.setMode(id) })),
           '-', { label: 'Safe zones', checked: Boolean(stage.safe), action: () => stage.setSafe() },

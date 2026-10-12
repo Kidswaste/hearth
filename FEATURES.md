@@ -706,3 +706,9 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ Show mode: editing chrome hidden, a one-row show bar, frame rate locked, reloads blocked, a scene error holds the last good frame and the set moves on at the bar, Light mode when frames keep dropping; beat LFOs on any slider ride the song, MIDI clock or taps.
 - ✓ Right-click the preview → 🎚 Live (VJ), `/stage` (`/vj`), Ctrl/⌘+K "Lab: Live …".
 - ○ The cued scene hears the demo beat until it takes over; tested with a fake MIDI controller (`dev/checks/labstage.js`).
+## Lab export (round 22, labexport, 63 upgrades: docs/upgrades/labexport.md)
+- ✓ Every Lab render runs in a hidden export page (own process + GPU context): the preview keeps its size and plays, the sequence stays editable, 0 long tasks on the app's thread; the sequence's own ⇪ Render uses it too.
+- ✓ Frame-exact on the scene's clock, seeded randomness (same render = same pixels); any size up to 8K (16K stills), any fps, 2–4× supersampling, 4–64 sub-frame motion blur, GPU memory cap.
+- ✓ MP4, HEVC 10-bit, ProRes 4444 + alpha, WebM VP9 + alpha, PNG sequence + alpha, perfect-loop GIF / MP4 (on the bars with a cross-fade, or found in the frames), stills (PNG, 16-bit); GLB, one-file web page, slider preset (+ load), contact sheet.
+- ✓ Right-click the preview › ⇪ Export, the Render panel › Export…, Ctrl/⌘+K, `/lab-export` (`/lx`); directors via `three_do run`; render queue rows with time left, pause / resume / cancel.
+- ○ Measured headless on SwiftShader (1080p 6.4 frames/s, 4K 2.2); not on a real GPU.
