@@ -177,7 +177,7 @@ topic `grade` is read on demand, so it adds no prompt tokens.
     - `/grade clip 1 noir` turns the red clip grey in the preview, with noir's 2.39 bars black. The next (green) clip stays green.
     - A still of that frame from the hidden export page shows the same grey (preview 122 vs render 119 luma), so preview = render.
     - `/grade clip 1 none` brings red back.
-- `labgpu`, `labexport`, `smooth-lab`, `qa-commands`: see the final report of this stream for the outcome.
+- `labgpu`, `labexport` (+ unit), `smooth-lab`, `qa-commands`: passed.
 - `node dev/lazy-manifest.js` was regenerated, with /grade and the 4 ⌘/Ctrl+K actions in the lab group.
 
 ## Notes and limits

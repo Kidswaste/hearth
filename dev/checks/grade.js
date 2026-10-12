@@ -185,6 +185,5 @@ await say('/grade clip 1 none');
 await wait(1200);
 const redOff = await SQL.at(7);
 step('/grade clip 1 none: red again', SQL.colorOf(redOff.center) === 'red', redOff.center);
-out.ok = out.steps.every((s) => s.ok);
-out.failed = out.steps.filter((s) => !s.ok).map((s) => s.name);
-return JSON.stringify(out);
+const failed = out.steps.filter((s) => !s.ok).map((s) => s.name);
+return JSON.stringify({ ok: !failed.length, failed, ...out }); // (ok first: dev/run-checks.js reads a top-level "ok": false)
