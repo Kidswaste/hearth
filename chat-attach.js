@@ -101,6 +101,7 @@ const ChatAttach = (() => {
       ] } : null,
       { label: 'Recent renders', icon: 'film', items: renders.length ? renders.map((x) => ({ label: `🎬 ${base(x.path).slice(0, 42)}`, hint: x.mtime ? ago(x.mtime) : '', action: tryRun(() => attachPath(agentId, x.path)) })) : [{ label: 'No renders yet', disabled: true }] },
       ...(typeof ChatContext !== 'undefined' ? ChatContext.attachItems(agentId) : []),
+      ...(typeof Voice !== 'undefined' ? Voice.attachItems(agentId) : []), // (round 23) 🎙 Talk: the mic on / off
     ].filter(Boolean);
     showMenu(r.left, (r.top ?? r.bottom) - 4 - 8, items);
     // (the menu opens above the chat box when there is room: showMenu clamps it to the window)

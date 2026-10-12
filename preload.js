@@ -121,6 +121,8 @@ contextBridge.exposeInMainWorld('hub', {
     onChanged: on('fs:changed'),
   },
   chatMedia: { find: call('chatmedia:find') },
+  // (round 23) voice (voicemain.js): local speech-to-text in a child process, the model download, the system's voices
+  voice: { status: call('voice:status'), transcribe: call('voice:transcribe'), cancel: call('voice:cancel'), download: call('voice:download'), say: call('voice:say'), hush: call('voice:hush'), voices: call('voice:voices'), mic: call('voice:mic'), onPartial: on('voice:partial'), onProgress: on('voice:progress') },
   // (round 19, reach) paths from the other computer → this one's; open / reveal / preview what a chat made (reachmain.js)
   reach: { resolve: call('reach:resolve'), open: call('reach:open'), info: call('reach:info') },
   update: { status: call('update:status'), apply: call('update:apply'), restart: call('update:restart'), reload: call('update:reload') },

@@ -15,7 +15,9 @@ const Native = (() => {
   const unfolded = new Set(); // "chatId:index" of long replies the user unfolded (they stay open)
   // Extension points for chat-*.js: render(agentId, view, chat), message(node, m, index, agent),
   // event(event, chat), mark(chat, index, key, on), send(agentId, chat, text).
-  const hooks = { render: [], message: [], event: [], mark: [], send: [], newChat: [], finish: [], compose: [] }; // newChat(agentId): "New chat" (chat-scenes.js)
+  const hooks = { render: [], message: [], event: [], mark: [], send: [], newChat: [], finish: [], compose: [], speak: [] }; // newChat(agentId): "New chat" (chat-scenes.js)
+  // (round 23, voice.js) speak: { text(raw) → what is read, say(text, done) → true when it reads it itself (a system
+  // voice), stop() }: the last one added reads replies aloud
   // (round 9, chatcore) finish(event, chat, extras): add fields to the reply about to be saved (chat-things.js: the
   // captures / renders / board items / scenes a reply made). compose(agentId, chat, full, message): may return a new
   // text for the engine (chat-context.js adds one short context line, only when your words point at the chat's things).
@@ -1806,13 +1808,14 @@ const Native = (() => {
   let speaking = null;
   function speak(text, btn = null, msgNode = null) {
     if (speaking) {
-      speechSynthesis.cancel();
+      speaking.via?.stop?.(); speechSynthesis.cancel();
       const was = speaking; speaking = null;
       if (was.btn) was.btn.textContent = '🔊';
       was.node?.classList.remove('speaking');
       if (!btn || was.btn === btn) return false;
     }
-    const plain = String(text || '').replace(/```[\s\S]*?```/g, ' (code) ').replace(/[#*_`>|]/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+    const via = hooks.speak.at(-1);
+    const plain = via?.text ? via.text(text) : String(text || '').replace(/```[\s\S]*?```/g, ' (code) ').replace(/[#*_`>|]/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
     const u = new SpeechSynthesisUtterance(plain);
     u.rate = Number(store.get('chat.readRate', 1)) || 1;
     const voice = store.get('chat.readVoice', '');
@@ -1823,6 +1826,7 @@ const Native = (() => {
     u.onend = () => { node?.classList.remove('speaking'); if (speaking === me) { speaking = null; if (btn) btn.textContent = '🔊'; } };
     speaking = me;
     if (btn) btn.textContent = '⏹';
+    if (via?.say?.(plain, u.onend)) { me.via = via; return true; } // (round 23) read by voice.js (a system voice)
     speechSynthesis.speak(u);
     return true;
   }
@@ -1833,7 +1837,7 @@ const Native = (() => {
     stopSpeaking();
     return speak(m.text, null, views.get(agentId)?.list.querySelector(`.msg[data-index="${index}"]`));
   }
-  function stopSpeaking() { if (!speaking) return false; speechSynthesis.cancel(); if (speaking.btn) speaking.btn.textContent = '🔊'; speaking.node?.classList.remove('speaking'); speaking = null; return true; }
+  function stopSpeaking() { if (!speaking) return false; speaking.via?.stop?.(); speechSynthesis.cancel(); if (speaking.btn) speaking.btn.textContent = '🔊'; speaking.node?.classList.remove('speaking'); speaking = null; return true; }
 
   async function togglePin(chatId) {
     const chat = await loadChat(chatId);
@@ -2023,7 +2027,7 @@ const Native = (() => {
     // additive API for chat-*.js / chat commands
     hooks, current, view: (agentId) => views.get(agentId) || null, load: loadChat, save: remember, adopt,
     compact: compactChat, summarizeAndContinue, branch: branchFrom, edit: editMessage, retry: regenerate, quote,
-    secondOpinion, review: (agentId) => send(agentId, REVIEW_PROMPT), chatMarkdown, stats: chatStats, speak, speakMessage, stopSpeaking, plainText, modelMenu, toggleRaw,
+    secondOpinion, review: (agentId) => send(agentId, REVIEW_PROMPT), chatMarkdown, stats: chatStats, speak, speakMessage, stopSpeaking, isSpeaking: () => Boolean(speaking), plainText, modelMenu, toggleRaw,
     setModel: setChatModel, renameCurrent, stop: stopReply, pendingFor, renderQueue, insertDraft, setStyle, renderStyle,
     toggleThinking, jumpTo, react, toggleMark, REACTIONS, messageMenu, chatMenu, lastReplyText, dayLabel,
     MODEL_CHOICES, astraAgent, screenshotFor, addFiles, addPath, pickFiles: async (agentId) => {

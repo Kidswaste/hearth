@@ -1,0 +1,14 @@
+/* Voice (round 23): the listening pill above the chat box (live waveform, then the recognised words). */
+.voice-pill { position: fixed; z-index: 9000; display: flex; align-items: center; gap: 8px; max-width: min(520px, 70vw); padding: 5px 6px 5px 10px; border-radius: 999px; background: color-mix(in srgb, var(--bg, #111) 88%, var(--accent, #ff7a3d)); border: 1px solid color-mix(in srgb, var(--accent, #ff7a3d) 55%, transparent); color: var(--text, #eee); font-size: 12px; box-shadow: 0 6px 20px rgba(0, 0, 0, .35); cursor: pointer; user-select: none; }
+.voice-pill.voice-center { left: 50%; bottom: 96px; transform: translateX(-50%); }
+.voice-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent, #ff7a3d); flex: none; opacity: .55; }
+.voice-pill.heard .voice-dot { opacity: 1; animation: voice-pulse 1s ease-in-out infinite; }
+.voice-pill.busy .voice-dot { animation: voice-pulse .6s ease-in-out infinite; }
+.voice-wave { width: 96px; height: 20px; flex: none; }
+.voice-pill.busy .voice-wave { opacity: .35; }
+.voice-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.voice-pill.partial .voice-label { font-style: italic; }
+.voice-x { flex: none; border: 0; background: none; color: var(--muted, #999); font-size: 15px; line-height: 1; padding: 0 6px; cursor: pointer; }
+.voice-x:hover { color: var(--text, #eee); }
+@keyframes voice-pulse { 50% { transform: scale(1.5); opacity: .6; } }
+@media (prefers-reduced-motion: reduce) { .voice-pill .voice-dot { animation: none !important; } }
