@@ -125,7 +125,7 @@ async function cdpConnect() {
   try {
     const ws = new WebSocket(await cdpConnect());
     await new Promise((r, j) => { ws.onopen = r; ws.onerror = j; });
-    let id = 0; const pending = new Map();
+    let id = 0; const pending = new Map(); const attached = [];
     ws.onmessage = (m) => {
       const msg = JSON.parse(m.data);
       if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); return; }
@@ -135,6 +135,7 @@ async function cdpConnect() {
       if (process.env.SMOKE_DEBUG && msg.method === 'Target.attachedToTarget') console.log('attached', msg.params.targetInfo.type, msg.params.targetInfo.url.slice(0, 80));
       if (msg.method === 'Target.attachedToTarget') {
         const sid = msg.params.sessionId;
+        attached.push({ sid, id: msg.params.targetInfo.targetId }); // (a check's { cdp, target: 'three-sandbox' } goes to it)
         send('Fetch.enable', { patterns: CDN_PATTERNS }, sid);
         send('Runtime.enable', {}, sid);
         send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }, sid);
@@ -197,6 +198,12 @@ async function cdpConnect() {
         const img = await send('Page.captureScreenshot', { format: 'png' });
         if (img.result?.data) { fs.mkdirSync(path.dirname(req.shot), { recursive: true }); fs.writeFileSync(req.shot, Buffer.from(img.result.data, 'base64')); }
         result = { saved: req.shot };
+      } else if (req.target) {
+        // (round 21) a CDP call into an iframe target (the Lab preview runs in its own): the newest one whose URL matches
+        const infos = (await send('Target.getTargets', {})).result?.targetInfos || [];
+        const ids = new Set(infos.filter((x) => new RegExp(req.target).test(x.url)).map((x) => x.targetId));
+        const t = attached.filter((a) => ids.has(a.id)).pop();
+        result = t ? (await send(req.cdp, req.params || {}, t.sid)).result || {} : { error: `no target ${req.target}` };
       } else result = (await send(req.cdp, req.params || {})).result || {};
       send('Runtime.evaluate', { expression: `window.__smokeReply && window.__smokeReply(${req.id}, ${JSON.stringify(JSON.stringify(result))})` });
     };
