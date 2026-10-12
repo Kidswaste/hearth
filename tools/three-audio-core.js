@@ -71,7 +71,8 @@ function hearthAudioCore() {
   // over the last 2048 samples (Blackman, like the browser's AnalyserNode) and calls onFrame(feat, spec, wave) with
   // the features; with bytes: true also the analyser-style byte spectrum (−100…−30 dB, smoothing 0.6: what
   // audio.spectrum always gave) and the waveform as bytes (128 = silence).
-  function stream({ rate, hop = 512, bytes = true, track = true, onFrame }) {
+  // features(): false skips the features (the worklet while nothing reads them): onFrame(null, spec, wave)
+  function stream({ rate, hop = 512, bytes = true, track = true, features = null, onFrame }) {
     const N = 2048; const H = N / 2;
     const ring = new Float32Array(N); let w = 0; let filled = 0; let since = 0;
     const win = new Float32Array(N); for (let i = 0; i < N; i += 1) win[i] = 0.42 - 0.5 * Math.cos((2 * Math.PI * i) / N) + 0.08 * Math.cos((4 * Math.PI * i) / N);
@@ -91,7 +92,7 @@ function hearthAudioCore() {
         if (bytes) { smooth[k] = 0.6 * smooth[k] + 0.4 * mag; const d = smooth[k] > 1e-10 ? 20 * Math.log10(smooth[k]) : -200; spec[k] = d <= -100 ? 0 : d >= -30 ? 255 : Math.round(((d + 100) / 70) * 255); }
       }
       if (bytes) for (let i = 0; i < N; i += 1) { const v = Math.round(128 + ring[(w + i) % N] * 128); wave[i] = v < 0 ? 0 : v > 255 ? 255 : v; }
-      const feat = ex.frame(db, dt, n ? ms / n : 0, n ? kms / n : 0);
+      const feat = !features || features() ? ex.frame(db, dt, n ? ms / n : 0, n ? kms / n : 0) : null;
       ms = 0; kms = 0; n = 0;
       onFrame(feat, spec, wave);
     }
