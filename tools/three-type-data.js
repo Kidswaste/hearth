@@ -65,10 +65,10 @@ const TypeData = (() => {
     P('outline', 'Outline', 'Looks', 'outlined letters that fill in', { inAnim: 'tracking', fill: 0, outline: 0.04, outlineColor: '#ffffff', unit: 'line', dur: 1.3, ease: 'expo' }),
     P('drop', 'Drop', 'Titles', 'words dropping in and bouncing', { inAnim: 'drop', outAnim: 'shatter', unit: 'word', stagger: 0.18, dur: 0.9 }),
     P('stretch', 'Stretch', 'Titles', 'letters stretching in on a spring', { inAnim: 'stretch', stagger: 0.04, dur: 0.8 }),
-    P('chrome3d', 'Chrome 3D', '3D', 'extruded chrome letters with a bevel, turning slowly', { inAnim: 'flip', material: 'chrome', depth: 0.35, bevel: 0.04, spin: 0.15, stagger: 0.06, dur: 0.9 }, { mode: '3d' }),
-    P('gold3d', 'Gold 3D', '3D', 'heavy gold letters falling into place', { inAnim: 'drop', material: 'gold', depth: 0.5, bevel: 0.05, stagger: 0.07, dur: 1 }, { mode: '3d' }),
-    P('glass3d', 'Glass 3D', '3D', 'glass letters flying at the camera', { inAnim: 'fly-in', material: 'glass', depth: 0.3, bevel: 0.05, stagger: 0.05, dur: 1.1, ease: 'expo' }, { mode: '3d' }),
-    P('toon3d', 'Toon 3D', '3D', 'chunky cartoon letters popping in', { inAnim: 'scale-pop', material: 'toon', color: '#ff8c42', depth: 0.45, bevel: 0.02, stagger: 0.05 }, { mode: '3d' }),
+    P('chrome3d', 'Chrome 3D', '3D', 'extruded chrome letters with a bevel, turning slowly', { inAnim: 'flip', material: 'chrome', depth: 0.35, bevel: 0.04, spin: 0.15, tilt: 0.2, stagger: 0.06, dur: 0.9 }, { mode: '3d' }),
+    P('gold3d', 'Gold 3D', '3D', 'heavy gold letters falling into place', { inAnim: 'drop', material: 'gold', depth: 0.5, bevel: 0.05, tilt: 0.25, stagger: 0.07, dur: 1 }, { mode: '3d' }),
+    P('glass3d', 'Glass 3D', '3D', 'glass letters flying at the camera', { inAnim: 'fly-in', material: 'glass', depth: 0.3, bevel: 0.05, tilt: 0.15, stagger: 0.05, dur: 1.1, ease: 'expo' }, { mode: '3d' }),
+    P('toon3d', 'Toon 3D', '3D', 'chunky cartoon letters popping in', { inAnim: 'scale-pop', material: 'toon', color: '#ff8c42', depth: 0.45, bevel: 0.02, tilt: 0.25, stagger: 0.05 }, { mode: '3d' }),
     P('holo3d', 'Hologram 3D', '3D', 'iridescent see-through letters, glitching', { inAnim: 'glitch', material: 'holographic', color: '#48ddff', depth: 0.2, bevel: 0.02, spin: -0.1 }, { mode: '3d' }),
     P('circle', 'Circle badge', 'Paths', 'text around a circle, turning', { path: 'circle', pathSize: 0.7, pathSpin: 0.4, inAnim: 'fade', size: 0.08, tracking: 0.08 }, { text: 'HEARTH • MADE IN THE LAB • ' }),
     P('arc', 'Arc banner', 'Paths', 'text along an arc', { path: 'arc', pathSize: 0.9, inAnim: 'scale-pop', size: 0.1 }),
@@ -90,7 +90,7 @@ Sliders (P): ${Object.entries(SLIDERS).map(([k, s]) => `${k}${s.options ? ` (${s
 In / out: ${ANIM_IDS.join(', ')} (out also none). By glyph | word | line, order forward | reverse | center | edges | random, easing ${EASES.join(', ')}.
 Paths: ${Object.keys(PATHS).join(', ')}. 3D materials: ${MATERIALS.join(', ')}. Lyric looks: ${Object.entries(LOOKS).map(([k, v]) => `${k} (${v})`).join(' · ')}.
 Lyrics: paste them, or an .lrc / .srt; untimed lines are put on the song (the music analysis' onsets and beats), words too; /lyrics tap corrects them by tapping Space at each line.
-Chat: /type [preset | text <words> | 3d <words> | in <anim> | out <anim> | by glyph|word|line | path <kind> | font <family> | material <kind> | set <slider> <value> | react kick|bass|off | particles | list | info] · /lyrics [paste | load <file> | look <look> | align | tap | shift <s> | export lrc|srt | sequence].
+Chat: /text [preset | text <words> | 3d <words> | in <anim> | out <anim> | by glyph|word|line | path <kind> | font <family> | material <kind> | set <slider> <value> | react kick|bass|off | particles | list | info] · /lyrics [paste | load <file> | look <look> | align | tap | shift <s> | export lrc|srt | sequence].
 Director: three_do { cmd: "type", op } — list · add {preset, text, mode, font, sliders} · set {layer, values} · anim {layer, in, out, unit, order, ease, stagger, dur} · path {layer, kind, size} · text {layer, text} · lyrics {layer?, text (pasted / .lrc / .srt content) | file, look} (aligned to the song) · align {layer} · shift {layer, by} · react {layer, kick, bass, jitter} · info {layer}.`;
   return { ANIMS, ANIM_IDS, EASES, ORDERS, UNITS, PATHS, LOOKS, MATERIALS, SLIDERS, BASE, P3D, PPATH, PLYR, PRESETS, HELP };
 })();

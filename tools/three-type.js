@@ -2,13 +2,13 @@
 // - A type layer is plain layer code calling textLayer(P, opts) (drawn by tools/three-sandbox.html "kinetic type
 //   layers": SDF glyphs or 3D extruded letters, in / out animations by glyph / word / line, paths, music reactions,
 //   timed lyrics on the scene's clock). Its sliders are a normal tweak(): Save, Shuffle, keyframes, ♪ react-to work.
-// - Presets (tools/three-type-data.js): one searchable picker (/type, right-click the preview › 🅰 Type, Ctrl/⌘+K, the
+// - Presets (tools/three-type-data.js): one searchable picker (/text, right-click the preview › 🅰 Type, Ctrl/⌘+K, the
 //   FX picker's "Type" category, /template type-<id>).
 // - Lyrics (tools/three-type-lyrics.js): paste them or load an .lrc / .srt; untimed lines are aligned to the song
 //   (the music analysis' onsets and beats), words too; /lyrics tap is the tap-along correction (Space at each line).
 //   The lines live in the layer's code (opts.lyrics), so they're undoable and the time machine sees them; /lyrics
 //   sequence puts them on the Lab sequence's Captions track.
-// - Edits go through the layer's code. Chat: /type, /lyrics. Directors: three_do type { op } (one short entry in
+// - Edits go through the layer's code. Chat: /text, /lyrics. Directors: three_do type { op } (one short entry in
 //   three_do; the details on demand: three_do help type).
 const LabType = (() => {
   const TD = TypeData; const LY = TypeLyrics;
@@ -56,7 +56,7 @@ const LabType = (() => {
     for (const [k, v] of Object.entries(vals)) if (!TD.SLIDERS[k]) o[k] = v;
     const groups = [...new Set(keys.map((k) => TD.SLIDERS[k].group))];
     const lines = [
-      `// 🅰 Type: ${name || p.name} (preset ${p.id}) · kinetic type: /type, /lyrics, three_do type.`,
+      `// 🅰 Type: ${name || p.name} (preset ${p.id}) · kinetic type: /text, /lyrics, three_do type.`,
       `// ${o.mode === '3d' ? '3D extruded letters (depth, bevel, material)' : 'crisp SDF text at any size'}; the sliders are live (♪ react-to, keyframes, Shuffle);`,
       '// the options at the end: text, mode 2d | 3d, font (family | google:Family | ref:<key>), lyrics [[start, end, "line", [word starts]]…]',
       'const P = tweak({',
@@ -133,7 +133,7 @@ const LabType = (() => {
   async function target(ref, ctx = {}) {
     const v = await call('three_layers', {}, ctx);
     const pool = (v.layers || []).filter(isRow);
-    if (!pool.length) throw new Error('No 🅰 type layer in this scene: /type <preset> adds one (/type list).');
+    if (!pool.length) throw new Error('No 🅰 type layer in this scene: /text <preset> adds one (/text list).');
     if (ref != null && ref !== '' && ref !== 'selected') {
       const r = String(ref).toLowerCase().replace(/^🅰\s*/, '');
       const hit = pool.find((L) => L.id === ref || L.name.toLowerCase() === String(ref).toLowerCase() || L.name.toLowerCase().replace(/^🅰\s*/, '') === r) || pool.find((L) => L.name.toLowerCase().includes(r));
@@ -174,7 +174,7 @@ const LabType = (() => {
   // ---------- the operations (chat commands, the director's tool, the menus) ----------
   async function add(q0, { name = null, text = null, mode = null, font = null, sliders = {}, opts = {}, ctx = {}, replace = null } = {}) {
     const p = preset(q0 || 'title');
-    if (!p) throw new Error(`No preset "${q0}". /type list shows them (${TD.PRESETS.length}).`);
+    if (!p) throw new Error(`No preset "${q0}". /text list shows them (${TD.PRESETS.length}).`);
     const o = { ...opts };
     if (text != null && text !== '') o.text = String(text).slice(0, 400);
     if (mode) o.mode = mode === '3d' ? '3d' : '2d';
@@ -257,7 +257,7 @@ const LabType = (() => {
     const w = String(filter).toLowerCase().trim();
     const L = TD.PRESETS.filter((p) => !w || `${p.id} ${p.name} ${p.cat} ${p.desc}`.toLowerCase().includes(w));
     const cats = [...new Set(L.map((p) => p.cat))];
-    return cats.map((c) => `**${c}**\n${L.filter((p) => p.cat === c).map((p) => `- \`/type ${p.id}\` ${p.name}: ${p.desc}`).join('\n')}`).join('\n') || 'No preset matches.';
+    return cats.map((c) => `**${c}**\n${L.filter((p) => p.cat === c).map((p) => `- \`/text ${p.id}\` ${p.name}: ${p.desc}`).join('\n')}`).join('\n') || 'No preset matches.';
   }
   // the word into ✦ particles (the particles stream's text emitter)
   async function toParticles(ref, ctx = {}) {
@@ -270,7 +270,14 @@ const LabType = (() => {
   }
 
   // ---------- lyrics ----------
-  async function lyricsLayer(ref, ctx) { try { return await target(ref, ctx); } catch { return null; } }
+  // the type layer that already shows lyrics (the selected one first); a title layer is never turned into lyrics
+  async function lyricsLayer(ctx = {}) {
+    const v = await call('three_layers', {}, ctx).catch(() => null);
+    const pool = (v?.layers || []).filter(isRow);
+    const withLyrics = [];
+    for (const L of pool) { try { if (Array.isArray(optsOf(await codeOf(L, ctx)).lyrics)) withLyrics.push(L); } catch { /* hand-written */ } }
+    return withLyrics.find((L) => L.selected) || withLyrics[withLyrics.length - 1] || null;
+  }
   // set lyrics (pasted text, .lrc / .srt content) on the type layer (a new one in the look's preset when there's none),
   // aligned to the song when they have no times
   async function lyrics({ text, file = null, look = null, layer = null, align: doAlign = true, ctx = {} } = {}) {
@@ -283,7 +290,7 @@ const LabType = (() => {
     let lines = parsed.lines; let how = parsed.timed ? `timed (${parsed.kind})` : 'untimed';
     if (m && doAlign) { const r = LY.align(lines, m); lines = r.lines; how = `${how} · ${r.how}`; }
     else if (!parsed.timed) { const r = LY.align(lines, { duration: Math.max(lines.length * 3 + 4, 20), bpm: 120 }); lines = r.lines; how = `${how} · no song: one line every few seconds`; }
-    const L = layer ? await target(layer, ctx) : await lyricsLayer(null, ctx);
+    const L = layer ? await target(layer, ctx) : await lyricsLayer(ctx);
     const pk = LY.pack(lines);
     const lk = look && TD.LOOKS[look] ? look : null;
     if (L) {
@@ -298,7 +305,7 @@ const LabType = (() => {
     return { ...r, lines: lines.length, how, ...(m ? {} : { note: 'no song loaded: load one and /lyrics align' }) };
   }
   async function linesOf(ref, ctx = {}) {
-    const L = await target(ref, ctx);
+    const L = ref != null && ref !== '' ? await target(ref, ctx) : (await lyricsLayer(ctx)) || await target(null, ctx);
     const o = optsOf(await codeOf(L, ctx));
     if (!Array.isArray(o.lyrics)) throw new Error(`"${L.name}" has no lyrics: /lyrics pastes some`);
     return { L, lines: LY.unpack(o.lyrics) };
@@ -507,11 +514,11 @@ const LabType = (() => {
   const lyrSaid = (r) => `🅰 "${r.layer}": ${r.lines} lyric lines · ${r.how}${r.note ? ` (${r.note})` : ''}`;
   function registerCommands() {
     if (typeof Commands === 'undefined') return;
-    if (!Commands.get('type')) Commands.register({
-      name: 'type', area: 'Three.js Lab', aliases: ['kinetic-type', 'text-layer'],
+    if (!Commands.get('text')) Commands.register({
+      name: 'text', area: 'Three.js Lab', aliases: ['text-layer', 'lettering'],
       args: '[<preset> [words] | text <words> | 3d <words> | in <anim> | out <anim> | by glyph|word|line | path <kind> | font <family|google:Name|asset> | material <kind> | set <slider> <value> | letter <n> <color> | react [kick|bass|off] | particles | list [word] | info | help]',
       desc: '🅰 Kinetic type: crisp text (or 3D extruded letters) animated in and out by letter / word / line, on paths, reacting to the music',
-      examples: ['/type', '/type wave HELLO WORLD', '/type chrome3d DROP', '/type in glitch', '/type by word', '/type path circle', '/type font google:Anton', '/type react kick', '/type list 3d'],
+      examples: ['/text', '/text wave HELLO WORLD', '/text chrome3d DROP', '/text in glitch', '/text by word', '/text path circle', '/text font google:Anton', '/text react kick', '/text list 3d'],
       keywords: 'kinetic typography text title letters words glyphs sdf msdf 3d extrude bevel typewriter glitch scatter wave split-flap text on path circle lyrics',
       complete: (a) => {
         const w = a.trim().toLowerCase();
@@ -538,8 +545,8 @@ const LabType = (() => {
         if (v === 'path') { const [k, sz] = rest; const r = await setPath(null, k, sz ? { size: sz } : {}); return `🅰 "${r.layer}" ${TD.PATHS[r.path]}`; }
         if (v === 'font') { const r = await setFont(null, tail); return `🅰 "${r.layer}" in ${r.font}`; }
         if (v === 'material') { const r = await set(null, { material: tail }); return `🅰 "${r.layer}": ${r.set.join(' · ')}`; }
-        if (v === 'set') { const [k, ...vv] = rest; if (!k || !vv.length) return 'Usage: /type set <slider> <value> (/type help lists them)'; const r = await set(null, { [k]: vv.join(' ') }); return `🅰 "${r.layer}": ${r.set.join(' · ')}`; }
-        if (v === 'letter') { const [i, c2, sc] = rest; if (i == null) return 'Usage: /type letter <n> <#color> [scale]'; const r = await letter(null, Number(i), { ...(c2 ? { color: c2 } : {}), ...(sc ? { scale: Number(sc) } : {}) }); return `🅰 "${r.layer}": letter ${r.glyph}`; }
+        if (v === 'set') { const [k, ...vv] = rest; if (!k || !vv.length) return 'Usage: /text set <slider> <value> (/text help lists them)'; const r = await set(null, { [k]: vv.join(' ') }); return `🅰 "${r.layer}": ${r.set.join(' · ')}`; }
+        if (v === 'letter') { const [i, c2, sc] = rest; if (i == null) return 'Usage: /text letter <n> <#color> [scale]'; const r = await letter(null, Number(i), { ...(c2 ? { color: c2 } : {}), ...(sc ? { scale: Number(sc) } : {}) }); return `🅰 "${r.layer}": letter ${r.glyph}`; }
         if (v === 'react') { const k = rest[0]?.toLowerCase(); const r = await react(null, k === 'off' ? { off: true } : k === 'kick' ? { kick: true } : k === 'bass' ? { bass: true, letters: true } : k === 'jitter' ? { jitter: true } : {}); return `♪ "${r.layer}": ${r.set.join(' · ')}`; }
         if (v === 'particles') { await ThreeLab.cmd(); const r = await toParticles(null); return `✦ "${r.layer}": the words in particles`; }
         if (v === 'info') return fmt(await infoOf(null));
@@ -565,7 +572,7 @@ const LabType = (() => {
         const v = (verb || '').toLowerCase();
         if (!v || v === 'paste') { await ThreeLab.cmd(); const r = await pasteLyrics(); return r ? lyrSaid(r) : null; }
         if (v === 'load') { await ThreeLab.cmd(); const r = tail ? await lyrics({ file: tail.replace(/^~(?=[\\/])/, await window.hub.fs.home()) }) : await loadLyricsFile(); return r ? lyrSaid(r) : null; }
-        if (v === 'look') { const r = await set(null, { look: tail }); return `🅰 "${r.layer}": ${r.set.join(' · ')}`; }
+        if (v === 'look') { const r = await set((await lyricsLayer())?.id ?? null, { look: tail }); return `🅰 "${r.layer}": ${r.set.join(' · ')}`; }
         if (v === 'align') { const r = await realign(null); return `🅰 "${r.layer}": ${r.lines} lines · ${r.how}`; }
         if (v === 'tap') { const r = await tapMode(null); return `🎤 Tap along on "${r.layer}": Space at each line's start (⌫ back, Enter keeps, Esc cancels)`; }
         if (v === 'shift') { const r = await shift(null, tail); return `🅰 "${r.layer}": lyrics moved ${r.shifted > 0 ? '+' : ''}${r.shifted} s`; }

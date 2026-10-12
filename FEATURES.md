@@ -771,3 +771,9 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ One compact panel (right-click the preview › ◐ Grade, `/grade`): tabs, wheels, curves, hue strip, LUT grid, scopes (waveform, vectorscope, histogram from a small read, only while open).
 - ✓ Per-clip and whole-sequence grades in the Lab sequence (right-click a clip › ◐ Grade, `/grade clip 2 noir`): the same shader in the preview and the render.
 - ○ Tested headless on SwiftShader (`sh dev/run-checks.sh grade`); imported LUTs aren't packed into a one-file web page export.
+## Kinetic type and lyrics (round 25, type, 154 upgrades: docs/upgrades/type.md)
+- ✓ 🅰 type layers: `textLayer(P, opts)`, crisp SDF text at any size (outline, glow, softness from one distance field; system, Google or asset-library fonts) or 3D extruded letters with a bevel in the 12 lab3d materials (outlines traced from the font itself).
+- ✓ 26 in / out animations (typewriter, wave, scatter, glitch, slides, scale-pop, blur-in, split-flap, decode, neon…) by glyph / word / line with stagger, order and easing; text on a circle, arc, wave, spiral or your points; one letter's own look; scale / glow / jitter / bounce on the kick, color on the bass, per letter.
+- ✓ Lyrics: paste them or load .lrc / .srt; untimed lines aligned to the song (starts on onsets near the beat, words inside the lines), timed ones tightened; 🎤 tap-along (Space at each line) fixes them; six looks (karaoke fill, one word big, scrolling, centered fades, typed, 3D lines); export .lrc / .srt, or onto the sequence's Captions track.
+- ✓ 32 presets in one picker (`/text`, right-click › 🅰 Type, Ctrl/⌘+K, FX picker); `/lyrics`; words into ✦ particles; renders the same frame every time; directors: `three_do type` (help on demand).
+- ○ Tested headless on SwiftShader (`sh dev/run-checks.sh type`, `node dev/type-test.js`); alignment follows onsets and beats, not the voice.
