@@ -1,8 +1,8 @@
 // Lab preview GPU work (round 21 "labgpu"): the context pool, merged filter passes and the direct filter source keep
 // the picture exactly what it was. A still scene with a pixelate filter and three per-pixel filters over it (duotone,
 // vignette draw inside pixelate's pass; thermal, above them, takes that pass's canvas as it is), compared pixel by pixel with the round-21 shortcuts on and
-// off; then layer re-runs (their contexts come from the pool: the picture is the same, nothing grows) and scene
-// switches.
+// off; then layer re-runs (their contexts come from the pool, their shader programs from the context's cache: the
+// picture is the same, nothing grows) and scene switches.
 //   node dev/smoke.js --check-timeout 300000 --script dev/checks/labgpu.js
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 15000) => { const t = Date.now(); while (Date.now() - t < ms) { try { if (await fn()) return true; } catch { /* not yet */ } await wait(100); } return false; };
@@ -58,6 +58,7 @@ step('direct filter source: the same picture as the 2D merge (≤ 2)', diff(pOn,
 await sbx('window.__labGpu.set({ fuse: true, direct: true }); return 1'); await wait(1000);
 // re-runs: the scene layer and a filter, 4 times each; their contexts come back from the pool
 const h0 = await sbx('return window.__labHealth()');
+const n0 = (await sbx('return window.__labGpu.info()')).note;
 for (let i = 0; i < 4; i++) {
   await d.updateLayer('Thermal', { code: `${FX[3][1]}\n// run ${i}` }, 1.5);
   await d.updateLayer('bottom', { code: `${SCENE}\n// run ${i}` }, 1.5);
@@ -65,6 +66,9 @@ for (let i = 0; i < 4; i++) {
 await until(async () => { const h = await sbx1('return window.__labHealth()'); return h?.overlays === 0; }, 8000);
 await wait(1200);
 const h1 = await sbx('return window.__labHealth()');
+const n1 = (await sbx('return window.__labGpu.info()')).note;
+out.programs = { linked: n1.links - n0.links, reused: n1.progHit - n0.progHit };
+step('re-runs reuse their compiled shader programs (nothing new linked)', n1.progHit - n0.progHit >= 8 && n1.links - n0.links <= 1, out.programs);
 const pAfter = await probe();
 out.health = { before: h0, after: h1 };
 step('re-runs take their contexts from the pool', h1.poolHit - h0.poolHit >= 6, { hits: h1.poolHit - h0.poolHit });

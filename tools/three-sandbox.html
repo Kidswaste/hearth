@@ -2051,10 +2051,11 @@ function setParked(on) {
   on = Boolean(on);
   if (parked === on) return;
   parked = on;
+  if (on) for (const e of [...POOL]) poolEvict(e); // (round 21: the Lab off screen: no quick re-run coming, the GPU gets its memory back)
   if (!on) { const q = parkQ.splice(0); for (const fn of q) realRAF(fn); }
 }
 // what the preview saved (shown by /lab perf): renderers of gone modules dropped, filter merges skipped / done, passes skipped
-const perfNote = { stale: 0, composed: 0, reused: 0, passSkipped: 0, pooled: 0, poolHit: 0, poolMiss: 0, fused: 0, direct: 0, warm: 0 };
+const perfNote = { stale: 0, composed: 0, reused: 0, passSkipped: 0, pooled: 0, poolHit: 0, poolMiss: 0, fused: 0, direct: 0, warm: 0, firstMs: null, links: 0, progHit: 0 };
 // frame work: every render() of one displayed frame (and the filters' merges) adds up here; the last 120 frames
 let frameWork = 0; let frameCalls = 0; let lastCalls = 0; const workRing = [];
 function capOk(t) {
@@ -2114,7 +2115,7 @@ function instrument(renderFn) {
     // a Lab sequence's camera fly-through moves this scene's own camera for the frame (put back right after)
     const camBack = EL && SQ.cam ? sqCamFx(EL, camera) : null;
     try { renderFn.call(this, scene, camera); } finally { camBack?.(); }
-    if (EL && EL.drawnGen !== EL.gen) layerDrew(EL);
+    if (EL && EL.drawnGen !== EL.gen) layerDrew(EL, true);
     frameMs = realNow() - t0;
     frameWork += frameMs; frameCalls += this.info?.render?.calls || 0;
     if (EL) EL.drewTick = frameTick; // (a filter above it merges again only when something under it drew)
@@ -2171,7 +2172,7 @@ HTMLCanvasElement.prototype.getContext = function (type, opts) {
 // made a new one: ≈ 250 ms on the test machine's software GPU (measured by dev/checks/labperf.js), a GPU-process
 // round trip and a fresh drawing buffer on a real one, while the old picture waited. Now the context goes to a small
 // pool instead: everything the old code made on it (buffers, textures, programs, framebuffers…) is deleted, its state
-// put back to the defaults, its listeners taken off, its drawing buffer shrunk to 1 × 1, and the next layer renderer
+// put back to the defaults, its listeners taken off, its picture cleared, and the next layer renderer
 // asking for the same kind of context (antialias, depth, stencil…) gets it (the 'three' module in front of three.js,
 // see the import map). At most 3 wait (1 in Light mode), none longer than 20 s; then they're let go for real.
 const GL_KINDS = ['Buffer', 'Framebuffer', 'Program', 'Renderbuffer', 'Shader', 'Texture', 'VertexArray', 'Query', 'Sampler', 'TransformFeedback'];
@@ -2183,6 +2184,84 @@ function trackGL(ctx) {
     ctx.__del[k] = del;
     ctx[`create${k}`] = function (...a) { const o = mk.apply(ctx, a); if (o) objs.set(o, k); return o; };
     ctx[`delete${k}`] = function (o) { objs.delete(o); return del.call(ctx, o); };
+  }
+  progCache(ctx);
+}
+// ---------- compiled shader programs kept per context (round 21 "labgpu") ----------
+// A re-run, or the next scene on a pooled context, compiles the same shaders again (three.js keeps its programs per
+// renderer): a model layer's PBR + shadow shaders took seconds here, and the page stopped on its first frame. Now a
+// context keeps its linked programs (up to 48): a shader's compile waits until its program links; a program whose
+// shaders and attribute bindings are exactly ones already linked on this context, and that nothing uses right now,
+// borrows that program (every call that names it is pointed at the linked one) and nothing compiles. Each renderer
+// sets its own uniforms on a program it borrows, as on a new one. window.__labGpu.set({ progCache: false }) turns it off.
+const PROG_FNS = ['useProgram', 'getUniformLocation', 'getAttribLocation', 'getActiveUniform', 'getActiveAttrib', 'getProgramParameter', 'getProgramInfoLog', 'getUniform',
+  'validateProgram', 'isProgram', 'getAttachedShaders', 'getFragDataLocation', 'getTransformFeedbackVarying', 'getUniformIndices', 'getActiveUniforms', 'getUniformBlockIndex',
+  'getActiveUniformBlockParameter', 'getActiveUniformBlockName', 'uniformBlockBinding'];
+const PROG_MAX = 48;
+function progCache(ctx) {
+  const P = { src: new Map(), type: new Map(), pend: new Set(), hit: new Set(), att: new Map(), binds: new Map(), alias: new Map(), cache: new Map(), own: new Map(), noCache: new Set() };
+  ctx.__prog = P;
+  const f = (k) => ctx[k];
+  const realOf = {};
+  for (const k of ['createShader', 'shaderSource', 'compileShader', 'getShaderParameter', 'getShaderInfoLog', 'attachShader', 'detachShader', 'bindAttribLocation', 'linkProgram', 'deleteProgram', 'transformFeedbackVaryings', ...PROG_FNS]) realOf[k] = f(k);
+  if (PROG_FNS.concat(['linkProgram', 'compileShader']).some((k) => typeof realOf[k] !== 'function')) return;
+  const R = (p) => P.alias.get(p) || p;
+  for (const k of PROG_FNS) { const fn = realOf[k]; if (typeof fn === 'function') ctx[k] = function (p, ...a) { return fn.call(ctx, R(p), ...a); }; }
+  const flush = (s) => { if (P.pend.delete(s)) realOf.compileShader.call(ctx, s); };
+  ctx.createShader = function (t) { const s = realOf.createShader.call(ctx, t); if (s) P.type.set(s, t); return s; };
+  ctx.shaderSource = function (s, src) { P.src.set(s, String(src)); flush(s); return realOf.shaderSource.call(ctx, s, src); };
+  ctx.compileShader = function (s) { if (GPU_OPT.progCache && P.src.has(s)) { P.pend.add(s); return undefined; } return realOf.compileShader.call(ctx, s); };
+  ctx.getShaderParameter = function (s, pn) {
+    if (P.pend.has(s)) { if (pn === ctx.COMPILE_STATUS && P.hit.has(s)) return true; if (pn !== ctx.SHADER_TYPE && pn !== ctx.DELETE_STATUS) flush(s); }
+    return realOf.getShaderParameter.call(ctx, s, pn);
+  };
+  ctx.getShaderInfoLog = function (s) { if (P.pend.has(s)) { if (P.hit.has(s)) return ''; flush(s); } return realOf.getShaderInfoLog.call(ctx, s); };
+  ctx.attachShader = function (p, s) { let a = P.att.get(p); if (!a) P.att.set(p, a = new Set()); a.add(s); return realOf.attachShader.call(ctx, p, s); };
+  ctx.detachShader = function (p, s) { P.att.get(p)?.delete(s); return realOf.detachShader.call(ctx, p, s); };
+  ctx.bindAttribLocation = function (p, i, n) { let b = P.binds.get(p); if (!b) P.binds.set(p, b = []); b.push(`${i}:${n}`); return realOf.bindAttribLocation.call(ctx, p, i, n); };
+  if (typeof realOf.transformFeedbackVaryings === 'function') ctx.transformFeedbackVaryings = function (p, ...a) { P.noCache.add(p); return realOf.transformFeedbackVaryings.call(ctx, p, ...a); };
+  ctx.linkProgram = function (p) {
+    const prev = P.alias.get(p);
+    if (prev) { P.alias.delete(p); const e0 = P.own.get(prev); if (e0) e0.users -= 1; }
+    const sh = [...(P.att.get(p) || [])];
+    const ok = GPU_OPT.progCache && !P.noCache.has(p) && sh.length === 2 && sh.every((s) => P.src.has(s));
+    const key = ok ? `${sh.map((s) => `${P.type.get(s)}\u0002${P.src.get(s)}`).sort().join('\u0000')}\u0001${(P.binds.get(p) || []).join(',')}` : null;
+    const e = key ? P.cache.get(key) : null;
+    if (e && e.users === 0 && e.prog !== p) {
+      e.users = 1; e.at = realNow(); P.alias.set(p, e.prog);
+      for (const s of sh) if (P.pend.has(s)) P.hit.add(s);
+      perfNote.progHit += 1;
+      return undefined;
+    }
+    for (const s of sh) flush(s);
+    const r = realOf.linkProgram.call(ctx, p);
+    perfNote.links += 1;
+    if (key && !e && !P.own.has(p)) {
+      const entry = { prog: p, key, users: 1, at: realNow() };
+      P.cache.set(key, entry); P.own.set(p, entry);
+      if (P.cache.size > PROG_MAX) progTrim(ctx);
+    }
+    return r;
+  };
+  ctx.deleteProgram = function (p) {
+    const a = P.alias.get(p);
+    if (a) { P.alias.delete(p); const e = P.own.get(a); if (e) e.users = Math.max(0, e.users - 1); }
+    else { const e = P.own.get(p); if (e) { e.users = Math.max(0, e.users - 1); e.at = realNow(); return undefined; } } // (kept for the next run)
+    P.att.delete(p); P.binds.delete(p); P.noCache.delete(p);
+    return realOf.deleteProgram.call(ctx, p);
+  };
+  P.realDelete = (p) => realOf.deleteProgram.call(ctx, p);
+}
+// the oldest programs nothing uses go for real past the cap (all: n = 0)
+function progTrim(ctx, n = PROG_MAX) {
+  const P = ctx.__prog;
+  if (!P) return;
+  const idle = [...P.cache.values()].filter((e) => e.users === 0).sort((a, b) => a.at - b.at);
+  while (P.cache.size > n && idle.length) {
+    const e = idle.shift();
+    P.cache.delete(e.key); P.own.delete(e.prog);
+    try { P.realDelete(e.prog); } catch { /* gone */ }
+    ctx.__objs?.delete(e.prog);
   }
 }
 const POOL = []; // { key, cv, gl, timer }
@@ -2215,7 +2294,6 @@ globalThis.__labPoolTake = (p) => {
   realClearTimeout(e.timer);
   if (e.gl.isContextLost()) return null;
   e.gl.__pooled = false;
-  e.cv.width = 300; e.cv.height = 150; // (what a new canvas starts at)
   perfNote.poolHit += 1;
   return e.cv;
 };
@@ -2236,8 +2314,14 @@ function letGoRenderer(r) {
   const noop = () => {};
   for (const m of ['render', 'setSize', 'setPixelRatio', 'setViewport', 'clear', 'setAnimationLoop', 'setRenderTarget']) { try { r[m] = noop; } catch { /* read-only */ } }
   try {
-    for (const [o, k] of [...gl.__objs]) { try { gl.__del[k].call(gl, o); } catch { /* gone */ } }
-    gl.__objs.clear();
+    // (linked programs stay, for the next run's same shaders: see "compiled shader programs")
+    const PC_ = gl.__prog;
+    for (const [o, k] of [...gl.__objs]) { if (k === 'Program' && PC_?.own.has(o)) continue; try { gl.__del[k].call(gl, o); } catch { /* gone */ } gl.__objs.delete(o); }
+    if (PC_) {
+      for (const e of PC_.cache.values()) e.users = 0;
+      for (const m of [PC_.src, PC_.type, PC_.att, PC_.binds, PC_.alias]) m.clear();
+      PC_.pend.clear(); PC_.hit.clear(); PC_.noCache.clear();
+    }
     gl.bindVertexArray(null);
     const n = gl.getParameter(gl.MAX_VERTEX_ATTRIBS);
     for (let i = 0; i < n; i += 1) { gl.disableVertexAttribArray(i); gl.vertexAttribDivisor(i, 0); }
@@ -2252,8 +2336,10 @@ function letGoRenderer(r) {
   for (const [type, fn, o] of cv.__lis || []) cv.removeEventListener(type, fn, o);
   cv.__lis = null;
   cv.remove();
-  for (const a of [...cv.attributes]) cv.removeAttribute(a.name);
-  cv.width = 1; cv.height = 1; cv.__skip = false; cv.__letGo = false;
+  // (its size stays: resizing a WebGL canvas reallocates its drawing buffer, a GPU round trip each time (≈ 200 ms here),
+  // and the next layer asks for the same size; a waiting context isn't counted, and goes within 20 s)
+  for (const a of [...cv.attributes]) if (a.name !== 'width' && a.name !== 'height') cv.removeAttribute(a.name);
+  cv.__skip = false; cv.__letGo = false;
   gl.__pooled = true;
   const e = { key: poolKeyOf(gl), cv, gl, timer: 0 };
   e.timer = realSetTimeout(() => poolEvict(e), POOL_IDLE);
@@ -2717,7 +2803,12 @@ const media = {
   onFrame(fn) { const id = currentLayer(); const c = { fn, layer: id, gen: id ? layerState(id).gen : 0 }; frameCbs.add(c); return () => frameCbs.delete(c); },
   texture() {
     if (!isVideo) return null;
-    if (!videoTex || videoTex.image !== mediaEl) { videoTex = new THREE.VideoTexture(mediaEl); videoTex.colorSpace = THREE.SRGBColorSpace; }
+    if (!videoTex || videoTex.image !== mediaEl) {
+      videoTex = new THREE.VideoTexture(mediaEl); videoTex.colorSpace = THREE.SRGBColorSpace;
+      // (round 21 "labgpu": uploaded only when the decoder presented a new frame, see watchFrames; older three.js
+      // versions uploaded the video at every drawn frame, a 60 fps preview over 24 fps footage uploading each frame 2–3×)
+      if (mediaEl.requestVideoFrameCallback) videoTex.update = () => {};
+    }
     return videoTex;
   },
 };
@@ -2944,6 +3035,7 @@ function watchFrames(m) {
   const cb = (_now, meta) => {
     if (mediaEl !== m) return;
     fpres.time = meta.mediaTime; fpres.presented = meta.presentedFrames;
+    if (videoTex && videoTex.image === m) videoTex.needsUpdate = true; // (a new frame: media.texture() uploads it once)
     fpres.frame = fclock ? fFrameAt(meta.mediaTime) : -1;
     if (fparts && !m.paused && recUntil == null && !(region && loopOn)) partFrame(meta.mediaTime, meta);
     for (const c of frameCbs) {
@@ -5570,7 +5662,7 @@ function belowSame(L, list, W, H) {
 // the merge of everything under it on a 2D canvas (c). → { image, premul } or null when nothing under it changed.
 const FX_SRC = { image: null, premul: false };
 // checks (dev/checks/labgpu.js) turn the round-21 shortcuts off to compare pictures: window.__labGpu.set({ fuse, direct })
-const GPU_OPT = { fuse: true, direct: true };
+const GPU_OPT = { fuse: true, direct: true, progCache: true };
 window.__labGpu = { set: (o) => { Object.assign(GPU_OPT, o); fxPlanGen += 1; for (const L of layers.values()) if (L.belowKey) L.belowKey.length = 0; return { ...GPU_OPT }; },
   probe: (n = 32) => { const c = composite(null, 1, { w: n, h: n }); return [...c.getContext('2d').getImageData(0, 0, n, n).data].filter((_, i) => i % 4 !== 3).join(); }, // (text: checks get arrays cut short)
   info: () => ({ ...GPU_OPT, pool: POOL.length, note: { ...perfNote }, fused: [...layers.values()].filter((L) => L.fxInto).map((L) => [L.id, L.fxInto.id]), contexts: glAlive(), gpuMB: gpuEstimate() }) };
@@ -6155,9 +6247,11 @@ function reveal(L) {
   L.box.animate([{ opacity: 0, clipPath: 'inset(0 0 100% 0)' }, { opacity: op, clipPath: 'inset(0 0 0% 0)' }], { duration: dur(560), easing: EASE_OUT });
 }
 // The new code drew its first frame (or had nothing to draw in time, or failed): the old picture can go.
-function layerDrew(L) {
+const firstRing = []; // (round 21) ms from a layer's run to its first frame, the last 20 (/lab perf: "first frame")
+function layerDrew(L, drew = false) {
   if (L.drawnGen === L.gen) return;
   L.drawnGen = L.gen;
+  if (L.runAt && drew) { firstRing.push(realNow() - L.runAt); if (firstRing.length > 20) firstRing.shift(); perfNote.firstMs = Math.round(firstRing.slice().sort((a, b) => a - b)[firstRing.length >> 1]); L.runAt = 0; }
   if (!L.props.pcOf) post({ type: 'drawn', layer: L.id });
   const pics = L.pics; L.pics = null;
   for (const c of pics || []) fadeAway(c);
@@ -6200,6 +6294,7 @@ async function runLayer(spec, hot = false) {
   if (spec.values) Object.assign(TV, spec.values);
   installRunGuards();
   const L = layerState(spec.id);
+  L.runAt = realNow(); // (round 21: how long from here to its first frame, for /lab perf)
   // the picture on screen stays on top until the new code draws (rapid edits keep the first picture)
   let pics = null;
   if (hot && spec.fx === 'xfade') {
