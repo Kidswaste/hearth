@@ -261,7 +261,7 @@ const ThreeFX = (() => {
     close();
     // (round 21, labhub) the thumbnails stay for the same scene opened again within 2 minutes: shown at once, and the
     // preview isn't made to render every one of them again (each is a filter compiled and drawn in its page)
-    const pic = (() => { try { return ThreeLab.peek?.()?.state?.sketch || ''; } catch { return ''; } })();
+    const pic = (() => { try { return ThreeLab.scenes?.currentId?.() || ''; } catch { return ''; } })();
     if (pic !== thumbFor.pic || Date.now() - thumbFor.at > 120000) { thumbCache.clear(); thumbFor.at = Date.now(); }
     thumbFor.pic = pic;
     let tab = TABS.some((t) => t[0] === kind) ? kind : 'all';

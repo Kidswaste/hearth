@@ -2275,9 +2275,9 @@ const ThreeLab = (() => {
     const needSong = () => { if (!player.loaded) ensureTimeline(); if (!player.loaded) throw new Error('Load a song first (🎵 in the timeline, or drop one on the preview)'); };
     api.cmd = {
       get player() { return player; }, // the song / video timeline (tools/three-cmds.js: /song-trim, /cut-loop)
-      // (round 21: frame is read when asked for: in 'fit' it measures the preview, a layout right after a scene switch
-      // for readers that only want the name, e.g. speed-resume.js on every switch)
-      get state() { return { sketch: current?.name, layer: sel()?.name, get frame() { return stage.size; }, frozen: frozenNow, live: liveKind, song: player.loaded ? player.info().file : null, bpm: player.loaded ? player.bpm : liveBpm?.bpm ?? null, playing: player.playing, presenting: document.fullscreenElement === previewHost }; },
+      // (round 21: frame and song are read when asked for: frame measures the preview in "fit" (a layout right after a
+      // switch) and song walks the whole analysis, for readers that only want the name, e.g. speed-resume.js on a switch)
+      get state() { return { sketch: current?.name, layer: sel()?.name, get frame() { return stage.size; }, frozen: frozenNow, live: liveKind, get song() { return player.loaded ? player.info().file : null; }, bpm: player.loaded ? player.bpm : liveBpm?.bpm ?? null, playing: player.playing, presenting: document.fullscreenElement === previewHost }; },
       run: () => run(), restart: () => restartSim(),
       // a sketch that has a song is still loading it (just opened): wait for it a moment
       waitSong: async () => { for (let i = 0; i < 40 && current && extras[current.id]?.media?.path && !player.loaded; i += 1) await sleep(100); },
@@ -2556,7 +2556,9 @@ const ThreeLab = (() => {
     // Version history: a snapshot of a layer each time it runs (40 per layer), plus deleted sketches.
     let history = {};
     let trash = [];
-    const saveHistory = debounce(() => window.hub.kvSet('three-history', { versions: history, trash }), 400);
+    // (round 21: written 1.5 s after the last change, not 0.4 s: with auto-run every pause in typing takes a snapshot,
+    // and the whole history, 40 versions of every layer, went to disk each time)
+    const saveHistory = debounce(() => window.hub.kvSet('three-history', { versions: history, trash }), 1500);
     const histKey = (L) => (!L || L.id === 'main' ? current.id : `${current.id}:${L.id}`);
     function snapshot() {
       if (!current || !editor.value.trim()) return;
@@ -3235,6 +3237,8 @@ ${code}
       notesAll = await window.hub.kvGet('three-notes', {});
       refsAll = await window.hub.kvGet('three-refs', {});
       thumbs = await window.hub.kvGet('three-thumbs', {});
+      // (round 21) pictures of sketches that are gone (deleted and not in the trash) are let go
+      if (Array.isArray(sketches) && sketches.length) { const keep = new Set([...sketches.map((x) => x.id), ...trash.map((x) => x.id)]); const gone = Object.keys(thumbs || {}).filter((id) => !keep.has(id)); if (gone.length) { for (const id of gone) delete thumbs[id]; saveThumbs(); } }
       // The toolbar in labeled groups: what you see, the sketch, its code, its assets, capture.
       const group = (cat, ...nodes) => el('span', { class: 'tb-group', dataset: { cat } }, ...nodes);
       // One row, in the order of your workflow: your sketch and Run, then what you look at, then assets. The

@@ -680,3 +680,9 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ Freshen: after hours, if the window grew a lot, a quiet toast offers a reload that keeps everything (screen, open chats, drafts, scroll, Lab scene + sequence); never while you're busy; `/freshen`, `/freshen status`, Ctrl/⌘+K.
 - ✓ `node dev/soak.js`: a 20-minute realistic session with real input, sampled every minute (heaps, DOM, listeners, observers, GPU, main-process handles), trends + where things grow, retainer paths.
 - ○ Measured headless with software GL; hours-long runs on the owner's Mac / PC are not run here.
+## The Lab's hub side, instant (round 21, labhub, 27 upgrades: docs/upgrades/labhub.md)
+- ✓ Long sketches type like short ones: only the lines on screen are highlighted, in their own shadow root (2,000 lines: 345 → 6 ms a key); Ctrl+Enter runs only the layers you changed, in place.
+- ✓ Sliders reach the preview a frame sooner (51 → 6 ms); rebuild sliders no longer queue seconds behind; the sliders panel isn't rebuilt while you type or (its music panels) on every switch.
+- ✓ ▦ Your sketches and New sketch open in ~20 ms (were ~500: no modal restyle of the whole app); the effects picker builds rows as they scroll in (Browse all 195 → 16–60 ms) and keeps its thumbnails for the same scene.
+- ✓ The Lab behind a chat costs nothing: the timeline, key timer and node probes stop (12 frames + 10 DOM writes a second → 0).
+- ○ Measured headless (`dev/checks/labhub.js`); the preview's own frame time is labgpu's side.
