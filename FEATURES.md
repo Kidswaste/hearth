@@ -753,3 +753,9 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ A bar under each reply splits what the message sent (system prompt, tools, history, attachments, memory); expensive chats get one cheapest-fix tip; `/context`, `/context fix`.
 - ✓ `/fresh`: a new chat from a free, editable summary (goal, decisions, open tasks, key files): a 60-message chat's next message 9.8k → 4.4k tokens, measured after the first reply; `/fresh auto on` opt-in.
 - ○ Tested with the fake engines (`sh dev/run-checks.sh context`, `node dev/context-cost.js`); not on real Claude / Codex sessions.
+## GPU particles (round 24, particles, 119 upgrades: docs/upgrades/particles.md)
+- ✓ ✦ particle layers: `particles(P, opts)` simulated on the GPU (float textures, 60 steps a second of the scene's clock: pause holds, renders are the same every time), 100k–2M on a real GPU, fewer in the preview when frames drop.
+- ✓ Emitters (point… spiral, text, a reference picture, a 🧊 model layer's surface, another layer's bright pixels), forces (curl flow, attractors, vortex, gravity, drag, turbulence, boids-lite, hold the shape / dissolve), points / streaks / instanced meshes, trails, add / alpha.
+- ✓ Music sliders: burst on kick, explode on kick, forces × bass, hue on brightness; `/particles react` adds the preset's react-to links.
+- ✓ 30 presets in one picker (`/particles`, right-click › ✦ Particles, Ctrl/⌘+K, FX picker); directors: `three_do particles` (help on demand).
+- ○ Tested on SwiftShader at 16k particles only (`sh dev/run-checks.sh particles`).
