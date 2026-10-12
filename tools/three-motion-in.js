@@ -113,7 +113,7 @@ const LabMotionIn = (() => {
         st.mirror = p.mirror ?? !capture; // a webcam is a mirror by default; a capture card isn't
       }
       await v.play().catch((err) => { throw new Error(`The ${st.kind === 'file' ? 'video' : 'camera'} didn't start: ${err.message}`); });
-      st.on = true; st.paused = false; st.frames = 0;
+      st.on = true; st.paused = false;
       sendCore();
       send({ type: 'motionin-share', on: p.share });
       pump();
@@ -517,6 +517,6 @@ const LabMotionIn = (() => {
     AppUI.addAction('Lab: 📷 Camera source (webcam, capture card, video file)…', () => labApi().then(() => { const r = S()?.host?.getBoundingClientRect?.() || { left: 200, top: 120 }; showMenu(r.left + 40, r.top + 40, menuItems()); }).catch((e) => toast(e.message, { type: 'error' })));
   }
 
-  return { attach, onReady, onBox, previewItem, menuItems, owns, op, start, stop, pause, devices, findDevice, look, follow, resolve, probe, nowText, download, stub, picker, LOOKS, HELP, get state() { return { on: st.on, paused: st.paused, kind: st.kind, label: st.label, mirror: st.mirror, frames: st.frames, mp: st.mp, tasks: st.tasks.slice(), want: st.want.slice(), error: st.error }; } };
+  return { attach, onReady, onBox, previewItem, menuItems, owns, op, start, stop, pause, devices, findDevice, look, follow, resolve, probe, nowText, download, stub, picker, LOOKS, HELP, get state() { return { on: st.on, paused: st.paused, kind: st.kind, label: st.label, mirror: st.mirror, frames: st.frames, mp: st.mp, tasks: st.tasks.slice(), want: st.want.slice(), error: st.error, offered: st.offered }; } };
 })();
 window.LabMotionIn = LabMotionIn;

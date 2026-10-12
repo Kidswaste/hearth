@@ -111,6 +111,14 @@ function frame(sqX, sqY, { size = 14, color = [240, 240, 240], noise = 6 } = {})
   check(new Set(C.NAMES).size === C.NAMES.length && C.NAMES.every((n) => /^[a-zA-Z0-9]+$/.test(n)), `${C.F} unique feature names`);
 }
 
+// ---------- the directors' help on demand (three_do help webcam), the lean tool list untouched but a few words ----------
+{
+  const G = require(path.join(__dirname, '..', 'mcp', 'three-guide.js'));
+  const h = String(G.help('webcam'));
+  check(/CAMERA IN/.test(h) && /op camera/.test(h) && /handX/.test(h) && String(G.help('mediapipe')) === h && String(G.help('hands')) === h, 'help webcam (also mediapipe, hands, tracking…) explains the camera input', `${Math.round(h.length / 4)} tokens, on demand`);
+  check(/help webcam/.test(String(G.help('motion'))), 'help motion points to help webcam');
+}
+
 // ---------- motionmain.js: status, download from a local "CDN", cancel ----------
 (async () => {
   const MM = require(path.join(__dirname, '..', 'motionmain.js'));

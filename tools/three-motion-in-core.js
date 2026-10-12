@@ -224,9 +224,11 @@ function hearthMotionCore() {
   // out: { t: 'feat', b (Float32Array's buffer), mask?: { w, h, b }, pts?: [x, y…] (hands, screen), ms, engine, tasks }
   //      { t: 'state', mp: 'loading' | 'ready' | 'error', tasks, error }
   function worker(self) {
+    // MediaPipe's own start-up lines ("INFO: Created TensorFlow Lite XNNPACK delegate…", glog lines) aren't errors
+    for (const k of ['error', 'warn', 'log', 'info']) { const f = console[k].bind(console); console[k] = (...a) => { if (/^(INFO:|[IW]\d{4} |Graph successfully started)/.test(String(a[0] ?? ''))) return; f(...a); }; }
     const fin = finisher(); const lt = light();
     let cv = null; let g = null; let last = 0;
-    const mp = { V: null, fileset: null, files: null, tasks: {}, loading: {}, error: null, urls: [] };
+    const mp = { V: null, fileset: null, files: null, tasks: {}, loading: {}, error: null, urls: [], got: {}, turn: 0, slow: false, avg: 0, lastMask: null };
     const blobUrl = (buf, type = 'text/javascript') => { const u = URL.createObjectURL(new Blob([buf], { type })); mp.urls.push(u); return u; };
     const say = (m) => self.postMessage({ t: 'state', mp: mp.error ? 'error' : mp.V ? 'ready' : mp.files ? 'loading' : 'none', tasks: Object.keys(mp.tasks), error: mp.error, ...m });
     function loadBundle() {
@@ -276,10 +278,18 @@ function hearthMotionCore() {
       const ts = Math.max(1, Math.round(m.at));
       if (useMp && Object.keys(mp.tasks).length) {
         raw.tracked = 1;
-        if (mp.tasks.hands && m.want?.hands) { const x = fromHands(run(mp.tasks.hands, 'hands', bmp, ts), m.mirror); pts = x.pts.flatMap((p) => [m.mirror ? 1 - p.x : p.x, 1 - p.y]); delete x.pts; Object.assign(raw, x); }
-        if (mp.tasks.pose && m.want?.pose) Object.assign(raw, fromPose(run(mp.tasks.pose, 'pose', bmp, ts)));
-        if (mp.tasks.face && m.want?.face) Object.assign(raw, fromFace(run(mp.tasks.face, 'face', bmp, ts)));
-        if (mp.tasks.mask && m.want?.mask) { const x = run(mp.tasks.mask, 'mask', bmp, ts); if (x) { mask = { w: x.w, h: x.h, b: x.data.buffer }; raw.maskArea = x.area; } }
+        // every wanted task each frame while they're quick together; when they cost more than ~45 ms a frame (a slow
+        // computer, all four wanted) one runs per frame in turn, the others keep their last values (no frame waits)
+        const kinds = ['hands', 'pose', 'face', 'mask'].filter((k) => mp.tasks[k] && m.want?.[k]);
+        const turn = mp.slow && kinds.length > 1 ? [kinds[(mp.turn = (mp.turn + 1) % kinds.length)]] : kinds;
+        for (const k of turn) {
+          if (k === 'hands') { const x = fromHands(run(mp.tasks.hands, 'hands', bmp, ts), m.mirror); x.ptsS = x.pts.flatMap((p) => [m.mirror ? 1 - p.x : p.x, 1 - p.y]); delete x.pts; mp.got.hands = x; }
+          if (k === 'pose') mp.got.pose = fromPose(run(mp.tasks.pose, 'pose', bmp, ts));
+          if (k === 'face') mp.got.face = fromFace(run(mp.tasks.face, 'face', bmp, ts));
+          if (k === 'mask') { const x = run(mp.tasks.mask, 'mask', bmp, ts); if (x) { mp.got.mask = { maskArea: x.area }; mp.lastMask = { w: x.w, h: x.h, data: x.data.slice() }; mask = { w: x.w, h: x.h, b: x.data.buffer }; } }
+        }
+        for (const k of kinds) { const x = mp.got[k]; if (!x) continue; const { ptsS, ...v } = x; Object.assign(raw, v); if (k === 'hands') pts = ptsS; }
+        if (!mask && kinds.includes('mask') && mp.lastMask) { const x = mp.lastMask; mask = { w: x.w, h: x.h, b: x.data.slice().buffer }; }
       }
       // what MediaPipe doesn't track (not loaded, not wanted): the light tracker's stand-ins
       const si = lightStandIn(r);
@@ -288,6 +298,7 @@ function hearthMotionCore() {
       if (!mask && !r.first) { mask = { w: lw, h: lh, b: r.mask.slice().buffer, motion: true }; if (raw.maskArea == null) raw.maskArea = si.maskArea; }
       delete raw.mask; delete raw.first;
       bmp.close?.();
+      if (raw.tracked) { mp.avg += ((performance.now() - t0) - mp.avg) * 0.2; const n = ['hands', 'pose', 'face', 'mask'].filter((k) => mp.tasks[k] && m.want?.[k]).length; mp.slow = mp.slow ? mp.avg * n > 35 : mp.avg > 45; }
       const out = fin.apply(raw, dt, Boolean(m.mirror)).slice();
       self.postMessage({ t: 'feat', b: out.buffer, mask, pts, ms: performance.now() - t0, engine: raw.tracked ? 'mediapipe' : 'light', tasks: Object.keys(mp.tasks) }, [out.buffer, ...(mask ? [mask.b] : [])]);
     };
