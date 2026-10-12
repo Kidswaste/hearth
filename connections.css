@@ -1,0 +1,30 @@
+/* Connections (round 26, connections.js): the owner's MCP servers under ⋯ AI setup → What it can use, and the
+   ＋ Add a connection dialog */
+.cn-box { margin-top: 4px; }
+.cn-row .opt-label { display: flex; align-items: baseline; gap: 2px; }
+.cn-row .opt-label > span { overflow: hidden; text-overflow: ellipsis; }
+.cn-tok { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.cn-result { margin: -2px 4px 6px; font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
+.cn-result.good { color: color-mix(in srgb, #5fd38d 80%, var(--text)); }
+.cn-result.bad { color: color-mix(in srgb, #ff7a7a 85%, var(--text)); }
+.cn-dialog { width: min(560px, calc(100vw - 40px)); max-height: calc(100vh - 60px); }
+.cn-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cn-head h2 { margin: 0; }
+.cn-body { overflow-y: auto; max-height: calc(100vh - 140px); padding-top: 6px; }
+.cn-cards { display: grid; grid-template-columns: 1fr; gap: 4px; margin-bottom: 8px; }
+.cn-card { display: flex; align-items: center; gap: 10px; text-align: left; padding: 7px 9px; border-radius: 8px; cursor: pointer;
+  background: var(--surface); color: var(--text); border: 1px solid var(--line); font: inherit; }
+.cn-card:hover:not(:disabled) { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.cn-card:disabled { opacity: .5; cursor: default; }
+.cn-icon { font-size: 18px; width: 22px; text-align: center; }
+.cn-what { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.cn-what small { color: var(--muted); font-size: 11.5px; }
+.cn-need { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; white-space: nowrap; }
+.cn-need.missing { color: #ffb070; border-color: #ffb07066; }
+.cn-own { display: flex; flex-direction: column; gap: 6px; }
+.cn-own input, .cn-own textarea { width: 100%; box-sizing: border-box; }
+.cn-own textarea { font-family: var(--mono, ui-monospace, monospace); font-size: 12px; }
+.cn-secret { margin: 0; }
+.cn-err { margin: 0; color: #ff7a7a; font-size: 12px; }
+.cn-err:empty { display: none; }
+.cn-actions { display: flex; justify-content: flex-end; }

@@ -806,3 +806,9 @@ Right-click ⋯ in a chat for the old quick menu (rename, export, delete…).
 
 ### ◎ Missions
 The ◎ button by the chat box (and the top of ⋯) picks what your next message becomes: Just answer · Split it up (it deploys helper agents) · Swarm (several AIs answer, a chair merges; in the Lab, a crew of 4 explores variations) · Answer, then review (the other AI checks it) · Debate · Side by side (Claude and Astra) · Jam (a music visual in the Lab, taking turns) · Pair on code · Ask everyone. A click is for the next message only; 📌 keeps it from now on; right-click ◎ goes back to a normal reply. Your words go out as written.
+
+## Connections (round 26, connections, 38 upgrades: docs/upgrades/connections.md)
+- ✓ ⋯ AI setup → What it can use → **＋ Add a connection**: any MCP server you have (a command line, or the address of a remote HTTP server, with optional settings), or one of 8 free ready-made ones in one click (files in a folder, web pages, git, SQLite, a web browser, memory, time, step-by-step thinking; marked needs Node / Python).
+- ✓ Per AI Off / Read only / Full (Off / On when a server has only one kind of tool), for Claude and Astra; **Test** starts it, lists its tools, measures its ≈ tokens a message, and says clearly why when it doesn't start. Right-click a row: Test, Edit, Remove.
+- ✓ Settings you type (keys, tokens) stay in Hearth's config and go only to that server, never to the AI or a prompt; nothing is added to the system prompt.
+- ○ Tested with a fake stdio server, a local HTTP server and the fake engines (`sh dev/run-checks.sh connections`); the ready-made servers weren't started for real here (no network).

@@ -8,6 +8,9 @@ const os = require('os');
 const path = require('path');
 const { DATA_DIR, ATTACH_DIR, getMemory, addUsage } = require('./store');
 const Installs = require('./installs');
+// (round 26, connections) the owner's own MCP servers, switched on per AI in ⋯ AI setup (connectionsmain.js)
+const Conn = (() => { try { return require('./connectionsmain'); } catch { return null; } })();
+const conns = (agent) => (Conn ? Conn.enabledFor(agent) : []);
 
 const WORKSPACE = path.join(DATA_DIR, 'workspace');
 const PROMPTS_DIR = path.join(DATA_DIR, 'prompts');
@@ -189,6 +192,7 @@ function hubMcpConfig(agent) {
   }
   // (round 14) the permission check behind --permission-prompt-tool, for a chat with file access
   if (accessAsks(agent)) mcpServers.access = { command: process.execPath, args: [path.join(__dirname, 'mcp', 'access-mcp.js')], env: accessEnv(agent) };
+  if (Conn) Object.assign(mcpServers, Conn.claudeServers(agent)); // (round 26) the owner's connections
   const file = mcpConfigFile(agent);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify({ mcpServers }, null, 2));
@@ -213,6 +217,7 @@ function codexMcpArgs(agent) {
       '-c', `${p}.default_tools_approval_mode="approve"`,
     );
   }
+  if (Conn) args.push(...Conn.codexArgs(agent, tomlStr)); // (round 26) the owner's connections
   return args;
 }
 
@@ -357,7 +362,7 @@ function buildPrompt(agent) {
   }
   if (agent.crewOn && sets.includes('threeTools') && agent.toolMode !== 'crew') parts.push('Crew (on for this chat): for an open look question, three_do crew {op: "start", n: 2–6, brief, angles: [one per helper]} explores variations in parallel on copies of this scene (the owner approves the cost first; it answers when they finish). Then crew {op: "pick", n, reason} when asked to choose, or {op: "copy", from: n, layer} / {op: "code", n, layer} to merge parts.');
   if (web) parts.push('You can search the web when the answer depends on recent or specific facts; say briefly where facts come from.');
-  if (!folder && !acc && !usesApps && !sets.length) parts.push(web ? 'Apart from web search you have no tools: never try to run commands or read files.' : 'You have no tools: never try to run commands, read files or browse the web.');
+  if (!folder && !acc && !usesApps && !sets.length && !conns(agent).length) parts.push(web ? 'Apart from web search you have no tools: never try to run commands or read files.' : 'You have no tools: never try to run commands, read files or browse the web.');
   const memory = getMemory();
   const notes = [memory.shared, memory.agents?.[agent.id]].map((m) => (m || '').trim()).filter(Boolean);
   // (round 24, context) /memory relevant on: the notes leave the system prompt; chat-memory.js sends only the facts a message is about
@@ -396,9 +401,10 @@ function claudeToolArgs(agent, options = {}) {
   else if (images) args = ['--tools', 'Read', '--restricted', '--add-dir', ATTACH_DIR];
   else args = ['--tools', ''];
   const sets = hubToolsets(agent);
-  if (!enabled.size && !folder && !acc && !images && !sets.length) return [...args, '--strict-mcp-config'];
+  const own = conns(agent).length > 0; // (round 26) the owner's connections ride in the same --mcp-config file
+  if (!enabled.size && !folder && !acc && !images && !sets.length && !own) return [...args, '--strict-mcp-config'];
   // --strict-mcp-config limits MCP servers to the ones passed with --mcp-config (or none).
-  if (sets.length || asks) args.push('--mcp-config', hubMcpConfig(agent));
+  if (sets.length || asks || own) args.push('--mcp-config', hubMcpConfig(agent));
   if (!enabled.size) args.push('--strict-mcp-config');
   if (asks) args.push('--permission-prompt-tool', PERMISSION_TOOL);
   else args.push('--permission-prompts', 'none');
@@ -406,6 +412,7 @@ function claudeToolArgs(agent, options = {}) {
   const allowed = acc ? accessAllowed : folder ? [...FILE_TOOLS] : images ? ['Read'] : [];
   for (const key of sets) allowed.push(`mcp__${HUB_TOOLSETS[key].server}`);
   const denied = [];
+  if (own) { const r = Conn.claudeRules(agent); allowed.push(...r.allowed); denied.push(...r.denied); }
   for (const server of enabled.size ? claude?.servers || [] : []) {
     const prefix = serverPrefix(server.name);
     const mode = enabled.get(server.name);
@@ -466,8 +473,9 @@ function unsupportedFlag(text) {
 
 // The command line a new chat would run, for /astra-flags (prompt text shortened; its tool-server file removed again).
 function shownArgs(a) {
-  const args = a.engine === 'codex' ? codexArgs(a, {}, {}) : claudeArgs(a, {}, {});
+  let args = a.engine === 'codex' ? codexArgs(a, {}, {}) : claudeArgs(a, {}, {});
   if (args.includes('--mcp-config')) fs.rm(args[args.indexOf('--mcp-config') + 1], { force: true }, () => {});
+  if (Conn) args = Conn.maskArgs(args); // the owner's env values / headers never show
   return args.map((x) => (x.length > 160 ? `${x.slice(0, 157)}…` : x));
 }
 // Run files left by a crash or a force quit go at startup (a day old: a long chat run never loses its own).

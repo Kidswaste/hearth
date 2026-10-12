@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('hub', {
   saveMemory: call('memory:save'),
   getConnectors: call('connectors:get'),
   refreshConnectors: call('connectors:refresh'),
+  connections: { test: call('connections:test'), which: call('connections:which') }, // (round 26) the owner's own MCP servers (connectionsmain.js)
   getHistory: call('history:get'),
   saveHistory: call('history:save'),
   kvGet: call('kv:get'),

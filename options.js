@@ -96,7 +96,10 @@ const Options = (() => {
     if (a.engine === 'codex') rows.push(sw(a.webSearch && a.webSearch !== 'disabled', 'Web search', 'Look things up on the web', (v) => save(a, { webSearch: v ? 'live' : undefined })));
     const apps = el('div', { class: 'opt-apps' });
     if (a.engine === 'claude') loadApps(a, apps);
-    return sec('What it can use', 'Connections it reaches by itself when it helps: no need to paste things into your message.', ...rows, apps);
+    // (round 26, connections.js) the owner's own MCP servers: ＋ Add a connection, per-AI on / off, Test
+    const own = el('div', { class: 'opt-conns' });
+    Promise.resolve(typeof Lazy !== 'undefined' ? Lazy.load('connections') : null).then(() => { if (typeof Connections !== 'undefined') own.replaceChildren(Connections.section(a.id)); }).catch(() => {});
+    return sec('What it can use', 'Connections it reaches by itself when it helps: no need to paste things into your message.', ...rows, apps, own);
   }
   async function loadApps(a, box, refresh = false) {
     box.replaceChildren(el('p', { class: 'opt-hint', text: 'Connected apps: looking…' }));
