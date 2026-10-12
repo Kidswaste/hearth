@@ -30,19 +30,19 @@ const CORE_TOOLS = [
     inputSchema: obj({ size: { type: 'string', enum: ['small', 'medium', 'large'] }, region: { type: 'array', items: { type: 'number' } }, at: {}, compare: { type: 'boolean' }, frames: { type: 'number' }, gap: { type: 'number' }, force: { type: 'boolean' } }) },
   { name: 'three_read_code', description: 'Read a layer\'s code with line numbers (default: selected layer, lines 1–250); from / to read further, or around: line ± 20.',
     inputSchema: obj({ layer: LAYER, from: { type: 'number' }, to: { type: 'number' }, around: { type: 'number' } }) },
-  { name: 'three_search_code', description: 'Find text (regex: true for a regex) in every layer (or one). Returns matches by layer with line numbers and trimmed context (default 1 line, max 40 hits).',
+  { name: 'three_search_code', description: 'Find text (regex: true) in every layer (or one): matches by layer, line numbers, context lines (1), max hits (40).',
     inputSchema: obj({ pattern: { type: 'string' }, layer: LAYER, regex: { type: 'boolean' }, context: { type: 'number' }, max: { type: 'number' } }, ['pattern']) },
-  { name: 'three_sliders', description: 'Read or move a layer\'s tweak() sliders like the owner dragging them (no code change): set { key or label: value }. Shown unsaved (they keep or undo); locked ones are skipped. Returns sliders + looks.',
+  { name: 'three_sliders', description: 'Read or move a layer\'s tweak() sliders as the owner would (no code change): set { key or label: value }, shown unsaved; locked ones skipped. Returns sliders + looks.',
     inputSchema: obj({ layer: LAYER, set: { type: 'object' } }) },
   { name: 'three_set_code', description: 'Rewrite the selected layer with a complete module and run it (undoable): for an empty sketch, or when the owner asks to rewrite this layer; new elements go in a new layer. Returns errors (layer + line), console, fps, sliders; report: "full" for everything.',
     inputSchema: obj({ code: { type: 'string' }, report: { type: 'string', enum: ['compact', 'full'] } }, ['code']) },
-  { name: 'three_get_code', description: 'The selected layer\'s code (an outline with line numbers past 350 lines), the layers, frame size, sliders with values and music links, and slider changes the user hasn\'t saved.', inputSchema: obj({}) },
+  { name: 'three_get_code', description: 'The selected layer\'s code (an outline past 350 lines), layers, frame, sliders and unsaved slider changes.', inputSchema: obj({}) },
   { name: 'three_console', description: 'Errors, recent console lines and fps / draw calls of the running sketch; full: true adds sliders, layers and music.', inputSchema: obj({ full: { type: 'boolean' } }) },
   { name: 'three_media_control', description: 'Music: play, pause, seek (time s), loop (time = start, end; none clears; leave a locked loop). Footage: frame (n | "f120" | timecode), step n, read (exact frame; see: picture).',
     inputSchema: obj({ action: { type: 'string', enum: ['play', 'pause', 'seek', 'loop', 'frame', 'step', 'read'] }, time: { type: 'number' }, end: { type: 'number' }, frame: {}, n: { type: 'number' }, see: { type: 'boolean' } }, ['action']) },
-  { name: 'three_input', description: 'Play-test the preview, in order: { key: "ArrowLeft", ms } (held), { keys: ["w", "Shift"], ms }, { click: [x, y] } (0..1), { move: [x, y] }, { wait: ms }. screenshot: true = a picture after.',
+  { name: 'three_input', description: 'Play-test the preview, in order: { key: "ArrowLeft", ms } (held), { keys: ["w", "Shift"], ms }, { click: [x, y] } (0..1), { move: [x, y] }, { wait: ms }; screenshot: true after.',
     inputSchema: obj({ actions: { type: 'array', items: { type: 'object' } }, screenshot: { type: 'boolean' } }, ['actions']) },
-  { name: 'three_contact_sheet', description: 'One image of numbered, timed frames at the owner\'s cues (or count over the loop / song, or times in s): judge the whole piece.',
+  { name: 'three_contact_sheet', description: 'One image of numbered, timed frames at the owner\'s cues (or count over the loop / song, or times in s).',
     inputSchema: obj({ times: { type: 'array', items: { type: 'number' } }, count: { type: 'number' } }) },
 ];
 
@@ -89,10 +89,11 @@ const MORE_TOOLS = [
 const NODES_TOOL = { name: 'three_nodes', description: 'Layers as node graphs (the owner\'s Nodes view). command: "layer <preset>" (new layer), "presets", "types [word]", "list", "add <type> k=v [to=n.in]", "link a.out b.in", "unlink b.in", "set <n> k=v", "rm <n>", "preset <p>" (replace), "rebuild". help nodes.', inputSchema: obj({ command: { type: 'string' } }, ['command']) };
 
 // add_layer stays a command (older habits keep working) but is described as its own tool now
-const DO_CMDS = ['layers', 'undo', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'footage', 'sequence', 'motion', 'model', 'comp', 'make', 'help'];
+const DO_CMDS = ['layers', 'batch', 'undo', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'footage', 'sequence', 'motion', 'model', 'comp', 'make', 'help'];
 const DO_TOOL = {
   name: 'three_do',
   description: `More Lab actions: { cmd, ...args }; help {topic} explains any (app: the whole app). layer = name, id, n (1 = bottom), "top", "bottom", "selected".
+batch {ops: [{cmd, ...args}, …]} several in one call, in order (also screenshot, sliders, edit_code…)
 layers · select_layer {layer} · remove_layer {layer} · undo {force} (your last code change, no code re-sent)
 update_layer {layer, settings: {in, out, fadeIn, fadeOut, opacity, blend, x, y, scale, rotate, visible, name}, order, code}
 keyframes {layer, property, keys: [{time, value, ease}] | clear} · animate {layer, preset}

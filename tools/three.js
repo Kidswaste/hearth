@@ -3451,18 +3451,16 @@ ${code}
       // waiter used to replace the one before, which then never resolved. Tagged 'get' so a second reply never
       // falls through to the user's "save screenshot" dialog.
       // (round 21, labdirector) a small JPEG made by the preview itself (no full-size PNG): the director's pictures.
-      // Shares the thumbnail channel (after a Lab thumbnail on its way); null when it can't (the caller uses shot()).
-      shotSmall: async (max) => {
-        for (let i = 0; i < 40 && thumbShot; i += 1) await new Promise((r) => setTimeout(r, 100)); // a Lab thumbnail on its way: after it
-        if (thumbShot) return null;
-        return new Promise((resolve) => {
-          let done = false;
-          const mine = (url) => { if (done) return; done = true; if (thumbShot === mine) thumbShot = null; resolve(url || null); };
-          thumbShot = mine;
-          box.send({ type: 'screenshot', tag: 'thumb', max: Math.max(64, Math.round(max)) });
-          setTimeout(() => mine(null), 10000); // a heavy scene can take a while to draw its next frame
-        });
-      },
+      // Shares the thumbnail channel: a Lab thumbnail on its way gets the same picture (shrunk to its size).
+      shotSmall: (max) => new Promise((resolve) => {
+        const prev = thumbShot;
+        let done = false;
+        const mine = (url, small) => { if (done) return; done = true; if (thumbShot === mine) thumbShot = null; resolve(url || null); if (prev && url) prev(url, small && !prev.forDirector ? false : small); };
+        mine.forDirector = true;
+        thumbShot = mine;
+        box.send({ type: 'screenshot', tag: 'thumb', max: Math.max(64, Math.round(max)) });
+        setTimeout(() => mine(null), 10000); // a heavy scene can take a while to draw its next frame
+      }),
       shot: () => new Promise((resolve) => {
         const prev = pendingShot;
         const mine = (url) => { prev?.(url); resolve(url); };

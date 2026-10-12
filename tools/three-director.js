@@ -206,12 +206,13 @@ const ThreeDirector = (() => {
   // so a change answers in ≈ its build time instead of a fixed 2.5 s. Nothing drawn: the full wait, as before.
   const GRACE = 220;
   const waiters = new Set();
-  function onBox(m) { if (m && (m.type === 'drawn' || m.type === 'error')) for (const w of [...waiters]) w(m); }
+  function onBox(m) { if (m && (m.type === 'drawn' || m.type === 'error' || m.type === 'ran')) for (const w of [...waiters]) w(m); }
   function settle(ms) {
     return new Promise((resolve) => {
-      let grace = 0;
+      let grace = 0; let drew = false;
       const done = () => { waiters.delete(w); clearTimeout(cap); clearTimeout(grace); resolve(); };
-      const w = () => { clearTimeout(grace); grace = setTimeout(done, GRACE); };
+      // 'ran' (the code loaded) without a first frame soon after: answer anyway (a layer that draws nothing new)
+      const w = (m) => { if (m.type === 'ran') { if (!drew) { clearTimeout(grace); grace = setTimeout(done, 900); } return; } drew = true; clearTimeout(grace); grace = setTimeout(done, GRACE); };
       const cap = setTimeout(done, Math.max(0, ms));
       waiters.add(w);
     });
@@ -281,7 +282,16 @@ const ThreeDirector = (() => {
   // PNG to encode, pass over and shrink here) when the Lab offers it; region crops need the full picture.
   async function grab(d, max, region) {
     const t = performance.now();
-    if (!region && d.shotSmall) { const url = await d.shotSmall(max); if (url) { shotStat('small', t); return url; } }
+    if (!region && d.shotSmall) {
+      // the first picture back can be a Lab thumbnail's (360 px) that was already on its way: ask again if it's short
+      for (let i = 0; i < 2; i += 1) {
+        const url = await d.shotSmall(max);
+        if (!url) break;
+        const im = await loadImg(url).catch(() => null);
+        if (im && i === 0 && max > 400 && Math.max(im.width, im.height) <= 362) continue;
+        shotStat('small', t); return url;
+      }
+    }
     const url = await d.shot();
     shotStat('full', t);
     return url;

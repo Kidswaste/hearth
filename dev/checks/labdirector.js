@@ -65,6 +65,7 @@ async function turn(label, calls) {
     tokens: mine.reduce((n, e) => n + (e.tokens || 0), 0),
     onScreenMs: firstDrawn ? Math.round(firstDrawn - t0) : null,
     errors: mine.filter((e) => e.ok === false).map((e) => e.error),
+    steps: mine.filter((e) => e.via !== 'three_batch').length + 1, // model inferences: one per tool call + the answer
     chars: (reply.match(/^- three_\w+: .*$/gm) || []).map((l) => l.replace(/ · .*$/, '').replace(/^- /, '')),
   };
   out.turns[label] = r;
@@ -82,15 +83,32 @@ step(!t1.errors.length && t1.calls === 2, 'pulse on the kick: search + edit (wit
 const t2 = await turn('add a pink glow', [
   ['three_add_layer', { template: 'glow', name: 'Pink glow' }],
   ['three_sliders', { layer: 'top' }],
+  ['three_sliders', { layer: 'top', set: { strength: 1.4 } }],
+  ['three_sliders', { layer: knot, set: { tint: '#ff4fd8' } }],
   ['three_screenshot', {}],
 ]);
-step(!t2.errors.length, 'pink glow: add layer + sliders + screenshot', t2);
+step(!t2.errors.length, 'pink glow: add layer, read + set sliders, tint, screenshot', t2);
 const t3 = await turn('make it 9:16 and save', [
   ['three_do', { cmd: 'set_frame', size: '9:16' }],
   ['three_do', { cmd: 'looks', action: 'save', name: 'Pink pulse' }],
   ['three_screenshot', {}],
 ]);
 step(!t3.errors.length, '9:16 and save: frame + look + screenshot', t3);
+// the same asks the round-21 way: add_layer already lists its sliders (no read), the rest in one three_do batch
+if (typeof ThreeDirector !== 'undefined' && ThreeDirector.settle) {
+  await HubBridge.call('three_do', { cmd: 'set_frame', size: 'fit' }, { chatId: H.activeChat[agent.id] });
+  await HubBridge.call('three_do', { cmd: 'remove_layer', layer: 'top' }, { chatId: H.activeChat[agent.id] });
+  await wait(1500);
+  const b2 = await turn('add a pink glow (batched)', [
+    ['three_add_layer', { template: 'glow', name: 'Pink glow' }],
+    ['three_do', { cmd: 'batch', ops: [{ cmd: 'sliders', layer: 'top', set: { strength: 1.4 } }, { cmd: 'sliders', layer: knot, set: { tint: '#ff4fd8' } }, { cmd: 'screenshot' }] }],
+  ]);
+  step(!b2.errors.length && b2.calls === 2 && !/Error/.test(b2.chars.join(' ')), 'pink glow in 2 calls (add_layer lists its sliders; one batch)', b2);
+  const b3 = await turn('make it 9:16 and save (batched)', [
+    ['three_do', { cmd: 'batch', ops: [{ cmd: 'set_frame', size: '9:16' }, { cmd: 'looks', action: 'save', name: 'Pink pulse 2' }, { cmd: 'screenshot' }] }],
+  ]);
+  step(!b3.errors.length && b3.calls === 1 && /image/.test(b3.chars.join(' ')), '9:16 and save in 1 call (one batch, picture included)', b3);
+}
 
 // ---------- phases on their own (HubBridge.call: the same handlers, no engine) ----------
 const chatId = H.activeChat[agent.id];
@@ -103,7 +121,7 @@ const med = (a) => { const x = a.filter((v) => v != null).sort((p, q) => p - q);
 // edit apply: call → first new frame on screen → the answer (the gap is time the director waited for nothing)
 {
   const runs = [];
-  for (let i = 0; i < 3; i += 1) {
+  for (let i = 0; i < 5; i += 1) {
     const d0 = drawnAt.length; const t = performance.now();
     const r = await call('three_edit_code', { layer: knot, edits: [{ find: 'P.punch * 1.5', replace: 'P.punch * 1.6' }] });
     const ms = performance.now() - t;
@@ -111,7 +129,7 @@ const med = (a) => { const x = a.filter((v) => v != null).sort((p, q) => p - q);
     await call('three_edit_code', { layer: knot, edits: [{ find: 'P.punch * 1.6', replace: 'P.punch * 1.5' }] });
   }
   const r = runs[0].r;
-  out.phases.edit = { answerMs: Math.round(med(runs.map((x) => x.ms))), onScreenMs: Math.round(med(runs.map((x) => x.on))), idleAfterOnScreenMs: Math.round(med(runs.map((x) => (x.on == null ? null : x.ms - x.on)))), ok: r.ok !== false, ...(r.ok === false ? { error: r.error } : { chars: HubBridge.fmtText(r.value).length, text: HubBridge.fmtText(r.value).slice(0, 300) }) };
+  out.phases.edit = { raw: runs.map((x) => `${Math.round(x.ms)}/${x.on == null ? '-' : Math.round(x.on)}`).join(' '), answerMs: Math.round(med(runs.map((x) => x.ms))), onScreenMs: Math.round(med(runs.map((x) => x.on))), idleAfterOnScreenMs: Math.round(med(runs.map((x) => (x.on == null ? null : x.ms - x.on)))), ok: r.ok !== false, ...(r.ok === false ? { error: r.error } : { chars: HubBridge.fmtText(r.value).length, text: HubBridge.fmtText(r.value).slice(0, 300) }) };
 }
 // the same edit with its small picture
 {
@@ -132,7 +150,7 @@ for (const size of ['small', 'medium', 'large', undefined]) {
 // a broken edit: one short error line (layer + line); safe: true puts the code back by itself
 {
   const before = ThreeLab.director.codeOf(knot).code;
-  const r = await call('three_edit_code', { layer: knot, edits: [{ find: 'mesh.rotation.y = now / 1000 * P.spin;', replace: 'mesh.rotation.y = now / 1000 * P.spin + nope.x;' }], safe: true, wait: 3 });
+  const r = await call('three_edit_code', { layer: knot, edits: [{ find: 'scene.add(mesh);', replace: 'scene.add(mesh.add(nope.x));' }], safe: true, wait: 3 });
   const text = r.ok === false ? `ERROR ${r.error}` : HubBridge.fmtText(r.value);
   const after = ThreeLab.director.codeOf(knot).code;
   out.phases.brokenEdit = { text: text.slice(0, 400), reverted: after === before };
@@ -143,7 +161,7 @@ for (const size of ['small', 'medium', 'large', undefined]) {
 // three_do undo: the last change back without resending code
 {
   const before = ThreeLab.director.codeOf(knot).code;
-  await call('three_edit_code', { layer: knot, edits: [{ find: 'P.punch * 1.6', replace: 'P.punch * 1.7' }] });
+  await call('three_edit_code', { layer: knot, edits: [{ find: 'P.punch * 1.5', replace: 'P.punch * 1.7' }] });
   const { r, ms } = await timeIt(() => call('three_do', { cmd: 'undo' }));
   out.phases.undo = { ms, text: r.ok === false ? `ERROR ${r.error}` : HubBridge.fmtText(r.value) };
   step(ThreeLab.director.codeOf(knot).code === before, 'three_do undo puts the last change back', out.phases.undo);
