@@ -95,7 +95,8 @@ line count is lower than the number of upgrades).
 | Phone remote (round 24): `/remote on` shows a QR code and a 6-digit pairing code (LAN only, off by default, auto-off); your phone gets touch faders with meters and soft takeover, an XY pad, shuffle / freeze / tap / save / black-out pads, the set list with GO, a scene picker, BPM tap and a small live preview; two phones at once, kick / forget devices | [remote.md](remote.md) | 51 |
 | Smarter context (round 24): @ references (chat summary, scene, board, file, render, project) with the token cost before sending; memory sent only when relevant; a bar under each reply showing what the message sent and a one-click fix for expensive chats (`/context`); `/fresh` restarts a long chat from a free, editable summary (next message 9.8k → 4.4k tokens, a scene by @scene 2k → 108) | [context.md](context.md) | 50 |
 | GPU particles (round 24): a ✦ particle layer simulated on the GPU (deterministic for renders), emitters from shapes, text, pictures, a model's surface or another layer's bright pixels, curl-noise / vortex / attractors / boids / dissolve forces, trails, sprites and instanced meshes, burst / explode on kick and forces on bass; 30 presets (galaxy, nebula, smoke, fire, sparks on kick, model into dust…); `/particles`, and the director can use them | [particles.md](particles.md) | 119 |
-| **Total** | | **11,831** |
+| Asset library (round 24): one library (Ctrl/⌘+Shift+A, `/assets`) of textures, HDRIs, models, fonts, sounds, LUTs, shaders, presets and videos from watched folders, app downloads, renders and captures, deduplicated, thumbnails made off the main thread; free Poly Haven and ambientCG search and download; drag onto the Lab (by kind), the board, a chat or the sequence; directors can find and use assets | [assets.md](assets.md) | 77 |
+| **Total** | | **11,908** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.

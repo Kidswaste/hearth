@@ -759,3 +759,9 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ Music sliders: burst on kick, explode on kick, forces × bass, hue on brightness; `/particles react` adds the preset's react-to links.
 - ✓ 30 presets in one picker (`/particles`, right-click › ✦ Particles, Ctrl/⌘+K, FX picker); directors: `three_do particles` (help on demand).
 - ○ Tested on SwiftShader at 16k particles only (`sh dev/run-checks.sh particles`).
+## Asset library (round 24, assets, 77 upgrades: docs/upgrades/assets.md)
+- ✓ One library (Ctrl/⌘+Shift+A, `/assets`) of textures, HDRIs, 3D models, fonts, sounds, LUTs, shaders, presets and videos from watched folders, app downloads, renders and captures; by reference, deduplicated by content hash, tags, favorites, projects; a small kv index, nothing scanned at startup.
+- ✓ Free CC0 assets built in: Poly Haven (HDRIs, textures with their maps, models packed into a GLB) and ambientCG (PBR materials, HDRIs) through their public APIs: search, cached previews, size choice, downloads with a bar.
+- ✓ Pictures of every card made off the main thread and cached on disk (pictures, HDR skies, GLB textures / the Lab's model pictures, font samples with their real names, waveforms, LUT sweeps, video frames); a virtualized grid (3,000 cards ≈ 1 ms per screenful).
+- ✓ Drag a card onto the Lab (picture layer or shader input, sky, model layer, text layer in the font, song, grade, shader layer, preset), the board, a chat or the sequence; right-click › Use in…; the directors' `three_do asset` (find / use / free / get).
+- ○ Tested against fake Poly Haven / ambientCG servers and a fixtures folder (`sh dev/run-checks.sh assets`); not against the real services or very large real folders.

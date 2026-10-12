@@ -2675,6 +2675,7 @@ const ThreeLab = (() => {
         ...(typeof ThreeSeq !== 'undefined' ? [ThreeSeq.previewItem()] : []),
         ...(typeof ThreeComp !== 'undefined' ? [ThreeComp.previewItem()] : []),
         ...(typeof ThreeModels !== 'undefined' ? [ThreeModels.previewItem()] : []), // 3D models (tools/three-models.js)
+        ...(window.AssetsHooks ? [AssetsHooks.previewItem()] : []), // (round 24) 🗂 the asset library (assets-cmds.js)
         ...(typeof LabShader !== 'undefined' ? [LabShader.previewItem()] : []), // (round 23) ◇ shader layers (tools/three-shader.js)
         ...(typeof LabParticles !== 'undefined' ? [LabParticles.previewItem()] : []), // (round 24) ✦ GPU particles (tools/three-particles.js)
         ...(typeof ThreeStage !== 'undefined' ? [ThreeStage.previewItem()] : []), // (round 22) live / VJ: MIDI, set list, crossfade, output, show mode

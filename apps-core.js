@@ -30,15 +30,16 @@ const AppsCore = (() => {
     chat: '💬 Attach to the chat',
     meshy: '🧊 Make a 3D model of it (Meshy)',
     make: '✦ Add to the make in progress',
+    assets: '🗂 In your assets (tags, use anywhere)', // (round 24) the asset library (assets.js)
     reveal: '📂 Show in folder',
   };
   const BY_KIND = {
-    model: ['lab-model', 'board', 'reveal'],
-    hdri: ['lab-hdri', 'lab-ref', 'reveal'],
-    audio: ['lab-song', 'open', 'board', 'chat', 'reveal'],
-    video: ['board', 'open', 'lab-song', 'lab-ref', 'chat', 'reveal'],
-    image: ['board', 'lab-ref', 'chat', 'meshy', 'reveal'],
-    font: ['lab-ref', 'reveal'],
+    model: ['lab-model', 'board', 'assets', 'reveal'],
+    hdri: ['lab-hdri', 'lab-ref', 'assets', 'reveal'],
+    audio: ['lab-song', 'open', 'board', 'chat', 'assets', 'reveal'],
+    video: ['board', 'open', 'lab-song', 'lab-ref', 'chat', 'assets', 'reveal'],
+    image: ['board', 'lab-ref', 'chat', 'meshy', 'assets', 'reveal'],
+    font: ['lab-ref', 'assets', 'reveal'],
     archive: ['reveal'],
     file: ['chat', 'reveal'],
   };

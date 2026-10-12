@@ -192,5 +192,11 @@ contextBridge.exposeInMainWorld('hub', {
   },
   // (round 20) jank watch (jankmain.js): main loop lag + GPU events since the last take, culprits' line numbers, display / GPU
   jank: { take: call('jank:take'), info: call('jank:info'), lines: call('jank:lines'), profile: call('jank:profile'), busy: (b) => ipcRenderer.send('jank:busy', b), off: (o) => ipcRenderer.send('jank:off', o) },
+  // (round 24) the asset library (assetsmain.js): scans / hashes, bytes for thumbnails, the thumbnail cache, free sources, import, watch
+  assets: {
+    status: call('assets:status'), scan: call('assets:scan'), hash: call('assets:hash'), exists: call('assets:exists'), read: call('assets:read'), readText: call('assets:readText'),
+    saveThumb: call('assets:saveThumb'), cacheInfo: call('assets:cacheInfo'), clearThumbs: call('assets:clearThumbs'), fetchJson: call('assets:fetchJson'), preview: call('assets:preview'),
+    download: call('assets:download'), cancel: call('assets:cancel'), import: call('assets:import'), writePreset: call('assets:writePreset'), watch: call('assets:watch'), onEvent: on('assets:event'),
+  },
   renders: { run: call('renders:run'), pause: call('renders:pause'), resume: call('renders:resume'), cancel: call('renders:cancel'), relay: call('renders:relay'), encoders: call('renders:encoders') },
 });
