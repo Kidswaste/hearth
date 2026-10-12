@@ -65,7 +65,15 @@ const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (
   const doT = lean.tools.find((t) => t.name === 'three_do');
   check(/batch \{ops/.test(doT.description) && /undo \{force\}/.test(doT.description) && !doT.inputSchema.properties.cmd.enum, 'three_do: batch and undo listed, no repeated enum of commands');
   const listTok = Math.round(JSON.stringify(lean.tools).length / 4);
-  check(listTok <= 1700, `lean tool list ≤ 1700 tokens (${listTok}; 1878 before round 21)`);
+  // (round 25, diet) the ceiling came down from 1,700: new director ops go behind three_do + help <cmd>, not in descriptions
+  check(listTok <= 1300, `lean tool list ≤ 1300 tokens (${listTok}; 1687 before round 25, 1878 before round 21)`);
+  check(JSON.stringify(doT).length / 4 <= 200 && lean.tools.every((t) => JSON.stringify(t).length / 4 <= 130 || t.name === 'three_do'), `three_do ≤ 200 tokens (${Math.round(JSON.stringify(doT).length / 4)}), every other tool ≤ 130`);
+  for (const [topic, re] of [['edit_code', /three_edit_code: .*find.*\nargs: layer, edits/s], ['update_layer', /three_do update_layer.*fadeIn/], ['particles', /particles \{op: .*GPU PARTICLES/s], ['batch', /batch \{ops/], ['screenshot', /three_screenshot: .*compare/], ['nodes', /three_nodes: .*NODES|three_nodes: /]]) {
+    const r = await lean.call('three_do', { cmd: 'help', topic });
+    check(re.test(r.content[0].text), `help ${topic}: the details the lean list leaves out (${r.content[0].text.length} chars)`);
+  }
+  const dcmds = lean.tools.find((t) => t.name === 'three_do').description;
+  check(['layers', 'update_layer', 'keyframes', 'timeline_edit', 'footage', 'sequence', 'model', 'motion', 'particles', 'shader', 'asset', 'comp', 'crew', 'make', 'run'].every((c) => new RegExp(`\\b${c}\\b`).test(dcmds)), 'three_do still names every command');
   const off = await lean.call('three_console', {});
   check(off.isError && /not running/.test(off.content[0].text), `no hub: a clean one-line error (${off.content[0].text})`);
   lean.close();
