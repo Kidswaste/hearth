@@ -712,3 +712,9 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ MP4, HEVC 10-bit, ProRes 4444 + alpha, WebM VP9 + alpha, PNG sequence + alpha, perfect-loop GIF / MP4 (on the bars with a cross-fade, or found in the frames), stills (PNG, 16-bit); GLB, one-file web page, slider preset (+ load), contact sheet.
 - ✓ Right-click the preview › ⇪ Export, the Render panel › Export…, Ctrl/⌘+K, `/lab-export` (`/lx`); directors via `three_do run`; render queue rows with time left, pause / resume / cancel.
 - ○ Measured headless on SwiftShader (1080p 6.4 frames/s, 4K 2.2); not on a real GPU.
+
+## Lab time machine (round 23, timemachine, 52 upgrades: docs/upgrades/timemachine.md)
+- ✓ Every meaningful change to a scene (code run, layer added / removed, sliders saved, shuffle kept, director / crew edits) is a version with a tiny picture, who made it and a one-line label; deltas, thinned (today all, hourly for the week, daily after), one kv per scene, merges by id.
+- ✓ Sketch ▾ → ⏱ Time machine, Alt+H, `/history`: scrub on the preview (← →, live, nothing saved), compare (split wipe + what changed), restore (undoable), branch, pick the colors / sliders / one layer.
+- ✓ Each director turn's start is bookmarked: ⋯ → Back before the director, `/back n [claude|astra]`, `/back undo`; `/branch` in the Lab.
+- ○ Tested headless with the fake engines (`sh dev/run-checks.sh timemachine timemachine-test`).
