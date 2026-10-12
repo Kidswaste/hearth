@@ -5,6 +5,7 @@
 // only when your words are about the flow and a <flow answer="…"/> in a reply that moves it, /flow-status, /flow-step,
 // /flow-where, /principal, the editor (add a step, rewire, save as mine) and /flow-make with the fake engine.
 //   node dev/smoke.js --fake-engines --check-timeout 300000 --script dev/checks/flows.js --shot /tmp/flows.png
+store.set('commands.hidden', false); // (round 26) these drive the "/" menu, hidden by default
 const SHOTS = window.FLOW_SHOTS || '/tmp/hearth-checks/flows';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { if (await fn()) return true; } catch { /* not yet */ } await wait(100); } return false; };

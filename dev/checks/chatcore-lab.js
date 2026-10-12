@@ -4,6 +4,7 @@
 // rank the Lab's commands first), the context strip lists the scene / sequence / board, "render it again" names the
 // sequence in one line, and dragging a scene card carries the Lab sequence's own type.
 //   node dev/smoke.js --fake-engines --wait 6000 --check-timeout 400000 --script dev/checks/chatcore-lab.js --shot /tmp/chatcore-lab.png
+store.set('commands.hidden', false); // (round 26) these drive the "/" menu, hidden by default
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { if (await fn()) return true; } catch { /* not yet */ } await wait(100); } return false; };
 const out = {}; const fail = [];

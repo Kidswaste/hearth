@@ -2,6 +2,7 @@
 // "/" menu with arrow keys, Tab and Enter. Each step checks the Lab's state afterwards.
 //   node dev/make-test-song.js /tmp/hearth-test-song.wav
 //   node dev/smoke.js --fake-engines --check-timeout 400000 --lib dev/checks/journey-lib.js --script dev/checks/journey-commands.js --shot /tmp/j4.png
+store.set('commands.hidden', false); // (round 26) these drive the "/" menu, hidden by default
 const { wait, until, step, click, key, type, shot, visible } = J;
 J.shotDir = window.JOURNEY_SHOTS || '/tmp';
 const SONG = '/tmp/hearth-test-song.wav';

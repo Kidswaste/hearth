@@ -289,6 +289,9 @@ function buildPrompt(agent) {
       || `You are ${agent.name}, chatting with the user in their personal desktop app. `
         + 'Answer conversationally and directly, using Markdown when it helps.',
   ];
+  // (round 26) ⋯ AI setup: the user's standing instructions, each one on / off
+  const rules = (Array.isArray(agent.instructions) ? agent.instructions : []).filter((r) => r && r.on !== false && String(r.text || '').trim()).slice(0, 40).map((r) => `- ${String(r.text).trim().slice(0, 600)}`);
+  if (rules.length) parts.push(`The user's standing instructions (always follow them):\n${rules.join('\n')}`);
   const acc = accessOf(agent);
   if (acc) parts.push(accessLine(agent, acc));
   if (folder && agent.engine === 'codex') {
@@ -315,7 +318,7 @@ function buildPrompt(agent) {
   if (sets.includes('chatTools')) {
     // directors get the chat tools' when-to-use guide; plain chats only the <suggest> convention
     if (agent.dock || sets.filter((k) => !['boardTools', 'captureTools', 'adobeTools', 'deployTools', 'appsTools'].includes(k)).length > 1) parts.push(toolGuide('chatTools'));
-    parts.push('At the end of a reply, when it helps, offer up to 3 short next steps the user might want, each as <suggest>…</suggest> (they become buttons; keep each under 8 words).');
+    if (agent.suggestNext !== false) parts.push('At the end of a reply, when it helps, offer up to 3 short next steps the user might want, each as <suggest>…</suggest> (they become buttons; keep each under 8 words).');
   } else if (agent.suggestNext) {
     parts.push('At the end of a reply, when it helps, offer up to 3 short next steps the user might want, each as <suggest>…</suggest> (they become buttons; keep each under 8 words).');
   }

@@ -478,6 +478,9 @@ const Prompts = (() => {
     const update = async () => {
       const my = ++seq;
       const value = textarea.value;
+      // (round 26) commands are hidden: typing "/" in a chat no longer opens the command menu (a full /line typed still
+      // runs; the command bar, Ctrl+;, keeps its menu). store 'commands.hidden' false brings it back.
+      if (!bare && value.startsWith('/') && store.get('commands.hidden', true) !== false) { close(); return; }
       if (value !== lastValue) { sel = 0; lastValue = value; moved = false; }
       if (value !== '/') slashArea = null;
       const word = value.match(/^\/([\w-]*)$/);

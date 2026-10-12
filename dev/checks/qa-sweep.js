@@ -1,6 +1,7 @@
 // QA sweep: startup timing and memory, palette / "/" menu speed, then EVERY chat command with no arguments
 // (dialogs closed between, destructive ones skipped), collecting thrown errors, error toasts and console errors.
 //   node dev/smoke.js --fake-engines --check-timeout 600000 --script dev/checks/qa-sweep.js
+store.set('commands.hidden', false); // (round 26) these drive the "/" menu, hidden by default
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
 const out = {};

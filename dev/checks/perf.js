@@ -4,6 +4,7 @@
 // too and adds the CDP numbers (script eval per file, long tasks, idle CPU) plus the budget check.
 //   node dev/smoke.js --fake-engines --script dev/checks/perf.js --check-timeout 180000
 // Set window.__perfQuick = true before running to skip the Lab and the streaming reply.
+store.set('commands.hidden', false); // (round 26) these drive the "/" menu, hidden by default
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { try { if (await fn()) return true; } catch { /* not yet */ } await wait(16); } return false; };
 const frame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0))); // after the next paint

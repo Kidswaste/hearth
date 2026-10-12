@@ -4,6 +4,7 @@
 // your words point at it), inheritance on "continue with", right-click on every message part, and token frugality
 // (a plain message reaches the engine exactly as typed).
 //   node dev/smoke.js --fake-engines --check-timeout 300000 --script dev/checks/chatcore.js --shot /tmp/chatcore.png
+store.set('commands.hidden', false); // (round 26) these drive the "/" menu, hidden by default
 const VID = '/tmp/hearth-capture-test/cfr25.mp4';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { if (await fn()) return true; } catch { /* not yet */ } await wait(120); } return false; };

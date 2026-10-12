@@ -7,6 +7,7 @@
 // on the page; ↻ Again (same answers, a new run); change an answer (a branch); /commands <name>; Ctrl+Shift+F; the
 // "/" menu's rows; the keys sheet; every registered command's questions valid in the app.
 //   node dev/smoke.js --fake-engines --check-timeout 300000 --script dev/checks/commands-page.js --shot /tmp/commands-page.png
+store.set('commands.hidden', false); // (round 26) these drive the "/" menu, hidden by default
 const SHOTS = window.CMDPAGE_SHOTS || '/tmp/hearth-checks/commands-page';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { if (await fn()) return true; } catch { /* not yet */ } await wait(100); } return false; };

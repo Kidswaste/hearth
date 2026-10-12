@@ -4,6 +4,7 @@
 // the Lab / board commands again from their own tool.
 //   node dev/smoke.js --fake-engines --check-timeout 900000 --coverage /tmp/cov.json --script dev/checks/trim-drive.js
 //   node dev/coverage-report.js /tmp/cov.json
+store.set('commands.hidden', false); // (round 26) these drive the "/" menu, hidden by default
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { try { if (await fn()) return true; } catch { /* not yet */ } await wait(100); } return false; };
 const out = { groups: {}, tools: [], menus: 0 };

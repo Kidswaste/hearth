@@ -761,7 +761,7 @@ const Native = (() => {
       el('div', { class: 'empty-icon', attrs: { style: `--agent: ${agent.color || 'var(--accent)'}` } }, Icons.for(agent) || document.createTextNode(agent.icon || agent.name[0])),
       el('h3', { text: `New chat with ${agent.name}` }),
       el('p', { class: 'hint', text: engineOk
-        ? 'Type / for commands · drop or paste files to attach them.'
+        ? 'Ask anything · drop or paste files to attach them · ⋯ at the top: what it can use.'
         : `Couldn't find the ${agent.engine === 'claude' ? 'Claude' : 'Codex'} app on this computer, so this chat can't run yet.` }),
       // (round 18, tidy) first run without the engine: one action, straight to the setting that fixes it
       engineOk ? null : el('button', { type: 'button', class: 'primary', text: 'Show me where to set it', on: { click: () => AppUI.openSettings('program') } }),
