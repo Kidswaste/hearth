@@ -1729,6 +1729,7 @@ const ThreeLab = (() => {
       // what a controller would send (also used by tests): midiMessage([0xB0, 21, 64])
       midiMessage: (bytes) => onMidi({ data: bytes }), midiLearn: (o) => { midiLearn = o; }, write: (on) => setWrite(on),
     };
+    api.shaderHost = { editor, errors: () => errors, selId: () => selId }; // (round 23) ◇ shader layers' inline errors (tools/three-shader.js)
     function setFocus(on) {
       focusOn = on;
       document.body.classList.toggle('lab-focus', on);
@@ -1865,6 +1866,7 @@ const ThreeLab = (() => {
         // (round 7) the layer's timing, whose two buttons wait behind Alt now
         player.loaded ? ['Plays', L.in != null || L.out != null ? 'part of the song' : 'the whole song', [['The whole song', '', () => editLayer(L.id, { in: null, out: null }), L.in == null && L.out == null], player.loop ? ['Only during the loop', '', () => editLayer(L.id, { in: player.loop.a, out: player.loop.b })] : null].filter(Boolean)] : null,
         ...(typeof ThreeComp !== 'undefined' ? ThreeComp.layerMenu(L) : []), // ◫ Precomp › / ◫ Comp › (tools/three-comp.js)
+        ...(typeof LabShader !== 'undefined' ? LabShader.layerMenu(L) : []), // (round 23) ◇ Shader › (tools/three-shader.js)
         'Opacity',
         ...[1, 0.75, 0.5, 0.25].map((o) => [`${Math.round(o * 100)}%`, '', () => editLayer(L.id, { opacity: o }), Math.abs((L.opacity ?? 1) - o) < 0.01]),
         'Blend',
@@ -2495,6 +2497,7 @@ const ThreeLab = (() => {
     }
     function onMessage(msg) {
       window.ThreeStage?.preview?.(msg); // (round 22, labstage) show-mode safety, tempo, crossfade hand-over
+      if (msg.type === 'shader-info') { window.LabShader?.onBox?.(msg); return; } // (round 23) ◇ shader layers' compile state
       if (typeof ThreeDirector !== 'undefined') ThreeDirector.onBox?.(msg); // (round 21) a director call answers at the first new frame
       // the sequence's own messages (and a realtime render's recording) go to tools/three-seq.js
       if (typeof ThreeSeq !== 'undefined' && (ThreeSeq.onMessage(msg) || ThreeSeq.takeRecording(msg))) return;
@@ -2659,6 +2662,7 @@ const ThreeLab = (() => {
         ...(typeof ThreeSeq !== 'undefined' ? [ThreeSeq.previewItem()] : []),
         ...(typeof ThreeComp !== 'undefined' ? [ThreeComp.previewItem()] : []),
         ...(typeof ThreeModels !== 'undefined' ? [ThreeModels.previewItem()] : []), // 3D models (tools/three-models.js)
+        ...(typeof LabShader !== 'undefined' ? [LabShader.previewItem()] : []), // (round 23) ◇ shader layers (tools/three-shader.js)
         ...(typeof ThreeStage !== 'undefined' ? [ThreeStage.previewItem()] : []), // (round 22) live / VJ: MIDI, set list, crossfade, output, show mode
         ...(typeof LabExport !== 'undefined' ? [LabExport.previewItem()] : []), // ⇪ Export: renders and the scene itself (tools/three-export.js)
         { label: 'Frame size', hint: stage.size.id === 'fit' ? 'Fit' : stage.size.id, items: () => [
@@ -2921,6 +2925,7 @@ const ThreeLab = (() => {
         return false;
       }
       snapshot();
+      window.LabShader?.beforeRun?.(layersOf(), sel(), editor); // (round 23) ◇ shader layers: their sliders follow their uniforms
       const target = hot ? layerById(layer || selId) : null;
       if (hot && !target) hot = false;
       // every layer's sliders go into one table, each layer at its own offset
@@ -3391,7 +3396,7 @@ ${code}
     // (round 21, labdirector) its waits after a run end at the preview's first new frame (tools/three-director.js settle)
     const sleep = (ms) => (typeof ThreeDirector !== 'undefined' && ThreeDirector.settle ? ThreeDirector.settle(ms) : new Promise((r) => setTimeout(r, ms)));
     const layersSummary = () => layersOf().map((L, i) => ({
-      id: L.id, name: L.name, ...(ThreeLayers.isFilter(L.code) ? { kind: 'filter (changes the layers below it)' } : {}), ...(L.precomp && typeof ThreeComp !== 'undefined' && ThreeComp.isComp(L) ? { kind: `precomp of ${ThreeComp.describe(L)} (three_do comp)` } : {}), order: `${i + 1} of ${layersOf().length} (1 = bottom)`, selected: L.id === selId,
+      id: L.id, name: L.name, ...(ThreeLayers.isFilter(L.code) ? { kind: 'filter (changes the layers below it)' } : {}), ...(typeof ShaderLib !== 'undefined' && ShaderLib.isShader(L.code) ? { kind: 'shader (GLSL: three_do shader)' } : {}), ...(L.precomp && typeof ThreeComp !== 'undefined' && ThreeComp.isComp(L) ? { kind: `precomp of ${ThreeComp.describe(L)} (three_do comp)` } : {}), order: `${i + 1} of ${layersOf().length} (1 = bottom)`, selected: L.id === selId,
       visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal',
       ...(L.overrides ? { placedByUser: Object.fromEntries(Object.entries(L.overrides).map(([k, o]) => [k, { position: o.p, rotationDegrees: o.rd, scale: o.s, ...(o.v === false ? { hidden: true } : {}), ...(o.fov ? { fov: o.fov } : {}) }])) } : {}),
       plays: L.in == null && L.out == null ? 'whole song' : { from: L.in ?? 0, to: L.out ?? 'end', fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0 },
@@ -4227,6 +4232,7 @@ ${frag}\`,
     get director() { return api.director; }, // the Lab's layer / slider / palette API (the FX picker and its chat commands use it)
     get scenes() { return api.scenes || null; }, // the sketches as data, for per-chat scenes (chat-scenes.js)
     get stageHooks() { return api.stageHooks || null; }, // (round 22) tools/three-stage*.js
+    get shaderHost() { return api.shaderHost || null; }, // (round 23) tools/three-shader.js: the code editor, its errors, the selected layer
     // resolves when no director call is changing the sketch on screen (a chat switch waits for it)
     idle: () => (inflight ? new Promise((r) => idleWaiters.push(r)) : Promise.resolve()),
     _sandbox: (parent, onMessage, params) => sandboxFrame(parent, 'sketch', onMessage, params, { lazy: true, name: 'backstage' }), // tools/three-backstage.js
