@@ -39,6 +39,7 @@ const TOPICS = {
   Together: /jam (Claude ⇄ Astra build a visual in turns), /opinion (second opinion), /crew 3 <brief> (2–6 helpers explore variations of a scene in parallel; cost shown first; pick, undo, keep; three_do crew when /crew on).
   Sequence: /sequence, /sequence-render. Everything else: /help <area>.
   Live (VJ): /stage [show|go|cue|set add|output|midi learn|lfo] (set list, crossfade on the bar, MIDI, the output on a second screen).
+  Phone remote: /remote on|off|devices (the owner's phone on the same Wi-Fi plays sliders, pads, the set list; pairing code shown on the computer).
   History (time machine, Alt+H): /history [list|compare n|restore n|pick colors|sliders|layer <name> n] (every version of the scene with who made it; the owner scrubs it on the preview), /back n [claude|astra] (before the director's last n turns), /branch [name].
   Audio: /audio (what the Lab hears), /audio-in [list|loopback|<device>|monitor on], /react-to <slider> <sound> [amount attack= release=], /react-preset <pump on kick…>, /react-curve <slider>, /song-features (key, builds, drops).
   Flows (help flows): most commands sit in the owner's flows; /flow-status says where they are, /flow-step <answer> moves one.

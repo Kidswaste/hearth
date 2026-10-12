@@ -536,6 +536,7 @@ const ThreeStage = (() => {
       ] },
       M ? { label: '🎛 MIDI & keys', hint: M.summary(), items: () => M.menuItems() } : null,
       { label: 'Output', hint: h?.onStage ? 'on' : 'off', items: outputItems },
+      { label: '📱 Phone remote…', hint: 'Faders, GO and the set list on your phone', action: () => window.Lazy?.load('remote').then(() => (Remote.status?.on ? Remote.open() : Remote.on())).catch((err) => toast(err.message, { type: 'error' })) }, // (round 24, remote.js)
     ];
   }
   const previewItem = () => ({ label: '🎚 Live (VJ)', hint: S.show ? 'show mode' : S.cued ? `cued: ${nameOf(S.cued)}` : 'MIDI, set list, crossfade', items: menuItems });

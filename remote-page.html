@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#121214">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="referrer" content="no-referrer">
+<title>Hearth remote</title>
+<!-- Phone remote (round 24, remote): served on the local network by remotemain.js; the script is remote-page.js -->
+<style>
+:root { --bg: #121214; --card: #1d1d22; --line: #2c2c33; --text: #f1efe9; --muted: #8d8b93; --accent: #ff7a1a; --hot: #ff3d5a; --ok: #48d597; color-scheme: dark; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 15px/1.25 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; overscroll-behavior: none; }
+body { display: flex; flex-direction: column; padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); user-select: none; -webkit-user-select: none; }
+button, select, input { font: inherit; color: inherit; }
+button { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; touch-action: manipulation; }
+button:active { transform: scale(.97); background: #26262d; }
+button.on { border-color: var(--accent); color: var(--accent); }
+header { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+#dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+#dot.ok { background: var(--ok); } #dot.bad { background: var(--hot); }
+#scene { flex: 1; min-width: 0; text-align: left; border: 0; background: none; padding: 6px 2px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#bpm { min-width: 84px; font-variant-numeric: tabular-nums; }
+#frame { display: block; width: 100%; max-height: 28vh; object-fit: contain; background: #000; }
+main { flex: 1; overflow-y: auto; padding: 10px; -webkit-overflow-scrolling: touch; }
+.tab[hidden], [hidden] { display: none !important; }
+.chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; scrollbar-width: none; }
+.chips button { flex: none; padding: 7px 12px; border-radius: 999px; font-size: 14px; }
+.faders { display: grid; grid-template-columns: repeat(auto-fill, minmax(68px, 1fr)); gap: 10px 8px; }
+.fd { display: grid; gap: 4px; justify-items: center; }
+.tr { position: relative; width: 100%; height: clamp(180px, 44vh, 420px); border-radius: 14px; background: var(--card); border: 1px solid var(--line); overflow: hidden; touch-action: none; }
+.fl { position: absolute; inset: 0; background: linear-gradient(to top, #ff7a1a, #ffb35c); transform-origin: 50% 100%; transform: scaleY(0); opacity: .85; }
+.kn { position: absolute; left: 0; right: 0; top: 0; height: 3px; background: #fff; transform: translateY(0); }
+.gh { position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--muted); opacity: 0; transform: translateY(0); }
+.fd.wait .gh { opacity: 1; } .fd.wait .tr { border-color: var(--muted); }
+.fd.held .tr { border-color: var(--accent); }
+.mt { position: absolute; right: 0; bottom: 0; width: 6px; height: 100%; background: var(--ok); transform-origin: 50% 100%; transform: scaleY(0); }
+.lb { font-size: 12px; font-weight: 600; text-align: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vl { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.opt { width: 100%; height: 64px; border-radius: 14px; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.xyw { display: grid; gap: 6px; margin-bottom: 12px; }
+.xyw .axes { display: flex; gap: 6px; } .xyw select { flex: 1; min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+#xy { position: relative; width: 100%; aspect-ratio: 1; max-height: 46vh; border-radius: 16px; background: radial-gradient(circle at 50% 50%, #24242b, #17171b); border: 1px solid var(--line); touch-action: none; overflow: hidden; }
+#xy i { position: absolute; left: 0; top: 0; width: 34px; height: 34px; margin: -17px; border-radius: 50%; border: 3px solid var(--accent); transform: translate(50%, 50%); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.grid button { height: 72px; font-size: 15px; font-weight: 600; }
+.gorow { display: grid; grid-template-columns: 1fr 2fr 1fr; gap: 8px; }
+.gorow button { height: 92px; font-size: 22px; font-weight: 700; }
+#go { background: var(--accent); color: #1b0d00; border-color: var(--accent); font-size: 30px; }
+#go.busy { opacity: .55; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0 12px; }
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.list li { display: flex; gap: 8px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 0 0 0 12px; }
+.list li span { flex: 1; min-width: 0; padding: 14px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list li.cur { border-color: var(--ok); } .list li.cued { border-color: var(--accent); }
+.list li button { border: 0; border-left: 1px solid var(--line); border-radius: 0 12px 12px 0; padding: 14px 16px; }
+#q { width: 100%; margin-bottom: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+nav { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
+nav button { border: 0; border-radius: 0; background: none; padding: 14px 0; color: var(--muted); font-weight: 600; }
+nav button.on { color: var(--accent); }
+#pair { display: grid; gap: 12px; max-width: 360px; margin: 8vh auto 0; text-align: center; }
+#pair input { text-align: center; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+#code { font: 600 32px/1 ui-monospace, Menlo, monospace; letter-spacing: .3em; }
+#pair p { color: var(--muted); margin: 0; }
+#toast { position: fixed; left: 50%; bottom: calc(70px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: #2b2b33; border-radius: 10px; padding: 8px 14px; max-width: 90vw; font-size: 14px; pointer-events: none; }
+#toast.err { background: #5a1d28; }
+#gone { position: fixed; inset: 0; background: rgba(10,10,12,.92); display: grid; place-content: center; gap: 14px; text-align: center; padding: 24px; }
+.empty { color: var(--muted); text-align: center; padding: 30px 10px; }
+</style>
+</head>
+<body>
+<header><span id="dot"></span><button id="scene" type="button" title="Scenes">Hearth</button><button id="bpm" type="button" title="Tap tempo">— BPM</button><button id="pv" type="button" title="Live preview">▣</button></header>
+<img id="frame" alt="" hidden>
+<main>
+  <form id="pair" hidden>
+    <h2>Pair with Hearth</h2>
+    <p>Type the 6-digit code shown on the computer (📱 card, or /remote on).</p>
+    <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" pattern="[0-9 ]*" placeholder="000000" required>
+    <input id="name" maxlength="32" placeholder="This device's name">
+    <button type="submit" class="on">Pair</button>
+  </form>
+  <section id="faders" class="tab" hidden><div id="layers" class="chips"></div><div id="groups" class="chips"></div><div id="fz" class="faders"></div></section>
+  <section id="pads" class="tab" hidden>
+    <div class="xyw"><div class="axes"><select id="xs" aria-label="X"></select><select id="ys" aria-label="Y"></select></div><div id="xy"><i></i></div></div>
+    <div id="btns" class="grid"></div>
+  </section>
+  <section id="set" class="tab" hidden>
+    <div class="gorow"><button id="prev" type="button">◀</button><button id="go" type="button">GO</button><button id="next" type="button">▶</button></div>
+    <div class="row2"><button id="cut" type="button">Cut now</button><button id="setadd" type="button">＋ This scene</button></div>
+    <ol id="sl" class="list"></ol>
+  </section>
+  <section id="scenes" class="tab" hidden><input id="q" type="search" placeholder="Find a scene"><ul id="sc" class="list"></ul></section>
+</main>
+<nav id="tabs" hidden><button data-tab="faders" type="button">Faders</button><button data-tab="pads" type="button">Pads</button><button data-tab="set" type="button">Set</button><button data-tab="scenes" type="button">Scenes</button></nav>
+<div id="toast" hidden></div>
+<div id="gone" hidden><p id="goneText">Disconnected</p><button id="retry" type="button" class="on">Reconnect</button></div>
+<script src="/remote-page.js"></script>
+</body>
+</html>

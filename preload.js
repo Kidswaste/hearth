@@ -123,6 +123,8 @@ contextBridge.exposeInMainWorld('hub', {
   chatMedia: { find: call('chatmedia:find') },
   // (round 23) voice (voicemain.js): local speech-to-text in a child process, the model download, the system's voices
   voice: { status: call('voice:status'), transcribe: call('voice:transcribe'), cancel: call('voice:cancel'), download: call('voice:download'), say: call('voice:say'), hush: call('voice:hush'), voices: call('voice:voices'), mic: call('voice:mic'), onPartial: on('voice:partial'), onProgress: on('voice:progress') },
+  // (round 24) phone remote (remotemain.js): the local network server, pairing, devices; messages both ways
+  remote: { start: call('remote:start'), stop: call('remote:stop'), status: call('remote:status'), pair: call('remote:pair'), kick: call('remote:kick'), forget: call('remote:forget'), idle: call('remote:idle'), test: call('remote:test'), send: (o) => ipcRenderer.send('remote:send', o), frame: (d) => ipcRenderer.send('remote:frame', d), onMsg: on('remote:msg'), onJoin: on('remote:join'), onLeave: on('remote:leave'), onCode: on('remote:code'), onDevices: on('remote:devices'), onAlert: on('remote:alert'), onStopped: on('remote:stopped') },
   // (round 19, reach) paths from the other computer → this one's; open / reveal / preview what a chat made (reachmain.js)
   reach: { resolve: call('reach:resolve'), open: call('reach:open'), info: call('reach:info') },
   update: { status: call('update:status'), apply: call('update:apply'), restart: call('update:restart'), reload: call('update:reload') },

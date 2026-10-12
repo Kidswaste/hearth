@@ -1,0 +1,15 @@
+/* Phone remote (round 24, remote.js): the 📱 pill and the card (QR code, address, pairing code, who's connected) */
+.remote-pill { position: fixed; right: 14px; bottom: 14px; z-index: 60; border-radius: 999px; padding: 4px 10px; font-size: 13px; opacity: .8; }
+.remote-pill.live { opacity: 1; box-shadow: 0 0 0 2px var(--accent, #ff7a1a); }
+.remote-card { position: fixed; right: 14px; bottom: 50px; z-index: 61; width: 340px; max-width: calc(100vw - 28px); padding: 12px; border-radius: 12px; background: var(--surface, var(--bg, #1c1c20)); color: var(--text, #eee); border: 1px solid var(--line, #333); box-shadow: 0 10px 30px rgba(0,0,0,.35); display: grid; gap: 10px; font-size: 13px; }
+.remote-head { display: flex; align-items: center; gap: 8px; } .remote-head .remote-sub { flex: 1; }
+.remote-sub { opacity: .65; font-size: 12px; }
+.remote-pair { display: flex; gap: 12px; align-items: center; }
+.remote-qr svg { display: block; width: 132px; height: 132px; border-radius: 6px; }
+.remote-how { display: grid; gap: 6px; min-width: 0; }
+.remote-url { font-family: var(--mono, monospace); font-size: 12px; user-select: all; word-break: break-all; }
+.remote-code { font: 600 28px/1 var(--mono, monospace); letter-spacing: .08em; }
+.remote-list, .remote-devs { display: grid; gap: 4px; }
+.remote-dev { display: flex; align-items: center; gap: 8px; } .remote-dev > span:first-child { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.remote-dev.on > span:first-child { color: var(--ok, #6c6); }
+.remote-foot { display: flex; justify-content: flex-end; }
