@@ -771,3 +771,8 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ One compact panel (right-click the preview › ◐ Grade, `/grade`): tabs, wheels, curves, hue strip, LUT grid, scopes (waveform, vectorscope, histogram from a small read, only while open).
 - ✓ Per-clip and whole-sequence grades in the Lab sequence (right-click a clip › ◐ Grade, `/grade clip 2 noir`): the same shader in the preview and the render.
 - ○ Tested headless on SwiftShader (`sh dev/run-checks.sh grade`); imported LUTs aren't packed into a one-file web page export.
+## Light physics (round 25, physics, 91 upgrades: docs/upgrades/physics.md)
+- ✓ ⚛ Physics layers (`physics(P, opts)`): a compact position-based solver written for Hearth (no download, offline) for rigid boxes / letters / dominoes / model hulls, balls, ragdolls, cloth, ropes, jelly and water; 27 presets (bouncing balls on beat, falling letters, domino run, Newton's cradle, flag in the wind, curtain that falls on the drop, jelly, ragdolls down the stairs, dam break, Plinko…); `/physics`, right-click › ⚛ Physics, `three_do physics` for the directors.
+- ✓ Deterministic: 60 fixed steps a second of the scene's clock, seeded; renders land on the same pixels, scrubbing back re-simulates from cached states to the same state; bodies at rest sleep; the preview's solver runs in a Worker; instanced drawing.
+- ✓ Music: an impulse on each kick (jump / push / blast / spin / gust), bass lightens gravity or blows wind, a blast at the drop; only the Music presets react at first (`/physics react` for the rest).
+- ○ Tested headless (`node dev/physics-test.js`, `sh dev/run-checks.sh physics`); not measured on a real Mac GPU / CPU; box contacts are corner-against-box, model hulls are their boxes.
