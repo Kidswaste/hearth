@@ -712,3 +712,10 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ MP4, HEVC 10-bit, ProRes 4444 + alpha, WebM VP9 + alpha, PNG sequence + alpha, perfect-loop GIF / MP4 (on the bars with a cross-fade, or found in the frames), stills (PNG, 16-bit); GLB, one-file web page, slider preset (+ load), contact sheet.
 - ✓ Right-click the preview › ⇪ Export, the Render panel › Export…, Ctrl/⌘+K, `/lab-export` (`/lx`); directors via `three_do run`; render queue rows with time left, pause / resume / cancel.
 - ○ Measured headless on SwiftShader (1080p 6.4 frames/s, 4K 2.2); not on a real GPU.
+
+## Shader workbench (round 23, labshader, 103 upgrades: docs/upgrades/labshader.md)
+- ✓ ◇ shader layers: Shadertoy-style GLSL (or main() / ISF) as a Lab layer on the scene's clock, with music uniforms (uKick, uBass, uBeat…), the audio texture, feedback (self), Buffers A–D, the layers below / other layers / references as textures, a resolution scale.
+- ✓ `uniform float uGlow; // [Look] 0..2, 1 Glow` lines become sliders (colors, toggles, choices, XY pads) and follow the code on each run; errors show inline on their line while the last good shader keeps drawing.
+- ✓ 38 starters (noise, patterns, raymarch, music, feedback, filters), Shadertoy import (tab, tabs, JSON) and ISF import, copy back to Shadertoy; workbench card with channels per pass, resolution, alpha, + Buffer.
+- ✓ `/shader`, `/shadertoy`, right-click a layer › ◇ Shader, the preview › ◇ Shaders, the FX picker's Shaders, Ctrl/⌘+K; directors: `three_do shader` (help on demand, no prompt growth).
+- ○ No TSL / node-material layers; ISF vertex shaders aren't run; tested on SwiftShader only.

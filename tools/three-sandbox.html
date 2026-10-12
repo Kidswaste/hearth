@@ -6367,7 +6367,7 @@ globalThis.shader = (image, P = {}, opts = {}) => {
       if (!e) { e = { tex: new THREE.CanvasTexture(document.createElement('canvas')), L: null, tick: -1 }; e.tex.minFilter = THREE.LinearFilter; e.tex.generateMipmaps = false; layerTex.set(s, e); texs.push(e.tex); }
       if (e.tick !== frameTick) {
         e.tick = frameTick;
-        if (!e.L || layers.get(e.L.id) !== e.L) e.L = [...layers.values()].find((x) => x !== L && (x.id.toLowerCase() === want2 || String(x.props.name || '').toLowerCase() === want2)) || null;
+        if ((!e.L || layers.get(e.L.id) !== e.L) && !(frameTick < e.miss)) { e.L = null; for (const x of layers.values()) if (x !== L && (x.id.toLowerCase() === want2 || String(x.props.name || '').toLowerCase() === want2)) { e.L = x; break; } if (!e.L) e.miss = frameTick + 60; } // (a name not found: looked up again a second later)
         let cv = null;
         if (e.L) for (const x of e.L.box.getElementsByTagName('canvas')) { if (x.classList.contains('lab-xfade') || x.__skip || x.width < 2) continue; cv = x; break; }
         if (cv) { if (e.tex.image !== cv) { e.tex.dispose(); e.tex.image = cv; } e.tex.needsUpdate = true; }
