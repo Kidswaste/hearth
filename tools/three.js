@@ -71,6 +71,7 @@ const ThreeLab = (() => {
         // a sketch page uncovers once its layers have drawn (stack-drawn); the others right away
         if (mode !== 'sketch') setTimeout(uncover, 160);
         else { clearTimeout(coverT); coverT = setTimeout(uncover, 2600); }
+        try { window.LabGrade?.onPage?.(deliver); } catch { /* (round 24) imported .cube LUTs for this page: tools/three-grade.js */ }
         for (const m of queue) deliver(m);
         queue = [];
       }
@@ -2679,6 +2680,7 @@ const ThreeLab = (() => {
         ...(typeof LabShader !== 'undefined' ? [LabShader.previewItem()] : []), // (round 23) ◇ shader layers (tools/three-shader.js)
         ...(typeof LabParticles !== 'undefined' ? [LabParticles.previewItem()] : []), // (round 24) ✦ GPU particles (tools/three-particles.js)
         ...(typeof ThreeStage !== 'undefined' ? [ThreeStage.previewItem()] : []), // (round 22) live / VJ: MIDI, set list, crossfade, output, show mode
+        ...(typeof LabGrade !== 'undefined' ? [LabGrade.previewItem()] : []), // (round 24) ◐ Grade: color, LUTs, film & lens, scopes (tools/three-grade.js)
         ...(typeof LabExport !== 'undefined' ? [LabExport.previewItem()] : []), // ⇪ Export: renders and the scene itself (tools/three-export.js)
         { label: 'Frame size', hint: stage.size.id === 'fit' ? 'Fit' : stage.size.id, items: () => [
           ...stage.pillOrder.map((id, k) => ({ label: id === 'fit' ? 'Fit' : id, hint: ThreeMedia.SIZES.find((z) => z.id === id)?.title || '', key: `Shift+${k + 1}`, checked: stage.size.id === id, action: () => stage.setMode(id) })),

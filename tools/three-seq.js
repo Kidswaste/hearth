@@ -389,6 +389,7 @@ const ThreeSeq = (() => {
       const g = { id: c.id, main: true, start: r4(x.start), end: r4(x.end), td: r4(x.td || 0), trans: c.trans?.type || null, z: 100 + x.i * 20 };
       const lk = lookOfClip(c, e); if (lk) g.look = lk;
       if (c.off) continue;
+      const cg = typeof GradeCore !== 'undefined' ? GradeCore.clipLayers(c.cgrade || e.seq?.cgrade, c.id) : null; if (cg) g.cgrade = cg; // (round 24) its ◐ grade
       if (c.kind === 'scene') {
         const layers = sceneLayers(c, x, slot);
         slot += 16;
@@ -824,6 +825,13 @@ const ThreeSeq = (() => {
     if (!needs(ids, 'a clip')) return null;
     commit(C.patchAny(S.edit, ids, (c) => { if (gr) c.grade = gr; else delete c.grade; }), `Look: ${name}`);
     return look;
+  }
+  // (round 24 "grade") a clip's ◐ grade (tools/three-grade.js: { grade, lens, name }), or the whole sequence's; null: none
+  function setCGrade(spec, { ids = targets(), all = false } = {}) {
+    if (all) { const seq = { ...S.edit.seq }; if (spec) seq.cgrade = spec; else delete seq.cgrade; return commit({ ...S.edit, seq }, spec ? `Sequence grade: ${spec.name || '◐'}` : 'No sequence grade'); }
+    ids = kindsOf(ids, gradable);
+    if (!needs(ids, 'a clip')) return false;
+    return commit(C.patchAny(S.edit, ids, (c) => { if (spec) c.cgrade = spec; else delete c.cgrade; }), spec ? `◐ ${spec.name || 'Grade'}` : 'No grade', { merge: spec ? `cgrade:${ids.join(',')}` : null });
   }
   function setGradeAmt(amt, ids = targets()) { ids = kindsOf(ids, (c) => c?.grade); if (!needs(ids, 'a clip with a look')) return false; return commit(C.patchAny(S.edit, ids, (c) => { c.grade = { ...c.grade, amt: clamp(Number(amt), 0, 1.5) }; }), `Look strength ${Math.round(amt * 100)} %`); }
   // ✂ on the music: the clip cut at every bar (2 bars, a beat) of the song
@@ -1842,6 +1850,7 @@ const ThreeSeq = (() => {
     if (X() && (c.kind === 'video' || c.kind === 'image')) items.push({ label: 'Frame', hint: D.formatOf(S.edit), items: () => frameItems(c, ids, h.where) });
     if (X() && (c.kind === 'audio' || (c.kind === 'video' && !c.mute))) items.push(...soundItems(c, ids));
     if (X() && gradable(c)) items.push({ label: 'Color look', hint: c.grade ? EditFX.LOOK[c.grade.look]?.name : '', items: () => gradeItems(c.grade, { ids }) });
+    if (gradable(c) && typeof LabGrade !== 'undefined') items.push({ label: '◐ Grade', hint: c.cgrade?.name || '', items: () => LabGrade.clipMenu(c, ids) }); // (round 24)
     if (X() && c.kind === 'title' && c.caption) items.push({ label: 'Caption look', hint: X().CAPTION_LOOK[c.caption]?.name, items: () => X().CAPTION_LOOKS.map((l) => ({ label: l.name, checked: c.caption === l.id, action: () => captionLook(l.id) })) });
     if (X() && c.kind === 'title' && c.lower) items.push({ label: 'Lower third look', hint: EditFX.LTHIRD[c.lower]?.name, items: () => EditFX.LOWER_THIRDS.map((l) => ({ label: l.name, checked: c.lower === l.id, action: () => { S.sel = new Set([c.id]); lowerLook(l.id); } })) });
     if (h.where === 'clip' && h.i > 0) items.push({ label: 'Transition in', hint: c.trans ? EditFX.TRANS[c.trans.type]?.name : 'Cut', items: () => transItems(c.id) });
@@ -2583,7 +2592,7 @@ const ThreeSeq = (() => {
     enter, leave, toggle, open, create, current, list, add, addCurrent, applyVibe, select, split, del, dup, slipBy, trimToHead, marker, setTransition, setLength, setLook, fit, setFormat,
     play, seek, step, shuttle, jump, settle, undo, redo, render, renderEdit, renderScene, needsBake, bake, compile, status, handle, timeOf, secsOf, zoomBy,
     arrange, again, retime, versions, fillGap, vary, varySections, copyLook, pasteLook, swapLooks, nest, unnest, copySel, paste, zoomTo, sectionMarkers, decideArrangement,
-    setFrame, setFit, frameEverywhere, setMotion, setVolume, setFade, setDuck, muteTrack, setGrade, setGradeAmt, chop, captionsFile, captionsTyped, captionsFromCues, captionLook, exportCaptions, addLower, lowerLook, setOutputs, outputsOf: () => outputsOf(), renderOutputs, writeCaptions,
+    setFrame, setFit, frameEverywhere, setMotion, setVolume, setFade, setDuck, muteTrack, setGrade, setGradeAmt, setCGrade, chop, captionsFile, captionsTyped, captionsFromCues, captionLook, exportCaptions, addLower, lowerLook, setOutputs, outputsOf: () => outputsOf(), renderOutputs, writeCaptions,
     audioPlan, duckOf, // (labexport: the sound of an export page's render)
     outDir, keyForScene, switchTo, summaryFor, sceneCopied, songInfo, pickScenes, bakeRuns, get owner() { return S.owner; },
     on: (ev, fn) => { (listeners[ev] ||= []).push(fn); },

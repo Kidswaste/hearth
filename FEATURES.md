@@ -765,3 +765,9 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ Pictures of every card made off the main thread and cached on disk (pictures, HDR skies, GLB textures / the Lab's model pictures, font samples with their real names, waveforms, LUT sweeps, video frames); a virtualized grid (3,000 cards ≈ 1 ms per screenful).
 - ✓ Drag a card onto the Lab (picture layer or shader input, sky, model layer, text layer in the font, song, grade, shader layer, preset), the board, a chat or the sequence; right-click › Use in…; the directors' `three_do asset` (find / use / free / get).
 - ○ Tested against fake Poly Haven / ambientCG servers and a fixtures folder (`sh dev/run-checks.sh assets`); not against the real services or very large real folders.
+## Lab grade (round 24, grade, 115 upgrades: docs/upgrades/grade.md)
+- ✓ ◐ Grade + ◐ Film & lens filter layers drawn as one GPU pass (free at amount 0): ACES / AgX / Filmic / Reinhard / Neutral tone mapping, exposure, white balance, lift / gamma / gain wheels, RGB + luma curves, an HSL qualifier, saturation / vibrance, split toning, LUT strength, vignette, grain (luma response), letterbox per format; bloom with threshold, halation, anamorphic streaks, chromatic aberration, lens distortion.
+- ✓ LUTs: 14 procedural starters, .cube import (1D / 3D, kept, sent to every Lab page incl. the export page), the current grade exported as a 33³ .cube for Premiere / Resolve; 19 presets.
+- ✓ One compact panel (right-click the preview › ◐ Grade, `/grade`): tabs, wheels, curves, hue strip, LUT grid, scopes (waveform, vectorscope, histogram from a small read, only while open).
+- ✓ Per-clip and whole-sequence grades in the Lab sequence (right-click a clip › ◐ Grade, `/grade clip 2 noir`): the same shader in the preview and the render.
+- ○ Tested headless on SwiftShader (`sh dev/run-checks.sh grade`); imported LUTs aren't packed into a one-file web page export.
