@@ -5767,7 +5767,8 @@ function belowOf(L) {
   const below = L.belowList || (L.belowList = []);
   below.length = 0;
   // (inside a precomp: the layers below it in that precomp's scene)
-  for (const B of ordered()) if (B !== L && (B.props.z ?? 0) < z && (B.props.pcOf || null) === pc) below.push(B);
+  const sg = L.props.seqGrade ? L.props.seqGroup : null; // (round 24 "grade") a sequence clip's grade: only its own clip
+  for (const B of ordered()) if (B !== L && (B.props.z ?? 0) < z && (B.props.pcOf || null) === pc && (!sg || B.props.seqGroup === sg)) below.push(B);
   let from = 0;
   for (let i = below.length - 1; i > 0; i -= 1) {
     const B = below[i];
@@ -5845,14 +5846,14 @@ function glyphAtlas(chars) {
 const hexVec = (h, out = new THREE.Vector3()) => { const n = parseInt(String(h).slice(1), 16) || 0; return out.set(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255); };
 // The fragment shader of a filter: P keys the shader uses but doesn't declare become uniforms
 // (colors → vec3, everything else → float), so a filter's GLSL only declares what's unusual.
-function filterFrag(def, P) {
+function filterFrag(def, P, noLib = false) {
   const decl = [];
   for (const k of Object.keys(P)) {
     const name = `u_${k}`;
     if (!new RegExp(`\\b${name}\\b`).test(def.frag) || new RegExp(`uniform\\s+\\w+\\s+${name}\\b`).test(def.frag)) continue;
     decl.push(`uniform ${typeof P[k] === 'string' && P[k].startsWith('#') ? 'vec3' : 'float'} ${name};`);
   }
-  return FILTER_HEAD + decl.join('\n') + def.frag;
+  return FILTER_HEAD + decl.join('\n') + (noLib ? '' : def.lib || '') + def.frag; // (round 24: def.lib, helper functions)
 }
 function filterUniforms(def, P, srcTex) {
   const uniforms = {
@@ -5861,6 +5862,7 @@ function filterUniforms(def, P, srcTex) {
     uHats: { value: 0 }, uDrop: { value: 0 }, uBeatPhase: { value: 0 },
   };
   for (const k of Object.keys(P)) uniforms[`u_${k}`] = { value: typeof P[k] === 'string' && P[k].startsWith('#') ? new THREE.Vector3() : 0 };
+  for (const k of def.extra || []) uniforms[k] = { value: null }; // (round 24: a filter's own textures, set by def.frame)
   return uniforms;
 }
 // P values → uniforms (no allocations: colors are written into the uniform's own vector)
@@ -5911,6 +5913,7 @@ function setFxParams(def, P, refs) {
 // same. Only when they show plainly (fully, normal blend, not moved, no clip look), at the same resolution.
 const fxPointCache = new Map();
 function fxPointwise(def) {
+  if (def.pointwise != null) return def.pointwise; // (round 24: a filter that says so, helper functions and all)
   let ok = fxPointCache.get(def);
   if (ok != null) return ok;
   const f = def.frag.replace(/texture2D\(\s*uSrc\s*,\s*vUv\s*\)/g, '').replace(/\btex\(\s*vUv\s*\)/g, '');
@@ -5955,9 +5958,10 @@ function fxPlan() {
 // at its own pixel is the color the one below made (fxIn); the last one's color is the pass's
 function fxFuseFrag(base, chain) {
   const own = (frag) => frag.replace(/\bgl_FragColor\b/g, 'fxOut');
-  let out = `${FILTER_HEAD}vec4 fxOut;\nvec4 fxIn;\n${own(filterFrag(base.fx.def, base.fx.P).slice(FILTER_HEAD.length)).replace(/\bvoid\s+main\s*\(\s*\)/, 'void fx0()')}`;
+  const libs = [...new Set([base, ...chain].map((B) => B.fx.def.lib).filter(Boolean))].join('\n'); // (round 24: helpers once)
+  let out = `${FILTER_HEAD}${libs}vec4 fxOut;\nvec4 fxIn;\n${own(filterFrag(base.fx.def, base.fx.P, true).slice(FILTER_HEAD.length)).replace(/\bvoid\s+main\s*\(\s*\)/, 'void fx0()')}`;
   chain.forEach((B, i) => {
-    const f = own(filterFrag(B.fx.def, B.fx.P).slice(FILTER_HEAD.length))
+    const f = own(filterFrag(B.fx.def, B.fx.P, true).slice(FILTER_HEAD.length))
       .replace(/\bu_(\w+)/g, `u${i + 1}_$1`)
       .replace(/texture2D\(\s*uSrc\s*,\s*vUv\s*\)/g, 'fxIn')
       .replace(/\btex\(\s*vUv\s*\)/g, 'fxIn.rgb')
@@ -6015,7 +6019,7 @@ globalThis.filter = (type, P = {}) => {
   // filterSource); the texture is made again when the picture's size changes (it kept its first size before).
   const idKey = !def.feedback && !overlay ? FX_IDENTITY[type] : null;
   const soft = FX_SOFT[type];
-  L.fx = { def, type, P, idKey, soft, overlay: Boolean(overlay), gen: L.gen };
+  L.fx = { def, type, P, idKey, soft, overlay: Boolean(overlay), gen: L.gen, uniforms, frame: def.frame ? () => def.frame(P, uniforms, L) : null };
   let srcW = 0; let srcH = 0; let srcImg = null; let force = true;
   const fused = { chain: [], gens: [], mat: null, refs: null };
   const fullSize = () => renderer.setSize(innerWidth, innerHeight);
@@ -6048,6 +6052,7 @@ globalThis.filter = (type, P = {}) => {
     const t = mediaEl ? mediaEl.currentTime : (performance.now() - t0) / 1000;
     setFilterMusic(uniforms, t);
     setFxParams(def, P, refs);
+    L.fx.frame?.(); // (round 24: a filter's own textures, e.g. a grade's LUT)
     // the filters drawn inside this pass: their shader (made again only when the run changes), their settings
     const chain = L.fxChain;
     let want = mat;
@@ -6059,12 +6064,14 @@ globalThis.filter = (type, P = {}) => {
         const u = { ...uniforms }; const rs = [];
         chain.forEach((B, i) => {
           for (const k of Object.keys(B.fx.P)) u[`u${i + 1}_${k}`] = { value: typeof B.fx.P[k] === 'string' && B.fx.P[k].startsWith('#') ? new THREE.Vector3() : 0 };
+          for (const k of B.fx.def.extra || []) u[k.replace(/^u_/, `u${i + 1}_`)] = B.fx.uniforms[k]; // (round 24: shared, set by its def.frame)
           rs.push({ def: B.fx.def, P: B.fx.P, refs: fxRefs(B.fx.P, u, `u${i + 1}_`) });
         });
         fused.mat = new THREE.ShaderMaterial({ uniforms: u, vertexShader: FILTER_VERT, fragmentShader: fxFuseFrag(L, chain), depthTest: false, depthWrite: false });
         fused.refs = rs; fused.chain = chain.slice(); fused.gens = chain.map((B) => B.gen);
       }
       for (const r of fused.refs) setFxParams(r.def, r.P, r.refs);
+      for (const B of chain) B.fx.frame?.();
       want = fused.mat;
     }
     if (quad.material !== want) quad.material = want;
@@ -6095,6 +6102,283 @@ globalThis.filter = (type, P = {}) => {
 filter.types = Object.keys(FILTER_DEFS);
 // filter.define(name, { frag, feedback, choices }): a filter made elsewhere (Shader nodes compile a graph to one)
 filter.define = (name, def) => { FILTER_DEFS[name] = def; filter.types = Object.keys(FILTER_DEFS); return name; };
+// ---------- cinematic grade (round 24 "grade") ----------
+// Two filters (layer code: filter('cgrade', P), filter('clens', P); tools/three-grade*.js builds them, the ◐ Grade panel
+// moves their sliders): cgrade is per pixel (tone mapping, exposure, white balance, lift / gamma / gain, curves, an HSL
+// qualifier, saturation / vibrance, split toning, a 3D LUT, vignette, grain, letterbox) so it draws inside the pass of
+// the filter under it (see "merged filter passes"); clens (bloom, halation, anamorphic streaks, chromatic aberration,
+// lens distortion) reads around each pixel and is that pass. A full grade = one pass; at amount 0 each steps aside.
+// LUTs: the starter pack is made here from recipes (GRADE.PACK), imported .cube files come from the hub as numbers
+// ({ type: 'grade-lut', name, N, data }) to every page (preview, Stage window, export page): preview = render.
+const GRADE_TONES = ['none', 'aces', 'agx', 'filmic', 'reinhard', 'neutral'];
+const GRADE_BARS = ['off', '2.39:1', '2.35:1', '2:1', '1.85:1', '16:9', '4:3', '1:1', '4:5', '9:16'];
+const GRADE_LIB = `
+vec3 cgLin(vec3 c) { c = max(c, 0.0); return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)); }
+vec3 cgSrgb(vec3 c) { c = max(c, 0.0); return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
+vec3 cgAces(vec3 x) { return (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14); }
+vec3 cgHable(vec3 x) { return ((x * (0.15 * x + 0.05) + 0.004) / (x * (0.15 * x + 0.5) + 0.06)) - 0.0666667; }
+vec3 cgAgx(vec3 v) {
+  mat3 m = mat3(0.842479062253094, 0.0423282422610123, 0.0423756549057051, 0.0784335999999992, 0.878468636469772, 0.0784336, 0.0792237451477643, 0.0791661274605434, 0.879142973793104);
+  mat3 im = mat3(1.19687900512017, -0.0528968517574562, -0.0529716355144438, -0.0980208811401368, 1.15190312990417, -0.0980434501171241, -0.0990297440797205, -0.0989611768448433, 1.15107367264116);
+  v = clamp(log2(max(m * v, vec3(1e-10))), -12.47393, 4.026069);
+  v = (v + 12.47393) / 16.500999;
+  vec3 v2 = v * v; vec3 v4 = v2 * v2;
+  v = 15.5 * v4 * v2 - 40.14 * v4 * v + 31.96 * v4 - 6.868 * v2 * v + 0.4298 * v2 + 0.1191 * v - 0.00232;
+  return pow(max(im * v, vec3(0.0)), vec3(2.2));
+}
+vec3 cgNeutral(vec3 c) {
+  float x = min(c.r, min(c.g, c.b)); float off = x < 0.08 ? x - 6.25 * x * x : 0.04; c -= off;
+  float peak = max(c.r, max(c.g, c.b)); if (peak < 0.76) return c;
+  float np = 1.0 - 0.0576 / (peak - 0.52); c *= np / peak;
+  return mix(c, vec3(np), 1.0 - 1.0 / (0.15 * (peak - np) + 1.0));
+}
+// a tone curve on scene light, normalised so white stays white (the picture is already display-referred)
+vec3 cgTone(vec3 x, float m) {
+  if (m < 0.5) return x;
+  if (m < 1.5) return cgAces(x * 0.8) / cgAces(vec3(0.8));
+  if (m < 2.5) return cgAgx(x) / cgAgx(vec3(1.0));
+  if (m < 3.5) return cgHable(x * 2.0) / cgHable(vec3(2.0));
+  if (m < 4.5) return x * (1.0 + x / 16.0) / (1.0 + x) / 0.53125;
+  return cgNeutral(x * 1.2) / cgNeutral(vec3(1.2));
+}
+vec3 cgWheel(float hue, float amt) { vec3 k = hsv2rgb(vec3(hue / 360.0, 1.0, 1.0)); return (k - vec3(luma(k))) * amt; }
+// a curve through (0,0) (.25,a) (.5,b) (.75,c) (1,1) (Catmull-Rom)
+float cgCurve(float x, float a, float b, float c) {
+  if (abs(a - 0.25) + abs(b - 0.5) + abs(c - 0.75) < 1e-4) return x;
+  float t = clamp(x, 0.0, 1.0) * 4.0; float i = min(floor(t), 3.0); float f = t - i;
+  float p0; float p1; float p2; float p3;
+  if (i < 0.5) { p0 = -a; p1 = 0.0; p2 = a; p3 = b; }
+  else if (i < 1.5) { p0 = 0.0; p1 = a; p2 = b; p3 = c; }
+  else if (i < 2.5) { p0 = a; p1 = b; p2 = c; p3 = 1.0; }
+  else { p0 = b; p1 = c; p2 = 1.0; p3 = 2.0 - c; }
+  float f2 = f * f; float f3 = f2 * f;
+  return 0.5 * (2.0 * p1 + (p2 - p0) * f + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * f2 + (3.0 * p1 - p0 - 3.0 * p2 + p3) * f3);
+}
+// a 3D LUT stored as N slices side by side (N*N × N: x = red + blue·N, y = green), blue between two slices
+vec3 cgLut(sampler2D t, vec3 c, float N) {
+  float b = c.b * (N - 1.0); float b0 = floor(b); float f = b - b0; float b1 = min(b0 + 1.0, N - 1.0);
+  vec2 uv = vec2((c.r * (N - 1.0) + 0.5) / (N * N), (c.g * (N - 1.0) + 0.5) / N);
+  return mix(texture2D(t, uv + vec2(b0 / N, 0.0)).rgb, texture2D(t, uv + vec2(b1 / N, 0.0)).rgb, f);
+}
+float cgBars(float i) {
+  if (i < 0.5) return 0.0; if (i < 1.5) return 2.39; if (i < 2.5) return 2.35; if (i < 3.5) return 2.0; if (i < 4.5) return 1.85;
+  if (i < 5.5) return 1.7777778; if (i < 6.5) return 1.3333333; if (i < 7.5) return 1.0; if (i < 8.5) return 0.8; return 0.5625;
+}
+`;
+FILTER_DEFS.cgrade = {
+  pointwise: true, lib: GRADE_LIB, extra: ['u_lutTex', 'u_lutN'],
+  choices: { tone: GRADE_TONES, bars: GRADE_BARS },
+  frame: (P, u) => { const t = gradeLutTex(P.lut); u.u_lutTex.value = t; u.u_lutN.value = t ? t.userData.N : 0; },
+  frag: `
+uniform sampler2D u_lutTex;
+uniform float u_lutN;
+void main() {
+  vec4 src = texture2D(uSrc, vUv);
+  vec3 o = clamp(src.rgb, 0.0, 1.0);
+  // exposure, white balance and the tone curve, in linear light
+  vec3 lin = cgLin(o) * exp2(u_exposure);
+  vec3 wb = vec3(1.0 + 0.25 * u_temp, 1.0 - 0.2 * u_tint, 1.0 - 0.25 * u_temp);
+  lin *= wb / dot(wb, vec3(0.2126, 0.7152, 0.0722));
+  vec3 c = cgSrgb(cgTone(lin, u_tone));
+  c = max((c - 0.5) * u_contrast + 0.5, 0.0);
+  // lift / gamma / gain (each wheel: a hue, how much of it, brightness)
+  vec3 lift = cgWheel(u_liftHue, u_liftAmt) * 0.25 + u_liftLum * 0.25;
+  vec3 gam = 1.0 + cgWheel(u_gammaHue, u_gammaAmt) * 0.5 + u_gammaLum * 0.5;
+  vec3 gn = 1.0 + cgWheel(u_gainHue, u_gainAmt) * 0.5 + u_gainLum * 0.5;
+  c = max(c * gn + lift * (1.0 - c), 0.0);
+  c = pow(c, 1.0 / max(gam, vec3(0.05)));
+  // curves: red, green, blue, then luma
+  c = vec3(cgCurve(c.r, u_cR1, u_cR2, u_cR3), cgCurve(c.g, u_cG1, u_cG2, u_cG3), cgCurve(c.b, u_cB1, u_cB2, u_cB3));
+  float l0 = luma(c); c += cgCurve(l0, u_cL1, u_cL2, u_cL3) - l0;
+  // HSL qualifier: one band of hues shifted (hue, saturation, brightness)
+  if (abs(u_qShift) + abs(u_qSat) + abs(u_qLum) > 1e-4) {
+    vec3 h = rgb2hsv(clamp(c, 0.0, 1.0));
+    float dh = abs(fract(h.x - u_qHue / 360.0 + 0.5) - 0.5) * 360.0;
+    float w = (1.0 - smoothstep(u_qRange * 0.5, u_qRange * 0.5 + 1.0 + 40.0 * u_qSoft, dh)) * smoothstep(0.03, 0.15, h.y);
+    h.x = fract(h.x + w * u_qShift / 360.0); h.y = clamp(h.y * (1.0 + w * u_qSat), 0.0, 1.0); h.z *= 1.0 + w * u_qLum;
+    c = hsv2rgb(h);
+  }
+  // saturation, vibrance (the dull colors more), split toning
+  float l = luma(c);
+  c = mix(vec3(l), c, u_saturation);
+  float s = clamp(max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b)), 0.0, 1.0);
+  c = mix(vec3(l), c, 1.0 + u_vibrance * (1.0 - s));
+  float hw = smoothstep(0.0, 1.0, clamp(l + u_splitBalance * 0.5, 0.0, 1.0));
+  c += ((u_splitShadows - vec3(luma(u_splitShadows))) * (1.0 - hw) + (u_splitHighlights - vec3(luma(u_splitHighlights))) * hw) * u_split;
+  // the LUT, with its strength
+  if (u_lutN > 1.5) c = mix(c, cgLut(u_lutTex, clamp(c, 0.0, 1.0), u_lutN), u_lutMix);
+  // vignette, grain (by brightness), letterbox
+  float vd = length((vUv - 0.5) * vec2(mix(1.0, aspect(), 0.5), 1.0)) * 1.414;
+  c *= mix(1.0, smoothstep(1.05, 0.75 - 0.6 * u_vigSoft, vd), u_vignette);
+  if (u_grain > 0.0) {
+    vec2 gp = floor(vUv * uRes / max(u_grainSize, 1.0)); float ft = floor(uTime * 24.0);
+    float n = hash(gp + ft * 13.17) + hash(gp * 1.37 + ft * 7.31 + 3.1) - 1.0;
+    float gl = clamp(luma(c), 0.0, 1.0);
+    c += n * u_grain * 0.22 * mix(1.0, 4.0 * gl * (1.0 - gl), u_grainLuma);
+  }
+  float A = cgBars(u_bars);
+  if (A > 0.0) { float a = aspect(); vec2 d = abs(vUv - 0.5); c = mix(c, u_barColor, a > A ? step(0.5 * A / a, d.x) : step(0.5 * a / A, d.y)); }
+  gl_FragColor = vec4(mix(o, clamp(c, 0.0, 1.0), u_amount), 1.0);
+}`,
+};
+FILTER_DEFS.clens = {
+  frag: `
+void main() {
+  vec2 cc = vUv - 0.5; float a = aspect();
+  vec2 p = cc * vec2(a, 1.0); float k = u_distort * 0.3;
+  float comp = k > 0.0 ? 1.0 / (1.0 + k * (0.25 * a * a + 0.25)) : 1.0;
+  vec2 uv = 0.5 + cc * (1.0 + k * dot(p, p)) * comp;
+  vec2 ca = cc * u_ca * 0.012;
+  vec3 col = vec3(texture2D(uSrc, uv + ca).r, texture2D(uSrc, uv).g, texture2D(uSrc, uv - ca).b);
+  col *= step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
+  float th = u_threshold;
+  if (u_bloom + u_halation > 0.0) {
+    vec3 glow = vec3(0.0); float hal = 0.0; float ws = 0.0; float hs = 0.0;
+    vec2 R = u_radius * 0.06 * vec2(1.0 / a, 1.0);
+    float j = hash(floor(vUv * uRes)) * 0.6;
+    for (int i = 0; i < 24; i++) {
+      float fi = float(i); float r = sqrt((fi + 0.5) / 24.0); float an = fi * 2.39996 + j;
+      vec3 s = texture2D(uSrc, uv + vec2(cos(an), sin(an)) * r * R).rgb;
+      float w = 1.0 - 0.6 * r;
+      glow += max(s - th, 0.0) / max(1.0 - th, 0.05) * w; ws += w;
+      if (r < 0.6) { hal += max(luma(s) - max(th, 0.45), 0.0) * w; hs += w; }
+    }
+    col += glow / ws * u_bloom * 1.5 + u_halColor * hal / max(hs, 1e-3) * u_halation * 2.5;
+  }
+  if (u_streak > 0.0) {
+    float st = 0.0; float ss = 0.0;
+    for (int i = -8; i <= 8; i++) {
+      if (i == 0) continue;
+      float fi = float(i) / 8.0; float w = 1.0 - abs(fi);
+      st += max(luma(texture2D(uSrc, uv + vec2(fi * u_streakLen * 0.35, 0.0)).rgb) - th, 0.0) * w; ss += w;
+    }
+    col += u_streakColor * st / ss * u_streak * 3.0;
+  }
+  gl_FragColor = vec4(mix(texture2D(uSrc, vUv).rgb, clamp(col, 0.0, 1.0), u_amount), 1.0);
+}`,
+};
+FX_IDENTITY.cgrade = 'amount'; FX_IDENTITY.clens = 'amount';
+filter.types = Object.keys(FILTER_DEFS);
+// the LUTs: the starter pack (recipes on display colors 0..1, made into a 33³ LUT the first time one is used; the
+// hub lists the same names: tools/three-grade-core.js PACK) and the .cube files the hub sends; each becomes a
+// half-float texture once
+const GRADE = { luts: new Map(), tex: new Map() };
+{
+  const L = (r, g, b) => 0.299 * r + 0.587 * g + 0.114 * b;
+  const cl = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
+  const S = (x, k) => { const y = x - 0.5; return cl(0.5 + (y * k) / (1 + Math.abs(y) * (k - 1) * 2)); }; // a soft S (k > 1: more contrast)
+  const sat = (c, s) => { const l = L(...c); return c.map((v) => l + (v - l) * s); };
+  const tone = (c, sh, hi, amt) => { const l = cl(L(...c)); const w = l * l * (3 - 2 * l); return c.map((v, i) => v + ((sh[i] - 0.5) * (1 - w) + (hi[i] - 0.5) * w) * amt); };
+  GRADE.PACK = {
+    'teal-orange': (c) => { let o = tone(c, [0.3, 0.55, 0.62], [0.68, 0.52, 0.36], 0.55); const warm = Math.max(0, c[0] - c[2]); o = [o[0] + 0.06 * warm, o[1] + 0.02 * warm, o[2] - 0.05 * warm]; return sat(o.map((v) => S(v, 1.15)), 1.12); },
+    'bleach-bypass': (c) => { const l = S(L(...c), 1.6); return sat(c.map((v) => S(v * 0.5 + l * 0.5, 1.35)), 0.45); },
+    'kodak-warm': (c) => { let o = c.map((v) => 0.03 + v * 0.95); o = tone(o, [0.48, 0.47, 0.55], [0.62, 0.55, 0.42], 0.45); o[0] = S(o[0], 1.12); return sat(o.map((v) => S(v, 1.08)), 1.08); },
+    'fuji-fresh': (c) => { const o = tone(c, [0.44, 0.53, 0.57], [0.53, 0.5, 0.5], 0.5); const g = Math.max(0, c[1] - Math.max(c[0], c[2])); return sat([o[0] - 0.05 * g, o[1] + 0.04 * g, o[2] + 0.06 * g].map((v) => S(v, 1.1)), 1.05); },
+    noir: (c) => { const l = S(0.5 * c[0] + 0.4 * c[1] + 0.1 * c[2], 1.8); return [l, l, l * 0.98]; },
+    'cross-process': (c) => [S(c[0], 1.5), cl(0.04 + S(c[1], 1.25) * 0.96), cl(0.18 + c[2] * 0.62)],
+    'day-for-night': (c) => { const o = sat(c, 0.35).map((v) => v * 0.55); return [o[0] * 0.75, o[1] * 0.9, cl(o[2] * 1.15 + 0.05)]; },
+    'vintage-fade': (c) => { let o = c.map((v) => 0.1 + v * 0.8); o = tone(o, [0.5, 0.45, 0.55], [0.6, 0.55, 0.42], 0.4); return sat(o, 0.8); },
+    cyberpunk: (c) => { const o = tone(c, [0.35, 0.6, 0.7], [0.72, 0.36, 0.68], 0.65); return sat(o.map((v) => S(v, 1.2)), 1.25); },
+    'golden-hour': (c) => sat(tone(c, [0.55, 0.47, 0.4], [0.68, 0.56, 0.32], 0.55), 1.12),
+    'arctic-blue': (c) => tone(sat(c, 0.8), [0.42, 0.5, 0.62], [0.47, 0.53, 0.6], 0.55).map((v) => S(v, 1.05)),
+    'matrix-green': (c) => { const l = L(...c); const o = [l * 0.7, cl(l * 1.05 + 0.03), l * 0.65]; return c.map((v, i) => S(v + (o[i] - v) * 0.8, 1.15)); },
+    sepia: (c) => { const l = L(...c); return [cl(l * 1.07 + 0.04), cl(l * 0.88 + 0.03), cl(l * 0.66 + 0.02)]; },
+    'film-print': (c) => sat(tone(c.map((v) => S(v, 1.3)), [0.47, 0.5, 0.53], [0.54, 0.51, 0.46], 0.35), 0.92).map((v) => 0.015 + v * 0.97),
+  };
+}
+// a recipe → a LUT in .cube order: data[(r + g·N + b·N²)·3]
+function gradeBuild(fn, N) {
+  const data = new Float32Array(N * N * N * 3);
+  for (let b = 0; b < N; b += 1) for (let g = 0; g < N; g += 1) for (let r = 0; r < N; r += 1) {
+    const o = fn([r / (N - 1), g / (N - 1), b / (N - 1)]); const i = (r + g * N + b * N * N) * 3;
+    data[i] = o[0]; data[i + 1] = o[1]; data[i + 2] = o[2];
+  }
+  return { N, data };
+}
+function gradeLutTex(name) {
+  if (!name || name === 'none') return null;
+  let t = GRADE.tex.get(name);
+  if (t !== undefined) return t;
+  let lut = GRADE.luts.get(name);
+  if (!lut && GRADE.PACK[name]) { lut = gradeBuild(GRADE.PACK[name], 33); GRADE.luts.set(name, lut); }
+  t = null;
+  if (lut) {
+    const { N, data } = lut;
+    const h = new Uint16Array(N * N * N * 4); const H = THREE.DataUtils.toHalfFloat;
+    for (let b = 0; b < N; b += 1) for (let g = 0; g < N; g += 1) for (let r = 0; r < N; r += 1) {
+      const i = (r + g * N + b * N * N) * 3; const o = (g * N * N + b * N + r) * 4;
+      h[o] = H(data[i]); h[o + 1] = H(data[i + 1]); h[o + 2] = H(data[i + 2]); h[o + 3] = 15360;
+    }
+    t = new THREE.DataTexture(h, N * N, N, THREE.RGBAFormat, THREE.HalfFloatType);
+    t.minFilter = THREE.LinearFilter; t.magFilter = THREE.LinearFilter; t.generateMipmaps = false; t.needsUpdate = true;
+    t.userData.N = N;
+  }
+  GRADE.tex.set(name, t); // (null too: a name not known yet is looked for again when its data comes)
+  if (!t) GRADE.tex.delete(name);
+  return t;
+}
+function gradeSetLut(name, N, data) {
+  GRADE.tex.get(name)?.dispose?.(); GRADE.tex.delete(name);
+  if (!data) GRADE.luts.delete(name); else GRADE.luts.set(name, { N, data: data instanceof Float32Array ? data : Float32Array.from(data) });
+}
+// one cgrade / clens pass over a picture, off screen: the bake (identity LUT in → the grade as a .cube), checks
+function gradeRun(type, P, src, w, h, { float = false } = {}) {
+  const def = FILTER_DEFS[type];
+  return withThumbRenderer(w, h, (renderer) => {
+    const uniforms = filterUniforms(def, P, src);
+    setFilterParams(def, P, Object.keys(P), uniforms);
+    uniforms.uRes.value.set(w, h);
+    def.frame?.(P, uniforms);
+    const mat = new THREE.ShaderMaterial({ uniforms, vertexShader: FILTER_VERT, fragmentShader: filterFrag(def, P), depthTest: false, depthWrite: false });
+    const scene = new THREE.Scene(); const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat); scene.add(quad);
+    const rt = new THREE.WebGLRenderTarget(w, h, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: false, type: float ? THREE.FloatType : THREE.UnsignedByteType });
+    let out;
+    try {
+      renderer.setRenderTarget(rt); renderer.render(scene, new THREE.Camera()); renderer.setRenderTarget(null);
+      out = float ? new Float32Array(w * h * 4) : new Uint8Array(w * h * 4);
+      renderer.readRenderTargetPixels(rt, 0, 0, w, h, out);
+    } finally { rt.dispose(); mat.dispose(); quad.geometry.dispose(); }
+    return out;
+  });
+}
+const gradeLayer = (id) => (id ? layers.get(id) : [...ordered()].reverse().find((L) => L.fx?.type === 'cgrade')) || null;
+const gradeB64 = (u8) => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
+// window.__grade (the hub's ◐ Grade panel and checks, through eval):
+//   pack() → the starter LUT names · luts() → every LUT this page knows
+//   bake({ layer, N, P }) → the grade (its color part: no vignette / grain / bars) as a .cube's numbers (base64 Float32, red fastest)
+//   run(P, colors [[r,g,b] 0..255], type) → those colors through a cgrade with P (0..255) · scope(w, h) → the picture, small (base64 RGBA)
+window.__grade = {
+  pack: () => Object.keys(GRADE.PACK),
+  luts: () => [...new Set([...Object.keys(GRADE.PACK), ...GRADE.luts.keys()])],
+  bake({ layer = null, N = 33, P = null } = {}) {
+    const L = gradeLayer(layer);
+    const P0 = P || L?.fx?.P;
+    if (!P0) throw new Error('No ◐ Grade layer in this scene');
+    const Q = { ...P0, vignette: 0, grain: 0, bars: 'off', amount: 1 };
+    const W = N * N;
+    const id = new Float32Array(W * N * 4);
+    for (let g = 0; g < N; g += 1) for (let b = 0; b < N; b += 1) for (let r = 0; r < N; r += 1) { const o = (g * W + b * N + r) * 4; id[o] = r / (N - 1); id[o + 1] = g / (N - 1); id[o + 2] = b / (N - 1); id[o + 3] = 1; }
+    const tex = new THREE.DataTexture(id, W, N, THREE.RGBAFormat, THREE.FloatType); tex.needsUpdate = true;
+    let px;
+    try { px = gradeRun('cgrade', Q, tex, W, N, { float: true }); } finally { tex.dispose(); }
+    const out = new Float32Array(N * N * N * 3);
+    for (let b = 0; b < N; b += 1) for (let g = 0; g < N; g += 1) for (let r = 0; r < N; r += 1) {
+      const o = (g * W + b * N + r) * 4; const i = (r + g * N + b * N * N) * 3;
+      out[i] = px[o]; out[i + 1] = px[o + 1]; out[i + 2] = px[o + 2];
+    }
+    return { N, data: gradeB64(new Uint8Array(out.buffer)) };
+  },
+  run(P, colors = [], type = 'cgrade') {
+    const n = colors.length;
+    const d = new Uint8Array(n * 4); colors.forEach((c, i) => { d[i * 4] = c[0]; d[i * 4 + 1] = c[1]; d[i * 4 + 2] = c[2]; d[i * 4 + 3] = 255; });
+    const tex = new THREE.DataTexture(d, n, 1, THREE.RGBAFormat); tex.needsUpdate = true;
+    try { const px = gradeRun(type, P, tex, n, 1); return colors.map((_, i) => [px[i * 4], px[i * 4 + 1], px[i * 4 + 2]]); } finally { tex.dispose(); }
+  },
+  scope(w = 96, h = 54) {
+    GRADE.sc = composite(GRADE.sc || null, 1, { w, h });
+    return gradeB64(new Uint8Array(GRADE.sc.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data.buffer));
+  },
+};
 function testCard(c) {
   const g = c.getContext('2d'); const W = c.width; const H = c.height;
   const gr = g.createLinearGradient(0, 0, W, H);
@@ -7315,7 +7599,7 @@ function sqPseudo(id, props) {
 const sqKeys = new WeakMap();
 function sqKeyOf(g) {
   let k = sqKeys.get(g);
-  if (k == null) { k = JSON.stringify([g.kind, g.layers?.map((L) => [L.id, L.code, L.values, L.props?.precomp?.sig]), g.asset, g.card, g.mute, g.look?.id || null]); sqKeys.set(g, k); }
+  if (k == null) { k = JSON.stringify([g.kind, g.layers?.map((L) => [L.id, L.code, L.values, L.props?.precomp?.sig]), g.asset, g.card, g.mute, g.look?.id || null, g.cgrade?.map((x) => x.code) || null]); sqKeys.set(g, k); }
   return g.asset ? (sqAsset(g.asset) ? `${k}|1` : `${k}|0`) : k;
 }
 function sqProps(g, L, j) {
@@ -7376,6 +7660,11 @@ function sqMount(g) {
       st.ready = im.decode().catch(() => {});
     } else st.ready = Promise.resolve();
     styleLayer(L);
+  }
+  // (round 24 "grade") the clip's grade: filter layers on top of the clip that see only the clip (props.seqGrade)
+  if (g.cgrade?.length) {
+    const runs = g.cgrade.map((x, k) => { st.ids.push(x.id); return runLayer({ id: x.id, code: x.code, values: undefined, ...sqProps(g, x, 18 + k), seqFilter: '' }).catch(() => {}); }); // (its color look is under it already)
+    st.ready = Promise.all([st.ready, ...runs]);
   }
   return st;
 }
@@ -7452,6 +7741,7 @@ function sqManage(T, offline = false) {
       st.g = g;
       if (g.layers) g.layers.forEach((L, j) => { const lr = layers.get(st.ids[j]); if (lr) setLayerProps(lr, sqProps(g, L, j)); });
       else { const lr = layers.get(st.ids[0]); if (lr) setLayerProps(lr, sqProps(g, null, 0)); }
+      (g.cgrade || []).forEach((x, k) => { const lr = layers.get(x.id); if (lr) setLayerProps(lr, { ...sqProps(g, x, 18 + k), seqFilter: '' }); }); // (round 24 "grade")
     }
     if (st.ready) ready.push(st.ready);
   }
@@ -8324,6 +8614,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'edit') editCommand(msg);
   if (msg.type === 'input') runInput(msg);
   if (msg.type === 'refs') { setRefs(msg.items); palette.splice(0, palette.length, ...(msg.palette || [])); }
+  if (msg.type === 'grade-lut') gradeSetLut(msg.name, msg.N, msg.data); // (round 24) an imported .cube LUT (tools/three-grade.js)
   if (msg.type === 'media') mediaCommand(msg);
   if (msg.type === 'media-map') beatMap = msg;
   if (msg.type === 'media-clock') { fclock = msg.clock ? { fps: msg.clock.fps || 30, times: msg.clock.times || null, frames: msg.clock.frames || 0, exact: Boolean(msg.clock.exact) } : null; if (mediaEl && fclock) fpres.frame = fFrameAt(fpres.time || mediaEl.currentTime); }
