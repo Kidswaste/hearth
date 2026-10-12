@@ -726,3 +726,8 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ Search everything (Ctrl/⌘+Shift+K, `/everything`): projects, chats and their messages, scenes (code, sliders), board items, renders, files, commands; kinds as chips, keys, results open where they live.
 - ✓ The chats list groups chats by project (collapsible, ⏷ only one project, on / off); the Lab's sketch picker groups scenes by project.
 - ○ Tested headless with fake engines (`sh dev/run-checks.sh projects`); not on the owner's real data or two real computers.
+## Lab time machine (round 23, timemachine, 52 upgrades: docs/upgrades/timemachine.md)
+- ✓ Every meaningful change to a scene (code run, layer added / removed, sliders saved, shuffle kept, director / crew edits) is a version with a tiny picture, who made it and a one-line label; deltas, thinned (today all, hourly for the week, daily after), one kv per scene, merges by id.
+- ✓ Sketch ▾ → ⏱ Time machine, Alt+H, `/history`: scrub on the preview (← →, live, nothing saved), compare (split wipe + what changed), restore (undoable), branch, pick the colors / sliders / one layer.
+- ✓ Each director turn's start is bookmarked: ⋯ → Back before the director, `/back n [claude|astra]`, `/back undo`; `/branch` in the Lab.
+- ○ Tested headless with the fake engines (`sh dev/run-checks.sh timemachine timemachine-test`).
