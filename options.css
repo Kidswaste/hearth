@@ -36,3 +36,17 @@
 .opt-switch[aria-checked=true] { background: var(--accent); }
 .opt-switch[aria-checked=true] i { transform: translateX(15px); }
 @media (prefers-reduced-motion: reduce) { .opt-switch, .opt-switch i { transition: none; } }
+/* (round 33, simplify3) long parts fold: the title, one line about where it stands (right), ▸ / ▾ */
+.opt-sheet summary.opt-fold-sum { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; user-select: none; }
+.opt-sheet summary.opt-fold-sum::-webkit-details-marker { display: none; }
+.opt-sheet summary.opt-fold-sum::after { content: '▸'; flex: none; color: var(--muted); font-size: 11px; }
+.opt-sheet details[open] > summary.opt-fold-sum::after { content: '▾'; }
+.opt-fold-sum > .opt-h, .opt-fold-h { flex: none; }
+.opt-sum { flex: 1; min-width: 0; text-align: right; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.opt-fold { margin: 2px 0; border-radius: 7px; }
+.opt-fold > summary.opt-fold-sum { padding: 4px; min-height: 30px; border-radius: 7px; }
+.opt-fold > summary.opt-fold-sum:hover { background: var(--hover); }
+.opt-fold[open] { padding: 0 0 6px 8px; border-left: 1px solid var(--line); }
+.opt-fold[open] > summary.opt-fold-sum { margin-left: -8px; }
+.opt-sheet .ms-cards { grid-template-columns: minmax(0, 1fr); } /* the missions fit the drawer (they ran off its side) */
+.opt-sheet .ms-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

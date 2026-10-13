@@ -21,7 +21,7 @@ try {
   ok(!document.querySelector('.slash-menu'), 'typing "/" opens no command menu');
   box.value = ''; box.dispatchEvent(new Event('input', { bubbles: true }));
 
-  const dots = Native.view(C.id).root.querySelector('.native-head button[title="Chat options"]');
+  const dots = Native.view(C.id).root.querySelector('.native-head button[aria-label="Chat options"]');
   dots.click();
   ok(await until(() => S()), 'the chat ⋯ opens AI setup');
   out.sections = [...S().querySelectorAll('.opt-h')].map((h) => h.textContent);

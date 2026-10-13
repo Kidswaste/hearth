@@ -61,7 +61,7 @@ const Activity = (() => {
         if (c) dropFail(`reply:${c}`);
       } else if (g.file) window.hub.fs.open(g.file).catch?.(() => toast('That file is gone.', { timeout: 2200 }));
       else if (g.renders) (window.Lazy ? Lazy.load('renders') : Promise.resolve()).then(() => Renders.open()).catch(() => {});
-      else if (g.hooks) (typeof Options !== 'undefined' ? Promise.resolve() : Lazy.load('options')).then(() => Options.open({ agentId: g.hooks })).catch(() => {});
+      else if (g.hooks) (typeof Options !== 'undefined' ? Promise.resolve() : Lazy.load('options')).then(() => Options.open({ agentId: g.hooks, show: 'hooks' })).catch(() => {});
       else if (g.sync) Sync.conflicts();
       else if (g.update) Updater.dialog();
       else if (g.budget) (window.Lazy ? Lazy.load('budget') : Promise.resolve()).then(() => Budget.glance()).catch(() => {});

@@ -20,7 +20,7 @@ try {
   const idle = () => until(() => !Native.isAgentBusy(C.id), 30000);
 
   // ---------- ⋯ AI setup: the section, add a hook in plain words ----------
-  v.root.querySelector('.native-head button[title="Chat options"]').click();
+  v.root.querySelector('.native-head button[aria-label="Chat options"]').click();
   ok(await until(() => document.querySelector('aside.opt-sheet .hk-sec')), 'the ⋯ panel has "Hooks: when… then…"');
   const sec = () => document.querySelector('aside.opt-sheet .hk-sec');
   ok(/None yet/.test(sec().textContent), 'none yet');

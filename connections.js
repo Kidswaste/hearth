@@ -186,8 +186,8 @@ const Connections = (() => {
     dlg.body.append(
       el('p', { class: 'opt-hint', text: 'Free, no account: one click adds it, tests it and switches it on for this AI. They run on this computer with Node (npx) or Python (uvx).' }),
       el('div', { class: 'cn-cards' }, cards),
-      el('h4', { class: 'opt-h', text: 'Your own MCP server' }),
-      el('p', { class: 'opt-hint', text: 'Any MCP server: the command that starts it, or the address of a remote one.' }),
+      el('h4', { class: 'opt-h', text: 'A tool server you already have' }),
+      el('p', { class: 'opt-hint', text: 'Any tool server made for AIs (the kind called MCP): the command that starts it, or the address of one online.' }),
       ownForm(null, async (conn) => { dlg.close(); await add(conn, agentId); }));
   }
 
@@ -216,7 +216,7 @@ const Connections = (() => {
     if (!a) { box.replaceChildren(); return; }
     painted = { box, agentId };
     const list = all();
-    const head = el('div', { class: 'opt-row' }, el('span', { class: 'opt-label opt-sub', text: 'Your connections (MCP servers)' }), el('button', { type: 'button', class: 'ghost small', text: '＋ Add a connection', title: 'Ready-made free ones, or any MCP server you have', on: { click: () => openAdd(a.id) } }));
+    const head = el('div', { class: 'opt-row' }, el('span', { class: 'opt-label opt-sub', text: 'Your own connections' }), el('button', { type: 'button', class: 'ghost small', text: '＋ Add a connection', title: 'Gives it a ready-made free tool (files, web pages, a database…) or a tool server you already have', on: { click: () => openAdd(a.id) } }));
     box.replaceChildren(head, ...list.flatMap((c) => row(c, a)), list.length ? el('p', { class: 'opt-hint', text: 'Settings you typed for them go only to that server, never to the AI. Each one on adds its tools to every message (the ≈ tokens).' }) : null);
   }
   // options.js puts this under "What it can use"
@@ -246,7 +246,7 @@ const Connections = (() => {
           await setMode(agentId, c.id, verb === 'on' ? (splits(c) ? 'read' : 'full') : null);
           return `${c.name} is ${verb} for ${H.agent(agentId)?.name || 'this AI'}.`;
         }
-        if (typeof Options !== 'undefined') Options.open({ agentId });
+        if (typeof Options !== 'undefined') Options.open({ agentId, show: 'connections' });
         const a = H.agent(agentId);
         return all().length ? all().map((c) => `${c.name}: ${a?.connections?.[c.id] || 'off'} (${tokNote(c)})`).join('\n') : 'No connections yet: ⋯ AI setup → What it can use → ＋ Add a connection.';
       },

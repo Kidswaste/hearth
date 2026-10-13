@@ -109,7 +109,7 @@ const Hooks = (() => {
     const r = trigger(agentId, { ...h, on: true }, `(a test) ${C.whenText(h.when, nameOf)}`);
     return r === 'fired' ? 'Sent.' : r === 'waiting' ? 'It goes once the AI is free (or the minute is up).' : `Not now: ${r}.`;
   }
-  const openSetup = (agentId) => { if (typeof Options !== 'undefined') Options.open({ agentId }); else window.Lazy?.load('options').then(() => Options.open({ agentId })).catch(() => {}); };
+  const openSetup = (agentId) => { if (typeof Options !== 'undefined') Options.open({ agentId, show: 'hooks' }); else window.Lazy?.load('options').then(() => Options.open({ agentId, show: 'hooks' })).catch(() => {}); };
 
   // ---------- the chat side: mark hook messages, wait for replies to end ----------
   Native.hooks.send.push((agentId, chat, text) => {

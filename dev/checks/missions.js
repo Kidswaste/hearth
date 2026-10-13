@@ -47,7 +47,7 @@ try {
   ok(await until(() => lines.includes('/opinion'), 4000), 'after the reply, the other AI reviews it');
 
   // in the ⋯ panel too
-  v.root.querySelector('.native-head button[title="Chat options"]').click();
+  v.root.querySelector('.native-head button[aria-label="Chat options"]').click();
   ok(await until(() => document.querySelector('aside.opt-sheet .ms-grid')), 'the ⋯ panel lists them');
   document.querySelector('aside.opt-sheet .opt-head button[title^="Close"]')?.click();
 } catch (err) { fail.push(`threw: ${err.message}`); }

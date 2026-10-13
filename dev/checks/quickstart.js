@@ -61,7 +61,7 @@ try {
   ok(!after.includes('chat-recall'), 'tried: off the card for good', after);
 
   // ---------- AI setup's "?" ----------
-  document.querySelector(`.surface[data-id="${C.id}"] .native-head button[title="Chat options"]`)?.click();
+  document.querySelector(`.surface[data-id="${C.id}"] .native-head button[aria-label="Chat options"]`)?.click();
   const q = await until(() => document.querySelector('.opt-sheet .qs-ask'), 10000);
   ok(q, 'AI setup (the chat\'s ⋯) has a small "?"');
   q?.click();

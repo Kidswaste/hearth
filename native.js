@@ -58,7 +58,7 @@ const Native = (() => {
     const title = el('span', { class: 'chat-title', title: 'Double-click to rename' });
     const meta = el('span', { class: 'chat-meta' });
     const modelSel = el('select', { class: 'model-select', title: 'Model for this chat' });
-    const menuBtn = el('button', { class: 'ghost', text: '⋯', title: 'Chat options' });
+    const menuBtn = el('button', { class: 'ghost chat-menu-btn', text: '⋯', title: 'AI setup: who it is, its instructions and what it can use · right-click: this chat (model, rename, export…)', attrs: { 'data-feature': 'Chat options', 'aria-label': 'Chat options' } }); // (round 33, simplify3) the tooltip says what opens; usage keeps its name
     const newBtn = el('button', { class: 'ghost', text: '＋ New chat', title: 'New chat (Ctrl+N)', on: { click: () => newChat(agentId) } });
     // How much context each message sends now (the last reply's input tokens); click to compact.
     const ctx = el('button', { class: 'ctx-meter', hidden: true, on: { click: () => compactChat(agentId) } }, el('span', { class: 'ctx-bar' }, el('i')), el('span', { class: 'ctx-text' }));
@@ -1758,14 +1758,14 @@ const Native = (() => {
         { label: 'Jump to the first message', action: () => { const l = views.get(agentId)?.list; if (l) l.scrollTop = 0; } },
         { label: 'Read the last reply aloud', key: 'Alt+R', action: () => speak(lastReplyText(agentId)) },
         { label: 'Chat stats', action: () => chatStats(chat) },
-        { label: 'Chat commands…', key: '/help', action: () => Commands.exec('/help', agentId) },
+        { label: 'Everything it can do…', action: () => Commands.exec('/help', agentId) },
       ] },
       // (round 9) the board, scene, sequence, project, captures this chat works with (chat-context.js)
       ...(typeof ChatContext !== 'undefined' ? (() => { const w = ChatContext.attachItems(agentId).filter((x) => typeof x === 'object'); return w.length ? [{ label: 'Works with', hint: String(w.length), items: () => [...w, '-', { label: 'What it is and how your words use it', action: () => Commands.exec('/chat-context', agentId) }] }] : []; })() : []),
       { label: 'Organise', items: () => [
         { label: 'Rename…', action: () => renameCurrent(agentId) },
         { label: 'Pin to top', checked: Boolean(chat.pinned), action: () => togglePin(chat.id) },
-        { label: 'Tags and folder…', key: '/tag', action: () => Commands.exec('/tags', agentId) },
+        { label: 'Tags and folder…', action: () => Commands.exec('/tags', agentId) },
         { label: 'Duplicate this chat', action: () => { const n = chat.messages.length; if (n) branchFrom(agentId, n - 1); } },
         ...others.map((a) => ({ label: `Continue with ${a.name}`, action: () => continueWith(chat.id, a.id) })),
       ] },
@@ -1780,7 +1780,7 @@ const Native = (() => {
       { label: 'Model', hint: H.agent(agentId).model || 'default', items: modelItems },
       ...(typeof Access !== 'undefined' ? [Access.menuItem(agentId, null)] : []),
       { label: 'Import a chat from a file…', action: () => Commands.exec('/import', agentId) },
-      { label: 'Chat commands…', key: '/help', action: () => Commands.exec('/help', agentId) },
+      { label: 'Everything it can do…', action: () => Commands.exec('/help', agentId) },
     ];
     if (window.Lazy?.isIn?.('quickstart') && typeof QuickstartHooks !== 'undefined') items.push(QuickstartHooks.menuItem(QuickstartHooks.placeOf(agentId), agentId)); // (round 31) What can I do here?
     if (typeof Declutter !== 'undefined') items.push(...Declutter.customiseItems('Chat'));

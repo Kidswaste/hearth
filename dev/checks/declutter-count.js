@@ -79,7 +79,7 @@ const top = () => [...document.querySelectorAll('#menu > button')].length;
 const v = Native.view(claude.id);
 activate(claude.id); await wait(300);
 v.list.querySelector('.msg.assistant .msg-more')?.click(); await wait(150); menus['message ⋯'] = top(); hideMenu();
-v.root.querySelector('.native-head button[title="Chat options"]')?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 300, clientY: 60 })); await wait(150); menus['chat ⋯'] = top(); hideMenu();
+v.root.querySelector('.native-head button[aria-label="Chat options"]')?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 300, clientY: 60 })); await wait(150); menus['chat ⋯'] = top(); hideMenu();
 const item = document.querySelector('#panel .item');
 item?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 120, clientY: 120 })); await wait(150); menus['chat row (right-click)'] = top(); hideMenu();
 const total = (label) => Object.values(rows).reduce((s, r) => s + (r[label] || 0), 0);

@@ -126,7 +126,7 @@ const DiscoverData = (() => {
       { title: 'Downloads go where they fit', text: 'GLB → the Lab, HDRI → the sky, songs → the Lab, clips → the board (or your video player), pictures → the board.', cmd: '/apps downloads' },
     ] },
     { id: 'access', name: 'Chat access cards', icon: '🔐', why: 'what a chat may read, write and run', steps: [
-      { title: 'Each chat\'s access', text: 'Chat ⋯ → Access: Off · Read · Read & write · Full, in the chat\'s own folders.', target: ['.surface.active .native-head button[title="Chat options"]', '.surface.active .native-head'] },
+      { title: 'Each chat\'s access', text: 'Right-click the chat ⋯ → Files it can use: Off · Read · Read & write · Full, in its own folders.', target: ['.surface.active .native-head button[aria-label="Chat options"]', '.surface.active .native-head'] },
       { title: 'Where to set it', text: '⋯ AI setup → Files on this computer shows it and sets it (read only, its own folders, which folders).', cmd: '/access' },
       { title: 'Risky things ask first', text: 'Deleting, publishing, paid credits or folders outside: a card in the chat — Allow once · for this chat · Deny + note. No answer = no.' },
       { title: 'Nothing lost', text: 'Deletes go to the Trash, edits have Undo, and Folders… in ⋯ AI setup lists what a chat read, wrote, deleted or ran.', cmd: '/access log' },
