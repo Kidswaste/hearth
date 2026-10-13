@@ -32,6 +32,13 @@ One calm card per window with 3–5 things to try, picked from what you haven't 
 - Mac: tools installed with Homebrew / npm are found when Hearth starts from the Dock; the Dock icon brings back a hidden window; shortcuts show ⌘.
 - Windows: click "Create Start menu & desktop shortcuts" once so notifications work.
 
+## 🪟 Fix: commands on Windows ("blocked by policy")
+- With **Full** file access, Claude can run commands on Windows again. Claude Code runs them through PowerShell there, but Hearth only switched on Bash, so they were refused before Hearth could check them.
+- PowerShell commands get the same care as on the Mac: reading and building inside its folders just happen, Remove-Item goes to the Trash, and anything risky asks you first.
+- Astra on Windows: if its sandbox blocks commands, the chat now says so and offers **Run without its sandbox…** (also in ⋯ AI setup → Files on this computer), after a warning.
+- Any command refused before Hearth's check now gets a one-line reason and a fix in the chat.
+**Try it:** ⋯ AI setup → Files on this computer → Full, open a new chat, ask "run Get-ChildItem in your folder".
+
 ## Good to know
 - Astra can't ask permission: inside its folders it changes files directly (the home-folder warning says so).
 - On Windows, Claude installed through npm (claude.cmd) still isn't found by itself.
