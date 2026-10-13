@@ -107,7 +107,8 @@ line count is lower than the number of upgrades).
 | Missions 2 (round 26): one calm result card for Swarm / Debate / Side by side / Pair (who took part, live status, the answer up front, Use this one / Merge), helper agents as tidy live rows, Plan first / Research / Teacher / Second opinion only, the mission chip on your message with ↻ | [missions2.md](missions2.md) | 34 |
 | Easy Lab (round 26): every Lab feature without commands: right-click the picture → ✦ More (music, look & motion, make, what's going on), toolbar ⋯ → Director ›, a layer right-click menu; Lab missions (4 variations, react to the music, 9:16 version, polish the look, render it); no "/command" left in visible Lab text | [labeasy.md](labeasy.md) | 63 |
 | Smoothness after rounds 25–26 (round 26): the Lab preview sleeps when parked or paused (0 wake-ups off screen), no forced layout per click once the Lab loaded, ⋯ AI setup opens with 69 % less forced layout time and preloads on hover, ◎ Missions closes cleanly, switching windows forces 45 % less, "Show earlier" 60 messages at a time; new `smooth26` check, hz240 fixed for round 26 | [smooth26.md](smooth26.md) | 12 |
-| **Total** | | **12,630** |
+| Ready to post (round 27): 📮 on a finished render, in the renders list or the ◎ mission "Get it ready to post": checks for YouTube Shorts / TikTok / Reels / YouTube 16:9 / Instagram square (shape, size, length limits, bitrate, codec, loudness, detail under the app's buttons with a ▦ safe-area overlay, the loop), fixes through the render queue (9:16 copy, -14 LUFS, seamless loop, cut to the limit), cover ideas + words on the cover, title / description / hashtags written by the chat's AI, a tidy post folder; never uploads | [publishkit.md](publishkit.md) | 52 |
+| **Total** | | **12,682** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.
