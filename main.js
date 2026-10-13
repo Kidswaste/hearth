@@ -25,9 +25,10 @@ const bgmain = require('./bgmain'); // (round 16) is anybody looking / on batter
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const THEME_PATH = path.join(__dirname, 'theme.css');
 
-// Present as plain Chrome so sign-in pages (Google, etc.) don't reject the app.
-app.userAgentFallback =
-  `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome} Safari/537.36`;
+// Present as plain Chrome so sign-in pages (Google, etc.) don't reject the app. (round 30, chrome) naming this computer's
+// real system, with matching client hints for Google's sites (chromeguard.js); Google's refusal page offers Chrome.
+const chromeguard = require('./chromeguard');
+app.userAgentFallback = chromeguard.userAgent();
 if (process.platform === 'win32') app.setAppUserModelId('Hearth');
 
 // Sign-in popups stay inside the app so the login lands in the right agent.
@@ -519,6 +520,14 @@ lazyIpc('interopmain.js', (m, ipc) => m.register(ipc, () => win, { dataDir: stor
 lazyIpc('publishmain.js', (m, ipc) => m.register(ipc, () => win, settings)); // (round 27) Ready to post: measures a finished video (ffmpeg) for the platform checks and cover ideas
 lazyIpc('motionmain.js', (m, ipc) => m.register(ipc, () => win, { dataDir: store.DATA_DIR })); // (round 25) camera / body tracking: MediaPipe's files, downloaded once after a yes; the camera permission on a Mac
 lazyIpc('firstrunmain.js', (m, ipc) => m.register(ipc, () => win, { readConfig, dataDir: store.DATA_DIR })); // (round 28) Check this computer: Mac permissions, Windows paths, chats' folders, the shown install commands
+lazyIpc('chromemain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win })); // (round 30) Hearth's Chrome: Google sign-in in the owner's real Chrome, driven over the DevTools protocol
+// (round 30, chrome) Google's "Couldn't sign you in" anywhere: the app window offers Chrome, else the hub does (a website chat)
+chromeguard.setup({ onReject: (contents, opener) => {
+  const target = opener || contents;
+  if (appsmain.offerChrome(target, contents)) return;
+  send('chrome:offer', { wcId: target.id, url: (() => { try { return target.getURL(); } catch { return ''; } })(), popup: Boolean(opener) });
+  if (opener) { try { BrowserWindow.fromWebContents(contents)?.close(); } catch { /* gone */ } } // the dead-end sign-in popup goes
+} });
 lazyIpc('packsmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win })); // (round 28) packs: a scene and everything it uses as one .hearthpack file (zip-slip guard, size caps)
 // (round 28, packs) a .hearthpack opened from Finder / Explorer (or dropped on the app's icon) → the window's import card
 let packPending = process.argv.find((a) => /\.hearthpack$/i.test(a)) || null;

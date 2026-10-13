@@ -76,3 +76,7 @@ dialog.apps-grid:not([open]) { display: none; }
 .apps-card-acts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
 .apps-card-acts button { padding: 2px 7px; font-size: 11px; }
 dialog.apps-key input { width: 100%; font-family: ui-monospace, monospace; }
+/* (round 30, chrome) Google refused the sign-in in this window: the one-click offer of Chrome, under the bar */
+.aw-offer { flex: none; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 7px 10px; font-size: 12px; color: var(--aw-text); background: color-mix(in srgb, #4285f4 16%, var(--aw-surface)); border-bottom: 1px solid color-mix(in srgb, #4285f4 40%, transparent); }
+.aw-offer > span { flex: 1 1 260px; }
+.aw-offer .aw-go { border-color: #4285f4; background: #4285f4; color: #fff; font-weight: 600; }

@@ -20,7 +20,7 @@ const ignoredName = (name) => IGNORE_NAME.some((re) => re.test(name));
 // Folders and files of the data folder that belong to this computer only.
 // (round 19, reach) the chats' workspace (data/workspace: what Claude / Astra make) syncs too, without what can be
 // rebuilt: dependency folders, Python caches and virtualenvs anywhere (hidden folders like .git never sync).
-const LOCAL_DIRS = new Set(['sync', 'mcp-runs', 'ae', 'node_modules', 'electron', 'captures/frames', 'remote', 'safetynet']); // (round 24) remote: this computer's paired phones' keys · (round 29) safetynet: this computer's session marker + work journal
+const LOCAL_DIRS = new Set(['sync', 'mcp-runs', 'ae', 'node_modules', 'electron', 'captures/frames', 'remote', 'safetynet', 'chrome']); // (round 24) remote: this computer's paired phones' keys · (round 29) safetynet: this computer's session marker + work journal · (round 30) chrome: the Hearth Chrome's profile on this computer
 const HEAVY_DIRS = new Set(['node_modules', '__pycache__', 'venv', 'bower_components', '.venv', '.git', '.cache', '.next', '.parcel-cache', '.turbo']);
 const LOCAL_FILES = new Set(['window.json', 'game-bridge.json', 'hearth-origin.json', 'hearth-icon.png', 'hearth-icon.ico', 'engine-installs.json',
   'connectors.json', 'claude-flags.json', 'now-playing.ps1', 'now-playing-control.ps1', 'now-playing-cover.jpg', 'kv/fake-switches.json', 'kv/downloads-log.json',

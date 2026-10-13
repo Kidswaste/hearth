@@ -12,6 +12,7 @@
 //   node dev/smoke.js --data dev/old-data --script dev/checks/journey-upgrade.js     # start from a copy of a data/ folder
 //   node dev/smoke.js --fake-meshy --script dev/checks/apps-meshy.js   # app windows against dev/fake-meshy.js (no network)
 //   node dev/smoke.js --fake-assets --script dev/checks/assets.js    # the asset library against dev/fake-assets.js
+//   node dev/smoke.js --pw-chrome --script dev/checks/chrome.js     # Hearth's Chrome: Playwright's Chromium as "Chrome", test pages
 //   node dev/smoke.js --coverage /tmp/cov.json --script dev/checks/trim-drive.js   # JS function + CSS rule coverage of the
 //       page from the first byte (CDP Profiler precise coverage, CSS rule usage), written as JSON (dev/coverage-report.js reads it)
 //
@@ -128,6 +129,14 @@ async function cdpConnect() {
     const f = await require('./fake-obs').start({ password: 'hearth-test-pw' });
     env.HEARTH_FAKE_OBS = JSON.stringify({ url: f.url, state: f.state, password: f.password });
   }
+  // --pw-chrome: (round 30) Playwright's Chromium stands in for the owner's Google Chrome (dev/checks/chrome.js), with local
+  // test pages (dev/fake-cdp.js pages: an app page, a sign-in popup, Google's refusal page on 127.0.0.1, a chat page)
+  if (args.includes('--pw-chrome')) {
+    const root = process.env.PLAYWRIGHT_BROWSERS_PATH || '/opt/pw-browsers';
+    const dirN = fs.readdirSync(root).filter((d) => /^chromium-\d+$/.test(d)).sort().pop();
+    const pages = await require('./fake-cdp').pages();
+    Object.assign(env, { HEARTH_CHROME_PATH: path.join(root, dirN || 'chromium', 'chrome-linux', 'chrome'), HEARTH_CHROME_FLAGS: '--no-sandbox --disable-gpu --password-store=basic', HEARTH_CHROME_REJECT_HOSTS: '127.0.0.1', HEARTH_CHROME_TEST_BASE: pages.base });
+  }
   const child = spawn('xvfb-run', ['-a', '-s', '-screen 0 1600x1000x24', ELECTRON, dir, '--no-sandbox', `--remote-debugging-port=${PORT}`, `--user-data-dir=${userData}`, ...(process.env.SMOKE_GPU_FLAGS || '--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist').split(' ').filter(Boolean)], { stdio: ['ignore', 'pipe', 'pipe'], detached: true, env });
   // Kill Xvfb + Electron (their own process group) however the harness ends, so no stray instances pile up.
   const killAll = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* gone */ } try { execFileSync('pkill', ['-9', '-f', dir]); } catch { /* gone */ } };
@@ -213,6 +222,17 @@ async function cdpConnect() {
         const img = await send('Page.captureScreenshot', { format: 'png' });
         if (img.result?.data) { fs.mkdirSync(path.dirname(req.shot), { recursive: true }); fs.writeFileSync(req.shot, Buffer.from(img.result.data, 'base64')); }
         result = { saved: req.shot };
+      } else if (req.pageEval) {
+        // (round 30) an expression in another window's page (an app window's chrome): the newest page whose URL matches
+        const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
+        const t = list.filter((x) => x.type === 'page' && new RegExp(req.pageEval).test(x.url)).pop();
+        if (!t) result = { error: `no page ${req.pageEval}` };
+        else {
+          const w = new WebSocket(t.webSocketDebuggerUrl);
+          await new Promise((r, j) => { w.onopen = r; w.onerror = j; });
+          result = await new Promise((r) => { w.onmessage = (m) => { const d = JSON.parse(m.data); if (d.id === 1) r({ value: d.result?.result?.value, error: d.result?.exceptionDetails?.text }); }; w.send(JSON.stringify({ id: 1, method: 'Runtime.evaluate', params: { expression: req.expr, returnByValue: true, awaitPromise: true, userGesture: true } })); });
+          w.close();
+        }
       } else if (req.target) {
         // (round 21) a CDP call into an iframe target (the Lab preview runs in its own): the newest one whose URL matches
         const infos = (await send('Target.getTargets', {})).result?.targetInfos || [];

@@ -88,6 +88,8 @@ const Apps = (() => {
       actions: (app.actions || []).map((a) => ({ id: a.id, label: a.label, hint: a.hint || '' })),
     });
     if (!r?.ok) throw new Error(r?.error || `${app.name} didn't open`);
+    // (round 30, chrome) it opened in the owner's Chrome (Google sign-in): one click brings it back inside Hearth
+    if (r.chrome && !background) toast(`${app.name} opened in Chrome (Google sign-in works there)`, { timeout: 6000, action: { label: 'Use it inside Hearth', fn: async () => { await api().chrome(app.id, 'hearth'); openWindow(app.id, { url }).catch((err) => toast(err.message, { type: 'error' })); } } });
     noteRecent(app.id);
     return true;
   }
@@ -376,6 +378,17 @@ const Apps = (() => {
       }
       await open(app.id, a.url ? { url: a.url } : {});
       return { ok: true, value: `${app.name} is open in its own window${app.web ? ' (the owner signs in there)' : ''}.` };
+    }
+    // (round 30, chrome) the app's page, the same in Hearth's window or in Chrome: read, click, type, a picture, wait, go
+    if (tool === 'apps_page') {
+      const app = get(a.app);
+      if (!app?.web) return { ok: false, error: `No app window "${a.app || ''}"` };
+      if (!(await api()?.windows() || []).some((w) => w.id === app.id)) { await openWindow(app.id); await api().page(app.id, 'wait', { timeout: 20000 }); }
+      const op = String(a.do || 'text');
+      const r = await api().page(app.id, op, { selector: a.selector, text: a.text, url: a.url, key: a.key, enter: a.enter, timeout: a.timeout, max: a.max });
+      if (!r?.ok) return { ok: false, error: r?.error || 'Not done' };
+      if (op === 'shot') return { ok: true, value: `${app.name}'s page${r.where === 'chrome' ? ' (in Chrome)' : ''}.`, images: [{ data: r.image, mime: r.mime || 'image/jpeg' }] };
+      return { ok: true, value: r.value };
     }
     if (tool.startsWith('meshy_')) {
       if (typeof AppsMeshy === 'undefined') return { ok: false, error: 'Meshy isn\'t loaded' };

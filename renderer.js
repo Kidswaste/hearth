@@ -141,6 +141,10 @@ function showAgentMenu(id, x, y) {
       ? { label: (c.title || 'Untitled').slice(0, 48), hint: timeAgo(c.updatedAt || c.at || Date.now()), action: () => { activate(id); Native.open(id, c.id); } }
       : { label: (c.title || c.url).slice(0, 48), action: () => { activate(id); H.surfaces.get(id)?.webview?.loadURL(c.url); } })) } : null,
     agent.mode === 'web' ? { label: 'Reload', key: 'Ctrl+R', action: () => H.surfaces.get(id)?.webview?.reload() } : null,
+    // (round 30, chrome) Google refuses sign-in inside Hearth: this website chat in the owner's real Chrome, or back
+    agent.mode === 'web' ? (H.surfaces.get(id)?.webview?.dataset.chrome
+      ? { label: 'Use it inside Hearth instead', hint: 'not in Chrome', action: () => window.Lazy?.load('chrome').then(() => ChromeUI.setAgent(agent, 'off')) }
+      : { label: 'Open in Chrome (for Google sign-in)', action: () => window.Lazy?.load('chrome').then(() => ChromeUI.setAgent(agent, 'on')) }) : null,
     '-',
     { label: 'Edit…', action: () => Manager.open(id) },
     { label: 'Move', items: [
@@ -506,12 +510,16 @@ function WebPane(parent, { url, partition, home = url, zoomKey, onNavigate }) {
 }
 
 function createWebSurface(agent, host) {
+  // (round 30, chrome) a website chat set to Chrome, or one whose sign-in is Google's only (Gemini…): it lives in the
+  // owner's real Chrome (Google refuses sign-in in here); chrome-ui.js puts a card here and keeps Hearth's hand on it
+  const inChrome = agent.chrome === 'on' || (agent.chrome !== 'off' && /^https:\/\/[\w.-]*(google\.com|labs\.google|youtube\.com)\//i.test(agent.url || ''));
   const { view } = WebPane(host, {
-    url: agent.url, partition: `persist:${agent.id}`, zoomKey: agent.id,
+    url: inChrome ? 'about:blank' : agent.url, partition: `persist:${agent.id}`, zoomKey: agent.id,
     onNavigate: (v) => recordVisit(agent.id, v),
   });
   view.dataset.url = agent.url;
   view.addEventListener('focus', () => activate(agent.id, { focus: false }));
+  if (inChrome) { view.dataset.chrome = '1'; Promise.resolve(window.Lazy?.load('chrome')).then(() => ChromeUI.cover(agent, host, view)).catch(() => { delete view.dataset.chrome; view.src = agent.url; }); }
   return view;
 }
 
@@ -632,6 +640,9 @@ function activate(id, { focus = true } = {}) {
   else if (s.native) Native.focus(id);
 }
 
+// (round 30, chrome) Google's "Couldn't sign you in" showed in a website chat or a page: offer Chrome (chrome-ui.js)
+window.hub?.chrome?.onOffer?.((o) => Promise.resolve(window.Lazy?.load('chrome')).then(() => ChromeUI.offer(o)).catch(() => {}));
+
 function openWebChat(agentId, url) {
   activate(agentId);
   H.surfaces.get(agentId)?.webview?.loadURL(url);
@@ -682,6 +693,7 @@ function wakeWebsite(s) {
 
 async function sendToWebsite(agent, text) {
   const surf = H.surfaces.get(agent.id);
+  if (surf?.webview?.dataset.chrome && window.ChromeUI) return ChromeUI.sendTo(agent, text, { enter: H.config.askAll?.pressEnter !== false }); // (round 30) in Chrome
   if (surf.webview?.dataset.sleeping) { await wakeWebsite(surf); await new Promise((r) => setTimeout(r, 2500)); }
   const view = surf.webview;
   const selector = JSON.stringify(agent.inputSelector || DEFAULT_INPUT);
