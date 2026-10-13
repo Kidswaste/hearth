@@ -44,6 +44,7 @@ const LabGalleryHook = (() => {
       chip = el('div', { class: 'lab-gal-chip-start' },
         el('button', { type: 'button', text: '🖼 Start from something like…', title: 'Tunnels, chrome blobs, retro grids, particles, type openers, your own scenes…', on: { click: () => open() } }),
         el('button', { type: 'button', class: 'x', text: '×', title: 'Hide', on: { click: () => { hidden.add(ThreeLab.scenes.currentId()); chip.remove(); } } }));
+      if (typeof LabInstantHook !== 'undefined') LabInstantHook.decorate(chip); // (round 29) ✦ Describe it
     }
     if (getComputedStyle(hostEl).position === 'static') hostEl.style.position = 'relative';
     if (chip.parentNode !== hostEl) hostEl.append(chip);
