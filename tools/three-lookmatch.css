@@ -1,0 +1,44 @@
+/* 🎨 Look match (tools/three-lookmatch.js): a small card over the top left of the Lab preview (the ◐ Grade panel sits
+   top right) and the reference picker. No blur, no animation over the moving preview: a plain dark card. */
+.lm-card {
+  position: absolute; top: 46px; left: 8px; z-index: 7; width: 290px; max-width: calc(100% - 16px);
+  display: flex; flex-direction: column; gap: 6px; padding: 7px 9px 8px; border: 1px solid var(--line); border-radius: 10px;
+  background: color-mix(in srgb, var(--panel, #15181b) 95%, transparent); color: var(--text, #eae0d5); font-size: 12px;
+  box-shadow: 0 10px 30px #0008, 0 0 0 1px color-mix(in srgb, var(--fh-gold, #ffd75e) 14%, transparent); contain: layout paint;
+}
+.lm-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.lm-head b { color: var(--fh-gold, #ffd75e); flex: none; }
+.lm-src { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted, #9a948c); font-size: 11px; }
+.lm-top { display: flex; gap: 8px; align-items: flex-start; }
+.lm-thumb { flex: none; width: 72px; height: auto; max-height: 72px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }
+.lm-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.lm-pal { display: flex; height: 14px; border-radius: 4px; overflow: hidden; border: 1px solid var(--line); }
+.lm-pal span { min-width: 6px; }
+.lm-words { color: var(--muted, #9a948c); font-size: 11px; line-height: 1.35; }
+.lm-why { font-size: 11px; line-height: 1.35; }
+.lm-score { color: var(--fh-gold, #ffd75e); font-size: 11px; font-variant-numeric: tabular-nums; }
+.lm-row { display: grid; grid-template-columns: 60px 1fr; align-items: center; gap: 6px; }
+.lm-row > span { color: var(--muted, #9a948c); }
+.lm-row input[type=range] { width: 100%; min-width: 0; accent-color: var(--fh-gold, #ffd75e); }
+.lm-acts { display: flex; flex-wrap: wrap; gap: 4px; }
+.lm-btn { flex: none; padding: 1px 7px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: inherit; font: inherit; cursor: pointer; line-height: 1.6; touch-action: none; }
+.lm-btn:hover { border-color: var(--fh-gold, #ffd75e); }
+.lm-btn.lm-x { border-color: transparent; padding: 0 4px; }
+.lm-btn.lm-ask { color: var(--fh-gold, #ffd75e); }
+/* the picker */
+.lm-dlg { width: min(560px, calc(100vw - 32px)); }
+.lm-dlg .lm-sub { margin: 0 0 8px; color: var(--muted, #9a948c); font-size: 12px; }
+.lm-drop { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px 12px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted, #9a948c); }
+.lm-drop.dropping { border-color: var(--fh-gold, #ffd75e); color: var(--text, #eae0d5); }
+.lm-sec { margin: 10px 0 4px; font-size: 11px; color: var(--muted, #9a948c); text-transform: uppercase; letter-spacing: 0.04em; }
+.lm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; max-height: 180px; overflow-y: auto; scrollbar-width: thin; }
+.lm-tile { position: relative; aspect-ratio: 1; padding: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: #0003; cursor: pointer; color: var(--muted, #9a948c); font-size: 10px; }
+.lm-tile:hover { border-color: var(--fh-gold, #ffd75e); }
+.lm-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lm-tile i { position: absolute; right: 3px; bottom: 2px; font-style: normal; font-size: 10px; text-shadow: 0 1px 2px #000; color: #fff; }
+.lm-list { display: flex; flex-direction: column; gap: 3px; max-height: 150px; overflow-y: auto; scrollbar-width: thin; }
+.lm-rowbtn { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: inherit; font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.lm-rowbtn:hover { border-color: var(--line); }
+.lm-rowbtn img { width: 28px; height: 28px; object-fit: cover; border-radius: 4px; }
+/* (tools/three.js) while files are dragged over the window, the preview's page lets the drop through to the Lab */
+.drag-files iframe { pointer-events: none; }

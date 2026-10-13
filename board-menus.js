@@ -306,6 +306,8 @@
         { label: 'Presentation', items: () => [{ label: 'Present from here', action: () => B._.presentFrom(it) }, { label: 'Earlier', action: () => B._.presentOrder(-1, it) }, { label: 'Later', action: () => B._.presentOrder(1, it) }, { label: 'Play its clips', action: () => B._.playFrame(it) }] });
       else if (it.type === 'swatch' || it.type === 'palette') primary.push({ label: 'Copy hex', action: () => { copyText((it.colors || [it.color]).join(' ')); toast('Copied'); } }, { label: 'Harmonies', items: () => D.HARMONIES.map((h) => ({ label: h.name, action: () => B.addSwatch(D.harmony(h.id, it.color || it.colors[0]), { x: it.x, y: it.y + it.h + 40 }, { title: h.name }) })) }, { label: 'Change color…', action: async () => { const c = await pickColor(it.color || it.colors[0]); if (c) B.patch([it.id], it.type === 'swatch' ? { color: c, title: D.colorName(c) } : { colors: [c, ...it.colors.slice(1)] }, 'color'); } });
     }
+    // (round 28, lookmatch) its colors, light and grain on the Lab scene (tools/three-lookmatch.js, loaded with the Lab)
+    if (it && ['image', 'gif', 'video', 'web'].includes(it.type) && (it.src || it.thumb)) primary.push({ label: '🎨 Use this look in the Lab', action: () => (typeof Lazy !== 'undefined' ? Lazy.load('lab') : Promise.resolve()).then(() => LookMatch.fromBoardItem(it)).catch((err) => toast(err.message, { type: 'error' })) });
     if (list.length === 2) primary.push({ label: 'Compare the two', action: () => Board._.compare?.(list[0], list[1]) });
     menu(e, [
       ...primary,

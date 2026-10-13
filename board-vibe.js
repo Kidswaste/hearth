@@ -189,6 +189,7 @@ const BoardVibe = (() => {
     v.muted = true; v.preload = 'auto'; v.playsInline = true; v.crossOrigin = 'anonymous';
     v.src = url;
     await new Promise((resolve, reject) => { v.onloadeddata = resolve; v.onerror = () => reject(new Error('The clip did not load')); setTimeout(() => reject(new Error('The clip took too long to open')), 20000); });
+    await realDuration(v);
     const dur = Number.isFinite(v.duration) ? v.duration : 0;
     const vw = v.videoWidth || 16; const vh = v.videoHeight || 9;
     // resolves true when the frame at t is really there (a busy machine can be slow to seek: such samples are skipped)
@@ -249,6 +250,14 @@ const BoardVibe = (() => {
     if (debug) out.diffs = diffs.map((x) => [r2(x.t), Math.round(x.px * 1000) / 1000, Math.round(x.hist * 1000) / 1000]);
     v.removeAttribute('src'); v.load();
     return out;
+  }
+
+  // (round 28) a recorded .webm (MediaRecorder, screen captures) says its length is Infinity until you jump past the end
+  async function realDuration(v) {
+    if (Number.isFinite(v.duration)) return v.duration;
+    await new Promise((resolve) => { const done = () => { v.removeEventListener('durationchange', on); resolve(); }; const on = () => { if (Number.isFinite(v.duration)) done(); }; v.addEventListener('durationchange', on); v.currentTime = 1e9; setTimeout(done, 4000); });
+    v.currentTime = 0;
+    return Number.isFinite(v.duration) ? v.duration : 0;
   }
 
   // Palettes from several sources merged by weight (board summary, clips).
@@ -350,6 +359,6 @@ const BoardVibe = (() => {
     return r2(clamp(d * 2));
   }
 
-  return { fromPixels, palette, image, video, mergePalettes, summary, text, boardText, distance, moods, aspectWord, compWord, words: { keyWord, contrastWord, satWord, warmWord, edgeWord, grainWord, motionWord }, ALL_KEYS, KIND_WORD, loadImage, pixelsOf };
+  return { fromPixels, palette, image, video, realDuration, mergePalettes, summary, text, boardText, distance, moods, aspectWord, compWord, words: { keyWord, contrastWord, satWord, warmWord, edgeWord, grainWord, motionWord }, ALL_KEYS, KIND_WORD, loadImage, pixelsOf };
 })();
 if (typeof module !== 'undefined') module.exports = BoardVibe;

@@ -616,6 +616,8 @@ const ThreeDirector = (() => {
     canRedo: () => redoStack.length > 0,
     onHistory(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     newTurn, saved: () => JSON.parse(JSON.stringify(savedNotes)),
+    // (round 28, lookmatch) the small-picture path, for pictures made outside a tool call (a reference for the director)
+    pictures: { frameCanvas, tile, jpeg, loadImg },
     // tools/three.js: every preview message (onBox), and its director's waits after a run (settle)
     onBox, settle,
     _test: { diff, landed, applyEdits, compact, sliderLine, newLines, statLine, signature, sigDiff, onlyNew },
