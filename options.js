@@ -81,6 +81,8 @@ const Options = (() => {
     if (typeof Access !== 'undefined' && Access.aiSection) {
       try { rows.push(Access.aiSection(a.id, { repaint: () => setTimeout(paint, 50) })); } catch { /* no access module */ }
     }
+    // (round 32, aicheck.js) Check this AI: a short real test with a fix on each failing line; the last result stays here
+    if (typeof AiCheck !== 'undefined') { try { rows.push(AiCheck.section(a.id)); } catch { /* no check module */ } }
     for (const t of TOOLS) {
       const on = t.on ? t.on(a) : Boolean(a[t.k]);
       rows.push(sw(on, t.label, t.tip, (v) => save(a, t.set ? t.set(a, v) : { [t.k]: v || undefined })));

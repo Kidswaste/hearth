@@ -988,3 +988,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ Astra on Windows: when its sandbox blocks every command, the chat says so in one line with **Run without its sandbox…** (a warned opt-in, also in ⋯ AI setup → Files on this computer; Read keeps the sandbox).
 - ✓ Any command an engine refuses by its own policy now gets that one line with the right fix (never silent).
 - ○ Tested with fake engines simulating Windows (`FAKE_WINDOWS` / fake-switches `windows`: `sh dev/run-checks.sh access-chat options`, `node dev/access-test.js`); the real Windows confirmation is the owner's next try.
+## 🩺 Check this AI (round 32, aicheck: docs/upgrades/aicheck.md)
+- ✓ ⋯ AI setup → What it can use → **Check this AI**: one short real test through the AI's engine (a few tokens: one tiny message, the cheapest model, no Hearth tools), then a checklist: found · version · signed in · answers · reads its folder · writes a file there (then to the Trash) · runs a command. Each failing line has its fix: Install / Update / Sign in, Allow edits, Allow commands, Run without its sandbox… (Astra on Windows), Open AI setup.
+- ✓ The last result and its time stay on the row; a chat's one-line refusal note offers **Check this AI** too; `/check-ai` runs it.
+- ○ Tested with fake engines (`sh dev/run-checks.sh aicheck access-chat`), including a simulated Windows PC; not yet on a real Windows install.

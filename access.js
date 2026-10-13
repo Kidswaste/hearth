@@ -477,6 +477,8 @@ const Access = (() => {
     // (winshell) Astra on Windows: the warned opt-in, from the note itself
     if (r.kind === 'winsandbox' && onWindows() && R.rank(acc.level) >= R.rank('write') && agentOf(agentId)?.astraNoSandbox !== true) acts.push({ label: 'Run without its sandbox…', title: 'Asks first: deletes can\'t go to the Trash without the sandbox', run: (box) => setNoSandbox(agentId, true).then((on) => { if (on) done(box, 'Astra runs commands without its sandbox now: ask again'); }).catch((err) => toast(err.message, { type: 'error' })) });
     if (dir) acts.push({ label: 'Allow this folder', title: dir, run: (box) => allowFolder(dir).then(() => done(box, `${R.baseName(dir)} added: ask again`)).catch((err) => toast(err.message, { type: 'error' })) });
+    // (round 32, aicheck.js) one obvious next step: a short real test with a fix on each failing line, in AI setup
+    acts.push({ label: 'Check this AI', title: 'A short real test: found and signed in, reads, writes, runs a command, with a fix on each failing line (uses a few tokens)', run: () => Promise.resolve(window.Lazy?.load?.('options')).then(() => AiCheck.openAndRun(agentId)).catch((err) => toast(err.message, { type: 'error' })) });
     acts.push({ label: 'Open AI setup', title: 'Files on this computer: the level and folders for every chat with this AI', run: () => openSetup(agentId) });
     if (H.activeChat?.[agentId] === chatId && Native.note) Native.note(agentId, text, { id: 'access-refused', actions: acts });
     else toast(text.replace(/\*\*|`/g, ''), { timeout: 8000, action: { label: 'Open', fn: () => Native.open(agentId, chatId) } });
