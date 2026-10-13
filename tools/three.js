@@ -1261,7 +1261,7 @@ const ThreeLab = (() => {
     let notesAll = {};
     const notesOf = () => (current ? (notesAll[current.id] ||= []) : []);
     const saveNotes = saver(() => window.hub.kvSet('three-notes', notesAll), 300);
-    const fileUrl = (p) => `file:///${encodeURI(String(p).replace(/\\/g, '/'))}`;
+    const fileUrl = (p) => WinMac.fileUrl(p); // (round 31, winmac) a # or ? in a file name no longer cuts the URL
     // ---------- contact sheet ----------
     // One picture of the whole piece: a frame at each cue (or evenly over the loop / song), labeled with
     // its time, for you, the director's self-review or Astra.
@@ -3978,7 +3978,7 @@ ${frag}\`,
     const list = el('div', { class: 'tex-cards' });
     const intro = el('div', { class: 'drop-hint', text: 'Drop images here (or Open…) to check sizes, power-of-two, alpha and GPU memory, and to resize them for three.js.' });
     pane.append(el('div', { class: 'three-toolbar' },
-      el('button', { class: 'ghost small', text: 'Open images…', on: { click: async () => { for (const p of await window.hub.openDialog({ properties: ['openFile', 'multiSelections'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }] })) inspect({ name: p.split(/[\\/]/).pop(), url: `file:///${p.replace(/\\/g, '/')}`, path: p }); } } }),
+      el('button', { class: 'ghost small', text: 'Open images…', on: { click: async () => { for (const p of await window.hub.openDialog({ properties: ['openFile', 'multiSelections'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }] })) inspect({ name: p.split(/[\\/]/).pop(), url: WinMac.fileUrl(p), path: p }); } } }),
       el('button', { class: 'ghost small', text: 'Clear', on: { click: () => list.replaceChildren() } })), intro, list);
     dropZone(pane, (files) => files.filter((f) => f.type.startsWith('image/')).forEach((f) => inspect({ name: f.name, url: URL.createObjectURL(f), size: f.size, path: window.hub.pathForFile(f) })), { hint: 'Drop images to inspect' });
     const pot = (n) => (n & (n - 1)) === 0;

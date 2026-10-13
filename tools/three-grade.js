@@ -208,8 +208,8 @@ const LabGrade = (() => {
     const text = G.writeCube({ title: name, N: lut.N, data: lut.data });
     const safe = name.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'grade';
     if (!path) {
-      const dir = `${await window.hub.fs.home()}/Hearth exports`;
-      path = `${dir}/${safe}.cube`;
+      const dir = WinMac.join(await window.hub.fs.home(), 'Hearth exports');
+      path = WinMac.join(dir, `${safe}.cube`); // (round 31, winmac)
     }
     await window.hub.fs.write(path, text);
     return { path, N: lut.N, size: text.length };

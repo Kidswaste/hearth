@@ -17,7 +17,8 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
   const api = {};
 
   const folder = () => H.settings().forgeheartFolder || DEFAULT_FOLDER;
-  const join = (...p) => p.join('\\').replace(/\\+/g, '\\');
+  // (round 31, winmac) the folder's own slash: \ on Windows, / on the Mac (a Mac folder got files named "x\y.md")
+  const join = (...p) => { const sep = /^[A-Za-z]:|\\/.test(p[0] || '') ? '\\' : '/'; return p.join(sep).replace(/[\\/]+/g, sep); };
   const baseName = (p) => p.split(/[\\/]/).pop();
   const pretty = (file) => baseName(file).replace(/\.(md|html|csv|json|zip)$/i, '').replace(/[_-]+/g, ' ').replace(/\b20\d\d \d\d \d\d\b/, (d) => d.replace(/ /g, '-'));
   const isBackup = (name) => /\.bak\.html$/i.test(name);
@@ -48,7 +49,7 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
         return;
       }
       const all = await files();
-      const top = all.filter((f) => !f.path.slice(folder().length + 1).includes('\\'));
+      const top = all.filter((f) => !f.path.slice(folder().length + 1).match(/[\\/]/));
       const builds = top.filter((f) => /\.html$/i.test(f.name) && !isBackup(f.name)).sort((a, b) => b.mtime - a.mtime);
       const main = top.find((f) => f.name === MAIN_BUILD) || builds[0];
       const docs = top.filter((f) => /\.md$/i.test(f.name)).sort((a, b) => b.mtime - a.mtime);
@@ -141,7 +142,7 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
       current = path;
       title.textContent = baseName(path);
       frameBox.replaceChildren();
-      view = el('webview', { attrs: { src: `file:///${path.replace(/\\/g, '/')}`, partition: 'persist:forgeheart-play' } });
+      view = el('webview', { attrs: { src: WinMac.fileUrl(path), partition: 'persist:forgeheart-play' } });
       frameBox.append(view);
       layout();
       watch();
@@ -499,7 +500,7 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
     function resetTicks() { state.done = {}; save(); renderChecks(); }
     async function load() {
       const all = await files();
-      const top = all.filter((f) => !f.path.slice(folder().length + 1).includes('\\'));
+      const top = all.filter((f) => !f.path.slice(folder().length + 1).match(/[\\/]/));
       const builds = top.filter((f) => /\.html$/i.test(f.name) && !isBackup(f.name)).sort((a, b) => b.mtime - a.mtime);
       buildSel.replaceChildren(...builds.map((b) => el('option', { value: b.path, text: `${b.name} (${fmtBytes(b.size)}, ${timeAgo(b.mtime)})`, selected: b.name === MAIN_BUILD })));
       const zips = top.filter((f) => /\.zip$/i.test(f.name)).sort((a, b) => b.mtime - a.mtime);
@@ -666,7 +667,7 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
           ...h.lines.map(([op, t]) => el('div', { class: `diff-line ${op === '+' ? 'add' : op === '-' ? 'del' : ''}`, text: `${op === '=' ? ' ' : op} ${t}` })))));
     }
     async function load() {
-      const top = (await files()).filter((f) => !f.path.slice(folder().length + 1).includes('\\'));
+      const top = (await files()).filter((f) => !f.path.slice(folder().length + 1).match(/[\\/]/));
       backups = top.filter((f) => isBackup(f.name));
       builds = top.filter((f) => /\.html$/i.test(f.name) && !isBackup(f.name));
       const opts = [...builds.map((b) => ({ ...b, label: `★ ${b.name}` })), ...[...backups].sort((x, y) => y.mtime - x.mtime).map((b) => ({ ...b, label: `${b.name} (${fmtDate(b.mtime)})` }))];
@@ -705,11 +706,11 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
       all = await files();
       const imgs = all.filter((f) => /\.(png|jpe?g|webp|gif)$/i.test(f.name)).sort((a, b) => b.mtime - a.mtime);
       gallery.replaceChildren(...(imgs.length ? imgs.map((f) => el('figure', { class: 'gallery-item-img', title: f.path, on: { click: () => lightbox(f) } },
-        el('img', { src: `file:///${f.path.replace(/\\/g, '/')}`, loading: 'lazy' }), el('figcaption', { text: `${f.name} · ${timeAgo(f.mtime)}` }))) : [el('p', { class: 'hint', text: 'No images in the project.' })]));
+        el('img', { src: WinMac.fileUrl(f.path), loading: 'lazy' }), el('figcaption', { text: `${f.name} · ${timeAgo(f.mtime)}` }))) : [el('p', { class: 'hint', text: 'No images in the project.' })]));
     })();
     function lightbox(f) {
       const box = el('div', { class: 'lightbox', on: { click: (e) => { if (e.target === box) box.remove(); } } },
-        el('img', { src: `file:///${f.path.replace(/\\/g, '/')}` }),
+        el('img', { src: WinMac.fileUrl(f.path) }),
         el('div', { class: 'row' }, el('b', { text: f.name }),
           el('button', { class: 'ghost small', text: 'Open', on: { click: () => window.hub.fs.open(f.path) } }),
           el('button', { class: 'ghost small', text: 'Show', on: { click: () => window.hub.fs.reveal(f.path) } }),

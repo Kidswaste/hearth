@@ -12,7 +12,7 @@ const ForgeGame = (() => {
   let actor = 'Claude'; // who the log says did it (you, from the ⋯ menu and /forge-* commands)
 
   const buildPath = () => H.settings().forgeDebugBuild || DEFAULT_BUILD;
-  const fileUrl = (p) => `file:///${p.replace(/\\/g, '/')}`;
+  const fileUrl = (p) => WinMac.fileUrl(p); // (round 31, winmac)
 
   function log(text, kind = '') {
     if (!logBox) return;

@@ -155,10 +155,10 @@ const LabExport = (() => {
       window.hub.video.transcode({ id: job.id, input: job.input, output: job.output, args: job.args, duration: job.duration }, ffOver()).catch((err) => { jobs.delete(job.id); reject(err); });
     });
   }
-  async function outDir() { try { return await SEQ().outDir(); } catch { return `${await window.hub.fs.home()}/Hearth exports`; } }
+  async function outDir() { try { return await SEQ().outDir(); } catch { return WinMac.join(await window.hub.fs.home(), 'Hearth exports'); } }
   async function uniqueOut(dir, stem, ext, isDir = false) {
-    let p = `${dir}/${stem}${isDir ? '' : `.${ext}`}`;
-    for (let i = 2; i < 500 && await window.hub.fs.stat(p).catch(() => null); i += 1) p = `${dir}/${stem} (${i})${isDir ? '' : `.${ext}`}`;
+    let p = WinMac.join(dir, `${stem}${isDir ? '' : `.${ext}`}`); // (round 31, winmac) the folder's own slash
+    for (let i = 2; i < 500 && await window.hub.fs.stat(p).catch(() => null); i += 1) p = WinMac.join(dir, `${stem} (${i})${isDir ? '' : `.${ext}`}`);
     return p;
   }
   const uid = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
