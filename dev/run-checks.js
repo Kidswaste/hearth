@@ -34,7 +34,6 @@ const GROUPS = {
   capture: by(/^capture/),
   journeys: by(/^journey-/),
   chat: by(/^chat-|^chatcore|^cmdbar$|^clutter$|^declutter|^simplify2$/), // (round 27) simplify2: calm Settings, no /commands on screen
-  chat: by(/^chat-|^chatcore|^cmdbar$|^clutter$|^declutter/),
   lab: ['labeasy', 'autoedit', 'gallery', 'lookmatch', 'music', 'labaudio', 'live', 'scenes', 'labstage', 'remote', 'interop', 'labshader', 'particles', 'physics', 'grade', 'type', 'motion-in', 'jam', 'assist', 'decide', 'brain', 'director-dock', 'director-tools', 'labdirector', 'crew', 'timemachine', 'perf'],
   nodes: by(/^nodes-/),
   smooth: [...by(/^smooth-/), 'hz240', 'smooth26'], // (round 17) hz240: the 240 Hz interaction check · (round 26) smooth26: ⋯ / ◎ / the Lab hidden
@@ -73,6 +72,7 @@ const GROUPS = {
   firstrun: ['firstrun', 'unit:firstrun-test'], // (round 28) Check this computer: one list, one button each, live re-checks, the first launch
   aiundo: ['aiundo', 'unit:aiundo-test'], // (round 28) one undo for what the AIs did: Lab, board, files, settings; replies' ↶; Activity's part
   packs: ['packs', 'unit:packs-test'], // (round 28) ⇪ packs: a scene + everything it uses as one .hearthpack (round trip, preview card, zip-slip guard)
+  bugbash: ['bugbash', 'unit:sync-test'], // (round 29) regressions of the bug bash's app fixes: one Lab however it opens; sync's same-millisecond file
   unit: UNIT.map((u) => `unit:${u}`),
 };
 GROUPS.all = [...new Set([...all.filter((n) => !/^astra-/.test(n)), ...GROUPS.astra, ...GROUPS.unit])];
