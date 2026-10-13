@@ -1011,3 +1011,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ One-click fixes, one undo step each (hide the layer, show layers, frame the subject with the layer's camera placement, autopolish's exposure, reset / halve a slider, Light mode, live sound); "✦ Ask the director" fills its box with a short request, never sent.
 - ✓ A calm hint by itself on a blank frame or a layer error, once per problem.
 - ○ Checked by `dev/checks/scenedoctor.js` (lab group) and `node dev/scenedoctor-test.js` on generated scenes.
+## 🗜 Continue lighter (round 34, autocompact, 26 upgrades: docs/upgrades/autocompact.md)
+- ✓ One calm line under the reply when a long chat would clearly cost less compacted ("This chat re-reads ≈ 48k tokens each message. Continue lighter? (keeps a summary, ≈ 3k)"), decided from the real context, the prompt cache, how much history still matters and topic changes; one button, never silent.
+- ✓ The cheapest model at low effort writes a structured summary; the last 2 exchanges go word for word; every message stays (and in recall); byte-stable prompt. ⋯ AI setup → Spending → "Offer to continue lighter" (default about 40k), `/lighter`.
+- ○ Fake engines: a 30-message chat re-reads 1,434k → 739k tokens (`sh dev/run-checks.sh budget`); real summaries' quality not seen here.
