@@ -54,6 +54,14 @@ const LabEasy = (() => {
     if (line) run(line, { title: label.replace(/[…]$/, '') });
   } });
 
+  // (round 32, labvariations) 🎲 Variations: its files load on first use (lazy group "labvar")
+  async function variations(fn = (V) => V.open()) {
+    if (typeof LabVariations === 'undefined' && typeof Lazy !== 'undefined') await Lazy.load('labvar');
+    if (typeof LabVariations === 'undefined') throw new Error('Variations did not load');
+    return fn(LabVariations);
+  }
+  const varItem = () => ({ label: '🎲 Variations', hint: '6 takes on this scene to click: colors, motion, camera, look (no tokens)', cmd: 'variations', action: () => variations().catch((err) => toast(err.message, { type: 'error' })) });
+
   // ---------- the preview's right-click: ✦ More ----------
   const musicItems = () => [
     item('✦ Make it react to the music', 'Kick, bass and loudness move the right sliders', '/make-it-react', { undo: '/make-it-react undo' }),
@@ -68,6 +76,7 @@ const LabEasy = (() => {
     item('Its key, drops and builds', '', '/song-features'),
   ];
   const lookItems = () => [
+    varItem(),
     { label: '🎲 Surprise me', hint: 'a random…', items: () => [['filter', 'A filter'], ['layer', 'A layer'], ['look', 'A look'], ['palette', 'A palette']].map(([k, l]) => item(l, '', `/surprise ${k}`)) },
     item('Put Hearth on screen', 'A whole shot in a new sketch: your captures on 3D screens', '/hearth-on-screen'),
     { label: 'A motion intro', hint: 'logo → Hearth on screen → end card, as a sequence', items: () => ['9:16', '16:9', '1:1', '4:5'].map((z) => item(z, '', `/motion-intro ${z}`)) },
@@ -109,7 +118,7 @@ const LabEasy = (() => {
   // ThreeTweaks.menu rows ([label, hint, fn | [rows]]) from showMenu items
   const toRow = (it) => (it.items ? [it.label, it.hint || '', (typeof it.items === 'function' ? it.items() : it.items).map(toRow)] : [it.label, it.hint || '', it.action]);
   function toolbarItems() {
-    return [['Director', 'What it\'s making, did, costs', directorItems().map(toRow), false, 'Director menu']];
+    return [['🎲 Variations', '6 takes on this scene to click (no tokens)', varItem().action, false, 'Variations'], ['Director', 'What it\'s making, did, costs', directorItems().map(toRow), false, 'Director menu']];
   }
 
   // ---------- a layer's right-click (tools/three-layers.js) ----------
@@ -146,6 +155,9 @@ const LabEasy = (() => {
   const MISSIONS = [
     { id: 'lab-variations', icon: '👥', label: 'Make 4 variations', hides: ['swarm'], desc: 'A crew of 4 explores your idea on copies of the scene in parallel (cost shown first); you pick one.',
       submit: (agent, text, t) => { Commands.tryRun(`/crew 4 ${t}`, agent, undefined, { source: 'mission' }).catch((err) => toast(err.message, { type: 'error' })); return true; } },
+    // (round 32, labvariations) free, local: your words steer which values move ("warmer", "calmer", "another angle")
+    { id: 'lab-quickvars', icon: '🎲', label: 'Quick variations (free)', desc: '6 takes on the scene made here with no tokens: your words steer them (warmer, calmer, another angle, more glow). Click one to use it.',
+      submit: (agent, text) => { variations((V) => V.open({ steer: text })).catch((err) => { toast(err.message, { type: 'error' }); if (text) Native.setDraft?.(agent, text); }); return true; } },
     { id: 'lab-react', icon: '♪', label: 'Make it react to the music', desc: 'The director wires the scene to the song: kick, bass, loudness, drops; calm in the quiet parts.',
       submit: brief('♪ Mission: make it react to the music (kick, bass and loudness drive it, the drops land, calm in the quiet parts; sliders for how much).') },
     { id: 'lab-vertical', icon: '📱', label: 'Make a 9:16 version', desc: 'The frame goes 9:16 (1080×1920) and the director recomposes for vertical, clear of the app buttons.',
@@ -179,5 +191,5 @@ const LabEasy = (() => {
     walk(layerItems({ name: 'Layer' }, { change() {}, solo() {}, rename() {}, copy() {}, remove() {} }), 'Layer right-click');
     return out;
   }
-  return { previewItem, toolbarItems, layerItems, layerMenu, run, plain, placed, last, MISSIONS, addMissions };
+  return { previewItem, toolbarItems, layerItems, layerMenu, run, plain, placed, last, MISSIONS, addMissions, variations };
 })();
