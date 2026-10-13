@@ -962,3 +962,8 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ Mac: a Dock launch finds Homebrew / npm / nvm programs (claude, codex, gh, ffmpeg); the Dock click brings back a hidden window; toasts, search hints, menu rows say ⌘; the hotkey shows as ⌃⌥H.
 - ✓ Windows: shortcuts carry Hearth's app id (notifications) and land on the real (OneDrive) Desktop.
 - ○ `node dev/winmac-scan.js` keeps the patterns out (0 hits, checked by `dev/winmac-test.js`); no real Mac / PC here, and npm's `claude.cmd` on Windows is still not picked up.
+## ✦ What can I do here? (round 31, quickstart, 53 upgrades: docs/upgrades/quickstart.md)
+- ✓ One calm card per window (a chat, the Lab, the board) with 3–5 things worth trying there now, each one click that opens the feature; picked on this computer from what you haven't used yet and what's on screen (a song → React to the drums, an empty scene → Describe it, pictures → Find images like this, a long chat → What did we decide?). Free: nothing is sent.
+- ✓ By itself only the first time each kind of window opens (× = gone for good); then the window's ⋯ › ✦ What can I do here? (the chat: the ? in AI setup, or right-click), Ctrl/⌘+K. Used or tried things drop off; right-click › Not for me.
+- ✓ One place for things to try: Discover's daily tip no longer pops up by itself; the Lab's starter chips step aside while the card is up; an empty chat's "◎…" line became the one link.
+- ○ Tested with fake engines (`sh dev/run-checks.sh quickstart`) and a unit test of the picking (`node dev/quickstart-test.js`).

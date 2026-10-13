@@ -683,6 +683,10 @@ function toggleFold(hostId, m) {
       return el('div', { class: 'astra-hints' }, status,
         el('div', { class: 'astra-try' }, `${chips.slice(0, 2).map(([, t]) => t).join(' · ')} · `, el('a', { href: '#', text: '/astra', on: { click: (e) => { e.preventDefault(); Native.setDraft(agent.id, '/astra-'); } } }), ' for the rest'));
     }
+    // (round 31) the card "What can I do here?" (quickstart-hooks.js) says it, with what fits: one link instead of the line
+    if (window.Lazy?.isIn?.('quickstart') && typeof QuickstartHooks !== 'undefined') {
+      return el('div', { class: 'astra-hints' }, el('div', { class: 'astra-try' }, el('a', { href: '#', text: '✦ What can I do here?', on: { click: (e) => { e.preventDefault(); QuickstartHooks.open(QuickstartHooks.placeOf(agent.id), { agentId: agent.id }); } } })));
+    }
     if (astra() && agent.engine === 'claude') {
       return el('div', { class: 'astra-hints' }, el('div', { class: 'astra-try' }, `◎ in the chat box: jam, a second opinion or side by side with ${astra().name}`));
     }

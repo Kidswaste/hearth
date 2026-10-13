@@ -122,7 +122,8 @@ line count is lower than the number of upgrades).
 | Chrome out of sight (round 30): Hearth's Chrome runs hidden and its pages are shown and used inside Hearth's own windows; real Chrome appears only to sign in | [chromeview.md](chromeview.md) | 35 |
 | Token saver (round 31): every AI sends less with each message (plain Claude chat 869 → 572 tokens, board tools 1,977 → 1,444…), tool details on demand, memory sent only when relevant for big memories, a budget test | [tokensaver.md](tokensaver.md) | 16 |
 | Mac + Windows polish (round 31): file names with #, ?, %, accents load everywhere; one slash kind per path; Homebrew / npm tools found when started from the Dock; ⌘ names on a Mac; Windows shortcuts that allow notifications | [winmac.md](winmac.md) | 30 |
-| **Total** | | **13,370** |
+| What can I do here? (round 31): one calm card per window (a chat, the Lab, the board) with 3–5 things worth trying there now, one click each, picked from what you haven't used and what's on screen; once by itself, then in the window's ⋯ | [quickstart.md](quickstart.md) | 53 |
+| **Total** | | **13,423** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.
