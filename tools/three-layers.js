@@ -433,13 +433,15 @@ filter('${type}', P);
       // While the song plays: animated fields show their current value, and ◆ shows whether you're on a keyframe.
       sync(values, states) {
         for (const [k, ui] of Object.entries(liveRanges)) {
-          if (k in values && document.activeElement !== ui.r) { ui.r.value = values[k]; ui.out.textContent = ui.fmt(Number(values[k])); }
+          if (k in values && document.activeElement !== ui.r) { const v = String(values[k]); const t = ui.fmt(Number(values[k])); if (ui.r.value !== v) ui.r.value = v; if (ui.out.textContent !== t) ui.out.textContent = t; }
           if (states?.[k]) paintDiamond(ui.diamond, states[k]);
         }
       },
     };
   }
   function paintDiamond(b, state) {
+    if (b.kfState === state) return; // (round 32, smooth32) the playhead repaints these 10× a second: only a change is written
+    b.kfState = state;
     b.textContent = state === 'on' ? '◆' : '◇';
     b.className = `kf-btn kf-${state}`;
     b.title = state === 'on' ? 'Remove this keyframe' : state === 'animated' ? 'Add a keyframe here (it\'s animated: moving the slider also adds one)' : 'Animate: add a keyframe at the playhead';

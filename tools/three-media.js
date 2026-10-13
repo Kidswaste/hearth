@@ -133,29 +133,33 @@ const ThreeMedia = (() => {
           box('frame', { left: '0', right: '0', top: pct((1350 - 1080) / 2 / 1350), bottom: pct((1350 - 1080) / 2 / 1350) }, '1:1 center'));
       } else zones.replaceChildren(box('frame', { left: '5%', right: '5%', top: '5%', bottom: '5%' }, 'Title safe'), box('frame dashed', { left: '3.5%', right: '3.5%', top: '3.5%', bottom: '3.5%' }, ''));
     }
+    // (round 32, smooth32) the preview's size is read before anything is written, and only what changed is written:
+    // this runs from a ResizeObserver (after the frame's layout, so the read is free), and writing first made the read
+    // style + lay out the page again (≈ 1–2 ms per call here, every resize of the window, the panel or the grid)
+    const put = (n, k, v) => { if (n[k] !== v) n[k] = v; };
     function layout() {
       const s = current();
+      const W = host.clientWidth; const H = host.clientHeight;
       buttons.forEach((b, i) => b.classList.toggle('on', pillSizes[i].id === mode));
-      moreSel.value = s.extra ? s.id : ''; moreSel.classList.toggle('on', Boolean(s.extra));
-      safeBtn.hidden = !s.w;
+      put(moreSel, 'value', s.extra ? s.id : ''); moreSel.classList.toggle('on', Boolean(s.extra));
+      put(safeBtn, 'hidden', !s.w);
       safeBtn.classList.toggle('on', safe);
-      safeBtn.textContent = safe && (s.id === '9:16' || s.id === '4k-v') ? `Safe · ${(SAFE[platform] || SAFE.tiktok).name}` : 'Safe';
+      put(safeBtn, 'textContent', safe && (s.id === '9:16' || s.id === '4k-v') ? `Safe · ${(SAFE[platform] || SAFE.tiktok).name}` : 'Safe');
       host.classList.toggle('exact', Boolean(s.w));
-      host.dataset.frame = s.id;
+      if (host.dataset.frame !== s.id) host.dataset.frame = s.id;
       if (!s.w) {
-        frame.style.cssText = '';
-        zones.hidden = true;
-        sizeLabel.textContent = `${host.clientWidth}×${host.clientHeight}`;
+        if (frame.style.cssText) frame.style.cssText = '';
+        put(zones, 'hidden', true);
+        put(sizeLabel, 'textContent', `${W}×${H}`);
         return;
       }
-      const W = host.clientWidth; const H = host.clientHeight;
       const k = Math.min(W / s.w, H / s.h);
       const left = (W - s.w * k) / 2; const top = (H - s.h * k) / 2;
       frame.style.cssText = `position:absolute;left:${left}px;top:${top}px;width:${s.w}px;height:${s.h}px;transform:scale(${k});transform-origin:0 0;`;
       Object.assign(zones.style, { left: `${left}px`, top: `${top}px`, width: `${s.w * k}px`, height: `${s.h * k}px` });
-      zones.hidden = !safe;
+      put(zones, 'hidden', !safe);
       if (safe && zones.dataset.for !== `${s.id}|${platform}`) { zones.dataset.for = `${s.id}|${platform}`; paintZones(s); }
-      sizeLabel.textContent = `${s.w}×${s.h} · ${Math.round(k * 100)}%`;
+      put(sizeLabel, 'textContent', `${s.w}×${s.h} · ${Math.round(k * 100)}%`);
     }
     // silent: set by the Lab when a sketch opens (it runs the sketch itself afterwards).
     function setMode(id, { silent = false } = {}) {

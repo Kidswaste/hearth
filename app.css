@@ -94,6 +94,10 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .surface { position: absolute; inset: 0; visibility: hidden; display: flex; flex-direction: column; background: var(--bg); }
 .surface.active { visibility: visible; }
 .surface webview { flex: 1; width: 100%; }
+/* (round 32, smooth32) not inherited: dragging a gap rewrites them on every frame, and an inherited custom property
+   restyled every element of every chat in the grid (≈ 60k elements per drag here); now only #surfaces itself */
+@property --gcols { syntax: '*'; inherits: false; }
+@property --grows { syntax: '*'; inherits: false; }
 #surfaces.grid {
   display: grid; gap: var(--gap); padding: var(--gap);
   grid-template-columns: var(--gcols, repeat(var(--cols), 1fr)); grid-template-rows: var(--grows, repeat(var(--rows), 1fr)); /* (round 29) grid-resize.js */
