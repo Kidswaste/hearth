@@ -1,0 +1,28 @@
+/* ▦ All formats (tools/three-formats.js): one dialog built on the Export panel's parts (.sq-render-panel, .sq-rp-sum).
+   Four small cards side by side, each a crop of a zoomed-out picture (moved with one transform-free style write per
+   drag step); plain and still: no blur, no animation. */
+.lf-panel { width: min(760px, calc(100vw - 32px)); padding: 14px 16px 12px; box-sizing: border-box; }
+.lf-panel h3 { margin: 0 0 6px; }
+.lf-what { display: flex; flex-direction: column; gap: 2px; margin: 0 0 8px; }
+.lf-what small { color: var(--muted, #9a948c); }
+.lf-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.lf-card { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.lf-card.lf-off .lf-frame { opacity: 0.35; }
+.lf-panel label.lf-pick { display: flex; flex-direction: row; flex-wrap: nowrap; align-items: center; gap: 6px; cursor: pointer; min-width: 0; margin: 0; }
+.lf-pick input { flex: none; width: auto; margin: 0; }
+.lf-pick b { flex: none; }
+.lf-stage { height: 200px; display: flex; align-items: center; justify-content: center; }
+.lf-pick span { color: var(--muted, #9a948c); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lf-frame { --lf-h: 200px; position: relative; overflow: hidden; width: min(100%, calc(var(--lf-h) * var(--ar, 1))); aspect-ratio: var(--ar, 1); margin: 0 auto; border: 1px solid var(--line); border-radius: 6px; background: #000; cursor: grab; touch-action: none; contain: strict; }
+.lf-frame:active { cursor: grabbing; }
+.lf-frame.lf-wait { background: linear-gradient(135deg, #1b1e22, #101215); cursor: progress; }
+.lf-img { position: absolute; max-width: none; pointer-events: none; user-select: none; }
+.lf-img:not([src]) { visibility: hidden; }
+.lf-safe { position: absolute; border: 1px dashed color-mix(in srgb, var(--fh-gold, #ffd75e) 70%, transparent); border-radius: 3px; pointer-events: none; }
+.lf-wait .lf-safe { display: none; }
+.lf-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.lf-note { color: var(--muted, #9a948c); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.lf-tools { display: flex; flex: none; gap: 2px; }
+.lf-b { padding: 0 5px; min-width: 20px; line-height: 1.4; }
+.lf-sum { margin-top: 10px; }
+@media (max-width: 640px) { .lf-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

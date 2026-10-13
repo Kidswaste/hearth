@@ -464,7 +464,8 @@ function instrument(renderFn) {
     const t0 = realNow(); // (performance.now inside a sequence scene / a precomp is that scene's clock)
     // a Lab sequence's camera fly-through moves this scene's own camera for the frame (put back right after)
     const camBack = EL && SQ.cam ? sqCamFx(EL, camera) : null;
-    try { renderFn.call(this, scene, camera); } finally { camBack?.(); }
+    const rfBack = RF.on && !this.__helper ? rfApply(camera) : null; // (round 33, multiformat) a format's pan / zoom
+    try { renderFn.call(this, scene, camera); } finally { rfBack?.(); camBack?.(); }
     if (EL && EL.drawnGen !== EL.gen) layerDrew(EL, true);
     frameMs = realNow() - t0;
     frameWork += frameMs; frameCalls += this.info?.render?.calls || 0;
@@ -9032,6 +9033,28 @@ function sqCamFx(EL, camera) {
   camera.updateProjectionMatrix?.();
   return () => { camera.position.copy(pos); if (camera.isPerspectiveCamera) camera.fov = fov; if (camera.isOrthographicCamera) camera.zoom = zoom; camera.updateProjectionMatrix?.(); };
 }
+// (round 33, multiformat) "All formats": a format's reframe (tools/three-formats.js). The image plane of every scene
+// camera is zoomed / panned for the frame (exactly what a wider or narrower lens and a shifted film would give; the
+// projection is put back right after, so the sketch never sees it): z < 1 shows more around the subject, x / y move
+// the view's centre (in the frame's own -1…1 units, y up). Full-screen passes (an ortho camera spanning -1…1), cube
+// cameras (90°, square) and nested renders (a reflection's own camera) are left alone.
+const RF = { on: false, z: 1, x: 0, y: 0, depth: 0, m: null };
+function rfSet(m) {
+  RF.z = Math.max(0.2, Math.min(4, Number(m.z) || 1)); RF.x = Number(m.x) || 0; RF.y = Number(m.y) || 0;
+  RF.on = m.on !== false && (Math.abs(RF.z - 1) > 1e-4 || Math.abs(RF.x) > 1e-4 || Math.abs(RF.y) > 1e-4);
+  RF.m = null;
+}
+function rfApply(camera) {
+  if (RF.depth || !camera?.isCamera || !camera.projectionMatrix || camera.isArrayCamera) return null;
+  if (camera.isOrthographicCamera && camera.left === -1 && camera.right === 1 && camera.top === 1 && camera.bottom === -1) return null;
+  if (camera.isPerspectiveCamera && camera.fov === 90 && camera.aspect === 1) return null;
+  const P = camera.projectionMatrix; const I = camera.projectionMatrixInverse;
+  const saved = P.clone(); const savedI = I?.clone();
+  RF.m ||= new THREE.Matrix4().set(RF.z, 0, 0, -RF.z * RF.x, 0, RF.z, 0, -RF.z * RF.y, 0, 0, 1, 0, 0, 0, 0, 1);
+  P.premultiply(RF.m); I?.copy(P).invert();
+  RF.depth += 1;
+  return () => { RF.depth -= 1; P.copy(saved); if (savedI) I.copy(savedI); };
+}
 // the sequence's own sound bus (footage with its sound on, sound clips): to the speakers, and into a recording
 function sqBus() {
   graph();
@@ -10152,6 +10175,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'park') setParked(msg.on);
   if (msg.type === 'light') { lightMode = Boolean(msg.on); applyCap(); }
   if (msg.type === 'loop-clock') { loopMessage(msg); return; } // (round 31, perfectloop)
+  if (msg.type === 'reframe') { rfSet(msg); return; } // (round 33, multiformat)
   if (msg.type === 'adapt') setAdapt(msg.on !== false); // (round 31 "labadapt": the Lab's right-click, View › Lighten to stay smooth)
   if (msg.type === 'eval') runEval(msg);
   if (msg.type === 'edit') editCommand(msg);

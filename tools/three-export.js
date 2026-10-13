@@ -27,9 +27,9 @@ const LabExport = (() => {
   const gpuCap = () => Number(store.get('three.export.gpu', 64)) || 64; // megapixels a supersampled frame may take
 
   // ---------- the hidden export page ----------
-  async function openPage({ w, h, ss = 1, alpha = false, seed = 1 }) {
+  async function openPage({ w, h, ss = 1, alpha = false, seed = 1, pg: pg0 = null }) {
     if (typeof ThreeLab === 'undefined' || !ThreeLab._sandbox) throw new Error('Open the Three.js Lab first');
-    const pg = C.page(w, h, ss, { cap: gpuCap() });
+    const pg = pg0 || C.page(w, h, ss, { cap: gpuCap() }); // (round 33, multiformat: a small preview page passes its own)
     // behind the app, inside the window (a cross-origin frame outside the viewport stops drawing), invisible
     const host = el('div', { class: 'lab-xp-host', attrs: { 'aria-hidden': 'true' }, style: { position: 'fixed', left: '0', top: '0', width: `${pg.cssW}px`, height: `${pg.cssH}px`, zIndex: '-1', opacity: '0', pointerEvents: 'none', overflow: 'hidden', contain: 'strict' } });
     document.body.append(host);
@@ -198,9 +198,10 @@ const LabExport = (() => {
     S.cur = ctl;
     const title = `⇪ ${f.name} · ${o.w}×${o.h}${o.ss > 1 ? ` · ${o.ss}× SS` : ''}${o.blur > 1 ? ` · blur ${o.blur}` : ''}`;
     const pk = `lab-export:${id}`;
-    window.Progress?.set(pk, { title, icon: '⇪', kind: 'lab-export', pct: 0, label: 'opening the export page', jump: () => { if (typeof activate === 'function') activate('tool:three'); }, actions: [{ label: '■', title: 'Cancel', run: () => { ctl.cancel = true; } }] });
-    const rq = window.Renders?.track?.({ kind: o.trackKind || 'export', title: o.title || title, pk, quiet: Boolean(o.quiet), cancel: () => { ctl.cancel = true; }, pause: (on) => { ctl.paused = on; }, again: o.again !== undefined ? o.again : { type: 'cmd', line: cmdLine(o) } });
-    const progress = (p, label) => { window.Progress?.set(pk, { pct: Math.min(99.5, p * 100), label }); rq?.progress?.(Math.min(99.5, p * 100), label); o.onProgress?.(p, label); };
+    const own = o.track !== false; // (round 33, multiformat: a batch shows one line of its own instead)
+    if (own) window.Progress?.set(pk, { title, icon: '⇪', kind: 'lab-export', pct: 0, label: 'opening the export page', jump: () => { if (typeof activate === 'function') activate('tool:three'); }, actions: [{ label: '■', title: 'Cancel', run: () => { ctl.cancel = true; } }] });
+    const rq = !own ? null : window.Renders?.track?.({ kind: o.trackKind || 'export', title: o.title || title, pk, quiet: Boolean(o.quiet), cancel: () => { ctl.cancel = true; }, pause: (on) => { ctl.paused = on; }, again: o.again !== undefined ? o.again : { type: 'cmd', line: cmdLine(o) } });
+    const progress = (p, label) => { if (own) window.Progress?.set(pk, { pct: Math.min(99.5, p * 100), label }); rq?.progress?.(Math.min(99.5, p * 100), label); o.onProgress?.(p, label); };
     let page = null; let tmp = null; let ok = false; let result = null; let errOut = null;
     try {
       const tools = await ffmpegOf();
@@ -239,8 +240,9 @@ const LabExport = (() => {
       // loop's frames; the cross-fade's frames past the end are what the scene does next, blended into the start)
       const lc = o.source === 'scene' ? window.PerfectLoop?.clockFor?.(o, loop) || null : null;
       if (lc) page.send({ type: 'loop-clock', ...lc });
-      const dir = await outDir();
-      const stem = C.safe(`${o.name || sk?.name || seqE?.seq?.name || 'Lab'} ${f.id === 'still16' ? 'print' : f.id} ${o.w}x${o.h}${o.ss > 1 ? ` ss${o.ss}` : ''}${o.blur > 1 ? ` mb${o.blur}` : ''}`);
+      if (o.reframe) page.send({ type: 'reframe', ...o.reframe }); // (round 33, multiformat) this format's pan / zoom
+      const dir = o.dir || await outDir();
+      const stem = o.stem ? C.safe(o.stem) : C.safe(`${o.name || sk?.name || seqE?.seq?.name || 'Lab'} ${f.id === 'still16' ? 'print' : f.id} ${o.w}x${o.h}${o.ss > 1 ? ` ss${o.ss}` : ''}${o.blur > 1 ? ` mb${o.blur}` : ''}`);
       const isSeqOut = f.id === 'png';
       const output = await uniqueOut(dir, stem, f.ext, isSeqOut);
       tmp = isSeqOut ? output : `${dir}/.hearth-titles-xp${id}`;
@@ -321,7 +323,7 @@ const LabExport = (() => {
     } catch (err) { errOut = err; throw err; } finally {
       if (page) page.close();
       if (tmp && !(f.id === 'png') && tmp.includes('.hearth-titles-xp')) window.hub.video.rmtemp?.(tmp).catch(() => {});
-      if (ok) { window.Progress?.done(pk); rq?.done(result?.path); } else { window.Progress?.done(pk, { ok: false, label: ctl.cancel ? 'cancelled' : 'failed' }); rq?.fail(ctl.cancel ? 'Render cancelled' : errOut || 'The export stopped'); }
+      if (!own) { /* the batch's own line */ } else if (ok) { window.Progress?.done(pk); rq?.done(result?.path); } else { window.Progress?.done(pk, { ok: false, label: ctl.cancel ? 'cancelled' : 'failed' }); rq?.fail(ctl.cancel ? 'Render cancelled' : errOut || 'The export stopped'); }
       if (S.cur === ctl) S.cur = null;
     }
   }
@@ -521,6 +523,7 @@ const LabExport = (() => {
   function previewItem() {
     return { label: '⇪ Export', items: () => [
       { label: '⇪ Export…', hint: 'any size, ProRes, alpha, loops', action: () => panel() },
+      ...(typeof LabEasy !== 'undefined' && LabEasy.formatsItem ? [{ ...LabEasy.formatsItem(), label: '▦ All formats…' }] : []), // (round 33, multiformat)
       { label: '4K MP4, supersampled', action: () => render({ format: 'mp4', size: '4k', ss: 2 }).catch((e) => toast(e.message, { type: 'error' })) },
       { label: 'ProRes 4444 + alpha', action: () => render({ format: 'prores' }).catch((e) => toast(e.message, { type: 'error' })) },
       { label: 'Perfect loop GIF', action: () => render({ format: 'gif' }).catch((e) => toast(e.message, { type: 'error' })) },
@@ -556,6 +559,6 @@ const LabExport = (() => {
     } finally { page.close(); }
   }
 
-  return { render, resolve, renderEdit, panel, previewItem, pause, cancel, status, savePreset, loadPreset, presetNow, packHtml, openPage, probe, gpuCap, setGpuCap: (mp) => store.set('three.export.gpu', Math.max(4, Math.min(512, Number(mp) || 64))), _S: S };
+  return { render, resolve, renderEdit, panel, previewItem, pause, cancel, status, savePreset, loadPreset, presetNow, packHtml, openPage, probe, gpuCap, loadPlan, sceneEdit, compileLive, aspectKey, frameNow, playhead, setGpuCap: (mp) => store.set('three.export.gpu', Math.max(4, Math.min(512, Number(mp) || 64))), _S: S };
 })();
 if (typeof module !== 'undefined') module.exports = LabExport;

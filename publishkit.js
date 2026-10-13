@@ -153,7 +153,10 @@ const PublishKit = (() => {
       st.plats,
       el('div', { class: 'pk-main' },
         el('div', { class: 'pk-left' }, st.frame, el('div', { class: 'pk-bar' }, playBtn, st.scrub, st.time, st.overlayBtn))),
-      el('div', { class: 'modal-actions pk-foot' }, st.status, el('span', { class: 'spacer' }), st.folderBtn, st.makeBtn));
+      el('div', { class: 'modal-actions pk-foot' }, st.status, el('span', { class: 'spacer' }),
+        // (round 33, multiformat) the Lab scene in every shape at once, each reframed (nothing uploaded either)
+        typeof LabEasy !== 'undefined' && LabEasy.formats ? el('button', { type: 'button', class: 'ghost pk-formats', text: '▦ All formats', title: 'Export the Lab scene as 16:9, 9:16, 1:1 and 4:5 in one go, each reframed so the subject stays in frame', on: { click: () => { close(); LabEasy.formats().catch((err) => toast(err.message, { type: 'error' })); } } }) : null,
+        st.folderBtn, st.makeBtn));
     dlg.querySelector('.pk-main').append(st.side);
     dlg.addEventListener('close', () => { if (cur === st) close(); });
     dlg.addEventListener('keydown', (e) => { if (e.key === ' ' && !/^(INPUT|TEXTAREA|BUTTON|SUMMARY)$/.test(e.target.tagName) || (e.key === ' ' && e.target === st.scrub)) { e.preventDefault(); playBtn.click(); } });
