@@ -952,3 +952,8 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ Mouse, wheel, keys (⌘ editing commands on a Mac, input methods), pastes, the page's cursor, right-click (the page's menu or Hearth's), popups as another view, downloads → Downloads/Hearth/<App>, file pickers → Hearth's dialog. ≤ 30 frames a second, none while the view can't be seen.
 - ✓ Chrome's own window only for signing in: **Sign in (opens Chrome once)** puts that page's window on screen and back out of sight when the page leaves the sign-in page (or "I'm signed in"). AI setup › Chrome › **Show Chrome** (off) for fixing things. The AI's page tools are unchanged.
 - ○ Tested with Playwright's Chromium as "Chrome" (`sh dev/run-checks.sh chromeview`, `node dev/chromeview-test.js`); real Chrome on a Mac / Windows and a real Google sign-in weren't available here (on a Mac, Chrome's Dock icon stays while it runs).
+## 🪶 The Lab preview stays smooth on any machine (round 31, labadapt, 20 upgrades: docs/upgrades/labadapt.md)
+- ✓ When frames drop, the preview lightens itself in steps (resolution 1 → 0.85 → 0.7 → 0.5, then filters at half / a third, smaller shadow maps, fewer GPU particles), skips steps the scene doesn't use, and climbs back with headroom, with hysteresis (no flicker).
+- ✓ A layer fully under an opaque one skips drawing (its code still runs) and draws again the frame it can be seen.
+- ✓ A quiet corner note while lighter ("lighter to stay smooth · full quality in renders"); right-click › View › Lighten to stay smooth turns it off. Light mode stays the manual option.
+- ✓ Stills, freezes, exports and recordings are full quality: pixel-identical to adapting off (`sh dev/run-checks.sh labadapt`). Heavy test scene on SwiftShader: 5.3 → 12.2 fps.

@@ -787,14 +787,15 @@ function adaptCore(opt = {}) {
 // </adapt-core>
 const XP_PAGE = new URLSearchParams(location.search).get('xp') === '1';
 // what the scene has for each knob to lower
-const AD_USE = { fx: () => [...layers.values()].some((L) => L.fx && !L.fxSkip), shadow: () => [...renderers].some((r) => r.shadowMap?.enabled && !r.__stale), parts: () => PT.stats.size > 0 };
+const adShows = (id) => { const L = id ? layers.get(id) : null; return !L || layerMix(L) > 0; };
+const AD_USE = { fx: () => [...layers.values()].some((L) => L.fx && !L.fxSkip && layerMix(L) > 0), shadow: () => [...renderers].some((r) => r.shadowMap?.enabled && !r.__stale && adShows(r.__layer)), parts: () => [...PT.stats.keys()].some(adShows) };
 const AD = { on: !XP_PAGE, core: adaptCore({ useful: (k) => Boolean(AD_USE[k]?.()) }), cull: 0 };
 // full quality right now: a still / screenshot / recording, an offline render step, the export page, adapting off
 const adFull = () => !AD.on || fullRes() || SQ.off || XP_PAGE;
 const adStep = () => (adFull() ? AD.core.STEPS[0] : AD.core.step);
 let quality = 1; // (the internal resolution's share: AD's step's scale)
-let shotFull = false; // (a merged still: the layers draw a frame at full quality first, see requestShot)
-const fullRes = () => shotPending || shotFull || recorder != null || recUntil != null;
+let shotFull = 0; // (> 0: a merged still: the layers draw a frame at full quality first, see requestShot)
+const fullRes = () => shotPending || shotFull > 0 || recorder != null || recUntil != null;
 // (round 16: "slow" is measured against the screen's own frame time, the shortest gap seen lately, so a 120 Hz screen
 // is protected too; with a cap, against the cap's frame time. Auto fps then steps a fast screen down to a steady 60
 // when even the lowest resolution can't keep up, and tries its full rate again after a calm while.)
@@ -804,8 +805,9 @@ const fullRes = () => shotPending || shotFull || recorder != null || recUntil !=
 let dispMs = 16.7; let capSince = 0; let capBack = 20000;
 function adaptQuality(gap) {
   if (document.hidden || parked || !AD.on) return;
-  const target = Math.max(dispMs, fpsCap ? 1000 / fpsCap : 0);
+  const target = AD.target || Math.max(dispMs, fpsCap ? 1000 / fpsCap : 0);
   const now = performance.now();
+  AD.gap = gap;
   const capInstead = () => { if (!capWant.auto || !capWant.focused || lightMode || autoCap || dispMs >= 12) return false; autoCap = 60; capSince = now; applyCap(); return true; };
   const v = AD.core.feed(gap, target, now, capInstead);
   if (!v) return;
@@ -824,9 +826,11 @@ function setAdapt(on) {
 // (tests and /lab perf: window.__labAdapt.state() / .set({ level, hold }) / .on(false) / .cover())
 window.__labAdapt = {
   state: adaptInfo,
-  set: ({ level = 0, hold = true } = {}) => { AD.core.set(level, { hold }); quality = AD.core.step.scale; post({ type: 'adapt', ...adaptInfo() }); return adaptInfo(); },
+  // (target: the frame time to hold, in ms, instead of the screen's: a check plays a fast or a slow machine)
+  set: ({ level = 0, hold = true, cull = true, target = 0 } = {}) => { AD.noCull = cull === false; AD.target = Number(target) || 0; if (AD.noCull) adCoverClear(); AD.core.set(level, { hold }); quality = AD.core.step.scale; post({ type: 'adapt', ...adaptInfo() }); return adaptInfo(); },
   on: (v) => { setAdapt(v); return adaptInfo(); },
   cover: () => [...layers.values()].filter((L) => L.adCovered).map((L) => L.id),
+  peek: () => composite().toDataURL('image/png'), // (the merged preview as it draws now, lighter or not)
 };
 // shadow maps at the step's size (light.shadow.mapSize; the map is made again at the new size). The sizes the scene
 // asked for are kept on the light and come back at full quality; a size its code sets later is taken as its own.
@@ -934,14 +938,7 @@ function requestShot() {
   if (mode === 'sketch' && needsComposite()) {
     // (round 31 "labadapt") a lighter preview (adaptive steps, covered layers, Light mode): every layer draws two frames
     // at full quality first, then the merge (a frozen picture is merged as it is: nothing draws while frozen)
-    if ((AD.core.level > 0 || AD.cull || lightMode || quality < 1) && !frozen && !SQ.off) {
-      shotFull = true; const t0 = frameTick; const end = realNow() + 500;
-      const go = () => {
-        if (realNow() < end && ordered().some((L) => !L.props.pcOf && L.renderers.size && layerMix(L) > 0 && (L.drewTick ?? -1) <= t0 + 1)) { realRAF(go); return; }
-        try { postShot(composite(), shotTag); } finally { shotFull = false; }
-      };
-      realRAF(go); return;
-    }
+    if (adLighter() && !frozen) { adFullFrame(() => postShot(composite(), shotTag)); return; }
     realRAF(() => postShot(composite(), shotTag)); return;
   }
   shotPending = true;
@@ -949,6 +946,18 @@ function requestShot() {
   realSetTimeout(() => { if (shotPending && lastRenderer) { shotPending = false; postShot(lastRenderer.domElement, shotTag); } }, 600);
 }
 
+// the preview draws lighter than a render right now (adaptive steps, covered layers, Light mode)
+const adLighter = () => !SQ.off && (AD.core.level > 0 || AD.cull > 0 || lightMode || quality < 1);
+// every layer on screen draws two frames at full quality, then fn() (a merged still; a freeze lands on a full frame)
+let frzTok = 0;
+function adFullFrame(fn) {
+  shotFull += 1; const t0 = frameTick; const end = realNow() + Math.min(2000, Math.max(500, (AD.gap || 0) * 3)); // (a slow preview: up to 3 of its frames)
+  const go = () => {
+    if (realNow() < end && ordered().some((L) => !L.props.pcOf && L.renderers.size && layerMix(L) > 0 && (L.drewTick ?? -1) <= t0 + 1)) { realRAF(go); return; }
+    try { fn(); } finally { shotFull -= 1; }
+  };
+  realRAF(go);
+}
 // ---------- covered layers (round 31 "labadapt") ----------
 // A layer fully under an opaque one (the top-most plain full-frame picture: whole, normal blend, not moved, its canvas
 // covering the frame, a solid background, every sampled pixel opaque, twice in a row) draws nothing: its code still runs
@@ -956,7 +965,7 @@ function requestShot() {
 // its cover stops covering (checked every frame: fading, moved, blended, hidden, gone). Layers another layer reads
 // (particles born from it, a shader's layer: input, physics on its model) and filters' first frames always draw. Off
 // while editing a scene, in a sequence, with precomps, frozen, and for every still / recording / render.
-const adPx = new Uint8Array(4);
+const adPx = new Uint8Array(4); let adProbes = 0;
 function adOpaque(L) {
   const p = L.props;
   if (L.fx || L.pc || L.seqHide || p.seqFilter || (p.blend && p.blend !== 'normal') || layerMix(L) < 0.999 || L.drawnGen !== L.gen || L.pics?.length) return false;
@@ -969,7 +978,8 @@ function adOpaque(L) {
     const solid = Boolean(sc?.background?.isColor || sc?.background?.isTexture) || (r.__keepClear && r.getClearAlpha?.() >= 1 && r.autoClear !== false);
     if (!solid) continue;
     if (cv.offsetLeft > 0 || cv.offsetTop > 0 || cv.offsetLeft + cv.offsetWidth < L.box.clientWidth - 1 || cv.offsetTop + cv.offsetHeight < L.box.clientHeight - 1) continue;
-    // its pixels: a 3 × 3 grid read back (one small GPU sync, twice a second at most)
+    // its pixels: a 3 × 3 grid read back (one small GPU sync; two layers at most, twice a second)
+    adProbes += 1;
     const gl = r.getContext?.();
     if (!gl || gl.isContextLost()) continue;
     let ok = true;
@@ -994,10 +1004,11 @@ function adCoverFrame() {
 // which layers are covered (twice a second, from the stats timer)
 function adCoverTick() {
   if (frozen) return;
-  if (!AD.on || mode !== 'sketch' || adFull() || edit.on || SQ.on || PC.list.size) { adCoverClear(); return; }
+  if (!AD.on || AD.noCull || mode !== 'sketch' || adFull() || edit.on || SQ.on || PC.list.size) { adCoverClear(); return; }
   const list = ordered().filter((L) => !L.props.pcOf && layerMix(L) > 0);
   let C = null; let at = -1;
-  for (let i = list.length - 1, n = 0; i > 0 && n < 3; i -= 1, n += 1) if (adOpaque(list[i])) { C = list[i]; at = i; break; }
+  adProbes = 0;
+  for (let i = list.length - 1; i > 0 && adProbes < 2; i -= 1) if (!list[i].fx && adOpaque(list[i])) { C = list[i]; at = i; break; }
   if (!C) { adCoverClear(); for (const L of list) L.adOpq = 0; return; }
   C.adOpq = (AD.coverBy === C || C.adOpq) ? 2 : 1;
   if (C.adOpq < 2) return; // (opaque twice in a row first)
@@ -10051,7 +10062,12 @@ addEventListener('message', async (e) => {
   if (msg.type === 'pc-sync') { const P = layers.get(msg.id); if (P?.pc) pcSync(P, msg.precomp); }
   if (msg.type === 'media-load') loadMedia(msg);
   if (msg.type === 'media-unload') unloadMedia();
-  if (msg.type === 'freeze') frozen = Boolean(msg.on);
+  if (msg.type === 'freeze') {
+    // (round 31 "labadapt") a lighter preview freezes on a frame drawn at full quality (what you freeze is what a still saves)
+    const k = ++frzTok;
+    if (msg.on && !frozen && adLighter() && mode === 'sketch') adFullFrame(() => { if (k === frzTok) frozen = true; });
+    else frozen = Boolean(msg.on);
+  }
   if (msg.type === 'guides') setGuides(msg.kind || null);
   if (msg.type === 'present') { presentCursor = Boolean(msg.on); document.documentElement.style.cursor = msg.on ? 'none' : ''; }
   if (msg.type === 'step') { stepping = true; realRAF(() => realRAF(() => { stepping = false; })); }

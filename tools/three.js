@@ -2506,7 +2506,7 @@ const ThreeLab = (() => {
       statsSig = sig;
       stats.replaceChildren(
         el('b', { class: msg.fps < 30 ? 'bad' : msg.fps < 55 ? 'warn' : 'ok', text: `${Math.round(msg.fps)} fps` }),
-        msg.quality < 1 ? el('span', { class: 'warn', text: `preview ${Math.round(msg.quality * 100)}%`, title: 'Frames were dropping, so the preview draws at a lower resolution while you watch. Stills, screenshots and recordings stay at full resolution.' }) : null,
+        msg.quality < 1 ? el('span', { class: 'warn', text: `preview ${Math.round(msg.quality * 100)}%`, title: 'Frames were dropping, so the preview draws lighter while you watch (resolution first, then filters, shadows, particles). Stills, screenshots, recordings and renders stay full quality.' }) : null,
         msg.worst ? el('span', { class: msg.worst > 40 ? 'bad' : msg.worst > 24 ? 'warn' : 'ok', text: `worst ${Math.round(msg.worst)} ms`, title: 'The longest gap between two frames in the last half second: over ~25 ms shows as a stutter (60 Hz = 16.7 ms per frame)' }) : null,
         el('span', { text: `${msg.ms.toFixed(1)} ms render` }), el('span', { text: `${msg.calls} draw calls` }),
         el('span', { text: `${msg.triangles.toLocaleString()} tris` }), msg.points ? el('span', { text: `${msg.points.toLocaleString()} points` }) : null,
@@ -2520,7 +2520,7 @@ const ThreeLab = (() => {
     previewHost.append(perfHud);
     function perfLine(m) {
       if (!m) return 'no frames yet';
-      const q = m.quality < 1 ? ` · ${Math.round(m.quality * 100)}%` : '';
+      const q = (m.quality < 1 ? ` · ${Math.round(m.quality * 100)}%` : '') + (m.adapt?.level > 3 ? ` · lighter ${m.adapt.level}/9` : '') + (m.adapt?.covered ? ` · ${m.adapt.covered} hidden skipped` : '');
       return `${Math.round(m.fps)} fps${m.cap ? `/${m.cap}` : ''} · ${m.p50 ?? m.ms.toFixed(1)}/${m.p95 ?? '–'} ms · ${m.callsAll ?? m.calls} calls · ≈${m.gpuMB ?? '?'} MB${q}${m.light ? ' · 🪶' : ''}`;
     }
     function paintPerfHud(m) { if (!perfHudOn) return; const t = perfLine(m); if (perfHud.textContent !== t) perfHud.textContent = t; }
