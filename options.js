@@ -174,7 +174,9 @@ const Options = (() => {
     if (scroll) sheet.body.scrollTop = scroll; // (round 26, smooth26: at the top already, no layout forced mid-build)
   }
   function build(host, agentId, page = false) {
-    const head = el('header', { class: 'opt-head' }, el('b', { text: 'This AI: missions and what it can use' }), el('span', { class: 'spacer' }), page ? null : btn('✕', 'Close (Esc)', () => hide()));
+    // (round 31, quickstart-hooks.js) "?": What can I do here? (the card shows in the window, so the drawer goes)
+    const qs = !page && window.Lazy?.isIn?.('quickstart') && typeof QuickstartHooks !== 'undefined' ? QuickstartHooks.button(QuickstartHooks.placeOf(agentId), agentId, () => hide()) : null;
+    const head = el('header', { class: 'opt-head' }, el('b', { text: 'This AI: missions and what it can use' }), el('span', { class: 'spacer' }), qs, page ? null : btn('✕', 'Close (Esc)', () => hide()));
     const body = el('div', { class: 'opt-body' });
     const root = el(page ? 'div' : 'aside', { class: `opt-sheet${page ? ' opt-page' : ''}`, attrs: { 'aria-label': 'AI setup' } }, head, body);
     root.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !page && !e.target.closest('textarea')) { e.stopPropagation(); hide(); } });

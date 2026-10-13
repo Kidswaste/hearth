@@ -1780,6 +1780,7 @@ const Native = (() => {
       { label: 'Import a chat from a file…', action: () => Commands.exec('/import', agentId) },
       { label: 'Chat commands…', key: '/help', action: () => Commands.exec('/help', agentId) },
     ];
+    if (window.Lazy?.isIn?.('quickstart') && typeof QuickstartHooks !== 'undefined') items.push(QuickstartHooks.menuItem(QuickstartHooks.placeOf(agentId), agentId)); // (round 31) What can I do here?
     if (typeof Declutter !== 'undefined') items.push(...Declutter.customiseItems('Chat'));
     return items;
   }

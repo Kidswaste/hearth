@@ -213,6 +213,8 @@ const Discover = (() => {
   async function maybeTip({ force = false } = {}) {
     const st = tipState();
     if (!force && (st.off || st.day === today() || Date.now() - T0 < 120e3 || Tour.current || otherCard() || document.hidden)) return null;
+    // (round 31) "What can I do here?" (quickstart-hooks.js) is the one place for things to try: no tip by itself next to it
+    if (!force && window.Lazy?.state?.().some((g) => g.name === 'quickstart')) return null;
     const list = tipCandidates();
     const here = list.filter((t) => t.place !== 'any');
     const tip = (here.length ? here : list)[0];

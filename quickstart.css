@@ -1,0 +1,33 @@
+/* "What can I do here?" (round 31, quickstart.js): one calm card in the window it is about, top right, under the
+   header. Static: no backdrop-filter, one short fade in (opacity / transform only). */
+.qs-card {
+  position: absolute; top: 48px; right: 14px; z-index: 60; width: min(320px, calc(100% - 28px));
+  display: flex; flex-direction: column; gap: 1px; padding: 8px 6px 6px; border-radius: var(--r-lg, 10px);
+  background: var(--sidebar, #17181c); border: 1px solid var(--line, #2c2f36); box-shadow: 0 14px 36px #0009; color: var(--text, #e8e8ea); font-size: 12.5px;
+}
+:root[data-look~=v2] .qs-card { border-color: var(--line-hi, var(--line)); }
+:root:not([data-motion=off]) .qs-card { animation: qs-in .2s cubic-bezier(.2, .9, .3, 1.05) both; transform-origin: top right; }
+:root:not([data-motion=off]) .qs-card.qs-out { animation: qs-out .13s ease both; }
+@keyframes qs-in { from { opacity: 0; transform: translateY(-6px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes qs-out { to { opacity: 0; transform: translateY(-4px); } }
+.qs-head { display: flex; align-items: center; gap: 6px; padding: 0 4px 5px; }
+.qs-head b { font-size: 12px; letter-spacing: .02em; color: var(--fh-gold, var(--accent)); }
+.qs-head .spacer { flex: 1; }
+.qs-x { border: 0; background: none; color: var(--muted, #8a8f98); font-size: 15px; line-height: 1; cursor: pointer; padding: 0 4px; }
+.qs-x:hover { color: var(--text, #e8e8ea); }
+.qs-row {
+  display: grid; grid-template-columns: 22px 1fr; align-items: center; gap: 6px; width: 100%; padding: 6px 6px; border: 0;
+  border-radius: var(--r-md, 7px); background: none; color: inherit; text-align: left; cursor: pointer; font: inherit;
+}
+.qs-row:hover, .qs-row:focus-visible { background: var(--hover, #ffffff10); outline: none; }
+.qs-ic { text-align: center; font-size: 14px; }
+.qs-text { display: flex; flex-direction: column; min-width: 0; }
+.qs-text b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qs-why { color: var(--muted, #8a8f98); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qs-fit .qs-text b::after { content: ' ·'; color: var(--fh-gold, var(--accent)); } /* fits what's on screen now */
+.qs-done { margin: 4px 6px 6px; color: var(--muted, #8a8f98); }
+.qs-foot { padding: 4px 6px 0; color: var(--muted, #8a8f98); font-size: 10.5px; opacity: .8; }
+/* AI setup's header: the small "?" */
+.qs-ask { min-width: 24px; height: 24px; padding: 0 6px; font-weight: 600; }
+/* one place at a time: the window's own first-run chips step aside while the card is up */
+body.qs-on-lab .lab-gal-chip-start { display: none; }
