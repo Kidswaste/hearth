@@ -1389,10 +1389,14 @@ const ChatCmds = (() => {
     return H.agent(id)?.mode === 'native' ? id : H.claudeAgent()?.id;
   }
   // (round 29, fastboot) the ~850 lines are made when the palette first opens or in an idle moment (AppUI.addActionsLater),
-  // from the commands there were at this moment, as before
+  // from the commands there are when the first screen is up (also the token meter's, registered then: before, whether
+  // they made it depended on which came first, the page's load or the first screen)
+  let defs = null;
+  const snap = () => { defs ||= Commands.list().filter((x) => !x.hidden && !['do', 'help'].includes(x.name)); };
+  if (performance.getEntriesByName('hearth:ready').length) snap(); else addEventListener('hearth:ready', snap, { once: true });
   window.addEventListener('load', () => setTimeout(() => {
-    const defs = Commands.list().filter((x) => !x.hidden && !['do', 'help'].includes(x.name));
     const build = (add) => {
+      snap();
       for (const d of defs) {
         add(`/${d.name} — ${d.desc}`, () => {
           const agentId = chatAgentNow();

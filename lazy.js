@@ -394,7 +394,10 @@ const Lazy = (() => {
       const g = queue.shift();
       if (!g) return;
       // (round 20) not mid-gesture: a load waits for typing / a drag / a scroll to end (≤ 4 s; jank.js)
-      idle(() => (window.Jank?.calm?.(4000, 'feature load') ?? Promise.resolve()).then(() => load(g.name)).catch(() => {}).finally(next));
+      // (round 29, fastboot) g.asap (the Lab, what you open most): right after the first frame, without waiting for an idle
+      // moment (with a busy start those come seconds later); still never mid-gesture
+      const go = () => (window.Jank?.calm?.(4000, 'feature load') ?? Promise.resolve()).then(() => load(g.name)).catch(() => {}).finally(next);
+      if (g.asap) go(); else idle(go);
     };
     next();
   }
