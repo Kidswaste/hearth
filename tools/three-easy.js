@@ -77,6 +77,7 @@ const LabEasy = (() => {
   const makeItems = () => [
     askItem('👥 4 variations of this scene…', 'A crew explores them side by side (cost shown first); you pick one', { title: 'What should the 4 variations explore?', placeholder: 'e.g. hit harder on the drop' }, (v) => `/crew 4 ${v || 'clearly different takes on this scene'}`, 'crew'),
     item('Render this chat\'s sequence again', 'Here, on this computer', '/render-again'),
+    ...(typeof AutoEdit !== 'undefined' ? [AutoEdit.item()] : []), // (round 27, autoedit)
   ];
   const infoItems = () => [
     item('What the Lab shows now', 'Sketch, layer, frame size, song, tempo', '/lab-state'),

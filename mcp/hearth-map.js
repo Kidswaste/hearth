@@ -37,7 +37,7 @@ const TOPICS = {
   Nodes: /nodes, /nodes-layer <preset>, /nodes-presets.
   Director: /undo-edit, /redo-edit (you: three_do undo; three_edit_code safe: true), /director-engine claude|astra, /handoff, /task, /director-cost, /director-mode lean|full, /nodes-director on|off.
   Together: /jam (Claude ⇄ Astra build a visual in turns), /opinion (second opinion), /crew 3 <brief> (2–6 helpers explore variations of a scene in parallel; cost shown first; pick, undo, keep; three_do crew when /crew on).
-  Sequence: /sequence, /sequence-render. Everything else: /help <area>.
+  Sequence: /sequence, /sequence-render. Music video from the loaded song: 🎬 by the song name, a plan per section (scene, bars, transition on the beat, look, lyrics) as an editable strip, then Make it / Render (three_do autoedit; /music-video). Everything else: /help <area>.
   Live (VJ): /stage [show|go|cue|set add|output|midi learn|lfo] (set list, crossfade on the bar, MIDI, the output on a second screen).
   Phone remote: /remote on|off|devices (the owner's phone on the same Wi-Fi plays sliders, pads, the set list; pairing code shown on the computer).
   Other tools: /osc (TouchDesigner, Ableton, Resolume, TouchOSC drive sliders / pads / scenes; beat, kick, features out), /midi-out (clock, notes on beats, slider CC), /obs (transparent Browser Source page; OBS scenes follow the Lab, record; streaming asks the owner), /link (Ableton Link tempo).

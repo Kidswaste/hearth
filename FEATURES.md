@@ -844,3 +844,8 @@ In ⋯ AI setup, **⚡ Hooks: when… then…** gives each AI a short list of ru
 - ✓ No "/command" on screen outside the Lab: keys sheet, command bar, Ctrl+K, Discover tips and tours, tooltips, toasts.
 - ✓ ⚇ Work with Astra waits behind Alt (◎ Missions does the same; right-click the chat box has it); AI setup's rail icon is ❖, not a second ⚙.
 - ○ Checked by `dev/checks/simplify2.js` (chat group) and the updated `tidy` check.
+## 🎬 Drop a song, get a music video (round 27, autoedit, 33 upgrades: docs/upgrades/autoedit.md)
+- ✓ 🎬 next to the song in the Lab timeline (also ✦ More › ⇪ Make, the director's ◎ mission "Make a music video from this song", or just asking the director): a plan of the whole video by section (intro / build / drop / break / outro) as one strip, nothing made yet.
+- ✓ Each section: a scene (the one on screen, your others, or a new one the director makes), its length in bars, the transition into it on the beat, an intensity from the song's energy (faster cuts, bolder variations, a stronger look), a look from the song's key, lyrics on / off; click a block to change any of it.
+- ✓ Make it: new scenes go to the crew (cost first, your Start), then a Lab sequence with every cut on a bar, the song under it, section markers and the lyrics as captions (one undo step); ⇪ Render 9:16 / 16:9 / 1:1 or all three.
+- ○ Tested with the fake engines and a generated song (`sh dev/run-checks.sh autoedit unit:autoedit-test`); real crew-made scenes and real renders need a real engine and GPU.
