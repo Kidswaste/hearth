@@ -15,7 +15,7 @@
 //   info    the display's refresh rate and the GPU's name (for the report and "frames dropped")
 // Nothing here is sent anywhere: the window keeps its own log (kv/jank-log.json, a local-only file for sync).
 // Required from main.js: register(ipcMain, bgmain, getWin) once.
-const { app } = require('electron');
+const { app, BrowserWindow } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
@@ -154,10 +154,13 @@ async function info() {
 function register(ipcMain, bgmain, getWin) {
   app.on('child-process-gone', (_e, d) => { if (d?.type === 'GPU') note('gpu', `GPU process ${d.reason}${d.exitCode ? ` (code ${d.exitCode})` : ''}`); });
   app.on('render-process-gone', (_e, wc, d) => note('page', `${wc?.getTitle?.() || 'a window'}: page ${d?.reason || 'gone'}`));
-  app.on('browser-window-created', (_e, w) => {
+  const watchWin = (w) => {
     w.on('unresponsive', () => note('hang', `${w.getTitle() || 'a window'} stopped answering`));
     w.on('responsive', () => note('unhang', `${w.getTitle() || 'a window'} answers again`));
-  });
+  };
+  // (round 30 fix) registered after the main window is made (round 29, fastboot): watch the windows already open too
+  for (const w of BrowserWindow?.getAllWindows?.() || []) watchWin(w);
+  app.on('browser-window-created', (_e, w) => watchWin(w));
   // the loop-lag sampler runs only while somebody can be looking
   const pace = (st) => setHist(!st.hidden && !st.asleep && !off);
   let off = false;
