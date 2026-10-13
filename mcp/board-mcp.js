@@ -3,7 +3,7 @@
 // or "directors"), so nobody pays for these tool definitions unless they use the board. The rule that matters is in
 // every description and in the guide line: references give a VIBE; the media itself never goes into the output
 // unless the owner explicitly asks for the clip.
-const { serve } = require('./common');
+const { serve, leanTools } = require('./common');
 const MAP = require('./hearth-map');
 
 const RULE = 'References give a vibe (palette, light, texture, motion, pacing, mood); never place reference media in the output unless the owner explicitly asks for the clip itself.';
@@ -25,6 +25,20 @@ const local = {};
 // one line in the system prompt of agents that have the board tools (engines.js buildPrompt)
 const guide = `MOOD BOARD (board_* tools): the owner's references. ${RULE} Read board_vibe before styling something "like my board"; board_look / board_watch when you need to see them; name items by id.`;
 
-module.exports = serve({ name: 'board', instructions: '', guide, tools: TOOLS, local, RULE }, module);
+// (round 31, tokensaver) what rides along with every message: short words; the whole descriptions above (and the
+// long enums) come back from board_do { help: '<tool or op>' }, answered here without the hub (common.js leanTools).
+const SHORT = {
+  board_vibe: 'Vibe of a board (this chat\'s linked one by default), a frame or an item; focus narrows it (palette, light, motion, mood…); items: true lists ids; image: true adds a preview. A vibe only: never place reference media in the output unless the owner asks for the clip itself.',
+  board_add: 'Add to a board (frame: inside it): kind note|text|url|file|colors|frame. A found picture: source + credit.',
+  board_arrange: 'Auto-arrange a board, frame or items: layout grid, masonry, timeline, by-hue, by-mood, tidy…',
+  board_do: 'More: op collections | collection | show | groups | lab-look | timeline | find | caption | pinterest | pins. help: a tool or op → its details.',
+  board_look: 'SEE the board: item (+ region close-up), items (+ compare), selection, frame, or nothing = all with ids. size small|medium|large.',
+  board_watch: 'Watch a clip / gif: count frames, times [s] or mode scenes; one sheet, or as: frames.',
+};
+const L = leanTools(TOOLS, SHORT, 'board_do');
+// board_do's ops, one line each, for help <op>
+L.help.board_do += '\nops: collections | collection {name, query} | show {name} | groups {k?} | lab-look {name?} | timeline | find {query} | caption {item, text} | pinterest {phrases?, aesthetic?} | pins {query?}';
+
+module.exports = serve({ name: 'board', instructions: '', guide, tools: L.list, help: L.help, local, RULE }, module);
 // keep the map reachable for tests
 void MAP;

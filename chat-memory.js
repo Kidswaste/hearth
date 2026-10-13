@@ -46,18 +46,22 @@ const ChatMemory = (() => {
 
   // ---------- the agent's own memory, when it goes only where relevant (/memory relevant on) ----------
   let memCache = null; let memAt = 0;
+  // (round 31, tokensaver) relevant is the default once the memory grows past a few lines (ContextCore.memoryRelevant,
+  // the same rule engines.js uses for the system prompt); standing preferences ("never…", "call me…") go every time.
   async function agentFacts(agent) {
-    if (!agent?.memoryWhenRelevant) return [];
+    if (!agent) return [];
     if (!memCache || Date.now() - memAt > 10000) { memCache = await window.hub.getMemory().catch(() => ({ agents: {} })); memAt = Date.now(); }
+    if (!C.memoryRelevant(agent, memCache)) return [];
     const lines = [memCache.shared, memCache.agents?.[agent.id]].flatMap((m) => String(m || '').split('\n')).map((l) => l.trim().replace(/^[-*•]\s+/, '')).filter(Boolean);
-    return lines.map((t) => ({ t, scope: 'agent' }));
+    return lines.map((t) => ({ t, scope: 'agent', ...(C.standing(t) ? { always: true } : {}) }));
   }
   // what always-on memory costs this agent per message (the system prompt's memory part, engines.js)
   async function alwaysTokens(agent) {
-    if (!agent || agent.memoryWhenRelevant) return 0;
+    if (!agent) return 0;
     const m = await window.hub.getMemory().catch(() => null);
-    const notes = [m?.shared, m?.agents?.[agent.id]].map((x) => String(x || '').trim()).filter(Boolean);
-    return notes.length ? C.tok(`What you remember about the user (saved notes, keep them in mind):\n${notes.join('\n')}`) : 0;
+    if (C.memoryRelevant(agent, m)) return 0;
+    const notes = C.memoryNotes(m, agent.id);
+    return notes.length ? C.tok(C.memoryBlock(notes)) : 0;
   }
 
   // ---------- with a message: only the facts it is about ----------
@@ -65,7 +69,10 @@ const ChatMemory = (() => {
     if (!msg || msg.role !== 'user' || String(msg.text || '').startsWith('/')) return undefined;
     await load();
     const p = projectOf(chat.id);
-    const facts = [...factsOf('chat', chat.id), ...(p ? factsOf('project', p.id) : []), ...(await agentFacts(H.agent(agentId)))];
+    // (round 31, tokensaver) a fact already sent in this chat is in its history: never twice (each copy would be
+    // re-read by every later message); after 30 messages it may go again (a long chat's start can be compacted away)
+    const sent = new Set((chat.messages || []).slice(-31).filter((m) => m !== msg).flatMap((m) => m.memSent || []).map((t) => t.toLowerCase()));
+    const facts = [...factsOf('chat', chat.id), ...(p ? factsOf('project', p.id) : []), ...(await agentFacts(H.agent(agentId)))].filter((f) => !sent.has(f.t.toLowerCase()));
     if (!facts.length) return undefined;
     const pick = C.relevant(facts, msg.text, { project: p?.name || '' });
     if (!pick.length) return undefined;
@@ -131,11 +138,13 @@ const ChatMemory = (() => {
     if (w === 'relevant') {
       if (!agent) return 'Run this in a chat.';
       const before = await alwaysTokens({ ...agent, memoryWhenRelevant: false });
-      if (arg === 'off') delete agent.memoryWhenRelevant; else if (arg === 'on' || !arg) agent.memoryWhenRelevant = true;
+      // (round 31) on / off force it; auto (the default) = in the prompt while small, relevant once it grows
+      if (arg === 'off') agent.memoryWhenRelevant = false; else if (arg === 'auto') delete agent.memoryWhenRelevant; else if (arg === 'on' || !arg) agent.memoryWhenRelevant = true;
       await saveConfig();
-      return agent.memoryWhenRelevant
-        ? `${agent.name}'s memory now goes only with the messages it is about (it was ≈ ${before} tokens on every message). \`/memory relevant off\` puts it back in the system prompt.`
-        : `${agent.name}'s memory is in its system prompt again (≈ ${before} tokens on every message).`;
+      const m = await window.hub.getMemory().catch(() => null);
+      return C.memoryRelevant(agent, m)
+        ? `${agent.name}'s memory now goes only with the messages it is about (it was ≈ ${before} tokens on every message)${agent.memoryWhenRelevant === true ? '' : ', the default for a memory this size'}. \`/memory relevant off\` puts it back in the system prompt.`
+        : `${agent.name}'s memory is in its system prompt (≈ ${before} tokens on every message)${agent.memoryWhenRelevant === false ? '' : ', the default while it is small'}.${agent.memoryWhenRelevant === false ? ' \`/memory relevant auto\` lets Hearth choose.' : ''}`;
     }
     if (w === 'approve') {
       store.set('memory.approve', arg !== 'off');
@@ -168,13 +177,14 @@ const ChatMemory = (() => {
     // here: what this chat and its project keep, what they cost, and the agent's always-on memory
     const mine = factsOf('chat', chatId); const proj = p ? factsOf('project', p.id) : [];
     const always = await alwaysTokens(agent);
+    const rel = agent ? C.memoryRelevant(agent, await window.hub.getMemory().catch(() => null)) : false;
     const s = data.sent[chatId];
     const line = (f) => `- ${f.always ? '📌 ' : ''}${f.t} · ${C.tok(f.t)} tok`;
     return [`**Memory for this chat** (sent only with the messages it is about)`,
       mine.length ? mine.map(line).join('\n') : '- none pinned (`/memory pin <fact>`)',
       p ? `\n**Project “${p.name}”**\n${proj.length ? proj.map(line).join('\n') : '- no key facts yet (`/memory project <fact>`)'}` : null,
       `\nSent so far here: ${s ? `${s.n} message${s.n === 1 ? '' : 's'} carried memory, ≈ ${s.tokens} tokens in all` : 'nothing'}.`,
-      agent ? (agent.memoryWhenRelevant ? `${agent.name}'s saved memory goes only where relevant too.` : `${agent.name}'s saved memory: ≈ ${always} tokens on every message${always > 150 ? ' (`/memory relevant on` sends only the facts a message is about)' : ''}.`) : null,
+      agent ? (rel ? `${agent.name}'s saved memory goes only where relevant too.` : `${agent.name}'s saved memory: ≈ ${always} tokens on every message${always > 150 ? ' (`/memory relevant on` sends only the facts a message is about)' : ''}.`) : null,
       `\n\`/memory pin|project|forget|edit\` · \`/memory approve on\`: OK a fact before an agent keeps it.`].filter((x) => x != null).join('\n');
   }
 
@@ -183,7 +193,7 @@ const ChatMemory = (() => {
     if (typeof Commands === 'undefined') return;
     Commands.register({ name: 'memory', area: 'Memory', args: '[here | pin | project | forget | edit | relevant on|off | approve on|off]', when: (ctx, args) => handles(args), whenLabel: 'here, pin, project…',
       desc: 'This chat\'s and its project\'s facts, sent only with the messages they are about', examples: ['/memory here', '/memory pin I want 9:16', '/memory relevant on'],
-      complete: (a) => (/\s/.test(a) ? [] : ['here', 'pin', 'project', 'forget', 'edit', 'relevant on', 'relevant off', 'approve on', 'approve off'].filter((x) => x.startsWith(a)).map((value) => ({ value }))),
+      complete: (a) => (/\s/.test(a) ? [] : ['here', 'pin', 'project', 'forget', 'edit', 'relevant on', 'relevant off', 'relevant auto', 'approve on', 'approve off'].filter((x) => x.startsWith(a)).map((value) => ({ value }))),
       run });
   }
   if (document.readyState === 'loading') addEventListener('DOMContentLoaded', register); else register();

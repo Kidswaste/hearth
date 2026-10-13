@@ -10,6 +10,8 @@ const { DATA_DIR, ATTACH_DIR, getMemory, addUsage } = require('./store');
 const Installs = require('./installs');
 // (round 26, connections) the owner's own MCP servers, switched on per AI in ⋯ AI setup (connectionsmain.js)
 const Conn = (() => { try { return require('./connectionsmain'); } catch { return null; } })();
+// (round 31, tokensaver) where saved memory goes (system prompt or only relevant messages), shared with chat-memory.js
+const CtxCore = (() => { try { return require('./context-core'); } catch { return null; } })();
 const conns = (agent) => (Conn ? Conn.enabledFor(agent) : []);
 
 const WORKSPACE = path.join(DATA_DIR, 'workspace');
@@ -177,9 +179,14 @@ const gameTools = (agent) => hubToolsets(agent).includes('gameTools');
 // The node tool (three_nodes) is on for Three directors: the owner wants a node view of the visual work they make
 // (an explicit opt-in to its ≈ 75 tokens per message). `/nodes-director off` sets agent.nodesTool = false.
 const nodesOn = (agent) => Boolean(agent.threeTools) && agent.nodesTool !== false;
+// (round 31, tokensaver) who gets the chat tools' when-to-use guide and their whole list: directors (docked, or with a
+// working tool set besides the chat). A plain chat gets the lean chat list (chat_ask, chat_open, chat_do + help).
+const leanDirector = (agent) => Boolean(agent.threeTools) && !agent.noHubTools && agent.toolMode !== 'full' && agent.toolMode !== 'crew';
+const OPT_IN_SETS = ['boardTools', 'captureTools', 'adobeTools', 'deployTools', 'appsTools'];
+const chatGuideOn = (agent) => Boolean(agent.dock) || hubToolsets(agent).filter((k) => !OPT_IN_SETS.includes(k)).length > 1;
 // What every hub MCP server gets: Node mode, the agent (for chat_ tools), opt-ins that change the tool list.
 // HUB_CHAT_ID: the chat this run answers, so a director's tool calls reach that chat's own scene (chat-scenes.js).
-const hubToolEnv = (agent, key) => ({ ...(key === 'openTool' ? { HUB_CHAT_ONLY: 'chat_open' } : {}), ELECTRON_RUN_AS_NODE: '1', HUB_AGENT_ID: agent.id, ...(agent.hubChatId ? { HUB_CHAT_ID: agent.hubChatId } : {}), ...(agent.engine === 'codex' ? { HUB_PARTNER: 'Claude' } : {}), ...(nodesOn(agent) ? { HUB_NODES_TOOL: '1' } : {}), ...(agent.toolMode === 'full' || agent.toolMode === 'crew' ? { HUB_TOOL_MODE: agent.toolMode } : {}), ...(agent.reportTool === false ? { HUB_NO_REPORT: '1' } : {}) });
+const hubToolEnv = (agent, key) => ({ ...(key === 'openTool' ? { HUB_CHAT_ONLY: 'chat_open' } : {}), ELECTRON_RUN_AS_NODE: '1', HUB_AGENT_ID: agent.id, ...(agent.hubChatId ? { HUB_CHAT_ID: agent.hubChatId } : {}), ...(agent.engine === 'codex' ? { HUB_PARTNER: 'Claude' } : {}), ...(nodesOn(agent) ? { HUB_NODES_TOOL: '1' } : {}), ...(agent.toolMode === 'full' || agent.toolMode === 'crew' ? { HUB_TOOL_MODE: agent.toolMode } : {}), ...(agent.reportTool === false ? { HUB_NO_REPORT: '1' } : {}), ...(key === 'chatTools' && !chatGuideOn(agent) ? { HUB_CHAT_LEAN: '1' } : {}) });
 // One file per run, removed when that run ends: a retry of the same chat (a lost session, an option the CLI doesn't
 // know) starts while the previous run is still closing, and a shared file was deleted under the new run
 // ("Invalid MCP configuration: … not found").
@@ -285,14 +292,19 @@ function toolGuide(key) {
   try { return require(path.join(__dirname, 'mcp', HUB_TOOLSETS[key].script)).guide || ''; } catch { return ''; }
 }
 
+// (round 31, tokensaver) the two habit lines most chats carry, in fewer words (same asks, same tags)
+const SUGGEST_LINE = 'When it helps, end with up to 3 short next steps as <suggest>…</suggest> (they become buttons; under 8 words each).';
+const REMEMBER_LINE = 'Rarely, when the user shares a lasting fact or preference worth keeping for future chats (not one-off details), add <remember>short fact</remember> on its own line at the very end of your reply; never mention these tags.';
+
 function buildPrompt(agent) {
   const usesApps = agent.engine === 'claude' ? enabledConnectors(agent).length > 0 : Boolean(agent.chatgptApps);
   const folder = fileFolder(agent);
   const web = agent.engine === 'codex' && WEB_SEARCH.includes(agent.webSearch) && agent.webSearch !== 'disabled';
   const parts = [
     agent.systemPrompt
-      || `You are ${agent.name}, chatting with the user in their personal desktop app. `
-        + 'Answer conversationally and directly, using Markdown when it helps.',
+      // (round 31, tokensaver) a lean Three Director's role is set by its own part below: no second "You are…" line
+      || (leanDirector(agent) ? '' : `You are ${agent.name}, chatting with the user in their personal desktop app. `
+        + 'Answer conversationally and directly, using Markdown when it helps.'),
   ];
   // (round 26) ⋯ AI setup: the user's standing instructions, each one on / off
   const rules = (Array.isArray(agent.instructions) ? agent.instructions : []).filter((r) => r && r.on !== false && String(r.text || '').trim()).slice(0, 40).map((r) => `- ${String(r.text).trim().slice(0, 600)}`);
@@ -322,16 +334,16 @@ function buildPrompt(agent) {
   const sets = hubToolsets(agent);
   if (sets.includes('chatTools')) {
     // directors get the chat tools' when-to-use guide; plain chats only the <suggest> convention
-    if (agent.dock || sets.filter((k) => !['boardTools', 'captureTools', 'adobeTools', 'deployTools', 'appsTools'].includes(k)).length > 1) parts.push(toolGuide('chatTools'));
-    if (agent.suggestNext !== false) parts.push('At the end of a reply, when it helps, offer up to 3 short next steps the user might want, each as <suggest>…</suggest> (they become buttons; keep each under 8 words).');
+    if (chatGuideOn(agent)) parts.push(toolGuide('chatTools'));
+    if (agent.suggestNext !== false) parts.push(SUGGEST_LINE);
   } else if (agent.suggestNext) {
-    parts.push('At the end of a reply, when it helps, offer up to 3 short next steps the user might want, each as <suggest>…</suggest> (they become buttons; keep each under 8 words).');
+    parts.push(SUGGEST_LINE);
   }
   // the board's one-line guide (references give a vibe, never footage) only for agents that have its tools
   if (sets.includes('boardTools')) parts.push(toolGuide('boardTools'));
   if (sets.includes('appsTools')) parts.push(toolGuide('appsTools')); // Meshy costs credits: one line
   // Directors (agents docked in a tool) check their own work unless switched off.
-  if (agent.selfReview ?? Boolean(agent.dock)) parts.push('Before you finish, check your result against what was asked (for visual work, a fresh small picture is enough). Fix real problems you find, then mention in one line what you checked.');
+  if (agent.selfReview ?? Boolean(agent.dock)) parts.push('Before you finish, check the result against what was asked (visual work: one fresh small picture), fix real problems, then say in one line what you checked.');
   // (round 11) opt-in (`/progress tags on`, directors only): the agent says how far it is; Hearth draws the bar and hides the tag
   if (agent.dock && agent.progressTag) parts.push('During long work, now and then write <progress pct="40" note="what\'s next"/> (hidden; it drives the user\'s progress bar).');
   // (round 22, labcrew) a crew helper: the sketch rules in five lines, no app map (its brief says what to explore)
@@ -342,7 +354,7 @@ function buildPrompt(agent) {
   } else
   // Lean (default): the three-lab tool guide carries the how-to, so the prompt only sets the role. 'full' keeps the long version.
   if (sets.includes('threeTools') && agent.toolMode !== 'full') {
-    parts.push('You are the Three Director. Prefer good-looking defaults (tone mapping, environment light, smooth motion, sensible performance) and small edits over rewrites.\n'
+    parts.push(`${agent.systemPrompt ? 'You are the Three Director.' : `You are ${agent.name === 'Three Director' ? 'the Three Director' : `${agent.name}, the Three Director`}, chatting with the user in their desktop app.`} Prefer good-looking defaults (tone mapping, environment light, smooth motion, sensible performance) and small edits over rewrites.\n`
       + threeGuide().CORE
       + (nodesOn(agent) ? `\n${threeGuide().NODES_LINE}` : '')
       + `\n${hearthMap().LINE('three_do help')}`);
@@ -366,13 +378,13 @@ function buildPrompt(agent) {
   const memory = getMemory();
   const notes = [memory.shared, memory.agents?.[agent.id]].map((m) => (m || '').trim()).filter(Boolean);
   // (round 24, context) /memory relevant on: the notes leave the system prompt; chat-memory.js sends only the facts a message is about
-  if (notes.length && !agent.memoryWhenRelevant) {
+  // (round 31, tokensaver) and by default once they are big (≈ 300 tokens, context-core.js memoryRelevant): the prompt
+  // stays small and stable (a new fact no longer changes it, so the prompt cache keeps the whole chat)
+  if (notes.length && !(CtxCore ? CtxCore.memoryRelevant(agent, memory) : agent.memoryWhenRelevant)) {
     parts.push(`What you remember about the user (saved notes, keep them in mind):\n${notes.join('\n')}`);
   }
   if (agent.autoMemory !== false) {
-    parts.push('When the user shares a lasting fact or preference worth remembering in future chats '
-      + '(not one-off details), add it on its own line at the very end of your reply as '
-      + '<remember>short fact</remember>. Do this rarely, and never mention these tags.');
+    parts.push(REMEMBER_LINE);
   }
   return parts.filter(Boolean).join('\n\n');
 }
@@ -1386,7 +1398,7 @@ module.exports = {
   send, stop, stopAll, login, status, checkInstalls, checkEngine, fix, onInstalls, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
   doctor, EFFORTS, CODEX_DISABLED_FEATURES,
   // for tests (dev/astra-engine-test.js)
-  _test: { lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION },
+  _test: { lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, chatGuideOn, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION },
   buildPrompt, HUB_TOOLSETS, // the director cost report (mcp/cost.js)
   busy: () => running.size, // (round 16) replies running now: background work (sync) waits a little longer meanwhile
 };

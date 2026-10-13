@@ -52,6 +52,29 @@ function fmtValue(v) {
   }).join('\n');
 }
 
+// (round 31, tokensaver) help on demand for any server: def.help = { topic: text } (a tool's name → its whole how-to).
+// A call with { help: '<topic>' } (on the tool whose schema names it) is answered here, without the hub, so the tool
+// list that rides along with every message keeps only short descriptions (the pattern of three_do help).
+function helpOf(help, topic) {
+  const t = String(topic || '').trim().toLowerCase().replace(/^help\s+/, '');
+  const word = t && new RegExp(`(^|[^\\w-])${t.replace(/[^\w-]/g, '')}([^\\w-]|$)`, 'i');
+  // a tool by name (board_vibe or vibe), else the tool whose help names it (an op: pins → board_do)
+  const hit = help[t] || help[Object.keys(help).find((k) => k.endsWith(`_${t}`) || k.replace(/^\w+?_/, '') === t)] || (word && Object.values(help).find((v) => word.test(v)));
+  return { ok: true, value: hit || `Topics: ${Object.keys(help).join(', ')}.` };
+}
+
+// The tool list as it's sent (short words) and its help (the whole descriptions + args, enums included) from one
+// full definition: short = { tool: 'its short description' }; helpOn = the tool whose schema takes { help }.
+// Long enums leave the schema (they're in help); short ones stay, they steer the model for a few tokens.
+function leanTools(tools, short, helpOn) {
+  const argsOf = (t) => Object.entries(t.inputSchema?.properties || {}).map(([k, v]) => (v.enum ? `${k} (${v.enum.join('|')})` : k)).join(', ');
+  const help = Object.fromEntries(tools.map((t) => [t.name, `${t.name}: ${t.description}\nargs: ${argsOf(t) || 'none'}`]));
+  const slim = (props) => Object.fromEntries(Object.entries(props || {}).map(([k, v]) => [k, v.enum && JSON.stringify(v.enum).length > 60 ? { type: v.type } : v]));
+  const list = tools.map((t) => ({ ...t, description: short[t.name] ?? t.description,
+    inputSchema: { ...t.inputSchema, properties: { ...slim(t.inputSchema?.properties), ...(t.name === helpOn ? { help: { type: 'string' } } : {}) } } }));
+  return { list, help };
+}
+
 // Each server file ends with `module.exports = serve({ name, instructions, tools }, module)`: run as a program it
 // serves stdio; required (by the hub's cost report / tests) it only hands back its definitions.
 function serve(def, mod) {
@@ -69,7 +92,7 @@ function serve(def, mod) {
       // local[name](args) can answer without the hub (help text); null means "ask the hub".
       // hubChatId: which chat's run made the call (engines.js HUB_CHAT_ID); the hub routes by it and strips it
       const args = { ...(params.arguments || {}), ...extraArgs, ...(process.env.HUB_CHAT_ID ? { hubChatId: process.env.HUB_CHAT_ID } : {}) };
-      const r = (local[params.name] && await local[params.name](args)) || await callHub(params.name, args);
+      const r = (def.help && typeof args.help === 'string' && helpOf(def.help, args.help)) || (local[params.name] && await local[params.name](args)) || await callHub(params.name, args);
       const content = [];
       for (const img of [].concat(r.images || (r.image ? [{ data: r.image, mime: r.mime }] : []))) {
         content.push({ type: 'image', data: img.data, mimeType: img.mime || 'image/png' });
@@ -100,4 +123,4 @@ function serve(def, mod) {
   return def;
 }
 
-module.exports = { serve, callHub, fmtValue };
+module.exports = { serve, callHub, fmtValue, helpOf, leanTools };

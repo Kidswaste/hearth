@@ -84,6 +84,9 @@ const about = await reply('echo make the kick hit harder');
 ok(about.text.includes('[Memory, approved by the user: Kick drives the orb scale]'), 'a message about it carries the fact');
 const mu = Native.current(A.id).messages.at(-2);
 ok(mu.memTokens > 0 && mu.memSent?.length === 1, 'the message keeps what memory it carried');
+// (round 31, tokensaver) it's in the chat's history now: never sent twice
+const again = await reply('echo the kick once more');
+ok(!/\[Memory/.test(again.text), 'a fact already sent in this chat is not sent again');
 ok(await until(() => [...v().list.querySelectorAll('.msg.user .mem-sent')].length === 1), 'one 🧠 mark, on that message');
 out.here = await run('/memory here');
 ok(/Kick drives the orb scale/.test(out.here) && /1 message carried memory/.test(out.here), `/memory here: the facts and the running count (${out.here.slice(0, 200)})`);

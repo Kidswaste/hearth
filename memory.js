@@ -151,7 +151,9 @@ const MemoryEditor = (() => {
     const today = usage?.[new Date().toLocaleDateString('en-CA')] || {};
     return H.agents().filter((a) => a.mode === 'native').map((a) => {
       const own = (memory.agents?.[a.id] || '').trim().length;
-      const chars = (shared || own ? HEADER_CHARS + shared + own : 0) + (a.autoMemory !== false ? AUTO_CHARS : 0);
+      // (round 31) a memory that goes only with the messages it's about isn't on every message (ContextCore.memoryRelevant)
+      const rel = typeof ContextCore !== 'undefined' && ContextCore.memoryRelevant?.(a, memory);
+      const chars = (!rel && (shared || own) ? HEADER_CHARS + shared + own : 0) + (a.autoMemory !== false ? AUTO_CHARS : 0);
       const perMsg = Math.ceil(chars / 4);
       const replies = today[a.id]?.replies || 0;
       return { id: a.id, name: a.name, color: a.color, shared: Math.ceil(shared / 4), own: Math.ceil(own / 4), auto: a.autoMemory !== false ? Math.ceil(AUTO_CHARS / 4) : 0, perMsg, replies, today: perMsg * replies };

@@ -5,7 +5,7 @@
 // When the hub isn't running, capture_frames still reads a video file with ffmpeg here (framereader.js).
 const fs = require('fs');
 const path = require('path');
-const { serve, callHub } = require('./common');
+const { serve, callHub, leanTools } = require('./common');
 
 const TOOLS = [
   { name: 'capture_shot', description: 'Screenshot of Hearth itself → path + a small view. target: window, tool, chat, transcript (whole chat, tall), dock, lab (full size), composer; or selector (CSS). crop: 9:16, 4:5, 1:1, 16:9… see: false = path only.',
@@ -54,4 +54,13 @@ const local = {
   capture_frames: async (a) => { const r = await callHub('capture_frames', a); return unreachable(r) ? framesLocal(a) : r; },
 };
 
-module.exports = serve({ name: 'capture', instructions: '', guide: '', tools: TOOLS, local }, module);
+// (round 31, tokensaver) short words in the list; the whole descriptions come from capture_list { help: '<tool>' }
+const SHORT = {
+  capture_shot: 'Screenshot of Hearth → path + a small view. target: window|tool|chat|transcript|dock|lab|composer, or selector; crop: 9:16, 1:1…; see: false = path only.',
+  capture_record: 'Record Hearth (webm + mp4): action start {target, preset, fps, size, sound: none|app|mic, seconds} | stop | status | pause | resume | mark {label} | tour {name or steps, dry}. help: tour steps.',
+  capture_frames: 'Exact frames of any video. path: file or "last". mode: at {times|frames} | every | spread {count} | scenes | sheet | motion | pacing | palette | info | make {op}… (help: all modes). → timecodes, paths, pictures.',
+  capture_list: 'Newest screenshots and recordings (paths). kind: shot | video. help: a capture tool → its details.',
+};
+const L = leanTools(TOOLS, SHORT, 'capture_list');
+
+module.exports = serve({ name: 'capture', instructions: '', guide: '', tools: L.list, help: L.help, local }, module);

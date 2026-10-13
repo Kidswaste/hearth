@@ -18,8 +18,9 @@ function defOf(key, opts = {}) {
   const before = process.env.HUB_NODES_TOOL;
   if (opts.nodesTool) process.env.HUB_NODES_TOOL = '1'; else delete process.env.HUB_NODES_TOOL;
   if (opts.toolMode) process.env.HUB_TOOL_MODE = opts.toolMode; else delete process.env.HUB_TOOL_MODE;
+  if (opts.chatLean) process.env.HUB_CHAT_LEAN = '1'; else delete process.env.HUB_CHAT_LEAN;
   delete require.cache[require.resolve(file)];
-  try { return require(file); } finally { if (before == null) delete process.env.HUB_NODES_TOOL; else process.env.HUB_NODES_TOOL = before; delete process.env.HUB_TOOL_MODE; }
+  try { return require(file); } finally { if (before == null) delete process.env.HUB_NODES_TOOL; else process.env.HUB_NODES_TOOL = before; delete process.env.HUB_TOOL_MODE; delete process.env.HUB_CHAT_LEAN; }
 }
 
 function measure(key, opts = {}) {
@@ -44,7 +45,7 @@ function promptPart(agent) {
 // counted on its own) and each tool set it really gets (engines.js hubToolsets). chat-cost.js splits a message with it.
 // (measured once per tool-set variant: the servers' definitions don't change while the app runs, and chats ask often)
 const memo = new Map();
-const measured = (k, opts = {}) => { const key = `${k}|${opts.nodesTool ? 1 : 0}|${opts.toolMode || ''}`; if (!memo.has(key)) memo.set(key, measure(k, opts)); return memo.get(key); };
+const measured = (k, opts = {}) => { const key = `${k}|${opts.nodesTool ? 1 : 0}|${opts.toolMode || ''}|${opts.chatLean ? 1 : 0}`; if (!memo.has(key)) memo.set(key, measure(k, opts)); return memo.get(key); };
 function exactOf(a, sets) {
   let engines = null;
   try { engines = require(path.join(__dirname, '..', 'engines.js')); } catch { /* no engines here */ }
@@ -57,7 +58,9 @@ function exactOf(a, sets) {
     }
     if (!SETS[k]) continue;
     const nodes = k === 'threeTools' && a.nodesTool !== false;
-    const m = k === 'threeTools' && (nodes || a.toolMode) ? measured(k, { nodesTool: nodes, toolMode: a.toolMode }) : (sets?.find((s) => s.key === k) || measured(k));
+    // (round 31) a plain chat gets the lean chat list (engines.js chatGuideOn)
+    const lean = k === 'chatTools' && engines?._test?.chatGuideOn && !engines._test.chatGuideOn(a);
+    const m = k === 'threeTools' && (nodes || a.toolMode) ? measured(k, { nodesTool: nodes, toolMode: a.toolMode }) : lean ? measured(k, { chatLean: true }) : (sets?.find((s) => s.key === k) || measured(k));
     tools.push([k, m.total]);
   }
   const prompt = engines?.buildPrompt ? tok(engines.buildPrompt(a)) : 0;

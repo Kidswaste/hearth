@@ -169,6 +169,25 @@ const ContextCore = (() => {
   }
   const memoryLine = (facts) => (facts.length ? `[Memory, approved by the user: ${facts.map((f) => f.t).join('; ')}]` : '');
 
+  // (round 31, tokensaver) an AI's saved memory: in its system prompt while it's small (≤ MEMORY_AUTO tokens), only
+  // with the messages it's about once it's big ("relevant" becomes the default there). agent.memoryWhenRelevant true /
+  // false (/memory relevant on / off) forces one way. engines.js (the system prompt) and chat-memory.js (the message)
+  // both ask here, so a fact is never sent twice or dropped. Why not relevant for every memory: a fact sent with a
+  // message stays in the chat's history and is re-read by every later message, so a small memory costs less in the
+  // (cached) system prompt; chat-memory.js sends each fact at most once per chat for the same reason. Standing
+  // preferences ("never…", "call me…") go with the first message of a chat in relevant mode (`always` facts, capped).
+  const MEMORY_HEAD = 'What you remember about the user (saved notes, keep them in mind):';
+  const MEMORY_AUTO = 300;
+  const memoryNotes = (mem, agentId) => [mem?.shared, mem?.agents?.[agentId]].map((m) => String(m || '').trim()).filter(Boolean);
+  const memoryBlock = (notes) => (notes.length ? `${MEMORY_HEAD}\n${notes.join('\n')}` : '');
+  function memoryRelevant(agent, mem) {
+    if (agent?.memoryWhenRelevant === true) return true;
+    if (agent?.memoryWhenRelevant === false) return false;
+    return tok(memoryBlock(memoryNotes(mem, agent?.id))) > MEMORY_AUTO;
+  }
+  const STANDING = /\b(always|never|prefer|don'?t|do not|call me|my name is|answer|repl(?:y|ies)|I hate|I like|I love)\b/i;
+  const standing = (t) => STANDING.test(String(t || ''));
+
   // ---------- what a message sent ----------
   // input (the engine's own count) split into: the engine's base, the system prompt, each tool set, the history, the
   // attachments / @ references / memory of this message, and the words typed. History is what remains.
@@ -203,6 +222,6 @@ const ContextCore = (() => {
     return out.sort((a, b) => b.saves - a.saves);
   }
 
-  return { tok, clip, fmt, block, refName, ref, sliders, sceneCompact, sceneFull, words, localSummary, chatDigest, historyTokens, projectCompact, relevant, memoryLine, breakdown, fixes, SET_OFF };
+  return { tok, clip, fmt, block, refName, ref, sliders, sceneCompact, sceneFull, words, localSummary, chatDigest, historyTokens, projectCompact, relevant, memoryLine, breakdown, fixes, SET_OFF, MEMORY_AUTO, memoryNotes, memoryBlock, memoryRelevant, standing };
 })();
 if (typeof module !== 'undefined') module.exports = ContextCore; else window.ContextCore = ContextCore;
