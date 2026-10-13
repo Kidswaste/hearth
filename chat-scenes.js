@@ -71,7 +71,9 @@ const ChatScenes = (() => {
   }
 
   // ---------- links ----------
-  const lab = () => (typeof ThreeLab !== 'undefined' && ThreeLab.director && ThreeLab.scenes) || null;
+  // (round 29, fastboot) not in yet: nothing to follow or paint (Lazy.when('lab', sync) below catches up); peeking at
+  // the stand-in global asked for the whole Lab in front of the window's first frame
+  const lab = () => ((!window.Lazy?.isIn || Lazy.isIn('lab')) && typeof ThreeLab !== 'undefined' && ThreeLab.director && ThreeLab.scenes) || null;
   function linkOf(chatId) {
     const L = chatId && data.links[chatId];
     if (!L) return null;

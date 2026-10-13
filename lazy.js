@@ -304,6 +304,19 @@ const Lazy = (() => {
       document.head.append(s);
     });
   }
+  // (round 29, fastboot) a big group's tags go in a few at a time, a task each (the Lab's 74 files were one ≈ 0.1–0.5 s
+  // task right after the first frame); they still run in their order (async = false keeps insertion order)
+  const CHUNK = 8;
+  const yieldTask = () => (globalThis.scheduler?.yield ? scheduler.yield() : new Promise((r) => setTimeout(r, 0)));
+  async function injectAll(files) {
+    const all = [];
+    for (let i = 0; i < files.length; i += 1) {
+      if (i && i % CHUNK === 0) await yieldTask();
+      const p = inject(files[i]); p.catch(() => {}); // (Promise.all below reports a failure; no "unhandled" meanwhile)
+      all.push(p);
+    }
+    return Promise.all(all);
+  }
   function css(href, before) {
     if (document.querySelector(`link[rel=stylesheet][href="${href}"]`)) return Promise.resolve();
     return new Promise((res) => {
@@ -330,7 +343,7 @@ const Lazy = (() => {
         reports.set(g.name, rep);
         const p = patch(g, rep);
         try {
-          await Promise.all([...(g.css || []).map((h) => css(h, g.cssBefore)), ...g.files.map(inject)]);
+          await Promise.all([...(g.css || []).map((h) => css(h, g.cssBefore)), injectAll(g.files)]);
           for (const fn of p.ready) { try { fn.call(window, new Event('DOMContentLoaded')); } catch (err) { console.error(err); } }
         } catch (err) {
           g.state = 'failed';
@@ -354,6 +367,25 @@ const Lazy = (() => {
     return g.promise;
   }
 
+  // ---------- (round 29, fastboot) a group's own keys work before it's in ----------
+  // g.keys: [{ key, code, mod (Ctrl/⌘), shift, typing: false (not while typing in a field), run(shift) }]: a press while
+  // the group is still a stand-in loads it, then does what the key does; the hub's 'shortcut' messages (main.js: the
+  // same keys pressed in the Lab's frame or a website) too. Once the group is in (or loading), its own handlers answer.
+  function earlyKeys(g) {
+    if (!g.keys?.length) return;
+    const go = (k, shift) => load(g.name).then(() => k.run(shift)).catch((err) => say(`${g.name}: ${err.message}`));
+    const typing = (t) => /^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName || '') || t?.isContentEditable;
+    document.addEventListener('keydown', (e) => {
+      if (g.state !== 'stub' || e.defaultPrevented || e.altKey) return; // (a press is a use: held groups load too)
+      const k = g.keys.find((x) => (e.key.toLowerCase() === x.key.toLowerCase() || e.code === x.code) && Boolean(x.mod) === (e.ctrlKey || e.metaKey)
+        && (x.shift == null || Boolean(x.shift) === e.shiftKey) && !(x.typing === false && typing(e.target)));
+      if (!k) return;
+      e.preventDefault(); e.stopPropagation();
+      go(k, e.shiftKey);
+    }, true);
+    try { window.hub?.onShortcut?.((sc) => { if (g.state !== 'stub') return; const k = g.keys.find((x) => x.mod && x.key.toLowerCase() === String(sc?.key || '').toLowerCase() && (x.shift == null || Boolean(x.shift) === Boolean(sc.shift))); if (k) go(k, Boolean(sc.shift)); }); } catch { /* no hub */ }
+  }
+
   // ---------- after the first screen: the 'soon' groups, one per idle moment ----------
   const idle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 600 }) : setTimeout(fn, 30));
   function soon() {
@@ -362,16 +394,29 @@ const Lazy = (() => {
       const g = queue.shift();
       if (!g) return;
       // (round 20) not mid-gesture: a load waits for typing / a drag / a scroll to end (≤ 4 s; jank.js)
-      idle(() => (window.Jank?.calm?.(4000, 'feature load') ?? Promise.resolve()).then(() => load(g.name)).catch(() => {}).finally(next));
+      // (round 29, fastboot) g.asap (the Lab, what you open most): right after the first frame, without waiting for an idle
+      // moment (with a busy start those come seconds later); still never mid-gesture
+      const go = () => (window.Jank?.calm?.(4000, 'feature load') ?? Promise.resolve()).then(() => load(g.name)).catch(() => {}).finally(next);
+      if (g.asap) go(); else idle(go);
     };
     next();
   }
   // a group asked for before the first screen is up waits for it (the first screen comes first), then goes first
+  // (round 29, fastboot) and after the window's first frame: a module that peeks at a lazy global while it builds the
+  // first screen (typeof ThreeLab) no longer has the whole group parsed in front of the first paint (the Lab: ≈ 0.4 s)
   const wanted = new Set();
+  let painted = false;
   function want(g) {
     if (hold) return;
-    if (readyAt) queueMicrotask(() => load(g.name).catch(() => {}));
+    if (painted) queueMicrotask(() => load(g.name).catch(() => {}));
     else wanted.add(g.name);
+  }
+  // one frame drawn (rAF, then the task after it), or 300 ms at most (a hidden window draws no frames)
+  function afterPaint(fn) {
+    let done = false;
+    const go = () => { if (done) return; done = true; clearTimeout(t); fn(); };
+    const t = setTimeout(go, 300);
+    try { requestAnimationFrame(() => setTimeout(go, 0)); } catch { /* no frames */ }
   }
   // (tests: localStorage 'lazy.hold' = '1' keeps every group a stand-in until it's used, to prove first use works)
   let hold = false;
@@ -381,8 +426,11 @@ const Lazy = (() => {
     readyAt = performance.now();
     try { namesAtReady = Commands.list().map((d) => d.name); } catch { /* no commands */ }
     if (hold) return;
-    for (const n of wanted) load(n).catch(() => {});
-    soon();
+    afterPaint(() => {
+      painted = true;
+      for (const n of wanted) load(n).catch(() => {});
+      soon();
+    });
   }
 
   // ---------- stand-ins ----------
@@ -400,7 +448,7 @@ const Lazy = (() => {
   }
   // a group without a lazy-at.js tag gets its stand-ins at the end
   document.addEventListener('DOMContentLoaded', () => { for (const g of groups.values()) if (!placed.has(g.name)) { placed.add(g.name); stubNow(g); stubLater(g); } }, { once: true });
-  for (const g of groups.values()) { try { guardGlobals(g); } catch (err) { say(`${g.name}: ${err.message}`); } }
+  for (const g of groups.values()) { try { guardGlobals(g); earlyKeys(g); } catch (err) { say(`${g.name}: ${err.message}`); } }
   // start.js fires 'hearth:ready' once the first screen is up: the cue for the 'soon' groups
   addEventListener('hearth:ready', start, { once: true });
   // start.js never got there (an error during startup): don't leave the features unloaded
@@ -409,6 +457,9 @@ const Lazy = (() => {
   return {
     load, state, start, at,
     loaded: (name) => groups.get(name)?.state === 'loaded',
+    // (round 29) in yet, without asking for it: false while the group is a stand-in or loading (true for a name that
+    // isn't lazy). For code that only decorates a lazy feature (`Lazy.isIn('lab') && ThreeLab…`): no miss, no load
+    isIn: (name) => !groups.has(name) || groups.get(name).state === 'loaded',
     // when(group, fn): fn() now if the group is in (or isn't lazy), else once it has loaded; for hooks an eager module
     // puts into a lazy one (window.Lazy?.when('lab', () => ThreeSeq.on(…)) ?? …)
     when(name, fn) {

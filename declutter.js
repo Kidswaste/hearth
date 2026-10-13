@@ -345,7 +345,7 @@ const Declutter = (() => {
   const railItems = () => [
     { label: '＋ Add an agent or website…', action: () => Manager.open() },
     { label: '⌘ Command palette', key: 'Ctrl+K', action: () => AppUI.palette() },
-    { label: 'Command bar', key: 'Ctrl+;', action: () => (typeof CmdBar !== 'undefined' ? CmdBar.toggle?.() : AppUI.palette()) },
+    { label: 'Command bar', key: 'Ctrl+;', action: () => (window.Lazy?.isIn && !Lazy.isIn('cmdbar') ? Lazy.load('cmdbar').then(() => CmdBar.toggle()).catch(() => AppUI.palette()) : typeof CmdBar !== 'undefined' ? CmdBar.toggle?.() : AppUI.palette()) },
     { label: 'Panels', items: [
       { label: '☰ Chats panel', key: 'Ctrl+\\', checked: H.panelOpen, action: () => handleShortcut({ key: '\\' }) },
       { label: '🗒 Notes', key: 'Ctrl+J', action: () => Notes.toggle() },

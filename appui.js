@@ -233,6 +233,25 @@ const AppUI = (() => {
   // ---------- command palette ----------
   const actions = [];
   function addAction(label, run, keys = '') { actions.push({ label, run, keys }); }
+  // (round 29, fastboot) a big batch (every chat command as a "/name — what it does" line) keeps its place in the list
+  // but is made when something first reads the actions (the palette), or in an idle moment: not at the first frame
+  let later = 0;
+  function addActionsLater(build) {
+    actions.push({ label: '', later: build });
+    later += 1;
+    (window.requestIdleCallback || setTimeout)(flushLater, { timeout: 4000 });
+  }
+  function flushLater() {
+    if (!later) return;
+    for (let i = 0; i < actions.length; i += 1) {
+      if (!actions[i].later) continue;
+      const made = [];
+      try { actions[i].later((label, run, keys = '') => made.push({ label, run, keys })); } catch (err) { console.warn('palette actions', err); }
+      actions.splice(i, 1, ...made);
+      i += made.length - 1;
+      later -= 1;
+    }
+  }
   addAction('Restart Hearth', () => window.hub.restartApp());
 
   function fuzzy(query, text) {
@@ -267,6 +286,7 @@ const AppUI = (() => {
       const a = H.agent(agentId);
       if (a) for (const h of list.slice(0, 50)) items.push({ kind: `${a.name} chat`, label: h.title, run: () => openWebChat(agentId, h.url) });
     }
+    flushLater();
     for (const act of actions) items.push({ kind: 'Action', label: act.label, keys: act.keys, run: act.run });
     return typeof SpeedRank !== 'undefined' ? SpeedRank.palette(items) : items; // (round 13) what you pick most here, now, first; ↻ Again on top
   }
@@ -288,6 +308,7 @@ const AppUI = (() => {
     list.addEventListener('mousemove', (e) => { const r = e.target.closest('.palette-item'); if (r && r.__i !== pal.sel) { pal.sel = r.__i; paletteMark(); } }, { passive: true });
     input.addEventListener('input', () => {
       // "/" hands over to the command bar (chat commands over any tool, cmdbar.js)
+      if (input.value.startsWith('/') && window.Lazy?.isIn && !Lazy.isIn('cmdbar')) { const t = input.value; close(); Lazy.load('cmdbar').then(() => CmdBar.open(t)).catch(() => {}); return; } // (round 29: it loads after the first screen)
       if (input.value.startsWith('/') && typeof CmdBar !== 'undefined') { const t = input.value; close(); CmdBar.open(t); return; }
       pal.sel = 0; if (input.value.startsWith('?')) debounced(); else paletteRender();
     });
@@ -830,5 +851,5 @@ const AppUI = (() => {
     for (const [id, t] of Object.entries(THEMES)) addAction(`Theme: ${t.label}`, () => Look.applyPreset(id));
   }
 
-  return { actions: () => actions.slice(), init, offerSwirl, openSettings, palette, find, shortcutsHelp, zoom, switchRecent, replyFinished, usageDialog, downloadsDialog, trashDialog, addAction, THEMES, snapshotToChat, toggleOnTop, backupsDialog, backupNow, restoreBackup, autoBackup, exportData, downloadHistory: dlHistory };
+  return { actions: () => { flushLater(); return actions.slice(); }, addActionsLater, init, offerSwirl, openSettings, palette, find, shortcutsHelp, zoom, switchRecent, replyFinished, usageDialog, downloadsDialog, trashDialog, addAction, THEMES, snapshotToChat, toggleOnTop, backupsDialog, backupNow, restoreBackup, autoBackup, exportData, downloadHistory: dlHistory };
 })();

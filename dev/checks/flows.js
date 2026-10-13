@@ -22,6 +22,8 @@ try {
   await until(() => Native.hasView(C.id));
   Native.newChat(C.id);
   await until(() => typeof FlowsUI !== 'undefined' && Flows.list().length > 20, 10000);
+  // (round 29, fastboot) Flows loads after the first screen like the other groups: the registry is checked once they're all in
+  await until(() => !window.Lazy || Lazy.state().every((g) => g.tier === 'use' || g.state === 'loaded'), 20000);
 
   // ---- principal commands, tucked ones, hidden ones ----
   out.commands = Commands.list().length;
