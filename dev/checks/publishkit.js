@@ -103,7 +103,7 @@ try {
   }
 
   // ---- 6. close; the renders list's 📮; /post; the mission ----
-  dlg()?.close(); await wait(100);
+  dlg()?.close(); await until(() => !dlg() && !K(), 3000);
   ok(!dlg() && !K(), 'closed');
   Renders.open(); await wait(150);
   ok([...document.querySelectorAll('.rq-pop .rq-q')].some((b) => b.textContent === '📮'), 'the renders list has 📮 on finished videos');

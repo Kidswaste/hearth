@@ -11,7 +11,7 @@ const PublishHooks = (() => {
   }
   const open = (file, o = {}) => kit().then((K) => K.open(file, o)).catch((err) => { toast(err.message, { type: 'error' }); return null; });
   if (typeof Missions !== 'undefined' && Missions.add) {
-    Missions.add({ id: 'post', icon: '📮', label: 'Get it ready to post', desc: 'Your newest render, checked for Shorts / TikTok / Reels / YouTube (size, length, loudness, what the app\'s buttons cover, the loop), cover ideas, and this AI writes the title, description and hashtags. You post it yourself.',
+    Missions.add({ id: 'post', more: true, icon: '📮', label: 'Get it ready to post', desc: 'Your newest render, checked for Shorts / TikTok / Reels / YouTube (size, length, loudness, what the app\'s buttons cover, the loop), cover ideas, and this AI writes the title, description and hashtags. You post it yourself.',
       submit: (agentId, text) => { kit().then((K) => K.mission(agentId, text)).catch((err) => toast(err.message, { type: 'error' })); return true; } });
   }
   return { open, isVideo };
