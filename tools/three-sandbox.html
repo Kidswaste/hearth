@@ -877,8 +877,8 @@ function adShadows(r, scene) {
 // <pace-core> (pure: dev/labpace-test.js runs it in Node)
 function paceCore(opt = {}) {
   const AFTER = opt.after ?? 2; const REFRESH = opt.refresh ?? 1000; const MAX_NODES = opt.maxNodes ?? 4000;
-  // (gap in ms; < 0: the first frame or the clock went back: one frame; 0: the same moment drawn again: nothing)
-  const f60 = (gap) => (gap >= 0 && gap === gap ? Math.min(6, gap / (1000 / 60)) : 1);
+  // (gap in ms; < 0: the first frame or the clock went back: one frame; 0: the same moment drawn again: nothing; at most 15 frames, so a hitch over ¼ s doesn't jump the motion)
+  const f60 = (gap) => (gap >= 0 && gap === gap ? Math.min(15, gap / (1000 / 60)) : 1);
   // ---- the signature: two 32-bit hashes over the exact bits of every number that changes the picture ----
   const F = new Float64Array(1); const U = new Uint32Array(F.buffer);
   let a = 0; let b = 0; let live = false; let nodes = 0;
@@ -1061,7 +1061,8 @@ function paceSkip(r, scene, camera, EL) {
 }
 function paceInfo() {
   const m = PACE.meter.read();
-  const still = PACE.lastSkip >= 0 && PACE.lastSkip > PACE.lastDraw && frameTick - PACE.lastSkip < 3;
+  // (still: frames have been skipped just now and few drew lately; one poke's few frames don't make it "moving")
+  const still = PACE.lastSkip >= 0 && frameTick - PACE.lastSkip < 30 && (PACE.drewAvg || 0) < 0.35;
   return { ...m, still, on: PACE.on, battery: PACE.battery, drawn: PACE.drawn, skipped: PACE.skipped, refreshes: PACE.refreshes, sigUs: PACE.sigs ? Math.round((PACE.sigMs / PACE.sigs) * 1000) : 0, sleeping: paceSleeping.size, dragLow: PACE.dragLow };
 }
 // on battery (the Lab says so, from the computer's battery): Auto fps holds 60 at most, and the adaptive steps start
@@ -1088,6 +1089,7 @@ const tickFrames = (t) => {
   frameTick += 1;
   if (frameSeen === frameTick - 1 && lastFrameAt) { worstGap = Math.max(worstGap, t - lastFrameAt); if (mode === 'sketch') adaptQuality(t - lastFrameAt); }
   // (labpace) the frames the layers showed (drawn or still), for the steadiness readout
+  PACE.drewAvg = (PACE.drewAvg || 0) * 0.9 + (PACE.lastDraw === frameTick - 1 ? 0.1 : 0);
   if ((frameSeen === frameTick - 1 || PACE.stillSeen === frameTick - 1) && !parked) { if (PACE.presentAt) PACE.meter.feed(t - PACE.presentAt); PACE.presentAt = t; }
   lastFrameAt = t;
   // (labpace) parked with nothing to draw (no recording, no offline render): no more frames asked for until woken

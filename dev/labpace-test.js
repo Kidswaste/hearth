@@ -23,7 +23,7 @@ const P = paceCore();
 // ---------- 1. f60 ----------
 const near = (x, y, e = 1e-9) => Math.abs(x - y) <= e;
 check(near(P.f60(1000 / 60), 1) && near(P.f60(1000 / 120), 0.5) && near(P.f60(1000 / 240), 0.25) && near(P.f60(1000 / 30), 2), 'f60: 1 at 60 Hz, 0.5 at 120, 0.25 at 240, 2 under a 30 fps cap');
-check(P.f60(-1) === 1 && P.f60(0) === 0 && P.f60(5000) === 6 && P.f60(NaN) === 1, 'f60: a first frame / a clock that went back = 1, the same moment again = 0, a long pause at most 6');
+check(P.f60(-1) === 1 && P.f60(0) === 0 && P.f60(5000) === 15 && near(P.f60(125), 7.5) && P.f60(NaN) === 1, 'f60: a first frame / a clock that went back = 1, the same moment again = 0, a slow 8 fps preview 7.5, a long pause at most 15 (¼ s)');
 
 // a sketch's frame loop on a fake display: hz frames a second for `secs` (optionally a cap: every n-th frame runs)
 function play(hz, secs, frame, { cap = 0, jitter = 0 } = {}) {
