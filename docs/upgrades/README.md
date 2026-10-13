@@ -124,7 +124,8 @@ line count is lower than the number of upgrades).
 | Mac + Windows polish (round 31): file names with #, ?, %, accents load everywhere; one slash kind per path; Homebrew / npm tools found when started from the Dock; ⌘ names on a Mac; Windows shortcuts that allow notifications | [winmac.md](winmac.md) | 30 |
 | What can I do here? (round 31): one calm card per window (a chat, the Lab, the board) with 3–5 things worth trying there now, one click each, picked from what you haven't used and what's on screen; once by itself, then in the window's ⋯ | [quickstart.md](quickstart.md) | 53 |
 | Perfect loops (round 31): ∞ Make it loop over N bars (time, keyframes, reactions wrap), a cross-fade for scenes that can't loop, a seamless check with one-click fixes, perfect-loop renders | [perfectloop.md](perfectloop.md) | 35 |
-| **Total** | | **13,458** |
+| Smooth Lab on any machine (round 31): the preview lightens in steps when frames drop (resolution, filters, shadows, particles) and comes back up, skips layers hidden under opaque ones, a small note and an off switch; renders and stills always full quality | [labadapt.md](labadapt.md) | 20 |
+| **Total** | | **13,478** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.

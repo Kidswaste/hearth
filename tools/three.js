@@ -858,6 +858,19 @@ const ThreeLab = (() => {
     try { new IntersectionObserver(() => syncPark()).observe(previewHost); } catch { /* old engine: events + timer */ }
     // Light mode (for slower machines): 30 fps, at most 1× pixels in the preview, filters at half resolution
     let lightOn = Boolean(store.get('three.light', false));
+    // (round 31 "labadapt") the preview lightens itself while frames drop (resolution, filters, shadows, particles: see
+    // "Adaptive quality" in three-sandbox.html) and says so in its corner; right-click › View turns it off. Renders,
+    // stills and recordings are always full quality.
+    let adaptOn = store.get('three.adapt', true) !== false;
+    const adaptNote = el('div', { class: 'lab-adapt-note', hidden: true, text: 'lighter to stay smooth · full quality in renders', title: 'Frames were dropping, so the preview draws lighter while you watch (resolution, then filters, shadows, particles) and goes back up when there\'s room. Renders, stills and recordings are full quality. Right-click the preview › View to turn it off.' });
+    previewHost.append(adaptNote);
+    let adaptLast = null;
+    function paintAdapt(a) {
+      if (a) adaptLast = a;
+      const show = adaptOn && (adaptLast?.level || 0) > 0;
+      if (adaptNote.hidden === show) adaptNote.hidden = !show;
+    }
+    function setAdaptOn(on) { adaptOn = Boolean(on); store.set('three.adapt', adaptOn); box.send({ type: 'adapt', on: adaptOn }); paintAdapt(); return adaptOn; }
     function setLight(on) { lightOn = Boolean(on); store.set('three.light', lightOn); box.send({ type: 'light', on: lightOn }); toast(lightOn ? '🪶 Light mode: 30 fps, 1× pixels, filters at half size (recordings and stills stay full size)' : 'Light mode off', { timeout: 2200 }); return lightOn; }
     const stageBtn = btn('🖥', 'Stage window: run the sketch in its own window, steady, smooth frames for recording or a second monitor (F11 there for fullscreen). The preview here sleeps meanwhile.', () => setStage(!box.onStage));
     stageBtn.dataset.feature = 'Stage window';
@@ -2377,7 +2390,8 @@ const ThreeLab = (() => {
       fps: (v) => { fpsSel.value = String(v); fpsSel.dispatchEvent(new Event('change')); return v; },
       // round 16 "labperf": the numbers (/lab perf), the HUD, Light mode
       // (kept out of lastStats: the director's reports stay as short as they were)
-      perf: () => ({ ...(lastStats || {}), ...(lastStatsMsg?.p50 != null ? { frameMsP50: lastStatsMsg.p50, frameMsP95: lastStatsMsg.p95, drawCallsAll: lastStatsMsg.callsAll, gpuMB: lastStatsMsg.gpuMB, quality: lastStatsMsg.quality, fpsCap: lastStatsMsg.cap || 'screen', saved: lastStatsMsg.note } : {}), parked: parkedNow, focused: winFocused, fpsSetting: (FPS_OPTS.find(([v]) => v === String(fpsPref())) || FPS_OPTS[0])[1], light: lightOn, hud: perfHudOn, line: perfLine(lastStatsMsg) }),
+      perf: () => ({ ...(lastStats || {}), ...(lastStatsMsg?.p50 != null ? { frameMsP50: lastStatsMsg.p50, frameMsP95: lastStatsMsg.p95, drawCallsAll: lastStatsMsg.callsAll, gpuMB: lastStatsMsg.gpuMB, quality: lastStatsMsg.quality, fpsCap: lastStatsMsg.cap || 'screen', saved: lastStatsMsg.note } : {}), parked: parkedNow, focused: winFocused, fpsSetting: (FPS_OPTS.find(([v]) => v === String(fpsPref())) || FPS_OPTS[0])[1], light: lightOn, hud: perfHudOn, adapt: { on: adaptOn, ...(adaptLast || {}), note: !adaptNote.hidden }, line: perfLine(lastStatsMsg) }),
+      adapt: (on) => (on == null ? adaptOn : setAdaptOn(on)),
       perfHud: (on) => setPerfHud(on ?? !perfHudOn), light: (on) => (on == null || on !== lightOn ? setLight(on ?? !lightOn) : lightOn),
       // view
       code: (on) => setCodeVisible(on ?? split.classList.contains('no-code')), panel: (on) => setSlidersVisible(on ?? column.hidden),
@@ -2493,7 +2507,7 @@ const ThreeLab = (() => {
       statsSig = sig;
       stats.replaceChildren(
         el('b', { class: msg.fps < 30 ? 'bad' : msg.fps < 55 ? 'warn' : 'ok', text: `${Math.round(msg.fps)} fps` }),
-        msg.quality < 1 ? el('span', { class: 'warn', text: `preview ${Math.round(msg.quality * 100)}%`, title: 'Frames were dropping, so the preview draws at a lower resolution while you watch. Stills, screenshots and recordings stay at full resolution.' }) : null,
+        msg.quality < 1 ? el('span', { class: 'warn', text: `preview ${Math.round(msg.quality * 100)}%`, title: 'Frames were dropping, so the preview draws lighter while you watch (resolution first, then filters, shadows, particles). Stills, screenshots, recordings and renders stay full quality.' }) : null,
         msg.worst ? el('span', { class: msg.worst > 40 ? 'bad' : msg.worst > 24 ? 'warn' : 'ok', text: `worst ${Math.round(msg.worst)} ms`, title: 'The longest gap between two frames in the last half second: over ~25 ms shows as a stutter (60 Hz = 16.7 ms per frame)' }) : null,
         el('span', { text: `${msg.ms.toFixed(1)} ms render` }), el('span', { text: `${msg.calls} draw calls` }),
         el('span', { text: `${msg.triangles.toLocaleString()} tris` }), msg.points ? el('span', { text: `${msg.points.toLocaleString()} points` }) : null,
@@ -2507,7 +2521,7 @@ const ThreeLab = (() => {
     previewHost.append(perfHud);
     function perfLine(m) {
       if (!m) return 'no frames yet';
-      const q = m.quality < 1 ? ` · ${Math.round(m.quality * 100)}%` : '';
+      const q = (m.quality < 1 ? ` · ${Math.round(m.quality * 100)}%` : '') + (m.adapt?.level > 3 ? ` · lighter ${m.adapt.level}/9` : '') + (m.adapt?.covered ? ` · ${m.adapt.covered} hidden skipped` : '');
       return `${Math.round(m.fps)} fps${m.cap ? `/${m.cap}` : ''} · ${m.p50 ?? m.ms.toFixed(1)}/${m.p95 ?? '–'} ms · ${m.callsAll ?? m.calls} calls · ≈${m.gpuMB ?? '?'} MB${q}${m.light ? ' · 🪶' : ''}`;
     }
     function paintPerfHud(m) { if (!perfHudOn) return; const t = perfLine(m); if (perfHud.textContent !== t) perfHud.textContent = t; }
@@ -2589,6 +2603,7 @@ const ThreeLab = (() => {
         showMenu(r.left + msg.x * k, r.top + msg.y * k, previewMenuItems());
         return;
       }
+      if (msg.type === 'adapt') { paintAdapt(msg); return; }
       if (msg.type === 'gpu-lost') { showStall('The preview lost its GPU context.'); window.Jank?.gpu('The Lab preview'); return; }
       if (msg.type === 'trig-viz') { trigPanel?.feed(msg); return; }
       if (msg.type === 'stats') {
@@ -2598,6 +2613,7 @@ const ThreeLab = (() => {
         lastStatsMsg = msg;
         window.Jank?.lab(msg); // (round 20) the jank watch: real frame times on this computer (/smooth)
         paintPerfHud(msg);
+        if (msg.adapt) paintAdapt(msg.adapt);
         if (stats.hidden) stats.hidden = false;
         // (round 16: the line shows on hover; while it can't be seen it isn't rewritten, and never with the same text)
         if (!stats.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return;
@@ -2611,7 +2627,7 @@ const ThreeLab = (() => {
       if (msg.type === 'ready' && typeof ThreeAudio !== 'undefined') ThreeAudio.onReady();
       if (msg.type === 'ready') window.LabMotionIn?.onReady?.(); // (round 25) 📷 a fresh page gets the tracker again
       if (msg.type === 'ready') window.PerfectLoop?.onReady?.(); // (round 31) ∞ a fresh page gets the scene's loop clock again
-      if (msg.type === 'ready') { box.send(capMsg()); if (lightOn) box.send({ type: 'light', on: true }); parkedNow = false; syncPark(); }
+      if (msg.type === 'ready') { box.send(capMsg()); if (lightOn) box.send({ type: 'light', on: true }); if (!adaptOn) box.send({ type: 'adapt', on: false }); adaptLast = null; paintAdapt(); parkedNow = false; syncPark(); }
       if (msg.type === 'ready') { if (frozenNow) box.send({ type: 'freeze', on: true }); if (guides) box.send({ type: 'guides', kind: guides }); if (previewHost.classList.contains('presenting')) box.send({ type: 'present', on: true }); sendTriggers(); if (trigPanel) box.send({ type: 'trig-watch', on: true }); }
       if (msg.type === 'ready' && liveKind) {
         // a reloaded preview: the hub page keeps capturing, the Stage captures again by itself
@@ -2761,6 +2777,7 @@ const ThreeLab = (() => {
           { label: '▣ Present', key: 'P', action: () => togglePresent() },
           { label: box.onStage ? '🖥 Back from the Stage window' : '🖥 Stage window', action: () => setStage(!box.onStage) },
           { label: '⛶ Focus', key: 'Shift+F', checked: focusOn, action: () => setFocus(!focusOn) },
+          { label: 'Lighten to stay smooth', hint: 'full quality in renders', checked: adaptOn, action: () => { setAdaptOn(!adaptOn); toast(adaptOn ? 'The preview lightens itself when frames drop (renders stay full quality)' : 'The preview stays at full quality, even when frames drop', { timeout: 2200 }); } },
           { label: 'Guides', hint: GUIDES.find(([k]) => k === guides)[1], items: () => GUIDES.map(([k, l]) => ({ label: l, checked: k === guides, action: () => { guides = k; store.set('three.guides', k); box.send({ type: 'guides', kind: k }); guidesBtn.classList.toggle('on', Boolean(k)); } })) },
         ] },
         '-',

@@ -973,3 +973,8 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ The seamless check compares the loop's last frame with its first (publishkit's loop check): **≈ seamless** or **a visible jump**, with one click to fix it (blend the last beat into the first: the preview fades its seam, renders cross-fade it), or the director (cost first).
 - ✓ ⇪ Render the loop: a perfect-loop MP4 (or GIF) of exactly the loop, with its bars of the song. Ready to post's loop fix renders a Lab render's scene again as a perfect loop.
 - ○ Tested with fake engines on a software GPU (`sh dev/run-checks.sh perfectloop`, `node dev/perfectloop-test.js`); `Date.now()` and live sound don't follow the loop.
+## 🪶 The Lab preview stays smooth on any machine (round 31, labadapt, 20 upgrades: docs/upgrades/labadapt.md)
+- ✓ When frames drop, the preview lightens itself in steps (resolution 1 → 0.85 → 0.7 → 0.5, then filters at half / a third, smaller shadow maps, fewer GPU particles), skips steps the scene doesn't use, and climbs back with headroom, with hysteresis (no flicker).
+- ✓ A layer fully under an opaque one skips drawing (its code still runs) and draws again the frame it can be seen.
+- ✓ A quiet corner note while lighter ("lighter to stay smooth · full quality in renders"); right-click › View › Lighten to stay smooth turns it off. Light mode stays the manual option.
+- ✓ Stills, freezes, exports and recordings are full quality: pixel-identical to adapting off (`sh dev/run-checks.sh labadapt`). Heavy test scene on SwiftShader: 5.3 → 12.2 fps.
