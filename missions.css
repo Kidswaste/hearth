@@ -1,0 +1,100 @@
+/* (round 26, missions2) Missions (missions.js): the picker's More fold, the chip on your message, the calm result card
+   every multi-AI mission shares (who took part, live status, the answer up front, the rest folded), Plan first's bar,
+   and the helper agents' rows under a reply (chat-live.js). Quiet colors, no colored left bars; motion on opacity /
+   transform only. */
+
+/* ---- the picker ---- */
+.ms-cards { display: grid; gap: 6px; }
+.ms-more > summary { cursor: pointer; list-style: none; color: var(--muted); font-size: 12px; padding: 4px 2px; user-select: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ms-more > summary::-webkit-details-marker { display: none; }
+.ms-more > summary::before { content: '▸ '; }
+.ms-more[open] > summary::before { content: '▾ '; }
+.ms-more > summary:hover { color: var(--text); }
+.ms-more > .ms-grid { margin-top: 4px; }
+.ms-card.off { opacity: .5; }
+.ms-card.off:hover { border-color: var(--line); }
+
+/* ---- on your message ---- */
+.ms-chip { display: inline-flex; align-items: center; gap: 2px; margin-right: auto; padding: 0 2px 0 7px; border-radius: 99px; font-size: 11px; line-height: 18px; color: var(--muted); background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent); white-space: nowrap; }
+.ms-again { background: none; border: 0; color: inherit; cursor: pointer; font-size: 12px; padding: 0 5px; border-radius: 99px; line-height: 16px; }
+.ms-again:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.msg.user > .ms-chip { margin-top: 4px; }
+
+/* ---- the result card ---- */
+.mr-card { margin: 10px 0; padding: 8px 12px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); position: relative; container-type: inline-size; }
+.collab-card.mr-card { background: var(--surface); }
+.collab-card.mr-card::before { display: none; } /* calm: the live state is in the avatars */
+.msg.mission-msg { padding: 0; background: none; border: 0; max-width: none; }
+.mr-head { display: flex; align-items: center; gap: 8px; min-height: 26px; font-size: 12px; }
+.mr-head .spacer { flex: 1; }
+.mr-label { background: none; border: 0; padding: 2px 0; color: var(--text); font: inherit; font-weight: 600; letter-spacing: .01em; cursor: pointer; white-space: nowrap; }
+.mr-people { display: inline-flex; align-items: center; }
+.mr-people .mr-av + .mr-av { margin-left: -5px; }
+.mr-av { position: relative; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; flex: none;
+  background: color-mix(in srgb, var(--c, var(--accent)) 30%, var(--surface)); box-shadow: 0 0 0 2px var(--surface); font-size: 10px; line-height: 1; color: var(--text); }
+.mr-av-face { overflow: hidden; max-width: 16px; text-align: center; }
+.mr-av::after { content: ''; position: absolute; right: -2px; bottom: -2px; width: 7px; height: 7px; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--surface); background: var(--muted); }
+.mr-av.done::after { background: #3fd28b; }
+.mr-av.failed::after, .mr-av.none::after { background: #e5534b; }
+.mr-av.stopped::after { background: var(--muted); }
+.mr-av.sent::after { background: #4fb3ff; }
+.mr-av.thinking::after, .mr-av.writing::after, .mr-av.sending::after { background: #e0a33a; animation: mr-pulse 1.2s ease-in-out infinite; }
+.mr-av.waiting::after { background: transparent; box-shadow: inset 0 0 0 1.5px var(--muted), 0 0 0 1.5px var(--surface); }
+@keyframes mr-pulse { 50% { opacity: .25; transform: scale(.7); } }
+.mr-tok { font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mr-head .msg-act { opacity: .8; }
+.mr-head .msg-act:hover { opacity: 1; }
+.mr-status { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 4px 0 2px; font-size: 11.5px; color: var(--muted); }
+.mr-st { display: inline-flex; align-items: center; gap: 5px; }
+.mr-st > i { width: 6px; height: 6px; border-radius: 50%; background: var(--c, var(--accent)); }
+.mr-st.thinking > i, .mr-st.writing > i, .mr-st.sending > i { animation: mr-pulse 1.2s ease-in-out infinite; }
+.mr-st.thinking, .mr-st.writing { color: var(--text); }
+.mr-st.failed { color: #e5534b; }
+
+/* the answer up front: plain, roomy, no tinted box */
+.mr-card .mr-final, .mr-card .collab-part.mr-final { margin-top: 6px; padding: 0; border: 0; background: none; box-shadow: none; }
+.mr-card .mr-final .collab-part-head b::before { content: none; }
+.mr-card .mr-final > .body, .mr-answer { font-size: 14px; line-height: 1.55; overflow-wrap: anywhere; }
+.mr-by { display: flex; align-items: center; gap: 6px; font-size: 11.5px; margin-bottom: 2px; }
+.mr-acts, .mr-card .collab-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; padding: 0; border: 0; justify-content: flex-start; font-size: 11.5px; }
+.mr-card .collab-part { border-color: var(--line); background: color-mix(in srgb, var(--text) 3%, transparent); }
+.mr-card .collab-part.picked { box-shadow: none; }
+.mr-card .collab-grid { margin-top: 6px; }
+.mr-error { color: #e5534b; font-size: 12px; margin-top: 6px; }
+
+/* the others, folded */
+.mr-others { margin-top: 8px; font-size: 12px; }
+.mr-others > summary { cursor: pointer; list-style: none; color: var(--muted); width: fit-content; user-select: none; padding: 2px 0; }
+.mr-others > summary::-webkit-details-marker { display: none; }
+.mr-others > summary::before { content: '▸ '; }
+.mr-others[open] > summary::before { content: '▾ '; }
+.mr-others > summary:hover { color: var(--text); }
+.mr-others > .collab-round, .mr-others > .collab-grid, .mr-others > .collab-verdict, .mr-others > .mr-row { margin: 4px 0 0; }
+.mr-row > summary { display: flex; align-items: center; gap: 7px; cursor: pointer; list-style: none; padding: 3px 0; min-width: 0; }
+.mr-row > summary::-webkit-details-marker { display: none; }
+.mr-row > summary > .hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.mr-row.failed > summary > .hint { color: #e5534b; }
+.mr-row > .mr-answer { margin: 2px 0 0 27px; font-size: 13.5px; }
+.mr-row > .mr-acts { margin-left: 27px; }
+
+/* ---- Plan first: under the plan ---- */
+.ms-plan { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 8px 0 2px; padding: 6px 10px; border-radius: 9px; font-size: 12px; background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.ms-plan .hint { margin-right: auto; }
+
+/* ---- helper agents a reply deployed (chat-live.js): one tidy row each ---- */
+.live-agents { gap: 2px; margin: 6px 0 4px; padding: 4px 0; }
+.live-agent > summary, .done-list > .live-agent { display: grid; grid-template-columns: 10px minmax(0, max-content) minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.done-list { padding-left: 0 !important; list-style: none; margin: 4px 0 2px; }
+.done-list > .live-agent { padding: 1px 0; white-space: nowrap; }
+.la-pip { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); justify-self: center; }
+.live-agent.running .la-pip { background: #e0a33a; animation: mr-pulse 1.2s ease-in-out infinite; }
+.live-agent.done .la-pip { background: #3fd28b; }
+.live-agent.failed .la-pip { background: #e5534b; }
+.la-name { font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 34ch; }
+.la-doing { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-agent.failed .la-doing { color: #e5534b; }
+.la-time { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.msg .agent-fold { margin-top: 6px; }
+.msg .agent-fold[open] { display: block; border-radius: 10px; padding: 4px 10px 6px; width: auto; }
+@media (prefers-reduced-motion: reduce) { .mr-av::after, .mr-st > i, .la-pip { animation: none !important; } }
+:root[data-motion=calm] .mr-av::after, :root[data-motion=calm] .mr-st > i, :root[data-motion=calm] .la-pip { animation: none; }

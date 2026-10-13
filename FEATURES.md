@@ -806,3 +806,10 @@ Right-click ⋯ in a chat for the old quick menu (rename, export, delete…).
 
 ### ◎ Missions
 The ◎ button by the chat box (and the top of ⋯) picks what your next message becomes: Just answer · Split it up (it deploys helper agents) · Swarm (several AIs answer, a chair merges; in the Lab, a crew of 4 explores variations) · Answer, then review (the other AI checks it) · Debate · Side by side (Claude and Astra) · Jam (a music visual in the Lab, taking turns) · Pair on code · Ask everyone. A click is for the next message only; 📌 keeps it from now on; right-click ◎ goes back to a normal reply. Your words go out as written.
+
+## ◎ Missions, finished (round 26, missions2, 34 upgrades: docs/upgrades/missions2.md)
+- ✓ One calm result card for Swarm, Debate, Side by side, Pair on code, Ask everyone, Research and Second opinion only: small avatars of who took part with a live status each, the final answer up front, the rest folded, Use this one / Merge where they apply, tokens small.
+- ✓ New missions: 📝 Plan first (▶ Go ahead under the plan), 🌐 Research (Astra searches the web and cites; from Claude, Astra answers it), 🎓 Explain like a teacher, 👁 Second opinion only; rarer ones under More; missions that can't run here are greyed with the reason.
+- ✓ Your message keeps a chip of the mission it was sent with ("🐝 Swarm") with ↻ to run it again; its tooltip shows any note the mission added.
+- ✓ Split it up: the helper agents show as tidy live rows under the reply (pip, task, what it's on, time), kept after it ends.
+- ○ Tested with the fake engines (`sh dev/run-checks.sh missions`); Research's web search only runs on a real Astra.

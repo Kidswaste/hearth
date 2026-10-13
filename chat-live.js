@@ -155,6 +155,11 @@ const ChatLive = (() => {
     d.addEventListener('toggle', () => { a.ver += 1; a.shown = -1; });
     return d;
   }
+  // (round 26, missions2) one tidy row per helper: a status pip, what it does, what it is on now (or its result), its time
+  function rowParts(a, doing, time) {
+    return [el('i', { class: 'la-pip' }), el('b', { class: 'la-name', text: `${a.description}${a.kind && a.kind !== 'general-purpose' ? ` · ${a.kind}` : ''}` }),
+      el('span', { class: 'la-doing', text: doing }), el('span', { class: 'la-time', text: time })];
+  }
   function paintAgent(d, a) {
     if (d.ver === a.ver) return;
     d.ver = a.ver;
@@ -162,8 +167,9 @@ const ChatLive = (() => {
     const time = secs((a.status === 'running' ? now() : a.at + (a.ms || 0)) - a.at);
     const doing = a.status === 'running' ? (a.tool ? `${toolShort(a.tool.name)}${a.tool.args ? ` ${short(a.tool.args, 30)}` : ''}` : 'thinking') : short(a.summary || (a.status === 'failed' ? 'failed' : 'done'), 90);
     const sum = d.firstChild;
-    const text = `${ICON[a.status] || '◌'} ${a.description}${a.kind && a.kind !== 'general-purpose' ? ` · ${a.kind}` : ''} — ${doing} · ${time}${a.steps.length ? ` · ${a.steps.length} step${a.steps.length > 1 ? 's' : ''}` : ''}`;
-    if (sum.textContent !== text) { sum.textContent = text; sum.title = a.summary || ''; }
+    const steps = a.steps.length ? ` · ${a.steps.length} step${a.steps.length > 1 ? 's' : ''}` : '';
+    const key = `${a.status}|${a.description}|${a.kind}|${doing}|${time}${steps}`;
+    if (sum.key !== key) { sum.key = key; sum.replaceChildren(...rowParts(a, doing, `${time}${steps}`)); sum.title = `${ICON[a.status] || '◌'} ${a.status}${a.summary ? ` — ${a.summary}` : ''}`; }
     if (!d.open) return;
     const ol = d.lastChild;
     ol.replaceChildren(...a.steps.slice(-12).map((e) => el('li', { class: e.status, text: `${label(e.name)}${e.args ? ` · ${short(e.args, 40)}` : ''}${e.summary ? ` → ${short(e.summary, 60)}` : ''}` })));
@@ -188,7 +194,7 @@ const ChatLive = (() => {
     if (!s || !msgEl) return;
     if (s.agents.size) {
       let tree = msgEl.querySelector(':scope > .live-agents');
-      if (!tree) { tree = el('div', { class: 'live-agents' }); body.before(tree); }
+      if (!tree) { tree = el('div', { class: 'live-agents' }); body.after(tree); } // (round 26) under the reply text
       for (const a of s.agents.values()) {
         if (!a.row) a.row = agentRow(a);
         if (a.row.parentNode !== tree) tree.append(a.row);
@@ -238,15 +244,17 @@ const ChatLive = (() => {
       el('summary', { text: `🤖 Deployed ${ag.length} agent${ag.length > 1 ? 's' : ''}${n('done') ? ` · ${n('done')} done` : ''}${n('failed') ? ` · ${n('failed')} failed` : ''}${n('stopped') ? ` · ${n('stopped')} stopped` : ''}` }));
     d.addEventListener('toggle', () => {
       if (!d.open || d.querySelector('ol')) return;
-      d.append(el('ol', { class: 'tool-list' }, ag.map((a) => el('li', { class: a.status, text: `${ICON[a.status] || '•'} ${a.description}${a.kind && a.kind !== 'general-purpose' ? ` · ${a.kind}` : ''} · ${secs(a.ms || 0)}${a.steps ? ` · ${a.steps} step${a.steps > 1 ? 's' : ''}` : ''}${a.summary ? ` — ${a.summary}` : ''}` }))));
+      // (round 26) the same tidy rows as while they worked: pip, what it did, its result, its time
+      d.append(el('ol', { class: 'tool-list live-agents done-list' }, ag.map((a) => el('li', { class: `live-agent ${a.status}`, title: a.summary || '' },
+        ...rowParts(a, a.summary || a.status, `${secs(a.ms || 0)}${a.steps ? ` · ${a.steps} step${a.steps > 1 ? 's' : ''}` : ''}`)))));
     });
     return d;
   }
   function onMessage(node, m) {
     if (!m.activity?.agents?.length || node.querySelector(':scope > .agent-fold')) return;
     const fold = agentFold(m.activity);
-    const tools = node.querySelector(':scope > .tool-fold');
-    if (tools) tools.after(fold); else node.prepend(fold);
+    const body = node.querySelector(':scope > .body'); // (round 26) under the reply, like the live list
+    if (body) body.after(fold); else node.prepend(fold);
   }
 
   // ---------- actions ----------

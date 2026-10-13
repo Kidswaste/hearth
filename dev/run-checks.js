@@ -63,6 +63,7 @@ const GROUPS = {
   voice: ['voice', 'unit:voice-test'], // (round 23) talk to chats: push to talk, local whisper (dev/fake-whisper.js), voice commands, read aloud
   labexport: ['labexport', 'unit:labexport-test'], // (round 22) best-quality Lab exports in a hidden page // (round 21) Report to the developer: masking, gh (fake), the browser link, fixed in an update
   assets: ['assets', 'unit:assets-test'], // (round 24) the asset library: fixtures folder, thumbnails, drops, fake Poly Haven / ambientCG (smoke --fake-assets)
+  missions: ['missions', 'missions2'], // (round 26) ◎ Missions: the picker, result cards, chips + ↻, plan first, ask everyone, helper rows
   unit: UNIT.map((u) => `unit:${u}`),
 };
 GROUPS.all = [...new Set([...all.filter((n) => !/^astra-/.test(n)), ...GROUPS.astra, ...GROUPS.unit])];
