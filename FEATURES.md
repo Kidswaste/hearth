@@ -988,3 +988,8 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ Astra on Windows: when its sandbox blocks every command, the chat says so in one line with **Run without its sandbox…** (a warned opt-in, also in ⋯ AI setup → Files on this computer; Read keeps the sandbox).
 - ✓ Any command an engine refuses by its own policy now gets that one line with the right fix (never silent).
 - ○ Tested with fake engines simulating Windows (`FAKE_WINDOWS` / fake-switches `windows`: `sh dev/run-checks.sh access-chat options`, `node dev/access-test.js`); the real Windows confirmation is the owner's next try.
+## 🪟 Windows, solid (round 32, winpolish, 37 upgrades: docs/upgrades/winpolish.md)
+- ✓ Fixed "Claude installed with npm isn't found on Windows": Hearth finds `claude.cmd` / `codex.cmd` (npm's folder and prefix, nvm-windows, Volta, scoop, winget, pnpm, Bun, the installer, the desktop apps) and starts them through their Node script (no cmd.exe; a `.cmd` it can't read goes through cmd.exe with every argument quoted).
+- ✓ Deletes stay recoverable: a file on a network share or USB drive (no Recycle Bin, Windows would delete it for good) is left alone with a plain reason.
+- ✓ Windows' own errors (no Node.js, a half-removed npm install, a refused `.cmd`, the antivirus, a too-long command line) read as one plain sentence with the fixing button; stack traces never show.
+- ○ Simulated Windows only (`node dev/winpolish-test.js`, `sh dev/run-checks.sh winpolish`); the real check is the owner's next start on the PC.

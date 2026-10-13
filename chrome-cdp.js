@@ -31,9 +31,14 @@ function candidates({ platform = process.platform, env = process.env, home = os.
     for (const [kind, rel] of mac) for (const dir of apps) add(kind, path.posix.join(dir, rel));
   } else if (platform === 'win32') {
     const w = path.win32;
-    const roots = [env.PROGRAMFILES || 'C:\\Program Files', env['PROGRAMFILES(X86)'] || env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', env.LOCALAPPDATA || (home ? w.join(home, 'AppData', 'Local') : null)].filter(Boolean);
+    // (round 32, winpolish) Windows' environment ignores case (ProgramFiles / PROGRAMFILES); a 32-bit Hearth sees the
+    // 64-bit Program Files only as ProgramW6432; per-user installs live in LocalAppData
+    const ev = (n) => { const k = Object.keys(env || {}).find((x) => x.toLowerCase() === n.toLowerCase()); return k ? env[k] : ''; };
+    const roots = [...new Set([ev('ProgramW6432'), ev('ProgramFiles') || 'C:\\Program Files', ev('ProgramFiles(x86)') || 'C:\\Program Files (x86)', ev('LOCALAPPDATA') || (home ? w.join(home, 'AppData', 'Local') : null)].filter(Boolean))];
     const win = [['chrome', 'Google\\Chrome\\Application\\chrome.exe'], ['edge', 'Microsoft\\Edge\\Application\\msedge.exe'], ['brave', 'BraveSoftware\\Brave-Browser\\Application\\brave.exe'], ['chromium', 'Chromium\\Application\\chrome.exe']];
     for (const [kind, rel] of win) for (const r of roots) add(kind, w.join(r, rel));
+    // Chrome Beta / Dev / Canary when stable Chrome isn't there (kept after the stable places)
+    for (const rel of ['Google\\Chrome Beta\\Application\\chrome.exe', 'Google\\Chrome Dev\\Application\\chrome.exe', 'Google\\Chrome SxS\\Application\\chrome.exe']) for (const r of roots) add('chrome', w.join(r, rel));
   } else {
     const dirs = String(env.PATH || '/usr/local/bin:/usr/bin:/bin').split(':').filter(Boolean);
     const lin = [['chrome', ['google-chrome', 'google-chrome-stable']], ['edge', ['microsoft-edge', 'microsoft-edge-stable']], ['brave', ['brave-browser', 'brave']], ['chromium', ['chromium', 'chromium-browser']]];

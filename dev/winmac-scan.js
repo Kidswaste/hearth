@@ -98,6 +98,7 @@ const REVIEWED = [
   ['slash-join', 'astra.js', 'engine.log'], ['slash-join', 'devreport.js', 'engine.log'], // read by Node: either slash works
   ['slash-join', 'tools/three-seq.js', '${dir}/frame_'], ['slash-join', 'tools/three-seq.js', '.hearth-titles-seq'], ['slash-join', 'tools/three-export.js', '.hearth-titles-xp'], // temporary files Node / ffmpeg read
   ['*', 'winmac.js', ''], // the helpers themselves
+  ['shell-cmd', 'winpolish.js', 'powershell.exe'], // (round 32) the Windows-only drive-type probe (trashCheck runs it only on win32)
 ];
 const reviewed = (h) => REVIEWED.some(([r, f, piece]) => (r === '*' || r === h.rule) && h.file.startsWith(f) && h.text.includes(piece));
 

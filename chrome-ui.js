@@ -26,7 +26,8 @@ const ChromeUI = (() => {
     try { st = await api().status({ fresh }); stAt = Date.now(); } catch (err) { st = { found: null, error: err.message }; }
     return st;
   }
-  const say = (r, okText) => { if (r?.ok) { if (okText) toast(okText, { timeout: 4500 }); } else toast(r?.error || 'Chrome didn\'t answer', { type: 'error', timeout: 9000 }); return r; };
+  // (round 32, winpolish) "Chrome isn't installed" gets its fix as a button (Google's download page)
+  const say = (r, okText) => { if (r?.ok) { if (okText) toast(okText, { timeout: 4500 }); } else toast(r?.error || 'Chrome didn\'t answer', { type: 'error', timeout: 9000, action: /isn't installed/i.test(r?.error || '') ? { label: 'Get Chrome', fn: () => window.hub.openExternal('https://www.google.com/chrome/') } : undefined }); return r; };
 
   // ---------- website chats in Chrome ----------
   const covers = new Map(); // agent id → { host, view (the <webview>), wrap, cv (the Chrome view) }

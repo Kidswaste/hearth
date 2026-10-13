@@ -121,7 +121,7 @@ const EngineHealth = (() => {
     }
     return out.join('\n');
   }
-  const KIND = { homebrew: 'Homebrew', npm: 'npm', bun: 'Bun', desktop: 'desktop app', native: 'installer', other: 'on PATH', settings: 'Settings → Engines' };
+  const KIND = { homebrew: 'Homebrew', npm: 'npm', pnpm: 'pnpm', scoop: 'scoop', winget: 'winget', bun: 'Bun', desktop: 'desktop app', native: 'installer', other: 'on PATH', settings: 'Settings → Engines' };
   function actionsFor(r, ctx) {
     const acts = problems(r).map((p) => ({ label: p.label, run: () => fix(p.engine, p.action) }));
     acts.push({ label: 'Test both (a few tokens)', title: 'Sends "Reply with just: OK" to one Claude and one Astra agent (lean: no tools, low effort)', run: () => testBoth(ctx) });
