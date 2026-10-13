@@ -18,7 +18,7 @@ const F = require('./fake-common');
     if (sw.claudeLoggedOut) { console.log('Not logged in. Run claude auth login'); process.exit(1); }
     console.log('Logged in (fake Claude Max account)'); return;
   }
-  if (argv[0] === 'auth' || argv[0] === '/login') { F.setSwitch({ claudeLoggedOut: null }); console.log('(fake) signed in'); return; }
+  if (argv[0] === 'auth' || argv[0] === '/login') { F.setSwitch({ claudeLoggedOut: null, claudeExpired: null }); console.log('(fake) signed in'); return; }
   if (argv[0] === 'update') { const to = sw.updateTo || '2.1.400'; F.setSwitch({ claudeVersion: to }); console.log(`Successfully updated from ${version} to version ${to}`); return; }
   // FAKE_CLAUDE_REJECT=--flag,--other acts like a Claude Code version that doesn't know those options
   const reject = (process.env.FAKE_CLAUDE_REJECT || '').split(',').find((f) => f && argv.includes(f));
@@ -45,6 +45,21 @@ const F = require('./fake-common');
   if (sw.claudeNeeds && F.older(version, sw.claudeNeeds)) { F.out({ type: 'result', subtype: 'error', is_error: true, result: `API Error: 400 {"type":"error","error":{"type":"invalid_request_error","message":"Claude Code version ${sw.claudeNeeds} or newer is required to use this model."}}`, session_id: sessionId }); return; }
   if (p.login) { F.out({ type: 'result', subtype: 'error', is_error: true, result: 'Invalid API key · Please run /login', session_id: sessionId }); return; }
   if (p.crash) { process.stderr.write('fake-claude: simulated crash\n'); process.exit(3); }
+  // (round 34, offline) the service's own failures, worded like the real CLI's result line (fake-common.js switches)
+  const fail = (result) => F.out({ type: 'result', subtype: 'success', is_error: true, result, session_id: sessionId, duration_ms: 400 });
+  if (sw.claudeExpired) { fail('OAuth token has expired. Please obtain a new token or refresh your existing token. · Please run /login'); return; }
+  if (F.trip('claude-limit', sw.claudeLimit)) { fail(F.limitText('claude', sw)); return; }
+  if (F.trip('claude-busy', sw.claudeBusy)) { fail('API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}'); return; }
+  if (F.trip('claude-rate', sw.claudeRate)) { fail('API Error: 429 {"type":"error","error":{"type":"rate_limit_error","message":"This request would exceed the rate limit for your organization. Please try again later."}}'); return; }
+  if (F.trip('claude-proxy', sw.claudeProxy)) { fail('API Error: Connection error. (self signed certificate in certificate chain)'); return; }
+  // claudeCut: halfway through, the connection drops; asked to continue (on the same session), it writes the rest,
+  // starting with its last few words again (as models do), which Hearth's stitch removes
+  const cutState = `cut-claude-${sessionId}`;
+  if (/Your last reply was cut off \(the connection dropped\)/.test(prompt)) {
+    const st = F.loadState(cutState);
+    if (st.rest != null) { text = `${st.overlap}${st.rest}`; F.saveState(cutState, {}); }
+  }
+  const cutting = F.trip('claude-cut', sw.claudeCut);
 
   F.out({ type: 'stream_event', event: { type: 'message_start', message: { id: `msg_${F.uuid()}`, model } }, session_id: sessionId });
   let index = 0;
@@ -135,6 +150,16 @@ const F = require('./fake-common');
   // (round 28, router) "runinfo": the reply ends with the model + effort this run really got (dev/checks/router.js)
   if (/\bruninfo\b/i.test(prompt)) text += `\n\nrun: model=${arg('--model') || 'default'} effort=${arg('--effort') || 'none'}`;
   F.out({ type: 'stream_event', event: { type: 'content_block_start', index, content_block: { type: 'text', text: '' } } });
+  if (cutting) {
+    const half = Math.max(text.indexOf(' ', Math.floor(text.length / 2)), 1);
+    const first = text.slice(0, half);
+    const from = first.lastIndexOf(' ', first.length - 12);
+    F.saveState(cutState, { rest: text.slice(half), overlap: first.slice(from + 1), full: text });
+    for (const t of F.pieces(first)) { F.out({ type: 'stream_event', event: { type: 'content_block_delta', index, delta: { type: 'text_delta', text: t } } }); await F.sleep(wait); }
+    await F.sleep(200);
+    fail('API Error: Connection error.');
+    return;
+  }
   for (const t of F.pieces(text)) { F.out({ type: 'stream_event', event: { type: 'content_block_delta', index, delta: { type: 'text_delta', text: t } } }); await F.sleep(wait); }
   F.out({ type: 'stream_event', event: { type: 'content_block_stop', index } });
   F.out({ type: 'assistant', message: { content: [{ type: 'text', text }] }, session_id: sessionId });

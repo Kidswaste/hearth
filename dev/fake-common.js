@@ -430,7 +430,19 @@ const serverFor = (servers, tool) => servers[{ three: 'three', video: 'video', a
 //   windows                        (winshell, FAKE_WINDOWS=1) act like the CLIs on a Windows PC: Claude runs commands with
 //                                  its PowerShell tool (refused when --tools leaves it out, like the real CLI); Codex's
 //                                  sandbox refuses every command "by policy" unless it runs with danger-full-access
-const SWITCHES = ['windows', 'claudeNoAuth', 'claudeVersion', 'codexVersion', 'claudeNeeds', 'codexNeeds', 'claudeLoggedOut', 'codexLoggedOut', 'claudeNetwork', 'codexNetwork', 'claudeMcpMissing', 'codexMcpCancel', 'updateTo'];
+// (round 34, offline) things going wrong outside Hearth, each 'once' | 'always' | a number of times (like the real texts):
+//   claudeBusy / codexBusy         the service is overloaded (Claude: "API Error: 529 …overloaded_error…"; Codex: "We're
+//                                  currently experiencing high demand…" + "exceeded retry limit, last status: 529")
+//   claudeRate                     a short rate limit ("API Error: 429 …rate_limit_error…")
+//   claudeLimit / codexLimit       the plan's usage limit; its wording from limitForm: 'epoch' (Claude's "…reached|<seconds>",
+//                                  the default), 'zone' ("You've hit your limit · resets 6pm (Europe/Paris)"), 'in' (Codex's
+//                                  "…or try again in 2 hours 13 minutes."); limitAt: the reset moment (ms) for 'epoch'
+//   claudeExpired                  the sign-in expired ("OAuth token has expired…"); `auth login` clears it
+//   claudeProxy                    a VPN / proxy in the way ("…self signed certificate in certificate chain")
+//   claudeCut                      the reply is cut off halfway ("API Error: Connection error."), as when the laptop slept
+//                                  or the Wi-Fi dropped; asked to continue, it writes the rest (repeating its last words)
+const SWITCHES = ['windows', 'claudeNoAuth', 'claudeVersion', 'codexVersion', 'claudeNeeds', 'codexNeeds', 'claudeLoggedOut', 'codexLoggedOut', 'claudeNetwork', 'codexNetwork', 'claudeMcpMissing', 'codexMcpCancel', 'updateTo',
+  'claudeBusy', 'codexBusy', 'claudeRate', 'claudeLimit', 'codexLimit', 'limitForm', 'limitAt', 'claudeExpired', 'claudeProxy', 'claudeCut'];
 const kvFile = () => path.join(process.cwd(), '..', 'kv', 'fake-switches.json');
 function switches() {
   const env = {};
@@ -445,14 +457,25 @@ function setSwitch(patch) {
   for (const [k, v] of Object.entries(patch)) { if (v == null) delete kv[k]; else kv[k] = v; }
   try { fs.writeFileSync(kvFile(), JSON.stringify(kv)); } catch { /* no data folder: env only */ }
 }
-// 'once': true the first time per Hearth copy (a marker next to the switches), 'always': always
+// 'once': true the first time per Hearth copy (a marker next to the switches), 'always': always, a number N (round 34):
+// the first N times
 function trip(name, mode) {
   if (mode === 'always') return true;
-  if (mode !== 'once') return false;
+  const times = mode === 'once' ? 1 : /^\d+$/.test(String(mode ?? '')) ? Number(mode) : 0;
+  if (!times) return false;
   const marker = fs.existsSync(path.dirname(kvFile())) ? path.join(path.dirname(kvFile()), `fake-once-${name}.json`) : path.join(STATE_DIR, `once-${name}-${process.env.FAKE_ONCE_TAG || ''}`);
-  if (fs.existsSync(marker)) return false;
-  try { fs.writeFileSync(marker, '1'); } catch { /* best effort */ }
+  let n = 0;
+  try { n = Number(fs.readFileSync(marker, 'utf8')) || 0; } catch { /* first time */ }
+  if (n >= times) return false;
+  try { fs.writeFileSync(marker, String(n + 1)); } catch { /* best effort */ }
   return true;
+}
+// (round 34) the plan's usage limit, in the wording the real CLIs use
+function limitText(engine, sw) {
+  const at = Number(sw.limitAt) || (Math.floor(Date.now() / 3600000) + 2) * 3600000;
+  if (engine === 'codex' || sw.limitForm === 'in') return "You've hit your usage limit. Upgrade to Pro (https://openai.com/chatgpt/pricing) or try again in 2 hours 13 minutes.";
+  if (sw.limitForm === 'zone') return "You've hit your limit · resets 6pm (Europe/Paris)";
+  return `Claude AI usage limit reached|${Math.floor(at / 1000)}`;
 }
 const older = (a, b) => { const pa = String(a).match(/\d+/g) || []; const pb = String(b).match(/\d+/g) || []; for (let i = 0; i < 3; i++) { const d = (+pa[i] || 0) - (+pb[i] || 0); if (d) return d < 0; } return false; };
 
@@ -467,4 +490,4 @@ function logRun(engine, { system = '', prompt = '', prior = 0, text = '', thinki
   } catch { /* the log is optional */ }
 }
 
-module.exports = { logRun, userPartOf: userPart, readStdin, sleep, out, uuid, loadState, saveState, plan, pieces, delayMs, mcpClient, serverFor, switches, setSwitch, trip, older, runTool, within };
+module.exports = { logRun, userPartOf: userPart, readStdin, sleep, out, uuid, loadState, saveState, plan, pieces, delayMs, mcpClient, serverFor, switches, setSwitch, trip, older, runTool, within, limitText };

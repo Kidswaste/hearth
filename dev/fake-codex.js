@@ -38,6 +38,9 @@ const F = require('./fake-common');
   if (await require('./fake-liveness').codex(prompt, threadId)) return; // (round 21) long-task scenarios
   if (p.login || sw.codexLoggedOut) { F.out({ type: 'turn.failed', error: { message: 'Not logged in. Please run codex login' } }); return; }
   if (sw.codexNeeds && F.older(version, sw.codexNeeds)) { F.out({ type: 'error', message: 'This model requires a newer version of Codex. Please upgrade to the latest version.' }); F.out({ type: 'turn.failed', error: { message: 'This model requires a newer version of Codex. Please upgrade to the latest version.' } }); return; }
+  // (round 34, offline) the service's own failures, worded like the real CLI's (fake-common.js switches)
+  if (F.trip('codex-limit', sw.codexLimit)) { F.out({ type: 'turn.failed', error: { message: F.limitText('codex', sw) } }); return; }
+  if (F.trip('codex-busy', sw.codexBusy)) { F.out({ type: 'turn.failed', error: { message: "We're currently experiencing high demand, which may cause temporary errors." } }); return; }
   if (F.trip('codex-network', sw.codexNetwork)) { F.out({ type: 'turn.failed', error: { message: 'stream disconnected before completion: error sending request for url (https://chatgpt.com/backend-api/codex/responses)' } }); return; }
   // Codex cancels a tool call it would have to ask about ('new': unless the server's tools are pre-approved; 'old':
   // an older Codex that ignores that key, unless approvals are off altogether)

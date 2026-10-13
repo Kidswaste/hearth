@@ -143,6 +143,7 @@ contextBridge.exposeInMainWorld('hub', {
   reach: { resolve: call('reach:resolve'), open: call('reach:open'), info: call('reach:info') },
   firstrun: { facts: call('firstrun:facts'), folders: call('firstrun:folders'), perm: call('firstrun:perm'), run: call('firstrun:run') }, // (round 28) Check this computer (firstrunmain.js)
   update: { status: call('update:status'), apply: call('update:apply'), restart: call('update:restart'), reload: call('update:reload') },
+  net: { probe: call('net:probe'), onPower: on('net:power') }, // (round 34, offline) is the internet there? the computer slept / woke (offlinemain.js)
   safetynet: { status: call('safetynet:status'), keep: call('safetynet:keep'), done: call('safetynet:done'), testCrash: call('safetynet:test-crash') }, // (round 29) after an unexpected exit: what was kept (safetynetmain.js)
   devreport: { info: call('devreport:info'), gh: call('devreport:gh'), send: call('devreport:send'), states: call('devreport:states'), log: call('devreport:log'), crashes: call('devreport:crashes') }, // (round 21) Report to the developer
   fetchText: call('net:text'),

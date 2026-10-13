@@ -10,7 +10,7 @@
 //   sh dev/run-checks.sh --list               # groups and checks
 //   options: --out <dir> (logs and pictures, default <tmp>/hearth-checks) · --shots (journeys keep a picture per step)
 //   · --fixtures-only · --stop (first failure)
-// Groups: qa, board, capture, journeys, chat, lab, nodes, smooth, astra, sequence, robust, motion, orb, flows, commands, sync, comp, progress, speed, renders, access, adobe, deploy, apps, eyes, pinboard, chromeview, quickstart, aicheck, unit, all.
+// Groups: qa, board, capture, journeys, chat, lab, nodes, smooth, astra, sequence, robust, motion, orb, flows, commands, sync, comp, progress, speed, renders, access, adobe, deploy, apps, eyes, pinboard, chromeview, quickstart, aicheck, offline, unit, all.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -26,7 +26,7 @@ const names = argv.filter((a, i) => !a.startsWith('--') && !['--out'].includes(a
 
 const LIBS = new Set(['journey-lib', 'smooth-lib', 'journey-olddata-make', 'sequence-lib']); // helpers / made to run in the old app
 const all = fs.readdirSync(CHECKS).filter((f) => f.endsWith('.js')).map((f) => f.slice(0, -3)).filter((n) => !LIBS.has(n)).sort();
-const UNIT = ['board-unit-test', 'store-thread-test', 'board-mcp-test', 'capture-mcp-test', 'director-mcp-test', 'cut-test', 'capture-test', 'music-test', 'code-flow-test', 'importer-test', 'director-cost', 'astra-engine-test', 'robust-engine-test', 'test-aemain-mac', 'sequence-test', 'flows-test', 'sync-test', 'cmdpage-test', 'progress-test', 'makes-test', 'renders-test', 'updater-test', 'access-test', 'adobe-test', 'adobe-mcp-test', 'deploy-test', 'apps-unit-test', 'eyes-test', 'boot-test', 'liveness-test', 'devreport-test', 'labexport-test', 'voice-test', 'projects-test', 'timemachine-test', 'audio-test', 'remote-qr-test', 'interop-test', 'context-test', 'assets-test', 'type-test', 'motion-in-test', 'physics-test', 'connections-test', 'hooks-test', 'autoedit-test', 'publishkit-test', 'router-test', 'firstrun-test', 'lookmatch-test', 'aiundo-test', 'packs-test', 'safetynet-test', 'instantscene-test', 'chrome-test', 'budget-test', 'recall-test', 'autopolish-test', 'stems-test', 'pinboard-test', 'chromeview-test', 'tokens-test', 'cache-test', 'winmac-test', 'quickstart-test', 'perfectloop-test', 'labadapt-test', 'labvariations-test', 'winpolish-test', 'macpolish-test', 'multiformat-test', 'labpace-test'];
+const UNIT = ['board-unit-test', 'store-thread-test', 'board-mcp-test', 'capture-mcp-test', 'director-mcp-test', 'cut-test', 'capture-test', 'music-test', 'code-flow-test', 'importer-test', 'director-cost', 'astra-engine-test', 'robust-engine-test', 'test-aemain-mac', 'sequence-test', 'flows-test', 'sync-test', 'cmdpage-test', 'progress-test', 'makes-test', 'renders-test', 'updater-test', 'access-test', 'adobe-test', 'adobe-mcp-test', 'deploy-test', 'apps-unit-test', 'eyes-test', 'boot-test', 'liveness-test', 'devreport-test', 'labexport-test', 'voice-test', 'projects-test', 'timemachine-test', 'audio-test', 'remote-qr-test', 'interop-test', 'context-test', 'assets-test', 'type-test', 'motion-in-test', 'physics-test', 'connections-test', 'hooks-test', 'autoedit-test', 'publishkit-test', 'router-test', 'firstrun-test', 'lookmatch-test', 'aiundo-test', 'packs-test', 'safetynet-test', 'instantscene-test', 'chrome-test', 'budget-test', 'recall-test', 'autopolish-test', 'stems-test', 'pinboard-test', 'chromeview-test', 'tokens-test', 'cache-test', 'winmac-test', 'quickstart-test', 'perfectloop-test', 'labadapt-test', 'labvariations-test', 'winpolish-test', 'macpolish-test', 'multiformat-test', 'labpace-test', 'offline-test'];
 const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
   qa: ['qa-commands', 'qa-keys', 'qa-mac', 'polish', 'lazy', 'fastboot'], // (round 29) fastboot: first frame before any lazy group, keys of lazy groups, first-use main modules
@@ -86,6 +86,7 @@ const GROUPS = {
   labpace: ['labpace', 'unit:labpace-test', 'unit:labadapt-test'], // (round 33) frame pacing: f60 (same speed at 60–240 Hz), still pictures stop drawing, a parked Lab sleeps, battery, Frame pace
   labadapt: ['labadapt', 'unit:labadapt-test'], // (round 31) the Lab preview lightens itself in steps (resolution, filters, shadows, particles), covered layers skip drawing, renders unchanged
   bugbash: ['bugbash', 'unit:sync-test'], // (round 29) regressions of the bug bash's app fixes: one Lab however it opens; sync's same-millisecond file
+  offline: ['offline', 'unit:offline-test'], // (round 34) calm when things go wrong outside Hearth: no internet (the queue sends once when back), busy (retry / cancel / switch), usage limit, signed out, a reply cut off (continue + stitch), restart survival
   unit: UNIT.map((u) => `unit:${u}`),
 };
 GROUPS.all = [...new Set([...all.filter((n) => !/^astra-/.test(n)), ...GROUPS.astra, ...GROUPS.unit])];

@@ -1707,6 +1707,7 @@ function toggleFold(hostId, m) {
   // Errors that another agent can work around come with a one-click way out.
   window.hub.onEngineEvent((ev) => {
     if (ev.type !== 'error' || String(ev.chatId).startsWith('collab-')) return;
+    if (typeof Offline !== 'undefined' && Offline.owns?.(ev)) return; // (round 34) offline.js answers it in the chat (one line with Switch to …)
     const agentId = Object.keys(H.activeChat).find((id) => H.activeChat[id] === ev.chatId);
     const agent = H.agent(agentId);
     if (!agent) return;
