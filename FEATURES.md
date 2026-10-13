@@ -888,3 +888,9 @@ In ⋯ AI setup, **⚡ Hooks: when… then…** gives each AI a short list of ru
 - ✓ **Drop a .hearthpack anywhere on Hearth** (or Share › Open a pack…, or open it with Hearth): a card first (its picture, name, what's inside, size, where it came from, and that its layers are code running only in the Lab's sandboxed preview); nothing is added until **Add as a new scene**. Then a new scene opens, its files in `data/assets/packs/<name>/` and the asset library, paths rewritten, LUTs in the grade, its sequence back.
 - ✓ Safe by construction: no zip-slip (only `files/<plain name>`, every target checked inside Hearth's folder), size and zip-bomb caps, CRC checks, never overwrites, a newer-format pack says "update Hearth".
 - ○ Tested headless (`sh dev/run-checks.sh packs`: unit + a scene and a sequence round trip through the buttons); real Finder / Explorer "Open with" wasn't tried here.
+## Bug bash (round 29, bugbash: docs/upgrades/bugbash.md)
+- ✓ The Lab no longer starts twice when a command or the director opens it before its tab was ever shown (two previews, keys doing nothing).
+- ✓ Switching director chats always fades from the old scene's picture, even while a heavy scene draws (the preview's quick picture or the window's own).
+- ✓ Sync: a file changed in the very same millisecond no longer waits an extra sync.
+- ✓ The flaky self-checks (sync journal, keys, tooltips, die, Commands page count, music undo, sequence help / render, frame card) fixed at their cause; each reason is in the doc.
+- ○ `remote`'s fader step still fails now and then under heavy load (passes alone); listed in the doc.
