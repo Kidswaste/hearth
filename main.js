@@ -237,6 +237,7 @@ ipcMain.handle('chats:get', afterSync((_e, id) => store.getChat(id)));
 ipcMain.handle('chats:save', afterSync((_e, chat) => store.saveChat(chat)));
 ipcMain.handle('chats:delete', afterSync((_e, id) => store.deleteChat(id)));
 ipcMain.handle('chats:searchText', (_e, query) => store.searchChats(query));
+ipcMain.handle('chats:recall', (_e, o) => store.recall(o || {})); // (round 30) recall: "what did we decide about X?", ranked, local
 ipcMain.handle('chats:trash', () => store.listTrash());
 ipcMain.handle('chats:restore', afterSync((_e, id) => store.restoreChat(id)));
 ipcMain.handle('history:get', afterSync(() => store.getHistory()));

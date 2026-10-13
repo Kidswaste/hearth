@@ -12,6 +12,8 @@
 //   read { file, fallback }       a big store read and parsed here
 //   flist / fsearch               fsapi.js's recursive folder listing and folder search (on a second copy: "files")
 //   syncHash { file, rel, cloud, ctx }  cloud sync: a big JSON store's cloud form + hash (sync-engine.js hashJson)
+//   recall { dir, q?, budgetMs? }  (round 30) "what did we decide about X?": catches the recall index up (only chats that
+//                                 changed, within the budget) and, with q, ranks the messages (recall-core.js)
 // Chat files are parsed once and kept (by size + mtime): a list or a search only re-reads the files that changed, and
 // a chat saved through here is indexed from the value itself (no re-read). Texts are kept up to TEXT_CAP characters
 // in all; past that, a search reads the files again (still on this thread).
@@ -26,6 +28,7 @@ const TEXT_CAP = 32 * 1024 * 1024;
 const written = new Map(); // file → { h, size, mtimeMs } of the text this thread last wrote / saw there
 const index = new Map(); // chat file → { size, mtimeMs, sum, texts, lower }
 let textChars = 0;
+let recallIdx = null; // (round 30) recall-core.js's index, made on the first recall op
 
 function stat(file) { try { return fs.statSync(file); } catch { return null; } }
 function sameOnDisk(file, h) {
@@ -95,7 +98,7 @@ const OPS = {
     const st = stat(file);
     if (st) written.set(file, { h, size: st.size, mtimeMs: st.mtimeMs });
     // a chat saved here goes straight into the index (no read back)
-    if (chatDir && st && value && typeof value === 'object') { drop(file); index.set(file, entryOf(value, st)); }
+    if (chatDir && st && value && typeof value === 'object') { drop(file); index.set(file, entryOf(value, st)); if (recallIdx) recallIdx.add(file, value, index.get(file)); }
     return { bytes: text.length };
   },
   list({ dir }) {
@@ -143,6 +146,31 @@ const OPS = {
     if (!cloud && rel === 'app/config.json') v = S.portableConfig(v);
     const t = JSON.stringify(cloud ? v : S.toCloud(v, ctx));
     return { h: sha(t), t: t.length < 16e6 ? t : null }; // the text too: a push / merge in this pass uses it (no second parse)
+  },
+  // (round 30) recall: the index is built only when asked (an idle moment, or a question), never at startup; nothing on disk
+  recall({ dir, q, budgetMs = 12, limit }) {
+    const t0 = performance.now();
+    recallIdx ||= require('./recall-core').createIndex();
+    const live = new Set(); let left = 0;
+    for (const { file, e } of chats(dir)) {
+      live.add(file);
+      if (recallIdx.has(file, e)) continue;
+      if (performance.now() - t0 > budgetMs) { left += 1; continue; }
+      const chat = readChat(file);
+      if (chat) recallIdx.add(file, chat, e); else live.delete(file);
+    }
+    for (const file of recallIdx.keys()) if (file.startsWith(dir) && !live.has(file)) recallIdx.drop(file);
+    const size = recallIdx.size();
+    if (!q) return { left, ...size, ms: Math.round(performance.now() - t0) };
+    const reread = new Map();
+    const textOf = (file, k) => {
+      const e = index.get(file);
+      if (e?.texts) return e.texts[k] || '';
+      if (!reread.has(file)) reread.set(file, readChat(file));
+      return reread.get(file)?.messages?.[k]?.text || '';
+    };
+    const res = recallIdx.search(q, { textOf, limit });
+    return { ...res, left, ms: Math.round(performance.now() - t0) };
   },
   forget({ file }) { written.delete(file); drop(file); return true; },
   ping() { return { chats: index.size, textChars }; },

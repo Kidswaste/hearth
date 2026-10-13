@@ -161,6 +161,21 @@ function searchChats(query) {
   if (thread()) return ask({ op: 'search', dir: CHATS_DIR, query: String(query || '') }).catch(() => searchChatsSync(query));
   return searchChatsSync(query);
 }
+// (round 30) recall: the ranked "what did we decide about X?" (storework.js op recall; here when there is no thread)
+let recallLocal = null;
+function recall(o = {}) {
+  if (thread()) return ask({ op: 'recall', dir: CHATS_DIR, q: String(o.q || ''), budgetMs: o.budgetMs || 12, limit: o.limit }).catch(() => recallSync(o));
+  return recallSync(o);
+}
+function recallSync({ q = '', limit } = {}) {
+  const R = require('./recall-core');
+  recallLocal ||= R.createIndex();
+  const all = allChats();
+  for (const c of all) recallLocal.add(c.id, c);
+  for (const k of recallLocal.keys()) if (!all.some((c) => c.id === k)) recallLocal.drop(k);
+  const byId = new Map(all.map((c) => [c.id, c]));
+  return q ? { ...recallLocal.search(q, { textOf: (id, k) => byId.get(id)?.messages?.[k]?.text || '', limit }), left: 0 } : { left: 0, ...recallLocal.size() };
+}
 function searchChatsSync(query) {
   const q = query.trim().toLowerCase();
   if (q.length < 2) return [];
@@ -318,6 +333,7 @@ module.exports = {
   ATTACH_DIR,
   listChats,
   searchChats,
+  recall,
   getChat: (id) => readJson(chatPath(id), null),
   saveChat: (chat) => writeJson(chatPath(chat.id), chat, { off: true, chat: true }),
   deleteChat: (id) => trashChat(id),

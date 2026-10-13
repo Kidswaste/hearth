@@ -921,3 +921,8 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ Calm warnings at 80 % and 100 % (toast + ◉ Activity line, once a week); costly confirms (crew, ✦ take it further, look match) say "this would pass your weekly limit". Nothing is blocked.
 - ✓ **This week at a glance**: biggest chats, where it went, tools sent with every message, one-click fixes ("Turn off Board tools for Claude: saves ≈ 70k a week"). `/spending` from chat.
 - ○ Tested with the fake engines (`sh dev/run-checks.sh budget`); real prices only show for engines that report them.
+## Recall: "what did we decide about X?" (round 30, recall, 20 upgrades: docs/upgrades/recall.md)
+- ✓ Ask in plain words in the chats panel's search box (**🔎 Find the answer**) or with ◎ Missions › More › **Remind me what we decided**: every chat on this computer is searched for free, and the answers come as short quotes grouped into **decisions**, **open questions** and other mentions, each with its chat, date and **Jump to it**.
+- ✓ Ranked by the words that matter, recency, pinned chats, bookmarked messages and decision phrasing; the index lives on the store thread, is built only in idle moments (never at startup) and costs nothing once caught up.
+- ✓ **Ask the AI to sum these up** shows its token cost first and sends only the quotes, never whole chats.
+- ○ Tested with seeded chats (`sh dev/run-checks.sh recall`: smoke with fake engines + a ranking unit test with 24,000 messages); decisions phrased unusually land under "Also mentioned".

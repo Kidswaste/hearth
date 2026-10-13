@@ -118,7 +118,7 @@ line count is lower than the number of upgrades).
 | One undo for what the AIs did (round 28): every change an AI made (Lab scenes, the mood board, files, settings) in one timeline (Activity › Changes by AIs, Ctrl/⌘+K) with who / chat / reply / when in plain words; ↶ Undo this, Undo everything it did since…, and "↶ Undo what it did" on the reply; safe order (later changes to the same thing first, newest first) with a warning when you changed it after; each place's own undo does the work (time machine, board edit, chat access's copies, the old value); deleted files keep a copy | [aiundo.md](aiundo.md) | 32 |
 | Packs (round 28): share a scene as one file: Sketch ▾ › Share › Save as a pack (also ✦ More, the gallery's right-click, a scene's sequence), the scene with its sliders, looks, keyframes, references, LUTs and the song in one .hearthpack (a plain zip); drop one on Hearth (or Open a pack…) for a card first (picture, what's inside, size, where it came from, the sandbox note), then a new scene with its files in the asset library; zip-slip guard and size caps | [packs.md](packs.md) | 42 |
 | A faster start (round 29): the first frame no longer waits for the Lab (reload first paint ≈ 808 → 469 ms, start long tasks −74 %), the main process makes the window first (36 → 7 ms before it), the command bar and Flows load after the first screen (−205 KB JS) with their keys working from the start, the Lab starts building on the press of its button | [fastboot.md](fastboot.md) | 13 |
-| **Total** | | **13,166** |
+| **Total** | | **13,186** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.

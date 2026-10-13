@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('hub', {
   saveChat: call('chats:save'),
   deleteChat: call('chats:delete'),
   searchChatText: call('chats:searchText'),
+  recall: call('chats:recall'), // (round 30) ({ q?, budgetMs? }) → ranked decisions / open questions / mentions, or { left } (recall-core.js)
   listChatTrash: call('chats:trash'),
   restoreChat: call('chats:restore'),
   importChats: call('chats:import'), // (opts?: { path, dryRun }) → summary; no path opens a file dialog
