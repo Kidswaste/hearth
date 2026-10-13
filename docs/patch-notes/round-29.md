@@ -28,6 +28,11 @@ Google refuses sign-ins inside embedded apps; now Hearth uses your real Chrome.
 ## ↔ Resizable chats
 **Find it:** drag the gap between chats in the grid view (double-click = equal); drag a docked chat's divider (now up to 80% of the window).
 
+## 🐞 Bug fixes
+- The Lab could open twice in one window (double the graphics work, keys going to the hidden copy): fixed. That was also why undoing marked kicks with Ctrl+Z sometimes did nothing.
+- Switching scenes in a chat cross-fades from a real picture again, even when the computer is busy.
+- Sync: a file saved in the same millisecond as a sync pass could wait a minute longer than it should: fixed.
+
 ## ⚡ Faster start
 - The window paints about 40% sooner on reload; the Lab loads right after the first frame instead of before it.
 
