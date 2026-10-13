@@ -240,7 +240,10 @@ function fileFolder(agent) {
 // A chat's ⋯ → Access (or /access) picks one level and its folders; they arrive as options.access = { level, folders }.
 //   read   Claude: Read / Glob / Grep in the folders.  Codex: shell in a read-only sandbox.
 //   write  + Edit / Write.  Codex: workspace-write sandbox, writable roots = the folders, no network.
-//   full   + Bash (Claude).  Codex: the same sandbox (it can't ask, so the risky parts stay off).
+//   full   + Bash and PowerShell (Claude; on Windows Claude Code runs commands through its PowerShell tool, and a
+//          tool left out of --tools is refused by the CLI before Hearth's check sees it. A Claude Code without that
+//          tool ignores the name). Codex: the same sandbox (it can't ask, so the risky parts stay off), or, when the
+//          owner opted in on Windows (agent.astraNoSandbox, ⋯ AI setup), no sandbox, the folders as its working place.
 // Claude's permission requests (edits, commands, anything outside the folders) go to mcp/access-mcp.js through
 // --permission-prompt-tool: Hearth decides silently for safe things and shows an approval card for risky ones. A
 // Claude Code that doesn't know that flag drops it (CLAUDE_OPTIONAL) and gets what a project folder always had: file
@@ -256,6 +259,9 @@ function accessOf(agent) {
   return { level: a.level, folders };
 }
 // Claude asks Hearth (the permission tool) unless this Claude Code rejected the flag before.
+// (winshell) Astra without its sandbox: only at Read & write / Full, only when the owner switched it on (⋯ AI setup on
+// Windows, where Codex's sandbox blocks every command). Read never loses its sandbox.
+const codexOpen = (agent, acc = accessOf(agent)) => agent.engine === 'codex' && agent.astraNoSandbox === true && Boolean(acc) && acc.level !== 'read';
 const accessAsks = (agent) => agent.engine !== 'codex' && Boolean(accessOf(agent)) && !claudeDropped.has('--permission-prompt-tool');
 function accessLine(agent, acc) {
   return `${accessLine0(agent, acc)} ${OTHER_PC}`;
@@ -266,6 +272,8 @@ function accessLine0(agent, acc) {
   const where = acc.folders.length ? acc.folders.join(', ') : 'no folder yet (ask the user to add one in ⋯ AI setup)';
   const label = { read: 'read only', write: 'read & write', full: 'full: files and commands' }[acc.level];
   if (agent.engine === 'codex') {
+    // (winshell) no sandbox (the owner's Windows opt-in): the same line, with the rule the sandbox used to enforce
+    if (codexOpen(agent, acc)) return `File access (${label}, no sandbox): ${where}. Edit with apply_patch; commands run unsandboxed, so stay inside these folders, no installs or downloads unless asked; to delete, move files into .hearth-trash/ at the top of that folder (Hearth sends them to the Trash).`;
     return acc.level === 'read' ? `File access (${label}): ${where}. Look with short read-only commands (ls, cat, rg, sed -n); you can't change files (the user can allow edits in ⋯ AI setup).`
       : `File access (${label}): ${where}. Edit with apply_patch; commands run sandboxed (writes only there, no network); to delete, move files into .hearth-trash/ at the top of that folder (Hearth sends them to the Trash).`;
   }
@@ -277,13 +285,17 @@ function accessLine0(agent, acc) {
 // What the access server needs: the chat to show its cards in, and where relative paths start.
 const accessEnv = (agent) => ({ ELECTRON_RUN_AS_NODE: '1', HUB_AGENT_ID: agent.id, HUB_ACCESS_CHAT: agent.accessChatId || '', HUB_ACCESS_CWD: WORKSPACE });
 // Which file / command a tool call touches, for the chat's activity log (access.js), from the engines' own events.
+// (winshell) A command refused before it ran, by the engine's own policy: Claude Code's "No such tool available" (a tool
+// left out of --tools, e.g. PowerShell on Windows) or a policy setting; Codex's sandbox / approval policy (on Windows its
+// sandbox can block every command). access.js turns it into the one-line note with the fix.
+const POLICY_BLOCKED = /no such tool available|blocked by (managed |enterprise |the )?polic|(disabled|denied|rejected|forbidden|not allowed) by (the )?(sandbox |exec ?)?polic|sandbox (is )?(not available|unavailable|not supported)|windows sandbox/i;
 // What Codex's sandbox says when it refuses a write (Linux landlock / macOS seatbelt / Windows), as seen in a command's output.
 const SANDBOX_DENIED = /read-only file system|operation not permitted|permission denied|access is denied|sandbox(: | denied| blocked)/i;
 function toolAccess(name, input = {}) {
   const target = input.file_path || input.notebook_path || input.path || input.pattern || '';
   if (/^(Read|Glob|Grep|LS|NotebookRead)$/.test(name)) return { action: 'read', target, tool: name };
   if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(name)) return { action: 'write', target, tool: name };
-  if (name === 'Bash') return { action: 'run', target: String(input.command || '').slice(0, 400), tool: name };
+  if (name === 'Bash' || name === 'PowerShell') return { action: 'run', target: String(input.command || '').slice(0, 400), tool: name };
   return null;
 }
 // Tool guides go into the system prompt, which the hub controls (the CLI may drop MCP server instructions when
@@ -407,7 +419,7 @@ function claudeToolArgs(agent, options = {}) {
   let args;
   let accessAllowed = [];
   if (acc) {
-    const tools = acc.level === 'read' ? ['Read', 'Glob', 'Grep'] : acc.level === 'full' && asks ? [...FILE_TOOLS, 'Bash'] : [...FILE_TOOLS];
+    const tools = acc.level === 'read' ? ['Read', 'Glob', 'Grep'] : acc.level === 'full' && asks ? [...FILE_TOOLS, 'Bash', 'PowerShell'] : [...FILE_TOOLS];
     args = ['--tools', tools.join(','), ...(acc.level === 'full' && asks ? [] : ['--restricted']), '--add-dir', ...acc.folders, ATTACH_DIR];
     // an older Claude Code without the permission tool: what a project folder always had (edits accepted, no commands)
     if (!asks) { accessAllowed = tools; if (acc.level !== 'read') args.push('--permission-mode', 'acceptEdits'); }
@@ -576,8 +588,10 @@ function codexArgs(agent, session, options = {}) {
     // `codex exec` can't show an approval prompt, so approvals stay off and the sandbox is the safety (round 14: each
     // access level maps here: read → read-only, read & write / full → workspace-write on the chat's folders).
     const roots = acc ? acc.folders : [folder];
-    args.push('-c', `sandbox_mode="${edit ? 'workspace-write' : 'read-only'}"`, '-c', 'approval_policy="never"');
-    if (edit) args.push('-c', `sandbox_workspace_write.writable_roots=[${roots.map(tomlStr).join(', ')}]`, '-c', 'sandbox_workspace_write.network_access=false');
+    // (winshell) the owner's Windows opt-in: no sandbox (Codex's blocks every command there); approvals stay off
+    if (codexOpen(agent, acc)) args.push('-c', 'sandbox_mode="danger-full-access"', '-c', 'approval_policy="never"');
+    else args.push('-c', `sandbox_mode="${edit ? 'workspace-write' : 'read-only'}"`, '-c', 'approval_policy="never"');
+    if (edit && !codexOpen(agent, acc)) args.push('-c', `sandbox_workspace_write.writable_roots=[${roots.map(tomlStr).join(', ')}]`, '-c', 'sandbox_workspace_write.network_access=false');
   }
   let effort = pick(options.effort, EFFORTS.codex) || pick(agent.effort, EFFORTS.codex);
   // minimal reasoning can't use the web search tool: with web on it becomes low instead of failing
@@ -594,7 +608,8 @@ function codexArgs(agent, session, options = {}) {
   if (options._approvalRetry) args.push('-c', 'approval_policy="never"');
   const model = options.model || agent.model;
   if (model) args.push('-m', model);
-  if (!session.id) args.push('-s', edit ? 'workspace-write' : 'read-only', '-C', WORKSPACE);
+  // (winshell) unsandboxed, its commands start in the chat's first folder
+  if (!session.id) args.push('-s', codexOpen(agent, acc) ? 'danger-full-access' : edit ? 'workspace-write' : 'read-only', '-C', codexOpen(agent, acc) && acc.folders[0] ? acc.folders[0] : WORKSPACE);
   for (const image of options.images || []) args.push('-i', image);
   args.push('-');
   return args;
@@ -627,6 +642,7 @@ function resultText(content) {
 }
 function claudeParser(session) {
   const agents = new Set(); // tool_use ids of the subagents still running
+  const cmds = new Map(); // (winshell) command tool calls (Bash / PowerShell) waiting for their result: id -> access
   return (msg) => {
     if (msg.type === 'system' && msg.subtype === 'init') session.id = msg.session_id;
     // a subagent's own streamed text / thinking belongs to it, never to the reply (its stream_event lines carry a parent)
@@ -653,6 +669,7 @@ function claudeParser(session) {
         const target = input.file_path || input.pattern;
         // (round 14) what it touches, for the chat's activity log (access.js)
         const access = toolAccess(toolUse.name, input);
+        if (access?.action === 'run' && toolUse.id) { cmds.set(toolUse.id, access); if (cmds.size > 200) cmds.delete(cmds.keys().next().value); }
         out.push({ type: 'tool', name: target ? `${toolUse.name} · ${path.basename(String(target))}` : toolUse.name, id: toolUse.id, args: toolArgs(input), ...(parent ? { parent } : {}), ...(access ? { access: { ...access, id: toolUse.id } } : {}) });
       }
     }
@@ -661,7 +678,10 @@ function claudeParser(session) {
         if (r?.type !== 'tool_result' || !r.tool_use_id) continue;
         const text = r.big || oneLine(resultText(r.content), 160);
         if (agents.has(r.tool_use_id)) { agents.delete(r.tool_use_id); out.push({ type: 'agent', id: r.tool_use_id, status: r.is_error ? 'failed' : 'done', summary: text }); continue; }
-        out.push({ type: 'step', id: r.tool_use_id, ok: !r.is_error, summary: text, ...(parent ? { parent } : {}) });
+        // (winshell) a command Claude Code itself refused before Hearth's check (its tool not enabled, a policy)
+        const cmd = cmds.get(r.tool_use_id); cmds.delete(r.tool_use_id);
+        const policy = cmd && r.is_error && POLICY_BLOCKED.test(resultText(r.content)) ? { access: { ...cmd, id: r.tool_use_id, failed: true, policy: true, why: oneLine(resultText(r.content), 200) } } : {};
+        out.push({ type: 'step', id: r.tool_use_id, ok: !r.is_error, summary: text, ...(parent ? { parent } : {}), ...policy });
       }
     }
     if (out.length) return out.length === 1 ? out[0] : out;
@@ -784,10 +804,13 @@ function codexParser(session, agent = {}) {
     }
     if (msg.type === 'item.started' && item.type === 'command_execution') return { type: 'tool', name: `Shell · ${short(item.command)}`, id: item.id, args: short(item.command), access: { action: 'run', target: String(item.command || '').slice(0, 400), tool: 'Shell', id: item.id } };
     if (msg.type === 'item.completed' && item.type === 'command_execution' && item.id) {
-      const failed = item.status === 'failed' || Boolean(item.exit_code);
+      const failed = item.status === 'failed' || item.status === 'declined' || Boolean(item.exit_code);
       // (round 32) the sandbox said no (a write outside its folders, or a read-only level): access.js tells the owner why
-      const blocked = failed && SANDBOX_DENIED.test(String(item.aggregated_output || '').slice(-2000));
-      return { type: 'step', id: item.id, ok: !failed, summary: item.big || oneLine(`${item.exit_code ? `exit ${item.exit_code} · ` : ''}${String(item.aggregated_output || '').slice(-400)}`, 160), ...(blocked ? { access: { action: 'run', failed: true, target: String(item.command || '').slice(0, 400), tool: 'Shell', id: item.id } } : {}) };
+      const said = String(item.aggregated_output || item.error?.message || '').slice(-2000);
+      // (winshell) refused before it ran (Codex's sandbox / approval policy: on Windows every command can be)
+      const policy = failed && POLICY_BLOCKED.test(said);
+      const blocked = failed && (policy || SANDBOX_DENIED.test(said));
+      return { type: 'step', id: item.id, ok: !failed, summary: item.big || oneLine(`${item.exit_code ? `exit ${item.exit_code} · ` : ''}${said.slice(-400)}`, 160), ...(blocked ? { access: { action: 'run', failed: true, target: String(item.command || '').slice(0, 400), tool: 'Shell', id: item.id, ...(policy ? { policy: true, why: oneLine(said, 200) } : {}) } } : {}) };
     }
     if (msg.type === 'item.started' && item.type === 'web_search') return { type: 'tool', name: `Web search · ${short(item.query, 50)}`, id: item.id, args: short(item.query, 50) };
     if (msg.type === 'item.completed' && item.type === 'file_change') {
@@ -801,7 +824,11 @@ function codexParser(session, agent = {}) {
       return { type: 'progress', steps: item.items.slice(0, 12).map((s) => ({ text: short(s.text, 160), status: s.completed ? 'done' : 'todo' })) };
     }
     // Non-fatal warnings (an item of type error) go into the thinking fold, not the reply.
-    if (msg.type === 'item.completed' && item.type === 'error' && item.message) return { type: 'thinking', text: `⚠ ${item.message}\n\n` };
+    if (msg.type === 'item.completed' && item.type === 'error' && item.message) {
+      // (winshell) a command refused by policy can come as a warning item too: the note says why
+      if (POLICY_BLOCKED.test(item.message)) return [{ type: 'thinking', text: `⚠ ${item.message}\n\n` }, { type: 'step', id: item.id || `policy-${Date.now()}`, ok: false, summary: oneLine(item.message, 160), access: { action: 'run', failed: true, policy: true, target: '', tool: 'Shell', why: oneLine(item.message, 200) } }];
+      return { type: 'thinking', text: `⚠ ${item.message}\n\n` };
+    }
     if (msg.type === 'turn.completed') {
       // Codex has reported running totals for the whole thread (shown here as what this turn added); a
       // smaller number than last time means this version reports per turn, so it is used as is.
@@ -857,6 +884,10 @@ const FIXES = [
     () => 'Network problem (Hearth already tried again once): check the internet connection (or VPN / proxy), then press Retry.'],
   [/context (window|length)|maximum context|too many tokens|prompt is too long|input too long/i,
     () => 'The conversation is too long for the model: compact it (🗜 in the chat menu) or start a new chat from a summary.'],
+  // (winshell) commands refused before they ran: Claude Code's tool list / a policy, or Codex's sandbox on Windows
+  [POLICY_BLOCKED,
+    (e) => (e === 'codex' ? `Astra's sandbox blocked its commands${IS_WIN ? ' (on Windows it can block every command)' : ''}. ${IS_WIN ? 'In ⋯ AI setup → Files on this computer (Read & write or Full) you can let Astra run commands without its sandbox.' : 'Check ⋯ AI setup → Files on this computer.'}`
+      : 'Claude Code refused its command tool before Hearth could check it. Set Full in ⋯ AI setup → Files on this computer (it switches on Bash and PowerShell); if it still happens, press Update.')],
   [/sandbox|landlock|seatbelt|seccomp/i,
     () => 'Codex\'s sandbox refused something: Astra may only change files in its own folders, at Read & write or Full. Change it in ⋯ AI setup → Files on this computer.'],
 ];
@@ -1406,7 +1437,7 @@ module.exports = {
   send, stop, stopAll, login, status, checkInstalls, checkEngine, fix, onInstalls, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
   doctor, EFFORTS, CODEX_DISABLED_FEATURES,
   // for tests (dev/astra-engine-test.js)
-  _test: { lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, chatGuideOn, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION },
+  _test: { lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, POLICY_BLOCKED, codexOpen, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, chatGuideOn, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION },
   buildPrompt, HUB_TOOLSETS, // the director cost report (mcp/cost.js)
   busy: () => running.size, // (round 16) replies running now: background work (sync) waits a little longer meanwhile
 };

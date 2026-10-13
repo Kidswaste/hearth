@@ -89,6 +89,8 @@ const F = require('./fake-common');
     let roots = [];
     try { roots = JSON.parse(cfg('sandbox_workspace_write.writable_roots') || '[]'); } catch { /* none */ }
     const shell = !argv.some((x, i) => x === 'shell_tool' && argv[i - 1] === '--disable');
+    // (winshell) unsandboxed, Codex works in the -C folder (the chat's first folder)
+    if (mode === 'danger-full-access' && argv.includes('-C') && fs.existsSync(argv[argv.indexOf('-C') + 1])) process.chdir(argv[argv.indexOf('-C') + 1]);
     const lines = [`sandbox: ${mode}; roots: ${roots.join(', ') || 'none'}; shell: ${shell ? 'on' : 'off'}; network: ${cfg('sandbox_workspace_write.network_access') || 'default'}; approvals: ${cfg('approval_policy') || 'default'}`];
     for (const [tool, input] of p.accessCalls) {
       const id = `item_${n++}`;
@@ -96,12 +98,15 @@ const F = require('./fake-common');
         if (!shell) { lines.push('Bash: no shell tool'); continue; }
         F.out({ type: 'item.started', item: { id, type: 'command_execution', command: input.command, status: 'in_progress' } });
         const writes = /(^|[;&|]\s*)(rm|mv|touch|mkdir|cp|tee)\b|>/.test(input.command || '');
-        const res = mode === 'read-only' && writes ? { ok: false, text: 'sandbox: read-only file system' } : F.runTool('Bash', input);
-        F.out({ type: 'item.completed', item: { id, type: 'command_execution', command: input.command, aggregated_output: res.text, exit_code: res.ok ? 0 : 1, status: res.ok ? 'completed' : 'failed' } });
+        // (winshell) on "Windows" the sandbox can't run commands, and with approvals off every one is refused by policy
+        const win = sw.windows && mode !== 'danger-full-access';
+        const res = win ? { ok: false, text: 'exec command rejected: blocked by policy (the Windows sandbox could not run this command)' }
+          : mode === 'read-only' && writes ? { ok: false, text: 'sandbox: read-only file system' } : F.runTool('Bash', input);
+        F.out({ type: 'item.completed', item: { id, type: 'command_execution', command: input.command, aggregated_output: res.text, exit_code: res.ok ? 0 : win ? -1 : 1, status: res.ok ? 'completed' : win ? 'declined' : 'failed' } });
         lines.push(`Bash: ${res.ok ? 'ran' : 'failed'} · ${res.text.replace(/\s+/g, ' ').slice(0, 160)}`);
       } else if (tool === 'Write' || tool === 'Edit') {
         const file = path.resolve(input.file_path);
-        const can = mode !== 'read-only' && roots.some((r) => file === path.resolve(r) || file.startsWith(path.resolve(r) + path.sep));
+        const can = mode === 'danger-full-access' || (mode !== 'read-only' && roots.some((r) => file === path.resolve(r) || file.startsWith(path.resolve(r) + path.sep)));
         const kind = fs.existsSync(file) ? 'update' : 'add';
         const res = can ? F.runTool(tool, input) : { ok: false, text: 'sandbox: not writable' };
         F.out({ type: 'item.completed', item: { id, type: 'file_change', changes: [{ path: file, kind }], status: res.ok ? 'completed' : 'failed' } });

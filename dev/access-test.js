@@ -89,6 +89,30 @@ assert.deepStrictEqual(wr.trash, ['c:/users/me/proj/a.txt'], JSON.stringify(wr))
 assert.strictEqual(bash('cd /c/x && ls').verdict, 'allow', 'on a Mac /c/x stays a plain path');
 ok('Windows paths (case, backslashes, drive letters) and ~ compare correctly');
 
+// (winshell) Claude Code on Windows runs commands with its PowerShell tool: PowerShell quoting (\ is a path character,
+// '' inside '…'), verbs and aliases, script blocks, .NET calls
+const PSF = ['C:\\Users\\me\\proj'];
+const ps = (command, level = 'full') => R.classify({ tool: 'PowerShell', input: { command }, level, folders: PSF, home: 'C:\\Users\\me', cwd: 'C:\\hearth\\data\\workspace' });
+for (const cmd of ['Get-ChildItem C:\\Users\\me\\proj', 'Set-Location C:\\Users\\me\\proj; Get-ChildItem -Recurse -Filter *.js | Select-Object Name', 'cd C:\\Users\\me\\proj; gci', 'Get-ChildItem',
+  'Get-Content C:\\Users\\me\\proj\\a.txt -Tail 5', 'Test-Path C:\\Users\\me\\proj\\a.txt', 'cd C:\\Users\\me\\proj; Select-String -Path *.js -Pattern "TODO"', 'cd C:\\Users\\me\\proj; New-Item -ItemType Directory -Path dist',
+  'cd C:\\Users\\me\\proj; Copy-Item a.js dist\\a.js', 'cd C:\\Users\\me\\proj; Set-Content -Path notes.txt -Value "hello"', 'Get-ChildItem $HOME\\proj', 'cd C:\\Users\\me\\proj; npm run build',
+  'cd C:\\Users\\me\\proj; Get-ChildItem | Where-Object { $_.Length -gt 1MB } | Sort-Object Length', 'cd C:\\Users\\me\\proj; Get-ChildItem 2>$null', "cd 'C:\\Users\\me\\proj'; echo 'it''s'"])
+  assert.strictEqual(ps(cmd).verdict, 'allow', cmd);
+const psCases = {
+  'Get-Content C:\\Windows\\win.ini': 'ask/low/read', 'Get-ChildItem $env:USERPROFILE\\Documents': 'ask/low/read', 'New-Item -ItemType File -Path C:\\Users\\me\\Desktop\\x.txt': 'ask/high/write',
+  'Copy-Item C:\\Users\\me\\proj\\a.js C:\\Users\\me\\Desktop': 'ask/high/write', 'cd C:\\Users\\me\\proj; Move-Item a.txt b.txt': 'ask/low/move', 'Remove-Item C:\\Users\\me\\Desktop\\x.txt': 'ask/high/delete',
+  'cd C:\\Users\\me\\proj; Get-ChildItem *.tmp | Remove-Item': 'ask/high/delete', 'cd C:\\Users\\me\\proj; Get-ChildItem | ForEach-Object { Remove-Item $_ }': 'ask/high/delete',
+  '[System.IO.File]::Delete("C:\\Users\\me\\proj\\a.txt")': 'ask/high/delete', 'iex "Remove-Item C:\\x"': 'ask/high/delete', 'Invoke-WebRequest https://x.com -OutFile a.zip': 'ask/low/network',
+  'Start-Process notepad': 'ask/low/apps', 'powershell -EncodedCommand ZQBjAGgAbwA=': 'ask/high/run', 'Stop-Process -Name chrome': 'ask/high/system', 'winget install ffmpeg': 'ask/high/install', 'Install-Module PSReadLine': 'ask/high/install',
+};
+for (const [cmd, want] of Object.entries(psCases)) assert.strictEqual(v(ps(cmd)), want, cmd);
+assert.deepStrictEqual(ps('Remove-Item C:\\Users\\me\\proj\\a.txt').trash, ['c:/users/me/proj/a.txt']);
+assert.deepStrictEqual(ps('Set-Location C:\\Users\\me\\proj; Remove-Item -Recurse -Force build, dist').trash, ['c:/users/me/proj/build', 'c:/users/me/proj/dist']);
+assert(ps('Start-Process powershell -Verb RunAs').password && ps('Get-Credential').password);
+assert.strictEqual(ps('Get-ChildItem', 'write').verdict, 'deny', 'Read & write: no commands, PowerShell too');
+assert.strictEqual(v(R.classify({ tool: 'Bash', input: { command: 'powershell -Command "Remove-Item C:\\Users\\me\\Desktop\\x.txt"' }, level: 'full', folders: PSF, home: 'C:\\Users\\me' })), 'ask/high/delete', 'powershell -Command from Bash reads as PowerShell');
+ok(`PowerShell (Windows): reads / builds / writes in the folders run silently, Remove-Item → the Trash, the rest asks like Bash (${Object.keys(psCases).length} cases)`);
+
 const g1 = bash('cd /home/u/proj && rm a.txt b.txt'); const g2 = bash('rm /home/u/proj/sub/c.txt');
 assert.strictEqual(g1.grant, g2.grant, 'one "allow deletes in this folder" covers both');
 assert.notStrictEqual(bash('git push').grant, bash('npm install').grant);
@@ -133,7 +157,12 @@ const strip = (args) => args.filter((x, i) => args[i - 1] !== '--session-id' && 
   const cfg = JSON.parse(fs.readFileSync(after(fu, '--mcp-config'), 'utf8'));
   assert(cfg.mcpServers.access && /access-mcp\.js$/.test(cfg.mcpServers.access.args[0]) && cfg.mcpServers.access.env.HUB_ACCESS_CHAT === 'chat-1');
   assert(cfg.mcpServers.chat, 'the chat tools stay');
-  ok('Claude: Read → read tools; Read & write → edits through the permission tool; Full → + Bash; folders as --add-dir');
+  // (winshell) Claude Code on Windows runs commands with its PowerShell tool: a tool left out of --tools is refused before
+  // Hearth's check ("No such tool available" / "blocked by policy"), so Full switches on both (other systems ignore it)
+  assert.deepStrictEqual(after(fu, '--tools').split(','), ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash', 'PowerShell']);
+  assert(!/PowerShell/.test(after(wr, '--tools')) && !/PowerShell/.test(after(rd, '--tools')));
+  assert.deepStrictEqual(T.toolAccess('PowerShell', { command: 'Get-ChildItem' }), { action: 'run', target: 'Get-ChildItem', tool: 'PowerShell' });
+  ok('Claude: Read → read tools; Read & write → edits through the permission tool; Full → + Bash and PowerShell; folders as --add-dir');
 
   const missing = T.claudeArgs(withAcc(claude, 'write', ['/no/such/folder', proj]), {}, {});
   assert(!missing.includes('/no/such/folder') && missing.includes(proj));
@@ -158,6 +187,37 @@ const strip = (args) => args.filter((x, i) => args[i - 1] !== '--session-id' && 
   assert(co.includes('shell_tool') && after(co, '-s') === 'read-only');
   assert(/\.hearth-trash/.test(T.buildPrompt(withAcc(astra, 'full'))));
   ok('Codex: Read → read-only sandbox with its shell; Read & write / Full → workspace-write on the folders, no network, no approvals');
+
+  // (winshell) the owner's Windows opt-in: no sandbox at Read & write / Full, its first folder as the working place
+  const open = { ...astra, astraNoSandbox: true };
+  const cn = T.codexArgs(withAcc(open, 'full', [proj, art]), {}, {});
+  assert(cn.includes('sandbox_mode="danger-full-access"') && cn.includes('approval_policy="never"') && !cn.some((x) => /writable_roots|workspace-write/.test(x)), cn.join(' '));
+  assert.strictEqual(after(cn, '-s'), 'danger-full-access');
+  assert.strictEqual(after(cn, '-C'), proj);
+  assert(/no sandbox/.test(T.buildPrompt(withAcc(open, 'full'))) && /\.hearth-trash/.test(T.buildPrompt(withAcc(open, 'full'))));
+  const cnr = T.codexArgs(withAcc(open, 'read'), {}, {});
+  assert(cnr.includes('sandbox_mode="read-only"') && after(cnr, '-s') === 'read-only', 'Read keeps its sandbox');
+  assert(!T.codexOpen(withAcc({ ...astra, astraNoSandbox: false }, 'full')) && !T.codexOpen(open) && !T.codexOpen(withAcc({ ...claude, astraNoSandbox: true }, 'full')));
+  ok('Astra without its sandbox (Windows opt-in): danger-full-access at Read & write / Full in its first folder; Read keeps the sandbox; off by default');
+
+  // (winshell) refusals by the engine's own policy reach access.js as a failed run (the one-line note)
+  const cp = T.claudeParser({});
+  cp({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'tu1', name: 'PowerShell', input: { command: 'Get-ChildItem' } }] } });
+  let st = cp({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'tu1', is_error: true, content: '<tool_use_error>Error: No such tool available: PowerShell</tool_use_error>' }] } });
+  assert(st.type === 'step' && st.access?.failed && st.access.policy && st.access.tool === 'PowerShell' && st.access.target === 'Get-ChildItem', JSON.stringify(st));
+  cp({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'tu2', name: 'Bash', input: { command: 'ls' } }] } });
+  st = cp({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'tu2', is_error: true, content: 'Shell command execution is blocked by policy.' }] } });
+  assert(st.access?.policy, 'blocked by policy');
+  cp({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'tu3', name: 'Bash', input: { command: 'ls' } }] } });
+  st = cp({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'tu3', is_error: true, content: 'This chat can\'t run commands (the user can choose Full in ⋯ AI setup → Files on this computer).' }] } });
+  assert(!st.access, 'Hearth\'s own refusal is not a policy refusal (it already wrote its note)');
+  const xp = T.codexParser({});
+  st = xp({ type: 'item.completed', item: { id: 'c1', type: 'command_execution', command: 'dir', status: 'declined', exit_code: -1, aggregated_output: 'exec command rejected: blocked by policy' } });
+  assert(st.access?.failed && st.access.policy && st.access.target === 'dir', JSON.stringify(st));
+  st = xp({ type: 'item.completed', item: { id: 'c2', type: 'error', message: 'command blocked by policy: the Windows sandbox is not available' } });
+  assert(Array.isArray(st) && st[1].access?.policy);
+  assert(/without its sandbox|AI setup/.test(T.friendlyError('codex', 'exec command rejected: blocked by policy').fix) && /PowerShell/.test(T.friendlyError('claude', 'No such tool available: PowerShell').fix));
+  ok('"blocked by policy" / "No such tool available" refusals (Claude Code, Codex) become access events and a plain fix');
 
   // ---------------------------------------------------------------- real runs: fake CLI → access-mcp → stub hub
   const calls = [];
@@ -234,6 +294,29 @@ const strip = (args) => args.filter((x, i) => args[i - 1] !== '--session-id' && 
   r = await turn(astra, line([['Write', { file_path: path.join(proj, 'full.txt'), content: 'full' }], ['Bash', { command: `touch "${path.join(proj, 'full2.txt')}"` }]]), { access: { level: 'full', folders: [proj] } });
   assert(/sandbox: workspace-write/.test(r.end.text) && fs.existsSync(path.join(proj, 'full.txt')) && fs.existsSync(path.join(proj, 'full2.txt')), r.end.text);
   ok('Codex runs under the mapped sandbox (writes only in the folders, read-only at Read, Full writes and runs) and reports edits, commands and refusals for the log');
+
+  // (winshell) a simulated Windows PC (FAKE_WINDOWS): Claude Code runs commands with its PowerShell tool
+  process.env.FAKE_WINDOWS = '1';
+  calls.length = 0;
+  fs.writeFileSync(path.join(proj, 'w.txt'), 'win');
+  answer = (c) => (c.trash ? { behavior: 'allow', updatedInput: { command: 'echo "Hearth moved 1 item to the Trash (recoverable)."' } } : { behavior: 'deny', message: 'The user denied this.' });
+  r = await turn(claude, line([['Bash', { command: `cd "${proj}"; ls` }], ['Bash', { command: `Set-Location "${proj}"; Remove-Item w.txt` }]]), { access });
+  assert(r.end.type === 'done' && /tools: [^;\n]*PowerShell/.test(r.end.text) && /PowerShell: ran · [\s\S]*a\.txt/.test(r.end.text) && /PowerShell: ran · Hearth moved 1 item to the Trash/.test(r.end.text), r.end.text);
+  assert(calls.some((c) => c.args.tool === 'PowerShell'), 'the PowerShell command went through Hearth\'s check');
+  assert(fs.existsSync(path.join(proj, 'w.txt')), 'Remove-Item became the Trash (done by Hearth)');
+  assert(r.events.some((e) => e.type === 'tool' && e.access?.tool === 'PowerShell' && e.access.action === 'run'));
+  // below Full the CLI refuses the tool itself (like the old Bash-only list did on Windows): reported, never silent
+  r = await turn(claude, line([['Bash', { command: 'ls' }]]), { access: { level: 'write', folders: [proj] } });
+  assert(/PowerShell: denied · <tool_use_error>Error: No such tool available: PowerShell/.test(r.end.text), r.end.text);
+  assert(r.events.some((e) => e.type === 'step' && e.access?.policy && e.access.tool === 'PowerShell'), 'the refusal is an access event');
+  // Astra on "Windows": its sandbox refuses every command by policy … until the owner's opt-in
+  r = await turn(astra, line([['Bash', { command: 'ls' }]]), { access: { level: 'full', folders: [proj] } });
+  assert(/Bash: failed · exec command rejected: blocked by policy/.test(r.end.text), r.end.text);
+  assert(r.events.some((e) => e.type === 'step' && e.access?.failed && e.access.policy), 'Astra\'s policy refusal is reported');
+  r = await turn({ ...astra, astraNoSandbox: true }, line([['Bash', { command: 'ls' }], ['Bash', { command: 'touch nosandbox.txt' }]]), { access: { level: 'full', folders: [proj] } });
+  assert(/sandbox: danger-full-access/.test(r.end.text) && /Bash: ran · [\s\S]*a\.txt/.test(r.end.text) && fs.existsSync(path.join(proj, 'nosandbox.txt')), r.end.text);
+  delete process.env.FAKE_WINDOWS;
+  ok('simulated Windows: Claude at Full runs PowerShell through Hearth\'s check (Remove-Item → the Trash); a refused tool is reported; Astra is refused by policy, then runs after the opt-in in its folder');
 
   r = await turn(claude, line([['Write', { file_path: path.join(proj, 'i.txt'), content: 'x' }]]), { access, lean: true });
   assert(/Write: denied · No such tool/.test(r.end.text));

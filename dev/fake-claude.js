@@ -99,12 +99,16 @@ const F = require('./fake-common');
     const pm = ppt && /^mcp__(.+?)__(.+)$/.exec(ppt);
     if (pm && servers[pm[1]]) pc = await F.mcpClient(servers[pm[1]]);
     const lines = [`permission tool: ${ppt ? (pc ? 'yes' : 'missing server') : 'none'}; tools: ${given.join(',') || 'none'}`];
-    for (const [tool, input0] of p.accessCalls) {
+    for (const [tool0, input0] of p.accessCalls) {
+      // (winshell) on "Windows" Claude Code runs its commands with the PowerShell tool
+      const tool = sw.windows && tool0 === 'Bash' ? 'PowerShell' : tool0;
       const id = `toolu_${F.uuid().slice(0, 8)}`;
       F.out({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: tool, input: input0 }] }, session_id: sessionId });
       let input = input0; let ok = false; let why = '';
       const file = input0.file_path || input0.path;
-      if (!given.includes(tool)) why = `No such tool available: ${tool}`;
+      // like the real CLI: a tool left out of --tools doesn't exist for this run (Claude Code 2.1: "<tool_use_error>Error:
+      // No such tool available: PowerShell</tool_use_error>"; the model tends to retell it as "blocked by policy")
+      if (!given.includes(tool)) why = sw.windows ? `<tool_use_error>Error: No such tool available: ${tool}</tool_use_error>` : `No such tool available: ${tool}`;
       else if (tools.includes(tool) || (['Read', 'Glob', 'Grep'].includes(tool) && (!file || F.within(file, dirs))) || (mode === 'acceptEdits' && ['Edit', 'Write'].includes(tool) && F.within(file, dirs))) ok = true;
       else if (pc) {
         const r = await pc.call(pm[2], { tool_name: tool, input: input0, tool_use_id: id });
