@@ -2249,9 +2249,16 @@ const ThreeLab = (() => {
     // Drop an mp3/mp4 on the preview to load it.
     previewHost.addEventListener('dragover', (e) => { if ([...e.dataTransfer.items].some((i) => i.kind === 'file')) { e.preventDefault(); previewHost.classList.add('drop-on'); } });
     previewHost.addEventListener('dragleave', () => previewHost.classList.remove('drop-on'));
+    // (round 28) files dragged into the window: the preview's page lets them through to this drop (it used to swallow them)
+    addEventListener('dragenter', (e) => { if (e.dataTransfer?.types.includes('Files')) previewHost.classList.add('drag-files'); });
+    for (const ev of ['drop', 'dragend']) addEventListener(ev, () => previewHost.classList.remove('drag-files'), true);
+    addEventListener('dragleave', (e) => { if (!e.relatedTarget) previewHost.classList.remove('drag-files'); });
     previewHost.addEventListener('drop', (e) => {
       previewHost.classList.remove('drop-on');
       const f = [...e.dataTransfer.files].find((x) => ThreeMedia.isMedia(x.name));
+      // (round 28) a picture: "Match this look" (tools/three-lookmatch.js)
+      const pic = !f && typeof LookMatch !== 'undefined' ? [...e.dataTransfer.files].find((x) => /^image\//.test(x.type)) : null;
+      if (pic) { e.preventDefault(); LookMatch.offerDrop(pic, e.clientX, e.clientY); return; }
       if (!f) return;
       e.preventDefault();
       const p = window.hub.pathForFile(f);

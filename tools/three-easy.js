@@ -73,6 +73,7 @@ const LabEasy = (() => {
     { label: 'A motion intro', hint: 'logo → Hearth on screen → end card, as a sequence', items: () => ['9:16', '16:9', '1:1', '4:5'].map((z) => item(z, '', `/motion-intro ${z}`)) },
     item('A cursor tour', 'A cursor glides and clicks around the frame', '/cursor-path'),
     item('Fade to black and back', '', '/blackout'),
+    ...(typeof LookMatch !== 'undefined' ? [LookMatch.item()] : []), // (round 28) 🎨 make it look like this (tools/three-lookmatch.js)
   ];
   const makeItems = () => [
     askItem('👥 4 variations of this scene…', 'A crew explores them side by side (cost shown first); you pick one', { title: 'What should the 4 variations explore?', placeholder: 'e.g. hit harder on the drop' }, (v) => `/crew 4 ${v || 'clearly different takes on this scene'}`, 'crew'),
