@@ -227,7 +227,7 @@ const BoardPack = (() => {
       await B.ready();
       const op = String(a.op || '');
       // (round 14) board eyes / Pinterest ops live in board-eyes.js / board-pins.js
-      const more = { ...(typeof BoardEyes !== 'undefined' ? BoardEyes.OPS : {}), ...(typeof BoardPins !== 'undefined' ? BoardPins.OPS : {}) };
+      const more = { ...(typeof BoardEyes !== 'undefined' ? BoardEyes.OPS : {}), ...(typeof BoardPins !== 'undefined' ? BoardPins.OPS : {}), ...(window.PinboardHook?.OPS || {}) }; // (round 30) pins: pinboard-hook.js
       if (more[op]) return await more[op](a, ctx);
       if (op === 'collections') return { ok: true, value: { saved: collections().map((c) => ({ ...c, n: B._.matches(c.query).length })), moods: moodCollections(refs()) } };
       if (op === 'collection') { const r = saveCollection(a.name, a.query); return { ok: true, value: r }; }
@@ -235,7 +235,7 @@ const BoardPack = (() => {
       if (op === 'groups') { activate('tool:board'); return { ok: true, value: vibeGroups({ k: Number(a.k) || 0 }) }; }
       if (op === 'lab-look') { const r = await labLook({ name: a.name || null }); return { ok: true, value: r }; }
       if (op === 'timeline') return { ok: true, value: timelineText() || 'no clips on this board' };
-      return { ok: false, error: 'op: collections | collection {name, query} | show {name} | groups {k?} | lab-look {name?} | timeline | find {query} | caption {item, text} | pinterest {phrases | aesthetic}' };
+      return { ok: false, error: 'op: collections | collection {name, query} | show {name} | groups {k?} | lab-look {name?} | timeline | find {query} | caption {item, text} | pinterest {phrases | aesthetic} | pins {query?}' };
     } catch (err) { return { ok: false, error: err.message }; }
   }
   if (typeof HubBridge !== 'undefined') HubBridge.register(['board_do'], (t, a, c) => (window.AiUndo?.board ? AiUndo.board(t, a, c, handle) : handle(t, a, c))); // (round 28) aiundo.js

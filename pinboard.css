@@ -1,0 +1,53 @@
+/* Find images like this (round 30, pinboard): the picker (pinboard.js) and the picker card in a reply (pinboard-hook.js).
+   Thumbnails are the site's own small pictures; nothing animates but the busy line (opacity only). */
+.pinb-wrap { position: fixed; inset: 0; z-index: 950; display: grid; place-items: center; background: #0009; }
+.pinb { width: min(920px, calc(100vw - 32px)); height: min(760px, calc(100vh - 48px)); display: flex; flex-direction: column; gap: 8px;
+  padding: 14px 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--sidebar); color: var(--text); box-shadow: 0 20px 60px #000a; }
+.pinb-head { display: flex; align-items: center; gap: 6px; }
+.pinb-head h2 { margin: 0; flex: 1; font-size: 16px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pinb-x { border: 0; background: none; color: var(--muted); font-size: 15px; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
+.pinb-x:hover { background: var(--hover); color: var(--text); }
+.pinb .pinb-bar { display: flex; gap: 6px; align-items: center; padding: 0; flex-direction: row; }
+.pinb-q { flex: 1; min-width: 0; padding: 8px 10px; font: inherit; font-size: 14px; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
+.pinb-site, .pinb-go, .pinb-more { font: inherit; font-size: 13px; padding: 7px 11px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--text); cursor: pointer; white-space: nowrap; }
+.pinb-site:hover, .pinb-go:hover, .pinb-more:hover { border-color: #e60023; }
+.pinb-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.pinb-chips:empty { display: none; }
+.pinb-chip { font: inherit; font-size: 11.5px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--line); background: none; color: var(--muted); cursor: pointer; }
+.pinb-chip:hover { color: var(--text); border-color: #e60023; }
+.pinb-status { font-size: 12px; color: var(--muted); min-height: 16px; }
+.pinb-status.warn { color: var(--bd-gold, #ffc233); }
+.pinb.busy .pinb-status, .pinb-wrap.busy .pinb-status { animation: pinb-busy 1.2s ease-in-out infinite alternate; }
+@keyframes pinb-busy { from { opacity: 1; } to { opacity: .45; } }
+.pinb-grid { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); grid-auto-rows: 210px; gap: 8px; align-content: start; padding: 2px; scrollbar-color: var(--line) transparent; }
+.pinb-tile { position: relative; border-radius: 10px; overflow: hidden; cursor: pointer; background: #0b0b0e; outline: 2px solid transparent; outline-offset: -2px; }
+.pinb-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pinb-tile:hover, .pinb-tile:focus-visible { outline-color: color-mix(in srgb, var(--text) 40%, transparent); }
+.pinb-tile.on { outline: 3px solid #e60023; outline-offset: -3px; }
+.pinb-tile.on::after { content: '✓'; position: absolute; top: 6px; left: 6px; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; background: #e60023; color: #fff; font-size: 13px; font-weight: 700; }
+.pinb-t { position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 7px 5px; font-size: 11px; line-height: 1.25; color: #fff; background: linear-gradient(transparent, #000c);
+  opacity: 0; transition: opacity .12s; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.pinb-tile:hover .pinb-t, .pinb-tile:focus-visible .pinb-t, .pinb-tile:not(:has(img)) .pinb-t { opacity: 1; }
+.pinb-t:empty { display: none; }
+.pinb-open { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: #000a; color: #fff; text-decoration: none; font-size: 12px; opacity: 0; transition: opacity .12s; }
+.pinb-tile:hover .pinb-open { opacity: 1; }
+.pinb-foot { display: flex; align-items: center; gap: 8px; }
+.pinb-foot .spacer { flex: 1; }
+.pinb-more[hidden] { display: none; }
+.pinb-add:disabled { opacity: .55; cursor: default; }
+
+/* the picker card in a reply */
+.pinb-strip { display: flex; flex-direction: column; gap: 4px; margin: 2px 0 6px; }
+.live-cards .pinb-card { margin: 6px 6px 0 0; }
+.pinb-card { max-width: 560px; padding: 6px 8px; border-radius: 9px; border: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 70%, transparent); font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 6px; }
+.pinb-ch b { color: var(--text); font-weight: 600; }
+.pinb-cs { display: flex; gap: 5px; overflow-x: auto; }
+.pinb-ct { flex: none; width: 58px; height: 74px; padding: 0; border: 0; border-radius: 7px; overflow: hidden; cursor: pointer; background: #0b0b0e; position: relative; outline: 2px solid transparent; outline-offset: -2px; }
+.pinb-ct img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pinb-ct.on { outline-color: #e60023; }
+.pinb-ct.done { cursor: default; opacity: .5; }
+.pinb-ct.on::after, .pinb-ct.done::after { content: '✓'; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; display: grid; place-items: center; border-radius: 50%; background: #e60023; color: #fff; font-size: 10px; font-weight: 700; }
+.pinb-ct.done::after { background: #3a3a40; }
+.pinb-cf { display: flex; gap: 6px; }
+.pinb-ca { font: inherit; font-size: 11.5px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--text); cursor: pointer; }
+.pinb-ca:disabled { opacity: .55; cursor: default; }

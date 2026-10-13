@@ -357,6 +357,15 @@ async function pagePicture(id, { whole = false } = {}) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const q = (sel) => (sel ? `document.querySelector(${JSON.stringify(String(sel))})` : 'document.body');
 async function pageAny(id, op, a = {}) {
+  // (round 30, pinboard) Find images like this: the pictures on screen (read only) and one modest step down the page
+  if (op === 'pins' || op === 'scroll') {
+    const PC = require('./pinboard-core');
+    const expr = op === 'scroll' ? PC.SCROLL_EXPR : PC.readExpr(a);
+    if (await inChrome(id)) return { ...(await chromeM.pageOp(ckey(id), 'eval', { expr })), where: 'chrome' };
+    const g0 = guestOf(wins.get(id) || {});
+    if (!g0 || g0.isDestroyed()) return { ok: false, error: 'The app window isn\'t open' };
+    try { return { ok: true, value: await g0.executeJavaScript(expr, true) }; } catch (err) { return { ok: false, error: err.message }; }
+  }
   if (await inChrome(id)) {
     if (op === 'shot') { const r = await chromeM.pageOp(ckey(id), 'shot'); return r.ok ? { ok: true, image: r.value, mime: 'image/jpeg', where: 'chrome' } : r; }
     return { ...(await chromeM.pageOp(ckey(id), op, a)), where: 'chrome' };

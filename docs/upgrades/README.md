@@ -119,7 +119,7 @@ line count is lower than the number of upgrades).
 | Packs (round 28): share a scene as one file: Sketch ▾ › Share › Save as a pack (also ✦ More, the gallery's right-click, a scene's sequence), the scene with its sliders, looks, keyframes, references, LUTs and the song in one .hearthpack (a plain zip); drop one on Hearth (or Open a pack…) for a card first (picture, what's inside, size, where it came from, the sandbox note), then a new scene with its files in the asset library; zip-slip guard and size caps | [packs.md](packs.md) | 42 |
 | A faster start (round 29): the first frame no longer waits for the Lab (reload first paint ≈ 808 → 469 ms, start long tasks −74 %), the main process makes the window first (36 → 7 ms before it), the command bar and Flows load after the first screen (−205 KB JS) with their keys working from the start, the Lab starts building on the press of its button | [fastboot.md](fastboot.md) | 13 |
 | Song parts (round 30): react to the drums, the bass or the voice separately (a local split, no AI), in sketches, the ♪ chips, /react-to and presets | [stems.md](stems.md) | 26 |
-| **Total** | | **13,247** |
+| **Total** | | **13,275** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.
