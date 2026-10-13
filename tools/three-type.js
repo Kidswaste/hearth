@@ -328,7 +328,7 @@ const LabType = (() => {
     const { L, lines } = await linesOf(ref, ctx);
     const text = fmt === 'srt' ? LY.toSRT(lines) : LY.toLRC(lines, { words: fmt === 'lrc-words' || fmt === 'words' });
     let p = null;
-    try { const home = await window.hub.fs.home(); p = `${home}/Hearth lyrics/${L.name.replace(/[^\w -]+/g, '').trim() || 'lyrics'}.${fmt === 'srt' ? 'srt' : 'lrc'}`; await window.hub.fs.write(p, text); } catch { p = null; }
+    try { const home = await window.hub.fs.home(); p = WinMac.join(home, 'Hearth lyrics', `${L.name.replace(/[^\w -]+/g, '').trim() || 'lyrics'}.${fmt === 'srt' ? 'srt' : 'lrc'}`); await window.hub.fs.write(p, text); } catch { p = null; }
     return { layer: L.name, file: p, text: p ? undefined : text, lines: lines.length };
   }
   // the lines onto the Lab sequence's Captions track (each one a timed caption, styled by the sequence's caption look)

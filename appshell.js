@@ -200,11 +200,20 @@ function createShortcuts() {
   if (process.platform === 'darwin') return createMacLauncher();
   const target = process.execPath;
   const appDir = app.getAppPath();
+  // (round 31, winmac) the Desktop where Explorer shows it (OneDrive moves it to OneDrive\Desktop), and the shortcuts
+  // made by Electron itself carrying the app's id ("Hearth", main.js): Windows shows notifications for an app whose
+  // Start-menu shortcut has that id, and the path can hold any character (the PowerShell line below is the fallback)
+  let desktop = path.join(os.homedir(), 'Desktop');
+  try { desktop = app.getPath('desktop') || desktop; } catch { /* the usual place */ }
   const places = [
     path.join(process.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs', `${APP_NAME}.lnk`),
-    path.join(os.homedir(), 'Desktop', `${APP_NAME}.lnk`),
+    path.join(desktop, `${APP_NAME}.lnk`),
   ];
-  const ps = places.map((p) => `$s=$w.CreateShortcut('${p.replace(/'/g, "''")}');$s.TargetPath='${target.replace(/'/g, "''")}';$s.Arguments='"${appDir}" --restart';$s.WorkingDirectory='${appDir.replace(/'/g, "''")}';$s.IconLocation='${ICON_ICO.replace(/'/g, "''")},0';$s.Description='Start ${APP_NAME} (or restart it if it is already open)';$s.Save()`).join(';');
+  try {
+    const made = places.filter((p) => shell.writeShortcutLink(p, 'create', { target, args: `"${appDir}" --restart`, cwd: appDir, icon: ICON_ICO, iconIndex: 0, appUserModelId: APP_NAME, description: `Start ${APP_NAME} (or restart it if it is already open)` }));
+    if (made.length === places.length) return Promise.resolve({ created: made });
+  } catch { /* PowerShell below */ }
+  const ps = places.map((p) => `$s=$w.CreateShortcut('${p.replace(/'/g, "''")}');$s.TargetPath='${target.replace(/'/g, "''")}';$s.Arguments='"${appDir.replace(/'/g, "''")}" --restart';$s.WorkingDirectory='${appDir.replace(/'/g, "''")}';$s.IconLocation='${ICON_ICO.replace(/'/g, "''")},0';$s.Description='Start ${APP_NAME} (or restart it if it is already open)';$s.Save()`).join(';');
   return new Promise((resolve) => {
     execFile('powershell.exe', ['-NoProfile', '-Command', `$w=New-Object -ComObject WScript.Shell;${ps}`], { windowsHide: true }, (err) => {
       resolve(err ? { error: err.message } : { created: places });

@@ -152,7 +152,7 @@ const Renders = (() => {
       const done = (x) => { v.removeAttribute('src'); v.load(); res(x); };
       v.onloadedmetadata = () => done({ w: v.videoWidth, h: v.videoHeight, fps: 30, duration: Number.isFinite(v.duration) ? v.duration : 0, audio: undefined });
       v.onerror = () => done(null);
-      v.src = `file://${String(path).replace(/\\/g, '/').replace(/^([A-Za-z]):/, '/$1:')}`;
+      v.src = WinMac.fileUrl(path); // (round 31, winmac) # ? % in a render's name
       setTimeout(() => done(null), 8000);
     });
   }

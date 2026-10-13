@@ -94,7 +94,7 @@ const LabMotionIn = (() => {
       st.video = v;
       if (file) {
         st.kind = 'file'; st.path = file; st.label = String(file).split(/[\\/]/).pop();
-        v.src = /^(blob:|https?:|file:)/.test(file) ? file : `file://${encodeURI(String(file).replace(/\\/g, '/')).replace(/^([^/])/, '/$1')}`;
+        v.src = /^(blob:|https?:|file:)/.test(file) ? file : WinMac.fileUrl(file); // (round 31, winmac)
         v.loop = true;
         st.mirror = p.mirror ?? false;
       } else {

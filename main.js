@@ -1,6 +1,9 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell, session, desktopCapturer } = require('electron');
 const fs = require('fs');
 const path = require('path');
+// (round 31, winmac) started from the Mac's Dock, PATH lacks Homebrew / npm / nvm: claude, codex, ffmpeg, git and the
+// chats' own commands are found again (Windows / Linux: unchanged)
+require('./winmac').fixProcessPath();
 const store = require('./store');
 // (round 19, splash) modules the first screen doesn't need are required on their first use instead of before the window
 // opens (Electron's 'ready' waits for everything main.js does at load): the same object to every caller, made on demand
@@ -611,3 +614,6 @@ app.whenReady().then(async () => {
   syncGate = syncmain.ready().catch(() => {}).then(() => { syncGate = null; bootTimes.syncMs = Math.round(performance.now() - syncFrom); });
 });
 app.on('window-all-closed', () => app.quit());
+// (round 31, winmac) a Mac: clicking Hearth in the Dock (or opening it again) brings back a window that "Closing the
+// window keeps Hearth running" hid; before, only the menu-bar icon could
+app.on('activate', () => { if (win && !win.isDestroyed() && !win.isVisible()) { win.show(); win.focus(); } });

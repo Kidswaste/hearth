@@ -43,13 +43,17 @@ document.addEventListener('loadedmetadata', (e) => { const v = e.target; if (v i
   }
 
   const MAC_TIPS = /Mac/.test(navigator.platform);
+  // (round 31, winmac) on a Mac, "Ctrl+K" in placeholders, hints (class …hint…) and toasts reads "⌘K" too (winmac.js)
+  const macText = (v) => (MAC_TIPS && typeof v === 'string' && typeof WinMac !== 'undefined' ? WinMac.macKeys(v, { mac: true }) : v);
+  globalThis.macText = macText;
   // el('div', { class: 'x', on: { click }, attrs: {}, style: {}, dataset: {} }, ...children)
   function el(tag, props = {}, ...children) {
     const node = document.createElement(tag);
     for (const [key, value] of Object.entries(props || {})) {
       if (value == null || value === false) continue;
       if (key === 'class') node.className = value;
-      else if (key === 'text') node.textContent = value;
+      else if (key === 'text') node.textContent = MAC_TIPS && /\bhint\b/.test(props.class || '') ? macText(value) : value;
+      else if (key === 'placeholder' && MAC_TIPS) node.placeholder = macText(value);
       else if (key === 'html') node.innerHTML = value;
       else if (key === 'on') for (const [ev, fn] of Object.entries(value)) node.addEventListener(ev, fn);
       else if (key === 'style') Object.assign(node.style, value);
@@ -85,7 +89,7 @@ document.addEventListener('loadedmetadata', (e) => { const v = e.target; if (v i
       return prev;
     }
     while (toastBox.childElementCount >= 5) ([...toastBox.children].find((t) => !t.hasAction) || toastBox.firstElementChild).remove(); // an Undo stays longest
-    const node = el('div', { class: `toast ${type}` }, el('span', { text: message }));
+    const node = el('div', { class: `toast ${type}` }, el('span', { text: macText(message) }));
     node.toastKey = `${type}\n${message}`; node.hasAction = Boolean(action);
     if (action) node.append(el('button', { text: action.label, on: { click: () => { action.fn(); node.remove(); } } }));
     node.append(el('button', { class: 'toast-x', text: '×', title: 'Dismiss', on: { click: () => node.remove() } }));

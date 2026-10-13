@@ -292,7 +292,7 @@ const ThreeSeq = (() => {
   async function durationOf(p) {
     const pr = await probe(p);
     if (pr?.duration) return pr.duration;
-    return new Promise((r) => { const m = document.createElement(VID.test(p) ? 'video' : 'audio'); m.preload = 'metadata'; m.onloadedmetadata = () => r(m.duration || 0); m.onerror = () => r(0); m.src = `file://${p}`; setTimeout(() => r(0), 6000); });
+    return new Promise((r) => { const m = document.createElement(VID.test(p) ? 'video' : 'audio'); m.preload = 'metadata'; m.onloadedmetadata = () => r(m.duration || 0); m.onerror = () => r(0); m.src = WinMac.fileUrl(p); setTimeout(() => r(0), 6000); });
   }
   async function probe(p) {
     if (S.probes.has(p)) return S.probes.get(p);
@@ -1226,11 +1226,11 @@ const ThreeSeq = (() => {
   async function outDir() {
     try { const d = await window.hub.capture.dir(); if (d?.dir) return `${d.dir}${d.dir.includes('\\') ? '\\' : '/'}made`; } catch { /* below */ }
     const home = await window.hub.fs.home();
-    return `${home}/Hearth sequences`;
+    return WinMac.join(home, 'Hearth sequences'); // (round 31, winmac) C:\Users\me\Hearth sequences on Windows
   }
   async function uniqueOut(dir, stem, ext) {
-    let p = `${dir}/${stem}.${ext}`;
-    for (let i = 2; i < 200 && await window.hub.fs.stat(p).catch(() => null); i += 1) p = `${dir}/${stem} (${i}).${ext}`;
+    let p = WinMac.join(dir, `${stem}.${ext}`);
+    for (let i = 2; i < 200 && await window.hub.fs.stat(p).catch(() => null); i += 1) p = WinMac.join(dir, `${stem} (${i}).${ext}`);
     return p;
   }
   // ffmpeg jobs: one listener for all of them (the bridge's onJob can't be unsubscribed)
@@ -1485,7 +1485,7 @@ const ThreeSeq = (() => {
       try { const cv = document.createElement('canvas'); cv.height = 64; cv.width = Math.max(16, Math.round((64 * v.videoWidth) / (v.videoHeight || 1))); cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height); const im = new Image(); im.onload = () => redraw(); im.src = cv.toDataURL('image/jpeg', 0.7); r.img = im; } catch { /* no picture */ }
       v.removeAttribute('src'); v.load();
     }, { once: true });
-    v.src = `file://${c.src}`;
+    v.src = WinMac.fileUrl(c.src); // (round 31, winmac) C:\… and # in names
     return null;
   }
   function poster(c) {
@@ -2268,7 +2268,7 @@ const ThreeSeq = (() => {
       for (const x of (S.index ? [...listCache] : []).filter((y) => y.key !== S.key && ok(y.name)).slice(0, 6)) out.push(tile(`▤ ${x.name}`, 'a sequence, as a clip', null, { seq: x.key }));
       // (labcut) your latest renders and recordings, as footage
       const made = (window.Renders?.history?.() || []).filter((j) => j.status === 'done' && !j.trashed && (VID.test(j.output || '') || IMG.test(j.output || '')) && ok(`${base(j.output)} ${j.title || ''} render recording`));
-      for (const j of made.slice(0, s ? 9 : 3)) out.push(tile(base(j.output), j.kind === 'record' || /record/i.test(j.kind || '') ? 'recording' : 'render', IMG.test(j.output) ? `file://${j.output}` : null, { path: j.output }));
+      for (const j of made.slice(0, s ? 9 : 3)) out.push(tile(base(j.output), j.kind === 'record' || /record/i.test(j.kind || '') ? 'recording' : 'render', IMG.test(j.output) ? WinMac.fileUrl(j.output) : null, { path: j.output }));
       const chats = typeof ChatScenes !== 'undefined' ? H.chats.filter((c) => ChatScenes.linkOf?.(c.id)).slice(0, 12) : [];
       for (const c of chats) { const sid = ChatScenes.linkOf(c.id); const sk = L.scenes.get(sid); if (sk && ok(c.title) ) out.push(tile(c.title || sk.name, `chat scene ${ChatScenes.glyphFor(sid)}`, L.scenes.thumbOf(sid), { chat: c.id })); }
       const pins = new Set(store.get('three.sketchPins', []));

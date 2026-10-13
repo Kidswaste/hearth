@@ -216,7 +216,7 @@ function menuButton(it, onPick) {
   b.type = 'button';
   b.setAttribute('role', 'menuitem');
   const [text, inlineKey] = menuLabel(it);
-  b.textContent = text; // the label stays the first text node (usage counts and checks read it)
+  b.textContent = typeof macText === 'function' ? macText(text) : text; // the label stays the first text node (usage counts and checks read it); "(Ctrl+N)" reads ⌘N on a Mac
   if (it.icon && typeof Icons !== 'undefined') { const ic = Icons.node(it.icon); if (ic) { ic.classList.add('menu-ico'); b.append(ic); b.classList.add('has-ico'); } } // drawn first by CSS (order: -1)
   if (it.hint) b.append(el('span', { class: 'menu-hint', text: it.hint }));
   const sub = Boolean(it.items);

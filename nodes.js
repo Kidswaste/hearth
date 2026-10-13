@@ -286,7 +286,7 @@ const NodeView = (() => {
       if (!it) continue;
       const [label, hint, fn, o = {}] = it;
       box.append(el('button', { class: `nv-menu-item${o.checked ? ' on' : ''}`, disabled: Boolean(o.disabled), title: hint || '', on: { click: () => { close(); fn?.(); } } },
-        el('span', { class: 'nv-menu-check', text: o.checked ? '✓' : '' }), el('span', { text: label }), o.key ? el('kbd', { text: o.key }) : null));
+        el('span', { class: 'nv-menu-check', text: o.checked ? '✓' : '' }), el('span', { text: label }), o.key ? el('kbd', { text: typeof macText === 'function' ? macText(o.key) : o.key }) : null)); // (round 31, winmac) ⌘ on a Mac
     }
     document.body.append(box);
     const r = box.getBoundingClientRect();

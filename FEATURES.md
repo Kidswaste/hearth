@@ -957,3 +957,8 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ Plain chats get a lean chat tool list (`chat_do` for the rarer abilities); board / capture / apps tools give their details on demand (`help`); one "You are…" line for the director; shorter habit lines.
 - ✓ Memory goes where it costs least: in the prompt while small, only with the messages it's about once big (`/memory relevant on|off|auto`), each fact at most once per chat.
 - ✓ `node dev/tokens-test.js` (unit group) fails when any of these per-message totals grows past its budget. ≈ 147k fewer tokens in a typical week (before tool steps).
+## 🖥 Mac + Windows polish (round 31, winmac, 30 upgrades: docs/upgrades/winmac.md)
+- ✓ Files named with `#`, `?`, `%` or accents show everywhere (one `WinMac.fileUrl` in `winmac.js`); exports use one slash kind; Forge Debug works on the Mac.
+- ✓ Mac: a Dock launch finds Homebrew / npm / nvm programs (claude, codex, gh, ffmpeg); the Dock click brings back a hidden window; toasts, search hints, menu rows say ⌘; the hotkey shows as ⌃⌥H.
+- ✓ Windows: shortcuts carry Hearth's app id (notifications) and land on the real (OneDrive) Desktop.
+- ○ `node dev/winmac-scan.js` keeps the patterns out (0 hits, checked by `dev/winmac-test.js`); no real Mac / PC here, and npm's `claude.cmd` on Windows is still not picked up.

@@ -124,7 +124,7 @@ const ThreeFrames = (() => {
   // The Lab side
   // ======================================================================================================
   const base = (p) => String(p || '').split(/[\\/]/).pop();
-  const fileUrl = (p) => `file:///${String(p).replace(/\\/g, '/').replace(/^\/+/, '')}`.replace(/#/g, '%23').replace(/\?/g, '%3F');
+  const fileUrl = (p) => WinMac.fileUrl(p); // (round 31, winmac) every name part encoded: % and accents too
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const C = () => (typeof CutData !== 'undefined' ? CutData : null);
   const F = {

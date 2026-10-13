@@ -423,7 +423,7 @@ const Native = (() => {
         try {
           const sheet = await FrameRead.sheet(path, { layout: '4x3' });
           const p = await window.hub.saveAttachment(`${name.replace(/\.\w+$/, '')} · contact sheet.jpg`, await window.hub.fs.read(sheet.path, { encoding: 'base64' }));
-          v.attachments.push({ kind: 'image', name: `${name} · contact sheet`, path: p, preview: `file:///${p.replace(/\\/g, '/')}`, video: path });
+          v.attachments.push({ kind: 'image', name: `${name} · contact sheet`, path: p, preview: WinMac.fileUrl(p), video: path });
         } finally { busy.remove(); }
         renderChips(agentId); return;
       } catch (err) { toast(`Couldn't read ${name}: ${err.message}`, { type: 'error' }); return; }
@@ -431,7 +431,7 @@ const Native = (() => {
     if (/\.(png|jpe?g|gif|webp|bmp)$/i.test(name)) {
       // The Three Director can turn attached pictures into sketch references, from the attachments folder.
       if (H.agent(agentId)?.threeTools) { try { path = await window.hub.saveAttachment(name, await window.hub.fs.read(path, { encoding: 'base64' })); } catch { /* keep the original path */ } }
-      v.attachments.push({ kind: 'image', name, path, preview: `file:///${path.replace(/\\/g, '/')}` });
+      v.attachments.push({ kind: 'image', name, path, preview: WinMac.fileUrl(path) }); // (round 31, winmac) # / % / a Mac's /Users path
     } else if (isTextName(name)) {
       try { v.attachments.push({ kind: 'text', name, content: await window.hub.fs.read(path, { maxBytes: TEXT_ATTACH_LIMIT }) }); } catch (err) { toast(err.message, { type: 'error' }); }
     } else {
@@ -1187,7 +1187,7 @@ const Native = (() => {
     return card;
   }
   function showCard(sh) {
-    const url = `file:///${String(sh.path).replace(/\\/g, '/')}`;
+    const url = WinMac.fileUrl(sh.path);
     return el('figure', { class: 'show-card' }, el('img', { src: url, alt: sh.caption, loading: 'lazy', decoding: 'async', title: 'Click to open full size', on: { click: () => window.hub.fs.open(sh.path) } }), el('figcaption', { text: sh.caption }));
   }
   function opinionCard(op) {
