@@ -35,16 +35,16 @@ interleaved with "after", twice each.
 
 | What | Before | After |
 |---|---|---|
-| **A still scene** (a knot + 40 spheres, drawn each frame by its loop): frames drawn / s | 13.4 | **1.7** (a refresh a second + the probe's own messages) |
-| Same: WebGL draw calls / s | 547 | **68 (−88 %)** |
+| **A still scene** (a knot + 40 spheres, drawn each frame by its loop): frames drawn / s | 13.4–16.7 | **1.7** (a refresh a second + the probe's own messages) |
+| Same: WebGL draw calls / s | 547–683 | **68 (−88 to −90 %)** |
 | The scene changes itself (a timer, no message): first frame drawn after the change | — | **17 ms** (one frame here), then still again after 3 frames |
 | A slider moved / a pointer over the preview | — | draws at once (4 / 3 frames) |
 | **A parked Lab** (another tool in front): draw calls in 2 s | 0 | 0 |
 | Same: page frames asked for in 2 s | every frame (4 loops re-arming forever, ≈ 120+ at 60 Hz, ≈ 480+ at 240 Hz) | **1** (the probe's own message woke it once) |
 | Back on screen: first frame drawn | — | 110 ms (with the hub's message round trip) |
-| **A spin written per frame**, turn per second at the screen's rate vs a 5 fps cap: the old `+= 0.01` | proportional to the fps (0.103 vs 0.073 at 10 vs 7 fps in an earlier run) | — |
-| Same written with `f60` (`+= 0.01 * f60`) | — | **0.60 / 0.62 / 0.62** at both rates (equal within noise) |
-| An animated scene, pacing off vs on: frames drawn / s · frame gap p50 · p95 · σ | 11.6 · 83 · 167 · 43 ms | 10.6 · 83 · 200 · 44 ms (same within this machine's noise) |
+| **A spin written per frame**, turn per second at the screen's rate vs a 5 fps cap: the old `+= 0.01` | proportional to the fps: 0.18–0.21 at 18–21 fps vs 0.05 at 5 fps | — |
+| Same written with `f60` (`+= 0.01 * f60`) | — | **0.60 / 0.62 / 0.60** (18 fps / 5 fps / 21 fps: equal within noise) |
+| An animated scene, pacing off vs on: frames drawn / s · frame gap p50 · p95 · σ | 20.6 · 50 · 67 · 12.9 ms | 21.8 · 50 · 67 · 14.2 ms (same within this machine's noise) |
 | The still-picture signature's cost per looked-at frame (this scene, SwiftShader machine) | — | 105–140 µs; Node: 0.3 µs per object (500 objects: 245 µs), an animating scene is looked at on 1 frame in 8 |
 | Battery: Auto fps · preview resolution | screen rate · 100 % | **60 fps at most · 85 %** (step 1), back to screen rate · 100 % when plugged in |
 
@@ -105,6 +105,8 @@ and on the next frame at 60 Hz.
     signature's cost and battery.
 
 ## Tests
+Run: `sh dev/run-checks.sh labpace lazy unit:boot-test smooth-lab labframes perfectloop smooth32 labadapt`: all pass
+(labpace failed once on a readout timing; fixed by making "still" robust to the probe's own message, then passed).
 - `node dev/labpace-test.js` (unit): 59 checks. They cover f60 values, equal progress at 60 / 120 / 144 / 240 Hz,
   under a cap and with jitter, and the "before" (4× at 240 Hz). They lint that no per-frame decay, spin or damping is
   left without f60 in the three template files, and that the guide line is there. The signature sees 17 kinds of
