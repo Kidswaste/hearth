@@ -418,6 +418,7 @@ const ThreeLab = (() => {
         ['Cycle looks…', lookCycle ? `Now: every ${lookCycle} bar${lookCycle === 1 ? '' : 's'}` : 'Switch between your saved looks every few bars while it plays', () => lookCycleMenu(sketchMenuBtn)],
         ['⟲ Restart from scratch', 'A fresh page, GPU and sound, when something bugs out (Ctrl+Shift+Enter)', () => restartSim()],
         ['Export HTML…', 'A standalone .html file', () => exportHtml()],
+        ...(window.LabPacksHook ? [LabPacksHook.sketchRow(() => current?.id)] : []), // (round 28) Share › Save as a pack (tools/three-packs-hook.js)
         ...(typeof Deploy !== 'undefined' ? [['Publish & Adobe', 'A web page (Vercel, Netlify…) · Photoshop', [['Publish as a web page…', 'Preview first; asks before it goes public', () => Deploy.menuAt(sketchMenuBtn)], ['Preview the web page here', 'Built like the published one, on this computer', () => Deploy.build('scene', current?.id || '').then((b) => Deploy.preview(b)).catch((err) => toast(err.message, { type: 'error' }))], ...(typeof Adobe !== 'undefined' ? [['Open the picture in Photoshop', 'A still of the preview (all layers)', () => Adobe.labToPhotoshop().catch((err) => toast(err.message, { type: 'error', timeout: 9000 }))]] : [])]]] : []), // (round 14: deploy.js, adobe.js)
         ['Ask Claude about this layer', 'Sends the code and any errors to Claude', () => askAbout()],
         'Careful',
@@ -3444,6 +3445,7 @@ ${code}
       timelineOf: (id) => timelineOf(id), setTimeline: (id, tl) => setTimeline(id, tl),
       mediaUp: (id = current?.id) => (id ? sceneMedia(id, { playing: false }) : null),
       extrasOf: (id) => extras[id] || null, // looks / music links per layer (the Lab sequence applies a clip's look)
+      setExtras(id, ex) { if (!sketches.some((x) => x.id === id) || !ex || typeof ex !== 'object') return false; extras[id] = { ...(extras[id] || {}), ...JSON.parse(JSON.stringify(ex)) }; saveExtras(); return true; }, // (round 28, packs) a scene from a .hearthpack: its sliders, looks, song link
       thumbOf: (id) => thumbs[id]?.url || null,
       previewHost: () => previewHost,
     };

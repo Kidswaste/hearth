@@ -307,6 +307,7 @@ const LabGallery = (() => {
       { label: it.kind === 'scene' ? '⧉ A new scene from a copy of it' : '✦ A new scene from it', action: () => pickCard(it.key, 'scene') },
       { label: '＋ Add it as layers on this scene', hint: 'on top of what you have', action: () => pickCard(it.key, 'layer') },
       it.kind === 'scene' && !it.current ? { label: 'Open it', action: () => { close(); ThreeLab.director?.openSketch(it.id); } } : null,
+      window.LabPacksHook?.galleryItem(it, () => cards.get(it.key)?.img?.src || null), // (round 28) Share › Save as a pack
       { label: 'Draw its picture again', more: true, action: () => { delete cache[cacheKey(it)]; const c = cards.get(it.key); if (c) { c.img.removeAttribute('src'); c.pic.classList.remove('has'); } want(it.key, true); } },
     ].filter(Boolean);
   }
