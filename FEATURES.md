@@ -1006,3 +1006,8 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ ⋯ AI setup reads who → Personality → Instructions → What it can use (files, Hearth's tools, Connections, Hooks, Check this AI) → How hard it thinks; Memory, Habits, Spending and Missions folded at the end, each fold with a one-line state (48 → 18 controls at first sight, 1871 → 841 px).
 - ✓ Plain words: Files it can use, Everything it can do…, Your own connections; no /command left in the chat menus; Settings › Updates has one What's new…, the Meshy key moved to Advanced.
 - ○ Checked by `dev/checks/simplify3.js` (chat group).
+## 🩺 Fix my scene (round 34, scenedoctor, 30 upgrades: docs/upgrades/scenedoctor.md)
+- ✓ A free local check of the Lab scene (✦ More first row, the toolbar's ⋯, ⌘K): layer errors, a blank / dark / blown-out frame, the subject off-screen / tiny / camera inside it, NaN values, slow frames, music layers with nothing playing, missing files; one plain sentence each.
+- ✓ One-click fixes, one undo step each (hide the layer, show layers, frame the subject with the layer's camera placement, autopolish's exposure, reset / halve a slider, Light mode, live sound); "✦ Ask the director" fills its box with a short request, never sent.
+- ✓ A calm hint by itself on a blank frame or a layer error, once per problem.
+- ○ Checked by `dev/checks/scenedoctor.js` (lab group) and `node dev/scenedoctor-test.js` on generated scenes.

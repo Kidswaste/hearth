@@ -168,7 +168,8 @@ const AutoPolish = (() => {
     l.after = { M, shot, score: C().score(M) };
     afterTexts(l);
   }
-  async function run({ quiet = false } = {}) {
+  // only: fix ids to keep (🩺 Fix my scene asks for the exposure ones alone) · card: false = no card (the caller shows its own)
+  async function run({ quiet = false, only = null, card = true } = {}) {
     if (S.busy) throw new Error('Still polishing.');
     S.busy = true;
     const busy = quiet ? null : toast('✨ Looking at the picture…', { timeout: 0 });
@@ -177,6 +178,7 @@ const AutoPolish = (() => {
       closeCard();
       const big = await d.shotSmall(480).catch(() => null);
       const r = await check();
+      if (only) { r.fixes = r.fixes.filter((f) => only.includes(f.id)); r.left = []; }
       const snap = await snapshot(d, cmd);
       S.last = { M: r.M, fixes: r.fixes, left: r.left, before: { score: r.score, shot: r.shot, big }, snap, on: new Set(r.fixes.map((f) => f.id)), after: null, at: Date.now() };
       if (r.fixes.length) {
@@ -188,7 +190,7 @@ const AutoPolish = (() => {
       if (!l.fixes.length && !l.left.length) {
         if (!quiet) toast(`✨ It already looks finished (${l.before.score} / 100): nothing to fix`, { timeout: 3500 });
       } else {
-        showCard();
+        if (card) showCard();
         if (!quiet && l.fixes.length) toast(`✨ ${l.fixes.length} fix${l.fixes.length === 1 ? '' : 'es'}${l.after ? ` · finish ${l.before.score} → ${l.after.score}` : ''}`, { timeout: 4500, action: { label: 'Undo', fn: () => undo().catch(err) } });
       }
       return state();

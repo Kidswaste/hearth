@@ -173,7 +173,7 @@ async function cdpConnect() {
       if (msg.method === 'Runtime.exceptionThrown') {
         const d = msg.params.exceptionDetails;
         const txt = `exception: ${d.exception?.description || d.text} @ ${d.url || ''}:${d.lineNumber}`;
-        if (!/seqsolid (boom|throws)/.test(txt)) problems.push(txt); // (seqsolid: a test scene throws on purpose)
+        if (!/seqsolid (boom|throws)|scenedoctorGlow/.test(txt)) problems.push(txt); // (seqsolid, scenedoctor: a test scene throws on purpose)
       }
       if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'log' && process.env.SMOKE_DEBUG) {
         const text = msg.params.args.map((a) => a.value ?? a.description ?? '').join(' ');

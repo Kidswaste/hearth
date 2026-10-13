@@ -1,0 +1,27 @@
+/* 🩺 Fix my scene (tools/three-doctor*.js): the card over the top left of the Lab preview and the calm hint in its
+   bottom-right corner, built on lookmatch's card parts (.lm-head / .lm-btn / .lm-acts). Plain and still: no blur,
+   no animation over the moving preview. Loaded with the Lab (the hint can show before the doctor's files load). */
+.sd-card {
+  position: absolute; top: 46px; left: 8px; z-index: 7; width: 330px; max-width: calc(100% - 16px); max-height: calc(100% - 56px);
+  display: flex; flex-direction: column; gap: 6px; padding: 7px 9px 8px; border: 1px solid var(--line); border-radius: 10px; overflow-y: auto; scrollbar-width: thin;
+  background: color-mix(in srgb, var(--panel, #15181b) 95%, transparent); color: var(--text, #eae0d5); font-size: 12px;
+  box-shadow: 0 10px 30px #0008, 0 0 0 1px color-mix(in srgb, var(--fh-gold, #ffd75e) 14%, transparent); contain: layout paint;
+}
+.sd-card.busy .sd-body { opacity: 0.6; }
+.sd-body { display: flex; flex-direction: column; gap: 3px; }
+.sd-row { display: flex; flex-direction: column; gap: 3px; padding: 4px 6px; border-radius: 6px; border-left: 2px solid var(--fh-orange, #ff9d4d); background: color-mix(in srgb, var(--fh-gold, #ffd75e) 4%, transparent); }
+.sd-row.sd-error, .sd-row.sd-blank, .sd-row.sd-nan { border-left-color: var(--fh-red, #ff5d5d); }
+.sd-row.sd-slow, .sd-row.sd-noaudio, .sd-row.sd-dark, .sd-row.sd-bright { border-left-color: var(--fh-blue, #6db3ff); }
+.sd-row.fixed { border-left-color: var(--fh-gold, #ffd75e); opacity: 0.75; }
+.sd-text { line-height: 1.35; overflow-wrap: anywhere; }
+.sd-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.sd-fix { color: var(--fh-gold, #ffd75e); border-color: color-mix(in srgb, var(--fh-gold, #ffd75e) 45%, var(--line)); }
+.sd-ask-quiet { color: var(--muted, #9a948c); }
+.sd-done { color: var(--fh-gold, #ffd75e); font-size: 11px; }
+.sd-ok { padding: 4px 6px; color: var(--muted, #9a948c); }
+.sd-hint {
+  position: absolute; right: 10px; bottom: 10px; z-index: 7; display: flex; align-items: center; gap: 6px; max-width: calc(100% - 20px);
+  padding: 4px 6px 4px 9px; border: 1px solid var(--line); border-radius: 9px; font-size: 12px; color: var(--text, #eae0d5);
+  background: color-mix(in srgb, var(--panel, #15181b) 94%, transparent); box-shadow: 0 6px 18px #0007;
+}
+.sd-hint .sd-hint-go { color: var(--fh-gold, #ffd75e); }
