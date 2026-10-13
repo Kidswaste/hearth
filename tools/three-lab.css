@@ -254,6 +254,9 @@ body.tw-scrubbing, body.tw-scrubbing * { cursor: ew-resize !important; }
 .three-preview .lab-adapt-note { position: absolute; left: 8px; bottom: 8px; z-index: 2; padding: 2px 8px; border-radius: 6px; background: #0007; color: #cfd3dc; font: 10.5px system-ui, sans-serif; opacity: 0.7; pointer-events: none; white-space: nowrap; contain: content; }
 .three-preview .lab-adapt-note[hidden], .three-preview.presenting .lab-adapt-note, .three-preview:fullscreen .lab-adapt-note { display: none; }
 .three-preview:hover .lab-adapt-note { opacity: 0; }
+/* (round 33, labpace) ⋯ › Frame pace: a tiny readout in the preview's top-left corner, off by default */
+.three-preview .lab-pace-note { position: absolute; left: 8px; top: 8px; z-index: 2; padding: 1px 7px; border-radius: 6px; background: #0007; color: #cfd3dc; font: 10.5px system-ui, sans-serif; font-variant-numeric: tabular-nums; opacity: 0.75; pointer-events: none; white-space: nowrap; contain: content; }
+.three-preview .lab-pace-note[hidden], .three-preview.presenting .lab-pace-note, .three-preview:fullscreen .lab-pace-note { display: none; }
 /* (round 21, labhub) the code editor: the highlighted copy and the line numbers lay out on their own. Without this a
    new highlight (each key, each scroll in a long sketch) laid out the textarea under it again: ~70 ms at 2,000 lines */
 .three-editor .ce-pre, .three-editor .ce-gutter { contain: size layout style; }

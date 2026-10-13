@@ -389,6 +389,7 @@ let autoCap = 0; let lightMode = false;
 function applyCap() {
   let c = capWant.auto ? (!capWant.focused ? 30 : autoCap) : capWant.value;
   if (lightMode) c = c ? Math.min(c, 30) : 30;
+  if (capWant.auto && PACE.battery) c = c ? Math.min(c, 60) : 60; // (round 33 "labpace": on battery, Auto holds 60 at most)
   if (c !== fpsCap) { fpsCap = c; capT = -1; }
 }
 // parked: the Lab isn't on screen (another tool, a hidden window): layers' frames wait in a queue, nothing draws
@@ -398,7 +399,7 @@ function setParked(on) {
   if (parked === on) return;
   parked = on;
   if (on) for (const e of [...POOL]) poolEvict(e); // (round 21: the Lab off screen: no quick re-run coming, the GPU gets its memory back)
-  if (!on) { const q = parkQ.splice(0); for (const fn of q) realRAF(fn); }
+  if (!on) { const q = parkQ.splice(0); for (const fn of q) realRAF(fn); paceWake(); PACE.meter.reset(); }
   statsRun(!on); // (round 26, smooth26) the stats timer sleeps too: a parked Lab woke the page twice a second for nothing
 }
 // what the preview saved (shown by /lab perf): renderers of gone modules dropped, filter merges skipped / done, passes skipped
@@ -452,7 +453,8 @@ function instrument(renderFn) {
     if (this.shadowMap?.enabled && scene?.isObject3D) adShadows(this, scene);
     // adaptive resolution (see adaptQuality): the sketch's own pixel ratio × the current quality
     // (a precomp's layers: × that precomp's own resolution, see "precomps")
-    let q = fullRes() || this.__helper ? 1 : SQ.off ? 1 : +(quality * (EL?.props.pcOf ? pcRes(EL) : 1) * (this.__lowRes || 1)).toFixed(2);
+    if (paceSleeping.size) paceWake(); // (labpace: anything drawing wakes the page's loops)
+    let q = fullRes() || this.__helper ? 1 : SQ.off ? 1 : +(quality * (EL?.props.pcOf ? pcRes(EL) : 1) * (this.__lowRes || 1) * paceDragK()).toFixed(2);
     // Light mode: at most 1 device pixel per CSS pixel in the preview (a Retina screen draws a quarter of the pixels)
     if (lightMode && !fullRes() && !this.__helper && !SQ.off && typeof this.getPixelRatio === 'function') q = Math.min(q, +(1 / Math.max(1, this.__basePR ?? this.getPixelRatio())).toFixed(2));
     if (this.__q !== q && typeof this.setPixelRatio === 'function') {
@@ -461,6 +463,8 @@ function instrument(renderFn) {
       this.__q = q;
       this.setPixelRatio(this.__basePR * q);
     }
+    if (paceSkip(this, scene, camera, EL)) return; // (labpace: the picture it shows is the one it would draw: it stays)
+    PACE.drawn += 1; PACE.lastDraw = frameTick;
     const t0 = realNow(); // (performance.now inside a sequence scene / a precomp is that scene's clock)
     // a Lab sequence's camera fly-through moves this scene's own camera for the frame (put back right after)
     const camBack = EL && SQ.cam ? sqCamFx(EL, camera) : null;
@@ -730,16 +734,16 @@ function adaptCore(opt = {}) {
   const FLOOR = 3; // the lowest resolution: below it the page may cap the frame rate instead (onFloor)
   const UP0 = opt.upWait ?? 4000; const UP_MAX = opt.upMax ?? 64000; const FLIP = opt.flip ?? 10000; const SETTLE = opt.settle ?? 600; const HELD = opt.held ?? 60000;
   const useful = opt.useful || (() => true); // (knob) → does the scene have anything it lowers
-  const S = { level: 0, frames: 0, slow: 0, win0: 0, winMin: Infinity, prevGap: 0, since: -1e9, calm0: 0, upWait: UP0, lastUp: -1e9, lastDown: -1e9, slowWins: 0, downs: 0, ups: 0, flips: 0, hold: false };
+  const S = { level: 0, frames: 0, slow: 0, win0: 0, winMin: Infinity, prevGap: 0, since: -1e9, calm0: 0, upWait: UP0, lastUp: -1e9, lastDown: -1e9, slowWins: 0, downs: 0, ups: 0, flips: 0, hold: false, min: 0, byFloor: false };
   // the next level down / up that changes something here
   const nextDown = (l) => { for (let k = l + 1; k < STEPS.length; k += 1) if (KNOB[k] === 'scale' || useful(KNOB[k])) return k; return l; };
-  const nextUp = (l) => { for (let k = l - 1; k > 0; k -= 1) if (KNOB[k] === 'scale' || useful(KNOB[k])) return k; return 0; };
+  const nextUp = (l) => { for (let k = l - 1; k > S.min; k -= 1) if (KNOB[k] === 'scale' || useful(KNOB[k])) return k; return S.min; };
   function down(now) {
     const to = nextDown(S.level);
     if (to === S.level) return 0;
     // a climb that came straight back down: the next climb waits twice as long
     if (now - S.lastUp < FLIP) { S.upWait = Math.min(UP_MAX, S.upWait * 2); S.flips += 1; }
-    S.level = to; S.since = now; S.lastDown = now; S.downs += 1; S.slowWins = 0;
+    S.level = to; S.since = now; S.lastDown = now; S.downs += 1; S.slowWins = 0; S.byFloor = false;
     return 1;
   }
   function up(now) {
@@ -771,7 +775,7 @@ function adaptCore(opt = {}) {
       }
     } else {
       S.slowWins = 0;
-      if (share < 0.04 && S.level > 0 && now - S.since > S.upWait && now - S.calm0 > S.upWait) step = up(now);
+      if (share < 0.04 && S.level > S.min && now - S.since > S.upWait && now - S.calm0 > S.upWait) step = up(now);
     }
     return { share, winMin, step };
   }
@@ -780,8 +784,17 @@ function adaptCore(opt = {}) {
     get level() { return S.level; },
     get step() { return STEPS[S.level]; },
     set(level, { hold = false } = {}) { S.level = Math.max(0, Math.min(STEPS.length - 1, Math.round(Number(level) || 0))); S.hold = Boolean(hold); S.since = -1e9; S.frames = 0; S.slow = 0; S.slowWins = 0; },
-    reset() { S.level = 0; S.frames = 0; S.slow = 0; S.slowWins = 0; S.since = -1e9; S.upWait = UP0; S.hold = false; },
-    state: () => ({ level: S.level, ...STEPS[S.level], upWait: S.upWait, downs: S.downs, ups: S.ups, flips: S.flips, hold: S.hold }),
+    reset() { S.level = S.min; S.frames = 0; S.slow = 0; S.slowWins = 0; S.since = -1e9; S.upWait = UP0; S.hold = false; },
+    // (round 33 "labpace") the lightest step it climbs back to (1 = 85 % resolution, on battery; 0 = full quality): a
+    // higher floor lowers the quality at once; back to 0, a step that only the floor held goes back up at once too
+    floor(level) {
+      const m = Math.max(0, Math.min(FLOOR, Math.round(Number(level) || 0)));
+      if (m === S.min) return S.level;
+      if (S.level < m) { S.level = m; S.byFloor = true; S.since = -1e9; } else if (m < S.min && S.byFloor && S.level === S.min) { S.level = m; S.byFloor = false; S.since = -1e9; }
+      S.min = m;
+      return S.level;
+    },
+    state: () => ({ level: S.level, ...STEPS[S.level], upWait: S.upWait, downs: S.downs, ups: S.ups, flips: S.flips, hold: S.hold, min: S.min }),
   };
 }
 // </adapt-core>
@@ -817,7 +830,7 @@ function adaptQuality(gap) {
   if (!capWant.auto || !capWant.focused || lightMode) return;
   if (v.share < 0.04 && autoCap && AD.core.level === 0 && now - capSince > capBack) { autoCap = 0; capSince = now; capBack = Math.min(160000, capBack * 2); applyCap(); }
 }
-function adaptInfo() { const s = AD.core.state(); return { on: AD.on, level: s.level, scale: s.scale, fx: s.fx, shadow: s.shadow, parts: s.parts, covered: AD.cull, flips: s.flips, hold: s.hold }; }
+function adaptInfo() { const s = AD.core.state(); return { on: AD.on, battery: PACE.battery, floor: s.min || 0, level: s.level, scale: s.scale, fx: s.fx, shadow: s.shadow, parts: s.parts, covered: AD.cull, flips: s.flips, hold: s.hold }; }
 function setAdapt(on) {
   AD.on = Boolean(on) && !XP_PAGE;
   if (!AD.on) { AD.core.reset(); quality = 1; adCoverClear(); }
@@ -850,14 +863,237 @@ function adShadows(r, scene) {
     if (sh.map) { try { sh.map.dispose(); } catch { /* gone */ } sh.map = null; }
   });
 }
+// Frame pacing (round 33 "labpace"): the preview moves at the same speed on a 60, 120 or 240 Hz screen, draws only
+// when its picture can change, and says how steady it is.
+//   f60    each frame callback of a sketch sees globalThis.f60: that frame's length in 60 fps frames (1 at 60 Hz, 0.5
+//          at 120, 0.25 at 240, 2 when a 30 fps cap skips one), so motion written per frame (x *= 0.9 ** f60,
+//          a += 0.01 * f60) keeps its 60 fps speed on every screen. The templates use it; time-based code needs nothing.
+//   still  a three.js layer whose next frame would be the picture it already shows (nothing in its scene, camera,
+//          materials, uniforms, textures or size changed: a signature of all of it, no pixels read) stops drawing after
+//          two identical frames; it draws again the frame anything changes, at once on a slider, a message from the
+//          Lab, a pointer or a key, and once a second anyway (a change the signature can't see). Its code keeps running.
+//          Videos, custom shader hooks, renderers that draw more than once a frame and huge scenes always draw.
+//   meter  the frame gaps of the last 2 s: "120 fps · steady" for the Lab's ⋯ › Frame pace.
+// <pace-core> (pure: dev/labpace-test.js runs it in Node)
+function paceCore(opt = {}) {
+  const AFTER = opt.after ?? 2; const REFRESH = opt.refresh ?? 1000; const MAX_NODES = opt.maxNodes ?? 4000;
+  // (gap in ms; < 0: the first frame or the clock went back: one frame; 0: the same moment drawn again: nothing)
+  const f60 = (gap) => (gap >= 0 && gap === gap ? Math.min(6, gap / (1000 / 60)) : 1);
+  // ---- the signature: two 32-bit hashes over the exact bits of every number that changes the picture ----
+  const F = new Float64Array(1); const U = new Uint32Array(F.buffer);
+  let a = 0; let b = 0; let live = false; let nodes = 0;
+  const v = (x) => {
+    if (x === undefined || x === null) return;
+    F[0] = +x;
+    a = Math.imul(a ^ U[0], 0x9e3779b1); a = Math.imul((a << 13) | (a >>> 19), 0x85ebca77) ^ U[1];
+    b = Math.imul(b ^ U[1], 0xc2b2ae3d); b = Math.imul((b << 15) | (b >>> 17), 0x27d4eb2f) ^ U[0] ^ a;
+  };
+  const col = (c) => { if (c && c.r !== undefined) { v(c.r); v(c.g); v(c.b); } };
+  const tex = (t) => { if (!t || !t.isTexture) return; if (t.isVideoTexture || t.image?.tagName === 'VIDEO' || t.source?.data?.tagName === 'VIDEO') live = true; v(t.id); v(t.version); v(t.source?.version); v(t.offset?.x); v(t.offset?.y); v(t.repeat?.x); v(t.repeat?.y); v(t.rotation); };
+  const vec = (x) => { if (typeof x === 'number' || typeof x === 'boolean') v(x); else if (x) { if (x.isTexture) tex(x); else if (x.isColor) col(x); else if (x.elements) { for (let i = 0; i < x.elements.length; i += 1) v(x.elements[i]); } else { v(x.x); v(x.y); v(x.z); v(x.w); } } };
+  const uni = (u) => {
+    const x = u?.value;
+    if (x === undefined || x === null) return;
+    if (Array.isArray(x) || ArrayBuffer.isView(x)) { if (x.length > 512) { live = true; return; } for (let i = 0; i < x.length; i += 1) vec(x[i]); return; }
+    vec(x);
+  };
+  // (each property named: a list of names read in a loop was 3× slower; a material shared by many objects is read once)
+  let pass = 0;
+  const mat = (m) => {
+    if (!m) return;
+    if (Array.isArray(m)) { for (let i = 0; i < m.length; i += 1) mat(m[i]); return; }
+    v(m.id); v(m.version);
+    if (m.__pacePass === pass) return;
+    m.__pacePass = pass;
+    if (m.isNodeMaterial) live = true;
+    v(m.opacity); v(m.visible); v(m.transparent); v(m.side); v(m.blending); v(m.wireframe); v(m.alphaTest); v(m.depthTest); v(m.depthWrite); v(m.colorWrite); v(m.vertexColors); v(m.toneMapped);
+    col(m.color);
+    if (m.emissive) { col(m.emissive); v(m.emissiveIntensity); }
+    if (m.roughness !== undefined) { v(m.roughness); v(m.metalness); v(m.envMapIntensity); v(m.clearcoat); v(m.transmission); v(m.thickness); v(m.ior); v(m.iridescence); v(m.sheen); col(m.sheenColor); v(m.specularIntensity); col(m.specularColor); col(m.attenuationColor); }
+    if (m.shininess !== undefined) { v(m.shininess); col(m.specular); }
+    if (m.size !== undefined) { v(m.size); v(m.sizeAttenuation); }
+    if (m.linewidth !== undefined) { v(m.linewidth); v(m.dashSize); v(m.gapSize); v(m.scale); }
+    v(m.rotation); v(m.flatShading); v(m.displacementScale); v(m.bumpScale); v(m.reflectivity);
+    if (m.map) tex(m.map); if (m.emissiveMap) tex(m.emissiveMap); if (m.alphaMap) tex(m.alphaMap); if (m.normalMap) tex(m.normalMap);
+    if (m.roughnessMap) tex(m.roughnessMap); if (m.metalnessMap) tex(m.metalnessMap); if (m.envMap) tex(m.envMap); if (m.aoMap) tex(m.aoMap);
+    if (m.bumpMap) tex(m.bumpMap); if (m.displacementMap) tex(m.displacementMap); if (m.lightMap) tex(m.lightMap); if (m.matcap) tex(m.matcap); if (m.gradientMap) tex(m.gradientMap);
+    const U = m.uniforms; if (U) for (const k in U) uni(U[k]);
+    const S = m.userData?.shader?.uniforms;
+    if (S) { for (const k in S) uni(S[k]); } else if (m.onBeforeCompile !== m.constructor?.prototype?.onBeforeCompile || m.onBeforeRender !== m.constructor?.prototype?.onBeforeRender) live = true; // (uniforms we can't reach)
+  };
+  const geo = (g) => {
+    v(g.id); if (g.__pacePass === pass) return; g.__pacePass = pass;
+    const at = g.attributes; for (const k in at) { const x = at[k]; v(x.version ?? x.data?.version); }
+    const mo = g.morphAttributes; if (mo) for (const k in mo) { const arr = mo[k]; if (arr) for (let i = 0; i < arr.length; i += 1) v(arr[i].version); }
+    if (g.index) v(g.index.version);
+    if (g.drawRange) { v(g.drawRange.start); v(g.drawRange.count); }
+    v(g.instanceCount);
+  };
+  const cam = (c) => { v(c.fov); v(c.zoom); v(c.near); v(c.far); v(c.aspect); v(c.left); v(c.right); v(c.top); v(c.bottom); v(c.filmOffset); const e = c.projectionMatrix?.elements; if (e) { v(e[0]); v(e[5]); v(e[8]); v(e[9]); v(e[10]); v(e[14]); } };
+  function obj(o) {
+    if (++nodes > MAX_NODES) { live = true; return; }
+    v(o.visible ? 1 : 0);
+    if (!o.visible) return; // (nothing under a hidden object is drawn)
+    const p = o.position; const q = o.quaternion; const s = o.scale;
+    if (p) { v(p.x); v(p.y); v(p.z); } if (q) { v(q.x); v(q.y); v(q.z); v(q.w); } if (s) { v(s.x); v(s.y); v(s.z); }
+    if (o.matrixAutoUpdate === false) { const e = o.matrix.elements; for (let i = 0; i < 16; i += 1) v(e[i]); }
+    v(o.layers?.mask); v(o.renderOrder); v(o.frustumCulled);
+    const pr = o.constructor?.prototype; if ((pr && (o.onBeforeRender !== pr.onBeforeRender || o.onAfterRender !== pr.onAfterRender)) || o.isBatchedMesh || o.isLOD) live = true;
+    if (o.material) mat(o.material);
+    if (o.geometry) geo(o.geometry);
+    if (o.isInstancedMesh) { v(o.count); v(o.instanceMatrix?.version); v(o.instanceColor?.version); v(o.morphTexture?.version); }
+    const mi = o.morphTargetInfluences; if (mi) for (let i = 0; i < mi.length; i += 1) v(mi[i]);
+    if (o.isLight) { v(o.intensity); col(o.color); col(o.groundColor); v(o.distance); v(o.angle); v(o.penumbra); v(o.decay); v(o.width); v(o.height); v(o.castShadow); if (o.shadow) { v(o.shadow.mapSize?.x); v(o.shadow.bias); v(o.shadow.radius); } if (o.target && !o.target.parent) obj(o.target); }
+    if (o.isCamera) cam(o);
+    if (o.isSprite && o.center) { v(o.center.x); v(o.center.y); }
+    const ch = o.children; for (let i = 0; i < ch.length; i += 1) obj(ch[i]);
+  }
+  // a frame's signature: scene, camera, renderer state, and `extra` numbers from the page (pixel ratio, size…)
+  function signature(scene, camera, r, extra) {
+    a = 0x2545f491; b = 0x6c8e9cf5; live = false; nodes = 0; pass += 1;
+    if (scene) {
+      const bg = scene.background; if (bg?.isColor) col(bg); else tex(bg);
+      v(scene.backgroundBlurriness); v(scene.backgroundIntensity); tex(scene.environment); v(scene.environmentIntensity);
+      const f = scene.fog; if (f) { col(f.color); v(f.near); v(f.far); v(f.density); }
+      if (scene.overrideMaterial) mat(scene.overrideMaterial);
+      obj(scene);
+    }
+    if (camera) obj(camera);
+    if (r) { v(r.toneMapping); v(r.toneMappingExposure); v(r.autoClear); v(r.shadowMap?.enabled); v(r.localClippingEnabled); const cv = r.domElement; if (cv) { v(cv.width); v(cv.height); } }
+    if (extra) for (let i = 0; i < extra.length; i += 1) v(extra[i]);
+    return { a, b, live, nodes };
+  }
+  // ---- the gate: is this frame's picture the one already on screen? (st: one per renderer; true = don't draw) ----
+  // poke: a counter the page bumps on anything from outside (a slider, a message, a pointer): it draws at once.
+  // The signature isn't worked out every frame: a scene that was "live" not for 60 frames, one that keeps moving only
+  // every 8th frame (it draws anyway), a still one at most every LOOK ms (its own change shows within one 60 Hz frame).
+  const LOOK = opt.look ?? 15;
+  function still(st, now, poke, sigOf) {
+    st.refreshes ||= 0; st.looks ||= 0;
+    if (poke !== st.poke) { st.poke = poke; const s = sigOf(); st.looks += 1; st.a = s.a; st.b = s.b; st.same = 0; st.moving = 0; st.at = now; st.lookAt = now; st.liveFor = s.live ? 60 : 0; return false; }
+    if (st.liveFor > 0) { st.liveFor -= 1; return false; }
+    if ((st.moving || 0) >= 30) { st.k = ((st.k || 0) + 1) % 8; if (st.k) return false; }
+    if ((st.same || 0) > AFTER && now - st.lookAt < LOOK) {
+      if (now - st.at < REFRESH) return true;
+      st.at = now; st.refreshes += 1; return false;
+    }
+    st.lookAt = now;
+    const s = sigOf(); st.looks += 1;
+    if (s.live) { st.same = 0; st.moving = 0; st.liveFor = 60; return false; }
+    const changed = s.a !== st.a || s.b !== st.b;
+    st.a = s.a; st.b = s.b;
+    if (changed) { st.same = 0; st.moving = (st.moving || 0) + 1; st.at = now; return false; }
+    st.moving = 0; st.same = (st.same || 0) + 1;
+    if (st.same <= AFTER) { st.at = now; return false; }
+    if (now - (st.at ?? -1e9) >= REFRESH) { st.at = now; st.refreshes += 1; return false; }
+    return true;
+  }
+  // ---- the meter: frame gaps → "120 fps · steady" ----
+  function meter(size = 240) {
+    const ring = new Float32Array(size); let i = 0; let count = 0;
+    return {
+      feed(gap) { if (!(gap > 0) || gap > 1000) return; ring[i] = gap; i = (i + 1) % size; count = Math.min(size, count + 1); },
+      reset() { count = 0; i = 0; },
+      read() {
+        if (count < 12) return { fps: 0, med: 0, p95: 0, drops: 0, label: 'measuring' };
+        const g = Array.from(count < size ? ring.subarray(0, count) : ring).sort((x, y) => x - y);
+        let med = 0; const q0 = g.length >> 2; const q1 = g.length - q0; for (let k = q0; k < q1; k += 1) med += g[k]; med /= q1 - q0; // (the middle half's mean)
+        const p95 = g[Math.min(g.length - 1, Math.floor(g.length * 0.95))];
+        const drops = g.filter((x) => x > med * 1.6).length;
+        const share = drops / g.length;
+        const label = share <= 0.02 && p95 <= med * 1.5 ? 'steady' : share <= 0.08 ? 'a few drops' : 'uneven';
+        return { fps: Math.round(1000 / med), med: Math.round(med * 100) / 100, p95: Math.round(p95 * 100) / 100, drops, label };
+      },
+    };
+  }
+  return { f60, signature, still, meter, AFTER, REFRESH, LOOK };
+}
+// </pace-core>
+// the page's side of it (state, the gate in the render wrapper, the loops that sleep, the readout)
+const PACE = { core: paceCore(), on: true, poke: 0, drawn: 0, skipped: 0, refreshes: 0, sigs: 0, sigMs: 0, sleeps: 0, wakes: 0, battery: false, drag: false, dragLow: false, wheelUntil: 0, lastDraw: -1, lastSkip: -1, presentAt: 0, fxTick: -1, fxOn: false };
+PACE.meter = PACE.core.meter();
+globalThis.f60 = 1; // (a sketch's setup, before its first frame: one 60 fps frame)
+// Page loops that may sleep (the frame counter, the compositor, the song's loop points, the sequence clock): while the
+// Lab is parked with nothing to do, they don't ask for frames at all (a parked page used to wake every frame for
+// nothing); a message from the Lab, a pointer, a key, unparking or any render wakes them.
+const paceSleeping = new Set();
+function paceNext(fn, sleep) { if (sleep) { if (!paceSleeping.has(fn)) { paceSleeping.add(fn); PACE.sleeps += 1; } return; } realRAF(fn); }
+function paceWake() { if (!paceSleeping.size) return; const l = [...paceSleeping]; paceSleeping.clear(); PACE.wakes += 1; for (const fn of l) realRAF(fn); }
+const pacePoke = () => { PACE.poke += 1; if (paceSleeping.size) paceWake(); };
+for (const ev of ['message', 'pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown', 'keyup', 'resize', 'focus']) addEventListener(ev, pacePoke, { capture: true, passive: true });
+// orbit / drag / scrub: a held pointer (or a wheel turn) is an interaction; if frames are slow while it lasts, the
+// preview draws at 70 % of its resolution until the pointer comes up (full again on release; adapting on only)
+addEventListener('pointerdown', (e) => { if (e.button === 0 || e.button === 2) { PACE.drag = true; PACE.dragLow = false; } }, true);
+for (const ev of ['pointerup', 'pointercancel', 'blur']) addEventListener(ev, () => { if (PACE.drag || PACE.dragLow) { PACE.drag = false; PACE.dragLow = false; PACE.poke += 1; } }, true);
+addEventListener('wheel', () => { PACE.wheelUntil = realNow() + 250; }, { capture: true, passive: true });
+function paceDragK() {
+  if (!AD.on || lightMode) return 1;
+  const on = PACE.drag || realNow() < PACE.wheelUntil;
+  if (!on) { if (PACE.dragLow) PACE.dragLow = false; return 1; }
+  const target = AD.target || Math.max(dispMs, fpsCap ? 1000 / fpsCap : 0);
+  if (!PACE.dragLow && (AD.gap || 0) > target * 1.35) PACE.dragLow = true; // (latched until the pointer comes up: no flicker)
+  return PACE.dragLow ? 0.7 : 1;
+}
+const paceExtra = [0, 0, 0, 0];
+// true: this render of a still picture is skipped (the canvas keeps showing it)
+function paceSkip(r, scene, camera, EL) {
+  if (!PACE.on || mode !== 'sketch' || XP_PAGE || SQ.off || SQ.on || SQ.cam || fullRes() || stepping || edit.on || PC.list.size || stackWait || r.__helper) return false;
+  const st = (r.__pace ||= { tick: -1, multi: -1e9 });
+  // a renderer that draws more than once a frame (passes into render targets, several scenes) always draws
+  if (st.tick === frameTick) { st.multi = frameTick; return false; }
+  st.tick = frameTick;
+  if (r.getRenderTarget?.()) { st.multi = frameTick; return false; }
+  if (frameTick - st.multi < 120) return false;
+  if (EL && (EL.drawnGen !== EL.gen || EL.pics?.length || realNow() - (EL.adReadAt ?? -1e9) < 5000)) return false;
+  const sigOf = () => {
+    const t0 = realNow();
+    paceExtra[0] = r.__q || 1; paceExtra[1] = r.getPixelRatio?.() || 1; paceExtra[2] = quality; paceExtra[3] = EL ? EL.gen : 0;
+    const s = PACE.core.signature(scene, camera, r, paceExtra);
+    PACE.sigMs += realNow() - t0; PACE.sigs += 1;
+    return s;
+  };
+  const before = st.refreshes || 0;
+  const skip = PACE.core.still(st, realNow(), PACE.poke, sigOf);
+  if (!skip) { if ((st.refreshes || 0) !== before) PACE.refreshes += 1; return false; }
+  PACE.skipped += 1; PACE.lastSkip = frameTick;
+  if (frameSeen !== frameTick && PACE.stillSeen !== frameTick) { PACE.stillSeen = frameTick; frames += 1; } // (the picture shows this frame too)
+  return true;
+}
+function paceInfo() {
+  const m = PACE.meter.read();
+  const still = PACE.lastSkip >= 0 && PACE.lastSkip > PACE.lastDraw && frameTick - PACE.lastSkip < 3;
+  return { ...m, still, on: PACE.on, battery: PACE.battery, drawn: PACE.drawn, skipped: PACE.skipped, refreshes: PACE.refreshes, sigUs: PACE.sigs ? Math.round((PACE.sigMs / PACE.sigs) * 1000) : 0, sleeping: paceSleeping.size, dragLow: PACE.dragLow };
+}
+// on battery (the Lab says so, from the computer's battery): Auto fps holds 60 at most, and the adaptive steps start
+// one step lighter (85 % resolution); renders, stills and recordings stay full quality; plugged in: as before
+function pacePower(on) {
+  PACE.battery = Boolean(on);
+  applyCap();
+  AD.core.floor(PACE.battery && AD.on ? 1 : 0);
+  quality = AD.core.step.scale;
+  post({ type: 'adapt', ...adaptInfo() });
+}
+// (checks and /lab perf: window.__labPace.state() / .on(false) / .power(true) / .reset() / .hold(level))
+window.__labPace = {
+  state: () => ({ ...paceInfo(), poke: PACE.poke, sleeps: PACE.sleeps, wakes: PACE.wakes, frameTick, parked, cap: fpsCap, quality, level: AD.core.level }),
+  on: (v) => { PACE.on = v !== false; PACE.poke += 1; return PACE.on; },
+  power: (v) => { pacePower(v); return { cap: fpsCap, level: AD.core.level, quality }; },
+  reset: () => { PACE.drawn = 0; PACE.skipped = 0; PACE.refreshes = 0; PACE.sigs = 0; PACE.sigMs = 0; PACE.sleeps = 0; PACE.wakes = 0; PACE.meter.reset(); return 1; },
+  sleeping: () => paceSleeping.size,
+};
 // The gap between displayed frames; the worst one in each half second is what reads as a stutter.
 const tickFrames = (t) => {
   if (frameSeen === frameTick) { workRing.push(frameWork); if (workRing.length > 120) workRing.shift(); lastCalls = frameCalls; }
   frameWork = 0; frameCalls = 0;
   frameTick += 1;
   if (frameSeen === frameTick - 1 && lastFrameAt) { worstGap = Math.max(worstGap, t - lastFrameAt); if (mode === 'sketch') adaptQuality(t - lastFrameAt); }
+  // (labpace) the frames the layers showed (drawn or still), for the steadiness readout
+  if ((frameSeen === frameTick - 1 || PACE.stillSeen === frameTick - 1) && !parked) { if (PACE.presentAt) PACE.meter.feed(t - PACE.presentAt); PACE.presentAt = t; }
   lastFrameAt = t;
-  realRAF(tickFrames);
+  // (labpace) parked with nothing to draw (no recording, no offline render): no more frames asked for until woken
+  const sleep = parked && !SQ.off && !fullRes() && !compRec;
+  if (sleep) { lastFrameAt = 0; PACE.presentAt = 0; }
+  paceNext(tickFrames, sleep);
 };
 realRAF(tickFrames);
 // (a context the page lets go of itself, a re-run or removed layer's, is not a GPU loss: teardownLayer marks it)
@@ -917,7 +1153,7 @@ function statsTick() {
   const w = workRing.slice(-60).sort((a, b) => a - b);
   const at = (p) => (w.length ? +w[Math.min(w.length - 1, Math.floor(w.length * p))].toFixed(2) : 0);
   post({ type: 'stats', fps, worst, quality, ms: frameMs, calls: i.render.calls, triangles: i.render.triangles, points: i.render.points, lines: i.render.lines, geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs?.length ?? 0,
-    p50: at(0.5), p95: at(0.95), callsAll: lastCalls, gpuMB: gpuEstimate(), cap: fpsCap, light: lightMode, adapt: adaptInfo(), note: { ...perfNote } });
+    p50: at(0.5), p95: at(0.95), callsAll: lastCalls, gpuMB: gpuEstimate(), cap: fpsCap, light: lightMode, adapt: adaptInfo(), pace: paceInfo(), note: { ...perfNote } });
 }
 statsRun(!parked);
 // A GPU memory estimate (MB): what the page's WebGL canvases hold (color + depth, ×2 for the kept last frame every
@@ -1682,7 +1918,7 @@ let loopOn = false;
 let recUntil = null;
 let prevT = 0;
 function mediaTick() {
-  realRAF(mediaTick);
+  paceNext(mediaTick, parked && (!mediaEl || mediaEl.paused)); // (labpace: parked and no song playing: it sleeps)
   if (!mediaEl || mediaEl.paused) { prevT = mediaEl?.currentTime || 0; return; }
   const t = mediaEl.currentTime;
   if (fparts && !(region && loopOn) && recUntil == null) { partTick(t); prevT = mediaEl.currentTime; return; }
@@ -2549,7 +2785,7 @@ function drawLayer2D(g, L, W, H) {
 let compRec = null; // the merged canvas being recorded
 // Runs first in every frame (it was registered before any layer), so animated sliders are set before layers draw.
 function compositorTick() {
-  realRAF(compositorTick);
+  paceNext(compositorTick, parked && !compRec && !SQ.off); // (labpace: parked, it sleeps instead of waking every frame)
   fxPlanGen += 1; // (a new frame: which filters draw inside which is worked out again, see "merged filter passes")
   if (parked && !compRec) return; // (nothing draws: the layers' looks wait too)
   for (const L of layers.values()) { applySliderKeys(L); styleLayer(L); }
@@ -8390,14 +8626,17 @@ function installRunGuards() {
     let e = typeof fn === 'function' ? rafOf.get(fn) : null;
     if (!e || !e.o.L || !alive(e.o)) {
       const o = owner();
+      let lt = -1; // (labpace: this callback's last frame time, for f60)
       const run = (t) => {
         if (!alive(o)) return;
         // ❚❚ freeze: the picture holds (the music goes on); a layer re-run meanwhile still draws its first frame
-        if (frozen && !stepping && !SQ.off && !(o.L && o.L.drawnGen !== o.L.gen)) { sched(run); return; }
-        if (o.L && layerMix(o.L) <= 0) { sched(run); return; }
+        if (frozen && !stepping && !SQ.off && !(o.L && o.L.drawnGen !== o.L.gen)) { lt = -1; sched(run); return; }
+        if (o.L && layerMix(o.L) <= 0) { lt = -1; sched(run); return; }
         // parked (the Lab isn't on screen): nothing draws until it is again (a recording / an offline render goes on)
-        if (parked && !SQ.off && !fullRes()) { parkQ.push(run); return; }
+        if (parked && !SQ.off && !fullRes()) { lt = -1; parkQ.push(run); return; }
         if (!SQ.off && !capOk(t)) { sched(run); return; }
+        // (labpace) f60: this frame's length in 60 fps frames (a cap's skipped frames count; a pause starts again at 1)
+        globalThis.f60 = PACE.core.f60(lt < 0 ? -1 : t - lt); lt = t;
         within1(o, fn, o.L?.props.seqT0 != null && SQ.on ? sqLocal(o.L) * 1000 : o.L?.props.pcOf ? keyTime(o.L) * 1000 : LOOPC.on && o.L && !SQ.on && mediaEl && !liveKind ? loopFold(mediaEl.currentTime) * 1000 : t);
         if (o.L) { if (o.L.ranG === o.L.gen) o.L.ran += 1; else { o.L.ranG = o.L.gen; o.L.ran = 1; } } // (seqsolid: its frames since its run, see sqDrawn)
       };
@@ -9475,7 +9714,7 @@ function sqState(force = false) {
   post({ type: 'seq-state', T: SQ.T, playing: SQ.playing, ended: SQ.ended, mounted: SQ.mounted.size, ack: SQ.ack || 0 });
 }
 function sqTick() {
-  realRAF(sqTick);
+  paceNext(sqTick, parked && !SQ.on && !SQ.off); // (labpace: parked and no sequence: it sleeps)
   if (!SQ.on || SQ.off) return;
   let T = sqClock();
   const D = SQ.plan?.dur || 0;
@@ -10151,6 +10390,8 @@ addEventListener('message', async (e) => {
   if (msg.type === 'fps-cap') { capWant.value = Number(msg.value) || 0; capWant.auto = Boolean(msg.auto); capWant.focused = msg.focused !== false; applyCap(); }
   if (msg.type === 'park') setParked(msg.on);
   if (msg.type === 'light') { lightMode = Boolean(msg.on); applyCap(); }
+  if (msg.type === 'power') pacePower(msg.battery); // (round 33 "labpace": on battery or not, from the Lab)
+  if (msg.type === 'pace') PACE.on = msg.on !== false;
   if (msg.type === 'loop-clock') { loopMessage(msg); return; } // (round 31, perfectloop)
   if (msg.type === 'adapt') setAdapt(msg.on !== false); // (round 31 "labadapt": the Lab's right-click, View › Lighten to stay smooth)
   if (msg.type === 'eval') runEval(msg);

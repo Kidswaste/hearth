@@ -41,7 +41,7 @@ function fillSpectrum() {
   for (let i = 0; i < SPEC; i++) {
     let m = 0;
     for (let j = edges[i]; j <= Math.max(edges[i], edges[i + 1] - 1); j++) m = Math.max(m, s[j] || 0);
-    specData[i] = Math.max(m, specData[i] * 0.85);
+    specData[i] = Math.max(m, specData[i] * 0.85 ** f60);
   }
   specTex.needsUpdate = true;
 }
@@ -78,8 +78,8 @@ const camera = new THREE.Camera();
 let kick = 0;
 let snare = 0;
 renderer.setAnimationLoop((now) => {
-  kick = Math.max(kick * 0.9, audio.kick);
-  snare = Math.max(snare * 0.9, audio.snare);
+  kick = Math.max(kick * 0.9 ** f60, audio.kick);
+  snare = Math.max(snare * 0.9 ** f60, audio.snare);
   uniforms.uTime.value = now / 1000;
   renderer.getDrawingBufferSize(uniforms.uRes.value);
   uniforms.uKick.value = kick;
@@ -120,8 +120,8 @@ let snare = 0;
 function frame(now) {
   requestAnimationFrame(frame);
   const t = now / 1000;
-  kick = Math.max(kick * 0.88, audio.kick);
-  snare = Math.max(snare * 0.88, audio.snare);
+  kick = Math.max(kick * 0.88 ** f60, audio.kick);
+  snare = Math.max(snare * 0.88 ** f60, audio.snare);
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.clearRect(0, 0, W, H);
 ${draw.trim().split('\n').map((l) => `  ${l}`).join('\n')}
@@ -159,8 +159,8 @@ let kick = 0;
 let snare = 0;
 renderer.setAnimationLoop((now) => {
   const t = now / 1000;
-  kick = Math.max(kick * 0.9, audio.kick);
-  snare = Math.max(snare * 0.9, audio.snare);
+  kick = Math.max(kick * 0.9 ** f60, audio.kick);
+  snare = Math.max(snare * 0.9 ** f60, audio.snare);
 ${loop.trim().split('\n').map((l) => `  ${l}`).join('\n')}
   renderer.render(scene, camera);
 });
@@ -980,7 +980,7 @@ const bw = hgt / 8;
 g.font = Math.round(bw * 0.45) + 'px monospace';
 g.textAlign = 'center';
 for (let k = 0; k < 4; k++) {
-  peaks[k] = Math.max(peaks[k] * 0.985, vals4[k]);
+  peaks[k] = Math.max(peaks[k] * 0.985 ** f60, vals4[k]);
   const x = W * P.x + k * bw * 1.4;
   for (let i = 0; i < segs; i++) {
     const f = i / segs;
@@ -1233,7 +1233,7 @@ const s = Math.min(W, H) * P.size;
 for (let k = 0; k < MAX; k++) {
   if (life[k] <= 0) continue;
   life[k] -= dt;
-  vy[k] += P.gravity * dt; vx[k] *= 0.99;
+  vy[k] += P.gravity * dt; vx[k] *= 0.99 ** f60;
   px[k] += vx[k] * dt; py[k] += vy[k] * dt; rot[k] += dt * 6;
   g.fillStyle = col[k] === 0 ? P.c1 : col[k] === 1 ? P.c2 : P.c3;
   g.globalAlpha = Math.min(1, life[k]);
@@ -1423,7 +1423,7 @@ for (let i = 0; i < N; i++) {
 }
 const dummy = new THREE.Object3D();
 let push = 0;`,
-    loop: `push = Math.max(push * 0.92, kick * P.punch);
+    loop: `push = Math.max(push * 0.92 ** f60, kick * P.punch);
 mesh.material.color.set(P.color);
 for (let i = 0; i < N; i++) {
   const d = dirs[i];
@@ -1435,8 +1435,8 @@ for (let i = 0; i < N; i++) {
   mesh.setMatrixAt(i, dummy.matrix);
 }
 mesh.instanceMatrix.needsUpdate = true;
-mesh.rotation.y += P.spin * 0.01;
-mesh.rotation.x += P.spin * 0.004;`,
+mesh.rotation.y += (P.spin * 0.01) * f60;
+mesh.rotation.x += (P.spin * 0.004) * f60;`,
   }), 'instanced sphere explode');
   add('particle-galaxy', 'Particle galaxy', S3, 'A spiral galaxy of glowing points that spins with the music', scene3d({
     desc: 'Particle galaxy: spiral arms of points that spin faster when the music is loud',
@@ -1462,7 +1462,7 @@ const points = new THREE.Points(geo, mat);
 points.rotation.x = 0.6;
 scene.add(points);
 camera.position.set(0, 2, 8);`,
-    loop: `points.rotation.y += P.spin * 0.01 * (1 + audio.level * 2);
+    loop: `points.rotation.y += (P.spin * 0.01 * (1 + audio.level * 2)) * f60;
 mat.size = P.size * (1 + kick * P.punch * 0.8);`,
   }), 'stars spiral points');
   add('particle-sphere', 'Breathing sphere', S3, 'A sphere of points that breathes with the bass and ripples with noise', scene3d({
@@ -1490,7 +1490,7 @@ for (let i = 0; i < N; i++) {
 geo.attributes.position.needsUpdate = true;
 mat.color.set(P.color);
 mat.size = P.size;
-points.rotation.y += P.spin * 0.01;`,
+points.rotation.y += (P.spin * 0.01) * f60;`,
   }), 'points fibonacci');
   add('particle-fountain', 'Particle fountain', S3, 'Sparks shooting up on every kick and falling back', scene3d({
     desc: 'Particle fountain: sparks burst up on kicks and fall with gravity',
@@ -1701,7 +1701,7 @@ uniforms.uScale.value = P.scale;
 uniforms.uColor.value.set(P.color);
 uniforms.uRim.value.set(P.rim);
 blob.scale.setScalar(1 + kick * 0.06);
-blob.rotation.y += 0.004;`,
+blob.rotation.y += 0.004 * f60;`,
   }), 'shader sphere organic');
   add('knot', 'Chrome knot', S3, 'A shiny torus knot that twists on kicks', scene3d({
     desc: 'Chrome knot: a metallic torus knot spinning, twisting on kicks',
@@ -1714,9 +1714,9 @@ const mat = new THREE.MeshStandardMaterial({ color: P.color, metalness: P.metal,
 const knot = new THREE.Mesh(new THREE.TorusKnotGeometry(1.4, 0.42, 220, 32, Math.round(P.p), Math.round(P.q)), mat);
 scene.add(knot);
 let twist = 0;`,
-    loop: `twist = Math.max(twist * 0.9, kick * P.punch);
-knot.rotation.y += P.spin * 0.01 * (1 + twist * 4);
-knot.rotation.x += P.spin * 0.004;
+    loop: `twist = Math.max(twist * 0.9 ** f60, kick * P.punch);
+knot.rotation.y += (P.spin * 0.01 * (1 + twist * 4)) * f60;
+knot.rotation.x += (P.spin * 0.004) * f60;
 knot.scale.setScalar(1 + twist * 0.08);
 mat.color.set(P.color);
 mat.metalness = P.metal;
@@ -1779,7 +1779,7 @@ for (let i = 0; i < N; i++) {
 }
 helix.rotation.z = 0.4;
 scene.add(helix);`,
-    loop: `helix.rotation.y += P.spin * 0.01;
+    loop: `helix.rotation.y += (P.spin * 0.01) * f60;
 m1.color.set(P.c1);
 m2.color.set(P.c2);
 rungMat.opacity = 0.15 + kick * P.punch * 0.6;
@@ -1833,7 +1833,7 @@ for (let i = 0; i < N; i++) {
 }
 geo.attributes.position.needsUpdate = true;
 mat.color.set(P.color);
-line.rotation.y += P.spin * 0.01;`,
+line.rotation.y += (P.spin * 0.01) * f60;`,
   }), 'curve math line');
   add('shape-cycle', 'Shape cycle', S3, 'A neon wireframe shape that becomes a new one every bar', scene3d({
     desc: 'Shape cycle: a wireframe shape that changes on every bar and pumps on kicks',
@@ -1846,8 +1846,8 @@ scene.add(mesh);`,
 if (mesh.geometry !== shapes[idx]) mesh.geometry = shapes[idx];
 mat.color.set(P.color);
 mesh.scale.setScalar(P.size * (1 + kick * P.punch * 0.2));
-mesh.rotation.x += P.spin * 0.007;
-mesh.rotation.y += P.spin * 0.01;`,
+mesh.rotation.x += (P.spin * 0.007) * f60;
+mesh.rotation.y += (P.spin * 0.01) * f60;`,
   }), 'wireframe geometry morph');
   add('box-tunnel', 'Box tunnel', S3, 'Flying through a square tunnel of boxes', scene3d({
     desc: 'Box tunnel: a square tunnel of boxes rushing past',
@@ -1945,7 +1945,7 @@ for (let i = 0; i < N; i++) {
   const k = i < half ? i : N - 1 - i;
   let m = 0;
   for (let j = edges[k]; j <= Math.max(edges[k], edges[k + 1] - 1); j++) if (s[j] > m) m = s[j];
-  vals[i] = Math.max(m / 255, vals[i] * 0.88);
+  vals[i] = Math.max(m / 255, vals[i] * 0.88 ** f60);
   const a = (i / N) * Math.PI * 2 + t * P.spin;
   dummy.position.set(Math.cos(a) * P.radius, 0, Math.sin(a) * P.radius);
   dummy.rotation.set(0, -a, 0);
@@ -2065,7 +2065,7 @@ for (let i = 0; i < N; i++) {
   mesh.setColorAt(i, c.copy(ca).multiplyScalar(0.3 + rnd[i] * 0.5).lerp(cb, sparkle));
 }
 mesh.instanceColor.needsUpdate = true;
-mesh.rotation.y += P.spin * 0.01;`,
+mesh.rotation.y += (P.spin * 0.01) * f60;`,
   }), 'disco club');
   // the starter templates get a category too
   const CATS = { empty: 'Shapes', rings: 'Shapes', particles: 'Shapes' };
