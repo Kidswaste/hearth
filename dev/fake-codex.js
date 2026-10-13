@@ -38,6 +38,9 @@ const F = require('./fake-common');
   if (await require('./fake-liveness').codex(prompt, threadId)) return; // (round 21) long-task scenarios
   if (p.login || sw.codexLoggedOut) { F.out({ type: 'turn.failed', error: { message: 'Not logged in. Please run codex login' } }); return; }
   if (sw.codexNeeds && F.older(version, sw.codexNeeds)) { F.out({ type: 'error', message: 'This model requires a newer version of Codex. Please upgrade to the latest version.' }); F.out({ type: 'turn.failed', error: { message: 'This model requires a newer version of Codex. Please upgrade to the latest version.' } }); return; }
+  // (round 34, offline) the service's own failures, worded like the real CLI's (fake-common.js switches)
+  if (F.trip('codex-limit', sw.codexLimit)) { F.out({ type: 'turn.failed', error: { message: F.limitText('codex', sw) } }); return; }
+  if (F.trip('codex-busy', sw.codexBusy)) { F.out({ type: 'turn.failed', error: { message: "We're currently experiencing high demand, which may cause temporary errors." } }); return; }
   if (F.trip('codex-network', sw.codexNetwork)) { F.out({ type: 'turn.failed', error: { message: 'stream disconnected before completion: error sending request for url (https://chatgpt.com/backend-api/codex/responses)' } }); return; }
   // Codex cancels a tool call it would have to ask about ('new': unless the server's tools are pre-approved; 'old':
   // an older Codex that ignores that key, unless approvals are off altogether)
@@ -115,7 +118,7 @@ const F = require('./fake-common');
     }
     text += `\n\nAccess calls:\n${lines.map((l) => `- ${l}`).join('\n')}`;
   }
-  if (p.error) { F.out({ type: 'turn.failed', error: { message: 'Fake Codex error: stream disconnected' } }); return; }
+  if (p.error) { F.out({ type: 'turn.failed', error: { message: 'Fake Codex error: something went wrong' } /* (round 34) not a network drop: codexNetwork is that */ }); return; }
   // (round 28, router) "runinfo": the reply ends with the model + effort this run really got (dev/checks/router.js)
   if (/\bruninfo\b/i.test(prompt)) { const c = argv.find((x, i) => argv[i - 1] === '-c' && x.startsWith('model_reasoning_effort=')); text += `\n\nrun: model=${argv.includes('-m') ? argv[argv.indexOf('-m') + 1] : 'default'} effort=${c ? JSON.parse(c.split('=')[1]) : 'none'}`; }
   // Codex sends whole messages, not deltas: wait about as long as a stream would take, then send it.

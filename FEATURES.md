@@ -1015,3 +1015,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ One calm line under the reply when a long chat would clearly cost less compacted ("This chat re-reads ≈ 48k tokens each message. Continue lighter? (keeps a summary, ≈ 3k)"), decided from the real context, the prompt cache, how much history still matters and topic changes; one button, never silent.
 - ✓ The cheapest model at low effort writes a structured summary; the last 2 exchanges go word for word; every message stays (and in recall); byte-stable prompt. ⋯ AI setup → Spending → "Offer to continue lighter" (default about 40k), `/lighter`.
 - ○ Fake engines: a 30-message chat re-reads 1,434k → 739k tokens (`sh dev/run-checks.sh budget`); real summaries' quality not seen here.
+## 📶 Calm when things go wrong outside Hearth (round 34, offline, 30 upgrades: docs/upgrades/offline.md)
+- ✓ No internet, a busy or rate-limited AI, a usage limit (reset shown in local time), signed out, a VPN or proxy, a reply cut off: each is one plain line with its one action (waits and sends once back · retrying in 20 s with Cancel and Ask Astra instead · Switch · Sign in · Continue).
+- ✓ Waiting messages (and the chat's own queue) survive a restart and are never sent twice. A cut-off reply resumes on the same session and is stitched in without repeats. `/offline` lists what waits.
+- ○ Tested with fake engines and a simulated internet (`sh dev/run-checks.sh offline`), not against a real outage.

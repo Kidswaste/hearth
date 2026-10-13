@@ -1,0 +1,13 @@
+/* (round 34, offline) A failed turn whose cause is outside Hearth (no internet, a busy AI, a usage limit, signed out,
+   a VPN / proxy, a reply cut off) reads as one calm line with its one action, not a red error box. */
+:root .msg.error.net-note.net-note { animation: none; padding: 7px 12px; border: 1px solid var(--line); border-left: 3px solid color-mix(in srgb, var(--accent) 70%, transparent); background: var(--surface); color: var(--text); }
+:root .msg.error.net-note.net-limit, :root .msg.error.net-note.net-signedout { border-left-color: color-mix(in srgb, #f0a030 80%, transparent); }
+.msg.net-note .net-line { font-size: 13px; }
+.msg.net-note .net-count { font-variant-numeric: tabular-nums; }
+.msg.net-note .net-line .login-btn { margin: 0 0 0 4px; padding: 2px 10px; font-size: 12px; }
+.msg.net-note .msg-foot.net-acts { gap: 6px; margin-top: 6px; opacity: 1; }
+.msg.net-note .net-act { padding: 2px 10px; border: 1px solid var(--line); border-radius: 99px; background: transparent; color: var(--text); cursor: pointer; font-size: 12px; opacity: 1; }
+.msg.net-note .net-act:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+.msg.net-note .net-act[hidden] { display: none; }
+.offline-chips .offline-chip { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.msg.net-note .msg-report { display: none; } /* not Hearth's fault: nothing to report to the developer */

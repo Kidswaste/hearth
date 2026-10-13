@@ -563,6 +563,7 @@ function registerAfterWindow() {
     send('chrome:offer', { wcId: target.id, url: (() => { try { return target.getURL(); } catch { return ''; } })(), popup: Boolean(opener) });
     if (opener) { try { BrowserWindow.fromWebContents(contents)?.close(); } catch { /* gone */ } } // the dead-end sign-in popup goes
   } });
+  require('./offlinemain').register(ipcMain, { getWin: () => win }); // (round 34, offline) is the internet there (no engine, no tokens), sleep / wake
   require('./safetynetmain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win }); // (round 29) Hearth never loses work: the session marker, the page reloading after a crash, the work journal
   require('./devreportmain').register(ipcMain, { dataDir: store.DATA_DIR }); // (round 21) Report to the developer: gh issue / versions / crashes
   lazyIpc('assetsmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win })); // (round 24) the asset library: folder scans + hashes off-thread, thumbnails cache, Poly Haven / ambientCG downloads (round 29: on first use)
