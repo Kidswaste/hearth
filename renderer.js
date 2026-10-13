@@ -596,6 +596,7 @@ function applyLayout() {
   container.style.setProperty('--cols', cols);
   container.style.setProperty('--rows', Math.ceil(count / cols));
   container.classList.toggle('grid', H.grid);
+  if (typeof GridResize !== 'undefined') GridResize.apply(); // (round 29) the gaps between chats are drag handles
   $('panel').classList.toggle('hidden', !H.panelOpen);
   $('grid-btn').classList.toggle('on', H.grid);
   $('panel-btn').classList.toggle('on', H.panelOpen);

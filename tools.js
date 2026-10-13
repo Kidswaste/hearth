@@ -59,7 +59,7 @@ const Tools = (() => {
       divider.setPointerCapture(e.pointerId);
       document.body.classList.add('resizing');
       const right = host.getBoundingClientRect().right;
-      const move = (ev) => host.style.setProperty('--dock-w', `${Math.round(Math.min(760, host.clientWidth * 0.55, Math.max(300, right - ev.clientX)))}px`); // the tool keeps at least ~45%
+      const move = (ev) => host.style.setProperty('--dock-w', `${Math.round(Math.min(host.clientWidth * 0.8, Math.max(260, right - ev.clientX)))}px`); // (round 29) the owner: "let me resize the chat windows": up to 80% of the window, down to 260 px
       divider.addEventListener('pointermove', move);
       divider.addEventListener('pointerup', () => {
         divider.removeEventListener('pointermove', move);
@@ -67,6 +67,7 @@ const Tools = (() => {
         store.set(`dockWidth.${tool.id}`, parseInt(host.style.getPropertyValue('--dock-w'), 10));
       }, { once: true });
     });
+    divider.addEventListener('dblclick', () => { host.style.setProperty('--dock-w', '420px'); store.set(`dockWidth.${tool.id}`, 420); }); // back to the usual width
     host.append(head, el('div', { class: 'tool-main' }, body, divider, dock));
     return { el: host, mode: 'tool', tool, body, head, dock, divider, mounted: false, dockedId: null };
   }

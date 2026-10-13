@@ -95,7 +95,7 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .surface webview { flex: 1; width: 100%; }
 #surfaces.grid {
   display: grid; gap: var(--gap); padding: var(--gap);
-  grid-template-columns: repeat(var(--cols), 1fr); grid-template-rows: repeat(var(--rows), 1fr);
+  grid-template-columns: var(--gcols, repeat(var(--cols), 1fr)); grid-template-rows: var(--grows, repeat(var(--rows), 1fr)); /* (round 29) grid-resize.js */
 }
 #surfaces.grid .surface {
   position: relative; inset: auto; visibility: visible; min-width: 0; min-height: 0;
@@ -258,3 +258,10 @@ dialog { max-height: calc(100vh - 40px); }
 #surfaces:not(.grid) > .surface.agent-surface.native:not(.active):not(.capturing),
 #surfaces:not(.grid) > .surface.tool-surface:is([data-id="tool:board"], [data-id="tool:commands"]):not(.active):not(.capturing) { content-visibility: hidden; }
 .tool-head .tool-opts { margin-left: auto; font-size: 16px; line-height: 1; padding: 2px 8px; } /* (round 26) ⋯ Options for this window */
+
+/* (round 29) resizable chats in the grid view (grid-resize.js): the gaps are handles */
+.grid-handles { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+.grid-handle { position: fixed; pointer-events: auto; border-radius: 4px; }
+.grid-handle.col { width: 8px; cursor: col-resize; }
+.grid-handle.row { height: 8px; cursor: row-resize; }
+.grid-handle:hover, body.resizing .grid-handle { background: color-mix(in srgb, var(--accent) 45%, transparent); }
