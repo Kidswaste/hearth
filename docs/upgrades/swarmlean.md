@@ -60,21 +60,21 @@ The Lab's "Make 4 variations" crew (≈ 68k tokens for 4 helpers) keeps its coun
 10. Past the limit, starting a costly mission asks first ("Start it anyway?"); Cancel puts your words back in the box.
     The spending guard loads on its own when a limit is set (it is a lazy group).
 
-10b. The ◎ picker fits its popover again: a long "More · …" line had widened its grid past the right edge (the cards
+11. The ◎ picker fits its popover again: a long "More · …" line had widened its grid past the right edge (the cards
     now wrap in three columns).
 
 ### After it ends
-11. One compact card, as before; what goes back into the chat's context is a short summary of the kept / final answer
+12. One compact card, as before; what goes back into the chat's context is a short summary of the kept / final answer
     (the opening ≈ 900 characters, cut at a sentence, big code blocks named, not pasted, "the rest is in the result
     card"), for collaborations (Swarm, Debate, Side by side, Pair), Second opinion only, Research and Ask everyone's
     "Use this one".
-12. A chat rebuilt from its text (a lost session, a switched engine) reads each mission card's summary (`m.ctx`), not
+13. A chat rebuilt from its text (a lost session, a switched engine) reads each mission card's summary (`m.ctx`), not
     the full answers again.
 
 ### Measuring
-13. `node dev/mission-tokens.js` (+ `--save`, `--compare a.json b.json`, `--only swarm,duo`): tokens per mission and for
+14. `node dev/mission-tokens.js` (+ `--save`, `--compare a.json b.json`, `--only swarm,duo`): tokens per mission and for
     the next message, cached vs fresh, models used, and the picker's estimates side by side.
-14. The fake engines log every run with `FAKE_TOKEN_LOG=<file>` and pad plain replies to a typical length with
+15. The fake engines log every run with `FAKE_TOKEN_LOG=<file>` and pad plain replies to a typical length with
     `FAKE_REPLY_CHARS`.
 
 ## Tests
