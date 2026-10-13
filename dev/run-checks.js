@@ -33,9 +33,8 @@ const GROUPS = {
   board: by(/^board/),
   capture: by(/^capture/),
   journeys: by(/^journey-/),
-  chat: by(/^chat-|^chatcore|^cmdbar$|^clutter$|^declutter|^simplify2$/), // (round 27) simplify2: calm Settings, no /commands on screen
-  chat: by(/^chat-|^chatcore|^cmdbar$|^clutter$|^declutter/),
-  lab: ['labeasy', 'autoedit', 'gallery', 'lookmatch', 'instantscene', 'music', 'labaudio', 'live', 'scenes', 'labstage', 'remote', 'interop', 'labshader', 'particles', 'physics', 'grade', 'type', 'motion-in', 'jam', 'assist', 'decide', 'brain', 'director-dock', 'director-tools', 'labdirector', 'crew', 'timemachine', 'perf'],
+  chat: by(/^chat-|^chatcore|^cmdbar$|^clutter$|^declutter|^simplify2$|^grid-resize$/), // (round 27) simplify2: calm Settings, no /commands on screen
+  lab: ['labeasy', 'seqsolid', 'autoedit', 'gallery', 'lookmatch', 'instantscene', 'music', 'labaudio', 'live', 'scenes', 'labstage', 'remote', 'interop', 'labshader', 'particles', 'physics', 'grade', 'type', 'motion-in', 'jam', 'assist', 'decide', 'brain', 'director-dock', 'director-tools', 'labdirector', 'crew', 'timemachine', 'perf'],
   nodes: by(/^nodes-/),
   smooth: [...by(/^smooth-/), 'hz240', 'smooth26'], // (round 17) hz240: the 240 Hz interaction check · (round 26) smooth26: ⋯ / ◎ / the Lab hidden
   astra: ['astra-collab', 'astra-ui', 'astra-manager'],

@@ -72,15 +72,18 @@
   // Which layer logged / threw (the module fills these in once layers run).
   window.__layerOfStack = () => null;
   window.__layerOfUrl = () => null;
+  // (seqsolid) a call from a layer module that no layer runs any more (a sequence clip scrubbed past while it loaded,
+  // a re-run that replaced it): what it logs or throws isn't the scene's, it's dropped
+  window.__isStale = () => false;
   for (const level of ['log', 'info', 'warn', 'error']) {
     const orig = console[level].bind(console);
-    console[level] = (...args) => { post({ type: 'console', level, text: args.map(fmt).join(' '), layer: window.__layerOfStack(new Error().stack) }); orig(...args); };
+    console[level] = (...args) => { const st = new Error().stack; if (window.__isStale(st)) return; post({ type: 'console', level, text: args.map(fmt).join(' '), layer: window.__layerOfStack(st) }); orig(...args); };
   }
   // Line numbers for errors raised inside the sketch module (a blob: URL).
   // blob URLs look like blob:null/<uuid>:LINE:COL — take the first number pair after the URL.
   const lineOf = (stack) => { const m = /blob:[^\s)]*?:(\d+):(\d+)/.exec(stack || ''); return m ? Number(m[1]) : null; };
-  addEventListener('error', (e) => post({ type: 'error', message: e.message, line: e.filename?.startsWith('blob:') ? e.lineno : lineOf(e.error?.stack), layer: window.__layerOfUrl(e.filename) || window.__layerOfStack(e.error?.stack) }));
-  addEventListener('unhandledrejection', (e) => post({ type: 'error', message: String(e.reason?.message || e.reason), line: lineOf(e.reason?.stack), layer: window.__layerOfStack(e.reason?.stack) }));
+  addEventListener('error', (e) => !window.__isStale(e.error?.stack) && post({ type: 'error', message: e.message, line: e.filename?.startsWith('blob:') ? e.lineno : lineOf(e.error?.stack), layer: window.__layerOfUrl(e.filename) || window.__layerOfStack(e.error?.stack) }));
+  addEventListener('unhandledrejection', (e) => !window.__isStale(e.reason?.stack) && post({ type: 'error', message: String(e.reason?.message || e.reason), line: lineOf(e.reason?.stack), layer: window.__layerOfStack(e.reason?.stack) }));
 </script>
 </head>
 <body>
@@ -503,8 +506,14 @@ let glRefs = []; // WeakRefs to the WebGL contexts made here (__labHealth counts
 const glAlive = () => { glRefs = glRefs.filter((w) => { const c = w.deref(); return c && !c.isContextLost(); }); let n = 0; for (const w of glRefs) if (!w.deref().__pooled) n += 1; return n; };
 HTMLCanvasElement.prototype.getContext = function (type, opts) {
   const gl3d = /^(webgl2?|experimental-webgl)$/.test(type);
+  // (seqsolid) a layer module that no layer runs any more asks for a new context: none. Scrubbing a sequence across
+  // its cuts mounts and drops clips faster than their modules load: each late one made a WebGL context of its own
+  // (≈ 250 ms each here, a GPU-process round trip on a Mac) only to lose it, 45 in a few seconds of scrubbing, and the
+  // clip under the playhead waited behind them (black for a second or more). Its renderer now fails at once, quietly.
+  if (gl3d && mode === 'sketch' && !this.__ctxMade && typeof staleStack === 'function' && staleStack(new Error().stack)) { perfNote.staleRefused = (perfNote.staleRefused || 0) + 1; return null; }
   if (mode === 'sketch' && gl3d) opts = { ...(opts || {}), alpha: true, preserveDrawingBuffer: true };
   const ctx = realGetContext.call(this, type, opts);
+  if (gl3d && ctx) this.__ctxMade = true;
   if (gl3d && ctx && !ctx.__counted) {
     ctx.__counted = true; glRefs.push(new WeakRef(ctx)); if (glRefs.length > 64) glAlive();
     if (mode === 'sketch' && typeof WebGL2RenderingContext !== 'undefined' && ctx instanceof WebGL2RenderingContext) { trackGL(ctx); this.__gl = ctx; }
@@ -2020,6 +2029,7 @@ function staleStack(stack) {
 }
 // (console lines and errors from a precomp's layers are told as the precomp's, the layer the Lab knows)
 window.__layerOfStack = (s) => pcTop(layerOfStack(s));
+window.__isStale = (s) => Boolean(s) && staleStack(s);
 window.__layerOfUrl = (u) => (u ? pcTop(urlLayer.get(u) || null) : null);
 function layerState(id) {
   let L = layers.get(id);
@@ -8091,6 +8101,7 @@ function installRunGuards() {
         if (parked && !SQ.off && !fullRes()) { parkQ.push(run); return; }
         if (!SQ.off && !capOk(t)) { sched(run); return; }
         within1(o, fn, o.L?.props.seqT0 != null && SQ.on ? sqLocal(o.L) * 1000 : o.L?.props.pcOf ? keyTime(o.L) * 1000 : t);
+        if (o.L) { if (o.L.ranG === o.L.gen) o.L.ran += 1; else { o.L.ranG = o.L.gen; o.L.ran = 1; } } // (seqsolid: its frames since its run, see sqDrawn)
       };
       e = { o, run };
       if (o.L && !o.stale && typeof fn === 'function') rafOf.set(fn, e);
@@ -8298,6 +8309,7 @@ async function runLayer(spec, hot = false) {
     // a layer that draws without a WebGLRenderer (2D canvas, DOM) or is hidden right now: done after a moment
     realSetTimeout(() => { if (L.gen === g && layers.get(L.id) === L) layerDrew(L); }, 700);
   } catch (err) {
+    if (L.gen !== g || layers.get(L.id) !== L) return; // (seqsolid) a run replaced meanwhile (a scrub, a re-run): its failure isn't the layer's
     post({ type: 'error', layer: pcTop(L.id), message: `${L.props.pcOf ? `[◫ ${L.props.name || L.id}] ` : ''}${err.name}: ${err.message}`, line: Number(/blob:[^\s)]*?:(\d+):\d+/.exec(err.stack || '')?.[1]) || null });
     if (L.gen === g) layerDrew(L);
   }
@@ -8877,6 +8889,51 @@ function sqWanted(T, offline) {
   const ahead = offline ? WARM : PRE * Math.max(1, SQ.rate);
   return (SQ.plan?.groups || []).filter((g) => T >= g.start - ahead - 1 / fps && T < g.end + (offline ? 0 : 0.25));
 }
+// (seqsolid) a scene clip whose code or look changed (a director edit, a slider saved, an undo) while it shows: its
+// layers run again in place, each keeping its picture on top until the new version draws (like a live edit), where
+// it used to be taken off and mounted again: black until the new code had drawn, in the middle of playback
+function sqRerun(st, g) {
+  const want = [...g.layers.map((L) => L.id), ...(g.cgrade || []).map((x) => x.id)];
+  if (want.length !== st.ids.length || want.some((id, i) => id !== st.ids[i] || !layers.has(id))) return false;
+  st.g = g; st.key = sqKeyOf(g); st.fresh = true; st.at = realNow();
+  SQ.importing += 1;
+  const runs = g.layers.map((L, j) => runLayer({ id: L.id, code: L.code, values: L.values, ...sqProps(g, L, j), fx: 'xfade' }, true).catch(() => {}));
+  (g.cgrade || []).forEach((x, k) => runs.push(runLayer({ id: x.id, code: x.code, values: undefined, ...sqProps(g, x, 18 + k), seqFilter: '', fx: 'xfade' }, true).catch(() => {})));
+  st.ready = Promise.all(runs).finally(() => { SQ.importing -= 1; });
+  return true;
+}
+const sqShowKey = (T) => { const sh = sqShowing(T); return sh.a ? `${sh.a.id}>${sh.b.id}` : sh.show?.id || ''; };
+// (seqsolid) has a clip drawn since it (last) ran? WebGL: its first render; anything else: two of its frames ran. A
+// layer that doesn't show now (its own in / out, opacity 0) draws nothing and isn't waited for.
+const sqDrawn = (L) => Boolean(L) && (L.drawnGen === L.gen || (L.ranG === L.gen && L.ran >= 2) || layerMix(L) <= 0);
+function sqReadyAt(T) {
+  const sh = sqShowing(T);
+  for (const g of sh.a ? [sh.a, sh.b] : sh.show ? [sh.show] : []) {
+    if (!g.layers) continue; // (footage / pictures / cards keep their own last frame)
+    const st = SQ.mounted.get(g.id);
+    if (!st || st.key !== sqKeyOf(g) || !st.ids.every((lid) => sqDrawn(layers.get(lid)))) return false;
+  }
+  return true;
+}
+// (seqsolid) a seek onto a clip that hasn't drawn yet (scrubbing onto a scene still loading): the picture on screen
+// holds on top until it has (at most 2.5 s), instead of a black frame; checked once a frame only while it holds
+function sqHold() {
+  if (SQ.hold || SQ.off || parked) return;
+  if (!ordered().some((L) => !L.seqHide && !L.pseudo && layerMix(L) > 0)) return; // nothing on screen to hold
+  try {
+    const c = composite(null, 0.5);
+    c.className = 'sq-hold';
+    c.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:99989;pointer-events:none';
+    document.body.appendChild(c);
+    SQ.hold = { c, at: realNow() };
+  } catch { /* no hold: a cut */ }
+}
+function sqHoldTick(force = false) {
+  const h = SQ.hold;
+  if (!h || (!force && realNow() - h.at < 2500 && !sqReadyAt(SQ.T))) return;
+  SQ.hold = null;
+  fadeAway(h.c, 140);
+}
 function sqManage(T, offline = false) {
   const want = sqWanted(T, offline);
   const ids = new Set(want.map((g) => g.id));
@@ -8884,6 +8941,7 @@ function sqManage(T, offline = false) {
   const ready = [];
   for (const g of want) {
     let st = SQ.mounted.get(g.id);
+    if (st && g.layers && st.g.layers && !offline && st.key !== sqKeyOf(g) && sqRerun(st, g)) { ready.push(st.ready); continue; }
     // the layers were swept away (a whole new stack ran) or the clip's code / look changed: again
     if (st && (st.key !== sqKeyOf(g) || st.ids.some((lid) => !layers.has(lid)))) { sqUnmount(g.id); st = null; }
     if (!st) st = sqMount(g);
@@ -9127,6 +9185,9 @@ function sqTick() {
   else if (SQ.playing && T >= D) {
     if (SQ.loop && D > 0) { T = 0; SQ.T0 = 0; SQ.at0 = realNow(); const s = sqSong(); if (s && sqInSong(0)) mediaEl.currentTime = -s.offset; } else { T = D - 1e-3; SQ.playing = false; SQ.ended = true; sqState(true); } // holds the last frame: at T = dur every clip has ended (black)
   }
+  // (seqsolid) a cut onto a clip that hasn't drawn yet (a heavy scene, a busy computer): the picture on screen holds
+  // until it has, instead of black frames (checked only when what shows changes)
+  if (SQ.playing) { const k = sqShowKey(T); if (k !== SQ.showKey) { if (SQ.showKey != null && !SQ.hold && !sqReadyAt(T)) sqHold(); SQ.showKey = k; } }
   SQ.T = Math.max(0, T);
   sqManage(SQ.T);
   sqSyncSong(SQ.T);
@@ -9134,6 +9195,8 @@ function sqTick() {
   if (SQ.playing) sqGains(SQ.T);
   sqApply(SQ.T);
   if (SQ.playing) sqState();
+  if (SQ.hold) sqHoldTick();
+  if (sqWatch.on) sqWatchTick(); // (checks only)
 }
 realRAF(sqTick);
 // ---------- messages ----------
@@ -9169,6 +9232,7 @@ function sqFadeOut() {
   } catch { /* a cut */ }
 }
 function sqOff() {
+  sqHoldTick(true);
   SQ.playing = false; SQ.on = false; SQ.off = false; SQ.offQ = []; SQ.T = 0;
   for (const id of [...SQ.mounted.keys()]) sqUnmount(id);
   SQ.cam = null; SQ.plan = null; sqSounds(0);
@@ -9180,7 +9244,9 @@ function sqOff() {
 }
 function sqSeek(T, n = null) {
   if (n != null) SQ.ack = n; // its states say which seek they answer (the hub drops older ones)
-  SQ.T = Math.max(0, Math.min(Number(T) || 0, (SQ.plan?.dur || 0) - 1e-3));
+  const T1 = Math.max(0, Math.min(Number(T) || 0, (SQ.plan?.dur || 0) - 1e-3));
+  if (SQ.on && !SQ.off && !sqReadyAt(T1)) sqHold(); // (seqsolid: the picture now, until the clip there has drawn)
+  SQ.T = T1;
   SQ.T0 = SQ.T; SQ.at0 = realNow(); SQ.ended = false;
   const s = sqSong();
   if (s && sqInSong(SQ.T)) mediaEl.currentTime = SQ.T - s.offset;
@@ -9322,6 +9388,23 @@ window.__seqPixels = ({ size = 120, x = 0.5, y = 0.5, only = null } = {}) => {
 };
 window.__seqPlan = () => SQ.plan; // (labcut checks: framing, looks, ducking as the page got them)
 window.__seqLayers = () => [...layers.values()].map((L) => ({ id: L.id, share: L.props.share || null, hide: Boolean(L.seqHide), blend: L.props.blend, group: L.props.seqGroup || null, mix: layerMix(L) }));
+// checks (seqsolid, round 29): the program sampled while it plays, at most every `every` ms and only while a check
+// asked: the clock, what should show (a clip, or a transition's two sides) and the picture's middle (an 8 × 8 merge)
+const sqWatch = { on: false, every: 60, at: 0, log: [], c: null };
+window.__seqWatch = { start: ({ every = 60 } = {}) => { sqWatch.on = true; sqWatch.every = every; sqWatch.log = []; return 1; }, stop: () => { sqWatch.on = false; return sqWatch.log.splice(0); }, peek: () => sqWatch.log.slice() };
+function sqWatchTick() {
+  const now = realNow();
+  if (now - sqWatch.at < sqWatch.every) return;
+  sqWatch.at = now;
+  const sh = sqShowing(SQ.T);
+  const c = (sqWatch.c = composite(sqWatch.c, 1, { w: 8, h: 8 }));
+  // (the screen shows a re-run layer's previous picture until its new code draws, and a held picture over all)
+  for (const L of ordered()) if (L.pics?.length && !L.seqHide && layerMix(L) > 0) for (const p of L.pics) if (p.isConnected && !p.__fading) c.getContext('2d').drawImage(p, 0, 0, 8, 8);
+  if (SQ.hold) c.getContext('2d').drawImage(SQ.hold.c, 0, 0, 8, 8);
+  const d = c.getContext('2d').getImageData(4, 4, 1, 1).data;
+  sqWatch.log.push({ t: Math.round(now), T: Math.round(SQ.T * 1000) / 1000, play: SQ.playing, show: sh.a ? null : sh.show?.id || null, from: sh.a?.id || null, to: sh.b?.id || null, p: sh.a ? Math.round(sh.p * 100) / 100 : null, rgb: [d[0], d[1], d[2]], plan: SQ.planId || 0, hold: Boolean(SQ.hold) });
+  if (sqWatch.log.length > 4000) sqWatch.log.shift();
+}
 window.__seqInfo = () => ({ on: SQ.on, T: SQ.T, playing: SQ.playing, off: SQ.off, mounted: [...SQ.mounted.keys()], layers: [...layers.keys()].length, libs: Boolean(SQ.libs), showing: SQ.on ? (() => { const s = sqShowing(SQ.T); return s.a ? { trans: s.type, p: s.p, from: s.a.id, to: s.b.id } : { clip: s.show?.id || null }; })() : null });
 function sqMessage(msg) {
   if (msg.type === 'seq-libs') { try { SQ.libs = new Function(`${msg.code}\nreturn { EditFX, VideoTitles, SeqCut: typeof SeqCut !== 'undefined' ? SeqCut : null };`)(); } catch (err) { post({ type: 'console', level: 'warn', text: `Sequence titles / transitions: ${err.message}` }); } return; }

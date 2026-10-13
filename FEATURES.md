@@ -901,3 +901,8 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ 3 different picks as cards (a picture of each as it will open, what it understood, why). One click opens a new scene with colors, speed, intensity and the music reaction set from the words, and the look on top.
 - ✓ Ways in: the gallery's search ("✦ Make it from my words"), an empty scene / a new chat's starter, the director's ◎ mission "Make it from my words", ✦ More › ✨ Look & motion. "✦ Ask the director to take it further" shows the cost first.
 - ○ Tested with the fake engines (`sh dev/run-checks.sh instantscene unit:instantscene-test`); the picks' look on a real GPU wasn't seen here.
+## A Lab sequence that doesn't bug out (round 29, seqsolid: docs/upgrades/seqsolid.md)
+- ✓ Fast scrubbing across cuts no longer leaves the preview black: code from clips you scrubbed past no longer makes WebGL contexts, logs or errors.
+- ✓ A clip that is still loading (after a seek, or at a cut while playing) holds the last picture instead of going black. A scene edited while it plays cross-fades to its new version.
+- ✓ Quick scene switches always land on that scene's own sequence. A scene that throws gets a ⚠ on its clip (right-click shows the message).
+- ○ Stress-tested headless (`dev/checks/seqsolid.js`: scrubs, switches, size swaps, re-runs, a throwing scene, 🎬 auto-edit, export vs preview); not tried on a real Mac GPU.
