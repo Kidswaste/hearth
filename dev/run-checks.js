@@ -10,7 +10,7 @@
 //   sh dev/run-checks.sh --list               # groups and checks
 //   options: --out <dir> (logs and pictures, default <tmp>/hearth-checks) · --shots (journeys keep a picture per step)
 //   · --fixtures-only · --stop (first failure)
-// Groups: qa, board, capture, journeys, chat, lab, nodes, smooth, astra, sequence, robust, motion, orb, flows, commands, sync, comp, progress, speed, renders, access, adobe, deploy, apps, eyes, pinboard, chromeview, quickstart, unit, all.
+// Groups: qa, board, capture, journeys, chat, lab, nodes, smooth, astra, sequence, robust, motion, orb, flows, commands, sync, comp, progress, speed, renders, access, adobe, deploy, apps, eyes, pinboard, chromeview, quickstart, aicheck, unit, all.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -81,6 +81,7 @@ const GROUPS = {
   chromeview: ['chromeview', 'chrome', 'unit:chromeview-test', 'unit:chrome-test'], // (round 31) Chrome views: Chrome out of sight, its pages shown and used in Hearth (Playwright's Chromium as Chrome: frames, clicks, keys, wheel, popups, file picker, downloads, hidden = no frames, sign-in on screen then off)
   pinboard: ['pinboard', 'unit:pinboard-test'], // (round 30) Find images like this: a Pinterest-like page in Playwright's Chromium as Chrome (smoke --pw-chrome) and in the board's Pinterest window, an Unsplash-like app window; the page reading against saved pages
   quickstart: ['quickstart', 'unit:quickstart-test'], // (round 31) "What can I do here?": the card per window (once by itself, the ⋯ ways in, context first, used drops off) + the picking
+  aicheck: ['aicheck', 'options'], // (round 32) Check this AI: the checklist through the fake engines (Read / Windows Astra / signed out), its fixes, the refusal note's button
   labadapt: ['labadapt', 'unit:labadapt-test'], // (round 31) the Lab preview lightens itself in steps (resolution, filters, shadows, particles), covered layers skip drawing, renders unchanged
   bugbash: ['bugbash', 'unit:sync-test'], // (round 29) regressions of the bug bash's app fixes: one Lab however it opens; sync's same-millisecond file
   unit: UNIT.map((u) => `unit:${u}`),

@@ -266,6 +266,16 @@ function directorPlan(prompt, msg, engine) {
   return { mcpCalls: calls, text: lines.join(' ') };
 }
 
+// (round 32, aicheck.js) "Check this AI": read the probe file, write a new one, list the folder, then one line. Codex
+// reads with its shell (cat), like the real one; the tool lines say what happened (the probe's code included).
+function checkPlan(msg, engine) {
+  if (!/^Hearth setup check\b/.test(msg)) return null;
+  const at = (re) => (msg.match(re) || [])[1] || '';
+  const probe = at(/Read the file `([^`]+)`/); const made = at(/Create the file `([^`]+)`/); const dir = at(/lists the folder `([^`]+)`/);
+  const calls = [engine === 'codex' ? ['Bash', { command: `cat "${probe}"` }] : ['Read', { file_path: probe }], ['Write', { file_path: made, content: 'ok' }], ['Bash', { command: `ls "${dir}"` }]];
+  return { calls, text: 'Checked my tools.' };
+}
+
 // Flows (flows-ui.js): "make a flow for X" gets a small flow made of the first commands the prompt offers.
 function flowPlan(msg) {
   if (!/^Flow · make/.test(msg.split('\n')[0])) return null;
@@ -283,6 +293,8 @@ function plan(prompt, engine = 'claude') {
   const msg = userPart(prompt);
   const fl = flowPlan(msg);
   if (fl) return { p: {}, text: fl.text, thinking: '' };
+  const chk = checkPlan(msg, engine);
+  if (chk) return { p: { accessCalls: chk.calls }, text: chk.text, thinking: '' };
   const intro = introPlan(msg);
   if (intro) {
     const p = { mcp: Boolean(intro.mcpCalls), mcpCalls: intro.mcpCalls || null };

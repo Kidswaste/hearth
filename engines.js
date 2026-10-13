@@ -976,8 +976,9 @@ function send({ agent, chatId, session, text, options = {} }, emit, live = null)
   // the hub tool sets and file tools so they cost no more than a plain chat turn.
   if (options.persona) agent = { ...agent, systemPrompt: String(options.persona).slice(0, 4000) };
   if (options.lean) agent = { ...agent, openTool: false, chatTools: false, threeTools: false, gameTools: false, boardTools: false, captureTools: false, adobeTools: false, deployTools: false, appsTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false };
-  // (round 14) the chat's own file access (access.js); lean / hub-only runs never get it
-  else if (options.access && typeof options.access === 'object' && !options.hubOnly) agent = { ...agent, access: { level: String(options.access.level || 'off'), folders: options.access.folders }, accessChatId: chatId };
+  // (round 14) the chat's own file access (access.js); lean / hub-only runs never get it, except "Check this AI"
+  // (round 32, aicheck.js: options.accessCheck): a lean run that keeps the AI's file access, to test it for a few tokens
+  if (options.access && typeof options.access === 'object' && !options.hubOnly && (!options.lean || options.accessCheck)) agent = { ...agent, access: { level: String(options.access.level || 'off'), folders: options.access.folders }, accessChatId: chatId };
   // "hubOnly" runs (a jam's build turns, jam.js) keep the agent's tool sets (Lab, board…) and drop the rest.
   if (options.hubOnly) agent = { ...agent, chatTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false };
   // (round 22, labcrew) a crew helper (tools/three-crew.js): one variation of a scene, on its own backstage stage. Only
