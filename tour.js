@@ -52,7 +52,7 @@ const Tour = (() => {
   const reflow = debounce(() => { if (cur && target) { if (!target.isConnected) { show(cur.i); return; } placeRing(ring, target); placeCard(); } }, 80);
   function onKey(e) {
     if (!cur || e.target?.closest?.('input, textarea, [contenteditable=true]')) { if (e.key === 'Escape' && cur && !e.target?.closest?.('input, textarea')) stop(); return; }
-    if (e.key === 'Escape') { const id = cur.tour.id; stop(); toast(`Tour paused: /tour ${id} picks up there`, { timeout: 2200 }); }
+    if (e.key === 'Escape') { const name = cur.tour.name; stop(); toast(`${name} paused: it picks up there next time`, { timeout: 2200 }); }
   }
   function placeCard() {
     if (!card) return;
@@ -108,14 +108,14 @@ const Tour = (() => {
     const btn = (text, cls, fn, title = '') => el('button', { type: 'button', class: cls, text, title, on: { click: (e) => { e.stopPropagation(); fn(); } } });
     const body = el('div', { class: 'tour-body' },
       el('div', { class: 'tour-head' }, el('span', { class: 'tour-ic', text: tour.icon }), el('b', { text: step.title }), el('span', { class: 'spacer' }),
-        el('span', { class: 'tour-n', text: `${i + 1}/${steps.length}` }), btn('×', 'tour-x', () => { stop(); toast(`Tour paused: /tour ${tour.id} picks up at step ${i + 1}`, { timeout: 2400 }); }, 'Stop (it picks up here next time)')),
+        el('span', { class: 'tour-n', text: `${i + 1}/${steps.length}` }), btn('×', 'tour-x', () => { stop(); toast(`Tour paused: it picks up at step ${i + 1} next time`, { timeout: 2400 }); }, 'Stop (it picks up here next time)')),
       el('p', { class: 'tour-text', text: step.text }),
       !target && step.target ? el('p', { class: 'tour-hint', text: 'Not on screen right now.' }) : null,
       el('div', { class: 'tour-btns' },
         i ? btn('‹ Back', 'ghost small', () => show(i - 1)) : null,
-        step.cmd ? btn(`Try ${step.cmd.split(' ').slice(0, 2).join(' ')}`, 'ghost small tour-try', () => runLine(step.cmd), D.safeLine(step.cmd, (n) => Boolean(Commands.get(n))) ? 'Runs it' : 'Puts it in the chat box') : null,
+        step.cmd ? btn('Try it', 'ghost small tour-try', () => runLine(step.cmd), D.safeLine(step.cmd, (n) => Boolean(Commands.get(n))) ? 'Runs it' : 'Puts it in the chat box') : null,
         el('span', { class: 'spacer' }),
-        btn(last ? 'Done ✓' : 'Next ›', 'small primary tour-next', () => (last ? (stop({ done: true }), toast(`${tour.name}: done. /spotlight lists the others.`, { timeout: 2200 })) : show(i + 1)))));
+        btn(last ? 'Done ✓' : 'Next ›', 'small primary tour-next', () => (last ? (stop({ done: true }), toast(`${tour.name}: done. Discover has the other tours.`, { timeout: 2200 })) : show(i + 1)))));
     if (!card) {
       card = el('div', { class: 'tour-card speed-card', role: 'dialog', 'aria-label': `Tour: ${tour.name}`, 'data-no-usage': '' });
       // drag it out of the way by its head
@@ -193,7 +193,7 @@ const Tour = (() => {
   addEventListener('DOMContentLoaded', () => {
     register();
     try { AppUI.addAction?.('Guided tour of a new feature…', () => { const r = document.getElementById('keys-btn')?.getBoundingClientRect(); showMenu((r?.right || 80) + 6, Math.max(8, (r?.top || innerHeight) - 240), menuItems()); }); } catch { /* no palette */ }
-    try { Keys.add({ area: 'Discover', keys: 'Esc', what: 'Pause a guided tour (/tour <name> picks up there)' }); } catch { /* no keys sheet */ }
+    try { Keys.add({ area: 'Discover', keys: 'Esc', what: 'Pause a guided tour (it picks up there next time)' }); } catch { /* no keys sheet */ }
   });
   return { start, stop, pulse, find, runLine, menuItems, listText, get current() { return cur ? { id: cur.tour.id, step: cur.i, total: cur.steps.length } : null; }, progress: prog };
 })();

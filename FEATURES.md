@@ -838,3 +838,9 @@ In ⋯ AI setup, **⚡ Hooks: when… then…** gives each AI a short list of ru
 - ✓ **Looks stuck**: a reply with no news for 2 min (chat-live's own reading) offers Wait / Stop & retry from here.
 - ✓ **Desktop notifications** (Mac + Windows) only while Hearth is in the background and only for what needs you or long jobs finishing, one at most every 20 s, under the existing switch (Settings › General, `/notify`); right-click ◉ for stop all / notifications / clear.
 - ○ Tested with the fake engines (`sh dev/run-checks.sh activity`); real OS notifications not seen headless.
+## Calmer, plainer (round 27, simplify2, 23 upgrades: docs/upgrades/simplify2.md)
+- ✓ Settings reads like ⋯ AI setup: Look, Sync, Updates, Keys, then Advanced folded; every row explained on hover; no command names (34 → 21 controls at first sight, 7 → 4 open sections).
+- ✓ What belongs to an AI is in ⋯ AI setup only (its tools; for a Lab director: nodes, progress bar, a picture per edit); Settings has one link to it.
+- ✓ No "/command" on screen outside the Lab: keys sheet, command bar, Ctrl+K, Discover tips and tours, tooltips, toasts.
+- ✓ ⚇ Work with Astra waits behind Alt (◎ Missions does the same; right-click the chat box has it); AI setup's rail icon is ❖, not a second ⚙.
+- ○ Checked by `dev/checks/simplify2.js` (chat group) and the updated `tidy` check.

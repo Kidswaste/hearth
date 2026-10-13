@@ -355,7 +355,7 @@ const Voice = (() => {
     return [{ label: S.state === 'listening' ? '⏹ Stop listening' : '🎙 Talk', hint: `hold ${keyText()}`, action: () => toggle(agentId) }];
   }
 
-  if (typeof Keys !== 'undefined') Keys.add({ area: 'Chat', keys: `Hold ${DEFAULT_KEY}`, what: 'Push to talk: speak, let go, the words land in the chat box (a short tap listens until you stop; /voice key changes it)', run: () => toggle(targetAgent()) });
+  if (typeof Keys !== 'undefined') Keys.add({ area: 'Chat', keys: `Hold ${DEFAULT_KEY}`, what: 'Push to talk: speak, let go, the words land in the chat box (a short tap listens until you stop)', run: () => toggle(targetAgent()) });
 
   return {
     start, finish, cancel, toggle, deliver, install, offerModel, setKey, attachItems, settingsItems, engine, targetAgent,

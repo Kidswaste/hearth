@@ -141,7 +141,7 @@ const BoardDrawer = (() => {
         el('button', { text: '✕', title: 'Close (Esc / Ctrl+Shift+M)', on: { click: () => toggle(false) } })),
       search, vibe, grid,
       el('div', { class: 'bdd-foot' },
-        chatId ? el('button', { text: isLinked ? '✓ Linked to this chat' : 'Link to this chat', title: 'A linked board opens here first, and /board-use uses it', on: { click: () => { if (isLinked) B.unlinkChat(chatId); else B.linkChat(chatId, b.id); } } }) : null,
+        chatId ? el('button', { text: isLinked ? '✓ Linked to this chat' : 'Link to this chat', title: 'A linked board opens here first, and this chat uses it when you say “use my board”', on: { click: () => { if (isLinked) B.unlinkChat(chatId); else B.linkChat(chatId, b.id); } } }) : null,
         el('span', { class: 'spacer' }), el('span', { text: `${items.length} ref${items.length === 1 ? '' : 's'}` }),
         el('button', { text: '+', title: 'Add pictures or clips to this board', on: { click: async () => { const paths = await window.hub.openDialog({ properties: ['openFile', 'multiSelections'], title: 'Add to the board' }); if (paths?.length) { await B.open(b.id); await B.addFiles(paths); } } } })));
     renderGrid();
@@ -175,7 +175,7 @@ const BoardDrawer = (() => {
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.code === 'KeyM') { e.preventDefault(); e.stopPropagation(); toggle(); }
   }, true);
   try {
-    Keys.add({ area: 'Board', keys: 'Ctrl+Shift+M', what: 'board drawer over any chat or tool (also the ▦ in the rail, /board-peek)' });
+    Keys.add({ area: 'Board', keys: 'Ctrl+Shift+M', what: 'board drawer over any chat or tool (also the ▦ in the rail)' });
     Keys.add({ area: 'Board', keys: 'Drag a reference into a chat', what: 'attach its vibe (not the file) to your next message' });
     Keys.add({ area: 'Board', keys: 'Right-click a drawer tile', what: 'attach only its palette, light, motion… to the chat' });
   } catch { /* keys.js not loaded */ }

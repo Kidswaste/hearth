@@ -108,7 +108,8 @@ line count is lower than the number of upgrades).
 | Easy Lab (round 26): every Lab feature without commands: right-click the picture → ✦ More (music, look & motion, make, what's going on), toolbar ⋯ → Director ›, a layer right-click menu; Lab missions (4 variations, react to the music, 9:16 version, polish the look, render it); no "/command" left in visible Lab text | [labeasy.md](labeasy.md) | 63 |
 | Smoothness after rounds 25–26 (round 26): the Lab preview sleeps when parked or paused (0 wake-ups off screen), no forced layout per click once the Lab loaded, ⋯ AI setup opens with 69 % less forced layout time and preloads on hover, ◎ Missions closes cleanly, switching windows forces 45 % less, "Show earlier" 60 messages at a time; new `smooth26` check, hz240 fixed for round 26 | [smooth26.md](smooth26.md) | 12 |
 | Activity (round 27): ◉ at the bottom of the rail only while something runs or waits for you; one panel with Waiting for you (permission asks with Allow / Deny, questions, plan ready ▶ Go ahead, looks stuck with Wait / Stop & retry, sync, failures), Now running (each reply with its helper agents, missions, renders and other bars, Open / Stop), the last 24 h; calm desktop notifications under the one existing switch; nothing ticks while idle | [activity.md](activity.md) | 28 |
-| **Total** | | **12,658** |
+| Calmer, plainer (round 27): Settings like ⋯ AI setup (Look, Sync, Updates, Keys + Advanced folded, every row explained on hover, no command names; 34 → 21 controls), AI things only in ⋯ AI setup, no "/command" on screen outside the Lab (keys sheet, command bar, tips, tours, tooltips, toasts), ⚇ behind Alt; new `simplify2` check | [simplify2.md](simplify2.md) | 23 |
+| **Total** | | **12,681** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.

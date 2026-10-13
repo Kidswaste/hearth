@@ -223,7 +223,7 @@ const Discover = (() => {
       tip.tour ? el('button', { type: 'button', class: 'ghost small', text: 'Show me around', on: { click: () => { closeCard(); Tour.start(tip.tour); } } }) : null,
       el('button', { type: 'button', class: 'ghost small', text: 'Later', on: { click: () => { const s = tipState(); setTips({ seen: s.seen.filter((x) => x !== tip.id), later: { ...s.later, [tip.id]: Date.now() + 3 * DAY } }); closeCard(); } } }),
       el('span', { class: 'spacer' }),
-      el('button', { type: 'button', class: 'ghost small dc-stop', text: 'Stop tips', on: { click: () => { setTips({ off: true }); closeCard(); toast('No more tips (/tip on brings them back; /tip shows one)', { timeout: 2600 }); } } }));
+      el('button', { type: 'button', class: 'ghost small dc-stop', text: 'Stop tips', on: { click: () => { setTips({ off: true }); closeCard(); toast('No more tips (Settings › Advanced › Hearth brings them back)', { timeout: 2600 }); } } }));
     mountCard('dc-tip', 'Did you know?', [el('p', { class: 'dc-tiptext', text: tip.text })], foot, { timeout: 25000 });
     cardEl.dataset.tip = tip.id;
     return tip;
@@ -349,7 +349,7 @@ const Discover = (() => {
     pane.replaceChildren(
       el('h3', { class: 'dc-h', text: '◫ Feature map' }),
       el('p', { class: 'hint', text: `You have tried ${used} of ${total} commands. Click an area to see its commands; ✦ Surprise me picks something fun you never tried.` }),
-      el('div', { class: 'dc-foot' }, el('button', { type: 'button', class: 'primary small dc-surprise', text: '✦ Surprise me', on: { click: async () => { const s = await surprise(); out.textContent = s ? `${s.cmd} — ${s.why}${s.how === 'draft' ? ' (in the chat box: press Enter)' : ''}` : 'You have tried every surprise. Impressive.'; } } }), out),
+      el('div', { class: 'dc-foot' }, el('button', { type: 'button', class: 'primary small dc-surprise', text: '✦ Surprise me', on: { click: async () => { const s = await surprise(); out.textContent = s ? `✦ ${s.why[0].toUpperCase()}${s.why.slice(1)}${s.how === 'draft' ? ' (in the chat box: press Enter)' : ''}` : 'You have tried every surprise. Impressive.'; } } }), out),
       el('div', { class: 'dc-map' }, ...map.map((a) => el('button', { type: 'button', class: 'dc-area', title: a.never ? `Never tried: ${a.neverNames.map((n) => `/${n}`).join(' ')}${a.never > a.neverNames.length ? '…' : ''}` : 'All tried', on: { click: () => { const s = CmdPage.state; s.search.value = a.area; s.query = a.area; CmdPage.refreshList(); } } },
         el('span', { class: 'dc-aname', text: a.area }),
         el('span', { class: 'dc-bar' }, el('i', { style: { width: `${Math.round((a.used / Math.max(1, a.total)) * 100)}%` } })),
@@ -366,7 +366,7 @@ const Discover = (() => {
   async function paneTours(pane) {
     const p = Tour.progress();
     pane.replaceChildren(el('h3', { class: 'dc-h', text: '⌖ Guided tours' }),
-      el('p', { class: 'hint', text: 'A ring on the real control and one small card. × or Esc pauses; the same tour picks up there. /tour <name> from any chat.' }),
+      el('p', { class: 'hint', text: 'A ring on the real control and one small card. × or Esc pauses; the same tour picks up there.' }),
       el('div', { class: 'dc-list' }, ...D.TOURS.map((t) => el('button', { type: 'button', class: 'dc-idea', dataset: { tour: t.id }, on: { click: () => Tour.start(t) } },
         el('span', { class: 'sr-ic', text: t.icon }), el('span', { class: 'dc-text' }, el('b', { text: t.name }), el('span', { class: 'dc-sub', text: `${t.why}${p[t.id]?.done ? ' · seen ✓' : p[t.id] ? ` · paused at ${(p[t.id].step || 0) + 1}` : ''}` }))))));
   }
@@ -420,7 +420,7 @@ const Discover = (() => {
       run: (_a, ctx) => {
         const map = featureMap().slice(0, 14);
         const text = `**◫ Feature map** · used / never tried\n${map.map((a) => `- **${a.area}**: ${a.used} / ${a.never}${a.never ? ` (try \`/${a.neverNames[0]}\`)` : ''}`).join('\n')}`;
-        if (ctx?.note) { ctx.note(text, { id: 'feature-map', actions: [{ label: '✦ Surprise me', run: () => surprise().then((s) => s && toast(`${s.cmd}: ${s.why}`, { timeout: 2600 })) }, { label: 'Open the map ›', run: () => openPane('map') }] }); return undefined; }
+        if (ctx?.note) { ctx.note(text, { id: 'feature-map', actions: [{ label: '✦ Surprise me', run: () => surprise().then((s) => s && toast(`✦ ${s.why[0].toUpperCase()}${s.why.slice(1)}`, { timeout: 2600 })) }, { label: 'Open the map ›', run: () => openPane('map') }] }); return undefined; }
         return text;
       },
     });

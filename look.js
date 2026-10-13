@@ -76,11 +76,11 @@ const Look = (() => {
   function saveLook(name) {
     const n = String(name || '').trim().slice(0, 40);
     if (!n) throw new Error('Name it: /appearance save <name>');
-    if (!presetId()) throw new Error('Pick a preset first (/theme), then save your tweaks on top of it');
+    if (!presetId()) throw new Error('Pick a look first, then save your tweaks on top of it');
     H.config.theme.saved = { ...saved(), [savedKey(n) || n]: { preset: presetId(), fx: { ...(H.config.theme.fx || {}) } } };
     save();
     refresh();
-    return `Saved this look as "${n}" (/appearance load ${n})`;
+    return `Saved this look as "${n}"`;
   }
   function loadLook(name, { quiet = true } = {}) {
     const k = savedKey(name);
@@ -170,7 +170,7 @@ const Look = (() => {
       const names = Object.keys(saved());
       mine.replaceChildren(...(names.length ? [el('div', { class: 'look-group', text: 'Yours' }), ...names.map((n) => {
         const t = themes()[saved()[n].preset] || {};
-        return el('button', { type: 'button', class: 'look-tile mine', title: `${n} (${t.label || '?'} + your tweaks) · /appearance load ${n} · right-click to delete`, dataset: { saved: n },
+        return el('button', { type: 'button', class: 'look-tile mine', title: `${n} (${t.label || '?'} + your tweaks) · right-click to delete`, dataset: { saved: n },
           on: { click: () => loadLook(n, { quiet: false }), contextmenu: (e) => { e.preventDefault(); Modal.confirm(`Delete the look "${n}"?`, 'Only your saved tweaks go; the preset stays.', { ok: 'Delete', danger: true }).then((ok) => { if (ok) deleteLook(n); }); } } },
         swatch({ ...t, accent: saved()[n].fx?.accent || t.accent }), el('span', { text: n }));
       })] : []));
@@ -178,7 +178,7 @@ const Look = (() => {
     // Round 4: three looks up front (Forgeheart, Classic, one light) plus the one you're on; the other presets
     // wait under "More looks" (searchable), the toggles under "Advanced". /theme <name> reaches every one.
     const tile = (id, t, head) => {
-      const b = el('button', { type: 'button', class: 'look-tile', title: `${t.label}  ·  /theme ${id}`, dataset: { id }, on: { click: () => applyPreset(id) } }, swatch(t), el('span', { text: t.label.replace(/ \(.*\)$/, '') }));
+      const b = el('button', { type: 'button', class: 'look-tile', title: t.label, dataset: { id }, on: { click: () => applyPreset(id) } }, swatch(t), el('span', { text: t.label.replace(/ \(.*\)$/, '') }));
       b.head = head;
       return b;
     };
@@ -205,27 +205,27 @@ const Look = (() => {
       for (const head of grid.querySelectorAll('.look-group')) head.hidden = Boolean(q) && !tiles.some((t) => t.head === head && !t.hidden);
     });
     const bool = (v) => v === 'true';
-    const tex = seg('texture', [['true', 'On'], ['false', 'Off']], 'Brushed metal, grain and glass (/texture)', bool);
+    const tex = seg('texture', [['true', 'On'], ['false', 'Off']], 'Brushed metal, grain and glass', bool);
     // (round 17, hz240) dragging shows the glow live once per frame (one CSS variable); it's saved (and every other
     // part of the look re-applied) when you let go: saving on every step made the app reload its config 30× a drag
     let glowFrame = 0;
     const glowLive = () => { glowFrame = 0; root.style.setProperty('--glow', String(Math.max(0, Math.min(100, Number(glow.value) || 0)) / 50)); };
-    const glow = el('input', { type: 'range', min: 0, max: 100, step: 5, title: 'Glow intensity (/glow 0-100)', on: { input: () => { glowFrame ||= requestAnimationFrame(glowLive); }, change: () => { cancelAnimationFrame(glowFrame); glowFrame = 0; setFx({ glow: Number(glow.value) }); } } });
-    const motion = seg('motion', CHOICES.motion, 'Ambient animation (/motion)');
-    const density = seg('density', CHOICES.density, 'Spacing (/density)');
-    const corners = seg('corners', CHOICES.corners, 'Corner style (/corners)');
-    const font = seg('chatfont', CHOICES.chatfont, 'Font for chat text (/chatfont)');
-    const tips = seg('tips', [['true', 'On'], ['false', 'Off']], 'Forged tooltips (/tips)', bool);
-    const accentIn = el('input', { type: 'color', title: 'Accent color (/accent)', on: { input: debounce(() => setAccent(accentIn.value), 150) } });
+    const glow = el('input', { type: 'range', min: 0, max: 100, step: 5, title: 'How much the edges and buttons glow', on: { input: () => { glowFrame ||= requestAnimationFrame(glowLive); }, change: () => { cancelAnimationFrame(glowFrame); glowFrame = 0; setFx({ glow: Number(glow.value) }); } } });
+    const motion = seg('motion', CHOICES.motion, 'How much the app moves by itself (calm or off: lighter)');
+    const density = seg('density', CHOICES.density, 'How much room between things');
+    const corners = seg('corners', CHOICES.corners, 'How round the corners are');
+    const font = seg('chatfont', CHOICES.chatfont, 'The font of chat messages');
+    const tips = seg('tips', [['true', 'On'], ['false', 'Off']], 'Styled tooltips like this one', bool);
+    const accentIn = el('input', { type: 'color', title: 'The highlight colour', on: { input: debounce(() => setAccent(accentIn.value), 150) } });
     const accentReset = el('button', { type: 'button', class: 'ghost small', text: 'Reset', title: 'Back to the preset\'s accent', on: { click: () => setAccent('reset') } });
     const ctl = el('div', { class: 'look-ctl' },
       el('span', { text: 'Textures' }), tex, el('span', { text: 'Glow' }), glow,
       el('span', { text: 'Motion' }), motion, el('span', { text: 'Density' }), density,
       el('span', { text: 'Corners' }), corners, el('span', { text: 'Chat font' }), font,
       el('span', { text: 'Accent' }), el('span', { class: 'look-accent' }, accentIn, accentReset), el('span', { text: 'Tooltips' }), tips,
-      el('span', { text: 'Your looks' }), el('span', {}, el('button', { type: 'button', class: 'ghost small', text: 'Save as…', title: 'Keep this preset + your tweaks under a name (/appearance save <name>)',
+      el('span', { text: 'Your looks' }), el('span', {}, el('button', { type: 'button', class: 'ghost small', text: 'Save as…', title: 'Keep this look and your tweaks under a name',
         on: { click: async () => { const n = await Modal.prompt('Save this look as', { placeholder: 'e.g. Night session' }); if (n) toast(saveLook(n), { timeout: 1600 }); } } })));
-    const decide = typeof Decide !== 'undefined' ? el('button', { type: 'button', class: 'ghost small decide-btn', text: '✦ Let Astra pick', title: 'Astra picks a look for you (Undo puts yours back) · /decide theme', on: { click: () => Decide.run('theme') } }) : null;
+    const decide = typeof Decide !== 'undefined' ? el('button', { type: 'button', class: 'ghost small decide-btn', text: '✦ Let Astra pick', title: 'Astra picks a look for you (Undo puts yours back)', on: { click: () => Decide.run('theme') } }) : null;
     const box = el('div', { class: 'look-picker' }, el('div', { class: 'look-top' }, now, el('span', { class: 'spacer' }), decide), featured, mine, moreLooks,
       el('details', { class: 'look-adv' }, el('summary', { text: 'Advanced: textures, glow, motion, density, corners…' }), ctl));
     box.refresh = () => {

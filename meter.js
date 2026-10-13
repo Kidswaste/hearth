@@ -256,7 +256,7 @@ const Meter = (() => {
     const c = e.target.closest('.ms-cell');
     if (!c) return;
     const id = c.dataset.cell;
-    if (id === 'collapse') { setMode('pill'); toast('Meter tucked into the rail. Click the pill (or /meter strip) to bring it back.', { timeout: 2600 }); return; }
+    if (id === 'collapse') { setMode('pill'); toast('Meter tucked into the rail. Click the pill to bring it back.', { timeout: 2600 }); return; }
     if (id === 'ctx') { ctxMenu(e.clientX, e.clientY); return; }
     if (id === 'clicks' || id === 'streak') { dashboard('features'); return; }
     if (id === 'split') { dashboard('agents'); return; }
@@ -616,7 +616,7 @@ const Meter = (() => {
     },
     agents: (days) => [el('h4', { text: 'Per agent' }), dimTable('a', days, agentName, agentColor)],
     models: (days) => [el('h4', { text: 'Per model' }), dimTable('m', days, (m) => (m === 'default' ? 'default (agent setting)' : m)),
-      el('p', { class: 'hint', text: 'Context windows: 200k by default, 1M for [1m] models. Change one with /meter window <model> <tokens>.' })],
+      el('p', { class: 'hint', text: 'Context windows: 200k by default, 1M for [1m] models. Ask a chat or the command bar (Ctrl/⌘+;) to change one.' })],
     tools: (days) => [el('h4', { text: 'Per tool (docked directors, chat, second opinions)' }), dimTable('t', days, toolName)],
     chats(days, range) {
       const from = range === 'all' ? 0 : new Date(`${days[0]}T00:00`).getTime();

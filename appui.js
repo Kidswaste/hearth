@@ -81,21 +81,22 @@ const AppUI = (() => {
     document.querySelector('dialog.settings-dialog[open]')?.close();
     const s = { ...H.settings() };
     const hidden = new Set(H.config.tools?.hidden || []);
-    const field = (label, input, hint) => el('label', {}, label, input, hint ? el('span', { class: 'hint', text: hint }) : null);
-    const check = (label, checked, hint) => {
+    // (round 27, simplify2) every row says what it does on hover (tip)
+    const field = (label, input, hint, tip) => el('label', { title: tip || hint || '' }, label, input, hint ? el('span', { class: 'hint', text: hint }) : null);
+    const check = (label, checked, hint, tip) => {
       const input = el('input', { type: 'checkbox', checked: Boolean(checked) });
-      return [el('label', { class: 'check' }, input, label, hint ? el('span', { class: 'hint inline', text: hint }) : null), input];
+      return [el('label', { class: 'check', title: tip || hint || '' }, input, label, hint ? el('span', { class: 'hint inline', text: hint }) : null), input];
     };
     const startOn = el('select', {}, el('option', { value: '', text: 'Last used (first agent)' }),
       H.agents().map((a) => el('option', { value: a.id, text: a.name, selected: s.startOn === a.id })),
       Tools.all().map((t) => el('option', { value: `tool:${t.id}`, text: t.name, selected: s.startOn === `tool:${t.id}` })));
     const hotkey = el('input', { value: s.hotkey ?? 'Control+Alt+H', placeholder: 'e.g. Control+Alt+H (empty = off)' });
-    const [trayRow, trayIn] = check('Closing the window keeps the hub running in the tray', s.closeToTray);
+    const [trayRow, trayIn] = check('Closing the window keeps Hearth running in the tray', s.closeToTray, '', 'The window closes but Hearth keeps going (replies, renders, sync); the tray icon brings it back');
     const isMac = /Mac/.test(navigator.platform);
-    const [startupRow, startupIn] = check(isMac ? 'Start Hearth when you log in (Mac: add Hearth.app in System Settings → General → Login Items)' : 'Start Hearth when Windows starts', s.launchAtStartup);
+    const [startupRow, startupIn] = check(isMac ? 'Start Hearth when you log in (Mac: add Hearth.app in System Settings → General → Login Items)' : 'Start Hearth when Windows starts', s.launchAtStartup, '', 'Hearth opens by itself when you sign in to this computer');
     const claudePath = el('input', { value: s.enginePaths?.claude || '', placeholder: 'Found automatically (Claude desktop app or the claude command)' });
     const codexPath = el('input', { value: s.enginePaths?.codex || '', placeholder: 'Found automatically (Codex / ChatGPT app or the codex command)' });
-    const [notifyRow, notifyIn] = check('Desktop notifications while I\'m elsewhere: replies, things that need me, long jobs finishing', s.notify !== false);
+    const [notifyRow, notifyIn] = check('Desktop notifications while I\'m elsewhere', s.notify !== false, '', 'A system notification when an AI finishes, something needs you, or a long job ends while you are in another window or app');
     const sleepSel = el('select', {}, [['0', 'Never'], ['10', 'after 10 minutes'], ['30', 'after 30 minutes'], ['60', 'after an hour']].map(([v, l]) => el('option', { value: v, text: l, selected: String(s.sleepWebsAfter || 0) === v })));
     const langs = new Set(s.spellLanguages || ['en-US']);
     const langBoxes = SPELL_LANGS.map(([code, label]) => {
@@ -122,28 +123,55 @@ const AppUI = (() => {
 
     const dialog = el('dialog', { class: 'ui-modal settings-dialog' });
     const section = (title, ...kids) => el('section', { class: 'settings-section' }, el('h3', { text: title }), ...kids);
+    const home = (sec, id) => { sec.dataset.home = id; return sec; }; // settings-find.js puts each switch in its home
+    const gbtn = (text, title, fn, cls = 'ghost') => el('button', { type: 'button', class: cls, text, title, on: { click: fn } });
+    const run = (line) => () => { dialog.close(); Commands.tryRun(line, H.claudeAgent()?.id); };
+    // (round 27, simplify2) the owner found the app "way too complex… unclear" and loved how calm ⋯ AI setup is, so
+    // Settings reads the same way: four short sections in plain words (Look, Sync, Updates, Keys), everything rarer
+    // folded under Advanced (all still here, and the search finds it), every row explained on hover, no command
+    // names. What belongs to an AI (personality, instructions, what it can use) is one link to ⋯ AI setup.
+    const aiLine = el('div', { class: 'settings-ai', title: 'Personality, standing instructions, what each AI can use (files, the board, the Lab, apps), memory, how hard it thinks' },
+      el('span', { text: 'Your AIs: who they are and what they can use' }), el('span', { class: 'spacer' }),
+      gbtn('⋯ AI setup', 'Open AI setup for the chat you are in', () => { dialog.close(); (window.Lazy?.load ? Lazy.load('options') : Promise.resolve()).then(() => Options.open({})).catch(() => activate('tool:options')); }, 'ghost small'));
+    const syncSec = typeof Sync !== 'undefined' ? Sync.settingsSection(section) : null; // round 10: sync through your cloud drive
+    if (syncSec) {
+      syncSec.querySelector('h3').textContent = 'Sync';
+      for (const b of syncSec.querySelectorAll('.button-row > button:not([title])')) b.title = 'Keeps your Mac and PC the same through a cloud drive folder you already use (iCloud Drive, Google Drive, Dropbox, OneDrive)';
+      syncSec.querySelector('label.check')?.setAttribute('title', 'Very big captures and renders travel too, in pieces that resume after a break');
+    }
+    const upLine = () => { const u = typeof Updater !== 'undefined' ? Updater.status : null; return !u ? 'Hearth looks for updates by itself every half hour.' : u.ok ? (u.behind ? `${u.behind} new change${u.behind === 1 ? '' : 's'} ready: ⬆ in the rail.` : 'Hearth is up to date.') : 'Could not look for updates just now.'; };
+    const upText = el('p', { class: 'hint', text: upLine() });
     const form = el('form', { method: 'dialog' },
       el('h2', { text: 'Settings' }),
-      // Round 4: what people change sits on top; the rest folds into "More settings" (all still here).
-      section('General', field('Open on start', startOn), notifyRow),
-      section('Appearance', Look.picker()),
-      typeof Sync !== 'undefined' ? Sync.settingsSection(section) : null, // round 10: sync through your cloud drive
-      el('details', { class: 'settings-more' }, el('summary', { text: 'More settings: startup, tray, hotkey, spell check, rail tools, engines, folders, backups' }),
-      section('Startup and tray', trayRow, startupRow,
-        field('Unload websites I haven\'t opened (frees memory; they load again when you open them)', sleepSel),
-        field('Show/hide hotkey (works from anywhere)', hotkey, 'Uses Electron accelerator names: Control, Alt, Shift, Super, letters, Space, F1…')),
-      section('Spell check languages', el('div', { class: 'check-grid' }, langBoxes)),
-      section('Tools in the rail', el('div', { class: 'check-grid' }, toolBoxes)),
-      section('Engines', field('Claude program (only if it isn\'t found)', claudePath), field('Codex program (only if it isn\'t found)', codexPath)),
-      section('Folders', field('Forgeheart project', fhRow), field('Forgeheart debug build (runs beside the Forge Debug agent)', dbgRow), field('After Effects install (optional override)', aeRow), field('Where to look for .aep projects', aeDirs)),
-      section('App',
-        el('div', { class: 'button-row' },
-          el('button', { type: 'button', class: 'ghost', text: isMac ? 'Create Hearth.app in Applications' : 'Create Start menu & desktop shortcuts', on: { click: createShortcuts } }),
-          el('button', { type: 'button', class: 'ghost', text: 'Back up hub data…', on: { click: exportData } }),
+      aiLine,
+      home(section('Look', Look.picker(), el('span', { class: 'sf-slot' })), 'look'),
+      syncSec,
+      home(section('Updates', upText,
+        el('div', { class: 'button-row', title: 'Look for something new now, or read what changed lately' },
+          gbtn('Look now', 'Ask for updates now (nothing is installed without you)', async () => { await Updater.check({ loud: true }); upText.textContent = upLine(); }),
+          gbtn('What\'s new…', 'The latest changes that fit how you work', run('/whats-new')))), 'updates'),
+      home(section('Keys',
+        el('div', { class: 'button-row', title: 'Your keyboard keys, what hides behind Alt, and the keys of services Hearth talks to' },
+          gbtn('Keyboard keys…', 'Every key, what waits behind Alt, every right-click menu', () => { dialog.close(); KeysUI.open(); }),
+          gbtn('Meshy key…', 'Paste your Meshy API key once (stored encrypted on this computer, never shown to a chat)', run('/meshy key'))),
+        field('Show / hide Hearth from anywhere', hotkey, '', 'A hotkey (key combination) that brings Hearth up or hides it, even from another app (e.g. Control+Alt+H; empty: off)')), 'keys'),
+      el('details', { class: 'settings-more', title: 'Chats, start-up, spell check, the rail, programs, folders, backups' }, el('summary', { text: 'Advanced' }),
+      home(section('Chats', field('Open on start', startOn, '', 'What Hearth shows when it opens'), notifyRow, el('span', { class: 'sf-slot' })), 'chats'),
+      home(section('Hearth', trayRow, startupRow,
+        field('Unload websites I haven\'t opened', sleepSel, '', 'Frees memory; a website loads again when you open it'), el('span', { class: 'sf-slot' })), 'hearth'),
+      home(section('Mood board'), 'board'),
+      section('Spell check languages', el('div', { class: 'check-grid', title: 'The languages the message box checks your spelling in' }, langBoxes)),
+      section('Tools in the rail', el('div', { class: 'check-grid', title: 'Untick a tool to take it off the rail (it stays in the rail\'s ⋯)' }, toolBoxes)),
+      section('Claude and Codex programs', field('Claude program (only if it isn\'t found)', claudePath, '', 'Where the Claude program is, when Hearth can\'t find it by itself'), field('Codex program (only if it isn\'t found)', codexPath, '', 'Where the Codex program is, when Hearth can\'t find it by itself')),
+      section('Folders', field('Forgeheart project', fhRow, '', 'The game project the Forge agents work in'), field('Forgeheart debug build (runs beside the Forge Debug agent)', dbgRow, '', 'The game page the Forge Debug agent plays'), field('After Effects install (optional override)', aeRow, '', 'Only when After Effects is installed somewhere unusual'), field('Where to look for .aep projects', aeDirs, '', 'Folders searched for After Effects projects')),
+      section('Backup and files',
+        el('div', { class: 'button-row', title: 'Shortcuts, backups and Hearth\'s own files' },
+          el('button', { type: 'button', class: 'ghost', text: isMac ? 'Create Hearth.app in Applications' : 'Create Start menu & desktop shortcuts', title: 'Open Hearth like any other app', on: { click: createShortcuts } }),
+          el('button', { type: 'button', class: 'ghost', text: 'Back up hub data…', title: 'One file with your chats, settings and memory', on: { click: exportData } }),
           el('button', { type: 'button', class: 'ghost', text: 'Pack Hearth for a Mac…', title: 'One zip with the app, your chats, sketches, settings and memory, plus the Mac setup script', on: { click: packForMac } }),
-          el('button', { type: 'button', class: 'ghost', text: 'Open data folder', on: { click: () => window.hub.openDataFolder() } }),
-          el('button', { type: 'button', class: 'ghost', text: 'Edit config.json', on: { click: () => window.hub.openFile('config') } }),
-          el('button', { type: 'button', class: 'ghost', text: 'Edit theme.css', on: { click: () => window.hub.openFile('theme') } })))),
+          el('button', { type: 'button', class: 'ghost', text: 'Open data folder', title: 'Where Hearth keeps your chats and files', on: { click: () => window.hub.openDataFolder() } }),
+          el('button', { type: 'button', class: 'ghost', text: 'Edit config.json', title: 'Every setting as a text file (for experts)', on: { click: () => window.hub.openFile('config') } }),
+          el('button', { type: 'button', class: 'ghost', text: 'Edit theme.css', title: 'Your own colours and styles as a text file (for experts)', on: { click: () => window.hub.openFile('theme') } })))),
       el('div', { class: 'dialog-actions' }, el('span', { class: 'spacer' }),
         el('button', { type: 'button', text: 'Cancel', on: { click: () => dialog.close() } }),
         el('button', { type: 'submit', class: 'primary', text: 'Save' })));
@@ -172,6 +200,7 @@ const AppUI = (() => {
     });
     dialog.append(form);
     if (typeof SettingsFind !== 'undefined') try { SettingsFind.mount(form, section, { query }); } catch (err) { console.warn(err); }
+    for (const sec of form.querySelectorAll('.settings-section')) if (!sec.querySelector(':scope > :not(h3):not(.sf-slot)')) sec.remove(); // a home no switch came to
     dialog.addEventListener('close', () => dialog.remove());
     document.body.append(dialog);
     dialog.showModal();
@@ -244,7 +273,7 @@ const AppUI = (() => {
   let pal = null;
   function paletteNode() {
     if (pal) return pal;
-    const input = el('input', { class: 'palette-input', placeholder: 'Search agents, chats, tools, actions…  (? messages · / commands)' });
+    const input = el('input', { class: 'palette-input', placeholder: 'Find chats, tools, actions…  (? first: search inside messages)' });
     const list = el('div', { class: 'palette-list' });
     const box = el('div', { class: 'palette' }, el('div', { class: 'palette-card' }, input, list));
     pal = { box, input, list, items: [], shown: [], sel: 0, selEl: null, rows: [], empty: el('div', { class: 'palette-empty' }), scrollFrame: 0 };

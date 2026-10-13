@@ -100,7 +100,7 @@ const SpeedLearn = (() => {
     e.preventDefault(); e.stopPropagation();
     runDigit(Number(e.code.slice(5)));
   }, true);
-  try { Keys.add({ area: 'Everywhere', keys: 'Ctrl+Alt+1…9', what: 'Your one-key macros (learned shortcuts; /macro keys)', run: () => Commands.exec('/macro keys', H.claudeAgent()?.id) }); } catch { /* keys.js not loaded */ }
+  try { Keys.add({ area: 'Everywhere', keys: 'Ctrl+Alt+1…9', what: 'Your one-key routines (things you repeat, learned by Hearth)', run: () => Commands.exec('/macro keys', H.claudeAgent()?.id) }); } catch { /* keys.js not loaded */ }
 
   // ---------- /macro learned · keys · key · unkey ----------
   function learnedList(n = 6) {

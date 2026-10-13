@@ -98,7 +98,7 @@ const SpeedResume = (() => {
     card = el('div', { class: 'speed-card speed-resume', role: 'dialog', 'aria-label': title, 'data-no-usage': '' },
       el('div', { class: 'sr-head' }, el('b', { text: title }), el('span', { class: 'spacer' }), el('button', { type: 'button', class: 'sr-x', text: '×', title: 'Dismiss', on: { click: () => close() } })),
       ...list.map(row));
-    card.addEventListener('contextmenu', (e) => { e.preventDefault(); showMenu(e.clientX, e.clientY, [{ label: 'Dismiss', action: () => close() }, { label: 'Don\'t show this card when Hearth opens', hint: '/resume off', action: () => { store.set('speed.resume', false); close(); toast('The card stays away (/resume on brings it back; /resume shows it once)', { timeout: 2600 }); } }]); });
+    card.addEventListener('contextmenu', (e) => { e.preventDefault(); showMenu(e.clientX, e.clientY, [{ label: 'Dismiss', action: () => close() }, { label: 'Don\'t show this card when Hearth opens', action: () => { store.set('speed.resume', false); close(); toast('The card stays away (/resume on brings it back; /resume shows it once)', { timeout: 2600 }); } }]); });
     const arm = () => { clearTimeout(hideT); if (timeout) hideT = setTimeout(close, timeout); };
     card.addEventListener('mouseenter', () => clearTimeout(hideT));
     card.addEventListener('mouseleave', arm);

@@ -188,7 +188,7 @@ function register(ipcMain, getWin, { dataDir } = {}) {
       if (!crypto.timingSafeEqual(given, real)) {
         code.fails += 1; failsTotal += 1;
         if (code.fails >= 5) { lockUntil = Date.now() + 30000; newCode(); send('remote:alert', { text: 'Five wrong pairing codes: a new code, pairing paused for 30 s' }); }
-        if (failsTotal >= 20) { code = null; send('remote:code', null); send('remote:alert', { text: 'Too many wrong pairing codes: pairing is off until you show a new code (/remote pair)' }); }
+        if (failsTotal >= 20) { code = null; send('remote:code', null); send('remote:alert', { text: 'Too many wrong pairing codes: pairing is off until you show a new code' }); }
         sendJson(sock, { t: 'no', why: 'code' }); close(sock, 4002, 'wrong code'); return;
       }
       const key = crypto.randomBytes(32).toString('hex');

@@ -240,9 +240,9 @@ const KeysUI = (() => {
     sheet = el('div', { class: 'keys-sheet', role: 'dialog', 'aria-label': 'Keys and hidden buttons' },
       el('div', { class: 'ks-head' }, el('b', { text: 'Keys & hidden buttons' }), el('span', { class: 'spacer' }), latchBtn, el('button', { type: 'button', class: 'ks-x', text: '×', title: 'Close (Esc)', on: { click: () => close() } })),
       q, tips, body,
-      el('div', { class: 'ks-foot' }, el('span', { text: 'Not a shortcut person? Every line here is also in a menu or a /command.' }), el('span', { class: 'spacer' }),
+      el('div', { class: 'ks-foot' }, el('span', { text: 'Not a shortcut person? Every line here is also in a menu, or just ask a chat.' }), el('span', { class: 'spacer' }),
         el('button', { type: 'button', class: 'ks-link', text: 'Customise…', title: 'What waits behind Alt, what you pinned back on screen', on: { click: (e) => { const r = e.currentTarget.getBoundingClientRect(); close(); showMenu(r.left, r.top - 8, customiseMenu()); } } }),
-        el('button', { type: 'button', class: 'ks-link', text: '/help', title: 'Every chat command', on: { click: () => { close(); Commands.exec('/help', H.claudeAgent()?.id); } } }),
+        el('button', { type: 'button', class: 'ks-link', text: 'Actions', title: 'Everything Hearth can do, searchable', on: { click: () => { close(); Commands.exec('/help', H.claudeAgent()?.id); } } }),
         el('button', { type: 'button', class: 'ks-link', text: 'Table', title: 'The printable table of keys', on: { click: () => { close(); AppUI.shortcutsHelp(); } } })));
     let sel = -1;
     function paint() {
@@ -317,11 +317,11 @@ const KeysUI = (() => {
       showMenu(e.clientX + 6, e.clientY - 150, [
         { label: 'Keys & hidden buttons…', key: 'Ctrl+/', action: () => open() },
         // (round 13, speed) Again and the recent actions, under the pointer
-        ...(typeof Speed !== 'undefined' ? [{ label: 'Recent actions', key: 'Ctrl+Shift+.', items: () => Speed.recentItems(10) }, { label: 'Pick up where you left off…', hint: '/resume', action: () => Commands.exec('/resume', H.claudeAgent()?.id) }] : []),
+        ...(typeof Speed !== 'undefined' ? [{ label: 'Recent actions', key: 'Ctrl+Shift+.', items: () => Speed.recentItems(10) }, { label: 'Pick up where you left off…', action: () => Commands.exec('/resume', H.claudeAgent()?.id) }] : []),
         { label: 'Show the tucked buttons', key: 'Alt Alt', checked: latched, action: () => latch() },
         { label: 'Key badges while Ctrl is held', checked: store.get('keys.ctrlHints', true), action: () => store.set('keys.ctrlHints', !store.get('keys.ctrlHints', true)) },
         { label: 'Customise', items: customiseMenu },
-        { label: 'Show everything, always', hint: '/calm', checked: typeof Declutter !== 'undefined' && Declutter.isOff(), action: () => Commands.exec(`/calm ${Declutter.isOff() ? 'on' : 'off'}`, H.claudeAgent()?.id) },
+        { label: 'Show everything, always', checked: typeof Declutter !== 'undefined' && Declutter.isOff(), action: () => Commands.exec(`/calm ${Declutter.isOff() ? 'on' : 'off'}`, H.claudeAgent()?.id) },
       ]);
     });
     rail.append(btn);
@@ -346,9 +346,9 @@ const KeysUI = (() => {
       { area: 'Hidden buttons', keys: 'Alt, Alt', what: 'Tap Alt twice: keep them showing (Esc or tap twice again hides them)', run: () => latch() },
       { area: 'Hidden buttons', keys: 'Hold Ctrl', what: 'Key badges on every button that has a key', run: () => { showHints(); setTimeout(hideHints, 3000); } },
       { area: 'Hidden buttons', keys: 'Right-click anything', what: '… → Customise this…: pin a tucked button back on screen, hide one, or show everything', run: () => Commands.exec('/customise', H.claudeAgent()?.id) },
-      { area: 'Hidden buttons', keys: '/calm off', what: 'Show everything, always (/calm on tidies again)', run: () => Commands.exec('/calm off', H.claudeAgent()?.id) },
+      { area: 'Hidden buttons', keys: 'Right-click ⌨', what: 'Show everything, always (untick it to tidy again)', run: () => Commands.exec('/calm off', H.claudeAgent()?.id) },
       // everywhere
-      { area: G, keys: 'Ctrl+K', what: 'Command palette (? searches messages, / chat commands)', run: () => AppUI.palette() },
+      { area: G, keys: 'Ctrl+K', what: 'Find anything: chats, tools, actions (? first searches messages)', run: () => AppUI.palette() },
       { area: G, keys: 'Ctrl+;', what: 'Command bar over any tool: plain words work ("make it 9 by 16")', run: () => CmdBar.toggle() },
       { area: G, keys: 'F1', what: 'Every chat command, searchable', run: () => CmdBar.help() },
       { area: G, keys: 'Ctrl+/', what: 'This sheet (the keys button, bottom left)' },
@@ -382,7 +382,6 @@ const KeysUI = (() => {
       { area: 'Menus', keys: 'Shift+F10', what: 'The right-click menu of what has the focus (the menu key ≣ too; Ctrl+click on a Mac)' },
       // the chat box
       { area: 'Chat box', keys: 'Enter / Shift+Enter', what: 'Send / new line', when: inChat },
-      { area: 'Chat box', keys: '/', what: 'Chat commands (at the start of the message box)', when: inChat, sel: 'form.composer textarea' },
       { area: 'Chat box', keys: 'Esc', what: 'Stop the reply being written (or reading aloud)', when: inChat },
       { area: 'Chat box', keys: 'Alt+T', what: 'Open / close every thinking block', when: inChat },
       { area: 'Chat box', keys: 'Alt+R', what: 'Read the last reply aloud (again: stop)', when: inChat },
@@ -573,7 +572,7 @@ const KeysUI = (() => {
       { area: 'Right-click', keys: 'Right-click Still', what: 'A still at 9:16 / 16:9 / 4:5 / 1:1, copy this frame', sel: '.surface.active [data-feature="Still"]' },
       { area: 'Right-click', keys: 'Right-click New', what: 'In the Lab: new sketch from a template list', sel: '.surface.active .imp-main' },
       { area: 'Right-click', keys: 'Right-click a quick chip', what: 'Your own director chip: remove it', sel: '.surface.active .dd-chip' },
-      { area: 'Right-click', keys: 'Right-click a command', what: 'In /help: pin it, copy it, try it', sel: '.cmd-help-row' },
+      { area: 'Right-click', keys: 'Right-click an action', what: 'In the list of every action: pin it, copy it, try it', sel: '.cmd-help-row' },
       { area: 'Right-click', keys: 'Right-click a thinking block', what: 'Open / close it or all of them, copy the thinking', sel: '.msg details.thinking' },
       { area: 'Right-click', keys: 'Right-click the ↓ button', what: 'Latest / first message', sel: '.jump-bottom' },
       { area: 'Right-click', keys: 'Right-click an attachment', what: 'In the chat box: remove it, remove all, attach more', sel: '.composer .attach-chip' },

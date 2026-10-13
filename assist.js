@@ -350,12 +350,12 @@ const Assist = (() => {
     let rep = null; try { rep = d.report(); } catch { /* no sketch */ }
     const st = c.state;
     if (rep?.errors?.length) out.push({ label: '🛠 Fix the errors', run: '/fix-errors', title: `${rep.errors.length} error${rep.errors.length === 1 ? '' : 's'} in the console: ask the director to fix them` });
-    if (jam) out.push({ label: '🎛 Jam 2 more', run: '/jam again', title: 'Two more rounds on the result (/jam again)' });
+    if (jam) out.push({ label: '🎛 Jam 2 more', run: '/jam again', title: 'Two more rounds on the result' });
     if (rep?.unsavedSliders?.length) out.push({ label: '💾 Save', run: '/save', title: `${rep.unsavedSliders.length} slider change${rep.unsavedSliders.length === 1 ? '' : 's'} not in the code yet (Ctrl+S)` });
     const u = usualFrame();
-    if (st.frame?.id !== u.id) out.push({ label: `▯ Try ${u.id}`, run: `/size ${u.id}`, title: `${u.why[0].toUpperCase()}${u.why.slice(1)} (/usual)` });
-    else if (jam || !rep?.unsavedSliders?.length) out.push({ label: '⇪ Stills in 4 sizes', run: '/stills sizes', title: 'This frame as PNGs in 9:16, 16:9, 4:5 and 1:1 (/stills sizes)' });
-    if (Array.isArray(rep?.sliders) && rep.sliders.length) out.push({ label: '🎲 Shuffle & pick', run: '/shuffle-pick 4', title: '4 variations as thumbnails: click one, or let Astra pick (/shuffle-pick)' });
+    if (st.frame?.id !== u.id) out.push({ label: `▯ Try ${u.id}`, run: `/size ${u.id}`, title: `${u.why[0].toUpperCase()}${u.why.slice(1)}` });
+    else if (jam || !rep?.unsavedSliders?.length) out.push({ label: '⇪ Stills in 4 sizes', run: '/stills sizes', title: 'This frame as PNGs in 9:16, 16:9, 4:5 and 1:1' });
+    if (Array.isArray(rep?.sliders) && rep.sliders.length) out.push({ label: '🎲 Shuffle & pick', run: '/shuffle-pick 4', title: '4 variations as thumbnails: click one, or let Astra pick' });
     return out.slice(0, 3);
   }
   const stepsFor = (toolId, o) => (toolId === 'three' ? labSteps(o) : []);

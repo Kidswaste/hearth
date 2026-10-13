@@ -1265,7 +1265,7 @@ float sgSimplex(vec2 v) {
   function attachPlayground(pane, { editor } = {}) {
     const bar = pane.querySelector('.three-toolbar');
     if (!bar || bar.querySelector('.sg-open')) return;
-    const b = el('button', { class: 'ghost small sg-open', text: '◇ Nodes', title: 'Edit shaders as nodes and wires (/shader-nodes): uv, time, music, noise, shapes, palettes…', dataset: { feature: 'Shader nodes' } });
+    const b = el('button', { class: 'ghost small sg-open', text: '◇ Nodes', title: 'Edit shaders as nodes and wires: uv, time, music, noise, shapes, palettes…', dataset: { feature: 'Shader nodes' } });
     b.addEventListener('click', () => {
       const hit = NodeView.extract(editor?.value || '');
       if (hit?.graph?.kind === 'shader') open({ graph: NodeView.normalize(hit.graph, reg), bind: { kind: 'playground' } });

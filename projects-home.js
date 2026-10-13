@@ -21,7 +21,7 @@ const ProjectsHome = (() => {
     const chips = el('div', { class: 'pj-chips pj-home-chips' });
     const results = el('div', { class: 'palette-list pj-home-results' });
     const quick = el('div', { class: 'pj-quick' },
-      el('button', { type: 'button', class: 'primary small', text: '＋ New project', title: 'A new project (the chat you were in comes along) · /project new <name>', on: { click: () => newProject() } }),
+      el('button', { type: 'button', class: 'primary small', text: '＋ New project', title: 'A new project (the chat you were in comes along)', on: { click: () => newProject() } }),
       el('button', { type: 'button', class: 'ghost small pj-quick-more', text: '⋯', title: 'More: a new chat, the Lab, grouping in the chats list, archived projects', on: { click: (e) => { const b = e.currentTarget.getBoundingClientRect(); showMenu(b.left, b.bottom + 4, moreMenu()); } } }));
     const head = el('div', { class: 'pj-home-head' }, el('h2', { text: 'Home' }), input, quick);
     S.body = el('div', { class: 'pj-home-body' });

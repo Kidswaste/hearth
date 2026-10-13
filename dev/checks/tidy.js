@@ -15,15 +15,17 @@ try {
   const dlg = document.querySelector('dialog.settings-dialog[open]');
   ok(dlg?.querySelector('.sf-search'), 'Settings has a search field');
   out.switches = dlg.querySelectorAll('.sf-row').length;
-  ok(out.switches >= 20 && visRows(dlg).length < out.switches, `switches, the rare ones folded (${visRows(dlg).length} of ${out.switches} shown)`);
-  ok([...dlg.querySelectorAll('.sf-row')].every((r) => r.querySelector('.sf-cost') && r.querySelector('code')), 'each switch says its cost and its command');
+  // (round 27, simplify2) the switches sit in their own sections, explained on hover (with their cost), no command
+  // names; the AI's tool switches moved to ⋯ AI setup, so there are fewer of them
+  ok(out.switches >= 15 && visRows(dlg).length < out.switches, `switches, the rare ones folded (${visRows(dlg).length} of ${out.switches} shown)`);
+  ok([...dlg.querySelectorAll('.sf-row')].every((r) => /\(.*\)$/.test(r.title) && !r.querySelector('code')), 'each switch says on hover what it does and costs, no command name');
   const inp = dlg.querySelector('.sf-search');
   const search = async (q) => { inp.value = q; inp.dispatchEvent(new Event('input')); await wait(120); };
   await search('tokens');
-  out.tokens = visRows(dlg).map((r) => r.querySelector('code').textContent);
-  ok(out.tokens.includes('/board-tools') && out.tokens.includes('/deploy-tools') && dlg.querySelector('details.settings-more').open, `"tokens" finds the costly switches, More opens (${out.tokens})`);
+  out.tokens = visRows(dlg).map((r) => r.querySelector('.sf-label').textContent);
+  ok(out.tokens.some((t) => /your words point/.test(t)) && dlg.querySelector('details.settings-more').open, `"tokens" finds the switch that costs tokens, Advanced opens (${out.tokens})`);
   await search('hotkey');
-  ok([...dlg.querySelectorAll('.settings-section')].filter((s) => !s.hidden).map((s) => s.querySelector('h3').textContent).join() === 'Startup and tray', '"hotkey" finds the field in More settings');
+  ok([...dlg.querySelectorAll('.settings-section')].filter((s) => !s.hidden).map((s) => s.querySelector('h3').textContent).join() === 'Keys', '"hotkey" finds the field in Keys');
   await search('zzqq'); ok(!dlg.querySelector('.sf-none').hidden, 'nothing matches: one line says so');
   await search('');
   const row = (re) => [...dlg.querySelectorAll('.sf-row')].find((r) => re.test(r.dataset.find));

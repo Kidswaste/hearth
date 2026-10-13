@@ -470,7 +470,7 @@ const Astra = (() => {
     const head = el('div', { class: 'collab-head' },
       el('span', { class: 'collab-mode', text: `${m.folded ? '▸' : '▾'} ${mode.icon} ${mode.label}`, title: m.folded ? 'Unfold' : 'Fold this card', on: { click: () => toggleFold(hostId, m) } }),
       el('span', { class: 'collab-task', text: cap(m.task, 90), title: m.task }),
-      m.continued ? el('span', { class: 'hint', text: '↻', title: 'Both continued their earlier duo sessions in this chat (/duo --fresh starts over)' }) : null,
+      m.continued ? el('span', { class: 'hint', text: '↻', title: 'Both continued their earlier duo sessions in this chat' }) : null,
       el('span', { class: 'spacer' }),
       ...m.seats.map((s, i) => el('span', { class: 'collab-seat', on: { click: () => { if (s.agentId !== hostId) activate(H.surfaceIdFor(s.agentId)); } }, attrs: { style: `--seat: ${s.color}` }, title: `${s.label}: ${t.per[i].input.toLocaleString()} in · ${t.per[i].output.toLocaleString()} out · ${t.per[i].turns} turn(s)` },
         el('i', { class: 'collab-dot' }), `${s.name} ${fmt(t.per[i].input + t.per[i].output)}`)),
@@ -684,7 +684,7 @@ function toggleFold(hostId, m) {
         el('div', { class: 'astra-try' }, `${chips.slice(0, 2).map(([, t]) => t).join(' · ')} · `, el('a', { href: '#', text: '/astra', on: { click: (e) => { e.preventDefault(); Native.setDraft(agent.id, '/astra-'); } } }), ' for the rest'));
     }
     if (astra() && agent.engine === 'claude') {
-      return el('div', { class: 'astra-hints' }, el('div', { class: 'astra-try' }, `⚇ in the chat box (point at it): jam or a second opinion with ${astra().name}`));
+      return el('div', { class: 'astra-hints' }, el('div', { class: 'astra-try' }, `◎ in the chat box: jam, a second opinion or side by side with ${astra().name}`));
     }
     return null;
   }
