@@ -1388,14 +1388,20 @@ const ChatCmds = (() => {
     if (H.isTool(id)) return Tools.dockedAgent(id.slice(5))?.id || H.claudeAgent()?.id;
     return H.agent(id)?.mode === 'native' ? id : H.claudeAgent()?.id;
   }
+  // (round 29, fastboot) the ~850 lines are made when the palette first opens or in an idle moment (AppUI.addActionsLater),
+  // from the commands there were at this moment, as before
   window.addEventListener('load', () => setTimeout(() => {
-    for (const d of Commands.list().filter((x) => !x.hidden && !['do', 'help'].includes(x.name))) {
-      AppUI.addAction(`/${d.name} — ${d.desc}`, () => {
-        const agentId = chatAgentNow();
-        if (!agentId) return;
-        if (/^</.test(d.args)) { activate(agentId); Native.setDraft(agentId, `/${d.name} `); } else Commands.exec(`/${d.name}`, agentId);
-      }, d.keys || '');
-    }
+    const defs = Commands.list().filter((x) => !x.hidden && !['do', 'help'].includes(x.name));
+    const build = (add) => {
+      for (const d of defs) {
+        add(`/${d.name} — ${d.desc}`, () => {
+          const agentId = chatAgentNow();
+          if (!agentId) return;
+          if (/^</.test(d.args)) { activate(agentId); Native.setDraft(agentId, `/${d.name} `); } else Commands.exec(`/${d.name}`, agentId);
+        }, d.keys || '');
+      }
+    };
+    if (AppUI.addActionsLater) AppUI.addActionsLater(build); else build(AppUI.addAction);
   }, 0));
 
   return { undo: () => Commands.run('undo'), TEMPLATES, TONES, PERSONAS, LANGS, localTitle };

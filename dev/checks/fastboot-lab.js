@@ -1,5 +1,6 @@
 // (round 29, fastboot) Opening the Lab → its first frame, as a timeline (ms from the click on the Lab's rail button):
-//   group     the Lab's files are in (0 when they had loaded after the first screen, as usual)
+//   group     the Lab's files are in (0 when they had loaded after the first screen, as usual); press: a real press
+//             (mouse down, 100 ms, up) on its rail button, times from the press
 //   tool      the Lab tool is built (its preview frame is in the page)
 //   nav       the preview page starts loading · parsed: its DOMContentLoaded · ready: its 'ready' message (three.js in,
 //             the page set up) · ran: the scene's code ran · drawn: 'stack-drawn' (every layer drew its first frame)
@@ -30,9 +31,20 @@ const longs = [];
 try { new PerformanceObserver((l) => { for (const e of l.getEntries()) if (t0 && e.startTime >= t0) longs.push(Math.round(e.duration)); }).observe({ type: 'longtask' }); } catch { /* no API */ }
 const mo = new MutationObserver(() => { if (document.querySelector('iframe[src*="three-sandbox"]')) { at('tool'); mo.disconnect(); } });
 mo.observe(document.body, { childList: true, subtree: true });
-t0 = performance.now();
-const btn = document.querySelector('[data-id="tool:three"], [data-tool="three"]');
-if (btn) btn.click(); else activate('tool:three');
+// a real press on the Lab's rail button: down, 100 ms (a quick human click), up (times count from the press)
+const btn = document.querySelector('#agent-buttons .agent-btn[data-id="tool:three"]');
+if (btn && typeof smoke === 'function') {
+  const r = btn.getBoundingClientRect(); const x = Math.round(r.left + r.width / 2); const y = Math.round(r.top + r.height / 2);
+  let down = 0; let up = 0;
+  btn.addEventListener('pointerdown', (e) => { down ||= e.timeStamp; }, { capture: true, once: true });
+  btn.addEventListener('click', (e) => { up ||= e.timeStamp; }, { capture: true, once: true });
+  t0 = performance.now();
+  await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mousePressed', x, y, button: 'left', clickCount: 1 } });
+  if (down) { const shift = down - t0; t0 = down; for (const k of Object.keys(t)) t[k] -= Math.round(shift); }
+  await wait(Math.max(0, 100 - (performance.now() - t0)));
+  await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 } });
+  out.press = true; out.click = up ? Math.round(up - t0) : null;
+} else { t0 = performance.now(); activate('tool:three'); }
 await until(() => typeof ThreeLab !== 'undefined' && ThreeLab.director).then(() => at('group'));
 await until(() => t.drawn != null, 30000);
 await wait(300);

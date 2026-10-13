@@ -97,15 +97,29 @@ const Tools = (() => {
   }
 
   // Tools mount lazily the first time you open them, so startup stays fast.
+  function mountOnce(s, tool) {
+    if (s.mounted) return;
+    s.mounted = true;
+    try { tool.mount(s.body, s.head); } catch (err) { s.body.append(el('p', { class: 'hint', text: `This tool failed to load: ${err.message}` })); console.error(err); }
+  }
   function shown(tool) {
     const s = H.surfaces.get(`tool:${tool.id}`);
     if (!s) return;
-    if (!s.mounted) {
-      s.mounted = true;
-      try { tool.mount(s.body, s.head); } catch (err) { s.body.append(el('p', { class: 'hint', text: `This tool failed to load: ${err.message}` })); console.error(err); }
-    }
+    mountOnce(s, tool);
     syncDock(s);
     tool.onShow?.();
+  }
+  // (round 29, fastboot) the Lab's first open: pressing its rail button (or its docked director's) mounts it then, so its
+  // preview page is already loading when the click lands ≈ 0.1 s later (only once the Lab's files are in; nothing shows
+  // until the click, and a press that becomes a drag just leaves it mounted, as after any visit)
+  const WARM = new Set(['three']);
+  function warm(id) {
+    const sid = H.surfaceIdFor?.(id) || id;
+    const toolId = String(sid).startsWith('tool:') ? sid.slice(5) : null;
+    if (!toolId || !WARM.has(toolId) || (window.Lazy?.isIn && !Lazy.isIn('lab'))) return;
+    const s = H.surfaces.get(sid);
+    if (!s || s.mounted || !s.tool) return;
+    mountOnce(s, s.tool); // (a stand-in tool hands over to the real one at once: its group is in)
   }
 
   function syncDocks() {
@@ -117,5 +131,5 @@ const Tools = (() => {
     if (s?.dockedId && s.dock.hidden) setDockOpen(s, true);
   }
 
-  return { define, all, enabled, move, setHidden, createSurface, shown, syncDocks, openDock, dockedAgent, get: (id) => registry.get(id) };
+  return { define, all, enabled, move, setHidden, createSurface, shown, warm, syncDocks, openDock, dockedAgent, get: (id) => registry.get(id) };
 })();

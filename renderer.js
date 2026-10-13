@@ -102,6 +102,7 @@ function railButton(id, item, title) {
   btn.style.setProperty('--agent', item.color || 'var(--accent)');
   btn.append(iconFor(item));
   btn.addEventListener('click', () => activate(id));
+  btn.addEventListener('pointerdown', (e) => { if (e.button === 0) Tools.warm?.(id); }, { passive: true }); // (round 29) the Lab starts loading on the press
   return btn;
 }
 
