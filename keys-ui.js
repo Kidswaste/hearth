@@ -369,7 +369,8 @@ const KeysUI = (() => {
       { area: G, keys: 'Ctrl+Shift+T', what: 'Keep Hearth on top of other windows', run: () => AppUI.toggleOnTop() },
       { area: G, keys: 'Ctrl+R', what: 'Reload a website agent · restart the Lab picture' },
       { area: G, keys: 'Ctrl+Shift+R', what: 'Reload Hearth itself' },
-      { area: G, keys: 'Ctrl+Alt+H', what: 'Show / hide Hearth from any app (Settings → More settings changes it)' },
+      // (round 31, winmac) the global hotkey is the real Control key on a Mac (⌘⌥H hides other apps), not ⌘
+      { area: G, keys: MAC ? '⌃⌥H' : 'Ctrl+Alt+H', what: 'Show / hide Hearth from any app (Settings → More settings changes it)' },
       { area: G, keys: 'Shift+Esc', what: 'Dismiss every notification', run: () => document.querySelectorAll('#toasts .toast').forEach((t) => t.remove()) },
       { area: G, keys: 'Esc', what: 'Close a menu or dialog · stop a jam' },
       // menus

@@ -952,3 +952,8 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ Mouse, wheel, keys (⌘ editing commands on a Mac, input methods), pastes, the page's cursor, right-click (the page's menu or Hearth's), popups as another view, downloads → Downloads/Hearth/<App>, file pickers → Hearth's dialog. ≤ 30 frames a second, none while the view can't be seen.
 - ✓ Chrome's own window only for signing in: **Sign in (opens Chrome once)** puts that page's window on screen and back out of sight when the page leaves the sign-in page (or "I'm signed in"). AI setup › Chrome › **Show Chrome** (off) for fixing things. The AI's page tools are unchanged.
 - ○ Tested with Playwright's Chromium as "Chrome" (`sh dev/run-checks.sh chromeview`, `node dev/chromeview-test.js`); real Chrome on a Mac / Windows and a real Google sign-in weren't available here (on a Mac, Chrome's Dock icon stays while it runs).
+## 🖥 Mac + Windows polish (round 31, winmac, 30 upgrades: docs/upgrades/winmac.md)
+- ✓ Files named with `#`, `?`, `%` or accents show everywhere (one `WinMac.fileUrl` in `winmac.js`); exports use one slash kind; Forge Debug works on the Mac.
+- ✓ Mac: a Dock launch finds Homebrew / npm / nvm programs (claude, codex, gh, ffmpeg); the Dock click brings back a hidden window; toasts, search hints, menu rows say ⌘; the hotkey shows as ⌃⌥H.
+- ✓ Windows: shortcuts carry Hearth's app id (notifications) and land on the real (OneDrive) Desktop.
+- ○ `node dev/winmac-scan.js` keeps the patterns out (0 hits, checked by `dev/winmac-test.js`); no real Mac / PC here, and npm's `claude.cmd` on Windows is still not picked up.
