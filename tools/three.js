@@ -409,6 +409,7 @@ const ThreeLab = (() => {
       popup(r.left, r.bottom + 4, [
         ['New from a template…', 'Right-click it for the list', () => templateGallery()],
         ['▦ All your sketches', 'As pictures', () => browseSketches()],
+        ...(typeof LabPacksHook !== 'undefined' ? [LabPacksHook.sketchRow(() => current?.id)] : []), // (round 28) Share › Save as a pack (tools/three-packs-hook.js)
         'This sketch',
         ['Rename…', current?.name || '', () => renameSketch()],
         ['Duplicate', 'A copy you can change freely', () => duplicate()],
@@ -418,7 +419,6 @@ const ThreeLab = (() => {
         ['Cycle looks…', lookCycle ? `Now: every ${lookCycle} bar${lookCycle === 1 ? '' : 's'}` : 'Switch between your saved looks every few bars while it plays', () => lookCycleMenu(sketchMenuBtn)],
         ['⟲ Restart from scratch', 'A fresh page, GPU and sound, when something bugs out (Ctrl+Shift+Enter)', () => restartSim()],
         ['Export HTML…', 'A standalone .html file', () => exportHtml()],
-        ...(window.LabPacksHook ? [LabPacksHook.sketchRow(() => current?.id)] : []), // (round 28) Share › Save as a pack (tools/three-packs-hook.js)
         ...(typeof Deploy !== 'undefined' ? [['Publish & Adobe', 'A web page (Vercel, Netlify…) · Photoshop', [['Publish as a web page…', 'Preview first; asks before it goes public', () => Deploy.menuAt(sketchMenuBtn)], ['Preview the web page here', 'Built like the published one, on this computer', () => Deploy.build('scene', current?.id || '').then((b) => Deploy.preview(b)).catch((err) => toast(err.message, { type: 'error' }))], ...(typeof Adobe !== 'undefined' ? [['Open the picture in Photoshop', 'A still of the preview (all layers)', () => Adobe.labToPhotoshop().catch((err) => toast(err.message, { type: 'error', timeout: 9000 }))]] : [])]]] : []), // (round 14: deploy.js, adobe.js)
         ['Ask Claude about this layer', 'Sends the code and any errors to Claude', () => askAbout()],
         'Careful',

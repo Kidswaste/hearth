@@ -134,7 +134,7 @@ const LabPacks = (() => {
     await ThreeLab.cmd({ show: false });
     id ||= S()?.currentId();
     const sd = await sceneData(id);
-    return save({ kind: 'scene', name: sd.sketch.name, scenes: [sd], song: sd.extras?.media?.path || null, thumb: S().thumbOf(id) });
+    return save({ kind: 'scene', name: sd.sketch.name, scenes: [sd], song: sd.extras?.media?.path || null, thumb: S().thumbOf(id) || (id === S().currentId() ? await ThreeLab.shot().catch(() => null) : null) });
   }
   async function saveSequence(id = S()?.currentId()) {
     await ThreeLab.cmd({ show: false });

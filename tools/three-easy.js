@@ -88,7 +88,7 @@ const LabEasy = (() => {
     { label: '✨ Look & motion', hint: 'surprise, Hearth on screen, intro', items: lookItems },
     { label: '⇪ Make', hint: 'variations, render again', items: makeItems },
     { label: 'ℹ What\'s going on', items: infoItems },
-    ...(window.LabPacksHook ? [LabPacksHook.moreItem()] : []), // (round 28) ⇪ Share: save as a pack, open one
+    ...(typeof LabPacksHook !== 'undefined' ? [LabPacksHook.moreItem()] : []), // (round 28) ⇪ Share: save as a pack, open one
   ];
   function previewItem() {
     return { label: '✦ More', hint: 'music, motion, make…', items: moreItems };
