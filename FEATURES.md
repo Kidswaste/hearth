@@ -916,3 +916,8 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ The main process makes the window first and sets up the rest right after (36 → 7 ms before the window); renders, the updater, the asset library and hooks load on first use.
 - ✓ The command bar and Flows load just after the first screen (−205 KB of JS); Ctrl/⌘+;, F1 and Ctrl/⌘+Shift+F work from the first moment. Pressing the Lab's button starts building it before the click lands.
 - ○ Measured interleaved on a shared machine with software GL (`sh dev/run-checks.sh fastboot`, dev/checks/fastboot-lab.js); the Lab's own first run (GPU context + shaders) is unchanged.
+## Spending: a weekly guard per AI (round 30, budget, 30 upgrades: docs/upgrades/budget.md)
+- ✓ ⋯ AI setup → **Spending**: this week's use in plain words (≈ tokens, ≈ $ where the engine reports prices), a weekly limit (or none), and what happens near it (80 %): warn me · use cheaper answers (Smart steps down, never below what pictures / Lab builds need, never your own picks) · ask before each message.
+- ✓ Calm warnings at 80 % and 100 % (toast + ◉ Activity line, once a week); costly confirms (crew, ✦ take it further, look match) say "this would pass your weekly limit". Nothing is blocked.
+- ✓ **This week at a glance**: biggest chats, where it went, tools sent with every message, one-click fixes ("Turn off Board tools for Claude: saves ≈ 70k a week"). `/spending` from chat.
+- ○ Tested with the fake engines (`sh dev/run-checks.sh budget`); real prices only show for engines that report them.

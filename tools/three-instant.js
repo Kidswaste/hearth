@@ -137,7 +137,7 @@ const LabInstant = (() => {
     const tokens = C.cost(text);
     let dir = directorOf();
     if (confirm) {
-      const yes = await Modal.confirm('Ask the director to take it further?', `${dir?.name || 'The Three Director'} gets your words and what was made (≈${tokens} tokens with this message), plus its usual context, its reply and the work it does. Until now this scene cost 0 tokens.`, { ok: `Ask (≈${tokens} tokens)` });
+      const yes = await Modal.confirm('Ask the director to take it further?', `${dir?.name || 'The Three Director'} gets your words and what was made (≈${tokens} tokens with this message), plus its usual context, its reply and the work it does. Until now this scene cost 0 tokens.${window.Budget?.passLine?.(dir?.id, tokens) || ''}`, { ok: `Ask (≈${tokens} tokens)` });
       if (!yes) return false;
     }
     if (!dir) {

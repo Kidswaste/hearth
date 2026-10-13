@@ -1,0 +1,21 @@
+/* Spending (round 30, budget.js): the part in ⋯ AI setup and "This week at a glance" */
+.bud-bar { height: 5px; margin: 0 4px 6px; border-radius: 3px; background: color-mix(in srgb, var(--text) 9%, transparent); overflow: hidden; }
+.bud-bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+.bud-bar.near i { background: #f2a33a; }
+.bud-bar.over i { background: #e8664a; }
+dialog.bud-dlg { width: min(560px, 94vw); max-width: min(560px, 94vw); padding: 14px 18px 16px; display: none; }
+dialog.bud-dlg[open] { display: flex; flex-direction: column; gap: 6px; max-height: 86vh; overflow-y: auto; }
+.bud-head { display: flex; align-items: baseline; gap: 10px; }
+.bud-head h2 { margin: 0; font-size: 16px; }
+.bud-head .spacer { flex: 1; }
+.bud-sub { color: var(--muted); font-size: 12.5px; }
+.bud-x { padding: 0 8px; font-size: 18px; line-height: 1; }
+.bud-part h4 { margin: 8px 0 2px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: none; }
+.bud-line { display: flex; align-items: baseline; gap: 8px; padding: 3px 4px; border-radius: 6px; font-size: 13px; }
+.bud-line .bud-l { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bud-line b { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bud-line small, .bud-mode { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+.bud-click { cursor: pointer; }
+.bud-click:hover, .bud-fix:hover { background: var(--hover); }
+.bud-fix { align-items: center; }
+.bud-fix .bud-l { white-space: normal; }

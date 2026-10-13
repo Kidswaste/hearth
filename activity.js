@@ -49,7 +49,7 @@ const Activity = (() => {
   }
 
   // ---------- opening what an entry is about ----------
-  // go: { chat: [agentId, chatId] } | { file } | { renders: 1 } | { hooks: agentId } | { sync: 1 } | { update: 1 }
+  // go: { chat: [agentId, chatId] } | { file } | { renders: 1 } | { hooks: agentId } | { sync: 1 } | { update: 1 } | { budget: 1 }
   function go(g) {
     if (!g) return;
     try {
@@ -64,6 +64,7 @@ const Activity = (() => {
       else if (g.hooks) (typeof Options !== 'undefined' ? Promise.resolve() : Lazy.load('options')).then(() => Options.open({ agentId: g.hooks })).catch(() => {});
       else if (g.sync) Sync.conflicts();
       else if (g.update) Updater.dialog();
+      else if (g.budget) (window.Lazy ? Lazy.load('budget') : Promise.resolve()).then(() => Budget.glance()).catch(() => {});
     } catch (err) { toast(err.message, { type: 'error' }); }
     close();
   }
@@ -554,6 +555,8 @@ const Activity = (() => {
     document.addEventListener('hearth:needs-you', onNeed);
     document.addEventListener('hearth:mission', onMission);
     document.addEventListener('hearth:hook-fired', onHook);
+    // (round 30, budget.js) any module's line in the last 24 h: { icon, text, go }
+    document.addEventListener('hearth:activity', (e) => { if (e.detail?.text) remember({ icon: e.detail.icon || '•', text: short(e.detail.text, 140), go: e.detail.go || null }); });
     document.addEventListener('hearth:updated', (e) => onUpdated(e.detail));
     onUpdated(store.get('update.last', null)); // it was told at start, before this group loaded
     window.Lazy?.when?.('renders', () => Renders.onChange(onRender));

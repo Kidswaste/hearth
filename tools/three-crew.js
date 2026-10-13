@@ -503,7 +503,7 @@ ${codeBlock(c.base)}`;
       if (c.status === 'plan') {
         if (!planEl.firstChild) {
           planEl.append(
-            el('span', { class: 'crew-est', text: `${c.n} helpers, each on its own copy with one angle, ≤ ${CALLS} tool calls and ≤ ${fmtK(BUDGET)} tokens. Estimated ≈ ${fmtK(c.est.total)} tokens in all (≈ ${fmtK(c.est.each)} each, mostly cached; ${fmtK(c.est.fixed)} fixed per step) and ≈ ${secs(c.est.secs)}.` }),
+            el('span', { class: 'crew-est', text: `${c.n} helpers, each on its own copy with one angle, ≤ ${CALLS} tool calls and ≤ ${fmtK(BUDGET)} tokens. Estimated ≈ ${fmtK(c.est.total)} tokens in all (≈ ${fmtK(c.est.each)} each, mostly cached; ${fmtK(c.est.fixed)} fixed per step) and ≈ ${secs(c.est.secs)}.${(window.Budget?.passLine?.(c.agent?.id, c.est.total) || '').replace(/^\s+/, ' ')}` }),
             el('span', { class: 'spacer' }),
             el('button', { type: 'button', class: 'ghost small', text: 'Cancel', on: { click: () => cancel() } }),
             el('button', { type: 'button', class: 'primary small crew-go', text: `Start ${c.n} helpers`, on: { click: () => approve() } }));
