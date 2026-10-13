@@ -106,6 +106,7 @@ const LabEasy = (() => {
     item('What the Lab hears now', 'Hits, bands, loudness, beat', '/audio'),
   ];
   const moreItems = () => [
+    ...(typeof SceneDoctorHook !== 'undefined' ? [SceneDoctorHook.item()] : []), // (round 34) 🩺 fix my scene (tools/three-doctor-hook.js)
     { label: '♪ Music', hint: 'react, drops, cues, the song', items: musicItems },
     { label: '✨ Look & motion', hint: 'surprise, Hearth on screen, intro', items: lookItems },
     { label: '⇪ Make', hint: 'variations, render again', items: makeItems },
@@ -127,7 +128,7 @@ const LabEasy = (() => {
   // ThreeTweaks.menu rows ([label, hint, fn | [rows]]) from showMenu items
   const toRow = (it) => (it.items ? [it.label, it.hint || '', (typeof it.items === 'function' ? it.items() : it.items).map(toRow)] : [it.label, it.hint || '', it.action]);
   function toolbarItems() {
-    return [['🎲 Variations', '6 takes on this scene to click (no tokens)', varItem().action, false, 'Variations'], ['▦ All formats', '16:9, 9:16, 1:1, 4:5 in one go, each reframed', formatsItem().action, false, 'All formats'], ['Director', 'What it\'s making, did, costs', directorItems().map(toRow), false, 'Director menu']];
+    return [...(typeof SceneDoctorHook !== 'undefined' ? [SceneDoctorHook.toolbarRow()] : []), ['🎲 Variations', '6 takes on this scene to click (no tokens)', varItem().action, false, 'Variations'], ['▦ All formats', '16:9, 9:16, 1:1, 4:5 in one go, each reframed', formatsItem().action, false, 'All formats'], ['Director', 'What it\'s making, did, costs', directorItems().map(toRow), false, 'Director menu']];
   }
 
   // ---------- a layer's right-click (tools/three-layers.js) ----------

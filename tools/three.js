@@ -3106,6 +3106,7 @@ const ThreeLab = (() => {
       if (fresh) box.send(capMsg());
       ranOnce = true;
       if (!partial) scheduleThumb();
+      dispatchEvent(new CustomEvent('hearth:lab-ran', { detail: { id: current.id, partial } })); // (round 34) 🩺 the blank-frame hint (tools/three-doctor-hook.js)
       return true;
     }
 
