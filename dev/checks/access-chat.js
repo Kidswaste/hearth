@@ -10,6 +10,14 @@
 // the warned opt-in → the command runs; Claude at Full runs a PowerShell command through Hearth's check.
 //   node dev/smoke.js --fake-engines --check-timeout 300000 --lib dev/checks/journey-lib.js --script dev/checks/access-chat.js
 const { step, wait, until, click } = J;
+// (round 33) a card in a running reply is answered the way a person does: with the reply scrolled to its end first. A
+// card that arrives below the fold was clicked where it was, then the reply's follow-scroll moved it ~50 px up between
+// the measure and the press: the click landed on the message list, the card waited ("cards2: 2" under load)
+const answer = async (card, label) => {
+  const list = card.closest('.messages');
+  if (list) { list.scrollTop = list.scrollHeight; await wait(250); }
+  return click([...card.querySelectorAll('button')].find((b) => b.textContent === label));
+};
 const claude = H.claudeAgent();
 const fsx = window.hub.fs;
 const dir = `/tmp/hearth-access-${Date.now().toString(36)}`;
@@ -64,8 +72,8 @@ while (Native.isBusy(chatId) && Date.now() - t0 < 120000) {
     const text = card.textContent;
     seen.push(text.slice(0, 90));
     if (!shotDone) { shotDone = true; await smoke({ shot: '/tmp/access-card.png' }); }
-    if (/rm c\.txt/.test(text)) { card.dataset.handled = '1'; await click([...card.querySelectorAll('button')].find((b) => b.textContent === 'Allow once')); }
-    else if (/git push/.test(text)) { card.dataset.handled = '1'; card.querySelector('.access-note').value = 'not yet, review first'; await click([...card.querySelectorAll('button')].find((b) => b.textContent === 'Deny')); }
+    if (/rm c\.txt/.test(text)) { card.dataset.handled = '1'; await answer(card, 'Allow once'); }
+    else if (/git push/.test(text)) { card.dataset.handled = '1'; card.querySelector('.access-note').value = 'not yet, review first'; await answer(card, 'Deny'); }
     else card.dataset.handled = 'wait'; // curl: let it time out
   }
   await wait(150);
@@ -108,17 +116,22 @@ await fsx.write(`${dir2}/d.txt`, 'd');
 await fsx.write(`${dir2}/e.txt`, 'e');
 await Native.addPath(claude.id, dir2);
 step('a folder dropped on the chat joins its folders', Native.chatOf(claude.id).access.folders.includes(dir2));
+// (round 33) a card here must be answered, never time out: on a loaded machine clicking within the 5 s used for the
+// timeout steps raced (the first card expired, the second asked: "cards2: 2"); the timeout steps keep 5 s
+Access._setTimeout(30000);
+const chat2 = H.activeChat[claude.id];
 Native.send(claude.id, `access: ${JSON.stringify([['Bash', { command: `cd "${dir2}" && rm d.txt` }], ['Bash', { command: `cd "${dir2}" && rm e.txt` }]])}`);
-await wait(400);
+await until(() => Native.isBusy(chat2), 5000);
 let cards2 = 0;
 const t2 = Date.now();
 while (Native.isBusy(H.activeChat[claude.id]) && Date.now() - t2 < 60000) {
   const card = [...document.querySelectorAll('.access-card:not(.answered)')].pop();
-  if (card && !card.dataset.handled) { card.dataset.handled = '1'; cards2 += 1; await click([...card.querySelectorAll('button')].find((b) => b.textContent === 'Allow for this chat')); }
+  if (card && !card.dataset.handled) { card.dataset.handled = '1'; cards2 += 1; await answer(card, 'Allow for this chat'); }
   await wait(150);
 }
 await wait(300);
 const reply2 = Native.chatOf(claude.id).messages.at(-1)?.text || '';
+Access._setTimeout(5000);
 step('Allow for this chat: the second delete in that folder passes without a card (both to the Trash)', cards2 === 1 && (reply2.match(/Hearth moved 1 item to the Trash/g) || []).length === 2 && !(await fsx.stat(`${dir2}/e.txt`)), { cards2, grants: Native.chatOf(claude.id).access.grants });
 
 // 4. Access.ask for other features: the same card, "Allow for this chat" remembered
@@ -176,8 +189,11 @@ Options.hide();
 Native.newChat(claude.id);
 await wait(300);
 const runIn = async (agentId, calls, onCard) => {
+  const before = Native.chatOf(agentId)?.messages?.length || 0;
   Native.send(agentId, `access: ${JSON.stringify(calls)}`);
-  await wait(400);
+  // (round 33) a NEW chat is made after an await (its id isn't known yet): wait until the reply is really running, or
+  // a loaded machine ended this loop before it started ("ENOENT … new.txt")
+  await until(() => Native.isBusy(H.activeChat[agentId]) || (Native.chatOf(agentId)?.messages?.length || 0) > before + 1, 10000);
   const t = Date.now();
   while (Native.isBusy(H.activeChat[agentId]) && Date.now() - t < 60000) { const c = [...document.querySelectorAll('.access-card:not(.answered)')].pop(); if (c && !c.dataset.handled) { c.dataset.handled = '1'; onCard?.(c); } await wait(150); }
   await wait(900);
