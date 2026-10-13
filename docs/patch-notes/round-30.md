@@ -31,7 +31,19 @@ One click checks and fixes a Lab scene, with no tokens.
 - Exposure, crushed blacks, blown whites, glow, clashing colors, flat contrast, content under the 9:16 buttons, motion, music reaction, frame rate.
 - One undo step, each fix can be unticked; before → after numbers and pictures.
 
+## 🫥 Chrome out of sight
+Hearth's Chrome now runs hidden; its pages show and work inside Hearth's own windows.
+**Find it:** by itself for anything that opens in Chrome; ⋯ AI setup › What it can use › Chrome › "Show Chrome" to see it anyway.
+- Click, type, scroll, paste, popups, downloads (to Downloads/Hearth/<App>) and file pickers all work inside Hearth.
+- Real Chrome only comes up to sign in, then steps back out of sight by itself.
+- Nothing is drawn while you can't see the page.
+
+## 🐞 Fixes
+- The "Find images like this" window no longer turns into a tilted overlay across the app while it searches.
+- Pictures without a title get a readable name instead of a long code.
+
 ## Good to know
 - The song split is an approximation (a plucky bass can nudge "the drums", an 808 can count as bass).
 - Pinterest reading wasn't tried against the real site here; if its page changes, the picker says it found nothing rather than showing wrong pictures.
 - Make it look finished judges numbers, not taste: untick what you don't want.
+- On a Mac, Chrome's Dock icon stays while it runs (it can't be hidden); on Windows one Chrome button stays on the taskbar.
