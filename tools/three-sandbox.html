@@ -40,7 +40,14 @@
   } catch { threeUrl = real; }
   const im = document.createElement('script');
   im.type = 'importmap';
-  im.textContent = JSON.stringify({ imports: { three: threeUrl, 'three/addons/': `${base}/examples/jsm/`, 'three/examples/jsm/': `${base}/examples/jsm/` } });
+  // (round 34 "labgestures") OrbitControls report themselves to the page (Z frames / Shift+Z resets them); the same class
+  const orbits = {};
+  try {
+    const oc = `${base}/examples/jsm/controls/OrbitControls.js`;
+    const u = URL.createObjectURL(new Blob([`export * from '${oc}';\nimport { OrbitControls as O } from '${oc}';\nexport class OrbitControls extends O { constructor(...a) { super(...a); try { globalThis.__labOrbit?.(this); } catch { /* fine */ } } }\n`], { type: 'text/javascript' }));
+    orbits['three/addons/controls/OrbitControls.js'] = u; orbits['three/examples/jsm/controls/OrbitControls.js'] = u;
+  } catch { /* the plain one */ }
+  im.textContent = JSON.stringify({ imports: { three: threeUrl, 'three/addons/': `${base}/examples/jsm/`, 'three/examples/jsm/': `${base}/examples/jsm/`, ...orbits } });
   document.currentScript.after(im);
   // three.js starts downloading while the page is still parsed (the module graph is fetched once per page; re-runs and
   // scene switches in this page reuse it)
@@ -450,6 +457,7 @@ function instrument(renderFn) {
     if (EL?.adCovered && EL.drawnGen === EL.gen && !adFull()) { perfNote.covered = (perfNote.covered || 0) + 1; return; }
     if (EL?.props?.overrides) applyOverrides(EL, scene, camera);
     camera = editCamera(this, scene, camera);
+    const lvBack = EL && mode === 'sketch' && !this.__helper ? lvRender(this, scene, camera, EL) : null; // (round 34 "labgestures": the view you moved to)
     if (this.shadowMap?.enabled && scene?.isObject3D) adShadows(this, scene);
     // adaptive resolution (see adaptQuality): the sketch's own pixel ratio × the current quality
     // (a precomp's layers: × that precomp's own resolution, see "precomps")
@@ -463,13 +471,13 @@ function instrument(renderFn) {
       this.__q = q;
       this.setPixelRatio(this.__basePR * q);
     }
-    if (paceSkip(this, scene, camera, EL)) return; // (labpace: the picture it shows is the one it would draw: it stays)
+    if (paceSkip(this, scene, camera, EL)) { lvBack?.(); return; } // (labpace: the picture it shows is the one it would draw: it stays)
     PACE.drawn += 1; PACE.lastDraw = frameTick;
     const t0 = realNow(); // (performance.now inside a sequence scene / a precomp is that scene's clock)
     // a Lab sequence's camera fly-through moves this scene's own camera for the frame (put back right after)
     const camBack = EL && SQ.cam ? sqCamFx(EL, camera) : null;
     const rfBack = RF.on && !this.__helper ? rfApply(camera) : null; // (round 33, multiformat) a format's pan / zoom
-    try { renderFn.call(this, scene, camera); } finally { rfBack?.(); camBack?.(); }
+    try { renderFn.call(this, scene, camera); } finally { rfBack?.(); camBack?.(); lvBack?.(); }
     if (EL && EL.drawnGen !== EL.gen) layerDrew(EL, true);
     frameMs = realNow() - t0;
     frameWork += frameMs; frameCalls += this.info?.render?.calls || 0;
@@ -2502,6 +2510,429 @@ addEventListener('keydown', (e) => {
   if (k === 'f') editCommand({ cmd: 'focus' });
   if (k === 'escape') select(null);
 }, true);
+
+// ---------- Lab gestures (round 34 "labgestures"): look around the preview with a trackpad or a mouse ----------
+// For a layer that draws with an orbit-able camera (perspective, or orthographic that isn't a full-screen pass) and
+// whose code listens to no wheel / pointer-down / touch itself (no OrbitControls or own controls: those keep theirs):
+//   two-finger scroll  turns around the subject (the picture follows the fingers, like Blender's trackpad orbit)
+//   Shift + scroll     pans · pinch (Chromium's ctrl+wheel) zooms toward the pointer · a mouse wheel zooms
+//   right-drag         turns (Shift: pans) · middle-drag pans · a right-click that doesn't move still opens the menu
+//   double-click       frames the subject (again: back to the view before), like the Mac's smart zoom
+// The view is an offset on the scene's own camera, applied right before each of its renders and put back after
+// (like the formats' reframe), so the code's own camera moves go on underneath and nothing in the scene changes.
+// It isn't saved (no undo steps): ⌂ Reset the view (Shift+Z) drops it, "Keep this view" makes it the scene's camera
+// through the scene editor's camera override (one undo step, as today). Z frames / Shift+Z resets work on
+// OrbitControls scenes too (their target and camera, eased). Drags coast to a stop and the wheel's zoom eases, on
+// real elapsed time (labpace's f60), so they feel the same at 60 or 240 Hz; nothing runs once the view is still,
+// and labpace's still-picture check stops drawing again. Untrusted (synthetic) events never move the view.
+// <gest-core> (pure: dev/labgestures-test.js runs it in Node)
+function gestCore(opt = {}) {
+  const LINE = opt.line ?? 16; const PAGE = opt.page ?? 800;
+  const MAC_NOTCH = 4.000244140625; // (Chromium on a Mac: a mouse wheel notch scrolls 4.000244… pixels, times its acceleration)
+  const STICKY = 400; // ms: a wheel stream keeps the kind its first events showed (a flick's big momentum deltas stay "trackpad")
+  const TAU = { coast: opt.coast ?? 230, ease: opt.ease ?? 70, frame: opt.frame ?? 110 }; // ms
+  // ---- wheel events → what kind of device, in pixels ----
+  // kind: 'mouse' (notches: zooms) or 'trackpad' (two fingers: turns); pinch: a trackpad pinch (Chromium sends it as
+  // ctrl+wheel with small fractional deltas). Units: deltaMode 1 (lines, Firefox / some Windows mice) × 16 px,
+  // 2 (pages) × 800 px. prev: the last result ({ kind, t }) for the stream rule.
+  function wheel(e, prev, now = 0) {
+    const m = e.deltaMode === 1 ? LINE : e.deltaMode === 2 ? PAGE : 1;
+    const dx = (+e.deltaX || 0) * m; const dy = (+e.deltaY || 0) * m;
+    const ady = Math.abs(dy); const wy = +e.wheelDeltaY || 0;
+    let kind;
+    if (e.deltaMode === 1 || e.deltaMode === 2) kind = 'mouse';
+    else if (wy && wy === -3 * e.deltaY) kind = 'trackpad'; // (Chromium on a Mac trackpad: wheelDelta is −3 × delta, exactly)
+    else if (prev && now - prev.t < STICKY && Boolean(prev.ctrl) === Boolean(e.ctrlKey || e.metaKey)) kind = prev.kind;
+    else if (dx !== 0 && !e.shiftKey) kind = 'trackpad'; // (two fingers move sideways too; a wheel doesn't)
+    else if (wy && wy % 120 === 0 && ady >= 50) kind = 'mouse'; // (a notch on Windows / Linux: 100 px, wheelDelta 120)
+    else if (ady >= 4 && Math.abs(ady / MAC_NOTCH - Math.round(ady / MAC_NOTCH)) < 1e-6) kind = 'mouse';
+    else if (Number.isInteger(dy) && ady >= 50 && (ady % 25 === 0 || ady % 40 === 0)) kind = 'mouse'; // (100 / 120 / 125 / 150: a notch at a display scale)
+    else kind = 'trackpad';
+    // (⌘ + scroll zooms like Ctrl + scroll: ⌘ is Ctrl on a Mac)
+    const pinch = Boolean(e.ctrlKey || e.metaKey) && kind === 'trackpad';
+    return { kind, pinch, ctrl: Boolean(e.ctrlKey || e.metaKey), dx, dy, t: now };
+  }
+  // what a wheel event does: zoom (k: the distance's factor, < 1 = closer), turn or pan (dx, dy: a drag of that many pixels)
+  function act(w, shift) {
+    if (w.ctrl) return w.pinch ? { op: 'zoom', k: Math.exp(Math.max(-60, Math.min(60, w.dy)) * 0.01) } : { op: 'zoom', k: Math.exp(Math.max(-600, Math.min(600, w.dy)) * 0.0015) };
+    if (w.kind === 'mouse') { const d = w.dy || w.dx; return { op: 'zoom', k: Math.exp(Math.max(-600, Math.min(600, d)) * 0.0015) }; }
+    // (Shift: a pan; the picture follows the fingers like a drag of the content; Chromium may swap a shifted scroll to x)
+    return { op: shift ? 'pan' : 'turn', dx: -w.dx, dy: -w.dy };
+  }
+  // ---- frame-rate independent motion (dt: real elapsed ms) ----
+  const approach = (cur, target, dt, tau) => target + (cur - target) * Math.exp(-dt / tau);
+  // a coasting value after a flick: velocity v (units / ms) decays with tau; d is the exact distance it moves in dt,
+  // so 4 × 1/240 s and 1 × 1/60 s land on the same spot (its whole run is v × tau)
+  function coast(v, dt, tau = TAU.coast) { const k = Math.exp(-dt / tau); return { d: v * tau * (1 - k), v: v * k }; }
+  // a drag's velocity at release (units / ms) from its last samples [t, x, y]: the last 80 ms; none when the pointer
+  // rested more than 50 ms before letting go (a placed view stays placed)
+  function velocity(samples, now) {
+    if (!samples.length || now - samples[samples.length - 1][0] > 50) return [0, 0];
+    const end = samples[samples.length - 1]; let first = end;
+    for (let i = samples.length - 1; i >= 0 && end[0] - samples[i][0] <= 80; i -= 1) first = samples[i];
+    const span = end[0] - first[0];
+    if (span < 8) return [0, 0];
+    return [(end[1] - first[1]) / span, (end[2] - first[2]) / span];
+  }
+  // ---- a view: the offset on the scene's camera (yaw / pitch around the pivot, s = distance factor, p = pivot shift
+  // in the camera's own right / up / forward), each with a target it eases to and a coasting velocity ----
+  const KEYS = ['yaw', 'pitch', 's', 'px', 'py', 'pz'];
+  function view(d = 5) { return { d, yaw: 0, pitch: 0, s: 1, px: 0, py: 0, pz: 0, t: { yaw: 0, pitch: 0, s: 1, px: 0, py: 0, pz: 0 }, v: { yaw: 0, pitch: 0, px: 0, py: 0 }, tau: TAU.ease, e0: 0 }; }
+  const identity = (V) => V.yaw === 0 && V.pitch === 0 && V.s === 1 && V.px === 0 && V.py === 0 && V.pz === 0;
+  const LIM = 1.5; // rad: how far up / down the view may look (just short of straight up / down: no flip)
+  const clampPitch = (V, p) => Math.max(-LIM - V.e0, Math.min(LIM - V.e0, p));
+  const S_MIN = 1e-3; const S_MAX = 1e3;
+  const clampS = (s) => Math.max(S_MIN, Math.min(S_MAX, s));
+  // one step of dt ms: coasting, then easing to the targets; false once nothing moves (then nothing runs)
+  function step(V, dt) {
+    let moving = false;
+    const span = V.d * V.s; // (world units on screen: pan speeds and "close enough" scale with it)
+    for (const k of ['yaw', 'pitch', 'px', 'py']) {
+      const vk = V.v[k]; if (!vk) continue;
+      const c = coast(vk, dt); V[k] += c.d; V.t[k] += c.d;
+      V.v[k] = Math.abs(c.v) < (k === 'yaw' || k === 'pitch' ? 2e-6 : 2e-6 * span) ? 0 : c.v;
+      moving = true;
+    }
+    const p = clampPitch(V, V.pitch); if (p !== V.pitch) { V.pitch = p; V.t.pitch = clampPitch(V, V.t.pitch); V.v.pitch = 0; }
+    for (const k of KEYS) {
+      const g = V.t[k]; const x = V[k];
+      if (g === x) continue;
+      const eps = k === 'yaw' || k === 'pitch' ? 1e-5 : k === 's' ? 1e-5 * V.s : 1e-5 * span;
+      V[k] = Math.abs(g - x) < eps ? g : approach(x, g, dt, V.tau);
+      moving = true;
+    }
+    return moving;
+  }
+  // direct moves (a drag, two fingers): the view and its target move together; px: pixels, h: the view's height
+  function turn(V, dx, dy, h) { const a = (2 * Math.PI) / Math.max(1, h); V.yaw -= dx * a; V.t.yaw -= dx * a; const p = clampPitch(V, V.pitch - dy * a); V.t.pitch += p - V.pitch; V.pitch = p; V.tau = TAU.ease; }
+  // pan by pixels: unit = world units per pixel at the pivot
+  function pan(V, dx, dy, unit) { V.px -= dx * unit; V.t.px -= dx * unit; V.py += dy * unit; V.t.py += dy * unit; V.tau = TAU.ease; }
+  // zoom by k toward the point under the pointer (nx, ny: -1…1 from the centre, y up; half: the half-sizes in world
+  // units at the pivot now); eased: the target moves, the view follows (s and the pan ease together, so the point
+  // under the pointer stays put all along the way)
+  function zoom(V, k, nx = 0, ny = 0, halfW = 0, halfH = 0, eased = true) {
+    const s0 = V.t.s; const s1 = clampS(s0 * k); const f = 1 - s1 / s0;
+    const ox = nx * halfW * (V.t.s / V.s); const oy = ny * halfH * (V.t.s / V.s);
+    V.t.s = s1; V.t.px += ox * f; V.t.py += oy * f;
+    if (!eased) { V.s = V.t.s; V.px = V.t.px; V.py = V.t.py; }
+    V.tau = TAU.ease;
+  }
+  // let go of a drag: its velocity coasts (units / ms in yaw / pitch, or pixels / ms × unit for a pan)
+  function fling(V, kind, vx, vy, h, unit) {
+    if (kind === 'turn') { const a = (2 * Math.PI) / Math.max(1, h); V.v.yaw = -vx * a; V.v.pitch = -vy * a; } else { V.v.px = -vx * unit; V.v.py = vy * unit; }
+  }
+  // ease to a whole new view (frame / reset); the coasting stops
+  function goTo(V, to, tau = TAU.frame) { for (const k of KEYS) if (to[k] != null) V.t[k] = k === 's' ? clampS(to[k]) : to[k]; for (const k in V.v) V.v[k] = 0; V.t.pitch = clampPitch(V, V.t.pitch); V.tau = tau; }
+  const near = (V, to, e = 1e-3) => KEYS.every((k) => to[k] == null || Math.abs(V.t[k] - to[k]) <= e * (k === 'px' || k === 'py' || k === 'pz' ? Math.max(1, V.d) : 1));
+  // how far to stand to see a sphere of radius r whole (fov: vertical, radians; aspect: w / h), with a margin
+  function fitDistance(r, fov, aspect, margin = 1.2) { const v = fov / 2; const hf = Math.atan(Math.tan(v) * aspect); return (r * margin) / Math.sin(Math.max(1e-3, Math.min(v, hf))); }
+  return { wheel, act, approach, coast, velocity, view, identity, step, turn, pan, zoom, fling, goTo, near, fitDistance, clampPitch, KEYS, TAU, LIM };
+}
+// </gest-core>
+const LV = { core: gestCore(), views: new Map(), loop: false, lastT: -1, drag: null, wheelPrev: null, pref: null, hint: false, seq: 0, orbits: new Set(), anims: new Set(), steps: 0, applied: 0, self: 0, pose: new Float64Array(7) };
+window.__labGest = {
+  state: () => ({ views: [...LV.views].map(([id, V]) => ({ id, yaw: V.yaw, pitch: V.pitch, s: V.s, px: V.px, py: V.py, pz: V.pz, d: V.d, moving: LV.loop, idle: LV.core.identity(V) })), loop: LV.loop, steps: LV.steps, applied: LV.applied, self: LV.self, drag: Boolean(LV.drag), target: lvGestureLayer()?.id || null, keys: lvKeyLayer()?.id || null, pose: Array.from(LV.pose), kept: [...layers.values()].filter((L) => L.props.overrides?.['@camera']).map((L) => L.id), edit: edit.on, seqOn: SQ.on, layers: [...layers.values()].map((L) => ({ id: L.id, cam: Boolean(L.lvCam), camGen: L.lvCamGen === L.gen, own: L.lvOwn === L.gen, clicks: L.lvClicks === L.gen, mix: layerMix(L) })), orbits: [...LV.orbits].filter((c) => lvOrbitAlive(c)).length, seq: LV.seq }),
+  view: (id) => LV.views.get(id) || null,
+  cmd: (m) => lvCommand(m),
+};
+const lvOrbitable = (c) => Boolean(c && !c.isArrayCamera && (c.isPerspectiveCamera ? !(c.fov === 90 && c.aspect === 1) : c.isOrthographicCamera && !(c.left === -1 && c.right === 1 && c.top === 1 && c.bottom === -1)));
+// a layer's own controls: its code listened to the wheel / pointer-down / touch (OrbitControls, its own drag), or to
+// clicks (the double-click frame stays off). Noted per run (a re-run starts clean). Called from the listener guard.
+function lvListener(self, type) {
+  if (mode !== 'sketch' || edit.on || !/^(wheel|mousewheel|pointerdown|mousedown|touchstart|click|dblclick)$/.test(type)) return;
+  if (!(self === window || self === document || self instanceof Element)) return;
+  const id = currentLayer(); const L = id ? layers.get(id) : null; if (!L) return;
+  if (/click/.test(type)) L.lvClicks = L.gen; else L.lvOwn = L.gen;
+}
+// OrbitControls made by a layer (the import map hands out a subclass that reports itself here): Z / Shift+Z move them
+window.__labOrbit = (c) => {
+  if (mode !== 'sketch' || edit.on) return;
+  const id = currentLayer(); const L = id ? layers.get(id) : null; if (!L) return;
+  c.__lab = { layer: id, L, gen: L.gen, p0: null, t0: null };
+  LV.orbits.add(c);
+  // where it starts (Shift+Z goes back there): the pose at its first update, after the sketch's setup placed it
+  const up = c.update;
+  if (typeof up === 'function') c.update = function (...a) { const z = c.__lab; if (z && !z.p0 && c.object?.position && c.target) { z.p0 = c.object.position.clone(); z.t0 = c.target.clone(); } return up.apply(this, a); };
+};
+const lvOrbitAlive = (c) => { const L = layers.get(c.__lab?.layer); if (!L || L !== c.__lab.L || L.gen !== c.__lab.gen) { LV.orbits.delete(c); return false; } return true; }; // (a layer made again under the same id starts at gen 0 too)
+// layers that could be looked around, top first
+function lvLayers() {
+  const out = [];
+  for (const L of layers.values()) if (!L.pseudo && !L.props.pcOf && L.lvCam && L.lvCamGen === L.gen && layerMix(L) > 0) out.push(L);
+  return out.sort((a, b) => (b.props.z ?? 0) - (a.props.z ?? 0));
+}
+// the layer gestures move: none while any visible layer has controls of its own, the edit mode is on, a sequence
+// plays or this is an export page; the one the Lab has selected when it can, else the top one
+function lvGestureLayer() {
+  if (mode !== 'sketch' || edit.on || SQ.on || XP_PAGE) return null;
+  for (const L of layers.values()) if (L.lvOwn === L.gen && !L.pseudo && layerMix(L) > 0) return null;
+  const list = lvLayers();
+  return list.find((L) => L.id === LV.pref) || list[0] || null;
+}
+function lvViewOf(L, make = true) {
+  let V = LV.views.get(L.id);
+  if (V && V.L !== L) { LV.views.delete(L.id); V = null; } // (another scene under the same layer id: its own view)
+  if (V && V.cam !== L.lvCam) { if (LV.core.identity(V)) V = null; else V.cam = L.lvCam; } // (a re-run's new camera keeps the offset)
+  if (!V && make) { V = LV.core.view(lvPivot(L)); V.cam = L.lvCam; V.L = L; LV.views.set(L.id, V); }
+  return V || null;
+}
+// the camera's pose in the world (as the sketch left it: views apply only inside renders)
+const lvTmp = { P: null, Q: null, S: null, f: null, r: null, u: null, M: null };
+function lvPose(cam) {
+  if (!lvTmp.P) { lvTmp.P = new THREE.Vector3(); lvTmp.Q = new THREE.Quaternion(); lvTmp.S = new THREE.Vector3(); lvTmp.f = new THREE.Vector3(); lvTmp.r = new THREE.Vector3(); lvTmp.u = new THREE.Vector3(); lvTmp.M = new THREE.Matrix4(); }
+  cam.updateWorldMatrix?.(true, false);
+  cam.matrixWorld.decompose(lvTmp.P, lvTmp.Q, lvTmp.S);
+  lvTmp.f.set(0, 0, -1).applyQuaternion(lvTmp.Q); lvTmp.r.set(1, 0, 0).applyQuaternion(lvTmp.Q); lvTmp.u.set(0, 1, 0).applyQuaternion(lvTmp.Q);
+  return lvTmp;
+}
+// what the scene shows: the world sphere around its visible meshes / points / lines (a ground plane or a sky dome the
+// camera stands in, or something far bigger than the rest, doesn't count; at most 4,000 objects looked at)
+function lvSubject(scene, cam) {
+  if (!scene?.isObject3D) return null;
+  const S = []; let n = 0; const sph = new THREE.Sphere(); const camP = cam ? new THREE.Vector3().setFromMatrixPosition(cam.matrixWorld) : null;
+  const walk = (o) => {
+    if (++n > 4000 || !o.visible || o === edit.helper) return;
+    if ((o.isMesh || o.isPoints || o.isLine || o.isSprite) && o.geometry) {
+      try {
+        let bs = o.isInstancedMesh || o.isBatchedMesh ? (o.boundingSphere || (o.computeBoundingSphere?.(), o.boundingSphere)) : null;
+        if (!bs) { if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere(); bs = o.geometry.boundingSphere; }
+        if (bs && Number.isFinite(bs.radius) && bs.radius > 0) {
+          sph.copy(bs).applyMatrix4(o.matrixWorld);
+          if (Number.isFinite(sph.center.x)) S.push({ c: sph.center.clone(), r: sph.radius, inside: camP ? sph.containsPoint(camP) : false });
+        }
+      } catch { /* a geometry without positions */ }
+    }
+    for (const ch of o.children) walk(ch);
+  };
+  scene.updateMatrixWorld?.();
+  walk(scene);
+  if (!S.length) return null;
+  // (what the camera stands inside, a ground or a sky, isn't the subject when something else is; nor is what's 20× the rest)
+  let keep = S.some((x) => !x.inside) ? S.filter((x) => !x.inside) : S;
+  const rs = keep.map((x) => x.r).sort((a, b) => a - b); const med = rs[(rs.length - 1) >> 1];
+  keep = keep.filter((x) => x.r <= 20 * med);
+  const box = new THREE.Box3();
+  for (const x of keep) { box.expandByPoint(x.c.clone().addScalar(-x.r)); box.expandByPoint(x.c.clone().addScalar(x.r)); }
+  const out = box.getBoundingSphere(new THREE.Sphere());
+  return Number.isFinite(out.radius) ? out : null;
+}
+// the pivot's distance in front of the camera: the subject's, else 5 (within the camera's range)
+function lvPivot(L) {
+  const cam = L.lvCam; const T = lvPose(cam);
+  const sub = lvSubject(L.lvScene, cam);
+  let d = sub ? sub.center.clone().sub(T.P).dot(T.f) : 0;
+  if (!(d > (cam.near || 0.1) * 2)) d = sub ? Math.max(1, sub.center.distanceTo(T.P)) : 5;
+  return Math.max((cam.near || 0.1) * 4, Math.min(d, (cam.far || 1000) * 0.5));
+}
+// the render hook (in the WebGLRenderer wrapper): notes the layer's orbit-able camera and scene, and draws through
+// the view; returns the function that puts the camera back
+function lvRender(r, scene, camera, EL) {
+  if (!lvOrbitable(camera) || r.getRenderTarget?.()) return null;
+  if (EL.lvCamGen !== EL.gen) { EL.lvCam = camera; EL.lvCamGen = EL.gen; } // (the first one this run draws with: its main camera)
+  if (camera !== EL.lvCam) return null; // (a second camera, a minimap or a reflection: left alone)
+  EL.lvScene = scene; EL.lvR = r; EL.lvTick = frameTick;
+  const V = LV.views.size ? LV.views.get(EL.id) : null;
+  if (!V || V.L !== EL || LV.core.identity(V) || SQ.on || edit.on) return null;
+  if (V.cam !== camera) V.cam = camera; // (a re-run, a slider that rebuilds the scene: the view stays)
+  return lvApply(V, camera);
+}
+const lvR = { R: null, Ry: null, Rp: null, pan: null, T: null, P: null, Q: null, M: null, pi: null, sc: null };
+function lvApply(V, cam) {
+  if (!lvR.R) { for (const k of ['R', 'Ry', 'Rp', 'Q']) lvR[k] = new THREE.Quaternion(); for (const k of ['pan', 'T', 'P', 'sc']) lvR[k] = new THREE.Vector3(); lvR.M = new THREE.Matrix4(); lvR.pi = new THREE.Matrix4(); lvR.Y = new THREE.Vector3(0, 1, 0); }
+  const B = lvPose(cam);
+  V.e0 = Math.asin(Math.max(-1, Math.min(1, B.f.y)));
+  const pitch = LV.core.clampPitch(V, V.pitch);
+  // R: the pitch about the camera's right, then the yaw about the world's up; the pivot shifts in R's frame
+  lvR.Rp.setFromAxisAngle(B.r, pitch); lvR.Ry.setFromAxisAngle(lvR.Y, V.yaw); lvR.R.copy(lvR.Ry).multiply(lvR.Rp);
+  lvR.T.copy(B.P).addScaledVector(B.f, V.d);
+  lvR.pan.set(0, 0, 0).addScaledVector(B.r, V.px).addScaledVector(B.u, V.py).addScaledVector(B.f, V.pz).applyQuaternion(lvR.R);
+  lvR.T.add(lvR.pan);
+  const persp = !cam.isOrthographicCamera;
+  // the camera stands back from the pivot along the turned forward (closer / further with s; orthographic: its zoom)
+  lvR.P.copy(B.f).applyQuaternion(lvR.R).multiplyScalar(-V.d * (persp ? V.s : 1)).add(lvR.T);
+  lvR.Q.copy(lvR.R).multiply(B.Q);
+  const p0 = cam.position.clone(); const q0 = cam.quaternion.clone(); const s0 = cam.scale.clone(); const z0 = cam.zoom;
+  lvR.M.compose(lvR.P, lvR.Q, B.S);
+  if (cam.parent) { lvR.pi.copy(cam.parent.matrixWorld).invert(); lvR.M.premultiply(lvR.pi); }
+  lvR.M.decompose(cam.position, cam.quaternion, lvR.sc);
+  if (!persp) { cam.zoom = z0 / V.s; cam.updateProjectionMatrix(); }
+  cam.updateMatrixWorld(true);
+  LV.applied += 1; LV.pose[0] = lvR.P.x; LV.pose[1] = lvR.P.y; LV.pose[2] = lvR.P.z; LV.pose[3] = cam.zoom; LV.pose[4] = lvR.T.x; LV.pose[5] = lvR.T.y; LV.pose[6] = lvR.T.z; // (the last view drawn and its pivot, for the checks)
+  return () => { cam.position.copy(p0); cam.quaternion.copy(q0); cam.scale.copy(s0); if (!persp) { cam.zoom = z0; cam.updateProjectionMatrix(); } cam.updateMatrixWorld(true); };
+}
+// the size of the view at the pivot (world units per pixel, and the half sizes) for pans and zooms under the pointer
+function lvUnits(V, cam) {
+  const h = innerHeight || 1; const w = innerWidth || 1;
+  if (cam.isOrthographicCamera) { const hh = ((cam.top - cam.bottom) / 2 / (cam.zoom || 1)) * V.s; return { unit: (hh * 2) / h, halfH: hh, halfW: hh * (w / h) }; }
+  const hh = Math.tan(THREE.MathUtils.degToRad(cam.fov || 50) / 2) * V.d * V.s;
+  return { unit: (hh * 2) / h, halfH: hh, halfW: hh * (cam.aspect || w / h) };
+}
+// ---- the loop: runs only while something moves (a drag, a coast, an ease, an OrbitControls frame), then stops ----
+function lvKick() { if (LV.loop) return; LV.loop = true; LV.lastT = -1; realRAF(lvTick); }
+function lvTick(t) {
+  const dt = PACE.core.f60(LV.lastT < 0 ? -1 : t - LV.lastT) * (1000 / 60); LV.lastT = t;
+  let busy = Boolean(LV.drag);
+  for (const [id, V] of LV.views) {
+    const L = layers.get(id);
+    if (!L || V.L !== L) { LV.views.delete(id); continue; }
+    if (LV.core.step(V, dt) || V.dirty) { V.dirty = false; busy = true; LV.steps += 1; lvSelfDraw(L); }
+  }
+  for (const a of LV.anims) {
+    const c = a.c; if (!lvOrbitAlive(c)) { LV.anims.delete(a); continue; }
+    const k = 1 - Math.exp(-dt / LV.core.TAU.frame);
+    c.object.position.lerp(a.p, k); c.target.lerp(a.t, k);
+    if (c.object.position.distanceTo(a.p) < 1e-4 * Math.max(1, a.p.length()) && c.target.distanceTo(a.t) < 1e-4 * Math.max(1, a.t.length())) { c.object.position.copy(a.p); c.target.copy(a.t); LV.anims.delete(a); }
+    try { c.update(); } catch { /* gone */ }
+    busy = true;
+  }
+  if (busy) PACE.poke += 1; // (labpace: the picture changes now; the still check looks at once)
+  if (busy && !parked) realRAF(lvTick); else LV.loop = false;
+}
+// a scene that draws only now and then (once at the start, on its own events) or a frozen one: the view is drawn
+// here, from what it drew last (one plain render a frame; not for renderers drawing passes, the composite does that)
+function lvSelfDraw(L) {
+  const r = L.lvR;
+  if (!r || r.__stale || !L.lvScene || L.lvTick >= frameTick - 1 || frameTick - (r.__pace?.multi ?? -1e9) < 120) return;
+  try { r.render(L.lvScene, L.lvCam); LV.self += 1; } catch { /* gone */ }
+}
+// ---- input ----
+const lvHint = (L) => { if (LV.hint || !L) return; LV.hint = true; post({ type: 'view-hint', kind: 'look' }); };
+addEventListener('wheel', (e) => {
+  if (!e.isTrusted) return;
+  const L = lvGestureLayer(); if (!L) return;
+  e.preventDefault();
+  const w = LV.core.wheel(e, LV.wheelPrev, realNow()); LV.wheelPrev = w;
+  const a = LV.core.act(w, e.shiftKey);
+  const V = lvViewOf(L); const cam = L.lvCam;
+  for (const x of LV.anims) LV.anims.delete(x);
+  for (const k in V.v) V.v[k] = 0;
+  if (a.op === 'zoom') {
+    const U = lvUnits(V, cam);
+    V.t.yaw = V.yaw; V.t.pitch = V.pitch; // (a frame / reset easing in progress stops where it is)
+    LV.core.zoom(V, a.k, (e.clientX / (innerWidth || 1)) * 2 - 1, 1 - (e.clientY / (innerHeight || 1)) * 2, U.halfW, U.halfH, w.kind === 'mouse');
+  } else if (a.op === 'turn') { for (const k of LV.core.KEYS) V.t[k] = V[k]; LV.core.turn(V, a.dx, a.dy, innerHeight); } else { for (const k of LV.core.KEYS) V.t[k] = V[k]; LV.core.pan(V, a.dx, a.dy, lvUnits(V, cam).unit); }
+  V.dirty = true; lvHint(L); lvKick();
+}, { capture: true, passive: false });
+// right-drag turns (Shift: pans), middle-drag pans; it starts past 6 px, as the right-click menu stops (see above)
+addEventListener('pointerdown', (e) => {
+  if (!e.isTrusted || (e.button !== 1 && e.button !== 2)) return;
+  const L = lvGestureLayer(); if (!L) return;
+  if (e.button === 1) e.preventDefault(); // (no autoscroll on Windows / Linux)
+  LV.drag = { id: e.pointerId, L, x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, on: false, kind: e.button === 1 || e.shiftKey ? 'pan' : 'turn', samples: [], el: e.target };
+}, true);
+addEventListener('mousedown', (e) => { if (e.isTrusted && e.button === 1 && lvGestureLayer()) e.preventDefault(); }, true);
+addEventListener('pointermove', (e) => {
+  const D = LV.drag;
+  if (!D) { if (!LV.hint && e.isTrusted && realNow() - (LV.hintAt || -1e9) > 500) { LV.hintAt = realNow(); const L = lvGestureLayer(); if (L) lvHint(L); } return; }
+  if (e.pointerId !== D.id) return;
+  if (!D.on) { if (Math.hypot(e.clientX - D.x, e.clientY - D.y) < 6) return; D.on = true; D.lx = e.clientX; D.ly = e.clientY; try { D.el?.setPointerCapture?.(e.pointerId); } catch { /* fine */ } }
+  const V = lvViewOf(D.L); const cam = D.L.lvCam;
+  for (const k in V.v) V.v[k] = 0;
+  for (const k of LV.core.KEYS) V.t[k] = V[k];
+  const dx = e.clientX - D.lx; const dy = e.clientY - D.ly; D.lx = e.clientX; D.ly = e.clientY;
+  if (D.kind === 'turn') LV.core.turn(V, dx, dy, innerHeight); else LV.core.pan(V, dx, dy, lvUnits(V, cam).unit);
+  D.samples.push([realNow(), e.clientX, e.clientY]); if (D.samples.length > 32) D.samples.shift();
+  V.dirty = true; lvKick();
+}, true);
+const lvUp = (e) => {
+  const D = LV.drag; if (!D || (e.pointerId != null && e.pointerId !== D.id)) return;
+  LV.drag = null;
+  if (!D.on) return;
+  const V = lvViewOf(D.L);
+  const [vx, vy] = e.type === 'pointerup' ? LV.core.velocity(D.samples, realNow()) : [0, 0];
+  LV.core.fling(V, D.kind, vx, vy, innerHeight, lvUnits(V, D.L.lvCam).unit);
+  lvHint(D.L); lvKick();
+};
+addEventListener('pointerup', lvUp, true);
+addEventListener('pointercancel', lvUp, true);
+addEventListener('blur', () => { if (LV.drag) lvUp({ type: 'blur' }); });
+// double-click: frame the subject, again: the view before (the smart zoom of a Mac trackpad, with a double-tap)
+addEventListener('dblclick', (e) => {
+  if (!e.isTrusted || e.button !== 0 || mode !== 'sketch') return;
+  const L = lvKeyLayer(); if (!L || L.lvClicks === L.gen) return;
+  if (L.lvOwn === L.gen && !lvOrbitOf(L)) return;
+  lvFrame(L, true);
+}, true);
+// ---- frame / reset / keep (Z, Shift+Z, the preview's right-click › View, double-click) ----
+const lvOrbitOf = (L) => [...LV.orbits].find((c) => c.__lab.layer === L.id && lvOrbitAlive(c) && c.object === L.lvCam) || null;
+// the layer the keys act on: the Lab's selected one, else the top one with a camera (one with own controls only
+// through OrbitControls)
+function lvKeyLayer(pref = LV.pref) {
+  if (mode !== 'sketch' || edit.on || SQ.on || XP_PAGE) return null;
+  const list = lvLayers();
+  return list.find((L) => L.id === pref) || list[0] || null;
+}
+function lvFrame(L, toggle = false) {
+  const sub = lvSubject(L.lvScene, L.lvCam);
+  if (!sub) return { ok: false, say: 'Nothing to frame in this scene' };
+  const cam = L.lvCam;
+  const c = lvOrbitOf(L);
+  if (c) {
+    // OrbitControls: its target to the subject, the camera along its view at the fitting distance (eased)
+    const dir = new THREE.Vector3().subVectors(c.object.position, c.target).normalize();
+    if (!(dir.lengthSq() > 0)) dir.set(0, 0, 1);
+    const D = cam.isOrthographicCamera ? c.object.position.distanceTo(c.target) : LV.core.fitDistance(sub.radius, THREE.MathUtils.degToRad(cam.fov || 50), cam.aspect || 1);
+    const to = { c, p: sub.center.clone().addScaledVector(dir, D), t: sub.center.clone() };
+    if (toggle && c.__lab.back && c.object.position.distanceTo(to.p) < 1e-2 * D) { to.p = c.__lab.back.p; to.t = c.__lab.back.t; c.__lab.back = null; } else c.__lab.back = { p: c.object.position.clone(), t: c.target.clone() };
+    for (const a of LV.anims) if (a.c === c) LV.anims.delete(a);
+    LV.anims.add(to); lvKick();
+    return { ok: true, kind: 'orbit' };
+  }
+  if (L.lvOwn === L.gen) return { ok: false, say: 'This scene moves its own camera' };
+  const V = lvViewOf(L);
+  // keep the turn; the pivot moves to the subject's centre and the distance fits it
+  const B = lvPose(cam);
+  const R = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), V.t.yaw).multiply(new THREE.Quaternion().setFromAxisAngle(B.r, V.t.pitch));
+  const T0 = B.P.clone().addScaledVector(B.f, V.d);
+  const rel = sub.center.clone().sub(T0).applyQuaternion(R.clone().invert());
+  let s;
+  if (cam.isOrthographicCamera) s = (sub.radius * 1.2 * 2 * (cam.zoom || 1)) / Math.max(1e-6, Math.min(cam.top - cam.bottom, (cam.right - cam.left))); else s = LV.core.fitDistance(sub.radius, THREE.MathUtils.degToRad(cam.fov || 50), cam.aspect || 1) / V.d;
+  const to = { s, px: rel.dot(B.r), py: rel.dot(B.u), pz: rel.dot(B.f) };
+  if (toggle && V.back && LV.core.near(V, to)) { LV.core.goTo(V, V.back); V.back = null; } else { V.back = { yaw: V.t.yaw, pitch: V.t.pitch, s: V.t.s, px: V.t.px, py: V.t.py, pz: V.t.pz }; LV.core.goTo(V, to); }
+  lvKick();
+  return { ok: true, kind: 'look' };
+}
+function lvReset(L) {
+  const c = lvOrbitOf(L);
+  if (c) {
+    const z = c.__lab; if (!z.p0) return { ok: true, kind: 'orbit', same: true };
+    for (const a of LV.anims) if (a.c === c) LV.anims.delete(a);
+    LV.anims.add({ c, p: z.p0.clone(), t: z.t0.clone() }); lvKick();
+    return { ok: true, kind: 'orbit' };
+  }
+  const V = LV.views.get(L.id);
+  if (!V || LV.core.identity(V)) return { ok: true, kind: 'look', same: true };
+  V.back = null; LV.core.goTo(V, { yaw: 0, pitch: 0, s: 1, px: 0, py: 0, pz: 0 }); lvKick();
+  return { ok: true, kind: 'look' };
+}
+// the view becomes the scene's camera (the scene editor's camera override: saved with the layer, one undo step)
+function lvKeep(L) {
+  const V = LV.views.get(L.id);
+  if (lvOrbitOf(L)) return { ok: false, say: 'This scene’s orbit controls move its camera: it keeps where you leave it while it runs' };
+  if (!V || LV.core.identity(V)) return { ok: false, say: 'Move the view first (scroll, pinch or right-drag on the picture)' };
+  for (const k of LV.core.KEYS) V[k] = V.t[k]; for (const k in V.v) V.v[k] = 0;
+  const cam = L.lvCam; const back = lvApply(V, cam);
+  const ov = { p: cam.position.toArray().map(r3), q: cam.quaternion.toArray().map((x) => Math.round(x * 1e5) / 1e5), ...(cam.isPerspectiveCamera ? { fov: cam.fov } : {}) };
+  back();
+  L.props.overrides = { ...(L.props.overrides || {}), '@camera': ov };
+  LV.views.delete(L.id);
+  post({ type: 'edit-change', layer: L.id, overrides: L.props.overrides, final: true, info: null });
+  return { ok: true, kind: 'look', say: 'This view is now the scene’s camera (Ctrl+Z in the scene editor undoes it)' };
+}
+function lvCommand(m) {
+  if (m.layer) LV.pref = m.layer;
+  if (m.cmd === 'pref') return null;
+  const L = lvKeyLayer(m.layer);
+  let r;
+  if (!L) r = { ok: false, say: mode !== 'sketch' || SQ.on ? 'Not while the sequence plays' : edit.on ? 'The scene editor has its own view (F frames the selection there)' : 'This scene has no 3D camera to move' };
+  else if (m.cmd === 'frame') r = lvFrame(L, Boolean(m.toggle));
+  else if (m.cmd === 'reset') r = lvReset(L);
+  else if (m.cmd === 'keep') r = lvKeep(L);
+  else r = { ok: true };
+  LV.seq += 1;
+  post({ type: 'view-state', cmd: m.cmd, seq: LV.seq, layer: L?.id || null, ...r });
+  return r;
+}
 
 // Named controls: const P = tweak({ speed: [1, 0, 5], glow: { value: 1, min: 0, max: 3, label: 'Glow', group: 'Look', onChange }, tint: '#ff3cac', wire: false })
 globalThis.tweak = (spec = {}) => {
@@ -8592,6 +9023,7 @@ function installRunGuards() {
   // so every re-run added another resize / key listener)
   EventTarget.prototype.addEventListener = function (type, fn, opts) {
     const self = this ?? window;
+    if (type === 'wheel' || type === 'pointerdown' || type === 'mousedown' || type === 'touchstart' || type === 'click' || type === 'dblclick' || type === 'mousewheel') lvListener(self, type); // (round 34: a layer's own controls)
     if (sketchRunning && (self === window || self === document)) { const id = currentLayer(); if (id) sketchListeners.push([self, type, fn, opts, id]); }
     // (round 21) a pooled-context canvas: its listeners (OrbitControls…) go with the code that added them
     else if (self.__gl && self instanceof HTMLCanvasElement) (self.__lis ||= []).push([type, fn, opts]);
@@ -10422,6 +10854,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'adapt') setAdapt(msg.on !== false); // (round 31 "labadapt": the Lab's right-click, View › Lighten to stay smooth)
   if (msg.type === 'eval') runEval(msg);
   if (msg.type === 'edit') editCommand(msg);
+  if (msg.type === 'view') lvCommand(msg); // (round 34 "labgestures") Z frames, Shift+Z resets, keep this view
   if (msg.type === 'input') runInput(msg);
   if (msg.type === 'refs') { setRefs(msg.items); palette.splice(0, palette.length, ...(msg.palette || [])); }
   if (msg.type === 'lib') { libGot(msg); return; } // (round 25, diet) motion / lab3d code from the hub

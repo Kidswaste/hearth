@@ -391,7 +391,7 @@ const ThreeLab = (() => {
     function labKeys() {
       const rows = [['Space', 'Play / pause'], ['T · Shift+T', 'Tap tempo (locks to the song\'s grid) · this tap is the 1 · with live sound: sets the latency'], [', · .', 'Nudge the grid 5 ms earlier / later by ear (Shift 1 ms, Alt 20 ms)'], ['K · S · H', 'Kick / snare / hit marker at the playhead'], ['Q', 'Quantize taps to the grid on / off'], ['C', 'Cue here'], ['1–9', 'Jump to cue'],
         ['R · Shift+R', 'Shuffle the sliders · the shuffle before'], ['Ctrl+S · Ctrl+Shift+S', 'Save the sliders · as a look'], ['/', 'Find a slider'],
-        ['F · \\', 'Freeze the picture'], ['.', 'One frame (while frozen)'], ['|', 'Pin this frame to compare (onion / wipe)'], ['Shift+1–5', 'Fit · 9:16 · 16:9 · 4:5 · 1:1'],
+        ['F · \\', 'Freeze the picture'], ['Z · Shift+Z', 'Frame the subject · back to the scene\'s own camera'], ['Two fingers · pinch · right-drag', 'Turn around the scene · zoom · turn (Shift: pan)'], ['.', 'One frame (while frozen)'], ['|', 'Pin this frame to compare (onion / wipe)'], ['Shift+1–5', 'Fit · 9:16 · 16:9 · 4:5 · 1:1'],
         ['Shift+L', 'Live sound on / off'], ['O', 'Your sketches'], ['`', 'Console'], ['P · Shift+F', 'Present · Focus'], ['I · PgUp / PgDn', 'In Present: info · other sketches'],
         ['Shift+drag the waveform', 'Draw a loop'], ['= · - · 0', 'Zoom in · out · whole song'], ['[ · ]', 'Loop start / end'], ['Home · End', 'Start / end (of the loop)'], ['M', 'Mute the music (the sketch still reacts)'], ['A', 'Show every automation curve'], ['L', 'Loop this bar'], ['G', 'Next snap setting'],
         ['N', 'Note with a screenshot'], ['W', 'Write mode'], ['E', 'Edit the scene'],
@@ -444,6 +444,7 @@ const ThreeLab = (() => {
       // (round 7) six open entries: Capture ›, Console ›, Code › branch into the detail
       return ['View',
         ['⛶ Focus', 'Almost fullscreen · Shift+F (Esc leaves)', () => setFocus(!focusOn), focusOn, 'Focus'],
+        ...(typeof ThreeGestures !== 'undefined' ? [ThreeGestures.helpRow()] : []), // (round 34 "labgestures") how to move around the picture
         ['Capture', 'Screenshot, copy', [
           ['📷 Screenshot', 'Save the picture (all layers) as it shows here', () => { copyNextShot = false; box.send({ type: 'screenshot' }); }, false, 'Screenshot'],
           ['📋 Copy a screenshot', 'To the clipboard', () => { copyNextShot = true; box.send({ type: 'screenshot' }); }],
@@ -2387,7 +2388,7 @@ const ThreeLab = (() => {
       get player() { return player; }, // the song / video timeline (tools/three-cmds.js: /song-trim, /cut-loop)
       // (round 21: frame and song are read when asked for: frame measures the preview in "fit" (a layout right after a
       // switch) and song walks the whole analysis, for readers that only want the name, e.g. speed-resume.js on a switch)
-      get state() { return { sketch: current?.name, layer: sel()?.name, get frame() { return stage.size; }, frozen: frozenNow, live: liveKind, get song() { return player.loaded ? player.info().file : null; }, bpm: player.loaded ? player.bpm : liveBpm?.bpm ?? null, playing: player.playing, presenting: document.fullscreenElement === previewHost }; },
+      get state() { return { view: typeof ThreeGestures !== 'undefined' ? ThreeGestures.seq() : 0, sketch: current?.name, layer: sel()?.name, get frame() { return stage.size; }, frozen: frozenNow, live: liveKind, get song() { return player.loaded ? player.info().file : null; }, bpm: player.loaded ? player.bpm : liveBpm?.bpm ?? null, playing: player.playing, presenting: document.fullscreenElement === previewHost }; },
       run: () => run(), restart: () => restartSim(),
       // a sketch that has a song is still loading it (just opened): wait for it a moment
       waitSong: async () => { for (let i = 0; i < 40 && current && extras[current.id]?.media?.path && !player.loaded; i += 1) await sleep(100); },
@@ -2488,6 +2489,8 @@ const ThreeLab = (() => {
     if (typeof ThreeComp !== 'undefined') ThreeComp.attach({ send: (msg) => box.send(msg), sketchId: () => current?.id, persist: () => persist(), select: (id) => selectLayer(id), player });
     // 3D models (tools/three-models.js): drops on the preview, the gizmo on a model
     if (typeof ThreeModels !== 'undefined') ThreeModels.attach({ send: (msg) => box.send(msg), previewHost, sketchId: () => current?.id });
+    // (round 34 "labgestures") Z / Shift+Z, the view rows, the hint (tools/three-gestures.js; the gestures are in the preview)
+    if (typeof ThreeGestures !== 'undefined') ThreeGestures.attach({ send: (msg) => box.send(msg), pane, layer: () => sel()?.id });
     pane.addEventListener('keydown', (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
       const plain = !typing && !e.ctrlKey && !e.altKey && !e.metaKey;
@@ -2604,6 +2607,7 @@ const ThreeLab = (() => {
       if (msg.type === 'type-info') { window.LabType?.onBox?.(msg); return; } // (round 25) 🅰 type layers' glyphs / fonts
       if (/^motionin-/.test(msg.type)) { window.LabMotionIn?.onBox?.(msg); return; } // (round 25) 📷 camera input: what the scene reads, tracking state
       if (msg.type === 'physics-info') { window.LabPhysics?.onBox?.(msg); return; } // (round 25) ⚛ physics layers' bodies
+      if (/^view-/.test(msg.type) && typeof ThreeGestures !== 'undefined' && ThreeGestures.onBox(msg)) return; // (round 34) Z / Shift+Z answers, the first-time hint
       if (typeof ThreeDirector !== 'undefined') ThreeDirector.onBox?.(msg); // (round 21) a director call answers at the first new frame
       // the sequence's own messages (and a realtime render's recording) go to tools/three-seq.js
       if (typeof ThreeSeq !== 'undefined' && (ThreeSeq.onMessage(msg) || ThreeSeq.takeRecording(msg))) return;
@@ -2816,6 +2820,7 @@ const ThreeLab = (() => {
           { label: '⛶ Focus', key: 'Shift+F', checked: focusOn, action: () => setFocus(!focusOn) },
           { label: 'Lighten to stay smooth', hint: 'full quality in renders', checked: adaptOn, action: () => { setAdaptOn(!adaptOn); toast(adaptOn ? 'The preview lightens itself when frames drop (renders stay full quality)' : 'The preview stays at full quality, even when frames drop', { timeout: 2200 }); } },
           { label: 'Guides', hint: GUIDES.find(([k]) => k === guides)[1], items: () => GUIDES.map(([k, l]) => ({ label: l, checked: k === guides, action: () => { guides = k; store.set('three.guides', k); box.send({ type: 'guides', kind: k }); guidesBtn.classList.toggle('on', Boolean(k)); } })) },
+          ...(typeof ThreeGestures !== 'undefined' ? ThreeGestures.viewItems() : []), // (round 34) frame, reset, keep the view, moving around
         ] },
         '-',
         { label: '⟲ Restart from scratch', key: 'Ctrl+Shift+Enter', action: () => restartSim() },
