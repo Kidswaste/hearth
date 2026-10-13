@@ -1,0 +1,36 @@
+/* Auto-edit (tools/three-autoedit.js): the music video plan, one strip at the bottom of the Lab (like the crew grid). */
+.ae-panel {
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 59;
+  display: flex; flex-direction: column; gap: 6px; width: min(94vw, 1040px); padding: 8px 10px 9px;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--panel, #15181b); color: var(--text, #eae0d5);
+  box-shadow: 0 14px 40px #0009, 0 0 0 1px color-mix(in srgb, var(--fh-gold, #ffd75e) 14%, transparent);
+  font-size: 12px;
+}
+.ae-panel.ae-up { bottom: 230px; }
+.ae-panel.busy { box-shadow: 0 14px 40px #0009, 0 0 0 1px color-mix(in srgb, var(--fh-ai, #b07cff) 40%, transparent); }
+.ae-head, .ae-foot { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.ae-panel .spacer { flex: 1; }
+.ae-head b { font-size: 12.5px; white-space: nowrap; }
+.ae-meta, .ae-sum { color: var(--muted, #9a948c); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ae-head button.on { color: var(--fh-gold, #ffd75e); }
+.ae-strip { display: flex; gap: 3px; overflow-x: auto; scrollbar-width: thin; padding-bottom: 2px; }
+.ae-sec {
+  --c: #6b7a86; --i: .5;
+  position: relative; flex: 1 1 0; min-width: 62px; height: 70px; padding: 4px 6px 8px 8px; border: 1px solid color-mix(in srgb, var(--c) 55%, transparent);
+  border-radius: 7px; overflow: hidden; background: color-mix(in srgb, var(--c) 16%, #0b0e10); color: inherit; cursor: pointer;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; line-height: 1.2;
+  transition: border-color .12s;
+}
+.ae-sec:hover, .ae-sec:focus-visible { border-color: var(--fh-gold, #ffd75e); }
+.ae-sec > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ae-intro { --c: #5f8fb0; } .ae-build { --c: #c98a3c; } .ae-drop { --c: #ff5a3c; } .ae-break { --c: #7a6fb5; } .ae-outro { --c: #4f8f7a; }
+.ae-sec.new { border-style: dashed; }
+.ae-sec.new .ae-scene { color: var(--fh-ai, #b07cff); }
+.ae-lab { font-weight: 600; font-size: 11.5px; }
+.ae-bars, .ae-look { font-size: 10.5px; color: var(--muted, #9a948c); }
+.ae-scene { font-size: 11px; }
+/* the intensity: a bar along the bottom, as tall as the section is intense (no per-frame anything) */
+.ae-int { position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: var(--c); transform-origin: bottom; transform: scaleY(calc(.2 + var(--i) * .8)); opacity: .85; }
+.ae-tr { position: absolute; left: 0; top: 50%; transform: translate(-1px, -50%); padding: 0 1px; font-size: 10px; color: var(--fh-gold, #ffd75e); }
+.ae-foot .ae-make { white-space: nowrap; }
+@media (max-width: 640px) { .ae-sec { min-width: 54px; } .ae-look { display: none; } }

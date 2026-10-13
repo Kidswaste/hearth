@@ -26,7 +26,7 @@ const names = argv.filter((a, i) => !a.startsWith('--') && !['--out'].includes(a
 
 const LIBS = new Set(['journey-lib', 'smooth-lib', 'journey-olddata-make', 'sequence-lib']); // helpers / made to run in the old app
 const all = fs.readdirSync(CHECKS).filter((f) => f.endsWith('.js')).map((f) => f.slice(0, -3)).filter((n) => !LIBS.has(n)).sort();
-const UNIT = ['board-unit-test', 'store-thread-test', 'board-mcp-test', 'capture-mcp-test', 'director-mcp-test', 'cut-test', 'capture-test', 'music-test', 'code-flow-test', 'importer-test', 'director-cost', 'astra-engine-test', 'robust-engine-test', 'test-aemain-mac', 'sequence-test', 'flows-test', 'sync-test', 'cmdpage-test', 'progress-test', 'makes-test', 'renders-test', 'updater-test', 'access-test', 'adobe-test', 'adobe-mcp-test', 'deploy-test', 'apps-unit-test', 'eyes-test', 'boot-test', 'liveness-test', 'devreport-test', 'labexport-test', 'voice-test', 'projects-test', 'timemachine-test', 'audio-test', 'remote-qr-test', 'interop-test', 'context-test', 'assets-test', 'type-test', 'motion-in-test', 'physics-test', 'connections-test', 'hooks-test'];
+const UNIT = ['board-unit-test', 'store-thread-test', 'board-mcp-test', 'capture-mcp-test', 'director-mcp-test', 'cut-test', 'capture-test', 'music-test', 'code-flow-test', 'importer-test', 'director-cost', 'astra-engine-test', 'robust-engine-test', 'test-aemain-mac', 'sequence-test', 'flows-test', 'sync-test', 'cmdpage-test', 'progress-test', 'makes-test', 'renders-test', 'updater-test', 'access-test', 'adobe-test', 'adobe-mcp-test', 'deploy-test', 'apps-unit-test', 'eyes-test', 'boot-test', 'liveness-test', 'devreport-test', 'labexport-test', 'voice-test', 'projects-test', 'timemachine-test', 'audio-test', 'remote-qr-test', 'interop-test', 'context-test', 'assets-test', 'type-test', 'motion-in-test', 'physics-test', 'connections-test', 'hooks-test', 'autoedit-test'];
 const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
   qa: ['qa-commands', 'qa-keys', 'qa-mac', 'polish', 'lazy'],
@@ -34,7 +34,7 @@ const GROUPS = {
   capture: by(/^capture/),
   journeys: by(/^journey-/),
   chat: by(/^chat-|^chatcore|^cmdbar$|^clutter$|^declutter/),
-  lab: ['labeasy', 'music', 'labaudio', 'live', 'scenes', 'labstage', 'remote', 'interop', 'labshader', 'particles', 'physics', 'grade', 'type', 'motion-in', 'jam', 'assist', 'decide', 'brain', 'director-dock', 'director-tools', 'labdirector', 'crew', 'timemachine', 'perf'],
+  lab: ['labeasy', 'autoedit', 'music', 'labaudio', 'live', 'scenes', 'labstage', 'remote', 'interop', 'labshader', 'particles', 'physics', 'grade', 'type', 'motion-in', 'jam', 'assist', 'decide', 'brain', 'director-dock', 'director-tools', 'labdirector', 'crew', 'timemachine', 'perf'],
   nodes: by(/^nodes-/),
   smooth: [...by(/^smooth-/), 'hz240', 'smooth26'], // (round 17) hz240: the 240 Hz interaction check · (round 26) smooth26: ⋯ / ◎ / the Lab hidden
   astra: ['astra-collab', 'astra-ui', 'astra-manager'],
@@ -87,6 +87,7 @@ const FIX = [
   { re: /hearth-editor-videos|EDITOR_VIDS/, path: `${T}/hearth-editor-videos`, make: () => sh('node', ['dev/make-editor-videos.js', `${T}/hearth-editor-videos`]) },
   { re: /hearth-board-fixtures|BOARD_FIXTURES/, path: `${T}/hearth-board-fixtures`, make: () => sh('sh', ['dev/board-fixtures.sh', `${T}/hearth-board-fixtures`]) },
   { re: /labframes-media|make-lab-footage|\bLF\./, path: `${T}/labframes-media`, make: () => sh('node', ['dev/make-lab-footage.js', `${T}/labframes-media`]) },
+  { re: /hearth-autoedit-song/, path: `${T}/hearth-autoedit-song.wav`, make: () => sh('node', ['dev/make-test-song.js', `${T}/hearth-autoedit-song.wav`, '128', '0', '--form']) }, // (round 27) a whole track: intro, build, drops, break, outro
   { re: /hearth-intro-song/, path: `${T}/hearth-intro-song.wav`, make: () => sh('node', ['dev/make-test-song.js', `${T}/hearth-intro-song.wav`, '120', '30']) },
   { re: /hearth-capture-test/, path: `${T}/hearth-capture-test`, make: () => sh('node', ['dev/capture-test.js', '--make', `${T}/hearth-capture-test`]) },
   // (round 14) a local Pinterest-like search page for the Pinterest window check (dev/checks/eyes-pins.js)

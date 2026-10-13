@@ -2589,6 +2589,8 @@ const ThreeSeq = (() => {
   addEventListener('hearth:lab-ready', () => { setTimeout(() => list().then(() => emit('index', {})).catch(() => {}), 1500); });
   const api = {
     renderPanel, reloadPreview, setRange, markIn, markOut, clearRange, rangeToClip, rangeOf: () => rangeOf(), closeGaps, restore, sizeChanged, health, history, goBack, goForward, nudge, trimBy, setSpeed, setColor, goMarker, renameMarker, deleteMarker, markerList, setSnap, selectAll, selectRange, selectAfter, zoomToSel, playAround, goClip, SWATCHES, attach, onMessage, takeRecording, keep, owns: () => S.view, sketchChanged, previewItem,
+    // (round 27, autoedit) a whole edit made elsewhere (tools/three-autoedit.js) as one undo step, from the start
+    applyEdit: (e, label) => { const ok = commit(e, label); S.vr = null; seek(0); return ok; },
     enter, leave, toggle, open, create, current, list, add, addCurrent, applyVibe, select, split, del, dup, slipBy, trimToHead, marker, setTransition, setLength, setLook, fit, setFormat,
     play, seek, step, shuttle, jump, settle, undo, redo, render, renderEdit, renderScene, needsBake, bake, compile, status, handle, timeOf, secsOf, zoomBy,
     arrange, again, retime, versions, fillGap, vary, varySections, copyLook, pasteLook, swapLooks, nest, unnest, copySel, paste, zoomTo, sectionMarkers, decideArrangement,

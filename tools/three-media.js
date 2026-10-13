@@ -283,6 +283,9 @@ const ThreeMedia = (() => {
         ['Load a song on it…', 'Its keyframes and cues keep their seconds', () => pick()]]);
       e.stopPropagation();
     });
+    // (round 27, autoedit) 🎬 a whole music video from the loaded song (tools/three-autoedit.js): shown with a song
+    const videoBtn = btn('🎬', 'Make a music video from this song: a plan per section first, nothing renders until you say', () => window.AutoEdit?.open().catch((err) => toast(err.message, { type: 'error' })), 'ghost small mb-video');
+    videoBtn.dataset.feature = 'Music video';
     const unloadBtn = btn('×', 'Remove the music (sketches get a demo beat)', () => unload(), 'ghost small mb-x');
     const playBtn = btn('▶', 'Play / pause (Space)', () => toggle(), 'primary small mb-play');
     playBtn.dataset.feature = 'Play / pause';
@@ -527,7 +530,7 @@ const ThreeMedia = (() => {
       handle,
       el('div', { class: 'mb-row mb-main' },
         group('Play', playBtn, timeEl, rateSel, vol),
-        group('Song', loadBtn, nameEl, unloadBtn),
+        group('Song', loadBtn, nameEl, videoBtn, unloadBtn),
         group('Beat', tapBtn, bpmRead, ...laneBtns),
         group('Zoom', zoomOut, zoomIn, zoomAll, zoomLoop),
         group('Loop', loopChip, loopBtn, loopBox, lockBtn),
@@ -1689,6 +1692,7 @@ const ThreeMedia = (() => {
       setProp(loadBtn, 'title', st.clock ? 'Load a song or a video onto this scene\'s timeline (its keyframes and cues keep their seconds)' : 'Pick an mp3, wav, mp4… to drive the sketch (or drop one on the preview)');
       setProp(nameEl, 'title', st.clock ? `This scene's own timeline: ${fmtLen(D())} at ${clockFps()} fps, no song (keyframes, cues and the loop work on it, frame by frame) · click: its length` : st.path || '');
       setProp(unloadBtn, 'hidden', !st.bytes || Boolean(st.clock));
+      setProp(videoBtn, 'hidden', !st.bytes || Boolean(st.clock) || !/\.(mp3|wav|ogg|flac|m4a|aac|opus)$/i.test(st.path || ''));
       setText(playBtn, st.playing ? '⏸' : '▶');
       loopBtn.classList.toggle('on', st.loop);
       setProp(zoomOut, 'disabled', locked || !D()); setProp(zoomIn, 'disabled', locked || !D());
