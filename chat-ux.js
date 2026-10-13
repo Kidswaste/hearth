@@ -42,7 +42,7 @@ const ChatUX = (() => {
       b.add('chat-focus');
       b.toggle('chat-zen', on === 'zen');
       if (!document.querySelector('.chat-focus-exit')) {
-        document.body.append(el('button', { class: 'chat-focus-exit ghost small', text: '⤢ Exit focus', title: 'Back to the normal layout (/focus)', on: { click: () => setFocus(false) } }));
+        document.body.append(el('button', { class: 'chat-focus-exit ghost small', text: '⤢ Exit focus', title: 'Back to the normal layout', on: { click: () => setFocus(false) } }));
       }
     } else {
       if (focusState) H.panelOpen = focusState.panel;

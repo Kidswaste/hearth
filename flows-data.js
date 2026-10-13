@@ -61,8 +61,8 @@ const FlowsData = (() => {
         { id: 'plan', kind: 'action', title: 'A new Lab sequence for it', cmd: '/sequence new {idea} {fmt}', next: 'go' },
         { id: 'go', kind: 'choice', title: 'Let the Three Director build it now? (one Lab scene per beat, arranged on the sequence)', var: 'go', options: [{ label: 'Yes, build it', value: 'yes', next: 'build' }, { label: 'Not now', value: 'no', next: 'planned' }] },
         { id: 'build', kind: 'action', title: 'Build it', cmd: '/director-ask Build this {len} s {fmt} video in the Lab: one scene per beat, each its own layer set, then put them on the open Lab sequence in order (three_do sequence: add, transition, fit) with the words as titles. Beats:\n{beats}', next: 'video' },
-        { id: 'video', kind: 'result', title: 'Your video', text: 'The Three Director is building it on the Lab sequence. ⇪ Render (or /sequence-render) makes the file.' },
-        { id: 'planned', kind: 'result', title: 'Planned', text: 'The sequence is ready with these beats:\n{beats}\nAsk the Three Director to build it, or /arrange your scenes on it.' },
+        { id: 'video', kind: 'result', title: 'Your video', text: 'The Three Director is building it on the Lab sequence. ⇪ Render makes the file.' },
+        { id: 'planned', kind: 'result', title: 'Planned', text: 'The sequence is ready with these beats:\n{beats}\nAsk the Three Director to build it, or to arrange your scenes on it.' },
       ],
     },
     {

@@ -802,7 +802,7 @@ const FlowsUI = (() => {
       const existing = Flows.get(f.id);
       if (existing && existing.source !== 'mine') f.id = freeId(`${f.id}-mine`);
       const saved = await saveMine(f);
-      toast(`Saved “${saved.name}” · /flow ${saved.id}`, { timeout: 2500 });
+      toast(`Saved “${saved.name}”`, { timeout: 2500 });
       show({ mode: 'flow', flowId: saved.id });
     } catch (err) { renderSide(true); toast(`Not saved: ${err.message}`, { type: 'error', timeout: 6000 }); }
   }
@@ -899,7 +899,7 @@ const FlowsUI = (() => {
 
   function registerKeys() {
     Keys.add([
-      { area: 'Flows', keys: '/flows nodes', what: 'The node view of the flows (advanced): edit your own, the runs as nodes', run: () => open({}) },
+      { area: 'Flows', keys: 'Ctrl+K: Flows', what: 'The node view of the flows (advanced): edit your own, the runs as nodes', run: () => open({}) },
       { area: 'Flows', keys: 'Enter', what: 'Validate the step that waits (the option you picked, or your words)' },
       { area: 'Flows', keys: '1…9', what: 'Pick option 1…9 of the step that waits' },
       { area: 'Flows', keys: 'Double-click an option', what: 'Pick it and validate' },

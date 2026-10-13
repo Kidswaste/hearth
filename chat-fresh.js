@@ -101,7 +101,7 @@ const ChatFresh = (() => {
   Native.hooks.message.push((node, m, index, agent) => {
     if (!m.freshSummary) return;
     node.classList.add('fresh-summary');
-    node.querySelector('.msg-foot')?.prepend(el('button', { type: 'button', class: 'msg-act', text: '✎ Edit the summary', title: 'What this chat carries from the old one (/fresh edit)', on: { click: (e) => { e.stopPropagation(); edit(agent.id).then((r) => { if (r && r !== 'Saved.') toast(r); }); } } }));
+    node.querySelector('.msg-foot')?.prepend(el('button', { type: 'button', class: 'msg-act', text: '✎ Edit the summary', title: 'What this chat carries from the old one', on: { click: (e) => { e.stopPropagation(); edit(agent.id).then((r) => { if (r && r !== 'Saved.') toast(r); }); } } }));
   });
 
   // /fresh (chat-cmds.js hands its run here): free summary · ask (the agent writes it) · edit · auto on|off [60k]

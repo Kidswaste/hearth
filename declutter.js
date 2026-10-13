@@ -28,7 +28,9 @@ const Declutter = (() => {
     { id: 'chat-meta', area: 'Chat', label: 'Tokens-this-chat note in the header', sel: '.chat-meta', mode: 'hover', host: '.native-head' },
     { id: 'chat-ctx', area: 'Chat', label: 'Context size in the header', sel: '.ctx-meter', mode: 'hover', host: '.native-head', keep: '.warn, .high' },
     { id: 'chat-attach', area: 'Chat', label: '＋ Attach', sel: '.attach-btn', mode: 'hover', host: 'form.composer' },
-    { id: 'chat-collab', area: 'Chat', label: '⚇ Work with Astra', sel: '.collab-chip', mode: 'hover', host: 'form.composer', keep: '.on' },
+    // (round 27, simplify2) ⚇ waits behind Alt: ◎ Missions does the same (jam, second opinion, side by side, debate),
+    // right-click the chat box has ⚇ Work with Astra…, and it shows by itself while a mode is on
+    { id: 'chat-collab', area: 'Chat', label: '⚇ Work with Astra', sel: '.collab-chip', keep: '.on' },
     { id: 'msg-actions', area: 'Chat', label: 'Copy / ⋯ under older messages', sel: '> .msg-foot :is(.copy-msg, .msg-more)', mode: 'hover', host: '.messages .msg:not(:last-child)' },
     { id: 'msg-meta', area: 'Chat', label: 'Time and number under messages', sel: '> .msg-foot :is(.msg-time, .msg-num)', mode: 'hover', host: '.messages .msg:not(:last-child)' },
     { id: 'msg-tokens', area: 'Chat', label: 'Token badges under older replies', sel: '> .msg-foot :is(.tok-badge, .mt-badge)', mode: 'hover', host: '.messages .msg:not(:last-child)' },
@@ -547,15 +549,15 @@ const Declutter = (() => {
       { label: 'Close', action: () => dlg.close() },
     ];
   });
-  // Settings: jump to a section (the rarer ones sit folded in More settings)
+  // Settings: jump to a section (the rarer ones sit folded in Advanced)
   ctx('dialog.settings-dialog', 'Settings', (dlg) => {
     const more = dlg.querySelector('details.settings-more');
     const go = (sec) => () => { if (more && more.contains(sec)) more.open = true; sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); sec.classList.add('ks-flash'); setTimeout(() => sec.classList.remove('ks-flash'), 1600); };
     const secs = [...dlg.querySelectorAll('.settings-section')];
     return [
       { label: 'Appearance…', key: 'Ctrl+Shift+L', action: () => Look.openDialog() },
-      { label: 'Go to', items: () => secs.map((sec) => ({ label: sec.querySelector('h3')?.textContent || 'Section', hint: more?.contains(sec) ? 'more' : '', action: go(sec) })) },
-      { label: more?.open ? 'Fold More settings' : 'Open More settings', action: () => { if (more) more.open = !more.open; } },
+      { label: 'Go to', items: () => secs.map((sec) => ({ label: sec.querySelector('h3')?.textContent || 'Section', hint: more?.contains(sec) ? 'advanced' : '', action: go(sec) })) },
+      { label: more?.open ? 'Fold Advanced' : 'Open Advanced', action: () => { if (more) more.open = !more.open; } },
       { label: 'Back up now…', action: () => AppUI.exportData() },
       { label: 'Your usage…', action: () => Usage.dialog() },
       { label: 'Keys and hidden buttons…', key: 'Ctrl+/', action: () => KeysUI.open() },

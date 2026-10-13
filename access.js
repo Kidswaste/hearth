@@ -468,7 +468,7 @@ const Access = (() => {
         run: (a, ctx) => command(a, ctx),
       });
     }
-    if (typeof Keys !== 'undefined') Keys.add({ area: 'Chat', keys: '⋯ → Access', what: 'what the chat may do with your files (or /access)' });
+    if (typeof Keys !== 'undefined') Keys.add({ area: 'Chat', keys: '⋯ → Access', what: 'what the chat may do with your files' });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 

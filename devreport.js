@@ -196,7 +196,7 @@ const DevReport = (() => {
     data.items = data.items.slice(0, 100);
     await save();
     if (!quiet) {
-      if (res.via === 'gh') toast(`Sent to the developer: issue #${res.number}. /report list shows when it's fixed.`, { timeout: 8000, action: res.url ? { label: 'Open', fn: () => openUrl(res.url) } : undefined });
+      if (res.via === 'gh') toast(`Sent to the developer: issue #${res.number}. Hearth tells you when an update fixes it.`, { timeout: 8000, action: res.url ? { label: 'Open', fn: () => openUrl(res.url) } : undefined });
       else toast(`GitHub opened with your report: press Submit there.${res.trimmed ? ' It was too long for the link: the full report is on the clipboard, paste it over the text.' : ''}`, { timeout: 12000 });
     }
     return { ...res, record: rec };

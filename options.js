@@ -2,7 +2,7 @@
 // "still way too complex… hide all commands… only give me options that can give more access to stuff to the AI,
 // like hooks and connections or personalities or lists of instructions… right now it feels too complex to just ask
 // anything to any ai and then context gets wrapped in a single message".
-// So ⋯ (a chat's header, a window's header, ⚙ in the rail) opens one short panel about the AI itself, saved on the
+// So ⋯ (a chat's header, a window's header, ❖ in the rail) opens one short panel about the AI itself, saved on the
 // agent (its system prompt and tools), never tucked into your next message:
 //   Personality · Instructions (a list, each on / off) · What it can use (files, Hearth's tools, connected apps) ·
 //   Memory · Habits (checks its own work, suggests next steps…) · How hard it thinks.
@@ -129,7 +129,20 @@ const Options = (() => {
       sw(a.selfReview ?? Boolean(a.dock), 'Checks its own work before it answers', 'For visual work: a quick look at the result, and fixes what\'s off', (v) => save(a, { selfReview: v })),
       sw(chatsOn(a) ? a.suggestNext !== false : Boolean(a.suggestNext), 'Suggests what to do next', 'Up to 3 next steps as buttons under a reply', (v) => save(a, { suggestNext: chatsOn(a) ? (v ? undefined : false) : (v || undefined) })),
       sw(a.showThinking !== false, 'Shows its thinking', 'Its thought process, folded under the reply', (v) => save(a, { showThinking: v ? undefined : false })),
-      sw(a.autoCompact !== false, 'Shrinks long chats by itself', 'Summarises old messages when a chat gets long, so it stays fast', (v) => save(a, { autoCompact: v ? undefined : false })));
+      sw(a.autoCompact !== false, 'Shrinks long chats by itself', 'Summarises old messages when a chat gets long, so it stays fast', (v) => save(a, { autoCompact: v ? undefined : false })),
+      ...(a.threeTools ? lab(a) : []));
+  }
+  // (round 27, simplify2) the Lab directors' habits, moved here from Settings (they belong to the AI); each runs its
+  // own command out of sight, so this row, the command and the old menus never disagree
+  function lab(a) {
+    const quiet = { source: 'settings', say() {}, note() {}, error: (m) => toast(m, { type: 'error' }) };
+    const run = (line) => Promise.resolve(Commands.tryRun(line, a.id, undefined, quiet)).catch(() => {});
+    const rows = [
+      ['nodes-director', a.nodesTool !== false, 'Builds in node graphs', 'Its scenes come with nodes and wires you can see and change (≈ 75 tokens a message)'],
+      ['progress', Boolean(a.progressTag), 'Shows a progress bar while it builds', 'How far along it seems, as a bar (≈ 30 tokens a message)', (v) => `/progress tags ${v ? 'on' : 'off'}`],
+      ['director-autoshot', store.get('director.autoShot', false), 'Looks at a picture after each edit', 'A small preview after every code change, so it sees what it made (a picture per edit)'],
+    ];
+    return rows.filter(([cmd]) => typeof Commands === 'undefined' || Commands.get(cmd)).map(([cmd, on, label, tip, line]) => sw(on, `In the Lab: ${label.toLowerCase()}`, tip, (v) => run(line ? line(v) : `/${cmd} ${v ? 'on' : 'off'}`)));
   }
   function thinking(a) {
     const levels = [['low', 'Quick'], ['medium', 'Smart'], ['high', 'Deep']];
@@ -179,7 +192,7 @@ const Options = (() => {
 
   if (typeof Tools !== 'undefined') {
     Tools.define({
-      id: 'options', name: 'AI setup', icon: '⚙', color: '#9fd3ff',
+      id: 'options', name: 'AI setup', icon: '❖', color: '#9fd3ff', // (round 27, simplify2) ❖, not a second ⚙ next to Settings
       description: 'What each AI can use: personality, instructions, connections, memory',
       mount: (body) => { build(body, H.claudeAgent()?.id, true); },
       onShow() { if (sheet?.page) paint(); },

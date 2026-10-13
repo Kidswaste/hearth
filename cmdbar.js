@@ -38,7 +38,7 @@ const CmdBar = (() => {
     showMenu(r.left, r.bottom + 4, [
       ...H.agents().filter((a) => a.mode === 'native').map((a) => ({ label: `${a.id === now?.id ? '● ' : ''}Run in ${a.name}'s chat${a.dock ? ` (docked in ${a.dock})` : ''}`, action: () => { pinnedTarget = { agentId: a.id, place: sid }; place(); input.focus(); } })),
       { label: 'Back to the chat of what\'s on screen', action: () => { pinnedTarget = null; place(); input.focus(); } },
-      { label: 'Every command…  F1', action: () => help() },
+      { label: 'Everything it can do…  F1', action: () => help() },
       { label: `Move the bar to the ${pos() === 'top' ? 'bottom' : 'top'}`, action: () => runLine(`/cmdbar ${pos() === 'top' ? 'bottom' : 'top'}`) },
     ]);
   }
@@ -48,10 +48,10 @@ const CmdBar = (() => {
   let histAt = -1, histDraft = '';
   const pos = () => ls.get('cmdbar.pos', 'top');
   function build() {
-    input = el('textarea', { class: 'cmdbar-input', rows: 1, spellcheck: false, placeholder: 'Type / for commands, or what you want (“make it 9 by 16”)  ·  ↑ history  ·  ? help', attrs: { 'aria-label': 'Command' } });
+    input = el('textarea', { class: 'cmdbar-input', rows: 1, spellcheck: false, placeholder: 'Say what you want (“make it 9 by 16”)  ·  ↑ what you did before  ·  ? everything it can do', attrs: { 'aria-label': 'Command' } });
     chip = el('button', { type: 'button', class: 'cmdbar-place', title: 'Commands run here (the chat of what\'s on screen)', on: { mousedown: (e) => e.preventDefault(), click: chipMenu } });
-    const helpBtn = el('button', { type: 'button', class: 'ghost cmdbar-btn', text: '?', title: 'Every command, searchable (F1)', on: { mousedown: (e) => e.preventDefault(), click: () => help(input.value.replace(/^\//, '')) } });
-    const timersBtn = el('button', { type: 'button', class: 'ghost cmdbar-btn cmdbar-timers', hidden: true, title: 'Your timers (/timers)', on: { mousedown: (e) => e.preventDefault(), click: () => runLine('/timers') } });
+    const helpBtn = el('button', { type: 'button', class: 'ghost cmdbar-btn', text: '?', title: 'Everything it can do, searchable (F1)', on: { mousedown: (e) => e.preventDefault(), click: () => help(input.value.replace(/^\//, '')) } });
+    const timersBtn = el('button', { type: 'button', class: 'ghost cmdbar-btn cmdbar-timers', hidden: true, title: 'Your timers', on: { mousedown: (e) => e.preventDefault(), click: () => runLine('/timers') } });
     out = el('div', { class: 'cmdbar-out', hidden: true });
     bar = el('div', { class: `cmdbar ${pos()}`, hidden: true, attrs: { role: 'dialog', 'aria-label': 'Command bar' } },
       el('div', { class: 'cmdbar-row' }, chip, el('span', { class: 'cmdbar-field' }, input), timersBtn, helpBtn), out);

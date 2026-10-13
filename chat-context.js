@@ -235,7 +235,7 @@ const ChatContext = (() => {
   // a quiet mark on your message when it carried a context line (hover shows exactly what went along)
   Native.hooks.message.push((node, m) => {
     if (m.role !== 'user' || !m.ctxLine) return;
-    node.querySelector('.msg-foot')?.prepend(el('span', { class: 'ctx-sent', text: '⌖', title: `Sent along with your words:\n${m.ctxLine}\n(/chat-context auto off: never)` }));
+    node.querySelector('.msg-foot')?.prepend(el('span', { class: 'ctx-sent', text: '⌖', title: `Sent along with your words:\n${m.ctxLine}\n(Settings › Advanced › Chats can turn this off)` }));
   });
   document.addEventListener('hearth:chat-thing', (e) => { load().then(() => { note(e.detail.chatId, e.detail.thing); paintAll(); }); });
   addEventListener('hearth:sketch', paintAll);

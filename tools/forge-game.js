@@ -278,7 +278,7 @@ const ForgeGame = (() => {
         btn('📷', 'Screenshot', async () => { const r = await handleTool('forge_screenshot', {}); if (r.ok) { const p = await window.hub.saveFile({ defaultPath: 'forgeheart-debug.png', filters: [{ name: 'PNG', extensions: ['png'] }], content: r.png, base64: true }); if (p) toast('Screenshot saved'); } }),
         btn('DevTools', 'Game console & profiler', () => view.openDevTools()),
         btn('⋯', 'More: heal, kill all, boss, stage, gold, stat watch, snapshots, patch sets, run code', moreMenu)),
-      el('div', { class: 'game-view' }, view, watchBox = el('div', { class: 'fg-watch', hidden: true, title: 'Stat watch (⋯ → Stat watch, /forge-watch)' })),
+      el('div', { class: 'game-view' }, view, watchBox = el('div', { class: 'fg-watch', hidden: true, title: 'Stat watch (⋯ → Stat watch)' })),
       logBox);
     if (store.get('forge.watchOn', false)) setTimeout(() => setWatch(true), 500);
     fillBuilds();
