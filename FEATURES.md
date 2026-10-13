@@ -806,3 +806,10 @@ Right-click ⋯ in a chat for the old quick menu (rename, export, delete…).
 
 ### ◎ Missions
 The ◎ button by the chat box (and the top of ⋯) picks what your next message becomes: Just answer · Split it up (it deploys helper agents) · Swarm (several AIs answer, a chair merges; in the Lab, a crew of 4 explores variations) · Answer, then review (the other AI checks it) · Debate · Side by side (Claude and Astra) · Jam (a music visual in the Lab, taking turns) · Pair on code · Ask everyone. A click is for the next message only; 📌 keeps it from now on; right-click ◎ goes back to a normal reply. Your words go out as written.
+
+## The Lab without commands (round 26, labeasy, 63 upgrades: docs/upgrades/labeasy.md)
+- ✓ Audit of all 206 Lab commands (`dev/labeasy-audit.js`): the 22 that had no button now have one; the rest already had a home, are answered by just asking the director, or stay power commands.
+- ✓ Right-click the picture › **✦ More**: ♪ Music (make it react, next drop / cue, click track, song info…), ✨ Look & motion (surprise, Hearth on screen, motion intro, cursor tour, fade to black), ⇪ Make (4 variations, render again), ℹ what the Lab shows / hears.
+- ✓ Toolbar ⋯ › **Director** (what it's making, did, costs, its last picture, undo); **right-click a layer** (hide, solo, rename, duplicate, react to the music, a filter above, a look; blend / animate / ease / reset / save behind More…).
+- ✓ Lab missions in the director's ◎: Make 4 variations, Make it react to the music, Make a 9:16 version, Polish the look, Render it (`Missions.add`).
+- ✓ No "/command" in the Lab's visible hints, tooltips, placeholders and menus (checked by `dev/checks/labeasy.js`).

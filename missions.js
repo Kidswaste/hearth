@@ -16,12 +16,26 @@ const Missions = (() => {
     { id: 'pair', icon: '⌨', label: 'Pair on code', desc: 'Astra drafts the code, then Claude and Astra improve it together.' },
     { id: 'everyone', icon: '📢', label: 'Ask everyone', desc: 'Sent to every AI marked for Ask all, each in its own chat.' },
   ];
-  const byId = (id) => LIST.find((m) => m.id === id) || LIST[0];
+  // (round 26, labeasy) a place adds its own missions: Missions.add({ id, icon, label, desc, when(agentId) → shown for
+  // this AI, hides: [ids it stands in for there], submit(agentId, text) → true when it handled the message })
+  const ok = (fn, agentId) => { try { return !fn || Boolean(fn(agentId)); } catch { return false; } };
+  function shown(agentId) {
+    const mine = LIST.filter((m) => ok(m.when, agentId));
+    const hidden = new Set(mine.flatMap((m) => (m.when ? m.hides || [] : [])));
+    const here = mine.filter((m) => m.when); // a place's own missions come right after "Just answer"
+    return [mine[0], ...here, ...mine.slice(1).filter((m) => !m.when)].filter((m) => !hidden.has(m.id));
+  }
+  function add(m) {
+    if (!m?.id || LIST.some((x) => x.id === m.id)) return false;
+    LIST.push({ icon: '◎', desc: '', ...m });
+    return true;
+  }
+  const byId = (id, agentId) => (agentId === undefined ? LIST : shown(agentId)).find((m) => m.id === id) || LIST[0];
   const next = new Map(); // agent id -> mission for the next message only
   const stickyKey = (agentId) => `mission.sticky.${agentId}`;
   function current(agentId) {
     const once = next.get(agentId);
-    return byId(once || store.get(stickyKey(agentId), null) || 'normal');
+    return byId(once || store.get(stickyKey(agentId), null) || 'normal', agentId);
   }
   const isSticky = (agentId) => !next.has(agentId) && (store.get(stickyKey(agentId), null) || 'normal') !== 'normal';
   const listeners = new Set();
@@ -50,6 +64,7 @@ const Missions = (() => {
     if (next.has(agentId)) { next.delete(agentId); changed(agentId); }
     const run = (line) => Commands.tryRun(line, agentId, undefined, { source: 'mission' }).catch((err) => toast(err.message, { type: 'error' }));
     const t = text.replace(/\s+/g, ' ').trim();
+    if (m.submit) return m.submit(agentId, text, t) !== false; // an added mission (Missions.add)
     if (m.id === 'swarm') return run(inLab(agentId) ? `/crew 4 ${t}` : `/council ${t}`), true;
     if (m.id === 'debate') return run(`/debate ${t}`), true;
     if (m.id === 'duo') return run(`/duo ${t}`), true;
@@ -76,7 +91,7 @@ const Missions = (() => {
   function cards(agentId, { onPick } = {}) {
     const cur = current(agentId).id;
     const sticky = isSticky(agentId);
-    return el('div', { class: 'ms-grid' }, LIST.map((m) => el('div', { class: `ms-card${cur === m.id ? ' on' : ''}`, title: m.desc },
+    return el('div', { class: 'ms-grid' }, shown(agentId).map((m) => el('div', { class: `ms-card${cur === m.id ? ' on' : ''}`, title: m.desc },
       el('button', { type: 'button', class: 'ms-pick', on: { click: () => { set(agentId, m.id); onPick?.(); } } }, el('b', { text: `${m.icon} ${m.label}` }), el('span', { text: m.desc })),
       m.id === 'normal' ? null : el('button', { type: 'button', class: `ms-keep${cur === m.id && sticky ? ' on' : ''}`, text: '📌', title: 'From now on (every message in this AI\'s chats) · click again: back to next message only',
         on: { click: () => { set(agentId, cur === m.id && sticky ? 'normal' : m.id, { keep: !(cur === m.id && sticky) }); onPick?.(); } } }))));
@@ -108,5 +123,5 @@ const Missions = (() => {
     paint();
     return b;
   }
-  return { LIST, current, set, submit, cards, button, isSticky };
+  return { LIST, current, set, submit, cards, button, isSticky, add, shown };
 })();

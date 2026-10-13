@@ -807,7 +807,7 @@ const ThreeFrames = (() => {
   function menuItems() {
     const pl = P();
     if (!pl?.loaded || !pl.isVideo) return [{ label: 'Load a video…', action: () => pl?.pick() }];
-    if (!on()) return [{ label: 'Step this video frame by frame', hint: '/footage on', action: () => setMode(true) }];
+    if (!on()) return [{ label: 'Step this video frame by frame', hint: 'frame mode', action: () => setMode(true) }];
     const c = F.clock; const n = frameNow();
     const sp = (s) => ({ label: `${s}×`, checked: F.ps?.[inPart(F.ps, here())]?.speed === s, action: () => ops.speed(s) });
     return [

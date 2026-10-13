@@ -182,7 +182,7 @@ const ThreeStage = (() => {
     if (!h) throw new Error('Open the Three.js Lab first');
     if (S.busy) return null;
     const id = target || S.cued || neighbour(1);
-    if (!id) throw new Error('Nothing cued: add scenes to the set list (/stage set add) or cue one (/stage cue <name>)');
+    if (!id) throw new Error('Nothing cued: add scenes to the set list or cue one (the live menu, ⋯)');
     if (id === currentId() && !target) { uncue(); return nameOf(id); }
     const mode = o.mode || S.mode; const beats = o.beats ?? S.beats; const quant = o.quant || S.quant;
     S.busy = true; paintHud();

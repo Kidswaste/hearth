@@ -268,7 +268,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
       if (sig === built) { status(); return; }
       built = sig;
       const head = el('div', { class: 'sh-head' }, el('b', { text: `◇ ${P ? short(L.name.replace(/^◇\s*/, ''), 26) : 'Shader workbench'}` }), el('span', { class: 'spacer' }),
-        el('button', { type: 'button', class: 'ghost small', text: '?', title: 'Built-ins, slider hints, channels (/shader help)', on: { click: () => helpCard() } }),
+        el('button', { type: 'button', class: 'ghost small', text: '?', title: 'Built-ins, slider hints, channels', on: { click: () => helpCard() } }),
         el('button', { type: 'button', class: 'ghost small', text: '×', title: 'Close', on: { click: close } }));
       const st = el('div', { class: 'sh-status' });
       const body = [];
@@ -409,7 +409,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     return { label: '◇ Shaders', hint: 'GLSL layers', items: () => [
       { label: '◇ New shader layer…', hint: `${SL.STARTERS().length} starters`, action: () => library() },
       { label: 'Import Shadertoy / ISF…', hint: 'paste', action: () => importDialog() },
-      { label: 'Shader workbench', hint: '/shader', action: () => Bench.open() },
+      { label: 'Shader workbench', hint: 'code, uniforms, channels', action: () => Bench.open() },
     ] };
   }
 

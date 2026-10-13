@@ -146,12 +146,12 @@ const ThreeAudio = (() => {
       '1. Install BlackHole 2ch (free: existential.audio/blackhole, or brew install blackhole-2ch).',
       '2. Audio MIDI Setup → + → Create Multi-Output Device: tick your speakers / headphones and BlackHole 2ch (speakers first; drift correction on BlackHole).',
       '3. Sound settings → Output → that Multi-Output Device (you still hear everything).',
-      '4. Here: 🎧 Live ▾ → Input → 🔁 BlackHole 2ch (or /audio-in loopback).',
+      '4. Here: 🎧 Live ▾ → Input → 🔁 BlackHole 2ch.',
     ] : [
       'Windows: 🎧 Live → System sound already captures what the PC plays. For a loopback device instead:',
       '1. Install VB-Cable (vb-audio.com) or enable Stereo Mix (Sound settings → Recording).',
       '2. Set the player\'s output to CABLE Input (or keep your speakers with Stereo Mix).',
-      '3. Here: 🎧 Live ▾ → Input → 🔁 the loopback device (or /audio-in loopback).',
+      '3. Here: 🎧 Live ▾ → Input → 🔁 the loopback device.',
     ];
     const text = [...steps, '', 'Rogue Amoeba Loopback works the same way: Hearth finds these devices by name and lists them first.'].join('\n');
     if (show) Modal.alert('🔁 System audio into the Lab', text);

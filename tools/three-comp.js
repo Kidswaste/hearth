@@ -444,7 +444,7 @@ const ThreeComp = (() => {
   addEventListener('DOMContentLoaded', () => {
     try {
       Keys.add(
-        { area: 'Lab', keys: 'Alt+C', what: '◫ Comp: another scene (another chat\'s) as a layer, dispatch parts to other chats, render the comp (/comp)', when: () => Boolean(document.querySelector('.layers')?.offsetParent), run: () => menuAtCenter() },
+        { area: 'Lab', keys: 'Alt+C', what: '◫ Comp: another scene (another chat\'s) as a layer, dispatch parts to other chats, render the comp', when: () => Boolean(document.querySelector('.layers')?.offsetParent), run: () => menuAtCenter() },
         { area: 'Lab', keys: 'Right-click a precomp layer', what: '◫ Precomp ›: its time, size, crop & mask, effects, resolution, open its scene', when: () => Boolean(document.querySelector('.layers')?.offsetParent) },
       );
     } catch { /* keys list optional */ }

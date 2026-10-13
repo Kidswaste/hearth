@@ -952,7 +952,7 @@ const ThreeMedia = (() => {
       const g = ensureGrid(); g.anchor = r4(g.anchor + ms / 1000);
       nudgeRun.total += ms; nudgeRun.at = performance.now();
       mapChanged();
-      const text = `Grid ${nudgeRun.total > 0 ? '+' : ''}${nudgeRun.total} ms · , . nudge by ear (Shift 1 ms, Alt 20 ms)${gridView.click ? '' : ' · /click-track to hear it'}`;
+      const text = `Grid ${nudgeRun.total > 0 ? '+' : ''}${nudgeRun.total} ms · , . nudge by ear (Shift 1 ms, Alt 20 ms)${gridView.click ? '' : ' · ✦ More › Music › Click on every beat to hear it (right-click the picture)'}`;
       if (nudgeRun.note?.isConnected) nudgeRun.note.querySelector('span').textContent = text; else nudgeRun.note = toast(text, { timeout: 2200 });
       return nudgeRun.total;
     }
@@ -1338,7 +1338,7 @@ const ThreeMedia = (() => {
       const r = { ...cur, [edge]: snapT(t) };
       if (r.b < r.a) [r.a, r.b] = [r.b, r.a];
       const out = setTrim(r);
-      if (out) toast(`Song ${edge === 'a' ? 'starts' : 'ends'} at ${fmtMs(out[edge])} · /song-trim off undoes it`, { timeout: 1800 });
+      if (out) toast(`Song ${edge === 'a' ? 'starts' : 'ends'} at ${fmtMs(out[edge])} · right-click the time › Untrim the song undoes it`, { timeout: 1800 });
       return out;
     }
     const cutRange = () => (region ? { ...region, what: 'the loop' } : map.trim ? { ...map.trim, what: 'the trimmed song' } : { a: 0, b: D(), what: 'the whole file' });

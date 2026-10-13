@@ -25,7 +25,7 @@ const DirectorDock = (() => {
   // Quick asks per tool. run: a chat command that runs here (no tokens); send: a message to the director.
   const CHIPS = {
     three: [
-      { label: '🎛 Jam', run: '/jam', title: 'Claude and Astra take turns making a visual for you (4 rounds; Esc stops) · /jam <idea>' },
+      { label: '🎛 Jam', run: '/jam', title: 'Claude and Astra take turns making a visual for you (4 rounds; Esc stops) · or pick 🎛 Jam in ◎ and write your idea' },
       { label: '🥁 Hit harder on the kick', send: 'Make it hit harder on the kick: bigger, snappier punches on the kicks (my kick markers / the kick trigger when there are some), with a slider for how hard. Keep everything else.' },
       // (round 4: Shuffle colors / Save this look left the row: the Lab's own Shuffle and Save do it, and
       // /shuffle colors, /save-look, /fix-errors still work)
@@ -120,7 +120,7 @@ const DirectorDock = (() => {
         ] : []),
         { label: 'Quick chips', items: () => [
           { label: 'Show them above the chat box', checked: store.get('director.chips', true), action: () => { store.set('director.chips', !store.get('director.chips', true)); refreshAll(); } },
-          { label: 'Add a quick chip…', action: async () => { const t = await Modal.prompt('New quick chip', { label: 'What it sends to the director (start with / to run a command instead)' }); if (t?.trim()) { store.set(`director.chips.${toolId}`, [...store.get(`director.chips.${toolId}`, []), t.trim()]); refreshAll(); } } },
+          { label: 'Add a quick chip…', action: async () => { const t = await Modal.prompt('New quick chip', { label: 'What it sends to the director' }); if (t?.trim()) { store.set(`director.chips.${toolId}`, [...store.get(`director.chips.${toolId}`, []), t.trim()]); refreshAll(); } } },
           ...chipList(toolId).filter((c) => c.own).map((c) => ({ label: `Remove “${c.label}”`, danger: true, action: () => { store.set(`director.chips.${toolId}`, store.get(`director.chips.${toolId}`, []).filter((t) => t !== (c.run || c.send))); refreshAll(); } })),
         ] },
         { label: 'Dock', items: () => [

@@ -877,7 +877,7 @@ const Native = (() => {
     if (v.metaText !== metaText) { v.metaText = metaText; const badge = v.meta.querySelector('.access-badge'); v.meta.textContent = metaText; if (badge) v.meta.append(badge); }
     put(v.meta, 'title', agent.workspace ? `Can read and edit files in ${agent.workspace}` : '');
     paintContext(v, chat);
-    put(v.input, 'placeholder', v.root.classList.contains('dock-chat') ? `Message ${agent.name}…  (/ for commands)`
+    put(v.input, 'placeholder', v.root.classList.contains('dock-chat') ? `Message ${agent.name}…`
       : `Message ${agent.name}…${store.get('chat.enterSends', true) === false ? '  (Ctrl+Enter sends)' : ''}`);
     const modelKey = `${agent.model}|${agent.engine}|${chat?.model || ''}`;
     if (v.modelKey !== modelKey) { v.modelKey = modelKey; fillModelSelect(v, agent, chat); }

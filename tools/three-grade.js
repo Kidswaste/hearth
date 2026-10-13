@@ -454,7 +454,7 @@ const LabGrade = (() => {
   // ---------- menus elsewhere: the preview's right-click, a sequence clip's ----------
   function previewItem() {
     return { label: '◐ Grade', hint: 'color · LUTs · film', items: () => [
-      { label: '◐ Grade panel…', hint: '/grade', action: () => open().catch(err) },
+      { label: '◐ Grade panel…', hint: 'color, film, lens, scopes', action: () => open().catch(err) },
       { label: 'Presets', items: () => G.PRESETS.map((p) => ({ label: p.name, hint: p.desc, action: () => applyPreset(p.id).then((x) => toast(`◐ ${x.name}`)).catch(err) })) },
       { label: 'LUT', items: () => [{ label: 'None', action: () => setLut('none').catch(err) }, ...G.PACK.map(([id, name]) => ({ label: name, action: () => setLut(id).catch(err) })), ...(LUTS.list || []).map((x) => ({ label: `⬚ ${x.title || x.name}`, action: () => setLut(x.name).catch(err) })), '-', { label: '＋ Import .cube…', action: () => pickCubes().catch(err) }] },
       { label: 'Scopes', hint: 'waveform · vectorscope', action: () => open({ tab: 'scopes' }).catch(err) },
@@ -486,7 +486,7 @@ const LabGrade = (() => {
     if (it.id.startsWith('p:')) { const p = await applyPreset(it.id.slice(2)); return `◐ Grade: ${p.name}`; }
     const n = await setLut(it.id.slice(2)); return `◐ LUT ${n}`;
   }
-  function registerPicker() { if (typeof ThreeFX !== 'undefined' && ThreeFX.extend) ThreeFX.extend({ kind: 'grade', label: 'Grade', tab: ['grade', 'Grade', 'Cinematic grades and LUTs (◐ Grade panel: /grade)'], items: pickerItems, apply: pickerApply, hint: () => 'Enter: apply to the scene (◐ Grade layer on top)' }); }
+  function registerPicker() { if (typeof ThreeFX !== 'undefined' && ThreeFX.extend) ThreeFX.extend({ kind: 'grade', label: 'Grade', tab: ['grade', 'Grade', 'Cinematic grades and LUTs (the ◐ Grade panel: right-click the picture)'], items: pickerItems, apply: pickerApply, hint: () => 'Enter: apply to the scene (◐ Grade layer on top)' }); }
 
   // ---------- the two filters in the Layers ＋ picker / /fx / the director's filter list ----------
   function registerFilters() {
