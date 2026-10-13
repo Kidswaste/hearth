@@ -128,7 +128,10 @@ step('/mark-kicks marks the kicks found in the audio', nK >= T.kicks.length * 0.
 await wait(300); await shot('music-kicks-marked');
 // undo with Ctrl+Z in the Lab (the markers go again)
 await J.click([...L.querySelectorAll('.three-preview')].find(J.visible) || canvas, { at: [0.5, 0.6] }).catch(() => {});
-await key('z', { ctrl: true }); await wait(600);
+await key('z', { ctrl: true });
+// (bugbash) the beat map is saved 400 ms after a change (debounced) plus the store's round trip: 490–700 ms measured,
+// so a fixed 600 ms wait read the old map about half the time; wait (up to 4 s) for the kicks to be gone
+await until(async () => !(((await window.hub.kvGet('three-beatmaps')) || {})[SONG]?.marks?.kick?.length), 4000);
 const bm0 = (await window.hub.kvGet('three-beatmaps')) || {};
 step('Ctrl+Z takes the marked kicks back', !(bm0[SONG]?.marks?.kick?.length), bm0[SONG]?.marks?.kick?.length || 0);
 // the ghost note in the empty kick lane ("KICK ✦ 77 found · keep them"), clicked like a person
@@ -137,7 +140,7 @@ step('Ctrl+Z takes the marked kicks back', !(bm0[SONG]?.marks?.kick?.length), bm
   const rc = canvas.getBoundingClientRect();
   const y = rc.bottom - 16 - 3 * 14 + 7; // the kick lane: above the snare and hit lanes and one layer's track
   await J.mouse('mouseMoved', rc.left + 40, y, { button: 'none' }); await J.mouse('mousePressed', rc.left + 40, y); await J.mouse('mouseReleased', rc.left + 40, y);
-  await wait(500);
+  await until(async () => (((await window.hub.kvGet('three-beatmaps')) || {})[SONG]?.marks?.kick?.length || 0) >= T.kicks.length * 0.9, 4000); // (bugbash) saved 400 ms after, not at once
   const bm = (await window.hub.kvGet('three-beatmaps')) || {};
   step('a click on the "✦ found · keep them" note marks the kicks', (bm[SONG]?.marks?.kick?.length || 0) >= T.kicks.length * 0.9, bm[SONG]?.marks?.kick?.length || 0);
   await key('z', { ctrl: true }); await wait(400);

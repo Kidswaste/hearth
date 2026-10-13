@@ -170,6 +170,10 @@ const Lazy = (() => {
           wait.remove();
           const r = real();
           if (!r) return;
+          // (bugbash) already mounted meanwhile (ThreeLab.cmd() → Tools.shown() with the real tool, while this load was
+          // still settling): a second mount made a second, hidden Lab in the same body, two preview pages, and keys
+          // from the visible preview went to the hidden one's pane
+          if (s?.mounted) { if (s) s.tool = r; Tools.syncDocks?.(); return; }
           if (s) { s.tool = r; s.mounted = true; }
           r.mount(body, head);
           Tools.syncDocks?.();

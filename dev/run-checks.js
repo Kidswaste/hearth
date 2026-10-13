@@ -78,6 +78,7 @@ const GROUPS = {
   chrome: ['chrome', 'unit:chrome-test', 'unit:apps-unit-test'], // (round 30) Hearth's Chrome: Playwright's Chromium as Chrome (smoke --pw-chrome), the DevTools client against dev/fake-cdp.js
   recall: ['recall', 'unit:recall-test'], // (round 30) "what did we decide about X?": the local index + ranking, the panel's "Find the answer", the card, Jump to it, the mission, the sum-up's cost
   pinboard: ['pinboard', 'unit:pinboard-test'], // (round 30) Find images like this: a Pinterest-like page in Playwright's Chromium as Chrome (smoke --pw-chrome) and in the board's Pinterest window, an Unsplash-like app window; the page reading against saved pages
+  bugbash: ['bugbash', 'unit:sync-test'], // (round 29) regressions of the bug bash's app fixes: one Lab however it opens; sync's same-millisecond file
   unit: UNIT.map((u) => `unit:${u}`),
 };
 GROUPS.all = [...new Set([...all.filter((n) => !/^astra-/.test(n)), ...GROUPS.astra, ...GROUPS.unit])];

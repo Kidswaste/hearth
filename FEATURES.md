@@ -941,3 +941,9 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ Logos, avatars, ads and shopping links are left out; each picture and each pin shows once; what's already on the board is left out. **More ↓** reads one more screen (a modest scroll, 6 at most). Pick → **Add N to <board>**: only the picks are downloaded (the biggest version), saved like a dropped picture, with their link as the source and the site as credit.
 - ✓ The AIs with board tools: `board_do pins {query?}` returns a short numbered list and the owner confirms in a picker card under the reply (≈ 20 more tokens on the board tools only). Hearth never handles a password: a sign-in page is only noticed.
 - ○ Tested with Playwright's Chromium as "Chrome" on local Pinterest-like / Unsplash-like pages (`sh dev/run-checks.sh pinboard`) and a unit test of the page reading against saved pages; the real Pinterest / Unsplash / Are.na / Cosmos pages weren't reachable here.
+## Bug bash (round 29, bugbash: docs/upgrades/bugbash.md)
+- ✓ The Lab no longer starts twice when a command or the director opens it before its tab was ever shown (two previews, keys doing nothing).
+- ✓ Switching director chats always fades from the old scene's picture, even while a heavy scene draws (the preview's quick picture or the window's own).
+- ✓ Sync: a file changed in the very same millisecond no longer waits an extra sync.
+- ✓ The flaky self-checks (sync journal, keys, tooltips, die, Commands page count, music undo, sequence help / render, frame card) fixed at their cause; each reason is in the doc.
+- ○ `remote`'s fader step still fails now and then under heavy load (passes alone); listed in the doc.

@@ -529,13 +529,32 @@ renderer.setAnimationLoop((now) => {
   const labShown = () => { const h = lab()?.previewHost(); return Boolean(h?.offsetParent) && !h.classList.contains('on-stage') && document.visibilityState === 'visible'; };
   // The picture on screen now: null when the Lab isn't showing, its page is still loading, or it takes too long.
   let lastSnap = null; // the last picture taken for a switch (tests: why there was no fade)
-  async function snapNow(ms = 700) {
+  // the first of these promises to give a picture (null when none does within ms)
+  const firstPicture = (ps, ms) => new Promise((resolve) => {
+    let left = ps.filter(Boolean).length; let done = false;
+    const fin = (u) => { if (!done && (u || --left <= 0)) { done = true; resolve(u || null); } };
+    if (!left) { resolve(null); return; }
+    for (const p of ps) p?.then(fin, () => fin(null));
+    setTimeout(() => { if (!done) { done = true; resolve(null); } }, ms);
+  });
+  // the preview's spot of the window, from the compositor (capturemain.js), as a JPEG of at most 1280 px
+  function screenOf(host) {
+    const r = host?.getBoundingClientRect?.();
+    if (!r || r.width < 8 || r.height < 8 || !window.hub?.capture?.shot) return null;
+    const z = window.hub.getZoom?.() || 1;
+    return window.hub.capture.shot({ rect: { x: r.left * z, y: r.top * z, width: r.width * z, height: r.height * z }, save: false, format: 'jpg', quality: 0.8, preview: 1280 }).then((o) => o?.dataUrl || null, () => null);
+  }
+  async function snapNow(ms = 700, { screen = true } = {}) { // screen: the compositor may answer (a switch); not for row stills (no menus / toasts in them)
     const cover = previewCover();
     const t0 = performance.now();
     lastSnap = { shown: labShown(), loading: !cover?.classList.contains('out') };
     if (!lastSnap.shown || lastSnap.loading || !ThreeLab.director?.shot) return null;
     const S = lab(); const at = S.currentId();
-    const url = await Promise.race([ThreeLab.director.shot().catch(() => null), new Promise((r) => { setTimeout(() => r(null), ms); })]);
+    // (round 29, bugbash) two quick sources, the first picture wins: the preview's own small JPEG (no waiting for its
+    // next frame) and the window's compositor (what is on screen there, whatever the preview page is busy with). The
+    // full-size PNG of shot() took 700 ms and more while the preview drew heavy frames: no picture, no fade.
+    const quick = ThreeLab.director.coverShot ? ThreeLab.director.coverShot(ms).catch(() => null) : ThreeLab.director.shot().catch(() => null);
+    const url = await firstPicture([quick, screen ? screenOf(S.previewHost?.()) : null], ms);
     Object.assign(lastSnap, { ms: Math.round(performance.now() - t0), got: Boolean(url) });
     return url && S.currentId() === at ? url : null;
   }
@@ -569,7 +588,7 @@ renderer.setAnimationLoop((now) => {
       refreshT.delete(chatId);
       const S = lab();
       if (!S || linkOf(chatId) !== S.currentId()) return;
-      const url = await snapNow(1500);
+      const url = await snapNow(1500, { screen: false });
       if (url && linkOf(chatId) === S.currentId()) setThumb(chatId, url);
     }, ms));
   }

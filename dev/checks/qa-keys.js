@@ -69,13 +69,19 @@ async function tryKey(area, line, c, { sig, before, after }) {
   const e0 = errs.length;
   const m1 = mutations;
   const focusAt = `${document.activeElement?.tagName}.${String(document.activeElement?.className || '').slice(0, 24)}`;
-  await press(c);
+  // (bugbash) the key's input ack can be lost when the key rebuilds the frame it was routed to (Shift+1…3 frame sizes
+  // in the Lab: 'the key still running after 15s'); what the key did is still judged below, from the app's state
+  await Promise.race([press(c), wait(3000)]);
   await wait(c.slow ? 900 : 450);
   const s1 = sig(); const g1 = await globalSig(); const u1 = uiSig();
   const dm = mutations - m1;
   const worked = s1 !== s0 || u1 !== u0 || dm > Math.max(3, idle * 3);
   out.pressed += 1;
-  const why = NOOP[`${area}|${c.label}`];
+  // (bugbash) a line the keys sheet itself hides right now (its `when` is false, e.g. the lyrics tap-along's Enter
+  // while no tap-along runs) rightly does nothing: noted, not dead (more than 3 in one area: the surface wasn't ready)
+  let hidden = false; if (line.when) { try { hidden = !line.when(); } catch { hidden = true; } }
+  if (hidden) (hiddenBy[area] ||= []).push(c.label);
+  const why = NOOP[`${area}|${c.label}`] || (hidden ? 'its line is hidden in the keys sheet now (only in that state)' : '');
   if (worked) out.worked += 1; else if (why) (out.noop ||= []).push(`${area} · ${c.label}: ${why}`); else out.dead.push(`${area} · ${c.label} · ${line.what} (keys at ${focusAt})`);
   if (g1 !== g0 && !(area === 'Everywhere' || OWN_GLOBAL.test(line.what) || OWN_GLOBAL.test(c.label))) {
     const a = JSON.parse(g0); const b = JSON.parse(g1);
@@ -84,6 +90,7 @@ async function tryKey(area, line, c, { sig, before, after }) {
   if (errs.length > e0) out.errors.push(`${area} · ${c.label}: ${errs.slice(e0).join(' / ').slice(0, 200)}`);
   if (after) await after(c, line, { s0, s1, g0, g1 });
 }
+const hiddenBy = {}; // area → labels pressed while their keys-sheet line was hidden
 // keys that rightly do nothing in this test's setup (no music: no beats or sections)
 const NOOP = {
   'Lab|Space': 'no song loaded here (journey-lab plays one)', 'Lab|T': 'taps count while a song plays (journey-lab)', 'Lab|Ctrl+Enter': 're-runs the layers: nothing to see change', 'Lab|Ctrl+Z': 'nothing to undo yet', 'Lab|Esc': 'only from a Lab tool tab', 'Lab|.': 'only while frozen',
@@ -213,6 +220,10 @@ if (AREAS.includes('Lab')) {
   await runArea('Lab', {
     sig: sigL,
     skip: /^(P|Shift\+F|Ctrl\+Shift\+Enter|Ctrl\+PgDn|Ctrl\+PgUp)$/, // fullscreen Present / Focus, a fresh page, sketch switching (journey-lab covers them)
+    // (bugbash) a key seen dead gets one more try after the preview settles: keys reach the Lab through the preview's
+    // page (host-key), and a key pressed while an earlier key (a frame size, a re-run) is rebuilding that page lands on
+    // a page with no listener yet: W, ` or | were "dead" on some runs only. Dead twice still counts.
+    reset: async () => { await wait(1500); },
     before: async () => { if (H.activeId !== 'tool:three') activate('tool:three'); const r = pic?.getBoundingClientRect(); if (r) { await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mousePressed', x: r.left + r.width / 2, y: r.top + r.height * 0.6, button: 'left', clickCount: 1 } }); await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseReleased', x: r.left + r.width / 2, y: r.top + r.height * 0.6, button: 'left', clickCount: 1 } }); } await wait(100); },
     // keys, not calls (a size change can keep a call waiting for the next frame); and don't wait on the key's own
     // acknowledgement for more than 3 s: a frame size change rebuilds the preview frame, and the test harness's
@@ -227,7 +238,9 @@ if (AREAS.includes('Everywhere')) {
   await runArea('Everywhere', {
     sig: () => '',
     skip: /^(Esc|Ctrl\+=|Ctrl\+-|Ctrl\+0)$/, // Esc only closes; the text size is checked below
-    before: async () => { activate(H.claudeAgent().id); document.body.focus(); await wait(50); },
+    // (bugbash) Ctrl+1 opens rail item 1, which is the Claude chat this area starts from: start from another item,
+    // or the key has nothing to change (it was "dead" only because it was already there)
+    before: async (c) => { activate(H.claudeAgent().id); const d = /^Ctrl\+([1-9])$/.exec(c.label); if (d && H.railOrder()[d[1] - 1] === H.activeId) { const other = H.railOrder().find((id) => id !== H.activeId && !id.startsWith('tool:')) || H.railOrder().find((id) => id !== H.activeId); if (other) { activate(other); await wait(300); } } document.body.focus(); await wait(50); },
     restore: async () => { if (H.grid) handleShortcut({ key: 'g' }); if (!H.panelOpen) handleShortcut({ key: '\\' }); if (!document.getElementById('broadcast')?.classList.contains('hidden')) handleShortcut({ key: 'b' }); activate(H.claudeAgent().id); },
   });
   const z0 = await window.hub.getZoom(); await press(one('Ctrl+=')); await wait(300); const z1 = await window.hub.getZoom(); await press(one('Ctrl+0')); await wait(300);
@@ -248,5 +261,6 @@ for (const [a, others] of Object.entries(together)) {
 }
 out.conflicts = [...new Set(out.conflicts)];
 console.error = origErr; mo.disconnect();
+for (const [a, l] of Object.entries(hiddenBy)) if (l.length > 3) out.errors.push(`${a}: ${l.length} keys pressed while their lines were hidden (${l.join(', ')}): the surface wasn't ready`);
 out.ok = !out.dead.length && !out.globalToo.length && !out.errors.length && !out.dups.length;
 return JSON.stringify(out, null, 1);
