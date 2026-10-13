@@ -409,6 +409,7 @@ const ThreeLab = (() => {
       popup(r.left, r.bottom + 4, [
         ['New from a template…', 'Right-click it for the list', () => templateGallery()],
         ['▦ All your sketches', 'As pictures', () => browseSketches()],
+        ...(typeof LabPacksHook !== 'undefined' ? [LabPacksHook.sketchRow(() => current?.id)] : []), // (round 28) Share › Save as a pack (tools/three-packs-hook.js)
         'This sketch',
         ['Rename…', current?.name || '', () => renameSketch()],
         ['Duplicate', 'A copy you can change freely', () => duplicate()],
@@ -3451,6 +3452,7 @@ ${code}
       timelineOf: (id) => timelineOf(id), setTimeline: (id, tl) => setTimeline(id, tl),
       mediaUp: (id = current?.id) => (id ? sceneMedia(id, { playing: false }) : null),
       extrasOf: (id) => extras[id] || null, // looks / music links per layer (the Lab sequence applies a clip's look)
+      setExtras(id, ex) { if (!sketches.some((x) => x.id === id) || !ex || typeof ex !== 'object') return false; extras[id] = { ...(extras[id] || {}), ...JSON.parse(JSON.stringify(ex)) }; saveExtras(); return true; }, // (round 28, packs) a scene from a .hearthpack: its sliders, looks, song link
       thumbOf: (id) => thumbs[id]?.url || null,
       previewHost: () => previewHost,
     };

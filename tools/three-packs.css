@@ -1,0 +1,22 @@
+/* Packs (round 28, packs: tools/three-packs.js): one card to save a scene as a .hearthpack, and one to see what a
+   pack holds before anything is added. A picture, a name, a few plain lines, the facts, one button. */
+dialog.pk-card[open] {
+  width: min(560px, calc(100vw - 32px)); padding: 16px 18px 14px; border: 1px solid var(--line); border-radius: 14px;
+  background: var(--bg); color: var(--text); box-shadow: 0 24px 64px #000a;
+}
+dialog.pk-card::backdrop { background: #000a; }
+.pk-head { margin-bottom: 10px; letter-spacing: 0.04em; text-transform: uppercase; font-weight: 600; }
+.pk-main { display: flex; gap: 16px; align-items: flex-start; }
+.pk-pic { flex: none; width: 150px; aspect-ratio: 3 / 4; border-radius: 10px; overflow: hidden; background: #07070a; border: 1px solid var(--line); display: grid; place-items: center; }
+.pk-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pk-pic.none span { font-size: 34px; color: var(--muted); }
+.pk-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.pk-name { margin: 0; font-size: 18px; line-height: 1.25; overflow-wrap: anywhere; }
+.pk-lines, .pk-problems { margin: 2px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+.pk-problems { color: var(--danger, #ff6b6b); }
+.pk-facts { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+.pk-facts div { overflow-wrap: anywhere; }
+.pk-toggle { margin-top: 6px; font-size: 13px; }
+.pk-note { margin-top: 12px; padding: 8px 10px; border-radius: 9px; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); background: color-mix(in srgb, var(--accent) 8%, transparent); line-height: 1.4; }
+.pk-card .dialog-actions { margin-top: 14px; display: flex; justify-content: flex-end; gap: 8px; }
+@media (max-width: 520px) { .pk-main { flex-direction: column; } .pk-pic { width: 110px; } }

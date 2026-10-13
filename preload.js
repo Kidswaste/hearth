@@ -132,6 +132,8 @@ contextBridge.exposeInMainWorld('hub', {
   interop: { oscStart: call('interop:osc-start'), oscStop: call('interop:osc-stop'), oscStatus: call('interop:osc-status'), oscSend: (o) => ipcRenderer.send('interop:osc-send', o), onOsc: on('interop:osc'), linkStart: call('interop:link-start'), linkStop: call('interop:link-stop'), linkStatus: call('interop:link-status'), onLink: on('interop:link'), pageStart: call('interop:page-start'), pageStop: call('interop:page-stop'), pageStatus: call('interop:page-status'), pageCfg: call('interop:page-cfg'), frame: (buf) => ipcRenderer.send('interop:page-frame', buf), onViewers: on('interop:viewers'), obsConnect: call('interop:obs-connect'), obsDisconnect: call('interop:obs-disconnect'), obsStatus: call('interop:obs-status'), obsPassword: call('interop:obs-password'), obsReq: call('interop:obs-req'), onObs: on('interop:obs'), onObsEvent: on('interop:obs-event'), test: call('interop:test') },
   // (round 27) Ready to post (publishmain.js): the checks' numbers, the cover ideas
   publish: { analyze: call('publish:analyze') },
+  // (round 28) packs (packsmain.js): a scene and everything it uses as one .hearthpack; peek before anything is added
+  packs: { plan: call('packs:plan'), write: call('packs:write'), peek: call('packs:peek'), unpack: call('packs:unpack'), pending: call('packs:pending'), onOpen: on('packs:open') },
   // (round 26) hooks (hooksmain.js): the folders a hook watches, and the new files in them
   hooks: { watch: call('hooks:watch'), onFile: on('hooks:file') },
   // (round 19, reach) paths from the other computer → this one's; open / reveal / preview what a chat made (reachmain.js)
