@@ -39,7 +39,9 @@ try {
   ok(r1.things?.some((t) => t.k === 'frame'), `the Lab frame it looked at is a card (${out.r1things})`);
   await until(() => r1.things?.find((t) => t.k === 'frame')?.path, 8000);
   await Native.refresh(D.id); await wait(500);
-  const frameCard = v.list.querySelector('.msg.assistant:last-of-type .thing-frame img, .thing-strip .thing-frame img');
+  // (bugbash) a frame with its saved picture shows big in the reply (chat-media.js: a .cm-hero figure, out of the small
+  // card strip) while big media is on, the default; the small card only when it's off (/media off)
+  const frameCard = v.list.querySelector('.msg.assistant:last-of-type .cm-hero[data-key^="frame:"] img, .msg.assistant:last-of-type .thing-frame img, .thing-strip .thing-frame img');
   ok(frameCard && await until(() => frameCard.naturalWidth > 0, 5000), 'the frame card shows the saved picture');
   const sceneCard = [...v.list.querySelectorAll('.thing-scene')].at(-1);
   ok(sceneCard, 'scene card drawn');
