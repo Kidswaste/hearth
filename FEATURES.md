@@ -861,3 +861,9 @@ In ⋯ AI setup, **⚡ Hooks: when… then…** gives each AI a short list of ru
 - ✓ Also from a new chat's starter ("🖼 Start from something like…") and the director's ◎ mission of that name (your words search, you pick, the director gets your words).
 - ✓ Light: loads on first use; pictures drawn one at a time in one hidden preview page, only for cards in view, kept on disk.
 - ○ Checked with the fake engines (`sh dev/run-checks.sh gallery`: every starting point runs without errors); its look on a real GPU wasn't seen here.
+## 🎨 Make it look like this (round 28, lookmatch, 51 upgrades: docs/upgrades/lookmatch.md)
+- ✓ Give the Lab a picture, a video, a mood-board item or a render: its palette, light, contrast, saturation, warmth (in kelvin), grain, vignette, glow and bars land on the scene's ◐ Grade / ◐ Film & lens layers (as sliders) and its colors become the palette, at once and with no tokens; measured against your scene's own picture, then checked and corrected once ("≈82 % close").
+- ✓ A small card: Strength, hold for Before, ↶ Undo, ◐ Fine-tune; your matched looks come back in one click.
+- ✓ ✦ Ask the director: a small picture of the reference + the numbers (cost shown first) so it matches shapes, light and motion.
+- ✓ Ways in: the director's ◎ mission "Make it look like this", ✦ More › ✨ Look & motion, a board item's right-click "🎨 Use this look in the Lab", dropping a picture on the Lab preview.
+- ○ Checked with generated pictures, a recorded clip and the fake engines (`sh dev/run-checks.sh lookmatch unit:lookmatch-test`); how close a match gets on real footage depends on the scene.
