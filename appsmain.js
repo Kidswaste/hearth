@@ -9,7 +9,7 @@
 // never synced, never in a backup), used only here: no page and no engine ever receives one. Meshy jobs run here
 // (apps-meshy-api.js is the only file that knows Meshy's API) and survive a reload of the hub page.
 // Tests: HEARTH_MESHY_BASE / HEARTH_POLYHAVEN_BASE point the services at dev/fake-meshy.js.
-const { app, BrowserWindow, safeStorage, session, shell, net, nativeImage, webContents } = require('electron');
+const { app, BrowserWindow, safeStorage, session, shell, net, nativeImage, webContents, clipboard } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -38,6 +38,13 @@ let catalog = []; // [{ id, name, icon, group }] from the hub page (the chrome's
 const downloads = []; // newest first: { id, app, appName, name, path, state, received, total, url, at }
 const hooked = new Set(); // partitions whose downloads are routed here
 const pasteWaits = new Map();
+// (round 30, chrome) apps that open in the owner's Google Chrome instead (Google sign-in: chromemain.js, loaded on use)
+const cwins = new Map(); // app id → { spec, url } (its Chrome window is chromemain's key `app:<id>`)
+let chromeM = null;
+const chromeMod = () => { if (!chromeM) { chromeM = require('./chromemain'); chromeM.init({ dataDir: dataDir(), getWin }); } return chromeM; };
+const ckey = (id) => `app:${id}`;
+let lastOffer = null; // the last time an app window offered Chrome (apps:status, for dev/checks/chrome.js)
+const inChrome = async (id) => cwins.has(id) && chromeM && await chromeM.hasWindow(ckey(id));
 
 const toHub = (data) => { const w = getWin(); if (w && !w.isDestroyed()) w.webContents.send('apps:event', data); };
 const toChrome = (appId, channel, data) => { const e = wins.get(appId); if (e?.win && !e.win.isDestroyed()) e.win.webContents.send(channel, data); };
@@ -228,6 +235,52 @@ function openWindow(spec = {}) {
   toHub({ type: 'window', id, state: 'opened' });
   return { ok: true };
 }
+// (round 30, chrome) does this app open in Chrome? The owner's choice per app, else by itself for a site whose
+// sign-in is Google's own (Gemini, NotebookLM, YouTube Studio…) when Chrome is on this computer
+async function wantsChrome(spec) {
+  if (spec.inHearth || !/^https?:/i.test(String(spec.url || ''))) return false;
+  const p = chromeMod().prefs().apps[spec.id];
+  if (p === 'hearth') return false;
+  if (p === 'chrome') return true;
+  return chromeMod().googleOnly(spec.url) && Boolean(await chromeMod().found());
+}
+const siteUrl = (e) => e?.siteUrl || e?.spec?.url || null;
+async function openInChrome(spec) {
+  const id = spec.id;
+  const ex = wins.get(id);
+  const saved = savedBounds(id)?.url;
+  const url = (spec.go && spec.url) || siteUrl(ex) || (saved && !isAuth(saved) && AppsCore.sameSite(saved, spec.url) ? saved : null) || spec.url;
+  const r = await chromeMod().openWindow({ key: ckey(id), url, app: true, go: Boolean(spec.go && spec.url) });
+  if (!r.ok) return r;
+  cwins.set(id, { spec: { ...(ex?.spec || {}), ...spec }, url });
+  if (ex?.win && !ex.win.isDestroyed() && ex.win.isVisible()) closeWindow(id); // Hearth's own window steps aside (hidden, then parked)
+  toHub({ type: 'window', id, state: 'shown', chrome: true });
+  return { ok: true, chrome: true };
+}
+async function openAny(spec = {}) {
+  const id = String(spec.id || '').replace(/[^\w-]/g, '');
+  if (id && await wantsChrome({ ...spec, id }).catch(() => false)) {
+    const r = await openInChrome({ ...spec, id });
+    if (r.ok) return r;
+    const w = openWindow(spec); // Chrome couldn't: Hearth's own window, with the reason
+    if (w.ok) setTimeout(() => toChrome(id, 'appwin:key', { op: 'hint', text: `Chrome didn't open: ${r.error} (opened here instead)` }), 1500);
+    return w;
+  }
+  return openWindow(spec);
+}
+// Google's refusal page showed in an app window (or its sign-in popup): the window offers Chrome (chromeguard.js)
+function offerChrome(target, contents) {
+  for (const [id, e] of wins) {
+    if (!e.win || e.win.isDestroyed() || (e.guestId !== target?.id && e.win.webContents.id !== target?.id)) continue;
+    toChrome(id, 'appwin:offer', { url: siteUrl(e) });
+    lastOffer = { id, url: siteUrl(e), popup: Boolean(contents && contents !== target), at: Date.now() };
+    if (contents && contents !== target) { try { BrowserWindow.fromWebContents(contents)?.close(); } catch { /* gone */ } } // the dead-end popup goes
+    if (!e.win.isVisible()) e.win.show();
+    e.win.focus();
+    return true;
+  }
+  return false;
+}
 function configureGuest(guest, entry) {
   const home = entry.spec.url || entry.lastUrl;
   guest.setWindowOpenHandler(({ url }) => {
@@ -258,9 +311,30 @@ function closeWindow(id, { destroy = false } = {}) {
 }
 function closeAll() { for (const [id, e] of wins) { if (e.win && !e.win.isDestroyed()) { e.closing = true; saveBounds(id, e.win); e.win.destroy(); } } }
 const listWindows = () => [...wins.entries()].filter(([, e]) => e.win && !e.win.isDestroyed()).map(([id, e]) => ({ id, name: e.spec.name, visible: e.win.isVisible(), focused: e.win.isFocused(), url: e.lastUrl, title: e.title, audible: Boolean(guestOf(e)?.isCurrentlyAudible?.()) }));
+// (round 30) with the apps open in Chrome (each one listed once: its Chrome window when it has one)
+async function allWindows() {
+  const out = [];
+  for (const [id, c] of cwins) {
+    if (!(await inChrome(id))) { cwins.delete(id); continue; }
+    const info = await chromeM.pageOp(ckey(id), 'info');
+    out.push({ id, name: c.spec.name || id, visible: true, focused: false, url: info.value?.url || c.url, title: info.value?.title || '', audible: false, chrome: true });
+  }
+  return [...out, ...listWindows().filter((w) => !out.some((x) => x.id === w.id))];
+}
 
 // text typed into the app's page (Suno's lyrics / style boxes): the chrome page fills it and reads it back
-function paste(id, { text, field, strict } = {}) {
+async function pasteChrome(id, { text, field, strict } = {}) {
+  await chromeM.pageOp(ckey(id), 'wait', { timeout: 6000 });
+  const r = await chromeM.pageOp(ckey(id), 'eval', { expr: AppsCore.fillScript(String(text || ''), field || '', Boolean(strict)) });
+  const v = (r.ok && r.value) || { ok: false, error: r.error || 'The page didn\'t answer' };
+  if (!v.ok && !strict) { try { clipboard.writeText(String(text || '')); v.copied = true; } catch { /* no clipboard */ } }
+  return v;
+}
+async function paste(id, o = {}) {
+  if (await inChrome(id)) return pasteChrome(id, o);
+  return pasteHere(id, o);
+}
+function pasteHere(id, { text, field, strict } = {}) {
   const e = wins.get(id);
   if (!e?.win || e.win.isDestroyed()) return Promise.resolve({ ok: false, error: 'The app window isn\'t open.' });
   const reqId = uid();
@@ -272,9 +346,70 @@ function paste(id, { text, field, strict } = {}) {
 }
 async function pagePicture(id, { whole = false } = {}) {
   // whole: the window with its chrome (a picture of how the app window looks), else the app's page only
+  if (await inChrome(id)) { const r = await chromeM.pageOp(ckey(id), 'shot'); return r.ok ? store.saveAttachment(`${id}-page.jpg`, r.value) : null; }
   const g = whole ? wins.get(id)?.win?.webContents : guestOf(wins.get(id) || {});
   if (!g) return null;
   try { const img = await g.capturePage(); if (img.isEmpty()) return null; const s = img.getSize(); const small = s.width > 1600 ? img.resize({ width: 1600 }) : img; return store.saveAttachment(`${id}-page.jpg`, small.toJPEG(85).toString('base64')); } catch { return null; }
+}
+
+// (round 30, chrome) the AI's hands on an app's page, the same in Hearth's window and in Chrome: read its text, click,
+// type, press a key, a picture, wait, go somewhere. op: text | click | type | key | shot | wait | go | info
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const q = (sel) => (sel ? `document.querySelector(${JSON.stringify(String(sel))})` : 'document.body');
+async function pageAny(id, op, a = {}) {
+  if (await inChrome(id)) {
+    if (op === 'shot') { const r = await chromeM.pageOp(ckey(id), 'shot'); return r.ok ? { ok: true, image: r.value, mime: 'image/jpeg', where: 'chrome' } : r; }
+    return { ...(await chromeM.pageOp(ckey(id), op, a)), where: 'chrome' };
+  }
+  const e = wins.get(id);
+  const g = guestOf(e || {});
+  if (!g || g.isDestroyed()) return { ok: false, error: 'The app window isn\'t open' };
+  const js = (code) => g.executeJavaScript(code, true);
+  try {
+    switch (op) {
+      case 'info': return { ok: true, value: { url: g.getURL(), title: g.getTitle() } };
+      case 'text': { const t = await js(`(() => { const n = ${q(a.selector)}; return n ? String(n.innerText || n.textContent || '').replace(/\\n{3,}/g, '\\n\\n').trim().slice(0, ${Math.min(50000, Number(a.max) || 20000)}) : null; })()`); return t == null ? { ok: false, error: `Nothing matches ${a.selector}` } : { ok: true, value: t }; }
+      case 'click': {
+        const b = await js(`(() => { const n = ${q(a.selector)}; if (!n) return null; n.scrollIntoView({ block: 'center', inline: 'center' }); const r = n.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), w: r.width, h: r.height }; })()`);
+        if (!b) return { ok: false, error: `Nothing matches ${a.selector} on the page` };
+        if (!b.w || !b.h) return { ok: false, error: `${a.selector} is on the page but not visible` };
+        for (const type of ['mouseMove', 'mouseDown', 'mouseUp']) g.sendInputEvent({ type, x: b.x, y: b.y, button: 'left', clickCount: 1 });
+        return { ok: true, value: `Clicked ${a.selector}` };
+      }
+      case 'type': {
+        const ok = await js(`(() => { const n = ${a.selector ? q(a.selector) : 'document.activeElement'}; if (!n) return false; n.focus(); if (!${a.append ? 'true' : 'false'}) { if (n.select) n.select(); else if (n.isContentEditable) document.execCommand('selectAll'); } return true; })()`);
+        if (!ok) return { ok: false, error: a.selector ? `Nothing matches ${a.selector} on the page` : 'No box has the keyboard' };
+        await g.insertText(String(a.text ?? ''));
+        if (a.enter) await pageAny(id, 'key', { key: 'Enter' });
+        return { ok: true, value: `Typed ${String(a.text ?? '').length} characters` };
+      }
+      case 'key': { const k = a.key || 'Enter'; g.sendInputEvent({ type: 'keyDown', keyCode: k }); if (k === 'Enter') g.sendInputEvent({ type: 'char', keyCode: '\r' }); g.sendInputEvent({ type: 'keyUp', keyCode: k }); return { ok: true, value: 'done' }; }
+      case 'shot': { const img = await g.capturePage(); if (img.isEmpty()) return { ok: false, error: 'The page shows nothing yet' }; const sz = img.getSize(); return { ok: true, image: (sz.width > 1600 ? img.resize({ width: 1600 }) : img).toJPEG(82).toString('base64'), mime: 'image/jpeg' }; }
+      case 'wait': {
+        const t0 = Date.now(); const ms = Math.min(60000, Number(a.timeout) || 15000);
+        while (Date.now() - t0 < ms) { try { if (a.selector ? await js(`!!${q(a.selector)}`) : !g.isLoading() && await js('document.readyState') === 'complete') return { ok: true, value: true }; } catch { /* navigating */ } await sleep(150); }
+        return { ok: true, value: false };
+      }
+      case 'go': if (!/^https?:\/\//i.test(String(a.url))) return { ok: false, error: 'Only web addresses' }; await g.loadURL(String(a.url)).catch(() => {}); return { ok: true, value: { url: g.getURL(), title: g.getTitle() } };
+      default: return { ok: false, error: `Unknown page action ${op} (text, click, type, key, shot, wait, go, info)` };
+    }
+  } catch (err) { return { ok: false, error: err.message }; }
+}
+async function navChrome(id, op, url) {
+  const k = ckey(id);
+  if (op === 'download') return { ok: false, error: 'This app is open in Chrome: Chrome downloads it (to your Downloads folder).' };
+  if (op === 'url' && /^https?:/i.test(String(url))) return chromeM.pageOp(k, 'go', { url, wait: false });
+  if (op === 'home') return chromeM.pageOp(k, 'go', { url: cwins.get(id)?.spec?.url, wait: false });
+  if (['reload', 'back', 'forward'].includes(op)) return chromeM.pageOp(k, op);
+  if (op === 'close') return chromeM.pageOp(k, 'close');
+  if (op === 'copy-link') { const r = await chromeM.pageOp(k, 'info'); if (r.ok) clipboard.writeText(r.value.url); return { ok: r.ok }; }
+  if (op === 'to-chat') {
+    const [info, sel, pic] = await Promise.all([chromeM.pageOp(k, 'info'), chromeM.pageOp(k, 'eval', { expr: 'String(getSelection() || "")' }), pagePicture(id)]);
+    toHub({ type: 'to-chat', app: id, appName: cwins.get(id)?.spec?.name || id, url: info.value?.url, title: info.value?.title, selection: String(sel.value || '').slice(0, 4000), picture: pic });
+    const w = getWin(); if (w && !w.isDestroyed()) { w.show(); w.focus(); }
+    return { ok: true };
+  }
+  return chromeM.pageOp(k, 'show');
 }
 
 // ---------- Meshy jobs ----------
@@ -396,11 +531,20 @@ function register(ipcMain, gw, deps = {}) {
   app.on('before-quit', () => { for (const e of wins.values()) e.closing = true; for (const c of running.values()) c.stopped = true; });
   const h = (ch, fn) => ipcMain.handle(ch, (_e, ...a) => fn(...a));
   // from the hub page
-  h('apps:open', (spec) => openWindow(spec || {}));
+  h('apps:open', (spec) => openAny(spec || {})); // (round 30) in Chrome when that app asks for it (Google sign-in)
   h('apps:close', (id, o) => closeWindow(String(id), o || {}));
   h('apps:closeAll', () => { closeAll(); return { ok: true }; });
-  h('apps:windows', () => listWindows());
-  h('apps:nav', (id, op, url) => {
+  h('apps:windows', () => allWindows());
+  h('apps:page', (id, op, a) => pageAny(String(id), String(op || ''), a || {})); // (round 30) the AI's hands on the page (apps_page)
+  h('apps:chrome', async (id, op) => { // (round 30) this app in Chrome ('chrome'), back in Hearth ('hearth'), automatic (null)
+    const s = String(id || '').replace(/[^\w-]/g, '');
+    if (op === 'status') return { pref: chromeMod().prefs().apps[s] || null, open: await inChrome(s), found: await chromeMod().found() };
+    const r = chromeMod().setPref('apps', s, op === 'chrome' || op === 'hearth' ? op : null);
+    if (op === 'hearth' && cwins.has(s)) { await chromeM.pageOp(ckey(s), 'close').catch(() => {}); cwins.delete(s); }
+    return r;
+  });
+  h('apps:nav', async (id, op, url) => {
+    if (await inChrome(id)) return navChrome(id, op, url);
     if (!wins.has(id)) return { ok: false, error: 'Not open' };
     // a file fetched in the app's own session (its sign-in cookies apply), landing like any download from the window
     if (op === 'download') { const g = guestOf(wins.get(id)); if (!g || !/^https?:/i.test(String(url))) return { ok: false, error: 'No page' }; g.downloadURL(String(url)); return { ok: true }; }
@@ -419,13 +563,13 @@ function register(ipcMain, gw, deps = {}) {
   h('apps:fetchTo', (o) => fetchTo(o || {}));
   h('apps:fetchJson', (url) => fetchJson(String(url || '')));
   h('apps:meshy', (op, args) => meshy(String(op || ''), args || {}));
-  h('apps:status', () => ({ meshyBase: MESHY_BASE, polyBase: POLY_BASE, meshyKey: keyInfo('meshy'), windows: listWindows(), downloadsDir: downloadsRoot(), parkMs: PARK_MS, maxHidden: MAX_HIDDEN, testBase: process.env.HEARTH_MESHY_BASE || null }));
+  h('apps:status', async () => ({ lastOffer, meshyBase: MESHY_BASE, polyBase: POLY_BASE, meshyKey: keyInfo('meshy'), windows: await allWindows(), downloadsDir: downloadsRoot(), parkMs: PARK_MS, maxHidden: MAX_HIDDEN, testBase: process.env.HEARTH_MESHY_BASE || null }));
 
   // from an app window's chrome (apps-window.html via apps-preload.js); the sender names its app
   const appOf = (e) => { for (const [id, x] of wins) if (x.win && !x.win.isDestroyed() && x.win.webContents.id === e.sender.id) return [id, x]; return [null, null]; };
   const c = (ch, fn) => ipcMain.handle(ch, (e, ...a) => { const [id, x] = appOf(e); return id ? fn(id, x, ...a) : null; });
   c('appwin:init', (id, x) => ({ spec: x.spec, url: x.lastUrl || x.spec.url || 'about:blank', catalog, downloads: listDownloads(id), mac: process.platform === 'darwin' }));
-  c('appwin:state', (id, x, s = {}) => { if (s.url && /^https?:/i.test(s.url)) x.lastUrl = s.url; if (s.title != null) { x.title = String(s.title).slice(0, 200); x.win.setTitle(`${x.title ? `${x.title} · ` : ''}${x.spec.name} · Hearth`); } return true; });
+  c('appwin:state', (id, x, s = {}) => { if (s.url && /^https?:/i.test(s.url)) { x.lastUrl = s.url; if (!isAuth(s.url)) x.siteUrl = s.url; } if (s.title != null) { x.title = String(s.title).slice(0, 200); x.win.setTitle(`${x.title ? `${x.title} · ` : ''}${x.spec.name} · Hearth`); } return true; });
   c('appwin:external', (_id, _x, url) => { if (/^https?:\/\//i.test(String(url))) shell.openExternal(String(url)); return true; });
   c('appwin:toChat', async (id, x, o = {}) => { const pic = o.picture === false ? null : await pagePicture(id); toHub({ type: 'to-chat', app: id, appName: x.spec.name, url: o.url || x.lastUrl, title: o.title || x.title, selection: String(o.selection || '').slice(0, 4000), picture: pic }); const w = getWin(); if (w && !w.isDestroyed()) { w.show(); w.focus(); } return { ok: true }; });
   c('appwin:route', (id, _x, downloadId, target) => { const d = downloads.find((y) => y.id === downloadId); if (!d) return { ok: false }; toHub({ type: 'route', d: { ...d }, target: String(target) }); return { ok: true }; });
@@ -435,6 +579,16 @@ function register(ipcMain, gw, deps = {}) {
   c('appwin:pasteResult', (_id, _x, reqId, r) => { pasteWaits.get(reqId)?.(r || { ok: false }); pasteWaits.delete(reqId); return true; });
   c('appwin:signOut', async (id, x) => { await session.fromPartition(x.spec.partition).clearStorageData(); toChrome(id, 'appwin:key', 'reload'); return { ok: true }; });
   c('appwin:hide', (id) => closeWindow(id));
+  // (round 30, chrome) "Open in Chrome (for Google sign-in)" from the window's ⋯ or its offer after Google refused
+  c('appwin:chrome', async (id, x, op) => {
+    if (op === 'status') { const f = await chromeMod().found(); return { found: f ? f.name : null, pref: chromeMod().prefs().apps[id] || null, auto: chromeMod().googleOnly(x.spec.url) }; }
+    if (op === 'everyday') return chromeMod().everyday(siteUrl(x) || x.lastUrl);
+    if (op === 'hearth' || op === 'auto') return chromeMod().setPref('apps', id, op === 'hearth' ? 'hearth' : null);
+    chromeMod().setPref('apps', id, 'chrome');
+    const r = await openInChrome({ ...x.spec, id, url: siteUrl(x) || x.spec.url, go: true });
+    if (r.ok) toHub({ type: 'chrome-app', id, name: x.spec.name });
+    return r;
+  });
 }
 
-module.exports = { register, pace, isAppGuest: (contents) => Boolean(contents?.hostWebContents && hostIds.has(contents.hostWebContents.id)), _test: { isAuth, imageUri } };
+module.exports = { register, pace, offerChrome, isAppGuest: (contents) => Boolean(contents?.hostWebContents && hostIds.has(contents.hostWebContents.id)), _test: { isAuth, imageUri } };

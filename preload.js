@@ -201,7 +201,13 @@ contextBridge.exposeInMainWorld('hub', {
     open: call('apps:open'), close: call('apps:close'), closeAll: call('apps:closeAll'), windows: call('apps:windows'), nav: call('apps:nav'),
     paste: call('apps:paste'), picture: call('apps:picture'), catalog: call('apps:catalog'), downloads: call('apps:downloads'), dirs: call('apps:dirs'),
     key: call('apps:key'), fetchTo: call('apps:fetchTo'), fetchJson: call('apps:fetchJson'), meshy: call('apps:meshy'), status: call('apps:status'),
+    page: call('apps:page'), chrome: call('apps:chrome'), // (round 30) the AI's hands on an app's page; this app in Chrome or here
     onEvent: on('apps:event'),
+  },
+  // (round 30) Hearth's Chrome (chromemain.js): Google sign-in in the owner's real Chrome, driven over the DevTools protocol
+  chrome: {
+    status: call('chrome:status'), open: call('chrome:open'), page: call('chrome:page'), everyday: call('chrome:everyday'), signIn: call('chrome:signIn'),
+    quit: call('chrome:quit'), profile: call('chrome:profile'), pref: call('chrome:pref'), onEvent: on('chrome:event'), onOffer: on('chrome:offer'),
   },
   // (round 20) jank watch (jankmain.js): main loop lag + GPU events since the last take, culprits' line numbers, display / GPU
   jank: { take: call('jank:take'), info: call('jank:info'), lines: call('jank:lines'), profile: call('jank:profile'), busy: (b) => ipcRenderer.send('jank:busy', b), off: (o) => ipcRenderer.send('jank:off', o) },

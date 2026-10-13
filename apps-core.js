@@ -158,7 +158,30 @@ const AppsCore = (() => {
     return Boolean(ha && hb && base(ha) === base(hb));
   }
 
-  return { EXT, TARGETS, kindOf, routesFor, palette, sunoPrompt, splitSuno, colorWords, safeName, hostOf, sameSite };
+  // (round 30, chrome) the script that fills a box on an app's page like typing and reads it back (Suno's lyrics /
+  // style boxes): the app window's chrome runs it in its webview, appsmain.js in the app's Chrome window
+  const fillScript = (text, field, strict) => `(() => {
+    const text = ${JSON.stringify(text)}; const field = ${JSON.stringify(field)}; const strict = ${strict ? 'true' : 'false'};
+    const vis = (n) => { const r = n.getBoundingClientRect(); const s = getComputedStyle(n); return r.width > 20 && r.height > 10 && s.visibility !== 'hidden' && s.display !== 'none' && !n.disabled && !n.readOnly; };
+    const all = [...document.querySelectorAll('textarea, input[type=text], input:not([type]), input[type=search], [contenteditable=""], [contenteditable="true"]')].filter(vis);
+    const label = (n) => [n.placeholder, n.getAttribute('aria-label'), n.name, n.id, n.getAttribute('data-testid'), n.closest('label') && n.closest('label').textContent].filter(Boolean).join(' ').toLowerCase();
+    const re = { lyrics: /lyric|song text|words/, style: /style|genre|tags|sound/, title: /title|song name/, prompt: /prompt|describe|description|idea/ }[field];
+    const act = document.activeElement && all.includes(document.activeElement) ? document.activeElement : null;
+    const hit = re && all.find((n) => re.test(label(n)));
+    if (strict && re && !hit) return { ok: false, error: 'no ' + field + ' box' };
+    const t = hit || act || all.find((n) => n.tagName === 'TEXTAREA') || all[0];
+    if (!t) return { ok: false, error: 'no text box on this page' };
+    t.focus();
+    if (t.isContentEditable) { document.execCommand('selectAll'); document.execCommand('insertText', false, text); }
+    else {
+      const proto = t.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      Object.getOwnPropertyDescriptor(proto, 'value').set.call(t, text);
+      t.dispatchEvent(new Event('input', { bubbles: true })); t.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    return { ok: true, field, box: label(t).trim().slice(0, 60), length: String(t.value != null ? t.value : t.textContent).length };
+  })()`;
+
+  return { EXT, TARGETS, kindOf, routesFor, palette, sunoPrompt, splitSuno, colorWords, safeName, hostOf, sameSite, fillScript };
 })();
 if (typeof module !== 'undefined') module.exports = AppsCore;
 if (typeof window !== 'undefined') window.AppsCore = AppsCore;

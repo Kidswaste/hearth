@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld('appWin', {
   pasteResult: call('appwin:pasteResult'),
   signOut: call('appwin:signOut'),
   hide: call('appwin:hide'),
+  chrome: call('appwin:chrome'), // (round 30) open this app in Chrome (Google sign-in), the everyday Chrome, or back here
+  onOffer: on('appwin:offer'),
   onDownloads: on('appwin:downloads'),
   onPaste: on('appwin:paste'),
   onNavigate: on('appwin:navigate'),

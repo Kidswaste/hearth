@@ -94,9 +94,29 @@
     for (const [g, list] of Object.entries(groups)) { rows.push(mk('div', { class: 'aw-sub', text: g })); for (const a of list) rows.push(item(`${a.icon || '▣'} ${a.name}`, () => window.appWin.openApp(a.id), a.hint || '')); }
     pop($('aw-app'), rows);
   }
+  // ---------- (round 30, chrome) Google sign-in: this app in the owner's Chrome ----------
+  async function toChrome() {
+    toast('Opening in Chrome…', 8000);
+    const r = await window.appWin.chrome('chrome');
+    if (r?.ok) { closeOffer(); toast(`${spec.name} is open in Chrome: sign in there, it stays signed in`, 5000); } else toast(r?.error || 'Chrome didn\'t open', 8000);
+  }
+  async function toEveryday() { const r = await window.appWin.chrome('everyday'); toast(r?.ok ? `Opened in ${r.how || 'your browser'} (your own logins; Hearth can't drive it there)` : (r?.error || 'Not opened'), 5000); }
+  const closeOffer = () => $('aw-offer')?.remove();
+  function offer() {
+    if ($('aw-offer')) return;
+    const bar = mk('div', { class: 'aw-offer', id: 'aw-offer', role: 'alert' },
+      mk('span', { text: 'Google won\'t sign you in inside Hearth\'s window. Your real Chrome works, and Hearth can still use the page there.' }),
+      mk('button', { class: 'aw-chip aw-go', text: 'Sign in with Chrome instead', on: { click: toChrome } }),
+      mk('button', { class: 'aw-chip', text: 'My everyday Chrome', title: 'Open this page in the Chrome you use every day (your own logins; Hearth can\'t drive it there)', on: { click: toEveryday } }),
+      mk('button', { class: 'aw-btn', text: '✕', title: 'Not now', on: { click: closeOffer } }));
+    document.body.insertBefore(bar, $('aw-main'));
+  }
   function morePop() {
     const zoom = (d) => { const z = d ? Math.max(0.3, Math.min(3, view.getZoomFactor() + d)) : 1; view.setZoomFactor(z); toast(`Zoom ${Math.round(z * 100)} %`, 1200); };
     pop($('aw-more'), [
+      item('Open in Chrome (for Google sign-in)', toChrome, 'from now on'),
+      item('Open this page in my everyday Chrome', toEveryday),
+      mk('hr'),
       ...(spec.actions || []).map((a) => item(a.label, () => window.appWin.action(a.id, { url, title }), a.hint)),
       (spec.actions || []).length ? mk('hr') : null,
       item('Copy the address', () => go('copy-link'), '⌘L'.replace('⌘', spec.mac ? '⌘' : 'Ctrl+')),
@@ -111,26 +131,7 @@
   }
 
   // ---------- text into the page (Suno's boxes): fill a box like typing, read it back ----------
-  const FILL = (text, field, strict) => `(() => {
-    const text = ${JSON.stringify(text)}; const field = ${JSON.stringify(field)}; const strict = ${strict ? 'true' : 'false'};
-    const vis = (n) => { const r = n.getBoundingClientRect(); const s = getComputedStyle(n); return r.width > 20 && r.height > 10 && s.visibility !== 'hidden' && s.display !== 'none' && !n.disabled && !n.readOnly; };
-    const all = [...document.querySelectorAll('textarea, input[type=text], input:not([type]), input[type=search], [contenteditable=""], [contenteditable="true"]')].filter(vis);
-    const label = (n) => [n.placeholder, n.getAttribute('aria-label'), n.name, n.id, n.getAttribute('data-testid'), n.closest('label') && n.closest('label').textContent].filter(Boolean).join(' ').toLowerCase();
-    const re = { lyrics: /lyric|song text|words/, style: /style|genre|tags|sound/, title: /title|song name/, prompt: /prompt|describe|description|idea/ }[field];
-    const act = document.activeElement && all.includes(document.activeElement) ? document.activeElement : null;
-    const hit = re && all.find((n) => re.test(label(n)));
-    if (strict && re && !hit) return { ok: false, error: 'no ' + field + ' box' };
-    const t = hit || act || all.find((n) => n.tagName === 'TEXTAREA') || all[0];
-    if (!t) return { ok: false, error: 'no text box on this page' };
-    t.focus();
-    if (t.isContentEditable) { document.execCommand('selectAll'); document.execCommand('insertText', false, text); }
-    else {
-      const proto = t.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-      Object.getOwnPropertyDescriptor(proto, 'value').set.call(t, text);
-      t.dispatchEvent(new Event('input', { bubbles: true })); t.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-    return { ok: true, field, box: label(t).trim().slice(0, 60), length: String(t.value != null ? t.value : t.textContent).length };
-  })()`;
+  const FILL = (text, field, strict) => AppsCore.fillScript(text, field, strict); // (round 30: shared with apps in Chrome, apps-core.js)
   async function pasteIn({ reqId, text, field, strict }) {
     let r = { ok: false, error: 'The page isn\'t ready' };
     for (let i = 0; i < 20 && view?.isLoading?.(); i += 1) await new Promise((res) => setTimeout(res, 300));
@@ -183,6 +184,7 @@
     window.appWin.onNavigate((u) => { if (/^https?:/i.test(u)) view.loadURL(u).catch(() => {}); });
     window.appWin.onKey(go);
     window.appWin.onPaste(pasteIn);
+    window.appWin.onOffer?.(offer); // (round 30) Google refused the sign-in here: offer Chrome
     addEventListener('keydown', (e) => {
       const mod = e.ctrlKey || e.metaKey; const k = e.key.toLowerCase();
       if ((mod && k === 'r') || e.key === 'F5') { e.preventDefault(); go('reload'); } else if ((e.altKey && e.key === 'ArrowLeft') || (mod && k === '[')) go('back');

@@ -99,7 +99,10 @@ const Options = (() => {
     // (round 26, connections.js) the owner's own MCP servers: ＋ Add a connection, per-AI on / off, Test
     const own = el('div', { class: 'opt-conns' });
     Promise.resolve(typeof Lazy !== 'undefined' ? Lazy.load('connections') : null).then(() => { if (typeof Connections !== 'undefined') own.replaceChildren(Connections.section(a.id)); }).catch(() => {});
-    return sec('What it can use', 'Connections it reaches by itself when it helps: no need to paste things into your message.', ...rows, apps, own);
+    // (round 30, chrome-ui.js) Chrome for Google sign-in: found or not, Open the Hearth Chrome, Sign in, what opens there
+    const chrome = el('div', { class: 'opt-chrome' });
+    if (window.hub?.chrome) Promise.resolve(typeof Lazy !== 'undefined' ? Lazy.load('chrome') : null).then(() => { if (typeof ChromeUI !== 'undefined') chrome.replaceChildren(ChromeUI.section()); }).catch(() => {});
+    return sec('What it can use', 'Connections it reaches by itself when it helps: no need to paste things into your message.', ...rows, apps, own, chrome);
   }
   async function loadApps(a, box, refresh = false) {
     box.replaceChildren(el('p', { class: 'opt-hint', text: 'Connected apps: looking…' }));
