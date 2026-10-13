@@ -85,12 +85,12 @@ const PinboardHook = (() => {
   // ---------- Are.na and Cosmos as app windows (Unsplash and Pinterest are there already) ----------
   function registerApps() {
     const A = window.Apps;
-    if (!A?.register) return;
+    if (!A?.register || typeof A.get !== 'function') return; // (the real registry only)
     const add = (d) => { try { if (!A.get?.(d.id)) A.register({ group: 'Assets', routes: { image: 'board' }, ...d }); } catch (err) { console.warn('pinboard app', err); } };
     add({ id: 'arena', name: 'Are.na', icon: '◼', url: 'https://www.are.na', desc: 'Visual research: find images like your board (board ⋯ › Find images like this…)', keywords: 'arena are.na inspiration research blocks moodboard' });
     add({ id: 'cosmos', name: 'Cosmos', icon: '✳', url: 'https://www.cosmos.so', desc: 'Inspiration: find images like your board (board ⋯ › Find images like this…)', keywords: 'cosmos inspiration moodboard aesthetic' });
   }
-  if (document.readyState === 'complete') setTimeout(registerApps, 500); else addEventListener('load', () => setTimeout(registerApps, 500), { once: true });
+  if (typeof Lazy !== 'undefined' && Lazy.when) Lazy.when('apps', registerApps); else if (document.readyState === 'complete') setTimeout(registerApps, 500); else addEventListener('load', () => setTimeout(registerApps, 500), { once: true });
 
   // ---------- the command (the app's internal API) ----------
   const SITE_WORDS = ['pinterest', 'unsplash', 'arena', 'cosmos'];

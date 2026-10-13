@@ -212,7 +212,7 @@ const Pinboard = (() => {
       const r = st.res;
       status.textContent = st.busy ? `Looking on ${s.name}…` : st.err ? st.err
         : r?.signin ? `${s.name} asks you to sign in: do it in ${r.where} (Hearth never sees your password), then Search again.`
-          : r ? `${st.pins.length} from ${s.name} (in ${r.where})${r.dupes ? ` · ${r.dupes} already on your board` : ''}${st.addedN ? ` · ${st.addedN} added` : ''}${st.pins.length ? ' · click to pick' : ''}` : '';
+          : r ? `${st.pins.length} from ${s.name} (${r.preloaded ? 'suggested in a chat' : `in ${r.where}`})${r.dupes ? ` · ${r.dupes} already on your board` : ''}${st.addedN ? ` · ${st.addedN} added` : ''}${st.pins.length ? ' · click to pick' : ''}` : '';
       status.classList.toggle('warn', Boolean(st.err || r?.signin));
       const have = new Set([...grid.children].map((n) => n.dataset.key));
       const want = new Set(st.pins.map((p) => p.key));
@@ -245,7 +245,7 @@ const Pinboard = (() => {
       try { st.res = await more(st.site); st.pins = C.merge(st.pins, st.res.pins); } catch (err) { st.err = err.message; }
       st.busy = false; paint();
     }
-    if (preload?.pins?.length) { st.pins = preload.pins.slice(); st.res = { site: st.site, pins: st.pins, dupes: 0, where: 'the chat', end: true }; paint(); } else { paint(); run(); }
+    if (preload?.pins?.length) { st.pins = preload.pins.slice(); st.res = { site: st.site, pins: st.pins, dupes: 0, where: 'the chat', end: true, preloaded: true }; paint(); } else { paint(); run(); }
     return ui;
   }
   function close() { ui?.dlg?.remove(); ui = null; }
