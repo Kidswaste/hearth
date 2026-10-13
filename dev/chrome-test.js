@@ -164,6 +164,29 @@ async function t(name, fn) { try { await fn(); passed += 1; console.log(`ok   ${
     assert.strictEqual(C.activePort(d), 45123);
     fs.rmSync(d, { recursive: true, force: true });
   });
+  // (round 34, lightweight) the Hearth Chrome out of sight with no page left quits by itself (HEARTH_CHROME_IDLE_MS),
+  // never while a page is open
+  await t('idle: no page left for a while → it quits; a page open → it stays', async () => {
+    const fs = require('fs'); const os = require('os');
+    const g = await fake.start();
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-chrome-idle-'));
+    fs.writeFileSync(path.join(d, 'DevToolsActivePort'), `${g.port}\n/devtools/browser/x`);
+    Object.assign(process.env, { HEARTH_CHROME_PROFILE: d, HEARTH_CHROME_IDLE_MS: '600' });
+    const M = require(path.join(__dirname, '..', 'chromemain.js'));
+    M.init({ dataDir: d });
+    const s0 = await M.status();
+    assert.ok(s0.controlled, 'attached to the running one');
+    const keep = await M.browser().open('about:blank');
+    await new Promise((r) => setTimeout(r, 1200));
+    assert.ok(M.browser() && (await M.status()).idleQuits === 0, 'a page open: still running');
+    await M.browser().close(keep);
+    for (const id of [...g.targets.keys()]) await M.browser().close(id);
+    await new Promise((r) => setTimeout(r, 1600));
+    assert.ok(g.log.includes('Browser.close'), 'asked to close');
+    assert.ok(!M.browser(), 'let go');
+    delete process.env.HEARTH_CHROME_IDLE_MS; delete process.env.HEARTH_CHROME_PROFILE;
+    g.stop(); fs.rmSync(d, { recursive: true, force: true });
+  });
   f.stop();
 
   console.log(`\n${passed} passed, ${failed} failed`);
