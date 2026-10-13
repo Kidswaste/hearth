@@ -120,7 +120,8 @@ line count is lower than the number of upgrades).
 | A faster start (round 29): the first frame no longer waits for the Lab (reload first paint ≈ 808 → 469 ms, start long tasks −74 %), the main process makes the window first (36 → 7 ms before it), the command bar and Flows load after the first screen (−205 KB JS) with their keys working from the start, the Lab starts building on the press of its button | [fastboot.md](fastboot.md) | 13 |
 | Song parts (round 30): react to the drums, the bass or the voice separately (a local split, no AI), in sketches, the ♪ chips, /react-to and presets | [stems.md](stems.md) | 26 |
 | Chrome out of sight (round 30): Hearth's Chrome runs hidden and its pages are shown and used inside Hearth's own windows; real Chrome appears only to sign in | [chromeview.md](chromeview.md) | 35 |
-| **Total** | | **13,324** |
+| Token saver (round 31): every AI sends less with each message (plain Claude chat 869 → 572 tokens, board tools 1,977 → 1,444…), tool details on demand, memory sent only when relevant for big memories, a budget test | [tokensaver.md](tokensaver.md) | 16 |
+| **Total** | | **13,340** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.
