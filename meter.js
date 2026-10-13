@@ -56,6 +56,8 @@ const Meter = (() => {
   };
   const full = (n) => Math.round(n || 0).toLocaleString();
   const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+  // (round 32, cachewise) tokens the prompt cache saved: reads cost ≈ 0.1× fresh input, Claude's writes ≈ 1.25× (cachewise.js)
+  const cacheSaved = (c, w) => Math.max(0, Math.round((c || 0) * 0.9 - (w || 0) * 0.25));
   const money = (n) => (n >= 100 ? `$${Math.round(n)}` : `$${(n || 0).toFixed(2)}`);
   const SPARK = '▁▂▃▄▅▆▇█';
   const spark = (vals) => { const max = Math.max(1, ...vals); return vals.map((v) => (v ? SPARK[Math.min(7, Math.floor((v / max) * 7.999))] : '·')).join(''); };
@@ -307,10 +309,10 @@ const Meter = (() => {
         ? [`● ${fmt(liveEst)}↑`, `Streaming now: about ${full(liveEst)} output tokens so far (estimated from ${full([...live.values()].reduce((s, l) => s + l.chars + l.think, 0))} characters; snaps to the real count when the reply ends)${live.size > 1 ? ` · ${live.size} replies running` : ''}`, 'is-live']
         : snapFresh ? [`✓ ${fmt(lastSnap.usage.input)}→${fmt(lastSnap.usage.output)}`, `Last reply (${agentName(lastSnap.agentId)}): ${full(lastSnap.usage.input)} in · ${full(lastSnap.usage.output)} out${lastSnap.est ? ` (estimated ${full(lastSnap.est)} out while streaming)` : ''}`, 'is-snap']
           : ['○ idle', 'Nothing streaming right now. Live token count shows here while a reply streams.', ''],
-      chat: [cs ? `chat ${fmt(tot(cs))}` : 'chat –', cs ? `This chat: ${full(cs.i)} in (${full(cs.c || 0)} cached) · ${full(cs.o)} out · ${cs.r} replies` : 'This chat has no recorded replies yet', ''],
+      chat: [cs ? `chat ${fmt(tot(cs))}` : 'chat –', cs ? `This chat: ${full(cs.i)} in (${full(cs.c || 0)} cached) · ${full(cs.o)} out · ${cs.r} replies${cacheSaved(cs.c, cs.w) ? ` · ≈ ${full(cacheSaved(cs.c, cs.w))} saved by the cache` : ''}` : 'This chat has no recorded replies yet', ''],
       today: [`today ${fmt(tot(today))}`, `Today: ${full(today.i)} in · ${full(today.o)} out · ${today.r || 0} replies${Object.keys(prefs.budgets).length ? ' · budgets set' : ''}`, budgetState() ? `b-${budgetState()}` : ''],
       split: [null, `Today: ${engineLabel('claude')} ${full(tot(sp.claude))} · ${engineLabel('codex')} ${full(tot(sp.codex))}${tot(sp.other) ? ` · other ${full(tot(sp.other))}` : ''}`, ''],
-      cache: [`⚡${pct(today.c || 0, today.i || 0)}%`, `Cache hits today: ${full(today.c || 0)} of ${full(today.i || 0)} input tokens came from the prompt cache (cheaper and faster)`, ''],
+      cache: [`⚡${pct(today.c || 0, today.i || 0)}%`, `Cache hits today: ${full(today.c || 0)} of ${full(today.i || 0)} input tokens came from the prompt cache (cheaper and faster) · ≈ ${full(cacheSaved(today.c, today.w))} tokens saved by the cache`, ''],
       ctx: [null, ctx ? `Context: each message in this chat sends about ${full(ctx)} tokens (${pct(ctx, win)}% of a ${fmt(win)} window). Click to compact.` : 'Context fill of this chat (shows after its first reply)', ctx >= win * 0.55 ? 'b-over' : ctx >= win * 0.3 ? 'b-warn' : ''],
       replies: [`${today.r || 0} ↩`, `${today.r || 0} replies today${today.tools ? ` · ${today.tools} tool calls` : ''}`, ''],
       avg: [`⌀ ${fmt(today.r ? tot(today) / today.r : 0)}`, 'Average tokens per reply today (input + output)', ''],
@@ -381,6 +383,7 @@ const Meter = (() => {
     const secs = m.ms ? m.ms / 1000 : 0;
     const title = [`${full(u.input)} input tokens${u.cached ? ` (${full(u.cached)} from cache, ${pct(u.cached, u.input)}%)` : ''}`,
       u.cacheWrite ? `${full(u.cacheWrite)} written to cache` : null,
+      cacheSaved(u.cached, u.cacheWrite) ? `≈ ${full(cacheSaved(u.cached, u.cacheWrite))} saved by the cache` : null,
       `${full(u.output)} output tokens`, secs ? `${secs.toFixed(1)} s · ${Math.round(u.output / Math.max(secs, 0.1))} tokens/s` : null,
       u.cost ? `≈ ${money(u.cost)} at API prices (free on your subscription)` : null].filter(Boolean).join('\n');
     if (prefs.badges === 'off') return el('span', { text: `${fmt(u.input)} in · ${fmt(u.output)} out${secs ? ` · ${secs.toFixed(1)}s` : ''}` });
@@ -597,7 +600,7 @@ const Meter = (() => {
         ['claude', 'codex', 'other'].filter((e) => tot(sp[e])).map((e) => el('i', { class: `e-${e}`, style: { flex: tot(sp[e]) / sum }, title: `${engineLabel(e)}: ${full(tot(sp[e]))} tokens · ${sp[e].r || 0} replies`, text: `${engineLabel(e)} ${fmt(tot(sp[e]))}` }))));
       const s = sumOf(days);
       out.push(el('div', { class: 'mt-rings' },
-        el('div', {}, ring(pct(s.c || 0, s.i || 0), { stroke: 'var(--meter-info)' }), el('span', { text: 'cache hits' })),
+        el('div', {}, ring(pct(s.c || 0, s.i || 0), { stroke: 'var(--meter-info)' }), el('span', { text: 'cache hits', title: `≈ ${full(cacheSaved(s.c, s.w))} tokens saved by the cache` }, cacheSaved(s.c, s.w) ? el('small', { text: ` · ≈ ${fmt(cacheSaved(s.c, s.w))} saved` }) : null)),
         el('div', {}, ring(pct(s.o || 0, tot(s)), { stroke: 'var(--meter-active)' }), el('span', { text: 'output share' })),
         ...Object.entries(prefs.budgets).filter(([, b]) => b).map(([a, b]) => el('div', {}, ring(pct(tot(by('a', [dayKey()])[a]), b), { stroke: budgetState(a) === 'over' ? 'var(--meter-over)' : budgetState(a) === 'warn' ? 'var(--meter-warn)' : 'var(--meter-ok)' }), el('span', { text: `${agentName(a)} budget` })))));
       const cs = chatStat(activeChatId());
@@ -605,7 +608,7 @@ const Meter = (() => {
         const win = windowFor(activeAgentId(), activeChatId());
         out.push(el('h4', { text: 'This chat' }), el('div', { class: 'mt-chatline' },
           ring(pct(cs.ctx || 0, win), { stroke: (cs.ctx || 0) > win * 0.55 ? 'var(--meter-over)' : 'var(--meter-ai)', label: fmt(cs.ctx || 0) }),
-          el('span', { text: `${full(tot(cs))} tokens over ${cs.r} replies · context now ${full(cs.ctx || 0)} of ${fmt(win)} · peak ${fmt(cs.peak || 0)}` }),
+          el('span', { text: `${full(tot(cs))} tokens over ${cs.r} replies · context now ${full(cs.ctx || 0)} of ${fmt(win)} · peak ${fmt(cs.peak || 0)}${cacheSaved(cs.c, cs.w) ? ` · ≈ ${fmt(cacheSaved(cs.c, cs.w))} saved by the cache` : ''}` }),
           el('button', { type: 'button', class: 'ghost small', text: '🗜 Compact', title: 'Summarize the conversation so each message sends less (the chat keeps every message)', on: { click: () => { if (compact()) dlg?.close(); } } })));
       }
       if (range !== 'today' && allDays().length >= 7) {
@@ -899,7 +902,7 @@ const Meter = (() => {
     R({ name: 'cache', args: '[today|week|month|all]', desc: 'Prompt-cache hit ratio', complete: () => RANGE_ARGS, run: async (args) => {
       await refresh();
       const r = pickRange(args) || 'today'; const s = sumOf(rangeDays(r));
-      return `Cache hits (${r}): **${pct(s.c || 0, s.i || 0)}%** · ${full(s.c || 0)} of ${full(s.i || 0)} input tokens${s.w ? ` · ${full(s.w)} written to cache` : ''}`;
+      return `Cache hits (${r}): **${pct(s.c || 0, s.i || 0)}%** · ${full(s.c || 0)} of ${full(s.i || 0)} input tokens${s.w ? ` · ${full(s.w)} written to cache` : ''} · **≈ ${full(cacheSaved(s.c, s.w))} tokens saved by the cache**`;
     } });
     R({ name: 'models', args: '[range]', desc: 'Tokens per model', complete: () => RANGE_ARGS, run: async (args) => { await refresh(); return dimReport('m', pickRange(args) || 'week', (m) => m); } });
     R({ name: 'by-agent', aliases: ['agents-usage'], args: '[range]', desc: 'Tokens per agent', complete: () => RANGE_ARGS, run: async (args) => { await refresh(); return dimReport('a', pickRange(args) || 'week', agentName); } });

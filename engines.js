@@ -310,34 +310,22 @@ function toolGuide(key) {
 const SUGGEST_LINE = 'When it helps, end with up to 3 short next steps as <suggest>…</suggest> (they become buttons; under 8 words each).';
 const REMEMBER_LINE = 'Rarely, when the user shares a lasting fact or preference worth keeping for future chats (not one-off details), add <remember>short fact</remember> on its own line at the very end of your reply; never mention these tags.';
 
-function buildPrompt(agent) {
+// (round 32, cachewise) The prompt is built in two parts so the engines' prompt caches keep hitting:
+//   head: what only changes with an app update or a tool set (the role line, tool guides, habits, the director part);
+//   tail: what the owner changes mid-chat (personality, standing instructions, files / apps, saved memory), the least
+//         likely to change first. Codex (Astra) caches by prefix, so a changed instruction leaves the whole head cached;
+//         Claude re-reads its system prompt after any change, and a same-chat prompt is byte-identical message after message.
+// Nothing here depends on the time, a counter, a random id or a Set / Map's order. session (optional: the chat's engine
+// session, saved with the chat): saved memory is frozen per session while it only grows (memoryFor below).
+function buildPrompt(agent, session = null) {
   const usesApps = agent.engine === 'claude' ? enabledConnectors(agent).length > 0 : Boolean(agent.chatgptApps);
   const folder = fileFolder(agent);
   const web = agent.engine === 'codex' && WEB_SEARCH.includes(agent.webSearch) && agent.webSearch !== 'disabled';
-  const parts = [
-    agent.systemPrompt
-      // (round 31, tokensaver) a lean Three Director's role is set by its own part below: no second "You are…" line
-      || (leanDirector(agent) ? '' : `You are ${agent.name}, chatting with the user in their personal desktop app. `
-        + 'Answer conversationally and directly, using Markdown when it helps.'),
-  ];
-  // (round 26) ⋯ AI setup: the user's standing instructions, each one on / off
-  const rules = (Array.isArray(agent.instructions) ? agent.instructions : []).filter((r) => r && r.on !== false && String(r.text || '').trim()).slice(0, 40).map((r) => `- ${String(r.text).trim().slice(0, 600)}`);
-  if (rules.length) parts.push(`The user's standing instructions (always follow them):\n${rules.join('\n')}`);
-  const acc = accessOf(agent);
-  if (acc) parts.push(accessLine(agent, acc));
-  if (folder && agent.engine === 'codex') {
-    parts.push(agent.codexFiles === 'edit'
-      ? `You can read and edit files in the project folder ${folder}: look with short read-only commands (ls, cat, rg, sed -n) and edit with apply_patch. `
-        + 'Commands run in a sandbox with no network; never run builds, installs, deletes or anything outside that folder. Read before you edit, make focused changes, and list the files you changed at the end.'
-      : `You can read files in the project folder ${folder} with short read-only commands (ls, cat, rg, sed -n). Stay inside that folder. `
-        + 'You cannot change files: describe the edits instead, and tell the user what to run or test themselves.');
-  } else if (folder) {
-    parts.push(`You can read and edit files in the project folder ${folder} with your file tools `
-      + '(Read, Edit, Write, Glob, Grep). Read before you edit, make focused changes, and list the files you changed '
-      + 'at the end. You cannot run commands, so tell the user what to run or test themselves.');
-  }
-  if (usesApps) {
-    parts.push('You can use the connected apps in your tools (for example email, documents or calendars) when the user asks about them or when it clearly helps.');
+  const parts = [];
+  // ---- head ----
+  // (round 31, tokensaver) a lean Three Director's role is set by its own part below: no second "You are…" line
+  if (!agent.systemPrompt && !leanDirector(agent)) {
+    parts.push(`You are ${agent.name}, chatting with the user in their personal desktop app. Answer conversationally and directly, using Markdown when it helps.`);
   }
   if (gameTools(agent)) {
     parts.push('A live debug instance of the user\'s game Forgeheart runs right next to this chat, and you control it with the forge_* tools. '
@@ -367,8 +355,9 @@ function buildPrompt(agent) {
       + 'Change code with three_edit_code (small finds), a new element with three_add_layer, rewrite with three_set_code only when your angle needs it. Fix errors the results report. Stay within your call budget; end with one small three_screenshot, then one line: what you changed.');
   } else
   // Lean (default): the three-lab tool guide carries the how-to, so the prompt only sets the role. 'full' keeps the long version.
+  // (round 32) the same role line with a personality too (it sits in the tail): changing one keeps this part cached
   if (sets.includes('threeTools') && agent.toolMode !== 'full') {
-    parts.push(`${agent.systemPrompt ? 'You are the Three Director.' : `You are ${agent.name === 'Three Director' ? 'the Three Director' : `${agent.name}, the Three Director`}, chatting with the user in their desktop app.`} Prefer good-looking defaults (tone mapping, environment light, smooth motion, sensible performance) and small edits over rewrites.\n`
+    parts.push(`You are ${agent.name === 'Three Director' ? 'the Three Director' : `${agent.name}, the Three Director`}, chatting with the user in their desktop app. Prefer good-looking defaults (tone mapping, environment light, smooth motion, sensible performance) and small edits over rewrites.\n`
       + threeGuide().CORE
       + (nodesOn(agent) ? `\n${threeGuide().NODES_LINE}` : '')
       + `\n${hearthMap().LINE('three_do help')}`);
@@ -388,19 +377,59 @@ function buildPrompt(agent) {
   }
   if (agent.crewOn && sets.includes('threeTools') && agent.toolMode !== 'crew') parts.push('Crew (on for this chat): for an open look question, three_do crew {op: "start", n: 2–6, brief, angles: [one per helper]} explores variations in parallel on copies of this scene (the owner approves the cost first; it answers when they finish). Then crew {op: "pick", n, reason} when asked to choose, or {op: "copy", from: n, layer} / {op: "code", n, layer} to merge parts.');
   if (web) parts.push('You can search the web when the answer depends on recent or specific facts; say briefly where facts come from.');
+  if (agent.autoMemory !== false) parts.push(REMEMBER_LINE);
+  // ---- tail: what the owner changes mid-chat ----
+  if (agent.systemPrompt) parts.push(agent.systemPrompt); // the personality (⋯ AI setup) or a run's persona
+  // (round 26) ⋯ AI setup: the user's standing instructions, each one on / off
+  const rules = (Array.isArray(agent.instructions) ? agent.instructions : []).filter((r) => r && r.on !== false && String(r.text || '').trim()).slice(0, 40).map((r) => `- ${String(r.text).trim().slice(0, 600)}`);
+  if (rules.length) parts.push(`The user's standing instructions (always follow them):\n${rules.join('\n')}`);
+  const acc = accessOf(agent);
+  if (acc) parts.push(accessLine(agent, acc));
+  if (folder && agent.engine === 'codex') {
+    parts.push(agent.codexFiles === 'edit'
+      ? `You can read and edit files in the project folder ${folder}: look with short read-only commands (ls, cat, rg, sed -n) and edit with apply_patch. `
+        + 'Commands run in a sandbox with no network; never run builds, installs, deletes or anything outside that folder. Read before you edit, make focused changes, and list the files you changed at the end.'
+      : `You can read files in the project folder ${folder} with short read-only commands (ls, cat, rg, sed -n). Stay inside that folder. `
+        + 'You cannot change files: describe the edits instead, and tell the user what to run or test themselves.');
+  } else if (folder) {
+    parts.push(`You can read and edit files in the project folder ${folder} with your file tools `
+      + '(Read, Edit, Write, Glob, Grep). Read before you edit, make focused changes, and list the files you changed '
+      + 'at the end. You cannot run commands, so tell the user what to run or test themselves.');
+  }
+  if (usesApps) {
+    parts.push('You can use the connected apps in your tools (for example email, documents or calendars) when the user asks about them or when it clearly helps.');
+  }
   if (!folder && !acc && !usesApps && !sets.length && !conns(agent).length) parts.push(web ? 'Apart from web search you have no tools: never try to run commands or read files.' : 'You have no tools: never try to run commands, read files or browse the web.');
+  // saved memory last: it is what changes most often
+  const notes = memoryFor(agent, session);
+  if (notes) parts.push(`What you remember about the user (saved notes, keep them in mind):\n${notes}`);
+  return parts.filter(Boolean).join('\n\n');
+}
+
+// (round 24, context) /memory relevant on: the notes leave the system prompt; chat-memory.js sends only the facts a
+// message is about; (round 31, tokensaver) by default too once they are big (≈ 300 tokens, context-core.js memoryRelevant).
+// (round 32, cachewise) Within one engine session the notes are frozen while they only grow: a fact saved mid-chat (the
+// AI's own <remember>, or another chat's) no longer changes the prompt, which made the next message re-read the whole
+// chat without the cache. The AI that saved it already has it in this chat's history; every new chat gets it. An edited
+// or deleted fact applies at once. session.mem: the notes this session's prompt carries (saved with the chat).
+function memoryFor(agent, session) {
   const memory = getMemory();
   const notes = [memory.shared, memory.agents?.[agent.id]].map((m) => (m || '').trim()).filter(Boolean);
-  // (round 24, context) /memory relevant on: the notes leave the system prompt; chat-memory.js sends only the facts a message is about
-  // (round 31, tokensaver) and by default once they are big (≈ 300 tokens, context-core.js memoryRelevant): the prompt
-  // stays small and stable (a new fact no longer changes it, so the prompt cache keeps the whole chat)
-  if (notes.length && !(CtxCore ? CtxCore.memoryRelevant(agent, memory) : agent.memoryWhenRelevant)) {
-    parts.push(`What you remember about the user (saved notes, keep them in mind):\n${notes.join('\n')}`);
-  }
-  if (agent.autoMemory !== false) {
-    parts.push(REMEMBER_LINE);
-  }
-  return parts.filter(Boolean).join('\n\n');
+  if (!notes.length || (CtxCore ? CtxCore.memoryRelevant(agent, memory) : agent.memoryWhenRelevant)) { if (session) delete session.mem; return ''; }
+  const now = notes.join('\n');
+  if (!session) return now;
+  const was = typeof session.mem === 'string' ? session.mem : null;
+  if (was !== null && session.id && onlyGrew(was, now)) return was;
+  session.mem = now;
+  return now;
+}
+// every line of the older notes is still there (anywhere): only facts were added
+function onlyGrew(was, now) {
+  if (was === now) return true;
+  const have = new Map();
+  for (const l of now.split('\n')) have.set(l, (have.get(l) || 0) + 1);
+  for (const l of was.split('\n')) { const n = have.get(l) || 0; if (!n) return false; have.set(l, n - 1); }
+  return true;
 }
 
 function readConnectorCache() {
@@ -408,11 +437,15 @@ function readConnectorCache() {
 }
 
 // Claude's connected apps come from your Claude account. Each one is off, read-only or full.
-function claudeToolArgs(agent, options = {}) {
+function claudeToolArgs(agent, options = {}, session = {}) {
   const enabled = new Map(enabledConnectors(agent));
   const folder = fileFolder(agent);
   // Attached images are read with the Read tool from the hub's attachments folder.
-  const images = Boolean(options.images?.length);
+  // (round 32, cachewise) …and the Read tool stays for the rest of that engine session: switching the tool list on for
+  // the picture's message and off again for the next one made both re-read the whole chat without the cache (one cached
+  // tool definition costs far less than one uncached re-read)
+  const images = Boolean(options.images?.length) || session?.readTool === true;
+  if (options.images?.length && session) session.readTool = true;
   // (round 14) a chat's own access level: reads in its folders are free, edits / commands go through Hearth's check
   const acc = accessOf(agent);
   const asks = accessAsks(agent);
@@ -525,8 +558,8 @@ function claudeArgs(agent, session, options = {}) {
   const args = [
     '-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
     '--setting-sources', 'project', '--disable-slash-commands',
-    ...withSubagents(claudeToolArgs(agent, options), options),
-    '--system-prompt', buildPrompt(agent),
+    ...withSubagents(claudeToolArgs(agent, options, session), options),
+    '--system-prompt', buildPrompt(agent, session),
   ];
   const model = options.model || agent.model;
   if (model) args.push('--model', model);
@@ -542,8 +575,8 @@ function claudeArgs(agent, session, options = {}) {
 
 // The instructions file is named after its content, so two runs of the same agent with different personas
 // (a council, a debate) never overwrite each other's prompt.
-function promptFile(agent) {
-  const text = buildPrompt(agent);
+function promptFile(agent, session = null) {
+  const text = buildPrompt(agent, session);
   const file = path.join(PROMPTS_DIR, `${agent.id}-${crypto.createHash('sha1').update(text).digest('hex').slice(0, 10)}.md`);
   if (!fs.existsSync(file)) fs.writeFileSync(file, text);
   else { try { const now = new Date(); fs.utimesSync(file, now, now); } catch { /* only keeps it from being pruned */ } }
@@ -562,7 +595,7 @@ function prunePrompts() {
 prunePrompts();
 
 function codexArgs(agent, session, options = {}) {
-  const file = promptFile(agent);
+  const file = promptFile(agent, session);
   const folder = fileFolder(agent);
   const acc = accessOf(agent);
   const edit = (Boolean(folder) && agent.codexFiles === 'edit') || Boolean(acc && acc.level !== 'read');
@@ -1437,7 +1470,7 @@ module.exports = {
   send, stop, stopAll, login, status, checkInstalls, checkEngine, fix, onInstalls, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
   doctor, EFFORTS, CODEX_DISABLED_FEATURES,
   // for tests (dev/astra-engine-test.js)
-  _test: { lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, POLICY_BLOCKED, codexOpen, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, chatGuideOn, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION },
+  _test: { lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, POLICY_BLOCKED, codexOpen, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, chatGuideOn, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION, memoryFor, onlyGrew },
   buildPrompt, HUB_TOOLSETS, // the director cost report (mcp/cost.js)
   busy: () => running.size, // (round 16) replies running now: background work (sync) waits a little longer meanwhile
 };
