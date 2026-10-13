@@ -84,7 +84,7 @@ const st = v().list.querySelector('.msg.streaming .stream-status');
 out.stallLine = st?.textContent;
 out.stallButtons = [...(st?.querySelectorAll('.live-acts button') || [])].map((b) => b.textContent);
 expect(/No news for/.test(out.stallLine || '') && /three screenshot/.test(out.stallLine || ''), `stalled: says so and names the tool (${out.stallLine})`);
-expect(out.stallButtons.join('|') === 'Wait|Stop|Stop & retry from here', 'stalled: Wait · Stop · Stop & retry from here');
+expect(out.stallButtons.slice(0, 3).join('|') === 'Wait|Stop|Stop & retry from here', 'stalled: Wait · Stop · Stop & retry from here (then ⚑ Report, devreport)');
 await smoke({ shot: '/tmp/liveness-stall.png' });
 st.querySelector('.live-acts button').click(); // Wait
 await wait(1200);
