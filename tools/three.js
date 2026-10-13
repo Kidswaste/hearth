@@ -191,6 +191,17 @@ const ThreeLab = (() => {
     if (!lazy) load();
     return {
       frame, send, reload: (fresh) => load(Boolean(fresh)), useStage,
+      // (round 29, bugbash) the picture on screen now as a small JPEG the page makes at once (the cover's own shot: no
+      // waiting for a frame, no full-size PNG), for chat switching's cross-fade (chat-scenes.js); null if not up in time
+      cover: (ms = 700) => new Promise((resolve) => {
+        if (target !== 'frame' || !ready) { resolve(null); return; }
+        let done = false;
+        const fin = (url) => { if (!done) { done = true; resolve(url || null); } };
+        const prev = coverShot;
+        coverShot = (url) => { prev?.(url); fin(url); };
+        try { deliver({ target: 'three-sandbox', type: 'screenshot', tag: 'cover' }); } catch { fin(null); }
+        setTimeout(() => fin(null), ms);
+      }),
       set onStageClosed(fn) { onStageClosed = fn; },
       get onStage() { return target === 'stage'; },
       get revision() { return ready?.revision; }, get ready() { return Boolean(ready); },
@@ -3770,6 +3781,7 @@ ${code}
         box.send({ type: 'screenshot', tag: 'thumb', max: Math.max(64, Math.round(max)) });
         setTimeout(() => mine(null), 10000); // a heavy scene can take a while to draw its next frame
       }),
+      coverShot: (ms) => box.cover(ms), // (round 29, bugbash) quick picture for chat switching (see box.cover)
       shot: () => new Promise((resolve) => {
         const prev = pendingShot;
         const mine = (url) => { prev?.(url); resolve(url); };
