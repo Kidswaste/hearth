@@ -48,7 +48,7 @@ try {
   const notes = H.config.connections.find((c) => c.name === 'Notes');
   out.saved = { command: notes.command, args: notes.args, env: Object.keys(notes.env || {}), tokens: notes.tokens };
   ok(notes.command === 'node' && notes.args[0] === server && notes.env.FAKE_MCP_TOKEN === SECRET, 'the command line and setting are stored');
-  ok(H.agent(C.id).connections?.[notes.id] === 'read', `on for Claude as Read only (${JSON.stringify(H.agent(C.id).connections)})`);
+  ok(await until(() => H.agent(C.id).connections?.[notes.id] === 'read', 5000), `on for Claude as Read only (${JSON.stringify(H.agent(C.id).connections)})`);
   ok(await until(() => /✓ fake-notes: 4 tools/.test(document.querySelector('.cn-box .cn-result')?.textContent || '')), 'the row shows the Test result');
   const sel = document.querySelector('.cn-box .cn-row select');
   out.options = [...(sel?.options || [])].map((o) => o.textContent);

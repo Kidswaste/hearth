@@ -32,7 +32,7 @@ try {
   // a chat worth re-reading (the fake engine's chats are tiny)
   chat.messages.at(-1).usage.input = 24000;
   // ⋯ AI setup → personality, mid-chat
-  Native.view(C.id).root.querySelector('.native-head button[title="Chat options"]').click();
+  Native.view(C.id).root.querySelector('.native-head button[aria-label="Chat options"]').click();
   const S = await until(() => document.querySelector('aside.opt-sheet'));
   const sec = [...S.querySelectorAll('.opt-sec')].find((s) => s.querySelector('.opt-h')?.textContent === 'Personality');
   const psel = sec.querySelector('select');

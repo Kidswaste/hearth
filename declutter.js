@@ -314,9 +314,10 @@ const Declutter = (() => {
       typeof ChatAttach !== 'undefined' ? { label: '＋ Attach from…', hint: 'board, captures, Lab, screen, renders', action: () => ChatAttach.menu(agentId, form.querySelector('.attach-btn') || form) } : null,
       { label: 'Attach files…', action: () => Native.pickFiles(agentId) },
       { label: 'Paste', action: async () => { try { const t = await navigator.clipboard.readText(); if (t) Native.insertDraft(agentId, t); } catch { v.input.focus(); toast('Press Ctrl+V in the chat box', { timeout: 1600 }); } } },
-      { label: 'Commands', hint: 'type /', items: () => [
+      // (round 33, simplify3) typed actions are the power users' way: one level deeper, in plain words
+      { label: 'Typed actions', more: true, items: () => [
         ...Commands.recent().slice(0, 6).map((n) => ({ label: `/${n}`, action: () => { v.input.value = `/${n} `; v.input.focus(); v.input.dispatchEvent(new Event('input')); } })),
-        { label: 'All commands…', key: '/help', action: cmd('/help', agentId) },
+        { label: 'Everything it can do…', action: cmd('/help', agentId) },
       ] },
       typeof Prompts !== 'undefined' ? { label: 'Prompt library…', action: () => Prompts.manage() } : null,
       form.querySelector('.collab-chip') ? { label: '⚇ Work with Astra…', action: () => setTimeout(() => form.querySelector('.collab-chip')?.click(), 0) } : null,

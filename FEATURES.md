@@ -1002,3 +1002,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ Deletes stay recoverable: a file on a network share or USB drive (no Recycle Bin, Windows would delete it for good) is left alone with a plain reason.
 - ✓ Windows' own errors (no Node.js, a half-removed npm install, a refused `.cmd`, the antivirus, a too-long command line) read as one plain sentence with the fixing button; stack traces never show.
 - ○ Simulated Windows only (`node dev/winpolish-test.js`, `sh dev/run-checks.sh winpolish`); the real check is the owner's next start on the PC.
+## Simpler AI setup (round 33, simplify3: docs/upgrades/simplify3.md)
+- ✓ ⋯ AI setup reads who → Personality → Instructions → What it can use (files, Hearth's tools, Connections, Hooks, Check this AI) → How hard it thinks; Memory, Habits, Spending and Missions folded at the end, each fold with a one-line state (48 → 18 controls at first sight, 1871 → 841 px).
+- ✓ Plain words: Files it can use, Everything it can do…, Your own connections; no /command left in the chat menus; Settings › Updates has one What's new…, the Meshy key moved to Advanced.
+- ○ Checked by `dev/checks/simplify3.js` (chat group).

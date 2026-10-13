@@ -564,12 +564,12 @@ const Access = (() => {
     const acc = effective(chat, agent);
     const ai = aiEffective(agent);
     const own = acc.from === 'chat';
-    return { label: 'Access', hint: `${R.LEVEL_LABEL[acc.level]}${own ? ' (this chat)' : ''}`, items: () => [
+    return { label: 'Files it can use', hint: `${R.LEVEL_LABEL[acc.level]}${own ? ' (this chat)' : ''}`, items: () => [
       { label: `As in AI setup (${R.LEVEL_LABEL[ai.level]})`, hint: 'every chat with this AI', checked: !own, action: () => { if (chat || chatNow(agentId)) { useAi(agentId, chat); toast(`Access: as in AI setup (${R.LEVEL_LABEL[ai.level]})`, { timeout: 1600 }); } } },
       ...R.LEVELS.map((l) => ({ label: R.LEVEL_LABEL[l], hint: `only this chat: ${R.LEVEL_HINT[l]}`, checked: own && acc.level === l, action: () => setLevel(agentId, l, chat).then(() => toast(`This chat: ${R.LEVEL_LABEL[l]}`, { timeout: 1600 })).catch((err) => toast(err.message, { type: 'error' })) })),
       '-',
-      { label: 'Folders, permissions and log…', key: '/access', action: () => panel(agentId) },
-      { label: 'Activity log', key: '/access log', action: () => logPanel(agentId) },
+      { label: 'Folders, permissions and log…', action: () => panel(agentId) },
+      { label: 'What it did with files…', action: () => logPanel(agentId) },
     ] };
   }
   function dialog(title, body, cls = '') {
@@ -753,7 +753,7 @@ const Access = (() => {
         run: (a, ctx) => command(a, ctx),
       });
     }
-    if (typeof Keys !== 'undefined') Keys.add({ area: 'Chat', keys: '⋯ → Access', what: 'what the chat may do with your files' });
+    if (typeof Keys !== 'undefined') Keys.add({ area: 'Chat', keys: 'Right-click ⋯ → Files it can use', what: 'what the chat may do with your files' });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 

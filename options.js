@@ -7,6 +7,10 @@
 //   Personality · Instructions (a list, each on / off) · What it can use (files, Hearth's tools, connected apps) ·
 //   Memory · Habits (checks its own work, suggests next steps…) · How hard it thinks.
 // Changes apply from its next message. Chips on top switch which AI you're setting up.
+// (round 33, simplify3) It reads top to bottom: who → Personality → Instructions → What it can use (files, then
+// Hearth's tools, Connections and Hooks folded, Check this AI) → How hard it thinks → the rest folded (Memory, Habits,
+// Spending, Missions: ◎ in the chat box is their main place). A fold shows one line about where it stands, and what
+// you open stays open (this computer only).
 const Options = (() => {
   let sheet = null; // { root, body, agentId, page }
   const natives = () => H.agents().filter((a) => a.mode === 'native');
@@ -26,6 +30,25 @@ const Options = (() => {
     return el('label', { class: 'opt-row', title: tip }, el('span', { class: 'opt-label', text: label }), b);
   }
   const sec = (title, hint, ...kids) => el('section', { class: 'opt-sec' }, el('h4', { class: 'opt-h', text: title }), hint ? el('p', { class: 'opt-hint', text: hint }) : null, ...kids);
+  // (round 33, simplify3) a long part folds: its title and one line about where it stands; open ones stay open
+  let opened = null;
+  const openSet = () => { if (!opened) { let v = []; try { v = store.get('options.open', []) || []; } catch { /* no storage */ } opened = new Set(Array.isArray(v) ? v : []); } return opened; };
+  function fold(key, part, sum, { sub = false, title = '' } = {}) {
+    if (!part) return null;
+    const h = part.querySelector(':scope > .opt-h');
+    if (sub) h?.remove();
+    const head = sub ? el('span', { class: 'opt-fold-h', text: title || h?.textContent || '' }) : (h || el('h4', { class: 'opt-h', text: title }));
+    const cls = sub ? `${(part.className || '').replace(/\bopt-sec\b/, '').trim()} opt-fold`.trim() : part.className || 'opt-sec';
+    const d = el('details', { class: cls, attrs: { 'data-fold': key } });
+    d.open = openSet().has(key) || sheet?.show === key;
+    d.append(el('summary', { class: 'opt-fold-sum' }, head, el('span', { class: 'opt-sum', text: sum })), ...[...part.childNodes]);
+    d.addEventListener('toggle', () => {
+      if (d.open) openSet().add(key); else openSet().delete(key);
+      try { store.set('options.open', [...openSet()]); } catch { /* no storage */ }
+    });
+    return d;
+  }
+  const list3 = (names, none) => (names.length ? `${names.slice(0, 3).join(', ')}${names.length > 3 ? ` +${names.length - 3}` : ''}` : none);
 
   // ---------- personality ----------
   const personas = () => { try { return (Manager.PRESETS || []).filter((p) => p.persona); } catch { return []; } };
@@ -48,7 +71,7 @@ const Options = (() => {
       what.textContent = p?.systemPrompt || '';
       save(a, { systemPrompt: p?.systemPrompt || undefined });
     });
-    return sec('Personality', 'Who it is, in every message (its own setup: nothing is added to what you type).', sel, what, own);
+    return sec('Personality', 'Who it is and how it talks, in every message.', sel, what, own);
   }
 
   // ---------- instructions ----------
@@ -76,29 +99,49 @@ const Options = (() => {
     { k: 'gameTools', label: 'Forgeheart game', tip: 'Control the live debug game' },
   ];
   function access(a) {
-    const rows = [];
     // files: the AI's own access level and folders, for every chat with it (access.js; round 32: before, this row
     // changed only the open chat, so new chats started back at off / read)
+    let files = null;
     if (typeof Access !== 'undefined' && Access.aiSection) {
-      try { rows.push(Access.aiSection(a.id, { repaint: () => setTimeout(paint, 50) })); } catch { /* no access module */ }
+      try { files = Access.aiSection(a.id, { repaint: () => setTimeout(paint, 50) }); } catch { /* no access module */ }
     }
-    // (round 32, aicheck.js) Check this AI: a short real test with a fix on each failing line; the last result stays here
-    if (typeof AiCheck !== 'undefined') { try { rows.push(AiCheck.section(a.id)); } catch { /* no check module */ } }
-    for (const t of TOOLS) {
-      const on = t.on ? t.on(a) : Boolean(a[t.k]);
-      rows.push(sw(on, t.label, t.tip, (v) => save(a, t.set ? t.set(a, v) : { [t.k]: v || undefined })));
-    }
-    if (a.engine === 'codex') rows.push(sw(a.webSearch && a.webSearch !== 'disabled', 'Web search', 'Look things up on the web', (v) => save(a, { webSearch: v ? 'live' : undefined })));
+    // (round 33) Hearth's own tools (and Astra's web search), folded: "Your chats and Hearth, Mood board"
+    const re = () => setSum('tools', toolSum(H.agent(a.id) || a));
+    const tools = TOOLS.map((t) => sw(t.on ? t.on(a) : Boolean(a[t.k]), t.label, t.tip, (v) => save(a, t.set ? t.set(a, v) : { [t.k]: v || undefined }).then(re)));
+    if (a.engine === 'codex') tools.push(sw(a.webSearch && a.webSearch !== 'disabled', 'Web search', 'It can look things up on the web', (v) => save(a, { webSearch: v ? 'live' : undefined }).then(re)));
+    const toolBox = fold('tools', el('div', {}, ...tools), toolSum(a), { sub: true, title: 'Hearth\'s tools' });
+    // connections: claude.ai's connected apps, your own (connections.js), the Hearth Chrome (chrome-ui.js)
     const apps = el('div', { class: 'opt-apps' });
     if (a.engine === 'claude') loadApps(a, apps);
-    // (round 26, connections.js) the owner's own MCP servers: ＋ Add a connection, per-AI on / off, Test
+    // (round 26, connections.js) the owner's own connections: ＋ Add a connection, per-AI on / off, Test
     const own = el('div', { class: 'opt-conns' });
     Promise.resolve(typeof Lazy !== 'undefined' ? Lazy.load('connections') : null).then(() => { if (typeof Connections !== 'undefined') own.replaceChildren(Connections.section(a.id)); }).catch(() => {});
     // (round 30, chrome-ui.js) Chrome for Google sign-in: found or not, Open the Hearth Chrome, Sign in, what opens there
     const chrome = el('div', { class: 'opt-chrome' });
     if (window.hub?.chrome) Promise.resolve(typeof Lazy !== 'undefined' ? Lazy.load('chrome') : null).then(() => { if (typeof ChromeUI !== 'undefined') chrome.replaceChildren(ChromeUI.section()); }).catch(() => {});
-    return sec('What it can use', 'Connections it reaches by itself when it helps: no need to paste things into your message.', ...rows, apps, own, chrome);
+    const conns = fold('connections', el('div', {}, el('p', { class: 'opt-hint', text: 'Other apps and services it can reach: your mail, drive, notes, or a tool you add.' }), apps, own, chrome), connSum(a), { sub: true, title: 'Connections' });
+    // (round 26, hooks.js) "Hooks: when… then…" (its group loads by itself shortly after the start; asked for here if not yet)
+    const hk = window.Lazy?.loaded?.('hooks') === false ? (window.Lazy.load('hooks').then(() => paint()).catch(() => {}), null) : typeof Hooks !== 'undefined' ? Hooks.section(a, { save, repaint: paint }) : null;
+    const hooks = hk ? fold('hooks', hk, hookSum(a), { sub: true, title: 'Hooks: when something happens, it acts' }) : null;
+    // (round 32, aicheck.js) Check this AI: a short real test with a fix on each failing line; the last result stays here
+    let check = null;
+    if (typeof AiCheck !== 'undefined') { try { check = AiCheck.section(a.id); } catch { /* no check module */ } }
+    return sec('What it can use', 'What it may reach by itself when it helps.', files, toolBox, conns, hooks, check);
   }
+  const toolSum = (a) => list3([...TOOLS.filter((t) => (t.on ? t.on(a) : Boolean(a[t.k]))).map((t) => t.label), ...(a.engine === 'codex' && a.webSearch && a.webSearch !== 'disabled' ? ['Web search'] : [])], 'None on');
+  function connSum(a) {
+    const apps = Object.entries(a.connectors || {}).map(([k, m]) => `${k.replace(/^claude\.ai\s+/, '')}${m === 'read' ? ' (read only)' : ''}`);
+    const mine = Object.values(a.connections || {}).filter(Boolean).length;
+    return list3([...apps, ...(mine ? [`${mine} of yours`] : [])], 'None on');
+  }
+  function hookSum(a) {
+    const list = Array.isArray(a.hooks) ? a.hooks : [];
+    if (!list.length) return 'None yet';
+    const on = list.filter((h) => h.on !== false).length;
+    return `${on} on${list.length > on ? `, ${list.length - on} paused` : ''}${typeof Hooks !== 'undefined' && Hooks.paused?.() ? ' · all paused' : ''}`;
+  }
+  // a fold's one line, after a change inside it (no repaint: the switch you just clicked stays where it is)
+  const setSum = (key, text) => { const n = sheet?.body.querySelector(`[data-fold="${key}"] > summary .opt-sum`); if (n) n.textContent = text; };
   async function loadApps(a, box, refresh = false) {
     box.replaceChildren(el('p', { class: 'opt-hint', text: 'Connected apps: looking…' }));
     let info = null;
@@ -117,18 +160,25 @@ const Options = (() => {
 
   // ---------- memory, habits, thinking ----------
   function memory(a) {
-    return sec('Memory', null,
-      sw(a.autoMemory !== false, 'Remembers things you tell it', 'Lasting facts and preferences, kept for every chat with it', (v) => save(a, { autoMemory: v ? undefined : false })),
-      el('div', { class: 'opt-row' }, btn('What it remembers…', 'See, edit or remove what it keeps in mind', () => (typeof MemoryEditor !== 'undefined' ? MemoryEditor.open({}) : Commands.exec('/memory edit', a.id)), 'ghost small')));
+    return fold('memory', sec('Memory', null,
+      sw(a.autoMemory !== false, 'Remembers things you tell it', 'It keeps lasting facts and preferences for every chat with it', (v) => save(a, { autoMemory: v ? undefined : false }).then(() => setSum('memory', memSum(v)))),
+      el('div', { class: 'opt-row' }, btn('What it remembers…', 'See, edit or remove what it keeps in mind', () => (typeof MemoryEditor !== 'undefined' ? MemoryEditor.open({}) : Commands.exec('/memory edit', a.id)), 'ghost small'))), memSum(a.autoMemory !== false));
   }
+  const memSum = (on) => (on ? 'Remembers what you tell it' : 'Off: it forgets between chats');
   const chatsOn = (a) => TOOLS[0].on(a);
   function habits(a) {
-    return sec('Habits', 'Things it does by itself.',
-      sw(a.selfReview ?? Boolean(a.dock), 'Checks its own work before it answers', 'For visual work: a quick look at the result, and fixes what\'s off', (v) => save(a, { selfReview: v })),
-      sw(chatsOn(a) ? a.suggestNext !== false : Boolean(a.suggestNext), 'Suggests what to do next', 'Up to 3 next steps as buttons under a reply', (v) => save(a, { suggestNext: chatsOn(a) ? (v ? undefined : false) : (v || undefined) })),
-      sw(a.showThinking !== false, 'Shows its thinking', 'Its thought process, folded under the reply', (v) => save(a, { showThinking: v ? undefined : false })),
-      sw(a.autoCompact !== false, 'Shrinks long chats by itself', 'Summarises old messages when a chat gets long, so it stays fast', (v) => save(a, { autoCompact: v ? undefined : false })),
-      ...(a.threeTools ? lab(a) : []));
+    const re = () => setSum('habits', habitSum(H.agent(a.id) || a));
+    return fold('habits', sec('Habits', 'Things it does by itself.',
+      sw(a.selfReview ?? Boolean(a.dock), 'Checks its own work before it answers', 'For visual work: it takes a quick look at the result and fixes what\'s off', (v) => save(a, { selfReview: v }).then(re)),
+      sw(chatsOn(a) ? a.suggestNext !== false : Boolean(a.suggestNext), 'Suggests what to do next', 'Up to 3 next steps show as buttons under a reply', (v) => save(a, { suggestNext: chatsOn(a) ? (v ? undefined : false) : (v || undefined) }).then(re)),
+      sw(a.showThinking !== false, 'Shows its thinking', 'Its thought process shows folded under the reply', (v) => save(a, { showThinking: v ? undefined : false }).then(re)),
+      sw(a.autoCompact !== false, 'Shrinks long chats by itself', 'Old messages get summed up when a chat gets long, so it stays fast', (v) => save(a, { autoCompact: v ? undefined : false }).then(re)),
+      ...(a.threeTools ? lab(a) : [])), habitSum(a));
+  }
+  function habitSum(a) {
+    const on = [[a.selfReview ?? Boolean(a.dock), 'checks its work'], [chatsOn(a) ? a.suggestNext !== false : Boolean(a.suggestNext), 'suggests next steps'], [a.showThinking !== false, 'shows its thinking'], [a.autoCompact !== false, 'shrinks long chats']].filter(([v]) => v).map(([, t]) => t);
+    const t = list3(on, 'none');
+    return t.charAt(0).toUpperCase() + t.slice(1);
   }
   // (round 27, simplify2) the Lab directors' habits, moved here from Settings (they belong to the AI); each runs its
   // own command out of sight, so this row, the command and the old menus never disagree
@@ -147,9 +197,9 @@ const Options = (() => {
     const cur = a.effort || 'medium';
     // (round 28, router.js) Smart picks the model + effort per message; the reply shows the pick, one click thinks harder
     const smart = cur === 'medium' && typeof Router !== 'undefined';
-    return sec('How hard it thinks', smart ? 'Smart picks for each message: a lighter model for small asks, more thinking for code, builds and analyses. The reply shows its pick; click it to ask again, thinking harder.' : null,
+    return sec('How hard it thinks', smart ? 'Smart picks for each message: lighter for small asks, deeper for code and builds. Click the pick on a reply to ask again, harder.' : null,
       el('div', { class: 'opt-seg' }, levels.map(([v, label]) => el('button', { type: 'button', class: `ghost small${cur === v || (v === 'high' && cur === 'xhigh') ? ' on' : ''}`, text: label,
-        title: v === 'low' ? 'Fast, short' : v === 'medium' ? 'Picks per message: light for small asks, thorough for hard ones (saves tokens)' : 'Slower, more thorough (more tokens)', on: { click: () => save(a, { effort: v === 'medium' ? undefined : v }).then(paint) } }))));
+        title: v === 'low' ? 'It answers fast and short' : v === 'medium' ? 'It picks for each message: light for small asks, thorough for hard ones (saves tokens)' : 'It thinks longer and answers more thoroughly (more tokens)', on: { click: () => save(a, { effort: v === 'medium' ? undefined : v }).then(paint) } }))));
   }
 
   // ---------- the panel ----------
@@ -160,23 +210,31 @@ const Options = (() => {
     sheet.agentId = a.id;
     const scroll = sheet.body.scrollTop;
     const who = el('div', { class: 'opt-who' }, natives().map((x) => el('button', { type: 'button', class: `opt-chip${x.id === a.id ? ' on' : ''}`, text: `${x.icon || ''} ${x.name}`.trim(), title: `Set up ${x.name}`, on: { click: () => { sheet.agentId = x.id; paint(); } } })));
-    const mission = typeof Missions !== 'undefined' ? sec('Your next message', 'Click: the next message only · 📌 from now on. Right-click ◎ in the chat box: back to a normal reply.', Missions.cards(a.id, { onPick: paint })) : null;
-    // (round 26, hooks.js) "Hooks: when… then…" (its group loads by itself shortly after the start; asked for here if not yet)
-    const hooks = window.Lazy?.loaded?.('hooks') === false ? (window.Lazy.load('hooks').then(() => paint()).catch(() => {}), null) : typeof Hooks !== 'undefined' ? Hooks.section(a, { save, repaint: paint }) : null;
+    // (round 33, simplify3) ◎ in the chat box is the missions' place; here they wait folded at the end
+    const mission = typeof Missions !== 'undefined' ? fold('missions', sec('Your next message', 'Click: the next message only · 📌 every message from now on. Right-click ◎ in the chat box: back to a normal reply.', Missions.cards(a.id, { onPick: paint })), missionSum(a)) : null;
     // (round 30, budget.js) Spending: this week's use, a weekly limit, what happens near it
-    const spending = window.Lazy?.loaded?.('budget') === false ? (window.Lazy.load('budget').then(() => paint()).catch(() => {}), null) : typeof Budget !== 'undefined' ? Budget.section(a, { repaint: paint }) : null;
-    sheet.body.replaceChildren(who, mission, personality(a), instructions(a), hooks, access(a), memory(a), habits(a), thinking(a), spending);
+    const spent = window.Lazy?.loaded?.('budget') === false ? (window.Lazy.load('budget').then(() => paint()).catch(() => {}), null) : typeof Budget !== 'undefined' ? Budget.section(a, { repaint: paint }) : null;
+    sheet.body.replaceChildren(who, personality(a), instructions(a), access(a), thinking(a), memory(a), habits(a), spent ? fold('spending', spent, spendSum(a)) : null, mission);
+    if (sheet.show && sheet.body.querySelector(`[data-fold="${sheet.show}"]`)) { const k = sheet.show; sheet.show = null; requestAnimationFrame(() => sheet?.body.querySelector(`[data-fold="${k}"]`)?.scrollIntoView({ block: 'start' })); }
     if (scroll) sheet.body.scrollTop = scroll; // (round 26, smooth26: at the top already, no layout forced mid-build)
   }
-  function build(host, agentId, page = false) {
+  function missionSum(a) {
+    const m = Missions.current(a.id);
+    if (!m || m.id === 'normal') return 'Just answer';
+    return `${m.icon || ''} ${m.label}${Missions.isSticky(a.id) ? ', every message' : ', next message'}`.trim();
+  }
+  function spendSum(a) {
+    try { const s = Budget.state(a.id); return s.limit ? `${s.pct}% of this week's limit` : 'No weekly limit'; } catch { return ''; }
+  }
+  function build(host, agentId, page = false, show = null) {
     // (round 31, quickstart-hooks.js) "?": What can I do here? (the card shows in the window, so the drawer goes)
     const qs = !page && window.Lazy?.isIn?.('quickstart') && typeof QuickstartHooks !== 'undefined' ? QuickstartHooks.button(QuickstartHooks.placeOf(agentId), agentId, () => hide()) : null;
-    const head = el('header', { class: 'opt-head' }, el('b', { text: 'This AI: missions and what it can use' }), el('span', { class: 'spacer' }), qs, page ? null : btn('✕', 'Close (Esc)', () => hide()));
+    const head = el('header', { class: 'opt-head' }, el('b', { text: 'AI setup' }), el('span', { class: 'spacer' }), qs, page ? null : btn('✕', 'Close (Esc)', () => hide()));
     const body = el('div', { class: 'opt-body' });
     const root = el(page ? 'div' : 'aside', { class: `opt-sheet${page ? ' opt-page' : ''}`, attrs: { 'aria-label': 'AI setup' } }, head, body);
     root.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !page && !e.target.closest('textarea')) { e.stopPropagation(); hide(); } });
     host.append(root);
-    sheet = { root, body, agentId, page, sid: sidNow() };
+    sheet = { root, body, agentId, page, sid: sidNow(), show };
     paint();
     return root;
   }
@@ -185,10 +243,11 @@ const Options = (() => {
     const a = H.agent(H.activeId);
     return a?.mode === 'native' ? a.id : H.claudeAgent()?.id;
   }
-  function open({ agentId, place } = {}) {
+  // show: a fold to open and scroll to ('tools', 'connections', 'hooks', 'memory', 'habits', 'spending', 'missions')
+  function open({ agentId, place, show } = {}) {
     const id = agentId || agentFor(place);
-    if (sheet && !sheet.page) { const same = sheet.agentId === id; hide(); if (same) return null; }
-    return build(document.body, id);
+    if (sheet && !sheet.page) { const same = sheet.agentId === id; hide(); if (same && !show) return null; }
+    return build(document.body, id, false, show || null);
   }
   function hide() { if (sheet && !sheet.page) { sheet.root.remove(); sheet = null; } }
   // another window: the drawer goes (a re-render of the same window keeps it)
