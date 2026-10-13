@@ -249,6 +249,9 @@ body.tw-scrubbing, body.tw-scrubbing * { cursor: ew-resize !important; }
 /* Lab perf HUD (/lab perf, round 16 "labperf"): quiet, in the preview's bottom-right corner, no effects on it */
 .three-preview .lab-perf-hud { position: absolute; right: 8px; bottom: 8px; z-index: 2; padding: 2px 7px; border-radius: 6px; background: #0008; color: #cfd3dc; font: 10.5px Consolas, monospace; opacity: 0.72; pointer-events: none; white-space: nowrap; contain: content; }
 .three-preview .lab-perf-hud[hidden] { display: none; }
+/* (round 31 "labadapt") the honest note while the preview draws lighter to stay smooth: quiet, top left, never in Present */
+.three-preview .lab-adapt-note { position: absolute; left: 8px; top: 8px; z-index: 2; padding: 2px 8px; border-radius: 6px; background: #0007; color: #cfd3dc; font: 10.5px system-ui, sans-serif; opacity: 0.7; pointer-events: none; white-space: nowrap; contain: content; }
+.three-preview .lab-adapt-note[hidden], .three-preview.presenting .lab-adapt-note, .three-preview:fullscreen .lab-adapt-note { display: none; }
 /* (round 21, labhub) the code editor: the highlighted copy and the line numbers lay out on their own. Without this a
    new highlight (each key, each scroll in a long sketch) laid out the textarea under it again: ~70 ms at 2,000 lines */
 .three-editor .ce-pre, .three-editor .ce-gutter { contain: size layout style; }
