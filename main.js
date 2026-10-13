@@ -51,6 +51,8 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', (_e, argv) => {
     // The desktop "Hearth" shortcut passes --restart: restart cleanly instead of just showing the window.
     if (argv.includes('--restart')) { appshell.restartApp(); return; }
+    const pack = argv.find((a) => /\.hearthpack$/i.test(a)); // (round 28, packs) opening a .hearthpack while Hearth runs
+    if (pack && typeof packOpen === 'function') { packOpen(pack); return; }
     if (!win) return;
     if (win.isMinimized()) win.restore();
     win.show();
@@ -517,6 +519,12 @@ lazyIpc('remotemain.js', (m, ipc) => m.register(ipc, () => win, { dataDir: store
 lazyIpc('interopmain.js', (m, ipc) => m.register(ipc, () => win, { dataDir: store.DATA_DIR })); // (round 25) interop: OSC in / out, Ableton Link tempo, the OBS Browser Source page, obs-websocket; all off until used
 lazyIpc('publishmain.js', (m, ipc) => m.register(ipc, () => win, settings)); // (round 27) Ready to post: measures a finished video (ffmpeg) for the platform checks and cover ideas
 lazyIpc('motionmain.js', (m, ipc) => m.register(ipc, () => win, { dataDir: store.DATA_DIR })); // (round 25) camera / body tracking: MediaPipe's files, downloaded once after a yes; the camera permission on a Mac
+lazyIpc('packsmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win })); // (round 28) packs: a scene and everything it uses as one .hearthpack file (zip-slip guard, size caps)
+// (round 28, packs) a .hearthpack opened from Finder / Explorer (or dropped on the app's icon) → the window's import card
+let packPending = process.argv.find((a) => /\.hearthpack$/i.test(a)) || null;
+const packOpen = (p) => { if (win && !win.isDestroyed()) { win.webContents.send('packs:open', p); if (win.isMinimized()) win.restore(); win.show(); win.focus(); } else packPending = p; };
+app.on('open-file', (e, p) => { if (/\.hearthpack$/i.test(p)) { e.preventDefault(); packOpen(p); } });
+ipcMain.handle('packs:pending', () => { const p = packPending; packPending = null; return p; });
 appsmain.register(ipcMain, () => win, { store, appshell }); // app windows (Meshy, Suno, Figma…), their downloads, the Meshy API
 syncmain.register(ipcMain, () => win, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, themePath: THEME_PATH, store }); // sync through a cloud drive folder
 require('./chatmediamain').register(ipcMain, { workspace: path.join(store.DATA_DIR, 'workspace') }); // pictures / videos a chat made, shown in the reply
