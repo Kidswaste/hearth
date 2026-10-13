@@ -89,7 +89,7 @@ const Apps = (() => {
     });
     if (!r?.ok) throw new Error(r?.error || `${app.name} didn't open`);
     // (round 30, chrome) it opened in the owner's Chrome (Google sign-in): one click brings it back inside Hearth
-    if (r.chrome && !background) toast(`${app.name} opened in Chrome (Google sign-in works there)`, { timeout: 6000, action: { label: 'Use it inside Hearth', fn: async () => { await api().chrome(app.id, 'hearth'); openWindow(app.id, { url }).catch((err) => toast(err.message, { type: 'error' })); } } });
+    if (r.chrome && !background) toast(`${app.name} runs through Chrome, shown here (Google sign-in works there)`, { timeout: 6000, action: { label: 'Use it inside Hearth', fn: async () => { await api().chrome(app.id, 'hearth'); openWindow(app.id, { url }).catch((err) => toast(err.message, { type: 'error' })); } } });
     noteRecent(app.id);
     return true;
   }

@@ -92,7 +92,7 @@ How it fits together:
 - An existing Gemini website chat now opens in Chrome by itself when Chrome is found (right-click › Use it inside
   Hearth instead brings it back). If the Hearth Chrome is open without Hearth's hand on it (after "Sign in without
   Hearth's hand"), Hearth asks you to close its windows once.
-- Downloads from an app in Chrome land in Chrome's own Downloads folder (not Downloads/Hearth/<App>).
+- Downloads from an app in Chrome land in Chrome's own Downloads folder (not Downloads/Hearth/<App>). (Round 31, chromeview: now they do land in Downloads/Hearth/<App>, and Chrome works out of sight.)
 
 ## For the patch notes
 - Google sign-in works again: where Google refuses inside Hearth ("Couldn't sign you in"), the page opens in your real Google Chrome instead (Edge or Brave if there's no Chrome).

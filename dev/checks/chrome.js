@@ -7,7 +7,7 @@
 //  2. An app in Hearth's own window whose sign-in popup lands on Google's "Couldn't sign you in" page: the popup goes,
 //     the app window shows the offer; its "Sign in with Chrome instead" opens the same site in the Hearth Chrome.
 //  3. A website chat whose page lands on the refusal page: the offer shows above it; one click → it lives in Chrome
-//     (a card here), and asking it something types into its chat box in Chrome and presses Enter.
+//     (round 31: shown here in a Chrome view), and asking it something types into its chat box in Chrome and presses Enter.
 //   node dev/smoke.js --pw-chrome --wait 6000 --check-timeout 180000 --script dev/checks/chrome.js --shot /tmp/chrome.png
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(200); } return null; };
@@ -104,8 +104,8 @@ try {
   step(Boolean(offer) && /Sign in with Chrome instead/.test(offer?.textContent || ''), 'the refusal page in a website chat: the offer shows above it', offer?.textContent);
   await smoke({ shot: '/tmp/chrome-offer.png' });
   offer?.querySelector('button.primary')?.click();
-  const card = await until(() => H.surfaces.get(agent.id).el.querySelector('.chr-cover'), 15000);
-  step(Boolean(card) && H.agent(agent.id).chrome === 'on', 'one click: the chat lives in Chrome now (a card here, saved on the agent)', card?.textContent);
+  const card = await until(() => H.surfaces.get(agent.id).el.querySelector('.chr-view .cv'), 15000); // (round 31: a Chrome view of its page, no longer a card)
+  step(Boolean(card) && H.agent(agent.id).chrome === 'on', 'one click: the chat lives in Chrome now (its page in a Chrome view here, saved on the agent)', card?.className);
   const aw = await until(async () => ((await window.hub.chrome.status({ fresh: true })).windows || []).find((x) => x.key === `agent:${agent.id}`), 30000);
   step(Boolean(aw) && /\/chat/.test(aw?.page?.url || ''), 'its page is open in the Hearth Chrome', aw?.page);
   await sendToWebsite(H.agent(agent.id), 'hello from Hearth');
@@ -113,7 +113,7 @@ try {
   step(Boolean(sent), 'asking it types into its chat box in Chrome and presses Enter', sent);
   await smoke({ shot: '/tmp/chrome-card.png' });
   await ChromeUI.setAgent(H.agent(agent.id), 'off');
-  step(!H.surfaces.get(agent.id).el.querySelector('.chr-cover') && H.agent(agent.id).chrome === 'off', '"Use it inside Hearth instead" brings it back');
+  step(!H.surfaces.get(agent.id).el.querySelector('.chr-view') && H.agent(agent.id).chrome === 'off', '"Use it inside Hearth instead" brings it back');
 
   // the command still answers (internal API)
   const s = await Commands.tryRun('/chrome', H.claudeAgent().id);

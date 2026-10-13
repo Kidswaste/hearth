@@ -4,6 +4,9 @@
 // (#q: focus + Input.insertText fill it), its text, navigation (Page.loadEventFired), a JPEG for screenshots.
 // Page scripts (Runtime.evaluate) run in a vm with a small stand-in document, so the client's own scripts are tested.
 //   const f = await require('./fake-cdp').start(); f.port, f.log (methods called), f.targets, f.stop()
+// (round 31, chromeview) also: windows (getWindowForTarget / setWindowBounds, createTarget's bounds), the viewport
+// override, a screencast (a frame now, the next one 15 ms after each ack, none once stopped), the wheel (scrollY),
+// moves, IME text, the file picker's files, the download behaviour, process CPU.
 const http = require('http');
 const crypto = require('crypto');
 const vm = require('vm');
@@ -34,7 +37,7 @@ function parse(buf) {
 
 // a pretend page: what a page script can see
 function makePage(url) {
-  const page = { url, title: 'Fake page', ready: 'complete', clicks: 0, focused: null, loads: 0 };
+  const page = { url, title: 'Fake page', ready: 'complete', clicks: 0, focused: null, loads: 0, scrollY: 0, bounds: { left: 10, top: 10, width: 1280, height: 860 }, metrics: null, cast: null, frames: 0, acks: 0, moves: 0, ime: '' };
   const el = (id, box, extra = {}) => ({ id, value: '', innerText: '', textContent: '', box, getBoundingClientRect: () => ({ left: box.x, top: box.y, width: box.w, height: box.h }), scrollIntoView() {}, focus() { page.focused = this; }, select() { this.selected = true; }, ...extra });
   page.els = {
     '#go': el('go', { x: 100, y: 40, w: 80, h: 30 }, { innerText: 'Go' }),
@@ -61,7 +64,7 @@ async function start() {
   const targets = new Map(); // id → page
   const sessions = new Map(); // session id → target id
   let n = 0;
-  const addTarget = (url) => { const id = `T${++n}`; targets.set(id, makePage(url)); return id; };
+  const addTarget = (url, b) => { const id = `T${++n}`; const p = makePage(url); p.windowId = 100 + n; if (b && b.left != null) p.bounds = { left: b.left, top: b.top, width: b.width || 1280, height: b.height || 860 }; targets.set(id, p); return id; };
   addTarget('about:blank');
   const server = http.createServer((req, res) => {
     if (req.url === '/json/version') {
@@ -92,7 +95,28 @@ async function start() {
           switch (method) {
             case 'Target.getTargets': reply({ targetInfos: [...targets].map(([tid, p]) => ({ targetId: tid, type: 'page', url: p.url, title: p.title, attached: false })) }); break;
             case 'Target.setDiscoverTargets': reply({}); break;
-            case 'Target.createTarget': reply({ targetId: addTarget(params.url) }); break;
+            case 'Target.createTarget': reply({ targetId: addTarget(params.url, params) }); break;
+            case 'Browser.getWindowForTarget': { const t = targets.get(params.targetId); if (!t) { fail('No target with given id found'); break; } reply({ windowId: t.windowId, bounds: { ...t.bounds, windowState: 'normal' } }); break; }
+            case 'Browser.setWindowBounds': { const t = [...targets.values()].find((x) => x.windowId === params.windowId); if (!t) { fail('Browser window not found'); break; } const b = params.bounds || {}; for (const k of ['left', 'top', 'width', 'height']) if (b[k] != null) t.bounds[k] = b[k]; reply({}); break; }
+            case 'Browser.setDownloadBehavior': reply({}); break;
+            case 'SystemInfo.getProcessInfo': reply({ processInfo: [{ type: 'browser', id: 1, cpuTime: 0.5 }] }); break;
+            case 'Emulation.setDeviceMetricsOverride': page.metrics = params; reply({}); break;
+            case 'Emulation.clearDeviceMetricsOverride': page.metrics = null; reply({}); break;
+            case 'Emulation.setFocusEmulationEnabled': page.focusEmu = params.enabled; reply({}); break;
+            case 'Page.setInterceptFileChooserDialog': page.intercept = params.enabled; reply({}); break;
+            case 'DOM.setFileInputFiles': page.files = params.files; reply({}); break;
+            case 'Page.stopLoading': reply({}); break;
+            case 'Input.imeSetComposition': page.ime = params.text; reply({}); break;
+            case 'Page.startScreencast': {
+              page.cast = { params, n: 0 };
+              reply({});
+              const emit = () => { if (!page.cast) return; page.cast.n += 1; page.frames += 1; const m = page.metrics || { width: 800, height: 600 }; send({ method: 'Page.screencastFrame', params: { data: Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString('base64'), sessionId: page.cast.n, metadata: { deviceWidth: m.width, deviceHeight: m.height, offsetTop: 0, pageScaleFactor: 1, scrollOffsetX: 0, scrollOffsetY: page.scrollY, timestamp: Date.now() / 1000 } }, sessionId }); };
+              page.cast.emit = emit;
+              setTimeout(emit, 5);
+              break;
+            }
+            case 'Page.screencastFrameAck': page.acks += 1; reply({}); if (page.cast && params.sessionId === page.cast.n) setTimeout(() => page.cast?.emit(), 15); break;
+            case 'Page.stopScreencast': page.cast = null; reply({}); break;
             case 'Target.attachToTarget': { if (!targets.has(params.targetId)) { fail('No target with given id found'); break; } const sid = `S${params.targetId}`; sessions.set(sid, params.targetId); reply({ sessionId: sid }); break; }
             case 'Target.activateTarget': reply({}); break;
             case 'Target.closeTarget': targets.delete(params.targetId); reply({ success: true }); send({ method: 'Target.targetDestroyed', params: { targetId: params.targetId } }); break;
@@ -107,6 +131,8 @@ async function start() {
               break;
             }
             case 'Input.dispatchMouseEvent': {
+              if (params.type === 'mouseWheel') page.scrollY = Math.max(0, page.scrollY + (params.deltaY || 0));
+              if (params.type === 'mouseMoved') page.moves += 1;
               if (params.type === 'mouseReleased') { const hit = Object.values(page.els).find((e) => params.x >= e.box.x && params.x <= e.box.x + e.box.w && params.y >= e.box.y && params.y <= e.box.y + e.box.h); if (hit?.id === 'go') { page.clicks += 1; page.title = `Clicked ${page.clicks}`; } }
               reply({}); break;
             }
@@ -133,6 +159,11 @@ const PAGES = {
   '/page': '<!doctype html><title>Hearth test page</title><p>Hello from the test page</p><button id="go" onclick="document.title=\'Clicked\'" style="width:120px;height:40px">Go</button><br><textarea id="q" placeholder="Describe your song" style="width:300px;height:60px"></textarea>',
   '/start': '<!doctype html><title>Test app</title><p>A test app</p><a id="signin" href="/v3/signin/rejected?continue=x" target="_blank" style="display:inline-block;padding:10px">Sign in with Google</a>',
   '/v3/signin/rejected': '<!doctype html><title>Sign in - Google Accounts</title><h1>Couldn’t sign you in</h1><p>This browser or app may not be secure. <a href="#">Learn more</a></p><p>Try using a different browser. If you’re already using a supported browser, you can try again to sign in.</p>',
+  // (round 31, chromeview) a page to use through a Chrome view: a button, a box, a tall page to scroll, a popup, a file
+  // picker, a download, something that keeps moving (frames keep coming); a Google-like sign-in page on 127.0.0.1
+  '/cv': '<!doctype html><title>View test</title><style>body{margin:0;font:14px sans-serif}#tall{height:3000px}#spin{position:fixed;right:8px;top:8px;width:20px;height:20px;background:#c33}</style><div id="spin"></div><button id="go" style="position:absolute;left:20px;top:20px;width:140px;height:44px" onclick="document.title=\'Clicked\'">Go</button><input id="q" style="position:absolute;left:20px;top:90px;width:220px;height:30px"><button id="pop" style="position:absolute;left:20px;top:140px;width:140px;height:36px" onclick="window.open(\'/cv-popup\',\'p\',\'width=500,height=400,left=40,top=40\')">Popup</button><input id="f" type="file" style="position:absolute;left:20px;top:190px;width:220px;height:30px"><a id="dl" href="/cv-dl" style="position:absolute;left:20px;top:240px;display:block;width:140px;height:30px">Download</a><div id="tall"></div><script>let a=0;setInterval(()=>{a=(a+7)%360;document.getElementById("spin").style.transform="rotate("+a+"deg)"},33)</script>',
+  '/cv-popup': '<!doctype html><title>Popup page</title><p>A popup</p><button id="x" style="width:120px;height:40px" onclick="document.title=\'Popup clicked\'">Click</button>',
+  '/v3/signin/identifier': '<!doctype html><title>Sign in - Google Accounts</title><h1>Sign in</h1><p>Use your Google Account</p><input type="email" placeholder="Email or phone">',
   '/chat': '<!doctype html><title>Test chat</title><a id="signin" href="/v3/signin/rejected?continue=chat" style="display:inline-block;padding:10px">Sign in</a><textarea id="box" style="width:300px;height:60px" onkeydown="if(event.key===\'Enter\'){event.preventDefault();document.title=\'sent: \'+this.value}"></textarea>',
 };
 // (round 30, pinboard) a Pinterest-like search and an Unsplash-like one (dev/fixtures/pinboard-*.html) with their
@@ -163,6 +194,7 @@ async function pages() {
   const server = http.createServer((req, res) => {
     const pb = /^\/pinboard\//.test(req.url) ? pinboardPage(req.url) : null;
     if (pb) { res.statusCode = 200; res.setHeader('Content-Type', pb.type); res.end(pb.body); return; }
+    if (req.url.split('?')[0] === '/cv-dl') { res.statusCode = 200; res.setHeader('Content-Type', 'text/plain'); res.setHeader('Content-Disposition', 'attachment; filename="hearth-view-test.txt"'); res.end('downloaded through a Chrome view\n'); return; } // (round 31)
     const html = PAGES[req.url.split('?')[0]];
     res.statusCode = html ? 200 : 404;
     res.setHeader('Content-Type', 'text/html; charset=utf-8');

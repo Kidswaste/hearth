@@ -43,6 +43,10 @@ const cwins = new Map(); // app id → { spec, url } (its Chrome window is chrom
 let chromeM = null;
 const chromeMod = () => { if (!chromeM) { chromeM = require('./chromemain'); chromeM.init({ dataDir: dataDir(), getWin }); } return chromeM; };
 const ckey = (id) => `app:${id}`;
+// (round 31, chromeview) an app "in Chrome" shows in its usual Hearth window: a Chrome view of the page (Chrome itself
+// stays out of sight) instead of the <webview>. spec.chromeKey marks that window; downloads Chrome makes land in the
+// same Downloads/Hearth/<App> folder and list (chromeviewmain.js reports them through chromeDownloads below).
+const frameOf = (e) => Boolean(e?.spec?.chromeKey);
 let lastOffer = null; // the last time an app window offered Chrome (apps:status, for dev/checks/chrome.js)
 const inChrome = async (id) => cwins.has(id) && chromeM && await chromeM.hasWindow(ckey(id));
 
@@ -172,6 +176,7 @@ function park(entry, ms = hubAway ? Math.min(PARK_MS, 60000) : PARK_MS) {
     entry.parked = true; entry.closing = true;
     saveBounds(entry.spec.id, w);
     w.destroy();
+    if (frameOf(entry) && chromeM) chromeM.pageOp(entry.spec.chromeKey, 'close').catch(() => {}); // (round 31) its page in Chrome goes too (it costs as much as a window)
   }, ms);
 }
 // the hidden windows beyond MAX_HIDDEN (oldest hidden first) go away soon
@@ -189,6 +194,8 @@ function openWindow(spec = {}) {
   const id = String(spec.id || '').replace(/[^\w-]/g, '');
   if (!id) return { ok: false, error: 'No app id' };
   const url = spec.url && /^(https?|file):/i.test(spec.url) ? spec.url : null;
+  const ex0 = wins.get(id);
+  if (ex0?.win && !ex0.win.isDestroyed() && frameOf(ex0) !== Boolean(spec.chromeKey)) { ex0.closing = true; saveBounds(id, ex0.win); ex0.win.destroy(); wins.delete(id); } // (round 31) a Chrome view ↔ Hearth's own page: a fresh window
   const ex = wins.get(id);
   if (ex?.win && !ex.win.isDestroyed()) {
     clearTimeout(ex.park);
@@ -222,6 +229,7 @@ function openWindow(spec = {}) {
     const g = guestOf(entry);
     // hidden windows don't keep playing: the media on the page pauses (it resumes with a click when shown again)
     g?.executeJavaScript?.('document.querySelectorAll("video,audio").forEach((m) => { try { m.pause(); } catch {} })', true).catch(() => {});
+    if (frameOf(entry) && chromeM) chromeM.pageOp(entry.spec.chromeKey, 'eval', { expr: 'document.querySelectorAll("video,audio").forEach((m) => { try { m.pause(); } catch {} }), true' }).catch(() => {}); // (round 31) in Chrome too
     win.hide();
     entry.hiddenAt = Date.now();
     if (!g?.isCurrentlyAudible?.()) quiet(entry, true);
@@ -252,11 +260,34 @@ async function openInChrome(spec) {
   const url = (spec.go && spec.url) || siteUrl(ex) || (saved && !isAuth(saved) && AppsCore.sameSite(saved, spec.url) ? saved : null) || spec.url;
   const r = await chromeMod().openWindow({ key: ckey(id), url, app: true, go: Boolean(spec.go && spec.url) });
   if (!r.ok) return r;
-  cwins.set(id, { spec: { ...(ex?.spec || {}), ...spec }, url });
-  if (ex?.win && !ex.win.isDestroyed() && ex.win.isVisible()) closeWindow(id); // Hearth's own window steps aside (hidden, then parked)
+  const full = { ...(ex?.chromeSpec || ex?.spec || {}), ...spec };
+  cwins.set(id, { spec: full, url });
+  // (round 31) its page shows in Hearth's own window, as a Chrome view (Chrome itself stays out of sight)
+  const w = openWindow({ ...full, id, url, go: false, chromeKey: ckey(id) });
+  if (w.ok) { const e = wins.get(id); if (e) e.chromeSpec = full; }
   toHub({ type: 'window', id, state: 'shown', chrome: true });
-  return { ok: true, chrome: true };
+  return { ok: true, chrome: true, view: w.ok };
 }
+// (round 31) the app's Chrome page shown in its Hearth window (an AI or the board's finder asked to show it)
+async function showView(id) {
+  const c = cwins.get(id);
+  const cat = catalog.find((a) => a.id === id) || {};
+  const spec = { ...(wins.get(id)?.chromeSpec || {}), ...cat, ...(c?.spec || {}), id };
+  if (!chromeM?.keys.has(ckey(id))) { if (!/^https?:/i.test(String(spec.url || ''))) return { ok: false, error: 'That app isn\'t open in Chrome' }; return openInChrome(spec); }
+  cwins.set(id, { spec, url: spec.url });
+  const w = openWindow({ ...spec, go: false, chromeKey: ckey(id) });
+  return { ...w, chrome: true };
+}
+// (round 31) downloads from Chrome views (chromeviewmain.js): the same folder and list as Hearth's app windows
+const chromeDownloads = {
+  dir: (appName) => downloadsDir(appName),
+  report(d) {
+    const i = downloads.findIndex((x) => x.id === d.id);
+    if (i >= 0) downloads[i] = { ...downloads[i], ...d }; else { downloads.unshift({ ...d }); downloads.length = Math.min(downloads.length, 200); }
+    toChrome(d.app, 'appwin:downloads', listDownloads(d.app));
+    toHub({ type: 'download', d: { ...d } });
+  },
+};
 async function openAny(spec = {}) {
   const id = String(spec.id || '').replace(/[^\w-]/g, '');
   if (id && await wantsChrome({ ...spec, id }).catch(() => false)) {
@@ -406,11 +437,11 @@ async function pageAny(id, op, a = {}) {
 }
 async function navChrome(id, op, url) {
   const k = ckey(id);
-  if (op === 'download') return { ok: false, error: 'This app is open in Chrome: Chrome downloads it (to your Downloads folder).' };
+  if (op === 'download' && /^https?:/i.test(String(url))) return chromeM.pageOp(k, 'eval', { expr: `(() => { const a = document.createElement('a'); a.href = ${JSON.stringify(String(url))}; a.download = ''; document.body.appendChild(a); a.click(); a.remove(); return true; })()` }); // (round 31) it lands in Downloads/Hearth/<App>
   if (op === 'url' && /^https?:/i.test(String(url))) return chromeM.pageOp(k, 'go', { url, wait: false });
   if (op === 'home') return chromeM.pageOp(k, 'go', { url: cwins.get(id)?.spec?.url, wait: false });
   if (['reload', 'back', 'forward'].includes(op)) return chromeM.pageOp(k, op);
-  if (op === 'close') return chromeM.pageOp(k, 'close');
+  if (op === 'close') return wins.has(id) ? closeWindow(id) : chromeM.pageOp(k, 'close'); // (round 31) its Hearth window hides, like any app window
   if (op === 'copy-link') { const r = await chromeM.pageOp(k, 'info'); if (r.ok) clipboard.writeText(r.value.url); return { ok: r.ok }; }
   if (op === 'to-chat') {
     const [info, sel, pic] = await Promise.all([chromeM.pageOp(k, 'info'), chromeM.pageOp(k, 'eval', { expr: 'String(getSelection() || "")' }), pagePicture(id)]);
@@ -418,7 +449,7 @@ async function navChrome(id, op, url) {
     const w = getWin(); if (w && !w.isDestroyed()) { w.show(); w.focus(); }
     return { ok: true };
   }
-  return chromeM.pageOp(k, 'show');
+  return showView(id); // (round 31) shown in its Hearth window
 }
 
 // ---------- Meshy jobs ----------
@@ -547,9 +578,10 @@ function register(ipcMain, gw, deps = {}) {
   h('apps:page', (id, op, a) => pageAny(String(id), String(op || ''), a || {})); // (round 30) the AI's hands on the page (apps_page)
   h('apps:chrome', async (id, op) => { // (round 30) this app in Chrome ('chrome'), back in Hearth ('hearth'), automatic (null)
     const s = String(id || '').replace(/[^\w-]/g, '');
-    if (op === 'status') return { pref: chromeMod().prefs().apps[s] || null, open: await inChrome(s), found: await chromeMod().found() };
+    if (op === 'status') return { pref: chromeMod().prefs().apps[s] || null, open: await inChrome(s), found: await chromeMod().found(), hidden: chromeMod().hidden() };
+    if (op === 'view') return showView(s); // (round 31) its Chrome page in its Hearth window
     const r = chromeMod().setPref('apps', s, op === 'chrome' || op === 'hearth' ? op : null);
-    if (op === 'hearth' && cwins.has(s)) { await chromeM.pageOp(ckey(s), 'close').catch(() => {}); cwins.delete(s); }
+    if (op === 'hearth' && cwins.has(s)) { await chromeM.pageOp(ckey(s), 'close').catch(() => {}); cwins.delete(s); if (frameOf(wins.get(s))) closeWindow(s, { destroy: true }); }
     return r;
   });
   h('apps:nav', async (id, op, url) => {
@@ -592,7 +624,16 @@ function register(ipcMain, gw, deps = {}) {
   c('appwin:chrome', async (id, x, op) => {
     if (op === 'status') { const f = await chromeMod().found(); return { found: f ? f.name : null, pref: chromeMod().prefs().apps[id] || null, auto: chromeMod().googleOnly(x.spec.url) }; }
     if (op === 'everyday') return chromeMod().everyday(siteUrl(x) || x.lastUrl);
-    if (op === 'hearth' || op === 'auto') return chromeMod().setPref('apps', id, op === 'hearth' ? 'hearth' : null);
+    if (op === 'hearth' || op === 'auto') {
+      const r = chromeMod().setPref('apps', id, op === 'hearth' ? 'hearth' : null);
+      if (op === 'hearth' && frameOf(x)) { // (round 31) from its Chrome view back to Hearth's own page: the window opens again with it
+        const spec = { ...(x.chromeSpec || x.spec), chromeKey: null };
+        await chromeM.pageOp(ckey(id), 'close').catch(() => {}); cwins.delete(id);
+        setTimeout(() => openWindow({ ...spec, id, go: false }), 50);
+      }
+      return r;
+    }
+    if (op === 'signin') return chromeMod().signIn({ key: ckey(id) }); // (round 31) the view's "Sign in (opens Chrome once)" from the app window's ⋯
     chromeMod().setPref('apps', id, 'chrome');
     const r = await openInChrome({ ...x.spec, id, url: siteUrl(x) || x.spec.url, go: true });
     if (r.ok) toHub({ type: 'chrome-app', id, name: x.spec.name });
@@ -600,4 +641,4 @@ function register(ipcMain, gw, deps = {}) {
   });
 }
 
-module.exports = { register, pace, offerChrome, isAppGuest: (contents) => Boolean(contents?.hostWebContents && hostIds.has(contents.hostWebContents.id)), _test: { isAuth, imageUri } };
+module.exports = { register, pace, offerChrome, chromeDownloads, isAppGuest: (contents) => Boolean(contents?.hostWebContents && hostIds.has(contents.hostWebContents.id)), _test: { isAuth, imageUri } };

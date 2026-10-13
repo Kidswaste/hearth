@@ -644,6 +644,8 @@ function activate(id, { focus = true } = {}) {
 
 // (round 30, chrome) Google's "Couldn't sign you in" showed in a website chat or a page: offer Chrome (chrome-ui.js)
 window.hub?.chrome?.onOffer?.((o) => Promise.resolve(window.Lazy?.load('chrome')).then(() => ChromeUI.offer(o)).catch(() => {}));
+// (round 31, chromeview) Chrome works out of sight: "show this page" lands on its Hearth view; a finished sign-in says so
+window.hub?.chrome?.onEvent?.((e) => { if (e?.type === 'show' || e?.type === 'signed-in') Promise.resolve(window.Lazy?.load('chrome')).then(() => ChromeUI.onEvent(e)).catch(() => {}); });
 
 function openWebChat(agentId, url) {
   activate(agentId);

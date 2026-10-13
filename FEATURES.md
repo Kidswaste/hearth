@@ -947,3 +947,8 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ Sync: a file changed in the very same millisecond no longer waits an extra sync.
 - ✓ The flaky self-checks (sync journal, keys, tooltips, die, Commands page count, music undo, sequence help / render, frame card) fixed at their cause; each reason is in the doc.
 - ○ `remote`'s fader step still fails now and then under heavy load (passes alone); listed in the doc.
+## 🫥 Chrome out of sight, its pages inside Hearth (round 31, chromeview, 35 upgrades: docs/upgrades/chromeview.md)
+- ✓ The Hearth Chrome (Google sign-in) runs with every window far off-screen; its pages show in Hearth's own windows as a **Chrome view**: an app set to Chrome opens in its usual app window, a website chat in Chrome shows its page in place (‹ Back · Forward › · ↻ · the address).
+- ✓ Mouse, wheel, keys (⌘ editing commands on a Mac, input methods), pastes, the page's cursor, right-click (the page's menu or Hearth's), popups as another view, downloads → Downloads/Hearth/<App>, file pickers → Hearth's dialog. ≤ 30 frames a second, none while the view can't be seen.
+- ✓ Chrome's own window only for signing in: **Sign in (opens Chrome once)** puts that page's window on screen and back out of sight when the page leaves the sign-in page (or "I'm signed in"). AI setup › Chrome › **Show Chrome** (off) for fixing things. The AI's page tools are unchanged.
+- ○ Tested with Playwright's Chromium as "Chrome" (`sh dev/run-checks.sh chromeview`, `node dev/chromeview-test.js`); real Chrome on a Mac / Windows and a real Google sign-in weren't available here (on a Mac, Chrome's Dock icon stays while it runs).

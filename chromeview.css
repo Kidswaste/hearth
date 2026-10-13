@@ -1,0 +1,39 @@
+/* A Chrome view (round 31, chromeview stream): a page of the Hearth Chrome inside a Hearth window. The same file in the
+   hub (website chats: --surface / --line…) and in app windows (--aw-*): each token falls back to the other. */
+.cv { --cv-bg: var(--bg, var(--aw-bg, #101217)); --cv-surface: var(--surface, var(--aw-surface, #181b22)); --cv-text: var(--text, var(--aw-text, #e8e6e1));
+  --cv-muted: var(--muted, var(--aw-muted, #9a9890)); --cv-line: var(--line, var(--aw-line, #2a2e38)); --cv-accent: var(--accent, var(--aw-accent, #e6b450));
+  position: relative; display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; width: 100%; height: 100%; background: var(--cv-bg); color: var(--cv-text); }
+.cv-bar { flex: none; display: flex; align-items: center; gap: 4px; padding: 4px 6px; border-bottom: 1px solid var(--cv-line); background: var(--cv-surface); font-size: 12px; }
+.cv-btn { flex: none; padding: 3px 8px; border-radius: 7px; border: 1px solid transparent; background: transparent; color: var(--cv-text); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.cv-btn:hover:not(:disabled) { border-color: var(--cv-line); background: color-mix(in srgb, var(--cv-text) 6%, transparent); }
+.cv-btn:disabled { opacity: 0.38; cursor: default; }
+.cv-btn.cv-go { border-color: color-mix(in srgb, var(--cv-accent) 55%, transparent); color: var(--cv-accent); }
+.cv-addr { flex: 1 1 auto; min-width: 60px; padding: 4px 9px; border-radius: 7px; border: 1px solid var(--cv-line); background: var(--cv-bg); color: var(--cv-muted); font: inherit; font-size: 12px; }
+.cv-addr:focus { color: var(--cv-text); outline: none; border-color: color-mix(in srgb, var(--cv-accent) 60%, var(--cv-line)); }
+.cv-strip { flex: none; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 10px; font-size: 12px; background: color-mix(in srgb, #4285f4 16%, var(--cv-surface)); border-bottom: 1px solid color-mix(in srgb, #4285f4 40%, transparent); }
+.cv-strip > span { flex: 1 1 200px; }
+.cv-stage { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; background: var(--cv-bg); outline: none; touch-action: none; }
+.cv-canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; image-rendering: auto; }
+/* the keyboard's landing spot: there (it takes text, IME and pastes) but not seen */
+.cv-keys { position: absolute; left: 0; top: 0; width: 1px; height: 1px; padding: 0; border: 0; margin: 0; opacity: 0; resize: none; overflow: hidden; pointer-events: none; color: transparent; background: transparent; caret-color: transparent; }
+.cv.focused .cv-stage { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cv-accent) 30%, transparent); }
+.cv-load { position: absolute; left: 0; right: 0; top: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--cv-accent), transparent); background-size: 40% 100%; background-repeat: no-repeat; animation: cv-load 1.1s linear infinite; z-index: 2; pointer-events: none; }
+@keyframes cv-load { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+.cv-note { position: absolute; inset: 0; display: grid; place-items: center; z-index: 3; background: color-mix(in srgb, var(--cv-bg) 82%, transparent); }
+.cv-note[data-kind="start"] { background: var(--cv-bg); }
+.cv-note-card { max-width: 380px; padding: 16px 20px; border-radius: 12px; border: 1px solid var(--cv-line); background: var(--cv-surface); text-align: center; font-size: 12.5px; line-height: 1.45; }
+.cv-note-card p { margin: 0; color: var(--cv-muted); }
+.cv-acts { display: flex; justify-content: center; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.cv-popup { position: absolute; inset: 14px; z-index: 5; display: flex; flex-direction: column; border-radius: 10px; overflow: hidden; border: 1px solid var(--cv-line); box-shadow: 0 14px 40px #000a; background: var(--cv-bg); }
+.cv-popup-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 10px; font-size: 12px; background: var(--cv-surface); border-bottom: 1px solid var(--cv-line); }
+.cv-popup-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--cv-muted); }
+.cv-menu { position: fixed; z-index: 10000; min-width: 200px; max-width: 320px; padding: 4px; border-radius: 9px; border: 1px solid var(--line, var(--aw-line, #2a2e38)); background: var(--surface, var(--aw-surface, #181b22)); color: var(--text, var(--aw-text, #e8e6e1)); box-shadow: 0 12px 32px #0009; font-size: 12.5px; }
+.cv-menu hr { border: 0; border-top: 1px solid var(--line, var(--aw-line, #2a2e38)); margin: 4px 2px; }
+.cv-mi { display: flex; flex-direction: column; align-items: flex-start; width: 100%; padding: 5px 9px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.cv-mi small { color: var(--muted, var(--aw-muted, #9a9890)); font-size: 11px; }
+.cv-mi:hover:not(:disabled) { background: color-mix(in srgb, var(--accent, var(--aw-accent, #e6b450)) 16%, transparent); }
+.cv-mi:disabled { opacity: 0.4; cursor: default; }
+/* a website chat living in Chrome: its Hearth page and bar step aside for the view */
+.chr-host > .web-bar, .chr-host > webview { display: none !important; }
+.chr-view { position: absolute; inset: 0; display: flex; z-index: 2; }
+.chr-host .chr-offer ~ .chr-view { top: 34px; }
