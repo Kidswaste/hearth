@@ -861,3 +861,8 @@ In ⋯ AI setup, **⚡ Hooks: when… then…** gives each AI a short list of ru
 - ✓ Also from a new chat's starter ("🖼 Start from something like…") and the director's ◎ mission of that name (your words search, you pick, the director gets your words).
 - ✓ Light: loads on first use; pictures drawn one at a time in one hidden preview page, only for cards in view, kept on disk.
 - ○ Checked with the fake engines (`sh dev/run-checks.sh gallery`: every starting point runs without errors); its look on a real GPU wasn't seen here.
+## Smart picks the model and effort per message (round 28, router, 26 upgrades: docs/upgrades/router.md)
+- ✓ ⋯ AI setup → How hard it thinks → **Smart** now decides per message, from local rules (no extra model call): chit-chat → Haiku · low (Astra: Luna · minimal), short questions → Sonnet · low (Sol · low), everyday asks → the chat's own model · medium, code / Lab builds / analyses → its own model · high. Quick and Deep stay fixed.
+- ✓ The pick shows small on the reply ("Sonnet · low"; hover: why); one click **asks again, thinking harder** (own model, high; xhigh after high).
+- ✓ Never routes away from a model or effort you picked for the chat, never picks a stronger model than the chat's own, and a chat with a big context never steps down (it would lose its prompt cache).
+- ○ About −17% cost vs the old Smart and −32% vs Deep on a typical mix (estimate: `node dev/router-test.js`); checked with the fake engines reporting what each run got (`sh dev/run-checks.sh router`).
