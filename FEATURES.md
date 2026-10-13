@@ -833,3 +833,9 @@ In ⋯ AI setup, **⚡ Hooks: when… then…** gives each AI a short list of ru
 - ✓ No forced layout per click anywhere once the Lab has loaded (40 → 0 per 20 clicks); ⋯ AI setup opens with 69 % less forced style / layout time and is preloaded when you point at ⋯; ◎ Missions places itself before it paints and closes cleanly; switching windows forces 45 % less.
 - ✓ "↑ Show earlier" brings 60 messages at a time (41 ms frame → 15–26 ms per step); the usage highlights and the jank watch stay out of busy frames.
 - ○ Measured headless on a shared CPU with software GL (`sh dev/run-checks.sh smooth26`, hz240, labperf, perf-report); long-chat wheel tasks here are the software compositor's commit, to check with `/smooth` on a real Mac.
+## Calmer, plainer (round 27, simplify2, 23 upgrades: docs/upgrades/simplify2.md)
+- ✓ Settings reads like ⋯ AI setup: Look, Sync, Updates, Keys, then Advanced folded; every row explained on hover; no command names (34 → 21 controls at first sight, 7 → 4 open sections).
+- ✓ What belongs to an AI is in ⋯ AI setup only (its tools; for a Lab director: nodes, progress bar, a picture per edit); Settings has one link to it.
+- ✓ No "/command" on screen outside the Lab: keys sheet, command bar, Ctrl+K, Discover tips and tours, tooltips, toasts.
+- ✓ ⚇ Work with Astra waits behind Alt (◎ Missions does the same; right-click the chat box has it); AI setup's rail icon is ❖, not a second ⚙.
+- ○ Checked by `dev/checks/simplify2.js` (chat group) and the updated `tidy` check.

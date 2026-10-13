@@ -107,6 +107,7 @@ line count is lower than the number of upgrades).
 | Missions 2 (round 26): one calm result card for Swarm / Debate / Side by side / Pair (who took part, live status, the answer up front, Use this one / Merge), helper agents as tidy live rows, Plan first / Research / Teacher / Second opinion only, the mission chip on your message with ↻ | [missions2.md](missions2.md) | 34 |
 | Easy Lab (round 26): every Lab feature without commands: right-click the picture → ✦ More (music, look & motion, make, what's going on), toolbar ⋯ → Director ›, a layer right-click menu; Lab missions (4 variations, react to the music, 9:16 version, polish the look, render it); no "/command" left in visible Lab text | [labeasy.md](labeasy.md) | 63 |
 | Smoothness after rounds 25–26 (round 26): the Lab preview sleeps when parked or paused (0 wake-ups off screen), no forced layout per click once the Lab loaded, ⋯ AI setup opens with 69 % less forced layout time and preloads on hover, ◎ Missions closes cleanly, switching windows forces 45 % less, "Show earlier" 60 messages at a time; new `smooth26` check, hz240 fixed for round 26 | [smooth26.md](smooth26.md) | 12 |
+| Calmer, plainer (round 27): Settings like ⋯ AI setup (Look, Sync, Updates, Keys + Advanced folded, every row explained on hover, no command names; 34 → 21 controls), AI things only in ⋯ AI setup, no "/command" on screen outside the Lab (keys sheet, command bar, tips, tours, tooltips, toasts), ⚇ behind Alt; new `simplify2` check | [simplify2.md](simplify2.md) | 23 |
 | **Total** | | **12,630** |
 
 ## Start here
