@@ -223,13 +223,15 @@ const ProgressHooks = (() => {
     if (typeof Native !== 'undefined') Native.hooks.send.push(replyStart);
     window.hub.onEngineEvent?.(onEngine);
     if (typeof HubBridge !== 'undefined') HubBridge.onResult(onHubResult);
-    if (typeof Flows !== 'undefined') {
+    const flowsHook = () => {
+      if (typeof Flows === 'undefined') return;
       Flows.onChange((run) => flowRun(run));
       // runs left going (or hung) in the last hour show again after a restart (runs come back from disk a moment after
       // the page loads: looked at again then)
       const back = () => { for (const r of Flows.runs?.() || []) if (['running', 'waiting-ai', 'hung'].includes(r.status) && Date.now() - (r.updated || 0) < 3600000 && !P.get(`flow:${r.id}`)) flowRun(r); };
       back(); setTimeout(back, 4000);
-    }
+    };
+    if (window.Lazy?.isIn) Lazy.when('flows', flowsHook); else flowsHook(); // (round 29, fastboot) Flows loads after the first screen
     addEventListener('hearth:jam-end', (e) => { if (!jamKey || !P.get(jamKey)) return; const st = e.detail?.status; if (st === 'done') P.done(jamKey); else if (st === 'error') P.done(jamKey, { ok: false }); else P.drop(jamKey); jamKey = null; });
     window.hub.video?.onJob?.(onJob);
     window.hub.capture?.onProgress?.(onCapture);

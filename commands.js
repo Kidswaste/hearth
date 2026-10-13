@@ -511,8 +511,10 @@ const Commands = (() => {
     examples: ['/help', '/help lab', '/help list'],
     run: (args, ctx) => {
       const a = String(args || '').trim();
-      const view = typeof CmdBar !== 'undefined' && CmdBar.help;
       if (/^list\b/i.test(a)) return helpList(a.replace(/^list\s*/i, ''));
+      // (round 29, fastboot) the command bar loads after the first screen: /help alone waits for it, then opens its view
+      if (window.Lazy?.isIn && !Lazy.isIn('cmdbar') && (!a || ctx?.source === 'bar')) { Lazy.load('cmdbar').then(() => CmdBar.help(a)).catch(() => {}); return null; }
+      const view = typeof CmdBar !== 'undefined' && CmdBar.help;
       if (view && (!a || ctx?.source === 'bar')) { CmdBar.help(a); return null; }
       return helpList(a);
     },

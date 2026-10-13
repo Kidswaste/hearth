@@ -354,6 +354,25 @@ const Lazy = (() => {
     return g.promise;
   }
 
+  // ---------- (round 29, fastboot) a group's own keys work before it's in ----------
+  // g.keys: [{ key, code, mod (Ctrl/⌘), shift, typing: false (not while typing in a field), run(shift) }]: a press while
+  // the group is still a stand-in loads it, then does what the key does; the hub's 'shortcut' messages (main.js: the
+  // same keys pressed in the Lab's frame or a website) too. Once the group is in (or loading), its own handlers answer.
+  function earlyKeys(g) {
+    if (!g.keys?.length) return;
+    const go = (k, shift) => load(g.name).then(() => k.run(shift)).catch((err) => say(`${g.name}: ${err.message}`));
+    const typing = (t) => /^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName || '') || t?.isContentEditable;
+    document.addEventListener('keydown', (e) => {
+      if (g.state !== 'stub' || e.defaultPrevented || e.altKey) return; // (a press is a use: held groups load too)
+      const k = g.keys.find((x) => (e.key.toLowerCase() === x.key.toLowerCase() || e.code === x.code) && Boolean(x.mod) === (e.ctrlKey || e.metaKey)
+        && (x.shift == null || Boolean(x.shift) === e.shiftKey) && !(x.typing === false && typing(e.target)));
+      if (!k) return;
+      e.preventDefault(); e.stopPropagation();
+      go(k, e.shiftKey);
+    }, true);
+    try { window.hub?.onShortcut?.((sc) => { if (g.state !== 'stub') return; const k = g.keys.find((x) => x.mod && x.key.toLowerCase() === String(sc?.key || '').toLowerCase() && (x.shift == null || Boolean(x.shift) === Boolean(sc.shift))); if (k) go(k, Boolean(sc.shift)); }); } catch { /* no hub */ }
+  }
+
   // ---------- after the first screen: the 'soon' groups, one per idle moment ----------
   const idle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 600 }) : setTimeout(fn, 30));
   function soon() {
@@ -413,7 +432,7 @@ const Lazy = (() => {
   }
   // a group without a lazy-at.js tag gets its stand-ins at the end
   document.addEventListener('DOMContentLoaded', () => { for (const g of groups.values()) if (!placed.has(g.name)) { placed.add(g.name); stubNow(g); stubLater(g); } }, { once: true });
-  for (const g of groups.values()) { try { guardGlobals(g); } catch (err) { say(`${g.name}: ${err.message}`); } }
+  for (const g of groups.values()) { try { guardGlobals(g); earlyKeys(g); } catch (err) { say(`${g.name}: ${err.message}`); } }
   // start.js fires 'hearth:ready' once the first screen is up: the cue for the 'soon' groups
   addEventListener('hearth:ready', start, { once: true });
   // start.js never got there (an error during startup): don't leave the features unloaded

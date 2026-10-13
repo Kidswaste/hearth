@@ -287,6 +287,7 @@ const AppUI = (() => {
     list.addEventListener('mousemove', (e) => { const r = e.target.closest('.palette-item'); if (r && r.__i !== pal.sel) { pal.sel = r.__i; paletteMark(); } }, { passive: true });
     input.addEventListener('input', () => {
       // "/" hands over to the command bar (chat commands over any tool, cmdbar.js)
+      if (input.value.startsWith('/') && window.Lazy?.isIn && !Lazy.isIn('cmdbar')) { const t = input.value; close(); Lazy.load('cmdbar').then(() => CmdBar.open(t)).catch(() => {}); return; } // (round 29: it loads after the first screen)
       if (input.value.startsWith('/') && typeof CmdBar !== 'undefined') { const t = input.value; close(); CmdBar.open(t); return; }
       pal.sel = 0; if (input.value.startsWith('?')) debounced(); else paletteRender();
     });

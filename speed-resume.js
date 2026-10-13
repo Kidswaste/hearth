@@ -71,7 +71,7 @@ const SpeedResume = (() => {
     const r = from.render;
     if (r?.path && now - r.t < 3 * DAY) out.push({ id: 'render', icon: '🎬', label: r.name || base(r.path), hint: `last render · ${Speed.ago(r.t)}`, run: () => { if (typeof CaptureView !== 'undefined') CaptureView.open(r.path); else window.hub.fs?.open?.(r.path); } });
     try {
-      const run = typeof Flows !== 'undefined' && Flows.active?.().filter((x) => x.status === 'waiting-you' || x.status === 'hung').sort((a, b) => (b.updated || 0) - (a.updated || 0))[0];
+      const run = (!window.Lazy?.isIn || Lazy.isIn('flows')) && typeof Flows !== 'undefined' && Flows.active?.().filter((x) => x.status === 'waiting-you' || x.status === 'hung').sort((a, b) => (b.updated || 0) - (a.updated || 0))[0];
       if (run && now - (run.updated || 0) < 3 * DAY) out.push({ id: 'flow', icon: run.status === 'hung' ? '↻' : '⏸', label: run.flowName, hint: Flows.STATUS_LABEL?.[run.status] || run.status, run: () => FlowsUI.open({ runId: run.id }) });
     } catch { /* flows are optional */ }
     // the place you were last comes first

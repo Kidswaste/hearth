@@ -743,7 +743,8 @@ const Makes = (() => {
     ]);
     try { AppUI.addAction?.('Makes: everything Hearth makes, with its rooms', () => show()); AppUI.addAction?.('Makes: plan a make (its rooms now)…', async () => { const t = await Modal.prompt('Plan a make', { placeholder: 'a three.js animation that cuts into a video', label: 'What will be made? Its rooms are made now, with one name and mark.' }); if (t) plan(t).catch((e) => toast(e.message, { type: 'error' })); }); } catch { /* the palette is optional */ }
     ready.then(() => {
-      if (typeof Flows !== 'undefined') Flows.onChange((run) => { try { fromRun(run); } catch (err) { console.warn(err); } });
+      const hook = () => { if (typeof Flows !== 'undefined') Flows.onChange((run) => { try { fromRun(run); } catch (err) { console.warn(err); } }); };
+      if (window.Lazy?.isIn) Lazy.when('flows', hook); else hook(); // (round 29, fastboot) Flows loads after the first screen
       Panel.render();
     });
   });

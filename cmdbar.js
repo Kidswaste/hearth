@@ -964,5 +964,8 @@ const CmdBar = (() => {
   AppUI.addAction?.('Every chat command (searchable help)', () => help());
   AppUI.addAction?.('Command timers (/timers)', () => runLine('/timers'));
 
+  // (round 29, fastboot) loaded after the first screen: the replies already on screen get their clickable commands too
+  if (performance.getEntriesByName('hearth:ready').length) setTimeout(() => decorate(), 0);
+
   return { open, close, toggle, isOpen, help, runLine, target, decorate, timers: () => timers.slice(), parseDur, parseAt, recording: () => rec && { ...rec } };
 })();
