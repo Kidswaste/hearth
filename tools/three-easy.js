@@ -75,6 +75,7 @@ const LabEasy = (() => {
     item('Fade to black and back', '', '/blackout'),
     ...(typeof LabInstantHook !== 'undefined' ? [LabInstantHook.item()] : []), // (round 29) ✦ describe it (tools/three-instant-hook.js)
     ...(typeof LookMatch !== 'undefined' ? [LookMatch.item()] : []), // (round 28) 🎨 make it look like this (tools/three-lookmatch.js)
+    ...(typeof AutoPolish !== 'undefined' ? [AutoPolish.item()] : []), // (round 30) ✨ make it look finished (tools/three-autopolish.js)
   ];
   const makeItems = () => [
     askItem('👥 4 variations of this scene…', 'A crew explores them side by side (cost shown first); you pick one', { title: 'What should the 4 variations explore?', placeholder: 'e.g. hit harder on the drop' }, (v) => `/crew 4 ${v || 'clearly different takes on this scene'}`, 'crew'),
@@ -148,8 +149,9 @@ const LabEasy = (() => {
       submit: brief('♪ Mission: make it react to the music (kick, bass and loudness drive it, the drops land, calm in the quiet parts; sliders for how much).') },
     { id: 'lab-vertical', icon: '📱', label: 'Make a 9:16 version', desc: 'The frame goes 9:16 (1080×1920) and the director recomposes for vertical, clear of the app buttons.',
       submit: (agent, text) => { run('/size 9:16', { quiet: true }).finally(() => brief('📱 Mission: a 9:16 version (1080×1920, vertical): recompose for the vertical frame and keep the safe zones clear.')(agent, text)); return true; } },
-    { id: 'lab-polish', icon: '🎨', label: 'Polish the look', desc: 'Color grade, palette, light, glow and texture; the motion and timing stay.',
-      submit: brief('🎨 Mission: polish the look (the ◐ Grade: color, film, lens; the palette, light, glow, texture). Keep the motion and the timing.') },
+    { id: 'lab-polish', icon: '🎨', label: 'Polish the look', desc: 'First a free local pass fixes light, color, glow, motion and music from the picture; then the director (cost shown first) does what\'s left. The motion and timing stay.',
+      // (round 30, autopolish) the local pass first (no tokens), then the director for what's left, cost first
+      submit: (agent, text) => (typeof AutoPolish !== 'undefined' ? (AutoPolish.mission(agent, text).catch((err) => toast(err.message, { type: 'error' })), true) : brief('🎨 Mission: polish the look (the ◐ Grade: color, film, lens; the palette, light, glow, texture). Keep the motion and the timing.')(agent, text)) },
     { id: 'lab-render', icon: '🎬', label: 'Render it', desc: 'The director finishes what\'s needed, renders the final video in the best quality at this frame size, and says where it is.',
       submit: brief('🎬 Mission: render it: finish what\'s needed, then render the final video in the best quality at the current frame size and tell me where the file is.') },
   ];
