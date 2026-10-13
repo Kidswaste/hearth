@@ -1768,6 +1768,7 @@ const ThreeTweaks = (() => {
       bind(key, band, amount = 0.5, c) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0 || scanned.items[i].kind !== 'number') return false; setBinding(i, band || null, amount, c); return true; },
       // (round 23) what a named slider follows ({ band, amount, c } or null) and the curve editor's handle on it
       binding(key) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; return i < 0 ? null : bindings[ids[i]] || null; },
+      motion(key) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; return i < 0 ? null : motions[ids[i]] || null; }, // (round 30, autopolish) its undo
       mapping(key) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0 || scanned.items[i].kind !== 'number') return null; return mapAdapter(scanned.items[i], i, null); },
       // MIDI-ready: a 0..1 position (a knob, a fader, an OSC value…) → the control's range, like moving it by hand
       setNormalized(key, u, { release = false } = {}) {

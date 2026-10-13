@@ -926,3 +926,8 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ Ranked by the words that matter, recency, pinned chats, bookmarked messages and decision phrasing; the index lives on the store thread, is built only in idle moments (never at startup) and costs nothing once caught up.
 - ✓ **Ask the AI to sum these up** shows its token cost first and sends only the quotes, never whole chats.
 - ○ Tested with seeded chats (`sh dev/run-checks.sh recall`: smoke with fake engines + a ranking unit test with 24,000 messages); decisions phrased unusually land under "Also mentioned".
+## ✨ Make it look finished (round 30, autopolish, 35 upgrades: docs/upgrades/autopolish.md)
+- ✓ One click, 0 tokens: the Lab measures its own picture (levels, black / white, contrast, glow, color harmony, detail under the 9:16 apps' buttons), a few frames of motion, what follows the music and the frame rate, then fixes what's off with ◐ Grade and slider changes, as one undo step.
+- ✓ The card shows the measured numbers before → after, a finish score, Before / After pictures; untick any fix, hold Before, ↶ Undo all, ✦ ask the director for what's left (cost first).
+- ✓ Ways in: right-click the preview › ✨ Make it look finished, ✦ More › ✨ Look & motion, the director's ◎ "Polish the look" (local pass first, then the director), ⌘/Ctrl+K.
+- ○ Tested on a generated bad scene with the fake engines (`sh dev/run-checks.sh autopolish unit:autopolish-test`); not seen on the owner's real scenes / GPU.

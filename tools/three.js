@@ -2707,6 +2707,7 @@ const ThreeLab = (() => {
       const ctl = selCtl();
       return [
         { label: frozenNow ? '▶ Unfreeze' : '❚❚ Freeze', key: 'F', action: () => setFreeze(!frozenNow) },
+        ...(typeof AutoPolish !== 'undefined' ? [AutoPolish.previewItem()] : []), // (round 30) ✨ make it look finished (tools/three-autopolish.js)
         ...(typeof ThreeSeq !== 'undefined' ? [ThreeSeq.previewItem()] : []),
         ...(typeof ThreeComp !== 'undefined' ? [ThreeComp.previewItem()] : []),
         ...(typeof ThreeModels !== 'undefined' ? [ThreeModels.previewItem()] : []), // 3D models (tools/three-models.js)
