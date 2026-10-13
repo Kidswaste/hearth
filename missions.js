@@ -445,21 +445,29 @@ const Missions = (() => {
       el('div', { class: 'ms-grid' }, more.map(card)));
     return el('div', { class: 'ms-cards' }, el('div', { class: 'ms-grid' }, here.filter((m) => !m.more).map(card)), d);
   }
+  let shut = null; // closes the open picker
   function popover(agentId, anchor) {
+    shut?.();
     document.querySelector('.ms-pop')?.remove();
+    // (round 26, smooth26) every way it closes (a pick, opening it again too) takes its two page listeners with it
+    const close = () => { pop.remove(); removeEventListener('pointerdown', away, true); removeEventListener('keydown', esc, true); if (shut === close) shut = null; };
+    shut = close;
     const pop = el('div', { class: 'ms-pop', role: 'dialog', attrs: { 'aria-label': 'Mission for your next message' } },
       el('div', { class: 'ms-head' }, el('b', { text: 'Your next message will…' }), el('span', { class: 'hint', text: 'click: next message only · 📌 from now on' })),
-      cards(agentId, { onPick: () => pop.remove() }));
+      cards(agentId, { onPick: close }));
+    // measured hidden, placed, then shown: one layout, before it paints
+    pop.style.visibility = 'hidden';
     document.body.append(pop);
     const place = () => {
-      const r = anchor.getBoundingClientRect();
-      pop.style.left = `${Math.max(8, Math.min(innerWidth - pop.offsetWidth - 8, r.right - pop.offsetWidth))}px`;
-      pop.style.top = `${Math.max(8, r.top - pop.offsetHeight - 8)}px`;
+      const r = anchor.getBoundingClientRect(); const w = pop.offsetWidth; const h = pop.offsetHeight;
+      pop.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, r.right - w))}px`;
+      pop.style.top = `${Math.max(8, r.top - h - 8)}px`;
     };
     place();
+    pop.style.visibility = '';
     pop.querySelector('.ms-more')?.addEventListener('toggle', place);
-    const away = (e) => { if (!pop.contains(e.target) && e.target !== anchor) { pop.remove(); removeEventListener('pointerdown', away, true); removeEventListener('keydown', esc, true); } };
-    const esc = (e) => { if (e.key === 'Escape') { pop.remove(); removeEventListener('pointerdown', away, true); removeEventListener('keydown', esc, true); } };
+    const away = (e) => { if (!pop.contains(e.target) && e.target !== anchor) close(); };
+    const esc = (e) => { if (e.key === 'Escape') close(); };
     addEventListener('pointerdown', away, true); addEventListener('keydown', esc, true);
   }
   // the ◎ button in a chat box: shows the mission when there is one
@@ -468,11 +476,15 @@ const Missions = (() => {
     const paint = () => {
       const m = current(agentId);
       b.classList.toggle('on', m.id !== 'normal');
-      b.textContent = m.id === 'normal' ? '◎' : `${m.icon} ${m.label}${isSticky(agentId) ? ' 📌' : ''}`;
+      const t = m.id === 'normal' ? '◎' : `${m.icon} ${m.label}${isSticky(agentId) ? ' 📌' : ''}`;
+      if (b.textContent !== t) b.textContent = t;
     };
     b.addEventListener('click', () => popover(agentId, b));
     b.addEventListener('contextmenu', (e) => { e.preventDefault(); set(agentId, 'normal'); }); // right-click: back to a normal reply
-    listeners.add((id) => { if (id === agentId) paint(); });
+    // (round 26, smooth26) a chat box built again leaves its old ◎ behind: its painter goes at the next change
+    let shown = false;
+    const fn = (id) => { if (b.isConnected) shown = true; else if (shown) { listeners.delete(fn); return; } if (id === agentId) paint(); };
+    listeners.add(fn);
     paint();
     return b;
   }

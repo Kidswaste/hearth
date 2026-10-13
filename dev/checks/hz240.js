@@ -23,6 +23,8 @@ async function key(k, modifiers = 0) {
   await cdp('Input.dispatchKeyEvent', { type: 'keyUp', modifiers, ...p });
 }
 const mid = (n) => { const r = n.getBoundingClientRect(); return [Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2)]; };
+// (round 26: the Commands page has no rail button any more: /commands opens it)
+const railOpen = async (id) => { const btn = document.querySelector(`#agent-buttons .agent-btn[data-id="${id}"]`); if (btn) await click(...mid(btn)); else activate(id); };
 const settle = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 30))));
 
 // ---- the owner's look: Forgeheart (v2 materials, textures, glow) ----
@@ -67,7 +69,7 @@ await seg('scroll-chat', async () => { const [x, y] = mid(Native.view(claude.id)
 await seg('menu', async () => {
   const b = [...Native.view(claude.id).root.querySelectorAll('button')].find((n) => n.textContent.trim() === '⋯' && n.getBoundingClientRect().width);
   for (let i = 0; i < 5; i++) {
-    await click(...mid(b)); await settle();
+    await click(...mid(b), 'right'); await settle(); // (round 26: ⋯ opens AI setup, measured in smooth26.js; right-click ⋯ keeps the menu)
     const m = document.getElementById('menu'); const r = m.getBoundingClientRect();
     for (let y = r.top + 6; y < r.bottom - 6; y += 12) { await move(Math.round(r.left + r.width / 2), Math.round(y)); await wait(4); }
     await key('Escape'); await settle();
@@ -108,11 +110,11 @@ await seg('slider', async () => {
 });
 // opening tools from the rail (Board, Commands) and back to the chat, twice
 await seg('tools', async () => {
-  for (let i = 0; i < 2; i++) for (const id of ['tool:board', 'tool:commands', claude.id]) { await click(...mid(document.querySelector(`#agent-buttons .agent-btn[data-id="${id}"]`))); await wait(250); }
+  for (let i = 0; i < 2; i++) for (const id of ['tool:board', 'tool:commands', claude.id]) { await railOpen(id); await wait(250); }
 });
 // the Commands page: hover down its list, wheel through it, search in it
 await seg('cmdpage', async () => {
-  await click(...mid(document.querySelector('#agent-buttons .agent-btn[data-id="tool:commands"]'))); await wait(400);
+  await railOpen('tool:commands'); await wait(400);
   const L = document.querySelector('.cp-list'); const r = L.getBoundingClientRect(); const x = Math.round(r.left + r.width / 2);
   for (let y = r.top + 40; y < r.bottom - 10; y += 8) { await move(x, Math.round(y)); await wait(4); }
   for (let i = 0; i < 30; i++) { await wheel(x, Math.round(r.top + r.height / 2), 160); await wait(10); }

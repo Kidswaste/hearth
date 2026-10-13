@@ -396,6 +396,7 @@ function setParked(on) {
   parked = on;
   if (on) for (const e of [...POOL]) poolEvict(e); // (round 21: the Lab off screen: no quick re-run coming, the GPU gets its memory back)
   if (!on) { const q = parkQ.splice(0); for (const fn of q) realRAF(fn); }
+  statsRun(!on); // (round 26, smooth26) the stats timer sleeps too: a parked Lab woke the page twice a second for nothing
 }
 // what the preview saved (shown by /lab perf): renderers of gone modules dropped, filter merges skipped / done, passes skipped
 const perfNote = { stale: 0, composed: 0, reused: 0, passSkipped: 0, pooled: 0, poolHit: 0, poolMiss: 0, fused: 0, direct: 0, warm: 0, firstMs: null, links: 0, progHit: 0 };
@@ -771,7 +772,14 @@ function setGuides(kind) {
 // Present: the mouse hides after 2 s still
 let presentCursor = false; let cursorTimer = 0;
 addEventListener('mousemove', () => { if (!presentCursor) return; document.documentElement.style.cursor = ''; clearTimeout(cursorTimer); cursorTimer = realSetTimeout(() => { document.documentElement.style.cursor = 'none'; }, 2000); });
-realSetInterval(() => {
+let statsTimer = 0;
+function statsRun(on) {
+  if (!on) { if (statsTimer) clearInterval(statsTimer); statsTimer = 0; return; }
+  if (statsTimer) return;
+  frames = 0; lastTick = performance.now(); worstGap = 0;
+  statsTimer = realSetInterval(statsTick, 500);
+}
+function statsTick() {
   const now = performance.now();
   const fps = (frames * 1000) / (now - lastTick);
   frames = 0;
@@ -783,7 +791,8 @@ realSetInterval(() => {
   const at = (p) => (w.length ? +w[Math.min(w.length - 1, Math.floor(w.length * p))].toFixed(2) : 0);
   post({ type: 'stats', fps, worst, quality, ms: frameMs, calls: i.render.calls, triangles: i.render.triangles, points: i.render.points, lines: i.render.lines, geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs?.length ?? 0,
     p50: at(0.5), p95: at(0.95), callsAll: lastCalls, gpuMB: gpuEstimate(), cap: fpsCap, light: lightMode, note: { ...perfNote } });
-}, 500);
+}
+statsRun(!parked);
 // A GPU memory estimate (MB): what the page's WebGL canvases hold (color + depth, ×2 for the kept last frame every
 // layer has for merging), the filters' merged pictures and feedback buffers, plus ~1 MB per texture (a guess: three.js
 // doesn't tell texture sizes). An order of magnitude for /lab perf, not a measurement.
@@ -1421,8 +1430,10 @@ function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, lo
   for (const ev of ['play', 'pause', 'ended', 'seeked', 'loadedmetadata']) m.addEventListener(ev, sendState);
   fpres.frame = -1; fpres.time = 0; fpart = -1; fwant = null;
   if (video) watchFrames(m);
-  clearInterval(stateTimer);
-  stateTimer = realSetInterval(() => { if (!m.paused) sendState(); }, 250);
+  // (round 26, smooth26) the 4×/s position report runs only while it plays (a paused song woke the page for nothing)
+  const stateTick = () => { if (mediaEl !== m) return; clearInterval(stateTimer); stateTimer = m.paused ? 0 : realSetInterval(() => { if (!m.paused) sendState(); }, 250); };
+  for (const ev of ['play', 'pause', 'ended']) m.addEventListener(ev, stateTick);
+  stateTick();
   m.addEventListener('loadedmetadata', async () => {
     // a recorder's WebM doesn't say how long it is (Infinity): seek past the end once so the browser measures it
     if (m.duration === Infinity) await new Promise((res) => { const t = realSetTimeout(res, 6000); m.addEventListener('durationchange', () => { if (Number.isFinite(m.duration)) { clearTimeout(t); res(); } }); try { m.currentTime = 1e101; } catch { res(); } });

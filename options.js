@@ -150,7 +150,7 @@ const Options = (() => {
     // (round 26, hooks.js) "Hooks: when… then…" (its group loads by itself shortly after the start; asked for here if not yet)
     const hooks = window.Lazy?.loaded?.('hooks') === false ? (window.Lazy.load('hooks').then(() => paint()).catch(() => {}), null) : typeof Hooks !== 'undefined' ? Hooks.section(a, { save, repaint: paint }) : null;
     sheet.body.replaceChildren(who, mission, personality(a), instructions(a), hooks, access(a), memory(a), habits(a), thinking(a));
-    sheet.body.scrollTop = scroll;
+    if (scroll) sheet.body.scrollTop = scroll; // (round 26, smooth26: at the top already, no layout forced mid-build)
   }
   function build(host, agentId, page = false) {
     const head = el('header', { class: 'opt-head' }, el('b', { text: 'This AI: missions and what it can use' }), el('span', { class: 'spacer' }), page ? null : btn('✕', 'Close (Esc)', () => hide()));

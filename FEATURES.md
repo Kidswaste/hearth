@@ -828,3 +828,8 @@ In ⋯ AI setup, **⚡ Hooks: when… then…** gives each AI a short list of ru
 - ✓ Toolbar ⋯ › **Director** (what it's making, did, costs, its last picture, undo); **right-click a layer** (hide, solo, rename, duplicate, react to the music, a filter above, a look; blend / animate / ease / reset / save behind More…).
 - ✓ Lab missions in the director's ◎: Make 4 variations, Make it react to the music, Make a 9:16 version, Polish the look, Render it (`Missions.add`).
 - ✓ No "/command" in the Lab's visible hints, tooltips, placeholders and menus (checked by `dev/checks/labeasy.js`).
+## Smoothness after rounds 25–26 (round 26, smooth26, 12 upgrades: docs/upgrades/smooth26.md)
+- ✓ The Lab costs nothing off screen: its preview's stats timer and song report sleep while it's parked / paused (idle after visiting the tools 9.1 → 2.9 ms busy/s, 0 preview wake-ups).
+- ✓ No forced layout per click anywhere once the Lab has loaded (40 → 0 per 20 clicks); ⋯ AI setup opens with 69 % less forced style / layout time and is preloaded when you point at ⋯; ◎ Missions places itself before it paints and closes cleanly; switching windows forces 45 % less.
+- ✓ "↑ Show earlier" brings 60 messages at a time (41 ms frame → 15–26 ms per step); the usage highlights and the jank watch stay out of busy frames.
+- ○ Measured headless on a shared CPU with software GL (`sh dev/run-checks.sh smooth26`, hz240, labperf, perf-report); long-chat wheel tasks here are the software compositor's commit, to check with `/smooth` on a real Mac.
