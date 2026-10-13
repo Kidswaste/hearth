@@ -145,7 +145,7 @@ const F = require('./fake-common');
     await F.sleep(wait * 6);
     F.out({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: 'ok' }] }, session_id: sessionId });
   }
-  if (p.error) { F.out({ type: 'result', subtype: 'error_during_execution', is_error: true, result: 'Fake engine error: the model is overloaded', session_id: sessionId }); return; }
+  if (p.error) { F.out({ type: 'result', subtype: 'error_during_execution', is_error: true, result: 'Fake engine error: something went wrong' /* (round 34) not a busy service: offline.js would retry it; claudeBusy is that */, session_id: sessionId }); return; }
   text += mcpReport;
   // (round 28, router) "runinfo": the reply ends with the model + effort this run really got (dev/checks/router.js)
   if (/\bruninfo\b/i.test(prompt)) text += `\n\nrun: model=${arg('--model') || 'default'} effort=${arg('--effort') || 'none'}`;

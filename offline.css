@@ -10,3 +10,4 @@
 .msg.net-note .net-act:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
 .msg.net-note .net-act[hidden] { display: none; }
 .offline-chips .offline-chip { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.msg.net-note .msg-report { display: none; } /* not Hearth's fault: nothing to report to the developer */

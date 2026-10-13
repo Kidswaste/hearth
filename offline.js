@@ -24,7 +24,8 @@ const Offline = (() => {
   const HELD = 'offline.held'; // the chat's own queue at the last close (localStorage: written synchronously on pagehide)
   let items = [];
   let online = navigator.onLine !== false;
-  let forced = null; // tests: what the internet check answers
+  let forced = null; // tests: what the internet check answers (kept across a reload: dev/checks/offline.js)
+  try { const t = localStorage.getItem('offline.test-net'); if (t === 'true' || t === 'false') forced = t === 'true'; } catch { /* no storage */ }
   let scale = 1; // tests: every wait × scale
   let lastWake = 0;
   let probeN = 0; let probeT = null; let wakeT = null; let tickT = null;
@@ -101,7 +102,10 @@ const Offline = (() => {
   }
   async function probeNow() {
     clearTimeout(probeT); probeT = null;
-    const ok = await check();
+    let ok = await check();
+    // the check can fail where the engines still get through (a proxy set only in the engine's own settings): after
+    // a few failed checks while the OS says it's online, the send itself is the test (a failed one costs no tokens)
+    if (!ok && forced == null && navigator.onLine !== false && probeN >= 3) ok = true;
     if (ok) { if (!online) setOnline(true); else pump(); return; }
     online = false;
     document.documentElement.classList.add('net-offline');
@@ -220,8 +224,8 @@ const Offline = (() => {
     const agentId = chat.agentId;
     const merged = ['done', 'stopped', 'error'].includes(event.type) && mergeContinue(chat, event.type);
     if (event.type === 'done') { attempts.delete(chat.id); offTries.delete(chat.id); }
-    if (event.type === 'error') handleError(event, chat);
-    if (merged || event.type === 'error') { Native.save(chat); if (H.activeChat[agentId] === chat.id) Native.refresh(agentId, { keepScroll: true }); }
+    const ours = event.type === 'error' && handleError(event, chat);
+    if (merged || ours) { Native.save(chat); if (H.activeChat[agentId] === chat.id) Native.refresh(agentId, { keepScroll: true }); }
     if (items.length) setTimeout(pump, 300); // a chat that was answering may be free for what waits
   });
 
@@ -229,12 +233,11 @@ const Offline = (() => {
     const agentId = chat.agentId;
     const idx = chat.messages.length - 1;
     const m = chat.messages[idx];
-    if (m?.role !== 'error') return;
-    const net = C.classify(event.message || m.text);
-    if (!net) return;
+    if (m?.role !== 'error') return false;
+    const net = C.classify(event.message || m.text) || (m.needsLogin ? { kind: 'signedout' } : null);
+    if (!net) return false;
     const prev = chat.messages[idx - 1];
     const cutReply = prev?.role === 'assistant' && prev.stopped && (prev.at === m.at || prev.cut) && ['offline', 'busy', 'proxy'].includes(net.kind);
-    const was = net.kind;
     if (cutReply) {
       net.kind = 'cutoff';
       net.slept = now() - lastWake < 180000;
@@ -244,7 +247,7 @@ const Offline = (() => {
     }
     m.net = net;
     moveChatQueue(agentId, chat, net.kind);
-    if (net.kind === 'offline' || (net.kind === 'cutoff' && was === 'offline')) { online = false; document.documentElement.classList.add('net-offline'); }
+    if (net.kind === 'offline') { online = false; document.documentElement.classList.add('net-offline'); }
     if (net.kind === 'offline') {
       const n = (offTries.get(chat.id) || 0) + 1;
       offTries.set(chat.id, n);
@@ -254,9 +257,17 @@ const Offline = (() => {
       attempts.set(chat.id, n);
       if (n <= C.MAX_TRIES) { const at = now() + C.backoff(n, net.retryAfterMs) * scale; add({ kind: 'retry', reason: 'busy', agentId, chatId: chat.id, errAt: m.at, notBefore: at }); net.attempt = n; } else net.gaveUp = true;
     } else if (net.kind === 'cutoff') {
-      add({ kind: 'continue', reason: 'offline', agentId, chatId: chat.id, errAt: m.at, notBefore: now() + 3000 * scale });
+      // still offline: it continues by itself once the internet is back; online again already: the Continue button
+      check().then((ok) => {
+        if (ok || chat.messages.at(-1) !== m) return;
+        online = false;
+        document.documentElement.classList.add('net-offline');
+        add({ kind: 'continue', reason: 'offline', agentId, chatId: chat.id, errAt: m.at, notBefore: now() + 2000 * scale });
+        redraw(agentId, chat);
+      }).catch(() => {});
     }
     schedule();
+    return true;
   }
   // Messages typed while that reply ran: they'd fail too. Offline / busy / cut off: they wait in this queue, after the
   // retry. Limit / signed out / blocked: back in the box, not sent.
@@ -303,8 +314,9 @@ const Offline = (() => {
   // The failed turn's error message, drawn as one plain line + its action (the engine's words stay in the tooltip).
   Native.hooks.message.push((node, m, index, agent) => {
     if (m.role !== 'error') return;
-    const net = m.net || C.classify(m.text);
+    const net = m.net || C.classify(m.text) || (m.needsLogin ? { kind: 'signedout' } : null);
     if (!net) return;
+    m.net = net; // (read once; its state, like "sign-in opened", lives through redraws)
     decorate(node, m, net, agent);
   });
   function itemFor(chatId, m) { return items.find((x) => x.chatId === chatId && x.errAt === m.at && x.kind !== 'new') || null; }
@@ -334,7 +346,8 @@ const Offline = (() => {
     }
     body?.replaceChildren(lineEl);
     if (!foot) return;
-    const act = (label, fn, title = '') => el('button', { type: 'button', class: 'msg-act net-act', text: label, title, on: { click: (e) => { e.stopPropagation(); Promise.resolve(fn()).catch((err) => toast(err.message, { type: 'error' })); } } });
+    // (data-msg-act="retry" like the chat's own Retry, so it is found the same way; the click stays here: same session)
+    const act = (label, fn, title = '') => el('button', { type: 'button', class: 'msg-act net-act', text: label, title, dataset: label === 'Retry' ? { msgAct: 'retry' } : {}, on: { click: (e) => { e.stopPropagation(); Promise.resolve(fn()).catch((err) => toast(err.message, { type: 'error' })); } } });
     const acts = [];
     const ask = other && (kind === 'busy' || kind === 'limit') ? act(kind === 'limit' ? `Switch to ${other.name}` : `Ask ${other.name} instead`, () => switchOver(agent.id, chatId, m), `Send this message to ${other.name} (with the last few messages as context)`) : null;
     if (kind === 'offline') acts.push(it ? act('Cancel', () => cancel(agent.id, chatId, m), 'Don\'t send it when the internet is back') : act('Retry', () => retryNow(agent.id, chatId, m)));
@@ -346,8 +359,8 @@ const Offline = (() => {
       else acts.push(act('Retry', () => retryNow(agent.id, chatId, m)));
     } else if (kind === 'signedout') {
       const again = act('Retry', () => retryNow(agent.id, chatId, m), 'Once you finished signing in');
-      again.hidden = true;
-      lineEl.querySelector('.login-btn')?.addEventListener('click', () => setTimeout(() => { again.hidden = false; }, 400));
+      again.hidden = !net.loginTried; // shown once the sign-in window was opened (kept through redraws)
+      lineEl.querySelector('.login-btn')?.addEventListener('click', () => { net.loginTried = true; setTimeout(() => { again.hidden = false; }, 400); });
       acts.push(again);
     } else if (kind === 'proxy') acts.push(act('Retry', () => retryNow(agent.id, chatId, m)));
     else if (kind === 'cutoff') acts.push(it ? act('Cancel', () => cancel(agent.id, chatId, m), 'Don\'t continue it by itself') : act('Continue', () => continueNow(agent.id, chatId, m), 'Ask for the rest (the same session: only a short line is sent)'));
@@ -401,14 +414,19 @@ const Offline = (() => {
     if (msg?.net) { msg.net.cancelled = true; if (msg.net.kind === 'busy') msg.net.gaveUp = true; Native.save(chat); }
     if (chat) redraw(agentId, chat);
   }
+  // You asked: it goes now (if the internet is still away, it fails without tokens and waits again).
+  function tryNow() {
+    if (!online) { online = true; document.documentElement.classList.remove('net-offline'); }
+    pump();
+  }
   async function retryNow(agentId, chatId, m) {
     attempts.delete(chatId);
     add({ kind: 'retry', reason: m.net?.kind === 'offline' ? 'offline' : 'manual', agentId, chatId, errAt: m.at, notBefore: 0 });
-    probeNow();
+    tryNow();
   }
   async function continueNow(agentId, chatId, m) {
-    add({ kind: 'continue', reason: 'offline', agentId, chatId, errAt: m.at, notBefore: 0 });
-    probeNow();
+    add({ kind: 'continue', reason: 'manual', agentId, chatId, errAt: m.at, notBefore: 0 });
+    tryNow();
   }
   async function sendAt(agentId, chatId, m) {
     const at = (m.net?.resetAt || now()) + 30000;
@@ -461,7 +479,7 @@ const Offline = (() => {
         await ready;
         const a = String(args || '').trim().toLowerCase();
         if (a === 'clear') { const n = items.length; drop(() => true); return n ? `Forgot ${n} waiting message${n > 1 ? 's' : ''}.` : 'Nothing was waiting.'; }
-        if (a === 'send') { for (const it of items) it.notBefore = 0; await save(); await probeNow(); pump(); return items.length ? `Trying now${online ? '' : ' (still no internet: it waits)'}.` : 'Nothing waits.'; }
+        if (a === 'send') { for (const it of items) it.notBefore = 0; await save(); tryNow(); return items.length ? 'Trying now.' : 'Nothing waits.'; }
         if (!items.length) return `${online ? '✓ Online' : '⚠ No internet'} · nothing waits to be sent.`;
         const name = (it) => H.agent(it.agentId)?.name || it.agentId;
         const when = (it) => (it.notBefore > now() ? `at ${C.clock(it.notBefore)}` : online ? 'next' : 'when the internet is back');
@@ -474,6 +492,6 @@ const Offline = (() => {
     ready, items: () => items.map((it) => ({ ...it })), isOnline: () => online, pump,
     // astra.js: a failure this module answers in the chat needs no toast of its own
     owns: (ev) => ev?.type === 'error' && KINDS.has(C.classify(ev.message)?.kind),
-    _test: { net: (v) => { forced = v; }, scale: (x) => { scale = x; }, power: (state) => { if (state === 'resume') lastWake = now(); }, probeNow, attempts, set: (list) => { items = list; return save(); } },
+    _test: { net: (v) => { forced = v; try { if (v == null) localStorage.removeItem('offline.test-net'); else localStorage.setItem('offline.test-net', String(v)); } catch { /* no storage */ } }, scale: (x) => { scale = x; }, power: (state) => { if (state === 'resume') lastWake = now(); }, probeNow, attempts, set: (list) => { items = list; return save(); } },
   };
 })();
