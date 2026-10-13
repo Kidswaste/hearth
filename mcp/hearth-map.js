@@ -34,7 +34,7 @@ const TOPICS = {
   Code: the audio globals (help audio); build hits on the owner's markers (audio.kick / snare / hit) when the song has them.
   Until then, scenes move on the timeline: time, keyframes, easing, cues and sections (help keyframes, help timeline).`,
   commands: `CHAT COMMANDS: the owner types /name args. Offer them as <suggest>/name …</suggest>; run Lab, music, nodes and sequence ones yourself with three_do { cmd: "run", command: "/name args" } (results come back as text).
-  Lab: /save-look, /shuffle [colors], /fix-errors, /size 9:16, /freeze, /present, /record, /layer.
+  Lab: /save-look, /shuffle [colors], /fix-errors, /size 9:16, /freeze, /present, /record, /layer, /lab-view frame|reset|keep (the preview's view: frame the subject, back to the scene camera, keep it as the camera).
   Music: /make-it-react [undo], /analyze, /drops next, /downbeat, /auto-preset.
   Footage: /footage [go f120|step n|cut|delete|scenes], /match-pacing <clip>, /ref-frames <clip>.
   Nodes: /nodes, /nodes-layer <preset>, /nodes-presets.
