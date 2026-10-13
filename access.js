@@ -212,6 +212,7 @@ const Access = (() => {
       timer = setTimeout(() => done({ allow: false, timedOut: true }), timeoutMs);
       const live = chatId && typeof Native !== 'undefined' ? Native.liveCard?.(chatId, node) : null;
       if (!live) trayEl().append(node);
+      document.dispatchEvent(new CustomEvent('hearth:needs-you', { detail: { kind: 'permission', agentId, chatId, who: name, text: `wants to ${String(R.ACTION_WORD[action] || action || 'do this').toLowerCase()}: ${short(R.redact(what), 120)}`, node, risk } })); // (round 27) activity.js
       headsUp(agentId, chatId, short(what, 80)).then((t) => { headsNote = t; });
       setTimeout(() => node.querySelector('button')?.focus?.({ preventScroll: true }), 60);
     });

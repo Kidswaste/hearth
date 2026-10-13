@@ -163,6 +163,7 @@ const Missions = (() => {
   const cap = (s, n) => { const t = String(s || ''); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
   const clean = (t) => String(t || '').replace(/<(remember|suggest)>[\s\S]*?<\/\1>/gi, '').replace(/<progress\b[^>]*\/?>/gi, '').trim();
   const live = new Map(); // mission message id -> { m, chat, agentId } while it runs
+  const tell = (phase, id) => { const L = live.get(id); if (L) document.dispatchEvent(new CustomEvent('hearth:mission', { detail: { phase, id, kind: L.m.kind, agentId: L.agentId, chatId: L.chat?.id, task: L.m.task, ms: L.m.ms, ok: L.m.rows.some((r) => r.status === 'done') } })); }; // (round 27) activity.js
   const personOf = (a, extra = {}) => ({ agentId: a.id, name: a.name, label: a.name, icon: a.icon || a.name?.[0] || '•', color: a.color || 'var(--accent)', ...extra });
   async function askOther(agentId, id, text, target, { webSearch = null, persona = null } = {}) {
     if (!target) { toast('No other AI is set up for this.', { type: 'error' }); return; }
@@ -174,6 +175,7 @@ const Missions = (() => {
     const m = { role: 'mission', kind: id, id: `ms${at.toString(36)}`, at, task: text, rows: [{ ...personOf(target), status: 'thinking' }], text: `(${target.name} is answering)` };
     chat.messages.push(m);
     live.set(m.id, { m, chat, agentId });
+    tell('start', m.id);
     Native.save(chat); Native.refresh(agentId);
     const q = id === 'other' && prev
       ? `The user is working with ${host.name}. Its last reply:\n<reply>\n${cap(prev.text, 3000)}\n</reply>\n\nThe user now asks you for a second opinion (${host.name} won't answer this one):\n${text}`
@@ -199,6 +201,7 @@ const Missions = (() => {
     m.text = `(Asked everyone: ${m.rows.map((r) => r.name).join(', ')})`;
     if (!targets.some((a) => a.id === agentId)) chat.messages.push({ role: 'user', text, at, mission: 'everyone' }); // this AI isn't asked: your message still shows here
     live.set(m.id, { m, chat, agentId });
+    tell('start', m.id);
     broadcast = { m, agentId };
     await run(`/all ${text.replace(/\s+/g, ' ').trim()}`, agentId);
     broadcast = null;
@@ -226,6 +229,8 @@ const Missions = (() => {
   function finish(id) {
     const L = live.get(id);
     if (!L) return;
+    if (L.m.kind === 'everyone') L.m.ms = Date.now() - L.m.at;
+    tell('done', id);
     live.delete(id);
     const { m, chat } = L;
     if (m.kind === 'everyone') { m.ms = Date.now() - m.at; m.text = everyoneText(m); }

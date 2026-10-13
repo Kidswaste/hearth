@@ -1591,6 +1591,7 @@ const Native = (() => {
       repaintPending(chatId);
       setTimeout(() => (text.isConnected ? text : optBtns[0])?.focus?.(), 50);
       noteP = headsUp(agentId, chatId, `asks you: ${question}`);
+      document.dispatchEvent(new CustomEvent('hearth:needs-you', { detail: { kind: 'question', agentId, chatId, text: `asks: ${question}`, node: card } })); // (round 27) activity.js
     });
   }
   // What the user is looking at, as an image file for the second opinion.
