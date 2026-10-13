@@ -9,6 +9,7 @@ const GridResize = (() => {
   const key = (cols, rows) => `${cols}x${rows}`;
   const saved = (cols, rows) => H.config.layout?.gridSizes?.[key(cols, rows)] || null;
   const norm = (a, n) => (Array.isArray(a) && a.length === n && a.every((x) => x > 0) ? a : Array(n).fill(1));
+  const set = (c, k, v) => { if (c.style.getPropertyValue(k) !== v) c.style.setProperty(k, v); }; // (round 32) every applyLayout: only a change restyles
   const tmpl = (fr) => fr.map((x) => `minmax(0, ${Math.round(x * 1000) / 1000}fr)`).join(' ');
   function shape() {
     const c = surfaces();
@@ -21,8 +22,8 @@ const GridResize = (() => {
     const { c, cols, rows } = shape();
     if (!c) return;
     const s = saved(cols, rows);
-    c.style.setProperty('--gcols', tmpl(norm(s?.cols, cols)));
-    c.style.setProperty('--grows', tmpl(norm(s?.rows, rows)));
+    set(c, '--gcols', tmpl(norm(s?.cols, cols)));
+    set(c, '--grows', tmpl(norm(s?.rows, rows)));
     cancelAnimationFrame(raf);
     raf = requestAnimationFrame(handles);
   }

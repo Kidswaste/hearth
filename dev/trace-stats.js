@@ -20,7 +20,10 @@ function stats(events, opts = {}) {
   // the window's main thread: the renderer main thread that worked the most (the Lab's sandbox may have its own)
   const busy = {};
   for (const e of events) if (e.name === 'RunTask' && e.ph === 'X' && names[`${e.pid}:${e.tid}`] === 'CrRendererMain') busy[`${e.pid}:${e.tid}`] = (busy[`${e.pid}:${e.tid}`] || 0) + (e.dur || 0);
-  const main = Object.entries(busy).sort((a, b) => b[1] - a[1])[0]?.[0];
+  // (round 32) the thread that set the check's hz240 marks is the window's, even when a heavy Lab scene on software GL
+  // keeps its sandbox busier (smooth32's lab-stream stretch)
+  const marked = events.find((e) => e.cat?.includes('user_timing') && /^hz240:/.test(e.name) && busy[`${e.pid}:${e.tid}`] !== undefined);
+  const main = marked ? `${marked.pid}:${marked.tid}` : Object.entries(busy).sort((a, b) => b[1] - a[1])[0]?.[0];
   if (!main) return { error: 'no renderer main thread in the trace' };
   const on = events.filter((e) => `${e.pid}:${e.tid}` === main).sort((a, b) => a.ts - b.ts);
   const X = on.filter((e) => e.ph === 'X');

@@ -127,7 +127,9 @@ const Native = (() => {
     const v = { root, title, meta, ctx, modelSel, list, input, sendBtn, chips, counter, jump, attachments: [], queue: [], queueBox, styleBox, form, follow: true };
 
     const saveDraft = saver(() => store.set(draftKey(agentId), input.value || null), 400); // (round 29) kept during long typing too
-    input.addEventListener('input', () => { autosize(input); updateCounter(v); saveDraft(); });
+    // (round 32, smooth32) deleting can't make the box taller: at its smallest it stays (measuring it laid out the whole
+    // chat twice per Backspace)
+    input.addEventListener('input', (e) => { if (!(e.inputType?.startsWith('delete') && input.style.height === '84px')) autosize(input); else input.lenSeen = input.value.length; updateCounter(v); saveDraft(); });
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         const id = H.activeChat[agentId];

@@ -121,7 +121,9 @@ const Jank = (() => {
   const animating = () => {
     const now = performance.now();
     if (now < moving) return true; // (round 26, smooth26) a scroll / drag says it: getAnimations() would style the page mid-scroll
-    if (now - animAt > 1000) { animAt = now; try { animSeen = document.getAnimations().some((a) => a.playState === 'running') ? 1 : 0; } catch { animSeen = 0; } }
+    // (round 32, smooth32) asked right after the next frame, when the page's style is fresh: asked here (a long-frame
+    // report, often while a reply streams) it styled the whole page first (≈ 5 ms each here); the last answer stands meanwhile
+    if (now - animAt > 1000) { animAt = now; requestAnimationFrame(() => setTimeout(() => { try { animSeen = document.getAnimations().some((a) => a.playState === 'running') ? 1 : 0; } catch { animSeen = 0; } }, 0)); }
     return animSeen || now < moving;
   };
   function frame(e) {

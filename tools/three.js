@@ -478,7 +478,7 @@ const ThreeLab = (() => {
     document.addEventListener('pointerover', (e) => {
       const b = e.target.closest?.('[data-key]');
       clearTimeout(hintT);
-      if (!b || document.body.classList.contains('lab-nohints') || !pane.contains(b)) { keyHint.hidden = true; return; }
+      if (!b || document.body.classList.contains('lab-nohints') || !pane.contains(b)) { if (!keyHint.hidden) keyHint.hidden = true; return; } // (round 32) written only when shown: this runs on every pointerover in the app
       hintT = setTimeout(() => {
         if (!b.isConnected) return;
         const r = b.getBoundingClientRect();
@@ -487,7 +487,7 @@ const ThreeLab = (() => {
         Object.assign(keyHint.style, { left: `${Math.max(4, Math.min(innerWidth - w - 4, r.left + r.width / 2 - w / 2))}px`, top: `${r.bottom + 26 > innerHeight ? r.top - 22 : r.bottom + 4}px` });
       }, 380);
     });
-    addEventListener('pointerdown', () => { clearTimeout(hintT); keyHint.hidden = true; }, true);
+    addEventListener('pointerdown', () => { clearTimeout(hintT); if (!keyHint.hidden) keyHint.hidden = true; }, true);
     let copyNextShot = false;
     const shotBtn = btn('📷', 'Save a screenshot (all layers) · Shift+click: copy it to the clipboard', (e) => { copyNextShot = e.shiftKey; box.send({ type: 'screenshot' }); }, 'ghost small imp-capture');
     shotBtn.dataset.feature = 'Screenshot';
@@ -1155,7 +1155,9 @@ const ThreeLab = (() => {
       if (parkedNow && !box.onStage) { clearInterval(keyTimer); keyTimer = 0; return; } // the preview isn't on screen (no layout read)
       const keys = current ? sel()?.keys : null;
       if (!keys || !Object.values(keys).some((k) => k?.length)) return;
-      if (!(split || previewHost).checkVisibility({ visibilityProperty: true }) && !box.onStage) { clearInterval(keyTimer); keyTimer = 0; return; }
+      // (round 32, smooth32) not parked = on screen (syncPark keeps that current from view events, an observer and the
+      // stall timer): asking the page again here styled the whole window 10× a second while a chat streamed beside it
+      if ((parkedNow || player.recording) && !(split || previewHost).checkVisibility({ visibilityProperty: true }) && !box.onStage) { clearInterval(keyTimer); keyTimer = 0; return; }
       syncKeyUI();
     };
     const keyLoop = () => { if (!keyTimer) keyTimer = setInterval(keyTick, 100); };

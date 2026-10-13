@@ -1372,7 +1372,7 @@ const ThreeTweaks = (() => {
       icons.append(music);
       if (keyframes && it.key != null) {
         const kb = el('button', { class: 'kf-btn', type: 'button' });
-        r.paintKey = () => { const stt = keyframes.state(it.key); kb.textContent = stt === 'on' ? '◆' : '◇'; kb.className = `kf-btn kf-${stt}`; kb.title = stt === 'on' ? 'Remove this keyframe' : 'Keyframe at the playhead'; };
+        r.paintKey = () => { const stt = keyframes.state(it.key); if (kb.stt === stt) return; kb.stt = stt; kb.textContent = stt === 'on' ? '◆' : '◇'; kb.className = `kf-btn kf-${stt}`; kb.title = stt === 'on' ? 'Remove this keyframe' : 'Keyframe at the playhead'; };
         kb.addEventListener('click', () => { keyframes.toggle(it.key, r.current ?? values[i]); r.paintKey(); });
         r.paintKey();
         icons.prepend(kb);
@@ -1420,6 +1420,8 @@ const ThreeTweaks = (() => {
         const kb = el('button', { class: 'kf-btn', type: 'button' });
         r.paintKey = () => {
           const stt = keyframes.state(it.key);
+          if (kb.stt === stt) return; // (round 32, smooth32) the playhead repaints these 10× a second: only a change is written
+          kb.stt = stt;
           kb.textContent = stt === 'on' ? '◆' : '◇';
           kb.className = `kf-btn kf-${stt}`;
           kb.title = stt === 'on' ? 'Remove this keyframe' : stt === 'animated' ? 'Add a keyframe here (it\'s animated: moving the slider also adds one)' : 'Animate this slider: add a keyframe at the playhead';
