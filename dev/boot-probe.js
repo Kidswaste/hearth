@@ -3,6 +3,8 @@
 // Times are ms since the process started (performance.now() in the main process) plus the wall clock at 0, written
 // to $HEARTH_BOOT_PROBE as JSON after every step. Also: how long each module main.js requires at load takes.
 // (Child processes inherit NODE_OPTIONS: anything that isn't Electron's main process is left alone.)
+// (round 34, lightweight) HEARTH_BOOT_PROBE_BYTES=1 also sums what each channel's answers weigh (JSON length, or bytes),
+// and HEARTH_BOOT_PROBE_MS sets how long after the window IPC is counted (default 5000).
 const OUT = process.env.HEARTH_BOOT_PROBE;
 if (OUT && process.versions.electron && process.type === 'browser') {
   const fs = require('fs');
@@ -19,9 +21,10 @@ if (OUT && process.versions.electron && process.type === 'browser') {
     t.ipc = {};
     const handle = ipcMain.handle.bind(ipcMain);
     ipcMain.handle = (ch, fn) => handle(ch, (...a) => {
-      if (performance.now() > (t.marks.windowCreated ?? 1e9) + 5000) return fn(...a);
+      if (performance.now() > (t.marks.windowCreated ?? 1e9) + (Number(process.env.HEARTH_BOOT_PROBE_MS) || 5000)) return fn(...a);
       const t0 = performance.now();
-      const done = () => { const s = (t.ipc[ch] ||= [0, 0, 0]); s[0] += 1; s[1] += performance.now() - t0; save(); };
+      const weigh = (x) => { if (!process.env.HEARTH_BOOT_PROBE_BYTES || x == null) return 0; try { return typeof x === 'string' ? x.length : x.byteLength ?? JSON.stringify(x).length; } catch { return 0; } };
+      const done = (x) => { const s = (t.ipc[ch] ||= [0, 0, 0]); s[0] += 1; s[1] += performance.now() - t0; if (process.env.HEARTH_BOOT_PROBE_BYTES) s[3] = (s[3] || 0) + weigh(x); save(); };
       let r;
       try { r = fn(...a); } finally { const s = (t.ipc[ch] ||= [0, 0, 0]); s[2] += performance.now() - t0; } // [calls, ms to answer, ms of main-thread work]
       if (r && typeof r.then === 'function') r.then(done, done); else done();

@@ -86,6 +86,7 @@ const GROUPS = {
   labpace: ['labpace', 'unit:labpace-test', 'unit:labadapt-test'], // (round 33) frame pacing: f60 (same speed at 60–240 Hz), still pictures stop drawing, a parked Lab sleeps, battery, Frame pace
   labgestures: ['labgestures', 'unit:labgestures-test', 'labpace'], // (round 34) trackpad / mouse navigation of the Lab preview: wheel / pinch / drags, inertia, Z / Shift+Z, still after
   labadapt: ['labadapt', 'unit:labadapt-test'], // (round 31) the Lab preview lightens itself in steps (resolution, filters, shadows, particles), covered layers skip drawing, renders unchanged
+  lightweight: ['lightweight', 'unit:recall-test', 'unit:store-thread-test', 'unit:chrome-test'], // (round 34) an hour-like session (Lab, ⋯ AI setup, chats, a long reply, Astra, Activity) three times: heap budget, nothing left per session; recall index packed, chat texts held only while searching, Chrome quits when idle
   bugbash: ['bugbash', 'unit:sync-test'], // (round 29) regressions of the bug bash's app fixes: one Lab however it opens; sync's same-millisecond file
   offline: ['offline', 'unit:offline-test'], // (round 34) calm when things go wrong outside Hearth: no internet (the queue sends once when back), busy (retry / cancel / switch), usage limit, signed out, a reply cut off (continue + stitch), restart survival
   unit: UNIT.map((u) => `unit:${u}`),

@@ -79,7 +79,7 @@ async function status(o = {}) {
     profile: profileDir(), port: live() ? st.port : null, browser: live() ? st.browser.info?.browser || '' : '',
     pages: pages.length, windows: [...keys.entries()].map(([key, id]) => ({ key, id, page: pages.find((p) => p.id === id) || null })).filter((x) => x.page),
     hidden: hidden(), signing: [...signing].map(([id, x]) => ({ id, key: x.key })),
-    prefs: prefs(), testBase: process.env.HEARTH_CHROME_TEST_BASE || null, // (dev/checks/chrome.js: the local test pages)
+    prefs: prefs(), idleQuits: st.idleQuits || 0, testBase: process.env.HEARTH_CHROME_TEST_BASE || null, // (dev/checks/chrome.js: the local test pages)
   };
 }
 
@@ -103,7 +103,25 @@ async function connect(port) {
   // (round 31) windows pages open (popups, links as tabs) and where pages go (a sign-in finishing)
   b.c.on('Target.targetCreated', ({ targetInfo }) => { if (targetInfo?.type === 'page') created(b, targetInfo).catch(() => {}); });
   b.c.on('Target.targetInfoChanged', ({ targetInfo }) => { if (targetInfo?.type === 'page') { events.emit('info', targetInfo); watchSignIn(targetInfo); } });
+  watchIdle(b);
   return b;
+}
+// (round 34, lightweight) the Hearth Chrome out of sight with no page left (every Chrome view, app window and website
+// chat in it closed) quits after 5 minutes: its processes held ≈ 150–300 MB for nothing. The next use starts it again
+// (≈ 1 s), still signed in (its profile keeps the sessions). Never while it's shown, signing in or starting.
+const IDLE_MS = () => Number(process.env.HEARTH_CHROME_IDLE_MS) || 5 * 60000;
+function watchIdle(b) {
+  let since = 0;
+  const t = setInterval(async () => {
+    if (st.browser !== b || b.closed) { clearInterval(t); return; }
+    if (!hidden() || signing.size || st.connecting) { since = 0; return; }
+    let n = 1;
+    try { n = (await b.pages()).length; } catch { return; }
+    if (n) { since = 0; return; }
+    since ||= Date.now();
+    if (Date.now() - since >= IDLE_MS() && st.browser === b) { clearInterval(t); st.idleQuits = (st.idleQuits || 0) + 1; b.closeAll(); }
+  }, Math.min(60000, Math.max(200, IDLE_MS() / 4)));
+  t.unref?.();
 }
 function run(f, args) {
   const child = spawn(f.path, args, { detached: true, stdio: 'ignore', windowsHide: false });

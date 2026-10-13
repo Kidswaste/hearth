@@ -15,7 +15,7 @@ if (process.argv[2] !== '--inside') {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-store-thread-'));
   for (const f of ['store.js', 'storework.js', 'fswalk.js', 'sync-merge.js']) fs.copyFileSync(path.join(__dirname, '..', f), path.join(dir, f));
   fs.copyFileSync(__filename, path.join(dir, 't.js'));
-  const r = spawnSync(process.execPath, [path.join(dir, 't.js'), '--inside'], { cwd: dir, env: { ...process.env, HEARTH_STORE_THREAD: '1' }, stdio: 'inherit', timeout: 60000 });
+  const r = spawnSync(process.execPath, [path.join(dir, 't.js'), '--inside'], { cwd: dir, env: { ...process.env, HEARTH_STORE_THREAD: '1', HEARTH_TEXT_IDLE_MS: '1500' }, stdio: 'inherit', timeout: 60000 });
   fs.rmSync(dir, { recursive: true, force: true });
   process.exit(r.status ?? 1);
 }
@@ -31,6 +31,8 @@ const J = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
   ok(store.getChat('c7')?.title === 'Chat 7', 'a save reads back before it lands');
   const list = await store.listChats();
   ok(list.length === 30 && list[0].id === 'c29', `list: ${list.length} ${list[0]?.id}`);
+  // (round 34, lightweight) saves and lists hold no chat texts on the thread; a search reads them in (below)
+  ok((await store.idle())?.textChars === 0, 'no chat texts held before a search')
   const hits = await store.searchChats('zebracorn');
   ok(hits.length === 1 && hits[0].id === 'c7' && /ZebraCorn/.test(hits[0].snippet), `search: ${JSON.stringify(hits[0])}`);
   // the thread and the synchronous code agree
@@ -38,6 +40,10 @@ const J = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
   const offHits = await store.searchChats(q);
   ok(offHits.length > 0 && JSON.stringify(offHits) === JSON.stringify(store._sync.search(q)), 'same hits as the synchronous search');
   ok(JSON.stringify(await store.listChats()) === JSON.stringify(store._sync.list()), 'same list as the synchronous one');
+  ok((await store.idle())?.textChars > 0, 'texts kept while searching');
+  await new Promise((r) => setTimeout(r, 1900));
+  ok((await store.idle())?.textChars === 0, 'texts let go after a while without a search');
+  ok(JSON.stringify(await store.searchChats(q)) === JSON.stringify(offHits), 'the same hits once they were let go');
   const kv = path.join(store.DATA_DIR, 'kv');
   // kv: .prev copy, skip identical
   store.setKV('big', { a: 1 }); store.setKV('big', { a: 2 }); await store.idle();
