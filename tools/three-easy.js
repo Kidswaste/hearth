@@ -62,6 +62,14 @@ const LabEasy = (() => {
   }
   const varItem = () => ({ label: '🎲 Variations', hint: '6 takes on this scene to click: colors, motion, camera, look (no tokens)', cmd: 'variations', action: () => variations().catch((err) => toast(err.message, { type: 'error' })) });
 
+  // (round 33, multiformat) ▦ All formats: its files load on first use (lazy group "multiformat")
+  async function formats(fn = (F) => F.open()) {
+    if (typeof LabFormats === 'undefined' && typeof Lazy !== 'undefined') await Lazy.load('multiformat');
+    if (typeof LabFormats === 'undefined') throw new Error('All formats did not load');
+    return fn(LabFormats);
+  }
+  const formatsItem = () => ({ label: '▦ All formats', hint: '16:9, 9:16, 1:1, 4:5 in one go, each reframed', cmd: 'all-formats', action: () => formats().catch((err) => toast(err.message, { type: 'error' })) });
+
   // ---------- the preview's right-click: ✦ More ----------
   const musicItems = () => [
     item('✦ Make it react to the music', 'Kick, bass and loudness move the right sliders', '/make-it-react', { undo: '/make-it-react undo' }),
@@ -87,6 +95,7 @@ const LabEasy = (() => {
     ...(typeof AutoPolish !== 'undefined' ? [AutoPolish.item()] : []), // (round 30) ✨ make it look finished (tools/three-autopolish.js)
   ];
   const makeItems = () => [
+    formatsItem(),
     askItem('👥 4 variations of this scene…', 'A crew explores them side by side (cost shown first); you pick one', { title: 'What should the 4 variations explore?', placeholder: 'e.g. hit harder on the drop' }, (v) => `/crew 4 ${v || 'clearly different takes on this scene'}`, 'crew'),
     item('Render this chat\'s sequence again', 'Here, on this computer', '/render-again'),
     ...(typeof AutoEdit !== 'undefined' ? [AutoEdit.item()] : []), // (round 27, autoedit)
@@ -118,7 +127,7 @@ const LabEasy = (() => {
   // ThreeTweaks.menu rows ([label, hint, fn | [rows]]) from showMenu items
   const toRow = (it) => (it.items ? [it.label, it.hint || '', (typeof it.items === 'function' ? it.items() : it.items).map(toRow)] : [it.label, it.hint || '', it.action]);
   function toolbarItems() {
-    return [['🎲 Variations', '6 takes on this scene to click (no tokens)', varItem().action, false, 'Variations'], ['Director', 'What it\'s making, did, costs', directorItems().map(toRow), false, 'Director menu']];
+    return [['🎲 Variations', '6 takes on this scene to click (no tokens)', varItem().action, false, 'Variations'], ['▦ All formats', '16:9, 9:16, 1:1, 4:5 in one go, each reframed', formatsItem().action, false, 'All formats'], ['Director', 'What it\'s making, did, costs', directorItems().map(toRow), false, 'Director menu']];
   }
 
   // ---------- a layer's right-click (tools/three-layers.js) ----------
@@ -191,5 +200,5 @@ const LabEasy = (() => {
     walk(layerItems({ name: 'Layer' }, { change() {}, solo() {}, rename() {}, copy() {}, remove() {} }), 'Layer right-click');
     return out;
   }
-  return { previewItem, toolbarItems, layerItems, layerMenu, run, plain, placed, last, MISSIONS, addMissions, variations };
+  return { previewItem, toolbarItems, layerItems, layerMenu, run, plain, placed, last, MISSIONS, addMissions, variations, formats, formatsItem };
 })();
