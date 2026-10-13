@@ -1076,13 +1076,14 @@ const ThreeTweaks = (() => {
       const b = () => bindings[ids[i]];
       const amount = el('input', { type: 'range', min: -1, max: 1, step: 0.01, value: b()?.amount ?? 0.5, title: 'How far the music pushes this slider (negative = the other way)' });
       const pct = el('span', { class: 'tw-bind-pct' });
-      const bandBtns = [['', 'Off'], ...BANDS].map(([band, name]) => el('button', {
+      const CHIPS = [['', 'Off'], ...BANDS, ['stemDrums', 'The drums'], ['stemBass', 'The bass'], ['stemVocals', 'The voice']]; // (round 30, stems) the song's parts
+      const bandBtns = CHIPS.map(([band, name]) => el('button', {
         class: 'tw-chip', text: name, on: { click: () => { setBinding(i, band, Number(amount.value)); paint(); } },
       }));
       const note = el('div', { class: 'tw-hint' });
       function paint() {
         const cur = b()?.band || '';
-        bandBtns.forEach((x, k) => x.classList.toggle('on', ([['', 'Off'], ...BANDS][k][0]) === cur));
+        bandBtns.forEach((x, k) => x.classList.toggle('on', CHIPS[k][0] === cur));
         pct.textContent = `${Math.round(Number(amount.value) * 100)}%`;
         amount.disabled = !cur;
         note.textContent = cur && reads && !reads.live.has(i) ? 'This value is only used when the scene is built, so it can\'t follow the music. Ask the director to read it every frame.' : '';

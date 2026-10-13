@@ -1242,6 +1242,7 @@ function fxFallback() {
 }
 function featVal(name) {
   const cam = globalThis.__camFeat?.(name); if (cam !== undefined) return cam; // (round 25, motion) camera / body features: the "camera input" block
+  if (STEM_IDX[name] !== undefined) return stemVal(STEM_IDX[name]); // (round 30, stems) the song's parts: the "stems" block
   FX.reads += 1;
   fxWant();
   const k = FX.idx?.[name];
@@ -1285,6 +1286,30 @@ Object.defineProperties(audio, {
   // env('kickOn', 5, 300): the feature through an attack / release follower (ms), smooth whatever the frame rate
   env: { value: (name, att = 10, rel = 250) => { const id = `${name}|${att}|${rel}`; let s = FX.envs.get(id); if (!s) { s = {}; FX.envs.set(id, s); } return fxShape(featVal(name), { att, rel }, s); } },
 });
+// ---------- stems (round 30, stems: tools/three-stems-core.js / three-stems.js) ----------
+// audio.stems.drums / kick / snare / hats / bass / vocals / other, 0..1 and smooth: the loaded song split once (in
+// the hub, a Worker, cached) and read at the playhead like audio.feat, so a render reads what the preview read. The
+// same values as feature names for sliders and onHit (stemDrums, stemBass, stemVocals…). Until the split is in (a few
+// seconds, once per song), with live input or no song: a stand-in from the audio features. Nothing is asked until a
+// sketch or a slider reads one ('audio-stems-want').
+const STEMS = { keys: ['drums', 'kick', 'snare', 'hats', 'bass', 'vocals', 'other'], track: null, el: null, asked: null, askedAt: 0 };
+const STEM_IDX = { stemDrums: 0, stemKick: 1, stemSnare: 2, stemHats: 3, stemBass: 4, stemVocals: 5, stemOther: 6 };
+function stemStandIn(k) {
+  switch (k) {
+    case 0: return Math.max(featVal('kickOn'), featVal('snareOn'), 0.85 * featVal('hatOn'));
+    case 1: return featVal('kickOn'); case 2: return featVal('snareOn'); case 3: return featVal('hatOn');
+    case 4: return featVal('low'); case 5: return featVal('vocal'); default: return 0.6 * featVal('mids');
+  }
+}
+function stemVal(k) {
+  if (fxSong() && STEMS.el !== mediaEl && (STEMS.asked !== mediaEl || realNow() - STEMS.askedAt > 8000)) { STEMS.asked = mediaEl; STEMS.askedAt = realNow(); post({ type: 'audio-stems-want' }); }
+  const T = STEMS.track;
+  if (fxSong() && T && STEMS.el === mediaEl) return T.data[Math.max(0, Math.min(T.n - 1, Math.floor(mediaEl.currentTime * T.fps))) * T.F + k] / 255;
+  return stemStandIn(k);
+}
+const stemsView = Object.defineProperties({}, Object.fromEntries([...STEMS.keys.map((key, k) => [key, { enumerable: true, get: () => stemVal(k) }]),
+  ['ready', { get: () => Boolean(fxSong() && STEMS.track && STEMS.el === mediaEl) }]]));
+Object.defineProperty(audio, 'stems', { get() { return stemsView; } });
 // live meters on the hub's sliders: what the music does to each following slider, ~12 times a second while it moves
 const FX_METER = { vals: new Map(), sent: new Map(), timer: 0, idle: 0 };
 function meterNote(mid, raw, out) {
@@ -9841,6 +9866,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'live-remote') { if (!msg.on || liveKind !== msg.kind) liveReset(); liveKind = msg.on ? msg.kind : null; if (!msg.on) { remoteFreq = null; remoteWave = null; } if (msg.on) graph(); }
   if (msg.type === 'live-frame') { remoteFreq = msg.freq; remoteWave = msg.wave; remoteRate = msg.rate || 48000; }
   if (msg.type === 'af' || /^audio-(core|track|probe)$/.test(msg.type)) { fxMessage(msg); return; } // (round 23, labaudio)
+  if (msg.type === 'audio-stems') { STEMS.track = msg.track; STEMS.el = mediaEl; return; } // (round 30, stems) the song's parts, for the song loaded now
   // (auto: follow the screen and the window, see applyCap; focused: the Lab's window is the one in front)
   if (msg.type === 'fps-cap') { capWant.value = Number(msg.value) || 0; capWant.auto = Boolean(msg.auto); capWant.focused = msg.focused !== false; applyCap(); }
   if (msg.type === 'park') setParked(msg.on);

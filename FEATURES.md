@@ -931,3 +931,8 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ The card shows the measured numbers before → after, a finish score, Before / After pictures; untick any fix, hold Before, ↶ Undo all, ✦ ask the director for what's left (cost first).
 - ✓ Ways in: right-click the preview › ✨ Make it look finished, ✦ More › ✨ Look & motion, the director's ◎ "Polish the look" (local pass first, then the director), ⌘/Ctrl+K.
 - ○ Tested on a generated bad scene with the fake engines (`sh dev/run-checks.sh autopolish unit:autopolish-test`); not seen on the owner's real scenes / GPU.
+## 🥁 React to the drums, the bass, the voice (round 30, stems, 26 upgrades: docs/upgrades/stems.md)
+- ✓ The Lab splits the loaded song into its parts once, on this computer, no AI model (harmonic / percussive separation + bands + onsets, in a Worker, kept on disk): **the drums** (kick, snare, hats), **the bass**, **the voice**, **everything else**, smooth 0..1 at the playhead, so renders match the preview.
+- ✓ Sliders: the ♪ panel's **The drums / The bass / The voice**, the curve editor's "The song's parts", `/react-to size the drums`, presets Pump with the drums · Throb with the bass · Glow with the voice · Drift with everything else; the ◎ mission "React to the drums, bass and voice"; sketches read `audio.stems.drums` / `.bass` / `.vocals`…; `/stems`.
+- ✓ Costs nothing until a sketch or a slider reads a part; a small bar on the Lab icon the first time (a few seconds a minute of song).
+- ○ Tested on generated songs (`node dev/stems-test.js`, `sh dev/run-checks.sh stems`); an approximation (a plucky bass nudges the drums a little), not tried on real songs on a Mac.

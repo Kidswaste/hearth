@@ -75,7 +75,7 @@
   const FLAG = /^(attack|att|release|rel|threshold|thr|punch|curve|gam)=(.+)$/i;
   reg('react-to', 'Make a slider follow a sound: a feature (kick, snare, hats, vocals, sub…air, drop, build, loudness, brightness, key…), an amount and a curve (attack=ms release=ms threshold=0.3 punch=2 invert); no arguments lists what follows what', '<slider> <feature|off> [amount] [attack=ms] [release=ms] [threshold=x] [punch=x] [invert]', async (args) => {
     const l = await lab();
-    const ws = words(args);
+    const ws = words(String(args).replace(/\bthe\s+(?=(drums|bass|voice|vocals|kick|snare|hats)\b)/gi, 'the-')); // (round 30, stems) "the drums" is one sound
     if (!ws.length) { const r = reactions(l); return r.length ? `Following the sound:\n${r.join('\n')}` : 'No slider follows the sound yet (/react-preset pump on kick, or /react-to size kick 40)'; }
     // the feature is the first word that names one (the slider's name may be several words)
     let fi = -1; for (let i = 1; i < ws.length; i += 1) if (/^off$/i.test(ws[i]) || ThreeAudio.resolve(ws[i])) { fi = i; break; }

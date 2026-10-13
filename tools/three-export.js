@@ -73,6 +73,7 @@ const LabExport = (() => {
         const P = LAB()?.player;
         const same = P && P.path === song.src;
         page.send({ type: 'media-load', buffer: bytes, mime: mimeOf(song.src), video: false, name: base(song.src), startAt: 0, playing: false, loop: false, volume: 0, analysis: same ? P.analysis || null : null, region: null, rate: 1, trim: null });
+        if (typeof LabStems !== 'undefined') await LabStems.toPage(song.src, page.send).catch(() => false); // (round 30, stems) the same parts as the preview
         if (same) {
           // its beat grid and hand-placed hits (what reacts to the kick reacts the same)
           try {
