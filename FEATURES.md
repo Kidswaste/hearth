@@ -855,3 +855,9 @@ In ⋯ AI setup, **⚡ Hooks: when… then…** gives each AI a short list of ru
 - ✓ Cover ideas (sharp, well lit, strong moments), scrub to any frame, optional words on it, saved at the app's cover size; title / description / hashtags in plain words at first, **✍ Write it with** this chat's AI (one lean question, tokens shown), Copy all.
 - ✓ **📁 Make the post folder**: the video, the cover and post.txt in `posts/<date> <title> (<app>)` next to the video; Show in Finder / Explorer. Hearth never uploads or signs in.
 - ○ Tested with a generated video, ffmpeg and the fake engines (`sh dev/run-checks.sh publishkit`); the apps' button positions are approximate (they move them).
+## The Lab gallery: start from something like… (round 27, gallery, 58 upgrades: docs/upgrades/gallery.md)
+- ✓ The Lab's **New** opens a gallery of picture cards grouped by mood (Neon & retro, Chrome & glossy, Soft & dreamy, Dark & hypnotic, Club energy, Type openers) with a search: 26 new built-in music scenes (outrun sunset, hyper tunnel, chrome blob, molten gold, liquid gradient, beat burst, kinetic opener…), your own scenes, history (deleted scenes, how your scenes began) and the whole library (backgrounds, 3D, shaders, particles, physics, type, node presets, code sketches).
+- ✓ Hover a card: it plays; click: a new scene from it at your frame size; **＋ Layer**: on top of your scene. Every starting point has plainly named sliders and something that follows the music.
+- ✓ Also from a new chat's starter ("🖼 Start from something like…") and the director's ◎ mission of that name (your words search, you pick, the director gets your words).
+- ✓ Light: loads on first use; pictures drawn one at a time in one hidden preview page, only for cards in view, kept on disk.
+- ○ Checked with the fake engines (`sh dev/run-checks.sh gallery`: every starting point runs without errors); its look on a real GPU wasn't seen here.

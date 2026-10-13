@@ -3241,6 +3241,7 @@ const ThreeLab = (() => {
       openSketch(sketches[0].id);
     }
     function templateGallery() {
+      if (typeof LabGalleryHook !== 'undefined' && LabGalleryHook.open()) return; // (round 27) the gallery of starting points (tools/three-gallery*.js)
       const dlg = el('dialog', { class: 'ui-modal gallery-dialog' });
       dlg.append(el('form', { method: 'dialog' }, el('h2', { text: 'New sketch' }),
         el('div', { class: 'gallery' }, ThreeData.TEMPLATES.map((t) => el('button', {
