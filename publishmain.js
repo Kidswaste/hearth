@@ -70,7 +70,10 @@ async function analyze(file, overrides) {
     return { t: tt, ...P.frameStats(g, w, h), motion: near ? near.motion : (i ? P.diff(g, frames[i - 1]) : 0), sat: near ? near.sat : null };
   }).filter((s) => !d || s.t <= d);
   const usual = P.median(pts.slice(1).map((p) => p.motion));
-  const seam = frames.length && tail.length ? P.seam(frames[0], tail[tail.length - 1], usual) : null;
+  // (round 31, perfectloop) the very first frame (the fps filter's first sample can sit a few frames in: a loop whose start
+  // blends in read as a jump)
+  const head = tail.length ? await grayFrames(t.ffmpeg, ['-i', file, '-map', '0:v:0', '-vf', `scale=${w}:${h}:flags=area`, '-frames:v', '1'], w, h).catch(() => []) : [];
+  const seam = frames.length && tail.length ? P.seam(head[0] || frames[0], tail[tail.length - 1], usual) : null;
   // the best cover frames, as small pictures
   const picks = P.pickCovers(samples, d, 6);
   let covers = picks;

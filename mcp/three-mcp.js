@@ -89,7 +89,7 @@ const MORE_TOOLS = [
 const NODES_TOOL = { name: 'three_nodes', description: 'Layers as node graphs (the Nodes view). command: layer <preset> (new layer) · presets · types [word] · list · add <type> k=v [to=n.in] · link a.out b.in · unlink b.in · set <n> k=v · rm <n> · preset <p> (replace) · rebuild. help nodes.', inputSchema: obj({ command: { type: 'string' } }, ['command']) };
 
 // add_layer stays a command (older habits keep working) but is described as its own tool now
-const DO_CMDS = ['layers', 'batch', 'undo', 'crew', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'footage', 'sequence', 'motion', 'model', 'comp', 'make', 'asset', 'particles', 'shader', 'type', 'physics', 'autoedit', 'help'];
+const DO_CMDS = ['layers', 'batch', 'undo', 'crew', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'footage', 'sequence', 'motion', 'model', 'comp', 'make', 'asset', 'particles', 'shader', 'type', 'physics', 'autoedit', 'loop', 'help'];
 // (round 25, diet) three_do names its commands, grouped; each one's details come from three_do help <cmd> (DO_HELP,
 // MORE_TOOLS, the guide topics), answered here without a hub call. Was ≈ 370 tokens per message.
 const DO_TOOL = {
@@ -97,7 +97,7 @@ const DO_TOOL = {
   description: `More Lab actions: {cmd, ...args}. help {topic}: any cmd's args (topic = cmd), a guide topic, or app. layer = name|id|n (1 = bottom)|top|bottom|selected.
 batch {ops: [{cmd, ...}]} several calls in one, in order · undo {force} your last code change
 Layers: layers select_layer remove_layer update_layer keyframes animate looks references
-Time: timeline timeline_edit triggers media_info load_media footage sequence autoedit
+Time: timeline timeline_edit triggers media_info load_media footage sequence autoedit loop
 Make: new_sketch set_frame model motion particles shader type physics asset comp crew make task notes
 run {command: "/grade noir"} any chat command`,
   inputSchema: { type: 'object', properties: { cmd: { type: 'string' } }, required: ['cmd'] },
@@ -111,6 +111,7 @@ const DO_HELP = {
   asset: 'asset {op: find {q, kind, limit} | use {id|q, as} | free {q, source: polyhaven|ambientcg, type} | get {source, id, type, size, use} | help}: the owner\'s asset library (textures, HDRIs, fonts, models, sounds).',
   particles: 'particles {op: list {filter} | add {preset, sliders} | set {layer, values} | emitter | look | react | info {layer} | help}: GPU particle layers.',
   autoedit: 'autoedit {op: plan {brief, fresh, format} | show | set {section: n, scene: name|new, brief, bars, trans, look, cuts, lyrics} | lyrics {text} | make | render {format: 9:16|16:9|1:1|all}}: a whole music video from the loaded song: a plan per section (scene, bars, transition on the beat, intensity, look, lyrics) the owner sees as a strip; make builds the Lab sequence (new scenes go to the crew, the owner approves the cost); render only when asked.',
+  loop: 'loop {bars | secs | fade | check | render: loop|gif | off | status}: "make it loop" (Shorts): the timeline loops over N bars of the song (or N s) and the scene\'s clock wraps with it in the preview and renders (keyframes come back round); check: ≈ seamless or a visible jump (last frame vs first); fade: blend the last beat into the first; code that loops by itself: help loop.',
   shader: 'shader {op: list | add | glsl | channel | scale | info | check | help}: fragment-shader layers (GLSL, Shadertoy, ISF).',
 };
 
