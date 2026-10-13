@@ -126,7 +126,7 @@ const points = new THREE.Points(geo, new THREE.PointsMaterial({ size: 0.03, vert
 scene.add(points);
 
 renderer.setAnimationLoop(() => {
-  points.rotation.y += 0.002;
+  points.rotation.y += 0.002 * f60;
   controls.update();
   renderer.render(scene, camera);
 });
@@ -250,7 +250,7 @@ const knot = new THREE.Mesh(new THREE.TorusKnotGeometry(0.8, 0.28, 160, 24), new
 knot.position.y = 1.6;
 knot.castShadow = true;
 scene.add(knot);
-renderer.setAnimationLoop(() => { knot.rotation.y += 0.01; controls.update(); renderer.render(scene, camera); });
+renderer.setAnimationLoop(() => { knot.rotation.y += 0.01 * f60; controls.update(); renderer.render(scene, camera); });
 `,
     },
     {

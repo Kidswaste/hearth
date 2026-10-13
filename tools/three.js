@@ -456,6 +456,7 @@ const ThreeLab = (() => {
           ['Live code', 'Apply code changes a moment after you stop typing', () => { autoBox.checked = !autoBox.checked; autoBox.dispatchEvent(new Event('change')); }, autoRun]]],
         ...(typeof LabEasy !== 'undefined' ? LabEasy.toolbarItems() : []), // (round 26) Director › (tools/three-easy.js)
         ...(window.Lazy?.isIn?.('quickstart') && typeof QuickstartHooks !== 'undefined' ? [QuickstartHooks.labRow()] : []), // (round 31) ✦ What can I do here? (quickstart-hooks.js)
+        ['Frame pace', paceText(paceLast), () => { setPaceOn(!paceOn); }, paceOn, 'Frame pace'], // (round 33 "labpace") the readout lives here; ticked: also in the preview's corner
         ['Key hints on hover', 'Little key badges on the main buttons (hold Ctrl for all of them)', () => { const off = !document.body.classList.contains('lab-nohints'); document.body.classList.toggle('lab-nohints', off); store.set('three.keyHints', !off); }, !document.body.classList.contains('lab-nohints')],
         ['Lab keys', '? · the keys button, bottom left', () => (typeof KeysUI !== 'undefined' ? KeysUI.open() : labKeys())],
         ...(typeof Declutter !== 'undefined' ? Declutter.popItems('Lab') : [])]; // (round 8) ends like every menu
@@ -850,6 +851,7 @@ const ThreeLab = (() => {
       if (on === parkedNow && !force) return;
       parkedNow = on;
       if (box.ready || !on) box.send({ type: 'park', on });
+      if (paceOn) paintPace(); // (round 33 "labpace")
     }
     for (const ev of ['hearth:view', 'hearth:activate']) addEventListener(ev, () => setTimeout(() => syncPark(), 0));
     document.addEventListener('visibilitychange', () => syncPark());
@@ -868,8 +870,39 @@ const ThreeLab = (() => {
     function paintAdapt(a) {
       if (a) adaptLast = a;
       const show = adaptOn && (adaptLast?.level || 0) > 0;
+      // (round 33 "labpace") lighter only because the computer is on battery: the note says so
+      const txt = adaptLast?.battery && (adaptLast.level || 0) <= (adaptLast.floor || 0) ? 'lighter on battery · full quality in renders' : 'lighter to stay smooth · full quality in renders';
+      if (show && adaptNote.textContent !== txt) adaptNote.textContent = txt;
       if (adaptNote.hidden === show) adaptNote.hidden = !show;
     }
+    // (round 33 "labpace") Frame pace: how steady the preview's frames are ("120 fps · steady", "still · not
+    // drawing"), read in the toolbar's ⋯ › Frame pace; ticking it keeps a tiny readout in the preview's corner (off by
+    // default). The sandbox measures it (see "Frame pacing" in three-sandbox.html).
+    let paceOn = Boolean(store.get('three.paceReadout', false)); let paceLast = null;
+    const paceNote = el('div', { class: 'lab-pace-note', hidden: true, title: 'Frame pace: frames a second and how even they are (⋯ › Frame pace to hide it)' });
+    previewHost.append(paceNote);
+    const paceText = (p) => {
+      if (!p) return parkedNow ? 'parked · not drawing' : 'measuring…';
+      if (parkedNow) return 'parked · not drawing';
+      if (p.still) return 'still · not drawing';
+      if (!p.fps) return 'measuring…';
+      return `${p.fps} fps · ${p.label}${p.battery ? ' · battery' : ''}`;
+    };
+    function paintPace(p) {
+      if (p) paceLast = p;
+      const show = paceOn && !box.onStage;
+      if (show) { const t = paceText(paceLast); if (paceNote.textContent !== t) paceNote.textContent = t; }
+      if (paceNote.hidden === show) paceNote.hidden = !show;
+    }
+    function setPaceOn(on) { paceOn = Boolean(on); store.set('three.paceReadout', paceOn); paintPace(); return paceOn; }
+    // on battery (the computer says so): the preview holds 60 fps at most in Auto and starts a step lighter
+    let onBattery = false;
+    try {
+      navigator.getBattery?.().then((b) => {
+        const upd = () => { const v = !b.charging; if (v === onBattery) return; onBattery = v; if (box.ready) box.send({ type: 'power', battery: v }); };
+        upd(); b.addEventListener('chargingchange', upd);
+      }).catch(() => { /* no battery API: plugged in */ });
+    } catch { /* none */ }
     function setAdaptOn(on) { adaptOn = Boolean(on); store.set('three.adapt', adaptOn); box.send({ type: 'adapt', on: adaptOn }); paintAdapt(); return adaptOn; }
     function setLight(on) { lightOn = Boolean(on); store.set('three.light', lightOn); box.send({ type: 'light', on: lightOn }); toast(lightOn ? '🪶 Light mode: 30 fps, 1× pixels, filters at half size (recordings and stills stay full size)' : 'Light mode off', { timeout: 2200 }); return lightOn; }
     const stageBtn = btn('🖥', 'Stage window: run the sketch in its own window, steady, smooth frames for recording or a second monitor (F11 there for fullscreen). The preview here sleeps meanwhile.', () => setStage(!box.onStage));
@@ -2392,7 +2425,8 @@ const ThreeLab = (() => {
       fps: (v) => { fpsSel.value = String(v); fpsSel.dispatchEvent(new Event('change')); return v; },
       // round 16 "labperf": the numbers (/lab perf), the HUD, Light mode
       // (kept out of lastStats: the director's reports stay as short as they were)
-      perf: () => ({ ...(lastStats || {}), ...(lastStatsMsg?.p50 != null ? { frameMsP50: lastStatsMsg.p50, frameMsP95: lastStatsMsg.p95, drawCallsAll: lastStatsMsg.callsAll, gpuMB: lastStatsMsg.gpuMB, quality: lastStatsMsg.quality, fpsCap: lastStatsMsg.cap || 'screen', saved: lastStatsMsg.note } : {}), parked: parkedNow, focused: winFocused, fpsSetting: (FPS_OPTS.find(([v]) => v === String(fpsPref())) || FPS_OPTS[0])[1], light: lightOn, hud: perfHudOn, adapt: { on: adaptOn, ...(adaptLast || {}), note: !adaptNote.hidden }, line: perfLine(lastStatsMsg) }),
+      perf: () => ({ ...(lastStats || {}), ...(lastStatsMsg?.p50 != null ? { frameMsP50: lastStatsMsg.p50, frameMsP95: lastStatsMsg.p95, drawCallsAll: lastStatsMsg.callsAll, gpuMB: lastStatsMsg.gpuMB, quality: lastStatsMsg.quality, fpsCap: lastStatsMsg.cap || 'screen', saved: lastStatsMsg.note } : {}), parked: parkedNow, focused: winFocused, fpsSetting: (FPS_OPTS.find(([v]) => v === String(fpsPref())) || FPS_OPTS[0])[1], light: lightOn, hud: perfHudOn, adapt: { on: adaptOn, ...(adaptLast || {}), note: !adaptNote.hidden }, pace: { readout: paceOn, text: paceText(paceLast), battery: onBattery, ...(paceLast || {}) }, line: perfLine(lastStatsMsg) }),
+      pace: (on) => (on == null ? paceOn : setPaceOn(on)), // (round 33 "labpace") the Frame pace readout
       adapt: (on) => (on == null ? adaptOn : setAdaptOn(on)),
       perfHud: (on) => setPerfHud(on ?? !perfHudOn), light: (on) => (on == null || on !== lightOn ? setLight(on ?? !lightOn) : lightOn),
       // view
@@ -2616,6 +2650,7 @@ const ThreeLab = (() => {
         window.Jank?.lab(msg); // (round 20) the jank watch: real frame times on this computer (/smooth)
         paintPerfHud(msg);
         if (msg.adapt) paintAdapt(msg.adapt);
+        if (msg.pace) { paceLast = msg.pace; if (paceOn) paintPace(); } // (round 33 "labpace")
         if (stats.hidden) stats.hidden = false;
         // (round 16: the line shows on hover; while it can't be seen it isn't rewritten, and never with the same text)
         if (!stats.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return;
@@ -2629,7 +2664,7 @@ const ThreeLab = (() => {
       if (msg.type === 'ready' && typeof ThreeAudio !== 'undefined') ThreeAudio.onReady();
       if (msg.type === 'ready') window.LabMotionIn?.onReady?.(); // (round 25) 📷 a fresh page gets the tracker again
       if (msg.type === 'ready') window.PerfectLoop?.onReady?.(); // (round 31) ∞ a fresh page gets the scene's loop clock again
-      if (msg.type === 'ready') { box.send(capMsg()); if (lightOn) box.send({ type: 'light', on: true }); if (!adaptOn) box.send({ type: 'adapt', on: false }); adaptLast = null; paintAdapt(); parkedNow = false; syncPark(); }
+      if (msg.type === 'ready') { box.send(capMsg()); if (onBattery) box.send({ type: 'power', battery: true }); if (lightOn) box.send({ type: 'light', on: true }); if (!adaptOn) box.send({ type: 'adapt', on: false }); adaptLast = null; paintAdapt(); parkedNow = false; syncPark(); }
       if (msg.type === 'ready') { if (frozenNow) box.send({ type: 'freeze', on: true }); if (guides) box.send({ type: 'guides', kind: guides }); if (previewHost.classList.contains('presenting')) box.send({ type: 'present', on: true }); sendTriggers(); if (trigPanel) box.send({ type: 'trig-watch', on: true }); }
       if (msg.type === 'ready' && liveKind) {
         // a reloaded preview: the hub page keeps capturing, the Stage captures again by itself

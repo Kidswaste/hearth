@@ -62,8 +62,8 @@ let last = 0;
 renderer.setAnimationLoop((now) => {
   const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
   last = now;
-  kick = Math.max(kick * 0.9, audio.kick);
-  snare = Math.max(snare * 0.9, audio.snare);
+  kick = Math.max(kick * 0.9 ** f60, audio.kick);
+  snare = Math.max(snare * 0.9 ** f60, audio.snare);
   bass += (audio.bass - bass) * 0.2;
   uniforms.uTime.value = now / 1000;
   uniforms.uTravel.value += dt * (${travel});
@@ -285,7 +285,7 @@ let last = 0;
 renderer.setAnimationLoop((now) => {
   const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
   last = now;
-  kick = Math.max(kick * 0.88, audio.kick);
+  kick = Math.max(kick * 0.88 ** f60, audio.kick);
   bass += (audio.bass - bass) * 0.15;
   flow += dt * P.flow * (1 + bass * P.bassFlow);
   u.uFlow.value = flow;
@@ -383,7 +383,7 @@ let bass = 0;
 const size = new THREE.Vector2();
 renderer.setAnimationLoop((now) => {
   build();
-  kick = Math.max(kick * 0.9, audio.kick);
+  kick = Math.max(kick * 0.9 ** f60, audio.kick);
   bass += (audio.bass - bass) * 0.15;
   u.uTime.value = now / 1000;
   u.uBurst.value = kick * P.burst;
@@ -395,7 +395,7 @@ renderer.setAnimationLoop((now) => {
   u.uC1.value.set(P.c1);
   u.uC2.value.set(P.c2);
   u.uGlow.value = P.glow;
-  points.rotation.y += P.spin * 0.01;
+  points.rotation.y += (P.spin * 0.01) * f60;
   points.rotation.x = Math.sin(now / 6000) * 0.3;
   renderer.render(scene, camera);
 });
@@ -435,7 +435,7 @@ const ease = (x) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
 function frame(now) {
   requestAnimationFrame(frame);
   const t = now / 1000;
-  kick = Math.max(kick * 0.88, audio.kick);
+  kick = Math.max(kick * 0.88 ** f60, audio.kick);
   // a beat counter from the beat's phase (the demo beat when no song is loaded)
   const ph = audio.beatPhase || 0;
   if (ph < lastPhase - 0.5) beats += 1;
