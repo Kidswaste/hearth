@@ -178,7 +178,7 @@
 :root[data-look~=v2] .group.current .group-name { color: var(--fh-gold); text-shadow: 0 0 calc(10px * var(--glow)) var(--g-gold); }
 :root[data-look~=v2] .item.active { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 20%, transparent), color-mix(in srgb, var(--fh-ember) 4%, transparent) 70%, transparent); color: var(--fh-strong); }
 :root[data-look~=v2] .item.active::before { width: 3px; background: linear-gradient(180deg, var(--fh-gold-hi), var(--fh-gold), var(--fh-ember)); box-shadow: 0 0 calc(10px * var(--glow)) var(--g-ember); }
-:root[data-look~=v2] .busy { background: var(--fh-ai); box-shadow: 0 0 calc(8px * var(--glow)) var(--g-ai); }
+:root[data-look~=v2] :where(span).busy { background: var(--fh-ai); box-shadow: 0 0 calc(8px * var(--glow)) var(--g-ai); }
 :root[data-look~=v2] .group-kind { color: color-mix(in srgb, var(--muted) 80%, transparent); }
 
 /* ---------- inputs: dark wells with a bevel, forged focus ---------- */

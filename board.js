@@ -46,6 +46,9 @@ const Board = (() => {
     const b = await window.hub.kvGet(kvName(id), null);
     if (!b) return null;
     b.items ||= []; b.view ||= { x: 0, y: 0, z: 1 };
+    // (pictures added before captions were checked: a hash name becomes "<credit or Picture> n")
+    const seen = {};
+    for (const it of b.items) { if (!KIND_WORD[it.type]) continue; seen[it.type] = (seen[it.type] || 0) + 1; if (hashy(it.title)) it.title = `${it.credit || KIND_WORD[it.type]} ${seen[it.type]}`; }
     S.boards.set(id, b);
     return b;
   }
@@ -187,6 +190,16 @@ const Board = (() => {
       if (!hit(x, y)) { it.x = x; it.y = y; return; }
     }
   }
+  // A caption a person can read: a downloaded picture's file name is often a hash (Pinterest's "3e1e6b…c0b7.jpg", a
+  // uuid, a CDN's random id); those become "Picture 3" / "pinterest.com 3" / the credit + n instead
+  const hashy = (s) => { const t = String(s || '').replace(/[-_.\s]/g, ''); return t.length >= 12 && (/^[0-9a-f]+$/i.test(t) || (t.length >= 16 && /^[A-Za-z0-9]+$/.test(t) && /\d/.test(t) && /[a-z]/.test(t) && /[A-Z]/.test(t))); };
+  const KIND_WORD = { image: 'Picture', video: 'Clip', audio: 'Sound', file: 'File' };
+  function readableTitle(name, kind, b = S.cur, label = '') {
+    const t = String(name || '').replace(/^(?=[0-9a-z]*\d)[0-9a-z]{10}-(?=.)/, '').replace(/\.[^.]+$/, '');
+    if (t && !hashy(t)) return t;
+    const n = (b?.items || []).filter((i) => i.type === kind).length + 1;
+    return `${label || KIND_WORD[kind] || 'Item'} ${n}`;
+  }
   function newItem(type, props, b = S.cur) {
     const it = { id: uid(b), type, x: 0, y: 0, w: 360, h: 260, rot: 0, added: now(), ...props };
     return it;
@@ -220,7 +233,7 @@ const Board = (() => {
         }
         const kind = kindOf(name, type);
         const pos = placeAt(at, i++);
-        out.push(add(kind, { src, title: name.replace(/^(?=[0-9a-z]*\d)[0-9a-z]{10}-(?=.)/, '').replace(/\.[^.]+$/, ''), x: pos.x, y: pos.y, auto: pos.auto, w: 360, h: 260, file: name, batch, flow: true }, { b, select: false, label: 'add files' }));
+        out.push(add(kind, { src, title: readableTitle(name, kind, b), x: pos.x, y: pos.y, auto: pos.auto, w: 360, h: 260, file: name, batch, flow: true }, { b, select: false, label: 'add files' }));
       } catch (err) { toast(`Couldn't add ${f.name || f}: ${err.message}`, { type: 'error' }); }
     }
     if (b === S.cur && S.mounted && out.length) { S.sel = new Set(out.map((x) => x.id)); updateOverlay(); }
@@ -238,7 +251,7 @@ const Board = (() => {
     const kind = kindOf(u.pathname);
     if (/^https?:$/.test(u.protocol) && kind !== 'file') {
       const r = await window.hub.board.fetch(u.href);
-      if (r.ok) { const pos = placeAt(at, 0); return add(kind, { src: r.path, title: decodeURIComponent(u.pathname.split('/').pop() || u.hostname), url: u.href, x: pos.x, y: pos.y, auto: pos.auto }, { b }); }
+      if (r.ok) { const pos = placeAt(at, 0); return add(kind, { src: r.path, title: readableTitle(decodeURIComponent(u.pathname.split('/').pop() || ''), kind, b, u.hostname.replace(/^www\./, '')), url: u.href, x: pos.x, y: pos.y, auto: pos.auto }, { b }); }
     }
     if (u.protocol === 'file:' && kind !== 'file') return (await addFiles([decodeURIComponent(u.pathname.replace(/^\/([A-Za-z]:)/, '$1'))], at, b))[0];
     const pos = placeAt(at, 0, 400);
@@ -1177,6 +1190,6 @@ const Board = (() => {
     onChange: (fn) => { S.listeners.add(fn); return () => S.listeners.delete(fn); },
     vibeOf: (it) => V.text(it), fileUrl, isMounted: () => S.mounted, visible,
     // shared with board-*.js
-    _: { cancelAnim: () => B_cancelAnim?.(), TYPE_BUILD, SYNC, S, D, V, LY, flush, avoidOverlap, item, syncItem, renderAll, updateOverlay, toWorld, toScreen, center, emit, pushUndo, afterEdit, queueWork, startPreview, stopPreview, liveVideo, stopAllPreviews, playing, fileUrl, imgToJpeg, blobB64, applyView, writeView, animateTo, settle, renderHud, uid, newItem, key, KEYS, fmtTime, cropCss, lastOff, isMedia, fitFrame, kindOf, saveIndex },
+    _: { cancelAnim: () => B_cancelAnim?.(), TYPE_BUILD, SYNC, S, D, V, LY, flush, avoidOverlap, item, syncItem, renderAll, updateOverlay, toWorld, toScreen, center, emit, pushUndo, afterEdit, queueWork, startPreview, stopPreview, liveVideo, stopAllPreviews, playing, fileUrl, imgToJpeg, blobB64, applyView, writeView, animateTo, settle, renderHud, uid, newItem, key, KEYS, fmtTime, cropCss, lastOff, isMedia, fitFrame, kindOf, saveIndex, hashy, readableTitle },
   };
 })();

@@ -186,7 +186,7 @@ html[data-skin~="forge"] #menu button { padding: 6px 12px; }
 :root[data-look~=v2] .group-unread, :root[data-look~=v2] .unread-dot { background: var(--fh-ember); }
 :root[data-look~=v2] .unread-dot { border-radius: var(--r-md); transform: rotate(45deg); box-shadow: 0 0 6px var(--g-ember); }
 /* the busy dot in the chat list breathes only while the AI works (it already does); calm keeps it still */
-:root[data-motion=calm] .busy { animation: none; }
+:root[data-motion=calm] :where(span).busy { animation: none; }
 
 /* ====================================================================================================== */
 /* ---------- materials on the actions that matter (Forgeheart 2) ---------- */

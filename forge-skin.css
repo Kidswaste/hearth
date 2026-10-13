@@ -109,7 +109,7 @@ html[data-skin~="forge"] .item { border-radius: 0; position: relative; transitio
 html[data-skin~="forge"] .item > :is(.pin-mark, .item-title) { transition: translate .15s ease; }
 html[data-skin~="forge"] .item:hover > :is(.pin-mark, .item-title) { translate: 4px 0; }
 html[data-skin~="forge"] .item.active { background: linear-gradient(90deg, #ffd75e1f, transparent); color: #fff; }
-html[data-skin~="forge"] .busy { background: var(--r-mythic); border-radius: 0; transform: rotate(45deg); }
+html[data-skin~="forge"] :where(span).busy { background: var(--r-mythic); border-radius: 0; transform: rotate(45deg); }
 html[data-skin~="forge"] .panel-resize:hover, html[data-skin~="forge"] body.resizing .panel-resize { background: var(--r-rare); }
 
 /* ---------- inputs ---------- */

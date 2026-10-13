@@ -84,7 +84,8 @@ button { font: inherit; color: inherit; }
 .item.active { background: color-mix(in srgb, var(--agent) 18%, transparent); color: var(--text); }
 .item-title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .item .rename { width: 100%; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--accent); border-radius: 4px; padding: 1px 4px; }
-.busy { width: 7px; height: 7px; border-radius: 50%; background: var(--agent); animation: pulse 1s infinite alternate; }
+/* the chat list's working dot: a span (other modules use .busy as a state class on whole panels, e.g. the image picker) */
+:where(span).busy { width: 7px; height: 7px; border-radius: 50%; background: var(--agent); animation: pulse 1s infinite alternate; }
 .none { padding: 3px 8px 6px 30px; font-size: 12px; color: var(--muted); }
 
 /* ---------- surfaces ---------- */

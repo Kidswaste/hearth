@@ -7,6 +7,9 @@
 //     pin link, credit and title; searching again leaves them out ("already on your board"); More = one more screen
 //  3. Pinterest "inside Hearth" (the board's Pinterest window), Unsplash in its app window, a sign-in page (noticed only)
 //  4. the AIs: board_do pins → a short numbered list, the picker with those; the picker card adds what's ticked
+//  5. (regression, the owner's screenshot) while it looks, the picker isn't turned into the chat list's 7 px rotated
+//     .busy dot (a tilted see-through collage over the rail); nothing from the picker stays outside the board after
+//     closing; a picture with no title gets a readable caption (the search words + n), never its file's hash name
 //   node dev/smoke.js --pw-chrome --wait 6000 --check-timeout 240000 --script dev/checks/pinboard.js --shot /tmp/pinboard.png
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(200); } return null; };
@@ -35,7 +38,14 @@ try {
   step(lz() === 'stub', 'the finder itself isn\'t loaded until it\'s used', lz());
 
   // 2. board ⋯ › Find images like this… → Pinterest in the Hearth Chrome
+  const root = document.documentElement; const skin0 = root.dataset.skin;
+  root.dataset.skin = `${skin0 || ''} forge`.trim(); // (the owner's skin: there the chat list's .busy dot is turned 45°)
   top.action();
+  const busyWrap = await until(() => lz() === 'loaded' && Pinboard.ui?.st.busy && document.querySelector('.pinb-wrap'), 15000);
+  const bw = busyWrap?.getBoundingClientRect(); const bcs = busyWrap && getComputedStyle(busyWrap);
+  step(Boolean(busyWrap) && Math.round(bw.width) === innerWidth && Math.round(bw.height) === innerHeight && bcs.transform === 'none' && bcs.opacity === '1' && !busyWrap.classList.contains('busy'),
+    'while it looks: the picker still covers the window (not shrunk, turned or faded like the chat list\'s .busy dot)', busyWrap && { w: bw.width, h: bw.height, transform: bcs.transform, opacity: bcs.opacity, cls: busyWrap.className });
+  if (skin0 === undefined) delete root.dataset.skin; else root.dataset.skin = skin0;
   const ui = await until(() => lz() === 'loaded' && Pinboard.ui, 15000);
   step(Boolean(ui && document.querySelector('.pinb-wrap .pinb-q')), 'the picker opens (the finder loaded on use)', ui?.st?.query);
   await until(() => !Pinboard.ui.st.busy && Pinboard.ui.st.res, 60000);
@@ -60,6 +70,15 @@ try {
   const ok3 = got && picked.every((p) => got.some((i) => i.pinKey === p.key && i.source === p.link && i.title === p.title.slice(0, 80) && i.type === 'image' && i.src && !/^https?:/.test(i.src) && (i.tags || []).includes('pinterest')));
   step(Boolean(ok3), 'on the board: saved locally (like a dropped picture), the pin link as source, Pinterest as credit, its title', got?.map((i) => ({ src: String(i.src).slice(-40), source: i.source, title: i.title })));
   step(B.items().length === n0 + 3, `only the three picked were added (${B.items().length - n0})`);
+  // a pin with no title, its picture named by a hash (as Pinterest's are): the search words + n
+  const hashUrl = `${base}/pinboard/i/3e1e6b6875438000b9a6ccb4c18c0b7.jpg`;
+  const [hp] = await Pinboard.addPins([{ key: 'hashpin', image: hashUrl, thumb: hashUrl, link: 'https://www.pinterest.com/pin/4242/', title: '', site: 'pinterest' }], { query: 'restrained monochrome' });
+  const bare = await B.addUrl(`${base}/pinboard/i/9f86d081884c7d659a2feaa0c55ad015.png`, { x: 0, y: 0 });
+  step(hp?.title === 'restrained monochrome 1' && bare && !B._.hashy(bare.title) && /^127\.0\.0\.1|^localhost/.test(bare.title) && B.items().every((i) => !B._.hashy(i.title)),
+    'captions are readable: no title → the search words + n (a bare address → the site + n), never the file\'s hash', { pin: hp?.title, url: bare?.title });
+  step(B._.hashy('3e1e6b6875438000b9a6ccb4c18c0b7') && B._.hashy('0b5e7d3c-1f2a-4b6c-9d8e-7f6a5b4c3d2e') && !B._.hashy('Foggy forest at dawn') && !B._.hashy('IMG_2041') && B._.readableTitle('lq2x9k0a1b-3e1e6b6875438000b9a6ccb4c18c0b7.jpg', 'image', { items: [] }) === 'Picture 1',
+    'a hash / uuid file name is told apart from a real one');
+  B.removeItems?.([hp?.id, bare?.id].filter(Boolean));
   await until(() => !Pinboard.ui.st.busy && /3 added/.test(status()), 8000);
   step(document.querySelectorAll('.pinb-tile').length === nTiles - 3 && /3 added/.test(status()), 'the picker leaves them out now and says so', status());
 
@@ -116,6 +135,10 @@ try {
   step(Boolean(Pinboard.ui) && document.querySelectorAll('.pinb-tile').length === list.length, 'no reply running: the picker opens with those to confirm', document.querySelectorAll('.pinb-tile').length);
   const rec = { board: B.current().id, boardName: B.current().name, query: 'liquid chrome', site: 'pinterest', siteName: 'Pinterest', pins: Pinboard.ui.st.pins.slice(0, 4) };
   Pinboard.close();
+  // closed: nothing from the picker or its search stays in the page outside the board, nothing big turned over the app
+  const left = [...document.querySelectorAll('[class*="pinb"]')].filter((n) => !n.closest('.bd-vp, .msg, .live-cards'));
+  const tilted = [...document.body.querySelectorAll('*')].filter((n) => { if (n.closest('.bd-vp')) return false; const t = getComputedStyle(n).transform; if (!t || t === 'none') return false; const r = n.getBoundingClientRect(); return r.width * r.height > 150 * 150 && !/^matrix\(1, 0, 0, 1,/.test(t); });
+  step(!left.length && !tilted.length, 'closed: nothing from the picker stays outside the board, nothing big turned over the app', { left: left.map((n) => n.className).slice(0, 5), tilted: tilted.map((n) => `${n.tagName}.${n.className}`).slice(0, 5) });
   // the card a reply shows (the same one saved replies draw)
   const card = PinboardHook.card(rec);
   document.body.append(card);

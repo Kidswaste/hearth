@@ -119,7 +119,7 @@ const Pinboard = (() => {
   }
 
   // ---------- adding the picks ----------
-  async function addPins(list, { boardId = null } = {}) {
+  async function addPins(list, { boardId = null, query = '' } = {}) {
     await B.ready();
     if (boardId && B.current()?.id !== boardId) await B.open(boardId);
     const b = B.current();
@@ -142,10 +142,14 @@ const Pinboard = (() => {
     const at = B.isMounted() && B.visible() ? null : (b.items.length ? { x: bb.x + bb.w + 80, y: bb.y } : { x: 0, y: 0 });
     const items = await B.addFiles(files.map((f) => f.path), at, b);
     const meta = new Map(items.map((it, i) => [it.id, files[i]?.p]));
+    // no title on the page: the search words (or the site's name) + n, never the downloaded file's hash name
+    const named = (label) => { const w = `${String(label).slice(0, 60)} `; let n = b.items.filter((i) => String(i.title || '').startsWith(w)).length + 1; return () => `${w}${n++}`; };
+    const untitled = new Map();
     B.patch(items.map((i) => i.id), (x) => {
       const p = meta.get(x.id); if (!p) return;
       const site = C.siteOf(p.site);
-      if (p.title) x.title = p.title.slice(0, 80);
+      if (p.title && !B._.hashy(p.title)) x.title = p.title.slice(0, 80);
+      else { const label = query || site.name; if (!untitled.has(label)) untitled.set(label, named(label)); x.title = untitled.get(label)(); }
       if (p.link) x.source = p.link;
       if (/^https?:/.test(p.image)) x.url = p.image;
       x.pinKey = p.key; x.credit = site.name;
@@ -190,7 +194,7 @@ const Pinboard = (() => {
       const list = st.pins.filter((p) => st.picked.has(p.key));
       if (!list.length) return;
       addBtn.disabled = true; addBtn.textContent = `Adding ${list.length}…`;
-      const added = await addPins(list, { boardId: b.id });
+      const added = await addPins(list, { boardId: b.id, query: st.query });
       for (const p of list) if (added.length) st.pins = st.pins.filter((x) => x !== p);
       st.picked.clear(); st.addedN = (st.addedN || 0) + added.length;
       paint();
@@ -223,7 +227,7 @@ const Pinboard = (() => {
       addBtn.disabled = !st.picked.size || st.busy;
       moreBtn.hidden = !r || r.end || r.signin;
       moreBtn.disabled = st.busy;
-      dlg.classList.toggle('busy', st.busy);
+      dlg.classList.toggle('pinb-busy', st.busy); // (not 'busy': that's the chat list's dot, 7 px and rotated 45° in the Forge skin)
     }
     function tile(p) {
       return el('div', { class: 'pinb-tile', attrs: { role: 'button', tabindex: '0', 'aria-pressed': 'false' }, title: p.title || 'Untitled', dataset: { key: p.key },

@@ -58,7 +58,7 @@ const PinboardHook = (() => {
       const list = [...picked].map((i) => rec.pins[i]);
       add.disabled = true; add.textContent = 'Adding…';
       const P = await ready().catch(() => null);
-      const n = P ? (await P.addPins(list, { boardId: rec.board })).length : 0;
+      const n = P ? (await P.addPins(list, { boardId: rec.board, query: rec.query })).length : 0;
       for (const i of picked) tiles[i].classList.replace('on', 'done');
       picked.clear(); paint();
       if (n) add.textContent = `✓ ${n} added`;
