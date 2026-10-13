@@ -1408,6 +1408,71 @@ globalThis.noise = (() => {
       lerp(lerp(grad(p[AA + 1], x, y, z - 1), grad(p[BA + 1], x - 1, y, z - 1), u), lerp(grad(p[AB + 1], x, y - 1, z - 1), grad(p[BB + 1], x - 1, y - 1, z - 1), u), v), w);
   };
 })();
+// ---------- perfect loop (round 31, perfectloop: tools/three-loop*.js) ----------
+// "Make it loop": the scene's time wraps at the loop (N bars of the song, or N seconds of the scene's own timeline) in
+// the preview and in renders: a layer's frame time and performance.now() follow the timeline, folded into the loop
+// (0 while a layer sets up, like a sequence scene), so keyframes, music reactions and code all come round together.
+// Code made to loop reads the loop's phase, so its last frame runs into its first:
+//   loopT(n = 1) 0..1 over the loop (n whole times round) · loop.t / loop.time (s in) / loop.len / loop.start / loop.on
+//   loopSin(n, phase) / loopCos(n, phase) -1..1, n whole waves a loop · loopWave(n) 0..1..0 · loopAngle(n) radians
+//   loopNoise(x, y, t = loopT(), r = 1) smooth noise (about -1..1) sampled on a circle: back to itself at the loop's end
+// Without "Make it loop" they go round the timeline's loop (A–B) when one is set, else every 4 s.
+const LOOPC = { on: false, set: false, a: 0, len: 4, fade: 0, importing: 0, seams: 0 };
+const loopRegion = () => (!SQ.on && region && region.b - region.a > 0.05 ? region : null);
+function loopClock() {
+  const r = loopRegion();
+  if (r && (LOOPC.on || !LOOPC.set)) return { a: r.a, len: r.b - r.a };
+  return { a: LOOPC.a || 0, len: LOOPC.len > 0 ? LOOPC.len : 4 };
+}
+const loopFold = (t) => { const c = loopClock(); return c.a + ((((t - c.a) % c.len) + c.len) % c.len); };
+// the scene's own time for the helpers: a sequence / precomp scene's clock, else the timeline (song or the scene's own)
+function loopSceneT() {
+  const L = ctxLayer ? layers.get(ctxLayer) : null;
+  if (L?.props.pcOf) return keyTime(L);
+  if (SQ.on) return L?.props.seqT0 != null ? sqLocal(L) : SQ.T;
+  return mediaEl && !liveKind ? mediaEl.currentTime : realNow() / 1000;
+}
+// performance.now() / a frame's time for a layer while the loop is on (null: not this page's business)
+function loopNowMs() {
+  if (!LOOPC.on || SQ.on || !mediaEl || liveKind) return null;
+  if (ctxLayer) return loopFold(mediaEl.currentTime) * 1000;
+  if (LOOPC.importing && layerOfStack(new Error().stack)) return 0;
+  return null;
+}
+const loopWhole = (n) => Math.round(Number(n)) || 1;
+globalThis.loopT = (n = 1) => { const c = loopClock(); const u = ((((loopSceneT() - c.a) / c.len) % 1) + 1) % 1; return n === 1 ? u : fract(u * loopWhole(n)); };
+globalThis.loopAngle = (n = 1) => loopT(n) * Math.PI * 2;
+globalThis.loopSin = (n = 1, phase = 0) => Math.sin((loopT(n) + phase) * Math.PI * 2);
+globalThis.loopCos = (n = 1, phase = 0) => Math.cos((loopT(n) + phase) * Math.PI * 2);
+globalThis.loopWave = (n = 1) => 0.5 - 0.5 * Math.cos(loopT(n) * Math.PI * 2);
+globalThis.loopNoise = (x = 0, y = 0, t = loopT(), r = 1) => { const a = t * Math.PI * 2; return noise(x + r * Math.cos(a), y, 7.31 + r * Math.sin(a)); };
+globalThis.loop = Object.defineProperties({}, {
+  on: { enumerable: true, get: () => LOOPC.on },
+  len: { enumerable: true, get: () => loopClock().len },
+  start: { enumerable: true, get: () => loopClock().a },
+  t: { enumerable: true, get: () => loopT() },
+  time: { enumerable: true, get: () => loopT() * loopClock().len },
+  blend: { get: () => LOOPC.fade }, seams: { get: () => LOOPC.seams }, // (the seam's blend in s; how many seams the preview blended)
+});
+// the loop's seam in the preview, when the last beat blends into the first: a picture of the last frame fades away
+// over the start (on the compositor; renders blend the frames themselves)
+function loopSeam() {
+  if (!LOOPC.on || !(LOOPC.fade > 0) || parked) return;
+  LOOPC.seams += 1;
+  try {
+    const c = composite(null, 0.5);
+    c.className = 'lab-loop-seam';
+    c.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:99980;pointer-events:none';
+    document.body.appendChild(c);
+    const an = c.animate([{ opacity: 1 }, { opacity: 0 }], { duration: Math.max(80, LOOPC.fade * 1000), easing: 'linear', fill: 'forwards' });
+    an.onfinish = () => c.remove();
+    realSetTimeout(() => c.remove(), LOOPC.fade * 1000 + 600);
+  } catch { /* a plain cut */ }
+}
+function loopMessage(msg) {
+  Object.assign(LOOPC, { on: Boolean(msg.on), set: msg.a != null, a: Number(msg.a) || 0, len: Number(msg.len) > 0 ? Number(msg.len) : 4, fade: Math.max(0, Number(msg.fade) || 0) });
+  post({ type: 'loop-state', on: LOOPC.on, ...loopClock(), fade: LOOPC.fade });
+}
 globalThis.media = media;
 let stateTimer = 0;
 const sendState = () => { if (mediaEl) post({ type: 'media-state', time: mediaEl.currentTime, duration: mediaEl.duration || 0, playing: !mediaEl.paused, ended: mediaEl.ended, ...(fclock && isVideo ? { frame: fpres.frame } : {}) }); };
@@ -1427,6 +1492,7 @@ function mediaTick() {
     stopRecording();
     mediaEl.pause();
   } else if (region && loopOn && recUntil == null && prevT >= region.a - 0.1 && prevT < region.b && t >= region.b) {
+    if (LOOPC.on) loopSeam(); // (round 31, perfectloop) the last beat blending into the first
     mediaEl.currentTime = region.a;
     sendState();
   } else if (trim && !(region && loopOn) && prevT < trim.b && t >= trim.b) {
@@ -8125,7 +8191,7 @@ function installRunGuards() {
         // parked (the Lab isn't on screen): nothing draws until it is again (a recording / an offline render goes on)
         if (parked && !SQ.off && !fullRes()) { parkQ.push(run); return; }
         if (!SQ.off && !capOk(t)) { sched(run); return; }
-        within1(o, fn, o.L?.props.seqT0 != null && SQ.on ? sqLocal(o.L) * 1000 : o.L?.props.pcOf ? keyTime(o.L) * 1000 : t);
+        within1(o, fn, o.L?.props.seqT0 != null && SQ.on ? sqLocal(o.L) * 1000 : o.L?.props.pcOf ? keyTime(o.L) * 1000 : LOOPC.on && o.L && !SQ.on && mediaEl && !liveKind ? loopFold(mediaEl.currentTime) * 1000 : t);
         if (o.L) { if (o.L.ranG === o.L.gen) o.L.ran += 1; else { o.L.ranG = o.L.gen; o.L.ran = 1; } } // (seqsolid: its frames since its run, see sqDrawn)
       };
       e = { o, run };
@@ -8326,8 +8392,9 @@ async function runLayer(spec, hot = false) {
   sketchRunning = true;
   const inPc = Boolean(L.props.pcOf);
   if (inPc) PC.importing += 1;
+  LOOPC.importing += 1; // (round 31, perfectloop: performance.now() is 0 while a layer sets up on the loop's clock)
   try {
-    try { await import(url); } finally { if (inPc) PC.importing -= 1; }
+    try { await import(url); } finally { if (inPc) PC.importing -= 1; LOOPC.importing -= 1; }
     if (L.gen !== g) return;
     if (!inPc) post({ type: 'ran', hot, swap: Boolean(spec.swap), layer: L.id });
     realRAF(() => realRAF(() => { if (L.gen === g) slotPast[L.slot || 0] = true; }));
@@ -8713,6 +8780,7 @@ performance.now = function () {
   // a precomp's layer: its scene's own clock (0 while it sets up), like a sequence scene
   const c = PC.list.size ? pcLayerHere() : null;
   if (c) return c.setup ? 0 : keyTime(c.L) * 1000;
+  if (LOOPC.on) { const v = loopNowMs(); if (v != null) return v; } // (round 31, perfectloop) the loop's clock
   return realNow();
 };
 function pcLayerHere() {
@@ -9871,6 +9939,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'fps-cap') { capWant.value = Number(msg.value) || 0; capWant.auto = Boolean(msg.auto); capWant.focused = msg.focused !== false; applyCap(); }
   if (msg.type === 'park') setParked(msg.on);
   if (msg.type === 'light') { lightMode = Boolean(msg.on); applyCap(); }
+  if (msg.type === 'loop-clock') { loopMessage(msg); return; } // (round 31, perfectloop)
   if (msg.type === 'eval') runEval(msg);
   if (msg.type === 'edit') editCommand(msg);
   if (msg.type === 'input') runInput(msg);

@@ -967,3 +967,9 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ By itself only the first time each kind of window opens (× = gone for good); then the window's ⋯ › ✦ What can I do here? (the chat: the ? in AI setup, or right-click), Ctrl/⌘+K. Used or tried things drop off; right-click › Not for me.
 - ✓ One place for things to try: Discover's daily tip no longer pops up by itself; the Lab's starter chips step aside while the card is up; an empty chat's "◎…" line became the one link.
 - ○ Tested with fake engines (`sh dev/run-checks.sh quickstart`) and a unit test of the picking (`node dev/quickstart-test.js`).
+## ∞ Make it loop (round 31, perfectloop, 35 upgrades: docs/upgrades/perfectloop.md)
+- ✓ ✦ More › ⇪ Make › **∞ Make it loop** (or the ◎ mission, or just asking the director): the scene loops over N bars of the song (or N seconds of its own timeline). The preview's clock and renders' wrap with it, keyframes come back round, music reactions loop with the bars.
+- ✓ Code that loops by itself: `loopT()`, `loopSin(n)`, `loopCos(n)`, `loopWave(n)`, `loopAngle(n)`, `loopNoise(x, y)` (noise on a circle), `loop.len`; the director reads them with `help loop`, on demand.
+- ✓ The seamless check compares the loop's last frame with its first (publishkit's loop check): **≈ seamless** or **a visible jump**, with one click to fix it (blend the last beat into the first: the preview fades its seam, renders cross-fade it), or the director (cost first).
+- ✓ ⇪ Render the loop: a perfect-loop MP4 (or GIF) of exactly the loop, with its bars of the song. Ready to post's loop fix renders a Lab render's scene again as a perfect loop.
+- ○ Tested with fake engines on a software GPU (`sh dev/run-checks.sh perfectloop`, `node dev/perfectloop-test.js`); `Date.now()` and live sound don't follow the loop.

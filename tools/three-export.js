@@ -235,6 +235,10 @@ const LabExport = (() => {
       page = await openPage({ w: o.w, h: o.h, ss: o.ss, alpha: o.alpha, seed: o.seed });
       progress(0.01, 'loading the scene');
       await loadPlan(page, plan, assets, plan.song);
+      // (round 31, perfectloop) the scene's loop clock on the export page (its loopT / loopNoise… go round with the
+      // loop's frames; the cross-fade's frames past the end are what the scene does next, blended into the start)
+      const lc = o.source === 'scene' ? window.PerfectLoop?.clockFor?.(o, loop) || null : null;
+      if (lc) page.send({ type: 'loop-clock', ...lc });
       const dir = await outDir();
       const stem = C.safe(`${o.name || sk?.name || seqE?.seq?.name || 'Lab'} ${f.id === 'still16' ? 'print' : f.id} ${o.w}x${o.h}${o.ss > 1 ? ` ss${o.ss}` : ''}${o.blur > 1 ? ` mb${o.blur}` : ''}`);
       const isSeqOut = f.id === 'png';
@@ -529,6 +533,29 @@ const LabExport = (() => {
     ] };
   }
   const status = () => ({ running: S.cur ? { frames: S.cur.frames, total: S.cur.total, paused: S.cur.paused } : null, waiting: S.waiting, last: S.last, speeds: S.stats.slice(-8) });
-  return { render, resolve, renderEdit, panel, previewItem, pause, cancel, status, savePreset, loadPreset, presetNow, packHtml, openPage, gpuCap, setGpuCap: (mp) => store.set('three.export.gpu', Math.max(4, Math.min(512, Number(mp) || 64))), _S: S };
+  // (round 31, perfectloop) small frames of the scene on screen from the export page, for the seamless check: n frames
+  // at times(k) (in order: a simulation steps through them), JPEG buffers back; clock: the loop clock for its helpers
+  async function probe({ w, h, F = 30, n, times, clock = null, onFrame = null }) {
+    const { e, sk } = await sceneEdit({ w, h, F, end: Math.max(...Array.from({ length: n }, (_, k) => times(k))) + 2 / F });
+    const { plan, assets } = compileLive(e, sk);
+    plan.w = w; plan.h = h; plan.fps = F;
+    const page = await openPage({ w, h, ss: 1, alpha: false, seed: 1 });
+    try {
+      await loadPlan(page, plan, assets, plan.song);
+      if (clock) page.send({ type: 'loop-clock', ...clock });
+      const out = [];
+      for (let k = 0; k < n; k += 1) {
+        const got = page.wait((m) => m.type === 'xp-frame' && m.n === k, 60000, `frame ${k + 1}`);
+        page.send({ type: 'xp-frame', n: k, T: r4(times(k)), w, h, ss: 1, sub: 1, F, kind: 'image/jpeg', q: 0.9 });
+        const m = await got;
+        if (m.error) throw new Error(`Frame ${k + 1}: ${m.error}`);
+        out.push(m.buffer);
+        onFrame?.(k + 1, n);
+      }
+      return { frames: out, errors: page.errors.slice() };
+    } finally { page.close(); }
+  }
+
+  return { render, resolve, renderEdit, panel, previewItem, pause, cancel, status, savePreset, loadPreset, presetNow, packHtml, openPage, probe, gpuCap, setGpuCap: (mp) => store.set('three.export.gpu', Math.max(4, Math.min(512, Number(mp) || 64))), _S: S };
 })();
 if (typeof module !== 'undefined') module.exports = LabExport;

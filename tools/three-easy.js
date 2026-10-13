@@ -81,6 +81,7 @@ const LabEasy = (() => {
     askItem('👥 4 variations of this scene…', 'A crew explores them side by side (cost shown first); you pick one', { title: 'What should the 4 variations explore?', placeholder: 'e.g. hit harder on the drop' }, (v) => `/crew 4 ${v || 'clearly different takes on this scene'}`, 'crew'),
     item('Render this chat\'s sequence again', 'Here, on this computer', '/render-again'),
     ...(typeof AutoEdit !== 'undefined' ? [AutoEdit.item()] : []), // (round 27, autoedit)
+    ...(typeof PerfectLoop !== 'undefined' ? [PerfectLoop.item()] : []), // (round 31) ∞ make it loop (tools/three-loop.js)
   ];
   const infoItems = () => [
     item('What the Lab shows now', 'Sketch, layer, frame size, song, tempo', '/lab-state'),

@@ -1,0 +1,20 @@
+/* ∞ Make it loop (tools/three-loop.js): a small card over the top left of the Lab preview, built on lookmatch's card
+   (.lm-head / .lm-btn / .lm-acts). A plain dark card: no blur, no animation over the moving preview. */
+.pl-card {
+  position: absolute; top: 46px; left: 8px; z-index: 7; width: 272px; max-width: calc(100% - 16px); max-height: calc(100% - 56px);
+  display: flex; flex-direction: column; gap: 6px; padding: 7px 9px 8px; border: 1px solid var(--line); border-radius: 10px; overflow-y: auto; scrollbar-width: thin;
+  background: color-mix(in srgb, var(--panel, #15181b) 95%, transparent); color: var(--text, #eae0d5); font-size: 12px;
+  box-shadow: 0 10px 30px #0008, 0 0 0 1px color-mix(in srgb, var(--fh-gold, #ffd75e) 14%, transparent); contain: layout paint;
+}
+.pl-body { display: flex; flex-direction: column; gap: 4px; }
+.pl-len { color: var(--muted, #9a948c); font-variant-numeric: tabular-nums; }
+.pl-verdict { font-size: 15px; font-weight: 700; }
+.pl-verdict.pl-ok { color: var(--fh-gold, #ffd75e); }
+.pl-verdict.pl-jump { color: #ff8a5c; }
+.pl-detail { color: var(--muted, #9a948c); font-size: 11px; line-height: 1.35; }
+.pl-pics { display: flex; align-items: center; gap: 4px; }
+.pl-pics figure { flex: 1; margin: 0; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pl-pics img { width: 100%; height: 72px; object-fit: contain; background: #000; border-radius: 6px; border: 1px solid var(--line); }
+.pl-pics figcaption { font-size: 10px; color: var(--muted, #9a948c); text-align: center; }
+.pl-arrow { color: var(--muted, #9a948c); }
+.pl-card .lm-acts { flex-wrap: wrap; }

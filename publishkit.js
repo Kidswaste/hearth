@@ -87,6 +87,7 @@ const PublishKit = (() => {
     const an = { loud: st.res.loud, seam: st.res.seam, under: st.res.heat ? P.underUI(st.res.heat, P.zonesFor(p.id, st.info.w && st.info.h ? st.info.w / st.info.h : p.ratio)) : null }; // (zones in the video's own picture)
     st.under = an.under || [];
     const list = P.check(p.id, st.info, an);
+    for (const c of list) if (c.fix?.kind === 'loop' && window.PerfectLoop?.isLabRender?.(st)) c.fix = { ...c.fix, label: '∞ Render the scene as a perfect loop' }; // (round 31, perfectloop)
     if (st.res.local) list.push({ id: 'ffmpeg', level: 'tip', what: `Loudness, exact frame rate and bitrate need ffmpeg (${st.res.hint || 'install ffmpeg'}).` });
     return P.sortChecks(list);
   }
@@ -322,6 +323,15 @@ const PublishKit = (() => {
   // ---------- fixes (a better copy through the render queue; the kit checks it when it's done) ----------
   async function fix(st, c) {
     const p = P.get(st.platform); const f = c.fix; const file = st.file;
+    // (round 31, perfectloop) a Lab render: the scene is rendered again as a perfect loop (its clock wraps) instead of
+    // blending the file's end into its start
+    if (f.kind === 'loop' && window.PerfectLoop?.isLabRender?.(st)) {
+      setStatus(st, '∞ Rendering the scene again as a perfect loop… (the render queue); the kit checks it when it\'s done.');
+      emit('fixing');
+      const r = await PerfectLoop.forPost(st).catch((err) => ({ error: err.message }));
+      if (r?.path && cur === st) { toast(`📮 The perfect loop is ready: checking ${base(r.path)}`, { timeout: 3000 }); await reopen(st, r.path); } else if (r?.error && cur === st) { setStatus(st, `✕ ${r.error}`); paint(st); }
+      return r;
+    }
     if (typeof Renders === 'undefined') await window.Lazy?.load?.('renders');
     let id = null; let label = f.label;
     if (f.kind === 'render') {
