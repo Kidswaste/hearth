@@ -195,14 +195,22 @@
 
   // Finished messages are rendered again on every chat switch / redraw: the same text gives the same HTML, so recent
   // results are kept (a long chat re-opens without re-parsing hundreds of replies). Small texts aren't worth it.
+  // (round 34, lightweight) also capped by size: 600 very long replies (a pasted log, a whole file) held ≈ 40 MB of text
+  // and HTML; now the oldest go once the cache holds 6M characters (≈ 1,000 ordinary replies' worth, so it rarely bites)
   const mdCache = new Map();
+  const MD_CHARS = 6e6; let mdChars = 0;
+  function put(src, html) {
+    const had = mdCache.get(src);
+    if (had !== undefined) { mdChars -= src.length + had.length; mdCache.delete(src); }
+    mdCache.set(src, html); mdChars += src.length + html.length;
+    while (mdCache.size > 600 || (mdChars > MD_CHARS && mdCache.size > 1)) { const [k, v] = mdCache.entries().next().value; mdCache.delete(k); mdChars -= k.length + v.length; }
+  }
   function renderMarkdownCached(src) {
     if (typeof src !== 'string' || src.length < 200) return renderMarkdown(src);
     const hit = mdCache.get(src);
     if (hit !== undefined) { mdCache.delete(src); mdCache.set(src, hit); return hit; }
     const html = renderMarkdown(src);
-    mdCache.set(src, html);
-    if (mdCache.size > 600) mdCache.delete(mdCache.keys().next().value);
+    put(src, html);
     return html;
   }
   // (round 20, offmain) running as the worker: render what the window sends, in order, and send the HTML back
@@ -247,10 +255,6 @@
       worker.onerror = () => { broken = true; worker = null; for (const j of waiting.values()) { for (const t of j.texts) inFlight.delete(t); j.done(); } waiting.clear(); };
     } catch { broken = true; worker = null; }
     return worker;
-  }
-  function put(src, html) {
-    mdCache.delete(src); mdCache.set(src, html);
-    if (mdCache.size > 600) mdCache.delete(mdCache.keys().next().value);
   }
   function warm(texts, ms = 400) {
     const todo = [...new Set((texts || []).filter((t) => typeof t === 'string' && t.length >= WARM_MIN && !mdCache.has(t) && !inFlight.has(t)))];

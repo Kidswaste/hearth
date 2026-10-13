@@ -164,14 +164,15 @@ const OPS = {
   recall({ dir, q, budgetMs = 12, limit }) {
     const t0 = performance.now();
     recallIdx ||= require('./recall-core').createIndex();
-    const live = new Set(); let left = 0;
+    const live = new Set(); let left = 0; let added = 0;
     for (const { file, e } of chats(dir)) {
       live.add(file);
       if (recallIdx.has(file, e)) continue;
       if (performance.now() - t0 > budgetMs) { left += 1; continue; }
       const chat = readChat(file);
-      if (chat) recallIdx.add(file, chat, e); else live.delete(file);
+      if (chat) { recallIdx.add(file, chat, e); added += 1; } else live.delete(file);
     }
+    if (added && !left) recallIdx.trim?.(); // (round 34, lightweight) caught up: its lists cut to size
     for (const file of recallIdx.keys()) if (file.startsWith(dir) && !live.has(file)) recallIdx.drop(file);
     const size = recallIdx.size();
     if (!q) return { left, ...size, ms: Math.round(performance.now() - t0) };

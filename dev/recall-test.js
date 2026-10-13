@@ -94,6 +94,16 @@ const took = Date.now() - t1;
 console.log(`  (24,000 messages: built in ${built} ms, answered in ${took} ms, ${big.size().terms} terms)`);
 ok('the needle in 24,000 messages', hit.decisions[0]?.chatId === 'b123' && hit.decisions[0].k === 30, hit.decisions[0]);
 ok('answers fast', took < 400, took);
+// (round 34, lightweight) packed: ≈ 8 bytes a posting in typed arrays (the first layout was ≈ 100: a Map of arrays per chat)
+big.trim();
+const bytes = big._bytes();
+console.log(`  (index: ${Math.round(bytes / 1024)} KB of typed arrays)`);
+ok('the index stays small', bytes < 400 * 60 * 32 * 9, bytes);
+// a term in many chats survives one of them going (df once counted chats coming and messages going)
+for (let c = 0; c < 10; c++) big.drop(`k${c}`);
+ok('a term still counts after chats that had it are dropped', big.search('purple glow logo sting', { textOf: (k, i) => bt.get(k)[i], now: NOW }).decisions[0]?.chatId === 'b123');
+for (let c = 10; c < 300; c++) big.add(`k${c}`, { id: `b${c}`, agentId: 'claude', title: `Chat ${c}`, updatedAt: NOW, messages: bt.get(`k${c}`).map((t, i) => msg(i % 2 ? 'assistant' : 'user', t, 1)) }, `v2-${c}`);
+ok('saved again and again: old postings swept, the same answer', big._bytes() < bytes * 1.6 && big.size().messages === 390 * 60 && big.search('purple glow logo sting', { textOf: (k, i) => bt.get(k)[i], now: NOW }).decisions[0]?.chatId === 'b123', { bytes: big._bytes(), size: big.size() });
 
 console.log(`\n${n - fails}/${n} passed`);
 process.exit(fails ? 1 : 0);

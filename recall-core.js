@@ -82,63 +82,108 @@ const RecallCore = (() => {
   }
 
   // ---------- the index ----------
+  // (round 34, lightweight) packed: one term table for every chat and, per term, one typed array of postings (chat
+  // slot, message × 4096 + tf); each chat's messages are numbers in one Float64Array. The first layout (a Map of arrays
+  // per chat, its own copy of every word) took ≈ 200 MB of the main process for 400 long chats, built by itself a minute
+  // after every start; this one ≈ 20 MB. A changed chat still swaps in on its own: its old postings are skipped (its
+  // slot is empty) and swept out once they outnumber the live ones. df counts messages (each message is a document)
+  // when a chat comes and when it goes (it counted chats coming and messages going: a term could vanish from every search).
+  const ROLE_OF = ['user', 'assistant', 'opinion', 'collab'];
+  const ROLE_IX = new Map(ROLE_OF.map((r, i) => [r, i]));
   function createIndex() {
-    const chats = new Map(); // key → { src, sum, msgs: [{ k, role, at, len, mark, dec, open }], terms: Map(term → [pos, tf, pos, tf…]) }
-    const df = new Map();
-    let N = 0; let total = 0;
+    const byKey = new Map(); // key → slot
+    const slots = []; // slot → { key, src, sum, msgs: Float64Array [k, at, len, flags] per message, n, tids, tcounts, len, posts } | null
+    const termId = new Map(); // term → id
+    let df = new Int32Array(1024); // id → messages that have it
+    const lists = []; // id → { a: Uint32Array, n } postings: slot, pos × 4096 + tf
+    let N = 0; let total = 0; let live = 0; let dead = 0;
+    function idOf(t) {
+      let id = termId.get(t);
+      if (id === undefined) {
+        id = termId.size; termId.set(t, id); lists.push(null);
+        if (id >= df.length) { const d = new Int32Array(df.length * 2); d.set(df); df = d; }
+      }
+      return id;
+    }
+    function post(id, slot, v) {
+      let L = lists[id];
+      if (!L) L = lists[id] = { a: new Uint32Array(8), n: 0 };
+      if (L.n + 2 > L.a.length) { const b = new Uint32Array(L.a.length * 2); b.set(L.a); L.a = b; }
+      L.a[L.n++] = slot; L.a[L.n++] = v;
+    }
+    // old postings out; tight: every list cut to its size (after a catch-up, when nothing is added for a while)
+    function sweep(tight = false) {
+      for (const L of lists) {
+        if (!L) continue;
+        let w = 0;
+        if (dead) { for (let i = 0; i < L.n; i += 2) if (slots[L.a[i]]) { L.a[w++] = L.a[i]; L.a[w++] = L.a[i + 1]; } } else w = L.n;
+        L.n = w;
+        if (tight ? L.a.length > w : L.a.length > 16 && w * 2 < L.a.length) L.a = L.a.slice(0, Math.max(tight ? 2 : 8, tight ? w : Math.ceil(w * 0.625) * 2));
+      }
+      dead = 0;
+    }
     function drop(key) {
-      const c = chats.get(key);
-      if (!c) return;
-      for (const [t, list] of c.terms) { const n = (df.get(t) || 0) - list.length / 2; if (n > 0) df.set(t, n); else df.delete(t); }
-      N -= c.msgs.length; total -= c.len;
-      chats.delete(key);
+      const slot = byKey.get(key);
+      if (slot === undefined) return;
+      const c = slots[slot];
+      for (let i = 0; i < c.tids.length; i++) df[c.tids[i]] -= c.tcounts[i];
+      N -= c.n; total -= c.len; live -= c.posts; dead += c.posts;
+      slots[slot] = null; byKey.delete(key);
+      if (dead > 4096 && dead * 4 > live) sweep();
     }
     function add(key, chat, src = null) {
       drop(key);
-      const c = { src, sum: { id: chat.id, agentId: chat.agentId, title: chat.title || 'Chat', updatedAt: chat.updatedAt || 0, pinned: Boolean(chat.pinned) }, msgs: [], terms: new Map(), len: 0 };
+      const slot = slots.length;
+      const msgs = []; const per = new Map(); // term id → messages of this chat that have it
+      let len = 0; let posts = 0;
       (chat.messages || []).forEach((m, k) => {
         if (!m || !ROLES.has(m.role) || !m.text) return;
         const text = String(m.text).slice(0, 40000);
         const toks = tokens(text);
         if (!toks.length) return;
-        const pos = c.msgs.length;
+        const pos = msgs.length / 4;
         const tf = new Map();
         for (const t of toks) tf.set(t, (tf.get(t) || 0) + 1);
-        for (const [t, n] of tf) { let l = c.terms.get(t); if (!l) { l = []; c.terms.set(t, l); df.set(t, (df.get(t) || 0) + 1); } l.push(pos, n); }
+        for (const [t, n] of tf) { const id = idOf(t); post(id, slot, pos * 4096 + Math.min(n, 4095)); per.set(id, (per.get(id) || 0) + 1); df[id] += 1; posts += 1; }
         const plainText = text.replace(FENCE, ' ');
-        c.msgs.push({ k, role: m.role, at: m.at || chat.updatedAt || 0, len: toks.length, mark: Boolean(m.pinned || m.bookmark), dec: DECIDE.test(plainText), open: OPEN.test(plainText) });
-        c.len += toks.length;
+        msgs.push(k, m.at || chat.updatedAt || 0, toks.length, ROLE_IX.get(m.role) | (m.pinned || m.bookmark ? 4 : 0) | (DECIDE.test(plainText) ? 8 : 0) | (OPEN.test(plainText) ? 16 : 0));
+        len += toks.length;
       });
-      N += c.msgs.length; total += c.len;
-      chats.set(key, c);
+      const n = msgs.length / 4;
+      slots.push({ key, src, sum: { id: chat.id, agentId: chat.agentId, title: chat.title || 'Chat', updatedAt: chat.updatedAt || 0, pinned: Boolean(chat.pinned) }, msgs: Float64Array.from(msgs), n,
+        tids: Uint32Array.from(per.keys()), tcounts: Uint32Array.from(per.values()), len, posts });
+      byKey.set(key, slot);
+      N += n; total += len; live += posts;
     }
+    const msgOf = (c, pos) => { const b = pos * 4; const f = c.msgs[b + 3]; return { k: c.msgs[b], role: ROLE_OF[f & 3], at: c.msgs[b + 1], len: c.msgs[b + 2], mark: Boolean(f & 4), dec: Boolean(f & 8), open: Boolean(f & 16) }; };
     // textOf(key, k) → the message's text (the index keeps no texts); now: for recency (tests pass a fixed one)
     function search(q, { textOf, now = Date.now(), limit = 16, perChat = 2 } = {}) {
       const terms = questionTerms(q);
-      const out = { terms, decisions: [], open: [], mentions: [], chats: chats.size, messages: N };
+      const out = { terms, decisions: [], open: [], mentions: [], chats: byKey.size, messages: N };
       if (!terms.length || !N) return out;
       const avg = total / N || 1;
       const acc = new Map(); // `${key}\n${pos}` → { c, key, pos, s, matched }
       for (const t of terms) {
-        const n = df.get(t);
-        if (!n) continue;
+        const id = termId.get(t);
+        const n = id === undefined ? 0 : df[id];
+        if (n <= 0 || !lists[id]) continue;
         const idf = Math.log(1 + (N - n + 0.5) / (n + 0.5));
-        for (const [key, c] of chats) {
-          const l = c.terms.get(t);
-          if (!l) continue;
-          for (let i = 0; i < l.length; i += 2) {
-            const m = c.msgs[l[i]]; const tf = l[i + 1];
-            const id = `${key}\n${l[i]}`;
-            let a = acc.get(id);
-            if (!a) { a = { c, key, pos: l[i], s: 0, matched: 0 }; acc.set(id, a); }
-            a.s += idf * (tf * (K1 + 1)) / (tf + K1 * (1 - B + B * m.len / avg));
-            a.matched += 1;
-          }
+        const L = lists[id];
+        for (let i = 0; i < L.n; i += 2) {
+          const c = slots[L.a[i]];
+          if (!c) continue;
+          const v = L.a[i + 1]; const pos = Math.floor(v / 4096); const tf = v % 4096;
+          const mlen = c.msgs[pos * 4 + 2];
+          const key = `${c.key}\n${pos}`;
+          let a = acc.get(key);
+          if (!a) { a = { c, key: c.key, pos, s: 0, matched: 0 }; acc.set(key, a); }
+          a.s += idf * (tf * (K1 + 1)) / (tf + K1 * (1 - B + B * mlen / avg));
+          a.matched += 1;
         }
       }
       const titleHas = (c) => { const tt = new Set(tokens(c.sum.title)); return terms.some((t) => tt.has(t)); };
       const ranked = [...acc.values()].map((a) => {
-        const m = a.c.msgs[a.pos];
+        const m = msgOf(a.c, a.pos);
         const cover = a.matched / terms.length;
         const ageDays = Math.max(0, (now - (m.at || 0)) / DAY);
         let s = a.s * (0.35 + 0.65 * cover * cover);
@@ -165,7 +210,9 @@ const RecallCore = (() => {
       }
       return out;
     }
-    return { has: (key, src) => chats.has(key) && (src == null || chats.get(key).src === src), add, drop, keys: () => [...chats.keys()], size: () => ({ chats: chats.size, messages: N, terms: df.size }), search };
+    const termCount = () => { let n = 0; for (let i = 0; i < termId.size; i++) if (df[i] > 0) n += 1; return n; };
+    return { has: (key, src) => byKey.has(key) && (src == null || slots[byKey.get(key)].src === src), add, drop, keys: () => [...byKey.keys()], size: () => ({ chats: byKey.size, messages: N, terms: termCount() }), search, trim: () => sweep(true),
+      _bytes: () => lists.reduce((a, L) => a + (L ? L.a.byteLength : 0), 0) + slots.reduce((a, c) => a + (c ? c.msgs.byteLength + c.tids.byteLength * 2 : 0), 0) }; // (dev) its typed arrays' bytes
   }
 
   return { tokens, stem, questionTerms, isQuestion, snippet, sentences, createIndex, DECIDE, OPEN };
