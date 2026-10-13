@@ -40,7 +40,7 @@ const PORT = 9400 + Math.floor(Math.random() * 500);
 
 // Errors that come from the test environment, not the app (no GPU, no engines installed, no network).
 // (Chromium warns when the page capture's frame reader is cancelled with frames still queued: a GC note, not an app error)
-const IGNORE = [/A VideoFrame was garbage collected without being closed/, /GPU|gpu_|viz|dri3|libva|vaInitialize|Vulkan|EGL|GLES|ANGLE/i, /net::ERR_/, /Autofill\./, /ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|ERR_PROXY|ERR_TUNNEL/, /Electron Security Warning/, /favicon/i, /DevTools/, /dbus|org\.freedesktop/i];
+const IGNORE = [/A VideoFrame was garbage collected without being closed/, /GPU|gpu_|viz|dri3|libva|vaInitialize|Vulkan|EGL|GLES|ANGLE/i, /net::ERR_/, /Autofill\./, /ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|ERR_PROXY|ERR_TUNNEL/, /Electron Security Warning/, /favicon/i, /DevTools/, /dbus|org\.freedesktop/i, /seqsolid (boom|throws)/]; // (seqsolid: a test scene that throws on purpose)
 
 // https://cdn.jsdelivr.net/npm/three@V/<path> -> /opt/cdn-cache/three@V/package/<path> (fetched once from the npm registry).
 const CDN_CACHE = process.env.CDN_CACHE || '/opt/cdn-cache';
@@ -163,7 +163,8 @@ async function cdpConnect() {
       if (msg.method === 'Tracing.tracingComplete') { traceDone?.(); return; }
       if (msg.method === 'Runtime.exceptionThrown') {
         const d = msg.params.exceptionDetails;
-        problems.push(`exception: ${d.exception?.description || d.text} @ ${d.url || ''}:${d.lineNumber}`);
+        const txt = `exception: ${d.exception?.description || d.text} @ ${d.url || ''}:${d.lineNumber}`;
+        if (!/seqsolid (boom|throws)/.test(txt)) problems.push(txt); // (seqsolid: a test scene throws on purpose)
       }
       if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'log' && process.env.SMOKE_DEBUG) {
         const text = msg.params.args.map((a) => a.value ?? a.description ?? '').join(' ');

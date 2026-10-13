@@ -34,6 +34,8 @@ const ThreeSeq = (() => {
     page: 0, want: false, planId: 0, restoring: 0, lastState: 0, guard: { soft: 0, hard: 0, remount: 0, assets: 0, last: null, log: [] },
     // seqguard: undo labels (the history list), clip color labels
     undoLabels: [], redoLabels: [],
+    // seqsolid: the clips whose scene threw in the preview (clip id → { message, n }), marked ⚠ on the timeline
+    errs: new Map(), errSig: new Map(),
   };
   const A = typeof SeqArrange !== 'undefined' ? SeqArrange : null;
   const TR = () => (typeof SeqTrans !== 'undefined' ? SeqTrans : null);
@@ -159,6 +161,7 @@ const ThreeSeq = (() => {
     const e = await readEdit(key);
     if (!e) throw new Error(`No sequence "${String(key).replace(/^seq:/, '')}"`);
     if (!e.seq?.lab) e.seq = { ...(e.seq || {}), lab: true };
+    S.errs.clear(); S.errSig.clear();
     S.key = key; S.edit = e; S.undo = []; S.redo = []; S.undoLabels = []; S.redoLabels = []; S.lastMerge = null; S.sel.clear(); S.T = 0; S.vr = null; S.thumbs.clear();
     S.loop = Boolean(e.seq?.loop);
     // the scene it belongs to (the one it was opened for, when it belongs to none: an "other" sequence)
@@ -228,13 +231,21 @@ const ThreeSeq = (() => {
   }
   // another scene came on screen (you, a chat switch, a jam): its own sequence takes the view, cross-fading in the
   // same page like a scene switch (no reload)
-  let switching = null;
-  async function switchTo(sid) {
-    if (!sid || S.render) return;
+  // (seqsolid) one switch at a time, and only the latest: switches used to run side by side, and a slower one's
+  // open() could land after a newer one's, so the scene on screen showed another scene's sequence
+  let switching = null; let switchChain = Promise.resolve();
+  function switchTo(sid) {
+    if (!sid || S.render) return Promise.resolve();
     const run0 = (switching = Symbol('switch'));
+    const p = switchChain.then(() => (switching === run0 ? switchNow(sid, run0) : null));
+    switchChain = p.catch(() => {});
+    return p;
+  }
+  async function switchNow(sid, run0) {
     const k = await keyForScene(sid);
     if (switching !== run0 || !k) return;
     if (k !== S.key) { await open(k, { show: false }); }
+    if (switching !== run0) return;
     S.owner = sid; S.entered = sid; S.explicit = false;
     if (!S.view) return;
     await Promise.all([ensureSong(), loadMaps()]);
@@ -456,6 +467,7 @@ const ThreeSeq = (() => {
     const text = JSON.stringify(fresh);
     if (!force && text === sent.plan) return;
     sent.plan = text;
+    errsAfterPlan(fresh);
     S.planId += 1;
     L.send({ type: 'seq-set', plan: fresh, fade, id: S.planId });
     plan.dur = fresh.dur;
@@ -525,8 +537,29 @@ const ThreeSeq = (() => {
   }
   // a sketch changed (an edit, a director call): the clips using it play the new version
   function sketchChanged() { if (S.view) pushPlan(); }
+  // (seqsolid) an error from a clip's scene (its layers are "<clip>~<layer>" in the preview): ⚠ on that clip, said
+  // once in the row's note; it goes when the clip's code changes (a fix), the clip goes, or another sequence shows
+  function clipError(msg) {
+    const cid = String(msg.layer || '').split('~')[0];
+    const f = cid && S.edit ? C.find(S.edit, cid) : null;
+    if (!f) return;
+    const was = S.errs.get(cid);
+    S.errs.set(cid, { message: String(msg.message || 'Error').slice(0, 200), line: msg.line || null, n: (was?.n || 0) + 1 });
+    if (!was) { flash(`⚠ ${f.clip.name || 'This clip'}: ${String(msg.message || '').slice(0, 80)}`); redraw(); }
+  }
+  // what a clip runs (its layers' code): a new version clears its ⚠
+  function errsAfterPlan(plan) {
+    if (!S.errs.size && !S.errSig.size) return;
+    const sig = new Map();
+    for (const g of plan.groups || []) if (g.layers) sig.set(g.id, g.layers.map((L) => L.code).join('\n'));
+    let n = 0;
+    for (const id of [...S.errs.keys()]) if (!sig.has(id) || (S.errSig.has(id) && S.errSig.get(id) !== sig.get(id))) { S.errs.delete(id); n += 1; }
+    S.errSig = sig;
+    if (n) redraw();
+  }
   // the preview page was replaced (a new frame size, a restart): everything goes again
   function onMessage(msg) {
+    if (msg.type === 'error') { if (S.view && !S.render) clipError(msg); return false; } // (the Lab's console still logs it)
     if (msg.type === 'ready') { restore('ready').catch((err) => console.warn('Sequence restore', err)); return false; }
     if (msg.type === 'seq-health') { onHealth(msg); return true; }
     if (msg.type === 'seq-state') {
@@ -602,7 +635,7 @@ const ThreeSeq = (() => {
   }
   function jump(dir) { const p = points(); const t = dir > 0 ? p.find((x) => x > S.T + 1e-3) : [...p].reverse().find((x) => x < S.T - 1e-3); if (t != null) seek(t); return t; }
   // waits for the preview to report it is at T (checks / directors)
-  function settle(ms = 1500) { return new Promise((r) => { const t = setTimeout(() => r(null), ms); S.waits.push((m) => { clearTimeout(t); r(m); }); send({ type: 'seq-seek', T: S.T }); }); }
+  function settle(ms = 1500) { return new Promise((r) => { const w = (m) => { clearTimeout(t); r(m); }; const t = setTimeout(() => { S.waits = S.waits.filter((x) => x !== w); r(null); }, ms); S.waits.push(w); send({ type: 'seq-seek', T: S.T }); }); } // (seqsolid: a wait that timed out doesn't stay behind)
 
   // ---------- edits (the classic editing keys) ----------
   const selIds = () => [...S.sel].filter((id) => S.edit && C.find(S.edit, id));
@@ -1540,6 +1573,7 @@ const ThreeSeq = (() => {
       const fr = (c.frames?.[D.formatOf(e)] || c.frame || c.motion) && (c.kind === 'video' || c.kind === 'image') ? ' ⛶' : '';
       const label = c.kind === 'scene' ? `${c.name}${c.look ? ` · ${c.look}` : ''}${c.vary ? ' ✦' : ''}${c.vibe ? ' ◐' : ''}${sp}${gl}` : c.kind === 'video' ? `🎞 ${base(c.src)}${c.mute ? '' : ` 🔊${c.volume != null && c.volume !== 1 ? `${Math.round(c.volume * 100)}%` : ''}`}${sp}${fr}${gl}` : c.kind === 'image' ? `▣ ${base(c.src)}${fr}${gl}` : c.kind === 'title' ? `T ${c.text}` : c.kind === 'seq' ? `▤ ${c.name}${gl}` : c.kind;
       drawClip(c, x0, x1, main, S.sel.has(c.id), label, color, poster(c));
+      if (S.errs.has(c.id)) errMark(g, x0, x1, main);
       // the transition into it: a bow tie over the overlap
       if (x.td > 0) { const a = xOf(x.start); const b = xOf(x.start + x.td); g.fillStyle = 'rgba(255,215,94,0.28)'; g.beginPath(); g.moveTo(a, main.y); g.lineTo(b, main.y + main.h); g.lineTo(b, main.y); g.lineTo(a, main.y + main.h); g.closePath(); g.fill(); }
     }
@@ -1554,6 +1588,7 @@ const ThreeSeq = (() => {
         const vol = it.volume != null && it.volume !== 1 ? ` ${Math.round(it.volume * 100)}%` : '';
         const label = it.kind === 'title' ? `${caps ? '💬 ' : it.lower ? '▁ ' : ''}${String(it.text).replace(/\n/g, ' · ')}` : it.kind === 'audio' ? `${it.song ? '♪ ' : voice ? '🎙 ' : sfx ? '✸ ' : ''}${base(it.src)}${vol}` : it.kind === 'layer' ? `◭ ${it.name}` : base(it.src);
         drawClip(it, x0, x1, l, S.sel.has(it.id), label, color, null);
+        if (S.errs.has(it.id)) errMark(g, x0, x1, l);
         if (it.kind === 'audio' && (it.fadeIn || it.fadeOut)) fadeMarks(g, it, x0, x1, l);
       }
       g.globalAlpha = 1;
@@ -1569,6 +1604,12 @@ const ThreeSeq = (() => {
     refs.hint.hidden = Boolean(e.clips.length || (e.tracks || []).some((k) => k.items.length));
   }
   // (labcut) a sound clip's fades: a ramp drawn over each end
+  // (seqsolid) a clip whose scene threw: a red corner with ⚠ (its message in the clip's menu)
+  function errMark(g, x0, x1, l) {
+    const x = Math.min(x1, W()) - 2; if (x - x0 < 10) return;
+    g.save(); g.fillStyle = '#e5484d'; g.beginPath(); g.moveTo(x - 14, l.y); g.lineTo(x, l.y); g.lineTo(x, l.y + 14); g.closePath(); g.fill();
+    g.fillStyle = '#fff'; g.font = '9px system-ui, sans-serif'; g.textBaseline = 'top'; g.fillText('!', x - 5, l.y + 1); g.restore();
+  }
   function fadeMarks(g, it, x0, x1, l) {
     const pps = xOf(1) - xOf(0);
     g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = 1; g.beginPath();
@@ -1824,6 +1865,8 @@ const ThreeSeq = (() => {
   function clipMenu(h, x, y) {
     const c = h.clip;
     const items = [];
+    const er = S.errs.get(c.id); // (seqsolid) its scene threw: what, and the way to fix it
+    if (er) items.push({ label: `⚠ ${er.message.slice(0, 60)}`, hint: c.kind === 'scene' ? 'open the scene to fix it' : `${er.n}×`, action: () => (c.kind === 'scene' ? editScene(c) : flash(er.message.slice(0, 120))) }, '-');
     if (c.kind === 'scene') {
       const sk = lab().scenes.get(c.sketch);
       const looks = sk ? lookNames(sk) : [];
@@ -2186,7 +2229,7 @@ const ThreeSeq = (() => {
     if (m.broken?.length) { S.guard.remount += 1; send({ type: 'seq-remount', ids: m.broken }); note('a clip couldn\'t show'); }
   }
   // what the watchdog did (/sequence health, status)
-  function health() { return { watching: Boolean(guardT), restores: { ...S.guard, log: undefined }, last: S.guard.last, page: S.page, plan: S.planId, lastPing: S.health }; }
+  function health() { return { watching: Boolean(guardT), restores: { ...S.guard, log: undefined }, last: S.guard.last, page: S.page, plan: S.planId, lastPing: S.health, errors: Object.fromEntries([...S.errs].map(([id, e]) => [id, e.message])) }; }
 
   function renderMenu(anchor) {
     const r = anchor.getBoundingClientRect();
