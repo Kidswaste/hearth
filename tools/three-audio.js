@@ -30,7 +30,7 @@ const ThreeAudio = (() => {
   // every name a slider can follow: the classic bands and the features (chat completion, /react)
   const mappable = () => [...new Set([...OLD.map((x) => x[0]), ...GROUPS.flatMap((g) => g[1].map((x) => x[0]))])];
   // typed words → a feature name ("kick" → kickOn, "hats" → hatOn, "drops" → drop…)
-  const ALIAS = { kick: 'kickOn', kicks: 'kickOn', snare: 'snareOn', snares: 'snareOn', hat: 'hatOn', hats: 'hatOn', hihat: 'hatOn', vocals: 'vocal', voice: 'vocal', vox: 'vocalOn', drops: 'drop', builds: 'build', buildup: 'build', loud: 'loudness', lufs: 'loudness', bright: 'centroid', brightness: 'centroid', change: 'flux', bass: 'low', subs: 'sub', highs: 'brilliance', treble: 'brilliance', key: 'keyHue', hue: 'keyHue', bar: 'barPhase', phase: 'beatPhase', hits: 'onset', energy: 'intensity', 'kick-markers': 'kick', 'snare-markers': 'snare', 'hit-markers': 'hit', 'hats-triggers': 'hats', 'bass-triggers': 'bassHit', 'classic-bass': 'bass', 'classic-mids': 'mid', 'classic-highs': 'treble' };
+  const ALIAS = { kick: 'kickOn', kicks: 'kickOn', snare: 'snareOn', snares: 'snareOn', hat: 'hatOn', hats: 'hatOn', hihat: 'hatOn', vocals: 'vocal', voice: 'vocal', vox: 'vocalOn', drops: 'drop', builds: 'build', buildup: 'build', loud: 'loudness', lufs: 'loudness', bright: 'centroid', brightness: 'centroid', change: 'flux', bass: 'low', subs: 'sub', highs: 'brilliance', treble: 'brilliance', key: 'keyHue', hue: 'keyHue', bar: 'barPhase', phase: 'beatPhase', hits: 'onset', energy: 'intensity', 'kick-markers': 'kick', 'snare-markers': 'snare', 'hit-markers': 'hit', 'hats-triggers': 'hats', 'bass-triggers': 'bassHit', 'classic-bass': 'bass', 'classic-mids': 'mid', 'classic-highs': 'treble', drums: 'stemDrums', drum: 'stemDrums', 'the drums': 'stemDrums', 'the-drums': 'stemDrums', bassline: 'stemBass', 'bass-line': 'stemBass', 'the bass': 'stemBass', 'the-bass': 'stemBass', 'the voice': 'stemVocals', 'the-voice': 'stemVocals', singer: 'stemVocals', singing: 'stemVocals', 'the-vocals': 'stemVocals', 'everything-else': 'stemOther', 'the-kick': 'stemKick', 'the-snare': 'stemSnare', 'the-hats': 'stemHats' }; // (round 30, stems: the song's parts)
   function resolve(word) {
     const w = String(word || '').trim(); if (!w) return null;
     const all = mappable(); const lw = w.toLowerCase();
@@ -53,6 +53,7 @@ const ThreeAudio = (() => {
       if (msg.song) { st.songWanted = true; songFeatures().catch((err) => console.warn('Song features:', err.message)); }
       return true;
     }
+    if (msg.type === 'audio-stems-want') { if (typeof LabStems !== 'undefined') LabStems.want(); return true; } // (round 30, stems)
     if (msg.type === 'audio-meter') { if (typeof ThreeAudioMap !== 'undefined') ThreeAudioMap.meters(msg.m); return true; }
     if (msg.type === 'audio-probe-result') { st.probes.get(msg.id)?.(msg); st.probes.delete(msg.id); return true; }
     return false;
