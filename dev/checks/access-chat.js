@@ -6,6 +6,8 @@
 // same card and remembers "Allow for this chat"; the badge shows the level.
 // (round 32) The AI's own setting: AI setup → Full makes a NEW chat write in the AI's folder; a write outside its
 // folders gets one line saying why (Allow this folder / Open AI setup); a chat may still set its own; Astra with Full writes.
+// (winshell) A simulated Windows PC (fake-switches `windows`): Astra's sandbox refuses commands by policy → the note and
+// the warned opt-in → the command runs; Claude at Full runs a PowerShell command through Hearth's check.
 //   node dev/smoke.js --fake-engines --check-timeout 300000 --lib dev/checks/journey-lib.js --script dev/checks/access-chat.js
 const { step, wait, until, click } = J;
 const claude = H.claudeAgent();
@@ -216,6 +218,54 @@ if (astra) {
   await until(() => Native.view(astra.id).list.querySelector('.msg.note[data-note-id="access-refused"]'), 4000);
   const whyA = Native.view(astra.id).list.querySelector('.msg.note[data-note-id="access-refused"]');
   step('Astra\'s blocked write outside: not written, and the note says why', !(await fsx.stat(`${outside}/astra-no.txt`)) && /outside the folders/.test(whyA?.textContent || ''), whyA?.textContent);
+
+  // 8. (winshell) a simulated Windows PC: Codex's sandbox refuses every command "by policy" → the note says so and offers
+  // the warned opt-in; after it, the command runs (in its folder, no sandbox). AI setup shows the switch on Windows only.
+  await window.hub.kvSet('fake-switches', { windows: true });
+  Access._setWindows(true);
+  whyA?.remove();
+  const rw = await runIn(astra.id, [['Bash', { command: 'ls' }]]);
+  step('Windows: Astra\'s command is refused by policy (its sandbox)', /Bash: failed · exec command rejected: blocked by policy/.test(rw), rw.match(/Bash:[^\n]*/)?.[0]);
+  await until(() => Native.view(astra.id).list.querySelector('.msg.note[data-note-id="access-refused"]'), 4000);
+  const whyW = Native.view(astra.id).list.querySelector('.msg.note[data-note-id="access-refused"]');
+  const optBtn = [...(whyW?.querySelectorAll('.note-acts button') || [])].find((b) => /Run without its sandbox/.test(b.textContent));
+  step('the note says its sandbox blocks commands on Windows, with "Run without its sandbox…" and Open AI setup', /sandbox blocks commands on Windows/.test(whyW?.textContent || '') && Boolean(optBtn) && [...whyW.querySelectorAll('.note-acts button')].some((b) => b.textContent === 'Open AI setup'), whyW?.textContent);
+  step('the log lists it as refused by its sandbox (policy)', (await Access.entries(H.activeChat[astra.id])).some((e) => e.result === 'refused' && /blocked by policy/.test(e.why || '')));
+  if (optBtn) await click(optBtn);
+  await until(() => document.querySelector('dialog.ui-modal button.primary'), 3000);
+  step('turning the sandbox off asks first, and says deletes can\'t go to the Trash', /can't go to the Trash/.test(document.querySelector('dialog.ui-modal')?.textContent || ''));
+  await smoke({ shot: '/tmp/access-winsandbox.png' });
+  document.querySelector('dialog.ui-modal button.primary')?.click();
+  await until(() => H.agent(astra.id).astraNoSandbox === true, 3000);
+  step('…and then it is saved on Astra', H.agent(astra.id).astraNoSandbox === true);
+  Native.newChat(astra.id); // a new Codex session starts in its first folder (-C)
+  await wait(300);
+  const rw2 = await runIn(astra.id, [['Bash', { command: 'ls' }]]);
+  step('after the opt-in the command runs (no sandbox, in its folder)', /sandbox: danger-full-access/.test(rw2) && /Bash: ran · [^\n]*seed\.txt/.test(rw2), rw2.match(/(sandbox|Bash):[^\n]*/g));
+  Options.open({ agentId: astra.id });
+  await until(() => document.querySelector('aside.opt-sheet .access-ai-nosandbox'), 5000);
+  const swRow = document.querySelector('aside.opt-sheet .access-ai-nosandbox');
+  step('AI setup (Windows) shows "Run commands without its sandbox", on', /without its sandbox/.test(swRow?.textContent || '') && swRow?.querySelector('[role="switch"]')?.getAttribute('aria-checked') === 'true');
+  swRow?.scrollIntoView({ block: 'center' }); await wait(200);
+  await smoke({ shot: '/tmp/access-winsandbox-setup.png' });
+  swRow?.querySelector('[role="switch"]')?.click();
+  await until(() => H.agent(astra.id).astraNoSandbox !== true, 3000);
+  step('switching it off needs no question', H.agent(astra.id).astraNoSandbox !== true);
+  Options.hide();
+  // Claude on Windows: commands come as PowerShell; at Full they go through Hearth's check; below, the note says why
+  activate(claude.id);
+  Native.newChat(claude.id);
+  await wait(300);
+  const rc = await runIn(claude.id, [['Bash', { command: `cd "${dirAI}"; ls` }]]);
+  step('Windows: Claude at Full runs a PowerShell command through Hearth\'s check', /tools: [^;\n]*PowerShell/.test(rc) && /PowerShell: ran · [^\n]*seed\.txt/.test(rc) && (await Access.entries(H.activeChat[claude.id])).some((e) => e.tool === 'PowerShell' && /allowed|approved|done/.test(e.result)), rc.match(/(permission tool|PowerShell):[^\n]*/g));
+  await Access.setLevel(claude.id, 'write');
+  const rc2 = await runIn(claude.id, [['Bash', { command: 'ls' }]]);
+  await until(() => Native.view(claude.id).list.querySelector('.msg.note[data-note-id="access-refused"]'), 4000);
+  const whyC = Native.view(claude.id).list.querySelector('.msg.note[data-note-id="access-refused"]');
+  step('below Full the CLI refuses PowerShell, and the chat says why with Allow commands (never silent)', /No such tool available: PowerShell/.test(rc2) && /couldn't run a command/.test(whyC?.textContent || '') && [...(whyC?.querySelectorAll('.note-acts button') || [])].some((b) => b.textContent === 'Allow commands'), whyC?.textContent);
+  Access.useAi(claude.id);
+  await window.hub.kvSet('fake-switches', {});
+  Access._setWindows(false);
   delete H.agent(astra.id).fileAccess;
   activate(claude.id);
 }

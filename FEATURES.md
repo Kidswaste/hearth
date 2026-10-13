@@ -983,3 +983,8 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ AI setup lists the folders it may use: ＋ Add a folder…, ✕, and My home folder (with a clear warning). Full = files and commands there; deletes to the Trash; risky things still ask (Claude).
 - ✓ A refused change says why in one line in the chat (outside its folders · read only · no commands · Astra's sandbox) with Allow this folder / Allow edits / Allow commands / Open AI setup.
 - ○ Tested with fake engines (`sh dev/run-checks.sh access-chat options access-astra`, `node dev/access-test.js`); Astra can't ask, so outside its folders it is blocked, not asked.
+## 🪟 Commands on Windows (round 32, winshell: docs/upgrades/winshell.md)
+- ✓ Fixed "the command tool is blocked by policy" on Windows: at Full, Claude also gets Claude Code's **PowerShell** tool (Windows runs commands through it; it used to be left out, so the CLI refused it before Hearth's check). PowerShell commands get the same check as Bash (Get-ChildItem / Remove-Item → the Trash / Copy-Item…).
+- ✓ Astra on Windows: when its sandbox blocks every command, the chat says so in one line with **Run without its sandbox…** (a warned opt-in, also in ⋯ AI setup → Files on this computer; Read keeps the sandbox).
+- ✓ Any command an engine refuses by its own policy now gets that one line with the right fix (never silent).
+- ○ Tested with fake engines simulating Windows (`FAKE_WINDOWS` / fake-switches `windows`: `sh dev/run-checks.sh access-chat options`, `node dev/access-test.js`); the real Windows confirmation is the owner's next try.

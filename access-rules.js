@@ -66,10 +66,12 @@ const AccessRules = (() => {
   // ---------- shell: words, operators, redirects ----------
   // Splits a command line into segments (one command each, with how it was joined to the next) and redirect targets.
   // Quotes and backslashes are honoured; $(…) and backticks are only flagged (their insides are classified too).
-  function tokenize(cmd) {
+  // ps (PowerShell / cmd on Windows): a backslash is a plain path character and the backtick is the escape.
+  function tokenize(cmd, { ps = false } = {}) {
     const segs = [];
     let words = []; let redirects = []; let cur = ''; let has = false; let quote = null; let redirNext = null;
-    const complex = /\$\(|`|<\(|\$\{/.test(cmd);
+    const complex = ps ? /\$\(|@\(|\$\{|\{/.test(cmd) : /\$\(|`|<\(|\$\{/.test(cmd);
+    const esc = ps ? '`' : '\\';
     const pushWord = () => {
       if (!has) return;
       if (redirNext) { redirects.push({ op: redirNext, target: cur }); redirNext = null; } else words.push(cur);
@@ -79,13 +81,14 @@ const AccessRules = (() => {
     for (let i = 0; i < cmd.length; i++) {
       const c = cmd[i];
       if (quote) {
-        if (c === quote) quote = null;
-        else if (c === '\\' && quote === '"' && i + 1 < cmd.length) { cur += cmd[++i]; }
+        if (ps && quote === "'" && c === "'" && cmd[i + 1] === "'") { cur += "'"; i++; } // PowerShell's '' inside '…'
+        else if (c === quote) quote = null;
+        else if (c === esc && quote === '"' && i + 1 < cmd.length) { cur += cmd[++i]; }
         else cur += c;
         continue;
       }
       if (c === "'" || c === '"') { quote = c; has = true; continue; }
-      if (c === '\\' && i + 1 < cmd.length) { if (cmd[i + 1] === '\n') { i++; continue; } cur += cmd[++i]; has = true; continue; }
+      if (c === esc && i + 1 < cmd.length) { if (cmd[i + 1] === '\n') { i++; continue; } cur += cmd[++i]; has = true; continue; }
       if (c === ' ' || c === '\t') { pushWord(); continue; }
       if (c === '\n' || c === ';') { endSeg(';'); continue; }
       if (c === '&' && cmd[i + 1] === '&') { endSeg('&&'); i++; continue; }
@@ -111,16 +114,18 @@ const AccessRules = (() => {
 
   // Command families (first word, lower case, any folder / .exe stripped).
   const set = (s) => new Set(s.split(/\s+/));
-  const PASSWORD = set('sudo su doas pkexec runas ssh scp sftp ssh-copy-id passwd kinit login ssh-add');
+  // (winshell) PowerShell's own verbs and aliases sit in the same families (Remove-Item = rm, Get-ChildItem = ls…)
+  const PASSWORD = set('sudo su doas pkexec runas ssh scp sftp ssh-copy-id passwd kinit login ssh-add get-credential');
   const DELETE = set('rm rmdir unlink shred srm del erase rd remove-item ri');
-  const MOVE = set('mv rename move ren move-item');
-  const READONLY = set('ls dir cat head tail less more wc grep egrep fgrep rg ag ack find fd tree file stat du df pwd echo printf which where whereis type date sort uniq cut tr diff cmp comm md5 md5sum shasum sha1sum sha256sum jq yq awk gawk sed basename dirname realpath readlink xxd hexdump od strings column nl true false test [ sleep ffprobe mdls mdfind identify exiftool get-content get-childitem gci select-string cal uname whoami id hostname sw_vers system_profiler nproc uptime ps top lsof cd pushd popd');
-  const WRITES = set('touch mkdir cp copy tee ln install zip unzip tar gzip gunzip ffmpeg convert magick sips truncate patch dd new-item set-content add-content copy-item out-file chmod');
-  const INSTALL_TOOLS = set('brew apt apt-get yum dnf pacman port choco winget scoop softwareupdate snap flatpak mas');
+  const MOVE = set('mv rename move ren move-item mi rename-item rni');
+  const CD = set('cd pushd chdir set-location sl push-location');
+  const READONLY = set('ls dir cat head tail less more wc grep egrep fgrep rg ag ack find fd tree file stat du df pwd echo printf which where whereis type date sort uniq cut tr diff cmp comm md5 md5sum shasum sha1sum sha256sum jq yq awk gawk sed basename dirname realpath readlink xxd hexdump od strings column nl true false test [ sleep ffprobe mdls mdfind identify exiftool get-content gc get-childitem gci select-string sls test-path get-item gi get-itemproperty gp resolve-path rvpa get-location gl split-path join-path get-filehash get-date get-process gps get-command gcm get-help select-object select where-object ? foreach-object % sort-object measure-object measure group-object format-table ft format-list fl format-wide out-string out-host out-null write-output write write-host get-acl get-psdrive cal uname whoami id hostname sw_vers system_profiler nproc uptime ps top lsof cd pushd popd');
+  const WRITES = set('touch mkdir cp copy tee ln install zip unzip tar gzip gunzip ffmpeg convert magick sips truncate patch dd new-item ni md set-content add-content ac copy-item cpi out-file tee-object expand-archive compress-archive chmod');
+  const INSTALL_TOOLS = set('brew apt apt-get yum dnf pacman port choco winget scoop softwareupdate snap flatpak mas install-module install-package install-script uninstall-module update-module');
   const PKG = { npm: /^(i|install|add|ci|uninstall|remove|rm|un|update|upgrade|link|publish|exec|x|dlx|create|init)$/, pnpm: /^(i|install|add|remove|rm|update|up|publish|dlx|create)$/, yarn: /^(add|install|remove|upgrade|publish|dlx|create|global)$/, bun: /^(add|install|i|remove|rm|update|publish|x|create)$/, pip: /^(install|uninstall|download)$/, pip3: /^(install|uninstall|download)$/, pipx: /.*/, gem: /^(install|uninstall|update|push)$/, cargo: /^(install|uninstall|publish|add)$/, go: /^(install|get)$/, conda: /^(install|remove|create|update)$/, uv: /^(add|pip|tool|remove)$/, composer: /^(require|install|update|remove)$/ };
-  const NETWORK = set('curl wget nc ncat netcat telnet ftp rsync http https httpie aria2c invoke-webrequest iwr invoke-restmethod irm ping nslookup dig yt-dlp youtube-dl');
+  const NETWORK = set('curl wget nc ncat netcat telnet ftp rsync http https httpie aria2c invoke-webrequest iwr invoke-restmethod irm start-bitstransfer test-netconnection ping nslookup dig yt-dlp youtube-dl');
   const PUBLISH = set('vercel netlify firebase surge fly flyctl wrangler heroku twine gh glab railway render amplify');
-  const SYSTEM = set('kill pkill killall taskkill shutdown reboot halt launchctl systemctl service crontab defaults diskutil mkfs fdisk format chown chgrp nvram csrutil spctl tccutil scutil networksetup pmset reg regedit setx osascript');
+  const SYSTEM = set('kill pkill killall taskkill shutdown reboot halt launchctl systemctl service crontab defaults diskutil mkfs fdisk format chown chgrp nvram csrutil spctl tccutil scutil networksetup pmset reg regedit setx osascript stop-process spps restart-computer stop-computer set-itemproperty sp new-itemproperty remove-itemproperty set-executionpolicy set-service stop-service start-service restart-service');
   const SHELLS = set('sh bash zsh fish dash ksh pwsh powershell cmd');
   const INLINE = { python: '-c', python3: '-c', node: '-e', ruby: '-e', perl: '-e', php: '-r', deno: 'eval', bun: '-e' };
   const GIT_READ = set('status log diff show branch rev-parse ls-files blame grep describe shortlog reflog config remote tag stash');
@@ -130,6 +135,10 @@ const AccessRules = (() => {
   const ENV_ASSIGN = /^[A-Za-z_][\w]*=/;
   const isFlag = (w) => /^-/.test(w) || (/^\/[a-z?]{1,2}$/i.test(w));
   const hasGlob = (w) => /[*?[\]{}]|\$/.test(w);
+  // PowerShell parameters whose value is not a file (-ItemType Directory, -Value "text", -Filter *.js): left out of the
+  // paths; -Name / -NewName keep their value (a file name). Script-block braces and $null are not paths either.
+  const PS_VALUE = /^-(itemtype|type|value|encoding|filter|include|exclude|depth|first|last|tail|totalcount|head|skip|pattern|simplematch|delimiter|property|erroraction|ea|warningaction|wa|outvariable|ov|errorvariable|ev|name|newname|algorithm|verb|argumentlist|windowstyle|seconds|milliseconds)$/i;
+  const psClean = (args) => { const out = []; for (let i = 0; i < args.length; i++) { const a = args[i]; if (PS_VALUE.test(a)) { if (!/^-(name|newname)$/i.test(a)) i++; continue; } if (/^[{}()@%?]+$/.test(a) || /^\$(null|true|false)$/i.test(a)) continue; out.push(...a.split(',').filter(Boolean)); } return out; }; // a, b: a list
   const looksPath = (w) => /[\\/]/.test(w) || /^[.~]/.test(w) || /\.[A-Za-z0-9]{1,6}$/.test(w);
 
   // The findings for one simple command (words already split). ctx: { base, folders, home, cwd }.
@@ -143,27 +152,38 @@ const AccessRules = (() => {
       if (name === 'env' && !w.length) { out.push({ verdict: 'ask', risk: 'low', action: 'secrets', why: 'prints every environment variable (they can hold keys)' }); return; }
       while (w.length && (isFlag(w[0]) || ENV_ASSIGN.test(w[0]) || (name === 'timeout' && /^\d/.test(w[0])))) w.shift();
     }
+    // PowerShell: `(Get-ChildItem x)` starts with a bracket
+    if (ctx.ps && w.length) { w[0] = w[0].replace(/^[@$]?\(+/, ''); if (!w[0]) w.shift(); }
     if (!w.length) return;
     const name = cmdName(w[0]);
-    const args = w.slice(1);
+    const raw = w.slice(1);
+    const args = ctx.ps ? psClean(raw) : raw;
     const sub = (args.find((a) => !isFlag(a)) || '').toLowerCase();
-    const resolve = (p) => norm(p, ctx.base, ctx.home);
+    // PowerShell's $HOME / $env:USERPROFILE are the home folder
+    const resolve = (p) => norm(ctx.ps ? String(p).replace(/^\$(home|env:userprofile)(?=[\\/]|$)/i, '~') : p, ctx.base, ctx.home);
     const outside = (paths) => paths.map(resolve).filter((p) => p && !insideAny(p, ctx.folders) && !/^\/dev\/(null|stdout|stderr|tty)$/.test(p));
     const pathArgs = (all = false) => args.filter((a) => !isFlag(a) && (all || looksPath(a)));
 
-    if (name === 'cd' || name === 'pushd') { ctx.base = resolve(args[0] || ctx.home || '~'); return; }
+    if (CD.has(name)) { ctx.base = resolve(args.find((a) => !isFlag(a)) || ctx.home || '~'); return; }
     if (PASSWORD.has(name) || (name === 'security' && /unlock|add-generic|find-generic|find-internet|dump-keychain/.test(args.join(' '))) || (name === 'git' && /credential/.test(sub))) {
       out.push({ verdict: 'deny', risk: 'high', action: 'password', password: true, why: `${name} can ask for a password, and Hearth never handles passwords` }); return;
     }
     if (name === 'printenv' || (name === 'set' && !args.length) || name === 'history') { out.push({ verdict: 'ask', risk: 'low', action: 'secrets', why: 'prints environment variables / history (they can hold keys)' }); return; }
     if (SHELLS.has(name)) {
-      const i = args.findIndex((a) => /^-\w*c$/.test(a) || /^-command$/i.test(a) || a === '/c');
-      if (i >= 0 && args[i + 1]) { classifyShell(args.slice(i + 1).join(' '), ctx, out); return; }
+      const win = /^(pwsh|powershell|cmd)$/.test(name);
+      if (win && raw.some((a) => /^-(e|ec|enc|encodedcommand)$/i.test(a))) { out.push({ verdict: 'ask', risk: 'high', action: 'run', why: 'an encoded PowerShell command Hearth can\'t read' }); return; }
+      const i = raw.findIndex((a) => /^-\w*c$/.test(a) || /^-command$/i.test(a) || /^\/c$/i.test(a));
+      if (i >= 0 && raw[i + 1]) { classifyShell(raw.slice(i + 1).join(' '), { ...ctx, ps: win }, out); return; }
       const script = pathArgs(true)[0];
       if (script && outside([script]).length) out.push({ verdict: 'ask', risk: 'high', action: 'run', targets: outside([script]), why: 'runs a script outside the chat\'s folders' });
       return;
     }
-    if (name === 'eval') { classifyShell(args.join(' '), ctx, out); return; }
+    if (name === 'eval' || name === 'invoke-expression' || name === 'iex') { classifyShell(raw.join(' '), ctx, out); return; }
+    // PowerShell's Start-Process: as administrator is a password / UAC prompt; anything else starts a program
+    if (name === 'start-process' || name === 'saps') {
+      if (raw.some((a, j) => /^-verb$/i.test(raw[j - 1] || '') && /^runas$/i.test(a))) { out.push({ verdict: 'deny', risk: 'high', action: 'password', password: true, why: 'Start-Process -Verb RunAs asks for administrator rights, and Hearth never handles passwords' }); return; }
+      out.push({ verdict: 'ask', risk: 'low', action: 'apps', why: 'starts a program or opens a file' }); return;
+    }
     if (INLINE[name] && args.includes(INLINE[name])) {
       const code = args[args.indexOf(INLINE[name]) + 1] || '';
       if (/\b(rmtree|remove|unlink|rmdirSync|rmSync|rm\(|rmdir|unlinkSync|os\.remove|shutil\.rmtree|File\.delete|FileUtils\.rm)\b/.test(code)) out.push({ verdict: 'ask', risk: 'high', action: 'delete', why: 'inline code that deletes files' });
@@ -221,7 +241,7 @@ const AccessRules = (() => {
     if (READONLY.has(name)) {
       if (name === 'sed' && args.some((a) => /^-i|^--in-place/.test(a))) { const o = outside(pathArgs()); if (o.length) out.push({ verdict: 'ask', risk: 'high', action: 'write', targets: o, why: 'edits files outside the chat\'s folders' }); return; }
       if (name === 'awk' && /system\(|print\s*>/.test(args.join(' '))) { out.push({ verdict: 'ask', risk: 'low', action: 'run', why: 'awk that writes files or runs commands' }); return; }
-      const ps = pathArgs();
+      const ps = pathArgs().filter((a) => !(ctx.ps && /^\$[\w:]+(\.\w+)*$/.test(a))); // a PowerShell variable ($_.Name) isn't a file
       const secret = ps.map(resolve).filter((p) => SECRET_FILE.test(p));
       if (secret.length) { out.push({ verdict: 'ask', risk: 'high', action: 'secrets', targets: secret, why: 'reads a file that usually holds keys or passwords' }); return; }
       const o = outside(ps);
@@ -245,7 +265,7 @@ const AccessRules = (() => {
   }
 
   function classifyShell(cmd, ctx, out) {
-    const t = tokenize(String(cmd || ''));
+    const t = tokenize(String(cmd || ''), { ps: Boolean(ctx.ps) });
     const local = { ...ctx, complex: ctx.complex || t.complex };
     if (t.unclosed) out.push({ verdict: 'ask', risk: 'high', action: 'run', why: 'a command Hearth can\'t read (unclosed quote)' });
     for (let i = 0; i < t.segs.length; i++) {
@@ -261,7 +281,14 @@ const AccessRules = (() => {
       }
     }
     // $(…) and backticks: what runs inside them is classified too
-    for (const m of String(cmd).matchAll(/\$\(([^()]*)\)|`([^`]*)`/g)) classifyShell(m[1] || m[2] || '', { ...local }, out);
+    if (!ctx.ps) for (const m of String(cmd).matchAll(/\$\(([^()]*)\)|`([^`]*)`/g)) classifyShell(m[1] || m[2] || '', { ...local }, out);
+    else {
+      // PowerShell: script blocks { … } (ForEach-Object, Where-Object…), $( … ) and ( Verb-Noun … ) run too
+      for (const m of String(cmd).matchAll(/\{([^{}]*)\}|\$\(([^()]*)\)|\((\s*[A-Za-z]+-[A-Za-z][^()]*)\)/g)) classifyShell(m[1] || m[2] || m[3] || '', { ...local }, out);
+      // .NET file calls ([IO.File]::Delete(…), $f.Delete()) can't be checked: a careful card
+      const net = /\]::(Delete|Move|Copy|Replace|WriteAll\w*|AppendAll\w*|Create\w*)\s*\(|\.(Delete|MoveTo|CopyTo)\s*\(/i.exec(String(cmd));
+      if (net) out.push({ verdict: 'ask', risk: 'high', action: /delete/i.test(net[0]) ? 'delete' : 'write', why: 'calls .NET file methods Hearth can\'t check' });
+    }
     return { segs: t.segs, base: local.base, complex: local.complex };
   }
 
@@ -298,19 +325,20 @@ const AccessRules = (() => {
       const what = `Run: ${redact(cmd).replace(/\s+/g, ' ').slice(0, 140)}`;
       if (rank(L) < rank('full')) return r({ verdict: 'deny', action: 'run', what, why: 'This chat can\'t run commands (the user can choose Full in ⋯ AI setup → Files on this computer)' });
       const found = [];
-      const sh = classifyShell(cmd, { base, folders: fs0, home: norm(home), cwd: base, complex: false }, found);
+      // (winshell) Claude Code on Windows runs commands through its PowerShell tool: PowerShell's quoting and verbs
+      const sh = classifyShell(cmd, { base, folders: fs0, home: norm(home), cwd: base, complex: false, ps: tool === 'PowerShell' }, found);
       const worst = found.reduce((a, f) => (!a || ORDER[f.verdict] > ORDER[a.verdict] || (ORDER[f.verdict] === ORDER[a.verdict] && f.risk === 'high' && a.risk !== 'high') ? f : a), null);
       const targets = [...new Set(found.flatMap((f) => f.targets || []))];
       if (!worst || worst.verdict === 'allow') return r({ action: 'run', what, where: sh.base && insideAny(sh.base, fs0) ? sh.base : '', targets });
       const deletes = found.filter((f) => f.action === 'delete');
       // only `[cd X &&] rm a b` (plain paths, nothing else risky): Hearth can do it with the Trash instead
-      const onlyRm = deletes.length && found.every((f) => f.action === 'delete' && f.plain) && sh.segs.every((s, i) => DELETE.has(cmdName(s.words[0] || '')) || (cmdName(s.words[0] || '') === 'cd' && i < sh.segs.length - 1)) && sh.segs.every((s) => !s.redirects.length && (s.join === '&&' || s.join === ';' || s.join === null));
+      const onlyRm = deletes.length && found.every((f) => f.action === 'delete' && f.plain) && sh.segs.every((s, i) => DELETE.has(cmdName(s.words[0] || '')) || (CD.has(cmdName(s.words[0] || '')) && i < sh.segs.length - 1)) && sh.segs.every((s) => !s.redirects.length && (s.join === '&&' || s.join === ';' || s.join === null));
       const trash = onlyRm ? deletes.flatMap((f) => f.targets) : null;
       // a delete Hearth can't send to the Trash isn't recoverable: always the careful card
       if (deletes.length && !trash && worst.action === 'delete') worst.risk = 'high';
       const scope = (p) => (p ? fs0.find((f) => inside(p, f)) || dirName(p) : '');
       const grantKey = worst.password ? null : worst.action === 'delete' || worst.action === 'move' || worst.action === 'write' || worst.action === 'read' || worst.action === 'secrets'
-        ? `${worst.action}:${scope(worst.targets?.[0]) || sh.base || ''}` : worst.action === 'run' || worst.action === 'system' || worst.action === 'apps' ? `${worst.action}:${cmdName(sh.segs.find((s) => s.words.length && cmdName(s.words[0]) !== 'cd')?.words[0] || '')}` : worst.action;
+        ? `${worst.action}:${scope(worst.targets?.[0]) || sh.base || ''}` : worst.action === 'run' || worst.action === 'system' || worst.action === 'apps' ? `${worst.action}:${cmdName(sh.segs.find((s) => s.words.length && !CD.has(cmdName(s.words[0])))?.words[0] || '')}` : worst.action;
       return r({ verdict: worst.verdict, risk: worst.risk || 'high', action: worst.action, what, targets, where: where(targets) || (insideAny(sh.base, fs0) ? sh.base : ""), why: worst.why, grant: grantKey, ...(trash ? { trash } : {}), ...(worst.password ? { password: true } : {}), findings: found.length });
     }
     // anything else the engine had to ask about (a connector tool it wasn't given, web fetch…): the owner decides

@@ -385,7 +385,7 @@ function runTool(tool, input = {}) {
       fs.writeFileSync(file, before.replace(input.old_string, input.new_string ?? ''));
       return { ok: true, text: `Edited ${file}` };
     }
-    if (tool === 'Bash') {
+    if (tool === 'Bash' || tool === 'PowerShell') { // (winshell) the fake's "PowerShell" runs the command with the same shell
       const out = require('child_process').execSync(String(input.command || ''), { cwd: process.cwd(), shell: process.platform === 'win32' ? undefined : '/bin/sh', timeout: 15000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
       return { ok: true, text: out.trim().slice(0, 300) || '(no output)' };
     }
@@ -412,7 +412,10 @@ const serverFor = (servers, tool) => servers[{ three: 'three', video: 'video', a
 //                                  | 'always'
 //   updateTo                       the version `claude update` installs (default 2.1.400)
 //   claudeNoAuth                   an older Claude Code without the `auth` command (its --help doesn't list it)
-const SWITCHES = ['claudeNoAuth', 'claudeVersion', 'codexVersion', 'claudeNeeds', 'codexNeeds', 'claudeLoggedOut', 'codexLoggedOut', 'claudeNetwork', 'codexNetwork', 'claudeMcpMissing', 'codexMcpCancel', 'updateTo'];
+//   windows                        (winshell, FAKE_WINDOWS=1) act like the CLIs on a Windows PC: Claude runs commands with
+//                                  its PowerShell tool (refused when --tools leaves it out, like the real CLI); Codex's
+//                                  sandbox refuses every command "by policy" unless it runs with danger-full-access
+const SWITCHES = ['windows', 'claudeNoAuth', 'claudeVersion', 'codexVersion', 'claudeNeeds', 'codexNeeds', 'claudeLoggedOut', 'codexLoggedOut', 'claudeNetwork', 'codexNetwork', 'claudeMcpMissing', 'codexMcpCancel', 'updateTo'];
 const kvFile = () => path.join(process.cwd(), '..', 'kv', 'fake-switches.json');
 function switches() {
   const env = {};

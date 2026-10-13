@@ -4,6 +4,10 @@
 //     uses it; a chat may set its own instead (right-click ⋯ → Access, /access, dropping a folder on the chat).
 //   · When something is refused (it may only read, not run commands, a folder that isn't one of its own, Astra's
 //     sandbox) the chat gets one line saying why, with the fix: Allow edits / Allow commands / Allow this folder.
+//   · (winshell) A command the engine refused itself before Hearth's check ("blocked by policy": Claude Code's command
+//     tool not switched on, Codex's sandbox on Windows) gets that line too; on Windows Astra can be let run commands
+//     without its sandbox (⋯ AI setup, a warned opt-in: agent.astraNoSandbox).
+
 //   · Claude's permission requests come through mcp/access-mcp.js (engines.js --permission-prompt-tool) as access_check:
 //     the classifier (access-rules.js) lets safe things through silently, refuses what the level doesn't cover or what
 //     needs a password, and shows an approval card in the chat for risky ones (Allow once · Allow for this chat · Deny,
@@ -19,7 +23,9 @@ const Access = (() => {
   const LOG_MAX = 300;
   let timeoutMs = 3 * 60000; // an unanswered card denies (tests shorten it with Access._setTimeout)
   let logs = null; // { [chatId | 'app']: entry[] }
-  let dirs = null; // { data, home, cwd }
+  let dirs = null; // { data, home, cwd, win }
+  let winTest = false; // tests act as if on Windows (Access._setWindows)
+  const onWindows = () => winTest || Boolean(dirs?.win);
   const uid = () => `a${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const short = (s, n = 90) => { const t = String(s ?? '').replace(/\s+/g, ' ').trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
   const sep = (p) => (/^[A-Za-z]:\\/.test(p) || p.includes('\\') ? '\\' : '/');
@@ -29,7 +35,8 @@ const Access = (() => {
     if (dirs) return dirs;
     const attach = await window.hub.attachmentsDir();
     const data = attach.replace(/[\\/]attachments[\\/]?$/, '');
-    dirs = { data, home: await window.hub.fs.home(), cwd: join(data, 'workspace') };
+    const platform = await Promise.resolve(window.hub.platform?.()).catch(() => '');
+    dirs = { data, home: await window.hub.fs.home(), cwd: join(data, 'workspace'), win: platform === 'win32' };
     return dirs;
   }
 
@@ -169,6 +176,20 @@ const Access = (() => {
     const [gone] = cur.folders.splice(i, 1);
     await saveAgent(agent, { fileAccess: { level: cur.level, folders: cur.folders } });
     return gone;
+  }
+  // (winshell) Astra without its sandbox (Windows): turning it on asks first, with what it means
+  async function setNoSandbox(agentId, on, { confirm = true } = {}) {
+    const agent = agentOf(agentId);
+    if (!agent || agent.engine !== 'codex') throw new Error('Only Astra has a sandbox to turn off.');
+    if (on && confirm && typeof Modal !== 'undefined') {
+      const yes = await Modal.confirm(`Let ${agent.name} run commands without its sandbox?`,
+        `On Windows, Codex's sandbox can block every command ("blocked by policy"). Without it, ${agent.name}'s commands run like your own: it starts in its folders and is told to stay there, but nothing stops a command from changing files elsewhere, using the network or deleting for good (a delete it runs itself can't go to the Trash). Edits it makes with its own edit tool still show in the activity log. Only at Read & write or Full; Read keeps the sandbox. You can turn this off again in ⋯ AI setup.`,
+        { ok: 'Run without the sandbox', danger: true });
+      if (!yes) return false;
+    }
+    await saveAgent(agent, { astraNoSandbox: on ? true : undefined });
+    log(chatNow(agentId)?.id || null, { action: 'level', what: `${agent.name}: commands ${on ? 'without its sandbox (Windows)' : 'in its sandbox'}`, result: 'set', by: 'you' });
+    return true;
   }
   // "My home folder": everything under it, after a plain warning (Full there = files and commands anywhere in it).
   async function addHome(agentId, { confirm = true } = {}) {
@@ -330,8 +351,9 @@ const Access = (() => {
     agentId ||= chat?.agentId;
     const d = await paths();
     const c = R.classify({ tool, input, level: acc.level, folders: acc.folders, cwd: cwd || d.cwd, home: d.home });
-    const detail = tool === 'Bash' ? String(input.command || '') : tool === 'Edit' ? `- ${short(input.old_string, 400)}\n+ ${short(input.new_string, 400)}` : tool === 'Write' ? `${String(input.content || '').length} characters` : JSON.stringify(input).slice(0, 600);
-    const base = { id, tool, action: c.action, what: c.what, target: c.targets?.[0] || '', risk: c.risk, detail: tool === 'Bash' ? detail : '' };
+    const cmdTool = tool === 'Bash' || tool === 'PowerShell'; // (winshell) Claude Code on Windows runs commands with PowerShell
+    const detail = cmdTool ? String(input.command || '') : tool === 'Edit' ? `- ${short(input.old_string, 400)}\n+ ${short(input.new_string, 400)}` : tool === 'Write' ? `${String(input.content || '').length} characters` : JSON.stringify(input).slice(0, 600);
+    const base = { id, tool, action: c.action, what: c.what, target: c.targets?.[0] || '', risk: c.risk, detail: cmdTool ? detail : '' };
     if (c.verdict === 'deny') {
       log(chatId, { ...base, result: 'refused', why: c.why });
       if (!c.password && (c.action === 'write' || c.action === 'run')) refused(chatId, { kind: c.action === 'write' ? 'level' : 'run', target: c.targets?.[0] || '' });
@@ -394,7 +416,8 @@ const Access = (() => {
 
   // ---------- why something didn't happen (round 32): one line in the chat when the reply ends ----------
   // kind: 'level' (it may only read) · 'run' (it may not run commands) · 'outside' (not one of its folders) ·
-  // 'sandbox' (Astra's sandbox blocked a command). The line names the reason and offers the one fix: Allow edits /
+  // 'sandbox' (Astra's sandbox blocked a command) · (winshell) 'policy' (Claude Code refused its command tool before
+  // Hearth's check) · 'winsandbox' (Astra's sandbox refused commands by policy, as on Windows). The line names the reason and offers the one fix: Allow edits /
   // Allow commands / Allow this folder, plus Open AI setup (where the AI's own setting lives).
   const refusals = new Map(); // chatId → [{ kind, target }]
   const writes = new Map(); // tool call id → file (Claude's edits: to read the engine's own refusals, e.g. without Hearth's check)
@@ -428,6 +451,7 @@ const Access = (() => {
     if (!list?.length || typeof Native === 'undefined') return;
     const chat = await Native.load(chatId).catch(() => null);
     if (!chat) return;
+    await paths().catch(() => {}); // (winshell) whether this is Windows, for the wording and the fix
     const agentId = chat.agentId;
     const name = agentOf(agentId)?.name || 'The AI';
     const acc = effective(chat);
@@ -441,6 +465,8 @@ const Access = (() => {
       run: `▶ ${name} couldn't run a command: ${mine ? 'this chat' : 'it'} may read and edit files but not run commands (${R.LEVEL_LABEL[acc.level]}).${more}`,
       outside: `✎ ${name} couldn't write ${file}: it's outside the folders ${mine ? 'this chat' : 'it'} may use${dir ? ` (\`${short(dir, 70)}\` isn't one of them)` : ''}.${more}`,
       sandbox: `✎ ${name}'s sandbox blocked a change${dir ? ` in \`${short(dir, 70)}\`` : ''}: it may only change files in its own folders.${more}`,
+      policy: `▶ ${name} couldn't run a command: Claude Code blocked its command tool${r.tool ? ` (${r.tool})` : ''} before Hearth could check it${r.why ? ` ("${short(r.why, 70)}")` : ''}. If it happens again, update Claude Code.${more}`,
+      winsandbox: `▶ ${name} couldn't run a command: its sandbox blocks commands${onWindows() ? ' on Windows' : ''} (blocked by policy).${R.rank(acc.level) < R.rank('write') ? ' At Read & write or Full you can let it run them without its sandbox, in AI setup.' : onWindows() ? ' You can let it run commands without its sandbox (its folders stay its working place).' : ''}${more}`,
     }[r.kind];
     const raise = (level) => (mine ? setLevel(agentId, level, chat) : setAiLevel(agentId, level));
     const allowFolder = (p) => (mine ? addFolder(agentId, p, chat) : addAiFolder(agentId, p));
@@ -448,6 +474,8 @@ const Access = (() => {
     const acts = [];
     if (r.kind === 'level') acts.push({ label: 'Allow edits', title: `${R.LEVEL_LABEL.write}: ${R.LEVEL_HINT.write}`, run: (box) => raise('write').then(() => done(box, 'Edits allowed: ask again')).catch((err) => toast(err.message, { type: 'error' })) });
     if (r.kind === 'run') acts.push({ label: 'Allow commands', title: `${R.LEVEL_LABEL.full}: ${R.LEVEL_HINT.full}`, run: (box) => raise('full').then(() => done(box, 'Commands allowed (risky ones still ask): ask again')).catch((err) => toast(err.message, { type: 'error' })) });
+    // (winshell) Astra on Windows: the warned opt-in, from the note itself
+    if (r.kind === 'winsandbox' && onWindows() && R.rank(acc.level) >= R.rank('write') && agentOf(agentId)?.astraNoSandbox !== true) acts.push({ label: 'Run without its sandbox…', title: 'Asks first: deletes can\'t go to the Trash without the sandbox', run: (box) => setNoSandbox(agentId, true).then((on) => { if (on) done(box, 'Astra runs commands without its sandbox now: ask again'); }).catch((err) => toast(err.message, { type: 'error' })) });
     if (dir) acts.push({ label: 'Allow this folder', title: dir, run: (box) => allowFolder(dir).then(() => done(box, `${R.baseName(dir)} added: ask again`)).catch((err) => toast(err.message, { type: 'error' })) });
     acts.push({ label: 'Open AI setup', title: 'Files on this computer: the level and folders for every chat with this AI', run: () => openSetup(agentId) });
     if (H.activeChat?.[agentId] === chatId && Native.note) Native.note(agentId, text, { id: 'access-refused', actions: acts });
@@ -464,9 +492,13 @@ const Access = (() => {
       const a = e.access;
       for (const ch of a.changes || [{ path: a.target }]) {
         const target = a.action === 'run' ? absPath(a.target) : ch.path;
-        const kind = a.action === 'run' ? (R.rank(effective(chat).level) < R.rank('write') ? 'level' : 'sandbox') : (await whyNot(chat, target)) || 'sandbox';
-        log(e.chatId, { action: a.action === 'run' ? 'run' : 'write', what: a.action === 'run' ? `Blocked: ${short(a.target, 140)}` : `Not written: ${R.baseName(target)}`, target: a.action === 'run' ? '' : target, result: 'refused', why: { level: 'read-only level', outside: 'outside its folders', sandbox: 'its sandbox' }[kind], tool: a.tool });
-        refused(e.chatId, { kind, target });
+        const level = effective(chat).level;
+        // (winshell) refused by the engine's own policy: below Full that's "no commands"; at Full, Claude Code's tool list
+        // or Astra's sandbox (on Windows it can block every command)
+        const kind = a.policy ? (R.rank(level) < R.rank('full') && agentOf(chat.agentId)?.engine !== 'codex' ? 'run' : agentOf(chat.agentId)?.engine === 'codex' ? 'winsandbox' : 'policy')
+          : a.action === 'run' ? (R.rank(level) < R.rank('write') ? 'level' : 'sandbox') : (await whyNot(chat, target)) || 'sandbox';
+        log(e.chatId, { action: a.action === 'run' ? 'run' : 'write', what: a.action === 'run' ? `Blocked: ${short(a.target || a.why, 140)}` : `Not written: ${R.baseName(target)}`, target: a.action === 'run' ? '' : target, result: 'refused', why: { level: 'read-only level', outside: 'outside its folders', sandbox: 'its sandbox', run: 'commands not allowed at this level', policy: `refused by Claude Code before Hearth's check${a.why ? `: ${a.why}` : ''}`, winsandbox: `its sandbox (blocked by policy)${a.why ? `: ${a.why}` : ''}` }[kind], tool: a.tool });
+        refused(e.chatId, { kind, target, tool: a.tool, why: a.why || '' });
       }
       return;
     }
@@ -589,7 +621,8 @@ const Access = (() => {
       const row = el('div', { class: 'opt-row', title: 'What it may do with files on this computer, in every chat with it (it asks before anything risky)' }, el('span', { class: 'opt-label', text: 'Files on this computer' }), sel);
       const kids = [row];
       if (acc.level !== 'off') {
-        kids.push(el('p', { class: 'opt-hint access-ai-hint', text: `${{ read: 'It reads files in these folders', write: 'It reads and edits files in these folders', full: a.engine === 'codex' ? 'It reads, edits and runs commands in these folders (sandboxed, no network)' : 'It reads, edits and runs commands in these folders; deletes go to the Trash and risky things ask you first' }[acc.level]}. ${a.engine === 'codex' ? 'Anywhere else is blocked.' : 'Anywhere else it asks first.'}` }));
+        const open = a.engine === 'codex' && a.astraNoSandbox === true && acc.level !== 'read'; // (winshell) no sandbox: its own row says what that means
+        if (!open) kids.push(el('p', { class: 'opt-hint access-ai-hint', text: `${{ read: 'It reads files in these folders', write: 'It reads and edits files in these folders', full: a.engine === 'codex' ? 'It reads, edits and runs commands in these folders (sandboxed, no network)' : 'It reads, edits and runs commands in these folders; deletes go to the Trash and risky things ask you first' }[acc.level]}. ${a.engine === 'codex' ? 'Anywhere else is blocked.' : 'Anywhere else it asks first.'}` }));
         kids.push(el('div', { class: 'access-ai-folders' }, acc.folders.map((f, i) => el('div', { class: `access-folder${home && f === home ? ' access-home' : ''}` },
           el('span', { class: 'access-fname', text: `${home && f === home ? '⚠ ' : '📁 '}${home && f === home ? 'Your home folder' : R.baseName(f)}`, title: f }),
           el('span', { class: 'access-fpath', text: f.length > 44 ? `…${f.slice(-43)}` : f }),
@@ -597,6 +630,13 @@ const Access = (() => {
         kids.push(el('div', { class: 'opt-row access-ai-add' },
           el('button', { type: 'button', class: 'ghost small', text: '＋ Add a folder…', on: { click: () => addAiFolder(agentId).then(again).catch(fail) } }),
           home && acc.folders.includes(home) ? null : el('button', { type: 'button', class: 'ghost small', text: 'My home folder', title: 'Everywhere in your home folder (asks you first)', on: { click: () => addHome(agentId).then((r) => { if (r) again(); }).catch(fail) } })));
+      }
+      // (winshell) Astra on Windows: its sandbox can block every command; a warned opt-in runs them without it
+      if (a.engine === 'codex' && (onWindows() || a.astraNoSandbox) && (R.rank(acc.level) >= R.rank('write') || a.astraNoSandbox)) {
+        const on = a.astraNoSandbox === true;
+        const b = el('button', { type: 'button', class: 'opt-switch', role: 'switch', attrs: { 'aria-checked': String(on), 'aria-label': 'Run commands without its sandbox' }, on: { click: () => setNoSandbox(agentId, !on).then(again).catch(fail) } }, el('i'));
+        kids.push(el('label', { class: 'opt-row access-ai-nosandbox', title: 'On Windows, Codex\'s sandbox can block every command ("blocked by policy"). Without it, commands run like your own: its folders stay its working place, but nothing stops a command elsewhere and deletes can\'t go to the Trash.' }, el('span', { class: 'opt-label', text: `${on ? '⚠ ' : ''}Run commands without its sandbox` }), b));
+        if (on) kids.push(el('p', { class: 'opt-hint access-ai-hint', text: R.rank(acc.level) < R.rank('write') ? 'Only used at Read & write or Full.' : 'It reads, edits and runs commands without its sandbox: it starts in these folders and is told to stay there, but nothing enforces it, and a delete it runs itself skips the Trash.' }));
       }
       // the open chat set its own: say so, one click follows the AI again
       const chat = chatNow(agentId);
@@ -716,7 +756,7 @@ const Access = (() => {
   return {
     ask, check, trash, effective, sendOptions, setLevel, addFolder, removeFolder, isOn, menuItem, panel, logPanel, entries, undo, log,
     // (round 32) the AI's own setting (AI setup), and a chat going back to it
-    aiEffective, setAiLevel, addAiFolder, removeAiFolder, addHome, useAi, aiSection,
+    aiEffective, setAiLevel, addAiFolder, removeAiFolder, addHome, useAi, aiSection, setNoSandbox, onWindows,
     // native.js: a folder dropped on a chat becomes one of its folders
     async maybeFolder(agentId, p) {
       const st = await window.hub.fs.stat(p).catch(() => null);
@@ -725,6 +765,6 @@ const Access = (() => {
       toast(`${R.baseName(p)} added to this chat's folders (${R.LEVEL_LABEL[a.level]})`, { timeout: 5000, action: a.level === 'read' ? { label: 'Allow edits', fn: () => setLevel(agentId, 'write') } : undefined });
       return true;
     },
-    _setTimeout(ms) { timeoutMs = ms; }, _paths: paths,
+    _setTimeout(ms) { timeoutMs = ms; }, _paths: paths, _setWindows(on) { winTest = Boolean(on); },
   };
 })();
