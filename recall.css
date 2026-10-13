@@ -1,0 +1,29 @@
+/* Recall (round 30, recall.js): the "what did we decide?" card and the chats panel's "Find the answer" row. Static
+   card, no motion, no backdrop-filter. */
+.recall-row { display: flex; align-items: center; gap: 4px; color: var(--fh-ai, #a98bff); }
+.recall-row .recall-ic { font-size: 11px; }
+.recall-dlg { width: min(620px, calc(100vw - 48px)); max-height: min(78vh, 720px); padding: 0; display: none; }
+.recall-dlg[open] { display: flex; flex-direction: column; }
+.rc-head { display: flex; align-items: center; gap: 6px; padding: 10px 10px 6px; }
+.rc-head .rc-q { flex: 1; min-width: 0; font-size: 14px; }
+.rc-head .rc-x { width: 26px; height: 26px; padding: 0; }
+.rc-body { flex: 1; overflow: auto; padding: 0 12px 6px; font-size: 12.5px; }
+.rc-status { margin: 0 2px 4px; font-size: 11px; }
+.rc-empty { padding: 18px 4px; color: var(--muted, #8a8f98); }
+.rc-sec > h4 { margin: 10px 2px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted, #8a8f98); }
+.rc-dec > h4 { color: var(--fh-ok, #5fd28a); }
+.rc-open > h4 { color: var(--fh-ember, #ff8a3d); }
+.rc-hit { padding: 6px 8px; border-radius: 8px; }
+.rc-hit:hover { background: color-mix(in srgb, var(--fh-ai, #a98bff) 7%, transparent); }
+.rc-quote { margin: 0; padding: 0 0 0 9px; border-left: 2px solid var(--line, #2c2f36); line-height: 1.4; overflow-wrap: anywhere; }
+.rc-decision .rc-quote { border-left-color: var(--fh-ok, #5fd28a); }
+.rc-open .rc-quote { border-left-color: var(--fh-ember, #ff8a3d); }
+.rc-meta { display: flex; align-items: center; gap: 0; margin: 3px 0 0 11px; min-width: 0; font-size: 11px; }
+.rc-meta .rc-chat { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 50%; }
+.rc-meta .rc-sub { color: var(--muted, #8a8f98); white-space: pre; }
+.rc-meta .spacer { flex: 1; }
+.rc-jump { height: 20px; padding: 0 7px; font-size: 11px; opacity: .75; }
+.rc-hit:hover .rc-jump, .rc-jump:focus-visible { opacity: 1; }
+.rc-foot { display: flex; justify-content: flex-end; padding: 6px 10px 10px; }
+.rc-foot:empty { display: none; }
+.rc-ai { height: 26px; padding: 0 10px; font-size: 12px; }
