@@ -61,6 +61,8 @@ const QuickstartHooks = (() => {
     }, ms);
   }
   addEventListener('hearth:view', () => soon());
+  // an empty chat drawn before this loaded: its "✦ What can I do here?" link now (astra.js emptyHints)
+  try { const a = H.agent?.(H.activeId); if (a?.mode === 'native' && !Native.current(a.id)?.messages?.length) Native.refresh(a.id, { keepScroll: true }); } catch { /* not up yet */ }
   soon(5200);
 
   // ---------- Ctrl/⌘+K and the command (the buttons above are the way in) ----------

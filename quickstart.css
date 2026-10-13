@@ -24,7 +24,7 @@
 .qs-text { display: flex; flex-direction: column; min-width: 0; }
 .qs-text b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .qs-why { color: var(--muted, #8a8f98); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.qs-fit .qs-text b::after { content: ' ·'; color: var(--fh-gold, var(--accent)); } /* fits what's on screen now */
+.qs-fit { box-shadow: inset 2px 0 0 color-mix(in srgb, var(--fh-gold, var(--accent)) 70%, transparent); } /* fits what's on screen now */
 .qs-done { margin: 4px 6px 6px; color: var(--muted, #8a8f98); }
 .qs-foot { padding: 4px 6px 0; color: var(--muted, #8a8f98); font-size: 10.5px; opacity: .8; }
 /* AI setup's header: the small "?" */

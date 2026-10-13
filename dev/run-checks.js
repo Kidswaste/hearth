@@ -10,7 +10,7 @@
 //   sh dev/run-checks.sh --list               # groups and checks
 //   options: --out <dir> (logs and pictures, default <tmp>/hearth-checks) · --shots (journeys keep a picture per step)
 //   · --fixtures-only · --stop (first failure)
-// Groups: qa, board, capture, journeys, chat, lab, nodes, smooth, astra, sequence, robust, motion, orb, flows, commands, sync, comp, progress, speed, renders, access, adobe, deploy, apps, eyes, pinboard, chromeview, unit, all.
+// Groups: qa, board, capture, journeys, chat, lab, nodes, smooth, astra, sequence, robust, motion, orb, flows, commands, sync, comp, progress, speed, renders, access, adobe, deploy, apps, eyes, pinboard, chromeview, quickstart, unit, all.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -26,7 +26,7 @@ const names = argv.filter((a, i) => !a.startsWith('--') && !['--out'].includes(a
 
 const LIBS = new Set(['journey-lib', 'smooth-lib', 'journey-olddata-make', 'sequence-lib']); // helpers / made to run in the old app
 const all = fs.readdirSync(CHECKS).filter((f) => f.endsWith('.js')).map((f) => f.slice(0, -3)).filter((n) => !LIBS.has(n)).sort();
-const UNIT = ['board-unit-test', 'store-thread-test', 'board-mcp-test', 'capture-mcp-test', 'director-mcp-test', 'cut-test', 'capture-test', 'music-test', 'code-flow-test', 'importer-test', 'director-cost', 'astra-engine-test', 'robust-engine-test', 'test-aemain-mac', 'sequence-test', 'flows-test', 'sync-test', 'cmdpage-test', 'progress-test', 'makes-test', 'renders-test', 'updater-test', 'access-test', 'adobe-test', 'adobe-mcp-test', 'deploy-test', 'apps-unit-test', 'eyes-test', 'boot-test', 'liveness-test', 'devreport-test', 'labexport-test', 'voice-test', 'projects-test', 'timemachine-test', 'audio-test', 'remote-qr-test', 'interop-test', 'context-test', 'assets-test', 'type-test', 'motion-in-test', 'physics-test', 'connections-test', 'hooks-test', 'autoedit-test', 'publishkit-test', 'router-test', 'firstrun-test', 'lookmatch-test', 'aiundo-test', 'packs-test', 'safetynet-test', 'instantscene-test', 'chrome-test', 'budget-test', 'recall-test', 'autopolish-test', 'stems-test', 'pinboard-test', 'chromeview-test'];
+const UNIT = ['board-unit-test', 'store-thread-test', 'board-mcp-test', 'capture-mcp-test', 'director-mcp-test', 'cut-test', 'capture-test', 'music-test', 'code-flow-test', 'importer-test', 'director-cost', 'astra-engine-test', 'robust-engine-test', 'test-aemain-mac', 'sequence-test', 'flows-test', 'sync-test', 'cmdpage-test', 'progress-test', 'makes-test', 'renders-test', 'updater-test', 'access-test', 'adobe-test', 'adobe-mcp-test', 'deploy-test', 'apps-unit-test', 'eyes-test', 'boot-test', 'liveness-test', 'devreport-test', 'labexport-test', 'voice-test', 'projects-test', 'timemachine-test', 'audio-test', 'remote-qr-test', 'interop-test', 'context-test', 'assets-test', 'type-test', 'motion-in-test', 'physics-test', 'connections-test', 'hooks-test', 'autoedit-test', 'publishkit-test', 'router-test', 'firstrun-test', 'lookmatch-test', 'aiundo-test', 'packs-test', 'safetynet-test', 'instantscene-test', 'chrome-test', 'budget-test', 'recall-test', 'autopolish-test', 'stems-test', 'pinboard-test', 'chromeview-test', 'quickstart-test'];
 const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
   qa: ['qa-commands', 'qa-keys', 'qa-mac', 'polish', 'lazy', 'fastboot'], // (round 29) fastboot: first frame before any lazy group, keys of lazy groups, first-use main modules
@@ -79,6 +79,7 @@ const GROUPS = {
   recall: ['recall', 'unit:recall-test'], // (round 30) "what did we decide about X?": the local index + ranking, the panel's "Find the answer", the card, Jump to it, the mission, the sum-up's cost
   chromeview: ['chromeview', 'chrome', 'unit:chromeview-test', 'unit:chrome-test'], // (round 31) Chrome views: Chrome out of sight, its pages shown and used in Hearth (Playwright's Chromium as Chrome: frames, clicks, keys, wheel, popups, file picker, downloads, hidden = no frames, sign-in on screen then off)
   pinboard: ['pinboard', 'unit:pinboard-test'], // (round 30) Find images like this: a Pinterest-like page in Playwright's Chromium as Chrome (smoke --pw-chrome) and in the board's Pinterest window, an Unsplash-like app window; the page reading against saved pages
+  quickstart: ['quickstart', 'unit:quickstart-test'], // (round 31) "What can I do here?": the card per window (once by itself, the ⋯ ways in, context first, used drops off) + the picking
   bugbash: ['bugbash', 'unit:sync-test'], // (round 29) regressions of the bug bash's app fixes: one Lab however it opens; sync's same-millisecond file
   unit: UNIT.map((u) => `unit:${u}`),
 };

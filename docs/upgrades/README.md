@@ -120,7 +120,8 @@ line count is lower than the number of upgrades).
 | A faster start (round 29): the first frame no longer waits for the Lab (reload first paint ≈ 808 → 469 ms, start long tasks −74 %), the main process makes the window first (36 → 7 ms before it), the command bar and Flows load after the first screen (−205 KB JS) with their keys working from the start, the Lab starts building on the press of its button | [fastboot.md](fastboot.md) | 13 |
 | Song parts (round 30): react to the drums, the bass or the voice separately (a local split, no AI), in sketches, the ♪ chips, /react-to and presets | [stems.md](stems.md) | 26 |
 | Chrome out of sight (round 30): Hearth's Chrome runs hidden and its pages are shown and used inside Hearth's own windows; real Chrome appears only to sign in | [chromeview.md](chromeview.md) | 35 |
-| **Total** | | **13,324** |
+| What can I do here? (round 31): one calm card per window (a chat, the Lab, the board) with 3–5 things worth trying there now, one click each, picked from what you haven't used and what's on screen; once by itself, then in the window's ⋯ | [quickstart.md](quickstart.md) | 53 |
+| **Total** | | **13,377** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.
