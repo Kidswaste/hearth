@@ -992,3 +992,8 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ ⋯ AI setup → What it can use → **Check this AI**: one short real test through the AI's engine (a few tokens: one tiny message, the cheapest model, no Hearth tools), then a checklist: found · version · signed in · answers · reads its folder · writes a file there (then to the Trash) · runs a command. Each failing line has its fix: Install / Update / Sign in, Allow edits, Allow commands, Run without its sandbox… (Astra on Windows), Open AI setup.
 - ✓ The last result and its time stay on the row; a chat's one-line refusal note offers **Check this AI** too; `/check-ai` runs it.
 - ○ Tested with fake engines (`sh dev/run-checks.sh aicheck access-chat`), including a simulated Windows PC; not yet on a real Windows install.
+## ⚡ Cache-wise chats (round 32, cachewise: docs/upgrades/cachewise.md)
+- ✓ The same chat sends the same prompt and flags message after message: a fact saved mid-chat or a picture no longer resets the engines' prompt cache; the parts you change (personality, instructions, files, memory) sit at the end of the prompt. A 20-message chat: 4 → 1 full-price re-reads.
+- ✓ What the cache saved: a reply's ⚡ hover, the meter, `/cache`, ⋯ AI setup → Spending and the week at a glance.
+- ✓ A change made mid-chat (personality, instructions, tools, model, effort) shows one calm line, once: the next message re-reads the chat once without the cache. Never blocks.
+- ○ Tested with `node dev/cache-test.js` and fake engines (`sh dev/run-checks.sh budget`); real engines' cache numbers not seen here.

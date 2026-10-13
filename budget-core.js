@@ -35,13 +35,13 @@ const BudgetCore = (() => {
   };
   const money = (n) => (n >= 100 ? `$${Math.round(n)}` : `$${(n || 0).toFixed(2)}`);
 
-  // one AI over some days: { tokens, cost, replies }
+  // one AI over some days: { tokens, cost, replies, cached, cacheWrite } (cached: input read from the prompt cache)
   function used(stats, agentId, days) {
-    const out = { tokens: 0, cost: 0, replies: 0 };
+    const out = { tokens: 0, cost: 0, replies: 0, cached: 0, cacheWrite: 0 };
     for (const d of days) {
       const t = stats?.days?.[d]?.a?.[agentId];
       if (!t) continue;
-      out.tokens += tot(t); out.cost += t.cost || 0; out.replies += t.r || 0;
+      out.tokens += tot(t); out.cost += t.cost || 0; out.replies += t.r || 0; out.cached += t.c || 0; out.cacheWrite += t.w || 0;
     }
     return out;
   }
@@ -57,6 +57,9 @@ const BudgetCore = (() => {
   const priceOf = (u, tokens) => (u.cost > 0 && u.tokens > 0 ? (u.cost / u.tokens) * tokens : 0);
   // plain words: "≈ 1.2M tokens (≈ $3.40)"
   const words = (u, tokens = u.tokens) => { const $ = priceOf(u, tokens); return `≈ ${fmt(tokens)} tokens${$ >= 0.01 ? ` (≈ ${money($)})` : ''}`; };
+
+  // (round 32, cachewise) tokens the prompt cache saved: reads cost ≈ 0.1× fresh input, Claude's writes ≈ 1.25× (cachewise.js)
+  const saved = (u) => Math.max(0, Math.round((u?.cached || 0) * 0.9 - (u?.cacheWrite || 0) * 0.25));
 
   // Would this cost pass the limit? null, or { now, after, limit, level } for the line in a confirm.
   function wouldPass(tokens, extra, limit) {
@@ -141,10 +144,11 @@ const BudgetCore = (() => {
       if (a && (a.effort === 'high' || a.effort === 'xhigh') && p.replies >= 10) fixes.push({ kind: 'smart', agentId: p.id, saves: Math.round(p.tokens * 0.2), text: `Let ${p.name} think on Smart: lighter answers for small asks (saves ≈ ${fmt(p.tokens * 0.2)} a week)`, patch: { effort: undefined } });
     }
     fixes.sort((a, b) => b.saves - a.saves);
-    const all = per.reduce((s, p) => ({ tokens: s.tokens + p.tokens, cost: s.cost + p.cost, replies: s.replies + p.replies }), { tokens: 0, cost: 0, replies: 0 });
+    const all = per.reduce((s, p) => ({ tokens: s.tokens + p.tokens, cost: s.cost + p.cost, replies: s.replies + p.replies, cached: s.cached + (p.cached || 0), cacheWrite: s.cacheWrite + (p.cacheWrite || 0) }), { tokens: 0, cost: 0, replies: 0, cached: 0, cacheWrite: 0 });
+    all.saved = saved(all);
     return { days, per, all, chats, where, tools: tools.slice(0, 6), fixes: fixes.slice(0, 4) };
   }
 
-  return { NEAR, TIERS, MODES, weekDays, lastWeekDays, dayKey, used, level, pct, priceOf, words, wouldPass, floorOf, stepDown, cheaper, suggestions, week, fmt, money };
+  return { NEAR, TIERS, MODES, saved, weekDays, lastWeekDays, dayKey, used, level, pct, priceOf, words, wouldPass, floorOf, stepDown, cheaper, suggestions, week, fmt, money };
 })();
 if (typeof module !== 'undefined') module.exports = BudgetCore; else window.BudgetCore = BudgetCore;

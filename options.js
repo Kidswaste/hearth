@@ -17,6 +17,7 @@ const Options = (() => {
       for (const [k, v] of Object.entries(patch)) if (v === undefined) delete t[k];
     }
     await saveConfig();
+    if (typeof Cachewise !== 'undefined') Cachewise.changed(a.id); // (round 32) a mid-chat change: one calm line about the cache
   }
   const btn = (text, title, fn, cls = 'ghost small') => el('button', { type: 'button', class: cls, text, title, on: { click: fn } });
   function sw(on, label, tip, fn) {

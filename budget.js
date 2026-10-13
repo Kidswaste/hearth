@@ -133,7 +133,7 @@ const Budget = (() => {
     const s = state(a.id);
     const last = C.used(stats(), a.id, C.lastWeekDays());
     const avg = last.cost ? last : s; // a price from this week, or last week's
-    const now = s.tokens ? `This week: ${C.words(s)} · ${s.replies} repl${s.replies === 1 ? 'y' : 'ies'}${s.limit ? ` · ${s.pct}% of your limit` : ''}.` : 'This week: nothing yet.';
+    const now = s.tokens ? `This week: ${C.words(s)} · ${s.replies} repl${s.replies === 1 ? 'y' : 'ies'}${s.limit ? ` · ${s.pct}% of your limit` : ''}${s.cached ? ` · ≈ ${C.fmt(C.saved(s))} saved by the cache` : ''}.` : 'This week: nothing yet.';
     const values = C.suggestions(last.tokens, s.tokens);
     if (s.limit && !values.includes(s.limit)) values.push(s.limit);
     values.sort((x, y) => x - y);
@@ -205,7 +205,7 @@ const Budget = (() => {
       return el('div', { class: 'bud-line bud-fix' }, el('span', { class: 'bud-l', text: f.text }), b);
     });
     dlg = el('dialog', { class: 'ui-modal bud-dlg' },
-      el('div', { class: 'bud-head' }, el('h2', { text: 'This week' }), el('span', { class: 'bud-sub', text: w.all.tokens ? `${C.words(w.all)} · ${w.all.replies} replies` : 'Nothing yet this week.' }), el('span', { class: 'spacer' }), x),
+      el('div', { class: 'bud-head' }, el('h2', { text: 'This week' }), el('span', { class: 'bud-sub', text: w.all.tokens ? `${C.words(w.all)} · ${w.all.replies} replies${w.all.saved ? ` · ≈ ${C.fmt(w.all.saved)} saved by the cache` : ''}` : 'Nothing yet this week.', title: w.all.saved ? `${C.fmt(w.all.cached)} input tokens came from the prompt cache this week (read at about a tenth of the price)` : '' }), el('span', { class: 'spacer' }), x),
       part('Each AI', w.per.map((p) => el('div', {}, line(p.name, `${C.words(p)}${p.limit ? ` · ${p.pct}% of ${C.fmt(p.limit)}` : ''}`, p.limit ? el('span', { class: 'bud-mode', text: MODE_NAME[p.mode] }) : null), p.limit ? meterBar(p) : null))),
       part('Biggest chats', w.chats.map((c) => el('div', { class: 'bud-line bud-click', title: 'Open it', on: { click: () => { dlg?.close(); Native.open(c.agentId, c.id); } } },
         el('span', { class: 'bud-l', text: c.title }), el('b', { text: `≈ ${C.fmt(c.tokens)}` }), el('small', { text: `${c.replies} repl${c.replies === 1 ? 'y' : 'ies'}${c.ctx ? ` · ${C.fmt(c.ctx)} a message now` : ''}` })))),
