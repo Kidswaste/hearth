@@ -37,6 +37,8 @@ const Access = (() => {
     const data = attach.replace(/[\\/]attachments[\\/]?$/, '');
     const platform = await Promise.resolve(window.hub.platform?.()).catch(() => '');
     dirs = { data, home: await window.hub.fs.home(), cwd: join(data, 'workspace'), win: platform === 'win32' };
+    // (round 33, macpolish) a Mac: which disks ignore case and the boot disk's name, for the folder checks
+    if (platform === 'darwin') dirs.mac = await Promise.resolve(window.hub.macVolumes?.()).catch(() => null) || null;
     return dirs;
   }
 
@@ -350,7 +352,7 @@ const Access = (() => {
     const acc = effective(chat, agentOf(agentId || chat?.agentId));
     agentId ||= chat?.agentId;
     const d = await paths();
-    const c = R.classify({ tool, input, level: acc.level, folders: acc.folders, cwd: cwd || d.cwd, home: d.home });
+    const c = R.classify({ tool, input, level: acc.level, folders: acc.folders, cwd: cwd || d.cwd, home: d.home, mac: d.mac });
     const cmdTool = tool === 'Bash' || tool === 'PowerShell'; // (winshell) Claude Code on Windows runs commands with PowerShell
     const detail = cmdTool ? String(input.command || '') : tool === 'Edit' ? `- ${short(input.old_string, 400)}\n+ ${short(input.new_string, 400)}` : tool === 'Write' ? `${String(input.content || '').length} characters` : JSON.stringify(input).slice(0, 600);
     const base = { id, tool, action: c.action, what: c.what, target: c.targets?.[0] || '', risk: c.risk, detail: cmdTool ? detail : '' };

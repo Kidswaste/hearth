@@ -27,7 +27,8 @@ const ChromeUI = (() => {
     return st;
   }
   // (round 32, winpolish) "Chrome isn't installed" gets its fix as a button (Google's download page)
-  const say = (r, okText) => { if (r?.ok) { if (okText) toast(okText, { timeout: 4500 }); } else toast(r?.error || 'Chrome didn\'t answer', { type: 'error', timeout: 9000, action: /isn't installed/i.test(r?.error || '') ? { label: 'Get Chrome', fn: () => window.hub.openExternal('https://www.google.com/chrome/') } : undefined }); return r; };
+  // (round 33, macpolish) "macOS blocked Google Chrome…" (Gatekeeper) gets Allow: the exact command shown first, run after a click
+  const say = (r, okText) => { if (r?.ok) { if (okText) toast(okText, { timeout: 4500 }); } else toast(r?.error || 'Chrome didn\'t answer', { type: 'error', timeout: 9000, action: /isn't installed/i.test(r?.error || '') ? { label: 'Get Chrome', fn: () => window.hub.openExternal('https://www.google.com/chrome/') } : /Gatekeeper/.test(r?.error || '') && window.EngineHealth?.macFix ? { label: 'Allow…', fn: () => EngineHealth.macFix('chrome', 'unquarantine') } : undefined }); return r; };
 
   // ---------- website chats in Chrome ----------
   const covers = new Map(); // agent id → { host, view (the <webview>), wrap, cv (the Chrome view) }

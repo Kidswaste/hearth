@@ -52,15 +52,17 @@ function unwatch(id) {
 // Windows would delete it for good) is left alone with a plain reason; long-path (\\?\) names and trailing slashes are
 // cleaned first; a failure says what happened in plain words. Nothing is ever deleted permanently.
 const WinPolish = require('./winpolish');
+const MacPolish = require('./macpolish');
 async function trash(paths) {
   const done = [];
   const failed = [];
   for (const p of paths) {
     let target;
     try { target = assertAbs(p); } catch { failed.push({ path: p, error: `Hearth only deletes files named with their full path (${p}); nothing was deleted.` }); continue; }
-    const check = WinPolish.trashCheck(target);
+    // (round 33, macpolish) the Mac: a network share or a read-only disk has no Trash (left alone, said why)
+    const check = process.platform === 'darwin' ? MacPolish.trashCheck(target) : WinPolish.trashCheck(target);
     if (!check.ok) { failed.push({ path: p, error: check.error, reason: check.reason }); continue; }
-    try { await shell.trashItem(check.path); done.push(p); } catch (err) { failed.push({ path: p, error: process.platform === 'win32' ? WinPolish.trashError(err, check.path) : err.message }); }
+    try { await shell.trashItem(check.path); done.push(p); } catch (err) { failed.push({ path: p, error: process.platform === 'win32' ? WinPolish.trashError(err, check.path) : process.platform === 'darwin' ? MacPolish.trashError(err, check.path) : err.message }); }
   }
   return { done, failed };
 }
