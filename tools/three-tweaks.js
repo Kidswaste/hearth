@@ -1573,8 +1573,9 @@ const ThreeTweaks = (() => {
       matchCount.textContent = filter ? `${shown} of ${rows.length}` : '';
     }
 
-    // Set named controls by key (numbers, colors, on / off, choices): one undo step.
-    function setManyKeys(byKey) {
+    // Set named controls by key (numbers, colors, on / off, choices): one undo step. remember: false = a passing
+    // preview (🎲 Variations' pictures and hover peeks): no undo step, nothing marked for the time machine.
+    function setManyKeys(byKey, { remember = true } = {}) {
       if (!scanned) return [];
       const next = values.slice(); const done = [];
       scanned.items.forEach((it, i) => {
@@ -1587,7 +1588,7 @@ const ThreeTweaks = (() => {
         if (it.kind === 'color' && !CSS_HEX.test(x)) return;
         next[i] = it.kind === 'color' ? normHex(x) : x; done.push(it.key);
       });
-      applyValues(next);
+      applyValues(next, { remember });
       return done;
     }
     const codeWithValues = () => applyValues_(scanned.code, scanned.items, values);
@@ -1738,7 +1739,7 @@ const ThreeTweaks = (() => {
         return true;
       },
       // For the director: set several named controls at once (one undo step, unsaved like your own moves) and looks.
-      setMany: (byKey) => setManyKeys(byKey),
+      setMany: (byKey, o) => setManyKeys(byKey, o),
       // ---------- for chat commands (tools/three-cmds.js) and MIDI ----------
       shuffle: (o) => shuffle(o || {}), shuffleStep: (d) => shuffleStep(d),
       get shuffleInfo() { return { amount: shufOpt.amount, scope: shufOpt.scope, history: shufHist.length - 1, at: shufPos, seed: shufHist[shufPos]?.seed ?? null }; },

@@ -1,0 +1,29 @@
+/* 🎲 Variations (tools/three-variations.js): a card over the top left of the Lab preview, built on lookmatch's card
+   parts (.lm-head / .lm-btn / .lm-acts). Plain and still: no blur, no animation over the moving preview; the
+   pictures are small JPEGs made by the preview itself. */
+.lv-card {
+  position: absolute; top: 46px; left: 8px; z-index: 7; width: 348px; max-width: calc(100% - 16px); max-height: calc(100% - 56px);
+  display: flex; flex-direction: column; gap: 6px; padding: 7px 9px 8px; border: 1px solid var(--line); border-radius: 10px; overflow-y: auto; scrollbar-width: thin;
+  background: color-mix(in srgb, var(--panel, #15181b) 95%, transparent); color: var(--text, #eae0d5); font-size: 12px;
+  box-shadow: 0 10px 30px #0008, 0 0 0 1px color-mix(in srgb, var(--fh-gold, #ffd75e) 14%, transparent); contain: layout paint;
+}
+.lv-locks { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.lv-keep { font-size: 11px; color: var(--muted, #9a948c); margin-right: 2px; }
+.lv-lock { display: inline-flex; align-items: center; gap: 3px; padding: 1px 7px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted, #9a948c); font: inherit; font-size: 11px; line-height: 1.6; cursor: pointer; }
+.lv-lock:hover { border-color: var(--fh-gold, #ffd75e); color: var(--text, #eae0d5); }
+.lv-lock.on { color: var(--text, #eae0d5); border-color: var(--fh-gold, #ffd75e); background: color-mix(in srgb, var(--fh-gold, #ffd75e) 16%, transparent); }
+.lv-lk:empty { display: none; }
+.lv-grid { --lv-ratio: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.lv-tile { position: relative; padding: 0; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; background: #000; cursor: pointer; aspect-ratio: var(--lv-ratio); max-height: 170px; }
+.lv-tile img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.lv-tile img:not([src]) { visibility: hidden; }
+.lv-tile.lv-wait { background: linear-gradient(135deg, #1b1e22, #101215); }
+.lv-tile:hover, .lv-tile.lv-peek { border-color: var(--fh-gold, #ffd75e); }
+.lv-tile.lv-on { border-color: var(--fh-gold, #ffd75e); box-shadow: inset 0 0 0 2px var(--fh-gold, #ffd75e); }
+.lv-tile.lv-on .lv-n::after { content: ' ✓'; }
+.lv-n { position: absolute; top: 3px; left: 4px; padding: 0 4px; border-radius: 4px; background: #000a; color: #fff; font-size: 10px; font-variant-numeric: tabular-nums; }
+.lv-l { position: absolute; left: 0; right: 0; bottom: 0; padding: 8px 4px 2px; background: linear-gradient(transparent, #000c); color: #fff; font-size: 10px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lv-card.lv-busy .lv-grid { cursor: progress; }
+.lv-card .lv-undo[hidden] { display: none; }
+/* while the pictures are made: a still of the scene over the preview's frame, so nothing flickers */
+.lv-cover { position: absolute; z-index: 6; object-fit: contain; background: #000; pointer-events: none; }
