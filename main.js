@@ -13,13 +13,15 @@ function later(file, onLoad) {
 const engines = later('./engines', (m) => { m.onInstalls((report, info) => send('engine:installs', { ...report, fixed: info })); });
 const importer = later('./importer');
 const appshell = require('./appshell');
-const fsapi = require('./fsapi');
-const portable = require('./portable');
+// (round 29, fastboot) these are set up right after the window is made (registerAfterWindow, same tick: before the page
+// can ask anything), not before Electron's 'ready': main.js's top level is time the window waits for
+const fsapi = later('./fsapi');
+const portable = later('./portable');
 const nowplaying = later('./nowplaying', (m) => m.pace?.(bgmain.state())); // (Lab → live sound: "what's playing")
-const aemain = require('./aemain');
-const gamebridge = require('./gamebridge');
-const syncmain = require('./syncmain');
-const appsmain = require('./appsmain');
+const aemain = later('./aemain');
+const gamebridge = later('./gamebridge');
+const syncmain = later('./syncmain');
+const appsmain = later('./appsmain');
 const bgmain = require('./bgmain'); // (round 16) is anybody looking / on battery / asleep, and the steady idle cursor
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
@@ -479,9 +481,17 @@ ipcMain.handle('stage:place', (_e, { display = 'other', fullscreen = true } = {}
 // (round 16) A main-process module only some features use loads on its first IPC call: its channels are read from its
 // source (ipcMain.handle('x:y', …) / ipcMain.on('x:y', …)), stand-in handlers require it and hand the call over.
 // dev/boot-test.js checks the channels read match what register() really adds.
+// (round 29) also through a one-line helper of the file's own: `const h = (ch, fn) => ipcMain.handle(ch, …)`, h('x:y', …)
+function ipcChannels(src) {
+  const chans = [...src.matchAll(/ipcMain\.(handle|on)\(\s*'([^']+)'/g)].map((m) => ({ kind: m[1], ch: m[2] }));
+  for (const [, name, , kind] of src.matchAll(/const (\w+) = \((\w+)[^)]*\) => ipcMain\.(handle|on)\(\2\b/g)) {
+    for (const m of src.matchAll(new RegExp(`\\b${name}\\(\\s*'([^']+)'`, 'g'))) chans.push({ kind, ch: m[1] });
+  }
+  return chans;
+}
 function lazyIpc(file, register) {
   const src = fs.readFileSync(path.join(__dirname, file), 'utf8');
-  const chans = [...src.matchAll(/ipcMain\.(handle|on)\(\s*'([^']+)'/g)].map((m) => ({ kind: m[1], ch: m[2] }));
+  const chans = ipcChannels(src);
   const real = new Map(); // channel → handler / listeners
   let loaded = false;
   const load = () => {
@@ -501,54 +511,59 @@ function lazyIpc(file, register) {
   }
   return { load, channels: chans.map((c) => c.ch) };
 }
-fsapi.registerIpc(ipcMain, () => win);
-gamebridge.start(() => win);
-aemain.registerIpc(ipcMain, () => win, () => settings().aePath);
-require('./boardmain').registerIpc(ipcMain, () => win); // mood board: file import, website snapshots
-require('./capturemain').register(ipcMain, () => win, settings); // screenshots / recordings of Hearth itself, frame reader
-require('./rendersmain').register(ipcMain, () => win, settings); // the render queue: pause / resume / cancel ffmpeg jobs
-lazyIpc('adobemain.js', (m, ipc) => m.register(ipc, () => win, settings)); // Photoshop, Illustrator, Premiere, Media Encoder, InDesign scripting
-lazyIpc('deploymain.js', (m, ipc) => m.register(ipc, () => win, settings)); // publish on Vercel / Netlify / Cloudflare Pages / GitHub Pages
-lazyIpc('voicemain.js', (m, ipc) => m.register(ipc, () => win, { settings, dataDir: store.DATA_DIR })); // (round 23) voice: local speech-to-text (whisper), system voices
-lazyIpc('remotemain.js', (m, ipc) => m.register(ipc, () => win, { dataDir: store.DATA_DIR })); // (round 24) phone remote: a LAN-only server for the Lab / stage, off until /remote on
-lazyIpc('interopmain.js', (m, ipc) => m.register(ipc, () => win, { dataDir: store.DATA_DIR })); // (round 25) interop: OSC in / out, Ableton Link tempo, the OBS Browser Source page, obs-websocket; all off until used
-lazyIpc('publishmain.js', (m, ipc) => m.register(ipc, () => win, settings)); // (round 27) Ready to post: measures a finished video (ffmpeg) for the platform checks and cover ideas
-lazyIpc('motionmain.js', (m, ipc) => m.register(ipc, () => win, { dataDir: store.DATA_DIR })); // (round 25) camera / body tracking: MediaPipe's files, downloaded once after a yes; the camera permission on a Mac
-lazyIpc('firstrunmain.js', (m, ipc) => m.register(ipc, () => win, { readConfig, dataDir: store.DATA_DIR })); // (round 28) Check this computer: Mac permissions, Windows paths, chats' folders, the shown install commands
-lazyIpc('packsmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win })); // (round 28) packs: a scene and everything it uses as one .hearthpack file (zip-slip guard, size caps)
 // (round 28, packs) a .hearthpack opened from Finder / Explorer (or dropped on the app's icon) → the window's import card
 let packPending = process.argv.find((a) => /\.hearthpack$/i.test(a)) || null;
 const packOpen = (p) => { if (win && !win.isDestroyed()) { win.webContents.send('packs:open', p); if (win.isMinimized()) win.restore(); win.show(); win.focus(); } else packPending = p; };
 app.on('open-file', (e, p) => { if (/\.hearthpack$/i.test(p)) { e.preventDefault(); packOpen(p); } });
 ipcMain.handle('packs:pending', () => { const p = packPending; packPending = null; return p; });
-appsmain.register(ipcMain, () => win, { store, appshell }); // app windows (Meshy, Suno, Figma…), their downloads, the Meshy API
-syncmain.register(ipcMain, () => win, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, themePath: THEME_PATH, store }); // sync through a cloud drive folder
-require('./chatmediamain').register(ipcMain, { workspace: path.join(store.DATA_DIR, 'workspace') }); // pictures / videos a chat made, shown in the reply
-require('./reachmain').register(ipcMain, { dataDir: store.DATA_DIR, syncmain, folderMap: () => settings().reachFolders }); // (round 19) paths from the other computer, open / reveal / preview what a chat made
-require('./updatermain').register(ipcMain, { restart: () => appshell.restartApp(), getWin: () => win }); // ⬆ Update: pull main from the app's git checkout, reload / restart
-require('./devreportmain').register(ipcMain, { dataDir: store.DATA_DIR }); // (round 21) Report to the developer: gh issue / versions / crashes
-require('./assetsmain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win }); // (round 24) the asset library: folder scans + hashes off-thread, thumbnails cache, Poly Haven / ambientCG downloads
-require('./connectionsmain').register(ipcMain, { readConfig }); // (round 26) the owner's own MCP servers: Test, and what engines.js hands each AI
-require('./hooksmain').register(ipcMain, () => win); // (round 26) hooks: "when a file appears in a folder" (fs.watch, only while a hook asks)
+// (round 29, fastboot) every module the window talks to registers its IPC right after the window is made, in the same
+// tick (the page can't send anything before this returns), instead of before Electron's 'ready': the window opens that
+// much sooner and the requires below run while its page process starts. Order unchanged.
+function registerAfterWindow() {
+  fsapi.registerIpc(ipcMain, () => win);
+  gamebridge.start(() => win);
+  aemain.registerIpc(ipcMain, () => win, () => settings().aePath);
+  require('./boardmain').registerIpc(ipcMain, () => win); // mood board: file import, website snapshots
+  require('./capturemain').register(ipcMain, () => win, settings); // screenshots / recordings of Hearth itself, frame reader
+  lazyIpc('rendersmain.js', (m, ipc) => m.register(ipc, () => win, settings)); // the render queue: pause / resume / cancel ffmpeg jobs (round 29: on first use)
+  lazyIpc('adobemain.js', (m, ipc) => m.register(ipc, () => win, settings)); // Photoshop, Illustrator, Premiere, Media Encoder, InDesign scripting
+  lazyIpc('deploymain.js', (m, ipc) => m.register(ipc, () => win, settings)); // publish on Vercel / Netlify / Cloudflare Pages / GitHub Pages
+  lazyIpc('voicemain.js', (m, ipc) => m.register(ipc, () => win, { settings, dataDir: store.DATA_DIR })); // (round 23) voice: local speech-to-text (whisper), system voices
+  lazyIpc('remotemain.js', (m, ipc) => m.register(ipc, () => win, { dataDir: store.DATA_DIR })); // (round 24) phone remote: a LAN-only server for the Lab / stage, off until /remote on
+  lazyIpc('interopmain.js', (m, ipc) => m.register(ipc, () => win, { dataDir: store.DATA_DIR })); // (round 25) interop: OSC in / out, Ableton Link tempo, the OBS Browser Source page, obs-websocket; all off until used
+  lazyIpc('publishmain.js', (m, ipc) => m.register(ipc, () => win, settings)); // (round 27) Ready to post: measures a finished video (ffmpeg) for the platform checks and cover ideas
+  lazyIpc('motionmain.js', (m, ipc) => m.register(ipc, () => win, { dataDir: store.DATA_DIR })); // (round 25) camera / body tracking: MediaPipe's files, downloaded once after a yes; the camera permission on a Mac
+  lazyIpc('firstrunmain.js', (m, ipc) => m.register(ipc, () => win, { readConfig, dataDir: store.DATA_DIR })); // (round 28) Check this computer: Mac permissions, Windows paths, chats' folders, the shown install commands
+  lazyIpc('packsmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win })); // (round 28) packs: a scene and everything it uses as one .hearthpack file (zip-slip guard, size caps)
+  appsmain.register(ipcMain, () => win, { store, appshell }); // app windows (Meshy, Suno, Figma…), their downloads, the Meshy API
+  syncmain.register(ipcMain, () => win, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, themePath: THEME_PATH, store }); // sync through a cloud drive folder
+  require('./chatmediamain').register(ipcMain, { workspace: path.join(store.DATA_DIR, 'workspace') }); // pictures / videos a chat made, shown in the reply
+  require('./reachmain').register(ipcMain, { dataDir: store.DATA_DIR, syncmain, folderMap: () => settings().reachFolders }); // (round 19) paths from the other computer, open / reveal / preview what a chat made
+  lazyIpc('updatermain.js', (m, ipc) => m.register(ipc, { restart: () => appshell.restartApp(), getWin: () => win })); // ⬆ Update: pull main from the app's git checkout, reload / restart (round 29: on first use)
+  require('./devreportmain').register(ipcMain, { dataDir: store.DATA_DIR }); // (round 21) Report to the developer: gh issue / versions / crashes
+  lazyIpc('assetsmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win })); // (round 24) the asset library: folder scans + hashes off-thread, thumbnails cache, Poly Haven / ambientCG downloads (round 29: on first use)
+  require('./connectionsmain').register(ipcMain, { readConfig }); // (round 26) the owner's own MCP servers: Test, and what engines.js hands each AI
+  lazyIpc('hooksmain.js', (m, ipc) => m.register(ipc, () => win)); // (round 26) hooks: "when a file appears in a folder" (fs.watch, only while a hook asks; round 29: loaded then)
 
-// config.json / theme.css edited outside Hearth (an editor, sync): told to the window. (round 16) the OS tells us
-// (fs.watch, re-armed when an editor replaces the file); a calm stat every 5 s is the safety net (was a stat every
-// 400 ms per file); either way a change is sent once (size + modified time).
-for (const file of [CONFIG_PATH, THEME_PATH]) {
-  let seen = ''; let t = null; let w = null;
-  const stamp = () => { try { const st = fs.statSync(file); return `${st.size}:${st.mtimeMs}`; } catch { return ''; } };
-  seen = stamp();
-  const check = () => { const now = stamp(); if (now === seen) return; seen = now; send('config:changed', loadAll()); };
-  const soon = () => { clearTimeout(t); t = setTimeout(check, 60); };
-  const arm = () => { try { w?.close(); w = fs.watch(file, (ev) => { soon(); if (ev === 'rename') setTimeout(arm, 100); }); w.on('error', () => { w = null; }); } catch { w = null; } };
-  arm();
-  fs.watchFile(file, { interval: 5000 }, () => { if (!w) arm(); soon(); });
+  // config.json / theme.css edited outside Hearth (an editor, sync): told to the window. (round 16) the OS tells us
+  // (fs.watch, re-armed when an editor replaces the file); a calm stat every 5 s is the safety net (was a stat every
+  // 400 ms per file); either way a change is sent once (size + modified time).
+  for (const file of [CONFIG_PATH, THEME_PATH]) {
+    let seen = ''; let t = null; let w = null;
+    const stamp = () => { try { const st = fs.statSync(file); return `${st.size}:${st.mtimeMs}`; } catch { return ''; } };
+    seen = stamp();
+    const check = () => { const now = stamp(); if (now === seen) return; seen = now; send('config:changed', loadAll()); };
+    const soon = () => { clearTimeout(t); t = setTimeout(check, 60); };
+    const arm = () => { try { w?.close(); w = fs.watch(file, (ev) => { soon(); if (ev === 'rename') setTimeout(arm, 100); }); w.on('error', () => { w = null; }); } catch { w = null; } };
+    arm();
+    fs.watchFile(file, { interval: 5000 }, () => { if (!w) arm(); soon(); });
+  }
+  bgmain.register(() => win);
+  bgmain.subscribe((st) => { syncmain.pace?.(st); if (nowplaying.loaded) nowplaying.pace(st); appsmain.pace?.(st); });
+  syncmain.setBusy?.(() => (engines.loaded ? engines.busy?.() || 0 : 0)); // (no replies can run before the engines module is in)
+  require('./jankmain').register(ipcMain, bgmain, () => win); // (round 20) jank watch: main loop lag, GPU crashes, the owner's busy moments
+  syncmain.setHold?.(() => require('./jankmain').hold()); // a sync pass waits out a drag / typing burst
 }
-bgmain.register(() => win);
-bgmain.subscribe((st) => { syncmain.pace?.(st); if (nowplaying.loaded) nowplaying.pace(st); appsmain.pace?.(st); });
-syncmain.setBusy?.(() => (engines.loaded ? engines.busy?.() || 0 : 0)); // (no replies can run before the engines module is in)
-require('./jankmain').register(ipcMain, bgmain, () => win); // (round 20) jank watch: main loop lag, GPU crashes, the owner's busy moments
-syncmain.setHold?.(() => require('./jankmain').hold()); // a sync pass waits out a drag / typing burst
 // /background (sync.js): what Hearth is doing in the background right now, and what each of its processes costs
 ipcMain.handle('bg:state', () => {
   const procs = app.getAppMetrics().map((m) => ({ type: m.type, name: m.name || m.serviceName || '', cpu: Math.round((m.cpu?.percentCPUUsage || 0) * 10) / 10, mb: Math.round((m.memory?.workingSetSize || 0) / 1024) }));
@@ -557,8 +572,10 @@ ipcMain.handle('bg:state', () => {
 
 app.whenReady().then(async () => {
   bootMark('appReady');
+  createWindow(); // (round 29, fastboot) first: the page process starts while the rest is set up (same tick, so no IPC yet)
   // data moved here from another computer (or folder): point saved file locations at the new data folder
   try { const r = portable.fixMovedPaths(); if (r.moved) console.log(`Hearth: data moved from ${r.from}, fixed ${r.changed} paths in ${r.files} files`); } catch (err) { console.error('fixMovedPaths', err); }
+  registerAfterWindow();
   // "System sound" in the Lab: the sound of the whole computer (Windows), without a picker
   session.defaultSession.setDisplayMediaRequestHandler((_req, cb) => {
     desktopCapturer.getSources({ types: ['screen'] }).then(([src]) => cb(src ? { video: src, ...(process.platform === 'win32' ? { audio: 'loopback' } : {}) } : {})).catch(() => cb({}));
@@ -573,7 +590,6 @@ app.whenReady().then(async () => {
     ]));
     try { app.dock?.setIcon(appshell.ensureIcon()); } catch { /* the icon is optional */ }
   }
-  createWindow();
   // sync on: what the other computer did arrives before the window reads your data (≤ 1.5 s; see afterSync above)
   const syncFrom = performance.now();
   syncGate = syncmain.ready().catch(() => {}).then(() => { syncGate = null; bootTimes.syncMs = Math.round(performance.now() - syncFrom); });

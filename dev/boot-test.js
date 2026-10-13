@@ -16,7 +16,9 @@ const lazyFiles = [...main.matchAll(/lazyIpc\('([^']+)'/g)].map((m) => m[1]).fil
 ok(lazyFiles.length >= 2, 'main.js loads some modules lazily');
 for (const file of lazyFiles) {
   const src = fs.readFileSync(path.join(ROOT, file), 'utf8');
+  // (the same reading as main.js's ipcChannels: literal channels, and those through a `const h = (ch, fn) => ipcMain.handle(ch…` helper)
   const read = new Set([...src.matchAll(/ipcMain\.(handle|on)\(\s*'([^']+)'/g)].map((m) => m[2]));
+  for (const [, name] of src.matchAll(/const (\w+) = \((\w+)[^)]*\) => ipcMain\.(handle|on)\(\2\b/g)) for (const m of src.matchAll(new RegExp(`\\b${name}\\(\\s*'([^']+)'`, 'g'))) read.add(m[1]);
   const added = new Set();
   const fake = { handle: (ch) => added.add(ch), on: (ch) => added.add(ch), removeHandler() {} };
   const m = require(path.join(ROOT, file));

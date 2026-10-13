@@ -17,6 +17,7 @@ const SpeedResume = (() => {
   // ---------- noting where you are ----------
   function labNow() {
     try {
+      if (window.Lazy?.isIn && !Lazy.isIn('lab')) return null; // (round 29) not in yet: don't ask for it (fastboot)
       const api = typeof ThreeLab !== 'undefined' && ThreeLab.peek?.();
       if (!api) return null; // the Lab never opened this session: keep what the last one said
       const sceneId = ThreeLab.scenes?.currentId?.() || null;

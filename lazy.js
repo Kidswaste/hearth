@@ -367,11 +367,21 @@ const Lazy = (() => {
     next();
   }
   // a group asked for before the first screen is up waits for it (the first screen comes first), then goes first
+  // (round 29, fastboot) and after the window's first frame: a module that peeks at a lazy global while it builds the
+  // first screen (typeof ThreeLab) no longer has the whole group parsed in front of the first paint (the Lab: ≈ 0.4 s)
   const wanted = new Set();
+  let painted = false;
   function want(g) {
     if (hold) return;
-    if (readyAt) queueMicrotask(() => load(g.name).catch(() => {}));
+    if (painted) queueMicrotask(() => load(g.name).catch(() => {}));
     else wanted.add(g.name);
+  }
+  // one frame drawn (rAF, then the task after it), or 300 ms at most (a hidden window draws no frames)
+  function afterPaint(fn) {
+    let done = false;
+    const go = () => { if (done) return; done = true; clearTimeout(t); fn(); };
+    const t = setTimeout(go, 300);
+    try { requestAnimationFrame(() => setTimeout(go, 0)); } catch { /* no frames */ }
   }
   // (tests: localStorage 'lazy.hold' = '1' keeps every group a stand-in until it's used, to prove first use works)
   let hold = false;
@@ -381,8 +391,11 @@ const Lazy = (() => {
     readyAt = performance.now();
     try { namesAtReady = Commands.list().map((d) => d.name); } catch { /* no commands */ }
     if (hold) return;
-    for (const n of wanted) load(n).catch(() => {});
-    soon();
+    afterPaint(() => {
+      painted = true;
+      for (const n of wanted) load(n).catch(() => {});
+      soon();
+    });
   }
 
   // ---------- stand-ins ----------
@@ -409,6 +422,9 @@ const Lazy = (() => {
   return {
     load, state, start, at,
     loaded: (name) => groups.get(name)?.state === 'loaded',
+    // (round 29) in yet, without asking for it: false while the group is a stand-in or loading (true for a name that
+    // isn't lazy). For code that only decorates a lazy feature (`Lazy.isIn('lab') && ThreeLab…`): no miss, no load
+    isIn: (name) => !groups.has(name) || groups.get(name).state === 'loaded',
     // when(group, fn): fn() now if the group is in (or isn't lazy), else once it has loaded; for hooks an eager module
     // puts into a lazy one (window.Lazy?.when('lab', () => ThreeSeq.on(…)) ?? …)
     when(name, fn) {
