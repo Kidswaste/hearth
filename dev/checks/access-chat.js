@@ -4,6 +4,8 @@
 // note; `sudo` is refused with the password card; `curl` waits until the card times out (denied); the activity log
 // lists everything with Undo (an edit comes back, a new file goes to the Trash); Access.ask (other features) uses the
 // same card and remembers "Allow for this chat"; the badge shows the level.
+// (round 32) The AI's own setting: AI setup → Full makes a NEW chat write in the AI's folder; a write outside its
+// folders gets one line saying why (Allow this folder / Open AI setup); a chat may still set its own; Astra with Full writes.
 //   node dev/smoke.js --fake-engines --check-timeout 300000 --lib dev/checks/journey-lib.js --script dev/checks/access-chat.js
 const { step, wait, until, click } = J;
 const claude = H.claudeAgent();
@@ -149,6 +151,76 @@ step('/access read lowers it', Native.chatOf(claude.id).access.level === 'read')
 await Commands.tryRun('/access off', claude.id);
 await wait(200);
 step('/access off: no badge, nothing sent', Native.chatOf(claude.id).access.level === 'off' && !Native.view(claude.id).meta.querySelector('.access-badge'));
+
+// 6. (round 32) the AI's own setting: ⋯ AI setup → Files on this computer → Full, then a NEW chat writes in its folder
+// without a card; a write outside its folders gets one plain line in the chat with "Allow this folder" / "Open AI setup"
+const dirAI = `${dir}-ai`;
+const outside = `${dir}-outside`;
+await fsx.write(`${dirAI}/seed.txt`, 'seed');
+await fsx.write(`${outside}/seed.txt`, 'seed');
+await Lazy.load('options'); Options.open({ agentId: claude.id });
+await until(() => document.querySelector('aside.opt-sheet .access-ai select'), 5000);
+const aiSel = document.querySelector('aside.opt-sheet .access-ai select');
+step('AI setup has the AI\'s own Files row (a level for every chat)', Boolean(aiSel) && /Files on this computer/.test(aiSel.closest('.opt-row')?.textContent || ''));
+aiSel.value = 'full'; aiSel.dispatchEvent(new Event('change'));
+await until(() => H.agent(claude.id).fileAccess?.level === 'full', 5000);
+step('Full is saved on the AI, with its own folder', H.agent(claude.id).fileAccess?.level === 'full' && H.agent(claude.id).fileAccess.folders.length === 1, H.agent(claude.id).fileAccess);
+await Access.addAiFolder(claude.id, dirAI);
+await wait(300);
+step('AI setup lists its folders, ＋ Add a folder… and My home folder', document.querySelectorAll('aside.opt-sheet .access-ai .access-folder').length === 2 && [...document.querySelectorAll('aside.opt-sheet .access-ai button')].some((b) => /Add a folder/.test(b.textContent)) && [...document.querySelectorAll('aside.opt-sheet .access-ai button')].some((b) => b.textContent === 'My home folder'));
+document.querySelector('aside.opt-sheet .access-ai')?.scrollIntoView({ block: 'center' }); await wait(200);
+await smoke({ shot: '/tmp/access-ai-setup.png' });
+Options.hide();
+Native.newChat(claude.id);
+await wait(300);
+const runIn = async (agentId, calls, onCard) => {
+  Native.send(agentId, `access: ${JSON.stringify(calls)}`);
+  await wait(400);
+  const t = Date.now();
+  while (Native.isBusy(H.activeChat[agentId]) && Date.now() - t < 60000) { const c = [...document.querySelectorAll('.access-card:not(.answered)')].pop(); if (c && !c.dataset.handled) { c.dataset.handled = '1'; onCard?.(c); } await wait(150); }
+  await wait(900);
+  return Native.chatOf(agentId).messages.at(-1)?.text || '';
+};
+let cardsAI = 0;
+const r6 = await runIn(claude.id, [['Write', { file_path: `${dirAI}/new.txt`, content: 'from a new chat' }], ['Write', { file_path: `${outside}/nope.txt`, content: 'no' }]], () => { cardsAI += 1; });
+step('a NEW chat (no setting of its own) follows the AI: Full, the permission tool, the badge', !Native.chatOf(claude.id).access?.level && Access.effective(Native.chatOf(claude.id)).level === 'full' && /permission tool: yes/.test(r6) && /Full/.test(Native.view(claude.id).meta.querySelector('.access-badge')?.textContent || ''), r6.slice(0, 160));
+step('it writes a file in the AI\'s folder without asking', await fsx.read(`${dirAI}/new.txt`) === 'from a new chat');
+step('a write outside its folders asks (one card) and, unanswered, doesn\'t happen', cardsAI === 1 && !(await fsx.stat(`${outside}/nope.txt`)));
+await until(() => Native.view(claude.id).list.querySelector('.msg.note[data-note-id="access-refused"]'), 4000);
+const why = Native.view(claude.id).list.querySelector('.msg.note[data-note-id="access-refused"]');
+step('the chat says in one line why (outside its folders) with Allow this folder / Open AI setup', /outside the folders/.test(why?.textContent || '') && ['Allow this folder', 'Open AI setup'].every((l) => [...(why?.querySelectorAll('.note-acts button') || [])].some((b) => b.textContent === l)), why?.textContent);
+if (why) await click([...why.querySelectorAll('.note-acts button')].find((b) => b.textContent === 'Allow this folder'));
+await until(() => H.agent(claude.id).fileAccess.folders.includes(outside), 3000);
+step('Allow this folder adds it to the AI\'s folders', H.agent(claude.id).fileAccess.folders.includes(outside), H.agent(claude.id).fileAccess.folders);
+// a chat can still set its own (right-click ⋯ → Access), and go back to the AI's
+await Access.setLevel(claude.id, 'read');
+step('a chat may still set its own level', Access.effective(Native.chatOf(claude.id)).from === 'chat' && Access.effective(Native.chatOf(claude.id)).level === 'read');
+const r6b = await runIn(claude.id, [['Write', { file_path: `${dirAI}/ro.txt`, content: 'x' }]]);
+step('…and then it can\'t write (no edit tool at Read)', !(await fsx.stat(`${dirAI}/ro.txt`)) && /Write: denied/.test(r6b));
+Access.useAi(claude.id);
+step('"As in AI setup" brings the chat back to the AI\'s Full', Access.effective(Native.chatOf(claude.id)).from === 'ai' && Access.effective(Native.chatOf(claude.id)).level === 'full');
+
+// 7. Astra with Full (AI setup): Codex's sandbox writes in its folders; outside them the note says why
+const astra = H.agents().find((a) => a.mode === 'native' && a.engine === 'codex');
+if (astra) {
+  const dirA = `${dir}-astra`;
+  await fsx.write(`${dirA}/seed.txt`, 'seed');
+  await Access.setAiLevel(astra.id, 'full');
+  await Access.removeAiFolder(astra.id, 1);
+  await Access.addAiFolder(astra.id, dirA);
+  activate(astra.id);
+  Native.newChat(astra.id);
+  await wait(300);
+  const ra = await runIn(astra.id, [['Write', { file_path: `${dirA}/astra.txt`, content: 'astra wrote' }], ['Write', { file_path: `${outside}/astra-no.txt`, content: 'no' }]]);
+  step('Astra with Full (from AI setup): workspace-write on its folder, the write lands', /sandbox: workspace-write; roots: /.test(ra) && ra.includes(dirA) && await fsx.read(`${dirA}/astra.txt`) === 'astra wrote', ra.match(/sandbox:[^\n]*/)?.[0]);
+  await until(() => Native.view(astra.id).list.querySelector('.msg.note[data-note-id="access-refused"]'), 4000);
+  const whyA = Native.view(astra.id).list.querySelector('.msg.note[data-note-id="access-refused"]');
+  step('Astra\'s blocked write outside: not written, and the note says why', !(await fsx.stat(`${outside}/astra-no.txt`)) && /outside the folders/.test(whyA?.textContent || ''), whyA?.textContent);
+  delete H.agent(astra.id).fileAccess;
+  activate(claude.id);
+}
+delete H.agent(claude.id).fileAccess;
+await saveConfig();
 step('no duplicate command names', !Commands.duplicates?.().length, Commands.duplicates?.());
 step('no errors in the window', !J.out.errors.length, J.out.errors.slice(0, 3));
 return J.done();

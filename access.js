@@ -1,6 +1,9 @@
 // Chat file access (round 14): how a chat reads, writes, deletes and runs things on this computer, and how it asks.
-//   · One control per chat: ⋯ → Access (or /access): Off · Read · Read & write · Full, plus the folders it may use (its
-//     own project folder by default; add more with the picker, by dropping a folder on the chat or /access add).
+//   · One level per AI (round 32): ⋯ AI setup → Files on this computer: Off · Read · Read & write · Full, plus the
+//     folders it may use (its own project folder by default; ＋ Add a folder…, or My home folder). Every chat of that AI
+//     uses it; a chat may set its own instead (right-click ⋯ → Access, /access, dropping a folder on the chat).
+//   · When something is refused (it may only read, not run commands, a folder that isn't one of its own, Astra's
+//     sandbox) the chat gets one line saying why, with the fix: Allow edits / Allow commands / Allow this folder.
 //   · Claude's permission requests come through mcp/access-mcp.js (engines.js --permission-prompt-tool) as access_check:
 //     the classifier (access-rules.js) lets safe things through silently, refuses what the level doesn't cover or what
 //     needs a password, and shows an approval card in the chat for risky ones (Allow once · Allow for this chat · Deny,
@@ -30,14 +33,24 @@ const Access = (() => {
     return dirs;
   }
 
-  // ---------- settings (stored on the chat: chat.access = { level, folders, grants }) ----------
+  // ---------- settings ----------
+  // (round 32) Two places, so "Full" given once sticks: the AI's own setting (agent.fileAccess = { level, folders }, set
+  // in ⋯ AI setup → Files on this computer) is what every chat of that AI uses; a chat may set its own instead
+  // (right-click ⋯ → Access, /access): chat.access = { level, folders, grants }. Grants ("Allow for this chat") always
+  // live on the chat, also when it follows its AI (chat.access then holds only grants). Before round 32 the AI setup
+  // row changed only the open chat, so every new chat started back at off / read: the owner's "read only" report.
   const chatNow = (agentId) => (typeof Native !== 'undefined' ? Native.chatOf?.(agentId) : null);
   const agentOf = (agentId) => (typeof H !== 'undefined' ? H.agent(agentId) : null);
-  // What a chat has now: its own setting, else the agent's project folder (as before round 14), else off.
+  const aiOf = (agent) => (agent?.fileAccess && R.LEVELS.includes(agent.fileAccess.level) ? agent.fileAccess : null);
+  // What a chat has now: its own setting, else its AI's, else the agent's old project folder (as before round 14),
+  // else off. from: 'chat' | 'ai' | 'workspace' | 'none'.
   function effective(chat, agent = chat ? agentOf(chat.agentId) : null) {
-    if (chat?.access && R.LEVELS.includes(chat.access.level)) return { level: chat.access.level, folders: chat.access.folders || [], grants: chat.access.grants || [], own: true };
-    if (agent?.workspace) return { level: agent.engine === 'codex' && agent.codexFiles !== 'edit' ? 'read' : 'write', folders: [agent.workspace], grants: [], own: false };
-    return { level: 'off', folders: [], grants: [], own: false };
+    const grants = chat?.access?.grants || [];
+    if (chat?.access && R.LEVELS.includes(chat.access.level)) return { level: chat.access.level, folders: chat.access.folders || [], grants, own: true, from: 'chat' };
+    const ai = aiOf(agent);
+    if (ai) return { level: ai.level, folders: (ai.folders || []).slice(), grants, own: false, from: 'ai' };
+    if (agent?.workspace) return { level: agent.engine === 'codex' && agent.codexFiles !== 'edit' ? 'read' : 'write', folders: [agent.workspace], grants, own: false, from: 'workspace' };
+    return { level: 'off', folders: [], grants, own: false, from: 'none' };
   }
   const isOn = (agentId) => effective(chatNow(agentId), agentOf(agentId)).level !== 'off';
   const slug = (s) => String(s || 'chat').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32) || 'chat';
@@ -56,8 +69,11 @@ const Access = (() => {
     return Native.chatOf?.(agentId) || Native.ensureChat?.(agentId) || null;
   }
   function save(chat) { try { Native.save(chat); } catch { /* not a native chat */ } refreshBadge(chat.agentId); }
+  const normLevel = (level) => (level === 'rw' || level === 'edit' || /read\s*&\s*write/i.test(level) ? 'write' : level);
+  // "Allow for this chat": remembered on the chat without freezing its level (a chat that follows its AI keeps doing so)
+  function addGrant(chat, grant) { chat.access = { ...(chat.access || {}), grants: [...new Set([...(chat.access?.grants || []), grant])] }; save(chat); }
   async function setLevel(agentId, level, chat = null) {
-    if (level === 'rw' || level === 'edit' || /read\s*&\s*write/i.test(level)) level = 'write';
+    level = normLevel(level);
     if (!R.LEVELS.includes(level)) throw new Error(`Pick one of: ${R.LEVELS.join(', ')}`);
     chat = chatFor(agentId, chat);
     if (!chat) throw new Error('Open a chat first.');
@@ -92,10 +108,87 @@ const Access = (() => {
     save(chat);
     return gone;
   }
-  // What a run sends (native.js send options): nothing unless the chat set its own access.
+  // The chat goes back to its AI's setting (its "Allow for this chat" list stays).
+  function useAi(agentId, chat = null) {
+    chat = chatFor(agentId, chat);
+    if (!chat) return null;
+    const grants = chat.access?.grants || [];
+    if (grants.length) chat.access = { grants }; else delete chat.access;
+    save(chat);
+    const acc = effective(chat);
+    log(chat.id, { action: 'level', what: `Access → as in AI setup (${R.LEVEL_LABEL[acc.level]})`, result: 'set', by: 'you' });
+    return acc;
+  }
+
+  // ---------- the AI's own setting (round 32: ⋯ AI setup → Files on this computer) ----------
+  async function saveAgent(agent, patch) {
+    // the config watcher hands back fresh agent objects after a save: change the live one and the one in hand
+    for (const t of new Set([agent, agentOf(agent.id)].filter(Boolean))) Object.assign(t, patch);
+    if (typeof saveConfig === 'function') await saveConfig();
+    refreshBadge(agent.id);
+    document.dispatchEvent(new CustomEvent('hearth:file-access', { detail: { agentId: agent.id } })); // an open AI setup repaints
+  }
+  // An AI's own folder: its old project folder when it has one, else Hearth's projects/<AI name>.
+  async function aiDefaultFolder(agent) {
+    if (agent?.workspace && await window.hub.fs.stat(agent.workspace)) return agent.workspace;
+    const { data } = await paths();
+    const dir = join(data, 'projects', slug(agent?.name || 'ai'));
+    if (!await window.hub.fs.stat(dir)) await window.hub.fs.write(join(dir, '.hearth-project'), `${JSON.stringify({ agent: agent?.id, title: agent?.name, at: Date.now() })}\n`);
+    return dir;
+  }
+  const aiEffective = (agent) => effective(null, agent);
+  async function setAiLevel(agentId, level) {
+    level = normLevel(level);
+    if (!R.LEVELS.includes(level)) throw new Error(`Pick one of: ${R.LEVELS.join(', ')}`);
+    const agent = agentOf(agentId);
+    if (!agent) throw new Error('No such AI.');
+    let folders = aiEffective(agent).folders.slice(0, 12);
+    if (level !== 'off' && !folders.length) folders = [await aiDefaultFolder(agent)];
+    await saveAgent(agent, { fileAccess: { level, folders } });
+    log(chatNow(agentId)?.id || null, { action: 'level', what: `${agent.name}: file access → ${R.LEVEL_LABEL[level]} (every chat that doesn't set its own)`, result: 'set', by: 'you' });
+    return agentOf(agentId)?.fileAccess || agent.fileAccess;
+  }
+  async function addAiFolder(agentId, folder = null) {
+    const agent = agentOf(agentId);
+    if (!agent) throw new Error('No such AI.');
+    const cur = aiEffective(agent);
+    if (!folder) folder = await window.hub.pickFolder(cur.folders[0] || (await paths()).home, `A folder ${agent.name} may use`);
+    if (!folder) return null;
+    const st = await window.hub.fs.stat(folder);
+    if (!st?.isDir) throw new Error(`${folder} isn't a folder.`);
+    await saveAgent(agent, { fileAccess: { level: cur.level === 'off' ? 'read' : cur.level, folders: [...new Set([...cur.folders, folder])].slice(0, 12) } });
+    log(chatNow(agentId)?.id || null, { action: 'folder', what: `${agent.name} may use: ${folder}`, target: folder, result: 'set', by: 'you' });
+    return agentOf(agentId)?.fileAccess || agent.fileAccess;
+  }
+  async function removeAiFolder(agentId, which) {
+    const agent = agentOf(agentId);
+    if (!agent) throw new Error('No such AI.');
+    const cur = aiEffective(agent);
+    const i = /^\d+$/.test(String(which)) ? Number(which) - 1 : cur.folders.findIndex((f) => f === which || R.baseName(f) === which);
+    if (i < 0 || i >= cur.folders.length) throw new Error('No such folder.');
+    const [gone] = cur.folders.splice(i, 1);
+    await saveAgent(agent, { fileAccess: { level: cur.level, folders: cur.folders } });
+    return gone;
+  }
+  // "My home folder": everything under it, after a plain warning (Full there = files and commands anywhere in it).
+  async function addHome(agentId, { confirm = true } = {}) {
+    const agent = agentOf(agentId);
+    const { home } = await paths();
+    if (confirm && typeof Modal !== 'undefined') {
+      const yes = await Modal.confirm(`Let ${agent?.name || 'this AI'} use your whole home folder?`,
+        `Your home folder (${home}) holds your documents, photos and other projects. It could then read, and at Read & write or Full also change, any file in there. ${agent?.engine === 'codex' ? 'Astra can\'t ask first: its sandbox lets it change anything in there directly (no network), so a mistake can touch any file.' : 'Deletes still go to the Trash and risky things (deleting, installing, publishing, the network) still ask you first.'} Hearth never types passwords. Only do this if you want it to work anywhere on this computer.`,
+        { ok: 'Use my home folder', danger: true });
+      if (!yes) return null;
+    }
+    return addAiFolder(agentId, home);
+  }
+  // What a run sends (native.js send options): the chat's own setting, else its AI's. An AI with only an old project
+  // folder sends nothing (engines.js handles that one as before).
   function sendOptions(chat) {
-    if (!chat?.access || !R.LEVELS.includes(chat.access.level)) return {};
-    return { access: { level: chat.access.level, folders: (chat.access.folders || []).slice(0, 12) } };
+    if (!chat) return {};
+    const acc = effective(chat);
+    if (acc.from !== 'chat' && acc.from !== 'ai') return {};
+    return { access: { level: acc.level, folders: acc.folders.slice(0, 12) } };
   }
 
   // ---------- activity log ----------
@@ -241,6 +334,7 @@ const Access = (() => {
     const base = { id, tool, action: c.action, what: c.what, target: c.targets?.[0] || '', risk: c.risk, detail: tool === 'Bash' ? detail : '' };
     if (c.verdict === 'deny') {
       log(chatId, { ...base, result: 'refused', why: c.why });
+      if (!c.password && (c.action === 'write' || c.action === 'run')) refused(chatId, { kind: c.action === 'write' ? 'level' : 'run', target: c.targets?.[0] || '' });
       if (c.password) { passwordCard(agentId, chatId, String(input.command || '')); return denied(`${c.why}. Don't retry it: ask the user to run it themselves in a Terminal window (Hearth never types passwords).`); }
       return denied(`${c.why}.`);
     }
@@ -254,10 +348,12 @@ const Access = (() => {
         const r = await card({ agentId, chatId, action: c.action, what: c.what, where: c.where, why: c.why, detail, risk: c.risk, canAlways: Boolean(c.grant), trashNote: Boolean(c.trash) });
         if (!r.allow) {
           log(chatId, { ...base, result: r.timedOut ? 'timeout' : 'denied', why: c.why, by: 'you', ...(r.note ? { note: r.note } : {}) });
+          // nobody answered a write outside the folders: the note says why it didn't happen and offers the folder
+          if (r.timedOut && c.action === 'write' && c.targets?.[0] && !R.insideAny(R.norm(c.targets[0], '', d.home), acc.folders.map((f) => R.norm(f, '', d.home)))) refused(chatId, { kind: 'outside', target: c.targets[0] });
           return denied(r.timedOut ? 'The user didn\'t answer in time, so Hearth denied this. Ask in your reply instead.' : `The user denied this.${r.note ? ` Their note: ${r.note}` : ''}`);
         }
         by = 'you';
-        if (r.always && c.grant && chat) { chat.access = { ...effective(chat), grants: [...new Set([...acc.grants, c.grant])] }; delete chat.access.own; save(chat); }
+        if (r.always && c.grant && chat) addGrant(chat, c.grant);
         if (r.note) base.note = r.note;
       }
     }
@@ -291,23 +387,111 @@ const Access = (() => {
     const words = what || `${R.ACTION_WORD[action] || action}${target ? `: ${target}` : ''}`;
     if (chat?.access?.grants?.includes(grant)) { log(chatId, { action, what: words, target, result: 'approved', by: 'grant', risk }); return true; }
     const r = await card({ agentId, chatId, action, what: words, why: '', detail: typeof detail === 'string' ? detail : JSON.stringify(detail, null, 1), risk, canAlways: Boolean(chat), who });
-    if (r.allow && r.always && chat) { chat.access = { ...effective(chat), grants: [...new Set([...(chat.access?.grants || []), grant])] }; delete chat.access.own; save(chat); }
+    if (r.allow && r.always && chat) addGrant(chat, grant);
     log(chatId, { action, what: words, target, risk, result: r.allow ? 'approved' : r.timedOut ? 'timeout' : 'denied', by: 'you', ...(r.note ? { note: r.note } : {}) });
     return Boolean(r.allow);
+  }
+
+  // ---------- why something didn't happen (round 32): one line in the chat when the reply ends ----------
+  // kind: 'level' (it may only read) · 'run' (it may not run commands) · 'outside' (not one of its folders) ·
+  // 'sandbox' (Astra's sandbox blocked a command). The line names the reason and offers the one fix: Allow edits /
+  // Allow commands / Allow this folder, plus Open AI setup (where the AI's own setting lives).
+  const refusals = new Map(); // chatId → [{ kind, target }]
+  const writes = new Map(); // tool call id → file (Claude's edits: to read the engine's own refusals, e.g. without Hearth's check)
+  function refused(chatId, r) {
+    if (!chatId) return;
+    const list = refusals.get(chatId) || [];
+    if (!list.some((x) => x.kind === r.kind && R.dirName(x.target) === R.dirName(r.target))) list.push(r);
+    refusals.set(chatId, list.slice(-4));
+  }
+  // Hearth's own words for a refusal (the engines word theirs differently)
+  const DENIAL = /requested permissions|haven't granted|not allowed|permission denied|operation not permitted|read-only file system|sandbox|not writable|outside the (chat|allowed)/i;
+  async function whyNot(chat, target) {
+    const acc = effective(chat);
+    if (R.rank(acc.level) < R.rank('write')) return 'level';
+    const { home } = await paths();
+    if (/^([A-Za-z]:[\\/]|\/|~)/.test(String(target || '')) && !R.insideAny(R.norm(target, '', home), acc.folders.map((f) => R.norm(f, '', home)))) return 'outside';
+    return null;
+  }
+  // the nearest folder that exists, for "Allow this folder"
+  async function folderOf(target) {
+    let d = R.dirName(target);
+    for (let i = 0; i < 8 && d; i++) { const st = await window.hub.fs.stat(d).catch(() => null); if (st?.isDir) return d; const up = R.dirName(d); if (up === d) break; d = up; }
+    return null;
+  }
+  const absPath = (cmd) => (String(cmd || '').match(/(?:^|[\s"'=])((?:\/|[A-Za-z]:[\\/])[^\s"';|&<>]+)/) || [])[1] || '';
+  // ⋯ AI setup (options.js loads on first use)
+  const openSetup = (agentId) => Promise.resolve(window.Lazy?.load?.('options')).then(() => (typeof Options !== 'undefined' ? Options.open({ agentId }) : panel(agentId))).catch(() => panel(agentId));
+  async function refusalNote(chatId) {
+    const list = refusals.get(chatId);
+    refusals.delete(chatId);
+    if (!list?.length || typeof Native === 'undefined') return;
+    const chat = await Native.load(chatId).catch(() => null);
+    if (!chat) return;
+    const agentId = chat.agentId;
+    const name = agentOf(agentId)?.name || 'The AI';
+    const acc = effective(chat);
+    const mine = acc.from === 'chat';
+    const r = list.find((x) => x.kind === 'outside') || list[0];
+    const file = r.target ? `**${R.baseName(r.target)}**` : 'a file';
+    const dir = r.kind === 'outside' || r.kind === 'sandbox' ? await folderOf(r.target) : null;
+    const more = list.length > 1 ? ` (+${list.length - 1} more in the log)` : '';
+    const text = {
+      level: `✎ ${name} couldn't change ${file}: ${mine ? 'this chat' : 'it'} may only read files (${R.LEVEL_LABEL[acc.level]}).${more}`,
+      run: `▶ ${name} couldn't run a command: ${mine ? 'this chat' : 'it'} may read and edit files but not run commands (${R.LEVEL_LABEL[acc.level]}).${more}`,
+      outside: `✎ ${name} couldn't write ${file}: it's outside the folders ${mine ? 'this chat' : 'it'} may use${dir ? ` (\`${short(dir, 70)}\` isn't one of them)` : ''}.${more}`,
+      sandbox: `✎ ${name}'s sandbox blocked a change${dir ? ` in \`${short(dir, 70)}\`` : ''}: it may only change files in its own folders.${more}`,
+    }[r.kind];
+    const raise = (level) => (mine ? setLevel(agentId, level, chat) : setAiLevel(agentId, level));
+    const allowFolder = (p) => (mine ? addFolder(agentId, p, chat) : addAiFolder(agentId, p));
+    const done = (box, msg) => { box?.remove?.(); toast(msg, { timeout: 2200 }); };
+    const acts = [];
+    if (r.kind === 'level') acts.push({ label: 'Allow edits', title: `${R.LEVEL_LABEL.write}: ${R.LEVEL_HINT.write}`, run: (box) => raise('write').then(() => done(box, 'Edits allowed: ask again')).catch((err) => toast(err.message, { type: 'error' })) });
+    if (r.kind === 'run') acts.push({ label: 'Allow commands', title: `${R.LEVEL_LABEL.full}: ${R.LEVEL_HINT.full}`, run: (box) => raise('full').then(() => done(box, 'Commands allowed (risky ones still ask): ask again')).catch((err) => toast(err.message, { type: 'error' })) });
+    if (dir) acts.push({ label: 'Allow this folder', title: dir, run: (box) => allowFolder(dir).then(() => done(box, `${R.baseName(dir)} added: ask again`)).catch((err) => toast(err.message, { type: 'error' })) });
+    acts.push({ label: 'Open AI setup', title: 'Files on this computer: the level and folders for every chat with this AI', run: () => openSetup(agentId) });
+    if (H.activeChat?.[agentId] === chatId && Native.note) Native.note(agentId, text, { id: 'access-refused', actions: acts });
+    else toast(text.replace(/\*\*|`/g, ''), { timeout: 8000, action: { label: 'Open', fn: () => Native.open(agentId, chatId) } });
   }
 
   // ---------- what the engines report (reads; Astra's commands and edits) + Astra's .hearth-trash ----------
   async function onEngineEvent(e) {
     if (!e?.chatId) return;
+    // a refusal the engine reported itself (Astra's sandbox; Claude without Hearth's check): why, for the note
+    if (e.access?.failed) {
+      const chat = await Native.load(e.chatId).catch(() => null);
+      if (!chat) return;
+      const a = e.access;
+      for (const ch of a.changes || [{ path: a.target }]) {
+        const target = a.action === 'run' ? absPath(a.target) : ch.path;
+        const kind = a.action === 'run' ? (R.rank(effective(chat).level) < R.rank('write') ? 'level' : 'sandbox') : (await whyNot(chat, target)) || 'sandbox';
+        log(e.chatId, { action: a.action === 'run' ? 'run' : 'write', what: a.action === 'run' ? `Blocked: ${short(a.target, 140)}` : `Not written: ${R.baseName(target)}`, target: a.action === 'run' ? '' : target, result: 'refused', why: { level: 'read-only level', outside: 'outside its folders', sandbox: 'its sandbox' }[kind], tool: a.tool });
+        refused(e.chatId, { kind, target });
+      }
+      return;
+    }
+    if (e.type === 'step' && e.id && writes.has(e.id)) {
+      const w = writes.get(e.id);
+      writes.delete(e.id);
+      if (e.ok === false && DENIAL.test(String(e.summary || '')) && !/user denied|didn't answer/i.test(String(e.summary || ''))) {
+        const chat = await Native.load(e.chatId).catch(() => null);
+        const kind = chat ? await whyNot(chat, w) : null;
+        if (kind) refused(e.chatId, { kind, target: w });
+      }
+      return;
+    }
     if (e.type === 'tool' && e.access) {
       const chat = await Native.load(e.chatId).catch(() => null);
-      if (!chat || effective(chat).level === 'off') return;
+      if (!chat) return;
+      if (e.access.action === 'write' && e.access.id && e.access.target) { writes.set(e.access.id, e.access.target); if (writes.size > 200) writes.delete(writes.keys().next().value); }
+      if (effective(chat).level === 'off') return;
       const a = e.access;
       if (a.changes) { for (const ch of a.changes) log(e.chatId, { action: ch.kind === 'delete' ? 'delete' : 'write', what: `${ch.kind === 'add' ? 'Created' : ch.kind === 'delete' ? 'Deleted' : 'Edited'} ${R.baseName(ch.path)}`, target: ch.path, result: 'done', tool: a.tool }); return; }
       log(e.chatId, { id: a.id, action: a.action, what: a.action === 'run' ? `Run: ${short(a.target, 140)}` : `${a.tool} ${R.baseName(a.target)}`, target: a.action === 'run' ? '' : a.target, result: 'done', tool: a.tool, ...(a.action === 'run' ? { detail: a.target } : {}) });
       return;
     }
     if (e.type === 'done' || e.type === 'error' || e.type === 'stopped') {
+      if (refusals.has(e.chatId)) setTimeout(() => refusalNote(e.chatId).catch((err) => console.warn(err)), 300); // after the reply settles
       const chat = await Native.load(e.chatId).catch(() => null);
       const acc = chat ? effective(chat) : null;
       if (!acc || R.rank(acc.level) < R.rank('write') || agentOf(chat.agentId)?.engine !== 'codex') return;
@@ -330,18 +514,23 @@ const Access = (() => {
     if (!v?.meta) return;
     const acc = effective(chat, agentOf(agentId));
     const old = v.meta.querySelector('.access-badge');
-    if (acc.level === 'off' || !acc.own) { old?.remove(); return; }
+    if (acc.level === 'off' || (acc.from !== 'chat' && acc.from !== 'ai')) { old?.remove(); return; }
     // (round 16) the same badge stays as it is (every redraw of the chat used to replace it)
-    const text = badgeText(acc); const title = `File access: ${R.LEVEL_LABEL[acc.level]} (${R.LEVEL_HINT[acc.level]})\n${acc.folders.join('\n') || 'no folder'}\nClick to change`;
+    const text = badgeText(acc); const title = `File access: ${R.LEVEL_LABEL[acc.level]} (${R.LEVEL_HINT[acc.level]}) · ${acc.from === 'chat' ? 'this chat\'s own setting' : 'from AI setup'}\n${acc.folders.join('\n') || 'no folder'}\nClick to change`;
     if (old && old.textContent === text && old.title === title) return;
     old?.remove();
     v.meta.append(el('button', { type: 'button', class: 'access-badge', text, title, on: { click: (ev) => { ev.stopPropagation(); panel(agentId); } } }));
   }
-  // The chat ⋯ menu entry: the four levels in a submenu, then folders, the log and the rest in the panel.
+  // The chat ⋯ menu entry: "As in AI setup" (the default), or this chat's own level, then folders, the log and the
+  // rest in the panel.
   function menuItem(agentId, chat) {
-    const acc = effective(chat, agentOf(agentId));
-    return { label: 'Access', hint: R.LEVEL_LABEL[acc.level], items: () => [
-      ...R.LEVELS.map((l) => ({ label: R.LEVEL_LABEL[l], hint: R.LEVEL_HINT[l], checked: acc.level === l, action: () => setLevel(agentId, l, chat).then(() => toast(`Access: ${R.LEVEL_LABEL[l]}`, { timeout: 1600 })).catch((err) => toast(err.message, { type: 'error' })) })),
+    const agent = agentOf(agentId);
+    const acc = effective(chat, agent);
+    const ai = aiEffective(agent);
+    const own = acc.from === 'chat';
+    return { label: 'Access', hint: `${R.LEVEL_LABEL[acc.level]}${own ? ' (this chat)' : ''}`, items: () => [
+      { label: `As in AI setup (${R.LEVEL_LABEL[ai.level]})`, hint: 'every chat with this AI', checked: !own, action: () => { if (chat || chatNow(agentId)) { useAi(agentId, chat); toast(`Access: as in AI setup (${R.LEVEL_LABEL[ai.level]})`, { timeout: 1600 }); } } },
+      ...R.LEVELS.map((l) => ({ label: R.LEVEL_LABEL[l], hint: `only this chat: ${R.LEVEL_HINT[l]}`, checked: own && acc.level === l, action: () => setLevel(agentId, l, chat).then(() => toast(`This chat: ${R.LEVEL_LABEL[l]}`, { timeout: 1600 })).catch((err) => toast(err.message, { type: 'error' })) })),
       '-',
       { label: 'Folders, permissions and log…', key: '/access', action: () => panel(agentId) },
       { label: 'Activity log', key: '/access log', action: () => logPanel(agentId) },
@@ -372,11 +561,57 @@ const Access = (() => {
       const grants = acc.grants.length ? el('div', { class: 'access-grants' }, el('h4', { text: 'Allowed without asking in this chat' }), acc.grants.map((g) => el('div', { class: 'access-grant' }, el('span', { text: g.replace(/^ext:/, '') }), el('button', { type: 'button', class: 'ghost small', text: 'Ask again', on: { click: () => { chat.access.grants = chat.access.grants.filter((x) => x !== g); save(chat); paint(); } } })))) : null;
       const recent = el('div', { class: 'access-recent' }, el('h4', {}, 'Recent activity ', el('button', { type: 'button', class: 'link', text: 'full log', on: { click: () => logPanel(agentId) } })));
       entries(chat.id).then((list) => { const last = list.slice(-6).reverse(); recent.append(...(last.length ? last.map((e) => logRow(chat.id, e, paint)) : [el('p', { class: 'hint', text: 'Nothing yet.' })])); });
-      body.replaceChildren(seg, el('h4', { text: 'Folders' }), folders, grants || '', recent,
-        el('p', { class: 'hint access-foot', text: acc.level === 'full' ? 'Safe things inside the folders happen silently; deletes, moves, installs, network, publishing and anything outside the folders show a card here first. Deletes go to the Trash.' : 'Risky things show a card in the chat first. Change it any time: /access read · write · full · off' }));
+      // (round 32) whose setting this is: the AI's (AI setup, every chat) or this chat's own
+      const ai = aiEffective(agentOf(agentId));
+      const whose = el('p', { class: 'hint access-whose' }, acc.from === 'chat'
+        ? ['This chat has its own setting. ', el('button', { type: 'button', class: 'link', text: `Use AI setup's instead (${R.LEVEL_LABEL[ai.level]})`, on: { click: () => { useAi(agentId, chat); paint(); } } })]
+        : ['From AI setup: every chat with this AI uses it. Picking a level here sets this chat only. ', el('button', { type: 'button', class: 'link', text: 'Open AI setup', on: { click: () => { document.querySelector('.access-modal')?.close(); openSetup(agentId); } } })]);
+      body.replaceChildren(seg, whose, el('h4', { text: 'Folders' }), folders, grants || '', recent,
+        el('p', { class: 'hint access-foot', text: acc.level === 'full' ? 'Safe things inside the folders happen silently; deletes, moves, installs, network, publishing and anything outside the folders show a card here first. Deletes go to the Trash.' : 'Risky things show a card in the chat first. Full adds commands; anything outside the folders asks first.' }));
     };
     paint();
     return dialog(`Access · ${short(chat.title, 40)}`, body);
+  }
+  // (round 32) ⋯ AI setup → "Files on this computer": the AI's own level and folders, used by every chat of that AI
+  // unless a chat sets its own (then a line says so, with "Use this for this chat too").
+  function aiSection(agentId, { repaint } = {}) {
+    const agent = agentOf(agentId);
+    const box = el('div', { class: 'access-ai' });
+    if (!agent) return box;
+    const again = () => { paint(); repaint?.(); };
+    const fail = (err) => toast(err.message, { type: 'error' });
+    const paint = () => {
+      const a = agentOf(agentId) || agent;
+      const acc = aiEffective(a);
+      const home = dirs?.home || '';
+      const sel = el('select', { class: 'opt-pick', attrs: { 'aria-label': 'Files on this computer' } }, R.LEVELS.map((l) => el('option', { value: l, text: R.LEVEL_LABEL[l], selected: acc.level === l, title: R.LEVEL_HINT[l] })));
+      sel.addEventListener('change', () => setAiLevel(agentId, sel.value).then(() => { toast(`${a.name}: ${R.LEVEL_LABEL[sel.value]} in every chat`, { timeout: 1800 }); again(); }).catch(fail));
+      const row = el('div', { class: 'opt-row', title: 'What it may do with files on this computer, in every chat with it (it asks before anything risky)' }, el('span', { class: 'opt-label', text: 'Files on this computer' }), sel);
+      const kids = [row];
+      if (acc.level !== 'off') {
+        kids.push(el('p', { class: 'opt-hint access-ai-hint', text: `${{ read: 'It reads files in these folders', write: 'It reads and edits files in these folders', full: a.engine === 'codex' ? 'It reads, edits and runs commands in these folders (sandboxed, no network)' : 'It reads, edits and runs commands in these folders; deletes go to the Trash and risky things ask you first' }[acc.level]}. ${a.engine === 'codex' ? 'Anywhere else is blocked.' : 'Anywhere else it asks first.'}` }));
+        kids.push(el('div', { class: 'access-ai-folders' }, acc.folders.map((f, i) => el('div', { class: `access-folder${home && f === home ? ' access-home' : ''}` },
+          el('span', { class: 'access-fname', text: `${home && f === home ? '⚠ ' : '📁 '}${home && f === home ? 'Your home folder' : R.baseName(f)}`, title: f }),
+          el('span', { class: 'access-fpath', text: f.length > 44 ? `…${f.slice(-43)}` : f }),
+          acc.from === 'ai' ? el('button', { type: 'button', class: 'ghost small', text: '✕', title: 'It stops using this folder (the folder stays)', on: { click: () => removeAiFolder(agentId, i + 1).then(again).catch(fail) } }) : null))));
+        kids.push(el('div', { class: 'opt-row access-ai-add' },
+          el('button', { type: 'button', class: 'ghost small', text: '＋ Add a folder…', on: { click: () => addAiFolder(agentId).then(again).catch(fail) } }),
+          home && acc.folders.includes(home) ? null : el('button', { type: 'button', class: 'ghost small', text: 'My home folder', title: 'Everywhere in your home folder (asks you first)', on: { click: () => addHome(agentId).then((r) => { if (r) again(); }).catch(fail) } })));
+      }
+      // the open chat set its own: say so, one click follows the AI again
+      const chat = chatNow(agentId);
+      if (chat && effective(chat, a).from === 'chat') {
+        const own = effective(chat, a);
+        kids.push(el('p', { class: 'opt-hint access-ai-own' }, `The open chat has its own setting (${R.LEVEL_LABEL[own.level]}). `, el('button', { type: 'button', class: 'ghost small', text: 'Use this one there too', on: { click: () => { useAi(agentId, chat); again(); } } })));
+      }
+      box.replaceChildren(...kids);
+    };
+    paint();
+    if (!dirs) paths().then(paint).catch(() => {});
+    // a change from elsewhere (the chat's "Allow this folder", a command) shows here too
+    const onChange = (e) => { if (!box.isConnected) document.removeEventListener('hearth:file-access', onChange); else if (e.detail?.agentId === agentId) paint(); };
+    document.addEventListener('hearth:file-access', onChange);
+    return box;
   }
   const RESULT = { allowed: '✓', approved: '✓ you', denied: '✕ denied', refused: '⛔ refused', timeout: '⏱ no answer', trashed: '🗑 Trash', rewritten: '↪ Trash', done: '·', set: '·', restored: '↶', undone: '↶' };
   function logRow(chatId, e, after) {
@@ -403,7 +638,7 @@ const Access = (() => {
   // ---------- chat command ----------
   function summary(chat) {
     const acc = effective(chat);
-    return `**Access: ${R.LEVEL_LABEL[acc.level]}** (${R.LEVEL_HINT[acc.level]})${acc.own || acc.level === 'off' ? '' : ' · from the agent\'s project folder'}\n${acc.folders.map((f, i) => `${i + 1}. \`${f}\``).join('\n') || 'No folders.'}${acc.grants.length ? `\nAllowed without asking: ${acc.grants.map((g) => `\`${g.replace(/^ext:/, '')}\``).join(', ')}` : ''}`;
+    return `**Access: ${R.LEVEL_LABEL[acc.level]}** (${R.LEVEL_HINT[acc.level]})${{ chat: ' · this chat\'s own setting', ai: ' · from AI setup', workspace: ' · from the agent\'s project folder' }[acc.from] || ''}\n${acc.folders.map((f, i) => `${i + 1}. \`${f}\``).join('\n') || 'No folders.'}${acc.grants.length ? `\nAllowed without asking: ${acc.grants.map((g) => `\`${g.replace(/^ext:/, '')}\``).join(', ')}` : ''}`;
   }
   async function command(args, ctx) {
     args = String(args || '').trim();
@@ -444,6 +679,8 @@ const Access = (() => {
       });
     }
     window.hub.onEngineEvent((e) => { onEngineEvent(e).catch((err) => console.warn(err)); });
+    // (round 32) steps (a tool call's result) come on the live channel: Claude's own refusals, Astra's blocked commands
+    window.hub.onEngineLive?.((e) => { if (e?.type === 'step' && (e.access?.failed || writes.has(e.id))) onEngineEvent(e).catch((err) => console.warn(err)); });
     if (typeof Native !== 'undefined' && Native.hooks?.render) {
       Native.hooks.render.push(paintBadge);
       // the cards go when the reply ends; the reply keeps one small line of what it did with your files (→ the log)
@@ -478,6 +715,8 @@ const Access = (() => {
 
   return {
     ask, check, trash, effective, sendOptions, setLevel, addFolder, removeFolder, isOn, menuItem, panel, logPanel, entries, undo, log,
+    // (round 32) the AI's own setting (AI setup), and a chat going back to it
+    aiEffective, setAiLevel, addAiFolder, removeAiFolder, addHome, useAi, aiSection,
     // native.js: a folder dropped on a chat becomes one of its folders
     async maybeFolder(agentId, p) {
       const st = await window.hub.fs.stat(p).catch(() => null);

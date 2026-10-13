@@ -288,7 +288,7 @@ const AccessRules = (() => {
     if (WRITE_TOOLS.has(tool)) {
       const p = norm(file, base, home);
       const what = `${tool === 'Write' ? 'Write' : 'Edit'} ${baseName(p)}`;
-      if (rank(L) < rank('write')) return r({ verdict: 'deny', action: 'write', what, targets: [p], where: dirName(p), why: 'This chat can only read files (the user can raise it with /access write)' });
+      if (rank(L) < rank('write')) return r({ verdict: 'deny', action: 'write', what, targets: [p], where: dirName(p), why: 'This chat can only read files (the user can allow edits in ⋯ AI setup → Files on this computer)' });
       if (!p) return r({ verdict: 'ask', risk: 'high', action: 'write', what, why: 'no file named' });
       if (insideAny(p, fs0)) return r({ action: 'write', what, targets: [p], where: dirName(p), backup: p });
       return r({ verdict: 'ask', risk: 'high', action: 'write', what, targets: [p], where: dirName(p), backup: p, why: 'writes outside the chat\'s folders', grant: `write:${dirName(p)}` });
@@ -296,7 +296,7 @@ const AccessRules = (() => {
     if (tool === 'Bash' || tool === 'PowerShell') {
       const cmd = String(input.command || '');
       const what = `Run: ${redact(cmd).replace(/\s+/g, ' ').slice(0, 140)}`;
-      if (rank(L) < rank('full')) return r({ verdict: 'deny', action: 'run', what, why: 'This chat can\'t run commands (the user can raise it with /access full)' });
+      if (rank(L) < rank('full')) return r({ verdict: 'deny', action: 'run', what, why: 'This chat can\'t run commands (the user can choose Full in ⋯ AI setup → Files on this computer)' });
       const found = [];
       const sh = classifyShell(cmd, { base, folders: fs0, home: norm(home), cwd: base, complex: false }, found);
       const worst = found.reduce((a, f) => (!a || ORDER[f.verdict] > ORDER[a.verdict] || (ORDER[f.verdict] === ORDER[a.verdict] && f.risk === 'high' && a.risk !== 'high') ? f : a), null);

@@ -182,7 +182,7 @@ const strip = (args) => args.filter((x, i) => args[i - 1] !== '--session-id' && 
   fs.writeFileSync(info, JSON.stringify({ port: hub.address().port, token: 't' }));
   const turn = (agent, text, options = {}) => new Promise((resolve) => {
     const events = [];
-    engines.send({ agent, chatId: 'chat-1', session: {}, text, options }, (e) => { events.push(e); if (!['delta', 'tool', 'thinking', 'progress'].includes(e.type)) resolve({ events, end: e, text: events.filter((x) => x.type === 'delta').map((x) => x.text).join('') }); });
+    engines.send({ agent, chatId: 'chat-1', session: {}, text, options }, (e) => { events.push(e); if (!['delta', 'tool', 'thinking', 'progress'].includes(e.type)) resolve({ events, end: e, text: events.filter((x) => x.type === 'delta').map((x) => x.text).join('') }); }, (e) => events.push(e));
   });
   fs.writeFileSync(path.join(proj, 'a.txt'), 'alpha');
   fs.writeFileSync(path.join(proj, 'c.txt'), 'charlie');
@@ -226,9 +226,14 @@ const strip = (args) => args.filter((x, i) => args[i - 1] !== '--session-id' && 
   assert(fs.existsSync(path.join(proj, 'f.txt')) && !fs.existsSync(path.join(art, 'g.txt')));
   const cev = r.events.filter((e) => e.type === 'tool' && e.access);
   assert(cev.some((e) => e.access.changes?.[0]?.kind === 'add') && cev.some((e) => e.access.action === 'run'));
+  // (round 32) the blocked write outside the folders is reported too (access.js tells the owner why)
+  assert(cev.some((e) => e.access.failed && e.access.changes?.[0]?.path === path.join(art, 'g.txt')), JSON.stringify(cev.map((e) => e.access)));
   r = await turn(astra, line([['Bash', { command: `touch "${path.join(proj, 'h.txt')}"` }]]), { access: { level: 'read', folders: [proj] } });
   assert(/sandbox: read-only/.test(r.end.text) && /shell: on/.test(r.end.text) && !fs.existsSync(path.join(proj, 'h.txt')), r.end.text);
-  ok('Codex runs under the mapped sandbox (writes only in the folders, read-only at Read) and reports edits / commands for the log');
+  assert(r.events.some((e) => e.type === 'step' && e.access?.failed && e.access.action === 'run'), 'a command the sandbox blocked is reported');
+  r = await turn(astra, line([['Write', { file_path: path.join(proj, 'full.txt'), content: 'full' }], ['Bash', { command: `touch "${path.join(proj, 'full2.txt')}"` }]]), { access: { level: 'full', folders: [proj] } });
+  assert(/sandbox: workspace-write/.test(r.end.text) && fs.existsSync(path.join(proj, 'full.txt')) && fs.existsSync(path.join(proj, 'full2.txt')), r.end.text);
+  ok('Codex runs under the mapped sandbox (writes only in the folders, read-only at Read, Full writes and runs) and reports edits, commands and refusals for the log');
 
   r = await turn(claude, line([['Write', { file_path: path.join(proj, 'i.txt'), content: 'x' }]]), { access, lean: true });
   assert(/Write: denied · No such tool/.test(r.end.text));

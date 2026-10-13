@@ -973,3 +973,8 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ The seamless check compares the loop's last frame with its first (publishkit's loop check): **≈ seamless** or **a visible jump**, with one click to fix it (blend the last beat into the first: the preview fades its seam, renders cross-fade it), or the director (cost first).
 - ✓ ⇪ Render the loop: a perfect-loop MP4 (or GIF) of exactly the loop, with its bars of the song. Ready to post's loop fix renders a Lab render's scene again as a perfect loop.
 - ○ Tested with fake engines on a software GPU (`sh dev/run-checks.sh perfectloop`, `node dev/perfectloop-test.js`); `Date.now()` and live sound don't follow the loop.
+## 🔓 File access per AI (round 32, access2: docs/upgrades/access2.md)
+- ✓ Fixed "chats are read only even with Full": ⋯ AI setup → Files on this computer is now the AI's own setting, used by every chat with it (it used to change only the open chat). A chat can still set its own (right-click ⋯ → Access; "As in AI setup" goes back).
+- ✓ AI setup lists the folders it may use: ＋ Add a folder…, ✕, and My home folder (with a clear warning). Full = files and commands there; deletes to the Trash; risky things still ask (Claude).
+- ✓ A refused change says why in one line in the chat (outside its folders · read only · no commands · Astra's sandbox) with Allow this folder / Allow edits / Allow commands / Open AI setup.
+- ○ Tested with fake engines (`sh dev/run-checks.sh access-chat options access-astra`, `node dev/access-test.js`); Astra can't ask, so outside its folders it is blocked, not asked.

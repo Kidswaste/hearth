@@ -13,7 +13,7 @@ try {
   store.set('commands.hidden', true);
   const C = H.claudeAgent(); activate(C.id); await until(() => Native.hasView(C.id)); Native.newChat(C.id); await wait(200);
   const A = () => H.agent(C.id); // saveConfig may hand back fresh agent objects
-  const keep = JSON.stringify({ systemPrompt: C.systemPrompt, instructions: C.instructions, boardTools: C.boardTools, effort: C.effort, selfReview: C.selfReview });
+  const keep = JSON.stringify({ systemPrompt: C.systemPrompt, instructions: C.instructions, boardTools: C.boardTools, effort: C.effort, selfReview: C.selfReview, fileAccess: C.fileAccess });
 
   // "/" in the chat box: no command menu
   const box = Native.view(C.id).root.querySelector('textarea');
@@ -52,6 +52,13 @@ try {
   rowOf('Mood board').querySelector('.opt-switch').click(); await wait(300);
   ok(Boolean(A().boardTools) === was, 'and back');
   ok(rowOf('Files on this computer')?.querySelector('select'), 'files access is there');
+  // (round 32) the row sets the AI's own level (every chat), not just the open chat
+  const fsel = rowOf('Files on this computer')?.querySelector('select');
+  if (fsel) { fsel.value = 'full'; fsel.dispatchEvent(new Event('change')); }
+  ok(await until(() => A().fileAccess?.level === 'full' && A().fileAccess.folders?.length), 'Files → Full is saved on the AI, with a folder');
+  ok(await until(() => [...S().querySelectorAll('.access-ai button')].some((b) => /Add a folder/.test(b.textContent))), 'its folders: ＋ Add a folder…');
+  Native.newChat(C.id); await wait(200);
+  ok(Access.effective(Native.chatOf(C.id) || { agentId: C.id }).level === 'full' && Access.sendOptions(Native.chatOf(C.id) || { agentId: C.id }).access?.level === 'full', 'a new chat gets Full (and sends it)');
   [...secOf('How hard it thinks').querySelectorAll('button')].find((b) => b.textContent === 'Deep').click(); await wait(300);
   ok(A().effort === 'high', 'Deep → effort high');
 
