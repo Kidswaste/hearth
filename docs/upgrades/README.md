@@ -113,7 +113,7 @@ line count is lower than the number of upgrades).
 | Ready to post (round 27): 📮 on a finished render, in the renders list or the ◎ mission "Get it ready to post": checks for YouTube Shorts / TikTok / Reels / YouTube 16:9 / Instagram square (shape, size, length limits, bitrate, codec, loudness, detail under the app's buttons with a ▦ safe-area overlay, the loop), fixes through the render queue (9:16 copy, -14 LUFS, seamless loop, cut to the limit), cover ideas + words on the cover, title / description / hashtags written by the chat's AI, a tidy post folder; never uploads | [publishkit.md](publishkit.md) | 52 |
 | Lab gallery (round 27): "Start from something like…": the Lab's New opens picture cards by mood with a search, 26 new built-in music scenes (6 new layers: outrun sunset, hyper tunnel, liquid gradient, chrome blob, beat burst, kinetic opener), your scenes, history and the library; hover preview, new scene or ＋ Layer; starter chip and ◎ mission; pictures in one shared page, cached on disk | [gallery.md](gallery.md) | 58 |
 | Smart router (round 28): ⋯ AI setup → Smart picks model + effort per message from local rules (chit-chat → Haiku · low / Luna · minimal, short questions → Sonnet · low / Sol · low, code / Lab builds / analyses → own model · high); the pick small on the reply (hover: why), one click asks again thinking harder; never routes away from your pick, never steps down on a big cached context; ≈ −17% cost vs the old Smart, −32% vs Deep (estimate) | [router.md](router.md) | 26 |
-| **Total** | | **12,824** |
+| **Total** | | **12,850** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.
