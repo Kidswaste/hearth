@@ -320,6 +320,8 @@ function plan(prompt, engine = 'claude') {
     // tool calls, permitted like the real CLIs do (see accessTool below), then really run
     accessCalls: (() => { const m = msg.match(/^access:\s*(\[[\s\S]*\])\s*$/m); try { return m ? JSON.parse(m[1]) : null; } catch { return null; } })(),
     compact: /Compact our context|moving to a fresh chat/i.test(msg),
+    // (round 34, autocompact) continue lighter: a structured summary (fake-lighter-raw in the chat: an unshaped one)
+    lighter: /^Summarize this conversation so it can continue without its history/.test(msg) ? (/fake-lighter-raw/.test(msg) ? 'Sure! Here is what we talked about: many things.' : `Goal: ${(msg.match(/<conversation>\s*(?:<earlier_summary>[\s\S]*?<\/earlier_summary>\s*)?User: ([^\n]{0,80})/) || [])[1] || 'test Hearth'}\nDecisions:\n- keep replies short\n- use the ember palette\nFiles and names:\n- dev/checks/autocompact.js\n- layer "Glow"\nOpen tasks:\n- finish the long chat test\nWhere we stopped: measuring tokens per message`) : null,
     summarize: /^Summari[sz]e\b/i.test(msg),
     title: /short title for this chat/i.test(msg),
     // "Let Astra decide" (decide.js): answers with the second option, like a real pick
@@ -340,6 +342,7 @@ function plan(prompt, engine = 'claude') {
   const short = msg.replace(/\s+/g, ' ').slice(0, 80);
   if (p.decide) return { p, text: p.decide[1] || p.decide[0], thinking: '' };
   if (p.assist) return { p, text: p.assist, thinking: '' };
+  if (p.lighter) return { p, text: p.lighter, thinking: '' };
   if (p.title) parts.push('Fake chat about testing');
   else if (p.compact) parts.push('**Summary.** The user is testing Hearth with a fake engine. Decisions: keep it compact. Exists: one test chat. Left to do: nothing.');
   else if (p.echo) parts.push(prompt);

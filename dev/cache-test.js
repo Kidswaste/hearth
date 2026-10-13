@@ -129,6 +129,25 @@ const line = CW.note(['p', 'i'], 24000, { now: true });
 check(/^↻ Its personality and its standing instructions changed mid-chat: the next message/.test(line) && /24k tokens/.test(line) && /once/.test(line) && line.split('\n').length === 1, `one plain line: “${line}”`);
 check(CW.ctxOf(chat) === 24000 && CW.ctxOf({ messages: [] }) === 0, 'the chat\'s context is what its last reply sent');
 
+// 8. (round 34, autocompact) continuing lighter keeps the prompt byte-stable: the summary rides in the conversation
+// (the first message of a new session), never in the system prompt or flags; the new session's start is exactly a new
+// chat's, and every message after it resumes with the same bytes. The cheap summarizer run is byte-stable too.
+const AC = require(path.join(ROOT, 'autocompact.js'));
+const noId = (b) => b.replace(/--session-id\u0000[0-9a-f-]{36}/, '--session-id\u0000*'); // a new session's own id isn't part of what is cached
+const summary = 'Goal: a neon tunnel\nDecisions:\n- bloom 0.4\nWhere we stopped: the kick';
+for (const [label, agent] of [['plain Claude', CLAUDE], ['Three Director', DIRECTOR], ['plain Astra', ASTRA]]) {
+  const newChat = noId(bytesOf(agent, {}));
+  const lighter = noId(bytesOf(agent, {})); // chat.session = {} after continuing lighter
+  const next1 = bytesOf(agent, { id: 'after-lighter' });
+  const next2 = bytesOf(agent, { id: 'after-lighter' });
+  check(newChat === lighter && next1 === next2 && !T.buildPrompt(agent, {}).includes('neon tunnel'), `${label}: after continuing lighter the start is a new chat's and the next messages keep the same bytes (the summary is not in the prompt)`);
+}
+const cheapAgent = (a) => ({ ...a, chatTools: false, noHubTools: true, systemPrompt: 'You write tight, structured summaries of a conversation so that it can continue without its history. Plain text, no preamble.', autoMemory: false, suggestNext: false, memoryOff: true, openTool: false, threeTools: false, boardTools: false, captureTools: false, selfReview: false });
+const cheapOpts = { model: AC.CHEAP.claude.model, effort: AC.CHEAP.claude.effort };
+check(noId(bytesOf(cheapAgent(CLAUDE), {}, cheapOpts)) === noId(bytesOf(cheapAgent(CLAUDE), {}, cheapOpts)) && /haiku/.test(bytesOf(cheapAgent(CLAUDE), {}, cheapOpts)), 'the summarizer run: the same flags every time, on the cheapest model');
+const sumChat = { messages: [{ role: 'user', text: 'Build a tunnel' }, { role: 'assistant', text: 'Done.' }, { role: 'user', text: 'Glow' }, { role: 'assistant', text: 'ok' }, { role: 'user', text: 'Kick' }, { role: 'assistant', text: 'ok' }] };
+check(AC.prompt(AC.split(sumChat)) === AC.prompt(AC.split(JSON.parse(JSON.stringify(sumChat)))) && !/\d{4}-\d\d-\d\d/.test(AC.prompt(AC.split(sumChat))) && summary, 'the summarizer reads the same bytes for the same chat (no dates or ids)');
+
 try { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(proj, { recursive: true, force: true }); } catch { /* temp */ }
 console.log(fails.length ? `\n${fails.length} failed` : '\nall passed');
 process.exit(fails.length ? 1 : 0);

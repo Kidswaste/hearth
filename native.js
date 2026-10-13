@@ -902,7 +902,7 @@ const Native = (() => {
       }
       const lastIdx = chat.messages.length - 1;
       // suggestions stay on the latest reply even after a second opinion is added below it
-      const lastReplyIdx = chat.messages.map((m) => m.role).lastIndexOf('assistant');
+      const lastReplyIdx = chat.messages.findLastIndex((m) => m.role === 'assistant' && !m.compactSummary);
       const pins = chat.messages.map((m, i) => (m.pinnedMsg ? i : -1)).filter((i) => i >= 0);
       if (pins.length) out.push(pinnedStrip(agentId, chat, pins));
       const firstNew = unreadFrom.get(chat.id);
@@ -1254,7 +1254,8 @@ const Native = (() => {
   function withContext(chat, text) {
     if (chat.session?.id || chat.messages.length <= 1) return text;
     if (chat.compact) {
-      const after = chat.messages.slice(chat.compact.index, -1).filter((m) => m.role !== 'error')
+      // (round 34, autocompact) a lighter continuation carries its last exchanges word for word: from `tail`
+      const after = chat.messages.slice(chat.compact.tail ?? chat.compact.index, -1).filter((m) => m.role !== 'error' && !m.compactSummary && !m.compactReq)
         .map((m) => `${m.role === 'user' ? 'User' : m.role === 'opinion' ? `${m.from} (second opinion)` : 'Assistant'}: ${m.ctx || m.text}`).join('\n\n');
       return `We compacted our earlier conversation to save context. Here is your summary of it${after ? ', then what we said since' : ''}. Continue naturally.\n\n<summary>\n${chat.compact.summary}\n</summary>${after ? `\n\n<since_then>\n${after.length > CONTEXT_CHARS ? `…${after.slice(-CONTEXT_CHARS)}` : after}\n</since_then>` : ''}\n\n${text}`;
     }
@@ -1439,6 +1440,8 @@ const Native = (() => {
     const chat = chats.get(H.activeChat[agentId]);
     if (!chat || pending.has(chat.id)) return;
     if (!chat.messages.some((m) => m.role === 'assistant' && !m.compactSummary)) { toast('Nothing to compact yet', { timeout: 1500 }); return; }
+    // (round 34, autocompact.js) continue lighter: the cheapest model writes the summary, the last exchanges stay word for word
+    if (window.Autocompact?.run) { await Autocompact.run(agentId, { auto }).catch((err) => toast(err.message, { type: 'error' })); return; }
     const before = [...chat.messages].reverse().find((m) => m.usage)?.usage.input || 0;
     await send(agentId, COMPACT_PROMPT, { compact: true });
     afterReply.set(chat.id, (summary) => {
@@ -1456,12 +1459,14 @@ const Native = (() => {
   }
   function compactDivider(m) {
     return el('details', { class: 'compact-divider' },
-      el('summary', { text: `🗜 Context compacted here${m.compactFrom ? ` · was ${fmt(m.compactFrom)} tokens per message` : ''} · click to read the summary` }),
+      el('summary', { text: `🗜 ${m.lighter ? 'Continued lighter' : 'Context compacted'} here${m.compactFrom ? ` · was ${fmt(m.compactFrom)} tokens per message` : ''}${m.lighter ? ` · the last ${m.lighter.kept} exchanges kept word for word` : ''} · click to read the summary` }),
       el('div', { class: 'body', html: renderMarkdown(m.text) }));
   }
   function paintContext(v, chat) {
     const last = [...(chat?.messages || [])].reverse().find((m) => m.usage);
-    const n = last?.usage.input || 0;
+    // (round 34) continued lighter and nothing sent since: what the next message will send (≈), hover: what it was
+    const lt = chat?.compact?.lighter && chat.messages.lastIndexOf(last) < chat.compact.index ? chat.compact.lighter : null;
+    const n = lt ? lt.after : last?.usage.input || 0;
     if (v.ctx.hidden !== !n) v.ctx.hidden = !n;
     if (!n || v.ctxSeen === n) return; // (round 16) unchanged: nothing written
     v.ctxSeen = n;
@@ -1469,13 +1474,15 @@ const Native = (() => {
     v.ctx.style.setProperty('--pct', `${pct}%`);
     v.ctx.classList.toggle('warn', n >= 60000);
     v.ctx.classList.toggle('high', n >= AUTO_COMPACT_TOKENS);
-    v.ctx.querySelector('.ctx-text').textContent = `${fmt(n)} context`;
-    v.ctx.title = `Each message now sends about ${fmt(n)} tokens of context. Click to compact it into a summary (the chat keeps every message).`;
+    v.ctx.querySelector('.ctx-text').textContent = `${lt ? '≈ ' : ''}${fmt(n)} context`;
+    const was = chat?.compact?.lighter?.before;
+    v.ctx.title = `Each message now sends about ${fmt(n)} tokens of context${was > n ? ` (was ${fmt(was)} before continuing lighter)` : ''}. Click to compact it into a summary (the chat keeps every message).`;
   }
   // After a reply that pushed the context past the limit: compact on its own (agent setting, on by default).
   function maybeAutoCompact(chat, message) {
     const agent = H.agent(chat.agentId);
     if (!agent || agent.autoCompact === false || !message?.usage || message.usage.input < AUTO_COMPACT_TOKENS) return false;
+    if (window.Autocompact) return false; // (round 34) never silently: the offer to continue lighter (or the banner when it's off)
     if (H.activeChat[chat.agentId] !== chat.id || views.get(chat.agentId)?.queue?.length) return false;
     setTimeout(() => compactChat(chat.agentId, { auto: true }), 400);
     return true;
@@ -1524,6 +1531,7 @@ const Native = (() => {
   function longChatBanner(agent, chat) {
     const last = [...(chat?.messages || [])].reverse().find((m) => m.usage);
     if (!last || last.usage.input < LONG_CHAT_TOKENS || chat.longDismissed || pending.has(chat.id)) return null;
+    if (window.Autocompact?.handles(agent)) return null; // (round 34) one calm line under the reply instead (autocompact.js)
     return el('div', { class: 'long-chat' },
       el('span', { text: `This chat now sends about ${fmt(last.usage.input)} tokens with every message.` }),
       el('button', { class: 'primary small', text: '🗜 Compact context', title: 'It summarizes the conversation; this chat continues from the summary (every message stays visible)', on: { click: () => compactChat(agent.id) } }),

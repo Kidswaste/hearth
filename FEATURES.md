@@ -1006,3 +1006,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ ⋯ AI setup reads who → Personality → Instructions → What it can use (files, Hearth's tools, Connections, Hooks, Check this AI) → How hard it thinks; Memory, Habits, Spending and Missions folded at the end, each fold with a one-line state (48 → 18 controls at first sight, 1871 → 841 px).
 - ✓ Plain words: Files it can use, Everything it can do…, Your own connections; no /command left in the chat menus; Settings › Updates has one What's new…, the Meshy key moved to Advanced.
 - ○ Checked by `dev/checks/simplify3.js` (chat group).
+## 🗜 Continue lighter (round 34, autocompact, 26 upgrades: docs/upgrades/autocompact.md)
+- ✓ One calm line under the reply when a long chat would clearly cost less compacted ("This chat re-reads ≈ 48k tokens each message. Continue lighter? (keeps a summary, ≈ 3k)"), decided from the real context, the prompt cache, how much history still matters and topic changes; one button, never silent.
+- ✓ The cheapest model at low effort writes a structured summary; the last 2 exchanges go word for word; every message stays (and in recall); byte-stable prompt. ⋯ AI setup → Spending → "Offer to continue lighter" (default about 40k), `/lighter`.
+- ○ Fake engines: a 30-message chat re-reads 1,434k → 739k tokens (`sh dev/run-checks.sh budget`); real summaries' quality not seen here.

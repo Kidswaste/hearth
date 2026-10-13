@@ -92,7 +92,8 @@ const ChatCost = (() => {
   // once per chat and kind of fix, when it saves at least 2k tokens a message
   function suggest(agentId, chat, x, input) {
     if (input < 8000 || store.get('ctx.fixTips', true) === false) return;
-    const f = fixesFor(chat, x)[0];
+    // (round 34) a long history: the calm "Continue lighter?" line under the reply says it (autocompact.js), not a toast
+    const f = fixesFor(chat, x).filter((y) => y.kind !== 'history' || !window.Autocompact?.handles?.(H.agent(agentId)))[0];
     if (!f || f.saves < 2000 || chat.ctxTips?.[f.kind]) return;
     chat.ctxTips = { ...(chat.ctxTips || {}), [f.kind]: Date.now() };
     Native.save(chat);
