@@ -406,7 +406,7 @@ const ThreeLab = (() => {
     }
     let split = null;
     const btn = (text, title, fn, cls = 'ghost small') => el('button', { class: cls, text, title, on: { click: fn } });
-    const runBtn = btn('▶ Run', 'Run every layer again from the start · Ctrl+Enter in the code: only the layers you changed, in place (nothing changed: every layer) · Shift+click: restart from scratch', (e) => (e.shiftKey ? restartSim() : run()), 'primary small');
+    const runBtn = btn('▶ Run', 'Runs the scene again from the start (Shift+click: from scratch; Ctrl+Enter in the code: only what you changed)', (e) => (e.shiftKey ? restartSim() : run()), 'primary small');
     runBtn.dataset.key = 'Ctrl+Enter';
     const restartBtn = btn('⟲', 'Restart from scratch: a fresh page, GPU and sound, for when something bugs out (Ctrl+Shift+Enter)', () => restartSim(), 'ghost small');
     restartBtn.dataset.feature = 'Restart simulation';
@@ -415,7 +415,7 @@ const ThreeLab = (() => {
     const newBtn = btn('New', 'New sketch from a template · right-click: the templates as a list', () => templateGallery(), 'ghost small imp-main');
     newBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); ThreeTweaks.menu(e.clientX, e.clientY, ['New sketch from', ...ThreeData.TEMPLATES.map((t) => [t.name, t.desc || '', () => create(t.name, t.code)]), ['Duplicate this one', current?.name || '', () => duplicate()]]); });
     // Less frequent sketch actions live in a menu (they used to take a whole toolbar row).
-    const sketchMenuBtn = btn('Sketch ▾', 'Rename, duplicate, delete, history, export', (e) => {
+    const sketchMenuBtn = btn('Sketch ▾', 'Rename, copy, delete or export this scene, or see its history', (e) => {
       const r = e.currentTarget.getBoundingClientRect();
       popup(r.left, r.bottom + 4, [
         ['New from a template…', 'Right-click it for the list', () => templateGallery()],
@@ -493,8 +493,8 @@ const ThreeLab = (() => {
     shotBtn.dataset.feature = 'Screenshot';
     const toolbar = el('div', { class: 'three-toolbar' }, runBtn, liveLabel, picker, newBtn, sketchMenuBtn, snippetSel, version, el('span', { class: 'spacer' }), shotBtn);
     // Prompt-first: the code editor stays hidden until asked for.
-    const codeBtn = btn('</> Code', 'Show or hide the code of the selected layer (the Three Director writes it for you)', () => setCodeVisible(split.classList.contains('no-code')));
-    const slidersBtn = btn('⚡ Sliders', 'Show or hide the layers and the sliders of the selected layer (/ finds a slider)', () => setSlidersVisible(column.hidden));
+    const codeBtn = btn('</> Code', 'Shows or hides the selected layer\'s code (the director writes it for you)', () => setCodeVisible(split.classList.contains('no-code')));
+    const slidersBtn = btn('⚡ Sliders', 'Shows or hides the layers and the selected layer\'s sliders', () => setSlidersVisible(column.hidden));
     slidersBtn.dataset.feature = 'Layers & sliders';
     const focusBtn = btn('⛶ Focus', 'Almost fullscreen: hides the chat, side panels, toolbar, sliders and console, and shrinks the timeline to the strip (F · Esc to leave)', () => setFocus(!focusOn));
     focusBtn.dataset.feature = 'Focus';
@@ -505,7 +505,7 @@ const ThreeLab = (() => {
     let consoleMode = store.get('three.consoleMode', 'code');
     let consolePeek = null; // null: follow the mode · true / false: opened / closed by hand
     let unseen = { errors: 0, other: 0 };
-    const consoleBtn = btn('Console', 'Show or hide the console (errors and console.log from the sketch)', () => { consolePeek = !consoleShown(); syncConsole(); });
+    const consoleBtn = btn('Console', 'Shows or hides the scene\'s errors and messages', () => { consolePeek = !consoleShown(); syncConsole(); });
     consoleBtn.dataset.feature = 'Console';
     consoleBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); ThreeTweaks.menu(e.clientX, e.clientY, ['Console shows', ...CONSOLE_MODES.map(([m, l]) => [l, '', () => setConsoleMode(m), consoleMode === m]), ['Errors only', 'Hide console.log lines', () => { const on = !store.get('three.consoleErrors', false); store.set('three.consoleErrors', on); consoleWrap.classList.toggle('errors-only', on); }, store.get('three.consoleErrors', false)], ['Clear', '', () => { consoleBox.replaceChildren(); consoleLines = []; }], ['Copy', '', () => api.cmd.console('copy')]]); });
     consoleBtn.dataset.key = '`';
@@ -551,7 +551,7 @@ const ThreeLab = (() => {
       if (shown && !consoleScroll) consoleScroll = requestAnimationFrame(() => { consoleScroll = 0; consoleBox.scrollTop = consoleBox.scrollHeight; });
     }
     // Present: just the picture, fullscreen (P · Esc). Space, arrows and cue keys still work.
-    const presentBtn = btn('▣ Present', 'Fullscreen preview with nothing else on screen, for showing it off or a second monitor (P · Esc to leave)', () => togglePresent());
+    const presentBtn = btn('▣ Present', 'Shows the preview full screen with nothing else, for showing it off (P · Esc leaves)', () => togglePresent());
     presentBtn.dataset.feature = 'Present';
     presentBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); ThreeTweaks.menu(e.clientX, e.clientY, ['Present', ['Present', 'P', () => togglePresent()], player.loaded ? ['From the top of the song', 'Starts it playing', () => { player.seek(0); player.toggle(true); togglePresent(); }] : null, player.loop ? ['The loop', '', () => { player.seek(player.loop.a); player.toggle(true); togglePresent(); }] : null, [`${store.get('three.presentHud', false) ? '✓ ' : ''}Show the info line`, 'I while presenting', () => store.set('three.presentHud', !store.get('three.presentHud', false))], ['Stage window', 'Its own window, for a second monitor', () => setStage(true)]]); });
     previewHost.addEventListener('dblclick', (e) => { if (e.target === previewHost) togglePresent(); }); // double-click beside the picture
@@ -892,7 +892,7 @@ const ThreeLab = (() => {
     let editOn = false;
     let editSel = null;
     const editUndo = [];
-    const editBtn = btn('✥ Edit', 'Move around the selected layer\'s 3D scene and drag objects into place (move / rotate / scale). Placements are kept with the layer. E', () => setEdit(!editOn));
+    const editBtn = btn('✥ Edit', 'Move around the selected layer\'s scene and drag things to move, turn or resize them (E)', () => setEdit(!editOn));
     editBtn.dataset.feature = 'Edit scene';
     editBtn.dataset.key = 'E';
     const modeBtns = [['translate', 'Move', 'W'], ['rotate', 'Rotate', 'E'], ['scale', 'Scale', 'R']].map(([m, label, k]) => btn(label, `${label} (${k} in the preview)`, () => { box.send({ type: 'edit', cmd: 'mode', value: m }); paintMode(m); }, 'ghost small ed-mode'));

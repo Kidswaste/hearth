@@ -45,8 +45,11 @@ v.root.querySelector('.native-head button[title]')?.dispatchEvent(new MouseEvent
 lists['chat ⋯ menu (right-click)'] = menuRows().join(' | '); rows['chat ⋯ menu (right-click)'] = menuRows().length;
 await shot('chat-menu'); closeMenus(); await wait(100);
 // the composer's right-click (Work with Astra etc.)
-v.input.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 400, clientY: 600 })); await wait(200);
+v.form.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 400, clientY: 600 })); await wait(200); // around the text box (the box keeps cut / copy / paste)
 lists['composer right-click'] = menuRows().join(' | '); rows['composer right-click'] = menuRows().length; closeMenus();
+// no command names in the chat's menus
+const slashRows = ['chat ⋯ menu (right-click)', 'composer right-click'].flatMap((k) => (lists[k] || '').split(' | ').filter((t) => /(^|[^\w/.])\/[a-z][a-z-]{2,}/.test(t)));
+if (slashRows.length) fails.push(`menus show /commands: ${slashRows.join(' | ')}`);
 // ◎ Missions
 const ms = [...v.root.querySelectorAll('form.composer button')].find((b) => b.textContent.trim() === '◎');
 ms?.click(); await wait(400);
