@@ -481,7 +481,7 @@ const Astra = (() => {
       // folded: one line with the kept / final answer's start
       const fin = m.final != null ? m.parts[m.final] : null;
       card.append(el('div', { class: 'collab-folded hint', text: fin ? `${m.seats[fin.seat]?.name}: ${cap(answerOf(fin).replace(/\s+/g, ' '), 160)}` : `${latestBySeat(m).filter(ok).length} answers` }));
-      return card;
+      return typeof Missions !== 'undefined' && m.mission ? Missions.decorateCollab(card, m, { running, hostId }) : card; // (round 26) a mission's result card (missions.js)
     }
     if (m.mode === 'duo' || m.mode === 'compare') {
       const grid = el('div', { class: 'collab-grid', attrs: { style: `--cols: ${Math.min(m.seats.length, 3)}` } });
@@ -528,7 +528,7 @@ const Astra = (() => {
     }
     if (m.error) card.append(el('div', { class: 'collab-error', text: m.error }));
     if (!running && m.suggest?.length && hostId) card.append(el('div', { class: 'suggest-chips' }, m.suggest.map((s) => el('button', { class: 'suggest-chip', text: s, title: 'Send this', on: { click: () => Native.sendText(hostId, s) } }))));
-    return card;
+    return typeof Missions !== 'undefined' && m.mission ? Missions.decorateCollab(card, m, { running, hostId }) : card; // (round 26) a mission's result card (missions.js)
   }
   function cardMenu(e, hostId, m) {
     const r = e.currentTarget.getBoundingClientRect();

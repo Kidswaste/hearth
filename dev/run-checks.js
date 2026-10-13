@@ -65,6 +65,7 @@ const GROUPS = {
   assets: ['assets', 'unit:assets-test'], // (round 24) the asset library: fixtures folder, thumbnails, drops, fake Poly Haven / ambientCG (smoke --fake-assets)
   connections: ['connections', 'unit:connections-test'], // (round 26) the owner's MCP servers: ＋ Add a connection, Test (dev/fake-mcp-server.js), both engines' configs
   hooks: ['hooks', 'unit:hooks-test'], // (round 26) ⚡ hooks: when something happens, an AI gets your words (⋯ AI setup)
+  missions: ['missions', 'missions2'], // (round 26) ◎ Missions: the picker, result cards, chips + ↻, plan first, ask everyone, helper rows
   unit: UNIT.map((u) => `unit:${u}`),
 };
 GROUPS.all = [...new Set([...all.filter((n) => !/^astra-/.test(n)), ...GROUPS.astra, ...GROUPS.unit])];
