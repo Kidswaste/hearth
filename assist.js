@@ -159,7 +159,9 @@ const Assist = (() => {
     const c = ThreeLab.peek?.();
     if (!c) return;
     let st; try { st = c.state; } catch { return; }
-    const id = st.frame?.id;
+    // (round 26, smooth26) the frame size the Lab keeps (three-media.js setMode): reading st.frame measured the preview
+    // ("Fit" is its size in pixels), a forced layout right after every click in the app once the Lab had loaded
+    const id = store.get('three.aspect', 'fit');
     if (!id || id === lastFrame) return;
     lastFrame = id;
     if (id === 'fit') return;
@@ -498,13 +500,8 @@ const Assist = (() => {
 
   // ---------- the rest of the app ----------
   queueMicrotask(() => {
-    // every click in the app: is the Lab on a new frame size? (round 26, smooth26: only while the Lab is on screen, and
-    // read in an idle moment: the read measured the preview right after the click's own changes, a layout per click)
-    let frameT = 0;
-    Usage.onTrack?.(() => {
-      if (frameT || H.surfaceIdFor?.(H.activeId) !== 'tool:three') return;
-      frameT = window.requestIdleCallback ? requestIdleCallback(() => { frameT = 0; noteFrame(); }, { timeout: 1500 }) : setTimeout(() => { frameT = 0; noteFrame(); }, 50);
-    });
+    // every click in the app: is the Lab on a new frame size? (one stored value read, no timers)
+    Usage.onTrack?.(() => noteFrame());
     AppUI.addAction?.('Shuffle & pick: 4 variations as thumbnails', () => shufflePick(4).catch((err) => toast(err.message, { type: 'error' })));
     AppUI.addAction?.('Shuffle & let Astra pick the best', () => shufflePick(4, { astraPicks: true }).catch((err) => toast(err.message, { type: 'error' })));
     AppUI.addAction?.('Name this sketch (from its colors and song)', () => nameSketch().catch((err) => toast(err.message, { type: 'error' })));

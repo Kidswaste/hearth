@@ -806,3 +806,9 @@ Right-click ⋯ in a chat for the old quick menu (rename, export, delete…).
 
 ### ◎ Missions
 The ◎ button by the chat box (and the top of ⋯) picks what your next message becomes: Just answer · Split it up (it deploys helper agents) · Swarm (several AIs answer, a chair merges; in the Lab, a crew of 4 explores variations) · Answer, then review (the other AI checks it) · Debate · Side by side (Claude and Astra) · Jam (a music visual in the Lab, taking turns) · Pair on code · Ask everyone. A click is for the next message only; 📌 keeps it from now on; right-click ◎ goes back to a normal reply. Your words go out as written.
+
+## Smoothness after rounds 25–26 (round 26, smooth26, 12 upgrades: docs/upgrades/smooth26.md)
+- ✓ The Lab costs nothing off screen: its preview's stats timer and song report sleep while it's parked / paused (idle after visiting the tools 9.1 → 2.9 ms busy/s, 0 preview wake-ups).
+- ✓ No forced layout per click anywhere once the Lab has loaded (40 → 0 per 20 clicks); ⋯ AI setup opens with 69 % less forced style / layout time and is preloaded when you point at ⋯; ◎ Missions places itself before it paints and closes cleanly; switching windows forces 45 % less.
+- ✓ "↑ Show earlier" brings 60 messages at a time (41 ms frame → 15–26 ms per step); the usage highlights and the jank watch stay out of busy frames.
+- ○ Measured headless on a shared CPU with software GL (`sh dev/run-checks.sh smooth26`, hz240, labperf, perf-report); long-chat wheel tasks here are the software compositor's commit, to check with `/smooth` on a real Mac.
