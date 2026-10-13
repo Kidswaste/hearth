@@ -18,6 +18,7 @@ const AiUndo = (() => {
   const KV = 'aiundo';
   const LATE_MS = 6000; // a change recorded this soon after its reply ended still belongs to that reply
   const now = () => Date.now();
+  const Lab = () => (typeof ThreeLab !== 'undefined' ? ThreeLab : null); // a lexical global of the lab group (not on window)
   const short = C.short;
   const agentOf = (id) => (typeof H !== 'undefined' ? H.agent(id) : null);
   const chatRow = (chatId) => (typeof H !== 'undefined' ? (H.chats || []).find((c) => c.id === chatId) : null);
@@ -105,8 +106,10 @@ const AiUndo = (() => {
     if (!v || (v.by !== 'claude' && v.by !== 'codex') || list.some((e) => e.area === 'lab' && e.u?.v === v.id)) return;
     const vs = TMCore.byTime(doc);
     const i = vs.findIndex((x) => x.id === v.id);
-    const scene = window.ThreeLab?.scenes?.get?.(id);
-    add({ area: 'lab', chat: v.chat || null, engine: v.by, what: short(v.label || 'Changed the scene', 80), target: scene?.name || 'a Lab scene', tk: `scene:${id}`, u: { scene: id, v: v.id, vat: v.at, before: vs[i - 1]?.id || null } });
+    const scene = Lab()?.scenes?.get?.(id);
+    const lines = /^(.+?) \+(\d+) −(\d+)$/.exec(v.label || ''); // "Orb +3 −1": the time machine's code-change label
+    const what = lines ? `Edited the code of ${lines[1]} (+${lines[2]} −${lines[3]} lines)` : v.label || 'Changed the scene';
+    add({ area: 'lab', chat: v.chat || null, engine: v.by, what: short(what, 80), target: scene?.name || 'a Lab scene', tk: `scene:${id}`, u: { scene: id, v: v.id, vat: v.at, before: vs[i - 1]?.id || null } });
   }
 
   // board: board-cmds.js / board-pack.js run the agents' board_ calls through here (what the call changed)
@@ -146,8 +149,17 @@ const AiUndo = (() => {
       what = `Moved ${base} to the Trash`;
       if (!e.backup) cant = 'it is in the Trash: put it back from there';
     }
-    if (!what || list.some((x) => x.area === 'file' && x.u?.entry === e.id)) return;
-    add({ area: 'file', chat: chatId, what, target: e.target, tk: `file:${e.target}`, u: { chat: chatId, entry: e.id, path: e.target, created: Boolean(e.created), backup: e.backup || null }, ...(cant ? { cant } : {}) });
+    if (!what) return;
+    // the engine's report and the permission check are one line in the log: the check's copy arrives as an update
+    const had = list.find((x) => x.area === 'file' && x.u?.entry === e.id);
+    if (had) {
+      if (had.undone) return;
+      Object.assign(had, { what, u: { ...had.u, created: Boolean(e.created), backup: e.backup || null } });
+      if (cant) had.cant = cant; else delete had.cant;
+      changed();
+      return;
+    }
+    add({ area: 'file', chat: chatId, what, target: `in ${String(e.target).split(/[\\/]/).slice(-2, -1)[0] || 'its folder'}`, tk: `file:${e.target}`, u: { chat: chatId, entry: e.id, path: e.target, created: Boolean(e.created), backup: e.backup || null }, ...(cant ? { cant } : {}) });
   }
 
   // settings: a command an AI ran (three_run → Commands with source 'code' while its reply runs): the old values
@@ -179,12 +191,12 @@ const AiUndo = (() => {
   // ---------- each area's undo, its "the owner changed it after" check, and where to look ----------
   async function needLab() {
     if (typeof ThreeHistory === 'undefined' && window.Lazy) await Lazy.load('lab');
-    if (!window.ThreeLab?.tm) {
+    if (!Lab()?.tm) {
       activate('tool:three');
-      await window.ThreeLab?.cmd?.();
-      const t0 = now(); while (!window.ThreeLab?.tm && now() - t0 < 15000) await new Promise((r) => setTimeout(r, 120));
+      await Lab()?.cmd?.();
+      const t0 = now(); while (!Lab()?.tm && now() - t0 < 15000) await new Promise((r) => setTimeout(r, 120));
     }
-    if (typeof ThreeHistory === 'undefined' || !window.ThreeLab?.tm) throw new Error('The Lab isn\'t ready.');
+    if (typeof ThreeHistory === 'undefined' || !Lab()?.tm) throw new Error('The Lab isn\'t ready.');
   }
   const AREAS = {
     lab: {
@@ -204,7 +216,7 @@ const AiUndo = (() => {
         const mine = vs.filter((v) => v.at > at && v.by === 'you' && !/^Undid /.test(v.label || '') && v.kind !== 'turn');
         return mine.length ? `You changed the scene “${e.target}” after (${mine.length} change${mine.length === 1 ? '' : 's'}): going back takes ${mine.length === 1 ? 'it' : 'them'} back too (still in the time machine).` : null;
       },
-      async show(e) { activate('tool:three'); if (window.ThreeLab?.scenes?.get?.(e.u.scene) && ThreeLab.scenes.currentId() !== e.u.scene) ThreeLab.scenes.open(e.u.scene); },
+      async show(e) { activate('tool:three'); if (Lab()?.scenes?.get?.(e.u.scene) && ThreeLab.scenes.currentId() !== e.u.scene) ThreeLab.scenes.open(e.u.scene); },
     },
     board: {
       async undo(e) {

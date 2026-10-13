@@ -861,3 +861,8 @@ In ⋯ AI setup, **⚡ Hooks: when… then…** gives each AI a short list of ru
 - ✓ Also from a new chat's starter ("🖼 Start from something like…") and the director's ◎ mission of that name (your words search, you pick, the director gets your words).
 - ✓ Light: loads on first use; pictures drawn one at a time in one hidden preview page, only for cards in view, kept on disk.
 - ○ Checked with the fake engines (`sh dev/run-checks.sh gallery`: every starting point runs without errors); its look on a real GPU wasn't seen here.
+## One undo for what the AIs did (round 28, aiundo, 32 upgrades: docs/upgrades/aiundo.md)
+- ✓ Every change an AI makes (Lab scenes through the director, the mood board, files through chat access, settings through the commands it runs) lands in **one timeline**: who (the AI, the chat, the reply, a hook or mission that started it), what in plain words, when.
+- ✓ A reply that changed something has **"↶ Undo what it did"** in its actions; **Activity › Changes by AIs** (Ctrl/⌘+K) has ↶ per change and ⋯ / right-click for **Undo everything it did since then**, the whole reply, Show it.
+- ✓ Safe: later changes to the same thing go first (newest first), a scene / file goes back in one step, and the confirm warns when **you** changed it after. Each place's own undo does the work (the time machine, a board edit, chat access's copies, the old setting), so it can be taken back there too; a file a chat deleted now keeps a copy.
+- ○ Tested with the fake engines' real tool calls (`sh dev/run-checks.sh aiundo`: Lab, board, files, a setting, each undone) and a unit test of the timeline logic.

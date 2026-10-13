@@ -117,7 +117,7 @@ const Access = (() => {
       const list = (logs[k] ||= []);
       // one line per tool call: the permission check's line (with its decision, backup…) wins over the engine's report
       const twin = entry.id ? list.find((x) => x.id === entry.id) : null;
-      if (twin) { if (twin.result === 'done' && e.result !== 'done') { Object.assign(twin, e); persist(); } return; }
+      if (twin) { if (twin.result === 'done' && e.result !== 'done') { Object.assign(twin, e); persist(); document.dispatchEvent(new CustomEvent('hearth:access-log', { detail: { chatId: k, entry: twin, update: true } })); } return; } // (round 28) aiundo.js hears the copy kept
       list.push(e);
       if (list.length > LOG_MAX) list.splice(0, list.length - LOG_MAX);
       persist();
