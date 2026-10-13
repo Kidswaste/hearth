@@ -3,6 +3,9 @@
 // Tokens per look, /corners and /motion reaching the new UI, menu shortcut keys, /appearance vs the Lab's /look,
 // forged tooltips for cut-off text and beside lists, the Shuffle die.
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+// (bugbash) wait for what should happen instead of a fixed sleep: right after a look switch the first frames can take
+// a second or more under software GL, and both the tip and the die are drawn in an animation frame (juice.js `soon`)
+const until = async (fn, ms = 6000) => { const t = Date.now(); while (Date.now() - t < ms) { if (fn()) return true; await wait(50); } return false; };
 const A = H.claudeAgent();
 const cmd = (c) => Commands.tryRun(c, A.id);
 const out = {};
@@ -56,11 +59,14 @@ probe.remove();
 // a cut-off title shows its full text in a forged tooltip
 const long = el('div', { style: { width: '80px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', position: 'fixed', left: '400px', top: '300px' }, text: 'A very long chat title that does not fit' });
 document.body.append(long);
-long.matches = (sel) => (sel === ':hover' ? true : Element.prototype.matches.call(long, sel));
-long.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
-await wait(700);
+// (bugbash) hovered with the real pointer: a synthetic pointerover lost to the parked Xvfb cursor, whose own (trusted)
+// pointerover on the chat's empty state, ~0.8 s later after a layout change, rightly took the tip away
+const mouse = (x, y) => smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseMoved', x, y } });
+await wait(300);
+await mouse(420, 308);
+await until(() => document.querySelector('.juice-tip.full'));
 out.fullTip = document.querySelector('.juice-tip.full')?.textContent;
-long.dispatchEvent(new PointerEvent('pointerout', { bubbles: true, relatedTarget: document.body }));
+await mouse(2, 2);
 long.remove();
 
 // the Lab: Shuffle's die rolls on its own, Freeze and Tap carry their materials
@@ -70,7 +76,8 @@ const sh = document.querySelector('.tw-shuffle');
 if (sh) {
   sh.disabled = false;
   sh.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 10, clientY: 10 }));
-  out.die = !!sh.querySelector('.j-die.j-roll') && /Shuffle/.test(sh.textContent);
+  // the roll restarts on the next frame (round 17, hz240: no forced layout in the handler), so not synchronously
+  out.die = await until(() => !!sh.querySelector('.j-die.j-roll')) && /Shuffle/.test(sh.textContent);
 }
 out.freezeBg = (cs(document.querySelector('.freeze-btn'), 'background-image') || '').slice(0, 15);
 out.tapBorder = cs(document.querySelector('.mb-tap'), 'border-top-color');

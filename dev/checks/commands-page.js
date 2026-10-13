@@ -30,15 +30,21 @@ try {
   const badQ = [];
   for (const d of Commands.list()) { try { const q = CmdPage.questionsOf(d); const e = CmdPageCore.checkQuestions(q); if (e.length) badQ.push(`${d.name}: ${e[0]}`); CmdPageCore.buildFlow([{ name: d.name, ...q }]); } catch (err) { badQ.push(`${d.name}: ${err.message}`); } }
   out.commands = Commands.list().length;
-  ok(out.commands > 900 && !badQ.length, `every command (${out.commands}) has a valid question list (${badQ.slice(0, 4)})`);
+  // (bugbash) was "> 900": the count fell when the video side and its ≈ 180 commands were removed (round 17) and is
+  // ≈ 860 now. What this asserts is that the whole registry was checked, lazy groups included, so: every command a
+  // lazy group registers (LazyData.META, the manifest dev/checks/lazy.js keeps up to date) is in the list, plus the
+  // same floor as dev/checks/lazy.js. Commands left the chat box in round 26 but stay the app's API (and this page).
+  const lazyMissing = Object.values(LazyData.META || {}).flatMap((g) => (g.commands || []).map((c) => c.name)).filter((n) => !Commands.get(n));
+  ok(out.commands > 750 && !lazyMissing.length && !badQ.length, `every command (${out.commands}, lazy ones too${lazyMissing.length ? `, missing ${lazyMissing.slice(0, 4)}` : ''}) has a valid question list (${badQ.slice(0, 4)})`);
   ok(!Commands.duplicates().length, `no duplicate commands (${JSON.stringify(Commands.duplicates()).slice(0, 160)})`);
   ok(Commands.get('help').area === 'Chat' && Commands.get('?')?.name === 'help' && Commands.get('commands')?.name === 'commands', '/help keeps /?, /commands is the page');
 
-  // ---- open from the rail ----
-  const railBtn = document.querySelector('#agent-buttons .agent-btn[data-id="tool:commands"]');
-  ok(railBtn, 'a Commands button in the rail');
-  railBtn?.click();
-  await until(() => CmdPage.isOpen() && document.querySelectorAll('.cp-row').length > 900, 8000);
+  // ---- open it (round 26: no rail button any more, ⚙ replaced it; Ctrl+Shift+F, the palette and /commands open it) ----
+  ok(!document.querySelector('#agent-buttons .agent-btn[data-id="tool:commands"]'), 'no Commands button in the rail (round 26)');
+  await key('F', 'KeyF').catch(() => {}); // (a bare F: the page must not open on it)
+  ok(!CmdPage.isOpen(), 'a bare F does not open the page');
+  document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'F', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }));
+  await until(() => CmdPage.isOpen() && document.querySelectorAll('.cp-row[data-name]').length >= Commands.list().length, 8000);
   out.rows = document.querySelectorAll('.cp-row[data-name]').length;
   out.heads = [...document.querySelectorAll('.cp-head')].map((h) => h.textContent).slice(0, 6);
   ok(out.rows >= Commands.list().length, `every command is listed (${out.rows} rows for ${Commands.list().length})`);

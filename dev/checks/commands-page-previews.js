@@ -9,7 +9,7 @@ const until = async (fn, ms = 20000) => { const t0 = Date.now(); while (Date.now
 const out = {}; const fail = [];
 const ok = (cond, what) => { if (!cond) fail.push(what); return Boolean(cond); };
 try {
-  await until(() => typeof CmdPage !== 'undefined' && Commands.list().length > 900, 10000);
+  await until(() => typeof CmdPage !== 'undefined' && Commands.list().length > 750, 10000 /* (bugbash) ≈ 860 since round 17; same floor as lazy.js */);
   const all = Commands.list();
   // a few hundred commands, spread over the whole list, plus every principal one
   const sample = [...new Set([...all.filter((_, i) => i % 3 === 0), ...[...FlowsUI.principal()].map((n) => Commands.get(n)).filter(Boolean)])];
@@ -37,7 +37,7 @@ try {
 
   // the page: posters only for rows in view, playing only when pointed at
   activate('tool:commands');
-  await until(() => document.querySelectorAll('.cp-row').length > 900, 8000);
+  await until(() => document.querySelectorAll('.cp-row[data-name]').length >= Commands.list().length, 8000);
   await wait(400);
   out.drawn = document.querySelectorAll('.cp-pv[data-drawn]').length;
   ok(out.drawn > 5 && out.drawn < 120, `posters drawn for the rows in view only (${out.drawn} of ${document.querySelectorAll('.cp-pv[data-name]').length})`);
