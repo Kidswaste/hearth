@@ -57,10 +57,34 @@ const AccessRules = (() => {
       if (part === '..') { if (out.length > (unc ? 2 : win ? 1 : 0)) out.pop(); continue; }
       out.push(part);
     }
-    const r = lead + out.join('/');
+    let r = lead + out.join('/');
+    // (round 33, macpolish) the Mac: /private/var, /private/tmp, /private/etc are /var, /tmp, /etc (Apple's symlinks);
+    // /Volumes/<boot disk>/… is /…; é typed (NFC) and é from Finder (NFD) are one name
+    if (macHost && !win && lead === '/') {
+      r = r.replace(/^\/private(?=\/(var|tmp|etc)(\/|$))/, '');
+      if (macVol.boot && (r === `/Volumes/${macVol.boot}` || r.startsWith(`/Volumes/${macVol.boot}/`))) r = r.slice(9 + macVol.boot.length) || '/';
+      r = r.normalize('NFC');
+    }
     return win ? r.toLowerCase() : r;
   }
-  const inside = (p, folder) => Boolean(p && folder) && (p === folder || p.startsWith(folder.endsWith('/') ? folder : `${folder}/`));
+  // (round 33, macpolish) a Mac disk that ignores case (APFS' default: the boot disk unless told otherwise; another disk
+  // only when main.js measured it) compares without case: "~/Proj" given, "~/proj/a.txt" asked → inside. A disk that
+  // cares about case (or one not measured) compares exactly: a mismatch only makes Hearth ask.
+  let macHost = false; // set by classify() when Hearth runs on a Mac
+  let macVol = { caseless: { '/': true }, boot: '' };
+  const caselessAt = (p) => {
+    if (!macHost) return false;
+    const v = /^\/Volumes\/[^/]+/i.exec(p);
+    if (!v) return macVol.caseless['/'] !== false;
+    const k = Object.keys(macVol.caseless).find((x) => x.toLowerCase() === v[0].toLowerCase());
+    return k ? macVol.caseless[k] === true : false;
+  };
+  const inside = (p, folder) => {
+    if (!p || !folder) return false;
+    let a = p; let b = folder;
+    if (caselessAt(b)) { a = a.toLowerCase(); b = b.toLowerCase(); }
+    return a === b || a.startsWith(b.endsWith('/') ? b : `${b}/`);
+  };
   const insideAny = (p, folders) => folders.some((f) => inside(p, f));
   const baseName = (p) => String(p || '').split(/[\\/]/).filter(Boolean).pop() || String(p || '');
   const dirName = (p) => { const s = String(p || '').replace(/[\\/]+$/, ''); const i = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\')); return i > 0 ? s.slice(0, i) : s; };
@@ -174,7 +198,7 @@ const AccessRules = (() => {
     const args = ctx.ps ? psClean(raw) : raw;
     const sub = (args.find((a) => !isFlag(a)) || '').toLowerCase();
     // PowerShell's $HOME / $env:USERPROFILE are the home folder
-    const resolve = (p) => norm(ctx.ps ? String(p).replace(/^\$(home|env:userprofile)(?=[\\/]|$)/i, '~') : p, ctx.base, ctx.home);
+    const resolve = (p) => norm(ctx.ps ? String(p).replace(/^\$(home|env:userprofile)(?=[\\/]|$)/i, '~') : String(p).replace(/^\$\{?HOME\}?(?=\/|$)/, '~'), ctx.base, ctx.home);
     const outside = (paths) => paths.map(resolve).filter((p) => p && !insideAny(p, ctx.folders) && !/^\/dev\/(null|stdout|stderr|tty)$/.test(p));
     const pathArgs = (all = false) => args.filter((a) => !isFlag(a) && (all || looksPath(a)));
 
@@ -310,8 +334,11 @@ const AccessRules = (() => {
   const ACTION_WORD = { read: 'Read', write: 'Write', delete: 'Delete', move: 'Move', run: 'Run', install: 'Install', network: 'Use the network', publish: 'Publish', system: 'Change the system', apps: 'Control apps', secrets: 'Read secrets', password: 'Needs a password' };
 
   // The decision for one tool call. folders: the chat's folders (absolute); cwd: where the engine runs (relative paths).
-  function classify({ tool, input = {}, level = 'off', folders = [], cwd = '', home = '' } = {}) {
+  function classify({ tool, input = {}, level = 'off', folders = [], cwd = '', home = '', mac = null } = {}) {
     winHost = isWinPath(String(home || ''));
+    // (round 33) a Mac: its home is /Users/<name> (or main.js said so with the disks' info: mac:volumes)
+    macHost = !winHost && (Boolean(mac) || /^\/Users\/[^/]+/.test(String(home || '')));
+    macVol = { caseless: { '/': true, ...(mac?.caseless || {}) }, boot: mac?.boot || '' };
     const fs0 = folders.map((f) => norm(f, '', home)).filter(Boolean);
     const base = norm(cwd || '', '', home);
     const L = LEVELS.includes(level) ? level : 'off';

@@ -198,6 +198,8 @@ const WinPolish = (() => {
   }
   // child_process.spawn through plan(): same options otherwise (env merged when the plan sets one)
   function spawn(bin, args, opts = {}) {
+    // (round 33, macpolish) the Mac: an npm copy runs with its own Node when a Dock launch has none on PATH
+    if (process.platform === 'darwin') { let M = null; try { M = require('./macpolish'); } catch { /* a test copy without it */ } return M ? M.spawn(bin, args, opts) : cp.spawn(bin, args, opts); }
     if (process.platform !== 'win32') return cp.spawn(bin, args, opts);
     const p = plan(bin, args, { env: opts.env || process.env });
     const options = { ...opts, ...p.options };

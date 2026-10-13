@@ -361,6 +361,11 @@ ipcMain.handle('tools:installFfmpeg', () => {
   return { ...I.runInTerminal({ title: 'Install ffmpeg for Hearth', lines, marker }), marker, command: lines.join('\n') };
 });
 ipcMain.handle('engine:fix', (_e, engine, action) => { engines.setEnginePaths(settings().enginePaths); return engines.fix(String(engine), String(action || 'update')); });
+// (round 33, macpolish) the Mac's fix buttons (Gatekeeper's quarantine, chmod, Apple's tools, the privacy pane: the command
+// shown first, run after a click) and the disks' case for the chats' folder checks; the login shell's PATH read once
+const macpolish = require('./macpolish');
+macpolish.register(ipcMain, { locate: (e) => { engines.setEnginePaths(settings().enginePaths); return engines.locate(e); }, chrome: () => require('./chrome-cdp').find().catch(() => null), openExternal: (u) => shell.openExternal(u) });
+macpolish.adoptShellPath({ cacheFile: path.join(store.DATA_DIR, 'shell-path.json'), probe: () => new Promise((r) => setTimeout(r, 3000)).then(() => macpolish.shellPath()) }).catch(() => {}); // (last time's answer at once; the shell asked after the window opened)
 ipcMain.handle('engine:status', () => { engines.setEnginePaths(settings().enginePaths); return engines.status(); });
 
 // ---------- window & desktop ----------

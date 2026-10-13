@@ -29,6 +29,8 @@ function candidates({ platform = process.platform, env = process.env, home = os.
     const apps = ['/Applications', path.posix.join(home, 'Applications')];
     const mac = [['chrome', 'Google Chrome.app/Contents/MacOS/Google Chrome'], ['edge', 'Microsoft Edge.app/Contents/MacOS/Microsoft Edge'], ['brave', 'Brave Browser.app/Contents/MacOS/Brave Browser'], ['chromium', 'Chromium.app/Contents/MacOS/Chromium']];
     for (const [kind, rel] of mac) for (const dir of apps) add(kind, path.posix.join(dir, rel));
+    // (round 33, macpolish) Chrome Beta / Dev / Canary (and Chrome for Testing) when stable Chrome isn't there (kept after it)
+    for (const ch of ['Google Chrome Beta', 'Google Chrome Dev', 'Google Chrome Canary', 'Google Chrome for Testing']) for (const dir of apps) add('chrome', path.posix.join(dir, `${ch}.app/Contents/MacOS/${ch}`));
   } else if (platform === 'win32') {
     const w = path.win32;
     // (round 32, winpolish) Windows' environment ignores case (ProgramFiles / PROGRAMFILES); a 32-bit Hearth sees the

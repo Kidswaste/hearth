@@ -59,6 +59,7 @@ const EngineHealth = (() => {
   async function fix(engine, action) {
     const L = LABEL[engine];
     if (action === 'doctor') { Commands.exec('/doctor', H.activeId); return { ok: true }; }
+    if (MAC_FIX[action]) return macFix(engine, action);
     if (action === 'use-newest') {
       // Settings → Engines pinned an older copy: unpin it, so the newest working one is used
       const paths = { ...(H.settings().enginePaths || {}) };
@@ -94,8 +95,27 @@ const EngineHealth = (() => {
     if (doctorShown && Date.now() - doctorShown.at < 30 * 60000) runDoctor('', doctorShown.ctx).catch(() => {});
   });
 
+  // ---------- the Mac's fixes (round 33, macpolish) ----------
+  // Gatekeeper's quarantine, a copy not marked as a program, Apple's command line tools, the privacy pane: the exact
+  // command is shown first and runs only after "Run it" (never a password, never sudo). target: 'claude' | 'codex' | 'chrome'
+  const MAC_FIX = { unquarantine: 'Allow it…', chmod: 'Make runnable…', clt: 'Install tools…', privacy: 'Privacy settings' };
+  async function macFix(target, action) {
+    const name = LABEL[target] || (target === 'chrome' ? 'Chrome' : target);
+    const plan = await window.hub.macFix?.({ target, action, dry: true }).catch((err) => ({ ok: false, error: err.message }));
+    if (!plan?.ok) { toast(plan?.error || 'This fix only works on a Mac.', { type: 'error', timeout: 8000 }); return plan || { ok: false }; }
+    if (action !== 'privacy') {
+      const yes = await Modal.confirm(`${plan.text}?`, `Hearth will run this once, now:\n\n${plan.command}\n\nNo password is asked and nothing else changes.${action === 'unquarantine' ? ` Only do this for a ${name} you got from its maker.` : ''}`, { ok: 'Run it' });
+      if (!yes) return { ok: false, cancelled: true };
+    }
+    const r = await window.hub.macFix({ target, action }).catch((err) => ({ ok: false, error: err.message }));
+    if (!r?.ok) toast(r?.error || 'It didn\'t work', { type: 'error', timeout: 0, action: r?.command ? { label: 'Copy', fn: () => copyText(r.command, 'Command copied') } : undefined });
+    else toast(action === 'privacy' ? 'Switch Hearth on in the list, restart Hearth, then press Retry.' : action === 'clt' ? 'Finish in Apple\'s installer window, then press Retry.' : `Done${r.already ? ' (it was already allowed)' : ''}: press Retry.`, { timeout: 7000 });
+    if (r?.ok && ['claude', 'codex'].includes(target)) check({ fresh: true, engines: [target] }).catch(() => {});
+    return { ...r, window: 'Hearth' };
+  }
+
   // ---------- the buttons under a failed reply ----------
-  const FIX_LABEL = { update: (e) => `Update ${LABEL[e]}`, install: (e) => `Install ${LABEL[e]}`, doctor: () => 'Run /doctor' };
+  const FIX_LABEL = { update: (e) => `Update ${LABEL[e]}`, install: (e) => `Install ${LABEL[e]}`, doctor: () => 'Run /doctor', ...Object.fromEntries(Object.entries(MAC_FIX).map(([k, v]) => [k, () => v])) };
   Native.hooks?.message?.push((node, m, index, agent) => {
     if (m.role !== 'error' || !m.fixAction || !FIX_LABEL[m.fixAction] || node.querySelector('.engine-fix')) return;
     if (Native.chatOf(agent.id)?.messages?.length - 1 !== index) return; // only under the latest error
@@ -103,7 +123,7 @@ const EngineHealth = (() => {
     node.append(el('button', { class: 'primary small engine-fix', text: FIX_LABEL[m.fixAction](engine), title: 'Runs in a visible window; Hearth checks again when it is done', on: { click: async (e) => {
       const b = e.currentTarget;
       const r = await fix(engine, m.fixAction);
-      if (r?.ok && m.fixAction !== 'doctor') b.replaceWith(el('span', { class: 'hint', text: `Finish in the ${r.window} window, then press Retry.` }));
+      if (r?.ok && m.fixAction !== 'doctor' && !MAC_FIX[m.fixAction]) b.replaceWith(el('span', { class: 'hint', text: `Finish in the ${r.window} window, then press Retry.` }));
     } } }));
   });
 
@@ -114,14 +134,16 @@ const EngineHealth = (() => {
       const x = r[e];
       if (!x) continue;
       const mark = !x.found || x.broken || x.tooOld || x.signedIn === false ? '✗' : '✓';
-      out.push(`- ${mark} **${x.label}**${x.found ? ` ${x.semver || x.version || '(no version)'} · ${x.from === 'settings' ? 'Settings → Engines' : KIND[x.from] || x.from} · \`${home(x.chosen)}\`` : ': not found'}${x.signedIn === true ? ' · signed in' : x.signedIn === false ? ' · **not signed in**' : ''}${x.tooOld ? ` · **too old** (needs ${x.min}+)` : x.min ? ` · needs ${x.min}+` : ''}${used(e) ? '' : ' · no agent uses it'}`);
+      out.push(`- ${mark} **${x.label}**${x.found ? ` ${x.semver || x.version || '(no version)'} · ${x.from === 'settings' ? 'Settings → Engines' : kindText(x.from, x.via)} · \`${home(x.chosen)}\`` : ': not found'}${x.signedIn === true ? ' · signed in' : x.signedIn === false ? ' · **not signed in**' : ''}${x.tooOld ? ` · **too old** (needs ${x.min}+)` : x.min ? ` · needs ${x.min}+` : ''}${used(e) ? '' : ' · no agent uses it'}`);
       const others = (x.copies || []).filter((c) => !c.chosen);
-      if (others.length) out.push(`  - other copies: ${others.map((c) => `${c.semver || '?'} (${KIND[c.kind] || c.kind}) \`${home(c.path)}\`${c.ok === false ? ' too old' : ''}`).join(' · ')}`);
+      if (others.length) out.push(`  - other copies: ${others.map((c) => `${c.semver || '?'} (${kindText(c.kind, c.via)}) \`${home(c.path)}\`${c.ok === false ? ' too old' : ''}`).join(' · ')}`);
       if (x.found && (x.tooOld || x.broken)) out.push(`  - update: \`${x.plan?.command}\``);
     }
     return out.join('\n');
   }
   const KIND = { homebrew: 'Homebrew', npm: 'npm', pnpm: 'pnpm', scoop: 'scoop', winget: 'winget', bun: 'Bun', desktop: 'desktop app', native: 'installer', other: 'on PATH', settings: 'Settings → Engines' };
+  // (round 33) on a Mac, where it came from too: "npm · nvm", "npm · asdf", "on PATH · mise shim", "desktop app · Codex app"
+  const kindText = (kind, via) => { const k = KIND[kind] || kind || ''; return via && via.toLowerCase() !== k.toLowerCase() && !(kind === 'native' && via === 'installer') ? `${k} · ${via}` : k; };
   function actionsFor(r, ctx) {
     const acts = problems(r).map((p) => ({ label: p.label, run: () => fix(p.engine, p.action) }));
     acts.push({ label: 'Test both (a few tokens)', title: 'Sends "Reply with just: OK" to one Claude and one Astra agent (lean: no tools, low effort)', run: () => testBoth(ctx) });
@@ -257,5 +279,5 @@ const EngineHealth = (() => {
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 
-  return { installFfmpeg, check, problems, problemsOf, fix, notice, report: () => last, runDoctor, testBoth };
+  return { installFfmpeg, check, problems, problemsOf, fix, macFix, notice, report: () => last, runDoctor, testBoth };
 })();

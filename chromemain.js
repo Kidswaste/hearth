@@ -137,7 +137,13 @@ async function ensure({ url = null, app = false } = {}) {
       const p = (await CDP.version(port)) ? port : CDP.activePort(profileDir());
       if (p && await CDP.version(p)) { await connect(p); toHub({ type: 'started' }); return { browser: st.browser, opened: Boolean(url) && !out }; }
       if (st.child.exitCode != null && Date.now() - t0 > 3000) break; // handed over to a Chrome already open on this profile (without Hearth's hand)
+      // (round 33, macpolish) killed by macOS at once (Gatekeeper: a Chrome downloaded and never opened): said plainly
+      if (process.platform === 'darwin' && st.child.signalCode === 'SIGKILL') break;
       await new Promise((r) => setTimeout(r, 200));
+    }
+    if (process.platform === 'darwin' && (st.child.signalCode || st.child.exitCode)) {
+      const why = require('./macpolish').plainError('', { bin: f.path, signal: st.child.signalCode || '' });
+      if (why) throw new Error(why.action === 'unquarantine' ? `${why.text} Open ${f.name} once from Applications, or press Allow (Hearth shows the command first: ${why.command}).` : `macOS stopped ${f.name} right as it started (a damaged copy). Reinstall it from google.com/chrome, then try again.`);
     }
     throw new Error('The Hearth Chrome is open without Hearth\'s hand on it (you signed in that way, or it started before Hearth). Close its windows once, then try again.');
   })().finally(() => { st.connecting = null; });

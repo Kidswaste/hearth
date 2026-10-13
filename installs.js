@@ -12,6 +12,8 @@ const path = require('path');
 const { DATA_DIR } = require('./store');
 // (round 32) Windows: npm's .cmd copies, nvm / Volta / scoop / winget, started right (a test copy without the file: as before)
 const WinPolish = (() => { try { return require('./winpolish'); } catch { return { spawn, candidates: () => [] }; } })();
+// (round 33) the Mac: nvm / fnm / asdf / mise / Volta / pnpm / Bun / the login shell's PATH / the apps' bundled CLIs
+const MacPolish = (() => { try { return require('./macpolish'); } catch { return { candidates: () => [] }; } })();
 
 const IS_WIN = process.platform === 'win32';
 const IS_MAC = process.platform === 'darwin';
@@ -119,6 +121,8 @@ function candidates(engine) {
   const add = (file) => { if (file) list.push(file); };
   // (round 32, winpolish) Windows: every .exe / .cmd copy (npm, nvm-windows, Volta, scoop, winget, pnpm, the apps)
   if (IS_WIN) WinPolish.candidates(engine).forEach(add);
+  // (round 33, macpolish) the Mac: real programs before version-manager shims, one per real file (deduped below)
+  if (IS_MAC) MacPolish.candidates(engine, { shellPath: MacPolish.shellDirs }).forEach(add);
   for (const dir of pathDirs()) add(path.join(dir, name));
   const common = [path.join(HOME, '.local', 'bin', name), path.join(HOME, '.npm-global', 'bin', name), path.join(HOME, '.volta', 'bin', name), path.join(HOME, '.bun', 'bin', name)];
   for (const v of children(path.join(HOME, '.nvm', 'versions', 'node'))) add(path.join(v, 'bin', name));
@@ -156,7 +160,7 @@ function kindOf(engine, bin) {
   if (/\/scoop\/(shims|apps)\//i.test(p)) return 'scoop';
   if (/\/WinGet\/(Links|Packages)\//i.test(p)) return 'winget';
   if (/\/pnpm\//i.test(p)) return 'pnpm';
-  if (/node_modules\/@(anthropic-ai\/claude-code|openai\/codex)/.test(p) || /\/\.nvm\/|\/\.npm-global\/|\/\.volta\/|\/AppData\/Roaming\/npm\/|\/AppData\/Roaming\/nvm\/|\/AppData\/Local\/Volta\/|\/Program Files\/nodejs\//i.test(p)) return 'npm';
+  if (/node_modules\/@(anthropic-ai\/claude-code|openai\/codex)/.test(p) || /\/\.asdf\/installs\/|\/mise\/installs\/|\/fnm\/node-versions\/|\/\.fnm\/|\/\.nvm\/|\/\.npm-global\/|\/\.volta\/|\/AppData\/Roaming\/npm\/|\/AppData\/Roaming\/nvm\/|\/AppData\/Local\/Volta\/|\/Program Files\/nodejs\//i.test(p)) return 'npm';
   if (/\/\.bun\//.test(p)) return 'bun';
   if (engine === 'claude' && /Application Support\/Claude\/claude-code|AppData\/Roaming\/Claude\/claude-code/i.test(p)) return 'desktop';
   if (engine === 'codex' && /\.app\/Contents|Application Support\/Codex|AppData\/Local\/OpenAI\/Codex/i.test(p)) return 'desktop';
@@ -174,6 +178,10 @@ function updatePlan(engine, bin) {
   if (!bin) return { how: 'install', command: INSTALL[engine], text: `Install ${LABEL[engine]} (${engine === 'claude' ? 'the official installer' : 'npm'})` };
   const kind = kindOf(engine, bin);
   if (kind === 'homebrew') return { how: 'update', kind, command: `brew upgrade ${engine === 'claude' ? 'claude-code' : 'codex'}`, text: `Update with Homebrew (brew upgrade ${engine === 'claude' ? 'claude-code' : 'codex'})` };
+  // (round 33, macpolish) an nvm / fnm / asdf / mise copy updates with the npm of its own Node (the one next to it),
+  // not whichever npm the Terminal's PATH finds first
+  const ownNpm = !IS_WIN && kind === 'npm' && bin && fs.existsSync(path.join(path.dirname(bin), 'npm')) && fs.existsSync(path.join(path.dirname(bin), 'node')) ? path.dirname(bin) : null;
+  if (ownNpm) return { how: 'update', kind, command: `PATH=${q(ownNpm)}:"$PATH" ${q(path.join(ownNpm, 'npm'))} i -g ${engine === 'claude' ? '@anthropic-ai/claude-code' : '@openai/codex'}@latest`, text: 'Update with npm (its own Node)' };
   if (kind === 'npm') return { how: 'update', kind, command: `npm i -g ${engine === 'claude' ? '@anthropic-ai/claude-code' : '@openai/codex'}@latest`, text: 'Update with npm' };
   if (kind === 'pnpm') return { how: 'update', kind, command: `pnpm add -g ${engine === 'claude' ? '@anthropic-ai/claude-code' : '@openai/codex'}@latest`, text: 'Update with pnpm' };
   if (kind === 'bun') return { how: 'update', kind, command: `bun add -g ${engine === 'claude' ? '@anthropic-ai/claude-code' : '@openai/codex'}@latest`, text: 'Update with Bun' };

@@ -10,6 +10,8 @@ const { DATA_DIR, ATTACH_DIR, getMemory, addUsage } = require('./store');
 const Installs = require('./installs');
 // (round 32) Windows: npm's claude.cmd / codex.cmd found and started, plain errors (a test copy without the file: as before)
 const WinPolish = (() => { try { return require('./winpolish'); } catch { return { spawn, candidates: () => [], cleanPath: (p) => p, plainError: () => null, dropStack: (t) => String(t || '') }; } })();
+// (round 33) the Mac: nvm / fnm / asdf / mise / Volta / pnpm / Bun / app copies found, Gatekeeper and macOS errors in plain words
+const MacPolish = (() => { try { return require('./macpolish'); } catch { return { candidates: () => [], cleanPath: (p) => p, plainError: () => null, lookedIn: () => '' }; } })();
 // (round 26, connections) the owner's own MCP servers, switched on per AI in ⋯ AI setup (connectionsmain.js)
 const Conn = (() => { try { return require('./connectionsmain'); } catch { return null; } })();
 // (round 31, tokensaver) where saved memory goes (system prompt or only relevant messages), shared with chat-memory.js
@@ -81,7 +83,7 @@ function setEnginePaths(p) { enginePaths = p && typeof p === 'object' ? p : {}; 
 // script (…\npm\claude → claude.cmd), a folder (→ the program in it)
 const given = (name) => {
   if (!enginePaths[name]) return null;
-  const p = IS_WIN ? WinPolish.cleanPath(enginePaths[name], { engine: name }) : enginePaths[name];
+  const p = IS_WIN ? WinPolish.cleanPath(enginePaths[name], { engine: name }) : IS_MAC ? MacPolish.cleanPath(enginePaths[name], { engine: name }) : enginePaths[name];
   return p && fs.existsSync(p) ? p : null;
 };
 
@@ -108,12 +110,12 @@ function newestIn(root, exeName, depth = 3) {
 // places in order. The check runs at startup, off the window's thread, and after an update.
 const preferred = (name) => { const p = Installs.data().chosen[name]; return p && fs.existsSync(p) ? p : null; };
 const LOCATE = {
-  claude: () => given('claude') || preferred('claude') || (IS_WIN ? WinPolish.candidates('claude')[0] : findOnPath('claude'))
+  claude: () => given('claude') || preferred('claude') || (IS_WIN ? WinPolish.candidates('claude')[0] : IS_MAC ? MacPolish.candidates('claude', { shellPath: MacPolish.shellDirs })[0] || findOnPath('claude') : findOnPath('claude'))
     || (IS_WIN ? newestIn(path.join(process.env.APPDATA || '', 'Claude', 'claude-code'), 'claude.exe') : null)
     || (IS_MAC ? newestIn(path.join(os.homedir(), 'Library', 'Application Support', 'Claude', 'claude-code'), 'claude') : null)
     || [path.join(os.homedir(), '.local', 'bin', exe('claude')), path.join(os.homedir(), '.claude', 'local', exe('claude'))].find((f) => fs.existsSync(f))
     || null,
-  codex: () => given('codex') || preferred('codex') || (IS_WIN ? WinPolish.candidates('codex')[0] : findOnPath('codex'))
+  codex: () => given('codex') || preferred('codex') || (IS_WIN ? WinPolish.candidates('codex')[0] : IS_MAC ? MacPolish.candidates('codex', { shellPath: MacPolish.shellDirs })[0] || findOnPath('codex') : findOnPath('codex'))
     || (IS_WIN ? newestIn(path.join(process.env.LOCALAPPDATA || '', 'OpenAI', 'Codex', 'bin'), 'codex.exe') : null)
     || (IS_MAC ? newestIn('/Applications/Codex.app/Contents', 'codex', 4) || newestIn('/Applications/ChatGPT.app/Contents', 'codex', 4) || newestIn(path.join(os.homedir(), 'Library', 'Application Support', 'Codex'), 'codex', 4) : null)
     || null,
@@ -933,11 +935,15 @@ const FIXES = [
     () => 'Codex\'s sandbox refused something: Astra may only change files in its own folders, at Read & write or Full. Change it in ⋯ AI setup → Files on this computer.'],
 ];
 
-function friendlyError(engine, message, { win = IS_WIN } = {}) {
+function friendlyError(engine, message, { win = IS_WIN, mac = IS_MAC, bin = usedBin[engine], signal = '' } = {}) {
   // (round 32, winpolish) what Windows says (npm's Node missing, a half-removed npm install, a .cmd Windows wouldn't
   // start, the antivirus…) in plain words with the button that fixes it; the raw line stays underneath for /doctor
   const w = win && !/not logged in|unauthori[sz]ed|\b401\b/i.test(message) && !POLICY_BLOCKED.test(message) && !/sandbox/i.test(message) ? WinPolish.plainError(message) : null;
   if (w) return { message: `${w.text}\n\nFix: ${w.fix}\n\n(${String(message).split('\n')[0].slice(0, 200)})`, fix: w.fix, fixAction: w.action, fixEngine: engine };
+  // (round 33, macpolish) what macOS says (Gatekeeper's quarantine, a copy for another kind of Mac, npm's Node missing, a
+  // folder its privacy protection guards…): one plain sentence, the button that fixes it, the raw line underneath
+  const m = mac && !/not logged in|unauthori[sz]ed|\b401\b/i.test(message) && !POLICY_BLOCKED.test(message) && !/sandbox|seatbelt/i.test(message) ? MacPolish.plainError(message, { bin, signal }) : null;
+  if (m) return { message: `${m.text}\n\nFix: ${m.fix}\n\n(${String(message).split('\n')[0].slice(0, 200)})`, fix: m.fix, fixAction: m.action, fixEngine: engine };
   if (/not logged in|please run \/login|codex login|unauthori[sz]ed|\b401\b|sign in again|token (expired|is invalid)|refresh token/i.test(message)) {
     return { message: `${ENGINES[engine].label} isn't signed in to your ${ENGINES[engine].account} account.`, needsLogin: true, fix: 'Press the sign-in button below (or run /astra-login), finish in the window that opens, then Retry.' };
   }
@@ -1044,7 +1050,7 @@ function send({ agent, chatId, session, text, options = {} }, emit, live = null)
   }
   const bin = options._bin || LOCATE[engine]?.();
   if (!bin) {
-    emit({ type: 'error', message: `Couldn't find ${ENGINES[engine]?.label || engine} on this ${IS_MAC ? 'Mac' : 'PC'}.\n\nFix: press Install (it runs \`${Installs.updatePlan(engine, null).command}\` in a ${IS_WIN ? 'PowerShell' : 'Terminal'} window), install the ${engine === 'codex' ? 'Codex (ChatGPT)' : 'Claude'} desktop app, or set its path in Settings → Engines. /doctor shows what Hearth looked for${IS_WIN ? ' (PATH, npm\'s %APPDATA%\\npm, nvm, Volta, scoop, winget, pnpm and the desktop apps)' : ''}.`, fixAction: 'install', fixEngine: engine });
+    emit({ type: 'error', message: `Couldn't find ${ENGINES[engine]?.label || engine} on this ${IS_MAC ? 'Mac' : 'PC'}.\n\nFix: press Install (it runs \`${Installs.updatePlan(engine, null).command}\` in a ${IS_WIN ? 'PowerShell' : 'Terminal'} window), install the ${engine === 'codex' ? 'Codex (ChatGPT)' : 'Claude'} desktop app, or set its path in Settings → Engines. /doctor shows what Hearth looked for${IS_WIN ? ' (PATH, npm\'s %APPDATA%\\npm, nvm, Volta, scoop, winget, pnpm and the desktop apps)' : IS_MAC ? ` (${MacPolish.lookedIn()})` : ''}.`, fixAction: 'install', fixEngine: engine });
     return;
   }
   usedBin[engine] = bin;
@@ -1065,7 +1071,7 @@ function send({ agent, chatId, session, text, options = {} }, emit, live = null)
   let child;
   try { child = WinPolish.spawn(bin, args, { cwd: WORKSPACE, windowsHide: true, env: { ...process.env, MCP_TOOL_TIMEOUT: String(45 * 60000) } }); } catch (err) {
     log(`${engine} ${chatId} couldn't start ${bin}: ${err.message}`);
-    emit({ type: 'error', ...friendlyError(engine, `Couldn't start ${ENGINES[engine].label} (${err.code || err.message}).`) });
+    emit({ type: 'error', ...friendlyError(engine, `Couldn't start ${ENGINES[engine].label} (${err.code || err.message}).`, { bin }) });
     return;
   }
   if (child.hearthVia && child.hearthVia !== 'direct') log(`${engine} ${chatId} started ${path.basename(bin)} via ${child.hearthVia}`);
@@ -1129,7 +1135,7 @@ function send({ agent, chatId, session, text, options = {} }, emit, live = null)
       return;
     }
     if (heal(event)) return;
-    if (event.type === 'error') Object.assign(event, friendlyError(engine, event.message));
+    if (event.type === 'error') Object.assign(event, friendlyError(engine, event.message, { bin }));
     if (event.type === 'done') { try { addUsage(agent.id, event.usage, { chatId, model: options.model || agent.model || '', dock: agent.dock || '', ms: Date.now() - startedAt, tools: toolCount }); } catch { /* usage stats are best-effort */ } }
     emit({ ...event, session: state });
   };
@@ -1234,6 +1240,8 @@ function send({ agent, chatId, session, text, options = {} }, emit, live = null)
     if (child.hubIdle) finish({ type: 'error', message: `${ENGINES[engine].label} printed nothing for ${IDLE_MS / 60000} minutes, so Hearth stopped it. Press Retry.` });
     else if (child.hubStopped) finish({ type: 'stopped' });
     // (round 21) killed from outside (out of memory, a force quit…): it was shown as "stopped", as if you had pressed Stop
+    // (round 33, macpolish) killed by macOS before it printed anything: Gatekeeper / a bad signature, said as such
+    else if (code === null && IS_MAC && signal === 'SIGKILL' && !streamed && !stderr.trim() && Date.now() - startedAt < 10000) finish({ type: 'error', message: `${ENGINES[engine].label} was stopped by macOS as it started (killed: 9).` });
     else if (code === null) finish({ type: 'error', message: `${ENGINES[engine].label} stopped unexpectedly (${signal || 'killed'}): out of memory, or something closed it. What it wrote so far is kept. Press Retry, or ask it to continue.` });
     else finish({ type: 'error', message: lastErrorLine(stderr) || `${ENGINES[engine].label} exited (${code})` });
   };
@@ -1387,7 +1395,7 @@ async function checkEngine(engine, { fresh = false, login = true } = {}) {
   const copies = [];
   for (const file of files.slice(0, 12)) {
     const v = await Installs.version(file, { cwd: WORKSPACE, fresh });
-    copies.push({ path: file, kind: file === pinned ? 'settings' : Installs.kindOf(engine, file), version: v.text, semver: v.semver });
+    copies.push({ path: file, kind: file === pinned ? 'settings' : Installs.kindOf(engine, file), via: IS_MAC ? MacPolish.whereOf?.(file) || '' : '', version: v.text, semver: v.semver });
   }
   const working = copies.filter((c) => c.version);
   const newest = working.reduce((best, c) => (!best || Installs.cmp(c.semver, best.semver) > 0 ? c : best), null);
@@ -1396,7 +1404,7 @@ async function checkEngine(engine, { fresh = false, login = true } = {}) {
   if (!pinned && pick && d.chosen[engine] !== pick.path) { d.chosen[engine] = pick.path; Installs.persist(); }
   if (!pinned && !pick && d.chosen[engine]) { delete d.chosen[engine]; Installs.persist(); }
   for (const c of copies) { c.chosen = c === pick; c.ok = Installs.meetsMin(engine, c.semver); }
-  const r = { engine, label: ENGINES[engine].label, found: Boolean(pick), chosen: pick?.path || null, from: pick ? (pinned ? 'settings' : pick.kind) : null,
+  const r = { engine, label: ENGINES[engine].label, found: Boolean(pick), chosen: pick?.path || null, from: pick ? (pinned ? 'settings' : pick.kind) : null, via: pick?.via || '',
     version: pick?.version || null, semver: pick?.semver || null, min: Installs.minFor(engine), copies };
   r.tooOld = pick ? Installs.meetsMin(engine, pick.semver) === false : false;
   r.broken = Boolean(pick && !pick.version);
@@ -1489,7 +1497,7 @@ function discoverConnectors() {
 }
 
 module.exports = {
-  send, stop, stopAll, login, status, checkInstalls, checkEngine, fix, onInstalls, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
+  send, stop, stopAll, login, status, checkInstalls, checkEngine, fix, locate: (e) => LOCATE[e]?.() || null, onInstalls, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
   doctor, EFFORTS, CODEX_DISABLED_FEATURES,
   // for tests (dev/astra-engine-test.js)
   _test: { lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, POLICY_BLOCKED, codexOpen, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, chatGuideOn, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION, memoryFor, onlyGrew },
