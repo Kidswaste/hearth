@@ -833,3 +833,9 @@ In ⋯ AI setup, **⚡ Hooks: when… then…** gives each AI a short list of ru
 - ✓ No forced layout per click anywhere once the Lab has loaded (40 → 0 per 20 clicks); ⋯ AI setup opens with 69 % less forced style / layout time and is preloaded when you point at ⋯; ◎ Missions places itself before it paints and closes cleanly; switching windows forces 45 % less.
 - ✓ "↑ Show earlier" brings 60 messages at a time (41 ms frame → 15–26 ms per step); the usage highlights and the jank watch stay out of busy frames.
 - ○ Measured headless on a shared CPU with software GL (`sh dev/run-checks.sh smooth26`, hz240, labperf, perf-report); long-chat wheel tasks here are the software compositor's commit, to check with `/smooth` on a real Mac.
+## The Lab gallery: start from something like… (round 27, gallery, 58 upgrades: docs/upgrades/gallery.md)
+- ✓ The Lab's **New** opens a gallery of picture cards grouped by mood (Neon & retro, Chrome & glossy, Soft & dreamy, Dark & hypnotic, Club energy, Type openers) with a search: 26 new built-in music scenes (outrun sunset, hyper tunnel, chrome blob, molten gold, liquid gradient, beat burst, kinetic opener…), your own scenes, history (deleted scenes, how your scenes began) and the whole library (backgrounds, 3D, shaders, particles, physics, type, node presets, code sketches).
+- ✓ Hover a card: it plays; click: a new scene from it at your frame size; **＋ Layer**: on top of your scene. Every starting point has plainly named sliders and something that follows the music.
+- ✓ Also from a new chat's starter ("🖼 Start from something like…") and the director's ◎ mission of that name (your words search, you pick, the director gets your words).
+- ✓ Light: loads on first use; pictures drawn one at a time in one hidden preview page, only for cards in view, kept on disk.
+- ○ Checked with the fake engines (`sh dev/run-checks.sh gallery`: every starting point runs without errors); its look on a real GPU wasn't seen here.
