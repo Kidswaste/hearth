@@ -224,11 +224,16 @@ if (AREAS.includes('Lab')) {
     // page (host-key), and a key pressed while an earlier key (a frame size, a re-run) is rebuilding that page lands on
     // a page with no listener yet: W, ` or | were "dead" on some runs only. Dead twice still counts.
     reset: async () => { await wait(1500); },
-    before: async () => { if (H.activeId !== 'tool:three') activate('tool:three'); const r = pic?.getBoundingClientRect(); if (r) { await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mousePressed', x: r.left + r.width / 2, y: r.top + r.height * 0.6, button: 'left', clickCount: 1 } }); await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseReleased', x: r.left + r.width / 2, y: r.top + r.height * 0.6, button: 'left', clickCount: 1 } }); } await wait(100); },
+    // (round 30) the click's input ack can be lost like a key's when the frame it lands on is being rebuilt by the key
+    // before (Shift+2 → Shift+3: "the key still running after 15s"): don't wait on it for more than 3 s either
+    before: async () => { if (H.activeId !== 'tool:three') activate('tool:three'); const r = pic?.getBoundingClientRect(); const m = (type) => Promise.race([smoke({ cdp: 'Input.dispatchMouseEvent', params: { type, x: r.left + r.width / 2, y: r.top + r.height * 0.6, button: 'left', clickCount: 1 } }), wait(3000)]); if (r) { await m('mousePressed'); await m('mouseReleased'); } await wait(100); },
     // keys, not calls (a size change can keep a call waiting for the next frame); and don't wait on the key's own
     // acknowledgement for more than 3 s: a frame size change rebuilds the preview frame, and the test harness's
     // input ack for a key routed there can be lost (the next keys work: the app isn't stuck)
-    restore: async () => { const k = (c) => Promise.race([press(one(c)), wait(3000)]); if (lab.state.frozen) { await k('F'); await wait(200); } await k('Escape'); },
+    // (round 30) E's scene editor stays on (Esc only drops its selection), and while it's on the picture's W / E / R / Q / F
+    // are the editor's move / rotate / scale keys: W after E was "dead" whenever the key went into the picture. Leave it
+    // like the freeze, with its ✥ Edit button (E pressed in the picture would be the editor's rotate)
+    restore: async () => { const k = (c) => Promise.race([press(one(c)), wait(3000)]); if (lab.state.frozen) { await k('F'); await wait(200); } if (L.querySelector('.three-preview.editing')) { L.querySelector('button[title^="Move around the selected layer"]')?.click(); await wait(200); } await k('Escape'); },
   });
 }
 

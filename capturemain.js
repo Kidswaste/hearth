@@ -313,10 +313,17 @@ function register(ipcMain, getWin, getSettings = () => ({})) {
   const KEYS = { s: 'menu', a: 'region', r: 'record', p: 'pause', v: 'library', t: 'tour' };
   // the main window, and the website agents' webviews (the keys did nothing while a website had the keyboard)
   app.on('web-contents-created', (_e, wc) => { if (wc.getType() === 'webview') wc.on('before-input-event', (event, input) => captureKey(event, input)); });
-  app.on('browser-window-created', (_e, created) => setImmediate(() => {
-    if (created !== getWin()) return;
-    created.webContents.on('before-input-event', (event, input) => captureKey(event, input));
-  }));
+  // (round 30 fix) main.js registers this right after createWindow (round 29, fastboot): the window is already made, so
+  // its 'browser-window-created' is gone by now and the keys did nothing while the page had them (a chat box). Hook the
+  // window that exists, and any later main window (once each)
+  const hooked = new WeakSet();
+  const hookWin = (w) => {
+    if (!w || w.isDestroyed() || w !== getWin() || hooked.has(w.webContents)) return;
+    hooked.add(w.webContents);
+    w.webContents.on('before-input-event', (event, input) => captureKey(event, input));
+  };
+  hookWin(getWin());
+  app.on('browser-window-created', (_e, created) => setImmediate(() => hookWin(created)));
   function captureKey(event, input) {
     if (input.type !== 'keyDown') return;
     const mod = input.control || (process.platform === 'darwin' && input.meta);

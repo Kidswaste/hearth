@@ -8,7 +8,7 @@
 //    shows (an app window, its sign-in popup, a website chat), and the owner is offered "Sign in with Chrome instead"
 //    in one click (appsmain.js for app windows, chrome-ui.js in the hub for website chats).
 // Tests: HEARTH_CHROME_REJECT_HOSTS="127.0.0.1" lets a local fake refusal page count (dev/checks/chrome.js).
-const { app, session } = require('electron');
+const { app, session, webContents } = require('electron');
 const CDP = require('./chrome-cdp');
 
 const version = () => process.versions.chrome || '130.0.0.0';
@@ -28,7 +28,8 @@ const PROBE = 'String((document.body && document.body.innerText) || "").slice(0,
 function setup(deps = {}) {
   app.on('session-created', hookSession);
   app.whenReady().then(() => hookSession(session.defaultSession)).catch(() => {});
-  app.on('web-contents-created', (_e, contents) => {
+  // (round 30 fix) set up after the main window is made (round 29, fastboot): its page is hooked too, not only later ones
+  const hook = (contents) => {
     contents.on('did-create-window', (w) => { try { openers.set(w.webContents.id, contents); w.webContents.once('destroyed', () => openers.delete(w.webContents.id)); } catch { /* gone */ } });
     let last = '';
     const check = async () => {
@@ -43,7 +44,9 @@ function setup(deps = {}) {
     };
     contents.on('did-finish-load', check);
     contents.on('did-navigate-in-page', () => setTimeout(check, 400));
-  });
+  };
+  try { for (const c of webContents.getAllWebContents()) hook(c); } catch { /* not ready */ }
+  app.on('web-contents-created', (_e, contents) => hook(contents));
 }
 
 module.exports = { setup, userAgent, hookSession };
