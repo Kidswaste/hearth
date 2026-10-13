@@ -94,10 +94,19 @@ const Updater = (() => {
       s.branch && s.branch !== 'main' ? `This copy is on the branch "${s.branch}": main is pulled into it.` : '',
       s.ahead ? `${s.ahead} change${s.ahead === 1 ? '' : 's'} here aren't on main: kept.` : '',
     ].filter(Boolean);
+    // (round 29) the patch notes of the rounds this copy doesn't have yet come first, in plain words; the commit list
+    // folds under Details
+    const pn = (s.notes || []).map((n) => {
+      const box = el('div', { class: 'up-note pn-body' });
+      if (typeof renderMarkdown === 'function') box.innerHTML = renderMarkdown(n.text); else box.textContent = n.text;
+      return box;
+    });
     const dlg = el('dialog', { class: 'ui-modal up-dlg' },
-      el('h3', { text: `⬆ ${s.behind} new change${s.behind === 1 ? '' : 's'} on main` }),
+      el('h3', { text: pn.length ? `⬆ What's new: ${pn.length === 1 ? `round ${s.notes[0].round}` : `${pn.length} rounds`}` : `⬆ ${s.behind} new change${s.behind === 1 ? '' : 's'} on main` }),
       el('p', { class: 'hint', text: `You have ${s.head} · main is at ${s.remote}. Hearth pulls them, then reloads (or restarts when needed). Your chats, scenes and settings stay.` }),
-      list, more, ...notes.map((n) => el('p', { class: 'hint', text: n })),
+      pn.length ? el('div', { class: 'up-notes' }, pn) : null,
+      pn.length ? el('details', { class: 'up-details' }, el('summary', { text: `Details: ${s.behind} change${s.behind === 1 ? '' : 's'}` }), list, more) : list, pn.length ? null : more,
+      ...notes.map((n) => el('p', { class: 'hint', text: n })),
       el('div', { class: 'modal-buttons' },
         el('button', { type: 'button', text: 'Later', on: { click: () => dlg.close() } }),
         el('button', { type: 'button', class: 'primary', text: 'Update & reload', on: { click: () => { dlg.close(); run(); } } })));
@@ -114,11 +123,14 @@ const Updater = (() => {
     store.set('update.just', null);
     store.set('update.last', j); // (round 15) discover.js: What's new from the docs this update changed
     document.dispatchEvent(new CustomEvent('hearth:updated', { detail: j }));
-    if (Date.now() - j.at < 5 * 60000) toast(`Hearth updated (${j.from} → ${j.to}, ${j.n} file${j.n === 1 ? '' : 's'}).${j.note ? ` ${j.note}` : ''}`, { timeout: j.note ? 12000 : 4000 });
+    if (Date.now() - j.at < 5 * 60000) toast(`Hearth updated (${j.from} → ${j.to}, ${j.n} file${j.n === 1 ? '' : 's'}).${j.note ? ` ${j.note}` : ''}`, { timeout: j.note ? 12000 : 8000, action: { label: '📰 Patch notes', fn: () => patchNotes() } });
   }
 
+  // (round 29) the patch-notes reader (patchnotes.js, its own lazy group)
+  const patchNotes = (file) => (typeof Lazy !== 'undefined' ? Lazy.load('patchnotes') : Promise.resolve()).then(() => PatchNotes.open(file)).catch((err) => toast(err.message, { type: 'error' }));
   function start() {
     afterUpdate();
+    AppUI.addAction?.('Patch notes: what changed, round by round', () => patchNotes());
     setTimeout(() => { if (auto()) check(); }, 25000);
     setInterval(() => { if (auto() && !document.hidden) check(); }, EVERY);
     // (round 19, splash) not on the window's first focus at launch (a git fetch while the first screen builds): the
@@ -144,5 +156,5 @@ const Updater = (() => {
     }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
-  return { check, run, dialog, get status() { return last; }, _setApi: (fn) => { api = fn; } };
+  return { check, run, dialog, patchNotes, get status() { return last; }, _setApi: (fn) => { api = fn; } };
 })();

@@ -52,7 +52,17 @@ async function status({ fetch = true } = {}) {
   ]);
   const commits = log.out ? log.out.split('\n').map((l) => { const [hash, subject, t] = l.split('\t'); return { hash, subject, at: Number(t) * 1000 }; }) : [];
   const count = await git(['rev-list', '--count', `HEAD..origin/${BRANCH}`]);
+  // (round 29) the patch notes this copy doesn't have yet (docs/patch-notes/round-NN.md, newest first), read from the
+  // fetched main without touching the files here
+  const notes = [];
+  const nd = await git(['diff', '--name-only', `HEAD..origin/${BRANCH}`, '--', 'docs/patch-notes/']);
+  const roundOf = (f) => Number((/round-(\d+)\.md$/.exec(f) || [])[1]) || 0;
+  for (const f of (nd.out ? nd.out.split('\n') : []).filter(roundOf).sort((x, y) => roundOf(y) - roundOf(x)).slice(0, 6)) {
+    const t = await git(['show', `origin/${BRANCH}:${f}`]);
+    if (t.ok && t.out) notes.push({ file: f, round: roundOf(f), text: t.out });
+  }
   return {
+    notes,
     ok: true, head: head.out.slice(0, 7), remote: remote.out.slice(0, 7), branch: branch.out,
     behind: Number(count.out) || 0, ahead: Number(ahead.out) || 0, commits,
     dirty: dirty.out ? dirty.out.split('\n').length : 0, dir: DIR,

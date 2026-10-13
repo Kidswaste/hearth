@@ -49,6 +49,17 @@ const ok = (c, what) => { console.log(`${c ? '✓' : '✖'} ${what}`); if (!c) f
   s = await U.status();
   ok(s.behind === 0, 'up to date after');
 
+  // (round 29) patch notes: the rounds this copy doesn't have yet, newest first, read from the fetched main
+  write(path.join(dev, 'docs', 'patch-notes', 'round-7.md'), '# Round 7\nSeven.\n');
+  write(path.join(dev, 'docs', 'patch-notes', 'round-12.md'), '# Round 12\nTwelve.\n');
+  g(dev, 'add', '-A'); g(dev, 'commit', '-qm', 'Patch notes'); g(dev, 'push', '-q', 'origin', 'main');
+  s = await U.status();
+  ok(s.notes?.length === 2 && s.notes[0].round === 12 && /Twelve/.test(s.notes[0].text) && s.notes[1].round === 7, `patch notes not here yet, newest first (${s.notes?.map((n) => n.round)})`);
+  ok(!fs.existsSync(path.join(app, 'docs', 'patch-notes', 'round-12.md')), 'read without touching the files here');
+  await U.apply();
+  s = await U.status();
+  ok(s.notes.length === 0, 'none left after the update');
+
   // a main-process change → restart
   write(path.join(dev, 'main.js'), '// main 2\n'); g(dev, 'commit', '-qam', 'Main side'); g(dev, 'push', '-q', 'origin', 'main');
   r = await U.apply();

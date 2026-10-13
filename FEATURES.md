@@ -888,3 +888,6 @@ In ⋯ AI setup, **⚡ Hooks: when… then…** gives each AI a short list of ru
 - ✓ **Drop a .hearthpack anywhere on Hearth** (or Share › Open a pack…, or open it with Hearth): a card first (its picture, name, what's inside, size, where it came from, and that its layers are code running only in the Lab's sandboxed preview); nothing is added until **Add as a new scene**. Then a new scene opens, its files in `data/assets/packs/<name>/` and the asset library, paths rewritten, LUTs in the grade, its sequence back.
 - ✓ Safe by construction: no zip-slip (only `files/<plain name>`, every target checked inside Hearth's folder), size and zip-bomb caps, CRC checks, never overwrites, a newer-format pack says "update Hearth".
 - ○ Tested headless (`sh dev/run-checks.sh packs`: unit + a scene and a sequence round trip through the buttons); real Finder / Explorer "Open with" wasn't tried here.
+
+## 📰 Patch notes (round 29)
+One short, plain-words page per round (docs/patch-notes/round-NN.md): what each new thing is, where to find it, and what's good to know. The ⬆ Update dialog now leads with the patch notes of the rounds you don't have yet (the commit list folds under Details); after an update the note has a **📰 Patch notes** button; any time: Settings › Updates › **Patch notes…** or Ctrl/⌘+K.
