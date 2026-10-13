@@ -547,6 +547,7 @@ function registerAfterWindow() {
   require('./reachmain').register(ipcMain, { dataDir: store.DATA_DIR, syncmain, folderMap: () => settings().reachFolders }); // (round 19) paths from the other computer, open / reveal / preview what a chat made
   lazyIpc('updatermain.js', (m, ipc) => m.register(ipc, { restart: () => appshell.restartApp(), getWin: () => win })); // ⬆ Update: pull main from the app's git checkout, reload / restart (round 29: on first use)
   lazyIpc('chromemain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win })); // (round 30) Hearth's Chrome: Google sign-in in the owner's real Chrome, driven over the DevTools protocol
+  lazyIpc('chromeviewmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win })); // (round 31) Chrome views: that Chrome out of sight, its pages shown and used inside Hearth's windows
   // (round 30, chrome) Google's "Couldn't sign you in" anywhere: the app window offers Chrome, else the hub does (a website chat)
   chromeguard.setup({ onReject: (contents, opener) => {
     const target = opener || contents;

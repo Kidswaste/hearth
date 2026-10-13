@@ -23,4 +23,11 @@ contextBridge.exposeInMainWorld('appWin', {
   onNavigate: on('appwin:navigate'),
   onKey: on('appwin:key'),
   onCatalog: on('appwin:catalog'),
+  // (round 31, chromeview) an app in Chrome shows here as a Chrome view: its frames, the owner's input, its page's events
+  cview: {
+    start: call('cview:start'), stop: call('cview:stop'), visible: call('cview:visible'), resize: call('cview:resize'), nav: call('cview:nav'),
+    cursor: call('cview:cursor'), menu: call('cview:menu'), signIn: call('cview:signIn'), signedIn: call('cview:signedIn'),
+    input: (id, list) => ipcRenderer.send('cview:input', id, list), ack: (id, ms) => ipcRenderer.send('cview:ack', id, ms),
+    onFrame: on('cview:frame'), onEvent: on('cview:event'),
+  },
 });

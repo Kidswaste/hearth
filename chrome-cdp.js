@@ -12,6 +12,9 @@
 //   Browser.connect(port)                    → pages(), open(url), close(id), activate(id), page(id) → Page
 //   Page: navigate, waitLoad, waitFor(selector), evaluate, text, title, url, click(selector), type(selector, text),
 //         shot({ maxWidth }), reload, back, forward
+//   (round 31, chromeview) Browser.open(url, { bounds }) places a new window (off-screen when Chrome is out of sight),
+//   windowOf(id) / place(id, bounds) move a page's window; Screencast(page, { onFrame }) → start / resize / ack / stop:
+//   a page's frames sized to a Hearth view (Emulation.setDeviceMetricsOverride), paced by chromeview-core.js's Pacer
 // Passwords never pass through here: the owner signs in on Google's own page in Chrome's own window.
 const fs = require('fs');
 const os = require('os');
@@ -261,9 +264,20 @@ class Browser {
     const { targetInfos = [] } = await this.c.send('Target.getTargets');
     return targetInfos.filter((t) => t.type === 'page' && !/^(devtools|chrome-extension):/.test(t.url)).map((t) => ({ id: t.targetId, url: t.url, title: t.title, attached: t.attached }));
   }
-  async open(url, { newWindow = false, background = false } = {}) {
-    const { targetId } = await this.c.send('Target.createTarget', { url: String(url || 'about:blank'), newWindow, background });
+  // bounds: { left, top, width, height } for a new window (Chrome 130+ places it there at once: no flash on screen;
+  // older ones ignore it and place() moves it right after)
+  async open(url, { newWindow = false, background = false, bounds = null } = {}) {
+    const { targetId } = await this.c.send('Target.createTarget', { url: String(url || 'about:blank'), newWindow: newWindow || Boolean(bounds), background, ...(bounds || {}) });
     return targetId;
+  }
+  // (round 31) a page's window and where it is: { windowId, bounds: { left, top, width, height, windowState } }
+  windowOf(id) { return this.c.send('Browser.getWindowForTarget', { targetId: id }); }
+  async place(id, bounds) {
+    const { windowId, bounds: was } = await this.windowOf(id);
+    if (was?.windowState && was.windowState !== 'normal') await this.c.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'normal' } });
+    const { left, top, width, height } = bounds;
+    await this.c.send('Browser.setWindowBounds', { windowId, bounds: { left, top, width, height } });
+    return windowId;
   }
   async close(id) { this.sessions.delete(id); await this.c.send('Target.closeTarget', { targetId: id }); return true; }
   async activate(id) { await this.c.send('Target.activateTarget', { targetId: id }); return true; }
@@ -280,4 +294,63 @@ class Browser {
   disconnect() { this.c.close(); }
 }
 
-module.exports = { candidates, find, googleOnly, isRejection, rejectHost, hostOf, userAgent, clientHints, withHints, Client, Browser, Page, version, activePort, getJson, KINDS };
+// ---------- (round 31, chromeview) a page's frames for a Hearth view ----------
+// start({ width, height, scale, quality }): the page's viewport becomes the view's size (CSS pixels) at that pixel
+// ratio, and its frames come as JPEGs. Chrome sends the next frame only after the last one is acked: ack() is called
+// once Hearth drew it, and the Pacer spaces the acks (≤ maxFps, fewer while drawing is slow). stop(): no more frames
+// (a hidden view costs nothing). A frame not acked within a second is acked anyway (a view that stalled).
+class Screencast {
+  constructor(page, { onFrame = () => {}, maxFps = 30, quality = 70 } = {}) {
+    const { Pacer } = require('./chromeview-core');
+    this.page = page; this.onFrame = onFrame; this.quality = quality; this.pacer = new Pacer({ maxFps });
+    this.on = false; this.size = null; this.pending = null; this.timer = 0; this.watch = 0; this.frames = 0; this.bytes = 0;
+    this.off = page.b.c.on('Page.screencastFrame', (p, sid) => this.frame(p, sid));
+  }
+  frame(p, sid) {
+    if (sid !== this.page.sid) return;
+    if (!this.on) { this.page.send('Page.screencastFrameAck', { sessionId: p.sessionId }).catch(() => {}); return; }
+    this.frames += 1; this.bytes += p.data?.length || 0;
+    this.pending = p.sessionId;
+    clearTimeout(this.watch);
+    this.watch = setTimeout(() => this.ack(), 1000);
+    try { this.onFrame(p.data, p.metadata || {}); } catch { /* the view's own trouble */ }
+  }
+  ack(drawMs) {
+    if (drawMs != null) this.pacer.drawn(drawMs);
+    const sid = this.pending;
+    if (sid == null || this.timer) return;
+    clearTimeout(this.watch);
+    const go = () => { this.timer = 0; if (this.pending !== sid) return; this.pending = null; this.pacer.acked(Date.now()); this.page.send('Page.screencastFrameAck', { sessionId: sid }).catch(() => {}); };
+    const d = this.pacer.delay(Date.now());
+    if (d > 0) this.timer = setTimeout(go, d); else go();
+  }
+  async metrics({ width, height, scale = 1 }) {
+    await this.page.send('Emulation.setDeviceMetricsOverride', { width: Math.round(width), height: Math.round(height), deviceScaleFactor: scale, mobile: false });
+  }
+  async start({ width, height, scale = 1, quality = this.quality } = {}) {
+    this.size = { width, height, scale, quality };
+    await this.metrics(this.size);
+    await this.page.send('Emulation.setFocusEmulationEnabled', { enabled: true }).catch(() => {});
+    if (this.on) await this.page.send('Page.stopScreencast').catch(() => {});
+    this.on = true; this.pending = null; clearTimeout(this.timer); this.timer = 0;
+    await this.page.send('Page.startScreencast', { format: 'jpeg', quality, maxWidth: Math.round(width * scale), maxHeight: Math.round(height * scale), everyNthFrame: 1 });
+  }
+  // a new size: the viewport follows; the screencast restarts only when the frames' size cap changed
+  async resize(size) {
+    const was = this.size || {};
+    const s = { ...was, ...size };
+    if (!this.on) { this.size = s; return; }
+    if (Math.round(s.width * s.scale) === Math.round(was.width * was.scale) && Math.round(s.height * s.scale) === Math.round(was.height * was.scale)) { this.size = s; await this.metrics(s); return; }
+    await this.start(s);
+  }
+  async stop({ clear = false } = {}) {
+    const was = this.on;
+    this.on = false; clearTimeout(this.timer); clearTimeout(this.watch); this.timer = 0;
+    if (was) await this.page.send('Page.stopScreencast').catch(() => {});
+    if (this.pending != null) { this.page.send('Page.screencastFrameAck', { sessionId: this.pending }).catch(() => {}); this.pending = null; }
+    if (clear) { await this.page.send('Emulation.clearDeviceMetricsOverride').catch(() => {}); await this.page.send('Emulation.setFocusEmulationEnabled', { enabled: false }).catch(() => {}); }
+  }
+  dispose() { this.stop().catch(() => {}); this.off?.(); }
+}
+
+module.exports = { Screencast, candidates, find, googleOnly, isRejection, rejectHost, hostOf, userAgent, clientHints, withHints, Client, Browser, Page, version, activePort, getJson, KINDS };

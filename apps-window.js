@@ -3,6 +3,8 @@
 // send this page to the chat, open it in your browser, ⋯ for the rest. The website itself runs in a <webview> in
 // its own persistent session; nothing on the page can reach Hearth. Keys: Ctrl/⌘+R reload, Alt+← / ⌘[ back,
 // Alt+→ / ⌘] forward, Ctrl/⌘+L copy the address, Ctrl/⌘+Shift+Enter send to the chat, Ctrl/⌘+W hide.
+// (round 31, chromeview) An app "in Chrome" (Google sign-in) shows here too: a Chrome view (chromeview.js) of its page
+// in the out-of-sight Hearth Chrome takes the <webview>'s place; the bar, the downloads and ⋯ work the same.
 (() => {
   const $ = (id) => document.getElementById(id);
   const mk = (tag, props = {}, ...kids) => {
@@ -15,6 +17,7 @@
     return n;
   };
   let spec = {}; let view = null; let downloads = []; let catalog = []; let url = ''; let title = '';
+  let cv = null; let cvBack = false; let cvFwd = false; // (round 31) the Chrome view, when this app runs in Chrome
   let toastTimer = 0;
   function toast(text, ms = 2600) { const t = $('aw-toast'); t.textContent = text; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, ms); }
   const fmtBytes = (n) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
@@ -41,10 +44,11 @@
     let host = '';
     try { const u = new URL(url); host = `${u.hostname.replace(/^www\./, '')}${u.pathname.length > 1 ? u.pathname : ''}`; } catch { host = url; }
     $('aw-where').textContent = title ? `${title} — ${host}` : host;
-    $('aw-back').disabled = !view?.canGoBack?.();
+    $('aw-back').disabled = cv ? !cvBack : !view?.canGoBack?.();
   }
   function state() { window.appWin.state({ url, title }); where(); }
   function go(op) {
+    if (cv) return goChrome(op);
     if (!view) return;
     if (op === 'back' && view.canGoBack()) view.goBack();
     else if (op === 'forward' && view.canGoForward()) view.goForward();
@@ -56,9 +60,18 @@
     else if (op?.op === 'url' && /^https?:/i.test(op.url)) view.loadURL(op.url).catch(() => {});
     else if (op?.op === 'hint') toast(op.text, 9000);
   }
+  function goChrome(op) {
+    if (op === 'back' || op === 'forward' || op === 'reload') cv.go(op);
+    else if (op === 'home') cv.go('go', spec.url);
+    else if (op === 'close') window.appWin.hide();
+    else if (op === 'to-chat') toChat();
+    else if (op === 'copy-link') navigator.clipboard.writeText(url).then(() => toast('Address copied'));
+    else if (op?.op === 'url' && /^https?:/i.test(op.url)) cv.go('go', op.url);
+    else if (op?.op === 'hint') toast(op.text, 9000);
+  }
   async function toChat() {
     let selection = '';
-    try { selection = await view.executeJavaScript('String(getSelection() || "")', false); } catch { /* the page may block it */ }
+    try { selection = cv ? await cv.selection() : await view.executeJavaScript('String(getSelection() || "")', false); } catch { /* the page may block it */ }
     toast('Sending to the chat…');
     await window.appWin.toChat({ url, title, selection });
     toast('Sent: it waits in the chat\'s composer');
@@ -112,6 +125,23 @@
     document.body.insertBefore(bar, $('aw-main'));
   }
   function morePop() {
+    if (cv) { // (round 31) a Chrome view: sign in through Chrome, or back to Hearth's own page
+      pop($('aw-more'), [
+        item('Sign in (opens Chrome once)', () => cv.signIn(), 'Chrome\'s own window, just for signing in'),
+        item('Use it inside Hearth instead', async () => { await window.appWin.chrome('hearth'); }, 'its own page here'),
+        item('Open this page in my everyday Chrome', toEveryday),
+        mk('hr'),
+        ...(spec.actions || []).map((a) => item(a.label, () => window.appWin.action(a.id, { url, title }), a.hint)),
+        (spec.actions || []).length ? mk('hr') : null,
+        item('Copy the address', () => go('copy-link'), '⌘L'.replace('⌘', spec.mac ? '⌘' : 'Ctrl+')),
+        item('Forward', () => go('forward')),
+        item(`Back to ${spec.name}'s start page`, () => go('home')),
+        item('📂 Downloads folder', () => window.appWin.reveal('')),
+        mk('hr'),
+        item('Hide this window', () => go('close'), spec.mac ? '⌘W' : 'Ctrl+W'),
+      ]);
+      return;
+    }
     const zoom = (d) => { const z = d ? Math.max(0.3, Math.min(3, view.getZoomFactor() + d)) : 1; view.setZoomFactor(z); toast(`Zoom ${Math.round(z * 100)} %`, 1200); };
     pop($('aw-more'), [
       item('Open in Chrome (for Google sign-in)', toChrome, 'from now on'),
@@ -154,6 +184,7 @@
     document.title = `${spec.name} · Hearth`;
     $('aw-icon').textContent = spec.icon || '▣';
     $('aw-name').textContent = spec.name;
+    if (spec.chromeKey && window.ChromeView) { startChrome(init); return; }
     view = document.createElement('webview');
     view.setAttribute('partition', spec.partition);
     view.setAttribute('allowpopups', '');
@@ -193,4 +224,40 @@
     paintDl();
     where();
   })();
+  // (round 31, chromeview) the app's page in the Hearth Chrome, shown and used here
+  function startChrome(init) {
+    document.body.classList.add('aw-chrome');
+    cv = ChromeView.mount($('aw-main'), {
+      api: window.appWin.cview, key: spec.chromeKey, url: spec.url || init.url, label: spec.name, app: spec.id, mac: Boolean(init.mac), bar: false,
+      onNav: (s) => { url = s.url; title = s.title; cvBack = s.back; cvFwd = s.forward; state(); },
+      onLoading: (on) => { $('aw-load').hidden = !on; },
+      onError: (m) => toast(m, 7000),
+      extra: () => [{ label: 'Open this page in my everyday Chrome', action: toEveryday }, { label: 'Send this page to the chat', action: toChat }],
+    });
+    window.cv = cv; // (dev/checks/chromeview.js reads its state)
+    const wire = () => {
+      $('aw-back').addEventListener('click', () => go('back'));
+      $('aw-back').addEventListener('contextmenu', (e) => { e.preventDefault(); go('forward'); });
+      $('aw-reload').addEventListener('click', () => go('reload'));
+      $('aw-ext').addEventListener('click', () => window.appWin.external(url));
+      $('aw-chat').addEventListener('click', toChat);
+      $('aw-dl').addEventListener('click', () => dlPop());
+      $('aw-more').addEventListener('click', morePop);
+      $('aw-app').addEventListener('click', appsPop);
+      $('aw-where').addEventListener('click', () => go('copy-link'));
+    };
+    wire();
+    window.appWin.onDownloads((list) => { downloads = list || []; paintDl(); });
+    window.appWin.onCatalog((list) => { catalog = list || []; });
+    window.appWin.onNavigate((u) => { if (/^https?:/i.test(u)) cv.go('go', u); });
+    window.appWin.onKey(go);
+    addEventListener('keydown', (e) => {
+      const mod = e.ctrlKey || e.metaKey; const k = e.key.toLowerCase();
+      if ((mod && k === 'r') || e.key === 'F5') { e.preventDefault(); go('reload'); } else if ((e.altKey && e.key === 'ArrowLeft') || (mod && k === '[')) go('back');
+      else if ((e.altKey && e.key === 'ArrowRight') || (mod && k === ']')) go('forward'); else if (mod && k === 'w') { e.preventDefault(); go('close'); } else if (mod && k === 'l') go('copy-link');
+      else if (mod && e.shiftKey && k === 'enter') go('to-chat');
+    });
+    paintDl();
+    where();
+  }
 })();

@@ -209,6 +209,14 @@ contextBridge.exposeInMainWorld('hub', {
   chrome: {
     status: call('chrome:status'), open: call('chrome:open'), page: call('chrome:page'), everyday: call('chrome:everyday'), signIn: call('chrome:signIn'),
     quit: call('chrome:quit'), profile: call('chrome:profile'), pref: call('chrome:pref'), onEvent: on('chrome:event'), onOffer: on('chrome:offer'),
+    signedIn: call('chrome:signedIn'), // (round 31) "I'm signed in": Chrome's window goes back out of sight
+  },
+  // (round 31, chromeview) Chrome views (chromeviewmain.js): a page of the out-of-sight Chrome shown and used in Hearth
+  cview: {
+    start: call('cview:start'), stop: call('cview:stop'), visible: call('cview:visible'), resize: call('cview:resize'), nav: call('cview:nav'),
+    cursor: call('cview:cursor'), menu: call('cview:menu'), signIn: call('cview:signIn'), signedIn: call('cview:signedIn'), info: call('cview:info'), test: call('cview:test'),
+    input: (id, list) => ipcRenderer.send('cview:input', id, list), ack: (id, ms) => ipcRenderer.send('cview:ack', id, ms),
+    onFrame: on('cview:frame'), onEvent: on('cview:event'),
   },
   // (round 20) jank watch (jankmain.js): main loop lag + GPU events since the last take, culprits' line numbers, display / GPU
   jank: { take: call('jank:take'), info: call('jank:info'), lines: call('jank:lines'), profile: call('jank:profile'), busy: (b) => ipcRenderer.send('jank:busy', b), off: (o) => ipcRenderer.send('jank:off', o) },

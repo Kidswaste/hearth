@@ -7,6 +7,10 @@
 //   an app window's ⋯ › Open in Chrome (apps-window.js) and the same offer there (appsmain.js)
 // Hearth keeps its hand on the Chrome pages (chromemain.js: the DevTools protocol): asking everyone types into a
 // website chat in Chrome too, the AI's app tools read / click / type / take pictures there. Passwords: never here.
+// (round 31, chromeview) Chrome now works out of sight: a website chat in Chrome shows its page right here, in a Chrome
+// view (chromeview.js: its frames, the owner's mouse and keys), and Chrome's own window only comes up for signing in
+// ("Sign in (opens Chrome once)"; it goes away by itself when the sign-in is done). AI setup's Chrome row: Sign in…,
+// "Show Chrome" (Chrome's own windows on screen, for fixing things; off by default).
 const ChromeUI = (() => {
   const api = () => window.hub?.chrome || null;
   // sites whose only sign-in is Google's (chrome-cdp.js GOOGLE_ONLY: the same list)
@@ -25,28 +29,24 @@ const ChromeUI = (() => {
   const say = (r, okText) => { if (r?.ok) { if (okText) toast(okText, { timeout: 4500 }); } else toast(r?.error || 'Chrome didn\'t answer', { type: 'error', timeout: 9000 }); return r; };
 
   // ---------- website chats in Chrome ----------
-  const covers = new Map(); // agent id → { host, view, card }
+  const covers = new Map(); // agent id → { host, view (the <webview>), wrap, cv (the Chrome view) }
   async function saveAgent(agent, v) {
     for (const t of new Set([agent, H.agent(agent.id)].filter(Boolean))) { if (v) t.chrome = v; else delete t.chrome; }
     await saveConfig();
   }
-  async function showAgent(agent) {
-    toast(`Opening ${agent.name} in Chrome…`, { timeout: 2500 });
-    return say(await api().open({ key: akey(agent.id), url: agent.url, app: true }));
+  // (round 31) its page from the Hearth Chrome, shown and used right here (a Chrome view)
+  function viewFor(agent, wrap) {
+    return ChromeView.mount(wrap, {
+      api: window.hub.cview, key: akey(agent.id), url: agent.url, label: agent.name, app: agent.id,
+      extra: () => [
+        { label: 'Open in my everyday Chrome', hint: 'your own Chrome and logins (Hearth can\'t reach it there)', action: async () => say(await api().everyday(covers.get(agent.id)?.cv?.st.url || agent.url), 'Opened in your everyday Chrome') },
+        { label: 'Use it inside Hearth instead', hint: 'its own page here (Google sign-in may refuse there)', action: () => setAgent(H.agent(agent.id) || agent, 'off') },
+      ],
+      onDownload: (d) => { if (d.state === 'completed') toast(`⤓ ${d.name} saved in Downloads/Hearth/${d.appName}`, { timeout: 6000, action: { label: 'Show', fn: () => window.hub.fs?.reveal?.(d.path) } }); },
+      onError: (m) => toast(m, { type: 'error', timeout: 8000 }),
+    });
   }
-  function card(agent) {
-    const b = (text, title, fn, cls = 'ghost small') => el('button', { class: cls, text, title, on: { click: fn } });
-    return el('div', { class: 'chr-cover' },
-      el('div', { class: 'chr-card' },
-        el('div', { class: 'chr-icon', text: '◍' }),
-        el('h3', { text: `${agent.name} opens in Chrome` }),
-        el('p', { text: 'Google signs in there (it refuses inside Hearth). Hearth still reaches the page: asking everyone types into it, and it stays signed in.' }),
-        el('div', { class: 'chr-acts' },
-          b('Show it in Chrome', 'Open or bring forward its Chrome window', () => showAgent(agent), 'primary small'),
-          b('Sign in to Google…', 'Google\'s own page, in the Hearth Chrome', () => signIn()),
-          b('Use it inside Hearth instead', 'Back to the page inside Hearth (Google sign-in may refuse there)', () => setAgent(agent, 'off')))));
-  }
-  // a website chat set to Chrome: its page inside Hearth stays empty, a card says where it is
+  // a website chat set to Chrome: its Hearth page steps aside for a Chrome view of the same site
   async function cover(agent, host, view) {
     const s = await status();
     if (!wants(agent) || !s.found) {
@@ -56,13 +56,15 @@ const ChromeUI = (() => {
       return false;
     }
     uncover(agent.id);
-    const c = card(agent);
+    const wrap = el('div', { class: 'chr-view' });
     host.classList.add('chr-host');
-    host.append(c);
-    covers.set(agent.id, { host, view, card: c });
+    host.append(wrap);
+    const c = { host, view, wrap, cv: null };
+    covers.set(agent.id, c);
+    c.cv = viewFor(agent, wrap);
     return true;
   }
-  function uncover(id) { const c = covers.get(id); if (!c) return; c.card.remove(); c.host.classList.remove('chr-host'); covers.delete(id); }
+  function uncover(id, { close = false } = {}) { const c = covers.get(id); if (!c) return; c.cv?.destroy({ close }); c.wrap.remove(); c.host.classList.remove('chr-host'); covers.delete(id); }
   // 'on': in Chrome from now on · 'off': inside Hearth · null: automatic
   async function setAgent(agent, v) {
     await saveAgent(agent, v);
@@ -72,21 +74,24 @@ const ChromeUI = (() => {
     if (wants(H.agent(agent.id) || agent)) {
       view.dataset.chrome = '1';
       try { view.loadURL('about:blank'); } catch { /* not ready */ }
-      if (await cover(H.agent(agent.id) || agent, s.el, view)) await showAgent(agent);
+      await cover(H.agent(agent.id) || agent, s.el, view);
     } else {
-      uncover(agent.id);
+      uncover(agent.id, { close: true }); // (its Chrome page closes: the chat lives here again)
       delete view.dataset.chrome;
       try { view.loadURL(agent.url); } catch { view.src = agent.url; }
       toast(`${agent.name} is back inside Hearth`, { timeout: 2500 });
     }
   }
-  // its Chrome window comes forward when the owner opens the chat (once it has one: nothing starts by itself)
-  document.addEventListener('hearth:activate', async (e) => {
-    const id = e.detail?.id;
-    if (!covers.has(id) || !api()) return;
-    const w = (await status(true)).windows || [];
-    if (w.some((x) => x.key === akey(id))) api().page(akey(id), 'show').catch(() => {});
-  });
+  // (round 31) opening the chat shows its Chrome view (it draws only while it can be seen) and gives it the keyboard
+  document.addEventListener('hearth:activate', (e) => { const c = covers.get(e.detail?.id); if (c?.cv) setTimeout(() => c.cv.focus(), 60); });
+  // (round 31) Chrome's events for the hub: "show this page" (an AI or the board asked) → its Hearth view; a sign-in done
+  function onEvent(e = {}) {
+    if (e.type === 'show') {
+      const k = String(e.key || '');
+      if (k.startsWith('app:')) window.hub.apps.chrome(k.slice(4), 'view').catch(() => {});
+      else if (k.startsWith('agent:') && H.agent(k.slice(6))) activate(k.slice(6));
+    } else if (e.type === 'signed-in' && !e.key) toast('Signed in ✓ Chrome is out of sight again; its pages show here.', { timeout: 5000 });
+  }
   // asking everyone (renderer.js sendToWebsite): type into its chat box in Chrome, then Enter
   async function sendTo(agent, text, { enter = true } = {}) {
     const k = akey(agent.id);
@@ -125,12 +130,18 @@ const ChromeUI = (() => {
   }
 
   // ---------- the owner's own buttons ----------
-  async function signIn({ plain = false } = {}) {
+  async function signIn({ plain = false, url = null, stay = false } = {}) {
     if (plain && !(await Modal.confirm('Sign in without Hearth\'s hand on Chrome?', 'The Hearth Chrome closes and opens again on Google\'s sign-in page with nothing of Hearth attached (for the rare time Google still refuses). Your sign-in stays; the next time Hearth needs that Chrome it opens it again.', { ok: 'Open it' }))) return null;
     toast('Opening Google\'s sign-in page in Chrome…', { timeout: 3000 });
-    return say(await api().signIn({ plain }), plain ? 'Sign in there, then close that Chrome window when you\'re done' : 'Sign in on Google\'s page in Chrome: it stays signed in');
+    const r = await api().signIn({ plain, url, stay });
+    if (plain) return say(r, 'Sign in there, then close that Chrome window when you\'re done');
+    // (round 31) Chrome's own window is on screen just for this; it goes away by itself once the sign-in is done
+    if (r?.ok) toast(stay ? 'The Hearth Chrome is on screen.' : 'Sign in on Google\'s page in the Chrome window: it goes away by itself when you\'re done, and stays signed in.', { timeout: 20000, action: { label: stay ? 'Done' : 'I\'m signed in', fn: () => api().signedIn({}) } });
+    else say(r);
+    return r;
   }
-  async function openHearthChrome(url = 'https://myaccount.google.com/') { return say(await api().open({ key: 'home', url, app: false })); }
+  // (round 31) Chrome is out of sight: "open" brings its window on screen until Done (or a sign-in in it finishes)
+  async function openHearthChrome(url = 'https://myaccount.google.com/') { return signIn({ url, stay: true }); }
   // ⋯ AI setup › What it can use › Chrome
   function section() {
     const box = el('div', { class: 'chr-row-box' });
@@ -141,20 +152,24 @@ const ChromeUI = (() => {
         ...H.agents().filter((a) => a.mode === 'web' && wants(a)).map((a) => ({ label: a.name, back: () => setAgent(a, 'off') })),
         ...Object.entries(s.prefs?.apps || {}).filter(([, v]) => v === 'chrome').map(([id]) => ({ label: window.Apps?.get(id)?.name || id, back: () => window.hub.apps.chrome(id, 'hearth') })),
       ];
+      const show = Boolean(s.prefs?.show);
+      const showBox = el('input', { type: 'checkbox', checked: show, on: { change: async (e) => { await api().pref('show', null, e.target.checked); toast(e.target.checked ? 'Chrome\'s own windows are on screen (for fixing things)' : 'Chrome is out of sight again', { timeout: 3000 }); paint(true); } } });
       box.replaceChildren(
         el('div', { class: 'opt-row', title: s.found ? `${s.found.path}\nIts own profile: ${s.profile}` : 'Hearth looks for Google Chrome, then Microsoft Edge and Brave' },
           el('span', { class: 'opt-label', text: 'Chrome (for Google sign-in)' }),
-          el('span', { class: `chr-state${s.found ? ' good' : ''}`, text: s.found ? `${s.found.name}${s.controlled ? ' · open' : ' · found'}` : 'not found' }),
-          s.found ? b('Open', 'Open the Hearth Chrome (its own profile: your everyday Chrome isn\'t touched)', () => openHearthChrome()) : b('Get Chrome', 'Google Chrome\'s download page, in your browser', () => window.hub.openExternal('https://www.google.com/chrome/')),
-          s.found ? b('Sign in…', 'Sign in to Google once in the Hearth Chrome: it stays signed in', () => signIn()) : null,
+          el('span', { class: `chr-state${s.found ? ' good' : ''}`, text: s.found ? `${s.found.name}${s.controlled ? ` · open${show ? '' : ' out of sight'}` : ' · found'}` : 'not found' }),
+          s.found ? null : b('Get Chrome', 'Google Chrome\'s download page, in your browser', () => window.hub.openExternal('https://www.google.com/chrome/')),
+          s.found ? b('Sign in…', 'Chrome\'s own window comes up on Google\'s sign-in page, then goes away by itself: it stays signed in', () => signIn()) : null,
           el('button', { type: 'button', class: 'ghost small', text: '⋯', title: 'More', on: { click: (e) => { const r = e.currentTarget.getBoundingClientRect(); showMenu(r.left, r.bottom + 4, moreItems(paint)); } } })),
-        el('p', { class: 'opt-hint', text: s.found ? 'Google refuses sign-in inside Hearth, so pages that need it open in your real Chrome; Hearth still reaches them there (the AI can read, click and type in app windows).' : 'Install Google Chrome (or Edge / Brave) for Google sign-in: Google refuses it inside Hearth.' }),
+        s.found ? el('label', { class: 'opt-row chr-show', title: 'Chrome works out of sight and its pages show inside Hearth. Turn this on to see Chrome\'s own windows too (for fixing things).' }, showBox, el('span', { class: 'opt-label', text: 'Show Chrome' }), el('span', { class: 'opt-hint', text: 'for fixing things' })) : null,
+        el('p', { class: 'opt-hint', text: s.found ? 'Google refuses sign-in inside Hearth, so those pages run in your real Chrome, out of sight, and show right here: you use them in Hearth. Chrome\'s own window only comes up to sign in.' : 'Install Google Chrome (or Edge / Brave) for Google sign-in: Google refuses it inside Hearth.' }),
         inChrome.length ? el('div', { class: 'chr-list' }, el('span', { class: 'opt-hint', text: 'Open in Chrome: ' }), inChrome.map((x) => el('button', { type: 'button', class: 'chr-chip', text: `${x.label} ✕`, title: 'Back inside Hearth', on: { click: async () => { await x.back(); paint(true); } } }))) : null);
     };
     paint(false);
     return box;
   }
   const moreItems = (paint = () => {}) => [
+    { label: 'Open the Hearth Chrome on screen', hint: 'until you click Done', action: () => openHearthChrome().then(() => paint(true)) },
     { label: 'Sign in without Hearth\'s hand on Chrome…', hint: 'if Google still refuses', action: () => signIn({ plain: true }).then(() => paint(true)) },
     { label: 'Close the Hearth Chrome', action: async () => { say(await api().quit(), 'Closed'); paint(true); } },
     { label: 'Show its profile folder', action: () => api().profile() },
@@ -199,6 +214,6 @@ const ChromeUI = (() => {
   }
   try { AppUI.addAction('Chrome: open the Hearth Chrome (Google sign-in)', () => openHearthChrome()); AppUI.addAction('Chrome: sign in to Google in Chrome', () => signIn()); } catch { /* no palette */ }
 
-  return { status, wants, googleOnly, cover, uncover, setAgent, sendTo, offer, banner, signIn, openHearthChrome, section, moreItems };
+  return { status, wants, googleOnly, cover, uncover, setAgent, sendTo, offer, banner, signIn, openHearthChrome, section, moreItems, onEvent, covers };
 })();
 window.ChromeUI = ChromeUI;
