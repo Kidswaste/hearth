@@ -866,3 +866,9 @@ In ⋯ AI setup, **⚡ Hooks: when… then…** gives each AI a short list of ru
 - ✓ The pick shows small on the reply ("Sonnet · low"; hover: why); one click **asks again, thinking harder** (own model, high; xhigh after high).
 - ✓ Never routes away from a model or effort you picked for the chat, never picks a stronger model than the chat's own, and a chat with a big context never steps down (it would lose its prompt cache).
 - ○ About −17% cost vs the old Smart and −32% vs Deep on a typical mix (estimate: `node dev/router-test.js`); checked with the fake engines reporting what each run got (`sh dev/run-checks.sh router`).
+## Check this computer (round 28, firstrun, 31 upgrades: docs/upgrades/firstrun.md)
+- ✓ A new computer ready in two minutes: the first launch on a fresh computer opens one calm list (Settings › Advanced › **Check this computer…** any time; Ctrl/⌘+K; skippable, never back by itself). Claude + sign-in, Codex for Astra, ffmpeg, the sync folder (**Use this Hearth** joins the copy from your other computer), folders chats use from the other computer, Mac screen recording / camera / microphone, Windows long paths + the SmartScreen note, updates.
+- ✓ Each line: its state in plain words and one button. Installs, updates and sign-ins show their exact command first and run only after your click in a visible Terminal / PowerShell window; the official page is one click away. Mac permissions open the right System Settings pane.
+- ✓ A chat's folder that only exists on the other computer: **Show where it is…** once, and every chat uses this computer's folder from then on (kept per computer).
+- ✓ Live: a line re-checks itself after its button and when Hearth gets the focus back. Reuses the existing doctor, ffmpeg, sync, reach and updater checks; loads on first use.
+- ○ Tested with the fake engines (`sh dev/run-checks.sh firstrun`); the Mac panes and Windows' long-path switch weren't seen on a real Mac / PC here.

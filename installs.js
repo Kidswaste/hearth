@@ -212,4 +212,15 @@ function runInTerminal({ title, lines, marker, cwd, bin }) {
   return { ok: true, window: 'terminal', file };
 }
 
-module.exports = { MIN, LABEL, KIND_LABEL, data, persist, semverOf, cmp, minFor, meetsMin, binKey, quick, version, signedIn, candidates, kindOf, updatePlan, loginPlan, runInTerminal, IS_WIN, IS_MAC };
+// (round 28, firstrun) the documented ffmpeg install (Homebrew on a Mac, winget on Windows): main.js runs it after a
+// click; the "Check this computer" list shows the same lines before that click
+function ffmpegLines() {
+  if (IS_WIN) return ['winget install --id Gyan.FFmpeg -e --accept-source-agreements --accept-package-agreements'];
+  if (IS_MAC) {
+    return ['command -v brew >/dev/null 2>&1 || [ -x /opt/homebrew/bin/brew ] || [ -x /usr/local/bin/brew ] || /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"',
+      'eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || /usr/local/bin/brew shellenv 2>/dev/null)"', 'brew install ffmpeg'];
+  }
+  return ['sudo apt-get install -y ffmpeg || sudo dnf install -y ffmpeg || sudo pacman -S --noconfirm ffmpeg'];
+}
+
+module.exports = { ffmpegLines, MIN, LABEL, KIND_LABEL, data, persist, semverOf, cmp, minFor, meetsMin, binKey, quick, version, signedIn, candidates, kindOf, updatePlan, loginPlan, runInTerminal, IS_WIN, IS_MAC };

@@ -1,0 +1,26 @@
+/* Check this computer (round 28, firstrun.js): one calm list, a line per thing, its state as a small colored word and
+   one button. No motion, no backdrop-filter. */
+.fr-dialog { width: 600px; max-width: calc(100vw - 48px); }
+.fr-dialog h2 { margin-bottom: 2px; }
+.fr-intro { margin: 0 0 8px; }
+.fr-sum { margin: 0 0 6px; font-weight: 600; color: var(--fh-ai, #a98bff); }
+.fr-sum:not([data-need="0"]) { color: var(--fh-ember, #ff8a3d); }
+.fr-list { display: flex; flex-direction: column; gap: 2px; max-height: min(62vh, 560px); overflow: auto; margin: 0 -4px; padding: 0 4px; }
+.fr-row { display: grid; grid-template-columns: 22px 1fr auto; align-items: start; gap: 8px; padding: 7px 8px; border-radius: 8px; }
+.fr-row:hover { background: color-mix(in srgb, var(--fh-ai, #a98bff) 6%, transparent); }
+.fr-row[data-state="fix"] { box-shadow: inset 2px 0 0 var(--fh-ember, #ff8a3d); }
+.fr-ic { text-align: center; font-size: 14px; line-height: 20px; opacity: .9; }
+.fr-main { min-width: 0; }
+.fr-t { display: flex; align-items: baseline; gap: 8px; line-height: 20px; }
+.fr-s { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted, #8a8f98); }
+.fr-row[data-state="ok"] .fr-s { color: #5fbf7f; }
+.fr-row[data-state="fix"] .fr-s { color: var(--fh-ember, #ff8a3d); }
+.fr-row[data-state="optional"] .fr-s, .fr-row[data-state="note"] .fr-s { color: var(--fh-ai, #a98bff); }
+.fr-x { font-size: 12px; line-height: 1.4; color: var(--muted, #8a8f98); overflow-wrap: anywhere; }
+.fr-row[data-state="ok"] .fr-x { opacity: .8; }
+.fr-cmd { display: block; margin-top: 4px; padding: 3px 6px; border-radius: 5px; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; cursor: copy;
+  background: color-mix(in srgb, var(--line, #2c2f36) 60%, transparent); }
+.fr-link { display: inline-block; margin-top: 3px; font-size: 11px; color: var(--fh-ai, #a98bff); text-decoration: none; }
+.fr-link:hover { text-decoration: underline; }
+.fr-b { margin-top: 1px; white-space: nowrap; }
+.fr-later { font-size: 11px; margin-right: 6px; }
