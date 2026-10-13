@@ -168,7 +168,9 @@ const Options = (() => {
     const mission = typeof Missions !== 'undefined' ? sec('Your next message', 'Click: the next message only · 📌 from now on. Right-click ◎ in the chat box: back to a normal reply.', Missions.cards(a.id, { onPick: paint })) : null;
     // (round 26, hooks.js) "Hooks: when… then…" (its group loads by itself shortly after the start; asked for here if not yet)
     const hooks = window.Lazy?.loaded?.('hooks') === false ? (window.Lazy.load('hooks').then(() => paint()).catch(() => {}), null) : typeof Hooks !== 'undefined' ? Hooks.section(a, { save, repaint: paint }) : null;
-    sheet.body.replaceChildren(who, mission, personality(a), instructions(a), hooks, access(a), memory(a), habits(a), thinking(a));
+    // (round 30, budget.js) Spending: this week's use, a weekly limit, what happens near it
+    const spending = window.Lazy?.loaded?.('budget') === false ? (window.Lazy.load('budget').then(() => paint()).catch(() => {}), null) : typeof Budget !== 'undefined' ? Budget.section(a, { repaint: paint }) : null;
+    sheet.body.replaceChildren(who, mission, personality(a), instructions(a), hooks, access(a), memory(a), habits(a), thinking(a), spending);
     if (scroll) sheet.body.scrollTop = scroll; // (round 26, smooth26: at the top already, no layout forced mid-build)
   }
   function build(host, agentId, page = false) {

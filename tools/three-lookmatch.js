@@ -280,7 +280,7 @@ const LookMatch = (() => {
     const text = C().brief(l.ref, { title: l.source.title, kind: l.ref.kind, note });
     const c = C().cost(pic, text);
     if (confirm) {
-      const yes = await Modal.confirm('Ask the director to match it?', `${dir.name} gets a small picture of the reference (≈${c.image} tokens) and its numbers (≈${c.text} tokens): ≈${c.total} tokens with this message, plus its reply and the work it does. The colors are already matched here; it adapts shapes, light and motion.`, { ok: `Ask (≈${c.total} tokens)` });
+      const yes = await Modal.confirm('Ask the director to match it?', `${dir.name} gets a small picture of the reference (≈${c.image} tokens) and its numbers (≈${c.text} tokens): ≈${c.total} tokens with this message, plus its reply and the work it does. The colors are already matched here; it adapts shapes, light and motion.${window.Budget?.passLine?.(dir.id, c.total) || ''}`, { ok: `Ask (≈${c.total} tokens)` });
       if (!yes) return false;
     }
     if (typeof Tools !== 'undefined') Tools.openDock?.('three');
