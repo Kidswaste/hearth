@@ -263,13 +263,13 @@ function accessLine(agent, acc) {
 // (round 19, reach) one short clause while access is on: paths from the owner's other computer mean this one's files
 const OTHER_PC = `Paths from the user's other computer (…/Hearth/data/…) are the same files in ${DATA_DIR} here.`;
 function accessLine0(agent, acc) {
-  const where = acc.folders.length ? acc.folders.join(', ') : 'no folder yet (ask the user to add one with /access add)';
+  const where = acc.folders.length ? acc.folders.join(', ') : 'no folder yet (ask the user to add one in ⋯ AI setup)';
   const label = { read: 'read only', write: 'read & write', full: 'full: files and commands' }[acc.level];
   if (agent.engine === 'codex') {
-    return acc.level === 'read' ? `File access (${label}): ${where}. Look with short read-only commands (ls, cat, rg, sed -n); you can't change files.`
-      : `File access (${label}): ${where}. ${acc.level === 'write' ? 'Edit with apply_patch; ' : ''}commands run sandboxed (writes only there, no network); to delete, move files into .hearth-trash/ at the top of that folder (Hearth sends them to the Trash).`;
+    return acc.level === 'read' ? `File access (${label}): ${where}. Look with short read-only commands (ls, cat, rg, sed -n); you can't change files (the user can allow edits in ⋯ AI setup).`
+      : `File access (${label}): ${where}. Edit with apply_patch; commands run sandboxed (writes only there, no network); to delete, move files into .hearth-trash/ at the top of that folder (Hearth sends them to the Trash).`;
   }
-  if (acc.level === 'read') return `File access (${label}): ${where}. Use Read, Glob and Grep there.`;
+  if (acc.level === 'read') return `File access (${label}): ${where}. Use Read, Glob and Grep there; you can't change files (the user can allow edits in ⋯ AI setup).`;
   if (!accessAsks(agent)) return `File access (read & write): ${where}. Edit with your file tools; you can't run commands, so tell the user what to run.`;
   return acc.level === 'write' ? `File access (${label}): ${where}. Edit with your file tools; Hearth asks the user before risky changes.`
     : `File access (${label}): ${where}. Start commands with cd into it; deletes go to the Trash; a denied call means the user said no; never run commands that ask for a password (sudo, ssh): ask the user to run those in a terminal.`;
@@ -277,6 +277,8 @@ function accessLine0(agent, acc) {
 // What the access server needs: the chat to show its cards in, and where relative paths start.
 const accessEnv = (agent) => ({ ELECTRON_RUN_AS_NODE: '1', HUB_AGENT_ID: agent.id, HUB_ACCESS_CHAT: agent.accessChatId || '', HUB_ACCESS_CWD: WORKSPACE });
 // Which file / command a tool call touches, for the chat's activity log (access.js), from the engines' own events.
+// What Codex's sandbox says when it refuses a write (Linux landlock / macOS seatbelt / Windows), as seen in a command's output.
+const SANDBOX_DENIED = /read-only file system|operation not permitted|permission denied|access is denied|sandbox(: | denied| blocked)/i;
 function toolAccess(name, input = {}) {
   const target = input.file_path || input.notebook_path || input.path || input.pattern || '';
   if (/^(Read|Glob|Grep|LS|NotebookRead)$/.test(name)) return { action: 'read', target, tool: name };
@@ -781,12 +783,18 @@ function codexParser(session, agent = {}) {
       return { type: 'step', id: item.id, ok: item.status !== 'failed' && !item.error, summary: item.big || oneLine(item.error?.message || resultText(item.result?.content) || item.status, 160) };
     }
     if (msg.type === 'item.started' && item.type === 'command_execution') return { type: 'tool', name: `Shell · ${short(item.command)}`, id: item.id, args: short(item.command), access: { action: 'run', target: String(item.command || '').slice(0, 400), tool: 'Shell', id: item.id } };
-    if (msg.type === 'item.completed' && item.type === 'command_execution' && item.id) return { type: 'step', id: item.id, ok: item.status !== 'failed' && !item.exit_code, summary: item.big || oneLine(`${item.exit_code ? `exit ${item.exit_code} · ` : ''}${String(item.aggregated_output || '').slice(-400)}`, 160) };
+    if (msg.type === 'item.completed' && item.type === 'command_execution' && item.id) {
+      const failed = item.status === 'failed' || Boolean(item.exit_code);
+      // (round 32) the sandbox said no (a write outside its folders, or a read-only level): access.js tells the owner why
+      const blocked = failed && SANDBOX_DENIED.test(String(item.aggregated_output || '').slice(-2000));
+      return { type: 'step', id: item.id, ok: !failed, summary: item.big || oneLine(`${item.exit_code ? `exit ${item.exit_code} · ` : ''}${String(item.aggregated_output || '').slice(-400)}`, 160), ...(blocked ? { access: { action: 'run', failed: true, target: String(item.command || '').slice(0, 400), tool: 'Shell', id: item.id } } : {}) };
+    }
     if (msg.type === 'item.started' && item.type === 'web_search') return { type: 'tool', name: `Web search · ${short(item.query, 50)}`, id: item.id, args: short(item.query, 50) };
     if (msg.type === 'item.completed' && item.type === 'file_change') {
       const files = (item.changes || []).map((c) => path.basename(c.path || '')).filter(Boolean);
       const changes = (item.changes || []).filter((c) => c.path).slice(0, 20).map((c) => ({ path: c.path, kind: c.kind || 'update' }));
-      return { type: 'tool', name: `${item.status === 'failed' ? 'Edit failed' : 'Edited'} · ${short(files.join(', ') || 'files')}`, ...(item.status !== 'failed' && changes.length ? { access: { action: 'write', changes, tool: 'apply_patch', id: item.id } } : {}) };
+      // (round 32) a failed edit too: access.js says in the chat why (outside its folders, read-only) and offers the fix
+      return { type: 'tool', name: `${item.status === 'failed' ? 'Edit failed' : 'Edited'} · ${short(files.join(', ') || 'files')}`, ...(changes.length ? { access: { action: 'write', changes, tool: 'apply_patch', id: item.id, ...(item.status === 'failed' ? { failed: true } : {}) } } : {}) };
     }
     // Its own plan (todo list) becomes the chat's live checklist.
     if ((msg.type === 'item.started' || msg.type === 'item.updated' || msg.type === 'item.completed') && item.type === 'todo_list' && Array.isArray(item.items)) {
@@ -850,7 +858,7 @@ const FIXES = [
   [/context (window|length)|maximum context|too many tokens|prompt is too long|input too long/i,
     () => 'The conversation is too long for the model: compact it (🗜 in the chat menu) or start a new chat from a summary.'],
   [/sandbox|landlock|seatbelt|seccomp/i,
-    () => 'Codex\'s sandbox refused something. File access in Astra\'s settings decides what it may read or change (/astra-files).'],
+    () => 'Codex\'s sandbox refused something: Astra may only change files in its own folders, at Read & write or Full. Change it in ⋯ AI setup → Files on this computer.'],
 ];
 
 function friendlyError(engine, message) {

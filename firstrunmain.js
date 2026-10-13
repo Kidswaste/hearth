@@ -73,7 +73,10 @@ async function folders() {
   };
   let cfg = {};
   try { cfg = opts.readConfig() || {}; } catch { /* none */ }
-  for (const a of cfg.agents || []) if (a.workspace) add(a.workspace, a.name || a.id);
+  for (const a of cfg.agents || []) {
+    if (a.workspace) add(a.workspace, a.name || a.id);
+    for (const p of a.fileAccess?.folders || []) add(p, a.name || a.id); // (round 32) the AI's own folders (AI setup)
+  }
   const dir = path.join(opts.dataDir, 'chats');
   let files = [];
   try {

@@ -54,3 +54,11 @@
 /* the line a reply keeps about what it did with your files */
 .access-sum { display: block; margin-top: 4px; padding: 0; border: 0; background: none; color: var(--muted); font-size: 11.5px; cursor: pointer; }
 .access-sum:hover { color: var(--text); text-decoration: underline; }
+/* (round 32) ⋯ AI setup → Files on this computer: the AI's own level and folders */
+.access-ai { display: flex; flex-direction: column; gap: 2px; }
+.access-ai-folders { display: flex; flex-direction: column; gap: 2px; padding: 0 4px 0 12px; }
+.access-ai-folders .access-folder { font-size: 12px; }
+.access-ai .access-home .access-fname { color: var(--warn, #e0a040); }
+.access-ai-add { min-height: 26px; padding-left: 8px; }
+.access-ai-hint, .access-ai-own { padding-left: 12px; margin: 0; }
+.access-whose { margin: 6px 0 0; }

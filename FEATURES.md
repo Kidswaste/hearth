@@ -978,3 +978,8 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ A layer fully under an opaque one skips drawing (its code still runs) and draws again the frame it can be seen.
 - ✓ A quiet corner note while lighter ("lighter to stay smooth · full quality in renders"); right-click › View › Lighten to stay smooth turns it off. Light mode stays the manual option.
 - ✓ Stills, freezes, exports and recordings are full quality: pixel-identical to adapting off (`sh dev/run-checks.sh labadapt`). Heavy test scene on SwiftShader: 5.3 → 12.2 fps.
+## 🔓 File access per AI (round 32, access2: docs/upgrades/access2.md)
+- ✓ Fixed "chats are read only even with Full": ⋯ AI setup → Files on this computer is now the AI's own setting, used by every chat with it (it used to change only the open chat). A chat can still set its own (right-click ⋯ → Access; "As in AI setup" goes back).
+- ✓ AI setup lists the folders it may use: ＋ Add a folder…, ✕, and My home folder (with a clear warning). Full = files and commands there; deletes to the Trash; risky things still ask (Claude).
+- ✓ A refused change says why in one line in the chat (outside its folders · read only · no commands · Astra's sandbox) with Allow this folder / Allow edits / Allow commands / Open AI setup.
+- ○ Tested with fake engines (`sh dev/run-checks.sh access-chat options access-astra`, `node dev/access-test.js`); Astra can't ask, so outside its folders it is blocked, not asked.

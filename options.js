@@ -76,18 +76,10 @@ const Options = (() => {
   ];
   function access(a) {
     const rows = [];
-    // files: this chat's access level (access.js)
-    if (typeof Access !== 'undefined') {
-      try {
-        const chat = Native.chatOf?.(a.id);
-        const item = Access.menuItem(a.id, chat || null);
-        const kids = (typeof item.items === 'function' ? item.items() : item.items).filter((k) => k && typeof k === 'object' && k.action);
-        const levels = kids.filter((k) => 'checked' in k);
-        const sel = el('select', { class: 'opt-pick', attrs: { 'aria-label': 'Files on this computer' } }, levels.map((k, i) => el('option', { value: String(i), text: k.label, selected: Boolean(k.checked), title: k.hint || '' })));
-        sel.addEventListener('change', () => Promise.resolve(levels[Number(sel.value)]?.action()).finally(() => setTimeout(paint, 100)));
-        const more = kids.find((k) => /Folders/.test(k.label));
-        rows.push(el('div', { class: 'opt-row', title: 'What it may do with files on this computer (it asks before anything risky)' }, el('span', { class: 'opt-label', text: 'Files on this computer' }), sel, more ? btn('Folders…', 'Which folders, and the log', () => more.action()) : null));
-      } catch { /* no access module */ }
+    // files: the AI's own access level and folders, for every chat with it (access.js; round 32: before, this row
+    // changed only the open chat, so new chats started back at off / read)
+    if (typeof Access !== 'undefined' && Access.aiSection) {
+      try { rows.push(Access.aiSection(a.id, { repaint: () => setTimeout(paint, 50) })); } catch { /* no access module */ }
     }
     for (const t of TOOLS) {
       const on = t.on ? t.on(a) : Boolean(a[t.k]);
