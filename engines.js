@@ -421,6 +421,7 @@ function buildPrompt(agent, session = null) {
 // chat without the cache. The AI that saved it already has it in this chat's history; every new chat gets it. An edited
 // or deleted fact applies at once. session.mem: the notes this session's prompt carries (saved with the chat).
 function memoryFor(agent, session) {
+  if (agent.memoryOff) return ''; // (round 33) a mission's helper (send: options.helper)
   const memory = getMemory();
   const notes = [memory.shared, memory.agents?.[agent.id]].map((m) => (m || '').trim()).filter(Boolean);
   if (!notes.length || (CtxCore ? CtxCore.memoryRelevant(agent, memory) : agent.memoryWhenRelevant)) { if (session) delete session.mem; return ''; }
@@ -1020,6 +1021,9 @@ function send({ agent, chatId, session, text, options = {} }, emit, live = null)
   // A per-run persona replaces the agent's own instructions; "lean" runs (collaborations, quick asks) drop
   // the hub tool sets and file tools so they cost no more than a plain chat turn.
   if (options.persona) agent = { ...agent, systemPrompt: String(options.persona).slice(0, 4000) };
+  // (round 33, swarmlean) a mission's helper / reviewer (swarmlean.js): the task is all it needs, so no saved memory and
+  // no <remember> / <suggest> habits either (fixed text, so helpers on one engine share a cached prefix)
+  if (options.helper && options.lean) agent = { ...agent, autoMemory: false, suggestNext: false, memoryOff: true };
   if (options.lean) agent = { ...agent, openTool: false, chatTools: false, threeTools: false, gameTools: false, boardTools: false, captureTools: false, adobeTools: false, deployTools: false, appsTools: false, workspace: undefined, selfReview: false, connectors: undefined, chatgptApps: false };
   // (round 14) the chat's own file access (access.js); lean / hub-only runs never get it, except "Check this AI"
   // (round 32, aicheck.js: options.accessCheck): a lean run that keeps the AI's file access, to test it for a few tokens

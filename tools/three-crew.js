@@ -94,14 +94,18 @@ const ThreeCrew = (() => {
     const L = base.layers.find((x) => x.id === base.selId) || base.layers.at(-1);
     return L.code.length <= CODE_MAX ? `── Layer "${L.name}" (selected; read the others with three_read_code)\n${L.code}` : 'The code is long: read it with three_read_code.';
   }
+  // (round 33, swarmlean) byte-stable for the prompt caches: everything the helpers share comes first (scene, brief, code),
+  // only the last two lines differ (who and which angle), so helpers 2–n read the shared part from the cache
   function briefFor(c, h) {
     const names = c.base.layers.map((L) => `${L.name}${L.id === c.base.selId ? ' (selected)' : ''}`).join(', ');
-    return `Crew · helper ${h.n}/${c.n} · ${h.angle.split(':')[0]}
+    return `Crew of ${c.n} helpers: variations of one scene, in parallel, each on its own copy.
 Scene "${c.base.name}" · ${c.base.frame || 'fit'} · layers (bottom first): ${names}. It already runs on your own copy (no music there: a demo beat).
 The owner's brief: ${c.brief || 'make it more striking'}
-Your angle (the other helpers take other angles): ${h.angle}. Make ONE clear, good-looking variation along it; keep the layers and their sliders working.
+Make ONE clear, good-looking variation along your angle (below; the other helpers take other angles); keep the layers and their sliders working.
 Budget: at most ${CALLS} tool calls, then one line saying what you changed.
-${codeBlock(c.base)}`;
+${codeBlock(c.base)}
+Crew · helper ${h.n}/${c.n} · ${h.angle.split(':')[0]}
+Your angle: ${h.angle}.`;
   }
 
   // ---------- the crew's own scene data (the variations live here until one is picked or kept) ----------
@@ -165,8 +169,14 @@ ${codeBlock(c.base)}`;
       h.route = { chatId: h.id, sketchId: h.sketch.id, crew: true, stage: h.stage };
       // its page starts right away (thumbnails from the first second; no tokens)
       h.stage.handle('three_console', {}, h.route).then(() => setTimeout(() => refreshThumb(h), 900)).catch(() => {});
-      run(c, h);
     }
+    // (round 33, swarmlean) the first helper warms the prompt cache, the others start once it is streaming (≤ 4 s)
+    const [first, ...rest] = c.helpers;
+    let warmed = false;
+    const others = () => { if (warmed) return; warmed = true; for (const h of rest) if (c.status === 'running' && h.status === 'waiting') run(c, h); };
+    c.warm = others;
+    setTimeout(others, 4000);
+    run(c, first);
     live(c, null);
     Panel.paint();
     return true;
@@ -186,10 +196,13 @@ ${codeBlock(c.base)}`;
     h.ctx = tok(briefFor(c, h));
     h.estIn = (c.est?.fixed || 0) + h.ctx; // its first inference: fixed + the brief
     h.timer = setTimeout(() => stopHelper(h, 'timeout'), TIMEOUT);
-    window.hub.send({ agentId: c.agent.id, chatId: h.id, session: {}, text: briefFor(c, h), options: { crew: true, hubOnly: true, asDirector: 'three' } })
+    // (round 33, swarmlean) a helper thinks with low effort (medium when the director is on Deep); its own model: Lab builds
+    const effort = typeof SwarmLean !== 'undefined' ? SwarmLean.helperOptions(c.agent.id).effort : null;
+    window.hub.send({ agentId: c.agent.id, chatId: h.id, session: {}, text: briefFor(c, h), options: { crew: true, hubOnly: true, asDirector: 'three', ...(effort ? { effort } : {}) } })
       .catch((err) => done(h, 'failed', { message: err.message }));
   }
   function stopHelper(h, why = 'stopped') {
+    if (h.status === 'waiting' && h.crew.status === 'running') { h.status = 'running'; h.at = Date.now(); h.stopWhy = why; done(h, why, {}); return; } // not started yet (round 33)
     if (h.status !== 'running') return;
     h.stopWhy = why;
     if (!window.hub.stop(h.id)) done(h, why, {});
@@ -197,6 +210,7 @@ ${codeBlock(c.base)}`;
   window.hub.onEngineEvent((ev) => {
     const h = byHelper.get(ev?.chatId);
     if (!h || h.status !== 'running') return;
+    if (h.n === 1) h.crew.warm?.(); // its first word: the others can read the shared brief from the cache
     if (ev.type === 'delta') { if (h.text.length < 600) h.text += ev.text; return; }
     if (ev.type === 'tool') { h.tool = String(ev.name || '').replace(/^mcp__.+?__/, '').replace(/^three_/, ''); return; }
     if (ev.type === 'done') done(h, 'done', ev);

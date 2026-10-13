@@ -124,7 +124,7 @@ function jamPlan(msg, engine) {
 // (round 22) Crew helpers (tools/three-crew.js): a real variation through the crew's MCP tools (set_code on its copy, a
 // small picture), then one line. crew-slow in the brief: a long pause between (to test Stop); crew-break: helper 2 breaks.
 function crewPlan(msg) {
-  const m = msg.split('\n')[0].match(/^Crew · helper (\d+)\/(\d+)/);
+  const m = msg.match(/^Crew · helper (\d+)\/(\d+)/m); // (round 33) the line after the shared part of the brief
   if (!m) return null;
   const i = Number(m[1]);
   const seed = i * 5 + 1;
@@ -347,6 +347,9 @@ function plan(prompt, engine = 'claude') {
   else parts.push(`Fake reply to: “${short}”.`);
   if (p.code) parts.push('Here is a sketch:\n\n```js\nimport * as THREE from \'three\';\nconst scene = new THREE.Scene();\nconst cube = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshNormalMaterial());\nscene.add(cube);\n```\n\nAnd a shell line:\n\n```bash\necho hello\n```');
   if (p.table) parts.push('| Name | Value |\n| --- | ---: |\n| alpha | 1 |\n| beta | 22 |\n\n- [x] done task\n- [ ] open task\n\n> [!NOTE]\n> A callout note.\n\nInline math: $E = mc^2$.');
+  // (round 33, swarmlean) FAKE_REPLY_CHARS: plain replies padded to a typical length (dev/mission-tokens.js)
+  const typical = Number(process.env.FAKE_REPLY_CHARS || 0);
+  if (typical && !p.title && !p.compact && !p.echo && !p.summarize) { let i = 1; while (parts.join('\n\n').length < typical) parts.push(`Point ${i++}: a concrete, typical sentence or two of advice about the request, with a reason and an example of how it would look on screen.`); }
   if (p.long) for (let i = 1; i <= 60; i++) parts.push(`Paragraph ${i}: ${'lorem ipsum dolor sit amet '.repeat(6).trim()}.`);
   if (p.remember) parts.push('<remember>The user tests Hearth with fake engines</remember>');
   if (p.suggest) parts.push('<suggest>Make it bigger</suggest><suggest>/stats</suggest><suggest>Try another color</suggest>');
@@ -453,4 +456,15 @@ function trip(name, mode) {
 }
 const older = (a, b) => { const pa = String(a).match(/\d+/g) || []; const pb = String(b).match(/\d+/g) || []; for (let i = 0; i < 3; i++) { const d = (+pa[i] || 0) - (+pb[i] || 0); if (d) return d < 0; } return false; };
 
-module.exports = { userPartOf: userPart, readStdin, sleep, out, uuid, loadState, saveState, plan, pieces, delayMs, mcpClient, serverFor, switches, setSwitch, trip, older, runTool, within };
+// (round 33, swarmlean) FAKE_TOKEN_LOG=<file>: each run appends one JSON line with what it was sent (the system
+// prompt, the new message, the conversation the engine re-reads on a resume) and what it wrote, so dev/mission-tokens.js
+// can count the tokens a mission costs. Development only.
+function logRun(engine, { system = '', prompt = '', prior = 0, text = '', thinking = '', model = null, effort = null, session = '' } = {}) {
+  const file = process.env.FAKE_TOKEN_LOG;
+  if (!file) return;
+  try {
+    fs.appendFileSync(file, `${JSON.stringify({ at: Date.now(), engine, session, model, effort, system, prompt, prior, out: text.length + thinking.length })}\n`);
+  } catch { /* the log is optional */ }
+}
+
+module.exports = { logRun, userPartOf: userPart, readStdin, sleep, out, uuid, loadState, saveState, plan, pieces, delayMs, mcpClient, serverFor, switches, setSwitch, trip, older, runTool, within };
