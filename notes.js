@@ -8,7 +8,7 @@ const Notes = (() => {
   let panel = null;
   let preview = false;
   let filter = '';
-  const save = debounce(() => window.hub.kvSet('notes', notes), 500);
+  const save = saver(() => window.hub.kvSet('notes', notes), 500); // (round 29) written during long typing too, and on leaving
   const saveNow = () => window.hub.kvSet('notes', notes);
   const day = (d = new Date()) => d.toLocaleDateString('en-CA'); // YYYY-MM-DD
   const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });

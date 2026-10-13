@@ -1249,7 +1249,7 @@ const ThreeLab = (() => {
     // { sketchId: [{ id, t, text, image, at, done }] } in kv 'three-notes'. A note = the song time, a screenshot and what to change.
     let notesAll = {};
     const notesOf = () => (current ? (notesAll[current.id] ||= []) : []);
-    const saveNotes = debounce(() => window.hub.kvSet('three-notes', notesAll), 300);
+    const saveNotes = saver(() => window.hub.kvSet('three-notes', notesAll), 300);
     const fileUrl = (p) => `file:///${encodeURI(String(p).replace(/\\/g, '/'))}`;
     // ---------- contact sheet ----------
     // One picture of the whole piece: a frame at each cue (or evenly over the loop / song), labeled with
@@ -1553,7 +1553,7 @@ const ThreeLab = (() => {
     let refsAll = {};
     const refBytes = new Map(); // id → ArrayBuffer
     const refsOf = () => (current ? (refsAll[current.id] ||= []) : []);
-    const saveRefs = debounce(() => window.hub.kvSet('three-refs', refsAll), 300);
+    const saveRefs = saver(() => window.hub.kvSet('three-refs', refsAll), 300);
     const REF_KINDS = [['image', /\.(png|jpe?g|gif|webp|bmp|svg)$/i], ['video', /\.(mp4|webm|mov|m4v|mkv)$/i], ['model', /\.(glb|gltf|obj|fbx|stl|ply)$/i],
       ['audio', /\.(mp3|wav|ogg|m4a|flac|aac)$/i], ['font', /\.(ttf|otf|woff2?)$/i], ['data', /\.(json|csv|txt|hdr|exr|bin)$/i]];
     const MIMES = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml', mp4: 'video/mp4', webm: 'video/webm', mov: 'video/mp4', m4v: 'video/mp4', mkv: 'video/webm', glb: 'model/gltf-binary', gltf: 'model/gltf+json', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4', flac: 'audio/flac', aac: 'audio/aac', json: 'application/json', csv: 'text/csv', txt: 'text/plain', ttf: 'font/ttf', otf: 'font/otf', woff: 'font/woff', woff2: 'font/woff2' };
@@ -3041,7 +3041,7 @@ const ThreeLab = (() => {
       return true;
     }
 
-    const save = debounce(() => window.hub.kvSet('three-sketches', sketches), 600);
+    const save = saver(() => window.hub.kvSet('three-sketches', sketches), 600); // (round 29) written during long typing too, and on leaving
     function persist() {
       if (!current) return;
       const L = sel();

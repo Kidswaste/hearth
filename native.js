@@ -126,7 +126,7 @@ const Native = (() => {
     const form = el('form', { class: 'composer' }, el('div', { class: 'composer-box' }, styleBox, queueBox, chips, input, counter), missionBtn, attachBtn, sendBtn);
     const v = { root, title, meta, ctx, modelSel, list, input, sendBtn, chips, counter, jump, attachments: [], queue: [], queueBox, styleBox, form, follow: true };
 
-    const saveDraft = debounce(() => store.set(draftKey(agentId), input.value || null), 400);
+    const saveDraft = saver(() => store.set(draftKey(agentId), input.value || null), 400); // (round 29) kept during long typing too
     input.addEventListener('input', () => { autosize(input); updateCounter(v); saveDraft(); });
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
