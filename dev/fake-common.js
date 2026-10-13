@@ -394,7 +394,7 @@ function runTool(tool, input = {}) {
 const within = (p, dirs) => { const r = path.resolve(String(p || '')); return dirs.some((d) => { const x = path.resolve(d); return r === x || r.startsWith(x + path.sep); }); };
 
 // Which server a tool belongs to (by prefix), from the servers the CLI was given.
-const serverFor = (servers, tool) => servers[{ three: 'three', video: 'video', ae: 'video', forge: 'forgeheart', chat: 'chat', capture: 'capture', board: 'board', hearth: 'video' }[tool.split('_')[0]]] || null;
+const serverFor = (servers, tool) => servers[{ three: 'three', video: 'video', ae: 'video', forge: 'forgeheart', chat: 'chat', capture: 'capture', board: 'board', hearth: 'video' }[tool.split('_')[0]]] || servers[tool.split('_')[0]] || null; // (round 26) or an owner's connection named like the tool's prefix
 
 // ---------- failure switches (round 9 "robust": behave like the owner's real installs) ----------
 // Each one from the env (FAKE_CLAUDE_VERSION=2.1.1 …) or from data/kv/fake-switches.json of the Hearth copy running the

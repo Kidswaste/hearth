@@ -809,3 +809,8 @@ The ◎ button by the chat box (and the top of ⋯) picks what your next message
 
 ## Sync conflicts settle themselves (round 26)
 After each sync, conflicts settle by themselves: chats, scenes and settings merge (everything from both computers, the newer one winning where a field differs); pictures and files keep the newer version. A calm toast says how many, with Deleted files one click away (every other version waits there 30 days). The conflicts view has **✓ Settle all for me**, **Newest wins, all**, **This computer's, all**, **↻ Refresh**, and the switch "Settle new conflicts by themselves". Right-click the sync dot: **Settle all conflicts for me**.
+## Connections (round 26, connections, 38 upgrades: docs/upgrades/connections.md)
+- ✓ ⋯ AI setup → What it can use → **＋ Add a connection**: any MCP server you have (a command line, or the address of a remote HTTP server, with optional settings), or one of 8 free ready-made ones in one click (files in a folder, web pages, git, SQLite, a web browser, memory, time, step-by-step thinking; marked needs Node / Python).
+- ✓ Per AI Off / Read only / Full (Off / On when a server has only one kind of tool), for Claude and Astra; **Test** starts it, lists its tools, measures its ≈ tokens a message, and says clearly why when it doesn't start. Right-click a row: Test, Edit, Remove.
+- ✓ Settings you type (keys, tokens) stay in Hearth's config and go only to that server, never to the AI or a prompt; nothing is added to the system prompt.
+- ○ Tested with a fake stdio server, a local HTTP server and the fake engines (`sh dev/run-checks.sh connections`); the ready-made servers weren't started for real here (no network).

@@ -102,7 +102,8 @@ line count is lower than the number of upgrades).
 | Camera input (round 25): a webcam, capture card or video file as a live Lab input (off at every start, red ● pill while on, nothing recorded or sent); a light tracker always (movement overall / by region / direction, color blob, motion mask) and MediaPipe hands, pose, face and person mask after a one-time ≈27 MB download you approve; features in the react-to curve editor, particles from hands or silhouette, 15 looks; `/webcam` | [motion-in.md](motion-in.md) | 84 |
 | Light physics (round 25): a ⚛ layer kind with its own small solver (rigid boxes, letters, dominoes, model hulls, balls, ragdolls, cloth, ropes, jelly, water), 27 presets, music kicks / bass as forces, deterministic and scrub-safe (renders match the preview), stepped in a Worker; `/physics`, `three_do physics` | [physics.md](physics.md) | 91 |
 | Director and weight diet (round 25): the Three Director's tool list 1,687 → 1,177 tokens (three_do lists its commands in groups, details on `three_do help <cmd>`), the motion kit and 3D-model runtime split out of the Lab preview page (581 → 429 KB parsed before the first frame), a smaller lazy manifest, boot-test fixed | [diet.md](diet.md) | 15 |
-| **Total** | | **12,455** |
+| Connections (round 26): add any MCP server (a command or an address) or one of 8 ready-made free ones, per AI Off / Read only / Full, a Test button that lists its tools and says why it fails, secrets never sent to the AI | [connections.md](connections.md) | 38 |
+| **Total** | | **12,493** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.
