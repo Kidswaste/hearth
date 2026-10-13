@@ -1192,7 +1192,9 @@ const ThreeMedia = (() => {
       lastBeat = i;
       const down = mod(bno(bs, i), bpbNow()) === 0;
       // restart the beat light's flash without forcing a layout of the whole page (a reflow per beat, before)
-      if (gridView.light !== false) { bpmRead.classList.toggle('down', down); for (const a of bpmRead.getAnimations()) a.cancel(); bpmRead.classList.remove('beat'); requestAnimationFrame(() => bpmRead.classList.add('beat')); }
+      // (round 32: no getAnimations() either, it styled the page on every beat; the class is off for one frame's style,
+      // which ends the old flash, and back on the next frame, which starts a new one)
+      if (gridView.light !== false) { bpmRead.classList.toggle('down', down); bpmRead.classList.remove('beat'); requestAnimationFrame(() => bpmRead.classList.add('beat')); }
       if (gridView.click) {
         try {
           clickCtx ||= new AudioContext();
@@ -1740,14 +1742,19 @@ const ThreeMedia = (() => {
       if (st.playing || recording) raf = requestAnimationFrame(tick);
     }
     // ov: draw the time area into another canvas with its own view (the scrolling strip, see scroll below)
+    // (round 32, smooth32) the canvases first, the time texts after: a canvas font needs the page's style, and the
+    // time written just before (it changes on every draw while a song plays) made each draw style the page first
     function draw(ov = null) {
       const t = now();
+      drawTime(ov, t);
       if (!ov) {
+        drawMinimap(t);
         setText(timeEl, hooks.timeText?.(t) ?? clockText(t) ?? (D() ? `${span() < 20 ? fmtMs(t) : fmtTime(t)} / ${fmtTime(D())}` : fmtTime(t)));
         setText(miniTime, D() ? `${fmtTime(t)} / ${fmtTime(D())}` : '');
         setText(miniPlay, st.playing ? '⏸' : '▶');
-        drawMinimap(t);
       }
+    }
+    function drawTime(ov, t) {
       const cv = ov ? ov.canvas : canvas;
       const W = ov ? ov.w : cW(); const h = cH();
       if (!W || !h) return;
