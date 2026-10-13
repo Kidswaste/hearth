@@ -2560,6 +2560,7 @@ const ThreeLab = (() => {
         if (lid && controllers.get(lid)?.onError(msg)) return; // couldn't attach sliders: it re-runs as-is
         errors.push({ ...msg, layer: lid });
         log('error', msg.message, msg.line, lid);
+        dispatchEvent(new CustomEvent('hearth:lab-error', { detail: { message: msg.message, line: msg.line, layer: lid } })); // (round 26) ⚡ hooks.js: "when the Lab scene shows an error"
         if (!lid || lid === selId) editor.setErrorLines(errors.filter((e) => !e.layer || e.layer === selId).map((e) => e.line).filter(Boolean));
       }
       if (msg.type === 'ctx') {

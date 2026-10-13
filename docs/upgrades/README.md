@@ -103,7 +103,8 @@ line count is lower than the number of upgrades).
 | Light physics (round 25): a ⚛ layer kind with its own small solver (rigid boxes, letters, dominoes, model hulls, balls, ragdolls, cloth, ropes, jelly, water), 27 presets, music kicks / bass as forces, deterministic and scrub-safe (renders match the preview), stepped in a Worker; `/physics`, `three_do physics` | [physics.md](physics.md) | 91 |
 | Director and weight diet (round 25): the Three Director's tool list 1,687 → 1,177 tokens (three_do lists its commands in groups, details on `three_do help <cmd>`), the motion kit and 3D-model runtime split out of the Lab preview page (581 → 429 KB parsed before the first frame), a smaller lazy manifest, boot-test fixed | [diet.md](diet.md) | 15 |
 | Connections (round 26): add any MCP server (a command or an address) or one of 8 ready-made free ones, per AI Off / Read only / Full, a Test button that lists its tools and says why it fails, secrets never sent to the AI | [connections.md](connections.md) | 38 |
-| **Total** | | **12,493** |
+| Hooks (round 26): "when… then…" per AI in ⋯ AI setup: a render finishes or fails, a Lab error, a file in a folder, a time of day, Hearth updated, another AI replied, the board got new things → your words (or a mission) go to that AI with one visible line; once a minute at most, waits while it answers, no loops | [hooks.md](hooks.md) | 28 |
+| **Total** | | **12,521** |
 
 ## Start here
 - **Ctrl/⌘+;** opens the command bar over any tool (plain words work: "make it 9 by 16"); F1 = searchable help.
