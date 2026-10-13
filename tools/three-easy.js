@@ -73,6 +73,7 @@ const LabEasy = (() => {
     { label: 'A motion intro', hint: 'logo → Hearth on screen → end card, as a sequence', items: () => ['9:16', '16:9', '1:1', '4:5'].map((z) => item(z, '', `/motion-intro ${z}`)) },
     item('A cursor tour', 'A cursor glides and clicks around the frame', '/cursor-path'),
     item('Fade to black and back', '', '/blackout'),
+    ...(typeof LabInstantHook !== 'undefined' ? [LabInstantHook.item()] : []), // (round 29) ✦ describe it (tools/three-instant-hook.js)
     ...(typeof LookMatch !== 'undefined' ? [LookMatch.item()] : []), // (round 28) 🎨 make it look like this (tools/three-lookmatch.js)
   ];
   const makeItems = () => [

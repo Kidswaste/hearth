@@ -1,0 +1,42 @@
+/* ✦ Describe it (round 29, instantscene: tools/three-instant*.js): the window reuses the gallery's frame and cards
+   (three-gallery.css); here: the 3 big pick cards, the words understood, the gallery row, the empty-Lab chip and the
+   small "made from your words" card over the preview. Nothing animates from JS. */
+dialog.lab-inst-dlg[open] { width: min(900px, calc(100vw - 32px)); height: auto; max-height: calc(100vh - 32px); }
+.lab-inst-read { padding: 0 18px 8px; min-height: 1.4em; }
+.lab-inst-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; padding: 4px 16px 16px; overflow-y: auto; }
+@media (max-width: 640px) { .lab-inst-grid { grid-template-columns: 1fr; } }
+.lab-inst-card { gap: 5px; padding-bottom: 10px; content-visibility: visible; }
+.lab-inst-pic { aspect-ratio: 4 / 3; }
+.lab-inst-pic.base .lab-gal-img { opacity: 0.55; }
+.lab-inst-pic.drawing .lab-gal-wait { display: grid; color: #fffc; }
+.lab-inst-pal { display: flex; height: 6px; }
+.lab-inst-pal span { flex: 1; }
+.lab-inst-from { padding: 0 9px; }
+.lab-inst-chips { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 9px; }
+.lab-inst-chip { font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.lab-inst-why { padding: 0 9px; font-size: 11.5px; line-height: 1.35; color: var(--muted); }
+/* the gallery's search: one row on top when it reads like a description */
+.lab-inst-galrow {
+  display: block; width: 100%; margin: 12px 0 2px; padding: 10px 14px; text-align: left; cursor: pointer; font: inherit;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line)); border-radius: 11px; color: var(--text);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.lab-inst-galrow:hover, .lab-inst-galrow:focus-visible { border-color: var(--accent); outline: none; }
+/* the empty Lab's chip (same look as the gallery's starter chip) */
+.lab-gal-chip-start.lab-inst-empty, .lab-inst-empty {
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 5; display: flex; align-items: center;
+  border: 1px solid #fff3; border-radius: 999px; background: #000b; color: #fff; font-size: 12.5px; box-shadow: 0 6px 18px #0008;
+}
+.lab-inst-start { border: 0; background: none; color: inherit; font: inherit; padding: 6px 12px; cursor: pointer; border-radius: 999px; }
+.lab-inst-start:hover { background: #ffffff1a; }
+/* after opening a pick: what was made, and the optional ask (its cost on the button) */
+.lab-inst-made {
+  position: absolute; left: 12px; bottom: 12px; z-index: 6; max-width: min(460px, calc(100% - 24px)); padding: 9px 11px;
+  border: 1px solid #fff2; border-radius: 11px; background: #000c; color: #fff; font-size: 12px; box-shadow: 0 8px 22px #0009;
+}
+.lab-inst-made-why { margin: 3px 0 7px; color: #fffb; line-height: 1.35; }
+.lab-inst-made-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.lab-inst-btn { border: 1px solid #fff3; background: #ffffff10; color: #fff; font: inherit; padding: 4px 9px; border-radius: 8px; cursor: pointer; }
+.lab-inst-btn:hover { border-color: var(--accent); }
+.lab-inst-ask { border-color: color-mix(in srgb, var(--accent) 60%, #fff3); }
+.lab-inst-x { margin-left: auto; }
