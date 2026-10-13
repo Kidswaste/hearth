@@ -410,7 +410,7 @@ renderer.setAnimationLoop((now) => {
         el('span', { class: 'scene-avs' }, ...who.map((e) => avatar(e, working && (!active || active === e)))));
     }
     const whoText = who.length > 1 ? `Claude and Astra are jamming on it${active ? ` (${AVATARS[active]?.name} now)` : ''}` : working ? 'working on it now' : '';
-    tag.title = viewing ? `The scene of the chat "${titleOf(owner)}" (not the chat in the dock). Click to go to that chat.` : `This is the scene of the chat "${titleOf(owner)}"${whoText ? `: ${whoText}` : ''}. Each director chat has its own scene (/scene).`;
+    tag.title = viewing ? `The scene of the chat "${titleOf(owner)}" (not the chat in the dock). Click to go to that chat.` : `This is the scene of the chat "${titleOf(owner)}"${whoText ? `: ${whoText}` : ''}. Each director chat has its own scene.`;
     if (tag.parentElement !== host) host.append(tag);
   }
   function tagClick() {
@@ -430,7 +430,7 @@ renderer.setAnimationLoop((now) => {
     if (!g) { g = el('span', { class: 'chat-ident' }); v.title.before(g); }
     g.textContent = id.glyph;
     g.classList.toggle('at-work', busy(chat?.id));
-    g.title = chat ? `This chat's color and mark: its scene in the Lab has the same (/scene)` : 'A new chat: it gets its own color and scene when you send';
+    g.title = chat ? `This chat's color and mark: its scene in the Lab has the same` : 'A new chat: it gets its own color and scene when you send';
   }
   function paintHeads() { for (const a of H.agents().filter(isDirector)) { const v = Native.view(a.id); if (v) paintHead(a.id, v, Native.current(a.id)); } }
   // chat rows: the glyph in the chat's color; a working chat you aren't looking at gets a dot in its color

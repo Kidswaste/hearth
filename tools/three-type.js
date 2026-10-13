@@ -594,7 +594,7 @@ const LabType = (() => {
     AppUI.addAction('Lab: 🅰 Lyrics (paste, aligned to the song)…', () => ThreeLab.cmd().then(() => pasteLyrics()).catch((e) => toast(e.message, { type: 'error' })));
     AppUI.addAction('Lab: 🎤 Tap along to fix the lyric timing', () => ThreeLab.cmd().then(() => tapMode()).catch((e) => toast(e.message, { type: 'error' })));
   }
-  try { Keys.add({ area: 'Lab', keys: 'Space · ⌫ · Enter · Esc', what: '🎤 Lyrics tap-along (/lyrics tap): Space marks the next line\'s start, ⌫ goes back, Enter keeps, Esc cancels', when: () => Boolean(tapState) }); } catch { /* keys list optional */ }
+  try { Keys.add({ area: 'Lab', keys: 'Space · ⌫ · Enter · Esc', what: '🎤 Lyrics tap-along: Space marks the next line\'s start, ⌫ goes back, Enter keeps, Esc cancels', when: () => Boolean(tapState) }); } catch { /* keys list optional */ }
 
   return { isType, preset, codeFor, optsOf, setOpts, setValue, onBox, layerMenu, previewItem, picker, op, add, set, anim, setPath, setText, setFont, setMode, react, letter, infoOf, lyrics, realign, shift, exportLyrics, toSequence, toParticles, tapMode, tapAt, tapBack, tapStop, music, info: (id) => info.get(id) || null, get tapping() { return tapState ? { i: tapState.i, n: tapState.lines.length } : null; }, OPS, PRESETS: TD.PRESETS };
 })();

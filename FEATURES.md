@@ -822,3 +822,9 @@ In ⋯ AI setup, **⚡ Hooks: when… then…** gives each AI a short list of ru
 - ✓ Your message keeps a chip of the mission it was sent with ("🐝 Swarm") with ↻ to run it again; its tooltip shows any note the mission added.
 - ✓ Split it up: the helper agents show as tidy live rows under the reply (pip, task, what it's on, time), kept after it ends.
 - ○ Tested with the fake engines (`sh dev/run-checks.sh missions`); Research's web search only runs on a real Astra.
+## The Lab without commands (round 26, labeasy, 63 upgrades: docs/upgrades/labeasy.md)
+- ✓ Audit of all 206 Lab commands (`dev/labeasy-audit.js`): the 22 that had no button now have one; the rest already had a home, are answered by just asking the director, or stay power commands.
+- ✓ Right-click the picture › **✦ More**: ♪ Music (make it react, next drop / cue, click track, song info…), ✨ Look & motion (surprise, Hearth on screen, motion intro, cursor tour, fade to black), ⇪ Make (4 variations, render again), ℹ what the Lab shows / hears.
+- ✓ Toolbar ⋯ › **Director** (what it's making, did, costs, its last picture, undo); **right-click a layer** (hide, solo, rename, duplicate, react to the music, a filter above, a look; blend / animate / ease / reset / save behind More…).
+- ✓ Lab missions in the director's ◎: Make 4 variations, Make it react to the music, Make a 9:16 version, Polish the look, Render it (`Missions.add`).
+- ✓ No "/command" in the Lab's visible hints, tooltips, placeholders and menus (checked by `dev/checks/labeasy.js`).

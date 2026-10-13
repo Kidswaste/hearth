@@ -340,6 +340,8 @@ filter('${type}', P);
         const tags = [isFilter(L.code) ? 'FX' : '', L.blend && L.blend !== 'normal' ? BLENDS.find((b) => b[0] === L.blend)?.[1].split(' ')[0] : '', (L.opacity ?? 1) < 1 ? `${Math.round(L.opacity * 100)}%` : '', L.in != null || L.out != null ? '⏱' : ''].filter(Boolean).join(' · ');
         const row = el('div', { class: `ly-row${L.id === selectedId ? ' on' : ''}${L.visible === false ? ' hidden-layer' : ''}`, attrs: { draggable: 'true' }, dataset: { id: L.id }, title: 'Click to select · drag to reorder', on: { click: () => onSelect(L.id) } },
           eye, el('span', { class: 'ly-swatch', style: { background: L.color } }), name, el('span', { class: 'ly-tags', text: tags }));
+        // (round 26) right-click: hide, solo, rename, duplicate, react, a filter above… (tools/three-easy.js)
+        row.addEventListener('contextmenu', (e) => { if (typeof LabEasy === 'undefined') return; e.preventDefault(); onSelect(L.id); LabEasy.layerMenu(e.clientX, e.clientY, L, { select: () => onSelect(L.id), change: (p) => onChange(L.id, p, { live: false }), solo: onSolo ? () => onSolo(L.id) : null, copy: () => onAdd('copy'), remove: layers.length > 1 ? () => onRemove(L.id) : null, rename: () => name.dispatchEvent(new MouseEvent('dblclick')) }); });
         row.addEventListener('dragstart', (e) => { dragId = L.id; e.dataTransfer.effectAllowed = 'move'; row.classList.add('dragging'); });
         row.addEventListener('dragend', () => { dragId = null; row.classList.remove('dragging'); });
         row.addEventListener('dragover', (e) => { if (dragId && dragId !== L.id) { e.preventDefault(); row.classList.add('drop-target'); } });

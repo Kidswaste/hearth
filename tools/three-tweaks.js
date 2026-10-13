@@ -684,7 +684,7 @@ const ThreeTweaks = (() => {
       const set = (patch) => { shufOpt = { ...shufOpt, ...patch }; store.set('three.shuffle', shufOpt); };
       menu(r.left, r.bottom + 4, [
         // (round 5, assist.js) n variations as thumbnails to pick from; holding Shuffle does the same
-        ...(window.Assist ? [['🎲 Shuffle 4, pick one…', 'Thumbnails to click, or ✦ Astra picks · hold Shuffle · /shuffle-pick', () => window.Assist.shufflePick(4).catch((err) => toast(err.message, { type: 'error' }))]] : []),
+        ...(window.Assist ? [['🎲 Shuffle 4, pick one…', 'Thumbnails to click, or ✦ Astra picks · hold Shuffle', () => window.Assist.shufflePick(4).catch((err) => toast(err.message, { type: 'error' }))]] : []),
         'How far',
         ...AMOUNTS.map(([a, name]) => [name, `${Math.round(a * 100)}% of each range${a === 1 ? ' (anywhere)' : ''}`, () => { set({ amount: a }); shuffle(); }, shufOpt.amount === a]),
         'Which controls (locked ones always stay)',
@@ -964,7 +964,7 @@ const ThreeTweaks = (() => {
         chip.title = 'Click: switch to it · right-click: update, rename, duplicate, delete';
         looksBar.append(chip);
       }
-      if (looks.length >= 2 && window.Assist) looksBar.append(el('button', { class: 'tw-chip as-decide', text: '✦', title: 'Let Astra pick one of these looks for the picture (one small question, Undo) · /decide saved', on: { click: () => window.Assist.decide('saved') } }));
+      if (looks.length >= 2 && window.Assist) looksBar.append(el('button', { class: 'tw-chip as-decide', text: '✦', title: 'Let Astra pick one of these looks for the picture (one small question, Undo)', on: { click: () => window.Assist.decide('saved') } }));
       looksBar.append(el('button', { class: 'tw-chip add', text: '＋ Save look', title: 'Remember the current slider values as a look you can switch back to with one click', on: { click: saveLook } }));
     }
     async function saveLook() {

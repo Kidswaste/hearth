@@ -130,14 +130,14 @@ const ThreeHistoryUI = (() => {
       ['Compare with…', 'Another version', recent.map((x) => [`${TH.fmtWhen(x.at)} · ${C.whoName(x.by)}`, x.label, () => compare(x.id, v?.id || 'now').catch(err)])],
       [diffOn ? 'Hide what changed' : 'What changed', 'Layers, code lines and slider values vs now (D)', () => { diffOn = !diffOn; diffBox.hidden = !diffOn; paintSel(); }],
       v ? ['Restore this version', 'It becomes the scene; undoable (Enter)', () => keep().catch(err)] : null,
-      ['Branch into a new scene', `${v ? 'This version' : 'Now'} as a new scene, with its song, frame and looks (B) · /branch`, () => doBranch().catch(err)],
+      ['Branch into a new scene', `${v ? 'This version' : 'Now'} as a new scene, with its song, frame and looks (B)`, () => doBranch().catch(err)],
       v && st ? ['Pick from it', 'Only part of it into the scene (undoable)', [
         ['The colors', 'Its color sliders and palette', () => doPick('colors').catch(err)],
         ['The slider values', 'Every slider as it was', () => doPick('sliders').catch(err)],
         'One layer',
         ...st.layers.map((L) => [L.name, 'Replaced, or put back if it was removed', () => doPick('layer', L.id).catch(err)]),
       ]] : null,
-      turns.length ? ['Back before the director', `${turns.length} turn${turns.length === 1 ? '' : 's'} with edits · /back`, [1, 2, 3, 5].filter((n) => n <= turns.length || n === 1).map((n) => [`Before the last ${n === 1 ? 'turn' : `${n} turns`}`, turns[Math.min(n, turns.length) - 1] ? `${C.whoName(turns[Math.min(n, turns.length) - 1].by)}: “${turns[Math.min(n, turns.length) - 1].text}”` : '', () => doBack(n).catch(err)])] : null,
+      turns.length ? ['Back before the director', `${turns.length} turn${turns.length === 1 ? '' : 's'} with edits`, [1, 2, 3, 5].filter((n) => n <= turns.length || n === 1).map((n) => [`Before the last ${n === 1 ? 'turn' : `${n} turns`}`, turns[Math.min(n, turns.length) - 1] ? `${C.whoName(turns[Math.min(n, turns.length) - 1].by)}: “${turns[Math.min(n, turns.length) - 1].text}”` : '', () => doBack(n).catch(err)])] : null,
       [grid ? 'One row' : 'All as a grid', 'G', () => { grid = !grid; refresh().catch(err); }],
     ]);
   }
@@ -239,11 +239,11 @@ const ThreeHistoryUI = (() => {
     Promise.resolve(toggle()).catch(err);
   });
   if (typeof Keys !== 'undefined') Keys.add([
-    { area: 'Lab time machine', keys: 'Alt+H', what: 'Open / close the time machine (every version of the scene) · /history', run: () => toggle() },
+    { area: 'Lab time machine', keys: 'Alt+H', what: 'Open / close the time machine (every version of the scene)', run: () => toggle() },
     { area: 'Lab time machine', keys: '← / →', what: 'Older / newer version, shown on the preview (Home / End: first / now)' },
     { area: 'Lab time machine', keys: 'Enter', what: 'Restore the version on screen (undoable)' },
     { area: 'Lab time machine', keys: 'C', what: 'Compare it with now: split wipe + what changed' },
-    { area: 'Lab time machine', keys: 'B', what: 'Branch it into a new scene · /branch' },
+    { area: 'Lab time machine', keys: 'B', what: 'Branch it into a new scene' },
     { area: 'Lab time machine', keys: 'D', what: 'What changed since (layers, code, sliders)' },
     { area: 'Lab time machine', keys: 'G', what: 'All versions as a grid / one row' },
     { area: 'Lab time machine', keys: 'Esc', what: 'Close: the scene as it is now' },

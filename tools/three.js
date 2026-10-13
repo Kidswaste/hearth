@@ -418,7 +418,7 @@ const ThreeLab = (() => {
         ['Cycle looks…', lookCycle ? `Now: every ${lookCycle} bar${lookCycle === 1 ? '' : 's'}` : 'Switch between your saved looks every few bars while it plays', () => lookCycleMenu(sketchMenuBtn)],
         ['⟲ Restart from scratch', 'A fresh page, GPU and sound, when something bugs out (Ctrl+Shift+Enter)', () => restartSim()],
         ['Export HTML…', 'A standalone .html file', () => exportHtml()],
-        ...(typeof Deploy !== 'undefined' ? [['Publish & Adobe', 'A web page (Vercel, Netlify…) · Photoshop', [['Publish as a web page…', 'Preview first; asks before it goes public · /deploy', () => Deploy.menuAt(sketchMenuBtn)], ['Preview the web page here', 'Built like the published one, on this computer', () => Deploy.build('scene', current?.id || '').then((b) => Deploy.preview(b)).catch((err) => toast(err.message, { type: 'error' }))], ...(typeof Adobe !== 'undefined' ? [['Open the picture in Photoshop', 'A still of the preview (all layers) · /photoshop lab', () => Adobe.labToPhotoshop().catch((err) => toast(err.message, { type: 'error', timeout: 9000 }))]] : [])]]] : []), // (round 14: deploy.js, adobe.js)
+        ...(typeof Deploy !== 'undefined' ? [['Publish & Adobe', 'A web page (Vercel, Netlify…) · Photoshop', [['Publish as a web page…', 'Preview first; asks before it goes public', () => Deploy.menuAt(sketchMenuBtn)], ['Preview the web page here', 'Built like the published one, on this computer', () => Deploy.build('scene', current?.id || '').then((b) => Deploy.preview(b)).catch((err) => toast(err.message, { type: 'error' }))], ...(typeof Adobe !== 'undefined' ? [['Open the picture in Photoshop', 'A still of the preview (all layers)', () => Adobe.labToPhotoshop().catch((err) => toast(err.message, { type: 'error', timeout: 9000 }))]] : [])]]] : []), // (round 14: deploy.js, adobe.js)
         ['Ask Claude about this layer', 'Sends the code and any errors to Claude', () => askAbout()],
         'Careful',
         ['Delete…', 'Moves it to History → deleted sketches', () => removeSketch()],
@@ -442,6 +442,7 @@ const ThreeLab = (() => {
           ['Insert snippet…', 'At the cursor in the code', () => snippetMenu(), false, 'Insert snippet'],
           [`three.js version · r${v.split('.')[1]}`, 'Switch and re-run', () => versionMenu(), false, 'three.js version'],
           ['Live code', 'Apply code changes a moment after you stop typing', () => { autoBox.checked = !autoBox.checked; autoBox.dispatchEvent(new Event('change')); }, autoRun]]],
+        ...(typeof LabEasy !== 'undefined' ? LabEasy.toolbarItems() : []), // (round 26) Director › (tools/three-easy.js)
         ['Key hints on hover', 'Little key badges on the main buttons (hold Ctrl for all of them)', () => { const off = !document.body.classList.contains('lab-nohints'); document.body.classList.toggle('lab-nohints', off); store.set('three.keyHints', !off); }, !document.body.classList.contains('lab-nohints')],
         ['Lab keys', '? · the keys button, bottom left', () => (typeof KeysUI !== 'undefined' ? KeysUI.open() : labKeys())],
         ...(typeof Declutter !== 'undefined' ? Declutter.popItems('Lab') : [])]; // (round 8) ends like every menu
@@ -2710,6 +2711,7 @@ const ThreeLab = (() => {
         ...(typeof ThreeStage !== 'undefined' ? [ThreeStage.previewItem()] : []), // (round 22) live / VJ: MIDI, set list, crossfade, output, show mode
         ...(typeof LabGrade !== 'undefined' ? [LabGrade.previewItem()] : []), // (round 24) ◐ Grade: color, LUTs, film & lens, scopes (tools/three-grade.js)
         ...(typeof LabExport !== 'undefined' ? [LabExport.previewItem()] : []), // ⇪ Export: renders and the scene itself (tools/three-export.js)
+        ...(typeof LabEasy !== 'undefined' ? [LabEasy.previewItem()] : []), // (round 26) ✦ More: music, look & motion, make (tools/three-easy.js)
         { label: 'Frame size', hint: stage.size.id === 'fit' ? 'Fit' : stage.size.id, items: () => [
           ...stage.pillOrder.map((id, k) => ({ label: id === 'fit' ? 'Fit' : id, hint: ThreeMedia.SIZES.find((z) => z.id === id)?.title || '', key: `Shift+${k + 1}`, checked: stage.size.id === id, action: () => stage.setMode(id) })),
           '-', { label: 'Safe zones', checked: Boolean(stage.safe), action: () => stage.setSafe() },
@@ -2912,13 +2914,13 @@ const ThreeLab = (() => {
     function previewMenu() {
       return ['Preview',
         ['⌗ Composition guides', `Now: ${GUIDES.find(([k]) => k === guides)[1]} · click for the next`, () => cycleGuides(), Boolean(guides), 'Guides'],
-        ['Safe zones', 'Platform buttons / captions / crops for the size (/safe tiktok | reels | shorts)', () => stage.setSafe(), stage.safe, 'Safe zones'],
+        ['Safe zones', 'Platform buttons / captions / crops for the size (TikTok, Reels, Shorts)', () => stage.setSafe(), stage.safe, 'Safe zones'],
         ['◐ Pin this frame to compare', '|', () => pinFrame()],
         typeof Decide !== 'undefined' ? ['✦ Let Astra pick the frame size', 'For this picture · Undo puts yours back', () => Decide.run('size')] : null,
         [box.onStage ? '🖥 Back from the Stage window' : '🖥 Stage window', 'Its own window, steady frames', () => setStage(!box.onStage), box.onStage, 'Stage window'],
         ['Frame rate', `${(FPS_OPTS.find(([v]) => v === String(fpsPref())) || FPS_OPTS[0])[1]}${lightOn ? ' · light' : ''}`, [...FPS_OPTS.map(([v, l]) => [l, v === '-1' ? 'Follows the screen; 30 in the background; nothing when hidden' : '', () => { fpsSel.value = v; fpsSel.dispatchEvent(new Event('change')); }, String(fpsPref()) === v, 'Preview fps']),
-          ['🪶 Light mode', 'Slower machine: 30 fps, 1× pixels, filters at half size (/lab light)', () => setLight(!lightOn), lightOn, 'Light mode'],
-          ['Perf HUD', 'fps, frame ms, draw calls, GPU memory, in a corner (/lab perf)', () => setPerfHud(!perfHudOn), perfHudOn, 'Perf HUD']]]];
+          ['🪶 Light mode', 'Slower machine: 30 fps, 1× pixels, filters at half size', () => setLight(!lightOn), lightOn, 'Light mode'],
+          ['Perf HUD', 'fps, frame ms, draw calls, GPU memory, in a corner', () => setPerfHud(!perfHudOn), perfHudOn, 'Perf HUD']]]];
     }
     let restartNext = false;
     function restartSim() {

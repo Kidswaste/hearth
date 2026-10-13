@@ -2340,7 +2340,7 @@ const ThreeSeq = (() => {
 
   // ---------- mount (tools/three.js calls attach once the Lab's player exists) ----------
   function build(bar) {
-    refs.tab = el('button', { class: 'ghost small sq-tab', text: '▤ Sequence', title: 'Build a video from your scenes, footage, titles and the song, right here (/sequence)', dataset: { feature: 'Sequence' }, on: { click: () => toggle().catch((err) => toast(err.message, { type: 'error' })) } });
+    refs.tab = el('button', { class: 'ghost small sq-tab', text: '▤ Sequence', title: 'Build a video from your scenes, footage, titles and the song, right here', dataset: { feature: 'Sequence' }, on: { click: () => toggle().catch((err) => toast(err.message, { type: 'error' })) } });
     // ⇪ Render on the strip too: the scene (its own sequence: the scene on its timeline) without opening ▤ first
     refs.renderTab = el('button', { class: 'ghost small sq-render-tab', text: '⇪ Render', title: 'Render this scene as a video: format, frame rate, quality, sound (it renders the scene\'s own sequence)', dataset: { feature: 'Scene render' }, on: { click: async () => { try { await current(); if (!(programEnd(S.edit) > 0)) { await addCurrent?.({ at: 0 }); } await renderPanel(); } catch (err) { toast(err.message, { type: 'error' }); } } } });
     bar.querySelector('.mb-handle')?.append(refs.tab, refs.renderTab);

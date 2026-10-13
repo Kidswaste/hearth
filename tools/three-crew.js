@@ -443,8 +443,8 @@ ${codeBlock(c.base)}`;
       costEl = el('span', { class: 'crew-cost' });
       head = el('div', { class: 'crew-head' },
         el('b', { text: `👥 Crew · ${c.n} variations` }), el('span', { class: 'crew-brief', text: c.brief || `of "${c.base.name}"`, title: c.brief || c.base.name }), el('span', { class: 'spacer' }), costEl,
-        el('button', { type: 'button', class: 'ghost small crew-stop', text: '■', title: 'Stop the crew (/crew stop)', on: { click: () => stop() } }),
-        el('button', { type: 'button', class: 'ghost small crew-x', text: '✕', title: 'Close the grid (the variations stay: /crew)', on: { click: () => { if (C?.status === 'plan') cancel(); else close(); } } }));
+        el('button', { type: 'button', class: 'ghost small crew-stop', text: '■', title: 'Stop the crew', on: { click: () => stop() } }),
+        el('button', { type: 'button', class: 'ghost small crew-x', text: '✕', title: 'Close the grid (the variations stay)', on: { click: () => { if (C?.status === 'plan') cancel(); else close(); } } }));
       planEl = el('div', { class: 'crew-plan' });
       grid = el('div', { class: 'crew-grid' });
       foot = el('div', { class: 'crew-foot' });

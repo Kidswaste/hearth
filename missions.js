@@ -32,18 +32,32 @@ const Missions = (() => {
     { id: 'other', icon: '👁', label: 'Second opinion only', more: true, needs: 'partner', desc: 'Only the other AI answers this one (it sees this chat\'s last reply); this chat\'s AI stays quiet.' },
     { id: 'everyone', icon: '📢', label: 'Ask everyone', more: true, desc: 'Sent to every AI marked for Ask all, each in its own chat; their answers gather in one card here.' },
   ];
-  const byId = (id) => LIST.find((m) => m.id === id) || LIST[0];
   // What a mission adds to the words the AI receives (shown on the chip of your message; only these three add any).
   const NOTE = {
     plan: '[Mission: plan first. Don\'t do it yet. Reply with a short numbered plan (the steps in order, what you will make or change, and anything you need from me), then stop and wait for my go-ahead.]',
     teach: '[Mission: explain like a teacher. Go step by step with simple examples and plain words, define any jargon, and end with one short question that checks the key idea landed.]',
     research: '[Mission: research. Search the web for current, reliable sources; separate facts from guesses; cite each fact with a numbered link and end with a short Sources list.]',
   };
+  // (round 26, labeasy) a place adds its own missions: Missions.add({ id, icon, label, desc, when(agentId) → shown for
+  // this AI, hides: [ids it stands in for there], submit(agentId, text) → true when it handled the message })
+  const ok = (fn, agentId) => { try { return !fn || Boolean(fn(agentId)); } catch { return false; } };
+  function shown(agentId) {
+    const mine = LIST.filter((m) => ok(m.when, agentId));
+    const hidden = new Set(mine.flatMap((m) => (m.when ? m.hides || [] : [])));
+    const here = mine.filter((m) => m.when); // a place's own missions come right after "Just answer"
+    return [mine[0], ...here, ...mine.slice(1).filter((m) => !m.when)].filter((m) => !hidden.has(m.id));
+  }
+  function add(m) {
+    if (!m?.id || LIST.some((x) => x.id === m.id)) return false;
+    LIST.push({ icon: '◎', desc: '', ...m });
+    return true;
+  }
+  const byId = (id, agentId) => (agentId === undefined ? LIST : shown(agentId)).find((m) => m.id === id) || LIST[0];
   const next = new Map(); // agent id -> mission for the next message only
   const stickyKey = (agentId) => `mission.sticky.${agentId}`;
   function current(agentId) {
     const once = next.get(agentId);
-    return byId(once || store.get(stickyKey(agentId), null) || 'normal');
+    return byId(once || store.get(stickyKey(agentId), null) || 'normal', agentId);
   }
   const isSticky = (agentId) => !next.has(agentId) && (store.get(stickyKey(agentId), null) || 'normal') !== 'normal';
   const listeners = new Set();
@@ -112,6 +126,7 @@ const Missions = (() => {
     const no = why(agentId, m);
     if (no) { toast(`${no} Sent as a normal message.`, { timeout: 4000 }); return false; }
     const t = text.replace(/\s+/g, ' ').trim();
+    if (m.submit) return m.submit(agentId, text, t) !== false; // an added mission (Missions.add, e.g. the Lab's)
     const t0 = Date.now();
     const viaCommand = (line) => { run(line, agentId).then(() => tagAfter(agentId, id, t0)); return true; };
     if (m.id === 'swarm') return viaCommand(inLab(agentId) ? `/crew 4 ${t}` : `/council ${t}`);
@@ -424,10 +439,11 @@ const Missions = (() => {
         m.id === 'normal' || no ? null : el('button', { type: 'button', class: `ms-keep${cur === m.id && sticky ? ' on' : ''}`, text: '📌', title: 'From now on (every message in this AI\'s chats) · click again: back to next message only',
           on: { click: () => { set(agentId, cur === m.id && sticky ? 'normal' : m.id, { keep: !(cur === m.id && sticky) }); onPick?.(); } } }));
     };
-    const more = LIST.filter((m) => m.more);
+    const here = shown(agentId);
+    const more = here.filter((m) => m.more);
     const d = el('details', { class: 'ms-more', open: more.some((m) => m.id === cur) }, el('summary', { text: `More · ${more.map((m) => m.label.toLowerCase()).join(', ')}` }),
       el('div', { class: 'ms-grid' }, more.map(card)));
-    return el('div', { class: 'ms-cards' }, el('div', { class: 'ms-grid' }, LIST.filter((m) => !m.more).map(card)), d);
+    return el('div', { class: 'ms-cards' }, el('div', { class: 'ms-grid' }, here.filter((m) => !m.more).map(card)), d);
   }
   function popover(agentId, anchor) {
     document.querySelector('.ms-pop')?.remove();
@@ -467,5 +483,5 @@ const Missions = (() => {
     Native.hooks.compose.push(onCompose);
     Native.hooks.finish.push(onFinish);
   }
-  return { LIST, NOTE, current, set, submit, start, cards, button, isSticky, why, decorateCollab, resultCard, _live: live };
+  return { LIST, NOTE, current, set, submit, start, cards, button, isSticky, why, decorateCollab, resultCard, add, shown, _live: live };
 })();
