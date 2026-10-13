@@ -498,8 +498,13 @@ const Assist = (() => {
 
   // ---------- the rest of the app ----------
   queueMicrotask(() => {
-    // every click in the app: is the Lab on a new frame size? (one property read, no timers)
-    Usage.onTrack?.(() => noteFrame());
+    // every click in the app: is the Lab on a new frame size? (round 26, smooth26: only while the Lab is on screen, and
+    // read in an idle moment: the read measured the preview right after the click's own changes, a layout per click)
+    let frameT = 0;
+    Usage.onTrack?.(() => {
+      if (frameT || H.surfaceIdFor?.(H.activeId) !== 'tool:three') return;
+      frameT = window.requestIdleCallback ? requestIdleCallback(() => { frameT = 0; noteFrame(); }, { timeout: 1500 }) : setTimeout(() => { frameT = 0; noteFrame(); }, 50);
+    });
     AppUI.addAction?.('Shuffle & pick: 4 variations as thumbnails', () => shufflePick(4).catch((err) => toast(err.message, { type: 'error' })));
     AppUI.addAction?.('Shuffle & let Astra pick the best', () => shufflePick(4, { astraPicks: true }).catch((err) => toast(err.message, { type: 'error' })));
     AppUI.addAction?.('Name this sketch (from its colors and song)', () => nameSketch().catch((err) => toast(err.message, { type: 'error' })));

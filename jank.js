@@ -120,6 +120,7 @@ const Jank = (() => {
   let animSeen = 0; let animAt = -1e9;
   const animating = () => {
     const now = performance.now();
+    if (now < moving) return true; // (round 26, smooth26) a scroll / drag says it: getAnimations() would style the page mid-scroll
     if (now - animAt > 1000) { animAt = now; try { animSeen = document.getAnimations().some((a) => a.playState === 'running') ? 1 : 0; } catch { animSeen = 0; } }
     return animSeen || now < moving;
   };

@@ -1120,7 +1120,7 @@ const Board = (() => {
     addEventListener('keyup', (e) => { mods(e); if (e.code === 'Space') { S.space = false; ui.root.classList.remove('bd-hand'); } }, true);
     addEventListener('blur', () => { S.alt = S.ctrl = S.space = false; ui.root.classList.remove('bd-alt', 'bd-ctrl', 'bd-hand'); });
     new ResizeObserver(() => { if (S.cur) cull(true); }).observe(ui.vp);
-    addEventListener('hearth:view', () => { if (!visible()) stopAllPreviews(); });
+    addEventListener('hearth:view', () => { if (playing.size && !visible()) stopAllPreviews(); }); // (round 26, smooth26: nothing playing, no style read mid-switch)
     ready().then(() => {
       S.view = { ...(S.cur.view || { x: 80, y: 80, z: 1 }) };
       applyView(true); renderAll(); applyBg(); renderHud();

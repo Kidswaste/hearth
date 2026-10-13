@@ -145,7 +145,7 @@ const Options = (() => {
     const who = el('div', { class: 'opt-who' }, natives().map((x) => el('button', { type: 'button', class: `opt-chip${x.id === a.id ? ' on' : ''}`, text: `${x.icon || ''} ${x.name}`.trim(), title: `Set up ${x.name}`, on: { click: () => { sheet.agentId = x.id; paint(); } } })));
     const mission = typeof Missions !== 'undefined' ? sec('Your next message', 'Click: the next message only · 📌 from now on. Right-click ◎ in the chat box: back to a normal reply.', Missions.cards(a.id, { onPick: paint })) : null;
     sheet.body.replaceChildren(who, mission, personality(a), instructions(a), access(a), memory(a), habits(a), thinking(a));
-    sheet.body.scrollTop = scroll;
+    if (scroll) sheet.body.scrollTop = scroll; // (round 26, smooth26: at the top already, no layout forced mid-build)
   }
   function build(host, agentId, page = false) {
     const head = el('header', { class: 'opt-head' }, el('b', { text: 'This AI: missions and what it can use' }), el('span', { class: 'spacer' }), page ? null : btn('✕', 'Close (Esc)', () => hide()));

@@ -72,6 +72,8 @@ const Native = (() => {
     title.addEventListener('dblclick', () => renameCurrent(agentId));
     menuBtn.addEventListener('click', (e) => { if (typeof Lazy !== 'undefined' && Lazy.load) Lazy.load('options').then(() => Options.open({ agentId, place: 'chat' })).catch(() => chatMenu(agentId, e)); else chatMenu(agentId, e); });
     menuBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); chatMenu(agentId, e); });
+    // (round 26, smooth26) pointing at ⋯ fetches AI setup (18 KB): the click then opens it at once
+    menuBtn.addEventListener('pointerenter', () => { if (typeof Lazy !== 'undefined' && Lazy.load && !Lazy.loaded('options')) window.Jank?.calm?.(1500, null).then(() => Lazy.load('options')).catch(() => {}) ?? Lazy.load('options').catch(() => {}); }, { once: true });
     modelSel.addEventListener('change', () => setChatModel(agentId, modelSel.value));
 
     const list = el('div', { class: 'messages' });
@@ -545,7 +547,7 @@ const Native = (() => {
   function watchEarlier(v, agentId, more) {
     v.earlierT = setTimeout(() => {
       if (!more.isConnected) return;
-      const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); if (v.earlierIO === io) v.earlierIO = null; showEarlier(agentId); } }, { root: v.list });
+      const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); if (v.earlierIO === io) v.earlierIO = null; showEarlier(agentId, EARLIER); } }, { root: v.list });
       io.observe(more); v.earlierIO = io;
     }, 600);
   }
@@ -907,7 +909,7 @@ const Native = (() => {
       const from = shownFrom(chat, firstNew);
       v.earlierIO?.disconnect(); v.earlierIO = null; clearTimeout(v.earlierT); // (the last draw's "Show earlier" watch)
       if (from > 0) {
-        const more = el('button', { type: 'button', class: 'ghost show-earlier', text: `↑ Show ${from} earlier message${from === 1 ? '' : 's'}`, on: { click: () => showEarlier(agentId) } });
+        const more = el('button', { type: 'button', class: 'ghost show-earlier', text: from > EARLIER + 10 ? `↑ Show earlier messages (${from} more)` : `↑ Show ${from} earlier message${from === 1 ? '' : 's'}`, on: { click: () => showEarlier(agentId, EARLIER) } });
         out.push(more);
         // reaching it by scrolling up loads them too (after the chat has settled at the bottom)
         watchEarlier(v, agentId, more);
@@ -1018,17 +1020,23 @@ const Native = (() => {
   }
   const WINDOW = 40;
   const fullChats = new Set(); // chats whose earlier messages are shown (this session)
+  // (round 26, smooth26) "Show earlier" / scrolling up brings EARLIER more at a time: all 260 earlier messages of a
+  // 300-message chat in one go was a ~300 ms frame (here) right under your wheel
+  const EARLIER = 60;
+  const earlierFrom = new Map(); // chat id → first message shown after some "Show earlier"
   function shownFrom(chat, firstNew) {
     if (fullChats.has(chat.id) || chat.messages.length <= WINDOW + 10) return 0;
-    let from = chat.messages.length - WINDOW;
+    let from = Math.min(chat.messages.length - WINDOW, earlierFrom.get(chat.id) ?? Infinity);
     if (firstNew != null && firstNew < from) from = Math.max(0, firstNew - 2);
     return from;
   }
-  // the earlier messages of the open chat, keeping what's on screen where it is
-  function showEarlier(agentId) {
+  // the earlier messages of the open chat (step: that many more, else all), keeping what's on screen where it is
+  function showEarlier(agentId, step = 0) {
     const v = views.get(agentId); const id = H.activeChat[agentId];
     if (!v || !id || fullChats.has(id)) return;
-    fullChats.add(id);
+    const chat = chats.get(id);
+    const from = chat && step ? shownFrom(chat, unreadFrom.get(id)) - step : 0;
+    if (from > 10) earlierFrom.set(id, from); else fullChats.add(id);
     const h0 = v.list.scrollHeight; const t0 = v.list.scrollTop;
     const keep = () => { v.list.scrollTop = t0 + (v.list.scrollHeight - h0); };
     keep();

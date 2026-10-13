@@ -73,7 +73,10 @@ const Usage = (() => {
 
   // ---------- how important things look ----------
   let decorateTimer = 0;
-  function scheduleDecorate() { if (decorateTimer) return; decorateTimer = setTimeout(() => { decorateTimer = 0; decorate(); }, 600); }
+  // (round 26, smooth26) the pass (every header button's name, ~2 ms) waits for an idle moment after the delay, so it
+  // never lands in a frame of the click / menu / typing that caused it
+  const idleDecorate = () => { if (window.requestIdleCallback) requestIdleCallback(() => { decorateTimer = 0; decorate(); }, { timeout: 2000 }); else { decorateTimer = 0; decorate(); } };
+  function scheduleDecorate() { if (decorateTimer) return; decorateTimer = setTimeout(idleDecorate, 600); }
   const trackedDays = () => (data ? (Date.now() - data.since) / DAY : 0);
   function tiers() {
     const counts = Object.values(data.items).map((x) => x.n).filter((n) => n > 0).sort((a, b) => b - a);
@@ -210,7 +213,7 @@ const Usage = (() => {
     const NOISY = '.mb-time, .mb-minitime, .three-stats, .messages, .three-console, .tw-kval, .ed-panel, #toasts, .msg, .meter-strip, .meter-pill, .cp-list, .cp-right, .juice-layer, #menu, #menu-fly, .palette, .slash-menu'; // the meter ticks while replies stream
     // (round 17, hz240) what comes and goes right under <body> without new buttons to note: tips, sparks, menus, the
     // palette (a tooltip or a press re-ran the whole decorate pass 0.8 s later)
-    const QUIET = '.juice-tip, .juice-layer, .juice-glint, #menu, #menu-fly, .palette, #toasts, .quote-sel, .sel-bar';
+    const QUIET = '.juice-tip, .juice-layer, .juice-glint, #menu, #menu-fly, .palette, #toasts, .quote-sel, .sel-bar, .ms-pop, .opt-sheet'; // (round 26: ◎ Missions, ⋯ AI setup)
     const noisy = (r) => {
       const t = r.target.nodeType === 1 ? r.target : r.target.parentElement;
       if (t?.closest?.(NOISY)) return true;
@@ -219,7 +222,7 @@ const Usage = (() => {
     new MutationObserver((records) => {
       if (decorateTimer) return;
       if (records.every(noisy)) return;
-      decorateTimer = setTimeout(() => { decorateTimer = 0; decorate(); }, 800);
+      decorateTimer = setTimeout(idleDecorate, 800);
     }).observe(document.body, { childList: true, subtree: true });
     scheduleDecorate();
   }
