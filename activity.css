@@ -1,0 +1,54 @@
+/* Activity (round 27, activity.js): the ◉ indicator at the bottom of the rail (only while something runs or waits for
+   you) and its panel. Compositor-only motion: the indicator breathes with opacity while something runs; nothing
+   animates layout, no backdrop-filter. */
+#act-badge { width: 32px; height: 20px; padding: 0; margin: 2px 0 0; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px; opacity: .9; font-size: 11px; }
+#act-badge[hidden] { display: none; }
+#act-badge:hover { opacity: 1; }
+#act-badge .act-ic { text-align: center; line-height: 1; color: var(--fh-ai, #a98bff); }
+#act-badge .act-n { font-size: 10px; font-weight: 600; line-height: 1; min-width: 9px; color: var(--muted, #8a8f98); font-variant-numeric: tabular-nums; }
+#act-badge[data-state="run"] .act-ic { animation: act-breathe 2.4s ease-in-out infinite; will-change: opacity; }
+#act-badge[data-state="need"] .act-ic, #act-badge[data-state="need"] .act-n { color: var(--fh-ember, #ff8a3d); }
+@keyframes act-breathe { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { #act-badge[data-state="run"] .act-ic { animation: none; } }
+
+.ac-pop { position: fixed; z-index: 9000; width: 380px; max-width: calc(100vw - 80px); max-height: min(70vh, 560px); overflow: auto; padding: 8px; border-radius: 10px;
+  background: var(--surface, #1b1d22); border: 1px solid var(--line, #2c2f36); box-shadow: 0 10px 32px rgba(0, 0, 0, .35); font-size: 12px; }
+.ac-head { display: flex; align-items: center; gap: 4px; padding: 0 2px 4px; }
+.ac-head .spacer { flex: 1; }
+.ac-head button { height: 22px; padding: 0 8px; }
+.ac-sec { margin: 2px 0 6px; }
+.ac-sec[hidden] { display: none; }
+.ac-sec > h4 { margin: 6px 4px 2px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted, #8a8f98); }
+.ac-wait > h4 { color: var(--fh-ember, #ff8a3d); }
+.ac-row { padding: 4px 6px; border-radius: 7px; }
+.ac-row:hover { background: color-mix(in srgb, var(--fh-ai, #a98bff) 8%, transparent); }
+.ac-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.ac-t { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.ac-t.ac-grow { flex: 1 1 auto; }
+.ac-line > .ac-t:not(.ac-grow):not(.ac-wrap):not(.ac-ht) { flex-shrink: 0; max-width: 58%; }
+.ac-sub { margin: 1px 0 0 22px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted, #8a8f98); font-variant-numeric: tabular-nums; }
+.ac-t.ac-wrap { white-space: normal; overflow-wrap: anywhere; flex: 1 1 auto; font-weight: 500; line-height: 1.35; }
+.ac-ht { font-weight: 400; flex: 1 1 auto; }
+.ac-w { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted, #8a8f98); font-variant-numeric: tabular-nums; }
+.ac-hist .ac-w { flex: none; margin-left: auto; font-size: 11px; }
+.ac-ic { flex: none; width: 16px; text-align: center; font-size: 11px; opacity: .85; }
+.ac-av { flex: none; width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; font-size: 9px; font-weight: 700; color: #fff; }
+.ac-b { flex: none; height: 20px; padding: 0 6px; font-size: 11px; }
+.ac-row .ghost.ac-b { opacity: .7; }
+.ac-row:hover .ghost.ac-b { opacity: 1; }
+.ac-acts { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 0 22px; }
+.ac-need { box-shadow: inset 2px 0 0 var(--fh-ember, #ff8a3d); }
+.ac-failed .ac-ic { color: var(--fh-red, #ff5a5a); }
+.ac-link { cursor: pointer; }
+.ac-helpers { list-style: none; margin: 2px 0 0 22px; padding: 0; display: grid; gap: 1px; }
+.ac-helper { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 11px; }
+.ac-helper > b { flex: 0 1 auto; min-width: 0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ac-helper > .ac-hw { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted, #8a8f98); }
+.ac-pip { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--fh-ai, #a98bff); }
+.ac-helper.done .ac-pip { background: var(--fh-ok, #5fc98a); }
+.ac-helper.failed .ac-pip { background: var(--fh-red, #ff5a5a); }
+.ac-helper.stopped .ac-pip { background: var(--muted, #8a8f98); }
+.ac-more { margin: 0 4px 4px; }
+.ac-more[hidden], .ac-empty[hidden] { display: none; }
+.ac-empty { margin: 6px; color: var(--muted, #8a8f98); line-height: 1.4; }
+.ac-up { opacity: .85; }

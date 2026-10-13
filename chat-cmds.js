@@ -1190,7 +1190,7 @@ const ChatCmds = (() => {
   ];
   for (const [name, desc, keys, fn] of OPENERS) R({ name, area: 'App', desc, keys, ...(name === 'settings' ? { args: '[words]' } : {}), run: (args) => { fn(String(args || '').trim()); } });
   R({
-    name: 'notify', aliases: ['notifications'], area: 'App', args: '[on | off]', desc: 'Notifications when a reply arrives while you look elsewhere',
+    name: 'notify', aliases: ['notifications'], area: 'App', args: '[on | off]', desc: 'Desktop notifications while you look elsewhere: replies, things that need you (stuck, a plan to approve, sync), long jobs finishing',
     complete: () => ONOFF,
     run: async (args) => { const on = onOff(args, H.settings().notify !== false); H.config.settings = { ...H.settings(), notify: on }; await saveConfig(); return on ? 'Reply notifications on.' : 'Reply notifications off.'; },
   });

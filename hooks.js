@@ -77,6 +77,7 @@ const Hooks = (() => {
     recent.push({ at: now, agentId, hookId: h.id, fact: factLine });
     if (recent.length > 30) recent.shift();
     const when = C.whenText(h.when, nameOf);
+    document.dispatchEvent(new CustomEvent('hearth:hook-fired', { detail: { agentId, hookId: h.id, when, fact: factLine } })); // (round 27) activity.js: the last 24 h
     const text = C.compose(factLine, h.then.text);
     tagNext = { agentId, text, hook: { id: h.id, when } };
     Native.ensureChat(agentId); // (the note belongs to the chat the message goes to)

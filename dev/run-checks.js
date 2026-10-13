@@ -66,6 +66,7 @@ const GROUPS = {
   connections: ['connections', 'unit:connections-test'], // (round 26) the owner's MCP servers: ＋ Add a connection, Test (dev/fake-mcp-server.js), both engines' configs
   hooks: ['hooks', 'unit:hooks-test'], // (round 26) ⚡ hooks: when something happens, an AI gets your words (⋯ AI setup)
   missions: ['missions', 'missions2'], // (round 26) ◎ Missions: the picker, result cards, chips + ↻, plan first, ask everyone, helper rows
+  activity: ['activity'], // (round 27) ◉ Activity: what runs, what waits for you, the last 24 h, stuck replies, desktop notifications
   unit: UNIT.map((u) => `unit:${u}`),
 };
 GROUPS.all = [...new Set([...all.filter((n) => !/^astra-/.test(n)), ...GROUPS.astra, ...GROUPS.unit])];
