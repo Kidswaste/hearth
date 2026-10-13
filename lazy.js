@@ -304,6 +304,19 @@ const Lazy = (() => {
       document.head.append(s);
     });
   }
+  // (round 29, fastboot) a big group's tags go in a few at a time, a task each (the Lab's 74 files were one ≈ 0.1–0.5 s
+  // task right after the first frame); they still run in their order (async = false keeps insertion order)
+  const CHUNK = 8;
+  const yieldTask = () => (globalThis.scheduler?.yield ? scheduler.yield() : new Promise((r) => setTimeout(r, 0)));
+  async function injectAll(files) {
+    const all = [];
+    for (let i = 0; i < files.length; i += 1) {
+      if (i && i % CHUNK === 0) await yieldTask();
+      const p = inject(files[i]); p.catch(() => {}); // (Promise.all below reports a failure; no "unhandled" meanwhile)
+      all.push(p);
+    }
+    return Promise.all(all);
+  }
   function css(href, before) {
     if (document.querySelector(`link[rel=stylesheet][href="${href}"]`)) return Promise.resolve();
     return new Promise((res) => {
@@ -330,7 +343,7 @@ const Lazy = (() => {
         reports.set(g.name, rep);
         const p = patch(g, rep);
         try {
-          await Promise.all([...(g.css || []).map((h) => css(h, g.cssBefore)), ...g.files.map(inject)]);
+          await Promise.all([...(g.css || []).map((h) => css(h, g.cssBefore)), injectAll(g.files)]);
           for (const fn of p.ready) { try { fn.call(window, new Event('DOMContentLoaded')); } catch (err) { console.error(err); } }
         } catch (err) {
           g.state = 'failed';
