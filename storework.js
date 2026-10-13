@@ -17,6 +17,9 @@
 // Chat files are parsed once and kept (by size + mtime): a list or a search only re-reads the files that changed, and
 // a chat saved through here is indexed from the value itself (no re-read). Texts are kept up to TEXT_CAP characters
 // in all; past that, a search reads the files again (still on this thread).
+// (round 34, lightweight) the texts are kept only while you search: the first search reads them in, and 10 minutes
+// after the last one they're let go (a list never reads them in: with an imported history they were tens of MB held in
+// the main process from the first second, for a search that may never come). No lowercase copy is kept either.
 const { parentPort } = require('worker_threads');
 const fs = require('fs');
 const path = require('path');
@@ -24,7 +27,14 @@ const crypto = require('crypto');
 const { list: flist, search: fsearch } = require('./fswalk');
 
 const sha = (s) => crypto.createHash('sha1').update(s).digest('hex');
-const TEXT_CAP = 32 * 1024 * 1024;
+const TEXT_CAP = 16 * 1024 * 1024;
+const TEXT_IDLE_MS = Number(process.env.HEARTH_TEXT_IDLE_MS) || 10 * 60 * 1000; // texts let go after this long without a search
+let textsWarm = false; let coolT = null;
+function warmTexts() {
+  textsWarm = true; clearTimeout(coolT);
+  coolT = setTimeout(() => { textsWarm = false; for (const e of index.values()) { e.texts = null; e.n = 0; } textChars = 0; }, TEXT_IDLE_MS);
+  coolT.unref?.();
+}
 const written = new Map(); // file → { h, size, mtimeMs } of the text this thread last wrote / saw there
 const index = new Map(); // chat file → { size, mtimeMs, sum, texts, lower }
 let textChars = 0;
@@ -49,12 +59,12 @@ function renameRetry(from, to) {
 
 // ---------- the chat index ----------
 function entryOf(chat, st) {
-  const texts = (chat.messages || []).map((m) => m.text || '');
-  const n = texts.reduce((a, t) => a + t.length, 0);
-  const keep = textChars + n <= TEXT_CAP;
+  const texts = textsWarm ? (chat.messages || []).map((m) => m.text || '') : null;
+  const n = texts ? texts.reduce((a, t) => a + t.length, 0) : 0;
+  const keep = Boolean(texts) && textChars + n <= TEXT_CAP;
   if (keep) textChars += n;
   const { id, agentId, title, updatedAt, pinned, model } = chat;
-  return { size: st.size, mtimeMs: st.mtimeMs, sum: { id, agentId, title, updatedAt, pinned: Boolean(pinned), model }, texts: keep ? texts : null, lower: null, n: keep ? n : 0 };
+  return { size: st.size, mtimeMs: st.mtimeMs, sum: { id, agentId, title, updatedAt, pinned: Boolean(pinned), model }, texts: keep ? texts : null, n: keep ? n : 0 };
 }
 function drop(file) { const e = index.get(file); if (e) { textChars -= e.n; index.delete(file); } }
 function readChat(file) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } }
@@ -107,15 +117,18 @@ const OPS = {
   search({ dir, query }) {
     const q = String(query || '').trim().toLowerCase();
     if (q.length < 2) return [];
+    warmTexts();
     const hits = [];
     for (const { file, e } of chats(dir)) {
       let texts = e.texts;
-      if (!texts) { const chat = readChat(file); texts = (chat?.messages || []).map((m) => m.text || ''); }
-      const lower = e.lower || texts.map((t) => t.toLowerCase());
-      if (e.texts && !e.lower) e.lower = lower; // kept next to the texts (so up to twice TEXT_CAP in all)
+      if (!texts) {
+        const chat = readChat(file); texts = (chat?.messages || []).map((m) => m.text || '');
+        const n = texts.reduce((a, t) => a + t.length, 0);
+        if (textChars + n <= TEXT_CAP) { e.texts = texts; e.n = n; textChars += n; } // kept for the next keystrokes
+      }
       let count = 0; let snippet = null;
-      for (let k = 0; k < lower.length; k++) {
-        const i = lower[k].indexOf(q);
+      for (let k = 0; k < texts.length; k++) {
+        const i = texts[k].toLowerCase().indexOf(q);
         if (i < 0) continue;
         count += 1;
         const t = texts[k];

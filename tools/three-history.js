@@ -282,7 +282,11 @@ const ThreeHistory = (() => {
   }
   async function thumbs(id = S()?.currentId()) {
     if (!thumbMem.has(id)) { const m = okId(id) ? await window.hub.kvGet(KVT(id), {}).catch(() => ({})) : {}; thumbMem.set(id, { ...(m || {}), ...(pendingThumbs.get(id) || {}) }); }
-    return thumbMem.get(id);
+    // (round 34, lightweight) only the last few scenes' pictures stay in memory, like their histories (the rest are
+    // read again from disk when shown; not-yet-written ones wait in pendingThumbs)
+    const mine = thumbMem.get(id); thumbMem.delete(id); thumbMem.set(id, mine);
+    for (const [k] of thumbMem) { if (thumbMem.size <= CACHE) break; if (k !== S()?.currentId()) thumbMem.delete(k); }
+    return mine;
   }
 
   // ---------- scrubbing: a version on the preview, nothing saved until you keep it ----------

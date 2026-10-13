@@ -262,10 +262,16 @@ const AiCheck = (() => {
       box.replaceChildren(head, list || '');
     };
     paint();
-    const onChange = (e) => { if (!box.isConnected) document.removeEventListener('hearth:aicheck', onChange); else if (e.detail?.agentId === agentId) paint(); };
-    document.addEventListener('hearth:aicheck', onChange);
+    // (round 34, lightweight) one listener for every box: a closed ⋯ AI setup's box is let go at once, not
+    // kept (with its whole sheet) until a check happens to run
+    box.lwPaint = paint; // (held by the box only: a box nobody shows is collected with its paint)
+    for (const r of boxes) if (!r.deref()) boxes.delete(r);
+    boxes.add(new WeakRef(box));
+    if (!heard) { heard = true; document.addEventListener('hearth:aicheck', (e) => { for (const r of boxes) { const b = r.deref(); if (!b) boxes.delete(r); else if (b.isConnected && b.dataset.agent === e.detail?.agentId) b.lwPaint(); } }); }
     return box;
   }
+  const boxes = new Set(); // WeakRefs of the boxes shown (data-agent: whose)
+  let heard = false;
   // ⋯ AI setup on this AI, scrolled to a part of it
   function reveal(agentId, sel = '.aicheck') {
     if (typeof Options === 'undefined') return;

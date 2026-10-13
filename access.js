@@ -612,7 +612,7 @@ const Access = (() => {
   // unless a chat sets its own (then a line says so, with "Use this for this chat too").
   function aiSection(agentId, { repaint } = {}) {
     const agent = agentOf(agentId);
-    const box = el('div', { class: 'access-ai' });
+    const box = el('div', { class: 'access-ai', attrs: { 'data-agent': agentId } });
     if (!agent) return box;
     const again = () => { paint(); repaint?.(); };
     const fail = (err) => toast(err.message, { type: 'error' });
@@ -653,10 +653,16 @@ const Access = (() => {
     paint();
     if (!dirs) paths().then(paint).catch(() => {});
     // a change from elsewhere (the chat's "Allow this folder", a command) shows here too
-    const onChange = (e) => { if (!box.isConnected) document.removeEventListener('hearth:file-access', onChange); else if (e.detail?.agentId === agentId) paint(); };
-    document.addEventListener('hearth:file-access', onChange);
+    // (round 34, lightweight) one listener for every box: a closed ⋯ AI setup's box is let go at once, not
+    // kept (with its whole sheet) until a file-access change happens to come by
+    box.lwPaint = paint; // (held by the box only: a box nobody shows is collected with its paint)
+    for (const r of aiBoxes) if (!r.deref()) aiBoxes.delete(r);
+    aiBoxes.add(new WeakRef(box));
+    if (!aiHeard) { aiHeard = true; document.addEventListener('hearth:file-access', (e) => { for (const r of aiBoxes) { const b = r.deref(); if (!b) aiBoxes.delete(r); else if (b.isConnected && b.dataset.agent === e.detail?.agentId) b.lwPaint(); } }); }
     return box;
   }
+  const aiBoxes = new Set(); // WeakRefs of the boxes shown (data-agent: whose)
+  let aiHeard = false;
   const RESULT = { allowed: '✓', approved: '✓ you', denied: '✕ denied', refused: '⛔ refused', timeout: '⏱ no answer', trashed: '🗑 Trash', rewritten: '↪ Trash', done: '·', set: '·', restored: '↶', undone: '↶' };
   function logRow(chatId, e, after) {
     const canUndo = (e.action === 'write' ? e.backup || e.created : e.action === 'delete' && e.backup) && !e.undone && e.target; // (round 28) a delete with a copy too
