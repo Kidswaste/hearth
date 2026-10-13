@@ -888,3 +888,8 @@ In ⋯ AI setup, **⚡ Hooks: when… then…** gives each AI a short list of ru
 - ✓ **Drop a .hearthpack anywhere on Hearth** (or Share › Open a pack…, or open it with Hearth): a card first (its picture, name, what's inside, size, where it came from, and that its layers are code running only in the Lab's sandboxed preview); nothing is added until **Add as a new scene**. Then a new scene opens, its files in `data/assets/packs/<name>/` and the asset library, paths rewritten, LUTs in the grade, its sequence back.
 - ✓ Safe by construction: no zip-slip (only `files/<plain name>`, every target checked inside Hearth's folder), size and zip-bomb caps, CRC checks, never overwrites, a newer-format pack says "update Hearth".
 - ○ Tested headless (`sh dev/run-checks.sh packs`: unit + a scene and a sequence round trip through the buttons); real Finder / Explorer "Open with" wasn't tried here.
+## A faster start (round 29, fastboot, 13 upgrades: docs/upgrades/fastboot.md)
+- ✓ The window's first picture no longer waits for the Lab (it was being loaded in front of the first frame by mistake): first paint after a reload ≈ 808 → 469 ms, long tasks during the start −74 %.
+- ✓ The main process makes the window first and sets up the rest right after (36 → 7 ms before the window); renders, the updater, the asset library and hooks load on first use.
+- ✓ The command bar and Flows load just after the first screen (−205 KB of JS); Ctrl/⌘+;, F1 and Ctrl/⌘+Shift+F work from the first moment. Pressing the Lab's button starts building it before the click lands.
+- ○ Measured interleaved on a shared machine with software GL (`sh dev/run-checks.sh fastboot`, dev/checks/fastboot-lab.js); the Lab's own first run (GPU context + shaders) is unchanged.
