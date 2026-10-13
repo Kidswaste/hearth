@@ -878,3 +878,8 @@ In ⋯ AI setup, **⚡ Hooks: when… then…** gives each AI a short list of ru
 - ✓ ✦ Ask the director: a small picture of the reference + the numbers (cost shown first) so it matches shapes, light and motion.
 - ✓ Ways in: the director's ◎ mission "Make it look like this", ✦ More › ✨ Look & motion, a board item's right-click "🎨 Use this look in the Lab", dropping a picture on the Lab preview.
 - ○ Checked with generated pictures, a recorded clip and the fake engines (`sh dev/run-checks.sh lookmatch unit:lookmatch-test`); how close a match gets on real footage depends on the scene.
+## One undo for what the AIs did (round 28, aiundo, 32 upgrades: docs/upgrades/aiundo.md)
+- ✓ Every change an AI makes (Lab scenes through the director, the mood board, files through chat access, settings through the commands it runs) lands in **one timeline**: who (the AI, the chat, the reply, a hook or mission that started it), what in plain words, when.
+- ✓ A reply that changed something has **"↶ Undo what it did"** in its actions; **Activity › Changes by AIs** (Ctrl/⌘+K) has ↶ per change and ⋯ / right-click for **Undo everything it did since then**, the whole reply, Show it.
+- ✓ Safe: later changes to the same thing go first (newest first), a scene / file goes back in one step, and the confirm warns when **you** changed it after. Each place's own undo does the work (the time machine, a board edit, chat access's copies, the old setting), so it can be taken back there too; a file a chat deleted now keeps a copy.
+- ○ Tested with the fake engines' real tool calls (`sh dev/run-checks.sh aiundo`: Lab, board, files, a setting, each undone) and a unit test of the timeline logic.

@@ -249,7 +249,8 @@ const BoardCmds = (() => {
     }
     return { ok: false, error: `Unknown board tool ${tool}` };
   }
-  if (typeof HubBridge !== 'undefined') HubBridge.register(['board_'], handle);
+  // (round 28, aiundo) what an agent's call changes on a board goes in the AIs' undo timeline (aiundo.js)
+  if (typeof HubBridge !== 'undefined') HubBridge.register(['board_'], (t, a, c) => (window.AiUndo?.board ? AiUndo.board(t, a, c, handle) : handle(t, a, c)));
 
   function registerAll() {
     let skipped = [];

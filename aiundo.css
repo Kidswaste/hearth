@@ -1,0 +1,19 @@
+/* One undo for what the AIs did (round 28, aiundo.js): the "Changes by AIs" part of the Activity panel (it reuses the
+   panel's .ac-row / .ac-line), the small "↶ Undo what it did" in a reply's actions, and the confirm list. */
+.au-part .ac-row { cursor: default; }
+.au-row .ac-t.ac-wrap { font-weight: 500; }
+.au-row .ac-sub { margin-left: 44px; white-space: normal; font-size: 11px; }
+.au-row.au-undone { opacity: .55; }
+.au-row.au-undone .ac-t { text-decoration: line-through; text-decoration-color: color-mix(in srgb, currentColor 45%, transparent); }
+.au-row .au-u { color: var(--fh-ember, #ff8a3d); font-weight: 700; }
+
+.msg-foot .au-reply { font-size: 11px; white-space: nowrap; }
+.msg-foot button.au-reply { color: var(--fh-ember, #ff8a3d); opacity: .8; }
+.msg-foot button.au-reply:hover { opacity: 1; }
+.msg-foot .au-reply.au-done { color: var(--muted, #8a8f98); opacity: .7; padding: 0 4px; }
+
+.au-ask { max-width: min(560px, calc(100vw - 48px)); }
+.au-ask .au-list { margin: 6px 0 8px; padding-left: 18px; max-height: 40vh; overflow: auto; font-size: 12.5px; line-height: 1.45; }
+.au-ask .au-list li { overflow-wrap: anywhere; }
+.au-ask .au-note { margin: 4px 0; font-size: 12px; color: var(--muted, #8a8f98); }
+.au-ask .au-warn { margin: 6px 0; padding: 6px 8px; border-radius: 6px; font-size: 12px; background: color-mix(in srgb, var(--fh-ember, #ff8a3d) 12%, transparent); box-shadow: inset 2px 0 0 var(--fh-ember, #ff8a3d); }

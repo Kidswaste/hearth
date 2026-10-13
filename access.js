@@ -117,7 +117,7 @@ const Access = (() => {
       const list = (logs[k] ||= []);
       // one line per tool call: the permission check's line (with its decision, backup…) wins over the engine's report
       const twin = entry.id ? list.find((x) => x.id === entry.id) : null;
-      if (twin) { if (twin.result === 'done' && e.result !== 'done') { Object.assign(twin, e); persist(); } return; }
+      if (twin) { if (twin.result === 'done' && e.result !== 'done') { Object.assign(twin, e); persist(); document.dispatchEvent(new CustomEvent('hearth:access-log', { detail: { chatId: k, entry: twin, update: true } })); } return; } // (round 28) aiundo.js hears the copy kept
       list.push(e);
       if (list.length > LOG_MAX) list.splice(0, list.length - LOG_MAX);
       persist();
@@ -263,8 +263,11 @@ const Access = (() => {
     }
     // deletes Hearth can do itself go to the Trash; the command becomes a harmless echo so the run carries on
     if (c.trash?.length) {
+      // (round 28, aiundo) a copy first (files up to 25 MB), so Undo can put it back without digging in the Trash
+      const kept = new Map();
+      for (const p of c.trash) { const k = await backup(chatId, p).catch(() => ({})); if (k.backup) kept.set(p, k.backup); }
       const r = await window.hub.fs.trash(c.trash);
-      for (const p of r.done) log(chatId, { ...base, id: undefined, action: 'delete', what: `Moved to the Trash: ${R.baseName(p)}`, target: p, result: 'trashed', by });
+      for (const p of r.done) log(chatId, { ...base, id: undefined, action: 'delete', what: `Moved to the Trash: ${R.baseName(p)}`, target: p, result: 'trashed', by, ...(kept.has(p) ? { backup: kept.get(p) } : {}) });
       if (r.failed.length && !r.done.length) return denied(`Hearth couldn't move it to the Trash (${r.failed[0].error}).`);
       log(chatId, { ...base, result: 'rewritten', why: 'deleted with the Trash instead', by });
       const msg = `Hearth moved ${r.done.length} item${r.done.length === 1 ? '' : 's'} to the Trash (recoverable)${r.failed.length ? `; ${r.failed.length} could not be moved` : ''}.`;
@@ -377,7 +380,7 @@ const Access = (() => {
   }
   const RESULT = { allowed: '✓', approved: '✓ you', denied: '✕ denied', refused: '⛔ refused', timeout: '⏱ no answer', trashed: '🗑 Trash', rewritten: '↪ Trash', done: '·', set: '·', restored: '↶', undone: '↶' };
   function logRow(chatId, e, after) {
-    const canUndo = e.action === 'write' && (e.backup || e.created) && !e.undone && e.target;
+    const canUndo = (e.action === 'write' ? e.backup || e.created : e.action === 'delete' && e.backup) && !e.undone && e.target; // (round 28) a delete with a copy too
     return el('div', { class: `access-entry r-${e.result}`, title: [new Date(e.at).toLocaleString(), e.why, e.note ? `Your note: ${e.note}` : '', e.detail].filter(Boolean).join('\n') },
       el('span', { class: 'access-eico', text: ICON[e.action] || '·' }),
       el('span', { class: 'access-etext', text: short(e.what, 110) }),
