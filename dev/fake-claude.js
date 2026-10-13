@@ -128,6 +128,8 @@ const F = require('./fake-common');
   }
   if (p.error) { F.out({ type: 'result', subtype: 'error_during_execution', is_error: true, result: 'Fake engine error: the model is overloaded', session_id: sessionId }); return; }
   text += mcpReport;
+  // (round 28, router) "runinfo": the reply ends with the model + effort this run really got (dev/checks/router.js)
+  if (/\bruninfo\b/i.test(prompt)) text += `\n\nrun: model=${arg('--model') || 'default'} effort=${arg('--effort') || 'none'}`;
   F.out({ type: 'stream_event', event: { type: 'content_block_start', index, content_block: { type: 'text', text: '' } } });
   for (const t of F.pieces(text)) { F.out({ type: 'stream_event', event: { type: 'content_block_delta', index, delta: { type: 'text_delta', text: t } } }); await F.sleep(wait); }
   F.out({ type: 'stream_event', event: { type: 'content_block_stop', index } });

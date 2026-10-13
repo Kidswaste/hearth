@@ -147,8 +147,11 @@ const Options = (() => {
   function thinking(a) {
     const levels = [['low', 'Quick'], ['medium', 'Smart'], ['high', 'Deep']];
     const cur = a.effort || 'medium';
-    return sec('How hard it thinks', null, el('div', { class: 'opt-seg' }, levels.map(([v, label]) => el('button', { type: 'button', class: `ghost small${cur === v || (v === 'high' && cur === 'xhigh') ? ' on' : ''}`, text: label,
-      title: v === 'low' ? 'Fast, short' : v === 'medium' ? 'The everyday balance' : 'Slower, more thorough (more tokens)', on: { click: () => save(a, { effort: v === 'medium' ? undefined : v }).then(paint) } }))));
+    // (round 28, router.js) Smart picks the model + effort per message; the reply shows the pick, one click thinks harder
+    const smart = cur === 'medium' && typeof Router !== 'undefined';
+    return sec('How hard it thinks', smart ? 'Smart picks for each message: a lighter model for small asks, more thinking for code, builds and analyses. The reply shows its pick; click it to ask again, thinking harder.' : null,
+      el('div', { class: 'opt-seg' }, levels.map(([v, label]) => el('button', { type: 'button', class: `ghost small${cur === v || (v === 'high' && cur === 'xhigh') ? ' on' : ''}`, text: label,
+        title: v === 'low' ? 'Fast, short' : v === 'medium' ? 'Picks per message: light for small asks, thorough for hard ones (saves tokens)' : 'Slower, more thorough (more tokens)', on: { click: () => save(a, { effort: v === 'medium' ? undefined : v }).then(paint) } }))));
   }
 
   // ---------- the panel ----------

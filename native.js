@@ -15,7 +15,7 @@ const Native = (() => {
   const unfolded = new Set(); // "chatId:index" of long replies the user unfolded (they stay open)
   // Extension points for chat-*.js: render(agentId, view, chat), message(node, m, index, agent),
   // event(event, chat), mark(chat, index, key, on), send(agentId, chat, text).
-  const hooks = { render: [], message: [], event: [], mark: [], send: [], newChat: [], finish: [], compose: [], speak: [] }; // newChat(agentId): "New chat" (chat-scenes.js)
+  const hooks = { render: [], message: [], event: [], mark: [], send: [], newChat: [], finish: [], compose: [], speak: [], options: [] }; // newChat(agentId): "New chat" (chat-scenes.js)
   // (round 23, voice.js) speak: { text(raw) → what is read, say(text, done) → true when it reads it itself (a system
   // voice), stop() }: the last one added reads replies aloud
   // (round 9, chatcore) finish(event, chat, extras): add fields to the reply about to be saved (chat-things.js: the
@@ -1329,6 +1329,9 @@ const Native = (() => {
     let raw = last.sent || full || last.text;
     if (!fromHistory && !compact) for (const fn of hooks.compose) { try { const t = await fn(agentId, chat, raw, last); if (typeof t === 'string' && t !== raw) { raw = t; last.sent = t; } } catch (err) { console.warn(err); } }
     const extra = typeof Astra !== 'undefined' ? Astra.beforeSend(chat, raw, withContext) : { text: withContext(chat, raw), options: {} };
+    // (round 28, router.js) options(agentId, chat, raw, message, options, { compact, fromHistory }): may fill in engine
+    // options for this one message (Smart picks model + effort); what is already set (the chat's own pick) stays
+    for (const fn of hooks.options) { try { fn(agentId, chat, raw, last, extra.options, { compact, fromHistory }); } catch (err) { console.warn(err); } }
     window.hub.send({
       agentId, chatId: chat.id, session: chat.session,
       text: style ? `[${style}]\n\n${extra.text}` : extra.text,
