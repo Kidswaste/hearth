@@ -2542,14 +2542,15 @@ function gestCore(opt = {}) {
     let kind;
     if (e.deltaMode === 1 || e.deltaMode === 2) kind = 'mouse';
     else if (wy && wy === -3 * e.deltaY) kind = 'trackpad'; // (Chromium on a Mac trackpad: wheelDelta is −3 × delta, exactly)
-    else if (prev && now - prev.t < STICKY && Boolean(prev.ctrl) === Boolean(e.ctrlKey)) kind = prev.kind;
+    else if (prev && now - prev.t < STICKY && Boolean(prev.ctrl) === Boolean(e.ctrlKey || e.metaKey)) kind = prev.kind;
     else if (dx !== 0 && !e.shiftKey) kind = 'trackpad'; // (two fingers move sideways too; a wheel doesn't)
     else if (wy && wy % 120 === 0 && ady >= 50) kind = 'mouse'; // (a notch on Windows / Linux: 100 px, wheelDelta 120)
     else if (ady >= 4 && Math.abs(ady / MAC_NOTCH - Math.round(ady / MAC_NOTCH)) < 1e-6) kind = 'mouse';
     else if (Number.isInteger(dy) && ady >= 50 && (ady % 25 === 0 || ady % 40 === 0)) kind = 'mouse'; // (100 / 120 / 125 / 150: a notch at a display scale)
     else kind = 'trackpad';
-    const pinch = Boolean(e.ctrlKey) && kind === 'trackpad';
-    return { kind, pinch, ctrl: Boolean(e.ctrlKey), dx, dy, t: now };
+    // (⌘ + scroll zooms like Ctrl + scroll: ⌘ is Ctrl on a Mac)
+    const pinch = Boolean(e.ctrlKey || e.metaKey) && kind === 'trackpad';
+    return { kind, pinch, ctrl: Boolean(e.ctrlKey || e.metaKey), dx, dy, t: now };
   }
   // what a wheel event does: zoom (k: the distance's factor, < 1 = closer), turn or pan (dx, dy: a drag of that many pixels)
   function act(w, shift) {

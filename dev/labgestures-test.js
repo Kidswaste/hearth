@@ -31,6 +31,7 @@ check(ln.kind === 'mouse' && ln.dy === 48 && pg.kind === 'mouse' && pg.dy === 80
 const pin = k({ deltaY: -2.5, ctrlKey: true });
 check(pin.pinch && pin.kind === 'trackpad', 'pinch (Chromium: ctrl+wheel, small fractional delta) → pinch');
 check(!k({ deltaY: 100, wheelDeltaY: -120, ctrlKey: true }).pinch && !k({ deltaY: 4.000244140625, ctrlKey: true }).pinch, 'Ctrl / ⌘ + a mouse wheel is not a pinch (no 37 % jump a notch)');
+check(G.act(k({ deltaY: 100, wheelDeltaY: -120, metaKey: true }), false).op === 'zoom' && G.act(k({ deltaY: -3, metaKey: true }), false).op === 'zoom', '⌘ + scroll zooms like Ctrl + scroll (⌘ = Ctrl on a Mac)');
 // a stream keeps its kind: a trackpad flick's big momentum deltas don't turn into a mouse
 const first = k({ deltaY: 3 }, null, 0);
 check(k({ deltaY: 120 }, first, 100).kind === 'trackpad' && k({ deltaY: 120 }, first, 1000).kind === 'mouse', 'a wheel stream keeps its kind within 400 ms (a fast flick stays a trackpad); a new stream is looked at again');
