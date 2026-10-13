@@ -888,3 +888,8 @@ In ⋯ AI setup, **⚡ Hooks: when… then…** gives each AI a short list of ru
 - ✓ **Drop a .hearthpack anywhere on Hearth** (or Share › Open a pack…, or open it with Hearth): a card first (its picture, name, what's inside, size, where it came from, and that its layers are code running only in the Lab's sandboxed preview); nothing is added until **Add as a new scene**. Then a new scene opens, its files in `data/assets/packs/<name>/` and the asset library, paths rewritten, LUTs in the grade, its sequence back.
 - ✓ Safe by construction: no zip-slip (only `files/<plain name>`, every target checked inside Hearth's folder), size and zip-bomb caps, CRC checks, never overwrites, a newer-format pack says "update Hearth".
 - ○ Tested headless (`sh dev/run-checks.sh packs`: unit + a scene and a sequence round trip through the buttons); real Finder / Explorer "Open with" wasn't tried here.
+## A Lab sequence that doesn't bug out (round 29, seqsolid: docs/upgrades/seqsolid.md)
+- ✓ Fast scrubbing across cuts no longer leaves the preview black: code from clips you scrubbed past no longer makes WebGL contexts, logs or errors.
+- ✓ A clip that is still loading (after a seek, or at a cut while playing) holds the last picture instead of going black. A scene edited while it plays cross-fades to its new version.
+- ✓ Quick scene switches always land on that scene's own sequence. A scene that throws gets a ⚠ on its clip (right-click shows the message).
+- ○ Stress-tested headless (`dev/checks/seqsolid.js`: scrubs, switches, size swaps, re-runs, a throwing scene, 🎬 auto-edit, export vs preview); not tried on a real Mac GPU.

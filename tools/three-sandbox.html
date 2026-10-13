@@ -8903,8 +8903,9 @@ function sqRerun(st, g) {
   return true;
 }
 const sqShowKey = (T) => { const sh = sqShowing(T); return sh.a ? `${sh.a.id}>${sh.b.id}` : sh.show?.id || ''; };
-// (seqsolid) has a clip drawn since it (last) ran? WebGL: its first render; anything else: two of its frames ran
-const sqDrawn = (L) => Boolean(L) && (L.drawnGen === L.gen || (L.ranG === L.gen && L.ran >= 2));
+// (seqsolid) has a clip drawn since it (last) ran? WebGL: its first render; anything else: two of its frames ran. A
+// layer that doesn't show now (its own in / out, opacity 0) draws nothing and isn't waited for.
+const sqDrawn = (L) => Boolean(L) && (L.drawnGen === L.gen || (L.ranG === L.gen && L.ran >= 2) || layerMix(L) <= 0);
 function sqReadyAt(T) {
   const sh = sqShowing(T);
   for (const g of sh.a ? [sh.a, sh.b] : sh.show ? [sh.show] : []) {
@@ -9404,7 +9405,6 @@ function sqWatchTick() {
   sqWatch.log.push({ t: Math.round(now), T: Math.round(SQ.T * 1000) / 1000, play: SQ.playing, show: sh.a ? null : sh.show?.id || null, from: sh.a?.id || null, to: sh.b?.id || null, p: sh.a ? Math.round(sh.p * 100) / 100 : null, rgb: [d[0], d[1], d[2]], plan: SQ.planId || 0, hold: Boolean(SQ.hold) });
   if (sqWatch.log.length > 4000) sqWatch.log.shift();
 }
-window.__seqDbg = () => JSON.stringify({ hold: SQ.hold ? Math.round(realNow() - SQ.hold.at) : null, ready: SQ.on ? sqReadyAt(SQ.T) : null, T: SQ.T, pool: POOL.length, perf: perfNote, layers: [...layers.values()].map((L) => ({ id: L.id, gen: L.gen, drawn: L.drawnGen, ranG: L.ranG, ran: L.ran, rid: L.rid, url: Boolean(L.url), r: L.renderers.size, kids: L.box.children.length, cvs: [...L.box.querySelectorAll('canvas')].map((c) => `${c.width}x${c.height}${c.__gl ? (c.__gl.isContextLost() ? ':lost' : ':gl') : ''}${c.__gl?.__pooled ? ':pooled' : ''}`), disp: L.box.style.display, vis: L.box.style.visibility, op: L.box.style.opacity, mix: layerMix(L), inn: L.props.in, out: L.props.out, conn: L.box.isConnected })), mounted: [...SQ.mounted.values()].map((st) => ({ id: st.g.id, ids: st.ids, at: Math.round(realNow() - st.at) })) });
 window.__seqInfo = () => ({ on: SQ.on, T: SQ.T, playing: SQ.playing, off: SQ.off, mounted: [...SQ.mounted.keys()], layers: [...layers.keys()].length, libs: Boolean(SQ.libs), showing: SQ.on ? (() => { const s = sqShowing(SQ.T); return s.a ? { trans: s.type, p: s.p, from: s.a.id, to: s.b.id } : { clip: s.show?.id || null }; })() : null });
 function sqMessage(msg) {
   if (msg.type === 'seq-libs') { try { SQ.libs = new Function(`${msg.code}\nreturn { EditFX, VideoTitles, SeqCut: typeof SeqCut !== 'undefined' ? SeqCut : null };`)(); } catch (err) { post({ type: 'console', level: 'warn', text: `Sequence titles / transitions: ${err.message}` }); } return; }
