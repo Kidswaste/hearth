@@ -41,6 +41,7 @@ Hearth's Chrome now runs hidden; its pages show and work inside Hearth's own win
 ## 🐞 Fixes
 - The "Find images like this" window no longer turns into a tilted overlay across the app while it searches.
 - Pictures without a title get a readable name instead of a long code.
+- The screen-capture keys (Ctrl/⌘+Alt+S, A, R, V) work again from the chat box (the faster start had unhooked them).
 
 ## Good to know
 - The song split is an approximation (a plucky bass can nudge "the drums", an 808 can count as bass).
