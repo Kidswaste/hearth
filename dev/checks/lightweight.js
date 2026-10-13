@@ -100,7 +100,33 @@ for (let i = 1; i <= N; i++) {
   await sample(`closed${i}`);
 }
 out.ms = Math.round(performance.now() - t0);
-const S = out.samples;
-out.growth = { heapMB: Math.round((S[`closed${N}`].heapMB - S[`closed${N - 1}`].heapMB) * 10) / 10, nodes: S[`closed${N}`].nodes - S[`closed${N - 1}`].nodes, listeners: S[`closed${N}`].listeners - S[`closed${N - 1}`].listeners, observers: S[`closed${N}`].observers - S[`closed${N - 1}`].observers, intervals: S[`closed${N}`].intervals - S[`closed${N - 1}`].intervals };
-out.fail = fail;
+out.readyMs = Math.round(performance.getEntriesByName('hearth:ready')[0]?.startTime || 0);
+const S = out.samples; const s0 = S.start; const a = S[`closed${N - 1}`]; const z = S[`closed${N}`];
+const diff = (x, y) => { const o = {}; for (const k of new Set([...Object.keys(x || {}), ...Object.keys(y || {})])) { const d = (y?.[k] || 0) - (x?.[k] || 0); if (d) o[k] = d; } return o; };
+out.perSession = { heapMB: Math.round((z.heapMB - a.heapMB) * 10) / 10, nodes: z.nodes - a.nodes, listeners: z.listeners - a.listeners, docL: z.docL - a.docL, winL: z.winL - a.winL, observers: z.observers - a.observers, intervals: z.intervals - a.intervals, listenersWhere: diff(a.byListener, z.byListener), detachedWhere: diff(a.detached, z.detached) };
+out.afterAll = { heapMB: Math.round((z.heapMB - s0.heapMB) * 10) / 10, nodes: z.nodes - s0.nodes, listeners: z.listeners - s0.listeners, procs: z.procN - s0.procN, mb: Object.fromEntries(Object.keys(z.procs).map((k) => [k, `${s0.procs[k] ?? '–'} → ${z.procs[k]}`])) };
+
+// ---------- budgets (measured round 34 on 4 CPUs, software GL: start 9.1 MB heap · after 3 sessions 13.6 MB · a
+// session once warm: +0–0.4 MB, +0–130 nodes, +1 listener; before the round's fixes: +0.6 MB, +2,580 nodes, +226 listeners) ----------
+ok(z.heapMB - s0.heapMB <= 8, `heap after the sessions within 8 MB of the start (${s0.heapMB} → ${z.heapMB} MB)`);
+ok(z.heapMB - a.heapMB <= 1.2, `a session once warm costs ≤ 1.2 MB of heap (${a.heapMB} → ${z.heapMB} MB)`);
+ok(z.nodes - a.nodes <= 600, `a session once warm leaves ≤ 600 nodes (${a.nodes} → ${z.nodes})`);
+ok(z.listeners - a.listeners <= 40, `a session once warm leaves ≤ 40 listeners (${a.listeners} → ${z.listeners})`);
+// known leak sources, after closing: the ⋯ AI setup sheets (document listeners kept each one), observers, timers,
+// window / document listeners, hidden pages, WebGL contexts in the window
+ok(z.docL <= a.docL && z.docL - s0.docL <= 16, `document listeners don't grow per session (${s0.docL} · ${a.docL} → ${z.docL})`);
+ok(z.winL <= a.winL && z.winL - s0.winL <= 30, `window listeners don't grow per session (${s0.winL} · ${a.winL} → ${z.winL})`);
+ok(z.observers <= a.observers && z.observers - s0.observers <= 16, `observers don't grow per session (${s0.observers} · ${a.observers} → ${z.observers}: ${z.topObservers.join(' · ')})`);
+ok(z.intervals <= a.intervals && z.intervals - s0.intervals <= 3, `intervals don't grow per session (${s0.intervals} · ${a.intervals} → ${z.intervals}: ${z.topIntervals.join(' · ')})`);
+ok((z.detached['aside.opt-sheet'] || 0) <= 400, `closed ⋯ AI setup sheets are let go (${z.detached['aside.opt-sheet'] || 0} detached nodes of them)`);
+const sheetBtns = Object.entries(z.byListener).filter(([k]) => /btn options\.js/.test(k)).reduce((n, [, v]) => n + v, 0);
+ok(sheetBtns <= 6, `AI setup's buttons kept for two sheets at most (${sheetBtns} listeners; 3 a sheet, ${N * 3} sheets opened)`);
+ok(z.gl === 0, `no WebGL context left in the window (${z.gl})`);
+const pages = z.targets.filter((t) => /^page /.test(t)); const frames = z.targets.filter((t) => /^iframe /.test(t));
+ok(pages.length === 1 && frames.length <= 1 && frames.every((t) => /three-sandbox/.test(t)), `no hidden page left but the Lab's preview (${z.targets.join(' | ')})`);
+ok(z.procN <= s0.procN + 1, `processes: the Lab's preview at most (${s0.procN} → ${z.procN})`);
+ok(z.urls === 0 || z.urls <= s0.urls, `object URLs let go (${z.urls})`);
+// compact: the big per-site maps only where they changed
+for (const s of Object.values(S)) { delete s.byListener; delete s.byDom; s.detached = Object.fromEntries(Object.entries(s.detached).filter(([, n]) => n >= 20)); }
+out.ok = !fail.length; out.fail = fail;
 return JSON.stringify(out, null, 1);

@@ -85,6 +85,7 @@ const GROUPS = {
   aicheck: ['aicheck', 'options'], // (round 32) Check this AI: the checklist through the fake engines (Read / Windows Astra / signed out), its fixes, the refusal note's button
   labpace: ['labpace', 'unit:labpace-test', 'unit:labadapt-test'], // (round 33) frame pacing: f60 (same speed at 60–240 Hz), still pictures stop drawing, a parked Lab sleeps, battery, Frame pace
   labadapt: ['labadapt', 'unit:labadapt-test'], // (round 31) the Lab preview lightens itself in steps (resolution, filters, shadows, particles), covered layers skip drawing, renders unchanged
+  lightweight: ['lightweight', 'unit:recall-test', 'unit:store-thread-test', 'unit:chrome-test'], // (round 34) an hour-like session (Lab, ⋯ AI setup, chats, a long reply, Astra, Activity) three times: heap budget, nothing left per session; recall index packed, chat texts held only while searching, Chrome quits when idle
   bugbash: ['bugbash', 'unit:sync-test'], // (round 29) regressions of the bug bash's app fixes: one Lab however it opens; sync's same-millisecond file
   unit: UNIT.map((u) => `unit:${u}`),
 };
