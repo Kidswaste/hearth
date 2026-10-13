@@ -415,7 +415,9 @@ function createEngine(o) {
       return j && (C.size === null || j.s === C.size) ? j.h : UNKNOWN;
     }
     if (c && c[0] === C.size && c[1] === C.mtime && c[2]) return c[2];
-    if (now() - C.mtime < (o.settleMs ?? 2000)) return INFLIGHT; // still being written
+    // still being written (whole milliseconds: a file's mtime has sub-ms precision while now() is truncated, so a file
+    // written this very millisecond looked 0.4 ms "in the future" and never started its arriving clock below)
+    if (now() - Math.floor(C.mtime) < (o.settleMs ?? 2000)) return INFLIGHT;
     // not the size the other computer wrote: still arriving (a cloud client writing in place), unless it stays like
     // this for a minute (then the journal is the one late, and the file is what it is)
     if (j && j.op !== 'del' && j.s !== C.size && now() - j.t < 30 * 60 * 1000) {

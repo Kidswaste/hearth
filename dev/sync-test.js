@@ -253,6 +253,9 @@ async function main() {
   const late = crypto.randomBytes(500);
   fs.writeFileSync(cloudFile(w, 'board/media/late.png'), late);
   let t = Date.now();
+  // (bugbash) written "this very millisecond": an mtime 0.6 ms past now() (sub-ms precision vs a truncated clock) used to
+  // look in the future, skip the arriving clock on the first pass and flake this case about one run in four
+  fs.utimesSync(cloudFile(w, 'board/media/late.png'), (t + 0.6) / 1000, (t + 0.6) / 1000);
   const B2 = B.make({ now: () => t });
   await B2.pass();
   ok(!has(B.p('board/media/late.png')), 'a file that doesn\'t match the journal waits a moment');
