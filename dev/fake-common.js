@@ -313,7 +313,9 @@ function plan(prompt, engine = 'claude') {
     // "Let Astra decide" (decide.js): answers with the second option, like a real pick
     decide: /^Options: (.+)$/m.test(msg) && /Reply with one option name only/.test(msg) ? msg.match(/^Options: (.+)$/m)[1].split(' | ') : null,
     // assist.js: pick a numbered variation, a name, review notes, one next step
-    assist: /Reply with the number, a dash/.test(msg) ? `${Math.min(2, Number((msg.match(/numbered 1–(\d)/) || [])[1]) || 1)} — strongest contrast and the cleanest beat hits`
+    // (round 27) publishkit: the post's words in the asked format
+    assist: /^TITLE: </m.test(msg) && /^HASHTAGS: </m.test(msg) ? 'TITLE: Ember Tide — a loop you can\'t skip\nDESCRIPTION: A music visual that breathes with every kick. Song credit in the comments.\nHASHTAGS: #musicvisualizer #threejs #audioreactive #loop #motiondesign'
+      : /Reply with the number, a dash/.test(msg) ? `${Math.min(2, Number((msg.match(/numbered 1–(\d)/) || [])[1]) || 1)} — strongest contrast and the cleanest beat hits`
       : /Reply with the name only/.test(msg) ? 'Ember Tide'
         : /Reply one per line as "m:ss \| note"/.test(msg) ? '0:01 | Push the contrast in the center ring.\n0:02 | Cut the busy background grain.'
           : /Reply with one next step/.test(msg) ? 'Make the rings pulse on every kick and cut the slow spin.' : null,

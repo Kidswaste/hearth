@@ -298,6 +298,8 @@ const Renders = (() => {
       A.push({ label: 'Open', short: 'Open', action: () => window.hub.fs.open(out) });
       A.push({ label: revealLabel, short: IS_MAC ? 'Finder' : PLAT === 'win32' ? 'Explorer' : 'Folder', action: () => window.hub.fs.reveal(out) });
       A.push({ label: 'Copy path', short: 'Copy path', action: () => copyText(out, 'Path copied') });
+      // (round 27, publishkit) platform checks, cover, words, a post folder
+      if (window.PublishHooks?.isVideo(out)) A.push({ label: '📮 Ready to post…', short: '📮 Post', action: () => PublishHooks.open(out, { job: j }) });
     }
     return A;
   }
@@ -518,6 +520,7 @@ const Renders = (() => {
     if (!hist && live(j)) quick.push(['■', 'Cancel', () => cancel(j.id)]);
     if (j.status === 'failed' && j.again) quick.push(['↻', 'Retry', () => retry(j.id)]);
     if (j.status === 'done' && j.output && !j.trashed) quick.push(['↗', 'Open', () => window.hub.fs.open(j.output)]);
+    if (j.status === 'done' && !j.trashed && window.PublishHooks?.isVideo(j.output)) quick.push(['📮', 'Ready to post: checks, cover, words, a post folder', () => PublishHooks.open(j.output, { job: j })]); // (round 27, publishkit)
     const row = el('div', { class: `rq-row rq-${j.status}${j.trashed ? ' rq-trashed' : ''}`, dataset: { rq: j.id }, title: `${j.title}${j.output ? `\n${j.output}` : ''}\nRight-click: more` },
       el('div', { class: 'rq-row-head' }, el('span', { class: 'rq-ic', text: R.ICON[j.status] || '·' }), mk, el('b', { class: 'rq-t', text: j.status === 'done' && j.output ? R.base(j.output) : j.title }), el('span', { class: 'rq-w' }),
         ...quick.map(([t, title, fn]) => el('button', { type: 'button', class: 'ghost small rq-q', text: t, title, on: { click: (e) => { e.stopPropagation(); Promise.resolve(fn()).catch((err) => toast(err.message, { type: 'error' })); } } })),
