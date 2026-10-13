@@ -135,8 +135,34 @@ const PAGES = {
   '/v3/signin/rejected': '<!doctype html><title>Sign in - Google Accounts</title><h1>Couldn’t sign you in</h1><p>This browser or app may not be secure. <a href="#">Learn more</a></p><p>Try using a different browser. If you’re already using a supported browser, you can try again to sign in.</p>',
   '/chat': '<!doctype html><title>Test chat</title><a id="signin" href="/v3/signin/rejected?continue=chat" style="display:inline-block;padding:10px">Sign in</a><textarea id="box" style="width:300px;height:60px" onkeydown="if(event.key===\'Enter\'){event.preventDefault();document.title=\'sent: \'+this.value}"></textarea>',
 };
+// (round 30, pinboard) a Pinterest-like search and an Unsplash-like one (dev/fixtures/pinboard-*.html) with their
+// pictures: small solid PNGs, a color per address (dev/checks/pinboard.js)
+function png(seed) {
+  const zlib = require('zlib');
+  let h = 0; for (const c of String(seed)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  const W = 24; const H = 32; const row = Buffer.alloc(1 + W * 3);
+  for (let x = 0; x < W; x++) row.set([h & 255, (h >> 8) & 255, (h >> 16) & 255], 1 + x * 3);
+  const raw = Buffer.concat(Array.from({ length: H }, () => row));
+  const crcT = []; for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; crcT[n] = c >>> 0; }
+  const crc = (b) => { let c = 0xffffffff; for (const x of b) c = crcT[(c ^ x) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  const chunk = (t, d) => { const len = Buffer.alloc(4); len.writeUInt32BE(d.length); const td = Buffer.concat([Buffer.from(t), d]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(td)); return Buffer.concat([len, td, c]); };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(W, 0); ihdr.writeUInt32BE(H, 4); ihdr.set([8, 2, 0, 0, 0], 8);
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}
+function pinboardPage(url) {
+  const p = url.split('?')[0];
+  const fix = (f) => require('fs').readFileSync(require('path').join(__dirname, 'fixtures', f), 'utf8');
+  if (/^\/pinboard\/(i|u)\//.test(p)) return { type: 'image/png', body: png(url) };
+  if (/^\/pinboard\/search\b/.test(p)) return { type: 'text/html; charset=utf-8', body: fix('pinboard-pinterest.html') };
+  if (/^\/pinboard\/s\/photos\//.test(p)) return { type: 'text/html; charset=utf-8', body: fix('pinboard-unsplash.html') };
+  if (/^\/pinboard\/login\b/.test(p)) return { type: 'text/html; charset=utf-8', body: '<!doctype html><title>Log in</title><form><input type="email"><input type="password"><button>Log in</button></form>' };
+  return null;
+}
+
 async function pages() {
   const server = http.createServer((req, res) => {
+    const pb = /^\/pinboard\//.test(req.url) ? pinboardPage(req.url) : null;
+    if (pb) { res.statusCode = 200; res.setHeader('Content-Type', pb.type); res.end(pb.body); return; }
     const html = PAGES[req.url.split('?')[0]];
     res.statusCode = html ? 200 : 404;
     res.setHeader('Content-Type', 'text/html; charset=utf-8');

@@ -1,0 +1,24 @@
+<!doctype html>
+<!-- A local stand-in for an Unsplash search (round 30, pinboard: dev/pinboard-test.js, dev/checks/pinboard.js):
+     figures linking to /photos/<slug> around pictures with w-descriptor srcsets on images.unsplash.com-like addresses
+     (served here from /pinboard/u/…?w=…), a "Sponsored" figure, a user avatar link, a big hero image that isn't a
+     photo result (it links to /plus). data-y is the figure's top for the Node test. -->
+<html><head><meta charset="utf-8"><title>Unsplash-like search</title>
+<style>
+body { margin: 0; font: 14px system-ui, sans-serif; }
+.hero img { width: 900px; height: 160px; display: block; object-fit: cover; }
+.grid { display: grid; grid-template-columns: repeat(3, 300px); gap: 16px; padding: 16px; }
+figure { margin: 0; }
+figure img { width: 300px; height: 220px; display: block; object-fit: cover; background: #ccc; }
+.av { width: 24px; height: 24px; }
+</style></head>
+<body>
+<a class="hero" href="/plus" data-y="0"><img src="/pinboard/u/hero?w=900" alt="Unsplash+ banner"></a>
+<div class="grid">
+  <figure data-y="200"><a href="/photos/foggy-pine-forest-a1" title="Foggy pine forest"><img alt="green pine trees covered with fog" src="/pinboard/u/photo-a1?w=400&amp;q=60" srcset="/pinboard/u/photo-a1?w=400&amp;q=60 400w, /pinboard/u/photo-a1?w=800&amp;q=60 800w, /pinboard/u/photo-a1?w=1200&amp;q=60 1200w"></a><a href="/@someone"><img class="av" src="/pinboard/u/avatar?w=32" alt="Someone" width="24" height="24"></a></figure>
+  <figure data-y="200"><a href="/photos/neon-alley-b2" title="Neon alley"><img alt="neon signs in a narrow alley" src="/pinboard/u/photo-b2?w=400" srcset="/pinboard/u/photo-b2?w=400 400w, /pinboard/u/photo-b2?w=1200 1200w"></a></figure>
+  <figure data-y="200"><div>Sponsored</div><a href="/photos/brand-c3"><img alt="a sponsored product" src="/pinboard/u/photo-c3?w=400"></a></figure>
+  <figure data-y="460"><a href="/photos/desert-dunes-d4"><img alt="" src="/pinboard/u/photo-d4?w=400" srcset="/pinboard/u/photo-d4?w=400 400w, /pinboard/u/photo-d4?w=1600 1600w"></a><figcaption>Desert dunes at dawn</figcaption></figure>
+  <figure data-y="460"><a href="/photos/neon-alley-b2"><img alt="neon signs again" src="/pinboard/u/photo-b2?w=200"></a></figure>
+</div>
+</body></html>

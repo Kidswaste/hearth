@@ -1,0 +1,60 @@
+<!doctype html>
+<!-- A local stand-in for Pinterest's search results (round 30, pinboard: dev/pinboard-test.js reads it with a tiny DOM,
+     dev/checks/pinboard.js serves it to a real Chromium). Like the real page: a header with a logo and an avatar, a
+     grid of cards (data-test-id="pin") each linking to /pin/<id>/ around a picture with a 236x / 474x / 736x srcset,
+     alt text starting "This may contain:", a title under some cards; and the traps: the same picture saved as another
+     pin (#5), an ad (#7), a shopping link (#9), the same pin twice (#11). Scrolling near the bottom adds 8 more pins.
+     data-y is the card's top for the Node test (the real browser lays it out by itself: rows 330 px apart). -->
+<html><head><meta charset="utf-8"><title>Pinterest-like search</title>
+<style>
+body { margin: 0; font: 14px system-ui, sans-serif; background: #fff; color: #111; }
+header { position: sticky; top: 0; height: 60px; display: flex; align-items: center; gap: 12px; padding: 0 16px; background: #fff; border-bottom: 1px solid #eee; z-index: 2; }
+header img { width: 32px; height: 32px; border-radius: 50%; }
+.grid { display: grid; grid-template-columns: repeat(4, 236px); gap: 14px 16px; padding: 20px 16px; }
+[data-test-id="pin"] { height: 316px; overflow: hidden; }
+[data-test-id="pin"] img { width: 236px; height: 290px; display: block; border-radius: 16px; object-fit: cover; background: #ddd; }
+[data-test-id="pinrep-title"], .promo { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+</style></head>
+<body>
+<header><img src="/pinboard/i/logo.png" alt="Pinterest" width="32" height="32"><input id="q" type="search" aria-label="Search"><a href="/me/"><img src="/pinboard/i/avatar.png" alt="Your profile" width="32" height="32"></a></header>
+<div class="grid" id="grid">
+  <div data-test-id="pin" data-grid-item data-y="80"><a href="/pin/1001/" aria-label="Pin page"><img alt="This may contain: neon chrome lettering" src="/pinboard/i/236x/ab/cd/ef/h01.jpg" srcset="/pinboard/i/236x/ab/cd/ef/h01.jpg 1x, /pinboard/i/474x/ab/cd/ef/h01.jpg 2x, /pinboard/i/736x/ab/cd/ef/h01.jpg 3x"></a><div data-test-id="pinrep-title">Neon chrome lettering</div></div>
+  <div data-test-id="pin" data-grid-item data-y="80"><a href="/pin/1002/" aria-label="Pin page"><img alt="This may contain: pink and teal gradient poster" src="/pinboard/i/236x/ab/cd/ef/h02.jpg" srcset="/pinboard/i/236x/ab/cd/ef/h02.jpg 1x, /pinboard/i/474x/ab/cd/ef/h02.jpg 2x, /pinboard/i/736x/ab/cd/ef/h02.jpg 3x"></a></div>
+  <div data-test-id="pin" data-grid-item data-y="80"><a href="/pin/1003/" aria-label="Pin page"><img alt="This may contain: dark academia library" src="/pinboard/i/236x/ab/cd/ef/h03.jpg" srcset="/pinboard/i/236x/ab/cd/ef/h03.jpg 1x, /pinboard/i/474x/ab/cd/ef/h03.jpg 2x, /pinboard/i/736x/ab/cd/ef/h03.jpg 3x"></a></div>
+  <div data-test-id="pin" data-grid-item data-y="80"><a href="/pin/1004/" aria-label="Pin page"><img alt="This may contain: wet asphalt at night" src="/pinboard/i/236x/ab/cd/ef/h04.jpg" srcset="/pinboard/i/236x/ab/cd/ef/h04.jpg 1x, /pinboard/i/474x/ab/cd/ef/h04.jpg 2x, /pinboard/i/736x/ab/cd/ef/h04.jpg 3x"></a><div data-test-id="pinrep-title">Wet asphalt at night</div></div>
+  <div data-test-id="pin" data-grid-item data-y="410"><a href="/pin/1005/" aria-label="Pin page"><img alt="This may contain: the same gradient poster, saved again" src="/pinboard/i/474x/ab/cd/ef/h02.jpg" srcset="/pinboard/i/236x/ab/cd/ef/h02.jpg 1x, /pinboard/i/474x/ab/cd/ef/h02.jpg 2x, /pinboard/i/736x/ab/cd/ef/h02.jpg 3x"></a></div>
+  <div data-test-id="pin" data-grid-item data-y="410"><a href="/pin/1006/" aria-label="Pin page"><img alt="This may contain: soft glow portrait" src="/pinboard/i/236x/ab/cd/ef/h06.jpg" srcset="/pinboard/i/236x/ab/cd/ef/h06.jpg 1x, /pinboard/i/474x/ab/cd/ef/h06.jpg 2x, /pinboard/i/736x/ab/cd/ef/h06.jpg 3x"></a></div>
+  <div data-test-id="pin" data-grid-item data-y="410"><a href="/pin/1007/" aria-label="Pin page"><img alt="This may contain: y2k graphic grid" src="/pinboard/i/236x/ab/cd/ef/h07.jpg" srcset="/pinboard/i/236x/ab/cd/ef/h07.jpg 1x, /pinboard/i/474x/ab/cd/ef/h07.jpg 2x, /pinboard/i/736x/ab/cd/ef/h07.jpg 3x"></a><div data-test-id="pinrep-title">Y2K graphic grid</div><div class="promo">Promoted by Shopfront</div></div>
+  <div data-test-id="pin" data-grid-item data-y="410"><a href="/pin/1008/" aria-label="Pin page"><img alt="This may contain: film grain city" src="/pinboard/i/236x/ab/cd/ef/h08.jpg" srcset="/pinboard/i/236x/ab/cd/ef/h08.jpg 1x, /pinboard/i/474x/ab/cd/ef/h08.jpg 2x, /pinboard/i/736x/ab/cd/ef/h08.jpg 3x"></a></div>
+  <div data-test-id="pin" data-grid-item data-y="740"><a href="https://shop.example/product/9" aria-label="Pin page"><img alt="This may contain: brutalist stairs" src="/pinboard/i/236x/ab/cd/ef/h09.jpg" srcset="/pinboard/i/236x/ab/cd/ef/h09.jpg 1x, /pinboard/i/474x/ab/cd/ef/h09.jpg 2x, /pinboard/i/736x/ab/cd/ef/h09.jpg 3x"></a></div>
+  <div data-test-id="pin" data-grid-item data-y="740"><a href="/pin/1010/" aria-label="Pin page"><img alt="This may contain: hazy sunset over water" src="/pinboard/i/236x/ab/cd/ef/h10.jpg" srcset="/pinboard/i/236x/ab/cd/ef/h10.jpg 1x, /pinboard/i/474x/ab/cd/ef/h10.jpg 2x, /pinboard/i/736x/ab/cd/ef/h10.jpg 3x"></a><div data-test-id="pinrep-title">Hazy sunset over water</div></div>
+  <div data-test-id="pin" data-grid-item data-y="740"><a href="/pin/1003/" aria-label="Pin page"><img alt="This may contain: holographic foil texture" src="/pinboard/i/236x/ab/cd/ef/h11.jpg" srcset="/pinboard/i/236x/ab/cd/ef/h11.jpg 1x, /pinboard/i/474x/ab/cd/ef/h11.jpg 2x, /pinboard/i/736x/ab/cd/ef/h11.jpg 3x"></a></div>
+  <div data-test-id="pin" data-grid-item data-y="740"><a href="/pin/1012/" aria-label="Pin page"><img alt="This may contain: retro synth sunset" src="/pinboard/i/236x/ab/cd/ef/h12.jpg" srcset="/pinboard/i/236x/ab/cd/ef/h12.jpg 1x, /pinboard/i/474x/ab/cd/ef/h12.jpg 2x, /pinboard/i/736x/ab/cd/ef/h12.jpg 3x"></a></div>
+  <div data-test-id="pin" data-grid-item data-y="1070"><a href="/pin/1013/" aria-label="Pin page"><img alt="This may contain: glass blob render" src="/pinboard/i/236x/ab/cd/ef/h13.jpg" srcset="/pinboard/i/236x/ab/cd/ef/h13.jpg 1x, /pinboard/i/474x/ab/cd/ef/h13.jpg 2x, /pinboard/i/736x/ab/cd/ef/h13.jpg 3x"></a><div data-test-id="pinrep-title">Glass blob render</div></div>
+  <div data-test-id="pin" data-grid-item data-y="1070"><a href="/pin/1014/" aria-label="Pin page"><img alt="This may contain: cyan smoke" src="/pinboard/i/236x/ab/cd/ef/h14.jpg" srcset="/pinboard/i/236x/ab/cd/ef/h14.jpg 1x, /pinboard/i/474x/ab/cd/ef/h14.jpg 2x, /pinboard/i/736x/ab/cd/ef/h14.jpg 3x"></a></div>
+  <div data-test-id="pin" data-grid-item data-y="1070"><a href="/pin/1015/" aria-label="Pin page"><img alt="This may contain: grainy flash portrait" src="/pinboard/i/236x/ab/cd/ef/h15.jpg" srcset="/pinboard/i/236x/ab/cd/ef/h15.jpg 1x, /pinboard/i/474x/ab/cd/ef/h15.jpg 2x, /pinboard/i/736x/ab/cd/ef/h15.jpg 3x"></a></div>
+  <div data-test-id="pin" data-grid-item data-y="1070"><a href="/pin/1016/" aria-label="Pin page"><img alt="This may contain: orange chrome car" src="/pinboard/i/236x/ab/cd/ef/h16.jpg" srcset="/pinboard/i/236x/ab/cd/ef/h16.jpg 1x, /pinboard/i/474x/ab/cd/ef/h16.jpg 2x, /pinboard/i/736x/ab/cd/ef/h16.jpg 3x"></a><div data-test-id="pinrep-title">Orange chrome car</div></div>
+  <div data-test-id="pin" data-grid-item data-y="1400"><a href="/pin/1017/" aria-label="Pin page"><img alt="This may contain: moody forest fog" src="/pinboard/i/236x/ab/cd/ef/h17.jpg" srcset="/pinboard/i/236x/ab/cd/ef/h17.jpg 1x, /pinboard/i/474x/ab/cd/ef/h17.jpg 2x, /pinboard/i/736x/ab/cd/ef/h17.jpg 3x"></a></div>
+  <div data-test-id="pin" data-grid-item data-y="1400"><a href="/pin/1018/" aria-label="Pin page"><img alt="This may contain: vapor grid floor" src="/pinboard/i/236x/ab/cd/ef/h18.jpg" srcset="/pinboard/i/236x/ab/cd/ef/h18.jpg 1x, /pinboard/i/474x/ab/cd/ef/h18.jpg 2x, /pinboard/i/736x/ab/cd/ef/h18.jpg 3x"></a></div>
+  <div data-test-id="pin" data-grid-item data-y="1400"><a href="/pin/1019/" aria-label="Pin page"><img alt="This may contain: iridescent shell" src="/pinboard/i/236x/ab/cd/ef/h19.jpg" srcset="/pinboard/i/236x/ab/cd/ef/h19.jpg 1x, /pinboard/i/474x/ab/cd/ef/h19.jpg 2x, /pinboard/i/736x/ab/cd/ef/h19.jpg 3x"></a><div data-test-id="pinrep-title">Iridescent shell</div></div>
+  <div data-test-id="pin" data-grid-item data-y="1400"><a href="/pin/1020/" aria-label="Pin page"><img alt="This may contain: night market lights" src="/pinboard/i/236x/ab/cd/ef/h20.jpg" srcset="/pinboard/i/236x/ab/cd/ef/h20.jpg 1x, /pinboard/i/474x/ab/cd/ef/h20.jpg 2x, /pinboard/i/736x/ab/cd/ef/h20.jpg 3x"></a></div>
+  <div data-test-id="pin" data-grid-item data-y="1730"><a href="/pin/1021/" aria-label="Pin page"><img alt="This may contain: blue hour rooftop" src="/pinboard/i/236x/ab/cd/ef/h21.jpg" srcset="/pinboard/i/236x/ab/cd/ef/h21.jpg 1x, /pinboard/i/474x/ab/cd/ef/h21.jpg 2x, /pinboard/i/736x/ab/cd/ef/h21.jpg 3x"></a></div>
+  <div data-test-id="pin" data-grid-item data-y="1730"><a href="/pin/1022/" aria-label="Pin page"><img alt="This may contain: paper collage" src="/pinboard/i/236x/ab/cd/ef/h22.jpg" srcset="/pinboard/i/236x/ab/cd/ef/h22.jpg 1x, /pinboard/i/474x/ab/cd/ef/h22.jpg 2x, /pinboard/i/736x/ab/cd/ef/h22.jpg 3x"></a><div data-test-id="pinrep-title">Paper collage</div></div>
+  <div data-test-id="pin" data-grid-item data-y="1730"><a href="/pin/1023/" aria-label="Pin page"><img alt="This may contain: halftone poster" src="/pinboard/i/236x/ab/cd/ef/h23.jpg" srcset="/pinboard/i/236x/ab/cd/ef/h23.jpg 1x, /pinboard/i/474x/ab/cd/ef/h23.jpg 2x, /pinboard/i/736x/ab/cd/ef/h23.jpg 3x"></a></div>
+  <div data-test-id="pin" data-grid-item data-y="1730"><a href="/pin/1024/" aria-label="Pin page"><img alt="This may contain: motion blur dancer" src="/pinboard/i/236x/ab/cd/ef/h24.jpg" srcset="/pinboard/i/236x/ab/cd/ef/h24.jpg 1x, /pinboard/i/474x/ab/cd/ef/h24.jpg 2x, /pinboard/i/736x/ab/cd/ef/h24.jpg 3x"></a></div>
+</div>
+<script>
+document.getElementById('q').value = new URLSearchParams(location.search).get('q') || '';
+let more = 0;
+addEventListener('scroll', () => {
+  if (more >= 2 || scrollY + innerHeight < document.documentElement.scrollHeight - 400) return;
+  more += 1;
+  for (let i = 0; i < 8; i++) {
+    const id = 1100 + more * 10 + i; const h = 'm' + more + i;
+    const d = document.createElement('div'); d.dataset.testId = 'pin';
+    d.innerHTML = '<a href="/pin/' + id + '/" aria-label="Pin page"><img alt="This may contain: more ' + id + '" src="/pinboard/i/236x/ab/cd/ef/' + h + '.jpg" srcset="/pinboard/i/236x/ab/cd/ef/' + h + '.jpg 1x, /pinboard/i/736x/ab/cd/ef/' + h + '.jpg 3x"></a>';
+    document.getElementById('grid').append(d);
+  }
+});
+</script>
+</body></html>

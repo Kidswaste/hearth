@@ -96,6 +96,17 @@ async function testClick(n = 0) {
   return { ok: true };
 }
 
+// (round 30, pinboard) "Find images like this": what the window shows now (pinboard-core.js's page script: pictures on
+// screen with their links and titles, read only) and one modest step down the page. Never clicks, never types.
+async function readPage(op, a = {}) {
+  if (!win || win.isDestroyed()) return { ok: false, error: 'The Pinterest window isn\'t open' };
+  const wc = win.webContents;
+  const t0 = Date.now();
+  while (wc.isLoading() && Date.now() - t0 < 12000) await new Promise((r) => setTimeout(r, 150));
+  const Core = require('./pinboard-core');
+  try { return { ok: true, value: await wc.executeJavaScript(op === 'scroll' ? Core.SCROLL_EXPR : Core.readExpr(a), true) }; } catch (err) { return { ok: false, error: err.message }; }
+}
+
 function register(ipcMain, getWin) {
   getMain = getWin || getMain;
   const fromPins = (e) => win && !win.isDestroyed() && e.sender === win.webContents;
@@ -112,6 +123,7 @@ function register(ipcMain, getWin) {
     if (op === 'state') return { open: Boolean(win && !win.isDestroyed()), url: win && !win.isDestroyed() ? win.webContents.getURL() : null, title: win && !win.isDestroyed() ? win.getTitle() : null, partition: PARTITION, lastDrag };
     if (op === 'test-click') return testClick(a?.n);
     if (op === 'url') return { url: searchUrl(a?.query, a?.base) };
+    if (op === 'read' || op === 'scroll') return readPage(op, a || {}); // (round 30, pinboard) Find images like this
     return { ok: false, error: `unknown op ${op}` };
   });
 }
