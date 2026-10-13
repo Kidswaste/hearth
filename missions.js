@@ -127,6 +127,15 @@ const Missions = (() => {
     if (no) { toast(`${no} Sent as a normal message.`, { timeout: 4000 }); return false; }
     const t = text.replace(/\s+/g, ' ').trim();
     if (m.submit) return m.submit(agentId, text, t) !== false; // an added mission (Missions.add, e.g. the Lab's)
+    // (round 33, swarmlean) past the weekly spending limit, a costly mission asks first (your words come back if not)
+    if (typeof SwarmLean !== 'undefined' && SwarmLean.asks(agentId, m.id)) {
+      SwarmLean.okToStart(agentId, m.id).then((yes) => { if (yes) begin(agentId, m, text, t); else Native.setDraft(agentId, text); });
+      return true;
+    }
+    return begin(agentId, m, text, t);
+  }
+  function begin(agentId, m, text, t) {
+    const id = m.id;
     const t0 = Date.now();
     const viaCommand = (line) => { run(line, agentId).then(() => tagAfter(agentId, id, t0)); return true; };
     if (m.id === 'swarm') return viaCommand(inLab(agentId) ? `/crew 4 ${t}` : `/council ${t}`);
@@ -145,7 +154,7 @@ const Missions = (() => {
     const chat = Native.ensureChat(agentId);
     if (m.id === 'split') forThisMessage(agentId, chat, 'subagents', true);
     if (m.id === 'research') forThisMessage(agentId, chat, 'web', 'live');
-    if (m.id === 'review') afterReply(chat.id, (answered) => { if (answered) run('/opinion', agentId); });
+    if (m.id === 'review') afterReply(chat.id, (answered) => { if (answered) { if (typeof SwarmLean !== 'undefined') SwarmLean.markReview(agentId); run('/opinion', agentId); } });
     if (m.id === 'plan') {
       afterReply(chat.id, (answered) => {
         if (!answered) return;
@@ -161,6 +170,7 @@ const Missions = (() => {
   // ---------- result cards drawn here ("mission" messages: Ask everyone, Research / Second opinion via the other AI) ----------
   const fmt = (n) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n || 0));
   const cap = (s, n) => { const t = String(s || ''); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
+  const short = (t, n) => (typeof SwarmLean !== 'undefined' ? SwarmLean.brief(t, n) : cap(t, n));
   const clean = (t) => String(t || '').replace(/<(remember|suggest)>[\s\S]*?<\/\1>/gi, '').replace(/<progress\b[^>]*\/?>/gi, '').trim();
   const live = new Map(); // mission message id -> { m, chat, agentId } while it runs
   const tell = (phase, id) => { const L = live.get(id); if (L) document.dispatchEvent(new CustomEvent('hearth:mission', { detail: { phase, id, kind: L.m.kind, agentId: L.agentId, chatId: L.chat?.id, task: L.m.task, ms: L.m.ms, ok: L.m.rows.some((r) => r.status === 'done') } })); }; // (round 27) activity.js
@@ -187,7 +197,9 @@ const Missions = (() => {
       Object.assign(row, { status: 'done', text: cap(clean(r.text), 12000), ...(r.usage ? { usage: r.usage } : {}) });
       if (r.usage) document.dispatchEvent(new CustomEvent('hearth:usage', { detail: { agentId: target.id, usage: r.usage, source: id === 'research' ? 'research' : 'second opinion' } }));
       m.text = `${target.name} (${byId(id).label.toLowerCase()}): ${row.text}`;
-      for (const c of chatsLike(chat, agentId)) c.carry = `[Earlier in this chat, outside your session, ${target.name} answered the user's question "${cap(text, 300)}":\n${cap(row.text, 3000)}]`;
+      // (round 33, swarmlean) the chat's context gets a short summary; the whole answer stays in the card
+      m.ctx = `${target.name} (${byId(id).label.toLowerCase()}; summary, the full answer is in the card): ${short(row.text, 900)}`;
+      for (const c of chatsLike(chat, agentId)) c.carry = `[Earlier in this chat, outside your session, ${target.name} answered the user's question "${cap(text, 300)}" (summary; the full answer is in the card on screen):\n${short(row.text, 900)}]`;
     } else Object.assign(row, { status: 'failed', error: r.error || 'No answer' });
     m.ms = Date.now() - at;
     finish(m.id);
@@ -203,6 +215,9 @@ const Missions = (() => {
     live.set(m.id, { m, chat, agentId });
     tell('start', m.id);
     broadcast = { m, agentId };
+    // (round 33, swarmlean) the other AIs answer in a new chat of theirs: a question for everyone doesn't need (or pay
+    // for) whatever unrelated chat is open there. A Lab director keeps its chat (its scene goes with it).
+    for (const a of targets) if (a.mode === 'native' && a.id !== agentId && !a.dock && Native.chatOf(a.id)?.messages?.length && !Native.isAgentBusy(a.id)) H.activeChat[a.id] = null;
     await run(`/all ${text.replace(/\s+/g, ' ').trim()}`, agentId);
     broadcast = null;
     for (const r of m.rows) if (r.status === 'sending') Object.assign(r, { status: 'failed', error: 'Couldn\'t send (still answering?)' });
@@ -258,7 +273,8 @@ const Missions = (() => {
     if (!chat || !r?.text) return;
     m.kept = i;
     m.text = m.kind === 'everyone' ? everyoneText(m) : m.text;
-    chat.carry = `[Earlier in this chat, outside your session, the user asked several AIs "${cap(m.task, 300)}" and kept ${r.name}'s answer:\n${cap(r.text, 3000)}]`;
+    m.ctx = `(The user asked several AIs and kept ${r.name}'s answer; summary, the full answer is in the card:)\n${short(r.text, 900)}`;
+    chat.carry = `[Earlier in this chat, outside your session, the user asked several AIs "${cap(m.task, 300)}" and kept ${r.name}'s answer (summary; the full answer is in the card on screen):\n${short(r.text, 900)}]`;
     Native.save(chat);
     repaint(m);
     toast(`Kept ${r.name}'s answer: your next message continues from it`, { timeout: 2200 });
@@ -439,8 +455,11 @@ const Missions = (() => {
     const sticky = isSticky(agentId);
     const card = (m) => {
       const no = m.id === 'normal' ? null : why(agentId, m);
+      // (round 33, swarmlean) a costly mission says what it will take, in one line (no extra click)
+      const est = !no && m.id !== 'normal' && typeof SwarmLean !== 'undefined' ? SwarmLean.estimate(agentId, m.id) : null;
       return el('div', { class: `ms-card${cur === m.id ? ' on' : ''}${no ? ' off' : ''}`, title: no || m.desc },
-        el('button', { type: 'button', class: 'ms-pick', on: { click: () => { if (no) { toast(no, { timeout: 3500 }); return; } set(agentId, m.id); onPick?.(); } } }, el('b', { text: `${m.icon} ${m.label}` }), el('span', { text: no || m.desc })),
+        el('button', { type: 'button', class: 'ms-pick', on: { click: () => { if (no) { toast(no, { timeout: 3500 }); return; } set(agentId, m.id); onPick?.(); } } }, el('b', { text: `${m.icon} ${m.label}` }), el('span', { text: no || m.desc }),
+          est ? el('span', { class: `ms-est${est.over ? ' over' : ''}`, text: est.line, title: 'An estimate before it starts (input + output, all the AIs together); the result card shows what it really took' }) : null),
         m.id === 'normal' || no ? null : el('button', { type: 'button', class: `ms-keep${cur === m.id && sticky ? ' on' : ''}`, text: '📌', title: 'From now on (every message in this AI\'s chats) · click again: back to next message only',
           on: { click: () => { set(agentId, cur === m.id && sticky ? 'normal' : m.id, { keep: !(cur === m.id && sticky) }); onPick?.(); } } }));
     };
@@ -453,6 +472,7 @@ const Missions = (() => {
   let shut = null; // closes the open picker
   function popover(agentId, anchor) {
     shut?.();
+    if (typeof SwarmLean !== 'undefined') SwarmLean.warm(); // the spending guard, when a limit is set
     document.querySelector('.ms-pop')?.remove();
     // (round 26, smooth26) every way it closes (a pick, opening it again too) takes its two page listeners with it
     const close = () => { pop.remove(); removeEventListener('pointerdown', away, true); removeEventListener('keydown', esc, true); if (shut === close) shut = null; };

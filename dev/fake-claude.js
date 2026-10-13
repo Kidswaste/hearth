@@ -139,6 +139,7 @@ const F = require('./fake-common');
   F.out({ type: 'stream_event', event: { type: 'content_block_stop', index } });
   F.out({ type: 'assistant', message: { content: [{ type: 'text', text }] }, session_id: sessionId });
   // Input grows with the conversation; most of it comes from the cache after the first turn.
+  F.logRun('claude', { system: arg('--system-prompt') || '', prompt, prior: state.chars, text, thinking, model: arg('--model'), effort: arg('--effort'), session: sessionId });
   state.turns += 1;
   state.chars += prompt.length + text.length;
   const input = p.big ? 125000 : 700 + Math.ceil(state.chars / 4);

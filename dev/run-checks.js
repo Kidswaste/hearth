@@ -65,7 +65,7 @@ const GROUPS = {
   assets: ['assets', 'unit:assets-test'], // (round 24) the asset library: fixtures folder, thumbnails, drops, fake Poly Haven / ambientCG (smoke --fake-assets)
   connections: ['connections', 'unit:connections-test'], // (round 26) the owner's MCP servers: ＋ Add a connection, Test (dev/fake-mcp-server.js), both engines' configs
   hooks: ['hooks', 'unit:hooks-test'], // (round 26) ⚡ hooks: when something happens, an AI gets your words (⋯ AI setup)
-  missions: ['missions', 'missions2'], // (round 26) ◎ Missions: the picker, result cards, chips + ↻, plan first, ask everyone, helper rows
+  missions: ['missions', 'missions2', 'swarmlean', 'unit:swarmlean-test'], // (round 33: + swarmlean, lean missions) (round 26) ◎ Missions: the picker, result cards, chips + ↻, plan first, ask everyone, helper rows
   activity: ['activity'], // (round 27) ◉ Activity: what runs, what waits for you, the last 24 h, stuck replies, desktop notifications
   publishkit: ['publishkit', 'unit:publishkit-test'], // (round 27) 📮 Ready to post: platform checks, safe areas, cover, words, post folder, fixes through the queue
   router: ['router', 'unit:router-test'], // (round 28) Smart: model + effort per message, the pick on the reply, think harder (fake engines say what they got)

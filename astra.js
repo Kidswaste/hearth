@@ -99,7 +99,7 @@ const Astra = (() => {
   const runs = new Map(); // engine chat id -> event handler
   window.hub.onEngineEvent((ev) => { const fn = runs.get(ev.chatId); if (fn) fn(ev); });
   // One turn of one seat. Resolves { ok, text, usage, ms, session, error, stopped }.
-  function call(seat, text, { session = {}, images = [], live = null, onText = null } = {}) {
+  function call(seat, text, { session = {}, images = [], live = null, onText = null, helper = false } = {}) {
     const id = `collab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
     const agent = H.agent(seat.agentId);
     live?.runIds.add(id);
@@ -121,6 +121,9 @@ const Astra = (() => {
         resolve({ ok: done, stopped: ev.type === 'stopped', text: done ? (ev.text || out) : out, usage: ev.usage || null, error: ev.message || null, needsLogin: ev.needsLogin, session: ev.session || session, ms: Date.now() - started, thinking: thinking.trim(), tools });
       });
       const options = { lean: true, images, model: seat.model || undefined, effort: seat.effort || undefined, persona: seat.persona ? personaText(agent, seat.persona) : undefined };
+      // (round 33, swarmlean) a helper's turn (a council seat that isn't the chair, a critique): only the task, the
+      // cheaper model / low effort on Smart (never over a model / effort set for the seat)
+      if (helper && typeof SwarmLean !== 'undefined') Object.assign(options, SwarmLean.helperOptions(seat.agentId, { seat: { model: seat.model, effort: seat.effort } }));
       window.hub.send({ agentId: seat.agentId, chatId: id, session, text, options })
         .catch((err) => runs.get(id)?.({ type: 'error', message: err.message }));
     });
@@ -152,7 +155,9 @@ const Astra = (() => {
     const part = { seat: seatIdx, round, kind, text: '', status: 'running' };
     m.parts.push(part);
     paint(m);
-    const r = await call(seat, prompt, { session: L.sessions[seatIdx] || {}, images, live: L, onText: (t) => { part.text = clean(t); paint(m); } });
+    const helper = typeof SwarmLean !== 'undefined' && SwarmLean.isHelper(m, seatIdx, kind, judgeSeat(L));
+    if (helper) part.helper = true;
+    const r = await call(seat, prompt, { session: L.sessions[seatIdx] || {}, images, live: L, helper, onText: (t) => { part.text = clean(t); paint(m); } });
     L.sessions[seatIdx] = r.session || L.sessions[seatIdx];
     const raw = r.text || '';
     part.text = clean(raw);
@@ -226,7 +231,7 @@ const Astra = (() => {
       L.chat.duoSessions ||= {};
       m.seats.forEach((s, i) => { if (m.sessions[i]) L.chat.duoSessions[seatKey(s)] = m.sessions[i]; });
     }
-    m.text = collabText(m);
+    m.text = collabText(m); m.ctx = ctxText(m) || undefined;
     const fin = m.final != null ? m.parts[m.final] : null;
     if (fin?.suggest) m.suggest = fin.suggest;
     // the host chat's next message carries the outcome once (only when its engine session wouldn't see it)
@@ -362,7 +367,7 @@ const Astra = (() => {
     if (m.picked !== seatIdx) score(m, seatIdx);
     m.picked = seatIdx;
     m.final = m.parts.indexOf(part);
-    m.text = collabText(m);
+    m.text = collabText(m); m.ctx = ctxText(m) || undefined;
     chat.carry = carryText(m);
     Native.save(chat);
     paint(m, true);
@@ -418,9 +423,17 @@ const Astra = (() => {
     if (fin) return `**${MODES[m.mode].label} · ${seatsLabel(m)}** (${m.picked != null ? `kept ${m.seats[m.picked].name}'s answer` : `final by ${m.seats[fin.seat].name}`})\n\n${answerOf(fin)}`;
     return `**${MODES[m.mode].label} · ${seatsLabel(m)}**\n\n${latestBySeat(m).filter(ok).map((p) => `_${m.seats[p.seat].label}:_\n\n${answerOf(p)}`).join('\n\n---\n\n')}`;
   }
+  // (round 33, swarmlean) what goes back into the chat's context is a short summary (the opening of the kept answer,
+  // code named, not pasted); the whole card stays on screen. m.ctx is the same summary for a chat rebuilt from its text.
+  const short = (t, n) => (typeof SwarmLean !== 'undefined' ? SwarmLean.brief(t, n) : cap(t, n));
+  function ctxText(m) {
+    const fin = m.final != null ? m.parts[m.final] : null;
+    const body = fin ? short(answerOf(fin), 900) : latestBySeat(m).filter(ok).map((p) => `[${m.seats[p.seat].name}]: ${short(answerOf(p), 500)}`).join('\n\n');
+    return body ? `(${MODES[m.mode].label} · ${seatsLabel(m)}${m.picked != null ? `, kept ${m.seats[m.picked].name}'s answer` : fin ? `, final by ${m.seats[fin.seat].name}` : ''}; summary, the full answers are in the card)\n${body}` : '';
+  }
   function carryText(m) {
     const fin = m.final != null ? m.parts[m.final] : null;
-    const body = fin ? cap(answerOf(fin), 3000) : latestBySeat(m).filter(ok).map((p) => `[${m.seats[p.seat].name}]: ${cap(answerOf(p), 1500)}`).join('\n\n');
+    const body = fin ? short(answerOf(fin), 900) : latestBySeat(m).filter(ok).map((p) => `[${m.seats[p.seat].name}]: ${short(answerOf(p), 500)}`).join('\n\n');
     if (!body) return null;
     return `[Earlier in this chat, outside your session, the user ran a ${MODES[m.mode].label.toLowerCase()} (${seatsLabel(m)}) on: "${cap(m.task, 300)}". ${fin ? 'The answer they kept' : 'The answers'}:\n${body}]`;
   }

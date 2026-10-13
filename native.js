@@ -1255,11 +1255,11 @@ const Native = (() => {
     if (chat.session?.id || chat.messages.length <= 1) return text;
     if (chat.compact) {
       const after = chat.messages.slice(chat.compact.index, -1).filter((m) => m.role !== 'error')
-        .map((m) => `${m.role === 'user' ? 'User' : m.role === 'opinion' ? `${m.from} (second opinion)` : 'Assistant'}: ${m.text}`).join('\n\n');
+        .map((m) => `${m.role === 'user' ? 'User' : m.role === 'opinion' ? `${m.from} (second opinion)` : 'Assistant'}: ${m.ctx || m.text}`).join('\n\n');
       return `We compacted our earlier conversation to save context. Here is your summary of it${after ? ', then what we said since' : ''}. Continue naturally.\n\n<summary>\n${chat.compact.summary}\n</summary>${after ? `\n\n<since_then>\n${after.length > CONTEXT_CHARS ? `…${after.slice(-CONTEXT_CHARS)}` : after}\n</since_then>` : ''}\n\n${text}`;
     }
     const earlier = chat.messages.slice(0, -1).filter((m) => m.role !== 'error')
-      .map((m) => `${m.role === 'user' ? 'User' : m.role === 'opinion' ? `${m.from} (second opinion)` : 'Assistant'}: ${m.text}`).join('\n\n');
+      .map((m) => `${m.role === 'user' ? 'User' : m.role === 'opinion' ? `${m.from} (second opinion)` : 'Assistant'}: ${m.ctx || m.text}`).join('\n\n');
     if (!earlier) return text;
     const trimmed = earlier.length > CONTEXT_CHARS ? `…${earlier.slice(-CONTEXT_CHARS)}` : earlier;
     const where = chat.imported ? ` (imported from ${chat.imported})` : chat.continuedFrom ? ` (from a ${chat.continuedFrom} chat)` : '';
@@ -1616,7 +1616,9 @@ const Native = (() => {
     const img = screenshot ? await screenshotFor(agent) : null;
     const text = `${question}\n\n[You are giving a second opinion to ${agent?.name || 'another AI'}, which is working on this for the user.${img ? ' The attached image is what the user sees right now.' : ''} Be concise and concrete: what works, what doesn't, and the 3 changes that would help most.]`;
     // lean: the judge needs no tools of its own, so the opinion costs about one plain chat turn
-    const r = await window.hub.askOnce({ agentId: astra.id, text, images: img ? [img] : [], options: { lean: true } });
+    // (round 33, swarmlean) the reviewer of an "Answer, then review" mission: the helper pick (cheaper model on Smart)
+    const extra = typeof SwarmLean !== 'undefined' ? SwarmLean.takeReview(agentId, astra.id) : {};
+    const r = await window.hub.askOnce({ agentId: astra.id, text, images: img ? [img] : [], options: { lean: true, ...extra } });
     if (r.ok && r.usage) document.dispatchEvent(new CustomEvent('hearth:usage', { detail: { agentId: astra.id, usage: r.usage, source: 'second opinion' } }));
     return r.ok ? { ok: true, from: astra.name, text: r.text, usage: r.usage } : r;
   }
