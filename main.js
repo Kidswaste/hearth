@@ -344,12 +344,7 @@ ipcMain.handle('tools:ffmpeg', (_e, o = {}) => {
 ipcMain.handle('tools:installFfmpeg', () => {
   const I = require('./installs');
   const marker = path.join(require('os').tmpdir(), `hearth-ffmpeg-${Date.now()}.done`);
-  const lines = I.IS_WIN
-    ? ['winget install --id Gyan.FFmpeg -e --accept-source-agreements --accept-package-agreements']
-    : I.IS_MAC
-      ? ['command -v brew >/dev/null 2>&1 || [ -x /opt/homebrew/bin/brew ] || [ -x /usr/local/bin/brew ] || /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"',
-        'eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || /usr/local/bin/brew shellenv 2>/dev/null)"', 'brew install ffmpeg']
-      : ['sudo apt-get install -y ffmpeg || sudo dnf install -y ffmpeg || sudo pacman -S --noconfirm ffmpeg'];
+  const lines = I.ffmpegLines(); // (round 28) shared with the "Check this computer" list, which shows it first
   return { ...I.runInTerminal({ title: 'Install ffmpeg for Hearth', lines, marker }), marker, command: lines.join('\n') };
 });
 ipcMain.handle('engine:fix', (_e, engine, action) => { engines.setEnginePaths(settings().enginePaths); return engines.fix(String(engine), String(action || 'update')); });
@@ -517,10 +512,11 @@ lazyIpc('remotemain.js', (m, ipc) => m.register(ipc, () => win, { dataDir: store
 lazyIpc('interopmain.js', (m, ipc) => m.register(ipc, () => win, { dataDir: store.DATA_DIR })); // (round 25) interop: OSC in / out, Ableton Link tempo, the OBS Browser Source page, obs-websocket; all off until used
 lazyIpc('publishmain.js', (m, ipc) => m.register(ipc, () => win, settings)); // (round 27) Ready to post: measures a finished video (ffmpeg) for the platform checks and cover ideas
 lazyIpc('motionmain.js', (m, ipc) => m.register(ipc, () => win, { dataDir: store.DATA_DIR })); // (round 25) camera / body tracking: MediaPipe's files, downloaded once after a yes; the camera permission on a Mac
+lazyIpc('firstrunmain.js', (m, ipc) => m.register(ipc, () => win, { readConfig, dataDir: store.DATA_DIR })); // (round 28) Check this computer: Mac permissions, Windows paths, chats' folders, the shown install commands
 appsmain.register(ipcMain, () => win, { store, appshell }); // app windows (Meshy, Suno, Figma…), their downloads, the Meshy API
 syncmain.register(ipcMain, () => win, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, themePath: THEME_PATH, store }); // sync through a cloud drive folder
 require('./chatmediamain').register(ipcMain, { workspace: path.join(store.DATA_DIR, 'workspace') }); // pictures / videos a chat made, shown in the reply
-require('./reachmain').register(ipcMain, { dataDir: store.DATA_DIR, syncmain }); // (round 19) paths from the other computer, open / reveal / preview what a chat made
+require('./reachmain').register(ipcMain, { dataDir: store.DATA_DIR, syncmain, folderMap: () => settings().reachFolders }); // (round 19) paths from the other computer, open / reveal / preview what a chat made
 require('./updatermain').register(ipcMain, { restart: () => appshell.restartApp(), getWin: () => win }); // ⬆ Update: pull main from the app's git checkout, reload / restart
 require('./devreportmain').register(ipcMain, { dataDir: store.DATA_DIR }); // (round 21) Report to the developer: gh issue / versions / crashes
 require('./assetsmain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win }); // (round 24) the asset library: folder scans + hashes off-thread, thumbnails cache, Poly Haven / ambientCG downloads

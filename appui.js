@@ -162,7 +162,10 @@ const AppUI = (() => {
       home(section('Mood board'), 'board'),
       section('Spell check languages', el('div', { class: 'check-grid', title: 'The languages the message box checks your spelling in' }, langBoxes)),
       section('Tools in the rail', el('div', { class: 'check-grid', title: 'Untick a tool to take it off the rail (it stays in the rail\'s ⋯)' }, toolBoxes)),
-      section('Claude and Codex programs', field('Claude program (only if it isn\'t found)', claudePath, '', 'Where the Claude program is, when Hearth can\'t find it by itself'), field('Codex program (only if it isn\'t found)', codexPath, '', 'Where the Codex program is, when Hearth can\'t find it by itself')),
+      section('Claude and Codex programs',
+        el('div', { class: 'button-row', title: 'Claude, Codex, ffmpeg, sync, folders from the other computer, permissions, updates: one list, one button each' },
+          gbtn('Check this computer…', 'Is this computer ready? Each thing with its state and one button to fix it (nothing installs without your click)', () => { dialog.close(); (window.Lazy?.load ? Lazy.load('firstrun') : Promise.resolve()).then(() => FirstRun.open()); })), // (round 28, firstrun)
+        field('Claude program (only if it isn\'t found)', claudePath, '', 'Where the Claude program is, when Hearth can\'t find it by itself'), field('Codex program (only if it isn\'t found)', codexPath, '', 'Where the Codex program is, when Hearth can\'t find it by itself')),
       section('Folders', field('Forgeheart project', fhRow, '', 'The game project the Forge agents work in'), field('Forgeheart debug build (runs beside the Forge Debug agent)', dbgRow, '', 'The game page the Forge Debug agent plays'), field('After Effects install (optional override)', aeRow, '', 'Only when After Effects is installed somewhere unusual'), field('Where to look for .aep projects', aeDirs, '', 'Folders searched for After Effects projects')),
       section('Backup and files',
         el('div', { class: 'button-row', title: 'Shortcuts, backups and Hearth\'s own files' },

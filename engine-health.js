@@ -249,7 +249,9 @@ const EngineHealth = (() => {
   function start() {
     registerCommands();
     // (a test copy without engines set up isn't told to install them on every start)
-    const go = () => check().then((r) => { if (!(r.test && problems(r).every((p) => p.kind === 'missing'))) notice(r); setTimeout(() => ffmpegNotice(r.test), 20000); }).catch((err) => console.warn('engine check', err));
+    // (round 28, firstrun) the first launch on a fresh computer opens "Check this computer" instead of the notices
+    const firstRun = async (r) => { if (store.get('firstrun.seen', false) || r.test || !window.Lazy?.load) return false; try { await Lazy.load('firstrun'); return FirstRun.auto(r); } catch { return false; } };
+    const go = () => check().then(async (r) => { if (await firstRun(r)) return; if (!(r.test && problems(r).every((p) => p.kind === 'missing'))) notice(r); setTimeout(() => ffmpegNotice(r.test), 20000); }).catch((err) => console.warn('engine check', err));
     const calm = () => (window.Jank?.calm?.(10000, 'engine check') ?? Promise.resolve()).then(go); // (round 20) not mid-gesture
     setTimeout(() => (window.requestIdleCallback ? requestIdleCallback(calm, { timeout: 4000 }) : calm()), 2500);
   }

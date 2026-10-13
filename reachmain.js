@@ -38,6 +38,25 @@ function dataTops() { // the data folder's own top folders (workspace, projects,
 }
 const join = (dir, rel) => path.join(dir, ...rel.split('/').filter(Boolean));
 
+// (round 28, firstrun) folders the owner matched by hand in "Check this computer" (settings.reachFolders, kept on each
+// computer): { "<the other computer's folder>": "<the same folder here>" }; the longest match wins, a path inside
+// it follows ("/Users/x/Projects/a/b.js" → "D:\Work\a\b.js"); Windows-looking paths compare without case
+function mapFolder(p, map) {
+  if (!map || typeof map !== 'object') return null;
+  const f = fwd(p).replace(/\/+$/, '');
+  const winish = (s) => /^[A-Za-z]:\//.test(s) || s.startsWith('//');
+  for (const from of Object.keys(map).sort((a, b) => b.length - a.length)) {
+    const to = map[from];
+    if (typeof to !== 'string' || !absLike(from) || !absLike(to)) continue;
+    const k = fwd(from).replace(/\/+$/, '');
+    const same = (a, b) => (winish(k) ? a.toLowerCase() === b.toLowerCase() : a === b);
+    if (!k || f.length < k.length || !same(f.slice(0, k.length), k) || (f.length > k.length && f[k.length] !== '/')) continue;
+    const rest = f.slice(k.length).replace(/^\//, '');
+    return rest ? join(to, rest) : to;
+  }
+  return null;
+}
+
 // → { path, foreign, rel } (path: this computer's form; rel: inside the data folder, "/" separated) or null
 function localize(input, o = {}) {
   let p = unFile(String(input || '').trim().replace(/^["'`<(]+|["'`>),.;:]+$/g, ''));
@@ -45,6 +64,8 @@ function localize(input, o = {}) {
   const dataDir = o.dataDir || opts.dataDir;
   const relOf = (q) => { const r = path.relative(dataDir, q); return r && !r.startsWith('..') && !path.isAbsolute(r) ? fwd(r) : null; };
   if (statOf(p)) return { path: p, foreign: false, rel: relOf(p) };
+  const mapped = mapFolder(p, o.map !== undefined ? o.map : opts.folderMap?.());
+  if (mapped) return { path: mapped, foreign: true, rel: relOf(mapped) };
   // this computer's own path written with the other slashes ("C:/Users/…" is fine; "/C:/…" was handled above)
   const sctx = o.ctx !== undefined ? o.ctx : opts.syncmain?.pathCtx?.();
   if (sctx) {
@@ -157,4 +178,4 @@ function register(ipcMain, o = {}) {
   ipcMain.handle('reach:info', () => info());
 }
 
-module.exports = { register, localize, resolveOne, unFile, _set: (o) => { opts = { ...opts, ...o }; topsAt = 0; } };
+module.exports = { register, localize, resolveOne, unFile, mapFolder, _set: (o) => { opts = { ...opts, ...o }; topsAt = 0; } };
