@@ -48,11 +48,19 @@ function unwatch(id) {
   watchers.delete(id);
 }
 
+// (round 32, winpolish) deletes stay recoverable on Windows: a file on a network share / USB drive (no Recycle Bin there:
+// Windows would delete it for good) is left alone with a plain reason; long-path (\\?\) names and trailing slashes are
+// cleaned first; a failure says what happened in plain words. Nothing is ever deleted permanently.
+const WinPolish = require('./winpolish');
 async function trash(paths) {
   const done = [];
   const failed = [];
   for (const p of paths) {
-    try { await shell.trashItem(assertAbs(p)); done.push(p); } catch (err) { failed.push({ path: p, error: err.message }); }
+    let target;
+    try { target = assertAbs(p); } catch { failed.push({ path: p, error: `Hearth only deletes files named with their full path (${p}); nothing was deleted.` }); continue; }
+    const check = WinPolish.trashCheck(target);
+    if (!check.ok) { failed.push({ path: p, error: check.error, reason: check.reason }); continue; }
+    try { await shell.trashItem(check.path); done.push(p); } catch (err) { failed.push({ path: p, error: process.platform === 'win32' ? WinPolish.trashError(err, check.path) : err.message }); }
   }
   return { done, failed };
 }

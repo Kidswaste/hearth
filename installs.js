@@ -10,6 +10,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { DATA_DIR } = require('./store');
+// (round 32) Windows: npm's .cmd copies, nvm / Volta / scoop / winget, started right (a test copy without the file: as before)
+const WinPolish = (() => { try { return require('./winpolish'); } catch { return { spawn, candidates: () => [] }; } })();
 
 const IS_WIN = process.platform === 'win32';
 const IS_MAC = process.platform === 'darwin';
@@ -51,7 +53,7 @@ function quick(bin, args, ms = 8000, cwd = os.tmpdir()) {
   return new Promise((resolve) => {
     let out = '';
     let child;
-    try { child = spawn(bin, args, { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }); } catch (err) { resolve({ code: -1, out: err.message }); return; }
+    try { child = WinPolish.spawn(bin, args, { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }); } catch (err) { resolve({ code: -1, out: err.message }); return; }
     const timer = setTimeout(() => { try { child.kill(); } catch { /* gone */ } resolve({ code: -1, out: `${out}\n(timed out)`.trim() }); }, ms);
     child.stdout.on('data', (c) => { out += c; });
     child.stderr.on('data', (c) => { out += c; });
@@ -115,6 +117,8 @@ function candidates(engine) {
   const name = exe(engine);
   const list = [];
   const add = (file) => { if (file) list.push(file); };
+  // (round 32, winpolish) Windows: every .exe / .cmd copy (npm, nvm-windows, Volta, scoop, winget, pnpm, the apps)
+  if (IS_WIN) WinPolish.candidates(engine).forEach(add);
   for (const dir of pathDirs()) add(path.join(dir, name));
   const common = [path.join(HOME, '.local', 'bin', name), path.join(HOME, '.npm-global', 'bin', name), path.join(HOME, '.volta', 'bin', name), path.join(HOME, '.bun', 'bin', name)];
   for (const v of children(path.join(HOME, '.nvm', 'versions', 'node'))) add(path.join(v, 'bin', name));
@@ -149,14 +153,17 @@ function kindOf(engine, bin) {
   try { real = fs.realpathSync(bin); } catch { /* as given */ }
   const p = `${bin}\n${real}`.replace(/\\/g, '/');
   if (/\/(Cellar|Caskroom)\//.test(p) || (IS_MAC && /^\/opt\/homebrew\//.test(real) && !/node_modules/.test(real))) return 'homebrew';
-  if (/node_modules\/@(anthropic-ai\/claude-code|openai\/codex)/.test(p) || /\/\.nvm\/|\/\.npm-global\/|\/\.volta\/|\/AppData\/Roaming\/npm\//i.test(p)) return 'npm';
+  if (/\/scoop\/(shims|apps)\//i.test(p)) return 'scoop';
+  if (/\/WinGet\/(Links|Packages)\//i.test(p)) return 'winget';
+  if (/\/pnpm\//i.test(p)) return 'pnpm';
+  if (/node_modules\/@(anthropic-ai\/claude-code|openai\/codex)/.test(p) || /\/\.nvm\/|\/\.npm-global\/|\/\.volta\/|\/AppData\/Roaming\/npm\/|\/AppData\/Roaming\/nvm\/|\/AppData\/Local\/Volta\/|\/Program Files\/nodejs\//i.test(p)) return 'npm';
   if (/\/\.bun\//.test(p)) return 'bun';
   if (engine === 'claude' && /Application Support\/Claude\/claude-code|AppData\/Roaming\/Claude\/claude-code/i.test(p)) return 'desktop';
   if (engine === 'codex' && /\.app\/Contents|Application Support\/Codex|AppData\/Local\/OpenAI\/Codex/i.test(p)) return 'desktop';
   if (engine === 'claude' && /\/\.local\/(bin|share\/claude)\/|\/\.claude\/local\//.test(p)) return 'native';
   return 'other';
 }
-const KIND_LABEL = { homebrew: 'Homebrew', npm: 'npm', bun: 'Bun', desktop: 'desktop app', native: 'installer', other: 'on PATH', settings: 'Settings → Engines' };
+const KIND_LABEL = { homebrew: 'Homebrew', npm: 'npm', pnpm: 'pnpm', scoop: 'scoop', winget: 'winget', bun: 'Bun', desktop: 'desktop app', native: 'installer', other: 'on PATH', settings: 'Settings → Engines' };
 const q = (s) => (IS_WIN ? `& '${String(s).replace(/'/g, "''")}'` : `'${String(s).replace(/'/g, `'\\''`)}'`);
 const INSTALL = {
   claude: IS_WIN ? 'irm https://claude.ai/install.ps1 | iex' : 'curl -fsSL https://claude.ai/install.sh | bash',
@@ -168,6 +175,7 @@ function updatePlan(engine, bin) {
   const kind = kindOf(engine, bin);
   if (kind === 'homebrew') return { how: 'update', kind, command: `brew upgrade ${engine === 'claude' ? 'claude-code' : 'codex'}`, text: `Update with Homebrew (brew upgrade ${engine === 'claude' ? 'claude-code' : 'codex'})` };
   if (kind === 'npm') return { how: 'update', kind, command: `npm i -g ${engine === 'claude' ? '@anthropic-ai/claude-code' : '@openai/codex'}@latest`, text: 'Update with npm' };
+  if (kind === 'pnpm') return { how: 'update', kind, command: `pnpm add -g ${engine === 'claude' ? '@anthropic-ai/claude-code' : '@openai/codex'}@latest`, text: 'Update with pnpm' };
   if (kind === 'bun') return { how: 'update', kind, command: `bun add -g ${engine === 'claude' ? '@anthropic-ai/claude-code' : '@openai/codex'}@latest`, text: 'Update with Bun' };
   // the desktop apps update their own copy; a standalone copy next to it is quicker and Hearth prefers the newest
   if (kind === 'desktop') return { how: 'install', kind, command: INSTALL[engine], text: `Update the ${engine === 'claude' ? 'Claude' : 'Codex'} app, or install the standalone ${LABEL[engine]} (Hearth picks the newest copy)` };

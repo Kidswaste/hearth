@@ -997,3 +997,8 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ What the cache saved: a reply's ⚡ hover, the meter, `/cache`, ⋯ AI setup → Spending and the week at a glance.
 - ✓ A change made mid-chat (personality, instructions, tools, model, effort) shows one calm line, once: the next message re-reads the chat once without the cache. Never blocks.
 - ○ Tested with `node dev/cache-test.js` and fake engines (`sh dev/run-checks.sh budget`); real engines' cache numbers not seen here.
+## 🪟 Windows, solid (round 32, winpolish, 37 upgrades: docs/upgrades/winpolish.md)
+- ✓ Fixed "Claude installed with npm isn't found on Windows": Hearth finds `claude.cmd` / `codex.cmd` (npm's folder and prefix, nvm-windows, Volta, scoop, winget, pnpm, Bun, the installer, the desktop apps) and starts them through their Node script (no cmd.exe; a `.cmd` it can't read goes through cmd.exe with every argument quoted).
+- ✓ Deletes stay recoverable: a file on a network share or USB drive (no Recycle Bin, Windows would delete it for good) is left alone with a plain reason.
+- ✓ Windows' own errors (no Node.js, a half-removed npm install, a refused `.cmd`, the antivirus, a too-long command line) read as one plain sentence with the fixing button; stack traces never show.
+- ○ Simulated Windows only (`node dev/winpolish-test.js`, `sh dev/run-checks.sh winpolish`); the real check is the owner's next start on the PC.

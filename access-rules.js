@@ -32,15 +32,29 @@ const AccessRules = (() => {
     // Git Bash on Windows (where Claude Code runs commands) writes C:\x as /c/x
     if (winHost && /^\/[A-Za-z](\/|$)/.test(s)) s = `${s[1]}:/${s.slice(3)}`;
     if (!s) return '';
+    // (round 32, winpolish) Windows' other spellings of one place: \\?\C:\x and \\.\C:\x (long-path / device names) are
+    // C:\x, \\?\UNC\srv\share is \\srv\share; "\x" means the root of the current drive and "D:x" the current folder of
+    // drive D: (another drive is never "inside" the chat's folder)
+    if (/^[\\/]{2}[?.][\\/]UNC[\\/]/i.test(s)) s = `\\\\${s.slice(8)}`;
+    else if (/^[\\/]{2}[?.][\\/][A-Za-z]:/.test(s)) s = s.slice(4);
+    const baseDrive = /^[A-Za-z]:/.test(base) ? base.slice(0, 2) : '';
+    if ((winHost || baseDrive) && /^\\(?!\\)/.test(s)) s = `${baseDrive || 'c:'}${s}`;
+    if (/^[A-Za-z]:(?![\\/])/.test(s)) s = baseDrive && baseDrive.toLowerCase() === s.slice(0, 2).toLowerCase() ? `${base}/${s.slice(2)}` : `${s.slice(0, 2)}/${s.slice(2)}`;
     if (home && (s === '~' || s.startsWith('~/') || s.startsWith('~\\'))) s = home + s.slice(1);
     if (!isAbs(s) && base) s = `${base}/${s}`;
     const win = isWinPath(s);
     s = s.replace(/\\/g, '/');
     const lead = s.startsWith('//') ? '//' : s.startsWith('/') ? '/' : '';
+    const unc = win && lead === '//';
     const out = [];
-    for (const part of s.slice(lead.length).split('/')) {
+    const segs = s.slice(lead.length).split('/');
+    const lastAt = s.endsWith('/') ? -1 : segs.length - 1;
+    for (let [i, part] of segs.entries()) {
+      // Windows' own rules: the last name loses its trailing dots and spaces ("secret.txt. " is "secret.txt"), a name
+      // in the middle ending in one dot loses it ("proj." is "proj"); "..." stays a real name
+      if (win && !/^\.+$/.test(part)) part = i === lastAt ? part.replace(/[. ]+$/, '') : part.replace(/([^.])\.$/, '$1');
       if (!part || part === '.') continue;
-      if (part === '..') { if (out.length > (win ? 1 : 0)) out.pop(); continue; }
+      if (part === '..') { if (out.length > (unc ? 2 : win ? 1 : 0)) out.pop(); continue; }
       out.push(part);
     }
     const r = lead + out.join('/');

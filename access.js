@@ -386,7 +386,7 @@ const Access = (() => {
       for (const p of c.trash) { const k = await backup(chatId, p).catch(() => ({})); if (k.backup) kept.set(p, k.backup); }
       const r = await window.hub.fs.trash(c.trash);
       for (const p of r.done) log(chatId, { ...base, id: undefined, action: 'delete', what: `Moved to the Trash: ${R.baseName(p)}`, target: p, result: 'trashed', by, ...(kept.has(p) ? { backup: kept.get(p) } : {}) });
-      if (r.failed.length && !r.done.length) return denied(`Hearth couldn't move it to the Trash (${r.failed[0].error}).`);
+      if (r.failed.length && !r.done.length) { const why = String(r.failed[0].error || ''); return denied(/nothing was (deleted|lost)|already gone/i.test(why) ? why : `Hearth couldn't move it to the Trash (${why}).`); } // (round 32) fsapi's plain Windows reasons as they are
       log(chatId, { ...base, result: 'rewritten', why: 'deleted with the Trash instead', by });
       const msg = `Hearth moved ${r.done.length} item${r.done.length === 1 ? '' : 's'} to the Trash (recoverable)${r.failed.length ? `; ${r.failed.length} could not be moved` : ''}.`;
       return allowed({ ...input, command: `echo ${JSON.stringify(msg)}` });
@@ -433,7 +433,7 @@ const Access = (() => {
     const acc = effective(chat);
     if (R.rank(acc.level) < R.rank('write')) return 'level';
     const { home } = await paths();
-    if (/^([A-Za-z]:[\\/]|\/|~)/.test(String(target || '')) && !R.insideAny(R.norm(target, '', home), acc.folders.map((f) => R.norm(f, '', home)))) return 'outside';
+    if (/^([A-Za-z]:[\\/]|\/|~|\\\\)/.test(String(target || '')) && !R.insideAny(R.norm(target, '', home), acc.folders.map((f) => R.norm(f, '', home)))) return 'outside';
     return null;
   }
   // the nearest folder that exists, for "Allow this folder"
@@ -442,7 +442,7 @@ const Access = (() => {
     for (let i = 0; i < 8 && d; i++) { const st = await window.hub.fs.stat(d).catch(() => null); if (st?.isDir) return d; const up = R.dirName(d); if (up === d) break; d = up; }
     return null;
   }
-  const absPath = (cmd) => (String(cmd || '').match(/(?:^|[\s"'=])((?:\/|[A-Za-z]:[\\/])[^\s"';|&<>]+)/) || [])[1] || '';
+  const absPath = (cmd) => (String(cmd || '').match(/(?:^|[\s"'=])((?:\/|[A-Za-z]:[\\/]|\\\\)[^\s"';|&<>]+)/) || [])[1] || ''; // (round 32) \\server\share too
   // ⋯ AI setup (options.js loads on first use)
   const openSetup = (agentId) => Promise.resolve(window.Lazy?.load?.('options')).then(() => (typeof Options !== 'undefined' ? Options.open({ agentId }) : panel(agentId))).catch(() => panel(agentId));
   async function refusalNote(chatId) {

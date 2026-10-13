@@ -8,6 +8,8 @@ const os = require('os');
 const path = require('path');
 const { DATA_DIR, ATTACH_DIR, getMemory, addUsage } = require('./store');
 const Installs = require('./installs');
+// (round 32) Windows: npm's claude.cmd / codex.cmd found and started, plain errors (a test copy without the file: as before)
+const WinPolish = (() => { try { return require('./winpolish'); } catch { return { spawn, candidates: () => [], cleanPath: (p) => p, plainError: () => null, dropStack: (t) => String(t || '') }; } })();
 // (round 26, connections) the owner's own MCP servers, switched on per AI in ⋯ AI setup (connectionsmain.js)
 const Conn = (() => { try { return require('./connectionsmain'); } catch { return null; } })();
 // (round 31, tokensaver) where saved memory goes (system prompt or only relevant messages), shared with chat-memory.js
@@ -75,7 +77,13 @@ function findOnPath(name) {
 // Settings → Engines can point at the programs directly (settings.enginePaths = { claude, codex }).
 let enginePaths = {};
 function setEnginePaths(p) { enginePaths = p && typeof p === 'object' ? p : {}; }
-const given = (name) => (enginePaths[name] && fs.existsSync(enginePaths[name]) ? enginePaths[name] : null);
+// (round 32, winpolish) a pasted Windows path is cleaned first: quotes from "Copy as path", %APPDATA%, npm's extensionless
+// script (…\npm\claude → claude.cmd), a folder (→ the program in it)
+const given = (name) => {
+  if (!enginePaths[name]) return null;
+  const p = IS_WIN ? WinPolish.cleanPath(enginePaths[name], { engine: name }) : enginePaths[name];
+  return p && fs.existsSync(p) ? p : null;
+};
 
 // The desktop apps keep their engine in versioned folders; pick the most recently updated one.
 function newestIn(root, exeName, depth = 3) {
@@ -100,12 +108,12 @@ function newestIn(root, exeName, depth = 3) {
 // places in order. The check runs at startup, off the window's thread, and after an update.
 const preferred = (name) => { const p = Installs.data().chosen[name]; return p && fs.existsSync(p) ? p : null; };
 const LOCATE = {
-  claude: () => given('claude') || preferred('claude') || findOnPath('claude')
+  claude: () => given('claude') || preferred('claude') || (IS_WIN ? WinPolish.candidates('claude')[0] : findOnPath('claude'))
     || (IS_WIN ? newestIn(path.join(process.env.APPDATA || '', 'Claude', 'claude-code'), 'claude.exe') : null)
     || (IS_MAC ? newestIn(path.join(os.homedir(), 'Library', 'Application Support', 'Claude', 'claude-code'), 'claude') : null)
     || [path.join(os.homedir(), '.local', 'bin', exe('claude')), path.join(os.homedir(), '.claude', 'local', exe('claude'))].find((f) => fs.existsSync(f))
     || null,
-  codex: () => given('codex') || preferred('codex') || findOnPath('codex')
+  codex: () => given('codex') || preferred('codex') || (IS_WIN ? WinPolish.candidates('codex')[0] : findOnPath('codex'))
     || (IS_WIN ? newestIn(path.join(process.env.LOCALAPPDATA || '', 'OpenAI', 'Codex', 'bin'), 'codex.exe') : null)
     || (IS_MAC ? newestIn('/Applications/Codex.app/Contents', 'codex', 4) || newestIn('/Applications/ChatGPT.app/Contents', 'codex', 4) || newestIn(path.join(os.homedir(), 'Library', 'Application Support', 'Codex'), 'codex', 4) : null)
     || null,
@@ -925,7 +933,11 @@ const FIXES = [
     () => 'Codex\'s sandbox refused something: Astra may only change files in its own folders, at Read & write or Full. Change it in ⋯ AI setup → Files on this computer.'],
 ];
 
-function friendlyError(engine, message) {
+function friendlyError(engine, message, { win = IS_WIN } = {}) {
+  // (round 32, winpolish) what Windows says (npm's Node missing, a half-removed npm install, a .cmd Windows wouldn't
+  // start, the antivirus…) in plain words with the button that fixes it; the raw line stays underneath for /doctor
+  const w = win && !/not logged in|unauthori[sz]ed|\b401\b/i.test(message) && !POLICY_BLOCKED.test(message) && !/sandbox/i.test(message) ? WinPolish.plainError(message) : null;
+  if (w) return { message: `${w.text}\n\nFix: ${w.fix}\n\n(${String(message).split('\n')[0].slice(0, 200)})`, fix: w.fix, fixAction: w.action, fixEngine: engine };
   if (/not logged in|please run \/login|codex login|unauthori[sz]ed|\b401\b|sign in again|token (expired|is invalid)|refresh token/i.test(message)) {
     return { message: `${ENGINES[engine].label} isn't signed in to your ${ENGINES[engine].account} account.`, needsLogin: true, fix: 'Press the sign-in button below (or run /astra-login), finish in the window that opens, then Retry.' };
   }
@@ -1032,7 +1044,7 @@ function send({ agent, chatId, session, text, options = {} }, emit, live = null)
   }
   const bin = options._bin || LOCATE[engine]?.();
   if (!bin) {
-    emit({ type: 'error', message: `Couldn't find ${ENGINES[engine]?.label || engine} on this ${IS_MAC ? 'Mac' : 'PC'}.\n\nFix: press Install (it runs \`${Installs.updatePlan(engine, null).command}\` in a ${IS_WIN ? 'PowerShell' : 'Terminal'} window), install the ${engine === 'codex' ? 'Codex (ChatGPT)' : 'Claude'} desktop app, or set its path in Settings → Engines. /doctor shows what Hearth looked for.`, fixAction: 'install', fixEngine: engine });
+    emit({ type: 'error', message: `Couldn't find ${ENGINES[engine]?.label || engine} on this ${IS_MAC ? 'Mac' : 'PC'}.\n\nFix: press Install (it runs \`${Installs.updatePlan(engine, null).command}\` in a ${IS_WIN ? 'PowerShell' : 'Terminal'} window), install the ${engine === 'codex' ? 'Codex (ChatGPT)' : 'Claude'} desktop app, or set its path in Settings → Engines. /doctor shows what Hearth looked for${IS_WIN ? ' (PATH, npm\'s %APPDATA%\\npm, nvm, Volta, scoop, winget, pnpm and the desktop apps)' : ''}.`, fixAction: 'install', fixEngine: engine });
     return;
   }
   usedBin[engine] = bin;
@@ -1048,7 +1060,15 @@ function send({ agent, chatId, session, text, options = {} }, emit, live = null)
   const parse = engine === 'claude' ? claudeParser(state) : codexParser(state, agent);
 
   // MCP_TOOL_TIMEOUT: a question to the user (chat_ask) can wait a long time for the answer.
-  const child = spawn(bin, args, { cwd: WORKSPACE, windowsHide: true, env: { ...process.env, MCP_TOOL_TIMEOUT: String(45 * 60000) } });
+  // (round 32) WinPolish.spawn: on Windows npm's claude.cmd / codex.cmd run through their Node script (Node refuses a
+  // .cmd without a shell); elsewhere the plain spawn
+  let child;
+  try { child = WinPolish.spawn(bin, args, { cwd: WORKSPACE, windowsHide: true, env: { ...process.env, MCP_TOOL_TIMEOUT: String(45 * 60000) } }); } catch (err) {
+    log(`${engine} ${chatId} couldn't start ${bin}: ${err.message}`);
+    emit({ type: 'error', ...friendlyError(engine, `Couldn't start ${ENGINES[engine].label} (${err.code || err.message}).`) });
+    return;
+  }
+  if (child.hearthVia && child.hearthVia !== 'direct') log(`${engine} ${chatId} started ${path.basename(bin)} via ${child.hearthVia}`);
   running.set(chatId, child);
   child.stdin.on('error', () => { /* the engine quit before reading its input; close reports why */ });
   child.stdin.end(text);
@@ -1236,7 +1256,8 @@ const LIVE_EVENTS = new Set(['step', 'agent', 'pulse', 'status']);
 // The most telling stderr line: an "Error:" line when there is one, else the last line.
 // A line ending in ":" ("Error: Invalid MCP configuration:") keeps the lines after it, where the reason is.
 function lastErrorLine(stderr) {
-  const lines = stderr.trim().split('\n').map((l) => l.trim()).filter(Boolean);
+  // (round 32) a crashed Node script's stack frames ("    at Module._compile (node:internal…)") are never the reason
+  const lines = WinPolish.dropStack(stderr).split('\n').map((l) => l.trim()).filter(Boolean);
   const i = lines.map((l) => /error/i.test(l)).lastIndexOf(true);
   if (i < 0) return lines.pop() || '';
   return /:$/.test(lines[i]) ? lines.slice(i, i + 4).join('\n') : lines[i];
@@ -1299,7 +1320,7 @@ function quick(bin, args, ms = 10000) {
   return new Promise((resolve) => {
     let out = '';
     let child;
-    try { child = spawn(bin, args, { cwd: WORKSPACE, windowsHide: true }); } catch (err) { resolve({ code: -1, out: err.message }); return; }
+    try { child = WinPolish.spawn(bin, args, { cwd: WORKSPACE, windowsHide: true }); } catch (err) { resolve({ code: -1, out: err.message }); return; }
     const timer = setTimeout(() => { child.kill(); resolve({ code: -1, out: `${out}\n(timed out)`.trim() }); }, ms);
     child.stdout.on('data', (c) => { out += c; });
     child.stderr.on('data', (c) => { out += c; });
@@ -1435,7 +1456,7 @@ function discoverConnectors() {
   if (!bin) return Promise.resolve(readConnectorCache());
   loadDropped(bin);
   return new Promise((resolve) => {
-    const child = spawn(bin, dropUnsupported([
+    const child = WinPolish.spawn(bin, dropUnsupported([
       '-p', '--output-format', 'stream-json', '--verbose', '--setting-sources', 'project',
       '--tools', '', '--disable-slash-commands', '--permission-prompts', 'none',
     ]), { cwd: WORKSPACE, windowsHide: true });
