@@ -87,7 +87,10 @@ const OPS = {
     if (sameOnDisk(file, h)) return { skipped: true };
     if (prev && fs.existsSync(file)) fs.copyFileSync(file, prev);
     const tmp = `${file}.w.tmp`;
-    fs.writeFileSync(tmp, text);
+    // (round 29, safetynet) flushed to the disk before the rename: after a power cut the file is the old one or the
+    // new one, never an empty one (this thread waits for it; the window and the main process don't)
+    const fd = fs.openSync(tmp, 'w');
+    try { fs.writeSync(fd, text); try { fs.fsyncSync(fd); } catch { /* a disk that can't: as before */ } } finally { fs.closeSync(fd); }
     renameRetry(tmp, file);
     const st = stat(file);
     if (st) written.set(file, { h, size: st.size, mtimeMs: st.mtimeMs });
@@ -122,7 +125,11 @@ const OPS = {
   },
   // a big store read and parsed here (the main thread only receives the result)
   read({ file, fallback }) {
-    try { const text = fs.readFileSync(file, 'utf8'); const st = stat(file); if (st) written.set(file, { h: sha(text), size: st.size, mtimeMs: st.mtimeMs }); return JSON.parse(text); } catch { return fallback ?? null; }
+    let text;
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return fallback ?? null; }
+    try { const v = JSON.parse(text); const st = stat(file); if (st) written.set(file, { h: sha(text), size: st.size, mtimeMs: st.mtimeMs }); return v; } catch { /* cut short or garbled */ }
+    // (round 29, safetynet) a store that can't be read falls back to its previous version (<name>.prev.json)
+    try { return JSON.parse(fs.readFileSync(file.replace(/\.json$/, '.prev.json'), 'utf8')); } catch { return fallback ?? null; }
   },
   // the files thread (a second copy of this worker, so a big folder never holds up a save): fsapi's recursive listing
   // and its full-text search of a folder

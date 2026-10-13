@@ -182,6 +182,18 @@ function searchChatsSync(query) {
   return hits.sort((a, b) => b.count - a.count || b.updatedAt - a.updatedAt).slice(0, 100);
 }
 
+// (round 29, safetynet) a kv store that can't be read (cut short by a crash, garbled) falls back to its previous
+// version (<name>.prev.json, kept by every save) instead of starting empty and being saved over
+function readKV(file, fallback) {
+  const p = pending.get(file);
+  if (p) return structuredClone(p.value);
+  let text;
+  try { text = fs.readFileSync(file, 'utf8'); } catch { return fallback; }
+  try { return JSON.parse(text); } catch { /* below */ }
+  const prev = readJson(file.replace(/\.json$/, '.prev.json'), undefined);
+  if (prev !== undefined) { console.warn(`store: ${path.basename(file)} could not be read; using its previous version`); return prev; }
+  return fallback;
+}
 const kvPath = (name) => {
   if (!SAFE_ID.test(name)) throw new Error(`bad store name: ${name}`);
   return path.join(KV_DIR, `${name}.json`);
@@ -316,13 +328,13 @@ module.exports = {
   // { shared: "notes for every agent", agents: { [agentId]: "notes for one agent" } }
   getMemory: () => ({ shared: '', agents: {}, ...readJson(MEMORY_PATH, {}) }),
   saveMemory: (memory) => writeJson(MEMORY_PATH, memory, { off: true }),
-  getKV: (name, fallback = null) => readJson(kvPath(name), fallback),
+  getKV: (name, fallback = null) => readKV(kvPath(name), fallback),
   // (round 20) the kv:get IPC: a big store (over 512 KB, e.g. the Lab scenes) is read and parsed on the store thread
   getKVOff: (name, fallback = null) => {
     const file = kvPath(name);
-    if (pending.has(file) || !thread()) return readJson(file, fallback);
+    if (pending.has(file) || !thread()) return readKV(file, fallback);
     let size = 0; try { size = fs.statSync(file).size; } catch { return fallback; }
-    return size > 512 * 1024 ? ask({ op: 'read', file, fallback }).catch(() => readJson(file, fallback)) : readJson(file, fallback);
+    return size > 512 * 1024 ? ask({ op: 'read', file, fallback }).catch(() => readKV(file, fallback)) : readKV(file, fallback);
   },
   setKV: (name, value) => {
     // Keep the previous version of every store as <name>.prev.json (one step of undo for tools).

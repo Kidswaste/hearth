@@ -233,6 +233,27 @@ document.addEventListener('loadedmetadata', (e) => { const v = e.target; if (v i
     return fmtLocal(ms, {}, 'date');
   }
   const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+  // (round 29, safetynet) a debounced SAVE: like debounce, but a long burst of changes (typing without a pause, a slow
+  // drag) still writes at least every `max` ms, and a save still waiting is written at once when the page goes away
+  // (a reload, an update, closing); s.flush() writes now, s.pending() says whether one waits. One timer, no per-call work.
+  const waitingSaves = new Set();
+  function saver(fn, ms = 500, max = Math.max(2000, ms * 4)) {
+    let t = 0; let first = 0;
+    const run = () => { clearTimeout(t); t = 0; first = 0; waitingSaves.delete(s); fn(); };
+    const s = () => {
+      const now = Date.now();
+      if (!first) first = now;
+      clearTimeout(t);
+      t = setTimeout(run, Math.max(0, Math.min(ms, first + max - now)));
+      waitingSaves.add(s);
+    };
+    s.flush = () => { if (t) run(); };
+    s.pending = () => Boolean(t);
+    return s;
+  }
+  // (a save can start another one a moment later, e.g. the Lab sequence → its store: a few microtask rounds catch those)
+  const flushSaves = (rounds) => { for (const s of [...waitingSaves]) { try { s.flush(); } catch (err) { console.warn('save on leave', err); } } if (rounds > 0) queueMicrotask(() => flushSaves(rounds - 1)); };
+  addEventListener('pagehide', () => flushSaves(8));
   async function copyText(text, what = 'Copied') {
     await navigator.clipboard.writeText(text);
     toast(`${what} to clipboard`, { timeout: 1800 });
@@ -423,5 +444,5 @@ document.addEventListener('loadedmetadata', (e) => { const v = e.target; if (v i
     items: (p) => [{ label: 'Open', action: () => MediaFile.open(p) }, { label: MediaFile.revealLabel, action: () => MediaFile.reveal(p) }, { label: MediaFile.copyLabel, action: () => copyText(p, 'Path copied') }],
   };
 
-  Object.assign(window, { el, toast, Modal, Tabs, store, fmtBytes, fmtDate, fmtLocal, canvasDataUrl, timeAgo, debounce, copyText, escapeHtml, highlight, CodeEditor, dropZone, DataTable, MediaFile });
+  Object.assign(window, { el, toast, Modal, Tabs, store, fmtBytes, fmtDate, fmtLocal, canvasDataUrl, timeAgo, debounce, saver, copyText, escapeHtml, highlight, CodeEditor, dropZone, DataTable, MediaFile });
 })();

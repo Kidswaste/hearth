@@ -891,3 +891,8 @@ In ⋯ AI setup, **⚡ Hooks: when… then…** gives each AI a short list of ru
 
 ## 📰 Patch notes (round 29)
 One short, plain-words page per round (docs/patch-notes/round-NN.md): what each new thing is, where to find it, and what's good to know. The ⬆ Update dialog now leads with the patch notes of the rounds you don't have yet (the commit list folds under Details); after an update the note has a **📰 Patch notes** button; any time: Settings › Updates › **Patch notes…** or Ctrl/⌘+K.
+## Hearth never loses work (round 29, safetynet, 22 upgrades: docs/upgrades/safetynet.md)
+- ✓ A small journal keeps what isn't saved yet a moment after each change (Lab code, layers, keyframes and unsaved slider moves, chat drafts and queued messages, board edits, AI setup / dialog text); nothing runs while you do nothing.
+- ✓ After a crash, a forced quit or a power cut (or the window's page crashing: it now reloads by itself), one card: **"Hearth closed unexpectedly — here's what was restored"** with Open per line: Lab work as a time-machine version, the draft back in its box, queued messages back in the box (not sent), board edits put back, typed text as a note. Never over newer data. Again: Ctrl/⌘+K or `/restored`.
+- ✓ Saves no longer wait for a pause (long typing is written every couple of seconds and on reload / update / close); `config.json` and every store are written whole-or-old and flushed to the disk; an unreadable store opens its previous version.
+- ○ A real renderer crash tested end to end headless (`sh dev/run-checks.sh safetynet`); a real power cut / macOS force-quit wasn't tried here.

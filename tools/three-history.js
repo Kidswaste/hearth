@@ -351,6 +351,18 @@ const ThreeHistory = (() => {
     const v = await capture(id, { kind, label, by, force: true });
     return { version: v, before: before?.id || null, undo: before ? () => apply(id, C.stateOf(e.doc, before), { kind: 'restore', label: `Undid: ${label}` }) : null };
   }
+  // (round 29, safetynet) work that didn't reach the disk before Hearth closed unexpectedly: added as a version of its
+  // scene WITHOUT putting it on screen (the scene stays as saved; the version is one click away); none when the newest
+  // version already shows the same thing (a reload during the restore)
+  async function keepVersion(id, st, { label = 'Recovered', at = Date.now() } = {}) {
+    if (!okId(id) || !st?.layers?.length) return null;
+    const e = await docOf(id);
+    const lv = C.latest(e.doc);
+    if (lv && C.same(C.stateOf(e.doc, lv), st)) return lv;
+    const v = C.add(e.doc, C.clone(st), { kind: 'restore', label, by: 'you', at });
+    saveSoon(id); emit(id, v);
+    return v;
+  }
   async function restore(vid, { id = S()?.currentId(), label = null } = {}) {
     const e = await docOf(id);
     const v = e.doc.versions.find((x) => x.id === vid);
@@ -394,7 +406,7 @@ const ThreeHistory = (() => {
 
   return {
     changed, director, as, capture, flush, list, stateOf, resolve, changesBetween, thumbs, turns, back,
-    preview, endScrub, restore, pick, branch, fmtWhen,
+    preview, endScrub, restore, pick, branch, fmtWhen, keepVersion,
     get scrubbing() { return scrub ? { id: scrub.id, version: scrub.at } : null; },
     // dev checks: sizes and counts
     stats: () => ({ ...stats, cached: docs.size }),

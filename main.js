@@ -217,7 +217,11 @@ ipcMain.handle('boot:status', () => ({
 ipcMain.handle('config:get', afterSync(() => loadAll()));
 ipcMain.handle('config:save', afterSync((_e, config) => {
   config = syncmain.guardConfig(config); // a config that just arrived from another computer is merged, not undone
-  fs.writeFileSync(CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`);
+  // (round 29, safetynet) temp file + rename: a crash or a power cut mid-save can't leave half a config.json
+  const tmp = `${CONFIG_PATH}.tmp`;
+  const text = `${JSON.stringify(config, null, 2)}\n`;
+  fs.writeFileSync(tmp, text);
+  try { fs.renameSync(tmp, CONFIG_PATH); } catch { fs.writeFileSync(CONFIG_PATH, text); fs.rmSync(tmp, { force: true }); } // (Windows: a file held for a moment)
   cfgCache = null;
   return appshell.applySettings(win, config.settings || {});
 }));
@@ -526,6 +530,7 @@ syncmain.register(ipcMain, () => win, { dataDir: store.DATA_DIR, configPath: CON
 require('./chatmediamain').register(ipcMain, { workspace: path.join(store.DATA_DIR, 'workspace') }); // pictures / videos a chat made, shown in the reply
 require('./reachmain').register(ipcMain, { dataDir: store.DATA_DIR, syncmain, folderMap: () => settings().reachFolders }); // (round 19) paths from the other computer, open / reveal / preview what a chat made
 require('./updatermain').register(ipcMain, { restart: () => appshell.restartApp(), getWin: () => win }); // ⬆ Update: pull main from the app's git checkout, reload / restart
+require('./safetynetmain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win }); // (round 29) Hearth never loses work: the session marker, the page reloading after a crash, the work journal
 require('./devreportmain').register(ipcMain, { dataDir: store.DATA_DIR }); // (round 21) Report to the developer: gh issue / versions / crashes
 require('./assetsmain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win }); // (round 24) the asset library: folder scans + hashes off-thread, thumbnails cache, Poly Haven / ambientCG downloads
 require('./connectionsmain').register(ipcMain, { readConfig }); // (round 26) the owner's own MCP servers: Test, and what engines.js hands each AI

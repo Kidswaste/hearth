@@ -11,7 +11,7 @@ const CutStore = (() => {
   const listeners = {};
   const emit = (ev, d) => { for (const fn of listeners[ev] || []) { try { fn(d); } catch (err) { console.error(err); } } };
   let pending = false;
-  const write = debounce(() => { pending = false; window.hub.kvSet('video-cuts', cuts); }, 400);
+  const write = saver(() => { pending = false; window.hub.kvSet('video-cuts', cuts); }, 400);
   const save = () => { pending = true; write(); };
   addEventListener('beforeunload', () => { if (pending && cuts) { pending = false; window.hub.kvSet('video-cuts', cuts); } });
   async function load() {

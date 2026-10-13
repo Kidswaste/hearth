@@ -74,7 +74,7 @@ const ThreeSeq = (() => {
     if (all > vis + 0.05 && vis > 0) { if (!e.mark || e.mark.lab) e.mark = { a: 0, b: r4(vis), lab: true }; } else if (e.mark?.lab) e.mark = null;
     return e;
   }
-  const saveSoon = debounce(() => writeEdit(), 300);
+  const saveSoon = saver(() => { writeEdit().catch((err) => console.warn(err)); }, 300); // (round 29) also on leaving (CutStore then writes at once)
   // nested sequences (a sequence as a clip): their edits, loaded before the program is compiled
   async function loadNested(e, depth = 0) {
     for (const c of e?.clips || []) {
