@@ -50,20 +50,27 @@ step('Claude: transition dip-black into clip 3', e.clips[2]?.trans?.type === 'di
 step('Claude: trim clip 1 to end at bar 3', Math.abs(tm[0].end - ((g.downbeat || 0) + 2 * bar)) < 0.06, { end: tm[0].end, want: (g.downbeat || 0) + 2 * bar });
 step('Claude: frame f45 comes back with its picture', has(/three_do: .*\+ 1 image/) && has(/frame: 45/), lines.find((l) => /frame: 45/.test(l)));
 step('Claude: status lists the clips', has(/three_do: .*scene “Seq Red”/));
-step('Claude: help sequence answered by the server (no hub call)', has(/three_do: .*THE LAB SEQUENCE/));
+// (bugbash) since round 25 (diet) "help <cmd>" answers the command's own description and args first, then the guide
+// topic of the same name; the reply line shows the first 160 characters and the total length, so: the command's
+// text, and long enough to carry the "THE LAB SEQUENCE" topic too (the topic alone is ≈ 3,400 characters)
+const helpLine = lines.find((l) => /three_do: \d+ chars · three_sequence \(lean: three_do sequence\)/.test(l));
+step('Claude: help sequence answered by the server (no hub call)', Boolean(helpLine) && Number(helpLine.match(/three_do: (\d+) chars/)[1]) > 1500, helpLine);
 // Astra (fake Codex) as the director: the same tools
 Commands.tryRun('/director-engine astra', dir.id);
 await until(() => H.agent(dir.id).engine === 'codex', 8000); await wait(500);
 const lines2 = await ask([
   ['three_do', { cmd: 'sequence', op: 'add', scene: 'Seq Blue', bars: 1 }],
   ['three_do', { cmd: 'sequence', op: 'length', clip: 1, bars: 1 }],
-  ['three_do', { cmd: 'sequence', op: 'render', format: '1:1' }],
+  // (bugbash) "a short 1:1": the 1-bar clip as the range, not the whole 23.5 s (Green waits at bar 9): 705 frames at
+  // 1080×1080 took longer than the engine's 120 s per tool call in software GL ("no result")
+  ['three_do', { cmd: 'sequence', op: 'range', clip: 1 }],
+  ['three_do', { cmd: 'sequence', op: 'render', format: '1:1', range: true }],
 ], 'astra');
 step('Astra: add "Seq Blue" for 1 bar', ThreeSeq.edit.clips.some((c) => c.sketch === ids.blue), lines2[0]);
 const rendered = lines2.find((l) => /file: /.test(l)) || '';
 const file = (rendered.match(/file: ([^,·]+?\.mp4)/) || [])[1];
 const pr = file ? await window.hub.video.probe(file.trim()) : null;
-step('Astra: render 1:1 → a 1080×1080 video file', pr?.w === 1080 && pr?.h === 1080, { rendered, pr });
+step('Astra: render 1:1 (the range: one bar) → a 1080×1080 video file', pr?.w === 1080 && pr?.h === 1080 && pr?.duration < 4, { rendered: rendered || lines2.filter((l) => /three_do/.test(l)).slice(-2), pr });
 Commands.tryRun('/director-engine claude', dir.id);
 await wait(300);
 return J.done();
