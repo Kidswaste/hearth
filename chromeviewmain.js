@@ -261,7 +261,7 @@ function downloadProgress(p) {
 async function info() {
   const out = { views: [...views.values()].map((v) => ({ id: v.id, target: v.target, key: v.key, visible: v.visible, casting: Boolean(v.cast?.on), frames: v.frames, fps: v.cast?.pacer.fps || 0, bytes: v.cast?.bytes || 0, size: v.size, url: v.url, signing: Boolean(v.signing) })) };
   try { const b = C().browser(); if (b) { const r = await b.c.send('SystemInfo.getProcessInfo', {}, null, { timeout: 4000 }); out.chromeCpu = (r.processInfo || []).reduce((a, x) => a + (x.cpuTime || 0), 0); } } catch { /* older Chrome */ }
-  try { out.hearthCpu = require('electron').app.getAppMetrics().reduce((a, x) => a + (x.cpu?.cumulativeCPUUsage || 0), 0); } catch { /* plain Node */ }
+  try { const ms = require('electron').app.getAppMetrics(); out.hearthCpu = ms.reduce((a, x) => a + (x.cpu?.cumulativeCPUUsage || 0), 0); out.byType = {}; for (const x of ms) out.byType[x.type] = (out.byType[x.type] || 0) + (x.cpu?.cumulativeCPUUsage || 0); } catch { /* plain Node */ }
   return out;
 }
 

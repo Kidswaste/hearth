@@ -71,9 +71,11 @@ try {
   step(Boolean(scrolled), 'the wheel over the view scrolls the page', scrolled);
   await window.hub.chrome.page('app:cvtest', 'eval', { expr: 'scrollTo(0, 0), true' });
   await wait(300);
-  await inWin('window.__cv.move(90, 42)');
+  await inWin('window.__cv.move(60, 255)');
   const cur = await until(async () => { const c = await inWin('document.querySelector("#aw-main > .cv > .cv-stage").style.cursor'); return c === 'pointer' ? c : null; }, 5000);
-  step(Boolean(cur), 'the page\'s cursor shows on the view (a hand over the button)', cur);
+  await inWin('window.__cv.move(100, 105)');
+  const cur2 = await until(async () => { const c = await inWin('document.querySelector("#aw-main > .cv > .cv-stage").style.cursor'); return c === 'text' ? c : null; }, 5000);
+  step(Boolean(cur) && Boolean(cur2), 'the page\'s cursor shows on the view (a hand over a link, an I-beam over a box)', { cur, cur2 });
   const cm = await window.hub.cview.menu ? true : false;
   step(cm, 'right-click asks the page first (its own menu), else Hearth\'s menu');
 
@@ -86,7 +88,7 @@ try {
   step(Boolean(popWin) && popWin.bounds.left < -2000, 'the popup\'s own Chrome window was put off-screen', popWin && { url: popWin.url, b: popWin.bounds });
   const paused = await until(async () => { const i = await window.hub.cview.info(); const main = i.views.find((v) => v.key === 'app:cvtest'); return main && !main.casting ? true : null; }, 6000);
   step(Boolean(paused), 'the page under the popup stops drawing while it\'s covered');
-  await inWin('window.__cv.click(60, 20, true)');
+  await inWin('window.__cv.click(60, 70, true)');
   const pclick = await until(async () => { const w = (await window.hub.chrome.page(null, 'pages')).value || []; return w.find((p) => /cv-popup/.test(p.url) && p.title === 'Popup clicked'); }, 8000);
   step(Boolean(pclick), 'the popup\'s view takes clicks too');
   await inWin('[...document.querySelectorAll(".cv-popup-head .cv-btn")].pop().click(), true');
@@ -108,17 +110,20 @@ try {
 
   // ---------- 5. hidden: no frames; shown: frames again; CPU both ways ----------
   const cpu = async () => { const i = await window.hub.cview.info(); return { hearth: i.hearthCpu, chrome: i.chromeCpu, frames: i.views.find((v) => v.key === 'app:cvtest')?.frames || 0, casting: i.views.find((v) => v.key === 'app:cvtest')?.casting }; };
-  const a0 = await cpu(); await wait(3000); const a1 = await cpu();
-  out.cpu.visible = { fps: (a1.frames - a0.frames) / 3, hearthCpuPct: Math.round((a1.hearth - a0.hearth) / 3 * 1000) / 10, chromeCpuPct: Math.round((a1.chrome - a0.chrome) / 3 * 1000) / 10 };
+  const byType = async () => (await window.hub.cview.info()).byType || {};
+  const pct = (x1, x0) => Object.fromEntries(Object.keys(x1).map((k) => [k, Math.round((x1[k] - (x0[k] || 0)) / 3 * 100)]));
+  const a0 = await cpu(); const t0 = await byType(); await wait(3000); const a1 = await cpu(); const t1 = await byType();
+  out.cpu.visible = { fps: (a1.frames - a0.frames) / 3, hearthCpuPct: Math.round((a1.hearth - a0.hearth) / 3 * 1000) / 10, chromeCpuPct: Math.round((a1.chrome - a0.chrome) / 3 * 1000) / 10, byProcess: pct(t1, t0) };
   step(out.cpu.visible.fps > 5 && out.cpu.visible.fps <= 31, 'visible: frames keep coming (an animated page), at most 30 a second', out.cpu.visible);
   await window.hub.apps.close('cvtest');
   const stopped = await until(async () => (await cpu()).casting === false, 6000);
-  const b0 = await cpu(); await wait(3000); const b1 = await cpu();
-  out.cpu.hidden = { fps: (b1.frames - b0.frames) / 3, hearthCpuPct: Math.round((b1.hearth - b0.hearth) / 3 * 1000) / 10, chromeCpuPct: Math.round((b1.chrome - b0.chrome) / 3 * 1000) / 10 };
+  const b0 = await cpu(); const u0 = await byType(); await wait(3000); const b1 = await cpu(); const u1 = await byType();
+  out.cpu.hidden = { fps: (b1.frames - b0.frames) / 3, hearthCpuPct: Math.round((b1.hearth - b0.hearth) / 3 * 1000) / 10, chromeCpuPct: Math.round((b1.chrome - b0.chrome) / 3 * 1000) / 10, byProcess: pct(u1, u0) };
   step(Boolean(stopped) && b1.frames === b0.frames, 'the window hidden: the screencast stops (no frames at all)', out.cpu.hidden);
-  await Apps.open('cvtest');
+  const sh = await window.hub.chrome.page('app:cvtest', 'show'); // (what the board's finder's "Show the page" asks: out of sight, the Hearth view shows it)
   const again = await until(async () => { const c = await cpu(); return c.casting && c.frames > b1.frames + 2 ? c.frames - b1.frames : null; }, 10000);
-  step(Boolean(again), 'shown again: frames again', again);
+  const vis = (await window.hub.apps.windows()).find((w) => w.id === 'cvtest' && w.visible);
+  step(sh?.view === true && Boolean(again) && Boolean(vis), '"show this page" brings its Hearth window back (not Chrome\'s), frames again', { sh, again });
 
   // ---------- 6. Sign in (opens Chrome once) ----------
   const r6 = await inWin(`window.appWin.cview.signIn(window.cv.id, { url: ${JSON.stringify(`${base}/v3/signin/identifier?continue=x`)} })`);
@@ -152,7 +157,7 @@ try {
   await saveConfig();
   await until(() => H.surfaces.get(agent.id), 10000);
   activate(agent.id);
-  const hv = await until(() => { const c = ChromeUI.covers.get(agent.id); return c?.cv?.state.frames > 1 ? c : null; }, 30000);
+  const hv = await until(() => { const c = ChromeUI.covers.get(agent.id); return c?.cv?.state.frames >= 1 ? c : null; }, 30000); // (a still page sends one frame: Chrome sends frames when something changes)
   step(Boolean(hv) && Boolean(H.surfaces.get(agent.id).el.querySelector('.chr-view .cv .cv-bar .cv-addr')), 'a website chat in Chrome shows its page in a Chrome view here (with Back, Forward, ↻ and its address)', hv && { frames: hv.cv.state.frames, addr: hv.cv.state.address });
   await sendToWebsite(H.agent(agent.id), 'hello view');
   const sent = await until(async () => { const r = await window.hub.chrome.page(`agent:${agent.id}`, 'info'); return r.value?.title === 'sent: hello view' ? r.value.title : null; }, 15000);

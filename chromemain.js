@@ -313,7 +313,10 @@ async function revealFor({ key = null, url = null, stay = false } = {}) {
       temp = !key; if (key) keys.set(key, id);
     } else {
       const now = (await browser.pages()).find((p) => p.id === id)?.url || '';
-      if (!signInPage(now)) { const target = url || `${google}?continue=${encodeURIComponent(now)}`; await (await browser.page(id)).navigate(target, { wait: false }).catch(() => {}); }
+      // a page not on a sign-in page: Google's sign-in for a Google site (back to the page after); any other site shows
+      // as it is (its own "Log in" / "Continue with Google"), and "I'm signed in" ends it if no sign-in page shows
+      const g = CDP.googleOnly(now) || /(^|\.)google\.com$/.test(CDP.hostOf(now));
+      if (!signInPage(now) && (url || g)) { const target = url || `${google}?continue=${encodeURIComponent(now)}`; await (await browser.page(id)).navigate(target, { wait: false }).catch(() => {}); }
     }
     events.emit('reveal', id); // (its view lets go of the page's size first: the window shows the page as it is)
     const now = (await browser.pages()).find((p) => p.id === id)?.url || url || '';

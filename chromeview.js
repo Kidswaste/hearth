@@ -70,7 +70,7 @@ const ChromeView = (() => {
     const el = mk('div', { class: 'cv' }, bar, strip, stage);
     el.dataset.view = id;
     host.append(el);
-    const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+    const ctx = canvas.getContext('2d', { alpha: false });
 
     // ---------- frames ----------
     let drawing = false; let queued = null;
@@ -105,7 +105,9 @@ const ChromeView = (() => {
 
     // ---------- size and visibility ----------
     const size = () => ({ width: Math.max(1, Math.round(stage.clientWidth)), height: Math.max(1, Math.round(stage.clientHeight)), dpr: devicePixelRatio || 1 });
-    let seen = false;
+    let seen = false; let inView = false;
+    // seen: on screen (IntersectionObserver) and not hidden by visibility (the hub keeps chats it isn't showing that way)
+    const shown = () => { try { return stage.checkVisibility ? stage.checkVisibility({ visibilityProperty: true }) : true; } catch { return true; } };
     function wanted() { return seen && !st.paused && !st.signing && !st.gone && document.visibilityState === 'visible'; }
     function sync() {
       const on = wanted();
@@ -113,10 +115,13 @@ const ChromeView = (() => {
       st.visible = on;
       api.visible(id, on, size()).catch(() => {});
     }
-    const io = new IntersectionObserver((list) => { seen = list.some((x) => x.isIntersecting); sync(); });
+    const look = () => { seen = inView && shown(); sync(); };
+    const io = new IntersectionObserver((list) => { inView = list.some((x) => x.isIntersecting); look(); });
     io.observe(stage);
-    const onVis = () => sync();
+    const onVis = () => look();
     document.addEventListener('visibilitychange', onVis);
+    document.addEventListener('hearth:activate', onVis); // (the hub switched chats)
+    const poll = setInterval(() => { if (st.visible || (inView && !seen)) look(); }, 1500); // (anything else that hides it: checked slowly, only while it draws)
     let rzTimer = 0; let lastSize = '';
     const ro = new ResizeObserver(() => {
       place();
@@ -172,10 +177,12 @@ const ChromeView = (() => {
 
     // ---------- the keyboard, typed text, pastes ----------
     let composing = false;
-    const keyMsgs = (e, up) => K.keys(e, { mac, up }).map((p) => ({ m: 'Input.dispatchKeyEvent', p }));
+    // (the hub's ui.js makes ⌘ also read as Ctrl on a Mac, for its own shortcuts: the page gets the real Control key)
+    const real = (e) => ({ key: e.key, code: e.code, keyCode: e.keyCode, location: e.location, repeat: e.repeat, isComposing: e.isComposing, altKey: e.altKey, shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.getModifierState ? e.getModifierState('Control') : e.ctrlKey });
+    const keyMsgs = (e, up) => K.keys(real(e), { mac, up }).map((p) => ({ m: 'Input.dispatchKeyEvent', p }));
     keys.addEventListener('keydown', (e) => {
       if (composing || e.isComposing || e.keyCode === 229 || e.key === 'Dead') return; // (an input method / a dead key: the text comes as a composition)
-      if (K.reserved(e, { mac })) return; // (Hearth's own: reload, back, close, the palette…)
+      if (K.reserved(real(e), { mac })) return; // (Hearth's own: reload, back, close, the palette…)
       const mod = mac ? e.metaKey : e.ctrlKey;
       if (mod && !e.altKey && String(e.key).toLowerCase() === 'v') { e.stopPropagation(); return; } // (the paste event below brings the clipboard)
       e.preventDefault(); e.stopPropagation();
@@ -183,7 +190,7 @@ const ChromeView = (() => {
       sendIn(keyMsgs(e, false));
     });
     keys.addEventListener('keyup', (e) => {
-      if (composing || e.isComposing || e.keyCode === 229 || K.reserved(e, { mac })) return;
+      if (composing || e.isComposing || e.keyCode === 229 || K.reserved(real(e), { mac })) return;
       e.preventDefault(); e.stopPropagation();
       sendIn(keyMsgs(e, true));
     });
@@ -320,7 +327,7 @@ const ChromeView = (() => {
       for (const p of [...popups]) closePopup(p.pid, close);
       views.delete(id);
       io.disconnect(); ro.disconnect(); dprQ.removeEventListener?.('change', onDpr);
-      document.removeEventListener('visibilitychange', onVis);
+      document.removeEventListener('visibilitychange', onVis); document.removeEventListener('hearth:activate', onVis); clearInterval(poll);
       clearTimeout(curTimer); clearTimeout(rzTimer);
       api.stop(id, { close }).catch(() => {});
       el.remove();
