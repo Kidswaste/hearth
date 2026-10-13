@@ -988,3 +988,8 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ Astra on Windows: when its sandbox blocks every command, the chat says so in one line with **Run without its sandbox…** (a warned opt-in, also in ⋯ AI setup → Files on this computer; Read keeps the sandbox).
 - ✓ Any command an engine refuses by its own policy now gets that one line with the right fix (never silent).
 - ○ Tested with fake engines simulating Windows (`FAKE_WINDOWS` / fake-switches `windows`: `sh dev/run-checks.sh access-chat options`, `node dev/access-test.js`); the real Windows confirmation is the owner's next try.
+## ⚡ Cache-wise chats (round 32, cachewise: docs/upgrades/cachewise.md)
+- ✓ The same chat sends the same prompt and flags message after message: a fact saved mid-chat or a picture no longer resets the engines' prompt cache; the parts you change (personality, instructions, files, memory) sit at the end of the prompt. A 20-message chat: 4 → 1 full-price re-reads.
+- ✓ What the cache saved: a reply's ⚡ hover, the meter, `/cache`, ⋯ AI setup → Spending and the week at a glance.
+- ✓ A change made mid-chat (personality, instructions, tools, model, effort) shows one calm line, once: the next message re-reads the chat once without the cache. Never blocks.
+- ○ Tested with `node dev/cache-test.js` and fake engines (`sh dev/run-checks.sh budget`); real engines' cache numbers not seen here.
