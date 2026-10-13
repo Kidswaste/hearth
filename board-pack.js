@@ -238,7 +238,7 @@ const BoardPack = (() => {
       return { ok: false, error: 'op: collections | collection {name, query} | show {name} | groups {k?} | lab-look {name?} | timeline | find {query} | caption {item, text} | pinterest {phrases | aesthetic}' };
     } catch (err) { return { ok: false, error: err.message }; }
   }
-  if (typeof HubBridge !== 'undefined') HubBridge.register(['board_do'], handle);
+  if (typeof HubBridge !== 'undefined') HubBridge.register(['board_do'], (t, a, c) => (window.AiUndo?.board ? AiUndo.board(t, a, c, handle) : handle(t, a, c))); // (round 28) aiundo.js
 
   return { ...PURE, collections, saveCollection, removeCollection, showCollection, vibeGroups, labLook, timeline, timelineText, handle, defs };
 })();
